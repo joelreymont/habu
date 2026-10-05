@@ -39,13 +39,11 @@
 
 require lib/errors.f
 require lib/string.f
-require lib/fmt.f
 require lib/span.f
 require lib/byte-buffer.f
 require lib/adt/option.f
 require lib/fd-io.f
 require lib/fs.f
-require lib/source.f
 require lib/uri.f
 require lib/content-length.f
 require lib/json-read.f
@@ -64,7 +62,6 @@ using LSP-TEXT
 
 private
 
-10 constant LF
 47 constant SLASH
 1 constant ERROR-SEVERITY                \ LSP DiagnosticSeverity.Error
 3 constant INFORMATION-SEVERITY          \ LSP DiagnosticSeverity.Information
@@ -76,8 +73,6 @@ TYPED-VARIABLE W JSON-WRITE:writer
 create FILE-BUF FS-PATH-CAP allot        \ a packet's file, decoded
 variable FILE-U
 FS-PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file's URI: file:// and each byte escaped
-DYNAMIC-BUFFER DEP-TEXT u8               \ a file's text, read from disk
-variable DEP-U
 
 TYPED-VARIABLE LINE-A ptr u8             \ the packet line being screened
 variable LINE-U
@@ -126,24 +121,6 @@ variable ITEMS                           \ and the diagnostics in it so far
    then
    FILE-U @ 0 > if FILE-BUF c@ SLASH = exit then
    false ;
-
-\ ---- positions -----------------------------------------------------------------
-
-: POSITION ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
-   LINE-CHARACTER {: ln:n ch:n :}
-   OBJECT-START
-   s" line" ln FIELD-U COMMA
-   s" character" ch FIELD-U
-   OBJECT-END ;
-
-: RANGE ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
-   {: a:ptr u:n :}
-   a u s" byte_start" INT-MEMBER 0= if drop 0 then {: from:n :}
-   a u s" byte_end" INT-MEMBER 0= if drop from then from max {: to:n :}
-   s" range" KEY OBJECT-START
-   s" start" KEY from POSITION COMMA
-   s" end" KEY to POSITION
-   OBJECT-END ;
 
 \ ---- diagnostics ---------------------------------------------------------------
 
@@ -274,31 +251,6 @@ variable ITEMS                           \ and the diagnostics in it so far
       then
    loop ;
 
-: DEP-ROOM ( n -- ptr u8 )
-   DEP-TEXT-RESERVE 0 DEP-TEXT ;
-
-\ The file in LIST-A is read to its end however it grows while it is read: its
-\ size, whose refusal (E-FS-STAT) stays a missing file's, is only the first
-\ room (lib/source.f READ-WHOLE-SAMPLED).
-: SLURP ( -- )
-   LIST-A @ LIST-U @  LIST-A @ LIST-U @ FILE-SIZE  [: DEP-ROOM ;] SOURCE:READ-WHOLE-SAMPLED DEP-U ! ;
-
-\ The text of the file in LIST-A, read from disk and taken after the read,
-\ which may move it; positions count in it. A file that cannot be read says so
-\ on stderr and counts as empty; it may have been refused before any storage
-\ held it.
-: READ-LISTED ( -- )
-   [: SLURP ;] catch {: code:n :}
-   code 0<> if
-      code E-FS-LAST >= code E-FS-FIRST <= and 0= if code throw then
-      s" lsp: " ERR LIST-A @ LIST-U @ ERR
-      SB-RESET s" : not read: throw " SB-APPEND code FMT:SB-INT LF SB-APPEND-C
-      SB$ ERR
-      NULL$ TEXT!
-      exit
-   then
-   0 DEP-TEXT DEP-U @ TEXT! ;
-
 \ Appends the path, LF-ended, to the files published; answers that copy, which
 \ outlives FILE-BUF.
 : KEEP-NEW ( ptr u8 n -- ptr u8 n )
@@ -318,7 +270,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    NEW$ FILE$ HAS-LINE? if exit then
    FILE$ HELD-OPEN? if exit then
    FILE$ KEEP-NEW LIST-U ! LIST-A !
-   READ-LISTED
+   LIST-A @ LIST-U @ FILE-TEXT!
    LIST-URI OPTION:NONE LIST ;
 
 \ A file the document's earlier check published a list for, withdrawn unless

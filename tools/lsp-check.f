@@ -7,10 +7,12 @@
 \ its verdict: a check stopped by a later definition still publishes the
 \ packets written before it. A check that completed - the verdict verified,
 \ refused or deferred, or the engine providing the file, which leaves nothing
-\ to verify - publishes even when it wrote none. One that did not - the
-\ verifier's image holding the file, the verifier ending without a verdict, or
-\ a throw - and wrote none publishes nothing, so the client keeps the last list
-\ it was sent. One stderr line says why it did not complete:
+\ to verify - keeps its definitions in place of the last (LSP-DEFS:DEFS-KEEP)
+\ and publishes even when it wrote none. One that did not - the verifier's
+\ image holding the file, the verifier ending without a verdict, or a throw -
+\ keeps the last definitions and, when it wrote no packets, publishes nothing,
+\ so the client keeps the last list it was sent. One stderr line says why it
+\ did not complete:
 \
 \    lsp: URI: not checked: exit N | signal N | deadline passed
 \    lsp: URI: not checked: the verifier's image holds it
@@ -29,6 +31,7 @@ require lib/fd-io.f
 require lib/process.f
 require tools/check-verify-core.f
 require tools/lsp-docs.f
+require tools/lsp-defs.f
 require tools/lsp-diag.f
 
 package LSP-CHECK
@@ -110,6 +113,9 @@ public
    [: VERIFY ;] catch {: code:n :}
    code 0<> if
       HEAD s" not checked: throw " ERR code NUMBER$ ERR NEWLINE RELAY
+   then
+   PUBLISHABLE @ if
+      CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ slot LSP-DEFS:DEFS-KEEP
    then
    CHECK:VERIFY-OUT$ nip 0<> PUBLISHABLE @ or if
       slot CHECK:VERIFY-OUT$ LSP-DIAG:PUBLISH

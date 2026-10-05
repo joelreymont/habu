@@ -20,7 +20,8 @@
 \
 \ Lifecycle
 \ - initialize answers other than its capabilities: positions in utf-16, open
-\   and close notifications, Full sync, the name habu ............... lifecycle
+\   and close notifications, Full sync, workspace symbols, the name habu
+\   .................................................................. lifecycle
 \ - shutdown answers other than a null result; exit after it exits other than
 \   0 or writes to stderr ............................................ lifecycle
 \ - a reply held until more input comes, or the end of input .. answers-at-once
@@ -121,6 +122,38 @@
 \ - a definition deferred to the run, then one never ended: the deferral or
 \   the stop's record not published, or the document not said refused
 \   ....................................................... deferred-unended
+\
+\ Workspace symbols
+\ - a definition whose word holds the query, in an open document or a file one
+\   requires, missing, or answered with another name, kind, package or range
+\   than its line's, or at another URI than the one the client opened its
+\   document by or its file's canonical one; a query compared with case
+\   ........................................................ workspace-symbol
+\ - a definition two open documents' checks reached listed twice, or one a
+\   document's last check no longer retains still listed .... workspace-symbol
+\ - a file two open documents' checks reached answered from the earlier check,
+\   or not from the other once the later one's document closes
+\   ........................................................ workspace-symbol
+\ - params without a string query answered other than -32602 .. workspace-symbol
+\ - a file a later check read with no definition left answered from an
+\   earlier check, or still empty once the later one's document closes
+\   .................................................. workspace-symbol-empty
+\ - a redeclaration whose effect the registrar refused listed beside the
+\   declaration it retained ........................ workspace-symbol-retained
+\ - a redeclaration too wide to record listed or its refusal not published;
+\   the declaration retained before it, a definition after it, an identical
+\   redeclaration the registrar retained, or a refused body whose signature
+\   the checker kept not listed; a malformed declaration with none before it
+\   listed ....................................... workspace-symbol-redeclared
+\ - a definition in a file a check reads twice listed twice
+\   ........................................... workspace-symbol-reinclude
+\ - an open document's definitions answered from another document's check,
+\   which read the file from disk, or that check's definitions there placed
+\   through the document's text ............ workspace-symbol-open-dependency
+\ - a document in a directory whose name is 1, 2, 3 or 4 bytes long stopping the
+\   server: its global words, two bytes each, put the empty package each of
+\   their definition lines names at every even offset of the bytes the server
+\   keeps them in, one of them where those bytes fill their room .. path-length-N
 \
 \ Not proven here: a packet line that is not JSON, that names no file, or that
 \ names its file by a relative path, goes to stderr, but the checker writes
@@ -592,7 +625,8 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
 : CAPABILITIES ( -- )
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\"," MSG+
-   s\" \"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}}," MSG+
+   s\" \"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}," MSG+
+   s\" \"workspaceSymbolProvider\":true}," MSG+
    s\" \"serverInfo\":{\"name\":\"habu\"}}}" MSG+
    MSG$ HEARD ;
 
@@ -1783,6 +1817,345 @@ CK-USE-MAX 1 + constant OVER-USINGS
    1 13 1 19 3 s" W-CHECK-DEFERRED" DIAG+
    2 0 2 1 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
 
+\ ---- workspace symbols ------------------------------------------------------------
+
+: SYM-A-PATH ( -- ptr u8 n )  s" sym-a.f" FIXTURE ;
+: SYM-B-PATH ( -- ptr u8 n )  s" sym-b.f" FIXTURE ;
+: SYM-DEP-PATH ( -- ptr u8 n )  s" sym-dep.f" FIXTURE ;
+: SYM-DEP-CANON ( -- ptr u8 n )  SYM-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
+: TEXT-SYM-A ( -- ptr u8 n )  s\" require sym-dep.f\n: QUX-A ( -- n ) 1 ;\n: ZED ( -- n ) 4 ;\n" ;
+: TEXT-SYM-A2 ( -- ptr u8 n )  s\" require sym-dep.f\n: QUX-AA ( -- n ) 1 ;\n" ;
+: TEXT-SYM-B ( -- ptr u8 n )  s\" require sym-dep.f\n: QUX-B ( -- n ) 2 ;\n3 constant QUX-K\n" ;
+: TEXT-SYM-DEP ( -- ptr u8 n )
+   s\" package QD\npublic\n: QUX-DEP ( -- n ) 3 ;\n;package\nvariable QUX-V\n" ;
+
+\ workspace/symbol, by its id's JSON text, with these params' JSON text.
+: SYMBOLS-ASK ( ptr u8 n ptr u8 n -- )
+   {: i:ptr iu:n p:ptr pu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"method\":\"workspace/symbol\",\"params\":" MSG+ p pu MSG+ s" }" MSG+
+   MSG$ FRAMED ;
+
+\ The answer to the request with this id's JSON text, begun in MSG, up to its
+\ list's bracket.
+: SYMBOLS-START ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[" MSG+ ;
+
+\ The symbol the answer lists next: its name, kind and URI, the range from
+\ character C1 to C2 of line L, and its package, none when empty.
+: SYMBOL+ ( ptr u8 n n ptr u8 n n n n ptr u8 n -- )
+   {: w:ptr wu:n k:n u:ptr uu:n l:n c1:n c2:n p:ptr pu:n :}
+   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   s\" {\"name\":\"" MSG+ w wu MSG+
+   s\" \",\"kind\":" MSG+ k INT$ MSG+
+   s\" ,\"location\":{\"uri\":\"" MSG+ u uu MSG+
+   s\" \",\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c1 INT$ MSG+
+   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}}" MSG+
+   pu 0 > if s\" ,\"containerName\":\"" MSG+ p pu MSG+ s\" \"" MSG+ then
+   s" }" MSG+ ;
+
+\ The next frame is the answer begun.
+: SYMBOLS-END ( -- )
+   s" ]}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
+\ The dependency's symbols: QUX-DEP in package QD, recorded folded, and the
+\ global QUX-V.
+: DEP-SYMBOLS+ ( -- )
+   s" QUX-DEP" 12 SYM-DEP-CANON URI-OF 2 2 9 s" qd" SYMBOL+
+   s" QUX-V" 13 SYM-DEP-CANON URI-OF 4 9 14 s" " SYMBOL+ ;
+
+\ The dependency changed on disk: QUX-NEW where QUX-DEP was.
+: TEXT-SYM-DEP2 ( -- ptr u8 n )
+   s\" package QD\npublic\n: QUX-NEW ( -- n ) 3 ;\n;package\nvariable QUX-V\n" ;
+
+: DEP2-SYMBOLS+ ( -- )
+   s" QUX-NEW" 12 SYM-DEP-CANON URI-OF 2 2 9 s" qd" SYMBOL+
+   s" QUX-V" 13 SYM-DEP-CANON URI-OF 4 9 14 s" " SYMBOL+ ;
+
+\ Two open documents require sym-dep.f, on disk only. A query in another case
+\ lists each definition whose word holds it once, the dependency's at its
+\ canonical file URI and positions in its text on disk, the documents' at the
+\ URIs the client opened them by, check after check, oldest first; the word
+\ ZED is not one. A changed document's check replaces its definitions. A
+\ query that is no string, or none, is -32602. A file both documents' checks
+\ reached is listed once, from the later check: sym-dep.f changed on disk and
+\ B checked again, B's QUX-NEW and not A's QUX-DEP; B closed, A's QUX-DEP
+\ again, answered before A's next check.
+: SYMBOL-TURNS ( -- )
+   SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
+   INITIALIZE
+   SYM-A-PATH TEXT-SYM-A 1 OPENS
+   SYM-B-PATH TEXT-SYM-B 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
+   TEXT-SYM-B SYM-B-PATH 1 s" verified" LISTED
+   s" 3" s\" {\"query\":\"qux\"}" SYMBOLS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" QUX-A" 12 SYM-A-PATH URI-OF 1 2 7 s" " SYMBOL+
+   DEP-SYMBOLS+
+   s" QUX-B" 12 SYM-B-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" QUX-K" 14 SYM-B-PATH URI-OF 2 11 16 s" " SYMBOL+
+   SYMBOLS-END
+   SYM-A-PATH TEXT-SYM-A2 2 CHANGES
+   SAY
+   TEXT-SYM-A2 SYM-A-PATH 2 s" verified" LISTED
+   s" 4" s\" {\"query\":\"Qux-\"}" SYMBOLS-ASK
+   SAY
+   s" 4" SYMBOLS-START
+   s" QUX-B" 12 SYM-B-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" QUX-K" 14 SYM-B-PATH URI-OF 2 11 16 s" " SYMBOL+
+   DEP-SYMBOLS+
+   s" QUX-AA" 12 SYM-A-PATH URI-OF 1 2 8 s" " SYMBOL+
+   SYMBOLS-END
+   s" 5" s\" {\"query\":7}" SYMBOLS-ASK
+   s" 6" s" workspace/symbol" ASK
+   SAY
+   HEAR s" 5" -32602 REFUSED
+   HEAR s" 6" -32602 REFUSED
+   SYM-DEP-PATH TEXT-SYM-DEP2 WRITE-ALL
+   SYM-B-PATH TEXT-SYM-B 2 CHANGES
+   SAY
+   TEXT-SYM-B SYM-B-PATH 2 s" verified" LISTED
+   s" 7" s\" {\"query\":\"qux\"}" SYMBOLS-ASK
+   SAY
+   s" 7" SYMBOLS-START
+   s" QUX-AA" 12 SYM-A-PATH URI-OF 1 2 8 s" " SYMBOL+
+   DEP2-SYMBOLS+
+   s" QUX-B" 12 SYM-B-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" QUX-K" 14 SYM-B-PATH URI-OF 2 11 16 s" " SYMBOL+
+   SYMBOLS-END
+   SYM-B-PATH CLOSES
+   s" 8" s\" {\"query\":\"qux\"}" SYMBOLS-ASK
+   SAY
+   SYM-B-PATH -1 EXPECT PUBLISHES
+   s" 8" SYMBOLS-START
+   DEP-SYMBOLS+
+   s" QUX-AA" 12 SYM-A-PATH URI-OF 1 2 8 s" " SYMBOL+
+   SYMBOLS-END
+   TEXT-SYM-A2 SYM-A-PATH 2 s" verified" LISTED ;
+
+\ The dependency emptied on disk.
+: TEXT-SYM-DEP3 ( -- ptr u8 n )  s\" \\ no definition remains\n" ;
+
+\ Two open documents require sym-dep.f, on disk only, which then loses every
+\ definition, and B is checked again: B's check read it, so none of its
+\ definitions is listed, not even A's older ones; B closed, A's again,
+\ answered before A's next check.
+: EMPTY-TURNS ( -- )
+   SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
+   INITIALIZE
+   SYM-A-PATH TEXT-SYM-A 1 OPENS
+   SYM-B-PATH TEXT-SYM-B 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
+   TEXT-SYM-B SYM-B-PATH 1 s" verified" LISTED
+   SYM-DEP-PATH TEXT-SYM-DEP3 WRITE-ALL
+   SYM-B-PATH TEXT-SYM-B 2 CHANGES
+   SAY
+   TEXT-SYM-B SYM-B-PATH 2 s" verified" LISTED
+   s" 3" s\" {\"query\":\"qux\"}" SYMBOLS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" QUX-A" 12 SYM-A-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" QUX-B" 12 SYM-B-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" QUX-K" 14 SYM-B-PATH URI-OF 2 11 16 s" " SYMBOL+
+   SYMBOLS-END
+   SYM-B-PATH CLOSES
+   s" 4" s\" {\"query\":\"qux\"}" SYMBOLS-ASK
+   SAY
+   SYM-B-PATH -1 EXPECT PUBLISHES
+   s" 4" SYMBOLS-START
+   DEP-SYMBOLS+
+   s" QUX-A" 12 SYM-A-PATH URI-OF 1 2 7 s" " SYMBOL+
+   SYMBOLS-END
+   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED ;
+
+\ NAV-RETAIN declared, then declared again with a bare ptr, an effect the
+\ registrar refuses.
+: TEXT-RETAINED ( -- ptr u8 n )
+   s\" TRUSTED: NAV-RETAIN ( -- n ) 1 ;\nTRUSTED: NAV-RETAIN ( -- ptr ) ;\n" ;
+
+\ NAV-WIDE declared, then declared again taking 256 cells, a row too wide to
+\ record, which the registrar refuses; NAV-SAME declared twice with one effect,
+\ both retained; NAV-ODD malformed with nothing declared before it; NAV-KEPT's
+\ body refused with its signature kept; NAV-LATER after them.
+: REDECLARED-TEXT ( -- )
+   TXT-B CLEAR
+   s\" TRUSTED: NAV-WIDE ( n -- ) drop ;\nTRUSTED: NAV-WIDE (" N>BLEN TXT-B APPEND-SPAN
+   256 0 ?do s"  n" N>BLEN TXT-B APPEND-SPAN loop
+   s\"  -- ) ;\nTRUSTED: NAV-SAME ( -- n ) 1 ;\nTRUSTED: NAV-SAME ( -- n ) 1 ;\n" N>BLEN TXT-B APPEND-SPAN
+   s\" TRUSTED: NAV-ODD ( -- ptr ) ;\n: NAV-KEPT ( -- n n ) 8 ;\n: NAV-LATER ( -- n ) 2 ;\n" N>BLEN TXT-B APPEND-SPAN ;
+
+: RETAINED-PATH ( -- ptr u8 n )  s" retained.f" FIXTURE ;
+
+: REDECLARED-PATH ( -- ptr u8 n )  s" redeclared.f" FIXTURE ;
+
+\ The refused redeclaration keeps no record, so a query lists NAV-RETAIN once,
+\ where the declaration the registrar retained names it.
+: RETAINED-TURNS ( -- )
+   INITIALIZE
+   RETAINED-PATH TEXT-RETAINED 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RETAINED RETAINED-PATH CHECKS
+   RETAINED-PATH s" refused" COMPLETED
+   RETAINED-PATH 1 EXPECT 0 0 0 0 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES
+   s" 3" s\" {\"query\":\"nav-retain\"}" SYMBOLS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" NAV-RETAIN" 12 RETAINED-PATH URI-OF 0 9 19 s" " SYMBOL+
+   SYMBOLS-END ;
+
+\ Each refusal is published, and a query lists NAV-WIDE where the declaration
+\ the registrar retained names it, NAV-SAME at each declaration, NAV-KEPT and
+\ NAV-LATER, and not NAV-ODD.
+: REDECLARED-TURNS ( -- )
+   REDECLARED-TEXT
+   INITIALIZE
+   REDECLARED-PATH TXT$ 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TXT$ REDECLARED-PATH CHECKS
+   REDECLARED-PATH s" refused" COMPLETED
+   REDECLARED-PATH 1 EXPECT
+   0 0 0 0 1 s" E-BAD-STORED-SIGNATURE" DIAG+
+   0 0 0 0 1 s" E-BAD-STORED-SIGNATURE" DIAG+
+   5 22 5 23 1 s" E-MISMATCH" DIAG+
+   PUBLISHES
+   s" 3" s\" {\"query\":\"nav\"}" SYMBOLS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" NAV-WIDE" 12 REDECLARED-PATH URI-OF 0 9 17 s" " SYMBOL+
+   s" NAV-SAME" 12 REDECLARED-PATH URI-OF 2 9 17 s" " SYMBOL+
+   s" NAV-SAME" 12 REDECLARED-PATH URI-OF 3 9 17 s" " SYMBOL+
+   s" NAV-KEPT" 12 REDECLARED-PATH URI-OF 5 2 10 s" " SYMBOL+
+   s" NAV-LATER" 12 REDECLARED-PATH URI-OF 6 2 11 s" " SYMBOL+
+   SYMBOLS-END ;
+
+\ rep.f includes rep-dep.f, on disk only, undefines its word and includes it
+\ again.
+: REP-DEP-PATH ( -- ptr u8 n )  s" rep-dep.f" FIXTURE ;
+: REP-DEP-CANON ( -- ptr u8 n )  REP-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
+: REP-PATH ( -- ptr u8 n )  s" rep.f" FIXTURE ;
+: TEXT-REP-DEP ( -- ptr u8 n )  s\" : REV-SHARED ( -- n ) 7 ;\n" ;
+: TEXT-REP ( -- ptr u8 n )
+   s\" include rep-dep.f\nundefine REV-SHARED\ninclude rep-dep.f\n" ;
+
+\ The check reads rep-dep.f twice, and a query lists REV-SHARED once.
+: REINCLUDE-TURNS ( -- )
+   REP-DEP-PATH TEXT-REP-DEP WRITE-ALL
+   INITIALIZE
+   REP-PATH TEXT-REP 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-REP REP-PATH 1 s" verified" LISTED
+   s" 3" s\" {\"query\":\"rev-shared\"}" SYMBOLS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" REV-SHARED" 12 REP-DEP-CANON URI-OF 0 2 12 s" " SYMBOL+
+   SYMBOLS-END ;
+
+\ od-dep.f on disk, and the other text its open document holds, whose first
+\ line is longer in bytes than in characters.
+: OD-DEP-PATH ( -- ptr u8 n )  s" od-dep.f" FIXTURE ;
+: OD-PATH ( -- ptr u8 n )  s" od.f" FIXTURE ;
+: TEXT-OD-DISK ( -- ptr u8 n )  s\" ( disk )\n: REV-DISK ( -- n ) 7 ;\n" ;
+: TEXT-OD-EDIT ( -- ptr u8 n )
+   s\" ( unsaved é🙂 comment )\n: REV-EDIT ( -- n ) 8 ;\n" ;
+: TEXT-OD ( -- ptr u8 n )  s\" require od-dep.f\n: REV-A ( -- n ) 1 ;\n" ;
+
+\ od-dep.f open with text its disk file lacks, then od.f, which requires the
+\ file, open: a query lists REV-EDIT where the document places it, from its
+\ own check, and REV-A, and not REV-DISK, which od.f's check read from disk.
+\ od-dep.f closed, REV-DISK where the file on disk places it, answered before
+\ od.f's next check.
+: OPEN-DEP-TURNS ( -- )
+   OD-DEP-PATH TEXT-OD-DISK WRITE-ALL
+   INITIALIZE
+   OD-DEP-PATH TEXT-OD-EDIT 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-OD-EDIT OD-DEP-PATH 1 s" verified" LISTED
+   OD-PATH TEXT-OD 1 OPENS
+   SAY
+   TEXT-OD OD-PATH 1 s" verified" LISTED
+   s" 3" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" REV-EDIT" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
+   s" REV-A" 12 OD-PATH URI-OF 1 2 7 s" " SYMBOL+
+   SYMBOLS-END
+   OD-DEP-PATH CLOSES
+   s" 4" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
+   SAY
+   OD-DEP-PATH -1 EXPECT PUBLISHES
+   s" 4" SYMBOLS-START
+   s" REV-DISK" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
+   s" REV-A" 12 OD-PATH URI-OF 1 2 7 s" " SYMBOL+
+   SYMBOLS-END
+   TEXT-OD OD-PATH 1 s" verified" LISTED ;
+
+\ path-length's document: the global word Q, then a global word of two bytes on
+\ each line after it, QA to Q9, XA to X9 and ZA to Z9.
+: LENGTH-TEXT ( -- )
+   TXT-B CLEAR
+   s\" : Q ( -- ) ;\n" N>BLEN TXT-B APPEND-SPAN
+   3 0 ?do
+      36 0 ?do
+         s" : " N>BLEN TXT-B APPEND-SPAN
+         s" QXZ" drop j + c@ TXT-B APPEND-BYTE
+         s" ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" drop i + c@ TXT-B APPEND-BYTE
+         s\"  ( -- ) ;\n" N>BLEN TXT-B APPEND-SPAN
+      loop
+   loop ;
+
+variable LENGTH-N                        \ the length of its directory's name
+
+: LENGTH-DIR ( -- ptr u8 n )  s" dddd" drop LENGTH-N @ FIXTURE ;
+
+: LENGTH-PATH ( -- ptr u8 n )
+   LENGTH-DIR 2drop
+   s" /g.f" N>BLEN PATH-B APPEND-SPAN
+   PATH-B SPAN$ BLEN>N ;
+
+\ The document is checked and published, and Z9, its last word, answered.
+: LENGTH-TURNS ( -- )
+   INITIALIZE
+   LENGTH-PATH TXT$ 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TXT$ LENGTH-PATH 1 s" verified" LISTED
+   s" 3" s\" {\"query\":\"z9\"}" SYMBOLS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" Z9" 12 LENGTH-PATH URI-OF 108 2 4 s" " SYMBOL+
+   SYMBOLS-END ;
+
+: TEST-SYMBOLS ( -- )
+   s" workspace-symbol" [: SYMBOL-TURNS ;] TALK
+   s" workspace-symbol-empty" [: EMPTY-TURNS ;] TALK
+   s" workspace-symbol-retained" [: RETAINED-TURNS ;] TALK
+   s" workspace-symbol-redeclared" [: REDECLARED-TURNS ;] TALK
+   s" workspace-symbol-reinclude" [: REINCLUDE-TURNS ;] TALK
+   s" workspace-symbol-open-dependency" [: OPEN-DEP-TURNS ;] TALK
+   LENGTH-TEXT
+   5 1 ?do
+      i LENGTH-N !
+      LENGTH-DIR MAKE-DIR
+      SB-RESET s" path-length-" SB-APPEND i FMT:SB-INT
+      SB$ [: LENGTH-TURNS ;] TALK
+   loop ;
+
 : TEST-DIAGNOSTICS ( -- )
    s" diagnostics-open" [: OPEN-TURNS ;] TALK
    s" diagnostics-require" [: REQUIRE-TURNS ;] TALK
@@ -1847,6 +2220,7 @@ public
    TEST-TRUNCATED-FRAMES
    TEST-STDOUT-CLOSED
    TEST-DIAGNOSTICS
+   TEST-SYMBOLS
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
 
