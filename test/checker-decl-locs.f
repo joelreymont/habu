@@ -21,8 +21,8 @@
 \ name, and the refusal leaves no scope open.
 \
 \ A `does>` clause is walked outside CHECK! (CHECKER-SOURCE-DOES!), and that
-\ entry publishes what its walk bound: a certified clause's use, and a refused
-\ clause's uses up to the token that stopped it.
+\ entry publishes the uses its walk resolved, including later tokens when a
+\ using refusal is held until the scan ends. A refused lookup has no target.
 \
 \ A rollback takes a located row's location with it (USIGS-RESTORE-END), so
 \ the row that reuses its offset answers only for itself. This is the one
@@ -115,12 +115,16 @@ PTR-VARIABLE REPLAY-A   variable REPLAY-U
    s" a certified clause publishes its call of NAVT" T-LABEL
    s" : NAVOK ( -- ) create does> ( -- n ) drop NAVT ;" USES-REPLAY 0 T=
    42 46 ONE-USE
-   \ NAVS binds the used public over a global of that tail, so the walk stops
-   \ there: the NAVT before it is published, the NAVT after it never bound.
-   s" a refused clause publishes its resolved prefix" T-LABEL
+   \ The using refusal is held: both NAVT calls resolve, but NAVS does not.
+   s" a refused clause publishes its resolved calls" T-LABEL
    s" using NAVP : NAVBAD ( -- ) create does> ( -- n ) drop NAVT NAVS NAVT ; ;using"
    USES-REPLAY E-USING-SHADOW-GLOBAL T=
-   54 58 ONE-USE ;
+   USE-N @ 2 T=
+   USE-S @ 64 T=
+   USE-E @ 68 T=
+   USE-V @ VISIT T=
+   USE-DS @ AT-START T=
+   USE-DE @ AT-END T= ;
 
 \ ---- 5. a rollback, then the same offset -------------------------------------
 \ A neutral checker scope is the rollback frame a verifier child checks its
