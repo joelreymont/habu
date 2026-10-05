@@ -227,6 +227,11 @@ TRUSTED: REWIND-CODE ( n -- ) cp! ;
    FILE-HASH ENGINE-ID:PATH$ PRODUCT-KEY SHA256-FILE-IN
       0<> if BUILD-RC throw then
    PRODUCT-KEY 1 SCRIPT-ARGV$ AOT-FILE:WRITE
+   \ Generic instruction writes remove native capture evidence. Test them
+   \ after retaining the artifact, while the construction action is still live.
+   s" instruction writes retire only affected implementation facts" T-LABEL
+   PATCH-CASE
+   T-REPORT
    host count path size SOURCE-WRITER-DISPATCH ;
 
 : ORIGIN ( n n -- n ) code-origin ;
@@ -263,10 +268,6 @@ public
    ['] ORIGIN false ['] CAPTURE-WRITER RUN-READY-RC BUILD-RC T=
    PRODUCT-KEY 1 SCRIPT-ARGV$ AOT-FILE:READ
    ONE42-COUNT 1 T=
-   \ A generic instruction patch removes native capture evidence even when
-   \ it writes the same bytes. Check its lifetime after retaining the artifact.
-   s" instruction writes retire only affected implementation facts" T-LABEL
-   PATCH-CASE
    T-REPORT
    s" native host construction: artifact " type
    1 SCRIPT-ARGV$ type cr ;
