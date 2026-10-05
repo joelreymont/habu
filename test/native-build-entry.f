@@ -4,8 +4,8 @@
 \ the class the build is being asked for is settled before the target load, so
 \ a typo cannot quietly produce a product. So are a `--target` naming no target
 \ and one whose machine this engine has no backend for. With that backend
-\ loaded, the window for the other machine loads and is captured, and the build
-\ stops before it loads a writer. The entry's accepted path, the closure
+\ loaded, a foreign non-x86 window is refused before capture because no writer
+\ can be loaded for it afterward. The entry's accepted path, the closure
 \ compiling under the native build guard, is every gate's whitebox engine build
 \ (test/whitebox-engine.f runs this entry with `whitebox`).
 require lib/test.f
@@ -138,13 +138,12 @@ create CONTENT 64 allot
    HB-TARGET-LINUX-X86-64? if s" src/arch/arm64/passes.f" exit then
    s" src/arch/x86-64/passes.f" ;
 
-\ The whole window loads and is captured for the other machine; then the
-\ window's own compiler is the one a source-loaded writer would get
-\ (tools/native-build-core.f WRITER-MACHINE-CK), so the build stops there.
+\ A foreign non-x86 window has no preloaded writer. Loading its compiler
+\ before refusing it could fail in capture before the named writer check.
 \ The output path is writable, so an earlier filesystem refusal cannot satisfy
 \ the assertion and the other-machine build must leave it absent.
 : FOREIGN-WINDOW-CASE ( -- )
-   s" and stops the other machine's window after its capture, before a writer loads" T-LABEL
+   s" and refuses a foreign non-x86 window before capture" T-LABEL
    s" other-machine-hb" FOREIGN-OUT!
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
