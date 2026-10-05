@@ -863,19 +863,25 @@ $1000 constant BUMP-ADDR
 \ negative form. The routine is also RUN, in RUN-SQUARE-CASE above, over the same
 \ contract - so a wrong field would answer something other than forty-nine as
 \ well as read differently here.
-: SQUARE-HABU-BODY ( IR-CTX:ctx -- n n n n )
+: SQUARE-HABU-BODY ( IR-CTX:ctx -- n n n )
    HIR-MOD
    BUILD-SQUARE
    4 1 1 EMITTED-HABU
    A64EMIT:INSNS
    0 A64EMIT:WORD@                   \ ldur x0, [x19, #-8] - the argument's cell
-   2 A64EMIT:WORD@                   \ stur x0, [x19, #-8] - the result into it
+   2 A64EMIT:WORD@ ;                 \ stur x0, [x19, #-8] - the result into it
+
+: RUN-SQUARE-HABU ( IR-CTX:ctx -- n )
+   HIR-MOD BUILD-SQUARE 4 1 1 EMITTED-HABU
    7 PUBLISH NRUN:ENTER1 ;
 
 : SQUARE-HABU-CASE ( -- )
    s" a cell under the pointer is written in the unscaled signed form" T-LABEL
    WBND [: SQUARE-HABU-BODY ;] IR-CTX:WITH-CONTEXT
-   49 T= $F81F8260 T= $F85F8260 T= 4 T= ;
+   $F81F8260 T= $F85F8260 T= 4 T=
+   HB-TARGET-LINUX-X86-64? 0= if
+      WBND [: RUN-SQUARE-HABU ;] IR-CTX:WITH-CONTEXT 49 T=
+   then ;
 
 \ ---- a program that does not fit ---------------------------------------------
 \ The whole spill route, ending in bytes that run: allocate the chain, lower the
@@ -1385,21 +1391,23 @@ public
    BUMP-CASE
    SQUARE-HABU-CASE
    MAP-CASE
-   RUN-SQUARE-CASE
-   RUN-DIFF-CASE
-   RUN-DIV-CASE
-   RUN-SUM3-CASE
-   RUN-REUSE-CASE
-   RUN-WIDE-CASE
+   HB-TARGET-LINUX-X86-64? 0= if
+      RUN-SQUARE-CASE
+      RUN-DIFF-CASE
+      RUN-DIV-CASE
+      RUN-SUM3-CASE
+      RUN-REUSE-CASE
+      RUN-WIDE-CASE
+   then
    PLAIN-CASE
    TWO-FUNS-CASE
    DATA-ADDR-CASE
    SPILL-CASE
-   RUN-SPILL-CASE
+   HB-TARGET-LINUX-X86-64? 0= if RUN-SPILL-CASE then
    REMAT-EMIT-CASE
-   RUN-REMAT-CASE
+   HB-TARGET-LINUX-X86-64? 0= if RUN-REMAT-CASE then
    SECOND-CASE
-   RUN-SECOND-CASE
+   HB-TARGET-LINUX-X86-64? 0= if RUN-SECOND-CASE then
    WBND [: GROUP-ADDR ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-BIND ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MODULE ;] IR-CTX:WITH-CONTEXT

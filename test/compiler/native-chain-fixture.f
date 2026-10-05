@@ -7,6 +7,7 @@ require src/compiler/native/select.f
 require src/arch/arm64/machine.f
 require src/compiler/native/emit.f
 require src/compiler/native/spill.f
+require src/arch/arm64/passes.f
 
 package NFIX
 
@@ -81,12 +82,16 @@ private
 
 public
 
-\ The host AArch64 binding these chain runs are made under. Overflow wraps,
+\ The AArch64 binding these chain runs are made under. Overflow wraps,
 \ which is what ARM64's add, sub and mul do; a trapping unit is refused by the
 \ selector and has its own case in the selection suite. It is the compiler's own
-\ binding, stated in src/compiler/native/abi.f.
+\ profile, including when the fixture runs on a different host architecture.
 : BINDING ( -- CBIND:binding )
-   NABI:BINDING ;
+   HB-TARGET-MACOS? if
+      s" aarch64-apple-darwin"
+   else
+      s" aarch64-unknown-linux-gnu"
+   then RTARGET:RESOLVE RTARGET:NATIVE-BINDING ;
 
 \ A leaf routine of `n` registers from the pool that starts at register zero.
 : LEAF-N ( n -- NEFF:routine )

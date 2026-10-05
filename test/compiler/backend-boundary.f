@@ -3,6 +3,7 @@ require lib/test.f
 require src/compiler/native/hir.f
 require src/compiler/native/hir-word.f
 require src/compiler/native/abi.f
+require src/compiler/native/x64ir.f
 
 package BACKEND-BOUNDARY-TEST
 using IR-BUILD
@@ -46,6 +47,14 @@ private
    PLAN-BEGIN PLAN-DEFAULT
    A64IR:NEW-BUILDER drop ;
 
+: BUILD-HOST ( IR-CTX:ctx -- )
+   PLAN-BEGIN PLAN-DEFAULT
+   HB-TARGET-LINUX-X86-64? if
+      X64IR:NEW-BUILDER
+   else
+      A64IR:NEW-BUILDER
+   then drop ;
+
 : ARM-NATIVE ( -- )
    CTARGET-ARCH:A32 ARM-BINDING [: BUILD-NATIVE ;] IR-CTX:WITH-CONTEXT ;
 
@@ -70,7 +79,7 @@ public
    BIG-BINDING [: BUILD-HIR ;] IR-CTX:WITH-CONTEXT
    s" the supported native host still creates its machine module" T-LABEL
    NABI:BINDING [: BUILD-HIR ;] IR-CTX:WITH-CONTEXT
-   NABI:BINDING [: BUILD-NATIVE ;] IR-CTX:WITH-CONTEXT
+   NABI:BINDING [: BUILD-HOST ;] IR-CTX:WITH-CONTEXT
    s" the ARM64 machine dialect refuses other architectures" T-LABEL
    [: ARM-NATIVE ;] E-IR-SCHEMA-TARGET TTHROWSQ
    [: THUMB-NATIVE ;] E-IR-SCHEMA-TARGET TTHROWSQ
