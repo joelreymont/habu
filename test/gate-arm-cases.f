@@ -54,6 +54,28 @@ SUITE compiler-native-fused-moves
    test/compiler/native-fused-moves.f
 ;SUITE
 
+\ The producer builds an ARM source-recovery host. The capture format's
+\ portable storage and transfer cases remain in the shared capture row.
+SUITE aot-chain-producer
+   test/aot-chain-producer-suite.f
+;SUITE
+
+\ These cases exercise the ARM compact-blob planner, four-byte trailers and
+\ ADR extent inference. Shared create/does and stripped-image rows still run.
+SUITE compiler-native-code-span
+   test/compiler/native-code-span.f
+;SUITE
+
+SUITE compiler-aot-nested-body
+   test/compiler/aot-nested-body.f
+;SUITE
+
+\ Mutations target the ARM boot reader's packed ULEB record/site tables.
+\ The ordinary seed-batch build and execution row stays shared.
+SUITE aot-seed-metadata
+   test/aot-seed-metadata.f
+;SUITE
+
 \ Its unchecked candidate and false-reject oracle require tier 0: the
 \ harness selects tier 0 before defining or running any generated case.
 WHITEBOX-SUITE prop

@@ -112,10 +112,6 @@ SUITE hb-build-stripped-chain
    tools/hb-build-stripped-chain-test.f
 ;SUITE
 
-SUITE aot-chain-producer
-   test/aot-chain-producer-suite.f
-;SUITE
-
 SUITE hb-build-stripped-lifecycle
    tools/hb-build-stripped-lifecycle-test.f
 ;SUITE
@@ -1111,14 +1107,6 @@ SUITE compiler-code-bytes
    test/compiler/code-bytes.f
 ;SUITE
 
-SUITE compiler-native-code-span
-   test/compiler/native-code-span.f
-;SUITE
-
-SUITE compiler-aot-nested-body
-   test/compiler/aot-nested-body.f
-;SUITE
-
 SUITE compiler-aot-closure-index
    test/compiler/aot-closure-index.f
 ;SUITE
@@ -2029,7 +2017,6 @@ SUITE aot-data-window
 
 SUITE aot-seed-batch
    test/aot-seed-batch-suite.f
-   test/aot-seed-metadata.f
 ;SUITE
 
 SUITE aot-capture-compact

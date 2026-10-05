@@ -78,7 +78,7 @@ Gforth recovery checks below are also separate from this registry.
 
 The Linux x86-64 engine has only tier 1: `0 set-tier` exits with
 `set-tier: x86-64 runs tier 1 only`. The registry includes
-`test/gate-arm-cases.f` only on an ARM host. Its eleven whole rows require
+`test/gate-arm-cases.f` only on an ARM host. Its eighteen whole rows require
 the ARM host, its source recovery, JIT, or tier 0:
 
 - `compiler-shadow`, `x86-64-link-records`, `aot-shadow-capture`: these fixtures
@@ -102,6 +102,19 @@ the ARM host, its source recovery, JIT, or tier 0:
   AArch64 instructions and relocations. These rows execute its imported code.
   Source keys, artifact-format refusals and checked source admission remain
   in the shared `native-unit-refusals` row; Intel needs no keyed ARM export.
+- `compiler-native-identity-spill`, `compiler-native-wide-frame`,
+  `compiler-native-fused-moves`: these fixtures assert AArch64 instruction,
+  register and frame layouts. Intel selection, allocation and emission have
+  their own shared rows.
+- `aot-chain-producer`: its live-row mutation checks build an ARM source-only
+  recovery host. The capture format's portable transfer and refusal cases
+  remain in the shared `aot-chain-capture` row.
+- `compiler-native-code-span`, `compiler-aot-nested-body`: these inspect the
+  ARM compact-blob planner, four-byte record trailers and ADR extent inference.
+  Shared create/does and stripped-image rows cover the runtime behavior.
+- `aot-seed-metadata`: its signed-image mutations target the ARM boot reader's
+  packed ULEB record and site tables. `aot-seed-batch` still builds and runs the
+  ordinary candidate on both targets.
 
 Mixed rows, including `tier`, both compile-floor rows, and `outer-interpret`,
 remain registered on x86-64. Their eligible tier-1 cases must run; a fixture
