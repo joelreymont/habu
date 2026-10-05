@@ -86,7 +86,7 @@ TRUSTED: RI-SAME-STATE ( -- )
    -1 RI-COMPARE ! RI-STATE-BYTES RI-CURSOR @ RI-USED @ RI-EQ ;
 
 TRUSTED: RI-REFUSED ( ptr u8 n -- )
-   [: REG-AOT-INSTALL ;] catch
+   [: 2dup REG-AOT-INSTALL ;] catch
    76 RI-EQ 2drop
    RI-SAME-STATE
    REG-AOT-MEMO-U @ 0 RI-EQ

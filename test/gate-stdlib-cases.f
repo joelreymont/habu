@@ -2072,6 +2072,10 @@ SUITE aot-payload-unsupported
    test/aot-payload-unsupported.f
 ;SUITE
 
+SUITE aot-payload-constructor
+   test/aot-payload-constructor.f
+;SUITE
+
 SUITE aot-sig-pool
    test/aot-sig-pool-suite.f
 ;SUITE
