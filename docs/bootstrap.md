@@ -788,6 +788,11 @@ The separate stage-2 recovery/development refresh is:
 bin/hb --load tools/build-fixpoint-refresh.f -- install
 ```
 
+A retained AOT host resolves named calls against its cold prefix before reading
+tool input. Removing a prefix provider can make that host exit 82 with
+`hb: AOT call site unresolved`. Use the [check-only recovery chain](#periodic-no-binary-check)
+to regenerate a private seed from current source before refreshing it.
+
 `install` promotes `hb-stdin`, the source-only recovery engine. It does not
 qualify that engine as the native product. In particular, its checked access
 to internal compiler signatures differs from the captured runtime. Use
