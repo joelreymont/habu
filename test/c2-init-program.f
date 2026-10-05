@@ -7,7 +7,7 @@ require lib/task.f
 package C2-INIT-PROGRAM
 public
 STRUCTURE c2ipair 0 DERIVE init FIELD first n FIELD second n ;STRUCTURE
-STRUCTURE c2inest 0 FIELD marker n FIELD pair c2ipair ;STRUCTURE
+STRUCTURE c2inest 0 DERIVE init FIELD marker n FIELD pair c2ipair ;STRUCTURE
 
 private
 
@@ -32,9 +32,14 @@ variable READY
 : RESULT ( -- bool )
    5 24 MEM:BYTES-ALLOC-LEN [: BODY ;] C2-MEM:WITH-MUT ;
 
+: CHECK-NESTED ( mut-view<p,i,a,init<i,c2inest>> -- mut-view<p,i,a,init<i,c2inest>> )
+   C2--INIT--PROGRAM-C2INEST:MARKER@ 7 T=
+   C2--INIT--PROGRAM-C2INEST:PAIR@ C2--INIT--PROGRAM-C2IPAIR:UNMAKE swap
+   8 T= 9 T= ;
+
 : NESTED ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> )
    7 8 9 C2--INIT--PROGRAM-C2IPAIR:MAKE C2--INIT--PROGRAM-C2INEST:MAKE
-   [: ;] C2-MEM:WITH-INIT ;
+   [: CHECK-NESTED ;] C2-MEM:WITH-INIT ;
 
 : NESTED-RESULT ( -- n )
    24 MEM:BYTES-ALLOC-LEN [: NESTED ;] C2-MEM:WITH-MUT 1 ;

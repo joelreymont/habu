@@ -52,10 +52,10 @@ TRUSTED: WITH-MUT-LOAN ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U --
    {: parent:ptr bound:n callback :}
    parent bound callback LOAN-RUN 2drop parent bound ;
 
-TRUSTED: WITH-INIT ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] n n n | U -- S ptr u8 n | U )
+TRUSTED: WITH-INIT ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
    INIT-RUN ;
 
-TRUSTED: WITH-RECORDS ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] n n n | U -- S ptr u8 n | U )
+TRUSTED: WITH-RECORDS ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
    RECORDS-RUN ;
 
 TRUSTED: WITH-RECORD ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] n n n | U -- S ptr u8 n | U )

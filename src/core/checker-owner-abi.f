@@ -140,6 +140,8 @@ $348 constant EFFECT-STACK-STABLE-OFF
 $350 constant BINDING-WINDOW-OFF
 \ The source pre-pass reports a definition left to the run.
 $358 constant VERIFY-DEFERRED-BODY-OFF
+\ Five reserved owner calls remain absent; $388 is the borrowed C2 transfer fact.
+$388 constant C2-STOW-OFF
 \ lib/errors.f names this code E-NCOMP-BINDING; a retained build host loads
 \ this constants-only ABI before it can load the new error word.
 -8575 constant BINDING-RC

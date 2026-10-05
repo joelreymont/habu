@@ -107,6 +107,8 @@ $1000 constant CODE-CAP
 
 1 constant FL-TRUSTED-ONLY
 2 constant FL-FIXED-ABI
+4 constant FL-C2-INIT
+8 constant FL-C2-RECORDS
 
 create ROWS  ROW-CAP ROW-CELLS * cells allot
 create NAMES NAME-CAP allot
@@ -260,6 +262,12 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    ROW-N @ 0 <= IF s" prims: fixed ABI before any row" SPEC-RC die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-FIXED-ABI or swap ! ;
 
+: EC2-INIT! ( -- )
+   ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-C2-INIT or swap ! ;
+
+: EC2-RECORDS! ( -- )
+   ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-C2-RECORDS or swap ! ;
+
 \ The just-written row's minimum input depth, for a primitive whose body reads
 \ the stack although its atoms state no input: the elaborated `execute`,
 \ `catch`, `evaluate`, `?dup` and `2>r`, and `finally`. ENGINE-PRIMS:DNAME
@@ -302,6 +310,10 @@ public
 : FIXED-ABI? ( n -- bool )
    F-FLAGS ROW-FIELD @ FL-FIXED-ABI and 0 <> ;
 
+: C2-STOW-KIND ( n -- n )
+   F-FLAGS ROW-FIELD @ dup FL-C2-INIT and 0 <> if drop 1 exit then
+   FL-C2-RECORDS and 0 <> if 2 else 0 then ;
+
 \ The inputs a row's atoms state, or the depth its EMIN-IN! marker states.
 : MIN-IN ( n -- n )
    F-MIN-IN ROW-FIELD @ ;
@@ -336,14 +348,16 @@ ETRUSTED-ONLY!                       \ the C2 runtime owns the exceptional row
 \ private width descriptors are consumed by this narrow machine transfer.
 EPRIM: c2-init-stow
    PE-PTR-U8 PE-IN PE-N PE-IN PE-A PE-IN PE-B PE-IN
-   PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-PTR-N PE-IN
+   PE-C PE-IN PE-PTR-N PE-IN
    PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT EPRIM;
 ETRUSTED-ONLY!
+EC2-INIT!
 EPRIM: c2-records-stow
    PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-A PE-IN PE-B PE-IN
-   PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-PTR-N PE-IN
+   PE-C PE-IN PE-PTR-N PE-IN
    PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT EPRIM;
 ETRUSTED-ONLY!
+EC2-RECORDS!
 EPRIM: unit-compile-run
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QOUT ;PE-Q PE-IN
    PE-Q ;PE-Q PE-IN PE-N PE-OUT EPRIM;

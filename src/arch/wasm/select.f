@@ -862,6 +862,7 @@ $7FF8000000000000 constant NAN-MADE
       brz      OF id SEL-BRZ ENDOF
       call     OF id SEL-SELF-CALL ENDOF
       wordcall OF id SEL-WORDCALL ENDOF
+      c2-stow  OF REFUSE ENDOF
       quot     OF REFUSE ENDOF
       return   OF id SEL-RETURN ENDOF
       trap     OF id SEL-TRAP ENDOF

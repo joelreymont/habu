@@ -35,6 +35,7 @@ defer SOURCE-QUOT-IN ( n n -- n n )
 defer SOURCE-QUOT-OUT ( n n -- n n )
 defer SOURCE-INIT-LAYOUT ( n -- n n n )
 defer SOURCE-FIELD-SPAN ( n -- n n )
+defer SOURCE-C2-STOW ( n -- n n )
 defer SOURCE-REPORT ( -- )
 
 : REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -81,6 +82,7 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
 : SOURCE-FIELD ( n ptr u8 n -- n ) {: off:n a:ptr u:n :}
    RECORD {: rec:ptr :}
    rec 0= if a u REFUSE then
+   rec CHECKER-OWNER-ABI:BYTES CHECKER-OWNER-GUARD:VALIDATE drop
    rec off + CELL-VIEW @ {: xt:n :}
    xt 0= if a u REFUSE then
    xt ;
@@ -97,6 +99,7 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
    NCOMP-DISPATCH:DECL-CALL-QUOT-OUT-OFF s" source quotation outputs" SOURCE-FIELD AS-QUOT-CELLS is SOURCE-QUOT-OUT
    NCOMP-DISPATCH:DECL-INIT-LAYOUT-OFF s" source init layout" SOURCE-FIELD AS-INIT-LAYOUT is SOURCE-INIT-LAYOUT
    NCOMP-DISPATCH:DECL-FIELD-SPAN-OFF s" source field span" SOURCE-FIELD AS-CELLS is SOURCE-FIELD-SPAN
+   NCOMP-DISPATCH:DECL-C2-STOW-OFF s" source C2 stow" SOURCE-FIELD AS-CELLS is SOURCE-C2-STOW
    NCOMP-DISPATCH:DECL-CHECK-REPORT-OFF s" source scan report" SOURCE-FIELD AS-ACTION is SOURCE-REPORT ;
 BIND-SOURCE-CALLS
 
@@ -287,6 +290,11 @@ TRUSTED: DOES-COMMIT ( -- )
 : FIELD-SPAN ( n -- n n )
    NCOMP-DISPATCH:DECL-FIELD-SPAN-OFF s" field span" FIELD
    dup 0= if drop SOURCE-FIELD-SPAN exit then
+   AS-CELLS execute ;
+
+: C2-STOW ( n -- n n )
+   NCOMP-DISPATCH:DECL-C2-STOW-OFF s" C2 stow" FIELD
+   dup 0= if drop SOURCE-C2-STOW exit then
    AS-CELLS execute ;
 
 : CALL-GLUE ( n -- n n )

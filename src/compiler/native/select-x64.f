@@ -208,6 +208,7 @@ HIR-OPCODE:BR       HIR:ORD constant O-BR
 HIR-OPCODE:BRZ      HIR:ORD constant O-BRZ
 HIR-OPCODE:CALL     HIR:ORD constant O-CALL
 HIR-OPCODE:WORDCALL HIR:ORD constant O-WORDCALL
+HIR-OPCODE:C2-STOW HIR:ORD constant O-C2-STOW
 HIR-OPCODE:TERMINAL HIR:ORD constant O-TERMINAL
 HIR-OPCODE:TRAP     HIR:ORD constant O-TRAP
 
@@ -229,6 +230,7 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-IN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-OUT IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-KIND IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 1 TYPED-BUFFER BND-REAL IR-ID:ir-type-id
 
@@ -682,6 +684,15 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    id TAIL-OP? 0= if a r kk m exit then
    a r 0  kk m + ;
 
+: C2-STOW-SHAPE ( IR-ID:ir-op-id -- n n n n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 BND-KIND @ ATTR-INT-OF {: kind:n :}
+   kind 1 <> kind 2 <> and if E-X64SEL-CALL throw then
+   id OPERANDS-OF 1- {: a:n :}
+   a kind 7 + <> if E-X64SEL-CALL throw then
+   id a 3 CALL-LIVE 0<> if E-X64SEL-CALL throw then
+   a 3 0 0 ;
+
 \ Which value goes into which cell is written down once and three readers stand
 \ on it: the live values first, then the arguments.
 : DSAVE-VAL ( IR-ID:ir-op-id n n n -- IR-ID:ir-value-id )
@@ -770,6 +781,17 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    id kk m a mask CALL-SAVE
    id  kk a + X64IR:SLOT-WIDTH * DPLACED
        kk r + X64IR:SLOT-WIDTH * DPLACED
+   id WORD-ENTRY EMIT-WORDCALL-OP
+   id kk m r CALL-RESTORE ;
+
+: EMIT-C2-STOW ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
+   DSTACK? 0= if E-X64SEL-CALL throw then
+   id C2-STOW-SHAPE {: a:n r:n kk:n m:n :}
+   id 0 OPERAND TOK!
+   id kk m a mask CALL-SAVE
+   id a X64IR:SLOT-WIDTH * DPLACED
+      r X64IR:SLOT-WIDTH * DPLACED
    id WORD-ENTRY EMIT-WORDCALL-OP
    id kk m r CALL-RESTORE ;
 
@@ -1733,6 +1755,7 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
    id OP-SLOT {: s:n :}
    s O-CALL = if id  id SELF-SHAPE  DCALL-XFER exit then
    s O-WORDCALL = if id  id SITE-SHAPE  DCALL-XFER exit then
+   s O-C2-STOW = if id id C2-STOW-SHAPE DCALL-XFER exit then
    s O-TERMINAL = if id 0 0 id OPERANDS-OF 1- DSAVE-XFER exit then
    s O-RETURN = if
       DSTACK? 0= if 0 exit then
@@ -1909,6 +1932,7 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
    id OP-SLOT {: s:n :}
    s O-CALL = if id mask  id SELF-SHAPE  DNEED-CALL exit then
    s O-WORDCALL = if id mask  id SITE-SHAPE  DNEED-CALL exit then
+   s O-C2-STOW = if id mask id C2-STOW-SHAPE DNEED-CALL exit then
    s O-TERMINAL = if id mask id OPERANDS-OF 1- 0 0 0 DNEED-CALL exit then
    s O-RETURN = if id mask DNEED-EXIT exit then
    id DNEED-OPERANDS ;
@@ -1966,6 +1990,7 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
       brz    OF false ENDOF
       call   OF true  ENDOF
       wordcall OF true ENDOF
+      c2-stow OF true ENDOF
       terminal OF true ENDOF
       return OF false ENDOF
       trap   OF true  ENDOF
@@ -2031,6 +2056,7 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
       brz    OF id EMIT-BRZ ENDOF
       call   OF id mask EMIT-CALL ENDOF
       wordcall OF id mask EMIT-CALL-OR-TAIL ENDOF
+      c2-stow OF id mask EMIT-C2-STOW ENDOF
       terminal OF id mask EMIT-TERMINAL ENDOF
       return OF id mask EMIT-RETURN-OR-TAILED ENDOF
       trap   OF id EMIT-TRAP ENDOF
@@ -2318,6 +2344,7 @@ public
    m HIR:FKEY-ENTRY 0 BND-ENTRY !
    m HIR:FKEY-IN    0 BND-IN !
    m HIR:FKEY-OUT   0 BND-OUT !
+   m HIR:FKEY-KIND  0 BND-KIND !
    m HIR:FMEM-TYPE  0 BND-MEM !
    m HIR:FREAL-TYPE 0 BND-REAL !
    BOUND-YES BND-MODE ! ;

@@ -3369,7 +3369,7 @@ public
    TFM-EPOCH+                            \ ... and every family a memoized fact describes
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
    0 SUMV-N !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
-   -1 FIELD-FAM !  -1 LOAN-FIELD-FAM !
+   -1 FIELD-FAM !  -1 LOAN-FIELD-FAM !  -1 C2-STOW-FAM !
    EXT-FREE-CLEAR ;   \ BTC-7: drop free-extent marks with the families they name
 TFAM-RESET
 
@@ -3400,6 +3400,7 @@ TFAM-RESET
 \ other participants with their own frames; a caller that also owns those rewinds
 \ them itself, after this (the field rows through PF-REWIND).
 : TFAM-REWIND ( n n n n n -- ) {: tfamn:n stru:n pkn:n sumvn:n layn:n :}
+   C2-STOW-FAM @ tfamn >= IF -1 C2-STOW-FAM ! THEN
    tfamn TFX-RETIRE                      \ unchain the rows before their ids go out of range
    sumvn SVX-TRUNCATE                    \ and the constructor heads those rows own
    sumvn VNX-RETIRE                      \ and the tail chains
@@ -4855,6 +4856,7 @@ variable READ-FAM
 variable MUT-FAM
 variable INIT-FAM
 variable RECORDS-FAM
+variable STOW-FAM
 variable VIEW-TX
 variable VIEW-FIELD-BASE
 
@@ -4916,10 +4918,32 @@ variable VIEW-FIELD-BASE
    RECORDS-FAM @ 3 PK-TYPE TFAM-PK!
    RECORDS-FAM @ REGISTER-VIEW-FIELDS ;
 
+\ The runtime's three machine descriptors form one private value. The family
+\ identity, rather than its spelling or shape, authorizes a native transfer.
+: REGISTER-STOW ( -- )
+   s" C2-MEM" CHECKER-PACKAGE-PRIVATE s" stow-layout" 0 TK-PRODUCT TFAM-DECL STOW-FAM !
+   STOW-FAM @ C2-STOW-FAM !
+   TYPE-FIELD:COUNT VIEW-FIELD-BASE !
+   TYPE-FIELD-OWNER:OPEN VIEW-TX !
+   VIEW-TX @ STOW-FAM @ TYPE-FIELD:NO-VARIANT s" width"
+      CC-N SCHEMA-CON SCHEMA-ROOT+
+      0 1 0 CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
+   VIEW-TX @ STOW-FAM @ TYPE-FIELD:NO-VARIANT s" bytes"
+      CC-N SCHEMA-CON SCHEMA-ROOT+
+      1 1 CELL CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
+   VIEW-TX @ STOW-FAM @ TYPE-FIELD:NO-VARIANT s" alignment"
+      CC-N SCHEMA-CON SCHEMA-ROOT+
+      2 1 2 CELL * CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
+   VIEW-TX @ TYPE-FIELD-OWNER:COMMIT
+   STOW-FAM @ VIEW-FIELD-BASE @ 3 TFAM-FLD-RANGE!
+   STOW-FAM @ 3 TFAM-SLOTS!
+   VIEW-TX @ TYPE-FIELD-OWNER:FINALIZE ;
+
 REGISTER-READ-VIEW
 REGISTER-MUT-VIEW
 REGISTER-INIT
 REGISTER-RECORDS
+REGISTER-STOW
 public
 
 \ ---------------------------------------------------------------------------

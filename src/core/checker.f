@@ -128,6 +128,7 @@ create OWNER-STORAGE
    0 ,
    0 , 0 ,
    0 ,
+   0 , 0 , 0 , 0 , 0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -145,7 +146,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:VERIFY-DEFERRED-BODY-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:C2-STOW-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -900,6 +901,7 @@ variable C2-READ-FAM   -1 C2-READ-FAM ! REG-PROTECT \ reserved bounded shared-vi
 variable C2-MUT-FAM    -1 C2-MUT-FAM ! REG-PROTECT  \ reserved bounded exclusive-view family
 variable C2-INIT-FAM   -1 C2-INIT-FAM ! REG-PROTECT \ reserved initialized-storage element family
 variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! REG-PROTECT \ reserved initialized table control
+variable C2-STOW-FAM -1 C2-STOW-FAM ! REG-PROTECT \ private C2 descriptor product
 
 \ M5 barrier-uniformity: the `tile` and `uniform` family ids, captured by
 \ type-family.f at registration (loaded after checker.f). A word whose declared
@@ -9444,6 +9446,8 @@ $200 constant PE-CAP-INIT
 1 constant PE-ACTIVE
 2 constant PE-TRUSTED-ONLY       \ prim is a trust boundary: rejected from CHECKED code, TRUSTED: only
 4 constant PE-FIXED-ABI
+8 constant PE-C2-INIT
+16 constant PE-C2-RECORDS
 
 0 constant PE-SYM-CELL
 1 constant PE-EFF-CELL
@@ -9519,6 +9523,11 @@ variable PE-I
 
 : PRIM-FIXED-ABI! ( -- )
    #PE @ 1 - PE-ROW PE.FLAGS dup @ PE-FIXED-ABI or swap ! ;
+
+: PRIM-C2-STOW! ( n -- )
+   {: kind:n :}
+   #PE @ 1 - PE-ROW PE.FLAGS dup @
+   kind 1 = IF PE-C2-INIT ELSE PE-C2-RECORDS THEN or swap ! ;
 
 variable PRM-FIRST
 
@@ -9863,7 +9872,8 @@ variable PE-SPEC-I   variable PE-SPEC-J
    PE-SPEC-TOS @ 0 <> IF s" checker: primitive-spec operand left over" 76 die THEN
    kind PRIM-SPEC:K-PKG-PRIVATE = IF CLOSE-PRIVATE ELSE PE-CLOSE THEN
    row PRIM-SPEC:TRUSTED-ONLY? IF PRIM-TRUSTED-ONLY! THEN
-   row PRIM-SPEC:FIXED-ABI? IF PRIM-FIXED-ABI! THEN ;
+   row PRIM-SPEC:FIXED-ABI? IF PRIM-FIXED-ABI! THEN
+   row PRIM-SPEC:C2-STOW-KIND dup 0= 0= IF PRIM-C2-STOW! ELSE drop THEN ;
 
 : PE-SPEC-REPLAY ( -- )
    0 PE-SPEC-I !
@@ -12286,6 +12296,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 -5 constant CW-INIT-WIDTH            \ initialized record width and byte extent
 -6 constant CW-INIT-EXTENT           \ initialized byte extent and alignment
 -7 constant CW-FIELD-SPAN            \ authenticated field offset and extent
+-8 constant CW-C2-STOW               \ borrowed trusted transfer window and kind
 2 constant CW-CALL-RAW               \ frozen row spines with live type terms
 3 constant CW-CALL
 4 constant CW-GLUE
@@ -12440,6 +12451,16 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    extent bytes <> IF s" checker: init layout rows disagree" 76 die THEN
    width bytes align ;
 : EFFECT-FIELD-SPAN ( n -- n n ) CW-FIELD-SPAN CWIN-FIND ;
+
+: EFFECT-C2-STOW ( n -- n n )
+   {: ord:n :}
+   UWIN-VALID @ 0= IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
+   ord REC-UNJUDGED-BINDING {: row:ptr size:n :}
+   size 0= IF 0 -1 EXIT THEN
+   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
+   row CHECKER-OWNER-ABI:BOUND-ENTRY cells + CELL-VIEW @ 0= IF 0 -1 EXIT THEN
+   ord CW-C2-STOW CWIN-FIND {: width:n kind:n :}
+   kind 0< IF 0 -1 ELSE kind width THEN ;
 \ A trusted scan can finish without CWIN quotation rows. Its selected effect
 \ still names the declaration the source used; read that graph directly, not a
 \ later resolution of the spelling. Only a simple, one-cell-per-term callback
@@ -14690,6 +14711,8 @@ variable TSEEN  variable TSOK  variable TFA
 
 \ TRY-PRIMS ( n -- bool ) : try each prim overload for sym until one unifies.
 \ Starts at the cached first slot and stops at the first success.
+defer C2-STOW-BORROW-HOOK ( -- )
+
 : TRY-PRIMS ( n -- bool ) {: sym:n :}
    0 TSEEN !  0 TSOK !  0 TFA !
    sym PRIM-FIRST-IDX dup 0 = IF drop RES-FALSE EXIT THEN
@@ -14698,6 +14721,7 @@ variable TSEEN  variable TSOK  variable TFA
       PE-I @ PE-ACTIVE? IF
          PE-I @ PE-SYM@ sym = IF
             PE-I @ PE-TRUSTED-ONLY? IF        \ reached only from a CHECKED body -> reject fail-closed
+               C2-STOW-BORROW-HOOK
                -1 CAPREQ !  0 OK !  -1 FAILSET !  RES-TRUE EXIT THEN
             TSEEN @ 0= IF PE-I @ PE-EFF@ TFA ! THEN
             -1 TSEEN !
@@ -15759,6 +15783,82 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    CHECKER-EFFECT-AUTHORITY:SEALED? IF CALL-REFUSED EXIT THEN
    CALL-APPLIES ;
 
+\ A trusted scan still refuses this primitive. Before that refusal, borrow the
+\ physical window only when the selected seeded primitive and the complete
+\ private carrier are present at the exact source token.
+: C2-STOW-CELL? ( n n -- n bool )
+   {: row:n slot:n :}
+   row R-RES dup TAG S-PUSH <> IF drop row RES-FALSE EXIT THEN
+   dup P>TYPE T-RES {: t:n :}
+   t HIDDEN-PARAM? 0= IF drop row RES-FALSE EXIT THEN
+   t CELL>FAM C2-STOW-FAM @ <> IF drop row RES-FALSE EXIT THEN
+   t HIDDEN-SLOT@ slot <> IF drop row RES-FALSE EXIT THEN
+   t T-WIDTH 3 <> IF drop row RES-FALSE EXIT THEN
+   P>REST R-RES RES-TRUE ;
+
+: C2-STOW-ENVELOPE? ( n -- bool )
+   {: kind:n :}
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
+   dup P>TYPE T-RES TAG T-PTR <> IF drop RES-FALSE EXIT THEN
+   P>REST R-RES
+   2 C2-STOW-CELL? 0= IF drop RES-FALSE EXIT THEN
+   1 C2-STOW-CELL? 0= IF drop RES-FALSE EXIT THEN
+   0 C2-STOW-CELL? 0= IF drop RES-FALSE EXIT THEN
+   dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
+   dup P>TYPE T-RES TAG T-QUOT <> IF drop RES-FALSE EXIT THEN
+   P>REST R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
+   dup P>TYPE T-RES T-WIDTH 1 <> IF drop RES-FALSE EXIT THEN
+   P>REST R-RES
+   kind 2 = IF
+      dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
+      dup P>TYPE T-RES T-WIDTH 1 <> IF drop RES-FALSE EXIT THEN
+      P>REST R-RES
+   THEN
+   dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
+   dup P>TYPE T-RES T-WIDTH 1 <> IF drop RES-FALSE EXIT THEN
+   P>REST R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
+   dup P>TYPE T-RES TAG T-PTR <> IF drop RES-FALSE EXIT THEN
+   P>REST R-RES TAG S-ROW = ;
+
+: C2-STOW-PRIM-KIND ( -- n )
+   CURSYM @ PRIM-FIRST-IDX dup 0= IF drop 0 EXIT THEN
+   1- {: row:n :}
+   row PE-ACTIVE? 0= row PE-TRUSTED-ONLY? 0= or IF 0 EXIT THEN
+   TOK-ABI-EFF @ row PE-EFF@ E-PTR <> IF 0 EXIT THEN
+   row PE-FLAGS@ dup PE-C2-INIT and 0 <> IF drop 1 EXIT THEN
+   PE-C2-RECORDS and 0 <> IF 2 ELSE 0 THEN ;
+
+: C2-STOW-BORROW ( -- )
+   BWIN-UNJUDGED @ 0= IF EXIT THEN
+   REC-ON @ 0= IF EXIT THEN
+   OK @ 0= IF EXIT THEN
+   FAILSET @ 0 <> IF EXIT THEN
+   UNCK @ 0 <> IF EXIT THEN
+   UNSEEN @ 0 <> IF EXIT THEN
+   UNDEFERR @ 0 <> IF EXIT THEN
+   UNFIT @ 0 <> IF EXIT THEN
+   UNSAFE @ 0 <> IF EXIT THEN
+   RETIRED @ 0 <> IF EXIT THEN
+   LOCALBAD @ 0 <> IF EXIT THEN
+   LINLOCBAD @ 0 <> IF EXIT THEN
+   QDUPBAD @ 0 <> IF EXIT THEN
+   QUALBAD @ 0 <> IF EXIT THEN
+   CAPREQ @ 0 <> IF EXIT THEN
+   NPBAD @ 0 <> IF EXIT THEN
+   SGBAD @ 0 <> IF EXIT THEN
+   TOK-SEEDED @ 0= IF EXIT THEN
+   TOK-ABI-EFF @ NULL-PTR = IF EXIT THEN
+   TOK-REC @ NULL-PTR = IF EXIT THEN
+   TOK-SYM @ CURSYM @ <> IF EXIT THEN
+   TOK-REC @ @ 0= IF EXIT THEN
+   C2-STOW-PRIM-KIND {: kind:n :}
+   kind 0= IF EXIT THEN
+   kind C2-STOW-ENVELOPE? 0= IF EXIT THEN
+   REC-IX @ DCUR @ ROW-CELLS kind CW-C2-STOW CWIN-ADD ;
+: C2-STOW-BORROW-INSTALL ( -- )
+   [: C2-STOW-BORROW ;] is C2-STOW-BORROW-HOOK ;
+C2-STOW-BORROW-INSTALL
+
 \ A name no row answers: E-UNDEFINED (E-BAD-QUALIFIED for a malformed qualified
 \ name), the name joins the lazy intake's queue (ASIG-MISS+), and a name a
 \ rendering statement in scope may define is left to the run (UNSEEN-COVERS?).
@@ -15801,7 +15901,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    CURSYM @ CTOR-STEP-XT IF EXIT THEN              \ direct-layout generated-constructor call -> seeded step (default rejects pre-registry)
    FEP-HIT? IF
       CURSYM @ CALL-AUTHORITY
-      dup CALL-REFUSED = IF drop  -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
+      dup CALL-REFUSED = IF drop C2-STOW-BORROW  -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
       dup CALL-RECOVERS = IF RES-TRUE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED! THEN
       CALL-PRIMS <> IF FEP @ EFF-APPLY EXIT THEN
    THEN
@@ -23616,6 +23716,7 @@ package CHECKER-REG
 ' CWIN-QUOT-OUT                     DECLARATIONS CALL-QUOT-OUT-OFF + xt!
 ' EFFECT-INIT-LAYOUT                DECLARATIONS CHECKER-OWNER-ABI:INIT-LAYOUT-OFF + xt!
 ' EFFECT-FIELD-SPAN                 DECLARATIONS FIELD-SPAN-OFF + xt!
+' EFFECT-C2-STOW                    DECLARATIONS CHECKER-OWNER-ABI:C2-STOW-OFF + xt!
 ' TRUST-DECL                        DECLARATIONS TRUST-DECL-OFF + xt!
 ' NEUTRAL-PARSE-IMM?                DECLARATIONS PARSE-IMM-OFF + xt!
 ' EFFECT-QUERY                      DECLARATIONS EFFECT-QUERY-OFF + xt!

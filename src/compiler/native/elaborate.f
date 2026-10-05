@@ -892,6 +892,28 @@ DYNAMIC-BUFFER SPELL-BUF u8
    EXACT-SOURCE @ 0= if drop -1 -1 exit then
    NDICT:FIELD-SPAN ;
 
+: C2-STOW-SITE? ( n -- bool )
+   EXACT-SOURCE @ 0= if drop false exit then
+   CHECKER-OWNER:BINDING-WINDOW nip nip 0= if drop false exit then
+   NDICT:C2-STOW drop 0<> ;
+
+: C2-STOW-BOUND ( n -- n n n )
+   {: ix:n :}
+   ix NDICT:C2-STOW {: kind:n width:n :}
+   kind 0= width 0< or if CHECKER-OWNER-ABI:BINDING-RC throw then
+   ix CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
+   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
+      CHECKER-OWNER-ABI:BOUND-DICT <> if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-CTL cells + CELL-VIEW @
+      CHECKER-OWNER-ABI:BOUND-SEEDED and 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-RECORD cells + CELL-VIEW @ 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-EFFECT cells + CELL-VIEW @ 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-ENTRY cells + CELL-VIEW @ {: entry:n :}
+   entry 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   ix QSPELL NDICT:CALL-BINDING drop entry <> if CHECKER-OWNER-ABI:BINDING-RC throw then
+   entry kind width ;
+
 : SITE-MATCH ( n -- n )
    EXACT-SOURCE @ 0= if drop NDICT:MATCH-NONE exit then
    NDICT:MATCH-CELLS ;
@@ -2224,6 +2246,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    ix LOCAL-OF 0 >= if exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
+   ix C2-STOW-SITE? if ix C2-STOW-BOUND drop drop drop exit then
    EXACT-SOURCE @ 0= if
       r sy HIR-WORD:MODELS? if exit then
       CTX BLD r sy HIR-WORD:RESOLVE-FIXED if exit then
@@ -2299,6 +2322,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    {: r:IR-ARENA:arena ix:n :}
    ix PRINTED-STRING? if true exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
+   ix C2-STOW-SITE? if true exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
@@ -2342,6 +2366,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    ix LOCAL-OF 0 >= if false exit then
    ix PRINTED-STRING? if true exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
+   ix C2-STOW-SITE? if true exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
@@ -2626,6 +2651,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
       PATH-DEAD PATH-END !
       exit
    then
+   ix C2-STOW-SITE? if exit then
    r ix ADMIT-AT
    HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if exit then
    r  ix WSYM  HIR-WORD:CTRL@
@@ -3287,6 +3313,29 @@ here CELL 1- and CELL swap - CELL 1- and allot
    back o oglue CALL-CLOSE
    LIT-RESET ;
 
+: STAGE-C2-STOW ( n n n n -- )
+   {: ix:n entry:n kind:n width:n :}
+   VN @ width <> if E-NELAB-CALL throw then
+   VN @ 5 - VQ@ {: callback:n :}
+   width 3 CALL-LIVE drop
+   ix CALL-CROSS
+   CTX BLD HIR-OPCODE:C2-STOW HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
+   CTX BLD VW MKEY ix op OPEN
+   CALL-OPERANDS+
+   3 CALL-RESULTS+
+   CTX BLD CTX BLD HIR:KEY-ENTRY
+   CTX BLD entry IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
+   CTX BLD CTX BLD HIR:KEY-KIND
+   CTX BLD kind IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
+   3 3 NDICT:GLUE-NONE CALL-CLOSE
+   callback 2 VQ!
+   LIT-RESET ;
+
+: DO-C2-STOW ( n -- )
+   {: ix:n :}
+   ix C2-STOW-BOUND {: entry:n kind:n width:n :}
+   ix entry kind width STAGE-C2-STOW ;
+
 \ Publish the whole live row just as a call does, but create no return values
 \ or fallback diagnostic: these engine primitives have no returning edge.
 : STAGE-TERMINAL ( n n n -- )
@@ -3930,6 +3979,7 @@ variable IX                          \ the body token the walk stands on
    PATH-ENDED? if r ix AFTER-END-CK then
    ix IN-DECL? if exit then
    ix LOCAL-READ? if exit then
+   ix C2-STOW-SITE? if ix DO-C2-STOW exit then
    r ix ADMIT-AT {: meaning:HIR:meaning :}
    r ix meaning HOST-SOURCE
    meaning

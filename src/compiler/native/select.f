@@ -73,6 +73,7 @@ HIR-OPCODE:STORE    HIR:ORD constant O-STORE
 HIR-OPCODE:EQUAL    HIR:ORD constant O-EQUAL
 HIR-OPCODE:CALL     HIR:ORD constant O-CALL
 HIR-OPCODE:WORDCALL HIR:ORD constant O-WORDCALL
+HIR-OPCODE:C2-STOW HIR:ORD constant O-C2-STOW
 HIR-OPCODE:GT       HIR:ORD constant O-GT
 HIR-OPCODE:GE       HIR:ORD constant O-GE
 HIR-OPCODE:NE       HIR:ORD constant O-NE
@@ -107,6 +108,7 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-IN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-OUT IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-KIND IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 1 TYPED-BUFFER BND-REAL IR-ID:ir-type-id
 
@@ -958,6 +960,15 @@ variable D-RETS                                    \ returns seen while surveyin
    id TAIL-OP? 0= if a r kk m exit then
    a r 0  kk m + ;
 
+: C2-STOW-SHAPE ( IR-ID:ir-op-id -- n n n n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 BND-KIND @ ATTR-INT-OF {: kind:n :}
+   kind 1 <> kind 2 <> and if E-A64SEL-CALL throw then
+   id OPERANDS-OF 1- {: a:n :}
+   a kind 7 + <> if E-A64SEL-CALL throw then
+   id a 3 CALL-LIVE 0<> if E-A64SEL-CALL throw then
+   a 3 0 0 ;
+
 : EMIT-WORD-CALL ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id mask:n :}
    id SITE-SHAPE {: a:n r:n kk:n m:n :}
@@ -968,6 +979,17 @@ variable D-RETS                                    \ returns seen while surveyin
    id  kk a + A64IR:SLOT-WIDTH * gave SITE-MOVE
        kk r + A64IR:SLOT-WIDTH * rider 0 >= SITE-MOVE
    e EMIT-WBL
+   id kk m r rider CALL-RESTORE ;
+
+: EMIT-C2-STOW ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
+   id C2-STOW-SHAPE {: a:n r:n kk:n m:n :}
+   id 0 OPERAND TOK!
+   id kk m r RESTORE-RIDER {: rider:n :}
+   id kk m a mask CALL-SAVE {: gave:bool :}
+   id a A64IR:SLOT-WIDTH * gave SITE-MOVE
+      r A64IR:SLOT-WIDTH * rider 0 >= SITE-MOVE
+   id WORD-ENTRY EMIT-WBL
    id kk m r rider CALL-RESTORE ;
 
 \ ---- the converted region's literal memo -------------------------------------
@@ -1400,6 +1422,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
       brz    OF A64SEL-CMPKIND:NONE ENDOF
       call   OF A64SEL-CMPKIND:NONE ENDOF
       wordcall OF A64SEL-CMPKIND:NONE ENDOF
+      c2-stow OF A64SEL-CMPKIND:NONE ENDOF
       terminal OF A64SEL-CMPKIND:NONE ENDOF
       return OF A64SEL-CMPKIND:NONE ENDOF
       trap   OF A64SEL-CMPKIND:NONE ENDOF
@@ -1681,6 +1704,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       brz    OF false ENDOF
       call   OF true  ENDOF
       wordcall OF true ENDOF
+      c2-stow OF true ENDOF
       terminal OF true ENDOF
       return OF false ENDOF
       trap   OF true  ENDOF
@@ -2709,6 +2733,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    id OP-SLOT {: s:n :}
    s O-CALL = if id  id SELF-SHAPE  DCALL-XFER exit then
    s O-WORDCALL = if id  id SITE-SHAPE  DCALL-XFER exit then
+   s O-C2-STOW = if id id C2-STOW-SHAPE DCALL-XFER exit then
    s O-TERMINAL = if id 0 0 id OPERANDS-OF 1- DSAVE-XFER exit then
    s O-RETURN = if
       DSTACK? 0= if 0 exit then
@@ -2750,6 +2775,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       brz    OF id EMIT-BRANCH ENDOF
       call   OF id mask EMIT-CALL ENDOF
       wordcall OF id mask EMIT-CALL-OR-TAIL ENDOF
+      c2-stow OF id mask EMIT-C2-STOW ENDOF
       return OF id mask EMIT-RETURN-OR-TAILED ENDOF
       trap   OF id 0 TRAP-ENTRY 0 EMIT-TRAP ENDOF
       terminal OF id mask EMIT-TERMINAL ENDOF
@@ -2969,6 +2995,7 @@ create D-MEET DSLOT-MAX cells allot
    s O-BR = if exit then
    s O-CALL = if id mask  id SELF-SHAPE  DNEED-CALL exit then
    s O-WORDCALL = if id mask  id SITE-SHAPE  DNEED-CALL exit then
+   s O-C2-STOW = if id mask id C2-STOW-SHAPE DNEED-CALL exit then
    s O-TERMINAL = if id mask id OPERANDS-OF 1- 0 0 0 DNEED-CALL exit then
    s O-RETURN = if id mask DNEED-EXIT exit then
    s O-TRAP = if id DNEED-OPERANDS exit then
@@ -3039,6 +3066,7 @@ create D-MEET DSLOT-MAX cells allot
    id OP-SLOT {: s:n :}
    s O-CALL = if id SELF-SHAPE DPLACE-CALL exit then
    s O-WORDCALL = if id SITE-SHAPE DPLACE-CALL exit then
+   s O-C2-STOW = if id C2-STOW-SHAPE DPLACE-CALL exit then
    s O-TRAP = if id OPERANDS-OF A64IR:SLOT-WIDTH * DREQ+ exit then
    s O-TERMINAL = if id OPERANDS-OF 1- A64IR:SLOT-WIDTH * DREQ+ exit then
    s O-RETURN = if DPLACE-RETURN then ;
@@ -3493,6 +3521,7 @@ public
    m HIR:FKEY-ENTRY 0 BND-ENTRY !
    m HIR:FKEY-IN    0 BND-IN !
    m HIR:FKEY-OUT   0 BND-OUT !
+   m HIR:FKEY-KIND  0 BND-KIND !
    m HIR:FMEM-TYPE  0 BND-MEM !
    m HIR:FREAL-TYPE 0 BND-REAL !
    BOUND-YES BND-MODE ! ;

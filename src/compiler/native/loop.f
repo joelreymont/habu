@@ -61,12 +61,13 @@ HIR-OPCODE:BRZ   HIR:ORD constant O-BRZ
 
 \ This pass writes one key of its own and COPIES every one the elaborator built;
 \ a field copied under the wrong key would be a call reaching the wrong routine.
-5 constant KEYS-N
+6 constant KEYS-N
 0 constant K-VALUE
 1 constant K-ENTRY
 2 constant K-IN
 3 constant K-OUT
 4 constant K-ADDR
+5 constant K-KIND
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -1029,6 +1030,10 @@ variable CH-STATE
          CTX BLD  CTX BLD HIR:KEY-OUT  CTX BLD v IR-BUILD:INTERN-INT-ATTR
          IR-BUILD:ADD-ATTR
       then
+      k K-KIND = if
+         CTX BLD  CTX BLD HIR:KEY-KIND  CTX BLD v IR-BUILD:INTERN-INT-ATTR
+         IR-BUILD:ADD-ATTR
+      then
    loop ;
 
 \ Carried across by its NEW ordinal, so a branch to a deleted block is a refusal
@@ -1303,6 +1308,7 @@ public
    c b HIR:KEY-IN    K-IN    BND-KEY !
    c b HIR:KEY-OUT   K-OUT   BND-KEY !
    c b HIR:KEY-ADDR  K-ADDR  BND-KEY !
+   c b HIR:KEY-KIND  K-KIND  BND-KEY !
    c b HIR:CELL-TYPE 0 BND-CELL !
    c b HIR:MEM-TYPE  0 BND-MEM !
    c b HIR:REAL-TYPE 0 BND-REAL !
