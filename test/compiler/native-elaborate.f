@@ -385,13 +385,15 @@ create DIRECT-SCAN-TEXT 128 allot
 
 create REC-TEXT 128 allot
 
-: REC-FACTS ( IR-CTX:ctx -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ARENA:view )
-   {: c:IR-CTX:ctx :}
+\ Each scan needs a fresh declaration name: DIRECT-FETCH already checked
+\ NELB-REC, and a second CHECK! of one name refuses before it records tokens.
+: REC-FACTS ( IR-CTX:ctx ptr u8 n -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ARENA:view )
+   {: c:IR-CTX:ctx src:ptr su:n :}
    c HIR-BUILDER {: b:IR-BUILD:builder :}
    c b MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b IR-BUILD:MODULE-KEY 8 NTAPE:NEW {: tp:IR-ARENA:arena :}
    c b tp REC-TEXT 128 NFEED:BEGIN-UNIT
-   s" NELB-REC ( n -- n ) abs" CHECK! -1 T=
+   src su CHECK! -1 T=
    NFEED:END-UNIT {: v:IR-ARENA:view verdict:n :}
    verdict -1 T=
    v NFEED:RECORD-WINDOW
@@ -399,7 +401,8 @@ create REC-TEXT 128 allot
 
 : MISSING-FACT-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   c REC-FACTS {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c s" NELB-MISS ( n -- n ) abs" REC-FACTS
+      {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
    1 CHECKER-OWNER:SOURCE-BINDING {: row:ptr bytes:n :}
    bytes CHECKER-OWNER-ABI:BOUND-CELLS cells T=
    \ Remove the call's ordinal without changing its tape or dictionary word.
@@ -408,7 +411,8 @@ create REC-TEXT 128 allot
 
 : STALE-FACT-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   c REC-FACTS {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c s" NELB-STALE ( n -- n ) abs" REC-FACTS
+      {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
    s" NELB-LATER ( -- n ) 1" CHECK! -1 T=
    \ The recorded does entry checks its producer window before reading does shape.
    c b v p r 1 1 1 0 1 0 0 s" ( -- n )" NELAB:RECORDED-DOES drop ;
