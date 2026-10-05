@@ -1,11 +1,11 @@
 \ load-reject-diag-test.f - a rejecting `bin/hb --load` must identify itself.
 \
-\ Invariant (dot habu-silent-exit-70-215b2da7): every load leg that rejects a
-\ definition exits 70 WITH a named diagnostic on stderr — a silent fail-closed
-\ exit is the harness gap this campaign keeps paying for (cf. the seal-exit
-\ labeling and the check.f E-FS-CAPACITY raw-67 fix). Pins the direct --load
-\ leg, the require-chain leg, and the checked-body reject leg by spawning the
-\ engine on generated rejecting fixtures and asserting stderr names the error.
+\ Invariant (dot habu-silent-exit-70-215b2da7): a checked load refusal exits
+\ 70 WITH a named diagnostic on stderr — a silent fail-closed exit is the
+\ harness gap this campaign keeps paying for. Native lowering of an unmodeled
+\ immediate in a TRUSTED body refuses with its own named -8286 instead.
+\ Pins the direct --load leg, the require-chain leg, and the checked-body
+\ reject leg by spawning the engine on generated rejecting fixtures.
 \ The child engine is HABU_UNDER_TEST when the gate sets it, else bin/hb.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
@@ -397,8 +397,16 @@ LOWER-CERT-HOOK:INSTALL
    root s" byte_end" 38 GJA-ASSERT-INT-FIELD ;
 
 : TEST-IMM-TRUSTED ( -- )
-   s" trusted body cannot bypass immediate preflight" T-LABEL
+   s" trusted body cannot bypass unmodeled immediate refusal" T-LABEL
    TRUSTED$ RUN
+   HB-TARGET-LINUX-X86-64? if
+      EXITED @ TTRUE
+      RC @ 67 T=
+      OUT-U @ 0 T=
+      ERR$ s" ncomp: cannot compile LRD-TRUST-BODY at LRD-TRUST-IMM" CONTAINS? TTRUE
+      ERR$ s" -8286" CONTAINS? TTRUE
+      exit
+   then
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
    s" lrd-trust-body" s" LRD-TRUST-IMM" ASSERT-IMM-DIAG ;
 
