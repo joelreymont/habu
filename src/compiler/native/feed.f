@@ -236,6 +236,11 @@ using NTAPE
       TXT@ F-LEN @  a u  STR= 0= if E-NFEED-SCAN throw then
    then
    verdict F-VERDICT !
+   CHECKER-OWNER:BINDING-WINDOW
+      {: owner:ptr serial:n unjudged:bool :}
+   owner PRODUCED-OWNER !
+   serial PRODUCED-WINDOW !
+   unjudged PRODUCED-UNJUDGED !
    DOES? F-BASE @ 0= and if ST-BETWEEN else ST-DONE then F-STATE ! ;
 
 \ Clears this producer's hold on the caller's buffer, not its contents.
@@ -350,11 +355,6 @@ TRUSTED: SCAN-ID ( -- n )
    CHECKER-OWNER:TAPE-DISARM
    TAPE NTAPE:SEAL {: view:IR-ARENA:view :}
    view 0 PRODUCED-VIEW !
-   CHECKER-OWNER:BINDING-WINDOW
-      {: owner:ptr serial:n unjudged:bool :}
-   owner PRODUCED-OWNER !
-   serial PRODUCED-WINDOW !
-   unjudged PRODUCED-UNJUDGED !
    -1 PRODUCED-VALID !  0 PRODUCED-BOUND !
    view
    F-VERDICT @

@@ -320,6 +320,21 @@ using NSRC
    BND [: FUN-BODY ;] IR-CTX:WITH-CONTEXT
    6 T= 0 T= 1 T= 1 T= TTRUE ;
 
+: DIRECT-SITE-BODY ( IR-CTX:ctx -- n )
+   {: c:IR-CTX:ctx :}
+   s" NELB-OTHER ( n n -- n ) +" CHECK! -1 T=
+   s" NELB-DIRECT abs" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m m f F-BLK s" hir.wordcall" F-OPC-N ;
+
+: DIRECT-SITE-CASE ( -- )
+   s" a direct call keeps its model arity after an unrelated checker scan" T-LABEL
+   BND [: DIRECT-SITE-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= ;
+
 \ ---- the two words this suite is refused by -----------------------------------
 \ WHY AN OUT-OF-SCOPE SPELLING IS THE FIXTURE. A body word the dialect models no
 \ operation for is not refused for that alone: src/compiler/native/elaborate.f
@@ -2512,6 +2527,7 @@ public
    BND [: drop ELOPSIDED-CASE ;] IR-CTX:WITH-CONTEXT
    BUMP-CASE
    FUN-CASE
+   DIRECT-SITE-CASE
    BND [: drop UNDEC-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop CHARTOK-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop STRTOK-CASE ;] IR-CTX:WITH-CONTEXT

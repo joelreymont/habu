@@ -126,9 +126,7 @@ create OWNER-STORAGE
    0 ,
    0 , 0 , 0 , 0 ,
    0 ,
-   0 , 0 , 0 ,
-   0 ,
-   0 ,
+   0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public

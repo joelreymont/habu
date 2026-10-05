@@ -64,6 +64,7 @@ variable EXACT-SOURCE
    reason VW ix TOK-OFF NHOST:SOURCE-REFUSE ;
 
 : TOK-CELLS ( IR-ARENA:view n -- n )
+   EXACT-SOURCE @ 0= if 2drop 1 exit then
    TOK-OFF NDICT:MEM-CELLS ;
 
 \ ---- naming the token a refusal was about ------------------------------------
@@ -859,6 +860,61 @@ DYNAMIC-BUFFER SPELL-BUF u8
 : QSPELL ( n -- ptr u8 n )
    {: ix:n :}
    VW MKEY ix NTAPE:SPELL@ SPELL$ ;
+
+\ Source-site rows are indexed by the checker's token ordinal. A public direct
+\ tape has only its model and the live dictionary, even if another scan left
+\ rows with the same ordinals in the checker.
+: SITE-CALL ( n -- n n )
+   EXACT-SOURCE @ 0= if drop -1 -1 exit then
+   NDICT:CALL-CELLS ;
+
+: SITE-GLUE ( n -- n n )
+   EXACT-SOURCE @ 0= if drop -1 -1 exit then
+   NDICT:CALL-GLUE ;
+
+: SITE-QUOT-IN ( n n -- n n )
+   EXACT-SOURCE @ 0= if
+      {: ix:n term:n :} ix QSPELL term NDICT:SPELL-QUOT-DIN exit
+   then
+   NDICT:CALL-QUOT-IN ;
+
+: SITE-QUOT-OUT ( n n -- n n )
+   EXACT-SOURCE @ 0= if
+      {: ix:n term:n :} ix QSPELL term NDICT:SPELL-QUOT-DOUT exit
+   then
+   NDICT:CALL-QUOT-OUT ;
+
+: SITE-INIT ( n -- n n n )
+   EXACT-SOURCE @ 0= if drop -1 -1 -1 exit then
+   NDICT:INIT-LAYOUT ;
+
+: SITE-FIELD ( n -- n n )
+   EXACT-SOURCE @ 0= if drop -1 -1 exit then
+   NDICT:FIELD-SPAN ;
+
+: SITE-MATCH ( n -- n )
+   EXACT-SOURCE @ 0= if drop NDICT:MATCH-NONE exit then
+   NDICT:MATCH-CELLS ;
+
+: SITE-PAYLOAD ( n -- n n )
+   EXACT-SOURCE @ 0= if drop -1 NDICT:GLUE-UNKNOWN exit then
+   NDICT:MATCH-PAYLOAD ;
+
+: SITE-PADS ( n -- n )
+   EXACT-SOURCE @ 0= if drop 0 exit then
+   NDICT:CON-PADS ;
+
+: SITE-EXEC ( n -- n n )
+   EXACT-SOURCE @ 0= if drop -1 -1 exit then
+   NDICT:EXEC-CELLS ;
+
+: SITE-CATCH ( n -- n n )
+   EXACT-SOURCE @ 0= if drop NDICT:CATCH-NONE NDICT:CATCH-NONE exit then
+   NDICT:CATCH-CELLS ;
+
+: SITE-FINALLY ( n -- n n n )
+   EXACT-SOURCE @ 0= if drop -1 -1 -1 exit then
+   NDICT:FINALLY-CELLS ;
 
 \ ---- a string literal ----------------------------------------------------------
 : EMIT-STRING ( n -- ) {: ix:n :}
@@ -1746,12 +1802,7 @@ PTR-VARIABLE TOK-TABLES
    {: ix:n j:n skip:n :}
    VN @ 1- skip - j -  VQ@ {: k:n :}
    k 0 < if exit then
-   ix j NDICT:CALL-QUOT-IN
-   over NDICT:QUOT-NONE = if
-      \ A trusted mint can stop the checker's walk before this call. The
-      \ callee's declared simple callback still supplies its ordinary ABI.
-      2drop ix QSPELL j NDICT:SPELL-QUOT-DIN
-   then {: qi:n qo:n :}
+   ix j SITE-QUOT-IN {: qi:n qo:n :}
    qi NDICT:QUOT-NONE = if
       \ A polymorphic consumer can store or forward a quotation whose
       \ calling convention is already known from the checked parameter.
@@ -1831,7 +1882,7 @@ PTR-VARIABLE TOK-TABLES
 
 : QRESULTS-FILL ( n n -- ) {: ix:n out:n :}
    out 0 ?do
-      ix i NDICT:CALL-QUOT-OUT {: qi:n qo:n :}
+      ix i SITE-QUOT-OUT {: qi:n qo:n :}
       qi NDICT:QUOT-NONE <> if ix qi qo VN @ 1- i - QKNOWN then
    loop ;
 
@@ -1996,7 +2047,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    ix MTOK$ NFAM:MATCH-FAM {: fam:n ok:bool :}
    ok 0= if E-NELAB-MATCH throw then
    ix MR-FAMILY MROLE!
-   ix NDICT:MATCH-CELLS {: w:n :}
+   ix SITE-MATCH {: w:n :}
    w NDICT:MATCH-NONE = if E-NELAB-MATCH throw then
    w fam NFAM:WIDTH < if E-NELAB-MATCH throw then
    CB-ROW @  w  fam  MMATCH!
@@ -2017,11 +2068,11 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    MV-ROW @ {: vix:n :}
    vix 0 < if E-NELAB-MATCH throw then
    MS-TOP {: t:n :}
-   ix NDICT:MATCH-CELLS {: pads:n :}
+   ix SITE-MATCH {: pads:n :}
    pads NDICT:MATCH-NONE = if E-NELAB-MATCH throw then
    t MS-WID@ 1- pads - {: pay:n :}
    pay 0 < if E-NELAB-MATCH throw then
-   ix NDICT:MATCH-PAYLOAD {: cells:n glue:n :}
+   ix SITE-PAYLOAD {: cells:n glue:n :}
    cells pay <> glue NDICT:GLUE-UNKNOWN = or if E-NELAB-MATCH throw then
    ix  vix MTAG@  pads  pay  MARM!
    ix glue MGLUE!
@@ -2040,7 +2091,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    ix MTOK$ CB-FAM @ NFAM:VARIANT {: vid:n ok:bool :}
    ok 0= if E-NELAB-MATCH throw then
    ix MR-VARIANT MROLE!
-   CB-FAM @ vid NFAM:PADS  ix NDICT:CON-PADS +  {: pads:n :}
+   CB-FAM @ vid NFAM:PADS  ix SITE-PADS +  {: pads:n :}
    CB-ROW @  vid NFAM:TAG  pads  vid NFAM:PAY-CELLS  MARM!
    MM-OFF MM ! ;
 
@@ -2096,7 +2147,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 : MSCAN-STEP ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena ix:n :}
    ix IN-DECL? if exit then
    ix 0 > if
-      ix 1- NDICT:FIELD-SPAN drop 0 >= if
+      ix 1- SITE-FIELD drop 0 >= if
          VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if
             E-NELAB-MATCH throw then
          ix MR-FIELD MROLE!
@@ -2256,7 +2307,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 \ ---- does this definition CALL at all? ---------------------------------------
 : QUOTATION-STORE? ( IR-ARENA:arena n -- bool ) {: r:IR-ARENA:arena ix:n :}
    r ix WSYM HIR-WORD:OPCODE@ HIR-OPCODE:STORE HIR-OPCODE:EQ 0= if false exit then
-   ix 1 NDICT:CALL-QUOT-IN drop NDICT:QUOT-NONE <> ;
+   ix 1 SITE-QUOT-IN drop NDICT:QUOT-NONE <> ;
 
 : GUARDED-STORE? ( HIR:opcode -- bool )
    dup HIR-OPCODE:STORE HIR-OPCODE:EQ
@@ -3250,13 +3301,8 @@ here CELL 1- and CELL swap - CELL 1- and allot
 : DO-WORD-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
-   ix NDICT:CALL-CELLS {: a:n o:n :}
-   a 0 < if
-      r sy HIR-WORD:CALLEE-IN@ r sy HIR-WORD:CALLEE-OUT@
-      r sy HIR-WORD:OUT-GLUE@
-   else
-      a o ix NDICT:CALL-GLUE nip
-   then {: in:n out:n glue:n :}
+   r sy HIR-WORD:CALLEE-IN@ r sy HIR-WORD:CALLEE-OUT@
+   r sy HIR-WORD:OUT-GLUE@ {: in:n out:n glue:n :}
    r sy HIR-WORD:TERMINAL? if
       ix r sy HIR-WORD:ENTRY@ in STAGE-TERMINAL exit
    then
@@ -3329,7 +3375,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
    {: r:IR-ARENA:arena ix:n :}
    VN @ 1 < if E-NELAB-UNDER throw then
    VN @ 1- VQ@ {: k:n :}
-   ix NDICT:EXEC-CELLS {: cin:n cout:n :}
+   ix SITE-EXEC {: cin:n cout:n :}
    cin 0 < if
       k 0 < if ix QUOT-REFUSE then
       k QIN@ k QOUT@
@@ -3341,8 +3387,8 @@ here CELL 1- and CELL swap - CELL 1- and allot
    then
    s" execute" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if ix QUOT-REFUSE then
-   ix NDICT:CALL-CELLS drop 0 < if NDICT:GLUE-NONE
-   else ix NDICT:CALL-GLUE nip then {: glue:n :}
+   ix SITE-CALL drop 0 < if NDICT:GLUE-NONE
+   else ix SITE-GLUE nip then {: glue:n :}
    glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
    ix entry  in 1+  out 0 max  glue  STAGE-WCALL
    in 0 >= out NDICT:ARITY-NONE = and if r ix DEAD-END then ;
@@ -3353,7 +3399,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
    {: ix:n :}
    VN @ 1 < if E-NELAB-UNDER throw then
    VN @ 1- VQ@ {: k:n :}
-   ix NDICT:CATCH-CELLS {: win:n back:n :}
+   ix SITE-CATCH {: win:n back:n :}
    win NDICT:CATCH-NONE = if ix QUOT-REFUSE then
    back NDICT:CATCH-NONE <> if back win <> if ix QUOT-REFUSE then then
    VN @ 1- win < if E-NELAB-UNDER throw then
@@ -3371,7 +3417,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
 \ the body window and its outputs come from the same per-site checker table.
 : DO-FINALLY ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena ix:n :}
    VN @ 2 < if E-NELAB-UNDER throw then
-   ix NDICT:FINALLY-CELLS {: in:n out:n cleanup-out:n :}
+   ix SITE-FINALLY {: in:n out:n cleanup-out:n :}
    in 0 < if ix QUOT-REFUSE then
    VN @ 2 - VQ@ {: body:n :}
    VN @ 1- VQ@ {: cleanup:n :}
@@ -3382,15 +3428,15 @@ here CELL 1- and CELL swap - CELL 1- and allot
    \ Returning products and wide families need the checker's value boundaries.
    \ Dead outputs need no grouping. Trusted bodies can carry only quotation
    \ arity, without ordinary call rows; handle those exactly as execute does.
-   out 0 < ix NDICT:CALL-CELLS drop 0 < or if NDICT:GLUE-NONE
-   else ix NDICT:CALL-GLUE nip then {: glue:n :}
+   out 0 < ix SITE-CALL drop 0 < or if NDICT:GLUE-NONE
+   else ix SITE-GLUE nip then {: glue:n :}
    glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
    ix entry in 2 + out 0 max glue STAGE-WCALL
    out 0 < cleanup-out 0 < or if r ix DEAD-END then ;
 
 : DO-C2-INVOKE ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena ix:n :}
    VN @ 3 < if E-NELAB-UNDER throw then
-   ix NDICT:FINALLY-CELLS {: in:n out:n cleanup-out:n :}
+   ix SITE-FINALLY {: in:n out:n cleanup-out:n :}
    in 0 < if ix QUOT-REFUSE then
    VN @ 3 - VQ@ {: body:n :}
    VN @ 2 - VQ@ {: cleanup:n :}
@@ -3400,8 +3446,8 @@ here CELL 1- and CELL swap - CELL 1- and allot
    finish 0 >= if finish 1 0 QFILL then
    s" c2-invoke" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if ix QUOT-REFUSE then
-   out 0 < ix NDICT:CALL-CELLS drop 0 < or if NDICT:GLUE-NONE
-   else ix NDICT:CALL-GLUE nip then {: glue:n :}
+   out 0 < ix SITE-CALL drop 0 < or if NDICT:GLUE-NONE
+   else ix SITE-GLUE nip then {: glue:n :}
    glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
    ix entry in 3 + out 0 max glue STAGE-WCALL
    out 0 < cleanup-out 0 < or if r ix DEAD-END then ;
@@ -3417,43 +3463,43 @@ here CELL 1- and CELL swap - CELL 1- and allot
 
 : DO-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   ix NDICT:CALL-CELLS drop {: in:n :}
+   ix SITE-CALL drop {: in:n :}
    in 0 < if r ix WSYM HIR-WORD:CALLEE-IN@ else in then
    ix swap 0 QCALL-FILL
-   ix NDICT:INIT-LAYOUT {: width:n bytes:n align:n :}
+   ix SITE-INIT {: width:n bytes:n align:n :}
    width 0 >= if
       ix width EMIT-LIT
       ix bytes EMIT-LIT
       ix align EMIT-LIT
       ix WSYM {: sy:IR-ID:ir-symbol-id :}
-      ix NDICT:CALL-CELLS {: public-in:n out:n :}
+      ix SITE-CALL {: public-in:n out:n :}
       public-in 0 < if E-NELAB-CTRL throw then
       r sy HIR-WORD:TERMINAL? if
          ix r sy HIR-WORD:ENTRY@ public-in 3 + STAGE-TERMINAL exit
       then
-      ix NDICT:CALL-GLUE nip {: glue:n :}
+      ix SITE-GLUE nip {: glue:n :}
       glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
       ix r sy HIR-WORD:ENTRY@ public-in 3 + out glue STAGE-WCALL
       ix out QRESULTS-FILL
       exit
    then
-   ix NDICT:FIELD-SPAN {: off:n bytes:n :}
+   ix SITE-FIELD {: off:n bytes:n :}
    off 0 >= if
       ix off EMIT-LIT
       ix bytes EMIT-LIT
       ix WSYM {: sy:IR-ID:ir-symbol-id :}
-      ix NDICT:CALL-CELLS {: public-in:n out:n :}
+      ix SITE-CALL {: public-in:n out:n :}
       public-in 0 < if E-NELAB-CTRL throw then
       r sy HIR-WORD:TERMINAL? if
          ix r sy HIR-WORD:ENTRY@ public-in 2 + STAGE-TERMINAL exit
       then
-      ix NDICT:CALL-GLUE nip {: glue:n :}
+      ix SITE-GLUE nip {: glue:n :}
       glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
       ix r sy HIR-WORD:ENTRY@ public-in 2 + out glue STAGE-WCALL
       ix out QRESULTS-FILL
       exit
    then
-   ix NDICT:CON-PADS {: x:n :}
+   ix SITE-PADS {: x:n :}
    ix x CON-PADS-PUSH
    r ix DO-WORD-CALL
    x 0= if exit then
@@ -3610,7 +3656,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
 
 : DO-OP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   ix NDICT:CALL-CELLS drop {: a:n :}
+   ix SITE-CALL drop {: a:n :}
    a 0 >= if ix a 0 QCALL-FILL then
    VW ix TOK-CELLS {: w:n :}
    r ix WSYM HIR-WORD:OPCODE@ {: k:HIR:opcode :}
