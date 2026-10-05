@@ -1475,6 +1475,12 @@ $180000 constant LARGE-STDIN-LEN
    5 s" trusted-tick-order: unknown parent tick defers clause" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
    s" W-CHECK-DEFERRED" T$=
+   s" 0 set-tier : CVT-DOES ( -- ) ['] patch32 drop create does> CVT-MISSING ;" TOP-CHECK
+   5 s" trusted-tick-order: unknown parent stops before malformed clause" EXPECT-KIND
+   s" trusted-tick-order: unknown parent has one warning" T-LABEL
+   CHECK:VERIFY-OUT$ PACKETS 1 T=
+   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
+   s" W-CHECK-DEFERRED" T$=
    S\" s\" : CVT-GENERATED ( -- ) ;\" evaluate : CVT-DOES ( -- ) create does> ( -- ) drop CVT-GENERATED ;" TOP-CHECK
    5 s" trusted-tick-order: clause warning retains its pin after parent scan" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" token" s" CVT-GENERATED" PACKET {: clause-warning:n :}
@@ -1483,6 +1489,15 @@ $180000 constant LARGE-STDIN-LEN
    clause-warning s" column" NUMBER$ s" 82" T$=
    clause-warning s" code" STRING$
    s" W-CHECK-DEFERRED" T$=
+   S\" s\" : CVT-GENERATED ( -- ) ;\" evaluate\n: CVT-DOES ( -- ) CVT-GENERATED create does> ( -- ) CVT-GENERATED ;" TOP-CHECK
+   5 s" trusted-tick-order: parent and clause both defer" EXPECT-KIND
+   s" trusted-tick-order: one warning for the definition" T-LABEL
+   CHECK:VERIFY-OUT$ PACKETS 1 T=
+   CHECK:VERIFY-OUT$ s" token" s" CVT-GENERATED" PACKET {: parent-warning:n :}
+   s" trusted-tick-order: parent warning wins" T-LABEL
+   parent-warning s" line" NUMBER$ s" 2" T$=
+   parent-warning s" column" NUMBER$ s" 19" T$=
+   parent-warning s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    s" 0 set-tier : CVT-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" TOP-CHECK
    5 s" trusted-tick-order: unknown does clause defers parent check" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
