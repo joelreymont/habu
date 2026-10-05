@@ -599,6 +599,13 @@ SUITE wasm-backend
    test/wasm/backend.f
 ;SUITE
 
+\ The capture's Wasm reader, src/arch/wasm/capture.f: a window compiled through
+\ an open Wasm shadow, captured, its emissions read into AOT-SHADOW's tables
+\ with each call row, code and DATA field and code cell keyed by shipped row.
+SUITE wasm-capture
+   test/wasm/capture.f
+;SUITE
+
 \ The backend registry: complete rows in src/compiler/native/backend.f,
 \ registered by src/arch/arm64/passes.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.

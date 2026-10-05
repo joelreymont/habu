@@ -204,6 +204,16 @@ for a fixture, 21 for `diff-negative`. Any other status names the failed check,
 as `test/x86-64-peer-harness.f` numbers them; 124 is `timeout` stopping an
 image that did not exit.
 
+Two engines independent of Habu check its Wasm modules. wasm-tools validates a
+module under core Wasm and the backend's features, and bun runs it through
+`test/wasm/run.mjs`. Neither tool is part of the ordinary gate. Install both
+once and put them on `PATH`: `cargo install --locked wasm-tools` (into
+`~/.cargo/bin`; 1.243.0 verified) and
+`curl -fsSL https://bun.sh/install | bash` (into `~/.bun/bin`; 1.3.3
+verified). Then, from the tree's root, run
+`bin/hb --load test/wasm/device.f`. It prints the directory holding the
+modules it wrote and ends `test: ok`, exit 0.
+
 `tools/bootstrap.sh` does the whole recovery and installs exactly one file:
 `bin/hb`.
 
