@@ -663,17 +663,18 @@ CHILD-CAP BUFFER: CHILD-ERR
    src srcu CHILD-OUT CHILD-CAP >LEN CHILD-ERR CHILD-CAP >LEN CHILD-MS >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu CHILD-OUT outu LEN>N CHILD-ERR erru LEN>N oc CHECKER-REJECT-RC T-OUTCOME-EXITED=
-   CHILD-ERR erru LEN>N want wantu CONTAINS? TTRUE ;
+   CHILD-ERR erru LEN>N s" E-UNDEFINED" CONTAINS?
+   CHILD-ERR erru LEN>N want wantu CONTAINS? and TTRUE ;
 
 : CONVERTERS ( -- )
    s" the converters of pools are undefined outside RT-POOL" T-LABEL
-   s" : RPT-U1 ( ptr n -- RT-POOL:pools ) RT-POOL:>POOLS ;" s" E-UNDEFINED: RT-POOL:>POOLS" UNDEFINED
-   s" : RPT-U2 ( RT-POOL:pools -- n ) RT-POOL:POOLS>N ;" s" E-UNDEFINED: RT-POOL:POOLS>N" UNDEFINED
+   s" : RPT-U1 ( ptr n -- RT-POOL:pools ) RT-POOL:>POOLS ;" s" RT-POOL:>POOLS" UNDEFINED
+   s" : RPT-U2 ( RT-POOL:pools -- n ) RT-POOL:POOLS>N ;" s" RT-POOL:POOLS>N" UNDEFINED
    s" and so are a schema's" T-LABEL
-   s" : RPT-U3 ( n -- RT-POOL:schema ) RT-POOL:>SCHEMA ;" s" E-UNDEFINED: RT-POOL:>SCHEMA" UNDEFINED
-   s" : RPT-U4 ( RT-POOL:schema -- n ) RT-POOL:SCHEMA>N ;" s" E-UNDEFINED: RT-POOL:SCHEMA>N" UNDEFINED
+   s" : RPT-U3 ( n -- RT-POOL:schema ) RT-POOL:>SCHEMA ;" s" RT-POOL:>SCHEMA" UNDEFINED
+   s" : RPT-U4 ( RT-POOL:schema -- n ) RT-POOL:SCHEMA>N ;" s" RT-POOL:SCHEMA>N" UNDEFINED
    s" and the constructor of the pools' state" T-LABEL
-   s" : RPT-U5 ( -- ) 0 0 0 0 0 RT--POOL-STATE:MAKE drop ;" s" E-UNDEFINED: RT--POOL-STATE:MAKE" UNDEFINED ;
+   s" : RPT-U5 ( -- ) 0 0 0 0 0 RT--POOL-STATE:MAKE drop ;" s" RT--POOL-STATE:MAKE" UNDEFINED ;
 
 : MAIN ( -- )
    T-RESET

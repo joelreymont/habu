@@ -408,25 +408,26 @@ CHILD-CAP BUFFER: CHILD-ERR
    src srcu CHILD-OUT CHILD-CAP >LEN CHILD-ERR CHILD-CAP >LEN CHILD-MS >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu CHILD-OUT outu LEN>N CHILD-ERR erru LEN>N oc CHECKER-REJECT-RC T-OUTCOME-EXITED=
-   CHILD-ERR erru LEN>N want wantu CONTAINS? TTRUE ;
+   CHILD-ERR erru LEN>N s" E-UNDEFINED" CONTAINS?
+   CHILD-ERR erru LEN>N want wantu CONTAINS? and TTRUE ;
 
 : CONVERTERS ( -- )
    s" an Id128's converters are undefined outside RT-ID" T-LABEL
-   s" : RIDT-U1 ( n n -- RT-ID:id128 ) RT-ID:>ID128 ;" s" E-UNDEFINED: RT-ID:>ID128" UNDEFINED
-   s" : RIDT-U2 ( RT-ID:id128 -- n n ) RT-ID:ID128>N ;" s" E-UNDEFINED: RT-ID:ID128>N" UNDEFINED
-   s" : RIDT-U3 ( n -- n ) RT-ID:>ID-HALF ;" s" E-UNDEFINED: RT-ID:>ID-HALF" UNDEFINED
+   s" : RIDT-U1 ( n n -- RT-ID:id128 ) RT-ID:>ID128 ;" s" RT-ID:>ID128" UNDEFINED
+   s" : RIDT-U2 ( RT-ID:id128 -- n n ) RT-ID:ID128>N ;" s" RT-ID:ID128>N" UNDEFINED
+   s" : RIDT-U3 ( n -- n ) RT-ID:>ID-HALF ;" s" RT-ID:>ID-HALF" UNDEFINED
    s" a counter's outside RT-ID" T-LABEL
-   s" : RIDT-U4 ( ptr n -- RT-ID:counter ) RT-ID:>COUNTER ;" s" E-UNDEFINED: RT-ID:>COUNTER" UNDEFINED
-   s" : RIDT-U5 ( RT-ID:counter -- n ) RT-ID:COUNTER>N ;" s" E-UNDEFINED: RT-ID:COUNTER>N" UNDEFINED
+   s" : RIDT-U4 ( ptr n -- RT-ID:counter ) RT-ID:>COUNTER ;" s" RT-ID:>COUNTER" UNDEFINED
+   s" : RIDT-U5 ( RT-ID:counter -- n ) RT-ID:COUNTER>N ;" s" RT-ID:COUNTER>N" UNDEFINED
    s" a handle's and a table's outside RT-HANDLE" T-LABEL
-   s" : RIDT-U6 ( n -- RT-HANDLE:handle ) RT-HANDLE:>HANDLE ;" s" E-UNDEFINED: RT-HANDLE:>HANDLE" UNDEFINED
-   s" : RIDT-U7 ( RT-HANDLE:handle -- n ) RT-HANDLE:HANDLE>N ;" s" E-UNDEFINED: RT-HANDLE:HANDLE>N" UNDEFINED
-   s" : RIDT-U8 ( ptr n -- RT-HANDLE:table ) RT-HANDLE:>TABLE ;" s" E-UNDEFINED: RT-HANDLE:>TABLE" UNDEFINED
+   s" : RIDT-U6 ( n -- RT-HANDLE:handle ) RT-HANDLE:>HANDLE ;" s" RT-HANDLE:>HANDLE" UNDEFINED
+   s" : RIDT-U7 ( RT-HANDLE:handle -- n ) RT-HANDLE:HANDLE>N ;" s" RT-HANDLE:HANDLE>N" UNDEFINED
+   s" : RIDT-U8 ( ptr n -- RT-HANDLE:table ) RT-HANDLE:>TABLE ;" s" RT-HANDLE:>TABLE" UNDEFINED
    s" no constructor builds a table's header outside RT-HANDLE" T-LABEL
-   s" : RIDT-U9 ( ptr n -- RT-HANDLE:table ) 0 1 0 0 0 RT--HANDLE-TABLE:MAKE ;" s" E-UNDEFINED: RT--HANDLE-TABLE:MAKE" UNDEFINED
-   s" : RIDT-U10 ( ptr n -- ) 0 1 0 0 RT--HANDLE-HEADER:MAKE drop ;" s" E-UNDEFINED: RT--HANDLE-HEADER:MAKE" UNDEFINED
+   s" : RIDT-U9 ( ptr n -- RT-HANDLE:table ) 0 1 0 0 0 RT--HANDLE-TABLE:MAKE ;" s" RT--HANDLE-TABLE:MAKE" UNDEFINED
+   s" : RIDT-U10 ( ptr n -- ) 0 1 0 0 RT--HANDLE-HEADER:MAKE drop ;" s" RT--HANDLE-HEADER:MAKE" UNDEFINED
    s" nor a counter's state outside RT-ID" T-LABEL
-   s" : RIDT-U11 ( -- ) 0 1 RT--ID-STATE:MAKE drop ;" s" E-UNDEFINED: RT--ID-STATE:MAKE" UNDEFINED ;
+   s" : RIDT-U11 ( -- ) 0 1 RT--ID-STATE:MAKE drop ;" s" RT--ID-STATE:MAKE" UNDEFINED ;
 
 : MAIN ( -- )
    T-RESET
