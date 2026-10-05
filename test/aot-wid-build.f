@@ -852,7 +852,7 @@ create DRV-CH 1 allot
    s" package AOT-WID-IMAGE-PATCH" DRV-LINE
    s" : PATCH-CELL ( n n label -- ) {: value:n old:n lab:label :}" DRV-LINE
    s"    lab LBL-BOUND? 0= if 79 throw then" DRV-LINE
-   s"    lab LABEL>N cells LBLP + @ 4 * {: off:n :}" DRV-LINE
+   s"    lab LABEL>N LBLP @ 4 * {: off:n :}" DRV-LINE
    s"    off 0< off CODELEN @ 8 - > or if 79 throw then" DRV-LINE
    s"    CODE off + {: dst:ptr :}" DRV-LINE
    s"    dst FS-U64@ old <> if 79 throw then" DRV-LINE

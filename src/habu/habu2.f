@@ -12937,7 +12937,7 @@ variable AOT-BOUND-SITES
 : AOT-BOUND-DISP ( n -- n ) {: s:n :}
    s AOT-SITE-WORD $94000000 <> if AOT-SITE-REFUSE then
    s AOT-SITE-INDEX ENGINE-PRIMS:FIRST-LABEL
-   LABEL>N cells LBLP + @ dup 0 < if AOT-SITE-REFUSE then
+   LABEL>N LBLP @ dup 0 < if AOT-SITE-REFUSE then
    4 * REGION-OFF DICT-SIZE + s AOT-SITE-BOFF + - {: delta:n :}
    delta BL-REACH negate < delta BL-REACH >= or if AOT-SITE-REFUSE then
    delta 3 and 0<> if AOT-SITE-REFUSE then
