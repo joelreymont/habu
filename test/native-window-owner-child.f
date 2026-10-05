@@ -109,18 +109,37 @@ CAST: SOURCE-PROVIDE-XT ( n -- [ ptr u8 n -- ] )
    then
    XREF-START SOURCE-RESET-XT execute ;
 
-: REGISTER-CLAUSE ( -- )
+: TARGET-PROVIDE ( ptr u8 n -- )
    s" provided" XREF-FIND dup XREF-FOUND? 0= if
       drop s" window: fresh provided missing" 76 die
    then
-   XREF-START SOURCE-PROVIDE-XT {: register :}
-   s" src/core/does-clause.f" register execute ;
+   XREF-START SOURCE-PROVIDE-XT execute ;
 
-: LOAD-OPTIONAL ( ptr u8 n -- )
-   2dup included
-   s" src/core/include.f" STR= if
+variable SOURCE-READY
+
+: RECOVERY$ ( -- ptr u8 n ) s" --recovery-row" ;
+
+: OPTIONAL-FILE? ( ptr u8 n -- bool )
+   2dup s" --literals" CORE-STR= if 2drop false exit then
+   RECOVERY$ CORE-STR= 0= ;
+
+: REGISTER-LOADED ( n -- ) {: last:n :}
+   \ The early core and each optional path are already present in the target
+   \ dictionary. Its new loader must record them before a later require runs.
+   s" src/core/does-clause.f" TARGET-PROVIDE
+   s" src/core/layout-buffer.f" TARGET-PROVIDE
+   last 1+ 1 ?do
+      i SCRIPT-ARGV$ 2dup OPTIONAL-FILE? if TARGET-PROVIDE else 2drop then
+   loop ;
+
+: LOAD-OPTIONAL ( ptr u8 n n -- ) {: path:ptr u:n idx:n :}
+   path u included
+   path u s" src/core/include.f" STR= if
       ACTIVATE-SOURCE
-      REGISTER-CLAUSE
+      idx REGISTER-LOADED
+      true SOURCE-READY !
+   else
+      SOURCE-READY @ if path u TARGET-PROVIDE then
    then ;
 
 \ --- the recovery-row mode ---------------------------------------------------
@@ -130,8 +149,6 @@ CAST: SOURCE-PROVIDE-XT ( n -- [ ptr u8 n -- ] )
 \ source grant. Tier 0 scans no body while the hook is off, as it is through the
 \ prefix, so the definition compiles at tier 1, where the checker scans every
 \ body.
-
-: RECOVERY$ ( -- ptr u8 n ) s" --recovery-row" ;
 
 : RECOVERY-MODE? ( -- bool )
    SCRIPT-ARGC 1 ?do
@@ -183,7 +200,7 @@ CAST: SOURCE-PROVIDE-XT ( n -- [ ptr u8 n -- ] )
       \ The retained compiler owns literals after its namespace is retired.
       2dup s" --literals" CORE-STR= if
          2drop NSTR:WINDOW-OPEN
-      else 2dup RECOVERY$ CORE-STR= if 2drop else LOAD-OPTIONAL then then
+      else 2dup RECOVERY$ CORE-STR= if 2drop else i LOAD-OPTIONAL then then
    loop
    PATH$ included
    \ Call the retained production detector after the replacement checker loads.
