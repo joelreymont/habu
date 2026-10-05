@@ -463,17 +463,17 @@ variable SELF-SRC-U
    s" hb-build AOT compact/features/data" GB-HBB-BUILD
    BUNDLE-EXPECT s" hb-build AOT compact/features/data output" GB-RUN-EXPECT
    GB-OUT$ CODE-RANGE nip {: codesz:n :}
-   codesz CODE-TOO-LARGE? if s" hb-build AOT stripped code" GE-FAIL then
-   s" hb-build AOT dynamic ELF shape" ASSERT-DYNAMIC-ELF
-   \ No whole-range instruction/stencil control here: the sparse image stores
-   \ DATA as unaligned non-zero runs, so a whole-file aligned scan can no
-   \ longer find INSTRUCTION-DATA's planted blr x16 or NOP/NOP/NOP/BL words
-   \ verbatim. Only the code-only exclusion below remains meaningful.
-   s" hb-build AOT code excludes DATA blr x16" ASSERT-BLR-ABSENT
-   CODE-REPORT
-   s" aot-stripped" s" aot-stripped call report" AOT-ASSERT
-   s" aot-compact" s" aot-compact call report" AOT-ASSERT
-   s" PASS: hb-build AOT compact/feature/data coverage (persistent data region, code-window datum; code " type
+   HB-TARGET-LINUX-X86-64? 0= if
+      codesz CODE-TOO-LARGE? if s" hb-build AOT stripped code" GE-FAIL then
+      s" hb-build AOT dynamic ELF shape" ASSERT-DYNAMIC-ELF
+      \ ARM's direct-BL report and BLR scan inspect ARM instructions. The
+      \ x86-64 case above ran the linked calls in the stripped image.
+      s" hb-build AOT code excludes DATA blr x16" ASSERT-BLR-ABSENT
+      CODE-REPORT
+      s" aot-stripped" s" aot-stripped call report" AOT-ASSERT
+      s" aot-compact" s" aot-compact call report" AOT-ASSERT
+   then
+   s" PASS: hb-build AOT compact/feature/data coverage (persistent data region, code-window datum; executable span " type
    codesz GB-U.
    s"  B)" type cr ;
 
@@ -518,8 +518,14 @@ variable SELF-SRC-U
    LAYOUT-FETCH-SOURCE
    s" hb-build AOT layout-bundle fetch build" GB-HBB-BUILD
    LAYOUT-FETCH-EXPECT s" hb-build AOT layout-bundle fetch output" GB-RUN-EXPECT
-   s" hb-build AOT layout-bundle fetch zero un-collapsed blr x16" ASSERT-BLR-ABSENT
-   s" PASS: hb-build AOT layout-bundle store and fetch ((PROT-SPAN) and LP2VEXEC reached via relocated calls; zero blr x16)" type cr ;
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" hb-build AOT layout-bundle fetch zero un-collapsed blr x16" ASSERT-BLR-ABSENT
+   then
+   HB-TARGET-LINUX-X86-64? if
+      s" PASS: hb-build AOT layout-bundle store and fetch via relocated calls" type cr
+   else
+      s" PASS: hb-build AOT layout-bundle store and fetch ((PROT-SPAN) and LP2VEXEC reached via relocated calls; zero blr x16)" type cr
+   then ;
 
 \ item 10 slice 5: a preseeded bad-tag object/AOT test entry. A source declaring a
 \ matched family + helper is AOT-built with a SELECTED non-MAIN entry (the helper)
@@ -650,7 +656,9 @@ variable SELF-SRC-U
    s" hb-build AOT preseed fetch normal-MAIN exits 0" GB-RUN-OUT
    PRESEED-FETCH-BUILD
    s" hb-build AOT preseed bad-tag fetch run" FETCH-RUN-BAD
-   s" hb-build AOT preseed bad-tag fetch zero un-collapsed blr x16" ASSERT-BLR-ABSENT
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" hb-build AOT preseed bad-tag fetch zero un-collapsed blr x16" ASSERT-BLR-ABSENT
+   then
    PRESEED-FETCH-DROP-BUILD
    s" hb-build AOT preseed dropped bad-tag fetch run" FETCH-RUN-BAD
    s" PASS: hb-build AOT preseeded bad-tag fetch (rc 85 hb: bad layout tag via NFETCH-CHECK:TAGS in a stripped image, used and dropped)" type cr ;
@@ -705,7 +713,9 @@ public
 
 : RUN-BUNDLE-DATA ( -- )
    s" hb-gate-aot-bundle-data" GT-START
-   MAKER-SELFTEST
+   \ The synthetic private-word and ADR/BLR checks exercise the ARM linker.
+   \ On x86-64 the following builds execute its real relocated call paths.
+   HB-TARGET-LINUX-X86-64? 0= if MAKER-SELFTEST then
    BUNDLE
    LAYOUT-FETCH
    TRUSTED-ROW

@@ -106,11 +106,23 @@ create CODE-PATH FS-PATH-CAP allot
    \ PLAN-BLOBS places closure record zero (the selected root) first.
    root DATA-OFF @ < IMAGE-CK ;
 
+\ The x86-64 writer places the entry at CODE-OFF and pads the executable
+\ segment after its code. The ELF entry and RX program header bound the bytes
+\ without interpreting them as AArch64 startup instructions.
+: X64-CODE-RANGE ( ptr u8 n -- n n )
+   GB-EXEC-TEXT-RANGE {: off:n size:n :}
+   off size GB-RANGE
+   ELF-ENTRY CODE-OFF = IMAGE-CK
+   CODE-OFF off >= IMAGE-CK
+   CODE-OFF off size + < IMAGE-CK
+   CODE-OFF off size + CODE-OFF - ;
+
 public
 
 \ EMIT-DATA-BLOB places the startup's source address immediately
 \ after all code. NSTR:WINDOW-OPEN guarantees these fixtures have a DATA copy.
 : CODE-RANGE ( ptr u8 n -- n n )
+   HB-TARGET-LINUX-X86-64? if X64-CODE-RANGE exit then
    GB-EXEC-TEXT-RANGE {: off:n size:n :}
    off size GB-RANGE
    off size + RX-END !

@@ -17,6 +17,7 @@ $19 constant GB-LC-SEGMENT-64
 80 constant GB-SECT-SIZE
 $464C457F constant GB-ELF-MAGIC
 $B7 constant GB-ELF-MACHINE-AARCH64
+$3E constant GB-ELF-MACHINE-X86-64
 1 constant GB-ELF-PT-LOAD
 2 constant GB-ELF-PT-DYNAMIC
 3 constant GB-ELF-PT-INTERP
@@ -268,7 +269,10 @@ variable GB-LC-OFF
 
 : GB-ELF-TEXT-SIZE-LOADED ( -- n )
    0 GB-U32-OFF GB-ELF-MAGIC <> if E-BUILD-SOURCE throw then
-   GB-ELF-MACHINE-OFF GB-U16-OFF GB-ELF-MACHINE-AARCH64 <> if E-BUILD-SOURCE throw then
+   GB-ELF-MACHINE-OFF GB-U16-OFF
+      HB-TARGET-LINUX-X86-64? if GB-ELF-MACHINE-X86-64
+      else GB-ELF-MACHINE-AARCH64 then
+      <> if E-BUILD-SOURCE throw then
    GB-SCAN-PHDRS
    GB-TEXT-FOUND @ 0= if E-BUILD-SOURCE throw then
    GB-TEXT-SIZE-V @ ;
@@ -279,7 +283,7 @@ variable GB-LC-OFF
 
 : GB-EXEC-TEXT-SIZE ( ptr u8 n -- n )
    GB-READ-EXEC
-   HB-TARGET-LINUX? if
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
       GB-ELF-TEXT-SIZE-LOADED
       exit
    then
