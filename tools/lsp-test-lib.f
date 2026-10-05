@@ -155,6 +155,30 @@
 \   their definition lines names at every even offset of the bytes the server
 \   keeps them in, one of them where those bytes fill their room .. path-length-N
 \
+\ Go to definition
+\ - a use in an open document, at its first character or its last, or after a
+\   character UTF-16 counts as one unit and UTF-8 as two bytes, not answered
+\   with its declaring token's range at the URI the client opened the document
+\   by; the character after a use, or a declaring token, answered with a
+\   Location; a negative character answered other than -32602 .... definition
+\ - a use of a dependency on disk only, its global or, qualified, its public
+\   word, not answered with the declaring token's range in its text on disk
+\   at its canonical file URI ............................ definition-dependency
+\ - a use of a dependency open with its lines swapped, unsaved, not answered
+\   with its declaring token's range in the text on disk the check read, at
+\   the URI the client opened it by ................. definition-dependency-open
+\ - a position in a document not open answered other than -32602
+\   ................................................... definition-not-open
+\ - a use asked about with the document's opening, answered before the check
+\   it started published, or not with the declaration's
+\   ................................................ definition-before-check
+\ - a use asked about in the turn of a change that moved it and its
+\   declaration, answered before the check of the changed text published, or
+\   not with the declaration's new range ............. definition-after-change
+\ - a use asked about after a change whose check did not complete answered
+\   from the uses of the text before it, or the definitions of the last check
+\   that completed not listed .......................... definition-incomplete
+\
 \ Not proven here: a packet line that is not JSON, that names no file, or that
 \ names its file by a relative path, goes to stderr, but the checker writes
 \ none of them - every packet names its file, and the verifier names every
@@ -626,6 +650,7 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\"," MSG+
    s\" \"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}," MSG+
+   s\" \"definitionProvider\":true," MSG+
    s\" \"workspaceSymbolProvider\":true}," MSG+
    s\" \"serverInfo\":{\"name\":\"habu\"}}}" MSG+
    MSG$ HEARD ;
@@ -2141,6 +2166,223 @@ variable LENGTH-N                        \ the length of its directory's name
    s" Z9" 12 LENGTH-PATH URI-OF 108 2 4 s" " SYMBOL+
    SYMBOLS-END ;
 
+\ ---- go to definition --------------------------------------------------------
+
+: DEF-A-PATH ( -- ptr u8 n )  s" def-a.f" FIXTURE ;
+: DEF-B-PATH ( -- ptr u8 n )  s" def-b.f" FIXTURE ;
+: DEF-DEP-PATH ( -- ptr u8 n )  s" def-dep.f" FIXTURE ;
+: DEF-DEP-CANON ( -- ptr u8 n )  DEF-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
+
+\ DEF-ONE, its use in DEF-TWO, and its use in DEF-THREE after a character of
+\ one UTF-16 unit and two bytes.
+: TEXT-DEF-A ( -- ptr u8 n )
+   s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) DEF-ONE 1 + ;\n: DEF-THREE ( -- n ) s\" é\" 2drop DEF-ONE ;\n" ;
+
+\ def-dep.f, on disk only: DEF-PUB, public in package DD, and the global
+\ DEF-DEP.
+: TEXT-DEF-DEP ( -- ptr u8 n )
+   s\" package DD\npublic\n: DEF-PUB ( -- n ) 3 ;\n;package\n: DEF-DEP ( -- n ) 4 ;\n" ;
+
+\ Uses of def-dep.f's global and, qualified, of its public word.
+: TEXT-DEF-B ( -- ptr u8 n )
+   s\" require def-dep.f\n: DEF-USE ( -- n ) DEF-DEP DD:DEF-PUB + ;\n" ;
+
+\ textDocument/definition, by its id's JSON text, at character C of line L of
+\ the document opened from this path.
+: DEFINITION-ASK ( ptr u8 n ptr u8 n n n -- )
+   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"method\":\"textDocument/definition\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
+   p pu URI-OF MSG+
+   s\" \"},\"position\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c INT$ MSG+ s" }}}" MSG+
+   MSG$ FRAMED ;
+
+\ The next frame answers the request with this id's JSON text with one
+\ Location: this URI, from character C1 to C2 of line L.
+: LOCATED ( ptr u8 n ptr u8 n n n n -- )
+   {: i:ptr iu:n u:ptr uu:n l:n c1:n c2:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"result\":[{\"uri\":\"" MSG+ u uu MSG+
+   s\" \",\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c1 INT$ MSG+
+   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}}]}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
+\ The next frame answers the request with this id's JSON text with no
+\ Location.
+: NOWHERE ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[]}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
+\ DEF-ONE's uses, at the first and last character of the one in DEF-TWO and
+\ the first of the one in DEF-THREE, its byte one past its character, each
+\ answered with DEF-ONE's declaring token at the URI the document was opened
+\ by; the character after the use and DEF-TWO's declaring token with none; a
+\ negative character -32602.
+: DEF-TURNS ( -- )
+   INITIALIZE
+   DEF-A-PATH TEXT-DEF-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-A DEF-A-PATH 1 s" verified" LISTED
+   s" 3" DEF-A-PATH 1 19 DEFINITION-ASK
+   s" 4" DEF-A-PATH 1 25 DEFINITION-ASK
+   s" 5" DEF-A-PATH 2 33 DEFINITION-ASK
+   s" 6" DEF-A-PATH 1 26 DEFINITION-ASK
+   s" 7" DEF-A-PATH 1 2 DEFINITION-ASK
+   s" 8" DEF-A-PATH 1 -1 DEFINITION-ASK
+   SAY
+   s" 3" DEF-A-PATH URI-OF 0 2 9 LOCATED
+   s" 4" DEF-A-PATH URI-OF 0 2 9 LOCATED
+   s" 5" DEF-A-PATH URI-OF 0 2 9 LOCATED
+   s" 6" NOWHERE
+   s" 7" NOWHERE
+   HEAR s" 8" -32602 REFUSED ;
+
+\ The uses of def-dep.f's global and, qualified, of its public word, each
+\ answered with its declaring token in the text on disk at the file's
+\ canonical URI.
+: DEF-DEP-TURNS ( -- )
+   DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
+   INITIALIZE
+   DEF-B-PATH TEXT-DEF-B 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
+   s" 3" DEF-B-PATH 1 19 DEFINITION-ASK
+   s" 4" DEF-B-PATH 1 27 DEFINITION-ASK
+   SAY
+   s" 3" DEF-DEP-CANON URI-OF 4 2 9 LOCATED
+   s" 4" DEF-DEP-CANON URI-OF 2 2 9 LOCATED ;
+
+\ def-od-dep.f on disk, and the text its open document holds, its two lines
+\ swapped: DEF-DEPB's token there has the bytes DEF-DEPA's has on disk, and
+\ DEF-DEPA's token, after DEF-DEPB's longer line, those of no token on disk.
+: DEF-OD-DEP-PATH ( -- ptr u8 n )  s" def-od-dep.f" FIXTURE ;
+: DEF-OD-PATH ( -- ptr u8 n )  s" def-od.f" FIXTURE ;
+: TEXT-DEF-OD-DISK ( -- ptr u8 n )
+   s\" : DEF-DEPA ( -- n ) 1 ;\n: DEF-DEPB ( -- n n ) 2 3 ;\n" ;
+: TEXT-DEF-OD-EDIT ( -- ptr u8 n )
+   s\" : DEF-DEPB ( -- n n ) 2 3 ;\n: DEF-DEPA ( -- n ) 1 ;\n" ;
+: TEXT-DEF-OD ( -- ptr u8 n )
+   s\" require def-od-dep.f\n: DEF-USE ( -- n ) DEF-DEPA DEF-DEPB + + ;\n" ;
+
+\ def-od-dep.f open with its lines swapped, unsaved, then def-od.f, which
+\ requires it and whose check reads it from disk: the uses of DEF-DEPA and
+\ DEF-DEPB, each answered with its declaring token's range in the text on
+\ disk, at the URI the client opened def-od-dep.f by.
+: DEF-OPEN-DEP-TURNS ( -- )
+   DEF-OD-DEP-PATH TEXT-DEF-OD-DISK WRITE-ALL
+   INITIALIZE
+   DEF-OD-DEP-PATH TEXT-DEF-OD-EDIT 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-OD-EDIT DEF-OD-DEP-PATH 1 s" verified" LISTED
+   DEF-OD-PATH TEXT-DEF-OD 1 OPENS
+   SAY
+   TEXT-DEF-OD DEF-OD-PATH 1 s" verified" LISTED
+   s" 3" DEF-OD-PATH 1 19 DEFINITION-ASK
+   s" 4" DEF-OD-PATH 1 28 DEFINITION-ASK
+   SAY
+   s" 3" DEF-OD-DEP-PATH URI-OF 0 2 10 LOCATED
+   s" 4" DEF-OD-DEP-PATH URI-OF 1 2 10 LOCATED ;
+
+\ A position in a document the client never opened: -32602.
+: DEF-NOT-OPEN-TURNS ( -- )
+   INITIALIZE
+   s" 3" DEF-A-PATH 1 19 DEFINITION-ASK
+   SAY
+   HEAR CAPABILITIES
+   HEAR s" 3" -32602 REFUSED ;
+
+\ A use asked about with the document's opening, before the server checked
+\ it: the request checks it first, so its list comes before the answer, the
+\ declaration's.
+: DEF-BEFORE-CHECK-TURNS ( -- )
+   INITIALIZE
+   DEF-A-PATH TEXT-DEF-A 1 OPENS
+   s" 3" DEF-A-PATH 1 19 DEFINITION-ASK
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-A DEF-A-PATH 1 s" verified" LISTED
+   s" 3" DEF-A-PATH URI-OF 0 2 9 LOCATED ;
+
+\ TEXT-DEF-A two lines down.
+: TEXT-DEF-A-MOVED ( -- ptr u8 n )
+   s\" \\ two lines\n\\ above\n: DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) DEF-ONE 1 + ;\n: DEF-THREE ( -- n ) s\" é\" 2drop DEF-ONE ;\n" ;
+
+\ DEF-ONE's use in DEF-TWO asked about at its new place in the turn of the
+\ change that moved it and DEF-ONE two lines down, with no check between
+\ them: the request checks the changed text first, so its list comes before
+\ the answer, DEF-ONE's new declaring token.
+: DEF-AFTER-CHANGE-TURNS ( -- )
+   INITIALIZE
+   DEF-A-PATH TEXT-DEF-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-A DEF-A-PATH 1 s" verified" LISTED
+   DEF-A-PATH TEXT-DEF-A-MOVED 2 CHANGES
+   s" 3" DEF-A-PATH 3 19 DEFINITION-ASK
+   SAY
+   TEXT-DEF-A-MOVED DEF-A-PATH 2 s" verified" LISTED
+   s" 3" DEF-A-PATH URI-OF 2 2 9 LOCATED ;
+
+\ DEF-ONE and DEF-TWO, used in that order.
+: TEXT-DEF-C ( -- ptr u8 n )
+   s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) 2 ;\n: DEF-SUM ( -- n ) DEF-ONE DEF-TWO + ;\n" ;
+
+\ TEXT-DEF-C with its uses swapped, then one `using` more than the checker
+\ holds open, at which the verifier dies (`76 die`) and exits without a
+\ verdict as in incomplete. A bare `generates:`, which this case read before,
+\ is refused at the reader now (7187, E-MISSING-NAME).
+: TEXT-DEF-C-SWAPPED ( -- ptr u8 n )
+   TXT-B CLEAR
+   s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) 2 ;\n: DEF-SUM ( -- n ) DEF-TWO DEF-ONE + ;\n"
+   N>BLEN TXT-B APPEND-SPAN
+   OVER-USINGS+
+   TXT$ ;
+
+\ DEF-TWO's use, at the bytes of DEF-ONE's before the change, asked about in
+\ the turn of a change whose check did not complete: the uses of the text
+\ before it would answer DEF-ONE's declaring token, so the answer is no
+\ Location; the definitions of the last completed check are still listed.
+: DEF-INCOMPLETE-TURNS ( -- )
+   INITIALIZE
+   DEF-A-PATH TEXT-DEF-C 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-C DEF-A-PATH 1 s" verified" LISTED
+   DEF-A-PATH TEXT-DEF-C-SWAPPED 2 CHANGES
+   s" 3" DEF-A-PATH 2 19 DEFINITION-ASK
+   s" 4" s\" {\"query\":\"def-\"}" SYMBOLS-ASK
+   SAY
+   TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
+   DEF-A-PATH s" not checked: exit 76" SAID
+   s" 3" NOWHERE
+   s" 4" SYMBOLS-START
+   s" DEF-ONE" 12 DEF-A-PATH URI-OF 0 2 9 s" " SYMBOL+
+   s" DEF-TWO" 12 DEF-A-PATH URI-OF 1 2 9 s" " SYMBOL+
+   s" DEF-SUM" 12 DEF-A-PATH URI-OF 2 2 9 s" " SYMBOL+
+   SYMBOLS-END
+   LOGGED ;
+
+: TEST-DEFINITIONS ( -- )
+   s" definition" [: DEF-TURNS ;] TALK
+   s" definition-dependency" [: DEF-DEP-TURNS ;] TALK
+   s" definition-dependency-open" [: DEF-OPEN-DEP-TURNS ;] TALK
+   s" definition-not-open" [: DEF-NOT-OPEN-TURNS ;] TALK
+   s" definition-before-check" [: DEF-BEFORE-CHECK-TURNS ;] TALK
+   s" definition-after-change" [: DEF-AFTER-CHANGE-TURNS ;] TALK
+   s" definition-incomplete" [: DEF-INCOMPLETE-TURNS ;] TALK ;
+
 : TEST-SYMBOLS ( -- )
    s" workspace-symbol" [: SYMBOL-TURNS ;] TALK
    s" workspace-symbol-empty" [: EMPTY-TURNS ;] TALK
@@ -2221,6 +2463,7 @@ public
    TEST-STDOUT-CLOSED
    TEST-DIAGNOSTICS
    TEST-SYMBOLS
+   TEST-DEFINITIONS
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
 

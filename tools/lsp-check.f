@@ -7,12 +7,16 @@
 \ its verdict: a check stopped by a later definition still publishes the
 \ packets written before it. A check that completed - the verdict verified,
 \ refused or deferred, or the engine providing the file, which leaves nothing
-\ to verify - keeps its definitions in place of the last (LSP-DEFS:DEFS-KEEP)
-\ and publishes even when it wrote none. One that did not - the verifier's
-\ image holding the file, the verifier ending without a verdict, or a throw -
-\ keeps the last definitions and, when it wrote no packets, publishes nothing,
-\ so the client keeps the last list it was sent. One stderr line says why it
-\ did not complete:
+\ to verify - keeps its definitions and uses in place of the last
+\ (LSP-DEFS:DEFS-KEEP) and publishes even when it wrote none. One that did
+\ not - the verifier's image holding the file, the verifier ending without a
+\ verdict, or a throw - keeps the document's last definitions, which workspace
+\ symbols go on listing, but none of its uses: RUN drops them as it starts
+\ (LSP-DEFS:DEFS-USES-DROP), since a use is bytes of the text a check
+\ completed on, and go to definition finds none until a check of the document
+\ completes. When it wrote no packets it publishes nothing, so the client
+\ keeps the last list it was sent. One stderr line says why it did not
+\ complete:
 \
 \    lsp: URI: not checked: exit N | signal N | deadline passed
 \    lsp: URI: not checked: the verifier's image holds it
@@ -104,10 +108,12 @@ variable PUBLISHABLE                     \ whether its check completed
 public
 
 \ Checks the document in this slot and publishes what its check found. The
-\ document is clean from here on, whatever the check comes to.
+\ document is clean from here on, whatever the check comes to, and has no uses
+\ unless the check completes.
 : RUN ( n -- )
    {: slot:n :}
    slot DOC-CLEAN
+   slot LSP-DEFS:DEFS-USES-DROP
    slot SUBJECT !
    false PUBLISHABLE !
    [: VERIFY ;] catch {: code:n :}
@@ -115,7 +121,8 @@ public
       HEAD s" not checked: throw " ERR code NUMBER$ ERR NEWLINE RELAY
    then
    PUBLISHABLE @ if
-      CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ slot LSP-DEFS:DEFS-KEEP
+      CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ slot
+      LSP-DEFS:DEFS-KEEP
    then
    CHECK:VERIFY-OUT$ nip 0<> PUBLISHABLE @ or if
       slot CHECK:VERIFY-OUT$ LSP-DIAG:PUBLISH

@@ -6,12 +6,14 @@
 \ The server is starting, running or shut down. Starting, it answers initialize
 \ with its capabilities and any other request with -32002. Running, it answers
 \ shutdown with null, initialize with -32600, workspace/symbol with the open
-\ documents' definitions (tools/lsp-symbols.f), a request whose params it
-\ cannot read with -32602 and any other request with -32601, and it keeps the
-\ documents the client opens, changes and closes: Full sync, each change
-\ carrying the whole text, and positions in UTF-16 units. Shut down, it answers
-\ every request with -32600. Only a running server takes a notification other
-\ than exit; the rest are dropped, as unknown ones always are.
+\ documents' definitions (tools/lsp-symbols.f), textDocument/definition with
+\ the declaration the use at the position binds to (tools/lsp-definition.f), a
+\ request whose params it cannot read, or that names a document not open, with
+\ -32602 and any other request with -32601, and it keeps the documents the
+\ client opens, changes and closes: Full sync, each change carrying the whole
+\ text, and positions in UTF-16 units. Shut down, it answers every request
+\ with -32600. Only a running server takes a notification other than exit;
+\ the rest are dropped, as unknown ones always are.
 \
 \ A running server checks the documents and publishes their diagnostics
 \ (tools/lsp-check.f, tools/lsp-diag.f). Opening or changing a document leaves
@@ -19,12 +21,16 @@
 \ any of them may require the file saved. Input comes first: only when no
 \ message waits, in the reader's buffer or on stdin, is one waiting document
 \ checked, the next after the last one checked, and then input is looked at
-\ again. So a check always takes a document's newest text, the edits that came
+\ again. So such a check takes a document's newest text, the edits that came
 \ while another check ran are all applied before it, and the versions
-\ published for a document only rise. Closing a document publishes an empty
-\ list for it, drops the definitions its last check kept and leaves every open
-\ document waiting: any of them may require the file, whose diagnostics their
-\ checks left to it while it was open.
+\ published for a document only rise. A request about a document waiting for
+\ a check, textDocument/definition, is the exception: it checks that document
+\ first, as its turn, and is answered from that check, which takes the text
+\ the client asked about, since LSP orders a request after the changes sent
+\ before it. Closing a document publishes an empty list for it, drops the
+\ definitions its last check kept and leaves every open document waiting: any
+\ of them may require the file, whose diagnostics their checks left to it
+\ while it was open.
 \
 \ exit ends the process with 0 after shutdown and 1 before it, and so does the
 \ end of input, which before shutdown also says so on stderr. A notification
@@ -52,10 +58,12 @@ require lib/json-read.f
 require lib/json-write.f
 require lib/json-rpc.f
 require tools/lsp-docs.f
+require tools/lsp-text.f
 require tools/lsp-defs.f
 require tools/lsp-diag.f
 require tools/lsp-check.f
 require tools/lsp-symbols.f
+require tools/lsp-definition.f
 
 package LSP
 using SPAN
@@ -71,7 +79,7 @@ public
 -9400 constant E-LSP-FIRST
 -9401 constant E-LSP-LAST
 -9400 constant E-LSP-PARAMS    \ a notification's params lack a member the server reads, or hold one of another kind
--9401 constant E-LSP-NOT-OPEN  \ a change or close of a document that is not open
+-9401 constant E-LSP-NOT-OPEN  \ a change, close or definition of a document not open
 
 -32002 constant NOT-INITIALIZED          \ LSP's ServerNotInitialized
 \ The longest body taken, room for a document's whole text escaped. A header
@@ -95,6 +103,9 @@ TYPED-VARIABLE PATH-SPAN SPAN:span<u8>    \ the file path it names
 TYPED-VARIABLE TEXT-SPAN SPAN:span<u8>    \ a document's text, decoded
 TYPED-VARIABLE QUERY-SPAN SPAN:span<u8>   \ workspace/symbol's query, decoded,
 variable QUERY-U                          \ and its length
+variable AT-SLOT                          \ textDocument/definition's document,
+variable AT-LINE                          \ and its position's line
+variable AT-CHAR                          \ and character
 TYPED-VARIABLE W JSON-WRITE:writer
 variable TEXT-LEN                         \ the last change's text length, -1 before one is read
 variable LAST-CHECKED                     \ the slot checked last, -1 before any
@@ -159,6 +170,7 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
                s" includeText" false FIELD-BOOL
             OBJECT-END
          OBJECT-END COMMA
+         s" definitionProvider" true FIELD-BOOL COMMA
          s" workspaceSymbolProvider" true FIELD-BOOL
       OBJECT-END COMMA
       s" serverInfo" KEY OBJECT-START
@@ -346,6 +358,47 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
    i p pu [: QUERY! ;] READ? 0= if exit then
    WRITER i RESULT QUERY$ LSP-SYMBOLS:ANSWER END SENT ;
 
+\ A member of params.position, a nonnegative integer.
+: POSITION-INT ( ptr u8 n ptr u8 n -- n )
+   {: p:ptr pu:n k:ptr ku:n :}
+   p pu s" position" PARAM T-OBJ <> if E-LSP-PARAMS throw then
+   k ku FIND-KEY 0= if E-LSP-PARAMS throw then
+   TOKEN T-INT <> if E-LSP-PARAMS throw then
+   JR:INT {: v:n :}
+   JR:CLOSE
+   v 0 < if E-LSP-PARAMS throw then
+   v ;
+
+\ The slot of the open document params.textDocument names in AT-SLOT, and
+\ params.position in AT-LINE and AT-CHAR.
+: POSITION! ( ptr u8 n -- ptr u8 n )
+   {: p:ptr pu:n :}
+   p pu DOC-URI OPEN-SLOT AT-SLOT !
+   p pu s" line" POSITION-INT AT-LINE !
+   p pu s" character" POSITION-INT AT-CHAR !
+   p pu ;
+
+\ Checks the document in this slot now, as its turn: the next check due is of
+\ a waiting document after it.
+: CHECK-NOW ( n -- )  dup LAST-CHECKED ! LSP-CHECK:RUN ;
+
+\ Checks the document in this slot first if it waits for a check, so that a
+\ request about it is answered from a check of its current text.
+: CHECK-WAITING ( n -- )
+   dup DOC-DIRTY? if CHECK-NOW else drop then ;
+
+\ The declaration of the use at params.position in the open document
+\ params.textDocument names, as its last completed check bound it, that
+\ document checked first if it waits for a check.
+: DEFINITION ( JSON-RPC:id ptr u8 n -- )
+   {: i p:ptr pu:n :}
+   i p pu [: POSITION! ;] READ? 0= if exit then
+   AT-SLOT @ {: slot:n :}
+   slot CHECK-WAITING
+   slot DOC-TEXT$ LSP-TEXT:TEXT!
+   AT-LINE @ AT-CHAR @ LSP-TEXT:OFFSET-AT {: at:n :}
+   WRITER i RESULT slot at LSP-DEFINITION:ANSWER END SENT ;
+
 : STARTING-REQUEST ( JSON-RPC:id ptr u8 n -- )
    {: i m:ptr mu:n :}
    m mu s" initialize" NAMED? if
@@ -367,6 +420,7 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
       exit
    then
    m mu s" workspace/symbol" NAMED? if i p pu SYMBOLS exit then
+   m mu s" textDocument/definition" NAMED? if i p pu DEFINITION exit then
    i METHOD-NOT-FOUND s" method not found" REPLY-ERROR ;
 
 : REQUESTED ( JSON-RPC:id ptr u8 n ptr u8 n -- )
@@ -439,7 +493,7 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
    INPUT 0 >FD HEAD-BUF MAX-BODY BIND
    begin
       DUE MATCH option
-         some OF dup LAST-CHECKED ! LSP-CHECK:RUN ENDOF
+         some OF CHECK-NOW ENDOF
          none OF TAKE-INPUT ENDOF
       ;MATCH
    again ;
