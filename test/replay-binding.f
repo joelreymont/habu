@@ -236,7 +236,11 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
 \ the clause in the export's wordlist too (src/habu/habu2.f C-EXPORT): without
 \ it the trust of RB-XQ2:MK;does was E-TRUST-UNRESOLVED and the definition of
 \ MK;does after the export certified, where the live load certifies the one and
-\ refuses the other, 78.
+\ refuses the other, 78. The engine's `does>` makes the clause for a TRUSTED:
+\ definer as for a checked one, and so does the replay: without it the trust of
+\ RB-TP2:TD;does was E-TRUST-UNRESOLVED and the definition of TD;does after the
+\ definer, or after its export, certified, where the live load certifies the
+\ first and refuses the other two, 78.
 : CLAUSE-CASE ( -- )
    s" a replayed undefine retires the definer's does> clause with it" T-LABEL
    S\" s\" RB-DOES:RB-MK;does\" s\" -- n\" trust\n" 0 REPLAY
@@ -257,6 +261,13 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
    S\" package RB-XP2\npublic\n: MK ( n -- ) create , does> ( -- n ) @ ;\n;package\npackage RB-XQ2\npublic\nEXPORT RB-XP2:MK\n;package\ns\" RB-XQ2:MK;does\" s\" -- n\" trust\n"
       0 REPLAY
    S\" package RB-XP2\npublic\n: MK ( n -- ) create , does> ( -- n ) @ ;\n;package\npackage RB-XQ2\npublic\nEXPORT RB-XP2:MK\n: MK;does ( -- n ) 1 ;\n;package\n"
+      78 REPLAY
+   s" a TRUSTED: definer makes its clause too, and so does an export of it" T-LABEL
+   S\" package RB-TP2\npublic\nTRUSTED: TD ( n -- ) create , does> ( -- n ) @ ;\n;package\ns\" RB-TP2:TD;does\" s\" -- n\" trust\n"
+      0 REPLAY
+   S\" package RB-TP\npublic\nTRUSTED: TD ( n -- ) create , does> ( -- n ) @ ;\n: TD;does ( -- n ) 1 ;\n;package\n"
+      78 REPLAY
+   S\" package RB-TP3\npublic\nTRUSTED: TD ( n -- ) create , does> ( -- n ) @ ;\n;package\npackage RB-TQ3\npublic\nEXPORT RB-TP3:TD\n: TD;does ( -- n ) 1 ;\n;package\n"
       78 REPLAY ;
 
 \ The engine's `package` gives a namespace with no private wordlist one
@@ -291,7 +302,10 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
 \ has a clause, so one is refused where the engine's record of its name has
 \ none, as RB-WN:RB-WMK and its alias in RB-WY have none. The warm live engine
 \ refuses each text, 78; each certified while the replay took any record of
-\ the name for the twin.
+\ the name for the twin. A TRUSTED: definer makes its clause as a checked one
+\ does (CLAUSE-CASE), and the twin test reads the clause of the engine's
+\ record, not its trust: RB-WD's checked definer is the twin of a replayed
+\ TRUSTED: one, and RB-WN's word, which has no clause, is none, 78.
 : RB-WARM ( n -- n ) 1 + ;
 
 : WARM-CASE ( -- )
@@ -315,7 +329,10 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
       78 REPLAY
    S\" package RB-WN\npublic\n: RB-WMK ( n -- ) create , does> ( -- n ) @ ;\n;package\npackage RB-WY\npublic\nEXPORT RB-WN:RB-WMK\n;package\n"
       78 REPLAY
-   S\" package RB-WN\npublic\nEXPORT RB-WD:RB-WMK\n;package\n" 78 REPLAY ;
+   S\" package RB-WN\npublic\nEXPORT RB-WD:RB-WMK\n;package\n" 78 REPLAY
+   s" a replayed TRUSTED: definer takes the engine's definer for its twin, not a word that is none" T-LABEL
+   S\" package RB-WD\npublic\nTRUSTED: RB-WMK ( n -- ) create , does> ( -- n ) @ ;\n;package\n" 0 REPLAY
+   S\" package RB-WN\npublic\nTRUSTED: RB-WMK ( n -- ) create , does> ( -- n ) @ ;\n;package\n" 78 REPLAY ;
 
 \ The live `undefine dup` retires the seeded primitive's record (src/habu/xref.f
 \ XREF-RETIRE-WL), so a used public's dup binds bare after it

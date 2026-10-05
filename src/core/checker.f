@@ -128,6 +128,7 @@ create OWNER-STORAGE
    0 ,
    0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -145,7 +146,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:WRITE-WINDOW-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -15306,12 +15307,27 @@ variable UNSAFE-SYM-N
 PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 
 \ The clause name of the definer NA NU, composed in NMB: the name, then the
-\ companion suffix. The token buffers are sized for it (CHECKER-SOURCE-DOES!).
+\ companion suffix, the token buffers sized for it first. Growing them drops
+\ what they hold, so a caller that reports a token its scan left there sizes
+\ them before that scan (CHECKER-SOURCE-DOES!).
 : CLAUSE-NAME ( ptr u8 n -- ptr u8 n ) {: na:ptr nu:n :}
-   na NMB nu CCOPY
    DOES-CLAUSE:SUFFIX$ {: sa:ptr su:n :}
+   nu su + TOKBUF-ENSURE
+   na NMB nu CCOPY
    sa NMB nu + su CCOPY
    NMB nu su + ;
+
+\ The clause record of the does> definer or export NA NU in a replay, as the
+\ live engine makes one (CHECKER-OVERLAY:CLAUSE), under the name as written,
+\ which CLAUSE reads before anything writes NMB again. The engine's `does>`
+\ makes it for a TRUSTED: definer as for a checked one, so a replay publishes it
+\ at the definer's `;` whether the pre-pass checked the clause
+\ (CHECKER-SOURCE-DOES!) or only read its declaration
+\ (src/habu/verify-source.f TRUSTED-DEFINITION, through the owner's
+\ VERIFY-SOURCE-CLAUSE-OFF), and for an export once it is recorded
+\ (CHECKER-EXPORT).
+: CHECKER-SOURCE-CLAUSE ( ptr u8 n -- ) {: na:ptr nu:n :}
+   na nu  na nu CLAUSE-NAME  CHECKER-OVERLAY:CLAUSE ;
 
 \ --- EXPORT: alias an existing word's checked effect under its own tail -----
 \ (dot habu-compiler-pkg-re-688212c1). `EXPORT NAME` in an open package section
@@ -15435,12 +15451,6 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
    CHECKER-VERIFY-PKG-DEPTH @ 0= IF RES-FALSE EXIT THEN
    a u HORIZON-FIND 2drop drop CHECKER-OVERLAY:CARRIES? ;
 
-\ The clause name of the export's tail TA TU (CLAUSE-NAME), the token buffers
-\ sized for it as CHECKER-SOURCE-DOES! sizes them.
-: EXPORT-CLAUSE$ ( ptr u8 n -- ptr u8 n ) {: ta:ptr tu:n :}
-   tu DOES-CLAUSE:SUFFIX$ nip + TOKBUF-ENSURE
-   ta tu CLAUSE-NAME ;
-
 : CHECKER-EXPORT ( ptr u8 n -- ) {: a:ptr u:n :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-EXPORT-NO-PACKAGE throw THEN
    a u EXPORT-SEAL-GUARD
@@ -15460,15 +15470,13 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
    FEP-OFF@ 1 - E-PTR EXPORT-EFF-INST
    a u EXPORT-TAIL$ EXPORT-RECORD
    carries IF
-      a u EXPORT-TAIL$ 2dup EXPORT-CLAUSE$ CHECKER-OVERLAY:EXPORT-ROOM
+      a u EXPORT-TAIL$ 2dup CLAUSE-NAME CHECKER-OVERLAY:EXPORT-ROOM
    THEN
    src EFFECT-EXTERNAL-SYM? E-ADD-EFFECT DL-TAKE
    recovery IF RECOVERY-RECORD THEN
    src CHECKER-ASIG-EXPORT
    a u src EXPORT-META-COPY
-   carries IF
-      a u EXPORT-TAIL$ 2dup EXPORT-CLAUSE$ CHECKER-OVERLAY:CLAUSE
-   THEN ;
+   carries IF a u EXPORT-TAIL$ CHECKER-SOURCE-CLAUSE THEN ;
 
 \ Trial save/restore: a prim-overload trial saves the scalar cursors below and the
 \ trail height (SV-TRAIL); var bindings are undone via the unification trail (top).
@@ -23539,8 +23547,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ The clause's name is written after the scan, so the token buffers are sized
 \ for it first: growing them afterwards would drop the refused token being
 \ reported. A clause that certifies or is left to the run gets its record in a
-\ replay, as the engine's `does>` makes one (CHECKER-OVERLAY:CLAUSE), under the
-\ name as written, which CLAUSE reads before anything writes NMB again.
+\ replay (CHECKER-SOURCE-CLAUSE).
 : CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
    WRITE-WINDOW-CK
@@ -23558,7 +23565,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    DOES-EFF-CLEAR
    rc 0 <> IF rc SRC-DOES-THREW EXIT THEN
    SRC-DOES-VERDICT @ {: v:n :}
-   v -1 =  v 2 =  or IF na nu  na nu CLAUSE-NAME  CHECKER-OVERLAY:CLAUSE THEN
+   v -1 =  v 2 =  or IF na nu CHECKER-SOURCE-CLAUSE THEN
    v na nu DOES-REPORT ;
 
 \ The pre-pass's question about a top-level token (src/habu/verify-source.f
@@ -25012,6 +25019,7 @@ package CHECKER-REG
 ' CHECKER-RETRACT-ROWS DECLARATIONS CHECKER-OWNER-ABI:RETRACT-ROWS-OFF + xt!
 ' CHECKER-ROWS-END DECLARATIONS CHECKER-OWNER-ABI:ROWS-END-OFF + xt!
 ' CHECKER-WRITE-WINDOW! DECLARATIONS CHECKER-OWNER-ABI:WRITE-WINDOW-OFF + xt!
+' CHECKER-SOURCE-CLAUSE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF + xt!
 
 \ ---- the declared-row log of a cold boot ------------------------------------
 \ Before the claim below a cold boot has no source owner, so the engine's
