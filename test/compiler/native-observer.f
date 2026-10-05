@@ -1,6 +1,7 @@
 \ native-observer.f - frozen HIR facts bound to successfully published routines.
 require lib/test.f
 require lib/test/outcome.f
+require lib/string.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
@@ -317,7 +318,7 @@ public
    ['] INVALIDATE CODE-RECLAIM:INVALIDATE!
    EXACT-CASE RETRY-CASE LATE-CASE OUTER-CASE GENERATED-CASE DOES-CASE
    PUBLISH-THROW-CASE
-   ARGC 1 > if TIER0-CASE then
+   ARGC 1 > HB-TARGET-LINUX-X86-64? 0= and if TIER0-CASE then
    T-REPORT s" native-observer: ok" type cr ;
 
 : IMAGE-PREPARE ( -- )
@@ -381,12 +382,19 @@ variable IMAGE-PATH-U
    IMAGE-ROOT$ CLEANUP-TREE+
    IMAGE-ROOT$ s" saved-hb" IMAGE-PATH JOIN-PATH IMAGE-PATH-U ! ;
 
+: IMAGE-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" require src/habu/app-image.f\nrequire test/compiler/native-observer.f\nNOBS-TEST:IMAGE-PREPARE\n" SB-APPEND
+   HB-TARGET-LINUX-X86-64? 0= if S\" 0 set-tier\n" SB-APPEND then
+   S\" s\q HABU_NOBS_IMAGE\q GETENV APP-IMAGE:SAVE\n" SB-APPEND
+   SB$ ;
+
 : IMAGE-BUILD ( -- )
    PROC-ARGV-ENV-RESET
    s" HABU_NOBS_IMAGE" >LEN IMAGE-PATH$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN
-   S\" require src/habu/app-image.f\nrequire test/compiler/native-observer.f\nNOBS-TEST:IMAGE-PREPARE\n0 set-tier\ns\q HABU_NOBS_IMAGE\q GETENV APP-IMAGE:SAVE\n" >LEN
+   IMAGE-SRC$ >LEN
    CHILD-OUT CHILD-CAP >LEN CHILD-ERR CHILD-CAP >LEN 180000 >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    ENGINE-CANDIDATE:PATH$ CHILD-OUT outu LEN>N CHILD-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=

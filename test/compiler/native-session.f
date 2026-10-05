@@ -192,6 +192,9 @@ variable RC     variable EXITED
    S\"    E-IR-CTX-STATE = if s\q refused\q else s\q served\q then type cr ;\n" SB-APPEND
    S\" : RUN ( -- ) NABI:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT ;\n" SB-APPEND
    S\" ;package\n" SB-APPEND
+   \ Defining the probe's helpers opens a session on a tier-1-only x64 host.
+   \ Close that setup session so the nested compile must take its own.
+   HB-TARGET-LINUX-X86-64? if S\" IR-CTX:SESSION-CLOSE\n" SB-APPEND then
    S\" 1 set-tier\n" SB-APPEND
    S\" ZNEST:RUN\n" SB-APPEND
    RESET-TIER
