@@ -8,7 +8,7 @@ require lib/errors.f
 require lib/string.f
 require test/replay-scope.f
 require lib/tier.f
-require src/compiler/native/backend.f
+require src/compiler/native/publish.f
 require src/compiler/native/checker-owner.f
 require src/habu/verify-source.f
 
@@ -351,12 +351,13 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
 \ before, stays. The observer acts only while CB-ARMED is set, so later
 \ definitions compile.
 variable CB-ARMED
-: CB-OBSERVE ( n IR-CTX:ctx IR-BUILD:module -- )
-   {: idx:n c:IR-CTX:ctx m:IR-BUILD:module :}
+: CB-OBSERVE ( NART:emission n n n -- )
+   {: e:NART:emission idx:n fn:n size:n :}
    CB-ARMED @ 0= if exit then
    [: s" EAUTH-CB-LATER ( n -- n )" JUDGE drop ;] E-NCOMP-STATE TTHROWSQ
    7329 throw ;
 : CB-FAIL ( -- ) s" : EAUTH-CB-OUTER ( n -- n ) 1 + ;" evaluate-closed ;
+: CB-RUN ( -- ) ['] CB-OBSERVE ['] CB-FAIL NPUB:WITH-UNIT ;
 
 : TIER1-DECLARED-CASES ( -- )
    s" a scan-refused hook-less tier-1 definition compiles against its declaration" T-LABEL
@@ -404,10 +405,9 @@ variable CB-ARMED
    s" EAUTH-PRIOR" SIG-MIN-IN 1 T=
    s" EAUTH-PRIOR-LATER" SIG-MIN-IN 1 T=
    s" a callback's scan while a definition compiles is refused and records nothing" T-LABEL
-   ['] CB-OBSERVE NBACK:OBSERVE!
    s" EAUTH-CB-BEFORE ( n -- n )" JUDGE -1 T=
    1 CB-ARMED !
-   UNCHECKED+ ['] CB-FAIL catch UNCHECKED- 7329 T=
+   UNCHECKED+ ['] CB-RUN catch UNCHECKED- 7329 T=
    0 CB-ARMED !
    s" EAUTH-CB-OUTER" EFFECT-QUERY TFALSE
    s" EAUTH-CB-LATER" EFFECT-QUERY TFALSE
@@ -459,8 +459,8 @@ variable CB-ARMED
 TYPED-VARIABLE GENERATES-XT [ -- ]
 ' generates: GENERATES-XT !
 variable GENERATES-ARMED
-: GENERATES-OBSERVE ( n IR-CTX:ctx IR-BUILD:module -- )
-   {: idx:n c:IR-CTX:ctx m:IR-BUILD:module :}
+: GENERATES-OBSERVE ( NART:emission n n n -- )
+   {: e:NART:emission idx:n fn:n size:n :}
    GENERATES-ARMED @ 0= if exit then
    0 GENERATES-ARMED !
    [: GENERATES-XT @ execute ;] E-NCOMP-STATE TTHROWSQ
@@ -472,6 +472,8 @@ variable GENERATES-ARMED
    s" : EAUTH-WIN-HOOKED ( n -- bool ) 0= ; EAUTH-WIN-MAKE-H ( -- n )" evaluate-closed ;
 : WIN-HOOKLESS ( -- )
    s" : EAUTH-WIN-HOOKLESS ( n -- n ) 0= ; EAUTH-WIN-MAKE-U ( -- n )" evaluate-closed ;
+: WIN-HOOKED-RUN ( -- ) ['] GENERATES-OBSERVE ['] WIN-HOOKED NPUB:WITH-UNIT ;
+: WIN-HOOKLESS-RUN ( -- ) ['] GENERATES-OBSERVE ['] WIN-HOOKLESS NPUB:WITH-UNIT ;
 
 \ VERIFY's predictions for the word a definer statement defines, as ( -- n ),
 \ ( -- ) and ( -- bool ): ACCEPTED, REFUSED, or 1 when it names no word.
@@ -493,8 +495,8 @@ variable LATCH-ARMED
    size CHECKER-OWNER-ABI:BOUND-CELLS cells T=
    row CHECKER-OWNER-ABI:BOUND-ENTRY cells + CELL-VIEW @
       s" +" XREF-FIND XREF-START T= ;
-: LATCH-OBSERVE ( n IR-CTX:ctx IR-BUILD:module -- )
-   {: idx:n c:IR-CTX:ctx m:IR-BUILD:module :}
+: LATCH-OBSERVE ( NART:emission n n n -- )
+   {: e:NART:emission idx:n fn:n size:n :}
    LATCH-ARMED @ 0= if exit then
    0 LATCH-ARMED !
    CHECKER-OWNER:BINDING-WINDOW {: owner:ptr serial:n unjudged:bool :}
@@ -514,13 +516,12 @@ variable LATCH-ARMED
 
 : WINDOW-CASES ( -- )
    1 TIER:SELECT
-   ['] GENERATES-OBSERVE NBACK:OBSERVE!
    s" : EAUTH-WIN-MAKE-H ( -- ) parse-name 2drop ;" evaluate-closed
    s" : EAUTH-WIN-MAKE-U ( -- ) parse-name 2drop ;" evaluate-closed
    s" a callback's generates: while a certified definition compiles is refused" T-LABEL
    s" EAUTH-WIN-MAKE-H EAUTH-WIN-PRED" PREDICT {: h1:n h2:n h3:n :}
    1 GENERATES-ARMED !
-   ['] WIN-HOOKED catch 7329 T=
+   ['] WIN-HOOKED-RUN catch 7329 T=
    s" : EAUTH-WIN-FILL-H1 ( -- ) ;" evaluate-closed
    s" : EAUTH-WIN-FILL-H2 ( -- bool ) true ;" evaluate-closed
    s" EAUTH-WIN-MAKE-H EAUTH-WIN-PRED" PREDICT h3 T= h2 T= h1 T=
@@ -529,22 +530,21 @@ variable LATCH-ARMED
    s" a callback's generates: while a hook-less definition compiles is refused" T-LABEL
    s" EAUTH-WIN-MAKE-U EAUTH-WIN-PRED" PREDICT {: u1:n u2:n u3:n :}
    1 GENERATES-ARMED !
-   UNCHECKED+ ['] WIN-HOOKLESS catch UNCHECKED- 7329 T=
+   UNCHECKED+ ['] WIN-HOOKLESS-RUN catch UNCHECKED- 7329 T=
    s" : EAUTH-WIN-FILL-U1 ( -- ) ;" evaluate-closed
    s" : EAUTH-WIN-FILL-U2 ( -- bool ) true ;" evaluate-closed
    s" EAUTH-WIN-MAKE-U EAUTH-WIN-PRED" PREDICT u3 T= u2 T= u1 T=
    s" generates: EAUTH-WIN-MAKE-U ( -- n )" TEST-EVAL:RC 0 T=
    s" EAUTH-WIN-MAKE-U EAUTH-WIN-PRED" PREDICT REFUSED T= REFUSED T= ACCEPTED T=
    s" a callback's scan cannot reset the latch its definition publishes" T-LABEL
-   ['] LATCH-OBSERVE NBACK:OBSERVE!
    s" : EAUTH-LATCH-PLAIN ( n n -- n ) + ;" evaluate-closed
    1 LATCH-ARMED !
-   s" : EAUTH-LATCH-KEPT ( n n -- n ) + ;" evaluate-closed
+   ['] LATCH-OBSERVE [: s" : EAUTH-LATCH-KEPT ( n n -- n ) + ;" evaluate-closed ;] NPUB:WITH-UNIT
    s" EAUTH-LATCH-PLAIN" DICT-MIN 0 T<>
    s" EAUTH-LATCH-KEPT" DICT-MIN  s" EAUTH-LATCH-PLAIN" DICT-MIN T=
    s" a refused callback scan keeps an explicitly unjudged binding" T-LABEL
    1 LATCH-ARMED !
-   s" TRUSTED: EAUTH-LATCH-UNJUDGED ( n n -- n ) + ;" evaluate-closed
+   ['] LATCH-OBSERVE [: s" TRUSTED: EAUTH-LATCH-UNJUDGED ( n n -- n ) + ;" evaluate-closed ;] NPUB:WITH-UNIT
    REPLAY+ s" EAUTH-LATCH-CB" EFFECT-QUERY TFALSE REPLAY- ;
 
 \ ---- type registration in the compile window ----------------------------------
@@ -568,8 +568,8 @@ TYPED-VARIABLE REG-XT [ -- ]
 variable REG-ARMED
 variable REG-TX
 variable REG-SCH
-: REG-OBSERVE ( n IR-CTX:ctx IR-BUILD:module -- )
-   {: idx:n c:IR-CTX:ctx m:IR-BUILD:module :}
+: REG-OBSERVE ( NART:emission n n n -- )
+   {: e:NART:emission idx:n fn:n size:n :}
    REG-ARMED @ 0= if exit then
    0 REG-ARMED !
    [: REG-XT @ execute ;] E-NCOMP-STATE TTHROWSQ
@@ -577,15 +577,15 @@ variable REG-SCH
 : REG-OUTER ( -- ) s" : EAUTH-REG-OUTER ( n n -- n ) + ;" evaluate-closed ;
 : REG-ARM ( [ -- ] -- ) REG-XT !  1 REG-ARMED ! ;
 \ The write is refused, and so is the definition it ran under.
-: REG-RUN ( [ -- ] -- ) REG-ARM ['] REG-OUTER catch 7329 T= ;
+: REG-COMPILE ( -- ) ['] REG-OBSERVE ['] REG-OUTER NPUB:WITH-UNIT ;
+: REG-RUN ( [ -- ] -- ) REG-ARM ['] REG-COMPILE catch 7329 T= ;
 : REG-RUN-HOOKLESS ( [ -- ] -- )
-   REG-ARM UNCHECKED+ ['] REG-OUTER catch UNCHECKED- 7329 T= ;
+   REG-ARM UNCHECKED+ ['] REG-COMPILE catch UNCHECKED- 7329 T= ;
 \ A field frame opened before the definition compiles, as a declaration's is.
 : REG-TX-OPEN ( -- ) TYPE-FIELD-OWNER:OPEN REG-TX ! ;
 : REG-TX-PREPARE-RC ( -- n ) [: REG-TX @ TYPE-FIELD-OWNER:PREPARE drop ;] catch ;
 
 : REGISTRY-CASES ( -- )
-   ['] REG-OBSERVE NBACK:OBSERVE!
    s" a callback's linear type is refused and stays unknown" T-LABEL
    s" EAUTH-REG-P ( EAUTH-REG-LIN -- EAUTH-REG-LIN )" CHECK-QUIET-CANDIDATE! 0 T=
    [: s" EAUTH-REG-LIN" CHECKER-DEFLINEAR ;] REG-RUN
