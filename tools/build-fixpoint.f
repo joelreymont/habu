@@ -941,7 +941,7 @@ package BUILD-FIXPOINT
    else
       out outu s" using A64ICODE" BF-APPEND-LINE
    then
-   out outu s" src/os/image-bytes.f" BF-APPEND-SOURCE
+   out outu s" src/os/image-bytes.f" BF-APPEND-MODULE
    out outu s" ;using" BF-APPEND-LINE ;
 
 : BF-APPEND-TARGET-IMAGE ( ptr u8 n -- ) {: out:ptr outu :}
