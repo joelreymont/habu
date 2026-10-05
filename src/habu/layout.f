@@ -1504,15 +1504,15 @@ $2CE0 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-
 \ lib tools test bootstrap docs - below $7FF8 for the 12-bit scaled
 \ `DATA <off> LDR` form, and below DATA-START.
 $2CE8 constant DATA-FLOOR-CELL
-\ The callback CODE cells follow at $2CF0..$2D18. Their separate module
-\ (native-observer-cells.f) also loads on an older baked host during a build.
+\ The callback CODE cells at $2CF8, $2D00 and $2D10 are declared in
+\ native-observer-cells.f, which also loads on an older baked host during a build.
 \ This cell holds this process's dictionary occurrence allocation, not an image
 \ address. The allocation begins with last-issued and then DICT-CAP u64 slots.
 \ Its pointer is cleared from snapshot scratch and restored from the receiving
 \ process across a snapshot DATA copy.
 \ $2CE8 is the literal store's DATA floor; the host owner claims $2D10
-\ separately from the replaceable observer callbacks. Host dispatch and the
-\ current producer fact query occupy $2D20..$2D30.
+\ separately from the publication and code invalidation callbacks. Host dispatch
+\ and the current producer fact query occupy $2D20..$2D30.
 package DEF-OCC
 public
 $2D08 constant PTR-CELL

@@ -1,9 +1,0 @@
----
-title: Build the reference workbench headless
-status: open
-priority: 2
-issue-type: task
-created-at: "2026-10-04T05:10:11.617867+03:00"
----
-
-Problem: G1 needs the reference UI package compiled under the checker (HBR2 §27.3); §7.6 defines the workbench descriptors, an editing trace and compile gates for props mismatch, escaped builder pointer, duplicate keys, unbalanced scope, raw global mutation, hidden nondeterminism, arbitrary callback, use-after-dispose and linear-token duplication; Maki's viewer tests components natively first and later compares the same recorded inputs on Wasm (maki docs/viewer.md, Testing; §28.3). Acceptance: Workspace, AssemblyTree, PartEditor, MaterialChooser and ConstraintPanel (OperationStatus waits for SYNC, Viewport for SCENE) as a checked package under test/browser/workbench/, admitted by habu-admit-callbacks-by-13caa95b; the §7.6 trace runs headless up to the one command Apply constructs and publishes, with recorded field values in place of the host's form snapshot, and its inputs and outputs saved under build/ as the repeatable artifact; native drafts, FORM-SNAPSHOT, journaling and server events stay with BROWSER and SYNC; each compile gate is a fixture refused at its responsible layer (checker, UI-ADMIT at registration, UI:CHILD's schema tag, or FINISH), by code. Files: test/browser/workbench/ (new), test/browser/workbench-gates/ (new), test/browser/workbench-test.f (new), test/gate-stdlib-cases.f. Verify: bin/hb --load test/browser/workbench-test.f: the selection, generation-3 resource and two-field Apply steps match the recorded expectations; all nine gate fixtures are refused; bin/hb --load test/run.f. Depends: habu-reconcile-keyed-children-beee6378, habu-load-resources-with-cdc5aa88, habu-render-query-collections-55c48cbc, habu-admit-callbacks-by-13caa95b. Ownership: test/browser/workbench*. Lane: tim. Claim: unassigned.

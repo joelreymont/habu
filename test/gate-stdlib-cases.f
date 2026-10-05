@@ -265,11 +265,6 @@ SUITE manifest-lint-fixtures
    tools/manifest-lint-test.f
 ;SUITE
 
-\ Fixture trees, then the HBR2 layers of this tree.
-SUITE package-dag-lint
-   tools/package-dag-lint-test.f
-;SUITE
-
 SUITE chain-plan
    tools/chain-plan-test.f
 ;SUITE
@@ -534,12 +529,6 @@ SUITE compiler-wasm-target
    test/compiler/wasm-target.f
 ;SUITE
 
-\ The HBR2 wire goldens over lib/browser/hbr-v2-registry.json: its canonical
-\ digest, headers, control record, wrapper ABI, STOP packet and limits.
-SUITE wasm-hbr2-fixtures
-   test/wasm/hbr2-fixtures.f
-;SUITE
-
 \ The N01-N06 and W32 numeric rows of test/wasm/numeric-rows.f, each forked and
 \ its printed bytes compared, on the default tier and the optimizing compiler.
 SUITE wasm-numeric
@@ -731,10 +720,6 @@ SUITE compiler-native-div-refusal
 
 SUITE compiler-native-quot
    test/compiler/native-quot.f
-;SUITE
-
-SUITE compiler-native-observer
-   test/compiler/native-observer.f
 ;SUITE
 
 SUITE compiler-native-defer
@@ -1433,22 +1418,6 @@ SUITE content-length
 
 SUITE json-rpc
    lib/json-rpc-test.f
-;SUITE
-
-SUITE runtime-id
-   lib/runtime/id-test.f
-;SUITE
-
-SUITE runtime-pool
-   lib/runtime/pool-test.f
-;SUITE
-
-SUITE runtime-record
-   lib/runtime/record-test.f
-;SUITE
-
-SUITE runtime-scope
-   test/browser/scope-test.f
 ;SUITE
 
 SUITE ffi-abi

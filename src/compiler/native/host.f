@@ -67,8 +67,7 @@ DYNAMIC-BUFFER SOURCE-TYPE-READY n
 DYNAMIC-BUFFER SOURCE-TYPES n
 variable SOURCE-TYPE-N
 
-\ Emission reads the producer's source facts after the optional frozen-HIR
-\ observer. Keep the completed facts independent of that callback's writes.
+\ Emission reads the producer's completed source facts after HIR construction.
 variable FACT-REASON
 variable FACT-LOC
 variable FACT-FUNS
@@ -405,8 +404,8 @@ public
 : SOURCE-CONTRACT-DONE ( -- )
    1 SOURCE-FUNS @ 1- SOURCE-TYPE-READY ! ;
 
-\ The declaration's source facts are complete before NBACK:OBSERVE runs.
-\ TAKE reads this copy after emission; observers retain their veto/throw path.
+\ The declaration's source facts are complete before emission.
+\ TAKE reads this copy after emission.
 : SOURCE-FREEZE ( -- )
    SOURCE-FUNS @ {: funs:n :}
    SOURCE-TYPE-N @ {: types:n :}

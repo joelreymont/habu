@@ -20,8 +20,6 @@ create FILE-HASH SHA256-FILE-CTX-BYTES allot
 PTR-VARIABLE TEST-NAME
 variable TEST-NAME-U
 variable OBSERVED
-variable EARLY-ARMED
-variable EARLY-OBSERVED
 variable OLD-SLOT
 variable OLD-OCC
 
@@ -62,24 +60,8 @@ TRUSTED: REWIND-CODE ( n -- ) cp! ;
    NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
    1 OBSERVED +! ;
 
-: OBSERVE-EARLY ( n IR-CTX:ctx IR-BUILD:module -- )
-   2drop drop
-   EARLY-ARMED @ 0= if exit then
-   EARLY-OBSERVED @ 0= if
-      NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
-   else
-      NHOST:SOURCE-CONTRACT-START
-      NHOST:SOURCE-CONTRACT-DONE
-   then
-   1 EARLY-OBSERVED +! ;
-
 : CUSTOM-SOURCE ( -- )
    s" test/compiler/native-host-custom.f" LOAD-SOURCE ;
-
-: EARLY-SOURCE ( -- )
-   1 EARLY-ARMED !
-   s" test/compiler/native-host-early.f" LOAD-SOURCE
-   0 EARLY-ARMED ! ;
 
 : FOREIGN-SOURCE ( -- )
    s" test/compiler/native-host-foreign.f" LOAD-SOURCE ;
@@ -142,12 +124,6 @@ TRUSTED: REWIND-CODE ( n -- ) cp! ;
    s" custom publication retains its owned host row" T-LABEL
    s" NATIVE-HOST-CUSTOM:ANSWER" SELECTED-N 42 T=
    OBSERVED @ 1 T=
-   s" early frozen-HIR observer cannot change producer facts" T-LABEL
-   EARLY-OBSERVED @ 2 T=
-   s" NATIVE-HOST-EARLY:ANSWER" SELECTED-N 43 T=
-   s" NATIVE-HOST-SOURCE:PATCH-TARGET" HANDLE
-   s" NATIVE-HOST-EARLY:CONTRACT" HANDLE NHOST:ASSOCIATE
-   s" NATIVE-HOST-SOURCE:PATCH-TARGET" SELECTED-N 44 T=
    s" source casts, stores and pointer views refuse before entry" T-LABEL
    s" NATIVE-HOST-SOURCE:BEFORE-BAD" REFUSES
    s" NATIVE-HOST-SOURCE:NESTED-STORE" REFUSES
@@ -183,8 +159,6 @@ TRUSTED: REWIND-CODE ( n -- ) cp! ;
    0 OBSERVED !
    s" test/compiler/native-host-source.f" LOAD-SOURCE
    ['] OBSERVE ['] CUSTOM-SOURCE NPUB:WITH-UNIT
-   ['] OBSERVE-EARLY NBACK:OBSERVE!
-   EARLY-SOURCE
    s" NATIVE-HOST-SOURCE:TARGET99" HANDLE
    s" NATIVE-HOST-SOURCE:HOST42" HANDLE NHOST:ASSOCIATE
    s" distinct checked output constructors cannot attach" T-LABEL

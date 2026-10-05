@@ -584,7 +584,6 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 
 : EMITTED ( -- NART:emission )
    SS [: FROZEN ;] NSESSION:WITH-WORK {: hm:IR-BUILD:module :}
-   ndict@ CC hm NBACK:OBSERVE
    hm SHADOWED
    hm SS [: HOST-WORK ;] NSESSION:WITH-WORK ;
 

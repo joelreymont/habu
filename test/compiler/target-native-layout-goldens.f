@@ -15,7 +15,6 @@ create GOLDEN
    $27E8 , 0 ,   \ COMPILE-PREFLIGHT-CELL
    $27F0 , 0 ,   \ TOP-HOOK-CELL
    $2818 , 0 ,   \ EXIT-HOOK-CELL
-   $2CF0 , 0 ,   \ NBACK-OBSERVE-CELL
    $2CF8 , 0 ,   \ NCOMP-PUBLISHED-CELL
    $2D00 , 0 ,   \ CODE-INVALIDATE-CELL
    $358 ,  0 ,   \ NCOMP-DISPATCH:XT-CELL
@@ -29,7 +28,7 @@ create GOLDEN
    $2D20 , 0 ,   \ NATIVE-HOST-CELLS:SELECT
    $2D30 , 0 ,   \ NATIVE-HOST-CELLS:FACTS
 
-17 constant ROWS
+16 constant ROWS
 
 public
 
