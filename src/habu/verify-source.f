@@ -110,7 +110,7 @@ variable TICK-CONTEXT-ORDER
 PTR-VARIABLE TICK-CONTEXT-OWNER
 variable DEF-TICK-ORDER
 PTR-VARIABLE DEF-TICK-OWNER
-variable TICK-REMAINDER
+TYPED-VARIABLE TICK-REMAINDER bool
 
 : TICK-CONTEXT-RESET ( -- )
    ENTRY-TICK-ORDER @ TICK-CONTEXT-ORDER !
@@ -1097,7 +1097,7 @@ variable TICK-BODY-VERDICT
    DEF-BODY$ {: ba:ptr bu:n :}
    ba TICK-BODY-A !  bu TICK-BODY-U !
    ba bu [: TICK-BODY-RUN ;] WITH-BODY-TICK-ORDER
-   IF -1 TICK-REMAINDER ! 2 ELSE TICK-BODY-VERDICT @ THEN BODY-VERDICT ;
+   IF true TICK-REMAINDER ! 2 ELSE TICK-BODY-VERDICT @ THEN BODY-VERDICT ;
 
 \ The pre-pass's own does>-clause entry point. It is not the engine's
 \ CHECK-DOES!: this scan reaches a clause AFTER the definer's own body has been
@@ -1125,7 +1125,7 @@ variable DOES-PARENT-ROWS
 PTR-VARIABLE DOES-CLOSER-A
 variable DOES-CLOSER-U
 variable DOES-DEF-VERDICT
-variable DOES-PARENT-REFUSED
+TYPED-VARIABLE DOES-PARENT-REFUSED bool
 PTR-VARIABLE DOES-CLAUSE-A
 variable DOES-CLAUSE-U
 
@@ -1145,7 +1145,7 @@ variable DOES-CLAUSE-U
    sig TICK-DOES-SA !  sigu TICK-DOES-SU !
    na TICK-DOES-NA !  nu TICK-DOES-NU !
    ba bu [: TICK-DOES-RUN ;] WITH-BODY-TICK-ORDER
-   IF -1 TICK-REMAINDER ! 2 ELSE TICK-DOES-VERDICT @ THEN BODY-VERDICT ;
+   IF true TICK-REMAINDER ! 2 ELSE TICK-DOES-VERDICT @ THEN BODY-VERDICT ;
 
 \ ---- the two rules that put a definition in the table above ------------------
 \ The definition's own name, pinned by VERIFY-DEFINITION before its body is
@@ -1257,7 +1257,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
    DEF-TICK-ORDER @ {: order:n :}
    order TICK-GATE = {: gate:bool :}
    order TICK-UNKNOWN = {: unknown:bool :}
-   0 DOES-PARENT-REFUSED !
+   false DOES-PARENT-REFUSED !
    0 DOES-DEF-VERDICT !
    0 DOES-CLAUSE-U !
    gate unknown or IF
@@ -2688,7 +2688,7 @@ COMPOSE-INIT
 \ restores the caller's scope on the clean and the throwing path alike.
 : RUN-IN-SCOPE ( [ -- ] -- )
    TICK-CONTEXT-RESET
-   0 TICK-REMAINDER !
+   false TICK-REMAINDER !
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
    catch
    NCOMP-DISPATCH:DECL-VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute

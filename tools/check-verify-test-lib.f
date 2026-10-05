@@ -1430,7 +1430,7 @@ $180000 constant LARGE-STDIN-LEN
 \ The fresh verifier child captures tier 0 before requiring its tooling. A
 \ top-level tier switch is executed only by check.f's existing subject run.
 : TRUSTED-TICK-ORDER ( -- )
-   s\" : CVT-GATE ( -- ) drop ['] patch32 drop CVT-NOT-DEFINED ;\n\" TOP-CHECK
+   s\" : CVT-GATE ( -- ) drop ['] patch32 drop CVT-NOT-DEFINED ;\n" TOP-CHECK
    1 s" trusted-tick-order: static tier 0 refusal" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" word" s" cvt-gate" PACKET {: p:n :}
    s" trusted-tick-order: gate code" T-LABEL p s" code" STRING$ s" E-CAP-TRUSTED" T$=
@@ -1439,7 +1439,7 @@ $180000 constant LARGE-STDIN-LEN
    s" trusted-tick-order: target column" T-LABEL p s" column" NUMBER$ s" 28" T$=
    s" trusted-tick-order: rejected verdict" T-LABEL
    p s" verdict" STRING$ s" rejected" T$=
-   s\" 1 set-tier\n: CVT-GATE ( -- ) drop ['] patch32 drop ;\n\" TOP-CHECK
+   s\" 1 set-tier\n: CVT-GATE ( -- ) drop ['] patch32 drop ;\n" TOP-CHECK
    5 s" trusted-tick-order: dynamic tier is deferred" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET {: warning:n :}
    s" trusted-tick-order: warning code" T-LABEL
@@ -1449,7 +1449,7 @@ $180000 constant LARGE-STDIN-LEN
    s" trusted-tick-order: warning column" T-LABEL
    warning s" column" NUMBER$ s" 28" T$=
    s" trusted-tick-order: pre-pass continues to the run" T-LABEL
-   s\" 1 set-tier\n: CVT-GATE ( -- ) drop ['] patch32 drop ;\n\"
+   s\" 1 set-tier\n: CVT-GATE ( -- ) drop ['] patch32 drop ;\n"
    SUBJ$ s" dynamic-tier.f" GUARD-MS >MS CHECK:PREVERIFY-BYTES
    MATCH result
       ok OF 0= ENDOF
