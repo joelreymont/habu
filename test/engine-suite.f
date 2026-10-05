@@ -793,7 +793,7 @@ variable TG-RBASE
 TRUSTED: TG-RESET ( -- ) USIGS-RESET ;
 TRUSTED: TG-USIGS ( -- ptr a ) USIGS ;
 TRUSTED: TG-ROUND ( n -- n ) USIGS-ROUND-CAP ;
-TRUSTED: TG-COPY ( ptr u8 ptr u8 n -- ) USIGS-COPY ;
+TRUSTED: TG-COPY ( ptr u8 ptr u8 n -- ) ARENA-COPY ;
 TRUSTED: TG-RESTORE-END ( n -- ) USIGS-RESTORE-END ;
 TRUSTED: TG-PERSIST ( -- ) USIGS-SNAPSHOT-PERSIST ;
 TRUSTED: TG-TV-RESET ( -- ) TV-SNAP-RESET ;
@@ -920,13 +920,13 @@ s" grain-cap rounds up" T-LABEL
 USIGS-GRAIN 1 + TG-ROUND USIGS-GRAIN 2 * T=
 s" grain-cap no pow2 jump" T-LABEL
 USIGS-GRAIN 3 * TG-ROUND USIGS-GRAIN 3 * T=
-\ cell-wise USIGS-COPY preserves odd-length byte spans (body + tail)
+\ cell-wise ARENA-COPY preserves odd-length byte spans (body + tail)
 create TG-CPY-SRC
    $11 c, $22 c, $33 c, $44 c, $55 c, $66 c, $77 c, $88 c,
    $99 c, $AA c, $BB c,
 create TG-CPY-DST 11 allot
 TG-CPY-SRC TG-CPY-DST 11 TG-COPY
-s" usigs-copy bytes" T-LABEL
+s" arena-copy bytes" T-LABEL
 TG-CPY-DST 11 TG-CPY-SRC 11 T$=
 \ --- the TV group has an honest owned extent through growth and capture.
 TG-TV-RESET

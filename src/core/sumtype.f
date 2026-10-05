@@ -286,8 +286,11 @@ variable TDA-I
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF CHECKER-PACKAGE-PUBLIC EXIT THEN
    CHECKER-AUTH-PACKAGE-MODE@ ;
 
+\ TFAM-DECL's one failure left here is a duplicate, unless a compile callback
+\ declares: the window refusal comes first, under the general reason.
 : TDECL-FAMILY ( n n -- n ) {: ar:n kind:n :}   \ register the family row
    TDN-A @ TDN-U @ TDECL-TOK!
+   WRITE-WINDOW-CK                     \ src/core/checker.f WRITE-WINDOW
    s" duplicate family" TDECL-WHY!
    TFAM-ACTIVE-PKG$ TDECL-VIS TDN-A @ TDN-U @ ar kind TFAM-DECL ;
 

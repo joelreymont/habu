@@ -12,7 +12,18 @@
 \   - a family only the host that opened the window declares does not
 \     (E-CAST-FAM, never E-CAST-OWNER 7135). A product engine hosting the build
 \     left its retained checker answering window certifications: that refused
-\     the first case and resolved this one in a package the window cannot see.
+\     the first case and resolved this one in a package the window cannot see;
+\   - a prefix word compiled with the hook cell empty has its declaration as
+\     its row (test/native-window-declared-row.f), at both tiers;
+\   - a hook-less tier-1 definition whose declaration records no row, of the
+\     name an owner-private primitive types, is refused catchably
+\     (E-NELAB-UNDER -8304), alone and under a catch the window survives with
+\     the row before it kept (test/native-window-private-axiom.f, -catch.f),
+\     even a row of its own name that CHECK! recorded and the row after that
+\     (-prior.f). Its rollback cuts only the rows recorded since its
+\     definition began; asking the axiom instead, it died 76 (`checker:
+\     missing signature truncation mark`), and cutting the live rows of the
+\     symbol its name binds, it took the CHECK! row and every row after it.
 \
 \ The bindings fixture then loads its source closure at tier 0, and the last
 \ case is ONE window at the optimizing tier that loads every tier-1 fixture
@@ -133,6 +144,8 @@ create ERR IO-CAP allot
 \     adopted the bootstrap one (call-store), and the rebuilt checker's
 \     pointer-pool clear (test/compiler/native-checker-storage.f);
 \   - the source loader and layout the later require closures need;
+\   - the declared row of a prefix word compiled with the hook cell empty
+\     (declared-row): the tier-1 scan's row, else the declaration;
 \   - the dictionary boundary (fixed), asserting a FRESH owner at its load;
 \   - test/native-window-capture.f, the fixture argument: the capture seam.
 \     It requires the fixtures whose checks it runs - the family readers and
@@ -164,6 +177,7 @@ create ERR IO-CAP allot
    s" src/core/generated-declaration-dictionary.f" ARG+
    s" src/core/generated-declaration-protection.f" ARG+
    s" src/core/dynamic-storage.f" ARG+
+   s" test/native-window-declared-row.f" ARG+
    s" test/native-window-owner-fixed.f" ARG+
    WHITEBOX-CHILD:ENV!
    S\" window: 0\n" WINDOW-RESULT ;
@@ -173,6 +187,10 @@ create ERR IO-CAP allot
    s" test/native-window-cast-ok.f"       S\" window: 0\n"    WINDOW-IS
    s" test/native-window-cast-bad.f"      S\" window: 7131\n" WINDOW-IS
    s" test/native-window-cast-host-bad.f" S\" window: 7131\n" WINDOW-IS
+   s" test/native-window-declared-row.f"  S\" window: 0\n"    WINDOW-IS
+   s" test/native-window-private-axiom.f" S\" window: -8304\n" WINDOW-IS
+   s" test/native-window-private-axiom-catch.f" S\" -8304\n-1\nwindow: 0\n" WINDOW-IS
+   s" test/native-window-private-axiom-prior.f" S\" -1\n-8304\n-1\n-1\nwindow: 0\n" WINDOW-IS
    BINDINGS-CASE
    TIER1-CASE ;
 

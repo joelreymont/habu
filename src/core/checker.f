@@ -43,7 +43,6 @@ CHECKER-OWNER-ABI:DOES-IN-N-OFF constant DOES-IN-N-OFF
 CHECKER-OWNER-ABI:DOES-OUT-N-OFF constant DOES-OUT-N-OFF
 CHECKER-OWNER-ABI:DOES-IN-SLOT-OFF constant DOES-IN-SLOT-OFF
 CHECKER-OWNER-ABI:DOES-OUT-SLOT-OFF constant DOES-OUT-SLOT-OFF
-CHECKER-OWNER-ABI:USIG-TRUNCATE-OFF constant USIG-TRUNCATE-OFF
 \ --- the finalized per-call-site facts the scan recorded
 CHECKER-OWNER-ABI:CALL-CELLS-OFF constant CALL-CELLS-OFF
 CHECKER-OWNER-ABI:CALL-GLUE-OFF constant CALL-GLUE-OFF
@@ -129,6 +128,7 @@ create OWNER-STORAGE
    0 , 0 ,
    0 ,
    0 , 0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -146,7 +146,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:C2-STOW-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:WRITE-WINDOW-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -183,7 +183,9 @@ variable ARENA-CP-I   variable ARENA-UB-I
 : ARENA-ALLOC ( n -- ptr a )
    map-anon 0 <> IF drop s" checker: arena mmap failed" 76 die THEN ;
 
-: ARENA-COPY ( ptr u8 ptr u8 n -- ) {: src:ptr dst:ptr n:n :}   \ n bytes, src->dst
+\ The checker's one copier: n bytes, src->dst, cell-wise with a byte tail. arm64
+\ and x86-64 both take an unaligned cell access, so a span may start at any byte.
+: ARENA-COPY ( ptr u8 ptr u8 n -- ) {: src:ptr dst:ptr n:n :}
    0 ARENA-CP-I !
    begin ARENA-CP-I @ CELL + n <= while
       src ARENA-CP-I @ + CELL-VIEW @ dst ARENA-CP-I @ + CELL-VIEW !
@@ -1105,23 +1107,6 @@ variable VPKG-U
 variable VPKG-MODE
 variable VPKG-USE-N   \ the owned using depth at verifier-window entry
 
-variable VPKG-I
-
-\ Byte copy over an explicit index cell. The earlier form kept the index on the
-\ data stack and read it back with `over`, but by the time the destination
-\ address was on the stack `over` reached the fetched BYTE instead of the index,
-\ so every byte was written at an offset equal to its own character code. The
-\ first save/restore round trip looked fine because the mirror already held the
-\ right name; the second one restored a scrambled package name and the verifier
-\ then refused to start (7136). USIGS-COPY does the same job but is defined far
-\ below this point, so the loop lives here with a named cursor.
-: VPKG-COPY ( ptr u8 ptr u8 n -- ) {: src:ptr dst:ptr n:n :}
-   0 VPKG-I !
-   BEGIN VPKG-I @ n < WHILE
-      src VPKG-I @ + c@ dst VPKG-I @ + c!
-      VPKG-I @ 1 + VPKG-I !
-   REPEAT ;
-
 : CK-USE-SAVE ( ptr u8 n -- ) {: dst:ptr u:n :}
    u dst cell-view !
    CHECKER-PACKAGE-USE-N @ dst CELL + cell-view !
@@ -1129,7 +1114,7 @@ variable VPKG-I
       dst CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:ptr :}
       CK-USE-LENS i cells + @ {: len:n :}
       len row cell-view !
-      CK-USE-NAMES i CHECKER-PACKAGE-CAP * + row CELL + len VPKG-COPY
+      CK-USE-NAMES i CHECKER-PACKAGE-CAP * + row CELL + len ARENA-COPY
    LOOP ;
 
 : CK-USE-RESTORE ( ptr u8 -- ) {: src:ptr :}
@@ -1138,18 +1123,18 @@ variable VPKG-I
       src CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:ptr :}
       row cell-view @ {: len:n :}
       len CK-USE-LENS i cells + !
-      row CELL + CK-USE-NAMES i CHECKER-PACKAGE-CAP * + len VPKG-COPY
+      row CELL + CK-USE-NAMES i CHECKER-PACKAGE-CAP * + len ARENA-COPY
    LOOP ;
 
 : VPKG-SAVE ( ptr u8 n n -- ) {: a:ptr u:n mode:n :}
-   a VPKG-NAME u VPKG-COPY
+   a VPKG-NAME u ARENA-COPY
    u VPKG-U !
    mode VPKG-MODE !
    CHECKER-USE-OWNED-N @ VPKG-USE-N !
    VPKG-IMPORTS CK-USE-MAX CK-USE-SAVE ;
 
 : VPKG-RESTORE ( -- )
-   VPKG-NAME CHECKER-PACKAGE-NAME VPKG-U @ VPKG-COPY
+   VPKG-NAME CHECKER-PACKAGE-NAME VPKG-U @ ARENA-COPY
    VPKG-U @ CHECKER-PACKAGE-U !
    VPKG-MODE @ CHECKER-PACKAGE-MODE !
    VPKG-USE-N @ CHECKER-USE-OWNED-N !
@@ -1410,11 +1395,11 @@ VF-IMPORTS CK-USE-SNAP-BYTES + constant VF-BYTES
    CHECKER-PACKAGE-U @ frame VF-U + CELL-VIEW !
    CHECKER-USE-OWNED-N @ frame VF-OWN + CELL-VIEW !
    CHECKER-USE:SOURCE-FLOOR @ frame VF-FLOOR + CELL-VIEW !
-   CHECKER-PACKAGE-NAME frame VF-NAME + CHECKER-PACKAGE-U @ VPKG-COPY
+   CHECKER-PACKAGE-NAME frame VF-NAME + CHECKER-PACKAGE-U @ ARENA-COPY
    frame VF-IMPORTS + CK-USE-MAX CK-USE-SAVE ;
 
 : VF-RESTORE ( ptr u8 -- ) {: frame:ptr :}
-   frame VF-NAME + CHECKER-PACKAGE-NAME frame VF-U + CELL-VIEW @ VPKG-COPY
+   frame VF-NAME + CHECKER-PACKAGE-NAME frame VF-U + CELL-VIEW @ ARENA-COPY
    frame VF-U + CELL-VIEW @ CHECKER-PACKAGE-U !
    frame VF-MODE + CELL-VIEW @ CHECKER-PACKAGE-MODE !
    frame VF-OWN + CELL-VIEW @ CHECKER-USE-OWNED-N !
@@ -1619,6 +1604,49 @@ variable FM-CUR  variable FM-ACC
    a CP-TYPE b CP-TYPE = and
    a CP-OTHER b CP-OTHER = and ;
 
+\ ---- the compile window -------------------------------------------------------
+\ A CALLBACK THAT RUNS WHILE A DEFINITION COMPILES CHANGES NOTHING HERE. Once
+\ the native compiler's scan returns, every row of the definition is recorded;
+\ what runs from then until publication's last callback is not the compiler's
+\ own: its elaborator and backend passes, an NBACK:OBSERVE! observer and an
+\ NPUB:WITH-UNIT observer. A write one of them made outlived the definition's
+\ refusal pointing at what the refusal cut: an observer's `generates:` row,
+\ whose created record the rollback took, left the definer's CREATES naming a
+\ later word's record, and a type an observer registered stayed, so a
+\ signature naming it went from rejected to certified. The compiler opens the
+\ window with the code a write is refused with (src/compiler/native/compiler.f
+\ WORK, through the owner's WRITE-WINDOW-OFF field) and shuts it, with 0,
+\ before its own writes and on every exit. Each refusal comes before the first
+\ state the pending definition still reads moves: the stores, and the latches
+\ publication consumes (RECW, RECMI and the does> effect machine). A scan
+\ refuses before a scan wrapper changes its pending state, and at CHECK-RESET,
+\ which every scan passes and which clears those
+\ latches. A write refuses at the stores' only appenders, so no writer, public
+\ or not, gets past them: E-REC-START for a record with its nodes and content,
+\ NORET-APPEND for a control entry with its CREATES reference, and
+\ DFER-ADD-SYM for a defer flag; and before them where a writer moves a latch
+\ or the record symbol first: E-ADD-EFFECT, E-ADD-DELETED, USIG-ADD-BAD (a
+\ refused signature, which appends nothing), TRUST-DECL and
+\ CREATED-RECORD-BUILD. The type registries refuse at their only appenders:
+\ EXT-MARK-FREE (the extent free-set), CT-SET (the type table) and VREC-BEGIN
+\ (value records) here; TFAM-DECL (families), SUMV-ADD (variants), LAY-ADD
+\ (layouts) and TYPE-FIELD-OWNER's OPEN, ADD, COMMIT, FINALIZE and ROLLBACK
+\ (the field store) in src/core/type-family.f; SCHEMA-NEW (schema nodes) and
+\ SCHEMA-ROOT+ (schema roots) in src/core/type-schema.f. A registration's later
+\ writes (a family's own fields, a variant's constructor stamp, a linear type's
+\ package, an interned name) follow one of these in every flow that makes them.
+\ The block stands this early because EXT-MARK-FREE does.
+variable WRITE-WINDOW   0 WRITE-WINDOW !   \ 0 shut, else the code a write throws
+
+: WRITE-WINDOW-CK ( -- )
+   WRITE-WINDOW @ {: code:n :}
+   code 0 <> IF code throw THEN ;
+
+\ Sealed as CHECKER-RETRACT-ROWS is: from top level it would open or shut the
+\ window under a compilation.
+: CHECKER-WRITE-WINDOW! ( n -- ) WRITE-WINDOW ! ;
+REG-PROTECT
+
 \ --- BTC-7 extent-role product/factorization role registry (dot
 \ habu-extent-role-product-8e364885, docs/extent-substrate.md §Decision, BTC-7).
 \ EXT-PROD-FAM / EXT-REDX-FAM are the built-in `extprod`/`redx` family ids,
@@ -1644,6 +1672,7 @@ variable EXT-FREE-N   0 EXT-FREE-N !
       1 +
    REPEAT drop RES-FALSE ;
 : EXT-MARK-FREE ( n -- ) {: f:n :}      \ EXTPROD: marks a product's free factor family
+   WRITE-WINDOW-CK
    f 0 <= IF EXIT THEN
    f EXT-FREE? IF EXIT THEN              \ idempotent
    EXT-FREE-N @ EXT-FREE-CAP >= IF s" checker: extent free-set overflow" 76 die THEN
@@ -2164,6 +2193,7 @@ CT-ARENA-BOOT
    1 + dup CTN @ > IF CTN ! ELSE drop THEN ;
 
 : CT-SET ( ptr u8 n n n n n -- ) {: a:ptr u:n code:n class:n width:n sign:n :}
+   WRITE-WINDOW-CK
    code CT-CODE-CHECK
    code CT-ENSURE
    a u CT-COPY {: off:n len:n :}
@@ -5106,8 +5136,7 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 \ (the prim DB and the toolchain's own body use n), and the unifier lets n
 \ subsume any int-family code (so '( i64 -- i64 )' over an n-typed prim still
 \ checks). r(3)=float. Table-driven to keep the body small (inline-safe).
-: CON-OF {: a u :}                      \ multi-char name -> con code, or 0
-   a u CT-FIND ;
+: CON-OF ( ptr u8 n -- n ) CT-FIND ;   \ multi-char name -> con code, or 0
 : SGBAD-CLEAR ( -- )
    -1 SGBAD-AR-DECL !
    -1 SGBAD-AR-GOT !
@@ -6098,6 +6127,7 @@ variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
    VREC-ENSURE ;
 
 : VREC-BEGIN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   WRITE-WINDOW-CK
    VREC-ROOM
    VREC-N @ {: id:n :}
    a u VREC-STR-COPY {: off:n len:n :}
@@ -6431,21 +6461,6 @@ TRUSTED: USIGS-CELL-AT ( n -- ptr a )
    CHK-CAND @ 0 <> IF EXIT THEN
    0 OK !  -1 FAILSET ! ;
 
-variable UCP-I
-
-\ USIGS-COPY ( ptr a ptr a n -- ) : cell-wise store copy with a byte tail
-\ (ARM64 tolerates unaligned cell access; spans can start byte-aligned).
-: USIGS-COPY {: src:ptr dst:ptr n:n :}
-   0 UCP-I !
-   begin UCP-I @ CELL + n <= while
-      src UCP-I @ + @ dst UCP-I @ + !
-      UCP-I @ CELL + UCP-I !
-   repeat
-   begin UCP-I @ n < while
-      src UCP-I @ + c@ dst UCP-I @ + c!
-      UCP-I @ 1 + UCP-I !
-   repeat ;
-
 \ HEADROOM IS NOT COUNTED HERE, AND A BOOT-TIME GROW IS A COST, NOT A DEFECT.
 \ The cap is the smallest grain multiple holding the content, so an image whose
 \ content lands just under a grain boundary boots with only a few hundred spare
@@ -6529,7 +6544,7 @@ USIGS-RUNTIME-INIT
       USIGS-SNAPSHOT-SIZE {: n:n :}
       n USIGS-PERSIST-CAP {: cap:n :}
       cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
-      USIGS dst n USIGS-COPY
+      USIGS dst n ARENA-COPY
       dst USIGS-P !
       cap USIGS-CAP-U !
    THEN
@@ -6541,7 +6556,7 @@ USIGS-RUNTIME-INIT
 : USIGS-GROW {: need :}
    need USIGS-CAP-U @ 2 * max USIGS-ROUND-CAP USIGS-GROW-CAP !
    USIGS-GROW-CAP @ USIGS-ALLOC USIGS-GROW-NEXT !
-   USIGS USIGS-GROW-NEXT @ UEND @ CELL + USIGS-COPY
+   USIGS USIGS-GROW-NEXT @ UEND @ CELL + ARENA-COPY
    \ Carry only a valid content stamp; CLEAR's invalidation must survive a grow.
    USIGS CHX-BASE@ = IF USIGS-GROW-NEXT @ CHX-BASE! THEN
    USIGS-GROW-NEXT @ USIGS-P !
@@ -8487,7 +8502,8 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
 \ E-REC-START runs the effect-cache sync first: it is the single choke point
 \ for USIGS appends, so a rewind (scope/candidate rollback, forget, reset)
 \ flushes the cache BEFORE new records can reuse the truncated offsets — a
-\ read-time-only check could be masked by rewind-then-regrow.
+\ read-time-only check could be masked by rewind-then-regrow. The window is
+\ asked before anything moves.
 : E-REC-INIT ( ptr u8 -- ) {: p :}
    0 p ER.NEXT !  0 p ER.ACTIVE !
    0 p ER.CONTENT !
@@ -8496,6 +8512,7 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
    CHECKER-REC-SYM @ p ER.SYM ! ;
 
 : E-REC-START ( -- ptr u8 )
+   WRITE-WINDOW-CK
    HIDX-EFF-SYNC
    CHX-EXACT
    UIX-EXACT                             \ same discipline: UEND is the store's true top
@@ -8686,6 +8703,7 @@ variable RECMI   0 RECMI !
 \ cache stores offset+1 because offset 0 is legal after USIGS-RESET.
 : E-ADD-EFFECT ( n n n n bool bool -- )
    {: din:n dout:n rin:n rout:n hasr:bool external:bool :}
+   WRITE-WINDOW-CK                       \ before RECW moves
    din EFFECT-MIN-IN drop
    din ROW-WIDE?  dout ROW-WIDE? or
    hasr IF rin ROW-WIDE? or  rout ROW-WIDE? or THEN
@@ -8708,6 +8726,7 @@ variable RECMI   0 RECMI !
    CHECKER-REC-SYM @ external CHECKER-EFFECT-AUTHORITY:PUBLISH ;
 
 : E-ADD-DELETED ( -- )
+   WRITE-WINDOW-CK
    0 RECW !
    0 RECMI !
    E-REC-START E-OFF >r
@@ -9086,6 +9105,7 @@ variable ASIG-MISS-K
 \ already rendered and counted that definition's refusal.
 : USIG-ADD-BAD ( ptr u8 n ptr u8 n bool -- )
    {: sa:ptr su:n na:ptr nu:n src:bool :}
+   WRITE-WINDOW-CK                       \ a refusal moves the latches too
    0 RECW !                              \ no record stored: nothing to publish wide
    0 RECMI !                             \ ... and no min-in to poke
    MULTI-ERR? src 0= and na nu USIG-BAD-FOREIGN? 0= and IF EXIT THEN
@@ -9130,17 +9150,24 @@ variable ASIG-MISS-K
 : USIG-SYM@ ( ptr u8 -- n )
    ER.SYM @ ;
 
-: USIG-MATCH-SYM? ( ptr u8 n -- bool ) {: rec:ptr sym:n :}
-   rec USIG-SYM@ sym = ;
-
-: USIG-FIND-OFF-SYM ( n -- n bool ) {: sym:n :}
-   sym 0= if 0 RES-FALSE exit then
-   USIGS-USER FP !
-   begin FP @ USIG-END? 0= while
-      FP @ sym USIG-MATCH-SYM? if FP @ USIG-OFF RES-TRUE exit then
-      FP @ USIG-NEXT FP !
-   repeat
-   0 RES-FALSE ;
+\ Where retracting sym's definition starts, offset+1, 0 when sym has no live
+\ row: the oldest record of its live generation, found by walking back from the
+\ newest record to the first tombstone. A name `undefine` retired and defined
+\ again keeps its retired records, and the rows other words recorded after them
+\ are not this definition's; the dictionary forgets from the name's newest
+\ definition too (xref.f XREF-FIND-WL-INDEX).
+: USIG-LIVE-START ( n -- n ) {: sym:n :}
+   sym 0= IF 0 EXIT THEN
+   sym USIG-NEWEST
+   dup 0= IF EXIT THEN
+   dup 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF drop 0 EXIT THEN
+   BEGIN
+      dup 1 - E-PTR ER.SYMPREV @
+      dup 0 <> IF dup 1 - E-PTR ER.ACTIVE @ EFF-DELETED <> ELSE RES-FALSE THEN
+   WHILE
+      nip
+   REPEAT
+   drop ;
 
 variable FMEND
 
@@ -9813,8 +9840,9 @@ variable PE-QDOUT
 \ because a replayed atom does not have one stack effect: PE-A mints a term and
 \ PE-IN consumes one, so a dispatcher that left them on the data stack has a
 \ different depth down each branch and no inferable effect - measured,
-\ `ncomp: cannot compile PE-SPEC-ATOM` (src/compiler/native/compiler.f
-\ KEEP-ARITY). Every atom below is ( n -- ), the pending operands live in
+\ `ncomp: cannot compile PE-SPEC-ATOM`; the native elaborator cannot join such
+\ arms (E-NELAB-JOIN, test/compiler/native-hookless-reject.f SESSION-UNEVEN).
+\ Every atom below is ( n -- ), the pending operands live in
 \ PE-SPEC-TERMS, and a row that ends with one left over is malformed and says
 \ so.
 $20 constant PE-SPEC-CAP
@@ -11314,20 +11342,20 @@ PTR-VARIABLE RPL-TOK-A   variable RPL-TOK-U     \ the refused name (raw, valid w
 \ (test/reopen-binding.f, test/undefine-binding.f).
 \
 \ THE STORE IS ONE DEFINITION AHEAD OF THE DICTIONARY. A definition's facts are
-\ recorded when its check certifies it, or when TRUST-DECL registers its declared
-\ effect, and the engine publishes its record only after compiling it, so the
-\ lookup cannot see the definition in between. Both compilers ask about it by
-\ its name in that window - src/compiler/native/compiler.f KEEP-ARITY, the frame
-\ glue, NO-RETURN? and RETRACT's signature truncation - and the answer is the
-\ definition being compiled, which is what the lookup answers once the record is
-\ published. So the definition recorded last answers a token whose record path
-\ in the current scope is its symbol (CK-PENDING-SYM), ahead of the lookup,
-\ whose answer is the word it is about to shadow. The window is a fact the
-\ stores state, not a flag anyone clears: the dictionary count has not moved
-\ since the record (`ndict@`), and the record is still its symbol's newest one.
-\ A publication, a truncation, a rollback and `undefine` each end it. Only a
-\ check that runs while the engine holds the definition unpublished opens it
-\ (CK-CLOSE!): a check a program runs by hand publishes nothing.
+\ recorded when its check certifies it, or when TRUST-DECL registers its
+\ declared effect, and the engine publishes its record only after compiling it,
+\ so the lookup cannot see the definition in between. Both compilers ask about
+\ it by its name in that window - src/compiler/native/compiler.f KEEP-ARITY, the
+\ frame glue and NO-RETURN? - and the answer is the definition being compiled,
+\ which is what the lookup answers once the record is published. So the
+\ definition recorded last answers a token whose record path in the current
+\ scope is its symbol (CK-PENDING-SYM), ahead of the lookup, whose answer is the
+\ word it is about to shadow. The window is a fact the stores state, not a flag
+\ anyone clears: the dictionary count has not moved since the record (`ndict@`),
+\ and the record is still its symbol's newest one. A publication, a truncation,
+\ a rollback and `undefine` each end it. Only a check that runs while the engine
+\ holds the definition unpublished opens it (CK-CLOSE!): a check a program runs
+\ by hand publishes nothing.
 \
 \ A CANDIDATE SCOPE IS ITS ROWS AHEAD OF THE DICTIONARY. A candidate scope
 \ (CHECKER-CANDIDATE-SCOPE-START) checks definitions that are published together
@@ -11414,6 +11442,22 @@ variable CK-PEND-IX      0 CK-PEND-IX !
 
 \ The wordlist a dictionary record was published into, 0 for the global one.
 : CK-REC-WID ( ptr n -- n ) DICT-WORDLIST-SLOT cells + @ ;
+
+\ A dictionary record's name (src/habu/layout.f DREC): the flags cell holds its
+\ length under DNAME-LEN-MASK, and the name sits inline from the name cell or,
+\ with DNAME-EXT set, behind the pointer that cell holds, as src/habu/xref.f
+\ XREF-NAME-A reads it. The pointer is read through `ptr-field`, the declared
+\ door, so no cast mints it.
+2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
+3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
+$0003FFFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
+$2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
+: CK-REC-NAME$ ( ptr n -- ptr u8 n )
+   {: rec:ptr :}
+   rec CK-REC-FLAGS-SLOT cells + @ {: flags:n :}
+   flags CK-REC-LEN-MASK and {: u:n :}
+   flags CK-REC-EXT and 0 <> IF rec CK-REC-NAME-SLOT ptr-field @ u EXIT THEN
+   rec CK-REC-NAME-SLOT cells + BYTE-VIEW u ;
 
 \ The used slot whose public wordlist is wid, or -1. The engine's USE-WIDS and
 \ this checker's name mirror share one index (CHECKER-USING records the name at
@@ -11768,10 +11812,11 @@ package CHECKER-REG
    a u CHECKER-RECORD-SYM CHECKER-FIND-USIG-SYM ;
 
 : CHECKER-USIGS-TRUNCATE-FROM-RAW ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CHECKER-FIND-ACTIVE-SYM USIG-FIND-OFF-SYM 0= IF
+   a u CHECKER-FIND-ACTIVE-SYM USIG-LIVE-START {: off1:n :}
+   off1 0= IF
       s" checker: missing signature truncation mark" 76 die
    THEN
-   USIGS-RESTORE-END ;
+   off1 1 - USIGS-RESTORE-END ;
 
 \ TFAM 2b-iii: a direct post-seal user call would forget the checker's signature
 \ for an engine word so it could be redefined (spoof). Reject it fail-closed; the
@@ -11784,6 +11829,26 @@ package CHECKER-REG
       2drop s" seal: cannot truncate sealed checker signatures" ENGINE-ERROR:SEAL-VIOLATION die
    THEN
    CHECKER-USIGS-TRUNCATE-FROM-RAW ;
+
+\ The native compiler's rollback of a refused definition
+\ (src/compiler/native/compiler.f RETRACT) through the owner's ROWS-END-OFF and
+\ RETRACT-ROWS-OFF fields: the compiler reads the store's end when it begins the
+\ definition and, refusing it, cuts the store back to that end. The one mark
+\ both says what the definition recorded and bounds the cut, and the compile
+\ window (WRITE-WINDOW) admits only the compiler's own writes above it, so the
+\ cut takes exactly the definition's rows - certified, TRUSTED:, declared or a
+\ multi-error recovery fact, with the nodes they interned - and never a row
+\ recorded before it began: a twin's, or one of its own name that CHECK!
+\ recorded with no definition. An end at or below the mark holds nothing the
+\ definition recorded, and the store stays as it is. Sealed as
+\ CHECKER-DECLARED-ROW! is: from top level the cut would drop any name's rows.
+: CHECKER-ROWS-END ( -- n ) UEND @ ;
+REG-PROTECT
+
+: CHECKER-RETRACT-ROWS ( n -- )
+   {: mark:n :}
+   mark UEND @ < IF mark USIGS-RESTORE-END THEN ;
+REG-PROTECT
 
 : CHECKER-FIND-ACTIVE-SIG ( ptr u8 n -- ) {: a:ptr u:n :}
    FEP-CLEAR
@@ -12794,6 +12859,7 @@ variable DFER-POS
 \ DFER-FIND-SYM synchronizes its cache after a rewind before this comparison;
 \ every real transition still appends, preserving saved offsets and old flags.
 : DFER-ADD-SYM ( n bool -- ) {: sym:n flag:bool :}
+   WRITE-WINDOW-CK
    sym DFER-FIND-SYM flag xor 0= IF EXIT THEN
    DFER-NEED DFER-ENSURE
    sym DFER-CUR DFER.SYM !
@@ -13470,7 +13536,7 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
       NORET-END @ CELL + {: n:n :}
       n USIGS-PERSIST-CAP {: cap:n :}
       cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
-      NORETS dst n USIGS-COPY
+      NORETS dst n ARENA-COPY
       dst NORET-P !
       cap NORET-CAP-U !
    THEN
@@ -13480,7 +13546,7 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 : NORET-GROW {: need :}
    need NORET-CAP-U @ 2 * max USIGS-ROUND-CAP NORET-GROW-CAP !
    NORET-GROW-CAP @ USIGS-ALLOC NORET-GROW-NEXT !
-   NORETS NORET-GROW-NEXT @ NORET-END @ CELL + USIGS-COPY
+   NORETS NORET-GROW-NEXT @ NORET-END @ CELL + ARENA-COPY
    NORET-GROW-NEXT @ NORET-P !
    NORET-GROW-CAP @ NORET-CAP-U ! ;
 
@@ -13575,7 +13641,7 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    pvar @ {: old:ptr :}
    here {: dst:ptr :}
    bytes allot
-   old dst bytes USIGS-COPY
+   old dst bytes ARENA-COPY
    dst pvar !
    dst old - RES-TRUE ;
 
@@ -13821,6 +13887,7 @@ REG-EXT-AOT-DEFAULTS
 \ definition records its flags and its intact masks, and on the same record the
 \ effect authority appends its provenance flag and the created-word effect.
 : NORET-APPEND {: sym:n flag:n dmask:n rmask:n creates:n :}
+   WRITE-WINDOW-CK
    sym 0= IF EXIT THEN
    flag dmask rmask XFER-PACK {: ctl:n :}
    HIDX-CTL-SYNC
@@ -18235,6 +18302,7 @@ s" <input>" DIAG-FILE!
 \ CHECKER-VERIFY-PKG-START: interpret and tick refuse it (`hb: internal engine
 \ word`, rc 70), and only a TRUSTED: body compiles a call.
 : TRUST-DECL {: na:ptr nu:n sa:ptr su:n :}
+   WRITE-WINDOW-CK                       \ before the does> latch steps
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    DOES-EFF-STEP
    na nu sa su RES-FALSE TRUST-USIG!
@@ -18250,6 +18318,59 @@ REG-PROTECT
 package CHECKER-REG
 ' TRUST-DECL DECLARATIONS EFFECT-OFF + xt!
 ;package
+
+\ CHECKER-DECLARED-ROW!: the row of a definition compiled with the hook cell
+\ empty is its declaration, active and WITHOUT authority. No check judged the
+\ body, so the declaration is all the checker knows of it: an unsealed checker
+\ binds the row and checks callers against it, a sealed one refuses it by
+\ authority (CALL-AUTHORITY), and EFFECT-QUERY and the native compiler's arity
+\ read it. A TRUSTED: declaration is the assertion and goes through TRUST-DECL
+\ instead. The engine's empty-hook publish arm calls this at tier 0 (habu2.f
+\ EM-COMPILE-PUBLISH-HOOKED) and the native compiler after its unjudged scan at
+\ tier 1 (compiler.f DECLARE-HOOKLESS), both through the source owner's
+\ DECLARED-ROW-OFF field, so a cold boot records from this file's claim on.
+\
+\ A LIVE ROW WINS. At tier 1 the scan's own row (certified, deferred, or a
+\ multi-error recovery fact) already states the symbol, and keeps it; after
+\ `undefine` the tombstone is not live and the redefinition records. A
+\ declaration the checker cannot parse, or one with a scope scheme, records
+\ nothing - an unverified declaration carries no lexical binder (USIG-ADD-AS) -
+\ and its symbol stays interned without a row, as TRUST-DECL's bad signature
+\ leaves it. No DOES-EFF-STEP: no clause check ran for the definition, and
+\ STORE keeps no created-word value for a row without authority. Sealed as
+\ TRUST-DECL is: only the engine and the owner record reach it.
+\
+\ CK-DECLARED-SYM! records the row once the symbol is known and no live row
+\ states it. A cold boot's claim (CK-DECLARED-LOG-DRAIN) names each definition
+\ logged before it by its dictionary record rather than by a token in the open
+\ scope, so it keys the symbol itself and records through the same word. It
+\ writes a row for any symbol it is handed, so it is sealed as well.
+: CK-DECLARED-SYM! ( n ptr u8 n -- )
+   {: sym:n sa:ptr su:n :}
+   sym CHECKER-REC-SYM !
+   NEW
+   SGBAD-CLEAR
+   sa su PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
+   SGBAD @ IF EXIT THEN
+   din SCHEME-TYPE? dout SCHEME-TYPE? or
+   rin SCHEME-TYPE? or rout SCHEME-TYPE? or IF EXIT THEN
+   din dout rin rout SGHASR @ RES-FALSE E-ADD-EFFECT
+   sa su CHECKER-ASIG-CAPTURE
+   \ An unchecked body may throw after replacing a scoped input, as TRUST-DECL
+   \ states for its own.
+   PD-IN @ SCOPED-TYPE? PR-IN @ SCOPED-TYPE? or IF
+      sym sym CTL-FLAGS-SYM CTL-THROW or 0 0 NORET-ADD-SYM
+   THEN
+   sym CK-CLOSE! ;
+REG-PROTECT
+
+: CHECKER-DECLARED-ROW! ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n sa:ptr su:n :}
+   na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
+   na nu CHECKER-CERT-DUP? IF EXIT THEN
+   na nu CHECKER-RECORD-NAME 2drop
+   CHECKER-REC-SYM @ sa su CK-DECLARED-SYM! ;
+REG-PROTECT
 
 
 \ TRUST: declare a word's effect without checking its body — the native escape
@@ -19620,7 +19741,7 @@ variable ASIG-GRAPH-MAP-CAP
 
 : ASIG-GRAPH-BYTES ( ptr u8 n -- n ) {: src:ptr bytes:n :}
    bytes ASIG-GRAPH-ALLOC {: off:n :}
-   src off ASIG-GRAPH-PTR bytes USIGS-COPY
+   src off ASIG-GRAPH-PTR bytes ARENA-COPY
    off ;
 
 \ A generation stamp avoids clearing a map proportional to USIGS for every
@@ -19662,7 +19783,7 @@ variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
    THEN
    ASIG-GRAPH-GEN @ slot !  -1 slot CELL + !
    EFF-NODE ASIG-GRAPH-ALLOC {: dst:n :}
-   src E-PTR dst ASIG-GRAPH-PTR EFF-NODE USIGS-COPY
+   src E-PTR dst ASIG-GRAPH-PTR EFF-NODE ARENA-COPY
    src E-PTR EN.TAG @ {: tag:n :}
    tag EN-CON = IF
       src E-PTR EN.A @ {: con:n :}
@@ -20425,7 +20546,7 @@ ASIG-GRAPH-CHECK-INSTALL
    E-REC-START E-OFF {: base:n :}
    base EFF-REC + EFF-WIRE - {: delta:n :}
    CK-GRAPH-BASE @ EFF-WIRE + base EFF-REC + E-PTR
-   CK-GRAPH-LEN @ EFF-WIRE - USIGS-COPY
+   CK-GRAPH-LEN @ EFF-WIRE - ARENA-COPY
    CK-GRAPH-LEN @ delta + E-PTR wirebytes CK-GRAPH-LEN @ - ASIG-GRAPH-ZERO
    EFF-WIRE BEGIN dup CK-GRAPH-LEN @ < WHILE
       dup CK-GRAPH-SLOT @ 0 > IF dup delta CK-GRAPH-NODE-REBASE THEN
@@ -20576,9 +20697,13 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
    SGHASR @ IF SGRIN @ R-RES SGROUT @ R-RES <> IF RES-FALSE EXIT THEN THEN
    RES-TRUE ;
 
-\ A length that describes no memory (BYTE-SPAN?) is refused before any state is
-\ reset, with the refusal the token buffers gave the maximum cell.
+\ Every scan starts here, so a scan inside the compile window is refused first,
+\ before the reset clears the latches the pending definition's publication
+\ reads (WRITE-WINDOW-CK). A length that describes no memory (BYTE-SPAN?) is
+\ refused before any state is reset, with the refusal the token buffers gave the
+\ maximum cell.
 : CHECK-RESET {: a u :}
+   WRITE-WINDOW-CK
    BWIN-EPOCH @ 1+ dup 0= IF
       s" checker: binding window serial overflow" 76 die THEN
    BWIN-EPOCH !
@@ -21200,6 +21325,7 @@ variable CAST-PATH-N
 
 : CHECK   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable | 2=deferred )
    {: a u :}
+   WRITE-WINDOW-CK
    -1 PARSE-COMPLETE !
    a u CHECK-RESET
    CHECK-SCAN
@@ -21474,11 +21600,11 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 \ The byte half of each scope owns the package name and reachable import rows.
 \ Nested neutral scopes may overwrite any prefix, not just append imports.
 : RBF-NAME-SAVE ( ptr u8 -- ) {: dst:ptr :}
-   CHECKER-PACKAGE-NAME dst CHECKER-PACKAGE-U @ USIGS-COPY
+   CHECKER-PACKAGE-NAME dst CHECKER-PACKAGE-U @ ARENA-COPY
    dst CHECKER-PACKAGE-CAP + CK-USE-SCAN-N CK-USE-SAVE ;
 
 : RBF-NAME-RESTORE ( ptr u8 n -- ) {: src:ptr u:n :}
-   src CHECKER-PACKAGE-NAME u USIGS-COPY
+   src CHECKER-PACKAGE-NAME u ARENA-COPY
    src CHECKER-PACKAGE-CAP + CK-USE-RESTORE ;
 
 \ RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0 at
@@ -21802,6 +21928,7 @@ TYPES-DEFAULTS
    RBF-DEPTH @ ;
 
 : CHECK-CANDIDATE-START ( -- )
+   WRITE-WINDOW-CK
    CHK-CAND @ 0= IF UEND @ CK-PEND-FLOOR !  ndict@ CK-PEND-IX ! THEN   \ the outermost scope's floor
    RBF-PUSH
    -1 CHK-CAND !
@@ -21855,6 +21982,7 @@ variable CK-RETRY-TOKS
    76 die ;
 
 : CHECK-RETRY ( ptr u8 n -- n ) {: a:ptr u:n :}
+   WRITE-WINDOW-CK
    REC-IX @ {: ix0:n :}
    REC-ON @ IF CWIN-N @ ELSE 0 THEN {: cw0:n :}
    REC-ON @ IF BWIN-N @ ELSE 0 THEN {: bw0:n :}
@@ -21896,6 +22024,7 @@ variable CK-RETRY-TOKS
    CAND-A @ CAND-U @ CHECK-RETRY CAND-VERDICT ! ;
 
 : CHECK-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}
+   WRITE-WINDOW-CK
    a CAND-A !  u CAND-U !
    CK-AOT-RETRY-ARMED @ {: armed0:n :}
    CK-AOT-RETRY-DUE @ {: due0:n :}
@@ -21935,6 +22064,7 @@ PTR-VARIABLE QCAND-A   variable QCAND-U   variable QCAND-VERDICT
    QCAND-A @ QCAND-U @ CHECK-CANDIDATE! QCAND-VERDICT ! ;
 
 : CHECK-QUIET-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}
+   WRITE-WINDOW-CK
    a QCAND-A !  u QCAND-U !
    1 DIAG-QUIET +!
    [: QCAND-BODY ;] catch {: rc:n :}
@@ -21981,6 +22111,7 @@ variable DEF-STOPPED
    0 CK-DEF-VERDICT ! ;
 
 : CHECK! ( ptr u8 n -- n ) {: a:ptr u:n :}
+   WRITE-WINDOW-CK
    0 BWIN-VALID !  0 UWIN-VALID !
    -1 VSIG !
    a CK-DEF-A !  u CK-DEF-U !  0 DEF-REFUSAL !
@@ -22015,6 +22146,7 @@ PTR-VARIABLE UNJ-A   variable UNJ-U   variable UNJ-VERDICT
    UNJ-A @ UNJ-U @ CHECK! UNJ-VERDICT ! ;
 
 : CHECK-UNJUDGED! ( ptr u8 n -- n ) {: a:ptr u:n :}
+   WRITE-WINDOW-CK
    a UNJ-A !  u UNJ-U !
    -1 BWIN-UNJUDGED !
    1 DIAG-QUIET +!
@@ -22054,6 +22186,7 @@ public
 \ RUN calls above. Its published name must not shadow that call on replay.
 : CHECK-TARGET! ( ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n ta:ptr tu:n :}
+   WRITE-WINDOW-CK
    ba BODY-A!  bu BODY-U !  ta TARGET-A!  tu TARGET-U !
    -1 ACTIVE !
    [: RUN ;] catch {: rc:n :}
@@ -22220,6 +22353,7 @@ package CHECKER-REG
 \ recurse cache: sym 0 keeps it out of every per-symbol lookup.
 : CREATED-RECORD-BUILD ( ptr u8 n -- n )
    {: sa:ptr su:n :}
+   WRITE-WINDOW-CK                       \ before the record symbol and parser move
    CHECKER-REC-SYM @
    {: was:n :}
    0 CHECKER-REC-SYM !
@@ -22355,6 +22489,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ first: growing them afterwards would drop the refused token being reported.
 : CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
+   WRITE-WINDOW-CK
    nu DOES-CLAUSE:SUFFIX$ nip + TOKBUF-ENSURE
    ba SRC-DOES-BA !  bu SRC-DOES-BU !  sa SRC-DOES-SA !  su SRC-DOES-SU !
    0 DEF-REFUSAL !
@@ -22377,6 +22512,7 @@ variable TOP-ASK-ANSWER
 
 : CHECKER-VERIFY-TOP ( ptr u8 n bool -- n )
    {: a:ptr u:n runs:bool :}
+   WRITE-WINDOW-CK
    a TOP-ASK-A !  u TOP-ASK-U !  runs TOP-ASK-RUNS !
    0 DEF-REFUSAL !
    [: TOP-ASK-BODY ;] catch {: rc:n :}
@@ -22773,7 +22909,7 @@ private
    UNIT-BUF-P @ NULL-PTR = IF cap ARENA-ALLOC BYTE-VIEW
    ELSE
       cap ARENA-ALLOC BYTE-VIEW {: dst:ptr :}
-      UNIT-BUF-P @ dst UNIT-BUF-U @ USIGS-COPY
+      UNIT-BUF-P @ dst UNIT-BUF-U @ ARENA-COPY
       UNIT-BUF-P @ UNIT-BUF-CAP @ ASIG-RELEASE
       dst
    THEN UNIT-BUF-P !
@@ -22781,7 +22917,7 @@ private
 
 : UNIT-BUF+ ( ptr u8 n -- ) {: a:ptr u:n :}
    u UNIT-BUF-ROOM
-   a UNIT-BUF-P @ UNIT-BUF-U @ + u USIGS-COPY
+   a UNIT-BUF-P @ UNIT-BUF-U @ + u ARENA-COPY
    u UNIT-BUF-U +! ;
 
 : UNIT-CELL! ( n n -- ) {: x:n at:n :}
@@ -23705,7 +23841,6 @@ package CHECKER-REG
 ' CHECK-DOES-DOUT-N                 DECLARATIONS DOES-OUT-N-OFF + xt!
 ' CHECK-DOES-DIN-SLOT               DECLARATIONS DOES-IN-SLOT-OFF + xt!
 ' CHECK-DOES-DOUT-SLOT              DECLARATIONS DOES-OUT-SLOT-OFF + xt!
-' CHECKER-USIGS-TRUNCATE-FROM-RAW   DECLARATIONS USIG-TRUNCATE-OFF + xt!
 ' CWIN-CELLS                        DECLARATIONS CALL-CELLS-OFF + xt!
 ' REC-CALL-BINDING                  DECLARATIONS CHECKER-OWNER-ABI:CALL-BINDING-OFF + xt!
 ' REC-UNJUDGED-BINDING              DECLARATIONS CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF + xt!
@@ -23766,11 +23901,99 @@ package CHECKER-REG
 ' CHECKER-VERIFY-DEFERRED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-OFF + xt!
 ' CHECKER-VERIFY-REACH DECLARATIONS CHECKER-OWNER-ABI:VERIFY-REACH-OFF + xt!
 ' CHECKER-VERIFY-DEFERRED-BODY DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-BODY-OFF + xt!
+' CHECKER-DECLARED-ROW! DECLARATIONS CHECKER-OWNER-ABI:DECLARED-ROW-OFF + xt!
+' CHECKER-RETRACT-ROWS DECLARATIONS CHECKER-OWNER-ABI:RETRACT-ROWS-OFF + xt!
+' CHECKER-ROWS-END DECLARATIONS CHECKER-OWNER-ABI:ROWS-END-OFF + xt!
+' CHECKER-WRITE-WINDOW! DECLARATIONS CHECKER-OWNER-ABI:WRITE-WINDOW-OFF + xt!
+
+\ ---- the declared-row log of a cold boot ------------------------------------
+\ Before the claim below a cold boot has no source owner, so the engine's
+\ empty-hook publish arm logs each signed `:` definition it publishes
+\ (src/habu/layout.f DECLARED-LOG, src/habu/habu2.f C-DECLARED-LOG-APPEND)
+\ where it would call CHECKER-DECLARED-ROW!. The claim records their rows by
+\ that word's rule - active, without authority, only where no live row states
+\ the symbol - so a cold boot's checker holds the rows the build host records
+\ for the definitions of this file and the files before it. A TRUSTED:
+\ declaration before the claim is not logged: the claim grants no authority.
+\ test/aot-sig-pool-suite.f asserts each mirrored constant below.
+$4398 constant CK-DECLARED-LOG-CELL     \ = layout.f DECLARED-LOG:ADDR-CELL
+32 constant CK-DLOG-SLOT                \ = layout.f DECLARED-LOG:SLOT
+8 constant CK-DLOG-SLOTS-REL            \ = layout.f DECLARED-LOG:SLOTS-REL
+0 constant CK-DLOG-REC-OFF              \ = layout.f DECLARED-LOG:REC-OFF
+8 constant CK-DLOG-PKG-OFF              \ = layout.f DECLARED-LOG:PKG-OFF
+16 constant CK-DLOG-SIG-A-OFF           \ = layout.f DECLARED-LOG:SIG-A-OFF
+24 constant CK-DLOG-SIG-U-OFF           \ = layout.f DECLARED-LOG:SIG-U-OFF
+-2 constant CK-WL-RETIRED               \ = layout.f DICT-WL:RETIRED
+0 constant CK-NS-PUBLIC-SLOT            \ = xref.f XREF-START-SLOT
+1 constant CK-NS-PRIVATE-SLOT           \ = xref.f XREF-LEN-SLOT
+
+\ The cell holding the log's address while the log holds entries, 0 otherwise.
+\ It holds an address, so it is read and cleared through `ptr-field`.
+: CK-DLOG-FIELD ( -- ptr ptr n )
+   data-base CK-DECLARED-LOG-CELL CELL / ptr-field ;
+
+\ Field OFF of slot I of the log at LOG: a count cell, then the slots.
+: CK-DLOG-AT ( ptr n n n -- ptr n )
+   {: log:ptr i:n off:n :}
+   log CK-DLOG-SLOTS-REL + i CK-DLOG-SLOT * + off + ;
+
+\ A logged record in neither the global wordlist nor the open package's own is
+\ a qualified definition, which no file before the claim makes. Its row would
+\ be keyed in a scope no lookup of the engine reaches, so the boot stops.
+
+\ The symbol a logged definition's row is keyed by. REC names the word and the
+\ wordlist it was published into; NS is the namespace record of the package
+\ that was open, NULL-PTR outside one, and holds that package's public and
+\ private wordlist ids where a word keeps its code span (xref.f
+\ XREF-PKG-PUBLIC, XREF-PKG-PRIVATE).
+: CK-DLOG-SYM ( ptr n ptr n -- n )
+   {: rec:ptr ns:ptr :}
+   rec CK-REC-NAME$ {: a:ptr u:n :}
+   rec CK-REC-WID {: wid:n :}
+   wid 0= IF a u CHECKER-GLOBAL-SYM EXIT THEN
+   ns NULL-PTR <> IF
+      wid ns CK-NS-PUBLIC-SLOT cells + @ = IF
+         ns CK-REC-NAME$ SYM-PUBLIC a u CHECKER-PKG-SYM EXIT
+      THEN
+      wid ns CK-NS-PRIVATE-SLOT cells + @ = IF
+         ns CK-REC-NAME$ SYM-PRIVATE a u CHECKER-PKG-SYM EXIT
+      THEN
+   THEN
+   s" checker: qualified definition before the source claim" 76 die ;
+
+\ Record slot I's row. A record `undefine` has retired since has none. A live
+\ row wins, the question CHECKER-CERT-DUP? asks; no candidate is open here.
+: CK-DLOG-ROW ( ptr n n -- )
+   {: log:ptr i:n :}
+   log i CK-DLOG-REC-OFF CK-DLOG-AT 0 ptr-field @ {: rec:ptr :}
+   rec CK-REC-WID CK-WL-RETIRED = IF EXIT THEN
+   rec log i CK-DLOG-PKG-OFF CK-DLOG-AT 0 ptr-field @ CK-DLOG-SYM {: sym:n :}
+   sym CHECKER-FIND-USIG-SYM IF EXIT THEN
+   sym
+   log i CK-DLOG-SIG-A-OFF CK-DLOG-AT 0 ptr-field @
+   log i CK-DLOG-SIG-U-OFF CK-DLOG-AT @
+   CK-DECLARED-SYM! ;
+
+\ Record every logged row in log order, then empty the log - its slots, count
+\ and address cell - so no process-local address outlives the claim in DATA.
+\ The last row's wide and arity latches would mark the next definition the
+\ engine publishes (REC-WIDE-PUBLISH, REC-MIN-IN@), so they are cleared too.
+: CK-DECLARED-LOG-DRAIN ( -- )
+   CK-DLOG-FIELD @ {: log:ptr :}
+   log NULL-PTR = IF EXIT THEN
+   log @ {: n:n :}
+   n 0 ?DO log i CK-DLOG-ROW LOOP
+   log 0 n CK-DLOG-SLOT * CK-DLOG-SLOTS-REL + CELL / ARENA-CELLS-ZERO
+   NULL-PTR CK-DLOG-FIELD !
+   0 RECW !  0 RECMI ! ;
 
 \ The first cold checker has no retained owner to transfer from. Publish it
-\ only after every callback is installed. A replacement keeps the nonzero
+\ only after every callback is installed, then record the rows the engine
+\ logged while nothing owned the source. A replacement keeps the nonzero
 \ source owner until TRANSFER-CHECKED completes the explicit handover.
 : CLAIM-COLD-SOURCE ( -- )
-   data-base SOURCE-CELL + 0 ptr-field @ 0= if CLAIM-SOURCE-OWNER then ;
+   data-base SOURCE-CELL + 0 ptr-field @ 0= if
+      CLAIM-SOURCE-OWNER CK-DECLARED-LOG-DRAIN
+   then ;
 CLAIM-COLD-SOURCE
 ;package

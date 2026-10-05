@@ -1,5 +1,10 @@
 \ Descriptor bounds only: no synthetic record supplies or executes callbacks.
 require lib/test.f
+require lib/fs.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
+require lib/engine-candidate.f
 require src/habu/aot-arm.f
 
 package OWNER-DESCRIPTOR-TEST
@@ -38,6 +43,32 @@ variable NEED
 TRUSTED: ABI-ONLY ( -- )
    s" OD-ABI-ONLY ( -- n ) 7" CHECK-UNJUDGED! -1 T= ;
 
+\ A source-loaded compiler's bindings are bounded as a captured one's reads
+\ are: the subject loads the compiler source over a live owner whose recorded
+\ extent ends before the declared-row field, and the load dies on
+\ E-NCOMP-OWNER before the field is read.
+$1000 constant IO-CAP
+60000 constant TIMEOUT-MS
+67 constant RC-THROW                    \ a load's uncaught throw
+create OUT IO-CAP allot
+create ERR IO-CAP allot
+create SUBJECT FS-PATH-CAP allot   variable SUBJECT-U
+
+: SOURCE-EXTENT ( -- )
+   SOURCE-ROOT:CURRENT$ s" checker-owner-descriptor-subject.f"
+      SUBJECT JOIN-PATH SUBJECT-U !
+   PROC-ARGV-ENV-RESET
+   s" --load" >LEN PROC-ARGV+
+   SUBJECT SUBJECT-U @ >LEN PROC-ARGV+
+   PROC-ENV-INHERIT-MISSING
+   ENGINE-CANDIDATE:PATH$ >LEN
+   OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   {: outu:len erru:len rc:n :}
+   rc RC-THROW T=
+   ERR erru LEN>N s" hb: uncaught throw code -8574" CONTAINS? TTRUE
+   OUT outu LEN>N s" bound past" CONTAINS? TFALSE ;
+
 : RUN ( -- )
    T-RESET
    ABI-READ 16 T=
@@ -60,6 +91,7 @@ TRUSTED: ABI-ONLY ( -- )
    CHECKER-OWNER-ABI:BYTES 1+ NEED ! REJECT
    CHECKER-OWNER-ABI:BYTES NEED ! GOOD
    LIVE-OWNER
+   SOURCE-EXTENT
    \ This opening is valid even while the retained host has a legacy record.
    AOT-ARM:WINDOW-OPEN-PERSISTENT
    AOT-ARM:PAYLOAD-MODE @ 0 T=

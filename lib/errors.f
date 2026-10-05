@@ -979,7 +979,7 @@
 -8565 constant E-NEMIT-ROW    \ a row index at or past the count the sealed emission holds, a row offset outside the emission, an empty emission, a trailing return longer than it, or a call site of neither kind
 -8566 constant E-NPUB-PLACE   \ an emission whose branches were measured from an address that is not the code slot this seam is claiming for it
 
--8570 constant E-NCOMP-STATE   \ a compiler entry reached while another one is open
+-8570 constant E-NCOMP-STATE   \ a compiler entry reached while another one is open, or a checker scan or store write from a callback while a definition compiles (src/core/checker.f WRITE-WINDOW)
 -8571 constant E-NCOMP-TEXT    \ definition source longer than the engine capture can hold
 -8572 constant E-NCOMP-VERDICT \ the engine's own check did not certify the pending definition
 -8573 constant E-NCOMP-NAME    \ the pending record and the checker's tape name different definitions

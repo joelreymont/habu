@@ -1202,7 +1202,6 @@ CHECKER-OWNER-ABI:DOES-IN-N-OFF constant DECL-DOES-IN-N-OFF
 CHECKER-OWNER-ABI:DOES-OUT-N-OFF constant DECL-DOES-OUT-N-OFF
 CHECKER-OWNER-ABI:DOES-IN-SLOT-OFF constant DECL-DOES-IN-SLOT-OFF
 CHECKER-OWNER-ABI:DOES-OUT-SLOT-OFF constant DECL-DOES-OUT-SLOT-OFF
-CHECKER-OWNER-ABI:USIG-TRUNCATE-OFF constant DECL-USIG-TRUNCATE-OFF
 \ --- the finalized per-call-site facts the scan recorded
 CHECKER-OWNER-ABI:CALL-CELLS-OFF constant DECL-CALL-CELLS-OFF
 CHECKER-OWNER-ABI:CALL-BINDING-OFF constant DECL-CALL-BINDING-OFF
@@ -1252,6 +1251,14 @@ CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant DECL-REC-WIDE-PUBLISH-OFF
 CHECKER-OWNER-ABI:CHECK-UNJUDGED-OFF constant DECL-CHECK-UNJUDGED-OFF
 \ The diagnostic that scan suppressed, rendered by the instance that scanned.
 CHECKER-OWNER-ABI:CHECK-REPORT-OFF constant DECL-CHECK-REPORT-OFF
+\ A hook-less definition's declaration, recorded as its row without authority.
+CHECKER-OWNER-ABI:DECLARED-ROW-OFF constant DECL-DECLARED-ROW-OFF
+\ A refused definition's cut back to the store end it began at, and that end.
+CHECKER-OWNER-ABI:RETRACT-ROWS-OFF constant DECL-RETRACT-ROWS-OFF
+CHECKER-OWNER-ABI:ROWS-END-OFF constant DECL-ROWS-END-OFF
+\ The compile window: opened with the code a callback's checker write is refused
+\ with once the definition's rows are recorded, shut with 0 before its own.
+CHECKER-OWNER-ABI:WRITE-WINDOW-OFF constant DECL-WRITE-WINDOW-OFF
 \ Family/variant ids and all metadata about them share the live source owner.
 CHECKER-OWNER-ABI:FAMILY-MATCH-OFF constant DECL-FAMILY-MATCH-OFF
 CHECKER-OWNER-ABI:FAMILY-CON-OFF constant DECL-FAMILY-CON-OFF
@@ -2154,4 +2161,48 @@ TIER-PROV:END constant UNIT-COMPILE-CELL
 \ capacity may grow without moving any published engine slot or live map.
 UNIT-COMPILE-CELL CELL + constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
-PD-TABLE-END constant DATA-START
+
+\ --- The declared-row log of a cold boot (dot habu-visibility-discharge-548) --
+\ A definition compiled with the hook cell empty has its declaration as its row
+\ (src/core/checker.f CHECKER-DECLARED-ROW!), recorded by the source owner. A
+\ cold boot has no owner until src/core/checker.f claims the source at its end
+\ (CLAIM-COLD-SOURCE), so the engine's empty-hook publish arm (habu2.f
+\ EM-COMPILE-PUBLISH-HOOKED, seed forth.fs EMIT-COMPILE-PUBLISH-HOOKED) appends
+\ each signed `:` definition it publishes before then to this log, and the claim
+\ records every logged declaration's row (checker.f CK-DECLARED-LOG-DRAIN), then
+\ zeroes the slots and ADDR-CELL. The log is populated and drained inside the
+\ prefix load, so it is empty whenever user source runs and at every capture.
+\ A slot is four cells, all written from DATA cells the arm already holds: the
+\ pending record (PEND-CELL), the open package's namespace record (PKG-REC-CELL,
+\ 0 outside a package), the signature's address and its length. The checker
+\ keys each row by the record's wordlist and that namespace record, and reads
+\ both records through `ptr-field`, so no record number crosses.
+\ CAP: the prefix through src/core/checker.f publishes about 2330 signed `:`
+\ definitions; a full log dies at the definition, exit 72, the pre-trust
+\ boot-integrity class PD-TABLE's overflow uses, rather than lose a row.
+\ Protection class: UNGUARDED engine scratch, as PD-TABLE; it grants nothing,
+\ since the claim records rows without authority from it.
+\
+\ ADDR-CELL holds the log's ADDRESS while it holds entries, and 0 otherwise. The
+\ seed lays its bands out at other offsets (forth.fs SNAPSTK-END), so the checker
+\ finds the log through this one fixed cell (checker.f CK-DECLARED-LOG-CELL,
+\ test/aot-sig-pool-suite.f asserts the agreement) and mirrors no band offset; an
+\ engine that predates the log reads 0, an empty log. WHERE IT HAD TO GO: a
+\ fixed DATA cell both engines leave free, below $7FF8 and below DATA-START for
+\ the reasons AOT-CELLS states. It is the last cell of the unclaimed run
+\ $4208..$43A0 below APP-ENTRY:XT-CELL, swept for a claimant across src lib
+\ tools test maki bootstrap before taking it; the seed claims nothing there.
+package DECLARED-LOG
+public
+$4398 constant ADDR-CELL
+4096 constant CAP
+0  constant REC-OFF                                \ in-slot: the pending record
+8  constant PKG-OFF                                \ in-slot: the namespace record or 0
+16 constant SIG-A-OFF                              \ in-slot: the signature's address
+24 constant SIG-U-OFF                              \ in-slot: the signature's length
+32 constant SLOT                                   \ per-slot stride
+8  constant SLOTS-REL                              \ slots begin after the u64 count cell
+PD-TABLE-END constant OFF
+OFF SLOTS-REL + CAP SLOT * + constant END
+;package
+DECLARED-LOG:END constant DATA-START

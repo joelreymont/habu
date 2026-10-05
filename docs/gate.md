@@ -25,11 +25,20 @@ A green native build does not show that the prefix boots from source. The
 build compiles the whole prefix with a checker: the host's up to
 `src/core/check-hook.f`, then the window's own, which starts with the rows
 the host recorded for everything before the hook (`TRANSFER-CHECKED`,
-`src/core/checker.f`). An engine that boots its prefix from source has no
-checker before the hook and only axiom rows after it. A prefix file loaded
-after the hook that names a pre-hook word without a `PRIM:` row therefore
-builds and then dies on every cold boot - measured with `PATH-CAP` inside
-`TMP-PATH-CHECK` before it had a row: `native-build OK`, then
+`src/core/checker.f`). An engine that boots its prefix from source judges
+nothing before the hook: a signed `:` definition's declaration is its row,
+without authority (on a cold boot, before `src/core/checker.f` claims the
+source, the engine logs the declaration and the claim records it), and from
+the claim on a `TRUSTED:` declaration's row carries authority; a `TRUSTED:`
+or data word compiled before the claim has a row only from a `PRIM:` axiom. A
+sealed boot marks a pre-hook word with no external row internal, and a checked
+body naming it is refused `E-UNDEFINED`; an unsealed one
+(`HABU_WHITEBOX_IMAGE=1`) binds the declared row
+([forth.md](forth.md#rules-learned-by-refusal)). A prefix
+file loaded after the hook that names a pre-hook word with no external row (a
+`PRIM:` axiom, or a `TRUSTED:` declaration after the claim) therefore builds
+and then dies on every sealed cold boot - measured with `PATH-CAP`
+inside `TMP-PATH-CHECK` before it had a row: `native-build OK`, then
 `E-UNDEFINED habu: in tmp-path-check: undefined word 'PATH-CAP'` from the cold
 host. The rows cannot be withheld to make the build refuse it: without them
 the window cannot compile `src/core/check-hook.f`'s first definition (the
@@ -227,7 +236,11 @@ at its deadline.
   private copy of the unsealed engine (`test/whitebox-engine.f`) because such a
   file reaches inside the engine, and the sealed `bin/hb` refuses those tokens
   — standalone such a file exits 70 with `hb: internal engine word: <TOKEN>`
-  (measured on `test/whitebox-engine-suite.f`). That engine is a keyed image
+  (measured on `test/whitebox-engine-suite.f`). Its checker is unsealed, so a
+  checked body that names an internal word binds that word's recorded row and
+  is checked against it ([forth.md](forth.md#rules-learned-by-refusal)): a
+  whitebox suite calls an internal word from a plain `:` definition, and a
+  wrong signature there is refused. That engine is a keyed image
   (below): its build row, `whitebox-engine-build`, also puts the copy in
   place, and every whitebox row waits for that row. A file that only *spawns*
   a child needing the unsealed engine is not of that kind: it names one itself

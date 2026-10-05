@@ -50,6 +50,7 @@ require lib/errors.f
 require lib/string.f
 require lib/test.f
 require src/habu/layout.f
+require src/habu/xref.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
@@ -128,8 +129,12 @@ variable VALUE                     \ the number the first one carried
 \ exactly as unverified as they were. CK-BODYBUF-CAP is a capacity rather than an
 \ offset, the body-text capacity that bounds every name the checker takes, and
 \ drifts the same way. The input cursor and the input's end are the ones
-\ `generates:` reads its row from. src/core/layout-buffer.f loads before
-\ layout.f too and mirrors the input cursor STORAGE-UNREAD writes. The list is
+\ `generates:` reads its row from. The declared-row log's cell and slot layout,
+\ the record fields that name a word and its package's wordlists, and the
+\ retired wordlist mark are the ones the cold claim reads (CK-DECLARED-LOG-DRAIN);
+\ the record fields restate src/habu/xref.f, which the engine also holds.
+\ src/core/layout-buffer.f loads before layout.f too and mirrors the input
+\ cursor STORAGE-UNREAD writes. The list is
 \ the live mirror set of both files, so a name that is no longer mirrored has to
 \ leave this list with the mirror it describes: naming one that no definition
 \ answers reads as drift on the layout side (0 definitions, 0 for the number)
@@ -149,6 +154,20 @@ variable VALUE                     \ the number the first one carried
    s" CK-BODYBUF-CAP"      BODYBUF-CAP       ?MIRROR
    s" CK-INP-OFF"          INP-CELL          ?MIRROR
    s" CK-INE-OFF"          INE-CELL          ?MIRROR
+   s" CK-DECLARED-LOG-CELL" DECLARED-LOG:ADDR-CELL ?MIRROR
+   s" CK-DLOG-SLOT"        DECLARED-LOG:SLOT      ?MIRROR
+   s" CK-DLOG-SLOTS-REL"   DECLARED-LOG:SLOTS-REL ?MIRROR
+   s" CK-DLOG-REC-OFF"     DECLARED-LOG:REC-OFF   ?MIRROR
+   s" CK-DLOG-PKG-OFF"     DECLARED-LOG:PKG-OFF   ?MIRROR
+   s" CK-DLOG-SIG-A-OFF"   DECLARED-LOG:SIG-A-OFF ?MIRROR
+   s" CK-DLOG-SIG-U-OFF"   DECLARED-LOG:SIG-U-OFF ?MIRROR
+   s" CK-WL-RETIRED"       DICT-WL:RETIRED   ?MIRROR
+   s" CK-REC-LEN-MASK"     DNAME-LEN-MASK    ?MIRROR
+   s" CK-REC-EXT"          DNAME-EXT         ?MIRROR
+   s" CK-REC-FLAGS-SLOT"   XREF-FLAGS-SLOT   ?MIRROR
+   s" CK-REC-NAME-SLOT"    XREF-NAME-SLOT    ?MIRROR
+   s" CK-NS-PUBLIC-SLOT"   XREF-START-SLOT   ?MIRROR
+   s" CK-NS-PRIVATE-SLOT"  XREF-LEN-SLOT     ?MIRROR
    s" src/core/layout-buffer.f" LOAD-SOURCE
    s" STGT-INP-CELL"       INP-CELL          ?MIRROR ;
 

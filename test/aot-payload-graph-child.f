@@ -32,17 +32,17 @@ TRUSTED: BYTES ( ptr u8 n -- ) {: src:ptr u:n :}
    SNAPSHOT CURSOR @ + {: saved:ptr :}
    COMPARING @ IF
       src u saved u CORE-STR= 0= IF 79 throw THEN
-   ELSE src saved u USIGS-COPY THEN
+   ELSE src saved u ARENA-COPY THEN
    u CURSOR +! ;
 
-TRUSTED: VALUE ( n -- ) SCALAR ! SCALAR CELL BYTES ;
-TRUSTED: START ( bool -- ) COMPARING ! 0 CURSOR ! ;
-TRUSTED: FINISH ( -- )
+: VALUE ( n -- ) SCALAR ! SCALAR CELL BYTES ;
+: START ( bool -- ) COMPARING ! 0 CURSOR ! ;
+: FINISH ( -- )
    COMPARING @ IF CURSOR @ USED @ <> IF 79 throw THEN
    ELSE CURSOR @ USED ! THEN ;
 
 \ Published effects, symbols, constructors and their effect-index heads.
-TRUSTED: CORE ( -- )
+: CORE ( -- )
    UEND @ VALUE USIGS UEND @ BYTES
    SYM-N @ VALUE SYMS SYM-N @ SYM-REC * BYTES
    SYM-STR-U @ VALUE SYM-STR SYM-STR-U @ BYTES
@@ -62,7 +62,7 @@ public
 
 \ The old rows must not rescue an importer that publishes counts but fails to
 \ copy records. Bounds and current marks are checked before clearing them.
-TRUSTED: ERASE-REGISTRY-DELTA ( ptr u8 n -- ) {: src:ptr u:n :}
+: ERASE-REGISTRY-DELTA ( ptr u8 n -- ) {: src:ptr u:n :}
    src u REG-AOT-TABLE-CHECK
    REG-AOT-N 0 ?do
       src i REG-AOT-ROW@ drop {: base:n count:n :}
@@ -71,8 +71,8 @@ TRUSTED: ERASE-REGISTRY-DELTA ( ptr u8 n -- ) {: src:ptr u:n :}
       count i REG-AOT-WIDTH * ASIG-GRAPH-ZERO
    loop ;
 
-TRUSTED: PREPARE-GRAPH-STATE ( -- ) TFX-ENSURE SVX-ENSURE ;
-TRUSTED: GRAPH-STATE ( -- )
+: PREPARE-GRAPH-STATE ( -- ) TFX-ENSURE SVX-ENSURE ;
+: GRAPH-STATE ( -- )
    REG-AOT-N 0 ?do
       i REG-AOT-COUNT GRAPH-PUBLICATION:VALUE
       i REG-AOT-BASE-PTR i REG-AOT-COUNT i REG-AOT-WIDTH * GRAPH-PUBLICATION:BYTES
@@ -117,32 +117,32 @@ TRUSTED: SAVE ( -- )
    regoff POOL 40 + !
    AOT-REG-LEN @ {: regu:n :}
    regu CAP regoff - > IF 79 throw THEN
-   AOT-REG-BUF@ POOL regoff + regu USIGS-COPY
+   AOT-REG-BUF@ POOL regoff + regu ARENA-COPY
    regu POOL 48 + !
-   rows POOL 56 + rowu USIGS-COPY
-   str POOL 56 rowu + + stru USIGS-COPY
+   rows POOL 56 + rowu ARENA-COPY
+   str POOL 56 rowu + + stru ARENA-COPY
    regoff regu + USED ! ;
 
-TRUSTED: MODE? ( ptr u8 n -- bool )
+: MODE? ( ptr u8 n -- bool )
    s" HABU_PAYLOAD_TEST_MODE" GETENV CORE-STR= ;
 
-TRUSTED: GRAPH ( n -- ptr u8 )
+: GRAPH ( n -- ptr u8 )
    4 CK-AOT-FIELD POOL CK-AOT-S-STR CK-AOT-OFF + + ;
 
-TRUSTED: DIN ( ptr u8 -- ptr u8 ) dup EW.DIN @ + ;
-TRUSTED: DOUT-TYPE ( ptr u8 -- ptr u8 ) {: graph:ptr :}
+: DIN ( ptr u8 -- ptr u8 ) dup EW.DIN @ + ;
+: DOUT-TYPE ( ptr u8 -- ptr u8 ) {: graph:ptr :}
    graph EW.DOUT @ graph + EN.A @ graph + ;
 
-TRUSTED: NAMED-GRAPH ( ptr u8 n -- ptr u8 ) {: name:ptr u:n :}
+: NAMED-GRAPH ( ptr u8 n -- ptr u8 ) {: name:ptr u:n :}
    CK-AOT-ROWS 0 ?do
       i 0 CK-AOT-FIELD CK-AOT-STR$ name u CORE-STR=CI IF i GRAPH unloop EXIT THEN
-   loop 79 throw NULL-PTR ;
+   loop 79 throw ;
 
 \ The lowest EW.SYM bit outside CTL-GRAPH-FLAGS, which CK-GRAPH-CHECK refuses.
 \ A literal bit stays corrupt only until a flag claims it: $80 is CTL-RENDERS.
-TRUSTED: UNCLAIMED-FLAG ( -- n ) CTL-GRAPH-FLAGS invert dup negate and ;
+: UNCLAIMED-FLAG ( -- n ) CTL-GRAPH-FLAGS invert dup negate and ;
 
-TRUSTED: CORRUPT ( -- )
+: CORRUPT ( -- )
    s" authority-bits" MODE? IF 0 GRAPH EW.SYM dup @ UNCLAIMED-FLAG or swap ! THEN
    s" length" MODE? IF $7FFFFFFFFFFFFFFF 0 GRAPH EW.NEXT ! THEN
    s" cycle" MODE? IF 0 GRAPH dup EW.DIN @ swap DIN EN.B ! THEN
@@ -180,16 +180,16 @@ TRUSTED: CORRUPT ( -- )
       EN.E @ 0 EQ
       2 graph DIN EN.C ! 1 graph EW.MINI !
    THEN
-   s" HABU_PAYLOAD_TEST_MODE" GETENV nip IF
+   s" HABU_PAYLOAD_TEST_MODE" GETENV nip 0<> IF
       s" graph corruption applied: " type s" HABU_PAYLOAD_TEST_MODE" GETENV type cr
    THEN ;
 
-TRUSTED: WIDTH-MODE? ( -- bool )
+: WIDTH-MODE? ( -- bool )
    s" scalar-zero" MODE? s" wide-width" MODE? or s" logical-width" MODE? or ;
 
 \ Exercise the private throwing validator below the public process refusal,
 \ then compare every published store before rerunning the real install path.
-TRUSTED: WIDTH-REFUSAL-ATOMIC ( -- )
+: WIDTH-REFUSAL-ATOMIC ( -- )
    WIDTH-MODE? 0= IF EXIT THEN
    TFAM:PREPARE-GRAPH-STATE
    RES-FALSE GRAPH-PUBLICATION:START
@@ -202,12 +202,11 @@ TRUSTED: WIDTH-REFUSAL-ATOMIC ( -- )
    GRAPH-PUBLICATION:CORE TFAM:GRAPH-STATE GRAPH-PUBLICATION:FINISH
    s" graph width refusal preserved publication state" type cr ;
 
-TRUSTED: ARM ( -- ) CHECKER-SCOPE-START UEND @ MARK ! WINDOW-OPEN ;
+: ARM ( -- ) CHECKER-SCOPE-START UEND @ MARK ! WINDOW-OPEN ;
 TRUSTED: ABI-BEGIN ( -- )
    check@ SAVED-CHECK ! tier@ SAVED-TIER ! 0 set-check 1 TIER:SELECT ;
 TRUSTED: ABI-END ( -- ) SAVED-CHECK @ set-check SAVED-TIER @ TIER:SELECT ;
-TRUSTED: SOURCE-MIN ( ptr u8 n -- n ) EFFECT-EXTERNAL-MIN-IN ;
-TRUSTED: DECLARE-WIDE ( -- )
+: DECLARE-WIDE ( -- )
    s" payload-wide" s" 0 FIELD left n FIELD right r ;STRUCTURE" SD-REPLAY
    s" payload-empty" s" 0 ;STRUCTURE" SD-REPLAY
    s" payload-option" s" 1 VARIANT full FIELD value a ;VARIANT VARIANT empty ;VARIANT ;ENUM" ED-REPLAY ;
@@ -227,7 +226,7 @@ TRUSTED: CORRUPT-SOURCE ( -- )
       MULTI-ERR-END 1 EQ
       s" graph corruption applied: recovery" type cr
    THEN ;
-TRUSTED: INSTALL ( -- )
+: INSTALL ( -- )
    WINDOW-CLOSE
    R0 @ D0 @ PRELUDE-MARK
    PAYLOAD-CAPTURE
@@ -282,10 +281,10 @@ GRAPH-ROUNDTRIP:CORRUPT-SOURCE
 
 package GRAPH-ROUNDTRIP
 INSTALL
-s" PAYLOAD-FIXED" SOURCE-MIN 1 EQ
+s" PAYLOAD-FIXED" EFFECT-EXTERNAL-MIN-IN 1 EQ
 s" PAYLOAD-ABI" EFFECT-QUERY -1 EQ
 EFFECT-DIN-CELLS 1 EQ EFFECT-DOUT-CELLS 1 EQ
-s" PAYLOAD-ABI" SOURCE-MIN -1 EQ
+s" PAYLOAD-ABI" EFFECT-EXTERNAL-MIN-IN -1 EQ
 s" PAYLOAD-ABI" CHECKER-RESOLVES? 0 EQ
 \ The imported row carries no authority, and this window's checker is unsealed,
 \ so a checked call binds that row.

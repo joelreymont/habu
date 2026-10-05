@@ -10898,12 +10898,55 @@ public
    DEF-TRUST:REGISTER
    publish B, ;
 
+\ The declared-row log is full (layout.f DECLARED-LOG:CAP): name the definition
+\ that overflowed it, exit 72, the pre-trust boot-integrity class C-PD-DIE-FULL
+\ uses. Losing its row instead would leave a checked caller E-UNDEFINED with no
+\ reason given.
+: C-DECLARED-LOG-DIE-FULL ( -- )
+   SP SP 32 SUBI,  9 $6C636564203A6268 LIT64,  9 SP 0 STR,  9 $776F722D64657261 LIT64,  9 SP 8 STR,  9 $6C756620676F6C20 LIT64,  9 SP 16 STR,  9 $2020202020203A6C LIT64,  9 SP 24 STR,
+   0 2 MOVZ,  1 SP 0 ADDI,  2 27 MOVZ,  NR-WRITE SYS,  SP SP 32 ADDI,   \ "hb: declared-row log full: "
+   C-PUSH-DREC-NAME  2 G-POP  1 G-POP
+   0 2 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
+   0 72 MOVZ,  NR-EXIT-GROUP SYS, ;
+
+\ Log the pending definition for the claim (layout.f DECLARED-LOG): its record,
+\ the open package's namespace record, its signature's address and length, all
+\ read from DATA cells, then publish the log's address in ADDR-CELL. Clobbers
+\ x12-x15 only; the publication tail after it holds nothing in a register.
+: C-DECLARED-LOG-APPEND ( -- )
+   LBL LBL {: full:label done:label :}
+   12 DECLARED-LOG:OFF LIT64,  12 DATA 12 ADD,        \ x12 = &log
+   13 12 0 LDR,  14 DECLARED-LOG:CAP MOVZ,  13 14 CMP,  C-GE full BCOND,
+   15 DECLARED-LOG:SLOT MOVZ,  15 13 15 MUL,
+   14 12 DECLARED-LOG:SLOTS-REL ADDI,  14 14 15 ADD,   \ x14 = the slot
+   15 DATA PEND-CELL LDR,     15 14 DECLARED-LOG:REC-OFF STR,
+   15 DATA PKG-REC-CELL LDR,  15 14 DECLARED-LOG:PKG-OFF STR,
+   15 DATA TSIG-A-CELL LDR,   15 14 DECLARED-LOG:SIG-A-OFF STR,
+   15 DATA TSIG-U-CELL LDR,   15 14 DECLARED-LOG:SIG-U-OFF STR,
+   13 13 1 ADDI,  13 12 0 STR,                          \ count++
+   12 DATA DECLARED-LOG:ADDR-CELL STR,
+   done B,
+   full LBL,  C-DECLARED-LOG-DIE-FULL
+   done LBL, ;
+
 \ A zero hook verdict rejects the pending definition. Any non-zero verdict
 \ certifies it and reaches the ordinary publication tail.
+\ With the hook cell empty nothing judges the body, and its declaration is its
+\ row, as at tier 1 (compiler.f SCAN): a TRUSTED: declaration through TRUST-DECL
+\ with its authority, any other through the owner's DECLARED-ROW field without
+\ authority (checker.f CHECKER-DECLARED-ROW!). Only the source owner records.
+\ Before checker.f claims the source there is none, so a declaration other than
+\ a TRUSTED: one goes to the declared-row log, whose rows the claim records
+\ (C-DECLARED-LOG-APPEND); a TRUSTED: one records nothing, since the claim
+\ grants no authority. The logged definition is published: the tail after this
+\ arm cannot fail recoverably, as the DECLARED-ROW call here already assumes,
+\ so no logged record is ever rolled back and reused. A definition with no
+\ signature records nothing.
 : EM-COMPILE-PUBLISH-HOOKED ( label label -- )
    {: publish:label finish:label :}
-   LBL LBL LBL LBL {: nohook:label rejected:label inl:label done:label :}
-   9 DATA P2-CELL LDR,  9 nohook CBNZ,                \ pass-2 second ';': no hook re-check
+   LBL LBL LBL LBL LBL LBL {: nohook:label declared:label owned:label rejected:label inl:label done:label :}
+   9 DATA P2-CELL LDR,  9 publish CBNZ,               \ pass-2 second ';': no hook re-check
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
@@ -10913,7 +10956,19 @@ public
       \ publish path (item 12 slice 3b).
       LOWER-TXN:FREEZE
       EM-P2-TRIGGER
-   nohook LBL,  publish B,
+      publish B,
+   nohook LBL,
+   9 DATA TSIG-U-CELL LDR,  9 publish CBZ,
+   9 DATA TRUSTED-CELL LDR,  9 declared CBZ,
+      NCOMP-DISPATCH:DECL-EFFECT-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
+      publish B,
+   declared LBL,
+   9 DATA NCOMP-DISPATCH:DECL-CELL LDR,  9 owned CBNZ,
+      C-DECLARED-LOG-APPEND
+      publish B,
+   owned LBL,
+   NCOMP-DISPATCH:DECL-DECLARED-ROW-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
+   publish B,
    rejected LBL,  0 CODE-ORIGIN:CLOSE,
    11 DATA PEND-CELL LDR,  12 11 16 LDR,  12 12 DNAME-EXT ANDI,  12 inl CBZ,
       CP 11 24 LDR,  done B,                           \ ext name in code space: CP := pre-name CP

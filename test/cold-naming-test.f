@@ -10,6 +10,15 @@
 \ boot shows the refusal, so every case here is a load on the cold fixture host
 \ (test/cold-engine.f), which reads this tree's prefix.
 \
+\ Two rules meet at a signed `:` word of the prefix. Its declaration is its row,
+\ recorded without authority: after src/core/checker.f claims the source the
+\ owner records it at the definition, and before the claim the engine logs it
+\ and the claim records it (CK-DECLARED-LOG-DRAIN). The sealed boot marks it
+\ internal all the same (no external row, no axiom), so the engine refuses the
+\ name before the checker asks; with the seal pass stood down
+\ (HABU_WHITEBOX_IMAGE=1, src/core/internal-mark.f) the checker binds the row
+\ and checks the body against it.
+\
 \ Run: bin/hb --load test/cold-naming-test.f
 
 require lib/string.f
@@ -47,11 +56,12 @@ create ERR IO-CAP allot
    ROOT$ s" probe.f" PROBE JOIN-PATH PROBE-U !
    HOST$ COLD-ENGINE:PROVIDE ;
 
-\ Load one definition on the cold host, after its own prefix.
-: LOAD ( ptr u8 n -- n n ) {: src:ptr srcu:n :}   \ erru rc
+: PROBE! ( ptr u8 n -- ) {: src:ptr srcu:n :}
    PROBE$ EXISTS? if PROBE$ REMOVE-FILE then
    PROBE$ src srcu WRITE-ALL
-   PROC-ARGV-ENV-RESET
+   PROC-ARGV-ENV-RESET ;
+
+: SPAWN ( -- n n )   \ erru rc
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    PROBE$ >LEN PROC-ARGV+
@@ -59,6 +69,16 @@ create ERR IO-CAP allot
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    erru LEN>N rc ;
+
+\ Load one definition on the cold host, after its own prefix.
+: LOAD ( ptr u8 n -- n n ) PROBE! SPAWN ;
+
+\ The same load with the seal pass stood down, set before the inherited
+\ environment so an outer value cannot reach past it.
+: LOAD-UNSEALED ( ptr u8 n -- n n )
+   PROBE!
+   s" HABU_WHITEBOX_IMAGE" >LEN s" 1" >LEN PROC-ENV+
+   SPAWN ;
 
 : AXIOM-CASES ( -- )
    s" a checked body names PATH-CAP, which has an axiom row" T-LABEL
@@ -75,6 +95,43 @@ create ERR IO-CAP allot
    s" ... and is named as an undefined word" T-LABEL
    ERR erru s" undefined word 'REG-PROT-CAP'" CONTAINS? TTRUE ;
 
+\ SCHEMA-REG:SCHEMA-CON (src/core/type-schema.f) is declared ( n -- n ).
+: SEALED-NAME-CASE ( -- )
+   S\" : CN-SCH ( n -- n ) SCHEMA-REG:SCHEMA-CON ;\n" LOAD {: erru:n rc:n :}
+   s" a sealed boot refuses a declared pre-hook word by name" T-LABEL
+   rc REJECT-RC T=
+   ERR erru s" E-UNDEFINED: SCHEMA-REG:SCHEMA-CON" CONTAINS? TTRUE ;
+
+\ The mismatch text render names no code; its JSON diagnostic does.
+: UNSEALED-ROW-CASES ( -- )
+   s" an unsealed boot binds the declared row" T-LABEL
+   S\" : CN-SCH ( n -- n ) SCHEMA-REG:SCHEMA-CON ;\n" LOAD-UNSEALED nip 0 T=
+   S\" 0 0= DIAG-JSON!\n: CN-SCH ( n -- bool ) SCHEMA-REG:SCHEMA-CON ;\n"
+   LOAD-UNSEALED {: erru:n rc:n :}
+   s" ... and refuses a caller the row does not fit" T-LABEL
+   rc REJECT-RC T=
+   ERR erru s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE ;
+
+\ Declared before checker.f claims the source: CORE-FOLD-C ( n -- n ) in
+\ src/core/util.f, the first prefix file, and in src/core/checker.f
+\ CHECKER-EFFECT-AUTHORITY:SEALED? ( -- bool ), in a package, and CON-OF
+\ ( ptr u8 n -- n ).
+: SEALED-PRE-CLAIM-CASE ( -- )
+   S\" : CN-CON ( ptr u8 n -- n ) CON-OF ;\n" LOAD {: erru:n rc:n :}
+   s" a sealed boot refuses a word declared before the claim by name" T-LABEL
+   rc REJECT-RC T=
+   ERR erru s" E-UNDEFINED: CON-OF" CONTAINS? TTRUE ;
+
+: UNSEALED-PRE-CLAIM-CASES ( -- )
+   s" an unsealed boot binds rows declared before the claim, from the first file and in a package" T-LABEL
+   S\" : CN-FOLD ( n -- n ) CORE-FOLD-C ;\n: CN-SEALED ( -- bool ) CHECKER-EFFECT-AUTHORITY:SEALED? ;\n: CN-CON ( ptr u8 n -- n ) CON-OF ;\n"
+   LOAD-UNSEALED nip 0 T=
+   S\" 0 0= DIAG-JSON!\n: CN-CON ( ptr u8 n -- bool ) CON-OF ;\n"
+   LOAD-UNSEALED {: erru:n rc:n :}
+   s" ... and refuses a caller the row does not fit" T-LABEL
+   rc REJECT-RC T=
+   ERR erru s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE ;
+
 \ The source verifier tools/check.f loads names checker cells defined before the
 \ hook (VERIFY-DEFINER-N, MULTI-ERR), so it loads only while each has its row,
 \ and its owner bridges read the owner ABI offsets, which have none, through
@@ -90,6 +147,10 @@ public
    SETUP
    AXIOM-CASES
    NO-AXIOM-CASE
+   SEALED-NAME-CASE
+   UNSEALED-ROW-CASES
+   SEALED-PRE-CLAIM-CASE
+   UNSEALED-PRE-CLAIM-CASES
    VERIFIER-CASE
    CLEANUP-RUN
    T-REPORT

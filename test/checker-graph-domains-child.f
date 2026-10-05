@@ -38,7 +38,7 @@ TRUSTED: GD-LAYER ( n -- n ) {: inner:n :}
 TRUSTED: GD-BUILD ( n -- ) {: depth:n :}
    s" GD-SEED" CHECKER-FIND-ACTIVE-SYM ASIG-GRAPH-COPY ASIG-STR-P @ + {: src:ptr :}
    src EW.NEXT @ dup GD-CAP > IF 79 throw THEN GD-USED !
-   src GD-POOL GD-USED @ USIGS-COPY
+   src GD-POOL GD-USED @ ARENA-COPY
    GD-POOL GD-POOL EW.DIN @ + EN.A @ GD-POOL + {: binder:ptr :}
    binder EN.A @ depth 0 ?do GD-LAYER loop binder EN.A !
    GD-USED @ GD-POOL EW.NEXT ! ;
@@ -74,7 +74,7 @@ TRUSTED: DOMAIN-ALLOC ( -- n )
 
 TRUSTED: DOMAIN-DUP ( ptr u8 -- n ) {: src:ptr :}
    DOMAIN-ALLOC {: off:n :}
-   src DOMAIN-GRAPH @ off + EFF-NODE USIGS-COPY
+   src DOMAIN-GRAPH @ off + EFF-NODE ARENA-COPY
    off ;
 
 TRUSTED: DOMAIN-SHIFT-VIEW ( n -- ) {: rowoff:n :}
@@ -122,7 +122,7 @@ TRUSTED: DOMAIN-PREPARE ( -- )
    sym 0= IF 79 throw THEN
    sym ASIG-GRAPH-COPY ASIG-STR-P @ + {: source:ptr :}
    source EW.NEXT @ dup DOMAIN-CAP > IF 79 throw THEN DOMAIN-USED !
-   source DOMAIN-POOL DOMAIN-USED @ USIGS-COPY
+   source DOMAIN-POOL DOMAIN-USED @ ARENA-COPY
    DOMAIN-POOL DOMAIN-GRAPH !
    DOMAIN-GRAPH @ {: graph:ptr :}
    graph EW.DIN @ graph + {: first-push:ptr :}

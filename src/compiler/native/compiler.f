@@ -135,6 +135,7 @@ variable M-RC                        \ the code the run inside the context reach
 variable M-PUBLISHED-START           \ committed parent's index for notification
 variable M-VERDICT                   \ the verdict the recorded scan reached
 variable M-UNJUDGED                  \ a hook-cell-empty scan's verdict, else -1
+variable M-ROWS                      \ where the checker store ended at STAGE
 variable M-DOES-FRAME                \ checker-owned transaction spans a split compilation
 variable M-DOES                      \ byte split after `does> `, or zero
 variable M-DOES-ROW                  \ the tape row that carries `does>`
@@ -281,18 +282,19 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 
 \ Whether anything is certifying at all. With the hook cell empty nothing is, and
 \ the verdict the scan reports is then a fact about the source and not a refusal:
-\ tier 0 publishes such a definition uncertified (habu2.f reads HOOK-CELL and
-\ skips on zero) and the two tiers have to agree. A window depends on it - its
-\ core prefix is compiled between LOGICAL-RESET and its own check-hook.f - and so
-\ does every `0 set-check` session.
+\ tier 0 publishes such a definition uncertified with its declaration as its row
+\ (habu2.f EM-COMPILE-PUBLISH-HOOKED reads HOOK-CELL), and the two tiers have to
+\ agree (DECLARE-HOOKLESS). A window depends on it - its core prefix is compiled
+\ between LOGICAL-RESET and its own check-hook.f - and so does every
+\ `0 set-check` session.
 : CERTIFYING? ( -- bool )
    check@ 0 <> ;
 
-\ The scan with the hook cell empty. Its verdict refuses nothing, but a body it
-\ did not certify may have left no effect to compile against, and KEEP-ARITY
-\ refuses that over the verdict kept here. The reason is printed now, while the
-\ owner still holds the scan that found it: a does> head's scan is replaced by
-\ its clause's before KEEP-ARITY runs.
+\ The scan with the hook cell empty. Its verdict refuses nothing: a body it did
+\ not certify compiles against its declaration (DECLARE-HOOKLESS), and KEEP-ARITY
+\ refuses over the verdict kept here only when no declaration could be recorded.
+\ The reason is printed now, while the owner still holds the scan that found it:
+\ a does> head's scan is replaced by its clause's before KEEP-ARITY runs.
 : CHECK-HOOKLESS ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u CHECKER-OWNER:CHECK-UNJUDGED {: v:n :}
@@ -342,6 +344,17 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    M-DOES @ 0<> if CHECK-DOES-SPLIT exit then
    CHECK-SOURCE ;
 
+\ With the hook cell empty a definition's row is its declaration, as at tier 0
+\ (checker.f CHECKER-DECLARED-ROW!): recorded after the scan, its report and the
+\ capture, whose state the recorder would clobber, and before KEEP-ARITY, which
+\ then answers from it. The scan's own row - certified, deferred or a multi-error
+\ recovery fact - wins, since the recorder skips a symbol a live row states. A
+\ definition with no signature records nothing, as at tier 0.
+: DECLARE-HOOKLESS ( -- )
+   TRUST-SIG$ {: sa:ptr su:n :}
+   su 0= if exit then
+   NAME$ sa su CHECKER-OWNER:DECLARED-ROW ;
+
 : SCAN ( -- )
    [: CHECK-RECORDED M-VERDICT ! ;] catch {: src-rc:n :}
    [: END-RECORDED ;] catch {: end-rc:n :}
@@ -349,7 +362,8 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    src-rc 0<> if src-rc throw then
    end-rc 0<> if end-rc throw then
    name-rc 0<> if name-rc throw then
-   TRUSTED? if NAME$ TRUST-SIG$ REGISTER-TRUST then ;
+   TRUSTED? if NAME$ TRUST-SIG$ REGISTER-TRUST exit then
+   CERTIFYING? 0= if DECLARE-HOOKLESS then ;
 
 \ Read off the SOURCE: a token costs at least two bytes of capture, so n bytes
 \ can never produce more than n/2 rows. A tape is a span of the shared mapping.
@@ -430,16 +444,13 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 \ as a -1, which would refuse it as E-NELAB-ARITY and name the wrong thing. With
 \ a check hook installed nothing reaches it: E-NCOMP-VERDICT has refused every
 \ body the check did not certify. With the cell empty nothing has
-\ (CHECK-HOOKLESS), and the checker records no effect for a body it rejects or
-\ cannot check: branches that leave different depths, another type error, a
-\ callee it cannot resolve (in a window's core prefix that includes a prelude
-\ word such as `0<>`, not loaded yet), a callee the host's checker holds as a
-\ trust-boundary primitive (E-CAP-TRUSTED, from a PRIM: row the window lacks),
-\ or an unsigned body naming a word left to the run. The scan has printed why,
-\ so the refusal takes the check hook's reject status. Multi-error mode records
-\ a rejected body's declaration, and compiling goes on against it. After a
-\ certified scan nothing reaches it either: a package opened and closed by the
-\ source is E-NCOMP-NAME and an unsigned body answers its inferred effect.
+\ (CHECK-HOOKLESS), and a body the scan rejects or cannot check compiles
+\ against its declaration, which DECLARE-HOOKLESS recorded as its row. Only a
+\ definition with no recordable declaration reaches the refusal: no signature,
+\ one the checker cannot parse, or one with a scope scheme. The scan has printed
+\ why, so the refusal takes the check hook's reject status. After a certified
+\ scan nothing reaches it either: a package opened and closed by the source is
+\ E-NCOMP-NAME and an unsigned body answers its inferred effect.
 : KEEP-ARITY ( -- )
    NAME$ NDICT:SPELL-ARITY {: din:n dout:n :}
    din NDICT:ARITY-NONE = if
@@ -640,9 +651,8 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 
 \ The model is built AFTER the tape, because the table has to be sized from the
 \ body and the body is the tape.
-: WORK ( -- )
-   CC HIR-MOD 0 M-BLD !
-   RECORD {: before:n :}
+: LOWER ( n -- NART:emission )
+   {: before:n :}
    MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
@@ -652,8 +662,27 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    p r ELABORATE
    HOST-ARITIES
    NHOST:SOURCE-FREEZE
-   EMITTED dup M-EMISSION !
-   PUBLISH-IT
+   EMITTED dup M-EMISSION ! ;
+
+: SHUT ( -- )
+   0 CHECKER-OWNER:WRITE-WINDOW ;
+
+\ THE COMPILE WINDOW opens when RECORD returns. Every row the definition records
+\ is recorded by then: the scan and the hook that drives it, a TRUSTED:
+\ declaration and a hook-less one all run inside RECORD, and no callback has run
+\ yet. What follows until publication's last callback (publish.f UNIT-NOTIFY)
+\ is the elaborator, the backend and the observers a caller installed; the
+\ compiler scans nothing there and writes nothing to the checker. So the checker
+\ refuses every scan and every store write in between with E-NCOMP-STATE
+\ (checker.f WRITE-WINDOW): a callback cannot reset the latches publication
+\ reads, or record a row the definition's refusal would cut from under a
+\ reference to it. publish.f shuts the window before the compiler's own writes
+\ begin, and the finally shuts it on every exit.
+: WORK ( -- )
+   CC HIR-MOD 0 M-BLD !
+   RECORD {: before:n :}
+   E-NCOMP-STATE CHECKER-OWNER:WRITE-WINDOW
+   before [: LOWER PUBLISH-IT ;] [: SHUT ;] finally
    0 M-DOES-FRAME !
    before M-PUBLISHED-START ! ;
 
@@ -769,9 +798,27 @@ INSTALL-FORGET
    SESSION-READY
    NABI:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ A refusal after a certified, sealed scan owns the checker signature it just
-\ recorded. Before then the checker either published no signature or already
-\ rolled its own failed scan back.
+\ A refusal after the scan owns the checker row this definition recorded: a
+\ certified scan's, a TRUSTED: declaration's, and with the hook cell empty its
+\ declared row or its multi-error recovery fact. The definition is rolled back,
+\ so its row goes too, or the next definition of the name would be a duplicate.
+\ Whichever path recorded it, the refusal puts the store back as it stood at
+\ STAGE, when the body reached the compiler (M-ROWS): the owner truncates it to
+\ that end (checker.f CHECKER-RETRACT-ROWS). Until RECORD returns only the
+\ definition records rows, and from then to publication the compile window
+\ (WORK) admits only the compiler's own writes, so the cut takes exactly the
+\ definition's rows: a callback (a backend pass, an observer) that would record
+\ one while the definition compiles is refused E-NCOMP-STATE. Nothing goes when
+\ nothing was recorded, as when its declaration did not parse or had a scope
+\ scheme, and the refusal is its own for a catch to receive, TRUSTED: or not.
+\ Every row recorded before STAGE stays: a twin's in another scope, one CHECK!
+\ recorded under its own name, and one a parsing immediate recorded as the body
+\ was read. No word outlives the cut pointing at a cut row: while the
+\ definition is pending, source a callback evaluates is its body's capture
+\ (definers.f COMPILING?), where a definer defines nothing and a `;` is refused
+\ (rc 74). Under a hook a scan that did not certify was refused before this,
+\ and the checker rolled it back itself, so the cut finds nothing to take. A
+\ does> definer rolls back through its own checker frame (DOES-FINISH).
 : RETRACT ( -- )
    M-DOES @ 0<> if
       M-DOES-FRAME @ 0<> if
@@ -780,14 +827,7 @@ INSTALL-FORGET
       then
       exit
    then
-   TRUSTED? if
-      NAME-U @ 0= if exit then
-      NAME$ CHECKER-OWNER:USIG-TRUNCATE
-      exit
-   then
-   M-VERDICT @ -1 <> if exit then
-   NAME-U @ 0= if exit then
-   NAME$ CHECKER-OWNER:USIG-TRUNCATE ;
+   M-ROWS @ CHECKER-OWNER:RETRACT-ROWS ;
 
 : LENGTH-CK ( -- )
    M-SRC-U @ TEXT-CAP > if E-NCOMP-TEXT throw then ;
@@ -830,6 +870,7 @@ INSTALL-FORGET
    TRUSTED? CERTIFYING? 0= or NHOST:SOURCE-BEGIN
    0 M-VERDICT !
    -1 M-UNJUDGED !
+   CHECKER-OWNER:ROWS-END M-ROWS !
    0 M-DOES-FRAME !
    DOES-BYTE@ M-DOES !
    DOES-SIG-FIELD @ M-DOES-SIG !

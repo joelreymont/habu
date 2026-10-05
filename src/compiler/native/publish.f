@@ -134,8 +134,10 @@ variable HELD-SIZE
 : COMMIT-HELD ( -- )
    HELD-E @ HELD-IDX @ HELD-FN @ HELD-SIZE @ COMMIT ;
 
+\ The unit observer is the last callback; checker writes follow the commit.
 : NOTIFY-HELD ( -- )
-   HELD-E @ HELD-IDX @ HELD-FN @ HELD-SIZE @ UNIT-NOTIFY ;
+   HELD-E @ HELD-IDX @ HELD-FN @ HELD-SIZE @ UNIT-NOTIFY
+   0 CHECKER-OWNER:WRITE-WINDOW ;
 
 : COMMIT-OWNED ( NART:emission n n n -- )
    HELD-SIZE ! HELD-FN ! HELD-IDX ! HELD-E !

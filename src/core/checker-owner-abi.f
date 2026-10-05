@@ -30,7 +30,8 @@ $A8 constant DOES-CHECK-OFF
 $B0 constant DOES-IN-OFF
 $B8 constant DOES-OUT-OFF
 $C0 constant DOES-WIDE-OFF
-$C8 constant USIG-TRUNCATE-OFF
+\ $C8 is vacant: a retained prefix still installs its signature truncation
+\ there, so no later field may take it.
 $D0 constant CALL-CELLS-OFF
 $D8 constant CALL-GLUE-OFF
 $E0 constant CALL-MATCH-OFF
@@ -168,6 +169,17 @@ $20000 constant BOUND-SEEDED
 2 constant BOUND-INTRINSIC
 3 constant BOUND-PENDING
 4 constant BOUND-UNRESOLVED
+\ A hook-less definition's declaration, recorded as its row without authority
+\ (src/core/checker.f CHECKER-DECLARED-ROW!).
+$390 constant DECLARED-ROW-OFF
+\ A refused definition's rows: the store cut back to the end ROWS-END-OFF read
+\ when the definition began (src/core/checker.f CHECKER-RETRACT-ROWS).
+$398 constant RETRACT-ROWS-OFF
+$3A0 constant ROWS-END-OFF
+\ The compile window: from the end of the compiler's scan to publication's last
+\ callback the checker refuses every store write with the code set here, 0
+\ when shut (src/core/checker.f CHECKER-WRITE-WINDOW!).
+$3A8 constant WRITE-WINDOW-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

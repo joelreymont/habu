@@ -278,6 +278,12 @@ $68 constant CRSIG-A-CELL \ runtime created-word effect pending for CREATE
 $70 constant CRSIG-U-CELL
 $27B0 constant DOESB-CELL   \ BODYBUF offset of the DOES> body in current def
 $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
+\ The live source owner's record and the two of its fields the empty-hook
+\ publish arm calls (C-CALL-OWNER-DECLARATION). MIRROR of src/habu/layout.f
+\ DECL-CELL and src/core/checker-owner-abi.f EFFECT-OFF and DECLARED-ROW-OFF.
+$360 constant DECL-CELL
+$8 constant DECL-EFFECT-OFF
+$390 constant DECL-DECLARED-ROW-OFF
 $27E8 constant COMPILE-PREFLIGHT-CELL \ checker-owned hook run before source-defined immediates
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 2 cells constant ENGINE-HOOK-LEN
@@ -443,6 +449,21 @@ STACK-ABI:CATCH-MAGIC constant CATCH-FRAME-MAGIC
 PD-NAME-OFF PD-NAME-CAP + constant PD-SIG-OFF
 PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT
 8 constant PD-SLOTS-REL
+\ --- The declared-row log of a cold boot (dot habu-visibility-discharge-548) ---
+\ MIRROR of src/habu/layout.f DECLARED-LOG. Before src/core/checker.f claims the
+\ source, the empty-hook publish arm appends each signed `:` definition here
+\ (C-DECLARED-LOG-APPEND); the claim records their declared rows and zeroes the
+\ log. Slot shape, capacity and the fixed ADDR cell match native; the band
+\ follows this engine's own reserved bands, so its address need not match, and
+\ the checker finds it through the cell.
+$4398 constant DECLARED-LOG-ADDR-CELL
+4096 constant DECLARED-LOG-CAP
+0  constant DECLARED-LOG-REC-OFF
+8  constant DECLARED-LOG-PKG-OFF
+16 constant DECLARED-LOG-SIG-A-OFF
+24 constant DECLARED-LOG-SIG-U-OFF
+32 constant DECLARED-LOG-SLOT
+8  constant DECLARED-LOG-SLOTS-REL
 \ USER-REGION-END ends native's library arena (src/habu/layout.f): $5300..$6A88
 \ is USER-BAND (lib/task.f TASK:+USER), $6A88..$7690 FS-MUT-ABI, $7690..$7BC0
 \ FS-ABI, $7BC0..$7BF8 FMT-ABI and $7BF8..$8000 STRING-ABI. None of their
@@ -493,7 +514,9 @@ USE-BAND-END constant SNAPSTK-OFF
 SNAPSTK-OFF SNAP-FRAMES SNAP-FRAME-BYTES * + constant SNAPSTK-END
 SNAPSTK-END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
-PD-TABLE-END constant DATA-START \ user DP begins above engine-reserved state
+PD-TABLE-END constant DECLARED-LOG-OFF
+DECLARED-LOG-OFF DECLARED-LOG-SLOTS-REL + DECLARED-LOG-CAP DECLARED-LOG-SLOT * + constant DECLARED-LOG-END
+DECLARED-LOG-END constant DATA-START \ user DP begins above engine-reserved state
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create CQ-KW  99 c, 34 c,
 create DOTQ-KW 46 c, 34 c,
@@ -4413,6 +4436,21 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    11 BLR,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
+\ MIRROR of src/habu/habu2.f DECL-OWNER:SIGNATURE. Call the source owner's
+\ field at OFF with the definition's name and signature; nothing when no owner
+\ is published or the field is empty. The owner is reached through its record
+\ and never by name: checker.f defines TRUST-DECL well before it claims the
+\ source, and a by-name call would record from there on, where native records
+\ from the claim.
+: C-CALL-OWNER-DECLARATION ( n -- ) {: off :}
+   LBL {: skip :}
+   11 DATA DECL-CELL LDR,  11 skip CBZ,
+   11 11 off LDR,  11 skip CBZ,
+   C-PUSH-DREC-NAME
+   TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
+   C-CALL-X11-SAVED
+   skip LBL, ;
+
 \ MIRROR of src/habu/habu2.f LASTC-TRUST:FIND-RAW. Resolve `trust-raw`, the
 \ checker's raw-storage effect registrar (src/core/checker.f TRUST-RAW). Every
 \ word a definer publishes owns a cell of raw dictionary storage, so its effect
@@ -6619,6 +6657,34 @@ variable CFSK2
    12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,           \ reload &band (C-PUSH-DREC-NAME clobbered x12)
    13 12 0 LDR,  13 13 1 ADDI,  13 12 0 STR, ;       \ count++
 
+\ MIRROR of src/habu/habu2.f C-DECLARED-LOG-DIE-FULL: the declared-row log is
+\ full; name the definition that overflowed it and exit 72.
+: C-DECLARED-LOG-DIE-FULL ( -- )
+   SP SP 32 SUBI,  9 $6C636564203A6268 LIT64,  9 SP 0 STR,  9 $776F722D64657261 LIT64,  9 SP 8 STR,  9 $6C756620676F6C20 LIT64,  9 SP 16 STR,  9 $2020202020203A6C LIT64,  9 SP 24 STR,
+   0 2 MOVZ,  1 SP 0 ADDI,  2 27 MOVZ,  NR-WRITE SYS,  SP SP 32 ADDI,
+   C-PUSH-DREC-NAME  2 G-POP  1 G-POP
+   0 2 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 72 MOVZ,  NR-EXIT-GROUP SYS, ;
+
+\ MIRROR of src/habu/habu2.f C-DECLARED-LOG-APPEND: log the pending definition's
+\ record, the open package's namespace record and its signature for the claim,
+\ then publish the log's address. Clobbers x12-x15 only.
+: C-DECLARED-LOG-APPEND ( -- )
+   LBL {: capok :}
+   12 DECLARED-LOG-OFF LIT64,  12 DATA 12 ADD,
+   13 12 0 LDR,  14 DECLARED-LOG-CAP MOVZ,  13 14 CMP,  C-LT capok BCOND,
+      C-DECLARED-LOG-DIE-FULL
+   capok LBL,
+   15 DECLARED-LOG-SLOT MOVZ,  15 13 15 MUL,
+   14 12 DECLARED-LOG-SLOTS-REL ADDI,  14 14 15 ADD,
+   15 DATA PEND-CELL LDR,     15 14 DECLARED-LOG-REC-OFF STR,
+   15 DATA PKG-REC-CELL LDR,  15 14 DECLARED-LOG-PKG-OFF STR,
+   15 DATA TSIG-A-CELL LDR,   15 14 DECLARED-LOG-SIG-A-OFF STR,
+   15 DATA TSIG-U-CELL LDR,   15 14 DECLARED-LOG-SIG-U-OFF STR,
+   13 13 1 ADDI,  13 12 0 STR,
+   12 DATA DECLARED-LOG-ADDR-CELL STR, ;
+
 : C-PRETRUST-READY? ( -- )                           \ x13 <- both `trust` and `checker-defer` are defined (non-dying)
    LBL {: done :}
    9 LKWTRUSTDECL @ ADR,  10 10 MOVZ,  LFIND @ BL,
@@ -7614,9 +7680,12 @@ variable P2SK
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    lmain B, ;
 
+\ Mirror habu2.f: with the hook cell empty the declaration is the definition's
+\ row, a TRUSTED: one with authority and any other without it; before
+\ checker.f claims the source the latter goes to the declared-row log.
 : EMIT-COMPILE-PUBLISH-HOOKED ( n -- ) {: lmain :}
-   LBL LBL {: nohook rejected :}
-   9 DATA P2-CELL LDR,  9 nohook CBNZ,
+   LBL LBL LBL LBL LBL {: nohook declared owned publish rejected :}
+   9 DATA P2-CELL LDR,  9 publish CBNZ,
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
@@ -7624,7 +7693,19 @@ variable P2SK
       10 G-POP  10 rejected CBZ,
       [ also LOWER-TXN ] FREEZE [ previous ]
       lmain EM-P2-TRIGGER
+      publish B,
    nohook LBL,
+   9 DATA TSIG-U-CELL LDR,  9 publish CBZ,
+   9 DATA TRUSTED-CELL LDR,  9 declared CBZ,
+      DECL-EFFECT-OFF C-CALL-OWNER-DECLARATION
+      publish B,
+   declared LBL,
+      9 DATA DECL-CELL LDR,  9 owned CBNZ,
+      C-DECLARED-LOG-APPEND
+      publish B,
+   owned LBL,
+      DECL-DECLARED-ROW-OFF C-CALL-OWNER-DECLARATION
+   publish LBL,
       C-DOES-OCC-ROOM
       LOCC-APPEND @ BL,
       EM-REC-WIDE-PUBLISH

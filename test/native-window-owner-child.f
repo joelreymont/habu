@@ -69,15 +69,19 @@ TRUSTED: CHECKER-OWNER ( -- ptr u8 )
    s" package CHECKER-REG DECLARATIONS ;package" evaluate ;
 
 \ These execution tokens belong to the retained/target private checker owners.
-TRUSTED: RESET-CHECKER ( ptr u8 -- ) {: owner:ptr :}
+\ The owner record holds them as code address integers.
+CAST: RESET-XT ( n -- [ -- ] )
+CAST: IMPORT-XT ( n -- [ ptr u8 -- ] )
+
+: RESET-CHECKER ( ptr u8 -- ) {: owner:ptr :}
    owner 0= if exit then
-   owner NCOMP-DISPATCH:DECL-RESET-OFF + CELL-VIEW @ is RESET-SOURCE
+   owner NCOMP-DISPATCH:DECL-RESET-OFF + CELL-VIEW @ RESET-XT is RESET-SOURCE
    RESET-SOURCE ;
 
-TRUSTED: TRANSFER-CHECKER ( ptr u8 -- ) {: source:ptr :}
+: TRANSFER-CHECKER ( ptr u8 -- ) {: source:ptr :}
    CHECKER-OWNER {: owner:ptr :}
    owner 0= if s" window: target checker owner missing" 76 die then
-   owner NCOMP-DISPATCH:DECL-TRANSFER-OFF + CELL-VIEW @ is IMPORT-CHECKED
+   owner NCOMP-DISPATCH:DECL-TRANSFER-OFF + CELL-VIEW @ IMPORT-XT is IMPORT-CHECKED
    source IMPORT-CHECKED ;
 
 \ Installing a replacement's callbacks must not claim a nonzero source owner

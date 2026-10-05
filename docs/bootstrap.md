@@ -19,7 +19,9 @@ they are the artifacts to look at after a run:
 | `hb-stdin-mk` | `hb-stage` from `stage2-src` with the stdin driver | the maker for `hb-stdin` |
 | `hb-stdin` | `hb-stdin-mk` | the recovery engine the check suites run on |
 
-All four boot their prefix from source (see the cold-runtime rule below) and
+All four boot their prefix from source, where a signed `:` definition's
+declaration is its row, without authority
+([forth.md](forth.md#rules-learned-by-refusal)), and
 the chain completes: the check-only run ends `bootstrap check OK: <HB_TMP>/hb-stdin`
 after the five check suites pass on `hb-stdin`, and the full run (no
 `HABU_BOOTSTRAP_CHECK_ONLY`) goes on through the native self-refresh to
@@ -32,7 +34,7 @@ their comment and blank lines as they are read, `src/habu/habu2.f`
 the linux-aarch64 cold prefix from 1,635,735 to 963,642 bytes); the argv scan
 read its index across the cold-prefix call (`C-SOURCE-FIND-SEP` now sets its
 own); and the check suites named checker internals a from-source prefix
-publishes no effect for (the checker publishes `CHECK-QUIET-CANDIDATE!` and
+gives no row with authority (the checker publishes `CHECK-QUIET-CANDIDATE!` and
 `CHECKER-VIS-PUBLIC` with axioms instead).
 
 The generated engine maps `IBUFSZ + SRCN` bytes: `IBUFSZ` for the cold prefix
@@ -448,19 +450,24 @@ Three facts decide how a change reaches the fixpoint:
   `… DIE 0 ;` in a `( -- n )` word is `E-DEAD-CODE` under the new checker and
   `… DIE ;` a stack mismatch under the old one, while
   `cond 0= if … DIE then  value ;` certifies under both.
-- **A core-prefix definition the checker cannot judge dies without its cause.**
-  The window compiles `src/core/util.f` through `src/core/layout-valid.f`
-  before its own `src/core/check-hook.f` installs a hook, so
-  `src/compiler/native/compiler.f` `CHECK-PARENT` runs the owner's scan and
-  drops the verdict. A body the scan cannot judge records no effect, and
-  `KEEP-ARITY` stops the build with `ncomp: cannot compile <WORD>` and
-  `uncaught throw code -8579` (`E-NCOMP-ARITY`), rc 67, naming no token.
-  Measured: `: EXP-FWD ( -- n ) EXP-LATER ;  : EXP-LATER ( -- n ) 5 ;`
-  appended to `src/core/util.f` dies exactly so; the same two lines at the top
-  of `src/core/roles.f`, past the hook, die `E-UNDEFINED habu: in exp-fwd:
-  undefined word 'EXP-LATER'`, rc 70. A body with no inferable effect dies the
-  same silent way (`src/core/checker.f` `PE-SPEC-ATOM`). To see the cause,
-  move the definition past `check-hook.f` for one build.
+- **A core-prefix definition the checker refuses compiles against its
+  declaration, and only its reason on stderr says so.** The window compiles
+  `src/core/util.f` through `src/core/layout-valid.f` before its own
+  `src/core/check-hook.f` installs a hook, so `src/compiler/native/compiler.f`
+  `CHECK-HOOKLESS` prints the scan's reason and enforces nothing, and
+  `DECLARE-HOOKLESS` records the declaration as the definition's row.
+  Measured: `: EXP-MIS ( n -- n ) 0= ;` appended to `src/core/util.f` prints
+  `habu: in exp-mis: at '0=' expected: n actual: bool` and the build ends
+  `native-build OK`, rc 0. A body the native compiler cannot lower against
+  that row dies after the reason:
+  `: EXP-FWD ( -- n ) EXP-LATER ;  : EXP-LATER ( -- n ) 5 ;` appended there
+  prints `E-UNDEFINED habu: in exp-fwd: undefined word 'EXP-LATER'`,
+  `ncomp: cannot compile EXP-FWD at EXP-LATER` and
+  `native-build: uncaught throw code -8286` (`E-HIR-UNMODELED`), rc 74. A
+  definition with no signature has no row to record, and `KEEP-ARITY` refuses
+  it after the reason. A prefix build's stderr is therefore the guard:
+  `test/native-window-owner.f` `TIER1-CASE` asserts it empty, and
+  `test/compiler/native-hookless-reject.f` pins both outcomes.
 - **A new `lib/errors.f` code or `src/habu/layout.f` band that `lib/fs.f`
   reads lands through a stage host.** `tools/native-build-core.f` requires
   `lib/fs.f` from the tree, and the host resolves its names against its own

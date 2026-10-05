@@ -813,6 +813,7 @@ public
 
 : TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n )
    {: pa:ptr pu:n vis:n na:ptr nu:n arity:n kind:n :}
+   WRITE-WINDOW-CK                        \ src/core/checker.f WRITE-WINDOW
    na nu TF-REQUIRE-CANON
    arity 0 < IF E-TFAM-ARITY throw THEN
    kind TFAM-KIND-VALID? 0= IF E-TFAM-KIND throw THEN
@@ -1295,6 +1296,7 @@ public
    0 RES-FALSE ;
 : SUMV-ADD ( n ptr u8 n n n n n -- n )
    {: fam:n na:ptr nu:n tag:n ss:n sc:n pc:n :}
+   WRITE-WINDOW-CK
    na nu TF-REQUIRE-CANON
    fam na nu SUMV-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
    SUMV-ENSURE
@@ -2364,6 +2366,7 @@ public
 \ the sole mutator of the serial, so it is kept unexercised and deliberately not
 \ re-exposed through a TRUSTED boundary.
 : OPEN ( -- n )
+   WRITE-WINDOW-CK
    TX-PARENT-REQUIRE
    PF-TX-SERIAL @ 1 + dup 0 <= IF drop E-PF-TX throw THEN
    {: tok:n :}
@@ -2382,10 +2385,12 @@ public
    TX-OPEN-MARKS-REQUIRE
    PF-N @ ;
 : COMMIT ( n -- ) {: tx:n :}
+   WRITE-WINDOW-CK
    tx PREPARE drop
    PF-TX-DEPTH @ 1 = IF PF-N @ PF-COMMIT-N !  TFM-EPOCH+ THEN
    STATE-COMMITTED TX-TOP PFTX.STATE ! ;
 : FINALIZE ( n -- ) {: tx:n :}
+   WRITE-WINDOW-CK
    tx STATE-COMMITTED TX-STATE-REQUIRE
    TX-COMMITTED-MARKS-REQUIRE
    RELEASE ;
@@ -2393,6 +2398,7 @@ public
 \ to, so the state selects which watermark check applies; there is no third value
 \ to reject.
 : ROLLBACK ( n -- ) {: tx:n :}
+   WRITE-WINDOW-CK
    tx TX-REQUIRE
    TX-TOP PFTX.STATE @ STATE-OPEN =
       IF TX-OPEN-MARKS-REQUIRE ELSE TX-COMMITTED-MARKS-REQUIRE THEN
@@ -2865,6 +2871,7 @@ public
 
 : ADD ( n n n ptr u8 n n n n n n n n -- n )
    {: tx:n fam:n var:n na:ptr nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
+   WRITE-WINDOW-CK
    tx STATE-OPEN TX-STATE-REQUIRE
    TX-OPEN-MARKS-REQUIRE
    fam var PF-OWNER-OK? 0= IF E-PF-OWNER throw THEN
@@ -3264,6 +3271,7 @@ public
    REPEAT
    0 RES-FALSE ;
 : LAY-ADD ( n n n n n -- n ) {: fam:n p:n sz:n al:n tw:n :}
+   WRITE-WINDOW-CK
    p 0 < p TL-MAX > or IF E-TFAM-KIND throw THEN
    fam LAY-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
    LAY-ENSURE
@@ -3892,7 +3900,7 @@ create REG-AOT-END-A REG-AOT-N cells allot
       bytes 0 > IF
          i REG-AOT-BASE-PTR
          dst REG-AOT-CUR @ +
-         bytes USIGS-COPY
+         bytes ARENA-COPY
       THEN
       REG-AOT-CUR @ bytes + REG-AOT-CUR !
    loop
@@ -4693,7 +4701,7 @@ variable REG-AOT-MEMO-U
          cnt 0 > IF
             src REG-AOT-CUR @ + base i REG-AOT-WIDTH * +
             i REG-AOT-BASE-PTR base i REG-AOT-WIDTH * +
-            cnt i REG-AOT-WIDTH * USIGS-COPY
+            cnt i REG-AOT-WIDTH * ARENA-COPY
          THEN
          i base cnt + REG-AOT-COUNT!
          i base cnt REG-AOT-SCRUB

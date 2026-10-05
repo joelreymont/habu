@@ -539,7 +539,9 @@ chmod +x "$T/hb-stdin"
 
 env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/engine-error-package.f
 env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/catch-frame.f
-env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/type-ctor-suite.f
+# type-ctor-suite.f is a WHITEBOX-SUITE (test/gate-stdlib-cases.f), which the
+# gate runs on an unsealed engine; this cold boot stands its seal pass down too.
+env HABU_WHITEBOX_IMAGE=1 HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/type-ctor-suite.f
 env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/top-row-hook-test.f
 env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/compile-preflight-recovery.f
 

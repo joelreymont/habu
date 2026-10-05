@@ -2041,15 +2041,88 @@ the rule.
   with exit 72 (`C-PD-DIE-FULL`). `test/pre-trust-defer.f` checks it. Add a selector to an
   existing hook instead (`SHADOW-DIAG-XT ( n -- )` carries two diagnostics), or
   place the defer after `: TRUST`.
-- **A pre-hook word needs an axiom row in a checked body on a from-source
-  engine.** `src/core/cell-effects.f` supplies rows for `PATH-CAP`,
-  `E-PATH-RANGE` and `SCOPE-FIND-AMBIGUOUS`. A constant without a row can be read at top level into a
-  file-owned constant (`REG-PROT-CAP constant MY-CAP`); `test/cold-naming-test.f`
-  checks the refusal and the accepted forms. A pre-hook colon or `TRUSTED:`
-  word run at top level needs a row too: without one the seal marks it
-  `DNAME-INT` there, and a use dies `hb: internal engine word: NAME`, rc 70,
-  as `generates:` did in `lib/task.f` on `tools/build-fixpoint.f`'s `hb-host`
-  and `hb-stdin` before its row (`src/core/checker.f`).
+- **A pre-hook word needs an external row in a checked body on a sealed
+  from-source engine.** The seal marks a word defined before the check hook
+  `DNAME-INT` unless a row with authority states it - a `PRIM:` axiom, or a
+  `TRUSTED:` declaration recorded after `src/core/checker.f` claims the source -
+  and a checked body naming it is refused `E-UNDEFINED`, rc 70: the sealed cold
+  host answers `E-UNDEFINED: SCHEMA-REG:SCHEMA-CON` for a colon word, which the
+  engine refuses before the checker runs. A declared row (the next rule) is not
+  one. `src/core/cell-effects.f` supplies rows for `PATH-CAP`,
+  `E-PATH-RANGE` and `SCOPE-FIND-AMBIGUOUS`. A constant without a row can be
+  read at top level into a file-owned constant (`REG-PROT-CAP constant
+  MY-CAP`); `test/cold-naming-test.f` checks the refusal and the accepted
+  forms. A pre-hook word run at top level needs an external row too: without
+  one the seal marks it `DNAME-INT` there, and a use dies `hb: internal engine
+  word: NAME`, rc 70, as `generates:` did in `lib/task.f` on
+  `tools/build-fixpoint.f`'s `hb-host` and `hb-stdin` before its row
+  (`src/core/checker.f`).
+- **With the hook cell empty a definition's declaration is its row, without
+  authority.** Nothing judges such a body: a cold boot's prefix up to
+  `src/core/check-hook.f`, a window's core prefix, and every `0 set-check`
+  definition, at either tier. Where no live row states the symbol its
+  signature becomes an active row (`src/core/checker.f`
+  `CHECKER-DECLARED-ROW!`). Before `src/core/checker.f` claims a cold boot's
+  source no checker owns it, so the engine logs each signed `:` definition
+  (`src/habu/layout.f` `DECLARED-LOG`) and the claim records the logged rows by
+  the same rule (`CK-DECLARED-LOG-DRAIN`); a qualified definition there dies
+  `checker:`, rc 76, and a `TRUSTED:` or data word there has no row. An
+  unsealed checker (the whitebox image, and a prefix before
+  `src/core/internal-mark.f` runs) binds the row and checks callers against it
+  (against `( n -- n )` a `( -- n )` caller is `E-INPUT-UNDERFLOW` and a
+  `( n -- bool )` one `E-MISMATCH`), a sealed one refuses it
+  `E-CAP-TRUSTED`: `src/core/internal-mark.f` calls
+  `CHECKER-EFFECT-AUTHORITY:SEAL` for the product, a cold boot and every image
+  saved from either, and binding grants the row no authority
+  (`test/checker-effect-authority.f`). Where the seal also marked the word
+  internal the engine refuses the name first: `: X1 ( -- n ) FRESH ;`, a
+  pre-hook checker word, is `E-UNDEFINED: FRESH`, rc 70, on `bin/hb` and runs
+  on the whitebox image. A `TRUSTED:` declaration is the assertion and
+  carries authority at both tiers. At tier 1 the scan still runs and its own
+  row wins; a body it refuses compiles against the declaration with the
+  reason on stderr, and the row goes with the definition when the native
+  compiler then refuses it. A definition with no signature, one the checker
+  cannot parse or one with a scope scheme records nothing; when nothing else
+  answers its arity tier 1 refuses it with the check hook's reject status
+  (rc 70). When a twin in another scope or an owner-private primitive's axiom
+  answers it, the body compiles against that arity, and one that underflows
+  it is refused `E-NELAB-UNDER` (-8304). A `catch` receives either refusal,
+  and the rows recorded before and after it stay, even a row `CHECK!`
+  recorded under its name: the rollback cuts the store back to where it
+  stood when the body reached the native compiler, and the compile window
+  (next rule) admits only the compiler's own writes, so the cut takes
+  exactly the definition's rows and none recorded before.
+  `test/checker-effect-authority.f`,
+  `test/compiler/native-hookless-reject.f`,
+  `test/native-window-declared-row.f`, `test/native-window-owner.f` and
+  `test/cold-naming-test.f` pin it.
+- **A callback cannot scan or write the checker while a definition
+  compiles.** Once the native compiler's scan returns, every row of the
+  definition is recorded, and until publication's last callback
+  (`src/compiler/native/publish.f` `LAST-CALLBACK`) only callbacks run: the
+  elaborator and backend passes, an `NBACK:OBSERVE!` observer and an
+  `NPUB:WITH-UNIT` observer. In that window the checker refuses every scan
+  (`CHECK!`, `CHECK-CANDIDATE!`) and every store write (a `generates:` row
+  among them) with `E-NCOMP-STATE` (-8570), catchable, before anything
+  moves (`src/core/checker.f` `WRITE-WINDOW`), on the certified path and
+  the hook-less one; the compiler opens the window and shuts it on every
+  exit, throws included. Type registration is a store write: a linear type,
+  value record or family (`CHECKER-DEFLINEAR`, `CHECKER-DEFRECORD`,
+  `CHECKER-DEFFAMILY`), an extent's free mark (`EXT-MARK-FREE-TAIL`) and
+  each `TYPE-FIELD-OWNER` phase are refused at the registry's appender, so
+  a type a callback registered cannot outlive the refused definition and
+  turn a later signature naming it from rejected to certified. A refused
+  `TRUSTED:` or certified definition goes
+  back to the same mark as a hook-less one, where the store stood when its
+  body reached the compiler (`src/compiler/native/compiler.f` `RETRACT`).
+  A callback's `generates:` row
+  cut with a refused definition would leave the definer naming the cut
+  record: VERIFY would predict a word it defines from whatever record later
+  took its place, and a fresh `generates:` would be refused
+  `E-GENERATES-ROW`. A callback's `CHECK!` would reset the minimum-input
+  latch the pending definition publishes, so `( n n -- n )` would publish a
+  minimum input of 0. `test/checker-effect-authority.f` pins both paths,
+  the latch and every type registry's appender.
 - **`MATCH` and the other compile keywords name words, not constants**, even
   inside a package; a `case` default runs with the selector still on the
   stack. Two flags are not compared with `=` (`bool bool` is refused): a test

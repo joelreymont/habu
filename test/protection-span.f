@@ -81,8 +81,9 @@ create ERR CAP allot
    s" require lib/task.f TASK:#USER -1 TASK:+USER PST-WRAP drop" UNCAUGHT-RC EXPECT ;
 
 \ The unit dispatch cell ends the protected bands. Pending pre-trust defer
-\ scratch follows it and remains writable through PD-TABLE-END; crossing the
-\ dispatch cell's end must reject while scratch and the user heap accept.
+\ scratch and then the cold boot's declared-row log follow it and remain
+\ writable through DATA-START; crossing the dispatch cell's end must reject
+\ while scratch and the user heap accept.
 : TEST-BOUNDARY ( -- )
    s" 0 data-base $800 + c!" REJECTS
    s" 0 data-base $7FF + !" REJECTS
@@ -92,6 +93,7 @@ create ERR CAP allot
    s" 0 data-base TXN-STATE-OFF TXN-STATE-LEN + 1- + !" REJECTS
    s" 0 data-base PD-TABLE-OFF + c!" ACCEPTS
    s" 0 data-base PD-TABLE-END 1 cells - + !" ACCEPTS
+   s" 0 data-base DECLARED-LOG:OFF + c!" ACCEPTS
    s" 0 data-base TIER-PROV:OPEN-CELL 1 cells - + !" ACCEPTS
    s" 0 data-base TIER-PROV:OPEN-CELL 1- + !" REJECTS
    s" 0 data-base TIER-PROV:OPEN-CELL + c!" REJECTS

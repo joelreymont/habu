@@ -133,7 +133,9 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`, rc 70; at top level or after `'` `--load` exits 105 (`ENGINE-ERROR:USING-SHADOW-GLOBAL`) |
 | a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, rc 70, before anything runs |
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION`, rc 78 |
-| a word defined before the check hook, with no `PRIM:` row, in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a from-source prefix boot only**, never on `bin/hb`; `PATH-CAP`, `E-PATH-RANGE` and `SCOPE-FIND-AMBIGUOUS` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP` |
+| a word defined before the check hook with no external row (a `PRIM:` axiom, or a `TRUSTED:` declaration after `src/core/checker.f`) in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a sealed from-source prefix boot only**, never on `bin/hb`; `PATH-CAP`, `E-PATH-RANGE` and `SCOPE-FIND-AMBIGUOUS` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP`. An unsealed boot binds a signed `:` word of the prefix to its declaration |
+| a body the scan refuses with the hook cell empty (`0 set-check`, a window's core prefix) at tier 1 | compiles against its declaration, the reason on stderr; the row has no authority (forth.md **Rules learned by refusal**) |
+| `CHECK!`, `generates:`, a type registration (`CHECKER-DEFLINEAR`, `CHECKER-DEFFAMILY`, a `TYPE-FIELD-OWNER` phase) or another checker scan or store write in a compile callback (`NBACK:OBSERVE!`, `NPUB:WITH-UNIT`) | `E-NCOMP-STATE` (-8570), catchable, before anything changes |
 
 Checked C2 views carry owner and loan lifetimes: shared `read-view<p,q,T>` and
 exclusive `mut-view<p,q,a,T>`. They occupy two cells but form one logical value.

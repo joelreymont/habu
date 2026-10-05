@@ -523,8 +523,8 @@ validates in an independent engine and passes W01-W07 and N01-N06 of
 three `?do` rows, with differential rows against native output (W31, W32).
 Hand-authored fixtures alone are not a backend gate.
 
-The oracles: wasm-tools validates with exactly the profile's features, and
-node (V8) and bun (JavaScriptCore) run `test/wasm/run.mjs`. Together they form
+wasm-tools validates with the backend's features, and bun runs
+`test/wasm/run.mjs`. Together they form
 the `wasm` device check ([bootstrap.md](bootstrap.md)), not the ordinary gate.
 The module exports memory, run, throw-code, out-base and out-len and imports
 nothing. The driver, `tools/wasm-build.f`, loads

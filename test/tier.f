@@ -282,10 +282,10 @@ variable RC     variable EXITED
 \ A long family's constructors take the digest spelling
 \ (src/core/type-family.f TF-CTOR-PKG$), which no program writes, so that
 \ program compiles them, its MATCH and its local, and stops. A refused long name
-\ is reported whole up to its newline, and a refused TRUSTED: one still finds
-\ its signature to retract, which leaves the refusal's own code uncaught. A
-\ refusal at a 7900-byte body token names that token whole: a TRUSTED: body
-\ skips the checker, so its missing word reaches the elaborator.
+\ is reported whole up to its newline, and a refused TRUSTED: one retracts its
+\ signature, which leaves the refusal's own code uncaught. A refusal at a
+\ 7900-byte body token names that token whole: a TRUSTED: body skips the
+\ checker, so its missing word reaches the elaborator.
 $4000 constant LN-CAP
 create LN-BUF LN-CAP allot
 variable LN-U
@@ -573,6 +573,17 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    S\" TRUSTED: EV ( ptr u8 n -- n ) [: evaluate ;] catch ;\ns\q : RVND ( n -- n ) dup ;\q EV . cr\n"
    EXEC  s" 70" ASSERT-OK ;
 
+\ ---- 7b. a refused TRUSTED: declaration that records no row ------------------
+\ Its signature does not parse, so the definition recorded no row and its
+\ retract cuts nothing (src/compiler/native/compiler.f RETRACT): the refusal's
+\ own code goes uncaught, and as the checker rendered it the engine exits as a
+\ refusal.
+: TEST-TRUSTED-NO-ROW ( -- )
+   s" a tier-1 TRUSTED: declaration that records no row leaves its own code uncaught" T-LABEL
+   s" 1 set-tier TRUSTED: TB-BAD ( n -- no-such-type ) drop drop ;" RUN
+   REJECT-RC ASSERT-RC
+   ERR$ E-BAD-STORED-SIGNATURE UNCAUGHT$ CONTAINS? TTRUE ;
+
 : TEST-ORIGIN ( -- )
    s" known primitive text has positive native origin" T-LABEL
    s" ' dup dup 4 + code-origin . " EXEC s" 1" ASSERT-OK
@@ -707,6 +718,7 @@ public
    TEST-NESTED-QUOTATIONS
    TEST-NESTING-BOUND
    TEST-EVAL-RECOVERY
+   TEST-TRUSTED-NO-ROW
    T-REPORT
    s" tier: ok" type cr ;
 
