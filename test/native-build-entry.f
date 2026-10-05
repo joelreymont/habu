@@ -144,11 +144,12 @@ create CONTENT 64 allot
 \ The output path is writable, so an earlier filesystem refusal cannot satisfy
 \ the assertion and the other-machine build must leave it absent.
 : FOREIGN-WINDOW-CASE ( -- )
-   s" and stops the other machine's window after its capture, before a writer loads" T-LABEL
+   s" a host with the retired observer reaches capture before foreign writer refusal" T-LABEL
    s" other-machine-hb" FOREIGN-OUT!
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    s" --load" ARG
+   s" test/native-build-host-observer.f" ARG
    FOREIGN-BACKEND$ ARG
    s" tools/native-build.f" ARG
    s" --" ARG
@@ -158,6 +159,24 @@ create CONTENT 64 allot
    DRIVE
    S\" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine\n" REFUSED
    FOREIGN-OUT$ FILE? 0= TTRUE ;
+
+: BAD-HOST-ROW ( ptr u8 n -- )
+   {: fixture:ptr size:n :}
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" --load" ARG
+   fixture size ARG
+   s" tools/native-build.f" ARG
+   s" --" ARG
+   s" /dev/null/native-build-host-row" ARG
+   DRIVE
+   S\" native-build: incompatible fixed engine layout\n" REFUSED ;
+
+: BAD-HOST-ROWS ( -- )
+   s" DATA at the retired observer offset remains incompatible" T-LABEL
+   s" test/native-build-host-observer-data.f" BAD-HOST-ROW
+   s" an unrelated fixed CODE registration remains incompatible" T-LABEL
+   s" test/native-build-host-unknown-code.f" BAD-HOST-ROW ;
 
 : ACTION-CASE ( -- )
    s" nested build entries preserve an active action" T-LABEL
@@ -236,6 +255,7 @@ create CONTENT 64 allot
    WINDOWS-CORE-CASE
    TARGET-UNLOADED-CASE
    FOREIGN-WINDOW-CASE
+   BAD-HOST-ROWS
    ACTION-CASE
    FOREIGN-ABI-CASE
    T-REPORT ;

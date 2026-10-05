@@ -1,5 +1,10 @@
 \ Publication must make each completed native record immediately searchable.
 require lib/test.f
+require lib/test/outcome.f
+require lib/process.f
+require lib/process-argv.f
+require lib/engine-candidate.f
+require lib/string.f
 require src/habu/layout.f
 
 \ Tier 1 first: a native record is what the optimizing compiler publishes, so
@@ -16,6 +21,24 @@ variable REF-SLOT
 variable REF-OCC
 TRUSTED: OCC-COUNTER ( -- ptr n ) data-base DEF-OCC:PTR-CELL + @ ;
 variable SAVED-COUNT
+
+$4000 constant PUB-CAP
+create PUB-OUT PUB-CAP allot
+create PUB-ERR PUB-CAP allot
+
+: PUBLISH-THROW-SRC$ ( -- ptr u8 n )
+   S\" require src/compiler/native/compiler.f 1 set-tier package PUBFAIL public : THROW-PUBLISHED ( n IR-CTX:ctx NCOMP:code-entry n n -- ) {: idx:n c:IR-CTX:ctx parent:NCOMP:code-entry ord:n off:n :} s\q PUBFAIL-DOES\q XREF-FIND XREF-START parent NCOMP:ENTRY>N = if s\q committed-does-visible\q type cr then 8173 throw ; ;package ' PUBFAIL:THROW-PUBLISHED NCOMP:PUBLISHED! : PUBFAIL-DOES ( n -- ) create , does> ( -- n ) @ ;" ;
+
+: PUBLISH-THROW-CASE ( -- )
+   PROC-ARGV-RESET
+   ENGINE-CANDIDATE:PATH$ >LEN PUBLISH-THROW-SRC$ >LEN
+   PUB-OUT PUB-CAP >LEN PUB-ERR PUB-CAP >LEN 10000 >MS
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   PUBLISH-THROW-SRC$ PUB-OUT outu LEN>N PUB-ERR erru LEN>N oc 76
+   T-OUTCOME-EXITED=
+   PUB-OUT outu LEN>N s" committed-does-visible" CONTAINS? TTRUE
+   PUB-ERR erru LEN>N s" ncomp: publication callback threw" CONTAINS? TTRUE
+   PUB-ERR erru LEN>N s" ncomp: cannot compile" CONTAINS? TFALSE ;
 
 : TRY-FULL-DOES ( -- n )
    OCC-COUNTER @ SAVED-COUNT !
@@ -118,6 +141,7 @@ variable SAVED-COUNT
    s" general ndict! restore still rebuilds the live index" T-LABEL RESTORE T-NEXT
    s" namespace and unpublished records refuse callable selection" T-LABEL REFUSALS T-NEXT
    s" DOES and EXPORT refuse when only one occurrence remains" T-LABEL PAIR-EXHAUSTION T-NEXT
+   s" escaping publication callback is fatal after DOES commit" T-LABEL PUBLISH-THROW-CASE T-NEXT
    T-REPORT ;
 
 ' RUN

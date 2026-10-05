@@ -68,6 +68,9 @@ create SMOKE-ERR SMOKE-CAP allot
    data-base BOOT-LAYOUT:HEAP-START-CELL + @ ;
 
 : CHECK-HOST-LAYOUT ( -- )
+   \ Older hosts register the retired observer CODE cell even when it holds zero.
+   \ Remove its declaration before translating the remaining fixed host rows.
+   $2CF0 CELL ADDRESS-CELLS:REMOVE-XT-SPAN
    NATIVE-LAYOUT:CURRENT HOST-HEAP-START NATIVE-LAYOUT:CHECK
    ADDR-ROWS 0 ?do
       i ADDR-ROW@ {: raw:n :}
