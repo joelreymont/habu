@@ -249,7 +249,11 @@ variable HBT-INST-FILES
    IMAGE-SIZE:REGION-CODE 0 > TTRUE
    IMAGE-SIZE:REGION-NAMES 0 > TTRUE
    IMAGE-SIZE:REGION-UNOWNED 0 > TTRUE
-   IMAGE-SIZE:DATA-OWNERS 0 > TTRUE ;
+   HB-TARGET-LINUX-X86-64? if
+      IMAGE-SIZE:DATA-WRITTEN 0 > TTRUE
+   else
+      IMAGE-SIZE:DATA-OWNERS 0 > TTRUE
+   then ;
 
 \ Builds its own image, because this case reads the file rather than a report
 \ about it.
