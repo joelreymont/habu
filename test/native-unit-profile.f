@@ -12,7 +12,6 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/engine-candidate.f
 require tools/native-unit-build-core.f
-require test/native-unit-image.f
 
 package NUNIT-PROFILE-TEST
 
@@ -25,6 +24,8 @@ create OUTPUT FS-PATH-CAP allot
 variable OUTPUT-U
 create UNIT FS-PATH-CAP allot
 variable UNIT-U
+create CACHE-SRC FS-PATH-CAP allot
+variable CACHE-SRC-U
 create OUT CAP allot
 create ERR CAP allot
 variable OUT-U
@@ -35,6 +36,7 @@ variable CALLED
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : OUTPUT$ ( -- ptr u8 n ) OUTPUT OUTPUT-U @ ;
 : UNIT$ ( -- ptr u8 n ) UNIT UNIT-U @ ;
+: CACHE-SRC$ ( -- ptr u8 n ) CACHE-SRC CACHE-SRC-U @ ;
 : KEY$ ( -- ptr u8 n )
    s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" ;
 
@@ -42,7 +44,8 @@ variable CALLED
    s" native-unit-profile" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ s" hb-rejected" OUTPUT JOIN-PATH OUTPUT-U !
-   ROOT$ s" nbr.unit" UNIT JOIN-PATH UNIT-U ! ;
+   ROOT$ s" nbr.unit" UNIT JOIN-PATH UNIT-U !
+   ROOT$ s" cache-refusal.f" CACHE-SRC JOIN-PATH CACHE-SRC-U ! ;
 
 : MARK ( -- ) 1 CALLED ! ;
 : QUERY ( n n -- n ) drop ;
@@ -59,7 +62,6 @@ variable CALLED
    CALLED @ 0 T=
    [: IMPORT ;] E-NUNIT-PROFILE TTHROWSQ
    [: EXPORT ;] E-NUNIT-PROFILE TTHROWSQ
-   [: NATIVE-UNIT-IMAGE:ENSURE ;] E-NUNIT-PROFILE TTHROWSQ
    OUTPUT$ EXISTS? TFALSE
    UNIT$ EXISTS? TFALSE ;
 
@@ -76,6 +78,13 @@ variable CALLED
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
+: CHILD-RUN ( -- )
+   ENGINE-CANDIDATE:PATH$ >LEN
+   OUT CAP >LEN ERR CAP >LEN 60000 >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   {: outu:len erru:len code:n :}
+   outu LEN>N OUT-U ! erru LEN>N ERR-U ! code RC ! ;
+
 : BUILD-ENTRY ( -- )
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
@@ -86,11 +95,23 @@ variable CALLED
    s" NBR" ARG
    UNIT$ ARG
    OUTPUT$ ARG
-   ENGINE-CANDIDATE:PATH$ >LEN
-   OUT CAP >LEN ERR CAP >LEN 60000 >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
-   {: outu:len erru:len code:n :}
-   outu LEN>N OUT-U ! erru LEN>N ERR-U ! code RC ! ;
+   CHILD-RUN ;
+
+: CACHE-ENTRY ( -- )
+   CACHE-SRC$ S\" require test/native-unit-image.f\nNATIVE-UNIT-IMAGE:ENSURE\n" WRITE-ALL
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" --load" ARG
+   CACHE-SRC$ ARG
+   CHILD-RUN ;
+
+: CACHE-INTEL ( -- )
+   s" a real Intel cache ensure refuses before grant or key resolution" T-LABEL
+   CACHE-ENTRY
+   RC @ 67 T=
+   ERR ERR-U @ s" uncaught throw code -8597" CONTAINS? TTRUE
+   OUTPUT$ EXISTS? TFALSE
+   UNIT$ EXISTS? TFALSE ;
 
 : ENTRY-INTEL ( -- )
    s" a real Intel unit build refuses the profile without publishing either artifact" T-LABEL
@@ -107,6 +128,7 @@ public
    SETUP
    HB-TARGET-LINUX-X86-64? if
       DIRECT-INTEL
+      CACHE-INTEL
       ENTRY-INTEL
    then
    SELECT-FOREIGN
