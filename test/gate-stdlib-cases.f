@@ -91,14 +91,6 @@ SUITE hb-build-large-source
    tools/hb-build-large-source-test.f
 ;SUITE
 
-SUITE aot-wide-format
-   test/aot-wide-format-suite.f
-;SUITE
-
-SUITE aot-wide-prefix
-   test/aot-wide-prefix-suite.f
-;SUITE
-
 SUITE stripped-entry-qualified
    test/stripped-entry-qualified.f
 ;SUITE
@@ -1987,40 +1979,8 @@ SUITE stdlib-standalone-load
    test/stdlib-standalone-load.f
 ;SUITE
 
-SUITE aot-wid-restore
-   test/aot-wid-suite.f -- restore
-;SUITE
-
-SUITE aot-wid-refuse-wid0
-   test/aot-wid-suite.f -- refuse-wid0
-;SUITE
-
-SUITE aot-wid-refuse-address-span
-   test/aot-wid-suite.f -- refuse-address-span
-;SUITE
-
-SUITE aot-wid-boot-sealed
-   test/aot-wid-suite.f -- boot-sealed
-;SUITE
-
-SUITE aot-wid-rebase
-   test/aot-wid-suite.f -- rebase
-;SUITE
-
-SUITE aot-wid-capture-refusal
-   test/aot-wid-suite.f -- capture-refusal
-;SUITE
-
-SUITE aot-data-window
-   test/aot-data-window-suite.f
-;SUITE
-
 SUITE aot-seed-batch
    test/aot-seed-batch-suite.f
-;SUITE
-
-SUITE aot-capture-compact
-   test/aot-capture-compact.f
 ;SUITE
 
 SUITE data-address-codec
@@ -2028,16 +1988,8 @@ SUITE data-address-codec
    tools/snap-heap-owner-test.f
 ;SUITE
 
-SUITE aot-named-cells
-   test/aot-named-cells.f
-;SUITE
-
 SUITE aot-named-cells-native
    test/aot-named-cells.f -- native
-;SUITE
-
-SUITE aot-prelude-band
-   test/aot-prelude-band-suite.f
 ;SUITE
 
 SUITE aot-payload-admission
@@ -2056,16 +2008,8 @@ SUITE aot-registry-identity
    test/aot-registry-identity.f
 ;SUITE
 
-SUITE aot-payload-graph
-   test/aot-payload-graph.f
-;SUITE
-
 SUITE checker-graph-domains
    test/checker-graph-domains.f
-;SUITE
-
-SUITE aot-prefix-literal
-   test/aot-prefix-literal.f
 ;SUITE
 
 SUITE aot-payload-unsupported
@@ -2078,10 +2022,6 @@ SUITE aot-payload-constructor
 
 SUITE aot-sig-pool
    test/aot-sig-pool-suite.f
-;SUITE
-
-SUITE aot-effect-pool
-   test/aot-effect-pool.f
 ;SUITE
 
 SUITE heap-start-cell

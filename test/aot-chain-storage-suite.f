@@ -1,5 +1,5 @@
-\ Synthetic AOT DATA sites and address rows cross file, owned-value and merge
-\ boundaries without capturing or executing host instruction bytes.
+\ Synthetic AOT DATA sites, address rows and signature strings cross file,
+\ owned-value and merge boundaries without executing host instruction bytes.
 require test/aot-chain-capture-lib.f
 
 package AOT-CHAIN-SUITE
@@ -29,6 +29,15 @@ create ART-BUF FS-PATH-CAP allot   variable ART-U
    mode modeu >LEN PROC-ARGV+
    RUN-CHILD ;
 
+: RUN-SIGSTR ( ptr u8 n -- ) {: mode:ptr modeu:n :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" test/aot-sigstr-storage.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   ART$ >LEN PROC-ARGV+
+   mode modeu >LEN PROC-ARGV+
+   RUN-CHILD ;
+
 : SPAN-CASE ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
    a u s" file" RUN-DATA-SITES want ROW-RC
    a u s" owned" RUN-DATA-SITES want ROW-RC ;
@@ -47,6 +56,25 @@ create ART-BUF FS-PATH-CAP allot   variable ART-U
    s" budget-read" ADDRESS-BUDGET-CASE
    s" budget-import" ADDRESS-BUDGET-CASE
    s" budget-merge" ADDRESS-BUDGET-CASE ;
+
+: PROBE-SIGSTR-STORAGE ( -- )
+   s" rows" RUN-SIGSTR 0 ROW-RC s" aot-sigstr-storage: ok" SAID?
+   s" reserve-negative" RUN-SIGSTR REFUSE-RC ROW-RC
+   s" effect pool exceeds the section byte budget" ERR-SAID?
+   s" reserve-overflow" RUN-SIGSTR REFUSE-RC ROW-RC
+   s" effect pool exceeds the section byte budget" ERR-SAID?
+   s" reserve-limit" RUN-SIGSTR REFUSE-RC ROW-RC
+   s" effect pool exceeds the section byte budget" ERR-SAID?
+   s" budget-write" RUN-SIGSTR $4B ROW-RC
+   s" encoded sections exceed their byte budget" ERR-SAID?
+   s" budget-owned" RUN-SIGSTR $4B ROW-RC
+   s" encoded sections exceed their byte budget" ERR-SAID?
+   s" budget-import" RUN-SIGSTR $4B ROW-RC
+   s" encoded sections exceed their byte budget" ERR-SAID?
+   s" budget-read" RUN-SIGSTR $4B ROW-RC
+   s" encoded sections exceed their byte budget" ERR-SAID?
+   s" budget-merge" RUN-SIGSTR $4B ROW-RC
+   s" encoded sections exceed their byte budget" ERR-SAID? ;
 
 : PROBE-DATA-SITES ( -- )
    s" sites" s" file" RUN-DATA-SITES 0 ROW-RC
@@ -74,7 +102,8 @@ create ART-BUF FS-PATH-CAP allot   variable ART-U
    SETUP
    ROOT$ s" small.aot" ART-BUF JOIN-PATH ART-U !
    PROBE-DATA-SITES
-   PROBE-ADDRESS-STORAGE ;
+   PROBE-ADDRESS-STORAGE
+   PROBE-SIGSTR-STORAGE ;
 
 public
 
