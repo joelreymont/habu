@@ -2087,12 +2087,16 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    fam CB-FAM !
    MM-CON-VAR MM ! ;
 
-: MSCAN-CON-VAR ( n -- ) {: ix:n :}
+: MSCAN-CON-VAR ( n -- )
+   {: ix:n :}
    ix MTOK$ CB-FAM @ NFAM:VARIANT {: vid:n ok:bool :}
    ok 0= if E-NELAB-MATCH throw then
    ix MR-VARIANT MROLE!
    CB-FAM @ vid NFAM:PADS  ix SITE-PADS +  {: pads:n :}
-   CB-ROW @  vid NFAM:TAG  pads  vid NFAM:PAY-CELLS  MARM!
+   EXACT-SOURCE @ if
+      ix SITE-CALL drop dup 0< if drop E-NELAB-MATCH throw then
+   else vid NFAM:PAY-CELLS then {: pay:n :}
+   CB-ROW @  vid NFAM:TAG  pads  pay  MARM!
    MM-OFF MM ! ;
 
 \ ---- the keywords the pass reacts to -----------------------------------------
@@ -3324,12 +3328,14 @@ here CELL 1- and CELL swap - CELL 1- and allot
       r sy HIR-WORD:CALLEE-IN@ r sy HIR-WORD:CALLEE-OUT@
       r sy HIR-WORD:OUT-GLUE@
    then {: in:n out:n glue:n :}
+   \ Constructor pads are call operands; the output already includes them.
+   in ix SITE-PADS + {: call-in:n :}
    r sy HIR-WORD:TERMINAL? if
-      ix r sy HIR-WORD:ENTRY@ in STAGE-TERMINAL exit
+      ix r sy HIR-WORD:ENTRY@ call-in STAGE-TERMINAL exit
    then
    out 0< glue NDICT:GLUE-UNKNOWN = or if E-NELAB-BUNDLE throw then
    ix  r sy HIR-WORD:ENTRY@
-   in out glue STAGE-WCALL
+   call-in out glue STAGE-WCALL
    ix out QRESULTS-FILL
    r sy HIR-WORD:CALLEE-DEAD? if r ix DEAD-END then ;
 
@@ -3478,11 +3484,6 @@ here CELL 1- and CELL swap - CELL 1- and allot
 : CON-PADS-PUSH ( n n -- ) {: ix:n x:n :}
    x 0 ?do  ix 0 EMIT-LIT  loop ;
 
-\ What came back is ONE value: the call answered its DECLARED bundle.
-: CON-BUNDLE-GLUE ( n -- ) {: w:n :}
-   w VN @ > if E-NELAB-UNDER throw then
-   VN @ w -  w  VGLUE-GROW ;
-
 : DO-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    ix SITE-CALL drop {: in:n :}
@@ -3521,11 +3522,8 @@ here CELL 1- and CELL swap - CELL 1- and allot
       ix out QRESULTS-FILL
       exit
    then
-   ix SITE-PADS {: x:n :}
-   ix x CON-PADS-PUSH
-   r ix DO-WORD-CALL
-   x 0= if exit then
-   r  ix WSYM  HIR-WORD:CALLEE-OUT@  x +  CON-BUNDLE-GLUE ;
+   ix ix SITE-PADS CON-PADS-PUSH
+   r ix DO-WORD-CALL ;
 
 \ Source stores use the engine's protected-span boundary. A raw HIR store
 \ alone cannot enforce the same sealed-memory rule as interpreted ! and c!.

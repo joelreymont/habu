@@ -5457,7 +5457,8 @@ private
 \ its representation even at width 1. Open/linear/scalar/pointer args keep the
 \ fresh var and ordinary boundary coercion. Shared by the reserved `construct`
 \ token and the generated-constructor CALL (TFAM-CTOR-STEP?).
-: TFC-CONSTRUCT-STEP-VID ( n n -- ) {: fam:n vid:n :}
+: TFC-CONSTRUCT-STEP-VID ( n n -- )
+   {: fam:n vid:n :}
    \ The layout query walks ownership through TFC-VARS, so populate this
    \ constructor's arguments only after that query has finished.
    fam CONSTRUCT-DECL-LAYOUT {: dt:n seeded:bool :}
@@ -5469,7 +5470,7 @@ private
       dt TYPE-REP-CLOSED? IF fam vid famterm TFC-CON-XPAD-RECORD THEN
    THEN
    famterm base PUSH-LOGICAL {: dout:n :}
-   din dout CHECKER-STEP
+   din dout RECORDED-STEP
    seeded IF
       dt TYPE-REP-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN   \ open value/row: stay staged fail-closed
    THEN ;
