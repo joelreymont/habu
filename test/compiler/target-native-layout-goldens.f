@@ -25,8 +25,11 @@ create GOLDEN
    $3640 , 0 ,   \ REPLH-CELL
    $37E8 , 1 ,   \ BPWBASE-CELL
    $560 ,  0 ,   \ LASTC-CELL
+   $2D10 , 0 ,   \ NATIVE-OBS-CELLS:HOST-INVALIDATE
+   $2D20 , 0 ,   \ NATIVE-HOST-CELLS:SELECT
+   $2D30 , 0 ,   \ NATIVE-HOST-CELLS:FACTS
 
-14 constant ROWS
+17 constant ROWS
 
 public
 
