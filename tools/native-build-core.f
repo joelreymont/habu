@@ -524,6 +524,10 @@ TYPED-VARIABLE HELD-WRITER [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
    CLASS-WANTED @ CLASS-WHITEBOX = if S\" 42\n\n1\n\n" exit then
    S\" 42\n\n0\n\n" ;
 
+: SMOKE-OTHER$ ( -- ptr u8 n )
+   CLASS-WANTED @ CLASS-WHITEBOX = if S\" 42\n\n0\n\n" exit then
+   S\" 42\n\n1\n\n" ;
+
 \ The one place a whitebox image is stopped from becoming a product. It runs
 \ before PROMOTE, so the refusal costs a temp file and nothing that was named.
 : SMOKE-CLASS-REFUSE ( -- )
@@ -549,8 +553,8 @@ TYPED-VARIABLE HELD-WRITER [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
       SMOKE-ERR erru type
       BUILD-RC throw
    then
-   SMOKE-OUT outu SMOKE-EXPECT$ STR= 0= if
-      SMOKE-OUT outu S\" 42\n\n" STARTS-WITH? if SMOKE-CLASS-REFUSE then
+   SMOKE-OUT outu SMOKE-EXPECT$ ENDS-WITH? 0= if
+      SMOKE-OUT outu SMOKE-OTHER$ ENDS-WITH? if SMOKE-CLASS-REFUSE then
       BUILD-RC throw
    then ;
 
