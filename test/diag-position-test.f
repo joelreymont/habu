@@ -919,6 +919,37 @@ variable RC
    s" match-open.f" FIXTURE!
    s" E-MATCH-UNTERMINATED" s" ;" 2 38 83 84 REFUSED-AT ;
 
+\ A match beyond the control-frame limit leaves its body to the load. The
+\ checker's abandoned-match walk must still spend literal payloads before
+\ counting a real ;MATCH, so their text cannot replace the depth refusal.
+: MATCH-DEPTH-START ( -- )
+   SB-RESET
+   s" ENUM shade red ;ENUM" SB-APPEND LF+
+   s" : X ( -- )" SB-APPEND
+   31 0 DO s"  true if" SB-APPEND LOOP LF+
+   s" MATCH shade red OF " SB-APPEND ;
+
+: MATCH-DEPTH-END ( -- )
+   s"  ENDOF ;MATCH" SB-APPEND LF+
+   31 0 DO s"  then" SB-APPEND LOOP
+   s"  ;" SB-APPEND LF+ ;
+
+: TEST-MATCH-DEPTH-PAYLOAD ( -- )
+   s" a string cannot close an abandoned match" T-LABEL
+   MATCH-DEPTH-START
+   s" s" SB-APPEND 34 SB-APPEND-C
+   s"  ;match NOPE" SB-APPEND 34 SB-APPEND-C
+   s"  2drop" SB-APPEND
+   MATCH-DEPTH-END
+   s" depth-string.f" FIXTURE!
+   s" E-MATCH-DEPTH" s" shade" 3 7 286 291 REFUSED-AT
+   s" a [char] operand cannot close an abandoned match" T-LABEL
+   MATCH-DEPTH-START
+   s" [char] ;match drop" SB-APPEND
+   MATCH-DEPTH-END
+   s" depth-char.f" FIXTURE!
+   s" E-MATCH-DEPTH" s" shade" 3 7 286 291 REFUSED-AT ;
+
 \ AMB, which packages PA and PB both publish, and with GLOBAL the global
 \ wordlist too (line 9 defines AMC otherwise), and on line 13 the body BODY of
 \ a definition under `using PA` and `using PB`.
@@ -1013,6 +1044,7 @@ variable RC
    TEST-CONTROL-ORPHAN
    TEST-SECOND-ELSE
    TEST-CONTROL-OPEN
+   TEST-MATCH-DEPTH-PAYLOAD
    TEST-USING-ORDER
    CLEANUP-RUN
    T-REPORT
