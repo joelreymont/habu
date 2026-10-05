@@ -78,7 +78,7 @@ Gforth recovery checks below are also separate from this registry.
 
 The Linux x86-64 engine has only tier 1: `0 set-tier` exits with
 `set-tier: x86-64 runs tier 1 only`. The registry includes
-`test/gate-arm-cases.f` only on an ARM host. Its eighteen whole rows require
+`test/gate-arm-cases.f` only on an ARM host. Its nineteen whole rows require
 the ARM host, its source recovery, JIT, or tier 0:
 
 - `compiler-shadow`, `x86-64-link-records`, `aot-shadow-capture`: these fixtures
@@ -106,9 +106,11 @@ the ARM host, its source recovery, JIT, or tier 0:
   `compiler-native-fused-moves`: these fixtures assert AArch64 instruction,
   register and frame layouts. Intel selection, allocation and emission have
   their own shared rows.
-- `aot-chain-producer`: its live-row mutation checks build an ARM source-only
-  recovery host. The capture format's portable transfer and refusal cases
-  remain in the shared `aot-chain-capture` row.
+- `aot-chain-producer`, `aot-chain-capture`: their live-window mutation,
+  capture and instruction-chain compaction checks need an ARM host. The
+  producer builds a source-only recovery host. The capture format's inert
+  metadata transfer, extent, capacity and refusal cases remain in the shared
+  `aot-chain-storage` row.
 - `compiler-native-code-span`, `compiler-aot-nested-body`: these inspect the
   ARM compact-blob planner, four-byte record trailers and ADR extent inference.
   Shared create/does and stripped-image rows cover the runtime behavior.

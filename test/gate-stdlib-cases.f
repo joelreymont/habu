@@ -217,8 +217,8 @@ SUITE build-fixpoint-source
    tools/build-fixpoint-source-test.f
 ;SUITE
 
-SUITE aot-chain-capture
-   test/aot-chain-capture-suite.f
+SUITE aot-chain-storage
+   test/aot-chain-storage-suite.f
 ;SUITE
 
 SUITE os-memory

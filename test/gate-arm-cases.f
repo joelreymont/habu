@@ -60,6 +60,12 @@ SUITE aot-chain-producer
    test/aot-chain-producer-suite.f
 ;SUITE
 
+\ Live ARM windows and instruction-chain compaction need an ARM host. Inert
+\ metadata storage, transfer and refusal cases stay shared.
+SUITE aot-chain-capture
+   test/aot-chain-capture-suite.f
+;SUITE
+
 \ These cases exercise the ARM compact-blob planner, four-byte trailers and
 \ ADR extent inference. Shared create/does and stripped-image rows still run.
 SUITE compiler-native-code-span
