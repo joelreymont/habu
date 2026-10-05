@@ -41,6 +41,7 @@ public
 : PATCH-NEIGHBOR ( -- n ) 33 ;
 : HOST-IMM ( -- ) ;
 : TARGET-IMM ( -- ) 1 WRITES ! ; immediate
+s" NATIVE-HOST-SOURCE:TARGET-IMM" 0 parse-imm
 : BEFORE-BAD ( -- n ) WRITE-ONCE BAD-NATIVE ;
 : NESTED-STORE ( -- n ) BAD-STORE ;
 : DIRECT-NATIVE ( -- n ) BAD-NATIVE ;

@@ -229,7 +229,7 @@ public
 
 private
 
-: MATCH-ROW? ( n ptr n n -- bool )
+: MATCH-ROW? ( n ptr n n n -- bool )
    {: row:n types:ptr din:n dout:n :}
    row IMPL-TYPE-FIRST @ 0< if false exit then
    row IMPL-IN @ din <> row IMPL-OUT @ dout <> or if false exit then
@@ -443,6 +443,9 @@ private
    b ROW {: y:n :}
    x IMPL-TYPE-FIRST @ {: first:n :}
    first 0< if false exit then
+   x IMPL-IN @ x IMPL-OUT @ + 0= if
+      y NULL-PTR 0 0 MATCH-ROW? exit
+   then
    y first IMPL-TYPES x IMPL-IN @ x IMPL-OUT @ MATCH-ROW? ;
 
 : ASSOCIATED-ID ( n -- n )
@@ -471,6 +474,9 @@ private
    id ROW {: row:n :}
    row IMPL-TYPE-FIRST @ {: first:n :}
    first 0< if 0 false exit then
+   row IMPL-IN @ row IMPL-OUT @ + 0= if
+      entry NULL-PTR 0 0 query execute exit
+   then
    entry first IMPL-TYPES row IMPL-IN @ row IMPL-OUT @ query execute ;
 
 public
