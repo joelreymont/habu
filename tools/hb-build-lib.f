@@ -8,6 +8,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 require lib/source.f
 require lib/build.f
 require lib/codesign.f
@@ -442,8 +443,12 @@ variable HBB-MAKER-TIMEOUT-MS
      err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
    ;MATCH ;
 
+: HBB-LINT-ENGINE$ ( -- ptr u8 n )
+   CLI-TOOLS? if CLI-TOOLS$ exit then
+   ENGINE-CANDIDATE:PATH$ ;
+
 : HBB-RUN-HB-CAPTURE ( -- n n n )
-   CLI-TOOLS$ >LEN HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
+   HBB-LINT-ENGINE$ >LEN HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
    HBB-LINT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    HBB-CAPTURE>N ;
 
