@@ -273,7 +273,7 @@ deep until the seed mirrors those frames, or the stage0 build exits 75.
 A DATA cell or band the stage0 generator places gets a row in
 `bootstrap/cg/data-claims.fs`. So does a cell that src/ code reads at a fixed
 offset on any engine and the generator does not name, such as checker.f's
-declaration-owner cells at `$360`/`$368`. Loading the generator refuses an
+refusal cell at `$27F8`. Loading the generator refuses an
 overlapping pair and names both, so every Gforth harness and the stage0 build
 stop before an engine exists. Without the table, BEGIN frames laid over the
 compile cells showed only when a definition nested 23 deep.
