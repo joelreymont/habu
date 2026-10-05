@@ -237,8 +237,9 @@ variable M-DOES-FUN                  \ hidden clause function ordinal
 \ Parked rather than left on the stack, because this runs inside the quotation
 \ the recovery below catches.
 : END-RECORDED ( -- )
-   NFEED:END-UNIT M-VERDICT !
-   0 M-TAPE ! ;
+   NFEED:END-UNIT {: view:IR-ARENA:view verdict:n :}
+   verdict M-VERDICT !
+   view 0 M-TAPE ! ;
 
 \ Row zero's structural span names the exact spelling already copied into TXT.
 : TAPE-NAME$ ( -- ptr u8 n )
@@ -369,6 +370,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    [: SCAN ;] catch {: rc:n :}
    rc 0 <> if NFEED:ABANDON-UNIT rc throw then
    TRUSTED? 0= CERTIFYING? and if M-VERDICT @ -1 <> if E-NCOMP-VERDICT throw then then
+   TAPE NFEED:RECORD-WINDOW
    before ;
 
 \ ---- which word the source published -----------------------------------------
@@ -484,6 +486,8 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 
 : BIND-PRIOR ( IR-ARENA:arena IR-ARENA:arena -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   PRIOR-ENTRY @ 0= if exit then
+   TAPE NFEED:PRODUCED-CK
    TAPE NTAPE:TOKENS 1 ?do
       p r i PRIOR-STEP
    loop ;
@@ -593,11 +597,11 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    M-DOES @ 0<> if
       CC BB TAPE p r M-IN @ M-OUT @ M-DOES-ROW @
       M-DOES-IN @ M-DOES-OUT @ M-DOES-GIN @ M-DOES-GOUT @
-      M-DOES-SIG @ M-DOES-SIG-U @ NELAB:DOES drop
+      M-DOES-SIG @ M-DOES-SIG-U @ NELAB:RECORDED-DOES drop
       NELAB:DOES-FUNCTION M-DOES-FUN !
       exit
    then
-   CC BB TAPE p r M-IN @ M-OUT @ NELAB:COLON drop ;
+   CC BB TAPE p r M-IN @ M-OUT @ NELAB:RECORDED-COLON drop ;
 
 : HOST-DECL? ( -- bool )
    NAME$ CHECKER-OWNER:QUERY 0= if false exit then

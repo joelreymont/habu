@@ -722,6 +722,19 @@ public
    c r  c b id BKEY-CK
    a u NDICT:FIXED-VALUE  a u NDICT:SPELL-FIXED LIT-KIND  FIXED-ROW ;
 
+\ Direct tapes have no source checker window. Resolve their dictionary words
+\ through the ordinary model path; the recorded-source entry below never calls
+\ either of these readers when an exact site fact is missing.
+: RESOLVE-FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id :}
+   c b id FIX-SPELL {: a:ptr u:n :}
+   a u NDICT:SPELL-FIXED {: k:n :}
+   k NDICT:FIXED-NONE = if false exit then
+   c r  c b id BKEY-CK
+   a u NDICT:FIXED-VALUE  k LIT-KIND  FIXED-ROW
+   true ;
+
 \ Declare that a source word is another word this definition CALLS: where its
 \ A caller that states a callee by hand states no glue and no deadness, and gets
 \ the safe reading of both.
@@ -908,6 +921,21 @@ public
 
 : OVERLAY? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
    OVERLAY-MODELS? ;
+
+: RESOLVE-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id :}
+   c b id FIX-SPELL {: a:ptr u:n :}
+   a u NDICT:CALL-BINDING {: entry:n kind:n :}
+   entry 0= if false exit then
+   a u NDICT:SPELL-CALL {: in:n out:n glue:n neutral:bool :}
+   in NDICT:ARITY-NONE = if false exit then
+   neutral 0= if false exit then
+   glue NDICT:GLUE-UNKNOWN = if false exit then
+   kind DKIND:CAST = if c b p r id DECLARE-BOUND-CAST true exit then
+   c r  c b id BKEY-CK  entry in out glue
+   a u entry a u NDICT:SPELL-DEAD? RESOLVED-NORET CALLABLE-ROW
+   true ;
 
 \ Every ordinary source token arrives here, including a repeated word or one
 \ already in the session vocabulary. Cache the original seeded decision before

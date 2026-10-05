@@ -55,6 +55,12 @@ variable F-VERDICT
 variable F-DOES                        \ byte split after `does> `, or zero
 variable F-BASE                        \ start of the scan now being recorded
 variable OBSERVER-ID                   \ address identifies this producer instance
+1 TYPED-BUFFER PRODUCED-VIEW IR-ARENA:view
+variable PRODUCED-VALID
+variable PRODUCED-BOUND
+PTR-VARIABLE PRODUCED-OWNER
+variable PRODUCED-WINDOW
+TYPED-VARIABLE PRODUCED-UNJUDGED bool
 
 : TXT@ ( -- ptr u8 )
    F-TXT @ ;
@@ -242,6 +248,7 @@ using NTAPE
 : OPEN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena ptr u8 n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder tp:IR-ARENA:arena txt cap:n :}
    ST-IDLE STATE-CK
+   0 PRODUCED-VALID !  0 PRODUCED-BOUND !
    cap 0 < if E-NFEED-TEXT throw then
    c 0 F-CTX !
    b 0 F-BLD !
@@ -261,6 +268,29 @@ using NTAPE
 \ install is last-writer-wins for exactly this reason (src/core/checker.f
 \ CHECKER-TAPE).
 public
+
+\ END-UNIT supplies the exact sealed view. NCOMP binds only that view to the
+\ live checker window; a manually written tape has no producer association.
+: RECORD-WINDOW ( IR-ARENA:view -- )
+   {: view:IR-ARENA:view :}
+   PRODUCED-VALID @ 0= PRODUCED-BOUND @ 0<> or if
+      CHECKER-OWNER-ABI:BINDING-RC throw then
+   view 0 PRODUCED-VIEW @ IR-ARENA:VIEW-SAME? 0= if
+      CHECKER-OWNER-ABI:BINDING-RC throw then
+   PRODUCED-OWNER @ PRODUCED-WINDOW @ PRODUCED-UNJUDGED @
+      CHECKER-OWNER:BINDING-WINDOW-CK
+   0 CHECKER-OWNER:SOURCE-BINDING 2drop
+   -1 PRODUCED-BOUND ! ;
+
+: PRODUCED-CK ( IR-ARENA:view -- )
+   {: view:IR-ARENA:view :}
+   PRODUCED-VALID @ 0= PRODUCED-BOUND @ 0= or if
+      CHECKER-OWNER-ABI:BINDING-RC throw then
+   view 0 PRODUCED-VIEW @ IR-ARENA:VIEW-SAME? 0= if
+      CHECKER-OWNER-ABI:BINDING-RC throw then
+   PRODUCED-OWNER @ PRODUCED-WINDOW @ PRODUCED-UNJUDGED @
+      CHECKER-OWNER:BINDING-WINDOW-CK
+   0 CHECKER-OWNER:SOURCE-BINDING 2drop ;
 
 \ PUBLIC so the observer this compiler owns can be put back: a test that installs
 \ its own trio over it (test/compiler/native-tape-owner.f) restores the engine's
@@ -318,17 +348,27 @@ TRUSTED: SCAN-ID ( -- n )
 : END-UNIT ( -- IR-ARENA:view n )
    END-CK
    CHECKER-OWNER:TAPE-DISARM
-   TAPE NTAPE:SEAL
+   TAPE NTAPE:SEAL {: view:IR-ARENA:view :}
+   view 0 PRODUCED-VIEW !
+   CHECKER-OWNER:BINDING-WINDOW
+      {: owner:ptr serial:n unjudged:bool :}
+   owner PRODUCED-OWNER !
+   serial PRODUCED-WINDOW !
+   unjudged PRODUCED-UNJUDGED !
+   -1 PRODUCED-VALID !  0 PRODUCED-BOUND !
+   view
    F-VERDICT @
    CLEAR ;
 
 \ The only route out of a unit whose scan threw. It publishes nothing.
 : ABANDON-UNIT ( -- )
+   0 PRODUCED-VALID !  0 PRODUCED-BOUND !
    CHECKER-OWNER:TAPE-DISARM
    CLEAR ;
 
 : CAPTURE-PREPARE ( -- )
    ST-IDLE STATE-CK
+   0 PRODUCED-VALID !  0 PRODUCED-BOUND !
    CLEAR ;
 
 private

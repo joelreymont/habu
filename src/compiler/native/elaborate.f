@@ -24,6 +24,7 @@ require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/ir/source.f
 require src/compiler/native/tape.f
+require src/compiler/native/feed.f
 require src/compiler/native/hir.f
 require src/compiler/native/hir-word.f
 require src/compiler/native/host.f
@@ -41,6 +42,7 @@ private
 1 TYPED-BUFFER S-BLD IR-BUILD:builder
 1 TYPED-BUFFER S-VW IR-ARENA:view
 1 TYPED-BUFFER S-KEY IR-ID:ir-module-key
+variable EXACT-SOURCE
 
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
 : BLD ( -- IR-BUILD:builder )        0 S-BLD @ ;
@@ -2167,6 +2169,12 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    ix LOCAL-OF 0 >= if exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
+   EXACT-SOURCE @ 0= if
+      r sy HIR-WORD:MODELS? if exit then
+      CTX BLD r sy HIR-WORD:RESOLVE-FIXED if exit then
+      CTX BLD p r sy HIR-WORD:RESOLVE-CALLABLE drop
+      exit
+   then
    ix CHECKER-OWNER:SOURCE-BINDING {: bound:ptr bytes:n :}
    bytes 0= if
       r sy STRUCTURAL-MODEL? if exit then
@@ -4325,9 +4333,9 @@ private
    c b v key p r QBUILD-ALL
    f ;
 
-public
-
-: COLON ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
+\ Both entries share the same elaboration. Only NCOMP's recorded entry may
+\ consult source-site facts; a direct tape has no checker authority to borrow.
+: COLON-CORE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
       r:IR-ARENA:arena in:n out:n :}
    RF-RESET
@@ -4338,7 +4346,7 @@ public
    0 FR-GIN ! 0 FR-GOUT !
    c b v p r 1 n in out BUILD-FUN ;
 
-: DOES ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n n n n n n ptr u8 n -- IR-ID:ir-fun-id )
+: DOES-CORE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n n n n n n ptr u8 n -- IR-ID:ir-fun-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
       r:IR-ARENA:arena in:n out:n at:n din:n dout:n dgin:n dgout:n sig:ptr sigu:n :}
    RF-RESET
@@ -4360,6 +4368,33 @@ public
    c b v p r at 1+ n din dout BUILD-FUN drop
    1 CALL-NEED !  0 TAIL-NEED !
    f ;
+
+public
+
+: COLON ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
+   0 EXACT-SOURCE !
+   NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
+   COLON-CORE ;
+
+: DOES ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n n n n n n ptr u8 n -- IR-ID:ir-fun-id )
+   0 EXACT-SOURCE !
+   NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
+   DOES-CORE ;
+
+: RECORDED-COLON ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
+      r:IR-ARENA:arena in:n out:n :}
+   v NFEED:PRODUCED-CK
+   -1 EXACT-SOURCE !
+   c b v p r in out COLON-CORE ;
+
+: RECORDED-DOES ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n n n n n n ptr u8 n -- IR-ID:ir-fun-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
+      r:IR-ARENA:arena in:n out:n at:n din:n dout:n dgin:n dgout:n
+      sig:ptr sigu:n :}
+   v NFEED:PRODUCED-CK
+   -1 EXACT-SOURCE !
+   c b v p r in out at din dout dgin dgout sig sigu DOES-CORE ;
 
 : DOES-FUNCTION ( -- n )
    DOES-FUN @ ;

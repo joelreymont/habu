@@ -118,7 +118,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 , 0 , 0 ,
-   0 ,
+   0 , 0 , 0 , 0 ,
    0 ,
    0 ,
    0 ,
@@ -127,6 +127,7 @@ create OWNER-STORAGE
    0 , 0 , 0 , 0 ,
    0 ,
    0 , 0 , 0 ,
+   0 ,
    0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
@@ -145,7 +146,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:EFFECT-STACK-STABLE-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:BINDING-WINDOW-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -10203,6 +10204,7 @@ PPRIM: CHECKER-OWNER-ABI PAYLOAD-REG-SAVE-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI PAYLOAD-DISARM-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI VERIFY-FILE-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-RC PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI BINDING-WINDOW-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BOUND-ORD PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BOUND-KIND PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BOUND-SYM PE-N PE-OUT PPRIM;
@@ -12106,6 +12108,7 @@ variable PARSE-COMPLETE
 $7FFFFFFFFFFFFFFF CHECKER-OWNER-ABI:BOUND-CELLS cells / constant BWIN-MAX
 PTR-VARIABLE BWIN-P
 variable BWIN-N   variable BWIN-CAP   variable BWIN-VALID   variable UWIN-VALID
+variable BWIN-EPOCH
 variable BGLUE-MASK
 variable BGLUE-I
 
@@ -12233,6 +12236,8 @@ variable BGLUE-I
 : REC-UNJUDGED-BINDING ( n -- ptr u8 n )
    UWIN-VALID @ 0= IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
    REC-BINDING-ROW ;
+
+: REC-BINDING-WINDOW ( -- n ) BWIN-EPOCH @ ;
 
 : REC-STEP ( -- )                    \ one token reported, so the next takes the next ordinal
    REC-ON @ 0= IF EXIT THEN
@@ -20312,6 +20317,9 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
 \ A length that describes no memory (BYTE-SPAN?) is refused before any state is
 \ reset, with the refusal the token buffers gave the maximum cell.
 : CHECK-RESET {: a u :}
+   BWIN-EPOCH @ 1+ dup 0= IF
+      s" checker: binding window serial overflow" 76 die THEN
+   BWIN-EPOCH !
    a u BYTE-SPAN? 0= IF s" checker: token buffer too large" 76 die THEN
    RES-FALSE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    FO-RESET
@@ -23440,6 +23448,7 @@ package CHECKER-REG
 ' CWIN-CELLS                        DECLARATIONS CALL-CELLS-OFF + xt!
 ' REC-CALL-BINDING                  DECLARATIONS CHECKER-OWNER-ABI:CALL-BINDING-OFF + xt!
 ' REC-UNJUDGED-BINDING              DECLARATIONS CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF + xt!
+' REC-BINDING-WINDOW                DECLARATIONS CHECKER-OWNER-ABI:BINDING-WINDOW-OFF + xt!
 ' CWIN-GLUE                         DECLARATIONS CALL-GLUE-OFF + xt!
 ' CWIN-MATCH-PAYLOAD                DECLARATIONS CALL-MATCH-OFF + xt!
 ' CWIN-QUOT-IN                      DECLARATIONS CALL-QUOT-IN-OFF + xt!
