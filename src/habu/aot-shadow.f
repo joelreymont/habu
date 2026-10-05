@@ -240,6 +240,7 @@ DYNAMIC-BUFFER SH-ROWS n             \ capture record -> its shipped row, or -1
    k ACAP-NAMED-BIT @ 0= if 1 k ACAP-NAMED-BIT ! then ;
 
 : SH-KEEP-PRIVATE ( -- )
+   NSHADOW:OPEN? 0= if exit then
    NSHADOW:RECORDS 0 ?do i NSHADOW:RECORD@ SH-KEEP-ONE loop ;
 
 \ Whether map row r is over emission e and files a record the capture ships: a

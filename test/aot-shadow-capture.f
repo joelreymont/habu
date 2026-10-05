@@ -555,7 +555,7 @@ variable RC
       KEY 2 SCRIPT-ARGV$ AOT-FILE:MERGE
       s" aot-shadow-capture: merge=ok" type cr exit
    then
-   s" aot-shadow-capture: expected no arguments, retired, alias, bridge, helper, export, read <artifact>, or merge <host> <artifact>"
+   s" aot-shadow-capture: expected no arguments, retired, alias, bridge, helper, export, closed, read <artifact>, or merge <host> <artifact>"
    USAGE-RC die ;
 
 \ What the capture carried, for a reader comparing runs.
