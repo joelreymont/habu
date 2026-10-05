@@ -98,6 +98,7 @@ public
    e TAKEN-EMISSION !
    at TAKEN-AT !
    [: TAKE-BODY ;] catch {: rc:n :}
+   0 TAKEN-AT !
    rc 0<> if ABANDON-TAKEN rc throw then ;
 
 \ PREPARE wrote all cells; the code publisher only flips liveness now.
