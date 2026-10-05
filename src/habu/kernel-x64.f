@@ -25,6 +25,7 @@
 \ One section per group of rows. KERNEL, emits the helpers and every section;
 \ a group's rows land in its section word, which KERNEL, calls.
 require lib/byte-buffer.f
+require lib/le.f
 require lib/string.f
 require src/habu/prof-x64.f
 require src/core/does-clause.f
@@ -5323,16 +5324,11 @@ public
    s" prof-json" [: X64PROF:JSON-BODY ;] PRIM
    s" prof-row" [: X64PROF:ROW-BODY ;] PRIM ;
 
-\ A seeded provider needs a non-null code xt at its dispatch cell.
-: PROVIDED-FILLED? ( n -- bool ) {: cell:n :}
-   AOT-WINDOW:XTOFF-N @ 0 ?do
-      AOT-WINDOW:XTOFF-BUF@ i AOT-WINDOW:XTOFF-ROW * + CELL-VIEW @ {: pair:n :}
-      pair 32 rshift {: meta:n :}
-      pair $FFFFFFFF and cell =
-      meta AOT-WINDOW:XTOFF-KIND-MASK and 0= and
-      meta AOT-WINDOW:XTOFF-VALUE-MASK and 0<> and if unloop true exit then
-   loop
-   false ;
+\ A seeded provider needs a non-null code xt in the linked DATA cell. The
+\ capture's address-row metadata alone does not prove the final value.
+: PROVIDED-FILLED? ( ptr u8 n n -- bool ) {: data:ptr size:n cell:n :}
+   cell 0 < cell CELL + size > or if false exit then
+   data cell + LE:U64@ 0<> ;
 
 \ The linker supplies the seven translated entries after it has placed the
 \ captured routines. Comparing code identities also classifies aliases, while
@@ -5385,8 +5381,7 @@ public
    SCOPE-SEED-LBL X64CODE:LBL,
    R8 ENGINE-PRIMS:COUNT DREC * IMM32,
    ASM-SINK ENC-RET
-   SCOPE-SEED-END-LBL X64CODE:LBL,
-   [: PROVIDED-FILLED? ;] ENGINE-PRIMS:COMPLETE ;
+   SCOPE-SEED-END-LBL X64CODE:LBL, ;
 
 ;using   \ X64LAYOUT
 ;using

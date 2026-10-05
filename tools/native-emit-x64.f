@@ -56,16 +56,19 @@ variable TEXT-CODE-END
       s" native-emit: the window carries no x86-64 routines; NATIVE-EMIT:OPEN-SHADOW opens their shadow before the window loads" REFUSE-RC die
    then ;
 
+: LINKED-PROVIDED? ( n -- bool ) {: cell:n :}
+   X64LINK:DATA$ cell X64KERNEL:PROVIDED-FILLED? ;
+
 : STREAM, ( bool -- ) {: scoped:bool :}
    X64CODE:ASM-RESET
    X64CODE:LBL X64CODE:LBL {: start:label text:label :}
    start X64CODE:JMP,
    ENGINE-PRIMS:RESET
-   PROVIDED-XT:EVALUATE-CELL X64KERNEL:PROVIDED-FILLED?
-   ENGINE-PRIMS:SEEDED!
+   AOT-RUNTIME:COMPLETE? ENGINE-PRIMS:SEEDED!
    text X64CODE:LBL,
    X64KERNEL:KERNEL,
    X64LINK:LAYOUT
+   [: LINKED-PROVIDED? ;] ENGINE-PRIMS:COMPLETE
    scoped if X64LINK:C2-ENTRIES else 0 0 0 0 0 0 0 then
    X64KERNEL:SCOPE-KIND-HELPER,
    start X64CODE:LBL,
