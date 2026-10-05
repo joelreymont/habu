@@ -17,12 +17,13 @@ private
 \ HOLE-BYTES is test/stripped-sparse-data-subject.f's hole: an image that
 \ carried it is at least that long, as that subject's image alone was before
 \ sparse DATA extents (1,704,128 bytes). IMAGE-MAX bounds this whole image,
-\ every subject's code and DATA together, which measured 165,372 bytes, so it
-\ fails the image if it grows by 96,772 bytes or more, whatever grows.
+\ every subject's code and DATA together. The ARM image measured 165,372 bytes,
+\ so its bound refuses another 96,772 bytes, whatever grows.
 \ Being below HOLE-BYTES it also refuses the hole by itself; the HOLE-BYTES
-\ check names that failure.
+\ check names that failure. The x86-64 fixed-page ELF measured 327,680 bytes;
+\ reject another 64 KiB page there while retaining the ARM bound.
 1000000 constant HOLE-BYTES
-$40000 constant IMAGE-MAX
+: IMAGE-MAX ( -- n ) HB-TARGET-LINUX-X86-64? if $60000 else $40000 then ;
 
 create SUBJECT FS-PATH-CAP allot
 create IMAGE FS-PATH-CAP allot
