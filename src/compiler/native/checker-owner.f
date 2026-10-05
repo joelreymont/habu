@@ -163,6 +163,10 @@ public
    dup 0= if drop SOURCE-REPORT exit then
    AS-ACTION execute ;
 
+\ The using refusal's spelling is valid until this scan's tape is released.
+\ It is a diagnostic read, not a new live-owner operation.
+TRUSTED: REFUSAL-TOKEN$ ( -- ptr u8 n ) CHECKER-USE:REFUSAL-TOKEN$ ;
+
 : RESET-REPORT ( -- )
    NCOMP-DISPATCH:DECL-RESET-REPORT-OFF s" report reset" FIELD
    dup 0= if drop SOURCE-REPORT-RESET exit then

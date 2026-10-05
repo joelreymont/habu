@@ -16,6 +16,7 @@ require lib/prelude.f
 require lib/errors.f
 require src/core/does-clause.f
 require src/core/quotation-storage.f
+require src/habu/xref.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
@@ -69,12 +70,14 @@ here CELL 1- and CELL swap - CELL 1- and allot
 variable RF-AT                       \ the row of the admit in flight, or -1
 variable RF-ROW                      \ the row the record was taken for, or -1
 variable RF-U                        \ how many of that row's spelling bytes are held
+variable RF-MISSING                  \ a tick whose operand resolves to no record
 1 TYPED-BUFFER RF-KIND NTAPE:kind
 create RF-BUF RF-CAP allot
 
 : RF-RESET ( -- )
    -1 RF-AT !
-   -1 RF-ROW ! ;
+   -1 RF-ROW !
+   0 RF-MISSING ! ;
 
 \ The one place this file asks the word model what a body token means.
 : ADMIT-AT ( IR-ARENA:arena n -- HIR:meaning )
@@ -3550,7 +3553,13 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 : DO-TICK ( n -- ) {: ix:n :}
    ix 1+ QSPELL {: a:ptr u:n :}
    a u NDICT:TICK-TARGET {: entry:n :}
-   entry 0= if ix QUOT-REFUSE then
+   entry 0= if
+      a u NDICT:SCOPE-REC XREF-FOUND? 0= if
+         -1 RF-MISSING !
+         ix 1+ QUOT-REFUSE
+      then
+      ix QUOT-REFUSE
+   then
    ix entry HIR:ADDR-CODE EMIT-KIND-LIT
    a u NDICT:SPELL-ARITY {: qi:n qo:n :}
    qi NDICT:ARITY-NONE = if exit then
@@ -4652,6 +4661,9 @@ public
 \ The row the refusal was about; every reader of the record asks this first.
 : REFUSED-ROW ( -- n )
    RF-ROW @ ;
+
+: SOURCE-UNDEFINED? ( -- bool )
+   RF-MISSING @ 0<> ;
 
 : REFUSED-KIND? ( NTAPE:kind -- bool )
    {: k:NTAPE:kind :}

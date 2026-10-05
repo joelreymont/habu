@@ -23430,3 +23430,8 @@ package CHECKER-REG
    data-base SOURCE-CELL + 0 ptr-field @ 0= if CLAIM-SOURCE-OWNER then ;
 CLAIM-COLD-SOURCE
 ;package
+
+package CHECKER-USE
+public
+: REFUSAL-TOKEN$ ( -- ptr u8 n ) USH-TOK-A @ USH-TOK-U @ ;
+;package

@@ -34,6 +34,7 @@
 
 require lib/prelude.f
 require lib/errors.f
+require src/core/engine-error.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/abi.f
@@ -349,8 +350,17 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    M-DOES @ 0<> if CHECK-DOES-SPLIT exit then
    CHECK-SOURCE ;
 
+: SOURCE-RC ( n -- n )
+   dup E-USING-AMBIGUOUS <> if exit then
+   drop
+   2 s" hb: ambiguous bare word resolves in multiple used packages: " write drop
+   CHECKER-OWNER:REFUSAL-TOKEN$ {: a:ptr u:n :}
+   2 a u write drop
+   2 S\" \n" write drop
+   ENGINE-ERROR:USING-AMBIGUOUS ;
+
 : SCAN ( -- )
-   [: CHECK-RECORDED M-VERDICT ! ;] catch {: src-rc:n :}
+   [: CHECK-RECORDED M-VERDICT ! ;] catch SOURCE-RC {: src-rc:n :}
    [: END-RECORDED ;] catch {: end-rc:n :}
    end-rc 0= if [: KEEP-TAPE-NAME ;] catch else 0 then {: name-rc:n :}
    src-rc 0<> if src-rc throw then
@@ -882,6 +892,11 @@ INSTALL-FORGET
    u 0 > if s"  at " ERROR-TEXT a u ERROR-TEXT then
    S\" \n" ERROR-TEXT ;
 
+: REPORT-UNDEFINED-TICK ( -- )
+   s" E-UNDEFINED: " ERROR-TEXT
+   NELAB:REFUSED$ ERROR-TEXT
+   S\" \n" ERROR-TEXT ;
+
 : RUN ( -- )
    LENGTH-CK
    CHECKER-OWNER:RESET-REPORT
@@ -895,6 +910,11 @@ INSTALL-FORGET
    then
    M-RC @ {: rc:n :}
    rc E-NCOMP-REPORTED = if rc throw then
+   rc ENGINE-ERROR:USING-AMBIGUOUS = if RETRACT rc throw then
+   rc E-NELAB-QUOT = NELAB:SOURCE-UNDEFINED? and if
+      REPORT-UNDEFINED-TICK
+      RETRACT RC-REJECT throw
+   then
    rc 0 <> if
       rc RC-REJECT <> CHECKER-OWNER:JSON-REPORTED? 0= or
       if REPORT-FAILURE then
