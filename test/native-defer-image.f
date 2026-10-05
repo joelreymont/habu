@@ -1,7 +1,7 @@
 \ The candidate is already an AOT-restored engine. Its first native definition
 \ reinstalls the compiler's tape callbacks, exercising the saved `is` code.
 \ Public image capture then carries an application's installer across two boots.
-\ Each restored process also compiles fresh JIT and native words: live compiler
+\ Each restored process also compiles fresh live and native words: live compiler
 \ literals can be allocated before the first source-prefix dictionary record.
 require lib/test.f
 require lib/fs-mutate.f
@@ -55,7 +55,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
    s" --" >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN
-   S\" require src/compiler/native/compiler.f\n1 set-tier\n: DEFER-IMAGE-NATIVE ( n -- n ) 1+ ;\n17 DEFER-IMAGE-NATIVE . cr\n0 set-tier\nrequire src/habu/app-image.f\nrequire test/native-defer-image-subject.f\nrequire test/compiler/native-opcode-image.f\nNATIVE-OPCODE-IMAGE:PRINT\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   S\" require src/compiler/native/compiler.f\n1 set-tier\nrequire lib/tier.f\npackage DEFER-IMAGE-TIER\npublic\n: LEGACY ( -- ) HB-TARGET-LINUX-X86-64? if exit then 0 TIER:SELECT ;\n;package\n: DEFER-IMAGE-NATIVE ( n -- n ) 1+ ;\n17 DEFER-IMAGE-NATIVE . cr\nDEFER-IMAGE-TIER:LEGACY\nrequire src/habu/app-image.f\nrequire test/native-defer-image-subject.f\nrequire test/compiler/native-opcode-image.f\nNATIVE-OPCODE-IMAGE:PRINT\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n :}
    S\" 18\n\ndefer-source: ok\n" {: prefix:ptr pu:n :}
@@ -73,7 +73,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
 : CHECK-IMAGE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n want:ptr wantu:n :}
    ENVIRONMENT
    path pathu
-   S\" require src/compiler/native/compiler.f\n1 set-tier\n17 DEFER-IMAGE-SUBJECT:CALL . cr\nDEFER-IMAGE-SUBJECT:CHECK-REASSIGNMENT\n0 set-tier\n: DEFER-IMAGE-JIT ( n -- n ) 5 + ;\n17 DEFER-IMAGE-JIT . cr\n1 set-tier\n: DEFER-IMAGE-FRESH ( n -- n ) 7 + ;\n: DEFER-IMAGE-INSTALL ( -- ) ['] DEFER-IMAGE-FRESH DEFER-IMAGE-SUBJECT:INSTALL ;\nDEFER-IMAGE-INSTALL\n17 DEFER-IMAGE-SUBJECT:CALL . cr\nNATIVE-OPCODE-IMAGE:PRINT\n" RUN-INPUT
+   S\" require src/compiler/native/compiler.f\n1 set-tier\n17 DEFER-IMAGE-SUBJECT:CALL . cr\nDEFER-IMAGE-SUBJECT:CHECK-REASSIGNMENT\nDEFER-IMAGE-TIER:LEGACY\n: DEFER-IMAGE-JIT ( n -- n ) 5 + ;\n17 DEFER-IMAGE-JIT . cr\n1 set-tier\n: DEFER-IMAGE-FRESH ( n -- n ) 7 + ;\n: DEFER-IMAGE-INSTALL ( -- ) ['] DEFER-IMAGE-FRESH DEFER-IMAGE-SUBJECT:INSTALL ;\nDEFER-IMAGE-INSTALL\n17 DEFER-IMAGE-SUBJECT:CALL . cr\nNATIVE-OPCODE-IMAGE:PRINT\n" RUN-INPUT
    {: outu:n :}
    OUT wantu want wantu T$=
    outu wantu - 65 T=
