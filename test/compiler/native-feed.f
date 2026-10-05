@@ -252,6 +252,7 @@ create INPUT TEXT-CAP allot
 1 TYPED-BUFFER U-CTX IR-CTX:ctx
 1 TYPED-BUFFER U-BLD IR-BUILD:builder
 1 TYPED-BUFFER U-TP IR-ARENA:arena
+1 TYPED-BUFFER U-VIEW IR-ARENA:view
 : OPEN-SCRATCH ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
    c NEW-BLD {: b:IR-BUILD:builder :}
    c b IR-BUILD:MODULE-KEY 32 NTAPE:NEW {: tp:IR-ARENA:arena :}
@@ -282,6 +283,25 @@ create INPUT TEXT-CAP allot
    NFEED:ABANDON-UNIT
    c s" NF-RECOVER ( -- n ) 6" 0 REC
    0 TOKENS 2 T= 0 VERDICT@ -1 T= 0 1 LIT 6 T= ;
+
+: OTHER-SCAN ( ptr u8 n -- ) 2drop ;
+: OTHER-TOKEN ( ptr u8 n n n n n -- ) 2drop 2drop 2drop ;
+: OTHER-DONE ( ptr u8 n n -- ) 2drop drop ;
+
+: STALE-WINDOW ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c OPEN-SCRATCH
+   s" NF-WINDOW-A ( -- n ) 1" CHECK! -1 T=
+   CHECKER-TAPE:DISARM
+   71 [: OTHER-SCAN ;] [: OTHER-TOKEN ;] [: OTHER-DONE ;] CHECKER-TAPE:INSTALL
+   CHECKER-TAPE:ARM
+   s" NF-WINDOW-B ( -- n ) 2" CHECK! -1 T=
+   CHECKER-TAPE:DISARM
+   NFEED:END-UNIT {: v:IR-ARENA:view verdict:n :}
+   verdict -1 T=
+   v 0 U-VIEW !
+   [: 0 U-VIEW @ NFEED:RECORD-WINDOW ;] E-NCOMP-BINDING TTHROWSQ
+   NFEED:OBSERVE ;
 
 : PARSED? ( ptr u8 n -- bool )
    num-parse {: v:n flt:bool ok:bool :} ok ;
@@ -341,6 +361,8 @@ public
    BND [: STATES ;] IR-CTX:WITH-CONTEXT
    BND [: OWNER ;] IR-CTX:WITH-CONTEXT
    BND [: CAPACITY ;] IR-CTX:WITH-CONTEXT
+   s" a sealed unit refuses a later observer's checker window" T-LABEL
+   BND [: STALE-WINDOW ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;
 ;package
 NFEED-TEST:RUN

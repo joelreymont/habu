@@ -135,6 +135,8 @@ $330 constant UNJUDGED-BINDING-OFF
 $338 constant EFFECT-DIN-CON-OFF
 $340 constant EFFECT-DOUT-CON-OFF
 $348 constant EFFECT-STACK-STABLE-OFF
+\ A scan serial from the same owner that supplies the borrowed binding rows.
+$350 constant BINDING-WINDOW-OFF
 \ lib/errors.f names this code E-NCOMP-BINDING; a retained build host loads
 \ this constants-only ABI before it can load the new error word.
 -8575 constant BINDING-RC
@@ -160,6 +162,7 @@ $20000 constant BOUND-SEEDED
 1 constant BOUND-DICT
 2 constant BOUND-INTRINSIC
 3 constant BOUND-PENDING
+4 constant BOUND-UNRESOLVED
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

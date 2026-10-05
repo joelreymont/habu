@@ -28,6 +28,7 @@ defer SOURCE-UNJUDGED ( ptr u8 n -- n )
 defer SOURCE-CALL-CELLS ( n -- n n )
 defer SOURCE-CALL-BINDING ( n -- ptr u8 n )
 defer SOURCE-UNJUDGED-BINDING ( n -- ptr u8 n )
+defer SOURCE-BINDING-WINDOW ( -- n )
 defer SOURCE-CALL-GLUE ( n -- n n )
 defer SOURCE-MATCH-PAYLOAD ( n -- n n )
 defer SOURCE-QUOT-IN ( n n -- n n )
@@ -89,6 +90,7 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
    NCOMP-DISPATCH:DECL-CALL-CELLS-OFF s" source call cells" SOURCE-FIELD AS-CELLS is SOURCE-CALL-CELLS
    NCOMP-DISPATCH:DECL-CALL-BINDING-OFF s" source call binding" SOURCE-FIELD AS-BINDING is SOURCE-CALL-BINDING
    NCOMP-DISPATCH:DECL-UNJUDGED-BINDING-OFF s" source unjudged binding" SOURCE-FIELD AS-BINDING is SOURCE-UNJUDGED-BINDING
+   CHECKER-OWNER-ABI:BINDING-WINDOW-OFF s" source binding window" SOURCE-FIELD AS-N is SOURCE-BINDING-WINDOW
    NCOMP-DISPATCH:DECL-CALL-GLUE-OFF s" source call glue" SOURCE-FIELD AS-CELLS is SOURCE-CALL-GLUE
    NCOMP-DISPATCH:DECL-CALL-MATCH-OFF s" source match payload" SOURCE-FIELD AS-CELLS is SOURCE-MATCH-PAYLOAD
    NCOMP-DISPATCH:DECL-CALL-QUOT-IN-OFF s" source quotation inputs" SOURCE-FIELD AS-QUOT-CELLS is SOURCE-QUOT-IN
@@ -259,6 +261,22 @@ TRUSTED: DOES-COMMIT ( -- )
 
 : SOURCE-BINDING ( n -- ptr u8 n )
    BIND-UNJUDGED @ 0<> if UNJUDGED-BINDING else CALL-BINDING then ;
+
+\ The current source owner and scan identity. Its validity is checked when a
+\ compiler binds or borrows rows, so a rejected tape can still be sealed.
+: BINDING-WINDOW ( -- ptr u8 n bool )
+   RECORD
+   CHECKER-OWNER-ABI:BINDING-WINDOW-OFF s" source binding window" FIELD
+   dup 0= if drop SOURCE-BINDING-WINDOW else AS-N execute then
+   BIND-UNJUDGED @ 0<> ;
+
+: BINDING-WINDOW-CK ( ptr u8 n bool -- )
+   {: owner:ptr serial:n unjudged:bool :}
+   RECORD owner <> if CHECKER-OWNER-ABI:BINDING-RC throw then
+   BIND-UNJUDGED @ 0<> unjudged <> if CHECKER-OWNER-ABI:BINDING-RC throw then
+   CHECKER-OWNER-ABI:BINDING-WINDOW-OFF s" source binding window" FIELD
+   dup 0= if drop SOURCE-BINDING-WINDOW else AS-N execute then
+   serial <> if CHECKER-OWNER-ABI:BINDING-RC throw then ;
 
 : INIT-LAYOUT ( n -- n n n )
    NCOMP-DISPATCH:DECL-INIT-LAYOUT-OFF s" init layout" FIELD

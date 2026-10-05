@@ -16,6 +16,7 @@ public
 : MIXED-PAIR ( n -- n n ) dUp ;
 : THROW-RETURNS ( n -- n ) throw ;
 : DIE-RETURNS ( n -- n ) die ;
+TRUSTED: TRUSTED-DUP ( n -- n n ) DUP ;
 
 ;package
 
@@ -71,6 +72,7 @@ private
    8 NATIVE-BOUND-PUBLIC:MIXED-PAIR 42 T= 8 T=
    41 NATIVE-BOUND-PUBLIC:THROW-RETURNS 42 T=
    40 NATIVE-BOUND-PUBLIC:DIE-RETURNS 42 T=
+   8 NATIVE-BOUND-PUBLIC:TRUSTED-DUP 42 T= 8 T=
    NATIVE-BOUND-PRIVATE:COUNT 9 T=
    NATIVE-BOUND-PUBLIC:CELLS 4 T=
    s" global intrinsic bindings remain available outside those packages" T-LABEL

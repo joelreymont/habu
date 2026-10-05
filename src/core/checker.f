@@ -118,7 +118,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 , 0 , 0 ,
-   0 ,
+   0 , 0 , 0 , 0 ,
    0 ,
    0 ,
    0 ,
@@ -126,8 +126,7 @@ create OWNER-STORAGE
    0 ,
    0 , 0 , 0 , 0 ,
    0 ,
-   0 , 0 , 0 ,
-   0 ,
+   0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -145,7 +144,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:EFFECT-STACK-STABLE-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:BINDING-WINDOW-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -10203,6 +10202,7 @@ PPRIM: CHECKER-OWNER-ABI PAYLOAD-REG-SAVE-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI PAYLOAD-DISARM-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI VERIFY-FILE-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-RC PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI BINDING-WINDOW-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BOUND-ORD PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BOUND-KIND PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BOUND-SYM PE-N PE-OUT PPRIM;
@@ -10224,6 +10224,7 @@ PPRIM: CHECKER-OWNER-ABI BOUND-SEEDED PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BOUND-DICT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BOUND-INTRINSIC PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BOUND-PENDING PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI BOUND-UNRESOLVED PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-FETCH-ABI CERTIFICATE-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-FETCH-ABI BYTES PE-N PE-OUT PPRIM;
 PRIM: WF-N@ PE-N PE-OUT PRIM;
@@ -12072,15 +12073,17 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 \     unreachable code a caller believes in. This clause is NOT optional and is
 \     the one a reader is most likely to leave out, because a never-returning
 \     quotation has a perfectly ordinary din and dout.
-\ False when no descent is open: there is no quotation to answer about, and
-\ answering true would let a caller compile the enclosing word's own effect as a
-\ body.
-: EFFECT-QUOT-SIMPLE? ( -- bool )
-   EFFQ-QUOT @ {: q:n :}
+\ The simple callback rule is shared by a queried effect and an exact selected
+\ effect from an unjudged source scan. Zero admits neither.
+: EFF-QUOT-SIMPLE? ( n -- bool )
+   {: q:n :}
    q 0= if 0 0= 0= exit then
    q EFF-C@ q EFF-D@ EFF-RET-NEUTRAL? 0= if 0 0= 0= exit then
    q EFF-E@ 0= 0= if 0 0= 0= exit then
    q EFF-F@ 0= ;
+
+: EFFECT-QUOT-SIMPLE? ( -- bool )
+   EFFQ-QUOT @ EFF-QUOT-SIMPLE? ;
 
 \ Quotation call metadata is recorded at the token the checker consumed.
 \ Its input width is measured before unification binds the quotation's open
@@ -12106,6 +12109,7 @@ variable PARSE-COMPLETE
 $7FFFFFFFFFFFFFFF CHECKER-OWNER-ABI:BOUND-CELLS cells / constant BWIN-MAX
 PTR-VARIABLE BWIN-P
 variable BWIN-N   variable BWIN-CAP   variable BWIN-VALID   variable UWIN-VALID
+variable BWIN-EPOCH
 variable BGLUE-MASK
 variable BGLUE-I
 
@@ -12172,6 +12176,24 @@ variable BGLUE-I
    BWIN-ENSURE
    BWIN-N @ {: i:n :}
    REC-IX @ i CHECKER-OWNER-ABI:BOUND-ORD BWIN-AT !
+   TOK-SYM @ 0= IF
+      CHECKER-OWNER-ABI:BOUND-UNRESOLVED i CHECKER-OWNER-ABI:BOUND-KIND BWIN-AT !
+      0 i CHECKER-OWNER-ABI:BOUND-SYM BWIN-AT !
+      0 i CHECKER-OWNER-ABI:BOUND-EFFECT BWIN-AT !
+      0 i CHECKER-OWNER-ABI:BOUND-RECORD BWIN-AT !
+      0 i CHECKER-OWNER-ABI:BOUND-WID BWIN-AT !
+      0 i CHECKER-OWNER-ABI:BOUND-ENTRY BWIN-AT !
+      0 i CHECKER-OWNER-ABI:BOUND-FLAGS BWIN-AT !
+      0 i CHECKER-OWNER-ABI:BOUND-PEND-IX BWIN-AT !
+      0 i CHECKER-OWNER-ABI:BOUND-PEND-OFF BWIN-AT !
+      0 i CHECKER-OWNER-ABI:BOUND-CTL BWIN-AT !
+      0 i CHECKER-OWNER-ABI:BOUND-NEUTRAL BWIN-AT !
+      0 i CHECKER-OWNER-ABI:BOUND-DEAD BWIN-AT !
+      -1 i CHECKER-OWNER-ABI:BOUND-IN BWIN-AT !
+      -1 i CHECKER-OWNER-ABI:BOUND-OUT BWIN-AT !
+      -1 i CHECKER-OWNER-ABI:BOUND-GLUE BWIN-AT !
+      i 1+ BWIN-N ! EXIT
+   THEN
    TOK-REC @ NULL-PTR <> IF
       CHECKER-OWNER-ABI:BOUND-DICT i CHECKER-OWNER-ABI:BOUND-KIND BWIN-AT !
    ELSE TOK-PEND-OFF @ 0= 0= IF
@@ -12233,6 +12255,8 @@ variable BGLUE-I
 : REC-UNJUDGED-BINDING ( n -- ptr u8 n )
    UWIN-VALID @ 0= IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
    REC-BINDING-ROW ;
+
+: REC-BINDING-WINDOW ( -- n ) BWIN-EPOCH @ ;
 
 : REC-STEP ( -- )                    \ one token reported, so the next takes the next ordinal
    REC-ON @ 0= IF EXIT THEN
@@ -12314,13 +12338,15 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 \ through the declaration-owner record (layout.f DECL-CALL-*-OFF), never by
 \ name. -1 -1 means the scan recorded no such site, which is the answer a
 \ caller with no site of that kind must get.
-: CWIN-FIND ( n n -- n n ) {: ord:n kind:n :}
+: CWIN-FIND? ( n n -- n n bool ) {: ord:n kind:n :}
    CWIN-N @ 0 ?do
       i CW-ORD CWIN-AT @ ord =  i CW-KIND CWIN-AT @ kind =  and if
-         i CW-IN CWIN-AT @  i CW-OUT CWIN-AT @  unloop exit
+         i CW-IN CWIN-AT @  i CW-OUT CWIN-AT @  true unloop exit
       then
    loop
-   -1 -1 ;
+   -1 -1 false ;
+
+: CWIN-FIND ( n n -- n n ) CWIN-FIND? drop ;
 
 : CWIN-CELLS ( n -- n n ) CW-CALL CWIN-FIND ;
 : CWIN-GLUE ( n -- n n ) CW-GLUE CWIN-FIND ;
@@ -12332,7 +12358,39 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    extent bytes <> IF s" checker: init layout rows disagree" 76 die THEN
    width bytes align ;
 : EFFECT-FIELD-SPAN ( n -- n n ) CW-FIELD-SPAN CWIN-FIND ;
-: CWIN-QUOT-IN ( n n -- n n ) {: ord:n idx:n :} ord idx 2 * CW-QUOT-IN + CWIN-FIND ;
+\ A trusted scan can finish without CWIN quotation rows. Its selected effect
+\ still names the declaration the source used; read that graph directly, not a
+\ later resolution of the spelling. Only a simple, one-cell-per-term callback
+\ supplies an ordinary native calling convention.
+: SELECTED-QUOT-IN ( n n -- n n )
+   {: ord:n idx:n :}
+   idx 0< if -1 -1 exit then
+   ord REC-UNJUDGED-BINDING {: row:ptr size:n :}
+   size 0= if -1 -1 exit then
+   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
+      CHECKER-OWNER-ABI:BOUND-DICT <> if -1 -1 exit then
+   row CHECKER-OWNER-ABI:BOUND-RECORD cells + CELL-VIEW @ 0= if -1 -1 exit then
+   row CHECKER-OWNER-ABI:BOUND-EFFECT cells + CELL-VIEW @ {: eff:n :}
+   eff 0= if -1 -1 exit then
+   eff 1- E-PTR E-DIN@ {: din:n :}
+   din EFF-ROW-N din EFF-ROW-CELLS <> if -1 -1 exit then
+   din idx EFF-ROW-TERM {: q:n :}
+   q 0= if -1 -1 exit then
+   q EFF-TAG@ EN-QUOT <> if -1 -1 exit then
+   q EFF-QUOT-SIMPLE? 0= if -1 -1 exit then
+   q EFF-A@ {: qi:n :}  q EFF-B@ {: qo:n :}
+   qi EFF-ROW-N qi EFF-ROW-CELLS {: in-terms:n in-cells:n :}
+   qo EFF-ROW-N qo EFF-ROW-CELLS {: out-terms:n out-cells:n :}
+   in-terms in-cells <> out-terms out-cells <> or if -1 -1 exit then
+   in-cells out-cells ;
+
+: CWIN-QUOT-IN ( n n -- n n )
+   {: ord:n idx:n :}
+   ord idx 2 * CW-QUOT-IN + CWIN-FIND? if exit then
+   2drop
+   UWIN-VALID @ 0= if -1 -1 exit then
+   ord idx SELECTED-QUOT-IN ;
 : CWIN-QUOT-OUT ( n n -- n n ) {: ord:n idx:n :} ord idx 2 * CW-QUOT-OUT + CWIN-FIND ;
 
 \ Copy only the fixed row spine. Its fresh tail never participates in
@@ -15557,7 +15615,10 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
 \ before judgment or publication can change the active name.
 : BIND-SOURCE-CALL ( ptr u8 n -- ) {: a:ptr u:n :}
    a u BIND-TOK
-   TOK-SYM @ 0= IF EXIT THEN
+   TOK-SYM @ 0= IF
+      a u ALLDIG? a u FLODIG? or IF EXIT THEN
+      -1 BWIN-HIT ! EXIT
+   THEN
    -1 BWIN-HIT !
    BWIN-UNJUDGED @ 0= TOK-ABI-DONE @ 0= 0= or IF EXIT THEN
    -1 TOK-ABI-DONE !
@@ -20314,6 +20375,9 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
 \ A length that describes no memory (BYTE-SPAN?) is refused before any state is
 \ reset, with the refusal the token buffers gave the maximum cell.
 : CHECK-RESET {: a u :}
+   BWIN-EPOCH @ 1+ dup 0= IF
+      s" checker: binding window serial overflow" 76 die THEN
+   BWIN-EPOCH !
    a u BYTE-SPAN? 0= IF s" checker: token buffer too large" 76 die THEN
    RES-FALSE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    FO-RESET
@@ -23442,6 +23506,7 @@ package CHECKER-REG
 ' CWIN-CELLS                        DECLARATIONS CALL-CELLS-OFF + xt!
 ' REC-CALL-BINDING                  DECLARATIONS CHECKER-OWNER-ABI:CALL-BINDING-OFF + xt!
 ' REC-UNJUDGED-BINDING              DECLARATIONS CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF + xt!
+' REC-BINDING-WINDOW                DECLARATIONS CHECKER-OWNER-ABI:BINDING-WINDOW-OFF + xt!
 ' CWIN-GLUE                         DECLARATIONS CALL-GLUE-OFF + xt!
 ' CWIN-MATCH-PAYLOAD                DECLARATIONS CALL-MATCH-OFF + xt!
 ' CWIN-QUOT-IN                      DECLARATIONS CALL-QUOT-IN-OFF + xt!
