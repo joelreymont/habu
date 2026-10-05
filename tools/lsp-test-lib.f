@@ -179,6 +179,27 @@
 \   from the uses of the text before it, or the definitions of the last check
 \   that completed not listed .......................... definition-incomplete
 \
+\ Hover
+\ - a use, at its first character or its last, not answered with its
+\   declaration's kind, word, effect, package, file relative to the working
+\   directory and 1-based line as a fenced habu block, over the use .... hover
+\ - a use of a dependency on disk, its global or, qualified, its public word,
+\   not answered with its declaration there ............... hover-dependency
+\ - a use of a dependency open with its lines swapped, unsaved, not answered
+\   with its declaration in the text on disk, which the check read
+\   ...................................................... hover-dependency-open
+\ - a declaring token not answered with its definition, over it
+\   ...................................................... hover-definition
+\ - a comment, the space before a use or a stack comment answered other
+\   than null ................................................ hover-none
+\ - a client whose hovers take plain text answered other than with the
+\   lines unfenced ...................................... hover-plaintext
+\ - a position in a document not open answered other than -32602
+\   ........................................................ hover-not-open
+\ - a use asked about in the turn of a change that moved it and its
+\   declaration answered before the check of the changed text, or not with
+\   the declaration's new line ...................... hover-after-change
+\
 \ Not proven here: a packet line that is not JSON, that names no file, or that
 \ names its file by a relative path, goes to stderr, but the checker writes
 \ none of them - every packet names its file, and the verifier names every
@@ -651,6 +672,7 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\"," MSG+
    s\" \"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}," MSG+
    s\" \"definitionProvider\":true," MSG+
+   s\" \"hoverProvider\":true," MSG+
    s\" \"workspaceSymbolProvider\":true}," MSG+
    s\" \"serverInfo\":{\"name\":\"habu\"}}}" MSG+
    MSG$ HEARD ;
@@ -2187,17 +2209,24 @@ variable LENGTH-N                        \ the length of its directory's name
 : TEXT-DEF-B ( -- ptr u8 n )
    s\" require def-dep.f\n: DEF-USE ( -- n ) DEF-DEP DD:DEF-PUB + ;\n" ;
 
-\ textDocument/definition, by its id's JSON text, at character C of line L of
+\ A request by this method and id's JSON text at character C of line L of
 \ the document opened from this path.
-: DEFINITION-ASK ( ptr u8 n ptr u8 n n n -- )
-   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+: AT-ASK ( ptr u8 n ptr u8 n ptr u8 n n n -- )
+   {: m:ptr mu:n i:ptr iu:n p:ptr pu:n l:n c:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
-   s\" ,\"method\":\"textDocument/definition\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
+   s\" ,\"method\":\"" MSG+ m mu MSG+
+   s\" \",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
    p pu URI-OF MSG+
    s\" \"},\"position\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c INT$ MSG+ s" }}}" MSG+
    MSG$ FRAMED ;
+
+\ textDocument/definition, by its id's JSON text, at character C of line L of
+\ the document opened from this path.
+: DEFINITION-ASK ( ptr u8 n ptr u8 n n n -- )
+   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+   s" textDocument/definition" i iu p pu l c AT-ASK ;
 
 \ The next frame answers the request with this id's JSON text with one
 \ Location: this URI, from character C1 to C2 of line L.
@@ -2267,6 +2296,7 @@ variable LENGTH-N                        \ the length of its directory's name
 \ swapped: DEF-DEPB's token there has the bytes DEF-DEPA's has on disk, and
 \ DEF-DEPA's token, after DEF-DEPB's longer line, those of no token on disk.
 : DEF-OD-DEP-PATH ( -- ptr u8 n )  s" def-od-dep.f" FIXTURE ;
+: DEF-OD-DEP-CANON ( -- ptr u8 n )  DEF-OD-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
 : DEF-OD-PATH ( -- ptr u8 n )  s" def-od.f" FIXTURE ;
 : TEXT-DEF-OD-DISK ( -- ptr u8 n )
    s\" : DEF-DEPA ( -- n ) 1 ;\n: DEF-DEPB ( -- n n ) 2 3 ;\n" ;
@@ -2374,6 +2404,194 @@ variable LENGTH-N                        \ the length of its directory's name
    SYMBOLS-END
    LOGGED ;
 
+\ ---- hover -------------------------------------------------------------------
+
+\ initialize from a client whose hovers take the formats this JSON array
+\ text lists.
+: INITIALIZE-AS ( ptr u8 n -- )
+   {: f:ptr fu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{\"textDocument\":{\"hover\":{\"contentFormat\":" MSG+
+   f fu MSG+ s" }}}}}" MSG+
+   MSG$ FRAMED ;
+
+: MARKDOWN-CLIENT ( -- )  s\" [\"markdown\",\"plaintext\"]" INITIALIZE-AS ;
+: PLAIN-CLIENT ( -- )  s\" [\"plaintext\"]" INITIALIZE-AS ;
+
+\ textDocument/hover, by its id's JSON text, at character C of line L of the
+\ document opened from this path.
+: HOVER-ASK ( ptr u8 n ptr u8 n n n -- )
+   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+   s" textDocument/hover" i iu p pu l c AT-ASK ;
+
+: HV+ ( ptr u8 n -- )  N>BLEN TXT-B APPEND-SPAN ;
+
+\ A path as a hover names its file: relative to the working directory, which
+\ the server shares, when the file lies inside it, else the path.
+: WHERE+ ( ptr u8 n -- )  SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE HV+ ;
+
+\ The next frame answers the request with this id's JSON text with a hover of
+\ this kind, whose value TXT-B holds, over characters C1 to C2 of line L.
+: HOVERED ( ptr u8 n ptr u8 n n n n -- )
+   {: i:ptr iu:n k:ptr ku:n l:n c1:n c2:n :}
+   PAR-B CLEAR TXT$ TEXT+
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"result\":{\"contents\":{\"kind\":\"" MSG+ k ku MSG+
+   s\" \",\"value\":" MSG+ PAR$ MSG+
+   s\" },\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c1 INT$ MSG+
+   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}}}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
+\ hover-a.f, in the tree, the working directory the server shares, never on
+\ disk: HV-ONE, private in package HV, and its use in HV-TWO.
+: HOVER-A-PATH ( -- ptr u8 n )  s" hover-a.f" IN-TREE ;
+: TEXT-HOVER-A ( -- ptr u8 n )
+   s\" package HV\n: HV-ONE ( -- n ) 1 ;\n: HV-TWO ( -- n ) HV-ONE 1 + ;\n;package\n" ;
+
+\ TEXT-HOVER-A two lines down.
+: TEXT-HOVER-A-MOVED ( -- ptr u8 n )
+   s\" \\ two lines\n\\ above\npackage HV\n: HV-ONE ( -- n ) 1 ;\n: HV-TWO ( -- n ) HV-ONE 1 + ;\n;package\n" ;
+
+\ HV-ONE's lines, declared on this 1-based line.
+: HV-ONE-LINES ( n -- )
+   {: line:n :}
+   s\" : HV-ONE ( -- n )\n\\ package hv, hover-a.f:" HV+
+   SB-RESET line FMT:SB-INT SB$ HV+ ;
+
+\ HV-ONE's lines as Markdown.
+: HV-ONE-MD ( n -- )
+   TXT-B CLEAR s\" ```habu\n" HV+ HV-ONE-LINES s\" \n```" HV+ ;
+
+\ HV-ONE's use, at its first character and its last, answered with HV-ONE's
+\ kind, word, effect, package and place, over the use.
+: HOVER-TURNS ( -- )
+   MARKDOWN-CLIENT
+   HOVER-A-PATH TEXT-HOVER-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
+   s" 3" HOVER-A-PATH 2 18 HOVER-ASK
+   s" 4" HOVER-A-PATH 2 23 HOVER-ASK
+   SAY
+   2 HV-ONE-MD s" 3" s" markdown" 2 18 24 HOVERED
+   2 HV-ONE-MD s" 4" s" markdown" 2 18 24 HOVERED ;
+
+\ The uses of def-dep.f's global and, qualified, of its public word, each
+\ answered with its declaration in the file on disk.
+: HOVER-DEP-TURNS ( -- )
+   DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
+   MARKDOWN-CLIENT
+   DEF-B-PATH TEXT-DEF-B 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
+   s" 3" DEF-B-PATH 1 19 HOVER-ASK
+   s" 4" DEF-B-PATH 1 27 HOVER-ASK
+   SAY
+   TXT-B CLEAR s\" ```habu\n: DEF-DEP ( -- n )\n\\ " HV+ DEF-DEP-CANON WHERE+ s\" :5\n```" HV+
+   s" 3" s" markdown" 1 19 26 HOVERED
+   TXT-B CLEAR s\" ```habu\n: DEF-PUB ( -- n )\n\\ package dd, " HV+ DEF-DEP-CANON WHERE+ s\" :3\n```" HV+
+   s" 4" s" markdown" 1 27 37 HOVERED ;
+
+\ def-od-dep.f open with its lines swapped, unsaved, then def-od.f, which
+\ requires it and whose check reads it from disk: the uses of DEF-DEPA and
+\ DEF-DEPB, each answered with its declaration in the text on disk.
+: HOVER-OPEN-DEP-TURNS ( -- )
+   DEF-OD-DEP-PATH TEXT-DEF-OD-DISK WRITE-ALL
+   MARKDOWN-CLIENT
+   DEF-OD-DEP-PATH TEXT-DEF-OD-EDIT 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-OD-EDIT DEF-OD-DEP-PATH 1 s" verified" LISTED
+   DEF-OD-PATH TEXT-DEF-OD 1 OPENS
+   SAY
+   TEXT-DEF-OD DEF-OD-PATH 1 s" verified" LISTED
+   s" 3" DEF-OD-PATH 1 19 HOVER-ASK
+   s" 4" DEF-OD-PATH 1 28 HOVER-ASK
+   SAY
+   TXT-B CLEAR s\" ```habu\n: DEF-DEPA ( -- n )\n\\ " HV+ DEF-OD-DEP-CANON WHERE+ s\" :1\n```" HV+
+   s" 3" s" markdown" 1 19 27 HOVERED
+   TXT-B CLEAR s\" ```habu\n: DEF-DEPB ( -- n n )\n\\ " HV+ DEF-OD-DEP-CANON WHERE+ s\" :2\n```" HV+
+   s" 4" s" markdown" 1 28 36 HOVERED ;
+
+\ HV-ONE's declaring token, at its first character and its last, answered
+\ with HV-ONE, over the token.
+: HOVER-DEF-TURNS ( -- )
+   MARKDOWN-CLIENT
+   HOVER-A-PATH TEXT-HOVER-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
+   s" 3" HOVER-A-PATH 1 2 HOVER-ASK
+   s" 4" HOVER-A-PATH 1 7 HOVER-ASK
+   SAY
+   2 HV-ONE-MD s" 3" s" markdown" 1 2 8 HOVERED
+   2 HV-ONE-MD s" 4" s" markdown" 1 2 8 HOVERED ;
+
+\ A comment, the space before a use and a stack comment: null.
+: HOVER-NONE-TURNS ( -- )
+   MARKDOWN-CLIENT
+   DEF-A-PATH TEXT-DEF-A-MOVED 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-A-MOVED DEF-A-PATH 1 s" verified" LISTED
+   s" 3" DEF-A-PATH 0 3 HOVER-ASK
+   s" 4" DEF-A-PATH 3 18 HOVER-ASK
+   s" 5" DEF-A-PATH 3 12 HOVER-ASK
+   SAY
+   HEAR s" 3" NULL-RESULT
+   HEAR s" 4" NULL-RESULT
+   HEAR s" 5" NULL-RESULT ;
+
+\ A client whose hovers take plain text only: HV-ONE's lines, unfenced.
+: HOVER-PLAIN-TURNS ( -- )
+   PLAIN-CLIENT
+   HOVER-A-PATH TEXT-HOVER-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
+   s" 3" HOVER-A-PATH 2 18 HOVER-ASK
+   SAY
+   TXT-B CLEAR 2 HV-ONE-LINES
+   s" 3" s" plaintext" 2 18 24 HOVERED ;
+
+\ A position in a document the client never opened: -32602.
+: HOVER-NOT-OPEN-TURNS ( -- )
+   MARKDOWN-CLIENT
+   s" 3" HOVER-A-PATH 2 18 HOVER-ASK
+   SAY
+   HEAR CAPABILITIES
+   HEAR s" 3" -32602 REFUSED ;
+
+\ HV-ONE's use asked about at its new place in the turn of the change that
+\ moved it and HV-ONE two lines down: the request checks the changed text
+\ first, so its list comes before the answer, HV-ONE on its new line.
+: HOVER-AFTER-CHANGE-TURNS ( -- )
+   MARKDOWN-CLIENT
+   HOVER-A-PATH TEXT-HOVER-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
+   HOVER-A-PATH TEXT-HOVER-A-MOVED 2 CHANGES
+   s" 3" HOVER-A-PATH 4 18 HOVER-ASK
+   SAY
+   TEXT-HOVER-A-MOVED HOVER-A-PATH 2 s" verified" LISTED
+   4 HV-ONE-MD s" 3" s" markdown" 4 18 24 HOVERED ;
+
+: TEST-HOVERS ( -- )
+   s" hover" [: HOVER-TURNS ;] TALK
+   s" hover-dependency" [: HOVER-DEP-TURNS ;] TALK
+   s" hover-dependency-open" [: HOVER-OPEN-DEP-TURNS ;] TALK
+   s" hover-definition" [: HOVER-DEF-TURNS ;] TALK
+   s" hover-none" [: HOVER-NONE-TURNS ;] TALK
+   s" hover-plaintext" [: HOVER-PLAIN-TURNS ;] TALK
+   s" hover-not-open" [: HOVER-NOT-OPEN-TURNS ;] TALK
+   s" hover-after-change" [: HOVER-AFTER-CHANGE-TURNS ;] TALK ;
+
 : TEST-DEFINITIONS ( -- )
    s" definition" [: DEF-TURNS ;] TALK
    s" definition-dependency" [: DEF-DEP-TURNS ;] TALK
@@ -2464,6 +2682,7 @@ public
    TEST-DIAGNOSTICS
    TEST-SYMBOLS
    TEST-DEFINITIONS
+   TEST-HOVERS
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
 

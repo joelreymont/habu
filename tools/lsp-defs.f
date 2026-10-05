@@ -10,9 +10,11 @@
 \ retained none: the file's canonical path, the URI its positions count at,
 \ held as the JSON string that writes it, and its records in the order the
 \ check retained them. A record is a definition's class, its word as the source writes it,
-\ the package the checker recorded it under, empty for a global, the bytes
-\ the token that declared it starts and ends at, as its line states them, and
-\ that token's range in LSP positions (LSP-TEXT): a missing start is 0, a
+\ the package the checker recorded it under, empty for a global, the
+\ statement token that declared it, its declared effect, empty when it
+\ declared none, the bytes the token that declared it starts and ends at, as
+\ its line states them, and that token's range in LSP positions (LSP-TEXT),
+\ which gives the line it is on: a missing start is 0, a
 \ missing end the start, both are held to the text and the end
 \ to no less than the start. The range counts through the bytes the check
 \ read: the document's text for the file the check is of, the file on disk
@@ -28,7 +30,10 @@
 \ USE-GROUP its group, which holds its declaration as the check read it: no
 \ other check's group for the file, whose text may differ, answers for a use.
 \ DEFS-EACH gives the groups that answer for their files, the ones workspace
-\ symbols list.
+\ symbols list. DEFS-OWN-GROUP gives the group of a document's own file while
+\ its last check's positions are of its current text, from that check's
+\ completion until its next check starts, so that a definition's token is
+\ found at a byte of that text only from a check of it.
 \
 \ The store holds the groups check after check, oldest first, each check's in
 \ the order its definition lines first name their files, then the files it
@@ -70,14 +75,16 @@ private
 
 10 constant LF
 
-\ A check's block: the slot of the document checked, and its first group,
-\ record, byte and use.
+\ A check's block: the slot of the document checked, its first group,
+\ record, byte and use, and 1 while its positions are of the document's
+\ current text.
 0 constant B-SLOT
 1 constant B-GROUP
 2 constant B-REC
 3 constant B-BYTE
 4 constant B-USE
-5 constant BLOCK-CELLS
+5 constant B-CURRENT
+6 constant BLOCK-CELLS
 
 \ A group: 1 while another group for its file answers in its place, its
 \ path's offset and length in BYTES, its URI's JSON string's, its first and
@@ -94,7 +101,8 @@ private
 
 \ A record: its group's next record, -1 after the last, its class, the line
 \ and character its token starts at and ends at, its word's and package's
-\ offsets and lengths in BYTES, and the bytes its token starts and ends at.
+\ offsets and lengths in BYTES, the bytes its token starts and ends at, and
+\ its kind's and effect's offsets and lengths in BYTES.
 0 constant R-NEXT
 1 constant R-CLASS
 2 constant R-LINE
@@ -107,7 +115,11 @@ private
 9 constant R-PKG-U
 10 constant R-START
 11 constant R-END
-12 constant REC-CELLS
+12 constant R-KIND
+13 constant R-KIND-U
+14 constant R-EFF
+15 constant R-EFF-U
+16 constant REC-CELLS
 
 \ A use: the bytes it starts and ends at, its check's group for its
 \ declaration's file, and the bytes its declaring token starts and ends at.
@@ -141,6 +153,10 @@ variable WORD-AT                         \ its word's offset in BYTES,
 variable WORD-U
 variable PKG-AT                          \ its package's,
 variable PKG-U
+variable KIND-AT                         \ its kind's,
+variable KIND-U
+variable EFF-AT                          \ its effect's,
+variable EFF-U
 variable START-V                         \ its token's offsets,
 variable END-V
 variable TARGET-V                        \ a use's declaring token's,
@@ -207,6 +223,8 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    s" class" JR:STR-EQ? if JR:NEXT drop CLASS-OF CLASS-V ! exit then
    s" word" JR:STR-EQ? if JR:NEXT drop STRING>BYTES WORD-U ! WORD-AT ! exit then
    s" package" JR:STR-EQ? if JR:NEXT drop STRING>BYTES PKG-U ! PKG-AT ! exit then
+   s" kind" JR:STR-EQ? if JR:NEXT drop STRING>BYTES KIND-U ! KIND-AT ! exit then
+   s" effect" JR:STR-EQ? if JR:NEXT drop STRING>BYTES EFF-U ! EFF-AT ! exit then
    s" file" JR:STR-EQ? if JR:NEXT drop STRING>FILE exit then
    s" byte_start" JR:STR-EQ? if JR:NEXT drop JR:INT START-V ! exit then
    s" byte_end" JR:STR-EQ? if JR:NEXT drop JR:INT END-V ! exit then
@@ -224,6 +242,10 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    0 WORD-U !
    BYTES-U @ PKG-AT !
    0 PKG-U !
+   BYTES-U @ KIND-AT !
+   0 KIND-U !
+   BYTES-U @ EFF-AT !
+   0 EFF-U !
    0 FILE-U !
    0 START-V !
    0 END-V !
@@ -332,6 +354,10 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    WORD-U @ r R-WORD-U REC!
    PKG-AT @ r R-PKG REC!
    PKG-U @ r R-PKG-U REC!
+   KIND-AT @ r R-KIND REC!
+   KIND-U @ r R-KIND-U REC!
+   EFF-AT @ r R-EFF REC!
+   EFF-U @ r R-EFF-U REC!
    g G-LAST GROUP@ {: last:n :}
    last 0 < if r g G-FIRST GROUP! else r last R-NEXT REC! then
    r g G-LAST GROUP!
@@ -417,7 +443,9 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    r R-NEXT REC@ {: next:n :}
    next 0 >= if next dr - r R-NEXT REC! then
    r R-WORD REC@ dt - r R-WORD REC!
-   r R-PKG REC@ dt - r R-PKG REC! ;
+   r R-PKG REC@ dt - r R-PKG REC!
+   r R-KIND REC@ dt - r R-KIND REC!
+   r R-EFF REC@ dt - r R-EFF REC! ;
 
 \ Block K's uses removed; the later blocks' uses moved down, and their first
 \ uses with them.
@@ -501,10 +529,10 @@ public
    loop ;
 
 \ Removes the uses the last check of the document in this slot kept, and keeps
-\ its definitions.
+\ its definitions, whose positions are no longer of the document's text.
 : DEFS-USES-DROP ( n -- )
    BLOCK-OF MATCH option
-      some OF CUT-USES ENDOF
+      some OF dup CUT-USES 0 swap B-CURRENT BLOCK! ENDOF
       none OF ENDOF
    ;MATCH ;
 
@@ -520,6 +548,7 @@ public
    REC-N @ k B-REC BLOCK!
    BYTES-U @ k B-BYTE BLOCK!
    USE-N @ k B-USE BLOCK!
+   1 k B-CURRENT BLOCK!
    1 BLOCK-N +!
    -1 CUR-G !
    a u [: RECORD ;] LINES
@@ -538,6 +567,9 @@ public
       i GROUP-OVER? 0= if i xt execute then
    loop ;
 
+\ The path of the file the group is for.
+: GROUP-PATH$ ( n -- ptr u8 n )  PATH$ ;
+
 \ The JSON string of the URI the group's positions count at.
 : GROUP-URI$ ( n -- ptr u8 n )  dup G-URI GROUP@ swap G-URI-U GROUP@ AT$ ;
 
@@ -550,6 +582,8 @@ public
 : REC-CLASS ( n -- n )  R-CLASS REC@ ;
 : REC-WORD$ ( n -- ptr u8 n )  dup R-WORD REC@ swap R-WORD-U REC@ AT$ ;
 : REC-PACKAGE$ ( n -- ptr u8 n )  dup R-PKG REC@ swap R-PKG-U REC@ AT$ ;
+: REC-KIND$ ( n -- ptr u8 n )  dup R-KIND REC@ swap R-KIND-U REC@ AT$ ;
+: REC-EFFECT$ ( n -- ptr u8 n )  dup R-EFF REC@ swap R-EFF-U REC@ AT$ ;
 
 \ The line and character the record's token starts at, then ends at.
 : REC-RANGE ( n -- n n n n )
@@ -578,6 +612,57 @@ public
 : USE-TARGET ( n -- n n )
    {: u:n :}
    u U-TARGET USE@ u U-TARGET-END USE@ ;
+
+\ The bytes of the document's text the use starts and ends at.
+: USE-BYTES ( n -- n n )
+   {: u:n :}
+   u U-START USE@ u U-END USE@ ;
+
+\ The first record of group G whose token starts and ends at these bytes, if
+\ one does.
+: GROUP-REC-AT ( n n n -- option<n> )
+   {: g:n ts:n te:n :}
+   g G-FIRST GROUP@
+   begin dup 0 >= while
+      dup REC-BYTES te = swap ts = and if OPTION:SOME exit then
+      R-NEXT REC@
+   repeat
+   drop OPTION:NONE ;
+
+\ The first record of group G whose token's bytes, from its start to before
+\ its end, hold this byte, if one does.
+: GROUP-REC-HOLDING ( n n -- option<n> )
+   {: g:n at:n :}
+   g G-FIRST GROUP@
+   begin dup 0 >= while
+      dup REC-BYTES at > swap at <= and if OPTION:SOME exit then
+      R-NEXT REC@
+   repeat
+   drop OPTION:NONE ;
+
+private
+
+\ The group for the document's own file among block K's, while K's positions
+\ are of the document's current text, if K has one.
+: OWN-IN ( n -- option<n> )
+   {: k:n :}
+   k B-CURRENT BLOCK@ 0= if OPTION:NONE exit then
+   k B-GROUP GROUP-N @ BLOCK-END k B-GROUP BLOCK@ ?do
+      i G-OWN GROUP@ 0<> if i OPTION:SOME unloop exit then
+   loop
+   OPTION:NONE ;
+
+public
+
+\ The group for the file of the document in this slot in its last completed
+\ check, whose positions are of the document's text; none if the store keeps
+\ no check of it, a check of it has started since, so that the group's
+\ positions may not be of its text, or the check kept no group for it.
+: DEFS-OWN-GROUP ( n -- option<n> )
+   BLOCK-OF MATCH option
+      some OF OWN-IN ENDOF
+      none OF OPTION:NONE ENDOF
+   ;MATCH ;
 
 ;using
 ;using

@@ -43,11 +43,10 @@ TYPED-VARIABLE OUT ptr JSON-WRITE:writer \ the answer's writer
 : TARGET ( n -- )
    {: u:n :}
    u USE-GROUP {: g:n :}
-   u USE-TARGET {: ts:n te:n :}
-   g GROUP-FIRST begin dup 0 >= while
-      dup REC-BYTES te = swap ts = and if g swap LOCATION exit then
-      REC-NEXT
-   repeat drop ;
+   g u USE-TARGET GROUP-REC-AT MATCH option
+      some OF g swap LOCATION ENDOF
+      none OF ENDOF
+   ;MATCH ;
 
 public
 
