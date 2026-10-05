@@ -1,50 +1,14 @@
-\ Source-built image writer shared by partial-capture fixtures. One output
-\ argument emits an empty cold engine; three also name an artifact and its
-\ producer. The file reader verifies that producer before the normal writer
-\ imports the owned capture. Neither disk identity nor this copy claims a tier
-\ for the imported code.
-\
-\ This is an application, not a script: test/fixture-writer.f builds it once per
-\ tree into a keyed image through tools/app-build.f, which compiles it at native
-\ tier 1 and starts the image at MAIN. Every write runs that image with the
-\ arguments above. After MAIN returns the image runs its stdin as a program in
-\ the same process, which is how test/aot-wid-build.f forges the emitted code.
-require tools/native-emit.f
-require lib/fs-mutate.f
-require lib/codesign.f
-
+\ Select the source-built fixture writer for the running target. ARM keeps its
+\ original capture-host writer; x86-64 builds a full native runtime and merges
+\ a partial capture into that runtime when one was supplied.
 package NATIVE-FIXTURE-WRITE
-
-create KEY 32 allot
-create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
-
-: WRITER-NATIVE ( -- )
-   s" NATIVE-EMIT:WRITE" XREF-FIND {: rec:ptr :}
-   rec XREF-FOUND? 0= if 79 throw then
-   rec XREF-START dup rec XREF-LEN + code-origin 1 <> if
-      s" native-fixture: writer is not optimizing native code" 79 die then ;
-
-: READ-ARTIFACT ( -- )
-   SCRIPT-ARGC 1 = if exit then
-   SCRIPT-ARGC 3 <> if
-      s" native-fixture: expected output [artifact producer]" 64 die then
-   FSHA-CTX 2 SCRIPT-ARGV$ KEY SHA256-FILE-IN 0<> if 79 throw then
-   KEY 1 SCRIPT-ARGV$ AOT-FILE:READ ;
-
-: WRITE-OWNED ( AOT-OWNED:capture -- AOT-OWNED:capture )
-   dup NATIVE-LAYOUT:CURRENT 0 SCRIPT-ARGV$ NATIVE-EMIT:WRITE ;
-
-public
-
-: RUN ( -- )
-   WRITER-NATIVE
-   READ-ARTIFACT
-   AOT-FILE:OWN ['] WRITE-OWNED catch {: rc:n :}
-   AOT-OWNED:CLOSE
-   rc 0<> if rc throw then
-   0 SCRIPT-ARGV$ CHMOD-X
-   0 SCRIPT-ARGV$ CODESIGN:ENSURE ;
-
+private
+: LOAD-TARGET ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" test/native-fixture-write-x64.f" required exit then
+   HB-TARGET-LINUX? HB-TARGET-MACOS? or if
+      s" test/native-fixture-write-arm.f" required exit then
+   s" native-fixture: unsupported target" 76 die ;
+' LOAD-TARGET
 ;package
-
-: MAIN ( -- ) NATIVE-FIXTURE-WRITE:RUN ;
+execute
