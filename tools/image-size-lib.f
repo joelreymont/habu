@@ -70,7 +70,6 @@
 
 require lib/fmt.f
 require lib/fs.f
-require lib/string.f
 require lib/sort.f
 require src/habu/code-span.f
 require src/habu/address-cells.f
@@ -410,12 +409,6 @@ variable NFIRST
    PDICT @ 16 - U64@ {: row:n :}
    row 0 < row PDICT-N @ > or if
       s" image-size: invalid seeded scalar row" RC die
-   then
-   row 0<> if
-      PDICT @ row 1- PREC * + PREC-NAME {: at:n len:n :}
-      IMG@ at + len s" abs" STR= 0= if
-         s" image-size: invalid seeded scalar row" RC die
-      then
    then
    8 PMETA-BYTES ! ;
 
