@@ -11497,7 +11497,7 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ of CHECKER-EFFECT-AUTHORITY calls it. A name its wordlist already holds live
 \ keeps that record: in a warm engine it is the loaded twin of the definition,
 \ and a replay's second definition of its own name is refused before it is
-\ recorded (CHECKER-CERT-DUP?).
+\ recorded (CHECKER-CERT-DUP?, REPLAYED? below).
 : PUBLISH ( n -- ) {: sym:n :}
    sym 0=  ON @ 0=  or  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
    sym SYM-WID {: wid:n :}
@@ -11505,17 +11505,27 @@ ROW-CELLS cells constant SCOPE-BYTES
    ROOM
    sym SYM-NAME$ wid replay-record ;
 
+\ Whether the replay has already made a record of NAME where a definition of it
+\ lands: a definition it published or a does> clause (CLAUSE), which has no
+\ checker record.
+: REPLAYED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   ON @ 0= IF RES-FALSE EXIT THEN
+   a u TARGET 0= IF 2drop drop RES-FALSE EXIT THEN
+   SCOPE-WL-PROBE {: rec:ptr :}
+   rec NULL-PTR = IF RES-FALSE EXIT THEN
+   rec REC>IX MARK @ >= ;
+
 \ The clause of the replayed `create ... does>` definer NAME, as the engine's
 \ `does>` makes it (src/habu/habu2.f DOES-REC): a record of its own in the
-\ definer's wordlist, named the definer's tail with SUFFIX added, so a later
-\ `trust` or `undefine` of either binds as it would live. SA SU is
-\ DOES-CLAUSE:SUFFIX$, passed in because the checker registers that word's
-\ effect after this package. A live word already holding the clause's name
-\ refuses the definer, E-DUPLICATE-DEFINITION, as DOES-REC:REJECT-DUP does. A
-\ definer from before the overlay has the clause the engine made for it, and
-\ one the replay did not publish has none. A name has no fixed bound, so the
-\ clause's is built in a mapping of its own size, which replay-record copies.
-: CLAUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n sa:ptr su:n :}
+\ definer's wordlist, named the definer's tail with the companion suffix added,
+\ so a later `trust` or `undefine` of either binds as it would live. CNAME is
+\ NAME with DOES-CLAUSE:SUFFIX$ added, composed by the caller (CLAUSE-NAME)
+\ because the checker registers that word's effect after this package; past
+\ NAME's qualifier it spells the clause's tail. A live word already holding the
+\ clause's name refuses the definer, E-DUPLICATE-DEFINITION, as
+\ DOES-REC:REJECT-DUP does. A definer from before the overlay has the clause
+\ the engine made for it, and one the replay did not publish has none.
+: CLAUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n ca:ptr cu:n :}
    ON @ 0=  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
    a u TARGET 0= IF 2drop drop EXIT THEN
    {: ta:ptr tu:n wid:n :}
@@ -11525,15 +11535,10 @@ ROW-CELLS cells constant SCOPE-BYTES
    ix MARK @ < IF EXIT THEN
    PAIRS-N @ LOG-MAX >= IF E-OVERLAY-CAP throw THEN
    ROOM
-   tu su + {: nu:n :}
-   nu map-anon 0 <> IF drop s" checker: clause name allocation failed" 76 die THEN
-   {: buf:ptr :}
-   ta buf tu ARENA-COPY
-   sa buf tu + su ARENA-COPY
-   buf nu wid SCOPE-WL-PROBE NULL-PTR = {: fresh:bool :}
-   fresh IF buf nu wid replay-record THEN
-   buf nu munmap 0 <> IF s" checker: clause name release failed" 76 die THEN
-   fresh 0= IF DUPLICATE throw THEN
+   u tu - {: q:n :}
+   ca q +  cu q -  {: cta:ptr ctu:n :}
+   cta ctu wid SCOPE-WL-PROBE NULL-PTR <> IF DUPLICATE throw THEN
+   cta ctu wid replay-record
    ix ndict@ 1 - PAIRS PAIRS-N @ PAIR!
    PAIRS-N @ 1 + PAIRS-N ! ;
 
@@ -13589,18 +13594,23 @@ package CHECKER-REG
 \ The duplicate guard of a certifying record: does the scope the name would be
 \ recorded into already hold a live record for it? Asked without interning, so
 \ a refused name leaves no symbol behind; a candidate probe records nothing.
-\ A candidate's scanned definition is a duplicate when the verifier pass has
-\ already declared the name there, as the engine refuses its second compile:
-\ the name's own record (OWN-RECORD) is one the pass appended, at or above
-\ PASS-FLOOR. A record from before the pass is not the replay's - in a warm
-\ engine it is the loaded twin of the definition being replayed - and a
+\ A replayed definition is a duplicate when the replay has already made a
+\ record of the name where it lands (CHECKER-OVERLAY:REPLAYED?), as the engine
+\ refuses its second compile: a definition it published, or the clause a
+\ replayed does> definer claims, which no checker record holds. A candidate's
+\ scanned definition is one too when the verifier pass has already declared
+\ the name there: the name's own record (OWN-RECORD) is one the pass appended,
+\ at or above PASS-FLOOR. A record from before the pass is not the replay's - in
+\ a warm engine it is the loaded twin of the definition being replayed - and a
 \ deletion or a seeded record declares nothing. The check hook and the source
 \ scan ask it before a body is checked, so they refuse what the guard would and
 \ nothing more.
 : CHECKER-CERT-DUP? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
+   CHK-CAND @ 0 <>  CHK-PROBE @ 0 <>  and IF RES-FALSE EXIT THEN
+   a u CHECKER-OVERLAY:REPLAYED? IF RES-TRUE EXIT THEN
    CHK-CAND @ 0 <> IF
-      CHK-PROBE @ 0 <>  PASS-FLOOR @ 0 <=  or IF RES-FALSE EXIT THEN
+      PASS-FLOOR @ 0 <= IF RES-FALSE EXIT THEN
       a u OWN-RECORD PASS-FLOOR @ >= EXIT
    THEN
    a u CHECKER-RECORD-SYM? CHECKER-FIND-USIG-SYM ;
@@ -23431,12 +23441,17 @@ package CHECKER-REG
 \ its effect here, after PPRIM: is defined, for checked bodies that call it.
 PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 
-: DOES-NAME! ( ptr u8 n -- ) {: na:ptr nu:n :}
-   na nu TOKFOLD drop
-   TKF NMB nu CCOPY
+\ The clause name of the definer NA NU, composed in NMB: the name, then the
+\ companion suffix. The token buffers are sized for it (CHECKER-SOURCE-DOES!).
+: CLAUSE-NAME ( ptr u8 n -- ptr u8 n ) {: na:ptr nu:n :}
+   na NMB nu CCOPY
    DOES-CLAUSE:SUFFIX$ {: sa:ptr su:n :}
    sa NMB nu + su CCOPY
-   NMB NMA !  nu su + NMU ! ;
+   NMB nu su + ;
+
+: DOES-NAME! ( ptr u8 n -- ) {: na:ptr nu:n :}
+   na nu TOKFOLD drop
+   TKF nu CLAUSE-NAME NMU !  NMA ! ;
 
 : DOES-REPORT ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}
    v -1 = v 2 = or IF v EXIT THEN
@@ -23463,10 +23478,11 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    1 MULTI-ERR-N +!
    0 ;
 
-\ The name is written after the scan, so the token buffers are sized for it
-\ first: growing them afterwards would drop the refused token being reported.
-\ A clause that certifies or is left to the run gets its record in a replay,
-\ as the engine's `does>` makes one (CHECKER-OVERLAY:CLAUSE).
+\ The clause's name is written after the scan, so the token buffers are sized
+\ for it first: growing them afterwards would drop the refused token being
+\ reported. A clause that certifies or is left to the run gets its record in a
+\ replay, as the engine's `does>` makes one (CHECKER-OVERLAY:CLAUSE), under the
+\ name as written, which CLAUSE reads before anything writes NMB again.
 : CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
    WRITE-WINDOW-CK
@@ -23484,7 +23500,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    DOES-EFF-CLEAR
    rc 0 <> IF rc SRC-DOES-THREW EXIT THEN
    SRC-DOES-VERDICT @ {: v:n :}
-   v -1 =  v 2 =  or IF na nu DOES-CLAUSE:SUFFIX$ CHECKER-OVERLAY:CLAUSE THEN
+   v -1 =  v 2 =  or IF na nu  na nu CLAUSE-NAME  CHECKER-OVERLAY:CLAUSE THEN
    v na nu DOES-REPORT ;
 
 \ The pre-pass's question about a top-level token (src/habu/verify-source.f

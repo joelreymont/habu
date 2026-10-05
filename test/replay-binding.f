@@ -204,7 +204,9 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
 \ first row is the control: while R lives, the clause's name resolves. A definer
 \ the replay makes has its clause as well, as the engine's `does>` makes one;
 \ without it the trust of the clause was E-TRUST-UNRESOLVED, where the live
-\ load certifies it.
+\ load certifies it. The clause holds its name though no checker record does,
+\ so a later colon definition of that name is refused, as the live load refuses
+\ it ("duplicate definition: MK;does", rc 78).
 : CLAUSE-CASE ( -- )
    s" a replayed undefine retires the definer's does> clause with it" T-LABEL
    S\" s\" RB-DOES:RB-MK;does\" s\" -- n\" trust\n" 0 REPLAY
@@ -216,7 +218,11 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
    S\" package RB-NC\npublic\n: MK ( n -- ) create , does> ( -- n ) @ ;\nundefine MK\ns\" MK;does\" s\" -- n\" trust\n;package\n"
       E-TRUST-UNRESOLVED REPLAY
    s" a word holding the clause's name refuses the definer, as the engine's does> does" T-LABEL
-   S\" package RB-CC\npublic\n: RB-CK ( n -- ) create , does> ( -- n ) @ ;\n;package\n" 78 REPLAY ;
+   S\" package RB-CC\npublic\n: RB-CK ( n -- ) create , does> ( -- n ) @ ;\n;package\n" 78 REPLAY
+   s" a definition of the clause's name after its definer is refused" T-LABEL
+   S\" package RB-NC\npublic\n: MK ( n -- ) create , does> ( -- n ) @ ;\n: MK;does ( -- n ) 1 ;\n;package\n"
+      78 REPLAY
+   S\" : RB-GK ( n -- ) create , does> ( -- n ) @ ;\n: RB-GK;does ( -- n ) 1 ;\n" 78 REPLAY ;
 
 \ The engine's `package` gives a namespace with no private wordlist one
 \ (src/habu/packages.f PKG-REOPEN), so a replayed `package RB-PQ` opens it as

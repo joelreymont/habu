@@ -525,12 +525,11 @@ DOES-COMPANION-INSTALL
 \ load with that code. Both loops run these words; a replayed `undefine` never
 \ reaches them, since the checker's source pass retires through the overlay
 \ (src/core/checker.f CHECKER-OVERLAY:RETIRE).
-create XREF-NL 10 c,
 : XREF-UNDEFINE-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
    data-base REPLAY-SCOPE:LATCH + @ 0= if exit then
    2 s" hb: undefine while a checker replay is open: " write drop
    2 a u write drop
-   2 XREF-NL 1 write drop
+   2 S\" \n" write drop
    ENGINE-ERROR:OVERLAY-OPEN throw ;
 
 : UNDEFINE-NAME ( ptr u8 n -- )
