@@ -5,10 +5,10 @@
 \ SymbolInformation for each definition the store keeps (tools/lsp-defs.f)
 \ whose word holds the query, ASCII letters compared without case. A file
 \ several open documents' checks reached is answered once, from the check the
-\ store answers it from: the check of the document holding the file while the
-\ store keeps one, else the latest of them. The answer follows the store:
-\ check after check, oldest first, each check's files in the order its lines
-\ first name them.
+\ store answers it from (LSP-DEFS:DEFS-EACH): the check of the document
+\ holding the file while the store keeps one, else the latest of them. The
+\ answer follows the store: check after check, oldest first, each check's
+\ files in the order its lines first name them.
 \ - name: the word as the source wrote it.
 \ - kind: from the class the verifier states for the path that declared the
 \   word (tools/check-verify-child.f): 14 (Constant) for a constant, 13
@@ -93,9 +93,7 @@ public
    qu QUERY-U !
    0 SHOWN-N !
    w ARRAY-START drop
-   DEFS-GROUPS 0 ?do
-      i GROUP-OVER? 0= if i GROUP-SYMBOLS then
-   loop
+   [: GROUP-SYMBOLS ;] DEFS-EACH
    w ARRAY-END ;
 
 ;using

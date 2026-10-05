@@ -1941,6 +1941,14 @@ WHITEBOX-SUITE checker-verify-order
    test/checker-verify-order.f
 ;SUITE
 
+WHITEBOX-SUITE checker-decl-locs
+   test/checker-decl-locs.f
+;SUITE
+
+SUITE checker-decl-locs-capture
+   test/checker-decl-locs-capture.f
+;SUITE
+
 WHITEBOX-SUITE checker-replay-pkg-state
    test/checker-replay-pkg-state.f
 ;SUITE

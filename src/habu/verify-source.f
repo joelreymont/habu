@@ -745,6 +745,74 @@ CAST: DOES-ACTION ( n -- [ ptr u8 n ptr u8 n ptr u8 n -- n ] )
 CAST: RENDERS-ACTION ( n -- [ ptr u8 n n -- bool ] )
 CAST: REACH-ACTION ( n -- [ ptr u8 n ptr u8 n -- ] )
 CAST: DECL-ACTION ( n -- [ ptr u8 n ptr u8 n -- bool ] )
+CAST: VERIFIER-ACTION ( n -- [ -- ] )
+CAST: ARM-ACTION ( n -- [ n n n -- ] )
+CAST: USES-ACTION ( n -- [ [ n n n n n -- ] [ -- ] -- ] )
+
+\ ---- navigation: where a declaration was written, what a use bound ----------
+\ Each file the composition scans is a visit, numbered from one counter that
+\ never goes back: no number names two files in one process, so a declaration
+\ an earlier composition located names no file of this one. A visit keeps a
+\ copy of the path its file was resolved to, because the loader releases its
+\ own when the file ends while a use in the subject may bind a declaration in
+\ a file whose visit has ended. The composition's first visit is the
+\ subject's. The copies go when the composition ends.
+variable VISIT-NEXT                     \ the last visit number given
+variable VISIT-CUR                      \ the file being scanned, 0 outside a visit
+variable VISIT-FIRST                    \ this composition's first visit
+variable VISIT-N                        \ the visits this composition made
+DYNAMIC-BUFFER VISIT-PATHS u8           \ their paths, end to end
+variable VISIT-PATHS-U
+DYNAMIC-BUFFER VISIT-ROWS n             \ per visit, its path's offset and length
+
+\ Open a visit for the file resolved to PATH and make it the current one.
+: VISIT-OPEN ( ptr u8 n -- )
+   {: path:ptr pathu:n :}
+   VISIT-PATHS-U @ {: off:n :}
+   VISIT-N @ 0= IF VISIT-NEXT @ 1 + VISIT-FIRST ! THEN
+   off pathu + 1 + VISIT-PATHS-RESERVE
+   path off VISIT-PATHS pathu BYTE-COPY
+   off pathu + VISIT-PATHS-U !
+   VISIT-N @ 1 + 2 * VISIT-ROWS-RESERVE
+   off VISIT-N @ 2 * VISIT-ROWS !
+   pathu VISIT-N @ 2 * 1 + VISIT-ROWS !
+   VISIT-N @ 1 + VISIT-N !
+   VISIT-NEXT @ 1 + VISIT-NEXT !
+   VISIT-NEXT @ VISIT-CUR ! ;
+
+\ Did this composition make visit V?
+: VISIT-IN? ( n -- bool )
+   VISIT-FIRST @ - {: row:n :}
+   row 0 >= row VISIT-N @ < and ;
+
+\ The path visit V's file was resolved to, for a visit this composition made.
+: VISIT-PATH ( n -- ptr u8 n )
+   VISIT-FIRST @ - 2 * {: row:n :}
+   row VISIT-ROWS @ VISIT-PATHS  row 1 + VISIT-ROWS @ ;
+
+\ The composition's end: its visits and their paths go.
+: VISITS-DROP ( -- )
+   VISIT-PATHS-RELEASE  VISIT-ROWS-RELEASE
+   0 VISIT-PATHS-U !  0 VISIT-N !  0 VISIT-CUR ! ;
+
+\ Arm the checker with the token from byte AT, U long, in the file being
+\ scanned: the record the next named registrar retains takes that location
+\ (src/core/checker.f CHECKER-DECL-AT!), until DISARM. Outside a visit there
+\ is no file to name, and the checker's armed state stays its caller's.
+: ARM ( n n -- )
+   {: at:n u:n :}
+   VISIT-CUR @ 0= IF EXIT THEN
+   VISIT-CUR @ at at u +
+   NCOMP-DISPATCH:DECL-VERIFY-DECL-ARM-OFF OWNER-XT ARM-ACTION execute ;
+
+: DISARM ( -- )
+   VISIT-CUR @ 0= IF EXIT THEN
+   NCOMP-DISPATCH:DECL-VERIFY-DECL-DISARM-OFF OWNER-XT VERIFIER-ACTION execute ;
+
+\ Run Q with H receiving each use Q's checks bind (src/core/checker.f
+\ CHECKER-WITH-USES): one scope at a time, closed on either exit.
+: WITH-USES ( [ n n n n n -- ] [ -- ] -- )
+   NCOMP-DISPATCH:DECL-VERIFY-USES-OFF OWNER-XT USES-ACTION execute ;
 
 \ The checked dispatchers name their offsets through layout.f's
 \ NCOMP-DISPATCH:DECL-VERIFY-* mirrors. CHECKER-OWNER-ABI loads before the
@@ -999,6 +1067,12 @@ variable WRAP-ROW                             \ the definer row the last call na
 : DEF-NAME! ( -- )
    TOKEN-U @ DEF-NAME-U !  TOKEN-A @ DEF-NAME-A !  TOKEN-BYTE @ DEF-NAME-BYTE ! ;
 
+\ The body of the definition DEF-NAME! pinned, checked with its name armed.
+: VERIFY-NAMED-BODY ( -- n )
+   DEF-NAME-BYTE @ DEF-NAME-U @ ARM
+   VERIFY-BODY
+   DISARM ;
+
 : WRAP-RESET ( -- )
    0 WRAP-DEFINERS !  0 WRAP-CTL !  0 WRAP-ROW ! ;
 
@@ -1047,7 +1121,7 @@ variable WRAP-ROW                             \ the definer row the last call na
 \ CHECK, verdict 2), and the run judges the deferred text. The definition reports
 \ one deferral: its clause's only when the definer's body was not deferred.
 : VERIFY-DOES ( -- )
-   VERIFY-BODY {: def:n :}
+   VERIFY-NAMED-BODY {: def:n :}
    def REPORT-DEFERRED
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    BODY-RESET
@@ -1163,6 +1237,16 @@ defer ON-DUPLICATE ( n n ptr u8 n bool -- )
 \ word installed here consumes them before it returns.
 defer ON-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n -- )
 
+\ A use in the subject that the checker bound to a located declaration
+\ (src/core/checker.f CHECKER-ON-USE): where the use starts and ends in the
+\ subject; the path the declaration's file was resolved to when the
+\ composition visited it; and where the token that declared it starts and
+\ ends there, all at the base TOKEN-BYTE@ counts from. The path is borrowed: a
+\ word installed here consumes it before it returns. A use in a file the
+\ subject loads, and one bound to a declaration with no location, are not
+\ reported.
+defer ON-USE ( n n ptr u8 n n n -- )
+
 \ The file being scanned, named as its packets name it.
 : FILE$ ( -- ptr u8 n )
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @ COMPOSE-DIAG$ ;
@@ -1195,6 +1279,22 @@ DEFINITION-INIT
    ['] FILE-NONE is ON-FILE ;
 
 FILE-INIT
+
+: USE-NONE ( n n ptr u8 n n n -- )
+   2drop 2drop 2drop ;
+
+: USE-INIT ( -- )
+   ['] USE-NONE is ON-USE ;
+
+USE-INIT
+
+\ A use the checker published, at the subject's base: reported when it is in
+\ the subject and its declaration lies in a file this composition visited.
+: USE-SEEN ( n n n n n -- )
+   {: s:n e:n v:n ds:n de:n :}
+   VISIT-CUR @ VISIT-FIRST @ <> IF EXIT THEN
+   v VISIT-IN? 0= IF EXIT THEN
+   s BASE-BYTE @ +  e BASE-BYTE @ +  v VISIT-PATH  ds de ON-USE ;
 
 : DUPLICATE-STOP ( n n ptr u8 n bool -- )
    drop 2drop
@@ -1260,7 +1360,8 @@ DUPLICATE-INIT
    TOKEN-BYTE @
    {: name:ptr nameu:n at:n :}
    -1 SIG-RAW-MODE!
-   name nameu sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! ;] finally
+   at nameu ARM
+   name nameu sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! DISARM ;] finally
    IF name nameu sig sigu at class DEFINED-HERE THEN ;
 
 \ CREATED-TRUST-NEXT?: RAW-TRUST-NEXT's twin for a definer the checker knows and
@@ -1276,16 +1377,21 @@ DUPLICATE-INIT
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: at:n :}
-   name nameu dsym RECORD-CREATED 0= IF 0 0= 0= EXIT THEN
+   at nameu ARM
+   name nameu dsym RECORD-CREATED
+   DISARM
+   0= IF 0 0= 0= EXIT THEN
    name nameu s" " at DEF-STORAGE DEFINED-HERE
    0 0= ;
 
 : TRUST-DEFER-SIGNATURE ( ptr u8 n n -- )
    {: name:ptr nameu:n at:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    {: kept:bool :}
    name nameu CHECKER-DEFER
+   DISARM
    kept IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN ;
 
 : TRUST-DEFER ( -- )
@@ -1348,7 +1454,9 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: at:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
+   DISARM
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN
    name nameu SCAN-TRUSTED-BODY ;
 
@@ -1362,7 +1470,9 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    TOKEN-BYTE @ {: at:n :}
    name nameu REFUSE-DUPLICATE IF REQUIRE-SIGNATURE 2drop EXIT THEN
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   at nameu ARM
    name nameu sig sigu DEFCAST-SIGNATURE
+   DISARM
    name nameu sig sigu at DEF-WORD DEFINED-HERE ;
 
 \ A `linear:` row has the same shape and is certified by the engine's own
@@ -1373,7 +1483,9 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: at:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   at nameu ARM
    name nameu sig sigu CHECKER-LINEAR
+   DISARM
    name nameu sig sigu at DEF-WORD DEFINED-HERE ;
 
 : UNDEFINE-WORD ( -- )
@@ -1443,9 +1555,13 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
    TOKEN-BYTE @ {: at:n :}
    name nameu MANGLE {: tail:ptr tailu:n :}
    tail tailu s" 0" CHECKER-DEFFAMILY
+   at nameu ARM
    name nameu tail tailu RECORD-CAST-IN
+   DISARM
    at nameu CAST-DEFINED
+   at nameu ARM
    name nameu tail tailu RECORD-CAST-OUT
+   DISARM
    at nameu CAST-DEFINED ;
 
 : RECORD-DEFLINEAR ( -- )
@@ -1653,7 +1769,9 @@ PTR-VARIABLE STG-START
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    count countu COUNT-REFUSED? IF EXIT THEN
+   at nameu ARM
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER
+   DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
 \ DEFER-LAYOUT-BUFFER publishes its accessor and NAME-BIND and NAME-GROW from
@@ -1664,7 +1782,9 @@ PTR-VARIABLE STG-START
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   at nameu ARM
    type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER
+   DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
 : RECORD-TYPED-BUFFER ( -- )
@@ -1673,14 +1793,18 @@ PTR-VARIABLE STG-START
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    count countu COUNT-REFUSED? IF EXIT THEN
+   at nameu ARM
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER
+   DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
 : RECORD-TYPED-VARIABLE ( -- )
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   at nameu ARM
    type typeu name nameu CHECKER-DEFTYPED-VARIABLE
+   DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
 \ DYNAMIC-BUFFER (src/core/layout-buffer.f) publishes THREE words from one line -
@@ -1693,7 +1817,9 @@ PTR-VARIABLE STG-START
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   at nameu ARM
    type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER
+   DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
 \ The source byte body byte at was read from, in the newest run BODY-ROW!
@@ -1766,7 +1892,10 @@ PTR-VARIABLE STG-START
    nameu 0= IF E-MISSING-NAME throw THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
    name DEF-NAME-A !  nameu DEF-NAME-U !
-   [: DEF-NAME-A @ DEF-NAME-U @ CHECKER-EXPORT ;] catch {: rc:n :}
+   at nameu ARM
+   [: DEF-NAME-A @ DEF-NAME-U @ CHECKER-EXPORT ;] catch
+   DISARM
+   {: rc:n :}
    rc E-DUP-DEFINITION = IF nameu DUPLICATE! EXIT THEN
    rc 0<> IF rc throw THEN
    name nameu at EXPORT-DEFINED ;
@@ -1914,7 +2043,9 @@ variable FILE-USE
    {: kind:ptr kindu:n sig:ptr sigu:n :}
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
+   at nameu ARM
    name nameu sig sigu TRUST-STRUCTURE-FIELD
+   DISARM
    IF kind kindu name nameu sig sigu at at nameu + DEF-WORD DEFINED THEN ;
 
 \ Record the size word (`-- n`) then each field accessor with its runtime effect
@@ -1922,7 +2053,9 @@ variable FILE-USE
 : RECORD-STRUCTURE ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
+   at nameu ARM
    name nameu s" -- n" DECL-SIGNATURE
+   DISARM
    IF name nameu s" -- n" at DEF-CONSTANT DEFINED-HERE THEN
    BEGIN
       NEXT-SCAN
@@ -2003,7 +2136,9 @@ variable FFI-SIG-U
    nameu 0= IF E-MISSING-NAME throw THEN
    NEXT-SCAN nip 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
    FFI-SIGNATURE {: sig:ptr sigu:n :}
+   at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
+   DISARM
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN ;
 
 : RECORD-DEFINER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -2117,7 +2252,7 @@ variable FFI-SIG-U
       BODY!
       TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
-         VERIFY-BODY dup REPORT-DEFERRED -1 = IF VERIFY-WRAPPER THEN COLON-DEFINED EXIT
+         VERIFY-NAMED-BODY dup REPORT-DEFERRED -1 = IF VERIFY-WRAPPER THEN COLON-DEFINED EXIT
       THEN
       LOCAL-TOKEN? 0= IF
          TOKEN-A @ TOKEN-U @ s" does>" STR=CI IF VERIFY-DOES COLON-DEFINED EXIT THEN
@@ -2307,17 +2442,20 @@ variable TOP-DEFER-I                             \ where the run's reading start
    TOP-PREV-A @ TOP-PREV-U @ TOP-CUR-A @ TOP-CUR-U @
    TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-DEFER-I @ TOP-REFUSED @
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
-   FILE-PKG @ FILE-USE @ PEND-BASE @
+   FILE-PKG @ FILE-USE @ PEND-BASE @ VISIT-CUR @
    {: olda:ptr oldu:n oldi:n oldbl:n oldbc:n oldbb:n
       oldprev:ptr oldprevu:n oldcur:ptr oldcuru:n
       olddefer:n olddefa:ptr olddefu:n olddefi:n oldrefused:ptr
       oldpath:ptr oldpathu:n
-      oldpkg:n olduse:n oldbase:n :}
+      oldpkg:n olduse:n oldbase:n oldvisit:n :}
    src srcu SOURCE!
    SOURCE-ARM
    path COMPOSE-CUR-PATH-A !  pathu COMPOSE-CUR-PATH-U !
    diag diagu DIAG-FILE!
+   path pathu VISIT-OPEN
    [: FILE$ ON-FILE VERIFY-SOURCE ;] catch {: rc:n :}
+   DISARM
+   oldvisit VISIT-CUR !
    rc 0<> COMPOSE-STOP-U @ 0= and IF
       diag COMPOSE-STOP-PATH diagu BYTE-COPY
       diagu COMPOSE-STOP-U !
@@ -2349,8 +2487,6 @@ COMPOSE-INIT
 : THROW-RESULT ( n -- )
    dup 0= IF drop exit THEN
    throw ;
-
-CAST: VERIFIER-ACTION ( n -- [ -- ] )
 
 \ One action inside the verifier's package scope: the owner's start puts the
 \ checker under mirror authority, so every check the action runs binds a name
@@ -2384,6 +2520,10 @@ CAST: VERIFIER-ACTION ( n -- [ -- ] )
 : COMPOSE-WITH-ROOT ( -- )
    COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ SOURCE-ROOT:DIRNAME
    [: RUN-COMPOSE ;] SOURCE-ROOT:WITH ;
+
+\ The composition's checks report each use they bind to USE-SEEN.
+: COMPOSE-WITH-USES ( -- )
+   ['] USE-SEEN ['] COMPOSE-WITH-ROOT WITH-USES ;
 
 \ Stash-and-body, the shape src/core/checker.f CHECK-QUIET-CANDIDATE! takes: a
 \ quotation cannot read its caller's locals.
@@ -2438,7 +2578,8 @@ public
       COMPOSE-SUBJ-PATH pathu REQUIRE-STORE 2drop
    THEN
    -1 COMPOSE-ON !
-   [: COMPOSE-WITH-ROOT ;] catch {: rc:n :}
+   [: COMPOSE-WITH-USES ;] catch {: rc:n :}
+   VISITS-DROP
    0 COMPOSE-ON !
    COMPOSE-REQ0 @ REQUIRE-REG:TRUNCATE
    rc 0<> IF rc throw THEN ;

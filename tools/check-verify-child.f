@@ -24,8 +24,10 @@
 \ errors, going past a duplicate definition as past any refused definition,
 \ and writes for each duplicate, which the checker writes no packet for, a
 \ diagnostic line among the packets, for each file it reads a file line, once
-\ however often it reads the file and before anything in it, and for each
-\ definition it retains a definition line, one JSON object each. It answers
+\ however often it reads the file and before anything in it, for each
+\ definition it retains a definition line, and for each use in the subject
+\ that the checker binds to a located declaration a use line, one JSON object
+\ each. It answers
 \
 \    check-verify: verified | refused | deferred | held
 \                | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
@@ -33,6 +35,8 @@
 \    check-verify: file {"file":F}
 \    check-verify: definition {"kind":K,"class":C,"word":W,"package":P,
 \       "visibility":V,"effect":E,"file":F,"byte_start":S,"byte_end":N}
+\    check-verify: use {"byte_start":S,"byte_end":N,"file":F,
+\       "target_start":TS,"target_end":TN}
 \
 \ A file line names a file src/habu/verify-source.f ON-FILE reports, F as
 \ its packets name it. A definition line names what ON-DEFINITION reports:
@@ -44,6 +48,12 @@
 \ under, E its declared effect, absent when it declared none, F the file as
 \ its packets name it, and S and N where the token that declared it starts and
 \ ends there.
+\
+\ A use line names what src/habu/verify-source.f ON-USE reports, a use in the
+\ subject that the checker bound to a located declaration: S and N where the
+\ use starts and ends in the subject, F the path the declaration's file was
+\ resolved to, and TS and TN where the token that declared it starts and ends
+\ there.
 \
 \ deferred: nothing is refused, but a stretch of top-level source or a
 \ definition was deferred to the run, and a W-CHECK-DEFERRED packet locates each
@@ -336,6 +346,24 @@ variable SEEN-N
    OUT-FD NEWLINE ;
 
 
+\ A use the first form's subject bound to a located declaration, as its use
+\ line.
+: USE-LINE ( n n ptr u8 n n n -- )
+   {: at:n end:n path:ptr pathu:n tat:n tend:n :}
+   OUT-FD s\" check-verify: use {\"byte_start\":" WRITE
+   OUT-FD at FD-N
+   OUT-FD s\" ,\"byte_end\":" WRITE
+   OUT-FD end FD-N
+   OUT-FD s\" ,\"file\":" WRITE
+   path pathu JSON-STR
+   OUT-FD s\" ,\"target_start\":" WRITE
+   OUT-FD tat FD-N
+   OUT-FD s\" ,\"target_end\":" WRITE
+   OUT-FD tend FD-N
+   OUT-FD s" }" WRITE
+   OUT-FD NEWLINE ;
+
+
 \ One multi-error window covers the complete load composition, and goes past
 \ a duplicate as past any refused definition. A duplicate it cannot go past,
 \ a name the definer generates, stops it with its stopped line.
@@ -345,6 +373,7 @@ variable SEEN-N
    ['] DUPLICATE-LINE is VERIFY:ON-DUPLICATE
    ['] FILE-LINE is VERIFY:ON-FILE
    ['] DEFINITION-LINE is VERIFY:ON-DEFINITION
+   ['] USE-LINE is VERIFY:ON-USE
    MULTI-ERR-BEGIN
    [: VERIFY-CUR ;] catch {: rc:n :}
    MULTI-ERR-END {: rejects:n :}
