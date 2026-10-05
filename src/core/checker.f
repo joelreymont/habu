@@ -14705,7 +14705,14 @@ variable FLD  variable FLI  variable FLO  variable FLC
       THEN
    THEN
    SGSEEN @ 0= IF RES-FALSE EXIT THEN
-   id INTRINSIC-CREATE = ;
+   id INTRINSIC-CREATE <> IF RES-FALSE EXIT THEN
+   \ The intrinsic parses its created name without moving either stack. Native
+   \ elaboration calls that exact binding, so its judged site needs call facts.
+   REC-ON @ IF
+      REC-IX @ 0 0 CW-CALL CWIN-ADD
+      REC-IX @ 0 0 CW-GLUE CWIN-ADD
+   THEN
+   RES-TRUE ;
 
 : LITERAL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u ALLDIG? IF
