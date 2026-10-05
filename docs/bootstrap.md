@@ -473,7 +473,16 @@ Three facts decide how a change reaches the fixpoint:
   built straight from the stage-1 host, which lacks the primitive). A
   `TRUSTED:` bridge turned into a checked call is the same shape: the callee's
   `PRIM:`/`PPRIM:` row must exist in the host first, or an old host dies at
-  `--load` of the build tool with `ncomp: cannot compile <word>`.
+  `--load` of the build tool with `ncomp: cannot compile <word>`. The stage-2
+  refresh refuses such a tree before any build, at its certify step:
+  `VERIFY:SOURCE-BUF` types the boot prefix with the host's rows, as the window
+  compile does, so the certify reports the caller's refusal
+  (`certify: prefix-src rejected rc 70 (blocking)`) and the refresh exits 74
+  (`E-BUILD-CERTIFY`). Measured on the tree whose `NS-ENSURE` calls
+  `namespace-record` through `CHECKER-OVERLAY`'s owner row: an engine built
+  before that row refuses `E-CAP-TRUSTED habu: in ns-ensure` in the native
+  build (`ncomp: cannot compile NS-ENSURE`, rc 74) and in the refresh (rc 74),
+  and the tree's own engine passes both.
 - **Build-prefix source must satisfy the host's checker and the tree's.**
   `tools/native-build.f` compiles `src/habu/aot-file.f` and its siblings under
   the host's checker, and the window compiles them again under the tree's, so
