@@ -90,6 +90,14 @@ $1000 constant PAGE-BYTES              \ the x86-64 Linux base page
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 
+\ Load and store the DATA cell at an offset.
+: CELL@, ( r64 n -- )
+   {: r:r64 off:n :}
+   r DATA-REG off MEM-OFF ASM-SINK ENC-MOV-RM ;
+: CELL!, ( r64 n -- )
+   {: r:r64 off:n :}
+   r DATA-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
+
 \ mov r32, imm32, which zero-extends: every constant here is a small
 \ non-negative count, descriptor, prot or status.
 : IMM32, ( r64 n -- ) {: r:r64 v:n :}
@@ -2388,12 +2396,6 @@ public
 private
 
 : CP-REG ( -- r64 ) ENGINE-GPR:X64-CP >R64 ;
-
-\ Load and store the DATA cell at an offset.
-: CELL@, ( r64 n -- ) {: r:r64 off:n :}
-   r DATA-REG off MEM-OFF ASM-SINK ENC-MOV-RM ;
-: CELL!, ( r64 n -- ) {: r:r64 off:n :}
-   r DATA-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
 \ The twin of habu1.f DP-CHECK, before every store of a new DP: rdi, the new
 \ DP, must lie in [DATA + DATA-START, DATA + DP-CEILING], or LDPBAD refuses

@@ -325,6 +325,16 @@ public
    0 OWNER-INSTALLED !
    0 PRIOR-INVALIDATE !
    0 PRIOR-FACTS !
+   \ CANON-DATA releases every dynamic buffer after this hook. Their counts
+   \ cannot survive into an image whose buffers have zero capacity.
+   0 IMPL-N !
+   0 IMPL-TYPE-N !
+   0 EDGE-N !
+   0 ASSOC-N !
+   0 SOURCE-FUNS !
+   0 SOURCE-TYPE-N !
+   0 FACT-FUNS !
+   0 WORK-N !
    0 HOST-REQUIRED ! ;
 
 \ The elaborator keeps the first semantic refusal while its source tape is

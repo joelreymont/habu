@@ -729,9 +729,6 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 : PUT-CALL ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
    id DBYTES-OF s PUT-DMOVE
-   MEAS @ 0= PLACE-MODE @ PLACE-YES = and if
-      CUR NEMIT:CALL PLACE-AT-N @ SELF-FUN FUN-START + id CALL-SITE+
-   then
    SELF-FUN FUN-START s PUT-CALL-TO
    id DBACK-OF negate s PUT-DMOVE ;
 
