@@ -109,6 +109,17 @@ create ERR IO-CAP allot
    s" src/os/env-base.f" ARG+
    s" src/core/include.f" ARG+ ;
 
+\ The compiler target declares families, so its require closure follows the
+\ same declaration prefix as LOAD-TARGET, after the early handover checks.
+: DECL-DEPS+ ( -- )
+   s" src/core/declaration-transaction.f" ARG+
+   s" src/core/generated-declaration.f" ARG+
+   s" src/core/decl-event.f" ARG+
+   s" src/core/structure-make.f" ARG+
+   s" src/core/structure-decl.f" ARG+
+   s" src/core/enum-decl.f" ARG+
+   s" src/core/structures.f" ARG+ ;
+
 : BINDINGS-CASE ( -- )
    s" test/native-window-owner-bindings.f" ARGS!
    SOURCE-DEPS+
@@ -142,7 +153,17 @@ create ERR IO-CAP allot
    s" test/native-window-cast-ok.f" ARG+
    s" test/native-window-call-store.f" ARG+
    s" test/compiler/native-checker-storage.f" ARG+
+   DECL-DEPS+
    SOURCE-DEPS+
+   s" src/core/enums.f" ARG+
+   s" src/core/sha256.f" ARG+
+   s" src/core/type-family-sha.f" ARG+
+   s" src/core/combinators.f" ARG+
+   s" src/habu/code-span.f" ARG+
+   s" src/habu/xref.f" ARG+
+   s" src/core/generated-declaration-dictionary.f" ARG+
+   s" src/core/generated-declaration-protection.f" ARG+
+   s" src/core/dynamic-storage.f" ARG+
    s" test/native-window-owner-fixed.f" ARG+
    WHITEBOX-CHILD:ENV!
    S\" window: 0\n" WINDOW-RESULT ;
