@@ -2243,8 +2243,22 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 : RESOLVE-SCAN ( IR-ARENA:arena IR-ARENA:arena n n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}
    hi lo ?do
+      i RF-AT !
       p r i RESOLVE-STEP
+      -1 RF-AT !
    loop ;
+
+: RESOLVE-KEEP ( IR-ARENA:arena IR-ARENA:arena n n -- IR-ARENA:arena IR-ARENA:arena n n )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}
+   p r lo hi RESOLVE-SCAN
+   p r lo hi ;
+
+: RESOLVE-TRY ( IR-ARENA:arena IR-ARENA:arena n n -- )
+   [: RESOLVE-KEEP ;] catch {: rc:n :}
+   2drop 2drop
+   rc 0= if exit then
+   RF-RECORD
+   rc throw ;
 
 \ ---- which control actions stage a call, and which call ----------------------
 : CTRL-CALL? ( HIR:ctrl -- HIR:opcode bool )
@@ -4321,7 +4335,7 @@ private
    QLOCALS-CK
    r lo hi MATCH-SCAN
    r lo hi DEFER-SCAN
-   p r lo hi RESOLVE-SCAN
+   p r lo hi RESOLVE-TRY
    r lo hi MEM-SCAN
    r lo hi CROSS-SCAN ;
 

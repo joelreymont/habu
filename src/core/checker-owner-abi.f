@@ -162,6 +162,7 @@ $20000 constant BOUND-SEEDED
 1 constant BOUND-DICT
 2 constant BOUND-INTRINSIC
 3 constant BOUND-PENDING
+4 constant BOUND-UNRESOLVED
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

@@ -946,7 +946,14 @@ public
    ix CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
    size 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
    size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if E-NCOMP-OWNER throw then
+   row CHECKER-OWNER-ABI:BOUND-ORD BOUND@ ix <> if CHECKER-OWNER-ABI:BINDING-RC throw then
    row CHECKER-OWNER-ABI:BOUND-KIND BOUND@ {: source-kind:n :}
+   source-kind CHECKER-OWNER-ABI:BOUND-DICT =
+   source-kind CHECKER-OWNER-ABI:BOUND-INTRINSIC = or
+   source-kind CHECKER-OWNER-ABI:BOUND-PENDING = or
+   source-kind CHECKER-OWNER-ABI:BOUND-UNRESOLVED = or 0= if
+      CHECKER-OWNER-ABI:BINDING-RC throw then
+   source-kind CHECKER-OWNER-ABI:BOUND-UNRESOLVED = if E-HIR-UNMODELED throw then
    row CHECKER-OWNER-ABI:BOUND-CTL BOUND@
       CHECKER-OWNER-ABI:BOUND-SEEDED and 0<>
    source-kind CHECKER-OWNER-ABI:BOUND-INTRINSIC = or {: seeded:bool :}

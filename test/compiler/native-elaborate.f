@@ -15,13 +15,14 @@
 \ compiled. test/compiler/native-chain.f then runs one produced tape all the way
 \ through, so this suite may state that shape and that one proves it.
 \
-\ HOW A FIXTURE IS BUILT. Each one states its source text, and the shared source
+\ HOW A DIRECT FIXTURE IS BUILT. Each one states its source text, and the shared source
 \ fixture test/compiler/native-source-fixture.f lexes it onto a tape: one token
 \ per word, spans that are real ranges in that text, and the parser mode each
 \ token would really have been read in. That file is shared with the code
 \ generator comparison harness, so both harnesses agree about what a token is.
 \ The hostile fixtures below push their tokens by hand through the same writer,
 \ because the thing under test is a token the lexer would never produce.
+\ The recorded binding cases instead use NFEED's real checker observer.
 \
 \ WHICH REFUSAL BELONGS TO WHOM. The elaborator names five refusals of its own -
 \ the shape of a definition, the parser mode of a token, the declared arity, and
@@ -37,6 +38,7 @@
 require lib/errors.f
 require lib/test.f
 require src/compiler/native/elaborate.f
+require src/compiler/native/feed.f
 require test/compiler/native-source-fixture.f
 
 \ ---- the three targets the `is` fixtures name --------------------------------
@@ -334,6 +336,43 @@ using NSRC
    s" a direct call keeps its model arity after an unrelated checker scan" T-LABEL
    BND [: DIRECT-SITE-BODY ;] IR-CTX:WITH-CONTEXT
    1 T= ;
+
+create REC-TEXT 128 allot
+
+: REC-FACTS ( IR-CTX:ctx -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ARENA:view )
+   {: c:IR-CTX:ctx :}
+   c HIR-BUILDER {: b:IR-BUILD:builder :}
+   c b MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b IR-BUILD:MODULE-KEY 8 NTAPE:NEW {: tp:IR-ARENA:arena :}
+   c b tp REC-TEXT 128 NFEED:BEGIN-UNIT
+   s" NELB-REC ( n -- n ) abs" CHECK! -1 T=
+   NFEED:END-UNIT {: v:IR-ARENA:view verdict:n :}
+   verdict -1 T=
+   b p r v ;
+
+: MISSING-FACT-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c REC-FACTS {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   1 CHECKER-OWNER:SOURCE-BINDING {: row:ptr bytes:n :}
+   bytes CHECKER-OWNER-ABI:BOUND-CELLS cells T=
+   \ Remove the call's ordinal without changing its tape or dictionary word.
+   3 row CHECKER-OWNER-ABI:BOUND-ORD cells + CELL-VIEW !
+   c b v p r 1 1 NELAB:RECORDED-COLON drop ;
+
+: STALE-FACT-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c REC-FACTS {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   s" NELB-LATER ( -- n ) 1" CHECK! -1 T=
+   \ The recorded does entry checks its producer window before reading does shape.
+   c b v p r 1 1 1 0 1 0 0 s" ( -- n )" NELAB:RECORDED-DOES drop ;
+
+: RECORDED-FACT-CASE ( -- )
+   s" a missing ordinary recorded call refuses despite its dictionary spelling" T-LABEL
+   [: BND [: MISSING-FACT-BODY ;] IR-CTX:WITH-CONTEXT ;]
+      E-NCOMP-BINDING TTHROWSQ
+   s" a stale recorded does window refuses despite its dictionary spelling" T-LABEL
+   [: BND [: STALE-FACT-BODY ;] IR-CTX:WITH-CONTEXT ;]
+      E-NCOMP-BINDING TTHROWSQ ;
 
 \ ---- the two words this suite is refused by -----------------------------------
 \ WHY AN OUT-OF-SCOPE SPELLING IS THE FIXTURE. A body word the dialect models no
@@ -2528,6 +2567,7 @@ public
    BUMP-CASE
    FUN-CASE
    DIRECT-SITE-CASE
+   RECORDED-FACT-CASE
    BND [: drop UNDEC-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop CHARTOK-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop STRTOK-CASE ;] IR-CTX:WITH-CONTEXT
