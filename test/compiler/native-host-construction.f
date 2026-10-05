@@ -174,8 +174,6 @@ TRUSTED: REWIND-CODE ( n -- ) cp! ;
    s" NATIVE-HOST-SOURCE:HOST42" SELECTED-N 99 T=
    s" reclamation invalidates old occurrence before reuse" T-LABEL
    RECLAIM-CASE
-   s" instruction writes retire only affected implementation facts" T-LABEL
-   PATCH-CASE
    s" a refused closure leaves the next valid call usable" T-LABEL
    s" NATIVE-HOST-SOURCE:TARGET99" SELECTED-N 42 T= ;
 
@@ -265,6 +263,10 @@ public
    ['] ORIGIN false ['] CAPTURE-WRITER RUN-READY-RC BUILD-RC T=
    PRODUCT-KEY 1 SCRIPT-ARGV$ AOT-FILE:READ
    ONE42-COUNT 1 T=
+   \ A generic instruction patch removes native capture evidence even when
+   \ it writes the same bytes. Check its lifetime after retaining the artifact.
+   s" instruction writes retire only affected implementation facts" T-LABEL
+   PATCH-CASE
    T-REPORT
    s" native host construction: artifact " type
    1 SCRIPT-ARGV$ type cr ;
