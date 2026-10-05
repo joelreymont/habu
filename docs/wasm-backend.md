@@ -249,7 +249,7 @@ aggregate layouts explicitly.
 
 Native Habu exception primitives can rely on native control transfer. That mechanism must not be ported as pointer arithmetic on a fabricated call stack.
 
-The portable backend gives potentially throwing calls explicit status edges. A `throw` of zero returns normally. A nonzero throw stores its full Habu cell in the context and propagates status through generated cleanup/return paths. An unknown dynamic callee is conservatively potentially throwing; a no-throw certificate is validated against its dependency closure.
+The portable backend gives potentially throwing calls explicit status edges. A `throw` stores its full Habu cell in the context and propagates status through generated cleanup/return paths. An unknown dynamic callee is conservatively potentially throwing; a no-throw certificate is validated against its dependency closure.
 
 `catch` records the caller's stack depth and appropriate runtime marks, executes the adapter, and follows the existing checked catch contract on either result. **Depth restoration is not restoration of overwritten argument values, object ownership, heap contents or host side effects.** Current Habu source and issue records explicitly warn against recovering ownership from overwritten caught arguments. [R12]
 
