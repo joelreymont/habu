@@ -14,28 +14,33 @@
 \ their encoding, which is structural, in the order that numbering first uses
 \ them. A function keeps its own signature beside its type, so the aligned frame
 \ and a function of no lanes share a type and only the latter can be the entry.
-\ Table slots are numbered in the order TABLE+ adds them. No global is declared:
-\ ctx lives in memory at WPROF's ctx base, so the global index space is empty.
-\ Nothing is imported and no start function runs.
+\ Table slots are numbered from 1 in the order TABLE+ adds them: slot 0 holds
+\ no function, a null funcref, so call_indirect of xt 0 traps as native execute
+\ of 0 fails. No global is declared: ctx lives in memory at WPROF's ctx base,
+\ so the global index space is empty. Nothing is imported and no start
+\ function runs.
 \
 \ A SITE IS PATCHED IN PLACE. A call site is the offset of a padded five-byte
 \ field in its caller's body, and the field gets its callee's index. An address
 \ site, a padded ten-byte field, and a data cell, eight bytes of the image low
 \ byte first, name a kind and a target. A DATA target is an offset into the
 \ image, from zero to its length, and is written as WPROF's data base plus it; a
-\ CODE target is a table slot, and is written as the slot. Only the module's
-\ copies are patched, so the rows stay as given and LINK can run again.
+\ CODE target is a table slot, and is written as the slot. An indirect site,
+\ the padded five-byte field after a `call_indirect`, is written as the index of
+\ the type (i32) -> (i32), every table slot's (src/arch/wasm/dynamic.f). Only
+\ the module's copies are patched, so the rows stay as given and LINK can run
+\ again.
 \
 \ THE MODULE. Sections come in the specification's order: type, function, table
-\ when a slot was added, memory, export, element with the table, code, and
-\ data, one active segment at WPROF's data base. The memory's minimum and
-\ maximum are the pages holding the image's end, since nothing grows it. The
-\ exports are memory and the four wrappers, whose bodies are written here
-\ through WENC's opcode bytes because their signatures lie outside WSTRUCT's
-\ call row: run stores WPROF's stack base in ctx's stack base and top and 0 in
-\ its out-len, calls the entry with WPROF's ctx base and answers its status;
-\ throw-code answers ctx's throw code, out-base WPROF's out base, and out-len
-\ ctx's out-len.
+\ when a slot was added, memory, export, element with the table from slot 1,
+\ code, and data, one active segment at WPROF's data base. The memory's
+\ minimum and maximum are the pages holding the image's end, since nothing
+\ grows it. The exports are memory and the four wrappers, whose bodies are
+\ written here through WENC's opcode bytes because their signatures lie outside
+\ WSTRUCT's call row: run stores WPROF's stack base in ctx's stack base and top
+\ and 0 in its out-len, calls the entry with WPROF's ctx base and answers its
+\ status; throw-code answers ctx's throw code, out-base WPROF's out base, and
+\ out-len ctx's out-len.
 \
 \ REFUSALS. LINK reads every row before it writes. An entry, site, cell or slot
 \ naming no function, image byte or slot is E-WLINK-UNRESOLVED, as is an
@@ -95,6 +100,7 @@ $70 constant FUNCREF
 0 constant EXPORT-FUNC
 2 constant EXPORT-MEMORY
 0 constant ACTIVE                    \ an active segment of table or memory zero
+1 constant FIRST-SLOT                \ the first slot holding a function; 0 is null
 $0B constant OP-END
 2 constant ALIGN-32                  \ an i32 access's natural alignment, 2^2
 3 constant ALIGN-64
@@ -145,8 +151,11 @@ variable NCELLS
 DYNAMIC-BUFFER CELL-AT n             \ each data cell's offset in the image
 DYNAMIC-BUFFER CELL-KIND n
 DYNAMIC-BUFFER CELL-TGT n
-variable NSLOTS
-DYNAMIC-BUFFER SLOT-FN n             \ the function in each table slot
+variable NSLOTS                      \ the slots holding a function
+DYNAMIC-BUFFER SLOT-FN n             \ the function in slot FIRST-SLOT + k
+variable NINDS
+DYNAMIC-BUFFER IND-FN n              \ each indirect site's function
+DYNAMIC-BUFFER IND-AT n              \ its field, from the start of the body
 
 \ ---- writing the module ------------------------------------------------------
 \ The writer runs dry to measure what it would write, so a size precedes what it
@@ -228,6 +237,7 @@ DYNAMIC-BUFFER TYPE-AT n
 DYNAMIC-BUFFER TYPE-LEN n
 variable WR-I32                      \ () -> (i32): run, out-base and out-len
 variable WR-I64                      \ () -> (i64): throw-code
+variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 
 : TY-BYTE ( n -- )
    TY-U @ TY + c!
@@ -282,7 +292,8 @@ variable WR-I64                      \ () -> (i64): throw-code
    0 NTYPES !  0 TYPES-U !
    [: TYPE-FN ;] IN-ORDER
    I32 RESULT-TYPE INTERN WR-I32 !
-   I64 RESULT-TYPE INTERN WR-I64 ! ;
+   I64 RESULT-TYPE INTERN WR-I64 !
+   NINDS @ 0 > if  0 TY-U !  FUNC-FORM TY-BYTE  0 ROW  0 ROW  INTERN WR-DYN !  then ;
 
 \ ---- the wrappers ---------------------------------------------------------------
 \ ctx's field at off := v, an i32.
@@ -342,8 +353,9 @@ variable WR-I64                      \ () -> (i64): throw-code
    WR-I32 @ PUT-U32  WR-I64 @ PUT-U32  WR-I32 @ PUT-U32  WR-I32 @ PUT-U32 ;
 
 : TABLE-SEC ( -- )
+   NSLOTS @ FIRST-SLOT + {: n:n :}
    1 PUT-U32
-   FUNCREF PUT-BYTE  LIMITS-MAX PUT-BYTE  NSLOTS @ PUT-U32  NSLOTS @ PUT-U32 ;
+   FUNCREF PUT-BYTE  LIMITS-MAX PUT-BYTE  n PUT-U32  n PUT-U32 ;
 
 : MEMORY-SEC ( -- )
    1 PUT-U32
@@ -364,7 +376,7 @@ variable WR-I64                      \ () -> (i64): throw-code
 
 : ELEMENT-SEC ( -- )
    1 PUT-U32
-   ACTIVE PUT-U32  0 I32-CONST  OP-END PUT-BYTE
+   ACTIVE PUT-U32  FIRST-SLOT I32-CONST  OP-END PUT-BYTE
    NSLOTS @ PUT-U32
    NSLOTS @ 0 ?do  i SLOT-FN @ FN-IDX @ PUT-U32  loop ;
 
@@ -417,7 +429,7 @@ variable IMAGE-POS                   \ where LINK wrote the image in the module
       WPROF:DATA-BASE t +  exit
    then
    kind WSTRUCT:ADDR-CODE = if
-      t 0 <  t NSLOTS @ >= or if E-WLINK-UNRESOLVED throw then
+      t FIRST-SLOT <  t NSLOTS @ FIRST-SLOT + >= or if E-WLINK-UNRESOLVED throw then
       t exit
    then
    kind WSTRUCT:ADDR-NONE = if E-WLINK-UNRESOLVED throw then
@@ -434,6 +446,10 @@ variable IMAGE-POS                   \ where LINK wrote the image in the module
    {: k:n :}
    k CALL-TGT @ RESOLVED drop
    k CALL-FN @ RESOLVED BODY$  k CALL-AT @  WLEB:U32-PAD@ drop ;
+
+: IND-CK ( n -- )
+   {: k:n :}
+   k IND-FN @ RESOLVED BODY$  k IND-AT @  WLEB:U32-PAD@ drop ;
 
 : ADDR-CK ( n -- )
    {: k:n :}
@@ -452,6 +468,7 @@ variable IMAGE-POS                   \ where LINK wrote the image in the module
    ENTRY-CK
    NSLOTS @ 0 ?do  i SLOT-FN @ RESOLVED drop  loop
    NCALLS @ 0 ?do  i CALL-CK  loop
+   NINDS @ 0 ?do  i IND-CK  loop
    NADDRS @ 0 ?do  i ADDR-CK  loop
    NCELLS @ 0 ?do  i CELL-CK  loop ;
 
@@ -467,6 +484,9 @@ variable IMAGE-POS                   \ where LINK wrote the image in the module
 : PATCH ( -- )
    NCALLS @ 0 ?do
       i CALL-TGT @ FN-IDX @  MODULE  i CALL-FN @ FN-POS @ i CALL-AT @ +  WLEB:U32-PATCH
+   loop
+   NINDS @ 0 ?do
+      WR-DYN @  MODULE  i IND-FN @ FN-POS @ i IND-AT @ +  WLEB:U32-PATCH
    loop
    NADDRS @ 0 ?do
       i ADDR-KIND @ i ADDR-TGT @ FINAL  MODULE  i ADDR-FN @ FN-POS @ i ADDR-AT @ +
@@ -485,7 +505,8 @@ variable IMAGE-POS                   \ where LINK wrote the image in the module
 public
 
 : RESET ( -- )
-   0 NF !  0 BODIES-U !  0 NCALLS !  0 NADDRS !  0 IMAGE-U !  0 NCELLS !  0 NSLOTS ! ;
+   0 NF !  0 BODIES-U !  0 NCALLS !  0 NADDRS !  0 IMAGE-U !  0 NCELLS !  0 NSLOTS !
+   0 NINDS ! ;
 
 \ A body as WENC writes it, the lanes in and out its emission row states, the
 \ frame variant WENC picks for them and its origin; answers its handle.
@@ -508,6 +529,15 @@ public
    k 1+ CALL-FN-RESERVE  k 1+ CALL-AT-RESERVE  k 1+ CALL-TGT-RESERVE
    f k CALL-FN !  at k CALL-AT !  t k CALL-TGT !
    1 NCALLS +! ;
+
+\ Function f's call_indirect field at offset at of its body names the type
+\ (i32) -> (i32).
+: INDIRECT+ ( n n -- )
+   {: f:n at:n :}
+   NINDS @ {: k:n :}
+   k 1+ IND-FN-RESERVE  k 1+ IND-AT-RESERVE
+   f k IND-FN !  at k IND-AT !
+   1 NINDS +! ;
 
 \ Function f's address field at offset at of its body holds the address of a
 \ kind and a target.
@@ -543,7 +573,7 @@ public
    k 1+ SLOT-FN-RESERVE
    f k SLOT-FN !
    1 NSLOTS +!
-   k ;
+   k FIRST-SLOT + ;
 
 \ The module, run calling the function e.
 : LINK ( n -- ptr u8 n )

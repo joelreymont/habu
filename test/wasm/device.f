@@ -11,7 +11,9 @@
 \ (src/arch/wasm/kernel.f) run under callers that store cells to the context
 \ stack as compiled code does: emit writes OUT and traps one byte past it,
 \ depth counts the cells, throw takes its code, zero included, and .s calls `.`
-\ on each cell and leaves them. The modules stay in the printed directory.
+\ on each cell and leaves them. test/wasm/dynamic.f, required first, installs
+\ the backend and runs execute and catch through table slots, reporting on its
+\ own. The modules stay in the printed directories.
 
 require lib/test.f
 require lib/fs.f
@@ -27,7 +29,7 @@ require lib/le.f
 require test/wasm/harness.f
 require test/wasm/w03.f
 
-WBACK:INSTALL                                  \ WKERNEL builds under its binding
+require test/wasm/dynamic.f                    \ installs the backend WKERNEL builds under
 
 package WASM-DEVICE
 private
@@ -322,3 +324,4 @@ public
 ;package
 
 WASM-DEVICE:RUN
+

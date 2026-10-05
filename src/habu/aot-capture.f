@@ -2765,7 +2765,7 @@ public
    rstart AOT-ARM:R0 @ = and rend AOT-ARM:R1 @ = and
    d0 AOT-ARM:D0 @ = and d1 AOT-ARM:D1 @ = and ;
 
-: CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
+: CAPTURE-PREPARE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    bstart bend rstart rend d0 d1 ACAP-PAYLOAD-BAND? 0= if
       s" aot-capture: capture bounds differ from frozen payload window" 74 die then
    bstart rstart rend d0 ACAP-BAND!
@@ -2795,7 +2795,9 @@ public
    ACAP-GRAPH-SWEEP-GAPS
    ACAP-GRAPH-SWEEP
    ACAP-SHADOW-REACH
-   ACAP-GRAPH-NAME-DOES                         \ the names that ship are final here
+   ACAP-GRAPH-NAME-DOES ;
+
+: CAPTURE-COMPLETE ( n n n -- ) {: bstart:n bend:n d0:n :}
    bstart bend ACAP-CHECKER-STRIP               \ ... so the checker retires what they leave
    d0 ACAP-COPY-DATA                            \ ... before the DATA it changed is copied
    ACAP-GRAPH-BUILD-MAP
@@ -2810,6 +2812,10 @@ public
    ACAP-NIDX-PROVE                              \ ... and the pool index answers every entry
    ACAP-PWIN-CAPTURE                            \ only the window's own seals travel
    AOT-ARM:PAYLOAD-MODE @ 1 = SITE-ROW AOT-SECTION:BYTES drop ;
+
+: CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
+   bstart bend rstart rend d0 d1 CAPTURE-PREPARE
+   bstart bend d0 CAPTURE-COMPLETE ;
 
 private
 

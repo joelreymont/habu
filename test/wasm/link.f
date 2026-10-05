@@ -8,11 +8,12 @@
 \ type of one of no lanes, and only the latter can be the entry. Each call field
 \ holds its callee's index. An address field and a data cell hold WPROF's data
 \ base plus a target in the image, its length included, or a table slot; the
-\ table and its element segment list the slots' functions. Memory's minimum and
-\ maximum are the pages the image ends in. W03: 140 functions and 137 types,
-\ chained by calls, have sections and bodies that walk out exactly. Refused,
-\ each by its code: an entry, call, address site, table slot or cell naming
-\ nothing the link holds, an address of kind NONE among them; an address kind
+\ table and its element segment list the slots' functions from slot 1, and
+\ slot 0 holds none. Memory's minimum and maximum are the pages the image ends
+\ in. W03: 140 functions and 137 types, chained by calls, have sections and
+\ bodies that walk out exactly. Refused, each by its code: an entry, call,
+\ address site, table slot or cell naming nothing the link holds, an address
+\ of kind NONE or of slot 0 among them; an address kind
 \ outside NONE, DATA and CODE; a site whose field is not padded or lies past its
 \ body; a cell past the image, one whose end would wrap past MAX-N included; an
 \ entry that takes or answers a lane; and an image of a negative length or one
@@ -241,8 +242,9 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
 : IMAGE-FILL ( -- )
    IMAGE-LEN 0 do  i IMAGE-BUF i + c!  loop ;
 
-\ Kernels 0 and 1 hold a data and a code address, 2 and 3 are slots 1 and 0;
-\ the image's cells at 0 and at its last eight bytes hold the same kinds.
+\ Kernels 0 and 1 hold a data and a code address, 2 and 3 are slots 2 and 1,
+\ and slot 0 holds none; the image's cells at 0 and at its last eight bytes
+\ hold the same kinds.
 : TABLE-ROW ( -- )
    WLINK:RESET
    IMAGE-FILL
@@ -250,26 +252,26 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
    0 ADDR-BODY  0 0 0 ADD0
    0 ADDR-BODY  0 0 0 ADD0
    2 KERNEL drop  3 KERNEL drop
-   s" table slots number in the order added" T-LABEL
-   3 WLINK:TABLE+ 0 T=
-   2 WLINK:TABLE+ 1 T=
+   s" table slots number from 1 in the order added" T-LABEL
+   3 WLINK:TABLE+ 1 T=
+   2 WLINK:TABLE+ 2 T=
    0 2 WSTRUCT:ADDR-DATA IMAGE-LEN WLINK:ADDRESS+
-   1 2 WSTRUCT:ADDR-CODE 1 WLINK:ADDRESS+
+   1 2 WSTRUCT:ADDR-CODE 2 WLINK:ADDRESS+
    0 WSTRUCT:ADDR-DATA 8 WLINK:DATA-CELL+
-   IMAGE-LEN 8 - WSTRUCT:ADDR-CODE 0 WLINK:DATA-CELL+
+   IMAGE-LEN 8 - WSTRUCT:ADDR-CODE 1 WLINK:DATA-CELL+
    2 LINKED
    s" type, function, table, memory, export, element, code, data, ending at the module's end" T-LABEL
    IDS @ $134579AB T=
    WALKED @ MOD-U @ T=
-   s" the table holds two slots and the element segment functions 3 and 2" T-LABEL
-   S-TABLE SECTION$ s" 0170010202" T$=
-   S-ELEMENT SECTION$ s" 010041000b020302" T$=
+   s" the table holds three slots and the element segment, from slot 1, functions 3 and 2" T-LABEL
+   S-TABLE SECTION$ s" 0170010303" T$=
+   S-ELEMENT SECTION$ s" 010041010b020302" T$=
    s" a data address is the data base plus its target, the image's length included" T-LABEL
    MBUF MOD-U @  0 BODY@ drop 2 +  WLEB:S64-PAD@  $31018 T=
    s" a code address is its slot" T-LABEL
-   MBUF MOD-U @  1 BODY@ drop 2 +  WLEB:S64-PAD@  1 T=
+   MBUF MOD-U @  1 BODY@ drop 2 +  WLEB:S64-PAD@  2 T=
    s" data cells hold the same, low byte first, in one active segment at the data base" T-LABEL
-   S-DATA SECTION$ s" 01004180a00c0b18081003000000000008090a0b0c0d0e0f0000000000000000" T$= ;
+   S-DATA SECTION$ s" 01004180a00c0b18081003000000000008090a0b0c0d0e0f0100000000000000" T$= ;
 
 61441 BUFFER: BIG                      \ zeros, an image one byte past four pages
 
@@ -331,7 +333,7 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
    S-EXPORT SECTION$ WANT$ T$= ;
 
 \ ---- refused rows -------------------------------------------------------------------
-\ Kernel 0 returns, 1 calls 0 at 4 and 2 holds the image's end at 2; slot 0 is
+\ Kernel 0 returns, 1 calls 0 at 4 and 2 holds the image's end at 2; slot 1 is
 \ function 0 and the image's cell at 8 its descriptor. It links, so each
 \ refusal below is the one row added to it.
 : BASE ( -- )
@@ -344,7 +346,7 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
    1 4 0 WLINK:CALL+
    2 2 WSTRUCT:ADDR-DATA 16 WLINK:ADDRESS+
    0 WLINK:TABLE+ drop
-   8 WSTRUCT:ADDR-CODE 0 WLINK:DATA-CELL+
+   8 WSTRUCT:ADDR-CODE 1 WLINK:DATA-CELL+
    0 LINKED ;
 
 : ENTRY-ROWS ( -- )
@@ -372,9 +374,9 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
    s" a data address below the image is refused" T-LABEL
    BASE  2 2 WSTRUCT:ADDR-DATA -1 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" a code address past the table is refused" T-LABEL
-   BASE  2 2 WSTRUCT:ADDR-CODE 1 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
-   s" a code address below the table is refused" T-LABEL
-   BASE  2 2 WSTRUCT:ADDR-CODE -1 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
+   BASE  2 2 WSTRUCT:ADDR-CODE 2 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
+   s" a code address of slot 0, which holds no function, is refused" T-LABEL
+   BASE  2 2 WSTRUCT:ADDR-CODE 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" an address of kind none names nothing and is refused" T-LABEL
    BASE  2 2 WSTRUCT:ADDR-NONE 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" an address of a kind past code is refused" T-LABEL

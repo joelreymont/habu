@@ -1056,14 +1056,20 @@ DYNAMIC-BUFFER DEFINER-SIG u8
 variable DEFER-REPORT                            \ the child reports deferrals
 variable DEFER-SEEN                              \ and has reported one
 
+CAST: STRETCH-ACTION ( n -- [ ptr u8 n -- ] )
+: REPORT-STRETCH ( ptr u8 n -- )
+   NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-OFF OWNER-XT STRETCH-ACTION execute ;
+
 \ A body the checker deferred to the run (verdict 2) is reported where the
 \ checker's judgment of it stopped (CHECKER-VERIFY-DEFERRED-BODY), when the
 \ child reports deferrals, as a deferred stretch is at the token that opened it.
-CAST: DEFERRED-BODY-ACTION ( n -- [ -- ] )
+CAST: DEFERRED-BODY-ACTION ( n -- [ -- ptr u8 n ] )
+: DEFERRED-BODY$ ( -- ptr u8 n )
+   NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-BODY-OFF OWNER-XT DEFERRED-BODY-ACTION execute ;
 : REPORT-DEFERRED ( n -- )
    2 <> IF EXIT THEN
    DEFER-REPORT @ 0= IF EXIT THEN
-   NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-BODY-OFF OWNER-XT DEFERRED-BODY-ACTION execute
+   DEFERRED-BODY$ REPORT-STRETCH
    -1 DEFER-SEEN ! ;
 
 \ A body's verdict as this scan acts on it: -1 certified, 2 deferred to the run
@@ -1120,6 +1126,13 @@ PTR-VARIABLE DOES-CLOSER-A
 variable DOES-CLOSER-U
 variable DOES-DEF-VERDICT
 variable DOES-PARENT-REFUSED
+PTR-VARIABLE DOES-CLAUSE-A
+variable DOES-CLAUSE-U
+
+: REPORT-DOES-CLAUSE ( -- )
+   DOES-CLAUSE-U @ 0= DEFER-REPORT @ 0= or IF EXIT THEN
+   DOES-CLAUSE-A @ DOES-CLAUSE-U @ REPORT-STRETCH
+   -1 DEFER-SEEN ! ;
 
 : TICK-DOES-RUN ( -- )
    TICK-BODY-A @ TICK-BODY-U @
@@ -1156,6 +1169,9 @@ variable WRAP-ROW                             \ the definer row the last call na
    DEF-NAME-BYTE @ DEF-NAME-U @ ARM
    VERIFY-BODY
    DISARM ;
+
+: DOES-PARENT-RUN ( -- )
+   VERIFY-NAMED-BODY DOES-DEF-VERDICT ! ;
 
 : WRAP-RESET ( -- )
    0 WRAP-DEFINERS !  0 WRAP-CTL !  0 WRAP-ROW ! ;
@@ -1213,10 +1229,10 @@ DYNAMIC-BUFFER TICK-QUAL u8
    vis 1 = IF true EXIT THEN
    pkgu 0= IF false EXIT THEN
    pkgu tailu + 1+ TICK-QUAL-RESERVE
-   pkg TICK-QUAL pkgu BYTE-COPY
-   $3A TICK-QUAL pkgu + c!
-   tail TICK-QUAL pkgu 1+ + tailu BYTE-COPY
-   TICK-QUAL pkgu tailu + 1+ tok-imm? 0<> ;
+   pkg 0 TICK-QUAL pkgu BYTE-COPY
+   $3A 0 TICK-QUAL pkgu + c!
+   tail 0 TICK-QUAL pkgu 1+ + tailu BYTE-COPY
+   0 TICK-QUAL pkgu tailu + 1+ tok-imm? 0<> ;
 
 \ The created effect is the clause's declaration, recorded unless the definer's
 \ body or its clause was refused. One deferred to the run keeps it, as a
@@ -1242,10 +1258,13 @@ DYNAMIC-BUFFER TICK-QUAL u8
    order TICK-GATE = {: gate:bool :}
    order TICK-UNKNOWN = {: unknown:bool :}
    0 DOES-PARENT-REFUSED !
+   0 DOES-DEF-VERDICT !
+   0 DOES-CLAUSE-U !
    gate unknown or IF
       gate IF TICK-PARENT-GATE ELSE TICK-PARENT-UNKNOWN THEN DEF-TICK-ORDER !
       VERIFY-NAMED-BODY 2 <> DOES-PARENT-REFUSED !
       order DEF-TICK-ORDER !
+      TICK-REMAINDER @ IF 2 REPORT-DEFERRED false EXIT THEN
    THEN
    gate unknown or IF
       TOKEN-A @ DOES-CLOSER-A !  TOKEN-U @ DOES-CLOSER-U !
@@ -1265,18 +1284,27 @@ DYNAMIC-BUFFER TICK-QUAL u8
          TICK-REMAINDER @ DOES-PARENT-REFUSED @ or IF false EXIT THEN
          sig sigu DEF-NAME-A @ DEF-NAME-U @ VERIFY-DOES-BODY
          {: clause:n :}
-         TICK-REMAINDER @ IF clause REPORT-DEFERRED false EXIT THEN
+         TICK-REMAINDER @ IF
+            DOES-DEF-VERDICT @ 2 <> IF clause REPORT-DEFERRED THEN
+            false EXIT
+         THEN
          clause 0= IF false EXIT THEN
-         clause REPORT-DEFERRED
          gate unknown or IF
+            clause 2 = DEFER-REPORT @ 0<> and IF
+               DEFERRED-BODY$ DOES-CLAUSE-U ! DOES-CLAUSE-A !
+            THEN
             TOKEN-A @ {: end:ptr :}  TOKEN-U @ {: endu:n :}
             DOES-PARENT-BUF BODY-BUF DOES-PARENT-U @ BYTE-COPY
             DOES-PARENT-ROW BODY-ROW DOES-PARENT-ROWS @ 2 * cells BYTE-COPY
             DOES-PARENT-U @ BODY-U !  DOES-PARENT-ROWS @ BODY-ROWS !
             DOES-CLOSER-A @ TOKEN-A !  DOES-CLOSER-U @ TOKEN-U !
-            VERIFY-NAMED-BODY dup DOES-DEF-VERDICT ! REPORT-DEFERRED
+            [: DOES-PARENT-RUN ;] catch {: rc:n :}
+            rc 0<> IF REPORT-DOES-CLAUSE rc throw THEN
+            DOES-DEF-VERDICT @ 2 = IF 2 REPORT-DEFERRED ELSE REPORT-DOES-CLAUSE THEN
             end TOKEN-A !  endu TOKEN-U !
             TICK-REMAINDER @ IF false EXIT THEN
+         ELSE
+            DOES-DEF-VERDICT @ 2 <> IF clause REPORT-DEFERRED THEN
          THEN
          DOES-DEF-VERDICT @ 0<> IF sig sigu DEFINER-RECORD THEN
          true EXIT
@@ -2451,10 +2479,6 @@ variable FFI-SIG-U
 CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
 : TOP-VERDICT ( ptr u8 n bool -- n )
    NCOMP-DISPATCH:DECL-VERIFY-TOP-OFF OWNER-XT TOP-ACTION execute ;
-CAST: STRETCH-ACTION ( n -- [ ptr u8 n -- ] )
-: REPORT-STRETCH ( ptr u8 n -- )
-   NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-OFF OWNER-XT STRETCH-ACTION execute ;
-
 variable TOP-DEFER                               \ a stretch is open
 PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report is due, else 0
 variable TOP-DEFER-I                             \ where the run's reading starts in the source

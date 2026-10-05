@@ -593,8 +593,8 @@ SUITE wasm-select-f64
 
 \ The Wasm backend registered at run time, src/arch/wasm/backend.f and
 \ passes.f: real source compiled through an open Wasm shadow, one emission per
-\ record whose rows match its bytes, refusals that leave NEMIT empty, and the
-\ engine's own routine unchanged.
+\ record whose rows match its bytes, NEMIT empty after each, the placed row
+\ refused, and the engine's own routine unchanged.
 SUITE wasm-backend
    test/wasm/backend.f
 ;SUITE

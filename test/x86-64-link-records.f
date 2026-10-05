@@ -45,11 +45,11 @@
 \ forged rows: a site naming the package row, the same in a `does>` definer's
 \ routine, which the refusal names by the definer, a code cell whose xt row is
 \ gone, a code cell whose xt row names the package row, and a protected-wid row
-\ outside the window. Four the capture refuses
-\ before any layout, because the shadow keys every routine, target and code cell
-\ by the record row the capture ships: a live private word whose routine no
-\ shipped record carries, a shadow call to a private word the capture strips
-\ and one to a retired word, and a code cell holding a quotation's entry.
+\ outside the window, and a public EXPORT alias with no emission row. The
+\ capture refuses a shadow call to a private tier-0 word, one to a retired
+\ word, and a code cell holding a quotation's entry. A live emitted private
+\ HELPER beside its public USER instead ships with its private WID, links, and
+\ runs as USER(7)=22 on a Linux x86-64 host.
 \
 \ LOAD ORDER. The x86-64 side first, then the ARM64 code layer the capture
 \ needs: src/arch/arm64/icode.f defines CODE, LBL and ASM-LEN as globals, and a
@@ -58,13 +58,14 @@
 \ Registered as `SUITE x86-64-link-records`. Run standalone from the repository
 \ root: bin/hb --load test/x86-64-link-records.f
 \ A child: bin/hb --load test/x86-64-link-records.f -- MODE, MODE one of shift
-\ stray strip callee retired wid unresolved quot cellname pkgsite doessite
+\ stray strip export callee retired wid unresolved quot cellname pkgsite doessite
 \ xtless pkgcell
 
 package X64LT
 public
 ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
 variable PUB-WID                     \ the window package's public wordlist, host's id
+variable PRIVATE-WID
 ;package
 
 require lib/string.f
@@ -81,7 +82,8 @@ public
 \ What a refusal child adds to the window.
 : EXTRA$ ( -- ptr u8 n )
    s" stray" MODE? if s" 0 set-tier : BARE ( -- n ) 7 ; 1 set-tier : WRAP ( -- n ) BARE 1+ ;" exit then
-   s" strip" MODE? if s" private : HELPER ( n -- n ) 3 * ; public : USER ( n -- n ) HELPER 1+ ;" exit then
+   s" strip" MODE? if s" private get-current X64LT:PRIVATE-WID ! : HELPER ( n -- n ) 3 * ; public : USER ( n -- n ) HELPER 1+ ;" exit then
+   s" export" MODE? if s" private : SHARED ( -- n ) 7 ; public EXPORT SHARED" exit then
    s" callee" MODE? if s" private 0 set-tier : LOW ( -- n ) 7 ; public 1 set-tier : HIGH ( -- n ) LOW 1+ ;" exit then
    s" retired" MODE? if s" 0 set-tier : GONE ( -- n ) 7 ; 1 set-tier : KEEP ( -- n ) GONE 1+ ; undefine GONE" exit then
    s" unresolved" MODE? if s" : SAME ( ptr u8 n ptr u8 n -- bool ) STR= ;" exit then
@@ -153,6 +155,15 @@ using AOT-BUF
 : W-CALLER ( -- n ) s" X64LT-WIN:CALLER" WIDX ;
 : W-CONST ( -- n ) s" X64LT-WIN:CONST" WIDX ;
 : W-LONG ( -- n ) s" X64LT-WIN:SPELLED-PAST-SIXTEEN" WIDX ;
+: CREC ( n -- ptr u8 ) {: k:n :} AOT-REC-BUF@ AOT-REC-MAX 48 * + k AOT-CREC-ROW * + ;
+: SHIPPED ( ptr u8 n -- n ) {: a:ptr u:n :}
+   -1
+   AOT-REC-N @ 0 ?do
+      AOT-NAMES-BUF@ i CREC 8 + LE:U32@ + {: e:ptr :}
+      e 1+ e c@ a u STR= if drop i leave then
+   loop ;
+: W-HELPER ( -- n ) s" HELPER" SHIPPED ;
+: W-USER ( -- n ) s" USER" SHIPPED ;
 
 \ ---- the layout --------------------------------------------------------------
 : IMG ( n -- n ) X64LINK:PRIMS + ;
@@ -185,8 +196,7 @@ using AOT-BUF
 \ ---- the capture and the kernel ------------------------------------------------
 : CAPTURE ( -- )
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
-   AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
-   AOT-CAPTURE:SHADOW-CAPTURE ;
+   AOT-ARM:WINDOW$ AOT-CAPTURE:TARGET-CAPTURE ;
 
 : KERNEL ( -- ) X64HARNESS:INIT  false X64HARNESS:BOOT-OPEN, ;
 
@@ -446,6 +456,16 @@ using AOT-BUF
    k DREC * X64HARNESS:PUSH-REGION,
    s" -" X64HARNESS:CALL-ROW,  s" or" X64HARNESS:CALL-ROW, ;
 
+using X64ASM
+using X64CODE
+using X64RT
+: CALL-USER, ( n -- ) {: at:n :}
+   RAX ENGINE-GPR:X64-DBASE >R64 at X64LINK:REGION-VA - MEM-OFF ASM-SINK ENC-LEA
+   RAX ASM-SINK ENC-CALL-REG ;
+;using
+;using
+;using
+
 : INDEX-IMAGE ( -- )
    X64LINK:DICT$ 0 STAGE
    X64LINK:CODE$ DICT-SIZE STAGE
@@ -463,6 +483,22 @@ using AOT-BUF
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
    s" hb-x64-link-index" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
+
+: STRIP-IMAGE ( -- )
+   X64LINK:DICT$ 0 STAGE
+   X64LINK:CODE$ DICT-SIZE STAGE
+   X64LINK:RECORDS X64HARNESS:PUSH, s" ndict!" X64HARNESS:CALL-ROW,
+   STAGE-INDEX
+   PRIVATE-WID @ AOT-ARM:W0 @ - X64LINK:T0 + {: private-wid:n :}
+   PUB-WID @ AOT-ARM:W0 @ - X64LINK:T0 + {: public-wid:n :}
+   s" HELPER" private-wid XREF, W-HELPER IMG X64HARNESS:EXPECT-ROW,
+   s" HELPER" public-wid XREF, 0 X64HARNESS:EXPECT-POP,
+   7 X64HARNESS:PUSH,
+   W-USER IMG ENTRY CALL-USER,
+   22 X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   s" hb-x64-link-private" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
 
 \ ---- the children --------------------------------------------------------------
 create SHA-CTX SHA256-CTX-BYTES allot
@@ -509,6 +545,21 @@ variable RC
             o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
    ;MATCH ;
 
+: RUN-STRIP-IMAGE ( -- )
+   HB-TARGET-LINUX-X86-64? 0= if exit then
+   PROC-ARGV-RESET
+   s" hb-x64-link-private" TMP-PATH >LEN PROC-ARGV+
+   s" hb-x64-link-private" TMP-PATH >LEN
+      EMPTY 0 >LEN OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS
+      RUN-ARGV-STDIN-CAPTURE
+   MATCH result
+     ok OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
+          o LEN>N OUT-U ! e LEN>N ERR-U ! 0 RC ! ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
+          o LEN>N OUT-U ! e LEN>N ERR-U ! c RC>N RC ! ENDOF
+   ;MATCH
+   RC @ 0 T= ;
+
 : SHOW-CHILD ( -- )
    s" x86-64-link-records: child rc=" type RC @ . cr
    s" x86-64-link-records: child stdout:" type cr OUT OUT-U @ type cr
@@ -541,10 +592,35 @@ variable RC
    s" stray" s" window record BARE has no x86-64 routine"
    s" x64link: a code record the capture's shadow carries no routine for" REFUSED ;
 
+: EXPORT-CASE ( -- )
+   s" a public EXPORT alias with no emission is refused by the linker" T-LABEL
+   s" export" s" window record SHARED has no x86-64 routine"
+   s" x64link: a code record the capture's shadow carries no routine for" REFUSED ;
+
 : STRIP-CASE ( -- )
-   s" a capture that strips a live private word no shipped record carries refuses its routine by name" T-LABEL
-   s" strip" s" routine of HELPER is live"
-   s" aot-capture: a live shadow routine no shipped record carries" REFUSED ;
+   s" a live private helper ships with its public caller and links with its private WID" T-LABEL
+   s" strip" RUN-CHILD
+   OUT OUT-U @ s" x86-64-link-records: linked private" CONTAINS? {: said:bool :}
+   RC @ 0<> said 0= or if SHOW-CHILD then
+   RC @ 0 T=
+   said TTRUE
+   RUN-STRIP-IMAGE ;
+
+: STRIP-CHILD ( -- )
+   T-RESET
+   W-HELPER 0 >= TTRUE
+   W-USER 0 >= TTRUE
+   W-HELPER CREC 16 + LE:U32@ PRIVATE-WID @ AOT-ARM:W0 @ - 1+ T=
+   W-HELPER IMG X64KERNEL:REC-WID RF@
+      PRIVATE-WID @ AOT-ARM:W0 @ - X64LINK:T0 + T=
+   W-USER IMG X64KERNEL:REC-WID RF@
+      PUB-WID @ AOT-ARM:W0 @ - X64LINK:T0 + T=
+   W-USER AOT-SHADOW:CALL SITE-IN {: s:n :}
+   s 0 >= TTRUE
+   s 8 SITE@ W-HELPER SITE-REC-TAG or T=
+   STRIP-IMAGE
+   T-REPORT
+   s" x86-64-link-records: linked private" type cr ;
 
 : CALLEE-CASE ( -- )
    s" a shadow call to a window word the capture strips is refused by the callee's name" T-LABEL
@@ -612,7 +688,7 @@ variable RC
 
 \ The children that end in a refusal, before the layout returns.
 : REFUSAL? ( -- bool )
-   s" stray" MODE?  s" strip" MODE? or  s" callee" MODE? or  s" retired" MODE? or
+   s" stray" MODE?  s" export" MODE? or  s" callee" MODE? or  s" retired" MODE? or
    s" wid" MODE? or  s" unresolved" MODE? or  s" quot" MODE? or  s" xtless" MODE? or
    s" cellname" MODE? or  s" pkgsite" MODE? or  s" doessite" MODE? or
    s" pkgcell" MODE? or ;
@@ -629,6 +705,7 @@ public
    s" pkgcell" MODE? if FORGE-XT then
    KERNEL
    X64LINK:LAYOUT
+   s" strip" MODE? if STRIP-CHILD exit then
    REFUSAL? if s" x86-64-link-records: laid out" type cr exit then
    s" shift" MODE? if DIGEST$ type LAYOUT-HEX type cr exit then
    T-RESET
@@ -652,6 +729,7 @@ public
    SHIFT-CASE
    STRAY-CASE
    STRIP-CASE
+   EXPORT-CASE
    CALLEE-CASE
    RETIRED-CASE
    WID-FORGED-CASE

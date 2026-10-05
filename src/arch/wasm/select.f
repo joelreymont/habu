@@ -19,6 +19,20 @@
 \ past it they would overwrite static data, where the native stack meets its
 \ guard page, so the store faults first, as STACK-BOUNDS.
 \
+\ THE DYNAMIC CALL. The elaborator stages execute and catch as wordcalls to the
+\ engine's words, shaped by the xt each runs (src/compiler/native/elaborate.f
+\ DO-EXEC, DO-CATCH), so one callee meets every shape. Such a call is known by
+\ its entry, the global wordlist's execute or catch, never by what the spelling
+\ binds in the scope being compiled, where a package's own word of either
+\ spelling is an ordinary call. Each is selected as a framed call whatever its
+\ arity, the row and the xt stored, no lane passed and the results read back
+\ off the stack: the dynamic adapter's convention (section 7.2), which the
+\ runtime functions of src/arch/wasm/dynamic.f take.
+\ A quotation's address, HIR's quot, names a function of the module by its
+\ ordinal and is selected as an i64.const of WSTRUCT's kind FUN, which the
+\ encoder writes as that function's offset and the linker as its adapter's
+\ table slot, the descriptor every xt is (section 9).
+\
 \ THE STATUS. Status 0 is a return, status 1 a catchable throw whose full code
 \ the callee stored in ctx.throw-code (section 8.1). Every caller tests it
 \ before it reads an output and propagates a 1 through its own return with zero
@@ -115,7 +129,7 @@ require src/arch/wasm/wstruct.f
 \ WSEL's codes, -9820..-9824, in the Wasm backend's block -9800..-9829.
 -9820 constant E-WSEL-FIRST
 -9824 constant E-WSEL-LAST
--9820 constant E-WSEL-REFUSED \ an HIR operation this selector does not lower: quot, whose descriptor a sibling selects
+-9820 constant E-WSEL-REFUSED \ an HIR operation this selector does not lower: c2-stow, a trusted primitive consuming a runtime-width record
 -9821 constant E-WSEL-DECLARE \ a selection no DECLARE preceded, a definition whose arity is not the one declared, or a return whose operands are not its function's output cells
 -9822 constant E-WSEL-SOURCE  \ a module that is not HIR of the version this selector reads
 -9823 constant E-WSEL-TRAP    \ a may-trap operation whose rule cannot raise the trap: add, sub or mul of a unit whose overflow traps
@@ -194,6 +208,7 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-IN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-OUT IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-FUN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 1 TYPED-BUFFER BND-REAL IR-ID:ir-type-id
 
@@ -206,6 +221,7 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    m HIR:FKEY-ENTRY 0 BND-ENTRY !
    m HIR:FKEY-IN 0 BND-IN !
    m HIR:FKEY-OUT 0 BND-OUT !
+   m HIR:FKEY-FUN 0 BND-FUN !
    m HIR:FMEM-TYPE 0 BND-MEM !
    m HIR:FREAL-TYPE 0 BND-REAL ! ;
 
@@ -529,6 +545,19 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    id NFROZEN:RESULTS-OF 1- r - kk <> if E-WSEL-CALL throw then
    kk ;
 
+\ A wordcall to the engine's execute or catch, the global wordlist's (wid 0),
+\ whose shape is the xt's.
+: DYNAMIC? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id HIR-OPCODE:WORDCALL IS? 0= if false exit then
+   id 0 BND-ENTRY @ ATTR {: e:n :}
+   e s" execute" 0 search-wl =  e s" catch" 0 search-wl = or ;
+
+\ A call takes the frame past the lane arity, and a dynamic one always.
+: FRAMED-CALL? ( IR-ID:ir-op-id n n -- bool )
+   {: id:IR-ID:ir-op-id a:n r:n :}
+   a r FRAMED?  id DYNAMIC? or ;
+
 \ The cells an operation stores to the context stack, its operands from the
 \ first after any token: a call's kept row, and in the frame its arguments
 \ after it; a terminal's whole row; a framed return's outputs.
@@ -536,7 +565,7 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    {: id:IR-ID:ir-op-id :}
    id HIR-OPCODE:CALL IS?  id HIR-OPCODE:WORDCALL IS?  or if
       id SHAPE {: a:n r:n :}
-      id a r KEPT  a r FRAMED? if a + then  exit
+      id a r KEPT  id a r FRAMED-CALL? if a + then  exit
    then
    id HIR-OPCODE:TERMINAL IS? if  id NFROZEN:OPERANDS-OF 1-  exit  then
    id HIR-OPCODE:RETURN IS? FRAMED and if  id NFROZEN:OPERANDS-OF  exit  then
@@ -640,6 +669,12 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 \ HIR's first token: the one the prologue leaves.
 : SEL-MEM ( IR-ID:ir-op-id -- )
    0 NFROZEN:RESULT-AT TOK BIND ;
+
+\ The address of the module's function whose ordinal the operation carries.
+: SEL-QUOT ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 BND-FUN @ ATTR WSTRUCT:ADDR-FUN K64
+   id 0 NFROZEN:RESULT-AT swap BIND ;
 
 \ ---- the float rules ---------------------------------------------------------
 \ The NaN every operation that makes one answers.
@@ -780,7 +815,7 @@ $7FF8000000000000 constant NAN-MADE
    {: id:IR-ID:ir-op-id callee:IR-ID:ir-symbol-id :}
    id SHAPE {: a:n r:n :}
    id a r KEPT {: kk:n :}
-   a r FRAMED? {: fr:bool :}
+   id a r FRAMED-CALL? {: fr:bool :}
    id 0 OPND TOK!
    id  id STORED  fr CALL-SAVE
    id kk a r fr callee CALL-OP {: c:IR-ID:ir-op-id :}
@@ -863,7 +898,7 @@ $7FF8000000000000 constant NAN-MADE
       call     OF id SEL-SELF-CALL ENDOF
       wordcall OF id SEL-WORDCALL ENDOF
       c2-stow  OF REFUSE ENDOF
-      quot     OF REFUSE ENDOF
+      quot     OF id SEL-QUOT ENDOF
       return   OF id SEL-RETURN ENDOF
       trap     OF id SEL-TRAP ENDOF
       fconst   OF id SEL-FCONST ENDOF

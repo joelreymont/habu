@@ -143,7 +143,7 @@ $340 constant EFFECT-DOUT-CON-OFF
 $348 constant EFFECT-STACK-STABLE-OFF
 \ A scan serial from the same owner that supplies the borrowed binding rows.
 $350 constant BINDING-WINDOW-OFF
-\ The source pre-pass reports a definition left to the run.
+\ The source pre-pass borrows the selected deferred body token's source span.
 $358 constant VERIFY-DEFERRED-BODY-OFF
 \ Navigation (src/core/checker.f): the verifier arms a named declaration's
 \ location around its registrar (CHECKER-DECL-AT!, CHECKER-DECL-AT-OFF) and

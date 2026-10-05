@@ -101,7 +101,7 @@ TRUSTED: LONG-INSTALL ( -- )
    0 LONG-U !
    s" package CVO-LONG public TRUSTED: " LONG+
    LONG-NAME 1000 LONG+
-   s" ( -- ) 1 set-tier ; immediate ;package" LONG+
+   s"  ( -- ) 1 set-tier ; immediate ;package" LONG+
    LONG-BUF LONG-U @ evaluate ;
 
 : ACT ( -- )
@@ -257,7 +257,7 @@ variable SHADOW-QUIET   variable SHADOW-ACTIVE
    0 LONG-U !
    s" using CVO-LONG : CVI ( -- ) " LONG+
    LONG-NAME 1000 LONG+
-   s" ['] patch32 drop ; ;using" LONG+
+   s"  ['] patch32 drop ; ;using" LONG+
    tick-order@ VERIFY:ENTRY-TICK-ORDER!
    VERIFY:REPORT-DEFERRALS
    s" a long used-public immediate invalidates the later tick" T-LABEL

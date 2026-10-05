@@ -38,8 +38,10 @@
 \
 \ AN ADDRESS IS A KIND OF CONSTANT. An i64.const states whether its value is a
 \ number, a data address or a code address (HIR's three kinds, src/compiler/
-\ native/hir.f ADDR-NONE..ADDR-CODE), because the encoder writes an address as a
-\ padded field the linker rewrites and a number as itself.
+\ native/hir.f ADDR-NONE..ADDR-CODE), or the address of a function of its own
+\ module, its value that function's ordinal (HIR's quot, a quotation's or a
+\ does> clause's), because the encoder writes an address as a padded field the
+\ linker rewrites and a number as itself.
 
 require lib/prelude.f
 require lib/errors.f
@@ -57,7 +59,7 @@ require src/compiler/ir/build.f
 -9809 constant E-WSTRUCT-LAST
 -9805 constant E-WSTRUCT-DIALECT   \ a module whose schema table was created for another dialect or another schema version
 -9806 constant E-WSTRUCT-OPCODE    \ an ordinal outside the dialect's closed opcode vocabulary
--9808 constant E-WSTRUCT-ADDR      \ an address kind outside NONE, DATA and CODE
+-9808 constant E-WSTRUCT-ADDR      \ an address kind outside NONE, DATA, CODE and FUN
 
 package WSTRUCT
 public
@@ -125,7 +127,7 @@ ENUM opcode DERIVE eq
 \ Every consumer compares the version exactly, so a table with a form and one
 \ without are two different tables.
 0 constant MAJOR
-2 constant MINOR
+3 constant MINOR
 
 \ ---- the opcode spellings ----------------------------------------------------
 \ The Wasm mnemonic under the dialect's prefix. A Wasm instruction's semantic
@@ -293,7 +295,7 @@ ENUM opcode DERIVE eq
 : KEY-CALLEE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    KEY-CALLEE$ IR-BUILD:INTERN-SYMBOL ;
 
-\ An i64.const's address kind, one of the three below.
+\ An i64.const's address kind, one of the four below.
 : KEY-ADDR$ ( -- ptr u8 n )     s" wstruct.addr" ;
 
 : KEY-ADDR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
@@ -302,10 +304,11 @@ ENUM opcode DERIVE eq
 0 constant ADDR-NONE
 1 constant ADDR-DATA
 2 constant ADDR-CODE
+3 constant ADDR-FUN                  \ the function of the module whose ordinal is the value
 
 \ Refused where the attribute is built, as HIR refuses its own.
 : ADDR-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
-   dup ADDR-NONE < over ADDR-CODE > or if E-WSTRUCT-ADDR throw then
+   dup ADDR-NONE < over ADDR-FUN > or if E-WSTRUCT-ADDR throw then
    IR-BUILD:INTERN-INT-ATTR ;
 
 \ Interning deduplicates, so asking twice answers the same identity.

@@ -10,9 +10,7 @@
 \ offset, size, lanes, frame variant - and whose call and address rows sit on
 \ the padded fields after `call` and `i64.const`, each holding what the row
 \ says: a zero index and the callee's host entry or its own body offset, an
-\ address of its kind. The placed emission row is refused by name. A
-\ definition the selector refuses publishes nothing, leaves NEMIT and the
-\ encoder empty and the next definition compiling on both sides. A definition
+\ address of its kind. The placed emission row is refused by name. A definition
 \ of the engine's own machine comes out byte for byte as it did before the
 \ backend loaded.
 
@@ -306,7 +304,7 @@ CAST: >CODE ( n -- ptr u8 )
 
 public
 
-: RUN-OPEN ( -- )
+: RUN ( -- )
    SERVES-CASE
    INSTALL-CASE
    HOST-CASE
@@ -316,71 +314,10 @@ public
    ADDR-CASE
    RETIRED-CASE
    SAME-CASE
-   EMIT-CASE ;
-
-;package
-
-WBACK-TEST:RUN-OPEN
-
-\ ---- a definition the Wasm side refuses ---------------------------------------
-\ One holding a quotation, whose descriptor the selector leaves to a sibling,
-\ tried with the shadow open; then a definition that both sides compile.
-package WBACK-TEST
-private
-
-variable SEL-RC
-variable NDICT0
-variable MOVED
-variable RECS0
-variable EMS0
-variable RECS1
-variable EMS1
-variable REC-AFTER
-
-\ Define from source and answer what refusing the definition threw, or zero.
-\ The text evaluated is a copy, since a throw restores the depth catch began
-\ with, and both cells are dropped, so a refusal leaves only its code.
-: TRY-DEFINE ( ptr u8 n -- n )
-   [: 2dup INCLUDE-EVALUATE ;] catch
-   {: rc:n :}
-   2drop rc ;
-
-ndict@ NDICT0 !
-NSHADOW:RECORDS RECS0 !
-NSHADOW:EMISSIONS EMS0 !
-1 set-tier
-s" : BK-BAD-SEL ( -- [ n -- n ] ) [: 1 + ;] ;" TRY-DEFINE SEL-RC !
-0 set-tier
-ndict@ NDICT0 @ - MOVED !
-NSHADOW:RECORDS RECS1 !
-NSHADOW:EMISSIONS EMS1 !
-1 set-tier
-ndict@ REC-AFTER !
-: BK-AFTER ( n -- n ) 2 + ;
-0 set-tier
-
-: REFUSED-CASE ( -- )
-   s" a definition holding a quotation, which the selector does not lower, is refused by its code" T-LABEL
-   SEL-RC @ E-WSEL-REFUSED T=
-   s" it publishes no word, files no record, and leaves NEMIT and the encoder holding no rows" T-LABEL
-   MOVED @ 0 T=
-   RECS1 @ RECS0 @ T=
-   EMS1 @ EMS0 @ T=
-   [: NEMIT:SIZE drop ;] E-NEMIT-STATE TTHROWSQ
-   [: WENC:SIZE drop ;] E-WENC-STATE TTHROWSQ
-   s" the next definition compiles on both sides and is filed with its own emission" T-LABEL
-   40 BK-AFTER 42 T=
-   NSHADOW:RECORDS RECS1 @ 1+ T=
-   REC-AFTER @ ROW-OF RECS1 @ T=
-   REC-AFTER @ 1 1 ONE-BODY ;
-
-public
-
-: RUN-REFUSED ( -- )
-   REFUSED-CASE
+   EMIT-CASE
    NSHADOW:CLOSE
    T-REPORT ;
 
 ;package
 
-WBACK-TEST:RUN-REFUSED
+WBACK-TEST:RUN
