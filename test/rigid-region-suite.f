@@ -103,12 +103,12 @@ variable #CASE
 create RR-DIAG 16384 allot
 : RR-CHECK ( ptr u8 n -- n ) RR-DIAG 16384 DIAG-BUFFER! CHECK-CANDIDATE! ;
 : RR-CONTAINS? ( ptr u8 n ptr u8 n -- bool ) {: ha:ptr hu:n na:ptr nu:n :}
-   nu 0= if -1 exit then
-   hu nu < if 0 exit then
+   nu 0= if true exit then
+   hu nu < if false exit then
    0 begin dup hu nu - <= while
-      ha over + nu  na nu  CORE-STR= if drop -1 exit then
+      ha over + nu  na nu  CORE-STR= if drop true exit then
       1 +
-   repeat drop 0 ;
+   repeat drop false ;
 : RR-DIAG? ( ptr u8 n -- bool ) DIAG-BUFFER$ 2swap RR-CONTAINS? ;
 
 \ Exhaustion probe: shrink the shared domain bound so the SECOND region mint of

@@ -1983,6 +1983,7 @@ $44000000000 constant ES-MACOS-DATA-VA
 
 : ES-DATA-VA ( -- n )
    HB-TARGET-LINUX? if ES-LINUX-DATA-VA exit then
+   HB-TARGET-LINUX-X86-64? if ES-LINUX-DATA-VA exit then
    HB-TARGET-MACOS? if ES-MACOS-DATA-VA exit then
    ES-TARGET-UNKNOWN ;
 dbase@ rbase > -1 T=                                 \ live JIT region sits above __text (hinted at __text + REGION-OFF)
@@ -2109,12 +2110,11 @@ TFQ -1 T=
 : TFG ( -- bool ) 5.0 3.0 f> ;
 TFG -1 T=
 
-\ FFI: AAPCS64 trampoline runtime proof. Inside a compiled word (so cp@ is the
-\ stable free code slot, not a transient top-level line buffer) emit a C-ABI
-\ leaf `add x0,x0,x1; ret` at cp@ via patch32, then call it through ffi-call
-\ with an 8-cell arg buffer [3,4,..]. Proves x0..x7 marshalling, blr, the x0
-\ return, and that XDS (x19) survives the C call. Trusted boundary (raw code +
-\ foreign call).
+\ FFI: inside a compiled word (so cp@ is stable) emit a two-argument C-ABI
+\ leaf at cp@ and call it through ffi-call with [3,4,..]. The AArch64 body is
+\ `add x0,x0,x1; ret`; x86-64 uses `lea rax,[rdi+rsi]; ret`. Both return 7
+\ without corrupting the engine's data stack. Raw emission and the call are
+\ explicit trusted boundaries.
 create FFI-ARGS 8 cells allot
 TRUSTED: ES-PATCH32 ( n n -- ) patch32 ;   \ code-emission boundary (F3 gate):
                                            \ patch32 is TRUSTED-ONLY; TFFI stays checked.
@@ -2123,8 +2123,13 @@ TRUSTED: ES-FFI-CALL ( ptr a n n -- n ) ffi-call ;  \ foreign-call boundary:
 : TFFI ( -- n )
    3 FFI-ARGS !  4 FFI-ARGS 8 + !
    cp@ {: fn:n :}
-   $8B010000 fn ES-PATCH32         \ add x0, x0, x1   at fn
-   $D65F03C0 fn 4 + ES-PATCH32     \ ret             at fn+4
+   HB-TARGET-LINUX-X86-64? if
+      $37048D48 fn ES-PATCH32       \ 48 8d 04 37: lea rax,[rdi+rsi]
+      $000000C3 fn 4 + ES-PATCH32   \ c3: ret
+   else
+      $8B010000 fn ES-PATCH32       \ add x0, x0, x1
+      $D65F03C0 fn 4 + ES-PATCH32   \ ret
+   then
    FFI-ARGS 2 fn ES-FFI-CALL ;
 TFFI 7 T=
 

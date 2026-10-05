@@ -1,6 +1,7 @@
 \ Compile the private route record at tier 1, save it, and dispatch again in a
 \ fresh process. The restored process also compiles one new native caller.
 require lib/test.f
+require lib/string.f
 require lib/fs-mutate.f
 require lib/process-cwd.f
 require lib/engine-candidate.f
@@ -46,12 +47,31 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING ;
 
+: SAVE-SOURCE$ ( ptr u8 n -- ptr u8 n )
+   SB-RESET SB-APPEND
+   S\" require src/habu/app-image.f\n" SB-APPEND
+   HB-TARGET-LINUX-X86-64? 0= if S\" 0 set-tier\n" SB-APPEND then
+   S\" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" SB-APPEND
+   SB$ ;
+
+: RESAVE-SOURCE$ ( ptr u8 n -- ptr u8 n )
+   SB-RESET SB-APPEND
+   HB-TARGET-LINUX-X86-64? 0= if S\" 0 set-tier\n" SB-APPEND then
+   S\" require src/habu/app-image.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" SB-APPEND
+   SB$ ;
+
+: PERSIST-CHECK$ ( -- ptr u8 n )
+   S\" package QUOT-PERSIST-TEST\n: PERSIST-FIRST-TIER ( -- n ) HB-TARGET-LINUX-X86-64? if 1 else 0 then ;\nPERSIST-FIRST-TIER set-tier\n: SAVED-FIRST ( -- ) 35 GENERIC-ROW GENERIC-ENTRY-HANDLER @ execute 42 T= PRESENT-ROW @ READ-CHOICE 42 T= SCALAR-ROW @ READ-CHOICE LOOKALIKE @ 10 + T= EMPTY-ROW @ READ-CHOICE 0 T= 0 BATCH @ READ-CHOICE 41 T= 1 BATCH @ READ-CHOICE LOOKALIKE @ 10 + T= 2 BATCH @ READ-CHOICE 0 T= ;\n1 set-tier\n: SAVED-T1 ( -- ) 35 GENERIC-ROW GENERIC-ENTRY-HANDLER @ execute 42 T= PRESENT-ROW @ READ-CHOICE 42 T= SCALAR-ROW @ READ-CHOICE LOOKALIKE @ 10 + T= EMPTY-ROW @ READ-CHOICE 0 T= 0 BATCH @ READ-CHOICE 41 T= 1 BATCH @ READ-CHOICE LOOKALIKE @ 10 + T= 2 BATCH @ READ-CHOICE 0 T= ;\nCHECK\nT-RESET SAVED-FIRST SAVED-T1 T-REPORT\n;package\n" ;
+
+: SECOND-CHECK$ ( -- ptr u8 n )
+   S\" package QUOT-PERSIST-TEST\n: SECOND-FIRST-TIER ( -- n ) HB-TARGET-LINUX-X86-64? if 1 else 0 then ;\nSECOND-FIRST-TIER set-tier\n: SECOND-FIRST ( -- ) PRESENT-ROW @ READ-CHOICE 466 T= SCALAR-ROW @ READ-CHOICE 44 T= EMPTY-ROW @ READ-CHOICE 0 T= 0 BATCH @ READ-CHOICE 46 T= 1 BATCH @ READ-CHOICE LOOKALIKE @ 10 + T= 2 BATCH @ READ-CHOICE 0 T= ;\n1 set-tier\n: SECOND-T1 ( -- ) PRESENT-ROW @ READ-CHOICE 466 T= SCALAR-ROW @ READ-CHOICE 44 T= EMPTY-ROW @ READ-CHOICE 0 T= 0 BATCH @ READ-CHOICE 46 T= 1 BATCH @ READ-CHOICE LOOKALIKE @ 10 + T= 2 BATCH @ READ-CHOICE 0 T= ;\nT-RESET SECOND-FIRST SECOND-T1 T-REPORT\n;package\n" ;
+
 : BUILD ( -- )
    ENVIRONMENT
    s" --" >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN
-   S\" require src/compiler/native/compiler.f\n1 set-tier\nrequire test/structure-quotation-field.f\nrequire src/habu/app-image.f\n0 set-tier\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   S\" require src/compiler/native/compiler.f\n1 set-tier\nrequire test/structure-quotation-field.f\n" SAVE-SOURCE$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n :}
    OUT outu S\" test: ok\n" T$=
@@ -70,7 +90,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
    s" --" >LEN PROC-ARGV+
    PERSIST$ >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN
-   S\" require src/compiler/native/compiler.f\n1 set-tier\nrequire test/structure-quotation-persist-producer.f\nrequire src/habu/app-image.f\n0 set-tier\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   S\" require src/compiler/native/compiler.f\n1 set-tier\nrequire test/structure-quotation-persist-producer.f\n" SAVE-SOURCE$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n :}
    OUT outu S\" test: ok\n" T$=
@@ -79,7 +99,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
 : CHECK-PERSIST-RESTORE ( -- )
    ENVIRONMENT
    PERSIST$ >LEN
-   S\" package QUOT-PERSIST-TEST\n0 set-tier\n: SAVED-T0 ( -- ) 35 GENERIC-ROW GENERIC-ENTRY-HANDLER @ execute 42 T= PRESENT-ROW @ READ-CHOICE 42 T= SCALAR-ROW @ READ-CHOICE LOOKALIKE @ 10 + T= EMPTY-ROW @ READ-CHOICE 0 T= 0 BATCH @ READ-CHOICE 41 T= 1 BATCH @ READ-CHOICE LOOKALIKE @ 10 + T= 2 BATCH @ READ-CHOICE 0 T= ;\n1 set-tier\n: SAVED-T1 ( -- ) 35 GENERIC-ROW GENERIC-ENTRY-HANDLER @ execute 42 T= PRESENT-ROW @ READ-CHOICE 42 T= SCALAR-ROW @ READ-CHOICE LOOKALIKE @ 10 + T= EMPTY-ROW @ READ-CHOICE 0 T= 0 BATCH @ READ-CHOICE 41 T= 1 BATCH @ READ-CHOICE LOOKALIKE @ 10 + T= 2 BATCH @ READ-CHOICE 0 T= ;\nCHECK\nT-RESET SAVED-T0 SAVED-T1 T-REPORT\n;package\n" >LEN
+   PERSIST-CHECK$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n :}
    OUT outu S\" test: ok\ntest: ok\n" T$= ;
@@ -89,7 +109,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
    s" --" >LEN PROC-ARGV+
    SECOND$ >LEN PROC-ARGV+
    PERSIST$ >LEN
-   S\" package QUOT-PERSIST-TEST\n1 set-tier\n: SWITCH-SAVED ( -- ) 456 construct choice scalar HOLDER-MAKE ENVELOPE-MAKE PRESENT-ROW ! [: 9 + ;] HOOK-MAKE construct choice present HOLDER-MAKE ENVELOPE-MAKE SCALAR-ROW ! [: 11 + ;] HOOK-MAKE construct choice present HOLDER-MAKE ENVELOPE-MAKE 0 BATCH ! ;\n: CHECK-SWITCH ( -- ) T-RESET PRESENT-ROW @ READ-CHOICE 466 T= SCALAR-ROW @ READ-CHOICE 44 T= 0 BATCH @ READ-CHOICE 46 T= 1 BATCH @ READ-CHOICE LOOKALIKE @ 10 + T= 2 BATCH @ READ-CHOICE 0 T= T-REPORT ;\nSWITCH-SAVED CHECK-SWITCH\n;package\n0 set-tier\nrequire src/habu/app-image.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   S\" package QUOT-PERSIST-TEST\n1 set-tier\n: SWITCH-SAVED ( -- ) 456 construct choice scalar HOLDER-MAKE ENVELOPE-MAKE PRESENT-ROW ! [: 9 + ;] HOOK-MAKE construct choice present HOLDER-MAKE ENVELOPE-MAKE SCALAR-ROW ! [: 11 + ;] HOOK-MAKE construct choice present HOLDER-MAKE ENVELOPE-MAKE 0 BATCH ! ;\n: CHECK-SWITCH ( -- ) T-RESET PRESENT-ROW @ READ-CHOICE 466 T= SCALAR-ROW @ READ-CHOICE 44 T= 0 BATCH @ READ-CHOICE 46 T= 1 BATCH @ READ-CHOICE LOOKALIKE @ 10 + T= 2 BATCH @ READ-CHOICE 0 T= T-REPORT ;\nSWITCH-SAVED CHECK-SWITCH\n;package\n" RESAVE-SOURCE$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n :}
    OUT outu S\" test: ok\n" T$=
@@ -98,7 +118,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
 : RESTORE-SECOND ( -- )
    ENVIRONMENT
    SECOND$ >LEN
-   S\" package QUOT-PERSIST-TEST\n0 set-tier\n: SECOND-T0 ( -- ) PRESENT-ROW @ READ-CHOICE 466 T= SCALAR-ROW @ READ-CHOICE 44 T= EMPTY-ROW @ READ-CHOICE 0 T= 0 BATCH @ READ-CHOICE 46 T= 1 BATCH @ READ-CHOICE LOOKALIKE @ 10 + T= 2 BATCH @ READ-CHOICE 0 T= ;\n1 set-tier\n: SECOND-T1 ( -- ) PRESENT-ROW @ READ-CHOICE 466 T= SCALAR-ROW @ READ-CHOICE 44 T= EMPTY-ROW @ READ-CHOICE 0 T= 0 BATCH @ READ-CHOICE 46 T= 1 BATCH @ READ-CHOICE LOOKALIKE @ 10 + T= 2 BATCH @ READ-CHOICE 0 T= ;\nT-RESET SECOND-T0 SECOND-T1 T-REPORT\n;package\n" >LEN
+   SECOND-CHECK$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n :}
    OUT outu S\" test: ok\n" T$= ;
