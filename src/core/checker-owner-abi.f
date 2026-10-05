@@ -145,7 +145,9 @@ $348 constant EFFECT-STACK-STABLE-OFF
 $350 constant BINDING-WINDOW-OFF
 \ The source pre-pass reports a definition left to the run.
 $358 constant VERIFY-DEFERRED-BODY-OFF
-\ Four reserved owner calls, $360 to $378, remain absent.
+\ $360/$368/$370 belong to the native definition navigator. The verifier
+\ scopes its prospective compiler ordering answer to one checked body at $378.
+$378 constant WITH-TICK-ORDER-OFF
 \ The source verifier's registrar (src/core/checker.f TRUST-DECL?): TRUST-DECL's
 \ registration, answering whether it retained the row, so the verifier reports
 \ only the declarations whose rows were kept (src/habu/verify-source.f

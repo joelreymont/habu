@@ -22,6 +22,14 @@ public
 7188 constant E-UNTERMINATED-STRING
 7189 constant E-MALFORMED-REGISTRY-ROW
 
+\ Captured by the fresh child before it loads verifier tooling. A direct
+\ caller that does not supply an entry observation retains checking order.
+variable ENTRY-TICK-ORDER
+PTR-VARIABLE ENTRY-TICK-OWNER
+
+: ENTRY-TICK-ORDER! ( n ptr u8 -- )
+   ENTRY-TICK-OWNER !  ENTRY-TICK-ORDER ! ;
+
 private
 
 \ A statement the source ends inside, one that lacks a part it must have, or one
@@ -93,6 +101,24 @@ variable COMPOSE-REQ0
 create COMPOSE-STOP-PATH PATH-CAP allot
 variable COMPOSE-STOP-U
 variable COMPOSE-STOP-SUBJ               \ the stop was in the supplied bytes
+
+2 constant TICK-UNKNOWN
+variable TICK-CONTEXT-ORDER
+PTR-VARIABLE TICK-CONTEXT-OWNER
+variable DEF-TICK-ORDER
+PTR-VARIABLE DEF-TICK-OWNER
+
+: TICK-CONTEXT-RESET ( -- )
+   ENTRY-TICK-ORDER @ TICK-CONTEXT-ORDER !
+   ENTRY-TICK-OWNER @ TICK-CONTEXT-OWNER ! ;
+
+: TICK-CONTEXT-UNKNOWN ( -- )
+   TICK-UNKNOWN TICK-CONTEXT-ORDER !
+   NULL-PTR TICK-CONTEXT-OWNER ! ;
+
+: TICK-DEF-LATCH ( -- )
+   TICK-CONTEXT-ORDER @ DEF-TICK-ORDER !
+   TICK-CONTEXT-OWNER @ DEF-TICK-OWNER ! ;
 
 defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
 
@@ -745,6 +771,12 @@ CAST: DOES-ACTION ( n -- [ ptr u8 n ptr u8 n ptr u8 n -- n ] )
 CAST: RENDERS-ACTION ( n -- [ ptr u8 n n -- bool ] )
 CAST: REACH-ACTION ( n -- [ ptr u8 n ptr u8 n -- ] )
 CAST: DECL-ACTION ( n -- [ ptr u8 n ptr u8 n -- bool ] )
+CAST: TICK-ORDER-ACTION ( n -- [ ptr u8 n n ptr u8 [ -- ] -- n ] )
+
+: WITH-BODY-TICK-ORDER ( ptr u8 n [ -- ] -- n )
+   {: a:ptr u:n q :}
+   a u DEF-TICK-ORDER @ DEF-TICK-OWNER @ q
+   NCOMP-DISPATCH:DECL-WITH-TICK-ORDER-OFF OWNER-XT TICK-ORDER-ACTION execute ;
 
 \ The checked dispatchers name their offsets through layout.f's
 \ NCOMP-DISPATCH:DECL-VERIFY-* mirrors. CHECKER-OWNER-ABI loads before the
@@ -966,8 +998,18 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- ] )
    MULTI-ERR-MODE? IF 0 EXIT THEN
    70 throw ;
 
+PTR-VARIABLE TICK-BODY-A
+variable TICK-BODY-U
+variable TICK-BODY-VERDICT
+
+: TICK-BODY-RUN ( -- )
+   TICK-BODY-A @ TICK-BODY-U @ CHECK-BODY TICK-BODY-VERDICT ! ;
+
 : VERIFY-BODY ( -- n )
-   DEF-BODY$ CHECK-BODY BODY-VERDICT ;
+   DEF-BODY$ {: ba:ptr bu:n :}
+   ba TICK-BODY-A !  bu TICK-BODY-U !
+   ba bu [: TICK-BODY-RUN ;] WITH-BODY-TICK-ORDER
+   IF 2 ELSE TICK-BODY-VERDICT @ THEN BODY-VERDICT ;
 
 \ The pre-pass's own does>-clause entry point. It is not the engine's
 \ CHECK-DOES!: this scan reaches a clause AFTER the definer's own body has been
@@ -979,8 +1021,24 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- ] )
 : CHECK-DOES-BODY ( ptr u8 n ptr u8 n ptr u8 n -- n )
    NCOMP-DISPATCH:DECL-VERIFY-SOURCE-DOES-OFF OWNER-XT DOES-ACTION execute ;
 
+PTR-VARIABLE TICK-DOES-SA
+variable TICK-DOES-SU
+PTR-VARIABLE TICK-DOES-NA
+variable TICK-DOES-NU
+variable TICK-DOES-VERDICT
+
+: TICK-DOES-RUN ( -- )
+   TICK-BODY-A @ TICK-BODY-U @
+   TICK-DOES-SA @ TICK-DOES-SU @ TICK-DOES-NA @ TICK-DOES-NU @
+   CHECK-DOES-BODY TICK-DOES-VERDICT ! ;
+
 : VERIFY-DOES-BODY ( ptr u8 n ptr u8 n -- n ) {: sig:ptr sigu:n na:ptr nu:n :}
-   DEF-BODY$ sig sigu na nu CHECK-DOES-BODY BODY-VERDICT ;
+   DEF-BODY$ {: ba:ptr bu:n :}
+   ba TICK-BODY-A !  bu TICK-BODY-U !
+   sig TICK-DOES-SA !  sigu TICK-DOES-SU !
+   na TICK-DOES-NA !  nu TICK-DOES-NU !
+   ba bu [: TICK-DOES-RUN ;] WITH-BODY-TICK-ORDER
+   IF 2 ELSE TICK-DOES-VERDICT @ THEN BODY-VERDICT ;
 
 \ ---- the two rules that put a definition in the table above ------------------
 \ The definition's own name, pinned by VERIFY-DEFINITION before its body is
@@ -1046,6 +1104,20 @@ variable WRAP-ROW                             \ the definer row the last call na
 \ deferred colon definition keeps its declared signature (src/core/checker.f
 \ CHECK, verdict 2), and the run judges the deferred text. The definition reports
 \ one deferral: its clause's only when the definer's body was not deferred.
+\ A compile-time action inside the current definition can change the tier or
+\ replace a checker before its later trusted tick. The source scan does not run
+\ that action, so this definition and the following source lose the answer.
+: TICK-BODY-STEP ( -- )
+   DEF-TICK-ORDER @ TICK-UNKNOWN = IF EXIT THEN
+   LOCAL-TOKEN? IF EXIT THEN
+   TOKEN-A @ TOKEN-U @ STRING-OPENER? IF EXIT THEN
+   TOKEN-A @ TOKEN-U @ s" [']" CORE-STR= IF EXIT THEN
+   TOKEN-A @ TOKEN-U @ s" [" CORE-STR=
+   TOKEN-A @ TOKEN-U @ CHECKER-PREFLIGHT:BODY-TOK? or IF
+      TICK-UNKNOWN DEF-TICK-ORDER !  NULL-PTR DEF-TICK-OWNER !
+      TICK-CONTEXT-UNKNOWN
+   THEN ;
+
 : VERIFY-DOES ( -- )
    VERIFY-BODY {: def:n :}
    def REPORT-DEFERRED
@@ -1060,6 +1132,7 @@ variable WRAP-ROW                             \ the definer row the last call na
          def 2 <> IF dup REPORT-DEFERRED THEN
          0<>  def 0<> and IF sig sigu DEFINER-RECORD THEN EXIT
       THEN
+      TICK-BODY-STEP
       APPEND-BODY-TOKEN
    AGAIN ;
 
@@ -1180,6 +1253,21 @@ defer ON-FILE ( ptr u8 n -- )
    NCOMP-DISPATCH:DECL-VERIFY-SYM-IDENTITY-OFF OWNER-XT IDENTITY-ACTION execute ;
 
 private
+
+0 constant TICK-SYM-GLOBAL
+
+\ Scope keywords are syntax. A word-backed declaration keeps the prospective
+\ answer only when the selected symbol is the engine's global spelling. An
+\ imported or package-local shadow may run different defining code.
+: TICK-DECL-SELECTED? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u s" package" STR=CI  a u s" ;package" STR=CI or
+   a u s" public" STR=CI or  a u s" private" STR=CI or
+   a u s" using" STR=CI or  a u s" ;using" STR=CI or IF 0 0= EXIT THEN
+   a u FIND-SYM dup 0= IF drop 0 0= 0= EXIT THEN
+   SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
+   vis TICK-SYM-GLOBAL = pkgu 0= and
+   tail tailu a u STR=CI and ;
 
 : DEFINITION-NONE ( ptr u8 n ptr u8 n n ptr u8 n n n n -- )
    drop 2drop 2drop drop 2drop 2drop ;
@@ -1844,6 +1932,11 @@ variable FILE-USE
 
 : COMPOSE-TOP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    COMPOSE-ON @ 0= IF 0 0= 0= EXIT THEN
+   a u s" include" STR=CI  a u s" require" STR=CI or
+   a u s" included" STR=CI or  a u s" required" STR=CI or
+   a u s" script-required" STR=CI or  a u s" provided" STR=CI or IF
+      a u TICK-DECL-SELECTED? 0= IF TICK-CONTEXT-UNKNOWN THEN
+   THEN
    a u s" include" STR=CI IF COMPOSE-RAW-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
    a u s" require" STR=CI IF COMPOSE-RAW-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
    a u s" included" STR=CI IF COMPOSE-STRING-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
@@ -2055,11 +2148,11 @@ variable FFI-SIG-U
    a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
    a u s" cast:" STR=CI IF CAST-DECLARATION 0 0= EXIT THEN
    a u s" linear:" STR=CI IF LINEAR-DECLARATION 0 0= EXIT THEN
-   a u s" undefine" STR=CI IF UNDEFINE-WORD 0 0= EXIT THEN
+   a u s" undefine" STR=CI IF TICK-CONTEXT-UNKNOWN UNDEFINE-WORD 0 0= EXIT THEN
    a u s" trust" STR=CI IF RECORD-TRUST 0 0= EXIT THEN
    a u s" generates:" STR=CI IF RECORD-GENERATES 0 0= EXIT THEN
    a u s" FUNCTION:" STR=CI IF RECORD-FFI-FUNCTION 0 0= EXIT THEN
-   a u s" immediate" STR=CI IF 0 0= EXIT THEN
+   a u s" immediate" STR=CI IF TICK-CONTEXT-UNKNOWN 0 0= EXIT THEN
    a u s" export" STR=CI IF RECORD-EXPORT 0 0= EXIT THEN
    \ … then a word that renders source when it runs (`;FUNCTION`, CMD:COMMAND,
    \ TASK:+USER): what it defines is text this scan never reads, so the checker
@@ -2076,12 +2169,14 @@ variable FFI-SIG-U
    \ token, as it is for `constant` above - the definer's own arguments precede
    \ it - and the effect is the clause's or the row's, registered with the same
    \ raw seal the storage definers use.
-   a u DEFINER-EFFECT dup 0<> IF DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN 2drop
+   a u DEFINER-EFFECT dup 0<> IF
+      TICK-CONTEXT-UNKNOWN DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT
+   THEN 2drop
    \ … and last of all, a definer this pre-pass never read: one compiled in the
    \ checking process itself, whose clause the checker certified and kept. The
    \ token resolves through the same FIND-SYM every other name does, so the
    \ qualified and the bare-under-`using` spelling reach the one row.
-   a u CREATED-TRUST-NEXT? IF 0 0= EXIT THEN
+   a u CREATED-TRUST-NEXT? IF TICK-CONTEXT-UNKNOWN 0 0= EXIT THEN
    0 0= 0= ;
 
 \ The colon definition just scanned, once its body was judged.
@@ -2103,6 +2198,7 @@ variable FFI-SIG-U
    AGAIN ;
 
 : VERIFY-DEFINITION ( -- )
+   TICK-DEF-LATCH
    BODY-RESET
    NAME-TOKEN TOKEN-U !  TOKEN-A !
    TOKEN-U @ 0= if E-MISSING-NAME throw then
@@ -2123,6 +2219,7 @@ variable FFI-SIG-U
          TOKEN-A @ TOKEN-U @ s" does>" STR=CI IF VERIFY-DOES COLON-DEFINED EXIT THEN
          TOKEN-A @ TOKEN-U @ WRAP-TOKEN
       THEN
+      TICK-BODY-STEP
       APPEND-BODY-TOKEN
    AGAIN ;
 
@@ -2239,6 +2336,7 @@ variable TOP-DEFER-I                             \ where the run's reading start
 : TOP-TOKEN ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u num-parse nip nip IF EXIT THEN
+   a u STRING-OPENER? 0= IF TICK-CONTEXT-UNKNOWN THEN
    a u MARK-UNSEEN RENDERS-MARK? drop
    COMPOSE-ON @ 0=  TOP-DEFER @ 0<>  or IF EXIT THEN
    a u 0 0= TOP-RESOLVE ;
@@ -2249,7 +2347,9 @@ variable TOP-DEFER-I                             \ where the run's reading start
 : TOP-DEFINER? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    MULTI-ERR-N @ {: before:n :}
+   a u TICK-DECL-SELECTED? {: selected:bool :}
    a u RECORD-DEFINER? 0= IF 0 0= 0= EXIT THEN
+   selected 0= IF TICK-CONTEXT-UNKNOWN THEN
    TOP-CLOSE
    MULTI-ERR-N @ before <> IF -1 TOP-DEFER ! THEN
    0 0= ;
@@ -2357,6 +2457,7 @@ CAST: VERIFIER-ACTION ( n -- [ -- ] )
 \ over the checker's own records (src/core/checker.f REPLAY-BIND), and the done
 \ restores the caller's scope on the clean and the throwing path alike.
 : RUN-IN-SCOPE ( [ -- ] -- )
+   TICK-CONTEXT-RESET
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
    catch
    NCOMP-DISPATCH:DECL-VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute

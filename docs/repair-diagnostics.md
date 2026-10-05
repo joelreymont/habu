@@ -144,6 +144,18 @@ the engine's own load reports for the definition, chosen in the load's order:
    levels deep or an input row wider than 255 cells, `E-UNCHECKABLE` with
    verdict `uncheckable` and the bound in `reason`.
 
+A checked tick of a trusted-only primitive depends on the compiler path. In a
+sealed tier-0 load the compiler's trusted gate precedes the closing check, so
+`drop ['] patch32 drop` refuses the tick as `E-CAP-TRUSTED` even though `drop`
+would underflow in the checker. Tier 1 checks first and reports the underflow.
+The source verifier captures that ordering before it loads its own tools and
+carries it through a declarative prefix. Once top-level execution, an
+unmodeled compile-time immediate, tier selection or checker replacement can
+change the path, it reports a checked trusted tick as `W-CHECK-DEFERRED` at the
+ticked operand. It does not certify or publish a signature for that body.
+`check.f` then uses its existing single subject run to determine the live
+outcome; `--verify-only` retains the deferred verdict.
+
 The checker does not resolve a word after a terminating word, nor the
 variants and branch words of a `match` nested past its control-frame depth
 (`E-MATCH-DEPTH`). So for `( n -- n ) exit NOPE` it names the dead code,

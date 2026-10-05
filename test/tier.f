@@ -169,6 +169,45 @@ variable RC     variable EXITED
    s" -1 set-tier" RUN  REJECT-RC ASSERT-RC
    ERR$ s" set-tier" CONTAINS? TTRUE ;
 
+\ The JIT reaches its trusted tick gate before the closing checker scan;
+\ native compilation checks the body before it elaborates the tick.
+: TEST-TRUSTED-TICK-ORDER ( -- )
+   s" the fresh tier 0 boundary has a trusted gate" T-LABEL
+   s" tick-order@ drop . cr" EXEC s" 1" ASSERT-OK
+   s" tier 1 starts with checking order" T-LABEL
+   s" 1 set-tier tick-order@ drop . cr" EXEC s" 0" ASSERT-OK
+   s" tier 0 reports the selected trusted tick before a body underflow" T-LABEL
+   s" : IWGGPF ( -- ) drop ['] patch32 drop ;" EXEC
+   REJECT-RC ASSERT-RC
+   ERR$ s" trusted-only tick" CONTAINS? TTRUE
+   s" tier 1 keeps the first checker failure at drop" T-LABEL
+   s" 1 set-tier : IWGGPF ( -- ) drop ['] patch32 drop ;" EXEC
+   s" iwggpf" ASSERT-REJECTED
+   ERR$ s" underflow" CONTAINS? TTRUE
+   s" a later undefined token cannot displace the tier 0 gate" T-LABEL
+   s" : TICK-LATE ( -- ) drop ['] patch32 drop NO-SUCH-WORD ;" EXEC
+   REJECT-RC ASSERT-RC
+   ERR$ s" trusted-only tick" CONTAINS? TTRUE
+   s" a malformed signature cannot displace the tier 0 gate" T-LABEL
+   s" : TICK-SIG ( -- zz ) ['] patch32 drop ;" EXEC
+   REJECT-RC ASSERT-RC
+   ERR$ s" trusted-only tick" CONTAINS? TTRUE
+   s" an earlier undefined token refuses before the tier 0 gate" T-LABEL
+   s" : TICK-EARLY ( -- ) NO-SUCH-WORD ['] patch32 drop ;" EXEC
+   REJECT-RC ASSERT-RC
+   ERR$ s" NO-SUCH-WORD" CONTAINS? TTRUE
+   s" an unsafe check before the tier 0 gate leaves the gate first" T-LABEL
+   s" : TICK-UNSAFE ( -- ) evaluate ['] patch32 drop ;" EXEC
+   REJECT-RC ASSERT-RC
+   ERR$ s" trusted-only tick" CONTAINS? TTRUE
+   s" a package-local ordinary shadow has no trusted gate" T-LABEL
+   s" package TICK-SHADOW public : patch32 ( -- n ) 1 ; ;package : SHADOW-TICK ( -- ) ['] TICK-SHADOW:patch32 drop ;" EXEC
+   0 ASSERT-RC
+   s" a re-export of the trusted primitive keeps its gate" T-LABEL
+   s" package TICK-ALIAS public EXPORT patch32 ;package : ALIAS-TICK ( -- ) ['] TICK-ALIAS:patch32 drop ;" EXEC
+   REJECT-RC ASSERT-RC
+   ERR$ s" trusted-only tick" CONTAINS? TTRUE ;
+
 \ ---- 2b. checked code reads the tier and selects it through TIER --------------
 \ Registering a primitive in the engine dictionary is only half of it. Without a
 \ checker effect row the word is E-UNDEFINED inside every checked body, so
@@ -704,6 +743,7 @@ public
    T-RESET
    TEST-BOTH-TIERS
    TEST-SELECTION
+   TEST-TRUSTED-TICK-ORDER
    TEST-ORIGIN
    TEST-ORIGIN-OVERWRITE
    TEST-ORIGIN-CAPACITY

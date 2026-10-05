@@ -5452,27 +5452,10 @@ variable LCODEINV
    EM-C2-FIELD-OFF @ C-SCOPE-ENTRY-TICK-GUARD ;
 
 : C-TRUSTED-TICK? ( -- )
-   LBL LBL LBL {: noquery:label restore:label query:label :}
+   LBL LBL {: noquery:label restore:label :}
    SP SP 32 SUBI,
    5 SP 0 STR,  11 SP 8 STR,  12 SP 16 STR,  13 SP 24 STR,
-   \ The engine's cold source prefix installs trusted checker bridges before
-   \ SEAL-CAPTURE records its last dictionary entry. No user source can run
-   \ until that prefix finishes; the sealed watermark then keeps this path
-   \ closed for user ticks, including after a snapshot restore.
-   9 DATA SEAL-NDICT-CELL LDR,  9 noquery CBZ,
-   \ A protected executable build reloads the checker from the prefix and
-   \ legitimately ticks its trusted bridge words before the new query exists.
-   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  9 noquery CBNZ,
-   \ While a replacement checker is loading, its target owner differs from
-   \ the source owner's completed record. Its own bridge registrations tick
-   \ trusted primitives before the target takes over certification.
-   11 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  11 query CBZ,
-   12 DATA NCOMP-DISPATCH:DECL-CELL LDR,
-   11 12 CMP,  C-NE noquery BCOND,
-   query LBL,
-   \ The active checker owner's query is an installed code identity. A later
-   \ definition with the same spelling cannot replace the query it compiled.
-   NCOMP-DISPATCH:DECL-TRUSTED-TICK-OFF DECL-OWNER:FIND
+   C-TICK-QUERY
    11 noquery CBZ,
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
@@ -5483,7 +5466,6 @@ variable LCODEINV
    restore LBL,
    5 SP 0 LDR,  11 SP 8 LDR,  12 SP 16 LDR,  13 SP 24 LDR,
    SP SP 32 ADDI, ;
-
 
 : C-TICK ( -- )
    LBL LBL LBL LBL {: tk:label usedtry:label found:label named:label :}

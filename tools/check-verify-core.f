@@ -976,6 +976,7 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 : VFY-PREVERDICT ( outcome -- result<n,outcome> ) {: o :}
    o VFY-CLEAN-EXIT? if
       VFY-ANSWER @ VFY-VERIFIED = if 0 RESULT:OK exit then
+      VFY-ANSWER @ VFY-DEFERRED = if 0 RESULT:OK exit then
       VFY-ANSWER @ VFY-STOPPED = if VFY-STOP-RC @ RESULT:OK exit then
    then
    o RESULT:ERR ;

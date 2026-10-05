@@ -1408,6 +1408,48 @@ $180000 constant LARGE-STDIN-LEN
    s" def-deferred: the deferral" s" CVT-NOSUCH" s" W-CHECK-DEFERRED" s" 3" s" 19" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$= ;
 
+\ The fresh verifier child captures tier 0 before requiring its tooling. A
+\ top-level tier switch is executed only by check.f's existing subject run.
+: TRUSTED-TICK-ORDER ( -- )
+   s\" : CVT-GATE ( -- ) drop ['] patch32 drop CVT-NOT-DEFINED ;\n\" TOP-CHECK
+   1 s" trusted-tick-order: static tier 0 refusal" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" word" s" cvt-gate" PACKET {: p:n :}
+   s" trusted-tick-order: gate code" T-LABEL p s" code" STRING$ s" E-CAP-TRUSTED" T$=
+   s" trusted-tick-order: target token" T-LABEL p s" token" STRING$ s" patch32" T$=
+   s" trusted-tick-order: target line" T-LABEL p s" line" NUMBER$ s" 1" T$=
+   s" trusted-tick-order: target column" T-LABEL p s" column" NUMBER$ s" 28" T$=
+   s" trusted-tick-order: rejected verdict" T-LABEL
+   p s" verdict" STRING$ s" rejected" T$=
+   s\" 1 set-tier\n: CVT-GATE ( -- ) drop ['] patch32 drop ;\n\" TOP-CHECK
+   5 s" trusted-tick-order: dynamic tier is deferred" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET {: warning:n :}
+   s" trusted-tick-order: warning code" T-LABEL
+   warning s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   s" trusted-tick-order: warning line" T-LABEL
+   warning s" line" NUMBER$ s" 2" T$=
+   s" trusted-tick-order: warning column" T-LABEL
+   warning s" column" NUMBER$ s" 28" T$=
+   s" trusted-tick-order: pre-pass continues to the run" T-LABEL
+   s\" 1 set-tier\n: CVT-GATE ( -- ) drop ['] patch32 drop ;\n\"
+   SUBJ$ s" dynamic-tier.f" GUARD-MS >MS CHECK:PREVERIFY-BYTES
+   MATCH result
+      ok OF 0= ENDOF
+      err OF drop false ENDOF
+   ;MATCH TTRUE
+   s" dynamic-tier.f" s\" 1 set-tier\n: CVT-GATE ( -- ) drop ['] patch32 drop ;\n" FIXTURE
+   CLI-START s" --json-errors" ARG+ s" dynamic-tier.f" AT$ ARG+
+   s" " CLI {: erru:n rc:n :}
+   s" trusted-tick-order: single live run exits at the checker" T-LABEL rc 70 T=
+   s" trusted-tick-order: live stderr is packets" T-LABEL
+   0 ERR erru ALL-JSON? TTRUE
+   0 ERR erru s" token" s" drop" PACKET {: live:n :}
+   s" trusted-tick-order: live tier 1 underflow" T-LABEL
+   live s" code" STRING$ s" E-INPUT-UNDERFLOW" T$=
+   s" trusted-tick-order: live source line" T-LABEL
+   live s" line" NUMBER$ s" 2" T$=
+   s" trusted-tick-order: live source column" T-LABEL
+   live s" column" NUMBER$ s" 19" T$= ;
+
 
 \ Bytes the load accepts verify, with no packet.
 : LOADS-CLEAN ( ptr u8 n ptr u8 n -- )
@@ -1946,6 +1988,7 @@ public
    s" top-nested-deferred" [: TOP-NESTED-DEFERRED ;] RUN-CASE
    s" top-renders" [: TOP-RENDERS ;] RUN-CASE
    s" def-deferred" [: DEF-DEFERRED ;] RUN-CASE
+   s" trusted-tick-order" [: TRUSTED-TICK-ORDER ;] RUN-CASE
    s" top-create" [: TOP-CREATE ;] RUN-CASE
    s" top-data-word" [: TOP-DATA-WORD ;] RUN-CASE
    s" top-trusted" [: TOP-TRUSTED ;] RUN-CASE

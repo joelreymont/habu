@@ -59,7 +59,7 @@
 \ name it LABEL. SUBJECT is check.f's own copy of the text, which nothing holds.
 \ It answers
 \
-\    check-verify: verified | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
+\    check-verify: verified | deferred | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \
 \ RC is the code the composition stopped with, 70 for a definition or top-level
 \ token the checker refused by the throw that rendered its packet, BYTE where
@@ -74,6 +74,17 @@
 \ among it. A child that ends any other way, the verifier's own `die` included,
 \ writes no result line.
 
+\ The observation must precede every verifier require: those files may select a
+\ tier or replace a checker in this child, while the hypothetical subject has
+\ not reached any of them at its own load boundary.
+tick-order@
+package CHECK-VERIFY-CHILD
+variable ENTRY-ORDER
+PTR-VARIABLE ENTRY-OWNER
+ENTRY-OWNER !
+ENTRY-ORDER !
+;package
+
 require src/habu/verify-source.f
 
 \ Engine words with no checked effect; tools/check-core.f declares them alike.
@@ -81,6 +92,8 @@ s" CHECKER-SCOPE-START-NEUTRAL" s" --" TRUST
 s" CHECKER-SCOPE-DONE" s" --" TRUST
 
 package CHECK-VERIFY-CHILD
+
+ENTRY-ORDER @ ENTRY-OWNER @ VERIFY:ENTRY-TICK-ORDER!
 
 $10000 constant CHUNK                   \ bytes asked of one read
 32 constant NUM-CAP
@@ -408,8 +421,10 @@ variable SEEN-N
    dup DEF-STOPPED @ = if drop REFUSED-RC then ;
 
 : PREVERIFY ( -- )
+   VERIFY:REPORT-DEFERRALS
    [: PREVERIFY-CUR ;] SCOPED {: rc:n :}
    rc 0<> if rc STOP-CODE STOP-RESULT exit then
+   VERIFY:DEFERRED? if s" deferred" RESULT exit then
    s" verified" RESULT ;
 
 public

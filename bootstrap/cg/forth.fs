@@ -2090,6 +2090,9 @@ HB-TARGET-LINUX? [IF]
    A DATA SEAL-NDICT-CELL LDR,  A 0 CMPI,
    A C-NE CSET,  A SP A SUB,  A G-PUSH ;
 
+\ Stage 0 has no trusted-tick query, even when its internal-word tick gate runs.
+: BTICKORDER ( -- )  A 0 MOVZ,  A G-PUSH,  A G-PUSH ;
+
 \ SEAL-CAPTURE (TFAM 2b-iii): freeze the seal-time ndict truncation watermark
 \ (xref.f baseline token + the cold-prefix assembler's token at the true
 \ engine-prefix end). The friend latch is already sealed by then, so a raw !
@@ -2386,6 +2389,7 @@ HB-TARGET-LINUX? [IF]
    s" xref-search-wl" ['] BCOMPILERSWL PRIM-INT-WID FPRIM-WID
    s" scope-find" ['] BSCOPEFIND FPRIM
    s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
+   s" tick-order@" ['] BTICKORDER FPRIM-L
    s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
    s" tok-imm?" ['] BTOKIMM FPRIM
    s" scope-kind?" ['] BSCOPE-KIND FPRIM ;

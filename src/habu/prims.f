@@ -648,6 +648,9 @@ EPRIM: check@         PE-N PE-OUT EPRIM;
 \ Reading the selected compiler tier decides nothing and mutates nothing, so it
 \ is an ordinary reader like check@ beside it.
 EPRIM: tier@          PE-N PE-OUT EPRIM;
+\ The compiler's prospective trusted-tick order and the owner whose installed
+\ query established it. Order 0 is checking first; 1 is trusted gate first.
+EPRIM: tick-order@    PE-N PE-OUT PE-PTR-U8 PE-OUT EPRIM;
 EPRIM: code-origin    PE-N PE-IN PE-N PE-IN PE-N PE-OUT EPRIM;
 EPRIM: executable-build-enter EPRIM;
 ETRUSTED-ONLY!

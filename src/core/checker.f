@@ -5092,6 +5092,49 @@ variable UNFIT                \ the effect a record would hold is too deep or to
 variable QUALBAD
 variable QDUPBAD             \ ?dup applied to a layout value (width-breaking; item 12)
 variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen sink) called from checked code
+0 constant TORDER-CHECKING
+1 constant TORDER-GATE
+2 constant TORDER-UNKNOWN
+\ The verifier supplies a prospective ordering answer only for its selected
+\ body. The scan depth keeps an independent nested CHECK! out of that scope.
+PTR-VARIABLE TORDER-A
+variable TORDER-U
+variable TORDER-KIND             \ 0 checking first, 1 trusted gate first, 2 unknown
+variable TORDER-SCOPE
+variable TORDER-USED
+variable TORDER-ACTIVE
+variable TORDER-UNCERTAIN
+variable TORDER-SCAN-UNKNOWN
+variable TORDER-DEPTH
+
+: TORDER-SCAN! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   TORDER-SCOPE @ 0= TORDER-DEPTH @ 1 <> or TORDER-USED @ 0<> or IF EXIT THEN
+   a TORDER-A @ = u TORDER-U @ = and 0= IF EXIT THEN
+   -1 TORDER-USED !
+   TORDER-KIND @ TORDER-ACTIVE ! ;
+
+\ The answer belongs to this owner instance and to the first matching scan
+\ inside the action. A different owner cannot interpret its symbol identities.
+: WITH-TICK-ORDER ( ptr u8 n n ptr u8 [ -- ] -- bool )
+   {: a:ptr u:n order:n owner:ptr q :}
+   TORDER-A @ TORDER-U @ TORDER-KIND @
+   TORDER-SCOPE @ TORDER-USED @ TORDER-ACTIVE @ TORDER-UNCERTAIN @ TORDER-SCAN-UNKNOWN @
+   {: olda:ptr oldu:n oldorder:n
+      oldscope:n oldused:n oldactive:n olduncertain:n oldscan:n :}
+   a TORDER-A !  u TORDER-U !
+   order TORDER-GATE = owner DECLARATIONS <> and IF TORDER-UNKNOWN ELSE order THEN TORDER-KIND !
+   -1 TORDER-SCOPE !  0 TORDER-USED !  TORDER-CHECKING TORDER-ACTIVE !
+   0 TORDER-UNCERTAIN !  0 TORDER-SCAN-UNKNOWN !
+   q catch {: rc:n :}
+   TORDER-UNCERTAIN @ 0<> {: uncertain:bool :}
+   olda TORDER-A !  oldu TORDER-U !  oldorder TORDER-KIND !
+   oldscope TORDER-SCOPE !  oldused TORDER-USED !
+   oldactive TORDER-ACTIVE !  olduncertain TORDER-UNCERTAIN !
+   oldscan TORDER-SCAN-UNKNOWN !
+   rc 0<> IF rc throw THEN
+   uncertain ;
+REG-PROTECT
 \ --- declared-effect parametricity seal (habu-nominal-storage-effect). A rejected
 \ definition whose body specialized a declared quantifier to a sealed nominal/layout
 \ family, or unified two declared quantifiers together. Set by NP-CHECK post-body.
@@ -19184,6 +19227,10 @@ variable IS-PEND-U                   \ and its length
    IS-TARGET-SYM  WALK-REC @  {: sym:n rec:n :}
    sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
    sym PRIM-TRUSTED-SYM? IF
+      TORDER-ACTIVE @ TORDER-GATE = IF RF-CAP CREFUSE! THEN
+      TORDER-ACTIVE @ TORDER-UNKNOWN = RCOMPILE @ 0= and IF
+         TARGET-PIN!  -1 TORDER-UNCERTAIN !  -1 TORDER-SCAN-UNKNOWN !
+      THEN
       FAILSET @ 0= IF TICK-PIN  -1 CAPREQ ! THEN
       0 OK !  -1 FAILSET !  EXIT
    THEN
@@ -21060,6 +21107,7 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
 \ maximum cell.
 : CHECK-RESET {: a u :}
    WRITE-WINDOW-CK
+   a u TORDER-SCAN!
    BWIN-EPOCH @ 1+ dup 0= IF
       s" checker: binding window serial overflow" 76 die THEN
    BWIN-EPOCH !
@@ -21218,6 +21266,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
          THEN
          TOK0 @ {: was-name:bool :}
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
+         TORDER-SCAN-UNKNOWN @ IF EXIT THEN
          was-name 0= IF TSTART @ TADDR TI @ TSTART @ - ZSUMMARY-TOKEN THEN
          SCAN-TOKS @ 1 + SCAN-TOKS !
          CHECKER-TAPE:ARMED @ IF SCAN-REPORT THEN
@@ -21234,6 +21283,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
    [: CHECK-SCAN-WALK ;] catch  0 USING-HOLD !
    {: rc:n :}
    rc 0 <> IF rc throw THEN
+   TORDER-SCAN-UNKNOWN @ IF EXIT THEN
    CLOSER-REFUSE
    USING-RAISE ;
 
@@ -21707,6 +21757,12 @@ variable CAST-PATH-N
    -1 PARSE-COMPLETE !
    a u CHECK-RESET
    CHECK-SCAN
+   \ Unknown order cannot certify or even publish a declared recovery row.
+   \ Its selected trusted tick is already pinned for the verifier's warning.
+   TORDER-SCAN-UNKNOWN @ IF
+      0 LAYOUT-XPORT !  0 BIND-HORIZON !  CK-CLOSE-CLEAR
+      2 EXIT
+   THEN
    0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
    SIG-EFF-DROP
    CHECK-FOLD-EXITS
@@ -22493,13 +22549,21 @@ variable DEF-STOPPED
    0 BWIN-VALID !  0 UWIN-VALID !
    -1 VSIG !
    a CK-DEF-A !  u CK-DEF-U !  0 DEF-REFUSAL !
+   TORDER-ACTIVE @ TORDER-SCAN-UNKNOWN @ {: oldactive:n oldunknown:n :}
+   1 TORDER-DEPTH +!
+   TORDER-CHECKING TORDER-ACTIVE !  0 TORDER-SCAN-UNKNOWN !
    [: CHECK-DEF-BODY ;] catch {: rc:n :}
+   -1 TORDER-DEPTH +!
+   TORDER-SCAN-UNKNOWN @ {: unknown:n :}
+   oldactive TORDER-ACTIVE !  oldunknown TORDER-SCAN-UNKNOWN !
    rc 0 <> IF rc CHECK-DEF-THREW THEN
    CK-DEF-VERDICT @ {: verdict:n :}
    0 VSIG !
    CHECKER-TAPE:ARMED @ 0 <> {: recording:bool :}
-   recording IF a u verdict CHECKER-TAPE:DONE THEN
-   a u verdict CHECKER-CERT:PRODUCE
+   unknown 0= IF
+      recording IF a u verdict CHECKER-TAPE:DONE THEN
+      a u verdict CHECKER-CERT:PRODUCE
+   THEN
    verdict -1 = recording and BWIN-UNJUDGED @ 0= and BWIN-VALID !
    verdict ;
 
@@ -22781,6 +22845,7 @@ package CHECKER-REG
    BROW @ DCUR !
    SGHASR @ IF SGRIN @ dup RBROW ! RCUR ! THEN
    CHECK-SCAN
+   TORDER-SCAN-UNKNOWN @ IF WRAP-CLEAR 2 EXIT THEN
    CHECK-FOLD-EXITS
    CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
    MM @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN
@@ -22871,7 +22936,12 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    nu DOES-CLAUSE:SUFFIX$ nip + TOKBUF-ENSURE
    ba SRC-DOES-BA !  bu SRC-DOES-BU !  sa SRC-DOES-SA !  su SRC-DOES-SU !
    0 DEF-REFUSAL !
+   TORDER-ACTIVE @ TORDER-SCAN-UNKNOWN @ {: oldactive:n oldunknown:n :}
+   1 TORDER-DEPTH +!
+   TORDER-CHECKING TORDER-ACTIVE !  0 TORDER-SCAN-UNKNOWN !
    [: SRC-DOES-BODY ;] catch {: rc:n :}
+   -1 TORDER-DEPTH +!
+   oldactive TORDER-ACTIVE !  oldunknown TORDER-SCAN-UNKNOWN !
    DOES-EFF-CLEAR
    rc 0 <> IF rc SRC-DOES-THREW EXIT THEN
    SRC-DOES-VERDICT @ na nu DOES-REPORT ;
@@ -24191,6 +24261,9 @@ public
    0 ASIG-GRAPH-BASE ! 0 ASIG-GRAPH-GEN ! 0 ASIG-GRAPH-UNIT-OFF !
    0 CK-AOT-STATE !                  \ validation belongs to the current signature pool
    TOKBUF-RESET
+   NULL-PTR TORDER-A !  0 TORDER-U !  TORDER-CHECKING TORDER-KIND !
+   0 TORDER-SCOPE !  0 TORDER-USED !  TORDER-CHECKING TORDER-ACTIVE !
+   0 TORDER-UNCERTAIN !  0 TORDER-SCAN-UNKNOWN !  0 TORDER-DEPTH !
    CHECKER-SWEEP:SWEEP                  \ retire what the image cannot spell
    HIDX-RESET
    TV-SNAP-RESET
@@ -24302,6 +24375,7 @@ package CHECKER-REG
 ' CHECKER-VERIFY-REACH DECLARATIONS CHECKER-OWNER-ABI:VERIFY-REACH-OFF + xt!
 ' CHECKER-SYM-IDENTITY DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SYM-IDENTITY-OFF + xt!
 ' CHECKER-VERIFY-DEFERRED-BODY DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-BODY-OFF + xt!
+' WITH-TICK-ORDER DECLARATIONS CHECKER-OWNER-ABI:WITH-TICK-ORDER-OFF + xt!
 ' TRUST-DECL? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DECL-OFF + xt!
 ' CHECKER-DECLARED-ROW! DECLARATIONS CHECKER-OWNER-ABI:DECLARED-ROW-OFF + xt!
 ' CHECKER-RETRACT-ROWS DECLARATIONS CHECKER-OWNER-ABI:RETRACT-ROWS-OFF + xt!

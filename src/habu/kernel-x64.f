@@ -3003,6 +3003,7 @@ private
    s" executable-build-leave" [: BUILD-LEAVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" set-tier" [: SET-TIER-BODY ;] PRIM
    s" tier@" [: RAX TIER-OFF CELL@,  RAX PUSH, ;] PRIM
+   s" tick-order@" [: RAX ZERO-REG,  RAX PUSH,  RAX PUSH, ;] PRIM
    s" code-origin" [: RSI POP,  RDI POP,  X64PROV:QUERY,  RAX PUSH, ;] PRIM ;
 
 public

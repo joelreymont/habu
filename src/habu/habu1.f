@@ -3599,6 +3599,46 @@ public
 \ selection and for test/tier.f.
 : BTIERFETCH ( -- ) 9 DATA NCOMP-DISPATCH:TIER-CELL LDR,  A G-PUSH ;
 
+\ The same readiness supplies the live tick gate and the verifier's entry
+\ observation. x11 is the installed query, x12 its owner, both zero if absent.
+: C-TICK-QUERY ( -- )
+   LBL LBL LBL {: noquery:label query:label done:label :}
+   11 0 MOVZ,  12 0 MOVZ,
+   \ The cold prefix installs the bridge before its seal watermark exists.
+   9 DATA SEAL-NDICT-CELL LDR,  9 noquery CBZ,
+   \ An executable build and a replacement target bypass the source query.
+   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  9 noquery CBNZ,
+   13 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  13 query CBZ,
+   12 DATA NCOMP-DISPATCH:DECL-CELL LDR,
+   13 12 CMP,  C-NE noquery BCOND,
+   query LBL,
+   \ This is the installed code identity, independent of later name lookup.
+   12 DATA NCOMP-DISPATCH:DECL-CELL LDR,  12 noquery CBZ,
+   11 12 NCOMP-DISPATCH:DECL-TRUSTED-TICK-OFF LDR,
+   11 noquery CBZ,
+   done B,
+   noquery LBL,  11 0 MOVZ,  12 0 MOVZ,
+   done LBL, ;
+
+\ A prospective answer at this boundary: 0 means checking first, 1 means the
+\ trusted gate would run first. The verifier captures it before loading tools.
+: BTICKORDER ( -- )
+   LBL LBL LBL LBL {: next:label checking:label tier:label done:label :}
+   9 DATA PEND-CELL LDR,  9 next CBZ,
+      9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,
+      tier B,
+   next LBL,
+      9 DATA NCOMP-DISPATCH:TIER-CELL LDR,
+   tier LBL,
+   9 checking CBNZ,
+   C-TICK-QUERY
+   11 checking CBZ,
+   9 1 MOVZ,  9 G-PUSH,  12 G-PUSH,
+   done B,
+   checking LBL,
+   9 0 MOVZ,  9 G-PUSH,  9 G-PUSH,
+   done LBL, ;
+
 \ set-preflight ( xt -- ): single-assignment installer for the
 \ checker-owned immediate preflight. `0 set-check` clears the paired protected
 \ cell while reloading the canonical prefix; the checker may then install one live
@@ -4235,6 +4275,7 @@ package ENGINE-EMIT
    s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
    s" set-tier" ['] BSETTIER FPRIM     s" tier@" ['] BTIERFETCH FPRIM-L
+   s" tick-order@" ['] BTICKORDER FPRIM-L
    s" executable-build-enter" ['] BBUILDENTER ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" executable-build-leave" ['] BBUILDLEAVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" code-origin" ['] BCODEORIGIN FPRIM
