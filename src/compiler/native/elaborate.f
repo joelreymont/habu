@@ -2315,6 +2315,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 
 : VALIDATED-FETCH? ( HIR:opcode n -- bool ) {: op:HIR:opcode ix:n :}
    op HIR-OPCODE:LOAD HIR-OPCODE:EQ 0= if false exit then
+   EXACT-SOURCE @ 0= if false exit then
    VW ix TOK-OFF NFETCH:CHECKED? ;
 
 : WORD-CALL? ( IR-ARENA:arena n -- bool )
@@ -3301,11 +3302,18 @@ here CELL 1- and CELL swap - CELL 1- and allot
 : DO-WORD-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
-   r sy HIR-WORD:CALLEE-IN@ r sy HIR-WORD:CALLEE-OUT@
-   r sy HIR-WORD:OUT-GLUE@ {: in:n out:n glue:n :}
+   EXACT-SOURCE @ if
+      ix SITE-CALL {: in:n out:n :}
+      in 0< if E-NELAB-BUNDLE throw then
+      ix SITE-GLUE nip
+   else
+      r sy HIR-WORD:CALLEE-IN@ r sy HIR-WORD:CALLEE-OUT@
+      r sy HIR-WORD:OUT-GLUE@
+   then {: in:n out:n glue:n :}
    r sy HIR-WORD:TERMINAL? if
       ix r sy HIR-WORD:ENTRY@ in STAGE-TERMINAL exit
    then
+   out 0< glue NDICT:GLUE-UNKNOWN = or if E-NELAB-BUNDLE throw then
    ix  r sy HIR-WORD:ENTRY@
    in out glue STAGE-WCALL
    ix out QRESULTS-FILL
@@ -3563,6 +3571,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
 \ still decide whether a check is emitted at all and that the fact matches the
 \ token's width, but neither is passed any more.
 : VALIDATE-FETCH ( n -- ) {: ix:n :}
+   EXACT-SOURCE @ 0= if exit then
    VW ix TOK-OFF NFETCH:AT {: address:n bytes:n width:n :}
    bytes 0= if exit then
    width VW ix TOK-CELLS <> if E-NELAB-BUNDLE throw then

@@ -52,6 +52,8 @@ create NELB-DATA  $4842444546455201 ,  0 ,
 defer NELB-HOOK ( n -- n )
 
 package NELAB-TEST
+public
+ENUM shade dark light ;ENUM
 private
 
 \ ---- bindings ----------------------------------------------------------------
@@ -320,20 +322,54 @@ using NSRC
    BND [: FUN-BODY ;] IR-CTX:WITH-CONTEXT
    6 T= 0 T= 1 T= 1 T= TTRUE ;
 
-: DIRECT-SITE-BODY ( IR-CTX:ctx -- n )
+create DIRECT-SCAN-TEXT 128 allot
+
+: DIRECT-SITE-BODY ( IR-CTX:ctx -- n n n )
    {: c:IR-CTX:ctx :}
+   c HIR-BUILDER {: scan:IR-BUILD:builder :}
+   c scan IR-BUILD:MODULE-KEY 16 NTAPE:NEW {: tp:IR-ARENA:arena :}
+   c scan tp DIRECT-SCAN-TEXT 128 NFEED:BEGIN-UNIT
    s" NELB-OTHER ( n n -- n ) +" CHECK! -1 T=
+   NFEED:END-UNIT {: recorded:IR-ARENA:view verdict:n :}
+   verdict -1 T=
+   recorded NFEED:RECORD-WINDOW
+   1 NDICT:CALL-CELLS 1 T= 2 T=
    s" NELB-DIRECT abs" TEXT!
    c SEALED
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
    c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m m f F-BLK s" hir.wordcall" F-OPC-N ;
+   m f F-BLK {: blk:IR-ID:ir-block-id :}
+   m blk s" hir.wordcall" F-OPC-N
+   m blk s" hir.wordcall" 0 F-OPC-AT {: op:IR-ID:ir-op-id :}
+   m op 1 F-ATTR  m op 2 F-ATTR ;
 
 : DIRECT-SITE-CASE ( -- )
    s" a direct call keeps its model arity after an unrelated checker scan" T-LABEL
    BND [: DIRECT-SITE-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= ;
+   1 T= 1 T= 1 T= ;
+
+: DIRECT-FETCH-BODY ( IR-CTX:ctx -- n n )
+   {: c:IR-CTX:ctx :}
+   NFETCH:RELEASE
+   s" NELB-REC ( ptr NELAB-TEST:shade -- ) @ drop"
+      2dup CHECKER-OWNER:CHECK -1 T=
+   0 NFETCH:CAPTURE
+   37 NFETCH:CHECKED? TTRUE
+   s" NELB-DIRECT-FETCH NELB-DATA          @" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLK {: blk:IR-ID:ir-block-id :}
+   m blk s" hir.wordcall" F-OPC-N
+   m blk s" hir.load" F-OPC-N
+   NFETCH:RELEASE ;
+
+: DIRECT-FETCH-CASE ( -- )
+   s" a direct fetch ignores a recorded validator at its byte offset" T-LABEL
+   BND [: DIRECT-FETCH-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 0 T= ;
 
 \ ---- the two words this suite is refused by -----------------------------------
 \ WHY AN OUT-OF-SCOPE SPELLING IS THE FIXTURE. A body word the dialect models no
@@ -2528,6 +2564,7 @@ public
    BUMP-CASE
    FUN-CASE
    DIRECT-SITE-CASE
+   DIRECT-FETCH-CASE
    BND [: drop UNDEC-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop CHARTOK-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop STRTOK-CASE ;] IR-CTX:WITH-CONTEXT
