@@ -630,14 +630,17 @@ SUITE compiler-x64-chain
    test/compiler/x64-chain.f
 ;SUITE
 
-\ Only these seven whole rows require the ARM host or its tier-0 JIT. The
-\ x86-64 product refuses that tier; mixed tier/compiler rows remain below.
+\ Host rows exercise the ARM host/tier-0 JIT or native x86-64 capture. Mixed
+\ tier/compiler rows remain in the shared registry.
 package STDLIB-GATE
 private
-: ARM-ROWS ( -- )
-   HB-TARGET-LINUX-X86-64? if exit then
-   s" test/gate-arm-cases.f" included ;
-ARM-ROWS
+: HOST-ROWS ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" test/gate-x64-cases.f"
+   else
+      s" test/gate-arm-cases.f"
+   then included ;
+HOST-ROWS
 ;package
 
 SUITE compiler-tic6x-asm
