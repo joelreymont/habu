@@ -19106,7 +19106,7 @@ public
 \ observer must not have to know which class it is holding to know what the
 \ offset means.
 : TOKEN ( ptr u8 n n n -- ) {: a:ptr u:n off:n first:n :}
-   a u off u  a u KIND  first TOKEN-XT
+   a u off u  first 0 = IF a u KIND ELSE K-NAME THEN  first TOKEN-XT
    REC-STEP ;
 
 \ One string literal, as the reader consumed it: the literal's BODY, and the
