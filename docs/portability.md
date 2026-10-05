@@ -359,7 +359,7 @@ Cleanup must be safe after partial initialization, cancellation or exceptions. I
 
 Do not switch `HB-TARGET-*` meanings globally. Preserve legacy predicates for the engine/source window that owns them, while new code receives explicit `HostContext` or `TargetContext`. Prohibit new portable callers of the legacy predicates with a dependency/lint rule. Move each source selector individually behind a resolver adapter, retaining native fixtures.
 
-Master seals every package the native capture ships (bbcac900; `docs/forth.md:198-205`). Every edit to `CTARGET`, `CBIND`, `HIR`, `NBACK`, `NELAB` or `NCOMP` is therefore an engine rebuild under the full gate (the engine requires the compiler at `src/habu/native-runtime.f:114`; [gate.md](gate.md)), and a backend loaded at run time uses public words only. An adapter cannot be loaded into a sealed package on a product engine. All the sealed edits the Wasm path needs go into one commit, P1a (§27), developed on the whitebox image.
+Master seals every package the native capture ships (bbcac900; `docs/forth.md:198-205`). Every edit to `CTARGET`, `CBIND`, `HIR`, `NBACK`, `NELAB` or `NCOMP` is therefore an engine rebuild under the full gate (the engine requires the compiler at `src/habu/native-runtime.f:114`; [gate.md](gate.md)), and a backend loaded at run time uses public words only. An adapter cannot be loaded into a sealed package on a product engine. When the Wasm path needs a sealed package changed, the change is made at that owner and the engine rebuilt.
 
 A transitional non-reentrant backend is marked `ExclusiveSession`. The driver takes an explicit lease, saves only documented state, and prevents unsupported nested entry. This is preferable to claiming reentrancy before globals have been removed.
 
@@ -1388,7 +1388,7 @@ Lint generated source manifests as well as textual `require` edges: dynamic sour
 
 The order below is an implementation dependency graph, not a demand to stop Intel work until a repository-wide redesign finishes. Shared changes land with compatibility adapters and native regression gates. New Windows, TI and Wasm work can proceed behind those interfaces.
 
-P0 and P1 are split in two. P0n pins the native contracts and P0w the Wasm numeric goldens. P1a is the one commit that makes every sealed edit the Wasm path needs (§5.3); P1b is the rest of the action and target model. The Wasm path is P1a -> P6, with P0w alongside; it never waits on P2-P5. Each package names its dot. A bracketed [P1] elsewhere on this page cites the package-build design, not the P1 work package.
+P0 and P1 are split in two. P0n pins the native contracts and P0w the Wasm numeric goldens. P1a adds the Wasm target row (§5.3); P1b is the rest of the action and target model. The Wasm path is P1a -> P6, with P0w alongside; it never waits on P2-P5. Each package names its dot. A bracketed [P1] elsewhere on this page cites the package-build design, not the P1 work package.
 
 | Work package | Concrete deliverable | Depends on | Exit gate |
 |---|---|---|---|
