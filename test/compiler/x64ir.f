@@ -80,11 +80,12 @@ private
    b ;
 
 \ ---- the registry row --------------------------------------------------------
-\ Loading the low-level dialect does not publish a native pass provider. The
-\ pure capability predicate still answers for the machine it builds for.
+\ Loading the low-level dialect does not publish a native pass provider on an
+\ ARM host. The native x64 engine already has its provider registered.
 : REGISTRY-CASE ( -- )
-   s" loading the dialect does not publish incomplete native passes" T-LABEL
-   CTARGET-ARCH:X86-64 NBACK:REGISTERED? TFALSE
+   s" provider registration matches the native host" T-LABEL
+   CTARGET-ARCH:X86-64 NBACK:REGISTERED?
+   HB-TARGET-LINUX-X86-64? if TTRUE else TFALSE then
    CTR X64BACK:SERVES? TTRUE
    s" an architecture with no backend loaded is refused by the registry" T-LABEL
    [: PCTR NBACK:LOWERS? drop ;] E-CTGT-UNLOADED TTHROWSQ ;
