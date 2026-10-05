@@ -348,12 +348,10 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
 \ RETRACT): the observer's CHECK! of EAUTH-CB-LATER while EAUTH-CB-OUTER
 \ compiles hook-less is refused E-NCOMP-STATE and records nothing, the
 \ observer's throw refuses the definition, and EAUTH-CB-BEFORE, recorded
-\ before, stays. The observer acts only while CB-ARMED is set, so later
+\ before, stays. The observer is scoped to this definition, so later
 \ definitions compile.
-variable CB-ARMED
 : CB-OBSERVE ( NART:emission n n n -- )
    {: e:NART:emission idx:n fn:n size:n :}
-   CB-ARMED @ 0= if exit then
    [: s" EAUTH-CB-LATER ( n -- n )" JUDGE drop ;] E-NCOMP-STATE TTHROWSQ
    7329 throw ;
 : CB-FAIL ( -- ) s" : EAUTH-CB-OUTER ( n -- n ) 1 + ;" evaluate-closed ;
@@ -406,9 +404,7 @@ variable CB-ARMED
    s" EAUTH-PRIOR-LATER" SIG-MIN-IN 1 T=
    s" a callback's scan while a definition compiles is refused and records nothing" T-LABEL
    s" EAUTH-CB-BEFORE ( n -- n )" JUDGE -1 T=
-   1 CB-ARMED !
    UNCHECKED+ ['] CB-RUN catch UNCHECKED- 7329 T=
-   0 CB-ARMED !
    s" EAUTH-CB-OUTER" EFFECT-QUERY TFALSE
    s" EAUTH-CB-LATER" EFFECT-QUERY TFALSE
    s" EAUTH-CB-BEFORE" SIG-MIN-IN 1 T=
@@ -455,14 +451,11 @@ variable CB-ARMED
 \ definitions put where the cut one stood: VERIFY's predictions for a word it
 \ defines would follow that record, and a fresh generates: would be refused as
 \ a second row. generates: is a top-level word no checked body names, so the
-\ observer calls it through a typed cell. Each observer acts once, when armed.
+\ observer calls it through a typed cell inside one publication scope.
 TYPED-VARIABLE GENERATES-XT [ -- ]
 ' generates: GENERATES-XT !
-variable GENERATES-ARMED
 : GENERATES-OBSERVE ( NART:emission n n n -- )
    {: e:NART:emission idx:n fn:n size:n :}
-   GENERATES-ARMED @ 0= if exit then
-   0 GENERATES-ARMED !
    [: GENERATES-XT @ execute ;] E-NCOMP-STATE TTHROWSQ
    7329 throw ;
 
@@ -489,7 +482,6 @@ variable GENERATES-ARMED
 
 \ A refused callback scan keeps the pending definition's publication latch
 \ and its borrowed source binding, on checked and explicitly unjudged scans.
-variable LATCH-ARMED
 : LATCH-BINDING ( -- )
    1 CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
    size CHECKER-OWNER-ABI:BOUND-CELLS cells T=
@@ -497,8 +489,6 @@ variable LATCH-ARMED
       s" +" XREF-FIND XREF-START T= ;
 : LATCH-OBSERVE ( NART:emission n n n -- )
    {: e:NART:emission idx:n fn:n size:n :}
-   LATCH-ARMED @ 0= if exit then
-   0 LATCH-ARMED !
    CHECKER-OWNER:BINDING-WINDOW {: owner:ptr serial:n unjudged:bool :}
    LATCH-BINDING
    [: s" EAUTH-LATCH-CB ( -- n ) 1" JUDGE drop ;] E-NCOMP-STATE TTHROWSQ
@@ -520,7 +510,6 @@ variable LATCH-ARMED
    s" : EAUTH-WIN-MAKE-U ( -- ) parse-name 2drop ;" evaluate-closed
    s" a callback's generates: while a certified definition compiles is refused" T-LABEL
    s" EAUTH-WIN-MAKE-H EAUTH-WIN-PRED" PREDICT {: h1:n h2:n h3:n :}
-   1 GENERATES-ARMED !
    ['] WIN-HOOKED-RUN catch 7329 T=
    s" : EAUTH-WIN-FILL-H1 ( -- ) ;" evaluate-closed
    s" : EAUTH-WIN-FILL-H2 ( -- bool ) true ;" evaluate-closed
@@ -529,7 +518,6 @@ variable LATCH-ARMED
    s" EAUTH-WIN-MAKE-H EAUTH-WIN-PRED" PREDICT REFUSED T= REFUSED T= ACCEPTED T=
    s" a callback's generates: while a hook-less definition compiles is refused" T-LABEL
    s" EAUTH-WIN-MAKE-U EAUTH-WIN-PRED" PREDICT {: u1:n u2:n u3:n :}
-   1 GENERATES-ARMED !
    UNCHECKED+ ['] WIN-HOOKLESS-RUN catch UNCHECKED- 7329 T=
    s" : EAUTH-WIN-FILL-U1 ( -- ) ;" evaluate-closed
    s" : EAUTH-WIN-FILL-U2 ( -- bool ) true ;" evaluate-closed
@@ -538,12 +526,10 @@ variable LATCH-ARMED
    s" EAUTH-WIN-MAKE-U EAUTH-WIN-PRED" PREDICT REFUSED T= REFUSED T= ACCEPTED T=
    s" a callback's scan cannot reset the latch its definition publishes" T-LABEL
    s" : EAUTH-LATCH-PLAIN ( n n -- n ) + ;" evaluate-closed
-   1 LATCH-ARMED !
    ['] LATCH-OBSERVE [: s" : EAUTH-LATCH-KEPT ( n n -- n ) + ;" evaluate-closed ;] NPUB:WITH-UNIT
    s" EAUTH-LATCH-PLAIN" DICT-MIN 0 T<>
    s" EAUTH-LATCH-KEPT" DICT-MIN  s" EAUTH-LATCH-PLAIN" DICT-MIN T=
    s" a refused callback scan keeps an explicitly unjudged binding" T-LABEL
-   1 LATCH-ARMED !
    ['] LATCH-OBSERVE [: s" TRUSTED: EAUTH-LATCH-UNJUDGED ( n n -- n ) + ;" evaluate-closed ;] NPUB:WITH-UNIT
    REPLAY+ s" EAUTH-LATCH-CB" EFFECT-QUERY TFALSE REPLAY- ;
 
@@ -565,22 +551,18 @@ PRODUCT eauth-reg-pr 0 FIELD x n ;PRODUCT
 private
 TFAM:TFAM-N@ 1 - constant REG-FAM
 TYPED-VARIABLE REG-XT [ -- ]
-variable REG-ARMED
 variable REG-TX
 variable REG-SCH
 : REG-OBSERVE ( NART:emission n n n -- )
    {: e:NART:emission idx:n fn:n size:n :}
-   REG-ARMED @ 0= if exit then
-   0 REG-ARMED !
    [: REG-XT @ execute ;] E-NCOMP-STATE TTHROWSQ
    7329 throw ;
 : REG-OUTER ( -- ) s" : EAUTH-REG-OUTER ( n n -- n ) + ;" evaluate-closed ;
-: REG-ARM ( [ -- ] -- ) REG-XT !  1 REG-ARMED ! ;
 \ The write is refused, and so is the definition it ran under.
 : REG-COMPILE ( -- ) ['] REG-OBSERVE ['] REG-OUTER NPUB:WITH-UNIT ;
-: REG-RUN ( [ -- ] -- ) REG-ARM ['] REG-COMPILE catch 7329 T= ;
+: REG-RUN ( [ -- ] -- ) REG-XT ! ['] REG-COMPILE catch 7329 T= ;
 : REG-RUN-HOOKLESS ( [ -- ] -- )
-   REG-ARM UNCHECKED+ ['] REG-COMPILE catch UNCHECKED- 7329 T= ;
+   REG-XT ! UNCHECKED+ ['] REG-COMPILE catch UNCHECKED- 7329 T= ;
 \ A field frame opened before the definition compiles, as a declaration's is.
 : REG-TX-OPEN ( -- ) TYPE-FIELD-OWNER:OPEN REG-TX ! ;
 : REG-TX-PREPARE-RC ( -- n ) [: REG-TX @ TYPE-FIELD-OWNER:PREPARE drop ;] catch ;
