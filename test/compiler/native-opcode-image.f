@@ -4,6 +4,7 @@ require src/compiler/native/abi.f
 require src/compiler/native/hir.f
 require src/compiler/native/a64ir.f
 require src/compiler/ir/symbol.f
+require test/compiler/native-chain-fixture.f
 
 package NATIVE-OPCODE-IMAGE
 private
@@ -72,7 +73,7 @@ public
 : ARTIFACT$ ( -- ptr u8 n )
    0 ART-U !
    NABI:BINDING [: HIR-BODY ;] IR-CTX:WITH-CONTEXT
-   NABI:BINDING [: A64-BODY ;] IR-CTX:WITH-CONTEXT
+   NFIX:BINDING [: A64-BODY ;] IR-CTX:WITH-CONTEXT
    ART ART-U @ ;
 
 : PRINT ( -- )
