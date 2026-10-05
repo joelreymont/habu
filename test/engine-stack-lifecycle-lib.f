@@ -143,6 +143,10 @@ variable ERRLEN
 \ test/protection-span.f and test/runtime-regression-test.f already pin it.
 67 constant CHILD-UNCAUGHT-RC
 
+: REFUSED-NATIVE-RSTACK ( ptr u8 n -- )
+   CHILD-RC CHILD-UNCAUGHT-RC T=
+   ERR ERRLEN @ S\" ncomp: cannot compile EDGE\nhb: uncaught throw code -8304\n" T$= ;
+
 \ run-in-stack refuses an extent that is not a guarded mapping -- a
 \ create/allot buffer, a null or unaligned base, a capacity that is zero or
 \ not a STACK-ABI:PAGE-BYTES multiple, or a wrapping extent -- by throwing
@@ -181,7 +185,9 @@ variable ERRLEN
    UNGUARDED-REFUSED
    OUTLEN @ 0 T= ;
 
-: PRIMITIVE-BOUNDARIES ( -- )
+\ Tier-0 words use the guarded VM return mapping. These source lines call the
+\ primitive from the interpreter, so the exact slot accounting is ARM-only.
+: PRIMITIVE-RETURN-ARM ( -- )
    s" last two return-stack slots" T-LABEL
    s" STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = ."
    CHILD-RC 0 T=
@@ -190,14 +196,33 @@ variable ERRLEN
    s" STACK-ABI:RETURN-CELLS 1 - data-base RSP-CELL + ! 11 22 2>r" REFUSED-RETURN
    s" whole return transfer needs two live slots" T-LABEL
    s" 1 data-base RSP-CELL + ! 2r>" REFUSED-RETURN
-   s" empty return-stack read" T-LABEL s" 2r>" REFUSED-RETURN
+   s" empty return-stack read" T-LABEL s" 2r>" REFUSED-RETURN ;
+
+\ Tier-1 linear return transfers live in the compiler's value vector. Even
+\ with only one VM return slot free, 2>r/2r> leave RSP unchanged; an unmatched
+\ pop is refused while elaborating, before any native word can run.
+: PRIMITIVE-RETURN-X64 ( -- )
+   s" native pair transfer preserves values and VM return depth" T-LABEL
+   s" variable OLD-RSP TRUSTED: EDGE ( -- ) data-base RSP-CELL + @ OLD-RSP ! STACK-ABI:RETURN-CELLS 1 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 1 - = . OLD-RSP @ data-base RSP-CELL + ! ; EDGE"
+   CHILD-RC 0 T=
+   OUT OUTLEN @ S\" 22\n11\n-1\n" T$=
+   s" native return pop without a value is refused" T-LABEL
+   s" TRUSTED: EDGE ( -- ) 2r> 2drop ; EDGE" REFUSED-NATIVE-RSTACK ;
+
+: PRIMITIVE-BOUNDARIES ( -- )
+   HB-TARGET-LINUX-X86-64? if PRIMITIVE-RETURN-X64 else PRIMITIVE-RETURN-ARM then
    s" empty data-stack adjustment" T-LABEL
    s" drop" S\" hb: interpret stack underdepth: drop\n" NAMED-UNDERDEPTH
    s" the last loop frame" T-LABEL
    s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES NEST"
    CHILD-RC 0 T=
    s" one loop frame past the region" T-LABEL
-   s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES 1 + NEST"
-   REFUSED-LOOP ;
+   HB-TARGET-LINUX-X86-64? if
+      s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES 1 + NEST data-base LOOPSP-CELL + @ ."
+      CHILD-RC 0 T= OUT OUTLEN @ S\" 0\n" T$=
+   else
+      s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES 1 + NEST"
+      REFUSED-LOOP
+   then ;
 
 ;package

@@ -45,9 +45,10 @@ create LIT-SRC LIT-SRC-CAP allot
 \ makes the fall-through to `;` unreachable -- a bare tail call (`1 recurse ;`,
 \ no AGAIN) is rejected at 'recurse' for exactly that residual. Verified
 \ against the checker on the current engine. The legacy compiler stores return
-\ and DO frames in the guarded VM stacks. Native compilation keeps these values
-\ in HIR instead; on the tier-1-only Intel engine, Y and Z exhaust the machine
-\ call stack and must still produce a crash dump on its alternate signal stack.
+\ and DO frames in the guarded VM stacks. On Intel, Y's live >r value across
+\ recursion fills the guarded user return stack; native DO frames live in HIR,
+\ so Z exhausts the machine call stack and reports on its alternate signal
+\ stack.
 : MACHINE-OVERFLOW ( ptr u8 n -- )
    CHILD-RC 134 T=
    ERR ERRLEN @ s" habu-crash regs" T-PREFIX= ;
@@ -57,7 +58,7 @@ create LIT-SRC LIT-SRC-CAP allot
    s" : X ( n -- ) begin dup recurse again ; 0 X" REFUSED-DATA
    s" unbounded return-stack recursion overflows (return)" T-LABEL
    s" : Y ( -- ) 1 >r recurse r> drop ; Y"
-   HB-TARGET-LINUX-X86-64? if MACHINE-OVERFLOW else REFUSED-RETURN then
+   REFUSED-RETURN
    s" unbounded DO-frame recursion overflows (loop)" T-LABEL
    s" : Z ( -- ) 1 0 do recurse loop ; Z"
    HB-TARGET-LINUX-X86-64? if MACHINE-OVERFLOW else REFUSED-LOOP then ;
