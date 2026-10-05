@@ -3,8 +3,8 @@
 \ package-scope!, def-open, body-append, trust-sig!, created-sig! and
 \ def-close (src/habu/prims.f, "the definition writers"), and the replay
 \ writers the checker's overlay replays a package through: replay-open,
-\ replay-close, replay-widn!, replay-record and record-wid! (src/habu/prims.f,
-\ "the replay writers").
+\ replay-close, replay-widn!, replay-record, record-wid! and replay-private
+\ (src/habu/prims.f, "the replay writers").
 \
 \ Each case forks a child that hands its source to `evaluate`, the engine's own
 \ interpret loop, and judges the child by its status and its fd 1. A row is
@@ -234,7 +234,8 @@ private
    s" replay-close" s" EWX ( -- ) replay-close" OWNER-ONLY
    s" replay-widn!" s" EWX ( n -- ) replay-widn!" OWNER-ONLY
    s" replay-record" s" EWX ( ptr u8 n n -- ) replay-record" OWNER-ONLY
-   s" record-wid!" s" EWX ( n n -- ) record-wid!" OWNER-ONLY ;
+   s" record-wid!" s" EWX ( n n -- ) record-wid!" OWNER-ONLY
+   s" replay-private" s" EWX ( n bool -- ) replay-private" OWNER-ONLY ;
 
 \ A flagged row answers `using`, a `package` reopen and a qualified name. The
 \ reopen must find this row: a second row would hold X, and `using NSA` and
@@ -346,7 +347,8 @@ private
    SB-RESET
    s" 0 set-check : EWR-OPEN ( -- ) replay-open ; : EWR-CLOSE ( -- ) replay-close ; " SB-APPEND
    s" : EWR-WIDN ( n -- ) replay-widn! ; " SB-APPEND
-   s" : EWR-REC ( ptr u8 n n -- ) replay-record ; : EWR-WID ( n n -- ) record-wid! ; " SB-APPEND ;
+   s" : EWR-REC ( ptr u8 n n -- ) replay-record ; : EWR-WID ( n n -- ) record-wid! ; " SB-APPEND
+   s" : EWR-PRI ( n bool -- ) replay-private ; " SB-APPEND ;
 
 : REPLAY$ ( ptr u8 n -- ptr u8 n )
    CALLERS SB-APPEND SB$ ;
@@ -427,7 +429,8 @@ private
    s" EWR-OPEN EW-LIVE parse-name RX get-current EW-AT EWR-REC" TASK-LIVE REPLAY-REFUSES
    s" EWR-OPEN EW-LIVE EW-WIDN EW-AT EWR-WIDN" TASK-LIVE REPLAY-REFUSES
    s" : S ( -- ) ; ndict@ 1- EWR-OPEN EW-LIVE -2 swap EW-AT EWR-WID" TASK-LIVE REPLAY-REFUSES
-   s" EWR-OPEN EW-LIVE EW-AT EWR-CLOSE" TASK-LIVE REPLAY-REFUSES ;
+   s" EWR-OPEN EW-LIVE EW-AT EWR-CLOSE" TASK-LIVE REPLAY-REFUSES
+   s" parse-name NSG false EW-NS EWR-OPEN EW-LIVE true EW-AT EWR-PRI" TASK-LIVE REPLAY-REFUSES ;
 
 \ replay-open refuses an open overlay and a pending definition; replay-record
 \ refuses no overlay, a namespace or retired wid, a pending definition and
@@ -471,6 +474,29 @@ private
    s" : S ( -- ) ; EWR-OPEN ndict@ 1- ndict! EW-AT EWR-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
    s" EWR-OPEN cp@ 4 - cp! EW-AT EWR-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES ;
 
+\ replay-private gives a namespace row with no private wid, as a qualified
+\ definition leaves one, a fresh wid: package-scope! opens the row on it and a
+\ replay record binds there. replay-close puts WIDN back but leaves a row from
+\ before the overlay as it is, so the owner takes the wid back (false) first;
+\ the close then finds the scope as it was and the row's private wid 0 again.
+\ The writer refuses no overlay, an index at or past NDICT (unsigned) and a
+\ row that is not a namespace row; true refuses a row with a private wid, false
+\ one whose private wid is older than the overlay, 0 included.
+: REPLAY-GRANTS ( -- )
+   CALLERS
+   s" parse-name NSG false EW-NS EW-MARK EWR-OPEN dup true EWR-PRI dup get-current EW-SCOPE " SB-APPEND
+   s" EW-PRI set-current parse-name H get-current EWR-REC parse-name H get-current search-wl 0<> . " SB-APPEND
+   s" dup false EWR-PRI EWR-CLOSE EW-SAME XREF-REC XREF-PKG-PRIVATE . EW-AT" SB-APPEND
+   s" replay-private opens a public-only row and the close finds the row as it was"
+   SB$ s\" -1\n0\n@" 0 RUNS-AS
+   s" parse-name NSG false EW-NS true EW-AT EWR-PRI" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
+   s" EWR-OPEN ndict@ true EW-AT EWR-PRI" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
+   s" EWR-OPEN -1 true EW-AT EWR-PRI" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
+   s" : S ( -- ) ; ndict@ 1- EWR-OPEN true EW-AT EWR-PRI" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
+   s" parse-name NSP true EW-NS EWR-OPEN true EW-AT EWR-PRI" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
+   s" parse-name NSP true EW-NS EWR-OPEN false EW-AT EWR-PRI" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
+   s" parse-name NSG false EW-NS EWR-OPEN false EW-AT EWR-PRI" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES ;
+
 public
 
 : EW-RUN ( -- )
@@ -491,6 +517,7 @@ public
    s" the replay writers refuse a live task" T-LABEL REPLAY-LIVE T-NEXT
    s" replay-open and replay-record refuse their corrupting inputs" T-LABEL REPLAY-OPEN-RECORD T-NEXT
    s" record-wid! and replay-close refuse their corrupting inputs" T-LABEL REPLAY-WID-CLOSE T-NEXT
+   s" replay-private grants a private wid, takes it back and refuses the rest" T-LABEL REPLAY-GRANTS T-NEXT
    T-REPORT ;
 
 ;package

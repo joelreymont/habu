@@ -1734,7 +1734,7 @@ public
 \ row refuses, and the registration is what ENGINE-PRIMS:COMPLETE needs
 \ meanwhile.
 \ unit-compile-run arms the unit hook that interpreter calls, so it refuses too.
-\ The checker overlay binds names through scope-find, so its five replay
+\ The checker overlay binds names through scope-find, so its six replay
 \ writers refuse beside it.
 : CONTROL, ( -- )
    s" execute" [: RAX POP,  CALLABLE,  RAX ASM-SINK ENC-CALL-REG ;] PRIM
@@ -1764,6 +1764,7 @@ public
    s" replay-widn!" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" replay-record" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" record-wid!" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" replay-private" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" scope-kind?" [: RAX POP,  RAX ZERO-REG,  RAX PUSH, ;] PRIM ;
 
 \ ---- atomics and publication rows --------------------------------------------

@@ -266,11 +266,11 @@ registers nothing for `ptr-cell-mark`, and a static seed image with no loader
 slot cannot reach libc for `realpath`. Nothing in the native gate notices the
 omission, because the native gate never builds a stage0; the periodic check
 below is what catches it, as the stage0 build dying on the bare token name.
-`src/core/checker.f`, which a seed-built image compiles at boot, calls the
-seven rows package `CHECKER-OVERLAY` owns: `namespace-record`,
-`package-scope!` and the five replay writers (`replay-open`, `replay-close`,
-`replay-widn!`, `replay-record`, `record-wid!`). Stage0 registers them owned
-(`EMIT-OVERLAY-PRIMS`) with one body that prints
+`src/core/checker.f`, which a seed-built image compiles at boot, is the owner
+of the eight rows package `CHECKER-OVERLAY` types: `namespace-record`,
+`package-scope!` and the six replay writers (`replay-open`, `replay-close`,
+`replay-widn!`, `replay-record`, `record-wid!`, `replay-private`). Stage0
+registers them owned (`EMIT-OVERLAY-PRIMS`) with one body that prints
 `hb: stage0 has no checker overlay` and exits 76, as `src/habu/kernel-x64.f`
 `REFUSE-BODY` does for its absent rows: a seed-built image never opens the
 overlay, and the recovery check passes with those bodies. Without the rows its

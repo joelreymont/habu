@@ -2404,9 +2404,9 @@ HB-TARGET-LINUX? [IF]
    s" tok-imm?" ['] BTOKIMM FPRIM
    s" scope-kind?" ['] BSCOPE-KIND FPRIM ;
 
-\ src/core/checker.f, which every seed-built image compiles at boot, calls the
-\ seven rows src/habu/prims.f registers for package CHECKER-OVERLAY, so the seed
-\ registers them owned and EMIT-COMPILE-CALL admits those checked calls. No
+\ src/core/checker.f, which every seed-built image compiles at boot, owns the
+\ eight rows src/habu/prims.f registers for package CHECKER-OVERLAY, so the seed
+\ registers them owned and EMIT-COMPILE-CALL admits checked calls to them. No
 \ seed-built image opens the overlay: stage0 only compiles stage2, and the
 \ recovery gates replay nothing (docs/bootstrap.md). Each body says so on fd 2
 \ and exits 76, as src/habu/kernel-x64.f REFUSE-BODY does for its absent rows.
@@ -2424,7 +2424,8 @@ HB-TARGET-LINUX? [IF]
    s" replay-close" ['] B-NO-OVERLAY PRIM-OWNED-WID FPRIM-WID
    s" replay-widn!" ['] B-NO-OVERLAY PRIM-OWNED-WID FPRIM-WID
    s" replay-record" ['] B-NO-OVERLAY PRIM-OWNED-WID FPRIM-WID
-   s" record-wid!" ['] B-NO-OVERLAY PRIM-OWNED-WID FPRIM-WID ;
+   s" record-wid!" ['] B-NO-OVERLAY PRIM-OWNED-WID FPRIM-WID
+   s" replay-private" ['] B-NO-OVERLAY PRIM-OWNED-WID FPRIM-WID ;
 
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS

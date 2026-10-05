@@ -775,7 +775,7 @@ ETRUSTED-ONLY!
 EPRIM: def-close EPRIM;
 ETRUSTED-ONLY!
 \ ---- the replay writers ------------------------------------------------------
-\ Only package CHECKER-OVERLAY's rows type these five. With no global row, a
+\ Only package CHECKER-OVERLAY's rows type these six. With no global row, a
 \ checked caller elsewhere is E-UNDEFINED, and a TRUSTED: body elsewhere binds
 \ one at tier 0 only: tier 1 has no row to build its call from. A refusal
 \ exits: 79 while a task is live and 83 for every other.
@@ -790,6 +790,12 @@ ETRUSTED-ONLY!
 \ wid. It refuses no overlay, an index at or above NDICT, unsigned, a
 \ namespace row and wid -1. A seeded primitive's record retires as the live
 \ `undefine` retires it.
+\ replay-private ( n bool -- ) namespace index, flag: give a row with no
+\ private wid a fresh one (true), as `package` does for a row a qualified
+\ definition made, or take back the one given (false). It refuses no overlay,
+\ an index at or above NDICT, unsigned, and a row that is not a namespace row;
+\ true a row with a private wid, false one whose private wid is older than the
+\ overlay.
 \ replay-close ( -- ): zero the records published since replay-open, put the
 \ saved state back and zero the band. It refuses no overlay, a pending
 \ definition, NDICT below the saved count or above the highest count
@@ -802,6 +808,7 @@ EPPRIM: CHECKER-OVERLAY replay-close ECLOSE-PRIVATE
 EPPRIM: CHECKER-OVERLAY replay-widn! PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: CHECKER-OVERLAY replay-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: CHECKER-OVERLAY record-wid! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY replay-private PE-N PE-IN PE-F PE-IN ECLOSE-PRIVATE
 EPRIM: SEAL-CAPTURE   EPRIM;
 EPRIM: seal-captured? PE-F PE-OUT EPRIM;
 EPRIM: SEAL-FRIEND    EPRIM;

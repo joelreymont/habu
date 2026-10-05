@@ -3956,7 +3956,7 @@ public
 
 \ ---- the definition writers --------------------------------------------------
 \ The bodies of the nine rows src/habu/prims.f specifies under "the definition
-\ writers" and of the five replay writers after them, registered with
+\ writers" and of the six replay writers after them, registered with
 \ ENGINE-PRIMS:GLOBAL-INT-WID in EMIT-PRIMITIVE-SECTIONS. Each checks
 \ everything before it writes, and a refusal exits the process, so no reader
 \ ever sees a half-written row.
@@ -4196,7 +4196,7 @@ variable LREPLAYTRAP
    done LBL, ;
 
 \ ---- the checker overlay's replay writers ---------------------------------
-\ The five rows src/habu/prims.f types only for package CHECKER-OVERLAY.
+\ The six rows src/habu/prims.f types only for package CHECKER-OVERLAY.
 \ replay-open saves the scope into the REPLAY-SCOPE band and replay-close puts
 \ it back, so no caller hands the engine a state to restore; the one mark a
 \ caller hands, replay-widn!'s, the band bounds below. While the latch is
@@ -4286,18 +4286,53 @@ variable LREPLAYTRAP
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
+\ replay-private ( n bool -- ) namespace index, flag: true gives the row a
+\ fresh private wid, as `package` gives one to a row a qualified definition
+\ made (src/habu/packages.f PKG-REOPEN); false takes back the one it gave.
+\ replay-close puts WIDN back but nothing of a row below the saved NDICT, so
+\ the owner logs each grant and takes it back before the close. It refuses no
+\ overlay, an index at or above NDICT, unsigned, and a row that is not a
+\ namespace row; true refuses a row with a private wid, and false one whose
+\ private wid is below the saved WIDN, 0 included: a wid from before the
+\ overlay.
+: REPLAY-PRIVATE ( -- )
+   LBL LBL LBL {: bad give done :}
+   B-TASK-LIVE-GUARD
+   13 G-POP  3 G-POP                                  \ x13 = the flag, x3 = the index
+   8 BAND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
+   3 NDICT CMP,  C-CS bad BCOND,
+   9 3 REC-AT,
+   14 9 40 LDR,  15 DICT-WL:NAMESPACE invert MOVN,  14 15 CMP,  C-NE bad BCOND,
+   14 9 8 LDR,
+   13 give CBNZ,
+      15 8 REPLAY-SCOPE:WIDN BAND-OFF LDR,  14 15 CMP,  C-CC bad BCOND,
+      REC-SPAN,
+      14 0 MOVZ,  14 9 8 STR,
+      PROT-EMIT:LCLOSE LABEL@ BL,
+      done B,
+   give LBL,
+   14 bad CBNZ,
+   REC-SPAN,
+   14 DATA WIDN-CELL LDR,  14 9 8 STR,
+   14 14 1 ADDI,  14 DATA WIDN-CELL STR,
+   PROT-EMIT:LCLOSE LABEL@ BL,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
 \ replay-close ( -- ): every check comes before the first store. It refuses
 \ NDICT below the saved count or above HW, CP below the saved CP and WIDN below
 \ the saved WIDN; then it zeroes the overlay's records, puts NDICT, CP and the
 \ scope back and zeroes the band, the latch with it.
 \ The WIDN refusal is defensive: no unforged path reaches it. Every engine
 \ writer of WIDN but replay-widn! raises it (wordlist, package,
-\ namespace-record, namespace-private, a qualified definition's new wordlist,
-\ the AOT seed's window), replay-widn! lowers it no further than the saved
-\ WIDN, no recovery puts it back, the cold start sets it before any source
-\ runs, and a raw store to WIDN-CELL or to the band exits 83 after the seal. It
-\ keeps a WIDN the overlay did not leave from being restored over, as the NDICT
-\ and CP checks do.
+\ namespace-record, namespace-private, replay-private, a qualified definition's
+\ new wordlist, the AOT seed's window), replay-widn! lowers it no further than
+\ the saved WIDN, no recovery puts it back, the cold start sets it before any
+\ source runs, and a raw store to WIDN-CELL or to the band exits 83 after the
+\ seal. It keeps a WIDN the overlay did not leave from being restored over, as
+\ the NDICT and CP checks do.
 : REPLAY-CLOSE ( -- )
    LBL LBL {: bad done :}
    B-TASK-LIVE-GUARD
@@ -4328,10 +4363,11 @@ variable LREPLAYTRAP
 \ replay-widn! ( n -- ): put WIDN back to N, a mark the owner read while the
 \ overlay was open, as a rollback inside the overlay drops what it made since
 \ the mark (src/core/checker.f CHECKER-OVERLAY ROLLBACK). The records ndict!
-\ drops held every wid at or above N, so none is handed out twice. It refuses
-\ no overlay, N below the saved WIDN, which would hand out again a wid from
-\ before the overlay, and N above WIDN, both compared unsigned. A mark is never
-\ below the saved WIDN, so replay-close's WIDN check keeps holding.
+\ drops and the private wids replay-private takes back held every wid at or
+\ above N, so none is handed out twice. It refuses no overlay, N below the
+\ saved WIDN, which would hand out again a wid from before the overlay, and N
+\ above WIDN, both compared unsigned. A mark is never below the saved WIDN, so
+\ replay-close's WIDN check keeps holding.
 : REPLAY-WIDN ( -- )
    LBL LBL {: bad done :}
    B-TASK-LIVE-GUARD
@@ -13434,6 +13470,7 @@ package ENGINE-EMIT
    s" replay-widn!" ['] DEFWRITE:REPLAY-WIDN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-record" ['] DEFWRITE:REPLAY-RECORD ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" record-wid!" ['] DEFWRITE:RECORD-WID ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" replay-private" ['] DEFWRITE:REPLAY-PRIVATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM FPRIM

@@ -1333,10 +1333,10 @@ variable SZA-I
 \ REPLAY-SCOPE). replay-close puts NDICT, CP and WIDN back where replay-open
 \ found them, and a rollback inside the overlay puts them back to its frame's
 \ marks (src/core/checker.f CHECKER-OVERLAY ROLLBACK, replay-widn! for WIDN),
-\ so between open and close only the overlay's own writers,
-\ namespace-record and replay-record, may grow them: a record another writer
-\ appended would be dropped with the overlay's, and a wid it took handed out
-\ again. Every other writer runs GUARD, before it writes anything: LQUALIFYDEF
+\ so between open and close only the overlay's own writers, namespace-record,
+\ replay-record and replay-private, may grow them: a record another writer
+\ appended would be dropped with the overlay's and a wid it took handed out
+\ again. Every other writer runs GUARD before it writes anything: LQUALIFYDEF
 \ (each named definer, both tiers), `package` making a row or a missing
 \ private wid, EXPORT, `wordlist`, and the writer primitives def-open,
 \ alias-record, namespace-private and native-unit-publish. ndict-append needs

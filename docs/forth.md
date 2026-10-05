@@ -50,13 +50,12 @@ lives here; build, test and environment rules live in
   tiers, where no checker decides: tier 1 reports the global row's
   `E-CAP-TRUSTED`, as it reports every unjudged verdict, and compiles it.
   `namespace-record` and `package-scope!` are `CHECKER-OVERLAY`'s; so are
-  `replay-open`, `replay-close`, `replay-widn!`, `replay-record` and
-  `record-wid!`, which no global row types: elsewhere a checked caller is
-  `E-UNDEFINED`, and a `TRUSTED:` body binds one at tier 0 only (tier 1
-  cannot compile it);
-  `source-unit-run`'s `SOURCE-ROOT` row is trusted-only, so no checked caller
-  is admitted, inside `SOURCE-ROOT` included: a `TRUSTED:` body or unchecked
-  tier-0 code calls it.
+  `replay-open`, `replay-close`, `replay-widn!`, `replay-record`,
+  `record-wid!` and `replay-private`, which no global row types: elsewhere a
+  checked caller is `E-UNDEFINED`, and a `TRUSTED:` body binds one at tier 0
+  only (tier 1 cannot compile it); `source-unit-run`'s `SOURCE-ROOT` row is
+  trusted-only, so no checked caller is admitted, inside `SOURCE-ROOT`
+  included: a `TRUSTED:` body or unchecked tier-0 code calls it.
   `test/owner-access.f` and `test/prim-owner-scope.f` pin the rule.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
