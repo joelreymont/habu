@@ -145,7 +145,13 @@ $348 constant EFFECT-STACK-STABLE-OFF
 $350 constant BINDING-WINDOW-OFF
 \ The source pre-pass reports a definition left to the run.
 $358 constant VERIFY-DEFERRED-BODY-OFF
-\ Four reserved owner calls, $360 to $378, remain absent.
+\ Navigation (src/core/checker.f): the verifier arms a named declaration's
+\ location around its registrar (CHECKER-DECL-AT!, CHECKER-DECL-AT-OFF) and
+\ receives the uses a scope's checks bind (CHECKER-WITH-USES).
+$360 constant VERIFY-DECL-ARM-OFF
+$368 constant VERIFY-DECL-DISARM-OFF
+$370 constant VERIFY-USES-OFF
+\ One reserved owner call, $378, remains absent.
 \ The source verifier's registrar (src/core/checker.f TRUST-DECL?): TRUST-DECL's
 \ registration, answering whether it retained the row, so the verifier reports
 \ only the declarations whose rows were kept (src/habu/verify-source.f

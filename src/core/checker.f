@@ -6481,7 +6481,134 @@ TRUSTED: USIGS-CELL-AT ( n -- ptr a )
 : USIGS-ALLOC ( n -- ptr u8 )
    map-anon 0 <> IF drop s" checker: user sigs mmap failed" 76 die THEN ;
 
+\ ---- navigation: where a named declaration was written ----------------------
+\ The armed location (CHECKER-DECL-AT!) is the declaring token of the statement
+\ being registered: its file visit and byte range. Arming stamps nothing: a
+\ named registrar attaches it to the record it retained (DL-TAKE). DECL-LOCS
+\ holds one row per located record, (offset, visit, start, end), ascending by
+\ offset, and a use copies a row out when it binds (NAV-USE). Both tables are
+\ process-local mappings: no record field, wire format, unit file or image
+\ carries them (CHECKER-CAPTURE-PREPARE releases them).
+variable DL-ON   variable DL-VISIT   variable DL-START   variable DL-END
+variable DL-NEW                        \ offset+1 of the record E-ADD-EFFECT built last
+PTR-VARIABLE DL-P   variable DL-CAP   variable DL-N      \ DECL-LOCS, in rows
+PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
+4 constant DL-ROW                      \ record offset, visit, start, end
+6 constant PU-ROW                      \ use start, end, record offset, visit, start, end
+
+: NAV-UNMAP ( ptr n n -- )
+   {: base:ptr bytes:n :}
+   bytes 0= IF EXIT THEN
+   base bytes munmap 0 <> IF s" checker: navigation table munmap failed" 76 die THEN ;
+
+\ Grow the table PV holds to NEED rows of ROW cells, keeping its rows.
+: NAV-ENSURE ( ptr ptr n ptr n n n -- )
+   {: pv:ptr capv:ptr need:n row:n :}
+   need capv @ <= IF EXIT THEN
+   need capv @ 2 * max 64 max {: nc:n :}
+   pv @ capv @ row * cells nc row * cells ARENA-BYTES-GROW {: next:ptr :}
+   pv @ capv @ row * cells NAV-UNMAP
+   next pv !  nc capv ! ;
+
+: NAV-CELL ( ptr ptr n n n -- ptr n )   \ row i's first cell
+   {: pv:ptr i:n row:n :}
+   pv @ i row * cells + ;
+
+: NAV-CLEAR ( -- )
+   0 DL-N !  0 PU-N !  0 DL-NEW ! ;
+
+: NAV-RELEASE ( -- )
+   DL-P @ DL-CAP @ DL-ROW * cells NAV-UNMAP  NULL-PTR DL-P !  0 DL-CAP !
+   PU-P @ PU-CAP @ PU-ROW * cells NAV-UNMAP  NULL-PTR PU-P !  0 PU-CAP !
+   NAV-CLEAR  0 DL-ON ! ;
+
+: CHECKER-DECL-AT! ( n n n -- )
+   {: visit:n start:n end:n :}
+   visit DL-VISIT !  start DL-START !  end DL-END !  1 DL-ON ! ;
+
+: CHECKER-DECL-AT-OFF ( -- )
+   0 DL-ON ! ;
+
+: DL-ROW-OFF ( n -- n )                 \ row i's record offset
+   {: i:n :}
+   DL-P i DL-ROW NAV-CELL @ ;
+
+\ A row for record offset OFF. Records only append above the rows a rewind
+\ kept, so the table stays ascending; a row out of order is a lost truncation.
+: DL-ROW+ ( n n n n -- )
+   {: off:n visit:n start:n end:n :}
+   DL-N @ 0 > IF
+      DL-N @ 1 - DL-ROW-OFF off >= IF
+         s" checker: declaration location out of record order" 76 die
+      THEN
+   THEN
+   DL-P DL-CAP DL-N @ 1 + DL-ROW NAV-ENSURE
+   DL-P DL-N @ DL-ROW NAV-CELL {: p:ptr :}
+   off p !  visit p CELL + !  start p 2 cells + !  end p 3 cells + !
+   DL-N @ 1 + DL-N ! ;
+
+\ The record a named registrar just retained takes the armed location. DL-NEW
+\ is that record when the registrar's own step built one (the registrar zeroes
+\ it before a step that may retain nothing), else 0.
+: DL-TAKE ( -- )
+   DL-NEW @ {: rec1:n :}
+   0 DL-NEW !
+   DL-ON @ 0= rec1 0= or IF EXIT THEN
+   rec1 1 - DL-VISIT @ DL-START @ DL-END @ DL-ROW+ ;
+
+\ A generated registrar takes no location in this commit: it runs between
+\ NAV-PAUSE and NAV-RESUME, which put the declaring registrar's latch back on
+\ either exit, so neither its arming nor its newest record reaches DL-TAKE.
+: NAV-PAUSE ( -- n n )
+   DL-ON @  DL-NEW @  0 DL-ON !  0 DL-NEW ! ;
+
+: NAV-RESUME ( n n -- )
+   DL-NEW !  DL-ON ! ;
+
+\ Rows for records at or above offset N belong to a rewound store.
+: DL-TRUNCATE ( n -- )
+   {: n:n :}
+   BEGIN DL-N @ 0 > IF DL-N @ 1 - DL-ROW-OFF n >= ELSE RES-FALSE THEN WHILE
+      DL-N @ 1 - DL-N !
+   REPEAT ;
+
+\ Row FROM's cells into row TO of the pending uses.
+: PU-MOVE ( n n -- )
+   {: from:n to:n :}
+   PU-P from PU-ROW NAV-CELL {: src:ptr :}
+   PU-P to PU-ROW NAV-CELL {: dst:ptr :}
+   PU-ROW 0 ?do src i cells + @  dst i cells + ! loop ;
+
+\ A pending use bound to a record at or above offset N goes with that record.
+: PU-TRUNCATE ( n -- )
+   {: n:n :}
+   0 PU-N @ 0 ?do                          \ the count kept so far
+      PU-P i PU-ROW NAV-CELL 2 cells + @ n < IF  i over PU-MOVE  1 +  THEN
+   loop
+   PU-N ! ;
+
+\ The location of record REC1 (offset+1). DECL-LOCS is ascending by offset:
+\ DL-SEEK halves [lo, hi) to the first row whose offset is not below OFF.
+: DL-SEEK ( n -- n )
+   {: off:n :}
+   0 DL-N @
+   BEGIN 2dup < WHILE
+      2dup + 2 /  dup DL-ROW-OFF off < IF rot drop 1 + swap ELSE nip THEN
+   REPEAT drop ;
+
+: DL-AT ( n -- n n n bool )            \ row i's location
+   {: i:n :}
+   DL-P i DL-ROW NAV-CELL {: p:ptr :}
+   p CELL + @  p 2 cells + @  p 3 cells + @  RES-TRUE ;
+
+: CHECKER-REC-DECL-AT ( n -- n n n bool )
+   {: rec1:n :}
+   rec1 1 - DL-SEEK {: i:n :}
+   i DL-N @ < IF i DL-ROW-OFF rec1 1 - = IF i DL-AT EXIT THEN THEN
+   0 0 0 RES-FALSE ;
+
 : USIGS-CLEAR ( -- )
+   NAV-CLEAR                      \ no location or pending use outlives the store
    0 USX-GEN !                    \ every record the index points at is being dropped
    0 CHECKER-EFFECT-AUTHORITY:RECOVERY-START
    NULL-PTR CHX-BASE! 0 CHX-HI !
@@ -8427,6 +8554,8 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
    dup UIX-TRUNCATE                      \ drop interned nodes the rewind discards
    dup USX-TRUNCATE
    dup CHECKER-EFFECT-AUTHORITY:RECOVERY-REWIND
+   dup DL-TRUNCATE                       \ locations and pending uses of rewound records
+   dup PU-TRUNCATE
    UEND !
    UTERM! ;
 
@@ -8491,6 +8620,104 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
       dup HORIZON-VISIBLE? IF EXIT THEN
       1 - E-PTR ER.SYMPREV @
    REPEAT ;
+
+\ ---- navigation: what a use bound ---------------------------------------------
+\ A use is reported at the five places one source occurrence resolves: a body
+\ token (BIND-TOK), a swallowed `[']` or `is` target (IS-TARGET-SYM), a
+\ top-level token or tick (TOP-ANSWER), an export operand (EXPORT-RESOLVE) and a
+\ `generates:` definer (CHECKER-GENERATES), never from CHECKER-BIND itself. It
+\ takes the location of the record the binding selects at that moment, the
+\ newest one under BIND-HORIZON, and nothing when that record is a tombstone or
+\ carries none: no older row stands in. The use is the spelling's byte range in
+\ its source (NAV-SRC-XT); a spelling the source map does not hold reports
+\ nothing.
+defer NAV-SRC-XT ( ptr u8 -- n bool )   \ DIAG>SRC, bound beside it (NAV-SRC-INSTALL)
+\ A use: its start and end, and its declaration's visit, start and end.
+defer CHECKER-ON-USE ( n n n n n -- )
+: NO-USE ( n n n n n -- ) 2drop 2drop drop ;
+variable USES-OPEN                      \ a CHECKER-WITH-USES scope is running
+: ON-USE-DEFAULT ( -- )
+   ['] NO-USE is CHECKER-ON-USE  0 USES-OPEN ! ;
+ON-USE-DEFAULT
+
+\ One uses scope at a time, as one certificate producer (INSTALL): src/core has
+\ no action-of to save a caller's handler, so a nested scope is refused before
+\ it touches the open one's handler.
+7183 constant E-USES-NESTED   \ CHECKER-WITH-USES inside a running uses scope
+: USES-INSTALL ( [ n n n n n -- ] -- )
+   USES-OPEN @ 0 <> IF E-USES-NESTED throw THEN
+   is CHECKER-ON-USE
+   1 USES-OPEN ! ;
+
+: NAV-NO-USE ( -- n n n n n n bool )
+   0 0 0 0 0 0 RES-FALSE ;
+
+\ SYM spelled at A U: the use's range, the bound record's offset+1 and its
+\ location, true; false when there is nothing to report.
+: NAV-USE-AT ( n ptr u8 n -- n n n n n n bool )
+   {: sym:n a:ptr u:n :}
+   sym 0= IF NAV-NO-USE EXIT THEN
+   sym USIG-NEWEST-VISIBLE {: rec1:n :}
+   rec1 0= IF NAV-NO-USE EXIT THEN
+   rec1 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF NAV-NO-USE EXIT THEN
+   rec1 CHECKER-REC-DECL-AT {: v:n ds:n de:n found:bool :}
+   found 0= IF NAV-NO-USE EXIT THEN
+   a NAV-SRC-XT {: s:n mapped:bool :}
+   mapped 0= IF NAV-NO-USE EXIT THEN
+   s s u + rec1 v ds de RES-TRUE ;
+
+\ A body's uses wait in the pending table until the entry that walked it
+\ publishes them (NAV-PUBLISH): CHECK! its last attempt's, CHECKER-SOURCE-DOES!
+\ a clause's. A row keeps its record's offset so a rewind drops it.
+: NAV-USE ( n ptr u8 n -- )
+   NAV-USE-AT 0= IF 2drop 2drop 2drop EXIT THEN
+   {: s:n e:n rec1:n v:n ds:n de:n :}
+   PU-P PU-CAP PU-N @ 1 + PU-ROW NAV-ENSURE
+   PU-P PU-N @ PU-ROW NAV-CELL {: p:ptr :}
+   s p !  e p CELL + !  rec1 1 - p 2 cells + !
+   v p 3 cells + !  ds p 4 cells + !  de p 5 cells + !
+   PU-N @ 1 + PU-N ! ;
+
+\ A use outside a body is published at once.
+: NAV-USE-NOW ( n ptr u8 n -- )
+   NAV-USE-AT 0= IF 2drop 2drop 2drop EXIT THEN
+   {: s:n e:n rec1:n v:n ds:n de:n :}
+   s e v ds de CHECKER-ON-USE ;
+
+: PU-SEND ( n -- )                      \ publish pending use i
+   {: i:n :}
+   PU-P i PU-ROW NAV-CELL {: p:ptr :}
+   p @  p CELL + @  p 3 cells + @  p 4 cells + @  p 5 cells + @  CHECKER-ON-USE ;
+
+\ Publish the pending uses from FROM and drop them. The rows stay counted while
+\ the handler runs, so a check it starts appends above them.
+: NAV-PUBLISH ( n -- )
+   {: from:n :}
+   PU-N @ from ?do i PU-SEND loop
+   from PU-N ! ;
+
+\ A `trust` row amends the record before it in the same recording identity and
+\ keeps that record's location; a tombstone between them ends the declaration.
+: DL-AMEND ( -- )
+   DL-NEW @ {: rec1:n :}
+   0 DL-NEW !
+   rec1 0= IF EXIT THEN
+   rec1 1 - E-PTR ER.SYMPREV @ {: prev:n :}
+   prev 0= IF EXIT THEN
+   prev 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF EXIT THEN
+   prev CHECKER-REC-DECL-AT {: v:n s:n e:n found:bool :}
+   found 0= IF EXIT THEN
+   rec1 1 - v s e DL-ROW+ ;
+
+\ The owner slot: run Q with H receiving the uses its checks publish. Either
+\ exit puts NO-USE back and drops what Q left pending.
+TRUSTED: CHECKER-WITH-USES ( [ n n n n n -- ] [ -- ] -- ) {: h q :}
+   PU-N @ {: pu0 :}
+   h USES-INSTALL
+   q catch {: rc :}
+   ON-USE-DEFAULT
+   pu0 PU-N !
+   rc 0= 0= IF rc throw THEN ;
 
 : SYM-VISIBLE ( n -- n ) {: sym:n :}   \ the symbol, or 0 when its records all lie beyond the horizon
    sym 0= IF 0 EXIT THEN
@@ -8709,6 +8936,7 @@ variable RECMI   0 RECMI !
    hasr IF rin ROW-WIDE? or  rout ROW-WIDE? or THEN
    RECW !
    din dout rin rout hasr E-BUILD-EFFECT {: off:n :}
+   off 1 + DL-NEW !                     \ the record a registrar's DL-TAKE locates
    LBUF-PEND-U @ 0 > NMU @ 0 > and IF
       LBUF-PEND-A @ LBUF-PEND-U @ NMA @ NMU @ CORE-STR=CI IF
          off 1 + LBUF-EVAL-OFF !
@@ -8727,6 +8955,7 @@ variable RECMI   0 RECMI !
 
 : E-ADD-DELETED ( -- )
    WRITE-WINDOW-CK
+   0 DL-NEW !
    0 RECW !
    0 RECMI !
    E-REC-START E-OFF >r
@@ -9791,6 +10020,7 @@ variable PE-QDOUT
    PE-Q PE-N PE-QIN ;PE-Q PE-IN ;
 
 : PTABLE-START ( -- )
+   NAV-CLEAR
    0 #PE !
    0 UEND !
    UTERM! ;
@@ -13042,7 +13272,9 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
    na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
    na nu CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    na nu CHECKER-REC-NAME!
-   sa su CHECKER-REC-A@ CHECKER-REC-U@ external RES-FALSE USIG-ADD-AS drop ;
+   0 DL-NEW !
+   sa su CHECKER-REC-A@ CHECKER-REC-U@ external RES-FALSE USIG-ADD-AS drop
+   DL-TAKE ;
 
 : CHECKER-USIG-CERT-ADD ( ptr u8 n ptr u8 n -- )
    RES-TRUE CHECKER-USIG-CERT-ADD-AS ;
@@ -13051,7 +13283,7 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
 \ Publish its verified rows without resetting and reparsing that live arena.
 : CHECKER-PUBLISH-PARSED ( -- )
    SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @
-   CHECKER-EFFECT-AUTHORITY:CERTIFIED? E-ADD-EFFECT
+   CHECKER-EFFECT-AUTHORITY:CERTIFIED? E-ADD-EFFECT DL-TAKE
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? IF RECOVERY-RECORD THEN ;
 
 \ CHECK's publication of a declared signature. Its refusals were asked by
@@ -13246,11 +13478,20 @@ variable LBUF-NM-I
    sfx sfxu LBUF-NM-APP
    LBUF-NM-BUF LBUF-NM-U @ ;
 
+\ A suffix row is generated: its registration runs paused (NAV-PAUSE), its
+\ signature and name passed through cells to the quotation.
+PTR-VARIABLE SFX-SIG-A   variable SFX-SIG-U
+PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
 : CHECKER-DEFSUFFIX-NAME ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n sfx:ptr sfxu:n sig:ptr sigu:n :}
    name nameu sfx sfxu CHECKER-LBUF-SUFFIXED$ {: gen:ptr genu:n :}
    gen genu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
-   sig sigu gen genu CHECKER-USIG-CERT-ADD ;
+   sig SFX-SIG-A !  sigu SFX-SIG-U !  gen SFX-GEN-A !  genu SFX-GEN-U !
+   NAV-PAUSE {: on:n new:n :}
+   [: SFX-SIG-A @ SFX-SIG-U @ SFX-GEN-A @ SFX-GEN-U @ CHECKER-USIG-CERT-ADD ;]
+      catch {: rc:n :}
+   on new NAV-RESUME
+   rc 0 <> IF rc throw THEN ;
 
 : CHECKER-DEFDYNAMIC-BUFFER
    ( ptr u8 n ptr u8 n -- )
@@ -13288,7 +13529,7 @@ variable LBUF-NM-I
    {: na:ptr nu:n :}
    na nu CHECKER-REC-NAME!
    BROW @ DCUR @ 0 0 RES-FALSE
-   CHECKER-EFFECT-AUTHORITY:CERTIFIED? E-ADD-EFFECT
+   CHECKER-EFFECT-AUTHORITY:CERTIFIED? E-ADD-EFFECT DL-TAKE
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? IF RECOVERY-RECORD THEN ;
 
 \ Control-effect flags are append-only and later-wins so redefinitions can clear
@@ -14272,7 +14513,7 @@ SYM-AXIOM-INSTALL
    a u TOP-WALK {: sym:n why:n :}
    why 0 <> IF a u why CHECKER-RESOLVE:RAISE THEN
    CHECKER-QBAD-TOK @ 0= IF
-      a u sym TOP-BOUND-SYM IF runs TOP-RUNS EXIT THEN drop
+      a u sym TOP-BOUND-SYM IF dup a u NAV-USE-NOW runs TOP-RUNS EXIT THEN drop
       a u UNSEEN-COVERS? IF 3 EXIT THEN
    THEN
    a USH-TOK-A !  u USH-TOK-U !
@@ -14382,7 +14623,7 @@ get-current prot-wid-add
    rec E-DIN@ E-INST  rec E-DOUT@ E-INST
    rec E-RIN@ E-INST  rec E-ROUT@ E-INST
    na nu CHECKER-REC-NAME!
-   rec E-HASR@ 0 <> RES-TRUE E-ADD-EFFECT
+   rec E-HASR@ 0 <> RES-TRUE E-ADD-EFFECT DL-TAKE
    RES-TRUE ;
 
 \ A PRIM declaration grants its own effect, never an ABI-only user row's shape.
@@ -14666,10 +14907,10 @@ variable UNSAFE-SYM-N
 \ and the first PES row legitimately lives at USIGS offset 0.
 : EXPORT-RESOLVE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u EXPORT-TAIL$ UNSAFE-TOK? IF E-EXPORT-UNSAFE throw THEN
-   a u CHECKER-FIND-ACTIVE-SYM dup UNSAFE-SYM? swap PRIM-TRUSTED-SYM? or
-   IF E-EXPORT-UNSAFE throw THEN
+   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   sym UNSAFE-SYM? sym PRIM-TRUSTED-SYM? or IF E-EXPORT-UNSAFE throw THEN
    a u CHECKER-FIND-ACTIVE-SIG
-   FEP-HIT? IF EXIT THEN
+   FEP-HIT? IF sym a u NAV-USE-NOW EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-IDX 0 <> IF E-EXPORT-PRIM throw THEN
    E-EXPORT-UNDEFINED throw ;
 
@@ -14719,7 +14960,7 @@ variable UNSAFE-SYM-N
    NEW
    FEP-OFF@ 1 - E-PTR EXPORT-EFF-INST
    a u EXPORT-TAIL$ EXPORT-RECORD
-   a u CHECKER-FIND-ACTIVE-SYM EFFECT-EXTERNAL-SYM? E-ADD-EFFECT
+   a u CHECKER-FIND-ACTIVE-SYM EFFECT-EXTERNAL-SYM? E-ADD-EFFECT DL-TAKE
    recovery IF RECOVERY-RECORD THEN
    a u CHECKER-FIND-ACTIVE-SYM CHECKER-ASIG-EXPORT
    a u EXPORT-META-COPY ;
@@ -15814,6 +16055,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    BIND-PEND-OFF @ TOK-PEND-OFF !
    BIND-SEEDED @ TOK-SEEDED !
    TOK-SYM @ CTL-FLAGS-SYM CTL-DEAD and 0= IF 0 ELSE 1 THEN TOK-DEAD !
+   TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ NAV-USE
    a u CHECKER-QUALIFIED? IF EXIT THEN
    TOK-SYM @ CTL-FLAGS-SYM CTL-IDENTITY and TOK-CTL ! ;
 
@@ -18236,6 +18478,8 @@ PTR-VARIABLE DROW-A  variable DROW-N
 : DIAG-LOCATE ( ptr u8 -- n n n bool )
    DIAG>SRC 0= IF drop 0 0 0 0 0= 0= EXIT THEN
    DSRC-POS 0 0= ;
+: NAV-SRC-INSTALL ( -- ) [: DIAG>SRC ;] is NAV-SRC-XT ;
+NAV-SRC-INSTALL
 s" <input>" DIAG-FILE!
 1 1 0 DIAG-ORIGIN!
 
@@ -18323,8 +18567,10 @@ s" <input>" DIAG-FILE!
    WRITE-WINDOW-CK                       \ before the does> latch steps
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE RES-FALSE EXIT THEN
    DOES-EFF-STEP
+   0 DL-NEW !
    na nu sa su RES-FALSE TRUST-USIG!
    {: kept:bool :}
+   DL-TAKE
    \ The parser filled both input rows. An unchecked body may throw after
    \ replacing a scoped input on either stack; its scan does not prove intact
    \ cells for a later catch.
@@ -18462,7 +18708,9 @@ REG-PROTECT
 : TRUST {: na:ptr nu:n sa:ptr su:n :}
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
-   na nu sa su RES-TRUE TRUST-USIG! drop ;
+   0 DL-NEW !
+   na nu sa su RES-TRUE TRUST-USIG! drop
+   DL-AMEND ;
 
 \ TRUST-RAW: the raw-dictionary-storage form of TRUST, and the single authority
 \ that seals a storage cell at the moment its definer publishes it.
@@ -18501,7 +18749,9 @@ REG-PROTECT
 : TRUST-RAW {: na:ptr nu:n sa:ptr su:n :}
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    RES-TRUE SIG-RAW-DEFINER!
+   0 DL-NEW !
    na nu sa su [: RES-FALSE TRUST-USIG! drop ;] [: RES-FALSE SIG-RAW-DEFINER! ;] finally
+   DL-TAKE
    na nu CHECKER-RECORD-SYM? {: sym:n :}
    sym CTL-FLAGS-SYM {: flags:n :}
    flags CTL-INHERITED and 0 <> IF
@@ -18820,7 +19070,8 @@ variable IS-PEND-U                   \ and its length
 \ The symbol the swallowed target names: its fold resolves, and the token as
 \ written names a refusal (CHECKER-BIND), so a raised shadow locates in the file.
 : IS-TARGET-SYM ( -- n )
-   TKF TKFU @ IS-TA@ IS-TU @ CHECKER-BIND ;
+   TKF TKFU @ IS-TA@ IS-TU @ CHECKER-BIND
+   dup IS-TA@ IS-TU @ NAV-USE ;
 
 : IS-TOK ( -- )
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
@@ -22013,6 +22264,7 @@ variable CK-RETRY-TOKS
    REC-IX @ {: ix0:n :}
    REC-ON @ IF CWIN-N @ ELSE 0 THEN {: cw0:n :}
    REC-ON @ IF BWIN-N @ ELSE 0 THEN {: bw0:n :}
+   PU-N @ {: pu0:n :}
    0 RESCAN !
    -1 CK-AOT-RETRY-ARMED !
    a u CHECK CK-RETRY-V !
@@ -22025,6 +22277,7 @@ variable CK-RETRY-TOKS
          s" checker: a held diagnostic had no seeded signature to take after all" 76 die
       THEN
       -1 RESCAN !
+      pu0 PU-N !                       \ this attempt's uses replace the last's
       REC-ON @ IF ix0 REC-IX ! cw0 CWIN-N ! bw0 BWIN-N ! MWIN-RESET THEN
       a u CHECK CK-RETRY-V !
       CK-RETRY-STREAM-CK
@@ -22061,11 +22314,13 @@ variable CK-RETRY-TOKS
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? {: recovery0:bool :}
    BIND-HORIZON @ {: horizon0:n :}
    CHK-PROBE @ {: probe0:n :}
+   PU-N @ {: pu0:n :}
    CHECK-CANDIDATE-START
    -1 CHK-PROBE !
    [: CHECK-CANDIDATE-BODY ;] catch {: rc:n :}
    probe0 CHK-PROBE !
    0 CHECK-CANDIDATE-DONE drop
+   pu0 PU-N !                          \ a candidate's uses are never published
    armed0 CK-AOT-RETRY-ARMED !
    due0 CK-AOT-RETRY-DUE !
    rescan0 RESCAN !
@@ -22142,7 +22397,9 @@ variable DEF-STOPPED
    0 BWIN-VALID !  0 UWIN-VALID !
    -1 VSIG !
    a CK-DEF-A !  u CK-DEF-U !  0 DEF-REFUSAL !
+   PU-N @ {: pu0:n :}
    [: CHECK-DEF-BODY ;] catch {: rc:n :}
+   pu0 NAV-PUBLISH                     \ the final attempt's uses, its resolved prefix if it stopped
    rc 0 <> IF rc CHECK-DEF-THREW THEN
    CK-DEF-VERDICT @ {: verdict:n :}
    0 VSIG !
@@ -22520,7 +22777,9 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    nu DOES-CLAUSE:SUFFIX$ nip + TOKBUF-ENSURE
    ba SRC-DOES-BA !  bu SRC-DOES-BU !  sa SRC-DOES-SA !  su SRC-DOES-SU !
    0 DEF-REFUSAL !
+   PU-N @ {: pu0:n :}
    [: SRC-DOES-BODY ;] catch {: rc:n :}
+   pu0 NAV-PUBLISH                     \ the clause's uses, its resolved prefix if it stopped
    DOES-EFF-CLEAR
    rc 0 <> IF rc SRC-DOES-THREW EXIT THEN
    SRC-DOES-VERDICT @ na nu DOES-REPORT ;
@@ -22627,6 +22886,7 @@ GENERATES-DIAG-DEFAULT
    na nu CHECKER-FIND-ACTIVE-SYM
    {: sym:n :}
    sym 0= IF na nu GENR-UNRESOLVED GENERATES-REFUSE sym 0 EXIT THEN
+   sym na nu NAV-USE-NOW
    already sym NORET-CREATES@ 0 <> or IF na nu GENR-CREATES GENERATES-REFUSE sym 0 EXIT THEN
    sa su CREATED-RECORD-BUILD
    {: rec:n :}
@@ -23831,6 +24091,7 @@ public
 : CHECKER-CAPTURE-PREPARE ( -- )
    CHECKER-STORAGE-PREPARE
    CHECKER-TAPE:DETACH
+   NAV-RELEASE ON-USE-DEFAULT            \ navigation is process-local: no image carries it
    EFFECT-XFER-CLEAR
    CK-GRAPH-RELEASE
    NULL-PTR CK-GRAPH-BASE ! 0 CK-GRAPH-LEN ! 0 CK-GRAPH-MAP-U !
@@ -23951,6 +24212,9 @@ package CHECKER-REG
 ' CHECKER-VERIFY-REACH DECLARATIONS CHECKER-OWNER-ABI:VERIFY-REACH-OFF + xt!
 ' CHECKER-SYM-IDENTITY DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SYM-IDENTITY-OFF + xt!
 ' CHECKER-VERIFY-DEFERRED-BODY DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-BODY-OFF + xt!
+' CHECKER-DECL-AT! DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DECL-ARM-OFF + xt!
+' CHECKER-DECL-AT-OFF DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DECL-DISARM-OFF + xt!
+' CHECKER-WITH-USES DECLARATIONS CHECKER-OWNER-ABI:VERIFY-USES-OFF + xt!
 ' TRUST-DECL? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DECL-OFF + xt!
 ' CHECKER-DECLARED-ROW! DECLARATIONS CHECKER-OWNER-ABI:DECLARED-ROW-OFF + xt!
 ' CHECKER-RETRACT-ROWS DECLARATIONS CHECKER-OWNER-ABI:RETRACT-ROWS-OFF + xt!

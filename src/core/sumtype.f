@@ -1371,7 +1371,7 @@ TRUSTED: TDPLAN-FP-CLEAR ( -- ) FIELD-PROJ-CLEAR ;
       TDPLAN-I @ 1 + TDPLAN-I !
    REPEAT ;
 
-: TDPLAN-PREFLIGHT-DEFINITIONS ( -- )
+: TDPLAN-PREFLIGHT-ROWS ( -- )
    0 TDPLAN-I !
    BEGIN TDPLAN-I @ TDPLAN-N @ < WHILE
       TDPLAN-I @ TDPLAN-ARM
@@ -1379,6 +1379,14 @@ TRUSTED: TDPLAN-FP-CLEAR ( -- ) FIELD-PROJ-CLEAR ;
       TDPLAN-I @ 1 + TDPLAN-I !
    REPEAT
    CTOR-PEND-REQUIRE-DONE ;
+
+\ A generated definition takes no declaration location in this commit: its
+\ rows are checked with the declaring registrar's latch paused (NAV-PAUSE).
+: TDPLAN-PREFLIGHT-DEFINITIONS ( -- )
+   NAV-PAUSE {: on:n new:n :}
+   [: TDPLAN-PREFLIGHT-ROWS ;] catch {: rc:n :}
+   on new NAV-RESUME
+   rc 0 <> IF rc throw THEN ;
 
 : TDPLAN-PREFLIGHT-CHECKER ( -- )
    CTOR-PEND-REWIND
@@ -2353,15 +2361,22 @@ TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
 
 : TDINIT-HELP-REPLAY ( n -- ) {: fam:n :}
    RES-TRUE TDINIT-PRIVATE
+   NAV-PAUSE {: on:n new:n :}
    [: TDGEN-NA @ TDGEN-NU @
       TDGEN-BUF TDINIT-SIG-OFF @ + TDINIT-SIG-U @ TDINIT-DECLARE ;]
       catch {: rc:n :}
+   on new NAV-RESUME
    fam RES-TRUE TDINIT-RESTORE
    rc 0 <> IF rc throw THEN ;
 
+\ An initialized-field row is generated: it is declared paused (NAV-PAUSE).
 : TDINIT-REPLAY-ROW ( -- )
-   TDGEN-NA @ TDGEN-NU @
-   TDGEN-BUF TDINIT-SIG-OFF @ + TDINIT-SIG-U @ TDINIT-DECLARE ;
+   NAV-PAUSE {: on:n new:n :}
+   [: TDGEN-NA @ TDGEN-NU @
+      TDGEN-BUF TDINIT-SIG-OFF @ + TDINIT-SIG-U @ TDINIT-DECLARE ;]
+      catch {: rc:n :}
+   on new NAV-RESUME
+   rc 0 <> IF rc throw THEN ;
 
 : TDINIT-PREFLIGHT ( n bool -- ) {: fam:n replay:bool :}
    fam TDINIT-REQUIRE
