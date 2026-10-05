@@ -621,6 +621,8 @@ create TXT
    A64IR-OPCODE:MOVZ M-OPEN
    M-RESULT+
    imm 0 M-MOVE-ATTRS
+   CC BB  CC BB A64IR:KEY-REMAT-MARK
+   CC BB 0 IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
 : M-MOVK ( IR-ID:ir-value-id n n -- IR-ID:ir-value-id )
@@ -3547,6 +3549,7 @@ using A64RA
       gpr:IR-ID:ir-type-id fpr:IR-ID:ir-type-id mem:IR-ID:ir-type-id
       slot:IR-ID:ir-symbol-id frame:IR-ID:ir-symbol-id
       copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
+      mark:IR-ID:ir-symbol-id
       reserve:IR-ID:ir-symbol-id release:IR-ID:ir-symbol-id
       store:IR-ID:ir-symbol-id load:IR-ID:ir-symbol-id
       fstore:NDIALECT:optsym fload:NDIALECT:optsym
@@ -3554,7 +3557,7 @@ using A64RA
       linksave:NDIALECT:optsym linkload:NDIALECT:optsym :}
    fstore NDIALECT:HAS? 0= if E-A64SPILL-PLAN throw then
    fload NDIALECT:HAS? 0= if E-A64SPILL-PLAN throw then
-   nm mj mi gpr fpr mem slot frame copy remat reserve release store load
+   nm mj mi gpr fpr mem slot frame copy remat mark reserve release store load
    NDIALECT-OPTSYM:ABSENT NDIALECT-OPTSYM:ABSENT
    trapop linksave linkload
    NDIALECT-LOWERING:MAKE ;

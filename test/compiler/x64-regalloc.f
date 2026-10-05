@@ -529,6 +529,8 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    CC BB  CC BB X64IR:KEY-IMM   CC BB imm X64IR:IMM-ATTR  IR-BUILD:ADD-ATTR
    CC BB  CC BB X64IR:KEY-ADDR
       CC BB HIR:ADDR-NONE X64IR:ADDR-ATTR  IR-BUILD:ADD-ATTR
+   CC BB  CC BB X64IR:KEY-REMAT-MARK
+   CC BB 0 IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
 : M-BIN ( X64IR:opcode IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )

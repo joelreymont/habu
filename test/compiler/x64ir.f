@@ -208,6 +208,7 @@ private
       gpr:IR-ID:ir-type-id fpr:IR-ID:ir-type-id mem:IR-ID:ir-type-id
       slot:IR-ID:ir-symbol-id frame:IR-ID:ir-symbol-id
       copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
+      mark:IR-ID:ir-symbol-id
       reserve:IR-ID:ir-symbol-id release:IR-ID:ir-symbol-id
       store:IR-ID:ir-symbol-id load:IR-ID:ir-symbol-id
       fstore:NDIALECT:optsym fload:NDIALECT:optsym
@@ -274,9 +275,9 @@ private
    rv v IR-SCHEMA:FTIES ;
 
 : MOVE-CASE ( -- )
-   s" the literal carries its value and its address kind; the copy ties nothing" T-LABEL
+   s" the literal carries its value, address kind and origin; the copy ties nothing" T-LABEL
    BND [: MOVE-BODY ;] IR-CTX:WITH-CONTEXT
-   0 T= 1 T= 1 T= 2 T= 1 T= 0 T= ;
+   0 T= 1 T= 1 T= 3 T= 1 T= 0 T= ;
 
 \ Every two-address form declares one tie, and the tie names the operand the
 \ instruction overwrites: operand 0 for the arithmetic, operand 2 for the

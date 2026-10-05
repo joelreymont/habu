@@ -215,7 +215,7 @@ public
 \ Every consumer compares the version exactly, so a table with a form and one
 \ without are two different tables.
 0 constant MAJOR
-15 constant MINOR
+16 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 : REG-BITS ( -- n )      XBITS ;
@@ -706,7 +706,8 @@ private
 14 constant K-DWB
 15 constant K-COLD-ENTRY
 16 constant K-DATA-OFFSET
-17 constant KEYS
+17 constant K-REMAT-MARK
+18 constant KEYS
 
 : KEY-NAME ( n -- ptr u8 n )
    case
@@ -727,6 +728,7 @@ private
       K-DWB        of s" a64.dwb" endof
       K-COLD-ENTRY of s" a64.cold-entry" endof
       K-DATA-OFFSET of s" a64.data-offset" endof
+      K-REMAT-MARK of s" a64.remat-mark" endof
       E-A64IR-DIALECT throw
    endcase ;
 
@@ -914,6 +916,9 @@ public
 : KEY-ADDR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-ADDR KEY-BIND ;
 
+: KEY-REMAT-MARK ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-REMAT-MARK KEY-BIND ;
+
 : IMM-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    IMM16 IR-BUILD:INTERN-INT-ATTR ;
 
@@ -1037,6 +1042,7 @@ public
    c b KEY-ADDR  c b KEY-SHIFT
    c b A64IR-OPCODE:MOV OPCODE
    c b A64IR-OPCODE:MOVZ OPCODE
+   c b KEY-REMAT-MARK
    HALVES SLOT-WIDTH
    NDIALECT-DSTAND:SURVEY
    NDIALECT-VOCAB:MAKE ;
@@ -1062,6 +1068,7 @@ public
    c b KEY-SLOT  c b KEY-FRAME
    c b A64IR-OPCODE:MOV OPCODE
    c b A64IR-OPCODE:MOVZ OPCODE
+   c b KEY-REMAT-MARK
    c b A64IR-OPCODE:RESERVE OPCODE
    c b A64IR-OPCODE:RELEASE OPCODE
    c b A64IR-OPCODE:STORE OPCODE
@@ -1102,6 +1109,7 @@ private
    c b A64IR-OPCODE:MOVZ OPCODE IR-SCHEMA:BEGIN-OP
    t IR-SCHEMA:ADD-RESULT
    c b MOVE-ATTRS
+   c b KEY-REMAT-MARK IR-SCHEMA:ADD-ATTR
    PURE-VALUE
    TOTAL
    TARGET

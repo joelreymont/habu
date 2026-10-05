@@ -2503,6 +2503,7 @@ public
       entry:IR-ID:ir-symbol-id trap:IR-ID:ir-symbol-id
       addr:IR-ID:ir-symbol-id shift:IR-ID:ir-symbol-id
       copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
+      mark:IR-ID:ir-symbol-id
       lanes:n slotw:n stand:NDIALECT:dstand :}
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b nm mj mi DIALECT-CK

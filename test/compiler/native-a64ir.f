@@ -85,7 +85,7 @@ private
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR-OPCODE:FADD A64IR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m IR-BUILD:FSCHEMA-ROWS IR-SCHEMA:FMINOR@ 15 T=
+   m IR-BUILD:FSCHEMA-ROWS IR-SCHEMA:FMINOR@ 16 T=
    m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FFEATURES@
       CTARGET:F-SCALAR-FP CTARGET:HAS? TTRUE ;
 
@@ -275,7 +275,7 @@ private
 : SHAPE-CASE ( -- )
    s" the moves and the return have the shapes their forms have" T-LABEL
    BND [: SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE 0 T= 1 T= 1 T= TTRUE TTRUE TTRUE 3 T= 1 T= 0 T= ;
+   TTRUE TTRUE 0 T= 1 T= 1 T= TTRUE TTRUE TTRUE 4 T= 1 T= 0 T= ;
 
 \ ---- the declared shapes of the frame forms ----------------------------------
 \ The store puts a register away and passes the memory order on; the load takes

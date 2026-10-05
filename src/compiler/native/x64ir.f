@@ -237,9 +237,9 @@ public
    s" x64" ;
 
 \ Every consumer compares the version exactly, so a table with a form and one
-\ without are two different tables. MINOR 2 added the scalar double forms.
+\ without are two different tables. MINOR 3 adds the move origin attribute.
 0 constant MAJOR
-2 constant MINOR
+3 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 : REG-BITS ( -- n )        XBITS ;
@@ -604,7 +604,8 @@ private
 10 constant K-FUN
 11 constant K-COND
 12 constant K-THROW-ENTRY
-13 constant KEYS
+13 constant K-REMAT-MARK
+14 constant KEYS
 
 : KEY-NAME ( n -- ptr u8 n )
    case
@@ -621,6 +622,7 @@ private
       K-FUN        of s" x64.fun" endof
       K-COND       of s" x64.cond" endof
       K-THROW-ENTRY of s" x64.throw-entry" endof
+      K-REMAT-MARK of s" x64.remat-mark" endof
       E-X64IR-DIALECT throw
    endcase ;
 
@@ -753,6 +755,9 @@ public
 : KEY-SLOT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-SLOT KEY-BIND ;
 
+: KEY-REMAT-MARK ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-REMAT-MARK KEY-BIND ;
+
 : KEY-FRAME ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-FRAME KEY-BIND ;
 
@@ -857,6 +862,7 @@ public
    c b KEY-ADDR  c b KEY-SHIFT
    c b X64IR-OPCODE:MOV OPCODE
    c b X64IR-OPCODE:MOVI OPCODE
+   c b KEY-REMAT-MARK
    ADDR-LANES SLOT-WIDTH
    NDIALECT-DSTAND:ENTRY-BASE
    NDIALECT-VOCAB:MAKE ;
@@ -880,6 +886,7 @@ public
    c b KEY-SLOT  c b KEY-FRAME
    c b X64IR-OPCODE:MOV OPCODE
    c b X64IR-OPCODE:MOVI OPCODE
+   c b KEY-REMAT-MARK
    c b X64IR-OPCODE:RESERVE OPCODE
    c b X64IR-OPCODE:RELEASE OPCODE
    c b X64IR-OPCODE:STORE OPCODE
@@ -1044,6 +1051,7 @@ private
    t IR-SCHEMA:ADD-RESULT
    c b KEY-IMM IR-SCHEMA:ADD-ATTR
    c b KEY-ADDR IR-SCHEMA:ADD-ATTR
+   c b KEY-REMAT-MARK IR-SCHEMA:ADD-ATTR
    PURE-VALUE
    TOTAL
    TARGET

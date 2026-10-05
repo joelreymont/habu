@@ -151,6 +151,7 @@ variable BND-LANES                   \ address-carrier instructions, 1 or more
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-COPY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-REMAT IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-REMAT-MARK IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ADDR IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-SHIFT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
@@ -1502,30 +1503,31 @@ variable N-PINS
    p POS-BLOCK {: b:n :}
    f b BLOCK-AT  p  b cells B-ST + @ -  1-  OP-AT ;
 
-\ A class whose one value a turn of the fixpoint reloaded in front of its read:
-\ the operation defining it names a frame slot, which among the operations that
-\ define a register only a reload does. Putting it away would store it and
-\ reload it in front of that same read - the same class, put away again each
-\ turn - so it is never the class put away: another goes, or the fit refuses.
-: MB-RELOAD? ( IR-ID:ir-fun-id n -- bool )
+\ A reload or re-emission placed in front of a read by an earlier lowering turn
+\ cannot be put away there again. The former carries its frame-slot key; the
+\ latter carries the rewriter's mark. Ordinary immediate definitions carry
+\ zero and remain eligible for the first re-emission.
+: MB-RETURNED? ( IR-ID:ir-fun-id n -- bool )
    {: f:IR-ID:ir-fun-id r:n :}
    r cells CL-SIZE + @ 1 <> if false exit then
    r cells CL-LO + @ {: p:n :}
    p POS-OP? 0= if false exit then
-   f p POS-OP  0 BND-SLOT @ ATTR-INT-OF  NOATTR <> ;
+   f p POS-OP {: d:IR-ID:ir-op-id :}
+   d 0 BND-SLOT @ ATTR-INT-OF NOATTR <>
+   d 0 BND-REMAT-MARK @ ATTR-INT-OF 1 = or ;
 
 : MB-SPILLABLE? ( IR-ID:ir-fun-id n -- bool )
    {: f:IR-ID:ir-fun-id r:n :}
    r CL-EVICTED? if false exit then
    r KEEP? if false exit then
    r CLS-AT C-TOKEN = if false exit then
-   f r MB-RELOAD? 0= ;
+   f r MB-RETURNED? 0= ;
 
 : MB-INCOMING-SPILLABLE? ( IR-ID:ir-fun-id n -- bool )
    {: f:IR-ID:ir-fun-id r:n :}
    r CL-EVICTED? if false exit then
    r CLS-AT C-TOKEN = if false exit then
-   f r MB-RELOAD? 0= ;
+   f r MB-RETURNED? 0= ;
 
 \ Each class has a sorted slice of operand positions. A missing use answers
 \ this function's end, as did the forward walk through its operations.
@@ -1973,6 +1975,7 @@ variable N-PINS
    r CL-EVICTED? if false exit then
    r cells CL-SIZE + @ 1 <> if false exit then
    r CLS-AT C-TOKEN = if false exit then
+   f r MB-RETURNED? if false exit then
    f r MB-DEF-OP? ;
 
 \ A class the operation here reads would need its register back immediately.
@@ -2081,7 +2084,7 @@ variable N-PINS
 
 \ The incoming class goes first, because a class a call or a form forbids every
 \ register is served by nothing else - unless it is a reload, which would come
-\ back the same (MB-RELOAD?). Any other shortage is answered first by a
+\ back the same (MB-RETURNED?). Any other shortage is answered first by a
 \ division, which adds no store or reload, where putting a held class away adds
 \ both: a victim from a load run is divided in the next turn, since the end of
 \ its run would not give its register back here.
@@ -2567,7 +2570,7 @@ public
 \
 \ STAND names the data-stack pointer checked by regalloc-verify.f; this pass
 \ makes no decision from it, and a value is unmade whole, so it is bound and
-\ left. SLOT names the dialect's frame slot, which marks a reload (MB-RELOAD?).
+\ left. SLOT marks a reload; REMAT-MARK marks a re-emission (MB-RETURNED?).
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NMACH:mach NDIALECT:vocab -- )
    BND-MODE @ BOUND-YES = if E-A64RA-BIND throw then
    NDIALECT-VOCAB:UNMAKE
@@ -2579,6 +2582,7 @@ public
       entry:IR-ID:ir-symbol-id trap:IR-ID:ir-symbol-id
       addr:IR-ID:ir-symbol-id shift:IR-ID:ir-symbol-id
       copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
+      mark:IR-ID:ir-symbol-id
       lanes:n slotw:n stand:NDIALECT:dstand :}
    NMACH:ID {: row:n :}
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
@@ -2611,6 +2615,7 @@ public
    trap 0 BND-TRAP !
    copy 0 BND-COPY !
    remat 0 BND-REMAT !
+   mark 0 BND-REMAT-MARK !
    addr 0 BND-ADDR !
    shift 0 BND-SHIFT !
    lanes BND-LANES !

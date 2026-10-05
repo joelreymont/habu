@@ -112,6 +112,7 @@ variable CUR-B
 1 TYPED-BUFFER BND-LINKLOAD NDIALECT:optsym
 1 TYPED-BUFFER BND-COPY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-REMAT IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-REMAT-MARK IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-GPR IR-ID:ir-type-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
@@ -426,17 +427,20 @@ create NAMEBUF NAME-CAP allot
    {: id:IR-ID:ir-op-id i:n :}
    CTX BLD id i IR-BUILD:OP-RESULT@ ;
 
-\ Two callers want it: the copier, and the re-emission that rebuilds a move-wide
-\ out of the immediate its original carried.
-: COPY-ATTRS ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+\ Copies preserve the source mark; re-emission marks its rebuilt move-wide.
+: COPY-ATTRS ( IR-ID:ir-op-id bool -- )
+   {: id:IR-ID:ir-op-id remat:bool :}
    id ATTRS-OF {: n:n :}
    n 0 ?do
       id i ATTR-KEY-AT {: k:IR-ID:ir-symbol-id :}
       k 0 BND-FRAME @ SAME-SYM? if
          k FRAME-N @ INT-ATTR+
       else
-         k  id i ATTR-INT-AT  INT-ATTR+
+         k 0 BND-REMAT-MARK @ SAME-SYM? remat and if
+            k 1 INT-ATTR+
+         else
+            k  id i ATTR-INT-AT  INT-ATTR+
+         then
       then
    loop ;
 
@@ -494,7 +498,7 @@ create NAMEBUF NAME-CAP allot
    k DOP @ {: d:IR-ID:ir-op-id :}
    at 0 BND-REMAT @ OPEN
    k FILE-RESULT+
-   d COPY-ATTRS
+   d true COPY-ATTRS
    CLOSE {: id:IR-ID:ir-op-id :}
    k pos  id 0 RESULT@  RBIND ;
 
@@ -805,7 +809,7 @@ create NAMEBUF NAME-CAP allot
    f id carry FRAME-EDGE+
    id COPY-RESULTS
    f id carry COPY-SUCCS
-   id COPY-ATTRS
+   id false COPY-ATTRS
    id  CLOSE  frame BIND-RESULTS ;
 
 \ ---- the block ---------------------------------------------------------------
@@ -1068,6 +1072,7 @@ create NAMEBUF NAME-CAP allot
       gpr:IR-ID:ir-type-id fpr:IR-ID:ir-type-id mem:IR-ID:ir-type-id
       slot:IR-ID:ir-symbol-id frame:IR-ID:ir-symbol-id
       copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
+      mark:IR-ID:ir-symbol-id
       reserve:IR-ID:ir-symbol-id release:IR-ID:ir-symbol-id
       store:IR-ID:ir-symbol-id load:IR-ID:ir-symbol-id
       fstore:NDIALECT:optsym fload:NDIALECT:optsym
@@ -1083,6 +1088,7 @@ create NAMEBUF NAME-CAP allot
    frame 0 BND-FRAME !
    copy 0 BND-COPY !
    remat 0 BND-REMAT !
+   mark 0 BND-REMAT-MARK !
    reserve 0 BND-RESERVE !
    release 0 BND-RELEASE !
    store 0 BND-STORE !
