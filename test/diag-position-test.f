@@ -773,11 +773,17 @@ variable RC
    c cu REJECTED-AS
    0 tok toku line col bs be AT ;
 
-\ --verify-only leaves the stretch after MK to the run: one packet, rc 0.
-: VERIFY-DEFERS ( -- )
+\ --verify-only defers both the stretch after MK and X's body: the stretch
+\ ends at X's declaration, whose use of MADE or unsafe word needs its own
+\ warning where the check stopped.
+: VERIFY-DEFERS ( ptr u8 n -- )
+   {: tok:ptr toku:n :}
    s" --verify-only" 0 CHECK-EXIT
-   GJA-LINE# @ 1 T=
-   0 MK-DEFERRED ;
+   GJA-LINE# @ 2 T=
+   0 MK-DEFERRED
+   1 s" code" s" W-CHECK-DEFERRED" FIELD=
+   1 s" verdict" s" deferred" FIELD=
+   1 tok toku 3 12 40 40 toku + FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ RUN-REFUSED-AT, and --verify-only gives that rejection after the deferral.
 : VERIFY-REFUSED-AT ( ptr u8 n ptr u8 n n n n n -- )
@@ -816,7 +822,7 @@ variable RC
    GJA-LINE# @ 0 T=
    s" --all-errors" 0 CHECK-EXIT
    GJA-LINE# @ 0 T=
-   VERIFY-DEFERS
+   s" [']" VERIFY-DEFERS
    s" " 0 LOADED
    s" a signature that does not parse and a call of that word" T-LABEL
    s" : X ( -- zz ) MADE ;" s" made-badsig.f" MADE-FIXTURE
@@ -833,12 +839,12 @@ variable RC
    s" a trust-boundary word before a call of that word" T-LABEL
    s" : X ( -- ) evaluate MADE ;" s" made-unsafe.f" MADE-FIXTURE
    s" E-UNSAFE" s" evaluate" 3 12 40 48 RUN-REFUSED-AT
-   VERIFY-DEFERS
+   s" evaluate" VERIFY-DEFERS
    s" x at 'evaluate'" REJECT-RC LOADED
    s" a call of that word alone" T-LABEL
    s" : X ( -- ) MADE ;" s" made-call.f" MADE-FIXTURE
    s" E-UNDEFINED" s" MADE" 3 12 40 44 RUN-REFUSED-AT
-   VERIFY-DEFERS
+   s" MADE" VERIFY-DEFERS
    s" x at 'MADE'" REJECT-RC LOADED
    s" a signature that does not parse and a word nothing defines" T-LABEL
    s" : X ( -- zz ) NOPE ;" s" made-nope.f" MADE-FIXTURE
