@@ -59,9 +59,8 @@
 \ comparison answers the integer mask, f0< and f0= against +0.0. s>f is
 \ f64.convert_i64_s, nearest with ties to even, and f>s i64.trunc_sat_f64_s,
 \ which truncates, saturates and answers 0 for a NaN as src/compiler/native/
-\ hir-word.f DEF-FLOAT defines realint; only a profile admitting
-\ saturating-float-to-int has it, and under any other f>s is refused (W05).
-\ Each operation is selected alone, so no multiply and add contract.
+\ hir-word.f DEF-FLOAT defines realint. Each operation is selected alone, so no
+\ multiply and add contract.
 \
 \ THE BLOCKS. HIR blocks keep their order and arguments; a function opens with a
 \ prologue block that takes the signature's arguments and branches into HIR's
@@ -116,7 +115,7 @@ require src/arch/wasm/wstruct.f
 \ WSEL's codes, -9820..-9824, in the Wasm backend's block -9800..-9829.
 -9820 constant E-WSEL-FIRST
 -9824 constant E-WSEL-LAST
--9820 constant E-WSEL-REFUSED \ an HIR operation this selector does not lower: one ADMISSION leaves to a sibling, or realint under a profile without saturating-float-to-int
+-9820 constant E-WSEL-REFUSED \ an HIR operation this selector does not lower: quot, whose descriptor a sibling selects
 -9821 constant E-WSEL-DECLARE \ a selection no DECLARE preceded, a definition whose arity is not the one declared, or a return whose operands are not its function's output cells
 -9822 constant E-WSEL-SOURCE  \ a module that is not HIR of the version this selector reads
 -9823 constant E-WSEL-TRAP    \ a may-trap operation whose rule cannot raise the trap: add, sub or mul of a unit whose overflow traps
@@ -124,70 +123,6 @@ require src/arch/wasm/wstruct.f
 
 package WSEL
 public
-
-\ ---- the admission matrix ---------------------------------------------------
-\ Every HIR opcode is selected here or belongs to the sibling that selects it,
-\ and selection refuses the latter by E-WSEL-REFUSED: `dynamic` is the
-\ quotation descriptor. `unbounded-tail` is selected as well, as a call, so one
-\ in tail position is a call then a return: tail recursion is not bounded
-\ space. realint is selected under a profile that admits
-\ saturating-float-to-int and refused by E-WSEL-REFUSED under any other.
-ENUM admission
-   selected
-   unbounded-tail
-   dynamic
-;ENUM
-
-: ADMISSION ( HIR:opcode -- WSEL:admission )
-   MATCH HIR:opcode
-      const    OF WSEL-ADMISSION:SELECTED ENDOF
-      add      OF WSEL-ADMISSION:SELECTED ENDOF
-      sub      OF WSEL-ADMISSION:SELECTED ENDOF
-      mul      OF WSEL-ADMISSION:SELECTED ENDOF
-      div      OF WSEL-ADMISSION:SELECTED ENDOF
-      lt       OF WSEL-ADMISSION:SELECTED ENDOF
-      le       OF WSEL-ADMISSION:SELECTED ENDOF
-      gt       OF WSEL-ADMISSION:SELECTED ENDOF
-      ge       OF WSEL-ADMISSION:SELECTED ENDOF
-      equal    OF WSEL-ADMISSION:SELECTED ENDOF
-      ne       OF WSEL-ADMISSION:SELECTED ENDOF
-      and      OF WSEL-ADMISSION:SELECTED ENDOF
-      or       OF WSEL-ADMISSION:SELECTED ENDOF
-      xor      OF WSEL-ADMISSION:SELECTED ENDOF
-      lshift   OF WSEL-ADMISSION:SELECTED ENDOF
-      rshift   OF WSEL-ADMISSION:SELECTED ENDOF
-      invert   OF WSEL-ADMISSION:SELECTED ENDOF
-      mem      OF WSEL-ADMISSION:SELECTED ENDOF
-      load     OF WSEL-ADMISSION:SELECTED ENDOF
-      store    OF WSEL-ADMISSION:SELECTED ENDOF
-      bload    OF WSEL-ADMISSION:SELECTED ENDOF
-      bstore   OF WSEL-ADMISSION:SELECTED ENDOF
-      br       OF WSEL-ADMISSION:SELECTED ENDOF
-      brz      OF WSEL-ADMISSION:SELECTED ENDOF
-      call     OF WSEL-ADMISSION:UNBOUNDED-TAIL ENDOF
-      wordcall OF WSEL-ADMISSION:UNBOUNDED-TAIL ENDOF
-      quot     OF WSEL-ADMISSION:DYNAMIC ENDOF
-      return   OF WSEL-ADMISSION:SELECTED ENDOF
-      trap     OF WSEL-ADMISSION:SELECTED ENDOF
-      fconst   OF WSEL-ADMISSION:SELECTED ENDOF
-      fadd     OF WSEL-ADMISSION:SELECTED ENDOF
-      fsub     OF WSEL-ADMISSION:SELECTED ENDOF
-      fmul     OF WSEL-ADMISSION:SELECTED ENDOF
-      fdiv     OF WSEL-ADMISSION:SELECTED ENDOF
-      fneg     OF WSEL-ADMISSION:SELECTED ENDOF
-      fabs     OF WSEL-ADMISSION:SELECTED ENDOF
-      fsqrt    OF WSEL-ADMISSION:SELECTED ENDOF
-      flt      OF WSEL-ADMISSION:SELECTED ENDOF
-      fgt      OF WSEL-ADMISSION:SELECTED ENDOF
-      feq      OF WSEL-ADMISSION:SELECTED ENDOF
-      fltz     OF WSEL-ADMISSION:SELECTED ENDOF
-      feqz     OF WSEL-ADMISSION:SELECTED ENDOF
-      intreal  OF WSEL-ADMISSION:SELECTED ENDOF
-      realint  OF WSEL-ADMISSION:SELECTED ENDOF
-      bitsreal OF WSEL-ADMISSION:SELECTED ENDOF
-      realbits OF WSEL-ADMISSION:SELECTED ENDOF
-      terminal OF WSEL-ADMISSION:SELECTED ENDOF
-   ;MATCH ;
 
 \ ---- the signature descriptor -----------------------------------------------
 \ The pinned 16/16 rule (section 7.3): a function past either count takes the
@@ -762,13 +697,6 @@ $7FF8000000000000 constant NAN-MADE
    a  a WSTRUCT-OPCODE:F64-SQRT F64 OP1 CANON  PASS
    id 0 NFROZEN:RESULT-AT swap BIND ;
 
-\ i64.trunc_sat_f64_s is f>s exactly, and only a profile that admits
-\ saturating-float-to-int has it (W05).
-: SEL-REALINT ( IR-ID:ir-op-id -- )
-   WPROF-FEATURE:SATURATING-FLOAT-TO-INT WPROF:ADMITS?
-   0= if E-WSEL-REFUSED throw then
-   WSTRUCT-OPCODE:I64-TRUNC-SAT-F64-S I64 SEL-UNARY ;
-
 \ ---- control -----------------------------------------------------------------
 : SEL-BR ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
@@ -951,7 +879,7 @@ $7FF8000000000000 constant NAN-MADE
       fltz     OF id WSTRUCT-OPCODE:F64-LT SEL-COMPARE0 ENDOF
       feqz     OF id WSTRUCT-OPCODE:F64-EQ SEL-COMPARE0 ENDOF
       intreal  OF id WSTRUCT-OPCODE:F64-CONVERT-I64-S F64 SEL-UNARY ENDOF
-      realint  OF id SEL-REALINT ENDOF
+      realint  OF id WSTRUCT-OPCODE:I64-TRUNC-SAT-F64-S I64 SEL-UNARY ENDOF
       bitsreal OF id WSTRUCT-OPCODE:F64-REINTERPRET-I64 F64 SEL-UNARY ENDOF
       realbits OF id WSTRUCT-OPCODE:I64-REINTERPRET-F64 I64 SEL-UNARY ENDOF
       terminal OF id SEL-TERMINAL ENDOF

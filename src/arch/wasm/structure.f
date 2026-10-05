@@ -54,7 +54,7 @@ require src/compiler/native/frozen.f
 -9815 constant E-WCTL-FIRST
 -9819 constant E-WCTL-LAST
 -9815 constant E-WCTL-IRREDUCIBLE  \ a function whose control enters a cycle at more than one block
--9816 constant E-WCTL-RANGE        \ a block, step or temporary outside the last function structured
+-9816 constant E-WCTL-RANGE        \ a step or temporary outside the last function structured
 
 package WCTL
 public
@@ -90,8 +90,7 @@ private
 variable ORIGIN                      \ the module ordinal of the function's entry
 variable NB                          \ blocks in the function
 variable NREACH                      \ blocks the entry reaches
-variable READY                       \ blocks of the last function structured whole
-variable LABELS                      \ labels open where the next step goes
+variable LABELS                     \ labels open where the next step goes
 variable NSTEPS
 variable NTEMPS
 variable NCOPIES
@@ -442,22 +441,15 @@ BIND-TREE
    k 0 < k cnt >= or if E-WCTL-RANGE throw then
    k ;
 
-: BLOCK-CK ( IR-ID:ir-block-id -- n )
-   {: b:IR-ID:ir-block-id :}
-   b IR-ID:BLOCK-OWNER  0 CUR @ IR-ID:FUN-OWNER  IR-ID:MODULE-SAME?
-   0= if E-WCTL-RANGE throw then
-   b ORD READY @ INDEX-CK ;
-
 public
 
 \ Structure one defined function of a module WSTRUCT:FREEZE verified, which the
 \ readers below then answer for. A function whose control is irreducible is
 \ refused and leaves nothing to read.
 : STRUCTURE ( IR-BUILD:module IR-ID:ir-fun-id -- )
-   0 READY !  0 NSTEPS !  0 NTEMPS !  0 LABELS !
+   0 NSTEPS !  0 NTEMPS !  0 LABELS !
    ANALYSE
-   0 TREE
-   NB @ READY ! ;
+   0 TREE ;
 
 : STEPS ( -- n )
    NSTEPS @ ;
@@ -471,17 +463,6 @@ public
 
 : TEMP-TYPE ( n -- IR-ID:ir-type-id )
    NTEMPS @ INDEX-CK TEMP-ROW @ ;
-
-\ The block's immediate dominator. The entry and a block the entry does not
-\ reach answer themselves, since neither has another.
-: IDOM ( IR-ID:ir-block-id -- IR-ID:ir-block-id )
-   {: b:IR-ID:ir-block-id :}
-   b BLOCK-CK DOM @ {: d:n :}
-   d 0 < if b exit then
-   d BLK ;
-
-: HEADER? ( IR-ID:ir-block-id -- bool )
-   BLOCK-CK HEAD @ ;
 
 \ What the last refusal named: the function, and the span of one of the blocks
 \ its cycle is entered at.

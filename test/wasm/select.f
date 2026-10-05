@@ -1,5 +1,5 @@
 \ select.f - WSEL, src/arch/wasm/select.f: its calls, status, integer and
-\ checked memory rows and its admission matrix, under WPROF's V1 profile.
+\ checked memory rows.
 \
 \ Each row compiles Habu source, selects it and compares what the module holds
 \ (test/wasm/select-lib.f): its shape, with or without its accesses' offsets,
@@ -19,7 +19,6 @@ require src/compiler/native/frozen.f
 require src/compiler/native/hir.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/backend.f
-require src/arch/wasm/profile.f
 require src/arch/wasm/wstruct.f
 require src/arch/wasm/select.f
 require test/compiler/native-source-fixture.f
@@ -423,40 +422,9 @@ variable USE-K                       \ and its index there
    s" PO tuck ! @" 2 1
    s" 4: br>1 | 2: i32.load i32.const=8 i32.add i64.extend_i32_u i64.const=200704 i64.gt_s brz>3,2 | 0: i32.const=102 i32.store i64.store unreachable | 0: i64.store i32.store call brz>4,7 | 0: i64.load i32.store i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>5,6 | 0: i32.const=134 i32.store i64.store unreachable | 0: i32.wrap_i64 i64.load i32.const=0 return | 0: i32.const=1 i64.const=0 return | " ROW ;
 
-\ ---- the admission matrix -------------------------------------------------------
-\ Every HIR opcode answers: selected here, or the sibling that selects it.
-variable N-SEL
-variable N-TAIL
-variable N-DYN
-
-: ADMIT+ ( WSEL:admission -- )
-   MATCH WSEL:admission
-      selected       OF 1 N-SEL +! ENDOF
-      unbounded-tail OF 1 N-TAIL +! ENDOF
-      dynamic        OF 1 N-DYN +! ENDOF
-   ;MATCH ;
-
-: COUNTS-RESET ( -- )
-   0 N-SEL !  0 N-TAIL !  0 N-DYN ! ;
-
-: ADMISSION-ROWS ( -- )
-   COUNTS-RESET
-   HIR:OPCODES 0 ?do  i HIR:NTH WSEL:ADMISSION ADMIT+  loop
-   s" calls, status, integers, checked memory and f64: 46 selected here" T-LABEL
-   N-SEL @ N-TAIL @ + 46 T=
-   s" the quotation descriptor is the sibling's" T-LABEL
-   N-DYN @ 1 T=
-   s" the matrix says a tail call, self or host, is not bounded space" T-LABEL
-   N-TAIL @ 2 T=
-   COUNTS-RESET
-   HIR-OPCODE:CALL WSEL:ADMISSION ADMIT+
-   HIR-OPCODE:WORDCALL WSEL:ADMISSION ADMIT+
-   N-TAIL @ 2 T= ;
-
 public
 : RUN ( -- )
-   WPROF:V1 INSTALL
-   ADMISSION-ROWS
+   REGISTER-WASM
    INTEGER-ROWS
    LOOP-ROWS
    CALL-ROWS

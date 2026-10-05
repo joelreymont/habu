@@ -2,8 +2,7 @@
 \ select-f64.f): a definition compiled through the front end and NBACK:FREEZE,
 \ or built straight in HIR, selected by the rows a Wasm backend installs, and
 \ read back from the frozen WSTRUCT module. A row file reopens WSEL-TEST and
-\ installs the profile its rows are selected under, once in its process
-\ (src/arch/wasm/profile.f).
+\ registers those rows once in its process.
 \
 \ A shape lists per block its argument count and its operations, each with what
 \ it carries past its opcode - a number's value, an address's kind, whose value
@@ -24,7 +23,6 @@ require src/compiler/native/frozen.f
 require src/compiler/native/hir.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/backend.f
-require src/arch/wasm/profile.f
 require src/arch/wasm/wstruct.f
 require src/arch/wasm/select.f
 require test/compiler/native-source-fixture.f
@@ -53,11 +51,9 @@ private
 : NO-PROTOTYPE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- )
    2drop 2drop ;
 
-\ The profile, and the row the Wasm backend registers, with WSEL's own declare
-\ and select as NBACK reaches them; it lowers every Wasm contract and emits
-\ none.
-: INSTALL ( WPROF:profile -- )
-   WPROF:CURRENT!
+\ The row the Wasm backend registers, with WSEL's own declare and select as
+\ NBACK reaches them; it lowers every Wasm contract and emits none.
+: REGISTER-WASM ( -- )
    71 CTARGET:ID CTARGET-ARCH:WASM [: ALWAYS ;] [: NEVER ;]
    CTARGET-BACKEND:MAKE
    [: WSEL:DECLARE ;] [: WSEL:SELECT ;] [: NO-REWRITE ;] [: NO-REWRITE ;]

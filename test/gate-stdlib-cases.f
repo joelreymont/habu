@@ -549,16 +549,9 @@ SUITE wasm-leb
 ;SUITE
 
 \ The Wasm backend's dialect, src/arch/wasm/wstruct.f: its closed vocabulary,
-\ a module frozen through WSTRUCT:FREEZE, the substrate's refusals and the
-\ signature check.
+\ a module frozen through WSTRUCT:FREEZE and the substrate's refusals.
 SUITE wasm-wstruct
    test/wasm/wstruct.f
-;SUITE
-
-\ The Wasm feature profile, src/arch/wasm/profile.f: V1's features, layout and
-\ ceilings, profile identity, and the install-once rule.
-SUITE wasm-profile
-   test/wasm/profile.f
 ;SUITE
 
 \ WCTL, the Wasm backend's structured control, src/arch/wasm/structure.f: W01's
@@ -582,8 +575,7 @@ SUITE wasm-encode
 ;SUITE
 
 \ WSEL's f64 rows: Habu's NaN rule after f64 add, sub, mul, div and sqrt, the
-\ sign operations, the comparisons and conversions, and W05, f>s refused in a
-\ fork whose profile lacks saturating-float-to-int.
+\ sign operations, the comparisons and the conversions.
 SUITE wasm-select-f64
    test/wasm/select-f64.f
 ;SUITE

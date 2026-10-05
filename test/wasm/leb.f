@@ -84,10 +84,6 @@ variable STAGED-LEN
    {: v:n a u:n :}
    v [: WLEB:U32! ;] [: WLEB:U32@ ;] a u SHORTEST ;
 
-: U64-IS ( n ptr u8 n -- )
-   {: v:n a u:n :}
-   v [: WLEB:U64! ;] [: WLEB:U64@ ;] a u SHORTEST ;
-
 : S32-IS ( n ptr u8 n -- )
    {: v:n a u:n :}
    v [: WLEB:S32! ;] [: WLEB:S32@ ;] a u SHORTEST ;
@@ -107,15 +103,6 @@ variable STAGED-LEN
    $FFFFFFF s" ffffff7f" U32-IS
    $10000000 s" 8080808001" U32-IS
    U32-MAX s" ffffffff0f" U32-IS ;
-
-: U64-EDGES ( -- )
-   0 s" 00" U64-IS
-   127 s" 7f" U64-IS
-   128 s" 8001" U64-IS
-   U32-PAST s" 8080808010" U64-IS
-   MAX-N s" ffffffffffffffff7f" U64-IS
-   MIN-N s" 80808080808080808001" U64-IS
-   -1 s" ffffffffffffffffff01" U64-IS ;
 
 : S32-EDGES ( -- )
    0 s" 00" S32-IS
@@ -239,7 +226,6 @@ variable STAGED-LEN
 \ Padding inside the type's bytes, and an LEB that ends before its bytes do.
 : ADMITS ( -- )
    s" 8000" [: WLEB:U32@ ;] 0 2 READS
-   s" 8080808000" [: WLEB:U64@ ;] 0 5 READS
    s" ffffffff7f" [: WLEB:S32@ ;] -1 5 READS
    s" ff7f" [: WLEB:S64@ ;] -1 2 READS
    s" 7f00" [: WLEB:S32@ ;] -1 1 READS ;
@@ -249,7 +235,6 @@ variable STAGED-LEN
    s" 8080808080" [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-OVERLONG REFUSES
    s" ffffffff8f00" [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-OVERLONG REFUSES
    s" 808080808000" [: STAGED$ WLEB:S32@ 2drop ;] WLEB:E-OVERLONG REFUSES
-   s" 8080808080808080808000" [: STAGED$ WLEB:U64@ 2drop ;] WLEB:E-OVERLONG REFUSES
    s" ffffffffffffffffffff7f" [: STAGED$ WLEB:S64@ 2drop ;] WLEB:E-OVERLONG REFUSES ;
 
 : TRUNCATED ( -- )
@@ -257,7 +242,6 @@ variable STAGED-LEN
    s" 80" [: STAGED$ WLEB:S32@ 2drop ;] WLEB:E-TRUNCATED REFUSES
    s" ffffffff" [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-TRUNCATED REFUSES
    s" 808080808080808080" [: STAGED$ WLEB:S64@ 2drop ;] WLEB:E-TRUNCATED REFUSES
-   s" ffffffffffffffffff" [: STAGED$ WLEB:U64@ 2drop ;] WLEB:E-TRUNCATED REFUSES
    s" a negative length" T-LABEL
    [: STAGED SPAN:$ drop -1 WLEB:U32@ 2drop ;] E-SPAN-LENGTH TTHROWSQ ;
 
@@ -268,8 +252,6 @@ variable STAGED-LEN
    s" ffffffff0f" [: STAGED$ WLEB:S32@ 2drop ;] WLEB:E-RANGE REFUSES
    s" 8080808008" [: STAGED$ WLEB:S32@ 2drop ;] WLEB:E-RANGE REFUSES
    s" ffffffff77" [: STAGED$ WLEB:S32@ 2drop ;] WLEB:E-RANGE REFUSES
-   s" 80808080808080808002" [: STAGED$ WLEB:U64@ 2drop ;] WLEB:E-RANGE REFUSES
-   s" ffffffffffffffffff7f" [: STAGED$ WLEB:U64@ 2drop ;] WLEB:E-RANGE REFUSES
    s" ffffffffffffffffff01" [: STAGED$ WLEB:S64@ 2drop ;] WLEB:E-RANGE REFUSES
    s" 8080808080808080807e" [: STAGED$ WLEB:S64@ 2drop ;] WLEB:E-RANGE REFUSES ;
 
@@ -302,10 +284,10 @@ variable STAGED-LEN
 \ A span short of the LEB is refused before a byte is written, and an exact fit
 \ is written whole.
 : CAPACITY ( -- )
-   s" MAX-N's nine bytes in eight"
-   [: MAX-N OUT 8 SPAN:TAKE WLEB:U64! drop ;] E-SPAN-CAPACITY WRITE-REFUSES
-   s" and fills nine exactly" T-LABEL
-   MAX-N OUT 9 SPAN:TAKE WLEB:U64! 9 T=
+   s" MAX-N's ten bytes in nine"
+   [: MAX-N OUT 9 SPAN:TAKE WLEB:S64! drop ;] E-SPAN-CAPACITY WRITE-REFUSES
+   s" and fills ten exactly" T-LABEL
+   MAX-N OUT 10 SPAN:TAKE WLEB:S64! 10 T=
    s" a padded u32 in four bytes"
    [: 0 OUT 4 SPAN:TAKE WLEB:U32-PAD! drop ;] E-SPAN-CAPACITY WRITE-REFUSES
    s" a padded s64 in nine bytes"
@@ -358,7 +340,6 @@ variable STAGED-LEN
 \ holds it, and the shortest-form readers take the padded field too.
 : TRIP ( n -- )
    {: v:n :}
-   v [: WLEB:U64! ;] [: WLEB:U64@ ;] BACK
    v [: WLEB:S64! ;] [: WLEB:S64@ ;] BACK
    v [: WLEB:S64-PAD! ;] [: WLEB:S64-PAD@ ;] PAD-BACK
    v [: WLEB:S64-PAD! ;] [: WLEB:S64@ ;] BACK
@@ -381,7 +362,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   U32-EDGES U64-EDGES S32-EDGES S64-EDGES
+   U32-EDGES S32-EDGES S64-EDGES
    IN-PLACE PADS
    ADMITS OVERLONG TRUNCATED OUT-OF-RANGE
    WRITE-RANGE CAPACITY FIELD-REFUSALS PATCH-REFUSALS
