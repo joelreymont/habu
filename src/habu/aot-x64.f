@@ -2,6 +2,7 @@
 \ Loaded after aot-lib.f only for the x86-64 target.
 require lib/le.f
 require lib/byte-buffer.f
+require src/habu/aot-x64-format.f
 require src/habu/boot-x64.f
 require src/habu/patch-x64.f
 require src/habu/image-x64.f
@@ -39,6 +40,10 @@ variable X64-I  variable X64-J  variable X64-RUNS
    X64-WORD LE:U32!
    X64-WORD 4 BUF:N>BLEN X64-SINK BUF:APPEND-SPAN ;
 
+: X64-U64, ( n -- )
+   X64-WORD LE:U64!
+   X64-WORD 8 BUF:N>BLEN X64-SINK BUF:APPEND-SPAN ;
+
 : X64-RUNS, ( -- )
    X64-COUNT-RUNS X64-U32,
    0 X64-I !
@@ -61,6 +66,20 @@ variable X64-I  variable X64-J  variable X64-RUNS
       i XTC-OFF@ X64-U32,
       i XT-CELL-TARGET X64-U32,
    loop ;
+
+: X64-TABLE-FOOTER, ( n -- ) {: table:n :}
+   X64CODE:ASM-LEN table - {: length:n :}
+   X64LAYOUT:CODE-OFF X64CODE:ASM-LEN +
+      X64AOT-FORMAT:FOOTER-BYTES + PROT-PAGE-MAX 1- +
+      PROT-PAGE-MAX 1- invert and X64LAYOUT:CODE-OFF - {: end:n :}
+   end X64CODE:CODE-CAP-BYTES > if
+      s" aot: stripped table exceeds code window" 74 die then
+   end X64AOT-FORMAT:FOOTER-BYTES - X64CODE:ASM-LEN - 0 ?do
+      0 X64-SINK BUF:APPEND-BYTE
+   loop
+   table X64-U32,
+   length X64-U32,
+   X64AOT-FORMAT:MAGIC X64-U64, ;
 
 \ Place each reachable body in text without records or interpreter state.
 : X64-PACK ( label -- ) {: root:label :}
@@ -287,8 +306,10 @@ variable X64-MEMBER
    root X64-PACK
    X64-PATCH-SITES
    table X64CODE:LBL,
+   X64CODE:ASM-LEN {: table-at:n :}
    X64-RUNS,
    X64-XT-ROWS,
+   table-at X64-TABLE-FOOTER,
    X64-TEXT-VA X64CODE:ASM-LINK
    X64-WRITE-OBJ
    X64-WRITE

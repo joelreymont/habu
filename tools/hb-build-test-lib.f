@@ -234,7 +234,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    SB$ ;
 
 : HBT-AOT-SRC$ ( -- ptr u8 n )
-   s" : MAIN ( -- ) ; \ trailing source comment" ;
+   s" create HBT-DATA 41 c, : MAIN ( -- ) HBT-DATA c@ 41 <> if -9046 throw then ; \ trailing source comment" ;
 
 \ RUN's last line calls NULL$, and that is the point of it: NULL$ is a colon
 \ word of the ENGINE's own prefix, so it sits outside this window's code and the

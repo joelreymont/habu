@@ -544,6 +544,7 @@ HBB-INSTALL-CHILD-LINT
    s" target:linux-x86-64" CONTENT-KEY:TEXT+
    s" tools/object-image-x64.f" HBB-KEY-FILE+
    s" src/habu/aot-x64.f" HBB-KEY-FILE+
+   s" src/habu/aot-x64-format.f" HBB-KEY-FILE+
    s" src/habu/boot-x64.f" HBB-KEY-FILE+
    s" src/habu/image-x64.f" HBB-KEY-FILE+
    s" src/habu/patch-x64.f" HBB-KEY-FILE+

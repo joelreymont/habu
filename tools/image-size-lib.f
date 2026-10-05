@@ -72,7 +72,9 @@
 \ PT_LOADs. Their snapshot heap follows immutable RX text; a text-site footer
 \ marks executable code, and the trailer recovers the donor text boundary.
 \ The x86 path measures those physical segments and validates raw/grid heap
-\ framing. The ARM AOT and reachability walkers below retain their ARM scope.
+\ framing. A stripped x86 image locates its sparse DATA runs and XT rows through
+\ a versioned footer in RX text; the ARM AOT and reachability walkers below
+\ retain their ARM scope.
 
 require lib/fmt.f
 require lib/fs.f
@@ -80,6 +82,7 @@ require lib/sort.f
 require src/habu/code-span.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
+require src/habu/aot-x64-format.f
 require tools/aot-startup-shape.f        \ the startup's instruction shapes, named once
 require tools/image-names.f
 require tools/macho-read.f
@@ -2814,8 +2817,91 @@ $D37EF54A constant XTC-LSL2
 variable X64-TEXT-END
 variable X64-CODE-END
 variable X64-DICT-N
+variable X64-AOT
+variable X64-AOT-END
+variable X64-AOT-FOOTER
+variable X64-AOT-CUR
+variable X64-AOT-LAST
 
 $3145544953343658 constant X64-SITES-MAGIC
+
+: X64-AOT-LOCATE ( -- )
+   X64-TEXT-END @ CODE-OFF X64AOT-FORMAT:FOOTER-BYTES + 8 + >=
+      s" image-size: x86 stripped table footer is missing" ?TRL
+   X64-TEXT-END @ X64AOT-FORMAT:FOOTER-BYTES - {: footer:n :}
+   footer 8 + U64@ X64AOT-FORMAT:MAGIC =
+      s" image-size: x86 stripped table footer is missing" ?TRL
+   footer U32@ {: offset:n :}
+   footer 4 + U32@ {: length:n :}
+   offset footer CODE-OFF - <=
+      s" image-size: x86 stripped table starts outside text" ?TRL
+   CODE-OFF offset + {: start:n :}
+   length 8 >= length footer start - <= and
+      s" image-size: x86 stripped table length is invalid" ?TRL
+   start X64-CODE-END !
+   start BLOB-AT !
+   start length + X64-AOT-END !
+   footer X64-AOT-FOOTER ! ;
+
+: X64-AOT-FITS ( n -- ) {: len:n :}
+   X64-AOT-CUR @ X64-AOT-END @ <=
+   len X64-AOT-END @ X64-AOT-CUR @ - <= and
+      s" image-size: x86 stripped table is truncated" ?TRL ;
+
+: X64-AOT-U32 ( -- n )
+   4 X64-AOT-FITS
+   X64-AOT-CUR @ U32@
+   4 X64-AOT-CUR +! ;
+
+: X64-AOT-ROWS ( -- )
+   X64-CODE-END @ X64-AOT-CUR !
+   s" app/run-count" X64-AOT-CUR @ 4 SPAN B-OTHER ROW
+   X64-AOT-U32 {: runs:n :}
+   runs X64-AOT-END @ X64-AOT-CUR @ - 4 -
+      X64AOT-FORMAT:RUN-HEADER-BYTES / <=
+      s" image-size: x86 stripped run count exceeds table" ?TRL
+   0 X64-AOT-LAST !
+   runs 0 ?do
+      X64AOT-FORMAT:RUN-HEADER-BYTES X64-AOT-FITS
+      s" app/run-header" X64-AOT-CUR @
+         X64AOT-FORMAT:RUN-HEADER-BYTES SPAN B-OTHER ROW
+      X64-AOT-U32 {: off:n :}
+      X64-AOT-U32 {: len:n :}
+      off X64-AOT-LAST @ >=
+         s" image-size: x86 stripped runs overlap or are unordered" ?TRL
+      len 0 > off DATA-SIZE <= and
+      if len DATA-SIZE off - <= else false then
+         s" image-size: x86 stripped run exceeds DATA window" ?TRL
+      off len + X64-AOT-LAST !
+      len X64-AOT-FITS
+      X64-AOT-CUR @ len SPAN {: bytes:n zeros:n :}
+      zeros 0=
+         s" image-size: x86 stripped run contains zero bytes" ?TRL
+      s" app/data-run" bytes zeros B-DATA ROW
+      len X64-AOT-CUR +!
+   loop
+   X64-AOT-CUR @ BLOB-STOP !
+   4 X64-AOT-FITS
+   s" app/xt-count" X64-AOT-CUR @ 4 SPAN B-OTHER ROW
+   X64-AOT-U32 {: xts:n :}
+   xts X64-AOT-END @ X64-AOT-CUR @ -
+      X64AOT-FORMAT:XT-ROW-BYTES / =
+      s" image-size: x86 stripped XT rows do not fill table" ?TRL
+   -1 X64-AOT-LAST !
+   xts 0 ?do
+      s" app/xt-row" X64-AOT-CUR @
+         X64AOT-FORMAT:XT-ROW-BYTES SPAN B-OTHER ROW
+      X64-AOT-U32 {: off:n :}
+      X64-AOT-U32 {: target:n :}
+      off X64-AOT-LAST @ >
+      off DATA-SIZE 8 - <= and
+         s" image-size: x86 stripped XT cell is outside DATA or unordered" ?TRL
+      target X64-CODE-END @ CODE-OFF - <
+         s" image-size: x86 stripped XT target is outside code" ?TRL
+      off X64-AOT-LAST !
+   loop
+   X64-AOT-CUR @ X64-AOT-END @ =
+      s" image-size: x86 stripped table has trailing bytes" ?TRL ;
 
 : X64-FOOTER ( -- )
    X64-TEXT-END @ X64-CODE-END !
@@ -2902,6 +2988,7 @@ $3145544953343658 constant X64-SITES-MAGIC
 
 : X64-CLASSIFY ( -- )
    TEXT-SIZE X64-TEXT-END !
+   0 X64-AOT !
    0 BAND-CODE !  0 BAND-NAMES !  0 BAND-FREE !  0 DOWN-N !
    0 BLOB-OFF !  0 BLOB-LEN !  0 BLOB-AT !  0 BLOB-STOP !
    SNAPSHOT? if
@@ -2910,6 +2997,7 @@ $3145544953343658 constant X64-SITES-MAGIC
    else
       X64-REG-BYTES 0= if
          construct image-class stripped CLASS!
+         -1 X64-AOT !
       else
          X64-REG-BYTES DICT-SIZE < if
             s" image-size: x86 dictionary LOAD is incomplete" RC die
@@ -2917,7 +3005,7 @@ $3145544953343658 constant X64-SITES-MAGIC
          construct image-class engine CLASS!
       then
    then
-   X64-FOOTER
+   X64-AOT @ if X64-AOT-LOCATE else X64-FOOTER then
    X64-DICT-COUNT X64-DICT-N !
    X64-REG-BYTES DICT-SIZE >= if
       X64-REG-OFF DICT-SIZE + BLOB-OFF !
@@ -2925,8 +3013,10 @@ $3145544953343658 constant X64-SITES-MAGIC
       X64-DICT-N @ DREC * dup BAND-NAMES !
       DICT-SIZE swap - BAND-FREE !
    then
-   X64-DATA-OFF BLOB-AT !
-   X64-DATA-OFF X64-DATA-BYTES + BLOB-STOP ! ;
+   X64-AOT @ 0= if
+      X64-DATA-OFF BLOB-AT !
+      X64-DATA-OFF X64-DATA-BYTES + BLOB-STOP !
+   then ;
 
 : X64-GAP ( n n -- ) {: at:n len:n :}
    at len ZEROS len <> if
@@ -2938,8 +3028,15 @@ $3145544953343658 constant X64-SITES-MAGIC
    -1 ZCOL !  BUDGET-BEGIN
    s" elf/header-page" 0 CODE-OFF SPAN B-OTHER ROW
    s" image/text" CODE-OFF X64-CODE-END @ CODE-OFF - SPAN B-CODE ROW
-   s" image/text-sites" X64-CODE-END @ X64-TEXT-END @ X64-CODE-END @ -
-      SPAN B-OTHER ROW
+   X64-AOT @ if
+      X64-AOT-ROWS
+      X64-AOT-END @ X64-AOT-FOOTER @ X64-AOT-END @ - X64-GAP
+      s" app/table-footer" X64-AOT-FOOTER @
+         X64AOT-FORMAT:FOOTER-BYTES SPAN B-OTHER ROW
+   else
+      s" image/text-sites" X64-CODE-END @
+         X64-TEXT-END @ X64-CODE-END @ - SPAN B-OTHER ROW
+   then
    SNAPSHOT-CLASS? if
       DAT-FORM @ SNAPSHOT-FORMAT:HEAP-GRID = if
          s" snapshot/heap-frame" DAT-HEAP @ SNAPSHOT-FORMAT:GRID-FRAME SPAN B-DATA ROW

@@ -283,7 +283,14 @@ variable HBT-INST-FILES
    HBT-REMOVE-AOT-OUT
    BF-TMP-RESET ;
 
-\ ---- an image that copies a DATA blob this reader cannot locate ---------------
+\ ---- a damaged stripped DATA table ---------------------------------------------
+\ x86 stores sparse DATA runs in RX text and locates them with a footer. The
+\ real program above carries a nonzero byte; this case changes one run length,
+\ shortens the table past its XT count, then removes its footer. Each image must
+\ be refused before the reader accounts bytes outside the table or DATA window.
+\
+\ ARM copies a DATA blob through the startup sequence below. Its one-word
+\ mutation instead proves that an unlocatable copy is refused.
 \ tools/image-size-lib.f FIND-BLOB reads the blob's address out of the startup's
 \ four-word src/habu/aot-lib.f TEXT-ADR, sequence into x9. An image whose
 \ sequence it no longer recognises has none to count, and that used to be the
@@ -306,6 +313,10 @@ variable HBT-INST-FILES
    a off 1+ + c@ 8 lshift or
    a off 2 + + c@ 16 lshift or
    a off 3 + + c@ 24 lshift or ;
+
+: HBT-IMG-U64@ ( ptr u8 n -- n ) {: a:ptr off:n :}
+   a off HBT-IMG-U32@
+   a off 4 + HBT-IMG-U32@ 32 lshift or ;
 
 : HBT-IMG-U32! ( n ptr u8 n -- ) {: w:n a:ptr off:n :}
    w $FF and a off + c!
@@ -347,6 +358,37 @@ variable HBT-INST-FILES
    PROC-ENV-INHERIT-MISSING
    HBT-RUN-HB-BUILD ;
 
+: HBT-SIZE-AOT-LOST-RUN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a IMAGE-TEXT-SIZE-OFF HBT-IMG-U64@ {: textend:n :}
+   a textend 16 - HBT-IMG-U32@ CODE-OFF + {: table:n :}
+   a table HBT-IMG-U32@ 0 > TTRUE
+   a table 8 + HBT-IMG-U32@ {: runlen:n :}
+   a textend 12 - HBT-IMG-U32@ {: tablelen:n :}
+   HBT-LOST-CPY a u WRITE-ALL
+   HBT-LOST-CPY HBT-MEASURE-CHILD {: outu:n erru:n rc:n :}
+   HBT-ERR erru HBT-EMPTY$ T$=
+   rc 0 T=
+   $FFFFFFFF a table 8 + HBT-IMG-U32!
+   HBT-LOST-OUT a u WRITE-ALL
+   HBT-LOST-OUT HBT-MEASURE-CHILD {: outu2:n erru2:n rc2:n :}
+   rc2 0 T<>
+   HBT-ERR erru2 s" image-size: x86 stripped run exceeds DATA window"
+      CONTAINS? TTRUE
+   runlen a table 8 + HBT-IMG-U32!
+   tablelen 1- a textend 12 - HBT-IMG-U32!
+   HBT-LOST-OUT a u WRITE-ALL
+   HBT-LOST-OUT HBT-MEASURE-CHILD {: outu3:n erru3:n rc3:n :}
+   rc3 0 T<>
+   HBT-ERR erru3 s" image-size: x86 stripped table is truncated"
+      CONTAINS? TTRUE
+   tablelen a textend 12 - HBT-IMG-U32!
+   0 a textend 8 - HBT-IMG-U32!
+   HBT-LOST-OUT a u WRITE-ALL
+   HBT-LOST-OUT HBT-MEASURE-CHILD {: outu4:n erru4:n rc4:n :}
+   rc4 0 T<>
+   HBT-ERR erru4 s" image-size: x86 stripped table footer is missing"
+      CONTAINS? TTRUE ;
+
 : HBT-SIZE-AOT-LOST-BLOB ( -- )
    HBT-TMP BUILD-CACHE:ROOT!
    HBT-ROOT s" lostcopy" HBT-LOST-CPY-BUF HBT-LOST-CPY-U HBT-PATH!
@@ -356,21 +398,25 @@ variable HBT-INST-FILES
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    HBB-BUILD
    HBT-AOT-IMAGE$ {: a:ptr u:n :}
-   a u HBT-SCAN-TEXT-ADR9
-   HBT-SEQ-N @ 1 T=
-   HBT-LOST-CPY a u WRITE-ALL
-   HBT-LOST-CPY HBT-MEASURE-CHILD {: outu:n erru:n rc:n :}
-   HBT-ERR erru HBT-EMPTY$ T$=
-   rc 0 T=
-   HBT-OUT outu s" restored DATA window: " CONTAINS? TTRUE
-   13 CODE-OFF HBT-SEQ-AT @ 8 + - A64ASM:ENC-ADR
-   a HBT-SEQ-AT @ 8 + HBT-IMG-U32!
-   HBT-LOST-OUT a u WRITE-ALL
-   HBT-LOST-OUT HBT-MEASURE-CHILD {: outu2:n erru2:n rc2:n :}
-   rc2 0 T<>
-   HBT-ERR erru2
-   s" image-size: the startup copies a DATA blob but no code base + offset sequence names it"
-   CONTAINS? TTRUE
+   HB-TARGET-LINUX-X86-64? if
+      a u HBT-SIZE-AOT-LOST-RUN
+   else
+      a u HBT-SCAN-TEXT-ADR9
+      HBT-SEQ-N @ 1 T=
+      HBT-LOST-CPY a u WRITE-ALL
+      HBT-LOST-CPY HBT-MEASURE-CHILD {: outu:n erru:n rc:n :}
+      HBT-ERR erru HBT-EMPTY$ T$=
+      rc 0 T=
+      HBT-OUT outu s" restored DATA window: " CONTAINS? TTRUE
+      13 CODE-OFF HBT-SEQ-AT @ 8 + - A64ASM:ENC-ADR
+      a HBT-SEQ-AT @ 8 + HBT-IMG-U32!
+      HBT-LOST-OUT a u WRITE-ALL
+      HBT-LOST-OUT HBT-MEASURE-CHILD {: outu2:n erru2:n rc2:n :}
+      rc2 0 T<>
+      HBT-ERR erru2
+      s" image-size: the startup copies a DATA blob but no code base + offset sequence names it"
+      CONTAINS? TTRUE
+   then
    HBT-LOST-CPY HBT-REMOVE-FILE?
    HBT-LOST-OUT HBT-REMOVE-FILE?
    HBT-REMOVE-ARTIFACT
