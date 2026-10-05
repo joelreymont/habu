@@ -118,7 +118,8 @@ the ARM host, its source recovery, JIT, or tier 0:
 - `aot-capture-compact`, `aot-named-cells`, `aot-prelude-band`,
   `aot-payload-graph`, `aot-prefix-literal`, `aot-effect-pool`: these capture
   live ARM windows or inspect four-byte AArch64 instruction sites. The native
-  named-cell capture and inert signature-pool storage/refusal checks stay shared.
+  named-cell capture, inert signature-pool storage/refusal checks, and saved
+  graph width/publication checks stay shared.
 - `compiler-native-code-span`, `compiler-aot-nested-body`: these inspect the
   ARM compact-blob planner, four-byte record trailers and ADR extent inference.
   Shared create/does and stripped-image rows cover the runtime behavior.

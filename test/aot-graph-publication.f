@@ -1,0 +1,54 @@
+\ Compare every published checker and type-family store across graph refusal.
+package GRAPH-PUBLICATION
+$800000 constant CAP
+create SNAPSHOT CAP allot
+variable CURSOR variable USED variable COMPARING
+variable SCALAR
+public
+
+TRUSTED: BYTES ( ptr u8 n -- ) {: src:ptr u:n :}
+   u CAP CURSOR @ - > IF 79 throw THEN
+   SNAPSHOT CURSOR @ + {: saved:ptr :}
+   COMPARING @ IF
+      src u saved u CORE-STR= 0= IF 79 throw THEN
+   ELSE src saved u USIGS-COPY THEN
+   u CURSOR +! ;
+
+TRUSTED: VALUE ( n -- ) SCALAR ! SCALAR CELL BYTES ;
+TRUSTED: START ( bool -- ) COMPARING ! 0 CURSOR ! ;
+TRUSTED: FINISH ( -- )
+   COMPARING @ IF CURSOR @ USED @ <> IF 79 throw THEN
+   ELSE CURSOR @ USED ! THEN ;
+
+\ Published effects, symbols, constructors and their effect-index heads.
+TRUSTED: CORE ( -- )
+   UEND @ VALUE USIGS UEND @ BYTES
+   SYM-N @ VALUE SYMS SYM-N @ SYM-REC * BYTES
+   SYM-STR-U @ VALUE SYM-STR SYM-STR-U @ BYTES
+   CTN @ VALUE CT-STR-U @ VALUE CT-STR CT-STR-U @ BYTES
+   CT-NAME-A BYTE-VIEW CTN @ cells BYTES
+   CT-NAME-U BYTE-VIEW CTN @ cells BYTES
+   CT-CLASS BYTE-VIEW CTN @ cells BYTES
+   CT-WIDTH BYTE-VIEW CTN @ cells BYTES
+   CT-SIGN BYTE-VIEW CTN @ cells BYTES
+   USX-GEN @ VALUE USX-HI @ VALUE
+   SYM-N @ 1 ?do i USX@ VALUE loop ;
+
+;package
+
+package TFAM
+public
+
+TRUSTED: PREPARE-GRAPH-STATE ( -- ) TFX-ENSURE SVX-ENSURE ;
+TRUSTED: GRAPH-STATE ( -- )
+   REG-AOT-N 0 ?do
+      i REG-AOT-COUNT GRAPH-PUBLICATION:VALUE
+      i REG-AOT-BASE-PTR i REG-AOT-COUNT i REG-AOT-WIDTH * GRAPH-PUBLICATION:BYTES
+   loop
+   TFX-READY @ GRAPH-PUBLICATION:VALUE TFX-HI @ GRAPH-PUBLICATION:VALUE
+   TFX-CAP @ GRAPH-PUBLICATION:VALUE TFX-SLOTS GRAPH-PUBLICATION:VALUE
+   SVX-GEN @ GRAPH-PUBLICATION:VALUE SVX-HI @ GRAPH-PUBLICATION:VALUE
+   TFX-BASE BYTE-VIEW TFX-SLOTS cells GRAPH-PUBLICATION:BYTES
+   SYM-N @ 1 ?do i SVX@ GRAPH-PUBLICATION:VALUE loop ;
+
+;package
