@@ -2092,15 +2092,16 @@ public
 \ width of the term's matching arg (T-WIDTH, checker.f), so a layout arg widens
 \ the sum payload / product body. For every cell-kinded instantiation (all args
 \ width 1) it equals TFAM-WIDTH@, so routing T-WIDTH through it is behaviour-
-\ preserving groundwork. Nested parametric families propagate their own args in a
-\ later slice; a schema SC-APP is always an arity-0 concrete payload family today,
-\ whose instantiated width already equals its declared registry width.
+\ preserving groundwork. An application evaluates its argument widths before
+\ walking the applied family's payload.
 
 private
 
+defer SCH-APP-IWIDTH-XT ( n n -- n )
+
 : SCH-NODE-IWIDTH ( n n -- n ) {: node:n term:n :}   \ inst width of one schema node under term's args
    node SCHEMA-PARAM? IF term node SCHEMA-A@ PARAM>ARG T-WIDTH EXIT THEN
-   node SCHEMA-APP?   IF node SCHEMA-A@ TFAM-WIDTH@ EXIT THEN
+   node SCHEMA-APP?   IF node term SCH-APP-IWIDTH-XT EXIT THEN
    1 ;
 : SUMV-IWIDTH ( n n -- n ) {: vid:n term:n :}   \ legacy positional payload only
    vid SUMV-SCH-COUNT@ {: count:n :}
@@ -2162,24 +2163,35 @@ private
 
 \ --- which argument slots the width above READS (dot habu-place-an-open-d7bcba49).
 \ SCH-NODE-IWIDTH substitutes an argument's own width at exactly one kind of
-\ place: a schema root that IS a parameter node. Every other root — a pointer, a
-\ quotation, a concrete application — contributes a width the declaration fixes,
-\ so a parameter occurring only there cannot move the family's width whatever it
-\ binds to. These words walk the SAME schema roots as PRODUCT-IWIDTH and
+\ place: a schema root that IS a parameter node, including one passed into a
+\ width-bearing slot of an applied family. Pointer, quotation and boxed/niche
+\ slots do not propagate width dependence. These words walk the SAME roots as
+\ PRODUCT-IWIDTH and
 \ SUM-IWIDTH, one slot at a time, and the checker uses the answer to decide
 \ whether an instance with that slot still OPEN has a width it may place
 \ (checker.f LAYOUT-WIDTH-OPEN?). Keep the two walks together: a width site added
 \ to SCH-NODE-IWIDTH is an occurrence this must report.
+defer TFAM-WIDTH-SLOT? ( n n -- bool )
+
 : SCH-ROOT-WIDTH-SLOT? ( n n -- bool ) {: node:n slot:n :}
-   node SCHEMA-PARAM? 0= IF RES-FALSE EXIT THEN
-   node SCHEMA-A@ slot = ;
+   node SCHEMA-PARAM? IF node SCHEMA-A@ slot = EXIT THEN
+   node SCHEMA-APP? IF
+      node SCHEMA-A@ {: fam:n :}
+      node SCHEMA-B@ {: first:n :}
+      node SCHEMA-C@ 0 ?do
+         fam i TFAM-WIDTH-SLOT? IF
+            first i + SCHEMA-ROOT@ slot RECURSE IF RES-TRUE unloop EXIT THEN
+         THEN
+      loop
+   THEN
+   RES-FALSE ;
 : SUMV-WIDTH-SLOT? ( n n -- bool ) {: vid:n slot:n :}
    0 BEGIN dup vid SUMV-PAY-N < WHILE
       vid over SUMV-PAY-ROOT SCHEMA-ROOT@ slot SCH-ROOT-WIDTH-SLOT? IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop RES-FALSE ;
 
-: TFAM-WIDTH-SLOT? ( n n -- bool ) {: fam:n slot:n :}   \ the instantiated width reads argument slot `slot`
+: TFAM-WIDTH-SLOT-IMPL ( n n -- bool ) {: fam:n slot:n :}   \ the instantiated width reads argument slot `slot`
    fam TFAM-BOXED-OR-NICHE? IF RES-FALSE EXIT THEN
    fam TFAM-PRODUCT? IF
       0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
@@ -2203,6 +2215,9 @@ private
       REPEAT drop
    THEN
    RES-FALSE ;
+
+: TFAM-WIDTH-SLOT-INSTALL ( -- ) [: TFAM-WIDTH-SLOT-IMPL ;] is TFAM-WIDTH-SLOT? ;
+TFAM-WIDTH-SLOT-INSTALL
 
 : PF-MATCH? ( n n ptr u8 n n -- bool ) {: fam:n var:n na:ptr nu:n id:n :}
    id PF-REC@ {: r:ptr :}
@@ -2728,11 +2743,13 @@ public
       THEN kind PF-NONVALUE? 0= EXIT
    THEN drop RES-FALSE ;
 
+public
+
+defer DECL-SCHEMA-WIDTH ( n -- n )
+
 private
 
-: PF-SCHEMA-WIDTH ( n -- n ) {: sch:n :}
-   sch SCHEMA-ROOT@ {: node:n :}
-   node SCHEMA-APP? IF node SCHEMA-A@ TFAM-WIDTH@ ELSE 1 THEN ;
+: PF-SCHEMA-WIDTH ( n -- n ) SCHEMA-ROOT@ DECL-SCHEMA-WIDTH ;
 
 \ --- declaration-time parameter-arity walk for SUM variant payload schemas
 \ (dot habu-declaration-time-arity-4c70e37c). PRODUCT fields validate their whole
@@ -4387,45 +4404,129 @@ variable REG-AOT-MEMO-U
    kind TK-SUM = kind TK-ENUM = or IF row TF.SLOTS @ 1+ EXIT THEN
    1 ;
 
-: REG-AOT-NODE-WIDTH ( ptr u8 n n -- n ) {: src:ptr u:n node:n :}
-   src u 6 node REG-AOT-ITEM {: row:ptr :}
-   row @ SCH-APP = IF src u 0 row CELL + @ REG-AOT-ITEM REG-AOT-FAM-WIDTH EXIT THEN
-   1 ;
-
-\ Portable counterpart of SCH-NODE-IWIDTH / TFAM-INST-WIDTH@: substitute the
-\ graph's already validated logical argument widths for SCH-PARAM. A schema
-\ APP uses its declared family width, exactly as the live width authority does.
-\ The width memo is indexed by graph offsets, so shared arguments are read once
-\ rather than re-instantiated or published in the live checker to measure them.
-: REG-AOT-GRAPH-SCHEMA-WIDTH ( ptr u8 ptr u8 ptr u8 ptr u8 n n -- n )
-   {: term:ptr graph:ptr widths:ptr src:ptr u:n root:n :}
-   src u 7 root REG-AOT-ITEM @ {: node:n :}
-   src u 6 node REG-AOT-ITEM {: schema:ptr :}
-   schema @ SCH-PARAM = IF
-      schema CELL + @ {: arg:n :}
-      arg 0 < arg term EN.C @ >= or IF ASIG-GRAPH-DIE THEN
-      graph term EN.D @ + arg cells + CELL-VIEW @ widths + CELL-VIEW @ EXIT
-   THEN
-   schema @ SCH-APP = IF
-      src u 0 schema CELL + @ REG-AOT-ITEM REG-AOT-FAM-WIDTH EXIT
-   THEN
-   1 ;
-
 \ Leave room for the persisted width+1 encoding. Bounds precede addition.
 : REG-AOT-GRAPH-WIDTH+ ( n n -- n ) {: left:n right:n :}
    left 0 < right 0 < or IF ASIG-GRAPH-DIE THEN
    right $7FFFFFFFFFFFFFFE left - > IF ASIG-GRAPH-DIE THEN
    left right + ;
 
-: REG-AOT-GRAPH-FIELDS-WIDTH ( ptr u8 ptr u8 ptr u8 ptr u8 n ptr n n -- n )
-   {: term:ptr graph:ptr widths:ptr src:ptr u:n family:ptr variant:n :}
+\ A schema application has the width of its applied family WITH the argument
+\ widths at that site. The same reader handles live rows (u=0) and an incoming
+\ registry before installation. Mode 0 supplies declaration-time unit widths;
+\ 1 reads a live term, 2 reads a validated effect graph, 3 reads an application's
+\ numeric argument vector. No checker term or registry row is created here.
+0 constant VW-UNIT   1 constant VW-LIVE
+2 constant VW-GRAPH  3 constant VW-VECTOR
+
+defer VW-SCHEMA ( ptr u8 n n n n ptr u8 ptr u8 ptr u8 -- n )
+defer VW-FAMILY ( ptr u8 n n n n ptr u8 ptr u8 ptr u8 -- n )
+
+: VW-PARAM-WIDTH ( n n n ptr u8 ptr u8 ptr u8 -- n )
+   {: slot:n mode:n term:n ctx1 ctx2 ctx3 :}
+   mode VW-UNIT = IF 1 EXIT THEN
+   mode VW-LIVE = IF term slot PARAM>ARG T-WIDTH EXIT THEN
+   mode VW-VECTOR = IF ctx1 slot cells + CELL-VIEW @ EXIT THEN
+   slot 0 < slot ctx1 EN.C @ >= or IF ASIG-GRAPH-DIE THEN
+   ctx2 ctx1 EN.D @ + slot cells + CELL-VIEW @ ctx3 + CELL-VIEW @ ;
+
+: VW-FIELDS ( ptr u8 n ptr n n n n ptr u8 ptr u8 ptr u8 -- n )
+   {: src:ptr u:n family:ptr variant:n mode:n term:n ctx1:ptr ctx2:ptr ctx3:ptr :}
    0 family TF.FLD-COUNT @ 0 ?do
       src u 3 family TF.FLD-START @ i + REG-AOT-ITEM {: field:ptr :}
       field PF.VAR @ variant = IF
-         term graph widths src u field PF.SCH @ REG-AOT-GRAPH-SCHEMA-WIDTH
+         src u src u 7 field PF.SCH @ REG-AOT-ITEM @ mode term ctx1 ctx2 ctx3 VW-SCHEMA
          REG-AOT-GRAPH-WIDTH+
       THEN
    loop ;
+
+: VW-FAMILY-IMPL ( ptr u8 n n n n ptr u8 ptr u8 ptr u8 -- n )
+   {: src u:n id:n mode:n term:n ctx1 ctx2 ctx3 :}
+   src u 0 id REG-AOT-ITEM {: family:ptr :}
+   family TF.LAYOUT @ dup TL-BOXED = swap TL-NICHE = or IF 1 EXIT THEN
+   family TF.KIND @ {: kind:n :}
+   kind TK-PRODUCT = IF
+      src u family PF-NO-VARIANT mode term ctx1 ctx2 ctx3 VW-FIELDS EXIT
+   THEN
+   kind TK-SUM = kind TK-ENUM = or IF
+      0 family TF.VAR-COUNT @ 0 ?do
+         family TF.VAR-START @ i + {: vid:n :}
+         src u 2 vid REG-AOT-ITEM {: variant:ptr :}
+         family TF.FLD-COUNT @ 0 > IF
+            src u family vid mode term ctx1 ctx2 ctx3 VW-FIELDS
+         ELSE
+            0 variant SV.SCH-COUNT @ 0 ?do
+               src u src u 7 variant SV.SCH-START @ i + REG-AOT-ITEM @ mode term ctx1 ctx2 ctx3 VW-SCHEMA
+               REG-AOT-GRAPH-WIDTH+
+            loop
+         THEN
+         max
+      loop
+      1 REG-AOT-GRAPH-WIDTH+ EXIT
+   THEN
+   1 ;
+
+: VW-APP-RUN ( ptr u8 n ptr n n n ptr u8 ptr u8 ptr u8 ptr u8 -- ptr u8 n ptr n n n ptr u8 ptr u8 ptr u8 ptr u8 )
+   {: src u:n schema mode:n term:n ctx1 ctx2 ctx3 values :}
+   schema CELL + @ {: fam:n :}
+   schema 2 cells + @ {: first:n :}
+   schema 3 cells + @ {: count:n :}
+   count 0 ?do
+      src u src u 7 first i + REG-AOT-ITEM @ mode term ctx1 ctx2 ctx3 VW-SCHEMA
+      values i cells + CELL-VIEW !
+   loop
+   src u fam VW-VECTOR 0 values NULL-PTR NULL-PTR VW-FAMILY
+   values count cells + CELL-VIEW !
+   src u schema mode term ctx1 ctx2 ctx3 values BYTE-VIEW ;
+
+: VW-APP ( ptr u8 n ptr n n n ptr u8 ptr u8 ptr u8 -- n )
+   {: src u:n schema mode:n term:n ctx1 ctx2 ctx3 :}
+   schema CELL + @ {: fam:n :}
+   src u 0 fam REG-AOT-ITEM {: family:ptr :}
+   family TF.LAYOUT @ dup TL-BOXED = swap TL-NICHE = or IF 1 EXIT THEN
+   family TF.KIND @ dup TK-PRODUCT = swap TK-SUM = or
+   family TF.KIND @ TK-ENUM = or 0= IF 1 EXIT THEN
+   schema 3 cells + @ {: count:n :}
+   count 0= IF src u fam VW-UNIT 0 NULL-PTR NULL-PTR NULL-PTR VW-FAMILY EXIT THEN
+   count $7FFFFFFFFFFFFFFF CELL / 1- > IF ASIG-GRAPH-DIE THEN
+   count 1+ cells {: bytes:n :}
+   bytes ARENA-ALLOC {: values:ptr :}
+   src u schema mode term ctx1 ctx2 ctx3 values BYTE-VIEW ['] VW-APP-RUN catch
+   dup 0= IF
+      drop 2drop 2drop 2drop 2drop drop
+      values count cells + CELL-VIEW @ {: width:n :}
+      values BYTE-VIEW bytes ASIG-RELEASE
+      width EXIT
+   THEN
+   {: err:n :}
+   2drop 2drop 2drop 2drop drop
+   values BYTE-VIEW bytes ASIG-RELEASE
+   err throw ;
+
+: VW-SCHEMA-IMPL ( ptr u8 n n n n ptr u8 ptr u8 ptr u8 -- n )
+   {: src u:n node:n mode:n term:n ctx1 ctx2 ctx3 :}
+   src u 6 node REG-AOT-ITEM {: schema:ptr :}
+   schema @ SCH-PARAM = IF
+      schema CELL + @ mode term ctx1 ctx2 ctx3 VW-PARAM-WIDTH EXIT
+   THEN
+   schema @ SCH-APP = IF
+      src u schema mode term ctx1 ctx2 ctx3 VW-APP EXIT
+   THEN
+   1 ;
+
+: VW-DECL-SCHEMA ( n -- n ) {: node:n :}
+   NULL-PTR 0 node VW-UNIT 0 NULL-PTR NULL-PTR NULL-PTR VW-SCHEMA ;
+: VW-LIVE-APP ( n n -- n ) {: node:n term:n :}
+   NULL-PTR 0 node VW-LIVE term NULL-PTR NULL-PTR NULL-PTR VW-SCHEMA ;
+
+: VW-INSTALL ( -- )
+   [: VW-SCHEMA-IMPL ;] is VW-SCHEMA
+   [: VW-FAMILY-IMPL ;] is VW-FAMILY
+   [: VW-DECL-SCHEMA ;] is DECL-SCHEMA-WIDTH
+   [: VW-LIVE-APP ;] is SCH-APP-IWIDTH-XT ;
+VW-INSTALL
+
+: REG-AOT-NODE-WIDTH ( ptr u8 n n -- n )
+   VW-UNIT 0 NULL-PTR NULL-PTR NULL-PTR VW-SCHEMA ;
 
 : REG-AOT-GRAPH-WIDTH ( ptr u8 ptr u8 ptr u8 ptr u8 n -- n )
    {: term:ptr graph:ptr widths:ptr src:ptr u:n :}
@@ -4436,29 +4537,7 @@ variable REG-AOT-MEMO-U
    RES-TRUE term EN.C @ 0 ?do
       graph term EN.D @ + i cells + CELL-VIEW @ widths + CELL-VIEW @ 1 = and
    loop IF family REG-AOT-FAM-WIDTH EXIT THEN
-   family TF.LAYOUT @ {: policy:n :}
-   policy TL-BOXED = policy TL-NICHE = or IF 1 EXIT THEN
-   family TF.KIND @ {: kind:n :}
-   kind TK-PRODUCT = IF
-      term graph widths src u family PF-NO-VARIANT REG-AOT-GRAPH-FIELDS-WIDTH EXIT
-   THEN
-   kind TK-SUM = kind TK-ENUM = or IF
-      0 family TF.VAR-COUNT @ 0 ?do
-         family TF.VAR-START @ i + {: vid:n :}
-         src u 2 vid REG-AOT-ITEM {: variant:ptr :}
-         family TF.FLD-COUNT @ 0 > IF
-            term graph widths src u family vid REG-AOT-GRAPH-FIELDS-WIDTH
-         ELSE
-            0 variant SV.SCH-COUNT @ 0 ?do
-               term graph widths src u variant SV.SCH-START @ i + REG-AOT-GRAPH-SCHEMA-WIDTH
-               REG-AOT-GRAPH-WIDTH+
-            loop
-         THEN
-         max
-      loop
-      1 REG-AOT-GRAPH-WIDTH+ EXIT
-   THEN
-   1 ;
+   src u term EN.H @ VW-GRAPH 0 term graph widths VW-FAMILY ;
 
 : REG-AOT-SAME-PKG? ( ptr u8 n ptr n ptr n -- bool )
    {: src:ptr u:n left:ptr right:ptr :}
