@@ -10,10 +10,11 @@
 \ and runs to status 0 with no output. WKERNEL's hand-built rows
 \ (src/arch/wasm/kernel.f) run under callers that store cells to the context
 \ stack as compiled code does: emit writes OUT and traps one byte past it,
-\ depth counts the cells, throw takes its code, zero included, and .s calls `.`
-\ on each cell and leaves them. test/wasm/dynamic.f, required first, installs
-\ the backend and runs execute and catch through table slots, reporting on its
-\ own. The modules stay in the printed directories.
+\ depth counts the cells, and throw takes its code, zero included.
+\ test/wasm/dynamic.f runs first, installs the backend and reports on its own:
+\ it links a captured window with WASMLINK and runs execute and catch through
+\ table slots and .s through kernel-words.f's `.`. The modules stay in the
+\ printed directories.
 
 require lib/test.f
 require lib/fs.f
@@ -22,9 +23,7 @@ require src/arch/wasm/leb.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/link.f
 require src/arch/wasm/encode.f
-require src/arch/wasm/backend.f
 require src/arch/wasm/kernel.f
-require src/compiler/native/dict.f
 require lib/le.f
 require test/wasm/harness.f
 require test/wasm/w03.f
@@ -125,8 +124,9 @@ $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN
 
 \ ---- WKERNEL's rows -------------------------------------------------------------
 \ Each module links the four rows as kernel functions 0..3, in the order WENC
-\ emits them, a stand-in for the `.` that .s calls, and an entry of no lanes
-\ that calls each row by the function the map answers for its name.
+\ emits them, and an entry of no lanes that calls each row by the function the
+\ map answers for its name. No entry here calls .s, whose call to `.` stays
+\ unlinked.
 WPROF:STACK-BASE WPROF:OUT-BASE - constant OUT-CAP
 : EMITTED ( -- ptr u8 n )  S\" emit row\n" ;
 
@@ -165,22 +165,10 @@ variable SITES
       WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ drop
    loop ;
 
-\ The stand-in for `.`, which kernel-words.f provides once compiled: it emits
-\ the digit of a cell from 0 to 9 through the emit row.
-: DOT+ ( -- n )
-   0 SITES !  0 BODY-U !
-   0 B,  $20 B, 0 B,  $20 B, 1 B,  $42 B, 48 S64,  $7C B,  s" emit" ROW CALL,  $0B B,
-   BODY$ 1 0 0 WLINK-ORIGIN:CAPTURED WLINK:FUNCTION+ {: d:n :}
-   d SITES+
-   d ;
-
-\ A new link of the rows, .s's one call bound to the stand-in.
+\ A new link of the rows.
 : KERNEL+ ( -- )
    WLINK:RESET
-   ROWS+
-   DOT+ {: d:n :}
-   s" .s" ROW {: f:n :}
-   f  0 WENC:CALL-SITE@ f WENC:FUNCTION-OFFSET@ -  d  WLINK:CALL+ ;
+   ROWS+ ;
 
 \ An entry body: ctx is local 0, an i32 local 1 and an i64 local 2.
 : MAIN-OPEN ( -- )
@@ -283,28 +271,6 @@ variable SITES
    s" a zero throw throws, as the engine's does" T-LABEL
    0 s" throw0.wasm" THROWN ;
 
-\ .s on no cells prints nothing; on 1 2 3 it calls `.` on each, deepest first,
-\ and leaves them, so the depth thrown after it is 3.
-: DOT-S-ROW ( -- )
-   s" the call .s makes names the engine's `.`" T-LABEL
-   WKERNEL:ENCODE
-   0 WENC:CALL-TARGET@  s" ." NDICT:CALL-TARGET T=
-   KERNEL+
-   MAIN-OPEN
-   s" .s" ROW, $1A B,
-   1 PUSH, 2 PUSH, 3 PUSH,
-   s" .s" ROW, $1A B,
-   DEPTH,
-   s" throw" ROW,
-   s" dot-s.wasm" MAIN-SHUT {: a:ptr u:n :}
-   s" a module calling the .s row validates" T-LABEL
-   a u WASM-HARNESS:VALID? TTRUE
-   a u WASM-HARNESS:RUN 1 T=
-   s" .s prints each cell, deepest first" T-LABEL
-   WASM-HARNESS:OUT$ s" 123" T$=
-   s" .s leaves the cells" T-LABEL
-   WASM-HARNESS:THROW-CODE 3 T= ;
-
 public
 
 : RUN ( -- )
@@ -318,10 +284,8 @@ public
    FULL-ROW
    DEPTH-ROW
    THROW-ROW
-   DOT-S-ROW
    T-REPORT ;
 
 ;package
 
 WASM-DEVICE:RUN
-

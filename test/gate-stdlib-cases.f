@@ -613,6 +613,12 @@ SUITE wasm-kernel-words
    test/wasm/kernel.f
 ;SUITE
 
+\ WASMLINK, src/habu/link-wasm.f: a captured window linked into one module whose
+\ data image is the window's DATA, and the three windows it refuses by name.
+SUITE wasm-link-capture
+   test/wasm/link-capture.f
+;SUITE
+
 \ The backend registry: complete rows in src/compiler/native/backend.f,
 \ registered by src/arch/arm64/passes.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.
