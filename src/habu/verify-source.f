@@ -23,14 +23,21 @@ public
 
 private
 
-\ A statement the source ends inside, or one that lacks a part it must have,
-\ stops the scan with one of these at its opener (STATEMENT-STOP), and a table
-\ of this scan's that is full stops it at the token read last. tools/check.f
-\ reports each by the record of a statement that throws.
+\ A statement the source ends inside, one that lacks a part it must have, or one
+\ past a bound the engine sets stops the scan with one of these at its opener
+\ (STATEMENT-STOP). tools/check.f reports each by the record of a statement
+\ that throws.
 7155 constant E-VS-UNTERMINATED-DEFINITION \ a definition, signature or group
 7157 constant E-VS-MISSING-SIGNATURE       \ a definer's, absent or unclosed
 7158 constant E-VS-BARE-TRUST              \ TRUST with no name and signature
-7194 constant E-VS-CAPACITY                \ a table of this scan is full
+7199 constant E-VS-EFFECT-SIZE             \ a generates: effect past GENR-SIG-CAP
+
+\ A declaration the checker refuses stops the scan with one of these where the
+\ refusal stands, in the order tools/check.f's nominal pass asks
+\ (CHK-VREC-DEFRECORD); the checker's registration, which a load reaches, dies
+\ with the refusal instead.
+7200 constant E-VS-TYPE-NAME               \ a DEFLINEAR or VALUE-RECORD name no type may take
+7198 constant E-VS-RECORD-FIELD            \ a VALUE-RECORD field, or a record with none
 TYPE-DECL:E-TDECL-SYNTAX constant E-VS-DECL-SYNTAX \ a declaration never ends
 
 PTR-VARIABLE SOURCE-A
@@ -438,11 +445,10 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
 \ engine's. The path is the literal right before the loader word; any other
 \ loader form in a body is discovery's to refuse (tools/source-discovery.f).
 \ Each entry's path lies in the bytes of the file being read, which live until
-\ that file ends.
-16 constant PEND-MAX
-PEND-MAX TYPED-BUFFER PEND-A ptr u8           \ a waiting load's path
-PEND-MAX TYPED-BUFFER PEND-U n                \ and its length
-PEND-MAX TYPED-BUFFER PEND-INC n              \ 1 for `included`, 0 for `required`
+\ that file ends. The entries grow with the loads waiting at once.
+DYNAMIC-BUFFER PEND-A ptr u8                  \ a waiting load's path
+DYNAMIC-BUFFER PEND-U n                       \ and its length
+DYNAMIC-BUFFER PEND-INC n                     \ 1 for `included`, 0 for `required`
 variable PEND-N
 variable PEND-BASE                            \ the first entry of the file being read
 PTR-VARIABLE BODY-LIT-A  variable BODY-LIT-U  \ the literal the body token before closed, or 0
@@ -462,9 +468,11 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    0 BODY-BENT !  BODY-PREV-CLEAR  0 BODY-ARMS !  0 BODY-DEAD ! ;
 
 : PEND-PUSH ( ptr u8 n n -- ) {: a:ptr u:n inc:n :}
-   PEND-N @ PEND-MAX >= IF E-VS-CAPACITY throw THEN
-   a PEND-N @ PEND-A !  u PEND-N @ PEND-U !  inc PEND-N @ PEND-INC !
-   PEND-N @ 1 + PEND-N ! ;
+   PEND-N @
+   {: at:n :}
+   at 1 + PEND-A-RESERVE  at 1 + PEND-U-RESERVE  at 1 + PEND-INC-RESERVE
+   a at PEND-A !  u at PEND-U !  inc at PEND-INC !
+   at 1 + PEND-N ! ;
 
 \ The text of a `s"` literal from the rest STRING-REST read: past the one
 \ delimiting space, short of the closing quote. Any other opener leaves none.
@@ -814,24 +822,27 @@ CTL-RENDERS CTL-CREATES or constant MARK-UNSEEN
 \ effect (CHECKER-UNDEFINE): it appends a row with no effect, DEFINER-FIND reads
 \ the newest row for a name, and a rewound scope releases a retirement with the
 \ rest of its rows.
-\ The signature table stays `create … allot`: its elements are bytes, which a
-\ TYPED-BUFFER cannot hold, and BUFFER: lives in lib/string.f, outside this
-\ file's require closure. A slot holds the longest effect a `generates:` row
-\ states (checker.f GENR-SIG-CAP), so every row the engine takes fits.
-\ The bound is a scope's, not a file's: a preverified require closure holds
-\ several sources in one checker scope, and the largest single file in the tree
-\ carries 28 `does>` today.
-128 constant DEFINER-CAP                   \ definer rows
-GENR-SIG-CAP constant DEFINER-SIG-SLOT     \ one effect's bytes
-DEFINER-CAP TYPED-BUFFER DEFINER-SYM n
-DEFINER-CAP TYPED-BUFFER DEFINER-LEN n     \ its effect's length, 0 for a retired row
-create DEFINER-SIG DEFINER-CAP DEFINER-SIG-SLOT * allot
-
-: DEFINER-SLOT ( n -- ptr u8 ) {: row:n :}
-   DEFINER-SIG BYTE-VIEW row DEFINER-SIG-SLOT * + ;
+\ The rows grow with the scope's definers, and their effects with what they
+\ create: a preverified require closure holds several sources in one checker
+\ scope. Each row's effect lies in DEFINER-SIG, a byte row: a newer effect is
+\ appended, so the bytes past the last effect a live row holds are free, and a
+\ rewound scope's are written again. Growth may move DEFINER-SIG, so an effect
+\ is read where it lies only until the next one is recorded.
+DYNAMIC-BUFFER DEFINER-SYM n
+DYNAMIC-BUFFER DEFINER-LEN n               \ its effect's length, 0 for a retired row
+DYNAMIC-BUFFER DEFINER-AT n                \ where its effect starts in DEFINER-SIG
+DYNAMIC-BUFFER DEFINER-SIG u8
 
 : DEFINER-SIG@ ( n -- ptr u8 n ) {: row:n :}
-   row DEFINER-SLOT  row DEFINER-LEN @ ;
+   row DEFINER-AT @ DEFINER-SIG  row DEFINER-LEN @ ;
+
+\ Where the next effect goes: past the last one a live row holds.
+: DEFINER-SIG-END ( -- n )
+   0 VERIFY-DEFINER-N @
+   BEGIN dup 0 > WHILE
+      1 -
+      dup DEFINER-AT @ over DEFINER-LEN @ +  rot max swap
+   REPEAT drop ;
 
 \ The checker's own "offset+1, 0 = none" answer shape, for the same reason: a
 \ row index of 0 is a real row. The newest row for sym answers, a retired one
@@ -846,12 +857,12 @@ create DEFINER-SIG DEFINER-CAP DEFINER-SIG-SLOT * allot
       THEN
    REPEAT ;
 
-: DEFINER-APPEND ( n -- n )                   \ a new row for sym
+: DEFINER-APPEND ( n -- n )                   \ a new row for sym, with no effect
    {: sym:n :}
-   VERIFY-DEFINER-N @ DEFINER-CAP >= IF E-VS-CAPACITY throw THEN
    VERIFY-DEFINER-N @
    {: row:n :}
-   sym row DEFINER-SYM !
+   row 1 + DEFINER-SYM-RESERVE  row 1 + DEFINER-LEN-RESERVE  row 1 + DEFINER-AT-RESERVE
+   sym row DEFINER-SYM !  0 row DEFINER-LEN !  0 row DEFINER-AT !
    row 1 + VERIFY-DEFINER-N !
    row ;
 
@@ -859,35 +870,73 @@ create DEFINER-SIG DEFINER-CAP DEFINER-SIG-SLOT * allot
    sym DEFINER-FIND dup 0<> IF 1 - EXIT THEN drop
    sym DEFINER-APPEND ;
 
+\ Room for U more effect bytes, and where they go.
+: DEFINER-ROOM ( n -- n )
+   {: u:n :}
+   DEFINER-SIG-END
+   {: at:n :}
+   at u + DEFINER-SIG-RESERVE
+   at ;
+
 \ Record `sig` as the effect the definer named by `sym` creates. A name with a
 \ live row keeps that row and takes the newer effect, which is what the run
-\ time does: a replacement clause replaces the old created-word effect.
+\ time does: a replacement clause replaces the old created-word effect. An
+\ empty effect holds no byte: its row's length is 0, which DEFINER-FIND reads
+\ as retired, and no place in DEFINER-SIG, which may hold no byte yet, is
+\ formed for it.
 : DEFINER-ADD ( ptr u8 n n -- ) {: sig:ptr sigu:n sym:n :}
    sym 0= IF EXIT THEN                        \ never recorded: nothing to hang it on
-   sigu DEFINER-SIG-SLOT > IF E-VS-CAPACITY throw THEN
    sym DEFINER-ROW
    {: row:n :}
-   sigu row DEFINER-LEN !
-   row DEFINER-SLOT
-   {: slot:ptr :}
-   0 BEGIN dup sigu < WHILE
-      dup sig + c@  over slot + c!
-      1 +
-   REPEAT drop ;
+   sigu 0= IF 0 row DEFINER-AT !  0 row DEFINER-LEN !  EXIT THEN
+   sigu DEFINER-ROOM
+   {: at:n :}
+   sig  at DEFINER-SIG  sigu BYTE-COPY
+   at row DEFINER-AT !  sigu row DEFINER-LEN ! ;
+
+\ Give sym the effect row FROM holds, read where it lies once the room is made.
+: DEFINER-INHERIT ( n n -- ) {: from:n sym:n :}
+   sym 0= IF EXIT THEN
+   sym DEFINER-ROW
+   {: row:n :}
+   from DEFINER-LEN @
+   {: u:n :}
+   u DEFINER-ROOM
+   {: at:n :}
+   from DEFINER-SIG@ drop  at DEFINER-SIG  u BYTE-COPY
+   at row DEFINER-AT !  u row DEFINER-LEN ! ;
 
 : DEFINER-RETIRE ( n -- )
    {: sym:n :}
    sym DEFINER-FIND 0= IF EXIT THEN
-   0  sym DEFINER-APPEND DEFINER-LEN ! ;
+   sym DEFINER-APPEND drop ;
+
+\ The row of a token's definer + 1, 0 when it is no learned definer. The empty
+\ table answers before asking the scope anything, so a source that uses no such
+\ definer pays one cell read per token.
+: DEFINER-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
+   VERIFY-DEFINER-N @ 0= IF 0 EXIT THEN
+   a u FIND-SYM DEFINER-FIND ;
 
 \ The effect a token's definer gives the word it creates, answered as a string
 \ whose ZERO LENGTH means "not a learned definer" - the same shape NEXT-RAW ends
-\ a source with. The empty table answers before asking the scope anything, so a
-\ source that uses no such definer pays one cell read per token.
-: DEFINER-EFFECT ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   VERIFY-DEFINER-N @ 0= IF SOURCE@ 0 EXIT THEN
-   a u FIND-SYM DEFINER-FIND dup 0= IF drop SOURCE@ 0 EXIT THEN
+\ a source with.
+: DEFINER-EFFECT ( ptr u8 n -- ptr u8 n )
+   DEFINER-OF dup 0= IF drop SOURCE@ 0 EXIT THEN
    1 - DEFINER-SIG@ ;
+
+variable DEFER-REPORT                            \ the child reports deferrals
+variable DEFER-SEEN                              \ and has reported one
+
+\ A body the checker deferred to the run (verdict 2) is reported where the
+\ checker's judgment of it stopped (CHECKER-VERIFY-DEFERRED-BODY), when the
+\ child reports deferrals, as a deferred stretch is at the token that opened it.
+CAST: DEFERRED-BODY-ACTION ( n -- [ -- ] )
+: REPORT-DEFERRED ( n -- )
+   2 <> IF EXIT THEN
+   DEFER-REPORT @ 0= IF EXIT THEN
+   NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-BODY-OFF OWNER-XT DEFERRED-BODY-ACTION execute
+   -1 DEFER-SEEN ! ;
 
 \ A body's verdict as this scan acts on it: -1 certified, 2 deferred to the run
 \ (see RENDERS-MARK?), 0 refused. In MULTI-ERR mode a refusal, rejected (0) or
@@ -928,15 +977,13 @@ PTR-VARIABLE DEF-NAME-A
 variable DEF-NAME-U
 variable WRAP-DEFINERS                        \ definer calls in this body …
 variable WRAP-CTL                             \ … and whether the line ever bent
-PTR-VARIABLE WRAP-SIG-A
-variable WRAP-SIG-U
+variable WRAP-ROW                             \ the definer row the last call names
 
 : DEF-NAME! ( -- )
    TOKEN-U @ DEF-NAME-U !  TOKEN-A @ DEF-NAME-A ! ;
 
 : WRAP-RESET ( -- )
-   0 WRAP-DEFINERS !  0 WRAP-CTL !
-   NULL-PTR WRAP-SIG-A !  0 WRAP-SIG-U ! ;
+   0 WRAP-DEFINERS !  0 WRAP-CTL !  0 WRAP-ROW ! ;
 
 : DEFINER-RECORD-AS ( ptr u8 n ptr u8 n -- ) {: sig:ptr sigu:n na:ptr nu:n :}
    sig sigu na nu RECORD-SYM? DEFINER-ADD ;
@@ -963,11 +1010,11 @@ variable WRAP-SIG-U
 : WRAP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    WRAP-CTL @ IF EXIT THEN
    a u WRAP-CTL-TOK? IF -1 WRAP-CTL ! EXIT THEN
-   a u DEFINER-EFFECT dup 0<> IF
-      WRAP-SIG-U !  WRAP-SIG-A !
+   a u DEFINER-OF dup 0<> IF
+      1 - WRAP-ROW !
       WRAP-DEFINERS @ 1 + WRAP-DEFINERS !  EXIT
    THEN
-   2drop ;
+   drop ;
 
 \ Only a certified body is learned. One deferred to the run names a word only the
 \ run can see, which may itself be a definer, so its definer calls are not
@@ -975,14 +1022,16 @@ variable WRAP-SIG-U
 : VERIFY-WRAPPER ( -- )
    WRAP-CTL @ IF EXIT THEN
    WRAP-DEFINERS @ 1 <> IF EXIT THEN
-   WRAP-SIG-A @ WRAP-SIG-U @ DEFINER-RECORD ;
+   WRAP-ROW @  DEF-NAME-A @ DEF-NAME-U @ RECORD-SYM?  DEFINER-INHERIT ;
 
 \ The created effect is the clause's declaration, recorded unless the definer's
 \ body or its clause was refused. One deferred to the run keeps it, as a
 \ deferred colon definition keeps its declared signature (src/core/checker.f
-\ CHECK, verdict 2), and the run judges the deferred text.
+\ CHECK, verdict 2), and the run judges the deferred text. The definition reports
+\ one deferral: its clause's only when the definer's body was not deferred.
 : VERIFY-DOES ( -- )
    VERIFY-BODY {: def:n :}
+   def REPORT-DEFERRED
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    BODY-RESET
    LOCALS-RESET
@@ -991,6 +1040,7 @@ variable WRAP-SIG-U
       TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
          sig sigu DEF-NAME-A @ DEF-NAME-U @ VERIFY-DOES-BODY
+         def 2 <> IF dup REPORT-DEFERRED THEN
          0<>  def 0<> and IF sig sigu DEFINER-RECORD THEN EXIT
       THEN
       APPEND-BODY-TOKEN
@@ -1249,20 +1299,17 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
 \ static recorder mirrors the runtime mint: register the family, then trust the
 \ two derived converter signatures so later definitions that use the tail and
 \ the converters verify without loading deftype.f.
-$40 constant NOM-TAIL-CAP
-create NOM-TAIL-BUF NOM-TAIL-CAP allot
-variable NOM-TAIL-U
+DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the name
 
 \ MANGLE ( ptr u8 n -- ptr u8 n ) folds the UPPER-CASE surface name to the
 \ lowercase family tail, matching deftype.f's ASCII-LOWER fold.
 : MANGLE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   u NOM-TAIL-CAP > IF E-VS-CAPACITY throw THEN
-   0 NOM-TAIL-U !
+   u NOM-TAIL-RESERVE
    0 BEGIN dup u < WHILE
-      dup a + c@ FOLD-C  NOM-TAIL-BUF NOM-TAIL-U @ + c!
-      NOM-TAIL-U @ 1 + NOM-TAIL-U !  1+
+      dup a + c@ FOLD-C  over NOM-TAIL c!
+      1+
    REPEAT drop
-   NOM-TAIL-BUF NOM-TAIL-U @ ;
+   0 NOM-TAIL u ;
 
 : RECORD-DEFTYPE ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
@@ -1275,6 +1322,7 @@ variable NOM-TAIL-U
 : RECORD-DEFLINEAR ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
+   name nameu TYPE-RESERVED? IF E-VS-TYPE-NAME throw THEN
    name nameu CHECKER-DEFLINEAR ;
 
 : VALUE-RECORD-END? ( ptr u8 n -- bool )
@@ -1514,16 +1562,40 @@ PTR-VARIABLE STG-START
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER ;
 
+\ The source byte body byte at was read from, in the newest run BODY-ROW!
+\ started at or before it.
+: BODY>BYTE ( n -- n )
+   {: at:n :}
+   BODY-ROW {: rows:ptr :}
+   0 BODY-ROWS @ 0 ?do
+      i 2 * cells rows + @ at <= IF drop i THEN
+   loop
+   {: row:n :}
+   row 2 * 1 + cells rows + @  at +  row 2 * cells rows + @ -  BASE-BYTE @ + ;
+
+\ The record the body holds registers, or the scan stops at the name, at the
+\ field the checker refuses, or at END-VALUE-RECORD, the token read last, for a
+\ record with no field.
+: VALUE-RECORD-ADD ( ptr u8 n n -- )
+   {: name:ptr nameu:n byte:n :}
+   name nameu TYPE-RESERVED? IF byte TOKEN-BYTE !  E-VS-TYPE-NAME throw THEN
+   name nameu BODY$ CHECKER-TRY-RECORD
+   {: at:n msg:ptr msgu:n :}
+   msgu 0= IF EXIT THEN
+   at BODY-U @ < IF at BODY>BYTE TOKEN-BYTE ! THEN
+   E-VS-RECORD-FIELD throw ;
+
 : RECORD-VALUE-RECORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
+   TOKEN-BYTE @ {: byte:n :}
    BODY-RESET
    BEGIN
       NEXT-SCAN
       dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
       2dup VALUE-RECORD-END? IF
          2drop
-         name nameu BODY$ CHECKER-DEFRECORD
+         name nameu byte VALUE-RECORD-ADD
          EXIT
       THEN
       BODY-APPEND
@@ -1728,10 +1800,10 @@ variable FILE-USE
 : RECORD-GENERATES ( -- )
    NAME-TOKEN
    {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing generates: definer name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    REQUIRE-SIGNATURE
    {: sig:ptr sigu:n :}
-   sigu GENR-SIG-CAP > IF s" verify-source: generates: effect too long" 74 die THEN
+   sigu GENR-SIG-CAP > IF E-VS-EFFECT-SIZE STATEMENT-STOP THEN
    name nameu FIND-SYM
    {: sym:n :}
    name nameu sig sigu sym DEFINER-FIND 0<> GENERATES-SIGNATURE nip 0= IF EXIT THEN
@@ -1742,20 +1814,21 @@ variable FILE-USE
 \ the declarer applies (ffi-abi.f OUT-TOKEN): an `i32` result is a cell. Inputs
 \ stay verbatim. The group is read raw, because NEXT-SCAN skips it as a comment.
 \ The live declaration pins this reading: test/certify-does-definer.f section 10.
-\ The effect is rebuilt in a buffer of its own: BODY-BUF holds only runs read
-\ out of the source (BODY-APPEND), and the rewritten `n` is not one. Its bound is
-\ the engine's for a `generates:` effect.
+\ The effect is rebuilt in a byte row of its own, which grows with the group:
+\ BODY-BUF holds only runs read out of the source (BODY-APPEND), and the
+\ rewritten `n` is not one.
 variable FFI-OUT
-GENR-SIG-CAP constant FFI-SIG-CAP
-create FFI-SIG FFI-SIG-CAP allot
+DYNAMIC-BUFFER FFI-SIG u8
 variable FFI-SIG-U
 
 : FFI-APPEND ( ptr u8 n -- )
    {: a:ptr u:n :}
-   FFI-SIG-U @ u + 1 + FFI-SIG-CAP > IF s" verify-source: FUNCTION: group too long" 74 die THEN
-   a  FFI-SIG FFI-SIG-U @ +  u BYTE-COPY
-   32  FFI-SIG FFI-SIG-U @ u + +  c!
-   FFI-SIG-U @ u + 1 + FFI-SIG-U ! ;
+   FFI-SIG-U @
+   {: at:n :}
+   at u + 1 + FFI-SIG-RESERVE
+   a  at FFI-SIG  u BYTE-COPY
+   32  at u + FFI-SIG  c!
+   at u + 1 + FFI-SIG-U ! ;
 
 : FFI-TOKEN ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -1764,21 +1837,22 @@ variable FFI-SIG-U
    a u FFI-APPEND ;
 
 : FFI-SIGNATURE ( -- ptr u8 n )
-   NEXT-RAW s" (" CORE-STR= 0= IF s" verify-source: FUNCTION: needs a declaration group" 74 die THEN
+   NEXT-RAW s" (" CORE-STR= 0= IF E-VS-MISSING-SIGNATURE STATEMENT-STOP THEN
+   1 FFI-SIG-RESERVE                          \ an empty group answers a string in the row
    0 FFI-SIG-U !
    0 FFI-OUT !
    BEGIN
       NEXT-RAW
-      dup 0= IF s" verify-source: unterminated FUNCTION: group" 74 die THEN
-      2dup s" )" CORE-STR= IF 2drop FFI-SIG FFI-SIG-U @ EXIT THEN
+      dup 0= IF E-VS-MISSING-SIGNATURE STATEMENT-STOP THEN
+      2dup s" )" CORE-STR= IF 2drop 0 FFI-SIG FFI-SIG-U @ EXIT THEN
       FFI-TOKEN
    AGAIN ;
 
 : RECORD-FFI-FUNCTION ( -- )
    NEXT-SCAN
    {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing FUNCTION: name" 74 die THEN
-   NEXT-SCAN nip 0= IF s" verify-source: missing FUNCTION: symbol" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
+   NEXT-SCAN nip 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
    name nameu FFI-SIGNATURE DECL-SIGNATURE ;
 
 : RECORD-DEFINER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -1886,7 +1960,7 @@ variable FFI-SIG-U
    BEGIN
       BODY!
       TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
-      TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF VERIFY-BODY -1 = IF VERIFY-WRAPPER THEN EXIT THEN
+      TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF VERIFY-BODY dup REPORT-DEFERRED -1 = IF VERIFY-WRAPPER THEN EXIT THEN
       LOCAL-TOKEN? 0= IF
          TOKEN-A @ TOKEN-U @ s" does>" STR=CI IF VERIFY-DOES EXIT THEN
          TOKEN-A @ TOKEN-U @ WRAP-TOKEN
@@ -1925,8 +1999,6 @@ CAST: STRETCH-ACTION ( n -- [ ptr u8 n -- ] )
 variable TOP-DEFER                               \ a stretch is open
 PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report is due, else 0
 variable TOP-DEFER-I                             \ where the run's reading starts in the source
-variable DEFER-REPORT                            \ the child reports stretches
-variable DEFER-SEEN                              \ and has reported one
 
 : TOP-CLOSE ( -- )
    0 TOP-DEFER !  0 TOP-DEFER-U ! ;
@@ -2165,8 +2237,9 @@ variable CAND-VERDICT
 
 public
 
-\ The verifier's child has the deferred stretches of its composition reported
-\ (tools/check-verify-child.f); DEFERRED? says whether one was.
+\ The verifier's child has the deferred stretches and definitions of its
+\ composition reported (tools/check-verify-child.f); DEFERRED? says whether one
+\ was.
 : REPORT-DEFERRALS ( -- )
    -1 DEFER-REPORT !  0 DEFER-SEEN ! ;
 

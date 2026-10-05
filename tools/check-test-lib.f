@@ -2094,10 +2094,11 @@ variable LONG-J
 
 \ Pin: the JSON redrive re-run reports the honest child E-UNDEFINED (70), never
 \ a spurious E-DUPLICATE-DEFINITION from re-registering the preverified family.
+\ The engine writes that refusal as prose, which --json-errors puts on stdout.
 : NOM-REDRIVE-TEST ( -- )
    NOM-ALL-BARE$ ALL-JSON-STDIN 70 T=
    {: outu:n erru:n :}
-   outu 0 T=
+   CAP-OUT outu s" E-UNDEFINED: DEFTYPE" CONTAINS? TTRUE
    CAP-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TFALSE ;
 
 : NOM-ALL-CLEAN$ ( -- ptr u8 n )   \ require lets the child define DEFTYPE; zero errors
@@ -3212,7 +3213,9 @@ create BIG $2000 allot   variable BIG-U
    s" BEGIN-STRUCTURE CKB" s" +FIELD" NONAME-REFUSED
    s" BEGIN-STRUCTURE CKB" s" CFIELD:" NONAME-REFUSED
    s" BEGIN-STRUCTURE CKB" s" PTR-FIELD:" NONAME-REFUSED
-   s" : CKM ( n -- ) create , does> ( -- ptr n ) ;" s" CKM" NONAME-REFUSED ;
+   s" : CKM ( n -- ) create , does> ( -- ptr n ) ;" s" CKM" NONAME-REFUSED
+   s" \ lead" s" generates:" NONAME-REFUSED
+   s" require lib/ffi-abi.f" s" FUNCTION:" NONAME-REFUSED ;
 
 \ A parsing keyword takes the next whitespace-delimited token raw, whatever it
 \ spells, in every scanner of the check as in the loader, and a definer takes
@@ -3347,14 +3350,27 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru2 s\" \"code\":\"E-BAD-LOCAL-SHAPE\"" CONTAINS? TTRUE ;
 
 \ A parsing keyword outside its own state is refused by the loader and the check
-\ alike: `[char]` at top level, and `char` and `'` in a body.
-: OUT-OF-STATE ( ptr u8 n -- ) {: a:ptr u:n :}
+\ alike: `[char]` at top level, and `char` and `'` in a body. The checker
+\ refuses `[char]` and `'`; `char` in a body passes it, and the run stage's
+\ engine refuses it in prose, which --json-errors puts on stdout. Each leaves
+\ the lengths of the check's capture.
+: OUT-OF-STATE-RUNS ( ptr u8 n -- n n )
+   {: a:ptr u:n :}
    a u HB-LOAD-SRC 70 T=
    {: outu:n erru:n :}
    CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
-   a u DIRECT-JSON-STDIN 70 T=
-   {: outu2:n erru2:n :}
-   CAP-ERR erru2 s" E-UNDEFINED" CONTAINS? TTRUE ;
+   a u DIRECT-JSON-STDIN 70 T= ;
+
+: OUT-OF-STATE ( ptr u8 n -- )
+   OUT-OF-STATE-RUNS
+   {: outu:n erru:n :}
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE ;
+
+: OUT-OF-STATE-RUN ( ptr u8 n -- )
+   OUT-OF-STATE-RUNS
+   {: outu:n erru:n :}
+   erru 0 T=
+   CAP-OUT outu s" E-UNDEFINED: char" CONTAINS? TTRUE ;
 
 \ A body binding a 65th local is refused by the loader at that local (rc 70),
 \ and the check refuses it the same way, with the checker's located
@@ -3392,7 +3408,7 @@ create BIG $2000 allot   variable BIG-U
    TICK-NAME$ s" 7" RAW-PRINTS
    LOCAL-QUOTATION
    s" [char] A ." OUT-OF-STATE
-   s" : CKT-OC ( -- n ) char A ;" OUT-OF-STATE
+   s" : CKT-OC ( -- n ) char A ;" OUT-OF-STATE-RUN
    s" : CKT-OT ( -- n ) ' dup drop 1 ;" OUT-OF-STATE
    MANY-LOCALS
    s" char" LOCAL-NOMINAL
@@ -3439,6 +3455,32 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru3 s\" \"line\":2,\"column\":24," CONTAINS? TTRUE
    CAP-ERR erru3 s\" \"reason\":\"checker: duplicate value-record field\"" CONTAINS? TTRUE
    CAP-ERR erru3 s\" \"code\":\"E-MISSING-NAME\"" CONTAINS? TTRUE ;
+
+\ A value-record field with a scoped dependency, which the registration
+\ refuses before it stores the field. The loader dies with its message and
+\ rc 70; the check names the field at its line and column, in prose with and
+\ without --all-errors and in JSON with the registration's reason.
+: VREC-SCOPED$ ( -- ptr u8 n )
+   s" VALUE-RECORD ckn-w value read-view<p,q,u8> END-VALUE-RECORD" ;
+
+: TEST-VREC-SCOPED-REFUSED ( -- )
+   VREC-SCOPED$ HB-LOAD-SRC 70 T=
+   {: outu:n erru:n :}
+   CAP-ERR erru s" checker: value-record field contains a scoped dependency" CONTAINS? TTRUE
+   VREC-SCOPED$ DIRECT-STDIN 70 T=
+   {: outu2:n erru2:n :}
+   outu2 0 T=
+   CAP-ERR erru2 s" <stdin>:1:20: checker: value-record field contains a scoped dependency 'value'" CONTAINS? TTRUE
+   VREC-SCOPED$ DIRECT-ALL-STDIN 70 T=
+   {: outu3:n erru3:n :}
+   outu3 0 T=
+   CAP-ERR erru3 s" <stdin>:1:20: checker: value-record field contains a scoped dependency 'value'" CONTAINS? TTRUE
+   VREC-SCOPED$ DIRECT-JSON-STDIN 70 T=
+   {: outu4:n erru4:n :}
+   outu4 0 T=
+   CAP-ERR erru4 s\" \"code\":\"E-BAD-RECORD-FIELD\"" CONTAINS? TTRUE
+   CAP-ERR erru4 s\" \"line\":1,\"column\":20," CONTAINS? TTRUE
+   CAP-ERR erru4 s\" \"reason\":\"checker: value-record field contains a scoped dependency\"" CONTAINS? TTRUE ;
 
 : LINEAR-GOOD-TEST ( -- )
    LINEAR-GOOD$ DIRECT-STDIN 0 T=
@@ -4233,20 +4275,24 @@ variable REQ-U
    SB-RESET s" ckt-ut.f" REQ-LOAD+
    s" ckt-ut-req.f" REQ-WRITE ;
 
-: EXPECT-UT ( n n n ptr u8 n ptr u8 n -- )
-   {: outu:n erru:n rc:n tok:ptr toku:n at:ptr atu:n :}
+\ A refusal reported by one record: its code and class, token and place.
+: EXPECT-ONE ( n n n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: outu:n erru:n rc:n code:ptr codeu:n tok:ptr toku:n at:ptr atu:n :}
    rc 70 T=
    outu 0 T=
    CAP-ERR erru 10 COUNT-CHAR 1 T=
-   CAP-ERR erru s\" \"code\":\"E-UNTERMINATED-STRING\",\"repair_class\":\"close_string\"," CONTAINS? TTRUE
+   CAP-ERR erru code codeu CONTAINS? TTRUE
    CAP-ERR erru tok toku CONTAINS? TTRUE
    CAP-ERR erru at atu CONTAINS? TTRUE ;
 
-: UT-MODES ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n tok:ptr toku:n at:ptr atu:n :}
-   a u ST-JSON-RUN tok toku at atu EXPECT-UT
-   a u REQ-PLAIN-RUN tok toku at atu EXPECT-UT
-   a u REQ-ALL-RUN tok toku at atu EXPECT-UT ;
+: ONE-MODES ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n code:ptr codeu:n tok:ptr toku:n at:ptr atu:n :}
+   a u ST-JSON-RUN code codeu tok toku at atu EXPECT-ONE
+   a u REQ-PLAIN-RUN code codeu tok toku at atu EXPECT-ONE
+   a u REQ-ALL-RUN code codeu tok toku at atu EXPECT-ONE ;
+
+: UT-CODE$ ( -- ptr u8 n )
+   s\" \"code\":\"E-UNTERMINATED-STRING\",\"repair_class\":\"close_string\"," ;
 
 : UT-SDQ-TOKEN$ ( -- ptr u8 n )
    s\" \"token\":\"s\\\"\",\"file\":" ;
@@ -4262,9 +4308,149 @@ variable REQ-U
 
 : TEST-UNTERM-STRING ( -- )
    UT-FILES
-   s" ckt-ut.f" UT-SDQ-TOKEN$ UT-SDQ-AT$ UT-MODES
-   s" ckt-ut-req.f" UT-SDQ-TOKEN$ UT-SDQ-AT$ UT-MODES
-   s" ckt-ut-esc.f" UT-ESC-TOKEN$ UT-ESC-AT$ UT-MODES ;
+   s" ckt-ut.f" UT-CODE$ UT-SDQ-TOKEN$ UT-SDQ-AT$ ONE-MODES
+   s" ckt-ut-req.f" UT-CODE$ UT-SDQ-TOKEN$ UT-SDQ-AT$ ONE-MODES
+   s" ckt-ut-esc.f" UT-CODE$ UT-ESC-TOKEN$ UT-ESC-AT$ ONE-MODES ;
+
+\ A require of a file that is not there, of one the file system will not read,
+\ or of a literal path within the 1024 bytes a loader word takes that resolves
+\ past them, and a loader form discovery cannot follow, stop the require
+\ closure. Every --json-errors mode reports each by one record at the loader
+\ word, in the file that holds it, and fails as a refusal; a source that
+\ requires the file reports it there.
+: CL-LONG+ ( -- )
+   s" require " SB-APPEND
+   496 0 ?do s" a/" SB-APPEND loop
+   s" absent.f" REQ-LINE+ ;
+
+: CL-FILES ( -- )
+   SB-RESET s" \ lost" REQ-LINE+ s" require ckt-cl-none.f" REQ-LINE+
+   s" ckt-cl-lost.f" REQ-WRITE
+   SB-RESET s" \ dyn" REQ-LINE+ s" PATH$ included" REQ-LINE+
+   s" ckt-cl-dyn.f" REQ-WRITE
+   SB-RESET s" ckt-cl-dyn.f" REQ-LOAD+
+   s" ckt-cl-dyn-req.f" REQ-WRITE
+   SB-RESET s" \ unread" REQ-LINE+ s" require ckt-cl-locked.f" REQ-LINE+
+   s" ckt-cl-unread.f" REQ-WRITE
+   SB-RESET s" \ locked" REQ-LINE+ s" ckt-cl-locked.f" REQ-WRITE
+   s" ckt-cl-locked.f" REQ$ 0 CHMOD-MODE
+   SB-RESET CL-LONG+ s" ckt-cl-long.f" REQ-WRITE ;
+
+: CL-LOST-CODE$ ( -- ptr u8 n )
+   s\" \"code\":\"E-MISSING-SOURCE\",\"repair_class\":\"fix_load_path\"," ;
+
+: CL-REQUIRE-TOKEN$ ( -- ptr u8 n )
+   s\" \"token\":\"require\",\"file\":" ;
+
+: CL-LOST-AT$ ( -- ptr u8 n )
+   s\" /ckt-cl-lost.f\",\"line\":2,\"column\":1,\"byte_start\":7,\"byte_end\":14," ;
+
+: CL-UNREAD-CODE$ ( -- ptr u8 n )
+   s\" \"code\":\"E-UNREADABLE-SOURCE\",\"repair_class\":\"make_source_readable\"," ;
+
+: CL-UNREAD-AT$ ( -- ptr u8 n )
+   s\" /ckt-cl-unread.f\",\"line\":2,\"column\":1,\"byte_start\":9,\"byte_end\":16," ;
+
+: CL-DYN-CODE$ ( -- ptr u8 n )
+   s\" \"code\":\"E-LOADER-FORM\",\"repair_class\":\"literal_loader_form\"," ;
+
+: CL-DYN-TOKEN$ ( -- ptr u8 n )
+   s\" \"token\":\"included\",\"file\":" ;
+
+: CL-DYN-AT$ ( -- ptr u8 n )
+   s\" /ckt-cl-dyn.f\",\"line\":2,\"column\":7,\"byte_start\":12,\"byte_end\":20," ;
+
+: CL-LONG-AT$ ( -- ptr u8 n )
+   s\" /ckt-cl-long.f\",\"line\":1,\"column\":1,\"byte_start\":0,\"byte_end\":7," ;
+
+: TEST-CLOSURE-STOP ( -- )
+   CL-FILES
+   s" ckt-cl-lost.f" CL-LOST-CODE$ CL-REQUIRE-TOKEN$ CL-LOST-AT$ ONE-MODES
+   s" ckt-cl-unread.f" CL-UNREAD-CODE$ CL-REQUIRE-TOKEN$ CL-UNREAD-AT$ ONE-MODES
+   s" ckt-cl-dyn.f" CL-DYN-CODE$ CL-DYN-TOKEN$ CL-DYN-AT$ ONE-MODES
+   s" ckt-cl-dyn-req.f" CL-DYN-CODE$ CL-DYN-TOKEN$ CL-DYN-AT$ ONE-MODES
+   s" ckt-cl-long.f" CL-DYN-CODE$ CL-REQUIRE-TOKEN$ CL-LONG-AT$ ONE-MODES ;
+
+\ A source given on standard input, or through SOURCE under a label, is walked
+\ as a named file is: a require of a file that is not there is the same record,
+\ at the loader word, in the file the label names, and so is a string the
+\ source never closes, at its opener.
+: CL-STDIN$ ( -- ptr u8 n )
+   s\" \\ lost\nrequire ckt-cl-none.f\n" ;
+
+: CL-STDIN-AT$ ( -- ptr u8 n )
+   s\" \"<stdin>\",\"line\":2,\"column\":1,\"byte_start\":7,\"byte_end\":14," ;
+
+: EXPECT-STDIN-LOST ( n n n -- )
+   CL-LOST-CODE$ CL-REQUIRE-TOKEN$ CL-STDIN-AT$ EXPECT-ONE ;
+
+: UT-STDIN$ ( -- ptr u8 n )
+   s\" : CKS ( -- ) s\" abc ;\n" ;
+
+: UT-STDIN-AT$ ( -- ptr u8 n )
+   s\" \"<stdin>\",\"line\":1,\"column\":14,\"byte_start\":13,\"byte_end\":15," ;
+
+: EXPECT-STDIN-UNTERM ( n n n -- )
+   UT-CODE$ UT-SDQ-TOKEN$ UT-STDIN-AT$ EXPECT-ONE ;
+
+: TEST-CLOSURE-STDIN ( -- )
+   CL-STDIN$ s" --json-errors" CLI-FLAG-STDIN EXPECT-STDIN-LOST
+   CL-STDIN$ DIRECT-JSON-STDIN EXPECT-STDIN-LOST
+   CL-STDIN$ ALL-JSON-STDIN EXPECT-STDIN-LOST
+   UT-STDIN$ s" --json-errors" CLI-FLAG-STDIN EXPECT-STDIN-UNTERM
+   UT-STDIN$ DIRECT-JSON-STDIN EXPECT-STDIN-UNTERM
+   UT-STDIN$ ALL-JSON-STDIN EXPECT-STDIN-UNTERM ;
+
+\ A run that passes keeps what the subject wrote: under --json-errors its
+\ stderr goes to stdout beside its stdout, and stderr stays empty.
+: NOISE$ ( -- ptr u8 n )
+   s\" : CKT-NOISE ( -- ) 2 s\" ordinary stderr\" write drop ;\nCKT-NOISE\n" ;
+
+: EXPECT-NOISE-OUT ( n n n -- )
+   {: outu:n erru:n rc:n :}
+   rc 0 T=
+   erru 0 T=
+   CAP-OUT outu s" ordinary stderr" CONTAINS? TTRUE ;
+
+: TEST-SUCCESS-STDERR ( -- )
+   s" ckt-noise.f" REQ$ NOISE$ WRITE-ALL
+   s" ckt-noise.f" ST-JSON-RUN EXPECT-NOISE-OUT
+   s" ckt-noise.f" REQ-PLAIN-RUN EXPECT-NOISE-OUT ;
+
+\ A closure wider than a fixed table: the subject requires CL-HUBS files and
+\ each of those CL-LEAVES files of its own, so every text fits the string
+\ builder; every --json-errors mode checks it.
+10 constant CL-HUBS
+13 constant CL-LEAVES
+
+: CL-HUB+ ( n -- )
+   s" ckt-cl-" SB-APPEND FMT:SB-U ;
+
+: CL-LEAF+ ( n n -- )
+   swap CL-HUB+ s" -" SB-APPEND FMT:SB-U ;
+
+: CL-HUB-FILES ( n -- )
+   {: h:n :}
+   CL-LEAVES 0 ?do
+      SB-RESET h i CL-LEAF+ s" .f" SB-APPEND
+      SB$ REQ$ s\" \\ one of many\n" WRITE-ALL
+   loop
+   SB-RESET h CL-HUB+ s" .f" SB-APPEND SB$ REQ$ {: path:ptr pathu:n :}
+   SB-RESET
+   CL-LEAVES 0 ?do s" require " SB-APPEND h i CL-LEAF+ s" .f" REQ-LINE+ loop
+   path pathu SB$ WRITE-ALL ;
+
+: CL-WIDE-FILES ( -- )
+   CL-HUBS 0 ?do i CL-HUB-FILES loop
+   SB-RESET
+   CL-HUBS 0 ?do s" require " SB-APPEND i CL-HUB+ s" .f" REQ-LINE+ loop
+   s" ckt-cl-wide.f" REQ-WRITE ;
+
+: TEST-CLOSURE-WIDE ( -- )
+   CL-WIDE-FILES
+   s" ckt-cl-wide.f" ST-JSON-RUN EXPECT-ACCEPTED
+   s" ckt-cl-wide.f" REQ-PLAIN-RUN EXPECT-ACCEPTED
+   s" ckt-cl-wide.f" REQ-ALL-RUN EXPECT-ACCEPTED ;
 
 \ A refusal: status 70, nothing on stdout, one line on stderr, whose length
 \ this answers.
@@ -4420,16 +4606,22 @@ variable REQ-U
    s" E-MALFORMED-REGISTRY-ROW" s" ckt-vo-row.f" s\" \",\"line\":1,\"column\":1," VO-LOCATED ;
 
 \ A statement the source ends inside, or one that lacks a part it must have,
-\ stops the check at its opener: a definition, its signature or a locals group
-\ never closed (7155), a definer's signature missing or never closed (7157), a
+\ stops the check at its opener: a definition or its signature never closed
+\ (7155: a FUNCTION: with no symbol among them), a locals group never closed
+\ (discovery's E-DISC-UNTERM, on standard input as in a file), a definer's
+\ signature missing or never closed (7157: FUNCTION:'s declaration group too), a
 \ TRUST with no name and signature strings before it (7158), a declaration
-\ never ended (TYPE-DECL:E-TDECL-SYNTAX, 7107). A table of the pre-verifier's
-\ that is full (7194) stops it at the token it read last. Each is reported
-\ where it stands, by the record of a statement that throws: first in prose,
-\ alone under --all-errors, in JSON and under --verify-only, for standard
-\ input, a file and a file standard input requires. The nominal pass refuses
-\ an unended ENUM, STRUCTURE, PRODUCT or VALUE-RECORD in the subject itself,
-\ so those reach the pre-verifier from a file the subject requires.
+\ never ended (TYPE-DECL:E-TDECL-SYNTAX, 7107), a generates: effect past the
+\ engine's bound (7199). A DEFLINEAR or VALUE-RECORD name no type may take
+\ (7200) and a VALUE-RECORD field the checker refuses (7198) stop it there;
+\ the nominal pass refuses those first in every mode but --verify-only. Each
+\ is reported where it stands, by the record of a statement that throws: first
+\ in prose, alone under --all-errors, in JSON and under --verify-only, for
+\ standard input, a file and a file standard input requires. The nominal pass,
+\ which runs before the pre-verifier, refuses an unended ENUM, STRUCTURE,
+\ PRODUCT or VALUE-RECORD in every file of the closure, and standard input
+\ walks its closure as a named file does: only --verify-only, which has no
+\ nominal pass, reaches the pre-verifier's stop at one (SS-DECL-NESTED).
 TYPED-VARIABLE SS-TXT-A ptr u8                \ the statement, a source's second line
 variable SS-TXT-U
 variable SS-CODE                              \ the code it stops with
@@ -4518,6 +4710,55 @@ variable SS-TOK-U
 : SS-EVERY ( -- )
    SS-STDIN SS-FILE SS-NESTED SS-VERIFY ;
 
+\ An unended declaration in a file standard input requires. Under
+\ --verify-only, the language server's check, the pre-verifier stops at it,
+\ located in that file. In the other modes the nominal pass refuses it first,
+\ in standard input's closure as in a named file's, so standard input's report
+\ in each mode is the one for the same bytes in a named file.
+create SS-OUT BUF-CAP allot                   \ the named file's report
+variable SS-OUT-U
+create SS-ERR BUF-CAP allot
+variable SS-ERR-U
+variable SS-RC
+create SS-NEST FS-PATH-CAP 8 + allot          \ `require ` and the file's path
+variable SS-NEST-U
+
+: SS-KEEP ( n n n -- )
+   {: outu:n erru:n rc:n :}
+   rc 70 T=
+   CAP-OUT SS-OUT outu BYTE-COPY  outu SS-OUT-U !
+   CAP-ERR SS-ERR erru BYTE-COPY  erru SS-ERR-U !
+   rc SS-RC ! ;
+
+: SS-SAME ( n n n -- )
+   {: outu:n erru:n rc:n :}
+   rc SS-RC @ T=
+   SS-OUT SS-OUT-U @ CAP-OUT outu T$=
+   SS-ERR SS-ERR-U @ CAP-ERR erru T$= ;
+
+: SS-REQ$ ( -- ptr u8 n )
+   s" ckt-ss-req.f" ;
+
+\ Standard input's source for --verify-only, kept apart from the string
+\ builder, which the scratch directory the run makes reuses.
+: SS-NEST$ ( -- ptr u8 n )
+   SS-FILE$ NEST-SRC$ {: a:ptr u:n :}
+   a SS-NEST u BYTE-COPY  u SS-NEST-U !
+   SS-NEST SS-NEST-U @ ;
+
+: SS-DECL-NESTED ( -- )
+   SS-FILE$ SS-SRC$ NEST-FILE
+   SS-REQ$ SS-FILE$ NEST-SRC$ NEST-FILE
+   SS-REQ$ REQ$ PATH-RUN SS-KEEP
+   SS-FILE$ NEST-SRC$ DIRECT-STDIN SS-SAME
+   SS-REQ$ ALL-PROSE-RUN SS-KEEP
+   SS-FILE$ NEST-SRC$ DIRECT-ALL-STDIN SS-SAME
+   SS-REQ$ ST-JSON-RUN SS-KEEP
+   SS-FILE$ NEST-SRC$ DIRECT-JSON-STDIN SS-SAME
+   SS-REQ$ REQ-PLAIN-RUN SS-KEEP
+   SS-FILE$ NEST-SRC$ ALL-JSON-STDIN SS-SAME
+   SS-NEST$ s" ckt-ss-new.f" REQ$ VO-STDIN-RUN SS-AT$ SS-VERIFIED ;
+
 \ The line and the column of the given byte of BIG.
 : BIG-PLACE ( n -- n n )
    {: at:n :}
@@ -4538,52 +4779,60 @@ variable SS-TOK-U
 : SS-BIG-JSON ( -- )
    BIG BIG-U @ DIRECT-JSON-STDIN REFUSED-LINE STDIN-LABEL$ SS-JSON ;
 
-\ A DEFTYPE name longer than the pre-verifier folds.
+\ The pre-verifier's tables grow with what a source holds, so each source below,
+\ one past a bound a table once had, verifies under --verify-only, read as a
+\ file whose loads find their file beside it. Only the verdict is asserted: the
+\ run is the program's own, and lib/type/deftype.f refuses CAP-NAME's name
+\ there (E-VNOM-CAP: it mangles at most 32 bytes).
+: SS-BIG-VERIFIES ( -- )
+   s" ckt-x.f" s" \ ckt-x.f - the file CAP-LOADS' definitions load" NEST-FILE
+   s" ckt-big.f" BIG BIG-U @ NEST-FILE
+   s" ckt-big.f" REQ$ VO-FILE-RUN EXPECT-ACCEPTED ;
+
+\ A DEFTYPE name longer than the pre-verifier once folded.
 : CAP-NAME ( -- )
    0 BIG-U !
    s" require lib/type/deftype.f" BIG-APP $0a BIG-C,
    s" DEFTYPE " BIG-APP
-   BIG-U @ {: at:n :}
-   65 0 ?do $4e BIG-C, loop $0a BIG-C,
-   7194 at BIG-STOP! ;
+   65 0 ?do $4e BIG-C, loop $0a BIG-C, ;
 
-\ A clause signature longer than the definer table holds: a slot holds the
-\ longest effect a `generates:` row states (verify-source.f DEFINER-SIG-SLOT).
+\ A clause signature longer than the slot the definer table once gave an
+\ effect: the longest effect a `generates:` row states (checker.f GENR-SIG-CAP).
 : CAP-CLAUSE ( -- )
    0 BIG-U !
    s" : CKO ( n -- ) create , does> (" BIG-APP
    GENR-SIG-CAP 0 ?do 32 BIG-C, loop
-   s" -- n ) @ " BIG-APP
-   BIG-U @ {: at:n :}
-   s" ;" BIG-APP $0a BIG-C,
-   7194 at BIG-STOP! ;
+   s" -- n ) @ ;" BIG-APP $0a BIG-C, ;
 
-\ One does> definer more than the table holds.
+\ One does> definer more than the table once held.
 : CAP-DEFINERS ( -- )
    0 BIG-U !
-   129 1 ?do
+   130 1 ?do
       s" : CKD" BIG-APP i BIG-N
       s"  ( n -- ) create , does> ( -- n ) @ ;" BIG-APP $0a BIG-C,
-   loop
-   s" : CKD129 ( n -- ) create , does> ( -- n ) @ " BIG-APP
-   BIG-U @ {: at:n :}
-   s" ;" BIG-APP $0a BIG-C,
-   7194 at BIG-STOP! ;
+   loop ;
 
-\ One load more than the pre-verifier holds while an open package keeps the
+\ One load more than the pre-verifier once held while an open package keeps the
 \ loads its definitions make waiting.
 : CAP-LOADS ( -- )
    0 BIG-U !
    s" package CKP" BIG-APP $0a BIG-C,
-   17 1 ?do
+   18 1 ?do
       s" : CKL" BIG-APP i BIG-N
       s\"  ( -- ) s\" ckt-x.f\" required ;" BIG-APP $0a BIG-C,
    loop
-   s\" : CKL17 ( -- ) s\" ckt-x.f\" " BIG-APP
+   s" ;package" BIG-APP $0a BIG-C, ;
+
+\ A generates: effect longer than the engine's row holds (checker.f
+\ GENR-SIG-CAP) stops the pre-verifier at the row's opener (7199).
+: GEN-LONG ( -- )
+   0 BIG-U !
+   s" : CKG ( n -- ) create , ;" BIG-APP $0a BIG-C,
    BIG-U @ {: at:n :}
-   s" required ;" BIG-APP $0a BIG-C,
-   s" ;package" BIG-APP $0a BIG-C,
-   7194 at BIG-STOP! ;
+   s" generates: CKG (" BIG-APP
+   GENR-SIG-CAP 0 ?do 32 BIG-C, loop
+   s" -- n )" BIG-APP $0a BIG-C,
+   7199 at BIG-STOP! ;
 
 : TEST-STATEMENT-STOP-LOCATED ( -- )
    s" : CKD ( -- n ) 1" 7155 2 3 s" :" SS-STOP! SS-EVERY
@@ -4591,21 +4840,37 @@ variable SS-TOK-U
    s" TRUST" 7158 2 3 s" TRUST" SS-STOP! SS-EVERY
    s" BEGIN-STRUCTURE CKB 8 +FIELD CKB-X" 7107 2 3 s" BEGIN-STRUCTURE" SS-STOP! SS-EVERY
    s" : CKG ( n -- n" 7155 2 3 s" :" SS-STOP! SS-STDIN-JSON
-   s" : CKL ( n -- n ) {: a" 7155 2 3 s" :" SS-STOP! SS-STDIN-JSON
+   \ A locals group never closed stops at its `{:`, on standard input as in a
+   \ file (TEST-DISCOVERY-LOCATED).
+   s" : CKL ( n -- n ) {: a" E-DISC-UNTERM 2 20 s" {:" SS-STOP! SS-STDIN-JSON
    s" : CKO ( n -- ) create , does> ( -- n ) @" 7155 2 3 s" :" SS-STOP! SS-STDIN-JSON
    s" TRUSTED: CKT ( -- ) 1 drop" 7155 2 3 s" TRUSTED:" SS-STOP! SS-STDIN-JSON
    s" defer CKF foo" 7157 2 3 s" defer" SS-STOP! SS-STDIN-JSON
    s" defer CKF ( n -- n" 7157 2 3 s" defer" SS-STOP! SS-STDIN-JSON
    s" : CKO ( n -- ) create , does> @ ;" 7157 2 3 s" :" SS-STOP! SS-STDIN-JSON
    s\" s\" CKX\" TRUST" 7158 2 11 s" TRUST" SS-STOP! SS-STDIN-JSON
-   s" ENUM ckcolor red" 7107 2 3 s" ENUM" SS-STOP! SS-NESTED SS-VERIFY
-   s" STRUCTURE ckpoint 0 FIELD x n" 7107 2 3 s" STRUCTURE" SS-STOP! SS-NESTED SS-VERIFY
-   s" PRODUCT ckpair 0 FIELD x n" 7107 2 3 s" PRODUCT" SS-STOP! SS-NESTED SS-VERIFY
-   s" VALUE-RECORD ckvr x n" 7107 2 3 s" VALUE-RECORD" SS-STOP! SS-NESTED SS-VERIFY
-   CAP-NAME SS-BIG-JSON
-   CAP-CLAUSE SS-BIG-JSON
-   CAP-DEFINERS SS-BIG-JSON
-   CAP-LOADS SS-BIG-JSON ;
+   \ The nominal pass refuses an unended declaration first, in standard
+   \ input's closure as in a file's: the pre-verifier's stop at it is located
+   \ under --verify-only, and standard input reports in the other modes what
+   \ the same bytes as a named file do (SS-DECL-NESTED).
+   s" ENUM ckcolor red" 7107 2 3 s" ENUM" SS-STOP! SS-DECL-NESTED SS-VERIFY
+   s" STRUCTURE ckpoint 0 FIELD x n" 7107 2 3 s" STRUCTURE" SS-STOP! SS-DECL-NESTED SS-VERIFY
+   s" PRODUCT ckpair 0 FIELD x n" 7107 2 3 s" PRODUCT" SS-STOP! SS-DECL-NESTED SS-VERIFY
+   s" VALUE-RECORD ckvr x n" 7107 2 3 s" VALUE-RECORD" SS-STOP! SS-DECL-NESTED SS-VERIFY
+   s\" require lib/ffi-abi.f\nFUNCTION: CKF" 7155 3 1 s" FUNCTION:" SS-STOP! SS-EVERY
+   s\" require lib/ffi-abi.f\nFUNCTION: CKF getpid" 7157 3 1 s" FUNCTION:" SS-STOP! SS-EVERY
+   s\" require lib/ffi-abi.f\nFUNCTION: CKF getpid foo" 7157 3 1 s" FUNCTION:" SS-STOP! SS-STDIN-JSON
+   s\" require lib/ffi-abi.f\nFUNCTION: CKF getpid ( n -- n" 7157 3 1 s" FUNCTION:" SS-STOP! SS-STDIN-JSON
+   s" DEFLINEAR n" 7200 2 13 s" n" SS-STOP! SS-VERIFY
+   s" VALUE-RECORD n x n END-VALUE-RECORD" 7200 2 16 s" n" SS-STOP! SS-VERIFY
+   s" VALUE-RECORD ckvr x bogus END-VALUE-RECORD" 7198 2 21 s" x" SS-STOP! SS-VERIFY
+   s" VALUE-RECORD ckvr value read-view<p,q,u8> END-VALUE-RECORD" 7198 2 21 s" value" SS-STOP! SS-VERIFY
+   s" VALUE-RECORD ckvr END-VALUE-RECORD" 7198 2 21 s" END-VALUE-RECORD" SS-STOP! SS-VERIFY
+   CAP-NAME SS-BIG-VERIFIES
+   CAP-CLAUSE SS-BIG-VERIFIES
+   CAP-DEFINERS SS-BIG-VERIFIES
+   CAP-LOADS SS-BIG-VERIFIES
+   GEN-LONG SS-BIG-JSON ;
 
 \ Discovery walks every file of a closure before the check, and a string or a
 \ locals group a file never closes ends the walk at its opener. A string is
@@ -4657,10 +4922,17 @@ variable SS-TOK-U
    outu 0 T=
    CAP-ERR erru at atu USING-AT$ CONTAINS? TTRUE ;
 
+\ Under --json-errors the engine's refusal, prose, is on stdout.
+: EXPECT-USING-AT-JSON ( n n n ptr u8 n -- )
+   {: outu:n erru:n rc:n at:ptr atu:n :}
+   rc ENGINE-ERROR:USING-UNKNOWN T=
+   erru 0 T=
+   CAP-OUT outu at atu USING-AT$ CONTAINS? TTRUE ;
+
 : TEST-USING-AT-SOURCE ( -- )
    SB-RESET USING-AT-LINES s" using-at.f" REQ-WRITE
    s" using-at.f" REQ-RUN s" using-at.f" REQ$ EXPECT-USING-AT
-   s" using-at.f" ST-JSON-RUN s" using-at.f" REQ$ EXPECT-USING-AT
+   s" using-at.f" ST-JSON-RUN s" using-at.f" REQ$ EXPECT-USING-AT-JSON
    RESET
    SB-RESET USING-AT-LINES SB$ s" ckt-using-at.f" SOURCE
    [: RUN-ACT ;] IN-PROC s" ckt-using-at.f" EXPECT-USING-AT ;
@@ -4715,7 +4987,7 @@ variable SS-TOK-U
 : TEST-SHEBANG-AT-LINE ( -- )
    SHEBANG-FILES
    s" sb-using.f" REQ-RUN s" sb-using.f" REQ$ EXPECT-USING-AT
-   s" sb-using.f" ST-JSON-RUN s" sb-using.f" REQ$ EXPECT-USING-AT
+   s" sb-using.f" ST-JSON-RUN s" sb-using.f" REQ$ EXPECT-USING-AT-JSON
    SB-RESET SHEBANG-USING-LINES SB$ CLI-STDIN STDIN-LABEL$ EXPECT-USING-AT
    s" sb-one.f" s" sb-using.f" SHEBANG-LIST-RUN s" sb-using.f" REQ$ EXPECT-USING-AT ;
 
@@ -5678,6 +5950,19 @@ variable LC-OTHER-U
 : LC-UNTERM$SRC ( -- ptr u8 n )
    s\" : CKT-LC-UNTERM ( -- ptr u8 n ) s\" nope ;\n" ;
 
+\ A structure whose field has the type a required file declares, the require
+\ absolute so that it resolves wherever the bytes are checked.
+: LC-TYPE-DEP$SRC ( -- ptr u8 n )
+   s\" NEWTYPE cklctyval 0\n" ;
+
+: LC-TYPE-USE$SRC ( -- ptr u8 n )
+   SB-RESET
+   s" require " SB-APPEND
+   s" lc-type-dep.f" LC-AT SB-APPEND
+   $0a SB-APPEND-C
+   s\" STRUCTURE cklctypair 0 FIELD value cklctyval ;STRUCTURE\n" SB-APPEND
+   SB$ ;
+
 : LC-QUOTE$ ( -- ptr u8 n )
    s\" lc-q\"uote.f" ;
 
@@ -5701,6 +5986,8 @@ variable LC-OTHER-U
    s" lc-bad-dep.f" LC-BAD-DEP$SRC LC-WRITE
    s" lc-use-bad.f" LC-USE-BAD$SRC LC-WRITE
    s" lc-decl.f" LC-DECL$SRC LC-WRITE
+   s" lc-type-dep.f" LC-TYPE-DEP$SRC LC-WRITE
+   s" lc-type-use.f" LC-TYPE-USE$SRC LC-WRITE
    LC-QUOTE$ LC-UNTERM$SRC LC-WRITE
    LC-BACK$ LC-UNTERM$SRC LC-WRITE
    LC-QUOTE$ LC-QLINK$ LC-AT MAKE-SYMLINK
@@ -5742,14 +6029,19 @@ variable LC-OTHER-U
    s" tools/check-verify-child.f" LC-IN-OTHER
    s\" s\" check-verify-child: stub\" 98 die\n" WRITE-ALL ;
 
-\ The child runs in the given directory with the environment the caller set,
+\ PROGRAM runs in the given directory with the environment the caller set,
 \ completed from this process's.
-: LC-ENV-CAPTURE ( ptr u8 n -- n n n ) {: cwd:ptr cwdu:n :}
+: LC-RUN-CAPTURE ( ptr u8 n ptr u8 n -- n n n )
+   {: prog:ptr progu:n cwd:ptr cwdu:n :}
    PROC-ENV-INHERIT-MISSING
-   CLI-HB$ >LEN cwd cwdu >LEN
+   prog progu >LEN cwd cwdu >LEN
    CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN CHILD-HANG-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    CAPTURE>N ;
+
+\ The engine runs in the given directory with the environment the caller set.
+: LC-ENV-CAPTURE ( ptr u8 n -- n n n )
+   CLI-HB$ 2swap LC-RUN-CAPTURE ;
 
 \ The child runs with this process's environment in the given directory.
 : LC-CAPTURE ( ptr u8 n -- n n n )
@@ -5857,6 +6149,21 @@ variable LC-CANON-U
    {: outu:n erru:n :}
    label labelu T-LABEL CAP-ERR erru E-FS-OPEN LC-UNCAUGHT$ CONTAINS? TTRUE ;
 
+\ Under --json-errors stderr holds packets only: the command line says on
+\ stdout that the selection is no usable executable, whatever the resolver
+\ refused it for, with the status its refusal has uncaught.
+: LC-REFUSED-ENGINE-JSON ( ptr u8 n ptr u8 n -- )
+   {: engine:ptr engineu:n label:ptr labelu:n :}
+   PROC-ENV-RESET
+   s" HABU_UNDER_TEST" >LEN engine engineu >LEN PROC-ENV-SET
+   LC-ROOT$ LC-ENV-CAPTURE {: outu:n erru:n rc:n :}
+   label labelu T-LABEL rc 67 T=
+   label labelu T-LABEL erru 0 T=
+   label labelu T-LABEL CAP-OUT outu s" is not a usable executable" CONTAINS? TTRUE ;
+
+: LC-NOT-ENGINE$ ( -- ptr u8 n )
+   s" sub/lc-dep.f" LC-IN-ROOT ;
+
 : LC-REFUSED-ENGINE-CASE ( -- )
    CHECK-ARGV-START
    s" sub/lc-use.f" CHECK-ARG+
@@ -5864,7 +6171,186 @@ variable LC-CANON-U
    CHECK-ARGV-START
    s" --verify-only" CHECK-ARG+
    s" sub/lc-use.f" CHECK-ARG+
-   s" load-context: --verify-only's engine refused" LC-REFUSED-ENGINE ;
+   s" load-context: --verify-only's engine refused" LC-REFUSED-ENGINE
+   CHECK-ARGV-START
+   s" --json-errors" CHECK-ARG+
+   s" sub/lc-use.f" CHECK-ARG+
+   LC-NOT-ENGINE$ s" load-context: --json-errors's engine refused" LC-REFUSED-ENGINE-JSON
+   LC-ARGV-ALL
+   s" sub/lc-use.f" CHECK-ARG+
+   LC-NOT-ENGINE$ s" load-context: --all-errors's engine refused" LC-REFUSED-ENGINE-JSON
+   LC-ARGV-ALL
+   s" --verify-only" CHECK-ARG+
+   s" sub/lc-use.f" CHECK-ARG+
+   LC-NOT-ENGINE$ s" load-context: --json-errors --verify-only's engine refused" LC-REFUSED-ENGINE-JSON ;
+
+FS-PATH-CAP 1+ constant LC-LONG-U
+create LC-LONG-ENGINE LC-LONG-U allot
+
+\ A selection one byte longer than a path the file system takes, which it
+\ refuses (E-FS-PATH) before anything looks for an executable there.
+: LC-LONG-ENGINE$ ( -- ptr u8 n )
+   $2f LC-LONG-ENGINE c!
+   LC-LONG-U 1 ?do $61 LC-LONG-ENGINE i + c! loop
+   LC-LONG-ENGINE LC-LONG-U ;
+
+: LC-LONG-ENGINE-CASE ( -- )
+   CHECK-ARGV-START
+   s" --json-errors" CHECK-ARG+
+   s" sub/lc-use.f" CHECK-ARG+
+   LC-LONG-ENGINE$ s" load-context: --json-errors's overlong engine" LC-REFUSED-ENGINE-JSON
+   LC-ARGV-ALL
+   s" sub/lc-use.f" CHECK-ARG+
+   LC-LONG-ENGINE$ s" load-context: --all-errors's overlong engine" LC-REFUSED-ENGINE-JSON
+   LC-ARGV-ALL
+   s" --verify-only" CHECK-ARG+
+   s" sub/lc-use.f" CHECK-ARG+
+   LC-LONG-ENGINE$ s" load-context: --json-errors --verify-only's overlong engine" LC-REFUSED-ENGINE-JSON ;
+
+\ A subject the file system will not read ends the check before any child, so
+\ no engine is selected: every --json-errors mode says so on stdout, by the
+\ subject's canonical path, with the status the closure walk gives such a file,
+\ and a selection that would fail with the same code is not what it reports.
+\ An empty ENGINE leaves this process's selection in force.
+: LC-UNREAD-EXPECT ( ptr u8 n ptr u8 n -- )
+   {: engine:ptr engineu:n label:ptr labelu:n :}
+   PROC-ENV-RESET
+   engineu 0<> if s" HABU_UNDER_TEST" >LEN engine engineu >LEN PROC-ENV-SET then
+   LC-ROOT$ LC-ENV-CAPTURE {: outu:n erru:n rc:n :}
+   label labelu T-LABEL rc 74 T=
+   label labelu T-LABEL erru 0 T=
+   label labelu T-LABEL CAP-OUT outu s" check.f: cannot read /" CONTAINS? TTRUE
+   label labelu T-LABEL CAP-OUT outu s" /sub/lc-locked.f" CONTAINS? TTRUE
+   label labelu T-LABEL CAP-OUT outu s" usable executable" CONTAINS? TFALSE ;
+
+: LC-LOCKED-SETUP ( -- )
+   s" sub/lc-locked.f" LC-IN-ROOT s\" : LC-LOCKED ( -- n ) 8 ;\n" WRITE-ALL
+   s" sub/lc-locked.f" LC-IN-ROOT 0 CHMOD-MODE ;
+
+: LC-UNREAD-CASE ( -- )
+   LC-LOCKED-SETUP
+   CHECK-ARGV-START
+   s" --json-errors" CHECK-ARG+
+   s" sub/lc-locked.f" CHECK-ARG+
+   NULL$ s" load-context: --json-errors's unreadable subject" LC-UNREAD-EXPECT
+   LC-ARGV-ALL
+   s" sub/lc-locked.f" CHECK-ARG+
+   NULL$ s" load-context: --all-errors's unreadable subject" LC-UNREAD-EXPECT
+   LC-ARGV-ALL
+   s" --verify-only" CHECK-ARG+
+   s" sub/lc-locked.f" CHECK-ARG+
+   NULL$ s" load-context: --json-errors --verify-only's unreadable subject" LC-UNREAD-EXPECT ;
+
+\ HABU_UNDER_TEST naming no file fails the resolver with E-FS-OPEN, the code
+\ reading the unreadable subject fails with.
+: LC-NO-ENGINE$ ( -- ptr u8 n )
+   s" no-engine" LC-IN-ROOT ;
+
+: LC-UNREAD-ENGINE-CASE ( -- )
+   CHECK-ARGV-START
+   s" --json-errors" CHECK-ARG+
+   s" sub/lc-locked.f" CHECK-ARG+
+   LC-NO-ENGINE$ s" load-context: --json-errors's unreadable subject, absent engine" LC-UNREAD-EXPECT
+   LC-ARGV-ALL
+   s" sub/lc-locked.f" CHECK-ARG+
+   LC-NO-ENGINE$ s" load-context: --all-errors's unreadable subject, absent engine" LC-UNREAD-EXPECT
+   LC-ARGV-ALL
+   s" --verify-only" CHECK-ARG+
+   s" sub/lc-locked.f" CHECK-ARG+
+   LC-NO-ENGINE$ s" load-context: --json-errors --verify-only's unreadable subject, absent engine" LC-UNREAD-EXPECT ;
+
+\ A source list walks each listed file in turn. The first here reads the file
+\ it requires; the second is the file the file system will not read, so the
+\ check names it as it names an unreadable subject, and stderr holds no packet
+\ placing it at the first file's require.
+: LC-UNREAD-LIST-CASE ( -- )
+   CHECK-ARGV-START
+   s" --json-errors" CHECK-ARG+
+   s" --source-list" CHECK-ARG+
+   s" sub/lc-use.f" CHECK-ARG+
+   s" sub/lc-locked.f" CHECK-ARG+
+   NULL$ s" load-context: --json-errors's unreadable second listed file" LC-UNREAD-EXPECT
+   LC-ARGV-ALL
+   s" --source-list" CHECK-ARG+
+   s" sub/lc-use.f" CHECK-ARG+
+   s" sub/lc-locked.f" CHECK-ARG+
+   NULL$ s" load-context: --all-errors's unreadable second listed file" LC-UNREAD-EXPECT ;
+
+\ What check.f says on stdout under --json-errors for a throw nothing caught.
+: LC-CHECK-UNCAUGHT$ ( n -- ptr u8 n )
+   {: code:n :}
+   SB-RESET
+   s" check.f: uncaught throw code " SB-APPEND
+   code FMT:SB-INT
+   SB$ ;
+
+\ A check whose own scratch fails ends with that throw uncaught, no fault of
+\ the source's or of the engine's: under --json-errors the command line says
+\ it on stdout by its code, with the status hb gives such a throw, and stderr
+\ stays empty.
+: LC-SCRATCH-EXPECT ( n n n n ptr u8 n -- )
+   {: outu:n erru:n rc:n code:n label:ptr labelu:n :}
+   label labelu T-LABEL rc 67 T=
+   label labelu T-LABEL erru 0 T=
+   label labelu T-LABEL CAP-OUT outu code LC-CHECK-UNCAUGHT$ CONTAINS? TTRUE
+   label labelu T-LABEL CAP-OUT outu s" usable executable" CONTAINS? TFALSE ;
+
+$140 constant LC-MODE-0500   \ a directory its owner may list and enter, not write
+
+: LC-RO-TMP$ ( -- ptr u8 n )
+   s" ro-tmp" LC-IN-ROOT ;
+
+\ An HB_TMP check.f may not write in: its scratch directory cannot be made
+\ there (E-FS-IO).
+: LC-RO-TMP-RUN ( ptr u8 n -- )
+   {: label:ptr labelu:n :}
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN LC-RO-TMP$ >LEN PROC-ENV-SET
+   LC-ROOT$ LC-ENV-CAPTURE E-FS-IO label labelu LC-SCRATCH-EXPECT ;
+
+: LC-RO-TMP-CASE ( -- )
+   LC-RO-TMP$ MAKE-DIR
+   LC-RO-TMP$ LC-MODE-0500 CHMOD-MODE
+   CHECK-ARGV-START
+   s" --json-errors" CHECK-ARG+
+   s" sub/lc-use.f" CHECK-ARG+
+   s" load-context: --json-errors's read-only HB_TMP" LC-RO-TMP-RUN
+   LC-ARGV-ALL
+   s" sub/lc-use.f" CHECK-ARG+
+   s" load-context: --all-errors's read-only HB_TMP" LC-RO-TMP-RUN ;
+
+\ /bin/sh sets the file mode mask to 0222, then becomes the engine ($0) with
+\ the arguments CHECK-ARGV-START begins.
+: LC-UMASK-ARGV-START ( -- )
+   PROC-ARGV-RESET
+   s" -c" CHECK-ARG+
+   s\" umask 0222 && exec \"$0\" \"$@\"" CHECK-ARG+
+   CLI-HB$ CHECK-ARG+
+   s" --load" CHECK-ARG+
+   s" tools/check.f" CHECK-ARG+
+   s" --" CHECK-ARG+ ;
+
+\ Under that mask check.f makes its scratch directory without owner write, so
+\ writing the source into it fails with E-FS-OPEN, the code the resolver
+\ refuses HABU_UNDER_TEST naming no file with. The check ends there, before
+\ any child, so no selection is judged and the scratch failure is what it
+\ reports.
+: LC-UMASK-RUN ( ptr u8 n -- )
+   {: label:ptr labelu:n :}
+   PROC-ENV-RESET
+   s" HABU_UNDER_TEST" >LEN LC-NO-ENGINE$ >LEN PROC-ENV-SET
+   s" /bin/sh" LC-ROOT$ LC-RUN-CAPTURE E-FS-OPEN label labelu LC-SCRATCH-EXPECT ;
+
+: LC-UMASK-CASE ( -- )
+   LC-UMASK-ARGV-START
+   s" --json-errors" CHECK-ARG+
+   s" sub/lc-use.f" CHECK-ARG+
+   s" load-context: --json-errors's unwritable scratch, absent engine" LC-UMASK-RUN
+   LC-UMASK-ARGV-START
+   s" --json-errors" CHECK-ARG+
+   s" --all-errors" CHECK-ARG+
+   s" sub/lc-use.f" CHECK-ARG+
+   s" load-context: --all-errors's unwritable scratch, absent engine" LC-UMASK-RUN ;
 
 \ The verifier child is the one in the tree check.f was loaded from, never the
 \ working directory's: LC-OTHER's would end the check with 98.
@@ -5948,21 +6434,50 @@ variable LC-CANON-U
    erru s" code" s" E-BAD-DECLARATION" LC-PACKET s" file" LC-STRING$
    s" lc-decl.f" LC-AT s" load-context: refused declaration, file" LC-EXPECT-FILE ;
 
+FS-PATH-CAP 2 * constant LC-TYPE-CAP     \ a loader line of the longest path, and the rest
+create LC-TYPE-BUF LC-TYPE-CAP allot
+
+\ lc-type-use.f's bytes, for the checks that take a source as bytes.
+: LC-TYPE-BYTES ( -- ptr u8 n )
+   s" lc-type-use.f" LC-AT LC-TYPE-BUF LC-TYPE-CAP READ-ALL {: u:n :}
+   LC-TYPE-BUF u ;
+
+\ Every pass after the closure walk visits the files it found, so a type a
+\ required file declares is in scope wherever the source comes from: a named
+\ file, standard input or a SOURCE buffer, under --json-errors with and
+\ without --all-errors.
+: LC-TYPE-CASE ( -- )
+   s" lc-type-use.f" ST-JSON-RUN s" load-context: required type, file" LC-EXPECT-CLEAN
+   s" lc-type-use.f" REQ-PLAIN-RUN s" load-context: required type, file, all" LC-EXPECT-CLEAN
+   LC-TYPE-BYTES s" --json-errors" CLI-FLAG-STDIN s" load-context: required type, stdin" LC-EXPECT-CLEAN
+   LC-TYPE-BYTES LC-STDIN s" load-context: required type, stdin, all" LC-EXPECT-CLEAN
+   LC-TYPE-BYTES DIRECT-JSON-STDIN s" load-context: required type, SOURCE" LC-EXPECT-CLEAN
+   LC-TYPE-BYTES ALL-JSON-STDIN s" load-context: required type, SOURCE, all" LC-EXPECT-CLEAN ;
+
 \ The check quotes a path or label into a line it writes and hands a path to
 \ the file system. A path or label holding a byte the quoting refuses (double
-\ quote, backslash, CR, LF, NUL) is one usage line in every mode, and a listed
+\ quote, backslash, CR, LF, NUL) is one usage line in every mode, on stderr or,
+\ under --json-errors, on stdout, and a listed
 \ path holding a NUL is refused before the engine's resolver sees it. The
 \ quoted spelling is the canonical path for a named file, the path as given
 \ for a listed one, and the label in the run stage: a plain named file's path
 \ as given, or a CHECK:SOURCE label. It is judged before anything reads the
 \ source, so each case's source is one a later stage refuses, and the answer
 \ is the path's whatever the file holds.
+: LC-UNSAFE-LINE$ ( -- ptr u8 n )
+   s" check.f: source path or label contains a double quote, backslash, CR, LF or NUL"
+   LC-LINE$ ;
+
 : LC-EXPECT-UNSAFE ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n label:ptr labelu:n :}
    label labelu T-LABEL rc 64 T=
    label labelu T-LABEL outu 0 T=
-   label labelu T-LABEL CAP-ERR erru
-   s" check.f: source path or label contains a double quote, backslash, CR, LF or NUL"
-   LC-LINE$ T$= ;
+   label labelu T-LABEL CAP-ERR erru LC-UNSAFE-LINE$ T$= ;
+
+: LC-EXPECT-UNSAFE-JSON ( n n n ptr u8 n -- )
+   {: outu:n erru:n rc:n label:ptr labelu:n :}
+   label labelu T-LABEL rc 64 T=
+   label labelu T-LABEL erru 0 T=
+   label labelu T-LABEL CAP-OUT outu LC-UNSAFE-LINE$ T$= ;
 
 : LC-NUL$ ( -- ptr u8 n )
    SB-RESET s" lc-n" SB-APPEND 0 SB-APPEND-C s" ul.f" SB-APPEND SB$ ;
@@ -5970,7 +6485,7 @@ variable LC-CANON-U
 : LC-UNSAFE-TARGET-CASE ( -- )
    LC-QLINK$ LC-AT LC-ALL
    s" load-context: a link to a name with a double quote, refused by discovery"
-   LC-EXPECT-UNSAFE ;
+   LC-EXPECT-UNSAFE-JSON ;
 
 : LC-UNSAFE-LIST-CASE ( -- )
    CHECK-ARGV-START
@@ -5997,7 +6512,7 @@ variable LC-CANON-U
    LC-DECL$SRC LC-BACK$ SOURCE
    [: RUN-ACT ;] IN-PROC
    s" load-context: a JSON CHECK:SOURCE label with a backslash, refused declaration"
-   LC-EXPECT-UNSAFE ;
+   LC-EXPECT-UNSAFE-JSON ;
 
 : LC-UNSAFE-SOURCE-NUL-CASE ( -- )
    RESET
@@ -6010,13 +6525,14 @@ variable LC-CANON-U
    LC-NUL$ PATH-RUN
    s" load-context: a named path with a NUL" LC-EXPECT-UNSAFE ;
 
-\ Existence is checked before the path is quoted.
+\ Existence is checked before the path is quoted; under --json-errors the line
+\ is on stdout.
 : LC-MISSING-QUOTE-CASE ( -- )
    s\" lc-missing-q\"uote.f" LC-AT LC-ALL
    s" load-context: a missing path with a double quote" T-LABEL 66 T=
    {: outu:n erru:n :}
-   outu 0 T=
-   CAP-ERR erru s" check.f: no such source" LC-LINE$ T$= ;
+   erru 0 T=
+   CAP-OUT outu s" check.f: no such source" LC-LINE$ T$= ;
 
 \ A relative path as long as a path may be names no file, and its absolute
 \ spelling is longer than the engine's resolver takes. Listed, it is missing,
@@ -6088,6 +6604,12 @@ variable LC-CANON-U
    LC-ENTRY-ROOT-CASE
    LC-ENGINE-CASE
    LC-REFUSED-ENGINE-CASE
+   LC-LONG-ENGINE-CASE
+   LC-UNREAD-CASE
+   LC-UNREAD-ENGINE-CASE
+   LC-UNREAD-LIST-CASE
+   LC-RO-TMP-CASE
+   LC-UMASK-CASE
    LC-OTHER-TREE-CASE
    LC-TREE-CASE
    LC-PROVIDED-CASE
@@ -6097,6 +6619,7 @@ variable LC-CANON-U
    LC-DUPLICATE-CASE
    LC-DEPENDENCY-CASE
    LC-DECLARATION-CASE
+   LC-TYPE-CASE
    LC-UNSAFE-TARGET-CASE
    LC-UNSAFE-LIST-CASE
    LC-UNSAFE-LIST-NUL-CASE
@@ -6472,7 +6995,11 @@ variable LC-CANON-U
    s" check/target-shadow" [: TEST-TARGET-SHADOW ;] CASE-RUN
    s" check/require-size-all" [: TEST-REQUIRE-SIZE-ALL ;] CASE-RUN
    s" check/require-size-all-list" [: TEST-REQUIRE-SIZE-ALL-LIST ;] CASE-RUN
-   s" check/require-size-prose" [: TEST-REQUIRE-SIZE-PROSE ;] CASE-RUN ;
+   s" check/require-size-prose" [: TEST-REQUIRE-SIZE-PROSE ;] CASE-RUN
+   s" check/closure-stop" [: TEST-CLOSURE-STOP ;] CASE-RUN
+   s" check/closure-wide" [: TEST-CLOSURE-WIDE ;] CASE-RUN
+   s" check/closure-stdin" [: TEST-CLOSURE-STDIN ;] CASE-RUN
+   s" check/success-stderr" [: TEST-SUCCESS-STDERR ;] CASE-RUN ;
 
 \ Declaration forms (ENUM, PRODUCT, STRUCTURE, VALUE-RECORD, nominal names,
 \ package families); a case list of its own keeps TEST-MAIN under the
@@ -6521,6 +7048,7 @@ variable LC-CANON-U
    s" check/raw-operand" [: TEST-RAW-OPERAND ;] CASE-RUN
    s" check/local-operand" [: TEST-LOCAL-OPERAND ;] CASE-RUN
    s" check/value-record-field-refused" [: TEST-VREC-FIELD-REFUSED ;] CASE-RUN
+   s" check/value-record-scoped-refused" [: TEST-VREC-SCOPED-REFUSED ;] CASE-RUN
    s" check/package-linear-good" [: LINEAR-GOOD-TEST ;] CASE-RUN
    s" check/package-linear-cross" [: LINEAR-CROSS-TEST ;] CASE-RUN
    s" check/package-linear-global" [: LINEAR-GLOBAL-TEST ;] CASE-RUN

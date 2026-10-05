@@ -140,13 +140,19 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
   `--json-errors` it is the line `E-STATEMENT-THROW <file>:<line>:<column>:
   throw <throw_code> at '<token>'`. The pre-verifier stops the same way at the
   opener of a statement the source ends inside or that lacks a part it must
-  have: a definition, its signature or a locals group never closed (7155), a
-  definer's signature missing or never closed (7157), `TRUST` without the name
-  and signature strings before it (7158), and an `ENUM`, `STRUCTURE`,
+  have: a definition, its signature or a locals group never closed (7155; a
+  `FUNCTION:` with no symbol), a definer's signature missing or never closed
+  (7157; `FUNCTION:`'s declaration group), `TRUST` without the name and
+  signature strings before it (7158), an `ENUM`, `STRUCTURE`,
   `BEGIN-STRUCTURE`, `PRODUCT` or `VALUE-RECORD` never ended
   (`TYPE-DECL:E-TDECL-SYNTAX`, 7107; the nominal pass refuses one in a file it
-  reads first). A table of its own that is full stops it at the token it read
-  last (7194). Source discovery's stop at a `{:` group a file never closes is
+  reads first), and a `generates:` effect longer than the engine's row holds
+  (7199). It stops at a `DEFLINEAR` or `VALUE-RECORD` name no type may take
+  (7200) and at a `VALUE-RECORD` field the checker refuses, or the
+  `END-VALUE-RECORD` of a record with none (7198); outside `--verify-only` the
+  nominal pass reports those first as `E-BAD-NOMINAL-TYPE` and
+  `E-BAD-RECORD-FIELD`. Its own tables grow with the source, so none of them
+  stops it. Source discovery's stop at a `{:` group a file never closes is
   this record at the `{:`, with `throw_code` `E-DISC-UNTERM` (-4103).
 - `E-GENERATES-ROW`: a `generates: D ( effect )` row the checker refused, its
   `token` D. Its repair class names the claim that failed: `fix_generates_row`
@@ -180,28 +186,59 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
   `PPRIM:` primitive-axiom row opened at `token` does not close.
 
 The lexer cannot read past either defect, so it is reported in place of
-checking that source, in the file that holds it (a required file included):
-source discovery stops at an open string in a file, and the pre-verifier at
-either defect where it reads one (`VERIFY:E-UNTERMINATED-STRING`,
+checking that source, in the file that holds it (a required file included,
+standard input as `<stdin>`): source discovery stops at an open string, and the
+pre-verifier at either defect where it reads one (`VERIFY:E-UNTERMINATED-STRING`,
 `VERIFY:E-MALFORMED-REGISTRY-ROW`). Without `--json-errors` it is the line
 `<code> <file>:<line>:<column>: string literal opened at '<token>' does not
 close`, or `primitive-axiom row` in place of `string literal`. Under
-`--verify-only` a string or group discovery stops at keeps the closure's
-`discovery rejected: unterminated string or locals group` line among the
-prose and adds its record.
+`--verify-only` a string or group discovery stops at adds its record after the
+packets, and its status line, `<file>: discovery rejected: unterminated string
+or locals group`, is `CHECK:VERIFY-LOG$`, on stdout.
 
-A deferral record locates a stretch of top-level source the source pre-pass
-left to the run, and is no refusal: code `W-CHECK-DEFERRED`, repair class
-`rewrite_uncheckable`, `verdict` `deferred`, the `token` with its `file`,
-`line`, `column`, `byte_start` and `byte_end`, and `suggestion`, with no
-`throw_code` or definition fields. The token runs a word that may read the
-source after it (it parses or is deferred), or names a word only a rendering
-statement before it may define, so the tokens from it to the next statement the
-pre-pass reads are the run's to know, and none of them is verified. A word that
-renders source opens no stretch: it reads only the text it renders. Only
-`--verify-only` reports it, once per such stretch that holds anything but
-blanks and comments; see Checking Without Running for the file's verdict. It counts as no
-refusal and has no repair packet.
+`tools/check.f` follows the subject's require closure, of any size, before it
+checks anything, on every path: `--verify-only` and the language server's check
+as well, and for standard input and `CHECK:SOURCE` bytes, whose requires resolve
+as the run resolves them. Every pass after the walk visits the files it found,
+those bytes under their label, so what a required file declares, such as the
+type a structure's field names, is in scope there as it is for a named file.
+Under `--json-errors` or `--verify-only` a closure
+it cannot follow for any other reason is a refusal, exit 70, with one
+source-span record in the file that holds the defect, a required file included,
+and `CHECK:VERIFY-BYTES` answers `refused` with that record:
+
+- `E-LOADER-FORM`, repair class `literal_loader_form`, at a loader form
+  discovery cannot follow: a loader word with no literal path (a computed one,
+  or a `c"` or `."` string before it), a path over 1024 bytes as written or as
+  resolved, or the name of a definition that redefines or retires a loader
+  word, unless `tools/dynamic-tail-manifest.f` lists the file.
+- `E-MISSING-SOURCE`, repair class `fix_load_path`, at the loader word that
+  names a file that is not there.
+- `E-UNREADABLE-SOURCE`, repair class `make_source_readable`, at the loader
+  word that names a file the file system will not read, such as one whose
+  mode forbids it.
+
+Under `--verify-only` its status line, `CHECK:VERIFY-LOG$`, is on stdout and
+names the file that ended the walk: `<file>: discovery rejected: <reason>`,
+`<file>: no such source` or `cannot read <file>`. Without either option the
+line is `check.f: discovery rejected: <reason>`, exit 70, `check.f: no such
+source`, exit 66, or `check.f: cannot read <path>`, exit 74.
+
+A deferral record locates a stretch of top-level source the source pre-pass left
+to the run, or a definition the checker left to it, and is no refusal: code
+`W-CHECK-DEFERRED`, repair class `rewrite_uncheckable`, `verdict` `deferred`,
+the `token` with its `file`, `line`, `column`, `byte_start` and `byte_end`, and
+`suggestion`, with no `throw_code` or definition fields. The token runs a word
+that may read the source after it (it parses or is deferred), or names a word
+only a rendering statement before it may define, so the tokens from it to the
+next statement the pre-pass reads are the run's to know, and none of them is
+verified. A word that renders source opens no stretch: it reads only the text it
+renders. A definition's body names a word only such a statement, or an unlearned
+create caller, may define (`CHECK` verdict 2, `docs/forth.md`), and the token is
+where the checker's judgment of the body stops. Only `--verify-only` reports it,
+once per such stretch that holds anything but blanks and comments and once per
+such definition; see Checking Without Running for the file's verdict. It counts
+as no refusal and has no repair packet.
 
 A definition by `:`, `CAST:`, `EXPORT` or a typed storage definer of a name
 its wordlist already holds emits, with or without `--all-errors`, a
@@ -233,8 +270,9 @@ not provide is checked.
 `tools/check.f` runs a checked program in a child, the run stage, with a
 deadline of 120 s, or the milliseconds `--deadline-ms N` gives, from 1 to
 2147483647. A run still going at its deadline is killed with every process it
-started, what it wrote is not replayed, and stderr gets the one line
-`check.f: <label>: the run passed its deadline of <N> ms`, prose in either mode.
+started, what it wrote is not replayed, and the one line
+`check.f: <label>: the run passed its deadline of <N> ms` goes to stderr, or to
+stdout under `--json-errors`.
 The label is `<stdin>`, `<source-list>`, or a named file as given, canonical
 under `--json-errors` as in its packets. The run exits 70. A program that runs
 longer is checked with a longer `--deadline-ms`.
@@ -366,39 +404,58 @@ process.
 | `engine-provided` | The engine provides PATH (`ENGINE-PROVIDES?`): nothing is verified, whatever the bytes hold. | 64 |
 | `held` | The child's image holds PATH though the engine does not (`src/habu/verify-source.f`, `tools/check-verify-child.f`), so it cannot be verified there. | 69 |
 | `incomplete` | The child ended without a result line; its `status` is the exit, signal or deadline, and the packets are those it made before. | 69 |
-| `deferred` | Nothing is refused, but the source pre-pass left a stretch of top-level source in the closure or the subject to the run: a `W-CHECK-DEFERRED` packet locates each such stretch, and its tokens are not verified. | 0 |
+| `deferred` | Nothing is refused, but the source pre-pass left a stretch of top-level source or a definition in the closure or the subject to the run: a `W-CHECK-DEFERRED` packet locates each, and its tokens are not verified. | 0 |
 
-Any refusal makes the verdict `refused`, deferred stretches or not: the load
-fails at the refusal whatever the run would make of a stretch. Without one, a
-deferred stretch makes it `deferred`, which exits 0 because the load may accept
-the stretch, and whose packets and closing line keep a caller from reading
-that 0 as `verified`; the language server publishes those packets at
-Information severity. Only this child reports a stretch: check.f's default
+Any refusal makes the verdict `refused`, deferrals or not: the load fails at
+the refusal whatever the run would make of what was deferred. Without one, a
+deferred stretch or definition makes it `deferred`, which exits 0 because the
+load may accept it, and whose packets and closing line keep a caller from
+reading that 0 as `verified`; the language server publishes those packets at
+Information severity. Only this child reports a deferral: check.f's default
 mode runs the program after its pre-pass, so the run judges what the pre-pass
-left to it. The verdict concerns top-level source: a definition the checker
-leaves to the run, one naming a word only a rendering statement may define
-(`docs/forth.md`), is not reported and does not make the file `deferred`.
+left to it.
 
 Under `--verify-only` check.f writes the packets on stderr, as schema-1 JSON
 with or without `--json-errors`, and its prose on stdout, with a closing line
 for `engine-provided`, `held`, `incomplete` and `deferred`, for which it is
-`check.f: a stretch deferred to the run is not verified`. A verification that
-stopped, at a word with no name after it, a string or primitive-axiom row its
-file never closes, a statement that threw, or where discovery stopped, adds
-the record the other modes write for it, at that place, after the packets made
-before it. Child output beyond the
+`check.f: a stretch or definition deferred to the run is not verified`. A
+verification that stopped, at a word with no name after it, a string or
+primitive-axiom row its file never closes, a statement that threw, or where
+discovery stopped, adds the record the other modes write for it, at that place,
+after the packets made before it. Child output beyond the
 operation's capture exits 69 with the complete packets received before it, the
-prose and a closing line. Usage errors (64) and a missing FILE (66) keep their
-exit codes and explain the failure on stdout. A source of any size is checked:
-check.f reads a file to its end, its size only the first room, and holds the
-source, and the text it builds from it, in buffers that grow to what they hold;
-the engine loads it in a frame sized to the file.
+prose and a closing line. Usage errors (64), a missing FILE (66) and a FILE the
+file system will not read (74, `check.f: cannot read <path>` with its canonical
+path, as the closure walk says it) keep their exit codes and explain the failure
+on stdout. A source of any size is checked: check.f reads a file to its end, its
+size only the first room, and holds the source, and the text it builds from it,
+in buffers that grow to what they hold; the engine loads it in a frame sized to
+the file.
 An argument that exceeds the source path capacity is a usage error, exits 64
-and explains the limit on stdout. Ordinary checks explain it on stderr with the
-same status. An engine `HABU_UNDER_TEST` names that is not an executable exits
-67 in every mode, default, `--verify-only` and `--json-errors`, with only
-`hb: uncaught throw code -2102` (`E-FS-OPEN`) on stderr, naming neither the
-engine nor `HABU_UNDER_TEST`.
+and explains the limit on stdout. A check with neither `--verify-only` nor
+`--json-errors` explains it on stderr with the same status. Under
+`--json-errors`, with or without `--all-errors`, stderr likewise carries the
+packets alone and the prose goes to stdout: the closing lines, the run's
+deadline line, usage errors, a missing or unreadable FILE and, when the
+run stage writes no packet on stderr, what it writes there, whether the run
+passed or failed. The engine reports a top-level
+refusal of the run, such as `hb: interpret stack underdepth: <word>` (70) or
+`hb: uncaught throw code <n>` (67), as that prose, with no packet. An engine
+selection `lib/engine-candidate.f` refuses (`HABU_UNDER_TEST`, else the running
+engine) exits 67 in every mode, whether its path names no executable or is one
+the file system refuses, such as one over 1024 bytes. Under `--json-errors`
+stdout says `check.f: the selected engine (HABU_UNDER_TEST, else the running
+engine) is not a usable executable` and stderr is empty; otherwise, by default
+and with `--verify-only` alone, stderr holds only `hb: uncaught throw code <n>`,
+the resolver's code (`E-FS-OPEN` -2102, `E-FS-PATH` -2100), naming neither the
+engine nor `HABU_UNDER_TEST`. The selection is judged where the check starts a
+child, the verifier or the run, so a check that ends before either, such as one
+whose FILE cannot be read, keeps its own outcome whatever the selection is.
+Any other throw that reaches check.f's command line uncaught, such as a failure
+of its scratch directory under `HB_TMP` (`E-FS-IO` -2105 making it, `E-FS-OPEN`
+-2102 writing the source into it), exits 67 too: under `--json-errors` stdout
+says `check.f: uncaught throw code <n>`, with no packet, and stderr is empty;
+otherwise stderr holds `hb: uncaught throw code <n>`.
 With `--verify-only`, a source list, a FILE beside `--stdin-path` and stdin
 without it are usage errors; so is `--stdin-path` given twice or without
 `--verify-only`.
@@ -414,9 +471,14 @@ refuses it: `CHECK:VERIFY-STOP` is its code, 0 for none, and
 `CHECK:VERIFY-STOP-AT`, `CHECK:VERIFY-STOP-SUBJECT?` and
 `CHECK:VERIFY-STOPPED$` say where, as for `CHECK:PREVERIFY-BYTES`. Discovery's
 stop at a string or a `{:` group a file of the closure never closes refuses it
-too, with `E-DISC-UNTERM` at the opener in that file. An empty
-PATH throws
-`E-FS-PATH`; a closure of more than 128 files and a failed spawn throw as well.
+too, with `E-DISC-UNTERM` at the opener in that file. Either stop's record, the
+one `check.f --verify-only` writes, is the last line of `CHECK:VERIFY-OUT$`:
+for a definer or parsing word with nothing after it the nominal pass's
+`E-MISSING-NAME` packet, for an open string or row the lexer's record, else
+the record `--all-errors` writes for a statement that throws, at the stop, so
+a language server publishes it with the packets before it. Any other closure
+the walk cannot follow is its record (above), and the verdict is `refused`. An
+empty PATH throws `E-FS-PATH`, and a failed spawn throws as well.
 Child output beyond the capture, 4 MiB on stdout or 256 KiB on stderr, kills
 the child and throws `E-PROC-TRUNCATED`, with every complete packet received
 before it in `CHECK:VERIFY-OUT$` and the stderr received in
@@ -462,7 +524,8 @@ the checking process loaded, such as `lib/fs.f`'s `FILE-SIZE` under check.f or
 it there in every mode. The pre-pass
 child has the run stage's deadline, `--deadline-ms` included; one that ends
 without its result line fails the check with 69, as `incomplete` fails
-`--verify-only`, with its closing line on stderr.
+`--verify-only`, with its closing line on stderr, or on stdout under
+`--json-errors`.
 
 ## Repair Packet JSON
 
@@ -557,7 +620,7 @@ Span packets carry a span record's evidence:
 | `column` | integer | required | One-based source column. |
 | `byte_start` | integer | required | Token start byte. |
 | `byte_end` | integer | required | Token end byte. |
-| `code` | string | required | `E-STATEMENT-THROW`, `E-UNTERMINATED-STRING`, `E-MALFORMED-REGISTRY-ROW`, `E-UNDEFINED-TOP-LEVEL` or `E-BAD-QUALIFIED-TOP-LEVEL`. |
+| `code` | string | required | `E-STATEMENT-THROW`, `E-UNTERMINATED-STRING`, `E-MISSING-SOURCE`, `E-UNREADABLE-SOURCE`, `E-LOADER-FORM`, `E-MALFORMED-REGISTRY-ROW`, `E-UNDEFINED-TOP-LEVEL` or `E-BAD-QUALIFIED-TOP-LEVEL`. |
 | `throw_code` | integer or null | required | The code a statement threw; null for any other span. |
 | `repair_class` | string | required | Stable repair bucket. |
 | `suggestion` | string | required | Checker repair hint. |
@@ -680,8 +743,9 @@ Current checker classes:
   learned `create … does>` definer and the rest) or a parsing word (`char`,
   `'`, a field word) ended the source with no name after it
   (`E-MISSING-NAME`); the packet is located at that word.
-- `fix_record_field`: a `VALUE-RECORD` field had a bad or duplicate name or a
-  missing or unknown type, or the record had no field (`E-BAD-RECORD-FIELD`);
+- `fix_record_field`: a `VALUE-RECORD` field had a bad or duplicate name, a
+  missing or unknown type or one with a scoped dependency, or the record had
+  no field (`E-BAD-RECORD-FIELD`);
   `reason` carries the registration's refusal and the packet is located at the
   field (at `END-VALUE-RECORD` for a record with no field).
 - `fix_family_declaration`: a `NEWTYPE` or `SUMTYPE` declaration used a
@@ -700,6 +764,11 @@ Current checker classes:
 - `rename_duplicate`: a name was defined a second time in one wordlist; rename
   it or `undefine` the first definition.
 - `close_string`: a string literal does not close.
+- `fix_load_path`: a loader word names a file that is not there.
+- `make_source_readable`: a loader word names a file the file system will not
+  read.
+- `literal_loader_form`: a loader form names no literal path, or redefines or
+  retires a loader word, so the require closure cannot be read from the source.
 - `close_primitive_row`: a `PRIM:` or `PPRIM:` primitive-axiom row does not
   close.
 - `rebuild_engine`: the input is a source the engine provides, so loading it
@@ -755,6 +824,9 @@ table it is derived only from `repair_class`. It does not replace the raw
 | `fix_storage_count` | `Put a positive count before the definer whose cells fit in memory: a literal, a constant or an expression.` |
 | `rename_duplicate` | `Rename the word or undefine the old definition before redefining it.` |
 | `close_string` | `Close the string literal before the definition ends.` |
+| `fix_load_path` | `No file is at the path this loader word names. Correct the path, or create the file.` |
+| `make_source_readable` | `The file this loader word names cannot be read. Make it readable, or correct the path.` |
+| `literal_loader_form` | `Load a file by a literal path of at most 1024 bytes, as written and as resolved, through a loader word no definition redefines or retires, or list this file in tools/dynamic-tail-manifest.f.` |
 | `close_primitive_row` | `Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE.` |
 | `fix_generates_row` | `This generates: row names no word here. Write it after the definer's definition, spelled as the definition spells it.` |
 | `delete_generates_row` | `This definer already states what it makes: its does> clause, an earlier generates: row or the definer it wraps. Delete the row.` |

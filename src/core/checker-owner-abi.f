@@ -119,7 +119,8 @@ $2F8 constant CHECK-REPORT-OFF
 $300 constant LINEAR-OFF
 \ The source pre-pass's questions: what the load does with a top-level token,
 \ the report of a stretch deferred to the run (src/habu/verify-source.f
-\ TOP-TOKEN), and what a TRUSTED: body's calls may do (SCAN-TRUSTED-BODY).
+\ TOP-TOKEN), what a TRUSTED: body's calls may do (SCAN-TRUSTED-BODY), and the
+\ report of a definition deferred to the run (REPORT-DEFERRED).
 $308 constant VERIFY-TOP-OFF
 $310 constant VERIFY-DEFERRED-OFF
 $318 constant VERIFY-REACH-OFF
@@ -137,6 +138,8 @@ $340 constant EFFECT-DOUT-CON-OFF
 $348 constant EFFECT-STACK-STABLE-OFF
 \ A scan serial from the same owner that supplies the borrowed binding rows.
 $350 constant BINDING-WINDOW-OFF
+\ The source pre-pass reports a definition left to the run.
+$358 constant VERIFY-DEFERRED-BODY-OFF
 \ lib/errors.f names this code E-NCOMP-BINDING; a retained build host loads
 \ this constants-only ABI before it can load the new error word.
 -8575 constant BINDING-RC

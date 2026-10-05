@@ -44,12 +44,16 @@ private
 123 constant CA-LBRACE
 70 constant CA-REFUSED                  \ the status of a refusal the checker reported
 
+public
+
 \ The 1-based line and column of byte at in the buffer that starts at a.
 : BYTE-ORIGIN ( ptr u8 n -- n n ) {: a:ptr at:n :}
    1 0 at 0 ?do
       a i + c@ CA-LF = if drop 1+ i 1+ then
    loop
    at swap - 1+ ;
+
+private
 
 create CA-LF-BUF 1 allot
 
@@ -338,8 +342,7 @@ variable CA-COMPOSE-LABEL-U
    s" byte_start" LJW-KEY LINT-LEX:ERROR-BYTE@ LJW-U LJW-COMMA
    s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ CA-LEX-TOKEN-U + LJW-U LJW-COMMA
    s" suggestion" LJW-KEY s" Close the string literal before the definition ends." LJW-STRING
-   LJW-OBJECT-END
-   LJW$ CA-ERR-LN ;
+   LJW-OBJECT-END ;
 
 \ ---- malformed primitive-axiom row --------------------------------------------
 \ The lexer's second diagnostic. An incomplete `PRIM:`/`PPRIM:` row stops the scan
@@ -363,8 +366,7 @@ variable CA-COMPOSE-LABEL-U
    s" byte_start" LJW-KEY LINT-LEX:ERROR-BYTE@ LJW-U LJW-COMMA
    s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ CA-LEX-TOKEN-U + LJW-U LJW-COMMA
    s" suggestion" LJW-KEY CA-ROW-SUGGESTION$ LJW-STRING
-   LJW-OBJECT-END
-   LJW$ CA-ERR-LN ;
+   LJW-OBJECT-END ;
 
 \ The prose names the code, the file, line and column of the opener, what it
 \ opens, and the opener as written.
@@ -378,8 +380,7 @@ variable CA-COMPOSE-LABEL-U
    s" :" LJW-RAW LINT-LEX:ERROR-COL@ LJW-U
    s" : " LJW-RAW what whatu LJW-RAW
    s"  opened at '" LJW-RAW CA-LEX-TOKEN$ LJW-RAW
-   s" ' does not close" LJW-RAW
-   LJW$ CA-ERR-LN ;
+   s" ' does not close" LJW-RAW ;
 
 : CA-PROSE-LEX-ROW ( -- )
    s" E-MALFORMED-REGISTRY-ROW" s" primitive-axiom row" CA-PROSE-LEX ;
@@ -387,19 +388,22 @@ variable CA-COMPOSE-LABEL-U
 : CA-PROSE-LEX-UNTERM ( -- )
    s" E-UNTERMINATED-STRING" s" string literal" CA-PROSE-LEX ;
 
-: CA-EMIT-LEX-ROW ( -- )
-   CA-JSON? IF CA-JSON-LEX-ROW ELSE CA-PROSE-LEX-ROW THEN ;
-
-: CA-EMIT-LEX-UNTERM ( -- )
-   CA-JSON? IF CA-JSON-LEX-UNTERM ELSE CA-PROSE-LEX-UNTERM THEN ;
-
 : CA-LEX-ROW? ( -- bool )
    LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = ;
 
-\ The lexer reports more than one defect now, so name the one it hit.
+\ The record of the defect the lexer hit, in the selected mode, built in the
+\ JSON writer's buffer. The lexer reports more than one defect, so the record
+\ names the one it hit.
+: CA-LEX-RECORD ( -- )
+   CA-LEX-ROW? IF
+      CA-JSON? IF CA-JSON-LEX-ROW ELSE CA-PROSE-LEX-ROW THEN
+   ELSE
+      CA-JSON? IF CA-JSON-LEX-UNTERM ELSE CA-PROSE-LEX-UNTERM THEN
+   THEN ;
+
 : CA-HANDLE-LEX-DEFECT ( -- )
    LINT-LEX:ERROR? 0= IF exit THEN
-   CA-LEX-ROW? IF CA-EMIT-LEX-ROW ELSE CA-EMIT-LEX-UNTERM THEN
+   CA-LEX-RECORD LJW$ CA-ERR-LN
    CA-REFUSED throw ;
 
 
@@ -737,12 +741,17 @@ public
    patha pathu CA-READ-SOURCE
    CA-LEX ;
 
-\ LEX-FILE over the given bytes, which stand for the file the label names.
-: LEX-BUF ( ptr u8 n ptr u8 n -- )
+\ The record line LEX-FILE writes for the lexer defect of the given bytes, which
+\ stand for the file the label names, in the mode JSON! selected, with no line
+\ feed; empty when they lex clean.
+: LEX-RECORD$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: labela:ptr labelu:n srca:ptr srcu:n :}
    labela labelu CA-START
    srca srcu CA-SOURCE-BUF!
-   CA-LEX ;
+   CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
+   LJW-RESET
+   LINT-LEX:ERROR? IF CA-LEX-RECORD THEN
+   LJW$ ;
 
 \ Check the given source bytes as the file at the given path, reporting them under
 \ the given label: the composition verifies every file a top-level loader

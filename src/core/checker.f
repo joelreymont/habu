@@ -127,6 +127,7 @@ create OWNER-STORAGE
    0 , 0 , 0 , 0 ,
    0 ,
    0 , 0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -144,7 +145,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:BINDING-WINDOW-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:VERIFY-DEFERRED-BODY-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -6122,7 +6123,6 @@ variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
 
 : VREC-FIELD-STORE ( ptr u8 n ptr u8 n n -- )
    {: rec:ptr recu:n fld:ptr fldu:n typ:n :}
-   typ SCOPED-TYPE? IF s" checker: value-record field contains a scoped dependency" 70 die THEN
    rec recu fld fldu typ VREC-FIELD-WRAP VREC-COPY VREC-FIELD! ;
 
 : VREC-ATOM-COPY= ( ptr u8 n n -- bool ) {: a:ptr u:n node:n :}
@@ -6157,7 +6157,8 @@ variable VREC-AT
 \ Parse and store the fields of record id. Answer the end of the field text and
 \ an empty refusal, or the offset of the field refused and the refusal. A field
 \ text whose length describes no memory holds no field, so its record is refused
-\ as an empty one before a byte of it is read.
+\ as an empty one before a byte of it is read. A field type with a scoped
+\ dependency is refused before the field is stored.
 : VREC-PARSE-FIELDS ( n ptr u8 n ptr u8 n -- n ptr u8 n )
    {: id:n rec:ptr recu:n fields:ptr fieldsu:n :}
    fields fieldsu BYTE-SPAN? 0= IF fieldsu fields 0 EXIT THEN
@@ -6175,6 +6176,9 @@ variable VREC-AT
       2dup id VREC-FIELD-DUP? IF 2drop s" checker: duplicate value-record field" VREC-REFUSE EXIT THEN
       NEXT-SIG-TOK dup 0= IF 2drop 2drop s" checker: bad value-record field type" VREC-REFUSE EXIT THEN
       SIG-TYPE
+      dup SCOPED-TYPE? IF
+         drop 2drop s" checker: value-record field contains a scoped dependency" VREC-REFUSE EXIT
+      THEN
       >r rec recu 2swap r> VREC-FIELD-STORE
       SGBAD @ IF s" checker: bad value-record field type" VREC-REFUSE EXIT THEN
    AGAIN ;
@@ -10793,7 +10797,8 @@ PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name
 \ site (SHADOW-ARITY-CK), 2 a bare token two used publics export
 \ (CHECKER-RESOLVE:RAISE, the packages CK-USED-MASK marks), 3 a top-level token
 \ no scope defines and 4 one with a malformed qualifier (CHECKER-VERIFY-TOP), 5
-\ a top-level stretch deferred to the run (CHECKER-VERIFY-DEFERRED). One defer
+\ a top-level stretch or a definition deferred to the run
+\ (CHECKER-VERIFY-DEFERRED, CHECKER-VERIFY-DEFERRED-BODY). One defer
 \ and not six because every `defer` written here, before `: TRUST`, takes a slot
 \ of the engine's pre-trust pending table (src/habu/layout.f PD-CAP).
 \ test/pre-trust-defer.f exercises both an added defer and an overflow beyond
@@ -14137,6 +14142,13 @@ SYM-AXIOM-INSTALL
    {: a:ptr u:n :}
    a USH-TOK-A !  u USH-TOK-U !
    5 SHADOW-DIAG-XT ;
+
+\ Its report of a definition the checker deferred to the run (CHECK-VERDICT 2),
+\ located at the token the scan pinned where its judgment stopped (CAP-FAIL,
+\ latched by UNCK). It is asked right after the check, before another scan
+\ replaces the pin.
+: CHECKER-VERIFY-DEFERRED-BODY ( -- )
+   TBASE@ FAILB @ +  FAILE @ FAILB @ -  CHECKER-VERIFY-DEFERRED ;
 
 \ The pre-pass's question about a token a TRUSTED: body calls, before its
 \ `does>` (src/habu/verify-source.f SCAN-TRUSTED-BODY). The body is asserted,
@@ -22334,9 +22346,8 @@ GENERATES-DIAG-DEFAULT
 $36A0 constant CK-INP-OFF                  \ = layout.f INP-CELL
 $36A8 constant CK-INE-OFF                  \ = layout.f INE-CELL
 
-\ The longest effect a row states. The source pre-verifier keeps that much room
-\ for each definer's effect (verify-source.f DEFINER-SIG-SLOT), so it holds
-\ every row this engine takes.
+\ The longest effect a row states. The source pre-verifier refuses a longer one
+\ at the same bound (verify-source.f RECORD-GENERATES).
 $100 constant GENR-SIG-CAP
 
 \ The engine word reads the row's effect from the input at `at`, the cursor past
@@ -23602,6 +23613,7 @@ package CHECKER-REG
 ' CHECKER-VERIFY-TOP DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TOP-OFF + xt!
 ' CHECKER-VERIFY-DEFERRED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-OFF + xt!
 ' CHECKER-VERIFY-REACH DECLARATIONS CHECKER-OWNER-ABI:VERIFY-REACH-OFF + xt!
+' CHECKER-VERIFY-DEFERRED-BODY DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-BODY-OFF + xt!
 
 \ The first cold checker has no retained owner to transfer from. Publish it
 \ only after every callback is installed. A replacement keeps the nonzero

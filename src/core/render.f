@@ -1464,8 +1464,9 @@ REC-SIG-INSTALL
    10 EMIT1
    RSBUF-FLUSH ;
 \ --- a top-level token the load refuses, or the stretch after one the source
-\ pre-pass deferred to the run (checker.f CHECKER-VERIFY-TOP and
-\ CHECKER-VERIFY-DEFERRED): records at the token, with no definition fields.
+\ pre-pass deferred to the run, or a definition the checker deferred to it
+\ (checker.f CHECKER-VERIFY-TOP, CHECKER-VERIFY-DEFERRED and
+\ CHECKER-VERIFY-DEFERRED-BODY): records at the token, with no definition fields.
 \ A refusal is a span under a code of its own (tools/diag-code.f), with the
 \ repair class and suggestion a body's reference to the name gets (DCODE
 \ above); a deferral is no refusal, under W-CHECK-DEFERRED.
@@ -1498,7 +1499,7 @@ REC-SIG-INSTALL
    ELSE s" E-BAD-QUALIFIED-TOP-LEVEL" s" malformed qualified name" TOP-SPAN-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
-\ Only the verifier's child reports a deferred stretch, and it writes packets.
+\ Only the verifier's child reports a deferral, and it writes packets.
 : TOP-DEFERRED-DIAG ( -- )
    1 RDST !  0 RSN !  0 RQM !
    s" W-CHECK-DEFERRED" s" rewrite_uncheckable" s" deferred"
@@ -1508,7 +1509,8 @@ REC-SIG-INSTALL
 \ The diagnostics a token locates ride ONE checker hook, selected by its
 \ argument (checker.f SHADOW-DIAG-XT: 0 = the using-shadow reference site, 1 =
 \ the arity-shadow definition site, 2 = a using ambiguity, 3 and 4 = a
-\ top-level token undefined or malformed, 5 = a deferred top-level stretch),
+\ top-level token undefined or malformed, 5 = a deferred top-level stretch or
+\ definition),
 \ because every defer written before `: TRUST` takes a slot of the engine's
 \ pre-trust pending table (src/habu/layout.f PD-CAP).
 : SHADOW-DIAG ( n -- )
