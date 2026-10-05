@@ -1,5 +1,6 @@
 \ pool-test.f - RT-POOL through its load path: pools opened, shut and refused
-\ by token, reserves charged once per slot, stale and dead handles, a 100,000
+\ by token, reserves charged once per slot, stale and dead handles, a frozen
+\ object written by no word until its slot is reclaimed, a 100,000
 \ object chain reclaimed in bounded steps, an object released for good read
 \ only by its running enumerator, quotas and ceilings that answer oom and
 \ change nothing, the emergency pool kept apart, and the typed routes each
@@ -194,6 +195,7 @@ TYPED-VARIABLE PQ RT-POOL:pools
    [: 0 1 1 >WIRE-HANDLE 0 PQ @ RT-POOL:CELL! ;] code TTHROWSQ
    [: 1 1 >WIRE-HANDLE 0 PQ @ RT-POOL:REF@ drop ;] code TTHROWSQ
    [: RT-HANDLE:NULL 1 1 >WIRE-HANDLE 0 PQ @ RT-POOL:REF! ;] code TTHROWSQ
+   [: 1 1 >WIRE-HANDLE PQ @ RT-POOL:FREEZE ;] code TTHROWSQ
    [: 1 PQ @ RT-POOL:RECLAIM-STEP drop ;] code TTHROWSQ
    [: 0 PAGES PQ @ RT-POOL:QUOTA! ;] code TTHROWSQ
    [: PAGES PQ @ RT-POOL:CHARGED drop ;] code TTHROWSQ
@@ -293,8 +295,9 @@ TYPED-VARIABLE H-C RT-HANDLE:handle
    EDGES @ 0 T=
    s" an object released for good is not released again" T-LABEL
    [: H-A @ PB @ RT-POOL:RELEASE ;] DEAD TTHROWSQ
-   s" nor retained, read or written" T-LABEL
+   s" nor retained, frozen, read or written" T-LABEL
    [: H-A @ PB @ RT-POOL:RETAIN ;] DEAD TTHROWSQ
+   [: H-A @ PB @ RT-POOL:FREEZE ;] DEAD TTHROWSQ
    [: H-A @ 0 PB @ RT-POOL:CELL@ drop ;] DEAD TTHROWSQ
    [: 1 H-A @ 0 PB @ RT-POOL:CELL! ;] DEAD TTHROWSQ
    [: H-A @ 0 PB @ RT-POOL:REF@ drop ;] DEAD TTHROWSQ
@@ -322,12 +325,14 @@ TYPED-VARIABLE H-C RT-HANDLE:handle
    H-C @ LAST-CELL PB @ RT-POOL:CELL@ 0 T=
    s" while the handle it replaced stays stale" T-LABEL
    [: H-A @ PB @ RT-POOL:RETAIN ;] STALE TTHROWSQ
+   [: H-A @ PB @ RT-POOL:FREEZE ;] STALE TTHROWSQ
    H-C @ PB @ RT-POOL:RELEASE
    8 PB @ RT-POOL:RECLAIM-STEP 1 T= ;
 
 : FORGED ( -- )
    s" the null handle is foreign to the pools" T-LABEL
    [: RT-HANDLE:NULL PB @ RT-POOL:RETAIN ;] FOREIGN TTHROWSQ
+   [: RT-HANDLE:NULL PB @ RT-POOL:FREEZE ;] FOREIGN TTHROWSQ
    [: RT-HANDLE:NULL 0 PB @ RT-POOL:CELL@ drop ;] FOREIGN TTHROWSQ
    s" and so is a slot past every pool" T-LABEL
    [: $FFFFFFFF 1 >WIRE-HANDLE PB @ RT-POOL:RELEASE ;] FOREIGN TTHROWSQ
@@ -341,9 +346,53 @@ TYPED-VARIABLE H-C RT-HANDLE:handle
 
 : BUDGETS ( -- )
    s" a step's budget is at least one edge" T-LABEL
-   [: 0 PB @ RT-POOL:RECLAIM-STEP drop ;] RT-POOL:E-RT-POOL-BUDGET TTHROWSQ
-   [: -1 PB @ RT-POOL:RECLAIM-STEP drop ;] RT-POOL:E-RT-POOL-BUDGET TTHROWSQ
+   [: 0 PB @ RT-POOL:RECLAIM-STEP drop ;] RT-POOL:E-RT-POOL-RANGE TTHROWSQ
+   [: -1 PB @ RT-POOL:RECLAIM-STEP drop ;] RT-POOL:E-RT-POOL-RANGE TTHROWSQ
    1 PB @ RT-POOL:RECLAIM-STEP 0 T= ;
+
+\ ---- frozen objects ---------------------------------------------------------
+
+TYPED-VARIABLE H-F RT-HANDLE:handle
+
+: FROZEN-CODE ( -- n )
+   RT-POOL:E-RT-POOL-FROZEN ;
+
+\ H-F is a link holding H-B and, in its last cell, 5; H-C is a link the test
+\ holds once.
+: FROZEN ( -- )
+   LINK @ PB @ RT-POOL:RESERVE ID H-F !
+   5 H-F @ LAST-CELL PB @ RT-POOL:CELL!
+   H-B @ H-F @ 0 PB @ RT-POOL:REF!
+   H-F @ PB @ RT-POOL:FREEZE
+   LINK @ PB @ RT-POOL:RESERVE ID H-C !
+   s" a frozen object refuses CELL!" T-LABEL
+   [: 6 H-F @ LAST-CELL PB @ RT-POOL:CELL! ;] FROZEN-CODE TTHROWSQ
+   s" and REF!, its cell keeping the child it held" T-LABEL
+   [: H-C @ H-F @ 0 PB @ RT-POOL:REF! ;] FROZEN-CODE TTHROWSQ
+   [: RT-HANDLE:NULL H-F @ 0 PB @ RT-POOL:REF! ;] FROZEN-CODE TTHROWSQ
+   H-F @ 0 PB @ RT-POOL:REF@ BITS H-B @ BITS T=
+   s" and the child it refused not retained" T-LABEL
+   H-C @ PB @ RT-POOL:RELEASE
+   8 PB @ RT-POOL:RECLAIM-STEP 1 T=
+   [: H-C @ PB @ RT-POOL:RETAIN ;] STALE TTHROWSQ
+   s" while it is still read" T-LABEL
+   H-F @ LAST-CELL PB @ RT-POOL:CELL@ 5 T=
+   s" freezing it again keeps it frozen" T-LABEL
+   H-F @ PB @ RT-POOL:FREEZE
+   [: 6 H-F @ LAST-CELL PB @ RT-POOL:CELL! ;] FROZEN-CODE TTHROWSQ
+   s" it is retained, released and reclaimed, its child released" T-LABEL
+   H-F @ PB @ RT-POOL:RETAIN
+   H-F @ PB @ RT-POOL:RELEASE
+   H-F @ PB @ RT-POOL:RELEASE
+   8 PB @ RT-POOL:RECLAIM-STEP 2 T=
+   [: H-F @ PB @ RT-POOL:RETAIN ;] STALE TTHROWSQ
+   s" and its slot's next generation starts writable" T-LABEL
+   LINK @ PB @ RT-POOL:RESERVE ID H-C !
+   H-C @ SLOT# H-F @ SLOT# T=
+   7 H-C @ LAST-CELL PB @ RT-POOL:CELL!
+   H-C @ LAST-CELL PB @ RT-POOL:CELL@ 7 T=
+   H-C @ PB @ RT-POOL:RELEASE
+   8 PB @ RT-POOL:RECLAIM-STEP 1 T= ;
 
 \ ---- a long chain -----------------------------------------------------------
 
@@ -554,9 +603,9 @@ variable GRANTS
    8 PE @ RT-POOL:RECLAIM-STEP 1 T=
    PAGES PE @ RT-POOL:CHARGED 2 4096 * T=
    s" a quota runs from zero to its class's ceiling" T-LABEL
-   [: -1 PAGES PE @ RT-POOL:QUOTA! ;] RT-POOL:E-RT-POOL-QUOTA TTHROWSQ
-   [: RT-POOL:PAGES-CEILING 1 + PAGES PE @ RT-POOL:QUOTA! ;] RT-POOL:E-RT-POOL-QUOTA TTHROWSQ
-   [: RT-POOL:SCRATCH-CEILING 1 + JOBS PE @ RT-POOL:QUOTA! ;] RT-POOL:E-RT-POOL-QUOTA TTHROWSQ
+   [: -1 PAGES PE @ RT-POOL:QUOTA! ;] RT-POOL:E-RT-POOL-RANGE TTHROWSQ
+   [: RT-POOL:PAGES-CEILING 1 + PAGES PE @ RT-POOL:QUOTA! ;] RT-POOL:E-RT-POOL-RANGE TTHROWSQ
+   [: RT-POOL:SCRATCH-CEILING 1 + JOBS PE @ RT-POOL:QUOTA! ;] RT-POOL:E-RT-POOL-RANGE TTHROWSQ
    RT-POOL:SCRATCH-CEILING JOBS PE @ RT-POOL:QUOTA!
    PE @ RT-POOL:SHUTDOWN ;
 
@@ -683,6 +732,7 @@ CHILD-CAP BUFFER: CHILD-ERR
    REFERENCES
    FORGED
    BUDGETS
+   FROZEN
    PB @ RT-POOL:SHUTDOWN
    CHAIN-RECLAIM
    SHARED

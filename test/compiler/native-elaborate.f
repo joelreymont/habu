@@ -92,6 +92,16 @@ using NSRC
    c LEX
    b p r  tp NTAPE:SEAL ;
 
+\ A rig whose word model has room for the callees a fixture's body names.
+: SEALED-ROOM ( IR-CTX:ctx n -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ARENA:view )
+   {: c:IR-CTX:ctx extra:n :}
+   c HIR-BUILDER {: b:IR-BUILD:builder :}
+   c b extra MODEL-ROOM
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b TAPE {: tp:IR-ARENA:arena :}
+   c LEX
+   b p r  tp NTAPE:SEAL ;
+
 \ ---- reading the published module --------------------------------------------
 : F-BLK ( IR-BUILD:module IR-ID:ir-fun-id -- IR-ID:ir-block-id )
    {: m:IR-BUILD:module f:IR-ID:ir-fun-id :}
@@ -337,7 +347,7 @@ create DIRECT-SCAN-TEXT 128 allot
    recorded NFEED:RECORD-WINDOW
    1 NDICT:CALL-CELLS 1 T= 2 T=
    s" NELB-DIRECT abs" TEXT!
-   c SEALED
+   c 1 SEALED-ROOM
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
    c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
@@ -359,7 +369,7 @@ create DIRECT-SCAN-TEXT 128 allot
    0 NFETCH:CAPTURE
    37 NFETCH:CHECKED? TTRUE
    s" NELB-DIRECT-FETCH NELB-DATA          @" TEXT!
-   c SEALED
+   c 1 SEALED-ROOM
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
    c b v p r 0 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
@@ -2174,16 +2184,6 @@ create TW-BUF TW-CAP allot
 : F-QUOTS ( IR-BUILD:module -- n )
    {: m:IR-BUILD:module :}
    m  m  m IR-BUILD:FKEY 0 IR-ID:PACK-FUN  F-BLK  s" hir.quot" F-OPC-N ;
-
-\ A rig whose word model has room for the callees a fixture's body names.
-: SEALED-ROOM ( IR-CTX:ctx n -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ARENA:view )
-   {: c:IR-CTX:ctx extra:n :}
-   c HIR-BUILDER {: b:IR-BUILD:builder :}
-   c b extra MODEL-ROOM
-   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
-   c b TAPE {: tp:IR-ARENA:arena :}
-   c LEX
-   b p r  tp NTAPE:SEAL ;
 
 \ `: QP-ACT ( -- [ -- ] ) [: 1 drop ;] ;` - the returned quotation. The enclosing
 \ function leaves one value and the body leaves none, which is the pair a module

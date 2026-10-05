@@ -12113,8 +12113,7 @@ variable BWIN-EPOCH
 variable BGLUE-MASK
 variable BGLUE-I
 
-: BIND-EFF-GLUE ( ptr u8 -- n ) {: h:ptr :}
-   h E-DOUT@ {: row:n :}
+: BIND-ROW-GLUE ( n -- n ) {: row:n :}
    row EFF-ROW-N {: terms:n :}
    row EFF-ROW-CELLS {: width:n :}
    width 0 < width 64 > or IF -1 EXIT THEN
@@ -12135,6 +12134,8 @@ variable BGLUE-I
       THEN
    REPEAT
    BGLUE-MASK @ ;
+
+: BIND-EFF-GLUE ( ptr u8 -- n ) E-DOUT@ BIND-ROW-GLUE ;
 
 : BWIN-AT ( n n -- ptr n )
    {: i:n f:n :}
@@ -12341,15 +12342,50 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 : CWIN-FIND? ( n n -- n n bool ) {: ord:n kind:n :}
    CWIN-N @ 0 ?do
       i CW-ORD CWIN-AT @ ord =  i CW-KIND CWIN-AT @ kind =  and if
-         i CW-IN CWIN-AT @  i CW-OUT CWIN-AT @  true unloop exit
+         i CW-IN CWIN-AT @  i CW-OUT CWIN-AT @  RES-TRUE unloop exit
       then
    loop
-   -1 -1 false ;
+   -1 -1 RES-FALSE ;
 
 : CWIN-FIND ( n n -- n n ) CWIN-FIND? drop ;
 
-: CWIN-CELLS ( n -- n n ) CW-CALL CWIN-FIND ;
-: CWIN-GLUE ( n -- n n ) CW-GLUE CWIN-FIND ;
+\ A completed unjudged scan has no finalized call rows. Its selected dictionary
+\ declaration can supply a physical ABI only when its data tail is preserved
+\ and it has no open type variable; other generic calls need a judged site.
+: SELECTED-CALL-ABI ( n -- n n n n )
+   {: ord:n :}
+   ord REC-UNJUDGED-BINDING {: row:ptr size:n :}
+   size 0= if -1 -1 -1 -1 exit then
+   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
+      CHECKER-OWNER-ABI:BOUND-DICT <> if -1 -1 -1 -1 exit then
+   row CHECKER-OWNER-ABI:BOUND-RECORD cells + CELL-VIEW @ 0= if -1 -1 -1 -1 exit then
+   row CHECKER-OWNER-ABI:BOUND-ENTRY cells + CELL-VIEW @ 0= if -1 -1 -1 -1 exit then
+   row CHECKER-OWNER-ABI:BOUND-NEUTRAL cells + CELL-VIEW @ 0= if -1 -1 -1 -1 exit then
+   row CHECKER-OWNER-ABI:BOUND-EFFECT cells + CELL-VIEW @ {: eff:n :}
+   eff 0= if -1 -1 -1 -1 exit then
+   eff 1- E-PTR E-TVN@ 0= 0= if -1 -1 -1 -1 exit then
+   eff 1- E-PTR E-DIN@ EFF-ROW-TAIL
+   eff 1- E-PTR E-DOUT@ EFF-ROW-TAIL <> if -1 -1 -1 -1 exit then
+   row CHECKER-OWNER-ABI:BOUND-IN cells + CELL-VIEW @ {: in:n :}
+   row CHECKER-OWNER-ABI:BOUND-OUT cells + CELL-VIEW @ {: out:n :}
+   row CHECKER-OWNER-ABI:BOUND-GLUE cells + CELL-VIEW @ {: gout:n :}
+   in 0< out 0< or gout -1 = or if -1 -1 -1 -1 exit then
+   in out  eff 1- E-PTR E-DIN@ BIND-ROW-GLUE  gout ;
+
+: CWIN-CELLS ( n -- n n )
+   {: ord:n :}
+   ord CW-CALL CWIN-FIND? if exit then
+   2drop
+   UWIN-VALID @ 0= if -1 -1 exit then
+   ord SELECTED-CALL-ABI 2drop ;
+
+: CWIN-GLUE ( n -- n n )
+   {: ord:n :}
+   ord CW-GLUE CWIN-FIND? if exit then
+   2drop
+   UWIN-VALID @ 0= if -1 -1 exit then
+   ord SELECTED-CALL-ABI 2swap 2drop ;
 : CWIN-MATCH-PAYLOAD ( n -- n n ) CW-MATCH-PAYLOAD CWIN-FIND ;
 : EFFECT-INIT-LAYOUT ( n -- n n n ) {: ord:n :}
    ord CW-INIT-WIDTH CWIN-FIND {: width:n bytes:n :}
@@ -12373,13 +12409,18 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    row CHECKER-OWNER-ABI:BOUND-RECORD cells + CELL-VIEW @ 0= if -1 -1 exit then
    row CHECKER-OWNER-ABI:BOUND-EFFECT cells + CELL-VIEW @ {: eff:n :}
    eff 0= if -1 -1 exit then
+   eff 1- E-PTR E-TVN@ 0= 0= if -1 -1 exit then
    eff 1- E-PTR E-DIN@ {: din:n :}
    din EFF-ROW-N din EFF-ROW-CELLS <> if -1 -1 exit then
-   din idx EFF-ROW-TERM {: q:n :}
+   idx din EFF-ROW-TERM {: q:n :}
    q 0= if -1 -1 exit then
    q EFF-TAG@ EN-QUOT <> if -1 -1 exit then
    q EFF-QUOT-SIMPLE? 0= if -1 -1 exit then
    q EFF-A@ {: qi:n :}  q EFF-B@ {: qo:n :}
+   qi EFF-ROW-TAIL {: qt:n :}
+   qt EFF-TAG@ EN-ROW <> if -1 -1 exit then
+   qt EFF-B@ RVK-QUOT <> if -1 -1 exit then
+   qo EFF-ROW-TAIL qt <> if -1 -1 exit then
    qi EFF-ROW-N qi EFF-ROW-CELLS {: in-terms:n in-cells:n :}
    qo EFF-ROW-N qo EFF-ROW-CELLS {: out-terms:n out-cells:n :}
    in-terms in-cells <> out-terms out-cells <> or if -1 -1 exit then

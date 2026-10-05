@@ -3319,7 +3319,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
    EXACT-SOURCE @ if
       ix SITE-CALL {: in:n out:n :}
       in 0< if E-NELAB-BUNDLE throw then
-      ix SITE-GLUE nip
+      in out ix SITE-GLUE nip
    else
       r sy HIR-WORD:CALLEE-IN@ r sy HIR-WORD:CALLEE-OUT@
       r sy HIR-WORD:OUT-GLUE@

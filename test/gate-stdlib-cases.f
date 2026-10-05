@@ -1443,6 +1443,10 @@ SUITE runtime-pool
    lib/runtime/pool-test.f
 ;SUITE
 
+SUITE runtime-record
+   lib/runtime/record-test.f
+;SUITE
+
 SUITE runtime-scope
    test/browser/scope-test.f
 ;SUITE
