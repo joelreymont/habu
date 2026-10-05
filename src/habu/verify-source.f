@@ -777,10 +777,10 @@ CAST: REACH-ACTION ( n -- [ ptr u8 n ptr u8 n -- ] )
 CAST: DECL-ACTION ( n -- [ ptr u8 n ptr u8 n -- bool ] )
 CAST: TICK-ORDER-ACTION ( n -- [ ptr u8 n n ptr u8 [ -- ] -- n ] )
 
-: WITH-BODY-TICK-ORDER ( ptr u8 n [ -- ] -- n )
+: WITH-BODY-TICK-ORDER ( ptr u8 n [ -- ] -- bool )
    {: a:ptr u:n q :}
    a u DEF-TICK-ORDER @ DEF-TICK-OWNER @ q
-   NCOMP-DISPATCH:DECL-WITH-TICK-ORDER-OFF OWNER-XT TICK-ORDER-ACTION execute ;
+   NCOMP-DISPATCH:DECL-WITH-TICK-ORDER-OFF OWNER-XT TICK-ORDER-ACTION execute 0<> ;
 
 CAST: VERIFIER-ACTION ( n -- [ -- ] )
 CAST: ARM-ACTION ( n -- [ n n n -- ] )
