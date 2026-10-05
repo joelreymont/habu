@@ -3,6 +3,8 @@
 1 set-tier
 require src/habu/layout.f
 
+: SHADOW-RECOVERY ( n -- n ) 1+ ;
+
 package NATIVE-MULTI-RECOVERY
 public
 
@@ -37,5 +39,44 @@ CHECK-STALE
    BEFORE AFTER + 42 <> if s" native multi-error continuation" 1 die then ;
 CHECK-AFTER
 
+: CHECK-SHADOW ( -- )
+   FINISH 1 <> if s" native shadow recovery count" 1 die then
+   s" SHADOW-RECOVERY" get-current search-wl 0<> if s" native shadow refusal published" 1 die then
+   s" SHADOW-FOLLOW" get-current search-wl 0<> if s" native shadow dependent published" 1 die then ;
+
+START
+: SHADOW-RECOVERY ( n -- n ) drop ;
+: SHADOW-GOOD ( -- n ) 17 ;
+: SHADOW-FOLLOW ( n -- n ) SHADOW-RECOVERY ;
+CHECK-SHADOW
+
 ;package
+
+: GLOBAL-START ( -- ) MULTI-ERR-BEGIN ;
+: GLOBAL-FINISH ( -- n ) MULTI-ERR-END ;
+GLOBAL-START
+: GLOBAL-RECOVERY ( n -- n ) drop ;
+: GLOBAL-GOOD ( -- n ) 17 ;
+
+package NATIVE-RECOVERY-QUAL
+public
+: QUAL-FOLLOW ( n -- n ) NATIVE-RECOVERY-QUAL:GLOBAL-RECOVERY ;
+: CHECK-QUAL ( -- )
+   GLOBAL-FINISH 1 <> if s" native qualified global recovery count" 1 die then
+   s" QUAL-FOLLOW" get-current search-wl 0<> if s" native qualified global dependent published" 1 die then ;
+CHECK-QUAL
+;package
+
+GLOBAL-START
+: GLOBAL-RECOVERY-CLOSED ( n -- n ) drop ;
+: GLOBAL-GOOD-CLOSED ( -- n ) 18 ;
+package NATIVE-RECOVERY-OTHER
+public
+: CLOSED-FOLLOW ( n -- n ) NATIVE-RECOVERY-QUAL:GLOBAL-RECOVERY-CLOSED ;
+: CHECK-CLOSED ( -- )
+   GLOBAL-FINISH 2 <> if s" native closed qualified recovery count" 1 die then
+   s" CLOSED-FOLLOW" get-current search-wl 0<> if s" native closed qualified dependent published" 1 die then ;
+CHECK-CLOSED
+;package
+
 s" ok" type cr
