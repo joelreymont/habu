@@ -152,6 +152,10 @@ public
 : EFF-COUNTS ( -- n n n n )        \ din terms, din cells, dout terms, dout cells
    CHECKER-OWNER:DIN-N CHECKER-OWNER:DIN-CELLS CHECKER-OWNER:DOUT-N CHECKER-OWNER:DOUT-CELLS ;
 
+: RET-COUNTS ( -- n n n n )        \ rin terms, rin cells, rout terms, rout cells
+   CHECKER-OWNER:RIN-N CHECKER-OWNER:RIN-CELLS
+   CHECKER-OWNER:ROUT-N CHECKER-OWNER:ROUT-CELLS ;
+
 public
 0 constant GLUE-NONE                 \ every cell of the row is a value of its own
 
@@ -183,12 +187,16 @@ private
 1 constant RS-DOUT
 2 constant RS-DOES-IN
 3 constant RS-DOES-OUT
+4 constant RS-RIN
+5 constant RS-ROUT
 
 : RG-SLOT ( n n -- n ) {: i:n src:n :}
    src RS-DIN = if i CHECKER-OWNER:DIN-SLOT exit then
    src RS-DOUT = if i CHECKER-OWNER:DOUT-SLOT exit then
    src RS-DOES-IN = if i CHECKER-OWNER:DOES-IN-SLOT exit then
    src RS-DOES-OUT = if i CHECKER-OWNER:DOES-OUT-SLOT exit then
+   src RS-RIN = if i CHECKER-OWNER:RIN-SLOT exit then
+   src RS-ROUT = if i CHECKER-OWNER:ROUT-SLOT exit then
    E-NCOMP-OWNER throw ;
 
 \ The width of the value a term belongs to is readable from the top of each run:
@@ -300,6 +308,19 @@ public
    dn dc RS-DIN ROW-GLUE
    on oc RS-DOUT ROW-GLUE ;
 
+: RET-LAYOUT ( -- n n n n )
+   CHECKER-OWNER:RET-TAIL-SAME? 0= if
+      ARITY-NONE ARITY-NONE GLUE-UNKNOWN GLUE-UNKNOWN exit
+   then
+   RET-COUNTS {: ni:n ci:n no:n co:n :}
+   ci co ni ci RS-RIN ROW-GLUE no co RS-ROUT ROW-GLUE ;
+
+: SPELL-RET ( ptr u8 n -- n n n n )
+   CHECKER-OWNER:QUERY 0= if
+      ARITY-NONE ARITY-NONE GLUE-UNKNOWN GLUE-UNKNOWN exit
+   then
+   RET-LAYOUT ;
+
 \ The same two answers for the `does>` clause the compiler has just had checked.
 \ The clause is not a name the effect store can be queried for - it has no name
 \ until the created word exists - so its rows come from the owner's does> group
@@ -334,14 +355,17 @@ public
 \ is asked from; folding it in would hide that behind a word that looks like one
 \ lookup. What the two share is the name-to-symbol half, and sharing THAT is a
 \ checker-side question, not one this file can answer.
-: SPELL-CALL ( ptr u8 n -- n n n bool )  \ din cells, dout cells, result glue, returns?
+: SPELL-CALL ( ptr u8 n -- n n n bool )  \ din, dout, result glue, return layout known?
    CHECKER-OWNER:QUERY 0= if ARITY-NONE ARITY-NONE GLUE-NONE false exit then
    CHECKER-OWNER:DIN-CELLS {: din:n :}
    CHECKER-OWNER:DOUT-CELLS {: dout:n :}
    din 0 < dout 0 < or if ARITY-NONE ARITY-NONE GLUE-NONE false exit then
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}
    on oc RS-DOUT ROW-GLUE {: glue:n :}
-   din dout glue CHECKER-OWNER:RET-NEUTRAL? ;
+   RET-LAYOUT {: rin:n rout:n gin:n gout:n :}
+   din dout glue
+   rin 0 >= rout 0 >= and
+   gin GLUE-UNKNOWN <> gout GLUE-UNKNOWN <> and and ;
 
 \ ---- the quotation a term of one of those rows IS ----------------------------
 public
@@ -350,14 +374,21 @@ private
 
 \ Read while the latch is down, with the latch put back before either is
 \ answered; declining and answering leave it in the same place.
-: QUOT-CELLS ( -- n n )
-   CHECKER-OWNER:QUOT-SIMPLE? {: simple:bool :}
+: QUOT-UNKNOWN ( -- n n n n n n )
+   QUOT-NONE QUOT-NONE QUOT-NONE QUOT-NONE GLUE-UNKNOWN GLUE-UNKNOWN ;
+
+: QUOT-LAYOUT ( -- n n n n n n )
+   CHECKER-OWNER:QUOT-CALLABLE? {: callable:bool :}
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}
-   CHECKER-OWNER:QUOT-UP 0= if QUOT-NONE QUOT-NONE exit then
-   simple 0= if QUOT-NONE QUOT-NONE exit then
-   dc 0 < oc 0 < or if QUOT-NONE QUOT-NONE exit then
-   dn dc <> on oc <> or if QUOT-NONE QUOT-NONE exit then
-   dc oc ;
+   RET-LAYOUT {: rin:n rout:n gin:n gout:n :}
+   CHECKER-OWNER:QUOT-UP 0= if QUOT-UNKNOWN exit then
+   callable 0= if QUOT-UNKNOWN exit then
+   dc 0 < oc 0 < or if QUOT-UNKNOWN exit then
+   dn dc <> on oc <> or if QUOT-UNKNOWN exit then
+   rin 0 < rout 0 < or if QUOT-UNKNOWN exit then
+   dc oc rin rout gin gout ;
+
+: QUOT-CELLS ( -- n n ) QUOT-LAYOUT 2drop 2drop ;
 
 \ Terms are counted from the TOP and cells from the BOTTOM, so term i and cell i
 \ are the same index only while every term of the row is one cell wide.
@@ -378,12 +409,26 @@ public
    i CHECKER-OWNER:DIN-QUOT 0= if QUOT-NONE QUOT-NONE exit then
    QUOT-CELLS ;
 
+: SPELL-QUOT-DIN-LAYOUT ( ptr u8 n n -- n n n n n n )
+   {: a u:n i:n :}
+   a u CHECKER-OWNER:QUERY 0= if QUOT-UNKNOWN exit then
+   true ROW-INDEXABLE? 0= if QUOT-UNKNOWN exit then
+   i CHECKER-OWNER:DIN-QUOT 0= if QUOT-UNKNOWN exit then
+   QUOT-LAYOUT ;
+
 : SPELL-QUOT-DOUT ( ptr u8 n n -- n n )
    {: a u:n i:n :}
    a u CHECKER-OWNER:QUERY 0= if QUOT-NONE QUOT-NONE exit then
    false ROW-INDEXABLE? 0= if QUOT-NONE QUOT-NONE exit then
    i CHECKER-OWNER:DOUT-QUOT 0= if QUOT-NONE QUOT-NONE exit then
    QUOT-CELLS ;
+
+: SPELL-QUOT-DOUT-LAYOUT ( ptr u8 n n -- n n n n n n )
+   {: a u:n i:n :}
+   a u CHECKER-OWNER:QUERY 0= if QUOT-UNKNOWN exit then
+   false ROW-INDEXABLE? 0= if QUOT-UNKNOWN exit then
+   i CHECKER-OWNER:DOUT-QUOT 0= if QUOT-UNKNOWN exit then
+   QUOT-LAYOUT ;
 
 \ ---- and the window a catch site takes ---------------------------------------
 public
@@ -409,9 +454,15 @@ public
 : INIT-LAYOUT ( n -- n n n ) CHECKER-OWNER:INIT-LAYOUT ;
 : FIELD-SPAN ( n -- n n ) CHECKER-OWNER:FIELD-SPAN ;
 : CALL-GLUE ( n -- n n ) CHECKER-OWNER:CALL-GLUE ;
+: CALL-RCELLS ( n -- n n ) CHECKER-OWNER:CALL-RCELLS ;
+: CALL-RGLUE ( n -- n n ) CHECKER-OWNER:CALL-RGLUE ;
 : MATCH-PAYLOAD ( n -- n n ) CHECKER-OWNER:MATCH-PAYLOAD ;
 : CALL-QUOT-IN ( n n -- n n ) CHECKER-OWNER:CALL-QUOT-IN ;
 : CALL-QUOT-OUT ( n n -- n n ) CHECKER-OWNER:CALL-QUOT-OUT ;
+: CALL-QUOT-RIN ( n n -- n n ) CHECKER-OWNER:CALL-QUOT-RIN ;
+: CALL-QUOT-ROUT ( n n -- n n ) CHECKER-OWNER:CALL-QUOT-ROUT ;
+: CALL-QUOT-RGIN ( n n -- n n ) CHECKER-OWNER:CALL-QUOT-RGIN ;
+: CALL-QUOT-RGOUT ( n n -- n n ) CHECKER-OWNER:CALL-QUOT-RGOUT ;
 
 \ ---- and how many cells a layout token really moves ---------------------------
 -1 constant MATCH-NONE               \ no dispatch cell count was proved for that token

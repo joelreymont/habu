@@ -26,9 +26,15 @@ variable SOURCE-LOADED   -1 SOURCE-LOADED !
 defer SOURCE-UNJUDGED ( ptr u8 n -- n )
 defer SOURCE-CALL-CELLS ( n -- n n )
 defer SOURCE-CALL-GLUE ( n -- n n )
+defer SOURCE-CALL-RCELLS ( n -- n n )
+defer SOURCE-CALL-RGLUE ( n -- n n )
 defer SOURCE-MATCH-PAYLOAD ( n -- n n )
 defer SOURCE-QUOT-IN ( n n -- n n )
 defer SOURCE-QUOT-OUT ( n n -- n n )
+defer SOURCE-QUOT-RIN ( n n -- n n )
+defer SOURCE-QUOT-ROUT ( n n -- n n )
+defer SOURCE-QUOT-RGIN ( n n -- n n )
+defer SOURCE-QUOT-RGOUT ( n n -- n n )
 defer SOURCE-INIT-LAYOUT ( n -- n n n )
 defer SOURCE-FIELD-SPAN ( n -- n n )
 defer SOURCE-REPORT ( -- )
@@ -84,9 +90,15 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
    NCOMP-DISPATCH:DECL-CHECK-UNJUDGED-OFF s" source unjudged scan" SOURCE-FIELD AS-CHECK is SOURCE-UNJUDGED
    NCOMP-DISPATCH:DECL-CALL-CELLS-OFF s" source call cells" SOURCE-FIELD AS-CELLS is SOURCE-CALL-CELLS
    NCOMP-DISPATCH:DECL-CALL-GLUE-OFF s" source call glue" SOURCE-FIELD AS-CELLS is SOURCE-CALL-GLUE
+   NCOMP-DISPATCH:DECL-CALL-RET-CELLS-OFF s" source return cells" SOURCE-FIELD AS-CELLS is SOURCE-CALL-RCELLS
+   NCOMP-DISPATCH:DECL-CALL-RET-GLUE-OFF s" source return glue" SOURCE-FIELD AS-CELLS is SOURCE-CALL-RGLUE
    NCOMP-DISPATCH:DECL-CALL-MATCH-OFF s" source match payload" SOURCE-FIELD AS-CELLS is SOURCE-MATCH-PAYLOAD
    NCOMP-DISPATCH:DECL-CALL-QUOT-IN-OFF s" source quotation inputs" SOURCE-FIELD AS-QUOT-CELLS is SOURCE-QUOT-IN
    NCOMP-DISPATCH:DECL-CALL-QUOT-OUT-OFF s" source quotation outputs" SOURCE-FIELD AS-QUOT-CELLS is SOURCE-QUOT-OUT
+   NCOMP-DISPATCH:DECL-CALL-QUOT-RIN-OFF s" source quotation return inputs" SOURCE-FIELD AS-QUOT-CELLS is SOURCE-QUOT-RIN
+   NCOMP-DISPATCH:DECL-CALL-QUOT-ROUT-OFF s" source quotation return outputs" SOURCE-FIELD AS-QUOT-CELLS is SOURCE-QUOT-ROUT
+   NCOMP-DISPATCH:DECL-CALL-QUOT-RGIN-OFF s" source quotation return input glue" SOURCE-FIELD AS-QUOT-CELLS is SOURCE-QUOT-RGIN
+   NCOMP-DISPATCH:DECL-CALL-QUOT-RGOUT-OFF s" source quotation return output glue" SOURCE-FIELD AS-QUOT-CELLS is SOURCE-QUOT-RGOUT
    NCOMP-DISPATCH:DECL-INIT-LAYOUT-OFF s" source init layout" SOURCE-FIELD AS-INIT-LAYOUT is SOURCE-INIT-LAYOUT
    NCOMP-DISPATCH:DECL-FIELD-SPAN-OFF s" source field span" SOURCE-FIELD AS-CELLS is SOURCE-FIELD-SPAN
    NCOMP-DISPATCH:DECL-CHECK-REPORT-OFF s" source scan report" SOURCE-FIELD AS-ACTION is SOURCE-REPORT ;
@@ -262,6 +274,16 @@ TRUSTED: DOES-COMMIT ( -- )
    dup 0= if drop SOURCE-CALL-GLUE exit then
    AS-CELLS execute ;
 
+: CALL-RCELLS ( n -- n n )
+   NCOMP-DISPATCH:DECL-CALL-RET-CELLS-OFF s" call return cells" FIELD
+   dup 0= if drop SOURCE-CALL-RCELLS exit then
+   AS-CELLS execute ;
+
+: CALL-RGLUE ( n -- n n )
+   NCOMP-DISPATCH:DECL-CALL-RET-GLUE-OFF s" call return glue" FIELD
+   dup 0= if drop SOURCE-CALL-RGLUE exit then
+   AS-CELLS execute ;
+
 : MATCH-PAYLOAD ( n -- n n )
    NCOMP-DISPATCH:DECL-CALL-MATCH-OFF s" match payload" FIELD
    dup 0= if drop SOURCE-MATCH-PAYLOAD exit then
@@ -275,6 +297,26 @@ TRUSTED: DOES-COMMIT ( -- )
 : CALL-QUOT-OUT ( n n -- n n )
    NCOMP-DISPATCH:DECL-CALL-QUOT-OUT-OFF s" quotation outputs" FIELD
    dup 0= if drop SOURCE-QUOT-OUT exit then
+   AS-QUOT-CELLS execute ;
+
+: CALL-QUOT-RIN ( n n -- n n )
+   NCOMP-DISPATCH:DECL-CALL-QUOT-RIN-OFF s" quotation return inputs" FIELD
+   dup 0= if drop SOURCE-QUOT-RIN exit then
+   AS-QUOT-CELLS execute ;
+
+: CALL-QUOT-ROUT ( n n -- n n )
+   NCOMP-DISPATCH:DECL-CALL-QUOT-ROUT-OFF s" quotation return outputs" FIELD
+   dup 0= if drop SOURCE-QUOT-ROUT exit then
+   AS-QUOT-CELLS execute ;
+
+: CALL-QUOT-RGIN ( n n -- n n )
+   NCOMP-DISPATCH:DECL-CALL-QUOT-RGIN-OFF s" quotation return input glue" FIELD
+   dup 0= if drop SOURCE-QUOT-RGIN exit then
+   AS-QUOT-CELLS execute ;
+
+: CALL-QUOT-RGOUT ( n n -- n n )
+   NCOMP-DISPATCH:DECL-CALL-QUOT-RGOUT-OFF s" quotation return output glue" FIELD
+   dup 0= if drop SOURCE-QUOT-RGOUT exit then
    AS-QUOT-CELLS execute ;
 
 
@@ -331,6 +373,36 @@ TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
    dup 0= if drop EFFECT-DOUT-SLOT exit then
    AS-SLOT execute ;
 
+: RIN-N ( -- n )
+   NCOMP-DISPATCH:DECL-EFFECT-RIN-N-OFF s" rin terms" FIELD
+   dup 0= if drop EFFECT-RIN-N exit then
+   AS-N execute ;
+
+: ROUT-N ( -- n )
+   NCOMP-DISPATCH:DECL-EFFECT-ROUT-N-OFF s" rout terms" FIELD
+   dup 0= if drop EFFECT-ROUT-N exit then
+   AS-N execute ;
+
+: RIN-CELLS ( -- n )
+   NCOMP-DISPATCH:DECL-EFFECT-RIN-CELLS-OFF s" rin cells" FIELD
+   dup 0= if drop EFFECT-RIN-CELLS exit then
+   AS-N execute ;
+
+: ROUT-CELLS ( -- n )
+   NCOMP-DISPATCH:DECL-EFFECT-ROUT-CELLS-OFF s" rout cells" FIELD
+   dup 0= if drop EFFECT-ROUT-CELLS exit then
+   AS-N execute ;
+
+: RIN-SLOT ( n -- n )
+   NCOMP-DISPATCH:DECL-EFFECT-RIN-SLOT-OFF s" rin slot" FIELD
+   dup 0= if drop EFFECT-RIN-SLOT exit then
+   AS-SLOT execute ;
+
+: ROUT-SLOT ( n -- n )
+   NCOMP-DISPATCH:DECL-EFFECT-ROUT-SLOT-OFF s" rout slot" FIELD
+   dup 0= if drop EFFECT-ROUT-SLOT exit then
+   AS-SLOT execute ;
+
 : DIN-QUOT ( n -- bool )
    NCOMP-DISPATCH:DECL-EFFECT-DIN-QUOT-OFF s" din quotation" FIELD
    dup 0= if drop EFFECT-DIN-QUOT exit then
@@ -351,9 +423,19 @@ TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
    dup 0= if drop EFFECT-RET-NEUTRAL? exit then
    AS-BOOL execute ;
 
+: RET-TAIL-SAME? ( -- bool )
+   NCOMP-DISPATCH:DECL-EFFECT-RET-TAIL-SAME-OFF s" return tail" FIELD
+   dup 0= if drop EFFECT-RET-TAIL-SAME? exit then
+   AS-BOOL execute ;
+
 : QUOT-SIMPLE? ( -- bool )
    NCOMP-DISPATCH:DECL-EFFECT-QUOT-SIMPLE-OFF s" simple quotation" FIELD
    dup 0= if drop EFFECT-QUOT-SIMPLE? exit then
+   AS-BOOL execute ;
+
+: QUOT-CALLABLE? ( -- bool )
+   NCOMP-DISPATCH:DECL-EFFECT-QUOT-CALLABLE-OFF s" callable quotation" FIELD
+   dup 0= if drop EFFECT-QUOT-CALLABLE? exit then
    AS-BOOL execute ;
 
 : CATCH-CELLS ( n -- n n )

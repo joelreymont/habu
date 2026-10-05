@@ -128,6 +128,11 @@ variable RN                          \ how many values the return vector holds
 variable RGLUE                       \ bit i joins return cells i and i-1
 RMAX TYPED-BUFFER RSTK IR-ID:ir-value-id
 create RQ RMAX cells allot
+create RQSAV RMAX cells allot
+variable FUN-RIN
+variable FUN-ROUT
+variable FUN-RGIN
+variable FUN-RGOUT
 
 : VRESET ( -- )
    0 VN !
@@ -560,7 +565,10 @@ DYNAMIC-BUFFER LOCAL-TABLES n
 1 TYPED-BUFFER S-TOK IR-ID:ir-value-id
 variable TOK-LIVE                    \ whether an order has been minted yet
 variable TOK-NEED                    \ whether the body has a word that takes one
-variable CALL-NEED                   \ whether the body calls anything at all
+variable CALL-NEED                   \ reserve crossing capacity for possible calls
+variable CALL-SITES                  \ call operations actually staged in this module
+variable BRIDGE-SITES                \ returning data-base calls staged by the R bridge
+variable R-CALL-AT                   \ source call whose return row needs post-call work
 variable TAIL-NEED                   \ whether the last thing the body does is a call it need not come back from
 variable CALL-BACK                   \ whether the body makes a call control comes BACK from
 variable TAIL-ENTRY                  \ where the callee it would leave through starts
@@ -922,13 +930,15 @@ using IR-BUILD
 : RETURN-CROSS ( n -- )
    0 swap CELL-CROSS ;
 
+defer RETURN-R ( n n n -- )
+
 \ The RETURN vector is empty here, and that is asked rather than assumed.
 : EMIT-RETURN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
       out:n :}
    VN @ out <> if E-NELAB-ARITY throw then
-   RN @ 0<> if E-NELAB-JOIN throw then
    VGLUE @ out VGLUE-LOW  OUT-GLUE @ <> if E-NELAB-JOIN throw then
+   0 FUN-ROUT @ FUN-RGOUT @ RETURN-R
    out RETURN-CROSS
    c b HIR-OPCODE:RETURN HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    c b v key 0 op OPEN
@@ -1238,6 +1248,10 @@ variable IN-N                        \ values the definition takes
 variable OUT-N                       \ values the definition leaves
 variable FR-GIN                      \ what the caller staged for the definition about to be compiled
 variable FR-GOUT
+variable FR-RIN
+variable FR-ROUT
+variable FR-RGIN
+variable FR-RGOUT
 variable EXIT-USED                   \ whether the body has an `exit` at all
 variable EXIT-ORD                    \ the block every `exit` and the fall-through reach
 
@@ -1279,12 +1293,16 @@ variable BLOCK-LIMIT
 \ ---- the bodies this definition defers ---------------------------------------
 \ Signature parameters and callback-valued results also need rows, so their
 \ storage grows independently of the number of source tokens.
-7 constant QUOT-FIELDS
+11 constant QUOT-FIELDS
 DYNAMIC-BUFFER QAT-BUF n
 DYNAMIC-BUFFER QLO-BUF n
 DYNAMIC-BUFFER QHI-BUF n
 DYNAMIC-BUFFER QIN-BUF n
 DYNAMIC-BUFFER QOUT-BUF n
+DYNAMIC-BUFFER QRIN-BUF n
+DYNAMIC-BUFFER QROUT-BUF n
+DYNAMIC-BUFFER QRGIN-BUF n
+DYNAMIC-BUFFER QRGOUT-BUF n
 DYNAMIC-BUFFER QFUN-BUF n
 DYNAMIC-BUFFER QPARENT n
 
@@ -1295,6 +1313,10 @@ DYNAMIC-BUFFER QPARENT n
    n QHI-BUF-RESERVE
    n QIN-BUF-RESERVE
    n QOUT-BUF-RESERVE
+   n QRIN-BUF-RESERVE
+   n QROUT-BUF-RESERVE
+   n QRGIN-BUF-RESERVE
+   n QRGOUT-BUF-RESERVE
    n QFUN-BUF-RESERVE
    n QPARENT-RESERVE ;
 
@@ -1309,6 +1331,10 @@ variable QBASE                       \ the ordinal of the function the definitio
 : QHI ( -- ptr n ) 0 QHI-BUF ;
 : QIN ( -- ptr n ) 0 QIN-BUF ;
 : QOUT ( -- ptr n ) 0 QOUT-BUF ;
+: QRIN ( -- ptr n ) 0 QRIN-BUF ;
+: QROUT ( -- ptr n ) 0 QROUT-BUF ;
+: QRGIN ( -- ptr n ) 0 QRGIN-BUF ;
+: QRGOUT ( -- ptr n ) 0 QRGOUT-BUF ;
 \ This row's quotation is no body of this emission - it is a parameter.
 -1 constant QPARAM                   \ this row's quotation is no body of this emission
 : QFUN ( -- ptr n ) 0 QFUN-BUF ;
@@ -1331,6 +1357,10 @@ variable QCUR                        \ the body being walked, or QOWNER-DEF
 : QFUN@ ( n -- n )   QROW-CK cells QFUN + @ ;
 : QIN@ ( n -- n )    QROOT cells QIN + @ ;
 : QOUT@ ( n -- n )   QROOT cells QOUT + @ ;
+: QRIN@ ( n -- n )   QROOT cells QRIN + @ ;
+: QROUT@ ( n -- n )  QROOT cells QROUT + @ ;
+: QRGIN@ ( n -- n )  QROOT cells QRGIN + @ ;
+: QRGOUT@ ( n -- n ) QROOT cells QRGOUT + @ ;
 
 : QFILL ( n n n -- )
    {: k:n in:n out:n :}
@@ -1342,6 +1372,23 @@ variable QCUR                        \ the body being walked, or QOWNER-DEF
    in root cells QIN + !
    out root cells QOUT + ! ;
 
+: QFILL-R ( n n n n n -- )
+   {: k:n rin:n rout:n gin:n gout:n :}
+   rin 0 < rout 0 < or
+   gin NDICT:GLUE-UNKNOWN = gout NDICT:GLUE-UNKNOWN = or or
+      if k QAT@ QUOT-REFUSE then
+   k QRIN@ QNONE <> if
+      k QRIN@ rin <> k QROUT@ rout <> or
+      k QRGIN@ gin <> k QRGOUT@ gout <> or or
+         if k QAT@ QUOT-REFUSE then
+      exit
+   then
+   k QROOT {: root:n :}
+   rin root cells QRIN + !
+   rout root cells QROUT + !
+   gin root cells QRGIN + !
+   gout root cells QRGOUT + ! ;
+
 
 : QMERGE ( n n -- ) {: a:n b:n :}
    a b = if exit then
@@ -1349,6 +1396,9 @@ variable QCUR                        \ the body being walked, or QOWNER-DEF
    a QROOT {: ra:n :} b QROOT {: rb:n :}
    ra rb = if exit then
    rb QIN@ QNONE <> if ra rb QIN@ rb QOUT@ QFILL then
+   rb QRIN@ QNONE <> if
+      ra rb QRIN@ rb QROUT@ rb QRGIN@ rb QRGOUT@ QFILL-R
+   then
    ra rb QPARENT ! ;
 
 \ ---- what type each block argument has ---------------------------------------
@@ -1758,23 +1808,34 @@ PTR-VARIABLE TOK-TABLES
 
 \ ---- where a body's arity comes from -----------------------------------------
 \ execute and catch keep the applied quotation above their argument window.
+: QARG-LAYOUT ( n n -- n n n n n n ) {: ix:n j:n :}
+   ix j NDICT:CALL-QUOT-IN {: qi:n qo:n :}
+   ix j NDICT:CALL-QUOT-RIN {: rin:n rout:n :}
+   ix j NDICT:CALL-QUOT-RGIN {: gin:n gout:n :}
+   qi NDICT:QUOT-NONE = rin 0 < or if
+      ix QSPELL j NDICT:SPELL-QUOT-DIN-LAYOUT
+         {: ni:n no:n nri:n nro:n ngi:n ngo:n :}
+      qi NDICT:QUOT-NONE <> if
+         ni qi <> no qo <> or if ix QUOT-REFUSE then
+      then
+      ni no nri nro ngi ngo exit
+   then
+   qi qo rin rout gin gout ;
+
 : QARG-FILL ( n n n -- )
    {: ix:n j:n skip:n :}
    VN @ 1- skip - j -  VQ@ {: k:n :}
    k 0 < if exit then
-   ix j NDICT:CALL-QUOT-IN
-   over NDICT:QUOT-NONE = if
-      \ A trusted mint can stop the checker's walk before this call. The
-      \ callee's declared simple callback still supplies its ordinary ABI.
-      2drop ix QSPELL j NDICT:SPELL-QUOT-DIN
-   then {: qi:n qo:n :}
+   ix j QARG-LAYOUT
+      {: qi:n qo:n rin:n rout:n gin:n gout:n :}
    qi NDICT:QUOT-NONE = if
       \ A polymorphic consumer can store or forward a quotation whose
       \ calling convention is already known from the checked parameter.
-      k QIN@ QNONE <> if exit then
+      k QIN@ QNONE <> k QRIN@ QNONE <> and if exit then
       k QAT@ QUOT-REFUSE
    then
-   k qi qo 0 max QFILL ;
+   k qi qo 0 max QFILL
+   k rin rout gin gout QFILL-R ;
 
 : QCALL-FILL ( n n n -- )
    {: ix:n a:n skip:n :}
@@ -1787,16 +1848,18 @@ PTR-VARIABLE TOK-TABLES
    {: j:n :}
    VN @ 1- j -  VQ@ {: k:n :}
    k 0 < if exit then
-   0 QSPELL j NDICT:SPELL-QUOT-DOUT {: qi:n qo:n :}
+   0 QSPELL j NDICT:SPELL-QUOT-DOUT-LAYOUT
+      {: qi:n qo:n rin:n rout:n gin:n gout:n :}
    \ A checked word may return a quotation cell inside a layout value. The
    \ declared output then names the containing family, so there is no direct
    \ quotation term to query at this cell; consumers recover its effect when
    \ projection or fetch exposes the field as a quotation again.
    qi NDICT:QUOT-NONE = if
-      k QIN@ QNONE <> if exit then
+      k QIN@ QNONE <> k QRIN@ QNONE <> and if exit then
       k QAT@ QUOT-REFUSE
    then
-   k qi qo QFILL ;
+   k qi qo QFILL
+   k rin rout gin gout QFILL-R ;
 
 : QRET-FILL ( n -- )
    {: out:n :}
@@ -1807,7 +1870,8 @@ PTR-VARIABLE TOK-TABLES
 
 \ An enclosing walk supplies the calling convention before its child is built.
 : QCONSUMED-CK ( n -- )
-   dup QIN@ QNONE = if QAT@ QUOT-REFUSE else drop then ;
+   dup QIN@ QNONE = over QRIN@ QNONE = or
+      if QAT@ QUOT-REFUSE else drop then ;
 
 : QOPEN-ROW ( n -- )
    {: ix:n :}
@@ -1818,6 +1882,10 @@ PTR-VARIABLE TOK-TABLES
    ix 1+ k cells QLO + !
    QNONE k cells QIN + !
    QNONE k cells QOUT + !
+   QNONE k cells QRIN + !
+   QNONE k cells QROUT + !
+   NDICT:GLUE-UNKNOWN k cells QRGIN + !
+   NDICT:GLUE-UNKNOWN k cells QRGOUT + !
    QBASE @ k + 1+  k cells QFUN + !
    k ix TOK-CK cells QOPENED + !
    k QD !
@@ -1825,8 +1893,8 @@ PTR-VARIABLE TOK-TABLES
 
 \ A quotation supplied by a parameter, a called word, or a named tick has no
 \ body in this emission, but retains the same known calling convention.
-: QKNOWN ( n n n n -- )
-   {: ix:n qi:n qo:n cellix:n :}
+: QKNOWN ( n n n n n n n n -- )
+   {: ix:n qi:n qo:n rin:n rout:n gin:n gout:n cellix:n :}
    QN @ 1+ QUOT-ROOM
    QN @ {: k:n :}
    k k QPARENT !
@@ -1835,20 +1903,42 @@ PTR-VARIABLE TOK-TABLES
    0 k cells QHI + !
    qi k cells QIN + !
    qo k cells QOUT + !
+   rin k cells QRIN + !
+   rout k cells QROUT + !
+   gin k cells QRGIN + !
+   gout k cells QRGOUT + !
    QPARAM k cells QFUN + !
    k 1+ QN !
    k cellix VQ! ;
 
 : QOPEN-PARAM ( n n -- )
    {: j:n cellix:n :}
-   0 QSPELL j NDICT:SPELL-QUOT-DIN {: qi:n qo:n :}
+   0 QSPELL j NDICT:SPELL-QUOT-DIN-LAYOUT
+      {: qi:n qo:n rin:n rout:n gin:n gout:n :}
    qi NDICT:QUOT-NONE = if exit then
-   0 qi qo cellix QKNOWN ;
+   0 qi qo rin rout gin gout cellix QKNOWN ;
+
+: QOUT-LAYOUT ( n n -- n n n n n n ) {: ix:n j:n :}
+   ix j NDICT:CALL-QUOT-OUT {: qi:n qo:n :}
+   ix j NDICT:CALL-QUOT-ROUT {: rin:n rout:n :}
+   ix j NDICT:CALL-QUOT-RGOUT {: gin:n gout:n :}
+   qi NDICT:QUOT-NONE = rin 0 < or if
+      ix QSPELL j NDICT:SPELL-QUOT-DOUT-LAYOUT
+         {: ni:n no:n nri:n nro:n ngi:n ngo:n :}
+      qi NDICT:QUOT-NONE <> if
+         ni qi <> no qo <> or if ix QUOT-REFUSE then
+      then
+      ni no nri nro ngi ngo exit
+   then
+   qi qo rin rout gin gout ;
 
 : QRESULTS-FILL ( n n -- ) {: ix:n out:n :}
    out 0 ?do
-      ix i NDICT:CALL-QUOT-OUT {: qi:n qo:n :}
-      qi NDICT:QUOT-NONE <> if ix qi qo VN @ 1- i - QKNOWN then
+      ix i QOUT-LAYOUT
+         {: qi:n qo:n rin:n rout:n gin:n gout:n :}
+      qi NDICT:QUOT-NONE <> if
+         ix qi qo rin rout gin gout VN @ 1- i - QKNOWN
+      then
    loop ;
 
 : QPARAMS-OPEN ( n -- )
@@ -2207,6 +2297,23 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    then
    false ;
 
+\ A live return row makes either spelling issue the private data-base call
+\ around division. Reserve its memory token and call frame before lowering.
+: DIV-BRIDGE? ( IR-ARENA:arena n -- bool )
+   {: r:IR-ARENA:arena ix:n :}
+   ix LOCAL-OF 0 >= if false exit then
+   VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:MODELS? 0= if false exit then
+   r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
+   m HIR-MEANING:OP HIR-MEANING:EQ if
+      r sy HIR-WORD:OPCODE@ HIR-OPCODE:DIV HIR-OPCODE:EQ exit
+   then
+   m HIR-MEANING:EXPANSION HIR-MEANING:EQ if
+      r sy HIR-WORD:EXPAND@ HIR-EXPAND:MODULO HIR-EXPAND:EQ exit
+   then
+   false ;
+
 \ ---- does this definition touch memory at all? -------------------------------
 : PRINTED-STRING? ( n -- bool )
    VW swap NTAPE:KIND@ NTAPE-KIND:PRINTED-STRING-LITERAL NTAPE-KIND:EQ ;
@@ -2215,6 +2322,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 : WORD-ORDER? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
    ix PRINTED-STRING? if true exit then
+   r ix DIV-BRIDGE? if true exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? 0= if false exit then
@@ -2322,7 +2430,7 @@ variable LS-SEQ                      \ identity of the current outer loop
       CALL-NEED @ 0<> if k LCROSS+ exit then
       k LS-PEND+ exit
    then
-   r ix WORD-CALL? if
+   r ix WORD-CALL? r ix DIV-BRIDGE? or if
       1 CALL-NEED !
       LS-CALL+ exit
    then
@@ -3130,6 +3238,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
 : CALL-OPERANDS+ ( -- )
    CALL-CROSS-CK
    NO-REAL-CK
+   1 CALL-SITES +!
    CTX BLD TOK IR-BUILD:ADD-OPERAND
    VN @ 0 ?do
       CTX BLD  i VAT  IR-BUILD:ADD-OPERAND
@@ -3171,15 +3280,19 @@ here CELL 1- and CELL swap - CELL 1- and allot
    PATH-DEAD PATH-END ! ;
 
 \ A self-call empties the memo without asking.
+defer R-SELF-BEFORE ( n -- )
+defer R-SELF-AFTER ( n -- )
 : DO-SELF-CALL ( n -- )
    {: ix:n :}
    IN-N @ OUT-N @ CALL-LIVE  OUT-N @ + {: back:n :}
    ix CALL-CROSS
+   ix R-SELF-BEFORE
    CTX BLD HIR-OPCODE:CALL HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
    CALL-OPERANDS+
    back CALL-RESULTS+
    back OUT-N @ OUT-GLUE @ CALL-CLOSE
+   ix R-SELF-AFTER
    LIT-RESET ;
 
 : WCALL-ATTRS+ ( n n n -- )
@@ -3191,7 +3304,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
    CTX BLD  CTX BLD HIR:KEY-OUT
    CTX BLD out IR-BUILD:INTERN-INT-ATTR  IR-BUILD:ADD-ATTR ;
 
-: STAGE-WCALL ( n n n n n -- )
+: STAGE-WCALL-RAW ( n n n n n -- )
    {: ix:n entry:n a:n o:n oglue:n :}
    a o CALL-LIVE o + {: back:n :}
    ix CALL-CROSS
@@ -3203,11 +3316,156 @@ here CELL 1- and CELL swap - CELL 1- and allot
    back o oglue CALL-CLOSE
    LIT-RESET ;
 
+\ A private leaf obtains the current OS thread's DATA, including after a task
+\ switches stacks. It must use the raw call builder: the return-row bridge
+\ itself needs this address and cannot enter its own synchronization wrapper.
+TRUSTED: DATA-BASE-ENTRY ( -- n ) ['] data-base ;
+
+: R-RESULT ( -- IR-ID:ir-value-id )
+   VN @ 1- VAT {: id:IR-ID:ir-value-id :}
+   1 VDROP
+   id ;
+
+: R-IMM ( n n -- IR-ID:ir-value-id )
+   EMIT-LIT R-RESULT ;
+
+: R-ALU ( n IR-ID:ir-value-id IR-ID:ir-value-id HIR:opcode -- IR-ID:ir-value-id )
+   {: ix:n a:IR-ID:ir-value-id b:IR-ID:ir-value-id op:HIR:opcode :}
+   a VPUSH  b VPUSH
+   ix op EMIT-OPCODE
+   R-RESULT ;
+
+: R-LOAD-ID ( n IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: ix:n addr:IR-ID:ir-value-id :}
+   addr VPUSH
+   ix HIR-OPCODE:LOAD EMIT-OPCODE
+   R-RESULT ;
+
+: R-STORE-ID ( n IR-ID:ir-value-id IR-ID:ir-value-id -- )
+   {: ix:n val:IR-ID:ir-value-id addr:IR-ID:ir-value-id :}
+   val VPUSH  addr VPUSH
+   ix HIR-OPCODE:STORE EMIT-OPCODE ;
+
+: R-CURRENT-DATA ( n -- IR-ID:ir-value-id ) {: ix:n :}
+   1 BRIDGE-SITES +!
+   ix DATA-BASE-ENTRY 0 1 NDICT:GLUE-NONE STAGE-WCALL-RAW
+   R-RESULT ;
+
+: R-DATA-ADDR ( n n -- IR-ID:ir-value-id ) {: ix:n off:n :}
+   ix  ix R-CURRENT-DATA  ix off R-IMM  HIR-OPCODE:ADD R-ALU ;
+
+: R-DATA@ ( n n -- IR-ID:ir-value-id ) {: ix:n off:n :}
+   ix  ix off R-DATA-ADDR  R-LOAD-ID ;
+
+: R-DATA! ( n IR-ID:ir-value-id n -- ) {: ix:n val:IR-ID:ir-value-id off:n :}
+   ix val ix off R-DATA-ADDR R-STORE-ID ;
+
+: R-SLOT-ADDR ( n IR-ID:ir-value-id IR-ID:ir-value-id n -- IR-ID:ir-value-id )
+   {: ix:n base:IR-ID:ir-value-id depth:IR-ID:ir-value-id shift:n :}
+   ix depth ix shift R-IMM HIR-OPCODE:ADD R-ALU {: index:IR-ID:ir-value-id :}
+   ix index ix 3 R-IMM HIR-OPCODE:LSHIFT R-ALU {: bytes:IR-ID:ir-value-id :}
+   ix base bytes HIR-OPCODE:ADD R-ALU ;
+
+: R-PUBLISH ( n -- ) {: ix:n :}
+   RN @ 0= if exit then
+   ix RSP-CELL R-DATA@ {: depth:IR-ID:ir-value-id :}
+   ix STACK-ABI:RETURN-BASE-CELL R-DATA@ {: base:IR-ID:ir-value-id :}
+   RN @ 0 ?do
+      ix i RAT ix base depth i R-SLOT-ADDR R-STORE-ID
+   loop
+   ix ix depth ix RN @ R-IMM HIR-OPCODE:ADD R-ALU RSP-CELL R-DATA! ;
+
+: R-INPUT-CHECK ( n n -- ) {: rin:n glue:n :}
+   rin 0 < rin RN @ > or if E-NELAB-UNDER throw then
+   glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
+   RGLUE @ RN @ rin - rshift  rin VRUN-MASK and
+   glue <> if E-NELAB-BUNDLE throw then ;
+
+: R-TAKE ( n n n n -- ) {: ix:n rin:n rout:n glue:n :}
+   RN @ rin - {: kept:n :}
+   kept rout + {: count:n :}
+   count 0 < count RMAX > or if E-NELAB-CAP throw then
+   count 0= RN @ 0= and if exit then
+   RGLUE @ {: before:n :}
+   RN @ 0 ?do i RQ@ i cells RQSAV + ! loop
+   ix RSP-CELL R-DATA@ {: depth:IR-ID:ir-value-id :}
+   ix STACK-ABI:RETURN-BASE-CELL R-DATA@ {: base:IR-ID:ir-value-id :}
+   0 RN !  0 RGLUE !
+   count 0 ?do
+      ix ix base depth i count - R-SLOT-ADDR R-LOAD-ID
+      i kept < if i cells RQSAV + @ else VQ-NONE then
+      i kept < if before 1 i lshift and else glue 1 i kept - lshift and then 0<>
+      RPUSH
+   loop
+   ix ix depth ix count negate R-IMM HIR-OPCODE:ADD R-ALU RSP-CELL R-DATA! ;
+
+: R-ENTER ( n -- ) {: ix:n :}
+   FUN-RIN @ 0 < FUN-RIN @ RMAX > or if E-NELAB-CAP throw then
+   FUN-RGIN @ NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
+   FUN-RIN @ 0= if exit then
+   ix RSP-CELL R-DATA@ {: depth:IR-ID:ir-value-id :}
+   ix STACK-ABI:RETURN-BASE-CELL R-DATA@ {: base:IR-ID:ir-value-id :}
+   FUN-RIN @ 0 ?do
+      ix ix base depth i FUN-RIN @ - R-SLOT-ADDR R-LOAD-ID
+      VQ-NONE FUN-RGIN @ 1 i lshift and 0<> RPUSH
+   loop
+   ix ix depth ix FUN-RIN @ negate R-IMM HIR-OPCODE:ADD R-ALU RSP-CELL R-DATA! ;
+
+: RETURN-R-IMPL ( n n n -- ) {: ix:n rout:n glue:n :}
+   RN @ rout <> if E-NELAB-JOIN throw then
+   RGLUE @ RN @ VRUN-MASK and glue <> if E-NELAB-JOIN throw then
+   ix R-PUBLISH ;
+
+: R-SELF-BEFORE-IMPL ( n -- ) {: ix:n :}
+   FUN-RIN @ FUN-RGIN @ R-INPUT-CHECK
+   ix R-PUBLISH ;
+
+: R-SELF-AFTER-IMPL ( n -- ) {: ix:n :}
+   ix FUN-RIN @ FUN-ROUT @ FUN-RGOUT @ R-TAKE ;
+
+: R-BRIDGE-INSTALL ( -- )
+   ['] RETURN-R-IMPL is RETURN-R
+   ['] R-SELF-BEFORE-IMPL is R-SELF-BEFORE
+   ['] R-SELF-AFTER-IMPL is R-SELF-AFTER ;
+R-BRIDGE-INSTALL
+
+: STAGE-WCALL-R ( n n n n n n n n n -- )
+   {: ix:n entry:n in:n out:n glue:n rin:n rout:n gin:n gout:n :}
+   rin gin R-INPUT-CHECK
+   rout 0 < gout NDICT:GLUE-UNKNOWN = or if E-NELAB-CALL throw then
+   RN @ 0<> rin 0<> or rout 0<> or if ix R-CALL-AT ! then
+   ix R-PUBLISH
+   ix entry in out glue STAGE-WCALL-RAW
+   ix rin rout gout R-TAKE ;
+
+: STAGE-WCALL ( n n n n n -- )
+   {: ix:n entry:n in:n out:n glue:n :}
+   ix NDICT:CALL-RCELLS {: rin:n rout:n :}
+   ix NDICT:CALL-RGLUE {: gin:n gout:n :}
+   ix entry in out glue rin rout gin gout STAGE-WCALL-R ;
+
+\ Calls inserted by the elaborator name known R-neutral runtime helpers.
+: STAGE-WCALL-NEUTRAL ( n n n n n -- )
+   0 0 NDICT:GLUE-NONE NDICT:GLUE-NONE STAGE-WCALL-R ;
+
+: R-WORD-LAYOUT ( n -- n n n n ) {: ix:n :}
+   ix NDICT:CALL-RCELLS {: rin:n rout:n :}
+   ix NDICT:CALL-RGLUE {: gin:n gout:n :}
+   rin 0 < rout 0 < and if
+      \ TRUSTED bodies have no checker call window. The callee's named
+      \ declaration still fixes its return layout; an unknown one refuses.
+      ix QSPELL NDICT:SPELL-RET exit
+   then
+   rin rout gin gout ;
+
 \ Publish the whole live row just as a call does, but create no return values
 \ or fallback diagnostic: these engine primitives have no returning edge.
 : STAGE-TERMINAL ( n n n -- )
    {: ix:n entry:n in:n :}
    in 0 CALL-LIVE drop
+   ix R-WORD-LAYOUT {: rin:n rout:n gin:n gout:n :}
+   rin gin R-INPUT-CHECK
+   ix R-PUBLISH
    ix CALL-CROSS
    CTX BLD HIR-OPCODE:TERMINAL HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
@@ -3228,7 +3486,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 
 : EMIT-PRINTED-STRING ( n -- ) {: ix:n :}
    ix EMIT-STRING
-   ix TYPE-ENTRY 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   ix TYPE-ENTRY 2 0 NDICT:GLUE-NONE STAGE-WCALL-NEUTRAL ;
 
 
 : DO-STRING ( n -- ) {: ix:n :}
@@ -3251,8 +3509,9 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    r sy HIR-WORD:TERMINAL? if
       ix r sy HIR-WORD:ENTRY@ in STAGE-TERMINAL exit
    then
-   ix  r sy HIR-WORD:ENTRY@
-   in out glue STAGE-WCALL
+   ix R-WORD-LAYOUT {: rin:n rout:n gin:n gout:n :}
+   ix r sy HIR-WORD:ENTRY@
+   in out glue rin rout gin gout STAGE-WCALL-R
    ix out QRESULTS-FILL
    r sy HIR-WORD:CALLEE-DEAD? if r ix DEAD-END then ;
 
@@ -3271,7 +3530,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    out 0 < if ix QUOT-REFUSE then
    s" evaluate" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if E-HIR-UNMODELED throw then
-   ix entry VN @ out glue STAGE-WCALL ;
+   ix entry VN @ out glue STAGE-WCALL-NEUTRAL ;
 
 \ ---- what `[:` stages ---------------------------------------------------------
 : DO-QUOT ( n -- )
@@ -3296,7 +3555,9 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    a u NDICT:SPELL-ARITY {: qi:n qo:n :}
    qi NDICT:ARITY-NONE = if exit then
    qo NDICT:ARITY-NONE = if exit then
-   ix qi qo VN @ 1- QKNOWN ;
+   a u NDICT:SPELL-RET {: rin:n rout:n gin:n gout:n :}
+   rin NDICT:ARITY-NONE = if ix QUOT-REFUSE then
+   ix qi qo rin rout gin gout VN @ 1- QKNOWN ;
 
 \ ---- binding a quotation to a deferred word -----------------------------------
 : DO-IS ( n -- )
@@ -3309,9 +3570,26 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    din NDICT:ARITY-NONE = if E-NELAB-DEFER throw then
    dout NDICT:ARITY-NONE = if E-NELAB-DEFER throw then
    VN @ 1- VQ@ {: k:n :}
-   k 0 >= if k din dout QFILL then
+   k 0 >= if
+      k din dout QFILL
+      a u NDICT:SPELL-RET {: rin:n rout:n gin:n gout:n :}
+      k rin rout gin gout QFILL-R
+   then
    ix cell HIR:ADDR-DATA EMIT-KIND-LIT
-   ix XT-STORE-ENTRY 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   ix XT-STORE-ENTRY 2 0 NDICT:GLUE-NONE STAGE-WCALL-NEUTRAL ;
+
+: R-SITE-OR-QUOT ( n n -- n n n n ) {: ix:n k:n :}
+   ix NDICT:CALL-RCELLS {: rin:n rout:n :}
+   ix NDICT:CALL-RGLUE {: gin:n gout:n :}
+   rin 0 < rout 0 < and if
+      k 0 < if ix QUOT-REFUSE then
+      k QRIN@ k QROUT@ k QRGIN@ k QRGOUT@ exit
+   then
+   rin rout gin gout ;
+
+: Q-R-FILL ( n n n n n -- )
+   {: k:n rin:n rout:n gin:n gout:n :}
+   k 0 >= if k rin rout gin gout QFILL-R then ;
 
 \ ---- entering the routine a quotation names ----------------------------------
 : DO-EXEC ( IR-ARENA:arena n -- )
@@ -3325,15 +3603,17 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    else cin cout then {: in:n out:n :}
    in 0 < if ix QUOT-REFUSE then
    ix in 1 QCALL-FILL
+   ix k R-SITE-OR-QUOT {: rin:n rout:n gin:n gout:n :}
    k 0 >= if
       k QIN@ QNONE = if k in out 0 max QFILL then
    then
+   k rin rout gin gout Q-R-FILL
    s" execute" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if ix QUOT-REFUSE then
    ix NDICT:CALL-CELLS drop 0 < if NDICT:GLUE-NONE
    else ix NDICT:CALL-GLUE nip then {: glue:n :}
    glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
-   ix entry  in 1+  out 0 max  glue  STAGE-WCALL
+   ix entry in 1+ out 0 max glue rin rout gin gout STAGE-WCALL-R
    in 0 >= out NDICT:ARITY-NONE = and if r ix DEAD-END then ;
 
 \ ---- running a quotation and coming back either way --------------------------
@@ -3350,10 +3630,12 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    entry 0= if ix QUOT-REFUSE then
    ix win 1 QCALL-FILL
    k 0 >= if k win win QFILL then
+   ix k R-SITE-OR-QUOT {: rin:n rout:n gin:n gout:n :}
+   k rin rout gin gout Q-R-FILL
    \ RSCATCH requires the returned row to match the input row. Keep that
    \ window's value boundaries; the appended result code is a separate cell.
    VGLUE @ VN @ 1- win - rshift win VGLUE-LOW {: glue:n :}
-   ix entry  win 1+  win 1+  glue  STAGE-WCALL ;
+   ix entry win 1+ win 1+ glue rin rout gin gout STAGE-WCALL-R ;
 
 
 \ Both quotations are native calls. The cleanup has a certified empty window;
@@ -3366,6 +3648,10 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    VN @ 1- VQ@ {: cleanup:n :}
    body 0 >= if body in out 0 max QFILL then
    cleanup 0 >= if cleanup 0 0 QFILL then
+   cleanup 0 < ix NDICT:CALL-RCELLS drop 0 < and if ix QUOT-REFUSE then
+   cleanup 0 0 NDICT:GLUE-NONE NDICT:GLUE-NONE Q-R-FILL
+   ix body R-SITE-OR-QUOT {: rin:n rout:n gin:n gout:n :}
+   body rin rout gin gout Q-R-FILL
    s" finally" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if ix QUOT-REFUSE then
    \ Returning products and wide families need the checker's value boundaries.
@@ -3374,7 +3660,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    out 0 < ix NDICT:CALL-CELLS drop 0 < or if NDICT:GLUE-NONE
    else ix NDICT:CALL-GLUE nip then {: glue:n :}
    glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
-   ix entry in 2 + out 0 max glue STAGE-WCALL
+   ix entry in 2 + out 0 max glue rin rout gin gout STAGE-WCALL-R
    out 0 < cleanup-out 0 < or if r ix DEAD-END then ;
 
 : DO-C2-INVOKE ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena ix:n :}
@@ -3387,12 +3673,17 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    body 0 >= if body in out 0 max QFILL then
    cleanup 0 >= if cleanup 0 0 QFILL then
    finish 0 >= if finish 1 0 QFILL then
+   cleanup 0 < finish 0 < or ix NDICT:CALL-RCELLS drop 0 < and if ix QUOT-REFUSE then
+   cleanup 0 0 NDICT:GLUE-NONE NDICT:GLUE-NONE Q-R-FILL
+   finish 0 0 NDICT:GLUE-NONE NDICT:GLUE-NONE Q-R-FILL
+   ix body R-SITE-OR-QUOT {: rin:n rout:n gin:n gout:n :}
+   body rin rout gin gout Q-R-FILL
    s" c2-invoke" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if ix QUOT-REFUSE then
    out 0 < ix NDICT:CALL-CELLS drop 0 < or if NDICT:GLUE-NONE
    else ix NDICT:CALL-GLUE nip then {: glue:n :}
    glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
-   ix entry in 3 + out 0 max glue STAGE-WCALL
+   ix entry in 3 + out 0 max glue rin rout gin gout STAGE-WCALL-R
    out 0 < cleanup-out 0 < or if r ix DEAD-END then ;
 
 \ ---- a call that BUILDS a value of a wide instantiation ------------------------
@@ -3453,7 +3744,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 : DO-STORE ( n -- ) {: ix:n :}
    ix QSPELL NDICT:CALL-TARGET {: entry:n :}
    entry 0= if E-HIR-UNMODELED throw then
-   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL-NEUTRAL ;
 
 \ ---- moving a whole value between memory and the vector ----------------------
 : WIDE-ADDR ( n IR-ID:ir-value-id n -- )
@@ -3492,7 +3783,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 : DO-QUOTATION-STORE ( n -- ) {: ix:n :}
    s" QUOTATION-STORAGE:STORE" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if E-HIR-UNMODELED throw then
-   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL-NEUTRAL ;
 
 \ The original address remains on the vector while the validator consumes a
 \ duplicate and the immutable descriptor. Its call precedes every value load.
@@ -3514,7 +3805,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    entry 0= if E-HIR-UNMODELED throw then
    VN @ 1- VAT VPUSH
    ix address HIR:ADDR-DATA EMIT-KIND-LIT
-   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL-NEUTRAL ;
 
 \ ---- the words that are a short sequence of operations ------------------------
 \ Each of these was an engine primitive the elaborator CALLED, and each body is
@@ -3548,6 +3839,13 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    base VAT  base 1+ VAT
    2 VDROP ;
 
+\ Division's cold edge throws from the machine selector. Make the live return
+\ row physical for that edge, then take it back on the normal edge.
+: EMIT-DIV-THROW ( n -- ) {: ix:n :}
+   ix R-PUBLISH
+   ix HIR-OPCODE:DIV EMIT-OPCODE
+   ix 0 0 NDICT:GLUE-NONE R-TAKE ;
+
 \ For a literal positive two, the low bit is the magnitude of the remainder.
 \ A signed comparison yields all ones for a negative dividend, so (bit xor
 \ sign) - sign restores its sign without division, including MIN-N.
@@ -3568,7 +3866,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    EXPAND-PAIR {: a:IR-ID:ir-value-id b:IR-ID:ir-value-id :}
    b 2 SCALAR-LIT? if ix a EXPAND-MOD-TWO exit then
    a VPUSH
-   a VPUSH  b VPUSH  ix HIR-OPCODE:DIV EMIT-OPCODE
+   a VPUSH  b VPUSH  ix EMIT-DIV-THROW
    b VPUSH  ix HIR-OPCODE:MUL EMIT-OPCODE
    ix HIR-OPCODE:SUB EMIT-OPCODE ;
 
@@ -3606,7 +3904,10 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    k HIR-OPCODE:LOAD HIR-OPCODE:EQ if ix VALIDATE-FETCH then
    w 1 = if
       r ix QUOTATION-STORE? if ix DO-QUOTATION-STORE exit then
-      k GUARDED-STORE? if ix DO-STORE else r ix EMIT-OP then
+      k GUARDED-STORE? if ix DO-STORE else
+         k HIR-OPCODE:DIV HIR-OPCODE:EQ if ix EMIT-DIV-THROW
+         else r ix EMIT-OP then
+      then
       exit
    then
    w 1 < if E-NELAB-BUNDLE throw then
@@ -3953,7 +4254,7 @@ variable QNAME-P                     \ the place value the digit loop is on
       k:n :}
    k QOUT@ {: out:n :}
    VN @ out <> if k QAT@ QUOT-REFUSE then
-   RN @ 0<> if k QAT@ QUOT-REFUSE then
+   k QHI@ k QROUT@ k QRGOUT@ RETURN-R
    out RETURN-CROSS
    c b HIR-OPCODE:RETURN HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    c b v key  k QHI@  op OPEN
@@ -3974,11 +4275,17 @@ variable QNAME-P                     \ the place value the digit loop is on
    k QHI@ {: hi:n :}
    LBN @ {: lb:n :}
    k QCUR !
+   k QRIN@ FUN-RIN !  k QROUT@ FUN-ROUT !
+   k QRGIN@ FUN-RGIN !  k QRGOUT@ FUN-RGOUT !
+   FUN-RIN @ 0<> FUN-ROUT @ 0<> or if
+      1 TOK-NEED !  1 CALL-NEED !
+   then
    r lo hi SKELETON-TRY
    b FUN-STATE!
    c b v key k QOPEN-FUN
    c b v key k QOPEN-BLOCK
    TOK-NEED @ 0<> if k QAT@ EMIT-MEM then
+   k QAT@ R-ENTER
    PATH-LIVE PATH-END !
    p r lo hi WALK-TRY
    CS-N @ 0<> if E-NELAB-CTRL throw then
@@ -3989,7 +4296,7 @@ variable QNAME-P                     \ the place value the digit loop is on
          k QHI@ EXIT-ORD @ 0 0 0 TERM-BR-H
       then
       NB @ EXIT-ORD @ <> if E-NELAB-CTRL throw then
-      k QHI@ k QOUT@ 0 0 0 OPEN-ARGS-H
+      k QHI@ k QOUT@ EXIT-ORD @ ARG-R@ + 0 0 0 OPEN-ARGS-H
    then
    dead EXIT-USED @ 0= and 0= if
       c b v key k QEMIT-RETURN
@@ -4024,10 +4331,10 @@ public
 
 
 : CALLED? ( -- bool )
-   CALL-NEED @ 0<> ;
+   CALL-SITES @ 0<> ;
 
 : CALLS-BACK? ( -- bool )
-   CALL-BACK @ 0<> ;
+   CALL-BACK @ 0<> BRIDGE-SITES @ 0<> or ;
 
 : TAIL-CALLED? ( -- bool )
    TAIL-NEED @ 0<> ;
@@ -4072,6 +4379,7 @@ public
    hi lo <= if exit then
    r hi 1- WORD-CALL? 0= if exit then
    r hi 1- TAIL-CALLEE? 0= if exit then
+   hi 1- R-CALL-AT @ = if exit then
    1 TAIL-NEED !
    r  hi 1- WSYM  HIR-WORD:ENTRY@ TAIL-ENTRY !
    0 CALL-BACK !
@@ -4084,6 +4392,11 @@ public
    {: gin:n gout:n :}
    gin FR-GIN !
    gout FR-GOUT ! ;
+
+: FRAME-RET! ( n n n n -- )
+   {: rin:n rout:n gin:n gout:n :}
+   rin FR-RIN !  rout FR-ROUT !
+   gin FR-RGIN !  gout FR-RGOUT ! ;
 
 private
 
@@ -4131,6 +4444,7 @@ private
 
 : UNIT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view -- n )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view :}
+   0 CALL-SITES !  0 BRIDGE-SITES !
    c 0 S-CTX !
    b 0 S-BLD !
    v 0 S-VW !
@@ -4164,7 +4478,7 @@ private
    DOES-AT @  DOES-SIG @ DOES-SIG-U @ NSTR:INTERN  HIR:ADDR-DATA STAGE-LIT
    DOES-AT @ DOES-SIG-U @ HIR:ADDR-NONE STAGE-LIT
    1 CALL-NEED !
-   DOES-AT @ DOES-PATCH-ENTRY 3 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   DOES-AT @ DOES-PATCH-ENTRY 3 0 NDICT:GLUE-NONE STAGE-WCALL-NEUTRAL ;
 
 : STAGE-FIXED ( -- )
    0 FIXED-VAL @ FIXED-KIND @ HIR-WORD:LIT-KIND EMIT-KIND-LIT ;
@@ -4174,7 +4488,7 @@ private
    0 EMIT-MEM
    0 FIXED-VAL @ HIR:ADDR-DATA STAGE-LIT
    0 HIR-OPCODE:LOAD EMIT-OPCODE
-   0 EXECUTE-ENTRY 1 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   0 EXECUTE-ENTRY 1 0 NDICT:GLUE-NONE STAGE-WCALL-NEUTRAL ;
 
 : BEFORE-RETURN ( -- )
    FUN-KIND @ FUN-DOES-PARENT = if STAGE-DOES-PATCH exit then
@@ -4209,6 +4523,7 @@ private
 : BUILD-FUN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n n n -- IR-ID:ir-fun-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
       r:IR-ARENA:arena lo:n hi:n in:n out:n :}
+   -1 R-CALL-AT !
    TOK-RESET
    in IN-N !
    out OUT-N !
@@ -4217,11 +4532,19 @@ private
    OUT-GLUE @ NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
    b IR-BUILD:FUNS QBASE !
    p r lo hi SCAN-FUN
+   FUN-RIN @ 0 < FUN-ROUT @ 0 < or if E-NELAB-BUNDLE throw then
+   FUN-RIN @ RMAX > FUN-ROUT @ RMAX > or if E-NELAB-CAP throw then
+   FUN-RGIN @ NDICT:GLUE-UNKNOWN =
+   FUN-RGOUT @ NDICT:GLUE-UNKNOWN = or if E-NELAB-BUNDLE throw then
+   FUN-RIN @ 0<> FUN-ROUT @ 0<> or if
+      1 TOK-NEED !  1 CALL-NEED !
+   then
    r lo hi SKELETON-TRY
    b FUN-STATE!
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
    c b v key in out OPEN-FUN-BODY
    TOK-NEED @ 0<> if lo EMIT-MEM then
+   lo R-ENTER
    PATH-LIVE PATH-END !
    p r lo hi WALK-TRY
    FUN-KIND @ FUN-COLON = if lo hi in out EMPTY-FRAME-RESHAPE then
@@ -4234,7 +4557,7 @@ private
          0 EXIT-ORD @ 0 0 0 TERM-BR-H
       then
       NB @ EXIT-ORD @ <> if E-NELAB-CTRL throw then
-      0 out 0 0 0 OPEN-ARGS-H
+      0 out EXIT-ORD @ ARG-R@ + 0 0 0 OPEN-ARGS-H
    then
    dead  EXIT-USED @ 0=  and 0= if
       EXIT-USED @ 0= if BEFORE-RETURN then
@@ -4259,7 +4582,10 @@ public
    c b v UNIT {: n:n :}
    FUN-COLON FUN-KIND !
    FR-GIN @ FUN-GIN !  FR-GOUT @ FUN-GOUT !
+   FR-RIN @ FUN-RIN !  FR-ROUT @ FUN-ROUT !
+   FR-RGIN @ FUN-RGIN !  FR-RGOUT @ FUN-RGOUT !
    0 FR-GIN ! 0 FR-GOUT !
+   0 FR-RIN ! 0 FR-ROUT !  0 FR-RGIN ! 0 FR-RGOUT !
    c b v p r 1 n in out BUILD-FUN ;
 
 : DOES ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n n n n n n ptr u8 n -- IR-ID:ir-fun-id )
@@ -4275,11 +4601,15 @@ public
    at 1+ n >= if 1 DOES-EMPTY ! then
    FUN-DOES-PARENT FUN-KIND !
    FR-GIN @ FUN-GIN !  FR-GOUT @ FUN-GOUT !
+   FR-RIN @ FUN-RIN !  FR-ROUT @ FUN-ROUT !
+   FR-RGIN @ FUN-RGIN !  FR-RGOUT @ FUN-RGOUT !
    0 FR-GIN ! 0 FR-GOUT !
+   0 FR-RIN ! 0 FR-ROUT !  0 FR-RGIN ! 0 FR-RGOUT !
    c b v p r 1 at in out BUILD-FUN {: f:IR-ID:ir-fun-id :}
    b IR-BUILD:FUNS DOES-FUN @ <> if E-NELAB-SHAPE throw then
    FUN-DOES-CLAUSE FUN-KIND !
    dgin FUN-GIN !  dgout FUN-GOUT !
+   0 FUN-RIN ! 0 FUN-ROUT ! 0 FUN-RGIN ! 0 FUN-RGOUT !
    c b v p r at 1+ n din dout BUILD-FUN drop
    1 CALL-NEED !  0 TAIL-NEED !
    f ;
@@ -4294,7 +4624,9 @@ public
    val FIXED-VAL !  kind FIXED-KIND !
    FUN-FIXED FUN-KIND !
    NDICT:GLUE-NONE FUN-GIN !  NDICT:GLUE-NONE FUN-GOUT !
+   0 FUN-RIN ! 0 FUN-ROUT ! 0 FUN-RGIN ! 0 FUN-RGOUT !
    0 FR-GIN ! 0 FR-GOUT !
+   0 FR-RIN ! 0 FR-ROUT !  0 FR-RGIN ! 0 FR-RGOUT !
    c b v p r 1 1 0 1 BUILD-FUN ;
 
 \ The target held by a defer's dispatch cell meets the caller's stack.
@@ -4307,7 +4639,9 @@ public
    cell FIXED-VAL !
    FUN-DEFER FUN-KIND !
    NDICT:GLUE-NONE FUN-GIN !  NDICT:GLUE-NONE FUN-GOUT !
+   0 FUN-RIN ! 0 FUN-ROUT ! 0 FUN-RGIN ! 0 FUN-RGOUT !
    0 FR-GIN ! 0 FR-GOUT !
+   0 FR-RIN ! 0 FR-ROUT !  0 FR-RGIN ! 0 FR-RGOUT !
    c b v p r 1 1 0 0 BUILD-FUN ;
 
 : DOES-FUNCTION ( -- n )

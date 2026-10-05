@@ -125,6 +125,8 @@ create OWNER-STORAGE
    0 ,
    0 , 0 , 0 , 0 ,
    0 ,
+   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -142,7 +144,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:MULTI-ERROR-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:CALL-QUOT-RGOUT-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -1842,7 +1844,8 @@ create UWL-CALL MAXUWL cells allot   variable CUR-CALL
 create UWL-QUOT MAXUWL cells allot   variable CUR-QUOT
 create UWL-ARG MAXUWL cells allot    variable CUR-ARG
 variable CALL-ARMED
-variable CALL-DIN   variable CALL-DOUT   variable CALL-HIT
+variable CALL-DIN   variable CALL-DOUT
+variable CALL-RIN   variable CALL-ROUT   variable CALL-HIT
 variable REC-ON
 defer CALL-FREEZE-XT ( -- )
 defer CWIN-STATE ( -- ptr ptr n )
@@ -4066,12 +4069,17 @@ variable QDEPTH
 
 \ Record a complete token effect while its input row is unified. Memory
 \ tokens construct these rows directly instead of instantiating a named word.
-: RECORDED-STEP ( n n -- )
+: RECORDED-STEP-R ( n n n n -- ) {: din:n dout:n rin:n rout:n :}
    0 CALL-HIT !
-   2dup CALL-DOUT ! CALL-DIN !
+   din CALL-DIN !  dout CALL-DOUT !
+   rin CALL-RIN !  rout CALL-ROUT !
    REC-ON @ CALL-ARMED !
-   CHECKER-STEP
+   din dout CHECKER-STEP
    0 CALL-ARMED ! ;
+
+: RECORDED-STEP ( n n -- ) {: din:n dout:n :}
+   FRESH MK-ROW {: empty:n :}
+   din dout empty empty RECORDED-STEP-R ;
 
 : SCOPE-RECORDED-STEP ( n n -- )
    -1 FORALL-OPEN-ON !
@@ -4192,6 +4200,7 @@ variable FINALLY-CLEANUP-OUT
    \ unification extends the rows. Final metadata resolves their widths.
    REC-ON @ IF
       QTT @ Q>DIN CALL-DIN !  QTT @ Q>DOUT CALL-DOUT !
+      QTT @ Q>RIN CALL-RIN !  QTT @ Q>ROUT CALL-ROUT !
       CALL-FREEZE-XT
    THEN
    -1 CWIN-HIT ! ;
@@ -9403,12 +9412,12 @@ variable LMI
    h E-INST-RESET
    h E-DIN@ E-INST {: din:n :}
    h E-DOUT@ E-INST {: dout:n :}
-   RGN-N @ {: bind-region:n :}
-   -1 SCOPE-INTRO-ON !
-   din dout RECORDED-STEP
-   0 SCOPE-INTRO-ON !
    h E-RIN@ E-INST {: rin:n :}
    h E-ROUT@ E-INST {: rout:n :}
+   RGN-N @ {: bind-region:n :}
+   -1 SCOPE-INTRO-ON !
+   din dout rin rout RECORDED-STEP-R
+   0 SCOPE-INTRO-ON !
    h E-HASR@ 0 <> if
       rin RSUNI-IN          \ the called word's declared return inputs
       rout RCUR !
@@ -10471,11 +10480,19 @@ PRIM: EFFECT-DIN-CELLS   PE-N PE-OUT PRIM;
 PRIM: EFFECT-DOUT-CELLS  PE-N PE-OUT PRIM;
 PRIM: EFFECT-DIN-SLOT    PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: EFFECT-DOUT-SLOT   PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: EFFECT-RIN-N       PE-N PE-OUT PRIM;
+PRIM: EFFECT-ROUT-N      PE-N PE-OUT PRIM;
+PRIM: EFFECT-RIN-CELLS   PE-N PE-OUT PRIM;
+PRIM: EFFECT-ROUT-CELLS  PE-N PE-OUT PRIM;
+PRIM: EFFECT-RIN-SLOT    PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: EFFECT-ROUT-SLOT   PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: EFFECT-DIN-QUOT    PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: EFFECT-DOUT-QUOT   PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: EFFECT-QUOT-SIMPLE? PE-F PE-OUT PRIM;
 PRIM: EFFECT-QUOT-UP      PE-F PE-OUT PRIM;
 PRIM: EFFECT-RET-NEUTRAL? PE-F PE-OUT PRIM;
+PRIM: EFFECT-RET-TAIL-SAME? PE-F PE-OUT PRIM;
+PRIM: EFFECT-QUOT-CALLABLE? PE-F PE-OUT PRIM;
 PRIM: EFFECT-CATCH-CELLS PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
 PRIM: EFFECT-EXEC-CELLS PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
 PRIM: EFFECT-FINALLY-CELLS PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PE-N PE-OUT PRIM;
@@ -11778,6 +11795,8 @@ variable EFFQ-ROUT          \ rout row offset — the return stack it leaves
 variable EFFQ-QUOT          \ the EN-QUOT node the latch is currently inside, 0 = none
 variable EFFQ-SAVE-DIN      \ the row pair the open descent displaced
 variable EFFQ-SAVE-DOUT
+variable EFFQ-SAVE-RIN
+variable EFFQ-SAVE-ROUT
 
 \ The EN-node graph lives in the byte-addressed USIGS arena; USIGS-CELL-AT turns an
 \ E-OFF into a cell pointer the checked readers can fetch (E-PTR yields a ptr u8 that
@@ -11868,6 +11887,7 @@ variable EFFQ-SAVE-DOUT
 \ name and EFFECT-QUOT-UP put that name's rows back.
 TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect into query state
    0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
+   0 EFFQ-SAVE-RIN !  0 EFFQ-SAVE-ROUT !
    FIND-SIG dup EFFQ-OK !
    if FEP @ E-DIN@ EFFQ-DIN !  FEP @ E-DOUT@ EFFQ-DOUT !
       FEP @ E-RIN@ EFFQ-RIN !  FEP @ E-ROUT@ EFFQ-ROUT !
@@ -11899,6 +11919,12 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 : EFFECT-DOUT-CELLS ( -- n )   EFFQ-DOUT @ EFF-ROW-CELLS ; \ fixed dout width in cells, or CELLS-NONE
 : EFFECT-DIN-SLOT ( n -- n )   EFFQ-DIN @ EFF-ROW-SLOT ;   \ bundle slot+1 of din term i (top = 0), 0 = logical
 : EFFECT-DOUT-SLOT ( n -- n )  EFFQ-DOUT @ EFF-ROW-SLOT ;  \ bundle slot+1 of dout term i (top = 0), 0 = logical
+: EFFECT-RIN-N ( -- n )        EFFQ-RIN @ EFF-ROW-N ;
+: EFFECT-ROUT-N ( -- n )       EFFQ-ROUT @ EFF-ROW-N ;
+: EFFECT-RIN-CELLS ( -- n )    EFFQ-RIN @ EFF-ROW-CELLS ;
+: EFFECT-ROUT-CELLS ( -- n )   EFFQ-ROUT @ EFF-ROW-CELLS ;
+: EFFECT-RIN-SLOT ( n -- n )   EFFQ-RIN @ EFF-ROW-SLOT ;
+: EFFECT-ROUT-SLOT ( n -- n )  EFFQ-ROUT @ EFF-ROW-SLOT ;
 
 \ ---- the quotation descent ----------------------------------------------------
 \ Move the latch onto the rows of the quotation a term IS, so that every reader
@@ -11913,9 +11939,13 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    t EFF-TAG@ EN-QUOT = 0= if 0 0= 0= exit then
    EFFQ-DIN @ EFFQ-SAVE-DIN !
    EFFQ-DOUT @ EFFQ-SAVE-DOUT !
+   EFFQ-RIN @ EFFQ-SAVE-RIN !
+   EFFQ-ROUT @ EFFQ-SAVE-ROUT !
    t EFFQ-QUOT !
    t EFF-A@ EFFQ-DIN !
    t EFF-B@ EFFQ-DOUT !
+   t EFF-C@ EFFQ-RIN !
+   t EFF-D@ EFFQ-ROUT !
    0 0= ;
 
 : EFFECT-DIN-QUOT ( n -- bool )    EFFQ-DIN @ EFF-ROW-TERM EFF-DESCEND ;
@@ -11928,7 +11958,10 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    EFFQ-QUOT @ 0= if 0 0= 0= exit then
    EFFQ-SAVE-DIN @ EFFQ-DIN !
    EFFQ-SAVE-DOUT @ EFFQ-DOUT !
+   EFFQ-SAVE-RIN @ EFFQ-RIN !
+   EFFQ-SAVE-ROUT @ EFFQ-ROUT !
    0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
+   0 EFFQ-SAVE-RIN !  0 EFFQ-SAVE-ROUT !
    0 0= ;
 
 \ ARE THE QUOTATION'S TWO RETURN ROWS THE SAME STACK? They are when neither holds
@@ -11942,15 +11975,21 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 \ TWO nodes; comparing the stored offsets would call every quotation in the tree
 \ non-neutral. What survives the copy is what the nodes SAY - no terms, and the
 \ same row-variable id - so that is what is asked.
-: EFF-RET-NEUTRAL? ( n n -- bool )
+: EFF-RET-TAIL-SAME? ( n n -- bool )
    {: rin:n rout:n :}
-   rin EFF-ROW-N 0= 0= if 0 0= 0= exit then
-   rout EFF-ROW-N 0= 0= if 0 0= 0= exit then
+   rin 0= rout 0= and if 0 0= exit then
+   rin 0= rout 0= or if 0 0= 0= exit then
    rin EFF-ROW-TAIL {: a:n :}
    rout EFF-ROW-TAIL {: b:n :}
    a EFF-TAG@ EN-ROW = 0= if 0 0= 0= exit then
    b EFF-TAG@ EN-ROW = 0= if 0 0= 0= exit then
    a EFF-A@ b EFF-A@ = ;
+
+: EFF-RET-NEUTRAL? ( n n -- bool )
+   {: rin:n rout:n :}
+   rin EFF-ROW-N 0= 0= if 0 0= 0= exit then
+   rout EFF-ROW-N 0= 0= if 0 0= 0= exit then
+   rin rout EFF-RET-TAIL-SAME? ;
 
 \ THE SAME QUESTION ABOUT THE QUERIED WORD ITSELF, which is what a caller
 \ compiling a CALL has to ask before it may treat the return stack as its own.
@@ -11987,6 +12026,10 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    EFFQ-RIN @ 0=  EFFQ-ROUT @ 0=  and if 0 0= exit then
    EFFQ-RIN @ EFFQ-ROUT @ EFF-RET-NEUTRAL? ;
 
+: EFFECT-RET-TAIL-SAME? ( -- bool )
+   EFFQ-OK @ 0= if 0 0= 0= exit then
+   EFFQ-RIN @ EFFQ-ROUT @ EFF-RET-TAIL-SAME? ;
+
 \ IS THE QUOTATION THE LATCH IS INSIDE ONE A CALLER MAY COMPILE AS AN ORDINARY
 \ ROUTINE? Three clauses, and none of them is decoration.
 \   the return rows are NEUTRAL (EN.C against EN.D, above): the body neither takes
@@ -12006,6 +12049,13 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    EFFQ-QUOT @ {: q:n :}
    q 0= if 0 0= 0= exit then
    q EFF-C@ q EFF-D@ EFF-RET-NEUTRAL? 0= if 0 0= 0= exit then
+   q EFF-E@ 0= 0= if 0 0= 0= exit then
+   q EFF-F@ 0= ;
+
+: EFFECT-QUOT-CALLABLE? ( -- bool )
+   EFFQ-QUOT @ {: q:n :}
+   q 0= if 0 0= 0= exit then
+   q EFF-C@ q EFF-D@ EFF-RET-TAIL-SAME? 0= if 0 0= 0= exit then
    q EFF-E@ 0= 0= if 0 0= 0= exit then
    q EFF-F@ 0= ;
 
@@ -12039,6 +12089,13 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 4 constant CW-GLUE
 5 constant CW-QUOT-IN                \ + twice the input cell index from the top
 6 constant CW-QUOT-OUT               \ + twice the output cell index from the top
+-8 constant CW-CALL-R-RAW
+-9 constant CW-CALL-R
+-10 constant CW-RGLUE
+-11 constant CW-QUOT-RIN
+-12 constant CW-QUOT-ROUT
+-512 constant CW-QUOT-RGIN
+-513 constant CW-QUOT-RGOUT
 
 \ cell-effects.f owns the checked storage after the bootstrap checker starts.
 \ CWIN-STATE hands back the DECLARED arena cell itself, so the pointer needs no
@@ -12108,6 +12165,8 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 
 : CWIN-CELLS ( n -- n n ) CW-CALL CWIN-FIND ;
 : CWIN-GLUE ( n -- n n ) CW-GLUE CWIN-FIND ;
+: CWIN-RCELLS ( n -- n n ) CW-CALL-R CWIN-FIND ;
+: CWIN-RGLUE ( n -- n n ) CW-RGLUE CWIN-FIND ;
 : CWIN-MATCH-PAYLOAD ( n -- n n ) CW-MATCH-PAYLOAD CWIN-FIND ;
 : EFFECT-INIT-LAYOUT ( n -- n n n ) {: ord:n :}
    ord CW-INIT-WIDTH CWIN-FIND {: width:n bytes:n :}
@@ -12118,6 +12177,10 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 : EFFECT-FIELD-SPAN ( n -- n n ) CW-FIELD-SPAN CWIN-FIND ;
 : CWIN-QUOT-IN ( n n -- n n ) {: ord:n idx:n :} ord idx 2 * CW-QUOT-IN + CWIN-FIND ;
 : CWIN-QUOT-OUT ( n n -- n n ) {: ord:n idx:n :} ord idx 2 * CW-QUOT-OUT + CWIN-FIND ;
+: CWIN-QUOT-RIN ( n n -- n n ) {: ord:n idx:n :} ord CW-QUOT-RIN idx 2 * - CWIN-FIND ;
+: CWIN-QUOT-ROUT ( n n -- n n ) {: ord:n idx:n :} ord CW-QUOT-ROUT idx 2 * - CWIN-FIND ;
+: CWIN-QUOT-RGIN ( n n -- n n ) {: ord:n idx:n :} ord CW-QUOT-RGIN idx 2 * - CWIN-FIND ;
+: CWIN-QUOT-RGOUT ( n n -- n n ) {: ord:n idx:n :} ord CW-QUOT-RGOUT idx 2 * - CWIN-FIND ;
 
 \ Copy only the fixed row spine. Its fresh tail never participates in
 \ unification; the shared type terms can still acquire their final widths.
@@ -12148,6 +12211,8 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 : CALL-FREEZE ( -- )
    CALL-DIN @ CALL-ROW-COPY CALL-DIN !
    CALL-DOUT @ CALL-ROW-COPY CALL-DOUT !
+   CALL-RIN @ CALL-ROW-COPY CALL-RIN !
+   CALL-ROUT @ CALL-ROW-COPY CALL-ROUT !
    -1 CALL-HIT ! ;
 : CALL-FREEZE-INSTALL ( -- ) [: CALL-FREEZE ;] is CALL-FREEZE-XT ;
 CALL-FREEZE-INSTALL
@@ -12163,11 +12228,12 @@ CALL-FREEZE-INSTALL
    CALL-HIT @ IF
       0 CALL-HIT !
       REC-IX @ CALL-DIN @ CALL-DOUT @ CW-CALL-RAW CWIN-ADD
+      REC-IX @ CALL-RIN @ CALL-ROUT @ CW-CALL-R-RAW CWIN-ADD
    THEN ;
 
 : CALL-ROW-GLUE ( n -- n ) {: row:n :}
    row ROW-CELLS {: width:n :}
-   width CELL 8 * > IF -1 EXIT THEN
+   width 0 < width CELL 8 * > or IF -1 EXIT THEN
    0 0 row
    BEGIN dup TAG S-PUSH = WHILE
       dup P>TYPE {: t:n :}
@@ -12204,6 +12270,12 @@ CALL-FREEZE-INSTALL
          ord q Q>DIN ROW-CELLS
          q Q>XDEAD IF CELLS-NONE ELSE q Q>DOUT ROW-CELLS THEN
          k CWIN-ADD
+         ord q Q>RIN ROW-CELLS q Q>ROUT ROW-CELLS
+         kind CW-QUOT-IN = IF CW-QUOT-RIN ELSE CW-QUOT-ROUT THEN
+         k kind - - CWIN-ADD
+         ord q Q>RIN CALL-ROW-GLUE q Q>ROUT CALL-ROW-GLUE
+         kind CW-QUOT-IN = IF CW-QUOT-RGIN ELSE CW-QUOT-RGOUT THEN
+         k kind - - CWIN-ADD
       THEN
       swap t ROW-TERM-CELLS + swap P>REST
    REPEAT 2drop ;
@@ -12221,6 +12293,15 @@ CALL-FREEZE-INSTALL
          ord din CALL-ROW-GLUE dout CALL-ROW-GLUE CW-GLUE CWIN-ADD
          ord din CW-QUOT-IN CALL-ROW-QUOTS
          ord dout CW-QUOT-OUT CALL-ROW-QUOTS
+      ELSE i CW-KIND CWIN-AT @ CW-CALL-R-RAW = IF
+         i CW-ORD CWIN-AT @ {: ord:n :}
+         i CW-IN CWIN-AT @ {: rin:n :}
+         i CW-OUT CWIN-AT @ {: rout:n :}
+         rin ROW-CELLS i CW-IN CWIN-AT !
+         rout ROW-CELLS i CW-OUT CWIN-AT !
+         CW-CALL-R i CW-KIND CWIN-AT !
+         ord rin CALL-ROW-GLUE rout CALL-ROW-GLUE CW-RGLUE CWIN-ADD
+      THEN
       THEN
    loop ;
 
@@ -21570,7 +21651,12 @@ variable DEF-STOPPED
 PTR-VARIABLE UNJ-A   variable UNJ-U   variable UNJ-VERDICT
 
 : CHECK-UNJUDGED-BODY ( -- )
-   UNJ-A @ UNJ-U @ CHECK! UNJ-VERDICT ! ;
+   UNJ-A @ UNJ-U @ CHECK! dup UNJ-VERDICT !
+   -1 <> IF
+      \ A TRUSTED body still compiles. Its typed call windows must be measured
+      \ even when the body verdict is not enforced by this scan.
+      CALL-FINALIZE
+   THEN ;
 
 : CHECK-UNJUDGED! ( ptr u8 n -- n ) {: a:ptr u:n :}
    a UNJ-A !  u UNJ-U !
@@ -23090,6 +23176,7 @@ variable MARK-U                          \ the map's length in bytes
    NULL-PTR MARK-P !  0 MARK-U !
    0 EFFQ-OK !  0 EFFQ-DIN !  0 EFFQ-DOUT !  0 EFFQ-RIN !  0 EFFQ-ROUT !
    0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
+   0 EFFQ-SAVE-RIN !  0 EFFQ-SAVE-ROUT !
    0 USX-GEN !
    UIX-READY? IF UIX-DROP UIX-BUILD THEN
    CHX-READY? IF CHX-DROP CHX-BUILD THEN ;
@@ -23265,6 +23352,12 @@ package CHECKER-REG
 ' CWIN-MATCH-PAYLOAD                DECLARATIONS CALL-MATCH-OFF + xt!
 ' CWIN-QUOT-IN                      DECLARATIONS CALL-QUOT-IN-OFF + xt!
 ' CWIN-QUOT-OUT                     DECLARATIONS CALL-QUOT-OUT-OFF + xt!
+' CWIN-RCELLS                       DECLARATIONS CHECKER-OWNER-ABI:CALL-RET-CELLS-OFF + xt!
+' CWIN-RGLUE                        DECLARATIONS CHECKER-OWNER-ABI:CALL-RET-GLUE-OFF + xt!
+' CWIN-QUOT-RIN                     DECLARATIONS CHECKER-OWNER-ABI:CALL-QUOT-RIN-OFF + xt!
+' CWIN-QUOT-ROUT                    DECLARATIONS CHECKER-OWNER-ABI:CALL-QUOT-ROUT-OFF + xt!
+' CWIN-QUOT-RGIN                    DECLARATIONS CHECKER-OWNER-ABI:CALL-QUOT-RGIN-OFF + xt!
+' CWIN-QUOT-RGOUT                   DECLARATIONS CHECKER-OWNER-ABI:CALL-QUOT-RGOUT-OFF + xt!
 ' EFFECT-INIT-LAYOUT                DECLARATIONS CHECKER-OWNER-ABI:INIT-LAYOUT-OFF + xt!
 ' EFFECT-FIELD-SPAN                 DECLARATIONS FIELD-SPAN-OFF + xt!
 ' TRUST-DECL                        DECLARATIONS TRUST-DECL-OFF + xt!
@@ -23276,11 +23369,19 @@ package CHECKER-REG
 ' EFFECT-DOUT-CELLS                 DECLARATIONS EFFECT-DOUT-CELLS-OFF + xt!
 ' EFFECT-DIN-SLOT                   DECLARATIONS EFFECT-DIN-SLOT-OFF + xt!
 ' EFFECT-DOUT-SLOT                  DECLARATIONS EFFECT-DOUT-SLOT-OFF + xt!
+' EFFECT-RIN-N                      DECLARATIONS CHECKER-OWNER-ABI:EFFECT-RIN-N-OFF + xt!
+' EFFECT-ROUT-N                     DECLARATIONS CHECKER-OWNER-ABI:EFFECT-ROUT-N-OFF + xt!
+' EFFECT-RIN-CELLS                  DECLARATIONS CHECKER-OWNER-ABI:EFFECT-RIN-CELLS-OFF + xt!
+' EFFECT-ROUT-CELLS                 DECLARATIONS CHECKER-OWNER-ABI:EFFECT-ROUT-CELLS-OFF + xt!
+' EFFECT-RIN-SLOT                   DECLARATIONS CHECKER-OWNER-ABI:EFFECT-RIN-SLOT-OFF + xt!
+' EFFECT-ROUT-SLOT                  DECLARATIONS CHECKER-OWNER-ABI:EFFECT-ROUT-SLOT-OFF + xt!
 ' EFFECT-DIN-QUOT                   DECLARATIONS EFFECT-DIN-QUOT-OFF + xt!
 ' EFFECT-DOUT-QUOT                  DECLARATIONS EFFECT-DOUT-QUOT-OFF + xt!
 ' EFFECT-QUOT-UP                    DECLARATIONS EFFECT-QUOT-UP-OFF + xt!
 ' EFFECT-RET-NEUTRAL?               DECLARATIONS EFFECT-RET-NEUTRAL-OFF + xt!
+' EFFECT-RET-TAIL-SAME?             DECLARATIONS CHECKER-OWNER-ABI:EFFECT-RET-TAIL-SAME-OFF + xt!
 ' EFFECT-QUOT-SIMPLE?               DECLARATIONS EFFECT-QUOT-SIMPLE-OFF + xt!
+' EFFECT-QUOT-CALLABLE?             DECLARATIONS CHECKER-OWNER-ABI:EFFECT-QUOT-CALLABLE-OFF + xt!
 ' EFFECT-CATCH-CELLS                DECLARATIONS EFFECT-CATCH-CELLS-OFF + xt!
 ' EFFECT-EXEC-CELLS                 DECLARATIONS EFFECT-EXEC-CELLS-OFF + xt!
 ' EFFECT-FINALLY-CELLS              DECLARATIONS EFFECT-FINALLY-CELLS-OFF + xt!

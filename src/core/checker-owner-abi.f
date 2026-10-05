@@ -124,6 +124,20 @@ $308 constant VERIFY-TOP-OFF
 $310 constant VERIFY-DEFERRED-OFF
 $318 constant VERIFY-REACH-OFF
 $320 constant MULTI-ERROR-OFF
+$328 constant EFFECT-RIN-N-OFF
+$330 constant EFFECT-ROUT-N-OFF
+$338 constant EFFECT-RIN-CELLS-OFF
+$340 constant EFFECT-ROUT-CELLS-OFF
+$348 constant EFFECT-RIN-SLOT-OFF
+$350 constant EFFECT-ROUT-SLOT-OFF
+$358 constant CALL-RET-CELLS-OFF
+$360 constant CALL-RET-GLUE-OFF
+$368 constant CALL-QUOT-RIN-OFF
+$370 constant CALL-QUOT-ROUT-OFF
+$378 constant EFFECT-RET-TAIL-SAME-OFF
+$380 constant EFFECT-QUOT-CALLABLE-OFF
+$388 constant CALL-QUOT-RGIN-OFF
+$390 constant CALL-QUOT-RGOUT-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

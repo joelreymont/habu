@@ -903,9 +903,9 @@ public
    c b id FIX-SPELL {: a:ptr u:n :}
    a u NDICT:CALL-BINDING {: entry:n kind:n :}
    entry 0= if false exit then
-   a u NDICT:SPELL-CALL {: in:n out:n glue:n neutral:bool :}
+   a u NDICT:SPELL-CALL {: in:n out:n glue:n ret-layout:bool :}
    in NDICT:ARITY-NONE = if false exit then
-   neutral 0= if false exit then
+   ret-layout 0= if false exit then
    glue NDICT:GLUE-UNKNOWN = if false exit then
    kind DKIND:CAST = if c b p r id DECLARE-BOUND-CAST true exit then
    c r  c b id BKEY-CK  entry in out glue

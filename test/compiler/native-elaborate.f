@@ -2217,13 +2217,9 @@ create TW-BUF TW-CAP allot
 : QUOT-DEEP ( -- )
    BND [: QUOT-DEEP-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ A BODY THAT IS NOT AN ORDINARY ROUTINE. `QP-RET` declares the quotation it
-\ takes as ( n -- n ) on the data stack AND ( a -- a ) on the RETURN stack, which
-\ is a body a caller cannot reach with a branch and come back from: what it does
-\ to the return stack is not what a call's own return expects to find there. The
-\ checker owns that three-clause question - neutral return rows, no throw edge, a
-\ live fall-through - and src/compiler/native/dict.f asks it rather than
-\ re-deriving it, so the descent answers "no quotation there" and this refuses.
+\ `QP-RET` declares the quotation it takes as ( n -- n ) on data and
+\ ( a -- a ) on return. Its body leaves both rows intact, so the native
+\ quotation may use the caller's physical return stack.
 : QUOT-RSTACK-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    QP-RET!
@@ -2442,10 +2438,9 @@ create QHID-TXT
    [: QUOT-DISAGREE ;] E-NELAB-QUOT TTHROWSQ
    NELAB:REFUSED-ROW 1 T=
    NELAB:REFUSED$ s" [:" T$=
-   s" a body whose declared effect is not an ordinary routine's is refused"
+   s" a quotation with a declared return row elaborates"
    T-LABEL
-   [: QUOT-RSTACK ;] E-NELAB-QUOT TTHROWSQ
-   NELAB:REFUSED-ROW 1 T=
+   [: QUOT-RSTACK ;] catch 0 T=
    s" a body leaving more than its consumer declared is refused at its opener"
    T-LABEL
    [: QUOT-DEEP ;] E-NELAB-QUOT TTHROWSQ
