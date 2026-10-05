@@ -279,6 +279,22 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
    s" and the namespace has no private wordlist after it" T-LABEL
    s" RB-PQ" XREF-NAMESPACE-WL XREF-FIND-WL XREF-PKG-PRIVATE 0 T= ;
 
+\ A primitive is no source definition's record: the engine's builder made it
+\ before the source prefix's first record (src/core/prefix-boundary.f
+\ CORE-PREFIX:FIRST-RECORD), so the engine holds it at every point and the live
+\ load refuses a definition of its name in its wordlist, "duplicate
+\ definition: dup", rc 78, as the live row at the end of this file does. A
+\ package's wordlist holds no primitive of that name. The row runs in the
+\ neutral scope, which starts at top level: the candidate scope opens where
+\ RUN stands, in this package's private section, whose wordlist holds no dup,
+\ so there the definition certifies, as it loads. The end of this file
+\ replays it in the candidate scope from top level (TOP-REPLAY).
+: PRIMITIVE-CASE ( -- )
+   s" a replayed definition of a primitive's name is refused, as the live load refuses it" T-LABEL
+   S\" : dup ( n -- n n ) dup ;\n" 78 REPLAY
+   s" and in a package's wordlist that definition certifies" T-LABEL
+   S\" package RB-PD\npublic\n: dup ( n -- n n ) dup ;\n;package\n" 0 REPLAY ;
+
 : CASES ( -- )
    RAW-CASE
    QUALIFIED-CASE
@@ -514,6 +530,7 @@ variable ERR-U
    WARM-CASE
    -1 NEUTRAL !
    CASES
+   PRIMITIVE-CASE
    SEEDED-CASE
    INNER-CASE
    0 NEUTRAL !
@@ -524,6 +541,15 @@ variable ERR-U
    GHOST-CASE ;
 
 RUN
+
+public
+
+\ REPLAY in the candidate scope, which opens where its caller stands: called
+\ after `;package`, at top level in the global wordlist, where RUN's candidate
+\ rows stand in this package's private section.
+: TOP-REPLAY ( ptr u8 n n -- )
+   0 NEUTRAL !
+   REPLAY ;
 
 ;package
 
@@ -548,5 +574,18 @@ s" RB-QD ( n -- n n ) RB-Q:dup" CHECK-QUIET-CANDIDATE! -1 T=
 s" live, undefine retires the clause too" T-LABEL
 S\" undefine RB-DOES:RB-MK s\" RB-DOES:RB-MK;does\" s\" -- n\" trust" TEST-EVAL:RC
 E-TRUST-UNRESOLVED T=
+
+\ From top level a candidate replay lands in the global wordlist. A primitive's
+\ name is refused there, as the live load below refuses it. lib/prelude.f's
+\ `true`, a word the engine baked from source, is the loaded twin of its
+\ definition, so a replay of that definition certifies, as check-verify
+\ replays the engine's own files.
+s" from top level, a replayed definition of a primitive's name is refused" T-LABEL
+S\" : dup ( n -- n n ) dup ;\n" 78 REPLAY-BINDING-TEST:TOP-REPLAY
+s" and a replayed definition of a word the engine baked certifies" T-LABEL
+S\" : true  ( -- bool ) 0 0= ;\n" 0 REPLAY-BINDING-TEST:TOP-REPLAY
+
+s" live, a definition of a primitive's name is refused" T-LABEL
+s" : dup ( n -- n n ) dup ;" TEST-EVAL:RC 78 T=
 
 T-REPORT

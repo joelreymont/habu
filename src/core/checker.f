@@ -11131,6 +11131,12 @@ TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
 \ (src/habu/xref.f XREF-DOES-COMPANION?), which xref.f installs here.
 defer DOES-COMPANION?-XT ( n -- bool )
 
+\ The source prefix's first dictionary record, asked when it runs: the
+\ engine's own boundary (src/core/prefix-boundary.f CORE-PREFIX:FIRST-RECORD),
+\ which that file installs here. The engine's builder made every record below
+\ it: a primitive or a helper, never a Habu source definition.
+defer FIRST-RECORD-XT ( -- n )
+
 \ The wordlist a dictionary record was published into, 0 for the global one.
 : CK-REC-WID ( ptr n -- n ) DICT-WORDLIST-SLOT cells + @ ;
 
@@ -11166,6 +11172,7 @@ package CHECKER-OVERLAY
 
 variable ON                                \ nonzero while the overlay is open
 variable MARK                              \ NDICT when it opened: later records are the replay's
+variable PREFIX                            \ FIRST-RECORD-XT: earlier records the builder made
 variable OPENER                            \ the tag of the scope that opened it
 variable FLOOR0                            \ CHECKER-USE:SOURCE-FLOOR when it opened
 -2 constant RETIRED                        \ = layout.f DICT-WL:RETIRED
@@ -11315,6 +11322,7 @@ variable SNAP-N
    CK-DEF-PEND-OFF DATA@ 0 <> IF E-PKG-CONTEXT throw THEN
    replay-open
    ndict@ MARK !
+   FIRST-RECORD-XT PREFIX !
    tag OPENER !
    0 LOG-N !
    CHECKER-USE:SOURCE-FLOOR @ FLOOR0 !
@@ -11337,7 +11345,7 @@ variable SNAP-N
    replay-close
    0 UNPAIR
    FLOOR0 @ CHECKER-USE:SOURCE-FLOOR !
-   0 FLOOR0 !  0 OPENER !  0 MARK !  0 ON !
+   0 FLOOR0 !  0 OPENER !  0 MARK !  0 PREFIX !  0 ON !
    BEGIN SNAP-N @ 0 > WHILE
       SNAP-N @ 1 - SNAP-N !
       SNAP-N @ SNAP ZERO
@@ -11496,10 +11504,11 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ Publish the definition the checker just recorded as a codeless record, so the
 \ replay's later bodies bind it where the compiler would; the publication hook
 \ of CHECKER-EFFECT-AUTHORITY calls it. A name its wordlist already holds live
-\ keeps that record: in a warm engine it is the loaded twin of the definition,
-\ and a replay's second definition of its own name is refused before it is
-\ recorded (CHECKER-CERT-DUP?, REPLAYED? below). A does> clause is no twin
-\ (REPLAYED?), and a definer's or an export's twin has its clause (CLAUSE).
+\ keeps that record: in a warm engine it is the loaded twin of the definition.
+\ A definition of a name the replay or the engine's builder made there is
+\ refused before it is recorded (CHECKER-CERT-DUP?, DUPLICATE? below). A does>
+\ clause is no twin (DUPLICATE?), and a definer's or an export's twin has its
+\ clause (CLAUSE).
 : PUBLISH ( n -- ) {: sym:n :}
    sym 0=  ON @ 0=  or  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
    sym SYM-WID {: wid:n :}
@@ -11507,19 +11516,25 @@ ROW-CELLS cells constant SCOPE-BYTES
    ROOM
    sym SYM-NAME$ wid replay-record ;
 
-\ Whether the replay has already made a record of NAME where a definition of it
-\ lands: a definition it published or a does> clause (CLAUSE), which has no
-\ checker record. A does> clause from before the overlay, its predecessor's by
-\ the engine's own test, answers so too: no definition makes a clause, so it is
-\ no definition's loaded twin, and the live engine refuses the definition there
-\ whatever the replay made before it.
-: REPLAYED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+\ Whether a definition of NAME, replayed here, duplicates the record the engine
+\ holds of it where the definition lands, as the live engine refuses a compile
+\ of the name there. A record the replay made does: a definition it published
+\ or a does> clause (CLAUSE), which has no checker record. So does one below
+\ the source prefix's first record (PREFIX): the engine's builder made it, a
+\ primitive or a helper, before any source loaded, so a live load of the text
+\ meets it too. So does a does> clause from before the overlay, its
+\ predecessor's by the engine's own test: no definition makes a clause, so it
+\ is no definition's loaded twin. Any other record between the two is a Habu
+\ source definition the engine loaded: in a warm engine, the twin of the
+\ definition being replayed.
+: DUPLICATE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    ON @ 0= IF RES-FALSE EXIT THEN
    a u TARGET 0= IF 2drop drop RES-FALSE EXIT THEN
    SCOPE-WL-PROBE {: rec:ptr :}
    rec NULL-PTR = IF RES-FALSE EXIT THEN
    rec REC>IX {: ix:n :}
    ix MARK @ >= IF RES-TRUE EXIT THEN
+   ix PREFIX @ < IF RES-TRUE EXIT THEN
    ix 0 > IF ix 1 - DOES-COMPANION?-XT EXIT THEN
    RES-FALSE ;
 
@@ -13626,21 +13641,22 @@ package CHECKER-REG
 \ The duplicate guard of a certifying record: does the scope the name would be
 \ recorded into already hold a live record for it? Asked without interning, so
 \ a refused name leaves no symbol behind; a candidate probe records nothing.
-\ A replayed definition is a duplicate when the replay has already made a
-\ record of the name where it lands (CHECKER-OVERLAY:REPLAYED?), as the engine
-\ refuses its second compile: a definition it published, or a does> clause
-\ made by the replay or before it, which no checker record holds. A candidate's
-\ scanned definition is one too when the verifier pass has already declared
-\ the name there: the name's own record (OWN-RECORD) is one the pass appended,
-\ at or above PASS-FLOOR. A record from before the pass is not the replay's - in
-\ a warm engine it is the loaded twin of the definition being replayed - and a
-\ deletion or a seeded record declares nothing. The check hook and the source
-\ scan ask it before a body is checked, so they refuse what the guard would and
-\ nothing more.
+\ A replayed definition is a duplicate when the engine holds a record of the
+\ name where it lands that is no definition's loaded twin
+\ (CHECKER-OVERLAY:DUPLICATE?), as the engine refuses that compile: a
+\ definition the replay published, a does> clause made by the replay or before
+\ it, which no checker record holds, or a word the engine's builder made, such
+\ as a primitive. A candidate's scanned definition is one too when the verifier
+\ pass has already declared the name there: the name's own record (OWN-RECORD)
+\ is one the pass appended, at or above PASS-FLOOR. A record from before the
+\ pass is not the replay's - in a warm engine it is the loaded twin of the
+\ definition being replayed - and a deletion or a seeded record declares
+\ nothing. The check hook and the source scan ask it before a body is checked,
+\ so they refuse what the guard would and nothing more.
 : CHECKER-CERT-DUP? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    CHK-CAND @ 0 <>  CHK-PROBE @ 0 <>  and IF RES-FALSE EXIT THEN
-   a u CHECKER-OVERLAY:REPLAYED? IF RES-TRUE EXIT THEN
+   a u CHECKER-OVERLAY:DUPLICATE? IF RES-TRUE EXIT THEN
    CHK-CAND @ 0 <> IF
       PASS-FLOOR @ 0 <= IF RES-FALSE EXIT THEN
       a u OWN-RECORD PASS-FLOOR @ >= EXIT

@@ -292,6 +292,8 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s" TFAM-PKG$*" XREF-FIND XREF-FOUND? TFALSE
    s" does> clause hook is not addressable" T-LABEL
    s" DOES-COMPANION?-XT" XREF-FIND XREF-FOUND? TFALSE
+   s" source prefix boundary hook is not addressable" T-LABEL
+   s" FIRST-RECORD-XT" XREF-FIND XREF-FOUND? TFALSE
    s" checker overlay entry is not addressable" T-LABEL
    s" CHECKER-OVERLAY:OPEN-SCOPE" XREF-FIND XREF-FOUND? TFALSE
    s" sealed private package cannot reopen" T-LABEL
