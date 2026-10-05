@@ -15,6 +15,7 @@ require lib/process-env.f
 require lib/engine-candidate.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/le.f
 require lib/string.f
 require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
@@ -138,12 +139,11 @@ create CONTENT 64 allot
    HB-TARGET-LINUX-X86-64? if s" src/arch/arm64/passes.f" exit then
    s" src/arch/x86-64/passes.f" ;
 
-\ A foreign non-x86 window has no preloaded writer. Loading its compiler
-\ before refusing it could fail in capture before the named writer check.
-\ The output path is writable, so an earlier filesystem refusal cannot satisfy
-\ the assertion and the other-machine build must leave it absent.
+\ A foreign non-x86 window has no preloaded writer, and is refused before
+\ capture. An AArch64 host does preload the x86-64 writer and must produce an
+\ actual x86-64 ELF instead of taking that refusal path.
 : FOREIGN-WINDOW-CASE ( -- )
-   s" and refuses a foreign non-x86 window before capture" T-LABEL
+   s" and handles the foreign window at its writer boundary" T-LABEL
    s" other-machine-hb" FOREIGN-OUT!
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
@@ -155,8 +155,19 @@ create CONTENT 64 allot
    s" --target" ARG
    FOREIGN$ ARG
    DRIVE
-   S\" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine\n" REFUSED
-   FOREIGN-OUT$ FILE? 0= TTRUE ;
+   HB-TARGET-LINUX-X86-64? if
+      S\" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine\n" REFUSED
+      FOREIGN-OUT$ FILE? 0= TTRUE
+   else
+      RC @ 0<> if OUT OUT-U @ type ERR$ type then
+      RC @ 0 T=
+      FOREIGN-OUT$ FILE? TTRUE
+      FOREIGN-OUT$ FS-PATHZ open-rd {: fd:n :}
+      fd 0 >= TTRUE
+      fd CONTENT 64 read 64 T=
+      fd close
+      CONTENT 18 + LE:U16@ $3E T=
+   then ;
 
 : ACTION-CASE ( -- )
    s" nested build entries preserve an active action" T-LABEL
