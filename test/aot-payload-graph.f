@@ -5,6 +5,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/fmt.f
 require lib/engine-candidate.f
 require test/whitebox-child.f
 
@@ -108,6 +109,7 @@ variable SUBJECT-U
    engine engineu >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 30000 >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
+   outu LEN>N PRE-OUT-U !
    OUT outu LEN>N message messageu CONTAINS?
    ERR erru LEN>N message messageu CONTAINS? or {: said:bool :}
    rc expected <> said 0= or if
@@ -123,10 +125,10 @@ variable SUBJECT-U
    WHITEBOX-CHILD:ENV! ;
 
 
-: VERIFY-CHILD ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n bool -- )
-   {: engine:ptr engineu:n source:ptr sourceu:n status:ptr statusu:n packet:ptr packetu:n pre:bool :}
+: VERIFY-WITH ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n bool ptr u8 n -- )
+   {: engine:ptr engineu:n source:ptr sourceu:n status:ptr statusu:n packet:ptr packetu:n pre:bool child:ptr childu:n :}
    PROC-ARGV-RESET
-   s" --load" ARG s" tools/check-verify-child.f" ARG
+   s" --load" ARG child childu ARG
    s" --" ARG SUBJECT$ ARG
    pre if s" verifier-prepass" ARG then
    PROC-ENV-RESET
@@ -143,6 +145,9 @@ variable SUBJECT-U
    rc 0 T=
    PRE-OUT$ status statusu CONTAINS? TTRUE
    packetu 0<> if PRE-OUT$ packet packetu CONTAINS? TTRUE then ;
+
+: VERIFY-CHILD ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n bool -- )
+   s" tools/check-verify-child.f" VERIFY-WITH ;
 
 : PREVERIFY-CHILD ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    true VERIFY-CHILD ;
@@ -177,6 +182,126 @@ variable SUBJECT-U
    s" check-verify: stopped 7156 " s" E-BAD-STORED-SIGNATURE" PREVERIFY-CHILD ;
 
 
+: COLD-COMPLETION$ ( -- ptr u8 n )
+   s" using PAYLOAD-NATIVE 41 BUMP . ;using" ;
+
+: WARM-COMPLETION$ ( -- ptr u8 n )
+   s" : WARM-BUMP ( n -- n ) PAYLOAD-NATIVE:BUMP ; using PAYLOAD-NATIVE 41 BUMP . ;using" ;
+
+\ Both sources end with the same cursor suffix: the position just after BU.
+: COMPLETION-AT ( ptr u8 n -- n )
+   nip s" MP . ;using" nip - ;
+
+: COUNT-IN ( ptr u8 n ptr u8 n -- n )
+   {: a:ptr u:n b:ptr v:n :}
+   v 0= u v < or if 0 exit then
+   0 u v - 1+ 0 ?do
+      a i + v b v CORE-STR= if 1+ then
+   loop ;
+
+: COMPLETION-CHILD ( ptr u8 n n -- )
+   {: source:ptr sourceu:n at:n :}
+   PROC-ARGV-RESET
+   s" --load" ARG s" tools/check-verify-child.f" ARG
+   s" --" ARG SUBJECT$ ARG s" --at" ARG
+   SB-RESET at FMT:SB-U SB$ ARG
+   PROC-ENV-RESET
+   s" HABU_UNDER_TEST" >LEN IMAGE$ >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   IMAGE$ >LEN source sourceu >LEN
+   OUT IO-CAP >LEN ERR IO-CAP >LEN 30000 >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   {: outu:len erru:len rc:n :}
+   s" completion child: " type IMAGE$ type cr
+   source sourceu type cr
+   OUT outu LEN>N type ERR erru LEN>N type cr
+   rc 0 T=
+   OUT outu LEN>N s" check-verify: verified" CONTAINS? TTRUE
+   OUT outu LEN>N S\" check-verify: candidate {\"word\":\"BUMP\"" COUNT-IN 1 T=
+   OUT outu LEN>N S\" check-verify: candidate {\"word\":\"BUMP\"}" COUNT-IN 1 T= ;
+
+: COMPLETION-CASES ( -- )
+   s" verifier tooling leaves the seeded word without a checker symbol" T-LABEL
+   PROC-ARGV-RESET
+   s" --load" ARG s" test/aot-payload-native-cold-probe.f" ARG
+   PROC-ENV-RESET
+   s" HABU_UNDER_TEST" >LEN IMAGE$ >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   IMAGE$ 0 s" native graph cold verifier: ok" CHILD drop
+   PRE-OUT$ type
+   s" a fresh seeded image executes the imported bare public word" T-LABEL
+   SUBJECT$ COLD-COMPLETION$ WRITE-ALL
+   PROC-ARGV-RESET s" --load" ARG SUBJECT$ ARG
+   PROC-ENV-RESET
+   s" HABU_UNDER_TEST" >LEN IMAGE$ >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   IMAGE$ 0 s" 42" CHILD drop
+   PRE-OUT$ type cr
+   s" cold top-level completion selects seeded BUMP once without a location" T-LABEL
+   COLD-COMPLETION$ 2dup COMPLETION-AT COMPLETION-CHILD
+   s" warmed top-level completion makes the same selection" T-LABEL
+   WARM-COMPLETION$ 2dup COMPLETION-AT COMPLETION-CHILD ;
+
+: COLD-CONTROL$ ( -- ptr u8 n )
+   s" using PAYLOAD-NATIVE CPARSE MISSING ;using 4242 ." ;
+
+: WARM-CONTROL$ ( -- ptr u8 n )
+   s" : WARM-CPARSE ( -- ) PAYLOAD-NATIVE:CPARSE ; using PAYLOAD-NATIVE CPARSE MISSING ;using 4242 ." ;
+
+: RENDER-CONTROL$ ( -- ptr u8 n )
+   s" PAYLOAD-NATIVE:CRENDER : AFTER-RENDER ( -- n ) RENDERED ; AFTER-RENDER ." ;
+
+: DEFER-CONTROL$ ( -- ptr u8 n )
+   s" PAYLOAD-NATIVE:CDEFER MISSING 4242 ." ;
+
+: ALIAS-CONTROL$ ( -- ptr u8 n )
+   s" PAYLOAD-NATIVE:ALIAS-PARSE MISSING 4242 ." ;
+
+: GLOBAL-CONTROL$ ( -- ptr u8 n )
+   s" GPARSE MISSING 4242 ." ;
+
+: REPLACED-CONTROL$ ( -- ptr u8 n )
+   s" undefine GPARSE : GPARSE ( -- ) ; GPARSE MISSING" ;
+
+: LIVE-REPLACED-CONTROL$ ( -- ptr u8 n )
+   s" GPARSE MISSING" ;
+
+: CONTROL-RUN ( ptr u8 n n ptr u8 n -- )
+   {: source:ptr sourceu:n rc:n message:ptr messageu:n :}
+   SUBJECT$ source sourceu WRITE-ALL
+   PROC-ARGV-RESET s" --load" ARG SUBJECT$ ARG
+   PROC-ENV-RESET
+   s" HABU_UNDER_TEST" >LEN IMAGE$ >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   IMAGE$ rc message messageu CHILD drop ;
+
+: CONTROL-CASES ( -- )
+   s" the fresh image runs captured CPARSE and consumes its operand" T-LABEL
+   COLD-CONTROL$ 0 s" 4242" CONTROL-RUN
+   PRE-OUT$ type cr
+   s" a cold verifier defers the source consumed by captured CPARSE" T-LABEL
+   IMAGE$ COLD-CONTROL$ s" check-verify: deferred" s" " false VERIFY-CHILD
+   s" a qualified checked intake preserves the same control behavior" T-LABEL
+   IMAGE$ WARM-CONTROL$ s" check-verify: deferred" s" " false VERIFY-CHILD
+   s" a captured renderer defines a name absent from source" T-LABEL
+   RENDER-CONTROL$ 0 s" 42" CONTROL-RUN
+   IMAGE$ RENDER-CONTROL$ s" check-verify: deferred" s" " false VERIFY-CHILD
+   s" a captured deferred word leaves its following source to the run" T-LABEL
+   IMAGE$ DEFER-CONTROL$ s" check-verify: deferred" s" " false VERIFY-CHILD
+   s" an exported alias retains its captured parsing behavior" T-LABEL
+   ALIAS-CONTROL$ 0 s" 4242" CONTROL-RUN
+   IMAGE$ ALIAS-CONTROL$ s" check-verify: deferred" s" " false VERIFY-CHILD
+   s" a captured global parser consumes its operand before replacement" T-LABEL
+   GLOBAL-CONTROL$ 0 s" 4242" CONTROL-RUN
+   IMAGE$ GLOBAL-CONTROL$ s" check-verify: deferred" s" " false VERIFY-CHILD
+   s" a source replacement cannot inherit the captured parser control" T-LABEL
+   REPLACED-CONTROL$ 70 s" MISSING" CONTROL-RUN
+   IMAGE$ REPLACED-CONTROL$ s" check-verify: refused" s" E-UNDEFINED-TOP-LEVEL" false VERIFY-CHILD
+   s" a live replacement does not inherit captured parser control" T-LABEL
+   IMAGE$ LIVE-REPLACED-CONTROL$ s" check-verify: refused" s" E-UNDEFINED-TOP-LEVEL"
+   false s" test/aot-payload-native-replace-child.f" VERIFY-WITH ;
+
+
 : FRESH-NATIVE ( -- )
    s" imported definitions are absent from the original engine" T-LABEL
    CONSUMER-ARGS
@@ -195,6 +320,8 @@ variable SUBJECT-U
    s" a fresh boot executes imported code and compiles typed dependents" T-LABEL
    CONSUMER-ARGS
    IMAGE$ 0 s" native graph fresh consumer: ok" CHILD if
+      COMPLETION-CASES
+      CONTROL-CASES
       s" the seeded verifier renders global, private and public definitions" T-LABEL
       IMAGE$ VISIBILITY-CASE
       IMAGE$ PREVERIFY-CASES

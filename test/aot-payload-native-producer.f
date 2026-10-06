@@ -11,6 +11,9 @@ STRUCTURE pair 0
 
 : BUMP ( n -- n ) 1+ ;
 
+\ This checked public word consumes the next source token at top level.
+: CPARSE ( -- ) parse-name 2drop ;
+
 \ An unchecked native row is still useful ABI metadata after import.
 0 set-check
 : ABI-ONLY ( n -- n ) ;
@@ -31,10 +34,19 @@ TRUSTED: ASSERTED ( n -- n ) ;
 
 private
 variable QUOTE-SLOT
+: ALIAS-PARSE ( -- ) parse-name 2drop ;
 public
 : QUOTE-STORE ( [ R -- R ] -- ) QUOTE-SLOT xt! ;
+EXPORT ALIAS-PARSE
+\ This generated name is absent from the source the verifier scans.
+: CRENDER ( -- ) s" : RENDERED ( -- n ) 42 ;" evaluate-closed ;
+
+defer CDEFER ( -- )
 
 ;package
+
+\ A global captured parser can be retired and replaced in ordinary source.
+: GPARSE ( -- ) parse-name 2drop ;
 
 AOT-ARM:WINDOW-CLOSE
 

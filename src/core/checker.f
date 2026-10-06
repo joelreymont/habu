@@ -15114,7 +15114,8 @@ variable NORET-FMEND
 \ A scanned declaration has a visible effect record even though this engine
 \ has not loaded the subject. A cold published package primitive may have no
 \ user record. An axiom alone can describe a compile keyword (`>r`, `r>`, `r@`)
-\ for bodies without giving interpret or tick a binding.
+\ for bodies without giving interpret or tick a binding. A successful walk can
+\ also select a dictionary record before the lazy checker symbol exists.
 : TOP-BOUND-SYM ( ptr u8 n n -- n bool )
    {: a:ptr u:n sym:n :}
    sym 0 <> IF
@@ -15123,6 +15124,7 @@ variable NORET-FMEND
          a u 0 CK-WL-CLAIMS? IF sym RES-TRUE EXIT THEN
       THEN
    THEN
+   WALK-REC @ IF sym RES-TRUE EXIT THEN
    a u CHECKER-QUALIFIED? IF
       TOP-PUBLIC-BIND? IF sym RES-TRUE EXIT THEN
       a u OPEN-TAIL-GLOBAL? EXIT
@@ -15147,6 +15149,15 @@ variable NORET-FMEND
    THEN
    a u sym TOP-BOUND-SYM ;
 
+defer CK-AOT-REC-CONTROL ( ptr n -- n bool )
+
+\ An accepted cold dictionary selection can precede lazy effect intake. Keep
+\ symbolic facts authoritative for every selection the checker already knows.
+: TOP-CONTROL ( n -- n bool ) {: sym:n :}
+   sym 0 <> IF sym CTL-FLAGS-SYM sym DFER-FIND-SYM EXIT THEN
+   WALK-REC @ 0= IF 0 RES-FALSE EXIT THEN
+   BIND-REC @ CK-AOT-REC-CONTROL ;
+
 \ The source pre-pass's question about a top-level token (src/habu/verify-source.f
 \ RENDERS-MARK?): may the word the load runs for it (CHECKER-TOP-SYM) define
 \ words no source text spells, by one of the facts MASK names (CTL-RENDERS,
@@ -15155,8 +15166,10 @@ variable NORET-FMEND
 \ here, by the checker that owns the scope.
 : CHECKER-VERIFY-RENDERS ( ptr u8 n n -- bool )
    {: a:ptr u:n mask:n :}
-   a u CHECKER-TOP-SYM drop {: sym:n :}
-   sym CTL-FLAGS-SYM mask and 0 <>  sym DFER-FIND-SYM or
+   a u CHECKER-TOP-SYM IF
+      TOP-CONTROL {: flags:n deferred:bool :}
+      flags mask and 0 <> deferred or
+   ELSE drop RES-FALSE THEN
    dup IF CHECKER-UNSEEN-MARK THEN ;
 
 \ What running the word whose facts SYM holds does to the tokens after it; RUNS
@@ -15166,10 +15179,10 @@ variable NORET-FMEND
 \ the text it hands the loader is the only source its parsing words see, so
 \ only what that text defines is the run's, and the mark answers for that
 \ (CHECKER-VERIFY-RENDERS, UNSEEN-COVERS?).
-: TOP-RUNS ( n bool -- n )
-   {: sym:n runs:bool :}
+: TOP-RUNS ( n bool bool -- n )
+   {: flags:n deferred:bool runs:bool :}
    runs 0= IF -1 EXIT THEN
-   sym CTL-FLAGS-SYM CTL-PARSES and 0 <>  sym DFER-FIND-SYM or IF 2 EXIT THEN
+   flags CTL-PARSES and 0 <> deferred or IF 2 EXIT THEN
    -1 ;
 
 \ What the load does with a top-level token it runs, or ticks when RUNS is
@@ -15194,7 +15207,11 @@ variable NORET-FMEND
    a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
    why 0 <> IF a u why CHECKER-RESOLVE:RAISE THEN
    CHECKER-QBAD-TOK @ 0= IF
-      a u sym TOP-BOUND-SYM IF dup a u NAV-USE-NOW runs TOP-RUNS EXIT THEN drop
+      a u sym TOP-BOUND-SYM IF
+         dup TOP-CONTROL {: flags:n deferred:bool :}
+         dup a u NAV-USE-NOW drop
+         flags deferred runs TOP-RUNS EXIT
+      THEN drop
       a u UNSEEN-COVERS? IF 3 EXIT THEN
    THEN
    a USH-TOK-A !  u USH-TOK-U !
@@ -19977,9 +19994,8 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    WALK-REC @ IF BIND-REC @ EXIT THEN
    sym VIS-SYM-REC ;
 
-\ The engine word a top-level find reaches for A U when no symbol names it
-\ (TOP-BOUND-SYM): PKG's public record of PKG:TAIL, else the global record of
-\ the tail or of the bare name.
+\ The engine word a top-level find reaches when the walk selected no record:
+\ PKG's public record of PKG:TAIL, else the global record of the tail or bare name.
 : VIS-ENGINE-REC ( ptr u8 n -- ptr n )
    {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? 0= IF a u 0 SCOPE-WL-PROBE EXIT THEN
@@ -19998,6 +20014,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    a u sym TOP-BOUND-SYM {: s2:n ok:bool :}
    ok 0= IF 0 0 NULL-PTR RES-FALSE EXIT THEN
    s2 0 <> IF s2  s2 USIG-NEWEST-VISIBLE  s2 VIS-WALK-REC  RES-TRUE EXIT THEN
+   WALK-REC @ IF 0 0 BIND-REC @ RES-TRUE EXIT THEN
    a u VIS-ENGINE-REC {: rec:ptr :}
    rec NULL-PTR = IF 0 0 NULL-PTR RES-FALSE EXIT THEN
    0 0 rec RES-TRUE ;
@@ -22062,6 +22079,43 @@ ASIG-GRAPH-CHECK-INSTALL
    CK-GRAPH-RELEASE
    CK-GRAPH-THROW
    1 CK-AOT-STATE ! RES-TRUE ;
+
+\ Resolve a validated row's complete capture key in the live dictionary. The
+\ namespace supplies its explicit public or private wordlist; a global row
+\ uses wordlist zero. This probe publishes no checker symbol or effect.
+: CK-AOT-ROW-WID ( n -- n ) {: r:n :}
+   r 12 CK-AOT-FIELD {: vis:n :}
+   vis SYM-GLOBAL = IF 0 EXIT THEN
+   r 8 CK-AOT-FIELD CK-AOT-STR$ -1 SCOPE-WL-PROBE {: ns:ptr :}
+   ns NULL-PTR = IF -1 EXIT THEN
+   vis SYM-PUBLIC = IF ns @ ELSE ns CELL + @ THEN
+   dup 0= IF drop -1 THEN ;
+
+: CK-AOT-ROW-REC ( n -- ptr n ) {: r:n :}
+   r CK-AOT-ROW-WID {: wid:n :}
+   wid 0 < IF NULL-PTR EXIT THEN
+   r 0 CK-AOT-FIELD CK-AOT-STR$ wid SCOPE-WL-PROBE ;
+
+\ A zero-symbol top-level walk already selected REC. Give it only the controls
+\ of a captured row whose full key still resolves to that exact record. Source
+\ replacements have their own checker symbol and never ask this cold query.
+: CK-AOT-REC-CONTROL-READ ( ptr n -- n bool ) {: selected:ptr :}
+   selected NULL-PTR = IF 0 RES-FALSE EXIT THEN
+   CK-AOT-READY? 0= IF 0 RES-FALSE EXIT THEN
+   CK-AOT-ROWS 0 ?do
+      i CK-AOT-ROW-REC selected = IF
+         CK-AOT-SIG-POOL CK-AOT-S-STR CK-AOT-OFF +
+         i 4 CK-AOT-FIELD + EW.SYM @ {: control:n :}
+         control ASIG-GRAPH-DEFER invert and
+         control ASIG-GRAPH-DEFER and 0 <>
+         unloop EXIT
+      THEN
+   loop
+   0 RES-FALSE ;
+
+: CK-AOT-REC-CONTROL-INSTALL ( -- )
+   [: CK-AOT-REC-CONTROL-READ ;] is CK-AOT-REC-CONTROL ;
+CK-AOT-REC-CONTROL-INSTALL
 
 \ The registry the signatures resolve against. A signature naming a
 \ window-declared family would otherwise be refused as a bad stored signature
