@@ -1616,12 +1616,12 @@ variable LONG-J
    RESET ;
 
 \ ---- a source list lints each listed file for the checked boundary ----------
-\ The list runs one `required` line per listed file, so the boundary lint reads
-\ the listed files: one that switches the checker off and then defines is
-\ refused in every mode at its own line and column, as the single file is. The
-\ switch carries across the list: a definition in a later file is refused at
-\ its own line and column. An engine source beside a clean subject is not
-\ linted, as the run loads nothing from it: the strict lint refuses
+\ The list runs one `script-required` line per listed file, so the boundary
+\ lint reads the listed files: one that switches the checker off and then
+\ defines is refused in every mode at its own line and column, as the single
+\ file is. The switch carries across the list: a definition in a later file is
+\ refused at its own line and column. An engine source beside a clean subject
+\ is not linted, as the run loads nothing from it: the strict lint refuses
 \ src/habu/prims.f's `set-check`.
 : BOUNDARY-OFF$ ( -- ptr u8 n )
    SB-RESET
@@ -6150,10 +6150,22 @@ variable LC-CANON-U
    s" lc-use.f" LC-AT LC-ALL s" load-context: relative require" LC-EXPECT-CLEAN
    s" lc-use-abs.f" LC-AT LC-ALL s" load-context: absolute require" LC-EXPECT-CLEAN ;
 
+\ A file below the working directory, named or listed, is an entry: its bare
+\ require resolves against its own directory, as under `bin/hb --load`. A plain
+\ list loads it in the verifier child and --all-errors in check.f's own
+\ process, so both list modes are run.
 : LC-ENTRY-ROOT-CASE ( -- )
    LC-ARGV-ALL
    s" sub/lc-use.f" CHECK-ARG+
-   LC-ROOT$ LC-CAPTURE s" load-context: entry below the working directory" LC-EXPECT-CLEAN ;
+   LC-ROOT$ LC-CAPTURE s" load-context: entry below the working directory" LC-EXPECT-CLEAN
+   CHECK-ARGV-START
+   s" --source-list" CHECK-ARG+
+   s" sub/lc-use.f" CHECK-ARG+
+   LC-ROOT$ LC-CAPTURE s" load-context: listed entry below the working directory" LC-EXPECT-CLEAN
+   LC-ARGV-ALL
+   s" --source-list" CHECK-ARG+
+   s" sub/lc-use.f" CHECK-ARG+
+   LC-ROOT$ LC-CAPTURE s" load-context: --all-errors's listed entry below the working directory" LC-EXPECT-CLEAN ;
 
 \ The checker spawns the engine lib/engine-candidate.f names, here the one
 \ running this test, never the working directory's bin/hb: in LC-ROOT that
