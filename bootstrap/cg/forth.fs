@@ -2091,7 +2091,7 @@ HB-TARGET-LINUX? [IF]
    A C-NE CSET,  A SP A SUB,  A G-PUSH ;
 
 \ Stage 0 has no trusted-tick query, even when its internal-word tick gate runs.
-: BTICKORDER ( -- )  A 0 MOVZ,  A G-PUSH,  A G-PUSH ;
+: BTICKORDER ( -- )  A 0 MOVZ,  A G-PUSH  A G-PUSH ;
 
 \ SEAL-CAPTURE (TFAM 2b-iii): freeze the seal-time ndict truncation watermark
 \ (xref.f baseline token + the cold-prefix assembler's token at the true
