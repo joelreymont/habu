@@ -190,6 +190,9 @@
 \   ...................................................... hover-dependency-open
 \ - a declaring token not answered with its definition, over it
 \   ...................................................... hover-definition
+\ - a use of either converter a DEFTYPE declares, both at its name's token,
+\   in either case or package-qualified, not answered with that converter's
+\   own definition ........................................... hover-deftype
 \ - a comment, the space before a use or a stack comment answered other
 \   than null ................................................ hover-none
 \ - a client whose hovers take plain text answered other than with the
@@ -2544,6 +2547,43 @@ variable LENGTH-N                        \ the length of its directory's name
    2 HV-ONE-MD s" 3" s" markdown" 1 2 8 HOVERED
    2 HV-ONE-MD s" 4" s" markdown" 1 2 8 HOVERED ;
 
+\ hover-cvt.f, in the tree, never on disk: DEFTYPE CVT-T, public in package
+\ HV-P, whose converters >CVT-T and CVT-T>N the check states at CVT-T's token;
+\ a use of each in upper case and in lower case, and qualified ones outside HV-P.
+: HOVER-CVT-PATH ( -- ptr u8 n )  s" hover-cvt.f" IN-TREE ;
+: TEXT-HOVER-CVT ( -- ptr u8 n )
+   s\" require lib/type/deftype.f\npackage HV-P\npublic\nDEFTYPE CVT-T\n: HV-CVT ( -- n ) 5 >CVT-T CVT-T>N >cvt-t cvt-t>n ;\n;package\n: HV-Q ( -- n ) 5 HV-P:>CVT-T HV-P:CVT-T>N ;\n" ;
+
+\ The lines of CVT-T's converter W, of effect E, as Markdown.
+: CVT-MD ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n e:ptr eu:n :}
+   TXT-B CLEAR s\" ```habu\nDEFTYPE " HV+ w wu HV+
+   s"  ( " HV+ e eu HV+ s\"  )\n\\ package hv-p, hover-cvt.f:4\n```" HV+ ;
+
+\ The use of each converter, in either case and qualified, answered with its
+\ own definition, over the use: the two share one token, so the token alone
+\ tells neither. A qualified use's whole spelling is neither converter's word,
+\ so the server compares its tail, the bytes after its colon.
+: HOVER-DEFTYPE-TURNS ( -- )
+   MARKDOWN-CLIENT
+   HOVER-CVT-PATH TEXT-HOVER-CVT 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-CVT HOVER-CVT-PATH 1 s" verified" LISTED
+   s" 3" HOVER-CVT-PATH 4 20 HOVER-ASK
+   s" 4" HOVER-CVT-PATH 4 27 HOVER-ASK
+   s" 5" HOVER-CVT-PATH 4 35 HOVER-ASK
+   s" 6" HOVER-CVT-PATH 4 42 HOVER-ASK
+   s" 7" HOVER-CVT-PATH 6 18 HOVER-ASK
+   s" 8" HOVER-CVT-PATH 6 30 HOVER-ASK
+   SAY
+   s" >CVT-T" s" n -- cvt-t" CVT-MD s" 3" s" markdown" 4 20 26 HOVERED
+   s" CVT-T>N" s" cvt-t -- n" CVT-MD s" 4" s" markdown" 4 27 34 HOVERED
+   s" >CVT-T" s" n -- cvt-t" CVT-MD s" 5" s" markdown" 4 35 41 HOVERED
+   s" CVT-T>N" s" cvt-t -- n" CVT-MD s" 6" s" markdown" 4 42 49 HOVERED
+   s" >CVT-T" s" n -- cvt-t" CVT-MD s" 7" s" markdown" 6 18 29 HOVERED
+   s" CVT-T>N" s" cvt-t -- n" CVT-MD s" 8" s" markdown" 6 30 42 HOVERED ;
+
 \ A comment, the space before a use and a stack comment: null.
 : HOVER-NONE-TURNS ( -- )
    MARKDOWN-CLIENT
@@ -2599,6 +2639,7 @@ variable LENGTH-N                        \ the length of its directory's name
    s" hover-dependency" [: HOVER-DEP-TURNS ;] TALK
    s" hover-dependency-open" [: HOVER-OPEN-DEP-TURNS ;] TALK
    s" hover-definition" [: HOVER-DEF-TURNS ;] TALK
+   s" hover-deftype" [: HOVER-DEFTYPE-TURNS ;] TALK
    s" hover-none" [: HOVER-NONE-TURNS ;] TALK
    s" hover-plaintext" [: HOVER-PLAIN-TURNS ;] TALK
    s" hover-not-open" [: HOVER-NOT-OPEN-TURNS ;] TALK

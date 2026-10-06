@@ -629,6 +629,65 @@ public
    repeat
    drop OPTION:NONE ;
 
+private
+
+\ The first record of group G whose token starts and ends at these bytes and
+\ whose word is W, letters compared without case as Habu compares names, if
+\ one is.
+: GROUP-REC-WORD ( n n n ptr u8 n -- option<n> )
+   {: g:n ts:n te:n w:ptr wu:n :}
+   g G-FIRST GROUP@
+   begin dup 0 >= while
+      dup REC-BYTES te = swap ts = and if
+         dup REC-WORD$ w wu STR=CI if OPTION:SOME exit then
+      then
+      R-NEXT REC@
+   repeat
+   drop OPTION:NONE ;
+
+\ The record of group G whose token starts and ends at these bytes, if exactly
+\ one does.
+: GROUP-REC-SOLE ( n n n -- option<n> )
+   {: g:n ts:n te:n :}
+   0 -1 g G-FIRST GROUP@
+   begin dup 0 >= while
+      dup REC-BYTES te = swap ts = and if nip swap 1+ swap dup then
+      R-NEXT REC@
+   repeat
+   drop swap 1 = if OPTION:SOME else drop OPTION:NONE then ;
+
+\ When no record of group G at these bytes is of word W: the one of W's tail,
+\ its bytes after the colon, when W is qualified as CHECKER-QUALIFIED? reads a
+\ name, by one non-edge colon; else the one record there, if exactly one is.
+\ SPLIT-NEXT's flag says only that its start was valid: the position it
+\ returns lies past W's end when no colon follows that start.
+: GROUP-REC-TAIL ( n n n ptr u8 n -- option<n> )
+   {: g:n ts:n te:n w:ptr wu:n :}
+   w wu [char] : 0 SPLIT-NEXT drop nip nip
+   {: at:n :}
+   w wu [char] : at SPLIT-NEXT drop nip nip
+   {: at2:n :}
+   at 1 >  at wu < and  at2 wu > and 0= if g ts te GROUP-REC-SOLE exit then
+   g ts te w at + wu at - GROUP-REC-WORD MATCH option
+      some OF OPTION:SOME ENDOF
+      none OF g ts te GROUP-REC-SOLE ENDOF
+   ;MATCH ;
+
+public
+
+\ The record of group G whose token starts and ends at these bytes and whose
+\ word is W, letters compared without case as Habu compares names; else, for a
+\ W qualified by one non-edge colon, the one whose word is W's tail; else the
+\ one record whose token does, if exactly one does. Records can share a token,
+\ as a DEFTYPE's two converters share its name's, so with several there and
+\ none of them W or its tail, none answers.
+: GROUP-REC-NAMED ( n n n ptr u8 n -- option<n> )
+   {: g:n ts:n te:n w:ptr wu:n :}
+   g ts te w wu GROUP-REC-WORD MATCH option
+      some OF OPTION:SOME ENDOF
+      none OF g ts te w wu GROUP-REC-TAIL ENDOF
+   ;MATCH ;
+
 \ The first record of group G whose token's bytes, from its start to before
 \ its end, hold this byte, if one does.
 : GROUP-REC-HOLDING ( n n -- option<n> )

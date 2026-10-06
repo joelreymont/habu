@@ -4,23 +4,26 @@
 \
 \ ANSWER writes the result of textDocument/hover at a byte of an open
 \ document's text. At a byte a use of the document's last completed check
-\ holds (LSP-DEFS:DEFS-USE-AT), it shows the declaration the use binds to: the
-\ record go to definition gives the Location of (tools/lsp-definition.f), else,
-\ when no definition line states that declaration, the word as the use writes
-\ it and the file the declaration is in. At any other byte that the token of a
-\ definition the check retained in the document's own file holds, while the
-\ check's positions are of the document's text (LSP-DEFS:DEFS-OWN-GROUP), it
-\ shows the first such definition. Its range is the use's or the token's. Any
-\ other byte, and a document whose last check did not complete or that has
-\ none, answer null.
+\ holds (LSP-DEFS:DEFS-USE-AT), it shows the declaration the use binds to: of
+\ the records at the token go to definition gives the Location of
+\ (tools/lsp-definition.f), the one of the word as the use writes it, or of
+\ its tail when the use qualifies it, else the only one
+\ (LSP-DEFS:GROUP-REC-NAMED); else, when no definition line states that
+\ declaration, or several share its token and none is of that word or its
+\ tail, the word as the use writes it and the file the declaration is in. At
+\ any other byte that the token of a definition the check retained in the
+\ document's own file holds, while the check's positions are of the document's
+\ text (LSP-DEFS:DEFS-OWN-GROUP), it shows the first such definition. Its range is
+\ the use's or the token's. Any other byte, and a document whose last check
+\ did not complete or that has none, answer null.
 \
 \ A definition shows as two lines of Habu: the statement token that declared
 \ it, its word and, in parentheses, its declared effect when it declared one,
 \ then a comment naming the package it is declared in, unless it is global,
 \ and where it is: its file, relative to the server's working directory when
 \ it lies inside it, else its path, and the 1-based line of its token. A use
-\ no definition line states shows its word, then its declaration's file. As
-\ Markdown, the lines are a fenced habu block; as plain text, just the lines.
+\ with no record shows its word, then its declaration's file. As Markdown,
+\ the lines are a fenced habu block; as plain text, just the lines.
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer being written belongs to the
 \ server's one task.
@@ -70,15 +73,20 @@ variable TARGET-G                        \ and the group of the record it shows
    g GROUP-PATH$ WHERE+ s" :" V+
    r REC-RANGE 2drop drop 1+ SB-RESET FMT:SB-INT SB$ V+ ;
 
-\ The lines of use U of the text T when no definition line states its
-\ declaration: the bytes the use spans, held to the text, then its
-\ declaration's file.
-: USE-LINES ( ptr u8 n n -- )
+\ The word as use U of the text T writes it: the bytes the use spans, held to
+\ the text.
+: USE-WORD$ ( ptr u8 n n -- ptr u8 n )
    {: t:ptr tu:n u:n :}
    u USE-BYTES {: from:n to:n :}
    from 0 max tu min {: a:n :}
    to a max tu min {: b:n :}
-   t a + b a - V+
+   t a + b a - ;
+
+\ The lines of use U of the text T when TARGET-REC gives none: the word as the
+\ use writes it, then its declaration's file.
+: USE-LINES ( ptr u8 n n -- )
+   {: t:ptr tu:n u:n :}
+   t tu u USE-WORD$ V+
    NL s" \ " V+ u USE-GROUP GROUP-PATH$ WHERE+ ;
 
 \ The hover object up to its range: its contents, the lines VALUE-B holds,
@@ -93,18 +101,19 @@ variable TARGET-G                        \ and the group of the record it shows
    COMMA s" value" VALUE$ FIELD-S
    OBJECT-END COMMA ;
 
-\ The record of the declaration use U binds to, if the use's group holds it,
-\ with that group in TARGET-G.
-: TARGET-REC ( n -- option<n> )
-   {: u:n :}
+\ The record of the declaration use U of the text T binds to, by the word as
+\ the use writes it, if the use's group holds one, with that group in
+\ TARGET-G.
+: TARGET-REC ( ptr u8 n n -- option<n> )
+   {: t:ptr tu:n u:n :}
    u USE-GROUP dup TARGET-G !
-   u USE-TARGET GROUP-REC-AT ;
+   u USE-TARGET t tu u USE-WORD$ GROUP-REC-NAMED ;
 
 \ The hover of use U of the text T, positions counting in it.
 : USE-HOVER ( ptr u8 n n bool -- )
    {: t:ptr tu:n u:n md:bool :}
    md OPEN
-   u TARGET-REC MATCH option
+   t tu u TARGET-REC MATCH option
       some OF TARGET-G @ swap RECORD-LINES ENDOF
       none OF t tu u USE-LINES ENDOF
    ;MATCH
