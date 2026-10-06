@@ -69,7 +69,7 @@
 \ name it LABEL. SUBJECT is check.f's own copy of the text, which nothing holds.
 \ It answers
 \
-\    check-verify: verified | deferred | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
+\    check-verify: verified | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \
 \ RC is the code the composition stopped with, 70 for a definition or top-level
 \ token the checker refused by the throw that rendered its packet, BYTE where
@@ -449,11 +449,10 @@ variable SEEN-N
 : STOP-CODE ( n -- n )
    dup DEF-STOPPED @ = if drop REFUSED-RC then ;
 
+\ This pre-pass leaves deferred source to the run; only VERIFY-CLOSURE warns.
 : PREVERIFY ( -- )
-   VERIFY:REPORT-DEFERRALS
    [: PREVERIFY-CUR ;] SCOPED {: rc:n :}
    rc 0<> if rc STOP-CODE STOP-RESULT exit then
-   VERIFY:DEFERRED? if s" deferred" RESULT exit then
    s" verified" RESULT ;
 
 public
