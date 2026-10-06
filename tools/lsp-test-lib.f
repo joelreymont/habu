@@ -67,6 +67,8 @@
 \   a value that is no number, a line ended by LF alone, a line over LINE-CAP,
 \   a length over the maximum, end of input in a header and in a body; each is
 \   its own conversation ........................................... fault-*
+\ - a request read before a framing fault not answered before the fault
+\   stops the server ..................................... fault-after-request
 \ - a 700 KB body, written in many pieces, refused, cut or its document lost:
 \   its last line's diagnostic proves the whole text checked ...... big-frame
 \ - a closed stdout ending the server by SIGPIPE instead of exit 1 and the
@@ -217,6 +219,21 @@
 \   a qualified spelling a qualified prefix offers there, or with another
 \   detail ................................................ completion-qualified
 \
+\ Cancellation
+\ - a request with a cancel of it read behind it answered other than -32800,
+\   or its work done: two completions and a cancel of the first publish
+\   twice .................................................. cancel-completion
+\ - a hover cancelled by its string id spelt another way served
+\   ............................................................. cancel-hover
+\ - a completion with a change of its document read behind it answered other
+\   than -32801, or the change not applied and checked after it
+\   ......................................................... content-modified
+\ - a cancel of an id answered, never sent, of another kind or of a message
+\   that is not a request answered, or cancelling a request ..... cancel-stray
+\ - a request held when shutdown is read not answered first, a cancel of it
+\   read past shutdown not counted, or a request after shutdown answered other
+\   than -32600 .............................................. cancel-shutdown
+\
 \ Not proven here: a packet line that is not JSON, that names no file, or that
 \ names its file by a relative path, goes to stderr, but the checker writes
 \ none of them - every packet names its file, and the verifier names every
@@ -271,13 +288,13 @@ using BUF
 \ dependency-shared, took 660 to 1111 ms in single runs at a load average of
 \ about 140, when big-frame took up to 1289 ms. CONVERSATION-MS is ten times
 \ its busiest measurement and CHECKED-MS about six times big-frame's 1230 to
-\ 1289 ms, and neither is larger, so that all 25 runs bounded by the one (the
-\ 22 conversations CONVERSE runs, answers-at-once, stdout-closed and
-\ TEST-EXIT-TIMEOUT's child) and the 19 conversations bounded by the other
-\ could reach their bounds and still end inside the row's 360 s, each failing
-\ by name: a server that spins to its bound spends that much of the row's CPU
-\ budget (test/suite-budget.f CPU-MS), and one that blocks spends none and
-\ ends long before the row's hang guard (ROW-MS).
+\ 1289 ms, and neither is larger. The one bounds 27 runs (the 24 conversations
+\ CONVERSE runs, answers-at-once, stdout-closed and TEST-EXIT-TIMEOUT's child)
+\ and the other 67 conversations. A server that blocks spends none of the
+\ row's CPU budget (test/suite-budget.f CPU-MS), so all 94 could reach their
+\ bounds, each failing by name, well inside the row's hang guard (ROW-MS). One
+\ that spins to its bound spends that much of the budget's 360 s, so at most
+\ 45 such runs fail by name before the budget ends the row.
 8000 constant CONVERSATION-MS
 8000 constant CHECKED-MS
 
@@ -1111,7 +1128,14 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    s" fault-over-maximum" CONVERSATION
    s" Content-Length: " IN+ LSP:MAX-BODY 1+ INT$ IN+ s\" \r\n\r\n" IN+
    INITIALIZE
-   E-CONTENT-LENGTH-MALFORMED FAULTED ;
+   E-CONTENT-LENGTH-MALFORMED FAULTED
+   s" fault-after-request" CONVERSATION
+   INITIALIZE
+   s\" Content-Length: abc\r\n\r\n" IN+
+   E-CONTENT-LENGTH-MALFORMED STOPPED
+   1 CONVERSE
+   CAPABILITIES
+   ENDS ;
 
 : TEST-TRUNCATED-FRAMES ( -- )
    s" fault-eof-in-header" CONVERSATION
@@ -2808,6 +2832,117 @@ variable LENGTH-N                        \ the length of its directory's name
    s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
    ITEMS-END ;
 
+\ ---- cancellation ------------------------------------------------------------
+
+\ A cancel of the request with this id's JSON text.
+: CANCELS ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   PAR-B CLEAR
+   s\" {\"id\":" PAR+ i iu PAR+ s" }" PAR+
+   s" $/cancelRequest" PAR$ TELL ;
+
+\ Two completions and a cancel of the first, written together: the first is
+\ answered -32800 and runs no check, so the document's list is published once,
+\ by the second's check, before its answer.
+: CANCEL-CMP-TURNS ( -- )
+   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   INITIALIZE
+   CMP-A-PATH TEXT-CMP-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
+   s" 4" CMP-A-PATH 3 45 COMPLETION-ASK
+   s" 3" CANCELS
+   SAY
+   HEAR s" 3" -32800 REFUSED
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 4" ITEMS-START
+   s" swap" s" " ITEM+
+   ITEMS-END ;
+
+\ A hover whose id is a string and a cancel naming that string spelt another
+\ way, written together: -32800, the id echoed as it came.
+: CANCEL-HOVER-TURNS ( -- )
+   MARKDOWN-CLIENT
+   HOVER-A-PATH TEXT-HOVER-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
+   s\" \"h\\/3\"" HOVER-A-PATH 4 18 HOVER-ASK
+   s\" \"h/3\"" CANCELS
+   SAY
+   HEAR s\" \"h\\/3\"" -32800 REFUSED ;
+
+\ A completion and then a change of its document, written together: the
+\ completion asked about the text the change replaces, so it is answered
+\ -32801 and runs no check; the change is applied after it and its text is
+\ checked.
+: MODIFIED-TURNS ( -- )
+   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   INITIALIZE
+   CMP-A-PATH TEXT-CMP-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
+   CMP-A-PATH TEXT-CMP-A-NEW 2 CHANGES
+   SAY
+   HEAR s" 3" -32801 REFUSED
+   TEXT-CMP-A-NEW CMP-A-PATH 2 s" verified" LISTED ;
+
+\ Cancels read behind request 4 that name no request held: request 3's id,
+\ answered the turn before, an id never sent, the string "4", and the id of an
+\ invalid message, which is no request. None is answered, request 4 and the
+\ invalid message are answered as they would be, and a cancel of request 5
+\ behind it still counts: the server goes on.
+: STRAY-TURNS ( -- )
+   INITIALIZE
+   s" 3" s" habu/unknown" ASK
+   SAY
+   HEAR CAPABILITIES
+   HEAR s" 3" -32601 REFUSED
+   s" 4" s" habu/unknown" ASK
+   s" 3" CANCELS
+   s" 9" CANCELS
+   s\" \"4\"" CANCELS
+   s\" {\"jsonrpc\":\"1.0\",\"id\":6,\"method\":\"habu/unknown\"}" FRAMED
+   s" 6" CANCELS
+   s" 5" s" habu/unknown" ASK
+   s" 5" CANCELS
+   SAY
+   HEAR s" 4" -32601 REFUSED
+   HEAR s" 6" -32600 REFUSED
+   HEAR s" 5" -32800 REFUSED ;
+
+\ A request, shutdown, a cancel of the request, a request after shutdown and
+\ a cancel of it, and exit, read together: the held request is answered
+\ before shutdown, -32800, its cancel counting though read past shutdown;
+\ shutdown is answered null, the request after it -32600, since a server shut
+\ down takes no cancel, and exit after shutdown exits 0.
+: TEST-CANCEL-SHUTDOWN ( -- )
+   s" cancel-shutdown" CONVERSATION
+   INITIALIZE
+   s" 3" s" habu/unknown" ASK
+   SHUTDOWN
+   s" 3" CANCELS
+   s" 4" s" habu/unknown" ASK
+   s" 4" CANCELS
+   EXIT-NOTE
+   0 CONVERSE
+   CAPABILITIES
+   s" 3" -32800 REFUSED
+   s" 2" NULL-RESULT
+   s" 4" -32600 REFUSED
+   ENDS ;
+
+: TEST-CANCELS ( -- )
+   TEST-CANCEL-SHUTDOWN
+   s" cancel-completion" [: CANCEL-CMP-TURNS ;] TALK
+   s" cancel-hover" [: CANCEL-HOVER-TURNS ;] TALK
+   s" content-modified" [: MODIFIED-TURNS ;] TALK
+   s" cancel-stray" [: STRAY-TURNS ;] TALK ;
+
 : TEST-COMPLETIONS ( -- )
    s" completion" [: CMP-TURNS ;] TALK
    s" completion-not-open" [: CMP-NOT-OPEN-TURNS ;] TALK
@@ -2981,6 +3116,7 @@ public
    TEST-DEFINITIONS
    TEST-HOVERS
    TEST-COMPLETIONS
+   TEST-CANCELS
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
 
