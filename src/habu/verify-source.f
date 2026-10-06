@@ -1368,6 +1368,16 @@ variable WRAP-ROW                             \ the definer row the last call na
 \ cannot prove it will not execute at compile time.
 DYNAMIC-BUFFER TICK-QUAL u8
 
+\ A package's word as a caller outside it spells it, PKG:TAIL, copied into
+\ TICK-QUAL, so it outlives the borrowed bytes of a symbol's identity.
+: QUAL-SPELLING ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: pkg:ptr pkgu:n tail:ptr tailu:n :}
+   pkgu tailu + 1+ TICK-QUAL-RESERVE
+   pkg 0 TICK-QUAL pkgu BYTE-COPY
+   $3A 0 TICK-QUAL pkgu + c!
+   tail 0 TICK-QUAL pkgu 1+ + tailu BYTE-COPY
+   0 TICK-QUAL pkgu tailu + 1+ ;
+
 : TICK-RESIDENT-IMM? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u tok-imm? 0<> IF true EXIT THEN
@@ -1375,11 +1385,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
    SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
    vis 1 = IF true EXIT THEN
    pkgu 0= IF false EXIT THEN
-   pkgu tailu + 1+ TICK-QUAL-RESERVE
-   pkg 0 TICK-QUAL pkgu BYTE-COPY
-   $3A 0 TICK-QUAL pkgu + c!
-   tail 0 TICK-QUAL pkgu 1+ + tailu BYTE-COPY
-   0 TICK-QUAL pkgu tailu + 1+ tok-imm? 0<> ;
+   pkg pkgu tail tailu QUAL-SPELLING tok-imm? 0<> ;
 
 \ The created effect is the clause's declaration, recorded unless the definer's
 \ body or its clause was refused. One deferred to the run keeps it, as a
@@ -1492,6 +1498,13 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 \ accepts is a row the engine accepts.
 TRUSTED: GENERATES-SIGNATURE ( ptr u8 n ptr u8 n bool -- n n )
    CHECKER-GENERATES ;
+
+\ A `parses:` row's checks, on the same boundary for the same reason:
+\ UNSAFE-TOK? rejects `checker-parses-row` inside a checked body. The refusals
+\ are the engine's own (checker.f CHECKER-PARSES-ROW), so a row this pre-pass
+\ keeps is a row the load accepts.
+TRUSTED: PARSES-CHECK ( ptr u8 n ptr u8 n ptr u8 n bool -- n n n )
+   CHECKER-PARSES-ROW ;
 
 : CAST-TRUST ( -- bool )
    DTC-NAME$ DTC-SIG$ DECL-SIGNATURE ;
@@ -2198,6 +2211,146 @@ PTR-VARIABLE STG-START
    STR-LAST-A @ STR-LAST-U @
    TRUST-SIGNATURE ;
 
+\ ---- parses: rows -----------------------------------------------------------
+\ A ROW BOUNDS WHAT A WORD THAT READS THE SOURCE TAKES: `parses: W n` n raw
+\ tokens, `parses-through: W n ( E1 E2 )` n and then every token through the
+\ first one equal to a listed terminator, byte for byte, inclusive. The row is
+\ trusted, as parse-imm's is, and never compared with W's body: the call is
+\ still the run's (W-CHECK-DEFERRED at it), but the scan knows where it ends
+\ and goes on after it. Only this scan keeps rows, for the source it checks;
+\ the load checks them and keeps nothing (src/core/cell-effects.f parses:).
+\ A row is keyed by the checker owner whose scope selected it and by the
+\ binding the top-level find selects for W - its symbol and its visible
+\ record's offset + 1 (CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF) - never by
+\ spelling or symbol alone: a new definition of W, an `undefine` or another
+\ owner selects another binding, which no row names. A later row for the same
+\ binding is appended and wins; the rows are counted in a checker cell the
+\ rollback frame rewinds (src/core/checker.f VERIFY-PARSES-N), as the learned
+\ definers' are, so a rewound scope releases its rows. A row's terminators lie
+\ in PRS-TERMS, each followed by a blank, past the bytes of the rows before it,
+\ copied there as the row is read, before its source can be released; the
+\ bytes past the last live row's are free. Growth may move PRS-TERMS.
+DYNAMIC-BUFFER PRS-OWNER n                 \ the checker owner whose scope keyed it
+DYNAMIC-BUFFER PRS-SYM n                   \ the binding's symbol
+DYNAMIC-BUFFER PRS-EFF n                   \ and its visible record's offset + 1
+DYNAMIC-BUFFER PRS-COUNT n                 \ the tokens it reads first
+DYNAMIC-BUFFER PRS-AT n                    \ where its terminators start in PRS-TERMS
+DYNAMIC-BUFFER PRS-LEN n                   \ their bytes; 0 for a `parses:` row
+DYNAMIC-BUFFER PRS-TERMS u8
+
+: PRS-OWNER-BASE ( -- n )
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ BYTE-VIEW NULL-PTR BYTE-VIEW - ;
+
+CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
+\ The binding the load's top-level find selects for a token, asked quietly of
+\ the checker: its symbol, its visible record's offset + 1 and its control
+\ word, all 0 when the load refuses the token or nothing live binds it.
+: TOP-BINDING ( ptr u8 n -- n n n )
+   CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF OWNER-XT BINDING-ACTION execute ;
+
+\ The id of the engine word a control word names (checker.f CTL-INTRINSIC).
+: BINDING-ID ( n -- n )
+   CHECKER-OWNER-ABI:BINDING-ID-MASK and CHECKER-OWNER-ABI:BINDING-ID-SHIFT rshift ;
+
+\ Where the next row's terminators go: past the last ones a live row holds.
+: PRS-TERMS-END ( -- n )
+   0 VERIFY-PARSES-N @
+   BEGIN dup 0 > WHILE
+      1 -
+      dup PRS-AT @ over PRS-LEN @ +  rot max swap
+   REPEAT drop ;
+
+\ The newest row for a binding of this owner + 1, 0 when none.
+: PRS-FIND ( n n -- n )
+   {: sym:n eff1:n :}
+   sym 0=  eff1 0=  or IF 0 EXIT THEN
+   PRS-OWNER-BASE {: own:n :}
+   VERIFY-PARSES-N @ BEGIN dup 0 > WHILE
+      1 -
+      dup PRS-SYM @ sym =  over PRS-EFF @ eff1 = and  over PRS-OWNER @ own = and
+      IF 1 + EXIT THEN
+   REPEAT ;
+
+\ One terminator, copied after the LEN bytes this row has kept so far, with
+\ the blank that ends it; the bytes kept.
+: PRS-TERM-ADD ( ptr u8 n n -- n )
+   {: a:ptr u:n len:n :}
+   PRS-TERMS-END len + {: at:n :}
+   at u + 1 + PRS-TERMS-RESERVE
+   a  at PRS-TERMS  u BYTE-COPY
+   32  at u + PRS-TERMS  c!
+   len u + 1 + ;
+
+\ One token of a row's list: kept when it is a terminator. The bytes kept, and
+\ what the token is: 0 a terminator, 1 the closing `)`, 2 the source's end.
+: PRS-LIST-TOKEN ( n -- n n )
+   {: len:n :}
+   NEXT-RAW {: a:ptr u:n :}
+   u 0= IF len 2 EXIT THEN
+   a u s" )" CORE-STR= IF len 1 EXIT THEN
+   a u len PRS-TERM-ADD 0 ;
+
+\ The list as the engine word reads it (checker.f PARSES-LIST-LOAD): `(`, then
+\ tokens through a standalone `)`, at least one before it. The bytes kept, and
+\ true when it is malformed.
+: PRS-LIST-READ ( -- n bool )
+   NEXT-RAW s" (" CORE-STR= 0= IF 0 0 0= EXIT THEN
+   0 BEGIN PRS-LIST-TOKEN dup 0= WHILE drop REPEAT
+   {: len:n end:n :}
+   len  end 2 =  len 0=  or ;
+
+\ `parses: W n` and `parses-through: W n ( E1 E2 )`, known by the identity of
+\ the word the token selects (BINDING-ID), never by its spelling. The row is
+\ read whole as the engine word reads it (cell-effects.f parses:), checked by
+\ the engine's own checks, and kept when it bounds W. The scan knows every
+\ token the declarer reads, so nothing of it is the run's.
+: PARSES-ROW ( ptr u8 n bool -- )
+   {: ka:ptr ku:n through:bool :}
+   NEXT-RAW {: ta:ptr tu:n :}
+   NEXT-RAW {: ca:ptr cu:n :}
+   through IF PRS-LIST-READ ELSE 0 0 0= 0= THEN {: len:n bad:bool :}
+   ka ku ta tu ca cu bad PARSES-CHECK {: sym:n eff1:n count:n :}
+   sym 0= IF EXIT THEN
+   VERIFY-PARSES-N @ {: row:n :}
+   row 1 + PRS-OWNER-RESERVE  row 1 + PRS-SYM-RESERVE  row 1 + PRS-EFF-RESERVE
+   row 1 + PRS-COUNT-RESERVE  row 1 + PRS-AT-RESERVE  row 1 + PRS-LEN-RESERVE
+   PRS-TERMS-END row PRS-AT !
+   PRS-OWNER-BASE row PRS-OWNER !  sym row PRS-SYM !  eff1 row PRS-EFF !
+   count row PRS-COUNT !  len row PRS-LEN !
+   row 1 + VERIFY-PARSES-N ! ;
+
+\ From byte I of PRS-TERMS to END: the blank that ends the terminator at I.
+: PRS-TERM-END ( n n -- n )
+   {: end:n :}
+   BEGIN dup end < IF dup PRS-TERMS c@ 32 <> ELSE 0 0= 0= THEN WHILE 1 + REPEAT ;
+
+\ Is the token the terminator from byte I to J?
+: PRS-TERM-AT? ( ptr u8 n n n -- bool )
+   {: a:ptr u:n i:n j:n :}
+   j i - u <> IF 0 0= 0= EXIT THEN
+   a u  i PRS-TERMS u  CORE-STR= ;
+
+\ Is the token one of the row's terminators?
+: PRS-TERM? ( ptr u8 n n -- bool )
+   {: a:ptr u:n row:n :}
+   row PRS-AT @ row PRS-LEN @ + {: end:n :}
+   row PRS-AT @
+   BEGIN dup end < WHILE
+      dup end PRS-TERM-END
+      2dup a u 2swap PRS-TERM-AT? IF 2drop 0 0= EXIT THEN
+      nip 1 +
+   REPEAT drop 0 0= 0= ;
+
+\ What a bounded word reads, consumed as the run reads it, before the scan
+\ reads on: the row's count of raw tokens, then, for a through row, every token
+\ through the first terminator. The source's end ends it: what is there is
+\ consumed, and the word stays the run's.
+: PRS-CONSUME ( n -- )
+   {: row:n :}
+   row PRS-COUNT @ 0 ?do NEXT-RAW nip 0= IF unloop EXIT THEN loop
+   row PRS-LEN @ 0= IF EXIT THEN
+   BEGIN NEXT-RAW dup 0= IF 2drop EXIT THEN row PRS-TERM? UNTIL ;
+
 \ EXPORT has two documented roles split by package context (dot
 \ habu-compiler-pkg-re-688212c1): inside an open package it is the re-export
 \ declaration (CHECKER-EXPORT aliases the source's checked effect under its
@@ -2207,6 +2360,40 @@ PTR-VARIABLE STG-START
 \ A re-export duplicates its tail in the current section. The checker asks that
 \ only once the name has resolved (src/core/checker.f EXPORT-RECORD), as --load
 \ does, so its refusal is caught here and kept at the name as written.
+\ The tail a token names: past its one non-edge colon when it is qualified.
+: TOKEN-TAIL ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   u 1 > IF
+      u 1 - 1 ?do
+         a i + c@ 58 = IF a i + 1 +  u i - 1 -  unloop EXIT THEN
+      loop
+   THEN
+   a u ;
+
+\ An export is the same word under another tail, so the row of the word it
+\ re-exports, FROM (its row + 1, 0 for none), is the export's too, as the
+\ checker copies the word's other facts (checker.f EXPORT-META-COPY): appended
+\ under the binding of the record the export made, as the top-level find
+\ selects it by its package and tail. Its bare tail is no such selection: in
+\ the package it can still name the package's own private word, the one an
+\ `EXPORT` of that word publishes. A word that only calls a bounded word takes
+\ no row.
+: EXPORT-PARSES ( n ptr u8 n -- )
+   {: from:n a:ptr u:n :}
+   from 0= IF EXIT THEN
+   a u TOKEN-TAIL RETAINED-SYM {: rec:n :}
+   rec 0= IF EXIT THEN
+   rec SYM-IDENTITY drop QUAL-SPELLING TOP-BINDING drop {: sym:n eff1:n :}
+   sym rec <>  eff1 0=  or IF EXIT THEN
+   from 1 - {: src:n :}
+   VERIFY-PARSES-N @ {: row:n :}
+   row 1 + PRS-OWNER-RESERVE  row 1 + PRS-SYM-RESERVE  row 1 + PRS-EFF-RESERVE
+   row 1 + PRS-COUNT-RESERVE  row 1 + PRS-AT-RESERVE  row 1 + PRS-LEN-RESERVE
+   PRS-OWNER-BASE row PRS-OWNER !  sym row PRS-SYM !  eff1 row PRS-EFF !
+   src PRS-COUNT @ row PRS-COUNT !
+   src PRS-AT @ row PRS-AT !  src PRS-LEN @ row PRS-LEN !
+   row 1 + VERIFY-PARSES-N ! ;
+
 \ The record an export made is the open section's, under the tail the checker
 \ recorded the re-exported name under; the token that declared it is that
 \ name as written, from byte at.
@@ -2221,6 +2408,7 @@ PTR-VARIABLE STG-START
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
+   name nameu TOP-BINDING drop PRS-FIND {: from:n :}
    name DEF-NAME-A !  nameu DEF-NAME-U !
    name nameu at nameu ARM   \ the checker spells the record by the tail it keeps
    [: DEF-NAME-A @ DEF-NAME-U @ CHECKER-EXPORT ;] catch
@@ -2228,7 +2416,8 @@ PTR-VARIABLE STG-START
    {: rc:n :}
    rc E-DUP-DEFINITION = IF nameu DUPLICATE! EXIT THEN
    rc 0<> IF rc throw THEN
-   name nameu at EXPORT-DEFINED ;
+   name nameu at EXPORT-DEFINED
+   from name nameu EXPORT-PARSES ;
 
 \ The core resolver answers the canonical path and require-known state. A
 \ require publishes that path before descending, so recursive requires stop at
@@ -2611,15 +2800,15 @@ variable FFI-SIG-U
 \ the store this scan has filled; `char`'s operand is no name. None of it runs.
 \
 \ A word that may read the source after it - one that parses or is deferred -
-\ takes tokens no scan can know without running it, and a name a rendering
-\ statement may define is the run's to judge. From such a token to the next
-\ one the scan acts on - a definition, a loader, a definer of the table above,
-\ where the scan already takes a statement to start - the stretch is deferred
-\ to the run: nothing in it is resolved. A word that renders source opens no
-\ stretch: it reads only the text it renders. Anything but blanks and comments
-\ in a stretch is a token the run may read, so the verifier's child, which opts
-\ in (REPORT-DEFERRALS), has the stretch reported once, at the token that
-\ opened it (W-CHECK-DEFERRED, verdict deferred), and answers `deferred` when
+\ takes tokens no scan can know without running it, and any token after it may
+\ be one, so the scan stops at it (TOP-OPAQUE). A name a rendering statement
+\ may define is the run's to judge: from it to the next token the scan acts on
+\ - a definition, a loader, a definer of the table above, where the scan
+\ already takes a statement to start - the stretch is deferred to the run, and
+\ nothing in it is resolved. A word that renders source opens no stretch: it
+\ reads only the text it renders. The verifier's child, which opts in
+\ (REPORT-DEFERRALS), has each stop and each such stretch reported once, at its
+\ token (W-CHECK-DEFERRED, verdict deferred), and answers `deferred` when
 \ nothing is refused. A refusal opens a stretch too, unreported: the load stops
 \ at it, so the operands of a misspelt parsing word, or the rest of a
 \ declaration its definer misread, are not refused after it.
@@ -2628,68 +2817,52 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    NCOMP-DISPATCH:DECL-VERIFY-TOP-OFF OWNER-XT TOP-ACTION execute ;
 variable TOP-DEFER                               \ a stretch is open
 PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report is due, else 0
-variable TOP-DEFER-I                             \ where the run's reading starts in the source
 
 : TOP-CLOSE ( -- )
    0 TOP-DEFER !  0 TOP-DEFER-U ! ;
 
-\ From the source offset I up to END: past the blanks, past the token there, as
-\ NEXT-RAW reads them, and past the byte CH, as SKIP-PAST reads it.
-: TOP-BLANKS ( n n -- n )
-   {: end:n :}
-   BEGIN dup end < IF SOURCE@ over + c@ 33 < ELSE 0 0= 0= THEN WHILE 1+ REPEAT ;
-
-: TOP-WORD ( n n -- n )
-   {: end:n :}
-   BEGIN dup end < IF SOURCE@ over + c@ 32 > ELSE 0 0= 0= THEN WHILE 1+ REPEAT ;
-
-: TOP-PAST ( n n n -- n )
-   {: end:n ch:n :}
-   BEGIN dup end < WHILE
-      SOURCE@ over + c@ ch = IF 1+ EXIT THEN
-      1+
-   REPEAT ;
-
-\ Past the comment the token at I opens, as NEXT skips it, and true; else I and
-\ false.
-: TOP-COMMENT ( n n -- n bool )
-   {: i:n end:n :}
-   i end TOP-WORD {: j:n :}
-   SOURCE@ i +  j i -  COMMENT-END {: ch:n :}
-   ch 0= IF i 0 0= 0= EXIT THEN
-   j end ch TOP-PAST 0 0= ;
-
-\ Does the run read a token from where the stretch's reading starts to END? A
-\ comment is none, as the scan skips it; a string or `.(` is one.
-: TOP-READ? ( n -- bool )
-   {: end:n :}
-   TOP-DEFER-I @
-   BEGIN
-      end TOP-BLANKS
-      dup end < WHILE
-      end TOP-COMMENT 0= IF drop 0 0= EXIT THEN
-   REPEAT
-   drop 0 0= 0= ;
-
-\ The open stretch's report, once the run would read a token of it before END.
-: TOP-DUE ( n -- )
-   {: end:n :}
+\ The open stretch's report, made at the scan's next token or at the source's
+\ end: its opener is a token the run reads.
+: TOP-DUE ( -- )
    TOP-DEFER-U @ 0= IF EXIT THEN
-   end TOP-READ? 0= IF EXIT THEN
    DEFER-REPORT @ IF TOP-DEFER-A @ TOP-DEFER-U @ REPORT-STRETCH  -1 DEFER-SEEN ! THEN
    0 TOP-DEFER-U ! ;
 
-\ The checker's answer for a token: a refusal or a deferral opens the stretch
-\ at it, the run's reading starting after it when it runs a word that may read
-\ on, and at it when the token itself is the run's.
+\ A word that may read the source after it and states no operand shape: what
+\ it reads may be any of the rest, and may change the scope of what follows, so
+\ the scan reports it at once and stops, in this file and in each file whose
+\ load reached it (TICK-REMAINDER), keeping what it found before the word.
+: TOP-OPAQUE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   DEFER-REPORT @ IF a u REPORT-STRETCH  -1 DEFER-SEEN ! THEN
+   true TICK-REMAINDER ! ;
+
+\ A token that runs a word that may read the source after it (TOP-VERDICT 2):
+\ a declarer reads its row; a word a row bounds is reported at once, as the
+\ run's, and what it reads is consumed; any other stops the scan (TOP-OPAQUE).
+\ A deferred word stays opaque whatever row names it.
+: TOP-PARSER ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u TOP-BINDING {: sym:n eff1:n ctl:n :}
+   ctl BINDING-ID {: id:n :}
+   id CHECKER-OWNER-ABI:BINDING-PARSES-ID = IF a u 0 0= 0= PARSES-ROW EXIT THEN
+   id CHECKER-OWNER-ABI:BINDING-THROUGH-ID = IF a u 0 0= PARSES-ROW EXIT THEN
+   ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0<> IF a u TOP-OPAQUE EXIT THEN
+   sym eff1 PRS-FIND {: row:n :}
+   row 0= IF a u TOP-OPAQUE EXIT THEN
+   DEFER-REPORT @ IF a u REPORT-STRETCH  -1 DEFER-SEEN ! THEN
+   row 1 - PRS-CONSUME ;
+
+\ The checker's answer for a token: a word that may read on is TOP-PARSER's,
+\ and a refusal, or a name the run must judge, opens the stretch at the token.
 : TOP-RESOLVE ( ptr u8 n bool -- )
    {: a:ptr u:n runs:bool :}
    a u runs TOP-VERDICT {: v:n :}
    v -1 = IF EXIT THEN
+   v 2 = IF a u TOP-PARSER EXIT THEN
    -1 TOP-DEFER !
    v 0= IF a TOP-REFUSED ! EXIT THEN
-   a TOP-DEFER-A !  u TOP-DEFER-U !
-   a SOURCE@ -  v 2 = IF u + THEN  TOP-DEFER-I ! ;
+   a TOP-DEFER-A !  u TOP-DEFER-U ! ;
 
 \ The token the cursor waits on is a top-level statement, or a top-level tick's
 \ operand: the checker offers the spellings that bind there now, before the
@@ -2762,7 +2935,7 @@ variable TOP-DEFER-I                             \ where the run's reading start
    TOP-CLOSE
    BEGIN
       NEXT-SCAN dup 0 > TICK-REMAINDER @ 0= and WHILE
-      over SOURCE@ - TOP-DUE
+      TOP-DUE
       2dup TOP-CUR-U ! TOP-CUR-A !
       CSR-TOP
       2dup FILE-SCOPE-STEP
@@ -2775,7 +2948,7 @@ variable TOP-DEFER-I                             \ where the run's reading start
    REPEAT 2drop
    TICK-REMAINDER @ IF EXIT THEN
    CSR-TOP                                      \ a cursor in the blanks the source ends with
-   SOURCE-U @ TOP-DUE
+   TOP-DUE
    PEND-RELEASE ;
 
 \ The checker locates the packets it writes in the bytes being scanned, whose
@@ -2798,12 +2971,12 @@ variable TOP-DEFER-I                             \ where the run's reading start
    SOURCE-A @ SOURCE-U @ SCAN-I @
    BASE-LINE @ BASE-COL @ BASE-BYTE @
    TOP-PREV-A @ TOP-PREV-U @ TOP-CUR-A @ TOP-CUR-U @
-   TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-DEFER-I @ TOP-REFUSED @
+   TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-REFUSED @
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
    FILE-PKG @ FILE-USE @ PEND-BASE @ VISIT-CUR @ CSR-SUBJ @
    {: olda:ptr oldu:n oldi:n oldbl:n oldbc:n oldbb:n
       oldprev:ptr oldprevu:n oldcur:ptr oldcuru:n
-      olddefer:n olddefa:ptr olddefu:n olddefi:n oldrefused:ptr
+      olddefer:n olddefa:ptr olddefu:n oldrefused:ptr
       oldpath:ptr oldpathu:n
       oldpkg:n olduse:n oldbase:n oldvisit:n oldsubj:n :}
    src srcu SOURCE!
@@ -2826,7 +2999,7 @@ variable TOP-DEFER-I                             \ where the run's reading start
    oldprev TOP-PREV-A !  oldprevu TOP-PREV-U !
    oldcur TOP-CUR-A !  oldcuru TOP-CUR-U !
    olddefer TOP-DEFER !  olddefa TOP-DEFER-A !
-   olddefu TOP-DEFER-U !  olddefi TOP-DEFER-I !  oldrefused TOP-REFUSED !
+   olddefu TOP-DEFER-U !  oldrefused TOP-REFUSED !
    oldpath COMPOSE-CUR-PATH-A !  oldpathu COMPOSE-CUR-PATH-U !
    oldpkg FILE-PKG !  olduse FILE-USE !  oldbase PEND-BASE !
    oldpathu 0 > IF

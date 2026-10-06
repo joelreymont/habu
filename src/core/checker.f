@@ -130,6 +130,7 @@ create OWNER-STORAGE
    0 , 0 , 0 , 0 ,
    0 ,
    0 , 0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -147,7 +148,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:VERIFY-EACH-VISIBLE-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -10432,6 +10433,15 @@ PRIM: GENR-SIG-CAP PE-N PE-OUT PRIM;
 \ UNSAFE-TOK? rejects `generates:` inside checked bodies, so the axiom adds no
 \ checked-code capability.
 PRIM: generates: PRIM;
+\ CHECKER-PARSES-ROW ( keyword$ target$ count$ bad -- sym eff1 n ) is the checker
+\ half of a `parses:` row (defined after `generates:` below). The engine words
+\ `parses:` and `parses-through:` (src/core/cell-effects.f) and the source
+\ pre-verifier's TRUSTED PARSES-CHECK boundary reach it as CHECKER-GENERATES is
+\ reached, so it needs the same axiom to stay findable; UNSAFE-TOK? rejects
+\ `checker-parses-row` inside checked bodies, so the axiom adds no checked-code
+\ capability. The two engine words load after the hook, which records them, so
+\ they need no axiom of their own.
+PRIM: CHECKER-PARSES-ROW PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT PE-N PE-OUT PE-N PE-OUT PRIM;
 PRIM: CHECK-DOES! PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
 \ The native compiler's does> split (src/compiler/native/checker-owner.f
@@ -10582,6 +10592,13 @@ PPRIM: CHECKER-OWNER-ABI BOUND-DICT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BOUND-INTRINSIC PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BOUND-PENDING PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BOUND-UNRESOLVED PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI VERIFY-TOP-BINDING-OFF PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI BINDING-PARSES PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI BINDING-DEFER PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI BINDING-ID-SHIFT PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI BINDING-ID-MASK PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI BINDING-PARSES-ID PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI BINDING-THROUGH-ID PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-FETCH-ABI CERTIFICATE-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-FETCH-ABI BYTES PE-N PE-OUT PPRIM;
 PRIM: WF-N@ PE-N PE-OUT PRIM;
@@ -11058,6 +11075,9 @@ PTR-VARIABLE TSR-AT-A    variable TSR-AT-U      \ declaring name (valid while re
 \ A `generates:` row the checker cannot keep (CHECKER-GENERATES): one code for
 \ its three refusals, which the diagnostic tells apart by kind.
 7153 constant E-GENERATES-ROW
+\ A `parses:` or `parses-through:` row the checker refuses (CHECKER-PARSES-ROW):
+\ one code for its target's refusals and its syntax's, told apart by kind.
+7186 constant E-PARSES-ROW
 \ ONE hook for the three refused-record diagnostics, selected by its argument,
 \ for the pre-trust slot reason SHADOW-DIAG-XT below gives: 0 renders the stale
 \ `trust` row here, 1 the storage record refused outside the verifier window
@@ -14264,8 +14284,8 @@ $80 constant CTL-RENDERS
 \ CTL-PARSES and 14 CTL-CREATES (below), 15 free, 16 the defer bit
 \ (ASIG-GRAPH-DEFER, TRANSFER-DEFER), 17-19 free outside the flag mask, 20-39
 \ and 40-59 the intact masks (XFER-PACK).
-8 constant CTL-INTRINSIC-SHIFT
-$1F00 constant CTL-INTRINSIC-MASK
+CHECKER-OWNER-ABI:BINDING-ID-SHIFT constant CTL-INTRINSIC-SHIFT
+CHECKER-OWNER-ABI:BINDING-ID-MASK constant CTL-INTRINSIC-MASK
 CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
 1 constant INTRINSIC-CELL-FETCH                \ @
 2 constant INTRINSIC-CELL-STORE                \ !
@@ -14277,15 +14297,18 @@ CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
 8 constant INTRINSIC-CREATE                    \ create
 9 constant INTRINSIC-VARIABLE                  \ variable
 10 constant INTRINSIC-CONSTANT                 \ constant
+CHECKER-OWNER-ABI:BINDING-PARSES-ID constant INTRINSIC-PARSES    \ parses: (src/core/cell-effects.f)
+CHECKER-OWNER-ABI:BINDING-THROUGH-ID constant INTRINSIC-PARSES-THROUGH \ parses-through: (src/core/cell-effects.f)
 : INTRINSIC>CTL ( n -- n ) CTL-INTRINSIC-SHIFT lshift ;
 : CTL>INTRINSIC ( n -- n ) CTL-INTRINSIC-MASK and CTL-INTRINSIC-SHIFT rshift ;
 
 \ CTL-PARSES means a call may read the source after it, so which tokens it takes
-\ cannot be known without running it. parse-name carries it by axiom and every
-\ checked body that calls a flagged word inherits it, as CTL-RENDERS is
-\ inherited; the source pre-pass defers the top-level stretch after such a word
-\ to the run (CHECKER-VERIFY-TOP).
-$2000 constant CTL-PARSES
+\ cannot be known without running it. parse-name carries it by axiom, the
+\ operand declarers by their id (INTRINSIC-CTL), and every checked body that
+\ calls a flagged word inherits it, as CTL-RENDERS is inherited; the source
+\ pre-pass stops at such a top-level word unless a source row bounds what it
+\ reads (CHECKER-VERIFY-TOP, CHECKER-VERIFY-TOP-BINDING).
+CHECKER-OWNER-ABI:BINDING-PARSES constant CTL-PARSES
 \ CTL-CREATES means a call may define the name it reads: `create` carries it by
 \ axiom, inherited alike. Unlike rendered text it defines exactly that name,
 \ which a definer the pre-pass learned names where it takes the statement
@@ -15041,13 +15064,20 @@ variable NORET-FMEND
 \ pass leaves it callable by the engine's own source alone, so no program can
 \ claim that its word is an engine word. An id the field cannot hold, or no
 \ recorded definition to tag, is a broken registration.
+\ The operand declarers' ids also publish CTL-PARSES (INTRINSIC-CTL): each
+\ reads its row after it, but its trusted body calls the registrar the scan
+\ refuses, so no checked body records the flag its parse-name calls give.
+: INTRINSIC-CTL ( n -- n ) {: id:n :}
+   id INTRINSIC>CTL
+   id INTRINSIC-PARSES =  id INTRINSIC-PARSES-THROUGH =  or IF CTL-PARSES or THEN ;
+
 : INTRINSIC ( n -- ) {: id:n :}
    id 0 <=  id INTRINSIC>CTL CTL-INTRINSIC-MASK invert and 0 <>  or IF
       s" INTRINSIC: id out of range" 76 die
    THEN
    CK-CLOSED-SYM @ {: sym:n :}
    sym 0= IF s" INTRINSIC: no recorded definition to tag" 76 die THEN
-   sym CTL-FLAGS-SYM CTL-INTRINSIC-MASK invert and  id INTRINSIC>CTL or {: flags:n :}
+   sym CTL-FLAGS-SYM CTL-INTRINSIC-MASK invert and  id INTRINSIC-CTL or {: flags:n :}
    sym flags sym CTL-MASKS-SYM NORET-ADD-SYM ;
 
 : EFFECT-EXTERNAL-SYM? ( n -- bool )
@@ -15429,6 +15459,9 @@ variable CURSYM
    a u s" checker-defcast" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" generates:" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" checker-generates" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" parses:" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" parses-through:" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" checker-parses-row" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" set-check" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" set-preflight" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" parse-imm" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -20010,7 +20043,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 : VIS-TOP-PICK ( ptr u8 n -- n n ptr n bool )
    {: a:ptr u:n :}
    a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
-   why 0 <> IF 0 0 NULL-PTR RES-FALSE EXIT THEN
+   why 0 <>  CHECKER-QBAD-TOK @ 0 <> or IF 0 0 NULL-PTR RES-FALSE EXIT THEN
    a u sym TOP-BOUND-SYM {: s2:n ok:bool :}
    ok 0= IF 0 0 NULL-PTR RES-FALSE EXIT THEN
    s2 0 <> IF s2  s2 USIG-NEWEST-VISIBLE  s2 VIS-WALK-REC  RES-TRUE EXIT THEN
@@ -20026,8 +20059,10 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    sym  sym 0= IF 0 ELSE sym USIG-NEWEST-VISIBLE THEN  sym VIS-WALK-REC  RES-TRUE ;
 
 \ Select A U with every walk output put back after (the owner's list).
-: VIS-PICK ( ptr u8 n -- n n ptr n bool )
-   {: a:ptr u:n :}
+\ The binding query also asks for control and liveness while those outputs
+\ are saved. An ordinary visible-word enumeration asks for neither.
+: VIS-PICK ( ptr u8 n n bool -- n n ptr n n bool )
+   {: a:ptr u:n kind:n controls:bool :}
    BIND-REC @ {: s-br:ptr :}
    BIND-PEND-IX @ BIND-PEND-OFF @ BIND-SEEDED @ {: s-bpi:n s-bpo:n s-bs:n :}
    CK-USED-MASK @ {: s-um:n :}
@@ -20038,7 +20073,20 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    HIDX-H @ HIDX-I @ HIDX-CUR @ USX-BP @ USX-BN @ {: s-hh:n s-hi:n s-hc:n s-xp:n s-xn:n :}
    PRM-FIRST @ PE-I @ NORET-CTL @ NORET-FMEND @ NRX-POS @
    {: s-pf:n s-pe:n s-nc:n s-nf:n s-np:n :}
-   VIS-KIND @ CHECKER-OWNER-ABI:VISIBLE-TOP = IF a u VIS-TOP-PICK ELSE a u VIS-BODY-PICK THEN
+   DFER-HIT @ DFER-VALUE @ DFER-POS @ {: s-dh:n s-dv:n s-dp:n :}
+   kind CHECKER-OWNER-ABI:VISIBLE-TOP = IF a u VIS-TOP-PICK ELSE a u VIS-BODY-PICK THEN
+   {: sym:n rec1:n drec:ptr ok:bool :}
+   controls IF
+      sym 0= IF drec NULL-PTR <> ELSE
+         sym SYM-VISIBLE 0 <>
+         rec1 0= IF RES-TRUE ELSE rec1 1 - E-PTR ER.ACTIVE @ EFF-DELETED <> THEN and
+      THEN
+      ok 0 <> and
+   ELSE RES-TRUE THEN {: live:bool :}
+   controls live and IF
+      sym TOP-CONTROL {: flags:n deferred:bool :}
+      flags deferred IF CHECKER-OWNER-ABI:BINDING-DEFER or THEN
+   ELSE 0 THEN {: ctl:n :}
    s-br BIND-REC !  s-bpi BIND-PEND-IX !  s-bpo BIND-PEND-OFF !  s-bs BIND-SEEDED !
    s-um CK-USED-MASK !
    s-hg USH-GSYM !  s-hu USH-USYM !  s-ha USH-PKG-A !  s-hn USH-PKG-U !
@@ -20046,7 +20094,26 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    s-qa CHECKER-QA !  s-qu CHECKER-QU !  s-ta CHECKER-TA !  s-tu CHECKER-TU !
    s-ub USING-UNBOUND !  s-wr WALK-REC !
    s-hh HIDX-H !  s-hi HIDX-I !  s-hc HIDX-CUR !  s-xp USX-BP !  s-xn USX-BN !
-   s-pf PRM-FIRST !  s-pe PE-I !  s-nc NORET-CTL !  s-nf NORET-FMEND !  s-np NRX-POS ! ;
+   s-pf PRM-FIRST !  s-pe PE-I !  s-nc NORET-CTL !  s-nf NORET-FMEND !  s-np NRX-POS !
+   s-dh DFER-HIT !  s-dv DFER-VALUE !  s-dp DFER-POS !
+   controls live 0= and IF 0 0 NULL-PTR 0 RES-FALSE EXIT THEN
+   sym rec1 drec ctl ok ;
+
+\ The same top-level selection used by CHECKER-TOP-SYM, with the symbol,
+\ its visible effect record's offset + 1 (0 for a primitive or an axiom),
+\ and its control word. A deferred word has BINDING-DEFER set. A selected
+\ cold dictionary record may have no checker symbol or visible effect record;
+\ its captured control still answers here. A refusal, missing binding,
+\ invisible symbol or tombstone answers three zeroes.
+: TOP-BINDING ( ptr u8 n -- n n n )
+   {: a:ptr u:n :}
+   a u CHECKER-OWNER-ABI:VISIBLE-TOP RES-TRUE VIS-PICK rot drop
+   {: sym:n eff1:n ctl:n found:bool :}
+   found IF sym eff1 ctl ELSE 0 0 0 THEN ;
+
+\ The source pre-pass asks for a binding without reporting or marking a use.
+\ VIS-PICK restores the resolver's scratch before the pre-pass resumes.
+: CHECKER-VERIFY-TOP-BINDING ( ptr u8 n -- n n n ) TOP-BINDING ;
 
 \ Locals answer here: a body token outside a quotation, unqualified.
 : VIS-LOCALS? ( -- bool )
@@ -20113,7 +20180,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    {: qa:ptr qu:n a:ptr u:n :}
    qu 0= IF a u ELSE qa qu a u VIS-QSPELL THEN {: fa:ptr fu:n :}
    fa fu VS-ADD? 0= IF EXIT THEN
-   fa fu VIS-PICK {: sym:n rec1:n drec:ptr ok:bool :}
+   fa fu VIS-KIND @ RES-FALSE VIS-PICK swap drop {: sym:n rec1:n drec:ptr ok:bool :}
    ok 0= IF EXIT THEN
    qa qu sym rec1 drec VIS-SPELL {: sa:ptr su:n v:n s:n e:n :}
    sa su #LOC @ VIS-HELD? IF EXIT THEN
@@ -23239,6 +23306,10 @@ REG-EXT-RB-DEFAULTS
 \ symbol takes the row naming it: the next scope hands that id to another word,
 \ which a row left behind would read as a definer creating the token after it.
 variable VERIFY-DEFINER-N   0 VERIFY-DEFINER-N !
+\ Its `parses:` rows (verify-source.f PARSES-ROW) are keyed by the same ids and
+\ rewound alike; their terminators' bytes lie past the rows that hold them, so
+\ the count bounds those bytes too.
+variable VERIFY-PARSES-N   0 VERIFY-PARSES-N !
 
 $0 constant RBF.UEND-OFF
 $8 constant RBF.NEND-OFF
@@ -23264,7 +23335,8 @@ $A0 constant RBF.OVCP-OFF
 $A8 constant RBF.OVWIDN-OFF
 $B0 constant RBF.FLOOR-OFF
 $B8 constant RBF.VDEFN-OFF
-$C0 constant RBF-REC
+$C0 constant RBF.VPRSN-OFF
+$C8 constant RBF-REC
 $8 constant RBF-REC-ALIGN
 0 constant RBF-REC-PTR-MASK
 
@@ -23298,6 +23370,7 @@ $8 constant RBF-REC-ALIGN
 : RBF.OVWIDN ( ptr a -- ptr a ) RBF.OVWIDN-OFF + ;
 : RBF.FLOOR ( ptr a -- ptr a ) RBF.FLOOR-OFF + ;
 : RBF.VDEFN ( ptr a -- ptr a ) RBF.VDEFN-OFF + ;
+: RBF.VPRSN ( ptr a -- ptr a ) RBF.VPRSN-OFF + ;
 
 RBF.UEND-OFF 0 cells CHECKER-LAYOUT=
 RBF.NEND-OFF 1 cells CHECKER-LAYOUT=
@@ -23323,7 +23396,8 @@ RBF.OVCP-OFF 20 cells CHECKER-LAYOUT=
 RBF.OVWIDN-OFF 21 cells CHECKER-LAYOUT=
 RBF.FLOOR-OFF 22 cells CHECKER-LAYOUT=
 RBF.VDEFN-OFF 23 cells CHECKER-LAYOUT=
-RBF-REC 24 cells CHECKER-LAYOUT=
+RBF.VPRSN-OFF 24 cells CHECKER-LAYOUT=
+RBF-REC 25 cells CHECKER-LAYOUT=
 RBF-REC-ALIGN CELL CHECKER-LAYOUT=
 RBF-REC RBF-REC-ALIGN mod 0 CHECKER-LAYOUT=
 RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
@@ -23351,6 +23425,7 @@ RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
 0 RBF.OVWIDN RBF.OVWIDN-OFF CHECKER-LAYOUT=
 0 RBF.FLOOR RBF.FLOOR-OFF CHECKER-LAYOUT=
 0 RBF.VDEFN RBF.VDEFN-OFF CHECKER-LAYOUT=
+0 RBF.VPRSN RBF.VPRSN-OFF CHECKER-LAYOUT=
 
 16 constant RBF-CAP-INIT
 variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
@@ -23448,6 +23523,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    DFER-END @ r RBF.DFEREND !
    PASS-FLOOR @ r RBF.FLOOR !
    VERIFY-DEFINER-N @ r RBF.VDEFN !
+   VERIFY-PARSES-N @ r RBF.VPRSN !
    RBF-NO-COORDINATOR r RBF.COORD ! ;
 
 : RBF-RESTORE-FROM ( ptr n -- ) {: r:ptr :}
@@ -23473,6 +23549,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.PKGU @ CHECKER-PACKAGE-U !
    r RBF.FLOOR @ PASS-FLOOR !
    r RBF.VDEFN @ VERIFY-DEFINER-N !
+   r RBF.VPRSN @ VERIFY-PARSES-N !
    r RBF.DFEREND @ DFER-END !
    DFER-TERM ;                        \ null-terminate the DFER scan at the restored end
 
@@ -24455,11 +24532,14 @@ GENERATES-DIAG-DEFAULT
    close u = IF open 0 EXIT THEN
    open close 1 + ;
 
-\ The engine's input cursor and the input's end (src/habu/layout.f INP-CELL and
-\ INE-CELL, which loads after this file; test/aot-sig-pool-suite.f holds them
-\ equal).
+\ The engine's input cursor and the input's end, and the token it read last,
+\ which is a word's own name as the word starts to run (src/habu/layout.f
+\ INP-CELL, INE-CELL, TKA-CELL and TKL-CELL, which loads after this file;
+\ test/aot-sig-pool-suite.f holds them equal).
 $36A0 constant CK-INP-OFF                  \ = layout.f INP-CELL
 $36A8 constant CK-INE-OFF                  \ = layout.f INE-CELL
+$3690 constant CK-TKA-OFF                  \ = layout.f TKA-CELL
+$3698 constant CK-TKL-OFF                  \ = layout.f TKL-CELL
 
 \ The longest effect a row states. The source pre-verifier refuses a longer one
 \ at the same bound (verify-source.f RECORD-GENERATES).
@@ -24500,6 +24580,111 @@ TRUSTED: generates: ( -- )
    rec 0= IF EXIT THEN
    sym sym CTL-FLAGS-SYM sym CTL-MASKS-SYM rec NORET-APPEND ;
 
+\ ---- parses: rows -------------------------------------------------------------
+\ A TOP-LEVEL WORD THAT READS THE SOURCE AFTER IT (CTL-PARSES) TAKES TOKENS NO
+\ SCAN KNOWS WITHOUT RUNNING IT. `parses: W n` states that W reads n raw tokens,
+\ `parses-through: W n ( E1 E2 )` that it reads n and then every token through
+\ the first one equal to a listed terminator. Only the source pre-verifier
+\ keeps the shape, for the source it checks (verify-source.f PARSES-ROW); the
+\ engine words (src/core/cell-effects.f) read and check a row and keep nothing.
+\ Both paths check a row here, so a row the pre-pass accepts is a row the load
+\ accepts, under one code whose kind says which check failed: the first five
+\ are the target's (fix_parses_row), the last three the row's syntax
+\ (fix_parses_syntax).
+0 constant PARSES-UNDEFINED               \ the target names no word here
+1 constant PARSES-QUALIFIED               \ the target is a malformed qualified name
+2 constant PARSES-SHADOW                  \ a used public shadows the global it names
+3 constant PARSES-AMBIGUOUS               \ two used packages export its tail
+4 constant PARSES-READS-NONE              \ it names a word that reads no source
+5 constant PARSES-NO-TARGET               \ nothing follows the declarer
+6 constant PARSES-COUNT                   \ the count is no number, or negative
+7 constant PARSES-LIST                    \ no `(`, no terminator, or no `)`
+PTR-VARIABLE PRS-TOK-A   variable PRS-TOK-U   \ the token the packet names (raw, valid while rendering)
+defer PARSES-DIAG-XT ( n -- )             \ render.f installs the diagnostic, selected by kind
+: PARSES-DIAG-DEFAULT ( -- ) [: drop ;] is PARSES-DIAG-XT ;
+PARSES-DIAG-DEFAULT
+
+\ A refused row is rendered and then stops the load, as a refused generates:
+\ row does (GENERATES-REFUSE): counted under a MULTI-ERROR load instead.
+: PARSES-REFUSE ( ptr u8 n n -- )
+   {: a:ptr u:n kind:n :}
+   a PRS-TOK-A !  u PRS-TOK-U !
+   kind PARSES-DIAG-XT
+   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   E-PARSES-ROW throw ;
+
+\ A target the top-level find binds to no word: the load's reason, which the
+\ walk answers before the find falls back (CHECKER-RESOLVE:WALK, TOP-ANSWER). A name only a
+\ rendering statement in scope may define is the run's to judge, as a call of
+\ it is (UNSEEN-COVERS?): no refusal, and no row.
+: PARSES-UNBOUND ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u CHECKER-RESOLVE:WALK nip {: why:n :}
+   why E-USING-SHADOW-GLOBAL = IF a u PARSES-SHADOW PARSES-REFUSE EXIT THEN
+   why E-USING-AMBIGUOUS = IF a u PARSES-AMBIGUOUS PARSES-REFUSE EXIT THEN
+   why 0 <> IF a u why CHECKER-RESOLVE:RAISE EXIT THEN
+   CHECKER-QBAD-TOK @ IF a u PARSES-QUALIFIED PARSES-REFUSE EXIT THEN
+   a u UNSEEN-COVERS? IF EXIT THEN
+   a u PARSES-UNDEFINED PARSES-REFUSE ;
+
+\ The binding a row's target selects, as the top-level find selects it for a
+\ call (TOP-BINDING): its symbol and visible record's offset + 1, both 0 when
+\ the row bounds nothing. A target the load refuses, or a live word that reads
+\ no source, refuses the row. A deferred word stays opaque, whatever word is
+\ set in it, and so does a word with no record (a primitive or an axiom),
+\ whose replacement no record tells apart. A cold selected dictionary record
+\ can likewise have control but no checker symbol to key a row: the row stands
+\ and bounds nothing until a checked use materializes that binding.
+: PARSES-TARGET ( ptr u8 n -- n n )
+   {: a:ptr u:n :}
+   a u TOP-BINDING {: sym:n eff1:n ctl:n :}
+   sym 0= IF
+      ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF 0 0 EXIT THEN
+      ctl CTL-PARSES and 0 <> IF 0 0 EXIT THEN
+      ctl 0 <> IF a u PARSES-READS-NONE PARSES-REFUSE 0 0 EXIT THEN
+      a u PARSES-UNBOUND 0 0 EXIT
+   THEN
+   sym a u NAV-USE-NOW
+   ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF 0 0 EXIT THEN
+   ctl CTL-PARSES and 0= IF a u PARSES-READS-NONE PARSES-REFUSE 0 0 EXIT THEN
+   eff1 0= IF 0 0 EXIT THEN
+   sym eff1 ;
+
+\ CHECKER-PARSES-ROW ( keyword$ target$ count$ bad -- sym eff1 n ) : the checks
+\ every row passes, for the engine words (src/core/cell-effects.f) and for the
+\ source pre-verifier
+\ (verify-source.f PARSES-CHECK), each of which has read the whole row first, so
+\ that a row refused under --all-errors leaves none of its tokens to what
+\ follows. BAD is what the reader found of the terminator list: true when the
+\ row has one and it is malformed (PARSES-LIST). The packet names
+\ the target, or the keyword when no target follows it. Answers the binding
+\ the row bounds and its count, the symbol 0 when it bounds nothing.
+: CHECKER-PARSES-ROW ( ptr u8 n ptr u8 n ptr u8 n bool -- n n n )
+   {: ka:ptr ku:n ta:ptr tu:n ca:ptr cu:n bad:bool :}
+   tu 0= IF ka ku PARSES-NO-TARGET PARSES-REFUSE 0 0 0 EXIT THEN
+   ca cu num-parse {: v:n flt:bool ok:bool :}
+   ok 0=  flt or  v 0 <  or IF ta tu PARSES-COUNT PARSES-REFUSE 0 0 0 EXIT THEN
+   bad IF ta tu PARSES-LIST PARSES-REFUSE 0 0 0 EXIT THEN
+   ta tu PARSES-TARGET {: sym:n eff1:n :}
+   sym eff1 v ;
+
+\ What a list token is to its reader: 0 a terminator, 1 the closing `)`, 2 the
+\ end of the input, where no `)` came.
+: PARSES-ITEM ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   u 0= IF 2 EXIT THEN
+   a u s" )" CORE-STR= IF 1 EXIT THEN
+   0 ;
+
+\ The engine word's reading of a terminator list (src/core/cell-effects.f
+\ parses-through:): `(`, then tokens through a standalone `)`, at least one
+\ before it: true when it is malformed (CHECKER-PARSES-ROW's BAD).
+: PARSES-LIST-LOAD ( -- bool )
+   parse-name s" (" CORE-STR= 0= IF RES-TRUE EXIT THEN
+   0 BEGIN parse-name PARSES-ITEM dup 0= WHILE drop 1 + REPEAT
+   {: terms:n end:n :}
+   end 2 =  terms 0=  or ;
+
 \ The retained compiler checked the replacement prefix before its new hooks
 \ existed. Transfer those actual graphs into the new owner before enabling
 \ the hooks. Symbols and constructors cross by semantic name, never by ID.
@@ -24510,7 +24695,7 @@ create EFFECT-XFER EFF-WIRE allot
 
 package CHECKER-REG
 
-$10000 constant TRANSFER-DEFER
+CHECKER-OWNER-ABI:BINDING-DEFER constant TRANSFER-DEFER
 
 : CHECKED-ROW ( n -- ptr u8 ptr u8 ptr u8 n bool ) {: id:n :}
    id SYM-N @ >= if NULL-PTR NULL-PTR NULL-PTR 0 RES-FALSE exit then
@@ -25779,6 +25964,7 @@ package CHECKER-REG
 ' CHECKER-ROWS-END DECLARATIONS CHECKER-OWNER-ABI:ROWS-END-OFF + xt!
 ' CHECKER-WRITE-WINDOW! DECLARATIONS CHECKER-OWNER-ABI:WRITE-WINDOW-OFF + xt!
 ' CHECKER-SOURCE-CLAUSE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF + xt!
+' CHECKER-VERIFY-TOP-BINDING DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + xt!
 
 \ ---- the declared-row log of a cold boot ------------------------------------
 \ Before the claim below a cold boot has no source owner, so the engine's

@@ -558,7 +558,8 @@ public
    rc E-USING-AMBIGUOUS = or
    rc E-TRUST-UNRESOLVED = or
    rc E-SHADOWED-ARITY = or
-   rc E-GENERATES-ROW = or ;
+   rc E-GENERATES-ROW = or
+   rc E-PARSES-ROW = or ;
 
 \ True for the status of a check that a statement threw out of without
 \ reporting its own refusal.

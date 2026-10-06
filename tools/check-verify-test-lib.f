@@ -48,7 +48,8 @@
 \   other than the token that declared it, or a name a definer generates
 \   or a family has one before the checker reports it                     definitions
 \   a refused body without a kept signature has a line, or one with it,
-\   or a deferred body, has none                                          definitions-refused
+\   or a deferred body, has none, or one after an undeclared parser has
+\   one                                                                   definitions-refused
 \   a name defined again after undefine loses a line                      definitions-undefine
 \   a dependency's definitions are dropped, or named by the subject       definitions-dependency
 \   a file a check read has no file line or several, or one it did not
@@ -107,18 +108,30 @@
 \   a parsing word's operand is resolved, or the stretch after it is
 \   resolved, passed over in silence or answered verified                 top-deferred
 \   a dependency's deferred stretch hides a caller token, or is forgotten top-nested-deferred
+\   a declared parsing word's operand is read as code, a definer or `:`,
+\   or the check stops at it or before what follows                       top-parses-bound
+\   a through form's operands are read as code across lines, or a
+\   prefix token spelled like an end closes it                            top-parses-through
+\   a row binds a spelling: a defer, a resident word, a wrapper, a
+\   package's own parses: or a retired binding is bounded, or an EXPORT
+\   loses it                                                              top-parses-opaque
+\   a malformed or misplaced row loads, or is refused for another reason  top-parses-row
+\   a declarer loses its identity, the binding query raises or answers a
+\   refused name, a rolled-back row survives, a lost field falls back     top-parses-whitebox
 \   the tokens after a word that renders source are deferred, though it
 \   reads none of them, or a name its text may define, bare or
 \   qualified, is refused                                                 top-renders
 \   the operand or product of a word that defines a name it reads when it
-\   runs - its body calls create, or calls such a word - is refused       top-create
+\   runs - its body calls create, or calls such a word - is refused, or
+\   the check goes on past one no row bounds                              top-create
 \   a TRUSTED: word is taken to do other than the calls its body binds do,
 \   or than anything when one of them binds to nothing                    top-trusted
 \   kernel: is not taken as : is, or its refused body ends the scan       top-kernel
 \   an open package's own qualified name the engine finds in the global
-\   wordlist is refused, or that fallback reaches past the package        top-package-tail
-\   a name a deferred word may define is refused after its stretch        top-defer-word
-\   a deferred word followed only by comments is reported deferred        top-defer-comment
+\   wordlist is refused, or that fallback reaches past the package or
+\   misses the row of the word it finds                                   top-package-tail
+\   a name a deferred word may define is refused after its call           top-defer-word
+\   a deferred word followed only by comments is answered verified        top-defer-comment
 \   a definition left to the run is answered verified, or not reported
 \   where the checker's judgment of it stops                              def-deferred
 \   a name the load accepts at top level is refused                       top-accepted
@@ -1382,18 +1395,24 @@ $180000 constant LARGE-STDIN-LEN
 
 \ The tokens a word that parses its own input reads cannot be known without
 \ running it. Loaded, CVT-GRAB takes NOSUCH, and NOSUCH2 is E-UNDEFINED, exit
-\ 70; alone, the first two lines load. The stretch from CVT-GRAB to the next
-\ definition is deferred to the run where it starts, and a token after that
-\ definition is resolved again.
+\ 70; alone, the first two lines load. Undeclared, CVT-GRAB is deferred to the
+\ run where it stands and the scan discovers nothing after it, since what it
+\ reads may be any of the rest. A `parses:` row bounds what it reads, and a
+\ token past its operand is resolved again.
 : TOP-DEFERRED ( -- )
    s\" : CVT-GRAB ( -- ) parse-name 2drop ;\nCVT-GRAB NOSUCH\n: CVT-AFTER ( -- n ) 1 ;\nNOSUCH2 drop\n" TOP-CHECK
-   1 s" top-deferred: refused after the stretch" EXPECT-KIND
+   5 s" top-deferred: undeclared, deferred" EXPECT-KIND
+   s" top-deferred: undeclared, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-deferred: undeclared, the word" s" CVT-GRAB" s" W-CHECK-DEFERRED" s" 2" s" 1" TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$=
+   s\" : CVT-GRAB ( -- ) parse-name 2drop ;\nparses: CVT-GRAB 1\nCVT-GRAB NOSUCH\n: CVT-AFTER ( -- n ) 1 ;\nNOSUCH2 drop\n" TOP-CHECK
+   1 s" top-deferred: refused past the operand" EXPECT-KIND
    s" top-deferred: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-deferred: nothing names the operand" T-LABEL
    CHECK:VERIFY-OUT$ s" token" s" NOSUCH" PACKET 0 < TTRUE
-   s" top-deferred: the stretch" s" CVT-GRAB" s" W-CHECK-DEFERRED" s" 2" s" 1" TOP-PACKET
+   s" top-deferred: the call" s" CVT-GRAB" s" W-CHECK-DEFERRED" s" 3" s" 1" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$=
-   s" top-deferred: past the stretch" s" NOSUCH2" s" E-UNDEFINED-TOP-LEVEL" s" 4" s" 1" TOP-PACKET
+   s" top-deferred: past the operand" s" NOSUCH2" s" E-UNDEFINED-TOP-LEVEL" s" 5" s" 1" TOP-PACKET
    s" verdict" STRING$ s" rejected" T$=
    s\" : CVT-GRAB ( -- ) parse-name 2drop ;\nCVT-GRAB NOSUCH\n" TOP-CHECK
    5 s" top-deferred: alone, deferred" EXPECT-KIND
@@ -1402,11 +1421,20 @@ $180000 constant LARGE-STDIN-LEN
    s" verdict" STRING$ s" deferred" T$= ;
 
 
-\ A pending file load after a definition scans its own deferred stretch. Its
-\ warning contributes to the composed verdict, while the caller resumes with
-\ its own top-level state and refuses the malformed qualified token.
+\ A pending file load after a definition scans its own deferred word. Its
+\ warning contributes to the composed verdict. Undeclared, the dependency's
+\ GRAB may read any of the rest and change the scope the caller goes on in, so
+\ the caller discovers nothing after it either. With GRAB's operand declared
+\ the caller resumes with its own top-level state and refuses the malformed
+\ qualified token.
 : TOP-NESTED-DEFERRED ( -- )
    s" nested-dep.f" s\" : GRAB ( -- ) parse-name 2drop ;\nGRAB x\n" FIXTURE
+   s\" : LOADDEP ( -- ) s\" nested-dep.f\" required ;\nQ:R:S\n" TOP-CHECK
+   5 s" top-nested-deferred: undeclared, deferred" EXPECT-KIND
+   s" top-nested-deferred: undeclared, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-nested-deferred: undeclared, dependency warning" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" GRAB" PACKET s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   s" nested-dep.f" s\" : GRAB ( -- ) parse-name 2drop ;\nparses: GRAB 1\nGRAB x\n" FIXTURE
    s\" : LOADDEP ( -- ) s\" nested-dep.f\" required ;\nQ:R:S\n" TOP-CHECK
    1 s" top-nested-deferred: refused" EXPECT-KIND
    s" top-nested-deferred: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
@@ -1422,23 +1450,203 @@ $180000 constant LARGE-STDIN-LEN
    s" top-nested-deferred: only warning" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T= ;
 
 
+\ A deferred check whose only packet is the call TOKEN on LINE at COLUMN.
+: DEFERRED-ONLY ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: v label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
+   v 5 label labelu EXPECT-KIND
+   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   label labelu tok toku s" W-CHECK-DEFERRED" line lineu col colu TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$= ;
+
+
+\ A refused check of two packets: the call TOKEN deferred at the start of
+\ LINE, then the definition WORD refused with CODE.
+: BOUND-REFUSED ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: v label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n word:ptr wordu:n code:ptr codeu:n :}
+   v 1 label labelu EXPECT-KIND
+   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   label labelu tok toku s" W-CHECK-DEFERRED" line lineu s" 1" TOP-PACKET drop
+   CHECK:VERIFY-OUT$ 1 NTH-PACKET {: p:n :}
+   label labelu T-LABEL p s" word" STRING$ word wordu T$=
+   label labelu T-LABEL p s" code" STRING$ code codeu T$= ;
+
+
+\ Loaded, PN reads deftype, variable or `:` and OKW loads; F loads, and G is
+\ E-MISMATCH, exit 70. Declared, the operand is data: PN is deferred at its
+\ call, nothing names its operand, and the check goes on past it, so V is
+\ discovered, F certifies and G is refused. Undeclared, PN may read any of the
+\ rest, and the check discovers nothing after it.
+: TOP-PARSES-BOUND ( -- )
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN deftype\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-parses-bound: deftype" s" PN" s" 3" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN variable\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-parses-bound: variable" s" PN" s" 3" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN :\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-parses-bound: colon" s" PN" s" 3" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN foo\nvariable V\n: F ( -- n ) V @ ;\n: G ( -- n ) V @ V @ ;\n" TOP-CHECK
+   s" top-parses-bound: past the operand" s" PN" s" 3" s" g" s" E-MISMATCH" BOUND-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nPN foo\nvariable V\n: G ( -- n ) V @ V @ ;\n" TOP-CHECK
+   s" top-parses-bound: undeclared" s" PN" s" 2" s" 1" DEFERRED-ONLY ;
+
+
+\ Loaded, BLK reads through ;BLK and G is E-MISMATCH, exit 70. Declared, the
+\ definer, comment and string openers it reads are data, across lines, and the
+\ check resumes after the end; undeclared, BLK is deferred and nothing after it
+\ is discovered. SU reads one name, then through the first exact end: a name
+\ spelled like an end is the prefix, and either listed end closes it.
+: TOP-PARSES-THROUGH ( -- )
+   s\" require lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nparses-through: BLK 0 ( ;BLK )\nBLK deftype\n   foo\n;BLK\n: OKW ( n -- n ) 1 + ;\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-through: definer" s" BLK" s" 5" s" g" s" E-MISMATCH" BOUND-REFUSED
+   s\" require lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nBLK deftype\n   foo\n;BLK\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-through: undeclared" s" BLK" s" 4" s" 1" DEFERRED-ONLY
+   s\" require lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nparses-through: BLK 0 ( ;BLK )\nBLK ( \\ s\" .(\n  : X ;BLK\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-through: openers" s" BLK" s" 5" s" g" s" E-MISMATCH" BOUND-REFUSED
+   s\" require lib/string.f\n: SU? ( ptr u8 n -- bool )\n   {: a:ptr u:n :}\n   a u s\" ;SU\" STR=  a u s\" P:;SU\" STR=  or ;\n: SU ( -- ) parse-name 2drop begin parse-name dup 0= if 2drop exit then SU? until ;\nparses-through: SU 1 ( ;SU P:;SU )\nSU ;SU a b ;SU\nSU name c P:;SU\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   1 s" top-parses-through: suite" EXPECT-KIND
+   s" top-parses-through: suite, three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" top-parses-through: suite, first end" T-LABEL
+   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" line" NUMBER$ s" 7" T$=
+   s" top-parses-through: suite, second end" T-LABEL
+   CHECK:VERIFY-OUT$ 1 NTH-PACKET s" line" NUMBER$ s" 8" T$=
+   s" top-parses-through: suite, resumed" T-LABEL
+   CHECK:VERIFY-OUT$ 2 NTH-PACKET s" word" STRING$ s" g" T$= ;
+
+
+\ A row binds the selected definition, never its spelling. Loaded, the unset
+\ DW throws, exit 76; each other call reads its operand and G is E-MISMATCH,
+\ exit 70. A defer stays opaque under a row, and so does the resident
+\ parse-name, whose row no source states; a wrapper of a declared word
+\ inherits no row, a package's own `parses:` is an ordinary parser, and a row
+\ dies with the binding `undefine` retires, though the new PN reuses its
+\ symbol. Each is deferred, and nothing after it is discovered. An EXPORT
+\ copies the row to its alias, and a row may target the original declarer:
+\ the check goes on past both.
+: TOP-PARSES-OPAQUE ( -- )
+   s\" defer DW ( -- )\nparses: DW 1\nDW :\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-opaque: defer" s" DW" s" 3" s" 1" DEFERRED-ONLY
+   s\" parse-name foo\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-opaque: resident" s" parse-name" s" 1" s" 1" DEFERRED-ONLY
+   s\" : W ( -- ) parse-name 2drop ;\n: WR ( -- ) W ;\nparses: W 1\nWR :\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-opaque: wrapper" s" WR" s" 4" s" 1" DEFERRED-ONLY
+   s\" package Q\n: parses: ( -- ) parse-name 2drop parse-name 2drop ;\n: PN ( -- ) parse-name 2drop ;\nparses: PN 1\n;package\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-opaque: package declarer" s" parses:" s" 4" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nundefine PN\n: PN ( -- ) parse-name 2drop ;\nPN :\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-opaque: redefined" s" PN" s" 5" s" 1" DEFERRED-ONLY
+   s\" package Q\n: PN ( -- ) parse-name 2drop ;\nparses: PN 1\npublic\nEXPORT PN\n;package\nQ:PN :\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-opaque: export" s" Q:PN" s" 7" s" g" s" E-MISMATCH" BOUND-REFUSED
+   s\" parses: parses: 2\n: PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN :\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-opaque: declarer row" s" PN" s" 4" s" g" s" E-MISMATCH" BOUND-REFUSED ;
+
+
+\ A refused row: its one packet E-PARSES-ROW at TOKEN, with repair CLASS.
+: ROW-REFUSED ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: v label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n class:ptr classu:n :}
+   v label labelu tok toku s" E-PARSES-ROW" line lineu col colu REFUSED-AT
+   label labelu T-LABEL
+   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ class classu T$= ;
+
+
+\ Loaded, each row below throws E-PARSES-ROW, exit 67, naming its reason. A
+\ target that names no word, a malformed, ambiguous or shadow-refused one, and
+\ a live word that reads no source are fix_parses_row at the target; a count
+\ that is missing, not a number or negative, and a delimiter list that is
+\ empty, unopened or unclosed are fix_parses_syntax, at the keyword when no
+\ target follows it. A checked body calling a declarer or the registrar is
+\ E-UNSAFE; loaded, it is refused, exit 70.
+: TOP-PARSES-ROW ( -- )
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: NOSUCH 1\n" TOP-CHECK
+   s" top-parses-row: unknown" s" NOSUCH" s" 2" s" 9" s" fix_parses_row" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: A::B 1\n" TOP-CHECK
+   s" top-parses-row: malformed" s" A::B" s" 2" s" 9" s" fix_parses_row" ROW-REFUSED
+   s\" package A1\npublic\n: PQ ( -- ) parse-name 2drop ;\n;package\npackage A2\npublic\n: PQ ( -- ) parse-name 2drop ;\n;package\nusing A1\nusing A2\nparses: PQ 1\n;using\n;using\n" TOP-CHECK
+   s" top-parses-row: ambiguous" s" PQ" s" 11" s" 9" s" fix_parses_row" ROW-REFUSED
+   s\" package SH\npublic\n: DUP ( n -- n n ) dup ;\n;package\nusing SH\nparses: DUP 1\n;using\n" TOP-CHECK
+   s" top-parses-row: shadow" s" DUP" s" 6" s" 9" s" fix_parses_row" ROW-REFUSED
+   s\" : NP ( -- ) ;\nparses: NP 1\n" TOP-CHECK
+   s" top-parses-row: reads none" s" NP" s" 2" s" 9" s" fix_parses_row" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN\n" TOP-CHECK
+   s" top-parses-row: no count" s" PN" s" 2" s" 9" s" fix_parses_syntax" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN x\n" TOP-CHECK
+   s" top-parses-row: count" s" PN" s" 2" s" 9" s" fix_parses_syntax" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN -1\n" TOP-CHECK
+   s" top-parses-row: negative" s" PN" s" 2" s" 9" s" fix_parses_syntax" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses-through: PN 0 ( )\n" TOP-CHECK
+   s" top-parses-row: empty list" s" PN" s" 2" s" 17" s" fix_parses_syntax" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses-through: PN 0 ;E\n" TOP-CHECK
+   s" top-parses-row: unopened" s" PN" s" 2" s" 17" s" fix_parses_syntax" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses-through: PN 0 ( ;E\n" TOP-CHECK
+   s" top-parses-row: unclosed" s" PN" s" 2" s" 17" s" fix_parses_syntax" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses:\n" TOP-CHECK
+   s" top-parses-row: no target" s" parses:" s" 2" s" 1" s" fix_parses_syntax" ROW-REFUSED
+   s\" : W ( -- ) parses: ;\n" TOP-CHECK
+   1 s" top-parses-row: declarer in a body" EXPECT-KIND
+   s" top-parses-row: declarer in a body" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" parses:" PACKET s" code" STRING$ s" E-UNSAFE" T$=
+   s\" : W2 ( -- ) checker-parses-row ;\n" TOP-CHECK
+   1 s" top-parses-row: registrar in a body" EXPECT-KIND
+   s" top-parses-row: registrar in a body" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" checker-parses-row" PACKET s" code" STRING$ s" E-UNSAFE" T$= ;
+
+
+\ The rows' checker side, from loaded files that ask the live checker owner
+\ (CHECKER-OWNER-ABI) as the verifier does. Each file dies, exit 76, naming the
+\ first fact that fails, and prints NAME: ok after the last. A call of either
+\ declarer is a word the run reads source for (2) and its tick's context is
+\ unknown (-1). After the hook each declarer is its original binding: its
+\ intrinsic id and PARSES. A word calling parse-name parses with no id, and
+\ parse-name, a primitive, has no visible record a row could be keyed by.
+\ The selected-binding query answers 0 0 0 for an unknown, a malformed, a
+\ retired, a shadowed and an ambiguous name, and raises nothing. A scope's rows
+\ go with its rollback, though the next scope's PN reuses the binding's
+\ symbol and record. An owner record that ends before the query's field is
+\ refused with E-NCOMP-OWNER, with no fallback.
+\ Load the fixture NAME: it exits 0 and prints OK. Its stderr's length.
+: WB-LOAD ( ptr u8 n ptr u8 n -- n )
+   {: name:ptr nameu:n ok:ptr oku:n :}
+   name nameu AT$ {: f:ptr fu:n :}
+   PROC-ARGV-ENV-RESET s" --load" ARG+ f fu ARG+
+   PROC-ENV-INHERIT-MISSING s" " CLI {: erru:n rc:n :}
+   rc 0 T=
+   0 OUT CLI-OUT-U @ ok oku CONTAINS? TTRUE
+   erru ;
+
+
+: TOP-PARSES-WHITEBOX ( -- )
+   s" parses-top.f" s\" package CVT-WB\n: ASSERT ( bool ptr u8 n -- )\n   {: ok:bool m:ptr mu:n :}\n   ok if exit then m mu 76 die ;\ns\" parses:\" true data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-OFF + @ execute 2 = s\" parses: call\" ASSERT\ns\" parses:\" false data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-OFF + @ execute -1 = s\" parses: tick\" ASSERT\ns\" parses-through:\" true data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-OFF + @ execute 2 = s\" parses-through: call\" ASSERT\ns\" parses-through:\" false data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-OFF + @ execute -1 = s\" parses-through: tick\" ASSERT\ns\" top: ok\" type cr\n;package\n" FIXTURE
+   s" top-parses-whitebox: top" T-LABEL s" parses-top.f" s" top: ok" WB-LOAD drop
+   s" parses-binding.f" s\" package SH\npublic\n: DUP ( n -- n n ) dup ;\n;package\npackage A1\npublic\n: PQ ( -- ) parse-name 2drop ;\n;package\npackage A2\npublic\n: PQ ( -- ) parse-name 2drop ;\n;package\npackage CVT-WB\n: ASSERT ( bool ptr u8 n -- )\n   {: ok:bool m:ptr mu:n :}\n   ok if exit then m mu 76 die ;\n: BOUND ( n n n n ptr u8 n -- )\n   {: sym:n eff:n ctl:n want:n m:ptr mu:n :}\n   sym 0 <> m mu ASSERT\n   eff 0 <> m mu ASSERT\n   ctl CHECKER-OWNER-ABI:BINDING-ID-MASK and CHECKER-OWNER-ABI:BINDING-ID-SHIFT rshift want = m mu ASSERT\n   ctl CHECKER-OWNER-ABI:BINDING-PARSES and 0 <> m mu ASSERT ;\n: PRIM ( n n n ptr u8 n -- )\n   {: sym:n eff:n ctl:n m:ptr mu:n :}\n   sym 0 <> m mu ASSERT\n   eff 0= m mu ASSERT\n   ctl CHECKER-OWNER-ABI:BINDING-PARSES and 0 <> m mu ASSERT ;\n: NONE ( n n n ptr u8 n -- )\n   {: sym:n eff:n ctl:n m:ptr mu:n :}\n   sym 0= m mu ASSERT\n   eff 0= m mu ASSERT\n   ctl 0= m mu ASSERT ;\ns\" parses:\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute CHECKER-OWNER-ABI:BINDING-PARSES-ID s\" parses:\" BOUND\ns\" parses-through:\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute CHECKER-OWNER-ABI:BINDING-THROUGH-ID s\" parses-through:\" BOUND\ns\" parse-name\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute s\" parse-name\" PRIM\n: PN ( -- ) parse-name 2drop ;\ns\" PN\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute 0 s\" PN\" BOUND\ns\" A1:PQ\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute 0 s\" A1:PQ\" BOUND\ns\" NOSUCH\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute s\" unknown\" NONE\ns\" A::B\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute s\" malformed\" NONE\nundefine PN\ns\" PN\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute s\" retired\" NONE\nusing SH\ns\" DUP\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute s\" shadowed\" NONE\n;using\nusing A1\nusing A2\ns\" PQ\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute s\" ambiguous\" NONE\n;using\n;using\ns\" binding: ok\" type cr\n;package\n" FIXTURE
+   s" top-parses-whitebox: binding" T-LABEL s" parses-binding.f" s" binding: ok" WB-LOAD drop
+   s" parses-nested.f" s\" require src/habu/verify-source.f\nVERIFY:REPORT-DEFERRALS\ns\" CHECKER-SCOPE-START-NEUTRAL\" s\" --\" TRUST\ns\" CHECKER-SCOPE-DONE\" s\" --\" TRUST\npackage CVT-WB\n: ASSERT ( bool ptr u8 n -- )\n   {: ok:bool m:ptr mu:n :}\n   ok if exit then m mu 76 die ;\n: RUN1 ( -- n ) CHECKER-SCOPE-START-NEUTRAL [: s\\\" : PN ( -- ) parse-name 2drop ;\\nparses: PN 1\\n\" s\" a.f\" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;] catch CHECKER-SCOPE-DONE ;\n: RUN2 ( -- n ) CHECKER-SCOPE-START-NEUTRAL [: s\\\" : PN ( -- ) parse-name 2drop ;\\nPN :\\n: G ( -- n ) 1 2 ;\\n\" s\" b.f\" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;] catch CHECKER-SCOPE-DONE ;\n: RUN3 ( -- n ) CHECKER-SCOPE-START-NEUTRAL [: s\\\" : PN ( -- ) parse-name 2drop ;\\nparses: PN 1\\nPN :\\n: G ( -- n ) 1 2 ;\\n\" s\" c.f\" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;] catch CHECKER-SCOPE-DONE ;\nRUN1 0 = s\" declared\" ASSERT\nRUN2 0 = s\" rolled back: G unchecked\" ASSERT\nRUN3 70 = s\" declared again: G refused\" ASSERT\ns\" nested: ok\" type cr\n;package\n" FIXTURE
+   s" top-parses-whitebox: nested" T-LABEL s" parses-nested.f" s" nested: ok" WB-LOAD {: erru:n :}
+   s" top-parses-whitebox: rolled back, deferred" T-LABEL
+   0 ERR erru s\" \"token\":\"PN\",\"file\":\"b.f\",\"line\":2,\"column\":1" CONTAINS? TTRUE
+   s" top-parses-whitebox: declared again, deferred" T-LABEL
+   0 ERR erru s\" \"token\":\"PN\",\"file\":\"c.f\",\"line\":3,\"column\":1" CONTAINS? TTRUE
+   s" parses-field.f" s\" require src/habu/verify-source.f\npackage CVT-WB\n: ASSERT ( bool ptr u8 n -- )\n   {: ok:bool m:ptr mu:n :}\n   ok if exit then m mu 76 die ;\n: RUN ( -- n ) [: s\\\" : PN ( -- ) parse-name 2drop ;\\nparses: PN 1\\n\" s\" a.f\" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;] catch ;\ndata-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CELL - CELL-VIEW @\nCHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CELL - CELL-VIEW !\nRUN E-NCOMP-OWNER = s\" the missing field refuses\" ASSERT\ndata-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CELL - CELL-VIEW !\ns\" field: ok\" type cr\n;package\n" FIXTURE
+   s" top-parses-whitebox: field" T-LABEL s" parses-field.f" s" field: ok" WB-LOAD drop ;
+
+
 \ A body naming a word only the run can define is deferred where the checker's
 \ judgment of it stops: a name the evaluated text may define, and a create
 \ caller's product. Loaded, each refuses that name (E-UNDEFINED, exit 70), so
-\ neither is answered verified. A refusal anywhere keeps the file refused.
+\ neither is answered verified. A refusal anywhere keeps the file refused. A
+\ create caller no row bounds may read any of the rest, so the check discovers
+\ nothing after its call.
 : DEF-DEFERRED ( -- )
    s\" s\" : CVT-EG ( -- n ) 2 ;\" evaluate\n: CVT-EF ( -- n ) CVT-NOSUCH ;\n" TOP-CHECK
    5 s" def-deferred: evaluate, deferred" EXPECT-KIND
    s" def-deferred: evaluate, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
    s" def-deferred: at the name" s" CVT-NOSUCH" s" W-CHECK-DEFERRED" s" 2" s" 19" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$=
-   s\" : CVT-MK ( -- ) create 0 , ;\nCVT-MK CVT-FOO\n: CVT-UF ( -- n ) CVT-FOO @ ;\n" TOP-CHECK
+   s\" : CVT-MK ( -- ) create 0 , ;\nparses: CVT-MK 1\nCVT-MK CVT-FOO\n: CVT-UF ( -- n ) CVT-FOO @ ;\n" TOP-CHECK
    5 s" def-deferred: create caller, deferred" EXPECT-KIND
    s" def-deferred: create caller, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
-   s" def-deferred: the stretch" s" CVT-MK" s" W-CHECK-DEFERRED" s" 2" s" 1" TOP-PACKET
+   s" def-deferred: the call" s" CVT-MK" s" W-CHECK-DEFERRED" s" 3" s" 1" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$=
-   s" def-deferred: at the product" s" CVT-FOO" s" W-CHECK-DEFERRED" s" 3" s" 19" TOP-PACKET
+   s" def-deferred: at the product" s" CVT-FOO" s" W-CHECK-DEFERRED" s" 4" s" 19" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$=
+   s\" : CVT-MK ( -- ) create 0 , ;\nCVT-MK CVT-FOO\n: CVT-UF ( -- n ) CVT-FOO @ ;\n" TOP-CHECK
+   s" def-deferred: undeclared create caller, the stop" s" CVT-MK" s" 2" s" 1" DEFERRED-ONLY
    s\" : CVT-E ( -- n ) CVT-NOPE ;\ns\" : CVT-EG ( -- n ) 2 ;\" evaluate\n: CVT-EF ( -- n ) CVT-NOSUCH ;\n" TOP-CHECK
    1 s" def-deferred: after a refusal, refused" EXPECT-KIND
    s" def-deferred: after a refusal, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
@@ -1595,14 +1803,24 @@ $180000 constant LARGE-STDIN-LEN
 \ A word whose body calls `create` reads a name when it runs and defines it, and
 \ so does a word that calls such a word, though its own check is the run's
 \ (CVT-MK, deferred at CVT-RA:CVT-RSEVEN, which rendered text defines). Loaded,
-\ each subject makes CVT-Q or CVT-Y, exit 0. The stretch opens at the word, and
-\ a use of its product after the stretch is the run's too.
+\ each subject makes CVT-Q or CVT-Y, exit 0. With a row the call is the run's
+\ and its operand is consumed, and each use of its product after it is the
+\ run's too. With none, it may read any of the rest: the check discovers
+\ nothing after the call.
 : TOP-CREATE ( -- )
-   s\" : CVT-MKS ( n -- ) create , ;\n5 CVT-MKS CVT-Q\nCVT-Q drop\n: CVT-AFTER ( -- n ) 1 ;\nCVT-Q drop\n" TOP-CHECK
+   s\" : CVT-MKS ( n -- ) create , ;\nparses: CVT-MKS 1\n5 CVT-MKS CVT-Q\nCVT-Q drop\n: CVT-AFTER ( -- n ) 1 ;\nCVT-Q drop\n" TOP-CHECK
    5 s" top-create: deferred" EXPECT-KIND
-   s" top-create: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
-   s" top-create: the stretch" s" CVT-MKS" s" 2" s" 3" DEFERRED-AT
-   s" top-create: its product after it" s" CVT-Q" s" 5" s" 1" DEFERRED-AT
+   s" top-create: three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" top-create: the call" s" CVT-MKS" s" 3" s" 3" DEFERRED-AT
+   s" top-create: its product next" s" CVT-Q" s" 4" s" 1" DEFERRED-AT
+   CHECK:VERIFY-OUT$ 2 NTH-PACKET {: p:n :}
+   s" top-create: its product after it" T-LABEL p s" token" STRING$ s" CVT-Q" T$=
+   s" top-create: its product after it" T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   s" top-create: its product after it" T-LABEL p s" line" NUMBER$ s" 6" T$=
+   s" top-create: its product after it" T-LABEL p s" column" NUMBER$ s" 1" T$=
+   s" top-create: its product after it" T-LABEL p s" verdict" STRING$ s" deferred" T$=
+   s\" : CVT-MKS ( n -- ) create , ;\n5 CVT-MKS CVT-Q\nCVT-Q drop\n: CVT-AFTER ( -- n ) 1 ;\nCVT-Q drop\n" TOP-CHECK
+   s" top-create: undeclared, the stop" s" CVT-MKS" s" 2" s" 3" DEFERRED-ONLY
    s\" package CVT-RA public : CVT-RMAKE ( -- ) s\" : CVT-RSEVEN ( -- n ) 7 ;\" INCLUDE-EVALUATE ; CVT-RMAKE ;package\n: CVT-DEFR ( n -- ) create , does> ( -- n ) @ ;\n: CVT-MK ( n -- ) CVT-RA:CVT-RSEVEN + CVT-DEFR ;\n5 CVT-MK CVT-Y\n"
    TOP-CHECK
    5 s" top-create: through a word the run checks" EXPECT-KIND
@@ -1664,9 +1882,11 @@ $180000 constant LARGE-STDIN-LEN
 \ its public wordlist lacks to the global wordlist, for `'` too, and the word
 \ it finds there may define what a bare call to it would: a renderer's text
 \ (CVT-OFP:evaluate) or an unlearned create caller (CVT-OFP:CVT-OFMK) makes
-\ CVT-OFQ, so a later use of it is the run's. Loaded, the first subject and the
-\ last two run, exit 0; a tail no wordlist holds, or the name once the package
-\ is closed, is E-UNDEFINED, exit 70.
+\ CVT-OFQ, so a later use of it is the run's. The row of the word it finds
+\ bounds the qualified call, and with none the check discovers nothing after
+\ it. Loaded, the first subject and the last three run, exit 0; a tail no
+\ wordlist holds, or the name once the package is closed, is E-UNDEFINED, exit
+\ 70.
 : TOP-PACKAGE-TAIL ( -- )
    s\" : CVT-OFG ( -- n ) 7 ;\npackage CVT-OFP\n: CVT-OFL ( -- n ) 1 ;\nCVT-OFP:CVT-OFG drop\n' CVT-OFP:CVT-OFG drop\n;package\n"
    s" top-package-tail: in its package" LOADS-CLEAN
@@ -1678,28 +1898,32 @@ $180000 constant LARGE-STDIN-LEN
    5 s" top-package-tail: a renderer" EXPECT-KIND
    s" top-package-tail: a renderer, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
    s" top-package-tail: its product" s" CVT-OFQ" s" 3" s" 1" DEFERRED-AT
-   s\" : CVT-OFMK ( -- ) create ;\npackage CVT-OFP\nCVT-OFP:CVT-OFMK CVT-OFQ\n: CVT-AFTER ( -- ) ;\nCVT-OFQ drop\n;package\n" TOP-CHECK
+   s\" : CVT-OFMK ( -- ) create ;\nparses: CVT-OFMK 1\npackage CVT-OFP\nCVT-OFP:CVT-OFMK CVT-OFQ\n: CVT-AFTER ( -- ) ;\nCVT-OFQ drop\n;package\n" TOP-CHECK
    5 s" top-package-tail: a create caller" EXPECT-KIND
    s" top-package-tail: a create caller, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
-   s" top-package-tail: its stretch" s" CVT-OFP:CVT-OFMK" s" 3" s" 1" DEFERRED-AT
-   s" top-package-tail: its product after it" s" CVT-OFQ" s" 5" s" 1" DEFERRED-AT ;
+   s" top-package-tail: its call" s" CVT-OFP:CVT-OFMK" s" 4" s" 1" DEFERRED-AT
+   s" top-package-tail: its product after it" s" CVT-OFQ" s" 6" s" 1" DEFERRED-AT
+   s\" : CVT-OFMK ( -- ) create ;\npackage CVT-OFP\nCVT-OFP:CVT-OFMK CVT-OFQ\n: CVT-AFTER ( -- ) ;\nCVT-OFQ drop\n;package\n" TOP-CHECK
+   s" top-package-tail: an undeclared create caller, the stop" s" CVT-OFP:CVT-OFMK" s" 3" s" 1" DEFERRED-ONLY ;
 
 
 \ A deferred word may do anything when it runs, define the name it reads among
-\ them. Loaded, CVT-D runs CVT-MKC, which makes CVT-DQ, exit 0. The stretch
-\ opens at CVT-D, and a use of the name after the stretch is the run's too.
+\ them. Loaded, CVT-D runs CVT-MKC, which makes CVT-DQ, exit 0. The check
+\ reports CVT-D at its call and discovers nothing after it, so the use of that
+\ name is never refused.
 : TOP-DEFER-WORD ( -- )
    s\" defer CVT-D ( -- )\n: CVT-MKC ( -- ) create ;\n: CVT-SET ( -- ) ['] CVT-MKC is CVT-D ;\nCVT-SET\nCVT-D CVT-DQ\n: CVT-AFTER ( -- n ) 1 ;\nCVT-DQ drop\n"
    TOP-CHECK
    5 s" top-defer-word: deferred" EXPECT-KIND
-   s" top-defer-word: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
-   s" top-defer-word: the stretch" s" CVT-D" s" 5" s" 1" DEFERRED-AT
-   s" top-defer-word: the name after it" s" CVT-DQ" s" 7" s" 1" DEFERRED-AT ;
+   s" top-defer-word: one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-defer-word: the call" s" CVT-D" s" 5" s" 1" DEFERRED-AT
+   s" top-defer-word: the name after it" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" CVT-DQ" PACKET 0 < TTRUE ;
 
 
-\ A comment after a deferred word is no token the run reads, as the scan skips
-\ it, so it opens no stretch; `.(` is a word the run reads. Loaded, CVT-CD runs
-\ CVT-NOP, exit 0.
+\ A deferred word may read whatever follows it, a comment among them, so it is
+\ reported at its call whatever follows, and the check discovers nothing after
+\ it. Loaded, CVT-CD runs CVT-NOP, exit 0.
 : CVT-CD$ ( ptr u8 n -- ptr u8 n ) {: tail:ptr tailu:n :}
    SB-RESET
    s\" defer CVT-CD ( -- )\n: CVT-NOP ( -- ) ;\n: CVT-CSET ( -- ) ['] CVT-NOP is CVT-CD ;\nCVT-CSET\nCVT-CD " SB-APPEND
@@ -1708,8 +1932,10 @@ $180000 constant LARGE-STDIN-LEN
    SB$ ;
 
 : TOP-DEFER-COMMENT ( -- )
-   s" \ a note" CVT-CD$ s" top-defer-comment: a line comment" LOADS-CLEAN
-   s" ( a note )" CVT-CD$ s" top-defer-comment: a comment in parentheses" LOADS-CLEAN
+   s" \ a note" CVT-CD$ TOP-CHECK
+   s" top-defer-comment: a line comment" s" CVT-CD" s" 5" s" 1" DEFERRED-ONLY
+   s" ( a note )" CVT-CD$ TOP-CHECK
+   s" top-defer-comment: a comment in parentheses" s" CVT-CD" s" 5" s" 1" DEFERRED-ONLY
    s" .( a note)" CVT-CD$ TOP-CHECK
    5 s" top-defer-comment: a print, deferred" EXPECT-KIND
    s" top-defer-comment: one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
@@ -1928,11 +2154,12 @@ variable DEF-NODE                       \ the definition line DEF found
 
 
 \ A refused body keeps its line when the checker kept its signature, and has
-\ none without one; a body the checker defers has its line.
+\ none without one; a body the checker defers has its line. After a create
+\ caller no row bounds, the check discovers nothing: a body there has none.
 : DEFINITIONS-REFUSED ( -- )
    0 GEN-U !
    s\" : CVT-BAD ( -- n n ) 8 ;\n: CVT-NOSIG 0 if 1 then ;\n" GEN+
-   s\" : CVT-MKS ( n -- ) create , ;\n5 CVT-MKS CVT-Q\n: CVT-USEQ ( -- n ) CVT-Q @ ;\n" GEN+
+   s\" : CVT-MKS ( n -- ) create , ;\nparses: CVT-MKS 1\n5 CVT-MKS CVT-Q\n: CVT-USEQ ( -- n ) CVT-Q @ ;\n" GEN+
    s" defs-refused.f" DEFS-CHECK 1 s" definitions-refused: refused" EXPECT-KIND
    s" CVT-BAD" DEF
    s" definitions-refused: signature kept" s" :" s" " s" global" DEF-WHO
@@ -1943,7 +2170,14 @@ variable DEF-NODE                       \ the definition line DEF found
    s" CVT-USEQ" DEF
    s" definitions-refused: deferred" s" :" s" " s" global" DEF-WHO
    s" definitions-refused: deferred" s" -- n" DEF-EFF
-   s" definitions-refused: deferred" s" : CVT-USEQ" 8 s" defs-refused.f" DEF-SPAN ;
+   s" definitions-refused: deferred" s" : CVT-USEQ" 8 s" defs-refused.f" DEF-SPAN
+   0 GEN-U !
+   s\" : CVT-MKS ( n -- ) create , ;\n5 CVT-MKS CVT-Q\n: CVT-USEQ ( -- n ) CVT-Q @ ;\n" GEN+
+   s" defs-stop.f" DEFS-CHECK 5 s" definitions-refused: undeclared, deferred" EXPECT-KIND
+   s" CVT-MKS" DEF
+   s" definitions-refused: before the stop" s" n --" DEF-EFF
+   s" CVT-USEQ" DEF
+   s" definitions-refused: after the stop, no line" T-LABEL DEF-NODE @ 0 < TTRUE ;
 
 
 \ A name defined again after undefine has both lines, in order.
@@ -2665,6 +2899,11 @@ public
    s" top-qualified" [: TOP-QUALIFIED ;] RUN-CASE
    s" top-deferred" [: TOP-DEFERRED ;] RUN-CASE
    s" top-nested-deferred" [: TOP-NESTED-DEFERRED ;] RUN-CASE
+   s" top-parses-bound" [: TOP-PARSES-BOUND ;] RUN-CASE
+   s" top-parses-through" [: TOP-PARSES-THROUGH ;] RUN-CASE
+   s" top-parses-opaque" [: TOP-PARSES-OPAQUE ;] RUN-CASE
+   s" top-parses-row" [: TOP-PARSES-ROW ;] RUN-CASE
+   s" top-parses-whitebox" [: TOP-PARSES-WHITEBOX ;] RUN-CASE
    s" top-renders" [: TOP-RENDERS ;] RUN-CASE
    s" def-deferred" [: DEF-DEFERRED ;] RUN-CASE
    s" trusted-tick-order" [: TRUSTED-TICK-ORDER ;] RUN-CASE

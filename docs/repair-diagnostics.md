@@ -256,6 +256,17 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
   a refusal. A row in text that `evaluate` runs is
   refused by the run alone, which has no record of its token's place, so that
   record carries none.
+- `E-PARSES-ROW`: a `parses: W n` or `parses-through: W n ( E1 E2 )` row the
+  checker refused, its `token` W, or the declarer when nothing follows it.
+  `fix_parses_row` when W is refused where the row stands: it names no word,
+  is a malformed qualified name, is shadowed by a used public or exported by
+  two used packages, or names a word that reads no source after it; the
+  diagnostic's text says which. `fix_parses_syntax` when the row has no
+  target, its count is not a number of tokens, 0 or more, or its terminators
+  are not a standalone `(`, at least one terminator and a standalone `)`. A
+  refused row bounds nothing. A load refuses the row with
+  `hb: uncaught throw code 7186` and exits 67; `tools/check.f` exits 70 under
+  `--verify-only` and, under `--all-errors`, counts it and goes on.
 - `E-UNDEFINED-TOP-LEVEL`, repair class `unknown_rejection`, and
   `E-BAD-QUALIFIED-TOP-LEVEL`, repair class `fix_qualified_name`: a top-level
   token the load runs or ticks resolves nowhere, or is a malformed qualified
@@ -318,16 +329,19 @@ to the run, or a definition the checker left to it, and is no refusal: code
 `W-CHECK-DEFERRED`, repair class `rewrite_uncheckable`, `verdict` `deferred`,
 the `token` with its `file`, `line`, `column`, `byte_start` and `byte_end`, and
 `suggestion`, with no `throw_code` or definition fields. The token runs a word
-that may read the source after it (it parses or is deferred), or names a word
-only a rendering statement before it may define, so the tokens from it to the
-next statement the pre-pass reads are the run's to know, and none of them is
-verified. A word that renders source opens no stretch: it reads only the text it
-renders. A definition's body names a word only such a statement, or an unlearned
-create caller, may define (`CHECK` verdict 2, `docs/forth.md`), and the token is
-where the checker's judgment of the body stops. Only `--verify-only` reports it,
-once per such stretch that holds anything but blanks and comments and once per
-such definition; see Checking Without Running for the file's verdict. It counts
-as no refusal and has no repair packet.
+that may read the source after it (it parses or is deferred): what it reads is
+the run's to know, so nothing after it is verified, unless a `parses:` or
+`parses-through:` row bounds what it reads and the check resumes after that
+(`docs/forth.md`). Or the token names a word only a rendering statement before
+it may define, and the tokens from it to the next statement the pre-pass reads
+are the run's to know, none of them verified. A word that renders source opens
+no stretch: it reads only the text it renders. A definition's body names a word
+only such a statement, or an unlearned create caller, may define (`CHECK`
+verdict 2, `docs/forth.md`), and the token is where the checker's judgment of
+the body stops. Only `--verify-only` reports it: once per word that may read
+the source, once per rendered name's stretch that holds anything but blanks
+and comments, and once per such definition; see Checking Without Running for
+the file's verdict. It counts as no refusal and has no repair packet.
 
 A definition by `:`, `CAST:`, `EXPORT` or a typed storage definer of a name
 its wordlist already holds emits, with or without `--all-errors`, a
@@ -749,7 +763,7 @@ position fields when its named token locates in the checked text:
 | `signature` or `package` | string | the field its code adds | Copied from the record. |
 | `file` | string | required | Source label or path. |
 | `line`, `column`, `byte_start`, `byte_end` | integer | all four or none | Copied source positions when known. |
-| `code` | string | required | A refused-record code or `E-GENERATES-ROW`. |
+| `code` | string | required | A refused-record code, `E-GENERATES-ROW` or `E-PARSES-ROW`. |
 | `repair_class` | string | required | One its code names. |
 | `suggestion` | string | required | Checker repair hint. |
 | `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
@@ -831,6 +845,11 @@ Current checker classes:
 - `delete_generates_row`: a `generates: D ( effect )` row's D already states
   what it makes: its `does>` clause, an earlier row, or the definer it wraps.
   Delete the row.
+- `fix_parses_row`: a `parses:` or `parses-through:` row's target is no word
+  where the row stands that reads the source after it; write the row after
+  the definition of a word that parses, spelled as the definition spells it.
+- `fix_parses_syntax`: a `parses:` or `parses-through:` row is malformed;
+  write `parses: W n` or `parses-through: W n ( E1 E2 )`.
 - `fix_signature_size`: a stored signature is more than 4096 levels deep or takes
   more than 255 cells, more than its record holds; `reason` names the bound, the
   row's count and the limit. Keep bulk values in a buffer.
@@ -927,6 +946,8 @@ table it is derived only from `repair_class`. It does not replace the raw
 | `close_primitive_row` | `Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE.` |
 | `fix_generates_row` | `This generates: row names no word here. Write it after the definer's definition, spelled as the definition spells it.` |
 | `delete_generates_row` | `This definer already states what it makes: its does> clause, an earlier generates: row or the definer it wraps. Delete the row.` |
+| `fix_parses_row` | `This row's target is no word here that reads the source after it. Write the row after the definition of a word that parses, spelled as the definition spells it.` |
+| `fix_parses_syntax` | `Write the row as parses: W n or parses-through: W n ( E1 E2 ): a count of 0 or more, then at least one terminator between a standalone ( and ).` |
 | `rebuild_engine` | `The engine provides this source; rebuild bin/hb to check a change to it.` |
 | `fix_stale_trust_row` | `This trust row names no word in the wordlist its record lands in: the open section's, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word.` |
 | `use_storage_definer` | `A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar.` |

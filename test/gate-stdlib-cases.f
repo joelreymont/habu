@@ -1986,6 +1986,10 @@ SUITE defer-history
    test/defer-history.f
 ;SUITE
 
+SUITE parses-window
+   test/parses-window.f
+;SUITE
+
 WHITEBOX-SUITE effect-intern
    test/effect-intern-suite.f
 ;SUITE

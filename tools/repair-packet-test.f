@@ -412,12 +412,13 @@ create PACKET-BUF FS-PATH-CAP allot
    s" warning" s" unknown_rejection"
    s" : DIAG-WIDE drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop ; : DIAG-WIDE-CALL ( -- ) DIAG-WIDE ;" 70 CHILD-CASE ;
 
-\ A deferral is no refusal either: under --verify-only the stretch a parsing
-\ word leaves to the run comes first, and the packet comes from the refused
-\ definition after it and counts that one alone.
+\ A deferral is no refusal either: under --verify-only the call of a parsing
+\ word, whose row bounds what it reads, is left to the run and comes first, and
+\ the packet comes from the refused definition after it and counts that one
+\ alone.
 : TEST-DEFERRAL ( -- )
    s" deferral" s" unknown_rejection"
-   s" : DIAG-SKIP ( -- ) parse-name 2drop ; DIAG-SKIP DIAG-SKIPPED : DIAG-DBAD ( -- ) DIAG-NO-SUCH ;"
+   s" : DIAG-SKIP ( -- ) parse-name 2drop ; parses: DIAG-SKIP 1 DIAG-SKIP DIAG-SKIPPED : DIAG-DBAD ( -- ) DIAG-NO-SUCH ;"
    70 s" --verify-only" MODE-CASE ;
 
 \ A bare token that resolves in a used package and in another scope as well is

@@ -202,10 +202,26 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 | `s>number?` | `STR>NUMBER?`, `lib/string.f` |
 | `'` in a compiled body | `[: WORD ;]`; `'` is top level only |
 
-A top-level word that parses or is a `defer` leaves the tokens after it, up to
-the next statement the check reads, to the run: under `--verify-only` that
-stretch is `W-CHECK-DEFERRED` at the word and the verdict `deferred`, exit 0,
-unless something is refused.
+A top-level word that parses or is a `defer` is `W-CHECK-DEFERRED` at the word
+under `--verify-only`, verdict `deferred`, exit 0 unless something is refused,
+and the check discovers nothing after it: no definition, package, load or use
+in the rest of the file or of the file that loads it. State what such a word
+reads, after its definition, and the check goes on after its operands:
+
+```forth
+parses: PN 1                        \ PN reads one token
+parses-through: BLK 0 ( ;BLK )      \ BLK reads through the first ;BLK
+parses-through: SUITE 1 ( ;SUITE TEST:;SUITE )
+```
+
+The count is of raw blank-delimited tokens, as `parse-name` reads them; the
+through form then reads through the first token that equals a listed one,
+byte for byte, inclusive (`)` cannot be listed). A `:`, a definer, a comment or
+string opener among the operands is data. The word is still
+`W-CHECK-DEFERRED`: the row is trusted, as `parse-imm`'s is, never compared with
+the body. Only the check reads it, from the source it checks, so a word whose
+row it did not read, a resident or precompiled one among them, is undeclared;
+`EXPORT` carries a row, a word that calls the declared one does not.
 
 A word that renders definitions at load time (`FUNCTION:`/`;FUNCTION`,
 `CMD:COMMAND`, `TASK:+USER`, anything reaching `INCLUDE-EVALUATE`) makes names

@@ -211,6 +211,21 @@ $3B0 constant VERIFY-SOURCE-CLAUSE-OFF
 \ answers.
 $3B8 constant VERIFY-CURSOR-OFF
 $3C0 constant VERIFY-EACH-VISIBLE-OFF
+\ The word the load's top-level find selects for a token, asked quietly:
+\ ( ptr u8 n -- sym eff1 ctl ), its symbol, its visible effect record's offset
+\ + 1 and its control word, all 0 when the load refuses the token or nothing
+\ live binds it (src/core/checker.f CHECKER-VERIFY-TOP-BINDING).
+$3C8 constant VERIFY-TOP-BINDING-OFF
+\ The control word's facts its reader tests: the word may read the source after
+\ it, it is deferred, and the field holding the id of an engine word
+\ (src/core/checker.f CTL-INTRINSIC), with the ids of `parses:` and
+\ `parses-through:`, the declarers of what such a word reads.
+$2000 constant BINDING-PARSES
+$10000 constant BINDING-DEFER
+8 constant BINDING-ID-SHIFT
+$1F00 constant BINDING-ID-MASK
+11 constant BINDING-PARSES-ID
+12 constant BINDING-THROUGH-ID
 0 constant VISIBLE-BODY
 1 constant VISIBLE-TOP
 2 constant VISIBLE-NAMED

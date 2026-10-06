@@ -1774,4 +1774,70 @@ STGR-DIAG-INSTALL
 : GENERATES-DIAG-INSTALL ( -- ) [: GENR-DIAG ;] is GENERATES-DIAG-XT ;
 GENERATES-DIAG-INSTALL
 
+\ A `parses:` or `parses-through:` row the checker refused
+\ (checker.f CHECKER-PARSES-ROW), named at its target, or at its keyword when it
+\ has none. The kind says which check failed: the target's take
+\ fix_parses_row, the row's syntax fix_parses_syntax.
+: PRS-SYNTAX? ( n -- bool )
+   PARSES-NO-TARGET >= ;
+: PRS-REASON ( n -- )
+   {: kind:n :}
+   kind PARSES-UNDEFINED = IF
+      s" ' names no word here: the row follows the word's definition and names" DTXT
+      s"  it as the code there spells it" DTXT EXIT
+   THEN
+   kind PARSES-QUALIFIED = IF
+      s" ' is a malformed qualified name: one colon between a package and a" DTXT
+      s"  public tail" DTXT EXIT
+   THEN
+   kind PARSES-SHADOW = IF
+      s" ' is refused here: a used package's public shadows the global word of" DTXT
+      s"  that name" DTXT EXIT
+   THEN
+   kind PARSES-AMBIGUOUS = IF
+      s" ' is refused here: two used packages export that name" DTXT EXIT
+   THEN
+   kind PARSES-READS-NONE = IF
+      s" ' names a word that reads no source after it: only a word that parses" DTXT
+      s"  takes a row" DTXT EXIT
+   THEN
+   kind PARSES-NO-TARGET = IF s" ' has no target after it" DTXT EXIT THEN
+   kind PARSES-COUNT = IF
+      s" ': its count is not a number of tokens, 0 or more" DTXT EXIT
+   THEN
+   s" ': its terminators are not a standalone ( , at least one terminator and a" DTXT
+   s"  standalone )" DTXT ;
+: PRS-PROSE ( n -- )
+   {: kind:n :}
+   s" E-PARSES-ROW habu: parses: row '" DTXT  PRS-TOK-A @ PRS-TOK-U @ DTXT
+   kind PRS-REASON ;
+: PRS-SUGGEST$ ( n -- ptr u8 n )
+   PRS-SYNTAX? IF
+      s" Write the row as parses: W n or parses-through: W n ( E1 E2 ): a count of 0 or more, then at least one terminator between a standalone ( and )." EXIT
+   THEN
+   s" This row's target is no word here that reads the source after it. Write the row after the definition of a word that parses, spelled as the definition spells it." ;
+: PRS-CLASS$ ( n -- ptr u8 n )
+   PRS-SYNTAX? IF s" fix_parses_syntax" EXIT THEN
+   s" fix_parses_row" ;
+: PRS-JSON ( n -- )
+   {: kind:n :}
+   123 EMIT1
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" E-PARSES-ROW" JSTR 44 EMIT1
+   s" repair_class" JKEY kind PRS-CLASS$ JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" token" JKEY PRS-TOK-A @ PRS-TOK-U @ JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   PRS-TOK-A @ PRS-TOK-U @ JTOKEN-FIELDS
+   s" suggestion" JKEY kind PRS-SUGGEST$ JSTR
+   125 EMIT1 ;
+: PRS-DIAG ( n -- )
+   {: kind:n :}
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF kind PRS-JSON ELSE kind PRS-PROSE THEN
+   10 EMIT1
+   RSBUF-FLUSH ;
+: PARSES-DIAG-INSTALL ( -- ) [: PRS-DIAG ;] is PARSES-DIAG-XT ;
+PARSES-DIAG-INSTALL
+
 ;using

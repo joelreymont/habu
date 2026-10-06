@@ -129,9 +129,11 @@ variable VALUE                     \ the number the first one carried
 \ exactly as unverified as they were. CK-BODYBUF-CAP is a capacity rather than an
 \ offset, the body-text capacity that bounds every name the checker takes, and
 \ drifts the same way. The input cursor and the input's end are the ones
-\ `generates:` reads its row from. The declared-row log's cell and slot layout,
-\ the record fields that name a word and its package's wordlists, and the
-\ retired wordlist mark are the ones the cold claim reads (CK-DECLARED-LOG-DRAIN);
+\ `generates:` reads its row from, and the token the engine read last is the
+\ keyword `parses:` names a row with no target at. The declared-row log's cell
+\ and slot layout, the record fields that name a word and its package's
+\ wordlists, and the retired wordlist mark are the ones the cold claim reads
+\ (CK-DECLARED-LOG-DRAIN);
 \ the record fields restate src/habu/xref.f, which the engine also holds.
 \ src/core/layout-buffer.f loads before layout.f too and mirrors the input
 \ cursor STORAGE-UNREAD writes. The list is
@@ -155,6 +157,8 @@ variable VALUE                     \ the number the first one carried
    s" CK-BODYBUF-CAP"      BODYBUF-CAP       ?MIRROR
    s" CK-INP-OFF"          INP-CELL          ?MIRROR
    s" CK-INE-OFF"          INE-CELL          ?MIRROR
+   s" CK-TKA-OFF"          TKA-CELL          ?MIRROR
+   s" CK-TKL-OFF"          TKL-CELL          ?MIRROR
    s" CK-DECLARED-LOG-CELL" DECLARED-LOG:ADDR-CELL ?MIRROR
    s" CK-DLOG-SLOT"        DECLARED-LOG:SLOT      ?MIRROR
    s" CK-DLOG-SLOTS-REL"   DECLARED-LOG:SLOTS-REL ?MIRROR

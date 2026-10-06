@@ -39,10 +39,11 @@ s" LBUF-CAPTURE-PREPARE" s" --" TRUST
 PRIM: MULTI-ERR PE-PTR-N PE-OUT PRIM;
 PRIM: MULTI-ERR-N PE-PTR-N PE-OUT PRIM;
 
-\ src/habu/verify-source.f counts its learned definers in this checker cell,
-\ which the rollback frame rewinds (src/core/checker.f), and names it in
-\ checked bodies loaded after the hook.
+\ src/habu/verify-source.f counts its learned definers and its `parses:` rows
+\ in these checker cells, which the rollback frame rewinds (src/core/checker.f),
+\ and names them in checked bodies loaded after the hook.
 PRIM: VERIFY-DEFINER-N PE-PTR-N PE-OUT PRIM;
+PRIM: VERIFY-PARSES-N PE-PTR-N PE-OUT PRIM;
 
 s" SIG-RAW-MODE" s" -- ptr n" TRUST
 
@@ -56,6 +57,27 @@ TRUSTED: MULTI-ERR-BEGIN ( -- )
 : MULTI-ERR-END ( -- n )
    MULTI-ERR-N @  0 MULTI-ERR ! ;
 
+\ `parses: W n` and `parses-through: W n ( E1 E2 )`, at top level after W's
+\ definition. Each reads its row by parse-name, as the source pre-verifier reads
+\ it (src/habu/verify-source.f PARSES-ROW), has the checker check it
+\ (src/core/checker.f CHECKER-PARSES-ROW) and keeps nothing: the shape is the
+\ pre-verifier's contract alone. The keyword is the token the engine read last
+\ when the word starts (CK-TKA-OFF), where a row with no target is named.
+\ UNSAFE-TOK? bars both from checked bodies, so they run from top level only.
+\ They load after the hook so that this checker records them and INTRINSIC tags
+\ each as the engine word the pre-pass knows it by, and as a word that reads
+\ the source after it (CTL-PARSES, INTRINSIC-CTL): a word src/core/checker.f
+\ defines is recorded by the checker the build kept, whose identities its
+\ handover copies, and that checker may know no such word.
+TRUSTED: parses: ( -- )
+   data-base CK-TKA-OFF + @  data-base CK-TKL-OFF + @
+   parse-name parse-name RES-FALSE CHECKER-PARSES-ROW drop drop drop ;
+INTRINSIC-PARSES INTRINSIC
+
+TRUSTED: parses-through: ( -- )
+   data-base CK-TKA-OFF + @  data-base CK-TKL-OFF + @
+   parse-name parse-name PARSES-LIST-LOAD CHECKER-PARSES-ROW drop drop drop ;
+INTRINSIC-PARSES-THROUGH INTRINSIC
 
 \ Read finalized numeric call facts without exposing the unification graph.
 package CHECKER-CALLS

@@ -378,6 +378,10 @@ variable GJA-DIRECT
    GJA-MAP-ROW IF exit THEN
    s" delete_generates_row" s" This definer already states what it makes: its does> clause, an earlier generates: row or the definer it wraps. Delete the row."
    GJA-MAP-ROW IF exit THEN
+   s" fix_parses_row" s" This row's target is no word here that reads the source after it. Write the row after the definition of a word that parses, spelled as the definition spells it."
+   GJA-MAP-ROW IF exit THEN
+   s" fix_parses_syntax" s" Write the row as parses: W n or parses-through: W n ( E1 E2 ): a count of 0 or more, then at least one terminator between a standalone ( and )."
+   GJA-MAP-ROW IF exit THEN
    s" rebuild_engine" s" The engine provides this source; rebuild bin/hb to check a change to it."
    GJA-MAP-ROW IF exit THEN
    s" fix_stale_trust_row" s" This trust row names no word in the wordlist its record lands in: the open section's, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word."

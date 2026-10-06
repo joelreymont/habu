@@ -902,22 +902,28 @@ variable RC
    s" : X ( -- n ) ['] dup ;" s" tick-defined.f" LINE-FIXTURE
    CERTIFIED ;
 
-\ The fixture NAME holding the line TEXT after a create caller made MADE, a word
-\ the engine binds and no checker row types.
-: MADE-FIXTURE ( ptr u8 n ptr u8 n -- )
-   {: text:ptr textu:n name:ptr nameu:n :}
+\ The fixture NAME holding the line TEXT after MK, the create caller the line
+\ DEF defines, made MADE, a word the engine binds and no checker row types.
+: MK-FIXTURE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: def:ptr defu:n text:ptr textu:n name:ptr nameu:n :}
    SB-RESET
-   s" : MK ( -- ) create ;" SB-APPEND LF+
+   def defu SB-APPEND LF+
    s" MK MADE" SB-APPEND LF+
    text textu SB-APPEND LF+
    name nameu FIXTURE! ;
 
-\ Packet k of the last check defers the stretch after MK to the run.
-: MK-DEFERRED ( n -- )
-   {: k:n :}
+\ MK-FIXTURE whose row bounds MK's call to the name it reads, so the check goes
+\ on after it.
+: MADE-FIXTURE ( ptr u8 n ptr u8 n -- )
+   {: text:ptr textu:n name:ptr nameu:n :}
+   s" : MK ( -- ) create ; parses: MK 1" text textu name nameu MK-FIXTURE ;
+
+\ Packet k of the last check defers MK's call, at byte BS, to the run.
+: MK-DEFERRED ( n n -- )
+   {: k:n bs:n :}
    k s" code" s" W-CHECK-DEFERRED" FIELD=
    k s" verdict" s" deferred" FIELD=
-   k s" MK" 2 1 21 23 FX-PATH$ CANON$ FX$ AT-IN ;
+   k s" MK" 2 1 bs bs 2 + FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ The plain check and --all-errors each give one packet, a rejection: CODE at
 \ TOK, on LINE at COL, in bytes [BS, BE).
@@ -930,17 +936,16 @@ variable RC
    c cu REJECTED-AS
    0 tok toku line col bs be AT ;
 
-\ --verify-only defers both the stretch after MK and X's body: the stretch
-\ ends at X's declaration, whose use of MADE or unsafe word needs its own
-\ warning where the check stopped.
+\ --verify-only defers both MK's call and X's body, whose use of MADE or unsafe
+\ word needs its own warning where the check stopped.
 : VERIFY-DEFERS ( ptr u8 n -- )
    {: tok:ptr toku:n :}
    s" --verify-only" 0 CHECK-EXIT
    GJA-LINE# @ 2 T=
-   0 MK-DEFERRED
+   0 34 MK-DEFERRED
    1 s" code" s" W-CHECK-DEFERRED" FIELD=
    1 s" verdict" s" deferred" FIELD=
-   1 tok toku 3 12 40 40 toku + FX-PATH$ CANON$ FX$ AT-IN ;
+   1 tok toku 3 12 53 53 toku + FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ RUN-REFUSED-AT, and --verify-only gives that rejection after the deferral.
 : VERIFY-REFUSED-AT ( ptr u8 n ptr u8 n n n n n -- )
@@ -948,7 +953,7 @@ variable RC
    c cu tok toku line col bs be RUN-REFUSED-AT
    s" --verify-only" CHECK
    GJA-LINE# @ 2 T=
-   0 MK-DEFERRED
+   0 34 MK-DEFERRED
    1 s" code" c cu FIELD=
    1 s" verdict" s" rejected" FIELD=
    1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
@@ -971,7 +976,9 @@ variable RC
 \ made, is no word the load cannot compile: its tick is admitted, and a call to
 \ it fails its check in source order, after a signature that does not parse and
 \ an earlier failing check, as the load reports. A name nothing defines is
-\ still the load's compiler's to refuse, before any check.
+\ still the load's compiler's to refuse, before any check. MK's row bounds its
+\ call, so --verify-only checks what follows it; with no row the call may read
+\ any of the rest, and --verify-only discovers nothing after it.
 : TEST-UNROWED ( -- )
    s" a ticked word the engine binds and no row types" T-LABEL
    s" : X ( -- ) ['] MADE drop ; X" s" made-tick.f" MADE-FIXTURE
@@ -983,24 +990,24 @@ variable RC
    s" " 0 LOADED
    s" a signature that does not parse and a call of that word" T-LABEL
    s" : X ( -- zz ) MADE ;" s" made-badsig.f" MADE-FIXTURE
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 38 40 VERIFY-REFUSED-AT
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 51 53 VERIFY-REFUSED-AT
    s" x at 'zz'" REJECT-RC LOADED
    s" a signature that does not parse and a tick of that word" T-LABEL
    s" : X ( -- zz ) ['] MADE drop ;" s" made-badsig-tick.f" MADE-FIXTURE
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 38 40 VERIFY-REFUSED-AT
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 51 53 VERIFY-REFUSED-AT
    s" x at 'zz'" REJECT-RC LOADED
    s" that signature, a call of that word and a trust-boundary word" T-LABEL
    s" : X ( -- zz ) MADE evaluate ;" s" made-badsig-unsafe.f" MADE-FIXTURE
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 38 40 VERIFY-REFUSED-AT
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 51 53 VERIFY-REFUSED-AT
    s" x at 'zz'" REJECT-RC LOADED
    s" a trust-boundary word before a call of that word" T-LABEL
    s" : X ( -- ) evaluate MADE ;" s" made-unsafe.f" MADE-FIXTURE
-   s" E-UNSAFE" s" evaluate" 3 12 40 48 RUN-REFUSED-AT
+   s" E-UNSAFE" s" evaluate" 3 12 53 61 RUN-REFUSED-AT
    s" evaluate" VERIFY-DEFERS
    s" x at 'evaluate'" REJECT-RC LOADED
    s" a call of that word alone" T-LABEL
    s" : X ( -- ) MADE ;" s" made-call.f" MADE-FIXTURE
-   s" E-UNDEFINED" s" MADE" 3 12 40 44 RUN-REFUSED-AT
+   s" E-UNDEFINED" s" MADE" 3 12 53 57 RUN-REFUSED-AT
    s" MADE" VERIFY-DEFERS
    s" x at 'MADE'" REJECT-RC LOADED
    s" a signature that does not parse and a word nothing defines" T-LABEL
@@ -1008,7 +1015,14 @@ variable RC
    s" E-UNDEFINED: NOPE" REJECT-RC LOADED
    s" that signature, a call of MADE and a word nothing defines" T-LABEL
    s" : X ( -- zz ) MADE NOPE ;" s" made-call-nope.f" MADE-FIXTURE
-   s" E-UNDEFINED: NOPE" REJECT-RC LOADED ;
+   s" E-UNDEFINED: NOPE" REJECT-RC LOADED
+   s" that signature and a call of MADE, with no row for MK" T-LABEL
+   s" : MK ( -- ) create ;" s" : X ( -- zz ) MADE ;" s" made-stop.f" MK-FIXTURE
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 38 40 RUN-REFUSED-AT
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 1 T=
+   0 21 MK-DEFERRED
+   s" x at 'zz'" REJECT-RC LOADED ;
 
 \ A control-flow word with no structure open, or another structure's, is one
 \ the load cannot compile: it refuses the definition at that word, before a

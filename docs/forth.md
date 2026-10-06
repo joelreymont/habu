@@ -1943,11 +1943,37 @@ the rule.
   A `TRUSTED:` body takes the flags of the calls the pre-pass binds in it, up
   to its `does>` (`verify-source.f` `TRUSTED-CALL`), and every flag when one
   is unbound; a body whose check is deferred keeps the flags of the calls it
-  binds. From such a word to the next statement the pre-pass reads nothing
-  is resolved; `--verify-only` reports the stretch once, at the word, as
-  `W-CHECK-DEFERRED` when it holds anything but blanks and comments, and
-  answers `deferred` when nothing is refused. A refused token leaves the rest
-  of its stretch unresolved and unreported, as the load stops there. A word that
+  binds. `--verify-only` reports such a word at once, at the word, as
+  `W-CHECK-DEFERRED`, and answers `deferred` when nothing is refused. What
+  the word reads may be any of the text after it, so the pre-pass keeps what
+  it found before the word and discovers nothing after it: no definition,
+  package change, loader or use, in the rest of the file or in the file whose
+  load reached it, as the skipped text may change their scope. A source
+  declaration bounds the word instead, after its definition:
+  `parses: W n` reads n tokens, `parses-through: W n ( E1 E2 )` n tokens and
+  then every token through the first one equal to a listed terminator,
+  inclusive. Tokens are counted raw, blank-delimited, as `parse-name` reads
+  them; terminators compare bytes, with no case folding or qualification;
+  `)` ends the list and cannot be in it. A `:`, definer, comment or string
+  opener, package or loader spelling among the operands is data. A file that
+  ends inside the operands leaves them consumed and the word deferred. The
+  word is still `W-CHECK-DEFERRED`, as the pre-pass never runs it, but the
+  check resumes after its operands. The row is a trusted claim, as
+  `parse-imm`'s is, never compared with the word's body. Its target is the
+  binding the top-level find selects. A target the load refuses, a word that
+  reads no source, a count that is no number of tokens, 0 or more, or a list
+  that is not a standalone `(`, terminators and a standalone `)` refuses the
+  row with `E-PARSES-ROW` (7186; a load exits 67, `--verify-only` 70), and a
+  refused row bounds nothing. A `defer`, and a primitive, which no record
+  tells apart from its replacement, stay undeclared under a row. A later
+  row for the same binding replaces it, `undefine` or a new definition drops
+  it, `EXPORT` copies it to the new name, and a word that calls the declared
+  one does not take it. This is a contract of the source pre-pass only, not
+  of the language: an ordinary load reads and checks the row and keeps
+  nothing, so a word from a resident, precompiled or cached dependency whose
+  row this check did not read is undeclared, and a row before the call in the
+  source checked supplies it. A refused token leaves the rest of its stretch
+  unresolved and unreported, as the load stops there. A word that
   renders source opens no stretch, as it reads only the text it renders: it
   marks the wordlist (the rule above), and a later top-level name only that
   text may define opens the stretch at the name. Measured:

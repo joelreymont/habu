@@ -248,6 +248,15 @@ variable SUBJECT-U
 : WARM-CONTROL$ ( -- ptr u8 n )
    s" : WARM-CPARSE ( -- ) PAYLOAD-NATIVE:CPARSE ; using PAYLOAD-NATIVE CPARSE MISSING ;using 4242 ." ;
 
+\ The cold binding has no checker symbol, so its row is accepted but remains
+\ opaque. A checked use materializes that same selected parser; its row then
+\ bounds one operand, exposing the later unknown token.
+: COLD-ROW-CONTROL$ ( -- ptr u8 n )
+   s" parses: PAYLOAD-NATIVE:CPARSE 1 using PAYLOAD-NATIVE CPARSE MISSING ;using ROW-AFTER" ;
+
+: WARM-ROW-CONTROL$ ( -- ptr u8 n )
+   s" : WARM-CPARSE ( -- ) PAYLOAD-NATIVE:CPARSE ; parses: PAYLOAD-NATIVE:CPARSE 1 using PAYLOAD-NATIVE CPARSE MISSING ;using ROW-AFTER" ;
+
 : RENDER-CONTROL$ ( -- ptr u8 n )
    s" PAYLOAD-NATIVE:CRENDER : AFTER-RENDER ( -- n ) RENDERED ; AFTER-RENDER ." ;
 
@@ -283,6 +292,12 @@ variable SUBJECT-U
    IMAGE$ COLD-CONTROL$ s" check-verify: deferred" s" " false VERIFY-CHILD
    s" a qualified checked intake preserves the same control behavior" T-LABEL
    IMAGE$ WARM-CONTROL$ s" check-verify: deferred" s" " false VERIFY-CHILD
+   s" a cold selected parser accepts its row without materialization" T-LABEL
+   IMAGE$ COLD-ROW-CONTROL$ s" check-verify: deferred" s" " false VERIFY-CHILD
+   PRE-OUT$ s" E-PARSES-ROW" CONTAINS? TFALSE
+   s" a materialized selected parser row has the same bound" T-LABEL
+   IMAGE$ WARM-ROW-CONTROL$ s" check-verify: refused" s" E-UNDEFINED-TOP-LEVEL" false VERIFY-CHILD
+   PRE-OUT$ S\" \"token\":\"ROW-AFTER\"" CONTAINS? TTRUE
    s" a captured renderer defines a name absent from source" T-LABEL
    RENDER-CONTROL$ 0 s" 42" CONTROL-RUN
    IMAGE$ RENDER-CONTROL$ s" check-verify: deferred" s" " false VERIFY-CHILD
