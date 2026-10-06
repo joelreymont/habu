@@ -106,18 +106,20 @@ private
 : BUF-SPAN ( ptr a -- SPAN:span<u8> ) {: buf:ptr :}
    buf DATA@ buf CAP-RAW@ SPAN:MAKE ;
 
-\ ---- copy into the new mapping, install it, then release the prior one. Release
-\ is LAST; the caller validates the old prefix and new capacity before allocating,
-\ so validation or allocation failure leaves only the old storage owned.
-\ The active prefix is taken from the old span and copied into the new one, so
-\ both ends of the move are bounds-checked (E-SPAN-RANGE, E-SPAN-CAPACITY).
-: INSTALL-RESIZE ( ptr a SPAN:span<u8> -- ) {: buf:ptr d :}
-   buf BUF-SPAN {: old :}
-   old buf LEN-RAW@ SPAN:TAKE SPAN:$ d SPAN:COPY
+\ Install only after all source bytes have been copied; release is last.
+: INSTALL-STORAGE ( ptr a SPAN:span<u8> SPAN:span<u8> -- )
+   {: buf:ptr d old :}
    d SPAN:$ {: dp:ptr cap:n :}
    dp buf DATA!
    cap buf CAP-RAW!
    old STORAGE-RELEASE ;
+
+\ The caller validates the old prefix and new capacity before allocating.
+: INSTALL-RESIZE ( ptr a SPAN:span<u8> -- )
+   {: buf:ptr d :}
+   buf BUF-SPAN {: old :}
+   old buf LEN-RAW@ SPAN:TAKE SPAN:$ d SPAN:COPY
+   buf d old INSTALL-STORAGE ;
 
 : CHECK-RESIZE-CAP ( ptr a n -- ) {: buf:ptr cap:n :}
    buf CHECK-LIVE
@@ -173,17 +175,30 @@ private
    buf CHECK-LIVE
    0 buf SET-LEN ;
 
-\ The three writers mint the span AFTER the growth step: a grow installs a new
-\ mapping, so a span taken before it would name the released one.
+\ Writers project their destination from the mapping that receives the bytes.
 : APPEND-BYTE-RAW ( n ptr a -- ) {: v:n buf:ptr :}
    buf  buf LEN-RAW@ 1 +  ENSURE-RAW
    v  buf BUF-SPAN buf LEN-RAW@ SPAN:U8!
    buf LEN-RAW@ 1 + buf SET-LEN ;
 
-: APPEND-SPAN-RAW ( ptr u8 n ptr a -- ) {: src:ptr u:n buf:ptr :}
-   buf  buf LEN-RAW@ u +  ENSURE-RAW           \ len + u; a cell-overflow need fails closed
-   src u  buf BUF-SPAN buf LEN-RAW@ SPAN:SKIP  SPAN:COPY
-   buf LEN-RAW@ u + buf SET-LEN ;
+: APPEND-SPAN-RAW ( ptr u8 n ptr a -- )
+   {: src:ptr u:n buf:ptr :}
+   buf CHECK-LIVE
+   buf LEN-RAW@ u + {: need:n :}
+   need CHECK-NEED
+   need buf CAP-RAW@ > if
+      buf need GROW-CAP {: cap:n :}
+      buf cap CHECK-RESIZE-CAP
+      buf BUF-SPAN {: old :}
+      cap STORAGE-ALLOC {: d :}
+      old buf LEN-RAW@ SPAN:TAKE SPAN:$ d SPAN:COPY
+      \ src may borrow old storage. Copy it before install releases old.
+      src u d buf LEN-RAW@ SPAN:SKIP SPAN:COPY
+      buf d old INSTALL-STORAGE
+   else
+      src u buf BUF-SPAN buf LEN-RAW@ SPAN:SKIP SPAN:COPY
+   then
+   need buf SET-LEN ;
 
 : REPLACE-RAW ( ptr u8 n ptr a -- ) {: src:ptr u:n buf:ptr :}
    buf CHECK-LIVE

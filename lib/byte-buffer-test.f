@@ -85,6 +85,27 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-BUF BUFT-TCAP 8 T=
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abcdef" T$= ;
 
+\ A borrowed source can be this buffer's own active prefix or a substring.
+\ Growth must keep that source mapped until the append has copied its bytes.
+: BUFT-APPEND-SELF ( -- )
+   64 BUFT-FRESH
+   s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+   BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW
+   s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+   T$=
+   8 BUFT-FRESH
+   s" abcd" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abcdabcd" T$= ;
+
+: BUFT-APPEND-PART ( -- )
+   8 BUFT-FRESH
+   s" abcdefgh" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ drop 2 + 3 BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abcdefghcde" T$= ;
+
 \ ---- reserve exact grows capacity to exactly the request, preserving bytes ------
 : BUFT-RESERVE ( -- )
    4 BUFT-FRESH
@@ -263,6 +284,8 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    [: -1 BUF:N>BLEN drop ;] E-BUF-BOUNDS TTHROWSQ
    BUFT-GROW
    BUFT-APPEND-SPAN
+   BUFT-APPEND-SELF
+   BUFT-APPEND-PART
    BUFT-RESERVE
    BUFT-ENSURE
    BUFT-REPLACE
