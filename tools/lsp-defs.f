@@ -33,7 +33,9 @@
 \ symbols list. DEFS-OWN-GROUP gives the group of a document's own file while
 \ its last check's positions are of its current text, from that check's
 \ completion until its next check starts, so that a definition's token is
-\ found at a byte of that text only from a check of it.
+\ found at a byte of that text only from a check of it. DEFS-GROUP-OF gives,
+\ for that same while, that check's group for a file by its path: the one a
+\ candidate the check offered at a cursor is declared in, as the check read it.
 \
 \ The store holds the groups check after check, oldest first, each check's in
 \ the order its definition lines first name their files, then the files it
@@ -711,6 +713,16 @@ private
    loop
    OPTION:NONE ;
 
+\ The group for the file at this path among block K's, while K's positions
+\ are of the document's current text, if K has one.
+: PATH-IN ( n ptr u8 n -- option<n> )
+   {: k:n p:ptr pu:n :}
+   k B-CURRENT BLOCK@ 0= if OPTION:NONE exit then
+   k B-GROUP GROUP-N @ BLOCK-END k B-GROUP BLOCK@ ?do
+      i PATH$ p pu STR= if i OPTION:SOME unloop exit then
+   loop
+   OPTION:NONE ;
+
 public
 
 \ The group for the file of the document in this slot in its last completed
@@ -720,6 +732,17 @@ public
 : DEFS-OWN-GROUP ( n -- option<n> )
    BLOCK-OF MATCH option
       some OF OWN-IN ENDOF
+      none OF OPTION:NONE ENDOF
+   ;MATCH ;
+
+\ The group for the file at this path in the last completed check of the
+\ document in this slot, while that check's positions are of the document's
+\ text; none if the store keeps no check of it, a check of it has started
+\ since, or the check kept no group for the file.
+: DEFS-GROUP-OF ( n ptr u8 n -- option<n> )
+   {: slot:n p:ptr pu:n :}
+   slot BLOCK-OF MATCH option
+      some OF p pu PATH-IN ENDOF
       none OF OPTION:NONE ENDOF
    ;MATCH ;
 

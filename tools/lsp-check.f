@@ -2,7 +2,7 @@
 \ place the server meets the checker.
 \
 \ RUN checks a document's text as the file its URI names, in that file's load
-\ context, through CHECK:VERIFY-BYTES (tools/check-verify-core.f), which runs
+\ context, through CHECK:VERIFY-BYTES-AT (tools/check-verify-core.f), which runs
 \ none of it, and hands the packets the check wrote to LSP-DIAG:PUBLISH whatever
 \ its verdict: a check stopped by a later definition still publishes the
 \ packets written before it. A check that completed - the verdict verified,
@@ -24,6 +24,10 @@
 \
 \ The verifier's prose follows that line verbatim, and follows a line naming
 \ the verdict of a check that completed whenever it has any.
+\
+\ RUN-AT is RUN with a completion cursor at a byte of the text: the same check,
+\ publishing and keeping what RUN's does, which leaves the spellings the
+\ checker offers at that byte in CHECK:VERIFY-CANDIDATES$.
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: the check in progress belongs to the server's
 \ one task.
@@ -52,6 +56,7 @@ private
 
 variable SUBJECT                         \ the slot being checked
 variable PUBLISHABLE                     \ whether its check completed
+variable CURSOR                          \ and the byte of its cursor, -1 for none
 
 : ERR ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -95,7 +100,7 @@ variable PUBLISHABLE                     \ whether its check completed
 \ The check of the document's text as the file its path names.
 : VERIFY ( -- )
    SUBJECT @ {: slot:n :}
-   slot DOC-TEXT$ slot DOC-PATH$ CHECK-MS >MS CHECK:VERIFY-BYTES
+   slot DOC-TEXT$ slot DOC-PATH$ CURSOR @ CHECK-MS >MS CHECK:VERIFY-BYTES-AT
    MATCH CHECK:verdict
       verified OF s" verified" COMPLETED ENDOF
       refused OF s" refused" COMPLETED ENDOF
@@ -107,14 +112,16 @@ variable PUBLISHABLE                     \ whether its check completed
 
 public
 
-\ Checks the document in this slot and publishes what its check found. The
-\ document is clean from here on, whatever the check comes to, and has no uses
-\ unless the check completes.
-: RUN ( n -- )
-   {: slot:n :}
+\ Checks the document in this slot, its cursor at this byte of its text, none
+\ when it is negative, and publishes what its check found. The document is
+\ clean from here on, whatever the check comes to, and has no uses unless the
+\ check completes.
+: RUN-AT ( n n -- )
+   {: slot:n at:n :}
    slot DOC-CLEAN
    slot LSP-DEFS:DEFS-USES-DROP
    slot SUBJECT !
+   at CURSOR !
    false PUBLISHABLE !
    [: VERIFY ;] catch {: code:n :}
    code 0<> if
@@ -127,6 +134,10 @@ public
    CHECK:VERIFY-OUT$ nip 0<> PUBLISHABLE @ or if
       slot CHECK:VERIFY-OUT$ LSP-DIAG:PUBLISH
    then ;
+
+\ Checks the document in this slot, with no cursor, and publishes what its
+\ check found.
+: RUN ( n -- )  -1 RUN-AT ;
 
 ;using
 ;package

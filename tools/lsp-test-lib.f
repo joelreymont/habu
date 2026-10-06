@@ -203,6 +203,20 @@
 \   declaration answered before the check of the changed text, or not with
 \   the declaration's new line ...................... hover-after-change
 \
+\ Completion
+\ - a cursor in a body not answered, in a list that is not incomplete, with
+\   the words of the document and of a dependency that would bind there, each
+\   with its declared effect and the document's with its package, or with an
+\   engine word's, without either, or with each converter of a DEFTYPE, which
+\   share one token, with its own effect, qualified or not ...... completion
+\ - a position in a document not open answered other than -32602
+\   ................................................... completion-not-open
+\ - a cursor asked about in the turn of a change answered before the check of
+\   the changed text, or not from it .............. completion-after-change
+\ - a bare prefix, or a package's name and an edge colon, answered without
+\   a qualified spelling a qualified prefix offers there, or with another
+\   detail ................................................ completion-qualified
+\
 \ Not proven here: a packet line that is not JSON, that names no file, or that
 \ names its file by a relative path, goes to stderr, but the checker writes
 \ none of them - every packet names its file, and the verifier names every
@@ -674,7 +688,7 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\"," MSG+
    s\" \"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}," MSG+
-   s\" \"definitionProvider\":true," MSG+
+   s\" \"completionProvider\":{},\"definitionProvider\":true," MSG+
    s\" \"hoverProvider\":true," MSG+
    s\" \"workspaceSymbolProvider\":true}," MSG+
    s\" \"serverInfo\":{\"name\":\"habu\"}}}" MSG+
@@ -2634,6 +2648,172 @@ variable LENGTH-N                        \ the length of its directory's name
    TEXT-HOVER-A-MOVED HOVER-A-PATH 2 s" verified" LISTED
    4 HV-ONE-MD s" 3" s" markdown" 4 18 24 HOVERED ;
 
+\ ---- completion --------------------------------------------------------------
+
+: CMP-A-PATH ( -- ptr u8 n )  s" cmpl-a.f" FIXTURE ;
+: CMP-DEP-PATH ( -- ptr u8 n )  s" cmpl-dep.f" FIXTURE ;
+
+\ cmpl-dep.f, on disk only: the global CMPL-DEP.
+: TEXT-CMP-DEP ( -- ptr u8 n )  s\" : CMPL-DEP ( n -- n ) 4 + ;\n" ;
+
+\ In package CMPA, CMPL-ONE, then a body using it, cmpl-dep.f's global CMPL-DEP
+\ and the engine's swap; then, global, DEFTYPE CMPL-T, whose converters
+\ >CMPL-T and CMPL-T>N the check states at CMPL-T's token, and a use of each;
+\ then DEFTYPE CMPQ-T, public in package CMPQ, and a qualified use of each of
+\ its converters outside CMPQ.
+: TEXT-CMP-A ( -- ptr u8 n )
+   s\" require cmpl-dep.f\npackage CMPA\n: CMPL-ONE ( -- n ) 1 ;\n: CMPL-TWO ( -- n ) CMPL-ONE CMPL-DEP 1 2 swap 2drop ;\n;package\nrequire lib/type/deftype.f\nDEFTYPE CMPL-T\n: CMPL-CVT ( -- n ) 5 >CMPL-T CMPL-T>N ;\npackage CMPQ\npublic\nDEFTYPE CMPQ-T\n;package\n: CMPQ-USE ( -- n ) 5 CMPQ:>CMPQ-T CMPQ:CMPQ-T>N ;\n" ;
+
+\ TEXT-CMP-A with CMPL-ONE renamed CMPL-NEW, the body's bytes unmoved.
+: TEXT-CMP-A-NEW ( -- ptr u8 n )
+   s\" require cmpl-dep.f\npackage CMPA\n: CMPL-NEW ( -- n ) 5 ;\n: CMPL-TWO ( -- n ) CMPL-NEW CMPL-DEP 1 2 swap 2drop ;\n;package\nrequire lib/type/deftype.f\nDEFTYPE CMPL-T\n: CMPL-CVT ( -- n ) 5 >CMPL-T CMPL-T>N ;\npackage CMPQ\npublic\nDEFTYPE CMPQ-T\n;package\n: CMPQ-USE ( -- n ) 5 CMPQ:>CMPQ-T CMPQ:CMPQ-T>N ;\n" ;
+
+\ textDocument/completion, by its id's JSON text, at character C of line L of
+\ the document opened from this path.
+: COMPLETION-ASK ( ptr u8 n ptr u8 n n n -- )
+   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+   s" textDocument/completion" i iu p pu l c AT-ASK ;
+
+\ The answer to the request with this id's JSON text, begun in MSG, up to its
+\ items' bracket.
+: ITEMS-START ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"result\":{\"isIncomplete\":false,\"items\":[" MSG+ ;
+
+\ The item the answer lists next: its label, then its detail, none when empty,
+\ each as JSON text.
+: ITEM+ ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n d:ptr du:n :}
+   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   s\" {\"label\":\"" MSG+ w wu MSG+ s\" \"" MSG+
+   du 0 > if s\" ,\"detail\":\"" MSG+ d du MSG+ s\" \"" MSG+ then
+   s" }" MSG+ ;
+
+\ The next frame is the answer begun.
+: ITEMS-END ( -- )
+   s" ]}}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
+\ At CMPL in CMPL-TWO's body, the document's CMPL-ONE and the dependency's
+\ CMPL-DEP, each with its declared effect and CMPL-ONE with its package; at
+\ swa the engine's swap, without either; at >CMPL and at CMPL-T>, each
+\ converter with its own effect, which the token they share does not tell;
+\ and at CMPQ:>CMPQ and at CMPQ:CMPQ-T>, each of CMPQ's converters, its
+\ spelling qualified, with its own effect and package. Each request checks the
+\ document with its cursor, as its turn, so the document's list comes before
+\ each answer.
+: CMP-TURNS ( -- )
+   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   INITIALIZE
+   CMP-A-PATH TEXT-CMP-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
+   s" 4" CMP-A-PATH 3 45 COMPLETION-ASK
+   s" 5" CMP-A-PATH 7 27 COMPLETION-ASK
+   s" 6" CMP-A-PATH 7 37 COMPLETION-ASK
+   s" 7" CMP-A-PATH 12 32 COMPLETION-ASK
+   s" 8" CMP-A-PATH 12 47 COMPLETION-ASK
+   SAY
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" ITEMS-START
+   s" CMPL-DEP" s" ( n -- n )" ITEM+
+   s" CMPL-ONE" s" ( -- n ) \\ package cmpa" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 4" ITEMS-START
+   s" swap" s" " ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 5" ITEMS-START
+   s" >CMPL-T" s" ( n -- cmpl-t )" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 6" ITEMS-START
+   s" CMPL-T>N" s" ( cmpl-t -- n )" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 7" ITEMS-START
+   s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 8" ITEMS-START
+   s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
+   ITEMS-END ;
+
+\ A position in a document the client never opened: -32602.
+: CMP-NOT-OPEN-TURNS ( -- )
+   INITIALIZE
+   s" 3" CMP-A-PATH 2 24 COMPLETION-ASK
+   SAY
+   HEAR CAPABILITIES
+   HEAR s" 3" -32602 REFUSED ;
+
+\ CMPL asked about in the turn of the change that renamed CMPL-ONE: the
+\ request checks the changed text, so its list comes before the answer,
+\ which offers CMPL-NEW and no CMPL-ONE.
+: CMP-AFTER-CHANGE-TURNS ( -- )
+   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   INITIALIZE
+   CMP-A-PATH TEXT-CMP-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   CMP-A-PATH TEXT-CMP-A-NEW 2 CHANGES
+   s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
+   SAY
+   TEXT-CMP-A-NEW CMP-A-PATH 2 s" verified" LISTED
+   s" 3" ITEMS-START
+   s" CMPL-DEP" s" ( n -- n )" ITEM+
+   s" CMPL-NEW" s" ( -- n ) \\ package cmpa" ITEM+
+   ITEMS-END ;
+
+\ In CMPQ-USE's body, at CMPQ, the package's name, a bare prefix, and at
+\ CMPQ:, its name and an edge colon, each answer holds every qualified
+\ spelling that the qualified prefixes CMPQ:> and CMPQ:C there offer, with
+\ the same detail: the client's filter of the first answer as the token grows
+\ to either keeps what a later request would offer.
+: CMP-QUALIFIED-TURNS ( -- )
+   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   INITIALIZE
+   CMP-A-PATH TEXT-CMP-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" CMP-A-PATH 12 26 COMPLETION-ASK
+   s" 4" CMP-A-PATH 12 27 COMPLETION-ASK
+   s" 5" CMP-A-PATH 12 28 COMPLETION-ASK
+   s" 6" CMP-A-PATH 12 41 COMPLETION-ASK
+   SAY
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" ITEMS-START
+   s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
+   s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 4" ITEMS-START
+   s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
+   s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 5" ITEMS-START
+   s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 6" ITEMS-START
+   s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
+   ITEMS-END ;
+
+: TEST-COMPLETIONS ( -- )
+   s" completion" [: CMP-TURNS ;] TALK
+   s" completion-not-open" [: CMP-NOT-OPEN-TURNS ;] TALK
+   s" completion-after-change" [: CMP-AFTER-CHANGE-TURNS ;] TALK
+   s" completion-qualified" [: CMP-QUALIFIED-TURNS ;] TALK ;
+
 : TEST-HOVERS ( -- )
    s" hover" [: HOVER-TURNS ;] TALK
    s" hover-dependency" [: HOVER-DEP-TURNS ;] TALK
@@ -2800,6 +2980,7 @@ public
    TEST-SYMBOLS
    TEST-DEFINITIONS
    TEST-HOVERS
+   TEST-COMPLETIONS
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
 

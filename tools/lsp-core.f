@@ -10,9 +10,10 @@
 \ the declaration the use at the position binds to (tools/lsp-definition.f),
 \ textDocument/hover with what the token at the position declares or binds to
 \ (tools/lsp-hover.f), as Markdown when the client's initialize listed it in
-\ textDocument.hover.contentFormat, else as plain text, a request whose params
-\ it cannot read, or that names a document not open, with -32602 and any
-\ other request with -32601, and it keeps the documents the
+\ textDocument.hover.contentFormat, else as plain text, textDocument/completion
+\ with the spellings that would bind at the position (tools/lsp-completion.f),
+\ a request whose params it cannot read, or that names a document not open,
+\ with -32602 and any other request with -32601, and it keeps the documents the
 \ client opens, changes and closes: Full sync, each change carrying the whole
 \ text, and positions in UTF-16 units. Shut down, it answers every request
 \ with -32600. Only a running server takes a notification other than exit;
@@ -31,10 +32,12 @@
 \ checks that document
 \ first, as its turn, and is answered from that check, which takes the text
 \ the client asked about, since LSP orders a request after the changes sent
-\ before it. Closing a document publishes an empty list for it, drops the
-\ definitions its last check kept and leaves every open document waiting: any
-\ of them may require the file, whose diagnostics their checks left to it
-\ while it was open.
+\ before it. textDocument/completion checks its document as its turn whether
+\ it waits or not, with a cursor at the position, and is answered from that
+\ check: the spellings it offers belong to that cursor. Closing a document
+\ publishes an empty list for it, drops the definitions its last check kept
+\ and leaves every open document waiting: any of them may require the file,
+\ whose diagnostics their checks left to it while it was open.
 \
 \ exit ends the process with 0 after shutdown and 1 before it, and so does the
 \ end of input, which before shutdown also says so on stderr. A notification
@@ -69,6 +72,7 @@ require tools/lsp-check.f
 require tools/lsp-symbols.f
 require tools/lsp-definition.f
 require tools/lsp-hover.f
+require tools/lsp-completion.f
 
 package LSP
 using SPAN
@@ -84,7 +88,7 @@ public
 -9400 constant E-LSP-FIRST
 -9401 constant E-LSP-LAST
 -9400 constant E-LSP-PARAMS    \ a notification's params lack a member the server reads, or hold one of another kind
--9401 constant E-LSP-NOT-OPEN  \ a change, close, definition or hover of a document not open
+-9401 constant E-LSP-NOT-OPEN  \ a change, close, definition, hover or completion of a document not open
 
 -32002 constant NOT-INITIALIZED          \ LSP's ServerNotInitialized
 \ The longest body taken, room for a document's whole text escaped. A header
@@ -177,6 +181,7 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
                s" includeText" false FIELD-BOOL
             OBJECT-END
          OBJECT-END COMMA
+         s" completionProvider" KEY OBJECT-START OBJECT-END COMMA
          s" definitionProvider" true FIELD-BOOL COMMA
          s" hoverProvider" true FIELD-BOOL COMMA
          s" workspaceSymbolProvider" true FIELD-BOOL
@@ -395,16 +400,20 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
 : CHECK-WAITING ( n -- )
    dup DOC-DIRTY? if CHECK-NOW else drop then ;
 
+\ The byte of the text of the document in AT-SLOT that AT-LINE and AT-CHAR
+\ name, in AT-BYTE, positions counting in that text.
+: AT-BYTE! ( -- )
+   AT-SLOT @ DOC-TEXT$ LSP-TEXT:TEXT!
+   AT-LINE @ AT-CHAR @ LSP-TEXT:OFFSET-AT AT-BYTE ! ;
+
 \ The open document params.textDocument names in AT-SLOT, checked first if it
 \ waits for a check, and the byte of its text params.position names in
-\ AT-BYTE, positions counting in that text; false when the request is
-\ answered -32602 instead.
+\ AT-BYTE; false when the request is answered -32602 instead.
 : AT-READ? ( JSON-RPC:id ptr u8 n -- bool )
    {: i p:ptr pu:n :}
    i p pu [: POSITION! ;] READ? 0= if false exit then
    AT-SLOT @ CHECK-WAITING
-   AT-SLOT @ DOC-TEXT$ LSP-TEXT:TEXT!
-   AT-LINE @ AT-CHAR @ LSP-TEXT:OFFSET-AT AT-BYTE !
+   AT-BYTE!
    true ;
 
 \ The declaration of the use at params.position in the open document
@@ -420,6 +429,17 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
    {: i p:ptr pu:n :}
    i p pu AT-READ? 0= if exit then
    WRITER i RESULT AT-SLOT @ AT-BYTE @ HOVER-MD @ LSP-HOVER:ANSWER END SENT ;
+
+\ The spellings that would bind at params.position in the open document
+\ params.textDocument names: the document checked now, as its turn, with its
+\ cursor at that byte of its text, and answered from that check.
+: COMPLETION ( JSON-RPC:id ptr u8 n -- )
+   {: i p:ptr pu:n :}
+   i p pu [: POSITION! ;] READ? 0= if exit then
+   AT-BYTE!
+   AT-SLOT @ LAST-CHECKED !
+   AT-SLOT @ AT-BYTE @ LSP-CHECK:RUN-AT
+   WRITER i RESULT AT-SLOT @ LSP-COMPLETION:ANSWER END SENT ;
 
 \ Whether the member KEY of the object the reader is at is an object, the
 \ reader then at it.
@@ -479,6 +499,7 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
    m mu s" workspace/symbol" NAMED? if i p pu SYMBOLS exit then
    m mu s" textDocument/definition" NAMED? if i p pu DEFINITION exit then
    m mu s" textDocument/hover" NAMED? if i p pu HOVER exit then
+   m mu s" textDocument/completion" NAMED? if i p pu COMPLETION exit then
    i METHOD-NOT-FOUND s" method not found" REPLY-ERROR ;
 
 : REQUESTED ( JSON-RPC:id ptr u8 n ptr u8 n -- )
@@ -547,6 +568,7 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
    LSP-DIAG:PREPARE
    LSP-DEFS:DEFS-PREPARE
    LSP-HOVER:PREPARE
+   LSP-COMPLETION:PREPARE
    false HOVER-MD !
    -1 LAST-CHECKED !
    construct state starting STATE!
