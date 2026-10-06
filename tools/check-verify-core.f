@@ -478,10 +478,12 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
 \ the given bytes of the file the label names, a packet when json, else a prose
 \ line, with no line feed, and whether it refuses the source by itself. A reader
 \ with no name after it is the record the nominal pass writes where it stands,
-\ a refusal. Any other throw out of a statement is the lexer's record for an
-\ open string or row, and for a reader whose token the lexer reads into another
-\ one, a refusal; else the record --all-errors writes for a statement that
-\ throws, at the token that starts at that byte. Any other code has no record.
+\ a refusal. Any other throw out of a statement is the lexer's record of the
+\ file, when the lexer finds a defect there, for a code that record goes before
+\ (CHECK-ALL-ERRORS:LEX-FIRST?: an open string, row or locals group, a bad
+\ escape) and for a reader whose token the lexer reads into another one, a
+\ refusal; else the record --all-errors writes for a statement that throws, at
+\ the token that starts at that byte. Any other code has no record.
 : STOP-RECORD$ ( n n ptr u8 n ptr u8 n bool -- ptr u8 n bool )
    {: rc:n at:n label:ptr labelu:n src:ptr srcu:n json:bool :}
    rc VERIFY:E-MISSING-NAME = if
@@ -491,7 +493,7 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    then
    rc CHECK-ALL-ERRORS:THREW? 0= if NULL$ false exit then
    json CHECK-ALL-ERRORS:JSON!
-   rc CHECK-ALL-ERRORS:LEX-STOP? rc VERIFY:E-MISSING-NAME = or if
+   rc CHECK-ALL-ERRORS:LEX-FIRST? rc VERIFY:E-MISSING-NAME = or if
       label labelu src srcu CHECK-ALL-ERRORS:LEX-RECORD$
       dup 0<> if true exit then
       2drop

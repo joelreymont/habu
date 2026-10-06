@@ -15,7 +15,10 @@
 \ and of `is`, a public word whose private twin moves other cells and a
 \ definition whose inferred effect is not recorded, both at the definition's
 \ name, a refused `generates:` row at its name, and one whose name a global
-\ and a used public share, and declaration packets: SUMTYPE, NEWTYPE with
+\ and a used public share, a `trust` row written as escaped literals,
+\ unplaced where the name decoded is not in the text, a string loader's
+\ path written as one, at top level or in a body, followed decoded and
+\ refused at a bad escape, and declaration packets: SUMTYPE, NEWTYPE with
 \ no arity (at its family name), ENUM (a body token, and a close-stage
 \ fault at the family name) and STRUCTURE. The check composes the subject
 \ with the files it requires, so a packet in a required file names that
@@ -45,6 +48,7 @@ $1000 constant CAP
 120000 constant TIMEOUT-MS
 70 constant REJECT-RC
 67 constant THROW-RC                  \ a load's uncaught throw
+7194 constant BAD-ESCAPE-THROW        \ VERIFY:E-BAD-ESCAPE, a refused escape
 
 create OUT CAP allot
 create ERR CAP allot
@@ -631,6 +635,29 @@ variable RC
    c cu REJECTED-AS
    0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
+\ Packet 0 of the last check is the record of a statement that threw CODE.
+: THREW ( n -- )
+   {: code:n :}
+   GJA-LINE# @ 0 > dup TTRUE 0= IF EXIT THEN
+   0 GJA-LINE$ JSON-PARSE s" throw_code" INT-FIELD code T= ;
+
+\ REFUSED-AT for a statement that throws CODE at TOK: each check's one packet is
+\ the record of that throw.
+: THROWN-AT ( n ptr u8 n n n n n -- )
+   {: code:n tok:ptr toku:n line:n col:n bs:n be:n :}
+   s" " CHECK
+   s" E-STATEMENT-THROW" REJECTED-AS
+   0 tok toku line col bs be AT
+   code THREW
+   s" --all-errors" CHECK
+   s" E-STATEMENT-THROW" REJECTED-AS
+   0 tok toku line col bs be AT
+   code THREW
+   s" --verify-only" CHECK
+   s" E-STATEMENT-THROW" REJECTED-AS
+   0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN
+   code THREW ;
+
 \ The load compiles a body before it checks the definition at `;`, so a body
 \ word it cannot compile, undefined or a local it cannot bind, refuses a
 \ definition whose signature does not parse, at that word; any other error in
@@ -972,6 +999,229 @@ variable RC
    textu 0= IF ERR-U @ 0 T= EXIT THEN
    ERR$ text textu CONTAINS? TTRUE ;
 
+\ Packet k of the last check is E-TRUST-UNRESOLVED for TOK in the file PATH,
+\ with no position: the checked text does not hold TOK.
+: UNPLACED-STALE ( n ptr u8 n ptr u8 n -- )
+   {: k:n tok:ptr toku:n path:ptr pathu:n :}
+   k s" code" s" E-TRUST-UNRESOLVED" FIELD=
+   k s" token" tok toku FIELD=
+   k s" file" path pathu FIELD=
+   GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
+   k GJA-LINE$ JSON-PARSE
+   {: root:n :}
+   root s" line" INT-FIELD -1 T=
+   root s" column" INT-FIELD -1 T=
+   root s" byte_start" INT-FIELD -1 T=
+   root s" byte_end" INT-FIELD -1 T= ;
+
+\ Each check of the fixture, plain, --all-errors and --verify-only, refuses its
+\ trust row as stale at TOK, that packet alone and unplaced.
+: STALE-UNPLACED ( ptr u8 n -- )
+   {: tok:ptr toku:n :}
+   s" " CHECK
+   GJA-LINE# @ 1 T=
+   0 tok toku FX-PATH$ UNPLACED-STALE
+   s" --all-errors" CHECK
+   GJA-LINE# @ 1 T=
+   0 tok toku FX-PATH$ UNPLACED-STALE
+   s" --verify-only" CHECK
+   GJA-LINE# @ 1 T=
+   0 tok toku FX-PATH$ CANON$ UNPLACED-STALE ;
+
+\ A top-level row the check replays from the literals before it gets the bytes
+\ the load's literals make: an escaped literal's are its escapes decoded, a hex
+\ or a letter escape, in either slot of a `trust` row. A decoded name nothing
+\ defines is stale at that name, which the checked text does not hold, so its
+\ packet has no position. A bad escape is refused at the literal's opener, by
+\ each check as by the load, as the throw of its statement. The check's lexer
+\ reads no escape, and a defect it reads anywhere in the file is reported in
+\ its place before an earlier one, so a string after the bad escape that never
+\ closes is reported there, as after a definition that does not check.
+: TEST-ESCAPED-ROW ( -- )
+   s" an escaped trust row: a hex escape" T-LABEL
+   SB-RESET
+   s" : NOPE ( -- ) ;" SB-APPEND LF+
+   s\" s\\\" NO\\x50E\" s\" -- n\" trust" SB-APPEND LF+
+   s" escaped-hex-trust.f" FIXTURE!
+   CERTIFIED
+   s" " 0 LOADED
+   s" an escaped trust row: a letter escape in the name, a hex one in the effect" T-LABEL
+   SB-RESET
+   s\" : N\"E ( -- ) ;" SB-APPEND LF+
+   s\" s\\\" N\\qE\" s\\\" --\\X20n\" trust" SB-APPEND LF+
+   s" escaped-letter-trust.f" FIXTURE!
+   CERTIFIED
+   s" " 0 LOADED
+   s" an escaped trust row naming no word" T-LABEL
+   SB-RESET
+   s" : NOPE ( -- ) ;" SB-APPEND LF+
+   s\" s\\\" NO\\x51E\" s\" -- n\" trust" SB-APPEND LF+
+   s" escaped-stale-trust.f" FIXTURE!
+   s" NOQE" STALE-UNPLACED
+   s" trust row for 'NOQE'" REJECT-RC LOADED
+   s" an escaped literal with no escape, naming no word" T-LABEL
+   s\" s\\\" NOPF\" s\" -- n\" trust" s" escape-free-stale.f" LINE-FIXTURE
+   s" E-TRUST-UNRESOLVED" s" NOPF" 1 5 4 8 REFUSED-AT
+   s" a bad escape" T-LABEL
+   s\" s\\\" A\\yB\" 2drop" s" escaped-bad.f" LINE-FIXTURE
+   BAD-ESCAPE-THROW s\" s\\\"" 1 1 0 3 THROWN-AT
+   s" bad string literal" 74 LOADED
+   s" a bad escape before a string that never closes" T-LABEL
+   SB-RESET
+   s\" s\\\" A\\yB\" 2drop" SB-APPEND LF+
+   s\" s\" abc" SB-APPEND LF+
+   s" escaped-bad-unterminated.f" FIXTURE!
+   s" E-UNTERMINATED-STRING" s\" s\"" 2 1 16 18 REFUSED-AT
+   s" bad string literal" 74 LOADED
+   s" a definition that does not check before a string that never closes" T-LABEL
+   SB-RESET
+   s" : X ( -- ) NO-SUCH ;" SB-APPEND LF+
+   s\" s\" abc" SB-APPEND LF+
+   s" undefined-unterminated.f" FIXTURE!
+   s" E-UNTERMINATED-STRING" s\" s\"" 2 1 21 23 REFUSED-AT
+   s" E-UNDEFINED: NO-SUCH" REJECT-RC LOADED ;
+
+\ The u bytes at a end the fixture text, built in place for a fixture longer
+\ than the string builder holds.
+: FX+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   FX-U @ u + CAP > IF E-STR-CAPACITY throw THEN
+   a FX FX-U @ + u BYTE-COPY
+   FX-U @ u + FX-U ! ;
+
+\ Fixture NAME: `included` of an escaped literal of STEPS `.\x2F` escapes, each
+\ the step `./`, before inc-target.f, then a use of the word that file defines.
+\ A step is five bytes as written and two decoded, so with 250 steps the path
+\ is longer than the path capacity (PATH-CAP, 1024 bytes) as written but not
+\ decoded, and with 600 decoded too.
+: STEPS-FIXTURE ( n ptr u8 n -- ) {: steps:n name:ptr nameu:n :}
+   BASE$ name nameu FX-P JOIN-PATH FX-PU !
+   0 FX-U !
+   s\" s\\\" " FX+
+   steps 0 ?do s\" .\\x2F" FX+ loop
+   s\" inc-target.f\" included\nINCLUDED-WORD drop\n" FX+
+   FX-PATH$ FX$ WRITE-ALL ;
+
+\ A string loader's path is the bytes the load's literal makes: an escaped
+\ literal's escapes decoded, which each check follows to the file the load
+\ reads, through `included` and through `required`, and a plain literal's
+\ spelling, backslash and all. The path capacity bounds the decoded path, as it
+\ bounds a plain one: a path that fits only decoded is followed, and one over
+\ it decoded is refused at its loader, as a plain path that long is. A loader
+\ in a body loads when the word runs, and each check follows its path after
+\ the definition, as it follows a plain one: decoded, or as written when it
+\ holds no escape, and kept for that load whatever the check decodes first,
+\ more paths in the same body or literals at top level while a package is
+\ open. A bad escape in a loader's literal at top level is where the load
+\ stops: each check refuses that literal once, at its opener, and follows
+\ nothing after it, here a file that is not there. In a body, opened by `:` or
+\ by its synonym `kernel:`, it is one more error of a definition the check
+\ rejects and reads past: its loader is neither followed nor refused, and that
+\ missing file, required after the body, is refused at its `require`, as after
+\ a body holding any other error.
+: TEST-ESCAPED-PATH ( -- )
+   SB-RESET
+   s" : INCLUDED-WORD ( -- n ) 7 ;" SB-APPEND LF+
+   s" inc-target.f" FIXTURE!
+   s" an escaped included path" T-LABEL
+   SB-RESET
+   s\" s\\\" inc-t\\x61rget.f\" included" SB-APPEND LF+
+   s" INCLUDED-WORD drop" SB-APPEND LF+
+   s" escaped-included.f" FIXTURE!
+   CERTIFIED
+   s" " 0 LOADED
+   s" an escaped required path" T-LABEL
+   SB-RESET
+   s\" s\\\" inc-t\\x61rget.f\" required" SB-APPEND LF+
+   s" INCLUDED-WORD drop" SB-APPEND LF+
+   s" escaped-required.f" FIXTURE!
+   CERTIFIED
+   s" " 0 LOADED
+   s" a plain path holding a backslash" T-LABEL
+   SB-RESET
+   s" : BS-WORD ( -- n ) 9 ;" SB-APPEND LF+
+   s" bs\x41.f" FIXTURE!
+   SB-RESET
+   s\" s\" bs\\x41.f\" included" SB-APPEND LF+
+   s" BS-WORD drop" SB-APPEND LF+
+   s" plain-backslash-path.f" FIXTURE!
+   CERTIFIED
+   s" " 0 LOADED
+   s" an escaped path in a body" T-LABEL
+   SB-RESET
+   s\" : L ( -- ) s\\\" inc-t\\x61rget.f\" included ;" SB-APPEND LF+
+   s" L" SB-APPEND LF+
+   s" INCLUDED-WORD drop" SB-APPEND LF+
+   s" escaped-body-path.f" FIXTURE!
+   CERTIFIED
+   s" " 0 LOADED
+   s" an escaped path with no escape in a body" T-LABEL
+   SB-RESET
+   s\" : L ( -- ) s\\\" inc-target.f\" included ;" SB-APPEND LF+
+   s" L" SB-APPEND LF+
+   s" INCLUDED-WORD drop" SB-APPEND LF+
+   s" escape-free-body-path.f" FIXTURE!
+   CERTIFIED
+   s" " 0 LOADED
+   SB-RESET
+   s" : BODY-A-WORD ( -- n ) 1 ;" SB-APPEND LF+
+   s" body-a.f" FIXTURE!
+   SB-RESET
+   s" : BODY-B-WORD ( -- n ) 2 ;" SB-APPEND LF+
+   s" body-b.f" FIXTURE!
+   SB-RESET
+   s" : BODY-C-WORD ( -- n ) 3 ;" SB-APPEND LF+
+   s" body-c.f" FIXTURE!
+   s" three escaped paths in a body" T-LABEL
+   SB-RESET
+   s\" : L ( -- ) s\\\" b\\x6Fdy-a.f\" included s\\\" b\\x6Fdy-b.f\" included" SB-APPEND
+   s\"  s\\\" b\\x6Fdy-c.f\" included ;" SB-APPEND LF+
+   s" L" SB-APPEND LF+
+   s" BODY-A-WORD drop BODY-B-WORD drop BODY-C-WORD drop" SB-APPEND LF+
+   s" escaped-body-paths.f" FIXTURE!
+   CERTIFIED
+   s" " 0 LOADED
+   s" an escaped path in a body, escaped literals before its package closes" T-LABEL
+   SB-RESET
+   s" package DPT-ESC" SB-APPEND LF+
+   s" public" SB-APPEND LF+
+   s\" : L ( -- ) s\\\" b\\x6Fdy-a.f\" included ;" SB-APPEND LF+
+   s\" s\\\" X\\x41\" 2drop" SB-APPEND LF+
+   s\" s\\\" Y\\x42YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\" 2drop" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" DPT-ESC:L" SB-APPEND LF+
+   s" BODY-A-WORD drop" SB-APPEND LF+
+   s" escaped-body-path-package.f" FIXTURE!
+   CERTIFIED
+   s" " 0 LOADED
+   s" an escaped path over the capacity as written, within it decoded" T-LABEL
+   250 s" escaped-steps-fit.f" STEPS-FIXTURE
+   CERTIFIED
+   s" " 0 LOADED
+   s" an escaped path over the capacity decoded" T-LABEL
+   600 s" escaped-steps-over.f" STEPS-FIXTURE
+   s" E-LOADER-FORM" s" included" 1 3019 3018 3026 REFUSED-AT
+   s" a bad escape in a loader's path" T-LABEL
+   SB-RESET
+   s\" s\\\" inc-t\\yarget.f\" included" SB-APPEND LF+
+   s" require missing-dep.f" SB-APPEND LF+
+   s" escaped-bad-path.f" FIXTURE!
+   BAD-ESCAPE-THROW s\" s\\\"" 1 1 0 3 THROWN-AT
+   s" bad string literal" 74 LOADED
+   s" a bad escape in a loader's path in a body" T-LABEL
+   SB-RESET
+   s\" : L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
+   s" require missing-dep.f" SB-APPEND LF+
+   s" escaped-bad-body-path.f" FIXTURE!
+   s" E-MISSING-SOURCE" s" require" 2 1 42 49 REFUSED-AT
+   s" bad string literal" 74 LOADED
+   s" a bad escape in a loader's path in a kernel: body" T-LABEL
+   SB-RESET
+   s\" kernel: L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
+   s" require missing-dep.f" SB-APPEND LF+
+   s" escaped-bad-kernel-path.f" FIXTURE!
+   s" E-MISSING-SOURCE" s" require" 2 1 48 55 REFUSED-AT
+   s" bad string literal" 74 LOADED ;
+
 \ A word the engine binds and no checker row types, as one a create caller
 \ made, is no word the load cannot compile: its tick is admitted, and a call to
 \ it fails its check in source order, after a signature that does not parse and
@@ -1216,6 +1466,8 @@ variable RC
    TEST-STORED-SIGNATURE
    TEST-REPLACED-SIGNATURE
    TEST-MALFORMED-RECORD
+   TEST-ESCAPED-ROW
+   TEST-ESCAPED-PATH
    TEST-REFUSAL-ORDER
    TEST-REPAIR-FOLLOWS
    TEST-LIVE-BRANCHES

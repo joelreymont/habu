@@ -1470,6 +1470,13 @@ passing suite.
   delimiter space (`s\"\n"` is one undefined token) and reads `\u` as its own
   escape, so a fixture holding JSON writes `\\uXXXX`. Generated syntax from
   fields uses checked byte/field helpers or `lib/json-write.f`.
+- **`ESC-DECODE ( ptr u8 n ptr u8 -- n bool )` decodes an escaped payload** by
+  the engine's escape table: it reads the n source bytes, writes at most n bytes
+  at the destination, which the caller provides, and answers the count written
+  and whether every escape was valid. The payload `A\x42C` writes `ABC` and
+  answers 3 and true; `A\yB` stops at the bad escape, `A` written, and answers 1
+  and false. Code that reads an escaped literal's bytes, as the dependency walk
+  does, decodes through it rather than a table of its own.
 - **Generated fixtures use unique test-owned names** (`CAE-CAP-OK-0`,
   `GDX-AE-BAD1`); never baked generic names (`OK`, `BAD`, `FOLD`, `RESET`) or a
   repeated stem unless testing duplicate rejection.

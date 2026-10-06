@@ -10732,6 +10732,13 @@ PRIM: ."     PRIM;
 PRIM: s\"    PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: c\"    PE-PTR-U8 PE-OUT PRIM;
 PRIM: .\"    PRIM;
+\ The escape table's decoder (ESC-DECODE, beside ESC-BYTE? below), public: a
+\ checked reader of an escaped literal's bytes decodes them by the engine's
+\ table through this row, where without one the seal marks the word DNAME-INT,
+\ which no checked body may call. It reads the `ptr u8 n` source and writes at
+\ most n bytes at the destination, where the caller provides n bytes; it
+\ answers the count written and whether every escape was valid.
+PRIM: ESC-DECODE PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: [']    PE-N PE-OUT PRIM;
 PRIM: char   PE-N PE-OUT PRIM;
 PRIM: [char] PE-N PE-OUT PRIM;
@@ -19150,8 +19157,6 @@ variable SPAY-ON      \ did the token just judged spend a payload?
 variable SPAY-ESC     \ was it the escaped spelling?
 variable SPAY-B       \ raw payload start, as a byte offset into the scan text
 variable SPAY-U       \ raw payload length
-variable SDU          \ decoded length, in SDEC
-variable SDI          \ decode cursor, a byte offset into the scan text
 
 \ TI stood on the single delimiter after the opener when the skip started and
 \ stands one past the closing quote now, so the payload is what lies strictly
@@ -19162,48 +19167,61 @@ variable SDI          \ decode cursor, a byte offset into the scan text
    esc SPAY-ESC !
    -1 SPAY-ON ! ;
 
-: SD-PUT ( n -- ) {: b:n :}
-   b  SDEC SDU @ +  c!
-   SDU @ 1 + SDU ! ;
-
 : ESC-HEX-VAL ( n -- n ) {: c:n :}
    c $39 <= IF c $30 - EXIT THEN
    c $61 >= IF c $57 - EXIT THEN
    c $37 - ;
 
-: SD-HEX ( -- )   \ SDI at 'x'/'X', both digits already validated
-   SDI @ 1 + TBYTE@ ESC-HEX-VAL 4 lshift
-   SDI @ 2 + TBYTE@ ESC-HEX-VAL or SD-PUT
-   SDI @ 3 + SDI ! ;
+\ The byte the two hex digits at index k of the u bytes at src spell, the index
+\ past them, and whether both are hex digits inside those bytes.
+: ESC-HEX-AT ( ptr u8 n n -- n n bool ) {: src:ptr u:n k:n :}
+   k 1 + u >= IF 0 k RES-FALSE EXIT THEN
+   src k + c@ {: hi:n :}
+   src k + 1 + c@ {: lo:n :}
+   hi ESC-HEX-DIGIT? lo ESC-HEX-DIGIT? and 0= IF 0 k RES-FALSE EXIT THEN
+   hi ESC-HEX-VAL 4 lshift  lo ESC-HEX-VAL or  k 2 +  RES-TRUE ;
 
-\ The unknown-escape leg cannot be reached from a recorded span, because the
-\ validator walked the same table over the same bytes before SKF was set. It is
-\ written as a refusal rather than left out so that a future table edit that
-\ reaches only one of the two readers stops the definition instead of quietly
-\ emitting a byte nobody chose.
-: SD-ESC ( -- )   \ SDI at '\'
-   SDI @ 1 + SDI !
-   SDI @ TBYTE@ ESC-HEX-LEAD? IF SD-HEX EXIT THEN
-   SDI @ TBYTE@ ESC-BYTE? IF SD-PUT  SDI @ 1 + SDI !  EXIT THEN
-   drop  0 OK !  TBLEN @ SDI ! ;
+\ The byte the escape at index k of the u bytes at src stands for, k one past
+\ its backslash, the index past its spelling, and whether that spelling is whole
+\ inside those bytes: a letter of the table, or `x`/`X` and two hex digits.
+: ESC-AT ( ptr u8 n n -- n n bool ) {: src:ptr u:n k:n :}
+   k u >= IF 0 k RES-FALSE EXIT THEN
+   src k + c@ {: c:n :}
+   c ESC-HEX-LEAD? IF src u k 1 + ESC-HEX-AT EXIT THEN
+   c ESC-BYTE?  k 1 +  swap ;
 
-: SD-DECODE ( -- )
-   0 SDU !
-   SPAY-B @ SDI !
-   SPAY-B @ SPAY-U @ + {: end:n :}
-   BEGIN SDI @ end < WHILE
-      SDI @ TBYTE@ 92 = IF SD-ESC ELSE
-         SDI @ TBYTE@ SD-PUT  SDI @ 1 + SDI !
+\ The bytes the u bytes at src decode to, written at dst, which holds u bytes: a
+\ decoded body is never longer than its spelling. Answers the count written and
+\ whether every escape was whole; a bad one stops the decode with the bytes
+\ before it written. The decoder of the table for every reader of an escaped
+\ literal's bytes: the body scan below, the source pre-pass
+\ (src/habu/verify-source.f RECORD-ESCAPED-STRING) and the dependency walk
+\ (tools/source-discovery.f SD-DECODE-PATH).
+: ESC-DECODE ( ptr u8 n ptr u8 -- n bool ) {: src:ptr u:n dst:ptr :}
+   0 0
+   BEGIN {: at:n k:n :}
+      at u >= IF k RES-TRUE EXIT THEN
+      src at + c@ {: c:n :}
+      c 92 = IF
+         src u at 1 + ESC-AT {: b:n nx:n ok:bool :}
+         ok 0= IF k RES-FALSE EXIT THEN
+         b dst k + c!  nx  k 1 +
+      ELSE
+         c dst k + c!  at 1 +  k 1 +
       THEN
-   REPEAT ;
+   AGAIN ;
 
 \ The literal's body. A plain literal's body IS the recorded span, so it is
 \ handed over where it already lies; an escaped one is decoded into the buffer
-\ the token family grew for it.
+\ the token family grew for it. A bad escape cannot be reached from a recorded
+\ span, because the validator walked the same table over the same bytes before
+\ SKF was set. It is a refusal rather than ignored so that a future table edit
+\ that reaches only one of the two readers stops the definition instead of
+\ quietly emitting a byte nobody chose.
 : SPAY-BYTES ( -- ptr u8 n )
    SPAY-ESC @ 0= IF SPAY-B @ TADDR  SPAY-U @ EXIT THEN
-   SD-DECODE
-   SDEC SDU @ ;
+   SPAY-B @ TADDR  SPAY-U @  SDEC  ESC-DECODE 0= IF 0 OK ! THEN
+   SDEC swap ;
 
 \ The step the two skips are reached through, so that recording a span is part of
 \ spending one rather than a second decision somewhere else.

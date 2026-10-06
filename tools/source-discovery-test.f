@@ -151,8 +151,11 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 : SDT-RUN-ENTRY ( -- )   SDT-DISCOVER ;
 
+\ `kernel:` is the engine's synonym for `:`, so it shadows a loader word too.
 : SDT-TEST-SHADOW ( -- )
    s" shadow.f" S\" : required ( ptr u8 n -- ) 2drop ;\n" SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] E-DISC-SHADOW TTHROWSQ
+   s" kernel-shadow.f" S\" kernel: required ( ptr u8 n -- ) 2drop ;\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-SHADOW TTHROWSQ ;
 
 : SDT-TEST-UNDEFINE ( -- )

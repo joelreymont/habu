@@ -567,6 +567,8 @@ public
    rc 0 <> rc CA-REFUSED <> and rc DUP-RC <> and
    rc REPORTED-THROW? 0= and ;
 
+private
+
 \ True for the code the pre-verifier stops with at a string or a
 \ primitive-axiom row the file never closes, and discovery at a string or a
 \ locals group, a defect the lexer reads too but for the group.
@@ -574,6 +576,15 @@ public
    rc VERIFY:E-UNTERMINATED-STRING =
    rc VERIFY:E-MALFORMED-REGISTRY-ROW = or
    rc E-DISC-UNTERM = or ;
+
+public
+
+\ True for the code of a stop that the lexer's record of the stopped file goes
+\ before, as it goes before any error in the file: a defect the lexer reads
+\ too (LEX-STOP?), and a bad escape, which it does not read. With no defect
+\ for the lexer to read, the stop's own record stands.
+: LEX-FIRST? ( n -- bool ) {: rc:n :}
+   rc LEX-STOP? rc VERIFY:E-BAD-ESCAPE = or ;
 
 private
 
@@ -643,14 +654,14 @@ private
    CA-HANDLE-LEX-DEFECT ;
 
 \ The lexer reads a file the composition loads only when the pre-verifier
-\ reaches it, so a stop at an open string or row is reported by the lexer's
-\ record for the file it stopped in; a lex that finds no defect leaves the
-\ statement's throw record.
+\ reaches it, so a stop its record goes before (LEX-FIRST?) is reported by the
+\ lexer's record for the file it stopped in; a lex that finds no defect leaves
+\ the statement's throw record.
 : CA-HANDLE-COMPOSE-THROW ( n -- ) {: rc:n :}
    rc CA-THROW!
    0 CA-EMIT-CAPTURED
    CA-COMPOSE-STOPPED
-   rc LEX-STOP? IF CA-LEX THEN
+   rc LEX-FIRST? IF CA-LEX THEN
    CA-THROW-RECORD$ CA-ERR-LN ;
 
 \ A reader with no token after it is the refusal tools/check-core.f writes for
@@ -759,9 +770,10 @@ public
 \ the given label: the composition verifies every file a top-level loader
 \ statement loads where it stands, under its own path, in one session.
 \ Lexical defects stay each file's own (LEX-FILE): a loaded file is lexed when
-\ the pre-verifier stops in it at an open string or row. A reader with no token
-\ after it throws VERIFY:E-MISSING-NAME to the caller, which reports it at
-\ VERIFY:TOKEN-BYTE@ in the file VERIFY:SOURCE-COMPOSE-STOPPED$ names.
+\ the pre-verifier stops in it at an open string or row or a bad escape
+\ (LEX-FIRST?). A reader with no token after it throws VERIFY:E-MISSING-NAME
+\ to the caller, which reports it at VERIFY:TOKEN-BYTE@ in the file
+\ VERIFY:SOURCE-COMPOSE-STOPPED$ names.
 : COMPOSE-BUF ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
    path CA-COMPOSE-PATH-A !  pathu CA-COMPOSE-PATH-U !

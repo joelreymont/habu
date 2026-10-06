@@ -241,7 +241,20 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
   nominal pass reports those first as `E-BAD-NOMINAL-TYPE` and
   `E-BAD-RECORD-FIELD`. Its own tables grow with the source, so none of them
   stops it. Source discovery's stop at a `{:` group a file never closes is
-  this record at the `{:`, with `throw_code` `E-DISC-UNTERM` (-4103).
+  this record at the `{:`, with `throw_code` `E-DISC-UNTERM` (-4103). A
+  top-level escaped literal (`s\"`, `c\"`, `.\"`) holding an escape the engine
+  refuses, a bad string literal to the load, is this record at its opener,
+  with `throw_code` 7194 (`VERIFY:E-BAD-ESCAPE`), the code that names the
+  defect; 7188, the pre-verifier's code for a string that does not close,
+  would name another. The lexer reads no escape; a defect it does read in the
+  file, a string or primitive-axiom row that does not close, goes before the
+  literal's record in every mode, as it goes before a definition's error
+  (`CHECK-ALL-ERRORS:LEX-FIRST?`): `s\" A\yB" 2drop` then `s" abc` is
+  `E-UNTERMINATED-STRING` at line 2, though the load stops at line 1. Source
+  discovery follows no loader at or after that literal in its file, as the
+  load reaches none. In a definition such a literal is one more error of the
+  body, `E-REJECTED` at its opener, which the checker reads past, and so does
+  discovery, following no loader the literal names.
 - `E-GENERATES-ROW`: a `generates: D ( effect )` row the checker refused, its
   `token` D. Its repair class names the claim that failed: `fix_generates_row`
   when D names no word where the row stands, `delete_generates_row` when D
@@ -289,7 +302,8 @@ The lexer cannot read past either defect, so it is reported in place of
 checking that source, in the file that holds it (a required file included,
 standard input as `<stdin>`): source discovery stops at an open string, and the
 pre-verifier at either defect where it reads one (`VERIFY:E-UNTERMINATED-STRING`,
-`VERIFY:E-MALFORMED-REGISTRY-ROW`). Without `--json-errors` it is the line
+`VERIFY:E-MALFORMED-REGISTRY-ROW`) or at a bad escape before it
+(`VERIFY:E-BAD-ESCAPE`). Without `--json-errors` it is the line
 `<code> <file>:<line>:<column>: string literal opened at '<token>' does not
 close`, or `primitive-axiom row` in place of `string literal`. Under
 `--verify-only` a string or group discovery stops at adds its record after the
@@ -309,9 +323,10 @@ and `CHECK:VERIFY-BYTES` answers `refused` with that record:
 
 - `E-LOADER-FORM`, repair class `literal_loader_form`, at a loader form
   discovery cannot follow: a loader word with no literal path (a computed one,
-  or a `c"` or `."` string before it), a path over 1024 bytes as written or as
-  resolved, or the name of a definition that redefines or retires a loader
-  word, unless `tools/dynamic-tail-manifest.f` lists the file.
+  or a `c"` or `."` string before it), a path over 1024 bytes as written (an
+  escaped literal's as decoded) or as resolved, or the name of a definition
+  that redefines or retires a loader word, unless
+  `tools/dynamic-tail-manifest.f` lists the file.
 - `E-MISSING-SOURCE`, repair class `fix_load_path`, at the loader word that
   names a file that is not there.
 - `E-UNREADABLE-SOURCE`, repair class `make_source_readable`, at the loader
@@ -387,7 +402,7 @@ none are. It has no `throw_code` or definition-only field. The code names its re
 
 | `code` | `repair_class` | Added field | Refusal |
 | --- | --- | --- | --- |
-| `E-TRUST-UNRESOLVED` | `fix_stale_trust_row` | none | A `trust` row names no word where its record lands; `token` is the row's name. |
+| `E-TRUST-UNRESOLVED` | `fix_stale_trust_row` | none | A `trust` row names no word where its record lands; `token` is the row's name, an escaped literal's decoded as the engine decodes it. |
 | `E-PKG-CONTEXT` | `use_storage_definer` | none | A checker storage registrar was called from source, outside the engine's verifier window; `token` is the name it would have recorded. |
 | `E-BAD-QUALIFIED-RECORD` | `fix_qualified_name` | none | A checker record was asked for a malformed qualified name, which keys no word; `token` is that name. A call to such a name is refused in its definition as `E-BAD-QUALIFIED`, under the same class with a definition's fields. |
 | `E-BAD-STORED-SIGNATURE` | `fix_signature_type`, `fix_bare_ptr_element`, `fix_signature_arity` or `fix_signature_syntax`, as for a definition's signature; `fix_signature_size` for a row too deep or too wide to record | `signature`, as written, empty when the row stored no text; and `reason` for a row too deep or too wide to record, naming the bound with the row's count and the limit | A stored signature, a `trust` row's or a `TRUSTED:` definition's, does not parse, or is more than 4096 levels deep or takes more than 255 cells, more than its record holds; `token` is the name it is stored for. |
@@ -583,11 +598,12 @@ stop at a string or a `{:` group a file of the closure never closes refuses it
 too, with `E-DISC-UNTERM` at the opener in that file. Either stop's record, the
 one `check.f --verify-only` writes, is the last line of `CHECK:VERIFY-OUT$`:
 for a definer or parsing word with nothing after it the nominal pass's
-`E-MISSING-NAME` packet, for an open string or row the lexer's record, else
-the record `--all-errors` writes for a statement that throws, at the stop, so
-a language server publishes it with the packets before it. Any other closure
-the walk cannot follow is its record (above), and the verdict is `refused`. An
-empty PATH throws `E-FS-PATH`, and a failed spawn throws as well.
+`E-MISSING-NAME` packet, for an open string or row, or a bad escape before
+one, the lexer's record, else the record `--all-errors` writes for a statement
+that throws, at the stop, so a language server publishes it with the packets
+before it. Any other closure the walk cannot follow is its record (above), and
+the verdict is `refused`. An empty PATH throws `E-FS-PATH`, and a failed spawn
+throws as well.
 The child's stdout is kept whole, in storage that grows to what it writes.
 Its stderr beyond the capture, 256 KiB, kills the child and throws
 `E-PROC-TRUNCATED`, with every complete packet received before it in

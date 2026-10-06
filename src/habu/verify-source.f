@@ -16,11 +16,17 @@ public
 \ A source the scan cannot read on stops it with one of these, TOKEN-BYTE@ at
 \ the word that cannot finish: a reader (a definer, a parsing word) with no
 \ token after it, a string opener with no closing quote, a PRIM: or PPRIM: row
-\ with no closer. tools/check.f reports each where it stands, by the record it
-\ writes when it finds the same defect itself.
+\ with no closer, a top-level escaped literal holding an escape the engine
+\ refuses. tools/check.f reports the first three where they stand, by the
+\ record it writes when it finds the same defect itself. Its lexer reads no
+\ escape, so it reports a bad escape by the record of a statement that throws,
+\ at the literal's opener, under a code of its own that names the defect; as
+\ before any error, a defect its lexer reads anywhere in the file is reported
+\ instead, in its place (CHECK-ALL-ERRORS:LEX-FIRST?).
 7187 constant E-MISSING-NAME
 7188 constant E-UNTERMINATED-STRING
 7189 constant E-MALFORMED-REGISTRY-ROW
+7194 constant E-BAD-ESCAPE
 
 \ Captured by the fresh child before it loads verifier tooling. A direct
 \ caller that does not supply an entry observation retains checking order.
@@ -292,10 +298,13 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
       then
    repeat ;
 
-\ Skipped top-level string literals feed a two-slot ring so a bare top-level
-\ `s" NAME" s" SIG" TRUST` (strings the scanner would otherwise discard) can be
-\ replayed as a trust. The ring resets per NEXT-SCAN call, so at a TRUST token it
-\ holds exactly the two preceding literals from the same statement.
+\ Skipped top-level string literals feed a two-slot ring so the strings the
+\ scanner would otherwise discard reach the rows that replay them: a bare
+\ top-level `s" NAME" s" SIG" TRUST` (RECORD-TRUST) and a string loader's path,
+\ `s" FILE" included` (COMPOSE-STRING-PATH). A slot holds the bytes the engine's
+\ literal makes: a plain literal's source span, an escaped one's decoded payload
+\ (RECORD-ESCAPED-STRING). The ring resets per NEXT-SCAN call, so at a TRUST
+\ token it holds exactly the two preceding literals from the same statement.
 : STR-RING-RESET ( -- )
    NULL-PTR STR-PREV-A !  0 STR-PREV-U !
    NULL-PTR STR-LAST-A !  0 STR-LAST-U ! ;
@@ -306,10 +315,61 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
    a STR-LAST-A !
    u STR-LAST-U ! ;
 
-: RECORD-SKIPPED-STRING ( n -- ) {: pfx:n :}
-   SCAN-I @ TOKEN-START @ - pfx - 1 - {: vlen:n :}
-   vlen 0 < IF EXIT THEN
-   SOURCE@ TOKEN-START @ + pfx + vlen STR-RING-PUSH ;
+\ The payload of the literal just skipped: after its opener and delimiter, pfx
+\ bytes, and before the quote SCAN-I stands one past. The length is negative
+\ when the source ends before the payload starts.
+: SKIPPED-PAYLOAD ( n -- ptr u8 n ) {: pfx:n :}
+   SOURCE@ TOKEN-START @ + pfx +
+   SCAN-I @ TOKEN-START @ - pfx - 1 - ;
+
+: RECORD-SKIPPED-STRING ( n -- )
+   SKIPPED-PAYLOAD dup 0 < IF 2drop EXIT THEN
+   STR-RING-PUSH ;
+
+\ An escaped literal's decoded bytes are not in the source, so they live in one
+\ of two buffers. STR-DEC-TURN names the one the next decode writes, and a
+\ decode that answers its buffer flips it, so the last answer is never in the
+\ buffer the next decode writes, or that a reserve for it moves. No reader
+\ reads an older answer after the next decode. A top-level literal's answer
+\ goes to the ring, which the handler of the token NEXT-SCAN answers reads
+\ before the next NEXT-SCAN resets it: only STR-PREV may hold an older answer,
+\ and the push after the next decode drops it. Only `trust` and the string
+\ loaders read the ring, and neither reads a body. A body literal's answer is
+\ BODY-LIT, which the body's next token clears or consumes (PEND-PUSH keeps a
+\ copy), and a body token is read with SKIP-STRINGS off, so no decode comes
+\ between.
+DYNAMIC-BUFFER STR-DEC0 u8
+DYNAMIC-BUFFER STR-DEC1 u8
+variable STR-DEC-TURN
+
+\ The turn's buffer, with room for u bytes and an address for none.
+: STR-DEC-ROOM ( n -- ptr u8 ) {: u:n :}
+   STR-DEC-TURN @ 0= IF u 1 + STR-DEC0-RESERVE  0 STR-DEC0 EXIT THEN
+   u 1 + STR-DEC1-RESERVE  0 STR-DEC1 ;
+
+\ The bytes the engine's `s\"` makes of an escaped literal's payload, and
+\ whether every escape in it is one the engine reads: the payload decoded by
+\ the checker's escape table (src/core/checker.f ESC-DECODE), the engine
+\ decoder's table (src/habu/habu2.f C-ESC-DECODE-BASIC). An escape is spelt
+\ with more bytes than it decodes to, so a decode as long as its payload met no
+\ escape: the answer is the source span, and a diagnostic at the literal keeps
+\ its position.
+: ESC-BYTES ( ptr u8 n -- ptr u8 n bool ) {: src:ptr u:n :}
+   u STR-DEC-ROOM {: dst:ptr :}
+   src u dst ESC-DECODE {: k:n ok:bool :}
+   k u = ok 0= or IF src u ok EXIT THEN
+   1 STR-DEC-TURN @ - STR-DEC-TURN !
+   dst k ok ;
+
+\ A top-level escaped literal's slot holds its ESC-BYTES. A bad escape is
+\ refused at the opener (E-BAD-ESCAPE), where the engine refuses it as a bad
+\ string literal; tools/check.f reports it as the throw of the statement
+\ there, unless its lexer finds a defect in the file. An unterminated literal
+\ is left to the lexer, as a plain one is.
+: RECORD-ESCAPED-STRING ( -- )
+   FOUND @ 0= IF EXIT THEN
+   4 SKIPPED-PAYLOAD ESC-BYTES 0= IF E-BAD-ESCAPE throw THEN
+   STR-RING-PUSH ;
 
 \ ---- the locals a body declares -----------------------------------------------
 \ The engine and the checker look a body token up among the live locals before
@@ -369,7 +429,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
       SKIP-STRINGS @ 0= IF 2dup LOCAL? IF EXIT THEN THEN
       2dup PRINT-OPENER? IF 2drop 41 SKIP-PAST ELSE
       SKIP-STRINGS @ 0= 0= IF
-         2dup ESCAPED-STRING-OPENER? IF 2drop SKIP-ESCAPED-QUOTE 4 RECORD-SKIPPED-STRING ELSE
+         2dup ESCAPED-STRING-OPENER? IF 2drop SKIP-ESCAPED-QUOTE RECORD-ESCAPED-STRING ELSE
          2dup NORMAL-STRING-OPENER? IF 2drop 34 SKIP-PAST 3 RECORD-SKIPPED-STRING ELSE EXIT THEN THEN
       ELSE EXIT THEN
       THEN THEN THEN
@@ -560,11 +620,15 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
 \ tools/object-image.f loads its target's sys.f that way, and the three
 \ targets' files define the same words. A source cannot define a predicate's
 \ spelling (tools/reserved-name-lint-core.f reserves it), so the answer is the
-\ engine's. The path is the literal right before the loader word; any other
-\ loader form in a body is discovery's to refuse (tools/source-discovery.f).
-\ Each entry's path lies in the bytes of the file being read, which live until
-\ that file ends. The entries grow with the loads waiting at once.
-DYNAMIC-BUFFER PEND-A ptr u8                  \ a waiting load's path
+\ engine's. The path is the literal right before the loader word, the bytes the
+\ engine's literal makes of it (BODY-LIT!); any other loader form in a body is
+\ discovery's to refuse (tools/source-discovery.f). An entry keeps a copy of its
+\ path: a decoded one lives only until the decode after next, and the release
+\ comes after later bodies, top-level statements and nested files have decoded
+\ theirs. A file's entries sit above its loader's, and their paths go with
+\ them. The entries grow with the loads waiting at once.
+DYNAMIC-BUFFER PEND-PATH u8                   \ the waiting loads' paths, end to end
+DYNAMIC-BUFFER PEND-AT n                      \ a waiting load's path's offset
 DYNAMIC-BUFFER PEND-U n                       \ and its length
 DYNAMIC-BUFFER PEND-INC n                     \ 1 for `included`, 0 for `required`
 variable PEND-N
@@ -585,20 +649,32 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
 : BODY-LOAD-RESET ( -- )
    0 BODY-BENT !  BODY-PREV-CLEAR  0 BODY-ARMS !  0 BODY-DEAD ! ;
 
+\ The end of the waiting entries' paths.
+: PEND-END ( -- n )
+   PEND-N @ 0= IF 0 EXIT THEN
+   PEND-N @ 1 - {: last:n :}
+   last PEND-AT @ last PEND-U @ + ;
+
 : PEND-PUSH ( ptr u8 n n -- ) {: a:ptr u:n inc:n :}
-   PEND-N @
-   {: at:n :}
-   at 1 + PEND-A-RESERVE  at 1 + PEND-U-RESERVE  at 1 + PEND-INC-RESERVE
-   a at PEND-A !  u at PEND-U !  inc at PEND-INC !
+   PEND-N @ PEND-END
+   {: at:n off:n :}
+   off u + 1 + PEND-PATH-RESERVE
+   a off PEND-PATH u BYTE-COPY
+   at 1 + PEND-AT-RESERVE  at 1 + PEND-U-RESERVE  at 1 + PEND-INC-RESERVE
+   off at PEND-AT !  u at PEND-U !  inc at PEND-INC !
    at 1 + PEND-N ! ;
 
-\ The text of a `s"` literal from the rest STRING-REST read: past the one
-\ delimiting space, short of the closing quote. Any other opener leaves none.
+\ The text of a literal from the rest STRING-REST read after its opener, a
+\ string opener: past the one delimiting space, short of the closing quote, as
+\ the engine's literal makes it, decoded when the opener is an escaped one
+\ (ESC-BYTES). A literal holding a bad escape leaves none: the checker refuses
+\ its body.
 : BODY-LIT! ( ptr u8 n ptr u8 n -- ) {: o:ptr ou:n s:ptr su:n :}
    BODY-PREV-CLEAR
-   o ou NORMAL-STRING-OPENER? su 2 >= and IF
-      s 1 + BODY-LIT-A !  su 2 - BODY-LIT-U !
-   THEN ;
+   su 2 < IF EXIT THEN
+   s 1 + su 2 -
+   o ou NORMAL-STRING-OPENER? 0= IF ESC-BYTES 0= IF 2drop EXIT THEN THEN
+   BODY-LIT-U !  BODY-LIT-A ! ;
 
 : >GUARD ( bool -- n )
    IF GUARD-LIVE EXIT THEN GUARD-DEAD ;
@@ -2483,11 +2559,13 @@ CAST: FILE-ACTION ( n -- [ [ -- ] -- ] )
    NEXT-RAW dup 0= IF E-DISC-DYNAMIC throw THEN ;
 
 \ The loads that wait in this file, in the order of their loaders. A file one
-\ of them loads keeps its own entries above them, and they end with it.
+\ of them loads keeps its own entries above them, and they end with it. Its
+\ entries may grow PEND-PATH and move it, so an entry's path is fetched when its
+\ turn comes, and the resolver copies it before the file is read.
 : PEND-RELEASE ( -- )
    PEND-N @ PEND-BASE @ ?do
       TICK-REMAINDER @ IF leave THEN
-      i PEND-A @ i PEND-U @
+      i PEND-AT @ PEND-PATH i PEND-U @
       i PEND-INC @ 0<> IF COMPOSE-INCLUDED ELSE COMPOSE-REQUIRED THEN
    loop
    PEND-BASE @ PEND-N ! ;
@@ -2537,15 +2615,20 @@ variable FILE-USE
 
 \ PRIM:/PPRIM: bodies use the canonical body scanner so parsing words consume
 \ their comments, strings, and raw operands before a live closer is considered.
-\ A row declares no locals, so none of the last body's stay live in it. A row
-\ the source ends inside, before its name, package or closer, stops the scan at
-\ its opener, the byte RECORD-PRIM or RECORD-PPRIM was entered at.
+\ A row declares no locals, so none of the last body's stay live in it, and as
+\ every body reader it starts clear of the last body's literal and line: that
+\ literal may lie in decoded bytes a decode since has moved. Discovery refuses a
+\ loader word with no literal before it, so tools/check.f never reads one that
+\ opens a row. A row the source ends inside, before its name, package or
+\ closer, stops the scan at its opener, the byte RECORD-PRIM or RECORD-PPRIM was
+\ entered at.
 : ROW-UNCLOSED ( n -- )
    TOKEN-BYTE !
    E-MALFORMED-REGISTRY-ROW throw ;
 
 : RECORD-PRIM-ROW ( n ptr u8 n ptr u8 n -- )
    {: at:n end:ptr endu:n alt:ptr altu:n :}
+   BODY-LOAD-RESET
    LOCALS-RESET
    NEXT-RAW dup 0= IF at ROW-UNCLOSED THEN
    2drop
