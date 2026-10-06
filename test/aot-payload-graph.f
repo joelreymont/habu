@@ -5,6 +5,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 require test/whitebox-child.f
 
 package PAYLOAD-GRAPH-SUITE
@@ -12,13 +13,18 @@ package PAYLOAD-GRAPH-SUITE
 $4000 constant IO-CAP
 create OUT IO-CAP allot
 create ERR IO-CAP allot
+variable PRE-OUT-U
 create ART FS-PATH-CAP allot
 variable ART-U
 create IMAGE FS-PATH-CAP allot
 variable IMAGE-U
+create SUBJECT FS-PATH-CAP allot
+variable SUBJECT-U
 
 : ART$ ( -- ptr u8 n ) ART ART-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
+: SUBJECT$ ( -- ptr u8 n ) SUBJECT SUBJECT-U @ ;
+: PRE-OUT$ ( -- ptr u8 n ) OUT PRE-OUT-U @ ;
 
 \ The child runs test/native-window-owner-child.f, which reopens the engine's
 \ build window: `hb: internal engine word: DECLARATIONS`, exit 70 on the sealed
@@ -29,6 +35,7 @@ variable IMAGE-U
    path u CLEANUP-TREE+
    path u s" metadata.aot" ART JOIN-PATH ART-U !
    path u s" hb-partial" IMAGE JOIN-PATH IMAGE-U !
+   path u s" visibility.f" SUBJECT JOIN-PATH SUBJECT-U !
    path u WHITEBOX-CHILD:PROVIDE-IN ;
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
@@ -116,6 +123,60 @@ variable IMAGE-U
    WHITEBOX-CHILD:ENV! ;
 
 
+: VERIFY-CHILD ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n bool -- )
+   {: engine:ptr engineu:n source:ptr sourceu:n status:ptr statusu:n packet:ptr packetu:n pre:bool :}
+   PROC-ARGV-RESET
+   s" --load" ARG s" tools/check-verify-child.f" ARG
+   s" --" ARG SUBJECT$ ARG
+   pre if s" verifier-prepass" ARG then
+   PROC-ENV-RESET
+   s" HABU_UNDER_TEST" >LEN engine engineu >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   engine engineu >LEN source sourceu >LEN
+   OUT IO-CAP >LEN ERR IO-CAP >LEN 30000 >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   {: outu:len erru:len rc:n :}
+   outu LEN>N PRE-OUT-U !
+   s" verifier child: " type engine engineu type cr
+   source sourceu type cr
+   OUT outu LEN>N type ERR erru LEN>N type cr
+   rc 0 T=
+   PRE-OUT$ status statusu CONTAINS? TTRUE
+   packetu 0<> if PRE-OUT$ packet packetu CONTAINS? TTRUE then ;
+
+: PREVERIFY-CHILD ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   true VERIFY-CHILD ;
+
+: VISIBILITY-CASE ( ptr u8 n -- )
+   s" : SEED-GLOBAL ( -- n ) 1 ; package SEED-VIS private : HIDDEN ( -- n ) 2 ; public : SHOWN ( -- n ) 3 ; ;package"
+   s" check-verify: verified" s" " false VERIFY-CHILD
+   PRE-OUT$ S\" \"word\":\"SEED-GLOBAL\",\"package\":\"\",\"visibility\":\"global\"" CONTAINS? TTRUE
+   PRE-OUT$ S\" \"word\":\"HIDDEN\",\"package\":\"seed-vis\",\"visibility\":\"private\"" CONTAINS? TTRUE
+   PRE-OUT$ S\" \"word\":\"SHOWN\",\"package\":\"seed-vis\",\"visibility\":\"public\"" CONTAINS? TTRUE ;
+
+: PREVERIFY-CASES ( ptr u8 n -- )
+   {: engine:ptr engineu:n :}
+   s" a body using-shadow records its packet and stops as a refusal" T-LABEL
+   engine engineu
+   s" : SV-W ( -- n ) 1 ; package SV-U public : SV-W ( -- n ) 2 ; ;package using SV-U : SV-BODY ( -- n ) SV-W ; ;using"
+   s" check-verify: stopped 70 " s" E-USING-SHADOW-GLOBAL" PREVERIFY-CHILD
+   s" a does> using-shadow records its packet and stops as a refusal" T-LABEL
+   engine engineu
+   s" : SV-W ( n -- ) drop ; package SV-U public : SV-W ( n -- ) drop ; ;package using SV-U : SV-DO ( n -- ) create , does> ( -- ) @ SV-W ; ;using"
+   s" check-verify: stopped 70 " s" E-USING-SHADOW-GLOBAL" PREVERIFY-CHILD
+   s" a top-level using-shadow records its packet and stops as a refusal" T-LABEL
+   engine engineu
+   s" : SV-W ( n -- ) drop ; package SV-U public : SV-W ( n -- ) drop ; ;package using SV-U 1 SV-W ;using"
+   s" check-verify: stopped 70 " s" E-USING-SHADOW-GLOBAL" PREVERIFY-CHILD
+   s" an unfinished definition keeps the source stop code" T-LABEL
+   engine engineu s" : SV-OPEN ( -- n ) 1"
+   s" check-verify: stopped 7155 " s" " PREVERIFY-CHILD
+   s" a bad trust signature keeps the checker stop code" T-LABEL
+   engine engineu
+   s\" : SV-SIG ( -- n ) 1 ; s\" SV-SIG\" s\" -- sv-no-such-type\" trust"
+   s" check-verify: stopped 7156 " s" E-BAD-STORED-SIGNATURE" PREVERIFY-CHILD ;
+
+
 : FRESH-NATIVE ( -- )
    s" imported definitions are absent from the original engine" T-LABEL
    CONSUMER-ARGS
@@ -133,7 +194,14 @@ variable IMAGE-U
    WHITEBOX-CHILD:ENGINE$ 0 s" native graph artifact baked" CHILD 0= if exit then
    s" a fresh boot executes imported code and compiles typed dependents" T-LABEL
    CONSUMER-ARGS
-   IMAGE$ 0 s" native graph fresh consumer: ok" CHILD drop ;
+   IMAGE$ 0 s" native graph fresh consumer: ok" CHILD if
+      s" the seeded verifier renders global, private and public definitions" T-LABEL
+      IMAGE$ VISIBILITY-CASE
+      IMAGE$ PREVERIFY-CASES
+      s" the product verifier renders global, private and public definitions" T-LABEL
+      ENGINE-CANDIDATE:PATH$ VISIBILITY-CASE
+      ENGINE-CANDIDATE:PATH$ PREVERIFY-CASES
+   then ;
 
 
 : CASES ( -- )

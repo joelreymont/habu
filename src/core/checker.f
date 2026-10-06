@@ -10099,6 +10099,14 @@ PRIM: CHECK-QUIET-CANDIDATE! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 \ it answers is created before the hook and carries no effect on a from-source
 \ prefix boot (see CHECKER-VIS-PUBLIC above).
 PRIM: CHECKER-VIS-PUBLIC PE-N PE-OUT PRIM;
+\ The verifier renders the symbol identity this owner returns. These three
+\ pre-hook constants need their own scalar rows when a seeded native image
+\ loads the verifier child; their dictionary names alone cannot bind in a
+\ checked body.
+PRIM: SYM-GLOBAL PE-N PE-OUT PRIM;
+PRIM: SYM-PRIVATE PE-N PE-OUT PRIM;
+PRIM: SYM-PUBLIC PE-N PE-OUT PRIM;
+PRIM: CHECKER-DEF-STOPPED? PE-N PE-IN PE-F PE-OUT PRIM;
 \ CHECK / CHECK! are the public verdict words (`s" ..." CHECK! .` is the
 \ documented top-level probing idiom); the axioms keep them checker-known so
 \ the seal-time internal-word marking pass leaves them executable at top level
@@ -23180,6 +23188,8 @@ PTR-VARIABLE CK-DEF-A   variable CK-DEF-U   variable CK-DEF-VERDICT
 \ tools/check-verify-child.f, whose pre-pass then stops as at any refused
 \ definition.
 variable DEF-STOPPED
+
+: CHECKER-DEF-STOPPED? ( n -- bool ) DEF-STOPPED @ = ;
 
 \ The rule shared by the walks a refusal of the definition leaves by a throw, a
 \ body's here, a does> clause's (CHECKER-SOURCE-DOES! below) and a top-level

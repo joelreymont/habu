@@ -444,10 +444,10 @@ variable SEEN-N
 70 constant REFUSED-RC                  \ a refused definition's stop (verify-source.f BODY-VERDICT)
 
 \ A definition or top-level token refused by the throw that rendered its packet
-\ (checker.f DEF-STOPPED) stops the pre-pass as a definition its verdict refuses
+\ (checker.f CHECKER-DEF-STOPPED?) stops the pre-pass as a definition its verdict refuses
 \ does; any other stop keeps its code.
 : STOP-CODE ( n -- n )
-   dup DEF-STOPPED @ = if drop REFUSED-RC then ;
+   dup CHECKER-DEF-STOPPED? if drop REFUSED-RC then ;
 
 \ This pre-pass leaves deferred source to the run; only VERIFY-CLOSURE warns.
 : PREVERIFY ( -- )
