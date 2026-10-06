@@ -20081,7 +20081,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
          sym SYM-VISIBLE 0 <>
          rec1 0= IF RES-TRUE ELSE rec1 1 - E-PTR ER.ACTIVE @ EFF-DELETED <> THEN and
       THEN
-      ok 0 <> and
+      ok and
    ELSE RES-TRUE THEN {: live:bool :}
    controls live and IF
       sym TOP-CONTROL {: flags:n deferred:bool :}

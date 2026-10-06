@@ -1971,8 +1971,11 @@ the rule.
   one does not take it. This is a contract of the source pre-pass only, not
   of the language: an ordinary load reads and checks the row and keeps
   nothing, so a word from a resident, precompiled or cached dependency whose
-  row this check did not read is undeclared, and a row before the call in the
-  source checked supplies it. A refused token leaves the rest of its stretch
+  row this check did not read is undeclared. A row before the call supplies
+  its boundary only when the binding has a checker symbol and effect record.
+  A cold captured binding may have neither: its row is accepted but not kept,
+  and its call stays opaque. Declare the row again after a checked use has
+  materialized that binding. A refused token leaves the rest of its stretch
   unresolved and unreported, as the load stops there. A word that
   renders source opens no stretch, as it reads only the text it renders: it
   marks the wordlist (the rule above), and a later top-level name only that
