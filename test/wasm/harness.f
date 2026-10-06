@@ -54,16 +54,27 @@ variable CODE
       none OF a u NO-THROW-LINE ENDOF
    ;MATCH ;
 
-public
-
-: VALID? ( ptr u8 n -- bool )
-   {: path:ptr u:n :}
+: VALIDATE ( ptr u8 n bool -- bool )
+   {: path:ptr u:n no-sat:bool :}
    PROC-ARGV-RESET
    s" validate" ARG+
    s" --features" ARG+  s" mvp" ARG+          \ each list adds to the last
    s" --features" ARG+  WPROF:FEATURES ARG+
+   no-sat if  s" --features=-saturating-float-to-int" ARG+  then
    path u ARG+
-   s" wasm-tools" SPAWN 0= ;
+   s" wasm-tools" SPAWN {: rc:n :}
+   rc 1 > if
+      ERR ERR-U @ type cr
+      s" wasm harness: wasm-tools validate failed" 1 die
+   then
+   rc 0= ;
+
+public
+
+: VALID? ( ptr u8 n -- bool )  false VALIDATE ;
+
+\ W05 probes one missing required feature on the same generated module.
+: VALID-WITHOUT-SAT? ( ptr u8 n -- bool )  true VALIDATE ;
 
 : RUN ( ptr u8 n -- n )
    {: path:ptr u:n :}
