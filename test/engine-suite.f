@@ -9,12 +9,8 @@
 \ made once. `variable` and `!` need no harness, so the boot answer is latched
 \ here, before one user definition exists, and checked with the others further
 \ down. See src/core/layout-valid.f ARENAS-STALE.
-\ A named TRUSTED: shim for the same reason the TG-* probes further down have one:
-\ an engine-internal colon word fails closed under the internal-word gate when a
-\ bare token names it at top level.
-TRUSTED: ES-CERT-STALE ( -- n ) LOWER-CERT:ARENAS-STALE ;
 variable ES-CERT-STALE0
-ES-CERT-STALE ES-CERT-STALE0 !
+LOWER-CERT:ARENAS-STALE ES-CERT-STALE0 !
 
 require test/checker-assert.f
 require lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
@@ -421,10 +417,8 @@ variable TC-UEND
 variable TC-NEND
 variable TC-SYMN
 variable TC-SYMU
-\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal state
-\ probes use named words; bare internal tokens fail closed at top level under
-\ the internal-word gate, and a probe stays TRUSTED: only where the name it
-\ reads is one of those.
+\ Checker-internal state probes: this suite runs on the unsealed engine, where a
+\ checked body binds an internal word's recorded row.
 : TC-SNAP ( -- )
    UEND @ TC-UEND !
    NORET-END @ TC-NEND !
@@ -605,21 +599,19 @@ es-reso:t-label-cap 3 T=
 
 package ES-RES-REFUSE
 
-\ Whitebox: the engine's load path, so what a case measures is the engine
-\ refusing a source rather than a test deciding it should have.
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-
 public
 
-\ The engine's own exit codes for the two refusals, which inside evaluate
-\ arrive as catchable throws of the same code.
+\ The engine's own exit codes for the two refusals, which inside
+\ evaluate-closed arrive as catchable throws of the same code.
 70 constant UNDEFINED
 78 constant DUPLICATE
 
-\ The source travels through the quotation and back out, because a quotation
-\ cannot read the enclosing word's locals.
+\ Whitebox: the engine's load path, so what a case measures is the engine
+\ refusing a source rather than a test deciding it should have. The source
+\ travels through the quotation and back out, because a quotation cannot read
+\ the enclosing word's locals.
 : OUTCOME ( ptr u8 n -- n )
-   [: 2dup EV ;] catch {: rc:n :}
+   [: 2dup evaluate-closed ;] catch {: rc:n :}
    2drop rc ;
 
 ;package
@@ -651,9 +643,8 @@ s" COK-SIG-MID-COMMENT ( n -- n ) dup ( scratch note ) drop" T-CHECK-PASSES
 \ REND-SIG contract: a certified word's declared effect renders after CHECK!.
 \ Persisting the signature must retain the verified rows used by the renderer
 \ and lowering certificates. The prop-test round-trip amplifier also checks it.
-TRUSTED: ES-REND-SIG$ ( -- ptr u8 n ) REND-SIG ;   \ whitebox render-probe boundary
 s" COK-REND-SIG ( i64 -- i64 ) 1-" T-CHECK-PASSES
-ES-REND-SIG$ s" i64 -- i64" T$=
+REND-SIG s" i64 -- i64" T$=
 s" sigless-mid-comment certifies" T-LABEL
 s" COK-SIGLESS-MID-COMMENT dup ( n -- n ) drop" CHECK-QUIET-CANDIDATE! -1 T=
 \ escaped-string payloads: the checker accepts exactly the engine's escape set
@@ -728,7 +719,7 @@ DIAG-BUFFER$ s" rsv28" T-HAS? -1 T=
 s" rec-refuse diag names var-count reason" T-LABEL
 DIAG-BUFFER$ s" more than 23 type variables or binders" T-HAS? -1 T=
 : T-FQ ( forall<p,[ n -- n ]> -- ) drop ;
-TRUSTED: T-D23 ( a b c d e g h i j k l m o p q s t u v w x y z -- )
+: T-D23 ( a b c d e g h i j k l m o p q s t u v w x y z -- )
    drop drop drop drop drop drop drop drop drop drop drop drop
    drop drop drop drop drop drop drop drop drop drop drop ;
 RSD-BUF RSD-CAP DIAG-BUFFER!
@@ -786,20 +777,6 @@ variable TG-GROW-NEXT
 variable TG-UOFF
 variable TG-SMALL-CAP
 variable TG-RBASE
-\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): internal checker COLON
-\ words probed at top level go through named trusted shims - bare internal
-\ colon tokens fail closed under the internal-word gate (state cells stay
-\ directly readable: data records are exempt).
-TRUSTED: TG-RESET ( -- ) USIGS-RESET ;
-TRUSTED: TG-USIGS ( -- ptr a ) USIGS ;
-TRUSTED: TG-ROUND ( n -- n ) USIGS-ROUND-CAP ;
-TRUSTED: TG-COPY ( ptr u8 ptr u8 n -- ) ARENA-COPY ;
-TRUSTED: TG-RESTORE-END ( n -- ) USIGS-RESTORE-END ;
-TRUSTED: TG-PERSIST ( -- ) USIGS-SNAPSHOT-PERSIST ;
-TRUSTED: TG-TV-RESET ( -- ) TV-SNAP-RESET ;
-TRUSTED: TG-TV-ENSURE ( n -- ) TV-ENSURE ;
-TRUSTED: TG-ARENA-RESET ( -- ) DECOUPLED-ARENA-SNAP-RESET ;
-TRUSTED: TG-TVT ( -- ptr a ) TVT ;
 UEND @ TG-UEND !
 USIGS-CAP-U @ TG-CAP !
 USIGS-P @ TG-USIGS-P !
@@ -807,7 +784,7 @@ USIGS-GROW-CAP @ TG-GROW-CAP !
 USIGS-GROW-NEXT @ TG-GROW-NEXT !
 USIGS-USER-OFF @ TG-UOFF !
 \ --- a RESTORED pool grows correctly -------------------------------------------
-\ The grow asserts further down run after TG-RESET, i.e. over a runtime mmap
+\ The grow asserts further down run after USIGS-RESET, i.e. over a runtime mmap
 \ arena, so they never exercise the case the generation chain actually meets: a
 \ pool the IMAGE carried in DATA, growing on the engine's own appends (an image
 \ whose content lands just under a grain boundary grows at its first load -
@@ -817,13 +794,14 @@ USIGS-USER-OFF @ TG-UOFF !
 \ property of that engine's content against its cap, not of this file: a root
 \ engine at content 2307240 against cap 2359296 has already grown into a mapping
 \ while loading, and the first version of this block asserted the baked pool as a
-\ precondition and went red on it. TG-PERSIST is the capture's own step, so it
-\ leaves the live store exactly where a restored engine finds it - freshly
-\ allotted DATA below the heap top, capped at the grain - on any engine. Then
-\ leave one append of headroom and certify AND compile a word: the certify appends
-\ across the cap and the compile reads the relocated store back through the
-\ per-symbol, no-return and node-intern indexes stamped against the pre-grow base.
-TG-PERSIST
+\ precondition and went red on it. USIGS-SNAPSHOT-PERSIST is the capture's own
+\ step, so it leaves the live store exactly where a restored engine finds it -
+\ freshly allotted DATA below the heap top, capped at the grain - on any engine.
+\ Then leave one append of headroom and certify AND compile a word: the certify
+\ appends across the cap and the compile reads the relocated store back through
+\ the per-symbol, no-return and node-intern indexes stamped against the pre-grow
+\ base.
+USIGS-SNAPSHOT-PERSIST
 USIGS-P @ TG-RBASE !
 s" usigs persisted pool is DATA under the heap top" T-LABEL
 TG-RBASE @ here < -1 T=
@@ -870,31 +848,31 @@ s" lower-cert arenas restored on their boot buffers" T-LABEL
 ES-CERT-STALE0 @ 0 T=
 \ normalize first: a restored snapshot boots with a persisted (smaller)
 \ store; one reset guarantees the runtime-sized arena the asserts assume
-TG-RESET
+USIGS-RESET
 USIGS-P @
 USIGS-CAP-U @
-TG-RESET
+USIGS-RESET
 USIGS-CAP-U @ T=
 USIGS-P @ T=
 UEND @ 0 T=
-TG-USIGS @ 0 T=
+USIGS @ 0 T=
 USIGS-GROW-CAP @ 0 T=
 USIGS-GROW-NEXT @ 0 T=
 USIGS-INIT-CAP 2 / USIGS-CAP-U !
 USIGS-P @
-TG-RESET
+USIGS-RESET
 USIGS-P @ = 0 T=
 USIGS-CAP-U @ USIGS-INIT-CAP T=
 UEND @ 0 T=
-TG-USIGS @ 0 T=
+USIGS @ 0 T=
 \ the baked store is the smallest grain multiple that holds its content and a
 \ grain of room (checker.f USIGS-PERSIST-CAP): two grains of content persist as
 \ four grains of cap, never a power of two.
-USIGS-GRAIN 2 * TG-RESTORE-END
-TG-PERSIST
+USIGS-GRAIN 2 * USIGS-RESTORE-END
+USIGS-SNAPSHOT-PERSIST
 s" grain-cap persisted store" T-LABEL
 USIGS-CAP-U @ USIGS-GRAIN 4 * T=
-TG-RESET
+USIGS-RESET
 UEND @ 128 + USIGS-CAP-U !
 USIGS-CAP-U @ TG-SMALL-CAP !
 \ A defer: with the cap shrunk by hand above, a colon body is refused at its
@@ -909,43 +887,43 @@ TG-CAP @ USIGS-CAP-U !
 TG-GROW-CAP @ USIGS-GROW-CAP !
 TG-GROW-NEXT @ USIGS-GROW-NEXT !
 TG-UOFF @ USIGS-USER-OFF !
-TG-UEND @ TG-RESTORE-END
+TG-UEND @ USIGS-RESTORE-END
 \ snapshot cap policy: the smallest grain multiple >= size, and nothing above
 \ it -- a power-of-two cap baked megabytes of zero padding into every image.
 s" grain-cap floor" T-LABEL
-1 TG-ROUND USIGS-GRAIN T=
+1 USIGS-ROUND-CAP USIGS-GRAIN T=
 s" grain-cap exact grain" T-LABEL
-USIGS-GRAIN TG-ROUND USIGS-GRAIN T=
+USIGS-GRAIN USIGS-ROUND-CAP USIGS-GRAIN T=
 s" grain-cap rounds up" T-LABEL
-USIGS-GRAIN 1 + TG-ROUND USIGS-GRAIN 2 * T=
+USIGS-GRAIN 1 + USIGS-ROUND-CAP USIGS-GRAIN 2 * T=
 s" grain-cap no pow2 jump" T-LABEL
-USIGS-GRAIN 3 * TG-ROUND USIGS-GRAIN 3 * T=
+USIGS-GRAIN 3 * USIGS-ROUND-CAP USIGS-GRAIN 3 * T=
 \ cell-wise ARENA-COPY preserves odd-length byte spans (body + tail)
 create TG-CPY-SRC
    $11 c, $22 c, $33 c, $44 c, $55 c, $66 c, $77 c, $88 c,
    $99 c, $AA c, $BB c,
 create TG-CPY-DST 11 allot
-TG-CPY-SRC TG-CPY-DST 11 TG-COPY
+TG-CPY-SRC TG-CPY-DST 11 ARENA-COPY
 s" arena-copy bytes" T-LABEL
 TG-CPY-DST 11 TG-CPY-SRC 11 T$=
 \ --- the TV group has an honest owned extent through growth and capture.
-TG-TV-RESET
+TV-SNAP-RESET
 s" tv-arena-cold-cap" T-LABEL
 TV-CAP @ 0 T=
 s" tv-arena-cold-base" T-LABEL
 TVT-P @ NULL-PTR = -1 T=
-TG-TVT drop
+TVT drop
 s" tv-arena-first-use" T-LABEL
 TV-CAP @ MAXTV-INIT T=
 s" tv-arena-unbound-map" T-LABEL
 VRC-TV-P @ @ UNBOUND T=
-MAXTV-INIT 1 + TG-TV-ENSURE
+MAXTV-INIT 1 + TV-ENSURE
 s" tv-arena-grow-geometric" T-LABEL
 TV-CAP @ MAXTV-INIT 2 * T=
 s" tv-arena-plane-stride" T-LABEL
 RVT-P @ TVT-P @ - TV-CAP @ cells T=
 s" COK-TVGROW ( a -- a ) dup drop dup drop dup drop dup drop dup drop" T-CHECK-PASSES
-TG-TV-RESET
+TV-SNAP-RESET
 s" tv-arena-reset-cap" T-LABEL
 TV-CAP @ 0 T=
 s" tv-arena-reset-base" T-LABEL
@@ -977,7 +955,7 @@ defer T-MK-SPAN= ( n -- span<space-global,f32,fresh-extent-n> span<space-global,
 \ Parametric checks reuse T-MK-SPAN above.
 \ Capacity is the owned mapping extent: use a real small allocation so growth
 \ releases all of the old mapping, rather than forging its capacity.
-TRUSTED: TG-SPA-SMALL ( -- )
+: TG-SPA-SMALL ( -- )
    SPA-RELEASE
    2 16 * ARENA-ALLOC SPA-P !  2 SPA-CAP ! ;
 TG-SPA-SMALL
@@ -999,7 +977,7 @@ s" param-arena-grow" T-LABEL
 PARAM-CAP @ 2 > -1 T=
 s" atom-arena-grow" T-LABEL
 ATOM-CAP @ 2 > -1 T=
-TG-ARENA-RESET                   \ release SPA; reset the other scratch stores
+DECOUPLED-ARENA-SNAP-RESET       \ release SPA; reset the other scratch stores
 s" decoupled-arena-restored" T-LABEL
 SPA-P @ NULL-PTR = SPA-CAP @ 0= and SPN @ 0= and
 PTR-CAP @ MAXPTR-INIT = and
@@ -1011,16 +989,19 @@ PARAM-CAP @ MAXPARAM-INIT =  and  -1 T=
 \ - CT, VREC and SYMS name the pool by offset. Each
 \ test lowers the live cap to force a grow, then restores the store to its baked
 \ boot buffer.
-variable TR-HERE
+\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): the probes name
+\ checker-internal colon words in checked bodies; on the unsealed engine a
+\ checked body binds each one's recorded row. A saved store base is a pointer,
+\ so its cell is a PTR-VARIABLE.
+: TR-BOOL= ( bool -- )
+   if -1 else 0 then -1 T= ;
 \ ---- CT registry ----
 variable TR-CTN  variable TR-CTU  variable TR-CTC  variable TR-CTSC
-variable TR-CT-NAP variable TR-CT-NUP variable TR-CT-CLP variable TR-CT-WDP
-variable TR-CT-SGP variable TR-CT-STP variable TR-CTCODE variable TR-CT-LC
-variable TR-CT-PAP variable TR-CT-PUP
-variable TR-CT-STRLC
-\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): registry-growth probes
-\ call internal checker colon words through one named trusted boundary.
-TRUSTED: TR-CT-WHITEBOX ( -- )
+variable TR-CTCODE  variable TR-CT-LC  variable TR-CT-STRLC
+PTR-VARIABLE TR-CT-NAP  PTR-VARIABLE TR-CT-NUP  PTR-VARIABLE TR-CT-CLP
+PTR-VARIABLE TR-CT-WDP  PTR-VARIABLE TR-CT-SGP  PTR-VARIABLE TR-CT-STP
+PTR-VARIABLE TR-CT-PAP  PTR-VARIABLE TR-CT-PUP
+: TR-CT-WHITEBOX ( -- )
    CTN @ TR-CTN !  CT-STR-U @ TR-CTU !  CT-CAP-V @ TR-CTC !  CT-STR-CAP-V @ TR-CTSC !
    CT-NAME-A-P @ TR-CT-NAP !  CT-NAME-U-P @ TR-CT-NUP !  CT-CLASS-P @ TR-CT-CLP !
    CT-WIDTH-P @ TR-CT-WDP !  CT-SIGN-P @ TR-CT-SGP !  CT-STR-P @ TR-CT-STP !
@@ -1030,19 +1011,19 @@ TRUSTED: TR-CT-WHITEBOX ( -- )
    CTN @ dup CT-CAP-V !  TR-CT-LC !      \ next CT-SET crosses the record cap
    s" CTGROWTWO" CTN @ CT-ROLE 64 CS-NONE CT-SET
    s" ct-record-grow" T-LABEL
-   CT-CAP-V @ TR-CT-LC @ > -1 T=
+   CT-CAP-V @ TR-CT-LC @ > TR-BOOL=
    s" ct-record-grow-find" T-LABEL
    s" CTGROWPROBE" CT-FIND TR-CTCODE @ T=
    CT-STR-U @ dup CT-STR-CAP-V !  TR-CT-STRLC !   \ next name copy crosses the string cap
    s" CTGROWTHREE" CTN @ CT-ROLE 64 CS-NONE CT-SET
    s" ct-str-grow" T-LABEL
-   CT-STR-CAP-V @ TR-CT-STRLC @ > -1 T=
+   CT-STR-CAP-V @ TR-CT-STRLC @ > TR-BOOL=
    s" ct-str-grow-find" T-LABEL
    s" CTGROWPROBE" CT-FIND TR-CTCODE @ T=
-   here TR-HERE !
+   here {: mark:ptr :}
    CT-SNAPSHOT-PERSIST
    s" ct-persist-moved" T-LABEL
-   CT-NAME-A-P @ TR-HERE @ >= -1 T=
+   CT-NAME-A-P @ mark >= TR-BOOL=
    s" ct-persist-find" T-LABEL
    s" CTGROWPROBE" CT-FIND TR-CTCODE @ T=
    TR-CTN @ CTN !  TR-CTU @ CT-STR-U !  TR-CTC @ CT-CAP-V !  TR-CTSC @ CT-STR-CAP-V !
@@ -1060,7 +1041,7 @@ variable TR-VN  variable TR-VU  variable TR-VC  variable TR-VSC  variable TR-VRI
 variable TR-V-LC  variable TR-V-STRLC
 variable TR-VNODEN variable TR-VNODEC variable TR-V-NODE-LC
 variable TR-VFN variable TR-VFC variable TR-V-FIELD-LC
-TRUSTED: TR-VREC-WHITEBOX ( -- )
+: TR-VREC-WHITEBOX ( -- )
    VREC-N @ TR-VN !  VREC-STR-U @ TR-VU !  VREC-CAP-V @ TR-VC !  VREC-STR-CAP-V @ TR-VSC !
    VREC-NODE-N @ TR-VNODEN !  VREC-NODE-CAP-V @ TR-VNODEC !
    VREC-FIELD-N @ TR-VFN !  VREC-FIELD-CAP-V @ TR-VFC !
@@ -1069,31 +1050,31 @@ TRUSTED: TR-VREC-WHITEBOX ( -- )
    VREC-N @ dup VREC-CAP-V !  TR-V-LC !  \ next VREC-BEGIN crosses the record cap
    s" VRGROWTWO" VREC-BEGIN drop
    s" vrec-record-grow" T-LABEL
-   VREC-CAP-V @ TR-V-LC @ > -1 T=
+   VREC-CAP-V @ TR-V-LC @ > TR-BOOL=
    s" vrec-record-grow-find" T-LABEL
-   s" VRGROWPROBE" VREC-FIND -1 T= TR-VRID @ T=
+   s" VRGROWPROBE" VREC-FIND TR-BOOL= TR-VRID @ T=
    VREC-NODE-N @ dup VREC-NODE-CAP-V !  TR-V-NODE-LC !   \ next node crosses the node cap
    VR-CON VREC-NODE-NEW drop
    s" vrec-node-grow" T-LABEL
-   VREC-NODE-CAP-V @ TR-V-NODE-LC @ > -1 T=
+   VREC-NODE-CAP-V @ TR-V-NODE-LC @ > TR-BOOL=
    VREC-FIELD-N @ dup VREC-FIELD-CAP-V !  TR-V-FIELD-LC !   \ next field crosses the field cap
    0 VREC-FIELD!
    s" vrec-field-grow" T-LABEL
-   VREC-FIELD-CAP-V @ TR-V-FIELD-LC @ > -1 T=
+   VREC-FIELD-CAP-V @ TR-V-FIELD-LC @ > TR-BOOL=
    VREC-STR-U @ dup VREC-STR-CAP-V !  TR-V-STRLC !   \ next name crosses the string cap
    s" VRGROWTHREE" VREC-BEGIN drop
    s" vrec-str-grow" T-LABEL
-   VREC-STR-CAP-V @ TR-V-STRLC @ > -1 T=
+   VREC-STR-CAP-V @ TR-V-STRLC @ > TR-BOOL=
    s" vrec-str-grow-find" T-LABEL
-   s" VRGROWPROBE" VREC-FIND -1 T= TR-VRID @ T=
+   s" VRGROWPROBE" VREC-FIND TR-BOOL= TR-VRID @ T=
    s" vrec-str-grow-name-intact" T-LABEL
    TR-VRID @ VREC-NAME$ s" VRGROWPROBE" T$=
-   here TR-HERE !
+   here {: mark:ptr :}
    VREC-SNAPSHOT-PERSIST
    s" vrec-persist-moved" T-LABEL
-   VREC-NAME-A-P @ TR-HERE @ >= -1 T=
+   VREC-NAME-A-P @ mark >= TR-BOOL=
    s" vrec-persist-find" T-LABEL
-   s" VRGROWPROBE" VREC-FIND -1 T= TR-VRID @ T=
+   s" VRGROWPROBE" VREC-FIND TR-BOOL= TR-VRID @ T=
    s" vrec-persist-name-intact" T-LABEL
    TR-VRID @ VREC-NAME$ s" VRGROWPROBE" T$=
    VREC-ARENA-BOOT                       \ every VREC store P back to its boot buffer
@@ -1104,9 +1085,9 @@ LOWER-CERT-HOOK:INSTALL
 TR-VREC-WHITEBOX
 \ ---- SYMS registry: record array grow rehashes HIDX; string offsets survive ----
 variable TR-SC  variable TR-SSC  variable TR-SN  variable TR-SSU
-variable TR-SP  variable TR-SSP  variable TR-SID0 variable TR-SID1
+PTR-VARIABLE TR-SP  PTR-VARIABLE TR-SSP  variable TR-SID0 variable TR-SID1
 variable TR-S-LC variable TR-S-STRLC
-TRUSTED: TR-SYMS-WHITEBOX ( -- )
+: TR-SYMS-WHITEBOX ( -- )
    \ This probe restores the original store; growth now clears its retired bytes.
    SYM-CAP-V @ SYM-REC * {: bytes:n :}
    bytes ARENA-ALLOC {: saved:ptr :}
@@ -1116,59 +1097,60 @@ TRUSTED: TR-SYMS-WHITEBOX ( -- )
    SYMS-P @ TR-SP !  SYM-STR-P @ TR-SSP !
    s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-INTERN TR-SID0 !
    SYM-N @ dup SYM-CAP-V !  TR-S-LC !    \ next intern crosses the record cap
-   0 HIDX-MEM !  0 HIDX-VALID !          \ drop the full-cap index; rebuild at TR-S-LC
+   HIDX-MEM-CLEAR  0 HIDX-VALID !        \ drop the full-cap index; rebuild at TR-S-LC
    s" syms-rehash-before-grow" T-LABEL
-   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND -1 T= TR-SID0 @ T=
+   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TR-BOOL= TR-SID0 @ T=
    s" tgpkg" SYM-GLOBAL s" SYMGROWTWO" SYM-INTERN TR-SID1 !
    s" syms-record-grow" T-LABEL
-   SYM-CAP-V @ TR-S-LC @ > -1 T=
+   SYM-CAP-V @ TR-S-LC @ > TR-BOOL=
    s" syms-rehash-preserves-probe" T-LABEL
-   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND -1 T= TR-SID0 @ T=
+   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TR-BOOL= TR-SID0 @ T=
    s" syms-new-findable" T-LABEL
-   s" tgpkg" SYM-GLOBAL s" SYMGROWTWO" SYM-FIND -1 T= TR-SID1 @ T=
+   s" tgpkg" SYM-GLOBAL s" SYMGROWTWO" SYM-FIND TR-BOOL= TR-SID1 @ T=
    SYM-STR-U @ dup SYM-STR-CAP-V !  TR-S-STRLC !   \ next name crosses the string cap
    s" tgpkg" SYM-GLOBAL s" SYMGROWTHREE" SYM-INTERN drop
    s" syms-str-grow" T-LABEL
-   SYM-STR-CAP-V @ TR-S-STRLC @ > -1 T=
+   SYM-STR-CAP-V @ TR-S-STRLC @ > TR-BOOL=
    s" syms-str-grow-find" T-LABEL
-   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND -1 T= TR-SID0 @ T=
-   here TR-HERE !
+   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TR-BOOL= TR-SID0 @ T=
+   here {: mark:ptr :}
    SYM-SNAPSHOT-PERSIST
    s" syms-persist-moved" T-LABEL
-   SYMS-P @ TR-HERE @ >= -1 T=
+   SYMS-P @ mark >= TR-BOOL=
    s" syms-persist-find" T-LABEL
-   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND -1 T= TR-SID0 @ T=
+   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TR-BOOL= TR-SID0 @ T=
    saved BYTE-VIEW prior bytes ARENA-COPY
    TR-SC @ SYM-CAP-V !  TR-SSC @ SYM-STR-CAP-V !  TR-SN @ SYM-N !  TR-SSU @ SYM-STR-U !
    TR-SP @ SYMS-P !  TR-SSP @ SYM-STR-P !
    HIDX-RESET
    s" hidx snapshot reset clears mmap owner" T-LABEL
-   HIDX-MEM-READY? 0= -1 T=
+   HIDX-MEM-READY? 0= TR-BOOL=
    s" hidx snapshot reset invalidates cache" T-LABEL
-   HIDX-VALID @ 0= -1 T=
+   HIDX-VALID @ 0= TR-BOOL=
    \ The effect owner is a scratch slot, so the reset unbinds it: a capture bakes
    \ no store address through it, and the next read binds the live store again.
    s" hidx snapshot reset unbinds the effect owner" T-LABEL
-   HIDX-EFF-BASE@ 0= -1 T=
+   HIDX-EFF-BASE@ 0= TR-BOOL=
    HIDX-ENSURE
    HIDX-EFF-SYNC
    s" hidx snapshot reset rebuilds mmap owner" T-LABEL
-   HIDX-MEM-READY? -1 T=
+   HIDX-MEM-READY? TR-BOOL=
    s" hidx effect sync binds the live effect owner" T-LABEL
-   HIDX-EFF-BASE@ USIGS = -1 T=
+   HIDX-EFF-BASE@ USIGS = TR-BOOL=
    CHECKER-CAPTURE-PREPARE
    s" checker snapshot prepare clears mmap owner" T-LABEL
-   HIDX-MEM-READY? 0= -1 T=
+   HIDX-MEM-READY? 0= TR-BOOL=
    s" checker snapshot prepare invalidates cache" T-LABEL
-   HIDX-VALID @ 0= -1 T=
+   HIDX-VALID @ 0= TR-BOOL=
    s" checker snapshot prepare unbinds the effect owner" T-LABEL
-   HIDX-EFF-BASE@ 0= -1 T= ;
+   HIDX-EFF-BASE@ 0= TR-BOOL= ;
 LOWER-CERT-HOOK:INSTALL
 TR-SYMS-WHITEBOX
 
-\ Registry internals predate the checker hook. These trusted leaves expose only
-\ measured metadata, predicates, and transaction operations; all assertions and
-\ orchestration below remain checked.
+\ Registry internals predate the checker hook; a checked body binds their
+\ recorded rows on this unsealed engine. These leaves expose only measured
+\ metadata, predicates, and transaction operations to the checked assertions
+\ and orchestration below.
 variable TR-REG-SYM-MARK
 variable TR-REG-UEND-MARK
 variable TR-REG-DFER-MARK
@@ -1188,7 +1170,7 @@ package ES-LAYOUT
 
 create TR-REG-REC 12 cells allot
 
-TRUSTED: TR-SYM-LAYOUT-RAW ( -- n n n bool )
+: TR-SYM-LAYOUT-RAW ( -- n n n bool )
    SYM-REC SYM-REC-ALIGN SYM-REC-PTR-MASK
    TR-REG-REC SYM.PKG-A TR-REG-REC SYM-PKG-A-OFF + =
    TR-REG-REC SYM.PKG-U TR-REG-REC SYM-PKG-U-OFF + = and
@@ -1196,28 +1178,28 @@ TRUSTED: TR-SYM-LAYOUT-RAW ( -- n n n bool )
    TR-REG-REC SYM.NAME-U TR-REG-REC SYM-NAME-U-OFF + = and
    TR-REG-REC SYM.VIS TR-REG-REC SYM-VIS-OFF + = and ;
 
-TRUSTED: TR-EFF-REC-LAYOUT-RAW ( -- n n n bool )
+: TR-EFF-REC-LAYOUT-RAW ( -- n n n bool )
    EFF-REC EFF-REC-ALIGN EFF-REC-PTR-MASK
    TR-REG-REC ER.NEXT TR-REG-REC ER-NEXT-OFF + =
    TR-REG-REC ER.CONTENT TR-REG-REC ER-CONTENT-OFF + = and
    TR-REG-REC ER.SYMPREV TR-REG-REC ER-SYMPREV-OFF + = and ;
 
-TRUSTED: TR-EFF-NODE-LAYOUT-RAW ( -- n n n bool )
+: TR-EFF-NODE-LAYOUT-RAW ( -- n n n bool )
    EFF-NODE EFF-NODE-ALIGN EFF-NODE-PTR-MASK
    TR-REG-REC EN.TAG TR-REG-REC EN-TAG-OFF + =
    TR-REG-REC EN.H TR-REG-REC EN-H-OFF + = and ;
 
-TRUSTED: TR-PE-LAYOUT-RAW ( -- n n n bool )
+: TR-PE-LAYOUT-RAW ( -- n n n bool )
    PE-REC PE-REC-ALIGN PE-REC-PTR-MASK
    TR-REG-REC PE.SYM TR-REG-REC PE-SYM-OFF + =
    TR-REG-REC PE.FLAGS TR-REG-REC PE-FLAGS-OFF + = and ;
 
-TRUSTED: TR-DFER-LAYOUT-RAW ( -- n n n bool )
+: TR-DFER-LAYOUT-RAW ( -- n n n bool )
    DFER-REC DFER-REC-ALIGN DFER-REC-PTR-MASK
    TR-REG-REC DFER.SYM TR-REG-REC DFER-SYM-OFF + =
    TR-REG-REC DFER.FLAG TR-REG-REC DFER-FLAG-OFF + = and ;
 
-TRUSTED: TR-NORET-LAYOUT-RAW ( -- n n n bool )
+: TR-NORET-LAYOUT-RAW ( -- n n n bool )
    NORET-ENTRY NORET-ENTRY-ALIGN NORET-ENTRY-PTR-MASK
    TR-REG-REC NORET.SYM TR-REG-REC NORET-SYM-OFF + =
    TR-REG-REC NORET.FLAG TR-REG-REC NORET-FLAG-OFF + = and
@@ -1232,18 +1214,15 @@ TRUSTED: TR-NORET-LAYOUT-RAW ( -- n n n bool )
 : TR-VREC-MARKS@ ( -- n n n n n )
    VREC-N @ VREC-FIELD-N @ VREC-NODE-N @ VNARG-N @ VREC-STR-U @ ;
 
-TRUSTED: TR-SYM-ADD ( -- )
+: TR-SYM-ADD ( -- )
    s" " SYM-GLOBAL s" TRREGSCOPE" SYM-INTERN drop
 ;
 
-TRUSTED: TR-USIG-ADD ( -- )
+: TR-USIG-ADD ( -- )
    s" n -- n" s" TRREGSCOPE" CHECKER-USIG-ADD ;
 
-TRUSTED: TR-NORET-ADD ( -- )
+: TR-NORET-ADD ( -- )
    s" TRREGSCOPE" CTL-DEAD NORET-ADD ;
-
-: TR-BOOL= ( bool -- )
-   if -1 else 0 then -1 T= ;
 
 package ES-LAYOUT
 public
@@ -1362,13 +1341,12 @@ TR-REG-ROLLBACK
 \ init cap mid-check grows it without corrupting undo; a backtracking body still
 \ certifies. Lower TRAIL-CAP to force a grow, then repoint to the boot pool.
 variable TR-TRAIL-CAP
-TRUSTED: TR-TRAIL-RESET ( -- ) TRAIL-RESET ;   \ whitebox trail-reset boundary
 TRAIL-CAP @ TR-TRAIL-CAP !
 2 TRAIL-CAP !                            \ shrink so a few binds force a trail grow
 s" COK-TRAIL ( n n n n -- n ) + + + " T-CHECK-PASSES
 s" trail-arena-grow" T-LABEL
 TRAIL-CAP @ 2 > -1 T=
-TR-TRAIL-CAP @ TRAIL-CAP !  TRAIL-BOOT TRAIL-P !  TR-TRAIL-RESET
+TR-TRAIL-CAP @ TRAIL-CAP !  TRAIL-BOOT TRAIL-P !  TRAIL-RESET
 \ --- path compression in T-RES: at trial depth 0 a resolved var chain is
 \ compressed so intermediate vars point directly at the root; inside a trial
 \ (depth>0) compression is disabled, so a rolled-back trial can never leave a
@@ -1376,7 +1354,7 @@ TR-TRAIL-CAP @ TRAIL-CAP !  TRAIL-BOOT TRAIL-P !  TR-TRAIL-RESET
 \ hand and observe both behaviors, then restore the var pool.
 variable TC-V0  variable TC-V1  variable TC-V2  variable TC-CON  variable TC-FV
 variable TC-TRAIL
-TRUSTED: TR-PATHCOMP-WHITEBOX ( -- )
+: TR-PATHCOMP-WHITEBOX ( -- )
    FV @ TC-FV !
    TRAIL-N @ TC-TRAIL !
    FRESH MK-VAR TC-V0 !   FRESH MK-VAR TC-V1 !   FRESH MK-VAR TC-V2 !   7 MK-CON TC-CON !
@@ -1493,13 +1471,12 @@ DIAG-BUFFER-OFF  0 DIAG-JSON!
 \ exit. MEA3 uses MEA1's recovery n->n row without gaining source authority.
 : TR-ME-BEGIN ( -- ) MULTI-ERR-BEGIN ;   \ whitebox multi-error boundary
 : TR-ME-END ( -- n ) MULTI-ERR-END ;
-TRUSTED: TR-ME? ( -- bool ) MULTI-ERR? ;
 TR-ME-BEGIN
 s" : MEA1 ( n -- n ) drop ; : MEA2 ( n -- n ) drop drop ; : MEA3 ( n -- n ) MEA1 ;" evaluate
 s" multi-err collects both rejects" T-LABEL
 TR-ME-END 2 T=
 s" multi-err mode cleared after end" T-LABEL
-TR-ME? 0= -1 T=
+MULTI-ERR? 0= -1 T=
 \ --- user-declarable nominal integer types (dot habu-declarable-nominal-int).
 \ `DEFTYPE NAME` registers a fresh nominal AND auto-derives its explicit no-op
 \ converter pair >NAME ( n -- NAME ) / NAME>N ( NAME -- n ). The nominal is
@@ -1534,7 +1511,7 @@ DIAG-BUFFER-OFF  0 DIAG-JSON!
 s" sigless nominal certifies" T-LABEL
 s" DNI-SIGLESS >frame-idx" CHECK-QUIET-CANDIDATE! -1 T=
 s" sigless nominal effect renders bare" T-LABEL
-ES-REND-SIG$ s" n -- frame-idx" T$=
+REND-SIG s" n -- frame-idx" T$=
 : T-PTX-SAME-EXTENT ( span<space-global,f32,e> span<space-global,f32,e> -- ) drop drop ;
 s" COK-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" T-CHECK-PASSES
 \ A callee the later rows name is compiled: a call binds the record the engine's
@@ -1598,24 +1575,18 @@ s" and nowhere once the scope has closed" T-LABEL
 s" CSP-AFTER ( -- n ) CSPQ:ROW-A" CHECK-QUIET-CANDIDATE! 1 T=
 \ Family-specific arity diagnostics (PLAN item 4 acceptance): assert the verdict
 \ AND the diagnostic KIND (SGBAD-ARITY?), not merely rejection, so a regression
-\ swapping the arity reason for a generic syntax error is caught. These read a
-\ checker-internal predicate, so they run at top level (not inside a `:` body).
-\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): diagnostic-kind
-\ predicates and the test-family registrar are checker-internal colon words.
-TRUSTED: TR-SGBAD-ARITY? ( -- bool ) SGBAD-ARITY? ;
-TRUSTED: TR-SGBAD-BAREPTR? ( -- bool ) SGBAD-BAREPTR? ;
-TRUSTED: TR-SGBAD-SYNTAX? ( -- bool ) SGBAD-SYNTAX? ;
-TRUSTED: TR-SGBAD-UNKNOWN? ( -- bool ) SGBAD-UNKNOWN? ;
-TRUSTED: TR-TFAM-REG ( ptr u8 n n -- ) TFAM-REG-CELL ;
-s" CBAD-TFAM-ARITY-DIAG ( span<a,b> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  TR-SGBAD-ARITY? -1 T=
-s" CBAD-TFAM-ARITY4-DIAG ( tile<a,b,c,d> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  TR-SGBAD-ARITY? -1 T=
+\ swapping the arity reason for a generic syntax error is caught. The kind
+\ predicates and the test-family registrar TFAM-REG-CELL are checker-internal
+\ words, named here directly: this suite runs on the unsealed engine.
+s" CBAD-TFAM-ARITY-DIAG ( span<a,b> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
+s" CBAD-TFAM-ARITY4-DIAG ( tile<a,b,c,d> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
 \ `ptr` duality: proper `ptr<space,elem>` resolves as a family (incl. nested in
 \ another family's args); over-arity rejects via the arity diagnostic; a bare
 \ `ptr` with no element rejects via the bare-ptr diagnostic; a bare `ptr` inside
 \ another family's args also rejects.
 s" COK-PTR-IN-FAM ( span<space-global,ptr<space-global,f32>,extent-n> -- ) drop" T-CHECK-PASSES
-s" CBAD-PTR-OVERARITY ( ptr<a,b,c> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  TR-SGBAD-ARITY? -1 T=
-s" CBAD-PTR-BARE-ROWEND ( a ptr -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  TR-SGBAD-BAREPTR? -1 T=
+s" CBAD-PTR-OVERARITY ( ptr<a,b,c> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
+s" CBAD-PTR-BARE-ROWEND ( a ptr -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-BAREPTR? -1 T=
 s" CBAD-PTR-BARE-IN-FAM ( span<space-global,ptr,extent-n> -- ) drop" T-CHECK-REJECTS
 \ Uncapped per-param arity (dot habu-tfam-4-remainder): a family with arity > 4
 \ (old PARAM-MAX-ARGS SoA-row cap) parses, checks, persists, instantiates through
@@ -1623,19 +1594,19 @@ s" CBAD-PTR-BARE-IN-FAM ( span<space-global,ptr,extent-n> -- ) drop" T-CHECK-REJ
 \ family, then prove: bare parse; a STORED-sig reference (E-COPY + E-INST round
 \ trip); a nested arity-6 arg; a value-record field of the arity-6 family (VNARG
 \ pool); and wrong-arity rejection (5 and 7 args) with the arity diagnostic.
-s" tfam6r-big" 6 TR-TFAM-REG
+s" tfam6r-big" 6 TFAM-REG-CELL
 : COK-BIG6 ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) ;
 s" COK-BIG6-CALL ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) COK-BIG6" T-CHECK-PASSES
 s" COK-BIG6-NEST ( tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> -- tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> )" T-CHECK-PASSES
-s" CBAD-BIG6-A5-DIAG ( tfam6r-big<a,b,c,d,e> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  TR-SGBAD-ARITY? -1 T=
-s" CBAD-BIG6-A7-DIAG ( tfam6r-big<a,b,c,d,e,f,g> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  TR-SGBAD-ARITY? -1 T=
+s" CBAD-BIG6-A5-DIAG ( tfam6r-big<a,b,c,d,e> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
+s" CBAD-BIG6-A7-DIAG ( tfam6r-big<a,b,c,d,e,f,g> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
 \ SC-QUOT: a quotation as a family argument (dot habu-tfam-4-remainder). SIG-TYPE
 \ parses [ in -- out | rin -- rout ] as one param arg (a T-QUOT term), threaded
 \ through parse, persist (E-COPY/VREC-COPY), instantiate (E-INST), and render.
 \ Prove: bare parse; a STORED-sig reference (E-COPY + REND-SIG record + E-INST);
 \ an explicit return-stack clause; a quotation nested inside the quot arg's stack;
 \ and malformed effect rows (missing '--' or ']') reject.
-s" scq-fam" 2 TR-TFAM-REG
+s" scq-fam" 2 TFAM-REG-CELL
 : COK-SCQ ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) ;
 s" COK-SCQ-CALL ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) COK-SCQ" T-CHECK-PASSES
 s" COK-SCQ-RET ( scq-fam<[ n -- n | a -- a ],f32> -- scq-fam<[ n -- n | a -- a ],f32> )" T-CHECK-PASSES
@@ -1645,9 +1616,9 @@ s" COK-SCQ-QNEST ( scq-fam<[ [ n -- n ] -- n ],f32> -- scq-fam<[ [ n -- n ] -- n
 \ data rows is first seen as the stray ',' by SIG-TYPE -> SGBAD-UNKNOWN (the ']'
 \ EXPECT never runs); the extra '--' after a full return clause is the fixture
 \ that genuinely reaches the return-branch s" ]" EXPECT-SIG -> SGBAD-SYNTAX.
-s" CBAD-SCQ-NODASH ( scq-fam<[ n n ],f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  TR-SGBAD-SYNTAX? -1 T=
-s" CBAD-SCQ-NOCLOSE ( scq-fam<[ n -- n ,f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  TR-SGBAD-UNKNOWN? -1 T=
-s" CBAD-SCQ-RETCLOSE ( scq-fam<[ n -- n | a -- a -- ],f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  TR-SGBAD-SYNTAX? -1 T=
+s" CBAD-SCQ-NODASH ( scq-fam<[ n n ],f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-SYNTAX? -1 T=
+s" CBAD-SCQ-NOCLOSE ( scq-fam<[ n -- n ,f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-UNKNOWN? -1 T=
+s" CBAD-SCQ-RETCLOSE ( scq-fam<[ n -- n | a -- a -- ],f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-SYNTAX? -1 T=
 \ Render acceptance (destruction review): a mismatch diagnostic must render the
 \ full parametric type — all six args of an arity-6 application, and an SC-QUOT
 \ arg's din/dout rows plus the return clause — never a collapsed string or '?'.
@@ -1671,10 +1642,10 @@ variable TSHOW-N
    TSHOW-N @ 1 + TSHOW-N ! ;
 \ LOCSHOWXT is a defer, so swap the test hook / render hook in with `is` (which is
 \ compile-mode only, hence colon words). TSHOW-RESTORE names render's
-\ SHOW-LOCAL-TYPE, a checker-internal not published to checked loads, so it uses
-\ trusted whitebox probes like the file's other internal-state helpers.
+\ SHOW-LOCAL-TYPE, a checker-internal word whose recorded row a checked body
+\ binds on this unsealed engine.
 : TSHOW-INSTALL ( -- ) [: TSHOW-HOOK ;] is LOCSHOWXT ;
-TRUSTED: TSHOW-RESTORE ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
+: TSHOW-RESTORE ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
 LOWER-CERT-HOOK:INSTALL
 TSHOW-INSTALL
 0 TSHOW-N !
@@ -1705,6 +1676,8 @@ s" CBAD-NODE-LEN ( n -- len ) T->NODE" T-CHECK-REJECTS
 s" CBAD-NODE-IDX ( n -- ) >IDX T-NEED-NODE" T-CHECK-REJECTS
 s" CBAD-UNKNOWN-ROLE ( n -- track ) T->NODE" T-CHECK-REJECTS
 DEFLINEAR own
+\ own has no declaring package, so no checked word can mint or drop one:
+\ LINEAR: is E-LINEAR-OWNER and CAST: E-CAST-LINEAR. Its fixtures stay trusted.
 TRUSTED: T-MAKE-OWN ( -- own ) 0 ;
 TRUSTED: T-FREE-OWN ( own -- ) drop ;
 s" COK-OWN-PASS ( own -- own )" T-CHECK-PASSES
@@ -1843,12 +1816,11 @@ s" COK-BIG6VR-POSTRB ( tfam6r-vr -- tfam6r-vr )" CHECK-QUIET-CANDIDATE! -1 T=
 \ mmap store, bake it with VREC-SNAPSHOT-PERSIST, and prove a real >4-arg run
 \ still instantiates from the persisted buffer (VNARG-N stable across the bake).
 variable TR-VNARG-P0
-TRUSTED: TR-VREC-PERSIST ( -- ) VREC-SNAPSHOT-PERSIST ;   \ whitebox persist boundary
 VNARG-N @ VNARG-CAP-V !          \ next reserve crosses the cap -> VNARG grows to mmap
 VALUE-RECORD tfam6r-vrp q tfam6r-big<a,b,c,d,e,f> END-VALUE-RECORD
 VNARG-N @ TR-VNARG-P0 !
 s" vnarg-grow" T-LABEL   VNARG-P @ VNARG-BOOT = 0 T=   \ pool left the boot buffer -> persist is a real copy
-TR-VREC-PERSIST
+VREC-SNAPSHOT-PERSIST
 s" vnarg-persist-stable" T-LABEL   VNARG-N @ TR-VNARG-P0 @ T=
 s" vnarg-persist-readback" T-LABEL
 s" COK-BIG6VRP-RT ( tfam6r-vrp -- tfam6r-vrp )" CHECK-QUIET-CANDIDATE! -1 T=

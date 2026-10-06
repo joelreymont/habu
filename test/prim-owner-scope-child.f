@@ -47,14 +47,13 @@
 require lib/errors.f
 require lib/tier.f
 
-\ Compiling a candidate is the subject, so the compile boundary is unchecked on
-\ purpose: EV moves the live package the next case is measured in, and
-\ TIER:SELECT picks the compiler it is measured under. EVC reports the reject
-\ code instead of letting it exit the window. A refusal's throw puts the text's
-\ two cells back, so EVC evaluates a copy and drops them on either path: this
-\ file is a closed program and may leave nothing.
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-: EVC ( ptr u8 n -- n ) [: 2dup EV ;] catch {: rc:n :} 2drop rc ;
+\ Compiling a candidate is the subject, through evaluate-closed: a text that
+\ opens or closes a package moves the live package the next case is measured
+\ in, and TIER:SELECT picks the compiler it is measured under. EVC reports the
+\ reject code instead of letting it exit the window. A refusal's throw puts the
+\ text's two cells back, so EVC evaluates a copy and drops them on either path:
+\ this file is a closed program and may leave nothing.
+: EVC ( ptr u8 n -- n ) [: 2dup evaluate-closed ;] catch {: rc:n :} 2drop rc ;
 
 package PRIM-OWNER-CHILD
 
@@ -101,12 +100,12 @@ $0A constant LF-C
    la lu LABEL
    sa su EVC TICK-OUTCOME$ type LF-C emit ;
 
-: OWNER-OPEN ( -- ) s" package PRIM-OWNER-SCOPE" EV ;
-: OTHER-OPEN ( -- ) s" package PRIM-OWNER-OTHER" EV ;
-: FFI-OPEN ( -- ) s" package FFI" EV ;
-: NPUB-OPEN ( -- ) s" package NPUB" EV ;
-: OVERLAY-OPEN ( -- ) s" package CHECKER-OVERLAY" EV ;
-: PKG-CLOSE ( -- ) s" ;package" EV ;
+: OWNER-OPEN ( -- ) s" package PRIM-OWNER-SCOPE" evaluate-closed ;
+: OTHER-OPEN ( -- ) s" package PRIM-OWNER-OTHER" evaluate-closed ;
+: FFI-OPEN ( -- ) s" package FFI" evaluate-closed ;
+: NPUB-OPEN ( -- ) s" package NPUB" evaluate-closed ;
+: OVERLAY-OPEN ( -- ) s" package CHECKER-OVERLAY" evaluate-closed ;
+: PKG-CLOSE ( -- ) s" ;package" evaluate-closed ;
 
 \ ---- the fresh axiom: a row with no engine word binds nowhere ---------------
 : AXIOM-CASES ( -- )
@@ -259,7 +258,7 @@ $0A constant LF-C
 \ lib/tier.f, required above, already compiled TIER's own checked caller. A
 \ reopened TIER compiles another at both tiers; outside it set-tier is
 \ undefined, and TIER:SELECT is how any scope reaches it.
-: TIER-OPEN ( -- ) s" package TIER" EV ;
+: TIER-OPEN ( -- ) s" package TIER" evaluate-closed ;
 
 : OWNER-T0-CASES ( -- )
    0 TIER:SELECT
@@ -307,10 +306,10 @@ $0A constant LF-C
 \ it a checked call or tick misses the name. Every other primitive here keeps
 \ its global trusted-only row beside its owner's for its TRUSTED: callers
 \ outside the owner, so a checked caller there gets the named E-CAP-TRUSTED.
-: RECLAIM-OPEN ( -- ) s" package CODE-RECLAIM" EV ;
-: TOP-ROW-OPEN ( -- ) s" package TOP-ROW" EV ;
-: CK-OWNER-OPEN ( -- ) s" package CHECKER-OWNER" EV ;
-: TYPE-DECL-OPEN ( -- ) s" package TYPE-DECL" EV ;
+: RECLAIM-OPEN ( -- ) s" package CODE-RECLAIM" evaluate-closed ;
+: TOP-ROW-OPEN ( -- ) s" package TOP-ROW" evaluate-closed ;
+: CK-OWNER-OPEN ( -- ) s" package CHECKER-OWNER" evaluate-closed ;
+: TYPE-DECL-OPEN ( -- ) s" package TYPE-DECL" evaluate-closed ;
 
 \ NPUB exists from the dual-row cases above, so each block here reopens it.
 : NPUB-SITE-T0-CASES ( -- )

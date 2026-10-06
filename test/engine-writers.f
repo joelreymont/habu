@@ -77,6 +77,8 @@ create ERR IO-CAP allot
    la lu T-LABEL  got rc T=
    la lu T-LABEL  ea eu want wantu CONTAINS? TTRUE ;
 
+\ The engine's own indexed record lookup, which only a TRUSTED: body may call:
+\ HIDDEN asks what the engine finds, not what an XREF scan finds.
 TRUSTED: RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 \ The record is hidden from ordinary source, and the checker refuses a checked
@@ -97,7 +99,10 @@ TRUSTED: RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 public
 
-\ ---- the fixtures' words, each a TRUSTED: boundary ----------------------------
+\ ---- the fixtures' words ------------------------------------------------------
+\ A definition writer refuses a checked caller (E-UNDEFINED or E-CAP-TRUSTED), so
+\ each has one unchecked caller, its TRUSTED: shim here; the cases and the
+\ checked words below reach every writer's guards through it.
 TRUSTED: EW-NS ( ptr u8 n bool -- n ) namespace-record ;
 TRUSTED: EW-PRIVATE ( n -- ) namespace-private ;
 TRUSTED: EW-ALIAS ( ptr u8 n n n -- ) alias-record ;
@@ -111,17 +116,17 @@ TRUSTED: EW-CLOSE ( -- ) def-close ;
 \ The marker a refusal case prints just before the refused call.
 : EW-AT ( -- ) EW-MARK$ type ;
 
-TRUSTED: EW-LIVE ( -- ) 1 data-base TASKS-LIVE-CELL + ! ;
+: EW-LIVE ( -- ) 1 data-base TASKS-LIVE-CELL + ! ;
 \ A definition pending, as `:` leaves one until `;`: checked code reaches the
 \ cell with a raw store, so this is the one way a definition pends while an
 \ overlay is open.
 : EW-PEND ( -- ) 1 data-base PEND-CELL + ! ;
-TRUSTED: EW-BODYLEN! ( n -- ) data-base BODYLEN-CELL + ! ;
+: EW-BODYLEN! ( n -- ) data-base BODYLEN-CELL + ! ;
 
 \ NDICT at DICT-CAP. The raise would rebuild the name index over every zeroed
 \ slot below the cap, so the index goes first and lookup scans, as it does with
 \ no index at all.
-TRUSTED: EW-DICT-FULL ( -- ) 0 data-base HIDXP-CELL + !  DICT-CAP ndict! ;
+: EW-DICT-FULL ( -- ) 0 data-base HIDXP-CELL + !  DICT-CAP ndict! ;
 
 \ The code ceiling a definition and a spilled name stay below.
 : EW-CEILING ( -- n ) dbase@ REGION + $4000 - ;
@@ -130,7 +135,7 @@ TRUSTED: EW-DICT-FULL ( -- ) 0 data-base HIDXP-CELL + !  DICT-CAP ndict! ;
 : EW-NAME-ORIGIN ( n -- n ) XREF-REC XREF-NAME-SLOT XREF-CELL@ dup 4 + code-origin ;
 
 \ The index of an internal (DNAME-INT) record: namespace-record's own.
-TRUSTED: EW-INT ( -- n ) s" namespace-record" 0 xref-search-wl dbase@ - DREC / ;
+: EW-INT ( -- n ) s" namespace-record" 0 XREF-FIND-WL-INDEX ;
 
 \ The index of a seeded primitive's record, below the count the boot seeds:
 \ dup's.
@@ -141,25 +146,25 @@ TRUSTED: EW-INT ( -- n ) s" namespace-record" 0 xref-search-wl dbase@ - DREC / ;
 \ Open `name ( -- n )` as the engine's `:` leaves a definition: the name and the
 \ signature captured, the signature's inner span in TSIG. The engine loop
 \ compiles the body tokens that follow and publishes at `;`.
-TRUSTED: EW-COLON ( ptr u8 n -- ) {: a:ptr u:n :}
+: EW-COLON ( ptr u8 n -- ) {: a:ptr u:n :}
    0 data-base BODYLEN-CELL + !                        \ the caller starts the capture, as `:` does
-   a u get-current 0 def-open
-   a u body-append
-   EW-SIG$ body-append
-   EW-SIG$ swap 1+ swap 2 - trust-sig! ;
+   a u get-current 0 EW-OPEN
+   a u EW-APPEND
+   EW-SIG$ EW-APPEND
+   EW-SIG$ swap 1+ swap 2 - EW-SIG ;
 
 \ A second writer while a definition is pending: its record is slot NDICT.
-TRUSTED: EW-OPEN-TWICE ( -- )
-   s" EW-FIRST" get-current 0 def-open  EW-AT  s" EW-SECOND" get-current 0 def-open ;
-TRUSTED: EW-OPEN-NS ( -- )
-   s" EW-FIRST" get-current 0 def-open  EW-AT  s" EW-NSP" 0 0= namespace-record drop ;
-TRUSTED: EW-OPEN-ALIAS ( -- )
-   ndict@ 1-  s" EW-FIRST" get-current 0 def-open
-   EW-AT  s" EW-ALP" rot get-current alias-record ;
+: EW-OPEN-TWICE ( -- )
+   s" EW-FIRST" get-current 0 EW-OPEN  EW-AT  s" EW-SECOND" get-current 0 EW-OPEN ;
+: EW-OPEN-NS ( -- )
+   s" EW-FIRST" get-current 0 EW-OPEN  EW-AT  s" EW-NSP" 0 0= EW-NS drop ;
+: EW-OPEN-ALIAS ( -- )
+   ndict@ 1-  s" EW-FIRST" get-current 0 EW-OPEN
+   EW-AT  s" EW-ALP" rot get-current EW-ALIAS ;
 
 \ def-close on the definition just opened, at the tier the caller set.
-TRUSTED: EW-OPEN-CLOSE ( -- )
-   s" EW-FIRST" get-current 0 def-open  EW-AT  def-close ;
+: EW-OPEN-CLOSE ( -- )
+   s" EW-FIRST" get-current 0 EW-OPEN  EW-AT  EW-CLOSE ;
 
 \ ---- the scope replay-open saves ----------------------------------------------
 \ Cell k of the scope: 0 NDICT, 1 CP, then EW-OFFS's DATA cells, then the used

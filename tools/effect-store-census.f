@@ -50,12 +50,10 @@ require lib/memory.f
 package EFF-CENSUS
 
 \ ---- the read boundary onto the checker's private store -----------------------
-\ Read-only: offsets in, cells and bytes out, no store word and no mutation. The
-\ same shape test/engine-suite.f's TG-* shims use: E-PTR, SYM-RETIRED? and their
-\ kin are trust-boundary primitives a checked body may not call (E-CAP-TRUSTED),
-\ so each is called once, from a named one-line TRUSTED: definition. The boundary
-\ does not cross the seal: the product strips these names and refuses the bodies
-\ themselves (header above).
+\ Read-only: offsets in, cells and bytes out, no store word and no mutation. Each
+\ checker word is called once, from a named one-line definition. The boundary
+\ does not cross the seal: the product strips E-PTR, SYM-RETIRED? and USIGS and
+\ refuses this file (header above).
 TRUSTED: STORE-END ( -- n ) UEND @ ;
 TRUSTED: CELL-AT ( n -- n ) USIGS-CELL-AT @ ;
 TRUSTED: REC-NEXT ( n -- n ) E-PTR E-NEXT@ ;
