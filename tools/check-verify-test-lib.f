@@ -72,6 +72,26 @@
 \   a refused duplicate takes the uses after it                           uses-duplicate
 \   a declaration loses or moves its location when the store or the
 \   location table grows                                                  uses-growth
+\   a cursor's word is missing, or names a declaration other than the one
+\   it binds: a body's prefix, an engine word the body has not used, a
+\   word a TRUSTED: body before it declares; or the body's own word, or a
+\   word declared after it, is offered                                    cands-body
+\   a top-level cursor in a blank, at a prefix or at the end offers
+\   nothing                                                               cands-top
+\   a cursor in a name, a signature, a comment, a string, a TRUSTED: body,
+\   a type's name, a deferred stretch or a body the scan never reaches
+\   offers a word                                                         cands-none
+\   a tick or is target offers a local                                    cands-targets
+\   two locals that differ only in case merge, or lose their spelling     cands-locals
+\   a used public is offered before its using or after it, or a name two
+\   used publics export or one shadows a global with                      cands-refused
+\   a word undefine retired is offered, or its redefinition with the
+\   bytes of the first                                                    cands-order
+\   a word binds other than its scope selects, or names another file:
+\   private over global, a used public, a qualified public, a qualified
+\   export's tail; a cursor is placed in a dependency's bytes             cands-scopes
+\   the cursor changes the verdict, packets, definitions, uses or files,
+\   or --verify-only writes a candidate line                              cands-observer
 \   a source path exceeds the CLI's slot and leaks engine text on stderr cli-path-capacity
 \   the child runs on the working directory's bin/hb, or is that
 \   directory's tools/check-verify-child.f                                check-test: file-load-context
@@ -2225,6 +2245,321 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-growth: two lines" 2 USE-COUNT ;
 
 
+\ ---- the candidates ---------------------------------------------------------
+
+variable CAND-NODE                      \ the candidate line CAND found
+DYNAMIC-BUFFER SEEN u8                  \ an unarmed check's outputs, then an armed one's
+variable SEEN-U
+
+
+\ Check the generated source as the fixture NAME with its cursor at byte AT.
+: CANDS-AT ( ptr u8 n n -- CHECK:verdict )
+   {: name:ptr nameu:n at:n :}
+   0 GEN DEFS-SRC-A !  GEN-U @ DEFS-SRC-U !
+   name nameu AT$ SUBJ SUBJ-U COPY!
+   DEFS-SRC$ SUBJ$ at GUARD-MS >MS CHECK:VERIFY-BYTES-AT ;
+
+
+\ CANDS-AT where the first LEAD in the generated source ends.
+: CANDS ( ptr u8 n ptr u8 n -- CHECK:verdict )
+   {: name:ptr nameu:n lead:ptr leadu:n :}
+   0 GEN GEN-U @ lead leadu END-IN
+   {: at:n :}
+   name nameu at CANDS-AT ;
+
+
+\ The candidate line of the last check spelling WORD as written; -1 for none.
+: CAND ( ptr u8 n -- )
+   {: w:ptr wu:n :}
+   CHECK:VERIFY-CANDIDATES$ s" word" w wu PACKET CAND-NODE ! ;
+
+
+: CAND-NUM ( ptr u8 n ptr u8 n n -- )
+   {: label:ptr labelu:n key:ptr keyu:n want:n :}
+   label labelu T-LABEL CAND-NODE @ key keyu NUMBER$
+   SB-RESET want FMT:SB-INT SB$ T$= ;
+
+
+\ The candidate CAND found is declared by the U bytes the first LEAD in TEXT
+\ ends with, TEXT the fixture FILE's bytes.
+: CAND-TARGET ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: label:ptr labelu:n text:ptr textu:n lead:ptr leadu:n u:n file:ptr fileu:n :}
+   text textu lead leadu END-IN
+   {: end:n :}
+   label labelu T-LABEL CAND-NODE @ 0 >= TTRUE
+   label labelu T-LABEL CAND-NODE @ s" file" STRING$ file fileu AT$ T$=
+   label labelu s" target_start" end u - CAND-NUM
+   label labelu s" target_end" end CAND-NUM ;
+
+
+\ The candidate CAND found has no declaration in the files checked: no file and
+\ no target.
+: CAND-BARE ( ptr u8 n -- )
+   {: label:ptr labelu:n :}
+   label labelu T-LABEL CAND-NODE @ 0 >= TTRUE
+   label labelu T-LABEL CAND-NODE @ s" file" J-STR VALUE 0 < TTRUE
+   label labelu T-LABEL CAND-NODE @ s" target_start" J-NUM VALUE 0 < TTRUE ;
+
+
+\ CAND found no line.
+: NO-CAND ( ptr u8 n -- )
+   {: label:ptr labelu:n :}
+   label labelu T-LABEL CAND-NODE @ 0 < TTRUE ;
+
+
+: CAND-COUNT ( ptr u8 n n -- )
+   {: label:ptr labelu:n want:n :}
+   label labelu T-LABEL CHECK:VERIFY-CANDIDATES$ OBJECTS want T= ;
+
+
+\ A body token's prefix offers each word that binds there with the declaration
+\ it binds, and an engine word the body has not used yet with none. A TRUSTED:
+\ body read before the cursor's body does not take the cursor, and a word is
+\ not offered in its own body.
+: CANDS-BODY ( -- )
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\nTRUSTED: CVT-KT ( -- n ) 2 ;\n: CVT-KB ( -- n ) CVT-K 1 + ;\n: CVT-KLATE ( -- n ) 3 ;\n" GEN+
+   s" cands-body.f" s" ( -- n ) CVT-K" CANDS 1 s" cands-body: refused" EXPECT-KIND
+   s" CVT-KA" CAND
+   s" cands-body: a word declared before" DEFS-SRC$ s" : CVT-KA" 6 s" cands-body.f" CAND-TARGET
+   s" CVT-KT" CAND
+   s" cands-body: the trusted word" DEFS-SRC$ s" TRUSTED: CVT-KT" 6 s" cands-body.f" CAND-TARGET
+   s" CVT-KB" CAND
+   s" cands-body: not the body's own word" NO-CAND
+   s" CVT-KLATE" CAND
+   s" cands-body: not a word declared after" NO-CAND
+   s" cands-body: no other word" 2 CAND-COUNT
+   0 GEN-U !
+   s\" : CVT-KE ( n -- n n ) du ;\n" GEN+
+   s" cands-engine.f" s" ) du" CANDS drop
+   s" dup" CAND
+   s" cands-body: an engine word not yet taken" CAND-BARE ;
+
+
+\ A top-level cursor offers the words that bind there: in the blank before a
+\ token, at a prefix, at the end of the file, and in the blanks before a
+\ comment the file ends with, which belong to its end.
+: CANDS-TOP ( -- )
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\nCVT-KA drop  CVT-KA drop\nCVT-K" GEN+
+   s" cands-top.f" s" drop " CANDS drop
+   s" CVT-KA" CAND
+   s" cands-top: the blank before a token" DEFS-SRC$ s" : CVT-KA" 6 s" cands-top.f" CAND-TARGET
+   s" cands-top.f" s\" drop\nCVT-K" CANDS drop
+   s" CVT-KA" CAND
+   s" cands-top: a prefix" DEFS-SRC$ s" : CVT-KA" 6 s" cands-top.f" CAND-TARGET
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\n" GEN+
+   s" cands-end.f" GEN-U @ CANDS-AT drop
+   s" CVT-KA" CAND
+   s" cands-top: the end of the file" DEFS-SRC$ s" : CVT-KA" 6 s" cands-end.f" CAND-TARGET
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\n \\ hello wor\n" GEN+
+   s" cands-end-comment.f" s\" ;\n" CANDS drop
+   s" CVT-KA" CAND
+   s" cands-top: the blanks before a closed comment that ends the file" DEFS-SRC$ s" : CVT-KA" 6 s" cands-end-comment.f" CAND-TARGET ;
+
+
+\ Nothing is offered where no word binds: a definition's name, its signature,
+\ a comment, a string, a TRUSTED: body, a type's name, the stretch a deferring
+\ top-level word leaves to the run, a body the scan never reaches, or the end
+\ of a comment or string that the file ends in before it closes.
+: CANDS-NONE ( -- )
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\n: CVT-KN ( -- n ) 1 ;\n" GEN+
+   s" cands-none.f" s" : CVT-KN" CANDS drop
+   s" cands-none: a definition's name" 0 CAND-COUNT
+   s" cands-none.f" s" CVT-KN ( -- n" CANDS drop
+   s" cands-none: a signature" 0 CAND-COUNT
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\n\\ CVT-K\n: CVT-KS ( -- ptr u8 n ) s\" CVT-K\" ;\n" GEN+
+   s\" TRUSTED: CVT-KT ( -- n ) CVT-K ;\nDEFTYPE CVT-K\n" GEN+
+   s" cands-skip.f" s" \ CVT-K" CANDS drop
+   s" cands-none: a comment" 0 CAND-COUNT
+   s" cands-skip.f" s\" s\" CVT-K" CANDS drop
+   s" cands-none: a string" 0 CAND-COUNT
+   s" cands-skip.f" s" ( -- n ) CVT-K" CANDS drop
+   s" cands-none: a TRUSTED: body" 0 CAND-COUNT
+   s" cands-skip.f" s" DEFTYPE CVT-K" CANDS drop
+   s" cands-none: a type's name" 0 CAND-COUNT
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\ndefer CVT-KD ( -- n )\nCVT-KD CVT-K\n" GEN+
+   s" cands-deferred.f" s" CVT-KD CVT-K" CANDS drop
+   s" cands-none: a deferred stretch" 0 CAND-COUNT
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\n: CVT-KA ( -- n ) CVT-K ;\n" GEN+
+   s" cands-dup.f" s" ) CVT-K" CANDS drop
+   s" cands-none: a body after a duplicate" 0 CAND-COUNT
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\n\\ hello wor" GEN+
+   s" cands-open-line.f" GEN-U @ CANDS-AT drop
+   s" cands-none: the end of an open line comment" 0 CAND-COUNT
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\n( hello wor" GEN+
+   s" cands-open-paren.f" GEN-U @ CANDS-AT drop
+   s" cands-none: the end of an open paren comment" 0 CAND-COUNT
+   \ Pins the product answer: the core refuses an open s" (E-DISC-UNTERM) before the child, unlike \ and (.
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\ns\" hello wor" GEN+
+   s" cands-open-string.f" GEN-U @ CANDS-AT drop
+   s" cands-none: the end of an open string" 0 CAND-COUNT ;
+
+
+\ A tick or `is` target offers the words that bind there, never a local.
+: CANDS-TARGETS ( -- )
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\ndefer CVT-KD ( -- n )\n" GEN+
+   s\" : CVT-KT ( n -- n ) {: CVT-KL:n :} ['] CVT-K drop CVT-KL ;\n" GEN+
+   s\" : CVT-KI ( [ -- n ] n -- ) {: CVT-KL:n :} is CVT-K ;\n" GEN+
+   s" cands-target.f" s" ['] CVT-K" CANDS drop
+   s" CVT-KA" CAND
+   s" cands-targets: a tick target" DEFS-SRC$ s" : CVT-KA" 6 s" cands-target.f" CAND-TARGET
+   s" CVT-KL" CAND
+   s" cands-targets: no local for a tick" NO-CAND
+   s" cands-target.f" s" is CVT-K" CANDS drop
+   s" CVT-KD" CAND
+   s" cands-targets: an is target" DEFS-SRC$ s" defer CVT-KD" 6 s" cands-target.f" CAND-TARGET
+   s" CVT-KL" CAND
+   s" cands-targets: no local for is" NO-CAND ;
+
+
+\ Two locals that differ only in case are each offered as declared.
+: CANDS-LOCALS ( -- )
+   0 GEN-U !
+   s\" : CVT-KC ( n n -- n ) {: cvt-kx:n CVT-KX:n :} cvt-kx CVT-K ;\n" GEN+
+   s" cands-locals.f" s" cvt-kx CVT-K" CANDS drop
+   s" cvt-kx" CAND
+   s" cands-locals: the lower-case local" CAND-BARE
+   s" CVT-KX" CAND
+   s" cands-locals: the upper-case local" CAND-BARE ;
+
+
+\ A name the scope does not select is not offered, while a global beside it
+\ is: a used public before its using and after it, one two used publics both
+\ export, and one a used public shadows a global with.
+: CANDS-REFUSED ( -- )
+   0 GEN-U !
+   s\" : CVT-SOLO ( -- n ) 9 ;\npackage CVT-RA\npublic\n: CVT-SAME ( -- n ) 1 ;\n: CVT-SHADOW ( -- n ) 2 ;\n;package\n" GEN+
+   s\" package CVT-RB\npublic\n: CVT-SAME ( -- n ) 3 ;\n;package\n: CVT-SHADOW ( -- n ) 4 ;\n" GEN+
+   s\" : CVT-KBEFORE ( -- n ) CVT-S ;\nusing CVT-RA\nusing CVT-RB\n: CVT-KAMBIG ( -- n ) CVT-S ;\n;using\n;using\n" GEN+
+   s\" using CVT-RA\n: CVT-KSHADOW ( -- n ) CVT-S ;\n;using\n: CVT-KAFTER ( -- n ) CVT-S ;\n" GEN+
+   s" cands-refused.f" s" CVT-KBEFORE ( -- n ) CVT-S" CANDS drop
+   s" CVT-SOLO" CAND
+   s" cands-refused: the global before the using" DEFS-SRC$ s" : CVT-SOLO" 8 s" cands-refused.f" CAND-TARGET
+   s" CVT-SAME" CAND
+   s" cands-refused: a public before its using" NO-CAND
+   s" cands-refused.f" s" CVT-KAMBIG ( -- n ) CVT-S" CANDS drop
+   s" CVT-SOLO" CAND
+   s" cands-refused: the global beside two usings" DEFS-SRC$ s" : CVT-SOLO" 8 s" cands-refused.f" CAND-TARGET
+   s" CVT-SAME" CAND
+   s" cands-refused: two used publics" NO-CAND
+   s" cands-refused.f" s" CVT-KSHADOW ( -- n ) CVT-S" CANDS drop
+   s" CVT-SOLO" CAND
+   s" cands-refused: the global inside the using" DEFS-SRC$ s" : CVT-SOLO" 8 s" cands-refused.f" CAND-TARGET
+   s" CVT-SHADOW" CAND
+   s" cands-refused: a used public over a global" NO-CAND
+   s" cands-refused.f" s" CVT-KAFTER ( -- n ) CVT-S" CANDS drop
+   s" CVT-SOLO" CAND
+   s" cands-refused: the global after the using" DEFS-SRC$ s" : CVT-SOLO" 8 s" cands-refused.f" CAND-TARGET
+   s" CVT-SAME" CAND
+   s" cands-refused: a public after its using" NO-CAND ;
+
+
+\ A word undefine retires is not offered after it, while a word beside it is,
+\ and its redefinition is offered with the later declaration.
+: CANDS-ORDER ( -- )
+   0 GEN-U !
+   s\" : CVT-KEEP ( -- n ) 0 ;\n: CVT-KW ( -- n ) 1 ;\nundefine CVT-KW\n: CVT-KG ( -- n ) CVT-K ;\n" GEN+
+   s\" : CVT-KW ( -- n ) 2 ;\n: CVT-KH ( -- n ) CVT-K ;\n" GEN+
+   s" cands-order.f" s" CVT-KG ( -- n ) CVT-K" CANDS drop
+   s" CVT-KEEP" CAND
+   s" cands-order: the word beside it" DEFS-SRC$ s" : CVT-KEEP" 8 s" cands-order.f" CAND-TARGET
+   s" CVT-KW" CAND
+   s" cands-order: undefined" NO-CAND
+   s" cands-order.f" s" CVT-KH ( -- n ) CVT-K" CANDS drop
+   s" CVT-KW" CAND
+   s" cands-order: the redefinition" DEFS-SRC$ s\" CVT-K ;\n: CVT-KW" 6 s" cands-order.f" CAND-TARGET ;
+
+
+\ Each word as its scope selects it, with the declaration it binds in its own
+\ file: the open package's private word over a dependency's global of that
+\ name, a used public, a dependency's qualified public, a qualified export's
+\ tail. A cursor in the subject's comment is not placed at a dependency's token
+\ at the same byte.
+: CANDS-SCOPES ( -- )
+   USES-DEPS
+   0 GEN-U !
+   s\" require uses-dep.f\npackage CVT-KP\n: CVT-UGLOBAL ( -- n ) 7 ;\n: CVT-KQ ( -- n ) CVT-UG ;\n;package\n" GEN+
+   s" cands-private.f" s" ) CVT-UG" CANDS drop
+   s" CVT-UGLOBAL" CAND
+   s" cands-scopes: the private word over the global" DEFS-SRC$ s\" package CVT-KP\n: CVT-UGLOBAL" 11 s" cands-private.f" CAND-TARGET
+   s" cands-scopes: offered once" 1 CAND-COUNT
+   0 GEN-U !
+   s\" require uses-dep.f\nusing CVT-UD\n: CVT-KU ( -- n ) CVT-UO ;\n;using\n: CVT-KV ( -- n ) CVT-UD:CVT-UO ;\n" GEN+
+   s" cands-used.f" s" ) CVT-UO" CANDS drop
+   s" CVT-UONE" CAND
+   s" cands-scopes: a used public" USES-DEP$SRC s" : CVT-UONE" 8 s" uses-dep.f" CAND-TARGET
+   s" cands-used.f" s" CVT-UD:CVT-UO" CANDS drop
+   s" CVT-UD:CVT-UONE" CAND
+   s" cands-scopes: a qualified public" USES-DEP$SRC s" : CVT-UONE" 8 s" uses-dep.f" CAND-TARGET
+   0 GEN-U !
+   s\" require uses-dep.f\npackage CVT-KX\npublic\nEXPORT CVT-UD:CVT-UTWO\n;package\n: CVT-KY ( -- n ) CVT-KX:CVT-UT ;\n" GEN+
+   s" cands-export.f" s" CVT-KX:CVT-UT" CANDS drop
+   s" CVT-KX:CVT-UTWO" CAND
+   s" cands-scopes: a qualified export's tail" DEFS-SRC$ s" EXPORT CVT-UD:CVT-UTWO" 15 s" cands-export.f" CAND-TARGET
+   USES-DEP$SRC s" 1 CVT-HE" END-IN
+   {: at:n :}
+   0 GEN-U !
+   s\" require uses-dep.f\n\\ " GEN+
+   at 0 ?do s" x" GEN+ loop
+   s\" \n: CVT-KZ ( -- n ) 1 ;\n" GEN+
+   s" cands-ident.f" at CANDS-AT drop
+   s" cands-scopes: not a dependency's token" 0 CAND-COUNT ;
+
+
+\ The last check's verdict and outputs onto SEEN, each ended by a NUL.
+: SEEN+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   SEEN-U @ u + 1+ SEEN-RESERVE
+   a SEEN-U @ SEEN u BYTE-COPY
+   0 SEEN-U @ u + SEEN c!
+   SEEN-U @ u + 1+ SEEN-U ! ;
+
+: SEEN-CHECK+ ( CHECK:verdict -- )
+   KIND {: k:n :}
+   SEEN-U @ 1+ SEEN-RESERVE
+   k $30 + SEEN-U @ SEEN c!
+   SEEN-U @ 1+ SEEN-U !
+   CHECK:VERIFY-OUT$ SEEN+  CHECK:VERIFY-DEFS$ SEEN+
+   CHECK:VERIFY-USES$ SEEN+  CHECK:VERIFY-FILES$ SEEN+ ;
+
+
+\ The cursor only observes: the same bytes checked with and without it give the
+\ same verdict, packets, definitions, uses and files, byte for byte; and
+\ --verify-only, which has no cursor, writes no candidate line.
+: CANDS-OBSERVER ( -- )
+   USES-DEPS
+   0 GEN-U !
+   s\" require uses-dep.f\n: CVT-KA ( -- n ) 1 ;\n: CVT-KB ( -- n ) CVT-KA CVT-UGLOBAL + ;\n" GEN+
+   s\" : CVT-KR ( -- n ) CVT-KA CVT-NOPE ;\n: CVT-KC ( -- n ) CVT-KA CVT-KB + ;\n" GEN+
+   0 SEEN-U !
+   s" cands-observe.f" DEFS-CHECK SEEN-CHECK+
+   SEEN-U @
+   {: half:n :}
+   s" cands-observe.f" s" CVT-KA CVT-KB" CANDS SEEN-CHECK+
+   s" CVT-KB" CAND
+   s" cands-observer: the cursor offered" DEFS-SRC$ s" : CVT-KB" 6 s" cands-observe.f" CAND-TARGET
+   s" cands-observer: the same verdict and outputs" T-LABEL
+   0 SEEN half  half SEEN SEEN-U @ half -  T$=
+   s" cands-observe.f" DEFS-SRC$ FIXTURE
+   CLI-START s" --verify-only" ARG+ s" cands-observe.f" AT$ ARG+
+   s" " CLI drop
+   {: erru:n :}
+   s" cands-observer: no candidate line on the cli" T-LABEL
+   0 OUT CLI-OUT-U @ s" candidate" CONTAINS?
+   0 ERR erru s" candidate" CONTAINS? or TFALSE ;
+
+
 \ ---- the measurement -------------------------------------------------------
 
 : MS. ( -- )
@@ -2281,6 +2616,15 @@ public
    s" uses" [: USES ;] RUN-CASE
    s" uses-refused" [: USES-REFUSED ;] RUN-CASE
    s" uses-order" [: USES-ORDER ;] RUN-CASE
+   s" cands-body" [: CANDS-BODY ;] RUN-CASE
+   s" cands-top" [: CANDS-TOP ;] RUN-CASE
+   s" cands-none" [: CANDS-NONE ;] RUN-CASE
+   s" cands-targets" [: CANDS-TARGETS ;] RUN-CASE
+   s" cands-locals" [: CANDS-LOCALS ;] RUN-CASE
+   s" cands-refused" [: CANDS-REFUSED ;] RUN-CASE
+   s" cands-order" [: CANDS-ORDER ;] RUN-CASE
+   s" cands-scopes" [: CANDS-SCOPES ;] RUN-CASE
+   s" cands-observer" [: CANDS-OBSERVER ;] RUN-CASE
    s" uses-recovery" [: USES-RECOVERY ;] RUN-CASE
    s" uses-deferred" [: USES-DEFERRED ;] RUN-CASE
    s" uses-duplicate" [: USES-DUPLICATE ;] RUN-CASE
