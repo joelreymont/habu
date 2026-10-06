@@ -31,11 +31,12 @@
 \ group never closed, a stop at its opener (VERIFY-STOP). VERIFY-BYTES's stop
 \ is the last line, its record (STOP-RECORD$) in JSON. VERIFY-FILES$ is the
 \ files the verifier read, the subject and its dependencies, VERIFY-DEFS$ the
-\ definitions it retained in them, and VERIFY-USES$ the uses in the subject the
-\ checker bound to located declarations, each one JSON object per line, never
+\ definitions it retained in them, VERIFY-USES$ the uses in the subject the
+\ checker bound to located declarations, and VERIFY-CANDIDATES$ the spellings
+\ CHECK:VERIFY-BYTES-AT's cursor offered, each one JSON object per line, never
 \ among the packets. VERIFY-LOG$ is the child's stderr, or for a closure the
 \ walk cannot follow, which runs no child, the status line naming the file that
-\ ended it and why. All five hold until the next call.
+\ ended it and why. All six hold until the next call.
 \
 \ CHECK:PREVERIFY-BYTES is check.f's pre-pass, on the same child and image: the
 \ first refused definition stops it, as it stops the load, and the subject's
@@ -46,6 +47,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/fmt.f
 require lib/memory.f
 require lib/adt/result.f
 require lib/fs.f
@@ -540,10 +542,13 @@ DYNAMIC-BUFFER VFY-STOP-PATH u8         \ preserve the final stop across duplica
 DYNAMIC-BUFFER VFY-DEFS u8              \ VERIFY-DEFS$
 DYNAMIC-BUFFER VFY-FILES u8             \ VERIFY-FILES$
 DYNAMIC-BUFFER VFY-USES u8              \ VERIFY-USES$
+DYNAMIC-BUFFER VFY-CANDS u8             \ VERIFY-CANDIDATES$
 variable VFY-REC-U
 variable VFY-DEFS-U
 variable VFY-FILES-U
 variable VFY-USES-U
+variable VFY-CANDS-U
+variable VFY-AT                         \ the child's completion cursor, -1 for none
 variable VFY-OUT-U
 variable VFY-LOG-U
 variable VFY-ANSWER
@@ -580,6 +585,8 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    0 VFY-DEFS-U !
    0 VFY-FILES-U !
    0 VFY-USES-U !
+   0 VFY-CANDS-U !
+   -1 VFY-AT !
    VFY-NONE VFY-ANSWER !
    0 VFY-STOP-RC !
    false VFY-STOP-DISC !
@@ -678,6 +685,7 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    s" --" CHK-ARG+
    VFY-PATH$ CHK-ARG+
    VFY-PREPASS @ if VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+ then
+   VFY-AT @ 0 >= if s" --at" CHK-ARG+  SB-RESET VFY-AT @ FMT:SB-U SB$ CHK-ARG+ then
    PROC-ENV-INHERIT-MISSING ;
 
 
@@ -728,6 +736,9 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 
 : VFY-USE$ ( -- ptr u8 n )
    s" check-verify: use " ;
+
+: VFY-CAND$ ( -- ptr u8 n )
+   s" check-verify: candidate " ;
 
 
 \ Where the field of VFY-OUT that starts at AT ends: at its space, or at END.
@@ -900,6 +911,24 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    s\" \n" VFY-USES+ ;
 
 
+: VFY-CANDS+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0= if exit then
+   VFY-CANDS-U @ u + VFY-CANDS-RESERVE
+   a VFY-CANDS-U @ VFY-CANDS u BYTE-COPY
+   VFY-CANDS-U @ u + VFY-CANDS-U ! ;
+
+
+\ The JSON object of the candidate line from AT to END in VFY-OUT, to
+\ VFY-CANDS.
+: VFY-CAND-LINE ( n n -- )
+   {: at:n end:n :}
+   at VFY-CAND$ nip +
+   {: obj:n :}
+   obj VFY-OUT end obj - VFY-CANDS+
+   s\" \n" VFY-CANDS+ ;
+
+
 \ Where the line of VFY-OUT that starts at AT ends: at its line feed.
 : VFY-LINE-END ( n -- n )
    begin
@@ -909,8 +938,8 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 
 \ The line of VFY-OUT that starts at AT, to VFY-REC, a duplicate line
 \ as the record --all-errors writes for it, a file line to VFY-FILES, a
-\ definition line to VFY-DEFS and a use line to VFY-USES: where the next
-\ line starts.
+\ definition line to VFY-DEFS, a use line to VFY-USES and a candidate line to
+\ VFY-CANDS: where the next line starts.
 : VFY-REC-LINE ( n -- n )
    {: at:n :}
    at VFY-LINE-END
@@ -925,6 +954,10 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    then
    at VFY-OUT end at - VFY-USE$ STARTS-WITH? if
       at end VFY-USE-LINE
+      end 1+ exit
+   then
+   at VFY-OUT end at - VFY-CAND$ STARTS-WITH? if
+      at end VFY-CAND-LINE
       end 1+ exit
    then
    at VFY-OUT end at - VFY-DUPLICATE$ STARTS-WITH?
@@ -1044,6 +1077,13 @@ public
    VFY-USES-U @ 0= if NULL$ exit then
    0 VFY-USES VFY-USES-U @ ;
 
+\ The spellings the last VERIFY-BYTES-AT's cursor offered, one JSON object per
+\ line as tools/check-verify-child.f's candidate line states it, in the order
+\ the checker offered them; none for VERIFY-BYTES.
+: VERIFY-CANDIDATES$ ( -- ptr u8 n )
+   VFY-CANDS-U @ 0= if NULL$ exit then
+   0 VFY-CANDS VFY-CANDS-U @ ;
+
 \ Check the bytes as the file at PATH, the child given DEADLINE. A throw that
 \ ends the verification refuses it, as does a string or a locals group a file
 \ of the closure never closes: the stop's record ends VERIFY-OUT$, and
@@ -1055,9 +1095,12 @@ public
 \ stderr is E-PROC-TRUNCATED, VERIFY-OUT$ then holding every complete packet
 \ received before it. A file of the closure that a stop or a duplicate
 \ definition is in and can no longer be read throws as reading it does.
-: VERIFY-BYTES ( ptr u8 n ptr u8 n ms -- verdict )
-   {: src:ptr srcu:n path:ptr pathu:n deadline :}
+\ VERIFY-BYTES-AT has the child offer, as well, the spellings that would bind
+\ at byte AT of the bytes, VERIFY-CANDIDATES$; a negative AT is no cursor.
+: VERIFY-BYTES-AT ( ptr u8 n ptr u8 n n ms -- verdict )
+   {: src:ptr srcu:n path:ptr pathu:n at:n deadline :}
    VFY-RESET
+   at VFY-AT !
    path pathu VFY-PATH!
    VFY-PATH$ ENGINE-PROVIDES? if CHECK-VERDICT:engine-provided exit then
    src srcu VFY-PATH$ VFY-PATH$ CHK-EXPAND-BYTES {: rc:n :}
@@ -1067,6 +1110,10 @@ public
    VFY-RUN {: o :}
    o VFY-CLEAN-EXIT? VFY-ANSWER @ VFY-STOPPED = and if VFY-STOP-LINE then
    o VFY-VERDICT ;
+
+: VERIFY-BYTES ( ptr u8 n ptr u8 n ms -- verdict )
+   {: src:ptr srcu:n path:ptr pathu:n deadline :}
+   src srcu path pathu -1 deadline VERIFY-BYTES-AT ;
 
 \ check.f's pre-pass of the bytes as the file at PATH, the subject named LABEL
 \ in its packets, the child given DEADLINE. The child's image is the one

@@ -33,7 +33,9 @@
 \ symbols list. DEFS-OWN-GROUP gives the group of a document's own file while
 \ its last check's positions are of its current text, from that check's
 \ completion until its next check starts, so that a definition's token is
-\ found at a byte of that text only from a check of it.
+\ found at a byte of that text only from a check of it. DEFS-GROUP-OF gives,
+\ for that same while, that check's group for a file by its path: the one a
+\ candidate the check offered at a cursor is declared in, as the check read it.
 \
 \ The store holds the groups check after check, oldest first, each check's in
 \ the order its definition lines first name their files, then the files it
@@ -629,6 +631,65 @@ public
    repeat
    drop OPTION:NONE ;
 
+private
+
+\ The first record of group G whose token starts and ends at these bytes and
+\ whose word is W, letters compared without case as Habu compares names, if
+\ one is.
+: GROUP-REC-WORD ( n n n ptr u8 n -- option<n> )
+   {: g:n ts:n te:n w:ptr wu:n :}
+   g G-FIRST GROUP@
+   begin dup 0 >= while
+      dup REC-BYTES te = swap ts = and if
+         dup REC-WORD$ w wu STR=CI if OPTION:SOME exit then
+      then
+      R-NEXT REC@
+   repeat
+   drop OPTION:NONE ;
+
+\ The record of group G whose token starts and ends at these bytes, if exactly
+\ one does.
+: GROUP-REC-SOLE ( n n n -- option<n> )
+   {: g:n ts:n te:n :}
+   0 -1 g G-FIRST GROUP@
+   begin dup 0 >= while
+      dup REC-BYTES te = swap ts = and if nip swap 1+ swap dup then
+      R-NEXT REC@
+   repeat
+   drop swap 1 = if OPTION:SOME else drop OPTION:NONE then ;
+
+\ When no record of group G at these bytes is of word W: the one of W's tail,
+\ its bytes after the colon, when W is qualified as CHECKER-QUALIFIED? reads a
+\ name, by one non-edge colon; else the one record there, if exactly one is.
+\ SPLIT-NEXT's flag says only that its start was valid: the position it
+\ returns lies past W's end when no colon follows that start.
+: GROUP-REC-TAIL ( n n n ptr u8 n -- option<n> )
+   {: g:n ts:n te:n w:ptr wu:n :}
+   w wu [char] : 0 SPLIT-NEXT drop nip nip
+   {: at:n :}
+   w wu [char] : at SPLIT-NEXT drop nip nip
+   {: at2:n :}
+   at 1 >  at wu < and  at2 wu > and 0= if g ts te GROUP-REC-SOLE exit then
+   g ts te w at + wu at - GROUP-REC-WORD MATCH option
+      some OF OPTION:SOME ENDOF
+      none OF g ts te GROUP-REC-SOLE ENDOF
+   ;MATCH ;
+
+public
+
+\ The record of group G whose token starts and ends at these bytes and whose
+\ word is W, letters compared without case as Habu compares names; else, for a
+\ W qualified by one non-edge colon, the one whose word is W's tail; else the
+\ one record whose token does, if exactly one does. Records can share a token,
+\ as a DEFTYPE's two converters share its name's, so with several there and
+\ none of them W or its tail, none answers.
+: GROUP-REC-NAMED ( n n n ptr u8 n -- option<n> )
+   {: g:n ts:n te:n w:ptr wu:n :}
+   g ts te w wu GROUP-REC-WORD MATCH option
+      some OF OPTION:SOME ENDOF
+      none OF g ts te w wu GROUP-REC-TAIL ENDOF
+   ;MATCH ;
+
 \ The first record of group G whose token's bytes, from its start to before
 \ its end, hold this byte, if one does.
 : GROUP-REC-HOLDING ( n n -- option<n> )
@@ -652,6 +713,16 @@ private
    loop
    OPTION:NONE ;
 
+\ The group for the file at this path among block K's, while K's positions
+\ are of the document's current text, if K has one.
+: PATH-IN ( n ptr u8 n -- option<n> )
+   {: k:n p:ptr pu:n :}
+   k B-CURRENT BLOCK@ 0= if OPTION:NONE exit then
+   k B-GROUP GROUP-N @ BLOCK-END k B-GROUP BLOCK@ ?do
+      i PATH$ p pu STR= if i OPTION:SOME unloop exit then
+   loop
+   OPTION:NONE ;
+
 public
 
 \ The group for the file of the document in this slot in its last completed
@@ -661,6 +732,17 @@ public
 : DEFS-OWN-GROUP ( n -- option<n> )
    BLOCK-OF MATCH option
       some OF OWN-IN ENDOF
+      none OF OPTION:NONE ENDOF
+   ;MATCH ;
+
+\ The group for the file at this path in the last completed check of the
+\ document in this slot, while that check's positions are of the document's
+\ text; none if the store keeps no check of it, a check of it has started
+\ since, or the check kept no group for the file.
+: DEFS-GROUP-OF ( n ptr u8 n -- option<n> )
+   {: slot:n p:ptr pu:n :}
+   slot BLOCK-OF MATCH option
+      some OF p pu PATH-IN ENDOF
       none OF OPTION:NONE ENDOF
    ;MATCH ;
 

@@ -1,5 +1,5 @@
-\ check-verify-child.f - the verifier child CHECK:VERIFY-BYTES and
-\ CHECK:PREVERIFY-BYTES run.
+\ check-verify-child.f - the verifier child CHECK:VERIFY-BYTES,
+\ CHECK:VERIFY-BYTES-AT and CHECK:PREVERIFY-BYTES run.
 \
 \ tools/check-verify-core.f spawns it on the engine lib/engine-candidate.f
 \ names, by its absolute path in the tree that file was loaded from, in the
@@ -7,6 +7,7 @@
 \
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < BYTES
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < BYTES
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N < BYTES
 \
 \ BYTES is the subject's text and SUBJECT the canonical absolute path it is
 \ checked as. The image is the engine's boot prefix, the verifier and
@@ -37,6 +38,8 @@
 \       "visibility":V,"effect":E,"file":F,"byte_start":S,"byte_end":N}
 \    check-verify: use {"byte_start":S,"byte_end":N,"file":F,
 \       "target_start":TS,"target_end":TN}
+\    check-verify: candidate {"word":W,"file":F,"target_start":TS,
+\       "target_end":TN}
 \
 \ A file line names a file src/habu/verify-source.f ON-FILE reports, F as
 \ its packets name it. A definition line names what ON-DEFINITION reports:
@@ -54,6 +57,15 @@
 \ use starts and ends in the subject, F the path the declaration's file was
 \ resolved to, and TS and TN where the token that declared it starts and ends
 \ there.
+\
+\ The third form is the first with a completion cursor at byte N of BYTES. It
+\ writes as well, for each spelling the checker offers at the cursor's place, a
+\ candidate line naming what src/habu/verify-source.f ON-CANDIDATE reports: W
+\ the spelling, F the path the file of the declaration it binds was resolved
+\ to, and TS and TN where the token that declared it starts and ends there; F,
+\ TS and TN are absent for a declaration in no file the composition read, or
+\ with no location. A cursor the scan passes in a comment, a string or a
+\ signature, or never reaches, has none.
 \
 \ deferred: nothing is refused, but a stretch of top-level source or a
 \ definition was deferred to the run, and a W-CHECK-DEFERRED packet locates each
@@ -377,6 +389,23 @@ variable SEEN-N
    OUT-FD NEWLINE ;
 
 
+\ A spelling the third form's cursor offers, as its candidate line.
+: CANDIDATE-LINE ( ptr u8 n ptr u8 n n n -- )
+   {: w:ptr wu:n path:ptr pathu:n tat:n tend:n :}
+   OUT-FD s\" check-verify: candidate {\"word\":" WRITE
+   w wu JSON-STR
+   pathu 0 > if
+      OUT-FD s\" ,\"file\":" WRITE
+      path pathu JSON-STR
+      OUT-FD s\" ,\"target_start\":" WRITE
+      OUT-FD tat FD-N
+      OUT-FD s\" ,\"target_end\":" WRITE
+      OUT-FD tend FD-N
+   then
+   OUT-FD s" }" WRITE
+   OUT-FD NEWLINE ;
+
+
 \ One multi-error window covers the complete load composition, and goes past
 \ a duplicate as past any refused definition. A duplicate it cannot go past,
 \ a name the definer generates, stops it with its stopped line.
@@ -387,6 +416,7 @@ variable SEEN-N
    ['] FILE-LINE is VERIFY:ON-FILE
    ['] DEFINITION-LINE is VERIFY:ON-DEFINITION
    ['] USE-LINE is VERIFY:ON-USE
+   ['] CANDIDATE-LINE is VERIFY:ON-CANDIDATE
    MULTI-ERR-BEGIN
    [: VERIFY-CUR ;] catch {: rc:n :}
    MULTI-ERR-END {: rejects:n :}
@@ -457,9 +487,24 @@ variable SEEN-N
 
 public
 
+: USAGE ( -- )
+   s" usage: check-verify-child.f -- SUBJECT [LABEL | --at N]" 64 die ;
+
+\ N in the third form's `--at N`; -1 for arguments of no form.
+: CURSOR-ARG ( -- n )
+   1 SCRIPT-ARGV$ s" --at" CORE-STR= 0= if -1 exit then
+   2 SCRIPT-ARGV$ STR>NUMBER? MATCH option
+      some OF ENDOF
+      none OF -1 ENDOF
+   ;MATCH ;
+
 : MAIN ( -- )
    SCRIPT-ARGC 2 = if READ-SUBJECT PREVERIFY exit then
-   SCRIPT-ARGC 1 <> if s" usage: check-verify-child.f -- SUBJECT [LABEL]" 64 die then
+   SCRIPT-ARGC 3 = if
+      CURSOR-ARG dup 0 < if USAGE then VERIFY:CURSOR!
+   else
+      SCRIPT-ARGC 1 <> if USAGE then
+   then
    READ-SUBJECT
    0 SCRIPT-ARGV$ HELD? if s" held" RESULT exit then
    VERIFY-CLOSURE ;

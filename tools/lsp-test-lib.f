@@ -67,6 +67,8 @@
 \   a value that is no number, a line ended by LF alone, a line over LINE-CAP,
 \   a length over the maximum, end of input in a header and in a body; each is
 \   its own conversation ........................................... fault-*
+\ - a request read before a framing fault not answered before the fault
+\   stops the server ..................................... fault-after-request
 \ - a 700 KB body, written in many pieces, refused, cut or its document lost:
 \   its last line's diagnostic proves the whole text checked ...... big-frame
 \ - a closed stdout ending the server by SIGPIPE instead of exit 1 and the
@@ -190,6 +192,9 @@
 \   ...................................................... hover-dependency-open
 \ - a declaring token not answered with its definition, over it
 \   ...................................................... hover-definition
+\ - a use of either converter a DEFTYPE declares, both at its name's token,
+\   in either case or package-qualified, not answered with that converter's
+\   own definition ........................................... hover-deftype
 \ - a comment, the space before a use or a stack comment answered other
 \   than null ................................................ hover-none
 \ - a client whose hovers take plain text answered other than with the
@@ -199,6 +204,35 @@
 \ - a use asked about in the turn of a change that moved it and its
 \   declaration answered before the check of the changed text, or not with
 \   the declaration's new line ...................... hover-after-change
+\
+\ Completion
+\ - a cursor in a body not answered, in a list that is not incomplete, with
+\   the words of the document and of a dependency that would bind there, each
+\   with its declared effect and the document's with its package, or with an
+\   engine word's, without either, or with each converter of a DEFTYPE, which
+\   share one token, with its own effect, qualified or not ...... completion
+\ - a position in a document not open answered other than -32602
+\   ................................................... completion-not-open
+\ - a cursor asked about in the turn of a change answered before the check of
+\   the changed text, or not from it .............. completion-after-change
+\ - a bare prefix, or a package's name and an edge colon, answered without
+\   a qualified spelling a qualified prefix offers there, or with another
+\   detail ................................................ completion-qualified
+\
+\ Cancellation
+\ - a request with a cancel of it read behind it answered other than -32800,
+\   or its work done: two completions and a cancel of the first publish
+\   twice .................................................. cancel-completion
+\ - a hover cancelled by its string id spelt another way served
+\   ............................................................. cancel-hover
+\ - a completion with a change of its document read behind it answered other
+\   than -32801, or the change not applied and checked after it
+\   ......................................................... content-modified
+\ - a cancel of an id answered, never sent, of another kind or of a message
+\   that is not a request answered, or cancelling a request ..... cancel-stray
+\ - a request held when shutdown is read not answered first, a cancel of it
+\   read past shutdown not counted, or a request after shutdown answered other
+\   than -32600 .............................................. cancel-shutdown
 \
 \ Not proven here: a packet line that is not JSON, that names no file, or that
 \ names its file by a relative path, goes to stderr, but the checker writes
@@ -254,13 +288,13 @@ using BUF
 \ dependency-shared, took 660 to 1111 ms in single runs at a load average of
 \ about 140, when big-frame took up to 1289 ms. CONVERSATION-MS is ten times
 \ its busiest measurement and CHECKED-MS about six times big-frame's 1230 to
-\ 1289 ms, and neither is larger, so that all 25 runs bounded by the one (the
-\ 22 conversations CONVERSE runs, answers-at-once, stdout-closed and
-\ TEST-EXIT-TIMEOUT's child) and the 19 conversations bounded by the other
-\ could reach their bounds and still end inside the row's 360 s, each failing
-\ by name: a server that spins to its bound spends that much of the row's CPU
-\ budget (test/suite-budget.f CPU-MS), and one that blocks spends none and
-\ ends long before the row's hang guard (ROW-MS).
+\ 1289 ms, and neither is larger. The one bounds 27 runs (the 24 conversations
+\ CONVERSE runs, answers-at-once, stdout-closed and TEST-EXIT-TIMEOUT's child)
+\ and the other 67 conversations. A server that blocks spends none of the
+\ row's CPU budget (test/suite-budget.f CPU-MS), so all 94 could reach their
+\ bounds, each failing by name, well inside the row's hang guard (ROW-MS). One
+\ that spins to its bound spends that much of the budget's 360 s, so at most
+\ 45 such runs fail by name before the budget ends the row.
 8000 constant CONVERSATION-MS
 8000 constant CHECKED-MS
 
@@ -671,7 +705,7 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\"," MSG+
    s\" \"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}," MSG+
-   s\" \"definitionProvider\":true," MSG+
+   s\" \"completionProvider\":{},\"definitionProvider\":true," MSG+
    s\" \"hoverProvider\":true," MSG+
    s\" \"workspaceSymbolProvider\":true}," MSG+
    s\" \"serverInfo\":{\"name\":\"habu\"}}}" MSG+
@@ -1094,7 +1128,14 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    s" fault-over-maximum" CONVERSATION
    s" Content-Length: " IN+ LSP:MAX-BODY 1+ INT$ IN+ s\" \r\n\r\n" IN+
    INITIALIZE
-   E-CONTENT-LENGTH-MALFORMED FAULTED ;
+   E-CONTENT-LENGTH-MALFORMED FAULTED
+   s" fault-after-request" CONVERSATION
+   INITIALIZE
+   s\" Content-Length: abc\r\n\r\n" IN+
+   E-CONTENT-LENGTH-MALFORMED STOPPED
+   1 CONVERSE
+   CAPABILITIES
+   ENDS ;
 
 : TEST-TRUNCATED-FRAMES ( -- )
    s" fault-eof-in-header" CONVERSATION
@@ -2544,6 +2585,43 @@ variable LENGTH-N                        \ the length of its directory's name
    2 HV-ONE-MD s" 3" s" markdown" 1 2 8 HOVERED
    2 HV-ONE-MD s" 4" s" markdown" 1 2 8 HOVERED ;
 
+\ hover-cvt.f, in the tree, never on disk: DEFTYPE CVT-T, public in package
+\ HV-P, whose converters >CVT-T and CVT-T>N the check states at CVT-T's token;
+\ a use of each in upper case and in lower case, and qualified ones outside HV-P.
+: HOVER-CVT-PATH ( -- ptr u8 n )  s" hover-cvt.f" IN-TREE ;
+: TEXT-HOVER-CVT ( -- ptr u8 n )
+   s\" require lib/type/deftype.f\npackage HV-P\npublic\nDEFTYPE CVT-T\n: HV-CVT ( -- n ) 5 >CVT-T CVT-T>N >cvt-t cvt-t>n ;\n;package\n: HV-Q ( -- n ) 5 HV-P:>CVT-T HV-P:CVT-T>N ;\n" ;
+
+\ The lines of CVT-T's converter W, of effect E, as Markdown.
+: CVT-MD ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n e:ptr eu:n :}
+   TXT-B CLEAR s\" ```habu\nDEFTYPE " HV+ w wu HV+
+   s"  ( " HV+ e eu HV+ s\"  )\n\\ package hv-p, hover-cvt.f:4\n```" HV+ ;
+
+\ The use of each converter, in either case and qualified, answered with its
+\ own definition, over the use: the two share one token, so the token alone
+\ tells neither. A qualified use's whole spelling is neither converter's word,
+\ so the server compares its tail, the bytes after its colon.
+: HOVER-DEFTYPE-TURNS ( -- )
+   MARKDOWN-CLIENT
+   HOVER-CVT-PATH TEXT-HOVER-CVT 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-CVT HOVER-CVT-PATH 1 s" verified" LISTED
+   s" 3" HOVER-CVT-PATH 4 20 HOVER-ASK
+   s" 4" HOVER-CVT-PATH 4 27 HOVER-ASK
+   s" 5" HOVER-CVT-PATH 4 35 HOVER-ASK
+   s" 6" HOVER-CVT-PATH 4 42 HOVER-ASK
+   s" 7" HOVER-CVT-PATH 6 18 HOVER-ASK
+   s" 8" HOVER-CVT-PATH 6 30 HOVER-ASK
+   SAY
+   s" >CVT-T" s" n -- cvt-t" CVT-MD s" 3" s" markdown" 4 20 26 HOVERED
+   s" CVT-T>N" s" cvt-t -- n" CVT-MD s" 4" s" markdown" 4 27 34 HOVERED
+   s" >CVT-T" s" n -- cvt-t" CVT-MD s" 5" s" markdown" 4 35 41 HOVERED
+   s" CVT-T>N" s" cvt-t -- n" CVT-MD s" 6" s" markdown" 4 42 49 HOVERED
+   s" >CVT-T" s" n -- cvt-t" CVT-MD s" 7" s" markdown" 6 18 29 HOVERED
+   s" CVT-T>N" s" cvt-t -- n" CVT-MD s" 8" s" markdown" 6 30 42 HOVERED ;
+
 \ A comment, the space before a use and a stack comment: null.
 : HOVER-NONE-TURNS ( -- )
    MARKDOWN-CLIENT
@@ -2594,11 +2672,289 @@ variable LENGTH-N                        \ the length of its directory's name
    TEXT-HOVER-A-MOVED HOVER-A-PATH 2 s" verified" LISTED
    4 HV-ONE-MD s" 3" s" markdown" 4 18 24 HOVERED ;
 
+\ ---- completion --------------------------------------------------------------
+
+: CMP-A-PATH ( -- ptr u8 n )  s" cmpl-a.f" FIXTURE ;
+: CMP-DEP-PATH ( -- ptr u8 n )  s" cmpl-dep.f" FIXTURE ;
+
+\ cmpl-dep.f, on disk only: the global CMPL-DEP.
+: TEXT-CMP-DEP ( -- ptr u8 n )  s\" : CMPL-DEP ( n -- n ) 4 + ;\n" ;
+
+\ In package CMPA, CMPL-ONE, then a body using it, cmpl-dep.f's global CMPL-DEP
+\ and the engine's swap; then, global, DEFTYPE CMPL-T, whose converters
+\ >CMPL-T and CMPL-T>N the check states at CMPL-T's token, and a use of each;
+\ then DEFTYPE CMPQ-T, public in package CMPQ, and a qualified use of each of
+\ its converters outside CMPQ.
+: TEXT-CMP-A ( -- ptr u8 n )
+   s\" require cmpl-dep.f\npackage CMPA\n: CMPL-ONE ( -- n ) 1 ;\n: CMPL-TWO ( -- n ) CMPL-ONE CMPL-DEP 1 2 swap 2drop ;\n;package\nrequire lib/type/deftype.f\nDEFTYPE CMPL-T\n: CMPL-CVT ( -- n ) 5 >CMPL-T CMPL-T>N ;\npackage CMPQ\npublic\nDEFTYPE CMPQ-T\n;package\n: CMPQ-USE ( -- n ) 5 CMPQ:>CMPQ-T CMPQ:CMPQ-T>N ;\n" ;
+
+\ TEXT-CMP-A with CMPL-ONE renamed CMPL-NEW, the body's bytes unmoved.
+: TEXT-CMP-A-NEW ( -- ptr u8 n )
+   s\" require cmpl-dep.f\npackage CMPA\n: CMPL-NEW ( -- n ) 5 ;\n: CMPL-TWO ( -- n ) CMPL-NEW CMPL-DEP 1 2 swap 2drop ;\n;package\nrequire lib/type/deftype.f\nDEFTYPE CMPL-T\n: CMPL-CVT ( -- n ) 5 >CMPL-T CMPL-T>N ;\npackage CMPQ\npublic\nDEFTYPE CMPQ-T\n;package\n: CMPQ-USE ( -- n ) 5 CMPQ:>CMPQ-T CMPQ:CMPQ-T>N ;\n" ;
+
+\ textDocument/completion, by its id's JSON text, at character C of line L of
+\ the document opened from this path.
+: COMPLETION-ASK ( ptr u8 n ptr u8 n n n -- )
+   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+   s" textDocument/completion" i iu p pu l c AT-ASK ;
+
+\ The answer to the request with this id's JSON text, begun in MSG, up to its
+\ items' bracket.
+: ITEMS-START ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"result\":{\"isIncomplete\":false,\"items\":[" MSG+ ;
+
+\ The item the answer lists next: its label, then its detail, none when empty,
+\ each as JSON text.
+: ITEM+ ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n d:ptr du:n :}
+   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   s\" {\"label\":\"" MSG+ w wu MSG+ s\" \"" MSG+
+   du 0 > if s\" ,\"detail\":\"" MSG+ d du MSG+ s\" \"" MSG+ then
+   s" }" MSG+ ;
+
+\ The next frame is the answer begun.
+: ITEMS-END ( -- )
+   s" ]}}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
+\ At CMPL in CMPL-TWO's body, the document's CMPL-ONE and the dependency's
+\ CMPL-DEP, each with its declared effect and CMPL-ONE with its package; at
+\ swa the engine's swap, without either; at >CMPL and at CMPL-T>, each
+\ converter with its own effect, which the token they share does not tell;
+\ and at CMPQ:>CMPQ and at CMPQ:CMPQ-T>, each of CMPQ's converters, its
+\ spelling qualified, with its own effect and package. Each request checks the
+\ document with its cursor, as its turn, so the document's list comes before
+\ each answer.
+: CMP-TURNS ( -- )
+   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   INITIALIZE
+   CMP-A-PATH TEXT-CMP-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
+   s" 4" CMP-A-PATH 3 45 COMPLETION-ASK
+   s" 5" CMP-A-PATH 7 27 COMPLETION-ASK
+   s" 6" CMP-A-PATH 7 37 COMPLETION-ASK
+   s" 7" CMP-A-PATH 12 32 COMPLETION-ASK
+   s" 8" CMP-A-PATH 12 47 COMPLETION-ASK
+   SAY
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" ITEMS-START
+   s" CMPL-DEP" s" ( n -- n )" ITEM+
+   s" CMPL-ONE" s" ( -- n ) \\ package cmpa" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 4" ITEMS-START
+   s" swap" s" " ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 5" ITEMS-START
+   s" >CMPL-T" s" ( n -- cmpl-t )" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 6" ITEMS-START
+   s" CMPL-T>N" s" ( cmpl-t -- n )" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 7" ITEMS-START
+   s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 8" ITEMS-START
+   s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
+   ITEMS-END ;
+
+\ A position in a document the client never opened: -32602.
+: CMP-NOT-OPEN-TURNS ( -- )
+   INITIALIZE
+   s" 3" CMP-A-PATH 2 24 COMPLETION-ASK
+   SAY
+   HEAR CAPABILITIES
+   HEAR s" 3" -32602 REFUSED ;
+
+\ CMPL asked about in the turn of the change that renamed CMPL-ONE: the
+\ request checks the changed text, so its list comes before the answer,
+\ which offers CMPL-NEW and no CMPL-ONE.
+: CMP-AFTER-CHANGE-TURNS ( -- )
+   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   INITIALIZE
+   CMP-A-PATH TEXT-CMP-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   CMP-A-PATH TEXT-CMP-A-NEW 2 CHANGES
+   s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
+   SAY
+   TEXT-CMP-A-NEW CMP-A-PATH 2 s" verified" LISTED
+   s" 3" ITEMS-START
+   s" CMPL-DEP" s" ( n -- n )" ITEM+
+   s" CMPL-NEW" s" ( -- n ) \\ package cmpa" ITEM+
+   ITEMS-END ;
+
+\ In CMPQ-USE's body, at CMPQ, the package's name, a bare prefix, and at
+\ CMPQ:, its name and an edge colon, each answer holds every qualified
+\ spelling that the qualified prefixes CMPQ:> and CMPQ:C there offer, with
+\ the same detail: the client's filter of the first answer as the token grows
+\ to either keeps what a later request would offer.
+: CMP-QUALIFIED-TURNS ( -- )
+   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   INITIALIZE
+   CMP-A-PATH TEXT-CMP-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" CMP-A-PATH 12 26 COMPLETION-ASK
+   s" 4" CMP-A-PATH 12 27 COMPLETION-ASK
+   s" 5" CMP-A-PATH 12 28 COMPLETION-ASK
+   s" 6" CMP-A-PATH 12 41 COMPLETION-ASK
+   SAY
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" ITEMS-START
+   s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
+   s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 4" ITEMS-START
+   s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
+   s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 5" ITEMS-START
+   s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 6" ITEMS-START
+   s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
+   ITEMS-END ;
+
+\ ---- cancellation ------------------------------------------------------------
+
+\ A cancel of the request with this id's JSON text.
+: CANCELS ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   PAR-B CLEAR
+   s\" {\"id\":" PAR+ i iu PAR+ s" }" PAR+
+   s" $/cancelRequest" PAR$ TELL ;
+
+\ Two completions and a cancel of the first, written together: the first is
+\ answered -32800 and runs no check, so the document's list is published once,
+\ by the second's check, before its answer.
+: CANCEL-CMP-TURNS ( -- )
+   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   INITIALIZE
+   CMP-A-PATH TEXT-CMP-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
+   s" 4" CMP-A-PATH 3 45 COMPLETION-ASK
+   s" 3" CANCELS
+   SAY
+   HEAR s" 3" -32800 REFUSED
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 4" ITEMS-START
+   s" swap" s" " ITEM+
+   ITEMS-END ;
+
+\ A hover whose id is a string and a cancel naming that string spelt another
+\ way, written together: -32800, the id echoed as it came.
+: CANCEL-HOVER-TURNS ( -- )
+   MARKDOWN-CLIENT
+   HOVER-A-PATH TEXT-HOVER-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
+   s\" \"h\\/3\"" HOVER-A-PATH 4 18 HOVER-ASK
+   s\" \"h/3\"" CANCELS
+   SAY
+   HEAR s\" \"h\\/3\"" -32800 REFUSED ;
+
+\ A completion and then a change of its document, written together: the
+\ completion asked about the text the change replaces, so it is answered
+\ -32801 and runs no check; the change is applied after it and its text is
+\ checked.
+: MODIFIED-TURNS ( -- )
+   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   INITIALIZE
+   CMP-A-PATH TEXT-CMP-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
+   CMP-A-PATH TEXT-CMP-A-NEW 2 CHANGES
+   SAY
+   HEAR s" 3" -32801 REFUSED
+   TEXT-CMP-A-NEW CMP-A-PATH 2 s" verified" LISTED ;
+
+\ Cancels read behind request 4 that name no request held: request 3's id,
+\ answered the turn before, an id never sent, the string "4", and the id of an
+\ invalid message, which is no request. None is answered, request 4 and the
+\ invalid message are answered as they would be, and a cancel of request 5
+\ behind it still counts: the server goes on.
+: STRAY-TURNS ( -- )
+   INITIALIZE
+   s" 3" s" habu/unknown" ASK
+   SAY
+   HEAR CAPABILITIES
+   HEAR s" 3" -32601 REFUSED
+   s" 4" s" habu/unknown" ASK
+   s" 3" CANCELS
+   s" 9" CANCELS
+   s\" \"4\"" CANCELS
+   s\" {\"jsonrpc\":\"1.0\",\"id\":6,\"method\":\"habu/unknown\"}" FRAMED
+   s" 6" CANCELS
+   s" 5" s" habu/unknown" ASK
+   s" 5" CANCELS
+   SAY
+   HEAR s" 4" -32601 REFUSED
+   HEAR s" 6" -32600 REFUSED
+   HEAR s" 5" -32800 REFUSED ;
+
+\ A request, shutdown, a cancel of the request, a request after shutdown and
+\ a cancel of it, and exit, read together: the held request is answered
+\ before shutdown, -32800, its cancel counting though read past shutdown;
+\ shutdown is answered null, the request after it -32600, since a server shut
+\ down takes no cancel, and exit after shutdown exits 0.
+: TEST-CANCEL-SHUTDOWN ( -- )
+   s" cancel-shutdown" CONVERSATION
+   INITIALIZE
+   s" 3" s" habu/unknown" ASK
+   SHUTDOWN
+   s" 3" CANCELS
+   s" 4" s" habu/unknown" ASK
+   s" 4" CANCELS
+   EXIT-NOTE
+   0 CONVERSE
+   CAPABILITIES
+   s" 3" -32800 REFUSED
+   s" 2" NULL-RESULT
+   s" 4" -32600 REFUSED
+   ENDS ;
+
+: TEST-CANCELS ( -- )
+   TEST-CANCEL-SHUTDOWN
+   s" cancel-completion" [: CANCEL-CMP-TURNS ;] TALK
+   s" cancel-hover" [: CANCEL-HOVER-TURNS ;] TALK
+   s" content-modified" [: MODIFIED-TURNS ;] TALK
+   s" cancel-stray" [: STRAY-TURNS ;] TALK ;
+
+: TEST-COMPLETIONS ( -- )
+   s" completion" [: CMP-TURNS ;] TALK
+   s" completion-not-open" [: CMP-NOT-OPEN-TURNS ;] TALK
+   s" completion-after-change" [: CMP-AFTER-CHANGE-TURNS ;] TALK
+   s" completion-qualified" [: CMP-QUALIFIED-TURNS ;] TALK ;
+
 : TEST-HOVERS ( -- )
    s" hover" [: HOVER-TURNS ;] TALK
    s" hover-dependency" [: HOVER-DEP-TURNS ;] TALK
    s" hover-dependency-open" [: HOVER-OPEN-DEP-TURNS ;] TALK
    s" hover-definition" [: HOVER-DEF-TURNS ;] TALK
+   s" hover-deftype" [: HOVER-DEFTYPE-TURNS ;] TALK
    s" hover-none" [: HOVER-NONE-TURNS ;] TALK
    s" hover-plaintext" [: HOVER-PLAIN-TURNS ;] TALK
    s" hover-not-open" [: HOVER-NOT-OPEN-TURNS ;] TALK
@@ -2759,6 +3115,8 @@ public
    TEST-SYMBOLS
    TEST-DEFINITIONS
    TEST-HOVERS
+   TEST-COMPLETIONS
+   TEST-CANCELS
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
 

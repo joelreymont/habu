@@ -102,6 +102,75 @@ create COMPOSE-STOP-PATH PATH-CAP allot
 variable COMPOSE-STOP-U
 variable COMPOSE-STOP-SUBJ               \ the stop was in the supplied bytes
 
+\ ---- completion: the cursor --------------------------------------------------
+\ A completion names a byte of the subject (CURSOR!). The subject's scan finds
+\ the token the byte is in, or the blanks before it, as the scanner reads
+\ tokens (CSR-HIT), and the reader that takes that token answers: a top-level
+\ statement, or a top-level tick's operand, has the checker offer the spellings
+\ that bind there before the token is consumed (CSR-TOP); a run a definition's
+\ body appends places the cursor in the body's text, where that body's check
+\ offers them (CSR-PLACE, CSR-ARM). A token any other reader takes - a
+\ definer's name, a loader's or `using`'s operand, a TRUSTED: body, type
+\ syntax - offers nothing, nor does a byte the scan passed inside a comment, a
+\ string or a signature, nor one it never reaches. Blanks before a comment or
+\ string the scan skips belong to the token after it. One answer at most.
+0 constant CSR-WAIT                      \ not reached yet
+1 constant CSR-SPACE                     \ in the blanks before the token at CSR-TOK
+2 constant CSR-PART                      \ inside the token at CSR-TOK, past its first byte
+3 constant CSR-PLACED                    \ at CSR-BODY in the body being read
+4 constant CSR-DONE                      \ answered, or nothing to answer
+variable CSR-AT                          \ the subject byte, -1 for none
+variable CSR-STATE
+variable CSR-TOK                         \ where that token starts; -1 for the next one read
+variable CSR-BODY
+variable CSR-SUBJ                        \ the file being scanned is the subject
+
+: CSR-RESET ( -- )
+   -1 CSR-AT !  CSR-DONE CSR-STATE !  0 CSR-SUBJ ! ;
+
+CSR-RESET
+
+\ The cursor waits on the token read last.
+: CSR-HIT? ( -- bool )
+   CSR-STATE @ CSR-SPACE =  CSR-STATE @ CSR-PART =  or ;
+
+\ NEXT-RAW read from PREV past blanks to the token from START to END, START =
+\ END at the source's end. A waiting cursor is in those blanks or that token,
+\ or was passed; one the token before waited on, which no reader took, offers
+\ nothing.
+: CSR-HIT ( n n n -- )
+   {: prev:n start:n end:n :}
+   CSR-SUBJ @ 0= IF EXIT THEN
+   BASE-BYTE @ {: b:n :}
+   CSR-STATE @ CSR-SPACE =  CSR-TOK @ 0 <  and IF b start + CSR-TOK ! EXIT THEN
+   CSR-HIT? IF CSR-DONE CSR-STATE ! EXIT THEN
+   CSR-STATE @ CSR-WAIT <> IF EXIT THEN
+   CSR-AT @  b end +  > IF EXIT THEN
+   CSR-AT @  b prev +  < IF CSR-DONE CSR-STATE ! EXIT THEN
+   b start + CSR-TOK !
+   CSR-AT @ CSR-TOK @ > IF CSR-PART ELSE CSR-SPACE THEN CSR-STATE ! ;
+
+\ The scan skipped a comment or a string. Blanks before its opener belong to
+\ the token after it; a cursor in the opener offers nothing, nor does one
+\ still waiting, past the opener, when the skip ran out of source (FOUND = 0):
+\ it is inside the comment or string the file ends in.
+: CSR-SKIPPED ( -- )
+   CSR-SUBJ @ 0= IF EXIT THEN
+   CSR-STATE @ CSR-SPACE = IF -1 CSR-TOK ! EXIT THEN
+   CSR-STATE @ CSR-PART = IF CSR-DONE CSR-STATE ! EXIT THEN
+   CSR-STATE @ CSR-WAIT =  FOUND @ 0=  and IF CSR-DONE CSR-STATE ! THEN ;
+
+\ A body run read from source offset SRC starts at BODY-U: the token the cursor
+\ waits on places it in the body's text.
+: CSR-PLACE ( n -- )
+   {: src:n :}
+   CSR-SUBJ @ 0= IF EXIT THEN
+   CSR-HIT? 0= IF EXIT THEN
+   CSR-TOK @  BASE-BYTE @ src +  <> IF EXIT THEN
+   CSR-STATE @ CSR-PART = IF CSR-AT @ CSR-TOK @ - ELSE 0 THEN
+   BODY-U @ + CSR-BODY !
+   CSR-PLACED CSR-STATE ! ;
+
 1 constant TICK-GATE
 2 constant TICK-UNKNOWN
 3 constant TICK-PARENT-GATE
@@ -169,13 +238,15 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
    repeat ;
 
 : NEXT-RAW ( -- ptr u8 n )
+   SCAN-I @ {: prev:n :}
    SKIP-WS
-   SCAN-I @ SOURCE-U @ >= if SOURCE@ 0 exit then
+   SCAN-I @ SOURCE-U @ >= if prev SOURCE-U @ dup CSR-HIT SOURCE@ 0 exit then
    SCAN-I @ TOKEN-START !
    BASE-BYTE @ SCAN-I @ + TOKEN-BYTE !
    begin SCAN-I @ SOURCE-U @ < if SCAN-C@ 32 > else 0 0= 0= then while
       SCAN-C+ drop
    repeat
+   prev TOKEN-START @ SCAN-I @ CSR-HIT
    SOURCE@ TOKEN-START @ +  SCAN-I @ TOKEN-START @ - ;
 
 \ The scan stops at the statement it is in, at its opener: the top-level token
@@ -302,6 +373,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
          2dup NORMAL-STRING-OPENER? IF 2drop 34 SKIP-PAST 3 RECORD-SKIPPED-STRING ELSE EXIT THEN THEN
       ELSE EXIT THEN
       THEN THEN THEN
+      CSR-SKIPPED
    AGAIN ;
 
 : NEXT-SCAN ( -- ptr u8 n )
@@ -337,7 +409,10 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 \ also trips the engine's TDECL-CAP, so both paths answer the same code.
 TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
 
+\ A body read and never checked as a definition's (a TRUSTED: or type body)
+\ drops the cursor it placed.
 : BODY-RESET ( -- )
+   CSR-STATE @ CSR-PLACED = IF CSR-DONE CSR-STATE ! THEN
    0 BODY-U !
    0 BODY-ROWS ! ;
 
@@ -353,6 +428,7 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
    BODY-U @ u + 1 + BODYBUF-CAP > IF E-VS-BODY-CAP throw THEN
    a SOURCE@ - {: src:n :}
    src 0 <  src u + SOURCE-U @ >  or IF s" verify-source: body run outside the source" 74 die THEN
+   src CSR-PLACE
    src BODY-ROW!
    0 BEGIN dup u < WHILE
       dup a + c@  BODY-BUF BODY-U @ + c!
@@ -784,7 +860,7 @@ CAST: TICK-ORDER-ACTION ( n -- [ ptr u8 n n ptr u8 [ -- ] -- n ] )
    NCOMP-DISPATCH:DECL-WITH-TICK-ORDER-OFF OWNER-XT TICK-ORDER-ACTION execute 0<> ;
 
 CAST: VERIFIER-ACTION ( n -- [ -- ] )
-CAST: ARM-ACTION ( n -- [ n n n -- ] )
+CAST: ARM-ACTION ( n -- [ ptr u8 n n n n -- ] )
 CAST: USES-ACTION ( n -- [ [ n n n n n -- ] [ -- ] -- ] )
 
 \ ---- navigation: where a declaration was written, what a use bound ----------
@@ -833,19 +909,78 @@ DYNAMIC-BUFFER VISIT-ROWS n             \ per visit, its path's offset and lengt
    VISIT-PATHS-RELEASE  VISIT-ROWS-RELEASE
    0 VISIT-PATHS-U !  0 VISIT-N !  0 VISIT-CUR ! ;
 
-\ Arm the checker with the token from byte AT, U long, in the file being
-\ scanned: the record the next named registrar retains takes that location
+\ Arm the checker with NAME, declared by the token from byte AT, U long, in the
+\ file being scanned: the record the next named registrar retains takes that
+\ spelling and location
 \ (src/core/checker.f CHECKER-DECL-AT!), until DISARM. Outside a visit there
 \ is no file to name, and the checker's armed state stays its caller's.
-: ARM ( n n -- )
-   {: at:n u:n :}
+: ARM ( ptr u8 n n n -- )
+   {: name:ptr nameu:n at:n u:n :}
    VISIT-CUR @ 0= IF EXIT THEN
-   VISIT-CUR @ at at u +
+   name nameu VISIT-CUR @ at at u +
    NCOMP-DISPATCH:DECL-VERIFY-DECL-ARM-OFF OWNER-XT ARM-ACTION execute ;
 
 : DISARM ( -- )
    VISIT-CUR @ 0= IF EXIT THEN
    NCOMP-DISPATCH:DECL-VERIFY-DECL-DISARM-OFF OWNER-XT VERIFIER-ACTION execute ;
+
+public
+
+\ A spelling the cursor's place offers (CURSOR!), and where the declaration it
+\ binds was written: the path its file was resolved to when this composition
+\ visited it, and where its declaring token starts and ends there; an empty
+\ path and 0 0 for a declaration in no file the composition visited, or with no
+\ location. The strings are borrowed: a word installed here consumes them
+\ before it returns.
+defer ON-CANDIDATE ( ptr u8 n ptr u8 n n n -- )
+
+private
+
+: CANDIDATE-NONE ( ptr u8 n ptr u8 n n n -- )
+   2drop 2drop 2drop ;
+
+: CANDIDATE-INIT ( -- )
+   ['] CANDIDATE-NONE is ON-CANDIDATE ;
+
+CANDIDATE-INIT
+
+CAST: CURSOR-ACTION ( n -- [ n [ ptr u8 n n n n -- ] -- ] )
+CAST: VISIBLE-ACTION ( n -- [ ptr u8 n n [ ptr u8 n n n n -- ] -- ] )
+
+\ The checker's candidate (src/core/checker.f CHECKER-CURSOR!, EACH-VISIBLE):
+\ its spelling and the declaration's visit and span, 0 0 0 for none.
+: CSR-VISIT ( ptr u8 n n n n -- )
+   {: a:ptr u:n v:n s:n e:n :}
+   v VISIT-IN? IF a u v VISIT-PATH s e ON-CANDIDATE EXIT THEN
+   a u NULL$ 0 0 ON-CANDIDATE ;
+
+\ The definition body of U bytes about to be checked holds the cursor: arm the
+\ check at it, its place or the body's end when it waits before the closer,
+\ and answer whether it was armed. One arm per composition, so a does>
+\ parent checked twice offers once.
+: CSR-ARM ( n -- bool )
+   {: u:n :}
+   CSR-SUBJ @ 0= IF false EXIT THEN
+   CSR-STATE @ CSR-PLACED =  CSR-STATE @ CSR-SPACE =  or 0= IF false EXIT THEN
+   CSR-STATE @ CSR-PLACED = IF CSR-BODY @ ELSE u THEN
+   CSR-DONE CSR-STATE !
+   ['] CSR-VISIT CHECKER-OWNER-ABI:VERIFY-CURSOR-OFF OWNER-XT CURSOR-ACTION execute
+   true ;
+
+\ After the armed check, on either exit; the check that took the arm released
+\ it already.
+: CSR-DISARM ( -- )
+   -1 ['] CSR-VISIT CHECKER-OWNER-ABI:VERIFY-CURSOR-OFF OWNER-XT CURSOR-ACTION execute ;
+
+\ Run Q, the check of a definition body of U bytes, armed at the cursor the
+\ body holds immediately before it, so that no other check (a TRUSTED: body's)
+\ takes the arm, and disarmed after it on either exit.
+: CSR-CHECK ( n [ -- ] -- )
+   {: u:n q :}
+   u CSR-ARM 0= IF q execute EXIT THEN
+   q catch {: rc:n :}
+   CSR-DISARM
+   rc 0<> IF rc throw THEN ;
 
 \ Run Q with H receiving each use Q's checks bind (src/core/checker.f
 \ CHECKER-WITH-USES): one scope at a time, closed on either exit.
@@ -1096,8 +1231,11 @@ PTR-VARIABLE TICK-BODY-A
 variable TICK-BODY-U
 variable TICK-BODY-VERDICT
 
-: TICK-BODY-RUN ( -- )
+: TICK-BODY-CHECK ( -- )
    TICK-BODY-A @ TICK-BODY-U @ CHECK-BODY TICK-BODY-VERDICT ! ;
+
+: TICK-BODY-RUN ( -- )
+   TICK-BODY-U @ ['] TICK-BODY-CHECK CSR-CHECK ;
 
 : VERIFY-BODY ( -- n )
    DEF-BODY$ {: ba:ptr bu:n :}
@@ -1140,10 +1278,13 @@ variable DOES-CLAUSE-U
    DOES-CLAUSE-A @ DOES-CLAUSE-U @ REPORT-STRETCH
    -1 DEFER-SEEN ! ;
 
-: TICK-DOES-RUN ( -- )
+: TICK-DOES-CHECK ( -- )
    TICK-BODY-A @ TICK-BODY-U @
    TICK-DOES-SA @ TICK-DOES-SU @ TICK-DOES-NA @ TICK-DOES-NU @
    CHECK-DOES-BODY TICK-DOES-VERDICT ! ;
+
+: TICK-DOES-RUN ( -- )
+   TICK-BODY-U @ ['] TICK-DOES-CHECK CSR-CHECK ;
 
 : VERIFY-DOES-BODY ( ptr u8 n ptr u8 n -- n ) {: sig:ptr sigu:n na:ptr nu:n :}
    DEF-BODY$ {: ba:ptr bu:n :}
@@ -1172,7 +1313,7 @@ variable WRAP-ROW                             \ the definer row the last call na
 
 \ The body of the definition DEF-NAME! pinned, checked with its name armed.
 : VERIFY-NAMED-BODY ( -- n )
-   DEF-NAME-BYTE @ DEF-NAME-U @ ARM
+   DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ DEF-NAME-U @ ARM
    VERIFY-BODY
    DISARM ;
 
@@ -1354,14 +1495,6 @@ TRUSTED: GENERATES-SIGNATURE ( ptr u8 n ptr u8 n bool -- n n )
 
 : CAST-TRUST ( -- bool )
    DTC-NAME$ DTC-SIG$ DECL-SIGNATURE ;
-
-: RECORD-CAST-IN ( ptr u8 n ptr u8 n -- bool )
-   DTC-BUILD-IN
-   CAST-TRUST ;
-
-: RECORD-CAST-OUT ( ptr u8 n ptr u8 n -- bool )
-   DTC-BUILD-OUT
-   CAST-TRUST ;
 
 \ ---- a definition of a name the scope already holds ---------------------------
 \ The checker's own guard (src/core/checker.f CHECKER-CERT-DUP?) refuses a colon
@@ -1549,7 +1682,7 @@ DUPLICATE-INIT
    TOKEN-BYTE @
    {: name:ptr nameu:n at:n :}
    -1 SIG-RAW-MODE!
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! DISARM ;] finally
    IF name nameu sig sigu at class DEFINED-HERE THEN ;
 
@@ -1566,7 +1699,7 @@ DUPLICATE-INIT
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: at:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu dsym RECORD-CREATED
    DISARM
    0= IF 0 0= 0= EXIT THEN
@@ -1576,7 +1709,7 @@ DUPLICATE-INIT
 : TRUST-DEFER-SIGNATURE ( ptr u8 n n -- )
    {: name:ptr nameu:n at:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    {: kept:bool :}
    name nameu CHECKER-DEFER
@@ -1648,7 +1781,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: at:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    DISARM
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN
@@ -1665,7 +1798,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    TOKEN-BYTE @ {: at:n :}
    name nameu REFUSE-DUPLICATE IF REQUIRE-SIGNATURE 2drop EXIT THEN
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu sig sigu DEFCAST-SIGNATURE
    DISARM
    name nameu sig sigu at DEF-WORD DEFINED-HERE ;
@@ -1678,7 +1811,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: at:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu sig sigu CHECKER-LINEAR
    DISARM
    name nameu sig sigu at DEF-WORD DEFINED-HERE ;
@@ -1750,12 +1883,14 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
    TOKEN-BYTE @ {: at:n :}
    name nameu MANGLE {: tail:ptr tailu:n :}
    tail tailu s" 0" CHECKER-DEFFAMILY
-   at nameu ARM
-   name nameu tail tailu RECORD-CAST-IN
+   name nameu tail tailu DTC-BUILD-IN
+   DTC-NAME$ at nameu ARM              \ the converter's own name, the TYPE's span
+   CAST-TRUST
    DISARM
    at nameu CAST-DEFINED
-   at nameu ARM
-   name nameu tail tailu RECORD-CAST-OUT
+   name nameu tail tailu DTC-BUILD-OUT
+   DTC-NAME$ at nameu ARM
+   CAST-TRUST
    DISARM
    at nameu CAST-DEFINED ;
 
@@ -1964,7 +2099,7 @@ PTR-VARIABLE STG-START
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    count countu COUNT-REFUSED? IF EXIT THEN
-   at nameu ARM
+   name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
@@ -1977,7 +2112,7 @@ PTR-VARIABLE STG-START
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
@@ -1988,7 +2123,7 @@ PTR-VARIABLE STG-START
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    count countu COUNT-REFUSED? IF EXIT THEN
-   at nameu ARM
+   name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
@@ -1997,7 +2132,7 @@ PTR-VARIABLE STG-START
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFTYPED-VARIABLE
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
@@ -2012,7 +2147,7 @@ PTR-VARIABLE STG-START
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
@@ -2087,7 +2222,7 @@ PTR-VARIABLE STG-START
    nameu 0= IF E-MISSING-NAME throw THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
    name DEF-NAME-A !  nameu DEF-NAME-U !
-   at nameu ARM
+   name nameu at nameu ARM   \ the checker spells the record by the tail it keeps
    [: DEF-NAME-A @ DEF-NAME-U @ CHECKER-EXPORT ;] catch
    DISARM
    {: rc:n :}
@@ -2244,7 +2379,7 @@ variable FILE-USE
    {: kind:ptr kindu:n sig:ptr sigu:n :}
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu sig sigu TRUST-STRUCTURE-FIELD
    DISARM
    IF kind kindu name nameu sig sigu at at nameu + DEF-WORD DEFINED THEN ;
@@ -2254,7 +2389,7 @@ variable FILE-USE
 : RECORD-STRUCTURE ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu s" -- n" DECL-SIGNATURE
    DISARM
    IF name nameu s" -- n" at DEF-CONSTANT DEFINED-HERE THEN
@@ -2337,7 +2472,7 @@ variable FFI-SIG-U
    nameu 0= IF E-MISSING-NAME throw THEN
    NEXT-SCAN nip 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
    FFI-SIGNATURE {: sig:ptr sigu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    DISARM
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN ;
@@ -2556,13 +2691,27 @@ variable TOP-DEFER-I                             \ where the run's reading start
    a TOP-DEFER-A !  u TOP-DEFER-U !
    a SOURCE@ -  v 2 = IF u + THEN  TOP-DEFER-I ! ;
 
+\ The token the cursor waits on is a top-level statement, or a top-level tick's
+\ operand: the checker offers the spellings that bind there now, before the
+\ token is consumed, unless a stretch left to the run holds it.
+: CSR-TOP ( -- )
+   CSR-SUBJ @ 0= IF EXIT THEN
+   CSR-HIT? 0= IF EXIT THEN
+   CSR-STATE @ CSR-PART = IF CSR-AT @ CSR-TOK @ - ELSE 0 THEN {: n:n :}
+   CSR-DONE CSR-STATE !
+   TOP-DEFER @ 0<> IF EXIT THEN
+   SOURCE@ CSR-TOK @ BASE-BYTE @ - +  n  CHECKER-OWNER-ABI:VISIBLE-TOP
+   ['] CSR-VISIT
+   NCOMP-DISPATCH:DECL-VERIFY-EACH-VISIBLE-OFF OWNER-XT VISIBLE-ACTION execute ;
+
 \ `'` and `char` take the next token. `'` resolves it as the load does; `char`'s
 \ is no name.
 : TOP-OPERAND ( ptr u8 n -- )
    {: a:ptr u:n :}
    OPERAND {: o:ptr ou:n :}
-   COMPOSE-ON @ 0=  TOP-DEFER @ 0<>  or IF EXIT THEN
    a u CHAR-KEYWORD? IF EXIT THEN
+   CSR-TOP
+   COMPOSE-ON @ 0=  TOP-DEFER @ 0<>  or IF EXIT THEN
    o ou 0 0= 0= TOP-RESOLVE ;
 
 \ Any other token: a number the engine's reader takes is done. A word that may
@@ -2615,6 +2764,7 @@ variable TOP-DEFER-I                             \ where the run's reading start
       NEXT-SCAN dup 0 > TICK-REMAINDER @ 0= and WHILE
       over SOURCE@ - TOP-DUE
       2dup TOP-CUR-U ! TOP-CUR-A !
+      CSR-TOP
       2dup FILE-SCOPE-STEP
       2dup TOP-PARSER? IF TOP-OPERAND ELSE
       2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
@@ -2624,6 +2774,7 @@ variable TOP-DEFER-I                             \ where the run's reading start
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !
    REPEAT 2drop
    TICK-REMAINDER @ IF EXIT THEN
+   CSR-TOP                                      \ a cursor in the blanks the source ends with
    SOURCE-U @ TOP-DUE
    PEND-RELEASE ;
 
@@ -2633,7 +2784,8 @@ variable TOP-DEFER-I                             \ where the run's reading start
    SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @ DIAG-SOURCE! ;
 
 \ Nested files share the checker window but not the scanner cursor. The saved
-\ source, token and open-stretch context belongs to the caller; declarations,
+\ source, token and open-stretch context, and whether the file scanned is the
+\ subject a completion's cursor is in, belong to the caller; declarations,
 \ learned definers and the fact that a stretch was reported belong to the
 \ entire composition. A file's packets locate in that file, and on return or
 \ throw the checker is armed with the caller's bytes
@@ -2648,20 +2800,22 @@ variable TOP-DEFER-I                             \ where the run's reading start
    TOP-PREV-A @ TOP-PREV-U @ TOP-CUR-A @ TOP-CUR-U @
    TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-DEFER-I @ TOP-REFUSED @
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
-   FILE-PKG @ FILE-USE @ PEND-BASE @ VISIT-CUR @
+   FILE-PKG @ FILE-USE @ PEND-BASE @ VISIT-CUR @ CSR-SUBJ @
    {: olda:ptr oldu:n oldi:n oldbl:n oldbc:n oldbb:n
       oldprev:ptr oldprevu:n oldcur:ptr oldcuru:n
       olddefer:n olddefa:ptr olddefu:n olddefi:n oldrefused:ptr
       oldpath:ptr oldpathu:n
-      oldpkg:n olduse:n oldbase:n oldvisit:n :}
+      oldpkg:n olduse:n oldbase:n oldvisit:n oldsubj:n :}
    src srcu SOURCE!
    SOURCE-ARM
    path COMPOSE-CUR-PATH-A !  pathu COMPOSE-CUR-PATH-U !
    diag diagu DIAG-FILE!
    path pathu VISIT-OPEN
+   VISIT-CUR @ VISIT-FIRST @ = CSR-SUBJ !
    [: FILE$ ON-FILE VERIFY-SOURCE ;] catch {: rc:n :}
    DISARM
    oldvisit VISIT-CUR !
+   oldsubj CSR-SUBJ !
    rc 0<> COMPOSE-STOP-U @ 0= and IF
       diag COMPOSE-STOP-PATH diagu BYTE-COPY
       diagu COMPOSE-STOP-U !
@@ -2761,6 +2915,13 @@ public
 : DEFERRED? ( -- bool )
    DEFER-SEEN @ 0<> ;
 
+\ The next composition's completion cursor, subject byte N: the spellings its
+\ place offers go to ON-CANDIDATE (the cursor's section, at the top of this
+\ file). A negative N is none, and the composition's end drops it.
+: CURSOR! ( n -- )
+   dup CSR-AT !
+   0 < IF CSR-DONE ELSE CSR-WAIT THEN CSR-STATE ! ;
+
 \ The byte where the token the scan read last starts, at the base the source
 \ was given, or that base before the scan reads one: after a throw out of a
 \ statement, where the statement stood.
@@ -2796,6 +2957,7 @@ public
    -1 COMPOSE-ON !
    [: COMPOSE-WITH-USES ;] catch {: rc:n :}
    VISITS-DROP
+   CSR-RESET
    0 COMPOSE-ON !
    COMPOSE-REQ0 @ REQUIRE-REG:TRUNCATE
    rc 0<> IF rc throw THEN ;

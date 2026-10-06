@@ -147,7 +147,8 @@ $350 constant BINDING-WINDOW-OFF
 \ The source pre-pass borrows the selected deferred body token's source span.
 $358 constant VERIFY-DEFERRED-BODY-OFF
 \ Navigation (src/core/checker.f): the verifier arms a named declaration's
-\ location around its registrar (CHECKER-DECL-AT!, CHECKER-DECL-AT-OFF) and
+\ spelling and location around its registrar (CHECKER-DECL-AT! ( name len
+\ visit start end -- ), CHECKER-DECL-AT-OFF) and
 \ receives the uses a scope's checks bind (CHECKER-WITH-USES).
 $360 constant VERIFY-DECL-ARM-OFF
 $368 constant VERIFY-DECL-DISARM-OFF
@@ -202,6 +203,17 @@ $3A8 constant WRITE-WINDOW-OFF
 \ (src/habu/verify-source.f TRUSTED-DEFINITION): its clause is declared, never
 \ checked, so VERIFY-SOURCE-DOES-OFF, which checks one first, is not this.
 $3B0 constant VERIFY-SOURCE-CLAUSE-OFF
+\ Completion (src/core/checker.f): the verifier arms the cursor the next body
+\ check fires at (CHECKER-CURSOR!), and asks which spellings bind at a
+\ top-level cursor (CHECKER-RESOLVE:EACH-VISIBLE). The position kind says how
+\ each spelling is selected: as a body token binds, as a top-level token binds,
+\ or as a body's named operand - a tick or `is` target - binds, which no local
+\ answers.
+$3B8 constant VERIFY-CURSOR-OFF
+$3C0 constant VERIFY-EACH-VISIBLE-OFF
+0 constant VISIBLE-BODY
+1 constant VISIBLE-TOP
+2 constant VISIBLE-NAMED
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

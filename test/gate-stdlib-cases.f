@@ -1966,6 +1966,10 @@ WHITEBOX-SUITE checker-decl-locs
    test/checker-decl-locs.f
 ;SUITE
 
+WHITEBOX-SUITE checker-completion
+   test/checker-completion.f
+;SUITE
+
 SUITE checker-decl-locs-capture
    test/checker-decl-locs-capture.f
 ;SUITE

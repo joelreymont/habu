@@ -57,7 +57,7 @@ private
    fam fam TFAM-FLD-START@ TFAM-INIT-HELPER$ UNLOCATED ;
 
 : CASE-RECORD ( -- )
-   s" STRUCTURE rec 0 DERIVE addr init FIELD x n ;STRUCTURE"
+   s" rec" s" STRUCTURE rec 0 DERIVE addr init FIELD x n ;STRUCTURE"
    [: RECORD-ROWS ;] ARMED-REPLAY ;
 
 \ ---- 2. a storage definer: its own row, then its suffix words --------------
@@ -67,7 +67,7 @@ private
    s" NAVDB-RELEASE" UNLOCATED ;
 
 : CASE-STORAGE ( -- )
-   s" DYNAMIC-BUFFER NAVDB n" [: STORAGE-ROWS ;] ARMED-REPLAY ;
+   s" NAVDB" s" DYNAMIC-BUFFER NAVDB n" [: STORAGE-ROWS ;] ARMED-REPLAY ;
 
 \ ---- 3. one uses scope at a time ---------------------------------------------
 : NOTE-USE ( n n n n n -- ) 2drop 2drop drop ;
@@ -119,7 +119,7 @@ PTR-VARIABLE REPLAY-A   variable REPLAY-U
    USE-DE @ AT-END T= ;
 
 : CASE-DOES ( -- )
-   s" : NAVT ( -- n ) 9 ;" [: ;] ARMED-REPLAY
+   s" NAVT" s" : NAVT ( -- n ) 9 ;" [: ;] ARMED-REPLAY
    s" package NAVP public : NAVS ( -- n ) 1 ; ;package : NAVS ( -- n ) 2 ;"
    VERIFY:SOURCE-BUF-IN-SCOPE
    s" a certified clause publishes its call of NAVT" T-LABEL
@@ -137,19 +137,12 @@ PTR-VARIABLE REPLAY-A   variable REPLAY-U
    USE-DE @ AT-END T= ;
 
 \ ---- 5. a rollback, then the same offset -------------------------------------
-\ A neutral checker scope is the rollback frame a verifier child checks its
-\ whole composition in (tools/check-verify-child.f SCOPED). One nested in the
-\ case's own (MAIN) takes the located row back, and with it the record its
-\ name bound, so the name binds nothing in the case's scope; the next row the
-\ store retains lands at the same offset. That row is declared unarmed, so it
-\ has no location: a row a lost truncation left in DECL-LOCS would answer for
-\ it.
-: IN-NEUTRAL ( [ -- ] -- )
-   CHECKER-SCOPE-START-NEUTRAL
-   catch
-   CHECKER-SCOPE-DONE
-   dup 0= IF drop EXIT THEN
-   throw ;
+\ A neutral checker scope (IN-NEUTRAL) is the rollback frame a verifier child
+\ checks its whole composition in. One nested in the case's own (MAIN) takes
+\ the located row back, and with it the record its name bound, so the name
+\ binds nothing in the case's scope; the next row the store retains lands at
+\ the same offset. That row is declared unarmed, so it has no location: a row
+\ a lost truncation left in DECL-LOCS would answer for it.
 
 variable GONE-ROW
 
@@ -158,7 +151,7 @@ variable GONE-ROW
    s" NAVR-GONE" ROW GONE-ROW ! ;
 
 : GONE ( -- )
-   s" : NAVR-GONE ( -- n ) 1 ;" [: GONE-ROWS ;] ARMED-REPLAY ;
+   s" NAVR-GONE" s" : NAVR-GONE ( -- n ) 1 ;" [: GONE-ROWS ;] ARMED-REPLAY ;
 
 : NEXT-ROWS ( -- )
    s" the next row takes the same offset" T-LABEL
