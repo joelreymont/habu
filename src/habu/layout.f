@@ -1338,7 +1338,7 @@ $7D8 constant QFRAME-CELL
 $250 constant DEF-TKA-CELL
 $258 constant DEF-TKL-CELL
 \ CMM-CELL: compile-loop ADT-lowering mode (TFAM 10, docs/type-families.md §16),
-\ mirroring the checker's MM token machine: 0 = off; slices 2-3 arm it at a
+\ mirroring the checker's match-mode token machine: 0 = off; slices 2-3 arm it at a
 \ `construct`/`MATCH` keyword so the operand tokens are captured BEFORE the
 \ local/keyword/literal/call/undefined dispatch and never hit dictionary lookup.
 \ Tested fail-closed at the LCOMPILE head (EM-COMPILE-ADT-MODE): armed with no

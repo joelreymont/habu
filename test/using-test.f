@@ -55,6 +55,7 @@ package UA public : AW ( -- n ) 11 ; ;package
 package UB public : BW ( -- n ) 22 ; ;package
 package UC public : AW ( -- n ) 33 ; ;package   \ same tail AW as UA -> ambiguity source
 package UP  : SECP ( -- n ) 99 ; public : PUBW ( -- n ) SECP ; ;package   \ SECP is private
+package UMM public : MM ( n -- n ) 7 + ; ;package
 
 \ shadow fixtures (dot habu-err-on-global-e62f806c): a used package whose publics
 \ collide with globals of the same name. GW's global effect DIFFERS from the
@@ -89,6 +90,10 @@ s" package UH using UA public : UT-H1 ( -- n ) AW ; ;package UH:UT-H1 drop" UCE-
 s" package UI using UA : AW ( -- n ) 7 ; public : UT-I1 ( -- n ) AW ; ;package UI:UT-I1 drop" UCE-CATCH 0 T=
 \ a call resolved under a using stays compiled after ;using (compile-time resolution)
 s" using UA : UT-CB2 ( -- n ) AW ; ;using UT-CB2 drop" UCE-CATCH 0 T=
+\ A public MM must be callable bare through using, including in a checked body.
+\ The checker's global match-mode cell used to reject this as a global shadow.
+s" using UMM : UT-MM ( -- n ) 60 MM ; ;using UT-MM 67 T=" UCE-CATCH 0 T=
+s" using UMM : UT-MM-V ( n -- n ) MM ; ;using" VS-CATCH 0 T=
 
 \ === negatives (rejected, fail closed) ===
 \ used package's PRIVATE word does not resolve bare

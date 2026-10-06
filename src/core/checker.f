@@ -18113,10 +18113,10 @@ variable MSEEN-I
       MSEEN-I @ 1 + MSEEN-I !
    REPEAT RES-TRUE ;
 
-variable MM      \ 0 off | 1 expecting family | 2 expecting variant or ;match | 3 expecting of | 4 refused, read unmodeled
+variable CHECKER-MATCH-MODE      \ 0 off | 1 expecting family | 2 expecting variant or ;match | 3 expecting of | 4 refused, read unmodeled
 variable MPEND   \ pending variant SUMV id between the variant token and its OF (-1 poisoned)
 variable MREJ    \ match structural-reject latch: forces verdict 0, never uncheckable
-variable MSKIP   \ matches open in a refused match the walk reads unmodeled (MM 4)
+variable MSKIP   \ matches open in a refused match the walk reads unmodeled (CHECKER-MATCH-MODE 4)
 
 \ Rigid host-identity mismatch naming (dot habu-define-rigid-host). RIGID-ATOM-DOMAIN
 \ classifies a resolved term as a rigid-identity atom of a given domain (0 = none).
@@ -18150,7 +18150,7 @@ variable MSKIP   \ matches open in a refused match the walk reads unmodeled (MM 
    RF-REASON REFUSAL ! ;
 
 : MATCH-REJECT ( -- )
-   0 OK !  -1 FAILSET !  -1 MREJ !  0 MM ! ;
+   0 OK !  -1 FAILSET !  -1 MREJ !  0 CHECKER-MATCH-MODE ! ;
 
 \ A match whose family resolves nothing, which the load refuses there while
 \ compiling, or one nested past the frame depth leaves the walk without the
@@ -18159,16 +18159,16 @@ variable MSKIP   \ matches open in a refused match the walk reads unmodeled (MM 
 \ match's own `;MATCH`, as it reads dead code, rather than resolve a variant as
 \ a word.
 : MATCH-ABANDON ( -- )
-   MATCH-REJECT  1 MSKIP !  4 MM ! ;
+   MATCH-REJECT  1 MSKIP !  4 CHECKER-MATCH-MODE ! ;
 
 : MATCH-SKIP-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" match" CORE-STR= IF 1 MSKIP +! EXIT THEN
    a u s" ;match" CORE-STR= 0= IF EXIT THEN
    -1 MSKIP +!
-   MSKIP @ 0= IF 0 MM ! THEN ;
+   MSKIP @ 0= IF 0 CHECKER-MATCH-MODE ! THEN ;
 
 : MATCH-BEGIN ( -- )
-   1 MM ! ;   \ enter match mode; an unarmed registry fails closed at the family resolve (MATCH-FAM-XT default rejects)
+   1 CHECKER-MATCH-MODE ! ;   \ enter match mode; an unarmed registry fails closed at the family resolve (MATCH-FAM-XT default rejects)
 
 variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
 variable MTCH-W                      \ the bundle width the walk below really consumed
@@ -18224,7 +18224,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    MTCH-ROW @ DCUR !                         \ bundle popped; branches re-derive their rows
    9 DCUR @ 0 RCUR @ 0 CF-PUSH
    lost CF-TOP CF.FT !
-   2 MM ! ;
+   2 CHECKER-MATCH-MODE ! ;
 
 \ A scrutinee that does not fit refuses the match at its family token, but the
 \ family still gives the match's tokens their roles: the walk reads its
@@ -18274,7 +18274,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    MF-CUR MF.BASE @ DCUR !
    MF-CUR MF.RBASE @ RCUR !
    CF-ENTRY-FACTS
-   2 MM ! ;
+   2 CHECKER-MATCH-MODE ! ;
 
 : MATCH-SEMI ( -- )    \ ;match at variant-list level: exhaustiveness + join
    CF-MT? IF MD-STRAY MDIAG! MATCH-REJECT EXIT THEN
@@ -18303,18 +18303,18 @@ variable MTCH-W                      \ the bundle width the walk below really co
    CF-LOC-REST
    CF-DROP
    MF-DEPTH @ 1 - MF-DEPTH !
-   0 MM ! ;
+   0 CHECKER-MATCH-MODE ! ;
 
 : MATCH-VARIANT-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" ;match" CORE-STR= IF MATCH-SEMI EXIT THEN
    a u MF-CUR MF.FAM @ MATCH-VAR-XT 0= IF
-      drop MD-VAR-UNKNOWN MDIAG-COMPILE! 0 OK !  -1 MREJ !  -1 MPEND !  3 MM !  EXIT THEN
+      drop MD-VAR-UNKNOWN MDIAG-COMPILE! 0 OK !  -1 MREJ !  -1 MPEND !  3 CHECKER-MATCH-MODE !  EXIT THEN
    {: vid:n :}
    vid MATCH-VTAG-XT {: tag:n :}
    MF-CUR MF.SEEN @ tag MSEEN-GET IF MD-VAR-DUP MDIAG! 0 OK !  -1 MREJ ! THEN   \ duplicate variant
    MF-CUR MF.SEEN @ tag MSEEN-SET
    vid MPEND !
-   3 MM ! ;
+   3 CHECKER-MATCH-MODE ! ;
 
 : MATCH-OF-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" of" CORE-STR= 0= IF MD-MISSING-OF MDIAG-COMPILE! 0 OK !  -1 MREJ ! THEN   \ variant token without OF
@@ -18332,12 +18332,12 @@ variable MTCH-W                      \ the bundle width the walk below really co
    THEN
    10  r MF.BASE @  0  r MF.RBASE @  0  CF-PUSH
    0 DEADP !
-   0 MM ! ;
+   0 CHECKER-MATCH-MODE ! ;
 
 : MATCH-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
-   MM @ 1 = IF a u MATCH-FAM-TOK EXIT THEN
-   MM @ 2 = IF a u MATCH-VARIANT-TOK EXIT THEN
-   MM @ 4 = IF a u MATCH-SKIP-TOK EXIT THEN
+   CHECKER-MATCH-MODE @ 1 = IF a u MATCH-FAM-TOK EXIT THEN
+   CHECKER-MATCH-MODE @ 2 = IF a u MATCH-VARIANT-TOK EXIT THEN
+   CHECKER-MATCH-MODE @ 4 = IF a u MATCH-SKIP-TOK EXIT THEN
    a u MATCH-OF-TOK ;
 
 : CF-ENDOF-DISPATCH ( -- )   \ ENDOF serves CASE (7/8) and MATCH (10) by frame kind
@@ -19736,7 +19736,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 \ A structure is open: a locals declaration, a control frame, a construct or a
 \ match.
 : CF-OPEN? ( -- bool )
-   LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or ;
+   LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  CHECKER-MATCH-MODE @ 0 <>  or ;
 
 \ The closer DIAG-CLOSER! names is the load's last token of the mapped text's
 \ definition, and the load's compiler refuses a structure still open there
@@ -19751,7 +19751,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 : CLOSER-REFUSE ( -- )
    CF-OPEN? 0=  DCLOSE-U @ 0=  or  TBASE @ DMAP-A @ - 0 <>  or  RCOMPILE @ 0 <>  or IF EXIT THEN
    CONM @ 0 <> IF MD-CON-TRUNC ELSE
-      MM @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC ELSE 0 THEN
+      CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC ELSE 0 THEN
    THEN {: why:n :}
    why 0 <> IF why MDIAG !  RF-REASON ELSE RF-REJECTED THEN
    REFUSAL-TAKE  -1 RCOMPILE !
@@ -19778,8 +19778,8 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    LMODE @ IF a TKF TKFU @ LOC-TOK ELSE
    FIELD-LOAN-PENDING @ IF TKF TKFU @ SCOPE-FIELD-TOK ELSE
    CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK ELSE
-   MM @ 0 <> IF
-      MM @ 4 = IF LITERAL-PAYLOAD-STEP THEN
+   CHECKER-MATCH-MODE @ 0 <> IF
+      CHECKER-MATCH-MODE @ 4 = IF LITERAL-PAYLOAD-STEP THEN
       TKF TKFU @ MATCH-TOK
    ELSE
    a u LOC-REF? IF ELSE
@@ -21391,7 +21391,7 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 CF-OVER !  0 QDEPTH !  0 CONM !  0 FIELD-LOAN-PENDING !
    0 CF-LOOPS !
    0 ZSHAPE !
-   0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
+   0 CHECKER-MATCH-MODE !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
    0 MDIAG-DEPTH !  0 MDIAG-WIDTH !  0 UNFIT !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
@@ -22048,7 +22048,7 @@ variable CAST-PATH-N
    CHECK-FOLD-EXITS
    CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
    FIELD-LOAN-PENDING @ IF SCOPE-FIELD-REJECT THEN
-   MM @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN   \ unify pins its own mismatch
+   CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN   \ unify pins its own mismatch
    CHECK-SIG? IF CHECK-NO-BORROW THEN
    CHECK-SIG? CHECK-RETURNS? and IF
       CTOR-PEND-MATCH? IF
@@ -22883,7 +22883,7 @@ PTR-VARIABLE UNJ-A   variable UNJ-U   variable UNJ-VERDICT
    0 BWIN-UNJUDGED !
    rc 0 <> IF rc throw THEN
    CHECKER-TAPE:ARMED @ 0= 0=  LMODE @ 0= and  #CFC @ 0= and
-   CONM @ 0= and  MM @ 0= and  MF-DEPTH @ 0= and
+   CONM @ 0= and  CHECKER-MATCH-MODE @ 0= and  MF-DEPTH @ 0= and
    FIELD-LOAN-PENDING @ 0= and PARSE-COMPLETE @ 0= 0= and UWIN-VALID !
    UNJ-VERDICT @ ;
 
@@ -23134,7 +23134,7 @@ package CHECKER-REG
    TORDER-SCAN-UNKNOWN @ IF WRAP-CLEAR 2 EXIT THEN
    CHECK-FOLD-EXITS
    CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
-   MM @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN
+   CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN
    CHECK-NO-BORROW
    SGOUT @ SUNI-COERCE
    OK @ IF SGOUT @ DCUR ! THEN
