@@ -418,9 +418,12 @@ variable USE-K                       \ and its index there
    s" the call consumes the load's memory result, never the token before it" T-LABEL
    s" PJ @ SEL-INC" 1 1 3 2
    s" arg,i64.load(i32.wrap_i64(arg),arg),i64.load(i32.wrap_i64(arg),arg)" USED-ROW
-   s" a load after a source store, a call to the guarded !, stays after it" T-LABEL
+   s" a source store, a wordcall to the guarded !, is the checked store, no call" T-LABEL
    s" PO tuck ! @" 2 1
-   s" 4: br>1 | 2: i32.load i32.const=8 i32.add i64.extend_i32_u i64.const=200704 i64.gt_s brz>3,2 | 0: i32.const=102 i32.store i64.store unreachable | 0: i64.store i32.store call brz>4,7 | 0: i64.load i32.store i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>5,6 | 0: i32.const=134 i32.store i64.store unreachable | 0: i32.wrap_i64 i64.load i32.const=0 return | 0: i32.const=1 i64.const=0 return | " ROW ;
+   s" 4: br>1 | 2: i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>2,3 | 0: i32.const=134 i32.store i64.store unreachable | 0: i32.wrap_i64 i64.store i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>4,5 | 0: i32.const=134 i32.store i64.store unreachable | 0: i32.wrap_i64 i64.load i32.const=0 return | " ROW
+   s" a load after a source store takes the token the store leaves" T-LABEL
+   s" PO tuck ! @" 2 1 5 1
+   s" i32.wrap_i64(arg),i64.store(i32.wrap_i64(arg),arg,arg)" USED-ROW ;
 
 public
 : RUN ( -- )

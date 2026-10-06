@@ -3,13 +3,14 @@
 \ one module, and the windows the link refuses.
 \
 \ The module's data image is the window's DATA as the capture found it, byte
-\ for byte; the window holds a word whose text literal lies in that DATA.
+\ for byte; the window holds a word whose text literal lies in that DATA, and a
+\ constant no call names, which links with no routine.
 \ test/wasm/dynamic.f runs linked modules under wasm-tools and bun.
 \
 \ Each refused window is compiled, captured and linked in a child of its own,
-\ forked before this process opens a window: a variable in the window has no
-\ Wasm routine, a call to `here` names a word no kernel row answers, and a
-\ window without kernel-words.f ships no WKWORDS:DOT for `.`. Each exits 74
+\ forked before this process opens a window: a call to a defer names a record
+\ with no Wasm routine, a call to `here` names a word no kernel row answers, and
+\ a window without kernel-words.f ships no WKWORDS:DOT for `.`. Each exits 74
 \ and says what it refuses.
 \
 \ Registered as `SUITE wasm-link-capture`. Run standalone from the repository
@@ -89,9 +90,9 @@ DYNAMIC-BUFFER MODULE u8
    ERR eu RTRIM why yu T$= ;
 
 : REFUSALS ( -- )
-   s" a variable in the window is a code record with no Wasm routine" T-LABEL
-   s" : W ( -- ) ; variable LCV"
-   s" wasmlink: window record LCV has no Wasm routine"
+   s" a call to a defer names a code record with no Wasm routine" T-LABEL
+   s" require src/arch/wasm/kernel-words.f defer LCD ( -- ) : W ( -- ) LCD ;"
+   s" wasmlink: window record LCD has no Wasm routine"
    s" wasmlink: a code record the capture's shadow carries no routine for" REFUSED
    s" a call to `here` names a word no kernel row answers" T-LABEL
    s" require src/arch/wasm/kernel-words.f : W ( -- ) here drop ;"
@@ -143,6 +144,7 @@ LINK-CAPTURE:OPEN
 require src/arch/wasm/kernel-words.f
 package LINK-CAPTURE-WINDOW
 public
+5 constant LCK
 : MAIN ( -- ) s" linked text" type ;
 ;package
 0 set-tier

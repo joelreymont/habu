@@ -64,6 +64,12 @@ public
    a i s>f f-  1000000 s>f f*  f>s {: f:n :}
    i DIGITS  46 emit  f FRACTION  NEWLINE ;
 
+: F-DROP ( r -- )
+   drop ;
+
+: F-DUP ( r -- r r )
+   dup ;
+
 : NEG ( n -- n )
    0 swap - ;
 

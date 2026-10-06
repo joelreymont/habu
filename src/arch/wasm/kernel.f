@@ -340,6 +340,8 @@ variable MADE                              \ blocks built, the next one's ordina
    a u s" ." STR=CI if s" WKWORDS:DOT" exit then
    a u s" u." STR=CI if s" WKWORDS:U-DOT" exit then
    a u s" f." STR=CI if s" WKWORDS:F-DOT" exit then
+   a u s" fdrop" STR=CI if s" WKWORDS:F-DROP" exit then
+   a u s" fdup" STR=CI if s" WKWORDS:F-DUP" exit then
    a u s" type" STR=CI if s" WKWORDS:TYPE-BYTES" exit then
    a u s" cr" STR=CI if s" WKWORDS:NEWLINE" exit then
    a u s" space" STR=CI if s" WKWORDS:BLANK" exit then

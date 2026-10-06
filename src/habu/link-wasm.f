@@ -29,11 +29,13 @@
 \   offset and a code cell its target's slot. A cell outside the window is the
 \   engine's, which the module does not carry.
 \
-\ Refused by name, each before the module is written: a code record with no
-\ routine (a variable, a created word, a defer, a tier-0 word), a name no kernel
-\ row answers, a name WKERNEL's map or the entry gives that no shipped record
-\ carries, and an entry that takes or leaves cells, since run calls it with ctx
-\ alone. So is an output path that cannot be written. A refusal dies.
+\ Refused by name, each before the module is written: a call, a code literal or
+\ cell, or the entry naming a code record with no routine (a variable, a
+\ created word, a constant, a defer, a tier-0 word), whose data the image holds
+\ all the same; a name no kernel row answers; a name WKERNEL's map or the entry
+\ gives that no shipped record carries; and an entry that takes or leaves
+\ cells, since run calls it with ctx alone. So is an output path that cannot be
+\ written. A refusal dies.
 
 require lib/prelude.f
 require lib/string.f
@@ -160,14 +162,12 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    s" wasmlink: window record " type k CREC-NAME$ type s"  has no Wasm routine" type cr
    s" wasmlink: a code record the capture's shadow carries no routine for" REFUSE ;
 
-\ The shadow row filing each shipped record's routine; a package row has none.
+\ The shadow row filing each shipped record's routine, or -1 for a record with
+\ none, a package row among them.
 : ROUTINES ( -- )
    AOT-REC-N @ ROUTINE-RESERVE
    AOT-REC-N @ 0 ?do  -1 i ROUTINE !  loop
-   AOT-SHADOW:REC-N @ 0 ?do  i  i SH-REC ROUTINE !  loop
-   AOT-REC-N @ 0 ?do
-      i PKG? 0= if  i ROUTINE @ 0 < if i NO-ROUTINE then  then
-   loop ;
+   AOT-SHADOW:REC-N @ 0 ?do  i  i SH-REC ROUTINE !  loop ;
 
 : ROUTINES+ ( -- )
    AOT-SHADOW:REC-N @ FIRST-RESERVE
@@ -175,8 +175,15 @@ variable VAL-AT                      \ the next cell value in the capture's valu
       i EMISSION WLINK-ORIGIN:CAPTURED EMISSION+ i FIRST !
    loop ;
 
+\ The shadow row filing shipped record k's routine, which something names.
+: ROUTINE-OF ( n -- n )
+   {: k:n :}
+   k ROUTINE @ {: r:n :}
+   r 0 < if k NO-ROUTINE then
+   r ;
+
 \ The function shipped record k enters.
-: ENTERS ( n -- n ) ROUTINE @ FIRST @ ;
+: ENTERS ( n -- n ) ROUTINE-OF FIRST @ ;
 
 \ ---- the names ------------------------------------------------------------------
 \ The public wid of the shipped package named, or -1.
@@ -365,7 +372,7 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 : ENTRY ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u SHIPPED {: k:n :}
-   k ROUTINE @ EMISSION 0 HEAD {: h:ptr :}
+   k ROUTINE-OF EMISSION 0 HEAD {: h:ptr :}
    h 8 + c@  h 9 + c@  or 0<> if a u CELLS-ENTRY then
    k ENTERS ;
 

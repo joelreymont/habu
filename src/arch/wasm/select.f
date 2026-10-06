@@ -103,7 +103,11 @@
 \ and records the exit code of native's crash handler with the pointer as its
 \ address. The access takes the narrowed address at offset 0, so the engine's
 \ bounds check covers p + n whole: an access running past the memory's end
-\ traps there and never wraps into its start.
+\ traps there and never wraps into its start. Source `!` and `c!` reach HIR as
+\ wordcalls to the engine's guarded stores (src/compiler/native/elaborate.f
+\ DO-STORE), whose guard keeps a store out of the engine's protected data
+\ bands; a module holds none of them, so each such call is selected as the
+\ checked store itself, with no call.
 
 require lib/prelude.f
 require lib/errors.f
@@ -502,10 +506,23 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    BLOCK
    p WSTRUCT-OPCODE:I32-WRAP-I64 I32 OP1 ;
 
+\ A wordcall to the engine's word spelled so, the global wordlist's (wid 0),
+\ known by its entry (THE DYNAMIC CALL).
+: ENGINE-CALL? ( IR-ID:ir-op-id ptr u8 n -- bool )
+   {: id:IR-ID:ir-op-id a:ptr u:n :}
+   id HIR-OPCODE:WORDCALL IS? 0= if false exit then
+   id 0 BND-ENTRY @ ATTR  a u 0 search-wl = ;
+
+\ A source store: a wordcall to the engine's guarded `!` or `c!`.
+: STORE-CALL? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id s" !" ENGINE-CALL?  id s" c!" ENGINE-CALL? or ;
+
 : ACCESS? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    id HIR-OPCODE:LOAD IS?  id HIR-OPCODE:STORE IS? or
-   id HIR-OPCODE:BLOAD IS? or  id HIR-OPCODE:BSTORE IS? or ;
+   id HIR-OPCODE:BLOAD IS? or  id HIR-OPCODE:BSTORE IS? or
+   id STORE-CALL? or ;
 
 \ hir.load and hir.bload: the access at the checked address, ordered by the
 \ token HIR states, at alignment exponent al.
@@ -517,9 +534,8 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    id 1 NFROZEN:RESULT-AT TOK BIND ;
 
 \ hir.store and hir.bstore: Forth's value then address, Wasm's address then
-\ value. Source `!` and `c!` reach HIR as calls to the engine's guarded stores
-\ (src/compiler/native/elaborate.f DO-STORE), so these come from a builder
-\ that stages HIR directly.
+\ value. Source stores are wordcalls (SEL-STORE-CALL), so these come from a
+\ builder that stages HIR directly.
 : SEL-STORE ( IR-ID:ir-op-id WSTRUCT:opcode n -- )
    {: id:IR-ID:ir-op-id o:WSTRUCT:opcode al:n :}
    id 2 OPND TOK!
@@ -545,13 +561,10 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    id NFROZEN:RESULTS-OF 1- r - kk <> if E-WSEL-CALL throw then
    kk ;
 
-\ A wordcall to the engine's execute or catch, the global wordlist's (wid 0),
-\ whose shape is the xt's.
+\ A wordcall to the engine's execute or catch, whose shape is the xt's.
 : DYNAMIC? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
-   id HIR-OPCODE:WORDCALL IS? 0= if false exit then
-   id 0 BND-ENTRY @ ATTR {: e:n :}
-   e s" execute" 0 search-wl =  e s" catch" 0 search-wl = or ;
+   id s" execute" ENGINE-CALL?  id s" catch" ENGINE-CALL? or ;
 
 \ A call takes the frame past the lane arity, and a dynamic one always.
 : FRAMED-CALL? ( IR-ID:ir-op-id n n -- bool )
@@ -826,8 +839,20 @@ $7FF8000000000000 constant NAN-MADE
 : SEL-SELF-CALL ( IR-ID:ir-op-id -- )
    0 S-SELF @ SEL-CALL ;
 
+\ A source store: its operands are the token, the kept row, the value and the
+\ address, and its results the token and the kept row, which passes through.
+: SEL-STORE-CALL ( IR-ID:ir-op-id WSTRUCT:opcode n -- )
+   {: id:IR-ID:ir-op-id o:WSTRUCT:opcode al:n :}
+   id 2 0 KEPT {: kk:n :}
+   id 0 OPND TOK!
+   id kk 2 + OPND >ADDR  id kk 1+ OPND  0 o al STORE
+   kk 0 ?do  id i 1+ NFROZEN:RESULT-AT  id i 1+ OPND  BIND  loop
+   id 0 NFROZEN:RESULT-AT TOK BIND ;
+
 : SEL-WORDCALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
+   id s" !" ENGINE-CALL? if  id WSTRUCT-OPCODE:I64-STORE 3 SEL-STORE-CALL  exit  then
+   id s" c!" ENGINE-CALL? if  id WSTRUCT-OPCODE:I64-STORE8 0 SEL-STORE-CALL  exit  then
    id  id 0 BND-ENTRY @ ATTR HOST-CALLEE  SEL-CALL ;
 
 \ The whole row goes to the stack and the call passes no lane: the adapter's
