@@ -80,3 +80,18 @@ Not run: a full native build (window inferred from the tier-1 child probe).
 ## Qualified B8 step 1
 
 The integrated open-image authority gate, failed-row export/copy/transfer refusals and checked-tick correction are qualified on `cf7d6dc3`: full native 600/600, rc 0; official generations 2–5 have identical engines and names. Independent Fable and Astra feature reviews and the final first-failure Astra follow-up pass. Evidence is under `~/.cache/tmp/b8af/` and `dave-tick-abi-review-result.txt`. The product remains sealed; unsealed images use the actual recorded row, and failed declaration rows are confined to their own run. This completes step 1; tier-0 recording and subsequent sweeps remain open.
+
+## Outcome (master d273e641)
+
+Landed; every id below is an ancestor of master.
+- B8 step 1, the open-image authority gate: 0455469b "Bind internal rows in unsealed images". The P2 fix 08131803 "Keep recovery rows out of copies", with its review follow-ups 5b4dd582 "Correct the capture rule and EXPORT refusals" and 6aed7ae6 "Refuse recovery rows at owner transfer". Qualified together as release b7f63f25. TRUSTED: 1216 -> 1216 and trusted-only rows under src 53 -> 53 (08131803, 6aed7ae6; 0455469b records no count).
+- B8 steps 2-4 (tier-0 recording of hook-less rows, the pre-claim words' rows with CON-OF ( ptr u8 n -- n ), the docs) and B9d (the window and AOT fixtures' shims): 7bcc8270, a source carry of the lane stack b6103a52, a6746673, e8dec73c, d550fc78, da069d05, 0c7b339d and 4b754333. None of those lane commits is an ancestor of master. The carry renumbered the owner fields to $390..$3A8 (checker-owner-abi.f DECLARED-ROW-OFF..WRITE-WINDOW-OFF). 7bcc8270's description is empty. The lane descriptions record TRUSTED: 868 -> 795 (B9d removes 73) and trusted-only 53 -> 53; 7bcc8270's diff removes 75 TRUSTED: lines and adds 2, all under test/. On master: checker.f CHECKER-DECLARED-ROW!, CHECKER-ROWS-END, CHECKER-RETRACT-ROWS, CK-DECLARED-LOG-DRAIN and CON-OF; the step-4 text in docs/forth.md, docs/gate.md and docs/bootstrap.md.
+- B9 stack, the suites' shims checked on the unsealed engine: 9285d418 (B9a1, type-family suites), 26debbea (B9a2, type-decl and scan-index), 10baeb79 (B9b first half, effect and decl-event suites), bea8a267 (B9c, structure and layout) and 3f5e2054 (the eval follow-up, evaluate-closed), carried as 9684573b. The descriptions record 355 -> 36 TRUSTED: in the stack's suite files: B9a1 97 -> 0, B9a2 138 -> 43, B9b first half 61 -> 7 and B9c 59 -> 4, then 22 -> 4 at the evaluate sites.
+- Evaluate sweep: 63c90bd1 "Evaluate the remaining test texts closed", TRUSTED: 46 -> 27 in its 15 files, with the review's VALUE finding folded in.
+
+Remaining with this dot:
+- The eight sites whose targets step 3 gave rows are still TRUSTED:. In test/type-ctor-suite.f: CON-CODE, PEND-CLEAR, CAND-START and CAND-DONE (907-913). In test/aot-payload-graph-child.f: BYTES (30) and SAVE (111). In test/aot-registry-identity-child.f: RI-COPY-A (95) and RI-MIXED-STATE (192). The session permission check refused converting them to `:`, so they wait for Joel.
+- test/ holds 328 TRUSTED: definitions at d273e641 (`rg -c '^\s*TRUSTED:' -g '*.f' test`).
+Owned elsewhere:
+- The kept (d) sites (CERT-SIZE, DICT-MIN, UNCHECKED+/-) and step 4's forth-card.md section 9 row go with B12 (habu-delete-the-trusted-42b30edd).
+- TWX-XPG-CHECK (type-ctor-suite.f:702) is a cast for habu-turn-deliberate-cast-ad2e237d.

@@ -1,9 +1,11 @@
 ---
 title: Add the replay-record and record-wid! writers
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-10-01T18:16:50.965037+02:00"
+closed-at: "2026-10-06T17:50:00+02:00"
+close-reason: "Landed in master d31d4395 as 5b326c22 (the overlay's replay writers) with a5b59c74 (owner-private rows): engine-writers rows for both writers, refresh census 0 uncheckable / 0 rejected, run.f 621/621, generations 2-5 identical, Gforth recovery rc 0."
 blocks:
   - habu-share-reopen-name-92885254
 ---
@@ -20,3 +22,20 @@ Goal: the engine gains `replay-record` and `record-wid!`, codeless-record public
 Red first: before the change the child's evaluate dies E-UNDEFINED (70) at replay-record.
 Proof: `bin/hb --load test/engine-writers.f`; `bin/hb --load tools/build-fixpoint-refresh.f -- all --force` on a scratch HABU_FIXPOINT_ENGINE (census 0/0/6052); `bin/hb --load test/run.f`; generations; gforth recovery check.
 Dependencies: stage 2 landed in bin/hb. Not B11 or the seal; the two new trusted-only rows join habu-honour-owner-private-0a19f45d's deletion list once owner-private rows are honoured.
+
+## Outcome (master d273e641)
+
+Landed in the leaf 4 chain, merged on master as d31d4395. Every id here is an ancestor of master.
+- 5b326c22 "Add the overlay's replay writers" adds `replay-record` and `record-wid!` beside replay-open, replay-close and replay-widn!.
+- a5b59c74 "Let owners call internal primitives" types them by owner-private CHECKER-OVERLAY rows (src/habu/prims.f:809-810) instead of trusted-only rows. So the leaf added no trusted-only row and no TRUSTED: site. 5b326c22 records TRUSTED: 1219 -> 1219 and trusted-only under src 53 -> 53 on its base. The chain head 5124f4b5 has 687 and 56, as master does.
+- x86-64 refuses both (src/habu/kernel-x64.f:1765-1766). The Gforth recovery check passes with no seed twins (docs/bootstrap.md).
+
+Two departures from the brief, by measured design:
+- There is no namespace mode (wid -1). 733c6ca7 "Add the replay-private writer" gives a replayed namespace row its private wid.
+- record-wid! retires a seeded record, as the live `undefine` does (xref.f XREF-RETIRE-WL). The brief refused seeded indexes, which had no structural reason.
+The owner-private rows give habu-honour-owner-private-0a19f45d no new trusted-only row to delete.
+
+Acceptance, met on master:
+- test/engine-writers.f covers both writers. REPLAY-TRAPS has the prompt's refusal and the replay record's trap, exit 76. REPLAY-RETIRES covers retire and restore, including a seeded record and a restore across a hash compaction. REPLAY-LIVE has the 79 refusals; REPLAY-OPEN-RECORD and REPLAY-WID-CLOSE have the 83 refusals. The OWNER-ONLY rows (236-237) refuse a checked caller outside the owner. The row runs rc 0 with the d31d4395 engine on the d273e641 tree.
+- The stage-2 refresh census shows 0 uncheckable and 0 rejected. It certified 6997 at 7c2c2750, and the head's refresh returned rc 0. The brief's 6052 was the tree's size when the brief was written.
+- On the leaf 4 head (d31d4395 description): test/run.f 621/621, generations 2-5 identical, Gforth recovery rc 0.
