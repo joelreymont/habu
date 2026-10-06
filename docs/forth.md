@@ -1004,8 +1004,9 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   path returns or throws has no normal continuation; `?do` keeps its zero-trip
   exit; `leave` is the explicit exit. `do` always takes its first turn. `?do`
   tests its bounds by its closer's rule before that turn: `?do … loop` enters
-  only while start < limit, signed, so `-1 0 ?do` and `MIN-N 0 ?do` skip as
-  `0 0 ?do` does and a count at or below zero takes no turn; `?do … +loop`
+  only while start < limit, signed, so `-1 0 ?do` and
+  `$8000000000000000 0 ?do` skip as `0 0 ?do` does and a count at or below
+  zero takes no turn; `?do … +loop`
   skips only equal bounds, since its step may count down to a limit below the
   start. `+loop` adds its step wrapping and ends only when the index crosses
   between limit-1 and limit in the step's direction (Forth 2012 6.1.0140):
@@ -1062,9 +1063,11 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
 
 ## Integer arithmetic
 
-Cells are two's-complement 64-bit. `+`, `-` and `*` wrap (`MAX-N 1 +` is
-`MIN-N`) and never refuse. Division is the one partial operation; its two
-boundary cases are contracts every backend answers alike.
+Cells are two's-complement 64-bit. The signed bounds are
+`$8000000000000000` and `$7FFFFFFFFFFFFFFF`. `+`, `-` and `*` wrap
+(`$7FFFFFFFFFFFFFFF 1 +` is `$8000000000000000`) and never refuse. Division
+is the one partial operation; its two boundary cases are contracts every
+backend answers alike.
 
 - **A zero divisor throws `E-DIV-ZERO`.** `/`, `mod` and `/mod`, the only
   dividing primitives, test the divisor and throw (`lib/errors.f`;
@@ -1075,12 +1078,14 @@ boundary cases are contracts every backend answers alike.
   unreachable. **The contract holds at every tier**: the interpreted primitive,
   a word compiled with `1 set-tier` and an AOT-built executable all throw the
   same code.
-- **`MIN-N -1 /` is `MIN-N` and `MIN-N -1 mod` is `0`.** The quotient `2^63` has
-  no cell, so it wraps like `+`, `-`, `*`. A backend whose divide traps on this
-  quotient (x86_64 `idiv`) tests for the `-1` divisor and answers `(MIN-N, 0)`
-  without executing it. `test/prim-parity.f` pins both contracts.
-- **`.` prints every cell, `MIN-N` included**, and `FMT:SB-INT` prints the same
-  digits.
+- **`$8000000000000000 -1 /` is `$8000000000000000`, and
+  `$8000000000000000 -1 mod` is `0`.** The quotient `2^63` has no signed cell,
+  so it wraps like `+`, `-`, `*`. A backend whose divide traps on this quotient
+  (x86_64 `idiv`) tests for the `-1` divisor and answers quotient
+  `$8000000000000000` and remainder `0` without executing it.
+  `test/prim-parity.f` pins both contracts.
+- **`.` prints every cell, including `$8000000000000000`**, and `FMT:SB-INT`
+  prints the same digits.
 
 ## Errors
 
