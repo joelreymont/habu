@@ -2202,9 +2202,9 @@ variable USE-NODE                       \ the use line USE-FROM found
 
 \ The checker's record store and its location table both start with room for
 \ fewer declarations than this subject makes, and grow by copying
-\ (src/core/checker.f USIGS-GROW, NAV-ENSURE), which keeps every record's
-\ offset: the first and the last declaration keep their own locations. An
-\ engine bakes its store with one to two 64 KiB grains of room
+\ (src/core/checker.f USIGS-GROW, ARENA-ROWS-ENSURE), which keeps every
+\ record's offset: the first and the last declaration keep their own
+\ locations. An engine bakes its store with one to two 64 KiB grains of room
 \ (USIGS-PERSIST-CAP), the child's own load takes some 36 KB of it, and the
 \ table starts at 64 rows. These declarations take some 170 KB: in the child
 \ on an unsealed engine the store grew from 1,835,008 to 3,670,016 bytes.

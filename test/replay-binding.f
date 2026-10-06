@@ -295,6 +295,117 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
    s" and in a package's wordlist that definition certifies" T-LABEL
    S\" package RB-PD\npublic\n: dup ( n -- n n ) dup ;\n;package\n" 0 REPLAY ;
 
+\ A live load makes as many definers and runs as many `undefine`s as its
+\ dictionary holds, and so does a replay: only the dictionary bounds the
+\ overlay's clause pairs and its undo log (src/core/checker.f CHECKER-OVERLAY).
+\ One text makes MANY definers, a pair each, and the other runs MANY
+\ `undefine`s, a log entry each: one more than the 256 a fixed table held,
+\ which refused the 257th, E-OVERLAY-CAP. GROWTH-LIVE-CASE loads both live.
+$4000 constant TEXT-CAP
+TEXT-CAP BUFFER: TEXT
+variable TEXT-U
+257 constant MANY
+
+: TEXT+ ( ptr u8 n -- ) TEXT TEXT-CAP TEXT-U BUF-APPEND ;
+: TEXT$ ( -- ptr u8 n ) TEXT TEXT-U BUF-LEN@ ;
+
+\ Append name I of a run: the prefix, then two letters counting from AA.
+: NAME+ ( ptr u8 n n -- )
+   {: a:ptr u:n i:n :}
+   a u TEXT+
+   i 26 / [char] A + TEXT TEXT-CAP TEXT-U BUF-APPEND-C
+   i 26 mod [char] A + TEXT TEXT-CAP TEXT-U BUF-APPEND-C ;
+
+\ MANY does> definers, then an undefine of the first and its redefinition.
+: DEFINERS$ ( -- ptr u8 n )
+   TEXT-U BUF-RESET
+   MANY 0 ?DO
+      s" : RB-D" i NAME+
+      S\"  ( n -- ) create , does> ( -- n ) @ ;\n" TEXT+
+   LOOP
+   S\" undefine RB-DAA\n: RB-DAA ( n -- ) create , does> ( -- n ) @ ;\n" TEXT+
+   TEXT$ ;
+
+\ MANY words, then an undefine of each.
+: UNDEFINES$ ( -- ptr u8 n )
+   TEXT-U BUF-RESET
+   MANY 0 ?DO  s" : RB-U" i NAME+  S\"  ( -- ) ;\n" TEXT+  LOOP
+   MANY 0 ?DO  s" undefine RB-U" i NAME+  S\" \n" TEXT+  LOOP
+   TEXT$ ;
+
+: GROWTH-CASE ( -- )
+   s" a replay makes more than 256 definers, then undefines and redefines one" T-LABEL
+   DEFINERS$ 0 REPLAY
+   s" a replay runs more than 256 undefines" T-LABEL
+   UNDEFINES$ 0 REPLAY ;
+
+\ A live load nests as many checker scopes as its memory holds (src/core/checker.f
+\ RBF-GROW), and so does a replay: a scope opened inside the overlay keeps the
+\ one it entered from in a snapshot row, and only memory bounds the rows
+\ (CHECKER-OVERLAY SNAP-PUSH). DEEP package-neutral scopes hold a replay in the
+\ innermost: more rows than the 16 a fixed table held, which refused the 18th
+\ scope, E-OVERLAY-CAP, and than the 64 the rows' mapping starts with, so it
+\ grows with rows in it. Each inner close comes back to the scope it entered
+\ from, top level with no imports, and the outermost to the caller's.
+100 constant DEEP
+variable LIVE-NEST     \ nonzero: nest live checker scopes, else neutral ones
+variable OPENED
+variable OPEN-RC
+variable TOP-CUR
+variable TOP-PUB
+variable TOP-USE
+variable STRAYED       \ inner closes that did not come back to the top level
+
+: SCOPE-IN ( -- )
+   LIVE-NEST @ IF CHECKER-SCOPE-START ELSE CHECKER-SCOPE-START-NEUTRAL THEN ;
+
+\ Open DEEP nested scopes, stopping at the first refusal.
+: OPEN-DEEP ( -- )
+   0 OPENED !  0 OPEN-RC !
+   DEEP 0 ?DO
+      OPEN-RC @ 0= IF
+         ['] SCOPE-IN catch OPEN-RC !
+         OPEN-RC @ 0= IF OPENED @ 1 + OPENED ! THEN
+      THEN
+   LOOP ;
+
+: TOP! ( -- ) get-current TOP-CUR !  PKG-PUB TOP-PUB !  USE-DEPTH TOP-USE ! ;
+: TOP? ( -- bool )
+   get-current TOP-CUR @ =  PKG-PUB TOP-PUB @ = and  USE-DEPTH TOP-USE @ = and ;
+
+\ Close every scope but the outermost, counting the closes that strayed.
+: CLOSE-INNER ( -- )
+   0 STRAYED !
+   OPENED @ 1 ?DO
+      CHECKER-SCOPE-DONE
+      TOP? 0= IF STRAYED @ 1 + STRAYED ! THEN
+   LOOP ;
+
+: NEST-CASE ( -- )
+   s" a replay nests in more scopes than a fixed table held" T-LABEL
+   get-current PKG-PUB USE-DEPTH {: cur:n pub:n use:n :}
+   0 LIVE-NEST !
+   OPEN-DEEP
+   OPEN-RC @ 0 T=
+   OPENED @ DEEP T=
+   TOP!
+   -1 NEUTRAL !
+   S\" package RB-NEST\npublic\n: RB-NEST-W ( -- n ) 1 ;\n;package\n" 0 REPLAY
+   0 NEUTRAL !
+   CLOSE-INNER
+   STRAYED @ 0 T=
+   OPENED @ 0 > IF CHECKER-SCOPE-DONE THEN
+   get-current cur T=
+   PKG-PUB pub T=
+   USE-DEPTH use T=
+   s" live, the engine nests as many checker scopes" T-LABEL
+   -1 LIVE-NEST !
+   OPEN-DEEP
+   0 LIVE-NEST !
+   OPEN-RC @ 0 T=
+   OPENED @ DEEP T=
+   OPENED @ 0 ?DO CHECKER-SCOPE-DONE LOOP ;
+
 : CASES ( -- )
    RAW-CASE
    QUALIFIED-CASE
@@ -302,7 +413,8 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
    OWN-CASE
    USING-CASE
    CLAUSE-CASE
-   PRIVATE-CASE ;
+   PRIVATE-CASE
+   GROWTH-CASE ;
 
 \ A word the engine holds, as a warm engine holds the loaded twin of the
 \ source it replays: the replay's own definition of it is the first of its
@@ -524,6 +636,13 @@ variable ERR-U
    RC @ CHECKER-REJECT-RC T=
    ERR$ s" RB-TOP:RB-GHOST" CONTAINS? TTRUE ;
 
+: GROWTH-LIVE-CASE ( -- )
+   s" live, the load takes the same definers and undefines" T-LABEL
+   DEFINERS$ SESSION
+   RC @ 0 T=
+   UNDEFINES$ SESSION
+   RC @ 0 T= ;
+
 : RUN ( -- )
    0 NEUTRAL !
    CASES
@@ -538,7 +657,9 @@ variable ERR-U
    CHECK-CASE
    SEALED-CASE
    LIVE-CASE
-   GHOST-CASE ;
+   GHOST-CASE
+   GROWTH-LIVE-CASE
+   NEST-CASE ;
 
 RUN
 

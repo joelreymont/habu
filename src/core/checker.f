@@ -223,6 +223,30 @@ variable ARENA-CP-I   variable ARENA-UB-I
 : REG-GROW1 ( ptr ptr a n n -- ) {: pv:ptr ob:n nb:n :}
    pv @ ob nb ARENA-BYTES-GROW pv ! ;
 
+\ ARENA-UNMAP ( base bytes -- ) : give back a mapping of BYTES; 0 bytes is none.
+: ARENA-UNMAP ( ptr n n -- )
+   {: base:ptr bytes:n :}
+   bytes 0= IF EXIT THEN
+   base bytes munmap 0 <> IF s" checker: arena munmap failed" 76 die THEN ;
+
+\ ARENA-ROWS-ENSURE ( pvar capvar need row -- ) : grow the table of ROW-cell
+\ rows pvar holds, capvar rows long, to NEED rows, keeping its rows, and give
+\ the old mapping back. A table that holds none starts at 64 rows.
+: ARENA-ROWS-ENSURE ( ptr ptr n ptr n n n -- )
+   {: pv:ptr capv:ptr need:n row:n :}
+   need capv @ <= IF EXIT THEN
+   need capv @ 2 * max 64 max {: nc:n :}
+   pv @ capv @ row * cells nc row * cells ARENA-BYTES-GROW {: next:ptr :}
+   pv @ capv @ row * cells ARENA-UNMAP
+   next pv !  nc capv ! ;
+
+\ ARENA-ROWS-RELEASE ( pvar capvar row -- ) : give back the table pvar holds,
+\ leaving it none.
+: ARENA-ROWS-RELEASE ( ptr ptr n ptr n n -- )
+   {: pv:ptr capv:ptr row:n :}
+   pv @ capv @ row * cells ARENA-UNMAP
+   NULL-PTR pv !  0 capv ! ;
+
 \ TV arena: fifteen var-id planes share one owned mapping and one capacity.
 \ TVT, RVT, EC-TV and EC-RV store logical values plus one: zero means UNBOUND.
 \ Measured high-water of
@@ -1058,9 +1082,8 @@ $3688 constant CK-DEF-PEND-OFF             \ = layout.f PEND-CELL (DATA-relative
 \ overlay puts it back to its frame's mark (CHECKER-OVERLAY ROLLBACK).
 $30 constant CK-WIDN-OFF                   \ = layout.f WIDN-CELL (DATA-relative); engine owns it
 7136 constant E-PKG-CONTEXT
-\ The checker overlay is full: its scope snapshots, its undo log, its does>
-\ clause pairs, the records one lookup hides or the engine dictionary it
-\ publishes into (CHECKER-OVERLAY).
+\ The checker overlay is full: the records one lookup hides or the engine
+\ dictionary it publishes into (CHECKER-OVERLAY).
 7184 constant E-OVERLAY-CAP
 variable CHECKER-VERIFY-PKG-DEPTH
 0 CHECKER-VERIFY-PKG-DEPTH !
@@ -6411,20 +6434,6 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
 4 constant DL-ROW                      \ record offset, visit, start, end
 6 constant PU-ROW                      \ use start, end, record offset, visit, start, end
 
-: NAV-UNMAP ( ptr n n -- )
-   {: base:ptr bytes:n :}
-   bytes 0= IF EXIT THEN
-   base bytes munmap 0 <> IF s" checker: navigation table munmap failed" 76 die THEN ;
-
-\ Grow the table PV holds to NEED rows of ROW cells, keeping its rows.
-: NAV-ENSURE ( ptr ptr n ptr n n n -- )
-   {: pv:ptr capv:ptr need:n row:n :}
-   need capv @ <= IF EXIT THEN
-   need capv @ 2 * max 64 max {: nc:n :}
-   pv @ capv @ row * cells nc row * cells ARENA-BYTES-GROW {: next:ptr :}
-   pv @ capv @ row * cells NAV-UNMAP
-   next pv !  nc capv ! ;
-
 : NAV-CELL ( ptr ptr n n n -- ptr n )   \ row i's first cell
    {: pv:ptr i:n row:n :}
    pv @ i row * cells + ;
@@ -6433,8 +6442,8 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    0 DL-N !  0 PU-N !  0 DL-NEW ! ;
 
 : NAV-RELEASE ( -- )
-   DL-P @ DL-CAP @ DL-ROW * cells NAV-UNMAP  NULL-PTR DL-P !  0 DL-CAP !
-   PU-P @ PU-CAP @ PU-ROW * cells NAV-UNMAP  NULL-PTR PU-P !  0 PU-CAP !
+   DL-P DL-CAP DL-ROW ARENA-ROWS-RELEASE
+   PU-P PU-CAP PU-ROW ARENA-ROWS-RELEASE
    NAV-CLEAR  0 DL-ON ! ;
 
 : CHECKER-DECL-AT! ( n n n -- )
@@ -6457,7 +6466,7 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
          s" checker: declaration location out of record order" 76 die
       THEN
    THEN
-   DL-P DL-CAP DL-N @ 1 + DL-ROW NAV-ENSURE
+   DL-P DL-CAP DL-N @ 1 + DL-ROW ARENA-ROWS-ENSURE
    DL-P DL-N @ DL-ROW NAV-CELL {: p:ptr :}
    off p !  visit p CELL + !  start p 2 cells + !  end p 3 cells + !
    DL-N @ 1 + DL-N ! ;
@@ -8587,7 +8596,7 @@ ON-USE-DEFAULT
 : NAV-USE ( n ptr u8 n -- )
    NAV-USE-AT 0= IF 2drop 2drop 2drop EXIT THEN
    {: s:n e:n rec1:n v:n ds:n de:n :}
-   PU-P PU-CAP PU-N @ 1 + PU-ROW NAV-ENSURE
+   PU-P PU-CAP PU-N @ 1 + PU-ROW ARENA-ROWS-ENSURE
    PU-P PU-N @ PU-ROW NAV-CELL {: p:ptr :}
    s p !  e p CELL + !  rec1 1 - p 2 cells + !
    v p 3 cells + !  ds p 4 cells + !  de p 5 cells + !
@@ -11182,20 +11191,27 @@ $4E constant DUPLICATE                     \ E-DUPLICATE-DEFINITION, as CHECKER-
 \ The undo log: the index and wid of each record a replayed `undefine` retired,
 \ and the index of each namespace row the replay gave a private wordlist
 \ (GRANT) with wid NAMESPACE, which record-wid! refuses, so no retirement is
-\ logged with it.
-256 constant LOG-MAX
-create LOG LOG-MAX 2 * cells allot
+\ logged with it. A retired record has left its wordlist and a granted row has
+\ one of its own, so the log holds a record at most once, and only the
+\ dictionary bounds it, as it bounds the `undefine`s of a live load. It is a
+\ mapping of its own, grown as entries come (PAIR+) and given back by CLOSE.
+PTR-VARIABLE LOG-P
+variable LOG-CAP
 variable LOG-N
+: LOG ( -- ptr u8 ) LOG-P @ BYTE-VIEW ;
 
 \ The does> clauses the replay published (CLAUSE): each definer's or export's
 \ index, then its clause's, in the order they were made. The engine pairs a
 \ live definer or export with its clause by code containment
 \ (DOES-COMPANION?-XT), which a codeless replay record cannot meet, so the pair
-\ is kept where it is made. One overlay serves every verifier scope opened
-\ inside it (OPEN-SCOPE), so the table holds as many as the undo log, and a
-\ replay whose definers and exports fill it is refused, E-OVERLAY-CAP.
-create PAIRS LOG-MAX 2 * cells allot
+\ is kept where it is made. Each pair's clause is a record CLAUSE makes once
+\ ROOM admits it, so only the dictionary bounds the table, as it bounds the
+\ definers and exports of a live load. Like the log, it is a mapping of its
+\ own, grown as pairs come and given back by CLOSE.
+PTR-VARIABLE PAIRS-P
+variable PAIRS-CAP
 variable PAIRS-N
+: PAIRS ( -- ptr u8 ) PAIRS-P @ BYTE-VIEW ;
 
 \ The hidden records: the index and wid of each record a lookup under the
 \ binding horizon retired for its own time (HIDE, HORIZON-FIND). They are kept
@@ -11218,22 +11234,33 @@ variable HIDDEN-N
 6 constant S-TAG                           \ the scope that pushed the row
 7 constant S-WIDS                          \ the used publics, CK-USE-MAX cells
 S-WIDS CK-USE-MAX + constant ROW-CELLS
-16 constant SNAP-MAX
-create SNAPS SNAP-MAX ROW-CELLS * cells allot
+\ The snapshot rows, newest last: a scope opened while the overlay is on keeps
+\ the scope it entered from (SNAP-PUSH). The live engine nests checker scopes as
+\ deep as its memory holds (RBF-GROW), and so does a replay: the rows are a
+\ mapping of their own, grown as scopes open and given back by CLOSE.
+PTR-VARIABLE SNAPS-P
+variable SNAPS-CAP
 variable SNAP-N
 
 : DATA@ ( n -- n ) {: off:n :} data-base off + @ ;
 : DATA! ( n n -- ) {: v:n off:n :} v data-base off + ! ;
 : ROW@ ( ptr u8 n -- n ) {: p:ptr k:n :} p k cells + cell-view @ ;
 : ROW! ( n ptr u8 n -- ) {: v:n p:ptr k:n :} v p k cells + cell-view ! ;
-: ZERO ( ptr u8 -- ) {: p:ptr :} ROW-CELLS 0 ?DO 0 p i ROW! LOOP ;
-: SNAP ( n -- ptr u8 ) ROW-CELLS * cells SNAPS + ;
+: SNAP ( n -- ptr u8 ) ROW-CELLS * cells SNAPS-P @ BYTE-VIEW + ;
 \ Entry K of a pair table (LOG, HIDDEN): a record's index, then its wid.
 : IX@ ( ptr u8 n -- n ) 2 * ROW@ ;
 : WID@ ( ptr u8 n -- n ) 2 * 1 + ROW@ ;
 : PAIR! ( n n ptr u8 n -- ) {: ix:n wid:n t:ptr k:n :}
    ix t k 2 * ROW!
    wid t k 2 * 1 + ROW! ;
+
+\ Append the pair X Y to a growing pair table (LOG, PAIRS): the mapping PV
+\ holds, CAPV pairs long with NV of them in use.
+: PAIR+ ( n n ptr ptr n ptr n ptr n -- )
+   {: x:n y:n pv:ptr capv:ptr nv:ptr :}
+   pv capv nv @ 1 + 2 ARENA-ROWS-ENSURE
+   x y pv @ BYTE-VIEW nv @ PAIR!
+   nv @ 1 + nv ! ;
 
 : REC>IX ( ptr n -- n ) {: rec:ptr :} rec NULL-PTR - dbase@ - CK-DREC / ;
 \ The open package's row index, -1 when none is open.
@@ -11279,7 +11306,7 @@ variable SNAP-N
    CK-USE-MAX 0 ?DO p S-WIDS i + ROW@ i cells CK-USE-WIDS-OFF + DATA! LOOP ;
 
 : SNAP-PUSH ( n -- ) {: tag:n :}
-   SNAP-N @ SNAP-MAX >= IF E-OVERLAY-CAP throw THEN
+   SNAPS-P SNAPS-CAP SNAP-N @ 1 + ROW-CELLS ARENA-ROWS-ENSURE
    SNAP-N @ SNAP SNAP-SAVE
    tag SNAP-N @ SNAP S-TAG ROW!
    SNAP-N @ 1 + SNAP-N ! ;
@@ -11287,7 +11314,6 @@ variable SNAP-N
 : SNAP-POP ( -- )
    SNAP-N @ 1 - {: k:n :}
    k SNAP SNAP-RESTORE
-   k SNAP ZERO
    k SNAP-N ! ;
 
 \ The scope a package-neutral replay starts in: top level, no imports.
@@ -11298,10 +11324,7 @@ variable SNAP-N
    0 CK-USE-FLOOR-OFF DATA! ;
 
 \ Append record IX and WID to the log.
-: LOG! ( n n -- ) {: ix:n wid:n :}
-   LOG-N @ LOG-MAX >= IF E-OVERLAY-CAP throw THEN
-   ix wid LOG LOG-N @ PAIR!
-   LOG-N @ 1 + LOG-N ! ;
+: LOG! ( n n -- ) LOG-P LOG-CAP LOG-N PAIR+ ;
 
 \ Undo one log entry: a granted row loses its private wordlist, a retired
 \ record gets its wid back.
@@ -11314,7 +11337,6 @@ variable SNAP-N
    BEGIN LOG-N @ low > WHILE
       LOG-N @ 1 - LOG-N !
       LOG LOG-N @ IX@  LOG LOG-N @ WID@  UNDO1
-      0 0 LOG LOG-N @ PAIR!
    REPEAT ;
 
 \ replay-open refuses a pending definition by exit: refuse it here first.
@@ -11334,22 +11356,20 @@ variable SNAP-N
 : UNPAIR ( n -- ) {: nd:n :}
    BEGIN PAIRS-N @ 0 >  IF PAIRS PAIRS-N @ 1 - IX@ nd >= ELSE RES-FALSE THEN WHILE
       PAIRS-N @ 1 - PAIRS-N !
-      0 0 PAIRS PAIRS-N @ PAIR!
    REPEAT ;
 
-\ A snapshot a scope left is moot once replay-close has put the scope back; it
-\ is zeroed with the rest, as is every clause pair, so an image captured
-\ afterwards holds the bytes one no replay ran in does.
+\ A snapshot a scope left is moot once replay-close has put the scope back. The
+\ snapshot rows', the log's and the clause pairs' mappings are given back, so an
+\ image captured afterwards holds the bytes one no replay ran in does.
 : CLOSE ( -- )
    0 UNDO
    replay-close
    0 UNPAIR
+   LOG-P LOG-CAP 2 ARENA-ROWS-RELEASE
+   PAIRS-P PAIRS-CAP 2 ARENA-ROWS-RELEASE
+   SNAPS-P SNAPS-CAP ROW-CELLS ARENA-ROWS-RELEASE
    FLOOR0 @ CHECKER-USE:SOURCE-FLOOR !
-   0 FLOOR0 !  0 OPENER !  0 MARK !  0 PREFIX !  0 ON !
-   BEGIN SNAP-N @ 0 > WHILE
-      SNAP-N @ 1 - SNAP-N !
-      SNAP-N @ SNAP ZERO
-   REPEAT ;
+   0 FLOOR0 !  0 OPENER !  0 MARK !  0 PREFIX !  0 ON !  0 SNAP-N ! ;
 
 \ The wordlist a checker symbol's definition lands in, as a compile of it puts
 \ it: the global one, or its package's public or private one.
@@ -11563,14 +11583,12 @@ ROW-CELLS cells constant SCOPE-BYTES
       ix CLAUSE-OF 0 < IF DUPLICATE throw THEN
       EXIT
    THEN
-   PAIRS-N @ LOG-MAX >= IF E-OVERLAY-CAP throw THEN
    ROOM
    u tu - {: q:n :}
    ca q +  cu q -  {: cta:ptr ctu:n :}
    cta ctu wid SCOPE-WL-PROBE NULL-PTR <> IF DUPLICATE throw THEN
    cta ctu wid replay-record
-   ix ndict@ 1 - PAIRS PAIRS-N @ PAIR!
-   PAIRS-N @ 1 + PAIRS-N ! ;
+   ix ndict@ 1 - PAIRS-P PAIRS-CAP PAIRS-N PAIR+ ;
 
 \ Whether REC, the record a lookup bound, has its does> clause still in its
 \ wordlist (CLAUSE-OF): an export of it publishes that clause beside its own
