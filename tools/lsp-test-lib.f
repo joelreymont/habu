@@ -2068,7 +2068,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    HEAR CAPABILITIES
    TEXT-RETAINED RETAINED-PATH CHECKS
    RETAINED-PATH s" refused" COMPLETED
-   RETAINED-PATH 1 EXPECT 0 0 0 0 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES
+   RETAINED-PATH 1 EXPECT 1 9 1 19 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES
    s" 3" s\" {\"query\":\"nav-retain\"}" SYMBOLS-ASK
    SAY
    s" 3" SYMBOLS-START
@@ -2087,8 +2087,8 @@ CK-USE-MAX 1 + constant OVER-USINGS
    TXT$ REDECLARED-PATH CHECKS
    REDECLARED-PATH s" refused" COMPLETED
    REDECLARED-PATH 1 EXPECT
-   0 0 0 0 1 s" E-BAD-STORED-SIGNATURE" DIAG+
-   0 0 0 0 1 s" E-BAD-STORED-SIGNATURE" DIAG+
+   1 9 1 17 1 s" E-BAD-STORED-SIGNATURE" DIAG+
+   4 9 4 16 1 s" E-BAD-STORED-SIGNATURE" DIAG+
    5 22 5 23 1 s" E-MISMATCH" DIAG+
    PUBLISHES
    s" 3" s\" {\"query\":\"nav\"}" SYMBOLS-ASK
@@ -2628,6 +2628,65 @@ variable LENGTH-N                        \ the length of its directory's name
       SB$ [: LENGTH-TURNS ;] TALK
    loop ;
 
+\ A FUNCTION: whose group is empty stores a signature that does not parse: the
+\ packet is at its name F, line 1, characters 10-11.
+: EMPTY-FFI ( -- ptr u8 n )  s\" require lib/ffi-abi.f\nFUNCTION: F getpid ( )\n" ;
+
+: STORED-SIGNATURE-TURNS ( -- )
+   INITIALIZE
+   A-PATH EMPTY-FFI 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   EMPTY-FFI A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT 1 10 1 11 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES ;
+
+\ A TRUSTED: definition named as the colon definition `undefine` removed before
+\ it stores a signature that does not parse: the packet is at its name X, line
+\ 2, characters 9-10.
+: REPLACED-TRUSTED ( -- ptr u8 n )  s\" : X ( -- ) ;\nundefine X\nTRUSTED: X ( -- zz ) ;\n" ;
+
+: REPLACED-SIGNATURE-TURNS ( -- )
+   INITIALIZE
+   A-PATH REPLACED-TRUSTED 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   REPLACED-TRUSTED A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT 2 9 2 10 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES ;
+
+\ A defer whose name has two qualifiers asks a record for a malformed name: the
+\ packet is at its name DIAG:MAL:NAME, line 0, characters 6-19.
+: MALFORMED-DEFER ( -- ptr u8 n )  s\" defer DIAG:MAL:NAME ( -- )\n" ;
+
+: MALFORMED-RECORD-TURNS ( -- )
+   INITIALIZE
+   A-PATH MALFORMED-DEFER 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   MALFORMED-DEFER A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT
+   0 6 0 19 1 s" E-BAD-QUALIFIED-RECORD" DIAG+
+   0 6 0 19 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
+
+\ A colon definition CHECK rejects for its undefined NOPE still asks a record
+\ for its malformed name: that packet follows the body's, at the name P:Q:R,
+\ line 0, characters 2-7.
+: MALFORMED-REJECTED ( -- ptr u8 n )  s\" : P:Q:R ( -- ) NOPE ;\n" ;
+
+: MALFORMED-REJECTED-TURNS ( -- )
+   INITIALIZE
+   A-PATH MALFORMED-REJECTED 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   MALFORMED-REJECTED A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT
+   0 15 0 19 1 s" E-UNDEFINED" DIAG+
+   0 2 0 7 1 s" E-BAD-QUALIFIED-RECORD" DIAG+
+   0 20 0 21 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
+
 : TEST-DIAGNOSTICS ( -- )
    s" diagnostics-open" [: OPEN-TURNS ;] TALK
    s" diagnostics-require" [: REQUIRE-TURNS ;] TALK
@@ -2656,6 +2715,10 @@ variable LENGTH-N                        \ the length of its directory's name
    s" duplicate" [: DUPLICATE-TURNS ;] TALK
    s" duplicate-of-required" [: DUP-REQUIRED-TURNS ;] TALK
    s" top-level" [: TOP-LEVEL-TURNS ;] TALK
+   s" stored-signature" [: STORED-SIGNATURE-TURNS ;] TALK
+   s" replaced-signature" [: REPLACED-SIGNATURE-TURNS ;] TALK
+   s" malformed-record" [: MALFORMED-RECORD-TURNS ;] TALK
+   s" malformed-rejected" [: MALFORMED-REJECTED-TURNS ;] TALK
    s" deferred-definition" [: DEFINITION-TURNS ;] TALK
    s" deferred-unended" [: DEFERRED-UNENDED-TURNS ;] TALK ;
 

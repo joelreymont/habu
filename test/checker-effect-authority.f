@@ -20,7 +20,7 @@ package EFFECT-AUTHORITY-TEST
 : MIN-LATCH ( -- n ) REC-MIN-IN@ ;
 : ENFORCED? ( -- bool ) CHECKER-EFFECT-AUTHORITY:ENFORCED? ;
 : ABI-ROW ( ptr u8 n ptr u8 n -- )
-   CHECKER-RECORD-NAME RES-FALSE RES-FALSE USIG-ADD-AS drop ;
+   CHECKER-RECORD-NAME 2dup RES-FALSE USIG-ADD-AS drop ;
 : SCOPE+ ( -- ) CHECKER-SCOPE-START ;
 : SCOPE- ( -- ) CHECKER-SCOPE-DONE ;
 \ The scan, PRIM, rollback and recovery cases record rows only the checker holds

@@ -387,12 +387,18 @@ under `--load` with exit 75. The source pre-pass can ask the checker for its
 record and report the statement that asked for it as one that threw. A record
 entry called at run time with that name (`s" P:Q:R" CHECKER-DEFER`) throws
 `E-BAD-QUALIFIED` (7152); the load exits 70 and no later statement runs.
+The malformed record is placed at the declaration's name when that token lies
+in the checked text. A record requested at run time has no source position.
 
 `E-BAD-STORED-SIGNATURE` is rendered in every mode. Under `--all-errors`, a
-source `trust` row is counted and checking continues, even if it names the
-definition just checked. Otherwise the load throws 7156 where the signature
+refused row is counted and checking continues, even if it names the definition
+just checked. Otherwise the load throws 7156 where the signature
 was stored; the pre-pass places a following `E-STATEMENT-THROW` span when it
-meets that statement. A row reached only at run time, such as through
+meets that statement. The record is placed at the name its declaration reads,
+including a `trust` row's name string or the name after `TRUSTED:`, `defer`,
+`FUNCTION:` or `cast:`. Its `token` is the folded name for every row except a
+cast; a name made by the engine or a generator has no position. A row reached
+only at run time, such as through
 `evaluate`, also exits 70. Its prose is `habu: in <token>: bad stored
 signature '<signature>'`, with a reason for a row too deep or too wide to
 record. Named definition and using refusals place their own token when the

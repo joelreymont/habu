@@ -650,6 +650,152 @@ variable RC
    s" : X ( n -- zz ) evaluate ;" s" badsig-unsafe.f" LINE-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT ;
 
+\ Packet K of the last check is the record CODE refuses for TOK, the name the
+\ row is stored for, placed at SPELL, the declaring name as written, on LINE at
+\ COL in bytes [BS, BE) of the file at PATH.
+: RECORD-PLACED ( n ptr u8 n ptr u8 n ptr u8 n n n n n ptr u8 n -- )
+   {: k:n code:ptr codeu:n tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n path:ptr pathu:n :}
+   k s" code" code codeu FIELD=
+   k s" token" tok toku FIELD=
+   k sp spu line col bs be path pathu FX$ PLACED-IN ;
+
+: STORED-PLACED ( ptr u8 n ptr u8 n n n n n ptr u8 n -- )
+   {: tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n path:ptr pathu:n :}
+   0 s" E-BAD-STORED-SIGNATURE" tok toku sp spu line col bs be path pathu RECORD-PLACED ;
+
+\ STORED-PLACED for each check of the fixture: plain, which gives COUNT packets,
+\ the refusal first, and --all-errors and --verify-only, which give it alone.
+: STORED-AT ( ptr u8 n ptr u8 n n n n n n -- )
+   {: tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n count:n :}
+   s" " CHECK
+   GJA-LINE# @ count T=
+   tok toku sp spu line col bs be FX-PATH$ STORED-PLACED
+   s" --all-errors" CHECK
+   GJA-LINE# @ 1 T=
+   tok toku sp spu line col bs be FX-PATH$ STORED-PLACED
+   s" --verify-only" CHECK
+   GJA-LINE# @ 1 T=
+   tok toku sp spu line col bs be FX-PATH$ CANON$ STORED-PLACED ;
+
+\ A stored signature that does not parse is refused at the name its declaration
+\ reads, though the row is stored under that name's fold: a `FUNCTION:` whose
+\ group is empty, a `TRUSTED:` definition, a `defer`, a `trust` row and a
+\ cast. The plain check follows each row the load stores with its statement's
+\ throw; a cast's refusal stands alone.
+: TEST-STORED-SIGNATURE ( -- )
+   s" a FUNCTION: whose group is empty" T-LABEL
+   SB-RESET
+   s" require lib/ffi-abi.f" SB-APPEND LF+
+   s" FUNCTION: F getpid ( )" SB-APPEND LF+
+   s" stored-ffi.f" FIXTURE!
+   s" f" s" F" 2 11 32 33 2 STORED-AT
+   s" a TRUSTED: definition" T-LABEL
+   s" TRUSTED: X ( n -- zz ) 1 ;" s" stored-trusted.f" LINE-FIXTURE
+   s" x" s" X" 1 10 9 10 2 STORED-AT
+   s" a defer" T-LABEL
+   s" defer W ( n -- zz )" s" stored-defer.f" LINE-FIXTURE
+   s" w" s" W" 1 7 6 7 2 STORED-AT
+   s" a trust row" T-LABEL
+   SB-RESET
+   s" : Y ( n -- n ) ;" SB-APPEND LF+
+   s\" s\" Y\" s\" n -- zz\" trust" SB-APPEND LF+
+   s" stored-trust.f" FIXTURE!
+   s" y" s" Y" 2 4 20 21 2 STORED-AT
+   s" a cast" T-LABEL
+   s" cast: >X ( ptr -- n )" s" stored-cast.f" LINE-FIXTURE
+   s" >X" s" >X" 1 7 6 8 1 STORED-AT ;
+
+\ The same refusal for a declaration named as the colon definition checked
+\ before it: a `TRUSTED:` definition and a `defer` after `undefine` removed that
+\ word, and a `TRUSTED:` definition in a package, under a global's tail.
+: TEST-REPLACED-SIGNATURE ( -- )
+   s" a TRUSTED: definition replacing an undefined word" T-LABEL
+   SB-RESET
+   s" : X ( -- ) ;" SB-APPEND LF+
+   s" undefine X" SB-APPEND LF+
+   s" TRUSTED: X ( -- zz ) ;" SB-APPEND LF+
+   s" replaced-trusted.f" FIXTURE!
+   s" x" s" X" 3 10 33 34 2 STORED-AT
+   s" a defer replacing an undefined word" T-LABEL
+   SB-RESET
+   s" : X ( -- ) ;" SB-APPEND LF+
+   s" undefine X" SB-APPEND LF+
+   s" defer X ( -- zz )" SB-APPEND LF+
+   s" replaced-defer.f" FIXTURE!
+   s" x" s" X" 3 7 30 31 2 STORED-AT
+   s" a TRUSTED: definition in a package, under a global's tail" T-LABEL
+   SB-RESET
+   s" : X ( -- ) ;" SB-APPEND LF+
+   s" package Q public" SB-APPEND LF+
+   s" TRUSTED: X ( -- zz ) ;" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" replaced-same-tail.f" FIXTURE!
+   s" x" s" X" 3 10 39 40 2 STORED-AT ;
+
+\ RECORD-PLACED for E-BAD-QUALIFIED-RECORD in each check of the fixture: plain,
+\ --all-errors and --verify-only each give the record, then its statement's throw.
+: MALFORMED-AT ( ptr u8 n ptr u8 n n n n n -- )
+   {: tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n :}
+   s" " CHECK
+   GJA-LINE# @ 2 T=
+   0 s" E-BAD-QUALIFIED-RECORD" tok toku sp spu line col bs be FX-PATH$ RECORD-PLACED
+   s" --all-errors" CHECK
+   GJA-LINE# @ 2 T=
+   0 s" E-BAD-QUALIFIED-RECORD" tok toku sp spu line col bs be FX-PATH$ RECORD-PLACED
+   s" --verify-only" CHECK
+   GJA-LINE# @ 2 T=
+   0 s" E-BAD-QUALIFIED-RECORD" tok toku sp spu line col bs be FX-PATH$ CANON$ RECORD-PLACED ;
+
+\ A colon definition CHECK rejects, here for the undefined NOPE: the plain check
+\ stops at that refusal, and --all-errors and --verify-only follow it with the
+\ record the refused definition asks for its malformed name, then its
+\ statement's throw.
+: REJECTED-MALFORMED ( -- )
+   s" : P:Q:R ( -- ) NOPE ;" s" malformed-rejected.f" LINE-FIXTURE
+   s" " CHECK
+   s" E-UNDEFINED" REJECTED-AS
+   s" --all-errors" CHECK
+   GJA-LINE# @ 3 T=
+   1 s" E-BAD-QUALIFIED-RECORD" s" p:q:r" s" P:Q:R" 1 3 2 7 FX-PATH$ RECORD-PLACED
+   s" --verify-only" CHECK
+   GJA-LINE# @ 3 T=
+   1 s" E-BAD-QUALIFIED-RECORD" s" p:q:r" s" P:Q:R" 1 3 2 7 FX-PATH$ CANON$ RECORD-PLACED ;
+
+\ A record asked for a malformed qualified name is refused at the name its
+\ declaration reads, whether the record is keyed by that name's fold (a `defer`,
+\ a `variable`, a `trust` row), by the name as read (`undefine`) or by the name
+\ CHECK copied (a colon definition, certified, rejected or deferred to the run).
+: TEST-MALFORMED-RECORD ( -- )
+   s" a malformed defer" T-LABEL
+   s" defer DIAG:MAL:NAME ( -- )" s" malformed-defer.f" LINE-FIXTURE
+   s" diag:mal:name" s" DIAG:MAL:NAME" 1 7 6 19 MALFORMED-AT
+   s" a malformed variable" T-LABEL
+   s" variable P:Q:R" s" malformed-variable.f" LINE-FIXTURE
+   s" p:q:r" s" P:Q:R" 1 10 9 14 MALFORMED-AT
+   s" a malformed trust row" T-LABEL
+   SB-RESET
+   s" : R ( -- ) ;" SB-APPEND LF+
+   s\" s\" P:Q:R\" s\" --\" trust" SB-APPEND LF+
+   s" malformed-trust.f" FIXTURE!
+   s" p:q:r" s" P:Q:R" 2 4 16 21 MALFORMED-AT
+   s" a malformed undefine" T-LABEL
+   SB-RESET
+   s" : R ( -- ) ;" SB-APPEND LF+
+   s" undefine P:Q:R" SB-APPEND LF+
+   s" malformed-undefine.f" FIXTURE!
+   s" P:Q:R" s" P:Q:R" 2 10 22 27 MALFORMED-AT
+   s" a malformed colon definition" T-LABEL
+   s" : P:Q:R ( -- ) ;" s" malformed-colon.f" LINE-FIXTURE
+   s" p:q:r" s" P:Q:R" 1 3 2 7 MALFORMED-AT
+   s" a malformed colon definition CHECK rejects" T-LABEL
+   REJECTED-MALFORMED
+   s" a malformed colon definition deferred to the run" T-LABEL
+   SB-RESET
+   s\" s\" : MADE ( -- ) ;\" evaluate" SB-APPEND LF+
+   s" : P:Q:R ( -- ) MADE ;" SB-APPEND LF+
+   s" malformed-deferred.f" FIXTURE!
+   s" p:q:r" s" P:Q:R" 2 3 31 36 MALFORMED-AT ;
+
 \ The same order without a signature fault: a body word the load cannot
 \ compile refuses the definition at that word before any check made at `;`, and
 \ otherwise the first token whose check fails does, its verdict included.
@@ -1042,6 +1188,9 @@ variable RC
    TEST-ENUM-CLOSE
    TEST-STRUCTURE
    TEST-BAD-SIGNATURE
+   TEST-STORED-SIGNATURE
+   TEST-REPLACED-SIGNATURE
+   TEST-MALFORMED-RECORD
    TEST-REFUSAL-ORDER
    TEST-REPAIR-FOLLOWS
    TEST-LIVE-BRANCHES

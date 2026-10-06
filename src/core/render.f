@@ -1209,13 +1209,14 @@ DIAG-PRINT-INSTALL
 \ signature's (SGBAD-CLASS$, SGBAD-SUGGEST$). A row that parsed but is too deep
 \ or too wide to record has a class of its own and a reason naming the bound it
 \ passed, with its count and limit. The JSON is a refused record
-\ (docs/repair-diagnostics.md): the row's name is its token, and the signature
-\ as written the field its code adds.
+\ (docs/repair-diagnostics.md): the row's name is its token, placed where the
+\ declaring name AT lies in the checked text, and the signature as written is
+\ the field its code adds.
 : BADSIG-REASON ( -- )
    SGBAD-DEPTH? IF DEPTH-REASON$ DTXT  SGBAD-SIZE @ DEPTH-COUNTS EXIT THEN
    WIDTH-REASON$ DTXT  SGBAD-SIZE @ WIDTH-COUNTS ;
-: BADSIG-JSON ( ptr u8 n ptr u8 n -- )
-   {: sa:ptr su:n na:ptr nu:n :}
+: BADSIG-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
    123 EMIT1                                              \ {
    s" schema_version" JKEY 1 JNUM 44 EMIT1
    s" code" JKEY s" E-BAD-STORED-SIGNATURE" JSTR 44 EMIT1
@@ -1225,6 +1226,7 @@ DIAG-PRINT-INSTALL
    s" signature" JKEY sa su SIG-TRIM JSTR 44 EMIT1
    SGBAD-SIZE? IF s" reason" JKEY JOPEN BADSIG-REASON JCLOSE 44 EMIT1 THEN
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   at atu JTOKEN-FIELDS
    s" suggestion" JKEY SGBAD-SUGGEST$ JSTR
    125 EMIT1 ;                                            \ }
 : BADSIG-PROSE ( ptr u8 n ptr u8 n -- )
@@ -1232,9 +1234,10 @@ DIAG-PRINT-INSTALL
    s" habu: in " DTXT  na nu DTXT  s" : bad stored signature '" DTXT
    sa su SIG-TRIM DTXT  s" '" DTXT
    SGBAD-SIZE? IF s"  " DTXT BADSIG-REASON THEN ;
-: BADSIG-DIAG ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+: BADSIG-DIAG ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
    1 RDST !  0 RSN !
-   sa su na nu JSON-DIAGS @ IF BADSIG-JSON ELSE BADSIG-PROSE THEN
+   JSON-DIAGS @ IF sa su na nu at atu BADSIG-JSON ELSE sa su na nu BADSIG-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
 : BADSIG-DIAG-INSTALL ( -- ) [: BADSIG-DIAG ;] is BADSIG-XT ;
@@ -1601,7 +1604,8 @@ SHADOW-DIAG-INSTALL
 \ the same template, with the repair class and suggestion a call to such a name
 \ gets (E-BAD-QUALIFIED above). The record has a code of its own, in a refused
 \ record's shape, where the call's is a definition's (tools/diag-code.f); its
-\ refusal still throws E-BAD-QUALIFIED.
+\ refusal still throws E-BAD-QUALIFIED. Its position is the declaring name
+\ (TSR-AT-A, checker.f CHECKER-RECORD-NAME-AT) when that lies in checked text.
 : BADQUAL-PROSE ( -- )
    s" E-BAD-QUALIFIED-RECORD habu: record for '" DTXT  TSR-TOK-A @ TSR-TOK-U @ DTXT
    s" ' refused: malformed qualified name, where one non-edge ':' selects a" DTXT
@@ -1615,6 +1619,7 @@ SHADOW-DIAG-INSTALL
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY TSR-TOK-A @ TSR-TOK-U @ JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   TSR-AT-A @ TSR-AT-U @ JTOKEN-FIELDS
    s" suggestion" JKEY s" Use one ':' qualifier, e.g. PKG:WORD." JSTR
    125 EMIT1 ;
 : BADQUAL-DIAG ( -- )

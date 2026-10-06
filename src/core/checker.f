@@ -3486,7 +3486,7 @@ variable CVLIVE  -1 CVLIVE !
 \ the declaration-order payload index; -1 = position unknown (row-level or
 \ post-LOGHID failure), so the packet omits payload_pos.
 variable DPOS    -1 DPOS !
-variable VSIG   variable SGSEEN   variable SGIN   variable SGOUT
+variable VSIG   variable SGSEEN   variable SGDECL-BAD   variable SGIN   variable SGOUT
 variable SGRIN  variable SGROUT  variable SGDBASE  variable SGRBASE
 PTR-VARIABLE SGA  variable SGU
 $1000 constant TOKBUF-INIT-CAP
@@ -9107,12 +9107,11 @@ variable RECMI   0 RECMI !
 \ into an effect row. A signature that does not parse stores no row and reports
 \ through BADSIG-XT (render.f), then refuses as a stale trust row does
 \ (TRUST-STALE): the ordinary load path throws E-BAD-STORED-SIGNATURE, since a
-\ baked or TRUSTed effect must never be silently wrong. A MULTI-ERROR load must
-\ not abort the run: a rejected DEFINITION was already diagnosed and counted by
-\ CHECK (the native re-records every published definition's declared sig through
-\ TRUST-DECL), so a definer's row under its name is suppressed here; any other
-\ row, and a source TRUST row whatever it names, is reported and counted as a
-\ reject (USIG-ADD-BAD). Either way no row exists, so later
+\ baked or TRUSTed effect must never be silently wrong. A MULTI-ERROR load
+\ reports and counts the row (USIG-ADD-BAD), whatever it names. A colon
+\ definition's bad signature is CHECK's refusal and keeps no row
+\ (MULTI-REFUSED); the engine registers declared text only for `TRUSTED:` and
+\ `defer`, which CHECK does not check. No row exists after a refusal, so later
 \ callers reject as undefined instead of trusting a malformed effect.
 \ The multi-error load mode is off by default so the ordinary load path
 \ (fixpoint build, gate) keeps the fail-on-first-reject HOOK behavior. When on,
@@ -9125,14 +9124,15 @@ variable MULTI-ERR      \ multi-error load mode active?
 variable MULTI-ERR-N    \ refused definitions counted this load
 0 MULTI-ERR !   0 MULTI-ERR-N !
 7156 constant E-BAD-STORED-SIGNATURE   \ a stored signature does not parse
-\ bad stored-signature diagnostic hook (render.f installs BADSIG-DIAG). A `defer`
-\ so the diagnostic call is statically effect-known. Until render.f loads,
-\ BADSIG-PLAIN writes `name: sig: bad stored signature` on fd 2, so a row the
-\ boot refuses still names itself before the throw. The write results are
+\ bad stored-signature diagnostic hook (render.f installs BADSIG-DIAG). It takes
+\ the signature, stored name, and declaring name as read by the caller. Until
+\ render.f loads, BADSIG-PLAIN writes `name: sig: bad stored signature` on fd 2,
+\ so a row the boot refuses still names itself before the throw. The write results are
 \ dropped because the refusal follows at once; a failed write has no caller
 \ that could act on it.
-defer BADSIG-XT ( ptr u8 n ptr u8 n -- )
-: BADSIG-PLAIN ( ptr u8 n ptr u8 n -- )
+defer BADSIG-XT ( ptr u8 n ptr u8 n ptr u8 n -- )
+: BADSIG-PLAIN ( ptr u8 n ptr u8 n ptr u8 n -- )
+   2drop
    {: sa:ptr su:n na:ptr nu:n :}
    2 na nu write drop
    2 s" : " write drop
@@ -9153,9 +9153,6 @@ BADSIG-DEFAULT
 
 : RECOVERY-RECORD ( -- )
    EFF-RECOVERY CHECKER-REC-SYM @ USIG-NEWEST 1- E-PTR ER.ACTIVE ! ;
-
-: USIG-BAD-FOREIGN? ( ptr u8 n -- bool )   \ not the definition CHECK just handled
-   NMA @ NMU @ CORE-STR= 0= ;
 
 \ ---- the AOT signature pool: the capture side --------------------------------
 \
@@ -9463,41 +9460,37 @@ variable ASIG-MISS-K
 
 : ASIG-MISS-A@ ( n -- ptr u8 ) {: at:n :} ASIG-MISS at 2 + + ;
 
-\ A source `trust` row (TRUST) is rendered and counted whatever it names. Every
-\ other row is a definer's, and one naming the definition CHECK just handled
-\ re-records that definition's own signature (the native publish tail calls
-\ TRUST-DECL for every definition): a multi-error load skips it, since CHECK
-\ already rendered and counted that definition's refusal.
-: USIG-ADD-BAD ( ptr u8 n ptr u8 n bool -- )
-   {: sa:ptr su:n na:ptr nu:n src:bool :}
+\ AT is the declaring name as the caller read it, used to place the record.
+: USIG-ADD-BAD ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
    WRITE-WINDOW-CK                       \ a refusal moves the latches too
    0 RECW !                              \ no record stored: nothing to publish wide
    0 RECMI !                             \ ... and no min-in to poke
-   MULTI-ERR? src 0= and na nu USIG-BAD-FOREIGN? 0= and IF EXIT THEN
-   sa su na nu BADSIG-XT
+   sa su na nu at atu BADSIG-XT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-BAD-STORED-SIGNATURE CHECKER-REFUSE ;
 
-\ It answers whether it retained the row: false after a refusal that returns
-\ (USIG-ADD-BAD), true once the effect and its text are stored.
-: USIG-ADD-AS ( ptr u8 n ptr u8 n bool bool -- bool )
-   {: sa:ptr su:n na:ptr nu:n external:bool src:bool :}
+\ AT is the declaring name as read, beside the name NA stored for. The result
+\ is false after a refusal that returns (USIG-ADD-BAD), true once the effect
+\ and its text are stored.
+: USIG-ADD-AS ( ptr u8 n ptr u8 n ptr u8 n bool -- bool )
+   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n external:bool :}
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
-   SGBAD @ if sa su na nu src USIG-ADD-BAD RES-FALSE exit then
+   SGBAD @ if sa su na nu at atu USIG-ADD-BAD RES-FALSE exit then
    \ An effect deeper than a record holds, or an input row too wide for its
    \ min-in field, is a stored signature no record can hold: refused as a bad
    \ one, by the bound it passes, the depth first as a definition's is.
    din dout rin rout ROWS-DEPTH {: depth:n :}
    depth EFFECT-DEPTH-MAX > if
       sa su SGBAD-DEPTH-KIND depth SGBAD-SIZE!
-      sa su na nu src USIG-ADD-BAD RES-FALSE exit
+      sa su na nu at atu USIG-ADD-BAD RES-FALSE exit
    then
    din ROW-CELLS {: width:n :}
    width EFFECT-MIN-IN-MAX > if
       sa su SGBAD-WIDTH-KIND width SGBAD-SIZE!
-      sa su na nu src USIG-ADD-BAD RES-FALSE exit
+      sa su na nu at atu USIG-ADD-BAD RES-FALSE exit
    then
    \ This path records an asserted signature. Checked definitions publish their
    \ already verified rows through CHECKER-PUBLISH-PARSED, so no assertion may
@@ -9510,7 +9503,7 @@ variable ASIG-MISS-K
    RES-TRUE ;
 
 : USIG-ADD ( ptr u8 n ptr u8 n -- )
-   RES-TRUE RES-FALSE USIG-ADD-AS drop ;
+   2dup RES-TRUE USIG-ADD-AS drop ;
 
 : USIG-DELETE ( ptr u8 n -- )
    2drop E-ADD-DELETED ;
@@ -11180,6 +11173,7 @@ package CHECKER-REG
 \ A record for a malformed qualified name, which keys no word (CHECKER-RECORD-NAME).
 7152 constant E-BAD-QUALIFIED
 PTR-VARIABLE TSR-TOK-A   variable TSR-TOK-U     \ the row's name (raw, valid while rendering)
+PTR-VARIABLE TSR-AT-A    variable TSR-AT-U      \ declaring name (valid while rendering)
 \ A `generates:` row the checker cannot keep (CHECKER-GENERATES): one code for
 \ its three refusals, which the diagnostic tells apart by kind.
 7153 constant E-GENERATES-ROW
@@ -13324,18 +13318,24 @@ variable DFER-POS
 \ a malformed qualified name, which keys no word, and no row may carry 0: a
 \ defer row keyed 0 is DFERS' terminator and hides every row after it from the
 \ scan, and an effect row keyed 0 is anonymous. So the name is refused, and
-\ named, before the caller writes anything. The refusal is a throw because source
+\ named, before the caller writes anything. AT is the declaring name as read by
+\ the caller, which places the refusal if its bytes lie in the checked text.
+\ The refusal is a throw because source
 \ reaches it through the pre-pass (src/habu/verify-source.f), whose drivers
 \ report a throw at its statement after every diagnostic made before it.
-: CHECKER-RECORD-NAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: CHECKER-RECORD-NAME-AT ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n at:ptr atu:n :}
    a u CHECKER-RECORD-SYM {: sym:n :}
    sym 0= IF
-      a TSR-TOK-A !  u TSR-TOK-U !
+      a TSR-TOK-A !  u TSR-TOK-U !  at TSR-AT-A !  atu TSR-AT-U !
       2 RECORD-DIAG-XT
       E-BAD-QUALIFIED CHECKER-REFUSE
    THEN
    sym CHECKER-REC-SYM !
    a u ;
+
+: CHECKER-RECORD-NAME ( ptr u8 n -- ptr u8 n )
+   2dup CHECKER-RECORD-NAME-AT ;
 
 : CHECKER-DEFER ( ptr u8 n -- )
    CHECKER-RECORD-NAME DFER-ADD ;
@@ -13347,8 +13347,11 @@ package CHECKER-REG
 : CHECKER-USIG-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    sa su na nu CHECKER-RECORD-NAME USIG-ADD ;
 
+: CHECKER-REC-NAME-AT! ( ptr u8 n ptr u8 n -- )
+   CHECKER-RECORD-NAME-AT CHECKER-REC-U ! CHECKER-REC-A ! ;
+
 : CHECKER-REC-NAME! ( ptr u8 n -- )
-   CHECKER-RECORD-NAME CHECKER-REC-U ! CHECKER-REC-A ! ;
+   2dup CHECKER-REC-NAME-AT! ;
 
 : CHECKER-REC-A@ ( -- ptr u8 )
    CHECKER-REC-A @ ;
@@ -13458,18 +13461,19 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
 
 \ CHECKER-DEFCAST hands this a name source gave it, so a length no name has is
 \ refused with the symbol pool's refusal before the constructor scan reads it.
-: CHECKER-USIG-CERT-ADD-AS ( ptr u8 n ptr u8 n bool -- )
-   {: sa:ptr su:n na:ptr nu:n external:bool :}
+\ CHECK passes AT at NMOFF, where the checked text holds the name it folded.
+: CHECKER-USIG-CERT-ADD-AS ( ptr u8 n ptr u8 n ptr u8 n bool -- )
+   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n external:bool :}
    na nu CK-NAME-SPAN? 0= IF SYM-STR-OVERFLOW THEN
    na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
    na nu CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
-   na nu CHECKER-REC-NAME!
+   na nu at atu CHECKER-REC-NAME-AT!
    0 DL-NEW !
-   sa su CHECKER-REC-A@ CHECKER-REC-U@ external RES-FALSE USIG-ADD-AS drop
+   sa su CHECKER-REC-A@ CHECKER-REC-U@ at atu external USIG-ADD-AS drop
    DL-TAKE ;
 
 : CHECKER-USIG-CERT-ADD ( ptr u8 n ptr u8 n -- )
-   RES-TRUE CHECKER-USIG-CERT-ADD-AS ;
+   2dup RES-TRUE CHECKER-USIG-CERT-ADD-AS ;
 
 \ The successful CHECK still owns width facts referring to its type terms.
 \ Publish its verified rows without resetting and reparsing that live arena.
@@ -13482,7 +13486,7 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
 \ PUBLISH-REFUSALS before the definition's first write.
 : CHECKER-USIG-CERT-PARSED ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n :}
-   na nu CHECKER-REC-NAME!
+   na nu  NMOFF @ TADDR nu  CHECKER-REC-NAME-AT!
    SG-ROWS-N @ 0 <> IF
       SG-ROWS-RESOLVE
       -1 SG-ROWS-PUBLISH !
@@ -13719,7 +13723,7 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
 \ duplicate question was asked by PUBLISH-REFUSALS before the first write.
 : CHECKER-USIG-CERT-CURRENT ( ptr u8 n -- )
    {: na:ptr nu:n :}
-   na nu CHECKER-REC-NAME!
+   na nu  NMOFF @ TADDR nu  CHECKER-REC-NAME-AT!
    BROW @ DCUR @ 0 0 RES-FALSE
    CHECKER-EFFECT-AUTHORITY:CERTIFIED? E-ADD-EFFECT DL-TAKE
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? IF RECOVERY-RECORD THEN ;
@@ -18824,8 +18828,7 @@ s" <input>" DIAG-FILE!
 
 \ The registration the two declaration words share. It is factored out rather than
 \ copied because TRUST and TRUST-RAW must record the same row from the same
-\ code; the only things that differ between them are whether the signature
-\ parser is in raw-definer mode while it runs and whether the row is source's.
+\ code; only the signature parser's raw-definer mode differs between them.
 \ TRUST-RAW cannot reach the registration by calling TRUST, because `trust` is
 \ one of the tokens refused inside a checked body (UNSAFE-TOK?) and these bodies
 \ are themselves checked.
@@ -18838,15 +18841,14 @@ s" <input>" DIAG-FILE!
 \ print it. Given the maximum cell, the parser read on until the process was
 \ killed. Nothing is parsed, so the parser's state is cleared first: the
 \ refusal's class is otherwise the one an earlier refused signature left.
-\ Only TRUST's row is source's: a bad one is rendered and counted even when it
-\ names the definition CHECK just handled (USIG-ADD-BAD).
+\ The folded key in TKF is separate from the declaring name read by the caller.
 \ It answers whether the row was retained, as USIG-ADD-AS does: false when the
 \ refusal of a span no memory has returns.
-: TRUST-USIG! ( ptr u8 n ptr u8 n bool -- bool )
-   {: na:ptr nu:n sa:ptr su:n src:bool :}
+: TRUST-USIG! ( ptr u8 n ptr u8 n -- bool )
+   {: na:ptr nu:n sa:ptr su:n :}
    na nu TOKFOLD drop
-   sa su BYTE-SPAN? 0= IF SGBAD-CLEAR sa 0 TKF TKFU @ src USIG-ADD-BAD RES-FALSE EXIT THEN
-   sa su  TKF TKFU @ CHECKER-RECORD-NAME RES-TRUE src USIG-ADD-AS ;
+   sa su BYTE-SPAN? 0= IF SGBAD-CLEAR sa 0 TKF TKFU @ na nu USIG-ADD-BAD RES-FALSE EXIT THEN
+   sa su  TKF TKFU @ na nu CHECKER-RECORD-NAME-AT na nu RES-TRUE USIG-ADD-AS ;
 
 \ TRUST-DECL: record the effect a DEFINER just declared for the word it is
 \ publishing. The engine calls it by name from its publish tail and from the
@@ -18897,7 +18899,7 @@ s" <input>" DIAG-FILE!
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE RES-FALSE EXIT THEN
    DOES-EFF-STEP
    0 DL-NEW !
-   na nu sa su RES-FALSE TRUST-USIG!
+   na nu sa su TRUST-USIG!
    {: kept:bool :}
    DL-TAKE
    \ The parser filled both input rows. An unchecked body may throw after
@@ -19038,7 +19040,7 @@ REG-PROTECT
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
    0 DL-NEW !
-   na nu sa su RES-TRUE TRUST-USIG! drop
+   na nu sa su TRUST-USIG! drop
    DL-AMEND ;
 
 \ TRUST-RAW: the raw-dictionary-storage form of TRUST, and the single authority
@@ -19079,7 +19081,7 @@ REG-PROTECT
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    RES-TRUE SIG-RAW-DEFINER!
    0 DL-NEW !
-   na nu sa su [: RES-FALSE TRUST-USIG! drop ;] [: RES-FALSE SIG-RAW-DEFINER! ;] finally
+   na nu sa su [: TRUST-USIG! drop ;] [: RES-FALSE SIG-RAW-DEFINER! ;] finally
    DL-TAKE
    na nu CHECKER-RECORD-SYM? {: sym:n :}
    sym CTL-FLAGS-SYM {: flags:n :}
@@ -21393,7 +21395,7 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
    0 MDIAG-DEPTH !  0 MDIAG-WIDTH !  0 UNFIT !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
-   0 FAILSET !  0 DEXP !  0 DACT !  0 RSBAD !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
+   0 FAILSET !  0 DEXP !  0 DACT !  0 RSBAD !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    NULL-PTR SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !  0 BIND-HORIZON !
@@ -21524,6 +21526,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
            SG-ROWS-COLLECT
            NP-COLLECT
            SIG-EFF-CACHE!
+           SGBAD @ UNFIT @ or SGDECL-BAD !
          THEN
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN     \ skip ')'
        ELSE
@@ -22011,11 +22014,12 @@ variable CAST-PATH-N
 \ caller checks against it, unless that signature is bad or too big to record.
 \ A failed body makes no control claims; the hook publishes it all the same.
 : MULTI-REFUSED ( -- )
+   BWIN-UNJUDGED @ 0= 0= SGDECL-BAD @ 0= 0= and IF EXIT THEN  \ declared row reports this signature
    1 MULTI-ERR-N +!
    CHECK-SIG? SGBAD @ 0= and UNFIT @ 0= and IF
       NMA @ NMU @ CHECK-REC-ADMIT
       NMA @ NMU @ 0 NORET-ADD
-      SGA @ SGU @  NMA @ NMU @ RES-FALSE CHECKER-USIG-CERT-ADD-AS
+      SGA @ SGU @  NMA @ NMU @  NMOFF @ TADDR NMU @  RES-FALSE CHECKER-USIG-CERT-ADD-AS
       RECOVERY-RECORD
       NMA @ NMU @ CHECKER-RECORD-SYM CK-CLOSE!
    THEN ;
@@ -22135,7 +22139,7 @@ variable CAST-PATH-N
    dup 2 =  NMU @ 0 >  and  CHECK-SIG? and  CK-AOT-RETRY-DUE @ 0= and IF
       NMA @ NMU @ CHECK-REC-ADMIT
       NMA @ NMU @ INHSET @ NORET-ADD
-      SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD
+      SGA @ SGU @  NMA @ NMU @  NMOFF @ TADDR NMU @  RES-TRUE CHECKER-USIG-CERT-ADD-AS
    THEN
    \ A refusal in multi-error mode, rejected or uncheckable alike, once the last
    \ pass of a retried check has judged it:
@@ -23024,7 +23028,7 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW RAW-SIG!
    SGBAD-UNKNOWN? SGBAD-ARITY? or IF E-CAST-FAM throw THEN
-   SGBAD @ IF sa su na nu BADSIG-XT  CHECKER-REJECT-RC throw THEN
+   SGBAD @ IF sa su na nu na nu BADSIG-XT  CHECKER-REJECT-RC throw THEN
    SGHASR @ 0 <> IF E-CAST-ARITY throw THEN
    SGIN @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
    SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
