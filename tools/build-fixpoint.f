@@ -1100,8 +1100,12 @@ package BUILD-FIXPOINT
    out outu s" src/habu/code-origin.f" BF-APPEND-MODULE
    out outu s" src/habu/habu1.f" BF-CODE-ORIGIN-REQUIRE$ BF-APPEND-SOURCE-FROM ;
 
-\ fmt requires float and string; float also requires option, and string
-\ requires NUM arithmetic/types and errors. Prelude/errors are already
+\ fmt requires float and string; float requires string and option, and string
+\ requires errors and option. Nothing here requires num-types.f or
+\ num-arithmetic.f: they come in the prefix's order (src/habu/habu2.f
+\ PFX-LOAD-STDLIB-FILES) because num-types.f declares type families, and the
+\ seed refuses a captured registry that does not start where the prefix's does
+\ (src/core/type-family.f REG-AOT-BASE-BAD). Prelude/errors are already
 \ restored here. Each provided fact makes the remaining require a no-op.
 : BF-APPEND-FMT ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" lib/adt/option.f" BF-APPEND-MODULE

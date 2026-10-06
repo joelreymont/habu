@@ -101,64 +101,19 @@ TF-NAME-MAX constant NAME-MAX
 : YES ( -- bool ) 0 0= ;
 : NO ( -- bool ) 0 0= 0= ;
 
-\ ---------------------------------------------------------------------------
-\ Trusted forwarders to the pre-hook registry / schema / checker words. These are
-\ raw-memory / metaprogramming boundaries the checker cannot type from a post-hook
-\ checked body; the compiled reference survives the REG-PROTECT name seal exactly
-\ as decl-event.f's DEV-FLD-* and structure-decl.f's FAM-* forwarders do.
-\
-\ A forwarder belongs here ONLY while its target has no checker-recorded effect.
-\ TFAM-PUBLIC?, TFAM-ARITY@, TFAM-WIDTH@, CHECKER-AUTH-PACKAGE-ACTIVE? and
-\ CHECKER-AUTH-PACKAGE-MODE@ carry primitive axioms in src/core/checker.f, so the
-\ bodies below call them by name and the checker enforces the axiom. Forwarding a
-\ word whose effect the checker holds restates a signature nothing verifies
-\ (dot habu-visibility-discharge-548-fab55650).
-\ ---------------------------------------------------------------------------
-TRUSTED: FAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
-TRUSTED: FAM-LAYOUT! ( n n -- ) TFAM-LAYOUT! ;
-TRUSTED: FAM-EQ! ( n -- ) TFAM-DERIVE-EQ! ;
-TRUSTED: FAM-HASH! ( n -- ) TFAM-DERIVE-HASH! ;
-TRUSTED: FAM-VAR-RANGE! ( n n n -- ) TFAM-VAR-RANGE! ;
-TRUSTED: FAM-FLD-RANGE! ( n n n -- ) TFAM-FLD-RANGE! ;
-TRUSTED: FAM-SLOTS! ( n n -- ) TFAM-SLOTS! ;
-TRUSTED: LAY-DESC ( n -- ) TDECL-LAYOUT-DESC ;
-TRUSTED: FAM-LAYOUT? ( n -- bool ) TFAM-LAYOUT? ;
-TRUSTED: FAM-CELL? ( n -- bool ) TFAM-CELL? ;
-TRUSTED: SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool ) TFAM-SIG-RESOLVE ;
-TRUSTED: ACTIVE-PKG$ ( -- ptr u8 n ) TFAM-ACTIVE-PKG$ ;
-TRUSTED: CANON? ( ptr u8 n -- bool ) TF-CANON? ;
-TRUSTED: NAME-LONG$ ( -- ptr u8 n ) TF-NAME-LONG$ ;
-TRUSTED: NAME-RESERVED? ( ptr u8 n -- bool ) TYPE-NAME:FAMILY-RESERVED? ;
-TRUSTED: CON-CODE ( ptr u8 n -- n ) CON-OF ;
-TRUSTED: SUMV-N@ ( -- n ) SUMV-N @ ;    \ variant-cursor high-water (variant range start)
-TRUSTED: CON-N ( -- n ) CC-N ;          \ single-letter n : signed cell
-TRUSTED: CON-BOOL ( -- n ) CC-BOOL ;    \ single-letter f : boolean/flag
-TRUSTED: CON-R ( -- n ) CC-R ;          \ single-letter r : real/float
-TRUSTED: LT-STACK ( -- n ) TL-STACK-CELL-TAG ;   \ default layout policy code
-TRUSTED: LT-PACKED ( -- n ) TL-PACKED-TAG ;      \ packed-tag layout policy code
-TRUSTED: DV-EQ ( -- n ) DRV-EQ ;                 \ derive feature code: equality
-TRUSTED: DV-HASH ( -- n ) DRV-HASH ;             \ derive feature code: hash
-TRUSTED: PKG-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;   \ public visibility code
-TRUSTED: ED-SCH-CON ( n -- n ) SCHEMA-CON ;
-TRUSTED: ED-SCH-PARAM ( n -- n ) SCHEMA-PARAM ;
-TRUSTED: ED-SCH-PTR ( n -- n ) SCHEMA-PTR ;
-TRUSTED: ED-SCH-APP ( n n n -- n ) SCHEMA-APP ;
-TRUSTED: SCH-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
-TRUSTED: SCH-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
-TRUSTED: SCH-APP? ( n -- bool ) SCHEMA-APP? ;
-TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
-TRUSTED: SCH-OWNS-LINEAR? ( n -- bool ) TFCL-NODE? ;   \ node reaches a linear value
-TRUSTED: FLAGS-NONE ( -- n ) PF-FLAGS-NONE ;   \ field-record layout flag: none
-TRUSTED: TK-SUM-K ( -- n ) TK-SUM ;            \ full-mode named-variant sum kind
-TRUSTED: TK-ENUM-K ( -- n ) TK-ENUM ;          \ compact-mode payloadless enum kind
+\ The single-letter con codes are src/core/checker.f constants created before it
+\ claims the source, so a from-source boot gives them no row: they are read
+\ here at top level, as the reject codes are.
+CC-N constant CON-N          \ single-letter n : signed cell
+CC-BOOL constant CON-BOOL    \ single-letter f : boolean/flag
+CC-R constant CON-R          \ single-letter r : real/float
 
 \ --- one-token pushback. The token bytes stay valid across a line refill (the
-\ engine buffers the input source), so the pushback holds the raw span; storing a
-\ ptr u8 through a plain cell and reading it back is the one place the checker
-\ needs a named boundary.
-variable PEND-U   variable PEND-A
-TRUSTED: PEND! ( ptr u8 n -- ) PEND-U ! PEND-A ! ;
-TRUSTED: PEND@ ( -- ptr u8 n ) PEND-A @ PEND-U @ ;
+\ engine buffers the input source), so the pushback holds the raw span in a
+\ declared pointer cell.
+variable PEND-U   PTR-VARIABLE PEND-A
+: PEND! ( ptr u8 n -- ) PEND-U ! PEND-A ! ;
+: PEND@ ( -- ptr u8 n ) PEND-A @ PEND-U @ ;
 
 \ ---------------------------------------------------------------------------
 \ transient parse state (parse-loop bookkeeping, not declaration state). One
@@ -209,10 +164,10 @@ ED-RESET
 
 : REQUIRE-NAME ( ptr u8 n -- )      \ validate the family name (throws; consumes the copy)
    dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup NAME-LONG? IF 2drop NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
-   2dup CANON? 0= IF
+   2dup NAME-LONG? IF 2drop TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
+   2dup TF-CANON? 0= IF
       2drop s" name must be a lowercase family tail" E-CASE DECL-REJECT:REJECT throw THEN
-   NAME-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
+   TYPE-NAME:FAMILY-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
 
 \ --- mode-selection / arity token: a decimal within the shared alphabet.
 : ED-DIGIT? ( n -- bool ) dup 47 > swap 58 < and ;
@@ -264,21 +219,21 @@ ED-RESET
 \ kind it excludes, TK-EVIDENCE, has no declarer any source can write.
 \ ---------------------------------------------------------------------------
 : FIELD-FAM? ( ptr u8 n -- n bool )     \ resolve a closed arity-0 layout/cell family
-   ACTIVE-PKG$ 2swap SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
+   TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
-   id FAM-LAYOUT? id FAM-CELL? or 0= IF 0 NO EXIT THEN
+   id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
    id TFAM-ARITY@ 0 <> IF
       s" payload type is parametric and needs type arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
 
 : LETTER-TYPE ( ptr u8 n -- n )         \ single-char type: param / n / f / r
    drop c@
-   dup ASCII-N = IF drop CON-N ED-SCH-CON EXIT THEN
-   dup ASCII-F = IF drop CON-BOOL ED-SCH-CON EXIT THEN
-   dup ASCII-R = IF drop CON-R ED-SCH-CON EXIT THEN
+   dup ASCII-N = IF drop CON-N SCHEMA-CON EXIT THEN
+   dup ASCII-F = IF drop CON-BOOL SCHEMA-CON EXIT THEN
+   dup ASCII-R = IF drop CON-R SCHEMA-CON EXIT THEN
    TFAM-DECL-CHAR>PARAM 0= IF
       drop s" unknown payload type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-   dup ED-ARITY @ < IF ED-SCH-PARAM EXIT THEN
+   dup ED-ARITY @ < IF SCHEMA-PARAM EXIT THEN
    drop
    s" type parameter is outside the declared arity" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
@@ -289,20 +244,20 @@ ED-RESET
 \ the declaration door, with one rule — the same rule structure-decl.f applies to
 \ a field, because a variant payload carries exactly the same obligation.
 : REQUIRE-POINTEE ( n -- n )                \ pointee node, or reject a linear owner behind the address
-   dup SCH-OWNS-LINEAR? IF
+   dup TFCL-NODE? IF
       s" payload type is a pointer to a linear value and cannot own it"
       E-PAYLOAD DECL-REJECT:REJECT throw THEN ;
 
 : RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
    dup 0= IF 2drop s" missing payload type" E-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup s" ptr" CORE-STR=CI IF 2drop ED-NEXT RECURSE REQUIRE-POINTEE ED-SCH-PTR EXIT THEN
+   2dup s" ptr" CORE-STR=CI IF 2drop ED-NEXT RECURSE REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
    dup 1 = IF LETTER-TYPE EXIT THEN
-   2dup CON-CODE dup 0 <> IF nip nip ED-SCH-CON EXIT THEN drop
-   2dup FIELD-FAM? IF nip nip 0 0 ED-SCH-APP EXIT THEN drop
+   2dup CON-OF dup 0 <> IF nip nip SCHEMA-CON EXIT THEN drop
+   2dup FIELD-FAM? IF nip nip 0 0 SCHEMA-APP EXIT THEN drop
    2drop s" unknown payload type" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : SCH-WIDTH ( n -- n )                  \ physical cell width of a field schema node
-   dup SCH-APP? IF SCH-A@ TFAM-WIDTH@ EXIT THEN drop 1 ;
+   dup SCHEMA-APP? IF SCHEMA-A@ TFAM-WIDTH@ EXIT THEN drop 1 ;
 
 \ ---------------------------------------------------------------------------
 \ header clauses. Each emits its event through DECL-EVENT (which owns duplicate /
@@ -314,13 +269,13 @@ ED-RESET
 
 : POLICY-CODE ( ptr u8 n -- n )         \ policy name -> layout code (or reject)
    dup 0= IF 2drop s" missing layout policy name" E-POLICY DECL-REJECT:REJECT throw THEN
-   2dup s" stack-cell-tag" CORE-STR=CI IF 2drop LT-STACK EXIT THEN
-   2dup s" packed-tag" CORE-STR=CI IF 2drop LT-PACKED EXIT THEN
+   2dup s" stack-cell-tag" CORE-STR=CI IF 2drop TL-STACK-CELL-TAG EXIT THEN
+   2dup s" packed-tag" CORE-STR=CI IF 2drop TL-PACKED-TAG EXIT THEN
    2drop s" unknown layout policy" E-POLICY DECL-REJECT:REJECT throw ;
 : POLICY-CLAUSE ( -- )
    HEADER-ORDER
    ED-NEXT POLICY-CODE {: code:n :}
-   FAM @ code FAM-LAYOUT!
+   FAM @ code TFAM-LAYOUT!
    TOK @ FAM @ code DECL-EVENT:POLICY TOK ! ;
 
 : DERIVE-FEATURE? ( ptr u8 n -- bool )  \ a known/recognised derive feature token
@@ -336,8 +291,8 @@ ED-RESET
    TOK @ -rot DECL-EVENT:DERIVE TOK ! ;
 : DERIVE-ONE ( ptr u8 n -- )            \ apply one feature + emit its event
    DERIVE-GUARD
-   2dup s" eq" CORE-STR=CI IF 2drop FAM @ FAM-EQ! FAM @ DV-EQ EMIT-DERIVE EXIT THEN
-   2dup s" hash" CORE-STR=CI IF 2drop FAM @ FAM-HASH! FAM @ DV-HASH EMIT-DERIVE EXIT THEN
+   2dup s" eq" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-EQ! FAM @ DRV-EQ EMIT-DERIVE EXIT THEN
+   2dup s" hash" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH EMIT-DERIVE EXIT THEN
    2dup s" order" CORE-STR=CI IF
       2drop s" derive feature not yet supported" E-DERIVE DECL-REJECT:REJECT throw THEN
    2drop s" unknown derive feature" E-DERIVE DECL-REJECT:REJECT throw ;
@@ -357,12 +312,12 @@ ED-RESET
 \ width is the widest variant (MAXSLOTS).
 \ ---------------------------------------------------------------------------
 : EMIT-FIELD ( ptr u8 n n -- )          \ ( na nu node -- ) layout + drive the field event
-   SCH-ROOT+ {: sch:n :}                \ ( na nu )
-   sch SCH-ROOT@ SCH-WIDTH {: fw:n :}
+   SCHEMA-ROOT+ {: sch:n :}                \ ( na nu )
+   sch SCHEMA-ROOT@ SCH-WIDTH {: fw:n :}
    2dup DECL-REJECT:TOKEN!              \ the field name owns the field record's rejects
    s" duplicate field name" E-DUP DECL-REJECT:EXPECT
    TOK @ FAM @ 2swap sch                \ ( tok fam na nu sch )
-   VCELLS @  fw  VCELLS @ CELL *  fw CELL *  CELL  FLAGS-NONE
+   VCELLS @  fw  VCELLS @ CELL *  fw CELL *  CELL  PF-FLAGS-NONE
    DECL-EVENT:FIELD TOK !
    fw VCELLS @ + VCELLS !
    NFLD @ 1 + NFLD ! ;
@@ -370,14 +325,14 @@ ED-RESET
    ED-NEXT dup 0= IF
       2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ field name
    {: na:ptr nu:n :}
-   na nu NAME-LONG? IF NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
+   na nu NAME-LONG? IF TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    ED-NEXT RESOLVE-TYPE {: node:n :}
    na nu node EMIT-FIELD ;
 
 : VARIANT-NAME ( -- ptr u8 n )          \ next token = variant name (must be present)
    ED-NEXT dup 0= IF
       2drop s" missing variant name" E-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup NAME-LONG? IF 2drop NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN ;
+   2dup NAME-LONG? IF 2drop TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN ;
 : OPEN-VARIANT ( -- )
    VARIANT-NAME {: na:ptr nu:n :}
    na nu DECL-REJECT:TOKEN!             \ the variant name owns the variant registry's rejects
@@ -411,7 +366,7 @@ ED-RESET
    s" field" CORE-STR=CI ;
 : COMPACT-VARIANT ( ptr u8 n -- )       \ register one payloadless variant
    {: na:ptr nu:n :}
-   na nu NAME-LONG? IF NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
+   na nu NAME-LONG? IF TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    -1 SEEN-VARIANT !
    na nu DECL-REJECT:TOKEN!             \ the variant name owns the variant registry's rejects
    s" duplicate variant" E-DUP DECL-REJECT:EXPECT
@@ -432,7 +387,7 @@ ED-RESET
 \ transaction orchestration.
 \ ---------------------------------------------------------------------------
 : VIS ( -- n )                          \ declaration visibility (public at top level)
-   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF PKG-PUBLIC EXIT THEN CHECKER-AUTH-PACKAGE-MODE@ ;
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF CHECKER-VIS-PUBLIC EXIT THEN CHECKER-AUTH-PACKAGE-MODE@ ;
 : OPEN-TX ( -- )                        \ capture bases, open the event tx, emit DECL
    SUMV-N@ VBASE !
    TYPE-FIELD:COUNT FLDBASE !
@@ -444,8 +399,8 @@ ED-RESET
    ar ED-ARITY !
    na nu DECL-REJECT:TOKEN!             \ the family name owns the registry's rejects
    s" duplicate family" E-DUP DECL-REJECT:EXPECT
-   ACTIVE-PKG$ VIS na nu
-   ar TK-SUM-K FAM-DECL FAM !
+   TFAM-ACTIVE-PKG$ VIS na nu
+   ar TK-SUM TFAM-DECL FAM !
    OPEN-TX
    TOK @ FAM @ ar DECL-EVENT:ARITY TOK ! ;
 : REGISTER-COMPACT ( ptr u8 n -- )         \ ( na nu -- ) TK-ENUM family, arity 0, no header event
@@ -453,8 +408,8 @@ ED-RESET
    0 ED-ARITY !
    na nu DECL-REJECT:TOKEN!             \ the family name owns the registry's rejects
    s" duplicate family" E-DUP DECL-REJECT:EXPECT
-   ACTIVE-PKG$ VIS na nu
-   0 TK-ENUM-K FAM-DECL FAM !
+   TFAM-ACTIVE-PKG$ VIS na nu
+   0 TK-ENUM TFAM-DECL FAM !
    OPEN-TX ;
 
 \ ---------------------------------------------------------------------------
@@ -486,10 +441,10 @@ ED-RESET
 : ED-CLOSE ( -- )                          \ bind variant + field ranges + width, bake layout, arm generation
    DECL-REJECT:AT-FAMILY                    \ close-stage faults belong to the whole declaration
    NVAR @ 0= IF s" empty enum" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ needs a variant
-   FAM @ VBASE @ NVAR @ FAM-VAR-RANGE!
-   FAM @ FLDBASE @ NFLD @ FAM-FLD-RANGE!
-   FAM @ MAXSLOTS @ FAM-SLOTS!
-   FAM @ LAY-DESC
+   FAM @ VBASE @ NVAR @ TFAM-VAR-RANGE!
+   FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
+   FAM @ MAXSLOTS @ TFAM-SLOTS!
+   FAM @ TDECL-LAYOUT-DESC
    \ No reason is armed for the constructor participant's collide check. That
    \ check runs two phases later, in the commit phase, and nothing between here
    \ and there is a token this front end holds, so an arming made here would
@@ -568,7 +523,7 @@ ED-RESET
    AGAIN ;
 : ED-RESYNC ( -- )
    SEEN-END @ IF EXIT THEN
-   DECL-REJECT:MULTI-ERROR? 0= IF EXIT THEN
+   MULTI-ERR? 0= IF EXIT THEN
    ED-SKIP-BODY ;
 
 \ A reject is rendered through the shared declaration packet AFTER the

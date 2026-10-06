@@ -278,10 +278,14 @@ $68 constant CRSIG-A-CELL \ runtime created-word effect pending for CREATE
 $70 constant CRSIG-U-CELL
 $27B0 constant DOESB-CELL   \ BODYBUF offset of the DOES> body in current def
 $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
-\ The live source owner's record and the two of its fields the empty-hook
-\ publish arm calls (C-CALL-OWNER-DECLARATION). MIRROR of src/habu/layout.f
-\ DECL-CELL and src/core/checker-owner-abi.f EFFECT-OFF and DECLARED-ROW-OFF.
+\ The live source owner's record, a replacement checker's record, and the
+\ fields of them the publish arms call (C-CALL-OWNER-DECLARATION,
+\ C-FIND-ACTIVE-RAW, C-FIND-TARGET-RAW). MIRROR of src/habu/layout.f DECL-CELL
+\ and TARGET-DECL-CELL and src/core/checker-owner-abi.f RAW-OFF, EFFECT-OFF and
+\ DECLARED-ROW-OFF.
 $360 constant DECL-CELL
+$368 constant TARGET-DECL-CELL
+$0 constant DECL-RAW-OFF
 $8 constant DECL-EFFECT-OFF
 $390 constant DECL-DECLARED-ROW-OFF
 $27E8 constant COMPILE-PREFLIGHT-CELL \ checker-owned hook run before source-defined immediates
@@ -4456,52 +4460,70 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    skip LBL, ;
 
 \ MIRROR of src/habu/habu2.f LASTC-TRUST:FIND-RAW. Resolve `trust-raw`, the
-\ checker's raw-storage effect registrar (src/core/checker.f TRUST-RAW). Every
-\ word a definer publishes owns a cell of raw dictionary storage, so its effect
-\ must be registered with raw type variables that cannot bind a nominal family;
-\ the three publish words below all route here instead of at `trust-decl`. Same
-\ fail-closed shape as C-FIND-TRUST-DECL: a missing registrar names itself on
-\ fd 2 and exits 70 rather than publishing the word unsealed.
-: C-FIND-TRUST-RAW ( -- )  LBL {: ok :}
-   9 LKWTRUSTRAW @ ADR,  10 9 MOVZ,  LFIND @ BL,
-   13 ok CBNZ,
+\ checker's raw-storage effect registrar (src/core/checker.f TRUST-RAW), into
+\ x11 from the replacement checker's owner record, never by name, as
+\ C-CALL-OWNER-DECLARATION reaches its owner. Every word a definer publishes
+\ owns a cell of raw dictionary storage, so its effect must be registered with
+\ raw type variables that cannot bind a nominal family; the three publish words
+\ below all route here instead of at `trust-decl`. A missing registrar names
+\ itself on fd 2 and exits 70 rather than publishing the word unsealed.
+: C-FIND-TRUST-RAW ( -- )  LBL LBL {: absent ok :}
+   11 DATA TARGET-DECL-CELL LDR,  11 absent CBZ,
+   11 11 DECL-RAW-OFF LDR,  11 ok CBNZ,
+   absent LBL,
       0 2 MOVZ,  1 LKWTRUSTRAW @ ADR,  2 9 MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
+
+\ MIRROR of src/habu/habu2.f LASTC-TRUST:FIND-ACTIVE. Leave in x11 the raw
+\ registrar of the source owner in DECL-CELL, set hook or not: checker.f claims
+\ the source at its end, only check-hook.f installs the hook, and a word created
+\ between them (type-family.f's constants) has its row on a native cold boot.
+\ With no owner registrar an empty hook branches to ABSENT and a set one takes
+\ the replacement's (C-FIND-TRUST-RAW).
+: C-FIND-ACTIVE-RAW ( label -- ) {: absent :}
+   LBL LBL {: unowned ready :}
+   11 DATA DECL-CELL LDR,  11 unowned CBZ,
+   11 11 DECL-RAW-OFF LDR,  11 ready CBNZ,
+   unowned LBL,
+   9 DATA HOOK-CELL LDR,  9 absent CBZ,
+   C-FIND-TRUST-RAW
+   ready LBL, ;
+
+\ MIRROR of src/habu/habu2.f LASTC-TRUST:FIND-TARGET. A load that replaces the
+\ checker (stage2-src) keeps the startup checker in DECL-CELL while its own
+\ checker.f names the replacement in TARGET-DECL-CELL, and the replacement
+\ certifies what follows its check-hook.f. Leave the replacement's raw
+\ registrar in x11, or branch to SKIP when there is no owner, the replacement
+\ has no registrar yet, or it is the active owner's.
+: C-FIND-TARGET-RAW ( label -- ) {: skip :}
+   11 DATA DECL-CELL LDR,  11 skip CBZ,
+   12 11 DECL-RAW-OFF LDR,
+   11 DATA TARGET-DECL-CELL LDR,  11 skip CBZ,
+   11 11 DECL-RAW-OFF LDR,  11 skip CBZ,
+   11 12 CMP,  C-EQ skip BCOND, ;
 
 \ MIRROR of src/habu/habu2.f LASTC-TRUST:PUBLISH / PUBLISH-PTR-A / PUBLISH-A -
 \ every place this engine gives a defining word's creation an effect the checker
 \ will believe. C-PUBLISH registers the effect a `does>` clause declared for the
 \ words its defining word creates; C-PUBLISH-PTR-A registers `-- ptr a` for
-\ `create` and `variable`; C-PUBLISH-A registers `-- a` for `constant`.
-: C-PUBLISH ( -- )
-   LBL {: nohook :}
-   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-   C-FIND-TRUST-RAW
-   C-PUSH-DREC-NAME
-   CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG
-   C-CALL-X11-SAVED
-   nohook LBL, ;
+\ `create` and `variable`; C-PUBLISH-A registers `-- a` for `constant`. Each
+\ registers into the active owner, then into a distinct replacement one.
+: C-PUBLISH-RAW ( xt -- ) {: push-sig :}
+   LBL {: done :}
+   done C-FIND-ACTIVE-RAW
+   C-PUSH-DREC-NAME  push-sig execute  C-CALL-X11-SAVED
+   done C-FIND-TARGET-RAW
+   C-PUSH-DREC-NAME  push-sig execute  C-CALL-X11-SAVED
+   done LBL, ;
 
-: C-PUBLISH-PTR-A ( -- )
-   LBL {: nohook :}
-   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-   C-FIND-TRUST-RAW
-   C-PUSH-DREC-NAME
-   9 LSIGPTRA @ ADR,  9 G-PUSH
-   9 8 MOVZ,  9 G-PUSH
-   C-CALL-X11-SAVED
-   nohook LBL, ;
+: C-PUSH-CRSIG ( -- )  CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG ;
+: C-PUSH-SIG-PTR-A ( -- )  9 LSIGPTRA @ ADR,  9 G-PUSH  9 8 MOVZ,  9 G-PUSH ;
+: C-PUSH-SIG-A ( -- )  9 LSIGA @ ADR,  9 G-PUSH  9 4 MOVZ,  9 G-PUSH ;
 
-: C-PUBLISH-A ( -- )
-   LBL {: nohook :}
-   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-   C-FIND-TRUST-RAW
-   C-PUSH-DREC-NAME
-   9 LSIGA @ ADR,  9 G-PUSH
-   9 4 MOVZ,  9 G-PUSH
-   C-CALL-X11-SAVED
-   nohook LBL, ;
+: C-PUBLISH ( -- )  ['] C-PUSH-CRSIG C-PUBLISH-RAW ;
+: C-PUBLISH-PTR-A ( -- )  ['] C-PUSH-SIG-PTR-A C-PUBLISH-RAW ;
+: C-PUBLISH-A ( -- )  ['] C-PUSH-SIG-A C-PUBLISH-RAW ;
 
 : C-CALL-TRUST-PEND ( -- )
    C-FIND-TRUST-DECL

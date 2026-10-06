@@ -1357,7 +1357,6 @@ private
 \ window exists for: FIELD-PROJ! binds TYPE-DECL's private row
 \ (src/core/checker.f), so this caller is checked code.
 : TDPLAN-FP-ARM ( ptr u8 n n n -- ) FIELD-PROJ! ;
-TRUSTED: TDPLAN-FP-CLEAR ( -- ) FIELD-PROJ-CLEAR ;
 
 : TDPLAN-ARM ( n -- ) {: i:n :}
    i TDPLAN-ROW {: r:ptr :}
@@ -2170,7 +2169,7 @@ public
 : TDECL-ADDR-WORDS ( n -- )
    TDAD-FAM !
    [: TDECL-ADDR-BODY ;] catch {: rc:n :}
-   TDPLAN-FP-CLEAR
+   FIELD-PROJ-CLEAR
    rc 0 <> IF rc throw THEN ;
 
 \ Replay (tools/check-core.f's nominal pass, src/habu/verify-source.f) registers
@@ -2182,7 +2181,7 @@ public
 : TDECL-ADDR-REPLAY ( n -- )
    TDAD-FAM !
    [: TDECL-ADDR-REPLAY-BODY ;] catch {: rc:n :}
-   TDPLAN-FP-CLEAR
+   FIELD-PROJ-CLEAR
    rc 0 <> IF rc throw THEN ;
 
 \ Initialized fields use a separate trusted publication path. A checked

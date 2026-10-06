@@ -62,27 +62,19 @@ variable ADDRESS-ABI
    floor KEEP-ROWS-BELOW ;
 
 defer RESET-SOURCE ( -- )
-defer IMPORT-CHECKED ( ptr u8 -- )
 
 \ Resolve the current source owner in its own package.
 TRUSTED: CHECKER-OWNER ( -- ptr u8 )
    s" package CHECKER-REG DECLARATIONS ;package" evaluate ;
 
-\ These execution tokens belong to the retained/target private checker owners.
-\ The owner record holds them as code address integers.
+\ The execution token belongs to the retained private checker owner, whose
+\ record holds it as a code address integer.
 CAST: RESET-XT ( n -- [ -- ] )
-CAST: IMPORT-XT ( n -- [ ptr u8 -- ] )
 
 : RESET-CHECKER ( ptr u8 -- ) {: owner:ptr :}
    owner 0= if exit then
    owner NCOMP-DISPATCH:DECL-RESET-OFF + CELL-VIEW @ RESET-XT is RESET-SOURCE
    RESET-SOURCE ;
-
-: TRANSFER-CHECKER ( ptr u8 -- ) {: source:ptr :}
-   CHECKER-OWNER {: owner:ptr :}
-   owner 0= if s" window: target checker owner missing" 76 die then
-   owner NCOMP-DISPATCH:DECL-TRANSFER-OFF + CELL-VIEW @ IMPORT-XT is IMPORT-CHECKED
-   source IMPORT-CHECKED ;
 
 \ Installing a replacement's callbacks must not claim a nonzero source owner
 \ before the explicit transfer below; the retained compiler still uses it.
@@ -99,13 +91,20 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    CORE-PREFIX:FIRST-RECORD seed-ndict!
    RESET-ADDRESS-ROWS ;
 
-\ The dictionary row holds the fresh source reset as a code address integer.
+\ The dictionary rows hold the fresh source reset and checker handover as code
+\ address integers.
 CAST: SOURCE-RESET-XT ( n -- [ -- ] )
 CAST: SOURCE-PROVIDE-XT ( n -- [ ptr u8 n -- ] )
 
 : ACTIVATE-SOURCE ( -- )
    s" SOURCE-INPUT:RESET" XREF-FIND dup XREF-FOUND? 0= if
       drop s" window: fresh source reset missing" 76 die
+   then
+   XREF-START SOURCE-RESET-XT execute ;
+
+: TAKE-OVER ( -- )
+   s" CHECKER-REG:HANDOVER" XREF-FIND dup XREF-FOUND? 0= if
+      drop s" window: fresh checker handover missing" 76 die
    then
    XREF-START SOURCE-RESET-XT execute ;
 
@@ -187,7 +186,7 @@ variable SOURCE-READY
    s" src/core/layout-buffer.f" included
    s" src/core/layout-valid.f" included
    RECOVERY-MODE? if RECOVERY-ROW then
-   source TRANSFER-CHECKER
+   TAKE-OVER
    \ A source-loaded retained compiler must now use the replacement owner too.
    CHECKER-OWNER:CAPTURE-PREPARE
    s" src/core/check-hook.f" included
