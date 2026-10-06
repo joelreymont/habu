@@ -632,6 +632,20 @@ on a negative count. `BLEN>N` projects a validated length for byte arithmetic.
 `BUF:RESERVE` grows to the exact requested capacity; `BUF:ENSURE` uses checked
 doubling to leave room for incremental writes. Both preserve the active bytes.
 
+`BUF:SPAN ( ptr a -- SPAN:span<u8> )` borrows exactly the active prefix,
+including a zero-length span for a live empty buffer. It throws `E-BUF-STATE`
+on a dead buffer and `E-SPAN-RANGE` if the active length exceeds its allocation.
+Saved row offsets can use `BUF:SPAN`, `SPAN:SUB` and `SPAN:$` after growth;
+unused capacity is outside the returned span.
+
+`BUF:SPAN` and the raw pointer from `BUF:SPAN$` are borrowed until the next
+mutation or disposal of that buffer. Reacquire after append, replace, clear,
+reserve or ensure. A span does not enforce this lifetime or read-only access,
+and the borrower must not free it. Appends preserve saved offsets; clear or
+replace requires rebuilding rows that refer to the former contents.
+`BUF:APPEND-SPAN` accepts input borrowed from its own active bytes, including
+a substring: growth copies that input before releasing the former mapping.
+
 ## Bounded pointers (spans)
 
 `lib/span.f` (package `SPAN`) pairs a base pointer with the reach behind it, so a

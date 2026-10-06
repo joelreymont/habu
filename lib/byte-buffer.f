@@ -222,6 +222,12 @@ public
    buf CHECK-LIVE  buf LEN-RAW@ N>BLEN ;
 : CAP@ ( ptr a -- NUM:byte-len ) {: buf:ptr :}
    buf CHECK-LIVE  buf CAP-RAW@ N>BLEN ;
+\ Borrow the active prefix, not spare capacity. Reacquire after mutation;
+\ BUF retains ownership of the mapping, so the borrower must not free it.
+: SPAN ( ptr a -- SPAN:span<u8> )
+   {: buf:ptr :}
+   buf CHECK-LIVE
+   buf BUF-SPAN buf LEN-RAW@ SPAN:TAKE ;
 : SPAN$ ( ptr a -- ptr u8 NUM:byte-len ) {: buf:ptr :}
    buf CHECK-LIVE  buf DATA@  buf LEN-RAW@ N>BLEN ;
 
