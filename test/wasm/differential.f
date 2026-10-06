@@ -199,11 +199,19 @@ public
    want wu CRASH-RC 0 NATIVE
    want wu 2 0 WASM ;
 
+\ W05's generated conversion requires saturating float-to-int validation.
+: W05-ROW ( -- )
+   s" W05-FEATURE"
+   s" : W05-FEATURE ( -- ) 1 s>f f>s . ;"
+   S\" 1\n" ROW
+   LABEL  MODULE MODULE-U @ WASM-HARNESS:VALID-WITHOUT-SAT? TFALSE ;
+
 ;package
 
 T-RESET
 WASM-DIFFERENTIAL:SETUP
 using WASM-DIFFERENTIAL
+W05-ROW
 include test/wasm/numeric-rows.f
 
 \ ---- W01 a loop's edge copies form a cycle; nested exits keep their depths -------
