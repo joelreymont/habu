@@ -40,7 +40,8 @@ TRUSTED: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 1 constant SCOPE-SEEDED              \ LSCOPEREC flag: the bound record is a seeded primitive
 
 \ Public search hides internal words; the compiler admits them only while a
-\ TRUSTED: definition is being compiled. Re-read that authority on every call.
+\ TRUSTED: definition is being compiled, and a call to an owned one always
+\ (CALL-BINDING). Re-read that authority on every call.
 : VISIBLE-RECORD? ( ptr n -- bool )
    {: rec:ptr :}
    rec XREF-FLAGS DNAME-INT and 0<> if
@@ -71,9 +72,10 @@ public
 
 private
 
-\ The record a compilation may call. One it may not is refused where it binds, as
-\ the JIT's call guard refuses it (habu2.f C-COMPILE-CALL-GUARD): the spelling is
-\ never handed on to a later scope.
+\ The record a compilation may name other than by a call: tick, enter or read.
+\ One it may not is refused where it binds, so the spelling is never handed on
+\ to a later scope. An internal record needs the TRUSTED: cell here even when
+\ owned: only a call binds an owned primitive (CALL-BINDING).
 : SPELL-REC ( ptr u8 n -- ptr n )
    SCOPE-REC {: rec:ptr :}
    rec XREF-FOUND? 0= if rec exit then
@@ -246,30 +248,53 @@ variable RG-MASK   variable RG-I   variable RG-S   variable RG-BAD
    RG-BAD @ 0<> if GLUE-UNKNOWN exit then
    RG-MASK @ ;
 
-public
-
-\ Where a compiled CALL may branch to, or zero when it may not branch there at
-\ all. An IMMEDIATE word runs at compile time, and a RETIRED record's start is
-\ code nothing can reach. A DNAME-INT call is resolved only while the existing
-\ TRUSTED: compilation cell is armed; checked bodies cannot branch to internal
-\ engine code even if a trusted-only primitive row supplies its real arity.
-: CALL-BINDING ( ptr u8 n -- n n )
-   {: a u:n :}
-   a u SPELL-REC {: rec:ptr :}
+\ The entry a bound record offers a compiled reference and its definer kind, or
+\ 0 0. An IMMEDIATE word runs at compile time, and a RETIRED record's start is
+\ code nothing can reach.
+: REC-BINDING ( ptr n -- n n )
+   {: rec:ptr :}
    rec XREF-FOUND? 0= if 0 0 exit then
    rec XREF-START {: start:n :}
    start 0= if 0 0 exit then
    rec XREF-RETIRED? if 0 0 exit then
    rec XREF-FLAGS {: f:n :}
-   f DNAME-INT and 0<> if
-      data-base TRUSTED-CELL + @ 0= if 0 0 exit then
-   then
    f DNAME-IMM and 0<> if 0 0 exit then
    start f DKIND:MASK and ;
+
+public
+
+\ Whether a compiled call may bind an internal record (DNAME-INT) with flag
+\ cell f. An owned one (DNAME-OWNED, src/habu/layout.f) it may: whether a body
+\ may call that one is the checker's decision through its owner's rows, as tier
+\ 0's C-COMPILE-CALL-GUARD leaves it (src/habu/habu2.f). Any other only while
+\ the existing TRUSTED: compilation cell is armed: checked bodies cannot branch
+\ to other internal engine code even if a trusted-only primitive row supplies
+\ its real arity. Both tier-1 call paths ask it: CALL-BINDING of the record its
+\ lookup binds, src/compiler/native/hir-word.f RESOLVE-SITE of the record the
+\ checker's binder bound a checked site to.
+: INT-CALL? ( n -- bool )
+   DNAME-OWNED and 0<> if true exit then
+   data-base TRUSTED-CELL + @ 0<> ;
+
+\ Where a compiled CALL may branch to, or zero when it may not branch there at
+\ all: an internal record as INT-CALL? admits it, any other when it is visible.
+: CALL-BINDING ( ptr u8 n -- n n )
+   SCOPE-REC {: rec:ptr :}
+   rec XREF-FOUND? 0= if 0 0 exit then
+   rec XREF-FLAGS {: f:n :}
+   f DNAME-INT and 0<> if f INT-CALL? else rec VISIBLE-RECORD? then
+   0= if 0 0 exit then
+   rec REC-BINDING ;
 
 \ A caller that needs definer semantics captures them with the same resolved
 \ entry. Most call sites only need the target address.
 : CALL-TARGET ( ptr u8 n -- n ) CALL-BINDING drop ;
+
+\ Where a compiled `[']` may take its xt from, or zero. An xt runs wherever it
+\ is handed, so a tick binds only what SPELL-REC binds: an owned primitive's
+\ tick is refused as every internal word's is, at both tiers.
+: TICK-TARGET ( ptr u8 n -- n )
+   SPELL-REC REC-BINDING drop ;
 
 \ Where a compiled branch may reach a sealed engine helper, or zero. A helper
 \ (src/habu/primitive-registry.f HELPER-REGISTER) sits in OWNER-API-PRI-WID,

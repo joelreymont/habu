@@ -1107,6 +1107,10 @@ SUITE reopen-binding-aot
    test/reopen-binding.f
 ;SUITE
 
+SUITE replay-binding
+   test/replay-binding.f
+;SUITE
+
 SUITE undefine-binding
    test/undefine-binding.f
 ;SUITE
@@ -1920,6 +1924,10 @@ WHITEBOX-SUITE main-argv
 
 SUITE engine-writers
    test/engine-writers.f
+;SUITE
+
+SUITE owner-access
+   test/owner-access.f
 ;SUITE
 
 SUITE checker-assert

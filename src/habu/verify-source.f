@@ -774,6 +774,7 @@ CAST: CREATED-ACTION ( n -- [ ptr u8 n n -- bool ] )
 CAST: DOES-ACTION ( n -- [ ptr u8 n ptr u8 n ptr u8 n -- n ] )
 CAST: RENDERS-ACTION ( n -- [ ptr u8 n n -- bool ] )
 CAST: REACH-ACTION ( n -- [ ptr u8 n ptr u8 n -- ] )
+CAST: CLAUSE-ACTION ( n -- [ ptr u8 n -- ] )
 CAST: DECL-ACTION ( n -- [ ptr u8 n ptr u8 n -- bool ] )
 CAST: TICK-ORDER-ACTION ( n -- [ ptr u8 n n ptr u8 [ -- ] -- n ] )
 
@@ -906,6 +907,11 @@ CTL-RENDERS CTL-CREATES or constant MARK-UNSEEN
 \ (src/core/checker.f CHECKER-VERIFY-REACH).
 : TRUSTED-REACH ( ptr u8 n ptr u8 n -- )
    NCOMP-DISPATCH:DECL-VERIFY-REACH-OFF OWNER-XT REACH-ACTION execute ;
+
+\ The does> clause record of the TRUSTED: definer NAME, published as the
+\ engine's `does>` makes it (src/core/checker.f CHECKER-SOURCE-CLAUSE).
+: TRUSTED-CLAUSE ( ptr u8 n -- )
+   NCOMP-DISPATCH:DECL-VERIFY-SOURCE-CLAUSE-OFF OWNER-XT CLAUSE-ACTION execute ;
 
 \ ---- the definers this pre-pass learns from the sources it reads -------------
 \ A `create … does>` definition IS a definer, and the effect of every word it
@@ -1632,6 +1638,11 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
       THEN
    AGAIN ;
 
+\ The engine's `does>` makes the clause record `<definer>;does` for a TRUSTED:
+\ definer as for a checked one, so a definer whose `does>` the scan read gets it
+\ at its `;` (TRUSTED-CLAUSE), as a checked definer gets it from the check of
+\ its clause (CHECK-DOES-BODY): a later definition of that name is refused and a
+\ `trust` of it binds, as in the live load.
 : TRUSTED-DEFINITION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
@@ -1641,7 +1652,8 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    name nameu sig sigu DECL-SIGNATURE
    DISARM
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN
-   name nameu SCAN-TRUSTED-BODY ;
+   name nameu SCAN-TRUSTED-BODY
+   TRUSTED-DOES @ IF name nameu TRUSTED-CLAUSE THEN ;
 
 \ A cast has no body and no `;`, so unlike TRUSTED-DEFINITION above there is
 \ nothing to skip: the declaration ends at its closing paren. Registration goes
@@ -2682,10 +2694,11 @@ COMPOSE-INIT
    dup 0= IF drop exit THEN
    throw ;
 
-\ One action inside the verifier's package scope: the owner's start puts the
-\ checker under mirror authority, so every check the action runs binds a name
-\ over the checker's own records (src/core/checker.f REPLAY-BIND), and the done
-\ restores the caller's scope on the clean and the throwing path alike.
+\ One action inside the verifier's package scope: the owner's start opens the
+\ checker's engine overlay (src/core/checker.f CHECKER-OVERLAY), so every name
+\ the action replays binds through the engine dictionary, and the done closes
+\ the overlay and restores the caller's scope on the clean and the throwing
+\ path alike.
 : RUN-IN-SCOPE ( [ -- ] -- )
    TICK-CONTEXT-RESET
    false TICK-REMAINDER !
@@ -2729,6 +2742,13 @@ variable CAND-VERDICT
 
 : CANDIDATE-BODY ( -- )
    CAND-A @ CAND-U @ CHECK-QUIET-CANDIDATE! CAND-VERDICT ! ;
+
+\ The action SOURCE-BUF-THEN-IN-SCOPE runs once its scan is through.
+TYPED-VARIABLE THEN-ACTION [ -- ]
+
+: VERIFY-THEN ( -- )
+   VERIFY-ARMED
+   THEN-ACTION @ execute ;
 
 public
 
@@ -2797,6 +2817,18 @@ public
 : SOURCE-BUF-IN-SCOPE ( ptr u8 n -- )
    SOURCE!
    RUN ;
+
+\ Verify one supplied source, then run ACTION in the same scope. A name the
+\ source declares binds through the record the checker's overlay publishes for
+\ it (src/core/checker.f CHECKER-OVERLAY), which this scope's close takes back
+\ unless a neutral checker scope around it holds the overlay open, so a caller
+\ that reads what the scan recorded by name reads it here, as the scan's own
+\ checks do. No second verifier scope opens inside this one (E-PKG-CONTEXT). A
+\ scan that throws runs no action.
+: SOURCE-BUF-THEN-IN-SCOPE ( ptr u8 n [ -- ] -- )
+   THEN-ACTION !
+   SOURCE!
+   [: VERIFY-THEN ;] RUN-IN-SCOPE ;
 
 \ What the certify path says about one candidate definition, `NAME ( effect )
 \ body`: -1 certified, 0 refused, 1 unresolvable, as CHECK-QUIET-CANDIDATE!

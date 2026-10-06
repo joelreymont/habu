@@ -316,11 +316,7 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
 \ arity compiled it), and not its own name's symbol, which the recorder interned
 \ before it refused the declaration and the bare name then binds (EAUTH-T1-NO-ROW,
 \ EAUTH-T1-SCHEME): nothing answers their arity, and the refusal is the check
-\ hook's reject status, which a catch receives. Nor a row recorded before the
-\ definition began, even of its own name (EAUTH-PRIOR): CHECK! records it with
-\ no definition, the replay scope binds the name to it, and the refused body
-\ compiles against its arity. That row and the row after it (EAUTH-PRIOR-LATER)
-\ stay; cutting the live rows of the symbol the name binds took both.
+\ hook's reject status, which a catch receives.
 : REFUSED-SCAN ( -- ) s" : EAUTH-T1-REFUSED ( n -- n ) 0= ;" evaluate-closed ;
 : REFUSED-MULTI ( -- ) s" : EAUTH-T1-MULTI ( n -- n ) 0= ;" evaluate-closed ;
 : REFUSED-BODY ( -- ) s" : EAUTH-T1-RETRACT ( n -- n ) drop ;" evaluate-closed ;
@@ -340,20 +336,23 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
 : NO-ROW-FAIL ( -- ) s" : EAUTH-T1-NO-ROW ( n -- no-such-type ) ;" evaluate-closed ;
 : SCHEME-FAIL ( -- ) s" : EAUTH-T1-SCHEME ( forall<p,[ n -- n ]> -- ) ;" evaluate-closed ;
 : AFTER-ROW ( -- ) s" : EAUTH-T1-AFTER ( n -- n ) ;" evaluate-closed ;
-: PRIOR-LATER ( -- ) s" : EAUTH-PRIOR-LATER ( n -- n ) ;" evaluate-closed ;
-: PRIOR-FAIL ( -- ) s" : EAUTH-PRIOR ( n -- no-such-type ) drop drop ;" evaluate-closed ;
 
 \ A callback cannot scan while a definition compiles, so a refused definition
 \ takes exactly its own row and keeps the rows before (compiler.f WORK and
 \ RETRACT): the observer's CHECK! of EAUTH-CB-LATER while EAUTH-CB-OUTER
-\ compiles hook-less is refused E-NCOMP-STATE and records nothing, the
-\ observer's throw refuses the definition, and EAUTH-CB-BEFORE, recorded
-\ before, stays. The observer is scoped to this definition, so later
-\ definitions compile.
+\ compiles hook-less is refused E-NCOMP-STATE and leaves the store's end where
+\ it was, the observer's throw refuses the definition, and EAUTH-CB-BEFORE,
+\ defined before, stays. The store's end is the witness: a row only the
+\ checker holds binds nowhere outside a replay scope, so no name query could
+\ see one the scan recorded. The observer is scoped to this definition, so
+\ later definitions compile.
 : CB-OBSERVE ( NART:emission n n n -- )
    {: e:NART:emission idx:n fn:n size:n :}
+   CHECKER-OWNER:ROWS-END {: end:n :}
    [: s" EAUTH-CB-LATER ( n -- n )" JUDGE drop ;] E-NCOMP-STATE TTHROWSQ
+   CHECKER-OWNER:ROWS-END end T=
    7329 throw ;
+: CB-BEFORE ( -- ) s" : EAUTH-CB-BEFORE ( n -- n ) ;" evaluate-closed ;
 : CB-FAIL ( -- ) s" : EAUTH-CB-OUTER ( n -- n ) 1 + ;" evaluate-closed ;
 : CB-RUN ( -- ) ['] CB-OBSERVE ['] CB-FAIL NPUB:WITH-UNIT ;
 
@@ -395,20 +394,11 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    s" EAUTH-GEN-LATER" SIG-MIN-IN 1 T=
    UNCHECKED+ ['] AFTER-ROW catch UNCHECKED- 0 T=
    s" EAUTH-T1-AFTER" SIG-MIN-IN 1 T=
-   s" a refused definition keeps its name's row recorded before it began" T-LABEL
-   REPLAY+
-   s" EAUTH-PRIOR ( n -- n ) 1 +" JUDGE -1 T=
-   UNCHECKED+ ['] PRIOR-LATER catch UNCHECKED- 0 T=
-   UNCHECKED+ ['] PRIOR-FAIL catch UNCHECKED- E-NELAB-UNDER T=
-   s" EAUTH-PRIOR" SIG-MIN-IN 1 T=
-   s" EAUTH-PRIOR-LATER" SIG-MIN-IN 1 T=
    s" a callback's scan while a definition compiles is refused and records nothing" T-LABEL
-   s" EAUTH-CB-BEFORE ( n -- n )" JUDGE -1 T=
+   UNCHECKED+ ['] CB-BEFORE catch UNCHECKED- 0 T=
    UNCHECKED+ ['] CB-RUN catch UNCHECKED- 7329 T=
    s" EAUTH-CB-OUTER" EFFECT-QUERY TFALSE
-   s" EAUTH-CB-LATER" EFFECT-QUERY TFALSE
-   s" EAUTH-CB-BEFORE" SIG-MIN-IN 1 T=
-   REPLAY- ;
+   s" EAUTH-CB-BEFORE" SIG-MIN-IN 1 T= ;
 
 \ A refused TRUSTED: definition goes back to the mark STAGE took, as a hook-less
 \ one does (compiler.f RETRACT). Inside a package it cuts neither the global
@@ -481,7 +471,8 @@ TYPED-VARIABLE GENERATES-XT [ -- ]
    CHECKER-SCOPE-DONE ;
 
 \ A refused callback scan keeps the pending definition's publication latch
-\ and its borrowed source binding, on checked and explicitly unjudged scans.
+\ and its borrowed source binding, on checked and explicitly unjudged scans,
+\ and records no row: the store's end stays where it was (CB-OBSERVE).
 : LATCH-BINDING ( -- )
    1 CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
    size CHECKER-OWNER-ABI:BOUND-CELLS cells T=
@@ -490,6 +481,7 @@ TYPED-VARIABLE GENERATES-XT [ -- ]
 : LATCH-OBSERVE ( NART:emission n n n -- )
    {: e:NART:emission idx:n fn:n size:n :}
    CHECKER-OWNER:BINDING-WINDOW {: owner:ptr serial:n unjudged:bool :}
+   CHECKER-OWNER:ROWS-END {: end:n :}
    LATCH-BINDING
    [: s" EAUTH-LATCH-CB ( -- n ) 1" JUDGE drop ;] E-NCOMP-STATE TTHROWSQ
    owner serial unjudged CHECKER-OWNER:BINDING-WINDOW-CK
@@ -502,7 +494,8 @@ TYPED-VARIABLE GENERATES-XT [ -- ]
    LATCH-BINDING
    [: s" EAUTH-LATCH-CB ( -- n ) 1" CHECK-QUIET-CANDIDATE! drop ;] E-NCOMP-STATE TTHROWSQ
    owner serial unjudged CHECKER-OWNER:BINDING-WINDOW-CK
-   LATCH-BINDING ;
+   LATCH-BINDING
+   CHECKER-OWNER:ROWS-END end T= ;
 
 : WINDOW-CASES ( -- )
    1 TIER:SELECT
@@ -530,8 +523,7 @@ TYPED-VARIABLE GENERATES-XT [ -- ]
    s" EAUTH-LATCH-PLAIN" DICT-MIN 0 T<>
    s" EAUTH-LATCH-KEPT" DICT-MIN  s" EAUTH-LATCH-PLAIN" DICT-MIN T=
    s" a refused callback scan keeps an explicitly unjudged binding" T-LABEL
-   ['] LATCH-OBSERVE [: s" TRUSTED: EAUTH-LATCH-UNJUDGED ( n n -- n ) + ;" evaluate-closed ;] NPUB:WITH-UNIT
-   REPLAY+ s" EAUTH-LATCH-CB" EFFECT-QUERY TFALSE REPLAY- ;
+   ['] LATCH-OBSERVE [: s" TRUSTED: EAUTH-LATCH-UNJUDGED ( n n -- n ) + ;" evaluate-closed ;] NPUB:WITH-UNIT ;
 
 \ ---- type registration in the compile window ----------------------------------
 \ The window refuses type registration as it refuses rows. A callback's

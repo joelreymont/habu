@@ -128,6 +128,7 @@ create OWNER-STORAGE
    0 ,
    0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -145,7 +146,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:WRITE-WINDOW-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -221,6 +222,30 @@ variable ARENA-CP-I   variable ARENA-UB-I
 \ storing the relocated base back. Shared by every parallel-array registry grow.
 : REG-GROW1 ( ptr ptr a n n -- ) {: pv:ptr ob:n nb:n :}
    pv @ ob nb ARENA-BYTES-GROW pv ! ;
+
+\ ARENA-UNMAP ( base bytes -- ) : give back a mapping of BYTES; 0 bytes is none.
+: ARENA-UNMAP ( ptr n n -- )
+   {: base:ptr bytes:n :}
+   bytes 0= IF EXIT THEN
+   base bytes munmap 0 <> IF s" checker: arena munmap failed" 76 die THEN ;
+
+\ ARENA-ROWS-ENSURE ( pvar capvar need row -- ) : grow the table of ROW-cell
+\ rows pvar holds, capvar rows long, to NEED rows, keeping its rows, and give
+\ the old mapping back. A table that holds none starts at 64 rows.
+: ARENA-ROWS-ENSURE ( ptr ptr n ptr n n n -- )
+   {: pv:ptr capv:ptr need:n row:n :}
+   need capv @ <= IF EXIT THEN
+   need capv @ 2 * max 64 max {: nc:n :}
+   pv @ capv @ row * cells nc row * cells ARENA-BYTES-GROW {: next:ptr :}
+   pv @ capv @ row * cells ARENA-UNMAP
+   next pv !  nc capv ! ;
+
+\ ARENA-ROWS-RELEASE ( pvar capvar row -- ) : give back the table pvar holds,
+\ leaving it none.
+: ARENA-ROWS-RELEASE ( ptr ptr n ptr n n -- )
+   {: pv:ptr capv:ptr row:n :}
+   pv @ capv @ row * cells ARENA-UNMAP
+   NULL-PTR pv !  0 capv ! ;
 
 \ TV arena: fifteen var-id planes share one owned mapping and one capacity.
 \ TVT, RVT, EC-TV and EC-RV store logical values plus one: zero means UNBOUND.
@@ -928,13 +953,6 @@ variable PTX-CPREADY-FAM       0 PTX-CPREADY-FAM !
 \ PTX-BARRIER-SET installs. Reached from BOTH the checked `:` and the TRUSTED:
 \ publish paths through the one E-ADD-EFFECT choke.
 defer PTX-BARRIER-SET-XT ( n -- )
-\ Forward hook ( n -- bool ): the symbol carries a core-op control axiom
-\ (NORET-AXIOMS, the only writer of CTL-CORE-OP). SYM-LIVE asks it of a symbol
-\ with neither a record nor a primitive effect row - the return-stack words,
-\ whose one fact is that axiom - and the control store is defined after the
-\ lookup. SYM-AXIOM-INSTALL binds it beside CTL-FLAGS-SYM, before any token is
-\ looked up.
-defer SYM-AXIOM-XT ( n -- bool )
 
 \ A successful scan used only for native call shapes grants no source authority.
 \ The scope and the late publication hook belong to this checker instance. The
@@ -1012,132 +1030,63 @@ variable CHECKER-PACKAGE-MODE
 \ (dot habu-give-the-recovery-447196a8).
 : CHECKER-VIS-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;
 
-\ A scope opened by CHECKER-SCOPE-START-NEUTRAL DECLARES its package context
-\ instead of inheriting the caller's: the source it replays is standalone, so
-\ its context is top level whatever package the caller happens to have open.
-\ This flag records that declaration, and a verifier window opened inside the
-\ scope proves its mirror against it instead of against the engine
-\ (CHECKER-VERIFY-PKG-START); the window, not the declaration, is what makes
-\ the mirror authoritative. RBF-PUSH saves it and RBF-POP restores it with the
-\ rest of the package mirror, so the declaration cannot outlive the scope on
-\ either the clean or the throwing path, and nested scopes inside the replay
-\ inherit it.
-variable CHECKER-PACKAGE-NEUTRAL
-0 CHECKER-PACKAGE-NEUTRAL !
-
-: CHECKER-PACKAGE-NEUTRAL? ( -- bool )
-   CHECKER-PACKAGE-NEUTRAL @ 0 <> ;
-
-\ The replay's own `using` depth, and the other half of "one effective package
-\ and using state" (dot habu-own-pkg-state-acf7086c). The package half above was
-\ already owned; the imports were not, and the two have to answer to the same
-\ authority or a replayed file resolves half in its own scope and half in its
-\ caller's.
-\
-\ Ordinary compilation reads the live depth from the engine's own DATA cell,
-\ which is right: the code really is being compiled inside whatever usings the
-\ engine has open. A replay is not. Its source is a FILE, and a file's imports
-\ are exactly the ones it declares -- `using` scope is file-local (docs/forth.md
-\ § Packages) -- so a neutral replay starts with none and collects its own from
-\ the source it replays. Before this, the caller's usings stayed live throughout,
-\ which both hid tokens the replayed file never imported behind
-\ E-USING-SHADOW-GLOBAL and left a `using` the file DID declare doing nothing.
-\
-\ It is declared here rather than beside the using mirror 5000 lines down because
-\ the verifier window (CHECKER-VERIFY-PKG-START) has to seed and restore it, and
-\ that word is defined long before the mirror.
-variable CHECKER-USE-OWNED-N
-0 CHECKER-USE-OWNED-N !
-\ The package's import baseline travels with the import rows through every
-\ verifier and rollback savepoint, including nested neutral source scopes.
-variable CHECKER-PACKAGE-USE-N
-0 CHECKER-PACKAGE-USE-N !
-\ The owned depth the replayed source may close down to, as the engine's
+\ The using depth the replayed source may close down to, as the engine's
 \ evaluate frame keeps it for a buffer (src/habu/layout.f EVAL-FRAME:USE-FLOOR):
 \ the verifier window seeds it with the depth the source starts at, and the
 \ source's first `using` below it, after a `;package` closed the inherited
-\ package, lowers it to meet that using (CHECKER-USING-PUSH).
+\ package, lowers it to meet that using (CHECKER-OVERLAY:OPEN-USING).
 package CHECKER-USE
 public
 variable SOURCE-FLOOR
 0 SOURCE-FLOOR !
 ;package
 
-\ Import row storage is shared by the live compiler and verifier mirror.
-\ Savepoints must preserve the names and lengths as well as their depth.
+\ Import row storage is shared by the live compiler and the verifier window.
+\ A savepoint keeps the names and lengths with their count (CK-USE-SAVE).
 16 constant CK-USE-MAX                     \ = layout.f USE-MAX (concurrent usings)
 create CK-USE-NAMES CK-USE-MAX CHECKER-PACKAGE-CAP * allot
 create CK-USE-LENS  CK-USE-MAX cells allot
 CHECKER-PACKAGE-CAP CELL + constant CK-USE-SNAP-ROW
-2 cells constant CK-USE-SNAP-HEADER
+CELL constant CK-USE-SNAP-HEADER
 CK-USE-SNAP-HEADER CK-USE-MAX CK-USE-SNAP-ROW * + constant CK-USE-SNAP-BYTES
-create VPKG-IMPORTS CK-USE-SNAP-BYTES allot
 
-\ The mirror above records parser state and is rollback-aware. It is authority
-\ only while the private verifier scope is active. Normal checking reads the
-\ engine's protected package record/WIDs/current target through PKG-LIVE-XT.
+\ The mirror above records parser state and is rollback-aware. Every check,
+\ the verifier window's included, reads the engine's protected package
+\ record/WIDs/current target through PKG-LIVE-XT: inside the window the checker
+\ overlay drives the engine's scope (CHECKER-OVERLAY).
 \ checker.f loads before layout.f, so the boot provider mirrors its fixed DATA
 \ offsets; xref.f replaces it with full record validation before user source.
 $78 constant CK-PKG-PUB-OFF
 $80 constant CK-PKG-PRI-OFF
+$88 constant CK-PKG-PARENT-OFF
 $90 constant CK-PKG-REC-OFF
+48 constant CK-DREC                        \ = layout.f DREC (dictionary record bytes)
+65536 constant CK-DICT-CAP                 \ = layout.f DICT-CAP (dictionary records)
 \ The engine's live `using` depth, read raw like the package cells above. The
-\ using mirror further down is the main reader; the verifier window also seeds
-\ its owned depth from it, and that window is defined here, so the raw read lives
-\ with the other engine offsets rather than with the mirror.
+\ using mirror reads it, and inside the verifier window the checker overlay
+\ drives it with the rest of the engine's scope.
 $9C08 constant CK-USE-DEPTH-OFF            \ = layout.f USE-DEPTH-CELL (DATA-relative); engine owns it
 : CK-USE-ENGINE-DEPTH ( -- n )  data-base CK-USE-DEPTH-OFF + @ ;
 \ The depth the engine's open package opened at: its using floor, which
 \ `;package` restores and `;using` may not pop below, and which the engine
-\ lowers when an included buffer ends. An inherited replay seeds its floor here.
+\ lowers when an included buffer ends. The checker overlay moves it with the
+\ rest of the scope.
 $9C10 constant CK-USE-FLOOR-OFF            \ = layout.f USE-PKG-SAVE-CELL (DATA-relative); engine owns it
-: CK-USE-ENGINE-FLOOR ( -- n )  data-base CK-USE-FLOOR-OFF + @ ;
 \ The used publics' wordlists, in `using` order: the one name lookup's used
 \ record is mapped back to its mirror slot through them (CK-USED-INDEX).
 $9C20 constant CK-USE-WIDS-OFF             \ = layout.f USE-WIDS-OFF (DATA-relative); engine owns it
 \ The record of the definition the engine holds open and not yet published, 0
 \ when none: only a check run while it is set opens the pending window (CK-CLOSE!).
 $3688 constant CK-DEF-PEND-OFF             \ = layout.f PEND-CELL (DATA-relative); engine owns it
+\ The next wordlist id the engine hands out: a rollback inside the checker
+\ overlay puts it back to its frame's mark (CHECKER-OVERLAY ROLLBACK).
+$30 constant CK-WIDN-OFF                   \ = layout.f WIDN-CELL (DATA-relative); engine owns it
 7136 constant E-PKG-CONTEXT
+\ The checker overlay is full: the records one lookup hides or the engine
+\ dictionary it publishes into (CHECKER-OVERLAY).
+7184 constant E-OVERLAY-CAP
 variable CHECKER-VERIFY-PKG-DEPTH
 0 CHECKER-VERIFY-PKG-DEPTH !
-create VPKG-NAME CHECKER-PACKAGE-CAP allot
-variable VPKG-U
-variable VPKG-MODE
-variable VPKG-USE-N   \ the owned using depth at verifier-window entry
-
-: CK-USE-SAVE ( ptr u8 n -- ) {: dst:ptr u:n :}
-   u dst cell-view !
-   CHECKER-PACKAGE-USE-N @ dst CELL + cell-view !
-   u 0 ?DO
-      dst CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:ptr :}
-      CK-USE-LENS i cells + @ {: len:n :}
-      len row cell-view !
-      CK-USE-NAMES i CHECKER-PACKAGE-CAP * + row CELL + len ARENA-COPY
-   LOOP ;
-
-: CK-USE-RESTORE ( ptr u8 -- ) {: src:ptr :}
-   src CELL + cell-view @ CHECKER-PACKAGE-USE-N !
-   src cell-view @ 0 ?DO
-      src CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:ptr :}
-      row cell-view @ {: len:n :}
-      len CK-USE-LENS i cells + !
-      row CELL + CK-USE-NAMES i CHECKER-PACKAGE-CAP * + len ARENA-COPY
-   LOOP ;
-
-: VPKG-SAVE ( ptr u8 n n -- ) {: a:ptr u:n mode:n :}
-   a VPKG-NAME u ARENA-COPY
-   u VPKG-U !
-   mode VPKG-MODE !
-   CHECKER-USE-OWNED-N @ VPKG-USE-N !
-   VPKG-IMPORTS CK-USE-MAX CK-USE-SAVE ;
-
-: VPKG-RESTORE ( -- )
-   VPKG-NAME CHECKER-PACKAGE-NAME VPKG-U @ ARENA-COPY
-   VPKG-U @ CHECKER-PACKAGE-U !
-   VPKG-MODE @ CHECKER-PACKAGE-MODE !
-   VPKG-USE-N @ CHECKER-USE-OWNED-N !
-   VPKG-IMPORTS CK-USE-RESTORE ;
 
 : CHECKER-PKG-MIRROR ( -- ptr u8 n n bool )
    CHECKER-PACKAGE-MODE @ {: mode:n :}
@@ -1182,20 +1131,6 @@ variable VPKG-USE-N   \ the owned using depth at verifier-window entry
 : CHECKER-PKG-LIVE-DEFAULT ( -- )
    [: CHECKER-PKG-BOOT-LIVE ;] is PKG-LIVE-XT ;
 CHECKER-PKG-LIVE-DEFAULT
-
-\ Which record answers "what package is this code in?". Ordinary checking reads
-\ the engine's protected package record, because the code really is being
-\ compiled where the engine says it is. Only the private verifier window
-\ replaces that with the checker's own mirror, because only it replays recorded
-\ source rather than compiling it, and only the engine opens it
-\ (CHECKER-VERIFY-PKG-START is sealed). A package-neutral scope is no such
-\ window: source can open one, and while it held this authority the code it
-\ compiled was judged against the mirror - its names bound over the checker's
-\ records (REPLAY-BIND), every `trust` row believed, the storage registrars
-\ open - instead of against the engine that compiles it. Its declaration only decides that a window opened inside it
-\ starts at top level (CHECKER-VERIFY-PKG-START).
-: CHECKER-PKG-MIRROR-AUTHORITY? ( -- bool )
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> ;
 
 \ The refusal surface for "this definition has no package context".
 \
@@ -1254,17 +1189,15 @@ $27F8 constant CHECKER-REFUSAL-CELL
 \ CHECKER-RESOLVE owns the scope questions. AUTHORITY, here, and WALK, the scope
 \ walk CHECKER-FIND-ACTIVE-SYM resolves through, answer without refusing; RAISE
 \ raises a refusal WALK answered, and REFUSES? asks whether WALK would refuse.
-\ AUTHORITY's bool says whether an authority names a package context;
-\ CHECKER-PKG-CONTEXT is the refusing form. src/habu/xref.f retires AUTHORITY
-\ with the other package-context words.
+\ AUTHORITY's bool says whether the engine's package record names a package
+\ context: the code is compiled where the engine says it is, and a replay's
+\ package words drive that record through the checker overlay
+\ (CHECKER-OVERLAY). CHECKER-PKG-CONTEXT is the refusing form. src/habu/xref.f
+\ retires AUTHORITY with the other package-context words.
 package CHECKER-RESOLVE
 public
 : AUTHORITY ( -- ptr u8 n n bool )
-   CHECKER-PKG-MIRROR-AUTHORITY? IF
-      CHECKER-PKG-MIRROR
-   ELSE
-      PKG-LIVE-XT
-   THEN ;
+   PKG-LIVE-XT ;
 ;package
 
 : CHECKER-PKG-CONTEXT ( -- ptr u8 n n )
@@ -1298,137 +1231,6 @@ variable CHK-PROBE   0 CHK-PROBE !
 \ -1; rollback frames and the scope exit restore the value they found.
 variable PASS-FLOOR   0 PASS-FLOOR !
 variable VERIFY-FLOOR0
-
-\ Before the mirror becomes the replay's package authority it has to be proved
-\ against the context the enclosing scope claims, and both proofs are exact
-\ equalities rather than defaults. An inherited scope claims the caller's
-\ package, so the mirror must match the engine's live record name for name and
-\ mode for mode. A package-neutral scope claims top level, so the mirror must be
-\ exactly the empty top-level context.
-: VPKG-PROVE-INHERITED ( ptr u8 n n ptr u8 n n -- )
-   {: livea:ptr liveu:n livemode:n mira:ptr miru:n mirmode:n :}
-   livemode mirmode <> IF E-PKG-CONTEXT throw THEN
-   livea liveu mira miru CORE-STR=CI 0= IF E-PKG-CONTEXT throw THEN ;
-
-: VPKG-PROVE-NEUTRAL ( n n -- )
-   {: miru:n mirmode:n :}
-   mirmode CHECKER-PACKAGE-NONE <> IF E-PKG-CONTEXT throw THEN
-   miru 0 <> IF E-PKG-CONTEXT throw THEN ;
-
-\ These two names stay checker-internal: verify-source and the check driver's
-\ fixed scanners compile direct calls from named TRUSTED boundaries. Their
-\ effect rows are trusted-only, so checked code cannot activate the provider.
-\
-\ THE ROW IS WHY THE NAME ALSO NEEDS A SEAL. Both carry a zero-cell PRIM: row
-\ marked PRIM-TRUSTED-ONLY! so the native compiler can compile the call window
-\ from that TRUSTED caller — and a row makes SIG-MIN-IN answer 0, which is what
-\ src/core/internal-mark.f's IMK-MARK reads as "known, and no minimum arity to
-\ record" and leaves executable. A file holding nothing but
-\ CHECKER-VERIFY-PKG-START therefore ran and exited 0, seeding the verifier's
-\ package mirror from top level. REG-PROTECT is the seal CHECKER-RESET-SOURCE
-\ takes for the same reason: it records this record for IMK-SEAL-REGISTRY, which
-\ marks it DNAME-INT, so interpret and tick fail closed (`hb: internal engine
-\ word`, rc 70) while a compile-mode reference from a TRUSTED: body still
-\ resolves — src/compiler/native/dict.f CALL-TARGET admits a DNAME-INT call
-\ while the TRUSTED compilation cell is armed, which is what the row is for.
-\
-\ WHY NOT TEACH THE PASS THAT A TRUSTED-ONLY ROW IS UNKNOWN. Because trusted-only
-\ states a different restriction: CHECKED CODE may not call the word, and some
-\ rows carry it precisely so a top-level build driver still can — `set-check`'s
-\ row (src/habu/prims.f) is one. The pass classifies colon records, so that
-\ rule would also seal CHECK-DOES! (this file) and LOWER-CERT:BYTES
-\ (src/core/lower-cert-base.f) on a judgement neither row makes. The seal belongs
-\ where the intent is stated, at the definition; REG-PROTECT takes the record it
-\ follows, so it cannot drift off the word it is about.
-: CHECKER-VERIFY-PKG-START ( -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF E-PKG-CONTEXT throw THEN
-   PKG-LIVE-XT 0= IF E-PKG-CONTEXT throw THEN
-   {: livea:ptr liveu:n livemode:n :}
-   CHECKER-PKG-MIRROR 0= IF E-PKG-CONTEXT throw THEN
-   {: mira:ptr miru:n mirmode:n :}
-   CHECKER-PACKAGE-NEUTRAL? IF
-      miru mirmode VPKG-PROVE-NEUTRAL
-   ELSE
-      livea liveu livemode mira miru mirmode VPKG-PROVE-INHERITED
-   THEN
-   mira miru mirmode VPKG-SAVE
-   1 CHECKER-VERIFY-PKG-DEPTH !
-   PASS-FLOOR @ VERIFY-FLOOR0 !  -1 PASS-FLOOR !
-   \ Seed the owned using depth the same way the package half is proved: a
-   \ neutral replay declares top level and therefore no imports, while an
-   \ inherited replay continues the caller's scope and keeps the caller's usings,
-   \ which is what this window did before it owned a depth at all, and the open
-   \ package's using floor as the engine holds it now. VPKG-SAVE above has
-   \ already recorded both entry values for VPKG-RESTORE.
-   CHECKER-PACKAGE-NEUTRAL? IF
-      0 CHECKER-USE-OWNED-N !
-   ELSE
-      CK-USE-ENGINE-DEPTH CHECKER-USE-OWNED-N !
-      CK-USE-ENGINE-FLOOR CHECKER-PACKAGE-USE-N !
-   THEN
-   CHECKER-USE-OWNED-N @ CHECKER-USE:SOURCE-FLOOR ! ;
-REG-PROTECT
-
-: CHECKER-VERIFY-PKG-DONE ( -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF E-PKG-CONTEXT throw THEN
-   VPKG-RESTORE
-   0 BIND-HORIZON !
-   VERIFY-FLOOR0 @ PASS-FLOOR !
-   0 CHECKER-VERIFY-PKG-DEPTH ! ;
-REG-PROTECT
-
-\ A source loaded inside an active verifier window inherits its caller's
-\ package and imports. The file boundary discards imports it opened on clean
-\ return, as the native evaluator does. A throw restores the entire entry
-\ context; the outer verifier window retains the declarations and pass floor.
-0 constant VF-MODE
-CELL constant VF-U
-2 cells constant VF-OWN
-3 cells constant VF-FLOOR
-4 cells constant VF-NAME
-VF-NAME CHECKER-PACKAGE-CAP + constant VF-IMPORTS
-VF-IMPORTS CK-USE-SNAP-BYTES + constant VF-BYTES
-
-: VF-SAVE ( ptr u8 -- ) {: frame:ptr :}
-   CHECKER-PACKAGE-MODE @ frame VF-MODE + CELL-VIEW !
-   CHECKER-PACKAGE-U @ frame VF-U + CELL-VIEW !
-   CHECKER-USE-OWNED-N @ frame VF-OWN + CELL-VIEW !
-   CHECKER-USE:SOURCE-FLOOR @ frame VF-FLOOR + CELL-VIEW !
-   CHECKER-PACKAGE-NAME frame VF-NAME + CHECKER-PACKAGE-U @ ARENA-COPY
-   frame VF-IMPORTS + CK-USE-MAX CK-USE-SAVE ;
-
-: VF-RESTORE ( ptr u8 -- ) {: frame:ptr :}
-   frame VF-NAME + CHECKER-PACKAGE-NAME frame VF-U + CELL-VIEW @ ARENA-COPY
-   frame VF-U + CELL-VIEW @ CHECKER-PACKAGE-U !
-   frame VF-MODE + CELL-VIEW @ CHECKER-PACKAGE-MODE !
-   frame VF-OWN + CELL-VIEW @ CHECKER-USE-OWNED-N !
-   frame VF-IMPORTS + CK-USE-RESTORE
-   frame VF-FLOOR + CELL-VIEW @ CHECKER-USE:SOURCE-FLOOR ! ;
-
-: VF-CLEAN ( ptr u8 -- ) {: frame:ptr :}
-   CHECKER-USE-OWNED-N @ CHECKER-USE:SOURCE-FLOOR @ min CHECKER-USE-OWNED-N !
-   CHECKER-PACKAGE-USE-N @ CHECKER-USE-OWNED-N @ min CHECKER-PACKAGE-USE-N !
-   frame VF-FLOOR + CELL-VIEW @ CHECKER-USE:SOURCE-FLOOR ! ;
-
-TRUSTED: CHECKER-VERIFY-FILE ( [ -- ] -- ) {: q :}
-   CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF E-PKG-CONTEXT throw THEN
-   VF-BYTES map-anon 0= 0= IF
-      s" checker: file scope allocation failed" 76 die
-   THEN {: frame:ptr :}
-   frame VF-SAVE
-   CHECKER-USE-OWNED-N @ CHECKER-USE:SOURCE-FLOOR !
-   q catch {: rc:n :}
-   rc 0= IF frame VF-CLEAN ELSE frame VF-RESTORE THEN
-   frame VF-BYTES munmap {: release:n :}
-   rc 0= 0= IF rc throw THEN
-   release 0= 0= IF s" checker: file scope release failed" 76 die THEN ;
-REG-PROTECT
-
-package CHECKER-REG
-' CHECKER-VERIFY-PKG-START DECLARATIONS CHECKER-OWNER-ABI:VERIFY-START-OFF + xt!
-' CHECKER-VERIFY-PKG-DONE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DONE-OFF + xt!
-' CHECKER-VERIFY-FILE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-FILE-OFF + xt!
-;package
 
 0 constant UK-EXACT
 1 constant UK-INPUT
@@ -6632,20 +6434,6 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
 4 constant DL-ROW                      \ record offset, visit, start, end
 6 constant PU-ROW                      \ use start, end, record offset, visit, start, end
 
-: NAV-UNMAP ( ptr n n -- )
-   {: base:ptr bytes:n :}
-   bytes 0= IF EXIT THEN
-   base bytes munmap 0 <> IF s" checker: navigation table munmap failed" 76 die THEN ;
-
-\ Grow the table PV holds to NEED rows of ROW cells, keeping its rows.
-: NAV-ENSURE ( ptr ptr n ptr n n n -- )
-   {: pv:ptr capv:ptr need:n row:n :}
-   need capv @ <= IF EXIT THEN
-   need capv @ 2 * max 64 max {: nc:n :}
-   pv @ capv @ row * cells nc row * cells ARENA-BYTES-GROW {: next:ptr :}
-   pv @ capv @ row * cells NAV-UNMAP
-   next pv !  nc capv ! ;
-
 : NAV-CELL ( ptr ptr n n n -- ptr n )   \ row i's first cell
    {: pv:ptr i:n row:n :}
    pv @ i row * cells + ;
@@ -6654,8 +6442,8 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    0 DL-N !  0 PU-N !  0 DL-NEW ! ;
 
 : NAV-RELEASE ( -- )
-   DL-P @ DL-CAP @ DL-ROW * cells NAV-UNMAP  NULL-PTR DL-P !  0 DL-CAP !
-   PU-P @ PU-CAP @ PU-ROW * cells NAV-UNMAP  NULL-PTR PU-P !  0 PU-CAP !
+   DL-P DL-CAP DL-ROW ARENA-ROWS-RELEASE
+   PU-P PU-CAP PU-ROW ARENA-ROWS-RELEASE
    NAV-CLEAR  0 DL-ON ! ;
 
 : CHECKER-DECL-AT! ( n n n -- )
@@ -6678,7 +6466,7 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
          s" checker: declaration location out of record order" 76 die
       THEN
    THEN
-   DL-P DL-CAP DL-N @ 1 + DL-ROW NAV-ENSURE
+   DL-P DL-CAP DL-N @ 1 + DL-ROW ARENA-ROWS-ENSURE
    DL-P DL-N @ DL-ROW NAV-CELL {: p:ptr :}
    off p !  visit p CELL + !  start p 2 cells + !  end p 3 cells + !
    DL-N @ 1 + DL-N ! ;
@@ -8808,7 +8596,7 @@ ON-USE-DEFAULT
 : NAV-USE ( n ptr u8 n -- )
    NAV-USE-AT 0= IF 2drop 2drop 2drop EXIT THEN
    {: s:n e:n rec1:n v:n ds:n de:n :}
-   PU-P PU-CAP PU-N @ 1 + PU-ROW NAV-ENSURE
+   PU-P PU-CAP PU-N @ 1 + PU-ROW ARENA-ROWS-ENSURE
    PU-P PU-N @ PU-ROW NAV-CELL {: p:ptr :}
    s p !  e p CELL + !  rec1 1 - p 2 cells + !
    v p 3 cells + !  ds p 4 cells + !  de p 5 cells + !
@@ -8861,6 +8649,12 @@ TRUSTED: CHECKER-WITH-USES ( [ n n n n n -- ] [ -- ] -- ) {: h q :}
    sym USIG-NEWEST 0= IF sym EXIT THEN            \ no record at all: a primitive's, not the store's, to answer
    sym USIG-NEWEST-VISIBLE 0= IF 0 EXIT THEN
    sym ;
+
+\ Whether every record of the symbol lies beyond the horizon: false for no
+\ symbol and for one with no record, which a primitive or the engine answers for.
+: SYM-BEYOND? ( n -- bool ) {: sym:n :}
+   sym 0= IF RES-FALSE EXIT THEN
+   sym SYM-VISIBLE 0= ;
 
 \ E-REC-START runs the effect-cache sync first: it is the single choke point
 \ for USIGS appends, so a rewind (scope/candidate rollback, forget, reset)
@@ -9944,26 +9738,6 @@ variable PRM-FIRST
    sym PRIM-FIRST-IDX dup 0 = IF EXIT THEN
    1 - PE-EFF@ ;
 
-\ SYM-LIVE ( n -- n ) : the symbol when a lookup may bind it, else 0. It binds
-\ when its newest visible record is live (SCAN-USIGS-SYM's notion), or when it
-\ has no record at all and the engine's primitive tables answer for it: a
-\ primitive effect row, or the core-op control axiom (SYM-AXIOM-XT) that is the
-\ return-stack words' only fact. A symbol with none of these stands for no
-\ word: an `undefine` tombstone, a name interned for a definition that was then
-\ refused, a name a checker primitive marked from source. The engine binds past
-\ such a name, so every leg of the scope chain looks past it too, instead of
-\ letting it stand in front of the word the engine binds.
-: SYM-LIVE ( n -- n )
-   {: sym:n :}
-   sym SYM-VISIBLE 0= IF 0 EXIT THEN
-   sym USIG-NEWEST-VISIBLE {: off1:n :}
-   off1 0= IF
-      sym PRIM-FIRST-IDX 0 <> IF sym EXIT THEN
-      sym SYM-AXIOM-XT IF sym ELSE 0 THEN EXIT
-   THEN
-   off1 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF 0 EXIT THEN
-   sym ;
-
 \ A source `undefine` is stronger than a stale engine wordlist entry. The
 \ visible newest record decides, so a later declaration makes the name live.
 : SYM-DELETED? ( n -- bool )
@@ -11009,21 +10783,13 @@ variable DFER-END
 \ C-USING before it increments the shared depth, and by verify-source likewise) records the
 \ name into the slot at the current depth; resolution reads names[0..depth).
 7144 constant E-USING-AMBIGUOUS            \ bare tail resolves in more than one used public wordlist
-variable CK-USED-FOUND                     \ interned sym of the first used-public match while resolving
-variable CK-USED-SLOT                      \ used-scan slot of that first match (-1 = none), for the shadow diagnostic
 variable CK-USED-MASK                      \ bit i set when used-scan slot i matched, for the using diagnostics
-package CHECKER-USE
-public
-variable WHY                               \ E-USING-AMBIGUOUS when a second used public matched, else 0
-;package
 
-\ The depth every read of the mirror is bounded by, from whichever authority owns
-\ the current scope: the replay's own count while the mirror is authority, and
-\ the engine's live cell otherwise. Both index the same name table. Neutral
-\ replay starts at zero and may overwrite caller rows, so verifier and rollback
-\ savepoints preserve the row bytes and lengths alongside the depth.
+\ The depth every read of the mirror is bounded by: the engine's live cell,
+\ which a replay moves through CHECKER-OVERLAY:OPEN-USING. A neutral replay
+\ starts at zero and may overwrite caller rows, so rollback savepoints
+\ preserve the row bytes and lengths alongside the depth.
 : CK-USE-DEPTH ( -- n )
-   CHECKER-PKG-MIRROR-AUTHORITY? IF CHECKER-USE-OWNED-N @ EXIT THEN
    CK-USE-ENGINE-DEPTH ;
 : CK-USE-SLOT ( n -- ptr u8 )  CHECKER-PACKAGE-CAP * CK-USE-NAMES + ;
 : CK-USE-LEN@ ( n -- n )  cells CK-USE-LENS + @ ;
@@ -11083,72 +10849,16 @@ package CHECKER-REG
 ;package
 
 
-\ --- the replay's own `using` boundary --------------------------------------
-\ Live compilation splits these two steps between the engine and the checker: the
-\ engine's C-USING calls CHECKER-USING to record the name and then increments its
-\ own depth cell, and every scope boundary restores that cell. A replay has no
-\ engine doing either half for it -- the source is text being read, not tokens
-\ being compiled -- so it takes both steps here, against the depth it owns.
-\
-\ These are only reachable while the mirror is authority. Calling them during
-\ ordinary compilation would move a counter nothing reads and leave the engine's
-\ real depth untouched, so they refuse rather than silently disagree with the
-\ engine.
+\ --- the replay's `;using` refusals -------------------------------------------
+\ A replayed `;using` is refused where the engine's is (src/habu/packages.f
+\ PKG-END-USING), by these codes (CHECKER-OVERLAY:CLOSE-USING).
 7142 constant E-USING-UNBALANCED           \ `;using` with no `using` open in a replay
 \ Inside a package a `;using` closes only an import the package opened: one
-\ opened before `package` is at or below the depth CHECKER-END-PACKAGE restores,
-\ so closing it would come undone there (the engine's ENGINE-ERROR:USING-OUTER).
+\ opened before `package` is at or below the depth `;package` restores, so
+\ closing it would come undone there (the engine's ENGINE-ERROR:USING-OUTER).
 \ Nor does the replayed source close an import it inherited, at or below
 \ CHECKER-USE:SOURCE-FLOOR: the engine refuses that in an evaluated buffer.
 7146 constant E-USING-OUTER                \ `;using` closing an import its package or source did not open
-
-: CHECKER-USING-PUSH ( ptr u8 n -- )
-   CHECKER-PKG-MIRROR-AUTHORITY? 0= IF E-PKG-CONTEXT throw THEN
-   CHECKER-USE-OWNED-N @ CHECKER-USE:SOURCE-FLOOR @ < IF
-      CHECKER-USE-OWNED-N @ CHECKER-USE:SOURCE-FLOOR !
-   THEN
-   CHECKER-USING
-   CHECKER-USE-OWNED-N @ 1 + CHECKER-USE-OWNED-N ! ;
-
-: CHECKER-USING-POP ( -- )
-   CHECKER-PKG-MIRROR-AUTHORITY? 0= IF E-PKG-CONTEXT throw THEN
-   CHECKER-USE-OWNED-N @ {: d:n :}
-   d 0 <= IF E-USING-UNBALANCED throw THEN
-   CHECKER-PACKAGE-ACTIVE? d CHECKER-PACKAGE-USE-N @ <= and IF E-USING-OUTER throw THEN
-   d CHECKER-USE:SOURCE-FLOOR @ <= IF E-USING-OUTER throw THEN
-   d 1 - CHECKER-USE-OWNED-N ! ;
-
-\ Resolve a bare tail against the live used publics (searched only after the open-scope +
-\ global chain missed). A single distinct interned public sym wins; a second distinct sym
-\ across the used packages is the ambiguity hard error, matching the engine's used-search.
-\ The scan reports that refusal in CHECKER-USE:WHY rather than raising it, so
-\ the scope walk (CHECKER-RESOLVE:WALK) can answer a caller that only asks;
-\ CHECKER-FIND-ACTIVE-SYM raises it.
-\ A used public whose records all lie beyond the binding horizon was exported
-\ after this definition, and one with no live record (SYM-LIVE) is no export at
-\ all: neither is a candidate nor a cause of ambiguity. Every slot that matched
-\ is marked in CK-USED-MASK, so a using refusal names each package the token
-\ resolves in.
-: CHECKER-USED-SYM ( ptr u8 n -- n )
-   {: a:ptr u:n :}
-   0 CK-USED-FOUND !
-   -1 CK-USED-SLOT !
-   0 CK-USED-MASK !
-   0 CHECKER-USE:WHY !
-   CK-USE-SCAN-N 0 ?DO
-      i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC a u SYM-FIND IF SYM-LIVE ELSE drop 0 THEN
-      dup 0 <> IF                                            ( -- sym )
-         1 i lshift CK-USED-MASK @ or CK-USED-MASK !
-         CK-USED-FOUND @ 0= IF
-            i CK-USED-SLOT !
-            CK-USED-FOUND !
-         ELSE
-            dup CK-USED-FOUND @ <> IF E-USING-AMBIGUOUS CHECKER-USE:WHY ! THEN
-            drop
-         THEN
-      ELSE drop THEN
-   LOOP
-   CK-USED-FOUND @ ;
 
 \ --- global-vs-used-public shadow rejection (dot habu-err-on-global-e62f806c).
 \ Resolution order puts the open-scope + global wordlist ahead of the used
@@ -11248,60 +10958,10 @@ variable DEF-REFUSAL
    THEN
    E-USING-SHADOW-GLOBAL ;
 
-\ gsym has already resolved the bare tail to a global; if a live used public
-\ exports the same tail the reference is ambiguous: answer the refusal, or 0
-\ when no used public exports the tail. E-USING-AMBIGUOUS, when TWO used
-\ publics also match, is answered first, so the pre-existing rule keeps
-\ precedence.
-: CHECKER-USED-SHADOW ( ptr u8 n n -- n ) {: a:ptr u:n gsym:n :}
-   a u CHECKER-USED-SYM {: usym:n :}
-   CHECKER-USE:WHY @ 0 <> IF CHECKER-USE:WHY @ EXIT THEN
-   usym 0= IF 0 EXIT THEN
-   gsym usym CK-USED-SLOT @ CK-SHADOW-CAPTURE ;
-
-\ --- one resolver for the used-publics leg (dot habu-reject-a-bare-1f43a9a6) ---
-\ The checker and the engine each walk the same scope chain — open package
-\ (private, then public), then the global wordlist, then the used publics — but
-\ they walked it over DIFFERENT dictionaries. The engine walks its wordlists,
-\ which hold every word. The checker walked its own symbol table, which holds
-\ only the words IT recorded: an engine-prefix word, a `0 set-check` definition
-\ or anything else with no checker signature is invisible to it. So an earlier
-\ scope could claim a bare tail in the engine while the checker's chain fell
-\ through to a used public and certified against THAT word's effect. Nothing
-\ diverged loudly: the reproducer certified `41 FRESH` as ( -- ) against a used
-\ public ( n -- n ) and ran the checker-internal global FRESH ( -- n ), exit 0,
-\ wrong values, one item left on the stack.
-\ The repair is to give the two resolvers ONE authority for the question "does an
-\ earlier scope claim this tail?": the engine's own wordlists, read through
-\ `search-wl` (habu1.f BSWL — the same linear scan and the same case fold as the
-\ engine's LFIND). The checker's tables keep answering the other question, "what
-\ is this word's effect?", which is theirs alone.
-\ Cost is confined to the leg that was wrong: the probe runs only once a used
-\ public has actually matched, so a body with no `using` in scope, or one whose
-\ tails all resolve earlier, never reaches it.
+\ Whether wordlist wid holds a live record of the name: the engine's own probe,
+\ the same linear scan and case fold as its LFIND.
 : CK-WL-CLAIMS? ( ptr u8 n n -- bool ) {: a:ptr u:n wid:n :}
    a u wid search-wl 0 <> ;
-
-\ The used-publics leg of the replay's resolution (REPLAY-BIND below), reached
-\ only after every earlier scope missed. A visible global binding claims the
-\ tail before a used public may bind.
-\ Source records decide retirement and the binding horizon before a stale
-\ verifier wordlist or a compiler-only axiom can claim a global name.
-: GLOBAL-BOUND? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   s" " SYM-GLOBAL a u SYM-FIND 0= IF drop 0 THEN {: sym:n :}
-   sym SYM-DELETED? IF RES-FALSE EXIT THEN
-   sym USIG-NEWEST-VISIBLE 0 <> IF RES-TRUE EXIT THEN
-   sym USIG-NEWEST 0 <> IF RES-FALSE EXIT THEN
-   a u 0 CK-WL-CLAIMS? ;
-
-\ The leg answers the bound symbol and the refusal, 0 when there is none, as
-\ CHECKER-USED-SHADOW does; the symbol is 0 under a refusal.
-: CHECKER-USED-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
-   a u CHECKER-USED-SYM {: usym:n :}
-   CHECKER-USE:WHY @ 0 <> IF -1 USING-UNBOUND !  0 CHECKER-USE:WHY @ EXIT THEN
-   usym 0= IF 0 0 EXIT THEN
-   a u GLOBAL-BOUND? IF 0  a u 0 CHECKER-USED-SHADOW EXIT THEN
-   usym 0 ;
 
 \ --- generated-constructor protection (item 8 slice 3). The registry-backed
 \ predicates live in type-family.f (loads later) and install into these friend
@@ -11326,43 +10986,6 @@ CTOR-PROT-DEFAULTS
 
 : CHECKER-UNDEFINE-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CTOR-WORD?-XT IF E-CTOR-PROTECTED throw THEN ;
-
-: CHECKER-PACKAGE ( ptr u8 n -- )
-   2dup CHECKER-PACKAGE-LONG? IF E-PACKAGE-NAME-CAP throw THEN
-   2dup CTOR-PKG?-XT IF E-CTOR-PROTECTED throw THEN
-   CK-USE-DEPTH CHECKER-PACKAGE-USE-N !
-   CHECKER-PACKAGE-COPY
-   CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;
-package CHECKER-REG
-' CHECKER-PACKAGE DECLARATIONS PACKAGE-OFF + xt!
-;package
-
-
-: CHECKER-PUBLIC ( -- )
-   CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-PUBLIC CHECKER-PACKAGE-MODE ! THEN ;
-package CHECKER-REG
-' CHECKER-PUBLIC DECLARATIONS PUBLIC-OFF + xt!
-;package
-
-
-: CHECKER-PRIVATE ( -- )
-   CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! THEN ;
-package CHECKER-REG
-' CHECKER-PRIVATE DECLARATIONS PRIVATE-OFF + xt!
-;package
-
-
-: CHECKER-END-PACKAGE ( -- )
-   \ The engine restores its own depth on a real close. A replay must restore
-   \ the depth its package opened with; imports outside the package stay live.
-   CHECKER-PKG-MIRROR-AUTHORITY? CHECKER-PACKAGE-ACTIVE? and IF
-      CHECKER-PACKAGE-USE-N @ CHECKER-USE-OWNED-N !
-   THEN
-   CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
-   0 CHECKER-PACKAGE-U ! ;
-package CHECKER-REG
-' CHECKER-END-PACKAGE DECLARATIONS END-PACKAGE-OFF + xt!
-;package
 
 \ The package whose public wordlist the engine keeps in using slot n: its name
 \ and whether a live namespace row publishes that wid. xref.f installs the
@@ -11397,15 +11020,15 @@ package CHECKER-RESYNC
 \ input did: a buffer that closed the package an earlier buffer opened and then
 \ threw left the mirror at top level while the engine had the package open
 \ again, and every inherited replay after it refused E-PKG-CONTEXT. The mirror
-\ is therefore set from the restored scope, which the live provider names,
-\ with the floor the engine restored beside it. A scope the provider cannot
-\ authenticate names no package or mode to copy. With a package open (the
-\ current wordlist is neither of the package's own, say) the mirror keeps what
-\ the notifications set, so it agrees again once current is back; with none
-\ open it is top level. A replay owns its mirror, so a recovery inside one
-\ leaves it alone.
-: SCOPE ( -- )
-   CHECKER-PKG-MIRROR-AUTHORITY? IF EXIT THEN
+\ is therefore set from the restored scope, which the live provider names. A
+\ scope the provider cannot authenticate names no package or mode to copy.
+\ With a package open (the current wordlist is neither of the package's own,
+\ say) the mirror keeps what the notifications set, so it agrees again once
+\ current is back; with none open it is top level. Inside a replay the checker
+\ overlay drives the engine's scope, and it sets the mirror the same way each
+\ time it moves that scope (CHECKER-OVERLAY).
+public
+: MIRROR ( -- )
    SLOTS
    PKG-LIVE-XT {: a:ptr u:n mode:n ok:bool :}
    ok 0=  data-base CK-PKG-PUB-OFF + @ 0 <>  and IF EXIT THEN
@@ -11415,8 +11038,9 @@ package CHECKER-RESYNC
       EXIT
    THEN
    a u CHECKER-PACKAGE-COPY
-   mode CHECKER-PACKAGE-MODE !
-   CK-USE-ENGINE-FLOOR CHECKER-PACKAGE-USE-N ! ;
+   mode CHECKER-PACKAGE-MODE ! ;
+private
+: SCOPE ( -- ) MIRROR ;
 ' SCOPE CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:PKG-RESYNC-OFF + xt!
 ;package
 
@@ -11505,6 +11129,666 @@ variable CHECKER-QBAD-TOK
 
 : CHECKER-QTAIL$ ( -- ptr u8 n )
    CHECKER-TA@ CHECKER-TU @ ;
+
+\ The record a wordlist holds under a name, NULL-PTR when it holds none: the
+\ engine's one-wordlist probe, the one its used-publics search asks of each used
+\ wordlist (src/habu/habu2.f LFINDUSED-CORE). Wordlist -1, DICT-WL:NAMESPACE,
+\ holds the package rows.
+TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
+
+\ Whether record N+1 is record N's does> clause: the engine's own test
+\ (src/habu/xref.f XREF-DOES-COMPANION?), which xref.f installs here.
+defer DOES-COMPANION?-XT ( n -- bool )
+
+\ The source prefix's first dictionary record, asked when it runs: the
+\ engine's own boundary (src/core/prefix-boundary.f CORE-PREFIX:FIRST-RECORD),
+\ which that file installs here. The engine's builder made every record below
+\ it: a primitive or a helper, never a Habu source definition.
+defer FIRST-RECORD-XT ( -- n )
+
+\ The wordlist a dictionary record was published into, 0 for the global one.
+: CK-REC-WID ( ptr n -- n ) DICT-WORDLIST-SLOT cells + @ ;
+
+\ ---- the checker overlay ------------------------------------------------------
+\ A replay binds every name through the engine's own lookup, so while it runs
+\ the engine's dictionary holds what a compile of the replayed text would have
+\ defined. This package keeps that overlay through the engine writers only it
+\ may call (src/habu/prims.f, "the replay writers"): replay-open saves NDICT,
+\ CP, WIDN, CURRENT, the package cells and the using band; each definition the
+\ checker records is published as a codeless record (PUBLISH), a does>
+\ definer's clause beside it (CLAUSE); a replayed `undefine` retires the live
+\ records it names with wid -2 and logs them (RETIRE); the replay's package and
+\ using words move the engine's scope as the engine's own keywords do
+\ (src/habu/packages.f), and a replayed `package` gives a row with no private
+\ wordlist one and logs it (GRANT); a lookup under the binding
+\ horizon hides the records beyond it while it asks (HIDE, HORIZON-FIND). On
+\ every exit, clean or thrown, the log is undone newest first and replay-close
+\ zeroes the overlay's records and puts the saved state back.
+\
+\ The outermost scope that asks opens the overlay: the verifier window (tag -1)
+\ or a package-neutral rollback scope (its frame depth). A scope opened inside
+\ it saves the engine scope in a snapshot row and puts it back when it closes,
+\ so the names a scope publishes bind until the overlay itself closes. A
+\ rollback frame keeps the overlay's NDICT, log count, CP and WIDN (MARKS) and
+\ goes back to them (ROLLBACK).
+\
+\ Between a logged record's restore and the drop of a replay record of the same
+\ name, one wordlist holds two live records of it (src/habu/habu2.f
+\ RECORD-WID): CLOSE ends that window with replay-close and ROLLBACK with
+\ ndict!, each before any lookup. Every writer refusal ends the process, so
+\ each refusal a replay can meet is checked here first and thrown by name.
+package CHECKER-OVERLAY
+
+variable ON                                \ nonzero while the overlay is open
+variable MARK                              \ NDICT when it opened: later records are the replay's
+variable PREFIX                            \ FIRST-RECORD-XT: earlier records the builder made
+variable OPENER                            \ the tag of the scope that opened it
+variable FLOOR0                            \ CHECKER-USE:SOURCE-FLOOR when it opened
+-2 constant RETIRED                        \ = layout.f DICT-WL:RETIRED
+$4E constant DUPLICATE                     \ E-DUPLICATE-DEFINITION, as CHECKER-DUP-DEFINITION throws it
+-1 constant NAMESPACE                      \ = layout.f DICT-WL:NAMESPACE
+
+\ The undo log: the index and wid of each record a replayed `undefine` retired,
+\ and the index of each namespace row the replay gave a private wordlist
+\ (GRANT) with wid NAMESPACE, which record-wid! refuses, so no retirement is
+\ logged with it. A retired record has left its wordlist and a granted row has
+\ one of its own, so the log holds a record at most once, and only the
+\ dictionary bounds it, as it bounds the `undefine`s of a live load. It is a
+\ mapping of its own, grown as entries come (PAIR+) and given back by CLOSE.
+PTR-VARIABLE LOG-P
+variable LOG-CAP
+variable LOG-N
+: LOG ( -- ptr u8 ) LOG-P @ BYTE-VIEW ;
+
+\ The does> clauses the replay published (CLAUSE): each definer's or export's
+\ index, then its clause's, in the order they were made. The engine pairs a
+\ live definer or export with its clause by code containment
+\ (DOES-COMPANION?-XT), which a codeless replay record cannot meet, so the pair
+\ is kept where it is made. Each pair's clause is a record CLAUSE makes once
+\ ROOM admits it, so only the dictionary bounds the table, as it bounds the
+\ definers and exports of a live load. Like the log, it is a mapping of its
+\ own, grown as pairs come and given back by CLOSE.
+PTR-VARIABLE PAIRS-P
+variable PAIRS-CAP
+variable PAIRS-N
+: PAIRS ( -- ptr u8 ) PAIRS-P @ BYTE-VIEW ;
+
+\ The hidden records: the index and wid of each record a lookup under the
+\ binding horizon retired for its own time (HIDE, HORIZON-FIND). They are kept
+\ apart from the undo log, so putting them back can never revive a record a
+\ replayed `undefine` retired. A lookup hides at most one record of its name in
+\ each wordlist it searches: the open package's two, the used publics and the
+\ global one.
+CK-USE-MAX 3 + constant HIDE-MAX
+create HIDDEN HIDE-MAX 2 * cells allot
+variable HIDDEN-N
+
+\ A snapshot row: the engine scope a nested scope or a composed file puts back.
+\ The open package is its row's index, -1 for none, never its address.
+0 constant S-REC
+1 constant S-PARENT
+2 constant S-CURRENT
+3 constant S-DEPTH                         \ the using depth
+4 constant S-FLOOR                         \ the open package's using floor
+5 constant S-SOURCE                        \ CHECKER-USE:SOURCE-FLOOR
+6 constant S-TAG                           \ the scope that pushed the row
+7 constant S-WIDS                          \ the used publics, CK-USE-MAX cells
+S-WIDS CK-USE-MAX + constant ROW-CELLS
+\ The snapshot rows, newest last: a scope opened while the overlay is on keeps
+\ the scope it entered from (SNAP-PUSH). The live engine nests checker scopes as
+\ deep as its memory holds (RBF-GROW), and so does a replay: the rows are a
+\ mapping of their own, grown as scopes open and given back by CLOSE.
+PTR-VARIABLE SNAPS-P
+variable SNAPS-CAP
+variable SNAP-N
+
+: DATA@ ( n -- n ) {: off:n :} data-base off + @ ;
+: DATA! ( n n -- ) {: v:n off:n :} v data-base off + ! ;
+: ROW@ ( ptr u8 n -- n ) {: p:ptr k:n :} p k cells + cell-view @ ;
+: ROW! ( n ptr u8 n -- ) {: v:n p:ptr k:n :} v p k cells + cell-view ! ;
+: SNAP ( n -- ptr u8 ) ROW-CELLS * cells SNAPS-P @ BYTE-VIEW + ;
+\ Entry K of a pair table (LOG, HIDDEN): a record's index, then its wid.
+: IX@ ( ptr u8 n -- n ) 2 * ROW@ ;
+: WID@ ( ptr u8 n -- n ) 2 * 1 + ROW@ ;
+: PAIR! ( n n ptr u8 n -- ) {: ix:n wid:n t:ptr k:n :}
+   ix t k 2 * ROW!
+   wid t k 2 * 1 + ROW! ;
+
+\ Append the pair X Y to a growing pair table (LOG, PAIRS): the mapping PV
+\ holds, CAPV pairs long with NV of them in use.
+: PAIR+ ( n n ptr ptr n ptr n ptr n -- )
+   {: x:n y:n pv:ptr capv:ptr nv:ptr :}
+   pv capv nv @ 1 + 2 ARENA-ROWS-ENSURE
+   x y pv @ BYTE-VIEW nv @ PAIR!
+   nv @ 1 + nv ! ;
+
+: REC>IX ( ptr n -- n ) {: rec:ptr :} rec NULL-PTR - dbase@ - CK-DREC / ;
+\ The open package's row index, -1 when none is open.
+: OPEN-IX ( -- n )
+   CK-PKG-REC-OFF DATA@ {: r:n :}
+   r 0= IF -1 EXIT THEN
+   r dbase@ - CK-DREC / ;
+: NS-ROW ( ptr u8 n -- ptr n ) -1 SCOPE-WL-PROBE ;
+: ROOM ( -- )
+   ndict@ CK-DICT-CAP < IF EXIT THEN
+   E-OVERLAY-CAP throw ;
+
+\ The namespace row `package` opens, as the engine's PKG-ENSURE finds or makes
+\ it, and the one a replayed `using` imports (OPEN-USING): a colon anywhere in
+\ the name is refused with E-PKG-CONTEXT, the checker's code for the class the
+\ engine's `package` refuses it under (packages.f PKG-RC-CONTEXT, private to
+\ OUTER); a new row takes both wids.
+: NS-ENSURE ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
+   a u CHECKER-COLON-SCAN
+   CHECKER-COLON-N @ 0 <> IF E-PKG-CONTEXT throw THEN
+   a u NS-ROW {: rec:ptr :}
+   rec NULL-PTR <> IF rec EXIT THEN
+   ROOM
+   a u RES-TRUE namespace-record drop
+   a u NS-ROW ;
+
+: SNAP-SAVE ( ptr u8 -- ) {: p:ptr :}
+   OPEN-IX p S-REC ROW!
+   CK-PKG-PARENT-OFF DATA@ p S-PARENT ROW!
+   get-current p S-CURRENT ROW!
+   CK-USE-DEPTH-OFF DATA@ p S-DEPTH ROW!
+   CK-USE-FLOOR-OFF DATA@ p S-FLOOR ROW!
+   CHECKER-USE:SOURCE-FLOOR @ p S-SOURCE ROW!
+   CK-USE-MAX 0 ?DO i cells CK-USE-WIDS-OFF + DATA@ p S-WIDS i + ROW! LOOP ;
+
+: SNAP-RESTORE ( ptr u8 -- ) {: p:ptr :}
+   p S-REC ROW@ {: ix:n :}
+   ix 0 < IF -1 0 ELSE ix p S-PARENT ROW@ THEN package-scope!
+   p S-CURRENT ROW@ set-current
+   p S-DEPTH ROW@ CK-USE-DEPTH-OFF DATA!
+   p S-FLOOR ROW@ CK-USE-FLOOR-OFF DATA!
+   p S-SOURCE ROW@ CHECKER-USE:SOURCE-FLOOR !
+   CK-USE-MAX 0 ?DO p S-WIDS i + ROW@ i cells CK-USE-WIDS-OFF + DATA! LOOP ;
+
+: SNAP-PUSH ( n -- ) {: tag:n :}
+   SNAPS-P SNAPS-CAP SNAP-N @ 1 + ROW-CELLS ARENA-ROWS-ENSURE
+   SNAP-N @ SNAP SNAP-SAVE
+   tag SNAP-N @ SNAP S-TAG ROW!
+   SNAP-N @ 1 + SNAP-N ! ;
+
+: SNAP-POP ( -- )
+   SNAP-N @ 1 - {: k:n :}
+   k SNAP SNAP-RESTORE
+   k SNAP-N ! ;
+
+\ The scope a package-neutral replay starts in: top level, no imports.
+: CLEAR ( -- )
+   -1 0 package-scope!
+   0 set-current
+   0 CK-USE-DEPTH-OFF DATA!
+   0 CK-USE-FLOOR-OFF DATA! ;
+
+\ Append record IX and WID to the log.
+: LOG! ( n n -- ) LOG-P LOG-CAP LOG-N PAIR+ ;
+
+\ Undo one log entry: a granted row loses its private wordlist, a retired
+\ record gets its wid back.
+: UNDO1 ( n n -- ) {: ix:n wid:n :}
+   wid NAMESPACE = IF ix RES-FALSE replay-private EXIT THEN
+   wid ix record-wid! ;
+
+\ Undo each log entry above LOW, newest first.
+: UNDO ( n -- ) {: low:n :}
+   BEGIN LOG-N @ low > WHILE
+      LOG-N @ 1 - LOG-N !
+      LOG LOG-N @ IX@  LOG LOG-N @ WID@  UNDO1
+   REPEAT ;
+
+\ replay-open refuses a pending definition by exit: refuse it here first.
+: OPEN ( n -- ) {: tag:n :}
+   CK-DEF-PEND-OFF DATA@ 0 <> IF E-PKG-CONTEXT throw THEN
+   replay-open
+   ndict@ MARK !
+   FIRST-RECORD-XT PREFIX !
+   tag OPENER !
+   0 LOG-N !
+   CHECKER-USE:SOURCE-FLOOR @ FLOOR0 !
+   -1 ON ! ;
+
+\ Drop the clause pairs whose definer is at or above ND, newest first: the
+\ records they name are gone. Definers are made in index order, so they are
+\ the newest entries.
+: UNPAIR ( n -- ) {: nd:n :}
+   BEGIN PAIRS-N @ 0 >  IF PAIRS PAIRS-N @ 1 - IX@ nd >= ELSE RES-FALSE THEN WHILE
+      PAIRS-N @ 1 - PAIRS-N !
+   REPEAT ;
+
+\ A snapshot a scope left is moot once replay-close has put the scope back. The
+\ snapshot rows', the log's and the clause pairs' mappings are given back, so an
+\ image captured afterwards holds the bytes one no replay ran in does.
+: CLOSE ( -- )
+   0 UNDO
+   replay-close
+   0 UNPAIR
+   LOG-P LOG-CAP 2 ARENA-ROWS-RELEASE
+   PAIRS-P PAIRS-CAP 2 ARENA-ROWS-RELEASE
+   SNAPS-P SNAPS-CAP ROW-CELLS ARENA-ROWS-RELEASE
+   FLOOR0 @ CHECKER-USE:SOURCE-FLOOR !
+   0 FLOOR0 !  0 OPENER !  0 MARK !  0 PREFIX !  0 ON !  0 SNAP-N ! ;
+
+\ The wordlist a checker symbol's definition lands in, as a compile of it puts
+\ it: the global one, or its package's public or private one.
+: SYM-WID ( n -- n ) {: sym:n :}
+   sym SYM-ROW SYM.VIS @ SYM-GLOBAL = IF 0 EXIT THEN
+   sym SYM-PKG$ {: pa:ptr pu:n :}
+   pu 0= IF 0 EXIT THEN
+   pa pu NS-ENSURE {: rec:ptr :}
+   sym SYM-ROW SYM.VIS @ SYM-PUBLIC = IF rec @ EXIT THEN
+   rec CELL + @ {: pri:n :}
+   pri 0= IF E-PKG-CONTEXT throw THEN
+   pri ;
+
+\ The name `undefine` or a definition acts on and its wordlist: a qualified
+\ name's tail in its package's public wordlist, else the name in the current
+\ one. False for a malformed name and a package with no row.
+: QTARGET ( -- ptr u8 n n bool )
+   CHECKER-QPKG$ NS-ROW {: rec:ptr :}
+   CHECKER-QTAIL$
+   rec NULL-PTR = IF 0 RES-FALSE EXIT THEN
+   rec @ RES-TRUE ;
+
+: TARGET ( ptr u8 n -- ptr u8 n n bool ) {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? IF QTARGET EXIT THEN
+   CHECKER-QBAD-TOK @ 0 <> IF a u 0 RES-FALSE EXIT THEN
+   a u get-current RES-TRUE ;
+
+\ Log record IX with its wid, then retire it.
+: LOG-RETIRE ( n n -- ) {: ix:n wid:n :}
+   ix wid LOG!
+   RETIRED ix record-wid! ;
+
+\ Give namespace row REC, which has no private wordlist, one until the log is
+\ undone, as `package` gives one to a row a qualified definition made
+\ (src/habu/packages.f PKG-REOPEN).
+: GRANT ( ptr n -- ) {: rec:ptr :}
+   rec REC>IX {: ix:n :}
+   ix NAMESPACE LOG!
+   ix RES-TRUE replay-private ;
+
+\ Whether record IX is on the undo log. A replay record leaves its wordlist
+\ only through the log (HIDE gives a record back before its lookup ends), so
+\ for one of the replay's records this is whether it is retired.
+: LOGGED? ( n -- bool ) {: ix:n :}
+   LOG-N @ 0 ?DO
+      LOG i IX@ ix = IF RES-TRUE UNLOOP EXIT THEN
+   LOOP
+   RES-FALSE ;
+
+\ The clause PAIRS holds for the replayed definer or export IX, -1 for none.
+: PAIRED ( n -- n ) {: ix:n :}
+   PAIRS-N @ 0 ?DO
+      PAIRS i IX@ ix = IF PAIRS i 2 * 1 + ROW@ UNLOOP EXIT THEN
+   LOOP
+   -1 ;
+
+\ The does> clause of the definer or export at IX that is still in its
+\ wordlist, -1 for none: a live one's by the engine's own test, a replayed
+\ one's from PAIRS unless it is retired, as the engine's test then finds no
+\ clause either.
+: CLAUSE-OF ( n -- n ) {: ix:n :}
+   ix DOES-COMPANION?-XT IF ix 1 + EXIT THEN
+   ix PAIRED {: cl:n :}
+   cl 0 <  IF -1 EXIT THEN
+   cl LOGGED? IF -1 EXIT THEN
+   cl ;
+
+\ Retire one live record of the name in WID and log it, false when none is.
+\ A does> definer's clause goes with it, as the engine's undefine retires it
+\ (src/habu/xref.f XREF-RETIRE-INDEX): left live, the clause would still answer
+\ to its own name, `R;does`, after `undefine R`. The test reads the parent's
+\ wid, so it runs before the parent is retired.
+: RETIRE1 ( ptr u8 n n -- bool ) {: a:ptr u:n wid:n :}
+   a u wid SCOPE-WL-PROBE {: rec:ptr :}
+   rec NULL-PTR = IF RES-FALSE EXIT THEN
+   rec REC>IX {: ix:n :}
+   ix CLAUSE-OF {: cl:n :}
+   cl 0 >= IF cl wid LOG-RETIRE THEN
+   ix wid LOG-RETIRE
+   RES-TRUE ;
+
+public
+
+\ The scope tagged TAG opens: the overlay when none is open, else a snapshot
+\ row. A neutral scope then starts at top level with no imports.
+: OPEN-SCOPE ( bool n -- ) {: neutral:bool tag:n :}
+   ON @ 0= IF tag OPEN ELSE tag SNAP-PUSH THEN
+   neutral IF CLEAR CHECKER-RESYNC:MIRROR THEN ;
+
+\ The scope tagged TAG closes: the overlay when it opened it, its snapshot row
+\ when that is the newest, and nothing for a scope that opened neither.
+: CLOSE-SCOPE ( n -- ) {: tag:n :}
+   ON @ 0= IF EXIT THEN
+   OPENER @ tag = IF CLOSE CHECKER-RESYNC:MIRROR EXIT THEN
+   SNAP-N @ 0= IF EXIT THEN
+   SNAP-N @ 1 - SNAP S-TAG ROW@ tag <> IF EXIT THEN
+   SNAP-POP CHECKER-RESYNC:MIRROR ;
+
+\ The overlay's NDICT, log count, CP and WIDN, 0 0 0 0 while it is closed:
+\ what a rollback frame keeps and ROLLBACK goes back to. A frame from before
+\ the overlay opened rolls none of it back; the overlay's own close does.
+: MARKS ( -- n n n n )
+   ON @ 0= IF 0 0 0 0 EXIT THEN
+   ndict@ LOG-N @ cp@ CK-WIDN-OFF DATA@ ;
+
+\ A scope opened inside the overlay closes here, not through replay-close, so
+\ ROLLBACK hands back the three counters replay-close restores: the records
+\ above ND, the bytes their long names took at CP and the wordlists their
+\ namespace rows took. Without CP and WIDN every replay nested under one open
+\ overlay kept them until the overlay closed. WIDN goes back last, once UNDO
+\ took back the private wids granted since the mark and ndict! dropped every
+\ record that held a wid at or above it (replay-widn!).
+: ROLLBACK ( n n n n -- )
+   {: nd:n logn:n cp:n widn:n :}
+   ON @ 0=  nd MARK @ <  or IF EXIT THEN
+   logn UNDO
+   ndict@ nd > IF nd ndict! THEN
+   nd UNPAIR
+   cp@ cp > IF cp cp! THEN
+   widn replay-widn! ;
+
+\ Retire REC for the time of one lookup under the binding horizon; UNHIDE gives
+\ every hidden record its wid back, newest first. HORIZON-FIND pairs them on
+\ every exit, so nothing stays hidden past the lookup that hid it.
+: HIDE ( ptr n -- ) {: rec:ptr :}
+   HIDDEN-N @ HIDE-MAX >= IF E-OVERLAY-CAP throw THEN
+   rec REC>IX {: ix:n :}
+   ix rec CK-REC-WID HIDDEN HIDDEN-N @ PAIR!
+   HIDDEN-N @ 1 + HIDDEN-N !
+   RETIRED ix record-wid! ;
+
+: UNHIDE ( -- )
+   BEGIN HIDDEN-N @ 0 > WHILE
+      HIDDEN-N @ 1 - HIDDEN-N !
+      HIDDEN HIDDEN-N @ WID@  HIDDEN HIDDEN-N @ IX@  record-wid!
+      0 0 HIDDEN HIDDEN-N @ PAIR!
+   REPEAT ;
+
+\ The scope a composed file keeps (CHECKER-VERIFY-FILE): a row of SCOPE-BYTES.
+\ A file that returns keeps no import it opened, as the engine's evaluator
+\ drops one when an included buffer ends, and its includer's source floor
+\ comes back (FILE-DONE); a file that throws puts the whole scope back.
+ROW-CELLS cells constant SCOPE-BYTES
+: SAVE-SCOPE ( ptr u8 -- ) SNAP-SAVE ;
+: RESTORE-SCOPE ( ptr u8 -- ) SNAP-RESTORE CHECKER-RESYNC:MIRROR ;
+: FILE-DONE ( ptr u8 -- ) {: p:ptr :}
+   CK-USE-DEPTH-OFF DATA@ CHECKER-USE:SOURCE-FLOOR @ min {: d:n :}
+   d CK-USE-DEPTH-OFF DATA!
+   CK-USE-FLOOR-OFF DATA@ d min CK-USE-FLOOR-OFF DATA!
+   p S-SOURCE ROW@ CHECKER-USE:SOURCE-FLOOR ! ;
+
+\ Publish the definition the checker just recorded as a codeless record, so the
+\ replay's later bodies bind it where the compiler would; the publication hook
+\ of CHECKER-EFFECT-AUTHORITY calls it. A name its wordlist already holds live
+\ keeps that record: in a warm engine it is the loaded twin of the definition.
+\ A definition of a name the replay or the engine's builder made there is
+\ refused before it is recorded (CHECKER-CERT-DUP?, DUPLICATE? below). A does>
+\ clause is no twin (DUPLICATE?), and a definer's or an export's twin has its
+\ clause (CLAUSE).
+: PUBLISH ( n -- ) {: sym:n :}
+   sym 0=  ON @ 0=  or  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
+   sym SYM-WID {: wid:n :}
+   sym SYM-NAME$ wid SCOPE-WL-PROBE NULL-PTR <> IF EXIT THEN
+   ROOM
+   sym SYM-NAME$ wid replay-record ;
+
+\ Whether a definition of NAME, replayed here, duplicates the record the engine
+\ holds of it where the definition lands, as the live engine refuses a compile
+\ of the name there. A record the replay made does: a definition it published
+\ or a does> clause (CLAUSE), which has no checker record. So does one below
+\ the source prefix's first record (PREFIX): the engine's builder made it, a
+\ primitive or a helper, before any source loaded, so a live load of the text
+\ meets it too. So does a does> clause from before the overlay, its
+\ predecessor's by the engine's own test: no definition makes a clause, so it
+\ is no definition's loaded twin. Any other record between the two is a Habu
+\ source definition the engine loaded: in a warm engine, the twin of the
+\ definition being replayed.
+: DUPLICATE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   ON @ 0= IF RES-FALSE EXIT THEN
+   a u TARGET 0= IF 2drop drop RES-FALSE EXIT THEN
+   SCOPE-WL-PROBE {: rec:ptr :}
+   rec NULL-PTR = IF RES-FALSE EXIT THEN
+   rec REC>IX {: ix:n :}
+   ix MARK @ >= IF RES-TRUE EXIT THEN
+   ix PREFIX @ < IF RES-TRUE EXIT THEN
+   ix 0 > IF ix 1 - DOES-COMPANION?-XT EXIT THEN
+   RES-FALSE ;
+
+\ The clause of the replayed `create ... does>` definer NAME, as the engine's
+\ `does>` makes it (src/habu/habu2.f DOES-REC), or of a replayed export NAME of
+\ such a definer, as the engine's EXPORT publishes it (C-EXPORT): a record of
+\ its own in NAME's wordlist, named NAME's tail with the companion suffix added,
+\ so a later `trust` or `undefine` of either binds as it would live. CNAME is
+\ NAME with DOES-CLAUSE:SUFFIX$ added, composed by the caller (CLAUSE-NAME)
+\ because the checker registers that word's effect after this package; past
+\ NAME's qualifier it spells the clause's tail. A live word already holding the
+\ clause's name refuses the definer, E-DUPLICATE-DEFINITION, as
+\ DOES-REC:REJECT-DUP does; an export's caller asks that first (EXPORT-ROOM). A
+\ definer or export from before the overlay is the loaded twin the replay keeps
+\ (PUBLISH) only if it has the clause the engine made for it: over one with no
+\ clause the live engine refuses the definition, and so does the replay,
+\ E-DUPLICATE-DEFINITION. One the replay did not publish gets no clause.
+: CLAUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n ca:ptr cu:n :}
+   ON @ 0=  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
+   a u TARGET 0= IF 2drop drop EXIT THEN
+   {: ta:ptr tu:n wid:n :}
+   ta tu wid SCOPE-WL-PROBE {: rec:ptr :}
+   rec NULL-PTR = IF EXIT THEN
+   rec REC>IX {: ix:n :}
+   ix MARK @ < IF
+      ix CLAUSE-OF 0 < IF DUPLICATE throw THEN
+      EXIT
+   THEN
+   ROOM
+   u tu - {: q:n :}
+   ca q +  cu q -  {: cta:ptr ctu:n :}
+   cta ctu wid SCOPE-WL-PROBE NULL-PTR <> IF DUPLICATE throw THEN
+   cta ctu wid replay-record
+   ix ndict@ 1 - PAIRS-P PAIRS-CAP PAIRS-N PAIR+ ;
+
+\ Whether REC, the record a lookup bound, has its does> clause still in its
+\ wordlist (CLAUSE-OF): an export of it publishes that clause beside its own
+\ record (src/habu/habu2.f C-EXPORT, DOES-REC:CLAUSE-OF). No record has none.
+: CARRIES? ( ptr n -- bool ) {: rec:ptr :}
+   rec NULL-PTR = IF RES-FALSE EXIT THEN
+   rec REC>IX CLAUSE-OF 0 >= ;
+
+\ The room an export NAME of a does> definer needs for its clause CNAME in the
+\ current wordlist: the live engine refuses the export when a word there holds
+\ the clause's name, E-DUPLICATE-DEFINITION, before the checker hears of it
+\ (src/habu/habu2.f C-EXPORT-CLAUSE-ROOM), so the caller asks before it records
+\ the export. A wordlist already holding NAME holds the export's twin, and
+\ CLAUSE asks whether it has the clause.
+: EXPORT-ROOM ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n ca:ptr cu:n :}
+   a u get-current SCOPE-WL-PROBE NULL-PTR <> IF EXIT THEN
+   ca cu get-current SCOPE-WL-PROBE NULL-PTR <> IF DUPLICATE throw THEN ;
+
+\ `package NAME`, as the engine opens it (src/habu/packages.f PKG-PACKAGE): the
+\ row, made when new, and its private wordlist when it has none (GRANT); the
+\ using depth it opens at, which `;package` restores; the private wordlist
+\ current. A `package` replayed inside an open package
+\ replaces it and keeps its parent, as the checker's record of the scope does.
+: OPEN-PACKAGE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u NS-ENSURE {: rec:ptr :}
+   rec CELL + @ 0= IF rec GRANT THEN
+   CK-PKG-PUB-OFF DATA@ 0 <> IF CK-PKG-PARENT-OFF DATA@ ELSE get-current THEN {: parent:n :}
+   CK-USE-DEPTH-OFF DATA@ CK-USE-FLOOR-OFF DATA!
+   rec REC>IX parent package-scope!
+   rec CELL + @ set-current ;
+
+\ `public` or `private`: OFF is the open package's cell for that wordlist. With
+\ no package open it changes nothing, as the checker's record of the scope.
+: SECTION ( n -- ) {: off:n :}
+   CK-PKG-PUB-OFF DATA@ 0= IF EXIT THEN
+   off DATA@ set-current ;
+
+\ `;package` (PKG-END-PACKAGE): the parent wordlist current, no package open
+\ and the using depth the package opened at.
+: CLOSE-PACKAGE ( -- )
+   CK-PKG-PUB-OFF DATA@ 0= IF EXIT THEN
+   CK-PKG-PARENT-OFF DATA@ set-current
+   -1 0 package-scope!
+   CK-USE-FLOOR-OFF DATA@ CK-USE-DEPTH-OFF DATA! ;
+
+\ `using NAME` (PKG-USING): the package's public wordlist joins the used ones
+\ at the current depth. The checker names that slot first (CHECKER-USING: a
+\ name over 255 bytes throws and an overflow ends the process, before any store
+\ here). A colon in the name throws the engine's own code for it
+\ (ENGINE-ERROR:USING-BAD-NAME), as the live statement does inside evaluate:
+\ no row can exist for such a name, since namespace-record refuses a colon, so
+\ `using A:B` and every `A:B:X` after it are refused here, at the statement the
+\ load refuses. A legal name with no row is the run's to refuse
+\ (USING-UNKNOWN), so the replay goes on with the empty row NS-ENSURE makes,
+\ which replay-close drops: no name binds through it. A source below its floor
+\ lowers the floor to meet its first using, as an evaluated buffer does.
+: OPEN-USING ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECKER-USING
+   a u CHECKER-COLON-SCAN
+   CHECKER-COLON-N @ 0 <> IF ENGINE-ERROR:USING-BAD-NAME throw THEN
+   a u NS-ENSURE {: rec:ptr :}
+   CK-USE-DEPTH-OFF DATA@ {: d:n :}
+   d CHECKER-USE:SOURCE-FLOOR @ < IF d CHECKER-USE:SOURCE-FLOOR ! THEN
+   rec @ d cells CK-USE-WIDS-OFF + DATA!
+   d 1 + CK-USE-DEPTH-OFF DATA! ;
+
+\ `;using` (PKG-END-USING) closes only an import the open package or the
+\ replayed source opened.
+: CLOSE-USING ( -- )
+   CK-USE-DEPTH-OFF DATA@ {: d:n :}
+   d 0 <= IF E-USING-UNBALANCED throw THEN
+   CK-PKG-PUB-OFF DATA@ 0 <>  d CK-USE-FLOOR-OFF DATA@ <=  and IF E-USING-OUTER throw THEN
+   d CHECKER-USE:SOURCE-FLOOR @ <= IF E-USING-OUTER throw THEN
+   d 1 - CK-USE-DEPTH-OFF DATA! ;
+
+\ `undefine NAME` (src/habu/xref.f UNDEFINE-NAME): every live record of the
+\ name in the wordlist it acts in is retired and logged, a seeded primitive's
+\ as well: the live `undefine` retires every record of the name down to the
+\ first (XREF-RETIRE-WL).
+: RETIRE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TARGET 0= IF 2drop drop EXIT THEN
+   {: ta:ptr tu:n wid:n :}
+   BEGIN ta tu wid RETIRE1 0= UNTIL ;
+;package
+
+\ --- the package and using words ---------------------------------------------
+\ Live compilation splits each of these between the engine and the checker:
+\ the engine's keyword moves its scope and notifies the checker, which records
+\ the name. A replay has no engine doing the first half -- the source is text
+\ being read, not tokens being compiled -- so inside the verifier window the
+\ checker overlay moves the engine's scope first. CHECKER-USING-PUSH and
+\ CHECKER-USING-POP are the replay's alone: outside the window they refuse
+\ rather than move a scope no compile is in.
+: CHECKER-USING-PUSH ( ptr u8 n -- )
+   CHECKER-VERIFY-PKG-DEPTH @ 0= IF E-PKG-CONTEXT throw THEN
+   CHECKER-OVERLAY:OPEN-USING ;
+
+: CHECKER-USING-POP ( -- )
+   CHECKER-VERIFY-PKG-DEPTH @ 0= IF E-PKG-CONTEXT throw THEN
+   CHECKER-OVERLAY:CLOSE-USING ;
+
+: CHECKER-PACKAGE ( ptr u8 n -- )
+   2dup CHECKER-PACKAGE-LONG? IF E-PACKAGE-NAME-CAP throw THEN
+   2dup CTOR-PKG?-XT IF E-CTOR-PROTECTED throw THEN
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF 2dup CHECKER-OVERLAY:OPEN-PACKAGE THEN
+   CHECKER-PACKAGE-COPY
+   CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;
+package CHECKER-REG
+' CHECKER-PACKAGE DECLARATIONS PACKAGE-OFF + xt!
+;package
+
+: CHECKER-PUBLIC ( -- )
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF CK-PKG-PUB-OFF CHECKER-OVERLAY:SECTION THEN
+   CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-PUBLIC CHECKER-PACKAGE-MODE ! THEN ;
+package CHECKER-REG
+' CHECKER-PUBLIC DECLARATIONS PUBLIC-OFF + xt!
+;package
+
+: CHECKER-PRIVATE ( -- )
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF CK-PKG-PRI-OFF CHECKER-OVERLAY:SECTION THEN
+   CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! THEN ;
+package CHECKER-REG
+' CHECKER-PRIVATE DECLARATIONS PRIVATE-OFF + xt!
+;package
+
+: CHECKER-END-PACKAGE ( -- )
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF CHECKER-OVERLAY:CLOSE-PACKAGE THEN
+   CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
+   0 CHECKER-PACKAGE-U ! ;
+package CHECKER-REG
+' CHECKER-END-PACKAGE DECLARATIONS END-PACKAGE-OFF + xt!
+;package
+
+\ --- the verifier window --------------------------------------------------
+\ These two names stay checker-internal: verify-source and the check driver's
+\ fixed scanners compile direct calls from named TRUSTED boundaries. Their
+\ effect rows are trusted-only, so checked code cannot activate the provider.
+\
+\ THE ROW IS WHY THE NAME ALSO NEEDS A SEAL. Both carry a zero-cell PRIM: row
+\ marked PRIM-TRUSTED-ONLY! so the native compiler can compile the call window
+\ from that TRUSTED caller — and a row makes SIG-MIN-IN answer 0, which is what
+\ src/core/internal-mark.f's IMK-MARK reads as "known, and no minimum arity to
+\ record" and leaves executable. A file holding nothing but
+\ CHECKER-VERIFY-PKG-START therefore ran and exited 0, seeding the verifier's
+\ package mirror from top level. REG-PROTECT is the seal CHECKER-RESET-SOURCE
+\ takes for the same reason: it records this record for IMK-SEAL-REGISTRY, which
+\ marks it DNAME-INT, so interpret and tick fail closed (`hb: internal engine
+\ word`, rc 70) while a compile-mode reference from a TRUSTED: body still
+\ resolves — src/compiler/native/dict.f CALL-TARGET admits a DNAME-INT call
+\ while the TRUSTED compilation cell is armed, which is what the row is for.
+\
+\ WHY NOT TEACH THE PASS THAT A TRUSTED-ONLY ROW IS UNKNOWN. Because trusted-only
+\ states a different restriction: CHECKED CODE may not call the word, and some
+\ rows carry it precisely so a top-level build driver still can — `set-check`'s
+\ row (src/habu/prims.f) is one. The pass classifies colon records, so that
+\ rule would also seal CHECK-DOES! (this file) and LOWER-CERT:BYTES
+\ (src/core/lower-cert-base.f) on a judgement neither row makes. The seal belongs
+\ where the intent is stated, at the definition; REG-PROTECT takes the record it
+\ follows, so it cannot drift off the word it is about.
+: CHECKER-VERIFY-PKG-START ( -- )
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF E-PKG-CONTEXT throw THEN
+   PKG-LIVE-XT 0= IF E-PKG-CONTEXT throw THEN 2drop drop
+   RES-FALSE -1 CHECKER-OVERLAY:OPEN-SCOPE
+   1 CHECKER-VERIFY-PKG-DEPTH !
+   PASS-FLOOR @ VERIFY-FLOOR0 !  -1 PASS-FLOOR !
+   CK-USE-ENGINE-DEPTH CHECKER-USE:SOURCE-FLOOR ! ;
+REG-PROTECT
+
+: CHECKER-VERIFY-PKG-DONE ( -- )
+   CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF E-PKG-CONTEXT throw THEN
+   -1 CHECKER-OVERLAY:CLOSE-SCOPE
+   0 BIND-HORIZON !
+   VERIFY-FLOOR0 @ PASS-FLOOR !
+   0 CHECKER-VERIFY-PKG-DEPTH ! ;
+REG-PROTECT
+
+\ A source loaded inside an active verifier window inherits its caller's
+\ package and imports. On a clean return it keeps no import it opened, as the
+\ native evaluator drops them (CHECKER-OVERLAY:FILE-DONE); a throw puts back
+\ the scope it started in. The outer verifier window keeps the declarations and
+\ the pass floor either way.
+TRUSTED: CHECKER-VERIFY-FILE ( [ -- ] -- ) {: q :}
+   CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF E-PKG-CONTEXT throw THEN
+   CHECKER-OVERLAY:SCOPE-BYTES map-anon 0= 0= IF
+      s" checker: file scope allocation failed" 76 die
+   THEN {: frame:ptr :}
+   frame CHECKER-OVERLAY:SAVE-SCOPE
+   CK-USE-ENGINE-DEPTH CHECKER-USE:SOURCE-FLOOR !
+   q catch {: rc:n :}
+   rc 0= IF frame CHECKER-OVERLAY:FILE-DONE ELSE frame CHECKER-OVERLAY:RESTORE-SCOPE THEN
+   frame CHECKER-OVERLAY:SCOPE-BYTES munmap {: release:n :}
+   rc 0= 0= IF rc throw THEN
+   release 0= 0= IF s" checker: file scope release failed" 76 die THEN ;
+REG-PROTECT
+
+package CHECKER-REG
+' CHECKER-VERIFY-PKG-START DECLARATIONS CHECKER-OWNER-ABI:VERIFY-START-OFF + xt!
+' CHECKER-VERIFY-PKG-DONE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DONE-OFF + xt!
+' CHECKER-VERIFY-FILE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-FILE-OFF + xt!
+;package
 
 : CHECKER-SEALED-PKG? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" tfam" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -11635,7 +11919,7 @@ PTR-VARIABLE RPL-TOK-A   variable RPL-TOK-U     \ the refused name (raw, valid w
 : CHECKER-REPLAY-NAME-OK? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN
-   CHECKER-PKG-MIRROR-AUTHORITY? 0= IF
+   CHECKER-VERIFY-PKG-DEPTH @ 0= IF
       a RPL-TOK-A !  u RPL-TOK-U !
       1 RECORD-DIAG-XT
       E-PKG-CONTEXT CHECKER-REFUSE
@@ -11749,22 +12033,16 @@ PTR-VARIABLE RPL-TOK-A   variable RPL-TOK-U     \ the refused name (raw, valid w
 \ enclosing one, and nothing compiled after the scope can bind it. The window
 \ above belongs to the live path, and nothing inside a candidate scope writes it.
 \
-\ A REPLAY CANNOT ASK THE ENGINE. Under mirror authority the text is source the
-\ engine has not compiled (src/habu/verify-source.f VERIFY-DEFINITION hands it to
-\ CHECK! and publishes nothing), and the engine's scope cells hold the CALLER'S
-\ package, not the replayed one. So REPLAY-BIND walks the checker's own records
-\ in the engine's order, and a name only the checker holds - a pre-verifier
-\ registration, a bodiless TRUST - is a fact of the replay, asked there
-\ (verify-source.f CANDIDATE-IN-SCOPE). Its verdict never reaches compiled code:
-\ the live load re-checks every definition through the lookup above. A replay
-\ publishes nothing, so it opens no window.
-\ Each leg of that walk, the qualified one included, binds a symbol only with a
-\ live record or as a primitive (SYM-LIVE). A symbol is interned before its
-\ record is written and outlives the record's deletion, so its existence says
-\ nothing: an `undefine` tombstone, a source-level CHECKER-DEFER or
-\ CHECKER-UNDEFINE, a refused definition's own name - each answered first at
-\ its leg and hid the word a compile of the text binds (E-UNDEFINED,
-\ E-USING-SHADOW-GLOBAL).
+\ A REPLAY BINDS THROUGH THE ENGINE'S OVERLAY. Inside the verifier window the
+\ text is source the engine has not compiled (src/habu/verify-source.f
+\ VERIFY-DEFINITION hands it to CHECK!), so the checker overlay
+\ (CHECKER-OVERLAY) makes the engine's dictionary answer for it: the replay's
+\ package words drive the engine's package record and using band, a certified
+\ definition publishes a codeless record into its wordlist, and `undefine`
+\ retires the records it names. The replay asks the lookup above, as the live
+\ load does, and every exit of the window closes the overlay, so the engine's
+\ dictionary, scope and using band are as the window found them. A replay
+\ compiles nothing, so it opens no window (CK-CLOSE!).
 variable CK-CLOSED-SYM   0 CK-CLOSED-SYM !     \ the symbol of the definition recorded last
 variable CK-CLOSED-IX    0 CK-CLOSED-IX !      \ `ndict@` when it was recorded
 variable CK-CLOSED-OFF   0 CK-CLOSED-OFF !     \ its record, offset+1 (USIG-NEWEST)
@@ -11778,11 +12056,12 @@ variable CK-PEND-IX      0 CK-PEND-IX !
 \ The window bridges a definition the engine holds open and unpublished
 \ (CK-DEF-PEND-OFF), so only a check that runs while one is pending opens it:
 \ the compile hook's, and TRUST-DECL's. A check a program runs by hand
-\ (`s" W ( -- n ) 1" CHECK!`) and a replay (mirror authority) publish nothing,
-\ and a row recorded there would bind its symbol in compiled code. A candidate
-\ scope's rows pend through the scope's floor instead (CK-SCOPE-PENDING?).
+\ (`s" W ( -- n ) 1" CHECK!`) and a replay (the verifier window) publish
+\ nothing, and a row recorded there would bind its symbol in compiled code. A
+\ candidate scope's rows pend through the scope's floor instead
+\ (CK-SCOPE-PENDING?).
 : CK-CLOSE! ( n -- ) {: sym:n :}
-   CHECKER-PKG-MIRROR-AUTHORITY? IF EXIT THEN
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF EXIT THEN
    CHK-CAND @ 0 <> IF EXIT THEN
    data-base CK-DEF-PEND-OFF + @ 0= IF EXIT THEN
    sym CK-CLOSED-SYM !  ndict@ CK-CLOSED-IX !  sym USIG-NEWEST CK-CLOSED-OFF ! ;
@@ -11791,7 +12070,7 @@ variable CK-PEND-IX      0 CK-PEND-IX !
 \ last is no longer the one being compiled. A replay or a candidate leaves the
 \ live window alone, as CK-CLOSE! does.
 : CK-CLOSE-CLEAR ( -- )
-   CHECKER-PKG-MIRROR-AUTHORITY? IF EXIT THEN
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF EXIT THEN
    CHK-CAND @ 0 <> IF EXIT THEN
    0 CK-CLOSED-SYM ! ;
 
@@ -11803,11 +12082,15 @@ variable CK-PEND-IX      0 CK-PEND-IX !
    sym ;
 
 \ Whether a symbol (never 0) is a row an open candidate scope recorded and still
-\ pends: its newest record lies past the scope's floor, and nothing has been
-\ published since the scope opened.
+\ pends: its newest record lies past the scope's floor and is a row, and nothing
+\ has been published since the scope opened. The deletion `undefine` records
+\ (CHECKER-UNDEFINE) is no row: the name then binds what the engine's lookup
+\ finds, as a compile after the undefine would.
 : CK-SCOPE-PENDING? ( n -- bool ) {: sym:n :}
    CHK-CAND @ 0= IF RES-FALSE EXIT THEN
-   sym USIG-NEWEST CK-PEND-FLOOR @ >  ndict@ CK-PEND-IX @ =  and ;
+   sym USIG-NEWEST {: off1:n :}
+   off1 CK-PEND-FLOOR @ >  ndict@ CK-PEND-IX @ =  and 0= IF RES-FALSE EXIT THEN
+   off1 1 - E-PTR ER.ACTIVE @ EFF-DELETED <> ;
 
 \ The pending definition the token names: the one the live path recorded last,
 \ or a row of an open candidate scope; 0 for any other token.
@@ -11820,9 +12103,6 @@ variable CK-PEND-IX      0 CK-PEND-IX !
    sym CK-SCOPE-PENDING? IF sym EXIT THEN
    0 ;
 
-\ The wordlist a dictionary record was published into, 0 for the global one.
-: CK-REC-WID ( ptr n -- n ) DICT-WORDLIST-SLOT cells + @ ;
-
 \ A dictionary record's name (src/habu/layout.f DREC): the flags cell holds its
 \ length under DNAME-LEN-MASK, and the name sits inline from the name cell or,
 \ with DNAME-EXT set, behind the pointer that cell holds, as src/habu/xref.f
@@ -11830,7 +12110,7 @@ variable CK-PEND-IX      0 CK-PEND-IX !
 \ door, so no cast mints it.
 2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
 3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
-$0003FFFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
+$0001FFFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
 $2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
 : CK-REC-NAME$ ( ptr n -- ptr u8 n )
    {: rec:ptr :}
@@ -11852,19 +12132,16 @@ $2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
    ix 0 < IF 0 EXIT THEN
    ix CK-USE-SLOT ix CK-USE-LEN@ SYM-PUBLIC a u SYM-FIND IF EXIT THEN drop 0 ;
 
-\ The record a wordlist holds under a name, NULL-PTR when it holds none: the
-\ engine's one-wordlist probe, the one its used-publics search asks of each used
-\ wordlist (src/habu/habu2.f LFINDUSED-CORE).
-TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
-
 \ Mark in CK-USED-MASK each used slot whose public wordlist holds the bare tail:
 \ the packages a using refusal names (render.f UPKG-EACH). These are the
 \ wordlists the engine's used search probes, so the refusal names every package
-\ the lookup met, not only the two scope-find reports.
+\ the lookup met, not only the two scope-find reports; under the binding
+\ horizon, none whose word lies beyond it (HORIZON-FIND).
 : CK-USED-MARK ( ptr u8 n -- ) {: a:ptr u:n :}
    0 CK-USED-MASK !
    CK-USE-SCAN-N 0 ?DO
-      a u data-base CK-USE-WIDS-OFF + i cells + @ SCOPE-WL-PROBE NULL-PTR <> IF
+      a u data-base CK-USE-WIDS-OFF + i cells + @ SCOPE-WL-PROBE NULL-PTR <>
+      a u i CK-USED-SYM@ SYM-BEYOND? 0=  and IF
          1 i lshift CK-USED-MASK @ or CK-USED-MASK !
       THEN
    LOOP ;
@@ -11903,33 +12180,69 @@ TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
    sym USIG-NEWEST 0 <> IF 0 EXIT THEN
    sym ;
 
+\ THE LOOKUP IS ASKED AS OF THE HORIZON. Under a binding horizon (a
+\ reconstruction, HORIZON-VISIBLE?) the engine's lookup can return a record of
+\ a word defined after the definition being checked: a later package twin, used
+\ public or global. That record is retired for the time of the lookup
+\ (CHECKER-OVERLAY:HIDE) and the lookup is asked again, until every record it
+\ reports is visible, so the token binds what a compile at that point bound;
+\ `finally` gives the hidden records back on every exit. A record lies beyond
+\ the horizon when every record of its symbol does (SYM-BEYOND?): one the store
+\ never recorded is the engine's own word and stays. NAME-TOK sets a horizon
+\ only inside the verifier window, so the overlay is open whenever one is set.
+: USED-BEYOND? ( ptr u8 n ptr n -- bool ) {: a:ptr u:n rec:ptr :}
+   a u rec CK-REC-WID CK-USED-INDEX CK-USED-SYM@ SYM-BEYOND? ;
+
+\ Hide the first record the lookup reported beyond the horizon: true when one was.
+: HIDE-BEYOND? ( ptr n ptr n ptr n ptr u8 n -- bool )
+   {: rec:ptr used:ptr used2:ptr a:ptr u:n :}
+   rec 0= 0= IF
+      a u rec CK-REC-BIND SYM-BEYOND? IF rec CHECKER-OVERLAY:HIDE RES-TRUE EXIT THEN
+   THEN
+   used 0= 0= IF
+      a u used USED-BEYOND? IF used CHECKER-OVERLAY:HIDE RES-TRUE EXIT THEN
+   THEN
+   used2 0= 0= IF
+      a u used2 USED-BEYOND? IF used2 CHECKER-OVERLAY:HIDE RES-TRUE EXIT THEN
+   THEN
+   RES-FALSE ;
+
+: HIDE-FIND ( ptr u8 n -- ptr n ptr n ptr n n ) {: a:ptr u:n :}
+   a u scope-find
+   BEGIN 2over 2over drop a u HIDE-BEYOND? WHILE
+      2drop 2drop  a u scope-find
+   REPEAT ;
+
+: HORIZON-FIND ( ptr u8 n -- ptr n ptr n ptr n n )
+   BIND-HORIZON @ 0= IF scope-find EXIT THEN
+   [: HIDE-FIND ;] [: CHECKER-OVERLAY:UNHIDE ;] finally ;
+
 PTR-VARIABLE BIND-REC
 variable BIND-PEND-IX
 variable BIND-PEND-OFF
 variable BIND-SEEDED
 1 constant BIND-SCOPE-SEEDED
 
-\ THE BINDERS ANSWER THEIR REFUSALS RATHER THAN RAISING THEM: each leaves
-\ ( sym why ), where why is 0 or the code of the refusal it reached -
+\ THE BINDER ANSWERS ITS REFUSALS RATHER THAN RAISING THEM: LIVE-BIND, the one
+\ binder, leaves ( sym why ), where why is 0 or the code of the refusal it
+\ reached -
 \ CHECKER-REJECT-RC when no authority names a package context for a bare token,
 \ E-USING-SHADOW-GLOBAL when a used public also exports the tail a global
 \ binds, E-USING-AMBIGUOUS when two used publics export it and nothing earlier
 \ binds it or the global does. Under a refusal sym is not an answer, so no
-\ caller reads it when why is nonzero. They render nothing: a using refusal
+\ caller reads it when why is nonzero. It renders nothing: a using refusal
 \ leaves the used packages holding the tail marked in CK-USED-MASK
-\ (CK-USED-MARK, CHECKER-USED-SYM) for the raise to name. CHECKER-BIND
-\ raises the refusal exactly as each one always surfaced; a caller that only
-\ asks reads why.
+\ (CK-USED-MARK) for the raise to name. CHECKER-BIND raises the refusal
+\ exactly as it always surfaced; a caller that only asks reads why.
 \
 \ A name the split refuses (CHECKER-QBAD-TOK: a malformed qualified name, or a
-\ length no name has) binds nothing in either binder: the engine never binds
-\ it, and neither the pending row nor the lookup reads it.
+\ length no name has) binds nothing: the engine never binds it, and neither the
+\ pending row nor the lookup reads it.
 \
 \ A sym of 0 without a refusal is not proof the load cannot bind the name: the
 \ engine holds words no checker symbol names, as one a create caller made. So
 \ LIVE-BIND sets WALK-REC when its answer is the record the engine's lookup
-\ found, whether or not a symbol names it. A replay binds the source's own
-\ symbols and never sets it.
+\ found, whether or not a symbol names it.
 : LIVE-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
    NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
    0 BIND-SEEDED !
@@ -11944,13 +12257,13 @@ variable BIND-SEEDED
       \ The checker may still call this declaration pending after the engine
       \ has published its callable record. Retain that original source record
       \ beside the pending checker view; a later name query could bind another.
-      a u scope-find {: held:ptr used:ptr used2:ptr flags:n :}
+      a u HORIZON-FIND {: held:ptr used:ptr used2:ptr flags:n :}
       held 0= 0= flags SCOPE-FIND-AMBIGUOUS and 0= and IF
          held CK-REC-WID 0= 0= used 0= or IF held BIND-REC ! THEN
       THEN
       pending 0 EXIT
    THEN
-   a u scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+   a u HORIZON-FIND {: rec:ptr used:ptr used2:ptr flags:n :}
    flags BIND-SCOPE-SEEDED and BIND-SEEDED !
    flags SCOPE-FIND-AMBIGUOUS and 0 <> {: two:bool :}
    rec 0= IF
@@ -11971,26 +12284,10 @@ variable BIND-SEEDED
    -1 WALK-REC !
    sym 0 ;
 
-: REPLAY-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
-   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? SYM-LIVE 0 EXIT THEN
-   CHECKER-QBAD-TOK @ IF 0 0 EXIT THEN
-   CHECKER-RESOLVE:AUTHORITY 0= IF 2drop drop 0 CHECKER-REJECT-RC EXIT THEN
-   {: pkg:ptr pkgu:n mode:n :}
-   mode CHECKER-PACKAGE-NONE <> IF
-      pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-LIVE dup 0 <> IF 0 EXIT THEN drop
-      pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? SYM-LIVE dup 0 <> IF 0 EXIT THEN drop
-   THEN
-   a u CHECKER-GLOBAL-SYM? SYM-LIVE dup 0 <> IF
-      dup >r a u r> CHECKER-USED-SHADOW      \ refuses if a live used public also exports this bare tail
-      EXIT
-   THEN drop
-   a u CHECKER-USED-BIND ;                   \ engine-authoritative: no global may claim the tail
-
 package CHECKER-RESOLVE
 public
 : WALK ( ptr u8 n -- n n )
    0 USING-UNBOUND !  0 WALK-REC !
-   CHECKER-PKG-MIRROR-AUTHORITY? IF REPLAY-BIND EXIT THEN
    LIVE-BIND ;
 
 \ Raise a refusal the walk answered for a token the checked text spells s su.
@@ -13362,11 +13659,26 @@ package CHECKER-REG
 \ The duplicate guard of a certifying record: does the scope the name would be
 \ recorded into already hold a live record for it? Asked without interning, so
 \ a refused name leaves no symbol behind; a candidate probe records nothing.
-\ The check hook and the source scan ask it before a body is checked, so they
-\ refuse what the guard would and nothing more.
+\ A replayed definition is a duplicate when the engine holds a record of the
+\ name where it lands that is no definition's loaded twin
+\ (CHECKER-OVERLAY:DUPLICATE?), as the engine refuses that compile: a
+\ definition the replay published, a does> clause made by the replay or before
+\ it, which no checker record holds, or a word the engine's builder made, such
+\ as a primitive. A candidate's scanned definition is one too when the verifier
+\ pass has already declared the name there: the name's own record (OWN-RECORD)
+\ is one the pass appended, at or above PASS-FLOOR. A record from before the
+\ pass is not the replay's - in a warm engine it is the loaded twin of the
+\ definition being replayed - and a deletion or a seeded record declares
+\ nothing. The check hook and the source scan ask it before a body is checked,
+\ so they refuse what the guard would and nothing more.
 : CHECKER-CERT-DUP? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   CHK-CAND @ 0 <> IF RES-FALSE EXIT THEN
+   CHK-CAND @ 0 <>  CHK-PROBE @ 0 <>  and IF RES-FALSE EXIT THEN
+   a u CHECKER-OVERLAY:DUPLICATE? IF RES-TRUE EXIT THEN
+   CHK-CAND @ 0 <> IF
+      PASS-FLOOR @ 0 <= IF RES-FALSE EXIT THEN
+      a u OWN-RECORD PASS-FLOOR @ >= EXIT
+   THEN
    a u CHECKER-RECORD-SYM? CHECKER-FIND-USIG-SYM ;
 
 \ The DEFINING-scope question: CHECKER-FIND-USIG resolves through
@@ -14452,13 +14764,16 @@ NORET-END @ constant NORET-PRIM-END
 \ Undefining retires every fact the name carried, the created-word effect with
 \ them: the entry is appended through NORET-APPEND rather than NORET-ADD-SYM
 \ precisely because the carry-forward there would keep a definer's created
-\ effect alive under a name that no longer exists.
+\ effect alive under a name that no longer exists. Inside the verifier window
+\ the replayed `undefine` also retires the engine records of the name, as the
+\ engine's own does (CHECKER-OVERLAY:RETIRE).
 : CHECKER-UNDEFINE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-UNDEFINE-GUARD
    a u CHECKER-RECORD-NAME {: name:ptr nameu:n :}
    name nameu USIG-DELETE
    name nameu DFER-DELETE
-   name nameu CHECKER-RECORD-SYM 0 0 0 0 NORET-APPEND ;
+   name nameu CHECKER-RECORD-SYM 0 0 0 0 NORET-APPEND
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF a u CHECKER-OVERLAY:RETIRE THEN ;
 
 : CHECKER-DEFLINEAR ( ptr u8 n -- )
    CHECKER-AUTH-PACKAGE$ CT-ADD-LINEAR ;
@@ -14494,11 +14809,6 @@ variable NORET-FMEND
    a u CHECKER-FIND-ACTIVE-SYM CTL-WORD-SYM ;
 
 : CTL-FLAGS-SYM ( n -- n ) CTL-WORD-SYM XFER-FLAGS ;
-
-: CTL-CORE-SYM? ( n -- bool )
-   CTL-FLAGS-SYM CTL-CORE-OP and 0 <> ;
-: SYM-AXIOM-INSTALL ( -- ) [: CTL-CORE-SYM? ;] is SYM-AXIOM-XT ;
-SYM-AXIOM-INSTALL
 
 : CTL-FLAGS {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM CTL-FLAGS-SYM ;
@@ -14592,8 +14902,10 @@ SYM-AXIOM-INSTALL
 \ (src/habu/habu1.f EMIT-FIND: from FIND-DONE, a miss in the open package's
 \ public wordlist retries wordlist 0 at FIND-TRYG); a body's walk refuses such
 \ a name. True with the tail's global symbol when that retry finds it: a word
-\ the source defined, or one the engine's global wordlist claims, whose symbol
-\ is 0 when the store holds nothing for it.
+\ the engine's global wordlist claims, a replayed one included (the overlay
+\ publishes it there), whose symbol is 0 when the store holds nothing for it.
+\ A symbol only the checker's store holds binds nothing: the engine's find
+\ never answers it.
 : OPEN-TAIL-GLOBAL? ( ptr u8 n -- n bool )
    {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? 0= IF 0 RES-FALSE EXIT THEN
@@ -14601,9 +14913,6 @@ SYM-AXIOM-INSTALL
    mode CHECKER-PACKAGE-NONE =  CHECKER-QPKG$ pkg pkgu CORE-STR=CI 0=  or IF
       0 RES-FALSE EXIT
    THEN
-   CHECKER-QTAIL$ CHECKER-GLOBAL-SYM? SYM-LIVE dup 0 <> IF
-      dup USIG-NEWEST-VISIBLE 0 <> IF RES-TRUE EXIT THEN
-   THEN drop
    CHECKER-QTAIL$ ENGINE-WORD-SYM ;
 
 : TOP-PUBLIC-BIND? ( -- bool )
@@ -14616,15 +14925,6 @@ SYM-AXIOM-INSTALL
    rec NULL-PTR = IF RES-FALSE EXIT THEN
    rec @ dup 0= IF drop RES-FALSE EXIT THEN
    CHECKER-QTAIL$ rot SCOPE-WL-PROBE NULL-PTR <> ;
-
-\ The body's walk keeps compiler axioms. At top level a shadow refusal only
-\ stands when a visible global binding actually claims the imported tail.
-: TOP-WALK ( ptr u8 n -- n n ) {: a:ptr u:n :}
-   a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
-   why E-USING-SHADOW-GLOBAL = IF
-      a u GLOBAL-BOUND? 0= IF a u CHECKER-USED-BIND EXIT THEN
-   THEN
-   sym why ;
 
 \ A scanned declaration has a visible effect record even though this engine
 \ has not loaded the subject. A cold published package primitive may have no
@@ -14645,7 +14945,7 @@ SYM-AXIOM-INSTALL
    a u ENGINE-WORD-SYM ;
 
 \ The word the load runs for a top-level token, as the engine's top-level find
-\ selects it: what the top-level walk binds, else, for a qualified token, the
+\ selects it: what the walk binds, else, for a qualified token, the
 \ global tail the open package's own PKG:TAIL names (OPEN-TAIL-GLOBAL?), and
 \ for a bare one the engine word it names (ENGINE-WORD-SYM). True with any of
 \ them; 0 and false when nothing binds the token, and when `using` refuses it:
@@ -14655,7 +14955,7 @@ SYM-AXIOM-INSTALL
 \ refused renderer defines nothing.
 : CHECKER-TOP-SYM ( ptr u8 n -- n bool )
    {: a:ptr u:n :}
-   a u TOP-WALK {: sym:n why:n :}
+   a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
    why 0 <> IF
       why FQSYM-DEFERRED? 0= IF a u why CHECKER-RESOLVE:RAISE THEN
       0 RES-FALSE EXIT
@@ -14688,8 +14988,8 @@ SYM-AXIOM-INSTALL
    -1 ;
 
 \ What the load does with a top-level token it runs, or ticks when RUNS is
-\ false (CHECKER-VERIFY-TOP below). The top-level walk corrects only a shadow
-\ refusal whose global has no binding; the body's keyword walk stays intact.
+\ false (CHECKER-VERIFY-TOP below). The token takes the walk a body token takes
+\ and gets a body's verdict, so a qualified token resolves as it does there.
 \ The answer is -1 when it resolves, or 2 when it resolves to a word that may
 \ read the source after it (TOP-RUNS); 3 when it resolves nowhere but a
 \ rendering statement in scope may define it (UNSEEN-COVERS?), the run's to
@@ -14706,7 +15006,7 @@ SYM-AXIOM-INSTALL
 \ names runs as its global symbol's facts say.
 : TOP-ANSWER ( ptr u8 n bool -- n )
    {: a:ptr u:n runs:bool :}
-   a u TOP-WALK {: sym:n why:n :}
+   a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
    why 0 <> IF a u why CHECKER-RESOLVE:RAISE THEN
    CHECKER-QBAD-TOK @ 0= IF
       a u sym TOP-BOUND-SYM IF dup a u NAV-USE-NOW runs TOP-RUNS EXIT THEN drop
@@ -14782,7 +15082,9 @@ private
    old flags <>  creates sym NORET-CREATES@ <>  or IF
       sym flags sym CTL-MASKS-SYM creates NORET-APPEND
    THEN ;
-: INSTALL ( -- ) [: STORE ;] is PUBLISH-XT ;
+\ Each record is then published to the checker overlay, so a replay's later
+\ bodies bind its name through the engine (CHECKER-OVERLAY:PUBLISH).
+: INSTALL ( -- ) [: over >r STORE r> CHECKER-OVERLAY:PUBLISH ;] is PUBLISH-XT ;
 INSTALL
 get-current prot-wid-add
 ;package
@@ -15027,6 +15329,40 @@ variable UNSAFE-SYM-N
    s" dynamic-buffer" UNSAFE-NAME-ADD
    s" typed-variable" UNSAFE-NAME-ADD ;
 
+: CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a + c@
+      over d + c!
+      1 +
+   REPEAT drop ;
+
+\ The cold prefix compiles does-clause.f before the checker exists. Register
+\ its effect here, after PPRIM: is defined, for checked bodies that call it.
+PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
+
+\ The clause name of the definer NA NU, composed in NMB: the name, then the
+\ companion suffix, the token buffers sized for it first. Growing them drops
+\ what they hold, so a caller that reports a token its scan left there sizes
+\ them before that scan (CHECKER-SOURCE-DOES!).
+: CLAUSE-NAME ( ptr u8 n -- ptr u8 n ) {: na:ptr nu:n :}
+   DOES-CLAUSE:SUFFIX$ {: sa:ptr su:n :}
+   nu su + TOKBUF-ENSURE
+   na NMB nu CCOPY
+   sa NMB nu + su CCOPY
+   NMB nu su + ;
+
+\ The clause record of the does> definer or export NA NU in a replay, as the
+\ live engine makes one (CHECKER-OVERLAY:CLAUSE), under the name as written,
+\ which CLAUSE reads before anything writes NMB again. The engine's `does>`
+\ makes it for a TRUSTED: definer as for a checked one, so a replay publishes it
+\ at the definer's `;` whether the pre-pass checked the clause
+\ (CHECKER-SOURCE-DOES!) or only read its declaration
+\ (src/habu/verify-source.f TRUSTED-DEFINITION, through the owner's
+\ VERIFY-SOURCE-CLAUSE-OFF), and for an export once it is recorded
+\ (CHECKER-EXPORT).
+: CHECKER-SOURCE-CLAUSE ( ptr u8 n -- ) {: na:ptr nu:n :}
+   na nu  na nu CLAUSE-NAME  CHECKER-OVERLAY:CLAUSE ;
+
 \ --- EXPORT: alias an existing word's checked effect under its own tail -----
 \ (dot habu-compiler-pkg-re-688212c1). `EXPORT NAME` in an open package section
 \ publishes NAME's effect under NAME's tail in the CURRENT package scope: one
@@ -15050,7 +15386,10 @@ variable UNSAFE-SYM-N
 \   unsafe word a second spelling that escapes the name-keyed body reject; the
 \   symbol leg rejects by IDENTITY so a qualified or renamed reference that
 \   resolves to the same symbol cannot launder it past this gate;
-\ - duplicate tail in the current section (CHECKER-CERT-DUP? -> $4E).
+\ - duplicate tail in the current section (CHECKER-CERT-DUP? -> $4E);
+\ - in a replay, a word of the current section already holding the name of the
+\   clause a does> definer's export publishes (CHECKER-OVERLAY:EXPORT-ROOM ->
+\   $4E), as the live engine refuses it (habu2.f C-EXPORT-CLAUSE-ROOM).
 \ INTO a generated ctor package is structurally unreachable: CHECKER-PACKAGE
 \ rejects opening one (E-CTOR-PROTECTED), so the current package can never be
 \ a ctor package. Re-export FROM a ctor package stays allowed by design
@@ -15129,17 +15468,32 @@ variable UNSAFE-SYM-N
 \ record, which both compilers call instead of lowering it as the engine word
 \ (habu2.f C-OP-ROW-GATE and NDICT SPELL-PRIM? claim only the seeded record), so
 \ a rule that types the engine word must not judge it.
-: EXPORT-META-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CHECKER-FIND-ACTIVE-DEFER IF a u EXPORT-TAIL$ DFER-ADD THEN
-   a u CTL-FLAGS CTL-IDENTITY invert and {: ctl:n :}
-   a u CTL-MASKS {: dm:n rm:n :}
-   a u CHECKER-FIND-ACTIVE-SYM NORET-CREATES@ {: creates:n :}
+: EXPORT-META-COPY ( ptr u8 n n -- ) {: a:ptr u:n src:n :}
+   src DFER-FIND-SYM IF a u EXPORT-TAIL$ DFER-ADD THEN
+   src CTL-FLAGS-SYM CTL-IDENTITY invert and {: ctl:n :}
+   src CTL-MASKS-SYM {: dm:n rm:n :}
+   src NORET-CREATES@ {: creates:n :}
    a u EXPORT-TAIL$ CHECKER-RECORD-SYM ctl dm rm creates NORET-APPEND ;
+
+\ An export of a does> definer publishes the definer's clause too, under the
+\ clause's name in the export's wordlist (src/habu/habu2.f C-EXPORT). The live
+\ engine writes that record itself; a replay has the overlay write it
+\ (CHECKER-OVERLAY:CLAUSE), so a later `trust` or definition of the clause's
+\ name binds or is refused as the live load does. Whether the source carries a
+\ clause is asked of the record LIVE-BIND's lookup binds the operand to.
+: EXPORT-CARRIES? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   CHECKER-VERIFY-PKG-DEPTH @ 0= IF RES-FALSE EXIT THEN
+   a u HORIZON-FIND 2drop drop CHECKER-OVERLAY:CARRIES? ;
 
 : CHECKER-EXPORT ( ptr u8 n -- ) {: a:ptr u:n :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-EXPORT-NO-PACKAGE throw THEN
    a u EXPORT-SEAL-GUARD
    a u EXPORT-RESOLVE
+   \ The source symbol is read once, before the export's record is published:
+   \ inside a replay the operand's spelling can bind the published tail after.
+   \ So is whether the source carries a does> clause.
+   a u CHECKER-FIND-ACTIVE-SYM {: src:n :}
+   a u EXPORT-CARRIES? {: carries:bool :}
    FEP @ RECOVERY-ROW? {: recovery:bool :}
    \ A failed declaration's row is uncertified outside its own run, and no copy
    \ can carry that: a copy is a new record, so tagged in a later run it would
@@ -15149,10 +15503,14 @@ variable UNSAFE-SYM-N
    NEW
    FEP-OFF@ 1 - E-PTR EXPORT-EFF-INST
    a u EXPORT-TAIL$ EXPORT-RECORD
-   a u CHECKER-FIND-ACTIVE-SYM EFFECT-EXTERNAL-SYM? E-ADD-EFFECT DL-TAKE
+   carries IF
+      a u EXPORT-TAIL$ 2dup CLAUSE-NAME CHECKER-OVERLAY:EXPORT-ROOM
+   THEN
+   src EFFECT-EXTERNAL-SYM? E-ADD-EFFECT DL-TAKE
    recovery IF RECOVERY-RECORD THEN
-   a u CHECKER-FIND-ACTIVE-SYM CHECKER-ASIG-EXPORT
-   a u EXPORT-META-COPY ;
+   src CHECKER-ASIG-EXPORT
+   a u src EXPORT-META-COPY
+   carries IF a u EXPORT-TAIL$ CHECKER-SOURCE-CLAUSE THEN ;
 
 \ Trial save/restore: a prim-overload trial saves the scalar cursors below and the
 \ trail height (SV-TRAIL); var bindings are undone via the unification trail (top).
@@ -16838,12 +17196,6 @@ variable XG-N   variable XG-TN   variable XG-ROW
 \ words the RAW token beside the folded one the dictionary gets; the fold
 \ changes no byte count and moves no ':', so one length and one LCO serve both
 \ spans.
-: CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
-   0 BEGIN dup u < WHILE
-      dup a + c@
-      over d + c!
-      1 +
-   REPEAT drop ;
 64 constant LOC-CAP            \ max locals per definition (matches compiler frame)
 16 constant LOC-NAME-W         \ max local-name bytes (the name field of a compiler LOC-REC, src/habu/layout.f LOC-NAME-CAP)
 create LOCNB LOC-CAP LOC-NAME-W * allot   create LOCLN LOC-CAP cells allot   create LOCTV LOC-CAP cells allot
@@ -18995,18 +19347,11 @@ REG-PROTECT
 \ recorded yet is the ordinary case, so asking them here would refuse almost
 \ every row in the tree.
 \
-\ A REPLAY IS NOT ASKED, for the same reason CK-OPEN-CLAIMS? declines under
-\ mirror authority: the source being replayed has not been compiled in this
-\ process, so this dictionary is not the one the row is a claim about. A row
-\ sitting directly under its own definition - the src/habu/hide.f idiom -
-\ would otherwise be refused during
-\ VERIFY:SOURCE-BUF, which is how tools/build-fixpoint.f certifies a generated
-\ stage source, and the refusal would be about a word the replayed text defines
-\ two lines up. Nothing is lost by declining: every row is still asked on the
-\ load path that compiles it, where the engine IS the authority, and that path
-\ runs for every file in the tree. Answering from the checker's replayed tables
-\ instead would be a second authority for one question and would still have to
-\ special-case every primitive axiom, which have no recorded effect to find.
+\ A REPLAY IS ASKED THE SAME WAY. Inside the verifier window the checker
+\ overlay points the engine's package record at the replayed package and
+\ publishes each definition the replay certifies into its wordlist
+\ (CHECKER-OVERLAY), so the row's wordlist holds what a compile of the text has
+\ defined by then, and a row under its own definition finds it.
 \
 \ A QUALIFIED SPELLING lands on PKG's public symbol (CHECKER-RECORD-NAME), so
 \ PKG's public wordlist is the one asked, open or closed, and it is found the
@@ -19032,7 +19377,6 @@ REG-PROTECT
 
 : TRUST-RESOLVES? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   CHECKER-PKG-MIRROR-AUTHORITY? IF RES-TRUE EXIT THEN
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ TRUST-PUBLIC-CLAIMS? EXIT THEN
    a u TRUST-RECORD-WL CK-WL-CLAIMS? ;
 
@@ -22204,11 +22548,13 @@ $70 constant RBF.PKGMODE-OFF
 $78 constant RBF.PKGU-OFF
 $80 constant RBF.DFEREND-OFF
 $88 constant RBF.COORD-OFF
-$90 constant RBF.PKGNEU-OFF
-$98 constant RBF.PKGUSE-OFF
-$A0 constant RBF.FLOOR-OFF
-$A8 constant RBF.VDEFN-OFF
-$B0 constant RBF-REC
+$90 constant RBF.OVNDICT-OFF               \ the checker overlay's NDICT, log count,
+$98 constant RBF.OVLOG-OFF                 \ CP and WIDN (CHECKER-OVERLAY:MARKS)
+$A0 constant RBF.OVCP-OFF
+$A8 constant RBF.OVWIDN-OFF
+$B0 constant RBF.FLOOR-OFF
+$B8 constant RBF.VDEFN-OFF
+$C0 constant RBF-REC
 $8 constant RBF-REC-ALIGN
 0 constant RBF-REC-PTR-MASK
 
@@ -22236,8 +22582,10 @@ $8 constant RBF-REC-ALIGN
 : RBF.PKGU ( ptr a -- ptr a ) RBF.PKGU-OFF + ;
 : RBF.DFEREND ( ptr a -- ptr a ) RBF.DFEREND-OFF + ;
 : RBF.COORD ( ptr a -- ptr a ) RBF.COORD-OFF + ;
-: RBF.PKGNEU ( ptr a -- ptr a ) RBF.PKGNEU-OFF + ;
-: RBF.PKGUSE ( ptr a -- ptr a ) RBF.PKGUSE-OFF + ;
+: RBF.OVNDICT ( ptr a -- ptr a ) RBF.OVNDICT-OFF + ;
+: RBF.OVLOG ( ptr a -- ptr a ) RBF.OVLOG-OFF + ;
+: RBF.OVCP ( ptr a -- ptr a ) RBF.OVCP-OFF + ;
+: RBF.OVWIDN ( ptr a -- ptr a ) RBF.OVWIDN-OFF + ;
 : RBF.FLOOR ( ptr a -- ptr a ) RBF.FLOOR-OFF + ;
 : RBF.VDEFN ( ptr a -- ptr a ) RBF.VDEFN-OFF + ;
 
@@ -22259,11 +22607,13 @@ RBF.PKGMODE-OFF 14 cells CHECKER-LAYOUT=
 RBF.PKGU-OFF 15 cells CHECKER-LAYOUT=
 RBF.DFEREND-OFF 16 cells CHECKER-LAYOUT=
 RBF.COORD-OFF 17 cells CHECKER-LAYOUT=
-RBF.PKGNEU-OFF 18 cells CHECKER-LAYOUT=
-RBF.PKGUSE-OFF 19 cells CHECKER-LAYOUT=
-RBF.FLOOR-OFF 20 cells CHECKER-LAYOUT=
-RBF.VDEFN-OFF 21 cells CHECKER-LAYOUT=
-RBF-REC 22 cells CHECKER-LAYOUT=
+RBF.OVNDICT-OFF 18 cells CHECKER-LAYOUT=
+RBF.OVLOG-OFF 19 cells CHECKER-LAYOUT=
+RBF.OVCP-OFF 20 cells CHECKER-LAYOUT=
+RBF.OVWIDN-OFF 21 cells CHECKER-LAYOUT=
+RBF.FLOOR-OFF 22 cells CHECKER-LAYOUT=
+RBF.VDEFN-OFF 23 cells CHECKER-LAYOUT=
+RBF-REC 24 cells CHECKER-LAYOUT=
 RBF-REC-ALIGN CELL CHECKER-LAYOUT=
 RBF-REC RBF-REC-ALIGN mod 0 CHECKER-LAYOUT=
 RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
@@ -22285,7 +22635,10 @@ RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
 0 RBF.PKGU RBF.PKGU-OFF CHECKER-LAYOUT=
 0 RBF.DFEREND RBF.DFEREND-OFF CHECKER-LAYOUT=
 0 RBF.COORD RBF.COORD-OFF CHECKER-LAYOUT=
-0 RBF.PKGNEU RBF.PKGNEU-OFF CHECKER-LAYOUT=
+0 RBF.OVNDICT RBF.OVNDICT-OFF CHECKER-LAYOUT=
+0 RBF.OVLOG RBF.OVLOG-OFF CHECKER-LAYOUT=
+0 RBF.OVCP RBF.OVCP-OFF CHECKER-LAYOUT=
+0 RBF.OVWIDN RBF.OVWIDN-OFF CHECKER-LAYOUT=
 0 RBF.FLOOR RBF.FLOOR-OFF CHECKER-LAYOUT=
 0 RBF.VDEFN RBF.VDEFN-OFF CHECKER-LAYOUT=
 
@@ -22310,6 +22663,24 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    RBF-GROW ;
 : RBF-CUR ( -- ptr n )       RBF-DEPTH @ RBF-REC * RBF-BASE + ;
 : RBF-NAME-CUR ( -- ptr u8 )  RBF-DEPTH @ RBF-NAME-REC * RBF-NAME-BASE + ;
+
+\ An import savepoint: the row count, then each row's length and name bytes.
+: CK-USE-SAVE ( ptr u8 n -- ) {: dst:ptr u:n :}
+   u dst cell-view !
+   u 0 ?DO
+      dst CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:ptr :}
+      CK-USE-LENS i cells + @ {: len:n :}
+      len row cell-view !
+      CK-USE-NAMES i CHECKER-PACKAGE-CAP * + row CELL + len ARENA-COPY
+   LOOP ;
+
+: CK-USE-RESTORE ( ptr u8 -- ) {: src:ptr :}
+   src cell-view @ 0 ?DO
+      src CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:ptr :}
+      row cell-view @ {: len:n :}
+      len CK-USE-LENS i cells + !
+      row CELL + CK-USE-NAMES i CHECKER-PACKAGE-CAP * + len ARENA-COPY
+   LOOP ;
 
 \ The byte half of each scope owns the package name and reachable import rows.
 \ Nested neutral scopes may overwrite any prefix, not just append imports.
@@ -22362,14 +22733,16 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    VSIG @ r RBF.VSIG !
    CHECKER-PACKAGE-MODE @ r RBF.PKGMODE !
    CHECKER-PACKAGE-U @ r RBF.PKGU !
-   CHECKER-PACKAGE-NEUTRAL @ r RBF.PKGNEU !
-   CHECKER-USE-OWNED-N @ r RBF.PKGUSE !
+   CHECKER-OVERLAY:MARKS
+   r RBF.OVWIDN !  r RBF.OVCP !  r RBF.OVLOG !  r RBF.OVNDICT !
    DFER-END @ r RBF.DFEREND !
    PASS-FLOOR @ r RBF.FLOOR !
    VERIFY-DEFINER-N @ r RBF.VDEFN !
    RBF-NO-COORDINATOR r RBF.COORD ! ;
 
 : RBF-RESTORE-FROM ( ptr n -- ) {: r:ptr :}
+   r RBF.OVNDICT @  r RBF.OVLOG @  r RBF.OVCP @  r RBF.OVWIDN @
+   CHECKER-OVERLAY:ROLLBACK
    r RBF.UEND @ USIGS-RESTORE-END
    r RBF.NEND @ NORET-RESTORE-END
    r RBF.SYMN @ HIDX-SYMS-RETIRE      \ pop retired hash-index rows before SYM-N rewinds
@@ -22388,8 +22761,6 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.VSIG @ VSIG !
    r RBF.PKGMODE @ CHECKER-PACKAGE-MODE !
    r RBF.PKGU @ CHECKER-PACKAGE-U !
-   r RBF.PKGNEU @ CHECKER-PACKAGE-NEUTRAL !
-   r RBF.PKGUSE @ CHECKER-USE-OWNED-N !
    r RBF.FLOOR @ PASS-FLOOR !
    r RBF.VDEFN @ VERIFY-DEFINER-N !
    r RBF.DFEREND @ DFER-END !
@@ -22436,6 +22807,7 @@ package CHECKER-REG
 : RBF-POP-WITH ( [ -- ] -- )
    0 BWIN-VALID !  0 UWIN-VALID !
    execute                 \ registry restore for the frame this pop retires
+   RBF-DEPTH @ CHECKER-OVERLAY:CLOSE-SCOPE
    RBF-DEPTH @ 1 - RBF-DEPTH !
    RBF-NAME-CUR RBF-CUR RBF.PKGU @ RBF-NAME-RESTORE
    RBF-CUR RBF-RESTORE-FROM ;
@@ -22445,6 +22817,7 @@ package CHECKER-REG
 
 : RBF-FINALIZE ( -- )     \ keep every published row and release the live savepoint
    REG-EXT-RB-FINALIZE-XT
+   RBF-DEPTH @ CHECKER-OVERLAY:CLOSE-SCOPE
    RBF-DEPTH @ 1 - RBF-DEPTH ! ;
 
 \ ---------------------------------------------------------------------------
@@ -22617,20 +22990,19 @@ TYPES-DEFAULTS
 \ file needs the opposite: that file's package context is whatever the file
 \ itself declares, so the scope starts at top level. Neutrality belongs here,
 \ in the one word that opens such a scope, rather than in a rule each call site
-\ has to remember. CHECKER-SCOPE-DONE closes both kinds of scope unchanged: the
-\ frame RBF-PUSH pushed carries the caller's package mode, length, name bytes
-\ and neutral declaration, and RBF-POP restores all of them on the clean and
-\ the throwing path alike.
-\ Top level means no open package AND no imports: a standalone file starts with
-\ the global dictionary and whatever it goes on to declare for itself. RBF-PUSH
-\ has already recorded both halves, so the caller's package and the caller's
-\ usings come back at CHECKER-SCOPE-DONE on the clean and the throwing path.
+\ has to remember. Top level means no open package AND no imports: a standalone
+\ file starts with the global dictionary and whatever it goes on to declare for
+\ itself. The checker overlay moves the engine there, holding the caller's
+\ scope (CHECKER-OVERLAY:OPEN-SCOPE), and every pop of the frame puts the scope
+\ back on the clean and the throwing path alike, as RBF-POP puts back the
+\ caller's mirror; the names the scope's replays publish bind until then. An
+\ overlay that cannot open takes the frame with it.
 : CHECKER-SCOPE-START-NEUTRAL ( -- )
    RBF-PUSH
-   CHECKER-END-PACKAGE
-   0 CHECKER-USE-OWNED-N !
-   0 CHECKER-PACKAGE-USE-N !
-   1 CHECKER-PACKAGE-NEUTRAL ! ;
+   [: RES-TRUE RBF-DEPTH @ CHECKER-OVERLAY:OPEN-SCOPE ;] catch {: rc:n :}
+   rc 0= IF EXIT THEN
+   RBF-POP
+   rc throw ;
 
 : CHECKER-SCOPE-FINALIZE ( -- )
    RBF-FINALIZE ;
@@ -23173,21 +23545,13 @@ package CHECKER-REG
 \ diagnostic. It is reported as CHECK reports a body: rendered unless the scope
 \ is quiet, and counted in a multi-error load, rejected or uncheckable, under
 \ the name of the record the clause publishes - the definer's, folded as a
-\ definition's name is, with the companion suffix below. An uncheckable clause
-\ is rendered here too: CHECK leaves that verdict to its callers outside JSON
-\ and a multi-error load, and the pre-pass renders nothing of its own for a
+\ definition's name is, with the companion suffix (CLAUSE-NAME). An uncheckable
+\ clause is rendered here too: CHECK leaves that verdict to its callers outside
+\ JSON and a multi-error load, and the pre-pass renders nothing of its own for a
 \ clause.
-\
-\ The cold prefix compiles does-clause.f before the checker exists. Register
-\ its effect here, after PPRIM: is defined, for checked bodies that call it.
-PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
-
 : DOES-NAME! ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu TOKFOLD drop
-   TKF NMB nu CCOPY
-   DOES-CLAUSE:SUFFIX$ {: sa:ptr su:n :}
-   sa NMB nu + su CCOPY
-   NMB NMA !  nu su + NMU ! ;
+   TKF nu CLAUSE-NAME NMU !  NMA ! ;
 
 : DOES-REPORT ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}
    v -1 = v 2 = or IF v EXIT THEN
@@ -23214,8 +23578,10 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    1 MULTI-ERR-N +!
    0 ;
 
-\ The name is written after the scan, so the token buffers are sized for it
-\ first: growing them afterwards would drop the refused token being reported.
+\ The clause's name is written after the scan, so the token buffers are sized
+\ for it first: growing them afterwards would drop the refused token being
+\ reported. A clause that certifies or is left to the run gets its record in a
+\ replay (CHECKER-SOURCE-CLAUSE).
 : CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
    WRITE-WINDOW-CK
@@ -23232,7 +23598,9 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    pu0 NAV-PUBLISH                     \ the clause's uses, its resolved prefix if it stopped
    DOES-EFF-CLEAR
    rc 0 <> IF rc SRC-DOES-THREW EXIT THEN
-   SRC-DOES-VERDICT @ na nu DOES-REPORT ;
+   SRC-DOES-VERDICT @ {: v:n :}
+   v -1 =  v 2 =  or IF na nu CHECKER-SOURCE-CLAUSE THEN
+   v na nu DOES-REPORT ;
 
 \ The pre-pass's question about a top-level token (src/habu/verify-source.f
 \ TOP-TOKEN): TOP-ANSWER's answer. A using refusal leaves the token's walk by
@@ -24685,6 +25053,7 @@ package CHECKER-REG
 ' CHECKER-RETRACT-ROWS DECLARATIONS CHECKER-OWNER-ABI:RETRACT-ROWS-OFF + xt!
 ' CHECKER-ROWS-END DECLARATIONS CHECKER-OWNER-ABI:ROWS-END-OFF + xt!
 ' CHECKER-WRITE-WINDOW! DECLARATIONS CHECKER-OWNER-ABI:WRITE-WINDOW-OFF + xt!
+' CHECKER-SOURCE-CLAUSE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF + xt!
 
 \ ---- the declared-row log of a cold boot ------------------------------------
 \ Before the claim below a cold boot has no source owner, so the engine's

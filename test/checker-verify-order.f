@@ -10,6 +10,7 @@ require lib/errors.f
 require lib/string.f
 require lib/test.f
 require lib/tier.f
+require lib/test/eval.f
 require src/habu/verify-source.f
 
 \ A resident parsing immediate executes during compilation despite its neutral
@@ -81,6 +82,31 @@ public
 : CVR-H ( n -- n ) 7 + ;              \ the later second used public
 ;package
 
+\ A package twin that a replayed `undefine` retires between two definitions:
+\ CVU-A names the tail before the twin exists, CVU-B after it.
+: CVU-X ( -- n ) 1 ;
+package CVU-P
+public
+: CVU-A ( -- n ) CVU-X ;              \ binds the global: the twin is later
+: CVU-X ( n -- n ) 2 + ;              \ the package twin
+: CVU-B ( n -- n ) CVU-X ;            \ binds the twin
+;package
+
+\ Three used publics export one tail, CVA-X's only after CVA-D exists.
+package CVA-V
+public
+: CVA-H ( n -- n ) 1 + ;
+;package
+package CVA-W
+public
+: CVA-H ( n -- n ) 2 + ;
+;package
+: CVA-D ( n -- n ) 5 + ;
+package CVA-X
+public
+: CVA-H ( n -- n ) 3 + ;
+;package
+
 package CVO-TEST
 private
 
@@ -144,7 +170,9 @@ TRUSTED: LONG-INSTALL ( -- )
    2 3 CVO-P:LATER 5 T=
    1 CVR-R 2 T=
    1 CVR-S 4 T=
-   1 CVR-T 6 T= ;
+   1 CVR-T 6 T=
+   CVU-P:CVU-A 1 T=
+   1 CVU-P:CVU-B 3 T= ;
 
 : RECONSTRUCT-CASE ( -- )
    s" the whole program verifies warm: every definition binds as of its record" T-LABEL
@@ -187,7 +215,24 @@ TRUSTED: LONG-INSTALL ( -- )
    S\" using CVR-V\n: CVR-Q ( n -- n ) CVR-G ;\n;using\n" VERDICT 7141 T=
    s" a later second used public does not make an earlier reference ambiguous" T-LABEL
    S\" using CVR-V\nusing CVR-W\n: CVR-T ( n -- n ) CVR-H ;\n;using\n;using\n" VERDICT 0 T=
-   S\" using CVR-V\nusing CVR-W\n: CVR-Q ( n -- n ) CVR-H ;\n;using\n;using\n" VERDICT 7144 T= ;
+   S\" using CVR-V\nusing CVR-W\n: CVR-Q ( n -- n ) CVR-H ;\n;using\n;using\n" VERDICT 7144 T=
+   s" a refusal under a horizon names no used public whose word lies beyond it" T-LABEL
+   S\" using CVA-V\nusing CVA-W\nusing CVA-X\n: CVA-D ( n -- n ) CVA-H ;\n;using\n;using\n;using\n" VERDICT 7144 T=
+   DIAG$ s" cva-w:CVA-H" CONTAINS? TTRUE
+   DIAG$ s" cva-x:CVA-H" CONTAINS? TFALSE ;
+
+\ The horizon moves at every definition. A replayed `undefine` retires the live
+\ twin it names, so CVU-B, whose horizon lies past the twin's record, binds the
+\ global as a compile after the undefine would; a twin put back by the move
+\ would bind instead and refuse CVU-B. The verifier's close gives the engine its
+\ twin back.
+: HORIZON-MOVE-CASE ( -- )
+   s" one spelling binds the older record under a horizon and the newer after it moves" T-LABEL
+   S\" package CVO-P\npublic\n: RUN ( n -- n ) CVO-F ;\n: LATER ( n n -- n ) CVO-F ;\n;package\n" VERDICT 0 T=
+   s" an undefined record stays undefined across a horizon move" T-LABEL
+   S\" package CVU-P\npublic\n: CVU-A ( -- n ) CVU-X ;\nundefine CVU-X\n: CVU-B ( -- n ) CVU-X ;\n;package\n" VERDICT 0 T=
+   s" and the engine's twin answers once the verifier closes" T-LABEL
+   s" 2 CVU-P:CVU-X" TEST-EVAL:N 4 T= ;
 
 : REJECT-CASE ( -- )
    s" a real mismatch inside the horizon is still rejected and named" T-LABEL
@@ -283,6 +328,7 @@ public
    DEPENDENCY-CASE
    PASS-CASE
    USING-CASE
+   HORIZON-MOVE-CASE
    REJECT-CASE
    QUIET-CASE
    IMMEDIATE-CASE

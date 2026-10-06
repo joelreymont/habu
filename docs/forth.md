@@ -38,6 +38,25 @@ lives here; build, test and environment rules live in
   (`E-HIR-UNMODELED`). A row for a word the owner defines itself types only
   that word: it does not keep a global record of the same name out of
   `DNAME-INT`. `test/prim-owner-scope.f` pins the matrix.
+- An internal engine primitive (`DNAME-INT`: the prompt, `'`, `search-wl`
+  and a checked `[']` refuse it, and only a `TRUSTED:` body compiles a call
+  to it) that a package row in `src/habu/prims.f` types is its owner's:
+  `ENGINE-PRIMS:DNAME` stamps `DNAME-OWNED` beside `DNAME-INT`
+  (`src/habu/layout.f`). The bit opens only the call, and the call is the
+  checker's decision through the rows: the owner's checked callers compile at
+  both tiers, a checked caller elsewhere gets the global trusted-only row's
+  `E-CAP-TRUSTED`, and a checked `[']` stays refused at both tiers, the
+  owner's included. Unchecked code (`0 set-check`) compiles the call at both
+  tiers, where no checker decides: tier 1 reports the global row's
+  `E-CAP-TRUSTED`, as it reports every unjudged verdict, and compiles it.
+  `namespace-record` and `package-scope!` are `CHECKER-OVERLAY`'s; so are
+  `replay-open`, `replay-close`, `replay-widn!`, `replay-record`,
+  `record-wid!` and `replay-private`, which no global row types: elsewhere a
+  checked caller is `E-UNDEFINED`, and a `TRUSTED:` body binds one at tier 0
+  only (tier 1 cannot compile it); `source-unit-run`'s `SOURCE-ROOT` row is
+  trusted-only, so no checked caller is admitted, inside `SOURCE-ROOT`
+  included: a `TRUSTED:` body or unchecked tier-0 code calls it.
+  `test/owner-access.f` and `test/prim-owner-scope.f` pin the rule.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
   `evaluate-closed ( ptr u8 n -- )`: the text runs on a guarded data stack of
@@ -480,9 +499,9 @@ and always available, for a one-off call or to escape a collision.
   operation through a differently named word (`OPEN-APPEND-FD`, the primitive's
   sibling `close-rc`) or rename the package word. Operator spellings too: once a
   package defines `@` or `+`, a bare `@` or `+` in its later bodies is the
-  package word to the checker and both compilers, whatever its operands; a body
-  compiled before the definition keeps the engine word
-  (`test/reopen-binding.f`).
+  package word to the checker, including a replay, and both compilers, whatever
+  its operands; a body compiled before the definition keeps the engine word
+  (`test/reopen-binding.f`, `test/replay-binding.f`).
 
 ### Structures And Enums
 
@@ -1091,8 +1110,10 @@ backend answers alike.
 
 - Engine process failures use only the sealed `ENGINE-ERROR` package ABI:
   `SEAL-VIOLATION` 83, `SEAL-PACKAGE` 84, `BAD-TAG` 85, `CALLABLE-ABI` 86,
-  `CATCH-STACK` 87, `CODE-CERT` 88. No global `E-*` aliases; native and
-  no-binary recovery consume the same qualified names and values.
+  `CATCH-STACK` 87, `CODE-CERT` 88, and `OVERLAY-OPEN` 108 for a definition,
+  a new package, a wordlist or an `undefine` while a checker overlay is open.
+  No global `E-*` aliases; native and no-binary recovery consume the same
+  qualified names and values.
 - **Fallible words `throw` a named code** (`src/config.fs`, e.g. `E-MISMATCH`),
   never a silent failure or an out-of-band flag.
 - **`catch` only at explicit recovery boundaries**: REPL/CLI wrappers, test
@@ -1542,6 +1563,23 @@ passing suite.
 Each of these was measured on the engine; the fact that proved it is beside
 the rule.
 
+- **Nothing is defined live while a checker overlay is open.** The overlay's
+  close puts the dictionary count, the code pointer and the wordlist counter
+  back where `CHECKER-SCOPE-START-NEUTRAL` or the verifier window found them.
+  On an engine without the refusal, a `:` compiled inside a neutral pair
+  ended the process at the close (rc 83, fd 2 empty), or, once a replay row
+  had raised the overlay's high-water mark past it, vanished with the close
+  (its next use was `E-UNDEFINED`, rc 70), and a `wordlist` made there was
+  handed out again after it. So every definer head (`:`, `create`, `variable`,
+  `constant`, `defer`, `TRUSTED:`, `CAST:`), `EXPORT`, a new `package` and
+  `wordlist` die where they are made: `hb: definition while a checker replay
+  is open: NAME`, `ENGINE-ERROR:OVERLAY-OPEN` (rc 108), a throw inside
+  `evaluate`, after which the pair still closes. A live `undefine` there
+  retired its word for good, since the close gives back only what the
+  overlay retired (the word's next use after the pair was `E-UNDEFINED`), so
+  it dies before it retires anything: `hb: undefine while a checker replay is
+  open: NAME`, rc 108. Reopening a package the engine holds defines nothing
+  and is allowed (test/replay-binding.f `LIVE-CASE`).
 - **A definition and a `(` comment close in the source that opened them.** A
   file, an `evaluate` string and stdin each end inside nothing they opened:
   `hb: source ended inside definition: NAME` covers an open colon body with
@@ -1825,7 +1863,7 @@ the rule.
   pre-verifier's `E-MISMATCH`, a caller that agrees with a lying row is refused
   when the file loads, against the word the text really defines, and a name D
   never makes is still `E-UNDEFINED` there. `generates:` refuses with
-  `E-GENERATES-ROW` (7153; `tools/check.f` exits 67, `--verify-only` 70) when
+  `E-GENERATES-ROW` (7153; `tools/check.f` exits 70 in every mode) when
   D names no word there, when D already states what it makes (its `does>`
   clause, an earlier row, or the definer it wraps), or when the effect does
   not parse (`( -- i32 )`); a D the used scopes refuse is that refusal
@@ -1968,16 +2006,22 @@ the rule.
   by axiom (`>r`, `r@`). A name only the checker knows - a row `CHECK!` alone
   recorded, a qualified `TRUST` row with no word behind it, a word the source
   pre-verifier registered, a `CHECKER-EXPORT` alias - is unresolvable, bare or
-  qualified, as the compiler finds it `E-UNDEFINED`. It binds on the certify
-  path, which replays over the checker's records: `VERIFY:CANDIDATE-IN-SCOPE`
-  (`src/habu/verify-source.f`) answers what that path says of a candidate. A
-  candidate scope checks rows that publish together, so each row binds for the
-  scope's later rows until it closes: a `STRUCTURE` deriving `hash` checks a
-  `HASH` that calls its `UNMAKE` before either is published. Measured on
-  `bin/hb`: after `s" SPANX ( -- n ) 1" CHECK!`, `: C ( -- n ) SPANX ;` is
-  `E-UNDEFINED` and the candidate `C ( -- n ) SPANX` answers 1 live, as
-  `s" C ( -- n ) SPANX" CHECK!` does, and -1 through `VERIFY:CANDIDATE-IN-SCOPE`
-  (test/engine-suite.f, test/pointer-storage-test.f);
+  qualified, as the compiler finds it `E-UNDEFINED`. It binds in a replay:
+  while the verifier window or a package-neutral scope
+  (`CHECKER-SCOPE-START-NEUTRAL` … `CHECKER-SCOPE-DONE`) is open, the checker's
+  overlay publishes each row the checker records as a codeless engine record
+  (`src/core/checker.f` `CHECKER-OVERLAY`), so scanned names bind while that
+  scope is open, and `VERIFY:CANDIDATE-IN-SCOPE` (`src/habu/verify-source.f`)
+  answers what the certify path says of a candidate there. Nothing is defined
+  live inside such a scope (**Rules learned by refusal**). A candidate scope
+  checks rows that publish together, so each row binds for the scope's later
+  rows until it closes: a `STRUCTURE` deriving `hash` checks a `HASH` that
+  calls its `UNMAKE` before either is published. Measured on `bin/hb`: after
+  `s" SPANX ( -- n ) 1" CHECK!`, `: C ( -- n ) SPANX ;` is `E-UNDEFINED` and
+  the candidate `C ( -- n ) SPANX` answers 1 live, as
+  `s" C ( -- n ) SPANX" CHECK!` does, and through `VERIFY:CANDIDATE-IN-SCOPE`;
+  with the row recorded inside a neutral pair, `VERIFY:CANDIDATE-IN-SCOPE`
+  answers -1 until the pair closes (test/pointer-storage-test.f);
   `STRUCTURE der 0 DERIVE eq hash FIELD x n ;STRUCTURE` declares and its
   `DER:HASH` runs (test/structure-certify-suite.f).
 - **Native width depends on how the cells are used.** A 63-cell identity

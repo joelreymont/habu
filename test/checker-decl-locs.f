@@ -13,9 +13,11 @@
 \ NAV-RESUME (sumtype.f TDPLAN-PREFLIGHT-DEFINITIONS, TDINIT-HELP-REPLAY and
 \ TDINIT-REPLAY-ROW, checker.f CHECKER-DEFSUFFIX-NAME); without the pauses
 \ every generated row below carries the armed location. The declarations
-\ replay as the verifier reads them (VERIFY:SOURCE-BUF-IN-SCOPE), so each row
-\ is the replay path's. A generated name with no row fails its own case, so a
-\ missing row never passes as an unlocated one.
+\ replay as the verifier reads them (VERIFY:SOURCE-BUF-THEN-IN-SCOPE), so each
+\ row is the replay path's, and each case reads its rows by name where the
+\ replay binds them: in the replay's own scope, or in a neutral checker scope
+\ around several replays. A generated name with no row fails its own case, so
+\ a missing row never passes as an unlocated one.
 \
 \ One uses scope runs at a time (VERIFY-USES-OFF): a nested one is refused by
 \ name, and the refusal leaves no scope open.
@@ -44,8 +46,7 @@ private
 \ spelling (REC-MAKE, REC-X, REC-X@); NAVL-REC:MAKE binds nothing here.
 : FAMILY ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
 
-: CASE-RECORD ( -- )
-   s" STRUCTURE rec 0 DERIVE addr init FIELD x n ;STRUCTURE" ARMED-REPLAY
+: RECORD-ROWS ( -- )
    s" REC-MAKE" UNLOCATED
    s" REC-X" UNLOCATED
    s" REC-CELLS" UNLOCATED
@@ -55,12 +56,18 @@ private
    fam TFAM-INIT-RECEIVER$ UNLOCATED
    fam fam TFAM-FLD-START@ TFAM-INIT-HELPER$ UNLOCATED ;
 
+: CASE-RECORD ( -- )
+   s" STRUCTURE rec 0 DERIVE addr init FIELD x n ;STRUCTURE"
+   [: RECORD-ROWS ;] ARMED-REPLAY ;
+
 \ ---- 2. a storage definer: its own row, then its suffix words --------------
-: CASE-STORAGE ( -- )
-   s" DYNAMIC-BUFFER NAVDB n" ARMED-REPLAY
+: STORAGE-ROWS ( -- )
    s" NAVDB" LOCATED
    s" NAVDB-RESERVE" UNLOCATED
    s" NAVDB-RELEASE" UNLOCATED ;
+
+: CASE-STORAGE ( -- )
+   s" DYNAMIC-BUFFER NAVDB n" [: STORAGE-ROWS ;] ARMED-REPLAY ;
 
 \ ---- 3. one uses scope at a time ---------------------------------------------
 : NOTE-USE ( n n n n n -- ) 2drop 2drop drop ;
@@ -77,7 +84,10 @@ private
 \ ---- 4. a does> clause publishes its uses -------------------------------------
 \ Only NAVT is located, so a published use is a call of it: the spelling's
 \ range in the replayed text, and NAVT's armed location. The handler keeps the
-\ last use and counts them, so a count of one pins the only use.
+\ last use and counts them, so a count of one pins the only use. The later
+\ replays bind NAVT and NAVS where the earlier ones declared them, so the case
+\ runs in one neutral checker scope (MAIN), as a verifier child runs its
+\ composition.
 variable USE-N   variable USE-S   variable USE-E
 variable USE-V   variable USE-DS   variable USE-DE
 
@@ -109,7 +119,7 @@ PTR-VARIABLE REPLAY-A   variable REPLAY-U
    USE-DE @ AT-END T= ;
 
 : CASE-DOES ( -- )
-   s" : NAVT ( -- n ) 9 ;" ARMED-REPLAY
+   s" : NAVT ( -- n ) 9 ;" [: ;] ARMED-REPLAY
    s" package NAVP public : NAVS ( -- n ) 1 ; ;package : NAVS ( -- n ) 2 ;"
    VERIFY:SOURCE-BUF-IN-SCOPE
    s" a certified clause publishes its call of NAVT" T-LABEL
@@ -128,10 +138,12 @@ PTR-VARIABLE REPLAY-A   variable REPLAY-U
 
 \ ---- 5. a rollback, then the same offset -------------------------------------
 \ A neutral checker scope is the rollback frame a verifier child checks its
-\ whole composition in (tools/check-verify-child.f SCOPED). Its rewind takes
-\ the located row back, and the next row the store retains lands at the same
-\ offset. That row is declared unarmed, so it has no location: a row a lost
-\ truncation left in DECL-LOCS would answer for it.
+\ whole composition in (tools/check-verify-child.f SCOPED). One nested in the
+\ case's own (MAIN) takes the located row back, and with it the record its
+\ name bound, so the name binds nothing in the case's scope; the next row the
+\ store retains lands at the same offset. That row is declared unarmed, so it
+\ has no location: a row a lost truncation left in DECL-LOCS would answer for
+\ it.
 : IN-NEUTRAL ( [ -- ] -- )
    CHECKER-SCOPE-START-NEUTRAL
    catch
@@ -141,27 +153,31 @@ PTR-VARIABLE REPLAY-A   variable REPLAY-U
 
 variable GONE-ROW
 
-: GONE ( -- )
-   s" : NAVR-GONE ( -- n ) 1 ;" ARMED-REPLAY
+: GONE-ROWS ( -- )
    s" NAVR-GONE" LOCATED
    s" NAVR-GONE" ROW GONE-ROW ! ;
+
+: GONE ( -- )
+   s" : NAVR-GONE ( -- n ) 1 ;" [: GONE-ROWS ;] ARMED-REPLAY ;
+
+: NEXT-ROWS ( -- )
+   s" the next row takes the same offset" T-LABEL
+   s" NAVR-NEXT" ROW GONE-ROW @ T=
+   s" NAVR-NEXT" UNLOCATED ;
 
 : CASE-ROLLBACK ( -- )
    [: GONE ;] IN-NEUTRAL
    s" the rewind takes the row" T-LABEL
    s" NAVR-GONE" ROW 0 T=
-   s" : NAVR-NEXT ( -- n ) 2 ;" VERIFY:SOURCE-BUF-IN-SCOPE
-   s" the next row takes the same offset" T-LABEL
-   s" NAVR-NEXT" ROW GONE-ROW @ T=
-   s" NAVR-NEXT" UNLOCATED ;
+   s" : NAVR-NEXT ( -- n ) 2 ;" [: NEXT-ROWS ;] VERIFY:SOURCE-BUF-THEN-IN-SCOPE ;
 
 : MAIN ( -- )
    T-RESET
    CASE-RECORD
    CASE-STORAGE
    CASE-NESTED
-   CASE-DOES
-   CASE-ROLLBACK
+   [: CASE-DOES ;] IN-NEUTRAL
+   [: CASE-ROLLBACK ;] IN-NEUTRAL
    T-REPORT ;
 
 MAIN

@@ -547,8 +547,11 @@ variable CA-COMPOSE-LABEL-U
    CA-THROW-RC !
    VERIFY:TOKEN-BYTE@ CA-THROW-AT ! ;
 
-\ These checker refusals render their own diagnostic before throwing. They
-\ must retain that packet and exit code, not acquire a statement-throw record.
+public
+
+\ True for a checker refusal that renders its own diagnostic before throwing.
+\ It keeps that packet instead of acquiring a statement-throw record, and the
+\ check fails as for any refusal (check-core.f CHK-PREVERIFY-STOPPED).
 : REPORTED-THROW? ( n -- bool )
    {: rc:n :}
    rc E-USING-SHADOW-GLOBAL =
@@ -556,8 +559,6 @@ variable CA-COMPOSE-LABEL-U
    rc E-TRUST-UNRESOLVED = or
    rc E-SHADOWED-ARITY = or
    rc E-GENERATES-ROW = or ;
-
-public
 
 \ True for the status of a check that a statement threw out of without
 \ reporting its own refusal.

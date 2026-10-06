@@ -940,6 +940,9 @@ public
 \ Every ordinary source token arrives here, including a repeated word or one
 \ already in the session vocabulary. Cache the original seeded decision before
 \ any model is read. Fixed values and calls use the recorded entry and effect.
+\ A call to an internal record binds as NDICT:CALL-BINDING binds one
+\ (NDICT:INT-CALL?): an owned primitive's checked call compiles, since the
+\ checker's binder bound the site to that record through its owner's row.
 : RESOLVE-SITE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id n -- bool )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id ix:n :}
@@ -974,7 +977,7 @@ public
    row CHECKER-OWNER-ABI:BOUND-EFFECT BOUND@ 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
    flags DNAME-IMM and 0<> if false exit then
    flags DNAME-INT and 0<> if
-      data-base TRUSTED-CELL + @ 0= if false exit then
+      flags NDICT:INT-CALL? 0= if false exit then
    then
    row CHECKER-OWNER-ABI:BOUND-IN BOUND@ {: in:n :}
    row CHECKER-OWNER-ABI:BOUND-OUT BOUND@ {: out:n :}

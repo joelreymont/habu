@@ -3,12 +3,13 @@
 \
 \ A row CHECK!, CHECK-UNJUDGED! or a declaration replay records has no engine
 \ record, so compiled code binds nothing to its name (src/core/checker.f "ONE
-\ LOOKUP BINDS A NAME"); only a replay binds it, over the checker's own records
-\ (REPLAY-BIND). Mirror authority is the verifier window's alone
-\ (CHECKER-PKG-MIRROR-AUTHORITY?): a package-neutral scope declares top level
-\ and grants none. So OPEN does what tools/check-core.f CHK-RUN-NOMINAL-LINTS
-\ does - a neutral scope, then the window the declaration owner's start opens in
-\ it - and CLOSE undoes both.
+\ LOOKUP BINDS A NAME"); only a replay binds it, through the codeless record the
+\ checker's overlay publishes for it while it is open (CHECKER-OVERLAY). A
+\ package-neutral scope opens the overlay at top level, and the verifier window
+\ is where a replay's package and using words move the engine's scope. So OPEN
+\ does what tools/check-core.f CHK-RUN-NOMINAL-LINTS does - a neutral scope,
+\ then the window the declaration owner's start opens in it - and CLOSE undoes
+\ both, and with them every record the scope published.
 
 require lib/errors.f
 require src/habu/layout.f

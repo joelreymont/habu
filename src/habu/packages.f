@@ -162,6 +162,7 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
    TOKEN$ 0 COLON-AT 0 >= if PKG-RC-CONTEXT PKG-FAIL then
    PKG-ROW {: row:ptr :}
    row XREF-FOUND? if row PKG-REOPEN exit then
+   OVERLAY-GUARD
    PKG-DICT-ROOM
    TOKEN$ PKG-CODE-ROOM
    TOKEN$ true PKG-NS-RECORD ;
@@ -344,6 +345,7 @@ variable USE-FLOOR
    TASK-GUARD
    PKG-PUB-CELL CELL@ 0= if PKG-NAME exit then
    PKG-NAME
+   OVERLAY-GUARD
    PKG-EXPORT-SOURCE {: src:ptr :}
    PKG-DICT-ROOM
    PKG-TAIL {: ta:ptr tu:n :}

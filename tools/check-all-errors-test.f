@@ -883,8 +883,11 @@ $100000 constant CAE-CHILD-ERR-CAP
 \ ---- TFAM 5: verify-source top-level TRUST replay (census gap5) ---------------
 \ all-errors collects a top-level `s" NAME" s" SIG" TRUST` line and replays it
 \ through verify-source before later definitions. verify-source's RECORD-DEFINER?
-\ must dispatch that TRUST so a definition using the trusted word passes. A clean
-\ fixture (no genuinely-bad def) exits 0 only when the TRUST replay works.
+\ must dispatch that TRUST so a definition using the trusted word passes. The
+\ trust names a word defined above it, as a replayed trust row must (checker.f
+\ TRUST-RESOLVES?), and restates that `( n -- n )` identity at a pointer type:
+\ the use is an E-MISMATCH unless the replayed TRUST gave the word that effect.
+\ A clean fixture (no genuinely-bad def) exits 0 only when the TRUST replay works.
 
 : CAE-SQ-LIT ( ptr u8 n -- ) {: a:ptr u:n :}
    115 SB-APPEND-C
@@ -896,10 +899,11 @@ $100000 constant CAE-CHILD-ERR-CAP
 
 : CAE-TRUST-SOURCE$ ( -- ptr u8 n )
    SB-RESET
+   s" : CAE-TRO-HELP ( n -- n ) ;" SB-APPEND CAE-LF
    s" CAE-TRO-HELP" CAE-SQ-LIT
-   s" i64 -- i64" CAE-SQ-LIT
+   s" ptr u8 -- ptr u8" CAE-SQ-LIT
    s" TRUST" SB-APPEND CAE-LF
-   s" : CAE-TRO-USE ( i64 -- i64 ) CAE-TRO-HELP ;" SB-APPEND CAE-LF
+   s" : CAE-TRO-USE ( ptr u8 -- ptr u8 ) CAE-TRO-HELP ;" SB-APPEND CAE-LF
    SB$ ;
 
 : CAE-IMMEDIATE-SOURCE$ ( -- ptr u8 n )

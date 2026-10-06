@@ -695,7 +695,11 @@ ETRUSTED-ONLY!                       \ CODE-RECLAIM's permitted CP rewind
 \ TRUSTED: body reaches one. A refusal exits and never throws: 79 while a task
 \ is live (the four dictionary rows), 84 for a protected wid after
 \ the seal (`alias-record`, `def-open`) and 83 for every other refusal. A
-\ caller checks first and prints the engine's own text.
+\ caller checks first and prints the engine's own text. One refusal is a
+\ compile die instead: while a checker overlay is open (layout.f REPLAY-SCOPE)
+\ `namespace-private`, `alias-record` and `def-open`, like `native-unit-publish`
+\ above, name the token and die ENGINE-ERROR:OVERLAY-OPEN, which `evaluate`
+\ delivers as a throw (habu1.f OVERLAY-EMIT:GUARD,).
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
 \ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64
@@ -709,6 +713,12 @@ ETRUSTED-ONLY!                       \ CODE-RECLAIM's permitted CP rewind
 \ set and else 0, [40] DICT-WL:NAMESPACE. It refuses a colon in the name.
 EPRIM: namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
+\ namespace-record's and package-scope!'s owner-private rows: inside package
+\ CHECKER-OVERLAY they win, so the overlay's checked code calls the two writers,
+\ and each record carries DNAME-INT|DNAME-OWNED (src/habu/layout.f). The global
+\ trusted-only rows stay beside them for the TRUSTED: callers outside the owner
+\ (src/habu/packages.f); a checked caller elsewhere is refused by them.
+EPPRIM: CHECKER-OVERLAY namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 \ namespace-private ( n -- ): give namespace row n, whose [8] is 0, a fresh
 \ private wid. It refuses an index at or above NDICT, unsigned, a row that is
 \ not a namespace row and one that already has a private wid.
@@ -732,6 +742,7 @@ ETRUSTED-ONLY!
 \ puts the scope back through this row (src/habu/packages.f PKG-RECOVER).
 EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
+EPPRIM: CHECKER-OVERLAY package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ def-open ( ptr u8 n n n -- ) name, wid, kind: write record NDICT unpublished,
 \ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR or
 \ DKIND:CAST) in [16] and the wid in [40]; PEND-CELL is that record; TSIG,
@@ -763,6 +774,41 @@ ETRUSTED-ONLY!
 \ (DEF-TIER-CELL other than 1), as ndict-append does.
 EPRIM: def-close EPRIM;
 ETRUSTED-ONLY!
+\ ---- the replay writers ------------------------------------------------------
+\ Only package CHECKER-OVERLAY's rows type these six. With no global row, a
+\ checked caller elsewhere is E-UNDEFINED, and a TRUSTED: body elsewhere binds
+\ one at tier 0 only: tier 1 has no row to build its call from. A refusal
+\ exits: 79 while a task is live and 83 for every other.
+\
+\ replay-open ( -- ): save NDICT, CP, WIDN, CURRENT, the open package's cells
+\ and the using band in the engine's REPLAY-SCOPE band (src/habu/layout.f). It
+\ refuses an open overlay and a pending definition.
+\ replay-record ( ptr u8 n n -- ) name, wid: publish a codeless record whose
+\ entry traps, exit 76. It refuses no overlay, wid -1 or -2 and what the
+\ three record writers above refuse.
+\ record-wid! ( n n -- ) wid, index: retire a record (-2) or give it back its
+\ wid. It refuses no overlay, an index at or above NDICT, unsigned, a
+\ namespace row and wid -1. A seeded primitive's record retires as the live
+\ `undefine` retires it.
+\ replay-private ( n bool -- ) namespace index, flag: give a row with no
+\ private wid a fresh one (true), as `package` does for a row a qualified
+\ definition made, or take back the one given (false). It refuses no overlay,
+\ an index at or above NDICT, unsigned, and a row that is not a namespace row;
+\ true a row with a private wid, false one whose private wid is older than the
+\ overlay.
+\ replay-close ( -- ): zero the records published since replay-open, put the
+\ saved state back and zero the band. It refuses no overlay, a pending
+\ definition, NDICT below the saved count or above the highest count
+\ replay-record and namespace-record reached, and CP or WIDN below the saved.
+\ replay-widn! ( n -- ): put WIDN back to a mark the owner read inside the
+\ overlay, once its rollback dropped what it made since. It refuses no overlay
+\ and a mark below the saved WIDN or above WIDN, unsigned.
+EPPRIM: CHECKER-OVERLAY replay-open ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY replay-close ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY replay-widn! PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY replay-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY record-wid! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY replay-private PE-N PE-IN PE-F PE-IN ECLOSE-PRIVATE
 EPRIM: SEAL-CAPTURE   EPRIM;
 EPRIM: seal-captured? PE-F PE-OUT EPRIM;
 EPRIM: SEAL-FRIEND    EPRIM;

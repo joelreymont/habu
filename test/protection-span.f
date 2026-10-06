@@ -80,10 +80,10 @@ create ERR CAP allot
    s" require lib/task.f TASK:#USER USER-BAND:END over - 1+ TASK:+USER PST-OVER drop" UNCAUGHT-RC EXPECT
    s" require lib/task.f TASK:#USER -1 TASK:+USER PST-WRAP drop" UNCAUGHT-RC EXPECT ;
 
-\ The unit dispatch cell ends the protected bands. Pending pre-trust defer
-\ scratch and then the cold boot's declared-row log follow it and remain
-\ writable through DATA-START; crossing the dispatch cell's end must reject
-\ while scratch and the user heap accept.
+\ The replay scope band ends the protected bands, right after the unit
+\ dispatch cell. Pending pre-trust defer scratch and then the cold boot's
+\ declared-row log follow it and remain writable through DATA-START; crossing
+\ the band's end must reject while scratch and the user heap accept.
 : TEST-BOUNDARY ( -- )
    s" 0 data-base $800 + c!" REJECTS
    s" 0 data-base $7FF + !" REJECTS
@@ -99,6 +99,8 @@ create ERR CAP allot
    s" 0 data-base TIER-PROV:OPEN-CELL + c!" REJECTS
    s" 0 data-base UNIT-COMPILE-CELL + !" REJECTS
    s" 0 data-base UNIT-COMPILE-CELL 1 cells + 1- + !" REJECTS
+   s" 0 data-base REPLAY-SCOPE:LATCH + c!" REJECTS
+   s" 0 data-base REPLAY-SCOPE:END 1 cells - + !" REJECTS
    s" 0 data-base DATA-START 1 cells - + !" ACCEPTS
    s" 0 data-base DATA-START 1- + !" ACCEPTS
    s" 0 data-base DATA-START + c!" ACCEPTS ;
@@ -107,7 +109,7 @@ create ERR CAP allot
 \ in front of the band walk and skips the walk whole when a span provably
 \ misses every band, so the hull's own edges have to answer exactly as the
 \ bands do. BAND-LO is FRIEND-ARENA's base and BAND-HI is the end of the
-\ unit dispatch cell; the rows below stand one byte and one
+\ replay scope band; the rows below stand one byte and one
 \ cell either side of each, and the last two are the spans a bounding test
 \ could wrongly admit: one entirely under the hull, one straddling all of it.
 : TEST-HULL-EDGE ( -- )
@@ -117,7 +119,9 @@ create ERR CAP allot
    s" 0 data-base FRIEND-ARENA 1+ + c!" REJECTS
    s" 0 data-base UNIT-COMPILE-CELL + c!" REJECTS
    s" 0 data-base UNIT-COMPILE-CELL 1 cells + 1- + c!" REJECTS
-   s" 0 data-base UNIT-COMPILE-CELL 1 cells + + c!" ACCEPTS
+   s" 0 data-base UNIT-COMPILE-CELL 1 cells + + c!" REJECTS
+   s" 0 data-base REPLAY-SCOPE:END 1- + c!" REJECTS
+   s" 0 data-base REPLAY-SCOPE:END + c!" ACCEPTS
    s" 0 data-base 16 read drop" ACCEPTS
    s" 0 data-base $10 + DATA-START $100 + read drop" REJECTS ;
 

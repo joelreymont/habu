@@ -655,16 +655,6 @@ private
    CHK-EXP-OUT-U @ LEN>N u SOURCE-QPATH-BYTES + CHK-SRC-ROOM >LEN
    CHK-EXP-OUT-U SOURCE-APPEND-QPATH ;
 
-: CHK-APPEND-REQUIRED ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   \ Boot-owned dependencies are recorded portably relative to the current
-   \ tree.  Materializing their canonical absolute spelling makes the child
-   \ miss its boot row and reload a family such as option; paths outside the
-   \ tree remain absolute and retain their distinct application identity.
-   path pathu SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE CHK-EXP-QPATH
-   CHK-SP CHK-EXP-C
-   s" required" CHK-EXP-APP
-   CHK-LF CHK-EXP-C ;
-
 \ A named file is loaded the way the command line loads it: the engine turns
 \ `--load PATH` into `s" PATH" script-required`, which resolves PATH as an
 \ entry, so the file's own relative requires resolve against its directory. The
@@ -677,6 +667,18 @@ private
    CHK-SP CHK-EXP-C
    s" script-required" CHK-EXP-APP
    CHK-LF CHK-EXP-C ;
+
+\ A source list loads its files as `bin/hb --load` loads the files it names:
+\ each is an entry, so a listed file's own relative requires resolve against its
+\ directory, as discovery walks it (CHK-ENTRY-ID). A `required` would make the
+\ working directory the root of a file below it (src/core/include.f
+\ SEARCH-ROOTS), and resolve them there. Boot-owned dependencies are recorded
+\ portably relative to the current tree. Materializing their canonical absolute
+\ spelling makes the child miss its boot row and reload a family such as
+\ option; paths outside the tree remain absolute and retain their distinct
+\ application identity.
+: CHK-APPEND-LISTED ( ptr u8 n -- )
+   SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE CHK-APPEND-ENTRY ;
 
 \ Standard input holds a source of any size, read to its end into CHK-SRC
 \ (lib/source.f READ-WHOLE-FD), with no size to start from.
@@ -791,7 +793,7 @@ private
    CHK-EXPAND-RESET
    0 CHK-EXP-OUT-U !
    0 begin dup CHK-POS-N @ < while
-      dup CHK-POS$ CHK-APPEND-REQUIRED
+      dup CHK-POS$ CHK-APPEND-LISTED
       1+
    repeat drop
    0 begin dup CHK-POS-N @ < while
@@ -827,7 +829,7 @@ private
    endcase ;
 
 \ E-FS-PATH-UNSAFE is a path or label the run cannot quote (a named file's
-\ canonical spelling or a listed one as CHK-APPEND-REQUIRED spells it, in its
+\ canonical spelling or a listed one as CHK-APPEND-LISTED spells it, in its
 \ loader line; the label, in the run stage's DIAG-FILE!) or a path holding a
 \ NUL, which the file system refuses to look up. The materializers judge each
 \ spelling after the existence check, so a missing path is still NOINPUT, and
@@ -1568,9 +1570,9 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-OUT-BUF CHK-OUT-U @ CHK-OUT
    CHK-ERR-BUF CHK-ERR-U @ CHK-ERR ;
 
-\ A source list materializes as one `required` line per listed file, so a lint
-\ reads the listed files themselves, in list order, except a source the engine
-\ provides, which the run loads nothing from.
+\ A source list materializes as one `script-required` line per listed file, so
+\ a lint reads the listed files themselves, in list order, except a source the
+\ engine provides, which the run loads nothing from.
 : CHK-LINT-LISTED ( [ ptr u8 n -- ] -- ) {: lint :}
    CHK-POS-N @ 0 ?do
       i CHK-POS$ ENGINE-PROVIDES? 0= if i CHK-POS$ lint execute then
@@ -1693,11 +1695,14 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHECK-ALL-ERRORS:DUP-RECORD$ CHK-ERR-LN ;
 
 \ The pre-pass stopped with the given code: the record of its defect, or of a
-\ duplicate, then the failure, with a refusal's status for a statement that
-\ threw.
+\ duplicate, then the failure. A statement that threw and a refusal the checker
+\ reported itself both fail with a refusal's status, so --json-errors writes
+\ the refusal's packet and nothing else.
 : CHK-PREVERIFY-STOPPED ( n -- ) {: rc:n :}
    rc CHK-STOP-RECORD
-   rc CHECK-ALL-ERRORS:THREW? if CHK-E-CHECK CHK-PREVERIFY-FAIL then
+   rc CHECK-ALL-ERRORS:THREW?  rc CHECK-ALL-ERRORS:REPORTED-THROW? or if
+      CHK-E-CHECK CHK-PREVERIFY-FAIL
+   then
    rc CHECK-ALL-ERRORS:DUP-RC = if CHK-PREVERIFY-DUP then
    rc CHK-PREVERIFY-FAIL ;
 

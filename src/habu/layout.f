@@ -204,19 +204,29 @@ REGION DICT-SIZE - constant BYTES
 3 constant FIRST-DYNAMIC-WID
 \ --- the wordlist cell's two non-wordlist values ---------------------------
 \ A record's wordlist cell is HALF THE HASH INDEX'S KEY (habu1.f C-HIDX-INS
-\ keys a slot on the folded name XOR this cell), and it is written once, at
-\ publication, BEFORE the record is inserted - which is what lets a probe with a
-\ caller's wid find the row or prove it absent.
+\ keys a slot on the folded name XOR this cell), so a record is on the chain
+\ of the wid its cell holds - which is what lets a probe with a caller's wid
+\ find the row or prove it absent. Publication writes the cell BEFORE the
+\ record is inserted, and a rebuild (HIDX-EMIT:LREBUILD) keys every record on
+\ its cell as it stands.
 \
 \ NAMESPACE keeps that rule: a package's own row carries it from birth, so the
 \ row is on this key's chain and LFIND's qualifier probe finds it there.
 \ RETIRED breaks it. src/habu/xref.f XREF-RETIRE stamps it on the cell of a
 \ record that is ALREADY in the table, so the row stays on the chain of the wid
-\ it was published under. Every lookup keyed on a REAL wid still agrees with a
-\ scan (the row's cell no longer matches, so both skip it), but a lookup keyed
-\ on RETIRED itself cannot be answered by the table at all - and retiring one
-\ name twice puts two rows under the key, which an insert-once table has no slot
-\ shape for. habu1.f BSWL therefore keeps its linear scan for exactly this wid.
+\ it was published under until a rebuild moves it to RETIRED's. Every lookup
+\ keyed on a REAL wid still agrees with a scan (the row's cell no longer
+\ matches, so both skip it), but a lookup keyed on RETIRED itself cannot be
+\ answered by the table at all - and retiring one name twice puts two rows
+\ under the key, which an insert-once table has no slot shape for. habu1.f
+\ BSWL therefore keeps its linear scan for exactly this wid.
+\
+\ The checker overlay's record-wid! (habu2.f DEFWRITE:RECORD-WID) retires a
+\ record and later writes back the wid the overlay logged. A rebuild in
+\ between (a publication crossing HIDX:LOAD-MAX, an ndict! raise) re-keys the
+\ retired row on RETIRED's chain, so the chain of the wid it gets back no
+\ longer holds it: record-wid! therefore indexes the record under each wid it
+\ writes (HIDX-EMIT:LREKEY), which keeps the rule above.
 \
 \ Both live in a package rather than beside the constants above because they are
 \ new: the surrounding global surface is this file's packaging debt (dot
@@ -264,13 +274,14 @@ $FFFFFFFE constant MAX
 \ definer's own.
 \
 \ Claimed band: bits 50-51 of the record flags cell [16], below DNAME-MIN-IN
-\ (52-59) and above the narrowed name-length field (bits 0-49); native length
-\ reads clear the top 14 bits (LSLI 14 / LSRI 14), and the AOT seed carries the
-\ pair as a byte of its compact record (src/habu/aot-capture.f) so a stamp
-\ survives the round trip exactly as the min-in byte does.
+\ (52-59) and above DNAME-OWNED (49) and the name-length field (bits 0-48);
+\ native length reads clear the DNAME-FLAG-BITS above the length, and the AOT
+\ seed carries the pair as a byte of its compact record
+\ (src/habu/aot-capture.f) so a stamp survives the round trip exactly as the
+\ min-in byte does.
 \
 \ The recovery CAST: definer stamps the same kind, so bootstrap/cg's name
-\ readers clear the same fourteen bits. Capture carries the kind unchanged.
+\ readers clear the same bits. Capture carries the kind unchanged.
 package DKIND
 public
 $0004000000000000 constant VAL       \ kind 1: the body pushes a decided number
@@ -278,7 +289,11 @@ $0008000000000000 constant ADDR      \ kind 2: the body pushes its DATA address
 VAL ADDR or constant CAST           \ kind 3: a declared identity retype
 VAL ADDR or constant MASK
 ;package
-$0003FFFFFFFFFFFF constant DNAME-LEN-MASK
+\ The flag bits above the name length in [16], bits 49-63. Every native length
+\ read clears them by this count (LSLI then LSRI), so the next flag carved from
+\ the length is one edit here and none at the readers.
+15 constant DNAME-FLAG-BITS
+-1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
 \ certification time (checker RECMI latch -> publish tails / seal-time
 \ internal-mark pass; dot habu-habu-certified-words-84e84eaf). LFIND folds the
@@ -288,9 +303,9 @@ $0003FFFFFFFFFFFF constant DNAME-LEN-MASK
 \ words without signatures: the documented boundary). Compiled calls inside
 \ checked words are checker-proven and carry no guard. Claimed band: bits
 \ 52-59 of the record flags cell [16], below IMM/EXT/WIDE/INT (bits 60-63)
-\ and above the definer-kind pair (bits 50-51) and the narrowed name-length
-\ field (bits 0-49); native length reads clear the top 14 bits
-\ (LSLI 14 / LSRI 14).
+\ and above the definer-kind pair (bits 50-51), DNAME-OWNED (49) and the
+\ name-length field (bits 0-48); native length reads clear the
+\ DNAME-FLAG-BITS above the length.
 $0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
@@ -315,6 +330,17 @@ $4000000000000000 constant DNAME-WIDE
 \ unchecked user code, TRUSTED: bodies, hide.f refresh shims) are unaffected:
 \ those are declared trusted boundaries.
 $8000000000000000 constant DNAME-INT
+\ DNAME-OWNED (bit 49): an internal primitive its owner's rows type. A package
+\ row (src/habu/prims.f EPPRIM: ... ECLOSE-PRIVATE) states its effect, so
+\ ENGINE-PRIMS:DNAME stamps the bit beside DNAME-INT. It opens nothing
+\ DNAME-INT closes: the prompt, `'`, search-wl and `[']` refuse the record as
+\ before. Only the compile guards read it (habu2.f C-COMPILE-CALL-GUARD at tier
+\ 0; at tier 1 src/compiler/native/dict.f NDICT:INT-CALL?, which CALL-BINDING
+\ and src/compiler/native/hir-word.f RESOLVE-SITE ask), and with it a compiled
+\ call is the checker's decision through the rows: the owner's checked callers
+\ compile, and the global trusted-only row refuses a checked caller elsewhere.
+\ DNAME-INT without it keeps the compile refusal outside a TRUSTED: body.
+$0002000000000000 constant DNAME-OWNED
 \ DICT-CAP: dictionary record slots.
 \ 65536 exceeds the move-wide imm16 field, so the DICT-CAP comparison sites in
 \ src/habu/habu2.f and bootstrap/cg/forth.fs load it with LIT64 - the same
@@ -1271,7 +1297,8 @@ CHECKER-OWNER-ABI:VARIANT-PADS-OFF constant DECL-VARIANT-PADS-OFF
 CHECKER-OWNER-ABI:VARIANT-PAY-CELLS-OFF constant DECL-VARIANT-PAY-CELLS-OFF
 CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF constant DECL-VARIANT-PAY-TERMS-OFF
 \ --- the verifier pre-pass: the symbol, definer and top-level questions it asks
-\ the live checker, the stretch it reports, and the frame around one run
+\ the live checker, the stretch it reports, the clause a TRUSTED: definer
+\ publishes, and the frame around one run
 CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF constant DECL-VERIFY-RECORD-SYM-OFF
 CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF constant DECL-VERIFY-FIND-SYM-OFF
 CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF constant DECL-VERIFY-CREATES-SYM-OFF
@@ -1290,6 +1317,7 @@ CHECKER-OWNER-ABI:VERIFY-DECL-ARM-OFF constant DECL-VERIFY-DECL-ARM-OFF
 CHECKER-OWNER-ABI:VERIFY-DECL-DISARM-OFF constant DECL-VERIFY-DECL-DISARM-OFF
 CHECKER-OWNER-ABI:VERIFY-USES-OFF constant DECL-VERIFY-USES-OFF
 CHECKER-OWNER-ABI:WITH-TICK-ORDER-OFF constant DECL-WITH-TICK-ORDER-OFF
+CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OFF
 ;package
 
 
@@ -2162,9 +2190,39 @@ TABLE-OFF SPANS SPAN-BYTES * + constant END
 \ disarms it on return or throw; snapshots are taken only with no unit active.
 TIER-PROV:END constant UNIT-COMPILE-CELL
 
+\ The checker overlay's replay scope (habu2.f DEFWRITE:REPLAY-OPEN /
+\ REPLAY-CLOSE). replay-open saves the dictionary and scope cells here and sets
+\ LATCH; replay-record raises HW, the highest NDICT a replay record reached;
+\ replay-close checks the live state against these cells, restores them and
+\ zeroes the whole band, LATCH included; replay-widn! lowers WIDN no further
+\ than the saved one. The band is zero whenever no overlay is open, so a
+\ snapshot carries nothing new. It is a guarded band (data-bands.f), not
+\ scratch: replay-close and replay-widn! trust it as the state replay-open
+\ found, so a raw store that forged the saved NDICT, HW or WIDN would turn
+\ replay-close into a record eraser and either into a WIDN setter.
+\ USE-RPKG-SAVE is REPL-line state, not scope, and is not saved. Above $7FF8,
+\ so emitted code reaches it by LIT64 and ADD.
+package REPLAY-SCOPE
+public
+UNIT-COMPILE-CELL CELL + constant LATCH             \ 0: no overlay open
+LATCH CELL + constant HW
+HW CELL + constant NDICT
+NDICT CELL + constant CP
+CP CELL + constant WIDN
+WIDN CELL + constant CUR
+CUR CELL + constant PKG-PUB
+PKG-PUB CELL + constant PKG-PRI
+PKG-PRI CELL + constant PKG-PARENT
+PKG-PARENT CELL + constant PKG-REC
+PKG-REC CELL + constant USE-DEPTH
+USE-DEPTH CELL + constant USE-PKG-SAVE
+USE-PKG-SAVE CELL + constant USE-WIDS               \ USE-MAX cells
+USE-WIDS USE-MAX cells + constant END
+;package
+
 \ Pending storage is private to the engine's capture/drain primitives. Its
 \ capacity may grow without moving any published engine slot or live map.
-UNIT-COMPILE-CELL CELL + constant PD-TABLE-OFF
+REPLAY-SCOPE:END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 
 \ --- The declared-row log of a cold boot (dot habu-visibility-discharge-548) --

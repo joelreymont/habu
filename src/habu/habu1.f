@@ -196,13 +196,14 @@ variable LPROTWIDQ
 variable LDPBAD   \ DP-CHECK out-of-range die target (defined in habu2.f EM-COMPILE-DIE; dot habu-dictionary-allot-past-4e5c3c2b)
 variable LBCAPFULL   \ body-capture over BODYBUF-CAP die target (defined in habu2.f EM-BODY-CAP-DIE; dot habu-name-the-per-56a594f3)
 \ dict hash-index label ids: the in-place compaction BNDSET's raise leg BLs,
-\ and the cannot-maintain loud exit (both bound in EMIT-HIDX). In a package so
-\ new names stay out of the global packaging debt, and in HIDX-EMIT rather than
-\ layout.f's HIDX because the engine bakes that one.
+\ the cannot-maintain loud exit and the re-key record-wid! BLs (all bound in
+\ EMIT-HIDX). In a package so new names stay out of the global packaging debt,
+\ and in HIDX-EMIT rather than layout.f's HIDX because the engine bakes that one.
 package HIDX-EMIT
 public
 variable LREBUILD
 variable LFULL
+variable LREKEY
 ;package
 variable LHIDXADD
 
@@ -1327,6 +1328,36 @@ variable SZA-I
    9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
       0 $4F MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
+
+\ WHILE A CHECKER OVERLAY IS OPEN THE ENGINE DEFINES NOTHING (layout.f
+\ REPLAY-SCOPE). replay-close puts NDICT, CP and WIDN back where replay-open
+\ found them, and a rollback inside the overlay puts them back to its frame's
+\ marks (src/core/checker.f CHECKER-OVERLAY ROLLBACK, replay-widn! for WIDN),
+\ so between open and close only the overlay's own writers, namespace-record,
+\ replay-record and replay-private, may grow them: a record another writer
+\ appended would be dropped with the overlay's and a wid it took handed out
+\ again. Every other writer runs GUARD before it writes anything: LQUALIFYDEF
+\ (each named definer, both tiers), `package` making a row or a missing
+\ private wid, EXPORT, `wordlist`, and the writer primitives def-open,
+\ alias-record, namespace-private and native-unit-publish. ndict-append needs
+\ none: it publishes the pending record, which replay-open refuses and no head
+\ opens while the latch is set. The append itself (LHIDXADD) is too late: at
+\ `;` it follows the check hook, the trust registration, the code-origin row
+\ and pass 2, none of which replay-close restores. The refusal names the token
+\ and throws ENGINE-ERROR:OVERLAY-OPEN (habu2.f EM-COMPILE-DIE). A live
+\ `undefine` throws the same code before it retires anything (xref.f
+\ XREF-UNDEFINE-GUARD, both loops): replay-close gives back only the
+\ retirements the overlay logged. The latch is the one flag the Habu loop's
+\ twin reads (outer.f OVERLAY-GUARD). Clobbers x9.
+package OVERLAY-EMIT
+public
+variable LDIE
+: GUARD, ( -- )
+   LBL {: ok:label :}
+   9 REPLAY-SCOPE:LATCH LIT64,  9 DATA 9 ADD,  9 9 0 LDR,  9 ok CBZ,
+      LDIE LABEL@ B,
+   ok LBL, ;
+;package
 
 \ cp!/ndict! are the FORGET code-emit sinks: cp! redirects JIT emission to the
 \ popped CP, ndict! points the next dict-record write at DBASE+n*DREC. Both guard
@@ -2816,6 +2847,7 @@ public
 \ The code and record bands open together and close together; no dictionary
 \ name becomes live until both copies and the instruction-cache flush finish.
 : BNATIVEUNITPUBLISH ( -- ) B-TASK-LIVE-GUARD
+   OVERLAY-EMIT:GUARD,
    9 G-POP  10 G-POP  11 G-POP  12 G-POP  \ records-n, records-a, code-u, code-a
    LBL LBL LBL LBL LBL LBL
    {: bad:label widloop:label widdone:label cloop:label cdone:label rloop:label :}
@@ -3491,6 +3523,7 @@ public
    exit-code LBL, ;
 
 : BWORDLIST ( -- )
+   OVERLAY-EMIT:GUARD,
    9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;
 
 : BGETCUR ( -- )
@@ -3890,13 +3923,14 @@ private
    nl LBL,  POLICY-NL$ BYTES,
    bound LBL,  POLICY-BOUND$ BYTES,
    bounded LBL,
-   \ Every record of the wordlist: [40] its wid, [16] its name length (the low
-   \ 50 bits) and DNAME-EXT, [24] the name inline or, with DNAME-EXT, its address.
+   \ Every record of the wordlist: [40] its wid, [16] its name length (below the
+   \ DNAME-FLAG-BITS) and DNAME-EXT, [24] the name inline or, with DNAME-EXT, its
+   \ address.
    6 DBASE 0 ADDI,  7 NDICT 0 ADDI,
    walk LBL,
       7 walked CBZ,
       8 6 40 LDR,  8 11 CMP,  C-NE next BCOND,
-      8 6 16 LDR,  10 8 14 LSLI,  10 10 14 LSRI,      \ x10 = the name's length
+      8 6 16 LDR,  10 8 DNAME-FLAG-BITS LSLI,  10 10 DNAME-FLAG-BITS LSRI,      \ x10 = the name's length
       9 6 24 ADDI,
       8 8 DNAME-EXT ANDI,  8 inline CBZ,  9 6 24 LDR,
       inline LBL,                                    \ x9 = the name
@@ -3989,7 +4023,7 @@ private
 \     the scan exactly;
 \   - DICT-WL:RETIRED is not a wordlist. xref.f XREF-RETIRE stamps it onto rows
 \     that are ALREADY in the table under the wid they were published in, so
-\     those rows sit on another chain entirely and this key's chain is empty -
+\     such a row sits on another chain until a rebuild re-keys it onto this one -
 \     and retiring one name twice puts two rows under the key, which is the
 \     duplicate case the probe has no shape for. Both failures point the same
 \     way, so the probe is not consulted for that wid at all and the scan, which
@@ -4027,7 +4061,7 @@ public
       4 3 1 SUBI,  4 NDICT CMP,  C-GE pnext BCOND,         \ stale (truncated) index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,             \ x5 = record ptr
       16 5 40 LDR,  16 2 CMP,  C-NE pnext BCOND,           \ wid mismatch (retired / other wordlist)
-      16 5 16 LDR,  16 16 14 LSLI,  16 16 14 LSRI,  16 1 CMP,  C-NE pnext BCOND,  \ name-len mismatch
+      16 5 16 LDR,  16 16 DNAME-FLAG-BITS LSLI,  16 16 DNAME-FLAG-BITS LSRI,  16 1 CMP,  C-NE pnext BCOND,  \ name-len mismatch
       16 5 24 ADDI,
       3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 pinl CBZ,
          16 5 24 LDR,
@@ -4050,7 +4084,7 @@ public
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    SWL-LOOP LABEL@ LBL,  6 SWL-END LABEL@ CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
-      9 5 16 LDR,  9 9 14 LSLI,  9 9 14 LSRI,  9 1 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
+      9 5 16 LDR,  9 9 DNAME-FLAG-BITS LSLI,  9 9 DNAME-FLAG-BITS LSRI,  9 1 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
       16 5 24 ADDI,
       9 5 16 LDR,  9 9 DNAME-EXT ANDI,  9 SWL-INL LABEL@ CBZ,
          16 5 24 LDR,
@@ -4842,6 +4876,22 @@ package ENGINE-EMIT
 
 variable LHIDXBUILD
 
+\ Emit: the chain of record x3's key, its folded name XOR its wid cell: x6 =
+\ the chain's first slot, x8 = HIDX-SLOTS, the most slots one walk visits.
+\ Clobbers x2 x4 x5 x7 x15 x16.
+: C-HIDX-CHAIN ( -- )
+   LBL {: rinl:label :}
+   5 DREC MOVZ,  5 3 5 MUL,  5 DBASE 5 ADD,
+   2 5 40 LDR,
+   16 5 24 ADDI,
+   15 5 16 LDR,  15 15 DNAME-FLAG-BITS LSLI,  15 15 DNAME-FLAG-BITS LSRI,
+   4 5 16 LDR,  4 4 DNAME-EXT ANDI,  4 rinl CBZ,
+      16 5 24 LDR,
+   rinl LBL,
+   16 15 6 4 5 7 C-HIDX-HASH
+   6 6 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
+   8 HIDX-SLOTS LIT64, ;
+
 \ Emit: insert record index x3 into table x14. The dictionary rejects
 \ duplicate definitions, so the table is insert-once: probe to the first
 \ empty slot or stale rolled-back slot and store index+1 (no dedupe pass).
@@ -4854,17 +4904,8 @@ variable LHIDXBUILD
 \ with nothing said (CG-25) - so reaching it now dies loudly instead
 \ (HIDX-EMIT:LFULL). Clobbers x2 x4 x5 x6 x7 x8 x15 x16 x17.
 : C-HIDX-INS ( -- )
-   LBL LBL LBL LBL LBL {: iloop:label inext:label iempty:label iput:label rinl:label :}
-   5 DREC MOVZ,  5 3 5 MUL,  5 DBASE 5 ADD,
-   2 5 40 LDR,
-   16 5 24 ADDI,
-   15 5 16 LDR,  15 15 14 LSLI,  15 15 14 LSRI,
-   4 5 16 LDR,  4 4 DNAME-EXT ANDI,  4 rinl CBZ,
-      16 5 24 LDR,
-   rinl LBL,
-   16 15 6 4 5 7 C-HIDX-HASH
-   6 6 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
-   8 HIDX-SLOTS LIT64,
+   LBL LBL LBL LBL {: iloop:label inext:label iempty:label iput:label :}
+   C-HIDX-CHAIN
    iloop LBL,
       17 6 2 LSLI,  17 14 17 ADD,  4 17 0 LDRW,
       4 iempty CBZ,
@@ -4876,6 +4917,20 @@ variable LHIDXBUILD
       4 DATA HIDX:CLAIMS LDR,  4 4 1 ADDI,  4 DATA HIDX:CLAIMS STR,
    iput LBL,
       4 3 1 ADDI,  4 17 0 STRW, ;
+
+\ Emit: branch to `held` when record x3's chain in table x14 holds x3 before
+\ its first empty slot, the stretch every probe for the record's key walks;
+\ else fall through. Clobbers x2 x4 x5 x6 x7 x8 x15 x16 x17.
+: C-HIDX-HELD? ( label -- ) {: held:label :}
+   LBL LBL {: hloop:label hnone:label :}
+   C-HIDX-CHAIN
+   hloop LBL,
+      17 6 2 LSLI,  17 14 17 ADD,  4 17 0 LDRW,
+      4 hnone CBZ,
+      4 4 1 SUBI,  4 3 CMP,  C-EQ held BCOND,
+      8 8 1 SUBI,  8 hnone CBZ,
+      6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  hloop B,
+   hnone LBL, ;
 
 \ C-HIDX-DUP?: x14 = live table ptr (caller ensures != 0). Sets x13 = 1 when a
 \ live record with this definition's wordlist (DEF-WL-CELL) and folded name
@@ -4896,7 +4951,7 @@ variable LHIDXBUILD
       4 3 1 SUBI,  4 NDICT CMP,  C-GE dnext BCOND,           \ stale index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,               \ x5 = record ptr
       4 5 40 LDR,  15 DATA DEF-WL-CELL LDR,  4 15 CMP,  C-NE dnext BCOND,          \ wid mismatch
-      4 5 16 LDR,  4 4 14 LSLI,  4 4 14 LSRI,  15 DATA TKL-CELL LDR,  4 15 CMP,  C-NE dnext BCOND,  \ len mismatch
+      4 5 16 LDR,  4 4 DNAME-FLAG-BITS LSLI,  4 4 DNAME-FLAG-BITS LSRI,  15 DATA TKL-CELL LDR,  4 15 CMP,  C-NE dnext BCOND,  \ len mismatch
       16 5 24 ADDI,
       4 5 16 LDR,  4 4 DNAME-EXT ANDI,  4 dinl CBZ,
          16 5 24 LDR,
@@ -4916,6 +4971,14 @@ variable LHIDXBUILD
    dfound LBL,  13 1 MOVZ,
    dret LBL, ;
 
+\ The frame LHIDXADD and HIDX-EMIT:LREKEY open: x30 and every register their
+\ walks, insert and load bound clobber. EMIT-HIDX's aret closes it.
+: HIDX-SAVE, ( -- )
+   SP SP 96 SUBI,
+   30 SP 0 STR,  2 SP 8 STR,  3 SP 16 STR,  4 SP 24 STR,  5 SP 32 STR,
+   6 SP 40 STR,  7 SP 48 STR,  14 SP 56 STR,  15 SP 64 STR,  16 SP 72 STR,  17 SP 80 STR,
+   8 SP 88 STR, ;
+
 \ LHIDXADD: insert the just-published record (index NDICT-1), then compact the
 \ table in place the moment the claimed-slot count crosses HIDX:LOAD-MAX -
 \ which is how rollback churn's garbage (stale slots that NDICT regrowth
@@ -4928,20 +4991,25 @@ variable LHIDXBUILD
 \ raise keeps an authoritative table instead of silently dropping it.
 \ HIDX-EMIT:LFULL: the loud exit shared by every structurally-unreachable
 \ cannot-maintain state; nothing zeroes HIDXP-CELL any more.
+\ HIDX-EMIT:LREKEY (x3 = a record index): index that record under the wid its
+\ cell holds now, unless that key's chain already holds it, then apply
+\ LHIDXADD's load bound; register-transparent like LHIDXADD. record-wid!
+\ (habu2.f DEFWRITE:RECORD-WID) calls it after it rewrites a published record's
+\ wid, because a rebuild keys every record on its cell as it stands: a record
+\ retired across a rebuild sits on RETIRED's chain, not on the chain of the wid
+\ it gets back. x86-64 refuses record-wid! (kernel-x64.f), so it has no twin.
 : EMIT-HIDX ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: aret:label bfail:label msg:label fmsg:label floop:label fdone:label
       rret:label zloop:label zdone:label :}
-   LBL {: bhave:label :}
+   LBL LBL {: bhave:label ains:label :}
    S\" hb: dictionary index alloc failed\n" {: ma:ptr mu:n :}
    S\" hb: dictionary index exhausted\n" {: fa:ptr fu:n :}
    LHIDXADD LABEL@ LBL,
-      SP SP 96 SUBI,
-      30 SP 0 STR,  2 SP 8 STR,  3 SP 16 STR,  4 SP 24 STR,  5 SP 32 STR,
-      6 SP 40 STR,  7 SP 48 STR,  14 SP 56 STR,  15 SP 64 STR,  16 SP 72 STR,  17 SP 80 STR,
-      8 SP 88 STR,
+      HIDX-SAVE,
       14 DATA HIDXP-CELL LDR,  14 aret CBZ,
       3 NDICT 0 ADDI,  3 3 1 SUBI,
+      ains LBL,
       C-HIDX-INS
       \ the load bound: compact before chains can approach a full wrap
       4 DATA HIDX:CLAIMS LDR,  5 HIDX:LOAD-MAX LIT64,  4 5 CMP,  C-LT aret BCOND,
@@ -4951,6 +5019,11 @@ variable LHIDXBUILD
       6 SP 40 LDR,  7 SP 48 LDR,  14 SP 56 LDR,  15 SP 64 LDR,  16 SP 72 LDR,  17 SP 80 LDR,
       8 SP 88 LDR,
       SP SP 96 ADDI,  RET,
+   HIDX-EMIT:LREKEY LABEL@ LBL,
+      HIDX-SAVE,
+      14 DATA HIDXP-CELL LDR,  14 aret CBZ,
+      aret C-HIDX-HELD?
+      ains B,
    LHIDXBUILD LABEL@ LBL,
       \ startup runs this by BL between source setup and the interpret
       \ loop, so it must be register-transparent: save everything it or
@@ -5293,7 +5366,7 @@ variable FIND-HMATCH
       4 3 1 SUBI,  4 NDICT CMP,  C-GE qhnext BCOND,            \ stale (truncated) index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,                 \ x5 = record ptr
       16 5 40 LDR,  16 2 CMP,  C-NE qhnext BCOND,              \ not a wordlist record
-      16 5 16 LDR,  16 16 14 LSLI,  16 16 14 LSRI,  16 17 CMP,  C-NE qhnext BCOND,  \ name-len mismatch
+      16 5 16 LDR,  16 16 DNAME-FLAG-BITS LSLI,  16 16 DNAME-FLAG-BITS LSRI,  16 17 CMP,  C-NE qhnext BCOND,  \ name-len mismatch
       16 5 24 ADDI,
       3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 qhinl CBZ,
          16 5 24 LDR,
@@ -5315,7 +5388,7 @@ variable FIND-HMATCH
    FIND-NLOOP LABEL@ LBL,
       6 FIND-NEND LABEL@ CBZ,
       14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
-      14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,  14 17 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
+      14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,  14 17 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 FIND-NINL LABEL@ CBZ,
          16 5 24 LDR,
@@ -5350,10 +5423,12 @@ variable FIND-HMATCH
       \ That rests on ONE invariant: every record in [0,NDICT) is in the table.
       \ LHIDXBUILD indexes the whole dictionary once NDICT is final at startup,
       \ every publishing site increments NDICT and calls LHIDXADD in the same
-      \ breath, and no entry is ever removed - a truncated record's slot keeps
-      \ its stale index and is skipped, so no chain is ever cut. Slots therefore
-      \ only ever go empty -> occupied, and an insert takes the FIRST empty or
-      \ stale slot on its own chain, so nothing can hide behind an empty one.
+      \ breath, record-wid! indexes a record under each wid it writes
+      \ (HIDX-EMIT:LREKEY), and no entry is ever removed - a truncated
+      \ record's slot keeps its stale index and is skipped, so no chain is
+      \ ever cut. Slots therefore only ever go empty -> occupied, and an insert
+      \ takes the FIRST empty or stale slot on its own chain, so nothing can
+      \ hide behind an empty one.
       \ The two ways the invariant can lapse both keep the linear scan: no table
       \ (a failed insert cleared HIDXP-CELL, or ndict! raised NDICT over records
       \ the table never saw - see BNDSET), and a chain walked for every slot
@@ -5370,7 +5445,7 @@ variable FIND-HMATCH
       4 3 1 SUBI,  4 NDICT CMP,  C-GE FIND-HNEXT LABEL@ BCOND, \ stale (truncated) index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,                \ x5 = record ptr
       16 5 40 LDR,  16 2 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ wid mismatch (retired=-2 / other wl)
-      16 5 16 LDR,  16 16 14 LSLI,  16 16 14 LSRI,  16 10 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ name-len mismatch
+      16 5 16 LDR,  16 16 DNAME-FLAG-BITS LSLI,  16 16 DNAME-FLAG-BITS LSRI,  16 10 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ name-len mismatch
       16 5 24 ADDI,
       3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 FIND-HINL LABEL@ CBZ,
          16 5 24 LDR,
@@ -5405,7 +5480,7 @@ variable FIND-HMATCH
    FIND-LOOP LABEL@ LBL,
       6 FIND-DONE LABEL@ CBZ,
       14 5 40 LDR,  14 2 CMP,  C-NE FIND-NEXT LABEL@ BCOND,
-      14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,  14 10 CMP,  C-NE FIND-NEXT LABEL@ BCOND,
+      14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,  14 10 CMP,  C-NE FIND-NEXT LABEL@ BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 FIND-INL LABEL@ CBZ,
          16 5 24 LDR,

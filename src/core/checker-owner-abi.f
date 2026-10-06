@@ -198,6 +198,10 @@ $3A0 constant ROWS-END-OFF
 \ callback the checker refuses every store write with the code set here, 0
 \ when shut (src/core/checker.f CHECKER-WRITE-WINDOW!).
 $3A8 constant WRITE-WINDOW-OFF
+\ The does> clause record a replayed TRUSTED: definer publishes at its `;`
+\ (src/habu/verify-source.f TRUSTED-DEFINITION): its clause is declared, never
+\ checked, so VERIFY-SOURCE-DOES-OFF, which checks one first, is not this.
+$3B0 constant VERIFY-SOURCE-CLAUSE-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

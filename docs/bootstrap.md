@@ -266,9 +266,31 @@ registers nothing for `ptr-cell-mark`, and a static seed image with no loader
 slot cannot reach libc for `realpath`. Nothing in the native gate notices the
 omission, because the native gate never builds a stage0; the periodic check
 below is what catches it, as the stage0 build dying on the bare token name.
+`src/core/checker.f`, which a seed-built image compiles at boot, calls the
+eight rows package `CHECKER-OVERLAY` owns: `namespace-record`,
+`package-scope!` and the six replay writers (`replay-open`, `replay-close`,
+`replay-widn!`, `replay-record`, `record-wid!`, `replay-private`). Stage0
+registers them owned (`EMIT-OVERLAY-PRIMS`) with one body that prints
+`hb: stage0 has no checker overlay` and exits 76, as `src/habu/kernel-x64.f`
+`REFUSE-BODY` does for its absent rows: a seed-built image never opens the
+overlay, and the recovery check passes with those bodies. Without the rows its
+first gate, `test/bootstrap-engine-stack.fs`, dies 70 naming
+`namespace-record`.
 The stage0 `J-QUOT` keeps one quotation open at a time, where the engine's
 tier 0 nests to `JIT-QUOT:LEVELS`: a boot-prefix source keeps `[:` one level
 deep until the seed mirrors those frames, or the stage0 build exits 75.
+
+The stage0 generator mirrors `DNAME-OWNED` (`src/habu/layout.f`): `EMIT-DICT`
+stamps a `PRIM-OWNED-WID` primitive `DNAME-INT|DNAME-OWNED` and a
+`PRIM-INT-WID` primitive `DNAME-INT` alone, and the `EMIT-COMPILE-CALL` guard
+admits a checked call to an owned record, as the engine's guards
+(`src/habu/habu2.f` `C-COMPILE-CALL-GUARD`, `src/compiler/native/dict.f`
+`NDICT:INT-CALL?`, which `CALL-BINDING` and `src/compiler/native/hir-word.f`
+`RESOLVE-SITE` ask) do; any other `DNAME-INT` call outside a `TRUSTED:` body
+still goes to `EMIT-UNDEF` (undefined word, rc 70). The seed registers
+`source-unit-run`, owned on the engine (`src/habu/prims.f` `EPPRIM:`), as
+`PRIM-INT-WID`: every caller of it is a `test/` file that runs on a product
+engine.
 
 A DATA cell or band the stage0 generator places gets a row in
 `bootstrap/cg/data-claims.fs`. So does a cell that src/ code reads at a fixed
@@ -451,7 +473,16 @@ Three facts decide how a change reaches the fixpoint:
   built straight from the stage-1 host, which lacks the primitive). A
   `TRUSTED:` bridge turned into a checked call is the same shape: the callee's
   `PRIM:`/`PPRIM:` row must exist in the host first, or an old host dies at
-  `--load` of the build tool with `ncomp: cannot compile <word>`.
+  `--load` of the build tool with `ncomp: cannot compile <word>`. The stage-2
+  refresh refuses such a tree before any build, at its certify step:
+  `VERIFY:SOURCE-BUF` types the boot prefix with the host's rows, as the window
+  compile does, so the certify reports the caller's refusal
+  (`certify: prefix-src rejected rc 70 (blocking)`) and the refresh exits 74
+  (`E-BUILD-CERTIFY`). Measured on the tree whose `NS-ENSURE` calls
+  `namespace-record` through `CHECKER-OVERLAY`'s owner row: an engine built
+  before that row refuses `E-CAP-TRUSTED habu: in ns-ensure` in the native
+  build (`ncomp: cannot compile NS-ENSURE`, rc 74) and in the refresh (rc 74),
+  and the tree's own engine passes both.
 - **Build-prefix source must satisfy the host's checker and the tree's.**
   `tools/native-build.f` compiles `src/habu/aot-file.f` and its siblings under
   the host's checker, and the window compiles them again under the tree's, so

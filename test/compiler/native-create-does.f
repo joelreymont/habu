@@ -66,11 +66,15 @@ UNPATCHED @ 99 T=
 
 public
 
-\ The scan compiles nothing, so the engine holds no record of a word it
-\ registers (CHECKED-MADE, PLAIN-MADE, the ghosts). Every probe asks the certify
+\ The scan compiles nothing: a word it registers (CHECKED-MADE, PLAIN-MADE, the
+\ ghosts) binds through the checker overlay only while the package-neutral
+\ scope holding the scan and its probes is open. Every probe asks the certify
 \ path (VERIFY:CANDIDATE-IN-SCOPE), where a scanned name binds and so does any
-\ row the checker kept, a refused parent's leftover signature included.
+\ row the checker kept, a refused parent's leftover signature included. The
+\ live definitions run between scopes: an open scope refuses a definition
+\ (ENGINE-ERROR:OVERLAY-OPEN).
 : RUN ( -- )
+   CHECKER-SCOPE-START-NEUTRAL
    s\" 9 NATIVE-CREATE-DOES-PUBLIC:MAKE-CHECKED CHECKED-MADE\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s\" 9 NATIVE-CREATE-DOES-PUBLIC:MAKE-TRUSTED TRUSTED-MADE\n"
@@ -83,38 +87,49 @@ public
    s" NT1 ( -- ptr n ) TRUSTED-MADE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
    s" a native trusted definer refuses a scalar use" T-LABEL
    s" NT2 ( -- n ) TRUSTED-MADE" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+   CHECKER-SCOPE-DONE
    s" both native definers create working storage" T-LABEL
    NATIVE-CREATE-DOES-PUBLIC:CHECKED-VALUE 8 T=
    NATIVE-CREATE-DOES-PUBLIC:TRUSTED-VALUE 8 T=
+   CHECKER-SCOPE-START-NEUTRAL
    s\" 5 NATIVE-CREATE-DOES-PUBLIC:PLAIN PLAIN-MADE\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a native plain definition inherits no clause" T-LABEL
    s" NP1 ( -- ptr n ) PLAIN-MADE" VERIFY:CANDIDATE-IN-SCOPE 1 T=
+   CHECKER-SCOPE-DONE
    s" a refused native clause publishes no definer" T-LABEL
    [: s\" : NATIVE-DOES-BAD ( n -- ) NATIVE-CREATE-DOES-PUBLIC:MAKE-CHECKED does> ( -- n ) ;\n"
       evaluate-closed ;]
       E-NCOMP-VERDICT TTHROWSQ
    s" a refused clause leaves no parent signature" T-LABEL
    s" NB0 ( n -- ) NATIVE-DOES-BAD" VERIFY:CANDIDATE-IN-SCOPE 1 T=
+   CHECKER-SCOPE-START-NEUTRAL
    s\" 9 NATIVE-DOES-BAD BAD-GHOST\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a refused wrapper parent cannot create a phantom child" T-LABEL
    s" NB1 ( -- ptr n ) BAD-GHOST" VERIFY:CANDIDATE-IN-SCOPE 1 T=
+   CHECKER-SCOPE-DONE
    s\" : NATIVE-DOES-AFTER ( n -- n ) 2 * ;\n" evaluate-closed
+   CHECKER-SCOPE-START-NEUTRAL
    s\" 6 NATIVE-DOES-AFTER AFTER-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" the definition after a refused clause inherits nothing" T-LABEL
    s" NP2 ( -- ptr n ) AFTER-MADE" VERIFY:CANDIDATE-IN-SCOPE 1 T=
+   CHECKER-SCOPE-DONE
    s" a later native refusal retracts an accepted clause" T-LABEL
    [: s\" : NATIVE-DOES-LATE ( n -- ) NATIVE-CREATE-DOES-PUBLIC:MAKE-CHECKED does> ( -- ptr n ) [: 1 ;] drop ;\n"
       evaluate-closed ;] E-NELAB-QUOT TTHROWSQ
    s" a later refusal retracts the parent signature" T-LABEL
    s" NL0 ( n -- ) NATIVE-DOES-LATE" VERIFY:CANDIDATE-IN-SCOPE 1 T=
+   CHECKER-SCOPE-START-NEUTRAL
    s\" 9 NATIVE-DOES-LATE LATE-GHOST\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a later failure cannot leave a wrapper child" T-LABEL
    s" NL1 ( -- ptr n ) LATE-GHOST" VERIFY:CANDIDATE-IN-SCOPE 1 T=
+   CHECKER-SCOPE-DONE
    s\" : NATIVE-DOES-NEXT ( n -- n ) 1 + ;\n" evaluate-closed
+   CHECKER-SCOPE-START-NEUTRAL
    s\" 6 NATIVE-DOES-NEXT NEXT-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" the next definition inherits no accepted clause from that refusal" T-LABEL
    s" NP3 ( -- ptr n ) NEXT-MADE" VERIFY:CANDIDATE-IN-SCOPE 1 T=
+   CHECKER-SCOPE-DONE
    s" a does> cut outside the compiled source is refused as the cut" T-LABEL
    [: s\" : NATIVE-DOES-FORGED ( n -- ) create , does> ( -- n ) NATIVE-CREATE-DOES-PUBLIC:FORGE-CUT @ ;\n"
       evaluate-closed ;] E-NFEED-CUT TTHROWSQ
