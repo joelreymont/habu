@@ -1,6 +1,7 @@
 \ One spelling belongs to four distinct declarations. The saved images keep
 \ their effects and source order while later scopes rewind symbol text.
 require lib/tier.f
+require lib/test/eval.f
 
 package NI-ALPHA
 private
@@ -51,10 +52,10 @@ variable SRC-U
    s" NI-BAD ( -- n ) NI-ALPHA:RUN" CHECK-CANDIDATE! 0 EQ!
    PROGRAM$ VERDICT 0 EQ! ;
 
-TRUSTED: ID ( ptr u8 n n ptr u8 n -- n )
+: ID ( ptr u8 n n ptr u8 n -- n )
    SYM-FIND if exit then
    drop s" name intern: missing symbol" 79 die ;
-TRUSTED: OFF ( n -- n ) SYM-NAME-A-FIELD @ ;
+: OFF ( n -- n ) SYM-NAME-A-FIELD @ ;
 : ROW. ( ptr u8 n n ptr u8 n -- )
    ID dup . OFF . cr ;
 
@@ -65,7 +66,7 @@ variable BEFORE-U
 \ Direct symbol publications here exercise the rollback seam underneath normal
 \ checked definitions. The outer and inner frames both use a new spelling;
 \ the inner also shares text that predates either frame.
-TRUSTED: REWIND-ROWS ( -- )
+: REWIND-ROWS ( -- )
    SYM-N @ BEFORE-N ! SYM-STR-U @ BEFORE-U !
    CHECKER-SCOPE-START
       s" NI-TEMP-A" SYM-PUBLIC s" NiReWiNd" SYM-INTERN FIRST-ID !
@@ -82,14 +83,13 @@ TRUSTED: REWIND-ROWS ( -- )
    s" NI-REUSE" SYM-PUBLIC s" NIREPLAC" SYM-FIND nip ASSERT
    s" NI-TEMP-C" SYM-PUBLIC s" NIREWIND" SYM-FIND nip ASSERT ;
 
-TRUSTED: DEFINE-DELTA ( -- )
+: DEFINE-DELTA ( -- )
    1 TIER:SELECT
-   s" package NI-DELTA public : NiShArEd ( n -- n ) 4 * ; ;package" evaluate
+   s" package NI-DELTA public : NiShArEd ( n -- n ) 4 * ; ;package" evaluate-closed
    0 TIER:SELECT ;
-TRUSTED: DELTA-RUN ( -- n )
-   s" 3 NI-DELTA:NISHARED" evaluate ;
+: DELTA-RUN ( -- n ) s" 3 NI-DELTA:NISHARED" TEST-EVAL:N ;
 
-TRUSTED: MEASURE ( -- )
+: MEASURE ( -- )
    s" name intern rows (id offset):" type cr
    s" NI-ALPHA" SYM-PRIVATE s" NISHARED" ROW.
    s" NI-BETA" SYM-PUBLIC s" nIsHaReD" ROW.

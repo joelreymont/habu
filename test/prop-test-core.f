@@ -20,6 +20,7 @@ require lib/fs.f
 require lib/process.f
 require lib/process-fork.f
 require lib/fmt.f                        \ FMT:.INT - one-line number text
+require lib/test/eval.f                  \ TEST-EVAL:N - one cell out of a closed text
 
 \ The harness's own words and every candidate compile at tier 0, whatever tier
 \ the caller selected (the libraries above compile at the caller's tier). Tier 1 compiles against a static stack picture and the
@@ -212,11 +213,11 @@ variable CPSAVE  variable NDSAVE  variable UESAVE
 variable SCPSV   variable SNDSV   variable SUESV
 variable CHKCPSV variable CHKNDSV variable CHKUESV
 : MARK    ( -- )  cp@ CPSAVE !  ndict@ NDSAVE !  UEND @ UESAVE ! ;
-TRUSTED: FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ USIGS-RESTORE-END ;
+: FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ USIGS-RESTORE-END ;
 : SMARK   ( -- )  cp@ SCPSV !   ndict@ SNDSV !   UEND @ SUESV ! ;
-TRUSTED: SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ USIGS-RESTORE-END ;
+: SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ USIGS-RESTORE-END ;
 : CHK-MARK ( -- ) cp@ CHKCPSV ! ndict@ CHKNDSV ! UEND @ CHKUESV ! ;
-TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ USIGS-RESTORE-END ;
+: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ USIGS-RESTORE-END ;
 \ ---- shared measurement: build "depth BASE ! <nin×7> <nch> depth BASE @ - CLEAR-MEAS" ----
 : RUN1  ( n n -- ) {: name-ch:n in-arity:n :}
    0 PBUF-U ! s" depth BASE ! " P+
@@ -242,14 +243,18 @@ TRUSTED: CHK-COMPILE-CERT ( ptr u8 n -- )
       2drop
       CHK-FORGET
    THEN ;
-\ Dynamic measurement records exact residual depth or an evaluate trap.
-\ Dynamic evaluate and arbitrary residual-row measurement.
-\ Retirement: habu-give-tests-a-8d8cdc19.
-TRUSTED: RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
-   0 LAST-TRAP !  RUN1  PBUF PBUF-U @ evaluate
-   ERR@ 0 = IF
-      dup 0< IF  drop -1 LAST-TRAP !  ELSE  LAST-MEAS !  THEN
-   ELSE  -1 LAST-TRAP !  THEN ;
+\ Dynamic measurement runs PBUF's text as a closed program that stores its
+\ measured residual depth in MEAS-OUT, and records that depth or a trap: a
+\ throw out of the text, a read below its floor among them, or a negative
+\ depth.
+variable MEAS-OUT
+: MEAS-PBUF ( -- )
+   0 LAST-TRAP !
+   s"  MEAS-OUT !" P+
+   PBUF PBUF-U @ TEST-EVAL:RC 0= 0= IF  -1 LAST-TRAP !  EXIT  THEN
+   MEAS-OUT @ dup 0< IF  drop -1 LAST-TRAP !  ELSE  LAST-MEAS !  THEN ;
+: RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
+   RUN1  MEAS-PBUF ;
 : FC-SET-ARITY ( n n -- )
    FC-MEAS !  FC-EXP !  1 FC-KIND !  PROP-NFC @ 1+ PROP-NFC ! ;
 : FC-SET-TRAP ( n -- )
@@ -293,10 +298,8 @@ variable NSUB  variable NSI
 \ re-declare the SAME body with that exact rendered sig — it must re-certify. ----
 variable NRT  variable NRI  variable RSU
 TYPED-VARIABLE RSA ptr u8
-TRUSTED: REND-SIG$ ( -- ptr u8 n )
-   REND-SIG ;
 : ROUNDTRIP  ( -- )   \ pre: G just certified; REND-SIG holds G's rendered effect
-   REND-SIG$  RSU !  RSA !
+   REND-SIG  RSU !  RSA !
    SMARK  0 PBUF-U ! s" : R ( " P+  RSA @ RSU @ P+  s"  ) " P+  BBUF BLEN @ P+  s" ; " P+  PBUF PBUF-U @ CHK
    VERD @ -1 = IF  NRT @ 1+ NRT !  82 NIN @ DOUT @ MEASURE
    ELSE  NRI @ LOG-LIMIT < IF s" round-trip" LOG-META THEN  NRI @ 1+ NRI !  THEN
@@ -536,26 +539,15 @@ private
 
 variable DOUT
 
-\ Dynamic `evaluate` has source-dependent effects that the checker cannot
-\ express. Retirement: habu-give-tests-a-8d8cdc19.
-TRUSTED: EVAL-RUNNER ( -- n )
-   PBUF PBUF-U @ evaluate ;
-
-: MEASURE-RUNNER ( -- )
-   0 LAST-TRAP !
-   EVAL-RUNNER
-   ERR@ 0 = if
-      dup 0 < if drop -1 LAST-TRAP ! else LAST-MEAS ! then
-   else drop -1 LAST-TRAP ! then ;
 
 : SELFTEST-GUARD ( -- )
    0 PBUF-U !
    s" PROP-MEAS:CANARY depth BASE ! 7 nip 7 depth BASE @ - CLEAR-MEAS PROP-MEAS:VERIFY" P+
-   MEASURE-RUNNER
+   MEAS-PBUF
    LAST-TRAP @ 0= if s" prop-test: below-input guard self-test did not detect a clobber" 1 die then
    0 PBUF-U !
    s" PROP-MEAS:CANARY depth BASE ! 7 1+ depth BASE @ - CLEAR-MEAS PROP-MEAS:VERIFY" P+
-   MEASURE-RUNNER
+   MEAS-PBUF
    LAST-TRAP @ LAST-MEAS @ 1 <> or if
       s" prop-test: below-input guard self-test rejected an intact guard" 1 die
    then ;
@@ -566,7 +558,7 @@ TRUSTED: EVAL-RUNNER ( -- n )
 : SELFTEST-DEPTH ( -- )
    0 PBUF-U !
    s" PROP-MEAS:CANARY depth BASE ! 7 dup depth BASE @ - CLEAR-MEAS PROP-MEAS:VERIFY" P+
-   MEASURE-RUNNER
+   MEAS-PBUF
    5 DOUT ! OUT-OK? if s" prop-test: output-depth self-test accepted a mismatch" 1 die then
    2 DOUT ! OUT-OK? 0= if s" prop-test: output-depth self-test rejected an exact match" 1 die then ;
 
@@ -586,7 +578,7 @@ TRUSTED: EVAL-RUNNER ( -- n )
    then
    expected DOUT !
    ops opsu BUILD-CHECK-CASE-RUNNER
-   MEASURE-RUNNER
+   MEAS-PBUF
    OUT-OK? 0= if
       s" prop-test: primitive runtime mismatch: " type def defu type cr
       LAST-TRAP @ if s" prop-test: primitive reached below its declared inputs" 1 die then

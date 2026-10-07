@@ -14,15 +14,14 @@
 \ only by accident, and a blunt exit inside evaluate would pass the fatal half
 \ while failing the caught one.
 
-TRUSTED: EU-TRY ( -- n )
-   [: s" : ZZ-CAUGHT ( -- ) ZZ-NO-SUCH-WORD ;" evaluate ;] catch ;
-
 : EU-CHECK ( n -- )
    70 = 0= if s" bootstrap-eval-undef: evaluate failure is not a catchable 70" 1 die then ;
 
 s" BOOTSTRAP-EVAL-UNDEF-ARMED" type cr
 
-EU-TRY EU-CHECK
+\ The caught throw restores the depth catch saw, so the string's two cells sit
+\ under the code.
+s" : ZZ-CAUGHT ( -- ) ZZ-NO-SUCH-WORD ;" ' evaluate catch EU-CHECK 2drop
 
 s" : ZZ-LEAK ( -- ) ZZ-NO-SUCH-PKG:ZZ-NO-SUCH-WORD ;" evaluate
 

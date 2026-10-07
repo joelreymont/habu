@@ -158,7 +158,7 @@ BALANCED
 \ as they did.
 : CTS-POLICY? ( ptr u8 n bool ptr u8 n -- bool ) {: pa:ptr pu:n pub:bool na:ptr nu:n :}
    na nu s" cts-drop" STARTS-WITH? 0= ;
-TRUSTED: CT-SWEEP ( -- ) [: CTS-POLICY? ;] CHECKER-SWEEP:RUN ;
+: CT-SWEEP ( -- ) [: CTS-POLICY? ;] CHECKER-SWEEP:RUN ;
 
 70 constant REJECT-RC   \ a refused definition (src/habu/habu2.f RC-REJECT)
 

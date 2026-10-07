@@ -40,8 +40,8 @@ variable NEED
    AOT-ARM:WINDOW-CLOSE
    AOT-ARM:PAYLOAD-FROZEN @ -1 T= ;
 
-TRUSTED: ABI-ONLY ( -- )
-   s" OD-ABI-ONLY ( -- n ) 7" CHECK-UNJUDGED! -1 T= ;
+: ABI-ONLY ( -- )
+   s" OD-ABI-ONLY ( -- n ) 7" CHECKER-OWNER:CHECK-UNJUDGED -1 T= ;
 
 \ A source-loaded compiler's bindings are bounded as a captured one's reads
 \ are: the subject loads the compiler source over a live owner whose recorded

@@ -210,9 +210,9 @@ TRUSTED: ABI-END ( -- ) SAVED-CHECK @ set-check SAVED-TIER @ TIER:SELECT ;
    s" payload-wide" s" 0 FIELD left n FIELD right r ;STRUCTURE" SD-REPLAY
    s" payload-empty" s" 0 ;STRUCTURE" SD-REPLAY
    s" payload-option" s" 1 VARIANT full FIELD value a ;VARIANT VARIANT empty ;VARIANT ;ENUM" ED-REPLAY ;
-TRUSTED: CORRUPT-SOURCE ( -- )
+: CORRUPT-SOURCE ( -- )
    s" producer-scalar-zero" MODE? IF
-      s" PAYLOAD-FIXED" FIND-SIG -1 EQ
+      s" PAYLOAD-FIXED" FIND-SIG 0= IF s" graph corruption: no PAYLOAD-FIXED row" type cr 79 throw THEN
       FEP @ {: rec:ptr :}
       rec E-DIN@ E-PTR EN.C @ 2 EQ
       1 rec E-DIN@ E-PTR EN.C ! 0 rec E-CONTENT EC.MINI !
@@ -222,7 +222,7 @@ TRUSTED: CORRUPT-SOURCE ( -- )
    \ capture refuses it, so no import restores it as a seeded row.
    s" recovery" MODE? IF
       MULTI-ERR-BEGIN
-      s" : PAYLOAD-RECOVERY ( n -- n ) drop ;" evaluate
+      s" : PAYLOAD-RECOVERY ( n -- n ) drop ;" evaluate-closed
       MULTI-ERR-END 1 EQ
       s" graph corruption applied: recovery" type cr
    THEN ;

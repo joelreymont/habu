@@ -63,9 +63,11 @@ variable ADDRESS-ABI
 
 defer RESET-SOURCE ( -- )
 
-\ Resolve the current source owner in its own package.
-TRUSTED: CHECKER-OWNER ( -- ptr u8 )
-   s" package CHECKER-REG DECLARATIONS ;package" evaluate ;
+\ The checker publishes its own declaration owner into the engine's target
+\ declaration cell as it loads (src/core/checker.f), so the host's owner is a
+\ cell read before the window loads its replacement.
+: CHECKER-OWNER ( -- ptr u8 )
+   data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @ ;
 
 \ The execution token belongs to the retained private checker owner, whose
 \ record holds it as a code address integer.

@@ -169,10 +169,8 @@ cr
 \ to the arm as a linear value the arm must discharge exactly once.
 \
 \ FREE-MODEL / MINT-TOK are the abstract consumer and producer, so an arm can
-\ fully discharge or fully re-supply the resource without a runtime. They are
-\ bodiless TRUST rows: the engine holds no record of either, so compiled code
-\ cannot call them, and the candidates that do ask the certify path, where the
-\ rows bind (VERIFY:CANDIDATE-IN-SCOPE).
+\ fully discharge or fully re-supply the resource. They are checked words over
+\ the package's own `LINEAR:` mint and erase rows.
 \
 \ The whole section lives in package TLIN, which is also how production writes
 \ these types (maki/infer/weight-store.f owns `WSTORE:resident` the same way).
@@ -195,10 +193,15 @@ ENUM load-result 0
   VARIANT rejected FIELD code n ;VARIANT
 ;ENUM
 STRUCTURE via-load 0 FIELD result load-result ;STRUCTURE       \ a structure reaching a linear ENUM
-\ Declared boundaries, never run: a `trust` row would claim the words exist, and
-\ nothing defines them. A model is three cells (inner's t and k, then z).
-TRUSTED: FREE-MODEL ( TLIN:model -- ) 2drop drop ;
-TRUSTED: MINT-TOK ( -- TLIN:tok ) 0 ;
+private
+\ The token's mint and erase, rows only the declaring package may hold.
+LINEAR: N>TOK ( n -- TLIN:tok )
+LINEAR: TOK>N ( TLIN:tok -- n )
+public
+\ A model is three cells (inner's t and k, then z): taken apart down to its
+\ token, which is erased.
+: FREE-MODEL ( TLIN:model -- ) TLIN-MODEL:UNMAKE drop TLIN-BOX:UNMAKE drop TOK>N drop ;
+: MINT-TOK ( -- TLIN:tok ) 0 N>TOK ;
 
 \ the value itself: identity and permutation conserve it, every copy or loss does not.
 s" TC1=" type s" TC1 ( model -- model )" CHECK-QUIET-CANDIDATE! -1 T=

@@ -30,12 +30,13 @@ variable CU-SAVED-CAP
 : CU-RAISE ( -- ) 27 throw ;
 : CU-RAISE-CLOSED ( -- ) [: CU-RAISE ;] CU-RUN ;
 
-\ Deliberately dishonest trusted callbacks exercise the runtime boundary that
-\ the effect checker cannot model: a leftover cell and a cursor below the floor.
-TRUSTED: CU-ONE ( -- ) 11 ;
-: CU-ONE-CLOSED ( -- ) [: CU-ONE ;] CU-RUN ;
-TRUSTED: CU-TAKE ( -- ) drop ;
-: CU-TAKE-CLOSED ( -- ) [: CU-TAKE ;] CU-RUN ;
+\ Deliberately dishonest callbacks exercise the runtime boundary that the
+\ effect checker cannot model: a leftover cell and a cursor below the floor.
+\ Each cast declares a callback's row narrower than its body, on purpose.
+CAST: LEAVE-CELL ( [ -- n ] -- [ -- ] )
+CAST: TAKE-CELL ( [ n -- ] -- [ -- ] )
+: CU-ONE-CLOSED ( -- ) [: 11 ;] LEAVE-CELL CU-RUN ;
+: CU-TAKE-CLOSED ( -- ) [: drop ;] TAKE-CELL CU-RUN ;
 
 \ The loop consumes its bounds before pushing. At return the stack cursor is
 \ exactly the mapped top; the primitive must compare before pushing a code.

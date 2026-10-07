@@ -42,17 +42,6 @@ require lib/prelude.f
 require lib/test.f
 require test/checker-assert.f
 
-\ The checker's control-flag reader is a sig-less global that the seal strips, so
-\ checked code reaches it behind one declared boundary. It decides nothing: every
-\ assertion below is ordinary checked Habu over the number it answers.
-package DEADPATH-SHIM
-public
-
-TRUSTED: CTL ( ptr u8 n -- n )
-   CTL-FLAGS ;
-
-;package
-
 \ ---- fixtures ----------------------------------------------------------------
 \ A word that ends a path by its own body: it calls `throw`, so the checker
 \ records CTL-DEAD for it exactly as it records the two axioms. Its name is not
@@ -112,20 +101,20 @@ public
 T-RESET
 
 s" the throw axiom is recorded, dead and catchable" T-LABEL
-s" throw" DEADPATH-SHIM:CTL CTL-DEAD and CTL-DEAD T=
-s" throw" DEADPATH-SHIM:CTL CTL-THROW and CTL-THROW T=
+s" throw" CTL-FLAGS CTL-DEAD and CTL-DEAD T=
+s" throw" CTL-FLAGS CTL-THROW and CTL-THROW T=
 
 s" the die axiom is recorded, dead and not catchable" T-LABEL
-s" die" DEADPATH-SHIM:CTL CTL-DEAD and CTL-DEAD T=
-s" die" DEADPATH-SHIM:CTL CTL-THROW and 0 T=
+s" die" CTL-FLAGS CTL-DEAD and CTL-DEAD T=
+s" die" CTL-FLAGS CTL-THROW and 0 T=
 
 s" an ordinary word carries neither" T-LABEL
-s" DEADPATH-FIX:THROWN" DEADPATH-SHIM:CTL CTL-DEAD CTL-THROW or and 0 T=
+s" DEADPATH-FIX:THROWN" CTL-FLAGS CTL-DEAD CTL-THROW or and 0 T=
 s" the ordinary checked word separately carries source authority" T-LABEL
-s" DEADPATH-FIX:THROWN" DEADPATH-SHIM:CTL EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
+s" DEADPATH-FIX:THROWN" CTL-FLAGS EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
 
 s" a word whose own body ends a path earns the same flags" T-LABEL
-s" DEADPATH-FIX:BOOM" DEADPATH-SHIM:CTL CTL-DEAD and CTL-DEAD T=
+s" DEADPATH-FIX:BOOM" CTL-FLAGS CTL-DEAD and CTL-DEAD T=
 
 \ ---- 2. an arm that ends a path need not reach the join -----------------------
 s" an arm ending in throw certifies against a wider fall-through" T-LABEL
@@ -147,11 +136,11 @@ s" DP-D ( n n -- n ) 0 = if drop 5 DEADPATH-FIX:THROWN then" CHECK-QUIET-CANDIDA
 package DEADPATH-SHADOW
 
 s" inside the package the bare tail is not the axiom" T-LABEL
-s" throw" DEADPATH-SHIM:CTL CTL-DEAD CTL-THROW or and 0 T=
-s" die" DEADPATH-SHIM:CTL CTL-DEAD CTL-THROW or and 0 T=
+s" throw" CTL-FLAGS CTL-DEAD CTL-THROW or and 0 T=
+s" die" CTL-FLAGS CTL-DEAD CTL-THROW or and 0 T=
 s" both checked package bindings retain their own source authority" T-LABEL
-s" throw" DEADPATH-SHIM:CTL EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
-s" die" DEADPATH-SHIM:CTL EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
+s" throw" CTL-FLAGS EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
+s" die" CTL-FLAGS EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
 
 s" an arm ending in a package word named throw is refused" T-LABEL
 s" DP-E ( n n -- n ) 0 = if drop 5 throw then" CHECK-QUIET-CANDIDATE! 0 T=
@@ -170,8 +159,8 @@ s" DP-G ( n n -- n ) 0 = if drop 5 DEADPATH-FIX:BOOM then" CHECK-QUIET-CANDIDATE
 package DEADPATH-OWN
 
 s" the package word earns the flags under its own symbol" T-LABEL
-s" DIE" DEADPATH-SHIM:CTL CTL-DEAD and CTL-DEAD T=
-s" THROW" DEADPATH-SHIM:CTL CTL-DEAD CTL-THROW or and CTL-DEAD CTL-THROW or T=
+s" DIE" CTL-FLAGS CTL-DEAD and CTL-DEAD T=
+s" THROW" CTL-FLAGS CTL-DEAD CTL-THROW or and CTL-DEAD CTL-THROW or T=
 
 s" an arm ending in it certifies against a wider fall-through" T-LABEL
 s\" DP-M ( n n -- n ) 0 = if drop s\q x\q DIE then" CHECK-QUIET-CANDIDATE! -1 T=

@@ -18,7 +18,7 @@ variable REGISTRY-ID
 
 \ Force both registry arrays and their name pool into grown mappings. Capture
 \ must move them into DATA and preserve their lookup across both image boots.
-TRUSTED: GROW-REGISTRY ( -- )
+: GROW-REGISTRY ( -- )
    CTN @ REGISTRY-ID !
    CTN @ CT-CAP-V !
    s" AIMG-REGISTRY-FIRST" CTN @ CT-ROLE 64 CS-NONE CT-SET
@@ -28,7 +28,7 @@ TRUSTED: GROW-REGISTRY ( -- )
    CT-STR-P @ CT-STR-CAP-V @ REG-DATA-SPAN? if 70 throw then ;
 
 
-TRUSTED: CHECK-REGISTRY ( -- )
+: CHECK-REGISTRY ( -- )
    s" AIMG-REGISTRY-FIRST" CT-FIND REGISTRY-ID @ <> if 70 throw then
    s" AIMG-REGISTRY-SECOND" CT-FIND REGISTRY-ID @ 1+ <> if 70 throw then
    CT-NAME-A-P @ CT-CAP-V @ cells REG-DATA-SPAN? 0= if 70 throw then

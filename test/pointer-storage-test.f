@@ -31,8 +31,8 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
 : ADDRESS ( -- ptr ptr n )
    SLOT ;
 
-TRUSTED: RSV-OFF-A ( -- n ) RSV-CELL-A data-base - ;
-TRUSTED: RSV-OFF-B ( -- n ) RSV-CELL-B data-base - ;
+: RSV-OFF-A ( -- n ) RSV-CELL-A BYTE-VIEW data-base BYTE-VIEW - ;
+: RSV-OFF-B ( -- n ) RSV-CELL-B BYTE-VIEW data-base BYTE-VIEW - ;
 
 \ The definer answers `data-base + the offset it was given`, which is the whole
 \ of what it promises; the difference pins that the offset is the created

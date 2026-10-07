@@ -37,11 +37,6 @@ require lib/tier.f
 package DEC-TEST
 private
 
-\ `evaluate` is the metaprogramming boundary the checker does not model, and the
-\ only way a test can watch a definition be refused.
-TRUSTED: EV ( ptr u8 n -- )
-   evaluate ;
-
 $D65F03C0 constant W-RET
 $FC000000 constant OPC-MASK
 $14000000 constant OPC-B
@@ -154,7 +149,7 @@ create DEC-BARE1 16 allot
 \ A created word carries the effect its clause declared whether or not the
 \ clause survived, so `-- ptr ptr a` is still refused where `-- ptr n` is asked.
 : DEC-REFUSED? ( -- bool )
-   [: s" : DEC-MISUSE ( -- ptr n ) DEC-TEST:DEC-CELL1 ;" EV ;] catch 0<> ;
+   [: s" : DEC-MISUSE ( -- ptr n ) DEC-TEST:DEC-CELL1 ;" evaluate-closed ;] catch 0<> ;
 
 : RUN ( -- )
    T-RESET

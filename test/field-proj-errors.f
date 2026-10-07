@@ -13,10 +13,10 @@ variable OUTER-FAM
 variable FIELD-ID
 variable ERROR
 
-TRUSTED: FIND-FAM ( ptr u8 n -- n )
+: FIND-FAM ( ptr u8 n -- n )
    s" FIELD-PROJ-ERRORS" 2swap TFAM:TFAM-FIND-IN drop ;
 
-TRUSTED: TERM ( -- n )
+: TERM ( -- n )
    PARAM-SCR-N @ {: base:n :}
    base s" inner" INNER-FAM @ MK-PARAM PARAM-SCR+
    base s" outer" OUTER-FAM @ MK-PARAM ;

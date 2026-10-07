@@ -11,12 +11,6 @@ package CRECL-TEST
 
 private
 
-TRUSTED: EV ( ptr u8 n -- )
-   evaluate ;
-
-TRUSTED: EV-N ( ptr u8 n -- n )
-   evaluate ;
-
 4 constant INSN-BYTES
 
 : REC ( ptr u8 n -- ptr n )
@@ -33,10 +27,10 @@ TRUSTED: EV-N ( ptr u8 n -- n )
    XREF-FIND XREF-FOUND? ;
 
 : FILL ( -- )
-   s" : CR-F1 ( n -- n ) dup 3 * swap 7 + + ;" EV
-   s" : CR-F2 ( n -- n ) dup 5 * swap 9 + + ;" EV
-   s" : CR-F3 ( n -- n ) dup 11 * swap 13 + + ;" EV
-   s" : CR-F4 ( n -- n ) dup 17 * swap 19 + + ;" EV ;
+   s" : CR-F1 ( n -- n ) dup 3 * swap 7 + + ;" evaluate-closed
+   s" : CR-F2 ( n -- n ) dup 5 * swap 9 + + ;" evaluate-closed
+   s" : CR-F3 ( n -- n ) dup 11 * swap 13 + + ;" evaluate-closed
+   s" : CR-F4 ( n -- n ) dup 17 * swap 19 + + ;" evaluate-closed ;
 
 : FILL-FORGET ( -- )
    s" CR-F1" FORGET-DEFS-FROM ;
@@ -69,16 +63,16 @@ variable ALIAS-OCC
 
    FILL
    s" both surviving records keep their code" T-LABEL
-   s" CRECL-SUBJ:CR-LOW" EV-N 11 T=
-   s" CRECL-SUBJ:CR-HIGH" EV-N 22 T=
+   s" CRECL-SUBJ:CR-LOW" TEST-EVAL:N 11 T=
+   s" CRECL-SUBJ:CR-HIGH" TEST-EVAL:N 22 T=
    FILL-FORGET ;
 
 variable P-START
 
 : PLAIN-CASE ( -- )
-   s" : CR-P1 ( -- n ) 1 ;" EV
-   s" : CR-P2 ( -- n ) 2 ;" EV
-   s" : CR-P3 ( -- n ) 3 ;" EV
+   s" : CR-P1 ( -- n ) 1 ;" evaluate-closed
+   s" : CR-P2 ( -- n ) 2 ;" evaluate-closed
+   s" : CR-P3 ( -- n ) 3 ;" evaluate-closed
    s" CR-P2" REC-START P-START !
    s" CR-P2" FORGET-DEFS-FROM
 
@@ -87,7 +81,7 @@ variable P-START
    s" CR-P2" DEFINED? TFALSE
    s" CR-P3" DEFINED? TFALSE
    s" CR-P1" DEFINED? TTRUE
-   s" CR-P1" EV-N 1 T= ;
+   s" CR-P1" TEST-EVAL:N 1 T= ;
 
 variable G-CP
 
@@ -105,25 +99,25 @@ variable G-CP
 
    s" refusals leave the pointer and live routine unchanged" T-LABEL
    cp@ G-CP @ T=
-   s" CR-P1" EV-N 1 T= ;
+   s" CR-P1" TEST-EVAL:N 1 T= ;
 
 variable U-START
 variable U-INDEX
 
 : REUSE-CASE ( -- )
-   s" : CR-REUSE ( n -- n ) 1 + ;" EV
+   s" : CR-REUSE ( n -- n ) 1 + ;" evaluate-closed
    s" CR-REUSE" REC-START U-START !
    s" CR-REUSE" REC-INDEX U-INDEX !
    s" CR-REUSE" FORGET-DEFS-FROM
-   s" : CR-REUSE ( n -- n ) 3 * ;" EV
+   s" : CR-REUSE ( n -- n ) 3 * ;" evaluate-closed
 
    s" a new definition reuses the reclaimed record and code slot" T-LABEL
    s" CR-REUSE" REC-START U-START @ T=
    s" CR-REUSE" REC-INDEX U-INDEX @ T=
 
    s" a caller compiled after reuse reaches the new bytes" T-LABEL
-   s" : CR-REUSE-CALL ( n -- n ) CR-REUSE ;" EV
-   s" 5 CR-REUSE-CALL" EV-N 15 T= ;
+   s" : CR-REUSE-CALL ( n -- n ) CR-REUSE ;" evaluate-closed
+   s" 5 CR-REUSE-CALL" TEST-EVAL:N 15 T= ;
 
 \ LASTC-CELL names the record the last create, variable or constant wrote, and
 \ does> patches that record. Every motion that lowers the dictionary count
@@ -165,7 +159,7 @@ LC-CAP BUFFER: LC-ERR
    LC-REFUSED
 
    s" an evaluate that fails retires its created record the same way" T-LABEL
-   S\" create CR-LC-KEEP 7 ,\nTRUSTED: CR-LC-TRY ( -- n ) [: s\" create CR-LC-GONE 5 , CR-LC-NO-SUCH-WORD\" evaluate ;] catch ;\nCR-LC-TRY drop\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ ;\nCR-LC-BEHAVE\n"
+   S\" create CR-LC-KEEP 7 ,\n: CR-LC-TRY ( -- n ) [: s\" create CR-LC-GONE 5 , CR-LC-NO-SUCH-WORD\" evaluate-closed ;] catch ;\nCR-LC-TRY drop\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ ;\nCR-LC-BEHAVE\n"
    LC-REFUSED
 
    \ undefine retires a record in place: NDICT stays, the wordlist cell says so.

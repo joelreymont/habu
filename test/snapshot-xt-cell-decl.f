@@ -165,12 +165,13 @@ TAKE8
 CAST: XT>N ( [ -- n ] -- n )
 : RAW-TARGET-XT ( -- n ) ['] RAW-TARGET XT>N ;
 
-\ The store is the point: an ORDINARY `!` of a live token into an undeclared
-\ cell. Checked source may not write that any more (E-RAW-CELL-PTR, "an
-\ undeclared cell cannot hold an execution token"), and `xt!` would declare the
-\ cell -- the opposite of what this subject measures -- so the store is a named
-\ boundary and the runtime fact it pins stays measurable.
-TRUSTED: RAW-ARM ( -- ) ['] RAW-TARGET RAW-XT ! ;
+\ The store is the point: an ORDINARY `!` of a live token's bits into an
+\ undeclared cell. Checked source may not store the token itself
+\ (E-RAW-CELL-PTR, "an undeclared cell cannot hold an execution token"), and
+\ `xt!` would declare the cell -- the opposite of what this subject measures --
+\ so the token is stored as the integer XT>N projects; the cell holds the same
+\ live token either way.
+: RAW-ARM ( -- ) RAW-TARGET-XT RAW-XT ! ;
 
 RAW-ARM
 

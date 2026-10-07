@@ -77,9 +77,9 @@ public
 
 : READ-ARTIFACT ( -- ) KEY ART$ AOT-FILE:READ ;
 
-TRUSTED: LOAD-SOURCE ( -- )
+: LOAD-SOURCE ( -- )
    LEFT$ included RIGHT$ included
-   s" SRCBOUND:LEFT SRCBOUND:RIGHT + ." evaluate ;
+   s" SRCBOUND:LEFT SRCBOUND:RIGHT + ." evaluate-closed ;
 
 private
 

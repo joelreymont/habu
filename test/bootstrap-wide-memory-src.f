@@ -306,17 +306,14 @@ STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop BWM-POOL-A !
    1 BWM-BROUTER 0 BWM= 93 BWM= 92 BWM= 91 BWM=
    0 BWM-BROUTER 0 BWM= 93 BWM= 92 BWM= 91 BWM= ;
 
-\ defer / is round-trip through the stage0 engine (dot
-\ habu-mirror-defer-is-4461fe23). A fresh defer's dispatch cell holds DEFER-UNSET
-\ (fail closed, not garbage); `is` installs a target the word then dispatches to,
-\ and a second `is` re-points it. The defer-touching words are TRUSTED: so the
-\ check hook is skipped, exactly as an unchecked boot-prefix file is processed
-\ (the seed's engine keyword path is what stage0 recovery re-reads at startup).
+\ defer / is round-trip through the stage0 engine. A fresh defer's dispatch cell
+\ holds DEFER-UNSET (fail closed, not garbage); `is` installs a target the word
+\ then dispatches to, and a second `is` re-points it.
 defer BWM-DEF ( -- n )
 
-TRUSTED: BWM-DEF-A ( -- ) [: 42 ;] is BWM-DEF ;
-TRUSTED: BWM-DEF-B ( -- ) [: 99 ;] is BWM-DEF ;
-TRUSTED: BWM-CALL-DEF ( -- n ) BWM-DEF ;
+: BWM-DEF-A ( -- ) [: 42 ;] is BWM-DEF ;
+: BWM-DEF-B ( -- ) [: 99 ;] is BWM-DEF ;
+: BWM-CALL-DEF ( -- n ) BWM-DEF ;
 
 : BWM-RD64 ( n -- n )  dup 0 BWM-CODE:W32  swap 4 BWM-CODE:W32  32 lshift  or ;
 
@@ -335,8 +332,8 @@ TRUSTED: BWM-CALL-DEF ( -- n ) BWM-DEF ;
 \ must register the defer's declared effect with the checker (the trust usig row
 \ plus the checker-defer row), exactly as native habu2.f C-DEFER does. Without
 \ that bridge the seed's check hook rejects the installer body with exit 70
-\ 'hook: non-certified definition: bwm-cdef! at is'. Unlike the TRUSTED sibling
-\ above, BWM-CDEF! is a plain `:` word carrying an xt-effect parameter (the
+\ 'hook: non-certified definition: bwm-cdef! at is'. Unlike the quotation
+\ literals above, BWM-CDEF! is a `:` word carrying an xt-effect parameter (the
 \ stage2a hook shape `: FOO! ( [E] -- ) is FOO ;`): its `is BWM-CDEF` and the
 \ later checked BWM-CDEF calls certify only once the seed's checker learns the
 \ defer.
@@ -352,7 +349,7 @@ defer BWM-CDEF ( -- n )
    xt 32 BWM-CODE:W32  $46455201 BWM=              \ the same eight-instruction shared-DATA dispatch
    xt 36 BWM-CODE:W32  $48424445 BWM=              \ DEFER-MAGIC high word
    xt 40 + BWM-RD64 BWM-RD64                  \ the fresh dispatch cell's value
-   BWM-FRESH @ BWM=                           \ = the same unset target the trusted defer held
+   BWM-FRESH @ BWM=                           \ = the same unset target BWM-DEF held
    BWM-CDEF-A  BWM-CALL-CDEF 42 BWM=          \ checked is installs a target -> dispatch returns 42
    BWM-CDEF-B  BWM-CALL-CDEF 99 BWM= ;        \ a second checked is re-points -> 99
 

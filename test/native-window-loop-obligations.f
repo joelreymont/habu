@@ -15,9 +15,9 @@ s" choice" s" 0 VARIANT first ;VARIANT VARIANT second ;VARIANT" CHECKER-DEFSUM
 PTR-VARIABLE SOURCE-A
 variable SOURCE-U
 
-\ The generated definition has a dynamic effect; failures re-enter catch.
-TRUSTED: LOAD-SOURCE ( -- )
-   SOURCE-A @ SOURCE-U @ evaluate ;
+\ The text loads as a closed program; a refused definition re-enters catch.
+: LOAD-SOURCE ( -- )
+   SOURCE-A @ SOURCE-U @ evaluate-closed ;
 
 : REJECT ( ptr u8 n -- )
    SOURCE-U ! SOURCE-A !

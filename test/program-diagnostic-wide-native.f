@@ -5,12 +5,12 @@ package PROGRAM-DIAG-WIDE
 public
 : START ( -- ) MULTI-ERR-BEGIN ;
 : FINISH ( -- n ) MULTI-ERR-END ;
-TRUSTED: BAD ( -- )
+: BAD ( -- )
    SB-RESET
    s" TRUSTED: PDB-WIDE ( " SB-APPEND
    256 0 do s" n " SB-APPEND loop
    s" -- ) ;" SB-APPEND
-   SB$ evaluate ;
+   SB$ evaluate-closed ;
 ;package
 
 : PDB-WIDE ( -- ) ;

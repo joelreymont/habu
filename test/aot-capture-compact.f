@@ -124,9 +124,9 @@ using AOT-BUF
 
 \ A source definition may replace the global spelling too. This isolated test
 \ runs last; already compiled diagnostics still call the original primitive.
-TRUSTED: CGT-SHADOW-PRIMITIVES ( -- )
-   s" undefine die : die ( ptr u8 n n -- ) 2drop drop ;" evaluate
-   s" undefine throw : throw ( n -- ) drop ;" evaluate ;
+: CGT-SHADOW-PRIMITIVES ( -- )
+   s" undefine die : die ( ptr u8 n n -- ) 2drop drop ;" evaluate-closed
+   s" undefine throw : throw ( n -- ) drop ;" evaluate-closed ;
 
 public
 : CGT-SHADOW ( -- )

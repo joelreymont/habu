@@ -21,17 +21,14 @@ package DECL-DIAG
 8192 constant CAP
 create BUF CAP allot
 
-\ Raw-memory boundary: a `create` region is not a typed `ptr u8` span inside a
-\ checked body.
-\ CAPTURE-OFF restores prose mode; CAPTURED$ returns the production buffer.
-\ Retirement owner for all three: habu-trusted-dies-prim-4fd12d60.
-\ Everything else in this module is ordinary checked Habu.
-TRUSTED: CAPTURE-ON ( n -- )              \ json? -> route declaration diagnostics into BUF
+\ CAPTURE-ON routes declaration diagnostics into BUF, as JSON when its flag is
+\ true; CAPTURE-OFF restores prose mode; CAPTURED$ returns the production buffer.
+: CAPTURE-ON ( bool -- )
    DIAG-JSON!
    BUF CAP DIAG-BUFFER! ;
-TRUSTED: CAPTURE-OFF ( -- )
+: CAPTURE-OFF ( -- )
    DIAG-BUFFER-OFF
-   0 DIAG-JSON! ;
+   false DIAG-JSON! ;
 : CAPTURED$ ( -- ptr u8 n ) DIAG-BUFFER$ ;
 
 variable SI
@@ -48,8 +45,8 @@ public
 
 \ Start (or restart) a capture. Each call empties the buffer, so a suite asserts
 \ about exactly one declaration at a time.
-: PROSE ( -- ) 0 CAPTURE-ON ;
-: JSON ( -- ) -1 CAPTURE-ON ;
+: PROSE ( -- ) false CAPTURE-ON ;
+: JSON ( -- ) true CAPTURE-ON ;
 : OFF ( -- ) CAPTURE-OFF ;
 
 \ What the capture holds now.

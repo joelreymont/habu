@@ -15,16 +15,16 @@ require src/habu/verify-source.f
 
 \ A resident parsing immediate executes during compilation despite its neutral
 \ declared effect. The verifier must lose a prospective tier at this token.
-TRUSTED: CVO-SW ( -- ) 1 set-tier ;
+: CVO-SW ( -- ) 1 TIER:SELECT ;
 immediate
 s" CVO-SW" 0 parse-imm
 package CVO-I
 private
-TRUSTED: SWP ( -- ) 1 set-tier ;
+: SWP ( -- ) 1 TIER:SELECT ;
 immediate
 s" SWP" 0 parse-imm
 public
-TRUSTED: SWI ( -- ) 1 set-tier ;
+: SWI ( -- ) 1 TIER:SELECT ;
 immediate
 s" SWI" 0 parse-imm
 ;package
@@ -122,13 +122,13 @@ variable LONG-U
    a LONG-BUF LONG-U @ + u BYTE-COPY
    u LONG-U +! ;
 
-TRUSTED: LONG-INSTALL ( -- )
+: LONG-INSTALL ( -- )
    1000 0 ?do $58 LONG-NAME i + c! loop
    0 LONG-U !
-   s" package CVO-LONG public TRUSTED: " LONG+
+   s" package CVO-LONG public : " LONG+
    LONG-NAME 1000 LONG+
-   s"  ( -- ) 1 set-tier ; immediate ;package" LONG+
-   LONG-BUF LONG-U @ evaluate ;
+   s"  ( -- ) 1 TIER:SELECT ; immediate ;package" LONG+
+   LONG-BUF LONG-U @ evaluate-closed ;
 
 : ACT ( -- )
    SRC-A @ SRC-U @ VERIFY:SOURCE-BUF ;

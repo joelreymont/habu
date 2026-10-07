@@ -13,7 +13,7 @@ TRUSTED: RESET-DECLARATION ( -- )
 
 \ Inspect only the user row; the public effect query also answers
 \ primitive axioms and could not prove that the bypass's precondition exists.
-TRUSTED: USER-ROW ( -- n )
+: USER-ROW ( -- n )
    s" CHECKER-RESET-SOURCE" CHECKER-GLOBAL-SYM? USIG-NEWEST
    dup 0= if s" reset has no user effect" 76 die then
    dup 1- E-PTR ER.ACTIVE @ 0= if s" reset user effect is inactive" 76 die then ;

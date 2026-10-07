@@ -14,7 +14,7 @@ TRUSTED: DECLARATION ( -- )
    s" FIELD-PROJ-FID" s" -- ptr n" TRUST-DECL
    s" FIELD-PROJ-OFF" s" -- ptr n" TRUST-DECL ;
 
-TRUSTED: REQUIRE-USER-ROW ( ptr u8 n -- )
+: REQUIRE-USER-ROW ( ptr u8 n -- )
    CHECKER-GLOBAL-SYM? USIG-NEWEST
    dup 0= if s" field arming has no user effect" 76 die then
    1- E-PTR ER.ACTIVE @ 0= if s" field arming effect is inactive" 76 die then ;

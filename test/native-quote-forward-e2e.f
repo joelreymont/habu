@@ -15,7 +15,7 @@ create PATH FS-PATH-CAP allot
 
 : INNER ( -- ) 11 HIT ! ;
 
-TRUSTED: OUTER ( [ [ -- ] -- ] -- ) {: callback :}
+: OUTER ( [ [ -- ] -- ] -- ) {: callback :}
    [: INNER ;] callback execute ;
 
 : INVOKE ( [ -- ] -- ) execute ;
@@ -28,10 +28,10 @@ TRUSTED: OUTER ( [ [ -- ] -- ] -- ) {: callback :}
 : TWO-QUOT-RUN ( [ -- ] [ -- ] -- [ -- ] [ -- ] )
    over execute dup execute ;
 
-TRUSTED: WRONG-EFFECT ( -- )
-   s" : WRONG ( -- ) [: 1 ;] [: NATIVE-QUOTE-FORWARD-E2E:INVOKE ;] execute ;" evaluate ;
+: WRONG-EFFECT ( -- )
+   s" : WRONG ( -- ) [: 1 ;] [: NATIVE-QUOTE-FORWARD-E2E:INVOKE ;] execute ;" evaluate-closed ;
 
-TRUSTED: CATCH-RUN ( -- )
+: CATCH-RUN ( -- )
    [: COUNT-INNER ;] [: COUNT-INNER ;] [: TWO-QUOT-RUN ;] catch
    {: rc:n :}
    2drop
@@ -41,7 +41,7 @@ public
 
 EXPORT INVOKE
 
-TRUSTED: TEST ( -- )
+: TEST ( -- )
    T-RESET
    0 HIT !
    RUN

@@ -29,24 +29,29 @@ create PATH FS-PATH-CAP allot
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : OWNER ( -- ptr u8 ) data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ ;
 
-TRUSTED: MARK ( -- )
-   OWNER CHECKER-OWNER-ABI:UNIT-MARK-OFF + CELL-VIEW @ execute ;
+\ The checker owner's record holds its unit callbacks as code address integers.
+CAST: MARK-XT ( n -- [ -- ] )
+CAST: EXPORT-XT ( n -- [ -- ptr u8 n ] )
+CAST: IMPORT-XT ( n -- [ ptr u8 n -- ] )
 
-TRUSTED: UNIT-EXPORT ( -- ptr u8 n )
-   OWNER CHECKER-OWNER-ABI:UNIT-EXPORT-OFF + CELL-VIEW @ execute ;
+: MARK ( -- )
+   OWNER CHECKER-OWNER-ABI:UNIT-MARK-OFF + CELL-VIEW @ MARK-XT execute ;
 
-TRUSTED: IMPORT ( ptr u8 n -- )
-   OWNER CHECKER-OWNER-ABI:UNIT-IMPORT-OFF + CELL-VIEW @ execute ;
+: UNIT-EXPORT ( -- ptr u8 n )
+   OWNER CHECKER-OWNER-ABI:UNIT-EXPORT-OFF + CELL-VIEW @ EXPORT-XT execute ;
+
+: IMPORT ( ptr u8 n -- )
+   OWNER CHECKER-OWNER-ABI:UNIT-IMPORT-OFF + CELL-VIEW @ IMPORT-XT execute ;
 
 TRUSTED: RESET-SOURCE ( -- ) CHECKER-RESET-SOURCE ;
-TRUSTED: LOAD-UNIT ( -- )
-   s" package UNIT-NBR public : BL-ALPHA ( -- n ) 1 ; : BL-OMEGA ( -- n ) 2 ; : BL-WORD ( n n -- n ) + ; : BL-TARGET ( n n -- n ) + ; : BL? ( n -- bool ) 0= ; : BL-SCHEME ( forall<p,[ R n -- R n | U -- U ]> -- ) drop ; : BL-INFER BL-SCHEME ; ;package" evaluate ;
-TRUSTED: SHADOW ( -- )
-   s" package UNIT-NBR public : UNIT-SHADOW ( n -- n ) 1+ ; undefine UNIT-SHADOW : UNIT-SHADOW ( n n -- n ) + ; ;package" evaluate ;
-TRUSTED: CLIENT ( -- n )
-   s" 4096 8 UNIT-NBR:BL-WORD" evaluate ;
-TRUSTED: DEFER-CHANGE ( -- )
-   s" package UNIT-NBR public defer UNIT-DEFER ( -- n ) ;package" evaluate ;
+: LOAD-UNIT ( -- )
+   s" package UNIT-NBR public : BL-ALPHA ( -- n ) 1 ; : BL-OMEGA ( -- n ) 2 ; : BL-WORD ( n n -- n ) + ; : BL-TARGET ( n n -- n ) + ; : BL? ( n -- bool ) 0= ; : BL-SCHEME ( forall<p,[ R n -- R n | U -- U ]> -- ) drop ; : BL-INFER BL-SCHEME ; ;package" evaluate-closed ;
+: SHADOW ( -- )
+   s" package UNIT-NBR public : UNIT-SHADOW ( n -- n ) 1+ ; undefine UNIT-SHADOW : UNIT-SHADOW ( n n -- n ) + ; ;package" evaluate-closed ;
+: CLIENT ( -- n )
+   s" 4096 8 UNIT-NBR:BL-WORD" TEST-EVAL:N ;
+: DEFER-CHANGE ( -- )
+   s" package UNIT-NBR public defer UNIT-DEFER ( -- n ) ;package" evaluate-closed ;
 
 : SERIAL ( -- n )
    CHECKER-OWNER:BINDING-WINDOW {: owner:ptr serial:n regime:bool :}

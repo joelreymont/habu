@@ -22,7 +22,7 @@ private
 TYPED-VARIABLE ROW [ n -- n ]
 : PRIVATE-STORE ( -- ) [: 1 + ;] ROW ! ;
 : PRIVATE-CALL ( n -- n ) ROW @ execute ;
-TRUSTED: PRIVATE-OFF ( -- n ) ROW BYTE-VIEW data-base BYTE-VIEW - ;
+: PRIVATE-OFF ( -- n ) ROW BYTE-VIEW data-base BYTE-VIEW - ;
 
 public
 \ The public accessor has the same tail as the private quote accessor. Record
@@ -33,9 +33,7 @@ here PUBLIC-BASE !
 TYPED-VARIABLE ROW n
 : PUBLIC-STORE ( n -- ) STORAGE-BIND-TEST:ROW ! ;
 : PUBLIC-READ ( -- n ) STORAGE-BIND-TEST:ROW @ ;
-TRUSTED: PUBLIC-OFF ( -- n ) PUBLIC-BASE @ BYTE-VIEW data-base BYTE-VIEW - ;
-
-TRUSTED: CAPTURE-STORAGE ( -- ) CHECKER-CAPTURE-PREPARE ;
+: PUBLIC-OFF ( -- n ) PUBLIC-BASE @ BYTE-VIEW data-base BYTE-VIEW - ;
 
 : XT-MARKED? ( n -- bool ) {: off:n :}
    ADDRESS-CELLS:LIVE-SPAN nip 0 ?do
@@ -52,7 +50,7 @@ TRUSTED: CAPTURE-STORAGE ( -- ) CHECKER-CAPTURE-PREPARE ;
    3 s" abc" drop PLAIN-ROW-MAKE 4095 PLAIN !
    4095 PLAIN @ PLAIN-ROW-UNMAKE 3
    s" abc" T$= 3 T=
-   CAPTURE-STORAGE
+   CHECKER-CAPTURE-PREPARE
    PRIVATE-OFF XT-MARKED? TTRUE
    PUBLIC-OFF XT-MARKED? TFALSE
    5 PRIVATE-CALL 6 T=

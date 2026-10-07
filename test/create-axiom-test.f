@@ -76,18 +76,10 @@ private
 0 constant LOADED               \ what `catch` answers for a source that loaded
 70 constant REJECT-RC           \ src/core/check-hook.f LOWER-CERT-HOOK CHECK-RC (private there)
 
-\ `evaluate` is the metaprogramming boundary the checker does not model, and it is
-\ how this suite loads a definition the way a source file loads one. The suite
-\ runs at top level, so what these publish is global - the position an ordinary
-\ program's definitions occupy, and the one the inference case needs.
-TRUSTED: EV ( ptr u8 n -- )
-   evaluate ;
-
-TRUSTED: EV-N ( ptr u8 n -- n )
-   evaluate ;
-
-TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
-   evaluate ;
+\ `evaluate-closed` loads a definition the way a source file loads one, as a
+\ closed program. The suite runs at top level, so what these publish is global -
+\ the position an ordinary program's definitions occupy, and the one the
+\ inference case needs.
 
 \ ---- what the row says, read the way the production compiler reads it ----------
 \ NDICT:SPELL-ARITY is the bridge the dot named: it resolves a spelling's active
@@ -110,10 +102,10 @@ TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
 \ ---- authority. The definer publishes `-- ptr a` against the new name as it
 \ ---- emits the body, so emptying the definer's own row leaves this untouched.
 : MADE-WORD ( -- )
-   s" create CAX-DAT 8 allot" EV ;
+   s" create CAX-DAT 8 allot" evaluate-closed ;
 
 : MADE-USE ( -- )
-   s" : CAX-USE ( -- n ) CAX-DAT @ ;" EV ;
+   s" : CAX-USE ( -- n ) CAX-DAT @ ;" evaluate-closed ;
 
 : MADE-CASE ( -- )
    s" a word `create` made still pushes one address" T-LABEL
@@ -123,27 +115,27 @@ TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
 
    s" and a checked body may still take it as one" T-LABEL
    [: MADE-USE ;] LOADED TTHROWSQ
-   s" 41 CAX-DAT !  CAX-USE" EV-N 41 T= ;
+   s" 41 CAX-DAT !  CAX-USE" TEST-EVAL:N 41 T= ;
 
 \ ---- the load path: bodies that must load, and bodies that must not -----------
-: LOAD-EMPTY ( -- )      s" : CAX-B1 ( -- ) create ;" EV ;
-: LOAD-PTR-A ( -- )      s" : CAX-B2 ( -- ptr a ) create ;" EV ;
-: LOAD-N ( -- )          s" : CAX-B3 ( -- n ) create ;" EV ;
-: LOAD-ENUM-HALF ( -- )  s" : CAX-B4 ( n -- n ) dup create , 1 + ;" EV ;
-: LOAD-IN-STRING ( -- )  s\" : CAX-B5 ( -- ptr u8 n ) s\q create\q ;" EV ;
-: LOAD-IN-COMMENT ( -- ) s" : CAX-B6 ( -- ) ( create ) ;" EV ;
+: LOAD-EMPTY ( -- )      s" : CAX-B1 ( -- ) create ;" evaluate-closed ;
+: LOAD-PTR-A ( -- )      s" : CAX-B2 ( -- ptr a ) create ;" evaluate-closed ;
+: LOAD-N ( -- )          s" : CAX-B3 ( -- n ) create ;" evaluate-closed ;
+: LOAD-ENUM-HALF ( -- )  s" : CAX-B4 ( n -- n ) dup create , 1 + ;" evaluate-closed ;
+: LOAD-IN-STRING ( -- )  s\" : CAX-B5 ( -- ptr u8 n ) s\q create\q ;" evaluate-closed ;
+: LOAD-IN-COMMENT ( -- ) s" : CAX-B6 ( -- ) ( create ) ;" evaluate-closed ;
 \ `here` hands back a raw storage address, so its wrapper declares `ptr n`: a
 \ parametric pointee over raw storage is E-NONPARAMETRIC-EFFECT (docs/forth.md,
 \ "Use real types, not reflexive n"). What this case measures is the arity.
-: LOAD-HERE ( -- )       s" : CAX-B7 ( -- ptr n ) here ;" EV ;
+: LOAD-HERE ( -- )       s" : CAX-B7 ( -- ptr n ) here ;" evaluate-closed ;
 
 : BODY-CASE ( -- )
    s" a body whose whole content is `create` declares nothing and loads" T-LABEL
    [: LOAD-EMPTY ;] LOADED TTHROWSQ
 
    s" and the machine agrees: running it leaves the cell under it on top" T-LABEL
-   s" 99 CAX-B1 CAX-B1-NAME" EV-N 99 T=
-   s" CAX-B1-NAME" EV-N 0 T<>
+   s" 99 CAX-B1 CAX-B1-NAME" TEST-EVAL:N 99 T=
+   s" CAX-B1-NAME" TEST-EVAL:N 0 T<>
 
    s" declaring the address it used to claim is refused at the token" T-LABEL
    [: LOAD-PTR-A ;] REJECT-RC TTHROWSQ
@@ -155,12 +147,12 @@ TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
    [: LOAD-ENUM-HALF ;] LOADED TTHROWSQ
 
    s" and running it defines the name and stores the counter in it" T-LABEL
-   s" 5 CAX-B4 CAX-B4-CELL" EV-N 6 T=
-   s" CAX-B4-CELL @" EV-N 5 T=
+   s" 5 CAX-B4 CAX-B4-CELL" TEST-EVAL:N 6 T=
+   s" CAX-B4-CELL @" TEST-EVAL:N 5 T=
 
    s" `create` inside a string is a string" T-LABEL
    [: LOAD-IN-STRING ;] LOADED TTHROWSQ
-   s" CAX-B5" EV-STR s" create" T$=
+   s\" CAX-B5 s\q create\q STR=" TEST-EVAL:FLAG TTRUE
 
    s" `create` inside a comment is a comment" T-LABEL
    [: LOAD-IN-COMMENT ;] LOADED TTHROWSQ
@@ -176,9 +168,9 @@ TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
 \ A body with no declared signature reaches the primitive row, and what the walk
 \ infers for it is recorded under its name for every later caller. This is the
 \ case that certified a stack cell the machine never pushes.
-: INFER-MK ( -- )       s" : CAX-MK create ;" EV ;
-: INFER-BAD ( -- )      s" : CAX-C1 ( -- ptr a ) CAX-MK ;" EV ;
-: INFER-GOOD ( -- )     s" : CAX-C2 ( -- ) CAX-MK ;" EV ;
+: INFER-MK ( -- )       s" : CAX-MK create ;" evaluate-closed ;
+: INFER-BAD ( -- )      s" : CAX-C1 ( -- ptr a ) CAX-MK ;" evaluate-closed ;
+: INFER-GOOD ( -- )     s" : CAX-C2 ( -- ) CAX-MK ;" evaluate-closed ;
 
 : INFER-CASE ( -- )
    s" an unsigned body calling `create` records what it really leaves" T-LABEL
@@ -191,13 +183,13 @@ TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
 
    s" and the caller that claims nothing certifies and runs" T-LABEL
    [: INFER-GOOD ;] LOADED TTHROWSQ
-   s" CAX-C2 CAX-C2-CELL 8 allot  7 CAX-C2-CELL !  CAX-C2-CELL @" EV-N 7 T= ;
+   s" CAX-C2 CAX-C2-CELL 8 allot  7 CAX-C2-CELL !  CAX-C2-CELL @" TEST-EVAL:N 7 T= ;
 
 : COMPILER-ALONE ( -- )
-   s" : CAX-D1 ( -- ) create ;" EV ;
+   s" : CAX-D1 ( -- ) create ;" evaluate-closed ;
 
 : COMPILER-ENUM-HALF ( -- )
-   s" : CAX-D2 ( n -- n ) dup create , 1 + ;" EV ;
+   s" : CAX-D2 ( n -- n ) dup create , 1 + ;" evaluate-closed ;
 
 \ `create allot` was lib/string.f BUFFER:'s definer half until that definer was
 \ converted to a generated colon accessor (dot habu-the-reader-re-a65e56e5). The
@@ -205,7 +197,7 @@ TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
 \ cell, and a body that allots after it is the sharpest form of that question - not
 \ because the tree still ships one.
 : COMPILER-BUFFER-HALF ( -- )
-   s" : CAX-D3 ( n -- ) create allot ;" EV ;
+   s" : CAX-D3 ( n -- ) create allot ;" evaluate-closed ;
 
 \ THE FOURTH CASE HERE WAS A WRONG ARITY AND IT IS RETIRED, because there is no
 \ longer a caller who can state one. It handed the same body as COMPILER-ENUM-HALF

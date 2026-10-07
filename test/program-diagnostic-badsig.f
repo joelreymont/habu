@@ -5,8 +5,8 @@ package PROGRAM-DIAG-BADSIG
 public
 : START ( -- ) MULTI-ERR-BEGIN ;
 : FINISH ( -- n ) MULTI-ERR-END ;
-TRUSTED: NATIVE-BAD ( -- )
-   s" TRUSTED: PDB-NATIVE ( -- zz ) ;" evaluate ;
+: NATIVE-BAD ( -- )
+   s" TRUSTED: PDB-NATIVE ( -- zz ) ;" evaluate-closed ;
 ;package
 
 PROGRAM-DIAG-BADSIG:START

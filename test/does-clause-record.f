@@ -36,12 +36,6 @@ require src/habu/layout.f
 package DOESREC-TEST
 private
 
-\ `evaluate` is the metaprogramming boundary the checker does not model and the
-\ only way to compile a definition from inside a test.
-TRUSTED: EV ( ptr u8 n -- )
-   evaluate ;
-TRUSTED: EV-N ( ptr u8 n -- n )
-   evaluate ;
 \ A code address is an integer; decoding its instruction needs a byte view.
 CAST: N>U8 ( n -- ptr u8 )
 : U8>N ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
@@ -94,17 +88,17 @@ variable MK-CP
 \ Each definer is entered so a created word exists to carry the planted branch.
 : SUBJECTS ( -- )
    ndict@ N0 !
-   s" : DR-PLAIN ( n -- n ) 3 * ;" EV
+   s" : DR-PLAIN ( n -- n ) 3 * ;" evaluate-closed
    ndict@ N1 !
-   s" : DR-MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
+   s" : DR-MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" evaluate-closed
    cp@ MK-CP !
    ndict@ N2 !
-   s" 7 DR-MK DR-SEVEN drop" EV
-   s" : DR-LONG-DEFINER-NAME ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
-   s" 9 DR-LONG-DEFINER-NAME DR-NINE drop" EV
+   s" 7 DR-MK DR-SEVEN drop" evaluate-closed
+   s" : DR-LONG-DEFINER-NAME ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" evaluate-closed
+   s" 9 DR-LONG-DEFINER-NAME DR-NINE drop" evaluate-closed
    \ a package keeps its clause in its own wordlist, whatever the global one holds
-   s" : MK;does ( -- n ) 222 ;" EV
-   s" package DRP public : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; ;package" EV ;
+   s" : MK;does ( -- n ) 222 ;" evaluate-closed
+   s" package DRP public : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; ;package" evaluate-closed ;
 
 \ ---- a clause name a live word already holds ---------------------------------
 \ Each holder is spelled in another case than the clause would be: the
@@ -123,42 +117,42 @@ variable HELD-ND  variable HELD-CP
    cp@ HELD-CP @ T=
    d du GLOBAL-WID search-wl 0= TTRUE
    s" the word that holds the name still answers" T-LABEL
-   h hu EV-N 111 T= ;
+   h hu TEST-EVAL:N 111 T= ;
 
 \ Tier 0, the legacy JIT every `--load` and the REPL run: J-DOES.
 : HELD-JIT ( -- )
-   s" : dr-jit;DOES ( -- n ) 111 ;" EV
+   s" : dr-jit;DOES ( -- n ) 111 ;" evaluate-closed
    HELD-MARK
    s" the legacy compiler refuses a definer whose clause name is held" T-LABEL
-   [: s" : DR-JIT ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV ;]
+   [: s" : DR-JIT ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" evaluate-closed ;]
    DUP-DEF-RC TTHROWSQ
    s" DR-JIT" s" dr-jit;DOES" ?HELD
    s" undefining the holder frees the name for the definer" T-LABEL
-   s" undefine dr-jit;DOES" EV
-   s" : DR-JIT ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
-   s" 6 DR-JIT DR-JIT-SIX" EV-N 7 T=
-   s" DR-JIT-SIX" EV-N 6 T= ;
+   s" undefine dr-jit;DOES" evaluate-closed
+   s" : DR-JIT ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" evaluate-closed
+   s" 6 DR-JIT DR-JIT-SIX" TEST-EVAL:N 7 T=
+   s" DR-JIT-SIX" TEST-EVAL:N 6 T= ;
 
 \ Tier 1, the native chain an executable build runs: NCOMP-EMIT:CAPTURE-DOES.
 : HELD-NATIVE ( -- )
-   s" : Dr-Held;Does ( -- n ) 111 ;" EV
+   s" : Dr-Held;Does ( -- n ) 111 ;" evaluate-closed
    HELD-MARK
    s" the native compiler refuses a definer whose clause name is held" T-LABEL
-   [: s" : DR-HELD ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV ;]
+   [: s" : DR-HELD ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" evaluate-closed ;]
    DUP-DEF-RC TTHROWSQ
    s" DR-HELD" s" Dr-Held;Does" ?HELD
    s" undefining the holder frees the name for the definer" T-LABEL
-   s" undefine Dr-Held;Does" EV
-   s" : DR-HELD ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
-   s" 6 DR-HELD DR-HELD-SIX" EV-N 7 T=
-   s" DR-HELD-SIX" EV-N 6 T= ;
+   s" undefine Dr-Held;Does" evaluate-closed
+   s" : DR-HELD ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" evaluate-closed
+   s" 6 DR-HELD DR-HELD-SIX" TEST-EVAL:N 7 T=
+   s" DR-HELD-SIX" TEST-EVAL:N 6 T= ;
 
 \ A definition the check hook refuses must leave BOTH slots uncounted.
 variable REJ0  variable REJ1
 
 : RUN-REJECTED ( -- )
    ndict@ REJ0 !
-   [: s" : DR-BAD ( n -- n ) dup create , DR-NO-SUCH-WORD does> ( -- n ) @ ;" EV ;] catch drop
+   [: s" : DR-BAD ( n -- n ) dup create , DR-NO-SUCH-WORD does> ( -- n ) @ ;" evaluate-closed ;] catch drop
    ndict@ REJ1 ! ;
 
 \ The hook refuses DR-BAD at its parent, before the clause is scanned, and the
@@ -258,7 +252,7 @@ variable FORGET-NAME-A
    cp@ FAIL-RESTORE-CP !
    CODE-CEILING DR-MK-SIZE - dup FAIL-CP ! cp!
    ndict@ FAIL-ND !
-   [: s" : DR-PAD-FAIL ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV ;]
+   [: s" : DR-PAD-FAIL ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" evaluate-closed ;]
    E-NPUB-ROOM TTHROWSQ
    s" a refusal after native emission leaves CP and both records unpublished" T-LABEL
    cp@ FAIL-CP @ T=
@@ -266,13 +260,13 @@ variable FORGET-NAME-A
    s" DR-PAD-FAIL" GLOBAL-WID search-wl 0= TTRUE
    FAIL-RESTORE-CP @ cp!
    s" the rejected name and checker signature are reusable" T-LABEL
-   s" : DR-PAD-FAIL ( n -- n ) 1 + ;" EV
-   s" 4 DR-PAD-FAIL" EV-N 5 T= ;
+   s" : DR-PAD-FAIL ( n -- n ) 1 + ;" evaluate-closed
+   s" 4 DR-PAD-FAIL" TEST-EVAL:N 5 T= ;
 
 : FORGET-CASE ( -- )
    cp@ FORGET-CP !  ndict@ FORGET-ND !
-   s" : DR-FORGET-MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
-   s" 17 DR-FORGET-MK DR-FORGET-CELL" EV-N 18 T=
+   s" : DR-FORGET-MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" evaluate-closed
+   s" 17 DR-FORGET-MK DR-FORGET-CELL" TEST-EVAL:N 18 T=
    s" the definer, hidden clause, and created word add three records" T-LABEL
    ndict@ FORGET-ND @ 3 + T=
    s" DR-FORGET-MK;does" IDX NAME$ drop U8>N dup FORGET-NAME-A !
@@ -288,9 +282,9 @@ variable FORGET-NAME-A
    SNAP-RELOC:CALLMAP-OFF FORGET-NAME-A @ MAP-BIT@ 0 T=
    SNAP-RELOC:ADDRMAP-OFF FORGET-NAME-A @ 4 + MAP-BIT@ 0 T=
    s" its name and checker signature are reusable after reclamation" T-LABEL
-   s" : DR-FORGET-MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
-   s" 4 DR-FORGET-MK DR-FORGET-CELL" EV-N 5 T=
-   s" DR-FORGET-CELL" EV-N 4 T= ;
+   s" : DR-FORGET-MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" evaluate-closed
+   s" 4 DR-FORGET-MK DR-FORGET-CELL" TEST-EVAL:N 5 T=
+   s" DR-FORGET-CELL" TEST-EVAL:N 4 T= ;
 
 \ ---- an exported definer carries its clause ---------------------------------
 \ `export` gives a body a second record (habu2.f C-EXPORT), and a does>
@@ -312,29 +306,29 @@ variable FORGET-NAME-A
    da du wa wu ?BRANCH ;
 
 : EXPORTED-JIT ( -- )
-   s" package DRXJ : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; public export MK ;package" EV
-   s" 7 DRXJ:MK DRXJ-SEVEN drop" EV
+   s" package DRXJ : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; public export MK ;package" evaluate-closed
+   s" 7 DRXJ:MK DRXJ-SEVEN drop" evaluate-closed
    s" DRXJ:MK" s" DRXJ:MK;does" s" DRXJ-SEVEN" ?EXPORTED
    s" a word made through the alias runs the clause" T-LABEL
-   s" DRXJ-SEVEN" EV-N 7 T= ;
+   s" DRXJ-SEVEN" TEST-EVAL:N 7 T= ;
 
 \ Undefining the private original retires its own pair and leaves the export's;
 \ undefining the export retires its clause with it (src/habu/xref.f
 \ XREF-RETIRE-INDEX), and neither moves code.
 : EXPORTED-NATIVE ( -- )
-   s" package DRXN : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; public export MK ;package" EV
-   s" 7 DRXN:MK DRXN-SEVEN drop" EV
+   s" package DRXN : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; public export MK ;package" evaluate-closed
+   s" 7 DRXN:MK DRXN-SEVEN drop" evaluate-closed
    s" DRXN:MK" s" DRXN:MK;does" s" DRXN-SEVEN" ?EXPORTED
    s" DRXN:MK" XREF-FIND DEF-OCC:SELECT {: alias-slot:n alias-occ:n :}
    s" DRXN:MK;does" XREF-FIND DEF-OCC:SELECT {: clause-slot:n clause-occ:n :}
    alias-occ clause-occ T<>
    s" undefining the private original leaves the exported pair" T-LABEL
-   s" package DRXN private undefine MK ;package" EV
+   s" package DRXN private undefine MK ;package" evaluate-closed
    alias-slot alias-occ DEF-OCC:RESOLVE XREF-START 0<> TTRUE
    clause-slot clause-occ DEF-OCC:RESOLVE XREF-START 0<> TTRUE
    s" DRXN:MK;does" IDX  s" DRXN:MK" CLAUSE  T=
-   s" 8 DRXN:MK DRXN-EIGHT drop" EV
-   s" DRXN-EIGHT" EV-N 8 T=
+   s" 8 DRXN:MK DRXN-EIGHT drop" evaluate-closed
+   s" DRXN-EIGHT" TEST-EVAL:N 8 T=
    s" creating another word keeps the retained export pair" T-LABEL
    alias-slot alias-occ DEF-OCC:RESOLVE XREF-START 0<> TTRUE
    clause-slot clause-occ DEF-OCC:RESOLVE XREF-START 0<> TTRUE
@@ -345,26 +339,26 @@ variable FORGET-NAME-A
    earlier-slot later-slot T<>
    earlier-occ later-occ T<>
    s" undefining the export retires its clause with it" T-LABEL
-   s" package DRXN public undefine MK ;package" EV
+   s" package DRXN public undefine MK ;package" evaluate-closed
    s" DRXN:MK;does" IDX 0 < TTRUE
    public-slot public-occ DEF-OCC:RESOLVE XREF-START 0<> TTRUE
    pub-clause-slot pub-clause-occ DEF-OCC:RESOLVE XREF-START 0<> TTRUE
    s" ... and the words it made keep their clause" T-LABEL
-   s" DRXN-SEVEN" EV-N 7 T= ;
+   s" DRXN-SEVEN" TEST-EVAL:N 7 T= ;
 
 \ A clause name the export's wordlist already holds refuses the export, as it
 \ refuses a definer defined there.
 : EXPORT-HELD ( -- )
-   s" package DRXH public : mk;DOES ( -- n ) 111 ; private : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; ;package" EV
+   s" package DRXH public : mk;DOES ( -- n ) 111 ; private : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; ;package" evaluate-closed
    HELD-MARK
    s" an export whose clause name its wordlist holds is refused" T-LABEL
-   [: s" package DRXH public export MK ;package" EV ;] DUP-DEF-RC TTHROWSQ
+   [: s" package DRXH public export MK ;package" evaluate-closed ;] DUP-DEF-RC TTHROWSQ
    s" the refused export publishes neither record and moves no code" T-LABEL
    ndict@ HELD-ND @ T=
    cp@ HELD-CP @ T=
    s" DRXH:MK" IDX 0 < TTRUE
    s" the word that holds the name still answers" T-LABEL
-   s" DRXH:mk;DOES" EV-N 111 T= ;
+   s" DRXH:mk;DOES" TEST-EVAL:N 111 T= ;
 
 public
 
@@ -401,7 +395,7 @@ public
    s" ... and that is not the global wordlist" T-LABEL
    s" DRP:MK" IDX WID  GLOBAL-WID <>  TTRUE
    s" ... so the global word holding its clause name stands beside it" T-LABEL
-   s" MK;does" EV-N 222 T=
+   s" MK;does" TEST-EVAL:N 222 T=
 
    HELD-NATIVE
    EXPORTED-NATIVE

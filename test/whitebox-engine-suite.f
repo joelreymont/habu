@@ -50,9 +50,9 @@ CAST: XT>N ( [ -- ptr u8 ] -- n )
 
 \ The product has no NULL-PTR-CELL name. The unsealed image can still inspect
 \ the cell and the two independently declared offsets used by its runtime.
-TRUSTED: NULL-CELL-VALUE ( -- n ) NULL-PTR-CELL @ ;
-TRUSTED: NULL-CELL-OFFSET ( -- n ) NULL-PTR-CELL data-base - NULL-PTR-CELL-OFF - ;
-TRUSTED: NULL-CELL-MIRROR ( -- n ) NULL-PTR-OFF NULL-PTR-CELL-OFF - ;
+: NULL-CELL-VALUE ( -- n ) NULL-PTR-CELL @ ;
+: NULL-CELL-OFFSET ( -- n ) NULL-PTR-CELL data-base - NULL-PTR-CELL-OFF - ;
+: NULL-CELL-MIRROR ( -- n ) NULL-PTR-OFF NULL-PTR-CELL-OFF - ;
 
 \ Interpret-mode execution of the same word, through a name the engine resolves
 \ at run time rather than one this file compiled.

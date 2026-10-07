@@ -13,7 +13,7 @@ require tools/native-unit-compile.f
 
 package UNIT-COMPILE
 public
-TRUSTED: BORROWED-CLEAR? ( -- bool )
+: BORROWED-CLEAR? ( -- bool )
    BODY-XT @ 0= ;
 TRUSTED: NESTED-RUN ( [ -- ] -- n )
    ['] GUARD swap unit-compile-run ;

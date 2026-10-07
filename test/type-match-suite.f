@@ -50,13 +50,25 @@ SUMTYPE mpoly 2
   VARIANT ok  a ;VARIANT
   VARIANT err b ;VARIANT
 ;SUMTYPE
-deflinear mtok
+\ TMLIN declares the linear `mtok`, so FREE-MTOK, the abstract consumer that
+\ releases one to nothing, is checked over the package's private LINEAR: erase
+\ row. The cases name both by their qualified spelling and stay at top level:
+\ `construct` resolves its family owner-only, so KNL3 below stops certifying the
+\ moment a package is open around it.
+package TMLIN
+public
+DEFLINEAR TMLIN:mtok
+private
+LINEAR: MTOK>N ( TMLIN:mtok -- n )
+public
+: FREE-MTOK ( TMLIN:mtok -- ) MTOK>N drop ;
+;package
 SUMTYPE mlin 2
   VARIANT ok  a ;VARIANT
   VARIANT err b ;VARIANT
 ;SUMTYPE
 ENUM-DECL:ED-RUN mnamedlin 0
-  VARIANT hold FIELD token mtok ;VARIANT
+  VARIANT hold FIELD token TMLIN:mtok ;VARIANT
   VARIANT empty ;VARIANT
 ;ENUM
 \ variants spelled like stack words: the generated constructors MWV:DUP/MWV:SWAP
@@ -112,64 +124,47 @@ s" MATCH-OK" type cr
 \ (popped at MATCH entry, structurally unusable after), and each arm's refined
 \ payload is a use-after-free-class resource that the arm must consume EXACTLY
 \ once — no leak, no drop, no copy, no double-consume. ML1-ML4 prove this
-\ TRUST-free via construct round-trips (consume = re-mint); ML5-ML12 pin the
-\ consume-to-nothing contract using FREE-MTOK, the abstract linear consumer
-\ (test-fixture boundary, engine-suite T-FREE-OWN pattern; the sole checked way
-\ to release a linear to nothing), so a branch can fully discharge the payload.
+\ via construct round-trips (consume = re-mint); ML5-ML12 pin the
+\ consume-to-nothing contract using TMLIN:FREE-MTOK, the abstract linear
+\ consumer, so a branch can fully discharge the payload.
 \ ---------------------------------------------------------------------------
-s" MLC=" type s" KLC ( mtok -- mtok mtok ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+s" MLC=" type s" KLC ( TMLIN:mtok -- TMLIN:mtok TMLIN:mtok ) dup" CHECK-QUIET-CANDIDATE! 0 T=
 s" MLN1=" type s" KNL1 ( mnamedlin -- mnamedlin mnamedlin ) dup" CHECK-QUIET-CANDIDATE! 0 T=
 s" MLN2=" type s" KNL2 ( mnamedlin -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" ML1=" type s" K1 ( mlin<mtok,n> -- mlin<mtok,n> ) MATCH mlin ok OF construct mlin ok ENDOF err OF construct mlin err ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" ML1=" type s" K1 ( mlin<TMLIN:mtok,n> -- mlin<TMLIN:mtok,n> ) MATCH mlin ok OF construct mlin ok ENDOF err OF construct mlin err ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 \ moving the linear payload out through the join is legitimate consumption.
 SUMTYPE mlin2 2
   VARIANT ok  a ;VARIANT
   VARIANT err a ;VARIANT
 ;SUMTYPE
-s" ML2=" type s" K2 ( mlin2<mtok,mtok> -- mtok ) MATCH mlin2 ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" ML2=" type s" K2 ( mlin2<TMLIN:mtok,TMLIN:mtok> -- TMLIN:mtok ) MATCH mlin2 ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 \ dropping or copying the linear payload in a branch rejects.
-s" ML3=" type s" KB1 ( mlin<mtok,n> -- mlin<mtok,n> ) MATCH mlin ok OF drop 0 construct mlin ok ENDOF err OF construct mlin err ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
-s" ML4=" type s" KB2 ( mlin<mtok,n> -- mlin<mtok,n> ) MATCH mlin ok OF dup drop construct mlin ok ENDOF err OF construct mlin err ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
-\ FREE-MTOK: abstract linear consumer (test-fixture boundary; released to nothing).
-\
-\ IT IS A `TRUSTED:` DEFINITION IN A PACKAGE, NOT A BARE `trust` ROW. Releasing a
-\ linear token to nothing has no checked body, which is why the boundary is
-\ declared rather than written; a bare row would additionally CLAIM the word
-\ already exists somewhere, and nothing defines it. That claim is now refused at
-\ the row (src/core/checker.f TRUST-RESOLVES?, dot
-\ habu-make-trust-refuse-cc8e19de). The cases below cannot simply be wrapped in
-\ an open package instead -
-\ `construct` resolves its family owner-only, so KNL3 two lines down stops
-\ certifying the moment a package is open around it. A package the cases name by
-\ its qualified spelling leaves every case's scope exactly as it was.
-package TMLIN
-public
-TRUSTED: FREE-MTOK ( mtok -- ) drop ;
-;package
+s" ML3=" type s" KB1 ( mlin<TMLIN:mtok,n> -- mlin<TMLIN:mtok,n> ) MATCH mlin ok OF drop 0 construct mlin ok ENDOF err OF construct mlin err ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" ML4=" type s" KB2 ( mlin<TMLIN:mtok,n> -- mlin<TMLIN:mtok,n> ) MATCH mlin ok OF dup drop construct mlin ok ENDOF err OF construct mlin err ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 \ Named-field construct and MATCH use the same declared payload and preserve
 \ the linear token exactly once.
-s" MLN3=" type s" KNL3 ( mtok -- mnamedlin ) construct mnamedlin hold" CHECK-QUIET-CANDIDATE! -1 T=
+s" MLN3=" type s" KNL3 ( TMLIN:mtok -- mnamedlin ) construct mnamedlin hold" CHECK-QUIET-CANDIDATE! -1 T=
 s" MLN4=" type s" KNL4 ( mnamedlin -- n ) MATCH mnamedlin hold OF TMLIN:FREE-MTOK 0 ENDOF empty OF 0 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" MLN5=" type s" KNL5 ( mnamedlin -- n ) MATCH mnamedlin hold OF 0 ENDOF empty OF 0 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 \ full consume: the linear arm frees its refined payload to nothing, the err arm
 \ (payload n, non-linear) passes it through -> accept. The single-consumption
 \ contract: the scrutinee's linear resource is discharged exactly once.
-s" ML5=" type s" K5 ( mlin<mtok,n> -- n ) MATCH mlin ok OF TMLIN:FREE-MTOK 0 ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" ML5=" type s" K5 ( mlin<TMLIN:mtok,n> -- n ) MATCH mlin ok OF TMLIN:FREE-MTOK 0 ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 \ leak: the refined linear payload is never consumed (only n produced) -> reject.
-s" ML6=" type s" K6 ( mlin<mtok,n> -- n ) MATCH mlin ok OF 0 ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" ML6=" type s" K6 ( mlin<TMLIN:mtok,n> -- n ) MATCH mlin ok OF 0 ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 \ double-consume: freeing the payload twice (use-after-free) -> reject.
-s" ML7=" type s" K7 ( mlin<mtok,n> -- n ) MATCH mlin ok OF TMLIN:FREE-MTOK TMLIN:FREE-MTOK 0 ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" ML7=" type s" K7 ( mlin<TMLIN:mtok,n> -- n ) MATCH mlin ok OF TMLIN:FREE-MTOK TMLIN:FREE-MTOK 0 ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 \ leak on early exit: the payload is live when the arm exits -> reject.
-s" ML8=" type s" K8 ( mlin<mtok,n> -- n ) MATCH mlin ok OF exit ENDOF err OF 0 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" ML8=" type s" K8 ( mlin<TMLIN:mtok,n> -- n ) MATCH mlin ok OF exit ENDOF err OF 0 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 \ forward the payload out through the join (both arms carry mtok) -> accept.
-s" ML9=" type s" K9 ( mlin2<mtok,mtok> -- mtok ) MATCH mlin2 ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" ML9=" type s" K9 ( mlin2<TMLIN:mtok,TMLIN:mtok> -- TMLIN:mtok ) MATCH mlin2 ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 \ forward AND free the same payload (copy then consume) -> reject.
-s" ML10=" type s" K10 ( mlin2<mtok,mtok> -- mtok ) MATCH mlin2 ok OF dup TMLIN:FREE-MTOK ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" ML10=" type s" K10 ( mlin2<TMLIN:mtok,TMLIN:mtok> -- TMLIN:mtok ) MATCH mlin2 ok OF dup TMLIN:FREE-MTOK ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 \ payload moved via balanced return-stack traffic then consumed -> accept
 \ (the move-class relaxation composes with match refinement).
-s" ML11=" type s" K11 ( mlin<mtok,n> -- n ) MATCH mlin ok OF >r 0 r> TMLIN:FREE-MTOK ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" ML11=" type s" K11 ( mlin<TMLIN:mtok,n> -- n ) MATCH mlin ok OF >r 0 r> TMLIN:FREE-MTOK ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 \ payload stranded on the return stack (>r, never r>) -> reject.
-s" ML12=" type s" K12 ( mlin<mtok,n> -- n ) MATCH mlin ok OF >r 0 ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" ML12=" type s" K12 ( mlin<TMLIN:mtok,n> -- n ) MATCH mlin ok OF >r 0 ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MATCH-LINEAR" type cr
 
 \ ---------------------------------------------------------------------------
