@@ -7,11 +7,6 @@ require lib/image-lifecycle.f
 package C2-MEM
 private
 
-\ The source loaded below owns this contiguous private runtime band. Its
-\ executable records are hidden only after c2-memory.f and c2-owner.f have
-\ compiled their legitimate direct calls.
-ndict@ constant RUNTIME-FIRST
-
 CAST: INIT-LEN>N ( NUM:alloc-byte-len -- n )
 
 0 constant CLOSED
@@ -43,21 +38,27 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and REGION-BYTES TASK:+USER OWNER-REGION drop
 : STATE-CELL ( ptr n -- ptr n ) ;
 : PREV-CELL ( ptr n -- ptr n ) 8 + ;
 
-\ These three slots have stable types although +USER publishes a raw byte row.
-\ Only this package may refine the addresses; no capability or address leaves it.
-TRUSTED: RESOURCE-CELL ( ptr n -- ptr ptr u8 ) 16 + ;
+\ +USER publishes a raw byte row. The casts below retype the slots' pointees;
+\ they are C2-MEM's private words, so nothing outside C2-MEM can name them.
+CAST: >PTR-CELL ( ptr n -- ptr ptr u8 )
+CAST: >DISPOSER-CELL ( ptr n -- ptr [ ptr u8 NUM:alloc-byte-len -- ] )
+CAST: >APPEND-PTR-CELL ( ptr u8 -- ptr ptr u8 )
+CAST: >APPEND-LEN-CELL ( ptr u8 -- ptr n )
+CAST: >APPEND-DISPOSER-CELL ( ptr u8 -- ptr [ ptr u8 NUM:alloc-byte-len -- ] )
+
+: RESOURCE-CELL ( ptr n -- ptr ptr u8 ) 16 + >PTR-CELL ;
 TRUSTED: LENGTH-CELL ( ptr n -- ptr NUM:alloc-byte-len ) 24 + ;
-TRUSTED: DISPOSER-CELL ( ptr n -- ptr [ ptr u8 NUM:alloc-byte-len -- ] ) 32 + ;
-TRUSTED: ORIGINAL-BOUND-CELL ( ptr n -- ptr n ) 40 + ;
-TRUSTED: KIND-CELL ( ptr n -- ptr n ) 48 + ;
-TRUSTED: APPEND-HEAD-CELL ( ptr n -- ptr ptr u8 ) 56 + ;
-TRUSTED: APPEND-PENDING-CELL ( ptr n -- ptr ptr u8 ) 64 + ;
-TRUSTED: APPEND-CURSOR-CELL ( ptr n -- ptr ptr u8 ) 72 + ;
+: DISPOSER-CELL ( ptr n -- ptr [ ptr u8 NUM:alloc-byte-len -- ] ) 32 + >DISPOSER-CELL ;
+: ORIGINAL-BOUND-CELL ( ptr n -- ptr n ) 40 + ;
+: KIND-CELL ( ptr n -- ptr n ) 48 + ;
+: APPEND-HEAD-CELL ( ptr n -- ptr ptr u8 ) 56 + >PTR-CELL ;
+: APPEND-PENDING-CELL ( ptr n -- ptr ptr u8 ) 64 + >PTR-CELL ;
+: APPEND-CURSOR-CELL ( ptr n -- ptr ptr u8 ) 72 + >PTR-CELL ;
 : APPEND-REMAIN-CELL ( ptr n -- ptr n ) 80 + ;
 
-TRUSTED: APPEND-NEXT-CELL ( ptr u8 -- ptr ptr u8 ) ;
-TRUSTED: APPEND-LENGTH-CELL ( ptr u8 -- ptr NUM:alloc-byte-len ) 8 + ;
-TRUSTED: APPEND-DISPOSER-CELL ( ptr u8 -- ptr [ ptr u8 NUM:alloc-byte-len -- ] ) 16 + ;
+: APPEND-NEXT-CELL ( ptr u8 -- ptr ptr u8 ) >APPEND-PTR-CELL ;
+: APPEND-LENGTH-CELL ( ptr u8 -- ptr n ) 8 + >APPEND-LEN-CELL ;
+: APPEND-DISPOSER-CELL ( ptr u8 -- ptr [ ptr u8 NUM:alloc-byte-len -- ] ) 16 + >APPEND-DISPOSER-CELL ;
 
 : HEAD-FRAME ( -- ptr n )
    HEAD-CELL @ 1- FRAME-AT ;
@@ -82,7 +83,7 @@ TRUSTED: APPEND-DISPOSER-CELL ( ptr u8 -- ptr [ ptr u8 NUM:alloc-byte-len -- ] )
 : DISPOSE-APPEND ( -- )
    HEAD-FRAME APPEND-PENDING-CELL @ {: header:ptr :}
    header APPEND-HEADER-BYTES +
-   header APPEND-LENGTH-CELL @
+   header APPEND-LENGTH-CELL @ MEM:BYTES-ALLOC-LEN
    header APPEND-DISPOSER-CELL @ execute ;
 
 : RELEASE-APPEND-CHUNK ( ptr u8 NUM:alloc-byte-len -- )
@@ -202,13 +203,15 @@ TRUSTED: APPEND-DISPOSER-CELL ( ptr u8 -- ptr [ ptr u8 NUM:alloc-byte-len -- ] )
 
 : LIVE-BYTES-FRAME? ( ptr n -- bool ) HEAD-CELL @ FRAME-IN? ;
 
-TRUSTED: BIND-STATE ( ptr u8 n -- ptr u8 n )
+CAST: >NODE-CELL ( ptr u8 -- ptr ptr n )
+
+: BIND-STATE ( ptr u8 n -- ptr u8 n )
    {: base:ptr bound:n :}
-   base ROOT-FRAME base !
+   base ROOT-FRAME base >NODE-CELL !
    base bound ;
 
-TRUSTED: OWNER-FRAME ( ptr u8 -- ptr n )
-   @ dup LIVE-BYTES-FRAME? 0= if E-C2-STATE throw then ;
+: OWNER-FRAME ( ptr u8 -- ptr n )
+   >NODE-CELL @ dup LIVE-BYTES-FRAME? 0= if E-C2-STATE throw then ;
 
 : APPEND-RECORD-BYTES ( n -- n )
    CELL 1- + CELL negate and APPEND-HEADER-BYTES + ;
@@ -220,7 +223,7 @@ TRUSTED: OWNER-FRAME ( ptr u8 -- ptr n )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: chunk:ptr length:NUM:alloc-byte-len :}
    \ Register ownership before any further fallible operation or yield.
    frame APPEND-HEAD-CELL @ chunk APPEND-NEXT-CELL !
-   length chunk APPEND-LENGTH-CELL !
+   length INIT-LEN>N chunk APPEND-LENGTH-CELL !
    [: RELEASE-APPEND-CHUNK ;] chunk APPEND-DISPOSER-CELL !
    chunk frame APPEND-HEAD-CELL !
    chunk APPEND-HEADER-BYTES + frame APPEND-CURSOR-CELL !
@@ -236,7 +239,7 @@ TRUSTED: OWNER-FRAME ( ptr u8 -- ptr n )
    then
    frame APPEND-CURSOR-CELL @ {: header:ptr :}
    frame APPEND-HEAD-CELL @ header APPEND-NEXT-CELL !
-   size header APPEND-LENGTH-CELL !
+   bytes header APPEND-LENGTH-CELL !
    dispose header APPEND-DISPOSER-CELL !
    header frame APPEND-HEAD-CELL !
    header record-bytes + frame APPEND-CURSOR-CELL !
@@ -262,7 +265,7 @@ TRUSTED: RECORDS-STOW ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] sto
    HEAD-FRAME ORIGINAL-BOUND-CELL @ INIT-BOUND-CELL !
    CLOSE ;
 
-TRUSTED: INIT-RESTORE ( R ptr u8 n -- R ptr u8 n )
+: INIT-RESTORE ( R ptr u8 n -- R ptr u8 n )
    drop INIT-BOUND-CELL @ ;
 
 : ACQUIRE-BYTES ( NUM:alloc-byte-len [ ptr u8 NUM:alloc-byte-len -- ] -- ptr u8 NUM:alloc-byte-len )
@@ -294,14 +297,6 @@ TRUSTED: INVOKE ( R [ R -- S | U -- U ] | U -- S | U )
 : RUN ( R [ R -- S | U -- U ] | U -- S | U )
    OPEN
    INVOKE ;
-
-ndict@ constant RUNTIME-END
-
-TRUSTED: HIDE-RUNTIME ( -- )
-   RUNTIME-END RUNTIME-FIRST ?do
-      i XREF-REC XREF-FLAGS DKIND:MASK and 0= if i int-mark then
-   loop ;
-ndict@ 1- constant HIDE-RUNTIME-ID
 
 ;package
 

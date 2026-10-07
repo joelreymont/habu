@@ -122,7 +122,7 @@ EXPORT EARLY-R-CALLBACK
    s" two disposer allocations cannot claim one fresh region" T-LABEL
    s" : C2OP-DROP-VIEW ( mut-view<p,p,a,u8> -- ) C2-MEM:PUBLISH drop ; : C2OP-TWO-DISPOSE ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> mut-view<p,p,fresh-region-b,u8> mut-view<p,p,fresh-region-b,u8> ) 16 MEM:BYTES-ALLOC-LEN [: C2OP-DROP-VIEW ;] C2-MEM:ALLOC-DISPOSE swap 16 MEM:BYTES-ALLOC-LEN [: C2OP-DROP-VIEW ;] C2-MEM:ALLOC-DISPOSE rot swap ;" REJECT TTRUE
    s" the raw owner constructor cannot be called" T-LABEL
-   s" : C2OP-CTOR ( ptr u8 n -- C2-MEM:owner<p,i,a> ) C2--MEM-OWNER:MAKE ;" REJECT TTRUE
+   s" : C2OP-CTOR ( ptr u8 n -- C2-MEM:owner<p,i,a> ) C2-MEM:OWNER-MAKE ;" REJECT TTRUE
    s" a mutable view cannot be unpacked outside the owner package" T-LABEL
    s" : C2OP-UNPACK ( mut-view<p,l,a,u8> -- ptr u8 n ) C2-MEM:MUT-UNPACK ;" REJECT TTRUE
    s" ticking the unpacker does not cross its internal boundary" T-LABEL

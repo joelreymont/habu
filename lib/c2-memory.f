@@ -1,6 +1,6 @@
 \ Scoped C2 allocation and nonowning loans. The public entries are raw until
 \ the exact native image entries receive the checker-owned scope kinds.
-\ This hidden runtime is source composition, not a separately provided module,
+\ This private runtime is source composition, not a separately provided module,
 \ so it lives below lib/c2-memory/ and not among the flat modules: loaded alone
 \ on a product it would reopen the sealed C2-MEM and exit 84.
 include lib/c2-memory/owner-runtime.f
@@ -16,7 +16,6 @@ CAST: ALLOC-LEN>N ( NUM:alloc-byte-len -- n )
    {: body :}
    [: MEM:RELEASE-BYTES ;] ACQUIRE-BYTES {: resource:ptr size:NUM:alloc-byte-len :}
    resource size ALLOC-LEN>N body execute 2drop ;
-ndict@ 1- constant ALLOC-RUN-ID
 
 \ A child callback's returned control cells carry no disposal authority.
 : LOAN-BODY ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n ] -- S ptr u8 n )
@@ -25,7 +24,6 @@ ndict@ 1- constant ALLOC-RUN-ID
 : LOAN-RUN ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S ptr u8 n | U )
    LOAN-ENTER
    [: LOAN-BODY ;] [: LOAN-LEAVE ;] finally ;
-ndict@ 1- constant LOAN-RUN-ID
 
 : CHECK-INDEX ( n n -- ) {: idx:n bound:n :}
    idx 0 < idx bound >= or if E-SPAN-RANGE throw then ;
@@ -39,16 +37,9 @@ ndict@ 1- constant LOAN-RUN-ID
 \ Only C2-MEM's private section may pack, and every pack below keeps or
 \ narrows the cells it unpacked.
 CAST: READ-UNPACK ( read-view<p,q,u8> -- ptr u8 n )
-ndict@ 1- constant READ-UNPACK-ID
 CAST: MUT-UNPACK ( mut-view<p,q,a,u8> -- ptr u8 n )
-ndict@ 1- constant MUT-UNPACK-ID
 CAST: READ-PACK ( ptr u8 n -- read-view<p,q,u8> )
-ndict@ 1- constant READ-PACK-ID
 CAST: MUT-PACK ( ptr u8 n -- mut-view<p,q,a,u8> )
-ndict@ 1- constant MUT-PACK-ID
-
-TRUSTED: HIDE-REP ( n -- ) int-mark ;
-ndict@ 1- constant HIDE-REP-ID
 
 public
 
@@ -126,16 +117,5 @@ TRUSTED: WITH-RECORDS ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] sto
 : MUT-LENGTH ( mut-view<p,q,a,u8> -- n mut-view<p,q,a,u8> )
    MUT-UNPACK {: base:ptr bound:n :}
    bound base bound MUT-PACK ;
-
-private
-HIDE-RUNTIME
-HIDE-RUNTIME-ID HIDE-REP
-ALLOC-RUN-ID HIDE-REP
-LOAN-RUN-ID HIDE-REP
-READ-UNPACK-ID HIDE-REP
-MUT-UNPACK-ID HIDE-REP
-READ-PACK-ID HIDE-REP
-MUT-PACK-ID HIDE-REP
-HIDE-REP-ID HIDE-REP
 
 ;package
