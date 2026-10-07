@@ -1,26 +1,23 @@
-\ require-cap-test.f - REQUIRE-MAX inventory-cap regression.
+\ require-cap-test.f - growing require inventory regression.
 \
-\ REQUIRE-MAX (src/core/include.f) caps the per-image require inventory; the die
-\ site REQUIRE-CHECK-ROOM fails closed ("require: too many files", INCLUDE-IO-RC)
-\ once REQUIRE-N reaches the cap. This pins the fail-closed named die at the
-\ current boundary.
+\ A require inventory must grow past the former 512-entry limit. The first
+\ case crosses that boundary; the second needs another growth step.
 \
 \ Each case forks a disposable SUBJECT child that resets the require registry,
 \ flips DISCOVERY so synthetic paths never touch the filesystem (required stores
 \ then skips the load), and drives `require` to a target count. The dedup scan and
-\ die site both run on the real loader path.
+\ storage path both run through the real loader.
 \
 \ Registered beside the sister capacity regression test/seal.f.
 
 require lib/test.f
 require lib/test/outcome.f       \ T-TIMED-OUT - the report of a child past its deadline
-require lib/string.f
 require lib/process.f            \ outcome sumtype for the child completion
 require lib/test/subject.f       \ SUBJECT:RUN - isolated evaluation of the subject
 
 package REQUIRE-CAP
 
-$4000 constant FORGE-CAP         \ REQUIRE-MAX+1 "require pXX" lines fit well under this
+$4000 constant FORGE-CAP
 $800 constant IO-CAP
 30000 constant TIMEOUT-MS
 
@@ -54,7 +51,7 @@ variable EXITED?
 
 : FORGE-GEN ( n -- ptr u8 n ) {: k:n :}
    0 FORGE-U !
-   s" 0 REQUIRE-N ! 0 REQUIRE-BASE ! DISCOVERY-ON" FORGE-APPEND  10 FORGE-C
+   s" 0 REQUIRE-REG:TRUNCATE 0 REQUIRE-BASE ! DISCOVERY-ON" FORGE-APPEND  10 FORGE-C
    0 begin dup k < while dup FORGE-LINE 1+ repeat drop
    FORGE$ ;
 
@@ -77,24 +74,17 @@ variable EXITED?
    SUBJECT:RUN                          \ -- out-len err-len outcome
    src u STORE ;
 
-: ERR$ ( -- ptr u8 n )  ERR-BUF ERR-U @ ;
-
 : ASSERT-LOADS ( -- )                   \ child accepted every require and exited clean
    EXITED? @ TTRUE
    RC-N @ 0 T= ;
 
-: ASSERT-CAP-DIE ( -- )                 \ child failed closed with the named cap die
-   EXITED? @ TTRUE
-   RC-N @ INCLUDE-IO-RC T=
-   ERR$ s" require: too many files" CONTAINS? TTRUE ;
-
 \ ---- cases -------------------------------------------------------------------
 
 : CASES ( -- )
-   s" a full REQUIRE-MAX inventory loads" T-LABEL
-   REQUIRE-MAX RUN-CHILD ASSERT-LOADS
-   s" one require past REQUIRE-MAX dies named" T-LABEL
-   REQUIRE-MAX 1+ RUN-CHILD ASSERT-CAP-DIE ;
+   s" require inventory grows past 512 entries" T-LABEL
+   513 RUN-CHILD ASSERT-LOADS
+   s" require inventory grows again" T-LABEL
+   650 RUN-CHILD ASSERT-LOADS ;
 
 : MAIN ( -- )
    T-RESET

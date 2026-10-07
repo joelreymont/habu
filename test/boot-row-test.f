@@ -45,7 +45,7 @@ using SOURCE-ROOT
 package BOOT-ROW-TEST
 private
 
-$20000 constant DUMP-CAP          \ every realistic REQUIRE-MAX row list, with room to spare
+$20000 constant DUMP-CAP          \ room for the boot and process row lists
 $4000 constant IO-CAP
 INCLUDE-PATH-CAP $40 + constant SRC-CAP
 FS-PATH-CAP 1+ constant ROOT-CAP
