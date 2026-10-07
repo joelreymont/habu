@@ -393,9 +393,10 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
    XREF-SN@ split XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
 
 \ One wordlist's record for a name, from the dictionary's hash index (habu1.f
-\ WLFIND), the index the definer's own duplicate wall asks. The primitive is
-\ trusted-only by its own row (prims.f), as for outer.f WL-PROBE.
-TRUSTED: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
+\ WLFIND), the index the definer's own duplicate wall asks. xref-search-wl's
+\ row is this package's own (src/habu/prims.f), as OUTER's is for outer.f
+\ WL-PROBE.
+: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 \ The record a generated name would meet in the scope it will LAND in: a
 \ qualified name in the public wordlist its namespace row carries, a bare one in

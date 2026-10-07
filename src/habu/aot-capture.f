@@ -43,9 +43,9 @@ CAST: AOT-N>U8 ( n -- ptr u8 )
 : AOT-DBASE-N ( -- n ) dbase@ ;
 : AOT-DATA-N ( -- n ) data-base BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 \ One wordlist's record for a name, from the dictionary's hash index (habu1.f
-\ WLFIND). The primitive is trusted-only by its own row (prims.f), as for
-\ outer.f WL-PROBE.
-TRUSTED: AOT-WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
+\ WLFIND). xref-search-wl's row is this package's own (src/habu/prims.f), as
+\ OUTER's is for outer.f WL-PROBE.
+: AOT-WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 : AOT-LIVE-DATA ( -- ptr n ) data-base ;
 : AOT-CELL@ ( ptr n -- n ) @ ;
 : AOT-N-C! ( n ptr u8 -- ) {: v:n p:ptr :}         \ store a full cell as 8 LE bytes
