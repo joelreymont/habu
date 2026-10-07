@@ -96,6 +96,7 @@ ENUM opcode DERIVE eq
    bitsreal
    realbits
    terminal
+   c2-stow
 ;ENUM
 
 \ One member per Habu control word. `mid-while` and `mid-else` end their block
@@ -227,11 +228,11 @@ public
 \ Every consumer compares the version exactly, so a table with a new required
 \ attribute and one without are two different tables.
 0 constant MAJOR
-7 constant MINOR
+8 constant MINOR
 
 \ ---- the closed opcode vocabulary -------------------------------------------
 \ These are the stable codes stored by HIR-WORD, not enum representation.
-47 constant OPCODES
+48 constant OPCODES
 
 : ORD ( HIR:opcode -- n )
    MATCH opcode
@@ -282,6 +283,7 @@ public
       trap     OF 44 ENDOF
       quot     OF 45 ENDOF
       terminal OF 46 ENDOF
+      c2-stow  OF 47 ENDOF
    ;MATCH ;
 
 : NTH ( n -- HIR:opcode )
@@ -333,6 +335,7 @@ public
       44 of HIR-OPCODE:TRAP     endof
       45 of HIR-OPCODE:QUOT     endof
       46 of HIR-OPCODE:TERMINAL endof
+      47 of HIR-OPCODE:C2-STOW  endof
       E-HIR-OPCODE throw
    endcase ;
 
@@ -341,8 +344,8 @@ private
 \ ---- the opcode names --------------------------------------------------------
 \ Three exact immutable spans per stable ordinal: name, rule and renderer.
 \ The typed opcode selects its row through ORD, never through enum TAG.
-141 PTR-U8-TABLE TEXT-A
-141 TYPED-BUFFER TEXT-U n
+144 PTR-U8-TABLE TEXT-A
+144 TYPED-BUFFER TEXT-U n
 
 : TEXT! ( ptr u8 n n -- ) {: a:ptr u:n idx:n :}
    u idx TEXT-U !
@@ -384,6 +387,7 @@ s" hir.brz" s" hir.rule.brz" s" hir.render.brz" HIR-OPCODE:BRZ NAMES!
 s" hir.call" s" hir.rule.call" s" hir.render.call" HIR-OPCODE:CALL NAMES!
 s" hir.wordcall" s" hir.rule.wordcall" s" hir.render.wordcall" HIR-OPCODE:WORDCALL NAMES!
 s" hir.terminal" s" hir.rule.terminal" s" hir.render.terminal" HIR-OPCODE:TERMINAL NAMES!
+s" hir.c2-stow" s" hir.rule.c2-stow" s" hir.render.c2-stow" HIR-OPCODE:C2-STOW NAMES!
 s" hir.quot" s" hir.rule.quot" s" hir.render.quot" HIR-OPCODE:QUOT NAMES!
 s" hir.return" s" hir.rule.return" s" hir.render.return" HIR-OPCODE:RETURN NAMES!
 s" hir.trap" s" hir.rule.trap" s" hir.render.trap" HIR-OPCODE:TRAP NAMES!
@@ -428,7 +432,8 @@ private
 3 constant K-IN
 4 constant K-OUT
 5 constant K-FUN
-6 constant KEYS
+6 constant K-KIND
+7 constant KEYS
 
 : KEY-NAME ( n -- ptr u8 n )
    case
@@ -438,6 +443,7 @@ private
       K-IN    of s" hir.in"    endof
       K-OUT   of s" hir.out"   endof
       K-FUN   of s" hir.fun"   endof
+      K-KIND  of s" hir.kind"  endof
       E-HIR-OPCODE throw
    endcase ;
 
@@ -579,6 +585,9 @@ ADDR-CODE constant ADDR-KIND-MAX
 \ lands is the emitter's answer.
 : KEY-FUN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-FUN KEY-BIND ;
+
+: KEY-KIND ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-KIND KEY-BIND ;
 
 \ ---- the type of an ordinary value -------------------------------------------
 \ Habu cells are signed 64-bit values, including on a target with 32-bit
@@ -838,6 +847,24 @@ private
    c TARGET
    c b HIR-OPCODE:WORDCALL FINISH-OP ;
 
+\ The machine primitive consumes a runtime-width record; the three results are
+\ fixed, while the visible input vector is copied without a fixed ABI claim.
+: DEF-C2-STOW ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b HIR-OPCODE:C2-STOW OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND-TAIL
+   k IR-SCHEMA:ADD-RESULT
+   t IR-SCHEMA:ADD-RESULT
+   t IR-SCHEMA:ADD-RESULT
+   t IR-SCHEMA:ADD-RESULT
+   c b KEY-ENTRY IR-SCHEMA:ADD-ATTR
+   c b KEY-KIND IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:READ-WRITE GENERIC-MEM
+   true IR-SCHEMA:SET-TRAP
+   c TARGET
+   c b HIR-OPCODE:C2-STOW FINISH-OP ;
+
 \ An authenticated engine primitive ends control without answering a row. It
 \ still observes memory and receives the live data-stack values in order.
 : DEF-TERMINAL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
@@ -1044,6 +1071,7 @@ public
    c b t DEF-BRZ
    c b t k DEF-CALL
    c b t k DEF-WORDCALL
+   c b t k DEF-C2-STOW
    c b t k DEF-TERMINAL
    c b t DEF-QUOT
    c b t DEF-RETURN
@@ -1098,6 +1126,7 @@ private
       brz       OF c b c b CELL-TYPE DEF-BRZ ENDOF
       call      OF c b c b CELL-TYPE c b MEM-TYPE DEF-CALL ENDOF
       wordcall  OF c b c b CELL-TYPE c b MEM-TYPE DEF-WORDCALL ENDOF
+      c2-stow  OF c b c b CELL-TYPE c b MEM-TYPE DEF-C2-STOW ENDOF
       terminal  OF c b c b CELL-TYPE c b MEM-TYPE DEF-TERMINAL ENDOF
       quot      OF c b c b CELL-TYPE DEF-QUOT ENDOF
       return    OF c b c b CELL-TYPE DEF-RETURN ENDOF
@@ -1154,6 +1183,7 @@ public
    c b KEY-ENTRY drop
    c b KEY-IN drop
    c b KEY-OUT drop
+   c b KEY-KIND drop
    c b MEM-TYPE drop
    c b REAL-TYPE drop ;
 
@@ -1221,6 +1251,9 @@ public
 
 : FKEY-FUN ( IR-BUILD:module -- IR-ID:ir-symbol-id )
    K-FUN KEY-NAME FSYMBOL ;
+
+: FKEY-KIND ( IR-BUILD:module -- IR-ID:ir-symbol-id )
+   K-KIND KEY-NAME FSYMBOL ;
 
 : FMEM-TYPE ( IR-BUILD:module -- IR-ID:ir-type-id )
    [: MEM? ;] FTYPE ;

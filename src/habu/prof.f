@@ -25,7 +25,9 @@
 \ report reads the same band, so it needs no register either.
 require src/habu/prof-abi.f
 
+require src/arch/arm64/icode.f
 using A64ASM
+using A64ICODE
 using PROF-ABI
 
 package PROF
@@ -304,19 +306,19 @@ public
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LPROFNAME ( x5 = record ): the record's own name bytes.
-\ The record's flags cell carries the name length in its low bits and four
-\ fields above it: DKIND (50-51), DNAME-MIN-IN (52-59) and the IMM/EXT/WIDE/INT
-\ nibble (60-63). Clearing the top FOURTEEN is what leaves the length alone -
-\ src/habu/layout.f states the band. A clear of twelve leaves a definer's stamp
-\ in the count and hands `write` a length of 2^50 bytes, which writes nothing
-\ and loses the row's name.
+\ The record's flags cell carries the name length in its low bits and the
+\ fields above it: DNAME-OWNED (49), DKIND (50-51), DNAME-MIN-IN (52-59) and the
+\ IMM/EXT/WIDE/INT nibble (60-63). Clearing the DNAME-FLAG-BITS above the
+\ length is what leaves the length alone - src/habu/layout.f states the band. A
+\ narrower clear leaves a flag in the count and hands `write` a length of at
+\ least 2^49 bytes, which writes nothing and loses the row's name.
 : EMIT-PROFNAME ( -- )
    LPROFNAME LABEL@ LBL,
    LBL {: pinl :}
    0 1 MOVZ,  1 5 24 ADDI,  2 5 16 LDR,
    9 2 DNAME-EXT ANDI,  9 pinl CBZ,
       1 5 24 LDR,
-   pinl LBL,  2 2 14 LSLI,  2 2 14 LSRI,  NR-WRITE SYS,
+   pinl LBL,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,  NR-WRITE SYS,
    RET, ;
 
 \ LPROFQUAL ( x5 = record, x19 = arena ): the package qualifier, "PKG:", when the
@@ -1250,5 +1252,6 @@ public
 
 ;package
 
+;using
 ;using
 ;using

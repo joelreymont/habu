@@ -396,14 +396,16 @@ variable X64-DATA-PH
 
 \ ---- the boot-seeded primitive dictionary --------------------------------------
 \ src/habu/habu1.f ENGINE-EMIT:EMIT-DICT bakes, in this order: the long names of
-\ the primitives whose name does not fit a record, then LNCOUNT (the primitive
-\ count, one cell), then LDICT (that many 48-byte records). It is the LAST thing
+\ the primitives whose name does not fit a record, an optional LHOSTROW cell
+\ (the one-based scalar primitive row), then LNCOUNT (the primitive count, one
+\ cell), then LDICT (that many 48-byte records). It is the LAST thing
 \ in the engine's code half, so the AOT payload starts after it.
 \ The preceding count cell bounds the exact run validated by both readers.
 DREC constant PREC
 variable PDICT                                    \ file offset of the first record
 variable PDICT-N                                  \ records in the seeded table
 variable PNAME-BYTES                              \ padded long-name bytes before it
+variable PMETA-BYTES                              \ LHOSTROW cell between names and count
 
 : PREC-START ( n -- n ) U64@ ;
 : PREC-END ( n -- n ) 8 + U64@ ;
@@ -470,13 +472,13 @@ variable PNAME-BYTES                              \ padded long-name bytes befor
 
 : PAD4 ( n -- n ) negate 3 and ;
 
-\ The long-name blob sits immediately below the count cell, one padded run per
-\ out-of-line name, in record order. Proved by its own arithmetic: the first
-\ such name must start exactly that many bytes below the count cell.
+\ The long-name blob sits below the count cell and optional scalar-row cell,
+\ one padded run per out-of-line name, in record order. Its first address and
+\ summed extent establish the boundary before either layout is accepted.
 variable NFIRST
 
 : PRIM-NAMES-MEASURE ( -- )
-   0 PNAME-BYTES !  0 NFIRST !
+   0 PNAME-BYTES !  0 PMETA-BYTES !  0 NFIRST !
    PDICT-N @ 0 ?do
       PDICT @ i PREC * + {: r:n :}
       r PREC-EXT? if
@@ -485,10 +487,17 @@ variable NFIRST
       then
    loop
    PNAME-BYTES @ 0 > if
-      NFIRST @ PNAME-BYTES @ + PDICT @ 8 - <> if
+      NFIRST @ PNAME-BYTES @ + {: name-end:n :}
+      name-end PDICT @ 8 - = if exit then
+      name-end PDICT @ 16 - <> if
          s" image-size: seeded long-name blob does not meet its count cell" RC die
       then
-   then ;
+   then
+   PDICT @ 16 - U64@ {: row:n :}
+   row 0 < row PDICT-N @ > or if
+      s" image-size: invalid seeded scalar row" RC die
+   then
+   8 PMETA-BYTES ! ;
 
 \ ---- the AOT payload -----------------------------------------------------------
 \ One walk of src/habu/habu2.f EMIT-AOT-SEED's emission order. Every count cell
@@ -981,7 +990,7 @@ variable BK-DZERO  variable BK-PAD
 : PADDED ( n -- n ) dup PAD4 + ;
 
 : DICT-END ( -- n ) PDICT @ PDICT-N @ PREC * + ;
-: NAMES-START ( -- n ) PDICT @ 8 - PNAME-BYTES @ - ;
+: NAMES-START ( -- n ) PDICT @ 8 - PMETA-BYTES @ - PNAME-BYTES @ - ;
 
 \ The ELF header page, which every image class begins with.
 : ELF-ROWS ( -- )
@@ -1004,6 +1013,9 @@ variable BK-DZERO  variable BK-PAD
 : ENGINE-ROWS ( -- )
    s" engine/code" CODE-OFF NAMES-START CODE-OFF - SPAN B-CODE ROW
    s" engine/primitive-names" NAMES-START PNAME-BYTES @ SPAN B-NAMES ROW
+   PMETA-BYTES @ if
+      s" engine/scalar-row" NAMES-START PNAME-BYTES @ + PMETA-BYTES @ SPAN B-OTHER ROW
+   then
    s" engine/primitive-count" PDICT @ 8 - 8 SPAN B-OTHER ROW
    s" engine/primitive-records" PDICT @ PDICT-N @ PREC * SPAN B-NAMES ROW
    s" source/baked" DICT-END AOT0 @ DICT-END - SPAN B-OTHER ROW

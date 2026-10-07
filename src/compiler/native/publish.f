@@ -18,6 +18,7 @@ require src/compiler/native/abi.f
 require src/compiler/native/dict.f
 require src/compiler/session/emission.f
 require src/compiler/native/shadow.f
+require src/compiler/native/host-publish.f
 require src/habu/code-span.f
 
 package NPUB
@@ -132,6 +133,36 @@ TRUSTED: APPEND-PENDING ( n -- )
    e fn size PLACE
    fn e size RECORDED-LEN idx PUBLISH-REC ;
 
+TYPED-VARIABLE HELD-E NART:emission
+variable HELD-IDX
+variable HELD-FN
+variable HELD-SIZE
+
+: UNIT-NOTIFY ( NART:emission n n n -- )
+   {: e:NART:emission idx:n fn:n size:n :}
+   UNIT-ARMED @ if e idx fn size UNIT-OBSERVER @ execute then ;
+
+: COMMIT-HELD ( -- )
+   HELD-E @ HELD-IDX @ HELD-FN @ HELD-SIZE @ COMMIT ;
+
+\ The unit observer is the last callback; checker writes follow the commit.
+: NOTIFY-HELD ( -- )
+   HELD-E @ HELD-IDX @ HELD-FN @ HELD-SIZE @ UNIT-NOTIFY
+   0 CHECKER-OWNER:WRITE-WINDOW ;
+
+: COMMIT-OWNED-BODY ( -- )
+   [: NOTIFY-HELD ;] catch {: notify-rc:n :}
+   notify-rc 0<> if NHOST:ABANDON-TAKEN notify-rc throw then
+   [: COMMIT-HELD ;] catch {: rc:n :}
+   rc 0<> if NHOST:ABANDON-TAKEN rc throw then
+   NHOST:PUBLISH-TAKEN ;
+
+: COMMIT-OWNED ( NART:emission n n n -- )
+   {: e:NART:emission idx:n fn:n size:n :}
+   e fn NHOST:TAKE
+   e HELD-E !  idx HELD-IDX !  fn HELD-FN !  size HELD-SIZE !
+   [: COMMIT-OWNED-BODY ;] [: 0 HELD-FN ! ;] finally ;
+
 : PENDING-IDX ( -- n )
    ndict@ ;
 
@@ -156,10 +187,6 @@ TRUSTED: APPEND-PENDING ( n -- )
    idx PENDING-CK
    e size VALIDATE-EMISSION {: fn:n :}
    idx fn size ;
-
-: UNIT-NOTIFY ( NART:emission n n n -- )
-   {: e:NART:emission idx:n fn:n size:n :}
-   UNIT-ARMED @ if e idx fn size UNIT-OBSERVER @ execute then ;
 
 \ Publishing the checker's one-shot minimum-input latch is engine authority.
 \ Keep the boundary at the native publisher that consumes it for this record.
@@ -189,8 +216,7 @@ TRUSTED: PENDING-FACTS ( n -- ) {: idx:n :}
    {: e:NART:emission :}
    e PENDING-PROVE {: idx:n fn:n size:n :}
    e fn NSHADOW:SOURCE-FUNS
-   e idx fn size UNIT-NOTIFY
-   e idx fn size COMMIT
+   e idx fn size COMMIT-OWNED
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
    idx ;
@@ -203,6 +229,28 @@ create TRAILER TRAILER-BYTES allot
    DEFER-MAGIC TRAILER !
    cell TRAILER CELL + !
    TRAILER slot TRAILER-BYTES CODE-WINDOW ;
+
+variable HELD-DEFER-CELL
+
+: COMMIT-DEFER-HELD ( -- )
+   HELD-E @ HELD-FN @ HELD-SIZE @ PLACE
+   cp@ {: slot:n :}
+   HELD-FN @ slot HELD-FN @ - CODE-SPAN:EXACT HELD-IDX @ PUBLISH-REC
+   HELD-DEFER-CELL @ slot TRAILER-PLACE ;
+
+: COMMIT-DEFER-OWNED-BODY ( -- )
+   [: NOTIFY-HELD ;] catch {: notify-rc:n :}
+   notify-rc 0<> if NHOST:ABANDON-TAKEN notify-rc throw then
+   [: COMMIT-DEFER-HELD ;] catch {: rc:n :}
+   rc 0<> if NHOST:ABANDON-TAKEN rc throw then
+   NHOST:PUBLISH-TAKEN ;
+
+: COMMIT-DEFER-OWNED ( NART:emission n n n n -- )
+   {: e:NART:emission idx:n fn:n size:n cell:n :}
+   e fn NHOST:TAKE
+   e HELD-E !  idx HELD-IDX !  fn HELD-FN !  size HELD-SIZE !
+   cell HELD-DEFER-CELL !
+   [: COMMIT-DEFER-OWNED-BODY ;] [: 0 HELD-FN ! ;] finally ;
 
 : HOOKED? ( -- bool )
    data-base HOOK-CELL + @ 0<> ;
@@ -220,11 +268,7 @@ public
    e PENDING-PROVE {: idx:n fn:n size:n :}
    fn size + TRAILER-BYTES + CODE-CEILING > if E-NPUB-ROOM throw then
    e fn NSHADOW:SOURCE-FUNS
-   e idx fn size UNIT-NOTIFY
-   e fn size PLACE
-   cp@ {: slot:n :}
-   fn slot fn - CODE-SPAN:EXACT idx PUBLISH-REC
-   cell slot TRAILER-PLACE
+   e idx fn size cell COMMIT-DEFER-OWNED
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
    HOOKED? if idx PENDING-FACTS then ;
@@ -233,8 +277,7 @@ public
    {: e:NART:emission fun:n :}
    e fun DOES-PROVE {: idx:n fn:n size:n off:n :}
    e fn NSHADOW:SOURCE-FUNS
-   e idx fn size UNIT-NOTIFY
-   e idx fn size COMMIT
+   e idx fn size COMMIT-OWNED
    idx NSHADOW:PUBLISH
    fn off + e size off - RECORDED-LEN DOES-RECORD
    idx APPEND-PENDING

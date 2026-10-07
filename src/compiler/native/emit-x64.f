@@ -66,11 +66,13 @@ require lib/byte-buffer.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/build.f
+require src/compiler/ir/source.f
 require src/compiler/native/x64ir.f
 require src/compiler/native/frozen.f
 require src/compiler/native/regalloc.f
 require src/compiler/native/regalloc-verify.f
 require src/compiler/native/emission.f
+require src/compiler/native/host.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/machine.f
 require src/habu/arith-abi.f            \ E-DIV-ZERO, the divide's refusal
@@ -163,6 +165,10 @@ DYNAMIC-BUFFER CKIND-BUF n              \ NEMIT:CALL or NEMIT:TAIL
 : CKIND ( -- ptr n ) 0 CKIND-BUF ;
 DYNAMIC-BUFFER CTARGET-BUF n            \ and the absolute entry it goes to
 : CTARGET ( -- ptr n ) 0 CTARGET-BUF ;
+DYNAMIC-BUFFER CIMPL-BUF n              \ published implementation identity
+: CIMPL ( -- ptr n ) 0 CIMPL-BUF ;
+DYNAMIC-BUFFER CLOC-BUF n               \ source body offset
+: CLOC ( -- ptr n ) 0 CLOC-BUF ;
 
 : SINK-READY ( -- )
    SINK-MODE @ 0<> if exit then
@@ -200,7 +206,9 @@ DYNAMIC-BUFFER CTARGET-BUF n            \ and the absolute entry it goes to
    SITE-CEIL SKIND-BUF-RESERVE
    SITE-CEIL CSITES-BUF-RESERVE
    SITE-CEIL CKIND-BUF-RESERVE
-   SITE-CEIL CTARGET-BUF-RESERVE ;
+   SITE-CEIL CTARGET-BUF-RESERVE
+   SITE-CEIL CIMPL-BUF-RESERVE
+   SITE-CEIL CLOC-BUF-RESERVE ;
 
 \ ---- the bound dialect -------------------------------------------------------
 \ A module's symbols are its own ordinals, so the identities are taken once from
@@ -440,12 +448,14 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 \ opcode byte and counts from its end; NEMIT's kind, a call that comes back or a
 \ branch that leaves for good; and the entry. Which word owns that entry is the
 \ capture's to resolve, so no callee is named here.
-: CALL-SITE+ ( n n n -- )
-   {: off:n kind:n target:n :}
+: CALL-SITE+ ( n n n IR-ID:ir-op-id -- )
+   {: off:n kind:n target:n id:IR-ID:ir-op-id :}
    N-CALLS @ SITE-CEIL >= if E-X64EMIT-BOUND throw then
    off    N-CALLS @ cells CSITES + !
    kind   N-CALLS @ cells CKIND + !
    target N-CALLS @ cells CTARGET + !
+   target NHOST:ID-OF N-CALLS @ cells CIMPL + !
+   id SPAN-AT IR-SOURCE:SPAN-START N-CALLS @ cells CLOC + !
    N-CALLS @ 1+ N-CALLS ! ;
 
 \ ---- one operation, written --------------------------------------------------
@@ -732,22 +742,22 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 : PLACED? ( -- bool )
    PLACE-MODE @ PLACE-YES = ;
 
-: PUT-FAR-CALL ( n ptr a -- )
-   {: target:n s:ptr :}
-   MEAS @ 0= if CUR NEMIT:CALL target CALL-SITE+ then
+: PUT-FAR-CALL ( n IR-ID:ir-op-id ptr a -- )
+   {: target:n id:IR-ID:ir-op-id s:ptr :}
+   MEAS @ 0= if CUR NEMIT:CALL target id CALL-SITE+ then
    PLACED? 0= if 0 >REL s ENC-CALL-REL32 exit then
    target PLACE-AT-N @ -  s PUT-CALL-TO ;
 
-: PUT-FAR-JMP ( n ptr a -- )
-   {: target:n s:ptr :}
-   MEAS @ 0= if CUR NEMIT:TAIL target CALL-SITE+ then
+: PUT-FAR-JMP ( n IR-ID:ir-op-id ptr a -- )
+   {: target:n id:IR-ID:ir-op-id s:ptr :}
+   MEAS @ 0= if CUR NEMIT:TAIL target id CALL-SITE+ then
    PLACED? 0= if 0 >REL s ENC-JMP-REL32 exit then
    target PLACE-AT-N @ -  s PUT-JMP ;
 
 : PUT-WORDCALL ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
    id DBYTES-OF s PUT-DMOVE
-   id ENTRY-OF s PUT-FAR-CALL
+   id ENTRY-OF id s PUT-FAR-CALL
    id DBACK-OF negate s PUT-DMOVE ;
 
 \ ONE instruction and never more: the selector only builds it where the pointer
@@ -755,7 +765,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 \ routine's caller.
 : PUT-TAILCALL ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
-   id ENTRY-OF s PUT-FAR-JMP ;
+   id ENTRY-OF id s PUT-FAR-JMP ;
 
 \ ---- leaving through the routine that ends the process -----------------------
 \ The twin of emit.f PUT-TRAP: the pointer moved over the cells the routine
@@ -765,7 +775,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 : PUT-TRAP ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
    id DBYTES-OF s PUT-DMOVE
-   id TRAP-ENTRY-OF s PUT-FAR-CALL ;
+   id TRAP-ENTRY-OF id s PUT-FAR-CALL ;
 
 \ ---- the divide --------------------------------------------------------------
 \ `idiv r64` divides rdx:rax and raises #DE on a zero divisor and on MIN-N -1,
@@ -815,7 +825,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    code  ARITH-ABI:E-DIV-ZERO >IMM32  s ENC-MOV-RI32
    code  DSTACK MEM-AT  s ENC-MOV-MR
    CELL s PUT-DMOVE
-   id THROW-ENTRY-OF s PUT-FAR-CALL ;
+   id THROW-ENTRY-OF id s PUT-FAR-CALL ;
 
 : PUT-DIV-HOT ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
@@ -1537,6 +1547,12 @@ public
 
 : CALL-TARGET@ ( n -- n )
    SEAL-CK CALL-ORD-CK cells CTARGET + @ ;
+
+: CALL-IMPL@ ( n -- n )
+   SEAL-CK CALL-ORD-CK cells CIMPL + @ ;
+
+: CALL-LOC@ ( n -- n )
+   SEAL-CK CALL-ORD-CK cells CLOC + @ ;
 
 private
 get-current prot-wid-add

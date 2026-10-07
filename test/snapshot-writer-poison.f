@@ -7,6 +7,10 @@ require test/snapshot-writer-poison-canaries.f
 
 package SNAP-WRITER-POISON
 
+public
+: OCC-SUBJECT ( -- n ) 29 ;
+private
+
 \ The live return stack: the mapping the engine published in its base cell.
 : RETURN-STACK ( -- ptr u8 )
    data-base STACK-ABI:RETURN-BASE-CELL + @ MEM-MAPPED>PTR ;

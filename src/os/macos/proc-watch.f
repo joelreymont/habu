@@ -4,7 +4,9 @@
 \ (src/arch/arm64/asm.f), imported here rather than qualified at each call so the
 \ emitters below keep the bodies they had: this file carries no package, so the
 \ ownership gate reports a changed global definition in it.
+require src/arch/arm64/icode.f
 using A64ASM
+using A64ICODE
 
 : BPROCWATCHOPEN ( -- )            \ ( pid -- fd|-errno )
    LBL LBL LBL {: openbad:label regbad:label done:label :}
@@ -34,4 +36,5 @@ using A64ASM
    SP SP 64 ADDI,
    0 G-PUSH ;
 
+;using
 ;using

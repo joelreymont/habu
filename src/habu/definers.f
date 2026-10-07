@@ -159,6 +159,7 @@ TRUSTED: DEF-JIT-TOKEN ( -- ) jit-token ;
 \ edge leaves the whole token a bare name: `:a:b` is bare), and a second colon
 \ after it refuses.
 : DEF-QUALIFY ( -- ptr u8 n n )
+   OVERLAY-GUARD
    DEF-UNIT-GUARD
    SEAL-GUARD
    TKA-CELL CELL@ DEF-TKA-CELL CELL!
@@ -473,12 +474,12 @@ private
 \ return closes the one an engine head opened. The engine finds
 \ NEUTRAL-PARSE-IMM? by name as it asks, and exits 70 naming it when no checker
 \ is loaded; this file binds it as it loads, after the engine's checker.
-: DEF-IMMEDIATE ( -- n bool )
+: DEF-IMMEDIATE ( -- ptr n bool )
    TOKEN$ FIND-SCOPE {: rec:ptr :}
-   rec XREF-FOUND? 0= if 0 false exit then
-   rec XREF-FLAGS DNAME-IMM and 0= if 0 false exit then
+   rec XREF-FOUND? 0= if NULL-PTR false exit then
+   rec XREF-FLAGS DNAME-IMM and 0= if NULL-PTR false exit then
    rec POLICY-CHECK-REC
-   rec XREF-START  TOKEN$ NEUTRAL-PARSE-IMM? ;
+   rec TOKEN$ NEUTRAL-PARSE-IMM? ;
 
 \ The engine's cells hold the preflight's and the compiler entry's xts raw;
 \ these views state their effects: the checker's (src/core/check-hook.f
@@ -498,11 +499,13 @@ TRUSTED: DEF-AS-COMPILER ( n -- [ ptr u8 n -- ] ) ;
    data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
    xt DEF-AS-PREFLIGHT execute ;
 
-\ The xt waits on the return stack while the unit hook and the preflight run,
-\ and the stack's floor holds after the word, as after a word the loop runs.
-TRUSTED: DEF-RUN ( n -- )
-   >r 0 UNIT-EV-IMMEDIATE UNIT-EVENT drop
-   DEF-PREFLIGHT r> execute-floor FLOORED ;
+\ Keep the original occurrence across preflight, then select its host body.
+\ A preflight that retires it cannot substitute a reused dictionary slot.
+TRUSTED: DEF-RUN ( ptr n -- )
+   DEF-OCC:SELECT {: slot:n occurrence:n :}
+   0 UNIT-EV-IMMEDIATE UNIT-EVENT drop
+   DEF-PREFLIGHT
+   slot occurrence DEF-OCC:RESOLVE NHOST:SELECT-REC execute-floor FLOORED ;
 
 : DEF-IMMEDIATE? ( -- bool )
    DEF-IMMEDIATE if DEF-RUN true exit then

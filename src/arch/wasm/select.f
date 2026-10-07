@@ -19,6 +19,20 @@
 \ past it they would overwrite static data, where the native stack meets its
 \ guard page, so the store faults first, as STACK-BOUNDS.
 \
+\ THE DYNAMIC CALL. The elaborator stages execute and catch as wordcalls to the
+\ engine's words, shaped by the xt each runs (src/compiler/native/elaborate.f
+\ DO-EXEC, DO-CATCH), so one callee meets every shape. Such a call is known by
+\ its entry, the global wordlist's execute or catch, never by what the spelling
+\ binds in the scope being compiled, where a package's own word of either
+\ spelling is an ordinary call. Each is selected as a framed call whatever its
+\ arity, the row and the xt stored, no lane passed and the results read back
+\ off the stack: the dynamic adapter's convention (section 7.2), which the
+\ runtime functions of src/arch/wasm/dynamic.f take.
+\ A quotation's address, HIR's quot, names a function of the module by its
+\ ordinal and is selected as an i64.const of WSTRUCT's kind FUN, which the
+\ encoder writes as that function's offset and the linker as its adapter's
+\ table slot, the descriptor every xt is (section 9).
+\
 \ THE STATUS. Status 0 is a return, status 1 a catchable throw whose full code
 \ the callee stored in ctx.throw-code (section 8.1). Every caller tests it
 \ before it reads an output and propagates a 1 through its own return with zero
@@ -31,11 +45,11 @@
 \ (src/compiler/native/elaborate.f STAGE-TERMINAL). It is selected as the
 \ dynamic adapter's call (section 7.2): the row stored, no lanes, so the callee
 \ takes its operands from the stack. Its status 1 propagates; a callee that
-\ came back with 0 is a fault. A fault - that, a `trap` or a store past the
-\ stack region - is fatal and is never a status (section 8.2): it records
-\ ctx.fault-kind, the exit code the native process would end with, and
-\ ctx.fault-addr, the trap's message, the top the store would have left, or
-\ zero, then executes unreachable.
+\ came back with 0 is a fault. A fault - that, a `trap`, a store past the
+\ stack region or a pointer that fails its check - is fatal and is never a
+\ status (section 8.2): it records ctx.fault-kind, the exit code the native
+\ process would end with, and ctx.fault-addr, the trap's message, the top the
+\ store would have left, the pointer, or zero, then executes unreachable.
 \
 \ THE INTEGERS. Wrapping i64 arithmetic; `/` tests its divisor before any
 \ i64.div_s, storing E-DIV-ZERO and returning status 1 for zero and answering
@@ -59,27 +73,41 @@
 \ comparison answers the integer mask, f0< and f0= against +0.0. s>f is
 \ f64.convert_i64_s, nearest with ties to even, and f>s i64.trunc_sat_f64_s,
 \ which truncates, saturates and answers 0 for a NaN as src/compiler/native/
-\ hir-word.f DEF-FLOAT defines realint; only a profile admitting
-\ saturating-float-to-int has it, and under any other f>s is refused (W05).
-\ Each operation is selected alone, so no multiply and add contract.
+\ hir-word.f DEF-FLOAT defines realint. Each operation is selected alone, so no
+\ multiply and add contract.
 \
 \ THE BLOCKS. HIR blocks keep their order and arguments; a function opens with a
 \ prologue block that takes the signature's arguments and branches into HIR's
 \ entry block, and ends with one block that propagates a status. A call, a
-\ terminal, a division and a stack room check split their block, so before a
-\ function is built its plan counts the blocks each HIR block becomes and every
-\ branch is aimed by that plan. No conditional edge meets an argument, so none
-\ needs a landing block: the elaborator aims every brz at a block that takes
-\ nothing and passes any arguments on by br, the token's included, and no block
-\ this selector puts behind a brz takes one. The interim HIR freeze does not
-\ check this, but the full verify in WSTRUCT:FREEZE refuses a brz into a block
-\ with arguments (src/compiler/ir/verify.f SUCCARGS-CK), so a stray one is
-\ refused there, never selected.
+\ terminal, a division, a stack room check and a pointer check split their
+\ block, so before a function is built its plan counts the blocks each HIR
+\ block becomes and every branch is aimed by that plan. No conditional edge
+\ meets an argument, so none needs a landing block: the elaborator aims every
+\ brz at a block that takes nothing and passes any arguments on by br, the
+\ token's included, and no block this selector puts behind a brz takes one.
+\ The interim HIR freeze does not check this, but the full verify in
+\ WSTRUCT:FREEZE refuses a brz into a block with arguments (src/compiler/ir/
+\ verify.f SUCCARGS-CK), so a stray one is refused there, never selected.
 \
 \ THE MEMORY TOKEN. HIR's token values map to WSTRUCT's; the effects this
 \ selector adds itself take the token current where they stand: the block's
 \ token argument, the prologue's, or for a block without one its first
 \ predecessor's last.
+\
+\ THE CHECKED ACCESS. A pointer is a zero-extended offset in an i64 cell and
+\ memory32 takes an i32 address, so a load or store first proves on the whole
+\ cell that the pointer's high 32 bits are zero and that it lies past the null
+\ reservation [0, WPROF:CTX-BASE), which no Wasm engine faults on since address
+\ zero is in bounds, and only then narrows it by i32.wrap_i64 (sections 6.2,
+\ 6.3 and 17.5). A pointer that fails is fatal, as a native access fault is,
+\ and records the exit code of native's crash handler with the pointer as its
+\ address. The access takes the narrowed address at offset 0, so the engine's
+\ bounds check covers p + n whole: an access running past the memory's end
+\ traps there and never wraps into its start. Source `!` and `c!` reach HIR as
+\ wordcalls to the engine's guarded stores (src/compiler/native/elaborate.f
+\ DO-STORE), whose guard keeps a store out of the engine's protected data
+\ bands; a module holds none of them, so each such call is selected as the
+\ checked store itself, with no call.
 
 require lib/prelude.f
 require lib/errors.f
@@ -105,7 +133,7 @@ require src/arch/wasm/wstruct.f
 \ WSEL's codes, -9820..-9824, in the Wasm backend's block -9800..-9829.
 -9820 constant E-WSEL-FIRST
 -9824 constant E-WSEL-LAST
--9820 constant E-WSEL-REFUSED \ an HIR operation this selector does not lower: one ADMISSION leaves to a sibling, or realint under a profile without saturating-float-to-int
+-9820 constant E-WSEL-REFUSED \ an HIR operation this selector does not lower: c2-stow, a trusted primitive consuming a runtime-width record
 -9821 constant E-WSEL-DECLARE \ a selection no DECLARE preceded, a definition whose arity is not the one declared, or a return whose operands are not its function's output cells
 -9822 constant E-WSEL-SOURCE  \ a module that is not HIR of the version this selector reads
 -9823 constant E-WSEL-TRAP    \ a may-trap operation whose rule cannot raise the trap: add, sub or mul of a unit whose overflow traps
@@ -113,71 +141,6 @@ require src/arch/wasm/wstruct.f
 
 package WSEL
 public
-
-\ ---- the admission matrix ---------------------------------------------------
-\ Every HIR opcode is selected here or belongs to the sibling that selects it,
-\ and selection refuses the latter by E-WSEL-REFUSED: `memory` is the checked
-\ loads and stores, `dynamic` the quotation descriptor. `unbounded-tail` is
-\ selected as well, as a call, so one in tail position is a call then a return:
-\ tail recursion is not bounded space. realint is selected under a profile that
-\ admits saturating-float-to-int and refused by E-WSEL-REFUSED under any other.
-ENUM admission
-   selected
-   unbounded-tail
-   memory
-   dynamic
-;ENUM
-
-: ADMISSION ( HIR:opcode -- WSEL:admission )
-   MATCH HIR:opcode
-      const    OF WSEL-ADMISSION:SELECTED ENDOF
-      add      OF WSEL-ADMISSION:SELECTED ENDOF
-      sub      OF WSEL-ADMISSION:SELECTED ENDOF
-      mul      OF WSEL-ADMISSION:SELECTED ENDOF
-      div      OF WSEL-ADMISSION:SELECTED ENDOF
-      lt       OF WSEL-ADMISSION:SELECTED ENDOF
-      le       OF WSEL-ADMISSION:SELECTED ENDOF
-      gt       OF WSEL-ADMISSION:SELECTED ENDOF
-      ge       OF WSEL-ADMISSION:SELECTED ENDOF
-      equal    OF WSEL-ADMISSION:SELECTED ENDOF
-      ne       OF WSEL-ADMISSION:SELECTED ENDOF
-      and      OF WSEL-ADMISSION:SELECTED ENDOF
-      or       OF WSEL-ADMISSION:SELECTED ENDOF
-      xor      OF WSEL-ADMISSION:SELECTED ENDOF
-      lshift   OF WSEL-ADMISSION:SELECTED ENDOF
-      rshift   OF WSEL-ADMISSION:SELECTED ENDOF
-      invert   OF WSEL-ADMISSION:SELECTED ENDOF
-      mem      OF WSEL-ADMISSION:SELECTED ENDOF
-      load     OF WSEL-ADMISSION:MEMORY ENDOF
-      store    OF WSEL-ADMISSION:MEMORY ENDOF
-      bload    OF WSEL-ADMISSION:MEMORY ENDOF
-      bstore   OF WSEL-ADMISSION:MEMORY ENDOF
-      br       OF WSEL-ADMISSION:SELECTED ENDOF
-      brz      OF WSEL-ADMISSION:SELECTED ENDOF
-      call     OF WSEL-ADMISSION:UNBOUNDED-TAIL ENDOF
-      wordcall OF WSEL-ADMISSION:UNBOUNDED-TAIL ENDOF
-      quot     OF WSEL-ADMISSION:DYNAMIC ENDOF
-      return   OF WSEL-ADMISSION:SELECTED ENDOF
-      trap     OF WSEL-ADMISSION:SELECTED ENDOF
-      fconst   OF WSEL-ADMISSION:SELECTED ENDOF
-      fadd     OF WSEL-ADMISSION:SELECTED ENDOF
-      fsub     OF WSEL-ADMISSION:SELECTED ENDOF
-      fmul     OF WSEL-ADMISSION:SELECTED ENDOF
-      fdiv     OF WSEL-ADMISSION:SELECTED ENDOF
-      fneg     OF WSEL-ADMISSION:SELECTED ENDOF
-      fabs     OF WSEL-ADMISSION:SELECTED ENDOF
-      fsqrt    OF WSEL-ADMISSION:SELECTED ENDOF
-      flt      OF WSEL-ADMISSION:SELECTED ENDOF
-      fgt      OF WSEL-ADMISSION:SELECTED ENDOF
-      feq      OF WSEL-ADMISSION:SELECTED ENDOF
-      fltz     OF WSEL-ADMISSION:SELECTED ENDOF
-      feqz     OF WSEL-ADMISSION:SELECTED ENDOF
-      intreal  OF WSEL-ADMISSION:SELECTED ENDOF
-      realint  OF WSEL-ADMISSION:SELECTED ENDOF
-      bitsreal OF WSEL-ADMISSION:SELECTED ENDOF
-      realbits OF WSEL-ADMISSION:SELECTED ENDOF
-      terminal OF WSEL-ADMISSION:SELECTED ENDOF
-   ;MATCH ;
 
 \ ---- the signature descriptor -----------------------------------------------
 \ The pinned 16/16 rule (section 7.3): a function past either count takes the
@@ -249,6 +212,7 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-IN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-OUT IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-FUN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 1 TYPED-BUFFER BND-REAL IR-ID:ir-type-id
 
@@ -261,6 +225,7 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    m HIR:FKEY-ENTRY 0 BND-ENTRY !
    m HIR:FKEY-IN 0 BND-IN !
    m HIR:FKEY-OUT 0 BND-OUT !
+   m HIR:FKEY-FUN 0 BND-FUN !
    m HIR:FMEM-TYPE 0 BND-MEM !
    m HIR:FREAL-TYPE 0 BND-REAL ! ;
 
@@ -511,6 +476,72 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    BLOCK
    e ;
 
+\ ---- checked memory ------------------------------------------------------------
+\ The exit code native's crash handler ends the process with after an access
+\ fault outside every stack's guard pages (src/habu/crash.f EMIT-CRASH-HANDLER,
+\ src/habu/boot-x64.f CRASH-RC).
+134 constant CRASH-RC
+
+\ How many bits a memory32 address has: a pointer at or past 2^32 names no byte.
+32 constant ADDR-BITS
+
+\ The i32 address of the pointer p, once its whole cell proved that its high
+\ bits are zero and that it is at least WPROF:CTX-BASE; otherwise the block
+\ built next records CRASH-RC with the pointer as its address. Answers the
+\ address in the block built after the fault, where the access follows.
+: >ADDR ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: p:IR-ID:ir-value-id :}
+   p  ADDR-BITS N64  WSTRUCT-OPCODE:I64-SHR-U I64 OP2 {: hi:IR-ID:ir-value-id :}
+   p  WPROF:CTX-BASE N64  WSTRUCT-OPCODE:I64-LT-S I32 OP2
+   WSTRUCT-OPCODE:I64-EXTEND-I32-U I64 OP1 {: nul:IR-ID:ir-value-id :}
+   hi nul WSTRUCT-OPCODE:I64-OR I64 OP2
+   WSTRUCT-OPCODE:I64-EQZ I32 OP1 {: ok:IR-ID:ir-value-id :}
+   MADE @ {: at:n :}
+   TOK {: k:IR-ID:ir-value-id :}
+   ok  at 1+  at 2 +  BRZ
+   BLOCK
+   CRASH-RC K32  p  FAULT
+   BLOCK-END
+   k TOK!                            \ the fault's stores order nothing after it
+   BLOCK
+   p WSTRUCT-OPCODE:I32-WRAP-I64 I32 OP1 ;
+
+\ A wordcall to the engine's word spelled so, the global wordlist's (wid 0),
+\ known by its entry (THE DYNAMIC CALL).
+: ENGINE-CALL? ( IR-ID:ir-op-id ptr u8 n -- bool )
+   {: id:IR-ID:ir-op-id a:ptr u:n :}
+   id HIR-OPCODE:WORDCALL IS? 0= if false exit then
+   id 0 BND-ENTRY @ ATTR  a u 0 search-wl = ;
+
+\ A source store: a wordcall to the engine's guarded `!` or `c!`.
+: STORE-CALL? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id s" !" ENGINE-CALL?  id s" c!" ENGINE-CALL? or ;
+
+: ACCESS? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id HIR-OPCODE:LOAD IS?  id HIR-OPCODE:STORE IS? or
+   id HIR-OPCODE:BLOAD IS? or  id HIR-OPCODE:BSTORE IS? or
+   id STORE-CALL? or ;
+
+\ hir.load and hir.bload: the access at the checked address, ordered by the
+\ token HIR states, at alignment exponent al.
+: SEL-LOAD ( IR-ID:ir-op-id WSTRUCT:opcode n -- )
+   {: id:IR-ID:ir-op-id o:WSTRUCT:opcode al:n :}
+   id 1 OPND TOK!
+   id 0 OPND >ADDR  0 o I64 al LOAD {: v:IR-ID:ir-value-id :}
+   id 0 NFROZEN:RESULT-AT v BIND
+   id 1 NFROZEN:RESULT-AT TOK BIND ;
+
+\ hir.store and hir.bstore: Forth's value then address, Wasm's address then
+\ value. Source stores are wordcalls (SEL-STORE-CALL), so these come from a
+\ builder that stages HIR directly.
+: SEL-STORE ( IR-ID:ir-op-id WSTRUCT:opcode n -- )
+   {: id:IR-ID:ir-op-id o:WSTRUCT:opcode al:n :}
+   id 2 OPND TOK!
+   id 1 OPND >ADDR  id 0 OPND  0 o al STORE
+   id 0 NFROZEN:RESULT-AT TOK BIND ;
+
 \ ---- the shape of a call --------------------------------------------------------
 \ What a call takes and leaves: RECURSE names the definition, so a self call's
 \ shape is the declaration's, and a wordcall states its callee's.
@@ -530,6 +561,16 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    id NFROZEN:RESULTS-OF 1- r - kk <> if E-WSEL-CALL throw then
    kk ;
 
+\ A wordcall to the engine's execute or catch, whose shape is the xt's.
+: DYNAMIC? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id s" execute" ENGINE-CALL?  id s" catch" ENGINE-CALL? or ;
+
+\ A call takes the frame past the lane arity, and a dynamic one always.
+: FRAMED-CALL? ( IR-ID:ir-op-id n n -- bool )
+   {: id:IR-ID:ir-op-id a:n r:n :}
+   a r FRAMED?  id DYNAMIC? or ;
+
 \ The cells an operation stores to the context stack, its operands from the
 \ first after any token: a call's kept row, and in the frame its arguments
 \ after it; a terminal's whole row; a framed return's outputs.
@@ -537,7 +578,7 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    {: id:IR-ID:ir-op-id :}
    id HIR-OPCODE:CALL IS?  id HIR-OPCODE:WORDCALL IS?  or if
       id SHAPE {: a:n r:n :}
-      id a r KEPT  a r FRAMED? if a + then  exit
+      id a r KEPT  id a r FRAMED-CALL? if a + then  exit
    then
    id HIR-OPCODE:TERMINAL IS? if  id NFROZEN:OPERANDS-OF 1-  exit  then
    id HIR-OPCODE:RETURN IS? FRAMED and if  id NFROZEN:OPERANDS-OF  exit  then
@@ -545,11 +586,12 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 
 \ ---- the plan ----------------------------------------------------------------
 \ How many blocks beyond its own one HIR operation's selection builds: a
-\ division's five; a stack room check's fault and the block after it; and the
-\ block after a call's or a terminal's status test.
+\ division's five; a pointer check's or a stack room check's fault and the
+\ block after it; and the block after a call's or a terminal's status test.
 : EXTRA ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id HIR-OPCODE:DIV IS? if 5 exit then
+   id ACCESS? if 2 exit then
    id STORED 0<> if 2 else 0 then
    id HIR-OPCODE:CALL IS?  id HIR-OPCODE:WORDCALL IS? or
    id HIR-OPCODE:TERMINAL IS? or  if 1+ then ;
@@ -641,6 +683,12 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 : SEL-MEM ( IR-ID:ir-op-id -- )
    0 NFROZEN:RESULT-AT TOK BIND ;
 
+\ The address of the module's function whose ordinal the operation carries.
+: SEL-QUOT ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 BND-FUN @ ATTR WSTRUCT:ADDR-FUN K64
+   id 0 NFROZEN:RESULT-AT swap BIND ;
+
 \ ---- the float rules ---------------------------------------------------------
 \ The NaN every operation that makes one answers.
 $7FF8000000000000 constant NAN-MADE
@@ -696,13 +744,6 @@ $7FF8000000000000 constant NAN-MADE
    id 0 OPND {: a:IR-ID:ir-value-id :}
    a  a WSTRUCT-OPCODE:F64-SQRT F64 OP1 CANON  PASS
    id 0 NFROZEN:RESULT-AT swap BIND ;
-
-\ i64.trunc_sat_f64_s is f>s exactly, and only a profile that admits
-\ saturating-float-to-int has it (W05).
-: SEL-REALINT ( IR-ID:ir-op-id -- )
-   WPROF-FEATURE:SATURATING-FLOAT-TO-INT WPROF:ADMITS?
-   0= if E-WSEL-REFUSED throw then
-   WSTRUCT-OPCODE:I64-TRUNC-SAT-F64-S I64 SEL-UNARY ;
 
 \ ---- control -----------------------------------------------------------------
 : SEL-BR ( IR-ID:ir-op-id -- )
@@ -787,7 +828,7 @@ $7FF8000000000000 constant NAN-MADE
    {: id:IR-ID:ir-op-id callee:IR-ID:ir-symbol-id :}
    id SHAPE {: a:n r:n :}
    id a r KEPT {: kk:n :}
-   a r FRAMED? {: fr:bool :}
+   id a r FRAMED-CALL? {: fr:bool :}
    id 0 OPND TOK!
    id  id STORED  fr CALL-SAVE
    id kk a r fr callee CALL-OP {: c:IR-ID:ir-op-id :}
@@ -798,8 +839,20 @@ $7FF8000000000000 constant NAN-MADE
 : SEL-SELF-CALL ( IR-ID:ir-op-id -- )
    0 S-SELF @ SEL-CALL ;
 
+\ A source store: its operands are the token, the kept row, the value and the
+\ address, and its results the token and the kept row, which passes through.
+: SEL-STORE-CALL ( IR-ID:ir-op-id WSTRUCT:opcode n -- )
+   {: id:IR-ID:ir-op-id o:WSTRUCT:opcode al:n :}
+   id 2 0 KEPT {: kk:n :}
+   id 0 OPND TOK!
+   id kk 2 + OPND >ADDR  id kk 1+ OPND  0 o al STORE
+   kk 0 ?do  id i 1+ NFROZEN:RESULT-AT  id i 1+ OPND  BIND  loop
+   id 0 NFROZEN:RESULT-AT TOK BIND ;
+
 : SEL-WORDCALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
+   id s" !" ENGINE-CALL? if  id WSTRUCT-OPCODE:I64-STORE 3 SEL-STORE-CALL  exit  then
+   id s" c!" ENGINE-CALL? if  id WSTRUCT-OPCODE:I64-STORE8 0 SEL-STORE-CALL  exit  then
    id  id 0 BND-ENTRY @ ATTR HOST-CALLEE  SEL-CALL ;
 
 \ The whole row goes to the stack and the call passes no lane: the adapter's
@@ -861,15 +914,16 @@ $7FF8000000000000 constant NAN-MADE
       rshift   OF id WSTRUCT-OPCODE:I64-SHR-U SEL-BINARY ENDOF
       invert   OF id SEL-INVERT ENDOF
       mem      OF id SEL-MEM ENDOF
-      load     OF REFUSE ENDOF
-      store    OF REFUSE ENDOF
-      bload    OF REFUSE ENDOF
-      bstore   OF REFUSE ENDOF
+      load     OF id WSTRUCT-OPCODE:I64-LOAD 3 SEL-LOAD ENDOF
+      store    OF id WSTRUCT-OPCODE:I64-STORE 3 SEL-STORE ENDOF
+      bload    OF id WSTRUCT-OPCODE:I64-LOAD8-U 0 SEL-LOAD ENDOF
+      bstore   OF id WSTRUCT-OPCODE:I64-STORE8 0 SEL-STORE ENDOF
       br       OF id SEL-BR ENDOF
       brz      OF id SEL-BRZ ENDOF
       call     OF id SEL-SELF-CALL ENDOF
       wordcall OF id SEL-WORDCALL ENDOF
-      quot     OF REFUSE ENDOF
+      c2-stow  OF REFUSE ENDOF
+      quot     OF id SEL-QUOT ENDOF
       return   OF id SEL-RETURN ENDOF
       trap     OF id SEL-TRAP ENDOF
       fconst   OF id SEL-FCONST ENDOF
@@ -886,7 +940,7 @@ $7FF8000000000000 constant NAN-MADE
       fltz     OF id WSTRUCT-OPCODE:F64-LT SEL-COMPARE0 ENDOF
       feqz     OF id WSTRUCT-OPCODE:F64-EQ SEL-COMPARE0 ENDOF
       intreal  OF id WSTRUCT-OPCODE:F64-CONVERT-I64-S F64 SEL-UNARY ENDOF
-      realint  OF id SEL-REALINT ENDOF
+      realint  OF id WSTRUCT-OPCODE:I64-TRUNC-SAT-F64-S I64 SEL-UNARY ENDOF
       bitsreal OF id WSTRUCT-OPCODE:F64-REINTERPRET-I64 F64 SEL-UNARY ENDOF
       realbits OF id WSTRUCT-OPCODE:I64-REINTERPRET-F64 I64 SEL-UNARY ENDOF
       terminal OF id SEL-TERMINAL ENDOF
@@ -936,6 +990,9 @@ $7FF8000000000000 constant NAN-MADE
    FRAMED 0= if  S-OUT @ 0 ?do  I64 IR-TYPE:FN-RESULT  loop  then
    CTX BLD IR-BUILD:INTERN-CODE-REF ;
 
+\ The selected function is in Wasm's convention whatever its source's was: a
+\ shadow's HIR is in Habu's, elaborated under the engine's binding, and a
+\ Wasm-bound context admits no other (src/compiler/ir/fun.f TARGET-CK).
 : OPEN-FUN ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id k:n :}
    CTX BLD  NFROZEN:V-SYMP NFROZEN:VW NFROZEN:V-SYMR NFROZEN:VW
@@ -946,7 +1003,7 @@ $7FF8000000000000 constant NAN-MADE
    CTX BLD SIGNATURE IR-BUILD:SET-SIGNATURE
    CTX BLD  NFROZEN:V-FUNR NFROZEN:VW f IR-FUN:FLINKAGE@  IR-BUILD:SET-LINKAGE
    CTX BLD  NFROZEN:V-FUNR NFROZEN:VW f IR-FUN:FVISIBILITY@  IR-BUILD:SET-VISIBILITY
-   CTX BLD  NFROZEN:V-FUNR NFROZEN:VW f IR-FUN:FCONVENTION@  IR-BUILD:SET-CONVENTION
+   CTX BLD  IR--FUN-CONVENTION:WASM  IR-BUILD:SET-CONVENTION
    CTX BLD  0 S-SPAN @  IR-BUILD:SET-FUN-SPAN ;
 
 \ The signature's arguments, or the inputs taken off the frame, handed to HIR's

@@ -24,8 +24,10 @@ require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/ir/source.f
 require src/compiler/native/tape.f
+require src/compiler/native/feed.f
 require src/compiler/native/hir.f
 require src/compiler/native/hir-word.f
+require src/compiler/native/host.f
 require src/compiler/native/string.f
 require src/compiler/native/fetch.f
 require src/compiler/native/frozen.f
@@ -40,6 +42,7 @@ private
 1 TYPED-BUFFER S-BLD IR-BUILD:builder
 1 TYPED-BUFFER S-VW IR-ARENA:view
 1 TYPED-BUFFER S-KEY IR-ID:ir-module-key
+variable EXACT-SOURCE
 
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
 : BLD ( -- IR-BUILD:builder )        0 S-BLD @ ;
@@ -56,7 +59,12 @@ private
    {: v:IR-ARENA:view ix:n :}
    v MKEY ix NTAPE:SPAN@ IR-SOURCE:SPAN-START ;
 
+: HOST-REFUSE ( n n -- )
+   {: reason:n ix:n :}
+   reason VW ix TOK-OFF NHOST:SOURCE-REFUSE ;
+
 : TOK-CELLS ( IR-ARENA:view n -- n )
+   EXACT-SOURCE @ 0= if 2drop 1 exit then
    TOK-OFF NDICT:MEM-CELLS ;
 
 \ ---- naming the token a refusal was about ------------------------------------
@@ -883,6 +891,83 @@ DYNAMIC-BUFFER SPELL-BUF u8
 : QSPELL ( n -- ptr u8 n )
    {: ix:n :}
    VW MKEY ix NTAPE:SPELL@ SPELL$ ;
+
+\ Source-site rows are indexed by the checker's token ordinal. A public direct
+\ tape has only its model and the live dictionary, even if another scan left
+\ rows with the same ordinals in the checker.
+: SITE-CALL ( n -- n n )
+   EXACT-SOURCE @ 0= if drop -1 -1 exit then
+   NDICT:CALL-CELLS ;
+
+: SITE-GLUE ( n -- n n )
+   EXACT-SOURCE @ 0= if drop -1 -1 exit then
+   NDICT:CALL-GLUE ;
+
+: SITE-QUOT-IN ( n n -- n n )
+   EXACT-SOURCE @ 0= if
+      {: ix:n term:n :} ix QSPELL term NDICT:SPELL-QUOT-DIN exit
+   then
+   NDICT:CALL-QUOT-IN ;
+
+: SITE-QUOT-OUT ( n n -- n n )
+   EXACT-SOURCE @ 0= if
+      {: ix:n term:n :} ix QSPELL term NDICT:SPELL-QUOT-DOUT exit
+   then
+   NDICT:CALL-QUOT-OUT ;
+
+: SITE-INIT ( n -- n n n )
+   EXACT-SOURCE @ 0= if drop -1 -1 -1 exit then
+   NDICT:INIT-LAYOUT ;
+
+: SITE-FIELD ( n -- n n )
+   EXACT-SOURCE @ 0= if drop -1 -1 exit then
+   NDICT:FIELD-SPAN ;
+
+: C2-STOW-SITE? ( n -- bool )
+   EXACT-SOURCE @ 0= if drop false exit then
+   CHECKER-OWNER:BINDING-WINDOW nip nip 0= if drop false exit then
+   NDICT:C2-STOW drop 0<> ;
+
+: C2-STOW-BOUND ( n -- n n n )
+   {: ix:n :}
+   ix NDICT:C2-STOW {: kind:n width:n :}
+   kind 0= width 0< or if CHECKER-OWNER-ABI:BINDING-RC throw then
+   ix CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
+   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
+      CHECKER-OWNER-ABI:BOUND-DICT <> if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-CTL cells + CELL-VIEW @
+      CHECKER-OWNER-ABI:BOUND-SEEDED and 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-RECORD cells + CELL-VIEW @ 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-EFFECT cells + CELL-VIEW @ 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-ENTRY cells + CELL-VIEW @ {: entry:n :}
+   entry 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   ix QSPELL NDICT:CALL-BINDING drop entry <> if CHECKER-OWNER-ABI:BINDING-RC throw then
+   entry kind width ;
+
+: SITE-MATCH ( n -- n )
+   EXACT-SOURCE @ 0= if drop NDICT:MATCH-NONE exit then
+   NDICT:MATCH-CELLS ;
+
+: SITE-PAYLOAD ( n -- n n )
+   EXACT-SOURCE @ 0= if drop -1 NDICT:GLUE-UNKNOWN exit then
+   NDICT:MATCH-PAYLOAD ;
+
+: SITE-PADS ( n -- n )
+   EXACT-SOURCE @ 0= if drop 0 exit then
+   NDICT:CON-PADS ;
+
+: SITE-EXEC ( n -- n n )
+   EXACT-SOURCE @ 0= if drop -1 -1 exit then
+   NDICT:EXEC-CELLS ;
+
+: SITE-CATCH ( n -- n n )
+   EXACT-SOURCE @ 0= if drop NDICT:CATCH-NONE NDICT:CATCH-NONE exit then
+   NDICT:CATCH-CELLS ;
+
+: SITE-FINALLY ( n -- n n n )
+   EXACT-SOURCE @ 0= if drop -1 -1 -1 exit then
+   NDICT:FINALLY-CELLS ;
 
 \ ---- a string literal ----------------------------------------------------------
 : EMIT-STRING ( n -- ) {: ix:n :}
@@ -1809,7 +1894,8 @@ PTR-VARIABLE TOK-TABLES
 \ ---- where a body's arity comes from -----------------------------------------
 \ execute and catch keep the applied quotation above their argument window.
 : QARG-LAYOUT ( n n -- n n n n n n ) {: ix:n j:n :}
-   ix j NDICT:CALL-QUOT-IN {: qi:n qo:n :}
+   EXACT-SOURCE @ 0= if ix QSPELL j NDICT:SPELL-QUOT-DIN-LAYOUT exit then
+   ix j SITE-QUOT-IN {: qi:n qo:n :}
    ix j NDICT:CALL-QUOT-RIN {: rin:n rout:n :}
    ix j NDICT:CALL-QUOT-RGIN {: gin:n gout:n :}
    qi NDICT:QUOT-NONE = rin 0 < or if
@@ -1919,7 +2005,8 @@ PTR-VARIABLE TOK-TABLES
    0 qi qo rin rout gin gout cellix QKNOWN ;
 
 : QOUT-LAYOUT ( n n -- n n n n n n ) {: ix:n j:n :}
-   ix j NDICT:CALL-QUOT-OUT {: qi:n qo:n :}
+   EXACT-SOURCE @ 0= if ix QSPELL j NDICT:SPELL-QUOT-DOUT-LAYOUT exit then
+   ix j SITE-QUOT-OUT {: qi:n qo:n :}
    ix j NDICT:CALL-QUOT-ROUT {: rin:n rout:n :}
    ix j NDICT:CALL-QUOT-RGOUT {: gin:n gout:n :}
    qi NDICT:QUOT-NONE = rin 0 < or if
@@ -2102,7 +2189,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    ix MTOK$ NFAM:MATCH-FAM {: fam:n ok:bool :}
    ok 0= if E-NELAB-MATCH throw then
    ix MR-FAMILY MROLE!
-   ix NDICT:MATCH-CELLS {: w:n :}
+   ix SITE-MATCH {: w:n :}
    w NDICT:MATCH-NONE = if E-NELAB-MATCH throw then
    w fam NFAM:WIDTH < if E-NELAB-MATCH throw then
    CB-ROW @  w  fam  MMATCH!
@@ -2123,11 +2210,11 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    MV-ROW @ {: vix:n :}
    vix 0 < if E-NELAB-MATCH throw then
    MS-TOP {: t:n :}
-   ix NDICT:MATCH-CELLS {: pads:n :}
+   ix SITE-MATCH {: pads:n :}
    pads NDICT:MATCH-NONE = if E-NELAB-MATCH throw then
    t MS-WID@ 1- pads - {: pay:n :}
    pay 0 < if E-NELAB-MATCH throw then
-   ix NDICT:MATCH-PAYLOAD {: cells:n glue:n :}
+   ix SITE-PAYLOAD {: cells:n glue:n :}
    cells pay <> glue NDICT:GLUE-UNKNOWN = or if E-NELAB-MATCH throw then
    ix  vix MTAG@  pads  pay  MARM!
    ix glue MGLUE!
@@ -2142,12 +2229,16 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    fam CB-FAM !
    MM-CON-VAR MM ! ;
 
-: MSCAN-CON-VAR ( n -- ) {: ix:n :}
+: MSCAN-CON-VAR ( n -- )
+   {: ix:n :}
    ix MTOK$ CB-FAM @ NFAM:VARIANT {: vid:n ok:bool :}
    ok 0= if E-NELAB-MATCH throw then
    ix MR-VARIANT MROLE!
-   CB-FAM @ vid NFAM:PADS  ix NDICT:CON-PADS +  {: pads:n :}
-   CB-ROW @  vid NFAM:TAG  pads  vid NFAM:PAY-CELLS  MARM!
+   CB-FAM @ vid NFAM:PADS  ix SITE-PADS +  {: pads:n :}
+   EXACT-SOURCE @ if
+      ix SITE-CALL drop dup 0< if drop E-NELAB-MATCH throw then
+   else vid NFAM:PAY-CELLS then {: pay:n :}
+   CB-ROW @  vid NFAM:TAG  pads  pay  MARM!
    MM-OFF MM ! ;
 
 \ ---- the keywords the pass reacts to -----------------------------------------
@@ -2202,7 +2293,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 : MSCAN-STEP ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena ix:n :}
    ix IN-DECL? if exit then
    ix 0 > if
-      ix 1- NDICT:FIELD-SPAN drop 0 >= if
+      ix 1- SITE-FIELD drop 0 >= if
          VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if
             E-NELAB-MATCH throw then
          ix MR-FIELD MROLE!
@@ -2251,9 +2342,23 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
       r hi i DSCAN-STEP
    loop ;
 
-\ ---- the names the dialect does not model, before anything reads the model ----
-\ A name the dialect does not model is resolved through dict.f at the point it
-\ is used, in the order the engine resolves the body that wrote it.
+\ ---- source decisions before model lookup -----------------------------------
+\ Control syntax has no dictionary call. The forms that execute an existing
+\ word still require the same site decision as an ordinary call.
+: STRUCTURAL-MODEL? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: r:IR-ARENA:arena sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:MODELS? 0= if false exit then
+   r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
+   m HIR-MEANING:OPEN-LOCALS HIR-MEANING:EQ if true exit then
+   m HIR-MEANING:CLOSE-LOCALS HIR-MEANING:EQ if true exit then
+   m HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if false exit then
+   r sy HIR-WORD:CTRL@ {: k:HIR:ctrl :}
+   k HIR-CTRL:EXEC HIR-CTRL:EQ
+   k HIR-CTRL:CATCH HIR-CTRL:EQ or
+   k HIR-CTRL:FINALLY HIR-CTRL:EQ or
+   k HIR-CTRL:C2-INVOKE HIR-CTRL:EQ or
+   k HIR-CTRL:EVAL HIR-CTRL:EQ or 0= ;
+
 : RESOLVE-STEP ( IR-ARENA:arena IR-ARENA:arena n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
    ix MOPERAND? if exit then
@@ -2261,15 +2366,46 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    ix LOCAL-OF 0 >= if exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
-   r sy HIR-WORD:MODELS? if exit then
-   CTX BLD r sy HIR-WORD:RESOLVE-FIXED if exit then
-   CTX BLD p r sy HIR-WORD:RESOLVE-CALLABLE drop ;
+   ix C2-STOW-SITE? if ix C2-STOW-BOUND drop drop drop exit then
+   EXACT-SOURCE @ 0= if
+      r sy HIR-WORD:MODELS? if exit then
+      CTX BLD r sy HIR-WORD:RESOLVE-FIXED if exit then
+      CTX BLD p r sy HIR-WORD:RESOLVE-CALLABLE drop
+      exit
+   then
+   ix CHECKER-OWNER:SOURCE-BINDING {: bound:ptr bytes:n :}
+   bytes 0= if
+      r sy STRUCTURAL-MODEL? if exit then
+      CHECKER-OWNER-ABI:BINDING-RC throw
+   then
+   bytes CHECKER-OWNER-ABI:BOUND-CELLS cells = if
+      bound CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
+         CHECKER-OWNER-ABI:BOUND-DICT = if
+         bound CHECKER-OWNER-ABI:BOUND-FLAGS cells + CELL-VIEW @
+            DKIND:MASK and DKIND:CAST = if NHOST:CAST ix HOST-REFUSE then
+      then
+   then
+   CTX BLD p r sy ix HIR-WORD:RESOLVE-SITE drop ;
 
 : RESOLVE-SCAN ( IR-ARENA:arena IR-ARENA:arena n n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}
    hi lo ?do
+      i RF-AT !
       p r i RESOLVE-STEP
+      -1 RF-AT !
    loop ;
+
+: RESOLVE-KEEP ( IR-ARENA:arena IR-ARENA:arena n n -- IR-ARENA:arena IR-ARENA:arena n n )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}
+   p r lo hi RESOLVE-SCAN
+   p r lo hi ;
+
+: RESOLVE-TRY ( IR-ARENA:arena IR-ARENA:arena n n -- )
+   [: RESOLVE-KEEP ;] catch {: rc:n :}
+   2drop 2drop
+   rc 0= if exit then
+   RF-RECORD
+   rc throw ;
 
 \ ---- which control actions stage a call, and which call ----------------------
 : CTRL-CALL? ( HIR:ctrl -- HIR:opcode bool )
@@ -2324,6 +2460,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    ix PRINTED-STRING? if true exit then
    r ix DIV-BRIDGE? if true exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
+   ix C2-STOW-SITE? if true exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
@@ -2350,7 +2487,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 \ ---- does this definition CALL at all? ---------------------------------------
 : QUOTATION-STORE? ( IR-ARENA:arena n -- bool ) {: r:IR-ARENA:arena ix:n :}
    r ix WSYM HIR-WORD:OPCODE@ HIR-OPCODE:STORE HIR-OPCODE:EQ 0= if false exit then
-   ix 1 NDICT:CALL-QUOT-IN drop NDICT:QUOT-NONE <> ;
+   ix 1 SITE-QUOT-IN drop NDICT:QUOT-NONE <> ;
 
 : GUARDED-STORE? ( HIR:opcode -- bool )
    dup HIR-OPCODE:STORE HIR-OPCODE:EQ
@@ -2358,6 +2495,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 
 : VALIDATED-FETCH? ( HIR:opcode n -- bool ) {: op:HIR:opcode ix:n :}
    op HIR-OPCODE:LOAD HIR-OPCODE:EQ 0= if false exit then
+   EXACT-SOURCE @ 0= if false exit then
    VW ix TOK-OFF NFETCH:CHECKED? ;
 
 : WORD-CALL? ( IR-ARENA:arena n -- bool )
@@ -2366,6 +2504,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    ix LOCAL-OF 0 >= if false exit then
    ix PRINTED-STRING? if true exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
+   ix C2-STOW-SITE? if true exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
@@ -2650,6 +2789,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
       PATH-DEAD PATH-END !
       exit
    then
+   ix C2-STOW-SITE? if exit then
    r ix ADMIT-AT
    HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if exit then
    r  ix WSYM  HIR-WORD:CTRL@
@@ -3444,11 +3584,35 @@ R-BRIDGE-INSTALL
    ix NDICT:CALL-RGLUE {: gin:n gout:n :}
    ix entry in out glue rin rout gin gout STAGE-WCALL-R ;
 
+: STAGE-C2-STOW ( n n n n -- )
+   {: ix:n entry:n kind:n width:n :}
+   VN @ width <> if E-NELAB-CALL throw then
+   VN @ 5 - VQ@ {: callback:n :}
+   width 3 CALL-LIVE drop
+   ix CALL-CROSS
+   CTX BLD HIR-OPCODE:C2-STOW HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
+   CTX BLD VW MKEY ix op OPEN
+   CALL-OPERANDS+
+   3 CALL-RESULTS+
+   CTX BLD CTX BLD HIR:KEY-ENTRY
+   CTX BLD entry IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
+   CTX BLD CTX BLD HIR:KEY-KIND
+   CTX BLD kind IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
+   3 3 NDICT:GLUE-NONE CALL-CLOSE
+   callback 2 VQ!
+   LIT-RESET ;
+
+: DO-C2-STOW ( n -- )
+   {: ix:n :}
+   ix C2-STOW-BOUND {: entry:n kind:n width:n :}
+   ix entry kind width STAGE-C2-STOW ;
+
 \ Calls inserted by the elaborator name known R-neutral runtime helpers.
 : STAGE-WCALL-NEUTRAL ( n n n n n -- )
    0 0 NDICT:GLUE-NONE NDICT:GLUE-NONE STAGE-WCALL-R ;
 
 : R-WORD-LAYOUT ( n -- n n n n ) {: ix:n :}
+   EXACT-SOURCE @ 0= if ix QSPELL NDICT:SPELL-RET exit then
    ix NDICT:CALL-RCELLS {: rin:n rout:n :}
    ix NDICT:CALL-RGLUE {: gin:n gout:n :}
    rin 0 < rout 0 < and if
@@ -3499,19 +3663,23 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 : DO-WORD-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
-   ix NDICT:CALL-CELLS {: a:n o:n :}
-   a 0 < if
+   EXACT-SOURCE @ if
+      ix SITE-CALL {: in:n out:n :}
+      in 0< if E-NELAB-BUNDLE throw then
+      in out ix SITE-GLUE nip
+   else
       r sy HIR-WORD:CALLEE-IN@ r sy HIR-WORD:CALLEE-OUT@
       r sy HIR-WORD:OUT-GLUE@
-   else
-      a o ix NDICT:CALL-GLUE nip
    then {: in:n out:n glue:n :}
+   out 0< glue NDICT:GLUE-UNKNOWN = or if E-NELAB-BUNDLE throw then
+   \ Constructor pads are call operands; the output already includes them.
+   in ix SITE-PADS + {: call-in:n :}
    r sy HIR-WORD:TERMINAL? if
-      ix r sy HIR-WORD:ENTRY@ in STAGE-TERMINAL exit
+      ix r sy HIR-WORD:ENTRY@ call-in STAGE-TERMINAL exit
    then
    ix R-WORD-LAYOUT {: rin:n rout:n gin:n gout:n :}
    ix r sy HIR-WORD:ENTRY@
-   in out glue rin rout gin gout STAGE-WCALL-R
+   call-in out glue rin rout gin gout STAGE-WCALL-R
    ix out QRESULTS-FILL
    r sy HIR-WORD:CALLEE-DEAD? if r ix DEAD-END then ;
 
@@ -3596,7 +3764,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    {: r:IR-ARENA:arena ix:n :}
    VN @ 1 < if E-NELAB-UNDER throw then
    VN @ 1- VQ@ {: k:n :}
-   ix NDICT:EXEC-CELLS {: cin:n cout:n :}
+   ix SITE-EXEC {: cin:n cout:n :}
    cin 0 < if
       k 0 < if ix QUOT-REFUSE then
       k QIN@ k QOUT@
@@ -3610,8 +3778,8 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    k rin rout gin gout Q-R-FILL
    s" execute" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if ix QUOT-REFUSE then
-   ix NDICT:CALL-CELLS drop 0 < if NDICT:GLUE-NONE
-   else ix NDICT:CALL-GLUE nip then {: glue:n :}
+   ix SITE-CALL drop 0 < if NDICT:GLUE-NONE
+   else ix SITE-GLUE nip then {: glue:n :}
    glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
    ix entry in 1+ out 0 max glue rin rout gin gout STAGE-WCALL-R
    in 0 >= out NDICT:ARITY-NONE = and if r ix DEAD-END then ;
@@ -3622,7 +3790,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    {: ix:n :}
    VN @ 1 < if E-NELAB-UNDER throw then
    VN @ 1- VQ@ {: k:n :}
-   ix NDICT:CATCH-CELLS {: win:n back:n :}
+   ix SITE-CATCH {: win:n back:n :}
    win NDICT:CATCH-NONE = if ix QUOT-REFUSE then
    back NDICT:CATCH-NONE <> if back win <> if ix QUOT-REFUSE then then
    VN @ 1- win < if E-NELAB-UNDER throw then
@@ -3642,7 +3810,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 \ the body window and its outputs come from the same per-site checker table.
 : DO-FINALLY ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena ix:n :}
    VN @ 2 < if E-NELAB-UNDER throw then
-   ix NDICT:FINALLY-CELLS {: in:n out:n cleanup-out:n :}
+   ix SITE-FINALLY {: in:n out:n cleanup-out:n :}
    in 0 < if ix QUOT-REFUSE then
    VN @ 2 - VQ@ {: body:n :}
    VN @ 1- VQ@ {: cleanup:n :}
@@ -3657,15 +3825,15 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    \ Returning products and wide families need the checker's value boundaries.
    \ Dead outputs need no grouping. Trusted bodies can carry only quotation
    \ arity, without ordinary call rows; handle those exactly as execute does.
-   out 0 < ix NDICT:CALL-CELLS drop 0 < or if NDICT:GLUE-NONE
-   else ix NDICT:CALL-GLUE nip then {: glue:n :}
+   out 0 < ix SITE-CALL drop 0 < or if NDICT:GLUE-NONE
+   else ix SITE-GLUE nip then {: glue:n :}
    glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
    ix entry in 2 + out 0 max glue rin rout gin gout STAGE-WCALL-R
    out 0 < cleanup-out 0 < or if r ix DEAD-END then ;
 
 : DO-C2-INVOKE ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena ix:n :}
    VN @ 3 < if E-NELAB-UNDER throw then
-   ix NDICT:FINALLY-CELLS {: in:n out:n cleanup-out:n :}
+   ix SITE-FINALLY {: in:n out:n cleanup-out:n :}
    in 0 < if ix QUOT-REFUSE then
    VN @ 3 - VQ@ {: body:n :}
    VN @ 2 - VQ@ {: cleanup:n :}
@@ -3680,8 +3848,8 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    body rin rout gin gout Q-R-FILL
    s" c2-invoke" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if ix QUOT-REFUSE then
-   out 0 < ix NDICT:CALL-CELLS drop 0 < or if NDICT:GLUE-NONE
-   else ix NDICT:CALL-GLUE nip then {: glue:n :}
+   out 0 < ix SITE-CALL drop 0 < or if NDICT:GLUE-NONE
+   else ix SITE-GLUE nip then {: glue:n :}
    glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
    ix entry in 3 + out 0 max glue rin rout gin gout STAGE-WCALL-R
    out 0 < cleanup-out 0 < or if r ix DEAD-END then ;
@@ -3690,54 +3858,46 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 : CON-PADS-PUSH ( n n -- ) {: ix:n x:n :}
    x 0 ?do  ix 0 EMIT-LIT  loop ;
 
-\ What came back is ONE value: the call answered its DECLARED bundle.
-: CON-BUNDLE-GLUE ( n -- ) {: w:n :}
-   w VN @ > if E-NELAB-UNDER throw then
-   VN @ w -  w  VGLUE-GROW ;
-
 : DO-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   ix NDICT:CALL-CELLS drop {: in:n :}
+   ix SITE-CALL drop {: in:n :}
    in 0 < if r ix WSYM HIR-WORD:CALLEE-IN@ else in then
    ix swap 0 QCALL-FILL
-   ix NDICT:INIT-LAYOUT {: width:n bytes:n align:n :}
+   ix SITE-INIT {: width:n bytes:n align:n :}
    width 0 >= if
       ix width EMIT-LIT
       ix bytes EMIT-LIT
       ix align EMIT-LIT
       ix WSYM {: sy:IR-ID:ir-symbol-id :}
-      ix NDICT:CALL-CELLS {: public-in:n out:n :}
+      ix SITE-CALL {: public-in:n out:n :}
       public-in 0 < if E-NELAB-CTRL throw then
       r sy HIR-WORD:TERMINAL? if
          ix r sy HIR-WORD:ENTRY@ public-in 3 + STAGE-TERMINAL exit
       then
-      ix NDICT:CALL-GLUE nip {: glue:n :}
+      ix SITE-GLUE nip {: glue:n :}
       glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
       ix r sy HIR-WORD:ENTRY@ public-in 3 + out glue STAGE-WCALL
       ix out QRESULTS-FILL
       exit
    then
-   ix NDICT:FIELD-SPAN {: off:n bytes:n :}
+   ix SITE-FIELD {: off:n bytes:n :}
    off 0 >= if
       ix off EMIT-LIT
       ix bytes EMIT-LIT
       ix WSYM {: sy:IR-ID:ir-symbol-id :}
-      ix NDICT:CALL-CELLS {: public-in:n out:n :}
+      ix SITE-CALL {: public-in:n out:n :}
       public-in 0 < if E-NELAB-CTRL throw then
       r sy HIR-WORD:TERMINAL? if
          ix r sy HIR-WORD:ENTRY@ public-in 2 + STAGE-TERMINAL exit
       then
-      ix NDICT:CALL-GLUE nip {: glue:n :}
+      ix SITE-GLUE nip {: glue:n :}
       glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
       ix r sy HIR-WORD:ENTRY@ public-in 2 + out glue STAGE-WCALL
       ix out QRESULTS-FILL
       exit
    then
-   ix NDICT:CON-PADS {: x:n :}
-   ix x CON-PADS-PUSH
-   r ix DO-WORD-CALL
-   x 0= if exit then
-   r  ix WSYM  HIR-WORD:CALLEE-OUT@  x +  CON-BUNDLE-GLUE ;
+   ix ix SITE-PADS CON-PADS-PUSH
+   r ix DO-WORD-CALL ;
 
 \ Source stores use the engine's protected-span boundary. A raw HIR store
 \ alone cannot enforce the same sealed-memory rule as interpreted ! and c!.
@@ -3797,6 +3957,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 \ still decide whether a check is emitted at all and that the fact matches the
 \ token's width, but neither is passed any more.
 : VALIDATE-FETCH ( n -- ) {: ix:n :}
+   EXACT-SOURCE @ 0= if exit then
    VW ix TOK-OFF NFETCH:AT {: address:n bytes:n width:n :}
    bytes 0= if exit then
    width VW ix TOK-CELLS <> if E-NELAB-BUNDLE throw then
@@ -3897,7 +4058,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 
 : DO-OP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   ix NDICT:CALL-CELLS drop {: a:n :}
+   ix SITE-CALL drop {: a:n :}
    a 0 >= if ix a 0 QCALL-FILL then
    VW ix TOK-CELLS {: w:n :}
    r ix WSYM HIR-WORD:OPCODE@ {: k:HIR:opcode :}
@@ -4038,6 +4199,96 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
       eval         OF ix DO-EVAL ENDOF
    ;MATCH ;
 
+\ This decision is made while a source token still has its bound definer and
+\ semantic model. Stores, pointer expansion and indirect calls may disappear
+\ behind ordinary arithmetic or a guarded direct call after this point.
+: HOST-SCALAR-OP? ( HIR:opcode -- bool )
+   {: k:HIR:opcode :}
+   k HIR-OPCODE:ADD HIR-OPCODE:EQ
+   k HIR-OPCODE:SUB HIR-OPCODE:EQ or
+   k HIR-OPCODE:MUL HIR-OPCODE:EQ or
+   k HIR-OPCODE:LT HIR-OPCODE:EQ or
+   k HIR-OPCODE:LE HIR-OPCODE:EQ or
+   k HIR-OPCODE:GT HIR-OPCODE:EQ or
+   k HIR-OPCODE:GE HIR-OPCODE:EQ or
+   k HIR-OPCODE:EQUAL HIR-OPCODE:EQ or
+   k HIR-OPCODE:NE HIR-OPCODE:EQ or
+   k HIR-OPCODE:AND HIR-OPCODE:EQ or
+   k HIR-OPCODE:OR HIR-OPCODE:EQ or
+   k HIR-OPCODE:XOR HIR-OPCODE:EQ or
+   k HIR-OPCODE:LSHIFT HIR-OPCODE:EQ or
+   k HIR-OPCODE:RSHIFT HIR-OPCODE:EQ or
+   k HIR-OPCODE:INVERT HIR-OPCODE:EQ or ;
+
+: HOST-MEM-OP? ( HIR:opcode -- bool )
+   {: k:HIR:opcode :}
+   k HIR-OPCODE:LOAD HIR-OPCODE:EQ
+   k HIR-OPCODE:STORE HIR-OPCODE:EQ or
+   k HIR-OPCODE:BLOAD HIR-OPCODE:EQ or
+   k HIR-OPCODE:BSTORE HIR-OPCODE:EQ or ;
+
+: HOST-OP ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   r ix WSYM HIR-WORD:OPCODE@ {: k:HIR:opcode :}
+   k HOST-SCALAR-OP? if exit then
+   k HOST-MEM-OP? if NHOST:MEMORY ix HOST-REFUSE exit then
+   NHOST:UNKNOWN ix HOST-REFUSE ;
+
+: HOST-CONST-OP ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:CONST-OPCODE@ {: k:HIR:opcode :}
+   k HIR-OPCODE:ADD HIR-OPCODE:EQ
+   r sy HIR-WORD:CONST-VALUE@ HIR:CELL-BYTES = and if
+      NHOST:MEMORY ix HOST-REFUSE exit
+   then
+   k HOST-SCALAR-OP? 0= if NHOST:UNKNOWN ix HOST-REFUSE then ;
+
+: HOST-EXPAND ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   r ix WSYM HIR-WORD:EXPAND@
+   MATCH HIR:expand
+      cell-index OF NHOST:MEMORY ix HOST-REFUSE ENDOF
+      modulo     OF NHOST:UNKNOWN ix HOST-REFUSE ENDOF
+      maximum    OF ENDOF
+   ;MATCH ;
+
+: HOST-CONTROL ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   r ix WSYM HIR-WORD:CTRL@ {: k:HIR:ctrl :}
+   k HIR-CTRL:BIND-DEFER HIR-CTRL:EQ
+   k HIR-CTRL:EXEC HIR-CTRL:EQ or
+   k HIR-CTRL:CATCH HIR-CTRL:EQ or
+   k HIR-CTRL:FINALLY HIR-CTRL:EQ or
+   k HIR-CTRL:C2-INVOKE HIR-CTRL:EQ or
+   k HIR-CTRL:EVAL HIR-CTRL:EQ or
+   k HIR-CTRL:TICK HIR-CTRL:EQ or
+   k HIR-CTRL:OPEN-QUOT HIR-CTRL:EQ or if
+      NHOST:INDIRECT ix HOST-REFUSE
+   then ;
+
+: HOST-SOURCE ( IR-ARENA:arena n HIR:meaning -- )
+   {: r:IR-ARENA:arena ix:n m:HIR:meaning :}
+   m HIR-MEANING:RENAME HIR-MEANING:EQ if
+      r ix WSYM HIR-WORD:HOST-RENAME@ {: kind:n :}
+      kind HIR-WORD:HOST-VIEW = if NHOST:MEMORY ix HOST-REFUSE then
+      kind HIR-WORD:HOST-CAST = if NHOST:CAST ix HOST-REFUSE then
+      exit
+   then
+   m HIR-MEANING:OP HIR-MEANING:EQ if r ix HOST-OP exit then
+   m HIR-MEANING:CONST-OP HIR-MEANING:EQ if r ix HOST-CONST-OP exit then
+   m HIR-MEANING:EXPANSION HIR-MEANING:EQ if r ix HOST-EXPAND exit then
+   m HIR-MEANING:CONTROL HIR-MEANING:EQ if r ix HOST-CONTROL exit then
+   m HIR-MEANING:STRING-LITERAL HIR-MEANING:EQ if
+      NHOST:MEMORY ix HOST-REFUSE exit
+   then
+   m HIR-MEANING:FIXED HIR-MEANING:EQ if
+      NHOST:UNKNOWN ix HOST-REFUSE exit
+   then
+   m HIR-MEANING:REAL-LITERAL HIR-MEANING:EQ if
+      NHOST:UNKNOWN ix HOST-REFUSE exit
+   then ;
+
 \ ---- the walk ----------------------------------------------------------------
 variable IX                          \ the body token the walk stands on
 
@@ -4063,7 +4314,10 @@ variable IX                          \ the body token the walk stands on
    PATH-ENDED? if r ix AFTER-END-CK then
    ix IN-DECL? if exit then
    ix LOCAL-READ? if exit then
-   r ix ADMIT-AT
+   ix C2-STOW-SITE? if ix DO-C2-STOW exit then
+   r ix ADMIT-AT {: meaning:HIR:meaning :}
+   r ix meaning HOST-SOURCE
+   meaning
    MATCH HIR:meaning
       literal      OF ix EMIT-CONST ENDOF
       real-literal OF ix EMIT-FCONST ENDOF
@@ -4503,7 +4757,7 @@ private
    QLOCALS-CK
    r lo hi MATCH-SCAN
    r lo hi DEFER-SCAN
-   p r lo hi RESOLVE-SCAN
+   p r lo hi RESOLVE-TRY
    r lo hi MEM-SCAN
    FUN-KIND @ FUN-DOES-PARENT = if 1 TOK-NEED ! then
    r lo hi CROSS-SCAN
@@ -4572,9 +4826,9 @@ private
    c b v key p r QBUILD-ALL
    f ;
 
-public
-
-: COLON ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
+\ Both entries share the same elaboration. Only NCOMP's recorded entry may
+\ consult source-site facts; a direct tape has no checker authority to borrow.
+: COLON-CORE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
       r:IR-ARENA:arena in:n out:n :}
    RF-RESET
@@ -4588,7 +4842,7 @@ public
    0 FR-RIN ! 0 FR-ROUT !  0 FR-RGIN ! 0 FR-RGOUT !
    c b v p r 1 n in out BUILD-FUN ;
 
-: DOES ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n n n n n n ptr u8 n -- IR-ID:ir-fun-id )
+: DOES-CORE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n n n n n n ptr u8 n -- IR-ID:ir-fun-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
       r:IR-ARENA:arena in:n out:n at:n din:n dout:n dgin:n dgout:n sig:ptr sigu:n :}
    RF-RESET
@@ -4644,8 +4898,44 @@ public
    0 FR-RIN ! 0 FR-ROUT !  0 FR-RGIN ! 0 FR-RGOUT !
    c b v p r 1 1 0 0 BUILD-FUN ;
 
+public
+
+: COLON ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
+   0 EXACT-SOURCE !
+   NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
+   COLON-CORE ;
+
+: DOES ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n n n n n n ptr u8 n -- IR-ID:ir-fun-id )
+   0 EXACT-SOURCE !
+   NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
+   DOES-CORE ;
+
+: RECORDED-COLON ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
+      r:IR-ARENA:arena in:n out:n :}
+   v NFEED:PRODUCED-CK
+   -1 EXACT-SOURCE !
+   c b v p r in out COLON-CORE ;
+
+: RECORDED-DOES ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n n n n n n ptr u8 n -- IR-ID:ir-fun-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
+      r:IR-ARENA:arena in:n out:n at:n din:n dout:n dgin:n dgout:n
+      sig:ptr sigu:n :}
+   v NFEED:PRODUCED-CK
+   -1 EXACT-SOURCE !
+   c b v p r in out at din dout dgin dgout sig sigu DOES-CORE ;
+
 : DOES-FUNCTION ( -- n )
    DOES-FUN @ ;
+
+: QUOT-ARITY ( n -- n n )
+   {: ordinal:n :}
+   QN @ 0 ?do
+      i QFUN@ ordinal = if
+         i QIN@ i QOUT@ unloop exit
+      then
+   loop
+   -1 -1 ;
 
 \ ---- what the last elaboration refused ---------------------------------------
 

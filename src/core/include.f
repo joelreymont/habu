@@ -4,7 +4,6 @@
 \ this file only gives source files a checked way to load dependencies.
 
 PATH-CAP constant INCLUDE-PATH-CAP
-$200 constant REQUIRE-MAX  \ composed maki+stdlib require closure crossed 256 (2026-07-20)
 \ A loader refusal's exit status, always after a line naming the refusal: an
 \ uncaught throw of a code below 256 ends the process with no word at all.
 $4A constant INCLUDE-IO-RC
@@ -17,15 +16,16 @@ $37D8 constant INCLUDE-EVALERR-CELL
 $2800 constant INCLUDE-SRCLOC-PATH-CELL
 $2808 constant INCLUDE-SRCLOC-PATHLEN-CELL
 create INCLUDE-PATH INCLUDE-PATH-CAP 1 + allot
-create REQUIRE-LENS REQUIRE-MAX cells allot
 
 package REQUIRE-REG
 private
 
-REQUIRE-MAX INCLUDE-PATH-CAP * constant POOL-CAP
-create OFFSETS REQUIRE-MAX cells allot
+\ FROZEN holds a DATA block of (offset,length) pairs followed by path bytes.
+\ Process rows use a movable pair table and path chunks that never move.
 PERSISTED-PTR-VARIABLE FROZEN
-PTR-VARIABLE MAPPED
+PERSISTED-PTR-U8-TABLE-VARIABLE ROWS
+variable ROW-CAP
+PERSISTED-PTR-U8-TABLE-VARIABLE CHUNK
 variable PREFIX-N
 
 ;package
@@ -617,102 +617,242 @@ using SOURCE-ROOT
    dup 0 <= if s" include: missing path" INCLUDE-DIE then
    dup INCLUDE-PATH-CAP > if s" include: path too long" INCLUDE-DIE then ;
 
-: REQUIRE-LEN@ ( n -- n )
-   cells REQUIRE-LENS + @ ;
-
-: REQUIRE-LEN! ( n n -- ) {: u:n idx:n :}
-   u REQUIRE-LENS idx cells + ! ;
-
 package REQUIRE-REG
 private
 
-: OFFSET@ ( n -- n )
-   cells OFFSETS + @ ;
+$7FFFFFFFFFFFFFFF constant MAX-BYTES
+$7FFFFFFFFFFFFFFF 2 cells / constant ROW-LIMIT
+3 cells constant CHUNK-HEAD
+MAX-BYTES CHUNK-HEAD - constant CHUNK-LIMIT
 
-: OFFSET! ( n n -- ) {: off:n idx:n :}
-   off OFFSETS idx cells + ! ;
+: SIZE-DIE ( -- )
+   s" require: inventory size overflow" INCLUDE-DIE ;
 
-: USED ( -- n )
-   REQUIRE-N @ 0= if 0 exit then
-   REQUIRE-N @ 1- dup OFFSET@ swap REQUIRE-LEN@ + ;
+: FROZEN-REC ( n -- ptr n )
+   2 * cells FROZEN @ swap + ;
 
-: CLAMP ( -- )
-   PREFIX-N @ REQUIRE-N @ > if REQUIRE-N @ PREFIX-N ! then ;
+: FROZEN-LEN ( n -- n )
+   FROZEN-REC CELL + @ ;
 
-\ A mapping, once allocated, mirrors all live bytes. Frozen rows still return
-\ their DATA addresses, so appending never changes an existing live row borrow.
-: ENSURE-MAPPED ( n -- ) {: used:n :}
-   MAPPED @ NULL-PTR <> if exit then
-   POOL-CAP map-anon 0= 0= if drop s" require: cannot map the path pool" INCLUDE-DIE then
+: FROZEN-SLOT ( n -- ptr u8 ) {: idx:n :}
+   FROZEN @ idx FROZEN-REC @ + ;
+
+: ROW-PTR ( n -- ptr ptr u8 )
+   2 * ROWS @ swap ptr-field ;
+
+: ROW-PTR@ ( n -- ptr u8 )
+   ROW-PTR @ ;
+
+: ROW-LEN-ADDR ( n -- ptr n )
+   2 * 1+ cells ROWS @ BYTE-VIEW swap + CELL-VIEW ;
+
+: ROW-LEN@ ( n -- n )
+   ROW-LEN-ADDR @ ;
+
+: ROW-BYTES ( n -- n )
+   2 * cells ;
+
+: ROW-NEW-CAP ( n -- n ) {: need:n :}
+   need $40 max
+   ROW-CAP @ ROW-LIMIT 2 / <= if ROW-CAP @ 2 * max then ;
+
+: ROW-MAP ( n -- ptr ptr u8 )
+   ROW-BYTES map-anon 0 <> if
+      drop s" require: cannot map the row table" INCLUDE-DIE
+   then ;
+
+: ROW-GROW ( n -- ) {: need:n :}
+   need ROW-LIMIT > if SIZE-DIE then
+   need ROW-NEW-CAP {: cap:n :}
+   cap ROW-MAP
    {: fresh:ptr :}
-   used 0 > if FROZEN @ fresh used BYTE-COPY then
-   fresh MAPPED ! ;
+   ROW-CAP @ 0 > if
+      ROWS @ BYTE-VIEW fresh BYTE-VIEW ROW-CAP @ ROW-BYTES BYTE-COPY
+      ROWS @ ROW-CAP @ ROW-BYTES munmap 0 < if
+         s" require: cannot release the row table" INCLUDE-DIE
+      then
+   then
+   fresh ROWS !
+   cap ROW-CAP ! ;
+
+: ROW-ENSURE ( n -- ) {: need:n :}
+   need ROW-LIMIT > if SIZE-DIE then
+   need ROW-CAP @ > if need ROW-GROW then ;
+
+: ROWS-RELEASE ( -- )
+   ROW-CAP @ 0= if exit then
+   ROWS @ ROW-CAP @ ROW-BYTES munmap 0 < if
+      s" require: cannot release the row table" INCLUDE-DIE
+   then
+   NULL-PTR ROWS !
+   0 ROW-CAP ! ;
+
+: CHUNK-PREV@ ( ptr ptr u8 -- ptr ptr u8 )
+   0 ptr-field @ ;
+
+: CHUNK-ROOM@ ( ptr ptr u8 -- n )
+   BYTE-VIEW CELL + CELL-VIEW @ ;
+
+: CHUNK-USED@ ( ptr ptr u8 -- n )
+   BYTE-VIEW 2 cells + CELL-VIEW @ ;
+
+: CHUNK-USED! ( n ptr ptr u8 -- )
+   BYTE-VIEW 2 cells + CELL-VIEW ! ;
+
+: CHUNK-DATA ( ptr ptr u8 -- ptr u8 )
+   BYTE-VIEW CHUNK-HEAD + ;
+
+: CHUNK-BYTES ( ptr ptr u8 -- n )
+   CHUNK-ROOM@ CHUNK-HEAD + ;
+
+: CHUNK-NEW-ROOM ( n -- n ) {: u:n :}
+   CHUNK @ NULL-PTR = if u $1000 max exit then
+   CHUNK @ CHUNK-ROOM@ {: old:n :}
+   old CHUNK-LIMIT 2 / <= if old 2 * u max else u then ;
+
+: CHUNK-NEW ( n -- )
+   CHUNK-NEW-ROOM {: room:n :}
+   room CHUNK-LIMIT > if SIZE-DIE then
+   CHUNK @ {: prev:ptr :}
+   room CHUNK-HEAD + map-anon 0 <> if
+      drop s" require: cannot map a path chunk" INCLUDE-DIE
+   then
+   {: fresh:ptr :}
+   fresh CHUNK !
+   prev CHUNK @ 0 ptr-field !
+   room CHUNK @ BYTE-VIEW CELL + CELL-VIEW !
+   0 CHUNK @ CHUNK-USED! ;
+
+: CHUNK-SPACE ( n -- ptr u8 ) {: u:n :}
+   CHUNK @ NULL-PTR = if
+      u CHUNK-NEW
+   else
+      u CHUNK @ CHUNK-ROOM@ CHUNK @ CHUNK-USED@ - > if u CHUNK-NEW then
+   then
+   CHUNK @ {: chunk:ptr :}
+   chunk CHUNK-USED@ {: used:n :}
+   used u + chunk CHUNK-USED!
+   chunk CHUNK-DATA used + ;
+
+: CHUNKS-RELEASE ( -- )
+   CHUNK @ begin dup NULL-PTR <> while
+      dup CHUNK-PREV@ swap dup CHUNK-BYTES munmap 0 < if
+         s" require: cannot release a path chunk" INCLUDE-DIE
+      then
+   repeat drop
+   NULL-PTR CHUNK ! ;
+
+: CHUNK-CONTAINS? ( ptr ptr u8 ptr u8 -- bool ) {: chunk:ptr path:ptr :}
+   path chunk CHUNK-DATA - {: off:n :}
+   off 0 >= off chunk CHUNK-ROOM@ < and ;
+
+: CHUNK-TRIM-TO ( ptr ptr u8 ptr u8 n -- ) {: chunk:ptr path:ptr u:n :}
+   path chunk CHUNK-DATA - u + chunk CHUNK-USED!
+   chunk CHUNK ! ;
+
+: CHUNKS-TRIM ( ptr u8 n -- ) {: path:ptr u:n :}
+   CHUNK @ begin dup NULL-PTR <> while
+      dup path CHUNK-CONTAINS? if path u CHUNK-TRIM-TO exit then
+      dup CHUNK-PREV@ swap dup CHUNK-BYTES munmap 0 < if
+         s" require: cannot release a path chunk" INCLUDE-DIE
+      then
+   repeat drop
+   s" require: path chunk missing" INCLUDE-DIE ;
 
 : ROUND-CELL ( n -- n ) {: bytes:n :}
    bytes CELL mod {: rem:n :}
    rem 0= if bytes exit then
    bytes CELL rem - + ;
 
-: POOL-RELEASE ( -- )
-   MAPPED @ POOL-CAP munmap 0< if s" require: cannot release the path pool" INCLUDE-DIE then
-   NULL-PTR MAPPED ! ;
+: CLAMP ( -- )
+   PREFIX-N @ REQUIRE-N @ > if REQUIRE-N @ PREFIX-N ! then ;
+
+: LIVE-BYTES ( -- n )
+   0 REQUIRE-N @ 0 ?do
+      i PREFIX-N @ < if i FROZEN-LEN else i ROW-LEN@ then {: u:n :}
+      {: used:n :}
+      u MAX-BYTES used - > if SIZE-DIE then
+      used u +
+   loop ;
+
+: PACK-BYTES ( n -- n ) {: used:n :}
+   REQUIRE-N @ ROW-LIMIT > if SIZE-DIE then
+   REQUIRE-N @ ROW-BYTES {: recs:n :}
+   used MAX-BYTES recs - > if SIZE-DIE then
+   recs used + ;
+
+: PAD-BYTES ( ptr u8 -- n )
+   data-base - negate CELL 1- and ;
+
+: TOTAL-BYTES ( n n -- n ) {: bytes:n pad:n :}
+   bytes MAX-BYTES CELL 1- - pad - > if SIZE-DIE then
+   pad bytes + ROUND-CELL ;
 
 public
 
 : SLOT ( n -- ptr u8 ) {: idx:n :}
-   idx PREFIX-N @ < if FROZEN @ else MAPPED @ then
-   idx OFFSET@ + ;
+   idx PREFIX-N @ < if idx FROZEN-SLOT else idx ROW-PTR@ then ;
+
+: LEN ( n -- n ) {: idx:n :}
+   idx PREFIX-N @ < if idx FROZEN-LEN else idx ROW-LEN@ then ;
 
 : APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
-   REQUIRE-N @ REQUIRE-MAX >= if
-      s" require: too many files" INCLUDE-DIE
-   then
    u 0 <= u INCLUDE-PATH-CAP > or if
       s" require: invalid path length" INCLUDE-DIE
    then
-   USED {: used:n :}
-   u POOL-CAP used - > if
-      s" require: path pool full" INCLUDE-DIE
-   then
    REQUIRE-N @ {: idx:n :}
-   PREFIX-N @ idx min {: prefix:n :}
-   used ENSURE-MAPPED
-   a MAPPED @ used + u BYTE-COPY
-   used idx OFFSET!
-   u idx REQUIRE-LEN!
-   prefix PREFIX-N !
+   idx ROW-LIMIT >= if SIZE-DIE then
+   idx 1+ ROW-ENSURE
+   u CHUNK-SPACE {: path:ptr :}
+   a path u BYTE-COPY
+   path idx ROW-PTR !
+   u idx ROW-LEN-ADDR !
    idx 1+ REQUIRE-N ! ;
 
-: REWIND ( n -- )
-   REQUIRE-N !
+: REWIND ( n -- ) {: keep:n :}
+   keep PREFIX-N @ <= if
+      CHUNKS-RELEASE
+   else
+      keep 1- dup ROW-PTR@ swap ROW-LEN@ CHUNKS-TRIM
+   then
+   keep REQUIRE-N !
    CLAMP ;
 
-\ Capture has one DATA allocation only when a new suffix survives. Its
-\ leading and trailing padding are zero.
+\ Capture packs the live rows once; no process pointer enters the DATA block.
+\ An unchanged or discarded suffix keeps the prior block and DATA extent.
 : PERSIST ( -- )
-   MAPPED @ NULL-PTR = if
-      CLAMP
-      REQUIRE-N @ 0= if NULL-PTR FROZEN ! then
-      exit
-   then
    REQUIRE-N @ PREFIX-N @ <= if
-      POOL-RELEASE
+      CHUNKS-RELEASE
+      ROWS-RELEASE
       CLAMP
       REQUIRE-N @ 0= if NULL-PTR FROZEN ! then
       exit
    then
-   USED {: used:n :}
+   LIVE-BYTES PACK-BYTES {: bytes:n :}
    here {: start:ptr :}
-   start data-base - negate CELL 1- and {: pad:n :}
-   pad used ROUND-CELL + {: total:n :}
+   start PAD-BYTES {: pad:n :}
+   bytes pad TOTAL-BYTES {: total:n :}
    total allot
    total 0 ?do 0 start i + c! loop
-   MAPPED @ start pad + used BYTE-COPY
-   POOL-RELEASE
-   start pad + FROZEN !
+   start pad + {: fresh:ptr :}
+   REQUIRE-N @ ROW-BYTES
+   REQUIRE-N @ 0 ?do
+      {: cursor:n :}
+      i LEN {: u:n :}
+      i SLOT fresh cursor + u BYTE-COPY
+      cursor fresh i 2 * cells + CELL-VIEW !
+      u fresh i 2 * 1+ cells + CELL-VIEW !
+      cursor u +
+   loop drop
+   CHUNKS-RELEASE
+   ROWS-RELEASE
+   fresh FROZEN !
    REQUIRE-N @ PREFIX-N ! ;
 
 ;package
+
+: REQUIRE-LEN@ ( n -- n )
+   REQUIRE-REG:LEN ;
 
 : REQUIRE-SLOT ( n -- ptr u8 )
    REQUIRE-REG:SLOT ;
@@ -732,9 +872,6 @@ public
       dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
       1+
    repeat drop INCLUDE-FALSE ;
-
-: REQUIRE-CHECK-ROOM ( -- )
-   REQUIRE-N @ REQUIRE-MAX >= if s" require: too many files" INCLUDE-DIE then ;
 
 package SOURCE-ROOT
 private
@@ -997,7 +1134,6 @@ public
 \ portable one never does. The path comes back in storage the store did not
 \ reuse, for the caller's load.
 : REQUIRE-STORE ( ptr u8 n -- ptr u8 n )
-   REQUIRE-CHECK-ROOM
    REQUIRE-BOOT-OPEN? if BOOT-ROW else 2dup then
    REQUIRE-REG:APPEND ;
 

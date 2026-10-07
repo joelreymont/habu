@@ -51,6 +51,12 @@ variable REG-PROT-N   0 REG-PROT-N !
    REG-PROT-N @ REG-PROT-CAP >= IF s" registry protect overflow" 76 die THEN
    ndict@ 1 -  REG-PROT-IDX REG-PROT-N @ cells + !
    1 REG-PROT-N +! ;
+\ The seal pass reads the registrations through these and retires them.
+: REG-PROT-COUNT ( -- n ) REG-PROT-N @ ;
+: REG-PROT-RECORD ( n -- n ) cells REG-PROT-IDX + @ ;
+: REG-PROT-RETIRE ( -- )
+   REG-PROT-N @ 0 ?do 0 i cells REG-PROT-IDX + ! loop
+   0 REG-PROT-N ! ;
 
 : CORE-STR= {: a:ptr u:n b:ptr v:n :}   \ ( ptr u8 n ptr u8 n -- bool ) byte-wise string equality
    u v = IF

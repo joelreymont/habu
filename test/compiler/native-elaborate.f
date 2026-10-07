@@ -15,13 +15,14 @@
 \ compiled. test/compiler/native-chain.f then runs one produced tape all the way
 \ through, so this suite may state that shape and that one proves it.
 \
-\ HOW A FIXTURE IS BUILT. Each one states its source text, and the shared source
+\ HOW A DIRECT FIXTURE IS BUILT. Each one states its source text, and the shared source
 \ fixture test/compiler/native-source-fixture.f lexes it onto a tape: one token
 \ per word, spans that are real ranges in that text, and the parser mode each
 \ token would really have been read in. That file is shared with the code
 \ generator comparison harness, so both harnesses agree about what a token is.
 \ The hostile fixtures below push their tokens by hand through the same writer,
 \ because the thing under test is a token the lexer would never produce.
+\ The recorded binding cases instead use NFEED's real checker observer.
 \
 \ WHICH REFUSAL BELONGS TO WHOM. The elaborator names five refusals of its own -
 \ the shape of a definition, the parser mode of a token, the declared arity, and
@@ -37,6 +38,7 @@
 require lib/errors.f
 require lib/test.f
 require src/compiler/native/elaborate.f
+require src/compiler/native/feed.f
 require test/compiler/native-source-fixture.f
 
 \ ---- the three targets the `is` fixtures name --------------------------------
@@ -52,6 +54,8 @@ create NELB-DATA  $4842444546455201 ,  0 ,
 defer NELB-HOOK ( n -- n )
 
 package NELAB-TEST
+public
+ENUM shade dark light ;ENUM
 private
 
 \ ---- bindings ----------------------------------------------------------------
@@ -85,6 +89,16 @@ using NSRC
    {: c:IR-CTX:ctx :}
    c RIG
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena tp:IR-ARENA:arena :}
+   c LEX
+   b p r  tp NTAPE:SEAL ;
+
+\ A rig whose word model has room for the callees a fixture's body names.
+: SEALED-ROOM ( IR-CTX:ctx n -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ARENA:view )
+   {: c:IR-CTX:ctx extra:n :}
+   c HIR-BUILDER {: b:IR-BUILD:builder :}
+   c b extra MODEL-ROOM
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b TAPE {: tp:IR-ARENA:arena :}
    c LEX
    b p r  tp NTAPE:SEAL ;
 
@@ -319,6 +333,97 @@ using NSRC
    s" the definition publishes one function, named and spanned by its source" T-LABEL
    BND [: FUN-BODY ;] IR-CTX:WITH-CONTEXT
    6 T= 0 T= 1 T= 1 T= TTRUE ;
+
+create DIRECT-SCAN-TEXT 128 allot
+
+: DIRECT-SITE-BODY ( IR-CTX:ctx -- n n n )
+   {: c:IR-CTX:ctx :}
+   c HIR-BUILDER {: scan:IR-BUILD:builder :}
+   c scan IR-BUILD:MODULE-KEY 16 NTAPE:NEW {: tp:IR-ARENA:arena :}
+   c scan tp DIRECT-SCAN-TEXT 128 NFEED:BEGIN-UNIT
+   s" NELB-OTHER ( n n -- n ) +" CHECK! -1 T=
+   NFEED:END-UNIT {: recorded:IR-ARENA:view verdict:n :}
+   verdict -1 T=
+   recorded NFEED:RECORD-WINDOW
+   1 NDICT:CALL-CELLS 1 T= 2 T=
+   s" NELB-DIRECT abs" TEXT!
+   c 1 SEALED-ROOM
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLK {: blk:IR-ID:ir-block-id :}
+   m blk s" hir.wordcall" F-OPC-N
+   m blk s" hir.wordcall" 0 F-OPC-AT {: op:IR-ID:ir-op-id :}
+   m op 1 F-ATTR  m op 2 F-ATTR ;
+
+: DIRECT-SITE-CASE ( -- )
+   s" a direct call keeps its model arity after an unrelated checker scan" T-LABEL
+   BND [: DIRECT-SITE-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 1 T= 1 T= ;
+
+: DIRECT-FETCH-BODY ( IR-CTX:ctx -- n n )
+   {: c:IR-CTX:ctx :}
+   NFETCH:RELEASE
+   s" NELB-REC ( ptr NELAB-TEST:shade -- ) @ drop"
+      2dup CHECKER-OWNER:CHECK -1 T=
+   0 NFETCH:CAPTURE
+   37 NFETCH:CHECKED? TTRUE
+   s" NELB-DIRECT-FETCH NELB-DATA          @" TEXT!
+   c 1 SEALED-ROOM
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLK {: blk:IR-ID:ir-block-id :}
+   m blk s" hir.wordcall" F-OPC-N
+   m blk s" hir.load" F-OPC-N
+   NFETCH:RELEASE ;
+
+: DIRECT-FETCH-CASE ( -- )
+   s" a direct fetch ignores a recorded validator at its byte offset" T-LABEL
+   BND [: DIRECT-FETCH-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 0 T= ;
+
+create REC-TEXT 128 allot
+
+\ Each scan needs a fresh declaration name: DIRECT-FETCH already checked
+\ NELB-REC, and a second CHECK! of one name refuses before it records tokens.
+: REC-FACTS ( IR-CTX:ctx ptr u8 n -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ARENA:view )
+   {: c:IR-CTX:ctx src:ptr su:n :}
+   c HIR-BUILDER {: b:IR-BUILD:builder :}
+   c b MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b IR-BUILD:MODULE-KEY 8 NTAPE:NEW {: tp:IR-ARENA:arena :}
+   c b tp REC-TEXT 128 NFEED:BEGIN-UNIT
+   src su CHECK! -1 T=
+   NFEED:END-UNIT {: v:IR-ARENA:view verdict:n :}
+   verdict -1 T=
+   v NFEED:RECORD-WINDOW
+   b p r v ;
+
+: MISSING-FACT-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c s" NELB-MISS ( n -- n ) abs" REC-FACTS
+      {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   1 CHECKER-OWNER:SOURCE-BINDING {: row:ptr bytes:n :}
+   bytes CHECKER-OWNER-ABI:BOUND-CELLS cells T=
+   \ Remove the call's ordinal without changing its tape or dictionary word.
+   3 row CHECKER-OWNER-ABI:BOUND-ORD cells + CELL-VIEW !
+   c b v p r 1 1 NELAB:RECORDED-COLON drop ;
+
+: STALE-FACT-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c s" NELB-STALE ( n -- n ) abs" REC-FACTS
+      {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   s" NELB-LATER ( -- n ) 1" CHECK! -1 T=
+   \ The recorded does entry checks its producer window before reading does shape.
+   c b v p r 1 1 1 0 1 0 0 s" ( -- n )" NELAB:RECORDED-DOES drop ;
+
+: RECORDED-FACT-CASE ( -- )
+   s" a missing ordinary recorded call refuses despite its dictionary spelling" T-LABEL
+   [: BND [: MISSING-FACT-BODY ;] IR-CTX:WITH-CONTEXT ;]
+      E-NCOMP-BINDING TTHROWSQ
+   s" a stale recorded does window refuses despite its dictionary spelling" T-LABEL
+   [: BND [: STALE-FACT-BODY ;] IR-CTX:WITH-CONTEXT ;]
+      E-NCOMP-BINDING TTHROWSQ ;
 
 \ ---- the two words this suite is refused by -----------------------------------
 \ WHY AN OUT-OF-SCOPE SPELLING IS THE FIXTURE. A body word the dialect models no
@@ -2084,16 +2189,6 @@ create TW-BUF TW-CAP allot
    {: m:IR-BUILD:module :}
    m  m  m IR-BUILD:FKEY 0 IR-ID:PACK-FUN  F-BLK  s" hir.quot" F-OPC-N ;
 
-\ A rig whose word model has room for the callees a fixture's body names.
-: SEALED-ROOM ( IR-CTX:ctx n -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ARENA:view )
-   {: c:IR-CTX:ctx extra:n :}
-   c HIR-BUILDER {: b:IR-BUILD:builder :}
-   c b extra MODEL-ROOM
-   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
-   c b TAPE {: tp:IR-ARENA:arena :}
-   c LEX
-   b p r  tp NTAPE:SEAL ;
-
 \ `: QP-ACT ( -- [ -- ] ) [: 1 drop ;] ;` - the returned quotation. The enclosing
 \ function leaves one value and the body leaves none, which is the pair a module
 \ with one arity for the whole emission cannot hold.
@@ -2507,6 +2602,9 @@ public
    BND [: drop ELOPSIDED-CASE ;] IR-CTX:WITH-CONTEXT
    BUMP-CASE
    FUN-CASE
+   DIRECT-SITE-CASE
+   DIRECT-FETCH-CASE
+   RECORDED-FACT-CASE
    BND [: drop UNDEC-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop CHARTOK-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop STRTOK-CASE ;] IR-CTX:WITH-CONTEXT

@@ -26,7 +26,7 @@ CAST: AS-PREPARE ( n -- [ -- ] )
 \ the first one differ. And no core-prefix boundary is marked, so NORET-COMPACT
 \ (src/core/checker.f) compacts without one: a build never takes that branch,
 \ because its capture follows src/core/lower-cert-seal.f's mark.
-TRUSTED: FRESH? ( -- bool )
+: FRESH? ( -- bool )
    USIGS USIGS-CAP-U @ REG-DATA-SPAN? 0=
    CHECKER-BOUND:CURSORS 0= and ;
 

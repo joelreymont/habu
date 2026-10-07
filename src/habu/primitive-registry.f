@@ -31,8 +31,7 @@ DYNAMIC-BUFFER ROWS n
 DYNAMIC-BUFFER NAMES n
 variable USED
 variable NAME-BYTES
-\ Nonzero while the build carries a complete captured runtime; RESET clears it
-\ and the ARM64 builder arms it (habu2.f EMIT-RESET-BUILDER).
+variable SCALAR-ROW
 variable SEEDED
 
 : ROW-FIELD ( n n -- ptr n ) {: row:n field:n :}
@@ -53,7 +52,7 @@ variable SEEDED
 public
 
 : COUNT ( -- n ) USED @ ;
-: RESET ( -- ) 0 USED ! 0 NAME-BYTES ! 0 SEEDED ! ;
+: RESET ( -- ) 0 USED ! 0 NAME-BYTES ! 0 SCALAR-ROW ! 0 SEEDED ! ;
 : SEEDED! ( bool -- ) if 1 else 0 then SEEDED ! ;
 : SEEDED? ( -- bool ) SEEDED @ 0<> ;
 : RELEASE ( -- ) RESET ROWS-RELEASE NAMES-RELEASE ;
@@ -79,6 +78,23 @@ public
 : NAME-LABEL! ( label n -- ) swap LABEL>N swap 4 ROW-FIELD ! ;
 : WID ( n -- n ) 5 ROW-FIELD @ ;
 : WID! ( n n -- ) 5 ROW-FIELD ! ;
+
+\ Only an emitter that owns the completed body may mark it. The specification
+\ proves the declared n -> n effect; a helper has no checked row and cannot
+\ pass this gate. The marked row is carried into the booted dictionary by its
+\ exact ordinal, independently of its spelling or a later checker verdict.
+: MARK-SCALAR ( n -- ) {: row:n :}
+   SCALAR-ROW @ 0<> if E-INDEX throw then
+   row NAME$ PRIM-SPEC:FIND {: spec:n :}
+   spec 0 < if E-INDEX throw then
+   spec PRIM-SPEC:CODE-LEN@ 4 <> if E-INDEX throw then
+   spec 0 PRIM-SPEC:CODE@ PRIM-SPEC:A-NUM <> if E-INDEX throw then
+   spec 1 PRIM-SPEC:CODE@ PRIM-SPEC:A-IN <> if E-INDEX throw then
+   spec 2 PRIM-SPEC:CODE@ PRIM-SPEC:A-NUM <> if E-INDEX throw then
+   spec 3 PRIM-SPEC:CODE@ PRIM-SPEC:A-OUT <> if E-INDEX throw then
+   row 1+ SCALAR-ROW ! ;
+
+: SCALAR-ROW@ ( -- n ) SCALAR-ROW @ ;
 
 \ THE TABLE IS WHICH PRIMITIVES EXIST. Every body registers under a name that
 \ src/habu/prims.f already specifies - the row states the effect, the body
@@ -113,7 +129,9 @@ public
 
 \ A primitive whose dictionary record is globally searchable but cannot be
 \ executed or ticked by ordinary source. The sentinel lives only in this
-\ build-side registry; the emitted record carries WID 0 and DNAME-INT.
+\ build-side registry; the emitted record carries WID 0 and DNAME-INT, and
+\ DNAME-OWNED as well when a package row types the primitive (OWNED?): its
+\ owner's checked callers compile.
 -1 constant GLOBAL-INT-WID
 
 \ An engine helper is an engine-resident routine that guarded primitives reach
@@ -146,12 +164,26 @@ private
    then
    depth 52 lshift ;
 
+\ Whether a package row (src/habu/prims.f EPPRIM: ... ECLOSE-PRIVATE) states the
+\ primitive's effect. An internal primitive with one is its owner's to call, so
+\ DNAME stamps it DNAME-OWNED (src/habu/layout.f).
+: OWNED? ( ptr u8 n -- bool ) {: name:ptr size:n :}
+   PRIM-SPEC:COUNT 0 ?do
+      i PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = if
+         i PRIM-SPEC:NAME$ name size CORE-STR= if unloop 0 0= exit then
+      then
+   loop
+   0 0= 0= ;
+
 public
 
 : DNAME ( n -- n ) {: idx:n :}
    idx NAME-LEN  idx NAME$ MIN-IN-BITS or
    idx WID {: wid:n :}
-   wid OWNER-API-PRI-WID =  wid GLOBAL-INT-WID = or if DNAME-INT or then ;
+   wid OWNER-API-PRI-WID =  wid GLOBAL-INT-WID = or if DNAME-INT or then
+   wid GLOBAL-INT-WID = if
+      idx NAME$ OWNED? if DNAME-OWNED or then
+   then ;
 
 : HELPER-WID ( n -- n )
    WID dup GLOBAL-INT-WID = if drop 0 then ;

@@ -26,6 +26,7 @@ execute
 package OBJIMG-TEST
 using OBJ
 using OBJIMG
+using A64ICODE
 
 1024 constant CAP
 5000 constant TIMEOUT-MS
@@ -134,6 +135,7 @@ public
    CLEANUP-RUN
    T-REPORT ;
 
+;using
 ;using
 ;using
 ;package

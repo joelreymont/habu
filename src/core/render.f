@@ -844,55 +844,76 @@ variable MDV-I   variable MDV-F
    s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" ': a local cannot be bound or referenced inside a quotation, or bound on a dead path" DTXT ;
 
-: DCODE
-   IMMERR @ if IMM-CODE$ exit then
-   NPBAD @ IF s" E-NONPARAMETRIC-EFFECT" ELSE
-   CAPREQ @ IF s" E-CAP-TRUSTED" ELSE
-   UNSAFE @ IF s" E-UNSAFE" ELSE
-   LOCALBAD @ IF LOCALBAD-CODE$ ELSE
-   LINLOCBAD @ IF s" E-LINEAR-LOCAL" ELSE
-   MDIAG @ 0 <> IF MDIAG-CODE$ ELSE
-   DEADERR @ IF s" E-DEAD-CODE" ELSE
-   QUALBAD @ IF s" E-BAD-QUALIFIED" ELSE
-   UNDEFERR @ IF s" E-UNDEFINED" ELSE
-   DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
-   SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE SGBAD-ARITY? IF s" E-WRONG-ARITY" ELSE s" E-BAD-SIGNATURE" THEN THEN THEN ELSE
-   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+\ The refusal of a signature type that does not parse: a definition's
+\ signature, a local's type or a stored signature. SGBAD's state from the
+\ failed parse names the kind.
+: SGBAD-CODE$ ( -- ptr u8 n )
+   SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" EXIT THEN
+   SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" EXIT THEN
+   SGBAD-ARITY? IF s" E-WRONG-ARITY" EXIT THEN
+   s" E-BAD-SIGNATURE" ;
+: SGBAD-CLASS$ ( -- ptr u8 n )
+   SGBAD-UNKNOWN? IF s" fix_signature_type" EXIT THEN
+   SGBAD-BAREPTR? IF s" fix_bare_ptr_element" EXIT THEN
+   SGBAD-ARITY? IF s" fix_signature_arity" EXIT THEN
+   SGBAD-SIZE? IF s" fix_signature_size" EXIT THEN
+   s" fix_signature_syntax" ;
+\ A syntax fault has no line of its own: it reads as a refusal at its token.
+: SGBAD-PROSE ( -- )
+   s" habu: in " DTXT  NMA @ NMU @ DTXT
+   SGBAD-UNKNOWN? IF
+     s" : unknown type '" DTXT  FAILTK FAILTU @ DTXT  s" ' in signature" DTXT EXIT
+   THEN
+   SGBAD-BAREPTR? IF
+     s" : 'ptr' needs an element type, e.g. 'ptr u8' or 'ptr a'" DTXT EXIT
+   THEN
+   SGBAD-ARITY? IF
+     s" : wrong arity for type family '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
+   THEN
+   s" : at '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT ;
+
+\ The code, the repair class, the suggestion, the prose, the verdict and the
+\ per-code JSON fields all name the one refusal checker.f's REFUSAL@ chose.
+: DCODE ( -- ptr u8 n )
+   REFUSAL@ {: k:n :}
+   k RF-IMM = IF IMM-CODE$ EXIT THEN
+   k RF-UNDEF = IF s" E-UNDEFINED" EXIT THEN
+   k RF-QUAL = IF s" E-BAD-QUALIFIED" EXIT THEN
+   k RF-LOCAL = IF LOCALBAD-CODE$ EXIT THEN
+   k RF-SIG = IF SGBAD-CODE$ EXIT THEN
+   k RF-DEAD = IF s" E-DEAD-CODE" EXIT THEN
+   k RF-NP = IF s" E-NONPARAMETRIC-EFFECT" EXIT THEN
+   k RF-CAP = IF s" E-CAP-TRUSTED" EXIT THEN
+   k RF-UNSAFE = IF s" E-UNSAFE" EXIT THEN
+   k RF-LINLOCAL = IF s" E-LINEAR-LOCAL" EXIT THEN
+   k RF-REASON = IF MDIAG-CODE$ EXIT THEN
+   k RF-UNCHECKABLE = IF s" E-UNCHECKABLE" EXIT THEN
+   k RF-MISMATCH = IF s" E-MISMATCH" EXIT THEN
+   s" E-REJECTED" ;
+\ The verdict of the refusal the diagnostic names: a token the checker cannot
+\ model or an effect too big to record (UNFIT-REASON?) leaves the definition
+\ uncheckable, and every other refusal rejects it.
 : DVERDICT ( -- ptr u8 n )
-   UNDEFERR @ IF
-      s" rejected"
-   ELSE
-      DVERD @ 1 = IF s" uncheckable" ELSE s" rejected" THEN
-   THEN ;
-: RETURN-BORROWED? ( -- f )   \ the body bound the return tail below its declared frame
-   SGRBASE @ dup 0= IF drop RES-FALSE EXIT THEN ROW-OPEN? 0= ;
-: RETURN-MISMATCH? ( -- f )
-   SGHASR @ IF
-      RCUR @ R-RES  SGROUT @ R-RES  <>
-   ELSE
-      RCUR @ R-RES  RBROW @ R-RES  <>
-   THEN ;
+   REFUSAL@ {: k:n :}
+   k RF-UNCHECKABLE = IF s" uncheckable" EXIT THEN
+   k RF-REASON =  MDIAG @ UNFIT-REASON?  and IF s" uncheckable" EXIT THEN
+   s" rejected" ;
 : REPAIR-CLASS ( -- ptr u8 n )
-   IMMERR @ if IMM-CLASS$ exit then
-   NPBAD @ IF s" fix_parametric_effect" EXIT THEN
-   CAPREQ @ IF s" trusted_boundary_required" EXIT THEN
-   UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
-   LOCALBAD @ IF LOCALBAD-CLASS$ EXIT THEN
-   LINLOCBAD @ IF s" factor_linear_local" EXIT THEN
-   MDIAG @ 0 <> IF MDIAG-CLASS$ EXIT THEN
-   DEADERR @ IF s" remove_dead_code" EXIT THEN
-   QUALBAD @ IF s" fix_qualified_name" EXIT THEN
-   UNDEFERR @ IF s" unknown_rejection" EXIT THEN
-   DVERD @ 1 = IF s" rewrite_uncheckable" EXIT THEN
-   SGBAD @ IF
-      SGBAD-UNKNOWN? IF s" fix_signature_type" ELSE SGBAD-BAREPTR? IF s" fix_bare_ptr_element" ELSE SGBAD-ARITY? IF s" fix_signature_arity" ELSE s" fix_signature_syntax" THEN THEN THEN
-      EXIT
-   THEN
-   RETURN-BORROWED? IF s" fix_return_stack" EXIT THEN
-   RETURN-MISMATCH? IF s" fix_return_stack" EXIT THEN
-   DEXP @ 0= IF
-      s" unknown_rejection" EXIT
-   THEN
+   REFUSAL@ {: k:n :}
+   k RF-IMM = IF IMM-CLASS$ EXIT THEN
+   k RF-UNDEF = IF s" unknown_rejection" EXIT THEN
+   k RF-QUAL = IF s" fix_qualified_name" EXIT THEN
+   k RF-LOCAL = IF LOCALBAD-CLASS$ EXIT THEN
+   k RF-SIG = IF SGBAD-CLASS$ EXIT THEN
+   k RF-DEAD = IF s" remove_dead_code" EXIT THEN
+   k RF-NP = IF s" fix_parametric_effect" EXIT THEN
+   k RF-CAP = IF s" trusted_boundary_required" EXIT THEN
+   k RF-UNSAFE = IF s" trusted_boundary_required" EXIT THEN
+   k RF-LINLOCAL = IF s" factor_linear_local" EXIT THEN
+   k RF-REASON = IF MDIAG-CLASS$ EXIT THEN
+   k RF-UNCHECKABLE = IF s" rewrite_uncheckable" EXIT THEN
+   k RF-RETURN = IF s" fix_return_stack" EXIT THEN
+   k RF-MISMATCH <> IF s" unknown_rejection" EXIT THEN
    DEXP @ REND-COLLECT RBN @ DSUGE !
    DACT @ REND-COLLECT RBN @ DSUGA !
    DSUGA @ DSUGE @ > IF s" remove_producer" ELSE
@@ -907,43 +928,45 @@ variable MDV-I   variable MDV-F
    SGBAD-ARITY? IF s" Give the type family its exact declared number of arguments." EXIT THEN
    SGBAD-SIZE? IF s" Declare fewer cells: keep bulk values in a buffer, not on the stack." EXIT THEN
    s" Repair the stack-effect comment syntax, including --." ;
+\ The repair for a non-parametric declared effect, by NPBAD's kind.
+: NP-SUGGEST$ ( -- ptr u8 n )
+   NPBAD-KIND @ 4 = IF
+      s" Declare the pointee this base address really reaches (ptr n, ptr u8, ...); a pointer derived from data-base cannot be published under a type variable, nor handed to one a caller instantiates." EXIT
+   THEN
+   NPBAD-KIND @ 5 = IF
+      s" Declare the pointee this null stands in for (ptr n, ptr u8, ...); NULL-PTR may be stored through a declared parameter, but not published under a type variable." EXIT
+   THEN
+   NPBAD-KIND @ 3 = IF
+      s" Declare the concrete storage type, or keep the body polymorphic over the type variable." EXIT
+   THEN
+   NPBAD-KIND @ 0= IF
+      s" Declare the concrete family in the signature, or keep the body polymorphic over the type variable." EXIT
+   THEN
+   NPBAD-KIND @ 1 = IF
+      s" Keep each declared type variable distinct; do not unify two quantifiers in the body." EXIT
+   THEN
+   s" Bind the minted phantom's type arguments to the inputs, or mint it behind an audited TRUSTED: boundary." ;
 \ Short repair hint derived from the stable class. Raw stack rows stay in their
 \ own JSON fields; this text is only for LLM action selection.
 : SUGGEST-TEXT ( -- ptr u8 n )
-   IMMERR @ if IMM-SUGGEST$ exit then
-   NPBAD @ IF
-      NPBAD-KIND @ 4 = IF
-         s" Declare the pointee this base address really reaches (ptr n, ptr u8, ...); a pointer derived from data-base cannot be published under a type variable, nor handed to one a caller instantiates." EXIT
-      THEN
-      NPBAD-KIND @ 5 = IF
-         s" Declare the pointee this null stands in for (ptr n, ptr u8, ...); NULL-PTR may be stored through a declared parameter, but not published under a type variable." EXIT
-      THEN
-      NPBAD-KIND @ 3 = IF
-         s" Declare the concrete storage type, or keep the body polymorphic over the type variable." EXIT
-      THEN
-      NPBAD-KIND @ 0= IF
-         s" Declare the concrete family in the signature, or keep the body polymorphic over the type variable."
-      ELSE NPBAD-KIND @ 1 = IF
-         s" Keep each declared type variable distinct; do not unify two quantifiers in the body."
-      ELSE
-         s" Bind the minted phantom's type arguments to the inputs, or mint it behind an audited TRUSTED: boundary."
-      THEN THEN EXIT
+   REFUSAL@ {: k:n :}
+   k RF-IMM = IF IMM-SUGGEST$ EXIT THEN
+   k RF-UNDEF = IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
+   k RF-QUAL = IF s" Use one ':' qualifier, e.g. PKG:WORD." EXIT THEN
+   k RF-LOCAL = IF LOCALBAD-SUGGEST$ EXIT THEN
+   k RF-SIG = IF SGBAD-SUGGEST$ EXIT THEN
+   k RF-DEAD = IF s" Remove tokens after the terminating control word, or move the work before it." EXIT THEN
+   k RF-NP = IF NP-SUGGEST$ EXIT THEN
+   k RF-CAP = IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
+   k RF-UNSAFE = IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
+   k RF-LINLOCAL = IF s" Keep the linear value on the stack; do not bind it to a local." EXIT THEN
+   k RF-REASON = IF MDIAG-SUGGEST$ EXIT THEN
+   k RF-UNCHECKABLE = IF s" Rewrite with modeled words or isolate an audited primitive." EXIT THEN
+   k RF-RETURN = IF
+      RSBAD @ 2 = IF s" Read or pop only return-row cells this definition pushed with >r or declared after |; below them lies the caller's frame." EXIT THEN
+      s" Balance return-stack transfers before the definition exits." EXIT
    THEN
-   CAPREQ @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
-   UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
-   LOCALBAD @ IF LOCALBAD-SUGGEST$ EXIT THEN
-   LINLOCBAD @ IF s" Keep the linear value on the stack; do not bind it to a local." EXIT THEN
-   MDIAG @ 0 <> IF MDIAG-SUGGEST$ EXIT THEN
-   DEADERR @ IF s" Remove tokens after the terminating control word, or move the work before it." EXIT THEN
-   QUALBAD @ IF s" Use one ':' qualifier, e.g. PKG:WORD." EXIT THEN
-   UNDEFERR @ IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
-   DVERD @ 1 = IF s" Rewrite with modeled words or isolate an audited primitive." EXIT THEN
-   SGBAD @ IF SGBAD-SUGGEST$ EXIT THEN
-   RETURN-BORROWED? IF s" Read or pop only return-row cells this definition pushed with >r or declared after |; below them lies the caller's frame." EXIT THEN
-   RETURN-MISMATCH? IF s" Balance return-stack transfers before the definition exits." EXIT THEN
-   DEXP @ 0= IF
-      s" Inspect the token, signature, and raw stack evidence." EXIT
-   THEN
+   k RF-MISMATCH <> IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
    DEXP @ REND-COLLECT RBN @ DSUGE !
    DACT @ REND-COLLECT RBN @ DSUGA !
    DSUGA @ DSUGE @ > IF  s" Remove an extra producer or drop the surplus value."
@@ -989,79 +1012,75 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    NPBAD-TERM @ NP-FAM {: fam:n :}
    fam 0 >= IF s" family '" DTXT  fam FAM-QNAME-REND  s" '" DTXT
    ELSE s" a concrete type" DTXT THEN ;
+: NP-PROSE ( -- )
+   s" E-NONPARAMETRIC-EFFECT habu: in " DTXT  NMA @ NMU @ DTXT
+   NPBAD-KIND @ 4 = IF
+     s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
+     s" ' is restricted to a base address -- the DATA region, or a pointer computed off NULL-PTR; its declared kind must stay unchanged" DTXT EXIT
+   THEN
+   NPBAD-KIND @ 5 = IF
+     s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
+     s" ' is restricted to the null address; its declared kind must stay unchanged" DTXT EXIT
+   THEN
+   NPBAD-KIND @ 3 = IF
+     s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
+     s" ' is restricted by raw storage; its declared kind must stay unchanged" DTXT EXIT
+   THEN
+   NPBAD-KIND @ 0= IF
+     s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
+     s" ' is specialized to " DTXT  NP-FAM-REND
+     s" ; a declared effect must stay parametric over its quantifier" DTXT EXIT
+   THEN
+   NPBAD-KIND @ 1 = IF
+     s" : declared type variables '" DTXT  NPBAD-Q1 @ EMIT1
+     s" ' and '" DTXT  NPBAD-Q2 @ EMIT1
+     s" ' are unified; each declared quantifier must stay a distinct variable" DTXT EXIT
+   THEN
+   s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
+   s" ' is minted into " DTXT  NP-FAM-REND
+   s"  but is unbound in the inputs; a checked definition cannot mint a phantom of input-unrelated type — use an audited TRUSTED: boundary" DTXT ;
+\ The rows a refusal captured carry a mismatch or a latched reason; no other
+\ refusal shows them.
+: ROWS-REFUSAL? ( n -- bool )
+   {: k:n :}
+   k RF-MISMATCH =  k RF-REASON = or ;
 : DIAG-PROSE
-   IMMERR @ if
+   REFUSAL@ {: k:n :}
+   k RF-IMM = IF
      IMM-CODE$ DTXT  s"  habu: in " DTXT  NMA @ NMU @ DTXT
      s" : compile-time immediate '" DTXT  FAILTK FAILTU @ DTXT
-     s" ' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body" DTXT exit
-   then
-   NPBAD @ IF
-     s" E-NONPARAMETRIC-EFFECT habu: in " DTXT  NMA @ NMU @ DTXT
-     NPBAD-KIND @ 4 = IF
-       s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
-       s" ' is restricted to a base address -- the DATA region, or a pointer computed off NULL-PTR; its declared kind must stay unchanged" DTXT EXIT
-     THEN
-     NPBAD-KIND @ 5 = IF
-       s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
-       s" ' is restricted to the null address; its declared kind must stay unchanged" DTXT EXIT
-     THEN
-     NPBAD-KIND @ 3 = IF
-       s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
-       s" ' is restricted by raw storage; its declared kind must stay unchanged" DTXT EXIT
-     THEN
-     NPBAD-KIND @ 0= IF
-       s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
-       s" ' is specialized to " DTXT  NP-FAM-REND
-       s" ; a declared effect must stay parametric over its quantifier" DTXT
-     ELSE NPBAD-KIND @ 1 = IF
-       s" : declared type variables '" DTXT  NPBAD-Q1 @ EMIT1
-       s" ' and '" DTXT  NPBAD-Q2 @ EMIT1
-       s" ' are unified; each declared quantifier must stay a distinct variable" DTXT
-     ELSE
-       s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
-       s" ' is minted into " DTXT  NP-FAM-REND
-       s"  but is unbound in the inputs; a checked definition cannot mint a phantom of input-unrelated type — use an audited TRUSTED: boundary" DTXT
-     THEN THEN EXIT
+     s" ' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body" DTXT EXIT
    THEN
-   CAPREQ @ IF
+   k RF-SIG = IF SGBAD-PROSE EXIT THEN
+   k RF-NP = IF NP-PROSE EXIT THEN
+   k RF-CAP = IF
      s" E-CAP-TRUSTED habu: in " DTXT  NMA @ NMU @ DTXT
      s" : '" DTXT  FAILTK FAILTU @ DTXT
      s" ' is a trust-boundary primitive; call it only from a TRUSTED: definition" DTXT EXIT
    THEN
-   SGBAD-UNKNOWN? IF
-     s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : unknown type '" DTXT
-     FAILTK FAILTU @ DTXT  s" ' in signature" DTXT EXIT
-   THEN
-   SGBAD-BAREPTR? IF
-     s" habu: in " DTXT  NMA @ NMU @ DTXT
-     s" : 'ptr' needs an element type, e.g. 'ptr u8' or 'ptr a'" DTXT EXIT
-   THEN
-   SGBAD-ARITY? IF
-     s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : wrong arity for type family '" DTXT
-     FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
-   THEN
-   LOCALBAD @ IF LOCALBAD-PROSE EXIT THEN
-   QUALBAD @ IF
+   k RF-LOCAL = IF LOCALBAD-PROSE EXIT THEN
+   k RF-QUAL = IF
      s" E-BAD-QUALIFIED habu: in " DTXT  NMA @ NMU @ DTXT
      s" : malformed qualified name '" DTXT  FAILTK FAILTU @ DTXT
      s" ' (more than one ':')" DTXT EXIT
    THEN
-   UNDEFERR @ IF
+   k RF-UNDEF = IF
      s" E-UNDEFINED habu: in " DTXT  NMA @ NMU @ DTXT
      s" : undefined word '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
    THEN
-   LINLOCBAD @ IF
+   k RF-LINLOCAL = IF
      s" E-LINEAR-LOCAL habu: in " DTXT  NMA @ NMU @ DTXT
      s" : linear value cannot be bound to a local; keep it on the stack" DTXT EXIT
    THEN
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT
-   MDIAG @ 0 <> IF
+   k RF-REASON = IF
      s"  " DTXT  MDIAG-REASON$ DTXT
      MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
      MDIAG-COUNTS
    THEN
-   DEADERR @ IF s"  after '" DTXT DEADTA @ DEADTU @ DTXT s" '" DTXT THEN
+   k RF-DEAD = IF s"  after '" DTXT DEADTA @ DEADTU @ DTXT s" '" DTXT THEN
+   k ROWS-REFUSAL? 0= IF EXIT THEN
    DEXP @ 0 <> IF
      s"  expected: " DTXT  DEXP @ DROW
      s" actual: " DTXT  DACT @ DROW THEN
@@ -1112,7 +1131,10 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
       44 EMIT1 s" family" JKEY  JOPEN fam FAM-QNAME-REND JCLOSE
    THEN
    DIAG-VARIANT ;
+\ A field that belongs to one refusal goes only on that refusal's packet: the
+\ flags of a failure the refusal outranks leave their fields behind.
 : DIAG-JSON
+   REFUSAL@ {: k:n :}
    TBASE@ FAILB @ +  TBASE@ FAILE @ +  JLOCATE 0= IF JLOC-ORIGIN THEN
    123 EMIT1                                              \ {
    s" schema_version" JKEY 1 JNUM 44 EMIT1
@@ -1121,8 +1143,8 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    s" verdict" JKEY DVERDICT JSTR  44 EMIT1
    s" word" JKEY   NMA @ NMU @ JSTR   44 EMIT1
    s" token" JKEY  FAILTK FAILTU @ JSTR  44 EMIT1
-   DEADERR @ IF s" dead_owner" JKEY DEADTA @ DEADTU @ JSTR 44 EMIT1 THEN
-   MDIAG @ 0 <> IF
+   k RF-DEAD = IF s" dead_owner" JKEY DEADTA @ DEADTU @ JSTR 44 EMIT1 THEN
+   k RF-REASON = IF
      s" reason" JKEY
      \ A reason's counts belong IN it, so the string is the reason's text
      \ and then its counts.
@@ -1151,13 +1173,15 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    s" expected" JKEY  SGHASR @ IF SGROUT @ ELSE RBROW @ THEN JROW  44 EMIT1
    s" actual" JKEY    RCUR @ JROW
    125 EMIT1
-   DEXP @ 0 <> IF
-     44 EMIT1 s" expected" JKEY DEXP @ JROW
-     44 EMIT1 s" actual"   JKEY DACT @ JROW
-     DIAG-FAMILY THEN
-   DF-ACT @ 0 <>  DEXP @ 0= and IF
-      44 EMIT1 s" actual_type" JKEY 34 EMIT1 DF-ACT @ REND-TYPE 34 EMIT1 THEN
-   NPBAD @ IF                                             \ non-parametric declared effect
+   k ROWS-REFUSAL? IF
+     DEXP @ 0 <> IF
+       44 EMIT1 s" expected" JKEY DEXP @ JROW
+       44 EMIT1 s" actual"   JKEY DACT @ JROW
+       DIAG-FAMILY THEN
+     DF-ACT @ 0 <>  DEXP @ 0= and IF
+        44 EMIT1 s" actual_type" JKEY 34 EMIT1 DF-ACT @ REND-TYPE 34 EMIT1 THEN
+   THEN
+   k RF-NP = IF                                           \ non-parametric declared effect
      44 EMIT1 s" quantifier" JKEY JOPEN NPBAD-Q1 @ EMIT1 JCLOSE
      NPBAD-KIND @ 1 = IF
        44 EMIT1 s" quantifier2" JKEY JOPEN NPBAD-Q2 @ EMIT1 JCLOSE
@@ -1167,7 +1191,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
        ELSE drop THEN
      THEN
    THEN
-   SGBAD-ARITY? IF                                        \ item 13: E-WRONG-ARITY counts
+   k RF-SIG =  SGBAD-ARITY? and IF                        \ item 13: E-WRONG-ARITY counts
      44 EMIT1 s" arity_expected" JKEY SGBAD-AR-DECL @ JNUM
      44 EMIT1 s" arity_actual" JKEY SGBAD-AR-GOT @ JNUM THEN
    44 EMIT1 s" suggestion" JKEY SUGGEST-TEXT JSTR
@@ -1182,32 +1206,28 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 DIAG-PRINT-INSTALL
 
 \ --- bad stored-signature diagnostics (checker.f USIG-ADD-BAD, in every mode).
-\ SGBAD state from the failed parse is still live, so class + suggestion mirror
-\ REPAIR-CLASS's signature arm (same stable strings). A row that parsed but is
-\ too deep or too wide to record has a class of its own and a reason naming the
-\ bound it passed, with its count and limit. The JSON is a refused record
-\ (docs/repair-diagnostics.md): the row's name is its token, and the signature
-\ as written the field its code adds.
-: BADSIG-CLASS ( -- ptr u8 n )
-   SGBAD-UNKNOWN? IF s" fix_signature_type" EXIT THEN
-   SGBAD-BAREPTR? IF s" fix_bare_ptr_element" EXIT THEN
-   SGBAD-ARITY? IF s" fix_signature_arity" EXIT THEN
-   SGBAD-SIZE? IF s" fix_signature_size" EXIT THEN
-   s" fix_signature_syntax" ;
+\ SGBAD state from the failed parse is still live, so class + suggestion are a
+\ signature's (SGBAD-CLASS$, SGBAD-SUGGEST$). A row that parsed but is too deep
+\ or too wide to record has a class of its own and a reason naming the bound it
+\ passed, with its count and limit. The JSON is a refused record
+\ (docs/repair-diagnostics.md): the row's name is its token, placed where the
+\ declaring name AT lies in the checked text, and the signature as written is
+\ the field its code adds.
 : BADSIG-REASON ( -- )
    SGBAD-DEPTH? IF DEPTH-REASON$ DTXT  SGBAD-SIZE @ DEPTH-COUNTS EXIT THEN
    WIDTH-REASON$ DTXT  SGBAD-SIZE @ WIDTH-COUNTS ;
-: BADSIG-JSON ( ptr u8 n ptr u8 n -- )
-   {: sa:ptr su:n na:ptr nu:n :}
+: BADSIG-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
    123 EMIT1                                              \ {
    s" schema_version" JKEY 1 JNUM 44 EMIT1
    s" code" JKEY s" E-BAD-STORED-SIGNATURE" JSTR 44 EMIT1
-   s" repair_class" JKEY BADSIG-CLASS JSTR 44 EMIT1
+   s" repair_class" JKEY SGBAD-CLASS$ JSTR 44 EMIT1
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY na nu JSTR 44 EMIT1
    s" signature" JKEY sa su SIG-TRIM JSTR 44 EMIT1
    SGBAD-SIZE? IF s" reason" JKEY JOPEN BADSIG-REASON JCLOSE 44 EMIT1 THEN
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   at atu JTOKEN-FIELDS
    s" suggestion" JKEY SGBAD-SUGGEST$ JSTR
    125 EMIT1 ;                                            \ }
 : BADSIG-PROSE ( ptr u8 n ptr u8 n -- )
@@ -1215,9 +1235,10 @@ DIAG-PRINT-INSTALL
    s" habu: in " DTXT  na nu DTXT  s" : bad stored signature '" DTXT
    sa su SIG-TRIM DTXT  s" '" DTXT
    SGBAD-SIZE? IF s"  " DTXT BADSIG-REASON THEN ;
-: BADSIG-DIAG ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+: BADSIG-DIAG ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
    1 RDST !  0 RSN !
-   sa su na nu JSON-DIAGS @ IF BADSIG-JSON ELSE BADSIG-PROSE THEN
+   JSON-DIAGS @ IF sa su na nu at atu BADSIG-JSON ELSE sa su na nu BADSIG-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
 : BADSIG-DIAG-INSTALL ( -- ) [: BADSIG-DIAG ;] is BADSIG-XT ;
@@ -1319,7 +1340,7 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
 REC-SIG-INSTALL
 
 \ --- global-vs-used-public shadow diagnostic (dot habu-err-on-global-e62f806c).
-\ CHECKER-USED-SHADOW captured the ambiguous bare token and the two colliding
+\ CK-SHADOW-CAPTURE captured the ambiguous bare token and the two colliding
 \ candidates (global and used public); this renders the reference-site reject
 \ naming both with their effect arity so the author knows to qualify (PKG:WORD)
 \ or rename the collision. The sym effects read through the read-only USIGS
@@ -1342,8 +1363,8 @@ REC-SIG-INSTALL
    s"  export the same name; qualify " DTXT  USH-PKG-A @ USH-PKG-U @ DTXT  58 EMIT1  USH-TOK-A @ USH-TOK-U @ DTXT
    s"  for the package word, or rename the collision to reach the global" DTXT ;
 \ The used packages a bare token resolves in: the used-scan slots the checker's
-\ walk marked in CK-USED-MASK (checker.f CK-USED-MARK, CHECKER-USED-SYM), in the
-\ order the using scan reads them, each package once however often it is used.
+\ walk marked in CK-USED-MASK (checker.f CK-USED-MARK), in the order the using
+\ scan reads them, each package once however often it is used.
 : UPKG-MATCHED? ( n -- bool )             \ used-scan slot n exports the token
    1 swap lshift CK-USED-MASK @ and 0 <> ;
 : UPKG-NAME$ ( n -- ptr u8 n )            \ slot n's folded package name
@@ -1465,8 +1486,9 @@ REC-SIG-INSTALL
    10 EMIT1
    RSBUF-FLUSH ;
 \ --- a top-level token the load refuses, or the stretch after one the source
-\ pre-pass deferred to the run (checker.f CHECKER-VERIFY-TOP and
-\ CHECKER-VERIFY-DEFERRED): records at the token, with no definition fields.
+\ pre-pass deferred to the run, or a definition the checker deferred to it
+\ (checker.f CHECKER-VERIFY-TOP, CHECKER-VERIFY-DEFERRED and
+\ CHECKER-VERIFY-DEFERRED-BODY): records at the token, with no definition fields.
 \ A refusal is a span under a code of its own (tools/diag-code.f), with the
 \ repair class and suggestion a body's reference to the name gets (DCODE
 \ above); a deferral is no refusal, under W-CHECK-DEFERRED.
@@ -1499,7 +1521,7 @@ REC-SIG-INSTALL
    ELSE s" E-BAD-QUALIFIED-TOP-LEVEL" s" malformed qualified name" TOP-SPAN-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
-\ Only the verifier's child reports a deferred stretch, and it writes packets.
+\ Only the verifier's child reports a deferral, and it writes packets.
 : TOP-DEFERRED-DIAG ( -- )
    1 RDST !  0 RSN !  0 RQM !
    s" W-CHECK-DEFERRED" s" rewrite_uncheckable" s" deferred"
@@ -1509,7 +1531,8 @@ REC-SIG-INSTALL
 \ The diagnostics a token locates ride ONE checker hook, selected by its
 \ argument (checker.f SHADOW-DIAG-XT: 0 = the using-shadow reference site, 1 =
 \ the arity-shadow definition site, 2 = a using ambiguity, 3 and 4 = a
-\ top-level token undefined or malformed, 5 = a deferred top-level stretch),
+\ top-level token undefined or malformed, 5 = a deferred top-level stretch or
+\ definition),
 \ because every defer written before `: TRUST` takes a slot of the engine's
 \ pre-trust pending table (src/habu/layout.f PD-CAP).
 : SHADOW-DIAG ( n -- )
@@ -1525,7 +1548,8 @@ SHADOW-DIAG-INSTALL
 
 \ --- a `trust` row naming a word the engine resolves to nothing. Rendered on
 \ the same template as the shadow diagnostic above, and beside it on purpose:
-\ this is the refusal that stops a stale row from becoming that one.
+\ this is the refusal that stops a stale row from becoming that one. Its
+\ position is the row's name (checker.f TRUST) when that lies in checked text.
 : TSTALE-PROSE ( -- )
    s" E-TRUST-UNRESOLVED habu: trust row for '" DTXT  TSR-TOK-A @ TSR-TOK-U @ DTXT
    s" ' names no word where its record lands: nothing in the open" DTXT
@@ -1543,6 +1567,7 @@ SHADOW-DIAG-INSTALL
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY TSR-TOK-A @ TSR-TOK-U @ JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   TSR-TOK-A @ TSR-TOK-U @ JTOKEN-FIELDS
    s" suggestion" JKEY s" This trust row names no word in the wordlist its record lands in: the open section's, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word." JSTR
    125 EMIT1 ;
 : TSTALE-DIAG ( -- )
@@ -1582,7 +1607,8 @@ SHADOW-DIAG-INSTALL
 \ the same template, with the repair class and suggestion a call to such a name
 \ gets (E-BAD-QUALIFIED above). The record has a code of its own, in a refused
 \ record's shape, where the call's is a definition's (tools/diag-code.f); its
-\ refusal still throws E-BAD-QUALIFIED.
+\ refusal still throws E-BAD-QUALIFIED. Its position is the declaring name
+\ (TSR-AT-A, checker.f CHECKER-RECORD-NAME-AT) when that lies in checked text.
 : BADQUAL-PROSE ( -- )
    s" E-BAD-QUALIFIED-RECORD habu: record for '" DTXT  TSR-TOK-A @ TSR-TOK-U @ DTXT
    s" ' refused: malformed qualified name, where one non-edge ':' selects a" DTXT
@@ -1596,6 +1622,7 @@ SHADOW-DIAG-INSTALL
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY TSR-TOK-A @ TSR-TOK-U @ JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   TSR-AT-A @ TSR-AT-U @ JTOKEN-FIELDS
    s" suggestion" JKEY s" Use one ':' qualifier, e.g. PKG:WORD." JSTR
    125 EMIT1 ;
 : BADQUAL-DIAG ( -- )
@@ -1726,7 +1753,7 @@ STGR-DIAG-INSTALL
    {: kind:n :}
    kind GENR-UNRESOLVED = IF s" fix_generates_row" EXIT THEN
    kind GENR-CREATES = IF s" delete_generates_row" EXIT THEN
-   BADSIG-CLASS ;
+   SGBAD-CLASS$ ;
 : GENR-JSON ( n -- )
    {: kind:n :}
    123 EMIT1
@@ -1747,5 +1774,71 @@ STGR-DIAG-INSTALL
    RSBUF-FLUSH ;
 : GENERATES-DIAG-INSTALL ( -- ) [: GENR-DIAG ;] is GENERATES-DIAG-XT ;
 GENERATES-DIAG-INSTALL
+
+\ A `parses:` or `parses-through:` row the checker refused
+\ (checker.f CHECKER-PARSES-ROW), named at its target, or at its keyword when it
+\ has none. The kind says which check failed: the target's take
+\ fix_parses_row, the row's syntax fix_parses_syntax.
+: PRS-SYNTAX? ( n -- bool )
+   PARSES-NO-TARGET >= ;
+: PRS-REASON ( n -- )
+   {: kind:n :}
+   kind PARSES-UNDEFINED = IF
+      s" ' names no word here: the row follows the word's definition and names" DTXT
+      s"  it as the code there spells it" DTXT EXIT
+   THEN
+   kind PARSES-QUALIFIED = IF
+      s" ' is a malformed qualified name: one colon between a package and a" DTXT
+      s"  public tail" DTXT EXIT
+   THEN
+   kind PARSES-SHADOW = IF
+      s" ' is refused here: a used package's public shadows the global word of" DTXT
+      s"  that name" DTXT EXIT
+   THEN
+   kind PARSES-AMBIGUOUS = IF
+      s" ' is refused here: two used packages export that name" DTXT EXIT
+   THEN
+   kind PARSES-READS-NONE = IF
+      s" ' names a word that reads no source after it: only a word that parses" DTXT
+      s"  takes a row" DTXT EXIT
+   THEN
+   kind PARSES-NO-TARGET = IF s" ' has no target after it" DTXT EXIT THEN
+   kind PARSES-COUNT = IF
+      s" ': its count is not a number of tokens, 0 or more" DTXT EXIT
+   THEN
+   s" ': its terminators are not a standalone ( , at least one terminator and a" DTXT
+   s"  standalone )" DTXT ;
+: PRS-PROSE ( n -- )
+   {: kind:n :}
+   s" E-PARSES-ROW habu: parses: row '" DTXT  PRS-TOK-A @ PRS-TOK-U @ DTXT
+   kind PRS-REASON ;
+: PRS-SUGGEST$ ( n -- ptr u8 n )
+   PRS-SYNTAX? IF
+      s" Write the row as parses: W n or parses-through: W n ( E1 E2 ): a count of 0 or more, then at least one terminator between a standalone ( and )." EXIT
+   THEN
+   s" This row's target is no word here that reads the source after it. Write the row after the definition of a word that parses, spelled as the definition spells it." ;
+: PRS-CLASS$ ( n -- ptr u8 n )
+   PRS-SYNTAX? IF s" fix_parses_syntax" EXIT THEN
+   s" fix_parses_row" ;
+: PRS-JSON ( n -- )
+   {: kind:n :}
+   123 EMIT1
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" E-PARSES-ROW" JSTR 44 EMIT1
+   s" repair_class" JKEY kind PRS-CLASS$ JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" token" JKEY PRS-TOK-A @ PRS-TOK-U @ JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   PRS-TOK-A @ PRS-TOK-U @ JTOKEN-FIELDS
+   s" suggestion" JKEY kind PRS-SUGGEST$ JSTR
+   125 EMIT1 ;
+: PRS-DIAG ( n -- )
+   {: kind:n :}
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF kind PRS-JSON ELSE kind PRS-PROSE THEN
+   10 EMIT1
+   RSBUF-FLUSH ;
+: PARSES-DIAG-INSTALL ( -- ) [: PRS-DIAG ;] is PARSES-DIAG-XT ;
+PARSES-DIAG-INSTALL
 
 ;using

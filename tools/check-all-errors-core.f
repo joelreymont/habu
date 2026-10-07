@@ -44,12 +44,16 @@ private
 123 constant CA-LBRACE
 70 constant CA-REFUSED                  \ the status of a refusal the checker reported
 
+public
+
 \ The 1-based line and column of byte at in the buffer that starts at a.
 : BYTE-ORIGIN ( ptr u8 n -- n n ) {: a:ptr at:n :}
    1 0 at 0 ?do
       a i + c@ CA-LF = if drop 1+ i 1+ then
    loop
    at swap - 1+ ;
+
+private
 
 create CA-LF-BUF 1 allot
 
@@ -338,8 +342,7 @@ variable CA-COMPOSE-LABEL-U
    s" byte_start" LJW-KEY LINT-LEX:ERROR-BYTE@ LJW-U LJW-COMMA
    s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ CA-LEX-TOKEN-U + LJW-U LJW-COMMA
    s" suggestion" LJW-KEY s" Close the string literal before the definition ends." LJW-STRING
-   LJW-OBJECT-END
-   LJW$ CA-ERR-LN ;
+   LJW-OBJECT-END ;
 
 \ ---- malformed primitive-axiom row --------------------------------------------
 \ The lexer's second diagnostic. An incomplete `PRIM:`/`PPRIM:` row stops the scan
@@ -363,8 +366,7 @@ variable CA-COMPOSE-LABEL-U
    s" byte_start" LJW-KEY LINT-LEX:ERROR-BYTE@ LJW-U LJW-COMMA
    s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ CA-LEX-TOKEN-U + LJW-U LJW-COMMA
    s" suggestion" LJW-KEY CA-ROW-SUGGESTION$ LJW-STRING
-   LJW-OBJECT-END
-   LJW$ CA-ERR-LN ;
+   LJW-OBJECT-END ;
 
 \ The prose names the code, the file, line and column of the opener, what it
 \ opens, and the opener as written.
@@ -378,8 +380,7 @@ variable CA-COMPOSE-LABEL-U
    s" :" LJW-RAW LINT-LEX:ERROR-COL@ LJW-U
    s" : " LJW-RAW what whatu LJW-RAW
    s"  opened at '" LJW-RAW CA-LEX-TOKEN$ LJW-RAW
-   s" ' does not close" LJW-RAW
-   LJW$ CA-ERR-LN ;
+   s" ' does not close" LJW-RAW ;
 
 : CA-PROSE-LEX-ROW ( -- )
    s" E-MALFORMED-REGISTRY-ROW" s" primitive-axiom row" CA-PROSE-LEX ;
@@ -387,19 +388,22 @@ variable CA-COMPOSE-LABEL-U
 : CA-PROSE-LEX-UNTERM ( -- )
    s" E-UNTERMINATED-STRING" s" string literal" CA-PROSE-LEX ;
 
-: CA-EMIT-LEX-ROW ( -- )
-   CA-JSON? IF CA-JSON-LEX-ROW ELSE CA-PROSE-LEX-ROW THEN ;
-
-: CA-EMIT-LEX-UNTERM ( -- )
-   CA-JSON? IF CA-JSON-LEX-UNTERM ELSE CA-PROSE-LEX-UNTERM THEN ;
-
 : CA-LEX-ROW? ( -- bool )
    LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = ;
 
-\ The lexer reports more than one defect now, so name the one it hit.
+\ The record of the defect the lexer hit, in the selected mode, built in the
+\ JSON writer's buffer. The lexer reports more than one defect, so the record
+\ names the one it hit.
+: CA-LEX-RECORD ( -- )
+   CA-LEX-ROW? IF
+      CA-JSON? IF CA-JSON-LEX-ROW ELSE CA-PROSE-LEX-ROW THEN
+   ELSE
+      CA-JSON? IF CA-JSON-LEX-UNTERM ELSE CA-PROSE-LEX-UNTERM THEN
+   THEN ;
+
 : CA-HANDLE-LEX-DEFECT ( -- )
    LINT-LEX:ERROR? 0= IF exit THEN
-   CA-LEX-ROW? IF CA-EMIT-LEX-ROW ELSE CA-EMIT-LEX-UNTERM THEN
+   CA-LEX-RECORD LJW$ CA-ERR-LN
    CA-REFUSED throw ;
 
 
@@ -543,23 +547,27 @@ variable CA-COMPOSE-LABEL-U
    CA-THROW-RC !
    VERIFY:TOKEN-BYTE@ CA-THROW-AT ! ;
 
-\ These checker refusals render their own diagnostic before throwing. They
-\ must retain that packet and exit code, not acquire a statement-throw record.
+public
+
+\ True for a checker refusal that renders its own diagnostic before throwing.
+\ It keeps that packet instead of acquiring a statement-throw record, and the
+\ check fails as for any refusal (check-core.f CHK-PREVERIFY-STOPPED).
 : REPORTED-THROW? ( n -- bool )
    {: rc:n :}
    rc E-USING-SHADOW-GLOBAL =
    rc E-USING-AMBIGUOUS = or
    rc E-TRUST-UNRESOLVED = or
    rc E-SHADOWED-ARITY = or
-   rc E-GENERATES-ROW = or ;
-
-public
+   rc E-GENERATES-ROW = or
+   rc E-PARSES-ROW = or ;
 
 \ True for the status of a check that a statement threw out of without
 \ reporting its own refusal.
 : THREW? ( n -- bool ) {: rc:n :}
    rc 0 <> rc CA-REFUSED <> and rc DUP-RC <> and
    rc REPORTED-THROW? 0= and ;
+
+private
 
 \ True for the code the pre-verifier stops with at a string or a
 \ primitive-axiom row the file never closes, and discovery at a string or a
@@ -568,6 +576,15 @@ public
    rc VERIFY:E-UNTERMINATED-STRING =
    rc VERIFY:E-MALFORMED-REGISTRY-ROW = or
    rc E-DISC-UNTERM = or ;
+
+public
+
+\ True for the code of a stop that the lexer's record of the stopped file goes
+\ before, as it goes before any error in the file: a defect the lexer reads
+\ too (LEX-STOP?), and a bad escape, which it does not read. With no defect
+\ for the lexer to read, the stop's own record stands.
+: LEX-FIRST? ( n -- bool ) {: rc:n :}
+   rc LEX-STOP? rc VERIFY:E-BAD-ESCAPE = or ;
 
 private
 
@@ -637,14 +654,14 @@ private
    CA-HANDLE-LEX-DEFECT ;
 
 \ The lexer reads a file the composition loads only when the pre-verifier
-\ reaches it, so a stop at an open string or row is reported by the lexer's
-\ record for the file it stopped in; a lex that finds no defect leaves the
-\ statement's throw record.
+\ reaches it, so a stop its record goes before (LEX-FIRST?) is reported by the
+\ lexer's record for the file it stopped in; a lex that finds no defect leaves
+\ the statement's throw record.
 : CA-HANDLE-COMPOSE-THROW ( n -- ) {: rc:n :}
    rc CA-THROW!
    0 CA-EMIT-CAPTURED
    CA-COMPOSE-STOPPED
-   rc LEX-STOP? IF CA-LEX THEN
+   rc LEX-FIRST? IF CA-LEX THEN
    CA-THROW-RECORD$ CA-ERR-LN ;
 
 \ A reader with no token after it is the refusal tools/check-core.f writes for
@@ -737,20 +754,26 @@ public
    patha pathu CA-READ-SOURCE
    CA-LEX ;
 
-\ LEX-FILE over the given bytes, which stand for the file the label names.
-: LEX-BUF ( ptr u8 n ptr u8 n -- )
+\ The record line LEX-FILE writes for the lexer defect of the given bytes, which
+\ stand for the file the label names, in the mode JSON! selected, with no line
+\ feed; empty when they lex clean.
+: LEX-RECORD$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: labela:ptr labelu:n srca:ptr srcu:n :}
    labela labelu CA-START
    srca srcu CA-SOURCE-BUF!
-   CA-LEX ;
+   CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
+   LJW-RESET
+   LINT-LEX:ERROR? IF CA-LEX-RECORD THEN
+   LJW$ ;
 
 \ Check the given source bytes as the file at the given path, reporting them under
 \ the given label: the composition verifies every file a top-level loader
 \ statement loads where it stands, under its own path, in one session.
 \ Lexical defects stay each file's own (LEX-FILE): a loaded file is lexed when
-\ the pre-verifier stops in it at an open string or row. A reader with no token
-\ after it throws VERIFY:E-MISSING-NAME to the caller, which reports it at
-\ VERIFY:TOKEN-BYTE@ in the file VERIFY:SOURCE-COMPOSE-STOPPED$ names.
+\ the pre-verifier stops in it at an open string or row or a bad escape
+\ (LEX-FIRST?). A reader with no token after it throws VERIFY:E-MISSING-NAME
+\ to the caller, which reports it at VERIFY:TOKEN-BYTE@ in the file
+\ VERIFY:SOURCE-COMPOSE-STOPPED$ names.
 : COMPOSE-BUF ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
    path CA-COMPOSE-PATH-A !  pathu CA-COMPOSE-PATH-U !

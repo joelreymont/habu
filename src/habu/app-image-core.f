@@ -16,7 +16,6 @@ package APP-IMAGE
       s" src/arch/arm64/icode.f" required
       s" src/arch/arm64/mnem.f" required
       s" src/os/linux/sys.f" required
-      s" src/os/image-bytes.f" required
       s" src/os/linux/elf.f" required
       exit
    then
@@ -25,13 +24,13 @@ package APP-IMAGE
       s" src/arch/arm64/icode.f" required
       s" src/arch/arm64/mnem.f" required
       s" src/os/macos/sys.f" required
-      s" src/os/image-bytes.f" required
       s" src/os/macos/macho.f" required
       exit
    then
    HB-TARGET-LINUX-X86-64? if
       s" src/os/linux-x86-64/elf.f" required
       s" src/os/linux-x86-64/sys.f" required
+      s" src/os/linux-x86-64/elf.f" required
       exit
    then
    s" app-image: unsupported target" 76 die ;

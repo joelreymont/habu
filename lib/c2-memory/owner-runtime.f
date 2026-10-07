@@ -250,11 +250,11 @@ TRUSTED: OWNER-FRAME ( ptr u8 -- ptr n )
 \ c2-init-stow is the narrow machine transfer: it validates the byte view and
 \ descriptors, arms the clear-only frame, then moves the fixed cell bundle.
 \ INIT-RUN's c2-invoke body catches a refusal and retires the pending frame.
-TRUSTED: INIT-STOW ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] n n n | U -- R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U )
+TRUSTED: INIT-STOW ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U )
    HEAD-FRAME c2-init-stow
    TASK:DEFER-LEAVE ;
 
-TRUSTED: RECORDS-STOW ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] n n n | U -- R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U )
+TRUSTED: RECORDS-STOW ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U )
    HEAD-FRAME c2-records-stow
    TASK:DEFER-LEAVE ;
 
@@ -278,12 +278,12 @@ TRUSTED: INIT-RESTORE ( R ptr u8 n -- R ptr u8 n )
       TASK:HALTED? if rc TASK:EXIT-FAILURE TASK:PAUSE then
    then ;
 
-TRUSTED: INIT-RUN ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] n n n | U -- S ptr u8 n | U )
+TRUSTED: INIT-RUN ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
    INIT-OPEN
    [: INIT-STOW RUN-BODY ;] [: INIT-CLOSE ;] [: FINISH ;] c2-invoke
    INIT-RESTORE ;
 
-TRUSTED: RECORDS-RUN ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] n n n | U -- S ptr u8 n | U )
+TRUSTED: RECORDS-RUN ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
    INIT-OPEN
    [: RECORDS-STOW RUN-BODY ;] [: INIT-CLOSE ;] [: FINISH ;] c2-invoke
    INIT-RESTORE ;

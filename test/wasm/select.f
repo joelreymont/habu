@@ -1,9 +1,10 @@
-\ select.f - WSEL, src/arch/wasm/select.f: its calls, status and integer rows
-\ and its admission matrix, under WPROF's V1 profile.
+\ select.f - WSEL, src/arch/wasm/select.f: its calls, status, integer and
+\ checked memory rows.
 \
 \ Each row compiles Habu source, selects it and compares what the module holds
-\ (test/wasm/select-lib.f): its shape, or a function's signature, or a call's
-\ callee.
+\ (test/wasm/select-lib.f): its shape, with or without its accesses' offsets,
+\ or a function's signature, or a call's callee, or what defines one
+\ operation's operands.
 
 require lib/test.f
 require lib/string.f
@@ -18,7 +19,6 @@ require src/compiler/native/frozen.f
 require src/compiler/native/hir.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/backend.f
-require src/arch/wasm/profile.f
 require src/arch/wasm/wstruct.f
 require src/arch/wasm/select.f
 require test/compiler/native-source-fixture.f
@@ -33,6 +33,9 @@ require test/wasm/select-lib.f
 
 \ Dead by its own body, so the elaborator stages a fault after a call to it.
 : SEL-BOOM ( n -- ) throw ;
+
+\ A cell whose address a row loads through, a DATA address literal.
+variable SEL-CELL
 
 package WSEL-TEST
 private
@@ -247,8 +250,6 @@ variable Z-OUT
    c Z-SELECT drop ;
 
 : REFUSAL-ROWS ( -- )
-   s" a load is the checked-memory sibling's, refused by name" T-LABEL
-   s" PR @" 1 1 E-WSEL-REFUSED REFUSED
    s" an add a trapping unit may trap on is refused, never wrapped" T-LABEL
    s" PT +" 2 1 SOURCE!
    [: TRAP-RUN ;] E-WSEL-TRAP TTHROWSQ
@@ -270,49 +271,171 @@ variable Z-OUT
    0 DECL-IN !  17 DECL-OUT !
    [: [: BARE-BODY ;] WRAPPED ;] E-WSEL-DECLARE TTHROWSQ ;
 
-\ ---- the admission matrix -------------------------------------------------------
-\ Every HIR opcode answers: selected here, or the sibling that selects it.
-variable N-SEL
-variable N-TAIL
-variable N-MEM
-variable N-DYN
+\ ---- checked memory -------------------------------------------------------------
+\ `PS ( -- n )`, staged as HIR because source `!` and `c!` are calls to the
+\ engine's guarded stores: the literal 7 stored at the literal address ST-ADDR
+\ by the form ST-FORM, then read back from it by LD-FORM.
+TYPED-VARIABLE ST-FORM HIR:opcode
+TYPED-VARIABLE LD-FORM HIR:opcode
+variable ST-ADDR
+variable USE-J                       \ the block of the operation a uses row reads
+variable USE-K                       \ and its index there
 
-: ADMIT+ ( WSEL:admission -- )
-   MATCH WSEL:admission
-      selected       OF 1 N-SEL +! ENDOF
-      unbounded-tail OF 1 N-TAIL +! ENDOF
-      memory         OF 1 N-MEM +! ENDOF
-      dynamic        OF 1 N-DYN +! ENDOF
-   ;MATCH ;
+: Z-RESULT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
+   {: o:IR-ID:ir-op-id i:n :}
+   ZC ZB o i IR-BUILD:OP-RESULT@ ;
 
-: COUNTS-RESET ( -- )
-   0 N-SEL !  0 N-TAIL !  0 N-MEM !  0 N-DYN ! ;
+: Z-GIVES ( IR-ID:ir-type-id -- )
+   {: t:IR-ID:ir-type-id :}
+   ZC ZB t IR-BUILD:ADD-RESULT ;
 
-: ADMISSION-ROWS ( -- )
-   COUNTS-RESET
-   HIR:OPCODES 0 ?do  i HIR:NTH WSEL:ADMISSION ADMIT+  loop
-   s" every HIR opcode is selected or names its sibling" T-LABEL
-   N-SEL @ N-TAIL @ + N-MEM @ + N-DYN @ +  HIR:OPCODES T=
-   s" calls, status, integers and the 17 f64 operations: 42 selected here" T-LABEL
-   N-SEL @ N-TAIL @ + 42 T=
-   s" checked memory and the quotation descriptor are the siblings'" T-LABEL
-   N-MEM @ 4 T=  N-DYN @ 1 T=
-   s" the matrix says a tail call, self or host, is not bounded space" T-LABEL
-   N-TAIL @ 2 T=
-   COUNTS-RESET
-   HIR-OPCODE:CALL WSEL:ADMISSION ADMIT+
-   HIR-OPCODE:WORDCALL WSEL:ADMISSION ADMIT+
-   N-TAIL @ 2 T= ;
+: Z-CONST ( n -- IR-ID:ir-value-id )
+   {: v:n :}
+   HIR-OPCODE:CONST Z-OPEN
+   ZC ZB HIR:KEY-VALUE v Z-INT
+   ZC ZB  ZC ZB HIR:KEY-ADDR  ZC ZB HIR:ADDR-NONE HIR:ADDR-ATTR  IR-BUILD:ADD-ATTR
+   ZC ZB HIR:CELL-TYPE Z-GIVES
+   ZC ZB IR-BUILD:END-OP 0 Z-RESULT ;
+
+: ACCESS-BODY ( IR-CTX:ctx -- IR-BUILD:module )
+   {: c:IR-CTX:ctx :}
+   c s" PS" Z-SOURCE
+   s" PS" 0 1 Z-BEGIN
+   ZC ZB HIR:MEM-TYPE {: mt:IR-ID:ir-type-id :}
+   HIR-OPCODE:MEM Z-OPEN  mt Z-GIVES
+   ZC ZB IR-BUILD:END-OP 0 Z-RESULT {: k0:IR-ID:ir-value-id :}
+   7 Z-CONST {: v:IR-ID:ir-value-id :}
+   ST-ADDR @ Z-CONST {: a:IR-ID:ir-value-id :}
+   ST-FORM @ Z-OPEN  v Z-USE  a Z-USE  k0 Z-USE  mt Z-GIVES
+   ZC ZB IR-BUILD:END-OP 0 Z-RESULT {: k1:IR-ID:ir-value-id :}
+   LD-FORM @ Z-OPEN  a Z-USE  k1 Z-USE  ZC ZB HIR:CELL-TYPE Z-GIVES  mt Z-GIVES
+   ZC ZB IR-BUILD:END-OP 0 Z-RESULT {: x:IR-ID:ir-value-id :}
+   HIR-OPCODE:RETURN Z-OPEN  x Z-USE
+   ZC ZB IR-BUILD:END-OP drop
+   c Z-SELECT ;
+
+\ What defines each operand of operation USE-K of block USE-J.
+: USES-KEEP ( IR-BUILD:module -- )  USE-J @ USE-K @ USES$ KEEP ;
+
+: ACCESS-SHAPE ( IR-CTX:ctx -- )   ACCESS-BODY 0 [: AT-BLOCK+ ;] FUN$ KEEP ;
+: ACCESS-USES ( IR-CTX:ctx -- )    ACCESS-BODY USES-KEEP ;
+: SOURCE-USES ( IR-CTX:ctx -- )    COMPILE USES-KEEP ;
+: AT-RUN ( IR-CTX:ctx -- )         COMPILE 0 [: AT-BLOCK+ ;] FUN$ KEEP ;
+
+\ PS with the store form s, the load form l and the address a.
+: ACCESS! ( HIR:opcode HIR:opcode n -- )
+   {: s:HIR:opcode l:HIR:opcode a:n :}
+   s ST-FORM !  l LD-FORM !  a ST-ADDR !
+   0 DECL-IN !  1 DECL-OUT ! ;
+
+\ The shape function zero selects to.
+: ACCESS-ROW ( HIR:opcode HIR:opcode n ptr u8 n -- )
+   {: s:HIR:opcode l:HIR:opcode a:n want:ptr wn:n :}
+   s l a ACCESS!
+   [: ACCESS-SHAPE ;] OUTCOME
+   want wn KEPT ;
+
+\ What defines each operand of PS's operation k of block j.
+: USES-ROW ( HIR:opcode HIR:opcode n n n ptr u8 n -- )
+   {: s:HIR:opcode l:HIR:opcode a:n j:n k:n want:ptr wn:n :}
+   s l a ACCESS!
+   j USE-J !  k USE-K !
+   [: ACCESS-USES ;] OUTCOME
+   want wn KEPT ;
+
+\ The source, its arity, and what defines each operand of operation k of
+\ function zero's block j.
+: USED-ROW ( ptr u8 n n n n n ptr u8 n -- )
+   {: src:ptr sn:n in:n out:n j:n k:n want:ptr wn:n :}
+   src sn in out SOURCE!
+   j USE-J !  k USE-K !
+   [: SOURCE-USES ;] OUTCOME
+   want wn KEPT ;
+
+\ The source, its arity and the shape function zero must select to, with each
+\ access's offset.
+: AT-ROW ( ptr u8 n n n ptr u8 n -- )
+   {: src:ptr sn:n in:n out:n want:ptr wn:n :}
+   src sn in out SOURCE!
+   [: AT-RUN ;] OUTCOME
+   want wn KEPT ;
+
+\ A pointer is checked on its whole cell - high 32 bits zero, and at least
+\ 65536, past the null reservation - before i32.wrap_i64 narrows it; one that
+\ fails records the crash handler's exit code, 134, with the pointer, and
+\ executes unreachable, its kind at ctx offset 32 and its address at 40. The
+\ access takes the narrowed pointer at offset 0, so whether p + n fits the
+\ memory is the engine's bounds check. The fixture reads decimal literals only;
+\ each label gives its pointer in hex.
+: CHECK-ROWS ( -- )
+   s" an upper-bit pointer, $100031000, fails on its whole cell before narrowing" T-LABEL
+   s" PM 4295168000 @" 0 1
+   s" 2: br>1 | 0: i64.const=4295168000 i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>2,3 | 0: i32.const=134 i32.store i64.store unreachable | 0: i32.wrap_i64 i64.load i32.const=0 return | " ROW
+   s" a null-region pointer, $FFFF, fails: Wasm takes address zero in bounds" T-LABEL
+   s" PN 65535 c@" 0 1
+   s" 2: br>1 | 0: i64.const=65535 i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>2,3 | 0: i32.const=134 i32.store i64.store unreachable | 0: i32.wrap_i64 i64.load8_u i32.const=0 return | " ROW
+   s" its branch tests p >> 32 or p < 65536, never 32 >> p or 65536 < p" T-LABEL
+   s" PN 65535 c@" 0 1 1 8
+   s" i64.eqz(i64.or(i64.shr_u(i64.const=65535,i64.const=32),i64.extend_i32_u(i64.lt_s(i64.const=65535,i64.const=65536))))" USED-ROW
+   s" the last byte memory32 addresses, $FFFFFFFF, passes to the access at offset 0" T-LABEL
+   s" PB 4294967295 c@" 0 1
+   s" 2: br>1 | 0: i64.const=4294967295 i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>2,3 | 0: i32.const=134 i32.store+32 i64.store+40 unreachable | 0: i32.wrap_i64 i64.load8_u+0 i32.const=0 return | " AT-ROW
+   s" a cell at $FFFFFFF9 passes: p + 8, one past 2^32, is the engine's bounds check" T-LABEL
+   s" PE 4294967289 @" 0 1
+   s" 2: br>1 | 0: i64.const=4294967289 i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>2,3 | 0: i32.const=134 i32.store i64.store unreachable | 0: i32.wrap_i64 i64.load i32.const=0 return | " ROW ;
+
+\ An address literal keeps its HIR kind for the linker to write: DATA a linear
+\ memory offset, CODE an xt descriptor.
+: SITE-ROWS ( -- )
+   s" a variable's address is a DATA site, checked as any pointer" T-LABEL
+   s" PD SEL-CELL @" 0 1
+   s" 2: br>1 | 0: i64.const@data i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>2,3 | 0: i32.const=134 i32.store i64.store unreachable | 0: i32.wrap_i64 i64.load i32.const=0 return | " ROW
+   s" a tick is a CODE site" T-LABEL
+   s" PQ ['] SEL-INC" 0 1
+   s" 2: br>1 | 0: i64.const@code i32.const=0 return | " ROW ;
+
+\ PS at $31000 (200704): the store's check, its fault and its access are blocks
+\ 1 to 3, the load's 3 to 5.
+: ACCESS-ROWS ( -- )
+   s" a store then a load: each checks its pointer, then narrows it" T-LABEL
+   HIR-OPCODE:STORE HIR-OPCODE:LOAD 200704
+   s" 2: br>1 | 0: i64.const=7 i64.const=200704 i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>2,3 | 0: i32.const=134 i32.store+32 i64.store+40 unreachable | 0: i32.wrap_i64 i64.store+0 i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>4,5 | 0: i32.const=134 i32.store+32 i64.store+40 unreachable | 0: i32.wrap_i64 i64.load+0 i32.const=0 return | " ACCESS-ROW
+   s" the store takes the narrowed pointer, then the value" T-LABEL
+   HIR-OPCODE:STORE HIR-OPCODE:LOAD 200704 3 1
+   s" i32.wrap_i64(i64.const=200704),i64.const=7,arg" USES-ROW
+   s" a failed check records the pointer as the fault's address" T-LABEL
+   HIR-OPCODE:STORE HIR-OPCODE:LOAD 200704 2 2
+   s" arg,i64.const=200704,i32.store(arg,i32.const=134,arg)" USES-ROW
+   s" the load after the store takes the token the store leaves" T-LABEL
+   HIR-OPCODE:STORE HIR-OPCODE:LOAD 200704 5 1
+   s" i32.wrap_i64(i64.const=200704),i64.store(i32.wrap_i64(i64.const=200704),i64.const=7,arg)" USES-ROW
+   s" bstore and bload are i64.store8 and i64.load8_u" T-LABEL
+   HIR-OPCODE:BSTORE HIR-OPCODE:BLOAD 200704
+   s" 2: br>1 | 0: i64.const=7 i64.const=200704 i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>2,3 | 0: i32.const=134 i32.store+32 i64.store+40 unreachable | 0: i32.wrap_i64 i64.store8+0 i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>4,5 | 0: i32.const=134 i32.store+32 i64.store+40 unreachable | 0: i32.wrap_i64 i64.load8_u+0 i32.const=0 return | " ACCESS-ROW
+   s" a call after a load takes the token the load leaves" T-LABEL
+   s" PJ @ SEL-INC" 1 1
+   s" 3: br>1 | 1: i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>2,3 | 0: i32.const=134 i32.store i64.store unreachable | 0: i32.wrap_i64 i64.load call brz>4,5 | 0: i32.const=0 return | 0: i32.const=1 i64.const=0 return | " ROW
+   s" the call consumes the load's memory result, never the token before it" T-LABEL
+   s" PJ @ SEL-INC" 1 1 3 2
+   s" arg,i64.load(i32.wrap_i64(arg),arg),i64.load(i32.wrap_i64(arg),arg)" USED-ROW
+   s" a source store, a wordcall to the guarded !, is the checked store, no call" T-LABEL
+   s" PO tuck ! @" 2 1
+   s" 4: br>1 | 2: i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>2,3 | 0: i32.const=134 i32.store i64.store unreachable | 0: i32.wrap_i64 i64.store i64.const=32 i64.shr_u i64.const=65536 i64.lt_s i64.extend_i32_u i64.or i64.eqz brz>4,5 | 0: i32.const=134 i32.store i64.store unreachable | 0: i32.wrap_i64 i64.load i32.const=0 return | " ROW
+   s" a load after a source store takes the token the store leaves" T-LABEL
+   s" PO tuck ! @" 2 1 5 1
+   s" i32.wrap_i64(arg),i64.store(i32.wrap_i64(arg),arg,arg)" USED-ROW ;
 
 public
 : RUN ( -- )
-   WPROF:V1 INSTALL
-   ADMISSION-ROWS
+   REGISTER-WASM
    INTEGER-ROWS
    LOOP-ROWS
    CALL-ROWS
    FRAME-ROWS
    STACK-ROWS
+   CHECK-ROWS
+   SITE-ROWS
+   ACCESS-ROWS
    REFUSAL-ROWS
    T-REPORT ;
 

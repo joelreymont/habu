@@ -13,7 +13,9 @@
 \ allocator can be handed the register the stack lives in.
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 require src/habu/stack-abi.f
+require src/arch/arm64/icode.f
 using A64ASM
+using A64ICODE
 
 package RT
 
@@ -275,4 +277,5 @@ variable GO-DEV  variable GO-DONE
    10 G-PUSH
    RET, ;
 
+;using
 ;using

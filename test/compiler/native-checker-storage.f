@@ -16,15 +16,14 @@ PTR-VARIABLE SLOT2
    SLOT0 cell+ SLOT1 <> SLOT1 cell+ SLOT2 <> or if
       s" pointer slots are not contiguous" 76 die then ;
 : INIT ( -- ) LIVE SLOT0 ! LIVE SLOT1 ! LIVE SLOT2 ! ;
-TRUSTED: CLEAR ( ptr ptr u8 n n -- ) REG-POINTERS-CLEAR ;
 : CHECK ( -- )
    ADJACENT
    INIT
-   SLOT0 1 1 CLEAR
-   SLOT0 2 1 CLEAR
+   SLOT0 1 1 REG-POINTERS-CLEAR
+   SLOT0 2 1 REG-POINTERS-CLEAR
    SLOT0 @ LIVE <> SLOT1 @ LIVE <> or SLOT2 @ LIVE <> or if
       s" empty pointer clear changed storage" 76 die then
-   SLOT0 1 2 CLEAR
+   SLOT0 1 2 REG-POINTERS-CLEAR
    SLOT0 @ LIVE <> SLOT1 @ NULL-PTR <> or SLOT2 @ LIVE <> or if
       s" pointer clear changed the wrong range" 76 die then ;
 CHECK

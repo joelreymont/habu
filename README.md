@@ -35,6 +35,15 @@ bin/hb --load path/to/program.f
 bin/hb --load test/run.f
 ```
 
+Build a source file into a WebAssembly module whose `run` export calls its
+word `MAIN` (`PKG:NAME` names a package's public word);
+`bun test/wasm/run.mjs program.wasm` runs it, with bun installed as
+[docs/bootstrap.md](docs/bootstrap.md) describes:
+
+```sh
+bin/hb --load tools/wasm-build.f -- path/to/program.f MAIN program.wasm
+```
+
 If `bin/hb` is missing or broken, read the current recovery status and procedure
 in [docs/bootstrap.md](docs/bootstrap.md). The build and
 gate recipes live in [`skills/habu-build/SKILL.md`](skills/habu-build/SKILL.md)

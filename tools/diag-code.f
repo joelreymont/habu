@@ -13,8 +13,8 @@ public
 \ definition: a refused definition, the shape of every code without a row.
 \ declaration and storage: a refused family or storage declaration.
 \ source-span: a refusal placed in the source outside any definition.
-\ deferral: no refusal, a top-level stretch placed in the source that the
-\ source pre-pass leaves to the run. input: an input refused whole. record: a
+\ deferral: no refusal, a top-level stretch or a definition placed in the
+\ source that the source pre-pass leaves to the run. input: an input refused whole. record: a
 \ refusal, mostly of a checker record, that names its token and its place when
 \ known. warning: no refusal, since the definition loaded. using-refusal: a
 \ bare token with its used packages.
@@ -27,7 +27,8 @@ private
 \ the class to the record's own evidence: a storage refusal's is the class its
 \ reason takes (tools/gate-json-assert-core.f GJA-STORAGE-CLASS$), which
 \ GJA-STORAGE-CLASS holds it to.
-: ROW ( ptr u8 n -- shape ptr u8 n ptr u8 n ) {: c:ptr u:n :}
+: ROW ( ptr u8 n -- shape ptr u8 n ptr u8 n )
+   {: c:ptr u:n :}
    c u s" E-BAD-DECLARATION" STR= IF
       construct shape declaration s" fix_family_declaration" s" " EXIT THEN
    c u s" E-BAD-STORAGE" STR= IF
@@ -36,6 +37,12 @@ private
       construct shape source-span s" unknown_rejection" s" " EXIT THEN
    c u s" E-UNTERMINATED-STRING" STR= IF
       construct shape source-span s" close_string" s" " EXIT THEN
+   c u s" E-MISSING-SOURCE" STR= IF
+      construct shape source-span s" fix_load_path" s" " EXIT THEN
+   c u s" E-UNREADABLE-SOURCE" STR= IF
+      construct shape source-span s" make_source_readable" s" " EXIT THEN
+   c u s" E-LOADER-FORM" STR= IF
+      construct shape source-span s" literal_loader_form" s" " EXIT THEN
    c u s" E-MALFORMED-REGISTRY-ROW" STR= IF
       construct shape source-span s" close_primitive_row" s" " EXIT THEN
    c u s" E-UNDEFINED-TOP-LEVEL" STR= IF
@@ -48,6 +55,8 @@ private
       construct shape record
       s" fix_generates_row delete_generates_row fix_signature_syntax fix_signature_type fix_signature_arity fix_bare_ptr_element"
       s" " EXIT THEN
+   c u s" E-PARSES-ROW" STR= IF
+      construct shape record s" fix_parses_row fix_parses_syntax" s" " EXIT THEN
    c u s" E-ENGINE-PROVIDED" STR= IF
       construct shape input s" rebuild_engine" s" " EXIT THEN
    c u s" E-TRUST-UNRESOLVED" STR= IF

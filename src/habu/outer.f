@@ -361,6 +361,16 @@ variable DIGIT-AT
    TASKS-LIVE-CELL CELL@ 0= if exit then
    TOKEN$ RC-TASK-LIVE FAIL-CLOSED ;
 
+\ While a checker overlay is open a definer head, a new package row or private
+\ wid, or an export throws by name: the overlay's close would drop what it
+\ wrote (habu1.f OVERLAY-EMIT:GUARD, reads the same latch at the same sites).
+\ An `undefine` refuses at its own entry, which both loops run (xref.f
+\ XREF-UNDEFINE-GUARD).
+: OVERLAY-GUARD ( -- )
+   REPLAY-SCOPE:LATCH CELL@ 0= if exit then
+   s" hb: definition while a checker replay is open: " SAY
+   TOKEN$ SAY ENGINE-ERROR:OVERLAY-OPEN THROW-AT ;
+
 \ Whether wordlist wid is protected (habu1.f EMIT-PROTWID, read as
 \ tools/prot-wid-probe.f MEMBER? reads it): the two engine-reserved wordlists
 \ by rule, then the wid's bit in the bitmap at PROT-BITS-OFF, which no wid
@@ -572,7 +582,7 @@ TYPED-VARIABLE REC ptr n
 \ they run.
 TRUSTED: RUN-FOUND ( -- )
    GATE
-   WORD-FLAGS >r  REC @ XREF-START >r
+   WORD-FLAGS >r  REC @ NHOST:SELECT-REC >r
    r@ UNIT-EV-WORD UNIT-EVENT drop
    r> r> swap >r  TOP-EV-WORD swap HOOK
    r> execute-floor FLOORED ;

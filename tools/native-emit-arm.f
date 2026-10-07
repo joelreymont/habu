@@ -23,10 +23,7 @@ require src/os/script-argv.f
 require src/habu/treeshake.f
 require src/habu/rt.f
 require src/habu/crash.f
-require src/os/image-bytes.f
-
-\ The target writers read image-bytes.f's MSIZE as they load, and tools/check.f
-\ checks the files a body loads after that body, so LOAD-IMAGE follows it.
+\ The target writers load their image buffer in their own package scope.
 package NATIVE-EMIT
 : LOAD-IMAGE ( -- )
    HB-TARGET-LINUX? if

@@ -24,6 +24,8 @@ require src/habu/cell-grid.f
 require src/habu/fdio.f
 require src/habu/sign-id.f
 require src/habu/stack-abi.f
+require src/habu/native-observer-cells.f
+require src/habu/native-host-cells.f
 require src/habu/main.f
 
 package SNAP
@@ -265,6 +267,10 @@ TRUSTED: SND-ZERO-CELL ( n -- )
    EVAL-TOP-CELL SND-ZERO-CELL  CLOSED-FREE-CELL SND-ZERO-CELL
    FLOORREC-CELL SND-ZERO-CELL
    HB-TARGET-LINUX-X86-64? 0= if CODE-END-CELL SND-ZERO-CELL then
+   DEF-OCC:PTR-CELL SND-ZERO-CELL
+   NATIVE-OBS-CELLS:HOST-INVALIDATE SND-ZERO-CELL
+   NATIVE-HOST-CELLS:SELECT SND-ZERO-CELL
+   NATIVE-HOST-CELLS:FACTS SND-ZERO-CELL
    NCOMP-DISPATCH:DEF-TIER-CELL SND-ZERO-CELL
    NCOMP-DISPATCH:BUILD-DEPTH-CELL SND-ZERO-CELL
    NCOMP-DISPATCH:BUILD-TIER-CELL SND-ZERO-CELL ;

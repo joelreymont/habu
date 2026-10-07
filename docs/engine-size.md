@@ -899,8 +899,9 @@ Measured against this engine, so the numbers are bounds, not hopes:
 
 The Mach-O text segment rounds up to a 16 KiB page; `tools/engine-size.f`
 reports the remainder as `macho/text-pad`. A change shortens the shipped file
-only when it removes more content than the current pad, and then by exactly
-16,384 bytes, 0.66% of the 2,493,559-byte engine. Judge a code-generation change
+only when it removes more content than the current pad, and then by 16,512
+bytes: the 16,384-byte page and the 128 bytes of `macho/code-signature` that
+hash it, 0.66% of the 2,493,559-byte engine. Judge a code-generation change
 by the file total and the `macho/text-pad` row, not by `aot/code-blob`: a
 selector rule that shortens the blob also adds compiler code, schema rows and
 names to the other classes.
@@ -940,6 +941,44 @@ The two largest shapes are not selection gaps: DATA is mapped beyond ADRP
 reach, and the whole register pool is declared destroyed across a call. The
 bytes there are to win are the checker's DATA stores and the records the
 engine's own entries never reach; see "What the size work is worth" above.
+
+## What retiring `TRUSTED:` cost in bytes
+
+The work that replaced `TRUSTED:` definitions with checked code (the dots under
+`.dots/habu-trusted-dies-prim-4fd12d60/`) was measured unit by unit, from the
+2,493,559-byte engine above to master d31d4395. A unit's file bytes come from
+the engines installed for master commits, when every commit between two of
+them belongs to the unit, or else from the unit's own candidate engine
+measured against its parent. Content is the file less the Mach-O pads and the
+code signature, as `tools/engine-size.f` reports them; it shows what a page
+step hides.
+
+| Unit | Measured as | File | Content |
+|---|---|---|---|
+| Batches 2-4: effect compaction, tool and test shims, casts, package seal, leaf 3 | candidate a864f0a6 against bea0995a | -49,536 | -53,864 for the interval, which also holds one other commit with no file change |
+| Batch 5 and B11: B6-1, the evaluation floor, stage-2 name lookup | candidate bae09668 against e41e1342 | +16,512 | +8,416 |
+| B3: set-tier's owner row | candidate on its lane | 0 | not recorded |
+| B5: owners' trust-boundary sites | installed a39b04dd | 0 | +188 |
+| Closed evaluation in tests | installed 2be5eaed | 0 | 0 |
+| B8 step 1: internal rows in unsealed images, checked-tick authority | installed b7f63f25 | 0 | +592 |
+| B9: test shims | installed 9684573b | 0 | 0 |
+| LINEAR: mint and erase | two-generation build on 09583cba | 0 | not recorded |
+| B8 steps 2-3 | candidate on 2ea4d8f0; landed as 7bcc8270, which was never measured | +16,512 | not recorded |
+| B7: declaration-file shims | installed 366e1d3a | -16,512 | -6,168 |
+| Leaf 4: owners call internal primitives; a checked replay binds names through an engine overlay | installed d31d4395 against f8a898f5 | +16,512 | +11,372 |
+
+The units sum to -16,512 file bytes, one page. Master grew by 198,144 bytes
+over the same span, to 2,691,703. Intervals holding only other work measured
++115,584; three intervals mix both (d37500ab, c33ae867 and 543c0ac9) and split
+no further than the candidate sizes above. Page rounding decides a unit's file
+figure: batch 5 cost a page against eab7ce31 and none against 02b25a91, with
+about 5.9 KB of content both times. Leaf 4's content splits as +4,424 for the
+owners' calls and the overlay's writers, +4,488 for binding through the overlay
+and the replay-private writer, and +2,460 for the rest of the chain.
+
+Counted over the whole tree from eaca1afc, `TRUSTED:` definitions in src, lib,
+tools and test went from 1,510 to 687, and in src from 403 to 138.
+Trusted-only rows stayed at 56.
 
 ## Where an application image's bytes go
 

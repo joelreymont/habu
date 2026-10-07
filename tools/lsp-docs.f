@@ -8,7 +8,8 @@
 \ check published, then the version, then 1 while it waits for a check, then 1
 \ while the slot holds a document.
 \ Closing a document frees its buffers and its slot, and an open takes the
-\ first free slot. A document is found by its URI's bytes.
+\ first free slot. A document is found by its URI's bytes, its path's or its
+\ canonical path's.
 \
 \ Opening or changing a document leaves it dirty, its text not yet checked.
 \ DOC-NEXT-DIRTY hands out the dirty documents slot after slot, wrapping round,
@@ -42,7 +43,6 @@ variable SLOT-COUNT
 
 : SLOT-CELL ( n n -- ptr n )  swap SLOT-CELLS * + SLOTS ;
 : LIVE? ( n -- bool )  LIVE-AT SLOT-CELL @ 0<> ;
-: DIRTY? ( n -- bool )  DIRTY-AT SLOT-CELL @ 0<> ;
 : BYTES$ ( n n -- ptr u8 n )  SLOT-CELL SPAN$ BLEN>N ;
 
 \ A new buffer at this cell of the slot, holding these bytes.
@@ -61,6 +61,16 @@ variable SLOT-COUNT
    SLOT-COUNT @ 1+ SLOT-CELLS * SLOTS-RESERVE
    SLOT-COUNT @
    1 SLOT-COUNT +! ;
+
+\ The slot of the open document whose buffer at this cell holds these bytes.
+: HOLDER ( ptr u8 n n -- option<n> )
+   {: a:ptr u:n at:n :}
+   SLOT-COUNT @ 0 ?do
+      i LIVE? if
+         i at BYTES$ a u STR= if i OPTION:SOME unloop exit then
+      then
+   loop
+   OPTION:NONE ;
 
 public
 
@@ -87,6 +97,9 @@ public
 : DOC-DIRTY ( n -- )  1 swap DIRTY-AT SLOT-CELL ! ;
 : DOC-CLEAN ( n -- )  0 swap DIRTY-AT SLOT-CELL ! ;
 
+\ Whether the document in this slot waits for a check.
+: DOC-DIRTY? ( n -- bool )  DIRTY-AT SLOT-CELL @ 0<> ;
+
 \ Every open document waits for a check.
 : DOC-DIRTY-ALL ( -- )
    SLOT-COUNT @ 0 ?do i LIVE? if i DOC-DIRTY then loop ;
@@ -98,20 +111,20 @@ public
    SLOT-COUNT @ {: count:n :}
    count 0 ?do
       after 1+ i + count mod
-      dup DIRTY? if OPTION:SOME unloop exit then
+      dup DOC-DIRTY? if OPTION:SOME unloop exit then
       drop
    loop
    OPTION:NONE ;
 
 \ The slot of the open document with this URI.
-: DOC-FIND ( ptr u8 n -- option<n> )
-   {: a:ptr u:n :}
-   SLOT-COUNT @ 0 ?do
-      i LIVE? if
-         i DOC-URI$ a u STR= if i OPTION:SOME unloop exit then
-      then
-   loop
-   OPTION:NONE ;
+: DOC-FIND ( ptr u8 n -- option<n> )  URI-AT HOLDER ;
+
+\ The slot of the open document holding the file the checker names by this
+\ path.
+: DOC-HOLDING ( ptr u8 n -- option<n> )  CANON-AT HOLDER ;
+
+\ The slot of the open document the client opened by this path.
+: DOC-OPENED-AS ( ptr u8 n -- option<n> )  PATH-AT HOLDER ;
 
 \ Closes the document in this slot.
 : DOC-CLOSE ( n -- )

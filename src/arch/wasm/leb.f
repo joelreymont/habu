@@ -137,10 +137,6 @@ public
    v U32? 0= if E-RANGE throw then
    v false v ULEN s PUT ;
 
-: U64! ( n SPAN:span<u8> -- n )
-   {: v:n s :}
-   v false v ULEN s PUT ;
-
 : S32! ( n SPAN:span<u8> -- n )
    {: v:n s :}
    v S32? 0= if E-RANGE throw then
@@ -152,9 +148,6 @@ public
 
 : U32@ ( ptr u8 n -- u32 n )
    32 false DECODE ;
-
-: U64@ ( ptr u8 n -- n n )
-   64 false DECODE ;
 
 : S32@ ( ptr u8 n -- n n )
    32 true DECODE ;

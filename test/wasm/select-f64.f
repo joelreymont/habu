@@ -1,29 +1,22 @@
 \ select-f64.f - WSEL's f64 rows: src/arch/wasm/select.f under Habu's NaN rule
 \ (docs/wasm-backend.md 17.3, src/compiler/native/hir-word.f DEF-FLOAT).
 \
-\ Each row compiles Habu source, selects it under WPROF's V1 and compares
-\ function zero's shape (test/wasm/select-lib.f) with every operation's
-\ operands: `[a,b]` names the values it reads by their ordinals, each block
-\ argument and result numbered in the order the function makes it. So a row
-\ states which value each f64.select answers and which one its f64.ne tests,
-\ and with them the rule: the left operand when it is a NaN, else the right,
-\ else 9221120237041090560 - $7FF8000000000000 - when the answer is a NaN,
-\ else the answer. Executing the rows bit-exactly is the rows dot's.
-\
-\ W05 runs first, in a fork of this process (lib/test/subject.f): a profile is
-\ installed once, so the one without saturating-float-to-int has a process of
-\ its own, and the rows after it run under V1.
+\ Each row compiles Habu source, selects it and compares function zero's shape
+\ (test/wasm/select-lib.f) with every operation's operands: `[a,b]` names the
+\ values it reads by their ordinals, each block argument and result numbered in
+\ the order the function makes it. So a row states which value each f64.select
+\ answers and which one its f64.ne tests, and with them the rule: the left
+\ operand when it is a NaN, else the right, else 9221120237041090560 -
+\ $7FF8000000000000 - when the answer is a NaN, else the answer. Executing the
+\ rows bit-exactly is the rows dot's.
 
 require lib/test.f
 require lib/string.f
 require lib/fmt.f
-require lib/test/outcome.f
-require lib/test/subject.f
 require src/compiler/ir/id.f
 require src/compiler/ir/build.f
 require src/compiler/native/frozen.f
 require src/compiler/native/hir.f
-require src/arch/wasm/profile.f
 require src/arch/wasm/select.f
 require test/wasm/select-lib.f
 
@@ -71,10 +64,6 @@ private
 $7FF8000000000ABC constant NAN-ABC
 $7FF8000000000DEF constant NAN-DEF
 
-: Z-USE ( IR-ID:ir-value-id -- )
-   {: v:IR-ID:ir-value-id :}
-   ZC ZB v IR-BUILD:ADD-OPERAND ;
-
 \ The operation staged so far, given its one result of type t and closed.
 : Z-CLOSE1 ( IR-ID:ir-type-id -- IR-ID:ir-value-id )
    {: t:IR-ID:ir-type-id :}
@@ -108,46 +97,6 @@ $7FF8000000000DEF constant NAN-DEF
    0 DECL-IN !  1 DECL-OUT !
    [: FCONST-BODY ;] OUTCOME
    want wn KEPT ;
-
-\ ---- W05, in a process of its own ------------------------------------------
-TYPED-VARIABLE NO-SAT-P WPROF:profile
-
-\ V1 without saturating-float-to-int.
-: NO-SAT ( -- WPROF:profile )
-   WPROF:V1 NO-SAT-P !
-   NO-SAT-P WPROF-PROFILE:FEATURES @
-   WPROF-FEATURE:SATURATING-FLOAT-TO-INT WPROF:BIT invert and
-   NO-SAT-P WPROF-PROFILE:FEATURES !
-   NO-SAT-P @ ;
-
-$400 constant CAP
-CAP BUFFER: OUT
-CAP BUFFER: ERR
-30000 constant TIMEOUT-MS   \ a hang guard: the child selects one word
-
-public
-
-\ The fork's whole program: that profile installed, `f>s` selected under it,
-\ and the code the selection threw printed.
-: W05-EVAL ( -- )
-   NO-SAT INSTALL
-   s" PS f>s" 1 1 SOURCE!
-   [: [: COMPILE drop ;] WRAPPED ;] catch {: code:n :}
-   SB-RESET  code FMT:SB-INT  SB$ type ;
-
-private
-
-: W05 ( -- )
-   s" W05: f>s is refused by name without saturating-float-to-int" T-LABEL ;
-
-\ Green when the child exits 0, printed E-WSEL-REFUSED and wrote no error.
-: W05-ROW ( -- )
-   s" WSEL-TEST:W05-EVAL"
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
-   {: outu:len erru:len oc :}
-   W05  s" WSEL-TEST:W05-EVAL" OUT outu LEN>N ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
-   W05  SB-RESET  E-WSEL-REFUSED FMT:SB-INT  OUT outu LEN>N SB$ T$=
-   W05  erru LEN>N 0 T= ;
 
 \ ---- the rows --------------------------------------------------------------
 \ In PA, 6 and 7 are the operands, 8 their sum and 9 the made NaN; 11 answers 9
@@ -218,8 +167,7 @@ private
 
 public
 : F64-RUN ( -- )
-   W05-ROW
-   WPROF:V1 INSTALL
+   REGISTER-WASM
    NAN-ROWS
    SIGN-ROWS
    COMPARE-ROWS

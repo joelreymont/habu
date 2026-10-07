@@ -39,11 +39,17 @@ variable P-SYMN   variable P-SYMU   variable P-DEPTH
 \ The probes below are checked: on the whitebox engine a body naming a
 \ checker-internal word binds that word's recorded row.
 \
-\ An alias CHECKER-EXPORT records is a fact of the checker's store: the
-\ operation publishes no engine record, so compiled code cannot call one. The
-\ probes therefore read the alias's own record (CHECKER-RECORD-SYM?), and a
-\ checked caller of an alias asks the certify path (VERIFY:CANDIDATE-IN-SCOPE),
-\ where the static scanner's aliases bind.
+\ An alias CHECKER-EXPORT records is a fact of the checker's store: outside a
+\ replay the operation publishes no engine record, so compiled code cannot call
+\ one. The probes therefore read the alias's own record (CHECKER-RECORD-SYM?).
+\ A checked caller of an alias asks the certify path (VERIFY:CANDIDATE-IN-SCOPE),
+\ which binds through the engine's lookup: while a neutral pair is open the
+\ checker overlay publishes the alias as a record, as it does the static
+\ scanner's aliases. So a section that asks the certify path records its alias
+\ and asks inside one pair, and finalizes it: the store keeps the alias, the
+\ engine's record goes with the overlay. A package made inside the pair would be
+\ refused (ENGINE-ERROR:OVERLAY-OPEN), so the section makes it first and
+\ reopens it there.
 : TWX-FIND-DEFER ( ptr u8 n -- bool ) CHECKER-RECORD-SYM? DFER-FIND-SYM ;
 : TWX-CTL-FLAGS ( ptr u8 n -- n ) CHECKER-RECORD-SYM? CTL-FLAGS-SYM ;
 
@@ -60,16 +66,20 @@ public
 ;package
 
 package XPD
+;package
+
+CHECKER-SCOPE-START-NEUTRAL
+package XPD
 public
 s" xps:XP-INC" CHECKER-EXPORT
 ;package
-
 s" xpd:XP-INC" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
 s" xps:XP-INC" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
 s" XPU1 ( n -- n ) xpd:XP-INC" VERIFY:CANDIDATE-IN-SCOPE -1 T=
 s" XPU2 ( n -- n ) xps:XP-INC" CHECK! -1 T=
 s" XPU3 ( -- n ) xpd:XP-INC" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 s" XPU4 ( n -- n n ) xpd:XP-INC" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+CHECKER-SCOPE-FINALIZE
 \ the alias has no engine record, so a live caller binds nothing (unresolvable)
 s" XPU1L ( n -- n ) xpd:XP-INC" CHECK-QUIET-CANDIDATE! 1 T=
 
@@ -79,11 +89,15 @@ s" XPU1L ( n -- n ) xpd:XP-INC" CHECK-QUIET-CANDIDATE! 1 T=
 \ ---------------------------------------------------------------------------
 package XPP
 : XP-HID ( n -- n ) 2 + ;
+;package
+CHECKER-SCOPE-START-NEUTRAL
+package XPP
 public
 s" XP-HID" CHECKER-EXPORT
 ;package
 s" xpp:XP-HID" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
 s" XPU5 ( n -- n ) xpp:XP-HID" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+CHECKER-SCOPE-FINALIZE
 
 \ ---------------------------------------------------------------------------
 \ 3. defer + control flags ride the alias: the defer flag, and the source's
@@ -118,11 +132,15 @@ public
 : XP-HOF ( [ n -- n ] n -- n ) swap execute ;
 ;package
 package XPQ2
+;package
+CHECKER-SCOPE-START-NEUTRAL
+package XPQ2
 public
 s" xpq:XP-HOF" CHECKER-EXPORT
 ;package
 s" XPU6 ( n -- n ) [: 1 + ;] swap xpq2:XP-HOF" VERIFY:CANDIDATE-IN-SCOPE -1 T=
 s" XPU7 ( n -- n ) [: + ;] swap xpq2:XP-HOF" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+CHECKER-SCOPE-FINALIZE
 
 \ ---------------------------------------------------------------------------
 \ 5. rejects. Every fail-closed path throws its named code; catch restores

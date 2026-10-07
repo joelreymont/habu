@@ -85,6 +85,38 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-BUF BUFT-TCAP 8 T=
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abcdef" T$= ;
 
+\ A borrowed source can be this buffer's own active prefix or a substring.
+\ Growth must keep that source mapped until the append has copied its bytes.
+: BUFT-APPEND-SELF ( -- )
+   64 BUFT-FRESH
+   s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+   BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW
+   s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+   T$=
+   8 BUFT-FRESH
+   s" abcd" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abcdabcd" T$= ;
+
+: BUFT-APPEND-PART ( -- )
+   8 BUFT-FRESH
+   s" abcdefgh" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ drop 2 + 3 BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abcdefghcde" T$= ;
+
+\ Reacquire the active span after growth; stored row offsets remain valid.
+: BUFT-CONTENT ( -- )
+   8 BUFT-FRESH
+   BUFT-BUF BUF:SPAN SPAN:LEN 0 T=
+   s" abc" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN 3 0 SPAN:SUB SPAN:LEN 0 T=
+   [: BUFT-BUF BUF:SPAN 3 1 SPAN:SUB SPAN:LEN drop ;] E-SPAN-RANGE TTHROWSQ
+   1 2 {: off:n len:n :}
+   s" defghijk" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN off len SPAN:SUB SPAN:$ s" bc" T$= ;
+
 \ ---- reserve exact grows capacity to exactly the request, preserving bytes ------
 : BUFT-RESERVE ( -- )
    4 BUFT-FRESH
@@ -187,6 +219,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-CAP0 2 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: hole :}
    hole MEM:FREE-SPAN
    BUFT-CAP0 1 + BUFT-REL-BUF BUF:BUFT-LEN-RAW!        \ len = 33 past the 32-byte mapping
+   [: BUFT-REL-BUF BUF:SPAN SPAN:LEN drop ;] E-SPAN-RANGE TTHROWSQ
    [: BUFT-APPEND-MORE ;] E-SPAN-RANGE TTHROWSQ
    \ A refused grow must leave the free hole available, not leak a new mapping
    \ into it. This is the same address-reuse proof as the release tests above.
@@ -200,6 +233,9 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 : BUFT-USE-SPAN ( -- )
    BUFT-CAP0 BUFT-REL-INIT  BUFT-REL-BUF BUF:DISPOSE
    BUFT-REL-BUF BUF:SPAN$ 2drop ;
+: BUFT-USE-CONTENT ( -- )
+   BUFT-CAP0 BUFT-REL-INIT  BUFT-REL-BUF BUF:DISPOSE
+   BUFT-REL-BUF BUF:SPAN SPAN:LEN drop ;
 : BUFT-USE-APPEND ( -- )
    BUFT-CAP0 BUFT-REL-INIT  BUFT-REL-BUF BUF:DISPOSE
    9 BUFT-REL-BUF BUF:APPEND-BYTE ;
@@ -263,6 +299,9 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    [: -1 BUF:N>BLEN drop ;] E-BUF-BOUNDS TTHROWSQ
    BUFT-GROW
    BUFT-APPEND-SPAN
+   BUFT-APPEND-SELF
+   BUFT-APPEND-PART
+   BUFT-CONTENT
    BUFT-RESERVE
    BUFT-ENSURE
    BUFT-REPLACE
@@ -274,6 +313,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-DISPOSE-CYCLE-BOUNDED
    BUFT-GROW-FAIL-ATOMIC
    [: BUFT-USE-SPAN ;] E-BUF-STATE TTHROWSQ
+   [: BUFT-USE-CONTENT ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-APPEND ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-RESERVE ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-ENSURE-ZERO ;] E-BUF-STATE TTHROWSQ

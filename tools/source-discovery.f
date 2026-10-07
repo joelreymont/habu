@@ -18,7 +18,11 @@
 \ unless the entry file is a declared dynamic-tail boundary in
 \ tools/dynamic-tail-manifest.f, in which case exactly those forms are
 \ tolerated (skipped, never recorded) and only the statically-visible loader
-\ events are produced. Recorded loader-token spans are entry-file byte offsets.
+\ events are produced. An escaped literal (S\") names the path its escapes
+\ decode to. A bad escape refuses nothing: at top level it ends the walk where
+\ the load stops, and in a definition, which the check rejects and reads past,
+\ the walk reads past it and follows no loader taking it. Recorded loader-token
+\ spans are entry-file byte offsets.
 
 require lib/errors.f
 require lib/string.f
@@ -47,6 +51,7 @@ $20 constant SD-SP
 
 1 constant SD-PEND-PATH
 2 constant SD-PEND-OTHER
+3 constant SD-PEND-BAD                   \ a literal the engine refuses, in a body
 
 create SD-PATH SD-PATH-CAP allot
 create SD-ROOT SD-PATH-CAP 1+ allot
@@ -66,6 +71,10 @@ variable SD-PEND
 variable SD-LENIENT
 variable SD-EMIT-LEN
 variable SD-OPENER                       \ where the last string or group opener starts
+variable SD-TOK-OFF                      \ the token read last: where it starts
+variable SD-TOK-LEN                      \ and its length
+variable SD-CALL-KIND                    \ the loader SD-CALL-LOADER calls
+variable SD-DEF                          \ 1 from a definition's opener to its ;
 
 \ Local spellings are byte-exact and become visible after their group's closer.
 \ Keep source offsets so discovery need not copy names or impose a locals cap.
@@ -115,7 +124,7 @@ variable SD-SCOPES
       SD-I @ 1+ SD-I !
    repeat ;
 
-: SD-RAW ( -- n n )
+: SD-NEXT ( -- n n )
    SD-SKIP-WS
    SD-I @ {: start:n :}
    start SD-AT? 0= if start 0 exit then
@@ -124,6 +133,16 @@ variable SD-SCOPES
       SD-I @ 1+ SD-I !
    repeat
    start SD-I @ start - ;
+
+\ The next token, kept as the token read last when there is one: a refusal
+\ names the form discovery read last, and the source's end names none.
+: SD-RAW ( -- n n )
+   SD-NEXT {: off:n len:n :}
+   len 0<> if
+      off SD-TOK-OFF !
+      len SD-TOK-LEN !
+   then
+   off len ;
 
 : SD-SKIP-TO ( n -- ) {: stop:n :}
    begin SD-I @ SD-AT? while
@@ -158,27 +177,53 @@ variable SD-SCOPES
    c SD-PATH-U @ SD-PATH-AT c!
    SD-PATH-U @ 1+ SD-PATH-U ! ;
 
-: SD-SCAN-ESC ( -- )
-   SD-I @ SD-BYTE SD-PATH-APPEND
-   SD-I @ 1+ SD-I !
-   SD-I @ SD-AT? if SD-I @ SD-BYTE SD-PATH-APPEND SD-I @ 1+ SD-I ! then ;
-
-: SD-SCAN-CHAR ( -- bool ) \ true when closing quote consumed
-   SD-I @ SD-BYTE SD-DQUOTE = if SD-I @ 1+ SD-I ! STR-TRUE exit then
-   SD-I @ SD-BYTE SD-PATH-APPEND
-   SD-I @ 1+ SD-I !
-   STR-FALSE ;
-
-: SD-SCAN-STRING ( bool -- ) {: escaped:bool :}
-   SD-I @ SD-AT? if SD-I @ SD-BYTE SD-SP = if SD-I @ 1+ SD-I ! then then
+\ The u bytes at a become the path, as far as SD-PATH holds them.
+: SD-PATH-FILL ( ptr u8 n -- ) {: a:ptr u:n :}
    0 SD-PATH-U !
    0 SD-PATH-OVF !
+   u 0 ?do a i + c@ SD-PATH-APPEND loop ;
+
+\ Room for an escaped literal's decode: as many bytes as its payload, since a
+\ decode is never longer than its spelling.
+DYNAMIC-BUFFER SD-DEC u8
+
+\ A literal holding a bad escape is one the engine refuses, a bad string
+\ literal, where the load stops. At top level the walk ends at it too: it
+\ follows nothing at or after the literal and refuses nothing, leaving the
+\ literal to the check, which refuses it at its opener. In a definition it is
+\ one more error of a body the check rejects and reads past, so the walk reads
+\ past it as well, and a loader or retirement taking it is a call in a word
+\ never made, with nothing to follow or refuse: SD-PEND-BAD replaces the kind
+\ its opener left.
+: SD-REFUSED-LITERAL ( -- )
+   SD-DEF @ 0= if SD-U @ SD-I ! exit then
+   SD-PEND-BAD SD-PEND ! ;
+
+\ An escaped literal's path is what the engine's literal makes of its payload,
+\ the payload decoded by the engine's escape table (src/core/checker.f
+\ ESC-DECODE), unless an escape is bad.
+: SD-DECODE-PATH ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 1+ SD-DEC-RESERVE
+   0 SD-DEC {: dst:ptr :}
+   a u dst ESC-DECODE {: k:n ok:bool :}
+   ok 0= if SD-REFUSED-LITERAL exit then
+   dst k SD-PATH-FILL ;
+
+\ The literal whose opener SD-I stands after: SD-I steps past its closing quote,
+\ and its path is its payload, decoded when the opener is an escaped one, where
+\ a backslash and the byte after it never close the literal.
+: SD-SCAN-STRING ( bool -- ) {: escaped:bool :}
+   SD-I @ SD-AT? if SD-I @ SD-BYTE SD-SP = if SD-I @ 1+ SD-I ! then then
+   SD-I @ {: start:n :}
    begin SD-I @ SD-AT? while
-      SD-I @ SD-BYTE SD-BACKSLASH = escaped and if
-         SD-SCAN-ESC
-      else
-         SD-SCAN-CHAR if exit then
+      SD-I @ SD-BYTE SD-DQUOTE = if
+         start SD-BUF +  SD-I @ start -
+         SD-I @ 1+ SD-I !
+         escaped if SD-DECODE-PATH else SD-PATH-FILL then
+         exit
       then
+      SD-I @ SD-BYTE SD-BACKSLASH = escaped and if SD-I @ 1+ SD-I ! then
+      SD-I @ SD-AT? if SD-I @ 1+ SD-I ! then
    repeat
    E-DISC-UNTERM throw ;
 
@@ -203,13 +248,29 @@ variable SD-SCOPES
 : SD-RESERVED? ( n n -- bool )
    SD-TOK$ SD-RESERVED$? ;
 
-: SD-CALL-LOADER ( n n n -- ) {: off:n len:n kind:n :}
-   off len DISC-TOK!
+: SD-CALL-ACT ( -- )
+   SD-CALL-KIND @ {: kind:n :}
    kind SD-K-INCLUDED = if SD-PATH$ included exit then
    kind SD-K-REQUIRED = if SD-PATH$ required exit then
    SD-PATH$ provided ;
 
+\ The loader resolves the literal against its roots before it records the load.
+\ A path it cannot resolve (E-PATH-RANGE: longer resolved than the engine's path
+\ capacity, or holding a NUL) is a form discovery cannot follow, refused at the
+\ loader word that names it.
+: SD-CALL-LOADER ( n n n -- )
+   {: off:n len:n kind:n :}
+   off len DISC-TOK!
+   kind SD-CALL-KIND !
+   [: SD-CALL-ACT ;] catch {: rc:n :}
+   rc 0= if exit then
+   rc E-PATH-RANGE <> if rc throw then
+   off SD-TOK-OFF !
+   len SD-TOK-LEN !
+   E-DISC-CAPACITY SD-REJECT ;
+
 : SD-DISPATCH-LOADER ( n n n n -- ) {: off:n len:n kind:n pend:n :}
+   pend SD-PEND-BAD = if exit then
    pend SD-PEND-OTHER = if E-DISC-OPENER SD-REJECT exit then
    pend SD-PEND-PATH = 0= if E-DISC-DYNAMIC SD-REJECT exit then
    SD-PATH-OVF @ 0= 0= if E-DISC-CAPACITY SD-REJECT exit then
@@ -226,6 +287,7 @@ variable SD-SCOPES
 \ UNDEFINE-IF-DEFINED retiring a loader word (or fed a non-literal name that
 \ cannot be proven safe) breaks loader identity for the rest of the file.
 : SD-RETIRE ( n -- ) {: pend:n :}
+   pend SD-PEND-BAD = if exit then
    pend SD-PEND-PATH = 0= if E-DISC-RETIRE SD-REJECT exit then
    SD-PATH$ SD-RESERVED$? if E-DISC-RETIRE SD-REJECT then ;
 
@@ -241,6 +303,12 @@ variable SD-SCOPES
    0 SD-LOCALS !
    0 SD-LOCAL-BASE !
    0 SD-SCOPES ! ;
+
+\ A definition, from its `:`, `kernel:` or `TRUSTED:` to its `;`, opens with no
+\ locals.
+: SD-DEF-OPEN ( -- )
+   SD-LOCALS-RESET
+   1 SD-DEF ! ;
 
 
 : SD-LOCALS-RELEASE ( -- )
@@ -299,7 +367,7 @@ variable SD-SCOPES
 
 
 : SD-SCOPE-STEP ( n n -- ) {: off:n len:n :}
-   off len SD-TOK$ s" ;" STR= if SD-LOCALS-RESET exit then
+   off len SD-TOK$ s" ;" STR= if SD-LOCALS-RESET 0 SD-DEF ! exit then
    off len SD-TOK$ s" else" STR=CI if SD-SCOPE-RESTORE exit then
    off len SD-TOK$ BLOCK-OPENER? if SD-SCOPE-OPEN exit then
    off len SD-TOK$ BLOCK-CLOSER? if SD-SCOPE-CLOSE then ;
@@ -320,11 +388,12 @@ variable SD-SCOPES
    off len SD-TOK$ PARSING-KEYWORD? if SD-RAW 2drop exit then
    off len SD-TOK$ s" {:" STR= if off SD-OPENER ! SD-LOCAL-GROUP exit then
    off len SD-OPENER-KIND {: opener:n :}
-   opener 0= 0= if off SD-OPENER ! len 3 = SD-SCAN-STRING opener SD-PEND ! exit then
+   opener 0= 0= if off SD-OPENER ! opener SD-PEND ! len 3 = SD-SCAN-STRING exit then
    off len SD-LOADER-KIND {: lkind:n :}
    lkind 0= 0= if off len lkind pend SD-DISPATCH-LOADER exit then
-   off len SD-TOK$ s" :" STR= if SD-LOCALS-RESET SD-CHECK-NAME exit then
-   off len SD-TOK$ s" TRUSTED:" STR=CI if SD-LOCALS-RESET SD-CHECK-NAME exit then
+   off len SD-TOK$ s" :" STR= if SD-DEF-OPEN SD-CHECK-NAME exit then
+   off len SD-TOK$ s" kernel:" STR=CI if SD-DEF-OPEN SD-CHECK-NAME exit then
+   off len SD-TOK$ s" TRUSTED:" STR=CI if SD-DEF-OPEN SD-CHECK-NAME exit then
    off len SD-TOK$ s" undefine" STR=CI if SD-CHECK-NAME exit then
    off len SD-TOK$ s" UNDEFINE-IF-DEFINED" STR=CI if pend SD-RETIRE exit then
    off len SD-TOK$ s" include" STR=CI if off len SD-K-INCLUDED SD-LOADER-IMM exit then
@@ -334,6 +403,9 @@ variable SD-SCOPES
 : SD-WALK ( -- )
    0 SD-I !
    0 SD-PEND !
+   0 SD-TOK-OFF !
+   0 SD-TOK-LEN !
+   0 SD-DEF !
    SD-LOCALS-RESET
    begin
       SD-RAW {: off:n len:n :}
@@ -400,6 +472,7 @@ private
    DISCOVERY-OFF EVENT-OFF
    REQUIRE-RESTORE
    SD-LOCALS-RELEASE
+   SD-DEC-RELEASE
    rc 0= 0= if rc throw then ;
 
 public
@@ -420,6 +493,16 @@ public
    READ-SELECTED
    RUN-SELECTED ;
 
+\ RUN-IN in two steps, for a caller that reports a member it cannot read
+\ itself: READ-IN reads PATH under ROOT and throws the read's code with no
+\ prose, and RUN-READ walks what it read.
+: READ-IN ( ptr u8 n ptr u8 n -- )
+   SELECT-ENTRY
+   SD-ENTRY SD-ENTRY-U @ SD-READ-ENTRY ;
+
+: RUN-READ ( -- )
+   RUN-SELECTED ;
+
 : RUN-BYTES ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: pa:ptr pu:n root:ptr rootu:n bytes:ptr size:n :}
    pa pu root rootu SELECT-ENTRY
@@ -433,6 +516,15 @@ public
 \ the byte of its opener in the file that ended the walk.
 : OPENER-AT ( -- n )
    SD-OPENER @ ;
+
+\ The bytes the last run read, and where the token it read last starts in them
+\ and its length. A run that refused a loader form read that form last: a
+\ loader word with no literal path, or the name a definer gave a loader word.
+: BYTES$ ( -- ptr u8 n )
+   SD-BUF SD-U @ ;
+
+: LAST-TOKEN ( -- n n )
+   SD-TOK-OFF @ SD-TOK-LEN @ ;
 
 : EMIT ( ptr u8 n -- n ) {: dst:ptr cap:n :}
    0 >LEN SD-EMIT-LEN !

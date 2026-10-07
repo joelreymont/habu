@@ -19,7 +19,9 @@ they are the artifacts to look at after a run:
 | `hb-stdin-mk` | `hb-stage` from `stage2-src` with the stdin driver | the maker for `hb-stdin` |
 | `hb-stdin` | `hb-stdin-mk` | the recovery engine the check suites run on |
 
-All four boot their prefix from source (see the cold-runtime rule below) and
+All four boot their prefix from source, where a signed `:` definition's
+declaration is its row, without authority
+([forth.md](forth.md#rules-learned-by-refusal)), and
 the chain completes: the check-only run ends `bootstrap check OK: <HB_TMP>/hb-stdin`
 after the five check suites pass on `hb-stdin`, and the full run (no
 `HABU_BOOTSTRAP_CHECK_ONLY`) goes on through the native self-refresh to
@@ -32,7 +34,7 @@ their comment and blank lines as they are read, `src/habu/habu2.f`
 the linux-aarch64 cold prefix from 1,635,735 to 963,642 bytes); the argv scan
 read its index across the cold-prefix call (`C-SOURCE-FIND-SEP` now sets its
 own); and the check suites named checker internals a from-source prefix
-publishes no effect for (the checker publishes `CHECK-QUIET-CANDIDATE!` and
+gives no row with authority (the checker publishes `CHECK-QUIET-CANDIDATE!` and
 `CHECKER-VIS-PUBLIC` with axioms instead).
 
 The generated engine maps `IBUFSZ + SRCN` bytes: `IBUFSZ` for the cold prefix
@@ -202,6 +204,16 @@ for a fixture, 21 for `diff-negative`. Any other status names the failed check,
 as `test/x86-64-peer-harness.f` numbers them; 124 is `timeout` stopping an
 image that did not exit.
 
+Two engines independent of Habu check its Wasm modules. wasm-tools validates a
+module under core Wasm and the backend's features, and bun runs it through
+`test/wasm/run.mjs`. Neither tool is part of the ordinary gate. Install both
+once and put them on `PATH`: `cargo install --locked wasm-tools` (into
+`~/.cargo/bin`; 1.243.0 verified) and
+`curl -fsSL https://bun.sh/install | bash` (into `~/.bun/bin`; 1.3.3
+verified). Then, from the tree's root, run
+`bin/hb --load test/wasm/device.f`. It prints the directory holding the
+modules it wrote and ends `test: ok`, exit 0.
+
 `tools/bootstrap.sh` does the whole recovery and installs exactly one file:
 `bin/hb`.
 
@@ -254,14 +266,36 @@ registers nothing for `ptr-cell-mark`, and a static seed image with no loader
 slot cannot reach libc for `realpath`. Nothing in the native gate notices the
 omission, because the native gate never builds a stage0; the periodic check
 below is what catches it, as the stage0 build dying on the bare token name.
+`src/core/checker.f`, which a seed-built image compiles at boot, calls the
+eight rows package `CHECKER-OVERLAY` owns: `namespace-record`,
+`package-scope!` and the six replay writers (`replay-open`, `replay-close`,
+`replay-widn!`, `replay-record`, `record-wid!`, `replay-private`). Stage0
+registers them owned (`EMIT-OVERLAY-PRIMS`) with one body that prints
+`hb: stage0 has no checker overlay` and exits 76, as `src/habu/kernel-x64.f`
+`REFUSE-BODY` does for its absent rows: a seed-built image never opens the
+overlay, and the recovery check passes with those bodies. Without the rows its
+first gate, `test/bootstrap-engine-stack.fs`, dies 70 naming
+`namespace-record`.
 The stage0 `J-QUOT` keeps one quotation open at a time, where the engine's
 tier 0 nests to `JIT-QUOT:LEVELS`: a boot-prefix source keeps `[:` one level
 deep until the seed mirrors those frames, or the stage0 build exits 75.
 
+The stage0 generator mirrors `DNAME-OWNED` (`src/habu/layout.f`): `EMIT-DICT`
+stamps a `PRIM-OWNED-WID` primitive `DNAME-INT|DNAME-OWNED` and a
+`PRIM-INT-WID` primitive `DNAME-INT` alone, and the `EMIT-COMPILE-CALL` guard
+admits a checked call to an owned record, as the engine's guards
+(`src/habu/habu2.f` `C-COMPILE-CALL-GUARD`, `src/compiler/native/dict.f`
+`NDICT:INT-CALL?`, which `CALL-BINDING` and `src/compiler/native/hir-word.f`
+`RESOLVE-SITE` ask) do; any other `DNAME-INT` call outside a `TRUSTED:` body
+still goes to `EMIT-UNDEF` (undefined word, rc 70). The seed registers
+`source-unit-run`, owned on the engine (`src/habu/prims.f` `EPPRIM:`), as
+`PRIM-INT-WID`: every caller of it is a `test/` file that runs on a product
+engine.
+
 A DATA cell or band the stage0 generator places gets a row in
 `bootstrap/cg/data-claims.fs`. So does a cell that src/ code reads at a fixed
 offset on any engine and the generator does not name, such as checker.f's
-declaration-owner cells at `$360`/`$368`. Loading the generator refuses an
+refusal cell at `$27F8`. Loading the generator refuses an
 overlapping pair and names both, so every Gforth harness and the stage0 build
 stop before an engine exists. Without the table, BEGIN frames laid over the
 compile cells showed only when a definition nested 23 deep.
@@ -439,7 +473,16 @@ Three facts decide how a change reaches the fixpoint:
   built straight from the stage-1 host, which lacks the primitive). A
   `TRUSTED:` bridge turned into a checked call is the same shape: the callee's
   `PRIM:`/`PPRIM:` row must exist in the host first, or an old host dies at
-  `--load` of the build tool with `ncomp: cannot compile <word>`.
+  `--load` of the build tool with `ncomp: cannot compile <word>`. The stage-2
+  refresh refuses such a tree before any build, at its certify step:
+  `VERIFY:SOURCE-BUF` types the boot prefix with the host's rows, as the window
+  compile does, so the certify reports the caller's refusal
+  (`certify: prefix-src rejected rc 70 (blocking)`) and the refresh exits 74
+  (`E-BUILD-CERTIFY`). Measured on the tree whose `NS-ENSURE` calls
+  `namespace-record` through `CHECKER-OVERLAY`'s owner row: an engine built
+  before that row refuses `E-CAP-TRUSTED habu: in ns-ensure` in the native
+  build (`ncomp: cannot compile NS-ENSURE`, rc 74) and in the refresh (rc 74),
+  and the tree's own engine passes both.
 - **Build-prefix source must satisfy the host's checker and the tree's.**
   `tools/native-build.f` compiles `src/habu/aot-file.f` and its siblings under
   the host's checker, and the window compiles them again under the tree's, so
@@ -448,19 +491,24 @@ Three facts decide how a change reaches the fixpoint:
   `… DIE 0 ;` in a `( -- n )` word is `E-DEAD-CODE` under the new checker and
   `… DIE ;` a stack mismatch under the old one, while
   `cond 0= if … DIE then  value ;` certifies under both.
-- **A core-prefix definition the checker cannot judge dies without its cause.**
-  The window compiles `src/core/util.f` through `src/core/layout-valid.f`
-  before its own `src/core/check-hook.f` installs a hook, so
-  `src/compiler/native/compiler.f` `CHECK-PARENT` runs the owner's scan and
-  drops the verdict. A body the scan cannot judge records no effect, and
-  `KEEP-ARITY` stops the build with `ncomp: cannot compile <WORD>` and
-  `uncaught throw code -8579` (`E-NCOMP-ARITY`), rc 67, naming no token.
-  Measured: `: EXP-FWD ( -- n ) EXP-LATER ;  : EXP-LATER ( -- n ) 5 ;`
-  appended to `src/core/util.f` dies exactly so; the same two lines at the top
-  of `src/core/roles.f`, past the hook, die `E-UNDEFINED habu: in exp-fwd:
-  undefined word 'EXP-LATER'`, rc 70. A body with no inferable effect dies the
-  same silent way (`src/core/checker.f` `PE-SPEC-ATOM`). To see the cause,
-  move the definition past `check-hook.f` for one build.
+- **A core-prefix definition the checker refuses compiles against its
+  declaration, and only its reason on stderr says so.** The window compiles
+  `src/core/util.f` through `src/core/layout-valid.f` before its own
+  `src/core/check-hook.f` installs a hook, so `src/compiler/native/compiler.f`
+  `CHECK-HOOKLESS` prints the scan's reason and enforces nothing, and
+  `DECLARE-HOOKLESS` records the declaration as the definition's row.
+  Measured: `: EXP-MIS ( n -- n ) 0= ;` appended to `src/core/util.f` prints
+  `habu: in exp-mis: at '0=' expected: n actual: bool` and the build ends
+  `native-build OK`, rc 0. A body the native compiler cannot lower against
+  that row dies after the reason:
+  `: EXP-FWD ( -- n ) EXP-LATER ;  : EXP-LATER ( -- n ) 5 ;` appended there
+  prints `E-UNDEFINED habu: in exp-fwd: undefined word 'EXP-LATER'`,
+  `ncomp: cannot compile EXP-FWD at EXP-LATER` and
+  `native-build: uncaught throw code -8286` (`E-HIR-UNMODELED`), rc 74. A
+  definition with no signature has no row to record, and `KEEP-ARITY` refuses
+  it after the reason. A prefix build's stderr is therefore the guard:
+  `test/native-window-owner.f` `TIER1-CASE` asserts it empty, and
+  `test/compiler/native-hookless-reject.f` pins both outcomes.
 - **A new `lib/errors.f` code or `src/habu/layout.f` band that `lib/fs.f`
   reads lands through a stage host.** `tools/native-build-core.f` requires
   `lib/fs.f` from the tree, and the host resolves its names against its own
@@ -787,6 +835,11 @@ The separate ARM stage-2 recovery/development refresh is:
 ```sh
 bin/hb --load tools/build-fixpoint-refresh.f -- install
 ```
+
+A retained AOT host resolves named calls against its cold prefix before reading
+tool input. Removing a prefix provider can make that host exit 82 with
+`hb: AOT call site unresolved`. Use the [check-only recovery chain](#periodic-no-binary-check)
+to regenerate a private seed from current source before refreshing it.
 
 `install` promotes `hb-stdin`, the source-only recovery engine. It does not
 qualify that engine as the native product. In particular, its checked access

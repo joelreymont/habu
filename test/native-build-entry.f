@@ -148,6 +148,7 @@ create CONTENT 64 allot
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    s" --load" ARG
+   s" test/native-build-host-observer.f" ARG
    FOREIGN-BACKEND$ ARG
    s" tools/native-build.f" ARG
    s" --" ARG
@@ -168,6 +169,24 @@ create CONTENT 64 allot
       fd close
       CONTENT 18 + LE:U16@ $3E T=
    then ;
+
+: BAD-HOST-ROW ( ptr u8 n -- )
+   {: fixture:ptr size:n :}
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" --load" ARG
+   fixture size ARG
+   s" tools/native-build.f" ARG
+   s" --" ARG
+   s" /dev/null/native-build-host-row" ARG
+   DRIVE
+   S\" native-build: incompatible fixed engine layout\n" REFUSED ;
+
+: BAD-HOST-ROWS ( -- )
+   s" DATA at the retired observer offset remains incompatible" T-LABEL
+   s" test/native-build-host-observer-data.f" BAD-HOST-ROW
+   s" an unrelated fixed CODE registration remains incompatible" T-LABEL
+   s" test/native-build-host-unknown-code.f" BAD-HOST-ROW ;
 
 : ACTION-CASE ( -- )
    s" nested build entries preserve an active action" T-LABEL
@@ -246,6 +265,7 @@ create CONTENT 64 allot
    WINDOWS-CORE-CASE
    TARGET-UNLOADED-CASE
    FOREIGN-WINDOW-CASE
+   BAD-HOST-ROWS
    ACTION-CASE
    FOREIGN-ABI-CASE
    T-REPORT ;

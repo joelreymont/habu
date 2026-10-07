@@ -176,6 +176,59 @@ variable RC     variable EXITED
    s" -1 set-tier" RUN  REJECT-RC ASSERT-RC
    ERR$ s" set-tier" CONTAINS? TTRUE ;
 
+\ The JIT reaches its trusted tick gate before the closing checker scan;
+\ native compilation checks the body before it elaborates the tick.
+: TEST-TRUSTED-TICK-ORDER ( -- )
+   s" the fresh tier 0 boundary has a trusted gate" T-LABEL
+   s" tick-order@ drop . cr" EXEC s" 1" ASSERT-OK
+   s" tier 1 starts with checking order" T-LABEL
+   s" 1 set-tier tick-order@ drop . cr" EXEC s" 0" ASSERT-OK
+   s" tier 0 reports the selected trusted tick before a body underflow" T-LABEL
+   s" : IWGGPF ( -- ) drop ['] patch32 drop ;" EXEC
+   REJECT-RC ASSERT-RC
+   ERR$ s" trusted-only tick" CONTAINS? TTRUE
+   s" tier 1 keeps the first checker failure at drop" T-LABEL
+   s" 1 set-tier : IWGGPF ( -- ) drop ['] patch32 drop ;" EXEC
+   s" iwggpf" ASSERT-REJECTED
+   ERR$ s" underflow" CONTAINS? TTRUE
+   s" a later undefined token cannot displace the tier 0 gate" T-LABEL
+   s" : TICK-LATE ( -- ) drop ['] patch32 drop NO-SUCH-WORD ;" EXEC
+   REJECT-RC ASSERT-RC
+   ERR$ s" trusted-only tick" CONTAINS? TTRUE
+   s" a malformed signature cannot displace the tier 0 gate" T-LABEL
+   s" : TICK-SIG ( -- zz ) ['] patch32 drop ;" EXEC
+   REJECT-RC ASSERT-RC
+   ERR$ s" trusted-only tick" CONTAINS? TTRUE
+   s" an earlier undefined token refuses before the tier 0 gate" T-LABEL
+   s" : TICK-EARLY ( -- ) NO-SUCH-WORD ['] patch32 drop ;" EXEC
+   REJECT-RC ASSERT-RC
+   ERR$ s" NO-SUCH-WORD" CONTAINS? TTRUE
+   s" an unsafe check before the tier 0 gate leaves the gate first" T-LABEL
+   s" : TICK-UNSAFE ( -- ) evaluate ['] patch32 drop ;" EXEC
+   REJECT-RC ASSERT-RC
+   ERR$ s" trusted-only tick" CONTAINS? TTRUE
+   s" a package-local ordinary shadow has no trusted gate" T-LABEL
+   s" package TICK-SHADOW public : patch32 ( -- n ) 1 ; ;package : SHADOW-TICK ( -- ) ['] TICK-SHADOW:patch32 drop ;" EXEC
+   0 ASSERT-RC
+   s" exporting the trusted primitive is refused at its export boundary" T-LABEL
+   s" package TICK-ALIAS public EXPORT patch32 ;package" EXEC
+   UNCAUGHT-RC ASSERT-RC
+   ERR$ s" 7120" CONTAINS? TTRUE
+   s" a does clause reaches the native trusted gate before its parent check" T-LABEL
+   s" : TICK-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" EXEC
+   REJECT-RC ASSERT-RC
+   ERR$ s" trusted-only tick" CONTAINS? TTRUE
+   s" a replacement require leaves the tick to the loaded subject" T-LABEL
+   s" include test/tick-provider-replace.f" EXEC
+   REJECT-RC ASSERT-RC
+   OUT$ s" deferred-ok" CONTAINS? TTRUE
+   ERR$ s" underflow" CONTAINS? TTRUE
+   s" the original require may call a tier-changing source unit" T-LABEL
+   s" include test/tick-provider-unit.f" EXEC
+   REJECT-RC ASSERT-RC
+   OUT$ s" deferred-ok" CONTAINS? TTRUE
+   ERR$ s" underflow" CONTAINS? TTRUE ;
+
 \ ---- 2b. checked code reads the tier and selects it through TIER --------------
 \ Registering a primitive in the engine dictionary is only half of it. Without a
 \ checker effect row the word is E-UNDEFINED inside every checked body, so
@@ -307,10 +360,10 @@ variable RC     variable EXITED
 \ A long family's constructors take the digest spelling
 \ (src/core/type-family.f TF-CTOR-PKG$), which no program writes, so that
 \ program compiles them, its MATCH and its local, and stops. A refused long name
-\ is reported whole up to its newline, and a refused TRUSTED: one still finds
-\ its signature to retract, which leaves the refusal's own code uncaught. A
-\ refusal at a 7900-byte body token names that token whole: a TRUSTED: body
-\ skips the checker, so its missing word reaches the elaborator.
+\ is reported whole up to its newline, and a refused TRUSTED: one retracts its
+\ signature, which leaves the refusal's own code uncaught. A refusal at a
+\ 7900-byte body token names that token whole: a TRUSTED: body skips the
+\ checker, so its missing word reaches the elaborator.
 $4000 constant LN-CAP
 create LN-BUF LN-CAP allot
 variable LN-U
@@ -621,6 +674,17 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    S\" PTR-VARIABLE EV-A variable EV-U\nTRUSTED: EV-RUN ( -- ) EV-A @ EV-U @ evaluate ;\n: EV ( ptr u8 n -- n ) EV-U ! EV-A ! [: EV-RUN ;] catch ;\ns\q : RVND ( n -- n ) dup ;\q EV . cr\n"
    EXEC  s" 70" ASSERT-OK ;
 
+\ ---- 7b. a refused TRUSTED: declaration that records no row ------------------
+\ Its signature does not parse, so the definition recorded no row and its
+\ retract cuts nothing (src/compiler/native/compiler.f RETRACT): the refusal's
+\ own code goes uncaught, and as the checker rendered it the engine exits as a
+\ refusal.
+: TEST-TRUSTED-NO-ROW ( -- )
+   s" a tier-1 TRUSTED: declaration that records no row leaves its own code uncaught" T-LABEL
+   s" 1 set-tier TRUSTED: TB-BAD ( n -- no-such-type ) drop drop ;" RUN
+   REJECT-RC ASSERT-RC
+   ERR$ E-BAD-STORED-SIGNATURE UNCAUGHT$ CONTAINS? TTRUE ;
+
 : TEST-ORIGIN ( -- )
    s" known primitive text has positive native origin" T-LABEL
    s" ' dup dup 4 + code-origin . " EXEC s" 1" ASSERT-OK
@@ -764,6 +828,7 @@ public
    T-RESET
    TEST-BOTH-TIERS
    TEST-SELECTION
+   TEST-TRUSTED-TICK-ORDER
    TEST-ORIGIN
    TEST-ORIGIN-OVERWRITE
    LEGACY? if TEST-ORIGIN-CAPACITY then
@@ -778,6 +843,7 @@ public
    TEST-NESTED-QUOTATIONS
    LEGACY? if TEST-NESTING-BOUND then
    TEST-EVAL-RECOVERY
+   TEST-TRUSTED-NO-ROW
    T-REPORT
    s" tier: ok" type cr ;
 

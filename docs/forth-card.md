@@ -46,8 +46,14 @@ public
   `INTRINSIC` tag, which a redefinition does not carry.
 - A call binds a word the engine holds. A name only the checker knows - a row
   `CHECK!` alone recorded, a word `VERIFY:SOURCE-BUF-IN-SCOPE` scanned - is
-  `E-UNDEFINED` in a body; `VERIFY:CANDIDATE-IN-SCOPE`
-  (`require src/habu/verify-source.f`) asks the certify path, where it binds.
+  `E-UNDEFINED` in a body. Scanned names bind while that scope is open: inside
+  one `CHECKER-SCOPE-START-NEUTRAL` … `CHECKER-SCOPE-DONE` pair each row the
+  checker records is a codeless engine record, so there
+  `VERIFY:CANDIDATE-IN-SCOPE` (`require src/habu/verify-source.f`) certifies a
+  candidate calling one (-1); after the pair closes it answers 1. A
+  definition, a new `package` or a `wordlist` made inside the pair dies where
+  it is made, naming it, and so does an `undefine` run there, before it
+  retires anything: `ENGINE-ERROR:OVERLAY-OPEN` (rc 108).
 - Compiler keywords (`I`, `DO`, `IF`, …) cannot be definition names:
   `E-RESERVED-DEFINITION`. Nor can the target predicates `HB-TARGET-LINUX?`,
   `HB-TARGET-MACOS?` and `HB-TARGET-LINUX-X86-64?`, by any definer the lint
@@ -132,8 +138,11 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | a multi-cell value at the prompt | `hb: interpret-mode layout value: NAME` |
 | a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`, rc 70; at top level or after `'` `--load` exits 105 (`ENGINE-ERROR:USING-SHADOW-GLOBAL`) |
 | a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, rc 70, before anything runs |
+| `: W ( -- ) ;`, `create`, a new `package`, `wordlist` or `undefine W` inside a `CHECKER-SCOPE-START-NEUTRAL` pair | `ENGINE-ERROR:OVERLAY-OPEN`, rc 108 |
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION`, rc 78 |
-| a word defined before the check hook, with no `PRIM:` row, in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a from-source prefix boot only**, never on `bin/hb`; `PATH-CAP`, `E-PATH-RANGE` and `SCOPE-FIND-AMBIGUOUS` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP` |
+| a word defined before the check hook with no external row (a `PRIM:` axiom, or a `TRUSTED:` declaration after `src/core/checker.f`) in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a sealed from-source prefix boot only**, never on `bin/hb`; `PATH-CAP`, `E-PATH-RANGE` and `SCOPE-FIND-AMBIGUOUS` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP`. An unsealed boot binds a signed `:` word of the prefix to its declaration |
+| a body the scan refuses with the hook cell empty (`0 set-check`, a window's core prefix) at tier 1 | compiles against its declaration, the reason on stderr; the row has no authority (forth.md **Rules learned by refusal**) |
+| `CHECK!`, `generates:`, a type registration (`CHECKER-DEFLINEAR`, `CHECKER-DEFFAMILY`, a `TYPE-FIELD-OWNER` phase) or another checker scan or store write in a compile callback (`NBACK:OBSERVE!`, `NPUB:WITH-UNIT`) | `E-NCOMP-STATE` (-8570), catchable, before anything changes |
 
 Checked C2 views carry owner and loan lifetimes: shared `read-view<p,q,T>` and
 exclusive `mut-view<p,q,a,T>`. They occupy two cells but form one logical value.
@@ -193,10 +202,26 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 | `s>number?` | `STR>NUMBER?`, `lib/string.f` |
 | `'` in a compiled body | `[: WORD ;]`; `'` is top level only |
 
-A top-level word that parses or is a `defer` leaves the tokens after it, up to
-the next statement the check reads, to the run: under `--verify-only` that
-stretch is `W-CHECK-DEFERRED` at the word and the verdict `deferred`, exit 0,
-unless something is refused.
+A top-level word that parses or is a `defer` is `W-CHECK-DEFERRED` at the word
+under `--verify-only`, verdict `deferred`, exit 0 unless something is refused,
+and the check discovers nothing after it: no definition, package, load or use
+in the rest of the file or of the file that loads it. State what such a word
+reads, after its definition, and the check goes on after its operands:
+
+```forth
+parses: PN 1                        \ PN reads one token
+parses-through: BLK 0 ( ;BLK )      \ BLK reads through the first ;BLK
+parses-through: SUITE 1 ( ;SUITE TEST:;SUITE )
+```
+
+The count is of raw blank-delimited tokens, as `parse-name` reads them; the
+through form then reads through the first token that equals a listed one,
+byte for byte, inclusive (`)` cannot be listed). A `:`, a definer, a comment or
+string opener among the operands is data. The word is still
+`W-CHECK-DEFERRED`: the row is trusted, as `parse-imm`'s is, never compared with
+the body. Only the check reads it, from the source it checks, so a word whose
+row it did not read, a resident or precompiled one among them, is undeclared;
+`EXPORT` carries a row, a word that calls the declared one does not.
 
 A word that renders definitions at load time (`FUNCTION:`/`;FUNCTION`,
 `CMD:COMMAND`, `TASK:+USER`, anything reaching `INCLUDE-EVALUATE`) makes names
@@ -205,6 +230,13 @@ the source declares them: uses of a `FUNCTION:` word and of a `generates:` row's
 word (§ 4) are checked before the run, `--verify-only` included. At top level
 any other such name opens that stretch. The renderer reads none of the tokens
 after it, so they are checked.
+
+A trusted-only tick can outrank closing body checks at tier 0 only while the
+verifier knows the compiler tier and checker owner. A resident immediate in a
+body or a top-level loader makes later ordering uncertain; `--verify-only`
+reports the tick as `W-CHECK-DEFERRED` and leaves dependent source to the one
+subject run. Even an original `require`/`include` entry can reach replaceable
+source providers, so its spelling or original entry does not preserve tier.
 
 Admitted and measured, the ones worth doubting: `tuck`, `+!`, `unloop exit`,
 `>r r@ r> 2>r 2r>`, `RECURSE`, `['] W catch`, `finally`, `defer W ( n -- n )`

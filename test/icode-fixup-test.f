@@ -18,8 +18,9 @@ require src/habu/layout.f
 package ICODE-FIXUP-TEST
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
+using A64ICODE
 
-$801 constant SEQ-N
+$2080 constant SEQ-N
 $1000 constant CAPTURE-CAP
 10000 constant TIMEOUT-MS
 FX-LOFF 1 + constant KIND-BAD    \ first kind past the last real one
@@ -178,6 +179,50 @@ variable LW0  variable LW1
 \ movz x5, #imm16 / movk x5, #imm16, lsl 16 with every other field fixed.
 : MOVZ5 ( n -- n )  5 lshift $D2800005 or ;
 : MOVK5 ( n -- n )  5 lshift $F2A00005 or ;
+
+\ One early bound label and every kind of pending site must survive more than
+\ two fixed-table widths of later label allocation. Reset also discards an
+\ unresolved chain before IDs start again at zero.
+: TEST-LABEL-GROW ( -- )
+   ASM-INIT
+   LBL {: early:label :}
+   early LBL,
+   LBL {: pending:label :}
+   pending B,
+   pending BL,
+   C-EQ pending BCOND,
+   3 pending CBZ,
+   4 pending CBNZ,
+   5 pending ADR,
+   5 pending LOFF,
+   0 EMITW
+   ICODE-TAB-CELLS 2 * 1 + 0 ?do LBL drop loop
+   early B,
+   LBL {: last:label :}
+   last LABEL>N ICODE-TAB-CELLS 2 * 3 + T=
+   last LBL,
+   pending LBL,
+   0 WORD@ $1400000A T=
+   1 WORD@ $94000009 T=
+   2 WORD@ $54000100 T=
+   3 WORD@ $B40000E3 T=
+   4 WORD@ $B50000C4 T=
+   5 WORD@ $100000A5 T=
+   6 WORD@ 40 MOVZ5 T=
+   7 WORD@ 0 MOVK5 T=
+   9 WORD@ $17FFFFF7 T=
+   early LBL-BOUND? TTRUE
+   last LBL-BOUND? TTRUE
+   LBL {: abandoned:label :}
+   abandoned B,
+   ASM-INIT
+   NLBL @ 0 T=
+   NFX @ 0 T=
+   LBL {: fresh:label :}
+   fresh LABEL>N 0 T=
+   fresh B,
+   fresh LBL,
+   0 WORD@ $14000001 T= ;
 
 \ EVERY FORWARD CASE PUTS ITS SITE OFF WORD ZERO. At word zero the label's own
 \ offset and its distance from the site are the same number, and a deferred
@@ -451,6 +496,7 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
 : MAIN ( -- )
    T-RESET
    TEST-SEQUENTIAL
+   TEST-LABEL-GROW
    TEST-MIXED
    TEST-BACKWARD
    TEST-REACH-VALIDATE
@@ -473,5 +519,6 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
 
 MAIN
 
+;using
 ;using
 ;package

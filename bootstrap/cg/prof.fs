@@ -38,7 +38,7 @@ $0042 constant MACOS-SA-PROF-FLAGS
       0 1 MOVZ,  1 5 24 ADDI,  2 5 16 LDR,                  \ write(1, name, len)
       9 2 DNAME-EXT ANDI,  9 pinl CBZ,
          1 5 24 LDR,
-      pinl LBL,  2 2 14 LSLI,  2 2 14 LSRI,  NR-WRITE SYS,   \ len = [16] minus flags, DNAME-MIN-IN and DKIND (parity with src/habu/prof.f)
+      pinl LBL,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,  NR-WRITE SYS,   \ len = [16] minus its flag bits (parity with src/habu/prof.f)
       SP SP 16 SUBI,  12 32 MOVZ,  12 SP 0 STRB,                    \ " "
       0 1 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
       SP SP 16 ADDI,

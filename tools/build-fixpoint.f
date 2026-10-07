@@ -17,9 +17,9 @@ require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 \ The tool itself lives in package BUILD-FIXPOINT. Everything below is private
 \ to it; the export block at the end of the file names the whole surface other
-\ files call. The sibling packages in this file (COMPILER-BUILD, BUILD-EXT,
-\ NUM, VERIFY) close and reopen BUILD-FIXPOINT around themselves, because
-\ packages do not nest, and import what they need with `using BUILD-FIXPOINT`.
+\ files call. The sibling packages in this file (COMPILER-BUILD, BUILD-EXT)
+\ close and reopen BUILD-FIXPOINT around themselves, because packages do not
+\ nest, and import what they need with `using BUILD-FIXPOINT`.
 package BUILD-FIXPOINT
 
 32768 constant BF-CMP-CAP
@@ -249,7 +249,7 @@ variable BF-CERT-PATH-U
 : BF-SOURCE-CAP ( -- n )
    BF-SOURCE-CAP-V @ ;
 
-\ Process-owned scratch reused by source assembly, certification and census.
+\ Process-owned scratch reused by source assembly and certification.
 \ One allocator granule until somebody asks for more. There is no capacity
 \ CONSTANT here any more: this buffer holds user programs and generated stage
 \ text, and no number written in this file can bound either (dot
@@ -936,7 +936,13 @@ package BUILD-FIXPOINT
    BF-TARGET-UNKNOWN ;
 
 : BF-APPEND-IMAGE-BYTES ( ptr u8 n -- ) {: out:ptr outu :}
-   out outu s" src/os/image-bytes.f" BF-APPEND-SOURCE ;
+   BUILD-TARGET:LINUX-X86-64? if
+      out outu s" using X64CODE" BF-APPEND-LINE
+   else
+      out outu s" using A64ICODE" BF-APPEND-LINE
+   then
+   out outu s" src/os/image-bytes.f" BF-APPEND-MODULE
+   out outu s" ;using" BF-APPEND-LINE ;
 
 : BF-APPEND-TARGET-IMAGE ( ptr u8 n -- ) {: out:ptr outu :}
    BUILD-TARGET:LINUX? if
@@ -1093,8 +1099,12 @@ package BUILD-FIXPOINT
    out outu s" src/habu/code-origin.f" BF-APPEND-MODULE
    out outu s" src/habu/habu1.f" BF-CODE-ORIGIN-REQUIRE$ BF-APPEND-SOURCE-FROM ;
 
-\ fmt requires float and string; float also requires option, and string
-\ requires NUM arithmetic/types and errors. Prelude/errors are already
+\ fmt requires float and string; float requires string and option, and string
+\ requires errors and option. Nothing here requires num-types.f or
+\ num-arithmetic.f: they come in the prefix's order (src/habu/habu2.f
+\ PFX-LOAD-STDLIB-FILES) because num-types.f declares type families, and the
+\ seed refuses a captured registry that does not start where the prefix's does
+\ (src/core/type-family.f REG-AOT-BASE-BAD). Prelude/errors are already
 \ restored here. Each provided fact makes the remaining require a no-op.
 : BF-APPEND-FMT ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" lib/adt/option.f" BF-APPEND-MODULE
@@ -1328,8 +1338,10 @@ package BUILD-FIXPOINT
 \ in a forked child: the parent retains its build tools and registry, while
 \ every source body is checked without filename exemptions. The rewind keeps
 \ code/DATA alive, so the child's compiled verifier and diagnostic calls remain
-\ valid after their dictionary entries retire.
-: BF-CERTIFY-CORE-CHILD ( -- )
+\ valid after their dictionary entries retire. The child runs DONE once its
+\ scan certified the source, because what the scan counted (VERIFY:CENSUS)
+\ exists only in the child.
+: BF-CERTIFY-CORE-CHILD ( [ -- ] -- )
    [: BF-CERTIFY-CORE-ACT ;] catch BF-CERT-RC !
    DIAG-BUFFER$ nip BF-CERT-DIAG-U !
    DIAG-BUFFER-OFF
@@ -1337,13 +1349,37 @@ package BUILD-FIXPOINT
       BF-CERT-LABEL$ BF-CERTIFY-REPORT
       s" " 70 die
    then
+   execute
    s" " 0 die ;
 
-: BF-CERTIFY-GENERATED-CORE ( ptr u8 n ptr u8 n -- )
+: BF-CERTIFY-GENERATED-CORE ( ptr u8 n ptr u8 n [ -- ] -- )
+   {: done :}
    BF-CERTIFY-INPUT!
    PROC-FORK:CHECKED {: pid:pid :}
-   pid PID>N 0= if BF-CERTIFY-CORE-CHILD then
+   pid PID>N 0= if done BF-CERTIFY-CORE-CHILD then
    pid BF-FINISH-PID 0<> if E-BUILD-CERTIFY throw then ;
+
+: BF-CENSUS-TARGET$ ( -- ptr u8 n )
+   BUILD-TARGET:LINUX? if s" linux-arm64" exit then
+   BUILD-TARGET:MACOS? if s" macos-arm64" exit then
+   BUILD-TARGET:LINUX-X86-64? if s" linux-x86-64" exit then
+   BF-TARGET-UNKNOWN ;
+
+\ Self-check certification census (dot habu-census-assert-the-f3a20b1f). The
+\ boot prefix, which the host already carries, and the assembled stage source,
+\ which a stage compile consumes, each report on a line of their own, under
+\ PHASE, the colon definitions their certify scan certified and those it
+\ deferred to the run (VERIFY:CENSUS). The process that ran the scan prints
+\ the line, after the scan certified the source; a certify fails closed on the
+\ first definition its scan refuses, rejected or uncheckable, so a phase that
+\ reaches its line refused none. The target is named because both assemblies
+\ include its src/os leg.
+: BF-CENSUS ( ptr u8 n -- )
+   {: phase:ptr phaseu:n :}
+   VERIFY:CENSUS {: certified:n deferred:n :}
+   s" self-check census (" type BF-CENSUS-TARGET$ type s" ): " type phase phaseu type
+   s"  = " type certified FMT:.INT s"  certified, " type
+   deferred FMT:.INT s"  deferred to the run" type cr ;
 
 \ The stage engine reads its source from the fixed `stage2-src` name in the temp
 \ root (BF-PREPARE-STAGE-ARGV runs hb-stage with just `-- <tmp>`, no --load), so
@@ -1356,63 +1392,15 @@ package BUILD-FIXPOINT
 \ stage-input path and read straight back through VERIFY:SOURCE-BUF; no build
 \ step ever compiles that file.
 : BF-CERTIFY-PREFIX ( -- )
-   s" prefix-src" s" prefix-src" BF-A$ BF-CERTIFY-GENERATED ;
+   s" prefix-src" s" prefix-src" BF-A$ BF-CERTIFY-GENERATED
+   s" boot prefix" BF-CENSUS ;
 
 : BF-CERTIFY-STAGE2 ( -- )
-   s" stage2-src" s" stage2-src" BF-A$ BF-CERTIFY-GENERATED-CORE ;
+   s" stage2-src" s" stage2-src" BF-A$ [: s" assembled" BF-CENSUS ;]
+   BF-CERTIFY-GENERATED-CORE ;
 
 : BF-CERTIFY-STDIN ( -- )
-   s" stdin-src" s" stage2-src" BF-A$ BF-CERTIFY-GENERATED-CORE ;
-
-\ Self-check certification census (dot habu-census-assert-the-f3a20b1f). Every
-\ certify above fail-closes on any uncheckable/rejected definition, so reaching
-\ this report proves Uncheckable and Rejected are 0. CENSUS-COUNT reopens
-\ VERIFY to reuse its tokenizer (NEXT-SCAN skips strings and `\`/`( )` comments and
-\ each colon body), so the tally is exactly the top-level colon definitions the
-\ certify scanner verified. The count is per target because both assemblies
-\ include the target's src/os leg.
-\
-\ The total is reported with its two phases beside it because they answer
-\ different questions: the boot prefix is what the host already carries and the
-\ assembled source is what a stage compile consumes. A phase that silently
-\ emptied would otherwise hide inside one sum.
-;package
-
-package VERIFY
-variable CENSUS-N
-: CENSUS-SKIP-BODY ( -- )
-   begin NEXT-SCAN dup 0 > while
-      s" ;" CORE-STR= if exit then
-   repeat 2drop ;
-public
-: CENSUS-COUNT ( ptr u8 n -- n )
-   SOURCE! SCAN-RESET
-   0 CENSUS-N !
-   begin NEXT-SCAN dup 0 > while
-      s" :" CORE-STR= if 1 CENSUS-N +! CENSUS-SKIP-BODY then
-   repeat 2drop
-   CENSUS-N @ ;
-;package
-
-package BUILD-FIXPOINT
-
-: BF-CENSUS-TARGET$ ( -- ptr u8 n )
-   BUILD-TARGET:LINUX? if s" linux-arm64" exit then
-   BUILD-TARGET:MACOS? if s" macos-arm64" exit then
-   BUILD-TARGET:LINUX-X86-64? if s" linux-x86-64" exit then
-   BF-TARGET-UNKNOWN ;
-
-: BF-CENSUS-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u BF-A$ BF-READ-SOURCE
-   BF-SOURCE-BUF BF-SOURCE-LEN @ VERIFY:CENSUS-COUNT ;
-
-: BF-CENSUS-REPORT ( -- )
-   s" prefix-src" BF-CENSUS-COUNT {: pfx:n :}
-   s" stage2-src" BF-CENSUS-COUNT {: stg:n :}
-   s" self-check census (" type BF-CENSUS-TARGET$ type
-   s" ): 0 uncheckable, 0 rejected, certified = " type pfx stg + FMT:.INT
-   s"   boot prefix = " type pfx FMT:.INT
-   s"   assembled = " type stg FMT:.INT cr ;
+   s" stdin-src" s" stage2-src" BF-A$ [: ;] BF-CERTIFY-GENERATED-CORE ;
 
 : BF-SRC-DIGEST ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dg:ptr :}
    BF-FSHA-CTX a u BF-A$ dg SHA256-FILE-IN dup 0 <> if throw then drop ;
@@ -1502,7 +1490,6 @@ package BUILD-FIXPOINT
    BF-RECORD-PREFIX
    BF-STAGE2-SOURCE
    BF-CERTIFY-STAGE2
-   BF-CENSUS-REPORT
    BF-RECORD-STAGE
    BF-STAGE-FIXPOINT-FROM-SOURCE ;
 

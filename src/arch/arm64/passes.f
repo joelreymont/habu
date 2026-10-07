@@ -29,6 +29,7 @@ require src/compiler/ir/arena.f
 require src/compiler/ir/context.f
 require src/compiler/ir/build.f
 require src/compiler/ir/fun.f
+require src/compiler/ir/source.f
 require src/compiler/native/backend.f
 require src/compiler/native/abi.f
 require src/compiler/native/frame.f
@@ -41,6 +42,7 @@ require src/compiler/native/regalloc-verify.f
 require src/compiler/native/emit.f
 require src/compiler/native/branch.f
 require src/compiler/native/emission.f
+require src/compiler/native/host.f
 require src/compiler/native/prof.f
 require src/arch/arm64/backend.f
 
@@ -231,16 +233,22 @@ NBR:INSN-BYTES constant INSN-BYTES
    t at < if true exit then
    t at size + >= ;
 
+: HOST-CALL-ROW ( n n n n -- )
+   {: off:n kind:n target:n insn:n :}
+   off kind target target NHOST:ID-OF
+   insn A64EMIT:MAP-SPAN@ IR-SOURCE:SPAN-START
+   NEMIT:CALL-SITE+ ;
+
 : CALL-ROWS ( n n -- ) {: at:n size:n :}
    A64EMIT:INSNS 0 ?do
       i A64EMIT:WORD@ {: w:n :}
       i INSN-BYTES * {: off:n :}
       w NBR:BL? if
-         off NEMIT:CALL  at off + w NBR:BL-TARGET  NEMIT:CALL-SITE+
+         off NEMIT:CALL  at off + w NBR:BL-TARGET i HOST-CALL-ROW
       then
       w NBR:B? if
          at off + w NBR:B-TARGET {: t:n :}
-         at size t LEAVES? if off NEMIT:TAIL t NEMIT:CALL-SITE+ then
+         at size t LEAVES? if off NEMIT:TAIL t i HOST-CALL-ROW then
       then
    loop ;
 

@@ -9,7 +9,25 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/tier.f
+require lib/test/eval.f
 require src/habu/verify-source.f
+
+\ A resident parsing immediate executes during compilation despite its neutral
+\ declared effect. The verifier must lose a prospective tier at this token.
+TRUSTED: CVO-SW ( -- ) 1 set-tier ;
+immediate
+s" CVO-SW" 0 parse-imm
+package CVO-I
+private
+TRUSTED: SWP ( -- ) 1 set-tier ;
+immediate
+s" SWP" 0 parse-imm
+public
+TRUSTED: SWI ( -- ) 1 set-tier ;
+immediate
+s" SWI" 0 parse-imm
+;package
 
 \ A global, an earlier package dependency, and a package that shadows the
 \ global after using it (the engine refuses a duplicate definition in one
@@ -64,6 +82,31 @@ public
 : CVR-H ( n -- n ) 7 + ;              \ the later second used public
 ;package
 
+\ A package twin that a replayed `undefine` retires between two definitions:
+\ CVU-A names the tail before the twin exists, CVU-B after it.
+: CVU-X ( -- n ) 1 ;
+package CVU-P
+public
+: CVU-A ( -- n ) CVU-X ;              \ binds the global: the twin is later
+: CVU-X ( n -- n ) 2 + ;              \ the package twin
+: CVU-B ( n -- n ) CVU-X ;            \ binds the twin
+;package
+
+\ Three used publics export one tail, CVA-X's only after CVA-D exists.
+package CVA-V
+public
+: CVA-H ( n -- n ) 1 + ;
+;package
+package CVA-W
+public
+: CVA-H ( n -- n ) 2 + ;
+;package
+: CVA-D ( n -- n ) 5 + ;
+package CVA-X
+public
+: CVA-H ( n -- n ) 3 + ;
+;package
+
 package CVO-TEST
 private
 
@@ -71,9 +114,27 @@ create DIAG-BUF $1000 allot
 variable DIAG-U
 TYPED-VARIABLE SRC-A ptr u8
 variable SRC-U
+create LONG-NAME 1000 allot
+create LONG-BUF 4096 allot
+variable LONG-U
+
+: LONG+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a LONG-BUF LONG-U @ + u BYTE-COPY
+   u LONG-U +! ;
+
+TRUSTED: LONG-INSTALL ( -- )
+   1000 0 ?do $58 LONG-NAME i + c! loop
+   0 LONG-U !
+   s" package CVO-LONG public TRUSTED: " LONG+
+   LONG-NAME 1000 LONG+
+   s"  ( -- ) 1 set-tier ; immediate ;package" LONG+
+   LONG-BUF LONG-U @ evaluate ;
 
 : ACT ( -- )
    SRC-A @ SRC-U @ VERIFY:SOURCE-BUF ;
+
+: COMPOSE-ACT ( -- )
+   SRC-A @ SRC-U @ s" test/checker-verify-order.f" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;
 
 \ The verdict of verifying a text warm: 0 certified, else the throw code.
 : VERDICT ( ptr u8 n -- n ) {: a:ptr u:n :}
@@ -81,6 +142,14 @@ variable SRC-U
    u SRC-U !
    DIAG-BUF $1000 DIAG-BUFFER!
    [: ACT ;] catch {: rc:n :}
+   DIAG-BUFFER$ nip DIAG-U !
+   DIAG-BUFFER-OFF
+   rc ;
+
+: COMPOSE-VERDICT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a SRC-A !  u SRC-U !
+   DIAG-BUF $1000 DIAG-BUFFER!
+   [: COMPOSE-ACT ;] catch {: rc:n :}
    DIAG-BUFFER$ nip DIAG-U !
    DIAG-BUFFER-OFF
    rc ;
@@ -101,7 +170,9 @@ variable SRC-U
    2 3 CVO-P:LATER 5 T=
    1 CVR-R 2 T=
    1 CVR-S 4 T=
-   1 CVR-T 6 T= ;
+   1 CVR-T 6 T=
+   CVU-P:CVU-A 1 T=
+   1 CVU-P:CVU-B 3 T= ;
 
 : RECONSTRUCT-CASE ( -- )
    s" the whole program verifies warm: every definition binds as of its record" T-LABEL
@@ -144,7 +215,24 @@ variable SRC-U
    S\" using CVR-V\n: CVR-Q ( n -- n ) CVR-G ;\n;using\n" VERDICT 7141 T=
    s" a later second used public does not make an earlier reference ambiguous" T-LABEL
    S\" using CVR-V\nusing CVR-W\n: CVR-T ( n -- n ) CVR-H ;\n;using\n;using\n" VERDICT 0 T=
-   S\" using CVR-V\nusing CVR-W\n: CVR-Q ( n -- n ) CVR-H ;\n;using\n;using\n" VERDICT 7144 T= ;
+   S\" using CVR-V\nusing CVR-W\n: CVR-Q ( n -- n ) CVR-H ;\n;using\n;using\n" VERDICT 7144 T=
+   s" a refusal under a horizon names no used public whose word lies beyond it" T-LABEL
+   S\" using CVA-V\nusing CVA-W\nusing CVA-X\n: CVA-D ( n -- n ) CVA-H ;\n;using\n;using\n;using\n" VERDICT 7144 T=
+   DIAG$ s" cva-w:CVA-H" CONTAINS? TTRUE
+   DIAG$ s" cva-x:CVA-H" CONTAINS? TFALSE ;
+
+\ The horizon moves at every definition. A replayed `undefine` retires the live
+\ twin it names, so CVU-B, whose horizon lies past the twin's record, binds the
+\ global as a compile after the undefine would; a twin put back by the move
+\ would bind instead and refuse CVU-B. The verifier's close gives the engine its
+\ twin back.
+: HORIZON-MOVE-CASE ( -- )
+   s" one spelling binds the older record under a horizon and the newer after it moves" T-LABEL
+   S\" package CVO-P\npublic\n: RUN ( n -- n ) CVO-F ;\n: LATER ( n n -- n ) CVO-F ;\n;package\n" VERDICT 0 T=
+   s" an undefined record stays undefined across a horizon move" T-LABEL
+   S\" package CVU-P\npublic\n: CVU-A ( -- n ) CVU-X ;\nundefine CVU-X\n: CVU-B ( -- n ) CVU-X ;\n;package\n" VERDICT 0 T=
+   s" and the engine's twin answers once the verifier closes" T-LABEL
+   s" 2 CVU-P:CVU-X" TEST-EVAL:N 4 T= ;
 
 : REJECT-CASE ( -- )
    s" a real mismatch inside the horizon is still rejected and named" T-LABEL
@@ -186,6 +274,41 @@ variable SHADOW-QUIET   variable SHADOW-ACTIVE
    7121 FQSYM-DEFERRED? TFALSE
    70 FQSYM-DEFERRED? TFALSE ;
 
+: IMMEDIATE-CASE ( -- )
+   tier@ {: old:n :}
+   0 TIER:SELECT
+   tick-order@ VERIFY:ENTRY-TICK-ORDER!
+   VERIFY:REPORT-DEFERRALS
+   s" a resident parsing immediate makes the later tick uncertain" T-LABEL
+   S\" : CVI ( -- ) CVO-SW ['] patch32 drop ;\n: CVJ ( -- ) CVI ;\n" VERDICT 0 T=
+   VERIFY:DEFERRED? TTRUE
+   DIAG$ s" W-CHECK-DEFERRED" CONTAINS? TTRUE
+   VERIFY:REPORT-DEFERRALS
+   s" a used-public parsing immediate also makes the tick uncertain" T-LABEL
+   S\" using CVO-I\n: CVI ( -- ) SWI ['] patch32 drop ;\n;using\n" VERDICT 0 T=
+   VERIFY:DEFERRED? TTRUE
+   VERIFY:REPORT-DEFERRALS
+   s" a package-private parsing immediate also makes the tick uncertain" T-LABEL
+   S\" package CVO-I\nprivate\n: CVI ( -- ) SWP ['] patch32 drop ;\n;package\n" VERDICT 0 T=
+   VERIFY:DEFERRED? TTRUE
+   VERIFY:REPORT-DEFERRALS
+   s" a pending load after an unknown tick is left to the run" T-LABEL
+   S\" 0 set-tier : CVI ( -- ) s\" missing-tick-order-file.f\" required ['] patch32 drop ;" COMPOSE-VERDICT 0 T=
+   VERIFY:DEFERRED? TTRUE
+   old TIER:SELECT ;
+
+: LONG-IMMEDIATE-CASE ( -- )
+   LONG-INSTALL
+   0 LONG-U !
+   s" using CVO-LONG : CVI ( -- ) " LONG+
+   LONG-NAME 1000 LONG+
+   s"  ['] patch32 drop ; ;using" LONG+
+   tick-order@ VERIFY:ENTRY-TICK-ORDER!
+   VERIFY:REPORT-DEFERRALS
+   s" a long used-public immediate invalidates the later tick" T-LABEL
+   LONG-BUF LONG-U @ VERDICT 0 T=
+   VERIFY:DEFERRED? TTRUE ;
+
 public
 
 \ Asked with CVR-V and CVR-W both used: the tail both export.
@@ -205,8 +328,11 @@ public
    DEPENDENCY-CASE
    PASS-CASE
    USING-CASE
+   HORIZON-MOVE-CASE
    REJECT-CASE
-   QUIET-CASE ;
+   QUIET-CASE
+   IMMEDIATE-CASE
+   LONG-IMMEDIATE-CASE ;
 
 ;package
 

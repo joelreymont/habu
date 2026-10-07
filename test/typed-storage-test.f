@@ -212,15 +212,17 @@ PTR-VARIABLE TS-DP
 \ 8. Distinct capability pin #2: a raw variable/create/constant still cannot
 \    mint a nominal family (TVK-RAW), while TYPED-VARIABLE is the sound path.
 \    The raw definers are registered through the verify-source RAW gate — the
-\    enforcing path. That scan compiles nothing, so the engine holds no record
-\    of RAWV, RAWC or RAWK, and a laundering word naming them is asked on the
-\    certify path (VERIFY:CANDIDATE-IN-SCOPE), where the scan registered them.
+\    enforcing path. That scan compiles nothing: RAWV, RAWC and RAWK bind
+\    through the checker overlay only while the neutral scope holding the scan
+\    and its probes is open, so a laundering word naming them is asked there,
+\    on the certify path (VERIFY:CANDIDATE-IN-SCOPE).
 \ =============================================================================
 : TS-REG-RAW ( -- )
    s\" NEWTYPE rawk 0\nvariable RAWV\ncreate RAWC 8 allot\n7 constant RAWK"
    VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : TS-SECTION-PIN-RAW-REJECT ( -- )
+   CHECKER-SCOPE-START-NEUTRAL
    TS-REG-RAW
    \ raw variable/create/constant laundering a nominal family rejects (verdict 0)
    s" R1 ( n -- rawk ) RAWV ! RAWV @" VERIFY:CANDIDATE-IN-SCOPE 0 T=
@@ -229,6 +231,7 @@ PTR-VARIABLE TS-DP
    \ the same raw cell and constant still certify a plain scalar
    s" R4 ( n -- n ) RAWV ! RAWV @" VERIFY:CANDIDATE-IN-SCOPE -1 T=
    s" R7 ( -- n ) RAWK" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   CHECKER-SCOPE-DONE
    \ the SOUND alternative — a TYPED-VARIABLE of the same family, a live word —
    \ certifies where compiled code asks
    s" R5 ( tsk -- ) TSV !" CHECK-QUIET-CANDIDATE! -1 T=
@@ -294,7 +297,9 @@ TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
    s\" : TSGP-CK ( -- ) TSGP:TSGP-USE 7 <> if s\q a refused registrar bound the name\q 1 die then ;\nTSGP-CK"
       TS-EVAL 0 T=
    s\" : TSN ( -- n ) 7 ;\n: TSN-REG ( -- ) s\q n\q s\q TSN\q CHECKER-DEFTYPED-VARIABLE ;" TS-EVAL 0 T=
-   s\" CHECKER-SCOPE-START-NEUTRAL\npackage TSNP ' TSN-REG catch ;package\nCHECKER-SCOPE-FINALIZE throw"
+   \ TSNP exists before the scope opens: a neutral scope reopens a package and
+   \ refuses a new one (ENGINE-ERROR:OVERLAY-OPEN).
+   s\" package TSNP ;package\nCHECKER-SCOPE-START-NEUTRAL\npackage TSNP ' TSN-REG catch ;package\nCHECKER-SCOPE-FINALIZE throw"
       TS-EVAL E-PKG-CONTEXT T=
    s\" package TSNP\npublic\n: TSNP-USE ( -- n ) TSN ;\n;package" TS-EVAL 0 T=
    s\" : TSNP-CK ( -- ) TSNP:TSNP-USE 7 <> if s\q a neutral scope kept the row\q 1 die then ;\nTSNP-CK"

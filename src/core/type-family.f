@@ -813,6 +813,7 @@ public
 
 : TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n )
    {: pa:ptr pu:n vis:n na:ptr nu:n arity:n kind:n :}
+   WRITE-WINDOW-CK                        \ src/core/checker.f WRITE-WINDOW
    na nu TF-REQUIRE-CANON
    arity 0 < IF E-TFAM-ARITY throw THEN
    kind TFAM-KIND-VALID? 0= IF E-TFAM-KIND throw THEN
@@ -1295,6 +1296,7 @@ public
    0 RES-FALSE ;
 : SUMV-ADD ( n ptr u8 n n n n n -- n )
    {: fam:n na:ptr nu:n tag:n ss:n sc:n pc:n :}
+   WRITE-WINDOW-CK
    na nu TF-REQUIRE-CANON
    fam na nu SUMV-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
    SUMV-ENSURE
@@ -2379,6 +2381,7 @@ public
 \ the sole mutator of the serial, so it is kept unexercised and deliberately not
 \ re-exposed through a TRUSTED boundary.
 : OPEN ( -- n )
+   WRITE-WINDOW-CK
    TX-PARENT-REQUIRE
    PF-TX-SERIAL @ 1 + dup 0 <= IF drop E-PF-TX throw THEN
    {: tok:n :}
@@ -2397,10 +2400,12 @@ public
    TX-OPEN-MARKS-REQUIRE
    PF-N @ ;
 : COMMIT ( n -- ) {: tx:n :}
+   WRITE-WINDOW-CK
    tx PREPARE drop
    PF-TX-DEPTH @ 1 = IF PF-N @ PF-COMMIT-N !  TFM-EPOCH+ THEN
    STATE-COMMITTED TX-TOP PFTX.STATE ! ;
 : FINALIZE ( n -- ) {: tx:n :}
+   WRITE-WINDOW-CK
    tx STATE-COMMITTED TX-STATE-REQUIRE
    TX-COMMITTED-MARKS-REQUIRE
    RELEASE ;
@@ -2408,6 +2413,7 @@ public
 \ to, so the state selects which watermark check applies; there is no third value
 \ to reject.
 : ROLLBACK ( n -- ) {: tx:n :}
+   WRITE-WINDOW-CK
    tx TX-REQUIRE
    TX-TOP PFTX.STATE @ STATE-OPEN =
       IF TX-OPEN-MARKS-REQUIRE ELSE TX-COMMITTED-MARKS-REQUIRE THEN
@@ -2882,6 +2888,7 @@ public
 
 : ADD ( n n n ptr u8 n n n n n n n n -- n )
    {: tx:n fam:n var:n na:ptr nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
+   WRITE-WINDOW-CK
    tx STATE-OPEN TX-STATE-REQUIRE
    TX-OPEN-MARKS-REQUIRE
    fam var PF-OWNER-OK? 0= IF E-PF-OWNER throw THEN
@@ -3281,6 +3288,7 @@ public
    REPEAT
    0 RES-FALSE ;
 : LAY-ADD ( n n n n n -- n ) {: fam:n p:n sz:n al:n tw:n :}
+   WRITE-WINDOW-CK
    p 0 < p TL-MAX > or IF E-TFAM-KIND throw THEN
    fam LAY-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
    LAY-ENSURE
@@ -3386,7 +3394,7 @@ public
    TFM-EPOCH+                            \ ... and every family a memoized fact describes
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
    0 SUMV-N !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
-   -1 FIELD-FAM !  -1 LOAN-FIELD-FAM !
+   -1 FIELD-FAM !  -1 LOAN-FIELD-FAM !  -1 C2-STOW-FAM !
    EXT-FREE-CLEAR ;   \ BTC-7: drop free-extent marks with the families they name
 TFAM-RESET
 
@@ -3417,6 +3425,7 @@ TFAM-RESET
 \ other participants with their own frames; a caller that also owns those rewinds
 \ them itself, after this (the field rows through PF-REWIND).
 : TFAM-REWIND ( n n n n n -- ) {: tfamn:n stru:n pkn:n sumvn:n layn:n :}
+   C2-STOW-FAM @ tfamn >= IF -1 C2-STOW-FAM ! THEN
    tfamn TFX-RETIRE                      \ unchain the rows before their ids go out of range
    sumvn SVX-TRUNCATE                    \ and the constructor heads those rows own
    sumvn VNX-RETIRE                      \ and the tail chains
@@ -3908,7 +3917,7 @@ create REG-AOT-END-A REG-AOT-N cells allot
       bytes 0 > IF
          i REG-AOT-BASE-PTR
          dst REG-AOT-CUR @ +
-         bytes USIGS-COPY
+         bytes ARENA-COPY
       THEN
       REG-AOT-CUR @ bytes + REG-AOT-CUR !
    loop
@@ -4771,7 +4780,7 @@ VW-INSTALL
          cnt 0 > IF
             src REG-AOT-CUR @ + base i REG-AOT-WIDTH * +
             i REG-AOT-BASE-PTR base i REG-AOT-WIDTH * +
-            cnt i REG-AOT-WIDTH * USIGS-COPY
+            cnt i REG-AOT-WIDTH * ARENA-COPY
          THEN
          i base cnt + REG-AOT-COUNT!
          i base cnt REG-AOT-SCRUB
@@ -4934,6 +4943,7 @@ variable READ-FAM
 variable MUT-FAM
 variable INIT-FAM
 variable RECORDS-FAM
+variable STOW-FAM
 variable VIEW-TX
 variable VIEW-FIELD-BASE
 
@@ -4995,10 +5005,32 @@ variable VIEW-FIELD-BASE
    RECORDS-FAM @ 3 PK-TYPE TFAM-PK!
    RECORDS-FAM @ REGISTER-VIEW-FIELDS ;
 
+\ The runtime's three machine descriptors form one private value. The family
+\ identity, rather than its spelling or shape, authorizes a native transfer.
+: REGISTER-STOW ( -- )
+   s" C2-MEM" CHECKER-PACKAGE-PRIVATE s" stow-layout" 0 TK-PRODUCT TFAM-DECL STOW-FAM !
+   STOW-FAM @ C2-STOW-FAM !
+   TYPE-FIELD:COUNT VIEW-FIELD-BASE !
+   TYPE-FIELD-OWNER:OPEN VIEW-TX !
+   VIEW-TX @ STOW-FAM @ TYPE-FIELD:NO-VARIANT s" width"
+      CC-N SCHEMA-CON SCHEMA-ROOT+
+      0 1 0 CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
+   VIEW-TX @ STOW-FAM @ TYPE-FIELD:NO-VARIANT s" bytes"
+      CC-N SCHEMA-CON SCHEMA-ROOT+
+      1 1 CELL CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
+   VIEW-TX @ STOW-FAM @ TYPE-FIELD:NO-VARIANT s" alignment"
+      CC-N SCHEMA-CON SCHEMA-ROOT+
+      2 1 2 CELL * CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
+   VIEW-TX @ TYPE-FIELD-OWNER:COMMIT
+   STOW-FAM @ VIEW-FIELD-BASE @ 3 TFAM-FLD-RANGE!
+   STOW-FAM @ 3 TFAM-SLOTS!
+   VIEW-TX @ TYPE-FIELD-OWNER:FINALIZE ;
+
 REGISTER-READ-VIEW
 REGISTER-MUT-VIEW
 REGISTER-INIT
 REGISTER-RECORDS
+REGISTER-STOW
 public
 
 \ ---------------------------------------------------------------------------
@@ -5523,9 +5555,9 @@ public
 private
 
 : TFAM-CONSTRUCT-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token -> id
-   TFAM-ACTIVE-PKG$ na nu TFAM-FIND-IN 0= IF drop MD-CON-FAM MDIAG! 0 RES-FALSE EXIT THEN
+   TFAM-ACTIVE-PKG$ na nu TFAM-FIND-IN 0= IF drop MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    {: id:n :}
-   id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-CON-KIND MDIAG! 0 RES-FALSE EXIT THEN
+   id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-CON-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
 \ TFC-CONSTRUCT-STEP-VID ( fam vid -- ) : apply the inline generated-constructor
@@ -5536,7 +5568,8 @@ private
 \ its representation even at width 1. Open/linear/scalar/pointer args keep the
 \ fresh var and ordinary boundary coercion. Shared by the reserved `construct`
 \ token and the generated-constructor CALL (TFAM-CTOR-STEP?).
-: TFC-CONSTRUCT-STEP-VID ( n n -- ) {: fam:n vid:n :}
+: TFC-CONSTRUCT-STEP-VID ( n n -- )
+   {: fam:n vid:n :}
    \ The layout query walks ownership through TFC-VARS, so populate this
    \ constructor's arguments only after that query has finished.
    fam CONSTRUCT-DECL-LAYOUT {: dt:n seeded:bool :}
@@ -5548,13 +5581,13 @@ private
       dt TYPE-REP-CLOSED? IF fam vid famterm TFC-CON-XPAD-RECORD THEN
    THEN
    famterm base PUSH-LOGICAL {: dout:n :}
-   din dout CHECKER-STEP
+   din dout RECORDED-STEP
    seeded IF
       dt TYPE-REP-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN   \ open value/row: stay staged fail-closed
    THEN ;
 
 : TFAM-CONSTRUCT-STEP ( ptr u8 n n -- bool ) {: na:ptr nu:n fam:n :}
-   fam na nu SUMV-FIND 0= IF drop MD-CON-VAR MDIAG! RES-FALSE EXIT THEN
+   fam na nu SUMV-FIND 0= IF drop MD-CON-VAR MDIAG-COMPILE! RES-FALSE EXIT THEN
    {: vid:n :}
    fam vid TFC-CONSTRUCT-STEP-VID
    RES-TRUE ;
@@ -5596,9 +5629,9 @@ private
 \ liveness across tokens, so construct and nested matches may interleave).
 \ ---------------------------------------------------------------------------
 : TFAM-MATCH-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token
-   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE 0= IF drop MD-FAM-UNKNOWN MDIAG! 0 RES-FALSE EXIT THEN
+   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    {: id:n :}
-   id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-FAM-KIND MDIAG! 0 RES-FALSE EXIT THEN
+   id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-FAM-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
 : TFAM-MATCH-VARIANT ( ptr u8 n n -- n bool ) {: na:ptr nu:n fam:n :}

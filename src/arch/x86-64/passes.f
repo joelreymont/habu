@@ -218,6 +218,7 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
 : CALL-ROWS ( -- )
    X64EMIT:CALL-SITES 0 ?do
       i X64EMIT:CALL-SITE@  i X64EMIT:CALL-KIND@  i X64EMIT:CALL-TARGET@
+      i X64EMIT:CALL-IMPL@  i X64EMIT:CALL-LOC@
       NEMIT:CALL-SITE+
    loop ;
 

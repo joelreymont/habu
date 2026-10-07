@@ -2,6 +2,7 @@
 require lib/object-link.f
 
 package OBJIMG
+using A64ICODE
 
 : NONEMPTY-TEXT ( -- )
    OBJLINK:TEXT-SIZE 0 <= if E-OBJ-SCHEMA throw then ;

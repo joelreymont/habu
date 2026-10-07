@@ -2,13 +2,21 @@
 \ place the server meets the checker.
 \
 \ RUN checks a document's text as the file its URI names, in that file's load
-\ context, through CHECK:VERIFY-BYTES (tools/check-verify-core.f), which runs
-\ none of it. A check that completed - the verdict verified, refused or
-\ deferred, or the engine providing the file, which leaves nothing to verify -
-\ hands its packets to LSP-DIAG:PUBLISH. One that did not - the verifier's
-\ image holding the file, the verifier ending without a verdict, or a throw -
-\ publishes nothing, so the client keeps the last list it was sent, and one
-\ stderr line says why:
+\ context, through CHECK:VERIFY-BYTES-AT (tools/check-verify-core.f), which runs
+\ none of it, and hands the packets the check wrote to LSP-DIAG:PUBLISH whatever
+\ its verdict: a check stopped by a later definition still publishes the
+\ packets written before it. A check that completed - the verdict verified,
+\ refused or deferred, or the engine providing the file, which leaves nothing
+\ to verify - keeps its definitions and uses in place of the last
+\ (LSP-DEFS:DEFS-KEEP) and publishes even when it wrote none. One that did
+\ not - the verifier's image holding the file, the verifier ending without a
+\ verdict, or a throw - keeps the document's last definitions, which workspace
+\ symbols go on listing, but none of its uses: RUN drops them as it starts
+\ (LSP-DEFS:DEFS-USES-DROP), since a use is bytes of the text a check
+\ completed on, and go to definition finds none until a check of the document
+\ completes. When it wrote no packets it publishes nothing, so the client
+\ keeps the last list it was sent. One stderr line says why it did not
+\ complete:
 \
 \    lsp: URI: not checked: exit N | signal N | deadline passed
 \    lsp: URI: not checked: the verifier's image holds it
@@ -16,6 +24,10 @@
 \
 \ The verifier's prose follows that line verbatim, and follows a line naming
 \ the verdict of a check that completed whenever it has any.
+\
+\ RUN-AT is RUN with a completion cursor at a byte of the text: the same check,
+\ publishing and keeping what RUN's does, which leaves the spellings the
+\ checker offers at that byte in CHECK:VERIFY-CANDIDATES$.
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: the check in progress belongs to the server's
 \ one task.
@@ -27,6 +39,7 @@ require lib/fd-io.f
 require lib/process.f
 require tools/check-verify-core.f
 require tools/lsp-docs.f
+require tools/lsp-defs.f
 require tools/lsp-diag.f
 
 package LSP-CHECK
@@ -43,6 +56,7 @@ private
 
 variable SUBJECT                         \ the slot being checked
 variable PUBLISHABLE                     \ whether its check completed
+variable CURSOR                          \ and the byte of its cursor, -1 for none
 
 : ERR ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -86,7 +100,7 @@ variable PUBLISHABLE                     \ whether its check completed
 \ The check of the document's text as the file its path names.
 : VERIFY ( -- )
    SUBJECT @ {: slot:n :}
-   slot DOC-TEXT$ slot DOC-PATH$ CHECK-MS >MS CHECK:VERIFY-BYTES
+   slot DOC-TEXT$ slot DOC-PATH$ CURSOR @ CHECK-MS >MS CHECK:VERIFY-BYTES-AT
    MATCH CHECK:verdict
       verified OF s" verified" COMPLETED ENDOF
       refused OF s" refused" COMPLETED ENDOF
@@ -98,19 +112,32 @@ variable PUBLISHABLE                     \ whether its check completed
 
 public
 
-\ Checks the document in this slot and publishes what its check found. The
-\ document is clean from here on, whatever the check comes to.
-: RUN ( n -- )
-   {: slot:n :}
+\ Checks the document in this slot, its cursor at this byte of its text, none
+\ when it is negative, and publishes what its check found. The document is
+\ clean from here on, whatever the check comes to, and has no uses unless the
+\ check completes.
+: RUN-AT ( n n -- )
+   {: slot:n at:n :}
    slot DOC-CLEAN
+   slot LSP-DEFS:DEFS-USES-DROP
    slot SUBJECT !
+   at CURSOR !
    false PUBLISHABLE !
    [: VERIFY ;] catch {: code:n :}
    code 0<> if
       HEAD s" not checked: throw " ERR code NUMBER$ ERR NEWLINE RELAY
-      exit
    then
-   PUBLISHABLE @ if slot CHECK:VERIFY-OUT$ LSP-DIAG:PUBLISH then ;
+   PUBLISHABLE @ if
+      CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ slot
+      LSP-DEFS:DEFS-KEEP
+   then
+   CHECK:VERIFY-OUT$ nip 0<> PUBLISHABLE @ or if
+      slot CHECK:VERIFY-OUT$ LSP-DIAG:PUBLISH
+   then ;
+
+\ Checks the document in this slot, with no cursor, and publishes what its
+\ check found.
+: RUN ( n -- )  -1 RUN-AT ;
 
 ;using
 ;package

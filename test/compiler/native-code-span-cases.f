@@ -1,5 +1,6 @@
 \ Exact spans must not acquire the adjacent RET or an address chain's first word.
 require lib/test.f
+require src/arch/arm64/icode.f
 require src/habu/app-image.f
 require src/habu/aot-decl.f
 require src/habu/aot-closure.f
@@ -39,12 +40,12 @@ package AOT-LINK
    \ Retain the real root closure, including emitted stack-guard helpers.
    a u ENTRY-NAME! CLOSURE
    ROOTREC @ rec = TTRUE
-   ASM-INIT PLAN-BLOBS
-   ASM-LEN {: before:n :}
+   A64ICODE:ASM-INIT PLAN-BLOBS
+   A64ICODE:ASM-LEN {: before:n :}
    rec REC-CODE-PTR@ MEMBER-AT {: i:n :}
    i CLO-BYTES rec REC-BYTES T=
    i COPY-COMPACT-BLOB
-   ASM-LEN before - i CLO-BYTES T= ;
+   A64ICODE:ASM-LEN before - i CLO-BYTES T= ;
 
 : SPAN-RUN ( -- )
    T-RESET

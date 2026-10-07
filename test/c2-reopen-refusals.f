@@ -20,6 +20,19 @@
 require lib/test.f
 require lib/test/subject.f
 require lib/c2-owner.f
+require src/compiler/native/compiler.f
+
+\ Rewriting a foldable loop must also copy the later C2 transfer's kind.
+\ This uses the owner's real carrier and primitive; compilation is the probe.
+1 set-tier
+package C2-MEM
+private
+TRUSTED: STOW-WITH-LOOP ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U )
+   0 10 0 ?do 1 + loop drop
+   HEAD-FRAME c2-init-stow
+   TASK:DEFER-LEAVE ;
+;package
+0 set-tier
 
 package C2-REOPEN-REFUSALS
 

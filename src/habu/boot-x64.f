@@ -35,6 +35,7 @@ require src/habu/task-abi.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
 require src/habu/snap-decode-x64.f
+require src/habu/native-host-cells.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 require src/os/linux-x86-64/sys.f
@@ -44,6 +45,9 @@ package X64BOOT
 using X64ASM
 using X64CODE
 using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+
+variable SCALAR-ROW-LABEL
+create SCALAR-ROW-VALUE 0 ,
 
 0 constant PROT-NONE
 3 constant PROT-RW                  \ PROT_READ|PROT_WRITE
@@ -59,6 +63,7 @@ variable STACK-BAD
 variable ALT-BAD
 variable REGION-BAD
 variable DATA-BAD
+variable OCC-BAD
 variable SNAP-END
 
 : RBASE-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
@@ -239,7 +244,16 @@ variable SNAP-END
       RAX DATA-START IMM,  RAX BOOT-LAYOUT:HEAP-START-CELL CELL!
       RAX RBASE-REG DATA-START MEM-OFF ASM-SINK ENC-LEA  RAX DP-CELL CELL!
    then
-   RAX 1 IMM,  RAX NCOMP-DISPATCH:TIER-CELL CELL! ;
+   RAX 1 IMM,  RAX NCOMP-DISPATCH:TIER-CELL CELL!
+   RAX SCALAR-ROW-LABEL @ >LABEL MOVABS,
+   RAX RAX MEM-AT ASM-SINK ENC-MOV-RM
+   RAX NATIVE-HOST-CELLS:SCALAR-PRIM CELL! ;
+
+: OCC-INIT, ( -- )
+   RDI ZERO-REG,
+   DEF-OCC:STATE-BYTES PROT-RW MAP-ANON-PRIVATE MMAP,
+   C-B OCC-BAD @ >LABEL JCC,
+   RAX DEF-OCC:PTR-CELL CELL! ;
 
 \ The twin of EM-FRAME-STACKS: the return and DO/LOOP frame stacks, published
 \ in their DATA cells.
@@ -348,6 +362,13 @@ create GREG-SLOTS
    0 c, 1 c, 2 c, 3 c, 4 c, 5 c, 6 c, 7 c,
 
 public
+
+\ START, emits an absent marker; the completed kernel fills that same cell
+\ with the audited primitive ordinal plus one.
+: SCALAR-ROW, ( n -- )
+   SCALAR-ROW-VALUE !
+   SCALAR-ROW-VALUE BYTE-VIEW
+   CODE SCALAR-ROW-LABEL @ >LABEL LABEL-AT + CELL BYTE-COPY ;
 
 \ The flag that enters a handler with the signal number in rdi, the siginfo in
 \ rsi and the ucontext in rdx, and has the kernel fill the siginfo.
@@ -696,11 +717,14 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
 
 \ Shared open and close of both startup paths.
 : OPEN, ( -- )
+   X64CODE:LBL SCALAR-ROW-LABEL !
    X64CODE:LBL STACK-BAD !  X64CODE:LBL ALT-BAD !  X64CODE:LBL REGION-BAD !  X64CODE:LBL DATA-BAD !
+   X64CODE:LBL OCC-BAD !
    RBASE-REG TEXT-BASE,
    STACK-ABI:BOOT-BYTES DSTACK-REG STACK-BAD @ >LABEL MAP-STACK, ;
 
 : SETTLE, ( label label label -- ) {: crash:label rest:label stub:label :}
+   OCC-INIT,
    stub PUBLISH-STUB,
    FRAME-STACKS,
    CRASH-ALTSTACK,
@@ -709,9 +733,13 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
 : CLOSE, ( label label label label -- ) {: booted:label crash:label rest:label stub:label :}
    STACK-BAD @ >LABEL S\" hb: cannot map guarded VM stack\n" MAP-FAIL-RC FAIL,
    ALT-BAD @ >LABEL S\" hb: cannot install crash handler stack\n" MAP-FAIL-RC FAIL,
+   OCC-BAD @ >LABEL S\" hb: cannot map definition occurrences\n" MAP-FAIL-RC FAIL,
    crash CRASH-HANDLER,
    rest RESTORER,
    stub SIGNAL-STUB,
+   SCALAR-ROW-LABEL @ >LABEL X64CODE:LBL,
+   0 SCALAR-ROW-VALUE !
+   SCALAR-ROW-VALUE BYTE-VIEW CELL TEXT-BYTES,
    booted X64CODE:LBL, ;
 
 public

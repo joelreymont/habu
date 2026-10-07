@@ -11,8 +11,11 @@ require src/habu/cell-grid.f
 require src/habu/code-span.f
 require src/habu/aot-runtime.f
 require src/habu/native-observer-cells.f
+require src/habu/native-host-cells.f
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+require src/arch/arm64/icode.f
 using A64ASM
+using A64ICODE
 \ The AOT capture buffers, their caps and the section budget are src/habu/aot-decl.f,
 \ loaded immediately before this file so a capture running in bin/hb and this
 \ emitter share one declaration of the format. The import spans the file - the
@@ -1218,13 +1221,14 @@ here BPL-KW - constant BPL-LEN
 \ Order is the files' own require graph, read from the files: prelude and
 \ errors have no requires; span.f requires errors; adt/option.f is a bare
 \ ENUM; num-types.f is the role NEWTYPEs and num-arithmetic.f requires it;
-\ string.f requires errors, adt/option and num-arithmetic; memory.f requires
+\ string.f requires errors and adt/option; memory.f requires
 \ errors, num-arithmetic and span; image-lifecycle requires prelude, errors and
 \ quotation-storage.
 \ span.f SITS RIGHT AFTER errors.f, not beside memory.f, because it declares a
-\ type family, and a stage source that rewinds to the core prefix
-\ (tools/build-fixpoint.f BF-APPEND-COMMON, tools/bootstrap.sh SRC_COMMON) has
-\ to rebuild the type registry in this order: the REPL it captures is seeded
+\ type family, and a stage source that rebuilds the registry above the core
+\ prefix (tools/build-fixpoint.f BF-APPEND-COMMON rewinds to it,
+\ tools/bootstrap.sh SRC_COMMON reloads it) has to rebuild the type registry in
+\ this order: the REPL it captures is seeded
 \ into an engine that booted this prefix, and the seed refuses a registry that
 \ does not start where its capture did (src/core/type-family.f
 \ REG-AOT-BASE-BAD). Both lists name errors.f, so both place span.f after it. The
@@ -3426,7 +3430,8 @@ public
 
 : EMIT ( -- )
    LBL LBL LBL LBL LBL LBL LBL
-   {: nocr:label slot:label declared:label patch:label write:label flush:label have:label :}
+   {: nocr:label slot:label declared:label write:label flush:label
+      have:label before:label :}
    LDOESPATCH LABEL@ LBL,
    have EMIT-NONE
    have LBL,
@@ -3436,10 +3441,16 @@ public
    14 13 CODE-SPAN:FULL ANDI,  13 13 CODE-SPAN:MASK ANDI,
    14 slot CBZ,  13 13 4 SUBI,
    slot LBL,  12 12 13 ADD,                              \ final RET/B slot from either representation
-   10 patch CBNZ,
-   14 12 0 LDRW,  5 W-RET LIT64,  14 5 CMP,  C-EQ declared BCOND,
-   patch LBL,
    12 SP 16 STR,
+   9 12 0 ADDI,
+   10 before CBNZ,
+   14 12 0 LDRW,  5 W-RET LIT64,  14 5 CMP,  C-NE before BCOND,
+   9 0 MOVZ,
+   before LBL,
+   9 SP 24 STR,
+   10 11 0 ADDI,  EM-DEF-OCC:LBEFORE LABEL@ BL,
+   10 SP 8 LDR,  9 SP 24 LDR,
+   9 declared CBZ,
    1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,             \ code band -> RW
    10 SP 8 LDR,  12 SP 16 LDR,  11 DATA LASTC-CELL LDR,
    1 11 0 ADDI,  2 DREC MOVZ,  PROT-EMIT:LSPAN LABEL@ BL, \ the created record, whose kind stamp clears below
@@ -3475,6 +3486,7 @@ public
       EM-REC-WIDE-PUBLISH
       C-RUNTIME-CRSIG-CLEAR
    nocr LBL,
+   9 SP 24 LDR,  10 DATA LASTC-CELL LDR,  EM-DEF-OCC:LAFTER LABEL@ BL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
 ;package
@@ -3645,7 +3657,7 @@ public
    LBL {: inl:label :}
    11 DATA PEND-CELL LDR,
    12 11 16 LDR,
-   13 12 0 ADDI,  13 13 14 LSLI,  13 13 14 LSRI,       \ the parent's own name length
+   13 12 0 ADDI,  13 13 DNAME-FLAG-BITS LSLI,  13 13 DNAME-FLAG-BITS LSRI,       \ the parent's own name length
    14 11 24 ADDI,
    12 12 DNAME-EXT ANDI,  12 inl CBZ,
       14 11 24 LDR,                                    \ ... which is a pointer when it is long
@@ -3767,7 +3779,7 @@ public
 \ clobbered. The four registers differ.
 : NAME-OF, ( n n n n -- ) {: rec:n a:n u:n t:n :}
    LBL {: inl:label :}
-   u rec 16 LDR,  u u 14 LSLI,  u u 14 LSRI,
+   u rec 16 LDR,  u u DNAME-FLAG-BITS LSLI,  u u DNAME-FLAG-BITS LSRI,
    a rec 24 ADDI,
    t rec 16 LDR,  t t DNAME-EXT ANDI,  t inl CBZ,
       a rec 24 LDR,                                    \ ... which is a pointer when it is long
@@ -3883,7 +3895,7 @@ public
 : PUBLISH ( -- )
    LBL {: none:label :}
    9 DATA DOESB-CELL LDR,  9 none CBZ,
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    none LBL, ;
 
 ;package
@@ -3957,10 +3969,74 @@ package DEFWRITE
 
 \ Count record NDICT, index it and close the band.
 : PUBLISH, ( -- )
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    PROT-EMIT:LCLOSE LABEL@ BL, ;
 
+\ x<r> = the replay scope band (src/habu/layout.f REPLAY-SCOPE). It lies above
+\ $7FF8, past a DATA-relative scaled immediate, so its base is computed.
+: BAND, ( n -- ) {: r:n :}
+   r REPLAY-SCOPE:LATCH LIT64,  r DATA r ADD, ;
+
+\ A band cell's offset from BAND,'s base.
+: BAND-OFF ( n -- n ) REPLAY-SCOPE:LATCH - ;
+
+\ While an overlay is open, raise its high-water mark to NDICT: the records the
+\ overlay published are [the saved NDICT, HW). Clobbers x8 and x14.
+: HW-RAISE, ( -- )
+   LBL {: keep:label :}
+   8 BAND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 keep CBZ,
+   14 8 REPLAY-SCOPE:HW BAND-OFF LDR,  NDICT 14 CMP,  C-LS keep BCOND,
+   NDICT 8 REPLAY-SCOPE:HW BAND-OFF STR,
+   keep LBL, ;
+
+\ One scope cell, at off from x<base>, into band cell `cell` at x8 when save is
+\ true and back out of it when it is false. Clobbers x14.
+: SAVED, ( n n n bool -- ) {: base:n off:n cell:n save:bool :}
+   save if
+      14 base off LDR,  14 8 cell BAND-OFF STR,
+   else
+      14 8 cell BAND-OFF LDR,  14 base off STR,
+   then ;
+
+\ The scope replay-open saves and replay-close restores, beside NDICT and CP:
+\ WIDN, CURRENT, the open package's four cells and the using band's depth, the
+\ depth `package` saved and the used wids. USE-RPKG-SAVE is the REPL line's,
+\ not the scope's. x8 = the band. Clobbers x10 and x14.
+: SCOPE, ( bool -- ) {: save:bool :}
+   DATA WIDN-CELL REPLAY-SCOPE:WIDN save SAVED,
+   DATA CUR-CELL REPLAY-SCOPE:CUR save SAVED,
+   DATA PKG-PUB-CELL REPLAY-SCOPE:PKG-PUB save SAVED,
+   DATA PKG-PRI-CELL REPLAY-SCOPE:PKG-PRI save SAVED,
+   DATA PKG-PARENT-CELL REPLAY-SCOPE:PKG-PARENT save SAVED,
+   DATA PKG-REC-CELL REPLAY-SCOPE:PKG-REC save SAVED,
+   10 USE-BAND-OFF LIT64,  10 DATA 10 ADD,
+   10 USE-DEPTH-CELL USE-BAND-OFF - REPLAY-SCOPE:USE-DEPTH save SAVED,
+   10 USE-PKG-SAVE-CELL USE-BAND-OFF - REPLAY-SCOPE:USE-PKG-SAVE save SAVED,
+   USE-MAX 0 ?do
+      10 USE-WIDS-OFF USE-BAND-OFF - i cells +  REPLAY-SCOPE:USE-WIDS i cells +  save SAVED,
+   loop ;
+
+\ Zero the cells [x10, x11). Clobbers x10 and x15.
+: ZERO-SPAN, ( -- )
+   LBL LBL {: next:label done:label :}
+   15 0 MOVZ,
+   next LBL,  10 11 CMP,  C-CS done BCOND,
+      15 10 0 STR,  10 10 8 ADDI,  next B,
+   done LBL, ;
+
 public
+
+\ The entry of every replay record: executing one is an error the record has no
+\ code to report, so the trap reports it and exits 76.
+variable LREPLAYTRAP
+
+: EMIT-REPLAY-TRAP ( -- )
+   LBL  S\" hb: replay record executed\n"  {: msg:label ma mu :}
+   LREPLAYTRAP LABEL@ LBL,
+   0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
+   0 76 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  ma mu BYTES, ;
 
 \ namespace-record ( ptr u8 n bool -- n )
 : NAMESPACE-RECORD ( -- )
@@ -3989,6 +4065,7 @@ public
    15 9 8 STR,  14 DATA WIDN-CELL STR,
    15 DICT-WL:NAMESPACE invert MOVN,  15 9 40 STR,
    PUBLISH,
+   HW-RAISE,                                          \ an overlay's row dies at replay-close
    9 NDICT 1 SUBI,  9 G-PUSH
    done B,
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
@@ -3998,6 +4075,7 @@ public
 : NAMESPACE-PRIVATE ( -- )
    LBL LBL {: bad done :}
    B-TASK-LIVE-GUARD
+   OVERLAY-EMIT:GUARD,
    0 G-POP
    0 NDICT CMP,  C-CS bad BCOND,
    9 0 REC-AT,
@@ -4015,6 +4093,7 @@ public
 : ALIAS-RECORD ( -- )
    LBL LBL LBL LBL {: bad prot notval done :}
    B-TASK-LIVE-GUARD
+   OVERLAY-EMIT:GUARD,
    2 G-POP  4 G-POP  1 G-POP  0 G-POP                 \ x2 = the wid, x4 = the source, x1/x0 = the name
    bad REAL-WID,
    prot OPEN-WID,
@@ -4075,12 +4154,197 @@ public
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
-\ def-open ( ptr u8 n n n n -- ) name, wid, kind, tier. The tier waits on the
-\ machine stack for its store: of the registers WLFIND keeps, the name, the wid
-\ and the kind hold x0-x2 and x13.
+\ ---- the checker overlay's replay writers ---------------------------------
+\ The six rows src/habu/prims.f types only for package CHECKER-OVERLAY.
+\ replay-open saves the scope into the REPLAY-SCOPE band and replay-close puts
+\ it back, so no caller hands the engine a state to restore; the one mark a
+\ caller hands, replay-widn!'s, the band bounds below. While the latch is
+\ set, replay-record and namespace-record raise HW as they publish. The owner
+\ publishes through nothing else, nothing while a definition is pending, and
+\ lowers NDICT only by its own rollback, so [the saved NDICT, HW) is the
+\ overlay's and a record above HW is another writer's. Every other record or
+\ wid writer dies while the latch is set (habu1.f OVERLAY-EMIT:GUARD,), so a
+\ definition pends in an open overlay only through a raw store to PEND-CELL,
+\ which reaches the pending-definition refusals below, as a raw ndict! reaches
+\ the HW one (test/engine-writers.f EW-PEND).
+
+\ replay-open ( -- )
+: REPLAY-OPEN ( -- )
+   LBL LBL {: bad done :}
+   B-TASK-LIVE-GUARD
+   8 BAND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBNZ,   \ an overlay is open
+   bad NOT-PENDING,
+   NDICT 8 REPLAY-SCOPE:NDICT BAND-OFF STR,
+   CP 8 REPLAY-SCOPE:CP BAND-OFF STR,
+   0 0= SCOPE,
+   NDICT 8 REPLAY-SCOPE:HW BAND-OFF STR,
+   14 1 MOVZ,  14 8 REPLAY-SCOPE:LATCH BAND-OFF STR,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ replay-record ( ptr u8 n n -- ) name, wid: a codeless record, whose entry
+\ is the trap. It needs no OPEN-WID: it can only trap, and replay-close
+\ removes it.
+: REPLAY-RECORD ( -- )
+   LBL LBL {: bad done :}
+   B-TASK-LIVE-GUARD
+   2 G-POP  1 G-POP  0 G-POP                          \ x2 = the wid, x1/x0 = the name
+   bad REAL-WID,
+   8 BAND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
+   bad NOT-PENDING,
+   bad DICT-ROOM,
+   bad NAME-SIZE,
+   bad FRESH,
+   3 2 0 ADDI,  10 0 0 ADDI,  12 1 0 ADDI,
+   9 NDICT REC-AT,
+   NAME-BANDS,
+   NAME-COPY
+   14 LREPLAYTRAP LABEL@ ADR,  14 9 0 STR,            \ [0] = the trap
+   14 0 MOVZ,  14 9 8 STR,
+   3 9 40 STR,
+   PUBLISH,
+   HW-RAISE,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ record-wid! ( n n -- ) wid, index: the overlay retires a record with wid -2
+\ and later gives it back the wid it logged, in reverse order. The wid cell is
+\ half the record's hash key, and a compaction between the two re-keys the
+\ retired record on RETIRED's chain, so after each store the record is indexed
+\ under the wid it now holds (HIDX-EMIT:LREKEY, src/habu/layout.f DICT-WL).
+\ It refuses an index at or above NDICT, unsigned, a namespace row and the
+\ namespace wid. A seeded primitive's record is retired like any other: the
+\ live `undefine` retires it in place (src/habu/xref.f XREF-RETIRE-WL scans
+\ down to record 0), and a replay of that `undefine` has to as well.
+\ Between a restore and replay-close one wordlist can hold two live records of
+\ one name, the restored record and a replay record, and the hash probe and
+\ the wordlist scan may answer with different ones. The owner ends every such
+\ window before any lookup (src/core/checker.f CHECKER-OVERLAY): CLOSE's
+\ restore with replay-close, a frame ROLLBACK's with the ndict! that drops
+\ the replay record.
+: RECORD-WID ( -- )
+   LBL LBL {: bad done :}
+   B-TASK-LIVE-GUARD
+   3 G-POP  13 G-POP                                  \ x3 = the index, x13 = the wid
+   8 BAND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
+   3 NDICT CMP,  C-CS bad BCOND,
+   9 3 REC-AT,
+   15 DICT-WL:NAMESPACE invert MOVN,
+   14 9 40 LDR,  14 15 CMP,  C-EQ bad BCOND,
+   13 15 CMP,  C-EQ bad BCOND,
+   REC-SPAN,
+   13 9 40 STR,
+   HIDX-EMIT:LREKEY LABEL@ BL,
+   PROT-EMIT:LCLOSE LABEL@ BL,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ replay-private ( n bool -- ) namespace index, flag: true gives the row a
+\ fresh private wid, as `package` gives one to a row a qualified definition
+\ made (src/habu/packages.f PKG-REOPEN); false takes back the one it gave.
+\ replay-close puts WIDN back but nothing of a row below the saved NDICT, so
+\ the owner logs each grant and takes it back before the close. It refuses no
+\ overlay, an index at or above NDICT, unsigned, and a row that is not a
+\ namespace row; true refuses a row with a private wid, and false one whose
+\ private wid is below the saved WIDN, 0 included: a wid from before the
+\ overlay.
+: REPLAY-PRIVATE ( -- )
+   LBL LBL LBL {: bad give done :}
+   B-TASK-LIVE-GUARD
+   13 G-POP  3 G-POP                                  \ x13 = the flag, x3 = the index
+   8 BAND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
+   3 NDICT CMP,  C-CS bad BCOND,
+   9 3 REC-AT,
+   14 9 40 LDR,  15 DICT-WL:NAMESPACE invert MOVN,  14 15 CMP,  C-NE bad BCOND,
+   14 9 8 LDR,
+   13 give CBNZ,
+      15 8 REPLAY-SCOPE:WIDN BAND-OFF LDR,  14 15 CMP,  C-CC bad BCOND,
+      REC-SPAN,
+      14 0 MOVZ,  14 9 8 STR,
+      PROT-EMIT:LCLOSE LABEL@ BL,
+      done B,
+   give LBL,
+   14 bad CBNZ,
+   REC-SPAN,
+   14 DATA WIDN-CELL LDR,  14 9 8 STR,
+   14 14 1 ADDI,  14 DATA WIDN-CELL STR,
+   PROT-EMIT:LCLOSE LABEL@ BL,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ replay-close ( -- ): every check comes before the first store. It refuses
+\ NDICT below the saved count or above HW, CP below the saved CP and WIDN below
+\ the saved WIDN; then it zeroes the overlay's records, puts NDICT, CP and the
+\ scope back and zeroes the band, the latch with it.
+\ The WIDN refusal is defensive: no unforged path reaches it. Every engine
+\ writer of WIDN but replay-widn! raises it (wordlist, package,
+\ namespace-record, namespace-private, replay-private, a qualified definition's
+\ new wordlist, the AOT seed's window), replay-widn! lowers it no further than
+\ the saved WIDN, no recovery puts it back, the cold start sets it before any
+\ source runs, and a raw store to WIDN-CELL or to the band exits 83 after the
+\ seal. It keeps a WIDN the overlay did not leave from being restored over, as
+\ the NDICT and CP checks do.
+: REPLAY-CLOSE ( -- )
+   LBL LBL {: bad done :}
+   B-TASK-LIVE-GUARD
+   8 BAND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
+   bad NOT-PENDING,
+   4 8 REPLAY-SCOPE:NDICT BAND-OFF LDR,  NDICT 4 CMP,  C-CC bad BCOND,
+   5 8 REPLAY-SCOPE:HW BAND-OFF LDR,  NDICT 5 CMP,  C-HI bad BCOND,
+   6 8 REPLAY-SCOPE:CP BAND-OFF LDR,  CP 6 CMP,  C-CC bad BCOND,
+   14 8 REPLAY-SCOPE:WIDN BAND-OFF LDR,  15 DATA WIDN-CELL LDR,
+   15 14 CMP,  C-CC bad BCOND,
+   6 GUARD-CODE-WORD
+   NDICT 4 0 ADDI,  10 11 LASTC-TRIM,
+   CP 6 0 ADDI,
+   10 DREC MOVZ,  11 5 10 MUL,  10 4 10 MUL,
+   10 DBASE 10 ADD,  11 DBASE 11 ADD,                 \ records [x10, x11)
+   1 10 0 ADDI,  2 11 10 SUB,  PROT-EMIT:LSPAN LABEL@ BL,
+   ZERO-SPAN,
+   PROT-EMIT:LCLOSE LABEL@ BL,
+   8 BAND,
+   0 0<> SCOPE,
+   10 8 0 ADDI,  11 8 REPLAY-SCOPE:END BAND-OFF ADDI,
+   ZERO-SPAN,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ replay-widn! ( n -- ): put WIDN back to N, a mark the owner read while the
+\ overlay was open, as a rollback inside the overlay drops what it made since
+\ the mark (src/core/checker.f CHECKER-OVERLAY ROLLBACK). The records ndict!
+\ drops and the private wids replay-private takes back held every wid at or
+\ above N, so none is handed out twice. It refuses no overlay, N below the
+\ saved WIDN, which would hand out again a wid from before the overlay, and N
+\ above WIDN, both compared unsigned. A mark is never below the saved WIDN, so
+\ replay-close's WIDN check keeps holding.
+: REPLAY-WIDN ( -- )
+   LBL LBL {: bad done :}
+   B-TASK-LIVE-GUARD
+   13 G-POP                                           \ x13 = the mark
+   8 BAND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
+   14 8 REPLAY-SCOPE:WIDN BAND-OFF LDR,  13 14 CMP,  C-CC bad BCOND,
+   15 DATA WIDN-CELL LDR,  13 15 CMP,  C-HI bad BCOND,
+   13 DATA WIDN-CELL STR,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ def-open ( ptr u8 n n n n -- ) name, wid, kind, tier
 : DEF-OPEN ( -- )
    LBL LBL LBL LBL LBL {: bad prot done nolast ncomp :}
    B-TASK-LIVE-GUARD
+   OVERLAY-EMIT:GUARD,
    5 G-POP  4 G-POP  2 G-POP  1 G-POP  0 G-POP        \ x5 = the tier, x4 = the kind, x2 = the wid, x1/x0 = the name
    14 DKIND:MASK invert LIT64,  14 4 14 AND,  14 bad CBNZ,
    5 1 CMPI,  C-HI bad BCOND,                         \ a tier other than 0 or 1, unsigned
@@ -4230,7 +4494,7 @@ public
    nloop LBL,
       6 nend CBZ,
       14 5 40 LDR,  15 DATA DEF-WL-CELL LDR,  14 15 CMP,  C-NE nnext BCOND,
-      14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,
+      14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,
       15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE nnext BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
@@ -4328,6 +4592,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    SP SP 16 SUBI,  30 SP 0 STR,                       \ save link register across the internal LHIDXADD BL
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: qscan qcheck qhas qbad qtail qlookup qapply nloop nnext ncmp nmatch nend ninl done qopen qwalled :}
+   OVERLAY-EMIT:GUARD,
    C-QUALIFY-SEAL-GUARD
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
    12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
@@ -4367,7 +4632,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    nloop LBL,
       6 nend CBZ,
       14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE nnext BCOND,
-      14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,  14 17 CMP,  C-NE nnext BCOND,
+      14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,  14 17 CMP,  C-NE nnext BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
          16 5 24 LDR,
@@ -4398,7 +4663,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
       14 DATA DEF-WL-CELL LDR,  14 9 0 STR,
       15 0 MOVZ,  15 9 8 STR,
       15 0 MOVN,  15 9 40 STR,
-      NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+      EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    qapply LBL,
       11 DATA DEF-TKA-CELL LDR,  11 11 17 ADD,  11 11 1 ADDI,  11 DATA TKA-CELL STR,
       12 DATA DEF-TKL-CELL LDR,  12 12 17 SUB,  12 12 1 SUBI,  12 DATA TKL-CELL STR,
@@ -4496,7 +4761,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
    10 9 16 LDR,  10 10 DKIND:ADDR ORRI,  10 9 16 STR,     \ this record's body pushes its DATA address
    9 DATA LASTC-CELL STR,
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
    LBL {: noshadow:label :}
@@ -4549,7 +4814,7 @@ package INTERP-EMIT
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
    10 9 16 LDR,  10 10 DKIND:VAL ORRI,  10 9 16 STR,      \ this record's body pushes a decided number
    9 DATA LASTC-CELL STR,
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
    LKWCONST KWCONST$ nip C-DEFHOOK
@@ -4779,7 +5044,7 @@ private
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
       off DEF-TRUST:REGISTER-IDENTITY
    nohook LBL,
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
    C-IDENTITY-SHADOW
    C-CLEAR-TRUSTED-STATE
@@ -5009,7 +5274,7 @@ public
    9 DATA PEND-CELL LDR,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 CODE-SPAN:FULL ORRI,  10 9 8 STR,
    C-DEFER-META-WRITE
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
@@ -5299,6 +5564,19 @@ variable LCODEINV
    11 SP 0 LDR,  SP SP 16 ADDI,
    nohk LBL, ;
 
+\ The required construction scope installs a distinct callback. x5 is the
+\ record selected by LFIND (zero for an already-bound code entry); x11 is the
+\ entry actually about to run. The callback decides the full closure first.
+: C-HOST-SELECT ( -- )
+   LBL {: ordinary:label :}
+   9 DATA NATIVE-HOST-CELLS:SELECT LDR,  9 ordinary CBZ,
+   SP SP 32 SUBI,  30 SP 0 STR,  13 SP 8 STR,
+   5 G-PUSH  11 G-PUSH
+   9 BLR,
+   11 G-POP
+   13 SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
+   ordinary LBL, ;
+
 \ LTOPHOOK: shared top-row event trampoline, BL-called from the guarded event
 \ sites. Entry: x15 = class, x16 = flags, hook known installed. Pushes
 \ ( token-a token-u class flags ) and BLRs the hook word — the hook consumes
@@ -5465,27 +5743,10 @@ variable LCODEINV
    EM-C2-FIELD-OFF @ C-SCOPE-ENTRY-TICK-GUARD ;
 
 : C-TRUSTED-TICK? ( -- )
-   LBL LBL LBL {: noquery:label restore:label query:label :}
+   LBL LBL {: noquery:label restore:label :}
    SP SP 32 SUBI,
    5 SP 0 STR,  11 SP 8 STR,  12 SP 16 STR,  13 SP 24 STR,
-   \ The engine's cold source prefix installs trusted checker bridges before
-   \ SEAL-CAPTURE records its last dictionary entry. No user source can run
-   \ until that prefix finishes; the sealed watermark then keeps this path
-   \ closed for user ticks, including after a snapshot restore.
-   9 DATA SEAL-NDICT-CELL LDR,  9 noquery CBZ,
-   \ A protected executable build reloads the checker from the prefix and
-   \ legitimately ticks its trusted bridge words before the new query exists.
-   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  9 noquery CBNZ,
-   \ While a replacement checker is loading, its target owner differs from
-   \ the source owner's completed record. Its own bridge registrations tick
-   \ trusted primitives before the target takes over certification.
-   11 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  11 query CBZ,
-   12 DATA NCOMP-DISPATCH:DECL-CELL LDR,
-   11 12 CMP,  C-NE noquery BCOND,
-   query LBL,
-   \ The active checker owner's query is an installed code identity. A later
-   \ definition with the same spelling cannot replace the query it compiled.
-   NCOMP-DISPATCH:DECL-TRUSTED-TICK-OFF DECL-OWNER:FIND
+   C-TICK-QUERY
    11 noquery CBZ,
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
@@ -5496,7 +5757,6 @@ variable LCODEINV
    restore LBL,
    5 SP 0 LDR,  11 SP 8 LDR,  12 SP 16 LDR,  13 SP 24 LDR,
    SP SP 32 ADDI, ;
-
 
 : C-TICK ( -- )
    LBL LBL LBL LBL {: tk:label usedtry:label found:label named:label :}
@@ -6387,7 +6647,7 @@ public
       pkg-wid LBL,
       6 0 MOVN,  6 10 40 STR,                       \ package marker is signed -1, not a wid
       next LBL,
-      NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,      \ publish + index (x9/x11/x12 preserved)
+      EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,      \ publish + index (x9/x11/x12 preserved)
       12 12 1 ADDI,  rloop B,
    rdone LBL,
    17 SP 40 LDR, 17 done CBZ,
@@ -8041,7 +8301,7 @@ ardone LBL,
       \ the bytes live outside the record.
       14 5 16 LDR,
       6 DNAME-EXT LIT64,  6 14 6 AND,
-      2 14 0 ADDI,  2 2 14 LSLI,  2 2 14 LSRI,          \ x2 = name length
+      2 14 0 ADDI,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,          \ x2 = name length
       1 5 24 ADDI,                                      \ x1 = the inline bytes
       6 winl CBZ,  1 5 24 LDR,                          \ EXT: [24] points at them
       winl LBL,
@@ -8473,13 +8733,14 @@ ardone LBL,
    \ where it was not (tools/hb-build-stripped-test.f HBT-STRIPPED-ENGINE-CELLS).
    \ x13 is the copy loops' own scratch; x11 holds the snapshot text size the
    \ text pass below still needs, and x9/x10/x0 carry argc/argv/envp.
-   SP SP 48 SUBI,
+   SP SP 64 SUBI,
    13 DATA STACK-ABI:RETURN-BASE-CELL LDR,  13 SP 0 STR,
    13 DATA STACK-ABI:LOOP-BASE-CELL LDR,    13 SP 8 STR,
    0 SP 16 STR,
    13 DATA AOT-CELLS:SPAN-TABLE-CELL LDR,  13 SP 24 STR,
    13 DATA AOT-CELLS:SPAN-N-CELL LDR,      13 SP 32 STR,
    13 DATA AOT-CELLS:SPAN-BASE-CELL LDR,   13 SP 40 STR,
+   13 DATA EM-DEF-OCC:PTR-CELL LDR,       13 SP 48 STR,
    \ Restore live rows and code to their original runtime offsets. The gap is
    \ cleared explicitly because cold AOT seeding has touched dictionary pages.
    0 DBASE 0 ADDI,  1 21 0 ADDI,  5 DREC MOVZ,  2 15 5 MUL,
@@ -8539,10 +8800,11 @@ ardone LBL,
    13 SP 24 LDR,  13 DATA AOT-CELLS:SPAN-TABLE-CELL STR,
    13 SP 32 LDR,  13 DATA AOT-CELLS:SPAN-N-CELL STR,
    13 SP 40 LDR,  13 DATA AOT-CELLS:SPAN-BASE-CELL STR,
+   13 SP 48 LDR,  13 DATA EM-DEF-OCC:PTR-CELL STR,
    0 SP 16 LDR,
-   SP SP 48 ADDI,
+   SP SP 64 ADDI,
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
-   NDICT 15 0 ADDI,
+   9 15 0 ADDI,  EM-DEF-OCC:LRESET LABEL@ BL,
    CP DBASE 6 ADD,
    8 DBASE 0 ADDI,
    \ region pass FIRST: the RBASE-VA sentinel -> live region base (DBASE). Running it
@@ -8602,9 +8864,10 @@ ardone LBL,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
    9 DATA TOP-HOOK-CELL STR,  9 DATA NCOMP-DISPATCH:XT-CELL STR,
    9 DATA EXIT-HOOK-CELL STR,            \ no process-exit hook until something arms it
-   9 DATA NATIVE-OBS-CELLS:OBSERVE STR,
    9 DATA NATIVE-OBS-CELLS:PUBLISHED STR,
    9 DATA NATIVE-OBS-CELLS:INVALIDATE STR,
+   9 DATA NATIVE-OBS-CELLS:HOST-INVALIDATE STR,
+   9 DATA NATIVE-HOST-CELLS:SELECT STR,
    \ Tier 0 is the cold default: a session that selects nothing runs the JIT.
    \ Stored rather than left to the zeroed DATA page, so the default is a line
    \ someone can find and change, next to the dispatch it selects.
@@ -8629,9 +8892,10 @@ ardone LBL,
    COMPILE-PREFLIGHT-CELL RELOC-EMIT:MARK-CELL
    TOP-HOOK-CELL RELOC-EMIT:MARK-CELL
    EXIT-HOOK-CELL RELOC-EMIT:MARK-CELL
-   NATIVE-OBS-CELLS:OBSERVE RELOC-EMIT:MARK-CELL
    NATIVE-OBS-CELLS:PUBLISHED RELOC-EMIT:MARK-CELL
    NATIVE-OBS-CELLS:INVALIDATE RELOC-EMIT:MARK-CELL
+   NATIVE-OBS-CELLS:HOST-INVALIDATE RELOC-EMIT:MARK-CELL
+   NATIVE-HOST-CELLS:SELECT RELOC-EMIT:MARK-CELL
    NCOMP-DISPATCH:XT-CELL RELOC-EMIT:MARK-CELL
    APP-ENTRY:XT-CELL RELOC-EMIT:MARK-CELL
    \ LASTC holds the record the last `create`, `variable` or `constant` wrote,
@@ -8752,6 +9016,9 @@ ardone LBL,
    EM-SEED-DICT
    EM-MMAP-DATA-REGION
    EM-DATA-INIT
+   9 LHOSTROW LABEL@ ADR,  9 9 0 LDR,
+   9 DATA NATIVE-HOST-CELLS:SCALAR-PRIM STR,
+   EM-DEF-OCC:LINIT LABEL@ BL,
    EM-FRAME-STACKS
    EM-STARTUP-COLD-BASELINE
    SEEDED-RUNTIME? if
@@ -8761,6 +9028,7 @@ ardone LBL,
       LHIDXBUILD LABEL@ BL,
       LAOTPROT LABEL@ BL,
       EM-SEED-AOT
+      EM-AOT-BOOTRUN
       EM-SEAL-SEEDED-RUNTIME
    then
    EM-SNAPSHOT-RESTORE
@@ -8814,7 +9082,9 @@ ardone LBL,
 
 : C-CALL-COMPILE-IMMEDIATE ( -- )
    LBL {: callimm:label :}
-   SP SP 32 SUBI,  30 SP 0 STR,  11 SP 8 STR,
+   SP SP 48 SUBI,  30 SP 0 STR,  11 SP 8 STR,
+   5 G-PUSH  BDEFSELECT
+   9 G-POP  9 SP 32 STR,  9 G-POP  9 SP 24 STR,
    PROT-EMIT:LCLOSE LABEL@ BL,
    15 0 MOVZ,  16 3 MOVZ,  C-UNIT-HOOK
    9 DATA HOOK-CELL LDR,  9 callimm CBZ,
@@ -8826,10 +9096,14 @@ ardone LBL,
    9 DATA TRUSTED-CELL LDR,  9 G-PUSH
    9 SP 16 LDR,  9 BLR,
    callimm LBL,
-   11 SP 8 LDR,  11 BLR,
+   9 SP 24 LDR,  9 G-PUSH
+   9 SP 32 LDR,  9 G-PUSH  BDEFRESOLVE  5 G-POP
+   11 SP 8 LDR,
+   C-HOST-SELECT
+   11 BLR,
    \ No reopen: the immediate may have ended the head. A head that goes on
    \ reopens the window at its next tier 0 token (EM-COMPILE-LEGACY).
-   30 SP 0 LDR,  SP SP 32 ADDI,
+   30 SP 0 LDR,  SP SP 48 ADDI,
    LMAIN LABEL@ B, ;
 
 \ A `;` closes a definition only in the buffer that opened it. One open as this
@@ -8919,14 +9193,14 @@ public
    LPOLICYREC LABEL@ BL,
    gated LBL,
    14 13 2 ANDI,  14 noimm CBZ,
-   SP SP 16 SUBI,  11 SP 0 STR,
+   SP SP 16 SUBI,  11 SP 0 STR,  5 SP 8 STR,
    PROT-EMIT:LCLOSE LABEL@ BL,
    LNEUTRAL NEUTRAL$ nip C-FIND-GLOBAL
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED
    9 G-POP  9 notneutral CBZ,
-   11 SP 0 LDR,  SP SP 16 ADDI,
+   11 SP 0 LDR,  5 SP 8 LDR,  SP SP 16 ADDI,
    C-CALL-COMPILE-IMMEDIATE
    notneutral LBL,
    SP SP 16 ADDI,
@@ -9190,6 +9464,7 @@ public
    15 17 2 ADDI,  15 DATA WIDN-CELL STR, ;
 
 : C-PACKAGE-NEW-RECORD ( -- )
+   OVERLAY-EMIT:GUARD,
    C-QUALIFY-CAP
    C-PACKAGE-ALLOC-WIDS
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
@@ -9199,7 +9474,7 @@ public
    12 11 1 ADDI,
    11 9 0 STR,  12 9 8 STR,
    15 0 MOVN,  15 9 40 STR,
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    5 9 0 ADDI, ;
 
 \ The record this writes is one the SCAN found: `package NAME` reopening an
@@ -9209,6 +9484,7 @@ public
 : C-PACKAGE-EXISTING-PRIVATE ( label -- ) {: done:label :}
    LBL {: havepri:label :}
    12 havepri CBNZ,
+      OVERLAY-EMIT:GUARD,
       C-PACKAGE-NEW-PRIVATE-WID
       1 5 0 ADDI,  2 DREC MOVZ,  PROT-EMIT:LSPAN LABEL@ BL,
       12 5 8 STR,
@@ -9218,7 +9494,7 @@ public
 : C-PACKAGE-RECORD-MATCH ( label label -- ) {: hit:label miss:label :}
    LBL LBL {: cmp:label inline:label :}
    14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE miss BCOND,
-   14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,
+   14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,
    15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE miss BCOND,
    16 5 24 ADDI,
    14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 inline CBZ,
@@ -9542,7 +9818,7 @@ public
       11 11 1 SUBI,  11 NDICT CMP,  C-GE pnext BCOND,              \ stale (truncated) index
       12 DREC MOVZ,  12 11 12 MUL,  12 DBASE 12 ADD,               \ x12 = record ptr
       11 12 40 LDR,  11 2 CMP,  C-NE pnext BCOND,                  \ wid mismatch
-      11 12 16 LDR,  11 11 14 LSLI,  11 11 14 LSRI,  11 10 CMP,  C-NE pnext BCOND,  \ name-len mismatch
+      11 12 16 LDR,  11 11 DNAME-FLAG-BITS LSLI,  11 11 DNAME-FLAG-BITS LSRI,  11 10 CMP,  C-NE pnext BCOND,  \ name-len mismatch
       17 12 24 ADDI,
       11 12 16 LDR,  11 11 DNAME-EXT ANDI,  11 pinl CBZ,
          17 12 24 LDR,
@@ -9584,7 +9860,7 @@ public
          15 14 CMP,  C-EQ member BCOND,
          3 3 1 ADDI,  mloop B,
       member LBL,
-         15 5 16 LDR,  15 15 14 LSLI,  15 15 14 LSRI,  15 10 CMP,  C-NE unext BCOND,   \ name-len mismatch
+         15 5 16 LDR,  15 15 DNAME-FLAG-BITS LSLI,  15 15 DNAME-FLAG-BITS LSRI,  15 10 CMP,  C-NE unext BCOND,   \ name-len mismatch
          2 5 24 ADDI,
          14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
             2 5 24 LDR,
@@ -9731,9 +10007,16 @@ public
 \ the export publishes into are refused here, before the checker hears of the
 \ export and before anything is written, with the codes the export's own slot
 \ and name are refused with.
+: C-DOES-OCC-ROOM ( -- )
+   LBL {: none:label :}
+   9 DATA DOESB-CELL LDR,  9 none CBZ,
+   9 2 MOVZ,  EM-DEF-OCC:LROOM LABEL@ BL,
+   none LBL, ;
+
 : C-EXPORT-CLAUSE-ROOM ( -- )
    LBL LBL LBL {: none:label room:label fresh:label :}
    6 SP 24 LDR,  6 none CBZ,
+   9 2 MOVZ,  EM-DEF-OCC:LROOM LABEL@ BL,
    14 DICT-CAP 1 - LIT64,  NDICT 14 CMP,  C-LT room BCOND,
       LDICTFULL DICTFULL-MSG$ nip C-CAP-LABEL
       $4D C-QUALIFY-FAIL
@@ -9807,6 +10090,7 @@ public
    LTOK LABEL@ BL,  0 named CBNZ,
       $4A C-PACKAGE-FAIL
    named LBL,
+   OVERLAY-EMIT:GUARD,
    C-QUALIFY-SEAL-GUARD
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 found CBNZ,                                          \ EXPORT <undefined>: recoverable inside evaluate (rc 70), fail-closed exit 70 at top level. C-EXPORT's own state is clean (only LTOK + LFIND ran; no SP push, no publish), and the recovery rolls the package scope back with the dictionary (PKGSNAP), so a string that also opened the package leaves it closed.
@@ -9846,9 +10130,9 @@ public
    16 SP 32 LDR,  15 15 16 ORR,                          \ constant alias still pushes the same fixed value
    15 9 16 STR,
    C-EXPORT-CLAUSE-RECORD
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    6 SP 24 LDR,  6 counted CBZ,
-      NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,          \ the clause, counted with its definer
+      EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,          \ the clause, counted with its definer
    counted LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,
    SP SP 48 ADDI,
@@ -9909,6 +10193,7 @@ private
    LPOLICYREC LABEL@ BL,                               \ the design seal, ahead of every other gate: a record outside the vocabulary is refused as one (x5 = the record LFIND resolved)
    LFINDSHADOW LABEL@ BL,                              \ a global a used public also exports refuses (105)
    found LBL,
+   SP SP 16 SUBI,  5 SP 0 STR,                         \ retain LFIND's exact record across the guards
    14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                \ DNAME-WIDE effect (TFAM): fail closed, never land a bundle on the interpret stack (x13 still holds the LFIND dict flags)
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,           \ DNAME-INT: engine-internal word with no checker-known effect - fail closed before the body runs on the untyped interpret stack
    C-SCOPE-ENTRY-GUARD                                 \ a checked scope entry has no raw callback admission at the prompt
@@ -9917,6 +10202,8 @@ private
       9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 LSRI, \ descriptor proves a nonnegative unsigned depth
       10 14 CMP,  C-LT LMININ LABEL@ BCOND,            \ depth < declared inputs -> named reject BEFORE the body can read below base
    depthok LBL,
+   5 SP 0 LDR,  C-HOST-SELECT
+   SP SP 16 ADDI,
    15 11 0 ADDI,  16 4 MOVZ,  C-UNIT-HOOK
    C-TOPHOOK-CALL             \ every native gate passed: emit the pre-BLR word event (x13 = LFIND flags)
    11 BLR,  LMAIN LABEL@ B,
@@ -10931,12 +11218,55 @@ public
    DEF-TRUST:REGISTER
    publish B, ;
 
+\ The declared-row log is full (layout.f DECLARED-LOG:CAP): name the definition
+\ that overflowed it, exit 72, the pre-trust boot-integrity class C-PD-DIE-FULL
+\ uses. Losing its row instead would leave a checked caller E-UNDEFINED with no
+\ reason given.
+: C-DECLARED-LOG-DIE-FULL ( -- )
+   SP SP 32 SUBI,  9 $6C636564203A6268 LIT64,  9 SP 0 STR,  9 $776F722D64657261 LIT64,  9 SP 8 STR,  9 $6C756620676F6C20 LIT64,  9 SP 16 STR,  9 $2020202020203A6C LIT64,  9 SP 24 STR,
+   0 2 MOVZ,  1 SP 0 ADDI,  2 27 MOVZ,  NR-WRITE SYS,  SP SP 32 ADDI,   \ "hb: declared-row log full: "
+   C-PUSH-DREC-NAME  2 G-POP  1 G-POP
+   0 2 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
+   0 72 MOVZ,  NR-EXIT-GROUP SYS, ;
+
+\ Log the pending definition for the claim (layout.f DECLARED-LOG): its record,
+\ the open package's namespace record, its signature's address and length, all
+\ read from DATA cells, then publish the log's address in ADDR-CELL. Clobbers
+\ x12-x15 only; the publication tail after it holds nothing in a register.
+: C-DECLARED-LOG-APPEND ( -- )
+   LBL LBL {: full:label done:label :}
+   12 DECLARED-LOG:OFF LIT64,  12 DATA 12 ADD,        \ x12 = &log
+   13 12 0 LDR,  14 DECLARED-LOG:CAP MOVZ,  13 14 CMP,  C-GE full BCOND,
+   15 DECLARED-LOG:SLOT MOVZ,  15 13 15 MUL,
+   14 12 DECLARED-LOG:SLOTS-REL ADDI,  14 14 15 ADD,   \ x14 = the slot
+   15 DATA PEND-CELL LDR,     15 14 DECLARED-LOG:REC-OFF STR,
+   15 DATA PKG-REC-CELL LDR,  15 14 DECLARED-LOG:PKG-OFF STR,
+   15 DATA TSIG-A-CELL LDR,   15 14 DECLARED-LOG:SIG-A-OFF STR,
+   15 DATA TSIG-U-CELL LDR,   15 14 DECLARED-LOG:SIG-U-OFF STR,
+   13 13 1 ADDI,  13 12 0 STR,                          \ count++
+   12 DATA DECLARED-LOG:ADDR-CELL STR,
+   done B,
+   full LBL,  C-DECLARED-LOG-DIE-FULL
+   done LBL, ;
+
 \ A zero hook verdict rejects the pending definition. Any non-zero verdict
 \ certifies it and reaches the ordinary publication tail.
+\ With the hook cell empty nothing judges the body, and its declaration is its
+\ row, as at tier 1 (compiler.f SCAN): a TRUSTED: declaration through TRUST-DECL
+\ with its authority, any other through the owner's DECLARED-ROW field without
+\ authority (checker.f CHECKER-DECLARED-ROW!). Only the source owner records.
+\ Before checker.f claims the source there is none, so a declaration other than
+\ a TRUSTED: one goes to the declared-row log, whose rows the claim records
+\ (C-DECLARED-LOG-APPEND); a TRUSTED: one records nothing, since the claim
+\ grants no authority. The logged definition is published: the tail after this
+\ arm cannot fail recoverably, as the DECLARED-ROW call here already assumes,
+\ so no logged record is ever rolled back and reused. A definition with no
+\ signature records nothing.
 : EM-COMPILE-PUBLISH-HOOKED ( label label -- )
    {: publish:label finish:label :}
-   LBL LBL LBL LBL {: nohook:label rejected:label inl:label done:label :}
-   9 DATA P2-CELL LDR,  9 nohook CBNZ,                \ pass-2 second ';': no hook re-check
+   LBL LBL LBL LBL LBL LBL {: nohook:label declared:label owned:label rejected:label inl:label done:label :}
+   9 DATA P2-CELL LDR,  9 publish CBNZ,               \ pass-2 second ';': no hook re-check
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
@@ -10946,7 +11276,19 @@ public
       \ publish path (item 12 slice 3b).
       LOWER-TXN:FREEZE
       EM-P2-TRIGGER
-   nohook LBL,  publish B,
+      publish B,
+   nohook LBL,
+   9 DATA TSIG-U-CELL LDR,  9 publish CBZ,
+   9 DATA TRUSTED-CELL LDR,  9 declared CBZ,
+      NCOMP-DISPATCH:DECL-EFFECT-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
+      publish B,
+   declared LBL,
+   9 DATA NCOMP-DISPATCH:DECL-CELL LDR,  9 owned CBNZ,
+      C-DECLARED-LOG-APPEND
+      publish B,
+   owned LBL,
+   NCOMP-DISPATCH:DECL-DECLARED-ROW-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
+   publish B,
    rejected LBL,  0 CODE-ORIGIN:CLOSE,
    11 DATA PEND-CELL LDR,  12 11 16 LDR,  12 12 DNAME-EXT ANDI,  12 inl CBZ,
       CP 11 24 LDR,  done B,                           \ ext name in code space: CP := pre-name CP
@@ -10963,7 +11305,8 @@ public
    publish finish EM-COMPILE-PUBLISH-HOOKED
    publish LBL,
    0 CODE-ORIGIN:CLOSE,
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   C-DOES-OCC-ROOM
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
    DOES-REC:PUBLISH
    finish LBL,
@@ -11174,9 +11517,14 @@ public
 ;package
 
 
+\ A compiled call to an internal record (DNAME-INT) needs the TRUSTED: cell
+\ armed, unless its owner's rows type it (DNAME-OWNED, src/habu/layout.f):
+\ then the call is the checker's to admit or refuse, as every checked call is.
+\ LFIND left the record in x5.
 : C-COMPILE-CALL-GUARD ( -- )
    LBL {: allowed:label :}
    14 13 16 ANDI,  14 allowed CBZ,                 \ LFIND's DNAME-INT flag
+   14 5 16 LDR,  14 14 DNAME-OWNED ANDI,  14 allowed CBNZ,
    14 DATA TRUSTED-CELL LDR,  14 LUNDEF LABEL@ CBZ,
    allowed LBL, ;
 
@@ -11257,7 +11605,7 @@ public
    14 5 16 LDR,  14 14 50 LSRI,  14 14 3 ANDI,
    14 3 CMPI,  C-EQ LMAIN LABEL@ BCOND,
    prepare LBL,
-   SP SP 32 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,
+   SP SP 32 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,  5 SP 24 STR,
    9 DATA P2-CELL LDR,  9 noxc CBZ,               \ layout-cap slice 4: pass-2 wide generated-ctor call adds extra pads
       9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
       LP2CWAT LABEL@ BL,                          \ x10 = extra pads, x11 = found
@@ -11275,7 +11623,7 @@ public
    EM-P2-INIT-DESC
    EM-P2-FIELD-DESC
    LVSPILL LABEL@ BL,
-   11 SP 0 LDR,  12 SP 8 LDR,  13 SP 16 LDR,  SP SP 32 ADDI,
+   11 SP 0 LDR,  12 SP 8 LDR,  13 SP 16 LDR,  5 SP 24 LDR,  SP SP 32 ADDI,
    14 13 2 ANDI,  14 notimm CBZ,
       \ Pass 2 never runs an immediate: pass 1 ran it once on the real input
       \ and the capture pass 2 lowers holds what it compiled (LBCAP; a
@@ -11375,8 +11723,8 @@ public
 : EM-CODE-INVALIDATE ( -- )
    LBL {: done:label :}
    LCODEINV LABEL@ LBL,
-   9 DATA NATIVE-OBS-CELLS:INVALIDATE LDR,  9 done CBZ,
    10 CP CMP,  C-CS done BCOND,
+   9 DATA NATIVE-OBS-CELLS:INVALIDATE LDR,  9 done CBZ,
    SP SP 48 SUBI,
    30 SP 0 STR,  11 SP 8 STR,  13 SP 16 STR,
    14 SP 24 STR,  15 SP 32 STR,  10 SP 40 STR,
@@ -11441,11 +11789,15 @@ public
          12 DATA TOKVRF-CELL LDR,  12 DATA VRFREE-CELL STR,
          12 DATA TOKFRF-CELL LDR,  12 DATA FRFREE-CELL STR,
          scope B,
-   owned LBL,
-   CODE-ORIGIN:ABANDON,
-   10 13 40 LDR,  LCODEINV LABEL@ BL,
-   CP 13 40 LDR,  NDICT 13 48 LDR,
-   12 13 56 LDR,  12 9 RELOC-EMIT:FLOOR-CLAMP,
+      owned LBL,
+      CODE-ORIGIN:ABANDON,
+      10 13 40 LDR,  LCODEINV LABEL@ BL,
+      SP SP 32 SUBI,  11 SP 0 STR,  13 SP 8 STR,  15 SP 16 STR,
+      9 13 40 LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
+      11 SP 0 LDR,  13 SP 8 LDR,  15 SP 16 LDR,  SP SP 32 ADDI,
+      CP 13 40 LDR,
+      9 13 48 LDR,  EM-DEF-OCC:LCOUNT LABEL@ BL,  NDICT 13 48 LDR,
+      12 13 56 LDR,  12 9 RELOC-EMIT:FLOOR-CLAMP,
       RELOC-EMIT:LROLLBACK LABEL@ BL,
       12 DATA DP-CELL STR,
       9 10 LASTC-TRIM,
@@ -11566,7 +11918,9 @@ public
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  2 QNL-LEN MOVZ,  NR-WRITE SYS,
    CODE-ORIGIN:ABANDON,
    10 DATA RSAVCP-CELL LDR,  LCODEINV LABEL@ BL,
+   9 DATA RSAVCP-CELL LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
    CP DATA RSAVCP-CELL LDR,
+   9 DATA RSAVND-CELL LDR,  EM-DEF-OCC:LCOUNT LABEL@ BL,
    NDICT DATA RSAVND-CELL LDR,
    12 DATA RSAVDP-CELL LDR,  12 9 RELOC-EMIT:FLOOR-CLAMP,
    RELOC-EMIT:LROLLBACK LABEL@ BL,
@@ -11727,6 +12081,7 @@ public
 \ x2-x15); x0-x2 and x9-x14 are scratch, as in the LUNCAUGHT reporter.
 : EM-COMPILE-DIE ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: ldie:label rdie:label noloc:label located:label nlloop:label nldone:label digloop:label :}
+   LBL S" hb: definition while a checker replay is open: " {: omsg:label oma:ptr omu:n :}
    LCOMPILEDIE LABEL@ LBL,                                  \ entry: x0 = sysexits exit/throw code (die site just wrote its diagnostic, newline NOT written)
    15 0 0 ADDI,                                             \ x15 = code (survives LPROT; LEVALREC delivers it as the throw code)
    9 DATA SRCLOC:PATHLEN-CELL LDR,  9 noloc CBZ,            \ no open source file -> newline only
@@ -11803,7 +12158,18 @@ public
    0 2 MOVZ,  1 LDPBADOF LABEL@ ADR,  2 DPBAD-OF-LEN MOVZ,  NR-WRITE SYS,
    9 DATA-SIZE PROF-CNT-BYTES - LIT64,  LDIAGU LABEL@ BL,   \ the ceiling DP-CHECK enforces
    0 2 MOVZ,  1 LDPBADUNIT LABEL@ ADR,  2 DPBAD-UNIT-LEN MOVZ,  NR-WRITE SYS,
-   0 76 MOVZ,  LCOMPILEDIE LABEL@ B, ;
+   0 76 MOVZ,  LCOMPILEDIE LABEL@ B,
+   \ A writer of a record or a wid ran while a checker overlay was open
+   \ (habu1.f OVERLAY-EMIT:GUARD,), before it wrote anything. TKA/TKL hold the
+   \ token it was given: the definition's name, the package's, the EXPORT
+   \ operand, or the word that ran `wordlist` or a writer primitive. The code is
+   \ a literal so the host that emits this need not carry the new constant
+   \ (docs/bootstrap.md, a name a pre-window build file calls).
+   OVERLAY-EMIT:LDIE LABEL@ LBL,
+   0 2 MOVZ,  1 omsg ADR,  2 omu MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 108 MOVZ,  LCOMPILEDIE LABEL@ B,                     \ 108 = ENGINE-ERROR:OVERLAY-OPEN
+   omsg LBL,  oma omu BYTES, ;
 
 \ The design seal (layout.f POLICY-NDICT-CELL and POLICY-BITS-OFF, written by
 \ habu1.f BPOLICYADMIT and BPOLICYSEAL). A sealed process confines the source it
@@ -12667,6 +13033,7 @@ package LABELS
 : CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !  LBL LIMGEND !
    LBL LCEMIT !  LBL LCEMITBL !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
+   LBL LHOSTROW !
    LBL LDIVZERO !
    LBL PROT-EMIT:LOPEN !  LBL PROT-EMIT:LCLOSE !  LBL PROT-EMIT:LGROW !  LBL PROT-EMIT:LSPAN !  LBL PROT-EMIT:LCF !
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
@@ -12685,7 +13052,11 @@ package LABELS
    LBL AOT-WINDOW:LWIDW0 !  LBL AOT-WINDOW:LWIDSPAN !  LBL AOT-WINDOW:LNPWIN !  LBL AOT-WINDOW:LPWIN !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
-   LBL HIDX-EMIT:LREBUILD !  LBL HIDX-EMIT:LFULL !  LBL WLFIND:LENTRY !
+   LBL HIDX-EMIT:LREBUILD !  LBL HIDX-EMIT:LFULL !  LBL HIDX-EMIT:LREKEY !  LBL WLFIND:LENTRY !
+   LBL EM-DEF-OCC:LCOUNT !  LBL EM-DEF-OCC:LAPPEND !  LBL EM-DEF-OCC:LRESET !
+   LBL EM-DEF-OCC:LROOM !  LBL EM-DEF-OCC:LISSUE !  LBL EM-DEF-OCC:LINIT !
+   LBL EM-DEF-OCC:LBEFORE !  LBL EM-DEF-OCC:LAFTER !  LBL EM-DEF-OCC:LMATCH !
+   LBL EM-DEF-OCC:LRECLAIM !
    LBL RELOC-EMIT:LCALLS !  LBL RELOC-EMIT:LXT !  LBL RELOC-EMIT:LMARK !  LBL RELOC-EMIT:LPTRMARK !
    LBL RELOC-EMIT:LINDEXRELEASE !
    LBL RELOC-EMIT:LROLLBACK !
@@ -12718,7 +13089,7 @@ package LABELS
    LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL NCOMP-EMIT:LWORD !  LBL NCOMP-EMIT:LUNSET !  LBL NCOMP-EMIT:LNEUTRAL !  LBL NCOMP-EMIT:LENTRY !  LBL LP2DOESW !
    LBL LKWEXPORT !  LBL LCHKEXPORT !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LKWDESIGNEND !  LBL LCHKUSING !  LBL LFINDUSED !  LBL LFINDUSED-CORE !  LBL LSCOPEREC !
-   LBL INTERP-EMIT:LFINDSHADOW !
+   LBL INTERP-EMIT:LFINDSHADOW !  LBL DEFWRITE:LREPLAYTRAP !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
    LBL DEFER-DIAG:LDEFNOTOKEN !  LBL DEFER-DIAG:LDEFNOTFOUND !
    LBL DEFER-DIAG:LDEFNOTDEFER !  LBL DEFER-DIAG:LDEFNONAME !  LBL DEFER-DIAG:LDEFHINT !
@@ -12744,6 +13115,7 @@ package LABELS
    LBL LLOCWIDE !  LBL LLOCWIDEMSG !  LBL LLOCMANY !  LBL LLOCMANYMSG !
    LBL LCSTR !  LBL LCSTRMSG !
    LBL LDPBAD !  LBL LDPBADMSG !  LBL LDPBADOF !  LBL LDPBADUNIT !
+   LBL OVERLAY-EMIT:LDIE !
    LBL LDIAGU !  LBL LDIAGDEF !  LBL LDIAGNEEDS !
    LBL LBCAPFULL !  LBL LBCAPFULLMSG !  LBL LBCAPUNIT !
    LBL LSNAPNEST !  LBL LSNAPNESTMSG !  LBL LSNAPUNIT !
@@ -12992,7 +13364,7 @@ variable AOT-BOUND-SITES
 : AOT-BOUND-DISP ( n -- n ) {: s:n :}
    s AOT-SITE-WORD $94000000 <> if AOT-SITE-REFUSE then
    s AOT-SITE-INDEX ENGINE-PRIMS:FIRST-LABEL
-   LABEL>N cells LBLP + @ dup 0 < if AOT-SITE-REFUSE then
+   LABEL>N LBLP @ dup 0 < if AOT-SITE-REFUSE then
    4 * REGION-OFF DICT-SIZE + s AOT-SITE-BOFF + - {: delta:n :}
    delta BL-REACH negate < delta BL-REACH >= or if AOT-SITE-REFUSE then
    delta 3 and 0<> if AOT-SITE-REFUSE then
@@ -13278,6 +13650,12 @@ package ENGINE-EMIT
    s" def-cast" ['] DEFWRITE:DEF-CAST ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" jit-open" ['] DEFWRITE:JIT-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" jit-token" ['] DEFWRITE:JIT-TOKEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" replay-open" ['] DEFWRITE:REPLAY-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" replay-close" ['] DEFWRITE:REPLAY-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" replay-widn!" ['] DEFWRITE:REPLAY-WIDN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" replay-record" ['] DEFWRITE:REPLAY-RECORD ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" record-wid!" ['] DEFWRITE:RECORD-WID ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" replay-private" ['] DEFWRITE:REPLAY-PRIVATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM FPRIM
@@ -13303,7 +13681,11 @@ package ENGINE-EMIT
    EMIT-FIND-USED
    INTERP-EMIT:FIND-SHADOW
    EMIT-SCOPE-REC
+   DEFWRITE:EMIT-REPLAY-TRAP
    EMIT-HIDX
+   EMIT-DEF-OCC
+   EMIT-DEF-OCC-OVERLAP
+   EMIT-DEF-OCC-RECLAIM
    EMIT-QUALIFY-DEF
    EMIT-STORE-DEF-NAME
    EMIT-NUM
@@ -13440,6 +13822,7 @@ public
    ;
 ;package
 
+;using
 ;using
 ;using
 ;using

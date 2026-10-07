@@ -205,7 +205,7 @@ CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE T=
 \    "deferred" answer for the surviving symbol must not remain stale-true.
 \    Each deferred name gets its signature record first, as `defer W ( sig )`
 \    registers one (TRUST-DECL) before CHECKER-DEFER: a name with no record
-\    binds no word (SYM-LIVE), so no defer is found under it.
+\    binds no word, so no defer is found under it.
 \ ---------------------------------------------------------------------------
 s" -- n" s" RBD-KEEP" CHECKER-USIG-ADD
 s" RBD-KEEP" CHECKER-DEFER                             \ top-level defer that survives

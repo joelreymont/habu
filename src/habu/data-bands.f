@@ -23,6 +23,7 @@ create TAB
    NCOMP-DISPATCH:DEF-TIER-CELL , 3 cells ,
    TIER-PROV:OPEN-CELL ,          TIER-PROV:END TIER-PROV:OPEN-CELL - ,
    UNIT-COMPILE-CELL ,            1 cells ,
+   REPLAY-SCOPE:LATCH ,           REPLAY-SCOPE:END REPLAY-SCOPE:LATCH - ,
    BODYBUF-OFF ,                  BODYBUF-CAP 2 + ,
    TXN-STATE-OFF ,                TXN-STATE-LEN ,
    0 ,                            0 ,

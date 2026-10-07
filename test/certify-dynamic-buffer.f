@@ -34,9 +34,9 @@ package CERTIFY-DYNAMIC-BUFFER
 1 constant UNRESOLVED
 
 \ The scanner's registrations are facts of the certify path: the scan compiles
-\ nothing, so the engine holds no record of CDBT or its kin, and a live
-\ candidate binds only what the compiler binds. Each probe asks the certify
-\ path, where the scan recorded them.
+\ nothing, so CDBT and its kin bind through the checker overlay only while the
+\ package-neutral scope holding the scans and their probes is open (MAIN), and
+\ each probe asks the certify path there.
 : CDB-VERDICT ( ptr u8 n -- n )
    VERIFY:CANDIDATE-IN-SCOPE ;
 
@@ -136,11 +136,13 @@ DYNAMIC-BUFFER CDB-BYTES u8
 
 : MAIN ( -- )
    T-RESET
+   CHECKER-SCOPE-START-NEUTRAL
    CDB-SECTION-PUBLISHED
    CDB-SECTION-UNPUBLISHED
    CDB-SECTION-AOT-SHAPE
    CDB-SECTION-TYPED-POINTEE
    CDB-SECTION-BYTE
+   CHECKER-SCOPE-DONE
    CDB-SECTION-LIVE
    CDB-SECTION-LIVE-BYTES
    T-REPORT ;

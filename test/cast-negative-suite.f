@@ -410,8 +410,9 @@ CHECKER-END-PACKAGE
 s" CNEX0 ( n -- n ) CN-EXP-A:CN-EXP-SRC" CHECK-QUIET-CANDIDATE! -1 T=
 s" CNEX1 ( n -- n ) CN-EXP-B:CN-EXP-SRC" CHECK-QUIET-CANDIDATE! 1 T=
 
-\ Offline verification is the sole scoped mirror authority. A normal simulated
-\ package verifies, restores the live provider, and leaves no family behind.
+\ Offline verification replays a package in the verifier window's own scope. A
+\ normal simulated package verifies, restores the live provider, and leaves no
+\ family behind.
 package CN-CAST-TEST
 public
 : CN-VRF-VERIFY ( -- )

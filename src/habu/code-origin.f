@@ -4,6 +4,8 @@
 \ The table's geometry is src/habu/layout.f's package TIER-PROV. The engine
 \ bakes that file, so these emitters live in a package of their own
 \ (docs/forth-card.md § 6).
+require src/arch/arm64/icode.f
+using A64ICODE
 package CODE-ORIGIN
 
 variable LSET  variable LSET-END
@@ -294,3 +296,4 @@ public
    done LBL,  6 3 0 STR, ;
 
 ;package
+;using

@@ -1,14 +1,18 @@
-\ native-hookless-reject.f - with the check hook cell empty, a definition the
-\ checker leaves without an effect is refused with the checker's reason.
+\ native-hookless-reject.f - with the check hook cell empty, a body the scan
+\ refuses compiles against its declaration, and what the native compiler then
+\ refuses it refuses after the checker's reason.
 \
 \ Nothing certifies while the cell is empty: a `0 set-check` session, and a
 \ window's core prefix, which tools/native-build-core.f LOGICAL-RESET compiles
 \ from src/core/util.f up to src/core/check-hook.f with the cell cleared. The
-\ native compiler compiles against the effect the checker holds for the name,
-\ and the checker records none for a body it rejects or cannot check, so the
-\ compiler refuses one (src/compiler/native/compiler.f KEEP-ARITY) with the check
-\ hook's reject status, after printing the diagnostic of the owner's quiet scan
-\ (CHECK-HOOKLESS). A rejected body the checker still records is compiled.
+\ owner's quiet scan prints its reason and enforces nothing
+\ (src/compiler/native/compiler.f CHECK-HOOKLESS); the declaration becomes the
+\ definition's row, without authority (DECLARE-HOOKLESS), and the native
+\ compiler compiles against it. A body it cannot compile against that row -
+\ branches that leave different depths, a callee that is not defined - dies
+\ there as an uncaught throw, naming the token where it can. A body with no
+\ declaration, or one the checker cannot record, has no row, and KEEP-ARITY
+\ refuses it with the check hook's reject status.
 \
 \ Tier-neutral by design: each session subject sets the tier it compiles at, and
 \ the window is built by the engine under test. The window cases build a private
@@ -35,6 +39,7 @@ $4000 constant CAP
 20000 constant SUBJECT-TIMEOUT-MS
 600000 constant BUILD-TIMEOUT-MS
 70 constant RC-REJECT                \ the check hook's reject status (src/core/check-hook.f CHECK-RC)
+67 constant RC-THROW                 \ a load's uncaught throw
 74 constant RC-BUILD                 \ a window build's failure status (tools/native-build-args.f BUILD-RC)
 
 create ROOT FS-PATH-CAP allot          variable ROOT-U
@@ -77,28 +82,44 @@ variable RC
    src u OUT CAP >LEN ERR CAP >LEN SUBJECT-TIMEOUT-MS >MS SUBJECT:RUN
    src u SUBJECT-STORE! ;
 
-\ Both arms of the `if` are well typed and leave different depths, so the body
-\ has no effect to record and the checker rejects it at `then`.
+\ `0=` leaves a bool where the declaration says n: the scan refuses the body,
+\ and the compiled word runs as declared.
+: DECLARED$ ( -- ptr u8 n )
+   s" 1 set-tier 0 set-check : HR-DECLARED ( n -- n ) 0= ; 5 HR-DECLARED ." ;
+
+: SESSION-DECLARED ( -- )
+   s" a refused body compiles against its declaration after its reason" T-LABEL
+   DECLARED$ SESSION
+   RC @ 0 T=
+   S\" 0\n" PRINTS
+   s" habu: in hr-declared: at '0='" SAYS ;
+
+\ Both arms of the `if` are well typed and leave different depths: the checker
+\ rejects the body at `then`, and the elaborator cannot join the arms either
+\ (E-NELAB-JOIN).
 : UNEVEN$ ( -- ptr u8 n )
    s" 1 set-tier 0 set-check : HR-UNEVEN ( bool -- n ) if 1 2 else 3 then ;" ;
 
 : SESSION-UNEVEN ( -- )
-   s" uneven branches are refused with the checker's reason" T-LABEL
+   s" uneven branches are refused by the compiler after the checker's reason" T-LABEL
    UNEVEN$ SESSION
-   RC @ RC-REJECT T=
+   RC @ RC-THROW T=
    s" habu: in hr-uneven: at 'then'" SAYS
-   s" ncomp: cannot compile HR-UNEVEN" SAYS ;
+   s" ncomp: cannot compile HR-UNEVEN" SAYS
+   s" hb: uncaught throw code -8503" SAYS ;
 
 \ An undefined callee leaves the body uncheckable, a verdict whose text the scan
-\ itself never prints (src/core/check-hook.f REPORT-UNCHECKABLE does).
+\ itself never prints (src/core/check-hook.f REPORT-UNCHECKABLE does); the
+\ compiler then cannot lower the call (E-HIR-UNMODELED).
 : UNDEFINED$ ( -- ptr u8 n )
    s" 1 set-tier 0 set-check : HR-UNDEFINED ( n -- bool ) HR-NO-SUCH-WORD ;" ;
 
 : SESSION-UNDEFINED ( -- )
    s" an undefined callee is refused naming the callee" T-LABEL
    UNDEFINED$ SESSION
-   RC @ RC-REJECT T=
-   s" E-UNDEFINED habu: in hr-undefined: undefined word 'HR-NO-SUCH-WORD'" SAYS ;
+   RC @ RC-THROW T=
+   s" E-UNDEFINED habu: in hr-undefined: undefined word 'HR-NO-SUCH-WORD'" SAYS
+   s" ncomp: cannot compile HR-UNDEFINED at HR-NO-SUCH-WORD" SAYS ;
 
 \ A definer's own body is scanned before its does> clause, which the checker
 \ scans next, so the reason has to be printed before that second scan.
@@ -108,12 +129,14 @@ variable RC
 : SESSION-DEFINER ( -- )
    s" a does> definer's own body is refused with its reason" T-LABEL
    DEFINER$ SESSION
-   RC @ RC-REJECT T=
-   s" E-UNDEFINED habu: in hr-definer: undefined word 'HR-NO-SUCH-WORD'" SAYS ;
+   RC @ RC-THROW T=
+   s" E-UNDEFINED habu: in hr-definer: undefined word 'HR-NO-SUCH-WORD'" SAYS
+   s" ncomp: cannot compile HR-DEFINER at HR-NO-SUCH-WORD" SAYS ;
 
 \ The source pre-pass marks the wordlist a rendering statement runs in, and a
 \ word it never saw defined there is left to the run (checker verdict 2) rather
-\ than refused. An unsigned body naming one has no effect either.
+\ than refused. An unsigned body naming one has no effect, and no declaration
+\ to compile against.
 : RENDERING$ ( -- ptr u8 n )
    S\" : HR-MAKE ( -- ) s\" : HR-SEVEN ( -- n ) 7 ;\" INCLUDE-EVALUATE ; HR-MAKE" ;
 
@@ -129,9 +152,22 @@ variable RC
    RC @ RC-REJECT T=
    s" E-UNDEFINED habu: in hr-unseen: undefined word 'HR-SEVEN'" SAYS ;
 
-\ Multi-error mode records a rejected body's declaration (src/core/checker.f
-\ CHECK), so the compiler has an effect and compiles it; the reject it counts
-\ is still printed.
+\ A declaration the checker cannot record leaves no row either: the refusal is
+\ the reject status, and the definition retracts nothing. The checker interns
+\ the name before it refuses the declaration, and at top level the bare name
+\ binds that rowless global, so the subject closes this package first.
+: UNRECORDED$ ( -- ptr u8 n )
+   s" ;package 1 set-tier 0 set-check : HR-UNRECORDED ( n -- no-such-type ) ;" ;
+
+: SESSION-UNRECORDED ( -- )
+   s" an unrecordable declaration is refused with the reject status" T-LABEL
+   UNRECORDED$ SESSION
+   RC @ RC-REJECT T=
+   s" habu: in hr-unrecorded: unknown type 'no-such-type' in signature" SAYS ;
+
+\ Multi-error mode records a rejected body's declaration as a recovery fact
+\ (src/core/checker.f CHECK), which the declared row leaves in place; the reject
+\ it counts is still printed.
 : RECORDED$ ( -- ptr u8 n )
    s" 1 set-tier 0 set-check MULTI-ERR-BEGIN : HR-KEPT ( n -- bool ) 1 + ; 5 HR-KEPT . MULTI-ERR-END . cr" ;
 
@@ -171,7 +207,7 @@ variable RC
 
 \ The copy's util.f is the checkout's with one definition appended. A window
 \ build exits RC-BUILD for any failure (tools/native-build-core.f EXIT-RC), so
-\ the reason and the refusal's status are read from what the build printed.
+\ the reason and the refusal's code are read from what the build printed.
 : BUILD-PROBE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" src/core/util.f" UTIL$ COPY-FILE-STREAM
    UTIL$ a u APPEND-FILE
@@ -185,12 +221,12 @@ variable RC
    OUT CAP >LEN ERR CAP >LEN BUILD-TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT ;
 
-: WINDOW-UNDEFINED ( -- )
-   s" the window's prefix names a callee it does not define" T-LABEL
-   S\" : PROBE-NZ ( n -- bool ) NO-SUCH-PROBE-WORD ;\n" BUILD-PROBE
-   RC @ RC-BUILD T=
-   s" E-UNDEFINED habu: in probe-nz: undefined word 'NO-SUCH-PROBE-WORD'" SAYS
-   s" native-build: uncaught throw code 70" PRINTS ;
+: WINDOW-DECLARED ( -- )
+   s" the window's prefix compiles a refused body against its declaration" T-LABEL
+   S\" : PROBE-NZ ( n -- n ) 0= ;\n" BUILD-PROBE
+   RC @ 0 T=
+   s" habu: in probe-nz: at '0='" SAYS
+   s" native-build OK" PRINTS ;
 
 \ `0<>` is lib/prelude.f's, which the window has not loaded at util.f.
 : WINDOW-PRELUDE ( -- )
@@ -198,19 +234,22 @@ variable RC
    S\" : PROBE-NZ ( n -- bool ) 0<> ;\n" BUILD-PROBE
    RC @ RC-BUILD T=
    s" E-UNDEFINED habu: in probe-nz: undefined word '0<>'" SAYS
-   s" native-build: uncaught throw code 70" PRINTS ;
+   s" ncomp: cannot compile PROBE-NZ at 0<>" SAYS
+   s" native-build: uncaught throw code -8286" PRINTS ;
 
 : RUN ( -- )
    T-RESET
+   SESSION-DECLARED
    SESSION-UNEVEN
    SESSION-UNDEFINED
    SESSION-DEFINER
    SESSION-UNSEEN
+   SESSION-UNRECORDED
    SESSION-RECORDED
    SETUP
    s" native-hookless-reject artifacts: " type ROOT$ type cr
    TREE$ TREE-COPY:BUILD-SOURCES
-   WINDOW-UNDEFINED
+   WINDOW-DECLARED
    WINDOW-PRELUDE
    T-REPORT ;
 

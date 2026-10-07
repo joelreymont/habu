@@ -20,7 +20,10 @@
 \   a child that ends without a result reads as a verdict                 no-result, deadline
 \   a child that dies drops the packets it made before                    no-result
 \   a statement the source leaves open is no refusal, or is not placed
-\   at its opener in its file                                             open-stop
+\   at its opener in its file, or its record not among the packets        open-stop
+\   a closure the walk cannot follow, a string or locals group never
+\   closed, a dynamic loader path, a missing or unreadable required
+\   file, stops with no status line                  disc-stop, closure-line
 \   a stop drops the packets made before it, or names another file than
 \   the one it is in, a dependency's or the subject's                     stop-after-packet
 \   a nested duplicate drops earlier all-errors packets                   duplicate-after-packet
@@ -31,12 +34,65 @@
 \   a child that dies after a duplicate drops its record                  duplicate-then-dies
 \   a complete answer followed by a failed process exit leaks framing or
 \   invents a duplicate, or loses two identical real duplicates   unclean-answer
-\   a closure that cannot be followed reads as verified                   missing-dependency
-\   output past the capture loses the packets received before it, or
-\   puts prose on --verify-only's stderr                                  truncated, cli-truncated
+\   a closure that cannot be followed reads as verified, or is no packet at
+\   the form that stops it                          missing-dependency, loader-form
+\   a closure wider than a fixed table is refused                         wide-closure
+\   output past 4 MiB is cut short, or puts prose on --verify-only's
+\   stderr                                              whole-output, cli-whole-output
 \   --verify-only drops stdin's closure, names the subject otherwise
 \   than the operation, or writes prose on stderr                         cli-file, cli-stdin
 \   --stdin-path or --verify-only is taken where it means nothing         cli-usage
+\   a definition line reaches --verify-only's output                      cli-file
+\   a retained definition has no line, or a name other than as written,
+\   a package or visibility other than the checker's record of it, a span
+\   other than the token that declared it, or a name a definer generates
+\   or a family has one before the checker reports it                     definitions
+\   a refused body without a kept signature has a line, or one with it,
+\   or a deferred body, has none, or one after an undeclared parser has
+\   one                                                                   definitions-refused
+\   a name defined again after undefine loses a line                      definitions-undefine
+\   a dependency's definitions are dropped, or named by the subject       definitions-dependency
+\   a file a check read has no file line or several, or one it did not
+\   read has one                                                          files
+\   a use bound to a located declaration has no line, a range other than
+\   its token's, or a target other than the token that declared it: a
+\   body's call, a quotation's, ['], is, a top-level call and tick, an
+\   export operand, a generates: definer                                  uses
+\   a use binds other than the declaration its scope selects: private
+\   over global, a used public, a qualified name, an export's alias       uses
+\   a use of a dependency's or its dependency's declaration names another
+\   file; a use inside a dependency, or of a word the engine provides,
+\   has a line; a use line reaches --verify-only's output                 uses
+\   an ambiguous, shadowed or undefined name has a target, or the scan
+\   binds nothing after them                                              uses-refused
+\   a use binds other than the declaration undefine left visible          uses-order
+\   a use of a refused body's kept signature has no target, or a use of
+\   a refused signature type, which retains nothing, has one              uses-recovery
+\   a use of a body the checker defers has no target, or the name only
+\   its run defines has one                                               uses-deferred
+\   a refused duplicate takes the uses after it                           uses-duplicate
+\   a declaration loses or moves its location when the store or the
+\   location table grows                                                  uses-growth
+\   a cursor's word is missing, or names a declaration other than the one
+\   it binds: a body's prefix, an engine word the body has not used, a
+\   word a TRUSTED: body before it declares; or the body's own word, or a
+\   word declared after it, is offered                                    cands-body
+\   a top-level cursor in a blank, at a prefix or at the end offers
+\   nothing                                                               cands-top
+\   a cursor in a name, a signature, a comment, a string, a TRUSTED: body,
+\   a type's name, a deferred stretch or a body the scan never reaches
+\   offers a word                                                         cands-none
+\   a tick or is target offers a local                                    cands-targets
+\   two locals that differ only in case merge, or lose their spelling     cands-locals
+\   a used public is offered before its using or after it, or a name two
+\   used publics export or one shadows a global with                      cands-refused
+\   a word undefine retired is offered, or its redefinition with the
+\   bytes of the first                                                    cands-order
+\   a word binds other than its scope selects, or names another file:
+\   private over global, a used public, a qualified public, a qualified
+\   export's tail; a cursor is placed in a dependency's bytes             cands-scopes
+\   the cursor changes the verdict, packets, definitions, uses or files,
+\   or --verify-only writes a candidate line                              cands-observer
 \   a source path exceeds the CLI's slot and leaks engine text on stderr cli-path-capacity
 \   the child runs on the working directory's bin/hb, or is that
 \   directory's tools/check-verify-child.f                                check-test: file-load-context
@@ -52,18 +108,32 @@
 \   a parsing word's operand is resolved, or the stretch after it is
 \   resolved, passed over in silence or answered verified                 top-deferred
 \   a dependency's deferred stretch hides a caller token, or is forgotten top-nested-deferred
+\   a declared parsing word's operand is read as code, a definer or `:`,
+\   or the check stops at it or before what follows                       top-parses-bound
+\   a through form's operands are read as code across lines, or a
+\   prefix token spelled like an end closes it                            top-parses-through
+\   a row binds a spelling: a defer, a resident word, a wrapper, a
+\   package's own parses: or a retired binding is bounded, or an EXPORT
+\   loses it                                                              top-parses-opaque
+\   a malformed or misplaced row loads, or is refused for another reason  top-parses-row
+\   a declarer loses its identity, the binding query raises or answers a
+\   refused name, a rolled-back row survives, a lost field falls back     top-parses-whitebox
 \   the tokens after a word that renders source are deferred, though it
 \   reads none of them, or a name its text may define, bare or
 \   qualified, is refused                                                 top-renders
 \   the operand or product of a word that defines a name it reads when it
-\   runs - its body calls create, or calls such a word - is refused       top-create
+\   runs - its body calls create, or calls such a word - is refused, or
+\   the check goes on past one no row bounds                              top-create
 \   a TRUSTED: word is taken to do other than the calls its body binds do,
 \   or than anything when one of them binds to nothing                    top-trusted
 \   kernel: is not taken as : is, or its refused body ends the scan       top-kernel
 \   an open package's own qualified name the engine finds in the global
-\   wordlist is refused, or that fallback reaches past the package        top-package-tail
-\   a name a deferred word may define is refused after its stretch        top-defer-word
-\   a deferred word followed only by comments is reported deferred        top-defer-comment
+\   wordlist is refused, or that fallback reaches past the package or
+\   misses the row of the word it finds                                   top-package-tail
+\   a name a deferred word may define is refused after its call           top-defer-word
+\   a deferred word followed only by comments is answered verified        top-defer-comment
+\   a definition left to the run is answered verified, or not reported
+\   where the checker's judgment of it stops                              def-deferred
 \   a name the load accepts at top level is refused                       top-accepted
 \
 \ `measure` prints the time of one check of a one-definition subject and of
@@ -94,11 +164,10 @@ package CHECK-VERIFY-TEST
 \ What a child of this test may write on either stream: check.f's packets from
 \ a full capture of the verifier's output fit.
 $800000 constant CAP
-\ CHECK's capture of the verifier child's stdout, and room for one packet.
-$400000 constant OUT-CAPTURE
-$1000 constant PACKET-ROOM
+\ What the verifier child's stdout once held at most: CHECK's fixed capture.
+$400000 constant OLD-CAPTURE
 \ big.f's definitions, each a packet of some 500 bytes: more in all than
-\ OUT-CAPTURE.
+\ OLD-CAPTURE.
 10000 constant BIG-DEFS
 
 create ROOT FS-PATH-CAP allot
@@ -228,6 +297,12 @@ variable CLI-OUT-U
    repeat ;
 
 
+\ How many JSON objects LINES holds.
+: OBJECTS ( ptr u8 n -- n )
+   JSONL-START 0
+   begin JSONL-NEXT-OBJECT 0 >= while 1+ repeat ;
+
+
 \ Every line is a JSON object: the strict reader refuses a line that is not
 \ JSON, E-JSON-SYNTAX, or not an object, E-JSON-TYPE.
 : ALL-JSON? ( ptr u8 n -- bool )
@@ -315,9 +390,15 @@ variable CLI-OUT-U
 : DUP-LATE$SRC ( -- ptr u8 n )
    s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n: LATE ( n -- n ) drop ;\n" ;
 
-\ A refused definition, then a `generates:` row with no definer name.
-: BARE-GENERATES$SRC ( -- ptr u8 n )
-   s\" : CVT-BAD-GEN ( -- n n ) 8 ;\ngenerates:\n" ;
+\ A refused definition, then one `using` more than the checker holds open at
+\ once (CK-USE-MAX, the engine's USE-MAX).
+CK-USE-MAX 1 + constant OVER-USINGS
+
+: OVER-USING$SRC ( -- ptr u8 n )
+   0 GEN-U !
+   s\" : CVT-REFUSED ( -- n n ) 8 ;\n" GEN+
+   OVER-USINGS 0 ?do s\" using SOURCE-ROOT\n" GEN+ loop
+   0 GEN GEN-U @ ;
 
 : FIXTURES ( -- )
    s" cvt" HB-TMP-MKDIR SOURCE-ROOT:CANONICAL drop ROOT ROOT-U COPY!
@@ -334,6 +415,10 @@ variable CLI-OUT-U
    s" order-context-dep.f" s\" package CVT-CONTEXT public\n: USE ( -- n ) VALUE ;\n;package\n" FIXTURE
    s" order-context.f" s\" require order-dep.f\nusing CVT-ORDER\nrequire order-context-dep.f\n;using\n" FIXTURE
    s" order-package-dep.f" s\" : CVT-PKG-VALUE ( -- n ) 3 ;\n" FIXTURE
+   s" files-mid.f" s\" require files-nested.f\n" FIXTURE
+   s" files-nested.f" s\" : CVT-NESTED ( -- n ) 4 ;\n" FIXTURE
+   s" files-inc.f" s\" \\ no definition\n" FIXTURE
+   s" files-unread.f" s\" : CVT-UNREAD ( -- n ) 5 ;\n" FIXTURE
    s" order-package.f" s\" package CVT-PKG public\nrequire order-package-dep.f\n;package\n: CVT-PKG-USE ( -- n ) CVT-PKG:CVT-PKG-VALUE ;\n" FIXTURE
    s" order-floor-child.f" s\" ;package\nusing CVT-FLOOR-CHILD\n" FIXTURE
    s" order-floor-include.f" s\" package CVT-FLOOR-BASE public\n: BASE-VALUE ( -- n ) 11 ;\n;package\npackage CVT-FLOOR-CHILD public\n: CHILD-VALUE ( -- n ) 29 ;\n;package\npackage CVT-FLOOR-PARENT\nusing CVT-FLOOR-BASE\ninclude order-floor-child.f\npackage CVT-FLOOR-AFTER public\n: AFTER-VALUE ( -- n ) CHILD-VALUE ;\n;package\n" FIXTURE
@@ -439,7 +524,9 @@ variable CLI-OUT-U
 
 
 \ An open definition stops the verifier at its opener (7155, a code private to
-\ src/habu/verify-source.f): a refusal with no packet that says where.
+\ src/habu/verify-source.f): a refusal that says where, and the stop's record,
+\ the one `check.f --verify-only` writes, in VERIFY-OUT$ for a client to
+\ publish.
 : OPEN-STOP ( -- )
    s\" : CVT-OPEN ( -- n ) 1\n" s" open.f" GUARD-MS CHECK-AS {: v :}
    v 1 s" open-stop: refused" EXPECT-KIND
@@ -447,21 +534,74 @@ variable CLI-OUT-U
    s" open-stop: the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
    s" open-stop: its name" T-LABEL CHECK:VERIFY-STOPPED$ SUBJ$ T$=
    s" open-stop: at the opener" T-LABEL CHECK:VERIFY-STOP-AT 0 T=
-   s" open-stop: no packet" T-LABEL CHECK:VERIFY-OUT$ nip 0 T= ;
+   CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:n :}
+   s" open-stop: its record names the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
+   s" open-stop: with the code" T-LABEL p s" throw_code" NUMBER$ s" 7155" T$=
+   s" open-stop: at the opener's line" T-LABEL p s" line" NUMBER$ s" 1" T$=
+   s" open-stop: and column" T-LABEL p s" column" NUMBER$ s" 1" T$= ;
+
+
+\ The walk stops at a closure it cannot follow before any child runs: SRC,
+\ checked as the fixture NAME, is refused, and its status line, the one
+\ `check.f --verify-only` prints on stdout, is the line the xt builds, the file
+\ that ended the walk and why.
+: STOP-LINE ( ptr u8 n ptr u8 n ptr u8 n [ -- ] -- )
+   {: src:ptr srcu:n name:ptr nameu:n label:ptr labelu:n line :}
+   src srcu name nameu GUARD-MS CHECK-AS {: v :}
+   v 1 label labelu EXPECT-KIND
+   SB-RESET
+   line execute
+   $0a SB-APPEND-C
+   label labelu T-LABEL CHECK:VERIFY-LOG$ SB$ T$= ;
+
+\ A string or a locals group the bytes never close stops discovery at it.
+: DISC-STOP ( -- )
+   s\" : CVT-STR ( -- ) s\" abc ;\n" s" disc.f"
+   s" disc-stop: an open string's status line"
+   [: SUBJ$ SB-APPEND
+      s" : discovery rejected: unterminated string or locals group" SB-APPEND ;]
+   STOP-LINE
+   s\" : CVT-LOC ( n -- n ) {: a\n" s" disc.f"
+   s" disc-stop: an open locals group's status line"
+   [: SUBJ$ SB-APPEND
+      s" : discovery rejected: unterminated string or locals group" SB-APPEND ;]
+   STOP-LINE ;
+
+\ A loader path discovery cannot follow, and a required file that is not there
+\ or that the file system will not read (the census's dyn-loader.f and
+\ missing-require.f, and a file whose mode forbids reading it), each in the
+\ subject.
+: CLOSURE-LINE ( -- )
+   s\" : H1 ( n -- n ) 1 + ;\ns\" x.f\" 2dup + drop included\n" s" dyn-loader.f"
+   s" closure-line: a dynamic loader path's status line"
+   [: SUBJ$ SB-APPEND
+      s" : discovery rejected: dynamic (non-literal) loader path" SB-APPEND ;]
+   STOP-LINE
+   s\" require nosuch-lib.f\n: H1 ( n -- n ) 1 + ;\n" s" missing-require.f"
+   s" closure-line: a missing source's status line"
+   [: s" nosuch-lib.f" AT$ SB-APPEND s" : no such source" SB-APPEND ;]
+   STOP-LINE
+   s" locked-line.f" s\" \\ locked\n" FIXTURE
+   s" locked-line.f" AT$ 0 CHMOD-MODE
+   s\" require locked-line.f\n" s" unread-line.f"
+   s" closure-line: an unreadable source's status line"
+   [: s" cannot read " SB-APPEND s" locked-line.f" AT$ SB-APPEND ;]
+   STOP-LINE ;
 
 
 \ The verifier dies after it refused a definition: no result line, its exit and
-\ its words, and the packet it made first is kept. The input is the
-\ pre-verifier's generates: reader die (src/habu/verify-source.f
-\ RECORD-GENERATES, `74 die`); dot 8e9f3e62 turns it into a refusal and
-\ re-points this case.
+\ its words, and the packet it made first is kept. The input's last `using` is
+\ one past what the checker holds open: CHECKER-USING's `76 die`
+\ (src/core/checker.f), which `--load` refuses as ENGINE-ERROR:USING-OVERFLOW.
+\ The bare `generates:` this case read before no longer kills the verifier: it
+\ stops it at the reader (7187, E-MISSING-NAME).
 : NO-RESULT ( -- )
-   BARE-GENERATES$SRC s" bare-generates.f" GUARD-MS CHECK-AS {: v :}
+   OVER-USING$SRC s" over-using.f" GUARD-MS CHECK-AS {: v :}
    v 4 s" no-result: incomplete" EXPECT-KIND
-   s" no-result: the child's exit" T-LABEL v STATUS 74 T=
+   s" no-result: the child's exit" T-LABEL v STATUS 76 T=
    s" no-result: the child's words" T-LABEL
-   CHECK:VERIFY-LOG$ s" missing generates: definer name" CONTAINS? TTRUE
-   CHECK:VERIFY-OUT$ s" word" s" cvt-bad-gen" PACKET {: p:n :}
+   CHECK:VERIFY-LOG$ s" checker: using stack overflow" CONTAINS? TTRUE
+   CHECK:VERIFY-OUT$ s" word" s" cvt-refused" PACKET {: p:n :}
    s" no-result: the packet made first" T-LABEL p s" file" STRING$ SUBJ$ T$= ;
 
 
@@ -495,25 +635,87 @@ variable CLI-OUT-U
    CHECK:VERIFY-STOP-AT own ownu LINE-TWO T= ;
 
 
+\ A require of a file that is not there refuses the subject, with a packet at
+\ the loader word that names it, in the file that holds the word.
 : MISSING-DEPENDENCY ( -- )
-   s\" require cvt-missing.f\n" s" lost.f" GUARD-MS CHECK-AS
+   s\" \\ lost\nrequire cvt-missing.f\n" s" lost.f" GUARD-MS CHECK-AS
    1 s" missing-dependency: refused" EXPECT-KIND
-   s" missing-dependency: said so" T-LABEL
-   CHECK:VERIFY-LOG$ s" cvt-missing.f: no such source" CONTAINS? TTRUE
-   s" missing-dependency: no packet" T-LABEL CHECK:VERIFY-OUT$ nip 0 T= ;
+   CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET {: p:n :}
+   s" missing-dependency: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
+   s" missing-dependency: at the loader word" T-LABEL p s" token" STRING$ s" require" T$=
+   s" missing-dependency: its line" T-LABEL p s" line" NUMBER$ s" 2" T$=
+   s" missing-dependency: its column" T-LABEL p s" column" NUMBER$ s" 1" T$= ;
 
 
-: CHECK-BIG ( -- )
-   BIG$SRC s" big.f" GUARD-MS CHECK-AS KIND drop ;
+\ A loader form discovery cannot follow, in a file the subject requires: a
+\ packet at that form, in that file.
+: LOADER-FORM ( -- )
+   s" dyn-dep.f" s\" \\ dyn\nPATH$ included\n" FIXTURE
+   s\" require dyn-dep.f\n" s" dyn-use.f" GUARD-MS CHECK-AS
+   1 s" loader-form: refused" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET {: p:n :}
+   s" loader-form: in the dependency" T-LABEL p s" file" STRING$ s" dyn-dep.f" AT$ T$=
+   s" loader-form: at the loader word" T-LABEL p s" token" STRING$ s" included" T$=
+   s" loader-form: its line" T-LABEL p s" line" NUMBER$ s" 2" T$=
+   s" loader-form: its column" T-LABEL p s" column" NUMBER$ s" 7" T$= ;
 
-\ More packets than the capture holds: the throw, with every complete packet
-\ received before it.
-: TRUNCATED ( -- )
-   [: CHECK-BIG ;] E-PROC-TRUNCATED TTHROWSQ
+
+\ A require of a file the file system will not read refuses the subject, with
+\ a packet at the loader word that names it.
+: UNREADABLE-DEPENDENCY ( -- )
+   s" locked-dep.f" s\" \\ locked\n" FIXTURE
+   s" locked-dep.f" AT$ 0 CHMOD-MODE
+   s\" \\ unread\nrequire locked-dep.f\n" s" unread.f" GUARD-MS CHECK-AS
+   1 s" unreadable-dependency: refused" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" code" s" E-UNREADABLE-SOURCE" PACKET {: p:n :}
+   s" unreadable-dependency: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
+   s" unreadable-dependency: at the loader word" T-LABEL p s" token" STRING$ s" require" T$=
+   s" unreadable-dependency: its line" T-LABEL p s" line" NUMBER$ s" 2" T$= ;
+
+
+\ A literal path within the 1024 bytes a loader word takes that resolves past
+\ them refuses the subject, with a packet at the loader word.
+: LONG-RESOLVED ( -- )
+   0 GEN-U !
+   s" require " GEN+
+   496 0 ?do s" a/" GEN+ loop
+   s\" absent.f\n" GEN+
+   0 GEN GEN-U @ s" long.f" GUARD-MS CHECK-AS
+   1 s" long-resolved: refused" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET {: p:n :}
+   s" long-resolved: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
+   s" long-resolved: at the loader word" T-LABEL p s" token" STRING$ s" require" T$=
+   s" long-resolved: its line" T-LABEL p s" line" NUMBER$ s" 1" T$= ;
+
+
+\ A closure wider than a fixed table held: the subject and WIDE-N files it
+\ requires.
+130 constant WIDE-N
+
+: WIDE-NAME ( n -- ptr u8 n )
+   SB-RESET s" cvt-w" SB-APPEND FMT:SB-INT s" .f" SB-APPEND SB$ ;
+
+: WIDE-CLOSURE ( -- )
+   0 GEN-U !
+   WIDE-N 0 ?do
+      i WIDE-NAME s\" \\ one of many\n" FIXTURE
+      s" require " GEN+ i WIDE-NAME GEN+ s\" \n" GEN+
+   loop
+   s\" : CVT-WIDE ( -- n ) 1 ;\n" GEN+
+   0 GEN GEN-U @ s" wide.f" GUARD-MS CHECK-AS
+   0 s" wide-closure: verified" EXPECT-KIND ;
+
+
+\ More packets than OLD-CAPTURE held: every one, each complete, the last
+\ definition's among them.
+: WHOLE-OUTPUT ( -- )
+   BIG$SRC s" big.f" GUARD-MS CHECK-AS 1 s" whole-output: refused" EXPECT-KIND
    CHECK:VERIFY-OUT$ {: out:ptr outu:n :}
-   s" truncated: the packets fill the capture" T-LABEL
-   outu OUT-CAPTURE PACKET-ROOM - > TTRUE
-   s" truncated: each complete" T-LABEL out outu ALL-JSON? TTRUE ;
+   s" whole-output: past the old capture" T-LABEL outu OLD-CAPTURE > TTRUE
+   s" whole-output: each complete" T-LABEL out outu ALL-JSON? TTRUE
+   s" whole-output: every packet" T-LABEL out outu OBJECTS BIG-DEFS T=
+   s" whole-output: the last" T-LABEL
+   out outu s" word" s" cvt-b9999" PACKET 0 >= TTRUE ;
 
 
 \ ---- the command line ------------------------------------------------------
@@ -551,6 +753,8 @@ variable CLI-OUT-U
    s" " CLI {: erru:n rc:n :}
    s" cli-file: verified" T-LABEL rc 0 T=
    s" cli-file: nothing on stderr" T-LABEL erru 0 T=
+   s" cli-file: no definition line" T-LABEL
+   0 OUT CLI-OUT-U @ s\" \"visibility\"" CONTAINS? TFALSE
    s" pos.f" s\" \n\n\n: CVT-POS ( n -- n ) drop ;\n" FIXTURE
    CLI-START s" --verify-only" ARG+ s" pos.f" AT$ ARG+
    s" " CLI {: erru2:n rc2:n :}
@@ -681,12 +885,12 @@ $180000 constant LARGE-STDIN-LEN
    0 ERR erru4 s" check.f: source path exceeds capacity" CONTAINS? TTRUE ;
 
 
-: CLI-TRUNCATED ( -- )
+: CLI-WHOLE-OUTPUT ( -- )
    CLI-START s" --verify-only" ARG+ s" big.f" AT$ ARG+
    s" " CLI {: erru:n rc:n :}
-   s" cli-truncated: unavailable" T-LABEL rc 69 T=
-   s" cli-truncated: the packets on stderr" T-LABEL erru OUT-CAPTURE PACKET-ROOM - > TTRUE
-   s" cli-truncated: only packets on stderr" T-LABEL 0 ERR erru ALL-JSON? TTRUE ;
+   s" cli-whole-output: refused" T-LABEL rc 70 T=
+   s" cli-whole-output: only packets on stderr" T-LABEL 0 ERR erru ALL-JSON? TTRUE
+   s" cli-whole-output: every packet on stderr" T-LABEL 0 ERR erru OBJECTS BIG-DEFS T= ;
 
 
 \ --deadline-ms reaches the verifier's child, and the line names the deadline.
@@ -833,7 +1037,9 @@ $180000 constant LARGE-STDIN-LEN
 
 
 \ This executable Habu fixture forwards the real verifier child's complete
-\ output, then fails its own process. Its shebang makes it an engine candidate
+\ output, then fails its own process. For unclean-first-dup.f it forwards it
+\ only through the first duplicate line, for unclean-two-dups.f through the
+\ second, as a child that died there. Its shebang makes it an engine candidate
 \ while leaving the verifier and its packet writer on the normal load path.
 : UNCLEAN-FIXTURE ( -- )
    0 GEN-U !
@@ -841,7 +1047,8 @@ $180000 constant LARGE-STDIN-LEN
    S\" require lib/process.f\nrequire lib/process-argv.f\nrequire lib/process-env.f\nrequire lib/engine-id.f\nrequire lib/string.f\npackage CVT-UNCLEAN\nDYNAMIC-BUFFER SRC u8\nDYNAMIC-BUFFER OUT u8\nDYNAMIC-BUFFER ERR u8\nvariable SRC-U\n" GEN+
    S\" : ARGS ( -- )\n   PROC-ARGV-ENV-RESET\n   s\" --load\" >LEN PROC-ARGV+\n   s\" tools/check-verify-child.f\" >LEN PROC-ARGV+\n   s\" --\" >LEN PROC-ARGV+\n   SCRIPT-ARGC 0 ?do i SCRIPT-ARGV$ >LEN PROC-ARGV+ loop\n   PROC-ENV-INHERIT-MISSING ;\n" GEN+
    S\" : INPUT ( -- )\n   0 SRC-U !\n   begin SRC-U @ 4096 < while\n      0 SRC-U @ SRC 4096 SRC-U @ - read\n      dup 0< if s\" read failed\" 74 die then\n      dup 0= if drop exit then\n      SRC-U +!\n   repeat ;\n" GEN+
-   S\" : FIRST-LINE ( n -- n ) {: u:n :}\n   u 0 ?do i OUT c@ 10 = if i 1+ unloop exit then loop u ;\n: SECOND-LINE ( n -- n ) {: u:n :}\n   u u FIRST-LINE ?do i OUT c@ 10 = if i 1+ unloop exit then loop u ;\npublic\n: MAIN ( -- )\n   4096 SRC-RESERVE 65536 OUT-RESERVE 65536 ERR-RESERVE\n   INPUT ARGS\n   ENGINE-ID:PATH$ >LEN 0 SRC SRC-U @ >LEN\n   0 OUT 65536 >LEN 0 ERR 65536 >LEN 60000 >MS\n   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len o :}\n   o MATCH outcome\n      exited OF 0<> if s\" real verifier failed\" 74 die then ENDOF\n      signaled OF drop s\" real verifier signaled\" 74 die ENDOF\n      timeout OF s\" real verifier timed out\" 74 die ENDOF\n   ;MATCH\n   SCRIPT-ARGC 1- SCRIPT-ARGV$ s\" unclean-first-dup.f\" CONTAINS?\n   if outu LEN>N FIRST-LINE else\n      SCRIPT-ARGC 1- SCRIPT-ARGV$ s\" unclean-two-dups.f\" CONTAINS?\n      if outu LEN>N SECOND-LINE else outu LEN>N then\n   then\n   0 OUT swap type\n   s\" completed child output\" 79 die ;\n;package\nCVT-UNCLEAN:MAIN\n" GEN+
+   S\" : LINE-END ( n n -- n )\n   {: at:n u:n :}\n   u at ?do i OUT c@ 10 = if i 1+ unloop exit then loop u ;\n" GEN+
+   S\" : DUP-END ( n n -- n )\n   {: u:n :}\n   begin\n      {: at:n :}\n      at u >= if u exit then\n      at u LINE-END\n      {: end:n :}\n      at OUT end at - s\" check-verify: duplicate \" STARTS-WITH? if end exit then\n      end\n   again ;\npublic\n: MAIN ( -- )\n   4096 SRC-RESERVE 65536 OUT-RESERVE 65536 ERR-RESERVE\n   INPUT ARGS\n   ENGINE-ID:PATH$ >LEN 0 SRC SRC-U @ >LEN\n   0 OUT 65536 >LEN 0 ERR 65536 >LEN 60000 >MS\n   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len o :}\n   o MATCH outcome\n      exited OF 0<> if s\" real verifier failed\" 74 die then ENDOF\n      signaled OF drop s\" real verifier signaled\" 74 die ENDOF\n      timeout OF s\" real verifier timed out\" 74 die ENDOF\n   ;MATCH\n   SCRIPT-ARGC 1- SCRIPT-ARGV$ s\" unclean-first-dup.f\" CONTAINS?\n   if 0 outu LEN>N DUP-END else\n      SCRIPT-ARGC 1- SCRIPT-ARGV$ s\" unclean-two-dups.f\" CONTAINS?\n      if 0 outu LEN>N DUP-END outu LEN>N DUP-END else outu LEN>N then\n   then\n   0 OUT swap type\n   s\" completed child output\" 79 die ;\n;package\nCVT-UNCLEAN:MAIN\n" GEN+
    s" unclean.f" 0 GEN GEN-U @ FIXTURE
    s" unclean.f" AT$ CHMOD-X ;
 
@@ -1188,18 +1395,24 @@ $180000 constant LARGE-STDIN-LEN
 
 \ The tokens a word that parses its own input reads cannot be known without
 \ running it. Loaded, CVT-GRAB takes NOSUCH, and NOSUCH2 is E-UNDEFINED, exit
-\ 70; alone, the first two lines load. The stretch from CVT-GRAB to the next
-\ definition is deferred to the run where it starts, and a token after that
-\ definition is resolved again.
+\ 70; alone, the first two lines load. Undeclared, CVT-GRAB is deferred to the
+\ run where it stands and the scan discovers nothing after it, since what it
+\ reads may be any of the rest. A `parses:` row bounds what it reads, and a
+\ token past its operand is resolved again.
 : TOP-DEFERRED ( -- )
    s\" : CVT-GRAB ( -- ) parse-name 2drop ;\nCVT-GRAB NOSUCH\n: CVT-AFTER ( -- n ) 1 ;\nNOSUCH2 drop\n" TOP-CHECK
-   1 s" top-deferred: refused after the stretch" EXPECT-KIND
+   5 s" top-deferred: undeclared, deferred" EXPECT-KIND
+   s" top-deferred: undeclared, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-deferred: undeclared, the word" s" CVT-GRAB" s" W-CHECK-DEFERRED" s" 2" s" 1" TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$=
+   s\" : CVT-GRAB ( -- ) parse-name 2drop ;\nparses: CVT-GRAB 1\nCVT-GRAB NOSUCH\n: CVT-AFTER ( -- n ) 1 ;\nNOSUCH2 drop\n" TOP-CHECK
+   1 s" top-deferred: refused past the operand" EXPECT-KIND
    s" top-deferred: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-deferred: nothing names the operand" T-LABEL
    CHECK:VERIFY-OUT$ s" token" s" NOSUCH" PACKET 0 < TTRUE
-   s" top-deferred: the stretch" s" CVT-GRAB" s" W-CHECK-DEFERRED" s" 2" s" 1" TOP-PACKET
+   s" top-deferred: the call" s" CVT-GRAB" s" W-CHECK-DEFERRED" s" 3" s" 1" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$=
-   s" top-deferred: past the stretch" s" NOSUCH2" s" E-UNDEFINED-TOP-LEVEL" s" 4" s" 1" TOP-PACKET
+   s" top-deferred: past the operand" s" NOSUCH2" s" E-UNDEFINED-TOP-LEVEL" s" 5" s" 1" TOP-PACKET
    s" verdict" STRING$ s" rejected" T$=
    s\" : CVT-GRAB ( -- ) parse-name 2drop ;\nCVT-GRAB NOSUCH\n" TOP-CHECK
    5 s" top-deferred: alone, deferred" EXPECT-KIND
@@ -1208,11 +1421,20 @@ $180000 constant LARGE-STDIN-LEN
    s" verdict" STRING$ s" deferred" T$= ;
 
 
-\ A pending file load after a definition scans its own deferred stretch. Its
-\ warning contributes to the composed verdict, while the caller resumes with
-\ its own top-level state and refuses the malformed qualified token.
+\ A pending file load after a definition scans its own deferred word. Its
+\ warning contributes to the composed verdict. Undeclared, the dependency's
+\ GRAB may read any of the rest and change the scope the caller goes on in, so
+\ the caller discovers nothing after it either. With GRAB's operand declared
+\ the caller resumes with its own top-level state and refuses the malformed
+\ qualified token.
 : TOP-NESTED-DEFERRED ( -- )
    s" nested-dep.f" s\" : GRAB ( -- ) parse-name 2drop ;\nGRAB x\n" FIXTURE
+   s\" : LOADDEP ( -- ) s\" nested-dep.f\" required ;\nQ:R:S\n" TOP-CHECK
+   5 s" top-nested-deferred: undeclared, deferred" EXPECT-KIND
+   s" top-nested-deferred: undeclared, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-nested-deferred: undeclared, dependency warning" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" GRAB" PACKET s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   s" nested-dep.f" s\" : GRAB ( -- ) parse-name 2drop ;\nparses: GRAB 1\nGRAB x\n" FIXTURE
    s\" : LOADDEP ( -- ) s\" nested-dep.f\" required ;\nQ:R:S\n" TOP-CHECK
    1 s" top-nested-deferred: refused" EXPECT-KIND
    s" top-nested-deferred: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
@@ -1226,6 +1448,315 @@ $180000 constant LARGE-STDIN-LEN
    s\" : LOADDEP ( -- ) s\" nested-dep.f\" required ;\n7 drop\n" TOP-CHECK
    5 s" top-nested-deferred: warning survives" EXPECT-KIND
    s" top-nested-deferred: only warning" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T= ;
+
+
+\ A deferred check whose only packet is the call TOKEN on LINE at COLUMN.
+: DEFERRED-ONLY ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: v label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
+   v 5 label labelu EXPECT-KIND
+   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   label labelu tok toku s" W-CHECK-DEFERRED" line lineu col colu TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$= ;
+
+
+\ A refused check of two packets: the call TOKEN deferred at the start of
+\ LINE, then the definition WORD refused with CODE.
+: BOUND-REFUSED ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: v label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n word:ptr wordu:n code:ptr codeu:n :}
+   v 1 label labelu EXPECT-KIND
+   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   label labelu tok toku s" W-CHECK-DEFERRED" line lineu s" 1" TOP-PACKET drop
+   CHECK:VERIFY-OUT$ 1 NTH-PACKET {: p:n :}
+   label labelu T-LABEL p s" word" STRING$ word wordu T$=
+   label labelu T-LABEL p s" code" STRING$ code codeu T$= ;
+
+
+\ Loaded, PN reads deftype, variable or `:` and OKW loads; F loads, and G is
+\ E-MISMATCH, exit 70. Declared, the operand is data: PN is deferred at its
+\ call, nothing names its operand, and the check goes on past it, so V is
+\ discovered, F certifies and G is refused. Undeclared, PN may read any of the
+\ rest, and the check discovers nothing after it.
+: TOP-PARSES-BOUND ( -- )
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN deftype\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-parses-bound: deftype" s" PN" s" 3" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN variable\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-parses-bound: variable" s" PN" s" 3" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN :\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-parses-bound: colon" s" PN" s" 3" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN foo\nvariable V\n: F ( -- n ) V @ ;\n: G ( -- n ) V @ V @ ;\n" TOP-CHECK
+   s" top-parses-bound: past the operand" s" PN" s" 3" s" g" s" E-MISMATCH" BOUND-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nPN foo\nvariable V\n: G ( -- n ) V @ V @ ;\n" TOP-CHECK
+   s" top-parses-bound: undeclared" s" PN" s" 2" s" 1" DEFERRED-ONLY ;
+
+
+\ Loaded, BLK reads through ;BLK and G is E-MISMATCH, exit 70. Declared, the
+\ definer, comment and string openers it reads are data, across lines, and the
+\ check resumes after the end; undeclared, BLK is deferred and nothing after it
+\ is discovered. SU reads one name, then through the first exact end: a name
+\ spelled like an end is the prefix, and either listed end closes it.
+: TOP-PARSES-THROUGH ( -- )
+   s\" require lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nparses-through: BLK 0 ( ;BLK )\nBLK deftype\n   foo\n;BLK\n: OKW ( n -- n ) 1 + ;\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-through: definer" s" BLK" s" 5" s" g" s" E-MISMATCH" BOUND-REFUSED
+   s\" require lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nBLK deftype\n   foo\n;BLK\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-through: undeclared" s" BLK" s" 4" s" 1" DEFERRED-ONLY
+   s\" require lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nparses-through: BLK 0 ( ;BLK )\nBLK ( \\ s\" .(\n  : X ;BLK\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-through: openers" s" BLK" s" 5" s" g" s" E-MISMATCH" BOUND-REFUSED
+   s\" require lib/string.f\n: SU? ( ptr u8 n -- bool )\n   {: a:ptr u:n :}\n   a u s\" ;SU\" STR=  a u s\" P:;SU\" STR=  or ;\n: SU ( -- ) parse-name 2drop begin parse-name dup 0= if 2drop exit then SU? until ;\nparses-through: SU 1 ( ;SU P:;SU )\nSU ;SU a b ;SU\nSU name c P:;SU\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   1 s" top-parses-through: suite" EXPECT-KIND
+   s" top-parses-through: suite, three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" top-parses-through: suite, first end" T-LABEL
+   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" line" NUMBER$ s" 7" T$=
+   s" top-parses-through: suite, second end" T-LABEL
+   CHECK:VERIFY-OUT$ 1 NTH-PACKET s" line" NUMBER$ s" 8" T$=
+   s" top-parses-through: suite, resumed" T-LABEL
+   CHECK:VERIFY-OUT$ 2 NTH-PACKET s" word" STRING$ s" g" T$= ;
+
+
+\ A row binds the selected definition, never its spelling. Loaded, the unset
+\ DW throws, exit 76; each other call reads its operand and G is E-MISMATCH,
+\ exit 70. A defer stays opaque under a row, and so does the resident
+\ parse-name, whose row no source states; a wrapper of a declared word
+\ inherits no row, a package's own `parses:` is an ordinary parser, and a row
+\ dies with the binding `undefine` retires, though the new PN reuses its
+\ symbol. Each is deferred, and nothing after it is discovered. An EXPORT
+\ copies the row to its alias, and a row may target the original declarer:
+\ the check goes on past both.
+: TOP-PARSES-OPAQUE ( -- )
+   s\" defer DW ( -- )\nparses: DW 1\nDW :\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-opaque: defer" s" DW" s" 3" s" 1" DEFERRED-ONLY
+   s\" parse-name foo\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-opaque: resident" s" parse-name" s" 1" s" 1" DEFERRED-ONLY
+   s\" : W ( -- ) parse-name 2drop ;\n: WR ( -- ) W ;\nparses: W 1\nWR :\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-opaque: wrapper" s" WR" s" 4" s" 1" DEFERRED-ONLY
+   s\" package Q\n: parses: ( -- ) parse-name 2drop parse-name 2drop ;\n: PN ( -- ) parse-name 2drop ;\nparses: PN 1\n;package\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-opaque: package declarer" s" parses:" s" 4" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nundefine PN\n: PN ( -- ) parse-name 2drop ;\nPN :\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-opaque: redefined" s" PN" s" 5" s" 1" DEFERRED-ONLY
+   s\" package Q\n: PN ( -- ) parse-name 2drop ;\nparses: PN 1\npublic\nEXPORT PN\n;package\nQ:PN :\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-opaque: export" s" Q:PN" s" 7" s" g" s" E-MISMATCH" BOUND-REFUSED
+   s\" parses: parses: 2\n: PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN :\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-opaque: declarer row" s" PN" s" 4" s" g" s" E-MISMATCH" BOUND-REFUSED ;
+
+
+\ A refused row: its one packet E-PARSES-ROW at TOKEN, with repair CLASS.
+: ROW-REFUSED ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: v label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n class:ptr classu:n :}
+   v label labelu tok toku s" E-PARSES-ROW" line lineu col colu REFUSED-AT
+   label labelu T-LABEL
+   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ class classu T$= ;
+
+
+\ Loaded, each row below throws E-PARSES-ROW, exit 67, naming its reason. A
+\ target that names no word, a malformed, ambiguous or shadow-refused one, and
+\ a live word that reads no source are fix_parses_row at the target; a count
+\ that is missing, not a number or negative, and a delimiter list that is
+\ empty, unopened or unclosed are fix_parses_syntax, at the keyword when no
+\ target follows it. A checked body calling a declarer or the registrar is
+\ E-UNSAFE; loaded, it is refused, exit 70.
+: TOP-PARSES-ROW ( -- )
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: NOSUCH 1\n" TOP-CHECK
+   s" top-parses-row: unknown" s" NOSUCH" s" 2" s" 9" s" fix_parses_row" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: A::B 1\n" TOP-CHECK
+   s" top-parses-row: malformed" s" A::B" s" 2" s" 9" s" fix_parses_row" ROW-REFUSED
+   s\" package A1\npublic\n: PQ ( -- ) parse-name 2drop ;\n;package\npackage A2\npublic\n: PQ ( -- ) parse-name 2drop ;\n;package\nusing A1\nusing A2\nparses: PQ 1\n;using\n;using\n" TOP-CHECK
+   s" top-parses-row: ambiguous" s" PQ" s" 11" s" 9" s" fix_parses_row" ROW-REFUSED
+   s\" package SH\npublic\n: DUP ( n -- n n ) dup ;\n;package\nusing SH\nparses: DUP 1\n;using\n" TOP-CHECK
+   s" top-parses-row: shadow" s" DUP" s" 6" s" 9" s" fix_parses_row" ROW-REFUSED
+   s\" : NP ( -- ) ;\nparses: NP 1\n" TOP-CHECK
+   s" top-parses-row: reads none" s" NP" s" 2" s" 9" s" fix_parses_row" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN\n" TOP-CHECK
+   s" top-parses-row: no count" s" PN" s" 2" s" 9" s" fix_parses_syntax" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN x\n" TOP-CHECK
+   s" top-parses-row: count" s" PN" s" 2" s" 9" s" fix_parses_syntax" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN -1\n" TOP-CHECK
+   s" top-parses-row: negative" s" PN" s" 2" s" 9" s" fix_parses_syntax" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses-through: PN 0 ( )\n" TOP-CHECK
+   s" top-parses-row: empty list" s" PN" s" 2" s" 17" s" fix_parses_syntax" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses-through: PN 0 ;E\n" TOP-CHECK
+   s" top-parses-row: unopened" s" PN" s" 2" s" 17" s" fix_parses_syntax" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses-through: PN 0 ( ;E\n" TOP-CHECK
+   s" top-parses-row: unclosed" s" PN" s" 2" s" 17" s" fix_parses_syntax" ROW-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses:\n" TOP-CHECK
+   s" top-parses-row: no target" s" parses:" s" 2" s" 1" s" fix_parses_syntax" ROW-REFUSED
+   s\" : W ( -- ) parses: ;\n" TOP-CHECK
+   1 s" top-parses-row: declarer in a body" EXPECT-KIND
+   s" top-parses-row: declarer in a body" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" parses:" PACKET s" code" STRING$ s" E-UNSAFE" T$=
+   s\" : W2 ( -- ) checker-parses-row ;\n" TOP-CHECK
+   1 s" top-parses-row: registrar in a body" EXPECT-KIND
+   s" top-parses-row: registrar in a body" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" checker-parses-row" PACKET s" code" STRING$ s" E-UNSAFE" T$= ;
+
+
+\ The rows' checker side, from loaded files that ask the live checker owner
+\ (CHECKER-OWNER-ABI) as the verifier does. Each file dies, exit 76, naming the
+\ first fact that fails, and prints NAME: ok after the last. A call of either
+\ declarer is a word the run reads source for (2) and its tick's context is
+\ unknown (-1). After the hook each declarer is its original binding: its
+\ intrinsic id and PARSES. A word calling parse-name parses with no id, and
+\ parse-name, a primitive, has no visible record a row could be keyed by.
+\ The selected-binding query answers 0 0 0 for an unknown, a malformed, a
+\ retired, a shadowed and an ambiguous name, and raises nothing. A scope's rows
+\ go with its rollback, though the next scope's PN reuses the binding's
+\ symbol and record. An owner record that ends before the query's field is
+\ refused with E-NCOMP-OWNER, with no fallback.
+\ Load the fixture NAME: it exits 0 and prints OK. Its stderr's length.
+: WB-LOAD ( ptr u8 n ptr u8 n -- n )
+   {: name:ptr nameu:n ok:ptr oku:n :}
+   name nameu AT$ {: f:ptr fu:n :}
+   PROC-ARGV-ENV-RESET s" --load" ARG+ f fu ARG+
+   PROC-ENV-INHERIT-MISSING s" " CLI {: erru:n rc:n :}
+   rc 0 T=
+   0 OUT CLI-OUT-U @ ok oku CONTAINS? TTRUE
+   erru ;
+
+
+: TOP-PARSES-WHITEBOX ( -- )
+   s" parses-top.f" s\" package CVT-WB\n: ASSERT ( bool ptr u8 n -- )\n   {: ok:bool m:ptr mu:n :}\n   ok if exit then m mu 76 die ;\ns\" parses:\" true data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-OFF + @ execute 2 = s\" parses: call\" ASSERT\ns\" parses:\" false data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-OFF + @ execute -1 = s\" parses: tick\" ASSERT\ns\" parses-through:\" true data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-OFF + @ execute 2 = s\" parses-through: call\" ASSERT\ns\" parses-through:\" false data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-OFF + @ execute -1 = s\" parses-through: tick\" ASSERT\ns\" top: ok\" type cr\n;package\n" FIXTURE
+   s" top-parses-whitebox: top" T-LABEL s" parses-top.f" s" top: ok" WB-LOAD drop
+   s" parses-binding.f" s\" package SH\npublic\n: DUP ( n -- n n ) dup ;\n;package\npackage A1\npublic\n: PQ ( -- ) parse-name 2drop ;\n;package\npackage A2\npublic\n: PQ ( -- ) parse-name 2drop ;\n;package\npackage CVT-WB\n: ASSERT ( bool ptr u8 n -- )\n   {: ok:bool m:ptr mu:n :}\n   ok if exit then m mu 76 die ;\n: BOUND ( n n n n ptr u8 n -- )\n   {: sym:n eff:n ctl:n want:n m:ptr mu:n :}\n   sym 0 <> m mu ASSERT\n   eff 0 <> m mu ASSERT\n   ctl CHECKER-OWNER-ABI:BINDING-ID-MASK and CHECKER-OWNER-ABI:BINDING-ID-SHIFT rshift want = m mu ASSERT\n   ctl CHECKER-OWNER-ABI:BINDING-PARSES and 0 <> m mu ASSERT ;\n: PRIM ( n n n ptr u8 n -- )\n   {: sym:n eff:n ctl:n m:ptr mu:n :}\n   sym 0 <> m mu ASSERT\n   eff 0= m mu ASSERT\n   ctl CHECKER-OWNER-ABI:BINDING-PARSES and 0 <> m mu ASSERT ;\n: NONE ( n n n ptr u8 n -- )\n   {: sym:n eff:n ctl:n m:ptr mu:n :}\n   sym 0= m mu ASSERT\n   eff 0= m mu ASSERT\n   ctl 0= m mu ASSERT ;\ns\" parses:\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute CHECKER-OWNER-ABI:BINDING-PARSES-ID s\" parses:\" BOUND\ns\" parses-through:\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute CHECKER-OWNER-ABI:BINDING-THROUGH-ID s\" parses-through:\" BOUND\ns\" parse-name\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute s\" parse-name\" PRIM\n: PN ( -- ) parse-name 2drop ;\ns\" PN\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute 0 s\" PN\" BOUND\ns\" A1:PQ\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute 0 s\" A1:PQ\" BOUND\ns\" NOSUCH\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute s\" unknown\" NONE\ns\" A::B\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute s\" malformed\" NONE\nundefine PN\ns\" PN\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute s\" retired\" NONE\nusing SH\ns\" DUP\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute s\" shadowed\" NONE\n;using\nusing A1\nusing A2\ns\" PQ\" data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + @ execute s\" ambiguous\" NONE\n;using\n;using\ns\" binding: ok\" type cr\n;package\n" FIXTURE
+   s" top-parses-whitebox: binding" T-LABEL s" parses-binding.f" s" binding: ok" WB-LOAD drop
+   s" parses-nested.f" s\" require src/habu/verify-source.f\nVERIFY:REPORT-DEFERRALS\ns\" CHECKER-SCOPE-START-NEUTRAL\" s\" --\" TRUST\ns\" CHECKER-SCOPE-DONE\" s\" --\" TRUST\npackage CVT-WB\n: ASSERT ( bool ptr u8 n -- )\n   {: ok:bool m:ptr mu:n :}\n   ok if exit then m mu 76 die ;\n: RUN1 ( -- n ) CHECKER-SCOPE-START-NEUTRAL [: s\\\" : PN ( -- ) parse-name 2drop ;\\nparses: PN 1\\n\" s\" a.f\" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;] catch CHECKER-SCOPE-DONE ;\n: RUN2 ( -- n ) CHECKER-SCOPE-START-NEUTRAL [: s\\\" : PN ( -- ) parse-name 2drop ;\\nPN :\\n: G ( -- n ) 1 2 ;\\n\" s\" b.f\" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;] catch CHECKER-SCOPE-DONE ;\n: RUN3 ( -- n ) CHECKER-SCOPE-START-NEUTRAL [: s\\\" : PN ( -- ) parse-name 2drop ;\\nparses: PN 1\\nPN :\\n: G ( -- n ) 1 2 ;\\n\" s\" c.f\" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;] catch CHECKER-SCOPE-DONE ;\nRUN1 0 = s\" declared\" ASSERT\nRUN2 0 = s\" rolled back: G unchecked\" ASSERT\nRUN3 70 = s\" declared again: G refused\" ASSERT\ns\" nested: ok\" type cr\n;package\n" FIXTURE
+   s" top-parses-whitebox: nested" T-LABEL s" parses-nested.f" s" nested: ok" WB-LOAD {: erru:n :}
+   s" top-parses-whitebox: rolled back, deferred" T-LABEL
+   0 ERR erru s\" \"token\":\"PN\",\"file\":\"b.f\",\"line\":2,\"column\":1" CONTAINS? TTRUE
+   s" top-parses-whitebox: declared again, deferred" T-LABEL
+   0 ERR erru s\" \"token\":\"PN\",\"file\":\"c.f\",\"line\":3,\"column\":1" CONTAINS? TTRUE
+   s" parses-field.f" s\" require src/habu/verify-source.f\npackage CVT-WB\n: ASSERT ( bool ptr u8 n -- )\n   {: ok:bool m:ptr mu:n :}\n   ok if exit then m mu 76 die ;\n: RUN ( -- n ) [: s\\\" : PN ( -- ) parse-name 2drop ;\\nparses: PN 1\\n\" s\" a.f\" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;] catch ;\ndata-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CELL - CELL-VIEW @\nCHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CELL - CELL-VIEW !\nRUN E-NCOMP-OWNER = s\" the missing field refuses\" ASSERT\ndata-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CELL - CELL-VIEW !\ns\" field: ok\" type cr\n;package\n" FIXTURE
+   s" top-parses-whitebox: field" T-LABEL s" parses-field.f" s" field: ok" WB-LOAD drop ;
+
+
+\ A body naming a word only the run can define is deferred where the checker's
+\ judgment of it stops: a name the evaluated text may define, and a create
+\ caller's product. Loaded, each refuses that name (E-UNDEFINED, exit 70), so
+\ neither is answered verified. A refusal anywhere keeps the file refused. A
+\ create caller no row bounds may read any of the rest, so the check discovers
+\ nothing after its call.
+: DEF-DEFERRED ( -- )
+   s\" s\" : CVT-EG ( -- n ) 2 ;\" evaluate\n: CVT-EF ( -- n ) CVT-NOSUCH ;\n" TOP-CHECK
+   5 s" def-deferred: evaluate, deferred" EXPECT-KIND
+   s" def-deferred: evaluate, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" def-deferred: at the name" s" CVT-NOSUCH" s" W-CHECK-DEFERRED" s" 2" s" 19" TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$=
+   s\" : CVT-MK ( -- ) create 0 , ;\nparses: CVT-MK 1\nCVT-MK CVT-FOO\n: CVT-UF ( -- n ) CVT-FOO @ ;\n" TOP-CHECK
+   5 s" def-deferred: create caller, deferred" EXPECT-KIND
+   s" def-deferred: create caller, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" def-deferred: the call" s" CVT-MK" s" W-CHECK-DEFERRED" s" 3" s" 1" TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$=
+   s" def-deferred: at the product" s" CVT-FOO" s" W-CHECK-DEFERRED" s" 4" s" 19" TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$=
+   s\" : CVT-MK ( -- ) create 0 , ;\nCVT-MK CVT-FOO\n: CVT-UF ( -- n ) CVT-FOO @ ;\n" TOP-CHECK
+   s" def-deferred: undeclared create caller, the stop" s" CVT-MK" s" 2" s" 1" DEFERRED-ONLY
+   s\" : CVT-E ( -- n ) CVT-NOPE ;\ns\" : CVT-EG ( -- n ) 2 ;\" evaluate\n: CVT-EF ( -- n ) CVT-NOSUCH ;\n" TOP-CHECK
+   1 s" def-deferred: after a refusal, refused" EXPECT-KIND
+   s" def-deferred: after a refusal, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" def-deferred: the refusal" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" CVT-NOPE" PACKET s" code" STRING$ s" E-UNDEFINED" T$=
+   s" def-deferred: the deferral" s" CVT-NOSUCH" s" W-CHECK-DEFERRED" s" 3" s" 19" TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$= ;
+
+\ The fresh verifier child captures tier 0 before requiring its tooling. A
+\ top-level tier switch is executed only by check.f's existing subject run.
+: TRUSTED-TICK-ORDER ( -- )
+   s\" : CVT-GATE ( -- ) drop ['] patch32 drop CVT-NOT-DEFINED ;\n" TOP-CHECK
+   1 s" trusted-tick-order: static tier 0 refusal" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" word" s" cvt-gate" PACKET {: p:n :}
+   s" trusted-tick-order: gate code" T-LABEL p s" code" STRING$ s" E-CAP-TRUSTED" T$=
+   s" trusted-tick-order: target token" T-LABEL p s" token" STRING$ s" patch32" T$=
+   s" trusted-tick-order: target line" T-LABEL p s" line" NUMBER$ s" 1" T$=
+   s" trusted-tick-order: target column" T-LABEL p s" column" NUMBER$ s" 28" T$=
+   s" trusted-tick-order: rejected verdict" T-LABEL
+   p s" verdict" STRING$ s" rejected" T$=
+   s\" 1 set-tier\n: CVT-GATE ( -- ) drop ['] patch32 drop ;\n" TOP-CHECK
+   5 s" trusted-tick-order: dynamic tier is deferred" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET {: warning:n :}
+   s" trusted-tick-order: warning code" T-LABEL
+   warning s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   s" trusted-tick-order: warning line" T-LABEL
+   warning s" line" NUMBER$ s" 2" T$=
+   s" trusted-tick-order: warning column" T-LABEL
+   warning s" column" NUMBER$ s" 28" T$=
+   s" trusted-tick-order: pre-pass continues to the run" T-LABEL
+   s\" 1 set-tier\n: CVT-GATE ( -- ) drop ['] patch32 drop ;\n"
+   SUBJ$ s" dynamic-tier.f" GUARD-MS >MS CHECK:PREVERIFY-BYTES
+   MATCH result
+      ok OF 0= ENDOF
+      err OF drop false ENDOF
+   ;MATCH TTRUE
+   s" dynamic-tier.f" s\" 1 set-tier\n: CVT-GATE ( -- ) drop ['] patch32 drop ;\n" FIXTURE
+   CLI-START s" --json-errors" ARG+ s" dynamic-tier.f" AT$ ARG+
+   s" " CLI {: erru:n rc:n :}
+   s" trusted-tick-order: single live run exits at the checker" T-LABEL rc 70 T=
+   s" trusted-tick-order: live stderr is packets" T-LABEL
+   0 ERR erru ALL-JSON? TTRUE
+   0 ERR erru s" token" s" drop" PACKET {: live:n :}
+   s" trusted-tick-order: live tier 1 underflow" T-LABEL
+   live s" code" STRING$ s" E-INPUT-UNDERFLOW" T$=
+   s" trusted-tick-order: live source line" T-LABEL
+   live s" line" NUMBER$ s" 2" T$=
+   s" trusted-tick-order: live source column" T-LABEL
+   live s" column" NUMBER$ s" 19" T$=
+   s" 1 set-tier : CVT-A ( -- ) drop ['] patch32 drop ; : CVT-B ( -- ) CVT-A ;" TOP-CHECK
+   5 s" trusted-tick-order: unknown body leaves dependents to the run" EXPECT-KIND
+   s" trusted-tick-order: only the uncertain tick is reported" T-LABEL
+   CHECK:VERIFY-OUT$ PACKETS 1 T=
+   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
+   s" W-CHECK-DEFERRED" T$=
+   s" 0 set-tier package CVT-TU public : patch32 ( -- n ) 1 ; ;package using CVT-TU : CVT-SH ( -- ) ['] patch32 drop ; ;using" TOP-CHECK
+   1 s" trusted-tick-order: current tick resolution beats uncertainty" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
+   s" E-USING-SHADOW-GLOBAL" T$=
+   s" : CVT-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" TOP-CHECK
+   1 s" trusted-tick-order: does clause gate precedes parent check" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" word" s" cvt-does;does" PACKET s" code" STRING$
+   s" E-CAP-TRUSTED" T$=
+   s" : CVT-DOES ( -- ) CVT-MISSING create does> ( -- ) ['] patch32 drop ;" TOP-CHECK
+   1 s" trusted-tick-order: tier 0 parent compile refusal wins" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" word" s" cvt-does" PACKET s" code" STRING$
+   s" E-UNDEFINED" T$=
+   s" : CVT-DOES ( -- ) ['] patch32 drop create does> ( -- ) CVT-MISSING ;" TOP-CHECK
+   1 s" trusted-tick-order: parent gate precedes later clause refusal" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" word" s" cvt-does" PACKET s" code" STRING$
+   s" E-CAP-TRUSTED" T$=
+   s" 0 set-tier : CVT-DOES ( -- ) ['] patch32 drop create does> ( -- ) CVT-MISSING ;" TOP-CHECK
+   5 s" trusted-tick-order: unknown parent tick defers clause" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
+   s" W-CHECK-DEFERRED" T$=
+   s" 0 set-tier : CVT-DOES ( -- ) ['] patch32 drop create does> CVT-MISSING ;" TOP-CHECK
+   5 s" trusted-tick-order: unknown parent stops before malformed clause" EXPECT-KIND
+   s" trusted-tick-order: unknown parent has one warning" T-LABEL
+   CHECK:VERIFY-OUT$ PACKETS 1 T=
+   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
+   s" W-CHECK-DEFERRED" T$=
+   S\" s\" : CVT-GENERATED ( -- ) ;\" evaluate : CVT-DOES ( -- ) create does> ( -- ) drop CVT-GENERATED ;" TOP-CHECK
+   5 s" trusted-tick-order: clause warning retains its pin after parent scan" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" token" s" CVT-GENERATED" PACKET {: clause-warning:n :}
+   s" trusted-tick-order: clause warning span" T-LABEL
+   clause-warning s" line" NUMBER$ s" 1" T$=
+   clause-warning s" column" NUMBER$ s" 82" T$=
+   clause-warning s" code" STRING$
+   s" W-CHECK-DEFERRED" T$=
+   S\" s\" : CVT-GENERATED ( -- ) ;\" evaluate\n: CVT-DOES ( -- ) CVT-GENERATED create does> ( -- ) CVT-GENERATED ;" TOP-CHECK
+   5 s" trusted-tick-order: parent and clause both defer" EXPECT-KIND
+   s" trusted-tick-order: one warning for the definition" T-LABEL
+   CHECK:VERIFY-OUT$ PACKETS 1 T=
+   CHECK:VERIFY-OUT$ s" token" s" CVT-GENERATED" PACKET {: parent-warning:n :}
+   s" trusted-tick-order: parent warning wins" T-LABEL
+   parent-warning s" line" NUMBER$ s" 2" T$=
+   parent-warning s" column" NUMBER$ s" 19" T$=
+   parent-warning s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   s" 0 set-tier : CVT-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" TOP-CHECK
+   5 s" trusted-tick-order: unknown does clause defers parent check" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
+   s" W-CHECK-DEFERRED" T$=
+   s" 0 set-tier : CVT-DOES ( -- ) CVT-MISSING create does> ( -- ) ['] patch32 drop ;" TOP-CHECK
+   1 s" trusted-tick-order: earlier parent compile refusal wins" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" word" s" cvt-does" PACKET s" code" STRING$
+   s" E-UNDEFINED" T$=
+   s" : CVT-PRIOR ( -- ) ['] patch32 drop ; using CVT-TU : CVT-LATER ( -- ) ['] patch32 drop ; ;using" TOP-CHECK
+   1 s" trusted-tick-order: later using cannot replace earlier gate" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" word" s" cvt-prior" PACKET s" code" STRING$
+   s" E-CAP-TRUSTED" T$= ;
 
 
 \ Bytes the load accepts verify, with no packet.
@@ -1271,19 +1802,30 @@ $180000 constant LARGE-STDIN-LEN
 
 \ A word whose body calls `create` reads a name when it runs and defines it, and
 \ so does a word that calls such a word, though its own check is the run's
-\ (CVT-MK, whose CVT-RA:CVT-RSEVEN rendered text defines). Loaded, each subject
-\ makes CVT-Q or CVT-Y, exit 0. The stretch opens at the word, and a use of its
-\ product after the stretch is the run's too.
+\ (CVT-MK, deferred at CVT-RA:CVT-RSEVEN, which rendered text defines). Loaded,
+\ each subject makes CVT-Q or CVT-Y, exit 0. With a row the call is the run's
+\ and its operand is consumed, and each use of its product after it is the
+\ run's too. With none, it may read any of the rest: the check discovers
+\ nothing after the call.
 : TOP-CREATE ( -- )
-   s\" : CVT-MKS ( n -- ) create , ;\n5 CVT-MKS CVT-Q\nCVT-Q drop\n: CVT-AFTER ( -- n ) 1 ;\nCVT-Q drop\n" TOP-CHECK
+   s\" : CVT-MKS ( n -- ) create , ;\nparses: CVT-MKS 1\n5 CVT-MKS CVT-Q\nCVT-Q drop\n: CVT-AFTER ( -- n ) 1 ;\nCVT-Q drop\n" TOP-CHECK
    5 s" top-create: deferred" EXPECT-KIND
-   s" top-create: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
-   s" top-create: the stretch" s" CVT-MKS" s" 2" s" 3" DEFERRED-AT
-   s" top-create: its product after it" s" CVT-Q" s" 5" s" 1" DEFERRED-AT
+   s" top-create: three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" top-create: the call" s" CVT-MKS" s" 3" s" 3" DEFERRED-AT
+   s" top-create: its product next" s" CVT-Q" s" 4" s" 1" DEFERRED-AT
+   CHECK:VERIFY-OUT$ 2 NTH-PACKET {: p:n :}
+   s" top-create: its product after it" T-LABEL p s" token" STRING$ s" CVT-Q" T$=
+   s" top-create: its product after it" T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   s" top-create: its product after it" T-LABEL p s" line" NUMBER$ s" 6" T$=
+   s" top-create: its product after it" T-LABEL p s" column" NUMBER$ s" 1" T$=
+   s" top-create: its product after it" T-LABEL p s" verdict" STRING$ s" deferred" T$=
+   s\" : CVT-MKS ( n -- ) create , ;\n5 CVT-MKS CVT-Q\nCVT-Q drop\n: CVT-AFTER ( -- n ) 1 ;\nCVT-Q drop\n" TOP-CHECK
+   s" top-create: undeclared, the stop" s" CVT-MKS" s" 2" s" 3" DEFERRED-ONLY
    s\" package CVT-RA public : CVT-RMAKE ( -- ) s\" : CVT-RSEVEN ( -- n ) 7 ;\" INCLUDE-EVALUATE ; CVT-RMAKE ;package\n: CVT-DEFR ( n -- ) create , does> ( -- n ) @ ;\n: CVT-MK ( n -- ) CVT-RA:CVT-RSEVEN + CVT-DEFR ;\n5 CVT-MK CVT-Y\n"
    TOP-CHECK
    5 s" top-create: through a word the run checks" EXPECT-KIND
-   s" top-create: one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-create: two packets, through a word" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-create: that word's body" s" CVT-RA:CVT-RSEVEN" s" 3" s" 19" DEFERRED-AT
    s" top-create: at that word" s" CVT-MK" s" 4" s" 3" DEFERRED-AT ;
 
 
@@ -1340,9 +1882,11 @@ $180000 constant LARGE-STDIN-LEN
 \ its public wordlist lacks to the global wordlist, for `'` too, and the word
 \ it finds there may define what a bare call to it would: a renderer's text
 \ (CVT-OFP:evaluate) or an unlearned create caller (CVT-OFP:CVT-OFMK) makes
-\ CVT-OFQ, so a later use of it is the run's. Loaded, the first subject and the
-\ last two run, exit 0; a tail no wordlist holds, or the name once the package
-\ is closed, is E-UNDEFINED, exit 70.
+\ CVT-OFQ, so a later use of it is the run's. The row of the word it finds
+\ bounds the qualified call, and with none the check discovers nothing after
+\ it. Loaded, the first subject and the last three run, exit 0; a tail no
+\ wordlist holds, or the name once the package is closed, is E-UNDEFINED, exit
+\ 70.
 : TOP-PACKAGE-TAIL ( -- )
    s\" : CVT-OFG ( -- n ) 7 ;\npackage CVT-OFP\n: CVT-OFL ( -- n ) 1 ;\nCVT-OFP:CVT-OFG drop\n' CVT-OFP:CVT-OFG drop\n;package\n"
    s" top-package-tail: in its package" LOADS-CLEAN
@@ -1354,28 +1898,32 @@ $180000 constant LARGE-STDIN-LEN
    5 s" top-package-tail: a renderer" EXPECT-KIND
    s" top-package-tail: a renderer, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
    s" top-package-tail: its product" s" CVT-OFQ" s" 3" s" 1" DEFERRED-AT
-   s\" : CVT-OFMK ( -- ) create ;\npackage CVT-OFP\nCVT-OFP:CVT-OFMK CVT-OFQ\n: CVT-AFTER ( -- ) ;\nCVT-OFQ drop\n;package\n" TOP-CHECK
+   s\" : CVT-OFMK ( -- ) create ;\nparses: CVT-OFMK 1\npackage CVT-OFP\nCVT-OFP:CVT-OFMK CVT-OFQ\n: CVT-AFTER ( -- ) ;\nCVT-OFQ drop\n;package\n" TOP-CHECK
    5 s" top-package-tail: a create caller" EXPECT-KIND
    s" top-package-tail: a create caller, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
-   s" top-package-tail: its stretch" s" CVT-OFP:CVT-OFMK" s" 3" s" 1" DEFERRED-AT
-   s" top-package-tail: its product after it" s" CVT-OFQ" s" 5" s" 1" DEFERRED-AT ;
+   s" top-package-tail: its call" s" CVT-OFP:CVT-OFMK" s" 4" s" 1" DEFERRED-AT
+   s" top-package-tail: its product after it" s" CVT-OFQ" s" 6" s" 1" DEFERRED-AT
+   s\" : CVT-OFMK ( -- ) create ;\npackage CVT-OFP\nCVT-OFP:CVT-OFMK CVT-OFQ\n: CVT-AFTER ( -- ) ;\nCVT-OFQ drop\n;package\n" TOP-CHECK
+   s" top-package-tail: an undeclared create caller, the stop" s" CVT-OFP:CVT-OFMK" s" 3" s" 1" DEFERRED-ONLY ;
 
 
 \ A deferred word may do anything when it runs, define the name it reads among
-\ them. Loaded, CVT-D runs CVT-MKC, which makes CVT-DQ, exit 0. The stretch
-\ opens at CVT-D, and a use of the name after the stretch is the run's too.
+\ them. Loaded, CVT-D runs CVT-MKC, which makes CVT-DQ, exit 0. The check
+\ reports CVT-D at its call and discovers nothing after it, so the use of that
+\ name is never refused.
 : TOP-DEFER-WORD ( -- )
    s\" defer CVT-D ( -- )\n: CVT-MKC ( -- ) create ;\n: CVT-SET ( -- ) ['] CVT-MKC is CVT-D ;\nCVT-SET\nCVT-D CVT-DQ\n: CVT-AFTER ( -- n ) 1 ;\nCVT-DQ drop\n"
    TOP-CHECK
    5 s" top-defer-word: deferred" EXPECT-KIND
-   s" top-defer-word: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
-   s" top-defer-word: the stretch" s" CVT-D" s" 5" s" 1" DEFERRED-AT
-   s" top-defer-word: the name after it" s" CVT-DQ" s" 7" s" 1" DEFERRED-AT ;
+   s" top-defer-word: one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-defer-word: the call" s" CVT-D" s" 5" s" 1" DEFERRED-AT
+   s" top-defer-word: the name after it" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" CVT-DQ" PACKET 0 < TTRUE ;
 
 
-\ A comment after a deferred word is no token the run reads, as the scan skips
-\ it, so it opens no stretch; `.(` is a word the run reads. Loaded, CVT-CD runs
-\ CVT-NOP, exit 0.
+\ A deferred word may read whatever follows it, a comment among them, so it is
+\ reported at its call whatever follows, and the check discovers nothing after
+\ it. Loaded, CVT-CD runs CVT-NOP, exit 0.
 : CVT-CD$ ( ptr u8 n -- ptr u8 n ) {: tail:ptr tailu:n :}
    SB-RESET
    s\" defer CVT-CD ( -- )\n: CVT-NOP ( -- ) ;\n: CVT-CSET ( -- ) ['] CVT-NOP is CVT-CD ;\nCVT-CSET\nCVT-CD " SB-APPEND
@@ -1384,8 +1932,10 @@ $180000 constant LARGE-STDIN-LEN
    SB$ ;
 
 : TOP-DEFER-COMMENT ( -- )
-   s" \ a note" CVT-CD$ s" top-defer-comment: a line comment" LOADS-CLEAN
-   s" ( a note )" CVT-CD$ s" top-defer-comment: a comment in parentheses" LOADS-CLEAN
+   s" \ a note" CVT-CD$ TOP-CHECK
+   s" top-defer-comment: a line comment" s" CVT-CD" s" 5" s" 1" DEFERRED-ONLY
+   s" ( a note )" CVT-CD$ TOP-CHECK
+   s" top-defer-comment: a comment in parentheses" s" CVT-CD" s" 5" s" 1" DEFERRED-ONLY
    s" .( a note)" CVT-CD$ TOP-CHECK
    5 s" top-defer-comment: a print, deferred" EXPECT-KIND
    s" top-defer-comment: one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
@@ -1411,6 +1961,837 @@ $180000 constant LARGE-STDIN-LEN
    s\" package CVT-QA public : CVT-QW ( -- n ) 1 ; ;package\nCVT-QA:CVT-QW drop\n"
    s" top-accepted: a qualified public" LOADS-CLEAN
    s\" s\" a\" 2drop .\" x\" cr\n" s" top-accepted: strings" LOADS-CLEAN ;
+
+
+\ ---- the definitions --------------------------------------------------------
+
+PTR-VARIABLE DEFS-SRC-A                 \ the bytes a definitions case checked
+variable DEFS-SRC-U
+variable DEF-NODE                       \ the definition line DEF found
+
+
+: DEFS-SRC$ ( -- ptr u8 n )
+   DEFS-SRC-A @ DEFS-SRC-U @ ;
+
+
+\ Check the generated source as the fixture NAME, kept for the spans its
+\ definition lines are read against.
+: DEFS-CHECK ( ptr u8 n -- CHECK:verdict )
+   {: name:ptr nameu:n :}
+   0 GEN DEFS-SRC-A !  GEN-U @ DEFS-SRC-U !
+   DEFS-SRC$ name nameu GUARD-MS CHECK-AS ;
+
+
+\ The first definition line of the last check naming WORD as written; -1 for
+\ none.
+: DEF ( ptr u8 n -- )
+   {: w:ptr wu:n :}
+   CHECK:VERIFY-DEFS$ s" word" w wu PACKET DEF-NODE ! ;
+
+
+\ Where the first LEAD in TEXT ends, -1 for none.
+: END-IN ( ptr u8 n ptr u8 n -- n )
+   {: a:ptr u:n b:ptr v:n :}
+   u v - 1 + 0 max 0 ?do
+      a i + v b v STR= if i v + unloop exit then
+   loop
+   -1 ;
+
+
+\ Where the first LEAD in the checked bytes ends, -1 for none.
+: LEAD-END ( ptr u8 n -- n )
+   {: b:ptr v:n :}
+   DEFS-SRC$ b v END-IN ;
+
+
+: DEF-STR ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n key:ptr keyu:n want:ptr wantu:n :}
+   label labelu T-LABEL DEF-NODE @ key keyu STRING$ want wantu T$= ;
+
+
+: DEF-NUM ( ptr u8 n ptr u8 n n -- )
+   {: label:ptr labelu:n key:ptr keyu:n want:n :}
+   label labelu T-LABEL DEF-NODE @ key keyu NUMBER$
+   SB-RESET want FMT:SB-INT SB$ T$= ;
+
+
+\ The line DEF found: declared by KIND, recorded in PKG with visibility VIS.
+: DEF-WHO ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n kind:ptr kindu:n pkg:ptr pkgu:n vis:ptr visu:n :}
+   label labelu T-LABEL DEF-NODE @ 0 >= TTRUE
+   label labelu s" kind" kind kindu DEF-STR
+   label labelu s" package" pkg pkgu DEF-STR
+   label labelu s" visibility" vis visu DEF-STR ;
+
+
+\ Its effect, EFF, absent when empty.
+: DEF-EFF ( ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n eff:ptr effu:n :}
+   effu 0= if
+      label labelu T-LABEL DEF-NODE @ s" effect" J-STR VALUE 0 < TTRUE
+      exit
+   then
+   label labelu s" effect" eff effu DEF-STR ;
+
+
+\ Its span, the U bytes the first LEAD in the checked bytes ends with, in the
+\ fixture FILE.
+: DEF-SPAN ( ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: label:ptr labelu:n lead:ptr leadu:n u:n file:ptr fileu:n :}
+   lead leadu LEAD-END
+   {: end:n :}
+   label labelu s" file" file fileu AT$ DEF-STR
+   label labelu s" byte_start" end u - DEF-NUM
+   label labelu s" byte_end" end DEF-NUM ;
+
+
+\ A definer's names in packages: a private, a public, a qualified name defined
+\ in another package's private section, which lands in its qualifier's public
+\ wordlist, and an export of it under its tail. Each is named as written.
+: DEFS-PACKAGES ( -- )
+   0 GEN-U !
+   s\" package CVT-DQ\n;package\npackage CVT-DR\n: CVT-DQ:CVT-Y ( -- n ) 5 ;\n;package\n" GEN+
+   s\" package CVT-DP\nCAST: CVT-CAST ( n -- ptr u8 )\n: HELPER ( n -- n ) 2 * ;\npublic\n" GEN+
+   s\" : CVT-COUNT ( -- n ) 5 HELPER ;\nEXPORT CVT-DQ:CVT-Y\n;package\n" GEN+ ;
+
+
+\ The global definers, each a line, two that generate names, a user's own
+\ definer and the word it creates, and a family.
+: DEFS-GLOBALS ( -- )
+   s\" : CVT-G ( -- n ) 1 ;\n1 constant CVT-K\nvariable CVT-V\ndefer CVT-DF ( -- n )\n" GEN+
+   s\" TRUSTED: CVT-TR ( -- n ) 3 ;\nDYNAMIC-BUFFER CVT-DB u8\nDEFTYPE CVT-T\nNEWTYPE cvt-nt 0\n" GEN+
+   s\" : CVT-MK ( n -- ) create , does> ( -- n ) @ ;\n7 CVT-MK CVT-M\n" GEN+ ;
+
+
+: DEFINITIONS ( -- )
+   DEFS-PACKAGES DEFS-GLOBALS
+   s" defs.f" DEFS-CHECK 0 s" definitions: verified" EXPECT-KIND
+   s" CVT-DQ:CVT-Y" DEF
+   s" definitions: Q:Y" s" :" s" cvt-dq" s" public" DEF-WHO
+   s" definitions: Q:Y" s" class" s" word" DEF-STR
+   s" definitions: Q:Y" s" -- n" DEF-EFF
+   s" definitions: Q:Y" s" : CVT-DQ:CVT-Y" 12 s" defs.f" DEF-SPAN
+   s" CVT-CAST" DEF
+   s" definitions: cast" s" CAST:" s" cvt-dp" s" private" DEF-WHO
+   s" definitions: cast" s" class" s" word" DEF-STR
+   s" definitions: cast" s" n -- ptr u8" DEF-EFF
+   s" definitions: cast" s" CAST: CVT-CAST" 8 s" defs.f" DEF-SPAN
+   \ The name as written, which the checker records folded as helper.
+   s" HELPER" DEF
+   s" definitions: private" s" :" s" cvt-dp" s" private" DEF-WHO
+   s" definitions: private" s" class" s" word" DEF-STR
+   s" definitions: private" s" n -- n" DEF-EFF
+   s" definitions: private" s" : HELPER" 6 s" defs.f" DEF-SPAN
+   s" CVT-COUNT" DEF
+   s" definitions: public" s" :" s" cvt-dp" s" public" DEF-WHO
+   s" definitions: public" s" class" s" word" DEF-STR
+   s" definitions: public" s" -- n" DEF-EFF
+   s" definitions: public" s" : CVT-COUNT" 9 s" defs.f" DEF-SPAN
+   CHECK:VERIFY-DEFS$ s" kind" s" EXPORT" PACKET DEF-NODE !
+   s" definitions: export" s" EXPORT" s" cvt-dp" s" public" DEF-WHO
+   s" definitions: export" s" class" s" export" DEF-STR
+   s" definitions: export" s" word" s" CVT-DQ:CVT-Y" DEF-STR
+   s" definitions: export" s" " DEF-EFF
+   s" definitions: export" s" EXPORT CVT-DQ:CVT-Y" 12 s" defs.f" DEF-SPAN
+   s" CVT-G" DEF
+   s" definitions: global" s" :" s" " s" global" DEF-WHO
+   s" definitions: global" s" class" s" word" DEF-STR
+   s" definitions: global" s" -- n" DEF-EFF
+   s" definitions: global" s" : CVT-G" 5 s" defs.f" DEF-SPAN
+   s" CVT-K" DEF
+   s" definitions: constant" s" constant" s" " s" global" DEF-WHO
+   s" definitions: constant" s" class" s" constant" DEF-STR
+   s" definitions: constant" s" constant CVT-K" 5 s" defs.f" DEF-SPAN
+   s" CVT-V" DEF
+   s" definitions: variable" s" variable" s" " s" global" DEF-WHO
+   s" definitions: variable" s" class" s" storage" DEF-STR
+   s" definitions: variable" s" variable CVT-V" 5 s" defs.f" DEF-SPAN
+   s" CVT-DF" DEF
+   s" definitions: defer" s" defer" s" " s" global" DEF-WHO
+   s" definitions: defer" s" class" s" word" DEF-STR
+   s" definitions: defer" s" -- n" DEF-EFF
+   s" definitions: defer" s" defer CVT-DF" 6 s" defs.f" DEF-SPAN
+   s" CVT-TR" DEF
+   s" definitions: trusted" s" TRUSTED:" s" " s" global" DEF-WHO
+   s" definitions: trusted" s" class" s" word" DEF-STR
+   s" definitions: trusted" s" -- n" DEF-EFF
+   s" definitions: trusted" s" TRUSTED: CVT-TR" 6 s" defs.f" DEF-SPAN
+   s" CVT-DB" DEF
+   s" definitions: dynamic buffer" s" DYNAMIC-BUFFER" s" " s" global" DEF-WHO
+   s" definitions: dynamic buffer" s" class" s" storage" DEF-STR
+   s" definitions: dynamic buffer" s" " DEF-EFF
+   s" definitions: dynamic buffer" s" DYNAMIC-BUFFER CVT-DB" 6 s" defs.f" DEF-SPAN
+   s" CVT-DB-RESERVE" DEF
+   s" definitions: no generated reserve yet" T-LABEL DEF-NODE @ 0 < TTRUE
+   s" CVT-DB-RELEASE" DEF
+   s" definitions: no generated release yet" T-LABEL DEF-NODE @ 0 < TTRUE
+   s" >CVT-T" DEF
+   s" definitions: deftype in" s" DEFTYPE" s" " s" global" DEF-WHO
+   s" definitions: deftype in" s" class" s" word" DEF-STR
+   s" definitions: deftype in" s" n -- cvt-t" DEF-EFF
+   s" definitions: deftype in" s" DEFTYPE CVT-T" 5 s" defs.f" DEF-SPAN
+   s" CVT-T>N" DEF
+   s" definitions: deftype out" s" DEFTYPE" s" " s" global" DEF-WHO
+   s" definitions: deftype out" s" class" s" word" DEF-STR
+   s" definitions: deftype out" s" cvt-t -- n" DEF-EFF
+   s" definitions: deftype out" s" DEFTYPE CVT-T" 5 s" defs.f" DEF-SPAN
+   s" CVT-MK" DEF
+   s" definitions: definer" s" :" s" " s" global" DEF-WHO
+   s" definitions: definer" s" class" s" word" DEF-STR
+   \ A word a user's own create definer makes is storage, whatever its
+   \ does> clause answers.
+   s" CVT-M" DEF
+   s" definitions: created" s" CVT-MK" s" " s" global" DEF-WHO
+   s" definitions: created" s" class" s" storage" DEF-STR
+   s" definitions: created" s" -- n" DEF-EFF
+   s" definitions: created" s" CVT-MK CVT-M" 5 s" defs.f" DEF-SPAN
+   \ A family name has no recording symbol: its line waits on the checker
+   \ reporting each name a registrar publishes, the Habu owner's Q1 lane.
+   s" cvt-nt" DEF
+   s" definitions: no family line yet" T-LABEL DEF-NODE @ 0 < TTRUE
+   s" definitions: one line each" T-LABEL CHECK:VERIFY-DEFS$ OBJECTS 15 T=
+   s" definitions: packets unchanged" T-LABEL CHECK:VERIFY-OUT$ nip 0 T= ;
+
+
+\ A refused body keeps its line when the checker kept its signature, and has
+\ none without one; a body the checker defers has its line. After a create
+\ caller no row bounds, the check discovers nothing: a body there has none.
+: DEFINITIONS-REFUSED ( -- )
+   0 GEN-U !
+   s\" : CVT-BAD ( -- n n ) 8 ;\n: CVT-NOSIG 0 if 1 then ;\n" GEN+
+   s\" : CVT-MKS ( n -- ) create , ;\nparses: CVT-MKS 1\n5 CVT-MKS CVT-Q\n: CVT-USEQ ( -- n ) CVT-Q @ ;\n" GEN+
+   s" defs-refused.f" DEFS-CHECK 1 s" definitions-refused: refused" EXPECT-KIND
+   s" CVT-BAD" DEF
+   s" definitions-refused: signature kept" s" :" s" " s" global" DEF-WHO
+   s" definitions-refused: signature kept" s" -- n n" DEF-EFF
+   s" definitions-refused: signature kept" s" : CVT-BAD" 7 s" defs-refused.f" DEF-SPAN
+   s" CVT-NOSIG" DEF
+   s" definitions-refused: no signature, no line" T-LABEL DEF-NODE @ 0 < TTRUE
+   s" CVT-USEQ" DEF
+   s" definitions-refused: deferred" s" :" s" " s" global" DEF-WHO
+   s" definitions-refused: deferred" s" -- n" DEF-EFF
+   s" definitions-refused: deferred" s" : CVT-USEQ" 8 s" defs-refused.f" DEF-SPAN
+   0 GEN-U !
+   s\" : CVT-MKS ( n -- ) create , ;\n5 CVT-MKS CVT-Q\n: CVT-USEQ ( -- n ) CVT-Q @ ;\n" GEN+
+   s" defs-stop.f" DEFS-CHECK 5 s" definitions-refused: undeclared, deferred" EXPECT-KIND
+   s" CVT-MKS" DEF
+   s" definitions-refused: before the stop" s" n --" DEF-EFF
+   s" CVT-USEQ" DEF
+   s" definitions-refused: after the stop, no line" T-LABEL DEF-NODE @ 0 < TTRUE ;
+
+
+\ A name defined again after undefine has both lines, in order.
+: DEFINITIONS-UNDEFINE ( -- )
+   0 GEN-U !
+   s\" : CVT-R ( -- n ) 1 ;\nundefine CVT-R\n: CVT-R ( -- n n ) 2 3 ;\n" GEN+
+   s" defs-undefine.f" DEFS-CHECK 0 s" definitions-undefine: verified" EXPECT-KIND
+   s" definitions-undefine: two lines" T-LABEL CHECK:VERIFY-DEFS$ OBJECTS 2 T=
+   s" CVT-R" DEF
+   s" definitions-undefine: the first first" s" -- n" DEF-EFF
+   s" definitions-undefine: the first first" s" : CVT-R" 5 s" defs-undefine.f" DEF-SPAN
+   CHECK:VERIFY-DEFS$ s" effect" s" -- n n" PACKET DEF-NODE !
+   s" definitions-undefine: the second" s" :" s" " s" global" DEF-WHO
+   s" definitions-undefine: the second" s" word" s" CVT-R" DEF-STR
+   s" definitions-undefine: the second" s\" undefine CVT-R\n: CVT-R" 5 s" defs-undefine.f" DEF-SPAN ;
+
+
+\ A dependency's definitions have their lines, named by its file, before the
+\ subject's.
+: DEFINITIONS-DEPENDENCY ( -- )
+   0 GEN-U !
+   s\" require dep.f\n: CVT-USE7 ( -- n ) CVT-SEVEN ;\n" GEN+
+   s" defs-dep.f" DEFS-CHECK 0 s" definitions-dependency: verified" EXPECT-KIND
+   s" definitions-dependency: the dependency's first" T-LABEL
+   CHECK:VERIFY-DEFS$ JSONL-START JSONL-NEXT-OBJECT s" word" STRING$ s" CVT-SEVEN" T$=
+   s" CVT-SEVEN" DEF
+   s" definitions-dependency: the dependency's" s" :" s" " s" global" DEF-WHO
+   s" definitions-dependency: the dependency's" s" -- n" DEF-EFF
+   s" definitions-dependency: the dependency's" s" file" s" dep.f" AT$ DEF-STR
+   s" definitions-dependency: the dependency's" s" byte_start" 2 DEF-NUM
+   s" definitions-dependency: the dependency's" s" byte_end" 11 DEF-NUM
+   s" CVT-USE7" DEF
+   s" definitions-dependency: the subject's" s" :" s" " s" global" DEF-WHO
+   s" definitions-dependency: the subject's" s" : CVT-USE7" 8 s" defs-dep.f" DEF-SPAN ;
+
+
+\ Each file a check read has one file line, in the order it started them: the
+\ subject, a file it requires, the file that one requires, and a file it
+\ includes twice and so reads twice. A file required again, one the image
+\ holds and one only a comment names have none.
+: FILES ( -- )
+   0 GEN-U !
+   s\" require files-mid.f\nrequire files-mid.f\ninclude files-inc.f\ninclude files-inc.f\n" GEN+
+   s\" require src/habu/verify-source.f\n\\ files-unread.f\n: CVT-FILES ( -- n ) 1 ;\n" GEN+
+   s" files.f" DEFS-CHECK 0 s" files: verified" EXPECT-KIND
+   s" files: four lines" T-LABEL CHECK:VERIFY-FILES$ OBJECTS 4 T=
+   CHECK:VERIFY-FILES$ JSONL-START
+   s" files: the subject" T-LABEL
+   JSONL-NEXT-OBJECT s" file" STRING$ s" files.f" AT$ T$=
+   s" files: the required file" T-LABEL
+   JSONL-NEXT-OBJECT s" file" STRING$ s" files-mid.f" AT$ T$=
+   s" files: the file it requires" T-LABEL
+   JSONL-NEXT-OBJECT s" file" STRING$ s" files-nested.f" AT$ T$=
+   s" files: the included file" T-LABEL
+   JSONL-NEXT-OBJECT s" file" STRING$ s" files-inc.f" AT$ T$= ;
+
+
+\ ---- the uses ---------------------------------------------------------------
+
+variable USE-NODE                       \ the use line USE-FROM found
+
+
+\ The first use line of the last check whose use starts at AT; -1 for none.
+: USE-FROM ( n -- )
+   {: at:n :}
+   CHECK:VERIFY-USES$ JSONL-START
+   begin
+      JSONL-NEXT-OBJECT
+      dup 0 < if USE-NODE ! exit then
+      dup s" byte_start" NUMBER$ SB-RESET at FMT:SB-INT SB$ STR= 0=
+   while
+      drop
+   repeat
+   USE-NODE ! ;
+
+
+: USE-NUM ( ptr u8 n ptr u8 n n -- )
+   {: label:ptr labelu:n key:ptr keyu:n want:n :}
+   label labelu T-LABEL USE-NODE @ key keyu NUMBER$
+   SB-RESET want FMT:SB-INT SB$ T$= ;
+
+
+\ The use line of the U bytes the first LEAD in the checked bytes ends with.
+: USE ( ptr u8 n ptr u8 n n -- )
+   {: label:ptr labelu:n lead:ptr leadu:n u:n :}
+   lead leadu LEAD-END
+   {: end:n :}
+   end u - USE-FROM
+   label labelu T-LABEL USE-NODE @ 0 >= TTRUE
+   label labelu s" byte_end" end USE-NUM ;
+
+
+\ No use line starts where the U bytes the first LEAD in the checked bytes
+\ end.
+: NO-USE ( ptr u8 n ptr u8 n n -- )
+   {: label:ptr labelu:n lead:ptr leadu:n u:n :}
+   lead leadu LEAD-END u - USE-FROM
+   label labelu T-LABEL USE-NODE @ 0 < TTRUE ;
+
+
+\ The declaration the use line USE found names: the U bytes the first LEAD in
+\ TEXT ends with, TEXT the fixture FILE's bytes.
+: USE-TARGET ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: label:ptr labelu:n text:ptr textu:n lead:ptr leadu:n u:n file:ptr fileu:n :}
+   text textu lead leadu END-IN
+   {: end:n :}
+   label labelu T-LABEL USE-NODE @ s" file" STRING$ file fileu AT$ T$=
+   label labelu s" target_start" end u - USE-NUM
+   label labelu s" target_end" end USE-NUM ;
+
+
+: USE-COUNT ( ptr u8 n n -- )
+   {: label:ptr labelu:n want:n :}
+   label labelu T-LABEL CHECK:VERIFY-USES$ OBJECTS want T= ;
+
+
+: USES-NEST$SRC ( -- ptr u8 n )
+   s\" : CVT-UNEST ( -- n ) 3 ;\n" ;
+
+: USES-DEP$SRC ( -- ptr u8 n )
+   s\" require uses-nested.f\npackage CVT-UD\n: CVT-HELP ( n -- n ) 1 + ;\npublic\n: CVT-UONE ( -- n ) 1 CVT-HELP ;\n: CVT-UTWO ( -- n ) 2 ;\n;package\n: CVT-UGLOBAL ( -- n ) CVT-UNEST ;\n" ;
+
+
+\ uses-dep.f, which requires uses-nested.f.
+: USES-DEPS ( -- )
+   s" uses-nested.f" USES-NEST$SRC FIXTURE
+   s" uses-dep.f" USES-DEP$SRC FIXTURE ;
+
+
+\ The subject's uses where each source occurrence binds, across scopes, its
+\ dependency and that dependency's own: each line names the token that
+\ declared what it binds. The uses inside the dependencies, and of words the
+\ engine provides, have none.
+: USES ( -- )
+   USES-DEPS
+   0 GEN-U !
+   s\" require uses-dep.f\n: CVT-A ( -- n ) 1 ;\n: CVT-B ( -- n ) CVT-A 1 + ;\ndefer CVT-HOOK ( -- n )\n" GEN+
+   s\" : CVT-SET ( -- ) [: CVT-B ;] is CVT-HOOK ;\n: CVT-TICK ( -- n ) ['] CVT-A execute ;\n" GEN+
+   s\" : CVT-MAKER ( n -- ) drop ;\ngenerates: CVT-MAKER ( -- n )\nCVT-A drop\n' CVT-B drop\n" GEN+
+   s\" package CVT-UP\n: CVT-A ( -- n ) 2 ;\n: CVT-PRIV ( -- n ) CVT-A ;\npublic\n" GEN+
+   s\" : CVT-PUB ( -- n ) CVT-PRIV ;\nEXPORT CVT-UD:CVT-UTWO\n;package\n" GEN+
+   s\" : CVT-QUAL ( -- n ) CVT-UD:CVT-UONE CVT-UP:CVT-PUB + CVT-UP:CVT-UTWO + ;\n" GEN+
+   s\" using CVT-UD\n: CVT-USED ( -- n ) CVT-UONE ;\n;using\n" GEN+
+   s\" : CVT-DEP ( -- n ) CVT-UGLOBAL CVT-UNEST + STR-SPACE + ;\n" GEN+
+   s" uses.f" DEFS-CHECK 0 s" uses: verified" EXPECT-KIND
+   s" uses: body call" s" : CVT-B ( -- n ) CVT-A" 5 USE
+   s" uses: body call" DEFS-SRC$ s" : CVT-A" 5 s" uses.f" USE-TARGET
+   s" uses: quotation call" s" [: CVT-B" 5 USE
+   s" uses: quotation call" DEFS-SRC$ s" : CVT-B" 5 s" uses.f" USE-TARGET
+   s" uses: is" s" ;] is CVT-HOOK" 8 USE
+   s" uses: is" DEFS-SRC$ s" defer CVT-HOOK" 8 s" uses.f" USE-TARGET
+   s" uses: [']" s" ['] CVT-A" 5 USE
+   s" uses: [']" DEFS-SRC$ s" : CVT-A" 5 s" uses.f" USE-TARGET
+   s" uses: generates:" s" generates: CVT-MAKER" 9 USE
+   s" uses: generates:" DEFS-SRC$ s" : CVT-MAKER" 9 s" uses.f" USE-TARGET
+   s" uses: top-level call" s\" \nCVT-A" 5 USE
+   s" uses: top-level call" DEFS-SRC$ s" : CVT-A" 5 s" uses.f" USE-TARGET
+   s" uses: top-level tick" s" ' CVT-B" 5 USE
+   s" uses: top-level tick" DEFS-SRC$ s" : CVT-B" 5 s" uses.f" USE-TARGET
+   s" uses: private over global" s" : CVT-PRIV ( -- n ) CVT-A" 5 USE
+   s" uses: private over global" DEFS-SRC$ s\" package CVT-UP\n: CVT-A" 5 s" uses.f" USE-TARGET
+   s" uses: private" s" : CVT-PUB ( -- n ) CVT-PRIV" 8 USE
+   s" uses: private" DEFS-SRC$ s" : CVT-PRIV" 8 s" uses.f" USE-TARGET
+   s" uses: export operand" s" EXPORT CVT-UD:CVT-UTWO" 15 USE
+   s" uses: export operand" USES-DEP$SRC s" : CVT-UTWO" 8 s" uses-dep.f" USE-TARGET
+   s" uses: qualified, dependency" s" CVT-UD:CVT-UONE" 15 USE
+   s" uses: qualified, dependency" USES-DEP$SRC s" : CVT-UONE" 8 s" uses-dep.f" USE-TARGET
+   s" uses: qualified" s" CVT-UP:CVT-PUB" 14 USE
+   s" uses: qualified" DEFS-SRC$ s" : CVT-PUB" 7 s" uses.f" USE-TARGET
+   s" uses: export alias" s" CVT-UP:CVT-UTWO" 15 USE
+   s" uses: export alias" DEFS-SRC$ s" EXPORT CVT-UD:CVT-UTWO" 15 s" uses.f" USE-TARGET
+   s" uses: used public" s" : CVT-USED ( -- n ) CVT-UONE" 8 USE
+   s" uses: used public" USES-DEP$SRC s" : CVT-UONE" 8 s" uses-dep.f" USE-TARGET
+   s" uses: dependency global" s" : CVT-DEP ( -- n ) CVT-UGLOBAL" 11 USE
+   s" uses: dependency global" USES-DEP$SRC s" : CVT-UGLOBAL" 11 s" uses-dep.f" USE-TARGET
+   s" uses: nested dependency" s" CVT-UGLOBAL CVT-UNEST" 9 USE
+   s" uses: nested dependency" USES-NEST$SRC s" : CVT-UNEST" 9 s" uses-nested.f" USE-TARGET
+   s" uses: engine-provided" s" STR-SPACE" 9 NO-USE
+   s" uses: primitive" s" : CVT-MAKER ( n -- ) drop" 4 NO-USE
+   s" uses: one line each" 16 USE-COUNT
+   s" uses.f" DEFS-SRC$ FIXTURE
+   CLI-START s" --verify-only" ARG+ s" uses.f" AT$ ARG+
+   s" " CLI {: erru:n rc:n :}
+   s" uses: cli verified" T-LABEL rc 0 T=
+   s" uses: no use line on the cli" T-LABEL
+   0 OUT CLI-OUT-U @ s\" \"target_start\"" CONTAINS?
+   0 ERR erru s\" \"target_start\"" CONTAINS? or TFALSE ;
+
+
+\ A name the checker refuses binds nothing: one two usings both export, one a
+\ using shadows a global with, one nothing defines. The scan goes on, and the
+\ global binds once the using closes.
+: USES-REFUSED ( -- )
+   0 GEN-U !
+   s\" package CVT-RA\npublic\n: CVT-SAME ( -- n ) 1 ;\n: CVT-SHADOW ( -- n ) 2 ;\n: CVT-SLOT ( -- n ) 5 ;\n;package\n" GEN+
+   s\" package CVT-RB\npublic\n: CVT-SAME ( -- n ) 3 ;\n;package\n: CVT-SHADOW ( -- n ) 4 ;\n" GEN+
+   s\" using CVT-RA\nusing CVT-RB\n: CVT-AMBIG ( -- n ) CVT-SAME ;\n;using\n;using\n" GEN+
+   s\" defer CVT-SLOT ( -- n )\nusing CVT-RA\n: CVT-SHADOWED ( -- n ) CVT-SHADOW ;\n: CVT-TICK ( -- ) ['] CVT-SHADOW drop ;\n: CVT-IS ( [ -- n ] -- ) is CVT-SLOT ;\n;using\n" GEN+
+   s\" : CVT-UNKNOWN ( -- n ) CVT-NOWHERE ;\n: CVT-AFTER ( -- n ) CVT-SHADOW ;\n: CVT-IS-AFTER ( [ -- n ] -- ) is CVT-SLOT ;\n" GEN+
+   s" uses-refused.f" DEFS-CHECK 1 s" uses-refused: refused" EXPECT-KIND
+   s" uses-refused: ambiguous" s" CVT-AMBIG ( -- n ) CVT-SAME" 8 NO-USE
+   s" uses-refused: shadowed" s" CVT-SHADOWED ( -- n ) CVT-SHADOW" 10 NO-USE
+   s" uses-refused: tick target" s" CVT-TICK ( -- ) ['] CVT-SHADOW" 10 NO-USE
+   s" uses-refused: is target" s" CVT-IS ( [ -- n ] -- ) is CVT-SLOT" 8 NO-USE
+   s" uses-refused: undefined" s" CVT-NOWHERE" 11 NO-USE
+   s" uses-refused: the global after" s" CVT-AFTER ( -- n ) CVT-SHADOW" 10 USE
+   s" uses-refused: the global after" DEFS-SRC$ s\" ;package\n: CVT-SHADOW" 10 s" uses-refused.f" USE-TARGET
+   s" uses-refused: is after" s" CVT-IS-AFTER ( [ -- n ] -- ) is CVT-SLOT" 8 USE
+   s" uses-refused: is after" DEFS-SRC$ s" defer CVT-SLOT" 8 s" uses-refused.f" USE-TARGET
+   s" uses-refused: two lines" 2 USE-COUNT ;
+
+
+\ A use binds the declaration visible where it stands: the first before
+\ undefine retires it, the second after.
+: USES-ORDER ( -- )
+   0 GEN-U !
+   s\" : CVT-W ( -- n ) 1 ;\n: CVT-EARLY ( -- n ) CVT-W ;\nundefine CVT-W\n" GEN+
+   s\" : CVT-W ( -- n ) 2 ;\n: CVT-LATE ( -- n ) CVT-W ;\nCVT-W drop\n" GEN+
+   s" uses-order.f" DEFS-CHECK 0 s" uses-order: verified" EXPECT-KIND
+   s" uses-order: before undefine" s" CVT-EARLY ( -- n ) CVT-W" 5 USE
+   s" uses-order: before undefine" DEFS-SRC$ s" : CVT-W" 5 s" uses-order.f" USE-TARGET
+   s" uses-order: undefine binds nothing" s" undefine CVT-W" 5 NO-USE
+   s" uses-order: after" s" CVT-LATE ( -- n ) CVT-W" 5 USE
+   s" uses-order: after" DEFS-SRC$ s\" undefine CVT-W\n: CVT-W" 5 s" uses-order.f" USE-TARGET
+   s" uses-order: top level after" s\" \nCVT-W" 5 USE
+   s" uses-order: top level after" DEFS-SRC$ s\" undefine CVT-W\n: CVT-W" 5 s" uses-order.f" USE-TARGET
+   s" uses-order: three lines" 3 USE-COUNT ;
+
+
+\ A refused body keeps its declared signature, and its uses bind it. A refused
+\ signature type retains nothing, so a use of it is undefined and binds
+\ nothing.
+: USES-RECOVERY ( -- )
+   0 GEN-U !
+   s\" : CVT-BAD ( -- n ) ;\n: CVT-USE-BAD ( -- n ) CVT-BAD 1 + ;\n" GEN+
+   s\" : CVT-GONE ( -- cvt-no-type ) 1 ;\n: CVT-KEPT ( -- n ) 2 ;\n" GEN+
+   s\" : CVT-USE-KEPT ( -- n ) CVT-KEPT CVT-GONE + ;\n" GEN+
+   s" uses-recovery.f" DEFS-CHECK 1 s" uses-recovery: refused" EXPECT-KIND
+   s" uses-recovery: kept signature" s" CVT-USE-BAD ( -- n ) CVT-BAD" 7 USE
+   s" uses-recovery: kept signature" DEFS-SRC$ s" : CVT-BAD" 7 s" uses-recovery.f" USE-TARGET
+   s" uses-recovery: after a refusal" s" CVT-USE-KEPT ( -- n ) CVT-KEPT" 8 USE
+   s" uses-recovery: after a refusal" DEFS-SRC$ s" : CVT-KEPT" 8 s" uses-recovery.f" USE-TARGET
+   s" uses-recovery: a refused type retains nothing" s" CVT-KEPT CVT-GONE" 8 NO-USE
+   s" uses-recovery: two lines" 2 USE-COUNT ;
+
+
+\ A body the checker defers to the run (src/core/checker.f CHECK-VERDICT 2: it
+\ names a word only a rendering statement in scope can define) keeps its
+\ declared signature, and its uses bind it; the name only the run defines
+\ binds nothing.
+: USES-DEFERRED ( -- )
+   0 GEN-U !
+   s\" package CVT-UF\n: CVT-RENDER ( -- ) s\" : CVT-MADE ( -- n ) 7 ;\" INCLUDE-EVALUATE ;\nCVT-RENDER\n" GEN+
+   s\" : CVT-DEFERRED ( -- n ) CVT-MADE ;\n: CVT-USE ( -- n ) CVT-DEFERRED ;\n;package\n" GEN+
+   s" uses-deferred.f" DEFS-CHECK 5 s" uses-deferred: deferred" EXPECT-KIND
+   s" uses-deferred: the renderer" s\" \nCVT-RENDER" 10 USE
+   s" uses-deferred: the renderer" DEFS-SRC$ s" : CVT-RENDER" 10 s" uses-deferred.f" USE-TARGET
+   s" uses-deferred: the deferred body" s" CVT-USE ( -- n ) CVT-DEFERRED" 12 USE
+   s" uses-deferred: the deferred body" DEFS-SRC$ s" : CVT-DEFERRED" 12 s" uses-deferred.f" USE-TARGET
+   s" uses-deferred: the run's name" s" CVT-DEFERRED ( -- n ) CVT-MADE" 8 NO-USE
+   s" uses-deferred: two lines" 2 USE-COUNT ;
+
+
+\ A duplicate definition is refused and retains nothing: the uses after it
+\ bind the first.
+: USES-DUPLICATE ( -- )
+   0 GEN-U !
+   s\" : CVT-D ( -- n ) 1 ;\n: CVT-D ( -- n ) 2 ;\n: CVT-DUSE ( -- n ) CVT-D ;\nCVT-D drop\n" GEN+
+   s" uses-duplicate.f" DEFS-CHECK 1 s" uses-duplicate: refused" EXPECT-KIND
+   s" uses-duplicate: body" s" CVT-DUSE ( -- n ) CVT-D" 5 USE
+   s" uses-duplicate: body" DEFS-SRC$ s" : CVT-D" 5 s" uses-duplicate.f" USE-TARGET
+   s" uses-duplicate: top level" s\" \nCVT-D" 5 USE
+   s" uses-duplicate: top level" DEFS-SRC$ s" : CVT-D" 5 s" uses-duplicate.f" USE-TARGET
+   s" uses-duplicate: two lines" 2 USE-COUNT ;
+
+
+\ The checker's record store and its location table both start with room for
+\ fewer declarations than this subject makes, and grow by copying
+\ (src/core/checker.f USIGS-GROW, ARENA-ROWS-ENSURE), which keeps every
+\ record's offset: the first and the last declaration keep their own
+\ locations. An engine bakes its store with one to two 64 KiB grains of room
+\ (USIGS-PERSIST-CAP), the child's own load takes some 36 KB of it, and the
+\ table starts at 64 rows. These declarations take some 170 KB: in the child
+\ on an unsealed engine the store grew from 1,835,008 to 3,670,016 bytes.
+3000 constant GROWTH-DEFS
+
+: USES-GROWTH ( -- )
+   0 GEN-U !
+   s\" : CVT-GFIRST ( -- n ) 1 ;\n" GEN+
+   GROWTH-DEFS 0 ?do
+      s" : CVT-G" GEN+ i GEN-N+ s\"  ( -- n ) 1 ;\n" GEN+
+   loop
+   s\" : CVT-GLAST ( -- n ) 2 ;\n: CVT-GUSE ( -- n ) CVT-GFIRST CVT-GLAST + ;\n" GEN+
+   s" uses-growth.f" DEFS-CHECK 0 s" uses-growth: verified" EXPECT-KIND
+   s" uses-growth: the first declaration" s" CVT-GUSE ( -- n ) CVT-GFIRST" 10 USE
+   s" uses-growth: the first declaration" DEFS-SRC$ s" : CVT-GFIRST" 10 s" uses-growth.f" USE-TARGET
+   s" uses-growth: the last declaration" s" CVT-GFIRST CVT-GLAST" 9 USE
+   s" uses-growth: the last declaration" DEFS-SRC$ s" : CVT-GLAST" 9 s" uses-growth.f" USE-TARGET
+   s" uses-growth: two lines" 2 USE-COUNT ;
+
+
+\ ---- the candidates ---------------------------------------------------------
+
+variable CAND-NODE                      \ the candidate line CAND found
+DYNAMIC-BUFFER SEEN u8                  \ an unarmed check's outputs, then an armed one's
+variable SEEN-U
+
+
+\ Check the generated source as the fixture NAME with its cursor at byte AT.
+: CANDS-AT ( ptr u8 n n -- CHECK:verdict )
+   {: name:ptr nameu:n at:n :}
+   0 GEN DEFS-SRC-A !  GEN-U @ DEFS-SRC-U !
+   name nameu AT$ SUBJ SUBJ-U COPY!
+   DEFS-SRC$ SUBJ$ at GUARD-MS >MS CHECK:VERIFY-BYTES-AT ;
+
+
+\ CANDS-AT where the first LEAD in the generated source ends.
+: CANDS ( ptr u8 n ptr u8 n -- CHECK:verdict )
+   {: name:ptr nameu:n lead:ptr leadu:n :}
+   0 GEN GEN-U @ lead leadu END-IN
+   {: at:n :}
+   name nameu at CANDS-AT ;
+
+
+\ The candidate line of the last check spelling WORD as written; -1 for none.
+: CAND ( ptr u8 n -- )
+   {: w:ptr wu:n :}
+   CHECK:VERIFY-CANDIDATES$ s" word" w wu PACKET CAND-NODE ! ;
+
+
+: CAND-NUM ( ptr u8 n ptr u8 n n -- )
+   {: label:ptr labelu:n key:ptr keyu:n want:n :}
+   label labelu T-LABEL CAND-NODE @ key keyu NUMBER$
+   SB-RESET want FMT:SB-INT SB$ T$= ;
+
+
+\ The candidate CAND found is declared by the U bytes the first LEAD in TEXT
+\ ends with, TEXT the fixture FILE's bytes.
+: CAND-TARGET ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: label:ptr labelu:n text:ptr textu:n lead:ptr leadu:n u:n file:ptr fileu:n :}
+   text textu lead leadu END-IN
+   {: end:n :}
+   label labelu T-LABEL CAND-NODE @ 0 >= TTRUE
+   label labelu T-LABEL CAND-NODE @ s" file" STRING$ file fileu AT$ T$=
+   label labelu s" target_start" end u - CAND-NUM
+   label labelu s" target_end" end CAND-NUM ;
+
+
+\ The candidate CAND found has no declaration in the files checked: no file and
+\ no target.
+: CAND-BARE ( ptr u8 n -- )
+   {: label:ptr labelu:n :}
+   label labelu T-LABEL CAND-NODE @ 0 >= TTRUE
+   label labelu T-LABEL CAND-NODE @ s" file" J-STR VALUE 0 < TTRUE
+   label labelu T-LABEL CAND-NODE @ s" target_start" J-NUM VALUE 0 < TTRUE ;
+
+
+\ CAND found no line.
+: NO-CAND ( ptr u8 n -- )
+   {: label:ptr labelu:n :}
+   label labelu T-LABEL CAND-NODE @ 0 < TTRUE ;
+
+
+: CAND-COUNT ( ptr u8 n n -- )
+   {: label:ptr labelu:n want:n :}
+   label labelu T-LABEL CHECK:VERIFY-CANDIDATES$ OBJECTS want T= ;
+
+
+\ A body token's prefix offers each word that binds there with the declaration
+\ it binds, and an engine word the body has not used yet with none. A TRUSTED:
+\ body read before the cursor's body does not take the cursor, and a word is
+\ not offered in its own body.
+: CANDS-BODY ( -- )
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\nTRUSTED: CVT-KT ( -- n ) 2 ;\n: CVT-KB ( -- n ) CVT-K 1 + ;\n: CVT-KLATE ( -- n ) 3 ;\n" GEN+
+   s" cands-body.f" s" ( -- n ) CVT-K" CANDS 1 s" cands-body: refused" EXPECT-KIND
+   s" CVT-KA" CAND
+   s" cands-body: a word declared before" DEFS-SRC$ s" : CVT-KA" 6 s" cands-body.f" CAND-TARGET
+   s" CVT-KT" CAND
+   s" cands-body: the trusted word" DEFS-SRC$ s" TRUSTED: CVT-KT" 6 s" cands-body.f" CAND-TARGET
+   s" CVT-KB" CAND
+   s" cands-body: not the body's own word" NO-CAND
+   s" CVT-KLATE" CAND
+   s" cands-body: not a word declared after" NO-CAND
+   s" cands-body: no other word" 2 CAND-COUNT
+   0 GEN-U !
+   s\" : CVT-KE ( n -- n n ) du ;\n" GEN+
+   s" cands-engine.f" s" ) du" CANDS drop
+   s" dup" CAND
+   s" cands-body: an engine word not yet taken" CAND-BARE ;
+
+
+\ A top-level cursor offers the words that bind there: in the blank before a
+\ token, at a prefix, at the end of the file, and in the blanks before a
+\ comment the file ends with, which belong to its end.
+: CANDS-TOP ( -- )
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\nCVT-KA drop  CVT-KA drop\nCVT-K" GEN+
+   s" cands-top.f" s" drop " CANDS drop
+   s" CVT-KA" CAND
+   s" cands-top: the blank before a token" DEFS-SRC$ s" : CVT-KA" 6 s" cands-top.f" CAND-TARGET
+   s" cands-top.f" s\" drop\nCVT-K" CANDS drop
+   s" CVT-KA" CAND
+   s" cands-top: a prefix" DEFS-SRC$ s" : CVT-KA" 6 s" cands-top.f" CAND-TARGET
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\n" GEN+
+   s" cands-end.f" GEN-U @ CANDS-AT drop
+   s" CVT-KA" CAND
+   s" cands-top: the end of the file" DEFS-SRC$ s" : CVT-KA" 6 s" cands-end.f" CAND-TARGET
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\n \\ hello wor\n" GEN+
+   s" cands-end-comment.f" s\" ;\n" CANDS drop
+   s" CVT-KA" CAND
+   s" cands-top: the blanks before a closed comment that ends the file" DEFS-SRC$ s" : CVT-KA" 6 s" cands-end-comment.f" CAND-TARGET ;
+
+
+\ Nothing is offered where no word binds: a definition's name, its signature,
+\ a comment, a string, a TRUSTED: body, a type's name, the stretch a deferring
+\ top-level word leaves to the run, a body the scan never reaches, or the end
+\ of a comment or string that the file ends in before it closes.
+: CANDS-NONE ( -- )
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\n: CVT-KN ( -- n ) 1 ;\n" GEN+
+   s" cands-none.f" s" : CVT-KN" CANDS drop
+   s" cands-none: a definition's name" 0 CAND-COUNT
+   s" cands-none.f" s" CVT-KN ( -- n" CANDS drop
+   s" cands-none: a signature" 0 CAND-COUNT
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\n\\ CVT-K\n: CVT-KS ( -- ptr u8 n ) s\" CVT-K\" ;\n" GEN+
+   s\" TRUSTED: CVT-KT ( -- n ) CVT-K ;\nDEFTYPE CVT-K\n" GEN+
+   s" cands-skip.f" s" \ CVT-K" CANDS drop
+   s" cands-none: a comment" 0 CAND-COUNT
+   s" cands-skip.f" s\" s\" CVT-K" CANDS drop
+   s" cands-none: a string" 0 CAND-COUNT
+   s" cands-skip.f" s" ( -- n ) CVT-K" CANDS drop
+   s" cands-none: a TRUSTED: body" 0 CAND-COUNT
+   s" cands-skip.f" s" DEFTYPE CVT-K" CANDS drop
+   s" cands-none: a type's name" 0 CAND-COUNT
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\ndefer CVT-KD ( -- n )\nCVT-KD CVT-K\n" GEN+
+   s" cands-deferred.f" s" CVT-KD CVT-K" CANDS drop
+   s" cands-none: a deferred stretch" 0 CAND-COUNT
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\n: CVT-KA ( -- n ) CVT-K ;\n" GEN+
+   s" cands-dup.f" s" ) CVT-K" CANDS drop
+   s" cands-none: a body after a duplicate" 0 CAND-COUNT
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\n\\ hello wor" GEN+
+   s" cands-open-line.f" GEN-U @ CANDS-AT drop
+   s" cands-none: the end of an open line comment" 0 CAND-COUNT
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\n( hello wor" GEN+
+   s" cands-open-paren.f" GEN-U @ CANDS-AT drop
+   s" cands-none: the end of an open paren comment" 0 CAND-COUNT
+   \ Pins the product answer: the core refuses an open s" (E-DISC-UNTERM) before the child, unlike \ and (.
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\ns\" hello wor" GEN+
+   s" cands-open-string.f" GEN-U @ CANDS-AT drop
+   s" cands-none: the end of an open string" 0 CAND-COUNT ;
+
+
+\ A tick or `is` target offers the words that bind there, never a local.
+: CANDS-TARGETS ( -- )
+   0 GEN-U !
+   s\" : CVT-KA ( -- n ) 1 ;\ndefer CVT-KD ( -- n )\n" GEN+
+   s\" : CVT-KT ( n -- n ) {: CVT-KL:n :} ['] CVT-K drop CVT-KL ;\n" GEN+
+   s\" : CVT-KI ( [ -- n ] n -- ) {: CVT-KL:n :} is CVT-K ;\n" GEN+
+   s" cands-target.f" s" ['] CVT-K" CANDS drop
+   s" CVT-KA" CAND
+   s" cands-targets: a tick target" DEFS-SRC$ s" : CVT-KA" 6 s" cands-target.f" CAND-TARGET
+   s" CVT-KL" CAND
+   s" cands-targets: no local for a tick" NO-CAND
+   s" cands-target.f" s" is CVT-K" CANDS drop
+   s" CVT-KD" CAND
+   s" cands-targets: an is target" DEFS-SRC$ s" defer CVT-KD" 6 s" cands-target.f" CAND-TARGET
+   s" CVT-KL" CAND
+   s" cands-targets: no local for is" NO-CAND ;
+
+
+\ Two locals that differ only in case are each offered as declared.
+: CANDS-LOCALS ( -- )
+   0 GEN-U !
+   s\" : CVT-KC ( n n -- n ) {: cvt-kx:n CVT-KX:n :} cvt-kx CVT-K ;\n" GEN+
+   s" cands-locals.f" s" cvt-kx CVT-K" CANDS drop
+   s" cvt-kx" CAND
+   s" cands-locals: the lower-case local" CAND-BARE
+   s" CVT-KX" CAND
+   s" cands-locals: the upper-case local" CAND-BARE ;
+
+
+\ A name the scope does not select is not offered, while a global beside it
+\ is: a used public before its using and after it, one two used publics both
+\ export, and one a used public shadows a global with.
+: CANDS-REFUSED ( -- )
+   0 GEN-U !
+   s\" : CVT-SOLO ( -- n ) 9 ;\npackage CVT-RA\npublic\n: CVT-SAME ( -- n ) 1 ;\n: CVT-SHADOW ( -- n ) 2 ;\n;package\n" GEN+
+   s\" package CVT-RB\npublic\n: CVT-SAME ( -- n ) 3 ;\n;package\n: CVT-SHADOW ( -- n ) 4 ;\n" GEN+
+   s\" : CVT-KBEFORE ( -- n ) CVT-S ;\nusing CVT-RA\nusing CVT-RB\n: CVT-KAMBIG ( -- n ) CVT-S ;\n;using\n;using\n" GEN+
+   s\" using CVT-RA\n: CVT-KSHADOW ( -- n ) CVT-S ;\n;using\n: CVT-KAFTER ( -- n ) CVT-S ;\n" GEN+
+   s" cands-refused.f" s" CVT-KBEFORE ( -- n ) CVT-S" CANDS drop
+   s" CVT-SOLO" CAND
+   s" cands-refused: the global before the using" DEFS-SRC$ s" : CVT-SOLO" 8 s" cands-refused.f" CAND-TARGET
+   s" CVT-SAME" CAND
+   s" cands-refused: a public before its using" NO-CAND
+   s" cands-refused.f" s" CVT-KAMBIG ( -- n ) CVT-S" CANDS drop
+   s" CVT-SOLO" CAND
+   s" cands-refused: the global beside two usings" DEFS-SRC$ s" : CVT-SOLO" 8 s" cands-refused.f" CAND-TARGET
+   s" CVT-SAME" CAND
+   s" cands-refused: two used publics" NO-CAND
+   s" cands-refused.f" s" CVT-KSHADOW ( -- n ) CVT-S" CANDS drop
+   s" CVT-SOLO" CAND
+   s" cands-refused: the global inside the using" DEFS-SRC$ s" : CVT-SOLO" 8 s" cands-refused.f" CAND-TARGET
+   s" CVT-SHADOW" CAND
+   s" cands-refused: a used public over a global" NO-CAND
+   s" cands-refused.f" s" CVT-KAFTER ( -- n ) CVT-S" CANDS drop
+   s" CVT-SOLO" CAND
+   s" cands-refused: the global after the using" DEFS-SRC$ s" : CVT-SOLO" 8 s" cands-refused.f" CAND-TARGET
+   s" CVT-SAME" CAND
+   s" cands-refused: a public after its using" NO-CAND ;
+
+
+\ A word undefine retires is not offered after it, while a word beside it is,
+\ and its redefinition is offered with the later declaration.
+: CANDS-ORDER ( -- )
+   0 GEN-U !
+   s\" : CVT-KEEP ( -- n ) 0 ;\n: CVT-KW ( -- n ) 1 ;\nundefine CVT-KW\n: CVT-KG ( -- n ) CVT-K ;\n" GEN+
+   s\" : CVT-KW ( -- n ) 2 ;\n: CVT-KH ( -- n ) CVT-K ;\n" GEN+
+   s" cands-order.f" s" CVT-KG ( -- n ) CVT-K" CANDS drop
+   s" CVT-KEEP" CAND
+   s" cands-order: the word beside it" DEFS-SRC$ s" : CVT-KEEP" 8 s" cands-order.f" CAND-TARGET
+   s" CVT-KW" CAND
+   s" cands-order: undefined" NO-CAND
+   s" cands-order.f" s" CVT-KH ( -- n ) CVT-K" CANDS drop
+   s" CVT-KW" CAND
+   s" cands-order: the redefinition" DEFS-SRC$ s\" CVT-K ;\n: CVT-KW" 6 s" cands-order.f" CAND-TARGET ;
+
+
+\ Each word as its scope selects it, with the declaration it binds in its own
+\ file: the open package's private word over a dependency's global of that
+\ name, a used public, a dependency's qualified public, a qualified export's
+\ tail. A cursor in the subject's comment is not placed at a dependency's token
+\ at the same byte.
+: CANDS-SCOPES ( -- )
+   USES-DEPS
+   0 GEN-U !
+   s\" require uses-dep.f\npackage CVT-KP\n: CVT-UGLOBAL ( -- n ) 7 ;\n: CVT-KQ ( -- n ) CVT-UG ;\n;package\n" GEN+
+   s" cands-private.f" s" ) CVT-UG" CANDS drop
+   s" CVT-UGLOBAL" CAND
+   s" cands-scopes: the private word over the global" DEFS-SRC$ s\" package CVT-KP\n: CVT-UGLOBAL" 11 s" cands-private.f" CAND-TARGET
+   s" cands-scopes: offered once" 1 CAND-COUNT
+   0 GEN-U !
+   s\" require uses-dep.f\nusing CVT-UD\n: CVT-KU ( -- n ) CVT-UO ;\n;using\n: CVT-KV ( -- n ) CVT-UD:CVT-UO ;\n" GEN+
+   s" cands-used.f" s" ) CVT-UO" CANDS drop
+   s" CVT-UONE" CAND
+   s" cands-scopes: a used public" USES-DEP$SRC s" : CVT-UONE" 8 s" uses-dep.f" CAND-TARGET
+   s" cands-used.f" s" CVT-UD:CVT-UO" CANDS drop
+   s" CVT-UD:CVT-UONE" CAND
+   s" cands-scopes: a qualified public" USES-DEP$SRC s" : CVT-UONE" 8 s" uses-dep.f" CAND-TARGET
+   0 GEN-U !
+   s\" require uses-dep.f\npackage CVT-KX\npublic\nEXPORT CVT-UD:CVT-UTWO\n;package\n: CVT-KY ( -- n ) CVT-KX:CVT-UT ;\n" GEN+
+   s" cands-export.f" s" CVT-KX:CVT-UT" CANDS drop
+   s" CVT-KX:CVT-UTWO" CAND
+   s" cands-scopes: a qualified export's tail" DEFS-SRC$ s" EXPORT CVT-UD:CVT-UTWO" 15 s" cands-export.f" CAND-TARGET
+   USES-DEP$SRC s" 1 CVT-HE" END-IN
+   {: at:n :}
+   0 GEN-U !
+   s\" require uses-dep.f\n\\ " GEN+
+   at 0 ?do s" x" GEN+ loop
+   s\" \n: CVT-KZ ( -- n ) 1 ;\n" GEN+
+   s" cands-ident.f" at CANDS-AT drop
+   s" cands-scopes: not a dependency's token" 0 CAND-COUNT ;
+
+
+\ The last check's verdict and outputs onto SEEN, each ended by a NUL.
+: SEEN+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   SEEN-U @ u + 1+ SEEN-RESERVE
+   a SEEN-U @ SEEN u BYTE-COPY
+   0 SEEN-U @ u + SEEN c!
+   SEEN-U @ u + 1+ SEEN-U ! ;
+
+: SEEN-CHECK+ ( CHECK:verdict -- )
+   KIND {: k:n :}
+   SEEN-U @ 1+ SEEN-RESERVE
+   k $30 + SEEN-U @ SEEN c!
+   SEEN-U @ 1+ SEEN-U !
+   CHECK:VERIFY-OUT$ SEEN+  CHECK:VERIFY-DEFS$ SEEN+
+   CHECK:VERIFY-USES$ SEEN+  CHECK:VERIFY-FILES$ SEEN+ ;
+
+
+\ The cursor only observes: the same bytes checked with and without it give the
+\ same verdict, packets, definitions, uses and files, byte for byte; and
+\ --verify-only, which has no cursor, writes no candidate line.
+: CANDS-OBSERVER ( -- )
+   USES-DEPS
+   0 GEN-U !
+   s\" require uses-dep.f\n: CVT-KA ( -- n ) 1 ;\n: CVT-KB ( -- n ) CVT-KA CVT-UGLOBAL + ;\n" GEN+
+   s\" : CVT-KR ( -- n ) CVT-KA CVT-NOPE ;\n: CVT-KC ( -- n ) CVT-KA CVT-KB + ;\n" GEN+
+   0 SEEN-U !
+   s" cands-observe.f" DEFS-CHECK SEEN-CHECK+
+   SEEN-U @
+   {: half:n :}
+   s" cands-observe.f" s" CVT-KA CVT-KB" CANDS SEEN-CHECK+
+   s" CVT-KB" CAND
+   s" cands-observer: the cursor offered" DEFS-SRC$ s" : CVT-KB" 6 s" cands-observe.f" CAND-TARGET
+   s" cands-observer: the same verdict and outputs" T-LABEL
+   0 SEEN half  half SEEN SEEN-U @ half -  T$=
+   s" cands-observe.f" DEFS-SRC$ FIXTURE
+   CLI-START s" --verify-only" ARG+ s" cands-observe.f" AT$ ARG+
+   s" " CLI drop
+   {: erru:n :}
+   s" cands-observer: no candidate line on the cli" T-LABEL
+   0 OUT CLI-OUT-U @ s" candidate" CONTAINS?
+   0 ERR erru s" candidate" CONTAINS? or TFALSE ;
 
 
 \ ---- the measurement -------------------------------------------------------
@@ -1450,18 +2831,45 @@ public
    s" engine-provided" [: ENGINE-PROVIDED ;] RUN-CASE
    s" held" [: HELD ;] RUN-CASE
    s" open-stop" [: OPEN-STOP ;] RUN-CASE
+   s" disc-stop" [: DISC-STOP ;] RUN-CASE
+   s" closure-line" [: CLOSURE-LINE ;] RUN-CASE
    s" no-result" [: NO-RESULT ;] RUN-CASE
    s" deadline" [: DEADLINE ;] RUN-CASE
    s" stop-after-packet" [: STOP-AFTER-PACKET ;] RUN-CASE
    s" missing-dependency" [: MISSING-DEPENDENCY ;] RUN-CASE
-   s" truncated" [: TRUNCATED ;] RUN-CASE
+   s" loader-form" [: LOADER-FORM ;] RUN-CASE
+   s" unreadable-dependency" [: UNREADABLE-DEPENDENCY ;] RUN-CASE
+   s" long-resolved" [: LONG-RESOLVED ;] RUN-CASE
+   s" wide-closure" [: WIDE-CLOSURE ;] RUN-CASE
+   s" whole-output" [: WHOLE-OUTPUT ;] RUN-CASE
+   s" definitions" [: DEFINITIONS ;] RUN-CASE
+   s" definitions-refused" [: DEFINITIONS-REFUSED ;] RUN-CASE
+   s" definitions-undefine" [: DEFINITIONS-UNDEFINE ;] RUN-CASE
+   s" definitions-dependency" [: DEFINITIONS-DEPENDENCY ;] RUN-CASE
+   s" files" [: FILES ;] RUN-CASE
+   s" uses" [: USES ;] RUN-CASE
+   s" uses-refused" [: USES-REFUSED ;] RUN-CASE
+   s" uses-order" [: USES-ORDER ;] RUN-CASE
+   s" cands-body" [: CANDS-BODY ;] RUN-CASE
+   s" cands-top" [: CANDS-TOP ;] RUN-CASE
+   s" cands-none" [: CANDS-NONE ;] RUN-CASE
+   s" cands-targets" [: CANDS-TARGETS ;] RUN-CASE
+   s" cands-locals" [: CANDS-LOCALS ;] RUN-CASE
+   s" cands-refused" [: CANDS-REFUSED ;] RUN-CASE
+   s" cands-order" [: CANDS-ORDER ;] RUN-CASE
+   s" cands-scopes" [: CANDS-SCOPES ;] RUN-CASE
+   s" cands-observer" [: CANDS-OBSERVER ;] RUN-CASE
+   s" uses-recovery" [: USES-RECOVERY ;] RUN-CASE
+   s" uses-deferred" [: USES-DEFERRED ;] RUN-CASE
+   s" uses-duplicate" [: USES-DUPLICATE ;] RUN-CASE
+   s" uses-growth" [: USES-GROWTH ;] RUN-CASE
    s" cli-file" [: CLI-FILE ;] RUN-CASE
    s" cli-stdin" [: CLI-STDIN ;] RUN-CASE
    s" cli-usage" [: CLI-USAGE ;] RUN-CASE
    s" cli-early-fails" [: CLI-EARLY-FAILS ;] RUN-CASE
    s" cli-large-stdin" [: CLI-LARGE-STDIN ;] RUN-CASE
    s" cli-path-capacity" [: CLI-PATH-CAPACITY ;] RUN-CASE
-   s" cli-truncated" [: CLI-TRUNCATED ;] RUN-CASE
+   s" cli-whole-output" [: CLI-WHOLE-OUTPUT ;] RUN-CASE
    s" cli-deadline" [: CLI-DEADLINE ;] RUN-CASE
    s" cli-deadline-prepass" [: CLI-DEADLINE-PREPASS ;] RUN-CASE
    s" load-order" [: LOAD-ORDER ;] RUN-CASE
@@ -1491,7 +2899,14 @@ public
    s" top-qualified" [: TOP-QUALIFIED ;] RUN-CASE
    s" top-deferred" [: TOP-DEFERRED ;] RUN-CASE
    s" top-nested-deferred" [: TOP-NESTED-DEFERRED ;] RUN-CASE
+   s" top-parses-bound" [: TOP-PARSES-BOUND ;] RUN-CASE
+   s" top-parses-through" [: TOP-PARSES-THROUGH ;] RUN-CASE
+   s" top-parses-opaque" [: TOP-PARSES-OPAQUE ;] RUN-CASE
+   s" top-parses-row" [: TOP-PARSES-ROW ;] RUN-CASE
+   s" top-parses-whitebox" [: TOP-PARSES-WHITEBOX ;] RUN-CASE
    s" top-renders" [: TOP-RENDERS ;] RUN-CASE
+   s" def-deferred" [: DEF-DEFERRED ;] RUN-CASE
+   s" trusted-tick-order" [: TRUSTED-TICK-ORDER ;] RUN-CASE
    s" top-create" [: TOP-CREATE ;] RUN-CASE
    s" top-data-word" [: TOP-DATA-WORD ;] RUN-CASE
    s" top-trusted" [: TOP-TRUSTED ;] RUN-CASE

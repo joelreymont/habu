@@ -22,9 +22,9 @@ require src/habu/native-observer-cells.f
 DICT-WORDLIST-SLOT constant XREF-WORDLIST-SLOT   \ src/core/util.f
 \ The two non-wordlist values a record's wordlist cell can carry. They are
 \ src/habu/layout.f's, not this file's: the engine's hash index is keyed on the
-\ same cell, and XREF-RETIRE below is the one writer that changes it after a
-\ record is already in that index - see the DICT-WL comment there for what the
-\ lookup does about it.
+\ same cell, and XREF-RETIRE below and the checker overlay's record-wid! are
+\ the two writers that change it after a record is already in that index - see
+\ the DICT-WL comment there for what the lookup does about it.
 DICT-WL:NAMESPACE constant XREF-NAMESPACE-WL
 DICT-WL:RETIRED constant XREF-RETIRED-WL
 
@@ -497,6 +497,12 @@ TRUSTED: XREF-PATCH32 ( n ptr n -- )
    entry first <= if XREF-FALSE exit then
    entry clause XREF-CODE-BYTES +  first parent XREF-CODE-BYTES +  <= ;
 
+\ The checker overlay asks this same test of a live definer a replayed
+\ `undefine` retires (src/core/checker.f CHECKER-OVERLAY CLAUSE-OF); a replayed
+\ definer's clause, codeless, is paired where the overlay publishes it.
+: DOES-COMPANION-INSTALL ( -- ) [: XREF-DOES-COMPANION? ;] is DOES-COMPANION?-XT ;
+DOES-COMPANION-INSTALL
+
 \ A qualified token names PACKAGE:TAIL, but its dictionary record stores TAIL
 \ in the package wordlist. Retire from that resolved record identity; the
 \ original spelling remains the checker-side symbol identity below.
@@ -510,14 +516,32 @@ TRUSTED: XREF-PATCH32 ( n ptr n -- )
    k XREF-DOES-COMPANION? if k 1+ XREF-REC XREF-RETIRE then
    k XREF-REC dup XREF-NAME$ rot XREF-WORDLIST XREF-RETIRE-WL ;
 
+\ While a checker overlay is open (src/habu/layout.f REPLAY-SCOPE) the engine
+\ undefines nothing live, as it defines nothing (src/habu/habu1.f
+\ OVERLAY-EMIT:GUARD,): replay-close gives back only the records the overlay
+\ retired and logged, so a record retired here would stay retired after the
+\ pair and the live word would be gone. The refusal names the word before
+\ anything changes and throws ENGINE-ERROR:OVERLAY-OPEN, which ends a top-level
+\ load with that code. Both loops run these words; a replayed `undefine` never
+\ reaches them, since the checker's source pass retires through the overlay
+\ (src/core/checker.f CHECKER-OVERLAY:RETIRE).
+: XREF-UNDEFINE-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
+   data-base REPLAY-SCOPE:LATCH + @ 0= if exit then
+   2 s" hb: undefine while a checker replay is open: " write drop
+   2 a u write drop
+   2 S\" \n" write drop
+   ENGINE-ERROR:OVERLAY-OPEN throw ;
+
 : UNDEFINE-NAME ( ptr u8 n -- )
    XREF-SU ! XREF-SN!
+   XREF-SN@ XREF-SU @ XREF-UNDEFINE-GUARD
    XREF-SN@ XREF-SU @ XREF-FIND-TARGET-INDEX XREF-REQUIRE-UNDEFINE XREF-IDX !
    XREF-SN@ XREF-SU @ CHECKER-UNDEFINE   \ guarded checker mutation completes before retirement
    XREF-IDX @ XREF-RETIRE-INDEX ;
 
 : UNDEFINE-FOUND ( ptr u8 n n -- )
    XREF-IDX ! XREF-SU ! XREF-SN!
+   XREF-SN@ XREF-SU @ XREF-UNDEFINE-GUARD
    XREF-SN@ XREF-SU @ CHECKER-UNDEFINE
    XREF-IDX @ XREF-RETIRE-INDEX ;
 
@@ -551,6 +575,20 @@ TRUSTED: SEAL-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
 \ FORGET retires a suffix of dictionary records and gives back the corresponding
 \ code. Live XREF records decide the safe floor; relocation metadata over the
 \ released span is cleared before the code pointer moves.
+\ A selected record is borrowed from the resolver at SELECT. The slot alone is
+\ never identity: lowering and re-exposing the count issues another occurrence.
+\ These references stay in this process and carry no checker effect or code lease.
+package DEF-OCC
+public
+TRUSTED: SELECT ( ptr n -- n n ) def-occ-select ;
+TRUSTED: RESOLVE ( n n -- ptr n ) def-occ-resolve ;
+
+: CALLABLE ( n n -- n )
+   RESOLVE dup XREF-WORDLIST DICT-WL:NAMESPACE = if E-NONCALLABLE throw then
+   XREF-START ;
+
+;package
+
 package CODE-RECLAIM
 
 private
@@ -738,6 +776,8 @@ undefine USE-SLOT-BOOT
 undefine CWIN-STATE
 undefine CALL-FREEZE-XT
 undefine CALL-FREEZE-INSTALL
+undefine DOES-COMPANION?-XT
+undefine DOES-COMPANION-INSTALL
 undefine CHECKER-PKG-LIVE-DEFAULT
 undefine CHECKER-PKG-BOOT-LIVE
 undefine CHECKER-PKG-MIRROR
@@ -745,11 +785,6 @@ undefine CHECKER-PKG-CONTEXT
 undefine CHECKER-RESOLVE:AUTHORITY
 undefine CHECKER-PKG-CONTEXT-REJECT
 undefine CHECKER-VERIFY-PKG-DEPTH
-undefine VPKG-NAME
-undefine VPKG-U
-undefine VPKG-MODE
-undefine VPKG-SAVE
-undefine VPKG-RESTORE
 undefine TFAM-PKG-XT
 undefine TFAM-PKG$*
 package PKG-AUTH
@@ -770,7 +805,35 @@ get-current prot-wid-add
 \ The declaration owner holds CHECKER-RESYNC's entry by its xt, which keeps the
 \ name through the seal where SLOT and SLOTS lose theirs: the product still
 \ resolves SCOPE in the package's private wordlist. Retire it so the owner is
-\ the only way in.
+\ the only way in. MIRROR is public for the checker overlay's direct calls,
+\ compiled above; retire it too.
 package CHECKER-RESYNC
 undefine SCOPE
+public
+undefine MIRROR
+;package
+
+\ The checker overlay's public words are the checker's own calls, compiled
+\ above in src/core/checker.f. Retire their names so no source reaches the
+\ engine's replay writers through them.
+package CHECKER-OVERLAY
+public
+undefine OPEN-SCOPE
+undefine CLOSE-SCOPE
+undefine MARKS
+undefine ROLLBACK
+undefine HIDE
+undefine UNHIDE
+undefine SCOPE-BYTES
+undefine SAVE-SCOPE
+undefine RESTORE-SCOPE
+undefine FILE-DONE
+undefine PUBLISH
+undefine CLAUSE
+undefine OPEN-PACKAGE
+undefine SECTION
+undefine CLOSE-PACKAGE
+undefine OPEN-USING
+undefine CLOSE-USING
+undefine RETIRE
 ;package

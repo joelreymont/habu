@@ -12,14 +12,16 @@ variable SEEN
 : EQ! ( n n -- ) <> if 79 throw then ;
 
 defer PREPARE ( -- )
-TRUSTED: BIND-PREPARE ( -- )
+\ The owner record holds its prepare entry as a code address integer.
+CAST: AS-PREPARE ( n -- [ -- ] )
+: BIND-PREPARE ( -- )
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
-   NCOMP-DISPATCH:DECL-CAPTURE-OFF + CELL-VIEW @ is PREPARE ;
+   NCOMP-DISPATCH:DECL-CAPTURE-OFF + CELL-VIEW @ AS-PREPARE is PREPARE ;
 BIND-PREPARE
 
 \ Inject the checker's own events at this whitebox boundary. Ordinary source
 \ owns the declared observer API, not SCAN/TOKEN/DONE's event-production path.
-TRUSTED: EVENTS ( -- )
+: EVENTS ( -- )
    s" name" SCAN
    s" name" 0 0 TOKEN
    s" name" -1 DONE ;

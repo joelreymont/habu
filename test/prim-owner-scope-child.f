@@ -34,20 +34,26 @@
 \    package TIER (lib/tier.f). Its owner's checked callers compile at both
 \    tiers, every other scope misses the name, and the owner's public
 \    TIER:SELECT, which this file selects its tiers with, compiles everywhere.
+\ 6. An internal engine primitive a package row types: package-scope! and
+\    namespace-record carry DNAME-INT|DNAME-OWNED and are CHECKER-OVERLAY's
+\    (src/habu/prims.f). The owner's checked callers compile at both tiers,
+\    and a checked caller elsewhere gets the global trusted-only row's reject.
+\    A tick stays refused at both tiers, the owner's included, as every
+\    internal word's is: an xt would carry the call out of the owner.
 \
 \ Nothing here is EXECUTED: every compile case defines a word and throws the body
 \ away, and the shadowed global's token is refused before it runs.
 
+require lib/errors.f
 require lib/tier.f
 
-\ Compiling a candidate is the subject, so the compile boundary is unchecked on
-\ purpose: EV moves the live package the next case is measured in, and
-\ TIER:SELECT picks the compiler it is measured under. EVC reports the reject
-\ code instead of letting it exit the window. A refusal's throw puts the text's
-\ two cells back, so EVC evaluates a copy and drops them on either path: this
-\ file is a closed program and may leave nothing.
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-: EVC ( ptr u8 n -- n ) [: 2dup EV ;] catch {: rc:n :} 2drop rc ;
+\ Compiling a candidate is the subject, through evaluate-closed: a text that
+\ opens or closes a package moves the live package the next case is measured
+\ in, and TIER:SELECT picks the compiler it is measured under. EVC reports the
+\ reject code instead of letting it exit the window. A refusal's throw puts the
+\ text's two cells back, so EVC evaluates a copy and drops them on either path:
+\ this file is a closed program and may leave nothing.
+: EVC ( ptr u8 n -- n ) [: 2dup evaluate-closed ;] catch {: rc:n :} 2drop rc ;
 
 package PRIM-OWNER-CHILD
 
@@ -70,6 +76,13 @@ $0A constant LF-C
    rc HIR-UNMODELED-RC = if s" unmodeled" exit then
    s" unexpected" ;
 
+\ The checker admits a tick of an owned internal word inside its owner, through
+\ the owner's row; the compiler then refuses the token, tier 0 with the
+\ compile-reject rc and tier 1's elaborator with E-NELAB-QUOT.
+: TICK-OUTCOME$ ( n -- ptr u8 n ) {: rc:n :}
+   rc E-NELAB-QUOT = if s" rejected" exit then
+   rc OUTCOME$ ;
+
 \ The label is written BEFORE the subject runs. A rejected case raises through
 \ the diagnostic renderer, and reading the caller's label string back out on the
 \ far side of that printed an empty name.
@@ -88,11 +101,17 @@ $0A constant LF-C
    la lu LABEL
    sa su EVC OUTCOME$ type LF-C emit ;
 
-: OWNER-OPEN ( -- ) s" package PRIM-OWNER-SCOPE" EV ;
-: OTHER-OPEN ( -- ) s" package PRIM-OWNER-OTHER" EV ;
-: FFI-OPEN ( -- ) s" package FFI" EV ;
-: NPUB-OPEN ( -- ) s" package NPUB" EV ;
-: PKG-CLOSE ( -- ) s" ;package" EV ;
+\ The whole path for a tick of an owned internal word.
+: EVAL-TICK ( ptr u8 n ptr u8 n -- ) {: la:ptr lu:n sa:ptr su:n :}
+   la lu LABEL
+   sa su EVC TICK-OUTCOME$ type LF-C emit ;
+
+: OWNER-OPEN ( -- ) s" package PRIM-OWNER-SCOPE" evaluate-closed ;
+: OTHER-OPEN ( -- ) s" package PRIM-OWNER-OTHER" evaluate-closed ;
+: FFI-OPEN ( -- ) s" package FFI" evaluate-closed ;
+: NPUB-OPEN ( -- ) s" package NPUB" evaluate-closed ;
+: OVERLAY-OPEN ( -- ) s" package CHECKER-OVERLAY" evaluate-closed ;
+: PKG-CLOSE ( -- ) s" ;package" evaluate-closed ;
 
 \ ---- the fresh axiom: a row with no engine word binds nowhere ---------------
 : AXIOM-CASES ( -- )
@@ -245,7 +264,7 @@ $0A constant LF-C
 \ lib/tier.f, required above, already compiled TIER's own checked caller. A
 \ reopened TIER compiles another at both tiers; outside it set-tier is
 \ undefined, and TIER:SELECT is how any scope reaches it.
-: TIER-OPEN ( -- ) s" package TIER" EV ;
+: TIER-OPEN ( -- ) s" package TIER" evaluate-closed ;
 
 : OWNER-T0-CASES ( -- )
    0 TIER:SELECT
@@ -293,10 +312,10 @@ $0A constant LF-C
 \ it a checked call or tick misses the name. Every other primitive here keeps
 \ its global trusted-only row beside its owner's for its TRUSTED: callers
 \ outside the owner, so a checked caller there gets the named E-CAP-TRUSTED.
-: RECLAIM-OPEN ( -- ) s" package CODE-RECLAIM" EV ;
-: TOP-ROW-OPEN ( -- ) s" package TOP-ROW" EV ;
-: CK-OWNER-OPEN ( -- ) s" package CHECKER-OWNER" EV ;
-: TYPE-DECL-OPEN ( -- ) s" package TYPE-DECL" EV ;
+: RECLAIM-OPEN ( -- ) s" package CODE-RECLAIM" evaluate-closed ;
+: TOP-ROW-OPEN ( -- ) s" package TOP-ROW" evaluate-closed ;
+: CK-OWNER-OPEN ( -- ) s" package CHECKER-OWNER" evaluate-closed ;
+: TYPE-DECL-OPEN ( -- ) s" package TYPE-DECL" evaluate-closed ;
 
 \ NPUB exists from the dual-row cases above, so each block here reopens it.
 : NPUB-SITE-T0-CASES ( -- )
@@ -507,6 +526,28 @@ $0A constant LF-C
    CK-OWNER-CASES
    TYPE-DECL-CASES ;
 
+\ ---- an internal primitive its owner's rows type -------------------------------
+: OWNED-CASES ( -- )
+   0 TIER:SELECT
+   OVERLAY-OPEN
+   s" t0 package-scope! inside owner"
+   s" : POS-PS0-IN ( n n -- ) package-scope! ;" EVAL
+   s" t0 tick package-scope! inside owner"
+   s" : POS-TPS0-IN ( -- ) ['] package-scope! drop ;" EVAL-TICK
+   PKG-CLOSE
+   s" t0 package-scope! top level"
+   s" : POS-PS0-TOP ( n n -- ) package-scope! ;" EVAL
+   1 TIER:SELECT
+   OVERLAY-OPEN
+   s" t1 package-scope! inside owner"
+   s" : POS-PS1-IN ( n n -- ) package-scope! ;" EVAL
+   s" t1 namespace-record inside owner"
+   s" : POS-NS1-IN ( ptr u8 n bool -- n ) namespace-record ;" EVAL
+   s" t1 tick package-scope! inside owner"
+   s" : POS-TPS1-IN ( -- ) ['] package-scope! drop ;" EVAL-TICK
+   PKG-CLOSE
+   0 TIER:SELECT ;
+
 public
 
 : RUN ( -- )
@@ -521,6 +562,7 @@ public
    T0? if OWNER-T0-CASES then
    OWNER-T1-CASES
    OWNER-SITE-CASES
+   OWNED-CASES
    s" prim-owner: ok" type LF-C emit ;
 
 ;package

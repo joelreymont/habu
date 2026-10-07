@@ -49,9 +49,7 @@ require src/habu/aot-closure.f
 
 \ Full-image emission owns its signer and driver. This linker loads only after
 \ the application span is latched; snapshot support needs neither dependency.
-\ Each signer patches its target's image format and the format builds in
-\ src/os/image-bytes.f's buffer, so the buffer loads first, then the format.
-require src/os/image-bytes.f
+\ The target writer loads its image buffer in its own package scope.
 package AOT-LINK
 private
 

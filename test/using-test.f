@@ -66,6 +66,7 @@ package UA public : AW ( -- n ) 11 ; ;package
 package UB public : BW ( -- n ) 22 ; ;package
 package UC public : AW ( -- n ) 33 ; ;package   \ same tail AW as UA -> ambiguity source
 package UP  : SECP ( -- n ) 99 ; public : PUBW ( -- n ) SECP ; ;package   \ SECP is private
+package UMM public : MM ( n -- n ) 7 + ; ;package
 
 \ shadow fixtures (dot habu-err-on-global-e62f806c): a used package whose publics
 \ collide with globals of the same name. GW's global effect DIFFERS from the
@@ -100,6 +101,10 @@ s" package UH using UA public : UT-H1 ( -- n ) AW ; ;package UH:UT-H1 drop" UCE-
 s" package UI using UA : AW ( -- n ) 7 ; public : UT-I1 ( -- n ) AW ; ;package UI:UT-I1 drop" UCE-CATCH 0 T=
 \ a call resolved under a using stays compiled after ;using (compile-time resolution)
 s" using UA : UT-CB2 ( -- n ) AW ; ;using UT-CB2 drop" UCE-CATCH 0 T=
+\ A public MM must be callable bare through using, including in a checked body.
+\ The checker's global match-mode cell used to reject this as a global shadow.
+s" using UMM : UT-MM ( -- n ) 60 MM ; ;using UT-MM 67 T=" UCE-CATCH 0 T=
+s" using UMM : UT-MM-V ( n -- n ) MM ; ;using" VS-CATCH 0 T=
 
 \ === negatives (rejected, fail closed) ===
 \ used package's PRIVATE word does not resolve bare
@@ -110,9 +115,12 @@ s" using UP : UT-BADP ( -- n ) SECP ; ;using" UCE-CATCH E-REJECT T=
 s" AW drop" UCE-CATCH E-REJECT T=
 \ ambiguous: AW resolves in two used packages (interpret)
 s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
-\ Tier 0 resolves a body token before checking it; tier 1 checks the recorded
-\ definition. Both refuse the ambiguous tail at their owning boundary.
-s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH USING-TEST:BODY-AMBIGUOUS-RC T=
+\ A compiled body is refused by the ENGINE's own used-search, which resolves the
+\ body token before the checker walks it: the same E-AMBIGUOUS the interpret leg
+\ above gets, naming the tail on fd 2. The checker keeps its own rule for the paths
+\ it resolves alone - the production source verifier is one - so the code below
+\ pins E-USING-AMBIGUOUS there (src/core/checker.f LIVE-BIND).
+s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-AMBIGUOUS T=
 s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH E-USING-AMBIGUOUS T=
 \ unknown package
 s" using NOPE-PKG" UCE-CATCH E-UNKNOWN T=
@@ -359,13 +367,13 @@ USING-TEST:UQX-V @ 11 T=
 
 \ === a retired used public is no candidate (dot habu-skip-retired-used-58ba2793) ===
 \ `undefine` retires a used package's public. The engine's used-search skips it
-\ and binds the global or the one live public, else nothing; the checker's
-\ used-search skips it too (SYM-LIVE), so a checked body certifies against the
-\ word the engine binds and runs it, and a tail with nothing left to bind is
-\ undefined. The retired publics' effects differ from the words bound in their
-\ place, so a body certified against a retired one is refused. The checker used
-\ to find the retired symbol and refused the first two shapes as
-\ E-USING-SHADOW-GLOBAL and E-USING-AMBIGUOUS.
+\ and binds the global or the one live public, else nothing; the checker binds
+\ through that search (src/core/checker.f LIVE-BIND), so a checked body
+\ certifies against the word the engine binds and runs it, and a tail with
+\ nothing left to bind is undefined. The retired publics' effects differ from
+\ the words bound in their place, so a body certified against a retired one is
+\ refused. The checker used to find the retired symbol and refused the first
+\ two shapes as E-USING-SHADOW-GLOBAL and E-USING-AMBIGUOUS.
 package URS public : drop ( n n -- ) 2drop ; undefine drop ;package
 package URA public : URW ( n -- n ) 1 + ; ;package
 package URB public : URW ( n -- ) drop ; undefine URW ;package

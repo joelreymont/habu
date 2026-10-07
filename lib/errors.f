@@ -979,12 +979,13 @@
 -8565 constant E-NEMIT-ROW    \ a row index at or past the count the sealed emission holds, a row offset outside the emission, an empty emission, a trailing return longer than it, or a call site of neither kind
 -8566 constant E-NPUB-PLACE   \ an emission whose branches were measured from an address that is not the code slot this seam is claiming for it
 
--8570 constant E-NCOMP-STATE   \ a compiler entry reached while another one is open
+-8570 constant E-NCOMP-STATE   \ a compiler entry reached while another one is open, or a checker scan or store write from a callback while a definition compiles (src/core/checker.f WRITE-WINDOW)
 -8571 constant E-NCOMP-TEXT    \ definition source longer than the engine capture can hold
 -8572 constant E-NCOMP-VERDICT \ the engine's own check did not certify the pending definition
 -8573 constant E-NCOMP-NAME    \ the pending record and the checker's tape name different definitions
 -8574 constant E-NCOMP-OWNER   \ the checker that owns the source carries no operation for a front-end step this compiler needs: a replacement checker published a declaration-owner record without it, so the scan, the source tape, the does> split or a call fact has nowhere to come from
--8575 constant E-NCOMP-REPORTED \ the active checker already rendered and counted a refused ordinary definition in multi-error mode; the reader abandons that pending definition and continues
+-8575 constant E-NCOMP-BINDING \ no successful scan or resolved binding exists for a required call ordinal
+-8576 constant E-NCOMP-REPORTED \ the active checker already rendered and counted a refused ordinary definition in multi-error mode; the reader abandons that pending definition and continues
 -8579 constant E-NCOMP-ARITY   \ the checker holds no declared effect for the pending definition
 
 \ The float subset: -8580..-8589
@@ -1475,6 +1476,6 @@
 
 \ RUNTIME scopes: -9590..-9599, minted by lib/runtime/scope.f, which owns package RT-SCOPE.
 
-\ Wasm back end: -9800..-9829, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
-\ -9805..-9809, WPROF -9810..-9814, WCTL -9815..-9819, WSEL -9820..-9824,
-\ WENC -9825..-9829.
+\ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
+\ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,
+\ WLINK -9830..-9834.

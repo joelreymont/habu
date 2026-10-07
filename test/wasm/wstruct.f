@@ -3,20 +3,18 @@
 \
 \ Proves the contract the Wasm selector and encoder build on: with no Wasm
 \ backend registered a WSTRUCT builder is refused by the registry; every opcode
-\ of the closed vocabulary defines under a Wasm binding and round-trips through
-\ its spelling; a module using every form - typed block arguments, a memory
-\ token threaded from the entry block, loads and stores with their memarg, a
-\ direct and an indirect call, a two-way branch and a trap - freezes through
-\ WSTRUCT:FREEZE and reads back as a Wasm module whose double forms need scalar
-\ floating point; the substrate refuses, by its own codes, a use its definition
-\ does not dominate, a block with no terminator, a successor argument of the
-\ wrong type or on a two-way branch, an i64.const with no address kind, an
-\ opcode the module never registered, a WSTRUCT operation under a binding that
-\ is not Wasm and an f64 form under a Wasm contract without scalar floating
-\ point; and WSTRUCT itself refuses an ordinal or spelling outside its
-\ vocabulary, an address kind outside NONE, DATA and CODE, a table of another
-\ dialect or schema version, and a return or an entry block that is not the
-\ function's declared signature, all of which the full freeze accepts.
+\ of the closed vocabulary defines its schema once under a Wasm binding; a
+\ module using every form - typed block arguments, a memory token threaded from
+\ the entry block, loads and stores with their memarg, a direct and an indirect
+\ call, a two-way branch and a trap - freezes through WSTRUCT:FREEZE and reads
+\ back as a Wasm module whose double forms need scalar floating point; the
+\ substrate refuses, by its own codes, a use its definition does not dominate,
+\ a block with no terminator, a successor argument of the wrong type or on a
+\ two-way branch, an i64.const with no address kind, an opcode the module never
+\ registered, a WSTRUCT operation under a binding that is not Wasm and an f64
+\ form under a Wasm contract without scalar floating point; and WSTRUCT itself
+\ refuses an ordinal outside its vocabulary, an address kind outside NONE, DATA,
+\ CODE and FUN, and a table of another dialect or schema version.
 \
 \ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
 \ arena registry holds sixty-four, so every module below is built in its own
@@ -311,18 +309,9 @@ private
    [: UNLOADED-RUN ;] E-CTGT-UNLOADED TTHROWSQ ;
 
 \ ---- the closed vocabulary ---------------------------------------------------
-64 BUFFER: SPELL
-
-: SAME? ( IR-ID:ir-symbol-id IR-ID:ir-symbol-id -- bool )
-   IR-ID:SYMBOL-LOCAL swap IR-ID:SYMBOL-LOCAL = ;
-
-\ Define one opcode and ask for it again by the spelling the module holds.
 : ENSURE-ONE ( IR-CTX:ctx IR-BUILD:builder n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder i:n :}
-   c b i WSTRUCT:NTH WSTRUCT:ENSURE-OP {: s:IR-ID:ir-symbol-id :}
-   c b s IR-BUILD:SCHEMA-DEFINED? TTRUE
-   c b s SPELL 64 IR-BUILD:SYMBOL-COPY {: u:n :}
-   c b SPELL u WSTRUCT:ENSURE-NAMED s SAME? TTRUE ;
+   c b  c b i WSTRUCT:NTH WSTRUCT:ENSURE-OP  IR-BUILD:SCHEMA-DEFINED? TTRUE ;
 
 \ A spelling defined twice would leave fewer schemas than opcodes.
 : VOCAB-BODY ( IR-CTX:ctx -- )
@@ -336,22 +325,12 @@ private
 : NTH-LOW ( -- )    -1 WSTRUCT:NTH drop ;
 : NTH-HIGH ( -- )   WSTRUCT:OPCODES WSTRUCT:NTH drop ;
 
-: FOREIGN-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c MOD {: b:IR-BUILD:builder :}
-   c b s" wstruct.i64.rotl" WSTRUCT:ENSURE-NAMED drop ;
-
-: FOREIGN-RUN ( -- )
-   BND [: FOREIGN-BODY ;] IR-CTX:WITH-CONTEXT ;
-
 : VOCAB-CASE ( -- )
-   s" every opcode defines and round-trips through its spelling" T-LABEL
+   s" every opcode defines its schema once" T-LABEL
    BND [: VOCAB-BODY ;] IR-CTX:WITH-CONTEXT
    s" an ordinal outside the vocabulary is refused" T-LABEL
    [: NTH-LOW ;] E-WSTRUCT-OPCODE TTHROWSQ
-   [: NTH-HIGH ;] E-WSTRUCT-OPCODE TTHROWSQ
-   s" a spelling outside the vocabulary is refused" T-LABEL
-   [: FOREIGN-RUN ;] E-WSTRUCT-OPCODE TTHROWSQ ;
+   [: NTH-HIGH ;] E-WSTRUCT-OPCODE TTHROWSQ ;
 
 \ ---- the well-formed module --------------------------------------------------
 \ b0(ctx x m): y = x + 1; brz (y == 0) -> b1, b2
@@ -595,7 +574,7 @@ private
    c b k WSTRUCT:ADDR-ATTR drop ;
 
 : KIND-PAST-RUN ( -- )
-   BND [: WSTRUCT:ADDR-CODE 1+ KIND-BODY ;] IR-CTX:WITH-CONTEXT ;
+   BND [: WSTRUCT:ADDR-FUN 1+ KIND-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : KIND-BELOW-RUN ( -- )
    BND [: WSTRUCT:ADDR-NONE 1- KIND-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -658,7 +637,7 @@ private
    [: BRZ-ARG-RUN ;] E-IR-VERIFY-SUCCARG TTHROWSQ
    s" an i64.const that states no address kind is refused at the freeze" T-LABEL
    [: NO-KIND-RUN ;] E-IR-VERIFY-ATTRKEY TTHROWSQ
-   s" an address kind outside NONE, DATA and CODE is refused as it is built" T-LABEL
+   s" an address kind outside NONE, DATA, CODE and FUN is refused as it is built" T-LABEL
    [: KIND-PAST-RUN ;] E-WSTRUCT-ADDR TTHROWSQ
    [: KIND-BELOW-RUN ;] E-WSTRUCT-ADDR TTHROWSQ
    s" an operation naming an opcode the module never registered is refused" T-LABEL
@@ -675,86 +654,6 @@ private
    [: MAJOR-RUN ;] E-WSTRUCT-DIALECT TTHROWSQ
    [: MINOR-RUN ;] E-WSTRUCT-DIALECT TTHROWSQ ;
 
-\ ---- the declared signature ---------------------------------------------------
-\ Each function below passes the full IR-BUILD:FREEZE: the return schema's tail
-\ types its lanes but not their count, and nothing there reads the signature.
-: SHUT ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b IR-BUILD:END-BLOCK drop
-   c b IR-BUILD:END-FUN drop
-   c b WSTRUCT:FREEZE drop ;
-
-\ (ctx:i32, x:i64) -> (status:i32, out:i64) returning the status alone.
-: RET-ARITY-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c MOD {: b:IR-BUILD:builder :}
-   c b MAIN-OPEN
-   c b ENTRY-OPEN
-   c b WSTRUCT-OPCODE:I32-CONST  c b I32  0 K {: s:IR-ID:ir-value-id :}
-   c b WSTRUCT-OPCODE:RETURN OPEN
-   c b s USE
-   c b END0
-   c b SHUT ;
-
-: RET-ARITY-RUN ( -- )
-   BND [: RET-ARITY-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-\ (ctx:i32, x:i64) -> (status:i32, out:f64) returning an i64 lane.
-: RET-TYPE-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c MOD {: b:IR-BUILD:builder :}
-   c b  c b  c b F64  ROW  SIG-OPEN
-   c b BLK-OPEN
-   c b  c b I32  ARG drop
-   c b  c b I64  ARG {: v:IR-ID:ir-value-id :}
-   c b  c b MEM  ARG drop
-   c b WSTRUCT-OPCODE:I32-CONST  c b I32  0 K {: s:IR-ID:ir-value-id :}
-   c b s v RET
-   c b SHUT ;
-
-: RET-TYPE-RUN ( -- )
-   BND [: RET-TYPE-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-\ (ctx:i32, x:i64) -> (status:i32, out:i64) whose entry block takes no x.
-: ENTRY-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c MOD {: b:IR-BUILD:builder :}
-   c b MAIN-OPEN
-   c b BLK-OPEN
-   c b  c b I32  ARG drop
-   c b  c b MEM  ARG drop
-   c b WSTRUCT-OPCODE:I32-CONST  c b I32  0 K {: s:IR-ID:ir-value-id :}
-   c b WSTRUCT-OPCODE:I64-CONST  c b I64  0 K {: r:IR-ID:ir-value-id :}
-   c b s r RET
-   c b SHUT ;
-
-: ENTRY-RUN ( -- )
-   BND [: ENTRY-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-\ A function that only traps holds no return, and the freeze adds no symbol for
-\ one to a module that never interned it.
-: TRAP-ONLY-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c MOD {: b:IR-BUILD:builder :}
-   c b MAIN-OPEN
-   c b ENTRY-OPEN
-   c b TRAP
-   c b IR-BUILD:END-BLOCK drop
-   c b IR-BUILD:END-FUN drop
-   c b WSTRUCT:FREEZE {: m:IR-BUILD:module :}
-   m IR-BUILD:FSYM-POOL m IR-BUILD:FSYM-ROWS m IR-BUILD:FKEY
-   s" wstruct.return" IR-SYM:FFIND nip TFALSE ;
-
-: SIGNATURE-CASE ( -- )
-   s" a function that only traps freezes and gains no return symbol" T-LABEL
-   BND [: TRAP-ONLY-BODY ;] IR-CTX:WITH-CONTEXT
-   s" a return one output lane short of the signature is refused" T-LABEL
-   [: RET-ARITY-RUN ;] E-WSTRUCT-SIGNATURE TTHROWSQ
-   s" a return lane of another type than the signature's is refused" T-LABEL
-   [: RET-TYPE-RUN ;] E-WSTRUCT-SIGNATURE TTHROWSQ
-   s" an entry block missing a declared argument is refused" T-LABEL
-   [: ENTRY-RUN ;] E-WSTRUCT-SIGNATURE TTHROWSQ ;
-
 public
 
 : RUN ( -- )
@@ -764,7 +663,6 @@ public
    VOCAB-CASE
    WELL-FORMED-CASE
    REFUSE-CASE
-   SIGNATURE-CASE
    T-REPORT ;
 
 ;package

@@ -256,11 +256,6 @@ SUITE manifest-lint-fixtures
    tools/manifest-lint-test.f
 ;SUITE
 
-\ Fixture trees, then the HBR2 layers of this tree.
-SUITE package-dag-lint
-   tools/package-dag-lint-test.f
-;SUITE
-
 SUITE chain-plan
    tools/chain-plan-test.f
 ;SUITE
@@ -443,6 +438,10 @@ WHITEBOX-SUITE compiler-native-tape-owner
    test/compiler/native-tape-owner.f
 ;SUITE
 
+WHITEBOX-SUITE compiler-native-host-construction
+   test/compiler/native-host-construction-e2e.f
+;SUITE
+
 SUITE compiler-native-string
    test/compiler/native-string.f
 ;SUITE
@@ -521,12 +520,6 @@ SUITE compiler-wasm-target
    test/compiler/wasm-target.f
 ;SUITE
 
-\ The HBR2 wire goldens over lib/browser/hbr-v2-registry.json: its canonical
-\ digest, headers, control record, wrapper ABI, STOP packet and limits.
-SUITE wasm-hbr2-fixtures
-   test/wasm/hbr2-fixtures.f
-;SUITE
-
 \ The N01-N06 and W32 numeric rows of test/wasm/numeric-rows.f, each forked and
 \ its printed bytes compared, on the default tier and the optimizing compiler.
 SUITE wasm-numeric
@@ -551,16 +544,9 @@ SUITE wasm-leb
 ;SUITE
 
 \ The Wasm backend's dialect, src/arch/wasm/wstruct.f: its closed vocabulary,
-\ a module frozen through WSTRUCT:FREEZE, the substrate's refusals and the
-\ signature check.
+\ a module frozen through WSTRUCT:FREEZE and the substrate's refusals.
 SUITE wasm-wstruct
    test/wasm/wstruct.f
-;SUITE
-
-\ The Wasm feature profile, src/arch/wasm/profile.f: V1's features, layout and
-\ ceilings, profile identity, and the install-once rule.
-SUITE wasm-profile
-   test/wasm/profile.f
 ;SUITE
 
 \ WCTL, the Wasm backend's structured control, src/arch/wasm/structure.f: W01's
@@ -583,11 +569,45 @@ SUITE wasm-encode
    test/wasm/encode.f
 ;SUITE
 
+\ WLINK, the Wasm backend's linker, src/arch/wasm/link.f: modules wasm-tools
+\ assembles byte for byte, index and type order, patched call and address
+\ fields, the table, data cells and memory pages, W03 and each refusal.
+SUITE wasm-link
+   test/wasm/link.f
+;SUITE
+
 \ WSEL's f64 rows: Habu's NaN rule after f64 add, sub, mul, div and sqrt, the
-\ sign operations, the comparisons and conversions, and W05, f>s refused in a
-\ fork whose profile lacks saturating-float-to-int.
+\ sign operations, the comparisons and the conversions.
 SUITE wasm-select-f64
    test/wasm/select-f64.f
+;SUITE
+
+\ The Wasm backend registered at run time, src/arch/wasm/backend.f and
+\ passes.f: real source compiled through an open Wasm shadow, one emission per
+\ record whose rows match its bytes, NEMIT empty after each, the placed row
+\ refused, and the engine's own routine unchanged.
+SUITE wasm-backend
+   test/wasm/backend.f
+;SUITE
+
+\ The capture's Wasm reader, src/arch/wasm/capture.f: a window compiled through
+\ an open Wasm shadow, captured, its emissions read into AOT-SHADOW's tables
+\ with each call row, code and DATA field and code cell keyed by shipped row.
+SUITE wasm-capture
+   test/wasm/capture.f
+;SUITE
+
+\ src/arch/wasm/kernel-words.f beside the engine's primitives on the host: each
+\ engine name WKERNEL's map answers with a word prints and exits as the engine
+\ primitive does, and a name no provider answers is refused.
+SUITE wasm-kernel-words
+   test/wasm/kernel.f
+;SUITE
+
+\ WASMLINK, src/habu/link-wasm.f: a captured window linked into one module whose
+\ data image is the window's DATA, and the three windows it refuses by name.
+SUITE wasm-link-capture
+   test/wasm/link-capture.f
 ;SUITE
 
 \ The backend registry: complete rows in src/compiler/native/backend.f,
@@ -712,10 +732,6 @@ SUITE compiler-native-div-refusal
 
 SUITE compiler-native-quot
    test/compiler/native-quot.f
-;SUITE
-
-SUITE compiler-native-observer
-   test/compiler/native-observer.f
 ;SUITE
 
 SUITE compiler-native-defer
@@ -1058,6 +1074,10 @@ SUITE compiler-native-word-binding
    test/compiler/native-word-binding.f
 ;SUITE
 
+SUITE compiler-native-call-binding
+   test/compiler/native-call-binding.f
+;SUITE
+
 SUITE compiler-native-word-binding-aot
    lib/test.f
    test/compiler/aot-mode.f
@@ -1074,6 +1094,10 @@ SUITE reopen-binding-aot
    test/compiler/aot-mode.f
    ENTRIES
    test/reopen-binding.f
+;SUITE
+
+SUITE replay-binding
+   test/replay-binding.f
 ;SUITE
 
 SUITE undefine-binding
@@ -1097,6 +1121,10 @@ SUITE compiler-native-dictionary-append
 
 SUITE compiler-native-dictionary-publish
    test/compiler/native-dictionary-publish.f
+;SUITE
+
+WHITEBOX-SUITE compiler-native-dictionary-retarget
+   test/compiler/native-dictionary-retarget.f
 ;SUITE
 
 SUITE compiler-code-span
@@ -1410,18 +1438,6 @@ SUITE content-length
 
 SUITE json-rpc
    lib/json-rpc-test.f
-;SUITE
-
-SUITE runtime-id
-   lib/runtime/id-test.f
-;SUITE
-
-SUITE runtime-pool
-   lib/runtime/pool-test.f
-;SUITE
-
-SUITE runtime-scope
-   test/browser/scope-test.f
 ;SUITE
 
 SUITE ffi-abi
@@ -1919,6 +1935,10 @@ SUITE engine-writers
    test/engine-writers.f
 ;SUITE
 
+SUITE owner-access
+   test/owner-access.f
+;SUITE
+
 SUITE checker-assert
    test/checker-assert-test.f
 ;SUITE
@@ -1951,6 +1971,18 @@ WHITEBOX-SUITE checker-verify-order
    test/checker-verify-order.f
 ;SUITE
 
+WHITEBOX-SUITE checker-decl-locs
+   test/checker-decl-locs.f
+;SUITE
+
+WHITEBOX-SUITE checker-completion
+   test/checker-completion.f
+;SUITE
+
+SUITE checker-decl-locs-capture
+   test/checker-decl-locs-capture.f
+;SUITE
+
 WHITEBOX-SUITE checker-replay-pkg-state
    test/checker-replay-pkg-state.f
 ;SUITE
@@ -1961,6 +1993,10 @@ SUITE verify-prim
 
 SUITE defer-history
    test/defer-history.f
+;SUITE
+
+SUITE parses-window
+   test/parses-window.f
 ;SUITE
 
 WHITEBOX-SUITE effect-intern
@@ -2674,6 +2710,10 @@ WHITEBOX-SUITE field-proj
 
 WHITEBOX-SUITE field-proj-errors
    test/field-proj-errors.f
+;SUITE
+
+SUITE compiler-native-field-proj
+   test/compiler/native-field-proj.f
 ;SUITE
 
 SUITE gate-pool-orphan

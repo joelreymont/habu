@@ -1,11 +1,16 @@
 \ Source grants and native ABI facts share a row without sharing authority.
 \ A WHITEBOX-SUITE: this engine's seal pass stood down, so the open-gate cases
-\ run first; RUN then seals the checker and runs the cases a sealed image
-\ answers. Native builds and graph fixtures cover handover.
+\ run first, after the tier-0 declarations they call; RUN then seals the checker
+\ and runs the cases a sealed image answers. Native builds and graph fixtures
+\ cover handover.
 require lib/test.f
+require lib/errors.f
 require lib/string.f
 require test/replay-scope.f
 require lib/tier.f
+require src/compiler/native/publish.f
+require src/compiler/native/checker-owner.f
+require src/habu/verify-source.f
 
 package EFFECT-AUTHORITY-TEST
 
@@ -15,7 +20,7 @@ package EFFECT-AUTHORITY-TEST
 : MIN-LATCH ( -- n ) REC-MIN-IN@ ;
 : ENFORCED? ( -- bool ) CHECKER-EFFECT-AUTHORITY:ENFORCED? ;
 : ABI-ROW ( ptr u8 n ptr u8 n -- )
-   CHECKER-RECORD-NAME RES-FALSE RES-FALSE USIG-ADD-AS ;
+   CHECKER-RECORD-NAME 2dup RES-FALSE USIG-ADD-AS drop ;
 : SCOPE+ ( -- ) CHECKER-SCOPE-START ;
 : SCOPE- ( -- ) CHECKER-SCOPE-DONE ;
 \ The scan, PRIM, rollback and recovery cases record rows only the checker holds
@@ -267,6 +272,362 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    s" EAUTH-LIVE" SOURCE-MIN 1 T=
    s" 23 EAUTH-LIVE" TEST-EVAL:N 23 T= ;
 
+\ ---- a hook-less definition's declaration is its row --------------------------
+\ With the hook cell empty nothing judges a body, and the row a definition leaves
+\ is its declaration: active, without authority, and only where no live row
+\ states the symbol. A TRUSTED: declaration is the assertion and keeps its
+\ authority. Tier 0 runs no scan at all; RUN calls these cases first, because
+\ the open-gate and sealed cases call EAUTH-DECL.
+: TIER0-DECLARATIONS ( -- )
+   s" : EAUTH-DECL ( n -- n ) 1+ ;" evaluate-closed
+   s" TRUSTED: EAUTH-DECL-TRUSTED ( n -- n ) 1+ ;" evaluate-closed
+   s" : EAUTH-DECL-BAD ( n -- no-such-type ) ;" evaluate-closed
+   s" : EAUTH-DECL-WIDTH ( n -- n ) ;" evaluate-closed
+   s" undefine EAUTH-DECL-WIDTH" evaluate-closed
+   s" : EAUTH-DECL-WIDTH ( n n -- n ) + ;" evaluate-closed ;
+
+: TIER0-CASES ( -- )
+   s" a hook-less tier-0 definition records its declaration without authority" T-LABEL
+   tier@ {: saved:n :}
+   0 TIER:SELECT
+   UNCHECKED+
+   [: TIER0-DECLARATIONS ;] catch
+   UNCHECKED- 0 T=
+   saved TIER:SELECT
+   s" EAUTH-DECL" ROW-STATE 1 T=
+   s" EAUTH-DECL" SIG-MIN-IN 1 T=
+   s" EAUTH-DECL" SOURCE-MIN -1 T=
+   s" EAUTH-DECL" CHECKER-RESOLVES? TFALSE
+   s" EAUTH-DECL" EFFECT-QUERY TTRUE
+   s" its TRUSTED: twin carries authority" T-LABEL
+   s" EAUTH-DECL-TRUSTED" SOURCE-MIN 1 T=
+   s" a declaration the checker cannot parse records nothing" T-LABEL
+   s" EAUTH-DECL-BAD" EFFECT-QUERY TFALSE
+   s" a redefinition after undefine records its own declaration" T-LABEL
+   s" EAUTH-DECL-WIDTH" SIG-MIN-IN 2 T= ;
+
+\ A tier-1 scan with the hook cell empty fills the tape and reports its verdict
+\ without enforcing it. A body it refuses now compiles against the declaration,
+\ with the reason reported; a body the elaborator then refuses takes its own
+\ declared row with it, and only that: after `undefine` the name's retired row
+\ and the rows recorded since stay (EAUTH-GEN). A definition that recorded no
+\ row retracts nothing - not the global twin its name resolves to while it is
+\ pending (EAUTH-TWIN: the package's declaration does not parse, and the twin's
+\ arity compiled it), and not its own name's symbol, which the recorder interned
+\ before it refused the declaration and the bare name then binds (EAUTH-T1-NO-ROW,
+\ EAUTH-T1-SCHEME): nothing answers their arity, and the refusal is the check
+\ hook's reject status, which a catch receives.
+: REFUSED-SCAN ( -- ) s" : EAUTH-T1-REFUSED ( n -- n ) 0= ;" evaluate-closed ;
+: REFUSED-MULTI ( -- ) s" : EAUTH-T1-MULTI ( n -- n ) 0= ;" evaluate-closed ;
+: REFUSED-BODY ( -- ) s" : EAUTH-T1-RETRACT ( n -- n ) drop ;" evaluate-closed ;
+: RETRY-BODY ( -- ) s" : EAUTH-T1-RETRACT ( n n -- n ) + ;" evaluate-closed ;
+: TWIN-ROWS ( -- )
+   s" : EAUTH-TWIN ( n -- n ) ;" evaluate-closed
+   s" : EAUTH-TWIN-LATER ( n -- n ) ;" evaluate-closed ;
+: TWIN-FAIL ( -- )
+   s" package EAUTH-TWIN-PKG : EAUTH-TWIN ( n -- no-such-type ) drop drop ; ;package" evaluate-closed ;
+: GEN-ROWS ( -- )
+   s" : EAUTH-GEN ( n -- n ) ;" evaluate-closed
+   s" : EAUTH-GEN-MID ( n -- n ) ;" evaluate-closed
+   s" undefine EAUTH-GEN" evaluate-closed
+   s" : EAUTH-GEN-LATER ( n -- n ) ;" evaluate-closed ;
+: GEN-FAIL ( -- ) s" : EAUTH-GEN ( n -- n ) drop drop ;" evaluate-closed ;
+70 constant RC-REJECT                \ the check hook's reject status (src/core/check-hook.f CHECK-RC)
+: NO-ROW-FAIL ( -- ) s" : EAUTH-T1-NO-ROW ( n -- no-such-type ) ;" evaluate-closed ;
+: SCHEME-FAIL ( -- ) s" : EAUTH-T1-SCHEME ( forall<p,[ n -- n ]> -- ) ;" evaluate-closed ;
+: AFTER-ROW ( -- ) s" : EAUTH-T1-AFTER ( n -- n ) ;" evaluate-closed ;
+
+\ A callback cannot scan while a definition compiles, so a refused definition
+\ takes exactly its own row and keeps the rows before (compiler.f WORK and
+\ RETRACT): the observer's CHECK! of EAUTH-CB-LATER while EAUTH-CB-OUTER
+\ compiles hook-less is refused E-NCOMP-STATE and leaves the store's end where
+\ it was, the observer's throw refuses the definition, and EAUTH-CB-BEFORE,
+\ defined before, stays. The store's end is the witness: a row only the
+\ checker holds binds nowhere outside a replay scope, so no name query could
+\ see one the scan recorded. The observer is scoped to this definition, so
+\ later definitions compile.
+: CB-OBSERVE ( NART:emission n n n -- )
+   {: e:NART:emission idx:n fn:n size:n :}
+   CHECKER-OWNER:ROWS-END {: end:n :}
+   [: s" EAUTH-CB-LATER ( n -- n )" JUDGE drop ;] E-NCOMP-STATE TTHROWSQ
+   CHECKER-OWNER:ROWS-END end T=
+   7329 throw ;
+: CB-BEFORE ( -- ) s" : EAUTH-CB-BEFORE ( n -- n ) ;" evaluate-closed ;
+: CB-FAIL ( -- ) s" : EAUTH-CB-OUTER ( n -- n ) 1 + ;" evaluate-closed ;
+: CB-RUN ( -- ) ['] CB-OBSERVE ['] CB-FAIL NPUB:WITH-UNIT ;
+
+: TIER1-DECLARED-CASES ( -- )
+   s" a scan-refused hook-less tier-1 definition compiles against its declaration" T-LABEL
+   1 TIER:SELECT
+   DIAGS IO-CAP DIAG-BUFFER!  true DIAG-JSON!
+   UNCHECKED+ ['] REFUSED-SCAN catch UNCHECKED- 0 T=
+   DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
+   false DIAG-JSON!  DIAG-BUFFER-OFF
+   s" EAUTH-T1-REFUSED" ROW-STATE 1 T=
+   s" EAUTH-T1-REFUSED" SIG-MIN-IN 1 T=
+   s" EAUTH-T1-REFUSED" SOURCE-MIN -1 T=
+   s" a multi-error scan keeps its recovery row" T-LABEL
+   UNCHECKED+ MULTI+ ['] REFUSED-MULTI catch MULTI- UNCHECKED-
+   1 T=  0 T=
+   s" EAUTH-T1-MULTI" ROW-STATE 2 T=
+   s" a body the elaborator refuses takes its declared row with it" T-LABEL
+   UNCHECKED+ ['] REFUSED-BODY catch UNCHECKED- E-NELAB-ARITY T=
+   s" EAUTH-T1-RETRACT" EFFECT-QUERY TFALSE
+   UNCHECKED+ ['] RETRY-BODY catch UNCHECKED- 0 T=
+   s" EAUTH-T1-RETRACT" SIG-MIN-IN 2 T=
+   s" a definition with no row of its own retracts no twin's row" T-LABEL
+   UNCHECKED+ ['] TWIN-ROWS catch UNCHECKED- 0 T=
+   UNCHECKED+ ['] TWIN-FAIL catch UNCHECKED- E-NELAB-UNDER T=
+   s" EAUTH-TWIN" SIG-MIN-IN 1 T=
+   s" EAUTH-TWIN-LATER" SIG-MIN-IN 1 T=
+   s" a failed redefinition after undefine retracts only its own row" T-LABEL
+   UNCHECKED+ ['] GEN-ROWS catch UNCHECKED- 0 T=
+   UNCHECKED+ ['] GEN-FAIL catch UNCHECKED- E-NELAB-UNDER T=
+   s" EAUTH-GEN" EFFECT-QUERY TFALSE
+   s" EAUTH-GEN-MID" SIG-MIN-IN 1 T=
+   s" EAUTH-GEN-LATER" SIG-MIN-IN 1 T=
+   s" an unrecordable declaration is refused catchably and retracts nothing" T-LABEL
+   UNCHECKED+ ['] NO-ROW-FAIL catch UNCHECKED- RC-REJECT T=
+   UNCHECKED+ ['] SCHEME-FAIL catch UNCHECKED- RC-REJECT T=
+   s" EAUTH-T1-NO-ROW" EFFECT-QUERY TFALSE
+   s" EAUTH-T1-SCHEME" EFFECT-QUERY TFALSE
+   s" EAUTH-GEN-LATER" SIG-MIN-IN 1 T=
+   UNCHECKED+ ['] AFTER-ROW catch UNCHECKED- 0 T=
+   s" EAUTH-T1-AFTER" SIG-MIN-IN 1 T=
+   s" a callback's scan while a definition compiles is refused and records nothing" T-LABEL
+   UNCHECKED+ ['] CB-BEFORE catch UNCHECKED- 0 T=
+   UNCHECKED+ ['] CB-RUN catch UNCHECKED- 7329 T=
+   s" EAUTH-CB-OUTER" EFFECT-QUERY TFALSE
+   s" EAUTH-CB-BEFORE" SIG-MIN-IN 1 T= ;
+
+\ A refused TRUSTED: definition goes back to the mark STAGE took, as a hook-less
+\ one does (compiler.f RETRACT). Inside a package it cuts neither the global
+\ twin its name resolves to nor the row recorded after it (EAUTH-TTWIN,
+\ EAUTH-TTWIN-LATER). A declaration that
+\ does not parse records no row, so the refusal is its own
+\ E-BAD-STORED-SIGNATURE, which a catch receives with the hook installed or the
+\ cell empty, and the name is free for the next definition (EAUTH-TBAD).
+: TTWIN-ROWS ( -- )
+   s" : EAUTH-TTWIN ( n -- n ) 1 + ;" evaluate-closed
+   s" : EAUTH-TTWIN-LATER ( n -- n ) 2 + ;" evaluate-closed ;
+: TTWIN-FAIL ( -- )
+   s" package EAUTH-TTWIN-PKG TRUSTED: EAUTH-TTWIN ( n -- no-such-type ) drop drop ; ;package" evaluate-closed ;
+: TBAD-FAIL ( -- ) s" TRUSTED: EAUTH-TBAD ( n -- no-such-type ) drop drop ;" evaluate-closed ;
+: TBAD-RETRY ( -- ) s" : EAUTH-TBAD ( n -- n ) 1 + ;" evaluate-closed ;
+: TBAD-HOOKLESS ( -- ) s" TRUSTED: EAUTH-TBAD-NH ( n -- no-such-type ) drop drop ;" evaluate-closed ;
+
+: TIER1-TRUSTED-CASES ( -- )
+   1 TIER:SELECT
+   s" a refused TRUSTED: definition retracts no twin's row" T-LABEL
+   ['] TTWIN-ROWS catch 0 T=
+   ['] TTWIN-FAIL catch E-BAD-STORED-SIGNATURE T=
+   s" EAUTH-TTWIN" SIG-MIN-IN 1 T=
+   s" EAUTH-TTWIN-LATER" SIG-MIN-IN 1 T=
+   s" a TRUSTED: declaration that records no row is refused catchably" T-LABEL
+   ['] TBAD-FAIL catch E-BAD-STORED-SIGNATURE T=
+   s" EAUTH-TBAD" EFFECT-QUERY TFALSE
+   ['] TBAD-RETRY catch 0 T=
+   s" EAUTH-TBAD" SIG-MIN-IN 1 T=
+   s" and so is one with the hook cell empty" T-LABEL
+   UNCHECKED+ ['] TBAD-HOOKLESS catch UNCHECKED- E-BAD-STORED-SIGNATURE T=
+   s" EAUTH-TBAD-NH" EFFECT-QUERY TFALSE ;
+
+\ ---- the compile window --------------------------------------------------------
+\ From the end of the compiler's scan to publication's last callback the checker
+\ refuses every scan and store write with E-NCOMP-STATE (compiler.f WORK), so a
+\ refused definition's cut takes exactly its own rows, on the certified path and
+\ the hook-less one. An observer's generates: row, recorded there and cut with
+\ the definition, would leave the definer's CREATES naming whatever record later
+\ definitions put where the cut one stood: VERIFY's predictions for a word it
+\ defines would follow that record, and a fresh generates: would be refused as
+\ a second row. generates: is a top-level word no checked body names, so the
+\ observer calls it through a typed cell inside one publication scope.
+TYPED-VARIABLE GENERATES-XT [ -- ]
+' generates: GENERATES-XT !
+: GENERATES-OBSERVE ( NART:emission n n n -- )
+   {: e:NART:emission idx:n fn:n size:n :}
+   [: GENERATES-XT @ execute ;] E-NCOMP-STATE TTHROWSQ
+   7329 throw ;
+
+\ A certified definition and a scan-refused hook-less one; the observer's
+\ generates: reads the text after the `;`.
+: WIN-HOOKED ( -- )
+   s" : EAUTH-WIN-HOOKED ( n -- bool ) 0= ; EAUTH-WIN-MAKE-H ( -- n )" evaluate-closed ;
+: WIN-HOOKLESS ( -- )
+   s" : EAUTH-WIN-HOOKLESS ( n -- n ) 0= ; EAUTH-WIN-MAKE-U ( -- n )" evaluate-closed ;
+: WIN-HOOKED-RUN ( -- ) ['] GENERATES-OBSERVE ['] WIN-HOOKED NPUB:WITH-UNIT ;
+: WIN-HOOKLESS-RUN ( -- ) ['] GENERATES-OBSERVE ['] WIN-HOOKLESS NPUB:WITH-UNIT ;
+
+\ VERIFY's predictions for the word a definer statement defines, as ( -- n ),
+\ ( -- ) and ( -- bool ): ACCEPTED, REFUSED, or 1 when it names no word.
+-1 constant ACCEPTED
+0 constant REFUSED
+: PREDICT ( ptr u8 n -- n n n )
+   CHECKER-SCOPE-START-NEUTRAL
+   VERIFY:SOURCE-BUF-IN-SCOPE
+   s" EAUTH-WIN-X1 ( -- n ) EAUTH-WIN-PRED" VERIFY:CANDIDATE-IN-SCOPE
+   s" EAUTH-WIN-X2 ( -- ) EAUTH-WIN-PRED" VERIFY:CANDIDATE-IN-SCOPE
+   s" EAUTH-WIN-X3 ( -- bool ) EAUTH-WIN-PRED" VERIFY:CANDIDATE-IN-SCOPE
+   CHECKER-SCOPE-DONE ;
+
+\ A refused callback scan keeps the pending definition's publication latch
+\ and its borrowed source binding, on checked and explicitly unjudged scans,
+\ and records no row: the store's end stays where it was (CB-OBSERVE).
+: LATCH-BINDING ( -- )
+   1 CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
+   size CHECKER-OWNER-ABI:BOUND-CELLS cells T=
+   row CHECKER-OWNER-ABI:BOUND-ENTRY cells + CELL-VIEW @
+      s" +" XREF-FIND XREF-START T= ;
+: LATCH-OBSERVE ( NART:emission n n n -- )
+   {: e:NART:emission idx:n fn:n size:n :}
+   CHECKER-OWNER:BINDING-WINDOW {: owner:ptr serial:n unjudged:bool :}
+   CHECKER-OWNER:ROWS-END {: end:n :}
+   LATCH-BINDING
+   [: s" EAUTH-LATCH-CB ( -- n ) 1" JUDGE drop ;] E-NCOMP-STATE TTHROWSQ
+   owner serial unjudged CHECKER-OWNER:BINDING-WINDOW-CK
+   LATCH-BINDING
+   [: s" EAUTH-LATCH-CB ( -- n ) 1" CHECK-UNJUDGED! drop ;] E-NCOMP-STATE TTHROWSQ
+   owner serial unjudged CHECKER-OWNER:BINDING-WINDOW-CK
+   LATCH-BINDING
+   [: s" EAUTH-LATCH-CB ( -- n ) 1" CHECK-CANDIDATE! drop ;] E-NCOMP-STATE TTHROWSQ
+   owner serial unjudged CHECKER-OWNER:BINDING-WINDOW-CK
+   LATCH-BINDING
+   [: s" EAUTH-LATCH-CB ( -- n ) 1" CHECK-QUIET-CANDIDATE! drop ;] E-NCOMP-STATE TTHROWSQ
+   owner serial unjudged CHECKER-OWNER:BINDING-WINDOW-CK
+   LATCH-BINDING
+   CHECKER-OWNER:ROWS-END end T= ;
+
+: WINDOW-CASES ( -- )
+   1 TIER:SELECT
+   s" : EAUTH-WIN-MAKE-H ( -- ) parse-name 2drop ;" evaluate-closed
+   s" : EAUTH-WIN-MAKE-U ( -- ) parse-name 2drop ;" evaluate-closed
+   s" a callback's generates: while a certified definition compiles is refused" T-LABEL
+   s" EAUTH-WIN-MAKE-H EAUTH-WIN-PRED" PREDICT {: h1:n h2:n h3:n :}
+   ['] WIN-HOOKED-RUN catch 7329 T=
+   s" : EAUTH-WIN-FILL-H1 ( -- ) ;" evaluate-closed
+   s" : EAUTH-WIN-FILL-H2 ( -- bool ) true ;" evaluate-closed
+   s" EAUTH-WIN-MAKE-H EAUTH-WIN-PRED" PREDICT h3 T= h2 T= h1 T=
+   s" generates: EAUTH-WIN-MAKE-H ( -- n )" TEST-EVAL:RC 0 T=
+   s" EAUTH-WIN-MAKE-H EAUTH-WIN-PRED" PREDICT REFUSED T= REFUSED T= ACCEPTED T=
+   s" a callback's generates: while a hook-less definition compiles is refused" T-LABEL
+   s" EAUTH-WIN-MAKE-U EAUTH-WIN-PRED" PREDICT {: u1:n u2:n u3:n :}
+   UNCHECKED+ ['] WIN-HOOKLESS-RUN catch UNCHECKED- 7329 T=
+   s" : EAUTH-WIN-FILL-U1 ( -- ) ;" evaluate-closed
+   s" : EAUTH-WIN-FILL-U2 ( -- bool ) true ;" evaluate-closed
+   s" EAUTH-WIN-MAKE-U EAUTH-WIN-PRED" PREDICT u3 T= u2 T= u1 T=
+   s" generates: EAUTH-WIN-MAKE-U ( -- n )" TEST-EVAL:RC 0 T=
+   s" EAUTH-WIN-MAKE-U EAUTH-WIN-PRED" PREDICT REFUSED T= REFUSED T= ACCEPTED T=
+   s" a callback's scan cannot reset the latch its definition publishes" T-LABEL
+   s" : EAUTH-LATCH-PLAIN ( n n -- n ) + ;" evaluate-closed
+   ['] LATCH-OBSERVE [: s" : EAUTH-LATCH-KEPT ( n n -- n ) + ;" evaluate-closed ;] NPUB:WITH-UNIT
+   s" EAUTH-LATCH-PLAIN" DICT-MIN 0 T<>
+   s" EAUTH-LATCH-KEPT" DICT-MIN  s" EAUTH-LATCH-PLAIN" DICT-MIN T=
+   s" a refused callback scan keeps an explicitly unjudged binding" T-LABEL
+   ['] LATCH-OBSERVE [: s" TRUSTED: EAUTH-LATCH-UNJUDGED ( n n -- n ) + ;" evaluate-closed ;] NPUB:WITH-UNIT ;
+
+\ ---- type registration in the compile window ----------------------------------
+\ The window refuses type registration as it refuses rows. A callback's
+\ CHECKER-DEFLINEAR, CHECKER-DEFRECORD or CHECKER-DEFFAMILY registered its type
+\ while the outer definition compiled; the definition was refused and the type
+\ stayed, so a signature naming it went from rejected to certified. Each case
+\ arms the observer with one registry write: the write throws E-NCOMP-STATE,
+\ the definition is refused, and the registry reads as it did before. Every
+\ appender has a case (checker.f WRITE-WINDOW): the type table, value records,
+\ the extent free-set, families, variants, layouts, schema nodes and roots, and
+\ each field-owner phase. TFAM:SUMV-ADD, TFAM:LAY-ADD and the SCHEMA-REG words
+\ are internal appenders this whitebox engine leaves callable and a product
+\ seals.
+public
+NEWTYPE eauth-reg-ext 0
+PRODUCT eauth-reg-pr 0 FIELD x n ;PRODUCT
+private
+TFAM:TFAM-N@ 1 - constant REG-FAM
+TYPED-VARIABLE REG-XT [ -- ]
+variable REG-TX
+variable REG-SCH
+: REG-OBSERVE ( NART:emission n n n -- )
+   {: e:NART:emission idx:n fn:n size:n :}
+   [: REG-XT @ execute ;] E-NCOMP-STATE TTHROWSQ
+   7329 throw ;
+: REG-OUTER ( -- ) s" : EAUTH-REG-OUTER ( n n -- n ) + ;" evaluate-closed ;
+\ The write is refused, and so is the definition it ran under.
+: REG-COMPILE ( -- ) ['] REG-OBSERVE ['] REG-OUTER NPUB:WITH-UNIT ;
+: REG-RUN ( [ -- ] -- ) REG-XT ! ['] REG-COMPILE catch 7329 T= ;
+: REG-RUN-HOOKLESS ( [ -- ] -- )
+   REG-XT ! UNCHECKED+ ['] REG-COMPILE catch UNCHECKED- 7329 T= ;
+\ A field frame opened before the definition compiles, as a declaration's is.
+: REG-TX-OPEN ( -- ) TYPE-FIELD-OWNER:OPEN REG-TX ! ;
+: REG-TX-PREPARE-RC ( -- n ) [: REG-TX @ TYPE-FIELD-OWNER:PREPARE drop ;] catch ;
+
+: REGISTRY-CASES ( -- )
+   s" a callback's linear type is refused and stays unknown" T-LABEL
+   s" EAUTH-REG-P ( EAUTH-REG-LIN -- EAUTH-REG-LIN )" CHECK-QUIET-CANDIDATE! 0 T=
+   [: s" EAUTH-REG-LIN" CHECKER-DEFLINEAR ;] REG-RUN
+   s" EAUTH-REG-P ( EAUTH-REG-LIN -- EAUTH-REG-LIN )" CHECK-QUIET-CANDIDATE! 0 T=
+   s" and so is one under a hook-less definition" T-LABEL
+   [: s" EAUTH-REG-LIN-NH" CHECKER-DEFLINEAR ;] REG-RUN-HOOKLESS
+   s" EAUTH-REG-P ( EAUTH-REG-LIN-NH -- EAUTH-REG-LIN-NH )" CHECK-QUIET-CANDIDATE! 0 T=
+   s" a callback's value record is refused" T-LABEL
+   [: s" EAUTH-REG-REC" s" field n" CHECKER-DEFRECORD ;] REG-RUN
+   s" EAUTH-REG-P ( EAUTH-REG-REC -- EAUTH-REG-REC )" CHECK-QUIET-CANDIDATE! 0 T=
+   s" a callback's family is refused" T-LABEL
+   TFAM:TFAM-N@ {: fams:n :}
+   [: s" eauth-reg-fam" s" 0" CHECKER-DEFFAMILY ;] REG-RUN
+   TFAM:TFAM-N@ fams T=
+   s" EAUTH-REG-P ( eauth-reg-fam -- eauth-reg-fam )" CHECK-QUIET-CANDIDATE! 0 T=
+   s" a callback cannot mark an extent family free" T-LABEL
+   s" EAUTH-REG-P ( redx<eauth-reg-ext> -- redx<eauth-reg-ext> )" CHECK-QUIET-CANDIDATE! -1 T=
+   [: s" eauth-reg-ext" EXT-MARK-FREE-TAIL ;] REG-RUN
+   s" EAUTH-REG-P ( redx<eauth-reg-ext> -- redx<eauth-reg-ext> )" CHECK-QUIET-CANDIDATE! -1 T=
+   s" nor add a variant" T-LABEL
+   TFAM:SUMV-N@ {: vars:n :}
+   [: REG-FAM s" eauth-reg-v" 0 0 0 0 TFAM:SUMV-ADD drop ;] REG-RUN
+   TFAM:SUMV-N@ vars T=
+   s" nor a layout" T-LABEL
+   TFAM:LAY-N@ {: lays:n :}
+   [: REG-FAM 0 CELL CELL 0 TFAM:LAY-ADD drop ;] REG-RUN
+   TFAM:LAY-N@ lays T=
+   s" nor a schema node" T-LABEL
+   SCHEMA-REG:SCHEMA-N@ {: nodes:n :}
+   [: 1 SCHEMA-REG:SCHEMA-CON drop ;] REG-RUN
+   SCHEMA-REG:SCHEMA-N@ nodes T=
+   s" nor a schema root" T-LABEL
+   SCHEMA-REG:SCHEMA-ROOT-N@ {: roots:n :}
+   [: 1 SCHEMA-REG:SCHEMA-ROOT+ drop ;] REG-RUN
+   SCHEMA-REG:SCHEMA-ROOT-N@ roots T= ;
+
+\ A declaration's field frame is open while its generated definitions compile;
+\ no phase of it moves from a callback.
+: FIELD-TX-CASES ( -- )
+   s" a callback cannot add a field to an open frame" T-LABEL
+   REG-FAM TFAM-NAME$ s" eauth-reg-pr" T$=
+   TYPE-FIELD:TX-DEPTH {: depth:n :}
+   REG-FAM TYPE-FIELD:NO-VARIANT s" x" TYPE-FIELD:FIND TTRUE TYPE-FIELD:SCHEMA@ REG-SCH !
+   REG-TX-OPEN
+   REG-TX @ TYPE-FIELD-OWNER:PREPARE {: rows:n :}
+   [: REG-TX @ REG-FAM TYPE-FIELD:NO-VARIANT s" y" REG-SCH @ 1 1 CELL CELL CELL 0
+      TYPE-FIELD-OWNER:ADD drop ;] REG-RUN
+   REG-TX @ TYPE-FIELD-OWNER:PREPARE rows T=
+   [: REG-TX @ TYPE-FIELD-OWNER:ROLLBACK ;] catch 0 T=
+   s" nor commit it" T-LABEL
+   REG-TX-OPEN
+   [: REG-TX @ TYPE-FIELD-OWNER:COMMIT ;] REG-RUN
+   REG-TX-PREPARE-RC 0 T=
+   [: REG-TX @ TYPE-FIELD-OWNER:ROLLBACK ;] catch 0 T=
+   s" nor finalize a committed one" T-LABEL
+   REG-TX-OPEN  REG-TX @ TYPE-FIELD-OWNER:COMMIT
+   [: REG-TX @ TYPE-FIELD-OWNER:FINALIZE ;] REG-RUN
+   TYPE-FIELD:TX-DEPTH depth 1 + T=
+   [: REG-TX @ TYPE-FIELD-OWNER:FINALIZE ;] catch 0 T=
+   s" nor roll one back" T-LABEL
+   REG-TX-OPEN
+   [: REG-TX @ TYPE-FIELD-OWNER:ROLLBACK ;] REG-RUN
+   TYPE-FIELD:TX-DEPTH depth 1 + T=
+   [: REG-TX @ TYPE-FIELD-OWNER:ROLLBACK ;] catch 0 T=
+   s" nor open one" T-LABEL
+   [: TYPE-FIELD-OWNER:OPEN drop ;] REG-RUN
+   TYPE-FIELD:TX-DEPTH depth T= ;
+
 \ ---- the open gate -------------------------------------------------------------
 \ FRESH is a pre-hook checker word: the build recorded its row without source
 \ authority, and no primitive row stands behind it. An unsealed checker binds
@@ -290,7 +651,14 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    s" binding grants the row no authority" T-LABEL
    s" FRESH" CHECKER-RESOLVES? TFALSE
    s" FRESH" SOURCE-MIN -1 T=
-   ENFORCED? TTRUE ;
+   ENFORCED? TTRUE
+   s" a hook-less declaration's row binds the same way" T-LABEL
+   s" EAUTH-DECL-CALL ( n -- n ) EAUTH-DECL" CHECK-CANDIDATE! -1 T=
+   DIAGS IO-CAP DIAG-BUFFER!  true DIAG-JSON!
+   s" EAUTH-DECL-WRONG ( n -- bool ) EAUTH-DECL" CHECK-CANDIDATE! 0 T=
+   DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
+   false DIAG-JSON!  DIAG-BUFFER-OFF
+   s" EAUTH-DECL" SOURCE-MIN -1 T= ;
 
 : OPEN-REPLAY-CASES ( -- )
    PRIM-CASES
@@ -310,6 +678,10 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    ENFORCED? TTRUE
    DIAGS IO-CAP DIAG-BUFFER!  true DIAG-JSON!
    s" EAUTH-SEALED-X ( -- n ) FRESH" CHECK-CANDIDATE! 0 T=
+   DIAG-BUFFER$ s\" \"code\":\"E-CAP-TRUSTED\"" CONTAINS? TTRUE
+   s" and refuses a hook-less declaration's row" T-LABEL
+   DIAGS IO-CAP DIAG-BUFFER!
+   s" EAUTH-SEALED-DECL ( n -- n ) EAUTH-DECL" CHECK-CANDIDATE! 0 T=
    DIAG-BUFFER$ s\" \"code\":\"E-CAP-TRUSTED\"" CONTAINS? TTRUE
    false DIAG-JSON!  DIAG-BUFFER-OFF ;
 
@@ -340,6 +712,7 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
 
 : RUN ( -- )
    T-RESET
+   TIER0-CASES
    OPEN-LIVE-CASES
    REPLAY+ OPEN-REPLAY-CASES REPLAY-
    \ A failed declaration reaches the JIT publication path only at tier 0.
@@ -349,6 +722,11 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    SCAN-CASES PRIM-CASES ROLLBACK-CASES RECOVERY-CASES
    REPLAY-
    LIVE-CASES
+   TIER1-DECLARED-CASES
+   TIER1-TRUSTED-CASES
+   WINDOW-CASES
+   REGISTRY-CASES
+   FIELD-TX-CASES
    HB-TARGET-LINUX-X86-64? 0= if RECOVERY-PUBLICATION then
    T-REPORT
    s" effect authority: ok" type cr ;

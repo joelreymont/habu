@@ -3,6 +3,8 @@
 \ restores the existing convention by comparing x0 with -4095 after svc:
 \ carry set means error, carry clear means success.
 
+require src/arch/arm64/icode.f
+using A64ICODE
 $22 constant MAP-ANON-PRIVATE
 $32 constant MAP-ANON-PRIVATE-FIXED
 
@@ -114,3 +116,4 @@ $D4000001 SYS-SVC-STENCIL SYS-STENCIL-W!                        \ svc #0
       7 $20 MOVZ,  6 6 7 ORR,
    noanon LBL,
    3 6 0 ADDI, ;
+;using

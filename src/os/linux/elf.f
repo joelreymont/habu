@@ -6,6 +6,9 @@
 \ Snapshot extras name the staged dynamic/GOT tail and its fixed byte size.
 \ Retirement: habu-campaign-c2-mem-c3d7662b.
 
+require src/arch/arm64/icode.f
+using A64ICODE
+require src/os/image-bytes.f
 $7F constant ELF-MAG0
 69 constant ELF-MAG1
 76 constant ELF-MAG2
@@ -259,3 +262,4 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
 : IMG-TAIL-BYTES ( n -- n ) {: i:n :}
    i 0 = if ELF-RW-SZ exit then
    s" elf: size tail index out of range" ELF-TAIL-RC die ;
+;using

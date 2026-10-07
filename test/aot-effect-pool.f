@@ -5,6 +5,7 @@ ndict@ here variable PRE-R variable PRE-D PRE-D ! PRE-R !
 ;package
 
 require lib/test.f
+require src/arch/arm64/icode.f
 require lib/test/outcome.f
 require lib/test/subject.f
 require lib/fs-mutate.f
@@ -22,7 +23,7 @@ public
    STAGE BUILD-TABLE
    SEC-N ROW-BYTES * CUR !
    SEC-N 0 ?do
-      i S-SIGSTR = if AOT-SECTION-CAP else i ROW-LEN@ then {: bytes:n :}
+      i S-SIGSTR = if A64ICODE:AOT-SECTION-CAP else i ROW-LEN@ then {: bytes:n :}
       CUR @ bytes i ROW! CUR @ bytes + CUR !
    loop
    CUR @ MEM-ALLOC-BYTES {: dst:ptr size:n :}
@@ -30,7 +31,7 @@ public
    dst size -1 AOT--OWNED-CAPTURE:MAKE ;
 
 : EFFECT-TEST-HEADER ( ptr u8 n -- )
-   AOT-SECTION-CAP HDR O-PAYLEN + U64!
+   A64ICODE:AOT-SECTION-CAP HDR O-PAYLEN + U64!
    HDR HDR-BYTES WRITE-ALL ;
 
 ;package

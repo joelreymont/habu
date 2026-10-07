@@ -565,14 +565,16 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-qual-class.err" s" repair class is not one its code names" s" malformed record under the trust row's class refused" REFUSED ;
 
 \ A stored signature that does not parse, or is deeper or wider than a record
-\ holds (checker.f USIG-ADD-BAD), under the first and the last two of the
-\ classes its code names. The default mode renders the first record and stops
-\ there; a multi-error load renders all four, the deep and the wide one each
-\ with the bound it passed. The class mutation takes the first run's one
-\ record, which the 1 KB string builder splices whole.
+\ holds (checker.f USIG-ADD-BAD), on trust rows naming words the source
+\ defined, under the first and the last two of the classes its code names. The
+\ default mode renders the first record and stops there; a multi-error load
+\ renders all four, the deep and the wide one each with the bound it passed.
+\ The class mutation takes the first run's one record, which the 1 KB string
+\ builder splices whole.
 : SIGNATURE-RECORD-REFUSAL ( -- )
    GE-HB-RESET
    GE-SRC-RESET
+   s" : GDX-SIG-TYPE ( -- ) ; : GDX-SIG-SYNTAX ( -- ) ; : GDX-SIG-DEEP ( -- ) ; : GDX-SIG-WIDE ( -- ) ;" GE-SRC-LINE
    s\" s\" GDX-SIG-TYPE\" s\" -- gdx-no-such-type\" trust" GE-SRC-LINE
    s\" s\" GDX-SIG-SYNTAX\" s\" n n\" trust" GE-SRC-LINE
    s\" s\" GDX-SIG-DEEP\" s\" --" GE-SRC+

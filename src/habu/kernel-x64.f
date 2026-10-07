@@ -37,6 +37,7 @@ require src/habu/stack-abi.f
 require src/habu/arith-abi.f
 require src/habu/regalloc-abi.f
 require src/habu/primitive-registry.f
+require src/habu/boot-x64.f
 require src/habu/data-claims.f
 require src/habu/data-bands.f
 require src/habu/snapshot-format.f
@@ -101,6 +102,14 @@ $1000 constant PAGE-BYTES              \ the x86-64 Linux base page
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : SHARED-DATA, ( r64 -- ) X64LAYOUT:DATA-VA VA>N >IMM64 ASM-SINK ENC-MOV-RI64 ;
+
+\ Load and store the DATA cell at an offset.
+: CELL@, ( r64 n -- )
+   {: r:r64 off:n :}
+   r DATA-REG off MEM-OFF ASM-SINK ENC-MOV-RM ;
+: CELL!, ( r64 n -- )
+   {: r:r64 off:n :}
+   r DATA-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
 \ mov r32, imm32, which zero-extends: every constant here is a small
 \ non-negative count, descriptor, prot or status.
@@ -2730,10 +2739,23 @@ variable SITE-TRAP-CELL
 \ on the target, never on a band another bracket may hold open. A generic
 \ instruction write carries no optimizer proof, so the four bytes lose their
 \ native evidence before the write can publish.
+: HOST-INVALIDATE, ( -- )
+   LBL {: done:label :}
+   RDI RSI ASM-SINK ENC-CMP-RR  C-AE done JCC,
+   RAX NATIVE-OBS-CELLS:HOST-INVALIDATE CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RDI ASM-SINK ENC-PUSH  RSI ASM-SINK ENC-PUSH
+   RDI PUSH,  RSI PUSH,
+   RAX ASM-SINK ENC-CALL-REG
+   RSI ASM-SINK ENC-POP  RDI ASM-SINK ENC-POP
+   done LBL, ;
+
 : PATCH32, ( -- )
    0 PATCH-BYTES SIZED-GUARD,
    RDI 0 PEEK,  RSI RDI PATCH-BYTES MEM-OFF ASM-SINK ENC-LEA
    X64PROV:INVALIDATE,
+   RDI 0 PEEK,  RSI RDI PATCH-BYTES MEM-OFF ASM-SINK ENC-LEA
+   HOST-INVALIDATE,
    R8 POP,  R9 POP,                                    \ the address, the word
    R8 PROT-RW PROT-REC,
    R9 R64>N >R32 R8 MEM-AT ASM-SINK ENC-MOV32-MR
@@ -2928,17 +2950,39 @@ variable SITE-TRAP-CELL
 \ the address last: under total store order a plain store publishes after the
 \ one before it, where ARM64 needs STLR.
 : RETARGET, ( -- )
+   LBL LBL LBL {: pending:label room:label done:label :}
    RCX POP,  R9 POP,  R10 POP,                         \ the index, the length, the start
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
    RAX CODE-SPAN:RAW-MAX IMM32,
    R9 RAX ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
    RAX CODE-SPAN:FULL IMM32,
    R9 RAX ASM-SINK ENC-CMP-RR  C-E SEAL-TRAP-LBL JCC,
+   RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8
+   RAX ZERO-REG,  RAX RSP 0 MEM-OFF ASM-SINK ENC-MOV-MR
+   RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-E pending JCC,
+   R11 DATA-REG DEF-OCC:PTR-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX R11 MEM-AT ASM-SINK ENC-MOV-RM
+   RDX -1 IMM64,  RAX RDX ASM-SINK ENC-CMP-RR  C-NE room JCC,
+   RAX DEF-OCC:E-EXHAUSTED IMM64,  THROW,
+   room LBL,
+   RDX R11 RCX CELL CELL MEM-IDX ASM-SINK ENC-LEA
+   RDX RSP 0 MEM-OFF ASM-SINK ENC-MOV-MR
+   R11 RSP CELL MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX ZERO-REG,  RAX RDX MEM-AT ASM-SINK ENC-MOV-MR
+   pending LBL,
    RCX RECORD-AT,
    R8 PROT-RW PROT-REC,
    R9 R8 REC-CODE CELL + MOV-STORE,
    R10 R8 REC-CODE MOV-STORE,
-   R8 PROT-RX PROT-REC, ;
+   R8 PROT-RX PROT-REC,
+   RDX RSP 0 MEM-OFF ASM-SINK ENC-MOV-RM
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   R11 RSP CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX R11 MEM-AT ASM-SINK ENC-MOV-RM  RAX ASM-SINK ENC-INC
+   RAX R11 MEM-AT ASM-SINK ENC-MOV-MR
+   RAX RDX MEM-AT ASM-SINK ENC-MOV-MR
+   done LBL,
+   RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
 \ int-mark ( n -- ): or DNAME-INT into record n's flags between two LPROTREC
 \ flips, the twin of BINTMARK, which checks no index either.
@@ -3146,12 +3190,6 @@ private
 
 : CP-REG ( -- r64 ) ENGINE-GPR:X64-CP >R64 ;
 
-\ Load and store the DATA cell at an offset.
-: CELL@, ( r64 n -- ) {: r:r64 off:n :}
-   r DATA-REG off MEM-OFF ASM-SINK ENC-MOV-RM ;
-: CELL!, ( r64 n -- ) {: r:r64 off:n :}
-   r DATA-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
-
 \ The twin of habu1.f DP-CHECK, before every store of a new DP: rdi, the new
 \ DP, must lie in [DATA + DATA-START, DATA + DP-CEILING], or LDPBAD refuses
 \ it with rdi in hand. The compares are signed, as the ARM64 ones are. It
@@ -3328,6 +3366,111 @@ private
    RCX ZERO-REG,  RCX LASTC-CELL CELL!,
    live X64CODE:LBL, ;
 
+\ RAX is the new published count. Keep all caller scratch registers intact.
+\ The first mapped cell is the last number issued; slot cells follow it.
+: OCC-COUNT, ( -- )
+   LBL LBL LBL LBL LBL LBL LBL {: lower:label up:label up-done:label
+      down:label done:label exhausted:label end:label :}
+   RAX ASM-SINK ENC-PUSH  RCX ASM-SINK ENC-PUSH  RDX ASM-SINK ENC-PUSH
+   R8 ASM-SINK ENC-PUSH  R9 ASM-SINK ENC-PUSH
+   R10 ASM-SINK ENC-PUSH  R11 ASM-SINK ENC-PUSH
+   RDX DEF-OCC:PTR-CELL CELL@,
+   RAX NDICT-REG ASM-SINK ENC-CMP-RR
+   C-B lower JCC,  C-E done JCC,
+   R9 RAX ASM-SINK ENC-MOV-RR
+   R9 NDICT-REG ASM-SINK ENC-SUB-RR
+   R8 RDX MEM-AT ASM-SINK ENC-MOV-RM
+   R10 R8 ASM-SINK ENC-MOV-RR
+   R10 R9 ASM-SINK ENC-ADD-RR  C-B exhausted JCC,
+   RCX NDICT-REG ASM-SINK ENC-MOV-RR
+   up LBL,
+      RCX RAX ASM-SINK ENC-CMP-RR  C-AE up-done JCC,
+      R8 ASM-SINK ENC-INC
+      R8 RDX RCX CELL CELL MEM-IDX ASM-SINK ENC-MOV-MR
+      RCX ASM-SINK ENC-INC  up JMP,
+   up-done LBL,
+      R8 RDX MEM-AT ASM-SINK ENC-MOV-MR
+      done JMP,
+   lower LBL,
+      RCX RAX ASM-SINK ENC-MOV-RR
+      R11 ZERO-REG,
+   down LBL,
+      RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE done JCC,
+      R11 RDX RCX CELL CELL MEM-IDX ASM-SINK ENC-MOV-MR
+      RCX ASM-SINK ENC-INC  down JMP,
+   done LBL,
+   NDICT-REG RAX ASM-SINK ENC-MOV-RR
+   R11 ASM-SINK ENC-POP  R10 ASM-SINK ENC-POP
+   R9 ASM-SINK ENC-POP  R8 ASM-SINK ENC-POP
+   RDX ASM-SINK ENC-POP  RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP
+   end JMP,
+   exhausted LBL,
+   RAX DEF-OCC:E-EXHAUSTED IMM64,  THROW,
+   end LBL, ;
+
+\ An exact already-resolved record pointer becomes a process-local reference.
+: DEF-SELECT-BODY ( -- )
+   LBL LBL {: bad:label done:label :}
+   RAX POP,
+   RAX DBASE-REG ASM-SINK ENC-CMP-RR  C-B bad JCC,
+   RAX DBASE-REG ASM-SINK ENC-SUB-RR
+   RDX ZERO-REG,  RCX DREC IMM32,  RCX ASM-SINK ENC-DIV
+   RDX RDX ASM-SINK ENC-TEST-RR  C-NE bad JCC,
+   RAX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE bad JCC,
+   R8 DEF-OCC:PTR-CELL CELL@,
+   R9 R8 RAX CELL CELL MEM-IDX ASM-SINK ENC-MOV-RM
+   R9 R9 ASM-SINK ENC-TEST-RR  C-E bad JCC,
+   RAX PUSH,  R9 PUSH,  done JMP,
+   bad LBL,
+   RAX DEF-OCC:E-SELECT IMM64,  THROW,
+   done LBL, ;
+
+\ Check the slot and number before touching any dictionary record byte.
+: DEF-RESOLVE-BODY ( -- )
+   LBL LBL {: stale:label done:label :}
+   R10 POP,  RAX POP,
+   R10 R10 ASM-SINK ENC-TEST-RR  C-E stale JCC,
+   RAX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE stale JCC,
+   R8 DEF-OCC:PTR-CELL CELL@,
+   R9 R8 RAX CELL CELL MEM-IDX ASM-SINK ENC-MOV-RM
+   R9 R10 ASM-SINK ENC-CMP-RR  C-NE stale JCC,
+   RAX RAX DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RAX DBASE-REG ASM-SINK ENC-ADD-RR
+   RAX PUSH,  done JMP,
+   stale LBL,
+   RAX DEF-OCC:E-STALE IMM64,  THROW,
+   done LBL, ;
+
+\ A successful code rewind retires any published span that reaches its floor.
+: DEF-CODE-RECLAIM-BODY ( -- )
+   LBL LBL LBL LBL {: scan:label next:label full:label done:label :}
+   RSI CP-REG ASM-SINK ENC-MOV-RR
+   HOST-INVALIDATE,
+   RCX ZERO-REG,
+   scan LBL,
+      RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE done JCC,
+      RCX RECORD-AT,
+      R10 R8 REC-WID MEM-OFF ASM-SINK ENC-MOV-RM
+      R11 DICT-WL:NAMESPACE IMM64,
+      R10 R11 ASM-SINK ENC-CMP-RR  C-E next JCC,
+      R9 R8 REC-CODE MEM-OFF ASM-SINK ENC-MOV-RM
+      R9 CP-REG ASM-SINK ENC-CMP-RR  C-AE next JCC,
+      R10 R8 REC-CODE CELL + MEM-OFF ASM-SINK ENC-MOV-RM
+      R11 R10 ASM-SINK ENC-MOV-RR
+      RAX CODE-SPAN:MASK IMM64,  R10 RAX ASM-SINK ENC-AND-RR
+      RAX CODE-SPAN:FULL IMM64,  R11 RAX ASM-SINK ENC-AND-RR
+      R11 R11 ASM-SINK ENC-TEST-RR  C-NE full JCC,
+      R10 CODE-SPAN:INSN-BYTES >IMM8 ASM-SINK ENC-ADD-RI8
+   full LBL,
+      R9 R10 ASM-SINK ENC-ADD-RR
+      R9 RDI ASM-SINK ENC-CMP-RR  C-BE next JCC,
+      RAX DEF-OCC:PTR-CELL CELL@,
+      R11 ZERO-REG,
+      R11 RAX RCX CELL CELL MEM-IDX ASM-SINK ENC-MOV-MR
+   next LBL,
+      RCX ASM-SINK ENC-INC  scan JMP,
+   done LBL, ;
+
 \ ndict! ( n -- ): a count past DICT-CAP, unsigned, writes `hb: dictionary
 \ count out of range` and exits COUNT-RC; one below the seal floor exits
 \ SEAL-VIOLATION. A lowered count keeps the index, whose probe skips a record
@@ -3344,12 +3487,13 @@ private
    RAX POP,
    FLOOR-GUARD,
    RAX NDICT-REG ASM-SINK ENC-CMP-RR
-   NDICT-REG RAX ASM-SINK ENC-MOV-RR                   \ mov keeps the flags
    C-L lower JCC,
    C-E done JCC,
+   OCC-COUNT,
    HIDX-REBUILD,
    done JMP,
    lower X64CODE:LBL,
+   OCC-COUNT,
    LASTC-TRIM,
    done X64CODE:LBL, ;
 
@@ -3366,7 +3510,8 @@ private
    COUNT-RC EXIT-GROUP,
    lower X64CODE:LBL,
    RECORD-GUARD,
-   NDICT-REG POP,
+   RAX POP,
+   OCC-COUNT,
    LASTC-TRIM,
    HIDX-REBUILD,
    RAX ZERO-REG,  RAX SEAL-NDICT-CELL CELL!, ;
@@ -3376,7 +3521,8 @@ private
 \ a does> body is pending, and index it. Anything else, or a count below the
 \ seal floor, exits SEAL-VIOLATION.
 : NDICT-APPEND-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: owner:label bad:label done:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: parent:label owner:label room:label bad:label done:label :}
    TASK-LIVE-GUARD,
    RAX 0 PEEK,
    RAX NDICT-REG ASM-SINK ENC-CMP-RR  C-NE bad JCC,
@@ -3387,16 +3533,27 @@ private
    RDX DBASE-REG ASM-SINK ENC-ADD-RR                   \ rdx = record n
    RCX PEND-CELL CELL@,
    RCX RCX ASM-SINK ENC-TEST-RR  C-E bad JCC,
-   RCX RDX ASM-SINK ENC-CMP-RR  C-E owner JCC,
+   RCX RDX ASM-SINK ENC-CMP-RR  C-E parent JCC,
    RCX DREC >IMM8 ASM-SINK ENC-ADD-RI8
    RCX RDX ASM-SINK ENC-CMP-RR  C-NE bad JCC,
    RCX DOESB-CELL CELL@,
    RCX RCX ASM-SINK ENC-TEST-RR  C-LE bad JCC,
+   owner JMP,
+   parent X64CODE:LBL,
+   RCX DOESB-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-LE owner JCC,
+   R9 DEF-OCC:PTR-CELL CELL@,
+   R10 R9 MEM-AT ASM-SINK ENC-MOV-RM
+   R11 -1 IMM64,  R11 R10 ASM-SINK ENC-SUB-RR
+   R11 2 >IMM8 ASM-SINK ENC-CMP-RI8  C-AE room JCC,
+   RAX DEF-OCC:E-EXHAUSTED IMM64,  THROW,
+   room X64CODE:LBL,
    owner X64CODE:LBL,
    FLOOR-GUARD,
    RECORD-GUARD,
    DROP,
-   NDICT-REG ASM-SINK ENC-INC
+   RAX NDICT-REG 1 MEM-OFF ASM-SINK ENC-LEA
+   OCC-COUNT,
    HIDX-ADD,
    done JMP,
    bad X64CODE:LBL,
@@ -3411,10 +3568,14 @@ private
    s" ndict@" [: NDICT-REG PUSH, ;] PRIM
    s" cp!" [:
       TASK-LIVE-GUARD,  RCX POP,  RCX CODE-SLOT-GUARD,
-      CP-REG RCX ASM-SINK ENC-MOV-RR ;] PRIM
+      RDI RCX ASM-SINK ENC-MOV-RR
+      DEF-CODE-RECLAIM-BODY
+      CP-REG RDI ASM-SINK ENC-MOV-RR ;] PRIM
    s" ndict!" [: NDICT-SET-BODY ;] PRIM
    s" seed-ndict!" [: SEED-NDICT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" ndict-append" [: NDICT-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
+   s" ndict-append" [: NDICT-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" def-occ-select" [: DEF-SELECT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" def-occ-resolve" [: DEF-RESOLVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
 \ ---- the seal ----------------------------------------------------------------
 \ The twins of habu1.f BSEALCAP, BSEALCAPQ and BSEALFRIEND and habu2.f
@@ -3864,6 +4025,7 @@ variable MARK-CELL
    s" executable-build-leave" [: BUILD-LEAVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" set-tier" [: SET-TIER-BODY ;] PRIM
    s" tier@" [: RAX TIER-OFF CELL@,  RAX PUSH, ;] PRIM
+   s" tick-order@" [: RAX ZERO-REG,  RAX PUSH,  RAX PUSH, ;] PRIM
    s" code-origin" [: RSI POP,  RDI POP,  X64PROV:QUERY,  RAX PUSH, ;] PRIM ;
 
 public
@@ -4459,7 +4621,10 @@ $3A constant NAME-COLON                \ a qualified name's separator
 
 \ Count record NDICT, index it and close the window.
 : PUBLISH-RECORD, ( -- )
-   NDICT-REG ASM-SINK ENC-INC
+   RAX ASM-SINK ENC-PUSH
+   RAX NDICT-REG 1 MEM-OFF ASM-SINK ENC-LEA
+   OCC-COUNT,
+   RAX ASM-SINK ENC-POP
    HIDX-ADD,
    WINDOW-CLOSE, ;
 
@@ -4999,6 +5164,12 @@ public
    s" def-cast" [: DEF-CAST-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" jit-open" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" jit-token" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" replay-open" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" replay-close" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" replay-widn!" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" replay-record" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" record-wid!" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" replay-private" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" does-patch" [: DOES-PATCH-BODY ;] PRIM ;
 
 \ ---- pure rows ---------------------------------------------------------------
@@ -5046,6 +5217,17 @@ TYPED-VARIABLE HIR-STAGE [ -- ]
 : HIR-BODY ( -- )
    ROW$ HIR-IN @ HIR-OUT @ HIR-STAGE @ [: HIR-USE ;] X64KHIR:COMPILE ;
 
+: HIR-USE-SCALAR ( NART:emission -- )
+   {: e:NART:emission :}
+   e NART:CALL-SITES 0<> if
+      s" x64kernel: scalar body has a call edge" REFUSE-RC die
+   then
+   e HIR-USE ;
+
+: HIR-BODY-SCALAR ( -- )
+   ROW$ HIR-IN @ HIR-OUT @ HIR-STAGE @
+      [: HIR-USE-SCALAR ;] X64KHIR:COMPILE ;
+
 public
 
 \ Register the body the x86-64 chain compiles from the function the stager
@@ -5056,6 +5238,12 @@ public
    [: HIR-BODY ;] ARGS
    ROW$ KEEP? 0= if exit then
    false RECORD drop ;
+
+: SCALAR-HIR ( ptr u8 n n n [ -- ] -- )
+   HIR-STAGE !  HIR-OUT !  HIR-IN !
+   [: HIR-BODY-SCALAR ;] ARGS
+   ROW$ KEEP? 0= if exit then
+   false RECORD ENGINE-PRIMS:MARK-SCALAR ;
 
 private
 
@@ -5230,7 +5418,7 @@ private
    s" /" 2 1 [: HIR-OPCODE:DIV BIN ;] PRIM-HIR
    s" mod" 2 1 [: MOD-HIR ;] PRIM-HIR
    s" /mod" 2 2 [: DIVMOD-HIR ;] PRIM-HIR
-   s" abs" 1 1 [: ABS-HIR ;] PRIM-HIR
+   s" abs" 1 1 [: ABS-HIR ;] SCALAR-HIR
    s" min" 2 1 [: HIR-OPCODE:LT PICK-HIR ;] PRIM-HIR
    s" max" 2 1 [: HIR-OPCODE:GT PICK-HIR ;] PRIM-HIR ;
 
@@ -5394,7 +5582,9 @@ public
    SCOPE-SEED-LBL X64CODE:LBL,
    R8 ENGINE-PRIMS:COUNT DREC * IMM32,
    ASM-SINK ENC-RET
-   SCOPE-SEED-END-LBL X64CODE:LBL, ;
+   SCOPE-SEED-END-LBL X64CODE:LBL,
+   ENGINE-PRIMS:COMPLETE
+   ENGINE-PRIMS:SCALAR-ROW@ X64BOOT:SCALAR-ROW, ;
 
 ;using   \ X64LAYOUT
 ;using

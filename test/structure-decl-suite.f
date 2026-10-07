@@ -465,9 +465,18 @@ private
 ;package
 
 \ A replayed STRUCTURE registers the family, its fields, and its make/unmake
-\ rows, and moves the native dictionary not at all.
+\ rows, and moves the native dictionary not at all. Checked calls of the rows
+\ resolve on the certify path while the replay's neutral pair is open: the
+\ checker overlay holds them there as codeless records (src/core/checker.f
+\ CHECKER-OVERLAY), and they go with the pair, so DICT-SAME holds after it and
+\ compiled code holds no record of RPSD:MAKE to bind. The pair finalizes: the
+\ family stays registered for the payload replay below.
 struct-replay-test:DICT-MARK
+CHECKER-SCOPE-START-NEUTRAL
 s" rpsd" s" 0 FIELD one n FIELD two n ;STRUCTURE" struct-replay-test:RP-TRY 0 T=
+s" S1 ( n n -- rpsd ) RPSD:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" S1BAD ( n -- rpsd ) RPSD:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+CHECKER-SCOPE-FINALIZE
 struct-replay-test:DICT-SAME
 
 s" rpsd" FAMID FID !
@@ -480,23 +489,21 @@ SV0 @ struct-replay-test:SV-NAME$ s" make" CORE-STR= T-TRUE
 SV0 @ 1 + struct-replay-test:SV-NAME$ s" unmake" CORE-STR= T-TRUE
 SV0 @ struct-replay-test:CTOR-PKG$ s" RPSD" CORE-STR= T-TRUE
 
-\ Checked calls resolve, while DICT-SAME above proves no runtime word appeared.
-\ They resolve on the certify path, where the replay recorded them: compiled
-\ code holds no record of RPSD:MAKE to bind.
+\ The rows' checker symbols outlive the pair.
 SV0 @ SUMV-CTOR-SYM@ 0 <> T-TRUE
 SV0 @ 1 + SUMV-CTOR-SYM@ 0 <> T-TRUE
-s" S1 ( n n -- rpsd ) RPSD:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-s" S1BAD ( n -- rpsd ) RPSD:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 
 \ Header clauses replay onto the same family record. Derived EQ calls the
 \ rows the replay recorded before it, rows the engine holds no word for, so this
 \ replay runs where the check tool's runs: in its replay scope
-\ (test/replay-scope.f, src/core/checker.f REPLAY-BIND), closed after the probes.
+\ (test/replay-scope.f, src/core/checker.f CHECKER-OVERLAY), closed after the
+\ probes. While it is open the engine's scope is the replay's, which imports
+\ nothing, so a probe spells TFAM's word qualified.
 REPLAY-SCOPE:OPEN
 s" rpsdh" s" 0 POLICY packed-tag DERIVE eq FIELD one n ;STRUCTURE"
 struct-replay-test:RP-TRY 0 T=
 s" rpsdh" FAMID FID !
-FID @ TFAM-LAYOUT-POLICY@ PACKED# T=
+FID @ TFAM:TFAM-LAYOUT-POLICY@ PACKED# T=
 FID @ FAM-EQ? -1 T=
 REPLAY-SCOPE:CLOSE
 

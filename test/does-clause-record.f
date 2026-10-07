@@ -373,14 +373,30 @@ variable SITE-GOT
    s" package DRXN : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; public export MK ;package" EV
    s" 7 DRXN:MK DRXN-SEVEN drop" EV
    s" DRXN:MK" s" DRXN:MK;does" s" DRXN-SEVEN" ?EXPORTED
+   s" DRXN:MK" XREF-FIND DEF-OCC:SELECT {: alias-slot:n alias-occ:n :}
+   s" DRXN:MK;does" XREF-FIND DEF-OCC:SELECT {: clause-slot:n clause-occ:n :}
+   alias-occ clause-occ T<>
    s" undefining the private original leaves the exported pair" T-LABEL
    s" package DRXN private undefine MK ;package" EV
+   alias-slot alias-occ DEF-OCC:RESOLVE XREF-START 0<> TTRUE
+   clause-slot clause-occ DEF-OCC:RESOLVE XREF-START 0<> TTRUE
    s" DRXN:MK;does" IDX  s" DRXN:MK" CLAUSE  T=
    s" 8 DRXN:MK DRXN-EIGHT drop" EV
    s" DRXN-EIGHT" EV-N 8 T=
+   s" creating another word keeps the retained export pair" T-LABEL
+   alias-slot alias-occ DEF-OCC:RESOLVE XREF-START 0<> TTRUE
+   clause-slot clause-occ DEF-OCC:RESOLVE XREF-START 0<> TTRUE
+   s" DRXN:MK" XREF-FIND DEF-OCC:SELECT {: public-slot:n public-occ:n :}
+   s" DRXN:MK;does" XREF-FIND DEF-OCC:SELECT {: pub-clause-slot:n pub-clause-occ:n :}
+   s" DRXN-SEVEN" XREF-FIND DEF-OCC:SELECT {: earlier-slot:n earlier-occ:n :}
+   s" DRXN-EIGHT" XREF-FIND DEF-OCC:SELECT {: later-slot:n later-occ:n :}
+   earlier-slot later-slot T<>
+   earlier-occ later-occ T<>
    s" undefining the export retires its clause with it" T-LABEL
    s" package DRXN public undefine MK ;package" EV
    s" DRXN:MK;does" IDX 0 < TTRUE
+   public-slot public-occ DEF-OCC:RESOLVE XREF-START 0<> TTRUE
+   pub-clause-slot pub-clause-occ DEF-OCC:RESOLVE XREF-START 0<> TTRUE
    s" ... and the words it made keep their clause" T-LABEL
    s" DRXN-SEVEN" EV-N 7 T= ;
 

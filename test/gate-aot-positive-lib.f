@@ -345,10 +345,10 @@ variable SELF-SRC-U
    s\"  s\" AOT closed member range\" AMAP-EXPECT" GE-SRC+
    s"  0 AMAP-CODE AMAP-CODE-ROW + MAP-TARGET AMAP-M2-OFF =" GE-SRC+
    s\"  s\" AOT adjacent member relocation\" AMAP-EXPECT" GE-SRC+
-   s"  ASM-LEN 0 NEWOFF !" GE-SRC+
+   s"  A64ICODE:ASM-LEN 0 NEWOFF !" GE-SRC+
    s"  0 AMAP-CODE AMAP-ADR RELOC-W32 AMAP-ADR =" GE-SRC+
    s\"  s\" AOT in-member ADR keeps its delta\" AMAP-EXPECT" GE-SRC+
-   s"  TNEW @ ASM-LEN AMAP-ADR-DELTA + =" GE-SRC+
+   s"  TNEW @ A64ICODE:ASM-LEN AMAP-ADR-DELTA + =" GE-SRC+
    s\"  s\" AOT in-member ADR target\" AMAP-EXPECT ;" GE-SRC-LINE
    s" AMAP-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;

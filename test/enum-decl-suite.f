@@ -781,7 +781,7 @@ s" lay-legacy-def" FAMID enum-layout-test:NO-ROW
 s" lay-unified-def" FAMID enum-layout-test:NO-ROW
 
 \ 21c. Full mode: the descriptor is sized from the WIDEST variant, so the bake
-\      has to follow FAM-SLOTS!. Legacy ENUM has no payload grammar, so the
+\      has to follow TFAM-SLOTS!. Legacy ENUM has no payload grammar, so the
 \      legacy comparison partner is SUMTYPE — the same TK-SUM kind, the same
 \      one-cell payload, the same packed policy. This pairing keeps working
 \      after the global ENUM token moves to the front end.
@@ -1117,9 +1117,19 @@ private
 ;package
 
 \ 23a. A compact ENUM replays to the same family shape the live front end
-\      registers, and moves the native dictionary NOT AT ALL.
+\      registers, and moves the native dictionary NOT AT ALL. Checked
+\      constructor calls resolve on the certify path while the replay's
+\      neutral pair is open: the checker overlay holds the constructors there
+\      as codeless records (src/core/checker.f CHECKER-OVERLAY), and they go
+\      with the pair, so DICT-SAME holds after it and compiled code holds no
+\      record of RPCOMPACT:RED to bind. The pair finalizes: the family stays
+\      registered.
 enum-ctor-test:DICT-MARK
+CHECKER-SCOPE-START-NEUTRAL
 s" rpcompact" s" red green blue ;ENUM" enum-replay-test:RP-TRY 0 T=
+s" R1 ( -- rpcompact ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" R1BAD ( -- n ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+CHECKER-SCOPE-FINALIZE
 enum-ctor-test:DICT-SAME
 
 s" rpcompact" FAMID FID !
@@ -1138,13 +1148,9 @@ VS0 @ 2 + SV-TAG@ 2 T=
 VS0 @ enum-ctor-test:CTOR-PKG$ s" RPCOMPACT" CORE-STR= T-TRUE
 VS0 @ 2 + enum-ctor-test:CTOR-PKG$ s" RPCOMPACT" CORE-STR= T-TRUE
 
-\ The dictionary stayed unchanged above, but checked constructor calls resolve
-\ on the certify path, where the replay recorded them: compiled code holds no
-\ record of RPCOMPACT:RED to bind.
+\ The constructors' checker symbols outlive the pair.
 VS0 @ SUMV-CTOR-SYM@ 0 <> T-TRUE
 VS0 @ 2 + SUMV-CTOR-SYM@ 0 <> T-TRUE
-s" R1 ( -- rpcompact ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-s" R1BAD ( -- n ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 
 \ 23b. FULL mode replays too. The legacy CHECKER-DEFENUM this entry replaces read
 \      a compact list of bare variant names and nothing else, so an arity header
@@ -1165,13 +1171,15 @@ VS0 @ 1 + SUMV-CTOR-SYM@ 0 <> T-TRUE
 \ 23c. Header clauses replay: POLICY and DERIVE reach the same family record.
 \      Derived EQ calls the TAG row the replay recorded just before it, a row the
 \      engine holds no word for, so this replay runs where the check tool's runs:
-\      in its replay scope (test/replay-scope.f, src/core/checker.f REPLAY-BIND),
-\      closed after the probes.
+\      in its replay scope (test/replay-scope.f, src/core/checker.f
+\      CHECKER-OVERLAY), closed after the probes. While it is open the engine's
+\      scope is the replay's, which imports nothing, so a probe spells TFAM's
+\      word qualified.
 REPLAY-SCOPE:OPEN
 s" rppol" s" POLICY packed-tag DERIVE eq hash red green ;ENUM"
 enum-replay-test:RP-TRY 0 T=
 s" rppol" FAMID FID !
-FID @ TFAM-LAYOUT-POLICY@ PACKED# T=
+FID @ TFAM:TFAM-LAYOUT-POLICY@ PACKED# T=
 FID @ F-EQ? -1 T=
 FID @ F-HASH? -1 T=
 REPLAY-SCOPE:CLOSE

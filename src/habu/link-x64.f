@@ -58,12 +58,9 @@
 \ code cell whose xt row names a record with no routine. A refusal dies, and
 \ LAYOUT writes only this file's buffers, so no byte leaves the process first.
 \
-\ LOAD ORDER. The x86-64 files bind `using X64CODE`, whose public tails
-\ src/arch/arm64/icode.f also defines as globals (CODE, LBL, ASM-LEN), and
-\ src/habu/aot-decl.f reads that file's AOT-SECTION-CAP. So this file requires
-\ the x86-64 side first, then the ARM64 code layer and the capture's
-\ declarations; it reads X64CODE qualified. A loader that loads
-\ src/arch/arm64/icode.f ahead of this file loads the x86-64 side before that.
+\ LOAD ORDER. The x86-64 writer sizes image-bytes.f under `using X64CODE`,
+\ then src/habu/aot-decl.f reads ARM64's AOT-SECTION-CAP for the shared
+\ capture format. This file reads X64CODE qualified.
 require lib/le.f
 require src/arch/x86-64/icode.f
 require src/os/linux-x86-64/elf.f

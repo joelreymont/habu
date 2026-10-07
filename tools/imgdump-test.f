@@ -30,6 +30,13 @@ $4000 constant IDT-CAP
 62 constant IDT-EM-X86-64
 IDT-HDR-BYTES DREC + constant IDT-IMG-BYTES
 $4020 constant IDT-X64-IMG-BYTES
+$1008 constant IDT-EXT-NAME-OFF
+$1040 constant IDT-EXT-IMG-BYTES
+$1200 constant IDT-SNAP-TRL-OFF
+IDT-SNAP-TRL-OFF SNAP-TRL-BYTES + constant IDT-SNAP-IMG-BYTES
+32 constant IDT-SNAP-CODE-BYTES
+IDT-SNAP-TRL-OFF DREC IDT-SNAP-CODE-BYTES + 1 + - constant IDT-SNAP-REC-OFF
+IDT-SNAP-REC-OFF DREC + constant IDT-SNAP-NAME-OFF
 
 \ The decoy fixture (IDT-WRITE-DECOY-IMG) puts a second, refused record ahead
 \ of the real one. Its name length field declares far more bytes than the
@@ -86,6 +93,10 @@ variable IDT-X64-BAD-HEAP-U
 
 : IDT-A$ ( -- ptr u8 n )
    IDT-A IDT-A-U @ ;
+
+: IDT-A-NAMED ( ptr u8 n -- )
+   {: name:ptr len:n :}
+   IDT-ROOT$ name len IDT-A JOIN-PATH IDT-A-U ! ;
 
 : IDT-SAME$ ( -- ptr u8 n )
    IDT-SAME IDT-SAME-U @ ;
@@ -272,6 +283,38 @@ $340000 DATA-START + constant IDT-SNAP-BYTES
    IDT-X64-BAD-HEAP$ IDT-SNAP@ IDT-SNAP-BYTES WRITE-ALL
    IDT-SNAP-RELEASE ;
 
+: IDT-WRITE-EXT-IMG ( n n -- )
+   {: raw:n nameu:n :}
+   IDT-EXT-IMG-BYTES IDT-ZERO
+   IMAGE-DUMP:ELF-ET-EXEC IDT-WRITE-ELF-HDR
+   IDT-HDR-BYTES $100 $0c 0 0 IDT-REC-AT
+   nameu DNAME-EXT or IDT-IMG IDT-HDR-BYTES + 16 + !
+   raw IDT-IMG IDT-HDR-BYTES + 24 + !
+   s" extended-name-good" {: name:ptr len:n :}
+   name IDT-IMG IDT-EXT-NAME-OFF + len BYTE-COPY
+   IDT-A$ IDT-IMG IDT-EXT-IMG-BYTES WRITE-ALL ;
+
+\ A snapshot's external-name cell can hold either a canonical text address
+\ or an absolute region address. Both map to stored bytes in this image.
+: IDT-WRITE-SNAP-IMG ( n -- )
+   {: raw:n :}
+   IDT-SNAP-IMG-BYTES IDT-ZERO
+   IMAGE-DUMP:ELF-ET-EXEC IDT-WRITE-ELF-HDR
+   IDT-SNAP-IMG-BYTES IDT-IMG 96 + !
+   IDT-SNAP-REC-OFF 0 0 0 0 IDT-REC-AT
+   18 DNAME-EXT or IDT-IMG IDT-SNAP-REC-OFF + 16 + !
+   raw IDT-IMG IDT-SNAP-REC-OFF + 24 + !
+   XREF-NAMESPACE-WL IDT-IMG IDT-SNAP-REC-OFF + 40 + !
+   s" extended-name-good" {: name:ptr len:n :}
+   name IDT-IMG IDT-EXT-NAME-OFF + len BYTE-COPY
+   name IDT-IMG IDT-SNAP-NAME-OFF + len BYTE-COPY
+   SNAP-MAGIC IDT-IMG IDT-SNAP-TRL-OFF + !
+   1 IDT-IMG IDT-SNAP-TRL-OFF SNAP-TRL-NDICT + + !
+   DICT-SIZE IDT-SNAP-CODE-BYTES + IDT-IMG IDT-SNAP-TRL-OFF SNAP-TRL-REGLEN + + !
+   1 IDT-IMG IDT-SNAP-TRL-OFF SNAP-TRL-DATALEN + + !
+   SNAPSHOT-FORMAT:VERSION IDT-IMG IDT-SNAP-TRL-OFF SNAP-TRL-VERSION + + !
+   IDT-A$ IDT-IMG IDT-SNAP-IMG-BYTES WRITE-ALL ;
+
 : IDT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-imgdump-test" HB-TMP-MKDIR IDT-ROOT IDT-ROOT-U IDT-COPY!
@@ -319,23 +362,28 @@ $340000 DATA-START + constant IDT-SNAP-BYTES
    s" tools/imgdump.f" IDT-ARG+
    s" --" IDT-ARG+ ;
 
+: IDT-HB$ ( -- ptr u8 n )
+   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then ;
+
 : IDT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
      err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
    ;MATCH ;
 
-: IDT-RUN-1 ( ptr u8 n -- n n n ) {: a:ptr u :}
+: IDT-RUN-1 ( ptr u8 n -- n n n )
+   {: a:ptr u:n :}
    IDT-ARGV-BASE
    a u IDT-ARG+
-   s" bin/hb"  >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
+   IDT-HB$ >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
    IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
 
-: IDT-RUN-2 ( ptr u8 n ptr u8 n -- n n n ) {: a:ptr au b:ptr bu :}
+: IDT-RUN-2 ( ptr u8 n ptr u8 n -- n n n )
+   {: a:ptr au:n b:ptr bu:n :}
    IDT-ARGV-BASE
    a au IDT-ARG+
    b bu IDT-ARG+
-   s" bin/hb"  >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
+   IDT-HB$ >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
    IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
 
 : IDT-RUN-3 ( ptr u8 n ptr u8 n ptr u8 n -- n n n )
@@ -359,7 +407,7 @@ $340000 DATA-START + constant IDT-SNAP-BYTES
    s" --pc" IDT-ARG+
    IDT-A$ IDT-ARG+
    a u IDT-ARG+
-   s" bin/hb" >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
+   IDT-HB$ >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
    IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
 
 \ Source for the child that pins PRN?'s read bound. MEM-ALLOC-GUARDED keeps an
@@ -373,9 +421,10 @@ $340000 DATA-START + constant IDT-SNAP-BYTES
 
 \ hb evaluates stdin only when no --load names a file, so this child compiles
 \ imgdump from the source it is fed rather than through IDT-ARGV-BASE.
-: IDT-RUN-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu :}
+: IDT-RUN-STDIN ( ptr u8 n -- n n n )
+   {: src:ptr srcu:n :}
    PROC-ARGV-RESET
-   s" bin/hb" >LEN src srcu >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
+   IDT-HB$ >LEN src srcu >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
    IDT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE IDT-CAPTURE>N ;
 
 \ A word this engine carries live. Its record says both what to ask --pc and
@@ -395,9 +444,9 @@ DYNAMIC-BUFFER IDT-SELF u8
 : IDT-IMAGE-BASE ( -- )
    0 IDT-SLIDE !
    HB-TARGET-MACOS? 0= if exit then
-   s" bin/hb" FILE-SIZE {: size:n :}
+   IDT-HB$ FILE-SIZE {: size:n :}
    size IDT-SELF-RESERVE
-   s" bin/hb" 0 IDT-SELF size READ-ALL size T=
+   IDT-HB$ 0 IDT-SELF size READ-ALL size T=
    0 IDT-SELF size MACHO-READ:OPEN
    rbase MACHO-READ:TEXT-VA - IDT-SLIDE !
    IDT-SELF-RELEASE ;
@@ -486,10 +535,10 @@ DYNAMIC-BUFFER IDT-SELF u8
    s" imgdump --pc batches addresses on bin/hb itself" T-LABEL
    IDT-IMAGE-BASE
    IDT-ARGV-BASE
-   s" --pc" IDT-ARG+ s" bin/hb" IDT-ARG+
+   s" --pc" IDT-ARG+ IDT-HB$ IDT-ARG+
    s" +" IDT-XT$ IDT-ARG+
    s" evaluate" IDT-XT$ IDT-ARG+
-   s" bin/hb" >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
+   IDT-HB$ >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
    IDT-SELF-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N 0 T=
    {: outu:n erru:n :}
    erru 0 T=
@@ -620,6 +669,52 @@ DYNAMIC-BUFFER IDT-SELF u8
    s" imgdump rejects a malformed x86 snapshot trailer" T-LABEL
    s" --snap" IDT-X64-BAD-HEAP$ IDT-RUN-2 74 T= 2drop ;
 
+: IDT-TEST-EXT-NAME ( -- )
+   s" imgdump accepts a baked external name at a text-relative offset" T-LABEL
+   s" ext-valid.img" IDT-A-NAMED
+   IDT-EXT-NAME-OFF CODE-OFF - 18 IDT-WRITE-EXT-IMG
+   IDT-A$ IDT-RUN-1 0 T=
+   {: outu:n erru:n :}
+   erru 0 T=
+   IDT-OUT outu S\" extended-name-good $100 $c\n" T$=
+   s" imgdump refuses a negative raw external name offset" T-LABEL
+   s" ext-negative.img" IDT-A-NAMED
+   1 CODE-OFF - 1 IDT-WRITE-EXT-IMG
+   IDT-A$ IDT-RUN-1 74 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   IDT-ERR erru s" imgdump: no dict found" CONTAINS? TTRUE
+   s" imgdump refuses an external name offset past the file" T-LABEL
+   s" ext-high.img" IDT-A-NAMED
+   $7FFFFFFFFFFFFFFF CODE-OFF - 1 IDT-WRITE-EXT-IMG
+   IDT-A$ IDT-RUN-1 74 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   IDT-ERR erru s" imgdump: no dict found" CONTAINS? TTRUE ;
+
+: IDT-TEST-SNAP-NAME ( -- )
+   s" imgdump accepts a canonical snapshot external name" T-LABEL
+   s" snap-canonical.img" IDT-A-NAMED
+   IDT-EXT-NAME-OFF CODE-OFF - IDT-WRITE-SNAP-IMG
+   IDT-A$ IDT-RUN-1 0 T=
+   {: outu:n erru:n :}
+   erru 0 T=
+   IDT-OUT outu S\" extended-name-good $0 $0\n" T$=
+   s" imgdump accepts an absolute snapshot external name" T-LABEL
+   s" snap-absolute.img" IDT-A-NAMED
+   RBASE-VA DICT-SIZE + IDT-WRITE-SNAP-IMG
+   IDT-A$ IDT-RUN-1 0 T=
+   {: outu:n erru:n :}
+   erru 0 T=
+   IDT-OUT outu S\" extended-name-good $0 $0\n" T$= ;
+
+: IDT-FINISH ( -- )
+   s" HABU_IMGDUMP_KEEP" GETENV s" 1" STR= if
+      IDT-ROOT$ CLEANUP-FORGET
+      s" imgdump-artifacts: " type IDT-ROOT$ type cr exit
+   then
+   CLEANUP-RUN ;
+
 : IDT-MAIN ( -- )
    T-RESET
    IDT-PREPARE
@@ -638,7 +733,9 @@ DYNAMIC-BUFFER IDT-SELF u8
    IDT-TEST-NO-BASE-REFUSES
    IDT-TEST-NON-ELF-REFUSES
    IDT-TEST-NAMESPACE
-   CLEANUP-RUN
+   IDT-TEST-EXT-NAME
+   IDT-TEST-SNAP-NAME
+   IDT-FINISH
    T-REPORT
    s" imgdump-test: ok" type cr ;
 

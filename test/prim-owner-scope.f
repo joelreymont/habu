@@ -275,6 +275,17 @@ variable EXP-U
    CK-OWNER-LINES
    TYPE-DECL-LINES ;
 
+\ An internal primitive its owner's rows type: the owner's checked callers
+\ compile at both tiers, nobody's tick does, and the global trusted-only row
+\ refuses a checked caller outside the owner.
+: OWNED-LINES ( -- )
+   s" t0 package-scope! inside owner"      s" compiled" CASE+
+   s" t0 tick package-scope! inside owner" s" rejected" CASE+
+   s" t0 package-scope! top level"         s" rejected" CASE+
+   s" t1 package-scope! inside owner"      s" compiled" CASE+
+   s" t1 namespace-record inside owner"    s" compiled" CASE+
+   s" t1 tick package-scope! inside owner" s" rejected" CASE+ ;
+
 : EXPECT$ ( -- ptr u8 n )
    0 EXP-U !
    AXIOM-LINES
@@ -288,6 +299,7 @@ variable EXP-U
    T0? if OWNER-T0-LINES then
    OWNER-T1-LINES
    OWNER-SITE-LINES
+   OWNED-LINES
    S\" prim-owner: ok\nwindow: 0\n" EXP+
    EXP EXP-U @ ;
 
@@ -382,7 +394,9 @@ variable EXP-U
       ea eu s" E-CAP-TRUSTED habu: in pos-am0-oth: 'addrmap-set' is a trust-boundary primitive" ERR-HAS
    then
    ea eu s" E-CAP-TRUSTED habu: in pos-am1-top: 'addrmap-set' is a trust-boundary primitive" ERR-HAS
-   ea eu OWNER-SITE-ERRS ;
+   ea eu OWNER-SITE-ERRS
+   \ An owned primitive's global row refuses a checked caller outside its owner.
+   ea eu s" E-CAP-TRUSTED habu: in pos-ps0-top: 'package-scope!' is a trust-boundary primitive" ERR-HAS ;
 
 \ ---- the running engine -------------------------------------------------------
 \ A user's checked definition outside the owner, compiled by the engine that runs

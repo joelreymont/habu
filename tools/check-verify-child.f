@@ -1,5 +1,5 @@
-\ check-verify-child.f - the verifier child CHECK:VERIFY-BYTES and
-\ CHECK:PREVERIFY-BYTES run.
+\ check-verify-child.f - the verifier child CHECK:VERIFY-BYTES,
+\ CHECK:VERIFY-BYTES-AT and CHECK:PREVERIFY-BYTES run.
 \
 \ tools/check-verify-core.f spawns it on the engine lib/engine-candidate.f
 \ names, by its absolute path in the tree that file was loaded from, in the
@@ -7,6 +7,7 @@
 \
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < BYTES
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < BYTES
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N < BYTES
 \
 \ BYTES is the subject's text and SUBJECT the canonical absolute path it is
 \ checked as. The image is the engine's boot prefix, the verifier and
@@ -23,15 +24,53 @@
 \ packet made before; then one result line. The first form verifies with all
 \ errors, going past a duplicate definition as past any refused definition,
 \ and writes for each duplicate, which the checker writes no packet for, a
-\ diagnostic line among the packets. It answers
+\ diagnostic line among the packets, for each file it reads a file line, once
+\ however often it reads the file and before anything in it, for each
+\ definition it retains a definition line, and for each use in the subject
+\ that the checker binds to a located declaration a use line, one JSON object
+\ each. It answers
 \
 \    check-verify: verified | refused | deferred | held
 \                | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \    check-verify: duplicate 78 BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
+\    check-verify: file {"file":F}
+\    check-verify: definition {"kind":K,"class":C,"word":W,"package":P,
+\       "visibility":V,"effect":E,"file":F,"byte_start":S,"byte_end":N}
+\    check-verify: use {"byte_start":S,"byte_end":N,"file":F,
+\       "target_start":TS,"target_end":TN}
+\    check-verify: candidate {"word":W,"file":F,"target_start":TS,
+\       "target_end":TN}
 \
-\ deferred: nothing is refused, but a stretch of top-level source was deferred
-\ to the run, and a W-CHECK-DEFERRED packet locates each such stretch
-\ (src/habu/verify-source.f TOP-TOKEN): those tokens are not verified.
+\ A file line names a file src/habu/verify-source.f ON-FILE reports, F as
+\ its packets name it. A definition line names what ON-DEFINITION reports:
+\ K the statement token that declared it, C its class as that token's path
+\ knows it (word, constant, storage, or export: a re-export, whatever the word
+\ it names is), W its name as the source writes it
+\ (a name its definer generates, as spelled), P and V the package (empty for a
+\ global) and visibility (global, private or public) the checker recorded it
+\ under, E its declared effect, absent when it declared none, F the file as
+\ its packets name it, and S and N where the token that declared it starts and
+\ ends there.
+\
+\ A use line names what src/habu/verify-source.f ON-USE reports, a use in the
+\ subject that the checker bound to a located declaration: S and N where the
+\ use starts and ends in the subject, F the path the declaration's file was
+\ resolved to, and TS and TN where the token that declared it starts and ends
+\ there.
+\
+\ The third form is the first with a completion cursor at byte N of BYTES. It
+\ writes as well, for each spelling the checker offers at the cursor's place, a
+\ candidate line naming what src/habu/verify-source.f ON-CANDIDATE reports: W
+\ the spelling, F the path the file of the declaration it binds was resolved
+\ to, and TS and TN where the token that declared it starts and ends there; F,
+\ TS and TN are absent for a declaration in no file the composition read, or
+\ with no location. A cursor the scan passes in a comment, a string or a
+\ signature, or never reaches, has none.
+\
+\ deferred: nothing is refused, but a stretch of top-level source or a
+\ definition was deferred to the run, and a W-CHECK-DEFERRED packet locates each
+\ (src/habu/verify-source.f TOP-TOKEN, REPORT-DEFERRED): those tokens are not
+\ verified.
 \ held is answered before anything is verified: this image holds SUBJECT though
 \ the engine does not provide it (the verifier's source and this file), so it
 \ cannot be verified here. The parent answers engine-provided itself. stopped
@@ -57,6 +96,17 @@
 \ among it. A child that ends any other way, the verifier's own `die` included,
 \ writes no result line.
 
+\ The observation must precede every verifier require: those files may select a
+\ tier or replace a checker in this child, while the hypothetical subject has
+\ not reached any of them at its own load boundary.
+tick-order@
+package CHECK-VERIFY-CHILD
+variable ENTRY-ORDER
+PTR-VARIABLE ENTRY-OWNER
+ENTRY-OWNER !
+ENTRY-ORDER !
+;package
+
 require src/habu/verify-source.f
 
 \ Engine words with no checked effect; tools/check-core.f declares them alike.
@@ -64,6 +114,8 @@ s" CHECKER-SCOPE-START-NEUTRAL" s" --" TRUST
 s" CHECKER-SCOPE-DONE" s" --" TRUST
 
 package CHECK-VERIFY-CHILD
+
+ENTRY-ORDER @ ENTRY-OWNER @ VERIFY:ENTRY-TICK-ORDER!
 
 $10000 constant CHUNK                   \ bytes asked of one read
 32 constant NUM-CAP
@@ -79,6 +131,14 @@ variable STOP                           \ the code a throw ended the composition
 variable NUM-I
 create NUM NUM-CAP allot
 create NL 1 allot
+create ESC 6 allot                      \ one \u00XX escape
+variable RUN-AT                         \ where the bytes not yet written start
+DYNAMIC-BUFFER DEF-PKG u8               \ a definition's package
+variable DEF-PKG-U
+DYNAMIC-BUFFER SEEN u8                  \ the files file lines named, end to end,
+variable SEEN-U
+DYNAMIC-BUFFER SEEN-AT n                \ each one's offset there and length
+variable SEEN-N
 
 
 : WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
@@ -161,6 +221,191 @@ create NL 1 allot
    E-DUP-DEFINITION STOP-FIELDS ;
 
 
+\ The digit, 0 to 15, as a lowercase hexadecimal byte.
+: HEX-DIGIT ( n -- n )
+   dup 10 < if 48 + exit then 87 + ;
+
+
+\ A control byte's escape, \u00 and its two hexadecimal digits.
+: CONTROL-ESC ( n -- ptr u8 n )
+   {: c:n :}
+   92 ESC c!  117 ESC 1 + c!  48 ESC 2 + c!  48 ESC 3 + c!
+   c 16 / HEX-DIGIT ESC 4 + c!
+   c 15 and HEX-DIGIT ESC 5 + c!
+   ESC 6 ;
+
+
+\ The escape RFC 8259 requires in a string for the byte, empty for none: a
+\ quotation mark, a reverse solidus and a control character.
+: ESCAPE$ ( n -- ptr u8 n )
+   {: c:n :}
+   c 34 = if s\" \\\"" exit then
+   c 92 = if s\" \\\\" exit then
+   c 32 < if c CONTROL-ESC exit then
+   NULL$ ;
+
+
+\ Byte I of the bytes at A: when it needs an escape, the bytes before it not
+\ yet written, then its escape.
+: JSON-BYTE ( ptr u8 n -- )
+   {: a:ptr i:n :}
+   a i + c@ ESCAPE$
+   {: e:ptr eu:n :}
+   eu 0= if exit then
+   OUT-FD a RUN-AT @ + i RUN-AT @ - WRITE
+   OUT-FD e eu WRITE
+   i 1+ RUN-AT ! ;
+
+
+\ The bytes as a JSON string, written in runs between the escapes.
+: JSON-STR ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   OUT-FD s\" \"" WRITE
+   0 RUN-AT !
+   u 0 ?do a i JSON-BYTE loop
+   OUT-FD a RUN-AT @ + u RUN-AT @ - WRITE
+   OUT-FD s\" \"" WRITE ;
+
+
+\ The package span, copied out of the checker's symbol pool before anything
+\ else runs: the next intern can move it. The storage holds a byte at least,
+\ so a global's empty package has an address.
+: DEF-PKG! ( ptr u8 n -- )
+   {: pkg:ptr pkgu:n :}
+   pkgu 1 max DEF-PKG-RESERVE
+   pkg 0 DEF-PKG pkgu BYTE-COPY
+   pkgu DEF-PKG-U ! ;
+
+
+: DEF-PKG$ ( -- ptr u8 n )
+   0 DEF-PKG DEF-PKG-U @ ;
+
+
+: VISIBILITY$ ( n -- ptr u8 n )
+   {: vis:n :}
+   vis SYM-GLOBAL = if s" global" exit then
+   vis SYM-PRIVATE = if s" private" exit then
+   vis SYM-PUBLIC = if s" public" exit then
+   s" check-verify: unknown visibility" 74 die ;
+
+
+: CLASS$ ( n -- ptr u8 n )
+   {: class:n :}
+   class VERIFY:DEF-WORD = if s" word" exit then
+   class VERIFY:DEF-CONSTANT = if s" constant" exit then
+   class VERIFY:DEF-STORAGE = if s" storage" exit then
+   class VERIFY:DEF-EXPORT = if s" export" exit then
+   s" check-verify: unknown definition class" 74 die ;
+
+
+\ A definition the first form retained, as its definition line: the name as
+\ the event gives it, the package and visibility the checker recorded it
+\ under. The tail it recorded is its lookup key, not a name to show.
+: DEFINITION-LINE ( ptr u8 n ptr u8 n n ptr u8 n n n n -- )
+   {: kind:ptr kindu:n name:ptr nameu:n sym:n eff:ptr effu:n at:n end:n class:n :}
+   sym VERIFY:SYM-IDENTITY
+   {: vis:n :}
+   2drop DEF-PKG!
+   OUT-FD s\" check-verify: definition {\"kind\":" WRITE
+   kind kindu JSON-STR
+   OUT-FD s\" ,\"class\":" WRITE
+   class CLASS$ JSON-STR
+   OUT-FD s\" ,\"word\":" WRITE
+   name nameu JSON-STR
+   OUT-FD s\" ,\"package\":" WRITE
+   DEF-PKG$ JSON-STR
+   OUT-FD s\" ,\"visibility\":" WRITE
+   vis VISIBILITY$ JSON-STR
+   effu 0<> if
+      OUT-FD s\" ,\"effect\":" WRITE
+      eff effu JSON-STR
+   then
+   OUT-FD s\" ,\"file\":" WRITE
+   VERIFY:FILE$ JSON-STR
+   OUT-FD s\" ,\"byte_start\":" WRITE
+   OUT-FD at FD-N
+   OUT-FD s\" ,\"byte_end\":" WRITE
+   OUT-FD end FD-N
+   OUT-FD s" }" WRITE
+   OUT-FD NEWLINE ;
+
+
+\ The file the Kth file line named.
+: SEEN$ ( n -- ptr u8 n )
+   {: k:n :}
+   k 2 * SEEN-AT @ SEEN  k 2 * 1+ SEEN-AT @ ;
+
+
+\ Whether a file line named the file.
+: SEEN? ( ptr u8 n -- bool )
+   {: f:ptr fu:n :}
+   SEEN-N @ 0 ?do
+      i SEEN$ f fu CORE-STR= if unloop true exit then
+   loop
+   false ;
+
+
+\ The file kept as one a file line named. A path is never empty, so its
+\ offset lies inside SEEN.
+: SEEN+ ( ptr u8 n -- )
+   {: f:ptr fu:n :}
+   SEEN-U @ {: at:n :}
+   SEEN-N @ {: k:n :}
+   at fu + SEEN-RESERVE
+   f at SEEN fu BYTE-COPY
+   k 1+ 2 * SEEN-AT-RESERVE
+   at k 2 * SEEN-AT !
+   fu k 2 * 1+ SEEN-AT !
+   at fu + SEEN-U !
+   1 SEEN-N +! ;
+
+
+\ A file the first form starts reading, as its file line the first time.
+: FILE-LINE ( ptr u8 n -- )
+   {: f:ptr fu:n :}
+   f fu SEEN? if exit then
+   f fu SEEN+
+   OUT-FD s\" check-verify: file {\"file\":" WRITE
+   f fu JSON-STR
+   OUT-FD s" }" WRITE
+   OUT-FD NEWLINE ;
+
+
+\ A use the first form's subject bound to a located declaration, as its use
+\ line.
+: USE-LINE ( n n ptr u8 n n n -- )
+   {: at:n end:n path:ptr pathu:n tat:n tend:n :}
+   OUT-FD s\" check-verify: use {\"byte_start\":" WRITE
+   OUT-FD at FD-N
+   OUT-FD s\" ,\"byte_end\":" WRITE
+   OUT-FD end FD-N
+   OUT-FD s\" ,\"file\":" WRITE
+   path pathu JSON-STR
+   OUT-FD s\" ,\"target_start\":" WRITE
+   OUT-FD tat FD-N
+   OUT-FD s\" ,\"target_end\":" WRITE
+   OUT-FD tend FD-N
+   OUT-FD s" }" WRITE
+   OUT-FD NEWLINE ;
+
+
+\ A spelling the third form's cursor offers, as its candidate line.
+: CANDIDATE-LINE ( ptr u8 n ptr u8 n n n -- )
+   {: w:ptr wu:n path:ptr pathu:n tat:n tend:n :}
+   OUT-FD s\" check-verify: candidate {\"word\":" WRITE
+   w wu JSON-STR
+   pathu 0 > if
+      OUT-FD s\" ,\"file\":" WRITE
+      path pathu JSON-STR
+      OUT-FD s\" ,\"target_start\":" WRITE
+      OUT-FD tat FD-N
+      OUT-FD s\" ,\"target_end\":" WRITE
+      OUT-FD tend FD-N
+   then
+   OUT-FD s" }" WRITE
+   OUT-FD NEWLINE ;
+
+
 \ One multi-error window covers the complete load composition, and goes past
 \ a duplicate as past any refused definition. A duplicate it cannot go past,
 \ a name the definer generates, stops it with its stopped line.
@@ -168,6 +413,10 @@ create NL 1 allot
    0 SCRIPT-ARGV$ DIAG-FILE!
    1 1 0 DIAG-ORIGIN!
    ['] DUPLICATE-LINE is VERIFY:ON-DUPLICATE
+   ['] FILE-LINE is VERIFY:ON-FILE
+   ['] DEFINITION-LINE is VERIFY:ON-DEFINITION
+   ['] USE-LINE is VERIFY:ON-USE
+   ['] CANDIDATE-LINE is VERIFY:ON-CANDIDATE
    MULTI-ERR-BEGIN
    [: VERIFY-CUR ;] catch {: rc:n :}
    MULTI-ERR-END {: rejects:n :}
@@ -225,11 +474,12 @@ create NL 1 allot
 70 constant REFUSED-RC                  \ a refused definition's stop (verify-source.f BODY-VERDICT)
 
 \ A definition or top-level token refused by the throw that rendered its packet
-\ (checker.f DEF-STOPPED) stops the pre-pass as a definition its verdict refuses
+\ (checker.f CHECKER-DEF-STOPPED?) stops the pre-pass as a definition its verdict refuses
 \ does; any other stop keeps its code.
 : STOP-CODE ( n -- n )
-   dup DEF-STOPPED @ = if drop REFUSED-RC then ;
+   dup CHECKER-DEF-STOPPED? if drop REFUSED-RC then ;
 
+\ This pre-pass leaves deferred source to the run; only VERIFY-CLOSURE warns.
 : PREVERIFY ( -- )
    [: PREVERIFY-CUR ;] SCOPED {: rc:n :}
    rc 0<> if rc STOP-CODE STOP-RESULT exit then
@@ -237,9 +487,24 @@ create NL 1 allot
 
 public
 
+: USAGE ( -- )
+   s" usage: check-verify-child.f -- SUBJECT [LABEL | --at N]" 64 die ;
+
+\ N in the third form's `--at N`; -1 for arguments of no form.
+: CURSOR-ARG ( -- n )
+   1 SCRIPT-ARGV$ s" --at" CORE-STR= 0= if -1 exit then
+   2 SCRIPT-ARGV$ STR>NUMBER? MATCH option
+      some OF ENDOF
+      none OF -1 ENDOF
+   ;MATCH ;
+
 : MAIN ( -- )
    SCRIPT-ARGC 2 = if READ-SUBJECT PREVERIFY exit then
-   SCRIPT-ARGC 1 <> if s" usage: check-verify-child.f -- SUBJECT [LABEL]" 64 die then
+   SCRIPT-ARGC 3 = if
+      CURSOR-ARG dup 0 < if USAGE then VERIFY:CURSOR!
+   else
+      SCRIPT-ARGC 1 <> if USAGE then
+   then
    READ-SUBJECT
    0 SCRIPT-ARGV$ HELD? if s" held" RESULT exit then
    VERIFY-CLOSURE ;

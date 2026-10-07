@@ -24,6 +24,7 @@ require src/habu/address-cells.f
 require src/habu/aot-arm.f
 require src/habu/aot-decl.f
 require src/habu/code-span.f
+require src/habu/layout.f
 require src/habu/sites.f
 require src/habu/terminal-call.f
 require src/core/does-clause.f
@@ -62,8 +63,8 @@ TRUSTED: AOT-WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 : AOT-RBODY ( ptr n -- n ) AOT-RLEN dup CODE-SPAN:CHECK CODE-SPAN:BODY ;
 : AOT-RBYTES ( ptr n -- n ) AOT-RLEN CODE-SPAN:BYTES ;
 : AOT-RFLAGS ( ptr n -- n ) 16 + AOT-CELL@ ;                  \ [16] flags | name len
-: AOT-RNLEN ( ptr n -- n ) AOT-RFLAGS $0003FFFFFFFFFFFF and ;   \ = DNAME-LEN-MASK (top 14 bits are flags + DNAME-MIN-IN + DKIND)
-: AOT-REXT? ( ptr n -- bool ) AOT-RFLAGS $2000000000000000 and 0= 0= ;
+: AOT-RNLEN ( ptr n -- n ) AOT-RFLAGS DNAME-LEN-MASK and ;      \ [16] name length
+: AOT-REXT? ( ptr n -- bool ) AOT-RFLAGS DNAME-EXT and 0= 0= ;
 : AOT-RNPTR ( ptr n -- ptr u8 )
    dup AOT-REXT? if 24 + AOT-CELL@ AOT-N>U8 else BYTE-VIEW 24 + then ;
 : AOT-RWID ( ptr n -- n ) 40 + AOT-CELL@ ;                    \ [40] wordlist or -1 package sentinel
@@ -1438,6 +1439,8 @@ $14000000 constant ACAP-GBR-TERM
    v 20 + ACAP-W32@ 28 rshift $F and {: flags:n :}         \ flag nibble ([16] bits 60-63)
    v 20 + ACAP-W32@ 20 rshift $FF and {: minin:n :}        \ DNAME-MIN-IN byte ([16] bits 52-59)
    v 20 + ACAP-W32@ 18 rshift 3 and {: dkind:n :}          \ DKIND pair ([16] bits 50-51)
+   \ [16] bits 32-49 hold the length's high bits and DNAME-OWNED (bit 49); the
+   \ compact record carries neither, so the mask is wider than the length's.
    v 20 + ACAP-W32@ $0003FFFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
    v ACAP-REC-EXT? {: ext:bool :}                          \ name out of line (DNAME-EXT)
    v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)
@@ -2146,6 +2149,90 @@ variable ACAP-SWEEP-B1
    \ private: the DATA row is part of the captured ABI.
    ACAP-XTCELL-ROWS 0 ?do i ACAP-GRAPH-CELL-OFF ACAP-GRAPH-MARK-OFF loop ;
 
+DYNAMIC-BUFFER ACAP-RWORD n          \ blob word -> retired id over it
+DYNAMIC-BUFFER ACAP-SMARK n          \ node -> 1 once reached
+DYNAMIC-BUFFER ACAP-SWORK n          \ the nodes reached and not yet scanned
+variable ACAP-SWORK-N
+
+\ Where retired window record idx's code lies in the blob; empty when its code
+\ is not the window's.
+: ACAP-RETIRED-SPAN ( n -- n n ) {: idx:n :}
+   idx AOT-REC AOT-RXT AOT-CODE-B0 @ - {: start:n :}
+   start idx AOT-REC AOT-RBYTES + {: end:n :}
+   start 0 >=  end AOT-BLOB-LEN @ <=  and if start end else 0 0 then ;
+
+: ACAP-SHADOW-INDEX ( -- )
+   AOT-BLOB-LEN @ 4 / {: words:n :}
+   ACAP-REC-ALL @ ACAP-W-R1 @ + ACAP-W-R0 @ - {: nodes:n :}
+   words ACAP-RWORD-RESERVE  nodes ACAP-SMARK-RESERVE  nodes ACAP-SWORK-RESERVE
+   words 0 ?do 0 i ACAP-RWORD ! loop
+   nodes 0 ?do 0 i ACAP-SMARK ! loop
+   0 ACAP-SWORK-N !
+   ACAP-W-R1 @ ACAP-W-R0 @ ?do
+      i ACAP-DICT>CAP 0 < if
+         i ACAP-W-R0 @ - 1+ {: id:n :}
+         i ACAP-RETIRED-SPAN {: start:n end:n :}
+         end 4 / start 4 / ?do
+            i ACAP-RWORD @ 0= if id i ACAP-RWORD ! then
+         loop
+      then
+   loop ;
+
+: ACAP-SHADOW-NODE ( n -- ) {: v:n :}
+   v ACAP-SMARK @ 0<> if exit then
+   1 v ACAP-SMARK !
+   v ACAP-SWORK-N @ ACAP-SWORK !
+   ACAP-SWORK-N @ 1+ ACAP-SWORK-N ! ;
+
+\ Code at blob offset off is reached.
+: ACAP-SHADOW-OFF ( n -- ) {: off:n :}
+   off 0<  off AOT-BLOB-LEN @ >=  or if exit then
+   off 4 / ACAP-GOWNER @ {: owner:n :}
+   owner 0<> if owner 1- ACAP-SHADOW-NODE then
+   off 4 / ACAP-RWORD @ {: id:n :}
+   id 0<> if ACAP-REC-ALL @ id + 1- ACAP-SHADOW-NODE then ;
+
+: ACAP-SHADOW-SCAN ( n -- ) {: v:n :}
+   v ACAP-REC-ALL @ < if
+      v ACAP-GRAPH-START  v ACAP-GRAPH-END
+   else
+      v ACAP-REC-ALL @ - ACAP-W-R0 @ + ACAP-RETIRED-SPAN
+   then {: from:n to:n :}
+   from to >= if exit then
+   from begin dup to < while
+      dup ACAP-SHADOW-OFF
+      dup ACAP-GRAPH-EDGES ACAP-SHADOW-OFF ACAP-SHADOW-OFF
+      4 +
+   repeat drop
+   to 4 - ACAP-GRAPH-ENDS? 0= if to ACAP-SHADOW-OFF then ;
+
+\ A gap word no retired record covers is a root, as the gap sweep has it.
+: ACAP-SHADOW-GAP ( n -- ) {: at:n :}
+   at ACAP-GSITE@ 3 = if exit then
+   at 4 / ACAP-GOWNER @ 0<>  at 4 / ACAP-RWORD @ 0<>  or if exit then
+   at ACAP-GRAPH-EDGES ACAP-SHADOW-OFF ACAP-SHADOW-OFF
+   at ACAP-GRAPH-ENDS? 0= if at 4 + ACAP-SHADOW-OFF then ;
+
+\ After the sweeps above and before the blob is compacted: it reads their
+\ owners and sites, and the code they read.
+: ACAP-SHADOW-REACH ( -- )
+   ACAP-SHADOW-INDEX
+   ACAP-REC-ALL @ 0 ?do
+      i ACAP-NAMED-BIT @ 0<>  i ACAP-GRAPH-CODE?  and if i ACAP-SHADOW-NODE then
+   loop
+   ACAP-XTCELL-ROWS 0 ?do i ACAP-GRAPH-CELL-OFF ACAP-SHADOW-OFF loop
+   AOT-BLOB-LEN @ 4 / 0 ?do i 4 * ACAP-SHADOW-GAP loop
+   begin ACAP-SWORK-N @ 0 > while
+      ACAP-SWORK-N @ 1- ACAP-SWORK-N !
+      ACAP-SWORK-N @ ACAP-SWORK @ ACAP-SHADOW-SCAN
+   repeat ;
+
+\ Whether the shadow reach reached window record idx, a captured or a retired one.
+: ACAP-SHADOW-LIVE? ( n -- bool ) {: idx:n :}
+   idx ACAP-DICT>CAP {: k:n :}
+   k 0 < if idx ACAP-W-R0 @ - ACAP-REC-ALL @ + else k then
+   ACAP-SMARK @ 0<> ;
+
 \ A named alias and a direct call through a public wrapper can retain a private
 \ definer's code while stripping its own name. The reach graph marks the entire
 \ defining span in either case. Its clause shares those bytes, though the graph
@@ -2710,7 +2797,7 @@ public
    ACAP-PWIN-CAPTURE                            \ only the window's own seals travel
    AOT-ARM:PAYLOAD-MODE @ 1 = SITE-ROW AOT-SECTION:BYTES drop ;
 
-: CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
+: CAPTURE-PREPARE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    bstart bend rstart rend d0 d1 ACAP-START
    ACAP-GRAPH-SITES
    ACAP-SCAN-CALLS
@@ -2728,7 +2815,10 @@ public
    ACAP-GRAPH-SWEEP  -1 ACAP-GRAPH-READY !
    ACAP-GRAPH-SWEEP-GAPS
    ACAP-GRAPH-SWEEP
-   ACAP-GRAPH-NAME-DOES                         \ the names that ship are final here
+   ACAP-SHADOW-REACH
+   ACAP-GRAPH-NAME-DOES ;
+
+: CAPTURE-COMPLETE ( n n n -- ) {: bstart:n bend:n d0:n :}
    bstart bend ACAP-CHECKER-STRIP               \ ... so the checker retires what they leave
    d0 ACAP-COPY-DATA                            \ ... before the DATA it changed is copied
    ACAP-GRAPH-BUILD-MAP
@@ -2757,6 +2847,10 @@ public
    bstart bend ACAP-CHECKER-STRIP
    d0 ACAP-COPY-DATA
    ACAP-FINISH ;
+
+: CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
+   bstart bend rstart rend d0 d1 CAPTURE-PREPARE
+   bstart bend d0 CAPTURE-COMPLETE ;
 
 private
 

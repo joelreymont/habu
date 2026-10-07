@@ -7,7 +7,7 @@ require src/habu/aot-arm.f
 package PAYLOAD-EXCEPTION-TEST
 public
 
-TRUSTED: NONVACUOUS ( -- )
+: NONVACUOUS ( -- )
    s" PAYLOAD-THROW-PROVIDER" CHECKER-FIND-ACTIVE-SYM
    USIG-NEWEST dup 0= IF 79 throw THEN 1- E-PTR
    E-DOUT@ E-PTR EN.A @ E-PTR {: quotation:ptr :}

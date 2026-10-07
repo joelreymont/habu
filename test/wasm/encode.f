@@ -9,17 +9,11 @@
 \ at its own offset, a padded field WLEB reads back after the `call` opcode, its
 \ target the host entry or the callee's body offset; every address literal is a
 \ site of its kind at its own offset, a padded field WLEB reads back as its
-\ value after the `i64.const` opcode, and a number is none; an emission of
-\ exactly the module-byte ceiling, its header counted, is sealed. Refused by
-\ name: a table of another dialect or WSTRUCT version, a module its builder was
-\ not bound from, call_indirect, a function with no body, a brz or two-byte
-\ opcode asked for one byte, a callee that is neither, a stated arity unlike
-\ the signature or past its header byte, a call whose lanes in or out are not
-\ its callee's signature, an address kind WSTRUCT does not have, a memory
-\ access aligned past its width, a body past the local or body-byte ceiling, a
-\ module past the function ceiling, an emission past the module-byte ceiling
-\ only once its header is counted, and a read after a refusal or past the last
-\ row.
+\ value after the `i64.const` opcode, and a number is none. Refused by name:
+\ call_indirect, a function with no body, a brz or two-byte opcode asked for
+\ one byte, a callee that is neither, a stated arity unlike the signature or
+\ past its header byte, an address kind WSTRUCT does not have, and a read after
+\ a refusal or past the last row.
 \
 \ THE BYTES ARE WASM-TOOLS'. Each pinned body is what wasm-tools 1.243.0
 \ assembles for the same function written as text, its locals declared as WENC
@@ -28,11 +22,6 @@
 \ assembler writes one byte, and an address literal's immediate, the ten-byte
 \ padded SLEB WENC writes where the text assembler writes the shortest. The
 \ module with both padded address fields spliced in validates too.
-\
-\ A PROFILE WITH SMALL CEILINGS. WPROF is installed once per process, and V1's
-\ ceilings are the browsers' (50000 locals, 7654321 body bytes), too large to
-\ build past here, so this suite installs V1 with 64 locals, 3 functions, 400
-\ body bytes and 1000 module bytes.
 \
 \ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
 \ arena registry holds sixty-four, so every module below is built in its own
@@ -55,16 +44,16 @@ require src/compiler/ir/build.f
 require src/compiler/native/frozen.f
 require src/compiler/native/backend.f
 require src/compiler/native/emission.f
+require src/compiler/native/host.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/wstruct.f
-require src/arch/wasm/profile.f
 require src/arch/wasm/structure.f
 require src/arch/wasm/encode.f
 
 package WASM-ENCODE-TEST
 private
 
-\ ---- bindings and the profile -------------------------------------------------
+\ ---- bindings ----------------------------------------------------------------
 : POLICY ( -- CNUM:numeric-policy )
    CNUM-OVERFLOW:TRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
    CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY ;
@@ -94,32 +83,13 @@ private
    [: NO-PROTOTYPE ;] [: NO-STAGE ;] [: NO-STAGE ;] NBACK-PASS:MAKE
    NBACK:REGISTER ;
 
-64 constant LOCALS-CEIL
-3 constant FUNCTIONS-CEIL
-400 constant BODY-CEIL
-1000 constant MODULE-CEIL
-
-\ V1 with its four ceilings, the last four fields, lowered; fields count from
-\ the deepest, the order MAKE takes.
-: SMALL ( -- WPROF:profile )
-   WPROF:V1 WPROF-PROFILE:UNMAKE 2drop 2drop
-   {: f0:n f1:n f2:n f3:n f4:n f5:n f6:n f7:n f8:n f9:n
-      f10:n f11:n f12:n f13:n :}
-   f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13
-   LOCALS-CEIL FUNCTIONS-CEIL BODY-CEIL MODULE-CEIL
-   WPROF-PROFILE:MAKE ;
-
 \ ---- module rigging ----------------------------------------------------------
-\ Every builder's identities are bound before anything is frozen from it.
 : BUILDER ( IR-CTX:ctx -- IR-BUILD:builder )
-   {: c:IR-CTX:ctx :}
-   c IR-BUILD:PLAN-DEFAULT WSTRUCT:NEW-BUILDER {: b:IR-BUILD:builder :}
-   c b WENC:BIND-DIALECT
-   b ;
+   IR-BUILD:PLAN-DEFAULT WSTRUCT:NEW-BUILDER ;
 
 : SPAN ( IR-CTX:ctx IR-BUILD:builder -- IR-SOURCE:span )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   b  c b s" encode" IR-BUILD:ADD-SOURCE  0 6 IR-BUILD:ADD-SPAN ;
+   b  c b s" encode" IR-BUILD:ADD-SOURCE  1 5 IR-BUILD:ADD-SPAN ;
 
 : I32 ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )   WSTRUCT:I32-TYPE ;
 : I64 ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )   WSTRUCT:I64-TYPE ;
@@ -685,8 +655,12 @@ TYPED-VARIABLE WANT-U len
    s" calls: the host word's site, at 54, targets its entry" T-LABEL
    WENC:CALL-SITES 2 T=
    0 54 4096 SITE-IS
+   0 WENC:CALL-IMPL@ 4096 NHOST:ID-OF T=
+   0 WENC:CALL-LOC@ 1 T=
    s" calls: callee's site, at 68, targets its body offset" T-LABEL
-   1 68  1 WENC:FUNCTION-OFFSET@  SITE-IS ;
+   1 68  1 WENC:FUNCTION-OFFSET@  SITE-IS
+   1 WENC:CALL-IMPL@ 0 T=
+   1 WENC:CALL-LOC@ 1 T= ;
 
 : CALLS-ENCODE ( -- )
    0 FIX @ [: CALLS-ARITY ;] WENC:ENCODE ;
@@ -800,7 +774,7 @@ $40000000 constant CODE-LIT
    c b ENTRY {: cx x k :}
    c b WSTRUCT-OPCODE:I64-CONST OPEN
    c b  c b WSTRUCT:KEY-VALUE  0 INT-ATTR
-   c b  c b WSTRUCT:KEY-ADDR  WSTRUCT:ADDR-CODE 1+ INT-ATTR
+   c b  c b WSTRUCT:KEY-ADDR  WSTRUCT:ADDR-FUN 1+ INT-ATTR
    c b  c b I64  END1 {: v :}
    c b v RET
    c b SHUT
@@ -815,54 +789,6 @@ $40000000 constant CODE-LIT
    [: BAD-KIND-RUN ;] E-WSTRUCT-ADDR TTHROWSQ
    s" a refused encode leaves no address site to read" T-LABEL
    [: ADDR-SITES-RUN ;] E-WENC-STATE TTHROWSQ ;
-
-\ ---- binding --------------------------------------------------------------------
-\ Run first, before this process binds any builder.
-: UNBOUND-RUN ( -- )
-   0 FIX @ [: ONE-LANE ;] WENC:ENCODE ;
-
-: UNBOUND-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   IR-BUILD:PLAN-DEFAULT
-   c WSTRUCT:NEW-BUILDER {: b:IR-BUILD:builder :}
-   c b CALLEE-FN
-   c b WSTRUCT:FREEZE 0 FIX !
-   s" a module whose builder was never bound is refused" T-LABEL
-   [: UNBOUND-RUN ;] E-WENC-STATE TTHROWSQ
-   s" a module of a builder other than the one bound is refused" T-LABEL
-   c BUILDER drop
-   [: UNBOUND-RUN ;] E-WENC-STATE TTHROWSQ ;
-
-: UNBOUND-CASE ( -- )
-   BND [: UNBOUND-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-\ A table named a u at the given version.
-: TABLE-BODY ( IR-CTX:ctx ptr u8 n n n -- )
-   {: c:IR-CTX:ctx a u:n major:n minor:n :}
-   IR-BUILD:PLAN-DEFAULT
-   c  c a u major minor IR-BUILD:NEW-BUILDER  WENC:BIND-DIALECT ;
-
-: VERSION-BODY ( IR-CTX:ctx n n -- )
-   {: c:IR-CTX:ctx major:n minor:n :}
-   c WSTRUCT:NAME major minor TABLE-BODY ;
-
-\ Another dialect's table at WSTRUCT's own version.
-: OTHER-RUN ( -- )
-   BND [: s" other" WSTRUCT:MAJOR WSTRUCT:MINOR TABLE-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-: MAJOR-RUN ( -- )
-   BND [: WSTRUCT:MAJOR 1+ WSTRUCT:MINOR VERSION-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-: MINOR-RUN ( -- )
-   BND [: WSTRUCT:MAJOR WSTRUCT:MINOR 1+ VERSION-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-: DIALECT-CASE ( -- )
-   s" another dialect's table is not bound" T-LABEL
-   [: OTHER-RUN ;] E-WSTRUCT-DIALECT TTHROWSQ
-   s" a WSTRUCT table of another major version is not bound" T-LABEL
-   [: MAJOR-RUN ;] E-WSTRUCT-DIALECT TTHROWSQ
-   s" a WSTRUCT table of another minor version is not bound" T-LABEL
-   [: MINOR-RUN ;] E-WSTRUCT-DIALECT TTHROWSQ ;
 
 \ ---- forms with no Wasm bytes here ----------------------------------------------
 : INDIRECT-FN ( IR-CTX:ctx IR-BUILD:builder -- )
@@ -941,283 +867,16 @@ $40000000 constant CODE-LIT
    s" a callee spelled host and a number past a cell is refused" T-LABEL
    [: PAST-CELL-RUN ;] E-WENC-CALLEE TTHROWSQ ;
 
-\ ---- calls unlike their callee's signature -------------------------------------
-\ Each call below is one WSTRUCT's call row admits, to a function of its module.
-\ bad-call hands callee its context and no lane.
-: SHORT-IN-FN ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b s" bad-call" 1 1 FN-OPEN
-   c b ENTRY {: cx x k :}
-   c b WSTRUCT-OPCODE:CALL OPEN
-   c b cx USE  c b k USE
-   c b s" callee" CALLEE-ATTR
-   c b CALL-SHUT {: s1 k1 r1 :}
-   c b s1 r1 RETV
-   c b SHUT
-   c b FN-SHUT ;
-
-\ short-out takes callee's status back and no lane.
-: SHORT-OUT-FN ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b s" short-out" 1 1 FN-OPEN
-   c b ENTRY {: cx x k :}
-   c b WSTRUCT-OPCODE:CALL OPEN
-   c b cx USE  c b k USE  c b x USE
-   c b s" callee" CALLEE-ATTR
-   c b  c b I32  IR-BUILD:ADD-RESULT
-   c b  c b MEM  IR-BUILD:ADD-RESULT
-   c b IR-BUILD:END-OP {: op:IR-ID:ir-op-id :}
-   c b  c b op 0 IR-BUILD:OP-RESULT@  x RETV
-   c b SHUT
-   c b FN-SHUT ;
-
-\ callee's row, (ctx:i32, lane:i64) -> (status:i32, lane:i64), with an f64 for
-\ its lane coming in, or with the flag set going out.
-: F-SIG ( IR-CTX:ctx IR-BUILD:builder bool -- IR-ID:ir-type-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder out:bool :}
-   c b I32 {: w:IR-ID:ir-type-id :}
-   c b I64 {: x:IR-ID:ir-type-id :}
-   c b F64 {: f:IR-ID:ir-type-id :}
-   IR-TYPE:FN-BEGIN
-   w IR-TYPE:FN-PARAM
-   out if x else f then IR-TYPE:FN-PARAM
-   w IR-TYPE:FN-RESULT
-   out if f else x then IR-TYPE:FN-RESULT
-   c b IR-BUILD:INTERN-CODE-REF ;
-
-\ f-callee returns the lane 0 whatever f64 it takes.
-: F-CALLEE-FN ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b s" f-callee"  c b false F-SIG  FN-OPEN-SIG
-   c b BLK-OPEN
-   c b  c b I32  ARG drop
-   c b  c b F64  ARG drop
-   c b  c b MEM  ARG drop
-   c b  c b 0 I64-K  RET
-   c b SHUT
-   c b FN-SHUT ;
-
-\ f-result would leave an f64 where callee leaves its lane; it never returns,
-\ since a return's lanes are i64s.
-: F-RESULT-FN ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b s" f-result"  c b true F-SIG  FN-OPEN-SIG
-   c b BLK-OPEN
-   c b  c b I32  ARG drop
-   c b  c b I64  ARG drop
-   c b  c b MEM  ARG drop
-   c b WSTRUCT-OPCODE:UNREACHABLE OPEN
-   c b IR-BUILD:END-OP drop
-   c b SHUT
-   c b FN-SHUT ;
-
-: SHORT-IN-MOD ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b SHORT-IN-FN
-   c b CALLEE-FN ;
-
-: SHORT-OUT-MOD ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b SHORT-OUT-FN
-   c b CALLEE-FN ;
-
-\ stray hands f-callee its i64 lane where f-callee declares an f64.
-: F-LANE-MOD ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b s" f-callee" CALLS-ONE
-   c b F-CALLEE-FN ;
-
-\ stray takes back an i64 lane where f-result declares an f64.
-: F-RESULT-MOD ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b s" f-result" CALLS-ONE
-   c b F-RESULT-FN ;
-
-: SHORT-IN-RUN ( -- )   BND [: [: SHORT-IN-MOD ;] ENCODED ;] IR-CTX:WITH-CONTEXT ;
-: SHORT-OUT-RUN ( -- )  BND [: [: SHORT-OUT-MOD ;] ENCODED ;] IR-CTX:WITH-CONTEXT ;
-: F-LANE-RUN ( -- )     BND [: [: F-LANE-MOD ;] ENCODED ;] IR-CTX:WITH-CONTEXT ;
-: F-RESULT-RUN ( -- )   BND [: [: F-RESULT-MOD ;] ENCODED ;] IR-CTX:WITH-CONTEXT ;
-
-: SIGNATURE-CASE ( -- )
-   s" a call handing its callee fewer lanes than it declares is refused" T-LABEL
-   [: SHORT-IN-RUN ;] E-WENC-ARITY TTHROWSQ
-   s" a call taking back fewer lanes than its callee declares is refused" T-LABEL
-   [: SHORT-OUT-RUN ;] E-WENC-ARITY TTHROWSQ
-   s" a call handing an i64 lane where its callee declares an f64 is refused" T-LABEL
-   [: F-LANE-RUN ;] E-WENC-ARITY TTHROWSQ
-   s" a call taking back an i64 lane where its callee declares an f64 is refused" T-LABEL
-   [: F-RESULT-RUN ;] E-WENC-ARITY TTHROWSQ ;
-
-\ ---- memory accesses aligned past their width --------------------------------
-\ LINE-MEM aligns each access at its width, which is sealed; each below asks one
-\ power of two more.
-\ A function that loads type t by opcode o from its context, aligned at 2^al.
-: LOAD-AT ( IR-CTX:ctx IR-BUILD:builder WSTRUCT:opcode IR-ID:ir-type-id n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder o:WSTRUCT:opcode t:IR-ID:ir-type-id al:n :}
-   c b s" align" 1 1 FN-OPEN
-   c b ENTRY {: cx x k :}
-   c b o t cx k al 0 LOAD drop drop
-   c b x RET
-   c b SHUT
-   c b FN-SHUT ;
-
-\ The same storing its lane, or its context when narrow is set.
-: STORE-AT ( IR-CTX:ctx IR-BUILD:builder WSTRUCT:opcode bool n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder o:WSTRUCT:opcode narrow:bool al:n :}
-   c b s" align" 1 1 FN-OPEN
-   c b ENTRY {: cx x k :}
-   c b o cx  narrow if cx else x then  k al 0 STORE drop
-   c b x RET
-   c b SHUT
-   c b FN-SHUT ;
-
-: I32-LOAD-3 ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b WSTRUCT-OPCODE:I32-LOAD  c b I32  3 LOAD-AT ;
-
-: I64-LOAD-4 ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b WSTRUCT-OPCODE:I64-LOAD  c b I64  4 LOAD-AT ;
-
-: BYTE-LOAD-1 ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b WSTRUCT-OPCODE:I64-LOAD8-U  c b I64  1 LOAD-AT ;
-
-: I32-STORE-3 ( IR-CTX:ctx IR-BUILD:builder -- )
-   WSTRUCT-OPCODE:I32-STORE true 3 STORE-AT ;
-
-: I64-STORE-4 ( IR-CTX:ctx IR-BUILD:builder -- )
-   WSTRUCT-OPCODE:I64-STORE false 4 STORE-AT ;
-
-: BYTE-STORE-1 ( IR-CTX:ctx IR-BUILD:builder -- )
-   WSTRUCT-OPCODE:I64-STORE8 false 1 STORE-AT ;
-
-: I32-LOAD-RUN ( -- )    BND [: [: I32-LOAD-3 ;] ENCODED ;] IR-CTX:WITH-CONTEXT ;
-: I64-LOAD-RUN ( -- )    BND [: [: I64-LOAD-4 ;] ENCODED ;] IR-CTX:WITH-CONTEXT ;
-: BYTE-LOAD-RUN ( -- )   BND [: [: BYTE-LOAD-1 ;] ENCODED ;] IR-CTX:WITH-CONTEXT ;
-: I32-STORE-RUN ( -- )   BND [: [: I32-STORE-3 ;] ENCODED ;] IR-CTX:WITH-CONTEXT ;
-: I64-STORE-RUN ( -- )   BND [: [: I64-STORE-4 ;] ENCODED ;] IR-CTX:WITH-CONTEXT ;
-: BYTE-STORE-RUN ( -- )  BND [: [: BYTE-STORE-1 ;] ENCODED ;] IR-CTX:WITH-CONTEXT ;
-
-: ALIGN-CASE ( -- )
-   s" i32.load aligned at 8 bytes is refused" T-LABEL
-   [: I32-LOAD-RUN ;] E-WENC-FORM TTHROWSQ
-   s" i64.load aligned at 16 bytes is refused" T-LABEL
-   [: I64-LOAD-RUN ;] E-WENC-FORM TTHROWSQ
-   s" i64.load8_u aligned at 2 bytes is refused" T-LABEL
-   [: BYTE-LOAD-RUN ;] E-WENC-FORM TTHROWSQ
-   s" i32.store aligned at 8 bytes is refused" T-LABEL
-   [: I32-STORE-RUN ;] E-WENC-FORM TTHROWSQ
-   s" i64.store aligned at 16 bytes is refused" T-LABEL
-   [: I64-STORE-RUN ;] E-WENC-FORM TTHROWSQ
-   s" i64.store8 aligned at 2 bytes is refused" T-LABEL
-   [: BYTE-STORE-RUN ;] E-WENC-FORM TTHROWSQ ;
-
-\ ---- past the ceilings -------------------------------------------------------------
-\ cnt adds, each a value of its own: a body of 7cnt + 19 bytes and cnt + 4 locals.
-: CHAIN-FN ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n cnt:n :}
-   c b a u 1 1 FN-OPEN
-   c b ENTRY {: cx x k :}
-   c b 1 I64-K
-   cnt 0 ?do
-      {: v:IR-ID:ir-value-id :}
-      c b WSTRUCT-OPCODE:I64-ADD v x  c b I64  OP2
-   loop
-   {: last:IR-ID:ir-value-id :}
-   c b last RET
-   c b SHUT
-   c b FN-SHUT ;
-
-\ cnt constants: a body of 4cnt + 15 bytes and cnt + 3 locals.
-: CONSTS-FN ( IR-CTX:ctx IR-BUILD:builder n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder cnt:n :}
-   c b s" consts" 1 1 FN-OPEN
-   c b ENTRY {: cx x k :}
-   cnt 0 ?do  c b 1 I64-K drop  loop
-   c b x RET
-   c b SHUT
-   c b FN-SHUT ;
-
-\ 425 bytes in 62 locals.
-: LONG-BODY-FN ( IR-CTX:ctx IR-BUILD:builder -- )
-   s" long" 58 CHAIN-FN ;
-
-\ 65 locals in 263 bytes.
-: MANY-LOCALS-FN ( IR-CTX:ctx IR-BUILD:builder -- )
-   62 CONSTS-FN ;
-
-\ Three bodies of 348 bytes in 51 locals each.
-: BIG-MODULE-FN ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b s" big1" 47 CHAIN-FN
-   c b s" big2" 47 CHAIN-FN
-   c b s" big3" 47 CHAIN-FN ;
-
-\ Three bodies of 327 bytes in 48 locals each: 981 bytes, and 1025 with the
-\ header's 44.
-: EDGE-MODULE-FN ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b s" edge1" 44 CHAIN-FN
-   c b s" edge2" 44 CHAIN-FN
-   c b s" edge3" 44 CHAIN-FN ;
-
-\ Bodies of 383, 390 and 183 bytes: 1000 with the header's 44.
-: FULL-MODULE-FN ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b s" full1" 52 CHAIN-FN
-   c b s" full2" 53 CHAIN-FN
-   c b 42 CONSTS-FN ;
-
-\ One function past the function ceiling.
-: FOUR-FN ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b s" ret1" RET-FN
-   c b s" ret2" RET-FN
-   c b s" ret3" RET-FN
-   c b s" ret4" RET-FN ;
-
-: LONG-BODY-RUN ( -- )    BND [: [: LONG-BODY-FN ;] ENCODED ;] IR-CTX:WITH-CONTEXT ;
-: MANY-LOCALS-RUN ( -- )  BND [: [: MANY-LOCALS-FN ;] ENCODED ;] IR-CTX:WITH-CONTEXT ;
-: BIG-MODULE-RUN ( -- )   BND [: [: BIG-MODULE-FN ;] ENCODED ;] IR-CTX:WITH-CONTEXT ;
-: EDGE-MODULE-RUN ( -- )  BND [: [: EDGE-MODULE-FN ;] ENCODED ;] IR-CTX:WITH-CONTEXT ;
-: FOUR-RUN ( -- )         BND [: [: FOUR-FN ;] ENCODED ;] IR-CTX:WITH-CONTEXT ;
-
-: FULL-MODULE-BODY ( IR-CTX:ctx -- )
-   [: FULL-MODULE-FN ;] ENCODED
-   s" an emission of exactly the module-byte ceiling, its header counted, is sealed" T-LABEL
-   WENC:FUNS 3 T=
-   WENC:SIZE MODULE-CEIL T= ;
-
-: CEILING-CASE ( -- )
-   s" a body past the body-byte ceiling is refused" T-LABEL
-   [: LONG-BODY-RUN ;] E-WENC-CEILING TTHROWSQ
-   s" a body past the local ceiling is refused" T-LABEL
-   [: MANY-LOCALS-RUN ;] E-WENC-CEILING TTHROWSQ
-   s" bodies past the module-byte ceiling are refused" T-LABEL
-   [: BIG-MODULE-RUN ;] E-WENC-CEILING TTHROWSQ
-   s" bodies under the module-byte ceiling and past it with their header are refused" T-LABEL
-   [: EDGE-MODULE-RUN ;] E-WENC-CEILING TTHROWSQ
-   BND [: FULL-MODULE-BODY ;] IR-CTX:WITH-CONTEXT
-   s" a module past the function ceiling is refused" T-LABEL
-   [: FOUR-RUN ;] E-WENC-CEILING TTHROWSQ ;
-
 public
 
 : RUN ( -- )
    T-RESET
    REGISTER-WASM
-   SMALL WPROF:CURRENT!
-   UNBOUND-CASE
    ADDR-CASE
    SHAPES-CASE
    CALLS-CASE
-   DIALECT-CASE
    FORM-CASE
    CALLEE-CASE
-   SIGNATURE-CASE
-   ALIGN-CASE
-   CEILING-CASE
    T-REPORT ;
 
 ;package

@@ -455,6 +455,11 @@ private
 : E-MKGC ( n -- grow<pt> )
    dup 3 * swap 5 * NMX-PT:MAKE construct grow g1 ;
 
+: E-MKGC2 ( n -- grow<pt> )
+   {: k:n :}
+   k 3 * k 5 * NMX-PT:MAKE
+   k 7 * k 11 * NMX-PT:MAKE construct grow g2 ;
+
 : E-RDG ( grow<pt> -- n )
    MATCH grow
       g1 OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF
@@ -804,6 +809,7 @@ CAPTURE-NATIVE-EMISSION
    E-TWOC E-RDTWO 0 T=
    3 E-MKG E-RDG 204 T=
    3 E-MKGC E-RDG 204 T=
+   3 E-MKGC2 E-RDG 1278 T=
    3 E-MKP E-RDP 204 T=
    -3 E-MKP E-RDP -423 T= ;
 

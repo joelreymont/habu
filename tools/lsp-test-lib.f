@@ -20,7 +20,8 @@
 \
 \ Lifecycle
 \ - initialize answers other than its capabilities: positions in utf-16, open
-\   and close notifications, Full sync, the name habu ............... lifecycle
+\   and close notifications, Full sync, workspace and document symbols, the
+\   name habu ........................................................ lifecycle
 \ - shutdown answers other than a null result; exit after it exits other than
 \   0 or writes to stderr ............................................ lifecycle
 \ - a reply held until more input comes, or the end of input .. answers-at-once
@@ -66,6 +67,8 @@
 \   a value that is no number, a line ended by LF alone, a line over LINE-CAP,
 \   a length over the maximum, end of input in a header and in a body; each is
 \   its own conversation ........................................... fault-*
+\ - a request read before a framing fault not answered before the fault
+\   stops the server ..................................... fault-after-request
 \ - a 700 KB body, written in many pieces, refused, cut or its document lost:
 \   its last line's diagnostic proves the whole text checked ...... big-frame
 \ - a closed stdout ending the server by SIGPIPE instead of exit 1 and the
@@ -102,10 +105,14 @@
 \   published again by that one's check, or kept once neither does
 \   ...................................................... dependency-shared
 \ - one document's words seen by another's check ................ two-in-turn
-\ - a check that ended without a verdict publishing, or not saying how it
-\   ended ................................................. incomplete, held
+\ - a check that ended without a verdict and wrote no packet publishing, or
+\   not saying how it ended ................................ incomplete, held
+\ - the packets a check wrote before a later statement ended it without a
+\   verdict not published ................................ incomplete-packets
 \ - a definition never ended, at which the verifier stops, not said refused
-\   with the verifier's prose, or its list not published ............ unended
+\   with the verifier's prose, or its stop not published at it ...... unended
+\ - a definer with nothing after it, at which the verifier stops, not said
+\   refused, or the missing name not published at it ........... missing-name
 \ - a packet placed at the name of the definition it refuses, a public word
 \   whose private twin moves other cells, not published at that name
 \   ......................................................... shadowed-arity
@@ -114,6 +121,144 @@
 \ - a duplicate definition, of the document's own word or of one a file it
 \   requires defines, not published at the name defined again
 \   ......................................... duplicate, duplicate-of-required
+\ - a definition deferred to the run, then one never ended: the deferral or
+\   the stop's record not published, or the document not said refused
+\   ....................................................... deferred-unended
+\
+\ Workspace symbols
+\ - a definition whose word holds the query, in an open document or a file one
+\   requires, missing, or answered with another name, kind, package or range
+\   than its line's, or at another URI than the one the client opened its
+\   document by or its file's canonical one; a query compared with case
+\   ........................................................ workspace-symbol
+\ - a definition two open documents' checks reached listed twice, or one a
+\   document's last check no longer retains still listed .... workspace-symbol
+\ - a file two open documents' checks reached answered from the earlier check,
+\   or not from the other once the later one's document closes
+\   ........................................................ workspace-symbol
+\ - params without a string query answered other than -32602 .. workspace-symbol
+\ - a file a later check read with no definition left answered from an
+\   earlier check, or still empty once the later one's document closes
+\   .................................................. workspace-symbol-empty
+\ - a redeclaration whose effect the registrar refused listed beside the
+\   declaration it retained ........................ workspace-symbol-retained
+\ - a redeclaration too wide to record listed or its refusal not published;
+\   the declaration retained before it, a definition after it, an identical
+\   redeclaration the registrar retained, or a refused body whose signature
+\   the checker kept not listed; a malformed declaration with none before it
+\   listed ....................................... workspace-symbol-redeclared
+\ - a definition in a file a check reads twice listed twice
+\   ........................................... workspace-symbol-reinclude
+\ - an open document's definitions answered from another document's check,
+\   which read the file from disk, or that check's definitions there placed
+\   through the document's text ............ workspace-symbol-open-dependency
+\ - a document in a directory whose name is 1, 2, 3 or 4 bytes long stopping the
+\   server: its global words, two bytes each, put the empty package each of
+\   their definition lines names at every even offset of the bytes the server
+\   keeps them in, one of them where those bytes fill their room .. path-length-N
+\
+\ Document symbols
+\ - a definition the document's last completed check retained in it missing,
+\   or answered other than as the flat SymbolInformation workspace symbols
+\   give it: its name, kind and location at the document's URI over the
+\   token that declared it; a definition of another open document or of a
+\   file the document requires listed; a document with no definition answered
+\   other than an empty list; a document not open, or params naming none,
+\   answered other than -32602 ................................. document-symbol
+\ - a request in the turn of a change answered before the check of the
+\   changed text published, or still listing a definition the change removed;
+\   a request with a change of its document read behind it answered other
+\   than -32801, or that change not applied and checked after it; a client
+\   whose initialize supports hierarchical document symbols answered other
+\   than that flat list ........................... document-symbol-after-change
+\ - a request after a change whose check did not complete answered with the
+\   definitions of the text before it, which workspace symbols still list
+\   ................................................. document-symbol-incomplete
+\ - an open document's outline answered from a later check of another
+\   document, which read its file from disk; with its file open again by
+\   another URI and other text, either document's outline answered with the
+\   other's definitions or at the other's URI
+\   ......................................... workspace-symbol-open-dependency
+\
+\ Go to definition
+\ - a use in an open document, at its first character or its last, or after a
+\   character UTF-16 counts as one unit and UTF-8 as two bytes, not answered
+\   with its declaring token's range at the URI the client opened the document
+\   by; the character after a use, or a declaring token, answered with a
+\   Location; a negative character answered other than -32602 .... definition
+\ - a use of a dependency on disk only, its global or, qualified, its public
+\   word, not answered with the declaring token's range in its text on disk
+\   at its canonical file URI ............................ definition-dependency
+\ - a use of a dependency open with its lines swapped, unsaved, not answered
+\   with its declaring token's range in the text on disk the check read, at
+\   the URI the client opened it by ................. definition-dependency-open
+\ - a use in a document whose file is open by another URI too not answered at
+\   the URI the client opened the document by
+\   ......................................... workspace-symbol-open-dependency
+\ - a position in a document not open answered other than -32602
+\   ................................................... definition-not-open
+\ - a use asked about with the document's opening, answered before the check
+\   it started published, or not with the declaration's
+\   ................................................ definition-before-check
+\ - a use asked about in the turn of a change that moved it and its
+\   declaration, answered before the check of the changed text published, or
+\   not with the declaration's new range ............. definition-after-change
+\ - a use asked about after a change whose check did not complete answered
+\   from the uses of the text before it, or the definitions of the last check
+\   that completed not listed .......................... definition-incomplete
+\
+\ Hover
+\ - a use, at its first character or its last, not answered with its
+\   declaration's kind, word, effect, package, file relative to the working
+\   directory and 1-based line as a fenced habu block, over the use .... hover
+\ - a use of a dependency on disk, its global or, qualified, its public word,
+\   not answered with its declaration there ............... hover-dependency
+\ - a use of a dependency open with its lines swapped, unsaved, not answered
+\   with its declaration in the text on disk, which the check read
+\   ...................................................... hover-dependency-open
+\ - a declaring token not answered with its definition, over it
+\   ...................................................... hover-definition
+\ - a use of either converter a DEFTYPE declares, both at its name's token,
+\   in either case or package-qualified, not answered with that converter's
+\   own definition ........................................... hover-deftype
+\ - a comment, the space before a use or a stack comment answered other
+\   than null ................................................ hover-none
+\ - a client whose hovers take plain text answered other than with the
+\   lines unfenced ...................................... hover-plaintext
+\ - a position in a document not open answered other than -32602
+\   ........................................................ hover-not-open
+\ - a use asked about in the turn of a change that moved it and its
+\   declaration answered before the check of the changed text, or not with
+\   the declaration's new line ...................... hover-after-change
+\
+\ Completion
+\ - a cursor in a body not answered, in a list that is not incomplete, with
+\   the words of the document and of a dependency that would bind there, each
+\   with its declared effect and the document's with its package, or with an
+\   engine word's, without either, or with each converter of a DEFTYPE, which
+\   share one token, with its own effect, qualified or not ...... completion
+\ - a position in a document not open answered other than -32602
+\   ................................................... completion-not-open
+\ - a cursor asked about in the turn of a change answered before the check of
+\   the changed text, or not from it .............. completion-after-change
+\ - a bare prefix, or a package's name and an edge colon, answered without
+\   a qualified spelling a qualified prefix offers there, or with another
+\   detail ................................................ completion-qualified
+\
+\ Cancellation
+\ - a request with a cancel of it read behind it answered other than -32800,
+\   or its work done: two completions and a cancel of the first publish
+\   twice .................................................. cancel-completion
+\ - a hover cancelled by its string id spelt another way served
+\   ............................................................. cancel-hover
+\ - a completion with a change of its document read behind it answered other
+\   than -32801, or the change not applied and checked after it
+\   ......................................................... content-modified
+\ - a cancel of an id answered, never sent, of another kind or of a message
+\   that is not a request answered, or cancelling a request ..... cancel-stray
+\ - a request held when shutdown is read not answered first, a cancel of it
+\   read past shutdown not counted, or a request after shutdown answered other
+\   than -32600 .............................................. cancel-shutdown
 \
 \ Not proven here: a packet line that is not JSON, that names no file, or that
 \ names its file by a relative path, goes to stderr, but the checker writes
@@ -169,13 +314,13 @@ using BUF
 \ dependency-shared, took 660 to 1111 ms in single runs at a load average of
 \ about 140, when big-frame took up to 1289 ms. CONVERSATION-MS is ten times
 \ its busiest measurement and CHECKED-MS about six times big-frame's 1230 to
-\ 1289 ms, and neither is larger, so that all 25 runs bounded by the one (the
-\ 22 conversations CONVERSE runs, answers-at-once, stdout-closed and
-\ TEST-EXIT-TIMEOUT's child) and the 19 conversations bounded by the other
-\ could reach their bounds and still end inside the row's 360 s, each failing
-\ by name: a server that spins to its bound spends that much of the row's CPU
-\ budget (test/suite-budget.f CPU-MS), and one that blocks spends none and
-\ ends long before the row's hang guard (ROW-MS).
+\ 1289 ms, and neither is larger. The one bounds 27 runs (the 24 conversations
+\ CONVERSE runs, answers-at-once, stdout-closed and TEST-EXIT-TIMEOUT's child)
+\ and the other 70 conversations. A server that blocks spends none of the
+\ row's CPU budget (test/suite-budget.f CPU-MS), so all 97 could reach their
+\ bounds, each failing by name, well inside the row's hang guard (ROW-MS). One
+\ that spins to its bound spends that much of the budget's 360 s, so at most
+\ 45 such runs fail by name before the budget ends the row.
 8000 constant CONVERSATION-MS
 8000 constant CHECKED-MS
 
@@ -198,7 +343,7 @@ create PAR-B HDR-BYTES allot             \ a notification's params
 create DIR-B HDR-BYTES allot             \ the artifact directory
 create EXP-B HDR-BYTES allot             \ a publish expected
 create PATH-B HDR-BYTES allot            \ a document's path
-create TXT-B HDR-BYTES allot             \ big-frame's document
+create TXT-B HDR-BYTES allot             \ a generated document
 
 TYPED-VARIABLE IN-W fd                   \ a held conversation's ends of the server's stdin,
 TYPED-VARIABLE OUT-R fd                  \ stdout
@@ -585,7 +730,10 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
 : CAPABILITIES ( -- )
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\"," MSG+
-   s\" \"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}}," MSG+
+   s\" \"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}," MSG+
+   s\" \"completionProvider\":{},\"definitionProvider\":true," MSG+
+   s\" \"hoverProvider\":true,\"documentSymbolProvider\":true," MSG+
+   s\" \"workspaceSymbolProvider\":true}," MSG+
    s\" \"serverInfo\":{\"name\":\"habu\"}}}" MSG+
    MSG$ HEARD ;
 
@@ -1006,7 +1154,14 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    s" fault-over-maximum" CONVERSATION
    s" Content-Length: " IN+ LSP:MAX-BODY 1+ INT$ IN+ s\" \r\n\r\n" IN+
    INITIALIZE
-   E-CONTENT-LENGTH-MALFORMED FAULTED ;
+   E-CONTENT-LENGTH-MALFORMED FAULTED
+   s" fault-after-request" CONVERSATION
+   INITIALIZE
+   s\" Content-Length: abc\r\n\r\n" IN+
+   E-CONTENT-LENGTH-MALFORMED STOPPED
+   1 CONVERSE
+   CAPABILITIES
+   ENDS ;
 
 : TEST-TRUNCATED-FRAMES ( -- )
    s" fault-eof-in-header" CONVERSATION
@@ -1297,6 +1452,18 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    A-PATH s" refused" COMPLETED
    A-PATH 4 EXPECT 1 15 1 19 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
+\ X has an unknown signature type and an undefined word: the load refuses the
+\ word, so the diagnostic is E-UNDEFINED at NOPE, not at zz.
+: TEXT-X ( -- ptr u8 n )  s" : X ( n -- zz ) NOPE ;" ;
+
+: ONE-REFUSAL-TURNS ( -- )
+   F-OPENED
+   A-PATH TEXT-X 2 CHANGES
+   SAY
+   TEXT-X A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 2 EXPECT 0 16 0 20 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
+
 : REQUIRES-FMT ( -- ptr u8 n )  s\" require lib/fmt.f\n: G ( n -- ) FMT:SB-U ;\n" ;
 : UNDERFLOWS-FMT ( -- ptr u8 n )  s\" require lib/fmt.f\n: G ( -- ) FMT:SB-U ;\n" ;
 
@@ -1538,7 +1705,8 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    B-PATH 1 EXPECT 0 16 0 27 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
 
 \ A definition never ended: the verifier stops at its opener and refuses the
-\ document with no packet, so the list is empty.
+\ document, and the stop's record, the one `check.f --verify-only` writes, is
+\ published there.
 : UNENDED ( -- ptr u8 n )  s" : H6 ( n -- n ) 1" ;
 
 : UNENDED-TURNS ( -- )
@@ -1548,22 +1716,63 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    HEAR CAPABILITIES
    UNENDED A-PATH CHECKS
    A-PATH s" refused" COMPLETED
-   A-PATH 1 EXPECT PUBLISHES ;
+   A-PATH 1 EXPECT 0 0 0 1 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
 
-\ A `generates:` row with no definer name: the verifier exits without a
-\ verdict. The input is the pre-verifier's generates: reader die
-\ (src/habu/verify-source.f RECORD-GENERATES, `74 die`); dot 8e9f3e62 turns it
-\ into a refusal and re-points this case.
-: BARE-GENERATES ( -- ptr u8 n )  s" generates:" ;
+\ A definer with nothing after it: the verifier stops at it and refuses the
+\ document, and the stop's record, the nominal pass's packet that
+\ `check.f --verify-only` writes, is published there.
+: MISSING-NAME ( -- ptr u8 n )  s" :" ;
+
+: MISSING-NAME-TURNS ( -- )
+   INITIALIZE
+   A-PATH MISSING-NAME 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   MISSING-NAME A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT 0 0 0 1 1 s" E-MISSING-NAME" DIAG+ PUBLISHES ;
+
+\ One `using` more than the checker holds open at once (CK-USE-MAX): the
+\ verifier dies in CHECKER-USING (`76 die`) and exits without a verdict, where
+\ `--load` refuses that using as ENGINE-ERROR:USING-OVERFLOW. A bare
+\ `generates:`, which this case read before, stops the verifier at the reader
+\ now (7187, E-MISSING-NAME).
+CK-USE-MAX 1 + constant OVER-USINGS
+
+: OVER-USINGS+ ( -- )
+   OVER-USINGS 0 ?do s\" using SOURCE-ROOT\n" N>BLEN TXT-B APPEND-SPAN loop ;
+
+: OVER-USING-TEXT ( -- )
+   TXT-B CLEAR  OVER-USINGS+ ;
 
 : INCOMPLETE-TURNS ( -- )
    INITIALIZE
-   A-PATH BARE-GENERATES 1 OPENS
+   OVER-USING-TEXT
+   A-PATH TXT$ 1 OPENS
    SAY
    HEAR CAPABILITIES
-   BARE-GENERATES A-PATH CHECKS
-   A-PATH s" not checked: exit 74" SAID
+   TXT$ A-PATH CHECKS
+   A-PATH s" not checked: exit 76" SAID
    LOGGED ;
+
+\ H1 is refused, then one `using` more than the checker holds open: the
+\ verifier dies in CHECKER-USING (`76 die`) after writing H1's packet, which is
+\ published. A bare `generates:`, which this case read before, stops the
+\ verifier at the reader now (7187, E-MISSING-NAME).
+: REFUSED-OVER-TEXT ( -- )
+   TXT-B CLEAR
+   s\" : H1 ( n -- n ) NOSUCHWORD ;\n" N>BLEN TXT-B APPEND-SPAN
+   OVER-USINGS+ ;
+
+: INCOMPLETE-PACKET-TURNS ( -- )
+   INITIALIZE
+   REFUSED-OVER-TEXT
+   A-PATH TXT$ 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TXT$ A-PATH CHECKS
+   A-PATH s" not checked: exit 76" SAID
+   A-PATH 1 EXPECT 0 16 0 26 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
 
 \ The verifier's own image holds tools/check-verify-child.f.
 : HELD-PATH ( -- ptr u8 n )  s" tools/check-verify-child.f" IN-TREE ;
@@ -1701,10 +1910,1323 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    A-PATH s" deferred" COMPLETED
    A-PATH 2 EXPECT 1 0 1 4 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
 
+\ A body naming a word only the text `evaluate` renders may define, deferred to
+\ the run at that name.
+: DEFERRED-IN-BODY ( -- ptr u8 n )  s\" s\" : G ( -- n ) 2 ;\" evaluate\n: F ( -- n ) NOSUCH ;\n" ;
+
+: DEFINITION-TURNS ( -- )
+   INITIALIZE
+   A-PATH DEFERRED-IN-BODY 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   DEFERRED-IN-BODY A-PATH CHECKS
+   A-PATH s" deferred" COMPLETED
+   A-PATH 1 EXPECT 1 13 1 19 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
+
+\ That deferral, then a definition never ended: the verifier stops at its
+\ opener and refuses the document, and both the deferral and the stop's record
+\ are published.
+: DEFERRED-UNENDED-TEXT ( -- )
+   TXT-B CLEAR
+   DEFERRED-IN-BODY N>BLEN TXT-B APPEND-SPAN
+   UNENDED N>BLEN TXT-B APPEND-SPAN ;
+
+: DEFERRED-UNENDED-TURNS ( -- )
+   INITIALIZE
+   DEFERRED-UNENDED-TEXT
+   A-PATH TXT$ 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TXT$ A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT
+   1 13 1 19 3 s" W-CHECK-DEFERRED" DIAG+
+   2 0 2 1 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
+
+\ ---- workspace symbols ------------------------------------------------------------
+
+: SYM-A-PATH ( -- ptr u8 n )  s" sym-a.f" FIXTURE ;
+: SYM-B-PATH ( -- ptr u8 n )  s" sym-b.f" FIXTURE ;
+: SYM-DEP-PATH ( -- ptr u8 n )  s" sym-dep.f" FIXTURE ;
+: SYM-DEP-CANON ( -- ptr u8 n )  SYM-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
+: TEXT-SYM-A ( -- ptr u8 n )  s\" require sym-dep.f\n: QUX-A ( -- n ) 1 ;\n: ZED ( -- n ) 4 ;\n" ;
+: TEXT-SYM-A2 ( -- ptr u8 n )  s\" require sym-dep.f\n: QUX-AA ( -- n ) 1 ;\n" ;
+: TEXT-SYM-B ( -- ptr u8 n )  s\" require sym-dep.f\n: QUX-B ( -- n ) 2 ;\n3 constant QUX-K\n" ;
+: TEXT-SYM-DEP ( -- ptr u8 n )
+   s\" package QD\npublic\n: QUX-DEP ( -- n ) 3 ;\n;package\nvariable QUX-V\n" ;
+
+\ workspace/symbol, by its id's JSON text, with these params' JSON text.
+: SYMBOLS-ASK ( ptr u8 n ptr u8 n -- )
+   {: i:ptr iu:n p:ptr pu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"method\":\"workspace/symbol\",\"params\":" MSG+ p pu MSG+ s" }" MSG+
+   MSG$ FRAMED ;
+
+\ The answer to the request with this id's JSON text, begun in MSG, up to its
+\ list's bracket.
+: SYMBOLS-START ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[" MSG+ ;
+
+\ The symbol the answer lists next: its name, kind and URI, the range from
+\ character C1 to C2 of line L, and its package, none when empty.
+: SYMBOL+ ( ptr u8 n n ptr u8 n n n n ptr u8 n -- )
+   {: w:ptr wu:n k:n u:ptr uu:n l:n c1:n c2:n p:ptr pu:n :}
+   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   s\" {\"name\":\"" MSG+ w wu MSG+
+   s\" \",\"kind\":" MSG+ k INT$ MSG+
+   s\" ,\"location\":{\"uri\":\"" MSG+ u uu MSG+
+   s\" \",\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c1 INT$ MSG+
+   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}}" MSG+
+   pu 0 > if s\" ,\"containerName\":\"" MSG+ p pu MSG+ s\" \"" MSG+ then
+   s" }" MSG+ ;
+
+\ The next frame is the answer begun.
+: SYMBOLS-END ( -- )
+   s" ]}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
+\ textDocument/documentSymbol, by its id's JSON text, of the document opened
+\ from this path.
+: OUTLINE-ASK ( ptr u8 n ptr u8 n -- )
+   {: i:ptr iu:n p:ptr pu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"method\":\"textDocument/documentSymbol\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
+   p pu URI-OF MSG+ s\" \"}}}" MSG+
+   MSG$ FRAMED ;
+
+\ A request by this method and id's JSON text at character C of line L of
+\ the document opened from this path.
+: AT-ASK ( ptr u8 n ptr u8 n ptr u8 n n n -- )
+   {: m:ptr mu:n i:ptr iu:n p:ptr pu:n l:n c:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"method\":\"" MSG+ m mu MSG+
+   s\" \",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
+   p pu URI-OF MSG+
+   s\" \"},\"position\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c INT$ MSG+ s" }}}" MSG+
+   MSG$ FRAMED ;
+
+\ textDocument/definition, by its id's JSON text, at character C of line L of
+\ the document opened from this path.
+: DEFINITION-ASK ( ptr u8 n ptr u8 n n n -- )
+   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+   s" textDocument/definition" i iu p pu l c AT-ASK ;
+
+\ The next frame answers the request with this id's JSON text with one
+\ Location: this URI, from character C1 to C2 of line L.
+: LOCATED ( ptr u8 n ptr u8 n n n n -- )
+   {: i:ptr iu:n u:ptr uu:n l:n c1:n c2:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"result\":[{\"uri\":\"" MSG+ u uu MSG+
+   s\" \",\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c1 INT$ MSG+
+   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}}]}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
+\ The dependency's symbols: QUX-DEP in package QD, recorded folded, and the
+\ global QUX-V.
+: DEP-SYMBOLS+ ( -- )
+   s" QUX-DEP" 12 SYM-DEP-CANON URI-OF 2 2 9 s" qd" SYMBOL+
+   s" QUX-V" 13 SYM-DEP-CANON URI-OF 4 9 14 s" " SYMBOL+ ;
+
+\ The dependency changed on disk: QUX-NEW where QUX-DEP was.
+: TEXT-SYM-DEP2 ( -- ptr u8 n )
+   s\" package QD\npublic\n: QUX-NEW ( -- n ) 3 ;\n;package\nvariable QUX-V\n" ;
+
+: DEP2-SYMBOLS+ ( -- )
+   s" QUX-NEW" 12 SYM-DEP-CANON URI-OF 2 2 9 s" qd" SYMBOL+
+   s" QUX-V" 13 SYM-DEP-CANON URI-OF 4 9 14 s" " SYMBOL+ ;
+
+\ Two open documents require sym-dep.f, on disk only. A query in another case
+\ lists each definition whose word holds it once, the dependency's at its
+\ canonical file URI and positions in its text on disk, the documents' at the
+\ URIs the client opened them by, check after check, oldest first; the word
+\ ZED is not one. A changed document's check replaces its definitions. A
+\ query that is no string, or none, is -32602. A file both documents' checks
+\ reached is listed once, from the later check: sym-dep.f changed on disk and
+\ B checked again, B's QUX-NEW and not A's QUX-DEP; B closed, A's QUX-DEP
+\ again, answered before A's next check.
+: SYMBOL-TURNS ( -- )
+   SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
+   INITIALIZE
+   SYM-A-PATH TEXT-SYM-A 1 OPENS
+   SYM-B-PATH TEXT-SYM-B 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
+   TEXT-SYM-B SYM-B-PATH 1 s" verified" LISTED
+   s" 3" s\" {\"query\":\"qux\"}" SYMBOLS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" QUX-A" 12 SYM-A-PATH URI-OF 1 2 7 s" " SYMBOL+
+   DEP-SYMBOLS+
+   s" QUX-B" 12 SYM-B-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" QUX-K" 14 SYM-B-PATH URI-OF 2 11 16 s" " SYMBOL+
+   SYMBOLS-END
+   SYM-A-PATH TEXT-SYM-A2 2 CHANGES
+   SAY
+   TEXT-SYM-A2 SYM-A-PATH 2 s" verified" LISTED
+   s" 4" s\" {\"query\":\"Qux-\"}" SYMBOLS-ASK
+   SAY
+   s" 4" SYMBOLS-START
+   s" QUX-B" 12 SYM-B-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" QUX-K" 14 SYM-B-PATH URI-OF 2 11 16 s" " SYMBOL+
+   DEP-SYMBOLS+
+   s" QUX-AA" 12 SYM-A-PATH URI-OF 1 2 8 s" " SYMBOL+
+   SYMBOLS-END
+   s" 5" s\" {\"query\":7}" SYMBOLS-ASK
+   s" 6" s" workspace/symbol" ASK
+   SAY
+   HEAR s" 5" -32602 REFUSED
+   HEAR s" 6" -32602 REFUSED
+   SYM-DEP-PATH TEXT-SYM-DEP2 WRITE-ALL
+   SYM-B-PATH TEXT-SYM-B 2 CHANGES
+   SAY
+   TEXT-SYM-B SYM-B-PATH 2 s" verified" LISTED
+   s" 7" s\" {\"query\":\"qux\"}" SYMBOLS-ASK
+   SAY
+   s" 7" SYMBOLS-START
+   s" QUX-AA" 12 SYM-A-PATH URI-OF 1 2 8 s" " SYMBOL+
+   DEP2-SYMBOLS+
+   s" QUX-B" 12 SYM-B-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" QUX-K" 14 SYM-B-PATH URI-OF 2 11 16 s" " SYMBOL+
+   SYMBOLS-END
+   SYM-B-PATH CLOSES
+   s" 8" s\" {\"query\":\"qux\"}" SYMBOLS-ASK
+   SAY
+   SYM-B-PATH -1 EXPECT PUBLISHES
+   s" 8" SYMBOLS-START
+   DEP-SYMBOLS+
+   s" QUX-AA" 12 SYM-A-PATH URI-OF 1 2 8 s" " SYMBOL+
+   SYMBOLS-END
+   TEXT-SYM-A2 SYM-A-PATH 2 s" verified" LISTED ;
+
+\ The dependency emptied on disk.
+: TEXT-SYM-DEP3 ( -- ptr u8 n )  s\" \\ no definition remains\n" ;
+
+\ Two open documents require sym-dep.f, on disk only, which then loses every
+\ definition, and B is checked again: B's check read it, so none of its
+\ definitions is listed, not even A's older ones; B closed, A's again,
+\ answered before A's next check.
+: EMPTY-TURNS ( -- )
+   SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
+   INITIALIZE
+   SYM-A-PATH TEXT-SYM-A 1 OPENS
+   SYM-B-PATH TEXT-SYM-B 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
+   TEXT-SYM-B SYM-B-PATH 1 s" verified" LISTED
+   SYM-DEP-PATH TEXT-SYM-DEP3 WRITE-ALL
+   SYM-B-PATH TEXT-SYM-B 2 CHANGES
+   SAY
+   TEXT-SYM-B SYM-B-PATH 2 s" verified" LISTED
+   s" 3" s\" {\"query\":\"qux\"}" SYMBOLS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" QUX-A" 12 SYM-A-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" QUX-B" 12 SYM-B-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" QUX-K" 14 SYM-B-PATH URI-OF 2 11 16 s" " SYMBOL+
+   SYMBOLS-END
+   SYM-B-PATH CLOSES
+   s" 4" s\" {\"query\":\"qux\"}" SYMBOLS-ASK
+   SAY
+   SYM-B-PATH -1 EXPECT PUBLISHES
+   s" 4" SYMBOLS-START
+   DEP-SYMBOLS+
+   s" QUX-A" 12 SYM-A-PATH URI-OF 1 2 7 s" " SYMBOL+
+   SYMBOLS-END
+   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED ;
+
+\ NAV-RETAIN declared, then declared again with a bare ptr, an effect the
+\ registrar refuses.
+: TEXT-RETAINED ( -- ptr u8 n )
+   s\" TRUSTED: NAV-RETAIN ( -- n ) 1 ;\nTRUSTED: NAV-RETAIN ( -- ptr ) ;\n" ;
+
+\ NAV-WIDE declared, then declared again taking 256 cells, a row too wide to
+\ record, which the registrar refuses; NAV-SAME declared twice with one effect,
+\ both retained; NAV-ODD malformed with nothing declared before it; NAV-KEPT's
+\ body refused with its signature kept; NAV-LATER after them.
+: REDECLARED-TEXT ( -- )
+   TXT-B CLEAR
+   s\" TRUSTED: NAV-WIDE ( n -- ) drop ;\nTRUSTED: NAV-WIDE (" N>BLEN TXT-B APPEND-SPAN
+   256 0 ?do s"  n" N>BLEN TXT-B APPEND-SPAN loop
+   s\"  -- ) ;\nTRUSTED: NAV-SAME ( -- n ) 1 ;\nTRUSTED: NAV-SAME ( -- n ) 1 ;\n" N>BLEN TXT-B APPEND-SPAN
+   s\" TRUSTED: NAV-ODD ( -- ptr ) ;\n: NAV-KEPT ( -- n n ) 8 ;\n: NAV-LATER ( -- n ) 2 ;\n" N>BLEN TXT-B APPEND-SPAN ;
+
+: RETAINED-PATH ( -- ptr u8 n )  s" retained.f" FIXTURE ;
+
+: REDECLARED-PATH ( -- ptr u8 n )  s" redeclared.f" FIXTURE ;
+
+\ The refused redeclaration keeps no record, so a query lists NAV-RETAIN once,
+\ where the declaration the registrar retained names it.
+: RETAINED-TURNS ( -- )
+   INITIALIZE
+   RETAINED-PATH TEXT-RETAINED 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RETAINED RETAINED-PATH CHECKS
+   RETAINED-PATH s" refused" COMPLETED
+   RETAINED-PATH 1 EXPECT 1 9 1 19 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES
+   s" 3" s\" {\"query\":\"nav-retain\"}" SYMBOLS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" NAV-RETAIN" 12 RETAINED-PATH URI-OF 0 9 19 s" " SYMBOL+
+   SYMBOLS-END ;
+
+\ Each refusal is published, and a query lists NAV-WIDE where the declaration
+\ the registrar retained names it, NAV-SAME at each declaration, NAV-KEPT and
+\ NAV-LATER, and not NAV-ODD.
+: REDECLARED-TURNS ( -- )
+   REDECLARED-TEXT
+   INITIALIZE
+   REDECLARED-PATH TXT$ 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TXT$ REDECLARED-PATH CHECKS
+   REDECLARED-PATH s" refused" COMPLETED
+   REDECLARED-PATH 1 EXPECT
+   1 9 1 17 1 s" E-BAD-STORED-SIGNATURE" DIAG+
+   4 9 4 16 1 s" E-BAD-STORED-SIGNATURE" DIAG+
+   5 22 5 23 1 s" E-MISMATCH" DIAG+
+   PUBLISHES
+   s" 3" s\" {\"query\":\"nav\"}" SYMBOLS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" NAV-WIDE" 12 REDECLARED-PATH URI-OF 0 9 17 s" " SYMBOL+
+   s" NAV-SAME" 12 REDECLARED-PATH URI-OF 2 9 17 s" " SYMBOL+
+   s" NAV-SAME" 12 REDECLARED-PATH URI-OF 3 9 17 s" " SYMBOL+
+   s" NAV-KEPT" 12 REDECLARED-PATH URI-OF 5 2 10 s" " SYMBOL+
+   s" NAV-LATER" 12 REDECLARED-PATH URI-OF 6 2 11 s" " SYMBOL+
+   SYMBOLS-END ;
+
+\ rep.f includes rep-dep.f, on disk only, undefines its word and includes it
+\ again.
+: REP-DEP-PATH ( -- ptr u8 n )  s" rep-dep.f" FIXTURE ;
+: REP-DEP-CANON ( -- ptr u8 n )  REP-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
+: REP-PATH ( -- ptr u8 n )  s" rep.f" FIXTURE ;
+: TEXT-REP-DEP ( -- ptr u8 n )  s\" : REV-SHARED ( -- n ) 7 ;\n" ;
+: TEXT-REP ( -- ptr u8 n )
+   s\" include rep-dep.f\nundefine REV-SHARED\ninclude rep-dep.f\n" ;
+
+\ The check reads rep-dep.f twice, and a query lists REV-SHARED once.
+: REINCLUDE-TURNS ( -- )
+   REP-DEP-PATH TEXT-REP-DEP WRITE-ALL
+   INITIALIZE
+   REP-PATH TEXT-REP 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-REP REP-PATH 1 s" verified" LISTED
+   s" 3" s\" {\"query\":\"rev-shared\"}" SYMBOLS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" REV-SHARED" 12 REP-DEP-CANON URI-OF 0 2 12 s" " SYMBOL+
+   SYMBOLS-END ;
+
+\ od-dep.f on disk, and the other text its open document holds, whose first
+\ line is longer in bytes than in characters.
+: OD-DEP-PATH ( -- ptr u8 n )  s" od-dep.f" FIXTURE ;
+: OD-PATH ( -- ptr u8 n )  s" od.f" FIXTURE ;
+: TEXT-OD-DISK ( -- ptr u8 n )  s\" ( disk )\n: REV-DISK ( -- n ) 7 ;\n" ;
+: TEXT-OD-EDIT ( -- ptr u8 n )
+   s\" ( unsaved é🙂 comment )\n: REV-EDIT ( -- n ) 8 ;\n" ;
+: TEXT-OD ( -- ptr u8 n )  s\" require od-dep.f\n: REV-A ( -- n ) 1 ;\n" ;
+
+\ od-twin.f, a symlink to od-dep.f, and the other text its open document
+\ holds, whose definitions are on other lines than od-dep.f's.
+: OD-TWIN-PATH ( -- ptr u8 n )  s" od-twin.f" FIXTURE ;
+: TEXT-OD-TWIN ( -- ptr u8 n )
+   s\" \\ twin\n\n: REV-TWIN ( -- n ) 9 ;\n: REV-USE ( -- n ) REV-TWIN ;\n" ;
+
+\ od-dep.f open with text its disk file lacks, then od.f, which requires the
+\ file, open: a query lists REV-EDIT where the document places it, from its
+\ own check, and REV-A, and not REV-DISK, which od.f's check read from disk;
+\ od-dep.f's outline, after od.f's check, is REV-EDIT alone. The file open
+\ again through od-twin.f with its own text: each document's outline is its
+\ own definitions, at the URI the client opened it by, and a use in od-twin.f
+\ is at its declaration there.
+\ od-twin.f closed, and both documents checked again; then od-dep.f closed,
+\ REV-DISK where the file on disk places it, answered before od.f's next
+\ check.
+: OPEN-DEP-TURNS ( -- )
+   OD-DEP-PATH TEXT-OD-DISK WRITE-ALL
+   INITIALIZE
+   OD-DEP-PATH TEXT-OD-EDIT 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-OD-EDIT OD-DEP-PATH 1 s" verified" LISTED
+   OD-PATH TEXT-OD 1 OPENS
+   SAY
+   TEXT-OD OD-PATH 1 s" verified" LISTED
+   s" 3" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
+   s" 4" OD-DEP-PATH OUTLINE-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" REV-EDIT" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
+   s" REV-A" 12 OD-PATH URI-OF 1 2 7 s" " SYMBOL+
+   SYMBOLS-END
+   s" 4" SYMBOLS-START
+   s" REV-EDIT" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
+   SYMBOLS-END
+   s" od-dep.f" OD-TWIN-PATH MAKE-SYMLINK
+   OD-TWIN-PATH TEXT-OD-TWIN 1 OPENS
+   SAY
+   TEXT-OD-TWIN OD-TWIN-PATH 1 s" verified" LISTED
+   s" 5" OD-TWIN-PATH OUTLINE-ASK
+   s" 6" OD-DEP-PATH OUTLINE-ASK
+   s" 7" OD-TWIN-PATH 3 19 DEFINITION-ASK
+   SAY
+   s" 5" SYMBOLS-START
+   s" REV-TWIN" 12 OD-TWIN-PATH URI-OF 2 2 10 s" " SYMBOL+
+   s" REV-USE" 12 OD-TWIN-PATH URI-OF 3 2 9 s" " SYMBOL+
+   SYMBOLS-END
+   s" 6" SYMBOLS-START
+   s" REV-EDIT" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
+   SYMBOLS-END
+   s" 7" OD-TWIN-PATH URI-OF 2 2 10 LOCATED
+   OD-TWIN-PATH CLOSES
+   SAY
+   OD-TWIN-PATH -1 EXPECT PUBLISHES
+   TEXT-OD-EDIT OD-DEP-PATH 1 s" verified" LISTED
+   TEXT-OD OD-PATH 1 s" verified" LISTED
+   OD-DEP-PATH CLOSES
+   s" 8" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
+   SAY
+   OD-DEP-PATH -1 EXPECT PUBLISHES
+   s" 8" SYMBOLS-START
+   s" REV-DISK" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
+   s" REV-A" 12 OD-PATH URI-OF 1 2 7 s" " SYMBOL+
+   SYMBOLS-END
+   TEXT-OD OD-PATH 1 s" verified" LISTED ;
+
+\ path-length's document: the global word Q, then a global word of two bytes on
+\ each line after it, QA to Q9, XA to X9 and ZA to Z9.
+: LENGTH-TEXT ( -- )
+   TXT-B CLEAR
+   s\" : Q ( -- ) ;\n" N>BLEN TXT-B APPEND-SPAN
+   3 0 ?do
+      36 0 ?do
+         s" : " N>BLEN TXT-B APPEND-SPAN
+         s" QXZ" drop j + c@ TXT-B APPEND-BYTE
+         s" ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" drop i + c@ TXT-B APPEND-BYTE
+         s\"  ( -- ) ;\n" N>BLEN TXT-B APPEND-SPAN
+      loop
+   loop ;
+
+variable LENGTH-N                        \ the length of its directory's name
+
+: LENGTH-DIR ( -- ptr u8 n )  s" dddd" drop LENGTH-N @ FIXTURE ;
+
+: LENGTH-PATH ( -- ptr u8 n )
+   LENGTH-DIR 2drop
+   s" /g.f" N>BLEN PATH-B APPEND-SPAN
+   PATH-B SPAN$ BLEN>N ;
+
+\ The document is checked and published, and Z9, its last word, answered.
+: LENGTH-TURNS ( -- )
+   INITIALIZE
+   LENGTH-PATH TXT$ 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TXT$ LENGTH-PATH 1 s" verified" LISTED
+   s" 3" s\" {\"query\":\"z9\"}" SYMBOLS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" Z9" 12 LENGTH-PATH URI-OF 108 2 4 s" " SYMBOL+
+   SYMBOLS-END ;
+
+\ ---- go to definition --------------------------------------------------------
+
+: DEF-A-PATH ( -- ptr u8 n )  s" def-a.f" FIXTURE ;
+: DEF-B-PATH ( -- ptr u8 n )  s" def-b.f" FIXTURE ;
+: DEF-DEP-PATH ( -- ptr u8 n )  s" def-dep.f" FIXTURE ;
+: DEF-DEP-CANON ( -- ptr u8 n )  DEF-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
+
+\ DEF-ONE, its use in DEF-TWO, and its use in DEF-THREE after a character of
+\ one UTF-16 unit and two bytes.
+: TEXT-DEF-A ( -- ptr u8 n )
+   s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) DEF-ONE 1 + ;\n: DEF-THREE ( -- n ) s\" é\" 2drop DEF-ONE ;\n" ;
+
+\ def-dep.f, on disk only: DEF-PUB, public in package DD, and the global
+\ DEF-DEP.
+: TEXT-DEF-DEP ( -- ptr u8 n )
+   s\" package DD\npublic\n: DEF-PUB ( -- n ) 3 ;\n;package\n: DEF-DEP ( -- n ) 4 ;\n" ;
+
+\ Uses of def-dep.f's global and, qualified, of its public word.
+: TEXT-DEF-B ( -- ptr u8 n )
+   s\" require def-dep.f\n: DEF-USE ( -- n ) DEF-DEP DD:DEF-PUB + ;\n" ;
+
+\ The next frame answers the request with this id's JSON text with no
+\ Location.
+: NOWHERE ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[]}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
+\ DEF-ONE's uses, at the first and last character of the one in DEF-TWO and
+\ the first of the one in DEF-THREE, its byte one past its character, each
+\ answered with DEF-ONE's declaring token at the URI the document was opened
+\ by; the character after the use and DEF-TWO's declaring token with none; a
+\ negative character -32602.
+: DEF-TURNS ( -- )
+   INITIALIZE
+   DEF-A-PATH TEXT-DEF-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-A DEF-A-PATH 1 s" verified" LISTED
+   s" 3" DEF-A-PATH 1 19 DEFINITION-ASK
+   s" 4" DEF-A-PATH 1 25 DEFINITION-ASK
+   s" 5" DEF-A-PATH 2 33 DEFINITION-ASK
+   s" 6" DEF-A-PATH 1 26 DEFINITION-ASK
+   s" 7" DEF-A-PATH 1 2 DEFINITION-ASK
+   s" 8" DEF-A-PATH 1 -1 DEFINITION-ASK
+   SAY
+   s" 3" DEF-A-PATH URI-OF 0 2 9 LOCATED
+   s" 4" DEF-A-PATH URI-OF 0 2 9 LOCATED
+   s" 5" DEF-A-PATH URI-OF 0 2 9 LOCATED
+   s" 6" NOWHERE
+   s" 7" NOWHERE
+   HEAR s" 8" -32602 REFUSED ;
+
+\ The uses of def-dep.f's global and, qualified, of its public word, each
+\ answered with its declaring token in the text on disk at the file's
+\ canonical URI.
+: DEF-DEP-TURNS ( -- )
+   DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
+   INITIALIZE
+   DEF-B-PATH TEXT-DEF-B 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
+   s" 3" DEF-B-PATH 1 19 DEFINITION-ASK
+   s" 4" DEF-B-PATH 1 27 DEFINITION-ASK
+   SAY
+   s" 3" DEF-DEP-CANON URI-OF 4 2 9 LOCATED
+   s" 4" DEF-DEP-CANON URI-OF 2 2 9 LOCATED ;
+
+\ def-od-dep.f on disk, and the text its open document holds, its two lines
+\ swapped: DEF-DEPB's token there has the bytes DEF-DEPA's has on disk, and
+\ DEF-DEPA's token, after DEF-DEPB's longer line, those of no token on disk.
+: DEF-OD-DEP-PATH ( -- ptr u8 n )  s" def-od-dep.f" FIXTURE ;
+: DEF-OD-DEP-CANON ( -- ptr u8 n )  DEF-OD-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
+: DEF-OD-PATH ( -- ptr u8 n )  s" def-od.f" FIXTURE ;
+: TEXT-DEF-OD-DISK ( -- ptr u8 n )
+   s\" : DEF-DEPA ( -- n ) 1 ;\n: DEF-DEPB ( -- n n ) 2 3 ;\n" ;
+: TEXT-DEF-OD-EDIT ( -- ptr u8 n )
+   s\" : DEF-DEPB ( -- n n ) 2 3 ;\n: DEF-DEPA ( -- n ) 1 ;\n" ;
+: TEXT-DEF-OD ( -- ptr u8 n )
+   s\" require def-od-dep.f\n: DEF-USE ( -- n ) DEF-DEPA DEF-DEPB + + ;\n" ;
+
+\ def-od-dep.f open with its lines swapped, unsaved, then def-od.f, which
+\ requires it and whose check reads it from disk: the uses of DEF-DEPA and
+\ DEF-DEPB, each answered with its declaring token's range in the text on
+\ disk, at the URI the client opened def-od-dep.f by.
+: DEF-OPEN-DEP-TURNS ( -- )
+   DEF-OD-DEP-PATH TEXT-DEF-OD-DISK WRITE-ALL
+   INITIALIZE
+   DEF-OD-DEP-PATH TEXT-DEF-OD-EDIT 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-OD-EDIT DEF-OD-DEP-PATH 1 s" verified" LISTED
+   DEF-OD-PATH TEXT-DEF-OD 1 OPENS
+   SAY
+   TEXT-DEF-OD DEF-OD-PATH 1 s" verified" LISTED
+   s" 3" DEF-OD-PATH 1 19 DEFINITION-ASK
+   s" 4" DEF-OD-PATH 1 28 DEFINITION-ASK
+   SAY
+   s" 3" DEF-OD-DEP-PATH URI-OF 0 2 10 LOCATED
+   s" 4" DEF-OD-DEP-PATH URI-OF 1 2 10 LOCATED ;
+
+\ A position in a document the client never opened: -32602.
+: DEF-NOT-OPEN-TURNS ( -- )
+   INITIALIZE
+   s" 3" DEF-A-PATH 1 19 DEFINITION-ASK
+   SAY
+   HEAR CAPABILITIES
+   HEAR s" 3" -32602 REFUSED ;
+
+\ A use asked about with the document's opening, before the server checked
+\ it: the request checks it first, so its list comes before the answer, the
+\ declaration's.
+: DEF-BEFORE-CHECK-TURNS ( -- )
+   INITIALIZE
+   DEF-A-PATH TEXT-DEF-A 1 OPENS
+   s" 3" DEF-A-PATH 1 19 DEFINITION-ASK
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-A DEF-A-PATH 1 s" verified" LISTED
+   s" 3" DEF-A-PATH URI-OF 0 2 9 LOCATED ;
+
+\ TEXT-DEF-A two lines down.
+: TEXT-DEF-A-MOVED ( -- ptr u8 n )
+   s\" \\ two lines\n\\ above\n: DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) DEF-ONE 1 + ;\n: DEF-THREE ( -- n ) s\" é\" 2drop DEF-ONE ;\n" ;
+
+\ DEF-ONE's use in DEF-TWO asked about at its new place in the turn of the
+\ change that moved it and DEF-ONE two lines down, with no check between
+\ them: the request checks the changed text first, so its list comes before
+\ the answer, DEF-ONE's new declaring token.
+: DEF-AFTER-CHANGE-TURNS ( -- )
+   INITIALIZE
+   DEF-A-PATH TEXT-DEF-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-A DEF-A-PATH 1 s" verified" LISTED
+   DEF-A-PATH TEXT-DEF-A-MOVED 2 CHANGES
+   s" 3" DEF-A-PATH 3 19 DEFINITION-ASK
+   SAY
+   TEXT-DEF-A-MOVED DEF-A-PATH 2 s" verified" LISTED
+   s" 3" DEF-A-PATH URI-OF 2 2 9 LOCATED ;
+
+\ DEF-ONE and DEF-TWO, used in that order.
+: TEXT-DEF-C ( -- ptr u8 n )
+   s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) 2 ;\n: DEF-SUM ( -- n ) DEF-ONE DEF-TWO + ;\n" ;
+
+\ TEXT-DEF-C with its uses swapped, then one `using` more than the checker
+\ holds open, at which the verifier dies (`76 die`) and exits without a
+\ verdict as in incomplete. A bare `generates:`, which this case read before,
+\ is refused at the reader now (7187, E-MISSING-NAME).
+: TEXT-DEF-C-SWAPPED ( -- ptr u8 n )
+   TXT-B CLEAR
+   s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) 2 ;\n: DEF-SUM ( -- n ) DEF-TWO DEF-ONE + ;\n"
+   N>BLEN TXT-B APPEND-SPAN
+   OVER-USINGS+
+   TXT$ ;
+
+\ DEF-TWO's use, at the bytes of DEF-ONE's before the change, asked about in
+\ the turn of a change whose check did not complete: the uses of the text
+\ before it would answer DEF-ONE's declaring token, so the answer is no
+\ Location; the definitions of the last completed check are still listed.
+: DEF-INCOMPLETE-TURNS ( -- )
+   INITIALIZE
+   DEF-A-PATH TEXT-DEF-C 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-C DEF-A-PATH 1 s" verified" LISTED
+   DEF-A-PATH TEXT-DEF-C-SWAPPED 2 CHANGES
+   s" 3" DEF-A-PATH 2 19 DEFINITION-ASK
+   s" 4" s\" {\"query\":\"def-\"}" SYMBOLS-ASK
+   SAY
+   TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
+   DEF-A-PATH s" not checked: exit 76" SAID
+   s" 3" NOWHERE
+   s" 4" SYMBOLS-START
+   s" DEF-ONE" 12 DEF-A-PATH URI-OF 0 2 9 s" " SYMBOL+
+   s" DEF-TWO" 12 DEF-A-PATH URI-OF 1 2 9 s" " SYMBOL+
+   s" DEF-SUM" 12 DEF-A-PATH URI-OF 2 2 9 s" " SYMBOL+
+   SYMBOLS-END
+   LOGGED ;
+
+\ ---- document symbols --------------------------------------------------------
+
+: SYM-NONE-PATH ( -- ptr u8 n )  s" sym-none.f" FIXTURE ;
+: TEXT-SYM-NONE ( -- ptr u8 n )  s\" \\ no definition\n" ;
+
+\ Three open documents, A and B requiring sym-dep.f, on disk only, and one
+\ with no definition. Each outline lists its own document's definitions in
+\ source order, each as workspace symbols give it, and none of the other
+\ document's or of sym-dep.f, which both checks read; the document with none
+\ answers an empty list. A document never opened, and params naming no
+\ document, are -32602.
+: OUTLINE-TURNS ( -- )
+   SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
+   INITIALIZE
+   SYM-A-PATH TEXT-SYM-A 1 OPENS
+   SYM-B-PATH TEXT-SYM-B 1 OPENS
+   SYM-NONE-PATH TEXT-SYM-NONE 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
+   TEXT-SYM-B SYM-B-PATH 1 s" verified" LISTED
+   TEXT-SYM-NONE SYM-NONE-PATH 1 s" verified" LISTED
+   s" 3" SYM-A-PATH OUTLINE-ASK
+   s" 4" SYM-B-PATH OUTLINE-ASK
+   s" 5" SYM-NONE-PATH OUTLINE-ASK
+   s" 6" DEF-A-PATH OUTLINE-ASK
+   s" 7" s" textDocument/documentSymbol" ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" QUX-A" 12 SYM-A-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" ZED" 12 SYM-A-PATH URI-OF 2 2 5 s" " SYMBOL+
+   SYMBOLS-END
+   s" 4" SYMBOLS-START
+   s" QUX-B" 12 SYM-B-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" QUX-K" 14 SYM-B-PATH URI-OF 2 11 16 s" " SYMBOL+
+   SYMBOLS-END
+   s" 5" SYMBOLS-START SYMBOLS-END
+   HEAR s" 6" -32602 REFUSED
+   HEAR s" 7" -32602 REFUSED ;
+
+\ initialize from a client that supports hierarchical document symbols.
+: HIERARCHICAL-CLIENT ( -- )
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":" MSG+
+   s\" {\"textDocument\":{\"documentSymbol\":{\"hierarchicalDocumentSymbolSupport\":true}}}}}" MSG+
+   MSG$ FRAMED ;
+
+\ From a client that supports hierarchical document symbols, answered the same
+\ flat list. A's outline asked in the turn of the change that removed QUX-A
+\ and ZED: the request checks the changed text first, so its list comes before
+\ the answer, QUX-AA alone. Asked again with a change of A read behind it, the
+\ request is -32801 and the change is applied and checked after it; asked once
+\ more, the restored definitions are answered without a check.
+: OUTLINE-AFTER-CHANGE-TURNS ( -- )
+   SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
+   HIERARCHICAL-CLIENT
+   SYM-A-PATH TEXT-SYM-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
+   SYM-A-PATH TEXT-SYM-A2 2 CHANGES
+   s" 3" SYM-A-PATH OUTLINE-ASK
+   SAY
+   TEXT-SYM-A2 SYM-A-PATH 2 s" verified" LISTED
+   s" 3" SYMBOLS-START
+   s" QUX-AA" 12 SYM-A-PATH URI-OF 1 2 8 s" " SYMBOL+
+   SYMBOLS-END
+   s" 4" SYM-A-PATH OUTLINE-ASK
+   SYM-A-PATH TEXT-SYM-A 3 CHANGES
+   SAY
+   HEAR s" 4" -32801 REFUSED
+   TEXT-SYM-A SYM-A-PATH 3 s" verified" LISTED
+   s" 5" SYM-A-PATH OUTLINE-ASK
+   SAY
+   s" 5" SYMBOLS-START
+   s" QUX-A" 12 SYM-A-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" ZED" 12 SYM-A-PATH URI-OF 2 2 5 s" " SYMBOL+
+   SYMBOLS-END ;
+
+\ The outline asked in the turn of a change whose check did not complete: the
+\ definitions of the text before it are not of the document's text, so the
+\ answer is an empty list, while workspace symbols still list them.
+: OUTLINE-INCOMPLETE-TURNS ( -- )
+   INITIALIZE
+   DEF-A-PATH TEXT-DEF-C 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-C DEF-A-PATH 1 s" verified" LISTED
+   DEF-A-PATH TEXT-DEF-C-SWAPPED 2 CHANGES
+   s" 3" DEF-A-PATH OUTLINE-ASK
+   s" 4" s\" {\"query\":\"def-\"}" SYMBOLS-ASK
+   SAY
+   TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
+   DEF-A-PATH s" not checked: exit 76" SAID
+   s" 3" SYMBOLS-START SYMBOLS-END
+   s" 4" SYMBOLS-START
+   s" DEF-ONE" 12 DEF-A-PATH URI-OF 0 2 9 s" " SYMBOL+
+   s" DEF-TWO" 12 DEF-A-PATH URI-OF 1 2 9 s" " SYMBOL+
+   s" DEF-SUM" 12 DEF-A-PATH URI-OF 2 2 9 s" " SYMBOL+
+   SYMBOLS-END
+   LOGGED ;
+
+\ ---- hover -------------------------------------------------------------------
+
+\ initialize from a client whose hovers take the formats this JSON array
+\ text lists.
+: INITIALIZE-AS ( ptr u8 n -- )
+   {: f:ptr fu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{\"textDocument\":{\"hover\":{\"contentFormat\":" MSG+
+   f fu MSG+ s" }}}}}" MSG+
+   MSG$ FRAMED ;
+
+: MARKDOWN-CLIENT ( -- )  s\" [\"markdown\",\"plaintext\"]" INITIALIZE-AS ;
+: PLAIN-CLIENT ( -- )  s\" [\"plaintext\"]" INITIALIZE-AS ;
+
+\ textDocument/hover, by its id's JSON text, at character C of line L of the
+\ document opened from this path.
+: HOVER-ASK ( ptr u8 n ptr u8 n n n -- )
+   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+   s" textDocument/hover" i iu p pu l c AT-ASK ;
+
+: HV+ ( ptr u8 n -- )  N>BLEN TXT-B APPEND-SPAN ;
+
+\ A path as a hover names its file: relative to the working directory, which
+\ the server shares, when the file lies inside it, else the path.
+: WHERE+ ( ptr u8 n -- )  SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE HV+ ;
+
+\ The next frame answers the request with this id's JSON text with a hover of
+\ this kind, whose value TXT-B holds, over characters C1 to C2 of line L.
+: HOVERED ( ptr u8 n ptr u8 n n n n -- )
+   {: i:ptr iu:n k:ptr ku:n l:n c1:n c2:n :}
+   PAR-B CLEAR TXT$ TEXT+
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"result\":{\"contents\":{\"kind\":\"" MSG+ k ku MSG+
+   s\" \",\"value\":" MSG+ PAR$ MSG+
+   s\" },\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c1 INT$ MSG+
+   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}}}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
+\ hover-a.f, in the tree, the working directory the server shares, never on
+\ disk: HV-ONE, private in package HV, and its use in HV-TWO.
+: HOVER-A-PATH ( -- ptr u8 n )  s" hover-a.f" IN-TREE ;
+: TEXT-HOVER-A ( -- ptr u8 n )
+   s\" package HV\n: HV-ONE ( -- n ) 1 ;\n: HV-TWO ( -- n ) HV-ONE 1 + ;\n;package\n" ;
+
+\ TEXT-HOVER-A two lines down.
+: TEXT-HOVER-A-MOVED ( -- ptr u8 n )
+   s\" \\ two lines\n\\ above\npackage HV\n: HV-ONE ( -- n ) 1 ;\n: HV-TWO ( -- n ) HV-ONE 1 + ;\n;package\n" ;
+
+\ HV-ONE's lines, declared on this 1-based line.
+: HV-ONE-LINES ( n -- )
+   {: line:n :}
+   s\" : HV-ONE ( -- n )\n\\ package hv, hover-a.f:" HV+
+   SB-RESET line FMT:SB-INT SB$ HV+ ;
+
+\ HV-ONE's lines as Markdown.
+: HV-ONE-MD ( n -- )
+   TXT-B CLEAR s\" ```habu\n" HV+ HV-ONE-LINES s\" \n```" HV+ ;
+
+\ HV-ONE's use, at its first character and its last, answered with HV-ONE's
+\ kind, word, effect, package and place, over the use.
+: HOVER-TURNS ( -- )
+   MARKDOWN-CLIENT
+   HOVER-A-PATH TEXT-HOVER-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
+   s" 3" HOVER-A-PATH 2 18 HOVER-ASK
+   s" 4" HOVER-A-PATH 2 23 HOVER-ASK
+   SAY
+   2 HV-ONE-MD s" 3" s" markdown" 2 18 24 HOVERED
+   2 HV-ONE-MD s" 4" s" markdown" 2 18 24 HOVERED ;
+
+\ The uses of def-dep.f's global and, qualified, of its public word, each
+\ answered with its declaration in the file on disk.
+: HOVER-DEP-TURNS ( -- )
+   DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
+   MARKDOWN-CLIENT
+   DEF-B-PATH TEXT-DEF-B 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
+   s" 3" DEF-B-PATH 1 19 HOVER-ASK
+   s" 4" DEF-B-PATH 1 27 HOVER-ASK
+   SAY
+   TXT-B CLEAR s\" ```habu\n: DEF-DEP ( -- n )\n\\ " HV+ DEF-DEP-CANON WHERE+ s\" :5\n```" HV+
+   s" 3" s" markdown" 1 19 26 HOVERED
+   TXT-B CLEAR s\" ```habu\n: DEF-PUB ( -- n )\n\\ package dd, " HV+ DEF-DEP-CANON WHERE+ s\" :3\n```" HV+
+   s" 4" s" markdown" 1 27 37 HOVERED ;
+
+\ def-od-dep.f open with its lines swapped, unsaved, then def-od.f, which
+\ requires it and whose check reads it from disk: the uses of DEF-DEPA and
+\ DEF-DEPB, each answered with its declaration in the text on disk.
+: HOVER-OPEN-DEP-TURNS ( -- )
+   DEF-OD-DEP-PATH TEXT-DEF-OD-DISK WRITE-ALL
+   MARKDOWN-CLIENT
+   DEF-OD-DEP-PATH TEXT-DEF-OD-EDIT 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-OD-EDIT DEF-OD-DEP-PATH 1 s" verified" LISTED
+   DEF-OD-PATH TEXT-DEF-OD 1 OPENS
+   SAY
+   TEXT-DEF-OD DEF-OD-PATH 1 s" verified" LISTED
+   s" 3" DEF-OD-PATH 1 19 HOVER-ASK
+   s" 4" DEF-OD-PATH 1 28 HOVER-ASK
+   SAY
+   TXT-B CLEAR s\" ```habu\n: DEF-DEPA ( -- n )\n\\ " HV+ DEF-OD-DEP-CANON WHERE+ s\" :1\n```" HV+
+   s" 3" s" markdown" 1 19 27 HOVERED
+   TXT-B CLEAR s\" ```habu\n: DEF-DEPB ( -- n n )\n\\ " HV+ DEF-OD-DEP-CANON WHERE+ s\" :2\n```" HV+
+   s" 4" s" markdown" 1 28 36 HOVERED ;
+
+\ HV-ONE's declaring token, at its first character and its last, answered
+\ with HV-ONE, over the token.
+: HOVER-DEF-TURNS ( -- )
+   MARKDOWN-CLIENT
+   HOVER-A-PATH TEXT-HOVER-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
+   s" 3" HOVER-A-PATH 1 2 HOVER-ASK
+   s" 4" HOVER-A-PATH 1 7 HOVER-ASK
+   SAY
+   2 HV-ONE-MD s" 3" s" markdown" 1 2 8 HOVERED
+   2 HV-ONE-MD s" 4" s" markdown" 1 2 8 HOVERED ;
+
+\ hover-cvt.f, in the tree, never on disk: DEFTYPE CVT-T, public in package
+\ HV-P, whose converters >CVT-T and CVT-T>N the check states at CVT-T's token;
+\ a use of each in upper case and in lower case, and qualified ones outside HV-P.
+: HOVER-CVT-PATH ( -- ptr u8 n )  s" hover-cvt.f" IN-TREE ;
+: TEXT-HOVER-CVT ( -- ptr u8 n )
+   s\" require lib/type/deftype.f\npackage HV-P\npublic\nDEFTYPE CVT-T\n: HV-CVT ( -- n ) 5 >CVT-T CVT-T>N >cvt-t cvt-t>n ;\n;package\n: HV-Q ( -- n ) 5 HV-P:>CVT-T HV-P:CVT-T>N ;\n" ;
+
+\ The lines of CVT-T's converter W, of effect E, as Markdown.
+: CVT-MD ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n e:ptr eu:n :}
+   TXT-B CLEAR s\" ```habu\nDEFTYPE " HV+ w wu HV+
+   s"  ( " HV+ e eu HV+ s\"  )\n\\ package hv-p, hover-cvt.f:4\n```" HV+ ;
+
+\ The use of each converter, in either case and qualified, answered with its
+\ own definition, over the use: the two share one token, so the token alone
+\ tells neither. A qualified use's whole spelling is neither converter's word,
+\ so the server compares its tail, the bytes after its colon.
+: HOVER-DEFTYPE-TURNS ( -- )
+   MARKDOWN-CLIENT
+   HOVER-CVT-PATH TEXT-HOVER-CVT 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-CVT HOVER-CVT-PATH 1 s" verified" LISTED
+   s" 3" HOVER-CVT-PATH 4 20 HOVER-ASK
+   s" 4" HOVER-CVT-PATH 4 27 HOVER-ASK
+   s" 5" HOVER-CVT-PATH 4 35 HOVER-ASK
+   s" 6" HOVER-CVT-PATH 4 42 HOVER-ASK
+   s" 7" HOVER-CVT-PATH 6 18 HOVER-ASK
+   s" 8" HOVER-CVT-PATH 6 30 HOVER-ASK
+   SAY
+   s" >CVT-T" s" n -- cvt-t" CVT-MD s" 3" s" markdown" 4 20 26 HOVERED
+   s" CVT-T>N" s" cvt-t -- n" CVT-MD s" 4" s" markdown" 4 27 34 HOVERED
+   s" >CVT-T" s" n -- cvt-t" CVT-MD s" 5" s" markdown" 4 35 41 HOVERED
+   s" CVT-T>N" s" cvt-t -- n" CVT-MD s" 6" s" markdown" 4 42 49 HOVERED
+   s" >CVT-T" s" n -- cvt-t" CVT-MD s" 7" s" markdown" 6 18 29 HOVERED
+   s" CVT-T>N" s" cvt-t -- n" CVT-MD s" 8" s" markdown" 6 30 42 HOVERED ;
+
+\ A comment, the space before a use and a stack comment: null.
+: HOVER-NONE-TURNS ( -- )
+   MARKDOWN-CLIENT
+   DEF-A-PATH TEXT-DEF-A-MOVED 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-A-MOVED DEF-A-PATH 1 s" verified" LISTED
+   s" 3" DEF-A-PATH 0 3 HOVER-ASK
+   s" 4" DEF-A-PATH 3 18 HOVER-ASK
+   s" 5" DEF-A-PATH 3 12 HOVER-ASK
+   SAY
+   HEAR s" 3" NULL-RESULT
+   HEAR s" 4" NULL-RESULT
+   HEAR s" 5" NULL-RESULT ;
+
+\ A client whose hovers take plain text only: HV-ONE's lines, unfenced.
+: HOVER-PLAIN-TURNS ( -- )
+   PLAIN-CLIENT
+   HOVER-A-PATH TEXT-HOVER-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
+   s" 3" HOVER-A-PATH 2 18 HOVER-ASK
+   SAY
+   TXT-B CLEAR 2 HV-ONE-LINES
+   s" 3" s" plaintext" 2 18 24 HOVERED ;
+
+\ A position in a document the client never opened: -32602.
+: HOVER-NOT-OPEN-TURNS ( -- )
+   MARKDOWN-CLIENT
+   s" 3" HOVER-A-PATH 2 18 HOVER-ASK
+   SAY
+   HEAR CAPABILITIES
+   HEAR s" 3" -32602 REFUSED ;
+
+\ HV-ONE's use asked about at its new place in the turn of the change that
+\ moved it and HV-ONE two lines down: the request checks the changed text
+\ first, so its list comes before the answer, HV-ONE on its new line.
+: HOVER-AFTER-CHANGE-TURNS ( -- )
+   MARKDOWN-CLIENT
+   HOVER-A-PATH TEXT-HOVER-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
+   HOVER-A-PATH TEXT-HOVER-A-MOVED 2 CHANGES
+   s" 3" HOVER-A-PATH 4 18 HOVER-ASK
+   SAY
+   TEXT-HOVER-A-MOVED HOVER-A-PATH 2 s" verified" LISTED
+   4 HV-ONE-MD s" 3" s" markdown" 4 18 24 HOVERED ;
+
+\ ---- completion --------------------------------------------------------------
+
+: CMP-A-PATH ( -- ptr u8 n )  s" cmpl-a.f" FIXTURE ;
+: CMP-DEP-PATH ( -- ptr u8 n )  s" cmpl-dep.f" FIXTURE ;
+
+\ cmpl-dep.f, on disk only: the global CMPL-DEP.
+: TEXT-CMP-DEP ( -- ptr u8 n )  s\" : CMPL-DEP ( n -- n ) 4 + ;\n" ;
+
+\ In package CMPA, CMPL-ONE, then a body using it, cmpl-dep.f's global CMPL-DEP
+\ and the engine's swap; then, global, DEFTYPE CMPL-T, whose converters
+\ >CMPL-T and CMPL-T>N the check states at CMPL-T's token, and a use of each;
+\ then DEFTYPE CMPQ-T, public in package CMPQ, and a qualified use of each of
+\ its converters outside CMPQ.
+: TEXT-CMP-A ( -- ptr u8 n )
+   s\" require cmpl-dep.f\npackage CMPA\n: CMPL-ONE ( -- n ) 1 ;\n: CMPL-TWO ( -- n ) CMPL-ONE CMPL-DEP 1 2 swap 2drop ;\n;package\nrequire lib/type/deftype.f\nDEFTYPE CMPL-T\n: CMPL-CVT ( -- n ) 5 >CMPL-T CMPL-T>N ;\npackage CMPQ\npublic\nDEFTYPE CMPQ-T\n;package\n: CMPQ-USE ( -- n ) 5 CMPQ:>CMPQ-T CMPQ:CMPQ-T>N ;\n" ;
+
+\ TEXT-CMP-A with CMPL-ONE renamed CMPL-NEW, the body's bytes unmoved.
+: TEXT-CMP-A-NEW ( -- ptr u8 n )
+   s\" require cmpl-dep.f\npackage CMPA\n: CMPL-NEW ( -- n ) 5 ;\n: CMPL-TWO ( -- n ) CMPL-NEW CMPL-DEP 1 2 swap 2drop ;\n;package\nrequire lib/type/deftype.f\nDEFTYPE CMPL-T\n: CMPL-CVT ( -- n ) 5 >CMPL-T CMPL-T>N ;\npackage CMPQ\npublic\nDEFTYPE CMPQ-T\n;package\n: CMPQ-USE ( -- n ) 5 CMPQ:>CMPQ-T CMPQ:CMPQ-T>N ;\n" ;
+
+\ textDocument/completion, by its id's JSON text, at character C of line L of
+\ the document opened from this path.
+: COMPLETION-ASK ( ptr u8 n ptr u8 n n n -- )
+   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+   s" textDocument/completion" i iu p pu l c AT-ASK ;
+
+\ The answer to the request with this id's JSON text, begun in MSG, up to its
+\ items' bracket.
+: ITEMS-START ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"result\":{\"isIncomplete\":false,\"items\":[" MSG+ ;
+
+\ The item the answer lists next: its label, then its detail, none when empty,
+\ each as JSON text.
+: ITEM+ ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n d:ptr du:n :}
+   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   s\" {\"label\":\"" MSG+ w wu MSG+ s\" \"" MSG+
+   du 0 > if s\" ,\"detail\":\"" MSG+ d du MSG+ s\" \"" MSG+ then
+   s" }" MSG+ ;
+
+\ The next frame is the answer begun.
+: ITEMS-END ( -- )
+   s" ]}}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
+\ At CMPL in CMPL-TWO's body, the document's CMPL-ONE and the dependency's
+\ CMPL-DEP, each with its declared effect and CMPL-ONE with its package; at
+\ swa the engine's swap, without either; at >CMPL and at CMPL-T>, each
+\ converter with its own effect, which the token they share does not tell;
+\ and at CMPQ:>CMPQ and at CMPQ:CMPQ-T>, each of CMPQ's converters, its
+\ spelling qualified, with its own effect and package. Each request checks the
+\ document with its cursor, as its turn, so the document's list comes before
+\ each answer.
+: CMP-TURNS ( -- )
+   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   INITIALIZE
+   CMP-A-PATH TEXT-CMP-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
+   s" 4" CMP-A-PATH 3 45 COMPLETION-ASK
+   s" 5" CMP-A-PATH 7 27 COMPLETION-ASK
+   s" 6" CMP-A-PATH 7 37 COMPLETION-ASK
+   s" 7" CMP-A-PATH 12 32 COMPLETION-ASK
+   s" 8" CMP-A-PATH 12 47 COMPLETION-ASK
+   SAY
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" ITEMS-START
+   s" CMPL-DEP" s" ( n -- n )" ITEM+
+   s" CMPL-ONE" s" ( -- n ) \\ package cmpa" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 4" ITEMS-START
+   s" swap" s" " ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 5" ITEMS-START
+   s" >CMPL-T" s" ( n -- cmpl-t )" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 6" ITEMS-START
+   s" CMPL-T>N" s" ( cmpl-t -- n )" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 7" ITEMS-START
+   s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 8" ITEMS-START
+   s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
+   ITEMS-END ;
+
+\ A position in a document the client never opened: -32602.
+: CMP-NOT-OPEN-TURNS ( -- )
+   INITIALIZE
+   s" 3" CMP-A-PATH 2 24 COMPLETION-ASK
+   SAY
+   HEAR CAPABILITIES
+   HEAR s" 3" -32602 REFUSED ;
+
+\ CMPL asked about in the turn of the change that renamed CMPL-ONE: the
+\ request checks the changed text, so its list comes before the answer,
+\ which offers CMPL-NEW and no CMPL-ONE.
+: CMP-AFTER-CHANGE-TURNS ( -- )
+   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   INITIALIZE
+   CMP-A-PATH TEXT-CMP-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   CMP-A-PATH TEXT-CMP-A-NEW 2 CHANGES
+   s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
+   SAY
+   TEXT-CMP-A-NEW CMP-A-PATH 2 s" verified" LISTED
+   s" 3" ITEMS-START
+   s" CMPL-DEP" s" ( n -- n )" ITEM+
+   s" CMPL-NEW" s" ( -- n ) \\ package cmpa" ITEM+
+   ITEMS-END ;
+
+\ In CMPQ-USE's body, at CMPQ, the package's name, a bare prefix, and at
+\ CMPQ:, its name and an edge colon, each answer holds every qualified
+\ spelling that the qualified prefixes CMPQ:> and CMPQ:C there offer, with
+\ the same detail: the client's filter of the first answer as the token grows
+\ to either keeps what a later request would offer.
+: CMP-QUALIFIED-TURNS ( -- )
+   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   INITIALIZE
+   CMP-A-PATH TEXT-CMP-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" CMP-A-PATH 12 26 COMPLETION-ASK
+   s" 4" CMP-A-PATH 12 27 COMPLETION-ASK
+   s" 5" CMP-A-PATH 12 28 COMPLETION-ASK
+   s" 6" CMP-A-PATH 12 41 COMPLETION-ASK
+   SAY
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" ITEMS-START
+   s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
+   s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 4" ITEMS-START
+   s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
+   s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 5" ITEMS-START
+   s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
+   ITEMS-END
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 6" ITEMS-START
+   s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
+   ITEMS-END ;
+
+\ ---- cancellation ------------------------------------------------------------
+
+\ A cancel of the request with this id's JSON text.
+: CANCELS ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   PAR-B CLEAR
+   s\" {\"id\":" PAR+ i iu PAR+ s" }" PAR+
+   s" $/cancelRequest" PAR$ TELL ;
+
+\ Two completions and a cancel of the first, written together: the first is
+\ answered -32800 and runs no check, so the document's list is published once,
+\ by the second's check, before its answer.
+: CANCEL-CMP-TURNS ( -- )
+   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   INITIALIZE
+   CMP-A-PATH TEXT-CMP-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
+   s" 4" CMP-A-PATH 3 45 COMPLETION-ASK
+   s" 3" CANCELS
+   SAY
+   HEAR s" 3" -32800 REFUSED
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 4" ITEMS-START
+   s" swap" s" " ITEM+
+   ITEMS-END ;
+
+\ A hover whose id is a string and a cancel naming that string spelt another
+\ way, written together: -32800, the id echoed as it came.
+: CANCEL-HOVER-TURNS ( -- )
+   MARKDOWN-CLIENT
+   HOVER-A-PATH TEXT-HOVER-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
+   s\" \"h\\/3\"" HOVER-A-PATH 4 18 HOVER-ASK
+   s\" \"h/3\"" CANCELS
+   SAY
+   HEAR s\" \"h\\/3\"" -32800 REFUSED ;
+
+\ A completion and then a change of its document, written together: the
+\ completion asked about the text the change replaces, so it is answered
+\ -32801 and runs no check; the change is applied after it and its text is
+\ checked.
+: MODIFIED-TURNS ( -- )
+   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   INITIALIZE
+   CMP-A-PATH TEXT-CMP-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
+   CMP-A-PATH TEXT-CMP-A-NEW 2 CHANGES
+   SAY
+   HEAR s" 3" -32801 REFUSED
+   TEXT-CMP-A-NEW CMP-A-PATH 2 s" verified" LISTED ;
+
+\ Cancels read behind request 4 that name no request held: request 3's id,
+\ answered the turn before, an id never sent, the string "4", and the id of an
+\ invalid message, which is no request. None is answered, request 4 and the
+\ invalid message are answered as they would be, and a cancel of request 5
+\ behind it still counts: the server goes on.
+: STRAY-TURNS ( -- )
+   INITIALIZE
+   s" 3" s" habu/unknown" ASK
+   SAY
+   HEAR CAPABILITIES
+   HEAR s" 3" -32601 REFUSED
+   s" 4" s" habu/unknown" ASK
+   s" 3" CANCELS
+   s" 9" CANCELS
+   s\" \"4\"" CANCELS
+   s\" {\"jsonrpc\":\"1.0\",\"id\":6,\"method\":\"habu/unknown\"}" FRAMED
+   s" 6" CANCELS
+   s" 5" s" habu/unknown" ASK
+   s" 5" CANCELS
+   SAY
+   HEAR s" 4" -32601 REFUSED
+   HEAR s" 6" -32600 REFUSED
+   HEAR s" 5" -32800 REFUSED ;
+
+\ A request, shutdown, a cancel of the request, a request after shutdown and
+\ a cancel of it, and exit, read together: the held request is answered
+\ before shutdown, -32800, its cancel counting though read past shutdown;
+\ shutdown is answered null, the request after it -32600, since a server shut
+\ down takes no cancel, and exit after shutdown exits 0.
+: TEST-CANCEL-SHUTDOWN ( -- )
+   s" cancel-shutdown" CONVERSATION
+   INITIALIZE
+   s" 3" s" habu/unknown" ASK
+   SHUTDOWN
+   s" 3" CANCELS
+   s" 4" s" habu/unknown" ASK
+   s" 4" CANCELS
+   EXIT-NOTE
+   0 CONVERSE
+   CAPABILITIES
+   s" 3" -32800 REFUSED
+   s" 2" NULL-RESULT
+   s" 4" -32600 REFUSED
+   ENDS ;
+
+: TEST-CANCELS ( -- )
+   TEST-CANCEL-SHUTDOWN
+   s" cancel-completion" [: CANCEL-CMP-TURNS ;] TALK
+   s" cancel-hover" [: CANCEL-HOVER-TURNS ;] TALK
+   s" content-modified" [: MODIFIED-TURNS ;] TALK
+   s" cancel-stray" [: STRAY-TURNS ;] TALK ;
+
+: TEST-COMPLETIONS ( -- )
+   s" completion" [: CMP-TURNS ;] TALK
+   s" completion-not-open" [: CMP-NOT-OPEN-TURNS ;] TALK
+   s" completion-after-change" [: CMP-AFTER-CHANGE-TURNS ;] TALK
+   s" completion-qualified" [: CMP-QUALIFIED-TURNS ;] TALK ;
+
+: TEST-HOVERS ( -- )
+   s" hover" [: HOVER-TURNS ;] TALK
+   s" hover-dependency" [: HOVER-DEP-TURNS ;] TALK
+   s" hover-dependency-open" [: HOVER-OPEN-DEP-TURNS ;] TALK
+   s" hover-definition" [: HOVER-DEF-TURNS ;] TALK
+   s" hover-deftype" [: HOVER-DEFTYPE-TURNS ;] TALK
+   s" hover-none" [: HOVER-NONE-TURNS ;] TALK
+   s" hover-plaintext" [: HOVER-PLAIN-TURNS ;] TALK
+   s" hover-not-open" [: HOVER-NOT-OPEN-TURNS ;] TALK
+   s" hover-after-change" [: HOVER-AFTER-CHANGE-TURNS ;] TALK ;
+
+: TEST-DEFINITIONS ( -- )
+   s" definition" [: DEF-TURNS ;] TALK
+   s" definition-dependency" [: DEF-DEP-TURNS ;] TALK
+   s" definition-dependency-open" [: DEF-OPEN-DEP-TURNS ;] TALK
+   s" definition-not-open" [: DEF-NOT-OPEN-TURNS ;] TALK
+   s" definition-before-check" [: DEF-BEFORE-CHECK-TURNS ;] TALK
+   s" definition-after-change" [: DEF-AFTER-CHANGE-TURNS ;] TALK
+   s" definition-incomplete" [: DEF-INCOMPLETE-TURNS ;] TALK ;
+
+: TEST-SYMBOLS ( -- )
+   s" workspace-symbol" [: SYMBOL-TURNS ;] TALK
+   s" workspace-symbol-empty" [: EMPTY-TURNS ;] TALK
+   s" workspace-symbol-retained" [: RETAINED-TURNS ;] TALK
+   s" workspace-symbol-redeclared" [: REDECLARED-TURNS ;] TALK
+   s" workspace-symbol-reinclude" [: REINCLUDE-TURNS ;] TALK
+   s" workspace-symbol-open-dependency" [: OPEN-DEP-TURNS ;] TALK
+   LENGTH-TEXT
+   5 1 ?do
+      i LENGTH-N !
+      LENGTH-DIR MAKE-DIR
+      SB-RESET s" path-length-" SB-APPEND i FMT:SB-INT
+      SB$ [: LENGTH-TURNS ;] TALK
+   loop ;
+
+: TEST-OUTLINES ( -- )
+   s" document-symbol" [: OUTLINE-TURNS ;] TALK
+   s" document-symbol-after-change" [: OUTLINE-AFTER-CHANGE-TURNS ;] TALK
+   s" document-symbol-incomplete" [: OUTLINE-INCOMPLETE-TURNS ;] TALK ;
+
+\ A FUNCTION: whose group is empty stores a signature that does not parse: the
+\ packet is at its name F, line 1, characters 10-11.
+: EMPTY-FFI ( -- ptr u8 n )  s\" require lib/ffi-abi.f\nFUNCTION: F getpid ( )\n" ;
+
+: STORED-SIGNATURE-TURNS ( -- )
+   INITIALIZE
+   A-PATH EMPTY-FFI 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   EMPTY-FFI A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT 1 10 1 11 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES ;
+
+\ A TRUSTED: definition named as the colon definition `undefine` removed before
+\ it stores a signature that does not parse: the packet is at its name X, line
+\ 2, characters 9-10.
+: REPLACED-TRUSTED ( -- ptr u8 n )  s\" : X ( -- ) ;\nundefine X\nTRUSTED: X ( -- zz ) ;\n" ;
+
+: REPLACED-SIGNATURE-TURNS ( -- )
+   INITIALIZE
+   A-PATH REPLACED-TRUSTED 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   REPLACED-TRUSTED A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT 2 9 2 10 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES ;
+
+\ A defer whose name has two qualifiers asks a record for a malformed name: the
+\ packet is at its name DIAG:MAL:NAME, line 0, characters 6-19.
+: MALFORMED-DEFER ( -- ptr u8 n )  s\" defer DIAG:MAL:NAME ( -- )\n" ;
+
+: MALFORMED-RECORD-TURNS ( -- )
+   INITIALIZE
+   A-PATH MALFORMED-DEFER 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   MALFORMED-DEFER A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT
+   0 6 0 19 1 s" E-BAD-QUALIFIED-RECORD" DIAG+
+   0 6 0 19 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
+
+\ A colon definition CHECK rejects for its undefined NOPE still asks a record
+\ for its malformed name: that packet follows the body's, at the name P:Q:R,
+\ line 0, characters 2-7.
+: MALFORMED-REJECTED ( -- ptr u8 n )  s\" : P:Q:R ( -- ) NOPE ;\n" ;
+
+: MALFORMED-REJECTED-TURNS ( -- )
+   INITIALIZE
+   A-PATH MALFORMED-REJECTED 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   MALFORMED-REJECTED A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT
+   0 15 0 19 1 s" E-UNDEFINED" DIAG+
+   0 2 0 7 1 s" E-BAD-QUALIFIED-RECORD" DIAG+
+   0 20 0 21 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
+
 : TEST-DIAGNOSTICS ( -- )
    s" diagnostics-open" [: OPEN-TURNS ;] TALK
    s" diagnostics-require" [: REQUIRE-TURNS ;] TALK
    s" diagnostics-supersede" [: SUPERSEDE-TURNS ;] TALK
+   s" diagnostics-one-refusal" [: ONE-REFUSAL-TURNS ;] TALK
    s" save-dirties-all" [: SAVE-TURNS ;] TALK
    s" close" [: CLOSE-TURNS ;] TALK
    s" engine-provided" [: ENGINE-TURNS ;] TALK
@@ -1716,7 +3238,9 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    s" dependency-shared" [: DEP-SHARED-TURNS ;] TALK
    s" two-in-turn" [: TWO-TURNS ;] TALK
    s" unended" [: UNENDED-TURNS ;] TALK
+   s" missing-name" [: MISSING-NAME-TURNS ;] TALK
    s" incomplete" [: INCOMPLETE-TURNS ;] TALK
+   s" incomplete-packets" [: INCOMPLETE-PACKET-TURNS ;] TALK
    s" held" [: HELD-TURNS ;] TALK
    s" shadowed-arity" [: SHADOWED-TURNS ;] TALK
    s" not-recorded" [: NOT-RECORDED-TURNS ;] TALK
@@ -1725,7 +3249,13 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    s" using-clause" [: CLAUSE-USED-TURNS ;] TALK
    s" duplicate" [: DUPLICATE-TURNS ;] TALK
    s" duplicate-of-required" [: DUP-REQUIRED-TURNS ;] TALK
-   s" top-level" [: TOP-LEVEL-TURNS ;] TALK ;
+   s" top-level" [: TOP-LEVEL-TURNS ;] TALK
+   s" stored-signature" [: STORED-SIGNATURE-TURNS ;] TALK
+   s" replaced-signature" [: REPLACED-SIGNATURE-TURNS ;] TALK
+   s" malformed-record" [: MALFORMED-RECORD-TURNS ;] TALK
+   s" malformed-rejected" [: MALFORMED-REJECTED-TURNS ;] TALK
+   s" deferred-definition" [: DEFINITION-TURNS ;] TALK
+   s" deferred-unended" [: DEFERRED-UNENDED-TURNS ;] TALK ;
 
 public
 
@@ -1761,6 +3291,12 @@ public
    TEST-TRUNCATED-FRAMES
    TEST-STDOUT-CLOSED
    TEST-DIAGNOSTICS
+   TEST-SYMBOLS
+   TEST-OUTLINES
+   TEST-DEFINITIONS
+   TEST-HOVERS
+   TEST-COMPLETIONS
+   TEST-CANCELS
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
 

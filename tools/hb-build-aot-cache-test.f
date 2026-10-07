@@ -6,6 +6,7 @@
 \ Run: bin/hb --load tools/hb-build-aot-cache-test.f
 
 require tools/hb-build-test-lib.f
+require src/arch/arm64/icode.f
 require test/preloaded-engine.f
 
 package HB-BUILD-CLI

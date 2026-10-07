@@ -204,19 +204,29 @@ REGION DICT-SIZE - constant BYTES
 3 constant FIRST-DYNAMIC-WID
 \ --- the wordlist cell's two non-wordlist values ---------------------------
 \ A record's wordlist cell is HALF THE HASH INDEX'S KEY (habu1.f C-HIDX-INS
-\ keys a slot on the folded name XOR this cell), and it is written once, at
-\ publication, BEFORE the record is inserted - which is what lets a probe with a
-\ caller's wid find the row or prove it absent.
+\ keys a slot on the folded name XOR this cell), so a record is on the chain
+\ of the wid its cell holds - which is what lets a probe with a caller's wid
+\ find the row or prove it absent. Publication writes the cell BEFORE the
+\ record is inserted, and a rebuild (HIDX-EMIT:LREBUILD) keys every record on
+\ its cell as it stands.
 \
 \ NAMESPACE keeps that rule: a package's own row carries it from birth, so the
 \ row is on this key's chain and LFIND's qualifier probe finds it there.
 \ RETIRED breaks it. src/habu/xref.f XREF-RETIRE stamps it on the cell of a
 \ record that is ALREADY in the table, so the row stays on the chain of the wid
-\ it was published under. Every lookup keyed on a REAL wid still agrees with a
-\ scan (the row's cell no longer matches, so both skip it), but a lookup keyed
-\ on RETIRED itself cannot be answered by the table at all - and retiring one
-\ name twice puts two rows under the key, which an insert-once table has no slot
-\ shape for. habu1.f BSWL therefore keeps its linear scan for exactly this wid.
+\ it was published under until a rebuild moves it to RETIRED's. Every lookup
+\ keyed on a REAL wid still agrees with a scan (the row's cell no longer
+\ matches, so both skip it), but a lookup keyed on RETIRED itself cannot be
+\ answered by the table at all - and retiring one name twice puts two rows
+\ under the key, which an insert-once table has no slot shape for. habu1.f
+\ BSWL therefore keeps its linear scan for exactly this wid.
+\
+\ The checker overlay's record-wid! (habu2.f DEFWRITE:RECORD-WID) retires a
+\ record and later writes back the wid the overlay logged. A rebuild in
+\ between (a publication crossing HIDX:LOAD-MAX, an ndict! raise) re-keys the
+\ retired row on RETIRED's chain, so the chain of the wid it gets back no
+\ longer holds it: record-wid! therefore indexes the record under each wid it
+\ writes (HIDX-EMIT:LREKEY), which keeps the rule above.
 \
 \ Both live in a package rather than beside the constants above because they are
 \ new: the surrounding global surface is this file's packaging debt (dot
@@ -264,13 +274,14 @@ $FFFFFFFE constant MAX
 \ definer's own.
 \
 \ Claimed band: bits 50-51 of the record flags cell [16], below DNAME-MIN-IN
-\ (52-59) and above the narrowed name-length field (bits 0-49); native length
-\ reads clear the top 14 bits (LSLI 14 / LSRI 14), and the AOT seed carries the
-\ pair as a byte of its compact record (src/habu/aot-capture.f) so a stamp
-\ survives the round trip exactly as the min-in byte does.
+\ (52-59) and above DNAME-OWNED (49) and the name-length field (bits 0-48);
+\ native length reads clear the DNAME-FLAG-BITS above the length, and the AOT
+\ seed carries the pair as a byte of its compact record
+\ (src/habu/aot-capture.f) so a stamp survives the round trip exactly as the
+\ min-in byte does.
 \
 \ The recovery CAST: definer stamps the same kind, so bootstrap/cg's name
-\ readers clear the same fourteen bits. Capture carries the kind unchanged.
+\ readers clear the same bits. Capture carries the kind unchanged.
 package DKIND
 public
 $0004000000000000 constant VAL       \ kind 1: the body pushes a decided number
@@ -278,7 +289,11 @@ $0008000000000000 constant ADDR      \ kind 2: the body pushes its DATA address
 VAL ADDR or constant CAST           \ kind 3: a declared identity retype
 VAL ADDR or constant MASK
 ;package
-$0003FFFFFFFFFFFF constant DNAME-LEN-MASK
+\ The flag bits above the name length in [16], bits 49-63. Every native length
+\ read clears them by this count (LSLI then LSRI), so the next flag carved from
+\ the length is one edit here and none at the readers.
+15 constant DNAME-FLAG-BITS
+-1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
 \ certification time (checker RECMI latch -> publish tails / seal-time
 \ internal-mark pass; dot habu-habu-certified-words-84e84eaf). LFIND folds the
@@ -288,9 +303,9 @@ $0003FFFFFFFFFFFF constant DNAME-LEN-MASK
 \ words without signatures: the documented boundary). Compiled calls inside
 \ checked words are checker-proven and carry no guard. Claimed band: bits
 \ 52-59 of the record flags cell [16], below IMM/EXT/WIDE/INT (bits 60-63)
-\ and above the definer-kind pair (bits 50-51) and the narrowed name-length
-\ field (bits 0-49); native length reads clear the top 14 bits
-\ (LSLI 14 / LSRI 14).
+\ and above the definer-kind pair (bits 50-51), DNAME-OWNED (49) and the
+\ name-length field (bits 0-48); native length reads clear the
+\ DNAME-FLAG-BITS above the length.
 $0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
@@ -315,6 +330,17 @@ $4000000000000000 constant DNAME-WIDE
 \ unchecked user code, TRUSTED: bodies, hide.f refresh shims) are unaffected:
 \ those are declared trusted boundaries.
 $8000000000000000 constant DNAME-INT
+\ DNAME-OWNED (bit 49): an internal primitive its owner's rows type. A package
+\ row (src/habu/prims.f EPPRIM: ... ECLOSE-PRIVATE) states its effect, so
+\ ENGINE-PRIMS:DNAME stamps the bit beside DNAME-INT. It opens nothing
+\ DNAME-INT closes: the prompt, `'`, search-wl and `[']` refuse the record as
+\ before. Only the compile guards read it (habu2.f C-COMPILE-CALL-GUARD at tier
+\ 0; at tier 1 src/compiler/native/dict.f NDICT:INT-CALL?, which CALL-BINDING
+\ and src/compiler/native/hir-word.f RESOLVE-SITE ask), and with it a compiled
+\ call is the checker's decision through the rows: the owner's checked callers
+\ compile, and the global trusted-only row refuses a checked caller elsewhere.
+\ DNAME-INT without it keeps the compile refusal outside a TRUSTED: body.
+$0002000000000000 constant DNAME-OWNED
 \ DICT-CAP: dictionary record slots.
 \ 65536 exceeds the move-wide imm16 field, so the DICT-CAP comparison sites in
 \ src/habu/habu2.f and bootstrap/cg/forth.fs load it with LIT64 - the same
@@ -1199,7 +1225,6 @@ CHECKER-OWNER-ABI:PACKAGE-OFF constant DECL-PACKAGE-OFF
 CHECKER-OWNER-ABI:PUBLIC-OFF constant DECL-PUBLIC-OFF
 CHECKER-OWNER-ABI:PRIVATE-OFF constant DECL-PRIVATE-OFF
 CHECKER-OWNER-ABI:END-PACKAGE-OFF constant DECL-END-PACKAGE-OFF
-CHECKER-OWNER-ABI:TRANSFER-OFF constant DECL-TRANSFER-OFF
 CHECKER-OWNER-ABI:SOURCE-ROW-OFF constant DECL-SOURCE-ROW-OFF
 CHECKER-OWNER-ABI:SOURCE-CON-OFF constant DECL-SOURCE-CON-OFF
 CHECKER-OWNER-ABI:EXPORT-OFF constant DECL-EXPORT-OFF
@@ -1237,9 +1262,10 @@ CHECKER-OWNER-ABI:DOES-IN-N-OFF constant DECL-DOES-IN-N-OFF
 CHECKER-OWNER-ABI:DOES-OUT-N-OFF constant DECL-DOES-OUT-N-OFF
 CHECKER-OWNER-ABI:DOES-IN-SLOT-OFF constant DECL-DOES-IN-SLOT-OFF
 CHECKER-OWNER-ABI:DOES-OUT-SLOT-OFF constant DECL-DOES-OUT-SLOT-OFF
-CHECKER-OWNER-ABI:USIG-TRUNCATE-OFF constant DECL-USIG-TRUNCATE-OFF
 \ --- the finalized per-call-site facts the scan recorded
 CHECKER-OWNER-ABI:CALL-CELLS-OFF constant DECL-CALL-CELLS-OFF
+CHECKER-OWNER-ABI:CALL-BINDING-OFF constant DECL-CALL-BINDING-OFF
+CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF constant DECL-UNJUDGED-BINDING-OFF
 CHECKER-OWNER-ABI:CALL-GLUE-OFF constant DECL-CALL-GLUE-OFF
 CHECKER-OWNER-ABI:CALL-MATCH-OFF constant DECL-CALL-MATCH-OFF
 CHECKER-OWNER-ABI:CALL-QUOT-IN-OFF constant DECL-CALL-QUOT-IN-OFF
@@ -1252,6 +1278,7 @@ CHECKER-OWNER-ABI:CALL-QUOT-RGIN-OFF constant DECL-CALL-QUOT-RGIN-OFF
 CHECKER-OWNER-ABI:CALL-QUOT-RGOUT-OFF constant DECL-CALL-QUOT-RGOUT-OFF
 CHECKER-OWNER-ABI:INIT-LAYOUT-OFF constant DECL-INIT-LAYOUT-OFF
 CHECKER-OWNER-ABI:FIELD-SPAN-OFF constant DECL-FIELD-SPAN-OFF
+CHECKER-OWNER-ABI:C2-STOW-OFF constant DECL-C2-STOW-OFF
 \ --- the front end the checker IS: the scan, the tape it fills, the does> split,
 \ the declared-effect row and the retract of one
 CHECKER-OWNER-ABI:TRUST-DECL-OFF constant DECL-TRUST-DECL-OFF
@@ -1266,12 +1293,15 @@ CHECKER-OWNER-ABI:EFFECT-DIN-CELLS-OFF constant DECL-EFFECT-DIN-CELLS-OFF
 CHECKER-OWNER-ABI:EFFECT-DOUT-CELLS-OFF constant DECL-EFFECT-DOUT-CELLS-OFF
 CHECKER-OWNER-ABI:EFFECT-DIN-SLOT-OFF constant DECL-EFFECT-DIN-SLOT-OFF
 CHECKER-OWNER-ABI:EFFECT-DOUT-SLOT-OFF constant DECL-EFFECT-DOUT-SLOT-OFF
+CHECKER-OWNER-ABI:EFFECT-DIN-CON-OFF constant DECL-EFFECT-DIN-CON-OFF
 CHECKER-OWNER-ABI:EFFECT-RIN-N-OFF constant DECL-EFFECT-RIN-N-OFF
 CHECKER-OWNER-ABI:EFFECT-ROUT-N-OFF constant DECL-EFFECT-ROUT-N-OFF
 CHECKER-OWNER-ABI:EFFECT-RIN-CELLS-OFF constant DECL-EFFECT-RIN-CELLS-OFF
 CHECKER-OWNER-ABI:EFFECT-ROUT-CELLS-OFF constant DECL-EFFECT-ROUT-CELLS-OFF
 CHECKER-OWNER-ABI:EFFECT-RIN-SLOT-OFF constant DECL-EFFECT-RIN-SLOT-OFF
 CHECKER-OWNER-ABI:EFFECT-ROUT-SLOT-OFF constant DECL-EFFECT-ROUT-SLOT-OFF
+CHECKER-OWNER-ABI:EFFECT-DOUT-CON-OFF constant DECL-EFFECT-DOUT-CON-OFF
+CHECKER-OWNER-ABI:EFFECT-STACK-STABLE-OFF constant DECL-EFFECT-STACK-STABLE-OFF
 CHECKER-OWNER-ABI:EFFECT-DIN-QUOT-OFF constant DECL-EFFECT-DIN-QUOT-OFF
 CHECKER-OWNER-ABI:EFFECT-DOUT-QUOT-OFF constant DECL-EFFECT-DOUT-QUOT-OFF
 CHECKER-OWNER-ABI:EFFECT-QUOT-UP-OFF constant DECL-EFFECT-QUOT-UP-OFF
@@ -1295,6 +1325,14 @@ CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant DECL-REC-WIDE-PUBLISH-OFF
 CHECKER-OWNER-ABI:CHECK-UNJUDGED-OFF constant DECL-CHECK-UNJUDGED-OFF
 \ The diagnostic that scan suppressed, rendered by the instance that scanned.
 CHECKER-OWNER-ABI:CHECK-REPORT-OFF constant DECL-CHECK-REPORT-OFF
+\ A hook-less definition's declaration, recorded as its row without authority.
+CHECKER-OWNER-ABI:DECLARED-ROW-OFF constant DECL-DECLARED-ROW-OFF
+\ A refused definition's cut back to the store end it began at, and that end.
+CHECKER-OWNER-ABI:RETRACT-ROWS-OFF constant DECL-RETRACT-ROWS-OFF
+CHECKER-OWNER-ABI:ROWS-END-OFF constant DECL-ROWS-END-OFF
+\ The compile window: opened with the code a callback's checker write is refused
+\ with once the definition's rows are recorded, shut with 0 before its own.
+CHECKER-OWNER-ABI:WRITE-WINDOW-OFF constant DECL-WRITE-WINDOW-OFF
 \ Family/variant ids and all metadata about them share the live source owner.
 CHECKER-OWNER-ABI:FAMILY-MATCH-OFF constant DECL-FAMILY-MATCH-OFF
 CHECKER-OWNER-ABI:FAMILY-CON-OFF constant DECL-FAMILY-CON-OFF
@@ -1308,7 +1346,8 @@ CHECKER-OWNER-ABI:VARIANT-PADS-OFF constant DECL-VARIANT-PADS-OFF
 CHECKER-OWNER-ABI:VARIANT-PAY-CELLS-OFF constant DECL-VARIANT-PAY-CELLS-OFF
 CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF constant DECL-VARIANT-PAY-TERMS-OFF
 \ --- the verifier pre-pass: the symbol, definer and top-level questions it asks
-\ the live checker, the stretch it reports, and the frame around one run
+\ the live checker, the stretch it reports, the clause a TRUSTED: definer
+\ publishes, and the frame around one run
 CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF constant DECL-VERIFY-RECORD-SYM-OFF
 CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF constant DECL-VERIFY-FIND-SYM-OFF
 CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF constant DECL-VERIFY-CREATES-SYM-OFF
@@ -1320,6 +1359,16 @@ CHECKER-OWNER-ABI:VERIFY-DONE-OFF constant DECL-VERIFY-DONE-OFF
 CHECKER-OWNER-ABI:VERIFY-TOP-OFF constant DECL-VERIFY-TOP-OFF
 CHECKER-OWNER-ABI:VERIFY-DEFERRED-OFF constant DECL-VERIFY-DEFERRED-OFF
 CHECKER-OWNER-ABI:VERIFY-REACH-OFF constant DECL-VERIFY-REACH-OFF
+CHECKER-OWNER-ABI:VERIFY-SYM-IDENTITY-OFF constant DECL-VERIFY-SYM-IDENTITY-OFF
+CHECKER-OWNER-ABI:VERIFY-DEFERRED-BODY-OFF constant DECL-VERIFY-DEFERRED-BODY-OFF
+CHECKER-OWNER-ABI:VERIFY-DECL-OFF constant DECL-VERIFY-DECL-OFF
+CHECKER-OWNER-ABI:VERIFY-DECL-ARM-OFF constant DECL-VERIFY-DECL-ARM-OFF
+CHECKER-OWNER-ABI:VERIFY-DECL-DISARM-OFF constant DECL-VERIFY-DECL-DISARM-OFF
+CHECKER-OWNER-ABI:VERIFY-USES-OFF constant DECL-VERIFY-USES-OFF
+\ Completion: the names a top-level cursor sees.
+CHECKER-OWNER-ABI:VERIFY-EACH-VISIBLE-OFF constant DECL-VERIFY-EACH-VISIBLE-OFF
+CHECKER-OWNER-ABI:WITH-TICK-ORDER-OFF constant DECL-WITH-TICK-ORDER-OFF
+CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OFF
 CHECKER-OWNER-ABI:MULTI-ERROR-OFF constant DECL-MULTI-ERROR-OFF
 CHECKER-OWNER-ABI:RESET-REPORT-OFF constant DECL-RESET-REPORT-OFF
 CHECKER-OWNER-ABI:JSON-REPORTED-OFF constant DECL-JSON-REPORTED-OFF
@@ -1371,7 +1420,7 @@ $7D8 constant QFRAME-CELL
 $250 constant DEF-TKA-CELL
 $258 constant DEF-TKL-CELL
 \ CMM-CELL: compile-loop ADT-lowering mode (TFAM 10, docs/type-families.md §16),
-\ mirroring the checker's MM token machine: 0 = off; slices 2-3 arm it at a
+\ mirroring the checker's match-mode token machine: 0 = off; slices 2-3 arm it at a
 \ `construct`/`MATCH` keyword so the operand tokens are captured BEFORE the
 \ local/keyword/literal/call/undefined dispatch and never hit dictionary lookup.
 \ Tested fail-closed at the LCOMPILE head (EM-COMPILE-ADT-MODE): armed with no
@@ -1551,8 +1600,24 @@ $2CE0 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-
 \ lib tools test bootstrap docs - below $7FF8 for the 12-bit scaled
 \ `DATA <off> LDR` form, and below DATA-START.
 $2CE8 constant DATA-FLOOR-CELL
-\ The three callback CODE cells follow at $2CF0..$2D00. Their separate module
-\ (native-observer-cells.f) also loads on an older baked host during a build.
+\ The callback CODE cells at $2CF8, $2D00 and $2D10 are declared in
+\ native-observer-cells.f, which also loads on an older baked host during a build.
+\ This cell holds this process's dictionary occurrence allocation, not an image
+\ address. The allocation begins with last-issued and then DICT-CAP u64 slots.
+\ Its pointer is cleared from snapshot scratch and restored from the receiving
+\ process across a snapshot DATA copy.
+\ $2CE8 is the literal store's DATA floor; the host owner claims $2D10
+\ separately from the publication and code invalidation callbacks. Host dispatch
+\ and the current producer fact query occupy $2D20..$2D30.
+package DEF-OCC
+public
+$2D08 constant PTR-CELL
+DICT-CAP 1+ cells constant STATE-BYTES
+-7231 constant E-STALE
+-7232 constant E-SELECT
+-7233 constant E-NONCALLABLE
+-7234 constant E-EXHAUSTED
+;package
 \ The design seal (lib/policy.f, docs/policy.md): a cell and bitmap that confine a
 \ sealed source to the vocabulary its harness admitted. POLICY-NDICT-CELL is 0
 \ while nothing is sealed, else the NDICT the seal stored; a record at or above
@@ -1582,12 +1647,12 @@ $48A0 constant POLICY-BITS-OFF
 \ image keeps a live stack address.
 package NCOMP-DISPATCH
 public
-$2D10 constant JIT-RET-CELL
-$2D18 constant FIXED-SHADOW-CELL
-$2D20 constant DOES-SHADOW-CELL
+$2D50 constant JIT-RET-CELL
+$2D40 constant FIXED-SHADOW-CELL
+$2D48 constant DOES-SHADOW-CELL
 2 constant FIXED-ADDR-KIND
 ;package
-$2D08 constant TASK-CHAIN-CELL
+$2D38 constant TASK-CHAIN-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.
@@ -2192,9 +2257,82 @@ TABLE-OFF SPANS SPAN-BYTES * + constant END
 \ disarms it on return or throw; snapshots are taken only with no unit active.
 TIER-PROV:END constant UNIT-COMPILE-CELL
 
-\ Pending storage is private to the pre-trust capture (habu2.f C-PD-CAPTURE,
-\ definers.f PD-HOLD) and DRAIN-PRETRUST. Its capacity may grow without moving
-\ any published engine slot or live map.
-UNIT-COMPILE-CELL CELL + constant PD-TABLE-OFF
+\ The checker overlay's replay scope (habu2.f DEFWRITE:REPLAY-OPEN /
+\ REPLAY-CLOSE). replay-open saves the dictionary and scope cells here and sets
+\ LATCH; replay-record raises HW, the highest NDICT a replay record reached;
+\ replay-close checks the live state against these cells, restores them and
+\ zeroes the whole band, LATCH included; replay-widn! lowers WIDN no further
+\ than the saved one. The band is zero whenever no overlay is open, so a
+\ snapshot carries nothing new. It is a guarded band (data-bands.f), not
+\ scratch: replay-close and replay-widn! trust it as the state replay-open
+\ found, so a raw store that forged the saved NDICT, HW or WIDN would turn
+\ replay-close into a record eraser and either into a WIDN setter.
+\ USE-RPKG-SAVE is REPL-line state, not scope, and is not saved. Above $7FF8,
+\ so emitted code reaches it by LIT64 and ADD.
+package REPLAY-SCOPE
+public
+UNIT-COMPILE-CELL CELL + constant LATCH             \ 0: no overlay open
+LATCH CELL + constant HW
+HW CELL + constant NDICT
+NDICT CELL + constant CP
+CP CELL + constant WIDN
+WIDN CELL + constant CUR
+CUR CELL + constant PKG-PUB
+PKG-PUB CELL + constant PKG-PRI
+PKG-PRI CELL + constant PKG-PARENT
+PKG-PARENT CELL + constant PKG-REC
+PKG-REC CELL + constant USE-DEPTH
+USE-DEPTH CELL + constant USE-PKG-SAVE
+USE-PKG-SAVE CELL + constant USE-WIDS               \ USE-MAX cells
+USE-WIDS USE-MAX cells + constant END
+;package
+
+\ Pending storage is private to the engine's capture/drain primitives. Its
+\ capacity may grow without moving any published engine slot or live map.
+REPLAY-SCOPE:END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
-PD-TABLE-END constant DATA-START
+
+\ --- The declared-row log of a cold boot (dot habu-visibility-discharge-548) --
+\ A definition compiled with the hook cell empty has its declaration as its row
+\ (src/core/checker.f CHECKER-DECLARED-ROW!), recorded by the source owner. A
+\ cold boot has no owner until src/core/checker.f claims the source at its end
+\ (CLAIM-COLD-SOURCE), so the engine's empty-hook publish arm (habu2.f
+\ EM-COMPILE-PUBLISH-HOOKED, seed forth.fs EMIT-COMPILE-PUBLISH-HOOKED) appends
+\ each signed `:` definition it publishes before then to this log, and the claim
+\ records every logged declaration's row (checker.f CK-DECLARED-LOG-DRAIN), then
+\ zeroes the slots and ADDR-CELL. The log is populated and drained inside the
+\ prefix load, so it is empty whenever user source runs and at every capture.
+\ A slot is four cells, all written from DATA cells the arm already holds: the
+\ pending record (PEND-CELL), the open package's namespace record (PKG-REC-CELL,
+\ 0 outside a package), the signature's address and its length. The checker
+\ keys each row by the record's wordlist and that namespace record, and reads
+\ both records through `ptr-field`, so no record number crosses.
+\ CAP: the prefix through src/core/checker.f publishes about 2330 signed `:`
+\ definitions; a full log dies at the definition, exit 72, the pre-trust
+\ boot-integrity class PD-TABLE's overflow uses, rather than lose a row.
+\ Protection class: UNGUARDED engine scratch, as PD-TABLE; it grants nothing,
+\ since the claim records rows without authority from it.
+\
+\ ADDR-CELL holds the log's ADDRESS while it holds entries, and 0 otherwise. The
+\ seed lays its bands out at other offsets (forth.fs SNAPSTK-END), so the checker
+\ finds the log through this one fixed cell (checker.f CK-DECLARED-LOG-CELL,
+\ test/aot-sig-pool-suite.f asserts the agreement) and mirrors no band offset; an
+\ engine that predates the log reads 0, an empty log. WHERE IT HAD TO GO: a
+\ fixed DATA cell both engines leave free, below $7FF8 and below DATA-START for
+\ the reasons AOT-CELLS states. It is the last cell of the unclaimed run
+\ $4208..$43A0 below APP-ENTRY:XT-CELL, swept for a claimant across src lib
+\ tools test maki bootstrap before taking it; the seed claims nothing there.
+package DECLARED-LOG
+public
+$4398 constant ADDR-CELL
+4096 constant CAP
+0  constant REC-OFF                                \ in-slot: the pending record
+8  constant PKG-OFF                                \ in-slot: the namespace record or 0
+16 constant SIG-A-OFF                              \ in-slot: the signature's address
+24 constant SIG-U-OFF                              \ in-slot: the signature's length
+32 constant SLOT                                   \ per-slot stride
+8  constant SLOTS-REL                              \ slots begin after the u64 count cell
+PD-TABLE-END constant OFF
+OFF SLOTS-REL + CAP SLOT * + constant END
+;package
+DECLARED-LOG:END constant DATA-START

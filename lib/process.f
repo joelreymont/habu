@@ -634,6 +634,49 @@ PROC-STOP-DEFAULT
       PROC-ERR-R err errcap PROC-ERR-LEN PROC-READ-OR-PROBE-STREAM
    then ;
 
+\ ---- a capture whose stdout grows ---------------------------------------------
+\
+\ The fixed-span capture above refuses a child that writes past its span. This
+\ one keeps the child's stdout in storage the caller owns and grows: SINK, given
+\ a byte count, makes the storage hold at least that many bytes, keeping the
+\ bytes it holds, and answers its first byte, as a DYNAMIC-BUFFER u8's reserve
+\ and then its byte 0 do. Each read asks SINK for room for one more chunk after
+\ what the child wrote, so stdout holds whatever the child writes; stderr keeps
+\ its fixed span. A growth SINK refuses refuses the capture as a failed read
+\ does: the child is ended, the descriptors closed, then its code goes on.
+$10000 constant PROC-GROW-CHUNK          \ bytes asked of one stdout read
+
+\ SINK's room for one more chunk after what the child wrote: its first byte, in
+\ the place of the null one PROC-READ-GROWING hands in, since catch keeps the
+\ shape of the stack.
+: PROC-SINK-ROOM ( ptr u8 [ n -- ptr u8 ] -- ptr u8 [ n -- ptr u8 ] )
+   {: old:ptr sink :}
+   PROC-OUT-LEN @ PROC-GROW-CHUNK + sink execute sink ;
+
+: PROC-READ-INTO-ROOM ( ptr u8 -- )
+   {: buf:ptr :}
+   PROC-OUT-R @ buf PROC-OUT-LEN @ + PROC-GROW-CHUNK read PROC-RD !
+   PROC-RD @ 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
+   PROC-RD @ PROC-GROW-CHUNK > if E-PROC-OUTPUT PROC-THROW-CAPTURE then
+   PROC-RD @ 0= if
+      PROC-OUT-R PROC-CLOSE-CELL
+   else
+      PROC-OUT-LEN @ PROC-RD @ + PROC-OUT-LEN !
+   then ;
+
+: PROC-READ-GROWING ( [ n -- ptr u8 ] -- )
+   {: sink :}
+   NULL$ drop sink [: PROC-SINK-ROOM ;] catch {: buf:ptr s code:n :}
+   code 0= if buf PROC-READ-INTO-ROOM exit then
+   code PROC-THROW-CAPTURE ;
+
+: PROC-DRAIN-READY-GROWING ( [ n -- ptr u8 ] ptr u8 len -- )
+   {: sink err:ptr errcap :}
+   0 >IDX PROC-PFD-REVENTS 0 <> if sink PROC-READ-GROWING then
+   1 >IDX PROC-PFD-REVENTS 0 <> if
+      PROC-ERR-R err errcap PROC-ERR-LEN PROC-READ-OR-PROBE-STREAM
+   then ;
+
 : PROC-CAPTURE-DONE? ( -- bool )
    PROC-OUT-R @ 0 < PROC-ERR-R @ 0 < and ;
 
@@ -782,9 +825,28 @@ PROC-STOP-DEFAULT
    repeat
    PROC-REAP-CAPTURE-BOUNDED ;
 
+: PROC-RUN-STDIN-GROWING-CAPTURE-OUTCOME-LOOP ( ptr u8 len [ n -- ptr u8 ] ptr u8 len -- )
+   {: in:ptr inu sink err:ptr errcap :}
+   inu LEN>N 0 <= if PROC-IN-W PROC-CLOSE-CELL then
+   begin PROC-STDIN-CAPTURE-DONE? 0= while
+      PROC-REMAINING-MS PROC-POLL-IO-OUTCOME dup COUNT>N 0= if
+         drop
+         PROC-REAP-CAPTURE-TIMEOUT
+         exit
+      then
+      drop
+      in inu PROC-DRIVE-STDIN
+      sink err errcap PROC-DRAIN-READY-GROWING
+   repeat
+   PROC-REAP-CAPTURE-BOUNDED ;
+
+: PROC-CAPTURE-CHECK-CAP ( len -- )
+   {: cap :}
+   cap LEN>N 0 < if E-PROC-OUTPUT throw then ;
+
 : PROC-CAPTURE-CHECK-CAPS ( len len -- ) {: outcap errcap :}
-   outcap LEN>N 0 < if E-PROC-OUTPUT throw then
-   errcap LEN>N 0 < if E-PROC-OUTPUT throw then ;
+   outcap PROC-CAPTURE-CHECK-CAP
+   errcap PROC-CAPTURE-CHECK-CAP ;
 
 : PROC-CAPTURE-CHECK-STDIN ( len -- ) {: inu :}
    inu LEN>N 0 < if E-PROC-OUTPUT throw then ;

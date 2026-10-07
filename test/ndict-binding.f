@@ -50,6 +50,12 @@ using NDICT
 \ Test-only record identity and retired-wordlist inspection. No raw record is
 \ exported. Retirement: habu-trusted-dies-prim-4fd12d60.
 TRUSTED: RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
+CAST: REF-WORD ( n -- [ -- n ] )
+: REF-VALUE ( n n -- n ) DEF-OCC:CALLABLE REF-WORD execute ;
+variable REF-SLOT
+variable REF-OCC
+variable ROLL-SLOT
+variable ROLL-OCC
 
 
 : EV ( ptr u8 n -- ) INCLUDE-EVALUATE ;
@@ -105,7 +111,12 @@ TRUSTED: RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 : REDECLARATION ( -- )
    s" 31 constant NDB-REBIND : NDB-BEFORE ( -- n ) NDB-REBIND ;" EV
+   s" NDB-REBIND" 0 RECORD DEF-OCC:SELECT {: old-slot:n old-occ:n :}
    s" undefine NDB-REBIND 32 constant NDB-REBIND" EV
+   old-slot old-occ REF-VALUE 31 T=
+   s" NDB-REBIND" 0 RECORD DEF-OCC:SELECT {: new-slot:n new-occ:n :}
+   new-slot new-occ REF-VALUE 32 T=
+   old-occ new-occ T<>
    s" : NDB-AFTER ( -- n ) NDB-REBIND ; NDB-BEFORE 31 T= NDB-AFTER 32 T=" EV
    s" NDB-REBIND" FIXED-VALUE 32 T= ;
 
@@ -126,28 +137,42 @@ TRUSTED: RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 : HIDE-REUSE ( -- )
    s" : NDB-HIDE ( -- n ) 51 ; : NDB-HIDE-TAIL ( -- n ) 52 ;" EV
    s" NDB-HIDE" 0 RECORD {: old:ptr :}
+   old DEF-OCC:SELECT {: old-slot:n old-occ:n :}
    s" NDB-HIDE" HIDE-DEFS-FROM
    s" NDB-HIDE" SPELL-START 0 T=
    s" NDB-HIDE-TAIL" SPELL-START 0 T=
    s" : NDB-HIDE ( -- n ) 53 ;" EV
    s" NDB-HIDE" 0 RECORD old = TTRUE
+   old-slot REF-SLOT !  old-occ REF-OCC !
+   [: REF-SLOT @ REF-OCC @ DEF-OCC:RESOLVE drop ;] DEF-OCC:E-STALE TTHROWSQ
+   s" NDB-HIDE" 0 RECORD DEF-OCC:SELECT REF-VALUE 53 T=
    s" : NDB-HIDE-CALL ( -- n ) NDB-HIDE ; NDB-HIDE-CALL 53 T=" EV ;
 
 
 : FORGET-REUSE ( -- )
    s" : NDB-FORGET ( -- n ) 61 ;" EV
    s" NDB-FORGET" 0 RECORD {: old:ptr :}
+   old DEF-OCC:SELECT {: old-slot:n old-occ:n :}
    old XREF-START {: start:n :}
    s" NDB-FORGET" FORGET-DEFS-FROM
    s" NDB-FORGET" SPELL-START 0 T=
    s" : NDB-FORGET ( -- n ) 62 ;" EV
    s" NDB-FORGET" 0 RECORD old = TTRUE
    s" NDB-FORGET" SPELL-START start T=
+   old-slot REF-SLOT !  old-occ REF-OCC !
+   [: REF-SLOT @ REF-OCC @ DEF-OCC:RESOLVE drop ;] DEF-OCC:E-STALE TTHROWSQ
+   s" NDB-FORGET" 0 RECORD DEF-OCC:SELECT REF-VALUE 62 T=
    s" : NDB-FORGET-CALL ( -- n ) NDB-FORGET ; NDB-FORGET-CALL 62 T=" EV ;
 
 
+public
+: CAPTURE-ROLLBACK ( -- )
+   s" NDB-ROLLBACK" 0 RECORD DEF-OCC:SELECT
+   ROLL-OCC !  ROLL-SLOT ! ;
+private
+
 : FAIL-EVALUATION ( -- )
-   S\" : NDB-ROLLBACK ( -- n ) 71 ; using NDICT s\q NDB-ROLLBACK\q SPELL-START 0<> TTRUE 73 throw" EV ;
+   S\" : NDB-ROLLBACK ( -- n ) 71 ; using NDICT s\q NDB-ROLLBACK\q SPELL-START 0<> TTRUE ;using NDICT-BINDING-TEST:CAPTURE-ROLLBACK 73 throw" EV ;
 
 
 : ROLLBACK-REUSE ( -- )
@@ -155,10 +180,17 @@ TRUSTED: RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
    \ The whole source frame, including the successful definition, must roll back.
    ['] FAIL-EVALUATION 73 TTHROWS
    ndict@ before T=
+   ROLL-SLOT @ before T=
    s" 74 constant NDB-AFTER-ROLLBACK" EV
    s" NDB-AFTER-ROLLBACK" 0 RECORD before XREF-REC = TTRUE
    s" NDB-ROLLBACK" SPELL-START 0 T=
-   s" NDB-AFTER-ROLLBACK" FIXED-VALUE 74 T= ;
+   s" NDB-AFTER-ROLLBACK" FIXED-VALUE 74 T=
+   ROLL-SLOT @ REF-SLOT !  ROLL-OCC @ REF-OCC !
+   [: REF-SLOT @ REF-OCC @ DEF-OCC:RESOLVE drop ;] DEF-OCC:E-STALE TTHROWSQ
+   s" NDB-AFTER-ROLLBACK" 0 RECORD DEF-OCC:SELECT {: new-slot:n new-occ:n :}
+   new-slot ROLL-SLOT @ T=
+   new-occ ROLL-OCC @ T<>
+   new-slot new-occ REF-VALUE 74 T= ;
 
 
 : RUN ( -- )

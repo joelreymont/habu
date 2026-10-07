@@ -28,6 +28,7 @@ require src/compiler/ir/symbol.f
 require src/compiler/native/tape.f
 require src/compiler/native/hir.f
 require src/compiler/native/dict.f
+require src/compiler/native/checker-owner.f
 require src/habu/layout.f
 require src/habu/terminal-call.f
 
@@ -62,7 +63,7 @@ $48575231 constant WROW-MAGIC        \ "HWR1": the word-table header format tag
 2 constant OFF-A                     \ op and const-op: the opcode code; rename: the pick-list start; control: the control code; rstack: the transfer code; unmodeled: the reason ordinal plus one; callable: the callee's entry address
 3 constant OFF-IN                    \ rename: the number of values consumed; rstack: the number of cells moved; const-op: the constant; fixed: the value the word pushes; callable: the values the callee takes; otherwise zero
 4 constant OFF-N                     \ rename: the number of values put back; callable: the values the callee leaves; otherwise zero
-5 constant OFF-GLUE                  \ callable: which of the callee's result cells belong to a multi-cell value; otherwise zero
+5 constant OFF-GLUE                  \ callable result glue; rename host semantic class
 6 constant OFF-DEAD                  \ callable: whether control comes back from the callee; otherwise zero
 7 constant ROW-CELLS
 0 constant UNUSED                    \ a payload cell this meaning does not use
@@ -725,6 +726,19 @@ public
    c r  c b id BKEY-CK
    a u NDICT:FIXED-VALUE  a u NDICT:SPELL-FIXED LIT-KIND  FIXED-ROW ;
 
+\ Direct tapes have no source checker window. Resolve their dictionary words
+\ through the ordinary model path; the recorded-source entry below never calls
+\ either of these readers when an exact site fact is missing.
+: RESOLVE-FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id :}
+   c b id FIX-SPELL {: a:ptr u:n :}
+   a u NDICT:SPELL-FIXED {: k:n :}
+   k NDICT:FIXED-NONE = if false exit then
+   c r  c b id BKEY-CK
+   a u NDICT:FIXED-VALUE  k LIT-KIND  FIXED-ROW
+   true ;
+
 \ Declare that a source word is another word this definition CALLS: where its
 \ A caller that states a callee by hand states no glue and no deadness, and gets
 \ the safe reading of both.
@@ -740,19 +754,6 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id entry:n in:n out:n glue:n dead:bool :}
    c r  c b id BKEY-CK  entry in out glue  dead NORET-CODE  CALLABLE-ROW ;
-
-\ Make a FIXED row for a spelling nobody staged, by asking the engine which
-\ Asked BEFORE the callable question because a stamped record is never a call
-\ and an unstamped one is never anything but - the cheaper question first.
-: RESOLVE-FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
-      id:IR-ID:ir-symbol-id :}
-   c b id FIX-SPELL {: a:ptr u:n :}
-   a u NDICT:SPELL-FIXED {: k:n :}
-   k NDICT:FIXED-NONE = if false exit then
-   c r  c b id BKEY-CK
-   a u NDICT:FIXED-VALUE  k LIT-KIND  FIXED-ROW
-   true ;
 
 \ Declare that a source word elaborates to one operation of this dialect. The
 \ The second arena is the interner that has to have minted the word's spelling.
@@ -788,6 +789,12 @@ variable STG-MODE
 MODE-NONE STG-MODE !
 variable STG-IN
 variable STG-N
+variable STG-HOST
+public
+0 constant HOST-SCALAR
+1 constant HOST-VIEW
+2 constant HOST-CAST
+private
 create STG-PICK PICK-MAX cells allot
 
 : STG-OPEN-CK ( -- )
@@ -827,7 +834,7 @@ create STG-PICK PICK-MAX cells allot
    loop
    c r w
    HIR-MEANING:RENAME MEAN-CODE
-   st STG-IN @ STG-N @ UNUSED UNUSED
+   st STG-IN @ STG-N @ STG-HOST @ UNUSED
    ROW-ADD ;
 
 \ The same declaration for a module still being built. The stage is consumed
@@ -849,7 +856,8 @@ public
    in 0 < in INPUT-MAX > or if E-HIR-PICK throw then
    MODE-OPEN STG-MODE !
    in STG-IN !
-   0 STG-N ! ;
+   0 STG-N !
+   HOST-SCALAR STG-HOST ! ;
 
 \ Put one of the consumed values back, named by its depth in the consumed
 \ window with zero being the top. Picks are listed bottom first.
@@ -882,21 +890,42 @@ public
       id:IR-ID:ir-symbol-id :}
    1 BEGIN-RENAME
    0 ADD-PICK
+   HOST-CAST STG-HOST !
    STG-TAKE
    c p r  c b id BKEY-CK  RENAME-ROW ;
 
 private
 
-: RESOLVED-NORET ( ptr u8 n n -- n )
-   {: a:ptr u:n entry:n :}
-   a u NDICT:SPELL-DEAD? 0= if COMES-BACK exit then
+: RESOLVED-NORET ( ptr u8 n n bool -- n )
+   {: a:ptr u:n entry:n dead:bool :}
+   dead 0= if COMES-BACK exit then
    a u entry TERMINAL-CALL:BOUND? if TERMINAL else NO-RETURN then ;
+
+: BOUND@ ( ptr u8 n -- n ) cells + CELL-VIEW @ ;
+
+: OVERLAY-MODELS? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id SYM-OWNER-CK
+   id IR-ID:SYMBOL-LOCAL r swap FIND 0 >= ;
+
+: SESSION-MODELS? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r HC-LINK LCELL@ LINK-CLONE <> if false exit then
+   id IR-ID:SYMBOL-LOCAL SESS-ROW 0 >= ;
+
+: SITE-PRIM! ( IR-ARENA:arena IR-ID:ir-symbol-id bool -- )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id seeded:bool :}
+   r HC-LINK LCELL@ LINK-CLONE <> if exit then
+   id IR-ID:SYMBOL-LOCAL SESS-ROW {: sl:n :}
+   sl 0 < if exit then
+   seeded if 1 else 0 then sl cells CHK-BND + !
+   r HC-SERIAL LCELL@ sl cells CHK-GEN + ! ;
 
 public
 
-\ Resolve a callable and its definer kind together. Only a CAST: declaration
-\ gets the identity rename; ordinary empty or effect-compatible words remain
-\ calls. Missing or unsupported effects still leave the token unmodeled.
+: OVERLAY? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   OVERLAY-MODELS? ;
+
 : RESOLVE-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id :}
@@ -909,7 +938,61 @@ public
    glue NDICT:GLUE-UNKNOWN = if false exit then
    kind DKIND:CAST = if c b p r id DECLARE-BOUND-CAST true exit then
    c r  c b id BKEY-CK  entry in out glue
-   a u entry RESOLVED-NORET CALLABLE-ROW
+   a u entry a u NDICT:SPELL-DEAD? RESOLVED-NORET CALLABLE-ROW
+   true ;
+
+\ Every ordinary source token arrives here, including a repeated word or one
+\ already in the session vocabulary. Cache the original seeded decision before
+\ any model is read. Fixed values and calls use the recorded entry and effect.
+\ A call to an internal record binds as NDICT:CALL-BINDING binds one
+\ (NDICT:INT-CALL?): an owned primitive's checked call compiles, since the
+\ checker's binder bound the site to that record through its owner's row.
+: RESOLVE-SITE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id n -- bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id ix:n :}
+   ix CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
+   size 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if E-NCOMP-OWNER throw then
+   row CHECKER-OWNER-ABI:BOUND-ORD BOUND@ ix <> if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-KIND BOUND@ {: source-kind:n :}
+   source-kind CHECKER-OWNER-ABI:BOUND-DICT =
+   source-kind CHECKER-OWNER-ABI:BOUND-INTRINSIC = or
+   source-kind CHECKER-OWNER-ABI:BOUND-PENDING = or
+   source-kind CHECKER-OWNER-ABI:BOUND-UNRESOLVED = or 0= if
+      CHECKER-OWNER-ABI:BINDING-RC throw then
+   source-kind CHECKER-OWNER-ABI:BOUND-UNRESOLVED = if E-HIR-UNMODELED throw then
+   row CHECKER-OWNER-ABI:BOUND-CTL BOUND@
+      CHECKER-OWNER-ABI:BOUND-SEEDED and 0<>
+   source-kind CHECKER-OWNER-ABI:BOUND-INTRINSIC = or {: seeded:bool :}
+   r id seeded SITE-PRIM!
+   r id OVERLAY-MODELS? if true exit then
+   seeded if r id SESSION-MODELS? if true exit then then
+   source-kind CHECKER-OWNER-ABI:BOUND-DICT <> if false exit then
+   row CHECKER-OWNER-ABI:BOUND-SYM BOUND@ 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-ENTRY BOUND@ {: entry:n :}
+   entry 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-FLAGS BOUND@ {: flags:n :}
+   flags DKIND:MASK and {: kind:n :}
+   kind DKIND:VAL = kind DKIND:ADDR = or if
+      kind DKIND:VAL = if NDICT:FIXED-VAL else NDICT:FIXED-ADDR then {: fixed:n :}
+      c r c b id BKEY-CK entry fixed NDICT:BOUND-VALUE fixed LIT-KIND FIXED-ROW
+      true exit
+   then
+   row CHECKER-OWNER-ABI:BOUND-EFFECT BOUND@ 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   flags DNAME-IMM and 0<> if false exit then
+   flags DNAME-INT and 0<> if
+      flags NDICT:INT-CALL? 0= if false exit then
+   then
+   row CHECKER-OWNER-ABI:BOUND-IN BOUND@ {: in:n :}
+   row CHECKER-OWNER-ABI:BOUND-OUT BOUND@ {: out:n :}
+   row CHECKER-OWNER-ABI:BOUND-GLUE BOUND@ {: glue:n :}
+   in 0< out 0< or glue NDICT:GLUE-UNKNOWN = or if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-NEUTRAL BOUND@ 0= if false exit then
+   kind DKIND:CAST = if c b p r id DECLARE-BOUND-CAST true exit then
+   c b id FIX-SPELL {: a:ptr u:n :}
+   c r  c b id BKEY-CK  entry in out glue
+   a u entry row CHECKER-OWNER-ABI:BOUND-DEAD BOUND@ 0= 0=
+      RESOLVED-NORET CALLABLE-ROW
    true ;
 
 \ ---- reading -----------------------------------------------------------------
@@ -959,6 +1042,8 @@ create GATE-BUF GATE-CAP allot
    sl GATED? 0= if true exit then
    r HC-SERIAL LCELL@ {: gen:n :}
    sl CHK-GEN@ gen = if sl CHK-BND@ 0<> exit then
+   \ Direct table readers have no source site. The compiler fills this cache
+   \ from each source decision before it reads an ordinary call's model.
    sl ROW-SPELL INTRINSIC-BOUND? {: bound:bool :}
    bound if 1 else 0 then sl CHK-BND!
    gen sl CHK-GEN!
@@ -1133,6 +1218,11 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:RENAME ROW-AS {: ra:IR-ARENA:arena l:n :}
    ra l OFF-IN RC@ ;
+
+: HOST-RENAME@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:RENAME ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-GLUE RC@ ;
 
 \ How many values it puts back.
 : PICKS ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
@@ -1507,12 +1597,14 @@ private
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    1 BEGIN-RENAME
    0 ADD-PICK
+   HOST-VIEW STG-HOST !
    c b p r c b s" cell-view" MODEL-SYM BDECLARE-RENAME ;
 
 : DEF-BYTE-VIEW ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    1 BEGIN-RENAME
    0 ADD-PICK
+   HOST-VIEW STG-HOST !
    c b p r c b s" byte-view" MODEL-SYM BDECLARE-RENAME ;
 
 \ Six rows over three actions and two widths; the widths are declared because

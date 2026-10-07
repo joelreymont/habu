@@ -11,9 +11,9 @@
 \ host that can have a shadow open loads this file beside aot-capture.f, before
 \ its window opens, and it reopens the capture's package.
 \
-\ WHEN IT RUNS. SHADOW-CAPTURE runs right after AOT-CAPTURE:CAPTURE, which latches
-\ the window, builds the xt -> record index for the live dictionary and fills the
-\ name pool this reuses; it refuses to run against any other dictionary. It reads
+\ WHEN IT RUNS. TARGET-CAPTURE prepares the capture, retains live private emitted
+\ records from this map, completes the capture, then SHADOW-CAPTURE reads the
+\ tables. The reader refuses to run against any other dictionary. It reads
 \ the map before anything closes the shadow: NCOMP:CAPTURE-PREPARE closes the
 \ shadow of the compiler that runs it, and a native build's preparation of its
 \ target (tools/native-build-core.f PREPARE-TARGET) runs the target window's own
@@ -455,6 +455,21 @@ CELL 2 * constant SH-TRAILER-BYTES
       idx SH-PREV !
    loop ;
 
+\ Only an emitted private routine reached by live code needs its own dictionary
+\ row. The map row proves emission; the capture index excludes retired records.
+: SH-KEEP-ONE ( n -- ) {: idx:n :}
+   idx ACAP-DICT>CAP {: k:n :}
+   k 0 < if exit then
+   idx ACAP-SHADOW-LIVE? 0= if exit then
+   k ACAP-REC-DST {: rec:ptr :}
+   rec 40 + ACAP-W32@ ACAP-PRIVATE? 0= if exit then
+   rec ACAP-INTERNAL? if exit then
+   k ACAP-NAMED-BIT @ 0= if 1 k ACAP-NAMED-BIT ! then ;
+
+: SH-KEEP-PRIVATE ( -- )
+   NSHADOW:OPEN? 0= if exit then
+   NSHADOW:RECORDS 0 ?do i NSHADOW:RECORD@ SH-KEEP-ONE loop ;
+
 : SH-QCOPY ( n -- ) {: e:n :}
    SH-QN @ 0 ?do
       i SH-QEM @ e = if
@@ -549,6 +564,13 @@ public
    SH-ASSIGN
    SH-WALK
    AOT-WINDOW:XTOFF-N @ 0 ?do i SH-XTCELL loop ;
+
+: TARGET-CAPTURE ( n n n n n n -- )
+   {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
+   bstart bend rstart rend d0 d1 CAPTURE-PREPARE
+   SH-KEEP-PRIVATE
+   bstart bend d0 CAPTURE-COMPLETE
+   SHADOW-CAPTURE ;
 
 ;using
 ;package

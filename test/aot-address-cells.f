@@ -21,7 +21,7 @@ public
 package AOT-FILE
 public
 : ADDRESS-TEST-HEADER ( ptr u8 n -- )
-   AOT-SECTION-CAP HDR O-PAYLEN + U64!
+   A64ICODE:AOT-SECTION-CAP HDR O-PAYLEN + U64!
    HDR HDR-BYTES WRITE-ALL ;
 
 \ Every section has a valid individual width/cap and the table fills this real
@@ -30,7 +30,7 @@ public
    STAGE BUILD-TABLE
    SEC-N ROW-BYTES * CUR !
    SEC-N 0 ?do
-      i S-XTOFFS = if AOT-SECTION-CAP else i ROW-LEN@ then {: bytes:n :}
+      i S-XTOFFS = if A64ICODE:AOT-SECTION-CAP else i ROW-LEN@ then {: bytes:n :}
       CUR @ bytes i ROW! CUR @ bytes + CUR !
    loop
    CUR @ MEM-ALLOC-BYTES {: dst:ptr size:n :}

@@ -76,14 +76,16 @@ TRUSTED: RSV-OFF-B ( -- n ) RSV-CELL-B data-base - ;
 \ raw cell REFUSES a pointer pointee is the rule's own fixture
 \ (test/compiler/raw-cell-pointer-refusals.f), not this file's: the rule lands
 \ after these conversions, and this file must read the same before and after it.
-\ The pre-scan registers DPT, DPH and DPR for the certify path alone - the
-\ engine holds no record of them - so the probes ask that path
-\ (VERIFY:CANDIDATE-IN-SCOPE); VERIFY-RESERVED-SCAN below shows both answers.
+\ The pre-scan compiles nothing: DPT, DPH and DPR bind through the checker
+\ overlay only while the neutral scope holding the scan and its probes is open,
+\ so the probes ask the certify path there (VERIFY:CANDIDATE-IN-SCOPE);
+\ VERIFY-RESERVED-SCAN below shows both answers.
 : REG-DECLARED-CELLS ( -- )
    s\" 4 PTR-U8-TABLE DPT\nPERSISTED-PTR-U8-TABLE-VARIABLE DPH\nPTR-VARIABLE DPR"
    VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : VERIFY-DECLARED-POINTEE ( -- )
+   CHECKER-SCOPE-START-NEUTRAL
    REG-DECLARED-CELLS
    s" DP-BASE ( -- ptr ptr u8 ) DPT" VERIFY:CANDIDATE-IN-SCOPE -1 T=
    s" DP-READ ( -- ptr ptr u8 ) DPH @" VERIFY:CANDIDATE-IN-SCOPE -1 T=
@@ -92,7 +94,8 @@ TRUSTED: RSV-OFF-B ( -- n ) RSV-CELL-B data-base - ;
    s" DP-BASE-WRONG ( -- ptr ptr n ) DPT" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    s" DP-READ-WRONG ( -- ptr u8 ) DPH @" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    s" DP-STORE-WRONG ( n -- ) 0 cells DPT + 0 ptr-field !" VERIFY:CANDIDATE-IN-SCOPE 0 T=
-   s" DP-HEAD-WRONG ( ptr ptr n -- ) DPH !" VERIFY:CANDIDATE-IN-SCOPE 0 T= ;
+   s" DP-HEAD-WRONG ( ptr ptr n -- ) DPH !" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+   CHECKER-SCOPE-DONE ;
 
 \ THE TWO ROWS, AND THE PAIR THAT SHOWS WHAT THEY DO. `RESERVED-PTR-U8-CELL`
 \ is written in src/core/pointer-storage.f, before the checker exists, so the
@@ -120,17 +123,19 @@ TRUSTED: RSV-OFF-B ( -- n ) RSV-CELL-B data-base - ;
 \ The scanner's own row: the pre-scan sees the same definer and publishes the
 \ same effect for the word it creates, so a source file that declares a
 \ reserved cell verifies without being run. That effect is a fact of the
-\ certify path: the scan compiles nothing, so the engine holds no VSRSV record
-\ and a live candidate cannot bind it (1) even with VSRSV the scan's last
-\ registration - a replay leaves no pending definition behind - while the same
-\ candidate on the certify path binds the scanned row.
+\ certify path: inside the neutral scope holding the scan a candidate binds
+\ the scanned row there, and the scan compiles nothing, so once the scope
+\ closes the engine holds no VSRSV record and a live candidate cannot bind it
+\ (1) - a replay leaves no pending definition behind.
 : REG-RESERVED-CELL ( -- )
    s" $30 RESERVED-PTR-U8-CELL VSRSV" VERIFY:SOURCE-BUF-IN-SCOPE ;
 : VERIFY-RESERVED-SCAN ( -- )
+   CHECKER-SCOPE-START-NEUTRAL
    REG-RESERVED-CELL
-   s" VSRSV-BASE ( -- ptr ptr u8 ) VSRSV" CHECK-QUIET-CANDIDATE! 1 T=
    s" VSRSV-BASE ( -- ptr ptr u8 ) VSRSV" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-   s" VSRSV-WRONG ( -- ptr ptr n ) VSRSV" VERIFY:CANDIDATE-IN-SCOPE 0 T= ;
+   s" VSRSV-WRONG ( -- ptr ptr n ) VSRSV" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+   CHECKER-SCOPE-DONE
+   s" VSRSV-BASE ( -- ptr ptr u8 ) VSRSV" CHECK-QUIET-CANDIDATE! 1 T= ;
 
 : RUN ( -- )
    T-RESET

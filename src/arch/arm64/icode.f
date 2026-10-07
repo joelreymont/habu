@@ -5,7 +5,11 @@
 \ The encoders are package A64ASM's public surface, imported here once and called
 \ bare, which is what this layer did when they were global names.
 require src/arch/arm64/asm.f
+require src/core/layout-buffer.f
+require src/core/dynamic-storage.f
+package A64ICODE
 using A64ASM
+public
 
 \ ---- the window this assembler emits into ------------------------------------
 \ THE WINDOW IS NOT THIS FILE'S NUMBER TO PICK. It holds one emitted image, and
@@ -172,9 +176,8 @@ PTR-VARIABLE EP
    I-W @ $10 rshift $FF and EP@ 2 CODE-BYTE+ c@ or EP@ 2 CODE-BYTE+ c!
    I-W @ $18 rshift $FF and EP@ 3 CODE-BYTE+ c@ or EP@ 3 CODE-BYTE+ c! ;
 \ labels: LBLP[id] = defining word pos, or -1 while pending.
-ICODE-TAB-CELLS constant LBL-CAP
-\ Keep the historical table names as accessors so emitter code stays readable.
-: LBLP ( -- ptr n ) 0 ICODE-TAB ;
+\ Labels last for one emission and grow with its actual number of targets.
+DYNAMIC-BUFFER LBLP n
 variable NLBL
 \ fixups: site word-pos, next slot, kind (FX-B26 / FX-B19 / FX-ADR / FX-LOFF),
 \ and one pending-chain head per label. Target identity is the owning FXH chain.
@@ -188,10 +191,10 @@ variable NLBL
 1 constant FX-B19                              \ cond/CBZ/CBNZ: 19-bit word delta
 2 constant FX-ADR                              \ ADR: 21-bit byte delta
 3 constant FX-LOFF                             \ movz/movk pair: label byte offset
-: FXS ( -- ptr n ) 1 ICODE-TAB ;
-: FXN ( -- ptr n ) 2 ICODE-TAB ;
-: FXK ( -- ptr n ) 3 ICODE-TAB ;
-: FXH ( -- ptr n ) 4 ICODE-TAB ;
+: FXS ( -- ptr n ) 0 ICODE-TAB ;
+: FXN ( -- ptr n ) 1 ICODE-TAB ;
+: FXK ( -- ptr n ) 2 ICODE-TAB ;
+DYNAMIC-BUFFER FXH n
 variable NFX
 variable FX-FREE
 variable FX-NEW
@@ -202,16 +205,10 @@ variable FX-NEW
 
 : ASM-INIT ( -- )
    ARESET
+   LBLP-RELEASE FXH-RELEASE
    0 NLBL !
    0 NFX !
-   FX-INIT
-   0 begin
-      dup cells LBLP + -1 swap !
-      dup cells FXH + -1 swap !
-      1 + dup LBL-CAP 1 - >
-   until drop ;
-
-: ?LBL ( -- )  NLBL @ LBL-CAP 1- > if s" icode: out of labels" ICODE-EXIT-RC die then ;
+   FX-INIT ;
 
 : FX-FREE-BAD? ( -- bool )
    FX-NEW @ 0 <
@@ -231,14 +228,19 @@ variable FX-NEW
    then
    FX-FREE-BAD? if s" icode: fixup free list corrupt" ICODE-EXIT-RC die then ;
 
-: LBL ( -- label )  ?LBL  NLBL @ dup 1 + NLBL !  >LABEL ;
+: LBL ( -- label )
+   NLBL @ dup 1 + LBLP-RESERVE
+   dup 1 + FXH-RESERVE
+   dup LBLP -1 swap !
+   dup FXH -1 swap !
+   dup 1 + NLBL ! >LABEL ;
 
 : LABEL@ ( ptr n -- label ) @ >LABEL ;
 
 : LABEL! ( label ptr n -- ) swap LABEL>N swap ! ;
 
 : LBL-BOUND? ( label -- bool )
-   LABEL>N cells LBLP + @ 0 >= ;
+   LABEL>N LBLP @ 0 >= ;
 
 : ?LBL-UNBOUND ( label -- )
    LBL-BOUND? if s" icode: label redefined" ICODE-EXIT-RC die then ;
@@ -259,8 +261,8 @@ variable FX-NEW
 
 : FX-LINK ( n -- )
    I-W !
-   I-LBL @ cells FXH + @ I-W @ cells FXN + !
-   I-W @ I-LBL @ cells FXH + ! ;
+   I-LBL @ FXH @ I-W @ cells FXN + !
+   I-W @ I-LBL @ FXH ! ;
 
 : FX-KIND-OK? ( n -- bool )
    dup FX-B26 =
@@ -438,7 +440,7 @@ variable BBASE  variable BKIND
 
 : BR-EMIT ( label -- )
    LABEL>N I-LBL !                    \ BBASE/BKIND set; emits + records if fwd
-   I-LBL @ cells LBLP + @  dup 0 < IF              \ pos on stack (0< isn't a standalone prim)
+   I-LBL @ LBLP @  dup 0 < IF              \ pos on stack (0< isn't a standalone prim)
      drop  ASM-CP @ I-LBL @ >LABEL BKIND @ FX+  BBASE @ EMITW
    ELSE  dup $4 * I-RTARGET !  ASM-CP @ $4 * I-RSITE !          \ named before the check
      ASM-CP @ -  BKIND @ FX-B26 = IF ?REL26 D26 ELSE ?REL19 D19 THEN  BBASE @ or EMITW  THEN ;
@@ -465,7 +467,7 @@ variable BBASE  variable BKIND
 \ adr rd, label: PC-relative address (FX-ADR fixup when forward)
 : ADR, ( n label -- )
    LABEL>N I-LBL ! I-RD !
-   I-LBL @ cells LBLP + @ dup 0 < IF
+   I-LBL @ LBLP @ dup 0 < IF
      drop  ASM-CP @ I-LBL @ >LABEL FX-ADR FX+  I-RD @ 0 ENC-ADR EMITW
    ELSE  dup $4 * I-RTARGET !  ASM-CP @ $4 * I-RSITE !          \ named before the check
      ASM-CP @ - $4 *  ?ADR  I-RD @ swap ENC-ADR EMITW  THEN ;
@@ -481,7 +483,7 @@ variable BBASE  variable BKIND
 \ register takes that encoder's own refusals before this layer folds a lane in.
 : LOFF, ( n label -- )
    LABEL>N I-LBL ! I-RD !
-   I-LBL @ cells LBLP + @ dup 0 < IF
+   I-LBL @ LBLP @ dup 0 < IF
      drop  ASM-CP @ I-LBL @ >LABEL FX-LOFF FX+
      I-RD @ 0 0 MOVZHW EMITW  I-RD @ 0 1 MOVKHW EMITW
    ELSE  $4 * ?LOFF I-X !
@@ -522,9 +524,9 @@ variable LBI
 
 : LBL, ( label -- )
    dup ?LBL-UNBOUND LABEL>N I-LBL !
-   I-LBL @ cells FXH + @ LBI !
-   -1 I-LBL @ cells FXH + !
-   ASM-CP @ I-LBL @ cells LBLP + !
+   I-LBL @ FXH @ LBI !
+   -1 I-LBL @ FXH !
+   ASM-CP @ I-LBL @ LBLP !
    begin LBI @ 0 >= while
       FX-PATCH
       LBI @ cells FXN + @ I-N !
@@ -537,7 +539,7 @@ variable LBI
    dup $FFFFFFFF and EMITW  $20 rshift EMITW ;   \ one 64-bit cell, LE
 
 : DLBL, ( label -- )                                  \ cell = label's byte offset
-   LABEL>N cells LBLP + @ dup 0 < if s" icode: DLBL forward ref" ICODE-EXIT-RC die then  $4 * DCQ, ;
+   LABEL>N LBLP @ dup 0 < if s" icode: DLBL forward ref" ICODE-EXIT-RC die then  $4 * DCQ, ;
 PTR-VARIABLE BYP
 PTR-VARIABLE BYA
 variable BYU
@@ -617,3 +619,4 @@ variable LIT-CH  variable LFI  variable LCI
 : ASM-LEN ( -- n )  ASM-CP @ $4 * ;
 
 ;using
+;package

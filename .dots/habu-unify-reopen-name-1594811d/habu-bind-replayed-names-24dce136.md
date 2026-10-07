@@ -1,6 +1,8 @@
 ---
 title: Bind replayed names through scope-find
-status: open
+status: closed
+closed-at: "2026-10-06T17:52:16+02:00"
+close-reason: "Landed as the leaf 4 chain, merged on master d31d4395: LIVE-BIND is the checker's one binder, replays included; the brief's removal rg lines are empty; run.f 621/621, generations 2-5 identical, Gforth recovery rc 0."
 priority: 1
 issue-type: task
 created-at: "2026-10-01T18:16:58.049687+02:00"
@@ -37,3 +39,18 @@ Red first (test before any checker change):
 Proof: replay-binding, reopen-binding (+ -aot), undefine-binding, checker-verify-order, checker-replay-pkg-state, checker-verify-pkg-scope, using-test, engine-writers, checker-dead-path-suite, package and vector suites; `rg MIRROR-AUTHORITY src` and `rg -n 'REPLAY-BIND|CHECKER-USED-BIND|GLOBAL-BEYOND-HORIZON' src` empty; tools/check.f verdicts for lib/pty.f and src/habu/sites.f unchanged; NELAB probe still fails check.f; maker byte determinism (hb-build image with and without the pre-verify; if they differ, zero records [OV-MARK, NDICT) before ndict!); `bin/hb --load tools/build-fixpoint-refresh.f -- all --force` (census 0/0/6052, wall time vs the 3 m 21 s baseline); test/run.f; generations. No gforth check unless forth.fs changes.
 Dependencies: leaf 3 in bin/hb (two-stage rule, docs/bootstrap.md). The EPPRIM rows are the transitional pair B11 (0a19f45d) collapses. Seal (c550102f): keep RECORD-PACKAGE -> CHECKER-PACKAGE ahead of OV-PACKAGE; the prefix certify (BF-CERTIFY-PREFIX) replays sealed packages through this overlay, which is why replay-record omits OPEN-WID.
 Not determined (read first): CHK-RUN-PREVERIFY's treatment of require (check-core.f, CHK-MATERIALIZE); SOURCE-BUF bodies; BNDSET (habu1.f); C-UNDEFINE/XREF-RETIRE inside a package; whether search-wl accepts wid -1; the set-check re-enable value.
+
+## Outcome (master d273e641)
+
+The leaf 4 chain landed, merged on master as d31d4395 (dave's qualification: test/run.f 621/621, generations 2-5
+identical, Gforth recovery rc 0, refresh rc 0). Every id here is an ancestor of master.
+- 9b366a82 "Bind replayed names through an engine overlay": a replay publishes codeless records into package
+  CHECKER-OVERLAY and binds through LIVE-BIND (checker.f:12246); CHECKER-FIND-ACTIVE-SYM (12371) has no replay branch.
+- a5b59c74, 5b326c22 and 733c6ca7 give the overlay its owner-private writers (replay-record, record-wid!,
+  replay-private); bf7daf62, 98de6dd7, 7c2c2750, 892f1bb9, 66c853d9 and 41ec5077 make a replay define, refuse and
+  publish as the live engine does; 36628e0e and 5124f4b5 are the refresh note and the check.f source-list fix.
+- The brief's proof lines hold at d273e641: `rg MIRROR-AUTHORITY src` and
+  `rg -n 'REPLAY-BIND|CHECKER-USED-BIND|GLOBAL-BEYOND-HORIZON' src` are empty. CK-WL-CLAIMS? stays by design: master
+  978163a0 gave TRUST-RESOLVES? TRUST-PUBLIC-CLAIMS? and keeps CK-WL-CLAIMS? for the bare row (chain description).
+- replay-binding, reopen-binding (and -aot) and engine-writers are rows of the chain's gate; TRUSTED: 687 and
+  trusted-only 56 are unchanged across the chain.

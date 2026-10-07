@@ -62,23 +62,19 @@ variable ADDRESS-ABI
    floor KEEP-ROWS-BELOW ;
 
 defer RESET-SOURCE ( -- )
-defer IMPORT-CHECKED ( ptr u8 -- )
 
 \ Resolve the current source owner in its own package.
 TRUSTED: CHECKER-OWNER ( -- ptr u8 )
    s" package CHECKER-REG DECLARATIONS ;package" evaluate ;
 
-\ These execution tokens belong to the retained/target private checker owners.
-TRUSTED: RESET-CHECKER ( ptr u8 -- ) {: owner:ptr :}
-   owner 0= if exit then
-   owner NCOMP-DISPATCH:DECL-RESET-OFF + CELL-VIEW @ is RESET-SOURCE
-   RESET-SOURCE ;
+\ The execution token belongs to the retained private checker owner, whose
+\ record holds it as a code address integer.
+CAST: RESET-XT ( n -- [ -- ] )
 
-TRUSTED: TRANSFER-CHECKER ( ptr u8 -- ) {: source:ptr :}
-   CHECKER-OWNER {: owner:ptr :}
-   owner 0= if s" window: target checker owner missing" 76 die then
-   owner NCOMP-DISPATCH:DECL-TRANSFER-OFF + CELL-VIEW @ is IMPORT-CHECKED
-   source IMPORT-CHECKED ;
+: RESET-CHECKER ( ptr u8 -- ) {: owner:ptr :}
+   owner 0= if exit then
+   owner NCOMP-DISPATCH:DECL-RESET-OFF + CELL-VIEW @ RESET-XT is RESET-SOURCE
+   RESET-SOURCE ;
 
 \ Installing a replacement's callbacks must not claim a nonzero source owner
 \ before the explicit transfer below; the retained compiler still uses it.
@@ -95,7 +91,8 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    CORE-PREFIX:FIRST-RECORD seed-ndict!
    RESET-ADDRESS-ROWS ;
 
-\ The dictionary row holds the fresh source reset as a code address integer.
+\ The dictionary rows hold the fresh source reset and checker handover as code
+\ address integers.
 CAST: SOURCE-RESET-XT ( n -- [ -- ] )
 CAST: SOURCE-PROVIDE-XT ( n -- [ ptr u8 n -- ] )
 
@@ -105,18 +102,43 @@ CAST: SOURCE-PROVIDE-XT ( n -- [ ptr u8 n -- ] )
    then
    XREF-START SOURCE-RESET-XT execute ;
 
-: REGISTER-CLAUSE ( -- )
+: TAKE-OVER ( -- )
+   s" CHECKER-REG:HANDOVER" XREF-FIND dup XREF-FOUND? 0= if
+      drop s" window: fresh checker handover missing" 76 die
+   then
+   XREF-START SOURCE-RESET-XT execute ;
+
+: TARGET-PROVIDE ( ptr u8 n -- )
    s" provided" XREF-FIND dup XREF-FOUND? 0= if
       drop s" window: fresh provided missing" 76 die
    then
-   XREF-START SOURCE-PROVIDE-XT {: register :}
-   s" src/core/does-clause.f" register execute ;
+   XREF-START SOURCE-PROVIDE-XT execute ;
 
-: LOAD-OPTIONAL ( ptr u8 n -- )
-   2dup included
-   s" src/core/include.f" STR= if
+variable SOURCE-READY
+
+: RECOVERY$ ( -- ptr u8 n ) s" --recovery-row" ;
+
+: OPTIONAL-FILE? ( ptr u8 n -- bool )
+   2dup s" --literals" CORE-STR= if 2drop false exit then
+   RECOVERY$ CORE-STR= 0= ;
+
+: REGISTER-LOADED ( n -- ) {: last:n :}
+   \ The early core and each optional path are already present in the target
+   \ dictionary. Its new loader must record them before a later require runs.
+   s" src/core/does-clause.f" TARGET-PROVIDE
+   s" src/core/layout-buffer.f" TARGET-PROVIDE
+   last 1+ 1 ?do
+      i SCRIPT-ARGV$ 2dup OPTIONAL-FILE? if TARGET-PROVIDE else 2drop then
+   loop ;
+
+: LOAD-OPTIONAL ( ptr u8 n n -- ) {: path:ptr u:n idx:n :}
+   path u included
+   path u s" src/core/include.f" STR= if
       ACTIVATE-SOURCE
-      REGISTER-CLAUSE
+      idx REGISTER-LOADED
+      true SOURCE-READY !
+   else
+      SOURCE-READY @ if path u TARGET-PROVIDE then
    then ;
 
 \ --- the recovery-row mode ---------------------------------------------------
@@ -126,8 +148,6 @@ CAST: SOURCE-PROVIDE-XT ( n -- [ ptr u8 n -- ] )
 \ source grant. Tier 0 scans no body while the hook is off, as it is through the
 \ prefix, so the definition compiles at tier 1, where the checker scans every
 \ body.
-
-: RECOVERY$ ( -- ptr u8 n ) s" --recovery-row" ;
 
 : RECOVERY-MODE? ( -- bool )
    SCRIPT-ARGC 1 ?do
@@ -166,7 +186,7 @@ CAST: SOURCE-PROVIDE-XT ( n -- [ ptr u8 n -- ] )
    s" src/core/layout-buffer.f" included
    s" src/core/layout-valid.f" included
    RECOVERY-MODE? if RECOVERY-ROW then
-   source TRANSFER-CHECKER
+   TAKE-OVER
    \ A source-loaded retained compiler must now use the replacement owner too.
    CHECKER-OWNER:CAPTURE-PREPARE
    s" src/core/check-hook.f" included
@@ -179,7 +199,7 @@ CAST: SOURCE-PROVIDE-XT ( n -- [ ptr u8 n -- ] )
       \ The retained compiler owns literals after its namespace is retired.
       2dup s" --literals" CORE-STR= if
          2drop NSTR:WINDOW-OPEN
-      else 2dup RECOVERY$ CORE-STR= if 2drop else LOAD-OPTIONAL then then
+      else 2dup RECOVERY$ CORE-STR= if 2drop else i LOAD-OPTIONAL then then
    loop
    PATH$ included
    \ Call the retained production detector after the replacement checker loads.

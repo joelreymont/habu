@@ -5,12 +5,12 @@ Adopted 2026-10-03; reviewed against master 67a66d28.
 How Habu builds programs, and Habu itself, for more than one target: five
 qualified native compiler-host products, reusable ISA backends, separately
 selected ABI, runtime, image and toolchain profiles, package contributions
-installed in source order, and a Wasm path bound to Browser Runtime v2. The
+installed in source order, and a Wasm path. The
 compiler's execution environment never silently defines the program it builds.
 
 This page specifies contracts and a migration plan. It claims no compiler
 implementation, browser qualification, TI board test or native self-build.
-Wasm code generation and the browser binding (sections 17 to 21) live in
+Wasm code generation (section 17) lives in
 [wasm-backend.md](wasm-backend.md); the package contribution design this page
 builds on is [package-build.md](package-build.md). The adoption review checked
 every claim about master against 67a66d28; the commits and file:line references
@@ -43,20 +43,12 @@ contract that closes it.
 | F18 — freestanding completeness | Firmware might link but lack valid startup, load/run addresses, interrupt or DMA rules | Board/BSP contract and artifact-specific gates; §16 |
 | F19 — Windows ABI completeness | Internal register conventions could escape into C/COM, or exceptions cross foreign frames | ABI call plans, entry thunks, unwind and callback ownership; §15 |
 | F20 — Wasm linking | Native byte patching could corrupt function/type indices and variable-length encodings | Symbolic Wasm contribution plans and final index assignment; §17 |
-| F21 — actual HBR2 surface | A new collection of imports could replace the existing v2 protocol | Exact two imports, six exports, control record and packet framing; §18 |
-| F22 — three result domains | Scheduler outcomes could be treated as Habu throws or submission ownership | Separate language status, control-record result and host submission codes; §18 |
-| F23 — browser admission | Correct Wasm could bypass v2 effect, cost or capability restrictions | Artifact inspection plus callback certificates and host grants; §§19–20 |
 | F24 — publication “rollback” | Candidate initialization could mutate shared memory or trigger irreversible browser work | No start/active shared segments; declarative initialization; single root commit; §21 |
 | F25 — code lifetime | Redefinition could invalidate callbacks, suspended jobs or old execution tokens | Definition generations and code-generation leases; §§14, 21 |
-| F26 — browser release construction | Wasm, generic host, shader layouts and schema registry could come from different releases | ReleaseManifest integration and deterministic asset graph; §20 |
 | F27 — build-cache invalidation | Negative lookups, compile-time transitive calls and undeclared effects could be missed | Observation classes, closure dependencies and source-only fallback; §23 |
 | F28 — self-build circularity | Producer hashes embedded in outputs could prevent convergence | Content/provenance separation and explicit B0/B1/B2 receipts; §22 |
 | F29 — capability/qualification claims | “Backend available” could imply linking, deployment or execution support | Independent stage capability and evidence records; §§3, 24 |
 | F30 — migration ordering | New portability work could block or overwrite the Intel lane's work | Additive interfaces, per-lane ownership and concrete exit gates; §§26–27 |
-
-Browser Runtime v2 (HBR2) replaces the old browser runtime and protocol v1. Its
-main body and its generated registry are normative; it is a specification and
-reference model, not a qualified browser implementation. [B2 §§0–1, 24–28](browser-runtime.md#0-reading-and-precedence)
 
 ### 0.1 Precedence
 
@@ -77,27 +69,20 @@ target, Wasm included:
 The precedence for this work is:
 
 1. Existing language and primitive contracts, for language behavior.
-2. Browser Runtime v2, for browser semantics, HBR2 wire fields and the wrapper
-   ABI.
-3. The package incremental-build design ([package-build.md](package-build.md)),
+2. The package incremental-build design ([package-build.md](package-build.md)),
    for contribution boundaries, source-order installation and the AOT
    package-profile family.
-4. This page, for portability composition, context ownership, cross-target
+3. This page, for portability composition, context ownership, cross-target
    data, backend results and integration.
-5. [wasm-backend.md](wasm-backend.md), for Wasm-specific details this page does
+4. [wasm-backend.md](wasm-backend.md), for Wasm-specific details this page does
    not refine.
 
 A genuine conflict is an explicit integration change with new versioning and
-tests, not an implementer's local choice. No v1 browser compatibility is
-promised. [B1; B2 §0; P1 §§1, 4, 10]
+tests, not an implementer's local choice. [B1; P1 §§1, 4, 10]
 
 The Windows/COM design [WN] this design cites does not exist yet and is open
-future work. The HBR2 registry exists as `lib/browser/hbr-v2-registry.json`,
-generated from HBR2's tables and pinned by its own digest, but no build imports
-it yet ([wasm-backend.md](wasm-backend.md) §12.1). Until they land, the sections
-that defer to them (§15.4 here, and the registry parts of §18.1 and §20.4 in
-[wasm-backend.md](wasm-backend.md) §12.1 and §11.1)
-state requirements, not bindings.
+future work. Until it lands, the section that defers to it (§15.4) states
+requirements, not bindings.
 
 ### 0.2 Notation and evidence
 
@@ -108,9 +93,7 @@ handles where that avoids relying on unqualified multi-cell linear storage. This
 design authorizes no new `TRUSTED:` escape hatch.
 
 A cited source establishes an existing fact or external ABI rule. New records,
-algorithms and paths are design decisions. §29 lists the sources. The numeric
-wire fields in [wasm-backend.md](wasm-backend.md)'s HBR2 binding come from the
-HBR2 text; they are not new portability conventions.
+algorithms and paths are design decisions. §29 lists the sources.
 
 ## 1. Required scope and support claims
 
@@ -132,7 +115,7 @@ There is no required macOS/x86-64 host in this scope. TI C66x and Cortex-R4F/R5F
 
 ### 1.2 Output profiles
 
-Every native host should be able to **generate** every implemented output profile without executing that output. Initial profile families are native hosted ARM64/x86-64; ARM32 and C66x freestanding; core Wasm memory32; and browser applications using HBR2. Native objects, executables, static/shared libraries, firmware and browser releases are separate output kinds.
+Every native host should be able to **generate** every implemented output profile without executing that output. Initial profile families are native hosted ARM64/x86-64; ARM32 and C66x freestanding; and core Wasm memory32. Native objects, executables, static/shared libraries, firmware and browser releases are separate output kinds.
 
 Support is reported as `Declared`, `CodegenTested`, `ObjectTested`, `Linked`, `Executed`, and `Qualified(profile, environment, evidence)`, with independent fields rather than an assumed linear progression. A code-generation-only backend may be useful. It must not be advertised as a working compiler host, bootable board image, or COM server.
 
@@ -290,7 +273,7 @@ Keep existing CTARGET wire meanings and native digests readable under their exis
 
 Every target contribution carries `CompatibilityRequirements` with machine family/state, endian, address/layout ABI, Habu ABI, foreign-call contracts actually used, relocation schema, runtime interfaces actually referenced, and required features. The linker checks these per object, unions compatible requirements, and rejects conflicts. A backend's encoding support is not a promise that every ABI named by the architecture works.
 
-A runtime requirement is an interface/version constraint; a release pin is an exact content identity. Ordinary Habu linking can accept a compatible replacement runtime implementation, while a reproducible release pins the exact implementation. HBR2 is stricter at the protocol boundary: its selected canonical registry digest and feature schemas must match the release. A label containing “v2” alone is insufficient. [B2 §24.1](browser-runtime.md#241-new-protocol-identity)
+A runtime requirement is an interface/version constraint; a release pin is an exact content identity. Ordinary Habu linking can accept a compatible replacement runtime implementation, while a reproducible release pins the exact implementation.
 
 ### 4.4 Existing feature repairs
 
@@ -345,13 +328,10 @@ parallel compilation or foreign code execution. The registered
 nested admission, task refusal and failure after child scratch allocation, and
 writes the retained A64 artifact.
 
-At native tier 1, `NBACK:OBSERVE!` installs a callback that receives frozen HIR
-before emission. Its first argument is the pending dictionary record's index,
-which the callback installed by `NCOMP:PUBLISHED!` receives again for the
-published entry. The frozen module is borrowed only during that callback.
-Frozen-module function `k` is emission function `k` and is published as ordinal `k`:
-ordinal 0 is the definition, followed by its quotations and any `does>` clause.
-A `does>` definer and clause share one parent entry, with separate ordinals.
+The callback installed by `NCOMP:PUBLISHED!` receives the published dictionary
+entry's index. Emission function `k` is published as ordinal `k`: ordinal 0 is
+the definition, followed by its quotations and any `does>` clause. A `does>`
+definer and clause share one parent entry, with separate ordinals.
 The callback installed by `CODE-RECLAIM:INVALIDATE!` runs before the engine
 rewinds CP and NDICT during recovery, and after dictionary rollback when
 `TRUNCATE` reclaims code.
@@ -376,7 +356,7 @@ Cleanup must be safe after partial initialization, cancellation or exceptions. I
 
 Do not switch `HB-TARGET-*` meanings globally. Preserve legacy predicates for the engine/source window that owns them, while new code receives explicit `HostContext` or `TargetContext`. Prohibit new portable callers of the legacy predicates with a dependency/lint rule. Move each source selector individually behind a resolver adapter, retaining native fixtures.
 
-Master seals every package the native capture ships (bbcac900; `docs/forth.md:198-205`). Every edit to `CTARGET`, `CBIND`, `HIR`, `NBACK`, `NELAB` or `NCOMP` is therefore an engine rebuild under the full gate (the engine requires the compiler at `src/habu/native-runtime.f:114`; [gate.md](gate.md)), and a backend loaded at run time uses public words only. An adapter cannot be loaded into a sealed package on a product engine. All the sealed edits the Wasm path needs go into one commit, P1a (§27), developed on the whitebox image.
+A package compiled into `bin/hb` is an engine package. A backend loaded at run time uses its public words (see [Packages](forth.md#packages)). Changes to an engine package are made at its owner and require a matching engine rebuild and the verification in [gate.md](gate.md).
 
 A transitional non-reentrant backend is marked `ExclusiveSession`. The driver takes an explicit lease, saves only documented state, and prevents unsupported nested entry. This is preferable to claiming reentrancy before globals have been removed.
 
@@ -547,9 +527,7 @@ Preserve 64-bit Habu language cells for the new profiles. This is consistent wit
 | Habu pointer on memory32/target32 | Canonical zero-extended address in an 8-byte language slot | Check before narrowing; no lossy high-bit truncation |
 | Foreign pointer field | Target ABI pointer width | Four bytes on admitted address32 foreign layouts; eight on corresponding address64 layouts |
 | Habu true flag | Existing language flag representation | Convert explicitly to protocol Bool or branch predicate |
-| HBR2 Bool | u32 0 or 1 | Never serialize an eight-byte Forth mask as the wire field |
 | Execution token | Nominal callable descriptor/reference | Not interchangeable with C function pointers or browser handles |
-| Browser handle | Two u32 fields under HBR2 | Nominal owner/type and generation validation |
 | Native layout object | ABI-specific fields | Not a wire packet and not a host struct when cross-compiling |
 
 ### 9.2 Layout calculation
@@ -760,7 +738,7 @@ Use a monotone expansion algorithm for the initial native linker. Start with all
 
 Each site has a finite promotion chain. Thunks have bounded counts and deterministic placement constraints. Exceeding the configured code model or thunk budget fails explicitly. Final validation rechecks all references after the last size/alignment change, including data, literal and unwind relationships. Optional shrink optimization is a separate pass with its own convergence and byte-identity tests.
 
-Avoid O(n²) full rescans when practical by indexing references to moved sections and maintaining affected worklists. Correctness is more important than premature incremental link patching; the first package-incremental implementation can relink the entire unplaced contribution set deterministically. That whole-set relink is what lets the browser application binding (P7) proceed without the package cache (P4); see §27.
+Avoid O(n²) full rescans when practical by indexing references to moved sections and maintaining affected worklists. Correctness is more important than premature incremental link patching; the first package-incremental implementation can relink the entire unplaced contribution set deterministically.
 
 ### 13.4 Format and execution policy
 
@@ -770,7 +748,7 @@ Avoid O(n²) full rescans when practical by indexing references to moved section
 | Mach-O | Mach-O structures, supported relocations and link metadata | macOS deployment/signing/runtime policy |
 | COFF/PE | COFF objects; PE image sections, imports/exports/base relocations | Win32 runtime services, COM lifecycle and process policy |
 | Firmware container | Verified image regions and required wrapper/checksums | Board boot state, flashing authorization and device execution |
-| Core Wasm | Module sections/types/functions/data/table structure | Browser HBR2, WASI interfaces, host grants and application assets |
+| Core Wasm | Module sections/types/functions/data/table structure | Browser bindings, WASI interfaces, host grants and application assets |
 
 Windows image RVAs, file offsets, section alignment and base relocations have distinct meanings; do not conflate them when sharing layout utilities. [PE-COFF]
 
@@ -924,7 +902,7 @@ No unverified physical memory addresses or silicon errata tables are supplied he
 
 A vendor linker or packaging tool is an external action with explicit host compatibility. A remote tool runner is allowed only as a declared, authorized mode; it is not reported as a local cross-toolchain. The architectural goal remains local Habu code/object generation from every required native host and qualified finalization paths for each advertised image profile.
 
-## 17–21. Wasm and Browser Runtime v2
+## 17–21. Wasm
 
 These sections live in [wasm-backend.md](wasm-backend.md), beside the Wasm
 detail they refine:
@@ -932,13 +910,10 @@ detail they refine:
 | Section | Subject | In wasm-backend.md |
 |---|---|---|
 | 17 | Wasm code generation, module linking and admission: profiles, lowering, calls with the pinned 16/16 arity rule, memory, symbolic linking (padded LEB immediates in the first slice) and the binary validator | §3, §7.3, §10, §17 |
-| 18 | The exact HBR2 binding: two imports, six exports, the 128-byte control record, packet framing and lanes | §12.1 |
-| 19 | Compiler obligations HBR2 imposes: the bounded callback verifier, admission evidence, ownership types, code retention and package boundaries | §12.2 |
-| 20 | Browser release graph and runtime admission | §11.1 |
-| 21 | Optional browser compilation and transactional module installation | §11.2 |
+| 21 | Optional browser compilation and transactional module installation | none; deferred with P12 |
 
-Section 21 is P12. It is adopted as specified and deferred until a caller
-exists; Maki, the first browser caller, does not need it.
+Section 21 is P12, deferred until a caller exists; Maki, the first browser
+caller, does not need it.
 
 ## 22. Compiler products, bootstrap, self-build and persistent state
 
@@ -1051,7 +1026,7 @@ A deliberate source-installed checker/backend/definer owner transfer changes thi
 
 Part of this vector exists outside master: the Intel lane's unmerged 8b05f5d9 keys the `hb-build` producer by its load closures.
 
-For link/finalization actions, include actual linker/finalizer implementation, target libraries and relevant SDK data. For browser wrappers, include registry, wrapper ABI, runtime package and generator identities. Numeric policy, bounds/fuel instrumentation and internal call-ABI thresholds are code-generation inputs.
+For link/finalization actions, include actual linker/finalizer implementation, target libraries and relevant SDK data. Numeric policy, bounds/fuel instrumentation and internal call-ABI thresholds are code-generation inputs.
 
 ### 23.3 Observation classes
 
@@ -1153,18 +1128,15 @@ hb build app.f --target x86_64-unknown-linux-gnu --emit object -o app.o
 hb build app.f --target aarch64-pc-windows-msvc --emit executable -o app.exe
 hb build firmware.f --target c66x-none-eabi --board <pinned-board-profile>
                    --emit firmware --toolchain <pinned-toolchain> -o firmware.out
-hb build ui.f --target wasm32-habu --runtime browser-runtime-v2
-              --browser-profile DOM --emit browser-release -o release/
 hb build-compiler --compiler-host aarch64-pc-windows-msvc
                   --enable-backends arm64,x86-64,arm32,tic6x,wasm -o hb.exe
 hb test-artifact app.wasm --runner <qualified-browser-runner>
-hb explain-target wasm32-habu --runtime browser-runtime-v2
 hb explain-cache <action-receipt>
 ```
 
 Master's `tools/native-build.f` takes `--target linux-aarch64`, `macos-aarch64` or `linux-x86-64` (`tools/native-build-args.f:58-70` and `tools/native-build-args.f:92`). These labels and the existing entry scripts remain aliases until P13 retires target selection on the building engine. The resolver rejects ambiguous aliases and prints the resolved semantic profile. `--target native`, if admitted, means an explicitly requested host-derived default; generic backend code never performs that detection itself.
 
-`--emit object` must not load a final-image signer or demand a board runner. `--emit browser-release` includes the complete v2 release graph rather than only a `.wasm` file. `--build-only`/absence of a runner never implies foreign execution.
+`--emit object` must not load a final-image signer or demand a board runner. `--build-only`/absence of a runner never implies foreign execution.
 
 ### 24.4 Diagnostics
 
@@ -1272,7 +1244,7 @@ Include state hashes, owned-data values and executed behavior—not only final f
 | N01 | Signed/unsigned limits, wrap add/sub/mul | Match existing Habu cell semantics |
 | N02 | Zero divisor and signed minimum / −1 | Catchable −6400 and specified wrapped result, respectively |
 | N03 | Condition with only a high bit set | True according to Habu; no accidental low-i32 truncation |
-| N04 | Observable Boolean/mask conversion | Habu mask and HBR2 u32 Bool stay distinct |
+| N04 | Observable Boolean/mask conversion | A Habu flag is a whole-cell mask |
 | N05 | Shifts, remainder sign, integer/real conversions | Match pinned primitive contract; no host-language accidental semantics |
 | N06 | NaNs, signed zero, infinities, subnormals, contraction; print rows for `-1 fsqrt`, `0 0 f/` and `inf inf f-` | Every made NaN is `$7FF8000000000000` and a quiet NaN operand passes through, the left of two (§10.1); the three print rows print the same on every target; protocol finite fields validated separately |
 | N07 | Memory32 maximum offset and exclusive extent 2^32 | Last byte and legal empty spans handled without narrowing the extent |
@@ -1311,7 +1283,7 @@ Compare math helpers against independent arithmetic/specification oracles. Rando
 
 Use independent disassembly, ABI callers and target execution. Existing C66x assembler/facts/simulator sharing can validate consistency, but their common implementation facts can share a defect; supplement them with manual-derived golden encodings and an independently implemented/vendor execution oracle where available. Record the exact tested instruction subset and board/tool profile. [R7]
 
-### 25.5 Wasm and HBR2
+### 25.5 Wasm
 
 | Test ID | Fixture | Required result |
 |---|---|---|
@@ -1321,34 +1293,19 @@ Use independent disassembly, ABI callers and target execution. Existing C66x ass
 | W04 | Imported function has correct name but wrong signature | Admission rejects actual type mismatch |
 | W05 | Required Wasm feature unavailable | Profile rejection/fallback only when explicitly authorized |
 | W06 | Wide arity crosses fast-call/frame ABI threshold | Deterministic descriptor and correct direct/dynamic adaptation |
-| W07 | Full-width throw, fatal trap and browser Idle | Three different behaviors; no status-domain conflation |
-| W08 | HBR2 header/record/control layout | Exact 96/32/128-byte layouts, zero padding and registered types |
-| W09 | Canonical STOP packet | 136 bytes under the inherited reference shape |
-| W10 | IDs/epochs greater than 2^53 | No JavaScript Number precision loss |
-| W11 | Strict UTF-8 versus unpaired native UTF-16 draft unit | Distinct codecs; valid draft code units not destructively normalized |
-| W12 | Input lease replaced, stopped, consumed or from old epoch | Stale use refused; ownership and reservations settled exactly once |
+| W07 | Full-width throw and fatal trap | Two different behaviors; no status-domain conflation |
+| W10 | i64 values greater than 2^53 cross JavaScript | No Number precision loss |
 | W13 | Memory grows in an export between host accesses | Host view reacquired; no detached/stale view read |
-| W14 | submit returns Backpressure/OOM/Denied | Habu retains packet; no accepted-send credit increment |
-| W15 | submit returns Accepted then async operation fails | Host owns copied request; one typed terminal outcome plus proper cleanup |
-| W16 | Ordinary lane exhausted while request must terminate | Reserved control/terminal path remains usable |
-| W17 | Synchronous import tries to call an export recursively | Reentry blocked; completion scheduled later |
-| W18 | Callback bound unknown or cost exceeds 2,048 | Compile/admission rejection; not “probably fast” |
-| W19 | Callback within operation count but exceeds node/byte budget | Relevant separate budget rejection |
 | W20 | Candidate module has start/active shared segment | Incremental admission rejects before instantiation |
 | W21 | Prepare fails after memory/table capacity grew | Old semantic root remains; retained capacity accounted, not claimed undone |
 | W22 | Arbitrary initializer tries writing existing shared object | Not admitted as declarative candidate initialization |
 | W23 | Epoch/provider generation changes during browser compilation | Prepared ticket discarded/revalidated, never committed stale |
 | W24 | Old callback/job keeps a superseded module alive | Generation lease prevents retirement |
-| W25 | New AOT worker adopts state/draft | Versioned migration, new epoch; no copied raw memory/resource handles |
 | W26 | Untrusted plugin requests shared privileged memory/table | Refused; isolated plugin profile used |
-| W27 | Registry/schema mismatch in host/module/sidecar | Reject before bootstrap; no best-effort v1 reinterpretation |
-| W28 | Module valid but grants do not authorize operation | Runtime Denied; valid bytes do not confer authority |
-| W29 | Device/frame skipped while reliable pick is pending | Pick follows its retained scene/lease contract, not frame lifetime |
-| W30 | Old namespace completion arrives after authority transition | Drain/quarantine under original namespace; never adopt into new authority |
 | W31 | The same checked program compiled native and to Wasm | Differential rows: identical printed output, throw codes and final stacks |
 | W32 | `-1 0 ?do … loop`, `MIN-N 0 ?do … loop` and a counting-down `?do … +loop` | The first two take no turn; the third runs to its limit, as on native (`docs/forth.md:939-955`) |
 
-W29/W30 are integration tests of **existing v2** semantics. Their implementation remains in v2 owners, not the Wasm instruction selector. Browser tests must include the actual supported Safari/WebKit, Firefox and Chromium products/profiles when those are claimed; one engine's validator is not universal-browser evidence.
+Browser tests must include the actual supported Safari/WebKit, Firefox and Chromium products/profiles when those are claimed; one engine's validator is not universal-browser evidence.
 
 ### 25.6 Failure injection discipline
 
@@ -1356,17 +1313,17 @@ For every preparing operation, enumerate allocation, buffer-growth, symbol-resol
 
 After the declared commit point, verify that the commit path contains no operation classified as fallible. Faults outside that assumption are fatal recovery cases, not an invitation to roll back half a root update. Record retained capacities separately from leaked live objects.
 
-Mutation testing should deliberately alter ABI identity, type indices, relocation widths, source witnesses, schema hashes, HBR2 result codes, generation fields, C66x delay constraints, callback costs and ownership transfer points. A test suite that remains green after such changes does not adequately defend the contract.
+Mutation testing should deliberately alter ABI identity, type indices, relocation widths, source witnesses, schema hashes, generation fields, C66x delay constraints and ownership transfer points. A test suite that remains green after such changes does not adequately defend the contract.
 
 ### 25.7 Evidence levels and review checks
 
 Keep `Specified`, `ReferenceModelChecked`, `GeneratedByHabu`, `ExecutedOnTarget`, and `QualifiedConfiguration` distinct. Store evidence receipts with source/compiler/artifact hashes and tool/environment identities.
 
-HBR2 reports its own reference-model results. Those are inherited evidence about its supplied specimens, not tests this design reran. Likewise, the worked-example checks done while writing this design do not establish a Habu implementation or real browser execution. [B2 §§0, 28](browser-runtime.md#0-reading-and-precedence)
+The worked-example checks done while writing this design do not establish a Habu implementation or real browser execution.
 
 ## 26. File-by-file integration map
 
-Paths in the “destination/contract” column are proposed ownership destinations, not claims that those files already exist. The contracts are adopted now; the physical moves are deferred to P13. Introduce interfaces at current locations first, and keep a directory move and a semantic change in separate commits. A row whose current file is in a sealed engine package (§5.3) changes only through an engine rebuild.
+Paths in the “destination/contract” column are proposed ownership destinations, not claims that those files already exist. The contracts are adopted now; the physical moves are deferred to P13. Introduce interfaces at current locations first, and keep a directory move and a semantic change in separate commits. A row whose current file is in an engine package (§5.3) changes only through an engine rebuild.
 
 | Current file/area | Problem or retained value | Destination/contract | First acceptance gate |
 |---|---|---|---|
@@ -1381,7 +1338,7 @@ Paths in the “destination/contract” column are proposed ownership destinatio
 | `src/compiler/native/abi.f` | Host identity mixed with AArch64 routine construction | Split execution-host descriptor from ARM64 Habu routine/foreign ABI construction | T04/L07/L12 |
 | `native/a64ir.f`, ARM64 selector/emitter files | Architecture-specific implementation in shared area | `src/arch/arm64/` ownership after interfaces stabilize | Existing ARM64 gate and byte parity |
 | `native/x64ir.f`, `select-x64.f`, `emit-x64.f` | Existing Intel implementation | The Intel lane retains ownership; move by agreement after shared adapters land | Existing Intel gate; L07/L08 later Windows lane |
-| `src/compiler/ir/{attr,context,schema,type}.f` | Decoders that mirror every CTARGET architecture, ABI and feature code | Each new target code is mirrored in the decoders in the same sealed commit (P1a) | T01; HIR schema version bumped |
+| `src/compiler/ir/{attr,context,schema,type}.f` | Decoders that mirror every CTARGET architecture, ABI and feature code | Each new target code is mirrored in the decoders in the same commit (P1a) | T01; HIR schema version bumped |
 | `src/arch/arm32/` | ISA construction available; complete target pipeline needed | Shared ARM32 provider with CPU/state/FP/ABI profiles | L12/L13/N09 |
 | `src/arch/tic6x/` | Existing assembler, ABI/facts/simulator assets | Context-owned target provider; constraint scheduling and independent validators | L14–L18 |
 | `src/core/cell.f` | Existing 64-bit Habu cell semantics | Keep language cell invariant; target pointer/foreign layout moves to explicit layout owner | N07–N11 |
@@ -1397,7 +1354,6 @@ Paths in the “destination/contract” column are proposed ownership destinatio
 | `tools/build-fixpoint.f`, `native-emit.f`, bootstrap/runtime source lists | Several selection owners | One source-manifest authority with generated bootstrap representation | C02/C03; native self-build |
 | Existing object/cache/build libraries | Existing package design should be reused | Contribution storage/import and observation hooks from P1, not parallel format | C01–C18 |
 | New `src/arch/wasm/` provider | Must not inherit native code-address assumptions | WCFG/WSTRUCT, module contribution plans and binary encoder | W01–W07 |
-| Browser runtime packages/host adapter | Existing v2 owns UI/GPU/capabilities | Pin HBR2 registry and exact wrappers; portability sidecar only | W08–W19/W27–W30 |
 | Tool and test entry points | Must remain portable and inspectable | Thin Habu commands; external tools as adapters, independent tests as oracles | Same commands on all qualified hosts |
 
 ### 26.1 Minimal practical source layout
@@ -1417,10 +1373,7 @@ src/link/                symbols, layout, relocations, image policies
 src/runtime/             portable primitives plus environment providers
 src/build/               actions, input worlds, manifests, caches, tools, runners
 profiles/                targets, runtimes, boards, toolchains, qualification
-host/browser/            existing v2 closed adapter and workers
 ```
-
-`RUNTIME`, `UI`, `SCENE`, `RENDER`, `SYNC`, `BROWSER` and `MAKI` retain v2's package boundaries regardless of physical directory placement. `src/runtime` does not mean all those packages become mandatory dependencies of a small native application.
 
 ### 26.2 Dependency lint rules
 
@@ -1432,28 +1385,27 @@ Lint generated source manifests as well as textual `require` edges: dynamic sour
 
 The order below is an implementation dependency graph, not a demand to stop Intel work until a repository-wide redesign finishes. Shared changes land with compatibility adapters and native regression gates. New Windows, TI and Wasm work can proceed behind those interfaces.
 
-P0 and P1 are split in two. P0n pins the native contracts and P0w the HBR2 wire and Wasm numeric goldens. P1a is the one commit that makes every sealed edit the Wasm path needs (§5.3); P1b is the rest of the action and target model. The Wasm path is P1a -> P6 -> P7, with P0w alongside; it never waits on P2-P5. Each package names its dot. A bracketed [P1] elsewhere on this page cites the package-build design, not the P1 work package.
+P0 and P1 are split in two. P0n pins the native contracts and P0w the Wasm numeric goldens. P1a adds the Wasm target row (§5.3); P1b is the rest of the action and target model. The Wasm path is P1a -> P6, with P0w alongside; it never waits on P2-P5. Each package names its dot. A bracketed [P1] elsewhere on this page cites the package-build design, not the P1 work package.
 
 | Work package | Concrete deliverable | Depends on | Exit gate |
 |---|---|---|---|
 | P0n — pin native contracts | Literal CTARGET digests, primitive and layout goldens (habu-pin-native-target-12e4fbb7) | None | Old behavior reproducible on currently qualified hosts; unknown results labelled untested |
-| P0w — pin HBR2 wire and Wasm numerics | HBR2 wire fixtures, the registry and its digest, Wasm numeric goldens (habu-pin-hbr2-wire-0b340032) | This page | Wire goldens; N01–N06 with the NaN print rows and the three `?do` rows, run natively |
-| P1a — Wasm target row | Wasm architecture and ABI codes, the scalar-FP capability split (§4.4) and the decoders, in one sealed commit (habu-add-the-wasm-4c32353e) | P0n | T01; legacy digests unchanged |
+| P0w — pin Wasm numerics | Wasm numeric goldens (habu-pin-hbr2-wire-0b340032) | This page | N01–N06 with the NaN print rows and the three `?do` rows, run natively |
+| P1a — Wasm target row | Wasm architecture and ABI codes, the scalar-FP capability split (§4.4) and the decoders, in one commit (habu-add-the-wasm-4c32353e) | P0n | T01; legacy digests unchanged |
 | P1b — action/target model | ExecutionPlatform, CompilerProduct, ResolvedTarget, alias resolver, separate compatibility predicates (habu-resolve-build-targets-ae8e65c1) | P1a | T01–T06, T15; no changed legacy digest meanings |
 | P2 — provider/session adapter | Backend manifest capacity, context-owned artifact adapter, exclusive legacy-provider guard (habu-give-each-backend-b6f7ea4f) | P1b | T07–T09; ARM64/Intel failures leave parent state valid |
 | P3 — target data/staging | Symbolic target refs, object builder, host/helper binding split, adapter admission (habu-make-cross-target-934166cc) | P2 | T10–T14/N07–N11; no foreign artifact host pointers |
 | P4 — contribution integration | Existing P1 package profile, source-position importer, observation/producer hooks; scheduled by the package-build review (habu-review-and-schedule-dbdba551) | P3; that review | C01–C18 including transitive compile-time closure |
 | P5 — link/publication | Native fragments, relocation providers, layout fixpoint, native prepare/commit/retire (habu-link-native-fragments-5949ec30) | P2, P3 | L01–L06/L10/L11; existing image/capture qualification retained |
 | P6 — Wasm vertical slice | Genuine Habu-generated scalar/control/memory module through the shadow route (habu-emit-a-wasm-05443776; [wasm-backend.md](wasm-backend.md)) | P1a, P0w | W01–W07 and numeric parity; proves non-native result model early |
-| P7 — HBR2 AOT integration | Exact wrapper/codecs, callback certificates, ReleaseManifest sidecar, actual browser host (habu-bind-the-wasm-5e9830c7) | P6; P3 only for target data the capture path cannot carry; the HBR2 runtime packages | W08–W19/W27–W30 on selected real browser profiles |
 | P8 — host/toolchain services | Structured paths/processes/files/memory/tool/runner APIs for native hosts (habu-own-host-svcs-b1368bbe) | P1b; grows with P5 | Cross-generation on each brought-up host; no host library contamination |
 | P9 — Windows native profiles | x64/ARM64 foreign ABI, PE/DLL/unwind/TLS/callback and host runtime (habu-specify-windows-x64-3cd4cef3, parked until [WN] and a Windows lane exist) | P5/P8; [WN]; existing ISA lane output | L07–L11/N12, native compiler self-build per Windows host |
 | P10 — TI/freestanding profiles | ARM32/C66x complete lowered subset, startup/BSP, object/finalizer adapters (design input to C6's habu-design-the-first-61f718f0) | P3/P5/P8 | L12–L20 and device/independent execution evidence |
 | P11 — compiler product qualification | Native cross-bootstrap graph, source-free/self-build, cache equivalence and size gates (habu-qualify-the-five-a49d428e) | Relevant P4/P5/P8/P9 | All five required native compiler-host profiles qualified |
-| P12 — optional browser compiler | Installer provider, restricted transaction, leases, explicit compiler pump; deferred until a caller exists | P7/P11 where reused; v2 compiler profile | W20–W26 and real compiler B0/B1/B2 closure |
+| P12 — optional browser compiler | Installer provider, restricted transaction, leases, explicit compiler pump; deferred until a caller exists | P11 where reused | W20–W24/W26 and real compiler B0/B1/B2 closure |
 | P13 — cleanup/optimization | Retire compatibility predicates, move files, optimize measured bottlenecks (habu-retire-target-selecting-affc4d65) | Affected profiles have replacement gates | No hidden fallback; ownership lint and performance receipts |
 
-P4 gates incremental browser builds only. P7 needs no package cache, because the first linker relinks the whole unplaced set (§13.3).
+P4 gates incremental browser builds only.
 
 P11 does not require P10 or P12 to prove that a host compiler executes correctly. A release claiming TI emission additionally needs P10. A release claiming browser self-hosting needs P12. Keep capability/evidence records granular.
 
@@ -1469,7 +1421,7 @@ Avoid simultaneous mechanical moves and behavior changes across active worktrees
 
 Each work package records public stack interfaces, imported contracts, owned resources, state machine, target/profile coverage, failure paths, quotas, test IDs, baseline/source commit, effective producer identities and exact outcomes. A source-only design patch says “specified”; generated Habu output says “generated”; actual target execution is attached separately.
 
-Schema changes include all readers/writers, validators, fixtures and version-policy updates. No worker independently assigns a conflicting AOT profile version or HBR2 opcode. A task requiring a board-specific register map or external ABI table cannot close based on a guessed value.
+Schema changes include all readers/writers, validators, fixtures and version-policy updates. No worker independently assigns a conflicting AOT profile version. A task requiring a board-specific register map or external ABI table cannot close based on a guessed value.
 
 ### 27.3 Definition of done
 
@@ -1485,8 +1437,6 @@ This section separates fixed architectural decisions from deployment facts that 
 
 The action model separates executing platform, compiler-product host and emission target. Habu cells remain 64-bit in the initial target family. The generic result is an owned emission/contribution, not a native code address. Shared HIR reuse is dependency-sensitive. Cross-target persistent references are symbolic. Native and Wasm publishers have different preparation mechanisms but explicit commit/retirement contracts. Package contributions preserve source order and reuse the existing AOT-family package design.
 
-Browser integration uses **HBR2 2.0**, its registry digest once the registry exists, two imports, six wrapper exports, one unshared memory and the exact status/ownership rules of [wasm-backend.md](wasm-backend.md)'s HBR2 binding. No new portability-specific browser runtime replaces v2. Optional compiler installation is separately admitted; it does not assign new core operations in this document.
-
 The Wasm fast-call/frame threshold, 16 input and 16 output lanes ([wasm-backend.md](wasm-backend.md)), is a **pinned internal ABI parameter**, not an inherited browser wire value. It must enter the internal ABI descriptor and implementation fixtures. Changing it later requires compatible adapters or an ABI revision; it is not an untracked optimization heuristic.
 
 ### 28.2 Facts to pin during implementation—not opportunities to guess
@@ -1499,10 +1449,10 @@ The Wasm fast-call/frame threshold, 16 input and 16 output lanes ([wasm-backend.
 | ARM32 CPU/FPU/PCS and C66x device variant | Selected target profile backed by official ABI/device documentation |
 | Board memory map, reset/boot state, interrupt/cache/DMA policy | Explicit BSP/board manifest; refuse firmware qualification without it |
 | SDK libraries, import metadata and vendor finalizer support | Pinned content/tool profiles and actual host execution evidence |
-| Optional compiler-service transport schema | Separate reviewed extension of the existing compiler embedding, not invented HBR2 core IDs |
+| Optional compiler-service transport schema | Separate reviewed extension of the existing compiler embedding |
 | Browser support set, CSP, graphics fallback and budgets | Deployment manifest backed by actual browser/device tests |
 | Producer equivalence across different hosts | Explicit qualified equivalence policy; conservative exact-producer cache mode until then |
-| Runtime state migrations and offline authority | Existing v2/application owners; never inferred from pointer or schema similarity |
+| Runtime state migrations and offline authority | Existing application owners; never inferred from pointer or schema similarity |
 
 This is not permission to leave ordinary implementation behavior undefined. Each missing fact has a designated owner, a consuming descriptor and a fail-closed gate. Application/library code generation can proceed for narrower admitted profiles without overstating full platform qualification.
 
@@ -1516,9 +1466,7 @@ Reproducibility can also fail through unordered tables, floating compile-time ev
 
 ### 28.4 Review boundary
 
-This design checks its integration contracts against [wasm-backend.md](wasm-backend.md), HBR2 and [package-build.md](package-build.md). It does not claim that HBR2's runtime is reimplemented, that its state machines are independently reproved, or that every repository branch is audited. The Windows/COM design [WN] does not exist, so the Windows rows state requirements only.
-
-Habu generates the HBR2 registry, `lib/browser/hbr-v2-registry.json`, from HBR2's tables and pins its own digest (P0w; [wasm-backend.md](wasm-backend.md) §12.1). The digest HBR2 reports cannot be reproduced, because HBR2 does not publish the registry's JSON, so it stays attributed to HBR2. A qualified release imports the registry and checks its digest.
+This design checks its integration contracts against [wasm-backend.md](wasm-backend.md) and [package-build.md](package-build.md). It does not claim that every repository branch is audited. The Windows/COM design [WN] does not exist, so the Windows rows state requirements only.
 
 ## 29. Sources and provenance
 
@@ -1531,7 +1479,6 @@ design.
 | Label | Document | Status |
 |---|---|---|
 | [B1] | [wasm-backend.md](wasm-backend.md), the Wasm backend design, first written against aed8416b | In Habu, reconciled with this page |
-| [B2] | Habu Browser Runtime, consolidated design, revision 2 (HBR2), 2 October 2026 | It is [docs/browser-runtime.md](browser-runtime.md). HBR2 reports the digest of its registry, `hbr-v2-registry.json`, as `a2c0e4e513d448fc1ecc4fbc28b3b4aff5210cb7d85b9c923d97e8be40500599`; Habu generates the registry from its tables and cannot reproduce that digest ([wasm-backend.md](wasm-backend.md) §12.1) |
 | [P1] | [package-build.md](package-build.md), the package incremental-build design, baseline 37b2c1b7 | In Habu, reviewed only at its interface with this page; its full review is habu-review-and-schedule-dbdba551 |
 | [WN] | A Windows/COM design | Does not exist; open future work |
 
@@ -1596,14 +1543,6 @@ A Windows runner executes that exact PE and records startup/self-build results. 
 
 No step requires a compiler executing on C66x. No x86/Linux register or syscall convention is selected because Intel was the first completed non-ARM64 lane.
 
-### A.2 Windows x86-64 compiler builds an HBR2 DOM application
-
-Resolve `wasm32-habu`, cell64/address32, browser environment, HBR2 DOM runtime and AOT browser-release output. The application package closure uses v2's portable runtime/UI code without pulling in scene/GPU/SYNC packages unless referenced. The production schema generator emits codecs/wrappers from the pinned HBR2 registry. Host-executed compile-time code constructs symbolic guest data and never touches DOM APIs.
-
-Wasm contributions are linked by symbol/type/function identity; final indices and LEB sizes are assigned before module encoding. Admission checks exactly the selected wrapper/import/memory/profile requirements. The release binds `app.wasm`, host adapter, assets, schema, callback evidence and source map. A browser boot validates that release, instantiates without a core start function, reserves/copies bootstrap input and drives the six wrapper exports serially.
-
-If `submit` returns Backpressure, Habu retains the packet and does not advance accepted-send credit. If an asynchronous host request later fails after Accepted, the host still owns the request and returns its typed terminal outcome. Neither result becomes an arbitrary Habu throw code.
-
 ### A.3 Interrupted incremental browser compilation
 
 A compiler job records a new definition against root D7 and epoch E3. The host compiles its sealed bytes asynchronously. Before preparation resumes, an AOT reload creates epoch E4. The old ticket is rejected/drained under E3; it cannot publish into E4 even if the numeric table slot is free.
@@ -1622,7 +1561,7 @@ For a new **ISA**, define machine/features, internal ABI/layout, legalization, n
 
 For a new **OS on an existing ISA**, implement its foreign ABI variants, execution-host services, target runtime/entry/loader policy and image finalization. Reuse the ISA encoder/lowering where constraints genuinely match. Qualify callbacks, TLS, unwinding, memory permissions and process/path behavior; a hello-world executable alone is insufficient.
 
-For a new **runtime embedding**, specify capabilities, import/export ABI, owned data/handles, concurrency, errors, startup/shutdown, resource limits and admission. Reuse the target backend. Browser Runtime v2 is the existing example; a versioned WASI adapter is a separate embedding, not a rewrite of Wasm instruction selection.
+For a new **runtime embedding**, specify capabilities, import/export ABI, owned data/handles, concurrency, errors, startup/shutdown, resource limits and admission. Reuse the target backend. A versioned WASI adapter is a separate embedding, not a rewrite of Wasm instruction selection.
 
 For a new **board**, supply a reviewed BSP/memory/boot/interrupt/cache/DMA profile and deploy/runner evidence. Reuse ISA/ABI/object layers unless the board actually introduces a new constraint.
 

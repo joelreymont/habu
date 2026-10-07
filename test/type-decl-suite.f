@@ -1722,9 +1722,8 @@ s" TDSME3" CHECKER-FIND-USIG -1 T=
 \ engine resolves (src/core/checker.f TRUST-RESOLVES?, dot
 \ habu-make-trust-refuse-cc8e19de), so a row for a word nothing defines is
 \ refused for its NAME and never reaches the signature parser - which is the
-\ case below, not this one. A source row is counted even when it names the
-\ definition CHECK just handled (src/core/checker.f USIG-ADD-BAD); only a
-\ definer's re-record of that definition's own signature is skipped there.
+\ case below, not this one. The row is counted although it names the
+\ definition CHECK just handled (src/core/checker.f USIG-ADD-BAD).
 \
 \ "No row stored" is asserted as the effect TDTBAD KEEPS, because a defined word
 \ always has one. That is the invariant the original spelling was reaching for:

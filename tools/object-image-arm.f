@@ -12,7 +12,6 @@ require src/habu/sign-id.f
    E-OBJ-SCHEMA throw ;
 
 : OBJIMG-LOAD-IMAGE ( -- )
-   s" src/os/image-bytes.f" required
    HB-TARGET-LINUX? if
       s" src/os/linux/elf.f" required
       s" src/os/linux/sign.f" required

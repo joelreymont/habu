@@ -11,8 +11,7 @@ using SCHEMA-REG
 package TFAM
 create PCS-BUF $10000 allot
 public
-TRUSTED: PCS-START ( -- ) CHECKER-REG-AOT-MARK ;
-TRUSTED: PCS-SAVE ( -- )
+: PCS-SAVE ( -- )
    s" pcs-holder" s" 0 FIELD value pcs-linear ;STRUCTURE" STRUCTURE-DECL:SD-REPLAY
    0
    SCH-N @ 6 REG-AOT-MARK@ ?do
@@ -23,7 +22,7 @@ TRUSTED: PCS-SAVE ( -- )
    CHECKER-REG-AOT-CLOSE
    PCS-BUF $10000 CHECKER-REG-AOT-SAVE drop ;
 ;package
-TFAM:PCS-START
+CHECKER-REG-AOT-MARK
 DEFLINEAR pcs-linear
 TFAM:PCS-SAVE
 s" process-local schema constructor was incorrectly accepted" 79 die

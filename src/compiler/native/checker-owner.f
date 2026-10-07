@@ -20,11 +20,15 @@ package CHECKER-OWNER
 
 \ Set by this module's load, cleared before the compiler is captured.
 variable SOURCE-LOADED   -1 SOURCE-LOADED !
+variable BIND-UNJUDGED
 
 \ A retained prefix may carry these pre-hook words without native call models.
 \ Bind their actual execution tokens with their existing callable contracts.
 defer SOURCE-UNJUDGED ( ptr u8 n -- n )
 defer SOURCE-CALL-CELLS ( n -- n n )
+defer SOURCE-CALL-BINDING ( n -- ptr u8 n )
+defer SOURCE-UNJUDGED-BINDING ( n -- ptr u8 n )
+defer SOURCE-BINDING-WINDOW ( -- n )
 defer SOURCE-CALL-GLUE ( n -- n n )
 defer SOURCE-CALL-RCELLS ( n -- n n )
 defer SOURCE-CALL-RGLUE ( n -- n n )
@@ -37,9 +41,14 @@ defer SOURCE-QUOT-RGIN ( n n -- n n )
 defer SOURCE-QUOT-RGOUT ( n n -- n n )
 defer SOURCE-INIT-LAYOUT ( n -- n n n )
 defer SOURCE-FIELD-SPAN ( n -- n n )
+defer SOURCE-C2-STOW ( n -- n n )
 defer SOURCE-REPORT ( -- )
 defer SOURCE-REPORT-RESET ( -- )
 defer SOURCE-JSON-REPORTED ( -- bool )
+defer SOURCE-DECLARED-ROW ( ptr u8 n ptr u8 n -- )
+defer SOURCE-ROWS-END ( -- n )
+defer SOURCE-RETRACT-ROWS ( n -- )
+defer SOURCE-WRITE-WINDOW ( n -- )
 
 : REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    2 s" ncomp: the source owner carries no " write drop
@@ -57,8 +66,9 @@ CAST: AS-DOES-CHECK ( n -- [ ptr u8 n ptr u8 n -- n ] )
 CAST: AS-DOES-FINISH ( n -- [ ptr u8 n bool -- ] )
 CAST: AS-N ( n -- [ -- n ] )
 CAST: AS-BOOL ( n -- [ -- bool ] )
-CAST: AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
+CAST: AS-MARK-ACTION ( n -- [ n -- ] )
 CAST: AS-CELLS ( n -- [ n -- n n ] )
+CAST: AS-BINDING ( n -- [ n -- ptr u8 n ] )
 CAST: AS-INIT-LAYOUT ( n -- [ n -- n n n ] )
 CAST: AS-QUOT-CELLS ( n -- [ n n -- n n ] )
 CAST: AS-DECLARATION ( n -- [ ptr u8 n ptr u8 n -- ] )
@@ -80,10 +90,11 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
 \ source compiler and its checker are paired. A tick of an internal pre-hook
 \ word is intentionally refused by the JIT engine, and a checked body may not
 \ call a trust-boundary one (CHECKER-CHECK-REPORT, E-CAP-TRUSTED); the owner's
-\ callable field is the authority for this private typed binding.
+\ callable field is the authority for this private typed binding. The field is
+\ read only after the guard bounds the record and its recorded extent, which a
+\ captured compiler's FIELD reads through too.
 : SOURCE-FIELD ( n ptr u8 n -- n ) {: off:n a:ptr u:n :}
-   RECORD {: rec:ptr :}
-   rec 0= if a u REFUSE then
+   RECORD off CELL + CHECKER-OWNER-GUARD:VALIDATE {: rec:ptr :}
    rec off + CELL-VIEW @ {: xt:n :}
    xt 0= if a u REFUSE then
    xt ;
@@ -91,6 +102,9 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
 : BIND-SOURCE-CALLS ( -- )
    NCOMP-DISPATCH:DECL-CHECK-UNJUDGED-OFF s" source unjudged scan" SOURCE-FIELD AS-CHECK is SOURCE-UNJUDGED
    NCOMP-DISPATCH:DECL-CALL-CELLS-OFF s" source call cells" SOURCE-FIELD AS-CELLS is SOURCE-CALL-CELLS
+   NCOMP-DISPATCH:DECL-CALL-BINDING-OFF s" source call binding" SOURCE-FIELD AS-BINDING is SOURCE-CALL-BINDING
+   NCOMP-DISPATCH:DECL-UNJUDGED-BINDING-OFF s" source unjudged binding" SOURCE-FIELD AS-BINDING is SOURCE-UNJUDGED-BINDING
+   CHECKER-OWNER-ABI:BINDING-WINDOW-OFF s" source binding window" SOURCE-FIELD AS-N is SOURCE-BINDING-WINDOW
    NCOMP-DISPATCH:DECL-CALL-GLUE-OFF s" source call glue" SOURCE-FIELD AS-CELLS is SOURCE-CALL-GLUE
    NCOMP-DISPATCH:DECL-CALL-RET-CELLS-OFF s" source return cells" SOURCE-FIELD AS-CELLS is SOURCE-CALL-RCELLS
    NCOMP-DISPATCH:DECL-CALL-RET-GLUE-OFF s" source return glue" SOURCE-FIELD AS-CELLS is SOURCE-CALL-RGLUE
@@ -103,19 +117,21 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
    NCOMP-DISPATCH:DECL-CALL-QUOT-RGOUT-OFF s" source quotation return output glue" SOURCE-FIELD AS-QUOT-CELLS is SOURCE-QUOT-RGOUT
    NCOMP-DISPATCH:DECL-INIT-LAYOUT-OFF s" source init layout" SOURCE-FIELD AS-INIT-LAYOUT is SOURCE-INIT-LAYOUT
    NCOMP-DISPATCH:DECL-FIELD-SPAN-OFF s" source field span" SOURCE-FIELD AS-CELLS is SOURCE-FIELD-SPAN
+   NCOMP-DISPATCH:DECL-C2-STOW-OFF s" source C2 stow" SOURCE-FIELD AS-CELLS is SOURCE-C2-STOW
    NCOMP-DISPATCH:DECL-CHECK-REPORT-OFF s" source scan report" SOURCE-FIELD AS-ACTION is SOURCE-REPORT
    NCOMP-DISPATCH:DECL-RESET-REPORT-OFF s" source report reset" SOURCE-FIELD AS-ACTION is SOURCE-REPORT-RESET
-   NCOMP-DISPATCH:DECL-JSON-REPORTED-OFF s" source JSON report" SOURCE-FIELD AS-BOOL is SOURCE-JSON-REPORTED ;
+   NCOMP-DISPATCH:DECL-JSON-REPORTED-OFF s" source JSON report" SOURCE-FIELD AS-BOOL is SOURCE-JSON-REPORTED
+   NCOMP-DISPATCH:DECL-DECLARED-ROW-OFF s" source declared row" SOURCE-FIELD AS-DECLARATION is SOURCE-DECLARED-ROW
+   NCOMP-DISPATCH:DECL-ROWS-END-OFF s" source rows end" SOURCE-FIELD AS-N is SOURCE-ROWS-END
+   NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF s" source rows retract" SOURCE-FIELD AS-MARK-ACTION is SOURCE-RETRACT-ROWS
+   NCOMP-DISPATCH:DECL-WRITE-WINDOW-OFF s" source write window" SOURCE-FIELD AS-MARK-ACTION is SOURCE-WRITE-WINDOW ;
 BIND-SOURCE-CALLS
 
 \ Zero selects this source compiler's by-name binding; a captured compiler
 \ requires an installed operation from the live source owner.
 : FIELD ( n ptr u8 n -- n ) {: off:n a:ptr u:n :}
    SOURCE-LOADED @ 0<> if 0 exit then
-   RECORD off CELL + CHECKER-OWNER-GUARD:VALIDATE {: rec:ptr :}
-   rec off + CELL-VIEW @ {: xt:n :}
-   xt 0= if a u REFUSE then
-   xt ;
+   off a u SOURCE-FIELD ;
 
 public
 
@@ -260,10 +276,26 @@ TRUSTED: DOES-COMMIT ( -- )
    dup 0= if drop CHECK-DOES-DOUT-SLOT exit then
    AS-SLOT execute ;
 
-: USIG-TRUNCATE ( ptr u8 n -- )
-   NCOMP-DISPATCH:DECL-USIG-TRUNCATE-OFF s" signature retract" FIELD
-   dup 0= if drop CHECKER-USIGS-TRUNCATE-FROM-RAW exit then
-   AS-NAME-ACTION execute ;
+\ The store's end when a definition begins, and a refused one's cut back to it:
+\ exactly the rows it recorded go, and every row recorded before it stays
+\ (checker.f CHECKER-RETRACT-ROWS).
+: ROWS-END ( -- n )
+   NCOMP-DISPATCH:DECL-ROWS-END-OFF s" rows end" FIELD
+   dup 0= if drop SOURCE-ROWS-END exit then
+   AS-N execute ;
+
+: RETRACT-ROWS ( n -- )
+   NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF s" rows retract" FIELD
+   dup 0= if drop SOURCE-RETRACT-ROWS exit then
+   AS-MARK-ACTION execute ;
+
+\ Opens the compile window with the code a callback's checker write is refused
+\ with, or shuts it with 0: between them only the compiler's callbacks run, so
+\ the cut above takes exactly the definition's rows (checker.f WRITE-WINDOW).
+: WRITE-WINDOW ( n -- )
+   NCOMP-DISPATCH:DECL-WRITE-WINDOW-OFF s" write window" FIELD
+   dup 0= if drop SOURCE-WRITE-WINDOW exit then
+   AS-MARK-ACTION execute ;
 
 
 \ ---- the finalized per-call-site facts the scan recorded ----------------
@@ -273,6 +305,38 @@ TRUSTED: DOES-COMMIT ( -- )
    dup 0= if drop SOURCE-CALL-CELLS exit then
    AS-CELLS execute ;
 
+: CALL-BINDING ( n -- ptr u8 n )
+   NCOMP-DISPATCH:DECL-CALL-BINDING-OFF s" resolved call binding" FIELD
+   dup 0= if drop SOURCE-CALL-BINDING exit then
+   AS-BINDING execute ;
+
+: UNJUDGED-BINDING ( n -- ptr u8 n )
+   NCOMP-DISPATCH:DECL-UNJUDGED-BINDING-OFF s" unjudged source binding" FIELD
+   dup 0= if drop SOURCE-UNJUDGED-BINDING exit then
+   AS-BINDING execute ;
+
+: BIND-REGIME! ( n -- ) BIND-UNJUDGED ! ;
+
+: SOURCE-BINDING ( n -- ptr u8 n )
+   BIND-UNJUDGED @ 0<> if UNJUDGED-BINDING else CALL-BINDING then ;
+
+\ The current source owner and scan identity. Its validity is checked when a
+\ compiler binds or borrows rows, so a rejected tape can still be sealed.
+: BINDING-WINDOW ( -- ptr u8 n bool )
+   RECORD
+   CHECKER-OWNER-ABI:BINDING-WINDOW-OFF s" source binding window" FIELD
+   dup 0= if drop SOURCE-BINDING-WINDOW else AS-N execute then
+   BIND-UNJUDGED @ 0<> ;
+
+: BINDING-WINDOW-CK ( ptr u8 n bool -- )
+   {: owner:ptr serial:n unjudged:bool :}
+   RECORD owner <> if CHECKER-OWNER-ABI:BINDING-RC throw then
+   unjudged if BIND-UNJUDGED @ 0= else BIND-UNJUDGED @ 0<> then
+   if CHECKER-OWNER-ABI:BINDING-RC throw then
+   CHECKER-OWNER-ABI:BINDING-WINDOW-OFF s" source binding window" FIELD
+   dup 0= if drop SOURCE-BINDING-WINDOW else AS-N execute then
+   serial <> if CHECKER-OWNER-ABI:BINDING-RC throw then ;
+
 : INIT-LAYOUT ( n -- n n n )
    NCOMP-DISPATCH:DECL-INIT-LAYOUT-OFF s" init layout" FIELD
    dup 0= if drop SOURCE-INIT-LAYOUT exit then
@@ -281,6 +345,11 @@ TRUSTED: DOES-COMMIT ( -- )
 : FIELD-SPAN ( n -- n n )
    NCOMP-DISPATCH:DECL-FIELD-SPAN-OFF s" field span" FIELD
    dup 0= if drop SOURCE-FIELD-SPAN exit then
+   AS-CELLS execute ;
+
+: C2-STOW ( n -- n n )
+   NCOMP-DISPATCH:DECL-C2-STOW-OFF s" C2 stow" FIELD
+   dup 0= if drop SOURCE-C2-STOW exit then
    AS-CELLS execute ;
 
 : CALL-GLUE ( n -- n n )
@@ -340,6 +409,13 @@ TRUSTED: DOES-COMMIT ( -- )
 TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
    CHECKER-OWNER-ABI:TRUST-DECL-OFF s" declared-effect row" FIELD
    dup 0= if drop TRUST-DECL exit then
+   AS-DECLARATION execute ;
+
+\ A hook-less definition's declaration as its row, without authority, where no
+\ live row states the symbol (checker.f CHECKER-DECLARED-ROW!).
+: DECLARED-ROW ( ptr u8 n ptr u8 n -- )
+   NCOMP-DISPATCH:DECL-DECLARED-ROW-OFF s" declared row" FIELD
+   dup 0= if drop SOURCE-DECLARED-ROW exit then
    AS-DECLARATION execute ;
 
 : PARSE-IMM? ( ptr u8 n -- bool )
@@ -416,6 +492,21 @@ TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
    NCOMP-DISPATCH:DECL-EFFECT-ROUT-SLOT-OFF s" rout slot" FIELD
    dup 0= if drop EFFECT-ROUT-SLOT exit then
    AS-SLOT execute ;
+
+: DIN-CON ( n -- n )
+   NCOMP-DISPATCH:DECL-EFFECT-DIN-CON-OFF s" din constructor" FIELD
+   dup 0= if drop EFFECT-DIN-CON exit then
+   AS-SLOT execute ;
+
+: DOUT-CON ( n -- n )
+   NCOMP-DISPATCH:DECL-EFFECT-DOUT-CON-OFF s" dout constructor" FIELD
+   dup 0= if drop EFFECT-DOUT-CON exit then
+   AS-SLOT execute ;
+
+: STACK-STABLE? ( -- bool )
+   NCOMP-DISPATCH:DECL-EFFECT-STACK-STABLE-OFF s" stable stack rows" FIELD
+   dup 0= if drop EFFECT-STACK-STABLE? exit then
+   AS-BOOL execute ;
 
 : DIN-QUOT ( n -- bool )
    NCOMP-DISPATCH:DECL-EFFECT-DIN-QUOT-OFF s" din quotation" FIELD

@@ -107,6 +107,9 @@ $1000 constant CODE-CAP
 
 1 constant FL-TRUSTED-ONLY
 2 constant FL-PREFIX-PROVIDED
+4 constant FL-FIXED-ABI
+8 constant FL-C2-INIT
+16 constant FL-C2-RECORDS
 
 create ROWS  ROW-CAP ROW-CELLS * cells allot
 create NAMES NAME-CAP allot
@@ -255,16 +258,20 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    ROW-N @ 0 <= IF s" prims: trusted-only before any row" SPEC-RC die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-TRUSTED-ONLY or swap ! ;
 
-\ The just-written row is one the captured runtime provides. Its record stays in
-\ every build; in a seeded build its body jumps through the row's dispatch cell
-\ (src/habu/layout.f PROVIDED-XT), which the captured runtime fills, and a
-\ build with no captured runtime keeps the backend body. The backend registers
-\ the cell with the body (src/habu/primitive-registry.f DISPATCH!), and the
-\ gate refuses a marked row registered without one, or a seeded build whose
-\ captured runtime leaves the cell empty.
+\ The machine body uses the row's widths and glue without instantiating them.
 : EPREFIX-PROVIDED! ( -- )
    ROW-N @ 0 <= IF s" prims: prefix-provided before any row" SPEC-RC die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-PREFIX-PROVIDED or swap ! ;
+
+: EFIXED-ABI! ( -- )
+   ROW-N @ 0 <= IF s" prims: fixed ABI before any row" SPEC-RC die THEN
+   ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-FIXED-ABI or swap ! ;
+
+: EC2-INIT! ( -- )
+   ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-C2-INIT or swap ! ;
+
+: EC2-RECORDS! ( -- )
+   ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-C2-RECORDS or swap ! ;
 
 \ The just-written row's minimum input depth, for a primitive whose body reads
 \ the stack although its atoms state no input: the elaborated `execute`,
@@ -305,8 +312,15 @@ public
 : TRUSTED-ONLY? ( n -- bool )
    F-FLAGS ROW-FIELD @ FL-TRUSTED-ONLY and 0 <> ;
 
+: FIXED-ABI? ( n -- bool )
+   F-FLAGS ROW-FIELD @ FL-FIXED-ABI and 0 <> ;
+
 : PREFIX-PROVIDED? ( n -- bool )
    F-FLAGS ROW-FIELD @ FL-PREFIX-PROVIDED and 0 <> ;
+
+: C2-STOW-KIND ( n -- n )
+   F-FLAGS ROW-FIELD @ dup FL-C2-INIT and 0 <> if drop 1 exit then
+   FL-C2-RECORDS and 0 <> if 2 else 0 then ;
 
 \ The inputs a row's atoms state, or the depth its EMIN-IN! marker states.
 : MIN-IN ( n -- n )
@@ -342,14 +356,16 @@ ETRUSTED-ONLY!                       \ the C2 runtime owns the exceptional row
 \ private width descriptors are consumed by this narrow machine transfer.
 EPRIM: c2-init-stow
    PE-PTR-U8 PE-IN PE-N PE-IN PE-A PE-IN PE-B PE-IN
-   PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-PTR-N PE-IN
+   PE-C PE-IN PE-PTR-N PE-IN
    PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT EPRIM;
 ETRUSTED-ONLY!
+EC2-INIT!
 EPRIM: c2-records-stow
    PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-A PE-IN PE-B PE-IN
-   PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-PTR-N PE-IN
+   PE-C PE-IN PE-PTR-N PE-IN
    PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT EPRIM;
 ETRUSTED-ONLY!
+EC2-RECORDS!
 EPRIM: unit-compile-run
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QOUT ;PE-Q PE-IN
    PE-Q ;PE-Q PE-IN PE-N PE-OUT EPRIM;
@@ -456,7 +472,7 @@ EPRIM: !          PE-A PE-IN PE-PTR-A PE-IN EPRIM;
 \ (E-RAW-CELL-PTR, the raw rule's FENCE-EXEC arm in src/core/checker.f RAW-OK?;
 \ test/compiler/base-pointer-arith-refusals.f pins its reason over base-derived
 \ cells).
-EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EPRIM;
+EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EPRIM; EFIXED-ABI!
 EPRIM: ptr-cell-mark PE-PTR-A PE-IN EPRIM;
 EPRIM: addr-cells-abi PE-N PE-OUT EPRIM;
 EPRIM: snapshot-format PE-N PE-OUT EPRIM;
@@ -640,6 +656,9 @@ EPRIM: check@         PE-N PE-OUT EPRIM;
 \ Reading the selected compiler tier decides nothing and mutates nothing, so it
 \ is an ordinary reader like check@ beside it.
 EPRIM: tier@          PE-N PE-OUT EPRIM;
+\ The compiler's prospective trusted-tick order and the owner whose installed
+\ query established it. Order 0 is checking first; 1 is trusted gate first.
+EPRIM: tick-order@    PE-N PE-OUT PE-PTR-U8 PE-OUT EPRIM;
 EPRIM: code-origin    PE-N PE-IN PE-N PE-IN PE-N PE-OUT EPRIM;
 EPRIM: executable-build-enter EPRIM;
 ETRUSTED-ONLY!
@@ -670,16 +689,25 @@ EPRIM: seed-ndict!    PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ explicit trusted reset boundary
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native pending-record publication
+EPRIM: def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT EPRIM;
+ETRUSTED-ONLY!                       \ exact resolved dictionary record
+EPRIM: def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT EPRIM;
+ETRUSTED-ONLY!                       \ slot and nonzero process-local occurrence
+ETRUSTED-ONLY!                       \ CODE-RECLAIM's permitted CP rewind
 \ ---- the definition writers --------------------------------------------------
-\ What `package`, `export`, `:`, `does>`, `;`, `immediate` and `cast:` change
-\ is sealed state after the seal: the friend arena (CUR, WIDN, DEF-WL, TSIG,
-\ TCSIG, PKG-*), BODYBUF, DEF-TIER-CELL, the TIER-PROV band and the records
-\ behind the PROT window. These eleven rows are how an interpreter written in
-\ Habu writes it. Each is registered with ENGINE-PRIMS:GLOBAL-INT-WID on both
-\ targets, so only a TRUSTED: body reaches one. A refusal exits and never
-\ throws: 79 while a task is live (the five dictionary rows), 84 for a
-\ protected wid after the seal (`alias-record`, `def-open`) and 83 for every
-\ other refusal. A caller checks first and prints the engine's own text.
+\ What `package`, `export`, `:`, `does>` and `;` change is sealed state after
+\ the seal: the friend arena (CUR, WIDN, DEF-WL, TSIG, TCSIG, PKG-*), BODYBUF,
+\ DEF-TIER-CELL, the TIER-PROV band and the records behind the PROT window.
+\ These nine rows are how an interpreter written in Habu writes it. Each is
+\ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so only a
+\ TRUSTED: body reaches one. A refusal exits and never throws: 79 while a task
+\ is live (the four dictionary rows), 84 for a protected wid after
+\ the seal (`alias-record`, `def-open`) and 83 for every other refusal. A
+\ caller checks first and prints the engine's own text. One refusal is a
+\ compile die instead: while a checker overlay is open (layout.f REPLAY-SCOPE)
+\ `namespace-private`, `alias-record` and `def-open`, like `native-unit-publish`
+\ above, name the token and die ENGINE-ERROR:OVERLAY-OPEN, which `evaluate`
+\ delivers as a throw (habu1.f OVERLAY-EMIT:GUARD,).
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
 \ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64
@@ -693,6 +721,12 @@ ETRUSTED-ONLY!                       \ native pending-record publication
 \ set and else 0, [40] DICT-WL:NAMESPACE. It refuses a colon in the name.
 EPRIM: namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
+\ namespace-record's and package-scope!'s owner-private rows: inside package
+\ CHECKER-OVERLAY they win, so the overlay's checked code calls the two writers,
+\ and each record carries DNAME-INT|DNAME-OWNED (src/habu/layout.f). The global
+\ trusted-only rows stay beside them for the TRUSTED: callers outside the owner
+\ (src/habu/packages.f); a checked caller elsewhere is refused by them.
+EPPRIM: CHECKER-OVERLAY namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 \ namespace-private ( n -- ): give namespace row n, whose [8] is 0, a fresh
 \ private wid. It refuses an index at or above NDICT, unsigned, a row that is
 \ not a namespace row and one that already has a private wid.
@@ -716,6 +750,7 @@ ETRUSTED-ONLY!
 \ puts the scope back through this row (src/habu/packages.f PKG-RECOVER).
 EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
+EPPRIM: CHECKER-OVERLAY package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ def-open ( ptr u8 n n n n -- ) name, wid, kind, tier: write record NDICT
 \ unpublished, [0] CP after the name, [8] 0, the kind (0, DKIND:VAL,
 \ DKIND:ADDR or DKIND:CAST) in [16] and the wid in [40]; PEND-CELL is that
@@ -753,52 +788,55 @@ ETRUSTED-ONLY!
 \ (DEF-TIER-CELL other than 1), as ndict-append does.
 EPRIM: def-close EPRIM;
 ETRUSTED-ONLY!
-\ def-abort ( -- ): close an abandoned definition's writable code region,
-\ provenance window and compile-only state after a caught source error. The
-\ catch's handler, return and loop stacks remain live for the caller.
+\ The checked Intel interpreter closes and recovers its own definition writes.
 EPRIM: def-abort EPRIM;
 ETRUSTED-ONLY!
-\ stack-clear ( -- ): the REPL's caught-line boundary discards the user's
-\ arbitrary stack residue after a refusal. It leaves handler, return and loop
-\ state intact so the catching interpreter can continue.
 EPRIM: stack-clear EPRIM;
 ETRUSTED-ONLY!
-\ imm-mark ( -- ): set DNAME-IMM on the newest record, NDICT - 1, between two
-\ flips of its pages: the engine's `immediate` itself (habu2.f C-IMMEDIATE).
-\ Like that keyword and wide-mark, it refuses nothing.
 EPRIM: imm-mark EPRIM;
 ETRUSTED-ONLY!
-\ def-cast ( -- ): publish the declaration def-open opened with kind
-\ DKIND:CAST as the engine's `cast:` publishes one: the identity body at CP,
-\ the record's code length, the TIER-PROV window closed native, origin 1 over
-\ [open, CP), NDICT counted and indexed, and the state def-open set cleared:
-\ DEF-TIER-CELL, TSIG, TCSIG, DOESB, TRUSTED and PEND-CELL. It refuses a live
-\ task, nothing pending, a pending record other than NDICT, a kind other than
-\ DKIND:CAST and a `does>` split, whose flush would write record NDICT + 1.
 EPRIM: def-cast EPRIM;
 ETRUSTED-ONLY!
-\ ---- the tier-0 rows ----------------------------------------------------------
-\ At tier 0 the engine's `:` head and body loop compile each token as it is
-\ read, with the JIT (habu2.f EM-INTERPRET-COLON, LCOMPILE). These two rows are
-\ how an interpret loop written in Habu runs it. Like the definition writers
-\ each is registered with ENGINE-PRIMS:GLOBAL-INT-WID, so only a TRUSTED: body
-\ reaches one, and x86-64, which has no tier 0, refuses both. Each exits 83
-\ when no definition is pending or the pending one is not tier 0's
-\ (DEF-TIER-CELL other than 0).
-\ jit-open ( -- ): after def-open and the signature, the JIT half of the head:
-\ the per-definition compile state resets, the pass-2 watermarks take DP and
-\ BODYLEN, FRAME-CELL takes CP and the link save is the body's first word. It
-\ throws 70 inside an executable build, as the engine's head does, and
-\ refuses a definition whose code has begun (CP past the record's entry).
+\ Tier zero remains an ARM recovery path; Intel definitions use tier one.
 EPRIM: jit-open EPRIM;
 ETRUSTED-ONLY!
-\ jit-token ( -- ): the token in TKA/TKL through the JIT, which reads on from
-\ the input as the token needs, and back when the JIT would read the next
-\ one. `;` publishes and ends the definition through it, pass 2 included. A
-\ throw out of the JIT comes out of the row with the code window closed. It
-\ refuses a definition jit-open has not begun (CP at the record's entry).
 EPRIM: jit-token EPRIM;
 ETRUSTED-ONLY!
+\ ---- the replay writers ------------------------------------------------------
+\ Only package CHECKER-OVERLAY's rows type these six. With no global row, a
+\ checked caller elsewhere is E-UNDEFINED, and a TRUSTED: body elsewhere binds
+\ one at tier 0 only: tier 1 has no row to build its call from. A refusal
+\ exits: 79 while a task is live and 83 for every other.
+\
+\ replay-open ( -- ): save NDICT, CP, WIDN, CURRENT, the open package's cells
+\ and the using band in the engine's REPLAY-SCOPE band (src/habu/layout.f). It
+\ refuses an open overlay and a pending definition.
+\ replay-record ( ptr u8 n n -- ) name, wid: publish a codeless record whose
+\ entry traps, exit 76. It refuses no overlay, wid -1 or -2 and what the
+\ three record writers above refuse.
+\ record-wid! ( n n -- ) wid, index: retire a record (-2) or give it back its
+\ wid. It refuses no overlay, an index at or above NDICT, unsigned, a
+\ namespace row and wid -1. A seeded primitive's record retires as the live
+\ `undefine` retires it.
+\ replay-private ( n bool -- ) namespace index, flag: give a row with no
+\ private wid a fresh one (true), as `package` does for a row a qualified
+\ definition made, or take back the one given (false). It refuses no overlay,
+\ an index at or above NDICT, unsigned, and a row that is not a namespace row;
+\ true a row with a private wid, false one whose private wid is older than the
+\ overlay.
+\ replay-close ( -- ): zero the records published since replay-open, put the
+\ saved state back and zero the band. It refuses no overlay, a pending
+\ definition, NDICT below the saved count or above the highest count
+\ replay-record and namespace-record reached, and CP or WIDN below the saved.
+\ replay-widn! ( n -- ): put WIDN back to a mark the owner read inside the
+\ overlay, once its rollback dropped what it made since. It refuses no overlay
+\ and a mark below the saved WIDN or above WIDN, unsigned.
+EPPRIM: CHECKER-OVERLAY replay-open ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY replay-close ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY replay-widn! PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY replay-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY record-wid! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY replay-private PE-N PE-IN PE-F PE-IN ECLOSE-PRIVATE
 EPRIM: SEAL-CAPTURE   EPRIM;
 EPRIM: seal-captured? PE-F PE-OUT EPRIM;
 EPRIM: SEAL-FRIEND    EPRIM;

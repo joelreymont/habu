@@ -185,6 +185,7 @@ private
 public
 
 : SCHEMA-NEW ( n n n n -- n ) {: tag:n a:n b:n c:n :}
+   WRITE-WINDOW-CK                        \ src/core/checker.f WRITE-WINDOW
    tag SCHEMA-KIND? 0= IF E-SCHEMA-BAD throw THEN
    SCH-ENSURE
    SCH-N @ {: id:n :}
@@ -216,6 +217,7 @@ public
 \ --- schema-root pool: a flat, growable list of node ids that SUMV variants and
 \ product fields reference as contiguous [start,start+count) ranges.
 : SCHEMA-ROOT+ ( n -- n ) {: node:n :}
+   WRITE-WINDOW-CK
    node 0 <= IF s" tfam: bad schema root" 76 die THEN
    node SCH-N @ >= IF s" tfam: bad schema root" 76 die THEN
    SCH-ROOT-ENSURE

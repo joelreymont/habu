@@ -1,9 +1,0 @@
----
-title: Schedule job classes by deficit round-robin
-status: open
-priority: 2
-issue-type: task
-created-at: "2026-10-04T05:10:11.399490+03:00"
----
-
-Problem: HBR2 §4.3 orders work by class (emergency and terminal, semantic input and operations, interactive, frame planning, background and reclamation) with weighted deficit round-robin quanta 8/8/4/4/2, promotes a waiting nonterminal class after 32 rounds and gives accepted events a total ingress ordinal for replay; without it a busy interactive class starves reclamation and old roots are never freed. Acceptance: in package RT-SCHED, a scheduler over habu-run-explicit-jobs-37f296ae with the five classes and quanta; each round executes bounded units only; a class waiting 32 rounds is promoted; accepted events get a gap-free monotone ingress ordinal and per-producer order is preserved; a portable STEP ( budget -- step-result ), with step-result an ENUM of §24.5's seven result classes, runs rounds until its budget is spent or every class is idle, and is the entry habu-bind-the-wasm-5e9830c7's hbr_step export and habu-build-hbr2-browser-84328e34's driver call. Packet validation, per-channel blocking and coalescing (§4.3) stay with BROWSER (habu-build-hbr2-browser-84328e34). Files: lib/runtime/sched.f (new, package RT-SCHED; mints E-RT-SCHED-FIRST/LAST -9580..-9589 in its owning file), lib/errors.f (one comment line), test/browser/sched-test.f (new), test/gate-stdlib-cases.f. Verify: bin/hb --load test/browser/sched-test.f: under a saturating interactive load the background class runs within 32 rounds; over 10,000 rounds with every class busy the service shares follow the quanta and the promotion rule; ordinals are gap-free and monotone; bin/hb --load test/run.f. Depends: habu-run-explicit-jobs-37f296ae. Ownership: lib/runtime/sched.f. Lane: tim; not a G1 dependency. Claim: unassigned.

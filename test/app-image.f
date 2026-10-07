@@ -99,7 +99,13 @@ variable PROBE-SOURCE-U
 \ through stdin, so capture comparisons add no definitions to DATA.
 : WRITE-REQUIRE-PROBE ( -- )
    0 PROBE-SOURCE-U !
-   S\" package IMAGE-REQUIRE-PROBE\ncreate SAVED INCLUDE-PATH-CAP allot\npublic\n" PROBE+
+   S\" package IMAGE-REQUIRE-PROBE\ncreate SAVED INCLUDE-PATH-CAP allot\ncreate GROW-PATH 15 allot\nvariable GROWN-N\npublic\n" PROBE+
+   S\" : GROW-PATH! ( n -- )\n   {: i:n :}\n   $61 i 26 / + GROW-PATH 13 + c!\n   $61 i 26 mod + GROW-PATH 14 + c! ;\n" PROBE+
+   S\" : GROW ( -- )\n   s\q require-grow-aa\q GROW-PATH swap BYTE-COPY\n   0 GROW-PATH! GROW-PATH 15 provided\n   REQUIRE-N @ 1- {: first-idx:n :}\n   first-idx REQUIRE-SLOT {: first:ptr :}\n   first-idx REQUIRE-LEN@ {: len:n :}\n   first SAVED len BYTE-COPY\n" PROBE+
+   S\"    650 1 ?do\n      i GROW-PATH! GROW-PATH 15 provided\n   loop\n   first-idx REQUIRE-SLOT first <> if 70 throw then\n   first-idx REQUIRE-LEN@ len <> if 70 throw then\n   first-idx REQUIRE-SLOT len SAVED len CORE-STR= 0= if 70 throw then\n" PROBE+
+   S\"    REQUIRE-N @ GROWN-N !\n   GROWN-N @ 512 <= if 70 throw then ;\n" PROBE+
+   S\" : GROW-FACT ( n -- )\n   REQUIRE-N @ {: count:n :}\n   GROW-PATH! GROW-PATH 15 provided\n   REQUIRE-N @ count <> if 70 throw then ;\n" PROBE+
+   S\" : CHECK-GROWN ( -- )\n   REQUIRE-N @ GROWN-N @ < if 70 throw then\n   0 GROW-FACT 512 GROW-FACT 649 GROW-FACT ;\n" PROBE+
    S\" : BORROW ( ptr u8 n -- )\n   REQUIRE-N @ 1- {: idx:n :}\n   idx REQUIRE-SLOT {: old:ptr :}\n   idx REQUIRE-LEN@ {: len:n :}\n" PROBE+
    S\"    old SAVED len BYTE-COPY provided\n   idx REQUIRE-SLOT old <> if 70 throw then\n   idx REQUIRE-LEN@ len <> if 70 throw then\n" PROBE+
    S\"    idx REQUIRE-SLOT len SAVED len CORE-STR= 0= if 70 throw then ;\n" PROBE+
@@ -237,18 +243,18 @@ variable PROBE-SOURCE-U
    WHITEBOX-CHILD:ENV!
    source sourceu input inputu RUN-INPUT CLEAN drop ;
 
-\ The baseline image owns DATA-backed rows. FIRST-TWO crosses to a fresh
-\ mutable suffix, then appends again while the first new row is borrowed.
+\ The first recapture freezes more than 512 rows. FIRST-TWO then borrows a
+\ mutable row, and the next image restores those facts before appending again.
 \ Each saved image is booted as a new process before the next capture.
 : CHECK-REQUIRE-IMAGES ( -- )
    IMAGE$ MUTATED$
-   S\" IMAGE-REQUIRE-PROBE:FIRST-TWO\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
+   S\" IMAGE-REQUIRE-PROBE:GROW\nIMAGE-REQUIRE-PROBE:FIRST-TWO\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
    CAPTURE-PROBE
-   MUTATED$ S\" IMAGE-REQUIRE-PROBE:CHECK-TWO\n" CHECK-PROBE
+   MUTATED$ S\" IMAGE-REQUIRE-PROBE:CHECK-GROWN\nIMAGE-REQUIRE-PROBE:CHECK-TWO\n" CHECK-PROBE
    MUTATED$ MUTATED-AGAIN$
    S\" IMAGE-REQUIRE-PROBE:THIRD\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
    CAPTURE-PROBE
-   MUTATED-AGAIN$ S\" IMAGE-REQUIRE-PROBE:CHECK-THREE\n" CHECK-PROBE
+   MUTATED-AGAIN$ S\" IMAGE-REQUIRE-PROBE:CHECK-GROWN\nIMAGE-REQUIRE-PROBE:CHECK-THREE\n" CHECK-PROBE
 
    SECOND$ DISCARD$
    S\" IMAGE-REQUIRE-PROBE:DISCARD\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"

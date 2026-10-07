@@ -38,36 +38,28 @@
 \
 \ AN ADDRESS IS A KIND OF CONSTANT. An i64.const states whether its value is a
 \ number, a data address or a code address (HIR's three kinds, src/compiler/
-\ native/hir.f ADDR-NONE..ADDR-CODE), because the encoder writes an address as a
-\ padded field the linker rewrites and a number as itself.
-\
-\ THE SIGNATURE IS HELD AT THE FREEZE. A tail types its lanes but not their
-\ count, and the full freeze ties neither a function's entry arguments nor its
-\ returns to the signature it declares, so a selector freezes through FREEZE
-\ below, which checks both.
+\ native/hir.f ADDR-NONE..ADDR-CODE), or the address of a function of its own
+\ module, its value that function's ordinal (HIR's quot, a quotation's or a
+\ does> clause's), because the encoder writes an address as a padded field the
+\ linker rewrites and a number as itself.
 
 require lib/prelude.f
 require lib/errors.f
-require lib/string.f
 require src/compiler/target.f
 require src/compiler/native/backend.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/type.f
-require src/compiler/ir/op.f
-require src/compiler/ir/fun.f
 require src/compiler/ir/schema.f
 require src/compiler/ir/build.f
-require src/compiler/native/frozen.f
 
 \ WSTRUCT's codes, -9805..-9809, in the Wasm backend's block -9800..-9829.
 -9805 constant E-WSTRUCT-FIRST
 -9809 constant E-WSTRUCT-LAST
 -9805 constant E-WSTRUCT-DIALECT   \ a module whose schema table was created for another dialect or another schema version
--9806 constant E-WSTRUCT-OPCODE    \ an ordinal or spelling outside the dialect's closed opcode vocabulary
--9807 constant E-WSTRUCT-SIGNATURE \ a function whose entry-block arguments or a return's operands, memory tokens aside, are not its declared signature's
--9808 constant E-WSTRUCT-ADDR      \ an address kind outside NONE, DATA and CODE
+-9806 constant E-WSTRUCT-OPCODE    \ an ordinal outside the dialect's closed opcode vocabulary
+-9808 constant E-WSTRUCT-ADDR      \ an address kind outside NONE, DATA, CODE and FUN
 
 package WSTRUCT
 public
@@ -135,14 +127,13 @@ ENUM opcode DERIVE eq
 \ Every consumer compares the version exactly, so a table with a form and one
 \ without are two different tables.
 0 constant MAJOR
-2 constant MINOR
-
-private
+3 constant MINOR
 
 \ ---- the opcode spellings ----------------------------------------------------
 \ The Wasm mnemonic under the dialect's prefix. A Wasm instruction's semantic
 \ rule is the specification's rule for that mnemonic and its rendering is that
-\ mnemonic, so the spelling is also each schema's rule and renderer identifier.
+\ mnemonic, so the spelling is also each schema's rule and renderer identifier,
+\ and what a reader of a frozen module looks the opcode up by.
 : OP-NAME ( WSTRUCT:opcode -- ptr u8 n )
    MATCH opcode
       i32-const           OF s" wstruct.i32.const" ENDOF
@@ -197,8 +188,6 @@ private
       call                OF s" wstruct.call" ENDOF
       call-indirect       OF s" wstruct.call_indirect" ENDOF
    ;MATCH ;
-
-public
 
 \ ---- the closed opcode vocabulary --------------------------------------------
 \ The ordinal is a position in this one table, stated here and never derived
@@ -279,34 +268,47 @@ public
    IR--TYPE-DOMAIN:DATA-MEM IR-BUILD:INTERN-TOKEN ;
 
 \ ---- the attribute keys ------------------------------------------------------
+\ Each is spelled once: a builder interns the spelling, and a reader of a
+\ frozen module looks the key up by it.
 \ A constant's value: an i32 constant's value is the signed 32-bit number it
 \ pushes, an f64 constant's is its IEEE 754 bits.
+: KEY-VALUE$ ( -- ptr u8 n )    s" wstruct.value" ;
+
 : KEY-VALUE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" wstruct.value" IR-BUILD:INTERN-SYMBOL ;
+   KEY-VALUE$ IR-BUILD:INTERN-SYMBOL ;
 
 \ A memory access's memarg: the alignment as its base-2 exponent, as Wasm
 \ encodes it, and the unsigned byte offset added to the address operand.
+: KEY-ALIGN$ ( -- ptr u8 n )    s" wstruct.align" ;
+
 : KEY-ALIGN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" wstruct.align" IR-BUILD:INTERN-SYMBOL ;
+   KEY-ALIGN$ IR-BUILD:INTERN-SYMBOL ;
+
+: KEY-OFFSET$ ( -- ptr u8 n )   s" wstruct.offset" ;
 
 : KEY-OFFSET ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" wstruct.offset" IR-BUILD:INTERN-SYMBOL ;
+   KEY-OFFSET$ IR-BUILD:INTERN-SYMBOL ;
 
 \ A direct call's target, a symbol attribute naming the callee.
-: KEY-CALLEE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" wstruct.callee" IR-BUILD:INTERN-SYMBOL ;
+: KEY-CALLEE$ ( -- ptr u8 n )   s" wstruct.callee" ;
 
-\ An i64.const's address kind, one of the three below.
+: KEY-CALLEE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   KEY-CALLEE$ IR-BUILD:INTERN-SYMBOL ;
+
+\ An i64.const's address kind, one of the four below.
+: KEY-ADDR$ ( -- ptr u8 n )     s" wstruct.addr" ;
+
 : KEY-ADDR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" wstruct.addr" IR-BUILD:INTERN-SYMBOL ;
+   KEY-ADDR$ IR-BUILD:INTERN-SYMBOL ;
 
 0 constant ADDR-NONE
 1 constant ADDR-DATA
 2 constant ADDR-CODE
+3 constant ADDR-FUN                  \ the function of the module whose ordinal is the value
 
 \ Refused where the attribute is built, as HIR refuses its own.
 : ADDR-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
-   dup ADDR-NONE < over ADDR-CODE > or if E-WSTRUCT-ADDR throw then
+   dup ADDR-NONE < over ADDR-FUN > or if E-WSTRUCT-ADDR throw then
    IR-BUILD:INTERN-INT-ATTR ;
 
 \ Interning deduplicates, so asking twice answers the same identity.
@@ -395,7 +397,7 @@ private
 
 \ One operand: eqz, the f64 square root, negation and magnitude, and every
 \ conversion. None traps: the truncation is the saturating one, which answers
-\ where i64.trunc_f64_s would trap, and is why the profile admits
+\ where i64.trunc_f64_s would trap, and is why WPROF:FEATURES lists
 \ saturating-float-to-int.
 : UNARY-FORM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id IR-ID:ir-type-id IR-ID:ir-type-id CTARGET:features -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id ti:IR-ID:ir-type-id
@@ -612,96 +614,6 @@ private
    c b IR-BUILD:SCHEMA-MAJOR@ MAJOR <> if E-WSTRUCT-DIALECT throw then
    c b IR-BUILD:SCHEMA-MINOR@ MINOR <> if E-WSTRUCT-DIALECT throw then ;
 
-\ The table is the authority on the spelling in both directions, so a name that
-\ is not one of them is refused as the foreign form it is.
-: OP-NAMED ( ptr u8 n -- WSTRUCT:opcode )
-   {: a:ptr u:n :}
-   OPCODES 0 ?do
-      a u i NTH OP-NAME STR= if i NTH unloop exit then
-   loop
-   E-WSTRUCT-OPCODE throw ;
-
-\ ---- the signature check ------------------------------------------------------
-\ Read off the verified module: a live builder answers nothing about its
-\ functions, and the substrate that holds them is sealed.
-: FN-SIG ( IR-BUILD:module IR-ID:ir-fun-id -- IR-ID:ir-type-id )
-   {: m:IR-BUILD:module f:IR-ID:ir-fun-id :}
-   m IR-BUILD:FFUN-ROWS m IR-BUILD:FKEY f IR-FUN:FSIGNATURE@ ;
-
-: FN-BLOCK ( IR-BUILD:module IR-ID:ir-fun-id n -- IR-ID:ir-block-id )
-   {: m:IR-BUILD:module f:IR-ID:ir-fun-id i:n :}
-   m IR-BUILD:FFUN-ROWS m IR-BUILD:FBLOCK-ROWS m IR-BUILD:FKEY f i IR-FUN:FBLOCK@ ;
-
-: BLK-ARG ( IR-BUILD:module IR-ID:ir-block-id n -- IR-ID:ir-value-id )
-   {: m:IR-BUILD:module bk:IR-ID:ir-block-id i:n :}
-   m IR-BUILD:FBLOCK-ROWS m IR-BUILD:FVALUE-ROWS m IR-BUILD:FKEY bk i IR-FUN:FARG@ ;
-
-: OP-ARG ( IR-BUILD:module IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: m:IR-BUILD:module o:IR-ID:ir-op-id i:n :}
-   m IR-BUILD:FOP-POOL m IR-BUILD:FOP-ROWS m IR-BUILD:FKEY o i IR-OP:FOPERAND@ ;
-
-\ The parameters, or with the flag set the results, a signature declares.
-: DECLARED# ( IR-BUILD:module IR-ID:ir-type-id bool -- n )
-   {: m:IR-BUILD:module sig:IR-ID:ir-type-id out:bool :}
-   m IR-BUILD:FTYPE-ROWS sig IR-TYPE:FARITY@ {: pn:n rn:n :}
-   out if rn else pn then ;
-
-: DECLARED@ ( IR-BUILD:module IR-ID:ir-type-id bool n -- IR-ID:ir-type-id )
-   {: m:IR-BUILD:module sig:IR-ID:ir-type-id out:bool i:n :}
-   m IR-BUILD:FTYPE-POOL m IR-BUILD:FTYPE-ROWS m IR-BUILD:FKEY sig i
-   out if IR-TYPE:FRESULT@ else IR-TYPE:FPARAM@ then ;
-
-\ One value against the next declared type, n of them matched so far. A memory
-\ token is no lane and is passed over; a lane past the declared count or of
-\ another type is a mismatch.
-: LANE ( n IR-BUILD:module IR-ID:ir-type-id bool IR-ID:ir-value-id -- n bool )
-   {: j:n m:IR-BUILD:module sig:IR-ID:ir-type-id out:bool v:IR-ID:ir-value-id :}
-   m IR-BUILD:FVALUE-ROWS m IR-BUILD:FKEY v IR-OP:FVALUE-TYPE@ {: t:IR-ID:ir-type-id :}
-   m IR-BUILD:FTYPE-ROWS t IR-TYPE:FKIND@ IR--TYPE-KIND:MEMORY-TOKEN IR--TYPE-KIND:EQ
-   if j true exit then
-   j  m sig out DECLARED#  >= if j false exit then
-   j 1+  m sig out j DECLARED@ t NFROZEN:SAME-TYPE? ;
-
-: ENTRY-OK? ( IR-BUILD:module IR-ID:ir-type-id IR-ID:ir-block-id -- bool )
-   {: m:IR-BUILD:module sig:IR-ID:ir-type-id bk:IR-ID:ir-block-id :}
-   0  m IR-BUILD:FBLOCK-ROWS bk IR-FUN:FARG-COUNT 0 ?do
-      m sig false  m bk i BLK-ARG  LANE  0= if drop false unloop exit then
-   loop
-   m sig false DECLARED# = ;
-
-: RETURN-OK? ( IR-BUILD:module IR-ID:ir-type-id IR-ID:ir-op-id -- bool )
-   {: m:IR-BUILD:module sig:IR-ID:ir-type-id o:IR-ID:ir-op-id :}
-   0  m IR-BUILD:FOP-ROWS o IR-OP:FOPERANDS 0 ?do
-      m sig true  m o i OP-ARG  LANE  0= if drop false unloop exit then
-   loop
-   m sig true DECLARED# = ;
-
-\ An imported function has no blocks, so nothing of it to check. A module that
-\ never interned the return opcode holds no return to check.
-: FUN-OK? ( IR-BUILD:module IR-ID:ir-symbol-id bool IR-ID:ir-fun-id -- bool )
-   {: m:IR-BUILD:module ret:IR-ID:ir-symbol-id has:bool f:IR-ID:ir-fun-id :}
-   m IR-BUILD:FFUN-ROWS f IR-FUN:FBLOCK-COUNT {: nb:n :}
-   nb 0= if true exit then
-   m f FN-SIG {: sig:IR-ID:ir-type-id :}
-   m sig  m f 0 FN-BLOCK  ENTRY-OK? 0= if false exit then
-   has 0= if true exit then
-   nb 0 ?do
-      m IR-BUILD:FBLOCK-ROWS m IR-BUILD:FOP-ROWS m IR-BUILD:FKEY  m f i FN-BLOCK
-      IR-FUN:FTERMINATOR@ {: o:IR-ID:ir-op-id :}
-      m IR-BUILD:FOP-ROWS m IR-BUILD:FKEY o IR-OP:FOPCODE@ ret NFROZEN:SAME-SYM?
-      if m sig o RETURN-OK? 0= if false unloop exit then then
-   loop
-   true ;
-
-: SIGNATURES-OK? ( IR-BUILD:module -- bool )
-   {: m:IR-BUILD:module :}
-   m IR-BUILD:FSYM-POOL m IR-BUILD:FSYM-ROWS m IR-BUILD:FKEY
-   WSTRUCT-OPCODE:RETURN OP-NAME IR-SYM:FFIND {: ret:IR-ID:ir-symbol-id has:bool :}
-   m IR-BUILD:FFUN-ROWS IR-FUN:FFUNS 0 ?do
-      m ret has  m IR-BUILD:FKEY i IR-ID:PACK-FUN  FUN-OK? 0= if false unloop exit then
-   loop
-   true ;
-
 public
 
 \ ---- creation and materialisation --------------------------------------------
@@ -718,19 +630,12 @@ public
    c b op IR-BUILD:SCHEMA-DEFINED? 0= if c b o op DEFINE then
    op ;
 
-\ The same, asked for by spelling.
-: ENSURE-NAMED ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id )
-   OP-NAMED ENSURE-OP ;
-
 \ ---- the freeze ---------------------------------------------------------------
-\ What a selector calls in place of IR-BUILD:FREEZE: the full freeze, then every
-\ function's entry-block arguments and returns held to its signature. The check
-\ can only read a frozen module, so a refused one is retired before the throw.
+\ What a selector calls in place of IR-BUILD:FREEZE: the full freeze of a
+\ WSTRUCT table.
 : FREEZE ( IR-CTX:ctx IR-BUILD:builder -- IR-BUILD:module )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b DIALECT-CK
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m SIGNATURES-OK? 0= if m IR-BUILD:RETIRE E-WSTRUCT-SIGNATURE throw then
-   m ;
+   c b IR-BUILD:FREEZE ;
 
 ;package

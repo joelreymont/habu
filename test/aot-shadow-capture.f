@@ -8,7 +8,7 @@
 \ and READ. The window holds one of each thing the shadow tables carry: a leaf, a
 \ call to a window word, a `does>` definer, a quotation, a code literal naming a
 \ window word, a window DATA literal, a call to a word of the engine's own prefix,
-\ and a declared code cell holding a window word's entry. It also holds four
+\ and a declared code cell holding a window word's entry. It also holds three
 \ shadowed words that ship no record: a dead private word and two dead retired
 \ ones, the second calling the first, between two shadowed records - the capture
 \ strips the first and does not record the retired ones at all, so past them a
@@ -51,6 +51,7 @@
 package AOTSH
 public
 ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
+variable PRIVATE-WID
 ;package
 
 require lib/string.f
@@ -125,7 +126,8 @@ undefine GONER
 : LEAF ( n n -- n ) + ;
 : CALLER ( n -- n ) dup LEAF 1 + ;
 : CONST ( n -- ) create , does> ( -- n ) @ ;
-private : MAKER ( n -- ) create , does> ( -- n ) @ 1+ ; public
+private get-current AOTSH:PRIVATE-WID !
+: MAKER ( n -- ) create , does> ( -- n ) @ 1+ ; public
 5 MAKER MADE
 : QUOT ( -- [ n -- n ] ) [: 1 + ;] ;
 : TICK ( -- [ n n -- n ] ) ['] LEAF ;
@@ -187,6 +189,7 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
 : W-CALLER ( -- n ) s" CALLER" SHIPPED ;
 : W-CONST ( -- n ) s" CONST" SHIPPED ;
 : W-DOES ( -- n ) s" CONST;does" SHIPPED ;
+: W-MAKER ( -- n ) s" MAKER" SHIPPED ;
 : W-MAKER-DOES ( -- n ) s" MAKER;does" SHIPPED ;
 : W-MADE ( -- n ) s" MADE" SHIPPED ;
 : W-QUOT ( -- n ) s" QUOT" SHIPPED ;
@@ -248,8 +251,7 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
 \ ---- the capture -------------------------------------------------------------
 : CAPTURE ( -- )
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
-   AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
-   AOT-CAPTURE:SHADOW-CAPTURE ;
+   AOT-ARM:WINDOW$ AOT-CAPTURE:TARGET-CAPTURE ;
 
 : RECORDS-CASE ( -- )
    s" named routines and an anonymous callee follow publication order" T-LABEL
@@ -258,7 +260,8 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    W-CALLER ROW-OF W-LEAF ROW-OF 1+ T=
    W-CONST ROW-OF W-CALLER ROW-OF 1+ T=
    W-DOES ROW-OF W-CONST ROW-OF 1+ T=
-   W-MAKER-DOES ROW-OF W-DOES ROW-OF 1+ T=
+   W-MAKER ROW-OF W-DOES ROW-OF 1+ T=
+   W-MAKER-DOES ROW-OF W-MAKER ROW-OF 1+ T=
    W-MADE ROW-OF W-MAKER-DOES ROW-OF 1+ T=
    W-QUOT ROW-OF W-MADE ROW-OF 1+ T=
    W-TICK ROW-OF W-QUOT ROW-OF 1+ T=
@@ -295,10 +298,15 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    s" AOTSH-WINDOW:LEAF" XREF-FIND-INDEX  s" AOTSH-WINDOW:PEEK" XREF-FIND-INDEX 4 +  T= ;
 
 : CARRIED-CASE ( -- )
-   s" a live private definer ships no record, and its shipped does> companion carries its routine from the definer's start" T-LABEL
-   s" MAKER" SHIPPED -1 T=
+   s" a live private definer and its does> companion keep private records over one emission" T-LABEL
+   W-MAKER ROW-OF {: parent:n :}
+   parent 0 >= TTRUE
+   W-MAKER CREC 16 + LE:U32@  PRIVATE-WID @ AOT-ARM:W0 @ - 1+ T=
+   W-MAKER CREC 16 + LE:U32@  W-MAKER-DOES CREC 16 + LE:U32@ T=
    W-MAKER-DOES ROW-OF {: r:n :}
    r 0 >= TTRUE
+   r 4 REC@ parent 4 REC@ T=
+   r 8 REC@ parent 8 REC@ T=
    r 12 REC@ {: entry:n :}
    entry 0 > TTRUE
    W-MAKER-DOES AOT-SHADOW:FUN SITE-IN {: s:n :}
@@ -398,20 +406,31 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    s" shadow.aot" ART IN-DIR ART-U !
    IDENT! ;
 
+variable ROUND-REC-N
 : ROUND-CASE ( -- )
    s" WRITE and READ carry the four shadow tables byte for byte, and a second WRITE is the same file" T-LABEL
    ARTIFACT!
+   AOT-SHADOW:REC-N @ ROUND-REC-N !
    4 0 ?do i DIGESTS i SHA-BYTES * + DIGEST loop
    KEY ART$ AOT-FILE:WRITE
    AOT-FILE:SHA$ drop FIRST SHA-BYTES BYTE-COPY
    AOT-SHADOW:RESET
    KEY ART$ AOT-FILE:READ
+   AOT-SHADOW:REC-N @ ROUND-REC-N @ T=
    4 0 ?do
       i REREAD DIGEST
       REREAD SHA-BYTES DIGESTS i SHA-BYTES * + SHA-BYTES T$=
    loop
    KEY ART$ AOT-FILE:WRITE
    AOT-FILE:SHA$ FIRST SHA-BYTES T$= ;
+
+: CLOSED-ROUND-CASE ( -- )
+   s" capture without a shadow writes and reads empty shadow sections" T-LABEL
+   ARTIFACT!
+   KEY ART$ AOT-FILE:WRITE
+   AOT-SHADOW:RESET
+   KEY ART$ AOT-FILE:READ
+   4 0 ?do i TABLE$ nip 0 T= loop ;
 
 \ ---- the reader child ---------------------------------------------------------
 \ src/habu/aot-file.f's DIE: this exit code, its sentence on stderr.
@@ -492,9 +511,7 @@ variable RC
    s" a stripped private word only dead retired code calls is dead, and the capture completes" T-LABEL
    s" helper" CAPTURED ;
 
-\ In the export child the public alias SHARED shares the body of the private
-\ SHARED the capture strips. A shipped name is live, so the stripped routine is
-\ live, and no shipped row carries it: the alias would ship with no routine.
+\ The alias has no shadow map row of its own; the owning linker checks it.
 : EXPORT-CASE ( -- )
    s" a public alias carries its private source's x86 routine without its name" T-LABEL
    s" export" CAPTURED ;
@@ -554,7 +571,7 @@ variable RC
       KEY 2 SCRIPT-ARGV$ AOT-FILE:MERGE
       s" aot-shadow-capture: merge=ok" type cr exit
    then
-   s" aot-shadow-capture: expected no arguments, retired, alias, bridge, helper, export, read <artifact>, or merge <host> <artifact>"
+   s" aot-shadow-capture: expected no arguments, retired, alias, bridge, helper, export, closed, read <artifact>, or merge <host> <artifact>"
    USAGE-RC die ;
 
 \ What the capture carried, for a reader comparing runs.
@@ -567,6 +584,14 @@ variable RC
 public
 
 : RUN ( -- )
+   s" closed" MODE? if
+      NSHADOW:CLOSE
+      CAPTURE
+      T-RESET
+      CLOSED-ROUND-CASE
+      T-REPORT
+      s" aot-shadow-capture: captured" type cr exit
+   then
    MODE$ nip 0<> if
       CAPTURE NSHADOW:CLOSE  s" aot-shadow-capture: captured" type cr exit
    then
@@ -583,6 +608,7 @@ public
    BRIDGE-CASE
    HELPER-CASE
    EXPORT-CASE
+   s" closed" CAPTURED
    CARRIED-CASE
    SPAN-CASE
    CALL-CASE

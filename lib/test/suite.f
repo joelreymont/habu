@@ -463,6 +463,15 @@ EXPORT ITEM-NAME$
 : ;SUITE ( -- )
 ;
 
+\ The tokens each row opener reads, so the source pre-verifier checks what
+\ follows a row (docs/forth-card.md § 3): GROUP its mode and name, SUITE and
+\ WHITEBOX-SUITE a name, SUITE-STDIN a name and an input, then each row its
+\ arguments through the terminator ;SUITE? accepts.
+parses: GROUP 2
+parses-through: SUITE 1 ( ;SUITE TEST:;SUITE )
+parses-through: WHITEBOX-SUITE 1 ( ;SUITE TEST:;SUITE )
+parses-through: SUITE-STDIN 2 ( ;SUITE TEST:;SUITE )
+
 : RUN ( -- )
    RUN-ACT ;
 

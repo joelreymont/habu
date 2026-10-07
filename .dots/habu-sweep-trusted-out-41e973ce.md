@@ -26,3 +26,19 @@ B6-2 landed 2026-10-02 (ywswtrpz 7d4c0142 Retype engine pointer and projection c
 B6-1 landed 2026-10-03 (quyontvk 15c59c43, Declare engine quotation casts): the Group 1 quotation casts are private CAST:s (checker-owner.f AS-*, verify-source.f SYM/CREATES/CREATED/DOES-ACTION/VERIFIER-ACTION, aot-arm.f, aot-capture.f ACAP-*-XT, dict.f AS-FIXED, compiler.f AS-HOOK, packages.f, outer.f TICK-ACTION, aot-lib.f TASK-EXIT-SLOT) and the 52 checker-owner.f dispatchers, BIND-SOURCE-CALLS and the verify-source.f words are checked `:` over 13 NCOMP-DISPATCH:DECL-* re-exports; src TRUSTED: 397 -> 298 on its base. Kept: DOES-CHECK/FINISH/BEGIN/COMMIT, DECLARED-EFFECT, the verify-source UNSAFE rows, address-cells.f:35 and snapshot-format.f:30 (old donor); verify-source.f CHECK-BODY certifies as `:` and is a follow-up. Fable review ACCEPT.
 
 verify-source.f CHECK-BODY (:648-650) stays TRUSTED: until B8 step 2 (tier-0 recording, habu-visibility-discharge-548-fab55650) gives JSON-DIAGS (checker.f:3475, variable), DIAG-QUIET (checker.f:16961, variable) and DIAGXT (checker.f:16960, defer) pre-hook effect rows. As `:` it certifies on bin/hb (the B6-1 review probes ran only there) and is E-UNDEFINED on a from-source capture host: tools/build-fixpoint-test.f cases 65-67 and 73-74 (got 70 for 74). aot-closure.f:23's `JSON-DIAGS` TRUST row waits for the same rows. The body now also reads MULTI-ERR-MODE?. The bullet that found this named habu-finish-minimal-prim-c00c6a93 (closed, superseded) and habu-primitive-effect-axiom-1119f176 (in neither .dots nor its archive) as the rows' owners. Diff of the attempted conversion: /private/tmp/claude-501/-Users-joel-Work-habu/7a26c772-789c-447c-b6da-4c04943b1e3b/scratchpad/change2.diff.
+
+## Outcome (master d273e641)
+
+B7 landed as three commits, merged by 366e1d3a; each is an ancestor of master:
+- 1bc92f8f "Publish seed created-word rows via the owner";
+- fb1a4259 "Give the recovery reload the window's handover";
+- 8b055da6 "Delete the declaration files' trust shims".
+Both prerequisites fixed failures the Gforth recovery check found with the shims gone. fb1a4259 also deleted tools/native-build-core.f's IMPORT-XT (818 -> 817). 8b055da6 records TRUSTED: 817 -> 677 and src 278 -> 138: decl-event 3 -> 0, enum-decl 39 -> 0, generated-declaration 30 -> 7, structure-decl 54 -> 0, structure-make 15 -> 1, internal-mark 6 -> 2, sumtype 3 -> 2. Trusted-only rows stayed 56 -> 56.
+
+The acceptance (`rg -c` over src = 0) is not met: src holds 138 TRUSTED: definitions at d273e641. What remains, by owner:
+- B12 (habu-delete-the-trusted-42b30edd): B5's trust-boundary sites. These are xref-search-wl, the definers.f and packages.f primitives, MARK-INTERNAL/MARK-MIN-IN, patch32, seed-ndict!, TRUST, TRUST-DECL, and the CHECKER-DEFCAST and CHECKER-GENERATES wrappers. B12 also takes checker.f's pre-claim sites: 8b055da6 counted 27, and checker.f holds 28 TRUSTED: at d273e641.
+- habu-turn-deliberate-cast-ad2e237d: the B6 casts. These are declaration-transaction.f ST.DIAGNOSTIC and the five ROW.* words, the snap-lib.f *-PTR words, TRAILER@, the print-address words and IMAGE-BASE.
+- This dot keeps:
+  - generated-declaration.f's raw-memory bodies over `create` regions, INSTALL-DECLARATION-RUNNER and DICTIONARY-DP!, which are not shims;
+  - structure-make.f:92 SM-EMIT-ROWS, a multi-call body trusted only because it calls pre-hook words;
+  - verify-source.f:750 CHECK-BODY. The rows it waited for were due from B8 step 2, which landed in 7bcc8270, but no one has re-measured the conversion since.

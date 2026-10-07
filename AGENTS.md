@@ -59,8 +59,8 @@ belong in the language core.
   `bin/hb` and never carries logic, parsing or policy of its own. Two exceptions
   exist by design: `tools/bootstrap.sh`, the no-binary recovery launcher that
   runs when `bin/hb` does not exist, and the device-peer scripts under `test/`
-  (serial, XMODEM, UDP and the embedded assembler hosts) that stand in for a
-  foreign machine.
+  (serial, XMODEM, UDP, the embedded assembler hosts and `test/wasm/run.mjs`,
+  which runs a Wasm module under bun) that stand in for a foreign machine.
   Anything else under `tools/` or `test/` that is not Habu is a defect to
   convert.
 - Read [docs/forth-card.md](docs/forth-card.md) before writing Habu. It is the

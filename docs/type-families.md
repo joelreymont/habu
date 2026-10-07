@@ -2361,8 +2361,8 @@ Each frame saves every mutable high-water mark. `checker.f` owns the core frame
 UEND  NORET-END  SYM-N  SYM-STR-U  CTN  CT-STR-U  LIN-NDECL
 VREC-N  VREC-FIELD-N  VREC-NODE-N  VNARG-N  VREC-STR-U  CHK-CAND  VSIG
 CHECKER-PACKAGE-MODE  CHECKER-PACKAGE-U  (+ package-name bytes)
-CHECKER-PACKAGE-NEUTRAL  CHECKER-USE-OWNED-N  DFER-END  PASS-FLOOR
-VERIFY-DEFINER-N
+CHECKER-OVERLAY:MARKS (its NDICT, retire-log count, CP and WIDN)  DFER-END
+PASS-FLOOR  VERIFY-DEFINER-N
 ```
 
 The TFAM/SUMV/SCHEMA registries hang parallel frames off the

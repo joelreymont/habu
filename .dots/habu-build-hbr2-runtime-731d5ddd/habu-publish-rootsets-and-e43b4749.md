@@ -1,9 +1,0 @@
----
-title: Publish RootSets and hold snapshot leases
-status: open
-priority: 2
-issue-type: task
-created-at: "2026-10-04T05:10:11.445792+03:00"
----
-
-Problem: HBR2 §3.2 makes the publication of one RootSet pointer the semantic commit point and gives readers SnapshotLeases that keep old roots alive across later publications (§1.4); G1 requires that old roots survive (§27.3), and T03 (§28.4) pauses a reader across publications and reclamation. Acceptance: in package RT-ROOTS, a RootSet record holding a header of §2.2 stamps and a fixed row of root slots indexed by `ENUM rt-store document pending session edit-mirror resource ui-derived ;ENUM`, each with a u64 slot revision bumped per publication; one publication pointer; RT-ROOTS:ACQUIRE returns a linear lease, and the §7.2 read context (RT-ROOTS:READ-ACQUIRE, READ-RETAIN, READ-RELEASE) wraps it; the lease is a DEFLINEAR minted by one private TRUSTED: pair; a value read through a lease is valid only while the lease lives, and escaping values are copied scalars or owned record references; a yielded job owns its lease through habu-run-explicit-jobs-37f296ae; no publication or reclaim frees a page reachable from a leased root; snapshot age and count quotas cancel obsolete disposable readers, never a lease a command needs (§3.4); ledgers include every retained root version (§26.1). Files: lib/runtime/roots.f (new, package RT-ROOTS; mints E-RT-ROOTS-FIRST/LAST -9550..-9559 in its owning file), lib/errors.f (one comment line), test/browser/roots-test.f (new), test/gate-stdlib-cases.f. Verify: bin/hb --load test/browser/roots-test.f: T03, a reader paused while 100 roots publish and reclamation runs to idle reads every original value on resume; the test fails with the lease's retain removed (shown once and recorded at closure); bin/hb --load test/run.f. Depends: habu-build-the-persistent-e2154c78, habu-run-explicit-jobs-37f296ae. Ownership: lib/runtime/roots.f. Lane: tim. Claim: unassigned.

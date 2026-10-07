@@ -2,12 +2,11 @@
 \ as one emission, a header and then each function's body in Wasm binary form
 \ (docs/wasm-backend.md 10.2, 17.1).
 \
-\ THE IDENTITIES ARE BOUND, NOT SPELLED. A module's symbols are its own
-\ ordinals, so BIND-DIALECT takes every opcode and attribute key from the live
-\ builder before the freeze, as X64EMIT:BIND-DIALECT does, and the frozen
-\ reader compares symbols. The bound builder is a WSTRUCT table of the version
-\ this file was written for: a table of another version may hold a form this
-\ file writes no bytes for, so it is refused rather than encoded short.
+\ THE IDENTITIES ARE THE MODULE'S OWN. A module's symbols are its own ordinals,
+\ so ENCODE looks each WSTRUCT opcode and attribute key up in the frozen module
+\ by its spelling (src/compiler/ir/symbol.f FFIND), as HIR:FBIND does, and then
+\ compares symbols. An opcode the module never interned names none of its
+\ operations.
 \
 \ ONE LOCAL PER VALUE. The structure WCTL derives (structure.f) is written step
 \ by step: local.get for each operand, the instruction, local.set for each
@@ -21,31 +20,30 @@
 \
 \ A CALL IS A ROW. `call` is followed by a padded five-byte function index the
 \ linker rewrites in place, here zero. Each is a call site: the offset of that
-\ field, NEMIT:CALL (P6 lowers a tail call as call then return) and the target,
-\ an absolute address measured, for an unplaced emission, from its first byte
+\ field, NEMIT:CALL (P6 lowers a tail call as call then return), the target,
+\ its published host implementation when external, and its source location.
+\ An internal target has no host implementation until publication resolves its
+\ own function offset. The target is an absolute address measured, for an
+\ unplaced emission, from its first byte
 \ (src/compiler/native/emission.f). A callee spelled `host` and a decimal entry
 \ is that host word; a callee that names a function of the module is that
-\ function's body offset, which the capture reads as one of the emission's own
-\ functions (src/habu/aot-shadow.f SH-FUN?). Refused by name with E-WENC-FORM:
-\ call_indirect, whose type index is the linker's type table's and has no
-\ emission row to carry it, and a function with no body, which an emission
-\ has no bytes for. A call of a function of the module hands it and takes
-\ back, memory tokens aside, the values its signature declares, of the
-\ declared types, or the call the linker patches would not validate; any other
-\ is refused with E-WENC-ARITY. A host word's signature is the host's, which
-\ the module does not hold.
+\ function's body offset, which the capture reads as a self call, a call row
+\ naming the definition's own record (src/arch/wasm/capture.f WC-CALL).
+\ Refused by name with E-WENC-FORM: call_indirect, whose type index is the
+\ linker's type table's and has no emission row to carry it, and a function
+\ with no body, which an emission has no bytes for.
 \
 \ AN ADDRESS IS A ROW TOO. An i64.const states its address kind, one of
-\ WSTRUCT's three, which are HIR's (src/compiler/native/hir.f ADDR-NONE..
-\ ADDR-CODE). A number, kind NONE, is its shortest SLEB. A data or code address
-\ is a padded ten-byte SLEB holding the host value, which the capture resolves
+\ WSTRUCT's four: HIR's three (src/compiler/native/hir.f ADDR-NONE..ADDR-CODE)
+\ and FUN. A number, kind NONE, is its shortest SLEB. A data or code address is
+\ a padded ten-byte SLEB holding the host value, which the capture resolves
 \ and the linker rewrites in place; each is an address site: the offset of
-\ that field and its kind. Any other kind is refused with E-WSTRUCT-ADDR, as
-\ WSTRUCT refuses it where the attribute is built.
-\
-\ A MEMORY ACCESS IS ALIGNED AT MOST AT ITS WIDTH. Wasm's validator holds a
-\ memarg's alignment exponent to the bytes the access moves: 2 for an i32, 3 for
-\ an i64, 0 for a byte. A wider one is refused with E-WENC-FORM.
+\ that field and its kind. A function's address, kind FUN, is a CODE site
+\ whose field holds that function's body offset, laid out once every body is
+\ written as a self call's target is, which the capture keeps as a FUN site
+\ (src/arch/wasm/capture.f) as it keeps an x86-64 `codeaddr`. Any other kind
+\ is refused with E-WSTRUCT-ADDR, as WSTRUCT refuses it where the attribute is
+\ built.
 \
 \ THE EMISSION, LITTLE-ENDIAN: MAGIC; the function count, u32; then per
 \ function its body offset u32, body size u32, inputs u8, outputs u8, frame
@@ -55,12 +53,7 @@
 \ lanes the caller states for each function. Past WPROF's lane arity a function
 \ takes the aligned frame (variant 1) and its signature passes no lane;
 \ otherwise its signature is (ctx, inputs) -> (status, outputs) (variant 0).
-\
-\ CEILINGS. A module past WPROF's function ceiling, a body past its local or
-\ body-byte ceiling, or an emission past its module-byte ceiling, the header
-\ counted, is refused: the function count and the header before any storage is
-\ reserved, the rest as it is written. Readers answer the last emission encoded
-\ whole; a refused one leaves nothing.
+\ Readers answer the last emission encoded whole; a refused one leaves nothing.
 \
 \ STORAGE CLASS. MODULE-OWNED: the emission and its rows live in this
 \ package's buffers until the next ENCODE or RETIRE.
@@ -71,16 +64,16 @@ require lib/string.f
 require lib/span.f
 require lib/adt/option.f
 require src/compiler/ir/id.f
-require src/compiler/ir/arena.f
-require src/compiler/ir/context.f
 require src/compiler/ir/type.f
 require src/compiler/ir/symbol.f
 require src/compiler/ir/attr.f
 require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
+require src/compiler/ir/source.f
 require src/compiler/ir/build.f
 require src/compiler/native/frozen.f
 require src/compiler/native/emission.f
+require src/compiler/native/host.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/wstruct.f
 require src/arch/wasm/profile.f
@@ -89,11 +82,10 @@ require src/arch/wasm/structure.f
 \ WENC's codes, -9825..-9829, in the Wasm backend's block -9800..-9829.
 -9825 constant E-WENC-FIRST
 -9829 constant E-WENC-LAST
--9825 constant E-WENC-STATE    \ a module other than the one whose builder was bound, or a read of no emission or past its rows
--9826 constant E-WENC-FORM     \ an operation, value or function with no Wasm form here: call_indirect, a function with no body, a one-byte opcode asked of brz or a two-byte one, a memory access aligned past its width
+-9825 constant E-WENC-STATE    \ a read of no emission or past its rows
+-9826 constant E-WENC-FORM     \ an operation, value or function with no Wasm form here: call_indirect, a function with no body, a one-byte opcode asked of brz or a two-byte one
 -9827 constant E-WENC-CALLEE   \ a call naming neither a function of its module nor a host entry
--9828 constant E-WENC-ARITY    \ a stated arity that is not the function's signature or overflows its header byte, or a call whose lanes are not its callee's signature
--9829 constant E-WENC-CEILING  \ a module, a body or an emission, its header counted, past a WPROF ceiling
+-9828 constant E-WENC-ARITY    \ a stated arity that is not the function's signature or overflows its header byte
 
 package WENC
 public
@@ -130,25 +122,10 @@ $FC constant SAT-PREFIX              \ the saturating truncations' prefix
 1 constant FRAME-ALIGNED             \ the lanes are in the aligned frame
 $FF constant U8-MAX
 
-\ ---- the WSTRUCT version this file writes ---------------------------------------
-0 constant FOR-MAJOR
-2 constant FOR-MINOR
-
-\ ---- the bound dialect -----------------------------------------------------------
-\ Until a builder is bound BND-MOD holds zero, which names no module: module
-\ serials start at one (src/compiler/ir/id.f TRY-SERIAL).
-1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
-WSTRUCT:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-VALUE IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-ALIGN IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-OFFSET IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-CALLEE IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-ADDR IR-ID:ir-symbol-id
-
-\ ---- the module being encoded ------------------------------------------------------
-\ Its frozen type pool, where a signature's types are listed and which NFROZEN's
-\ cursor does not open.
-1 TYPED-BUFFER TYPE-POOL IR-ARENA:view
+\ ---- the module's opcodes ---------------------------------------------------------
+\ Each WSTRUCT opcode's symbol in the module being encoded, if it interned one.
+WSTRUCT:OPCODES TYPED-BUFFER OP-SYM IR-ID:ir-symbol-id
+WSTRUCT:OPCODES TYPED-BUFFER OP-HAS bool
 
 \ ---- the emission ----------------------------------------------------------------
 DYNAMIC-BUFFER EM u8                 \ its bytes
@@ -162,9 +139,12 @@ DYNAMIC-BUFFER FUN-OFF n             \ each function's body offset
 DYNAMIC-BUFFER CS-OFF n              \ each call site's field
 DYNAMIC-BUFFER CS-TGT n              \ its host entry, or its callee's ordinal until laid out
 DYNAMIC-BUFFER CS-OWN bool           \ whether the callee is a function of the module
+DYNAMIC-BUFFER CS-IMPL n             \ the published host implementation, if external
+DYNAMIC-BUFFER CS-LOC n              \ retained definition-body offset
 variable NADDRS                      \ its address sites
 DYNAMIC-BUFFER AS-OFF n              \ each address site's field
 DYNAMIC-BUFFER AS-KIND n             \ its address kind
+DYNAMIC-BUFFER AS-FUN n              \ the function a FUN address names, else -1
 
 \ ---- the function being written ---------------------------------------------------
 1 TYPED-BUFFER CUR IR-ID:ir-fun-id
@@ -179,38 +159,22 @@ variable CLOSED                      \ whether the last step written closed a la
 : GROW ( n -- )
    AT @ + EM-RESERVE ;
 
-\ The emission's first n bytes, its header among them, against the module-byte
-\ ceiling.
-: MODULE-CK ( n -- )
-   WPROF:MODULE-BYTES-MAX > if E-WENC-CEILING throw then ;
-
-\ Checked after every write, so the buffer never runs more than one LEB past a
-\ ceiling before the refusal.
-: CEILING-CK ( -- )
-   AT @ BODY0 @ - WPROF:BODY-BYTES-MAX > if E-WENC-CEILING throw then
-   AT @ MODULE-CK ;
-
 : PUT-BYTE ( n -- )
    {: v:n :}
    1 GROW
    v AT @ EM c!
-   1 AT +!
-   CEILING-CK ;
+   1 AT +! ;
 
 \ Room for the widest LEB past the cursor; the writer answers what it took.
 : ROOM ( -- SPAN:span<u8> )
    LEB-MOST GROW
    AT @ EM LEB-MOST SPAN:MAKE ;
 
-: ADVANCE ( n -- )
-   AT +!
-   CEILING-CK ;
-
-: PUT-U32 ( n -- )    ROOM WLEB:U32! ADVANCE ;
-: PUT-S32 ( n -- )    ROOM WLEB:S32! ADVANCE ;
-: PUT-S64 ( n -- )    ROOM WLEB:S64! ADVANCE ;
-: PUT-PAD32 ( n -- )  ROOM WLEB:U32-PAD! ADVANCE ;
-: PUT-PAD64 ( n -- )  ROOM WLEB:S64-PAD! ADVANCE ;
+: PUT-U32 ( n -- )    ROOM WLEB:U32! AT +! ;
+: PUT-S32 ( n -- )    ROOM WLEB:S32! AT +! ;
+: PUT-S64 ( n -- )    ROOM WLEB:S64! AT +! ;
+: PUT-PAD32 ( n -- )  ROOM WLEB:U32-PAD! AT +! ;
+: PUT-PAD64 ( n -- )  ROOM WLEB:S64-PAD! AT +! ;
 
 \ An f64 constant's IEEE 754 bits, low byte first.
 : PUT-F64 ( n -- )
@@ -222,43 +186,41 @@ variable CLOSED                      \ whether the last step written closed a la
    {: v:n at:n len:n :}
    len 0 do  v i 8 * rshift $FF and  at i + EM c!  loop ;
 
-\ ---- the bound identities, compared on the frozen module --------------------------
-: DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b  c b IR-BUILD:DIALECT@  WSTRUCT:NAME IR-BUILD:SYMBOL-IS?
-   0= if E-WSTRUCT-DIALECT throw then
-   c b IR-BUILD:SCHEMA-MAJOR@ FOR-MAJOR <> if E-WSTRUCT-DIALECT throw then
-   c b IR-BUILD:SCHEMA-MINOR@ FOR-MINOR <> if E-WSTRUCT-DIALECT throw then ;
+\ ---- the module's identities, looked up by spelling --------------------------------
+\ The symbol the module being encoded gave these bytes, if it interned them.
+: FSYMBOL ( ptr u8 n -- IR-ID:ir-symbol-id bool )
+   {: p u:n :}
+   NFROZEN:V-SYMP NFROZEN:VW  NFROZEN:V-SYMR NFROZEN:VW  NFROZEN:MKEY  p u IR-SYM:FFIND ;
 
-: BOUND-CK ( IR-BUILD:module -- )
-   {: m:IR-BUILD:module :}
-   m IR-BUILD:FMODULE  0 BND-MOD @  IR-ID:MODULE-SAME?
-   0= if E-WENC-STATE throw then ;
+: OPCODES! ( -- )
+   WSTRUCT:OPCODES 0 ?do  i WSTRUCT:NTH WSTRUCT:OP-NAME FSYMBOL  i OP-HAS !  i OP-SYM !  loop ;
 
 \ The operation's ordinal in WSTRUCT's table.
 : SLOT ( IR-ID:ir-op-id -- n )
    NFROZEN:OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
    WSTRUCT:OPCODES 0 ?do
-      sym i BND-OP @ NFROZEN:SAME-SYM? if i unloop exit then
+      i OP-HAS @ if  sym i OP-SYM @ NFROZEN:SAME-SYM? if i unloop exit then  then
    loop
    E-WENC-FORM throw ;
 
-\ Where the operation's attribute under key k sits; the freeze requires it.
-: ATTR-SLOT ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
-   {: o:IR-ID:ir-op-id k:IR-ID:ir-symbol-id :}
+\ Where the operation's attribute under the key spelled p u sits. The freeze
+\ requires the attribute, so the module interned its key.
+: ATTR-SLOT ( IR-ID:ir-op-id ptr u8 n -- n )
+   {: o:IR-ID:ir-op-id p u:n :}
+   p u FSYMBOL 0= if E-WENC-FORM throw then {: k:IR-ID:ir-symbol-id :}
    o NFROZEN:ATTRS-OF 0 ?do
       o i NFROZEN:ATTR-KEY-AT k NFROZEN:SAME-SYM? if i unloop exit then
    loop
    E-WENC-FORM throw ;
 
-: INT-ATTR ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
-   {: o:IR-ID:ir-op-id k:IR-ID:ir-symbol-id :}
-   o  o k ATTR-SLOT  NFROZEN:ATTR-INT-AT ;
+: INT-ATTR ( IR-ID:ir-op-id ptr u8 n -- n )
+   {: o:IR-ID:ir-op-id p u:n :}
+   o  o p u ATTR-SLOT  NFROZEN:ATTR-INT-AT ;
 
-: SYM-ATTR ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- IR-ID:ir-symbol-id )
-   {: o:IR-ID:ir-op-id k:IR-ID:ir-symbol-id :}
+: SYM-ATTR ( IR-ID:ir-op-id ptr u8 n -- IR-ID:ir-symbol-id )
+   {: o:IR-ID:ir-op-id p u:n :}
    NFROZEN:V-OPP NFROZEN:VW  NFROZEN:V-OPR NFROZEN:VW  NFROZEN:MKEY
-   o  o k ATTR-SLOT  IR-OP:FATTR@ {: a:IR-ID:ir-attr-id :}
+   o  o p u ATTR-SLOT  IR-OP:FATTR@ {: a:IR-ID:ir-attr-id :}
    NFROZEN:V-ATTR NFROZEN:VW  NFROZEN:MKEY  a IR-ATTR:FSYM@ ;
 
 \ ---- values and their locals ------------------------------------------------------
@@ -364,8 +326,7 @@ variable CLOSED                      \ whether the last step written closed a la
    PARAMS
    [: COUNT-ONE ;] VISIT
    COUNT-TEMPS
-   NPARAMS @  CLASSES 0 do  dup i CLS-AT !  i CLS-N @ +  loop
-   WPROF:LOCALS-MAX > if E-WENC-CEILING throw then
+   NPARAMS @  CLASSES 0 do  dup i CLS-AT !  i CLS-N @ +  loop  drop
    [: ASSIGN-ONE ;] VISIT
    ASSIGN-TEMPS ;
 
@@ -476,66 +437,17 @@ SPELL-MAX BUFFER: SPELL
    s MODULE-FUN if true exit then
    drop s HOST-ENTRY false ;
 
-\ An operation's operands, or with the flag set its results: how many, and the
-\ i'th.
-: VALS ( IR-ID:ir-op-id bool -- n )
-   if NFROZEN:RESULTS-OF else NFROZEN:OPERANDS-OF then ;
-
-: VAL@ ( IR-ID:ir-op-id bool n -- IR-ID:ir-value-id )
-   {: o:IR-ID:ir-op-id out:bool i:n :}
-   out if o i NFROZEN:RESULT-AT else o i NFROZEN:OPERAND-AT then ;
-
-\ The types function f's signature declares it takes, or with the flag set
-\ leaves: how many, and the i'th.
-: DECLARED ( IR-ID:ir-fun-id bool -- n )
-   {: f:IR-ID:ir-fun-id out:bool :}
-   f NFROZEN:FUN-ARITY {: np:n nr:n :}
-   out if nr else np then ;
-
-: DECLARED@ ( IR-ID:ir-fun-id bool n -- IR-ID:ir-type-id )
-   {: f:IR-ID:ir-fun-id out:bool i:n :}
-   NFROZEN:V-FUNR NFROZEN:VW NFROZEN:MKEY f IR-FUN:FSIGNATURE@ {: sig:IR-ID:ir-type-id :}
-   0 TYPE-POOL @ NFROZEN:V-TYPR NFROZEN:VW NFROZEN:MKEY sig i
-   out if IR-TYPE:FRESULT@ else IR-TYPE:FPARAM@ then ;
-
-\ The lanes of a call's operands, or with the flag set its results: the values
-\ that are not memory tokens.
-: LANES ( IR-ID:ir-op-id bool -- n )
-   {: o:IR-ID:ir-op-id out:bool :}
-   0  o out VALS 0 ?do  o out i VAL@ VALUE-CLASS C-NONE <> if 1+ then  loop ;
-
-\ A call's lanes in, or with the flag set out, are those its callee f
-\ declares, in order and each of the declared type.
-: LANES-CK ( IR-ID:ir-op-id IR-ID:ir-fun-id bool -- )
-   {: o:IR-ID:ir-op-id f:IR-ID:ir-fun-id out:bool :}
-   o out LANES  f out DECLARED <> if E-WENC-ARITY throw then
-   0  o out VALS 0 ?do
-      o out i VAL@ {: v:IR-ID:ir-value-id :}
-      v VALUE-CLASS C-NONE <> if
-         {: j:n :}
-         v NFROZEN:VALUE-TYPE-AT  f out j DECLARED@  NFROZEN:SAME-TYPE?
-         0= if E-WENC-ARITY throw then
-         j 1+
-      then
-   loop
-   drop ;
-
-\ A call of the module's t'th function against that function's signature.
-: CALLEE-CK ( IR-ID:ir-op-id n -- )
-   {: o:IR-ID:ir-op-id t:n :}
-   NFROZEN:MKEY t IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
-   o f false LANES-CK
-   o f true LANES-CK ;
-
 : CALL-FIELD ( IR-ID:ir-op-id -- )
    {: o:IR-ID:ir-op-id :}
-   o 0 BND-CALLEE @ SYM-ATTR TARGET {: t:n own:bool :}
-   own if  o t CALLEE-CK  then
+   o WSTRUCT:KEY-CALLEE$ SYM-ATTR TARGET {: t:n own:bool :}
    NCALLS @ {: k:n :}
    k 1+ CS-OFF-RESERVE  k 1+ CS-TGT-RESERVE  k 1+ CS-OWN-RESERVE
+   k 1+ CS-IMPL-RESERVE  k 1+ CS-LOC-RESERVE
    AT @ k CS-OFF !
    t k CS-TGT !
    own k CS-OWN !
+   own if 0 else t NHOST:ID-OF then k CS-IMPL !
+   o NFROZEN:SPAN-AT IR-SOURCE:SPAN-START k CS-LOC !
    1 NCALLS +!
    0 PUT-PAD32 ;
 
@@ -548,17 +460,12 @@ SPELL-MAX BUFFER: SPELL
 : SAME-OP? ( WSTRUCT:opcode WSTRUCT:opcode -- bool )
    WSTRUCT-OPCODE:EQ ;
 
-\ A memory access's natural alignment, the exponent of the bytes it moves, and
-\ true; any other operation answers false.
-: ACCESS ( WSTRUCT:opcode -- n bool )
+\ Whether the operation is a memory access, which carries a memarg.
+: ACCESS? ( WSTRUCT:opcode -- bool )
    {: o:WSTRUCT:opcode :}
    o WSTRUCT-OPCODE:I64-LOAD8-U SAME-OP?  o WSTRUCT-OPCODE:I64-STORE8 SAME-OP? or
-   if 0 true exit then
-   o WSTRUCT-OPCODE:I32-LOAD SAME-OP?  o WSTRUCT-OPCODE:I32-STORE SAME-OP? or
-   if 2 true exit then
-   o WSTRUCT-OPCODE:I64-LOAD SAME-OP?  o WSTRUCT-OPCODE:I64-STORE SAME-OP? or
-   if 3 true exit then
-   0 false ;
+   o WSTRUCT-OPCODE:I32-LOAD SAME-OP? or  o WSTRUCT-OPCODE:I32-STORE SAME-OP? or
+   o WSTRUCT-OPCODE:I64-LOAD SAME-OP? or  o WSTRUCT-OPCODE:I64-STORE SAME-OP? or ;
 
 : GET ( IR-ID:ir-value-id -- )
    {: v:IR-ID:ir-value-id :}
@@ -581,33 +488,39 @@ SPELL-MAX BUFFER: SPELL
    o NFROZEN:RESULTS-OF {: n:n :}
    n 0 ?do  o  n 1- i -  NFROZEN:RESULT-AT SET  loop ;
 
-\ The memarg of an access whose natural alignment is most: the alignment's
-\ exponent, at most most, then the offset.
-: MEMARG ( n IR-ID:ir-op-id -- )
-   {: most:n o:IR-ID:ir-op-id :}
-   o 0 BND-ALIGN @ INT-ATTR {: al:n :}
-   al most > if E-WENC-FORM throw then
-   al PUT-U32
-   o 0 BND-OFFSET @ INT-ATTR PUT-U32 ;
+\ An access's memarg: the alignment's exponent, then the offset.
+: MEMARG ( IR-ID:ir-op-id -- )
+   {: o:IR-ID:ir-op-id :}
+   o WSTRUCT:KEY-ALIGN$ INT-ATTR PUT-U32
+   o WSTRUCT:KEY-OFFSET$ INT-ATTR PUT-U32 ;
 
-: ADDR-SITE+ ( n -- )
-   {: kind:n :}
+: ADDR-SITE+ ( n n -- )
+   {: kind:n fun:n :}
    NADDRS @ {: k:n :}
-   k 1+ AS-OFF-RESERVE  k 1+ AS-KIND-RESERVE
+   k 1+ AS-OFF-RESERVE  k 1+ AS-KIND-RESERVE  k 1+ AS-FUN-RESERVE
    AT @ k AS-OFF !
    kind k AS-KIND !
+   fun k AS-FUN !
    1 NADDRS +! ;
 
 \ An i64.const's value: a number as itself, an address as a padded field and a
-\ site of its kind.
+\ site of its kind, a function's a CODE site its body offset fills later.
 : CELL-CONST ( IR-ID:ir-op-id -- )
    {: o:IR-ID:ir-op-id :}
-   o 0 BND-VALUE @ INT-ATTR {: v:n :}
-   o 0 BND-ADDR @ INT-ATTR {: kind:n :}
+   o WSTRUCT:KEY-VALUE$ INT-ATTR {: v:n :}
+   o WSTRUCT:KEY-ADDR$ INT-ATTR {: kind:n :}
    kind WSTRUCT:ADDR-NONE = if  v PUT-S64  exit  then
+   kind WSTRUCT:ADDR-FUN = if  WSTRUCT:ADDR-CODE v ADDR-SITE+  0 PUT-PAD64  exit  then
    kind WSTRUCT:ADDR-DATA <>  kind WSTRUCT:ADDR-CODE <> and if E-WSTRUCT-ADDR throw then
-   kind ADDR-SITE+
+   kind -1 ADDR-SITE+
    v PUT-PAD64 ;
+
+\ Each function's address field gets its body offset.
+: LAY-OUT-FUNS ( -- )
+   NADDRS @ 0 ?do
+      i AS-FUN @ {: f:n :}
+      f 0 >= if  f FUN-OFF @  0 EM AT @ SPAN:MAKE  i AS-OFF @  WLEB:S64-PATCH  then
+   loop ;
 
 \ The opcode and what follows it.
 : INSTR ( WSTRUCT:opcode IR-ID:ir-op-id -- )
@@ -617,11 +530,11 @@ SPELL-MAX BUFFER: SPELL
       SAT-PREFIX PUT-BYTE  SAT-I64-F64-S PUT-U32  exit
    then
    code OPCODE-BYTE PUT-BYTE
-   code WSTRUCT-OPCODE:I32-CONST SAME-OP? if  o 0 BND-VALUE @ INT-ATTR PUT-S32  exit  then
+   code WSTRUCT-OPCODE:I32-CONST SAME-OP? if  o WSTRUCT:KEY-VALUE$ INT-ATTR PUT-S32  exit  then
    code WSTRUCT-OPCODE:I64-CONST SAME-OP? if  o CELL-CONST  exit  then
-   code WSTRUCT-OPCODE:F64-CONST SAME-OP? if  o 0 BND-VALUE @ INT-ATTR PUT-F64  exit  then
+   code WSTRUCT-OPCODE:F64-CONST SAME-OP? if  o WSTRUCT:KEY-VALUE$ INT-ATTR PUT-F64  exit  then
    code WSTRUCT-OPCODE:CALL SAME-OP? if  o CALL-FIELD  exit  then
-   code ACCESS if  o MEMARG  else  drop  then ;
+   code ACCESS? if  o MEMARG  then ;
 
 : OP ( IR-ID:ir-op-id -- )
    {: o:IR-ID:ir-op-id :}
@@ -706,35 +619,19 @@ SPELL-MAX BUFFER: SPELL
 
 public
 
-\ The only moment a module can be asked its opcode and key identities, because
-\ its symbols are its own ordinals.
-: BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b DIALECT-CK
-   WSTRUCT:OPCODES 0 ?do  c b i WSTRUCT:NTH WSTRUCT:OPCODE  i BND-OP !  loop
-   b IR-BUILD:MODULE@ 0 BND-MOD !
-   c b WSTRUCT:KEY-VALUE 0 BND-VALUE !
-   c b WSTRUCT:KEY-ALIGN 0 BND-ALIGN !
-   c b WSTRUCT:KEY-OFFSET 0 BND-OFFSET !
-   c b WSTRUCT:KEY-CALLEE 0 BND-CALLEE !
-   c b WSTRUCT:KEY-ADDR 0 BND-ADDR ! ;
-
 \ Nothing is read from an emission after this, or after a refused ENCODE.
 : RETIRE ( -- )
    0 SEALED !  0 NF !  0 NCALLS !  0 NADDRS !  0 AT !  0 BODY0 ! ;
 
-\ Encode every function of a module WSTRUCT:FREEZE froze from the bound
-\ builder; ar answers function n's input and output lanes.
+\ Encode every function of a module WSTRUCT:FREEZE froze; ar answers function
+\ n's input and output lanes.
 : ENCODE ( IR-BUILD:module [ n -- n n ] -- )
    {: m:IR-BUILD:module ar :}
    RETIRE
-   m BOUND-CK
    m NFROZEN:VIEWS!
-   m IR-BUILD:FTYPE-POOL 0 TYPE-POOL !
+   OPCODES!
    NFROZEN:FUN-COUNT {: nf:n :}
-   nf WPROF:FUNCTIONS-MAX > if E-WENC-CEILING throw then
    HEAD-BYTES nf ROW-BYTES * + {: hb:n :}
-   hb MODULE-CK
    NFROZEN:VALUE-COUNT LOC-RESERVE
    nf FUN-OFF-RESERVE
    hb GROW  hb AT !  hb BODY0 !
@@ -742,6 +639,7 @@ public
    nf 4 4 FIELD!
    nf 0 ?do  m i ar FUNCTION  loop
    LAY-OUT-CALLS
+   LAY-OUT-FUNS
    nf NF !
    1 SEALED ! ;
 
@@ -770,6 +668,12 @@ public
 
 : CALL-TARGET@ ( n -- n )
    NCALLS @ ROW-CK CS-TGT @ ;
+
+: CALL-IMPL@ ( n -- n )
+   NCALLS @ ROW-CK CS-IMPL @ ;
+
+: CALL-LOC@ ( n -- n )
+   NCALLS @ ROW-CK CS-LOC @ ;
 
 : ADDR-SITES ( -- n )
    SEALED-CK NADDRS @ ;

@@ -110,6 +110,7 @@ create ERR BUF-CAP allot
 : FIX-RSTACK$ ( -- ptr u8 n )
    s" : DIAG-FIX-RSTACK ( i64 -- ) >r ;" LINE$ ;
 
+\ The data row fails first, at `;`, so it names the repair, not the return row.
 : MIXED-RSTACK$ ( -- ptr u8 n )
    s" : DIAG-MIXED-RSTACK ( i64 -- ) dup >r ;" LINE$ ;
 
@@ -277,8 +278,8 @@ create ERR BUF-CAP allot
    s" diag-fix-type" s" fix_type" ASSERT-WORD-CLASS
    s" diag-fix-rstack" s" fix_return_stack" ASSERT-WORD-CLASS
    s" diag-fix-rstack" EMPTY$ s" i64 " ASSERT-WORD-RSTACK
-   s" diag-mixed-rstack" s" fix_return_stack" ASSERT-WORD-CLASS
-   s" diag-mixed-rstack" EMPTY$ s" i64 " ASSERT-WORD-RSTACK
+   s" diag-mixed-rstack" s" remove_producer" ASSERT-WORD-CLASS
+   s" diag-mixed-rstack" s" i64 --" EMPTY$ s" i64 " s" remove_producer" ASSERT-WORD-ROW-EFFECT
    s" diag-row-dup-extra" s" remove_producer" ASSERT-WORD-CLASS
    s" diag-row-dup-extra" s" R x -- R x" s" a " s" a a " s" remove_producer" ASSERT-WORD-ROW-EFFECT
    s" diag-trusted-boundary" s" trusted_boundary_required" ASSERT-WORD-CLASS
