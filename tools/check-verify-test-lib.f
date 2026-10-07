@@ -135,6 +135,8 @@
 \   a definition left to the run is answered verified, or not reported
 \   where the checker's judgment of it stops                              def-deferred
 \   a name the load accepts at top level is refused                       top-accepted
+\   a type made by reached source rendering or nominal registration is
+\   refused as absent; an unrelated absence or later error is lost         type-deferred
 \
 \ `measure` prints the time of one check of a one-definition subject and of
 \ tools/check-core.f, whose closure is over thirty files.
@@ -1793,6 +1795,78 @@ $180000 constant LARGE-STDIN-LEN
    s" verdict" STRING$ s" deferred" T$= ;
 
 
+\ A source whose type is made at load time must really load with the same
+\ engine the verifier child runs. Keep the disk and buffer bytes identical.
+: TYPE-LOAD-CHECK ( ptr u8 n ptr u8 n ptr u8 n -- CHECK:verdict )
+   {: src:ptr srcu:n name:ptr nameu:n label:ptr labelu:n :}
+   name nameu src srcu FIXTURE
+   label labelu T-LABEL name nameu AT$ NATIVE-RC 0 T=
+   src srcu name nameu GUARD-MS CHECK-AS ;
+
+: TYPE-DEFERRED-PACKET ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
+   CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:n :}
+   label labelu T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   label labelu T-LABEL p s" file" STRING$ SUBJ$ T$=
+   label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
+   label labelu T-LABEL p s" column" NUMBER$ col colu T$=
+   label labelu T-LABEL p s" verdict" STRING$ s" deferred" T$= ;
+
+\ All four sources load. The verifier cannot execute their reached renderer or
+\ original registrar, so the declaration depending on the new type is
+\ deferred at that type.
+: TYPE-DEFERRED ( -- )
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-G ( cbx -- cbx ) ;\n"
+   s" type-sig-rendered.f" s" type-deferred: signature loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: signature defers" EXPECT-KIND
+   s" type-deferred: signature has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: signature type" s" cbx" s" 2" s" 11" TYPE-DEFERRED-PACKET
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE cob 0 FIELD b cbx ;STRUCTURE\n"
+   s" type-field-rendered.f" s" type-deferred: field loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: field defers" EXPECT-KIND
+   s" type-deferred: field has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: field type" s" cbx" s" 2" s" 25" TYPE-DEFERRED-PACKET
+   s\" s\" STRUCTURE cbx 1 FIELD v a ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE cob 0 FIELD b cbx<n> ;STRUCTURE\n"
+   s" type-generic-rendered.f" s" type-deferred: generic field loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: generic field defers" EXPECT-KIND
+   s" type-deferred: generic field has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: generic field type" s" cbx<n>" s" 2" s" 25" TYPE-DEFERRED-PACKET
+   s\" s\" chz\" s\" 0 VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM\n: CVT-F ( -- chz ) CONSTRUCT chz first ;\n"
+   s" type-sum-registered.f" s" type-deferred: sum loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: sum defers" EXPECT-KIND
+   s" type-deferred: sum has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: sum constructor" s" chz" s" 2" s" 30" TYPE-DEFERRED-PACKET
+
+   s\" : CVT-G ( cbx -- cbx ) ;\n" TOP-CHECK
+   1 s" type-deferred: no producer refuses" EXPECT-KIND
+   s" type-deferred: no producer code" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+   s\" : CVT-RENDER ( -- ) s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE ;\n: CVT-G ( cbx -- cbx ) ;\n" TOP-CHECK
+   1 s" type-deferred: uncalled renderer refuses" EXPECT-KIND
+   s" type-deferred: uncalled renderer code" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+   s\" : CVT-RENDER ( -- ) s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE ;\n' CVT-RENDER drop\n: CVT-G ( cbx -- cbx ) ;\n" TOP-CHECK
+   1 s" type-deferred: ticked renderer refuses" EXPECT-KIND
+   s" type-deferred: ticked renderer code" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-G ( cbx -- cbx ) ;\n: CVT-BAD ( n -- n n ) drop ;\n" TOP-CHECK
+   1 s" type-deferred: later mismatch refuses" EXPECT-KIND
+   s" type-deferred: later mismatch has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: prior type" s" cbx" s" 2" s" 11" TYPE-DEFERRED-PACKET
+   s" type-deferred: later mismatch code" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" drop" PACKET s" code" STRING$ s" E-MISMATCH" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\npackage CVT-A public STRUCTURE amb 0 FIELD v n ;STRUCTURE ;package\npackage CVT-B public STRUCTURE amb 0 FIELD v n ;STRUCTURE ;package\n: CVT-BAD ( amb -- amb ) ;\n" TOP-CHECK
+   1 s" type-deferred: ambiguous family refuses" EXPECT-KIND
+   s" type-deferred: ambiguous family stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" amb" PACKET s" verdict" STRING$ s" rejected" T$=
+   s\" s\" STRUCTURE cbx 1 FIELD v a ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-BAD ( cbx<n -- cbx<n ) ;\n" TOP-CHECK
+   1 s" type-deferred: unclosed generic refuses" EXPECT-KIND
+   s" type-deferred: unclosed generic stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" verdict" STRING$ s" rejected" T$= ;
+
+
 \ A deferred stretch at TOKEN on LINE at COLUMN.
 : DEFERRED-AT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
@@ -2905,6 +2979,7 @@ public
    s" top-parses-row" [: TOP-PARSES-ROW ;] RUN-CASE
    s" top-parses-whitebox" [: TOP-PARSES-WHITEBOX ;] RUN-CASE
    s" top-renders" [: TOP-RENDERS ;] RUN-CASE
+   s" type-deferred" [: TYPE-DEFERRED ;] RUN-CASE
    s" def-deferred" [: DEF-DEFERRED ;] RUN-CASE
    s" trusted-tick-order" [: TRUSTED-TICK-ORDER ;] RUN-CASE
    s" top-create" [: TOP-CREATE ;] RUN-CASE
