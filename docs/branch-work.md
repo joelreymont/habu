@@ -5,6 +5,17 @@ They are not needed to run the qualified native product. Their old trees also
 contain superseded code: port a reviewed change onto master instead of merging
 an entire historical tree. Integration and retirement follow AGENTS.md.
 
+## Intel checkpoint work
+
+The tested development checkpoint is on `intel`; `handoff.md` records its
+checks and Windows/WSL pickup. The full native gate remains red.
+
+| Bookmark | Reason retained |
+| --- | --- |
+| `intel-upstream-wip` | Conflict-resolved merge of `1f98c905` with `50d9f706`; no merged engine exists. Review found missing x64 occurrence initialization/publication/invalidation, replay refusal stubs, and lost quotation return-stack admission. |
+| `intel-aot-wip` | Portable graph and SIGSTR storage restoration. Review requires erasing retired registry records and restoring the imported graph's native execution control; six graph refusal groups remain unrun. |
+| `archive/intel-20261007` | Previous `intel` tip `3e502d32`, preserved before moving the bookmark to the native self-hosting checkpoint. |
+
 ## Alder drafts
 
 The prefix for these names is `archive/alder-20260924/alder-`.
