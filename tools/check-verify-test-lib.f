@@ -1835,7 +1835,7 @@ $180000 constant LARGE-STDIN-LEN
    s" type-sum-registered.f" s" type-deferred: sum loads" TYPE-LOAD-CHECK
    5 s" type-deferred: sum defers" EXPECT-KIND
    s" type-deferred: sum has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
-   s" type-deferred: sum constructor" s" chz" s" 2" s" 30" TYPE-DEFERRED-PACKET
+   s" type-deferred: sum signature type" s" chz" s" 2" s" 14" TYPE-DEFERRED-PACKET
 
    s\" : CVT-G ( cbx -- cbx ) ;\n" TOP-CHECK
    1 s" type-deferred: no producer refuses" EXPECT-KIND
