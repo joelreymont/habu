@@ -85,6 +85,8 @@ variable STR-PREV-U
 PTR-VARIABLE STR-LAST-A
 variable STR-LAST-U
 variable STR-LAST-KIND
+variable STR-LAST-AT
+variable STR-LAST-END
 PTR-VARIABLE TOP-PREV-A
 variable TOP-PREV-U
 PTR-VARIABLE TOP-REFUSED                 \ the top-level token refused last (TOP-RESOLVE)
@@ -326,17 +328,26 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
 \ (RECORD-ESCAPED-STRING). The ring resets per NEXT-SCAN call, so at a TRUST
 \ token it holds exactly the two preceding literals from the same statement.
 \ The last literal's kind is kept too, 0 when there is none: a quiet
-\ composition refuses a string loader by it (QUIET-STRING-LOAD).
+\ composition refuses a string loader by it (QUIET-STRING-LOAD). So is where
+\ its text between the quotes starts and ends in the file, as written, escapes
+\ and all, the end 0 when there is none: the span a string loader's load
+\ reports (ARM-LOAD).
 : STR-RING-RESET ( -- )
    NULL-PTR STR-PREV-A !  0 STR-PREV-U !
-   NULL-PTR STR-LAST-A !  0 STR-LAST-U !  0 STR-LAST-KIND ! ;
+   NULL-PTR STR-LAST-A !  0 STR-LAST-U !  0 STR-LAST-KIND !
+   0 STR-LAST-AT !  0 STR-LAST-END ! ;
 
-: STR-RING-PUSH ( ptr u8 n n -- ) {: a:ptr u:n kind:n :}
+\ Push the bytes A U a literal of the given kind makes, its text as written
+\ the RAWU bytes at RAW in the bytes being scanned.
+: STR-RING-PUSH ( ptr u8 n n ptr u8 n -- )
+   {: a:ptr u:n kind:n raw:ptr rawu:n :}
    STR-LAST-A @ STR-PREV-A !
    STR-LAST-U @ STR-PREV-U !
    a STR-LAST-A !
    u STR-LAST-U !
-   kind STR-LAST-KIND ! ;
+   kind STR-LAST-KIND !
+   raw SOURCE@ - BASE-BYTE @ + STR-LAST-AT !
+   STR-LAST-AT @ rawu + STR-LAST-END ! ;
 
 \ The kinds of literal discovery tells apart before a loader: an `s"` or `S"`
 \ one, plain or escaped, is a path; a `c"`, `C"` or `."` one is no string a
@@ -363,11 +374,14 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
    SOURCE@ TOKEN-START @ + pfx +
    SCAN-I @ TOKEN-START @ - pfx - 1 - ;
 
-\ A plain literal of the given kind, its payload pfx bytes after its opener.
-: RECORD-SKIPPED-STRING ( n n -- ) {: kind:n pfx:n :}
+\ A plain literal of the given kind, its payload pfx bytes after its opener:
+\ the bytes it makes are its text as written.
+: RECORD-SKIPPED-STRING ( n n -- )
+   {: kind:n pfx:n :}
    QUIET-UNTERM
    pfx SKIPPED-PAYLOAD dup 0 < IF 2drop EXIT THEN
-   kind STR-RING-PUSH ;
+   {: raw:ptr rawu:n :}
+   raw rawu kind raw rawu STR-RING-PUSH ;
 
 \ An escaped literal's decoded bytes are not in the source, so they live in one
 \ of two buffers. STR-DEC-TURN names the one the next decode writes, and a
@@ -411,11 +425,13 @@ variable STR-DEC-TURN
 \ there, unless its lexer finds a defect in the file. An unterminated literal
 \ is left to the lexer, as a plain one is, except in a quiet composition
 \ (QUIET-UNTERM).
-: RECORD-ESCAPED-STRING ( n -- ) {: kind:n :}
+: RECORD-ESCAPED-STRING ( n -- )
+   {: kind:n :}
    QUIET-UNTERM
    FOUND @ 0= IF EXIT THEN
-   4 SKIPPED-PAYLOAD ESC-BYTES 0= IF E-BAD-ESCAPE throw THEN
-   kind STR-RING-PUSH ;
+   4 SKIPPED-PAYLOAD {: raw:ptr rawu:n :}
+   raw rawu ESC-BYTES 0= IF E-BAD-ESCAPE throw THEN
+   kind raw rawu STR-RING-PUSH ;
 
 \ ---- the locals a body declares -----------------------------------------------
 \ The engine and the checker look a body token up among the live locals before
@@ -1113,7 +1129,7 @@ CAST: TICK-ORDER-ACTION ( n -- [ ptr u8 n n ptr u8 [ -- ] -- n ] )
 
 CAST: VERIFIER-ACTION ( n -- [ -- ] )
 CAST: ARM-ACTION ( n -- [ ptr u8 n n n n -- ] )
-CAST: USES-ACTION ( n -- [ [ n n n n n -- ] [ -- ] -- ] )
+CAST: USES-ACTION ( n -- [ [ n n n n n n -- ] [ -- ] -- ] )
 
 \ ---- navigation: where a declaration was written, what a use bound ----------
 \ Each file the composition scans is a visit, numbered from one counter that
@@ -1236,7 +1252,7 @@ CAST: VISIBLE-ACTION ( n -- [ ptr u8 n n [ ptr u8 n n n n -- ] -- ] )
 
 \ Run Q with H receiving each use Q's checks bind (src/core/checker.f
 \ CHECKER-WITH-USES): one scope at a time, closed on either exit.
-: WITH-USES ( [ n n n n n -- ] [ -- ] -- )
+: WITH-USES ( [ n n n n n n -- ] [ -- ] -- )
    NCOMP-DISPATCH:DECL-VERIFY-USES-OFF OWNER-XT USES-ACTION execute ;
 
 \ The checked dispatchers name their offsets through layout.f's
@@ -1838,19 +1854,36 @@ defer ON-DUPLICATE ( n n ptr u8 n bool -- )
 \ writes it, or a name the definer generates as spelled; the symbol the
 \ checker recorded it under; its declared effect, empty for none;
 \ where the token that declared it starts and ends in the file FILE$
-\ names; and its class, one of the four above. The strings are borrowed: a
-\ word installed here consumes them before it returns.
-defer ON-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n -- )
+\ names; its class, one of the four above; and its file visit. The strings are
+\ borrowed: a word installed here consumes them before it returns.
+defer ON-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
 
 \ A use in the subject that the checker bound to a located declaration
 \ (src/core/checker.f CHECKER-ON-USE): where the use starts and ends in the
 \ subject; the path the declaration's file was resolved to when the
 \ composition visited it; and where the token that declared it starts and
-\ ends there, all at the base TOKEN-BYTE@ counts from. The path is borrowed: a
+\ ends there, all at the base TOKEN-BYTE@ counts from; the selected symbol and
+\ declaration visit. The path is borrowed: a
 \ word installed here consumes it before it returns. A use in a file the
 \ subject loads, and one bound to a declaration with no location, are not
 \ reported.
-defer ON-USE ( n n ptr u8 n n n -- )
+defer ON-USE ( n n ptr u8 n n n n n -- )
+
+\ A top-level loader of the subject whose load reached a file, once the file
+\ was selected: where its operand starts and ends in the subject, at the base
+\ TOKEN-BYTE@ counts from (the token after `include` or `require`, a string
+\ loader's literal between its quotes as written); the canonical path; and
+\ what became of it. Read: the file's source bytes were acquired for this
+\ load, from disk or as the bytes supplied for the subject, whether or not
+\ their scan then completes. Held: a `require`, `required` or
+\ `script-required` of a path already held, which the engine provides or which
+\ was recorded before, so nothing was read. Nothing else is reported: not
+\ `provided`, a file that could not be read, a loader in a definition or in a
+\ file the subject loads. The path is borrowed: a word installed here consumes
+\ it before it returns.
+0 constant LOAD-READ
+1 constant LOAD-HELD
+defer ON-LOADER ( n n ptr u8 n n -- )
 
 \ The file being scanned, named as its packets name it.
 : FILE$ ( -- ptr u8 n )
@@ -1880,8 +1913,8 @@ private
    a u s" defer" STR=CI or  a u s" create" STR=CI or
    a u s" variable" STR=CI or  a u s" constant" STR=CI or ;
 
-: DEFINITION-NONE ( ptr u8 n ptr u8 n n ptr u8 n n n n -- )
-   drop 2drop 2drop drop 2drop 2drop ;
+: DEFINITION-NONE ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
+   2drop 2drop 2drop drop 2drop 2drop ;
 
 : DEFINITION-INIT ( -- )
    ['] DEFINITION-NONE is ON-DEFINITION ;
@@ -1895,13 +1928,21 @@ DEFINITION-INIT
 
 FILE-INIT
 
-: USE-NONE ( n n ptr u8 n n n -- )
-   2drop 2drop 2drop ;
+: USE-NONE ( n n ptr u8 n n n n n -- )
+   2drop 2drop 2drop 2drop ;
 
 : USE-INIT ( -- )
    ['] USE-NONE is ON-USE ;
 
 USE-INIT
+
+: LOADER-NONE ( n n ptr u8 n n -- )
+   2drop 2drop drop ;
+
+: LOADER-INIT ( -- )
+   ['] LOADER-NONE is ON-LOADER ;
+
+LOADER-INIT
 
 : LENIENT-NONE ( ptr u8 n -- bool )  2drop false ;
 
@@ -1912,11 +1953,11 @@ LENIENT-INIT
 
 \ A use the checker published, at the subject's base: reported when it is in
 \ the subject and its declaration lies in a file this composition visited.
-: USE-SEEN ( n n n n n -- )
-   {: s:n e:n v:n ds:n de:n :}
+: USE-SEEN ( n n n n n n -- )
+   {: s:n e:n sym:n v:n ds:n de:n :}
    VISIT-CUR @ VISIT-FIRST @ <> IF EXIT THEN
    v VISIT-IN? 0= IF EXIT THEN
-   s BASE-BYTE @ +  e BASE-BYTE @ +  v VISIT-PATH  ds de ON-USE ;
+   s BASE-BYTE @ +  e BASE-BYTE @ +  v VISIT-PATH  ds de sym v ON-USE ;
 
 : DUPLICATE-STOP ( n n ptr u8 n bool -- )
    drop 2drop
@@ -1974,7 +2015,7 @@ DUPLICATE-INIT
    name nameu RETAINED-SYM
    {: sym:n :}
    sym 0= IF EXIT THEN
-   kind kindu name nameu sym eff effu TRIM at end class ON-DEFINITION ;
+   kind kindu name nameu sym eff effu TRIM at end class VISIT-CUR @ ON-DEFINITION ;
 
 \ The same, for the name the statement token declares, written from byte at.
 : DEFINED-HERE ( ptr u8 n ptr u8 n n n -- )
@@ -2771,7 +2812,8 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
    name nameu RECORD-SYM? SYM-IDENTITY drop 2swap 2drop RETAINED-SYM
    {: sym:n :}
    sym 0= IF EXIT THEN
-   TOP-CUR-A @ TOP-CUR-U @ name nameu sym s" " at at nameu + DEF-EXPORT ON-DEFINITION ;
+   TOP-CUR-A @ TOP-CUR-U @ name nameu sym s" " at at nameu + DEF-EXPORT
+   VISIT-CUR @ ON-DEFINITION ;
 
 : RECORD-EXPORT ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
@@ -2791,7 +2833,9 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
 
 \ The core resolver answers the canonical path and require-known state. A
 \ require publishes that path before descending, so recursive requires stop at
-\ the same point as the native loader. An include always descends.
+\ the same point as the native loader, and one of a path held already reports
+\ held. An include always descends. A file whose bytes were acquired for a
+\ load reports read before it is scanned (COMPOSE-LOADED).
 : COMPOSE-PENDING ( -- )
    COMPOSE-PEND-A @ COMPOSE-PEND-U @
    COMPOSE-PEND-PATH-A @ COMPOSE-PEND-PATH-U @ COMPOSE-FILE ;
@@ -2799,8 +2843,38 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
 \ The owner record's file field holds a raw execution token.
 CAST: FILE-ACTION ( n -- [ [ -- ] -- ] )
 
+\ The operand span of the subject's top-level loader whose load runs, LOAD-AT
+\ to LOAD-END, LOAD-END 0 for none (an operand ends past the file's first
+\ byte). A quiet top-level loader in the subject's first visit arms it
+\ (ARM-LOAD) right before its claimed load; the one load it was armed for
+\ takes it before descending (LOADED); and CLAIMED-LOAD clears it once that
+\ load ends, however it ends: reported, held, provided, skipped as lenient or
+\ thrown. So no other load can report it: not a file the load reads, nor the
+\ load after it, nor a pending body load (PEND-RELEASE).
+variable LOAD-AT
+variable LOAD-END
+
+\ Arm the span AT to END for the load the subject's loader word makes. A
+\ loader in any other visit, a file the subject loads or the subject loaded
+\ again, arms none.
+: ARM-LOAD ( n n -- )
+   {: at:n end:n :}
+   VISIT-CUR @ VISIT-FIRST @ <> IF EXIT THEN
+   at LOAD-AT !  end LOAD-END ! ;
+
+\ The load of PATH came to OUTCOME: reported at the armed span, which it takes
+\ before anything its file loads could report it.
+: LOADED ( ptr u8 n n -- )
+   {: path:ptr pathu:n outcome:n :}
+   LOAD-END @ 0= IF EXIT THEN
+   LOAD-AT @ LOAD-END @  0 LOAD-END !
+   path pathu outcome ON-LOADER ;
+
+\ A load's file, its bytes acquired, from disk or as the subject's supplied
+\ bytes: the load reads it, whatever the scan then meets.
 : COMPOSE-LOADED ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n path:ptr pathu:n :}
+   path pathu LOAD-READ LOADED
    a COMPOSE-PEND-A !  u COMPOSE-PEND-U !
    path COMPOSE-PEND-PATH-A !  pathu COMPOSE-PEND-PATH-U !
    [: COMPOSE-PENDING ;]
@@ -2817,11 +2891,11 @@ CAST: FILE-ACTION ( n -- [ [ -- ] -- ] )
    SOURCE-ROOT:RESOLVE drop COMPOSE-OPEN ;
 
 : COMPOSE-REQUIRED ( ptr u8 n -- )
-   SOURCE-ROOT:RESOLVE IF 2drop EXIT THEN
+   SOURCE-ROOT:RESOLVE IF LOAD-HELD LOADED EXIT THEN
    REQUIRE-STORE COMPOSE-OPEN ;
 
 : COMPOSE-SCRIPT-REQUIRED ( ptr u8 n -- )
-   SOURCE-ROOT:ENTRY-RESOLVE IF 2drop EXIT THEN
+   SOURCE-ROOT:ENTRY-RESOLVE IF LOAD-HELD LOADED EXIT THEN
    REQUIRE-STORE COMPOSE-OPEN ;
 
 : COMPOSE-PROVIDED ( ptr u8 n -- )
@@ -2852,9 +2926,12 @@ variable LOAD-U
    IF [: LOAD$ COMPOSE-INCLUDED ;] EXIT THEN
    [: LOAD$ COMPOSE-REQUIRED ;] ;
 
-\ Run Q, the load a loader word wu bytes long at byte w makes.
-: CLAIMED-LOAD ( [ -- ] n n -- ) {: q w:n wu:n :}
-   q catch {: rc:n :}
+\ Run Q, the load a loader word wu bytes long at byte w makes. The span armed
+\ for it is gone once Q ends, however it ends.
+: CLAIMED-LOAD ( [ -- ] n n -- )
+   {: q w:n wu:n :}
+   q catch  0 LOAD-END !
+   {: rc:n :}
    rc E-PATH-RANGE = IF
       LENIENT? IF EXIT THEN
       E-DISC-CAPACITY
@@ -2867,19 +2944,23 @@ variable LOAD-U
    code 0<> IF code throw THEN ;
 
 \ `include PATH` (inc true) or `require PATH` at top level, its word u bytes
-\ long at TOKEN-BYTE.
-: QUIET-WORD-LOAD ( n bool -- ) {: u:n inc:bool :}
+\ long at TOKEN-BYTE; PATH's token is the operand its load reports.
+: QUIET-WORD-LOAD ( n bool -- )
+   {: u:n inc:bool :}
    TOKEN-BYTE @ {: at:n :}
    u LOADER-OPERAND {: p:ptr pu:n load:bool :}
    load 0= IF EXIT THEN
+   TOKEN-BYTE @ dup pu + ARM-LOAD
    p LOAD-A !  pu LOAD-U !
    inc FILE-LOAD at u CLAIMED-LOAD ;
 
 \ A string loader word at top level, u bytes long at TOKEN-BYTE: refused by
 \ the literal before it as discovery refuses it (LITERAL-LOAD?), else Q loads
-\ that literal's path.
-: QUIET-STRING-LOAD ( n [ -- ] -- ) {: u:n q :}
+\ that literal's path, and the literal is the operand its load reports.
+: QUIET-STRING-LOAD ( n [ -- ] -- )
+   {: u:n q :}
    STR-LAST-KIND @ STR-LAST-U @ u LITERAL-LOAD? 0= IF EXIT THEN
+   STR-LAST-AT @ STR-LAST-END @ ARM-LOAD
    STR-LAST-A @ LOAD-A !  STR-LAST-U @ LOAD-U !
    q TOKEN-BYTE @ u CLAIMED-LOAD ;
 
@@ -2908,6 +2989,9 @@ variable LOAD-U
       TICK-REMAINDER @ IF leave THEN
       i PEND-AT @ PEND-PATH i PEND-U @
       QUIET @ IF
+         \ No span is armed while this load runs, so it reports nothing: a
+         \ span is armed only from a top-level loader's ARM-LOAD until its
+         \ load takes it (LOADED) or ends, and no file is scanned in between.
          LOAD-U !  LOAD-A !
          i PEND-INC @ 0<> FILE-LOAD  i PEND-WORD-AT @  i PEND-WORD-U @  CLAIMED-LOAD
       ELSE

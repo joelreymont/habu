@@ -70,7 +70,7 @@ private
    s" NAVDB" s" DYNAMIC-BUFFER NAVDB n" [: STORAGE-ROWS ;] ARMED-REPLAY ;
 
 \ ---- 3. one uses scope at a time ---------------------------------------------
-: NOTE-USE ( n n n n n -- ) 2drop 2drop drop ;
+: NOTE-USE ( n n n n n n -- ) 2drop 2drop 2drop ;
 : NO-CHECK ( -- ) ;
 : INNER ( -- ) [: NOTE-USE ;] [: NO-CHECK ;] WITH-USES ;
 : OUTER ( -- ) [: NOTE-USE ;] [: INNER ;] WITH-USES ;
@@ -88,13 +88,14 @@ private
 \ replays bind NAVT and NAVS where the earlier ones declared them, so the case
 \ runs in one neutral checker scope (MAIN), as a verifier child runs its
 \ composition.
-variable USE-N   variable USE-S   variable USE-E
+variable USE-N   variable USE-S   variable USE-E   variable USE-SYM
 variable USE-V   variable USE-DS   variable USE-DE
 
-: KEEP-USE ( n n n n n -- )
-   {: s:n e:n v:n ds:n de:n :}
+: KEEP-USE ( n n n n n n -- )
+   {: s:n e:n sym:n v:n ds:n de:n :}
    1 USE-N +!
-   s USE-S !  e USE-E !  v USE-V !  ds USE-DS !  de USE-DE ! ;
+   s USE-S !  e USE-E !  sym USE-SYM !
+   v USE-V !  ds USE-DS !  de USE-DE ! ;
 
 PTR-VARIABLE REPLAY-A   variable REPLAY-U
 : REPLAY ( -- ) REPLAY-A @ REPLAY-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
@@ -114,6 +115,7 @@ PTR-VARIABLE REPLAY-A   variable REPLAY-U
    USE-N @ 1 T=
    USE-S @ s T=
    USE-E @ e T=
+   USE-SYM @ s" NAVT" CHECKER-FIND-ACTIVE-SYM T=
    USE-V @ VISIT T=
    USE-DS @ AT-START T=
    USE-DE @ AT-END T= ;

@@ -78,6 +78,18 @@
 \   a file line is keyed by its path alone, by its digest alone, by the
 \   path's last bytes alone, or by a path or bytes its caller reuses; the
 \   pre-pass writes one                                                   file-line-keys
+\   a top-level loader of the subject that reached its file has no load
+\   line, a span other than its operand's (the token after include or
+\   require, a string loader's literal as written, escapes and all), a
+\   path other than the canonical one, or read for a held file or held
+\   for a read one; provided, a comment or a dependency's loader has one  loads
+\   a file a loader cannot read has a load line, or its packet moves      loads-unread
+\   a file read for a loader loses its line when its scan then stops      loads-scan-fail
+\   an include of the subject's own path, read from the given bytes,
+\   has no line                                                           loads-supplied
+\   a body's immediate loader, or one after a word that may read on, has
+\   a line                                                                loads-none
+\   load lines outlive the next check, or check.f's pre-pass has one      loads-lifetime
 \   a use bound to a located declaration has no line, a range other than
 \   its token's, or a target other than the token that declared it: a
 \   body's call, a quotation's, ['], is, a top-level call and tick, an
@@ -94,6 +106,9 @@
 \   a refused signature type, which retains nothing, has one              uses-recovery
 \   a use of a body the checker defers has no target, or the name only
 \   its run defines has one                                               uses-deferred
+\   two declarations at one file span from separate includes share a use's
+\   identity, or a qualified/bare call selects the other package; DEFTYPE's
+\   two generated converters at one span merge                              uses-visit
 \   a refused duplicate takes the uses after it                           uses-duplicate
 \   a declaration loses or moves its location when the store or the
 \   location table grows                                                  uses-growth
@@ -456,6 +471,15 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" files-unread.f" s\" : CVT-UNREAD ( -- n ) 5 ;\n" FIXTURE
    s" same-a.f" SAME$SRC FIXTURE
    s" same-b.f" SAME$SRC FIXTURE
+   s" ld-dep.f" s\" require ld-nest.f\n" FIXTURE
+   s" ld-nest.f" s\" \\ loaded\n" FIXTURE
+   s" ld-inc.f" s\" \\ loaded\n" FIXTURE
+   s" ld-str-inc.f" s\" \\ loaded\n" FIXTURE
+   s" ld-str-req.f" s\" \\ loaded\n" FIXTURE
+   s" ld-script.f" s\" \\ loaded\n" FIXTURE
+   s" ld-esc.f" s\" \\ loaded\n" FIXTURE
+   s" ld-body.f" s\" \\ loaded\n" FIXTURE
+   s" ld-open.f" s\" : CVT-LDOPEN ( -- n ) 1\n" FIXTURE
    s" order-package.f" s\" package CVT-PKG public\nrequire order-package-dep.f\n;package\n: CVT-PKG-USE ( -- n ) CVT-PKG:CVT-PKG-VALUE ;\n" FIXTURE
    s" order-floor-child.f" s\" ;package\nusing CVT-FLOOR-CHILD\n" FIXTURE
    s" order-floor-include.f" s\" package CVT-FLOOR-BASE public\n: BASE-VALUE ( -- n ) 11 ;\n;package\npackage CVT-FLOOR-CHILD public\n: CHILD-VALUE ( -- n ) 29 ;\n;package\npackage CVT-FLOOR-PARENT\nusing CVT-FLOOR-BASE\ninclude order-floor-child.f\npackage CVT-FLOOR-AFTER public\n: AFTER-VALUE ( -- n ) CHILD-VALUE ;\n;package\n" FIXTURE
@@ -3172,6 +3196,146 @@ create DIGEST-HEX HEX-U allot
    0 OUT CLI-OUT-U @ SB$ T$= ;
 
 
+\ ---- the loads --------------------------------------------------------------
+
+\ The next load line of CHECK:VERIFY-LOADS$, once JSONL-START has started it:
+\ the load of PATH whose operand is the U bytes the first LEAD in the checked
+\ bytes ends with, and what became of it, OUTCOME.
+: LOAD-NEXT ( ptr u8 n ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n lead:ptr leadu:n u:n path:ptr pathu:n out:ptr outu:n :}
+   JSONL-NEXT-OBJECT  lead leadu LEAD-END
+   {: node:n end:n :}
+   label labelu T-LABEL node 0 >= TTRUE
+   label labelu T-LABEL node s" byte_start" NUMBER$
+   SB-RESET end u - FMT:SB-INT SB$ T$=
+   label labelu T-LABEL node s" byte_end" NUMBER$
+   SB-RESET end FMT:SB-INT SB$ T$=
+   label labelu T-LABEL node s" path" STRING$ path pathu T$=
+   label labelu T-LABEL node s" outcome" STRING$ out outu T$= ;
+
+
+: LOAD-COUNT ( ptr u8 n n -- )
+   {: label:ptr labelu:n want:n :}
+   label labelu T-LABEL CHECK:VERIFY-LOADS$ OBJECTS want T= ;
+
+
+\ `s" ROOT/NAME" script-required`, NAME in the fixture directory:
+\ script-required resolves from the working directory, so its path is
+\ absolute.
+: SCRIPT-REQUIRED+ ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   s\" s\" " GEN+  ROOT$ GEN+  s" /" GEN+  name nameu GEN+
+   s\" \" script-required\n" GEN+ ;
+
+
+\ Each top-level loader of the subject that reached its file has a load line,
+\ in the subject's order: where its operand stands (the token after include or
+\ require, past any blanks and line breaks, a string loader's literal between
+\ its quotes as written, escapes and all, not the word, nor the literal before
+\ it), the canonical path, and read, the file acquired for it, or held, a
+\ require of a path held already: required before under another spelling, the
+\ engine's, provided. provided itself, of a path held or not, a comment and the
+\ loader in a file the subject loads have none, though that file is read.
+: LOADS ( -- )
+   0 GEN-U !
+   s\" require ld-dep.f\ns\" ld-dep.f\" provided\ninclude\n   ld-inc.f\n" GEN+
+   s\" s\" ld-str-inc.f\" included\ns\" ld-str-req.f\" required\n" GEN+
+   s" ld-script.f" SCRIPT-REQUIRED+
+   s\" .\" x\" s\\\" ld-esc\\x2ef\" required\n" GEN+
+   s\" require ./ld-dep.f\nrequire lib/string.f\n" GEN+
+   s" ./ld-script.f" SCRIPT-REQUIRED+
+   s\" s\" ld-prov.f\" provided\nrequire ld-prov.f\n\\ require ld-inc.f\n" GEN+
+   s" loads.f" DEFS-CHECK 0 s" loads: verified" EXPECT-KIND
+   s" loads: ten lines" 10 LOAD-COUNT
+   s" loads: each a JSON object" T-LABEL CHECK:VERIFY-LOADS$ ALL-JSON? TTRUE
+   s" loads: the dependency's file read" T-LABEL
+   CHECK:VERIFY-FILES$ s" file" s" ld-nest.f" AT$ PACKET 0 >= TTRUE
+   CHECK:VERIFY-LOADS$ JSONL-START
+   s" loads: require" s" require ld-dep.f" 8 s" ld-dep.f" AT$ s" read" LOAD-NEXT
+   s" loads: include" s\" include\n   ld-inc.f" 8 s" ld-inc.f" AT$ s" read" LOAD-NEXT
+   s" loads: included" s" ld-str-inc.f" 12 s" ld-str-inc.f" AT$ s" read" LOAD-NEXT
+   s" loads: required" s" ld-str-req.f" 12 s" ld-str-req.f" AT$ s" read" LOAD-NEXT
+   s" loads: script-required" s" /ld-script.f" ROOT-U @ 12 +
+   s" ld-script.f" AT$ s" read" LOAD-NEXT
+   s" loads: escaped" s\" ld-esc\\x2ef" 11 s" ld-esc.f" AT$ s" read" LOAD-NEXT
+   s" loads: required again" s" require ./ld-dep.f" 10 s" ld-dep.f" AT$ s" held" LOAD-NEXT
+   s" loads: the engine's" s" lib/string.f" 12 s" lib/string.f" TREE$ s" held" LOAD-NEXT
+   s" loads: script-required again" s" /./ld-script.f" ROOT-U @ 14 +
+   s" ld-script.f" AT$ s" held" LOAD-NEXT
+   s" loads: provided" s" require ld-prov.f" 9 s" ld-prov.f" AT$ s" held" LOAD-NEXT ;
+
+
+\ A file a loader cannot read has no load line: the check stops at the loader
+\ word with the packet and status line it always had, and the loader after the
+\ stop is never reached.
+: LOADS-UNREAD ( -- )
+   s\" require ld-gone.f\nrequire ld-dep.f\n" s" loads-gone.f" GUARD-MS CHECK-AS
+   1 s" loads-unread: refused" EXPECT-KIND
+   s" loads-unread: no line" 0 LOAD-COUNT
+   s" loads-unread: at the loader word" s" E-MISSING-SOURCE" s" require" s" 1" s" 1" AT-TOKEN
+   s" loads-unread: its status line" s" ld-gone.f" MISSING-STATUS ;
+
+
+\ A file read for a loader keeps its read line when its own scan then stops.
+: LOADS-SCAN-FAIL ( -- )
+   0 GEN-U !
+   s\" require ld-open.f\n" GEN+
+   s" loads-open.f" DEFS-CHECK 1 s" loads-scan-fail: refused" EXPECT-KIND
+   s" loads-scan-fail: one line" 1 LOAD-COUNT
+   CHECK:VERIFY-LOADS$ JSONL-START
+   s" loads-scan-fail: read" s" require ld-open.f" 9 s" ld-open.f" AT$ s" read" LOAD-NEXT
+   s" loads-scan-fail: the stop is the file's" T-LABEL
+   CHECK:VERIFY-STOPPED$ s" ld-open.f" AT$ T$= ;
+
+
+\ An include of the subject's own path reads the bytes given for it, there
+\ being no file: read. In that second visit the buffer's name is free again,
+\ but a word the buffer makes is not, so the file stops there, as its load
+\ does, and that visit's loader is never reached.
+: LOADS-SUPPLIED ( -- )
+   0 GEN-U !
+   s\" DYNAMIC-BUFFER CVT-LDSELF u8\nundefine CVT-LDSELF\ninclude loads-self.f\n" GEN+
+   s" loads-self.f" DEFS-CHECK 1 s" loads-supplied: refused" EXPECT-KIND
+   s" loads-supplied: one line" 1 LOAD-COUNT
+   CHECK:VERIFY-LOADS$ JSONL-START
+   s" loads-supplied: read" s" include loads-self.f" 12 SUBJ$ s" read" LOAD-NEXT ;
+
+
+\ A loader no top-level statement of the subject makes has no line, though it
+\ loads: an immediate require in a body, loaded once the definition ends, here
+\ after a provided, which reports nothing. After a call of a word that may read
+\ on, nothing is loaded.
+: LOADS-NONE ( -- )
+   s\" s\" ld-p2.f\" provided\n: CVT-LDBODY ( -- n ) require ld-body.f 1 ;\n"
+   s" loads-body.f" GUARD-MS CHECK-AS 1 s" loads-none: body, refused" EXPECT-KIND
+   s" loads-none: body, no line" 0 LOAD-COUNT
+   s" loads-none: body, its file read" T-LABEL
+   CHECK:VERIFY-FILES$ s" file" s" ld-body.f" AT$ PACKET 0 >= TTRUE
+   s\" : CVT-GRAB ( -- ) parse-name 2drop ;\nCVT-GRAB x\nrequire ld-dep.f\n"
+   s" loads-opaque.f" GUARD-MS CHECK-AS 5 s" loads-none: opaque, deferred" EXPECT-KIND
+   s" loads-none: opaque, no line" 0 LOAD-COUNT ;
+
+
+\ The load lines are the last check's: the next check's replace them, none for
+\ a check that loads nothing, and check.f's pre-pass has none.
+: LOADS-LIFETIME ( -- )
+   s\" require ld-dep.f\n" s" loads-again.f" GUARD-MS CHECK-AS
+   0 s" loads-lifetime: verified" EXPECT-KIND
+   s" loads-lifetime: its line" 1 LOAD-COUNT
+   s\" : CVT-LDNONE ( -- n ) 1 ;\n" s" loads-nothing.f" GUARD-MS CHECK-AS
+   0 s" loads-lifetime: nothing loaded, verified" EXPECT-KIND
+   s" loads-lifetime: nothing loaded, no line" 0 LOAD-COUNT
+   s\" require ld-dep.f\n" s" loads-again.f" GUARD-MS CHECK-AS
+   0 s" loads-lifetime: again, verified" EXPECT-KIND
+   s" loads-lifetime: the pre-pass" T-LABEL
+   s\" require ld-dep.f\n" SUBJ$ s" loads-again.f" GUARD-MS >MS CHECK:PREVERIFY-BYTES
+   MATCH result
+      ok OF 0= ENDOF
+      err OF drop false ENDOF
+   ;MATCH TTRUE
+   s" loads-lifetime: the pre-pass, no line" 0 LOAD-COUNT ;
+
+
 \ ---- the uses ---------------------------------------------------------------
 
 variable USE-NODE                       \ the use line USE-FROM found
@@ -3276,16 +3440,32 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses: top-level tick" DEFS-SRC$ s" : CVT-B" 5 s" uses.f" USE-TARGET
    s" uses: private over global" s" : CVT-PRIV ( -- n ) CVT-A" 5 USE
    s" uses: private over global" DEFS-SRC$ s\" package CVT-UP\n: CVT-A" 5 s" uses.f" USE-TARGET
+   s" uses: private over global identity" T-LABEL
+   USE-NODE @ s" decl_name" STRING$ s" cvt-a" T$=
+   USE-NODE @ s" package" STRING$ s" cvt-up" T$=
+   USE-NODE @ s" visibility" STRING$ s" private" T$=
    s" uses: private" s" : CVT-PUB ( -- n ) CVT-PRIV" 8 USE
    s" uses: private" DEFS-SRC$ s" : CVT-PRIV" 8 s" uses.f" USE-TARGET
+   s" uses: private identity" T-LABEL
+   USE-NODE @ s" decl_name" STRING$ s" cvt-priv" T$=
+   USE-NODE @ s" package" STRING$ s" cvt-up" T$=
+   USE-NODE @ s" visibility" STRING$ s" private" T$=
    s" uses: export operand" s" EXPORT CVT-UD:CVT-UTWO" 15 USE
    s" uses: export operand" USES-DEP$SRC s" : CVT-UTWO" 8 s" uses-dep.f" USE-TARGET
+   s" uses: export operand identity" T-LABEL
+   USE-NODE @ s" decl_name" STRING$ s" cvt-utwo" T$=
+   USE-NODE @ s" package" STRING$ s" cvt-ud" T$=
+   USE-NODE @ s" visibility" STRING$ s" public" T$=
    s" uses: qualified, dependency" s" CVT-UD:CVT-UONE" 15 USE
    s" uses: qualified, dependency" USES-DEP$SRC s" : CVT-UONE" 8 s" uses-dep.f" USE-TARGET
    s" uses: qualified" s" CVT-UP:CVT-PUB" 14 USE
    s" uses: qualified" DEFS-SRC$ s" : CVT-PUB" 7 s" uses.f" USE-TARGET
    s" uses: export alias" s" CVT-UP:CVT-UTWO" 15 USE
    s" uses: export alias" DEFS-SRC$ s" EXPORT CVT-UD:CVT-UTWO" 15 s" uses.f" USE-TARGET
+   s" uses: export alias identity" T-LABEL
+   USE-NODE @ s" decl_name" STRING$ s" cvt-utwo" T$=
+   USE-NODE @ s" package" STRING$ s" cvt-up" T$=
+   USE-NODE @ s" visibility" STRING$ s" public" T$=
    s" uses: used public" s" : CVT-USED ( -- n ) CVT-UONE" 8 USE
    s" uses: used public" USES-DEP$SRC s" : CVT-UONE" 8 s" uses-dep.f" USE-TARGET
    s" uses: dependency global" s" : CVT-DEP ( -- n ) CVT-UGLOBAL" 11 USE
@@ -3302,6 +3482,164 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses: no use line on the cli" T-LABEL
    0 OUT CLI-OUT-U @ s\" \"target_start\"" CONTAINS?
    0 ERR erru s\" \"target_start\"" CONTAINS? or TFALSE ;
+
+
+\ Two real includes of one file declare K at the same byte span in distinct
+\ packages. Qualified calls and each package's using scope select different
+\ declarations even though the shared source location is identical.
+: VISIT-COMMON$SRC ( -- ptr u8 n )
+   s\" : K ( -- n ) 1 ;\n" ;
+
+\ Missing or nonnumeric visit is not a declaration identity.
+: DECL-VISIT ( n -- n )
+   s" decl_visit" NUMBER$ STR>NUMBER? MATCH option
+      none OF -1 ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+: VISIT-USE ( ptr u8 n ptr u8 n n n ptr u8 n -- )
+   {: label:ptr labelu:n lead:ptr leadu:n u:n visit:n pkg:ptr pkgu:n :}
+   label labelu lead leadu u USE
+   label labelu T-LABEL USE-NODE @ DECL-VISIT visit T=
+   label labelu T-LABEL USE-NODE @ s" decl_name" STRING$ s" k" T$=
+   label labelu T-LABEL USE-NODE @ s" package" STRING$ pkg pkgu T$=
+   label labelu T-LABEL USE-NODE @ s" visibility" STRING$ s" public" T$= ;
+
+: USES-VISIT ( -- )
+   s" visit-common.f" VISIT-COMMON$SRC FIXTURE
+   0 GEN-U !
+   s\" require lib/type/deftype.f\n" GEN+
+   s\" package P\npublic\ninclude visit-common.f\n;package\npackage Q\npublic\ninclude visit-common.f\n;package\n" GEN+
+   s\" : BOTH ( -- n ) P:K Q:K + ;\nusing P\n: P-BARE ( -- n ) K ;\n;using\nusing Q\n: Q-BARE ( -- n ) K ;\n;using\n" GEN+
+   s\" DEFTYPE CVT-ID-T\n: CVT-ROUND ( -- n ) 1 >CVT-ID-T CVT-ID-T>N ;\n" GEN+
+   s" uses-visit.f" 0 GEN GEN-U @ FIXTURE
+   s" uses-visit.f" AT$ {: path:ptr pathu:n :}
+   s" uses-visit: native loads" T-LABEL path pathu NATIVE-RC 0 T=
+   s" uses-visit.f" DEFS-CHECK 0 s" uses-visit: verified" EXPECT-KIND
+   CHECK:VERIFY-DEFS$ s" package" s" p" PACKET DEF-NODE !
+   s" uses-visit: P declaration" s" :" s" p" s" public" DEF-WHO
+   s" uses-visit: P declaration" s" word" s" K" DEF-STR
+   s" uses-visit: P source" T-LABEL DEF-NODE @ s" file" STRING$ s" visit-common.f" AT$ T$=
+   s" uses-visit: P span" s" byte_start" 2 DEF-NUM
+   s" uses-visit: P span" s" byte_end" 3 DEF-NUM
+   CHECK:VERIFY-DEFS$ s" package" s" q" PACKET DEF-NODE !
+   s" uses-visit: Q declaration" s" :" s" q" s" public" DEF-WHO
+   s" uses-visit: Q declaration" s" word" s" K" DEF-STR
+   s" uses-visit: Q source" T-LABEL DEF-NODE @ s" file" STRING$ s" visit-common.f" AT$ T$=
+   s" uses-visit: Q span" s" byte_start" 2 DEF-NUM
+   s" uses-visit: Q span" s" byte_end" 3 DEF-NUM
+   CHECK:VERIFY-DEFS$ s" package" s" p" PACKET {: pd:n :}
+   s" uses-visit: P canonical tail" T-LABEL pd s" decl_name" STRING$ s" k" T$=
+   pd DECL-VISIT {: pv:n :}
+   CHECK:VERIFY-DEFS$ s" package" s" q" PACKET {: qd:n :}
+   s" uses-visit: Q canonical tail" T-LABEL qd s" decl_name" STRING$ s" k" T$=
+   qd DECL-VISIT {: qv:n :}
+   s" uses-visit: P visit" T-LABEL pv 0 > TTRUE
+   s" uses-visit: Q visit" T-LABEL qv 0 > TTRUE
+   s" uses-visit: distinct visits" T-LABEL pv qv T<>
+   s" uses-visit: qualified P" s" P:K" 3 pv s" p" VISIT-USE
+   s" uses-visit: qualified P" VISIT-COMMON$SRC s" : K" 1 s" visit-common.f" USE-TARGET
+   s" uses-visit: qualified Q" s" Q:K" 3 qv s" q" VISIT-USE
+   s" uses-visit: qualified Q" VISIT-COMMON$SRC s" : K" 1 s" visit-common.f" USE-TARGET
+   s" uses-visit: bare P" s" P-BARE ( -- n ) K" 1 pv s" p" VISIT-USE
+   s" uses-visit: bare P" VISIT-COMMON$SRC s" : K" 1 s" visit-common.f" USE-TARGET
+   s" uses-visit: bare Q" s" Q-BARE ( -- n ) K" 1 qv s" q" VISIT-USE
+   s" uses-visit: bare Q" VISIT-COMMON$SRC s" : K" 1 s" visit-common.f" USE-TARGET
+   CHECK:VERIFY-DEFS$ s" word" s" >CVT-ID-T" PACKET DEF-NODE !
+   s" uses-visit: converter in" s" DEFTYPE" s" " s" global" DEF-WHO
+   s" uses-visit: converter in" s" decl_name" s" >cvt-id-t" DEF-STR
+   s" uses-visit: converter in" s" DEFTYPE CVT-ID-T" 8 s" uses-visit.f" DEF-SPAN
+   DEF-NODE @ DECL-VISIT {: iv:n :}
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-ID-T>N" PACKET DEF-NODE !
+   s" uses-visit: converter out" s" DEFTYPE" s" " s" global" DEF-WHO
+   s" uses-visit: converter out" s" decl_name" s" cvt-id-t>n" DEF-STR
+   s" uses-visit: converter out" s" DEFTYPE CVT-ID-T" 8 s" uses-visit.f" DEF-SPAN
+   DEF-NODE @ DECL-VISIT {: ov:n :}
+   s" uses-visit: converter visit" T-LABEL iv 0 > TTRUE
+   s" uses-visit: shared converter visit" T-LABEL iv ov T=
+   s" uses-visit: converter in use" s" >CVT-ID-T" 9 USE
+   s" uses-visit: converter in target" DEFS-SRC$ s" DEFTYPE CVT-ID-T" 8 s" uses-visit.f" USE-TARGET
+   s" uses-visit: converter in binding" T-LABEL USE-NODE @ DECL-VISIT iv T=
+   s" uses-visit: converter in name" T-LABEL USE-NODE @ s" decl_name" STRING$ s" >cvt-id-t" T$=
+   s" uses-visit: converter in package" T-LABEL USE-NODE @ s" package" STRING$ s" " T$=
+   s" uses-visit: converter in visibility" T-LABEL USE-NODE @ s" visibility" STRING$ s" global" T$=
+   s" uses-visit: converter out use" s" CVT-ID-T>N" 10 USE
+   s" uses-visit: converter out target" DEFS-SRC$ s" DEFTYPE CVT-ID-T" 8 s" uses-visit.f" USE-TARGET
+   s" uses-visit: converter out binding" T-LABEL USE-NODE @ DECL-VISIT ov T=
+   s" uses-visit: converter out name" T-LABEL USE-NODE @ s" decl_name" STRING$ s" cvt-id-t>n" T$=
+   s" uses-visit: converter out package" T-LABEL USE-NODE @ s" package" STRING$ s" " T$=
+   s" uses-visit: converter out visibility" T-LABEL USE-NODE @ s" visibility" STRING$ s" global" T$=
+   s" uses-visit: six calls" 6 USE-COUNT ;
+
+
+\ Exporting a private K creates a public K in the same package. The operand
+\ and earlier bare use keep the private identity; the qualified use selects
+\ the public export, despite the same package and tail.
+: USES-VISIBILITY ( -- )
+   0 GEN-U !
+   s\" package CVT-TWIN\n: K ( -- n ) 1 ;\n: PRIVATE-USE ( -- n ) K ;\npublic\nEXPORT K\n;package\n: PUBLIC-USE ( -- n ) CVT-TWIN:K ;\n" GEN+
+   s" uses-visibility.f" DEFS-SRC$ FIXTURE
+   s" uses-visibility: native loads" T-LABEL
+   s" uses-visibility.f" AT$ NATIVE-RC 0 T=
+   s" uses-visibility.f" DEFS-CHECK 0 s" uses-visibility: verified" EXPECT-KIND
+   CHECK:VERIFY-DEFS$ s" visibility" s" private" PACKET {: pd:n :}
+   CHECK:VERIFY-DEFS$ s" kind" s" EXPORT" PACKET {: ed:n :}
+   s" uses-visibility: private declaration" T-LABEL pd s" decl_name" STRING$ s" k" T$=
+   pd s" package" STRING$ s" cvt-twin" T$=
+   pd s" visibility" STRING$ s" private" T$=
+   s" uses-visibility: public declaration" T-LABEL ed s" decl_name" STRING$ s" k" T$=
+   ed s" package" STRING$ s" cvt-twin" T$=
+   ed s" visibility" STRING$ s" public" T$=
+   pd DECL-VISIT {: pv:n :}
+   ed DECL-VISIT {: ev:n :}
+   s" uses-visibility: declaration visits" T-LABEL pv 0 > ev 0 > and TTRUE
+   s" uses-visibility: bare" s" PRIVATE-USE ( -- n ) K" 1 USE
+   s" uses-visibility: bare target" DEFS-SRC$ s" : K" 1 s" uses-visibility.f" USE-TARGET
+   s" uses-visibility: bare identity" T-LABEL USE-NODE @ DECL-VISIT pv T=
+   USE-NODE @ s" decl_name" STRING$ s" k" T$=
+   USE-NODE @ s" package" STRING$ s" cvt-twin" T$=
+   USE-NODE @ s" visibility" STRING$ s" private" T$=
+   s" uses-visibility: export operand" s" EXPORT K" 1 USE
+   s" uses-visibility: export operand target" DEFS-SRC$ s" : K" 1 s" uses-visibility.f" USE-TARGET
+   s" uses-visibility: export operand identity" T-LABEL USE-NODE @ DECL-VISIT pv T=
+   USE-NODE @ s" decl_name" STRING$ s" k" T$=
+   USE-NODE @ s" package" STRING$ s" cvt-twin" T$=
+   USE-NODE @ s" visibility" STRING$ s" private" T$=
+   s" uses-visibility: qualified" s" CVT-TWIN:K" 10 USE
+   s" uses-visibility: qualified target" DEFS-SRC$ s" EXPORT K" 1 s" uses-visibility.f" USE-TARGET
+   s" uses-visibility: qualified identity" T-LABEL USE-NODE @ DECL-VISIT ev T=
+   USE-NODE @ s" decl_name" STRING$ s" k" T$=
+   USE-NODE @ s" package" STRING$ s" cvt-twin" T$=
+   USE-NODE @ s" visibility" STRING$ s" public" T$=
+   s" uses-visibility: three uses" 3 USE-COUNT ;
+
+\ Amending an effect keeps its declaration; re-including the same token after
+\ undefine publishes another declaration lifetime in the same namespace.
+: USES-VISIT-LIFETIME ( -- )
+   s" visit-common.f" VISIT-COMMON$SRC FIXTURE
+   0 GEN-U !
+   s\" package P\npublic\ninclude visit-common.f\n: BEFORE ( -- n ) K ;\ns\" K\" s\" -- n\" TRUST\n: AFTER ( -- n ) K ;\nundefine K\ninclude visit-common.f\n: REPLACED ( -- n ) K ;\n;package\n" GEN+
+   s" uses-lifetime.f" 0 GEN GEN-U @ FIXTURE
+   s" uses-lifetime: native loads" T-LABEL
+   s" uses-lifetime.f" AT$ NATIVE-RC 0 T=
+   s" uses-lifetime.f" DEFS-CHECK
+   0 s" uses-lifetime: verified" EXPECT-KIND
+   s" uses-lifetime: declarations" T-LABEL CHECK:VERIFY-DEFS$ OBJECTS 5 T=
+   CHECK:VERIFY-DEFS$ JSONL-START
+   JSONL-NEXT-OBJECT DECL-VISIT {: first:n :}
+   JSONL-NEXT-OBJECT drop
+   JSONL-NEXT-OBJECT drop
+   JSONL-NEXT-OBJECT DECL-VISIT {: later:n :}
+   s" uses-lifetime: first visit" T-LABEL first 0 > TTRUE
+   s" uses-lifetime: later visit" T-LABEL later 0 > TTRUE
+   s" uses-lifetime: reinclude changes visit" T-LABEL first later T<>
+   s" uses-lifetime: before amendment" s" BEFORE ( -- n ) K" 1 USE
+   s" uses-lifetime: before amendment" T-LABEL USE-NODE @ DECL-VISIT first T=
+   s" uses-lifetime: amendment preserves visit" s" AFTER ( -- n ) K" 1 USE
+   s" uses-lifetime: amendment preserves visit" T-LABEL USE-NODE @ DECL-VISIT first T=
+   s" uses-lifetime: replacement visit" s" REPLACED ( -- n ) K" 1 USE
+   s" uses-lifetime: replacement visit" T-LABEL USE-NODE @ DECL-VISIT later T=
+   s" uses-lifetime: three uses" 3 USE-COUNT ;
 
 
 \ A name the checker refuses binds nothing: one two usings both export, one a
@@ -3825,7 +4163,16 @@ public
    s" identity-paths" [: IDENTITY-PATHS ;] RUN-CASE
    s" identity-swap" [: IDENTITY-SWAP ;] RUN-CASE
    s" file-line-keys" [: FILE-LINE-KEYS ;] RUN-CASE
+   s" loads" [: LOADS ;] RUN-CASE
+   s" loads-unread" [: LOADS-UNREAD ;] RUN-CASE
+   s" loads-scan-fail" [: LOADS-SCAN-FAIL ;] RUN-CASE
+   s" loads-supplied" [: LOADS-SUPPLIED ;] RUN-CASE
+   s" loads-none" [: LOADS-NONE ;] RUN-CASE
+   s" loads-lifetime" [: LOADS-LIFETIME ;] RUN-CASE
    s" uses" [: USES ;] RUN-CASE
+   s" uses-visit" [: USES-VISIT ;] RUN-CASE
+   s" uses-visibility" [: USES-VISIBILITY ;] RUN-CASE
+   s" uses-visit-lifetime" [: USES-VISIT-LIFETIME ;] RUN-CASE
    s" uses-refused" [: USES-REFUSED ;] RUN-CASE
    s" uses-order" [: USES-ORDER ;] RUN-CASE
    s" cands-body" [: CANDS-BODY ;] RUN-CASE

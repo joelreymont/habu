@@ -36,11 +36,12 @@
 \ files the verifier read, the subject and its dependencies, each with the
 \ digest of the bytes it read there, VERIFY-DEFS$ the
 \ definitions it retained in them, VERIFY-USES$ the uses in the subject the
-\ checker bound to located declarations, and VERIFY-CANDIDATES$ the spellings
+\ checker bound to located declarations, VERIFY-LOADS$ the subject's top-level
+\ loaders that reached a file, and VERIFY-CANDIDATES$ the spellings
 \ CHECK:VERIFY-BYTES-AT's cursor offered, each one JSON object per line, never
 \ among the packets. VERIFY-LOG$ is the child's stderr, then after a loader's
 \ fault the status line naming the file it is in, or the file it could not
-\ read, and why. All six hold until the next call.
+\ read, and why. All seven hold until the next call.
 \
 \ CHECK:PREVERIFY-BYTES is check.f's pre-pass, on the same child and image: the
 \ first refused definition stops it, as it stops the load, and the subject's
@@ -554,11 +555,13 @@ DYNAMIC-BUFFER VFY-STOP-PATH u8         \ preserve the final stop across duplica
 DYNAMIC-BUFFER VFY-DEFS u8              \ VERIFY-DEFS$
 DYNAMIC-BUFFER VFY-FILES u8             \ VERIFY-FILES$
 DYNAMIC-BUFFER VFY-USES u8              \ VERIFY-USES$
+DYNAMIC-BUFFER VFY-LOADS u8             \ VERIFY-LOADS$
 DYNAMIC-BUFFER VFY-CANDS u8             \ VERIFY-CANDIDATES$
 variable VFY-REC-U
 variable VFY-DEFS-U
 variable VFY-FILES-U
 variable VFY-USES-U
+variable VFY-LOADS-U
 variable VFY-CANDS-U
 variable VFY-AT                         \ the child's completion cursor, -1 for none
 variable VFY-OUT-U
@@ -599,6 +602,7 @@ variable VFY-TARGET-U
    0 VFY-DEFS-U !
    0 VFY-FILES-U !
    0 VFY-USES-U !
+   0 VFY-LOADS-U !
    0 VFY-CANDS-U !
    -1 VFY-AT !
    VFY-NONE VFY-ANSWER !
@@ -738,6 +742,9 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 
 : VFY-USE$ ( -- ptr u8 n )
    s" check-verify: use " ;
+
+: VFY-LOAD$ ( -- ptr u8 n )
+   s" check-verify: load " ;
 
 : VFY-CAND$ ( -- ptr u8 n )
    s" check-verify: candidate " ;
@@ -963,6 +970,23 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    s\" \n" VFY-USES+ ;
 
 
+: VFY-LOADS+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0= if exit then
+   VFY-LOADS-U @ u + VFY-LOADS-RESERVE
+   a VFY-LOADS-U @ VFY-LOADS u BYTE-COPY
+   VFY-LOADS-U @ u + VFY-LOADS-U ! ;
+
+
+\ The JSON object of the load line from AT to END in VFY-OUT, to VFY-LOADS.
+: VFY-LOAD-LINE ( n n -- )
+   {: at:n end:n :}
+   at VFY-LOAD$ nip +
+   {: obj:n :}
+   obj VFY-OUT end obj - VFY-LOADS+
+   s\" \n" VFY-LOADS+ ;
+
+
 : VFY-CANDS+ ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 0= if exit then
@@ -990,9 +1014,9 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 
 \ The line of VFY-OUT that starts at AT, to VFY-REC, a duplicate line
 \ as the record --all-errors writes for it, a file line to VFY-FILES, a
-\ definition line to VFY-DEFS, a use line to VFY-USES and a candidate line to
-\ VFY-CANDS; a loader line's fields are kept for VFY-STOP-LINE: where the next
-\ line starts.
+\ definition line to VFY-DEFS, a use line to VFY-USES, a load line to
+\ VFY-LOADS and a candidate line to VFY-CANDS; a loader line's fields are kept
+\ for VFY-STOP-LINE: where the next line starts.
 : VFY-REC-LINE ( n -- n )
    {: at:n :}
    at VFY-LINE-END
@@ -1010,6 +1034,10 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    then
    at VFY-OUT end at - VFY-USE$ STARTS-WITH? if
       at end VFY-USE-LINE
+      end 1+ exit
+   then
+   at VFY-OUT end at - VFY-LOAD$ STARTS-WITH? if
+      at end VFY-LOAD-LINE
       end 1+ exit
    then
    at VFY-OUT end at - VFY-CAND$ STARTS-WITH? if
@@ -1132,6 +1160,13 @@ public
 : VERIFY-USES$ ( -- ptr u8 n )
    VFY-USES-U @ 0= if NULL$ exit then
    0 VFY-USES VFY-USES-U @ ;
+
+\ The top-level loaders of the last VERIFY-BYTES's subject that reached a file,
+\ one JSON object per line as tools/check-verify-child.f's load line states
+\ it, in the subject's order; none for PREVERIFY-BYTES.
+: VERIFY-LOADS$ ( -- ptr u8 n )
+   VFY-LOADS-U @ 0= if NULL$ exit then
+   0 VFY-LOADS VFY-LOADS-U @ ;
 
 \ The spellings the last VERIFY-BYTES-AT's cursor offered, one JSON object per
 \ line as tools/check-verify-child.f's candidate line states it, in the order

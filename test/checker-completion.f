@@ -431,8 +431,8 @@ PTR-VARIABLE TOP-A   variable TOP-U
 \ verdict, the same published uses at the same bytes, and the same store growth.
 variable USE-N   variable USE-SUM
 
-: COUNT-USE ( n n n n n -- )
-   {: s:n e:n v:n ds:n de:n :}
+: COUNT-USE ( n n n n n n -- )
+   {: s:n e:n sym:n v:n ds:n de:n :}
    1 USE-N +!  s e + USE-SUM +! ;
 
 : COUNTED ( -- ) [: COUNT-USE ;] [: REPLAY ;] WITH-USES ;
@@ -548,8 +548,8 @@ variable NEST-ARM   variable NEST-ENUM
    s" CMPA" OFFERED ;
 
 \ A use handler that throws, as the owner's handler of published uses can.
-: USE-THROWS ( n n n n n -- )
-   2drop 2drop drop  1 0 / drop ;
+: USE-THROWS ( n n n n n n -- )
+   2drop 2drop 2drop  1 0 / drop ;
 
 : USES-THROW ( -- ) [: USE-THROWS ;] [: REPLAY ;] WITH-USES ;
 
@@ -579,10 +579,10 @@ variable NEST-ARM   variable NEST-ENUM
 \ the clause takes the arm; the clause's use throws. The clause's checked text
 \ is `@ CMPB + `, so its byte 4 is in CMPB after `CM`.
 variable DOES-USES
-: DOES-USE ( n n n n n -- )
+: DOES-USE ( n n n n n n -- )
    1 DOES-USES +!
    DOES-USES @ 1 > IF USE-THROWS EXIT THEN
-   2drop 2drop drop
+   2drop 2drop 2drop
    4 [: KEEP ;] CURSOR! ;
 
 : DOES-USES-THROW ( -- ) [: DOES-USE ;] [: REPLAY ;] WITH-USES ;

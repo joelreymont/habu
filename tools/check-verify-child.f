@@ -32,17 +32,21 @@
 \ diagnostic line among the packets, for each file it reads a file line for
 \ the bytes it reads there, once however often it reads the same bytes and
 \ before anything in them, for each definition it retains a definition line,
-\ and for each use in the subject that the checker binds to a located
-\ declaration a use line, one JSON object each. It answers
+\ for each use in the subject that the checker binds to a located declaration
+\ a use line, and for each top-level loader of the subject whose load reached
+\ a file a load line, one JSON object each. It answers
 \
 \    check-verify: verified | refused | deferred | held
 \                | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \    check-verify: duplicate 78 BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \    check-verify: file {"file":F,"sha256":H}
-\    check-verify: definition {"kind":K,"class":C,"word":W,"package":P,
-\       "visibility":V,"effect":E,"file":F,"byte_start":S,"byte_end":N}
+\    check-verify: definition {"kind":K,"class":C,"word":W,
+\       "decl_visit":D,"decl_name":T,"package":P,"visibility":V,
+\       "effect":E,"file":F,"byte_start":S,"byte_end":N}
 \    check-verify: use {"byte_start":S,"byte_end":N,"file":F,
-\       "target_start":TS,"target_end":TN}
+\       "target_start":TS,"target_end":TN,"decl_visit":D,
+\       "decl_name":T,"package":P,"visibility":V}
+\    check-verify: load {"byte_start":S,"byte_end":N,"path":P,"outcome":O}
 \    check-verify: candidate {"word":W,"file":F,"target_start":TS,
 \       "target_end":TN}
 \    check-verify: loader LEN TARGET
@@ -66,15 +70,24 @@
 \ it names is), W its name as the source writes it
 \ (a name its definer generates, as spelled), P and V the package (empty for a
 \ global) and visibility (global, private or public) the checker recorded it
-\ under, E its declared effect, absent when it declared none, F the file as
-\ its packets name it, and S and N where the token that declared it starts and
-\ ends there.
+\ under, T its recorded canonical tail, D its local file visit, E its declared
+\ effect, absent when it declared none, F the file as its packets name it, and
+\ S and N where the token that declared it starts and ends there.
 \
 \ A use line names what src/habu/verify-source.f ON-USE reports, a use in the
 \ subject that the checker bound to a located declaration: S and N where the
 \ use starts and ends in the subject, F the path the declaration's file was
-\ resolved to, and TS and TN where the token that declared it starts and ends
-\ there.
+\ resolved to, TS and TN where the token that declared it starts and ends
+\ there, and D, T, P and V the selected declaration's local visit, canonical
+\ tail, package and visibility.
+\
+\ A load line names what src/habu/verify-source.f ON-LOADER reports, a
+\ top-level loader of the subject whose load reached a file, in the subject's
+\ order and before anything in that file: S and N where its operand starts and
+\ ends in the subject (the token after include or require, a string loader's
+\ literal between its quotes as written), P the canonical path, and O read,
+\ the file's bytes were acquired for this load, or held, a require of a path
+\ the engine provides or that was recorded before, which read nothing.
 \
 \ The third form is the first with a completion cursor at byte N of BYTES. It
 \ writes as well, for each spelling the checker offers at the cursor's place, a
@@ -338,17 +351,20 @@ variable LENIENT-FIRST                  \ the argument the --lenient paths start
 \ A definition the first form retained, as its definition line: the name as
 \ the event gives it, the package and visibility the checker recorded it
 \ under. The tail it recorded is its lookup key, not a name to show.
-: DEFINITION-LINE ( ptr u8 n ptr u8 n n ptr u8 n n n n -- )
-   {: kind:ptr kindu:n name:ptr nameu:n sym:n eff:ptr effu:n at:n end:n class:n :}
-   sym VERIFY:SYM-IDENTITY
-   {: vis:n :}
-   2drop DEF-PKG!
+: DEFINITION-LINE ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
+   {: kind:ptr kindu:n name:ptr nameu:n sym:n eff:ptr effu:n at:n end:n class:n visit:n :}
+   sym VERIFY:SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
+   pkg pkgu DEF-PKG!
    OUT-FD s\" check-verify: definition {\"kind\":" WRITE
    kind kindu JSON-STR
    OUT-FD s\" ,\"class\":" WRITE
    class CLASS$ JSON-STR
    OUT-FD s\" ,\"word\":" WRITE
    name nameu JSON-STR
+   OUT-FD s\" ,\"decl_visit\":" WRITE
+   OUT-FD visit FD-N
+   OUT-FD s\" ,\"decl_name\":" WRITE
+   tail tailu JSON-STR
    OUT-FD s\" ,\"package\":" WRITE
    DEF-PKG$ JSON-STR
    OUT-FD s\" ,\"visibility\":" WRITE
@@ -426,8 +442,10 @@ variable LENIENT-FIRST                  \ the argument the --lenient paths start
 
 \ A use the first form's subject bound to a located declaration, as its use
 \ line.
-: USE-LINE ( n n ptr u8 n n n -- )
-   {: at:n end:n path:ptr pathu:n tat:n tend:n :}
+: USE-LINE ( n n ptr u8 n n n n n -- )
+   {: at:n end:n path:ptr pathu:n tat:n tend:n sym:n visit:n :}
+   sym VERIFY:SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
+   pkg pkgu DEF-PKG!
    OUT-FD s\" check-verify: use {\"byte_start\":" WRITE
    OUT-FD at FD-N
    OUT-FD s\" ,\"byte_end\":" WRITE
@@ -438,6 +456,37 @@ variable LENIENT-FIRST                  \ the argument the --lenient paths start
    OUT-FD tat FD-N
    OUT-FD s\" ,\"target_end\":" WRITE
    OUT-FD tend FD-N
+   OUT-FD s\" ,\"decl_visit\":" WRITE
+   OUT-FD visit FD-N
+   OUT-FD s\" ,\"decl_name\":" WRITE
+   tail tailu JSON-STR
+   OUT-FD s\" ,\"package\":" WRITE
+   DEF-PKG$ JSON-STR
+   OUT-FD s\" ,\"visibility\":" WRITE
+   vis VISIBILITY$ JSON-STR
+   OUT-FD s" }" WRITE
+   OUT-FD NEWLINE ;
+
+
+: LOAD-OUTCOME$ ( n -- ptr u8 n )
+   {: outcome:n :}
+   outcome VERIFY:LOAD-READ = if s" read" exit then
+   outcome VERIFY:LOAD-HELD = if s" held" exit then
+   s" check-verify: unknown load outcome" 74 die ;
+
+
+\ A top-level loader of the first form's subject whose load reached a file, as
+\ its load line.
+: LOAD-LINE ( n n ptr u8 n n -- )
+   {: at:n end:n path:ptr pathu:n outcome:n :}
+   OUT-FD s\" check-verify: load {\"byte_start\":" WRITE
+   OUT-FD at FD-N
+   OUT-FD s\" ,\"byte_end\":" WRITE
+   OUT-FD end FD-N
+   OUT-FD s\" ,\"path\":" WRITE
+   path pathu JSON-STR
+   OUT-FD s\" ,\"outcome\":" WRITE
+   outcome LOAD-OUTCOME$ JSON-STR
    OUT-FD s" }" WRITE
    OUT-FD NEWLINE ;
 
@@ -480,6 +529,7 @@ variable LENIENT-FIRST                  \ the argument the --lenient paths start
    ['] FILE-LINE is VERIFY:ON-FILE
    ['] DEFINITION-LINE is VERIFY:ON-DEFINITION
    ['] USE-LINE is VERIFY:ON-USE
+   ['] LOAD-LINE is VERIFY:ON-LOADER
    ['] CANDIDATE-LINE is VERIFY:ON-CANDIDATE
    ['] LENIENT-ARG? is VERIFY:LENIENT-FILE?
    MULTI-ERR-BEGIN

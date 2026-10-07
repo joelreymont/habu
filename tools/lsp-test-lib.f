@@ -21,7 +21,7 @@
 \ Lifecycle
 \ - initialize answers other than its capabilities: positions in utf-16, open
 \   and close notifications, Full sync, workspace and document symbols,
-\   document highlights, the name habu ............................... lifecycle
+\   document highlights, document links without resolve, the name habu .. lifecycle
 \ - shutdown answers other than a null result; exit after it exits other than
 \   0 or writes to stderr ............................................ lifecycle
 \ - a reply held until more input comes, or the end of input .. answers-at-once
@@ -285,6 +285,27 @@
 \   a qualified spelling a qualified prefix offers there, or with another
 \   detail ................................................ completion-qualified
 \
+\ Document links
+\ - a loader of an open document whose file its last completed check read not
+\   linked over its operand, after a character UTF-16 counts as one unit and
+\   UTF-8 as two bytes, to the file's canonical file URI with no tooltip; one
+\   whose file was held, the engine's or required before, linked otherwise
+\   than there with a tooltip naming the file as hover does; a loader whose
+\   file is not there linked ................................. document-link
+\ - a loader's file open, through a symlink, not linked at the URI the client
+\   opened it by, or linked there before it opened ...... document-link-open
+\ - a document not open, or params naming none, answered other than -32602
+\   .................................................. document-link-not-open
+\ - links asked with the document's opening answered before the check it
+\   started published ............................ document-link-before-check
+\ - links asked in the turn of a change that moved a loader answered before
+\   the check of the changed text, or not at its new place; asked with a
+\   change read behind them, answered other than -32801
+\   .............................................. document-link-after-change
+\ - links asked after a change whose check did not complete answered from the
+\   text before it, or from the loads that check reported
+\   ................................................ document-link-incomplete
+\
 \ Cancellation
 \ - a request with a cancel of it read behind it answered other than -32800,
 \   or its work done: two completions and a cancel of the first publish
@@ -361,8 +382,8 @@ using BUF
 \ its busiest measurement and CHECKED-MS about six times big-frame's 1230 to
 \ 1289 ms, and neither is larger. The one bounds 27 runs (the 24 conversations
 \ CONVERSE runs, answers-at-once, stdout-closed and TEST-EXIT-TIMEOUT's child)
-\ and the other 78 conversations. A server that blocks spends none of the
-\ row's CPU budget (test/suite-budget.f CPU-MS), so all 105 could reach their
+\ and the other 84 conversations. A server that blocks spends none of the
+\ row's CPU budget (test/suite-budget.f CPU-MS), so all 111 could reach their
 \ bounds, each failing by name, well inside the row's hang guard (ROW-MS). One
 \ that spins to its bound spends that much of the budget's 360 s, so at most
 \ 45 such runs fail by name before the budget ends the row.
@@ -780,6 +801,7 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    s\" \"completionProvider\":{},\"definitionProvider\":true," MSG+
    s\" \"hoverProvider\":true,\"documentHighlightProvider\":true," MSG+
    s\" \"documentSymbolProvider\":true," MSG+
+   s\" \"documentLinkProvider\":{}," MSG+
    s\" \"workspaceSymbolProvider\":true}," MSG+
    s\" \"serverInfo\":{\"name\":\"habu\"}}}" MSG+
    MSG$ HEARD ;
@@ -3367,6 +3389,196 @@ variable LENGTH-N                        \ the length of its directory's name
    s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
    ITEMS-END ;
 
+\ ---- document links ----------------------------------------------------------
+
+: LK-PATH ( -- ptr u8 n )  s" lk.f" FIXTURE ;
+: LK-DEP-PATH ( -- ptr u8 n )  s" lk-dep.f" FIXTURE ;
+: LK-INC-PATH ( -- ptr u8 n )  s" lk-inc.f" FIXTURE ;
+: LK-REAL-DEP ( -- ptr u8 n )  s" lk-real/lk-dep.f" FIXTURE ;
+: LK-LINK-DEP ( -- ptr u8 n )  s" lk-link/lk-dep.f" FIXTURE ;
+: LK-LINK-DOC ( -- ptr u8 n )  s" lk-link/lk.f" FIXTURE ;
+
+\ The path the load lines name the file at this path by.
+: LK-CANON ( ptr u8 n -- ptr u8 n )  SOURCE-ROOT:CANONICAL drop ;
+
+: TEXT-LK-LOADED ( -- ptr u8 n )  s\" \\ loaded\n" ;
+: TEXT-LK-ONE ( -- ptr u8 n )  s\" require lk-dep.f\n" ;
+: TEXT-LK-MOVED ( -- ptr u8 n )  s\" \\ moved\nrequire lk-dep.f\n" ;
+
+\ After a comment holding a character UTF-16 counts as one unit and UTF-8 as
+\ two bytes, lk-dep.f required; lib/string.f required, which the engine
+\ provides; lk-dep.f required again by a string; lk-inc.f included; and
+\ lk-gone.f, which is not there, required, where the check stops.
+: TEXT-LK ( -- ptr u8 n )
+   s\" ( é ) require lk-dep.f\nrequire lib/string.f\ns\" lk-dep.f\" required\ninclude lk-inc.f\nrequire lk-gone.f\n" ;
+
+\ TEXT-LK-ONE, then one `using` more than the checker holds open, at which the
+\ verifier dies, its load reported, and exits without a verdict.
+: TEXT-LK-OVER ( -- ptr u8 n )
+   TXT-B CLEAR
+   TEXT-LK-ONE N>BLEN TXT-B APPEND-SPAN
+   OVER-USINGS+
+   TXT$ ;
+
+\ textDocument/documentLink, by its id's JSON text, of the document opened
+\ from this path.
+: LINKS-ASK ( ptr u8 n ptr u8 n -- )
+   {: i:ptr iu:n p:ptr pu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"method\":\"textDocument/documentLink\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
+   p pu URI-OF MSG+ s\" \"}}}" MSG+
+   MSG$ FRAMED ;
+
+\ The answer to the request with this id's JSON text, begun in MSG.
+: LINKS-START ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[" MSG+ ;
+
+\ The link the answer holds next, begun: over characters C1 to C2 of line L,
+\ to the file URI of the path at P.
+: LINK+ ( n n n ptr u8 n -- )
+   {: l:n c1:n c2:n p:ptr pu:n :}
+   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   s\" {\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c1 INT$ MSG+
+   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c2 INT$ MSG+
+   s\" }},\"target\":\"" MSG+ p pu URI-OF MSG+ s\" \"" MSG+ ;
+
+\ The link of a loader that read the file at P: no tooltip.
+: READ-LINK+ ( n n n ptr u8 n -- )  LINK+ s" }" MSG+ ;
+
+\ The link of a loader that held the file at P: its tooltip names the file as
+\ a hover does.
+: HELD-LINK+ ( n n n ptr u8 n -- )
+   {: l:n c1:n c2:n p:ptr pu:n :}
+   l c1 c2 p pu LINK+
+   TXT-B CLEAR
+   s" held " HV+ p pu WHERE+
+   s" : this loader did not read it; the engine provides it or it was already recorded." HV+
+   PAR-B CLEAR TXT$ TEXT+
+   s\" ,\"tooltip\":" MSG+ PAR$ MSG+ s" }" MSG+ ;
+
+\ The answer ended: the next frame is it.
+: LINKS-END ( -- )
+   s" ]}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
+\ Each loader of TEXT-LK the check reached and whose file it selected is a
+\ link over its operand, in the order of the text: lk-dep.f's first require
+\ and lk-inc.f's include read their files, linked with no tooltip; the
+\ engine's lib/string.f and lk-dep.f's second require are held, each with
+\ its tooltip, lib/string.f named relative to the working directory, which
+\ the server shares, and lk-dep.f, outside it, by its path. lk-gone.f, which
+\ the check could not read, has its E-MISSING-SOURCE and no link.
+: LINK-TURNS ( -- )
+   LK-DEP-PATH TEXT-LK-LOADED WRITE-ALL
+   LK-INC-PATH TEXT-LK-LOADED WRITE-ALL
+   INITIALIZE
+   LK-PATH TEXT-LK 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-LK LK-PATH CHECKS
+   LK-PATH s" refused" COMPLETED
+   LK-PATH 1 EXPECT 4 0 4 7 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
+   s" 3" LK-PATH LINKS-ASK
+   SAY
+   s" 3" LINKS-START
+   0 14 22 LK-DEP-PATH LK-CANON READ-LINK+
+   1 8 20 s" lib/string.f" IN-TREE LK-CANON HELD-LINK+
+   2 3 11 LK-DEP-PATH LK-CANON HELD-LINK+
+   3 8 16 LK-INC-PATH LK-CANON READ-LINK+
+   LINKS-END ;
+
+\ lk.f, opened through lk-link, a symlink to lk-real, requires lk-dep.f, on
+\ disk there: its link is at lk-dep.f's canonical file URI, under lk-real,
+\ until lk-dep.f is opened through lk-link, and then at the URI the client
+\ opened it by. That open leaves lk.f's check as it was, and lk-dep.f is
+\ checked after the links are answered.
+: LINK-OPEN-TURNS ( -- )
+   s" lk-real" FIXTURE MAKE-DIR
+   s" lk-real" s" lk-link" FIXTURE MAKE-SYMLINK
+   LK-REAL-DEP TEXT-LK-LOADED WRITE-ALL
+   INITIALIZE
+   LK-LINK-DOC TEXT-LK-ONE 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-LK-ONE LK-LINK-DOC 1 s" verified" LISTED
+   s" 3" LK-LINK-DOC LINKS-ASK
+   SAY
+   s" 3" LINKS-START 0 8 16 LK-REAL-DEP LK-CANON READ-LINK+ LINKS-END
+   LK-LINK-DEP TEXT-LK-LOADED 1 OPENS
+   s" 4" LK-LINK-DOC LINKS-ASK
+   SAY
+   s" 4" LINKS-START 0 8 16 LK-LINK-DEP READ-LINK+ LINKS-END
+   TEXT-LK-LOADED LK-LINK-DEP 1 s" verified" LISTED ;
+
+\ A document the client never opened, and params naming no document: -32602.
+: LINK-NOT-OPEN-TURNS ( -- )
+   INITIALIZE
+   s" 3" LK-PATH LINKS-ASK
+   s" 4" s" textDocument/documentLink" ASK
+   SAY
+   HEAR CAPABILITIES
+   HEAR s" 3" -32602 REFUSED
+   HEAR s" 4" -32602 REFUSED ;
+
+\ Links asked with the document's opening, before the server checked it: the
+\ request checks it first, so its list comes before the answer.
+: LINK-BEFORE-CHECK-TURNS ( -- )
+   LK-DEP-PATH TEXT-LK-LOADED WRITE-ALL
+   INITIALIZE
+   LK-PATH TEXT-LK-ONE 1 OPENS
+   s" 3" LK-PATH LINKS-ASK
+   SAY
+   HEAR CAPABILITIES
+   TEXT-LK-ONE LK-PATH 1 s" verified" LISTED
+   s" 3" LINKS-START 0 8 16 LK-DEP-PATH LK-CANON READ-LINK+ LINKS-END ;
+
+\ Links asked in the turn of a change that moved the loader a line down: the
+\ request checks the changed text first, so its list comes before the answer,
+\ the link at the loader's new place. Asked with a change of the document read
+\ behind them, they are -32801, and the change is applied and checked after.
+: LINK-AFTER-CHANGE-TURNS ( -- )
+   LK-DEP-PATH TEXT-LK-LOADED WRITE-ALL
+   INITIALIZE
+   LK-PATH TEXT-LK-ONE 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-LK-ONE LK-PATH 1 s" verified" LISTED
+   LK-PATH TEXT-LK-MOVED 2 CHANGES
+   s" 3" LK-PATH LINKS-ASK
+   SAY
+   TEXT-LK-MOVED LK-PATH 2 s" verified" LISTED
+   s" 3" LINKS-START 1 8 16 LK-DEP-PATH LK-CANON READ-LINK+ LINKS-END
+   s" 4" LK-PATH LINKS-ASK
+   LK-PATH TEXT-LK-ONE 3 CHANGES
+   SAY
+   HEAR s" 4" -32801 REFUSED
+   TEXT-LK-ONE LK-PATH 3 s" verified" LISTED ;
+
+\ Links asked in the turn of a change whose check did not complete: neither
+\ the load lines of the text before it nor the one that check reported before
+\ it stopped are of a text a check completed on, so the answer is an empty
+\ list.
+: LINK-INCOMPLETE-TURNS ( -- )
+   LK-DEP-PATH TEXT-LK-LOADED WRITE-ALL
+   INITIALIZE
+   LK-PATH TEXT-LK-ONE 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-LK-ONE LK-PATH 1 s" verified" LISTED
+   LK-PATH TEXT-LK-OVER 2 CHANGES
+   s" 3" LK-PATH LINKS-ASK
+   SAY
+   TEXT-LK-OVER LK-PATH CHECKS
+   LK-PATH s" not checked: exit 76" SAID
+   s" 3" LINKS-START LINKS-END
+   LOGGED ;
+
 \ ---- cancellation ------------------------------------------------------------
 
 \ A cancel of the request with this id's JSON text.
@@ -3483,6 +3695,14 @@ variable LENGTH-N                        \ the length of its directory's name
    s" completion-not-open" [: CMP-NOT-OPEN-TURNS ;] TALK
    s" completion-after-change" [: CMP-AFTER-CHANGE-TURNS ;] TALK
    s" completion-qualified" [: CMP-QUALIFIED-TURNS ;] TALK ;
+
+: TEST-LINKS ( -- )
+   s" document-link" [: LINK-TURNS ;] TALK
+   s" document-link-open" [: LINK-OPEN-TURNS ;] TALK
+   s" document-link-not-open" [: LINK-NOT-OPEN-TURNS ;] TALK
+   s" document-link-before-check" [: LINK-BEFORE-CHECK-TURNS ;] TALK
+   s" document-link-after-change" [: LINK-AFTER-CHANGE-TURNS ;] TALK
+   s" document-link-incomplete" [: LINK-INCOMPLETE-TURNS ;] TALK ;
 
 : TEST-HOVERS ( -- )
    s" hover" [: HOVER-TURNS ;] TALK
@@ -3669,6 +3889,7 @@ public
    TEST-HOVERS
    TEST-HIGHLIGHTS
    TEST-COMPLETIONS
+   TEST-LINKS
    TEST-CANCELS
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;

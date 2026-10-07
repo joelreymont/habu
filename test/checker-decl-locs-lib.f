@@ -23,7 +23,7 @@ private
 
 CAST: ARM-ACTION ( n -- [ ptr u8 n n n n -- ] )
 CAST: OFF-ACTION ( n -- [ -- ] )
-CAST: USES-ACTION ( n -- [ [ n n n n n -- ] [ -- ] -- ] )
+CAST: USES-ACTION ( n -- [ [ n n n n n n -- ] [ -- ] -- ] )
 CAST: CURSOR-ACTION ( n -- [ n [ ptr u8 n n n n -- ] -- ] )
 CAST: VISIBLE-ACTION ( n -- [ ptr u8 n n [ ptr u8 n n n n -- ] -- ] )
 
@@ -33,7 +33,7 @@ public
    NCOMP-DISPATCH:DECL-VERIFY-DECL-ARM-OFF SLOT ARM-ACTION execute ;
 : DISARM ( -- )
    NCOMP-DISPATCH:DECL-VERIFY-DECL-DISARM-OFF SLOT OFF-ACTION execute ;
-: WITH-USES ( [ n n n n n -- ] [ -- ] -- )
+: WITH-USES ( [ n n n n n n -- ] [ -- ] -- )
    NCOMP-DISPATCH:DECL-VERIFY-USES-OFF SLOT USES-ACTION execute ;
 \ Completion: the cursor the next body check fires at (-1 disarms), and the
 \ spellings that bind at a position of a kind (CHECKER-OWNER-ABI:VISIBLE-*),

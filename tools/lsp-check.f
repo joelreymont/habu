@@ -25,6 +25,13 @@
 \ The verifier's prose follows that line verbatim, and follows a line naming
 \ the verdict of a check that completed whenever it has any.
 \
+\ A check that completed also keeps the loads the verifier reported of the
+\ document's top level (CHECK:VERIFY-LOADS$), which its links are answered
+\ from (tools/lsp-links.f), in place of the last (LSP-DOCS:DOC-LOADS!). RUN
+\ drops the last ones as it starts, as it drops the uses, since a load's
+\ bytes are of the text a check completed on: a document whose last check did
+\ not complete has none.
+\
 \ RUN-AT is RUN with a completion cursor at a byte of the text: the same check,
 \ publishing and keeping what RUN's does, which leaves the spellings the
 \ checker offers at that byte in CHECK:VERIFY-CANDIDATES$.
@@ -115,12 +122,13 @@ public
 
 \ Checks the document in this slot, its cursor at this byte of its text, none
 \ when it is negative, and publishes what its check found. The document is
-\ clean from here on, whatever the check comes to, and has no uses unless the
-\ check completes.
+\ clean from here on, whatever the check comes to, and has no uses or loads
+\ unless the check completes.
 : RUN-AT ( n n -- )
    {: slot:n at:n :}
    slot DOC-CLEAN
    slot LSP-DEFS:DEFS-USES-DROP
+   NULL$ slot DOC-LOADS!
    slot SUBJECT !
    at CURSOR !
    false PUBLISHABLE !
@@ -130,6 +138,7 @@ public
       HEAD s" not checked: throw " ERR code NUMBER$ ERR NEWLINE RELAY
    then
    PUBLISHABLE @ if
+      CHECK:VERIFY-LOADS$ slot DOC-LOADS!
       CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ slot
       VERIFIED @ LSP-DEFS:DEFS-KEEP
    then

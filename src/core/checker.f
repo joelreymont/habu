@@ -8692,9 +8692,10 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
 \ its source (NAV-SRC-XT); a spelling the source map does not hold reports
 \ nothing.
 defer NAV-SRC-XT ( ptr u8 -- n bool )   \ DIAG>SRC, bound beside it (NAV-SRC-INSTALL)
-\ A use: its start and end, and its declaration's visit, start and end.
-defer CHECKER-ON-USE ( n n n n n -- )
-: NO-USE ( n n n n n -- ) 2drop 2drop drop ;
+\ A use: its start and end, selected symbol, and its declaration's visit,
+\ start and end. The symbol is read from the selected record at publication.
+defer CHECKER-ON-USE ( n n n n n n -- )
+: NO-USE ( n n n n n n -- ) 2drop 2drop 2drop ;
 variable USES-OPEN                      \ a CHECKER-WITH-USES scope is running
 : ON-USE-DEFAULT ( -- )
    ['] NO-USE is CHECKER-ON-USE  0 USES-OPEN ! ;
@@ -8704,7 +8705,7 @@ ON-USE-DEFAULT
 \ no action-of to save a caller's handler, so a nested scope is refused before
 \ it touches the open one's handler.
 7183 constant E-USES-NESTED   \ CHECKER-WITH-USES inside a running uses scope
-: USES-INSTALL ( [ n n n n n -- ] -- )
+: USES-INSTALL ( [ n n n n n n -- ] -- )
    USES-OPEN @ 0 <> IF E-USES-NESTED throw THEN
    is CHECKER-ON-USE
    1 USES-OPEN ! ;
@@ -8742,12 +8743,13 @@ ON-USE-DEFAULT
 : NAV-USE-NOW ( n ptr u8 n -- )
    NAV-USE-AT 0= IF 2drop 2drop 2drop EXIT THEN
    {: s:n e:n rec1:n v:n ds:n de:n :}
-   s e v ds de CHECKER-ON-USE ;
+   s e rec1 1 - E-PTR ER.SYM @ v ds de CHECKER-ON-USE ;
 
 : PU-SEND ( n -- )                      \ publish pending use i
    {: i:n :}
    PU-P i PU-ROW NAV-CELL {: p:ptr :}
-   p @  p CELL + @  p 3 cells + @  p 4 cells + @  p 5 cells + @  CHECKER-ON-USE ;
+   p @  p CELL + @  p 2 cells + @ E-PTR ER.SYM @
+   p 3 cells + @  p 4 cells + @  p 5 cells + @  CHECKER-ON-USE ;
 
 \ Publish the pending uses from FROM and drop them. The rows stay counted while
 \ the handler runs, so a check it starts appends above them.
@@ -8779,7 +8781,7 @@ ON-USE-DEFAULT
 
 \ The owner slot: run Q with H receiving the uses its checks publish. Either
 \ exit puts NO-USE back and drops what Q left pending.
-TRUSTED: CHECKER-WITH-USES ( [ n n n n n -- ] [ -- ] -- ) {: h q :}
+TRUSTED: CHECKER-WITH-USES ( [ n n n n n n -- ] [ -- ] -- ) {: h q :}
    PU-N @ {: pu0 :}
    h USES-INSTALL
    q catch {: rc :}

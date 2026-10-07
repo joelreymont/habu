@@ -299,6 +299,8 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    URI-SPAN URI:PATH>FILE {: n:n :}
    URI-SPAN SPAN:$ drop n ;
 
+public
+
 \ The URI positions count at in the file at this path, another than the
 \ checked document's own: the open document's that holds it, else the path's
 \ file URI.
@@ -308,6 +310,8 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
       some OF DOC-URI$ ENDOF
       none OF p pu FILE-URI$ ENDOF
    ;MATCH ;
+
+private
 
 \ The JSON string that writes this URI.
 : URI-JSON ( ptr u8 n -- ptr u8 n )
