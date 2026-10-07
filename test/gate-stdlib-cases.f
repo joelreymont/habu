@@ -2123,6 +2123,22 @@ SUITE pre-trust-defer
    test/pre-trust-defer.f
 ;SUITE
 
+SUITE pre-trust-defer-table
+   test/pre-trust-defer-table.f
+;SUITE
+
+SUITE pre-trust-defer-type
+   test/pre-trust-defer-type.f
+;SUITE
+
+SUITE pre-trust-defer-seal
+   test/pre-trust-defer-seal.f
+;SUITE
+
+SUITE pre-trust-defer-backstop
+   test/pre-trust-defer-backstop.f
+;SUITE
+
 WHITEBOX-SUITE snapshot-xt-cell-decl
    test/snapshot-xt-cell-decl.f
 ;SUITE
