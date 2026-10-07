@@ -4563,15 +4563,13 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ MIRROR of src/habu/habu2.f DEF-TRUST:REGISTER-IDENTITY for `cast:`. Same
 \ seam and same push sequence as the two above, reaching `checker-defcast` —
 \ which proves the declared retype legal before it records the row, and throws
-\ the named refusal when it is not.
-: C-FIND-DEFCAST ( -- )  LBL {: ok :}
-   9 LKWDEFCAST @ ADR,  10 15 MOVZ,  LFIND @ BL,
-   13 ok CBNZ,
-      0 2 MOVZ,  1 LKWDEFCAST @ ADR,  2 15 MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   ok LBL, ;
+\ the named refusal when it is not. Asked whether or not a hook is installed;
+\ an engine with no `checker-defcast` (no checker) branches to SKIP: it
+\ publishes the cast and records no row, as REGISTER-IDENTITY does with no owner.
+: C-FIND-DEFCAST ( label -- )  {: skip :}
+   9 LKWDEFCAST @ ADR,  10 15 MOVZ,  LFIND @ BL,  13 skip CBZ, ;
 
-: C-CALL-DEFCAST ( -- )
+: C-CALL-DEFCAST ( label -- )
    C-FIND-DEFCAST
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
@@ -6562,19 +6560,19 @@ variable CFSK2
 \ the colon rule (CP - entry - 4 = 16). The definer-kind stamp also survives
 \ capture into an engine whose compilers use declared identity semantics.
 \ The registrar runs BEFORE the record is counted, so a refused cast leaves no
-\ callable name behind - and it is asked only when a checker hook is installed.
-\ That guard is what keeps recovery readable: tools/bootstrap.sh hands this
-\ engine src/core/roles.f FIRST, with no checker anywhere, so an unguarded call
-\ would exit 70 on the first line of the build. The stage source it goes on to
-\ compile does load src/core/checker.f and src/core/check-hook.f, and a cast
-\ read after that point reaches the registrar exactly as the native one does.
+\ callable name behind, and it is asked whether or not a hook is installed.
+\ Recovery stays readable because C-FIND-DEFCAST branches to `noreg` when the
+\ engine has no `checker-defcast`: tools/bootstrap.sh hands this engine
+\ src/core/roles.f FIRST, with no checker anywhere, and its casts publish with
+\ no row. Once the stage source has defined `checker-defcast`
+\ (src/core/checker.f), a cast reaches the registrar as the native one does.
 : C-CAST-DIE-NO-NAME ( -- )
    0 2 MOVZ,  1 LCASTNONAME @ ADR,  2 29 MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 $4A MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-CAST ( -- )
-   LBL LBL {: named nohook :}
+   LBL LBL {: named noreg :}
    2 3 MOVZ,  LPROT @ BL,                              \ region -> RW
    C-COLON-CODE-ROOM
    C-COLON-DICT-ROOM
@@ -6595,9 +6593,8 @@ variable CFSK2
    9 DATA PEND-CELL LDR,  10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,                   \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,                \ region -> RX + flush
-   9 DATA HOOK-CELL LDR,  9 nohook CBZ,                \ no checker in this engine: publish, register nothing
-      C-CALL-DEFCAST
-   nohook LBL,
+   noreg C-CALL-DEFCAST
+   noreg LBL,
    LOCC-APPEND @ BL,
    EM-REC-WIDE-PUBLISH
    C-CLEAR-TRUSTED-STATE

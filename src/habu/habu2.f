@@ -4983,14 +4983,18 @@ package INTERP-EMIT
 \ the cell below the interpret base instead. Measured both ways
 \ (test/cast-negative-suite.f pins the refusal).
 \
-\ THE REGISTRAR IS ASKED UNDER THE SAME CONDITION THE DRAIN IS, so the two can
-\ never be out of step. There are two worlds with no hook and a cast is legal in
-\ both: the window
-\ before src/core/check-hook.f installs one (a cast there publishes exactly as a
-\ `:` definition does, and the fixpoint's certification pass runs the five
-\ refusals over the same source text through verify-source), and the recovery
-\ engine, whose source list has no checker in it at all — an unguarded call
-\ there would exit 70 on the FIRST file tools/bootstrap.sh feeds it.
+\ THE REGISTRAR IS ASKED WHETHER OR NOT A HOOK IS INSTALLED. A cast has no body
+\ for a hook to judge: the registrar is its whole check, so with the hook cell
+\ empty a cast gets the row and the refusals it gets with one, as a `:` compiled
+\ then records its declaration through the same owner (EM-COMPILE-PUBLISH-HOOKED,
+\ compiler.f DECLARE-HOOKLESS). The native build's hook-less prefix scan
+\ (compiler.f CHECK-HOOKLESS) types a call only from that row: without it a
+\ prefix cast's caller is E-UNDEFINED. With no owner record, or none holding the
+\ operation, REGISTER-IDENTITY calls nothing, so an engine with no checker
+\ publishes the cast and records no row. The drain stays hook-guarded: it finds
+\ its two checker words by global name, which a window still loading its
+\ checker lacks. The latches it would read are stored by value at the next
+\ record (checker.f RECW, RECMI), as a hook-less `:` row's are.
 \
 \ The two keywords select their registrar (`off`) and missing-name diagnostic
 \ (`noname`); LINEAR: also guards its publication destination below.
@@ -5021,7 +5025,7 @@ package INTERP-EMIT
 
 : C-IDENTITY ( [ -- ] n -- ) {: noname off:n :}
    C-TASK-LIVE-GUARD
-   LBL LBL LBL LBL {: cpok:label ndok:label named:label nohook:label :}
+   LBL LBL LBL {: cpok:label ndok:label named:label :}
    1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
       C-DIE-CODE-FULL
@@ -5050,9 +5054,7 @@ package INTERP-EMIT
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    EM-COMPILE-FLUSH-PEND
-   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-      off DEF-TRUST:REGISTER-IDENTITY
-   nohook LBL,
+   off DEF-TRUST:REGISTER-IDENTITY
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
    C-CLEAR-TRUSTED-STATE
