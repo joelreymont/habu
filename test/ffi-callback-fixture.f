@@ -1,8 +1,9 @@
 \ ffi-callback-fixture.f - what lib/ffi-callback-test.f and the children it
-\ spawns (test/ffi-callback-child.f) share: libc's qsort and pthread entry
-\ points, the callbacks C is handed, and the cells their bodies report through.
-\ Both files reopen package FFI-CB-TEST. Every row sorted here is ROW-N cells,
-\ which is the extent QSORT declares written.
+\ spawns (test/ffi-callback-child.f, test/ffi-callback-direct-child.f) share:
+\ libc's qsort and pthread entry points, the callbacks C is handed, and the
+\ cells their bodies report through. Each file reopens package FFI-CB-TEST.
+\ Every row sorted here is ROW-N cells, which is the extent QSORT declares
+\ written.
 require lib/errors.f
 require lib/string.f
 require lib/ffi-abi.f
@@ -61,6 +62,7 @@ variable THREAD                       \ pthread_t
 variable THREAD-RET                   \ the start routine's result, from pthread_join
 variable THREAD-OWNER                 \ CB-OWNER of the region the routine ran on
 variable THREAD-SELF                  \ pthread_self as the routine read it
+variable WHO-OWNER                    \ CB-OWNER of the region WHO last ran on
 8 TYPED-BUFFER SEEN-INTS n            \ MARSHAL's arguments as its body received them
 8 TYPED-BUFFER SEEN-FLOATS r
 
@@ -98,7 +100,7 @@ CALLBACK: START-B ( n -- n ) 0 FALLBACK ;CALLBACK
 \ seven of the eight integer reads are the wide spellings.
 CALLBACK: MARSHAL ( n i32 u32 ptr u8 i32 u32 i32 u32 r r r r r r r r -- r ) 0.5 FFALLBACK ;CALLBACK
 CALLBACK: UNSET ( n -- n ) 7 FALLBACK ;CALLBACK
-CALLBACK: WHO ( -- n ) 0 FALLBACK ;CALLBACK
+CALLBACK: WHO ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
 \ INNER sorted through the entry fn, from inside a comparator.
 : NEST ( n -- ) {: fn:n :}
@@ -171,9 +173,11 @@ CALLBACK: WHO ( -- n ) 0 FALLBACK ;CALLBACK
    f4 4 SEEN-FLOATS !  f5 5 SEEN-FLOATS !  f6 6 SEEN-FLOATS !  f7 7 SEEN-FLOATS !
    f7 ;
 
-\ The owner of the region this callback runs on, which is the calling thread.
-: WHO-IMPL ( -- n )
-   data-base CB-OWNER + atomic@ ;
+\ A comparator that keeps the owner of the region it runs on, which is the
+\ calling thread's.
+: WHO-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
+   data-base CB-OWNER + atomic@ WHO-OWNER !
+   a b ROW-ORDER ;
 
 ' ROW-ORDER CMP-BODY !
 ' CMP-SELF-IMPL CMP-SELF-BODY !
@@ -185,27 +189,6 @@ CALLBACK: WHO ( -- n ) 0 FALLBACK ;CALLBACK
 ' MARSHAL-IMPL MARSHAL-BODY !
 ' WHO-IMPL WHO-BODY !
 \ UNSET-BODY is left unset: its dispatch has to refuse, not execute the zero.
-
-\ C calling an entry, the way lib/ffi-test.f reaches its own stubs: the raw
-\ bounded calls, whose target is the entry address. A FUNCTION: declaration
-\ resolves a symbol and an entry has none.
-TRUSTED: CALL1 ( n n -- n ) {: arg:n fn:n :}
-   FFI:RESET
-   arg 0 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 1 fn ffi-call-bounded ;
-
-\ Every argument register loaded: x0..x7 and d0..d7.
-TRUSTED: MARSHAL-CALL ( n -- r ) {: fn:n :}
-   FFI:RESET
-   $123456789ABCDEF0 0 FFI:VALUE!
-   $1FFFFFFFE 1 FFI:VALUE!           \ a C int -2 under a dirty high half
-   $7FFFFFFFD 2 FFI:VALUE!           \ an unsigned $FFFFFFFD under one
-   MARSHAL-BYTE 3 FFI:READABLE!
-   40 4 FFI:VALUE!  50 5 FFI:VALUE!  60 6 FFI:VALUE!  70 7 FFI:VALUE!
-   1.0 0 FFI:FLOAT!  2.0 1 FFI:FLOAT!  3.0 2 FFI:FLOAT!  4.0 3 FFI:FLOAT!
-   5.0 4 FFI:FLOAT!  6.0 5 FFI:FLOAT!  7.0 6 FFI:FLOAT!  8.0 7 FFI:FLOAT!
-   FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
-   0 fn ffi-call-abi-r-bounded ;
 
 \ ---- bindings -----------------------------------------------------------------
 \ The five comparators on the calling task's own context: the main region on
