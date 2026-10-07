@@ -373,13 +373,16 @@ DYNAMIC-BUFFER SD-DEC u8
    off len SD-TOK$ BLOCK-CLOSER? if SD-SCOPE-CLOSE then ;
 
 
-\ A local is looked up before the parsing keywords: in a body a local named
-\ `char` is that local and takes no operand.
-: SD-STEP ( n n -- ) {: off:n len:n :}
-   SD-PEND @ {: pend:n :}
-   0 SD-PEND !
+\ A comment is skipped first, as the loader skips it, and like blanks it keeps a
+\ pending literal path: `s" x.f" ( why ) required` loads x.f. Every other token
+\ ends it. A local is looked up before the parsing keywords: in a body a local
+\ named `char` is that local and takes no operand.
+: SD-STEP ( n n -- )
+   {: off:n len:n :}
    len 1 = off SD-BYTE SD-BACKSLASH = and if SD-SKIP-LINE exit then
    len 1 = off SD-BYTE SD-LPAREN = and if SD-SKIP-PAREN exit then
+   SD-PEND @ {: pend:n :}
+   0 SD-PEND !
    off len SD-TOK$ s" [:" STR= if
       SD-SCOPE-OPEN SD-LOCALS @ SD-LOCAL-BASE ! exit
    then

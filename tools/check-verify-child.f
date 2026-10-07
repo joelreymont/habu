@@ -5,9 +5,9 @@
 \ names, by its absolute path in the tree that file was loaded from, in the
 \ caller's working directory; nothing else runs it:
 \
-\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < BYTES
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT [--lenient PATH...] < BYTES
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < BYTES
-\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N < BYTES
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N [--lenient PATH...] < BYTES
 \
 \ BYTES is the subject's text and SUBJECT the canonical absolute path it is
 \ checked as. The image is the engine's boot prefix, the verifier and
@@ -17,7 +17,12 @@
 \
 \ The verifier follows top-level loader acts in one neutral checker scope, with
 \ each file's path and positions while it is open. `require` skips held paths;
-\ `include` verifies every occurrence.
+\ `include` verifies every occurrence. The first and third forms compose
+\ quietly (VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE), so no walk of the closure
+\ runs before them: the composition reads each file a loader loads and refuses
+\ the loader forms tools/source-discovery.f refuses where it meets them, but in
+\ a file --lenient names, each PATH canonical and absolute (the entries of
+\ tools/dynamic-tail-manifest.f).
 \
 \ stdout is the schema-1 JSON packets, one per line in verification order, each
 \ written as the checker makes it, so a child that dies has passed on every
@@ -40,6 +45,13 @@
 \       "target_start":TS,"target_end":TN}
 \    check-verify: candidate {"word":W,"file":F,"target_start":TS,
 \       "target_end":TN}
+\    check-verify: loader LEN TARGET
+\
+\ A loader line comes right before the stopped line of a stop at a loader's
+\ fault (VERIFY:LOADER-FAULT?): LEN is the length of the loader token at the
+\ stopped line's BYTE, 0 for a string or locals group a file never closes, and
+\ TARGET, the rest of the line and absent when empty, the file the loader could
+\ not read, as it was resolved.
 \
 \ A file line names a file src/habu/verify-source.f ON-FILE reports, F as
 \ its packets name it. A definition line names what ON-DEFINITION reports:
@@ -92,8 +104,8 @@
 \ is in: for BYTES, SUBJECT in the first form and LABEL in the second.
 \
 \ stderr is prose: for the first form, a line for each file whose verification
-\ a throw stopped, and whatever else the engine writes there, a `die`'s message
-\ among it. A child that ends any other way, the verifier's own `die` included,
+\ a throw other than a loader's fault stopped, and whatever else the engine
+\ writes there, a `die`'s message among it. A child that ends any other way, the verifier's own `die` included,
 \ writes no result line.
 
 \ The observation must precede every verifier require: those files may select a
@@ -139,6 +151,7 @@ DYNAMIC-BUFFER SEEN u8                  \ the files file lines named, end to end
 variable SEEN-U
 DYNAMIC-BUFFER SEEN-AT n                \ each one's offset there and length
 variable SEEN-N
+variable LENIENT-FIRST                  \ the argument the --lenient paths start at, SCRIPT-ARGC for none
 
 
 : WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
@@ -189,8 +202,21 @@ variable SEEN-N
    ERR-FD NEWLINE ;
 
 
+\ A loader's fault, for the parent to place its packet and status line: the
+\ loader token's length and the file the loader could not read, if any.
+: LOADER-LINE ( -- )
+   VERIFY:FAULT-TARGET$ {: t:ptr tu:n :}
+   OUT-FD s" check-verify: loader " WRITE
+   OUT-FD VERIFY:FAULT-LEN@ FD-N
+   tu 0 > if
+      OUT-FD s"  " WRITE
+      OUT-FD t tu WRITE
+   then
+   OUT-FD NEWLINE ;
+
+
 : VERIFY-CUR ( -- )
-   0 SUBJECT SUBJECT-U @ 0 SCRIPT-ARGV$ VERIFY:SOURCE-COMPOSE-IN-SCOPE ;
+   0 SUBJECT SUBJECT-U @ 0 SCRIPT-ARGV$ VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 
 
 \ Fields shared by a duplicate diagnostic and a terminal stop.
@@ -406,9 +432,20 @@ variable SEEN-N
    OUT-FD NEWLINE ;
 
 
+\ Whether the file at PATH, canonical and absolute, is one --lenient names
+\ (VERIFY:LENIENT-FILE?).
+: LENIENT-ARG? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   SCRIPT-ARGC LENIENT-FIRST @ ?do
+      a u i SCRIPT-ARGV$ CORE-STR= if true unloop exit then
+   loop
+   false ;
+
+
 \ One multi-error window covers the complete load composition, and goes past
 \ a duplicate as past any refused definition. A duplicate it cannot go past,
-\ a name the definer generates, stops it with its stopped line.
+\ a name the definer generates, stops it with its stopped line. A loader's fault
+\ stops it with its loader line, from which the parent writes its packet and
+\ its status line.
 : VERIFY-ALL ( -- )
    0 SCRIPT-ARGV$ DIAG-FILE!
    1 1 0 DIAG-ORIGIN!
@@ -417,12 +454,14 @@ variable SEEN-N
    ['] DEFINITION-LINE is VERIFY:ON-DEFINITION
    ['] USE-LINE is VERIFY:ON-USE
    ['] CANDIDATE-LINE is VERIFY:ON-CANDIDATE
+   ['] LENIENT-ARG? is VERIFY:LENIENT-FILE?
    MULTI-ERR-BEGIN
    [: VERIFY-CUR ;] catch {: rc:n :}
    MULTI-ERR-END {: rejects:n :}
    rejects 0<> if -1 FAILED ! then
    rc STOP !
    rc 0= if exit then
+   rc VERIFY:LOADER-FAULT? if LOADER-LINE exit then
    rc E-DUP-DEFINITION = if
       VERIFY:DUPLICATE VERIFY:SOURCE-COMPOSE-STOPPED$
       VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? DUPLICATE-LINE
@@ -488,23 +527,28 @@ variable SEEN-N
 public
 
 : USAGE ( -- )
-   s" usage: check-verify-child.f -- SUBJECT [LABEL | --at N]" 64 die ;
+   s" usage: check-verify-child.f -- SUBJECT [LABEL | [--at N] [--lenient PATH...]]" 64 die ;
 
-\ N in the third form's `--at N`; -1 for arguments of no form.
+\ N in the third form's `--at N`; -1 for none.
 : CURSOR-ARG ( -- n )
+   SCRIPT-ARGC 3 < if -1 exit then
    1 SCRIPT-ARGV$ s" --at" CORE-STR= 0= if -1 exit then
    2 SCRIPT-ARGV$ STR>NUMBER? MATCH option
       some OF ENDOF
       none OF -1 ENDOF
    ;MATCH ;
 
+\ The arguments from the K-th on, after SUBJECT and a cursor: none, or
+\ `--lenient` and the paths LENIENT-ARG? answers for.
+: LENIENT-ARGS ( n -- ) {: k:n :}
+   k SCRIPT-ARGC >= if SCRIPT-ARGC LENIENT-FIRST ! exit then
+   k SCRIPT-ARGV$ s" --lenient" CORE-STR= 0= if USAGE then
+   k 1+ LENIENT-FIRST ! ;
+
 : MAIN ( -- )
    SCRIPT-ARGC 2 = if READ-SUBJECT PREVERIFY exit then
-   SCRIPT-ARGC 3 = if
-      CURSOR-ARG dup 0 < if USAGE then VERIFY:CURSOR!
-   else
-      SCRIPT-ARGC 1 <> if USAGE then
-   then
+   CURSOR-ARG {: at:n :}
+   at 0 >= if at VERIFY:CURSOR! 3 LENIENT-ARGS else 1 LENIENT-ARGS then
    READ-SUBJECT
    0 SCRIPT-ARGV$ HELD? if s" held" RESULT exit then
    VERIFY-CLOSURE ;

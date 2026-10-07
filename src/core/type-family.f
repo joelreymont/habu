@@ -842,6 +842,7 @@ public
    id TFX-ADD                             \ the row's tail is written: it can be found now
    arity TFAM-PK-RESERVE
    id ;
+NOMINAL-PROVIDER
 
 \ ---------------------------------------------------------------------------
 \ SUMV: sum/enum variant records, keyed by (family-id, variant tail).
@@ -5000,12 +5001,14 @@ variable TFQ-COLON
    u TFQ-COLON @ - 1 - TFQ-TU !
    RES-TRUE ;
 
+variable TFSR-HIDDEN
 : TFAM-QUAL-RESOLVE ( ptr u8 n -- n bool ) {: pa:ptr pu:n :}
    TFQ-TA @ TFQ-TU @ TF-CANON? 0= IF 0 RES-FALSE EXIT THEN
    TFQ-BUF TFQ-U @ TFQ-TA @ TFQ-TU @ TFAM-FIND-IN 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFAM-PUBLIC? IF id RES-TRUE EXIT THEN
    TFQ-BUF TFQ-U @ pa pu CORE-STR=CI IF id RES-TRUE EXIT THEN   \ own private rows
+   -1 TFSR-HIDDEN !
    0 RES-FALSE ;
 
 \ TFAM-RESOLVE may throw E-TFAM-AMBIG; a checked `catch` needs a stack-neutral
@@ -5013,6 +5016,7 @@ variable TFQ-COLON
 \ (id,flag) result through cells and run the resolve as a `( -- )` quotation.
 PTR-VARIABLE TFSR-PA   variable TFSR-PU   PTR-VARIABLE TFSR-NA   variable TFSR-NU
 variable TFSR-ID   variable TFSR-FLAG
+variable TFSR-AMBIG
 : TFSR-RUN ( -- )
    TFSR-PA @ TFSR-PU @ TFSR-NA @ TFSR-NU @ TFAM-RESOLVE
    TFSR-FLAG !  TFSR-ID ! ;
@@ -5021,13 +5025,28 @@ public
 
 : TFAM-SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
+   0 TFSR-AMBIG !  0 TFSR-HIDDEN !
    na nu TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
    na nu TFQ-SPLIT? IF pa pu TFAM-QUAL-RESOLVE EXIT THEN
    pa TFSR-PA !  pu TFSR-PU !  na TFSR-NA !  nu TFSR-NU !
    [: TFSR-RUN ;] catch {: rc:n :}
    rc 0= IF TFSR-ID @ TFSR-FLAG @ EXIT THEN   \ ( id flag ) from the resolver
-   rc E-TFAM-AMBIG = IF 0 RES-FALSE EXIT THEN
+   rc E-TFAM-AMBIG = IF -1 TFSR-AMBIG ! 0 RES-FALSE EXIT THEN
    rc throw ;
+
+\ The signature parser asks this only after its normal family and concrete
+\ lookups missed. An ambiguous public tail, a malformed qualifier or a
+\ noncanonical family tail is not an absent declaration a quiet producer may
+\ explain.
+: TFAM-MAY-ARRIVE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   TFSR-AMBIG @ TFSR-HIDDEN @ or 0 <> IF RES-FALSE EXIT THEN
+   a u TFQ-SPLIT? IF TFQ-TA @ TFQ-TU @ TF-CANON?
+   ELSE a u TF-CANON? THEN
+   IF a u CHECKER-TYPE-MARK-COVERS? ELSE RES-FALSE THEN ;
+
+: TFAM-MAY-ARRIVE-INSTALL ( -- )
+   [: TFAM-MAY-ARRIVE? ;] is TYPE-MAY-ARRIVE-XT ;
+TFAM-MAY-ARRIVE-INSTALL
 
 private
 

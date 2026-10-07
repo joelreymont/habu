@@ -21,7 +21,7 @@
 \   a child that dies drops the packets it made before                    no-result
 \   a statement the source leaves open is no refusal, or is not placed
 \   at its opener in its file, or its record not among the packets        open-stop
-\   a closure the walk cannot follow, a string or locals group never
+\   a closure the verifier cannot follow, a string or locals group never
 \   closed, a dynamic loader path, a missing or unreadable required
 \   file, stops with no status line                  disc-stop, closure-line
 \   a stop drops the packets made before it, or names another file than
@@ -36,6 +36,22 @@
 \   invents a duplicate, or loses two identical real duplicates   unclean-answer
 \   a closure that cannot be followed reads as verified, or is no packet at
 \   the form that stops it                          missing-dependency, loader-form
+\   a loader call in a body, which runs only when the body does, reads its
+\   file, is refused for it or defines its words for the definitions after
+\   it; a form no run could follow verifies                              body-uncalled
+\   an immediate loader in a body leaves its file unread                  body-immediate
+\   a loader word's name stored, deferred, exported or defined as a word
+\   verifies, or is refused for another reason; a package or using name
+\   is refused                                                            reserved-names
+\   a loader form's fault drops the packets made before it, is not the
+\   last, leaks a line that is no packet, or loses the child's code and
+\   place                                                                 fault-after-packet
+\   provided reads its file, or takes a form no loader takes              provided-meta
+\   script-required stops the verifier without a packet at the loader     script-loader
+\   a literal whose escape the checker refuses gives a loader its path    bad-escape
+\   a file the dynamic-tail manifest names is told by the working
+\   directory's spelling of it, so a check from outside the tree refuses
+\   it                                                                    manifest
 \   a closure wider than a fixed table is refused                         wide-closure
 \   output past 4 MiB is cut short, or puts prose on --verify-only's
 \   stderr                                              whole-output, cli-whole-output
@@ -115,6 +131,10 @@
 \   a row binds a spelling: a defer, a resident word, a wrapper, a
 \   package's own parses: or a retired binding is bounded, or an EXPORT
 \   loses it                                                              top-parses-opaque
+\   a loader, definer or package word a row bounds is dispatched, or a
+\   loader, definition or loader's name after the window is not checked   top-parses-loader
+\   a loader after a word no usable row bounds is read or refused, in
+\   its file or in a file that loaded it                                  top-opaque-loader
 \   a malformed or misplaced row loads, or is refused for another reason  top-parses-row
 \   a declarer loses its identity, the binding query raises or answers a
 \   refused name, a rolled-back row survives, a lost field falls back     top-parses-whitebox
@@ -135,6 +155,8 @@
 \   a definition left to the run is answered verified, or not reported
 \   where the checker's judgment of it stops                              def-deferred
 \   a name the load accepts at top level is refused                       top-accepted
+\   a type made by reached source rendering or nominal registration is
+\   refused as absent; an unrelated absence or later error is lost         type-deferred
 \
 \ `measure` prints the time of one check of a one-definition subject and of
 \ tools/check-core.f, whose closure is over thirty files.
@@ -149,6 +171,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/process-cwd.f
 require lib/engine-candidate.f
 require test/cold-engine.f
 require tools/json.f
@@ -541,10 +564,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" open-stop: and column" T-LABEL p s" column" NUMBER$ s" 1" T$= ;
 
 
-\ The walk stops at a closure it cannot follow before any child runs: SRC,
-\ checked as the fixture NAME, is refused, and its status line, the one
-\ `check.f --verify-only` prints on stdout, is the line the xt builds, the file
-\ that ended the walk and why.
+\ The verifier stops at a closure it cannot follow: SRC, checked as the fixture
+\ NAME, is refused, and its status line, the one `check.f --verify-only` prints
+\ on stdout, is the line the xt builds, the file the verifier stopped in and
+\ why.
 : STOP-LINE ( ptr u8 n ptr u8 n ptr u8 n [ -- ] -- )
    {: src:ptr srcu:n name:ptr nameu:n label:ptr labelu:n line :}
    src srcu name nameu GUARD-MS CHECK-AS {: v :}
@@ -554,7 +577,9 @@ CK-USE-MAX 1 + constant OVER-USINGS
    $0a SB-APPEND-C
    label labelu T-LABEL CHECK:VERIFY-LOG$ SB$ T$= ;
 
-\ A string or a locals group the bytes never close stops discovery at it.
+\ A string or a locals group the bytes never close stops the verifier at it,
+\ after the packets it made before, in the file it is in: the subject or a
+\ file the subject requires.
 : DISC-STOP ( -- )
    s\" : CVT-STR ( -- ) s\" abc ;\n" s" disc.f"
    s" disc-stop: an open string's status line"
@@ -565,7 +590,25 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" disc-stop: an open locals group's status line"
    [: SUBJ$ SB-APPEND
       s" : discovery rejected: unterminated string or locals group" SB-APPEND ;]
-   STOP-LINE ;
+   STOP-LINE
+   s\" : CVT-DISC-BAD ( -- n n ) 8 ;\ns\" never closed\n" s" disc.f"
+   s" disc-stop: after a refused definition"
+   [: SUBJ$ SB-APPEND
+      s" : discovery rejected: unterminated string or locals group" SB-APPEND ;]
+   STOP-LINE
+   s" disc-stop: the packet made first is kept" T-LABEL
+   CHECK:VERIFY-OUT$ s" word" s" cvt-disc-bad" PACKET 0 >= TTRUE
+   CHECK:VERIFY-OUT$ s" code" s" E-UNTERMINATED-STRING" PACKET {: r:n :}
+   s" disc-stop: the stop's record in the subject" T-LABEL r s" file" STRING$ SUBJ$ T$=
+   s" disc-stop: at the opener's line" T-LABEL r s" line" NUMBER$ s" 2" T$=
+   s\" require loop.f\n" s" disc-dep.f"
+   s" disc-stop: a dependency's status line"
+   [: s" loop.f" AT$ SB-APPEND
+      s" : discovery rejected: unterminated string or locals group" SB-APPEND ;]
+   STOP-LINE
+   s" disc-stop: not in the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TFALSE
+   s" disc-stop: in the dependency" T-LABEL CHECK:VERIFY-STOPPED$ s" loop.f" AT$ T$=
+   s" disc-stop: at its opener" T-LABEL CHECK:VERIFY-STOP-AT 0 T= ;
 
 \ A loader path discovery cannot follow, and a required file that is not there
 \ or that the file system will not read (the census's dyn-loader.f and
@@ -647,8 +690,73 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" missing-dependency: its column" T-LABEL p s" column" NUMBER$ s" 1" T$= ;
 
 
+\ Why a loader form ends the verification, after the file it is in.
+: DYNAMIC$ ( -- ptr u8 n )
+   s" discovery rejected: dynamic (non-literal) loader path" ;
+
+: OPENER$ ( -- ptr u8 n )
+   s" discovery rejected: unsupported string opener before a loader word" ;
+
+: CAPACITY$ ( -- ptr u8 n )
+   s" discovery rejected: capacity exceeded" ;
+
+: SHADOWED$ ( -- ptr u8 n )
+   s" discovery rejected: loader word shadowed or undefined" ;
+
+: RETIRED$ ( -- ptr u8 n )
+   s" discovery rejected: loader word retired (UNDEFINE-IF-DEFINED)" ;
+
+
+\ The first packet of the last check with CODE is in the subject, at TOKEN on
+\ LINE and COLUMN.
+: AT-TOKEN ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n code:ptr codeu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
+   CHECK:VERIFY-OUT$ s" code" code codeu PACKET {: p:n :}
+   label labelu T-LABEL p s" file" STRING$ SUBJ$ T$=
+   label labelu T-LABEL p s" token" STRING$ tok toku T$=
+   label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
+   label labelu T-LABEL p s" column" NUMBER$ col colu T$= ;
+
+
+\ The last check's status line names the subject and WHY.
+: SUBJ-STATUS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n why:ptr whyu:n :}
+   SB-RESET SUBJ$ SB-APPEND s" : " SB-APPEND why whyu SB-APPEND $0a SB-APPEND-C
+   label labelu T-LABEL CHECK:VERIFY-LOG$ SB$ T$= ;
+
+
+\ The last check's status line names the fixture NAME, which is not there.
+: MISSING-STATUS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n name:ptr nameu:n :}
+   SB-RESET name nameu AT$ SB-APPEND s\" : no such source\n" SB-APPEND
+   label labelu T-LABEL CHECK:VERIFY-LOG$ SB$ T$= ;
+
+
+\ VERIFY-OUT$'s last line, without its newline.
+: LAST-LINE ( -- ptr u8 n )
+   CHECK:VERIFY-OUT$ {: a:ptr u:n :}
+   u 0= if a 0 exit then
+   u 1 - {: end:n :}
+   end begin dup 0 > if a over 1 - + c@ 10 <> else false then while 1 - repeat
+   {: start:n :}
+   a start + end start - ;
+
+
+: VERIFIED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
+   src srcu name nameu GUARD-MS CHECK-AS 0 name nameu EXPECT-KIND ;
+
+
+\ SRC, checked as the fixture NAME, is refused at the loader form TOKEN on LINE
+\ and COLUMN of the subject, and its status line names the subject and WHY.
+: LOADER-REFUSED ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n name:ptr nameu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n why:ptr whyu:n :}
+   src srcu name nameu GUARD-MS CHECK-AS 1 name nameu EXPECT-KIND
+   name nameu s" E-LOADER-FORM" tok toku line lineu col colu AT-TOKEN
+   name nameu why whyu SUBJ-STATUS ;
+
+
 \ A loader form discovery cannot follow, in a file the subject requires: a
-\ packet at that form, in that file.
+\ packet at that form, in that file. A path a `c"` string gives at the top
+\ level of the subject: a packet at its loader word, and the opener status
+\ line.
 : LOADER-FORM ( -- )
    s" dyn-dep.f" s\" \\ dyn\nPATH$ included\n" FIXTURE
    s\" require dyn-dep.f\n" s" dyn-use.f" GUARD-MS CHECK-AS
@@ -657,7 +765,29 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" loader-form: in the dependency" T-LABEL p s" file" STRING$ s" dyn-dep.f" AT$ T$=
    s" loader-form: at the loader word" T-LABEL p s" token" STRING$ s" included" T$=
    s" loader-form: its line" T-LABEL p s" line" NUMBER$ s" 2" T$=
-   s" loader-form: its column" T-LABEL p s" column" NUMBER$ s" 7" T$= ;
+   s" loader-form: its column" T-LABEL p s" column" NUMBER$ s" 7" T$=
+   s\" c\" x.f\" required\n" s" top-opener.f"
+   s" required" s" 1" s" 9" OPENER$ LOADER-REFUSED ;
+
+
+\ A comment between a literal path and its loader word is skipped as the loader
+\ skips it: a subject that loads one file across a `( … )` comment and another
+\ across a `\` comment, and uses what both define, is verified. A file that is
+\ not there is refused at the loader word that names it, a comment between them
+\ or not.
+: COMMENTED-LITERAL ( -- )
+   s" lit-paren.f" s\" : CVT-PAREN ( -- n ) 1 ;\n" FIXTURE
+   s" lit-line.f" s\" : CVT-LINE ( -- n ) 2 ;\n" FIXTURE
+   s\" s\" lit-paren.f\" ( kept ) required\ns\" lit-line.f\" \\ kept\nrequired\n: CVT-LIT ( -- n ) CVT-PAREN CVT-LINE + ;\n"
+   s" lit.f" GUARD-MS CHECK-AS
+   0 s" commented-literal: verified" EXPECT-KIND
+   s\" s\" cvt-lit-gone.f\" ( kept ) required\n" s" lit-gone.f" GUARD-MS CHECK-AS
+   1 s" commented-literal: a missing one refused" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET {: p:n :}
+   s" commented-literal: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
+   s" commented-literal: at the loader word" T-LABEL p s" token" STRING$ s" required" T$=
+   s" commented-literal: its line" T-LABEL p s" line" NUMBER$ s" 1" T$=
+   s" commented-literal: its column" T-LABEL p s" column" NUMBER$ s" 29" T$= ;
 
 
 \ A require of a file the file system will not read refuses the subject, with
@@ -716,6 +846,143 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" whole-output: every packet" T-LABEL out outu OBJECTS BIG-DEFS T=
    s" whole-output: the last" T-LABEL
    out outu s" word" s" cvt-b9999" PACKET 0 >= TTRUE ;
+
+
+\ ---- loader calls ------------------------------------------------------------
+
+\ A loader call in a body loads when the body runs, and the verifier runs
+\ none: the file is not read, so one that is not there, one that defines a word
+\ again or one behind a target test refuses nothing, and the words it defines
+\ are not there for the definitions after the body. A form no run could follow
+\ is refused where it is: a path no literal gives, one a string opener other
+\ than s" gives, one past the 1024 bytes a loader word takes.
+: BODY-UNCALLED ( -- )
+   s\" : CVT-BODY-MISSING ( -- ) s\" nosuch.f\" included ;\n" s" body-missing.f" VERIFIED
+   s" dupdep.f" s\" : CVT-DUPW ( -- n ) 1 ;\n" FIXTURE
+   s\" : CVT-DUPW ( -- n ) 2 ;\n: CVT-LOADS ( -- ) s\" dupdep.f\" included ;\n"
+   s" body-dup.f" VERIFIED
+   s\" : CVT-GUARDED ( -- ) HB-TARGET-MACOS? if s\" nosuch.f\" included then ;\n"
+   s" body-guarded.f" VERIFIED
+   s\" : CVT-LOADS7 ( -- ) s\" dep.f\" required ;\n: CVT-USE7 ( -- n ) CVT-SEVEN ;\n"
+   s" body-later.f" GUARD-MS CHECK-AS 1 s" body-uncalled: its words are not there" EXPECT-KIND
+   s" body-uncalled: at the use" s" E-UNDEFINED" s" CVT-SEVEN" s" 2" s" 21" AT-TOKEN
+   s\" : CVT-INC ( -- ) s\" files-inc.f\" included ;\ns\" dep.f\" required\n: CVT-USE-INC ( -- n ) CVT-SEVEN ;\n"
+   s" body-files.f" VERIFIED
+   s" body-uncalled: the body's file is not read" T-LABEL
+   CHECK:VERIFY-FILES$ s" file" s" files-inc.f" AT$ PACKET 0 < TTRUE
+   s" body-uncalled: the top level's is" T-LABEL
+   CHECK:VERIFY-FILES$ s" file" s" dep.f" AT$ PACKET 0 >= TTRUE
+   s\" : CVT-DYN ( ptr u8 n -- ) included ;\n" s" body-dyn.f"
+   s" included" s" 1" s" 27" DYNAMIC$ LOADER-REFUSED
+   s\" : CVT-OPENER ( -- ) c\" x.f\" included ;\n" s" body-opener.f"
+   s" included" s" 1" s" 29" OPENER$ LOADER-REFUSED
+   0 GEN-U !
+   s\" : CVT-LONG ( -- ) s\" " GEN+
+   1025 0 ?do s" a" GEN+ loop
+   s\" \" included ;\n" GEN+
+   0 GEN GEN-U @ s" body-long.f" s" included" s" 1" s" 1049" CAPACITY$ LOADER-REFUSED ;
+
+
+\ include and require in a body are immediate: they load while the body
+\ compiles, so the verifier reads their file there. One that is not there is
+\ refused at the loader word; one that is defines its words for the
+\ definitions after the body, which the checker refuses for the immediate.
+: BODY-IMMEDIATE ( -- )
+   s\" : CVT-IMM-MISSING ( -- n ) include nosuch.f 1 ;\n" s" imm-missing.f" GUARD-MS CHECK-AS
+   1 s" body-immediate: a missing file" EXPECT-KIND
+   s" body-immediate: at the loader word" s" E-MISSING-SOURCE" s" include" s" 1" s" 28" AT-TOKEN
+   s" body-immediate: its status line" s" nosuch.f" MISSING-STATUS
+   s" imm.f" s\" : CVT-IMM ( -- n ) 5 ;\n" FIXTURE
+   s\" : CVT-IMM-LOADS ( -- n ) include imm.f 1 ;\n: CVT-IMM-USE ( -- n ) CVT-IMM ;\n"
+   s" imm-loads.f" GUARD-MS CHECK-AS 1 s" body-immediate: refused for the immediate" EXPECT-KIND
+   s" body-immediate: the file's word is there" T-LABEL
+   CHECK:VERIFY-OUT$ s" code" s" E-UNDEFINED" PACKET 0 < TTRUE ;
+
+
+\ A loader word's name as any word's name - a definition's, a storage word's,
+\ a deferred word's, an export's, a retired one's - refuses the file at the
+\ name, as UNDEFINE-IF-DEFINED with a loader's name or none does at itself:
+\ past them a loader word may not be the loader. A package's name, or a
+\ using's, names no word, and UNDEFINE-IF-DEFINED of another name retires no
+\ loader.
+: RESERVED-NAMES ( -- )
+   s\" package CVT-RES\nprivate\nvariable REQUIRED\n;package\n" s" res-variable.f"
+   s" REQUIRED" s" 3" s" 10" SHADOWED$ LOADER-REFUSED
+   s\" create INCLUDED\n" s" res-create.f" s" INCLUDED" s" 1" s" 8" SHADOWED$ LOADER-REFUSED
+   s\" TYPED-VARIABLE PROVIDED n\n" s" res-typed.f"
+   s" PROVIDED" s" 1" s" 16" SHADOWED$ LOADER-REFUSED
+   s\" 1 constant INCLUDE\n" s" res-constant.f" s" INCLUDE" s" 1" s" 12" SHADOWED$ LOADER-REFUSED
+   s\" defer included ( -- )\n" s" res-defer.f" s" included" s" 1" s" 7" SHADOWED$ LOADER-REFUSED
+   s\" package CVT-EXP\npublic\nEXPORT required\n;package\n" s" res-export.f"
+   s" required" s" 3" s" 8" SHADOWED$ LOADER-REFUSED
+   s\" : include ( -- ) ;\n" s" res-colon.f" s" include" s" 1" s" 3" SHADOWED$ LOADER-REFUSED
+   s\" TRUSTED: require ( -- ) ;\n" s" res-trusted.f"
+   s" require" s" 1" s" 10" SHADOWED$ LOADER-REFUSED
+   s\" undefine required\n" s" res-undefine.f" s" required" s" 1" s" 10" SHADOWED$ LOADER-REFUSED
+   s\" s\" required\" UNDEFINE-IF-DEFINED\n" s" res-retire.f"
+   s" UNDEFINE-IF-DEFINED" s" 1" s" 14" RETIRED$ LOADER-REFUSED
+   s\" UNDEFINE-IF-DEFINED\n" s" res-retire-bare.f"
+   s" UNDEFINE-IF-DEFINED" s" 1" s" 1" RETIRED$ LOADER-REFUSED
+   s\" s\" CVT-NONE\" UNDEFINE-IF-DEFINED\n: CVT-R ( -- n ) 1 ;\n" s" res-other.f" VERIFIED
+   s\" package REQUIRED\npublic\n: CVT-RQ ( -- n ) 1 ;\n;package\nusing REQUIRED\n: CVT-RQ-USE ( -- n ) CVT-RQ ;\n;using\n"
+   s" res-package.f" VERIFIED ;
+
+
+\ A loader form's fault is the verifier's, met where its walk reaches the form:
+\ the packets it made before are kept, the fault's is the last, every line is
+\ a packet, and the stop is the child's, its code at the loader word.
+: FAULT-AFTER-PACKET ( -- )
+   s\" : CVT-FAP-BAD ( -- n n ) 8 ;\nrequire nosuch.f\n" s" fap-missing.f" GUARD-MS CHECK-AS
+   1 s" fault-after-packet: refused" EXPECT-KIND
+   s" fault-after-packet: the packet made first" T-LABEL
+   CHECK:VERIFY-OUT$ s" word" s" cvt-fap-bad" PACKET 0 >= TTRUE
+   s" fault-after-packet: the fault" s" E-MISSING-SOURCE" s" require" s" 2" s" 1" AT-TOKEN
+   s" fault-after-packet: the fault last" T-LABEL LAST-LINE s" E-MISSING-SOURCE" CONTAINS? TTRUE
+   s" fault-after-packet: only packets" T-LABEL CHECK:VERIFY-OUT$ ALL-JSON? TTRUE
+   s" fault-after-packet: its status line" s" nosuch.f" MISSING-STATUS
+   s\" : CVT-FAP ( -- n n ) 8 ;\n: CVT-FAP-PATH ( -- ptr u8 n ) s\" x.f\" ;\nCVT-FAP-PATH included\n"
+   s" fap-dynamic.f" GUARD-MS CHECK-AS 1 s" fault-after-packet: a dynamic path" EXPECT-KIND
+   s" fault-after-packet: its packet made first" T-LABEL
+   CHECK:VERIFY-OUT$ s" word" s" cvt-fap" PACKET 0 >= TTRUE
+   s" fault-after-packet: the form" s" E-LOADER-FORM" s" included" s" 3" s" 14" AT-TOKEN
+   s" fault-after-packet: the child's code" T-LABEL CHECK:VERIFY-STOP E-DISC-DYNAMIC T=
+   s" fault-after-packet: in the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
+   \ 79 is the byte of `included`.
+   s" fault-after-packet: at the loader word" T-LABEL CHECK:VERIFY-STOP-AT 79 T=
+   s" fault-after-packet: the status line" DYNAMIC$ SUBJ-STATUS ;
+
+
+\ provided records a path as loaded and reads no file: one that is not there
+\ refuses nothing. A path no literal gives, or one no loader word takes, is
+\ refused.
+: PROVIDED-META ( -- )
+   s\" s\" nosuch.f\" provided\n" s" prov-missing.f" VERIFIED
+   s\" : CVT-PROV$ ( -- ptr u8 n ) s\" x.f\" ;\nCVT-PROV$ provided\n" s" prov-dynamic.f"
+   s" provided" s" 2" s" 11" DYNAMIC$ LOADER-REFUSED
+   s\" s\" \" provided\n" s" prov-empty.f" s" provided" s" 1" s" 6" CAPACITY$ LOADER-REFUSED ;
+
+
+\ script-required, which resolves its path from the working directory, reads
+\ its file as the other loaders do: a path no literal gives is refused at the
+\ loader word, and so is a file that is not there.
+: SCRIPT-LOADER ( -- )
+   s\" : CVT-SR$ ( -- ptr u8 n ) s\" dep.f\" ;\nCVT-SR$ script-required\n" s" script-dynamic.f"
+   s" script-required" s" 2" s" 9" DYNAMIC$ LOADER-REFUSED
+   s\" s\" cvt-nosuch-sr.f\" script-required\n" s" script-missing.f" GUARD-MS CHECK-AS
+   1 s" script-loader: a missing file" EXPECT-KIND
+   s" script-loader: at the loader word" s" E-MISSING-SOURCE" s" script-required" s" 1" s" 21"
+   AT-TOKEN ;
+
+
+\ A body literal whose escape the checker refuses gives no path: the loader
+\ word after it is refused for nothing more than the literal.
+: BAD-ESCAPE ( -- )
+   s\" : CVT-ESC ( -- ) s\\\" a\\k\" included ;\n" s" bad-escape.f" GUARD-MS CHECK-AS
+   1 s" bad-escape: refused" EXPECT-KIND
+   s" bad-escape: no loader form" T-LABEL
+   CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET 0 < TTRUE
+   s" bad-escape: no missing source" T-LABEL
+   CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET 0 < TTRUE ;
 
 
 \ ---- the command line ------------------------------------------------------
@@ -970,6 +1237,40 @@ $180000 constant LARGE-STDIN-LEN
    s" load-repeat: verify-only sees second include" T-LABEL path pathu true false CHECK-RC 70 T=
    s" load-repeat: ordinary sees second include" T-LABEL path pathu false false CHECK-RC 78 T=
    s" load-repeat: all-errors sees second include" T-LABEL path pathu false true CHECK-RC 78 T= ;
+
+
+\ The exit status of check.f, given FLAG unless it is empty, on the tree's
+\ tools/source-discovery.f, run from the fixture directory, outside the tree,
+\ with check.f and the subject named by absolute paths.
+: OUTSIDE-RC ( ptr u8 n -- n ) {: flag:ptr flagu:n :}
+   PROC-CWD:ARGV-ENV-CWD-RESET
+   s" --load" ARG+
+   s" tools/check.f" SOURCE-ROOT:CANONICAL drop ARG+
+   s" --" ARG+
+   flagu 0 > if flag flagu ARG+ then
+   s" tools/source-discovery.f" SOURCE-ROOT:CANONICAL drop ARG+
+   PROC-ENV-INHERIT-MISSING
+   ENGINE-CANDIDATE:PATH$ >LEN ROOT$ >LEN 0 OUT CAP >LEN 0 ERR CAP >LEN GUARD-MS >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
+   MATCH result
+      ok OF PCAP-CAPTURED:UNMAKE 2drop 0 ENDOF
+      err OF PCAP-FAILED:UNMAKE RC>N nip nip ENDOF
+   ;MATCH ;
+
+\ The dynamic-tail manifest names tree files: tools/source-discovery.f, whose
+\ loader path is dynamic, is one of them from the tree root and from outside
+\ the tree, in the operation and in each mode of check.f.
+: MANIFEST ( -- )
+   s" tools/source-discovery.f" TREE-BYTES s" tools/source-discovery.f" TREE$
+   GUARD-MS >MS CHECK:VERIFY-BYTES
+   0 s" manifest: the operation" EXPECT-KIND
+   SUBJ$ {: path:ptr pathu:n :}
+   s" manifest: verify-only from the root" T-LABEL path pathu true false CHECK-RC 0 T=
+   s" manifest: a check from the root" T-LABEL path pathu false false CHECK-RC 0 T=
+   s" manifest: all errors from the root" T-LABEL path pathu false true CHECK-RC 0 T=
+   s" manifest: verify-only from outside" T-LABEL s" --verify-only" OUTSIDE-RC 0 T=
+   s" manifest: a check from outside" T-LABEL s" " OUTSIDE-RC 0 T=
+   s" manifest: all errors from outside" T-LABEL s" --all-errors" OUTSIDE-RC 0 T= ;
 
 : DUPLICATE-AFTER-PACKET ( -- )
    s" order-errors.f"
@@ -1421,21 +1722,21 @@ $180000 constant LARGE-STDIN-LEN
    s" verdict" STRING$ s" deferred" T$= ;
 
 
-\ A pending file load after a definition scans its own deferred word. Its
-\ warning contributes to the composed verdict. Undeclared, the dependency's
-\ GRAB may read any of the rest and change the scope the caller goes on in, so
-\ the caller discovers nothing after it either. With GRAB's operand declared
-\ the caller resumes with its own top-level state and refuses the malformed
+\ A file the subject loads scans its own deferred word. Its warning
+\ contributes to the composed verdict. Undeclared, the dependency's GRAB may
+\ read any of the rest and change the scope the caller goes on in, so the
+\ caller discovers nothing after it either. With GRAB's operand declared the
+\ caller resumes with its own top-level state and refuses the malformed
 \ qualified token.
 : TOP-NESTED-DEFERRED ( -- )
    s" nested-dep.f" s\" : GRAB ( -- ) parse-name 2drop ;\nGRAB x\n" FIXTURE
-   s\" : LOADDEP ( -- ) s\" nested-dep.f\" required ;\nQ:R:S\n" TOP-CHECK
+   s\" s\" nested-dep.f\" required\nQ:R:S\n" TOP-CHECK
    5 s" top-nested-deferred: undeclared, deferred" EXPECT-KIND
    s" top-nested-deferred: undeclared, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
    s" top-nested-deferred: undeclared, dependency warning" T-LABEL
    CHECK:VERIFY-OUT$ s" token" s" GRAB" PACKET s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    s" nested-dep.f" s\" : GRAB ( -- ) parse-name 2drop ;\nparses: GRAB 1\nGRAB x\n" FIXTURE
-   s\" : LOADDEP ( -- ) s\" nested-dep.f\" required ;\nQ:R:S\n" TOP-CHECK
+   s\" s\" nested-dep.f\" required\nQ:R:S\n" TOP-CHECK
    1 s" top-nested-deferred: refused" EXPECT-KIND
    s" top-nested-deferred: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-nested-deferred: dependency warning" T-LABEL
@@ -1445,7 +1746,7 @@ $180000 constant LARGE-STDIN-LEN
    p s" file" STRING$ s" nested-dep.f" AT$ T$=
    s" top-nested-deferred: caller refusal" s" Q:R:S" s" E-BAD-QUALIFIED-TOP-LEVEL" s" 2" s" 1" TOP-PACKET
    s" verdict" STRING$ s" rejected" T$=
-   s\" : LOADDEP ( -- ) s\" nested-dep.f\" required ;\n7 drop\n" TOP-CHECK
+   s\" s\" nested-dep.f\" required\n7 drop\n" TOP-CHECK
    5 s" top-nested-deferred: warning survives" EXPECT-KIND
    s" top-nested-deferred: only warning" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T= ;
 
@@ -1536,6 +1837,86 @@ $180000 constant LARGE-STDIN-LEN
    s" top-parses-opaque: export" s" Q:PN" s" 7" s" g" s" E-MISMATCH" BOUND-REFUSED
    s\" parses: parses: 2\n: PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN :\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
    s" top-parses-opaque: declarer row" s" PN" s" 4" s" g" s" E-MISMATCH" BOUND-REFUSED ;
+
+
+\ Loaded, PN takes `required`, `include nosuch.f` or `;package` as its operand
+\ and OKW loads; BLK takes every token through ;BLK, a loader and its path, a
+\ definer, package words and `:`, and the `s" nosuch.f" required` after it
+\ cannot open, exit 74. Past PN's operand, `s" dep.f" required` loads
+\ CVT-SEVEN for X, `require nosuch.f` cannot open, exit 74, G is E-MISMATCH,
+\ exit 70, and `: required` defines a loader's name again, exit 78. Declared,
+\ the operand is the parser's: no loader, definer or package word in it loads,
+\ refuses or opens anything, and the check goes on after the window, so the
+\ loader, the definition or the loader's name there is checked.
+: TOP-PARSES-LOADER ( -- )
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN required\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-parses-loader: required" s" PN" s" 3" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop parse-name 2drop ;\nparses: PN 2\nPN include nosuch.f\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-parses-loader: include" s" PN" s" 3" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN ;package\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-parses-loader: ;package" s" PN" s" 3" s" 1" DEFERRED-ONLY
+   s\" require lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nparses-through: BLK 0 ( ;BLK )\nBLK require nosuch.f s\" x.f\" included\n   variable package ;package using : X ;BLK\ns\" nosuch.f\" required\n" TOP-CHECK
+   1 s" top-parses-loader: through" EXPECT-KIND
+   s" top-parses-loader: through, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-parses-loader: through, the call" s" BLK" s" W-CHECK-DEFERRED" s" 5" s" 1" TOP-PACKET drop
+   s" top-parses-loader: through, the loader after" s" E-MISSING-SOURCE" s" required" s" 7" s" 14" AT-TOKEN
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN required\ns\" dep.f\" required\n: X ( -- n ) CVT-SEVEN ;\n" TOP-CHECK
+   s" top-parses-loader: a load after" s" PN" s" 3" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN required\nrequire nosuch.f\n" TOP-CHECK
+   1 s" top-parses-loader: a missing file after" EXPECT-KIND
+   s" top-parses-loader: a missing file after, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-parses-loader: a missing file after, the call" s" PN" s" W-CHECK-DEFERRED" s" 3" s" 1" TOP-PACKET drop
+   s" top-parses-loader: a missing file after" s" E-MISSING-SOURCE" s" require" s" 4" s" 1" AT-TOKEN
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN include\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-loader: a definition after" s" PN" s" 3" s" g" s" E-MISMATCH" BOUND-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN required\n: required ( -- ) ;\n" s" top-name.f"
+   s" required" s" 4" s" 3" SHADOWED$ LOADER-REFUSED ;
+
+
+\ A deferred check whose only packet is the call TOKEN on LINE of the fixture
+\ DEP, a file the subject loads.
+: DEP-DEFERRED-ONLY ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: v label:ptr labelu:n tok:ptr toku:n dep:ptr depu:n line:ptr lineu:n :}
+   v 5 label labelu EXPECT-KIND
+   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:n :}
+   label labelu T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   label labelu T-LABEL p s" file" STRING$ dep depu AT$ T$=
+   label labelu T-LABEL p s" line" NUMBER$ line lineu T$= ;
+
+
+\ Loaded, PN takes `required`, or `include` and `nosuch.f`, and OKW loads;
+\ past PN, the redefined PN or GRAB, which take `required`, `require nosuch.f`
+\ cannot open, exit 74; DW, unset, throws, exit 76. A word that may read on
+\ with no row, or with a row it cannot use, a defer's or one its binding's
+\ retirement ended, may read any of the rest: it is deferred, and the check
+\ reads, loads and refuses nothing after it, in its file and in each file that
+\ loaded it. A dependency whose row bounds GRAB is gone past, and the subject's
+\ missing file is refused.
+: TOP-OPAQUE-LOADER ( -- )
+   s\" : PN ( -- ) parse-name 2drop ;\nPN required\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-opaque-loader: required" s" PN" s" 2" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop parse-name 2drop ;\nPN include nosuch.f\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-opaque-loader: include" s" PN" s" 2" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nPN required\nrequire nosuch.f\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-opaque-loader: no row" s" PN" s" 2" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nundefine PN\n: PN ( -- ) parse-name 2drop ;\nPN required\nrequire nosuch.f\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-opaque-loader: retired row" s" PN" s" 5" s" 1" DEFERRED-ONLY
+   s\" defer DW ( -- )\nparses: DW 1\nDW include\nrequire nosuch.f\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-opaque-loader: defer" s" DW" s" 3" s" 1" DEFERRED-ONLY
+   s" opq-dep.f" s\" : GRAB ( -- ) parse-name 2drop ;\nGRAB required\n" FIXTURE
+   s\" require opq-dep.f\nrequire nosuch.f\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-opaque-loader: a dependency's" s" GRAB" s" opq-dep.f" s" 2" DEP-DEFERRED-ONLY
+   s" opq-defer-dep.f" s\" defer DW ( -- )\nparses: DW 1\nDW include\n" FIXTURE
+   s\" require opq-defer-dep.f\nrequire nosuch.f\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-opaque-loader: a dependency's defer" s" DW" s" opq-defer-dep.f" s" 3" DEP-DEFERRED-ONLY
+   s" row-dep.f" s\" : GRAB ( -- ) parse-name 2drop ;\nparses: GRAB 1\nGRAB required\n" FIXTURE
+   s\" require row-dep.f\nrequire nosuch.f\n" TOP-CHECK
+   1 s" top-opaque-loader: a bounded dependency" EXPECT-KIND
+   s" top-opaque-loader: a bounded dependency, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-opaque-loader: a bounded dependency's call" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" GRAB" PACKET s" file" STRING$ s" row-dep.f" AT$ T$=
+   s" top-opaque-loader: the subject goes on" s" E-MISSING-SOURCE" s" require" s" 2" s" 1" AT-TOKEN ;
 
 
 \ A refused row: its one packet E-PARSES-ROW at TOKEN, with repair CLASS.
@@ -1791,6 +2172,284 @@ $180000 constant LARGE-STDIN-LEN
    s" top-renders: under catch, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
    s" top-renders: under catch, at the product" s" CVT-UQ:CVT-UR" s" W-CHECK-DEFERRED" s" 6" s" 1" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$= ;
+
+
+\ A source whose type is made at load time must really load with the same
+\ engine the verifier child runs. Keep the disk and buffer bytes identical.
+: TYPE-LOAD-CHECK ( ptr u8 n ptr u8 n ptr u8 n -- CHECK:verdict )
+   {: src:ptr srcu:n name:ptr nameu:n label:ptr labelu:n :}
+   name nameu src srcu FIXTURE
+   label labelu T-LABEL name nameu AT$ NATIVE-RC 0 T=
+   src srcu name nameu GUARD-MS CHECK-AS ;
+
+: TYPE-DEFERRED-PACKET ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
+   CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:n :}
+   label labelu T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   label labelu T-LABEL p s" file" STRING$ SUBJ$ T$=
+   label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
+   label labelu T-LABEL p s" column" NUMBER$ col colu T$=
+   label labelu T-LABEL p s" verdict" STRING$ s" deferred" T$= ;
+
+\ All four sources load. The verifier cannot execute their reached renderer or
+\ original registrar, so the declaration depending on the new type is
+\ deferred at that type.
+: TYPE-DEFERRED-DECLS ( -- )
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-G ( cbx -- cbx ) ;\n"
+   s" type-sig-rendered.f" s" type-deferred: signature loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: signature defers" EXPECT-KIND
+   s" type-deferred: signature has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: signature type" s" cbx" s" 2" s" 11" TYPE-DEFERRED-PACKET
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE cob 0 FIELD b cbx ;STRUCTURE\n"
+   s" type-field-rendered.f" s" type-deferred: field loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: field defers" EXPECT-KIND
+   s" type-deferred: field has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: field type" s" cbx" s" 2" s" 25" TYPE-DEFERRED-PACKET
+   s\" s\" STRUCTURE cbx 1 FIELD v a ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE cob 0 FIELD b cbx<n> ;STRUCTURE\n"
+   s" type-generic-rendered.f" s" type-deferred: generic field loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: generic field defers" EXPECT-KIND
+   s" type-deferred: generic field has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: generic field type" s" cbx<n>" s" 2" s" 25" TYPE-DEFERRED-PACKET
+   s\" s\" chz\" s\" 0 VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM\n: CVT-F ( -- chz ) CONSTRUCT chz first ;\n"
+   s" type-sum-registered.f" s" type-deferred: sum loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: sum defers" EXPECT-KIND
+   s" type-deferred: sum has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: sum signature type" s" chz" s" 2" s" 14" TYPE-DEFERRED-PACKET
+
+   s\" : CVT-REG ( -- ) s\" chz\" s\" 0 VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM ;\nCVT-REG\n: CVT-F ( -- chz ) CONSTRUCT chz first ;\n"
+   s" type-registrar-wrapper.f" s" type-deferred: registrar wrapper loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: registrar wrapper defers" EXPECT-KIND
+   s" type-deferred: registrar wrapper type" s" chz" s" 3" s" 14" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nTYPED-VARIABLE CVT-ST cbx\n"
+   s" type-storage-rendered.f" s" type-deferred: storage loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: storage defers" EXPECT-KIND
+   s" type-deferred: storage has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: stored type" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nTYPED-VARIABLE CVT-ST cbx\n: CVT-USE ( -- ) CVT-ST drop ;\n"
+   s" type-storage-use.f" s" type-deferred: storage dependency loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: storage dependency defers" EXPECT-KIND
+   s" type-deferred: storage dependency has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: storage dependency type" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
+   s" type-deferred: storage dependency word" s" CVT-ST" s" 3" s" 18" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nVALUE-RECORD CVT-VR x cbx END-VALUE-RECORD\n"
+   s" type-record-rendered.f" s" type-deferred: record loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: record defers" EXPECT-KIND
+   s" type-deferred: record has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: record field" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one cbx ;VARIANT ;SUMTYPE\n"
+   s" type-variant-rendered.f" s" type-deferred: variant loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: variant defers" EXPECT-KIND
+   s" type-deferred: variant has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: variant payload" s" cbx" s" 2" s" 27" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nPRODUCT cvp 0 FIELD f cbx ;PRODUCT\n"
+   s" type-product-rendered.f" s" type-deferred: product loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: product defers" EXPECT-KIND
+   s" type-deferred: product has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: product field" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 1 FIELD v a ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one cbx<n> ;VARIANT ;SUMTYPE\n"
+   s" type-variant-generic.f" s" type-deferred: applied payload loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: applied payload defers" EXPECT-KIND
+   s" type-deferred: applied payload has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: applied payload type" s" cbx" s" 2" s" 27" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one [ cbx -- n ] ;VARIANT ;SUMTYPE\n"
+   s" type-variant-quote.f" s" type-deferred: quoted payload loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: quoted payload defers" EXPECT-KIND
+   s" type-deferred: quoted payload has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: quoted payload type" s" cbx" s" 2" s" 29" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nPRODUCT cvp 0 FIELD f ptr cbx ;PRODUCT\n"
+   s" type-product-pointer.f" s" type-deferred: pointer field loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: pointer field defers" EXPECT-KIND
+   s" type-deferred: pointer field has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: pointer field type" s" cbx" s" 2" s" 27" TYPE-DEFERRED-PACKET
+
+   s\" s\" NEWTYPE cbx 0\" INCLUDE-EVALUATE\nCAST: CVT-C ( n -- cbx )\n"
+   s" type-cast-rendered.f" s" type-deferred: cast loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: cast defers" EXPECT-KIND
+   s" type-deferred: cast has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: cast type" s" cbx" s" 2" s" 20" TYPE-DEFERRED-PACKET
+
+   s\" s\" package CVT-L public DEFLINEAR CVT-L:tok ;package\" INCLUDE-EVALUATE\npackage CVT-L LINEAR: CVT-M ( n -- CVT-L:tok ) ;package\n"
+   s" type-linear-rendered.f" s" type-deferred: linear loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: linear defers" EXPECT-KIND
+   s" type-deferred: linear has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: linear type" s" CVT-L:tok" s" 2" s" 36" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\ndefer CVT-D ( cbx -- cbx )\n"
+   s" type-defer-rendered.f" s" type-deferred: defer loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: defer signature defers" EXPECT-KIND
+   s" type-deferred: defer has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: defer type" s" cbx" s" 2" s" 15" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one cbx ;VARIANT VARIANT one n ;VARIANT ;SUMTYPE\n" TOP-CHECK
+   1 s" type-deferred: duplicate variant refuses after missing type" EXPECT-KIND
+   s" type-deferred: duplicate variant stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" one" PACKET s" verdict" STRING$ s" rejected" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nPRODUCT cvp 0 FIELD f cbx FIELD f n ;PRODUCT\n" TOP-CHECK
+   1 s" type-deferred: duplicate field refuses after missing type" EXPECT-KIND
+   s" type-deferred: duplicate field stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" f" PACKET s" verdict" STRING$ s" rejected" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one cbx<n ;VARIANT ;SUMTYPE\n" TOP-CHECK
+   1 s" type-deferred: malformed applied payload refuses" EXPECT-KIND
+   s" type-deferred: malformed applied payload stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" ;VARIANT" PACKET s" verdict" STRING$ s" rejected" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE cknown 1 FIELD v a ;STRUCTURE\nSUMTYPE cvs 0 VARIANT one cbx<cknown> ;VARIANT ;SUMTYPE\n" TOP-CHECK
+   1 s" type-deferred: known nested arity refuses" EXPECT-KIND
+   s" type-deferred: known nested arity stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" cknown" PACKET s" verdict" STRING$ s" rejected" T$= ;
+
+: TYPE-DEFERRED-CONTROLS ( -- )
+   s\" package CVT-SH private\n: INCLUDE-EVALUATE ( -- ) ;\nINCLUDE-EVALUATE\n: CVT-G ( cbx -- cbx ) ;\n;package\n" TOP-CHECK
+   1 s" type-deferred: shadowed nonproducer refuses" EXPECT-KIND
+   s" type-deferred: shadowed nonproducer code" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+
+   s\" package CVT-A private\ns\" cbx\" s\" 0 VARIANT first ;VARIANT\" CHECKER-DEFSUM\n;package\n: CVT-G ( CVT-B:cbx -- CVT-B:cbx ) ;\n" TOP-CHECK
+   1 s" type-deferred: private registrar cannot supply another package" EXPECT-KIND
+   s" type-deferred: other package type refuses" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" CVT-B:cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+
+   s\" : CVT-G ( cbx -- cbx ) ;\n" TOP-CHECK
+   1 s" type-deferred: no producer refuses" EXPECT-KIND
+   s" type-deferred: no producer code" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+   s\" : CVT-RENDER ( -- ) s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE ;\n: CVT-G ( cbx -- cbx ) ;\n" TOP-CHECK
+   1 s" type-deferred: uncalled renderer refuses" EXPECT-KIND
+   s" type-deferred: uncalled renderer code" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+   s\" : CVT-RENDER ( -- ) s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE ;\n' CVT-RENDER drop\n: CVT-G ( cbx -- cbx ) ;\n" TOP-CHECK
+   1 s" type-deferred: ticked renderer refuses" EXPECT-KIND
+   s" type-deferred: ticked renderer code" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-G ( cbx -- cbx ) ;\n: CVT-BAD ( n -- n n ) drop ;\n" TOP-CHECK
+   1 s" type-deferred: later mismatch refuses" EXPECT-KIND
+   s" type-deferred: later mismatch has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: prior type" s" cbx" s" 2" s" 11" TYPE-DEFERRED-PACKET
+   s" type-deferred: later mismatch code" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" drop" PACKET s" code" STRING$ s" E-MISMATCH" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\npackage CVT-A public STRUCTURE amb 0 FIELD v n ;STRUCTURE ;package\npackage CVT-B public STRUCTURE amb 0 FIELD v n ;STRUCTURE ;package\n: CVT-BAD ( amb -- amb ) ;\n" TOP-CHECK
+   1 s" type-deferred: ambiguous family refuses" EXPECT-KIND
+   s" type-deferred: ambiguous family stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" amb" PACKET s" verdict" STRING$ s" rejected" T$=
+   s\" s\" STRUCTURE cbx 1 FIELD v a ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-BAD ( cbx<n -- cbx<n ) ;\n" TOP-CHECK
+   1 s" type-deferred: unclosed generic refuses" EXPECT-KIND
+   s" type-deferred: unclosed generic stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" --" PACKET s" verdict" STRING$ s" rejected" T$= ;
+
+: TYPE-DEFERRED-TRUSTED ( -- )
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nTRUSTED: CVT-T ( cbx -- cbx ) create does> ( -- n ) drop 7 ;\n: CVT-NEXT ( -- n ) 1 ;\n"
+   s" type-trusted-rendered.f" s" type-deferred: trusted loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: trusted signature defers" EXPECT-KIND
+   s" type-deferred: trusted has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: trusted signature type" s" cbx" s" 2" s" 18" TYPE-DEFERRED-PACKET
+   s" type-deferred: trusted parent absent" T-LABEL
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-T" PACKET 0 < TTRUE
+   s" type-deferred: trusted clause absent" T-LABEL
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-T;does" PACKET 0 < TTRUE
+   s" type-deferred: following declaration present" T-LABEL
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-NEXT" PACKET 0 >= TTRUE ;
+
+: TYPE-DEFERRED-DIRECT ( -- )
+   s\" s\" cbx\" CHECKER-DEFLINEAR\n: CVT-KEEP ( cbx -- cbx ) ;\n"
+   s" type-linear-direct.f" s" type-deferred: direct linear loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: direct linear defers" EXPECT-KIND
+   s" type-deferred: direct linear type" s" cbx" s" 2" s" 14" TYPE-DEFERRED-PACKET
+   s\" s\" cbx\" s\" f n\" CHECKER-DEFRECORD\n: CVT-KEEP ( cbx -- cbx ) ;\n"
+   s" type-record-direct.f" s" type-deferred: direct record loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: direct record defers" EXPECT-KIND
+   s" type-deferred: direct record type" s" cbx" s" 2" s" 14" TYPE-DEFERRED-PACKET ;
+
+: TYPE-DEFERRED-REVIEW ( -- )
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one a ;VARIANT ;SUMTYPE\n" TOP-CHECK
+   1 s" type-deferred: known payload letter arity refuses" EXPECT-KIND
+   s" type-deferred: known payload letter stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" a" PACKET s" verdict" STRING$ s" rejected" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one n ;VARIANT ;SUMTYPE\n" TOP-CHECK
+   0 s" type-deferred: known payload scalar checks" EXPECT-KIND
+   s" type-deferred: known payload scalar has no packet" T-LABEL
+   CHECK:VERIFY-OUT$ PACKETS 0 T=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one bool ;VARIANT ;SUMTYPE\n" TOP-CHECK
+   0 s" type-deferred: known payload bool checks" EXPECT-KIND
+   s" type-deferred: known payload bool has no packet" T-LABEL
+   CHECK:VERIFY-OUT$ PACKETS 0 T=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE bad 0 FIELD x cbx FIELD x n ;STRUCTURE\n" TOP-CHECK
+   1 s" type-deferred: duplicate structure field refuses" EXPECT-KIND
+   s" type-deferred: duplicate structure field stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" x" PACKET s" verdict" STRING$ s" rejected" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nENUM bad 0 VARIANT one FIELD x cbx FIELD x n ;VARIANT ;ENUM\n" TOP-CHECK
+   1 s" type-deferred: duplicate enum field refuses" EXPECT-KIND
+   s" type-deferred: duplicate enum field stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" x" PACKET s" verdict" STRING$ s" rejected" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE bad 0 FIELD BAD cbx ;STRUCTURE\n" TOP-CHECK
+   1 s" type-deferred: reserved structure field refuses" EXPECT-KIND
+   s" type-deferred: reserved structure field stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" BAD" PACKET s" verdict" STRING$ s" rejected" T$=
+
+   s\" package CVT-P private STRUCTURE hidden 0 FIELD v n ;STRUCTURE ;package\ns\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-BAD ( CVT-P:hidden -- CVT-P:hidden ) ;\n" TOP-CHECK
+   1 s" type-deferred: other private family refuses" EXPECT-KIND
+   s" type-deferred: other private family code" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" CVT-P:hidden" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nCAST: CVT-BAD ( n n -- cbx )\n" TOP-CHECK
+   1 s" type-deferred: cast known row shape refuses" EXPECT-KIND
+   s" type-deferred: cast known row shape stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET 0 >= TTRUE
+
+   s\" s\" NEWTYPE cbx 0\" INCLUDE-EVALUATE\nCAST: CVT-BAD ( R n -- S cbx )\n" TOP-CHECK
+   1 s" type-deferred: cast known tail mismatch refuses" EXPECT-KIND
+   s" type-deferred: cast known tail mismatch stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET 0 >= TTRUE
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n0 TYPED-BUFFER CVT-BAD cbx\n" TOP-CHECK
+   1 s" type-deferred: buffer known bad count refuses" EXPECT-KIND
+   s" type-deferred: buffer known bad count stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET 0 >= TTRUE ;
+
+: TYPE-LONG-FIELDS ( -- )
+   33 0 DO
+      s" FIELD f" GEN+
+      252 0 DO 97 GEN-C+ LOOP
+      i 10 < IF 48 GEN-C+ THEN i GEN-N+
+      s"  n" GEN+  10 GEN-C+
+   LOOP ;
+
+: TYPE-LONG-LIVE ( -- )
+   0 GEN-U !
+   s" STRUCTURE cvtlong 0" GEN+  10 GEN-C+
+   TYPE-LONG-FIELDS
+   s" ;STRUCTURE" GEN+  10 GEN-C+
+   s" type-structure-long.f" 0 GEN GEN-U @ FIXTURE
+   s" type-deferred: long live structure loads" T-LABEL
+   s" type-structure-long.f" AT$ NATIVE-RC 0 T=
+
+   0 GEN-U !
+   s" ENUM cvtlong 0 VARIANT one" GEN+  10 GEN-C+
+   TYPE-LONG-FIELDS
+   s" ;VARIANT ;ENUM" GEN+  10 GEN-C+
+   s" type-enum-long.f" 0 GEN GEN-U @ FIXTURE
+   s" type-deferred: long live enum loads" T-LABEL
+   s" type-enum-long.f" AT$ NATIVE-RC 0 T= ;
+
+: TYPE-DEFERRED ( -- )
+   TYPE-DEFERRED-DECLS TYPE-DEFERRED-CONTROLS TYPE-DEFERRED-TRUSTED
+   TYPE-DEFERRED-DIRECT TYPE-DEFERRED-REVIEW TYPE-LONG-LIVE ;
 
 
 \ A deferred stretch at TOKEN on LINE at COLUMN.
@@ -2838,6 +3497,14 @@ public
    s" stop-after-packet" [: STOP-AFTER-PACKET ;] RUN-CASE
    s" missing-dependency" [: MISSING-DEPENDENCY ;] RUN-CASE
    s" loader-form" [: LOADER-FORM ;] RUN-CASE
+   s" commented-literal" [: COMMENTED-LITERAL ;] RUN-CASE
+   s" body-uncalled" [: BODY-UNCALLED ;] RUN-CASE
+   s" body-immediate" [: BODY-IMMEDIATE ;] RUN-CASE
+   s" reserved-names" [: RESERVED-NAMES ;] RUN-CASE
+   s" fault-after-packet" [: FAULT-AFTER-PACKET ;] RUN-CASE
+   s" provided-meta" [: PROVIDED-META ;] RUN-CASE
+   s" script-loader" [: SCRIPT-LOADER ;] RUN-CASE
+   s" bad-escape" [: BAD-ESCAPE ;] RUN-CASE
    s" unreadable-dependency" [: UNREADABLE-DEPENDENCY ;] RUN-CASE
    s" long-resolved" [: LONG-RESOLVED ;] RUN-CASE
    s" wide-closure" [: WIDE-CLOSURE ;] RUN-CASE
@@ -2877,6 +3544,7 @@ public
    s" load-package" [: LOAD-PACKAGE ;] RUN-CASE
    s" load-using-floor" [: LOAD-USING-FLOOR ;] RUN-CASE
    s" load-repeat" [: LOAD-REPEAT ;] RUN-CASE
+   s" manifest" [: MANIFEST ;] RUN-CASE
    s" duplicate-after-packet" [: DUPLICATE-AFTER-PACKET ;] RUN-CASE
    s" duplicate-in-dependency" [: DUPLICATE-IN-DEPENDENCY ;] RUN-CASE
    s" duplicate-made" [: DUPLICATE-MADE ;] RUN-CASE
@@ -2902,9 +3570,12 @@ public
    s" top-parses-bound" [: TOP-PARSES-BOUND ;] RUN-CASE
    s" top-parses-through" [: TOP-PARSES-THROUGH ;] RUN-CASE
    s" top-parses-opaque" [: TOP-PARSES-OPAQUE ;] RUN-CASE
+   s" top-parses-loader" [: TOP-PARSES-LOADER ;] RUN-CASE
+   s" top-opaque-loader" [: TOP-OPAQUE-LOADER ;] RUN-CASE
    s" top-parses-row" [: TOP-PARSES-ROW ;] RUN-CASE
    s" top-parses-whitebox" [: TOP-PARSES-WHITEBOX ;] RUN-CASE
    s" top-renders" [: TOP-RENDERS ;] RUN-CASE
+   s" type-deferred" [: TYPE-DEFERRED ;] RUN-CASE
    s" def-deferred" [: DEF-DEFERRED ;] RUN-CASE
    s" trusted-tick-order" [: TRUSTED-TICK-ORDER ;] RUN-CASE
    s" top-create" [: TOP-CREATE ;] RUN-CASE

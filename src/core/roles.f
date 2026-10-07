@@ -163,6 +163,7 @@ CAST: SNAP>N ( snap -- n )
 : DEFLINEAR ( -- )
    parse-name dup 0= IF s" deflinear: missing name" 70 die THEN
    CHECKER-DEFLINEAR ;
+NOMINAL-PROVIDER
 
 $1000 constant VRDEF-CAP
 create VRDEF-BUF VRDEF-CAP allot
@@ -231,6 +232,7 @@ variable VRDEF-I
       THEN
       VRDEF-TOKEN+
    AGAIN ;
+NOMINAL-PROVIDER
 
 \ `cast:` used to be defined here, as a word that rebuilt its declaration as text
 \ and drove it back through TDECL-EVAL-XT's evaluate. It is an engine reader

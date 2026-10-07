@@ -54,6 +54,7 @@ public
 7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy (item 16 boxed sub-slice 1, docs §24)
 7118 constant E-TDECL-CAP       \ declaration body past TDECL-CAP (item 13 C2), or a declared name past TF-NAME-MAX
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause (derive S1)
+7204 constant E-TDECL-UNRESOLVED \ quiet replay: a nominal payload declaration may arrive
 
 private
 
@@ -61,6 +62,24 @@ private
                                 \ (7120-7132 already belong to the checker, layout-buffer, field, and cast blocks)
 
 $1000 constant TDECL-CAP        \ buffered declaration body bytes
+
+\ The body cap bounds its field/variant names. Keep names already parsed so a
+\ later duplicate still rejects when an earlier missing type prevented a row.
+TDECL-CAP 4 / constant TDECL-SEEN-CAP
+TDECL-SEEN-CAP PTR-U8-TABLE TDECL-SEEN-A
+create TDECL-SEEN-U TDECL-SEEN-CAP cells allot
+variable TDECL-SEEN-N
+: TDECL-SEEN-A-FIELD ( n -- ptr ptr u8 ) cells TDECL-SEEN-A + 0 ptr-field ;
+: TDECL-SEEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 BEGIN dup TDECL-SEEN-N @ < WHILE
+      dup TDECL-SEEN-A-FIELD @
+      over cells TDECL-SEEN-U + @ a u CORE-STR= IF drop RES-TRUE EXIT THEN
+      1+
+   REPEAT drop RES-FALSE ;
+: TDECL-SEEN+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a TDECL-SEEN-N @ TDECL-SEEN-A-FIELD !
+   u TDECL-SEEN-N @ cells TDECL-SEEN-U + !
+   TDECL-SEEN-N @ 1 + TDECL-SEEN-N ! ;
 
 \ --- declaration context (set before TDECL-RUN, read by bodies + diagnostics).
 \ The five -A cells hold token addresses, so they are declared pointer cells
@@ -108,10 +127,11 @@ variable TDM-TFAM   variable TDM-STR   variable TDM-PK
 variable TDM-SUMV   variable TDM-LAY
 variable TDM-SCH    variable TDM-ROOT
 variable TDV-QUOT-N
+variable TDV-QUOT-MISS
 
 public
 
-: QUOT-ROLLBACK ( -- ) 0 TDV-QUOT-N ! ;
+: QUOT-ROLLBACK ( -- ) 0 TDV-QUOT-N !  0 TDV-QUOT-MISS ! ;
 
 private
 
@@ -149,8 +169,11 @@ private
    TDECL-MARK
    -1 TDECL-FAM-REG !               \ set by a successful sum registration only
    catch {: rc:n :}
+   0 TDECL-SEEN-N !
    rc 0= IF EXIT THEN
    TDECL-RESTORE
+   rc E-TDECL-UNRESOLVED = IF rc throw THEN
+   SIG-UNRES-CLEAR
    TDECL-REPORT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    rc CHECKER-REFUSE ;
@@ -164,6 +187,8 @@ private
    TDN-U ! TDN-A !
    TDK-U ! TDK-A !
    0 TDT-U !  NULL-PTR TDT-A !
+   SIG-UNRES-CLEAR
+   0 TDECL-SEEN-N !
    -1 TDECL-CUR-FAM !
    s" declaration failed" TDECL-WHY! ;
 
@@ -358,17 +383,25 @@ variable TDECL-FAM-ARITY
    node SCHEMA-APP? IF node SCHEMA-A@ TFAM-WIDTH@ EXIT THEN
    1 ;
 
+: TDECL-ABSENT-MAY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE IF drop RES-FALSE EXIT THEN drop
+   a u TFAM-MAY-ARRIVE? ;
+
 : TDECL-PAY-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0= IF a u s" missing ;VARIANT" E-TDECL-SYNTAX TDECL-THROW THEN
    a u DELIM? IF a u s" bad payload token" E-TDECL-SYNTAX TDECL-THROW THEN
    a u TDECL-KEYWORD? IF a u s" bad payload token" E-TDECL-SYNTAX TDECL-THROW THEN
-   a u s" ptr" CORE-STR= IF TDECL-NEXT RECURSE SCHEMA-PTR EXIT THEN
+   a u s" ptr" CORE-STR= IF
+      TDECL-NEXT RECURSE
+      SIG-UNRES @ IF drop 0 EXIT THEN
+      SCHEMA-PTR EXIT THEN
    a u TDECL-SELF-REF? IF
       a u s" invalid layout policy for recursive sum" E-TDECL-RECURSIVE TDECL-THROW
    THEN
    u 1 = IF a u TDECL-LETTER EXIT THEN
    a u CON-OF dup 0 <> IF SCHEMA-CON EXIT THEN drop
    a u TDECL-PAY-FAM? IF 0 0 SCHEMA-APP EXIT THEN drop
+   a u TDECL-ABSENT-MAY? IF a u SIG-UNRES! 0 EXIT THEN
    a u s" unknown payload type" E-TDECL-PAYLOAD TDECL-THROW ;
 
 \ --- parametric family applications + quotation payloads as VARIANT payload
@@ -427,6 +460,7 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
       TDN-A @ TDN-U @ s" type family applied to wrong number of arguments"
       E-TDECL-PAYLOAD TDECL-THROW
    THEN
+   SIG-UNRES @ IF base TDV-ARG-N ! 0 EXIT THEN
    SCHEMA-ROOT-N@ {: argbase:n :}
    base BEGIN dup TDV-ARG-N @ < WHILE
       dup cells TDV-ARG-SCR + @ SCHEMA-ROOT+ drop
@@ -468,9 +502,11 @@ create TDV-QUOT-SCR TDV-QUOT-CAP cells allot
 : TDV-QUOT+ ( n [ ptr u8 n n -- ] -- ) {: node:n fail :}
    TDV-QUOT-N @ TDV-QUOT-CAP >= IF
       s" quotation effect side too long" E-TDECL-PAYLOAD fail execute THEN
+   node 0= IF -1 TDV-QUOT-MISS ! THEN
    node TDV-QUOT-N @ cells TDV-QUOT-SCR + !
    TDV-QUOT-N @ 1 + TDV-QUOT-N ! ;
 : TDV-QUOT-BUILD-ROW ( n -- n ) {: base:n :}   \ [base,top) scratch node ids -> contiguous SCH-ROW
+   TDV-QUOT-MISS @ IF base TDV-QUOT-N ! 0 EXIT THEN
    SCHEMA-ROOT-N@ {: estart:n :}
    TDV-QUOT-N @ base - {: cnt:n :}
    base BEGIN dup TDV-QUOT-N @ < WHILE
@@ -480,6 +516,12 @@ create TDV-QUOT-SCR TDV-QUOT-CAP cells allot
    base TDV-QUOT-N !
    estart cnt SCHEMA-ROW ;
 : TDV-QUOT-EMPTY-ROW ( -- n ) SCHEMA-ROOT-N@ 0 SCHEMA-ROW ;
+: TDV-QUOT-FINISH ( n n n n n n -- n )
+   {: din:n dout:n rin:n rout:n hasr:n outer:n :}
+   TDV-QUOT-MISS @ {: missing:n :}
+   outer TDV-QUOT-MISS !
+   missing 0 <> IF 0 EXIT THEN
+   din dout rin rout hasr SCHEMA-QUOT ;
 : TDV-QUOT-SIDE ( [ -- ptr u8 n ] [ ptr u8 n -- n ] [ ptr u8 n n -- ] -- n ptr u8 n )
    {: next elem fail :}
    TDV-QUOT-N @ {: base:n :}
@@ -500,6 +542,8 @@ public
 \ reporter; the resulting schema and ordered effect rows are identical.
 : PARSE-QUOT ( [ -- ptr u8 n ] [ ptr u8 n -- n ] [ ptr u8 n n -- ] -- n )
    {: next elem fail :}
+   TDV-QUOT-MISS @ {: outer:n :}
+   0 TDV-QUOT-MISS !
    next elem fail TDV-QUOT-SIDE {: din:n sep:ptr sepu:n :}
    sep sepu s" --" fail TDV-QUOT-EXPECT
    next elem fail TDV-QUOT-SIDE {: dout:n end:ptr endu:n :}
@@ -508,10 +552,10 @@ public
       rsep rsepu s" --" fail TDV-QUOT-EXPECT
       next elem fail TDV-QUOT-SIDE {: rout:n rend:ptr rendu:n :}
       rend rendu s" ]" fail TDV-QUOT-EXPECT
-      din dout rin rout -1 SCHEMA-QUOT
+      din dout rin rout -1 outer TDV-QUOT-FINISH
    ELSE
       end endu s" ]" fail TDV-QUOT-EXPECT
-      din dout TDV-QUOT-EMPTY-ROW TDV-QUOT-EMPTY-ROW 0 SCHEMA-QUOT
+      din dout TDV-QUOT-EMPTY-ROW TDV-QUOT-EMPTY-ROW 0 outer TDV-QUOT-FINISH
    THEN ;
 
 private
@@ -519,7 +563,8 @@ private
 : TDECL-QUOT-FAIL ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
    TDN-A @ TDN-U @ a u code TDECL-THROW ;
 : TDECL-VPAY-QUOT ( -- n )
-   [: TDECL-NEXT ;] [: TDV-ELEM-XT ;] [: TDECL-QUOT-FAIL ;] PARSE-QUOT ;
+   [: TDECL-NEXT ;] [: TDV-ELEM-XT ;] [: TDECL-QUOT-FAIL ;] PARSE-QUOT
+   SIG-UNRES @ IF drop 0 THEN ;
 
 \ a resolved family head followed by `<` is a parametric application; any other
 \ next token is pushed back and reported as not-an-application so the head falls
@@ -530,12 +575,39 @@ private
    TDECL-NEXT 2dup s" <" CORE-STR= IF 2drop fam TDECL-VPAY-ARGS RES-TRUE EXIT THEN
    PK! 0 RES-FALSE ;
 
+\ An absent head has no arity or layout to build. Consume its complete
+\ application, checking each independently known argument with the ordinary
+\ variant payload parser before the declaration is rolled back.
+: TDECL-VPAY-LOOSE-APP ( -- )
+   BEGIN
+      TDECL-NEXT
+      2dup s" >" CORE-STR= IF 2drop EXIT THEN
+      2dup DELIM? IF s" bad type application" E-TDECL-SYNTAX TDECL-THROW THEN
+      TDV-ELEM-XT drop
+      TDECL-NEXT
+      2dup s" ," CORE-STR= IF 2drop ELSE
+      2dup s" >" CORE-STR= IF 2drop EXIT ELSE
+         s" bad type application" E-TDECL-SYNTAX TDECL-THROW
+      THEN THEN
+   AGAIN ;
+
 \ one variant payload element: quotation, `ptr T`, parametric application, else
 \ the shared scalar/arity-0 grammar (TDECL-PAY-ELEM).
 : TDECL-VPAY-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" [" CORE-STR= IF TDECL-VPAY-QUOT EXIT THEN
-   a u s" ptr" CORE-STR= IF TDECL-NEXT RECURSE SCHEMA-PTR EXIT THEN
+   a u s" ptr" CORE-STR= IF
+      TDECL-NEXT RECURSE
+      SIG-UNRES @ IF drop 0 EXIT THEN
+      SCHEMA-PTR EXIT THEN
    a u TDECL-VPAY-APP? IF EXIT THEN drop
+   u 1 = IF a u TDECL-PAY-ELEM EXIT THEN
+   a u CON-OF dup 0 <> IF drop a u TDECL-PAY-ELEM EXIT THEN drop
+   a u TDECL-ABSENT-MAY? IF
+      a u SIG-UNRES!
+      TDECL-NEXT 2dup s" <" CORE-STR= IF 2drop TDECL-VPAY-LOOSE-APP
+      ELSE PK! THEN
+      0 EXIT
+   THEN
    a u TDECL-PAY-ELEM ;
 : TDV-ELEM-INSTALL ( -- ) [: TDECL-VPAY-ELEM ;] is TDV-ELEM-XT ;
 TDV-ELEM-INSTALL
@@ -598,6 +670,12 @@ create TDV-BADLETTER 1 allot
       drop 1 +
    REPEAT drop ;
 : TDECL-VARIANT-FINISH ( n -- ) {: fam:n :}
+   SIG-UNRES @ IF
+      TDV-NA @ TDV-NU @ TDECL-SEEN? IF
+         TDV-NA @ TDV-NU @ s" duplicate variant" E-TFAM-DUP TDECL-THROW THEN
+   THEN
+   TDV-NA @ TDV-NU @ TDECL-SEEN+
+   SIG-UNRES @ IF EXIT THEN
    SCHEMA-ROOT-N@ TDV-SS !
    0 TDV-PC !
    0 BEGIN dup TDV-PAY-N @ < WHILE
@@ -613,8 +691,10 @@ create TDV-BADLETTER 1 allot
    BEGIN
       TDECL-NEXT
       2dup s" ;variant" CORE-STR=CI IF 2drop fam TDECL-VARIANT-FINISH EXIT THEN
-      TDECL-VPAY-ELEM dup TDECL-SCH-WIDTH TDV-PW @ + TDV-PW !
-      TDV-PAY+
+      TDECL-VPAY-ELEM
+      SIG-UNRES @ IF drop ELSE
+         dup TDECL-SCH-WIDTH TDV-PW @ + TDV-PW ! TDV-PAY+
+      THEN
    AGAIN ;
 
 : TDECL-SUM-VARIANTS ( n -- ) {: fam:n :}
@@ -812,6 +892,7 @@ private
    SUMV-N @ {: vstart:n :}
    0 TDV-TAG !  0 TDV-N !  0 TDV-MAX !
    fam TDECL-SUM-VARIANTS
+   SIG-UNRES @ IF E-TDECL-UNRESOLVED throw THEN
    TDV-N @ 0= IF TDN-A @ TDN-U @ s" empty sum" E-TDECL-SYNTAX TDECL-THROW THEN
    fam vstart TDV-N @ TDECL-DERIVE-COLLIDE
    fam vstart TDV-N @ TDECL-DERIVE-REQUIRE
@@ -933,7 +1014,14 @@ private
    TDECL-NEXT {: fna:ptr fnu:n :}
    fna fnu TDECL-REQUIRE-FIELD-NAME
    SCHEMA-ROOT-N@ {: ss:n :}
-   TDECL-NEXT TDECL-FIELD-ELEM SCHEMA-ROOT+ drop    \ one field type (family/letter/con/ptr T)
+   TDECL-NEXT TDECL-FIELD-ELEM {: node:n :}
+   SIG-UNRES @ IF
+      fna fnu TDECL-SEEN? IF
+         fna fnu s" duplicate field" E-TFAM-DUP TDECL-THROW THEN
+   THEN
+   fna fnu TDECL-SEEN+
+   SIG-UNRES @ IF EXIT THEN
+   node SCHEMA-ROOT+ drop    \ one field type (family/letter/con/ptr T)
    ss SCHEMA-ROOT@ TDECL-SCH-WIDTH {: fw:n :}
    fna fnu TDECL-TOK!
    s" duplicate field" TDECL-WHY!
@@ -972,6 +1060,7 @@ private
    SCHEMA-ROOT-N@ {: rstart:n :}
    0 TDP-N !   0 TDP-W !
    fam TDECL-PRODUCT-FIELDS
+   SIG-UNRES @ IF E-TDECL-UNRESOLVED throw THEN
    TDP-N @ 0= IF TDN-A @ TDN-U @ s" empty product" E-TDECL-SYNTAX TDECL-THROW THEN
    fam fstart TDP-N @ TFAM-FLD-RANGE!
    fam TDP-W @ TFAM-SLOTS!               \ product width = field cell width sum (no tag)
@@ -2658,9 +2747,12 @@ using TYPE-DECL
 \ maki/extent.f EXTENT:). Their PRIM: rows live in src/core/checker.f and stay
 \ PRIM: because the names they describe stay global.
 : CHECKER-DEFFAMILY ( ptr u8 n ptr u8 n -- ) TDECL-DEFFAMILY ;
+NOMINAL-PROVIDER
 : CHECKER-DEFSUM ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM ;
+NOMINAL-PROVIDER
 : CHECKER-DEFSUM-NOEND ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM-NOEND ;
 : CHECKER-DEFPRODUCT ( ptr u8 n ptr u8 n -- ) TDECL-DEFPRODUCT ;
+NOMINAL-PROVIDER
 
 \ Public top-level surface of the type-family DSL: the block openers parse
 \ their own body tokens up to the ;NAME closer, so their cell effect is ( -- ).
