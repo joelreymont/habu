@@ -1996,14 +1996,34 @@ SUITE aot-payload-admission
    test/aot-payload-admission.f
 ;SUITE
 
-\ Saved checker graphs exercise width refusal and atomic publication without
-\ capturing host instructions. Two groups keep each row within its CPU budget.
+\ Saved checker graphs exercise portable intake, source authority, corrupt
+\ metadata and atomic width refusal without capturing host instructions.
 SUITE aot-graph-width-scalar
    test/aot-graph-width.f -- scalar
 ;SUITE
 
 SUITE aot-graph-width-composite
    test/aot-graph-width.f -- composite
+;SUITE
+
+SUITE aot-graph-structure-a
+   test/aot-graph-width.f -- structure-a
+;SUITE
+
+SUITE aot-graph-structure-b
+   test/aot-graph-width.f -- structure-b
+;SUITE
+
+SUITE aot-graph-structure-c
+   test/aot-graph-width.f -- structure-c
+;SUITE
+
+SUITE aot-graph-exception
+   test/aot-graph-width.f -- exception
+;SUITE
+
+SUITE aot-graph-source
+   test/aot-graph-width.f -- source
 ;SUITE
 
 SUITE aot-source-identity
