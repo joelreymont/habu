@@ -92,4 +92,10 @@ public
 : NONZERO? ( n -- bool )
    0 <> ;
 
+: YES ( -- bool )
+   0 0 = ;
+
+: NO ( -- bool )
+   0 0 <> ;
+
 ;package

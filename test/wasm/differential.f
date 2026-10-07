@@ -17,8 +17,9 @@
 \ from test/wasm/numeric-rows.f; W01's cyclic edge copies and nested label
 \ depths; W03's 144 signatures; W06's 16 and 17 lanes each way, called
 \ directly and through execute; W07's full-width throw and its trap; and W31's
-\ own storage. No Habu control word builds the cycle entered at two blocks
-\ W02 needs, so its refusal stays structural (test/wasm/structure.f).
+\ own storage and its booleans. No Habu control word builds the cycle entered
+\ at two blocks W02 needs, so its refusal stays structural
+\ (test/wasm/structure.f).
 \
 \ The sources and modules stay in the printed directory.
 
@@ -256,6 +257,12 @@ s\" 2\n" TRAP-ROW
 s" W31-STORAGE"
 s" variable W31-STORAGE-V create W31-STORAGE-B 2 allot 5 constant W31-STORAGE-K : W31-STORAGE ( -- ) W31-STORAGE-K W31-STORAGE-V ! W31-STORAGE-V @ 7 + W31-STORAGE-V ! W31-STORAGE-V @ . 65 W31-STORAGE-B c! 66 W31-STORAGE-B 1 + c! W31-STORAGE-B 2 type cr depth . ;"
 s\" 12\nAB\n0\n" ROW
+
+\ true and false, which the map answers with kernel words, as conditions and as
+\ cells.
+s" W31-BOOLEANS"
+s" : W31-BOOLEANS ( -- ) true if 1 else 0 then . false if 1 else 0 then . true false depth . .s 2drop ;"
+s\" 1\n0\n2\n-1\n0\n" ROW
 
 ;using
 T-REPORT
