@@ -9,10 +9,6 @@ require test/checker-assert.f
 package INTERNAL-CALL-TEST
 private
 
-\ Compilation is the regression; truncation runs only in the build driver.
-TRUSTED: TRUNCATE ( n -- ) seed-ndict! ;
-
-
 $1000 constant CAP
 20000 constant TIMEOUT-MS
 create OUT CAP allot
@@ -111,9 +107,9 @@ variable EXITED
 
 : RUN ( -- )
    T-RESET
-   s" seed-ndict!" 0 search-wl 0 T=
-   s" seed-ndict!" NDICT:CALL-TARGET 0 T=
-   s" BAD-INTERNAL ( n -- ) seed-ndict!" CHECK-QUIET-CANDIDATE! 0 T=
+   s" ndict-append" 0 search-wl 0 T=
+   s" ndict-append" NDICT:CALL-TARGET 0 T=
+   s" BAD-INTERNAL ( n -- ) ndict-append" CHECK-QUIET-CANDIDATE! 0 T=
    0 REJECT-CALL 1 REJECT-CALL
    0 TRUST-CALL 1 TRUST-CALL
    0 REJECT-EXPORT 1 REJECT-EXPORT

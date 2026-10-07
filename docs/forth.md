@@ -63,14 +63,18 @@ lives here; build, test and environment rules live in
   its own, must leave nothing and must close every definition it opens
   (measured under **Rules learned by refusal**). The loader and every
   source-generating definer evaluate through it, so a loaded file
-  (**Packages**) and a generated declaration are closed programs too. Two cases
-  stay open:
+  (**Packages**) and a generated declaration are closed programs too. Three
+  cases stay open:
   - A text that runs `0 set-check` leaves every later definition unchecked,
     inside the text and after it.
   - A text's top-level code is unchecked, so what it computes is untyped: with
     `variable V` and `S$ ( -- ptr u8 n )`, `s" S$ drop V !" evaluate-closed`
     stores an address in V that a checked `( -- n )` word then reads as `n`.
     Only the text's definitions are certified, each against its own signature.
+  - `seed-ndict!` lowers the dictionary below the seal floor and clears it
+    (the build rewinds). Top-level code calls it, text a checked word
+    evaluates included; no checked body names it, and legacy `TRUSTED:`
+    bodies still do.
 - Existing TRUST forms are legacy awaiting removal, tracked in [Campaign
   C2](../.dots/habu-campaign-c2-mem-c3d7662b/habu-campaign-c2-mem-c3d7662b.md);
   mentions below describe legacy syntax only.

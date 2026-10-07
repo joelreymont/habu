@@ -242,7 +242,8 @@ that makes a payload trustworthy is the tool's, not the engine's. A payload's
 dictionary rewind therefore goes through `seed-ndict!`, the engine's one
 authorized lowering (it refuses a raise, guards the record span it redirects
 the next write to, rebuilds the name index, and clears the floor as one
-operation, reachable only inside a `TRUSTED:` boundary): `src/habu/hide.f`
+operation; top-level text and `TRUSTED:` bodies call it, no checked body
+names it, and the engine refuses its tick): `src/habu/hide.f`
 `BFR-NDICT!` and `src/habu/prefix-rewind.f` `DICT!` are the two rows that drive
 it, both in payload-only files that no shipped engine carries, and
 `tools/bootstrap.sh`'s boot-hide prologue (`BOOT-NDICT!`) is the third: the
