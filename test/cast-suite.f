@@ -25,11 +25,16 @@
 \     and execute
 \   - a private pointer view of a layout row is raw: a forged tag stored through
 \     it is refused at the next fetch
+\   - a private read-view unpack ( read-view<p,q,u8> -- ptr u8 n ) certifies in
+\     any package and projects a live C2 view to its base and length
 \ A failure prints F<index> + detail; REPORT exits 1 on any fail.
 
 require test/checker-assert.f
 require lib/test/subject.f
 require lib/fmt.f                        \ FMT:.INT - one-line number text
+require lib/memory.f
+require lib/c2-memory.f
+require lib/c2-bytes.f
 
 variable #FAIL
 variable #CASE
@@ -347,6 +352,27 @@ variable ERR-U
 s" CS-LAYOUT:READ" CS-CHILD:RUN 0 T=
 s" CS-LAYOUT:FORGE CS-LAYOUT:READ" CS-CHILD:RUN ENGINE-ERROR:BAD-TAG T=
 CS-CHILD:ERR$ s" hb: bad layout tag" CONTAINS? -1 T=
+
+\ --- a private read-view unpack projects a live view to its cells. ----------
+\ Any package may erase a read-view to its representation in its private
+\ section (C2-MEM alone packs one, test/cast-negative-suite.f). Inside a real
+\ shared loan the base address reads the byte the view holds, and the length
+\ is the one C2-BYTES:LENGTH reads.
+package CS-VIEW
+CAST: UNPACK ( read-view<p,q,u8> -- ptr u8 n )
+: PROJECT ( read-view<p,l,u8> -- bool read-view<p,l,u8> )
+   dup UNPACK {: base:ptr cells:n :}
+   0 C2-MEM:BYTE@ {: byte:u8 held :}
+   held C2-BYTES:LENGTH {: len:n returned :}
+   base c@ byte =  cells len =  and  returned ;
+: OWNER ( mut-view<p,q,a,u8> -- bool mut-view<p,q,a,u8> )
+   0 58 C2-MEM:MUT-BYTE!
+   [: PROJECT ;] C2-MEM:WITH-READ ;
+public
+: RESULT ( -- bool )
+   3 MEM:BYTES-ALLOC-LEN [: OWNER ;] C2-MEM:WITH-MUT ;
+;package
+CS-VIEW:RESULT -1 T=
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

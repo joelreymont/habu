@@ -4876,6 +4876,9 @@ variable NRES  variable NDI  variable NDH
 3 constant SGBAD-ARITY-KIND
 4 constant SGBAD-DEPTH-KIND
 5 constant SGBAD-WIDTH-KIND
+\ An output scope or region variable no input supplies: the one fault
+\ IDENTITY-PARSE withholds, for a view representation pack cast.
+6 constant SGBAD-UNSUPPLIED-KIND
 variable SGBAD
 PTR-VARIABLE SGBAD-A
 variable SGBAD-U
@@ -5097,6 +5100,10 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
    SGBAD-SYNTAX-KIND SGBAD-SET ;
 : SGBAD-SYNTAX? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-SYNTAX-KIND = and ;
+: SGBAD-UNSUPPLIED! ( ptr u8 n -- )
+   SGBAD-UNSUPPLIED-KIND SGBAD-SET ;
+: SGBAD-UNSUPPLIED? ( -- bool )
+   SGBAD @ SGBAD-KIND @ SGBAD-UNSUPPLIED-KIND = and ;
 
 : SGBAD-UNKNOWN! ( ptr u8 n -- )
    SGBAD-UNKNOWN-KIND SGBAD-SET ;
@@ -5908,14 +5915,18 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
    dr PSIDE  PR-OUT ! PD-OUT !
    NEXT-SIG-TOK dup 0 <> IF SGBAD-SYNTAX! ELSE 2drop THEN   \ nothing may follow the output side
    \ Malformed family applications have already supplied their diagnostic;
-   \ dependency walks consume only admitted parameter slots.
+   \ dependency walks consume only admitted parameter slots. The supplied check
+   \ runs last and SGBAD-SET is first-wins, so its own kind is latched only when
+   \ the sort and forall checks passed: an unsupplied output variable is then the
+   \ row's only fault. Every check records the same span, so the order changes
+   \ nothing any other row records.
    SGBAD @ 0= IF
       PD-IN @ SCOPE-SORT? PD-OUT @ SCOPE-SORT? and
       PR-IN @ SCOPE-SORT? PR-OUT @ SCOPE-SORT? and and 0= IF SB@ SL @ SGBAD-SYNTAX! THEN
-      PD-OUT @ SCOPE-SUPPLIED? PR-OUT @ SCOPE-SUPPLIED? and 0= IF SB@ SL @ SGBAD-SYNTAX! THEN
       PD-IN @ RES-TRUE FORALL-PLACE? PD-OUT @ RES-FALSE FORALL-PLACE? and
       PR-IN @ RES-FALSE FORALL-PLACE? PR-OUT @ RES-FALSE FORALL-PLACE? and and 0= IF
          SB@ SL @ SGBAD-SYNTAX! THEN
+      PD-OUT @ SCOPE-SUPPLIED? PR-OUT @ SCOPE-SUPPLIED? and 0= IF SB@ SL @ SGBAD-UNSUPPLIED! THEN
    THEN
    PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ ;
 
@@ -9424,6 +9435,17 @@ variable ASIG-MISS-K
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-BAD-STORED-SIGNATURE CHECKER-REFUSE ;
 
+\ An effect with these rows deeper than a record holds is a stored signature
+\ no record can hold, whatever path records it: refused as a bad one by the
+\ bound it passes, as a definition's is. The result is false after that refusal
+\ returns (USIG-ADD-BAD), true when the rows fit.
+: USIG-DEPTH-FITS? ( ptr u8 n ptr u8 n ptr u8 n n n n n -- bool )
+   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n din:n dout:n rin:n rout:n :}
+   din dout rin rout ROWS-DEPTH {: depth:n :}
+   depth EFFECT-DEPTH-MAX <= if RES-TRUE exit then
+   sa su SGBAD-DEPTH-KIND depth SGBAD-SIZE!
+   sa su na nu at atu USIG-ADD-BAD RES-FALSE ;
+
 \ AT is the declaring name as read, beside the name NA stored for. The result
 \ is false after a refusal that returns (USIG-ADD-BAD), true once the effect
 \ and its text are stored.
@@ -9436,11 +9458,7 @@ variable ASIG-MISS-K
    \ An effect deeper than a record holds, or an input row too wide for its
    \ min-in field, is a stored signature no record can hold: refused as a bad
    \ one, by the bound it passes, the depth first as a definition's is.
-   din dout rin rout ROWS-DEPTH {: depth:n :}
-   depth EFFECT-DEPTH-MAX > if
-      sa su SGBAD-DEPTH-KIND depth SGBAD-SIZE!
-      sa su na nu at atu USIG-ADD-BAD RES-FALSE exit
-   then
+   sa su na nu at atu din dout rin rout USIG-DEPTH-FITS? 0= if RES-FALSE exit then
    din ROW-CELLS {: width:n :}
    width EFFECT-MIN-IN-MAX > if
       sa su SGBAD-WIDTH-KIND width SGBAD-SIZE!
@@ -14017,13 +14035,17 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
 \ CHECKER-DEFCAST hands this a name source gave it, so a length no name has is
 \ refused with the symbol pool's refusal before the constructor scan reads it.
 \ CHECK passes AT at NMOFF, where the checked text holds the name it folded.
-: CHECKER-USIG-CERT-ADD-AS ( ptr u8 n ptr u8 n ptr u8 n bool -- )
-   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n external:bool :}
+: USIG-CERT-ADMIT ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n at:ptr atu:n :}
    na nu CK-NAME-SPAN? 0= IF SYM-STR-OVERFLOW THEN
    na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
    na nu CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    na nu at atu CHECKER-REC-NAME-AT!
-   0 DL-NEW !
+   0 DL-NEW ! ;
+
+: CHECKER-USIG-CERT-ADD-AS ( ptr u8 n ptr u8 n ptr u8 n bool -- )
+   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n external:bool :}
+   na nu at atu USIG-CERT-ADMIT
    sa su CHECKER-REC-A@ CHECKER-REC-U@ at atu external USIG-ADD-AS drop
    DL-TAKE ;
 
@@ -14049,6 +14071,22 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
       SG-ROWS-RESET
        dup 0 <> IF throw THEN drop
    ELSE CHECKER-PUBLISH-PARSED THEN
+   sa su CHECKER-ASIG-CAPTURE ;
+
+\ The cast declarer's publication of the rows IDENTITY-PARSE parsed and
+\ VIEW-CAST-CERTIFY admitted. A pack's output binds variables no input supplies,
+\ which the stored-signature intake (USIG-ADD-AS) refuses, so the rows are
+\ published as CHECKER-USIG-CERT-PARSED publishes CHECK's. The row is asserted
+\ (external), as CHECKER-USIG-CERT-ADD records it. USIG-ADD-AS's width and
+\ scheme refusals cannot trip: the shape is two cells a side and holds no
+\ forall. The depth bound applies here as in USIG-ADD-AS (USIG-DEPTH-FITS?):
+\ a view argument's type nests as deep as its text, and a refused row is
+\ neither published nor captured, as CHECKER-USIG-CERT-ADD-AS leaves it.
+: CHECKER-USIG-CERT-ROWS ( ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n na:ptr nu:n :}
+   na nu na nu USIG-CERT-ADMIT
+   sa su na nu na nu  SGIN @ SGOUT @ SGRIN @ SGROUT @  USIG-DEPTH-FITS? 0= IF DL-TAKE EXIT THEN
+   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ RES-TRUE E-ADD-EFFECT DL-TAKE
    sa su CHECKER-ASIG-CAPTURE ;
 
 $1000 constant LBUF-SIG-CAP
@@ -15694,7 +15732,10 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 \ 7138-7146 are taken (dynamic storage, E-RIGID-EXHAUST, the using/trust/shadow
 \ rejects); the mint rule took the next free code.
 7147 constant E-CAST-MINT     \ a pointer or quotation output outside private
-7151 constant E-CAST-SCOPE    \ a cast would erase or introduce a scope dependency
+\ E-CAST-SCOPE: a cast would erase or introduce a scope dependency (a scoped
+\ term on either side, outside the view representation casts VIEW-CAST-CERTIFY
+\ admits: C2-MEM's private packs and unpacks, a private read-view unpack).
+7151 constant E-CAST-SCOPE
 \ `linear:` rejects (dot habu-mint-and-erase): the arity and unknown-type shapes
 \ are the cast block's own E-CAST-ARITY and E-CAST-FAM.
 7195 constant E-LINEAR-PAYLOAD \ not one linear con and one non-linear payload
@@ -23101,13 +23142,12 @@ variable CAST-PATH-N
    THEN
    RES-FALSE ;
 \ CAST-CERTIFY : the legality gate, in refusal order, over a declaration
-\ IDENTITY-SIG has parsed into one input and one output term. Every clause reads
+\ IDENTITY-ROWS has left as one input and one output term. Every clause reads
 \ the parsed rows (SGIN/SGOUT) and throws the named reject; a cast that survives
 \ every clause is legal and its declared row is registered by the caller.
-\ Nothing here observes a body.
+\ Nothing here observes a body. No term here carries a scope: CHECKER-DEFCAST
+\ sends every scoped row to VIEW-CAST-CERTIFY.
 : CAST-CERTIFY ( -- )
-   SGIN @ CAST-ROW-TERM SCOPED-TYPE? IF E-CAST-SCOPE throw THEN
-   SGOUT @ CAST-ROW-TERM SCOPED-TYPE? IF E-CAST-SCOPE throw THEN
    SGIN @ CAST-ROW-TERM CAST-TERM? 0= IF E-CAST-CLASS throw THEN
    SGOUT @ CAST-ROW-TERM CAST-TERM? 0= IF E-CAST-CLASS throw THEN
    SGOUT @ CAST-ROW-TERM INTRO-ATOM CAST-INTRODUCES? IF E-CAST-CLASS throw THEN
@@ -23125,6 +23165,60 @@ variable CAST-PATH-N
    SGOUT @ CAST-ROW-TERM INTRO-MINT CAST-INTRODUCES? 0= IF EXIT THEN
    CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF E-CAST-MINT throw THEN ;
 
+\ CAST-SCOPED? : a scope dependency anywhere in the declared rows.
+: CAST-SCOPED? ( -- bool )
+   SGIN @ SCOPED-TYPE? SGOUT @ SCOPED-TYPE? or
+   SGHASR @ IF SGRIN @ SCOPED-TYPE? or SGROUT @ SCOPED-TYPE? or THEN ;
+\ A view representation cast retypes one view, read-view<p,q,T> or
+\ mut-view<p,q,a,T>, as the two cells that represent it, `ptr u8 n` (base and
+\ length), or back, over the same tail. A view in a row is two pushes, the
+\ hidden cells of one instance (PUSH-LOGICAL): the base cell under the length.
+\ ROW-UNDER : the row below a row's top term.
+: ROW-UNDER ( n -- n ) R-RES P>REST R-RES ;
+\ ROW-2? : the row is exactly two terms deep over its base.
+: ROW-2? ( n -- bool )
+   R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
+   P>REST CAST-ROW-1? ;
+\ VIEW-PAIR? : a two-deep row's terms are both cells of one view.
+: VIEW-PAIR? ( n -- bool ) {: row:n :}
+   row CAST-ROW-TERM T-RES {: hi:n :}
+   row ROW-UNDER CAST-ROW-TERM T-RES {: lo:n :}
+   hi READ-VIEW? hi MUT-VIEW? or 0= IF RES-FALSE EXIT THEN
+   hi HIDDEN-PARAM? lo HIDDEN-PARAM? and 0= IF RES-FALSE EXIT THEN
+   hi HIDDEN-SLOT@ 1 =  lo HIDDEN-SLOT@ 0 =  and 0= IF RES-FALSE EXIT THEN
+   hi lo CAST-SAME-INSTANCE? ;
+\ VIEW-REP? : a two-deep row's terms are `ptr u8 n`.
+: VIEW-REP? ( n -- bool ) {: row:n :}
+   row CAST-ROW-TERM T-RES {: hi:n :}
+   hi TAG T-CON <> IF RES-FALSE EXIT THEN
+   hi PAY CC-N <> IF RES-FALSE EXIT THEN
+   row ROW-UNDER CAST-ROW-TERM BYTE-PTR? ;
+\ VIEW-CAST-CERTIFY : the gate for a cast with a scope dependency, in refusal
+\ order. Only a view representation cast in a private section is legal: an
+\ unpack ( V -- ptr u8 n ) or a pack ( ptr u8 n -- V ). The pack, and the unpack
+\ of a mut-view, are the owner's: only C2-MEM's private section produces a view
+\ or takes the raw address of an exclusive one. Any package may unpack a
+\ read-view in its private section: the projection erases the type and can
+\ neither widen bounds nor forge a scope. Every other scoped cast is
+\ E-CAST-SCOPE. A pack's view variables are free in its input and, like any
+\ callee's, instantiate fresh at each call.
+: VIEW-CAST-CERTIFY ( -- )
+   SGHASR @ IF E-CAST-SCOPE throw THEN
+   SGIN @ ROW-2? SGOUT @ ROW-2? and 0= IF E-CAST-SCOPE throw THEN
+   SGIN @ ROW-UNDER ROW-UNDER  SGOUT @ ROW-UNDER ROW-UNDER <> IF E-CAST-SCOPE throw THEN
+   SGIN @ VIEW-PAIR? SGOUT @ VIEW-REP? and {: unpack:bool :}
+   unpack 0= IF
+      SGIN @ VIEW-REP? SGOUT @ VIEW-PAIR? and 0= IF E-CAST-SCOPE throw THEN
+   THEN
+   CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF E-CAST-SCOPE throw THEN
+   unpack IF SGIN @ CAST-ROW-TERM T-RES READ-VIEW? IF EXIT THEN THEN
+   \ CHECKER-AUTH-PACKAGE$ is the engine's live namespace record, the identity
+   \ LINEAR-CERTIFY asks. The literal is only the owner's name, which no registry
+   \ holds: the view families are declared with package "" (type-family.f
+   \ REGISTER-READ-VIEW, REGISTER-MUT-VIEW), and type-family.f names C2-MEM by
+   \ this literal too.
+   CHECKER-AUTH-PACKAGE$ s" C2-MEM" CORE-STR=CI 0= IF E-CAST-SCOPE throw THEN ;
+
 \ LINEAR-PAYLOAD? : what a `linear:` row carries beside its token, a non-linear
 \ con or a pointer chain ending at one. A type variable, a family, a quotation
 \ or an atom is refused: the token stands for one payload of a declared type.
@@ -23134,7 +23228,7 @@ variable CAST-PATH-N
    PAY CT-LINEAR? 0= ;
 
 \ LINEAR-CERTIFY : the `linear:` legality gate, in refusal order, over the one
-\ input and one output term IDENTITY-SIG left. One side is the token, a linear
+\ input and one output term IDENTITY-ROWS left. One side is the token, a linear
 \ con, and the other its payload, so the row mints a token from its payload or
 \ erases one back into it. The package that declared the token's type alone
 \ may say so (a type declared at top level has no owner, so nothing mints it),
@@ -24236,13 +24330,14 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
       2drop  SGOUT !  SGIN !
    THEN ;
 
-\ IDENTITY-SIG ( name$ effect$ -- ) : parse the declared row of `cast:` or
-\ `linear:` and refuse what neither declarer accepts, before its own gate reads
-\ the row.
+\ IDENTITY-PARSE ( name$ effect$ -- ) : parse the declared row of `cast:` or
+\ `linear:` and refuse a signature that did not parse, before a gate reads the
+\ row. IDENTITY-ROWS ( name$ effect$ -- ) then refuses a parsed row that is not
+\ one term per side.
 \
 \ PARSE-SIG-RAW/RAW-SIG! is CHECK-DOES!'s own move, for the same reason: it is
 \ how this file parses a declared effect OUTSIDE a definition and lands
-\ SGIN/SGOUT/SGHASR, which is exactly what the two gates read. Family tails
+\ SGIN/SGOUT/SGHASR, which is exactly what the gates read. Family tails
 \ resolve through SIG-SCOPE$, which is off outside the AOT intake and therefore
 \ reads the engine's real open namespace — the same scope CAST-OWNER? asks
 \ about. An unresolvable family name lands in SGBAD and is named by E-CAST-FAM,
@@ -24253,16 +24348,25 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
 \ could not be registered. Its first fault names the class. A family unknown or
 \ applied to the wrong number of arguments is E-CAST-FAM; any other fault, bad
 \ syntax or a bare `ptr`, is refused as a definition with that signature is, by
-\ its bad-signature diagnostic and CHECKER-REJECT-RC. A row that parsed is one
-\ term in and one term out over the same resolved tail, else E-CAST-ARITY:
-\ neither declarer's emitted identity changes cells below that term.
-: IDENTITY-SIG ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
+\ its bad-signature diagnostic and CHECKER-REJECT-RC. One fault waits for the
+\ gate: an output scope or region variable no input supplies (SGBAD-UNSUPPLIED?)
+\ is the shape of a view representation pack. Such a row is always scoped, so
+\ CHECKER-DEFCAST routes it to VIEW-CAST-CERTIFY before IDENTITY-ROWS, which
+\ refuses it as a bad signature on the one path that reaches it, `linear:`.
+\
+\ A row that parsed is one term in and one term out over the same resolved tail,
+\ else E-CAST-ARITY: neither declarer's emitted identity changes cells below
+\ that term. A view is two pushes, so a view cast is certified before this.
+: IDENTITY-PARSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    sa su BYTE-SPAN? 0= IF E-CAST-ARITY throw THEN
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW RAW-SIG!
    SGBAD-UNKNOWN? SGBAD-ARITY? or IF E-CAST-FAM throw THEN
-   SGBAD @ IF sa su na nu na nu BADSIG-XT  CHECKER-REJECT-RC throw THEN
+   SGBAD @ SGBAD-UNSUPPLIED? 0= and IF sa su na nu na nu BADSIG-XT  CHECKER-REJECT-RC throw THEN ;
+
+: IDENTITY-ROWS ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
+   SGBAD-UNSUPPLIED? IF sa su na nu na nu BADSIG-XT  CHECKER-REJECT-RC throw THEN
    SGHASR @ 0 <> IF E-CAST-ARITY throw THEN
    SGIN @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
    SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
@@ -24276,17 +24380,32 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
 \ verify-source — so one set of refusals runs on one set of parsed rows
 \ whichever front end read the declaration.
 \
+\ A cast with a scope dependency on either side (CAST-SCOPED?) is certified by
+\ VIEW-CAST-CERTIFY, which admits only a view representation cast, and is
+\ registered from the rows IDENTITY-PARSE parsed (CHECKER-USIG-CERT-ROWS): a
+\ pack's output binds variables no input supplies, which the stored-signature
+\ intake refuses, so its text cannot be parsed again. Its name is unqualified,
+\ else E-CAST-SCOPE, as CHECKER-LINEAR refuses one: a qualified name publishes
+\ into that package's public wordlist, past the private section the gate asked.
+\
 \ THE ORDER IS THE CONTRACT: refuse first, register second. A refusal throws out
-\ of here before CHECKER-USIG-CERT-ADD, and the engine calls this BEFORE it counts
-\ the record into NDICT, so a rejected declaration leaves no name behind in
-\ either the checker's tables or the dictionary.
+\ of here before CHECKER-USIG-CERT-ADD or CHECKER-USIG-CERT-ROWS, and the engine
+\ calls this BEFORE it counts the record into NDICT, so a rejected declaration
+\ leaves no name behind in either the checker's tables or the dictionary.
 : CHECKER-DEFCAST ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
-   na nu sa su IDENTITY-SIG
+   na nu sa su IDENTITY-PARSE
+   CAST-SCOPED? IF
+      VIEW-CAST-CERTIFY
+      na nu CHECKER-QUALIFIED? IF E-CAST-SCOPE throw THEN
+      sa su na nu CHECKER-USIG-CERT-ROWS EXIT
+   THEN
+   na nu sa su IDENTITY-ROWS
    CAST-CERTIFY
    sa su na nu CHECKER-USIG-CERT-ADD ;
 
 : CHECKER-LINEAR ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
-   na nu sa su IDENTITY-SIG
+   na nu sa su IDENTITY-PARSE
+   na nu sa su IDENTITY-ROWS
    LINEAR-CERTIFY
    na nu CHECKER-QUALIFIED? IF E-LINEAR-SCOPE throw THEN
    sa su na nu CHECKER-USIG-CERT-ADD ;

@@ -649,21 +649,38 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   keyword with no body and no `;`, publishing `NAME` as an identity whose call
   sites emit nothing. A conversion that can refuse is a checked word that
   throws, then the cast. The checker's rule, in refusal order
-  (`src/core/checker.f` `CAST-CERTIFY`):
+  (`src/core/checker.f` `CHECKER-DEFCAST`):
   - Every family named is declared, visible and applied to its declared
     number of arguments (`E-CAST-FAM`, 7131): `( n -- box )` for a
     one-parameter `box` is refused by name, not by a later death.
   - Any other signature fault, bad syntax or a bare `ptr`, is refused as a
     definition with that signature is: the bad-stored-signature diagnostic,
     then the compile-reject rc 70. The first fault names the class, so
-    `( ptr -- box )` is this reject, not `E-CAST-FAM`.
+    `( ptr -- box )` is this reject, not `E-CAST-FAM`. An output scope or
+    region variable no input supplies, when it is the only fault, is left to
+    the scope rule: it is the shape of a view pack.
+  - A scope or region variable, a quantifier-bound variable, a scope, or a
+    read view, mutable view or loan field anywhere in either row would erase
+    or introduce a scope dependency (`E-CAST-SCOPE`, 7151). This is asked
+    before the arity rule, which would read a view's two cells as two terms.
+  - The exception is a view representation cast: it retypes one view,
+    `read-view<p,q,T>` or `mut-view<p,q,a,T>`, as the two cells that represent
+    it, `ptr u8 n` (base and length), or back, over the same tail. Producing a
+    view is C2-MEM's: the pack `( ptr u8 n -- V )`, and the mut-view unpack
+    `( mut-view<p,q,a,T> -- ptr u8 n )`, which takes the raw address of an
+    exclusive view, are declared only in package C2-MEM's private section.
+    Any package may declare the read-view unpack `( read-view<p,q,T> -- ptr
+    u8 n )` in its private section: the projection erases the type and can
+    neither widen bounds nor forge a scope. A pack's scope and region
+    variables are free in its input and, like any callee's, instantiate
+    fresh at each call. The cast takes an unqualified name: a qualified name
+    selects that package's public wordlist and would publish the boundary.
+    That, and every other cast with a view, public or private, is
+    `E-CAST-SCOPE`.
   - Each side is one term over the same stack tail (`E-CAST-ARITY`, 7129);
     a layout value wider than a cell is one term per cell. The emitted identity
     preserves the tail, so `( R n -- R u8 )` is valid and `( R n -- S u8 )`
     is refused.
-  - A scope or region variable, a quantifier-bound variable, a scope, or a
-    read view, mutable view or loan field anywhere in either term would erase
-    or introduce a scope dependency (`E-CAST-SCOPE`, 7151).
   - A cast term is one machine cell: a con, a width-1 family, a pointer, or a
     quotation. An atom, or a pointer to one, on either side, and an atom in an
     introduction position of the destination, are `E-CAST-CLASS` (7130).

@@ -14,7 +14,8 @@
 \ programs and expected exit: each reopens C2-MEM in a disposable fork of the
 \ whitebox engine (lib/test/subject.f), and the checker refuses the block, exit
 \ 70. The image class is asserted first, because on a sealed engine every case
-\ exits 84.
+\ exits 84. SECTION-VIEWS also runs what only C2-MEM's private section may
+\ declare, the view representation casts.
 
 require lib/test.f
 require lib/test/subject.f
@@ -120,6 +121,43 @@ create ERR CAP allot
    s" reopening C2-MEM cannot export the raw loan scope" T-LABEL
    s" package C2-MEM public EXPORT LOAN-RUN ;package" 70 STATUS? TTRUE ;
 
+\ The view representation casts are C2-MEM's (src/core/checker.f
+\ VIEW-CAST-CERTIFY): its private section packs ( ptr u8 n -- V ) and unpacks a
+\ mutable view, and a checked word that unpacks and packs again binds the
+\ pack's fresh scope and region variables to its own declared row. Its public
+\ section refuses the pack with E-CAST-SCOPE, which no catch takes here: exit
+\ 67 naming the code. A `:` still cannot declare raw cells a view. A qualified
+\ name selects another package's public wordlist, here this one's, so the
+\ private section's pack is E-CAST-SCOPE under one too. That refusal is caught
+\ in this engine, which the throw leaves outside C2-MEM, and the wordlist the
+\ name selects is shown to hold no such name after it.
+67 constant UNCAUGHT-RC          \ hb's exit status for an uncaught throw
+public get-current private constant QUAL-WID
+
+: SCOPE-REFUSED? ( ptr u8 n -- bool )
+   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
+   MATCH outcome
+      exited OF UNCAUGHT-RC = ENDOF
+      signaled OF drop false ENDOF
+      timeout OF false ENDOF
+   ;MATCH
+   {: outu:len erru:len refused:bool :}
+   refused outu LEN>N 0= and
+   ERR erru LEN>N s" uncaught throw code 7151" CONTAINS? and ;
+
+: SECTION-VIEWS ( -- )
+   s" C2-MEM's private section packs raw cells into a view" T-LABEL
+   s" package C2-MEM private CAST: C2RR-PACK ( ptr u8 n -- read-view<p,q,u8> ) ;package" 0 STATUS? TTRUE
+   s" a checked C2-MEM word unpacks a mutable view and packs it again" T-LABEL
+   s" package C2-MEM private CAST: C2RR-MUN ( mut-view<p,q,a,u8> -- ptr u8 n ) CAST: C2RR-MPK ( ptr u8 n -- mut-view<p,q,a,u8> ) : C2RR-ROUND ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) C2RR-MUN C2RR-MPK ; ;package" 0 STATUS? TTRUE
+   s" C2-MEM's public section cannot pack a view" T-LABEL
+   s" package C2-MEM public CAST: C2RR-PUBLIC-PACK ( ptr u8 n -- read-view<p,q,u8> ) ;package" SCOPE-REFUSED? TTRUE
+   s" a reopened C2-MEM definition cannot declare raw cells a view" T-LABEL
+   s" package C2-MEM private : C2RR-RAW-VIEW ( ptr u8 n -- read-view<p,q,u8> ) ; ;package" 70 STATUS? TTRUE
+   s" C2-MEM's private section cannot pack under another package's name" T-LABEL
+   s" package C2-MEM private CAST: C2-REOPEN-REFUSALS:QUAL-PACK ( ptr u8 n -- read-view<p,q,u8> ) ;package" TEST-EVAL:RC E-CAST-SCOPE T=
+   s" QUAL-PACK" QUAL-WID search-wl 0= TTRUE ;
+
 public
 
 : RUN ( -- )
@@ -127,6 +165,7 @@ public
    SECTION-CLASS
    SECTION-MEMORY
    SECTION-PRODUCER
+   SECTION-VIEWS
    T-REPORT ;
 
 ;package

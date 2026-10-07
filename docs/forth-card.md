@@ -155,6 +155,10 @@ callback; [ownership-model.md](ownership-model.md#public-owner-recipe) has a
 checked source example. `ALLOC-DISPOSE` also registers a callback that consumes
 the new unique view at that owner's close, including when an inner owner is
 active. `PUBLISH` consumes a mutable view to make it shared.
+A view on either side of `CAST:` is `E-CAST-SCOPE`, except a view representation
+cast: only C2-MEM's private section packs `( ptr u8 n -- V )` or unpacks a
+mut-view, and any private section may unpack `( read-view<p,q,T> -- ptr u8 n )`.
+The cast takes an unqualified name; a qualified one is `E-CAST-SCOPE`.
 Ordinary raw pointers remain lifetime-free.
 The task-local frame capacity is 32; the 33rd live open throws `E-C2-CAPACITY`
 (`-9360`) before acquisition. Live owner or loan image capture throws

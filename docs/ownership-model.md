@@ -384,6 +384,14 @@ underlying machine address. That boundary must be owned, explicit and tested;
 it cannot publish the address, a pointer cell, or a scope-free accessor that
 lets checked callers bypass the view rules. Ordinary raw APIs remain available
 only for inputs which already belong to the raw surface.
+For views that boundary is the view representation cast (forth.md `CAST:`):
+only C2-MEM's private section packs `ptr u8 n` into a view or unpacks a mutable
+view. Elsewhere a read-view unpack in a private section is the only way a raw
+address leaves a view, because a read view is shared and the projection erases
+its type: the cast makes no typed view, so it cannot widen a view's bound or
+forge a scope; the address it returns is an ordinary raw pointer, writable and
+not tied to the loan, so the boundary body must keep its raw use inside the loan
+and must not publish the pointer, which the checker does not enforce.
 Converted owners must not also publish a raw alias to the same borrowed storage
 as a compatibility escape.
 
