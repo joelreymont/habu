@@ -34,13 +34,14 @@
 \ THE MODULE. Sections come in the specification's order: type, function, table
 \ when a slot was added, memory, export, element with the table from slot 1,
 \ code, and data, one active segment at WPROF's data base. The memory's
-\ minimum and maximum are the pages holding the image's end, since nothing
-\ grows it. The exports are memory and the four wrappers, whose bodies are
-\ written here through WENC's opcode bytes because their signatures lie outside
-\ WSTRUCT's call row: run stores WPROF's stack base in ctx's stack base and top
-\ and 0 in its out-len, calls the entry with WPROF's ctx base and answers its
-\ status; throw-code answers ctx's throw code, out-base WPROF's out base, and
-\ out-len ctx's out-len.
+\ minimum is the pages holding the image's end and its maximum memory32's
+\ 65536, so a host may grow it and place bytes past the image
+\ (docs/browser-host.md). The exports are memory and the four wrappers, whose
+\ bodies are written here through WENC's opcode bytes because their signatures
+\ lie outside WSTRUCT's call row: run stores WPROF's stack base in ctx's stack
+\ base and top and 0 in its out-len, calls the entry with WPROF's ctx base and
+\ answers its status; throw-code answers ctx's throw code, out-base WPROF's out
+\ base, and out-len ctx's out-len.
 \
 \ REFUSALS. LINK reads every row before it writes. An entry, site, cell or slot
 \ naming no function, image byte or slot is E-WLINK-UNRESOLVED, as is an
@@ -359,7 +360,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 
 : MEMORY-SEC ( -- )
    1 PUT-U32
-   LIMITS-MAX PUT-BYTE  PAGES PUT-U32  PAGES PUT-U32 ;
+   LIMITS-MAX PUT-BYTE  PAGES PUT-U32  PAGES-MAX PUT-U32 ;
 
 : PUT-EXPORT ( ptr u8 n n n -- )
    {: a u:n kind:n idx:n :}

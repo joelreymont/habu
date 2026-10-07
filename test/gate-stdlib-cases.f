@@ -1507,6 +1507,12 @@ SUITE http
    lib/net/http-test.f
 ;SUITE
 
+\ BROWSER-HOST:ROUTES on a loopback port: CURL fetches the browser host's page,
+\ each file's content type and bytes.
+SUITE browser-host
+   lib/browser/host-test.f
+;SUITE
+
 SUITE crypto-evp
    lib/crypto/evp-test.f
 ;SUITE

@@ -206,7 +206,10 @@ image that did not exit.
 
 Two engines independent of Habu check its Wasm modules. wasm-tools validates a
 module under core Wasm and the backend's features, and bun runs it through
-`test/wasm/run.mjs`. Neither tool is part of the ordinary gate. Install both
+`test/wasm/run.mjs`; bun also runs the browser host's `lib/browser/host-cli.mjs`
+on its echo fixture through `test/browser/echo-test.f`
+([browser-host.md](browser-host.md)). Neither tool is part of the ordinary
+gate. Install both
 once and put them on `PATH`: `cargo install --locked wasm-tools` (into
 `~/.cargo/bin`; 1.243.0 verified) and
 `curl -fsSL https://bun.sh/install | bash` (into `~/.bun/bin`; 1.3.3

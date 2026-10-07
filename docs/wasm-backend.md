@@ -30,7 +30,7 @@ depends on no LLVM, MLIR, Emscripten or Binaryen.
 | Dynamic word calls | Checked execution-token descriptors and uniform context-taking adapters |
 | Catchable exceptions | Explicit status propagation and full 64-bit throw code in context |
 | Fatal failures | Diagnostic plus Wasm trap / discarded execution instance, not a catchable language error |
-| Host interop | The first slice's module imports nothing (§17.6); the browser binding is designed when the viewer needs it |
+| Host interop | The module imports nothing (§17.6); a browser host takes turns with it through its memory ([browser-host.md](browser-host.md)) |
 | NaN | Every NaN an operation makes is `$7FF8000000000000`, as on native targets; the selector implements §17.3 without branches |
 | First slice | P6 through `NSHADOW`: unplaced emissions whose call and address immediates are fixed-width padded LEBs, patched by the linker as `NEMIT` rows (§17.1) |
 | Optimizer | Habu-owned; engine native optimization is the embedding's job |
@@ -513,7 +513,10 @@ P6 pins this layout:
 - data stack [$21000,$31000);
 - static DATA from $31000.
 
-The memory minimum equals its maximum, since the slice has no allocator. A failed pointer check records the fault in ctx and traps (§8.2).
+The memory minimum is the pages holding the image and its maximum memory32's
+65536 pages. The module has no allocator; the maximum lets a host grow the
+memory and place bytes past the image ([browser-host.md](browser-host.md)). A
+failed pointer check records the fault in ctx and traps (§8.2).
 
 ### 17.6 Acceptance
 
