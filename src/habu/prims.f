@@ -854,14 +854,18 @@ EPRIM: set-current    PE-N PE-IN EPRIM;
 EPRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ NDICT's private indexed-record boundary
-\ Its owners' readers: CHECKER-RESOLVE's scope probe (src/core/checker.f SCOPE-WL-PROBE), NDICT's record
-\ lookup (src/compiler/native/dict.f WL-RECORD), CHECKER-SURFACE's record index (src/core/checker-surface.f
-\ RECORD-INDEX) and OUTER's dictionary probe (src/habu/outer.f WL-PROBE). Four rows, not one: each owner is a
-\ separate sealed package, and NDICT keeps the raw record private.
+\ Its owners' readers: CHECKER-RESOLVE's scope probe (src/core/checker.f CHECKER-RESOLVE:WL-PROBE), NDICT's
+\ record lookup (src/compiler/native/dict.f WL-RECORD), CHECKER-SURFACE's record index
+\ (src/core/checker-surface.f RECORD-INDEX), OUTER's dictionary probe (src/habu/outer.f WL-PROBE), the
+\ generated-name preflight (src/habu/xref.f WL-RECORD) and the capture's record lookup
+\ (src/habu/aot-capture.f AOT-WL-RECORD). Six rows, not one: each owner is a separate package, and NDICT
+\ keeps the raw record private.
 EPPRIM: CHECKER-RESOLVE xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: NDICT xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: CHECKER-SURFACE xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: OUTER xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: GENERATED-DECL-NAME-PREFLIGHT xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: AOT-CAPTURE xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPRIM: scope-find     PE-PTR-U8 PE-IN PE-N PE-IN
                       PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-N PE-OUT EPRIM;
 EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM;

@@ -35,11 +35,12 @@ package CHECKER-SURFACE
 private
 
 \ The dictionary index of the live row `wid` holds under the name, -1 for none.
-\ The trusted-only primitive is the lookup that returns a DNAME-INT row too:
-\ `search-wl` hides one, and whether such a row ships is not this file's call.
-TRUSTED: RECORD-INDEX ( ptr u8 n n -- n )
+\ xref-search-wl, this package's private row (src/habu/prims.f), is the lookup
+\ that returns a DNAME-INT row too: `search-wl` hides one, and whether such a
+\ row ships is not this file's call.
+: RECORD-INDEX ( ptr u8 n n -- n )
    xref-search-wl dup 0= if drop -1 exit then
-   dbase@ - DREC / ;
+   BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
 
 : SHIPPED? ( ptr u8 n n -- bool )
    RECORD-INDEX dup 0 < if drop false exit then

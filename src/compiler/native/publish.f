@@ -47,15 +47,15 @@ variable UNIT-ARMED
    xref-retarget ;
 
 \ min-in-mark and ndict-append are seed records the engine marks internal
-\ (ENGINE-PRIMS:GLOBAL-INT-WID). Package NPUB's rows (src/habu/prims.f) admit a
-\ checked call here only on an engine built with them; until then this is TRUSTED:.
-TRUSTED: MIN-IN-REC ( n n -- )
+\ (ENGINE-PRIMS:GLOBAL-INT-WID); package NPUB's own rows (src/habu/prims.f)
+\ admit the calls here.
+: MIN-IN-REC ( n n -- )
    min-in-mark ;
 
 : DOES-RECORD ( n n -- )
    does-record ;
 
-TRUSTED: APPEND-PENDING ( n -- )
+: APPEND-PENDING ( n -- )
    ndict-append ;
 
 : CODE-CEILING ( -- n )
@@ -180,7 +180,7 @@ variable HELD-SIZE
 
 \ Publishing the checker's one-shot minimum-input latch is engine authority.
 \ Keep the boundary at the native publisher that consumes it for this record.
-TRUSTED: PENDING-FACTS ( n -- ) {: idx:n :}
+: PENDING-FACTS ( n -- ) {: idx:n :}
    CHECKER-OWNER:WIDE-PUBLISH
    CHECKER-OWNER:MIN-IN {: mi:n :}
    mi 0<> if idx mi MIN-IN-REC then ;

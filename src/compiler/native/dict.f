@@ -33,9 +33,9 @@ private
 
 \ ---- which record a spelling denotes -----------------------------------------
 \ The raw indexed record stays inside this protected package. Visibility is
-\ checked after namespace resolution.
-\ Retirement: habu-sweep-trusted-out-41e973ce.
-TRUSTED: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
+\ checked after namespace resolution. xref-search-wl's row is NDICT's own
+\ (src/habu/prims.f).
+: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 1 constant SCOPE-SEEDED              \ LSCOPEREC flag: the bound record is a seeded primitive
 

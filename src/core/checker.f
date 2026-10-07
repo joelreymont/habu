@@ -11484,12 +11484,6 @@ variable CHECKER-QBAD-TOK
 : CHECKER-QTAIL$ ( -- ptr u8 n )
    CHECKER-TA@ CHECKER-TU @ ;
 
-\ The record a wordlist holds under a name, NULL-PTR when it holds none: the
-\ engine's one-wordlist probe, the one its used-publics search asks of each used
-\ wordlist (src/habu/habu2.f LFINDUSED-CORE). Wordlist -1, DICT-WL:NAMESPACE,
-\ holds the package rows.
-TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
-
 \ Whether record N+1 is record N's does> clause: the engine's own test
 \ (src/habu/xref.f XREF-DOES-COMPANION?), which xref.f installs here.
 defer DOES-COMPANION?-XT ( n -- bool )
@@ -11502,6 +11496,16 @@ defer FIRST-RECORD-XT ( -- n )
 
 \ The wordlist a dictionary record was published into, 0 for the global one.
 : CK-REC-WID ( ptr n -- n ) DICT-WORDLIST-SLOT cells + @ ;
+
+package CHECKER-RESOLVE
+public
+\ The record a wordlist holds under a name, NULL-PTR when it holds none: the
+\ engine's one-wordlist probe, the one its used-publics search asks of each used
+\ wordlist (src/habu/habu2.f LFINDUSED-CORE). Wordlist -1, DICT-WL:NAMESPACE,
+\ holds the package rows. xref-search-wl's row is this package's own
+\ (src/habu/prims.f).
+: WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
+;package
 
 \ ---- the checker overlay ------------------------------------------------------
 \ A replay binds every name through the engine's own lookup, so while it runs
@@ -11622,7 +11626,7 @@ variable SNAP-N
    CK-PKG-REC-OFF DATA@ {: r:n :}
    r 0= IF -1 EXIT THEN
    r dbase@ - CK-DREC / ;
-: NS-ROW ( ptr u8 n -- ptr n ) -1 SCOPE-WL-PROBE ;
+: NS-ROW ( ptr u8 n -- ptr n ) -1 CHECKER-RESOLVE:WL-PROBE ;
 : ROOM ( -- )
    ndict@ CK-DICT-CAP < IF EXIT THEN
    E-OVERLAY-CAP throw ;
@@ -11758,7 +11762,7 @@ variable SNAP-N
    {: a:ptr u:n :}
    ON @ 0= IF -1 EXIT THEN
    a u TARGET 0= IF 2drop drop -1 EXIT THEN
-   SCOPE-WL-PROBE {: rec:ptr :}
+   CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
    rec NULL-PTR = IF -1 EXIT THEN
    rec REC>IX ;
 
@@ -11808,7 +11812,7 @@ variable SNAP-N
 \ to its own name, `R;does`, after `undefine R`. The test reads the parent's
 \ wid, so it runs before the parent is retired.
 : RETIRE1 ( ptr u8 n n -- bool ) {: a:ptr u:n wid:n :}
-   a u wid SCOPE-WL-PROBE {: rec:ptr :}
+   a u wid CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
    rec NULL-PTR = IF RES-FALSE EXIT THEN
    rec REC>IX {: ix:n :}
    ix CLAUSE-OF {: cl:n :}
@@ -11897,7 +11901,7 @@ ROW-CELLS cells constant SCOPE-BYTES
 : PUBLISH ( n -- ) {: sym:n :}
    sym 0=  ON @ 0=  or  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
    sym SYM-WID {: wid:n :}
-   sym SYM-NAME$ wid SCOPE-WL-PROBE NULL-PTR <> IF EXIT THEN
+   sym SYM-NAME$ wid CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF EXIT THEN
    ROOM
    sym SYM-NAME$ wid replay-record ;
 
@@ -11953,14 +11957,14 @@ ROW-CELLS cells constant SCOPE-BYTES
    ON @ 0=  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
    a u TARGET 0= IF 2drop drop EXIT THEN
    {: ta:ptr tu:n wid:n :}
-   ta tu wid SCOPE-WL-PROBE {: rec:ptr :}
+   ta tu wid CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
    rec NULL-PTR = IF EXIT THEN
    rec REC>IX {: ix:n :}
    ix MARK @ < IF EXIT THEN
    ROOM
    u tu - {: q:n :}
    ca q +  cu q -  {: cta:ptr ctu:n :}
-   cta ctu wid SCOPE-WL-PROBE NULL-PTR <> IF DUPLICATE throw THEN
+   cta ctu wid CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF DUPLICATE throw THEN
    cta ctu wid replay-record
    ix ndict@ 1 - PAIRS-P PAIRS-CAP PAIRS-N PAIR+ ;
 
@@ -11978,8 +11982,8 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ the export. A wordlist already holding NAME holds the export's twin, and
 \ CLAUSE asks whether it has the clause.
 : EXPORT-ROOM ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n ca:ptr cu:n :}
-   a u get-current SCOPE-WL-PROBE NULL-PTR <> IF EXIT THEN
-   ca cu get-current SCOPE-WL-PROBE NULL-PTR <> IF DUPLICATE throw THEN ;
+   a u get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF EXIT THEN
+   ca cu get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF DUPLICATE throw THEN ;
 
 \ `package NAME`, as the engine opens it (src/habu/packages.f PKG-PACKAGE): the
 \ row, made when new, and its private wordlist when it has none (GRANT); the
@@ -12485,9 +12489,9 @@ $2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
 \ The dictionary record at index IX, minted as src/habu/xref.f XREF-REC mints it
 \ (XREF-N>REC). This file cannot use XREF-REC: the boot prefix loads it before
 \ xref.f (src/habu/habu2.f), and everywhere else it reaches a record only by a
-\ lookup by name (scope-find, SCOPE-WL-PROBE), which cannot list a wordlist. A
-\ record spans CK-REC-WID's slot and those before it, the size the bound window
-\ divides by to name a record's index.
+\ lookup by name (scope-find, CHECKER-RESOLVE:WL-PROBE), which cannot list a
+\ wordlist. A record spans CK-REC-WID's slot and those before it, the size the
+\ bound window divides by to name a record's index.
 package CHECKER-RESOLVE
 CAST: N>REC ( n -- ptr n )
 public
@@ -12515,7 +12519,7 @@ public
 : CK-USED-MARK ( ptr u8 n -- ) {: a:ptr u:n :}
    0 CK-USED-MASK !
    CK-USE-SCAN-N 0 ?DO
-      a u data-base CK-USE-WIDS-OFF + i cells + @ SCOPE-WL-PROBE NULL-PTR <>
+      a u data-base CK-USE-WIDS-OFF + i cells + @ CHECKER-RESOLVE:WL-PROBE NULL-PTR <>
       a u i CK-USED-SYM@ SYM-BEYOND? 0=  and IF
          1 i lshift CK-USED-MASK @ or CK-USED-MASK !
       THEN
@@ -15409,11 +15413,11 @@ variable NORET-FMEND
       pub SYM-VISIBLE 0= IF NULL-PTR EXIT THEN
       pub SYM-DELETED? IF NULL-PTR EXIT THEN
    THEN
-   CHECKER-QPKG$ -1 SCOPE-WL-PROBE {: rec:ptr :}
+   CHECKER-QPKG$ -1 CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
    rec NULL-PTR = IF NULL-PTR EXIT THEN
    rec @ {: wid:n :}
    wid 0= IF NULL-PTR EXIT THEN
-   CHECKER-QTAIL$ wid SCOPE-WL-PROBE ;
+   CHECKER-QTAIL$ wid CHECKER-RESOLVE:WL-PROBE ;
 
 : TOP-PUBLIC-BIND? ( -- bool ) TOP-PUBLIC-REC NULL-PTR <> ;
 
@@ -16440,14 +16444,14 @@ variable WF-I
    RES-TRUE ;
 
 \ A checker symbol has already passed the active binding resolver. Recover that
-\ binding's dictionary record in its own wordlist (SCOPE-WL-PROBE), then ask the
-\ engine about its code entry. The code entry, not the name or a persisted
-\ control flag, is the authority for the public C2 scope operations.
+\ binding's dictionary record in its own wordlist (CHECKER-RESOLVE:WL-PROBE),
+\ then ask the engine about its code entry. The code entry, not the name or a
+\ persisted control flag, is the authority for the public C2 scope operations.
 : SCOPE-CODE-KIND ( n -- n ) scope-kind? ;
 : SCOPE-SYM-WID ( n -- n ) {: sym:n :}
    sym SYM-PKG$ {: pkg:ptr pkgu:n :}
    pkgu 0= IF 0 EXIT THEN
-   pkg pkgu -1 SCOPE-WL-PROBE {: rec:ptr :}  \ DICT-WL:NAMESPACE, loaded after checker.f
+   pkg pkgu -1 CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}  \ DICT-WL:NAMESPACE, loaded after checker.f
    rec NULL-PTR = IF -1 EXIT THEN
    sym SYM-ROW SYM.VIS @ SYM-PUBLIC = IF rec @ EXIT THEN
    sym SYM-ROW SYM.VIS @ SYM-PRIVATE = IF rec CELL + @ EXIT THEN
@@ -16457,7 +16461,7 @@ variable WF-I
    sym 0= IF 0 EXIT THEN
    sym SCOPE-SYM-WID {: wid:n :}
    wid 0 < IF 0 EXIT THEN
-   sym SYM-NAME$ wid SCOPE-WL-PROBE {: rec:ptr :}
+   sym SYM-NAME$ wid CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
    rec NULL-PTR = IF 0 EXIT THEN
    rec @ SCOPE-CODE-KIND ;
 : SCOPE-AUTH-SYM? ( n -- bool ) SCOPE-KIND-SYM 2 >= ;
@@ -16470,12 +16474,12 @@ variable WF-I
 \ holds the tail - always, while the owner is not a package yet. An owner that
 \ defines the tail itself is typing its own word, not a global one.
 : PE-GLOBAL-REACH? ( n -- bool ) {: sym:n :}
-   sym SYM-PKG$ -1 SCOPE-WL-PROBE {: rec:ptr :}  \ DICT-WL:NAMESPACE, as SCOPE-SYM-WID
+   sym SYM-PKG$ -1 CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}  \ DICT-WL:NAMESPACE, as SCOPE-SYM-WID
    rec NULL-PTR = IF RES-TRUE EXIT THEN
-   sym SYM-NAME$ rec @ SCOPE-WL-PROBE NULL-PTR <> IF RES-FALSE EXIT THEN
+   sym SYM-NAME$ rec @ CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF RES-FALSE EXIT THEN
    rec CELL + @ {: pri:n :}
    pri 0= IF RES-TRUE EXIT THEN                   \ a package with no private wordlist
-   sym SYM-NAME$ pri SCOPE-WL-PROBE NULL-PTR = ;
+   sym SYM-NAME$ pri CHECKER-RESOLVE:WL-PROBE NULL-PTR = ;
 
 : PE-OWNS-GLOBAL? ( ptr u8 n n -- bool ) {: a:ptr u:n i:n :}
    i PE-ACTIVE? 0= IF RES-FALSE EXIT THEN
@@ -20367,7 +20371,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    {: sym:n :}
    sym SCOPE-SYM-WID {: wid:n :}
    wid 0 < IF NULL-PTR EXIT THEN
-   sym SYM-NAME$ wid SCOPE-WL-PROBE ;
+   sym SYM-NAME$ wid CHECKER-RESOLVE:WL-PROBE ;
 
 \ The dictionary record a walk's selection of SYM binds: the one the engine's
 \ lookup found under live authority (WALK-REC), else the symbol's own.
@@ -20380,10 +20384,10 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 \ PKG's public record of PKG:TAIL, else the global record of the tail or bare name.
 : VIS-ENGINE-REC ( ptr u8 n -- ptr n )
    {: a:ptr u:n :}
-   a u CHECKER-QUALIFIED? 0= IF a u 0 SCOPE-WL-PROBE EXIT THEN
+   a u CHECKER-QUALIFIED? 0= IF a u 0 CHECKER-RESOLVE:WL-PROBE EXIT THEN
    TOP-PUBLIC-REC {: rec:ptr :}
    rec NULL-PTR <> IF rec EXIT THEN
-   CHECKER-QTAIL$ 0 SCOPE-WL-PROBE ;
+   CHECKER-QTAIL$ 0 CHECKER-RESOLVE:WL-PROBE ;
 
 \ The selections, each with the symbol, its newest visible record+1 and the
 \ dictionary record it binds. A top-level token binds as CHECKER-TOP-SYM
@@ -20497,7 +20501,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 : VIS-QUALIFIER ( ptr u8 n -- ptr u8 n )
    {: qa:ptr qu:n :}
    VIS-PU @ 0 <> IF VIS-PA @ VIS-PU @ EXIT THEN
-   qa qu -1 SCOPE-WL-PROBE {: rec:ptr :}   \ its namespace record (DICT-WL:NAMESPACE)
+   qa qu -1 CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}   \ its namespace record (DICT-WL:NAMESPACE)
    rec NULL-PTR = IF qa qu EXIT THEN
    rec CK-REC-NAME$ ;
 
@@ -22509,7 +22513,7 @@ ASIG-GRAPH-CHECK-INSTALL
 : CK-AOT-ROW-WID ( n -- n ) {: r:n :}
    r 12 CK-AOT-FIELD {: vis:n :}
    vis SYM-GLOBAL = IF 0 EXIT THEN
-   r 8 CK-AOT-FIELD CK-AOT-STR$ -1 SCOPE-WL-PROBE {: ns:ptr :}
+   r 8 CK-AOT-FIELD CK-AOT-STR$ -1 CHECKER-RESOLVE:WL-PROBE {: ns:ptr :}
    ns NULL-PTR = IF -1 EXIT THEN
    vis SYM-PUBLIC = IF ns @ ELSE ns CELL + @ THEN
    dup 0= IF drop -1 THEN ;
@@ -22517,7 +22521,7 @@ ASIG-GRAPH-CHECK-INSTALL
 : CK-AOT-ROW-REC ( n -- ptr n ) {: r:n :}
    r CK-AOT-ROW-WID {: wid:n :}
    wid 0 < IF NULL-PTR EXIT THEN
-   r 0 CK-AOT-FIELD CK-AOT-STR$ wid SCOPE-WL-PROBE ;
+   r 0 CK-AOT-FIELD CK-AOT-STR$ wid CHECKER-RESOLVE:WL-PROBE ;
 
 \ A zero-symbol top-level walk already selected REC. Give it only the controls
 \ of a captured row whose full key still resolves to that exact record. Source
