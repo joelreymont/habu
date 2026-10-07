@@ -131,6 +131,7 @@ create OWNER-STORAGE
    0 ,
    0 , 0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -148,7 +149,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:VERIFY-TRUST-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -10665,6 +10666,7 @@ PPRIM: CHECKER-OWNER-ABI BINDING-ID-SHIFT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-ID-MASK PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-PARSES-ID PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-THROUGH-ID PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI VERIFY-TRUST-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-FETCH-ABI CERTIFICATE-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-FETCH-ABI BYTES PE-N PE-OUT PPRIM;
 PRIM: WF-N@ PE-N PE-OUT PRIM;
@@ -19823,6 +19825,36 @@ REG-PROTECT
    na nu sa su TRUST-USIG! drop
    DL-AMEND ;
 
+\ A blank, a byte at or below 32, ends a token (src/habu/habu1.f EMIT-TOK), so
+\ no token spells a name holding one and no definer gives it to a word.
+: CK-HOLDS-BLANK? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   0 begin dup u < while
+      a over + c@ 32 <= IF drop RES-TRUE EXIT THEN
+      1+
+   repeat drop RES-FALSE ;
+
+\ The source pre-pass's question about a `trust` row (src/habu/verify-source.f
+\ RECORD-TRUST): is the row the run's to judge? It is when the row names no word
+\ in the wordlist its record lands in (TRUST-RESOLVES?) and a rendering statement
+\ read before it marked that same wordlist (CHECKER-VERIFY-RENDERS): for a bare
+\ name the open section's, or the global one outside a package, for PKG:TAIL
+\ PKG's public one. There a word the run defines and a misspelt name look alike,
+\ so the load's TRUST judges both. A mark only a use walks to (UNSEEN-COVERS?) -
+\ the global one from inside a package, a used public's, the other section's -
+\ is no answer, and nor is any mark for a name no word can have: a false length,
+\ one holding a blank (CK-HOLDS-BLANK?), the mark's own spelling among them, or
+\ a malformed qualified one. Nothing is recorded: the row's effect, and each use
+\ of its name, stay the run's.
+: CHECKER-VERIFY-TRUST ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN
+   a u CK-HOLDS-BLANK? IF RES-FALSE EXIT THEN
+   a u TRUST-RESOLVES? IF RES-FALSE EXIT THEN
+   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ UNSEEN-MARK$ CHECKER-PUBLIC-SYM? 0 <> EXIT THEN
+   CHECKER-QBAD-TOK @ IF RES-FALSE EXIT THEN
+   UNSEEN-MARK$ CHECKER-RECORD-SYM? 0 <> ;
+
 \ TRUST-RAW: the raw-dictionary-storage form of TRUST, and the single authority
 \ that seals a storage cell at the moment its definer publishes it.
 \
@@ -26172,6 +26204,7 @@ package CHECKER-REG
 ' CHECKER-WRITE-WINDOW! DECLARATIONS CHECKER-OWNER-ABI:WRITE-WINDOW-OFF + xt!
 ' CHECKER-SOURCE-CLAUSE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF + xt!
 ' CHECKER-VERIFY-TOP-BINDING DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + xt!
+' CHECKER-VERIFY-TRUST DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TRUST-OFF + xt!
 
 \ ---- the declared-row log of a cold boot ------------------------------------
 \ Before the claim below a cold boot has no source owner, so the engine's

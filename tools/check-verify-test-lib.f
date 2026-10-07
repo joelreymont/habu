@@ -2502,6 +2502,99 @@ $180000 constant LARGE-STDIN-LEN
    s" top-create: at that word" s" CVT-MK" s" 4" s" 3" DEFERRED-AT ;
 
 
+\ The deferred stretch packet IDX holds, counted from 0: TOKEN on LINE at COLUMN.
+: DEFERRED-NTH ( ptr u8 n n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n idx:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
+   CHECK:VERIFY-OUT$ idx NTH-PACKET {: p:n :}
+   label labelu T-LABEL p s" token" STRING$ tok toku T$=
+   label labelu T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
+   label labelu T-LABEL p s" column" NUMBER$ col colu T$=
+   label labelu T-LABEL p s" verdict" STRING$ s" deferred" T$= ;
+
+
+\ A `trust` row naming a word a statement before it renders: loaded, CVT-TL
+\ defines CVT-TDW in the wordlist current when it runs, from the text it
+\ evaluates or the file it includes, the row finds it there and each subject
+\ loads, exit 0, but CVT-TDWX names no word, E-TRUST-UNRESOLVED, exit 70. The
+\ scan never sees CVT-TDW, since it runs no word and so reads no file a body
+\ loads, and the statement marked the wordlist the row's record lands in - the
+\ open section, or PKG's public one for PKG:TAIL - where a product and a
+\ misspelt name look alike, so the row is the run's at its name. It records
+\ nothing: each use after it is the run's too.
+\ A row naming a word the scan has seen is checked as ever: the last subject is
+\ E-BAD-STORED-SIGNATURE loaded, exit 70.
+: TOP-TRUST ( -- )
+   s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TDW\" s\" -- n\" TRUST\n: CVT-TU ( -- n ) CVT-TDW ;\nCVT-TDW drop\n"
+   TOP-CHECK
+   5 s" top-trust: a product's row, deferred" EXPECT-KIND
+   s" top-trust: three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" top-trust: at the row's name" 0 s" CVT-TDW" s" 3" s" 4" DEFERRED-NTH
+   s" top-trust: a use in a body" 1 s" CVT-TDW" s" 4" s" 19" DEFERRED-NTH
+   s" top-trust: a use at top level" 2 s" CVT-TDW" s" 5" s" 1" DEFERRED-NTH
+   s\" package CVT-TP\n: CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TDW\" s\" -- n\" TRUST\n;package\npackage CVT-TP s\" CVT-TDW\" s\" -- n\" TRUST ;package\n"
+   TOP-CHECK
+   5 s" top-trust: private, deferred" EXPECT-KIND
+   s" top-trust: private, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-trust: in the private section" 0 s" CVT-TDW" s" 4" s" 4" DEFERRED-NTH
+   s" top-trust: in that section reopened" 1 s" CVT-TDW" s" 6" s" 19" DEFERRED-NTH
+   s\" package CVT-TP public\n: CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TDW\" s\" -- n\" TRUST\n;package\n"
+   TOP-CHECK s" top-trust: in the public section" s" CVT-TDW" s" 4" s" 4" DEFERRED-ONLY
+   s\" package CVT-TQ public : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ; CVT-TL ;package\ns\" CVT-TQ:CVT-TDW\" s\" -- n\" TRUST\n"
+   TOP-CHECK s" top-trust: qualified, in its public" s" CVT-TQ:CVT-TDW" s" 2" s" 4" DEFERRED-ONLY
+   s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TDWX\" s\" -- n\" TRUST\n"
+   TOP-CHECK s" top-trust: a misspelt name" s" CVT-TDWX" s" 3" s" 4" DEFERRED-ONLY
+   s" trust-dep.f" s\" : CVT-TDW ( -- n ) 1 ;\n" FIXTURE
+   s\" : CVT-TL ( -- ) s\" trust-dep.f\" included ;\nCVT-TL\ns\" CVT-TDW\" s\" -- n\" TRUST\n"
+   TOP-CHECK s" top-trust: a called body's loader" s" CVT-TDW" s" 3" s" 4" DEFERRED-ONLY
+   s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\n: CVT-TK ( -- n ) 1 ;\ns\" CVT-TK\" s\" -- n\" TRUST\n: CVT-TU ( -- n ) CVT-TK ;\n"
+   s" top-trust: a seen word's row" LOADS-CLEAN
+   s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\n: CVT-TK ( -- n ) 1 ;\ns\" CVT-TK\" s\" -- nosuchtype\" TRUST\n: CVT-TU ( -- n ) CVT-TK ;\n"
+   TOP-CHECK
+   1 s" top-trust: a seen word's bad row" EXPECT-KIND
+   s" top-trust: a seen word's bad row, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-trust: a seen word's bad row, its code" T-LABEL
+   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" code" STRING$ s" E-BAD-STORED-SIGNATURE" T$= ;
+
+
+\ The rows the scan still refuses where the load does, each E-TRUST-UNRESOLVED,
+\ exit 70: a row before the statement that renders its word, a row naming a
+\ word only an uncalled body's loader defines, whose file neither the load nor
+\ the scan reads and for which no statement marks a wordlist, a row whose record
+\ lands in a wordlist no statement marked - a package's section under a global
+\ mark, the public section under a private mark, the global wordlist under a
+\ package's mark or a used public's, PKG's public wordlist under a global mark -
+\ and a name no word can have: a malformed one, or one holding a blank or a tab,
+\ which no token holds, the mark's own spelling among them (checker.f
+\ UNSEEN-MARK$).
+: TOP-TRUST-REFUSED ( -- )
+   s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\ns\" CVT-TDW\" s\" -- n\" TRUST\nCVT-TL\n" TOP-CHECK
+   s" top-trust: before the statement" s" CVT-TDW" s" E-TRUST-UNRESOLVED" s" 2" s" 4" REFUSED-AT
+   s" trust-dep.f" s\" : CVT-TDW ( -- n ) 1 ;\n" FIXTURE
+   s\" : CVT-TL ( -- ) s\" trust-dep.f\" included ;\ns\" CVT-TDW\" s\" -- n\" TRUST\n" TOP-CHECK
+   s" top-trust: an uncalled body's loader" s" CVT-TDW" s" E-TRUST-UNRESOLVED" s" 2" s" 4" REFUSED-AT
+   s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\npackage CVT-TP s\" CVT-TDW\" s\" -- n\" TRUST ;package\n"
+   TOP-CHECK s" top-trust: a package's row" s" CVT-TDW" s" E-TRUST-UNRESOLVED" s" 3" s" 19" REFUSED-AT
+   s\" package CVT-TP : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ; CVT-TL\npublic s\" CVT-TDW\" s\" -- n\" TRUST ;package\n"
+   TOP-CHECK s" top-trust: a public row" s" CVT-TDW" s" E-TRUST-UNRESOLVED" s" 2" s" 11" REFUSED-AT
+   s\" package CVT-TP : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ; CVT-TL ;package\ns\" CVT-TDW\" s\" -- n\" TRUST\n"
+   TOP-CHECK s" top-trust: a global row" s" CVT-TDW" s" E-TRUST-UNRESOLVED" s" 2" s" 4" REFUSED-AT
+   s\" package CVT-TQ public : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ; CVT-TL ;package\nusing CVT-TQ s\" CVT-TDW\" s\" -- n\" TRUST ;using\n"
+   TOP-CHECK s" top-trust: a used public's mark" s" CVT-TDW" s" E-TRUST-UNRESOLVED" s" 2" s" 17" REFUSED-AT
+   s\" package CVT-TQ public : CVT-TK ( -- n ) 1 ; ;package\n: CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TQ:CVT-TDW\" s\" -- n\" TRUST\n"
+   TOP-CHECK s" top-trust: a qualified row" s" CVT-TQ:CVT-TDW" s" E-TRUST-UNRESOLVED" s" 4" s" 4" REFUSED-AT
+   s\" package CVT-TQ public : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ; CVT-TL ;package\ns\" CVT-TQ:CVT-TDW:X\" s\" -- n\" TRUST\n"
+   TOP-CHECK s" top-trust: a malformed qualified name" s" CVT-TQ:CVT-TDW:X" s" E-TRUST-UNRESOLVED" s" 2" s" 4" REFUSED-AT
+   s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-A:B:C\" s\" -- n\" TRUST\n"
+   TOP-CHECK s" top-trust: a malformed name" s" CVT-A:B:C" s" E-TRUST-UNRESOLVED" s" 3" s" 4" REFUSED-AT
+   s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TDW X\" s\" -- n\" TRUST\n"
+   TOP-CHECK s" top-trust: a name holding a blank" s" CVT-TDW X" s" E-TRUST-UNRESOLVED" s" 3" s" 4" REFUSED-AT
+   s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" unseen products\" s\" -- n\" TRUST\n"
+   TOP-CHECK s" top-trust: the mark's own spelling" s" unseen products" s" E-TRUST-UNRESOLVED" s" 3" s" 4" REFUSED-AT
+   s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TDW\tX\" s\" -- n\" TRUST\n"
+   TOP-CHECK s" top-trust: a name holding a tab" s\" CVT-TDW\tX" s" E-TRUST-UNRESOLVED" s" 3" s" 4" REFUSED-AT ;
+
+
 \ A word a top-level `create` makes pushes its address when it runs: it reads
 \ and defines nothing, though `create` does both, and neither does a word whose
 \ calls reach only such words (lib/test.f T= reaches lib/string.f's
@@ -3725,6 +3818,8 @@ public
    s" def-deferred" [: DEF-DEFERRED ;] RUN-CASE
    s" trusted-tick-order" [: TRUSTED-TICK-ORDER ;] RUN-CASE
    s" top-create" [: TOP-CREATE ;] RUN-CASE
+   s" top-trust" [: TOP-TRUST ;] RUN-CASE
+   s" top-trust-refused" [: TOP-TRUST-REFUSED ;] RUN-CASE
    s" top-data-word" [: TOP-DATA-WORD ;] RUN-CASE
    s" top-trusted" [: TOP-TRUSTED ;] RUN-CASE
    s" top-kernel" [: TOP-KERNEL ;] RUN-CASE

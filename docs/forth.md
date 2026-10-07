@@ -1829,7 +1829,18 @@ the rule.
   product from outside its package is still refused by the pre-pass. It also
   covers any other unresolved name there: in lib/aio-macos.f, private `AIO`
   after its `FUNCTION:` rows, the require-order miss of `REC-STATE@` (:64) is
-  now the run's to judge. A definer's created words keep its `does>` clause's
+  now the run's to judge. A `trust` row naming a word nothing defines where
+  its record lands is the run's only under a mark in that same wordlist: the
+  open section's, or the global one outside a package, for a bare name, PKG's
+  public one for PKG:TAIL. A mark only a use walks to, the global one from
+  inside a package or a used public's, leaves the row refused (`checker.f`
+  `CHECKER-VERIFY-TRUST`). `--verify-only` reports the row as
+  `W-CHECK-DEFERRED` at its name and records no effect, so each use stays the
+  run's, and a misspelt name there is the load's `E-TRUST-UNRESOLVED` (exit
+  70). Measured: `: L ( -- ) s" : DW ( -- n ) 1 ;" evaluate-closed ;  L  s" DW"
+  s" -- n" TRUST  : U ( -- n ) DW ;` loads 0 and checked 70
+  (`E-TRUST-UNRESOLVED` `DW`) before, 0 now; tools/image-bytes-test.f was
+  refused at each of its 22 rows. A definer's created words keep its `does>` clause's
   declared effect when the clause or the definer's own body is deferred; the
   run judges the deferred text (verify-source.f `VERIFY-DOES`). A `TRUSTED:`
   body is not checked, but the pre-pass binds its calls, so a trusted wrapper

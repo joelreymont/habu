@@ -2557,9 +2557,23 @@ variable STG-TYPE-U
    rc E-CHECKER-RECORD-UNRESOLVED <> IF rc throw THEN
    QUIET-TYPE-REPORT ;
 
+\ A row the checker leaves to the run (src/core/checker.f CHECKER-VERIFY-TRUST):
+\ it names no word where its record lands, and a rendering statement before it
+\ marked that wordlist, so the run may define the word or the name may be
+\ misspelt, and only the load can tell. The row is reported at its name, as a
+\ deferred stretch is at its token, and records nothing, so each use of the
+\ name stays the run's too.
+CAST: TRUST-ACTION ( n -- [ ptr u8 n -- bool ] )
+: TRUST-UNSEEN? ( ptr u8 n -- bool )
+   CHECKER-OWNER-ABI:VERIFY-TRUST-OFF OWNER-XT TRUST-ACTION execute ;
+
 : RECORD-TRUST ( -- )
    STR-LAST-U @ 0= IF E-VS-BARE-TRUST STATEMENT-STOP THEN
    STR-PREV-U @ 0= IF E-VS-BARE-TRUST STATEMENT-STOP THEN
+   STR-PREV-A @ STR-PREV-U @ TRUST-UNSEEN? IF
+      DEFER-REPORT @ IF STR-PREV-A @ STR-PREV-U @ REPORT-STRETCH  -1 DEFER-SEEN ! THEN
+      EXIT
+   THEN
    STR-PREV-A @ STR-PREV-U @
    STR-LAST-A @ STR-LAST-U @
    TRUST-SIGNATURE ;
