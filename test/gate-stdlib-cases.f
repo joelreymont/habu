@@ -1471,6 +1471,12 @@ SUITE ffi-callback
    lib/ffi-callback-test.f
 ;SUITE
 
+\ IMAGE-LIFECYCLE:PREPARE closes the library a FUNCTION: row opened, and the
+\ row's next call opens it again; RTLD_NOLOAD reads whether libzip is loaded.
+SUITE ffi-library-lifetime
+   test/ffi-library-lifetime.f
+;SUITE
+
 \ The five foreign libraries a server binds at once, in one image: the load is
 \ the case, because one short declaration table refuses it outright.
 SUITE five-bindings

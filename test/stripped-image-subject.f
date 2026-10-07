@@ -13,6 +13,7 @@ require test/compiler/aot-xt-cells-subject.f
 require test/stripped-lifecycle-prepare-subject.f
 require test/stripped-lifecycle-tasks-subject.f
 require test/stripped-lifecycle-semaphore-subject.f
+require test/ffi-library-lifetime-subject.f
 
 \ Baked defining words and a fresh does> clause. The definer is retained, so a
 \ word it creates ends in a branch to its ;does clause, whose record the link
@@ -74,7 +75,8 @@ public
    AOT-XT-CELL-SUBJECT:RUN
    STRIPPED-LIFECYCLE-PREPARE-SUBJECT:RUN
    STRIPPED-LIFECYCLE-TASKS-SUBJECT:RUN
-   STRIPPED-LIFECYCLE-SEMAPHORE-SUBJECT:RUN ;
+   STRIPPED-LIFECYCLE-SEMAPHORE-SUBJECT:RUN
+   FFI-LIBRARY-LIFETIME:RUN ;
 
 \ Exits 71 with `memory: unmap failed`, a literal the stripped link kept.
 : UNMAP ( -- )

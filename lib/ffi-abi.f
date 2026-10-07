@@ -298,25 +298,6 @@ variable FN-REGISTERED
 : FORGET-STAGED ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do 0 a i + c! loop ;
 
-\ Image capture is quiescent, and these are borrowed process addresses: clearing
-\ them needs no foreign call. The next call after a restore re-resolves against
-\ the new process.
-: FORGET-SYMBOLS ( -- )
-   FN-MAX 0 ?do 0 i FN-ADDR! loop
-   LIB-MAX 0 ?do 0 i LIB-HANDLE! loop
-   FFI-BUF BYTE-VIEW FFI-KPARAM-PBUF-OFF FFI-BUF-OFF - FORGET-STAGED
-   FFI-DLBUF BYTE-VIEW FFI-KPARAM#-OFF FFI-DLBUF-OFF - FORGET-STAGED
-   FFI-REG-LEN-BUF BYTE-VIEW FFI-SCRATCH-END FFI-REG-LEN-BUF-OFF - FORGET-STAGED ;
-
-\ The registered flag is set only after REGISTER completes, so a throwing
-\ registration leaves flag and registry consistent for a retry (forth.md's
-\ IMAGE-LIFECYCLE:PREPARE rule).
-: REGISTER-CLEANUP ( -- )
-   FN-REGISTERED @ 0= if
-      [: FORGET-SYMBOLS ;] IMAGE-LIFECYCLE:REGISTER-PERSISTENT
-      1 FN-REGISTERED !
-   then ;
-
 \ Library 0 is RTLD_DEFAULT and has no handle to acquire.
 : PROCESS-HANDLE ( -- n )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 0 exit then
@@ -333,6 +314,7 @@ variable FN-REGISTERED
    dup slot LIB-HANDLE! ;
 
 variable ERRNO-FN-CELL
+variable DLCLOSE-FN-CELL
 
 : ERRNO-FN ( -- n ) ERRNO-FN-CELL @ ;
 
@@ -341,8 +323,9 @@ variable ERRNO-FN-CELL
 \ Every first resolution resolves the errno accessor first, so once a row's call
 \ returns, ERRNO's own lookup is the cached path and nothing runs the loader
 \ between the call and its errno read: the loader may change errno even when it
-\ succeeds.
-: FN-RESOLVE ( n -- n ) {: idx:n :}
+\ succeeds. This lookup registers nothing; FN-RESOLVE below arms FFI's cleanup
+\ before it lets the loader acquire anything.
+: FN-LOOKUP ( n -- n ) {: idx:n :}
    idx FN-ADDR@ dup 0 <> if exit then
    drop
    idx ERRNO-FN <> if ERRNO-FN RECURSE drop then
@@ -446,8 +429,6 @@ private
    HB-TARGET-MACOS? if s" __error" exit then
    E-FFI-LIBRARY throw ;
 
-get-current prot-wid-add
-
 public
 
 : DLOPEN ( ptr u8 n -- n ) DLOPEN-RAW ;
@@ -507,23 +488,63 @@ public
    0 LIB-N @ LIB-HANDLE!
    LIB-N @ 1 + dup LIB-N ! ;
 
-\ The table's own fail-closed guard. The declarer refuses first, with the word
-\ and symbol in its diagnostic; this stands for every other caller and for the
-\ errno row below, and it is what keeps a full table from being overrun.
-: DECLARE-SPILLED ( ptr u8 n n n n -- n ) {: name:ptr u:n lib:n argc:n spills:n :}
-   ROOM? 0= if E-FFI-TABLE-FULL throw then
-   lib LIB-N @ 1 + FFI-CHECK-INDEX
-   argc FFI-MAX-ARGS FFI-CHECK-COUNT
-   spills FFI-MAX-ARGS FFI-CHECK-COUNT
-   spills FN-SPILLS FN-N @ cells + !
-   name u NAME-ROOM FN-N @ FN-NAME CSTR
-   lib FN-LIBS FN-N @ cells + !
-   argc FN-ARGCS FN-N @ cells + !
-   0 FN-N @ FN-ADDR!
-   REGISTER-CLEANUP
-   FN-N @ dup 1 + FN-N ! ;
+private
 
-: DECLARE ( ptr u8 n n n -- n ) 0 DECLARE-SPILLED ;
+\ Close the handle in library slot `slot`, answering whether it closed. dlclose
+\ answers a C int, which fills only the low half of the return register, and
+\ zero is success, so the low half alone decides. A refused close keeps the
+\ handle for the next PREPARE to retry. This runs only inside the hook FFI has
+\ registered, so the dlclose row is looked up without registering.
+: CLOSE-SLOT ( n -- bool ) {: slot:n :}
+   RESET slot LIB-HANDLE@ 0 VALUE!
+   DLCLOSE-FN-CELL @ {: row:n :}
+   row FN-LOOKUP {: fn:n :}
+   FFI-BUF FFI-REG-LEN-BUF row FN-ARGC@ fn ffi-call-bounded
+   $FFFFFFFF and 0 <> if false exit then
+   0 slot LIB-HANDLE!
+   true ;
+
+\ Image capture is quiescent. Library handles are owned references and are
+\ released here; function addresses are borrowed and only cleared, and the next
+\ call after a restore re-resolves against the new process. This runs after
+\ every one-shot cleanup (IMAGE-LIFECYCLE:PREPARE runs persistent hooks last, in
+\ reverse order, and FFI registers first), so module cleanup that calls into a
+\ library has finished before the library closes.
+: FORGET-SYMBOLS ( -- )
+   true
+   LIB-N @ 0 ?do
+      i LIB-HANDLE@ 0 <> if i CLOSE-SLOT and then
+   loop {: closed:bool :}
+   FN-MAX 0 ?do 0 i FN-ADDR! loop
+   FFI-BUF BYTE-VIEW FFI-KPARAM-PBUF-OFF FFI-BUF-OFF - FORGET-STAGED
+   FFI-DLBUF BYTE-VIEW FFI-KPARAM#-OFF FFI-DLBUF-OFF - FORGET-STAGED
+   FFI-REG-LEN-BUF BYTE-VIEW FFI-SCRATCH-END FFI-REG-LEN-BUF-OFF - FORGET-STAGED
+   closed 0= if E-FFI-DLCLOSE throw then ;
+
+\ The registered flag is set only after REGISTER completes, so a throwing
+\ registration leaves flag and registry consistent for a retry (forth.md's
+\ IMAGE-LIFECYCLE:PREPARE rule).
+: REGISTER-CLEANUP ( -- )
+   FN-REGISTERED @ 0= if
+      [: FORGET-SYMBOLS ;] IMAGE-LIFECYCLE:REGISTER-PERSISTENT
+      1 FN-REGISTERED !
+   then ;
+
+\ The resolution every call makes. Its unresolved path arms FFI's cleanup before
+\ the lookup acquires an address or a library handle, and the cached path pays
+\ nothing. A stripped image needs this: it starts with an empty registry and the
+\ flag clear (OWNED-CELLS) and replays no declaration, so its first resolution
+\ registers, and FFI's hook is its first persistent one unless the program
+\ registered one at run time before its first foreign call. Registering here
+\ rather than in the CALL words puts this word after REGISTER-CLEANUP, and so
+\ after the hook's own dlclose call, which looks its row up with FN-LOOKUP.
+: FN-RESOLVE ( n -- n ) {: idx:n :}
+   idx FN-ADDR@ dup 0 <> if exit then
+   drop
+   REGISTER-CLEANUP
+   idx FN-LOOKUP ;
+
+public
 
 \ The staged call. The row's index is the only thing a caller names, so a
 \ checked body cannot reach an address the declarations did not publish.
@@ -545,6 +566,29 @@ public
    FFI-BUF FFI-FBUF FFI-STACK-BUF FFI-REG-LEN-BUF FFI-STACK-LEN-BUF
    idx FN-SPILL@ fn ffi-call-abi-r-bounded ;
 
+\ The table's own fail-closed guard. The declarer refuses first, with the word
+\ and symbol in its diagnostic; this stands for every other caller and for the
+\ errno row below, and it is what keeps a full table from being overrun.
+\ Declaring registers too. A process that loads this file declares the errno row
+\ at its load, before any module that calls a library can register a persistent
+\ hook, so FFI's hook is the first and runs last whenever the first foreign call
+\ comes, and a full image keeps the entry and the flag (tools/aot-build-core.f
+\ registers PROC-MAPS:RELOAD, which calls Mach through this table, after it).
+: DECLARE-SPILLED ( ptr u8 n n n n -- n ) {: name:ptr u:n lib:n argc:n spills:n :}
+   ROOM? 0= if E-FFI-TABLE-FULL throw then
+   lib LIB-N @ 1 + FFI-CHECK-INDEX
+   argc FFI-MAX-ARGS FFI-CHECK-COUNT
+   spills FFI-MAX-ARGS FFI-CHECK-COUNT
+   spills FN-SPILLS FN-N @ cells + !
+   name u NAME-ROOM FN-N @ FN-NAME CSTR
+   lib FN-LIBS FN-N @ cells + !
+   argc FN-ARGCS FN-N @ cells + !
+   0 FN-N @ FN-ADDR!
+   REGISTER-CLEANUP
+   FN-N @ dup 1 + FN-N ! ;
+
+: DECLARE ( ptr u8 n n n -- n ) 0 DECLARE-SPILLED ;
+
 \ errno is this package's own binding, written by hand because the declarer is
 \ defined after this package closes. libc's location is thread-local and the
 \ value is a four-byte C int.
@@ -552,6 +596,9 @@ public
    RESET ERRNO-FN CALL-PTR LE:U32@ ;
 
 ERRNO-SYMBOL$ PROCESS 0 DECLARE ERRNO-FN-CELL !
+
+\ FORGET-SYMBOLS closes the library handles through this row.
+s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
 
 \ A stripped image whose host already includes FFI needs its declarations in
 \ the image's DATA window. The names, paths and row metadata are the declarations
@@ -569,9 +616,19 @@ ERRNO-SYMBOL$ PROCESS 0 DECLARE ERRNO-FN-CELL !
    FN-N BYTE-VIEW CELL carry execute
    LIB-N BYTE-VIEW CELL carry execute
    ERRNO-FN-CELL BYTE-VIEW CELL carry execute
+   DLCLOSE-FN-CELL BYTE-VIEW CELL carry execute
    FN-ADDRS FN-MAX cells fresh execute
    LIB-HANDLES LIB-MAX cells fresh execute
    FN-REGISTERED BYTE-VIEW CELL fresh execute ;
+
+\ Both wordlists are protected here, after FFI's last definition: an engine
+\ that loads this file after its seal (tools/build-fixpoint.f's capture host)
+\ refuses any definition into a protected wordlist and exits 84.
+private
+
+get-current prot-wid-add
+
+public
 
 get-current prot-wid-add
 
