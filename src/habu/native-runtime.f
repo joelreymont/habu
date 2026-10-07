@@ -135,6 +135,7 @@ execute
 s" src/habu/repl.f" required
 s" src/core/top-row.f" required
 s" lib/c2-owner.f" required
+s" lib/executable-build.f" required
 
 package NATIVE-RUNTIME
 

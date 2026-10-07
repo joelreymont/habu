@@ -237,24 +237,24 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
    S\" : MAIN ( -- ) 42 FMT:.INT cr ;\n" ;
 
 \ A build driver's shape: tools/app-build.f and tools/build-profile.f run their
-\ work through lib/executable-build.f's WITH. The production maker requires that
-\ module before it opens the capture window (tools/aot-build-open.f), so this
-\ program's require is a no-op there and its closure reaches the maker's WITH.
+\ work through lib/executable-build.f's WITH. The engine bakes that module, so
+\ this program's require is a no-op on every engine and WITH lies below the
+\ seal watermark.
 : HBT-EXBUILD-SRC$ ( -- ptr u8 n )
    S\" require lib/executable-build.f\n: MAIN ( -- ) 1 [: 1+ . cr ;] EXECUTABLE-BUILD:WITH ;\n" ;
 
-\ THE KEYED LINKER IMAGE REFUSES ALL THREE PROGRAMS BY NAME
-\ (test/preloaded-engine.f rule 3). The image loaded lib/fmt.f and
-\ lib/executable-build.f with the linker, before its maker latched the band, so
-\ the first and third programs' requires resolve to those copies and the second
-\ program's FMT:.INT names one without a require. Each closure reaches a word
-\ compiled outside the window, and the maker refuses the first such word rather
-\ than carry the image's copy. The engine compiles the first program's module
-\ inside the window, refuses the second program's name and links the third
-\ (BUILD-AOT-EXBUILD). The first program's module is one the engine does not
-\ bake: a baked module's words lie below the engine's seal watermark, where the
-\ band starts (src/habu/aot-closure.f PRE-WINDOW?), so every maker carries them
-\ and the image links a program that requires one.
+\ THE KEYED LINKER IMAGE REFUSES BOTH PROGRAMS BY NAME
+\ (test/preloaded-engine.f rule 3). The image loaded lib/fmt.f with the linker,
+\ before its maker latched the band, so the first program's require resolves to
+\ that copy and the second program's FMT:.INT names one without a require. Each
+\ closure reaches a word compiled outside the window, and the maker refuses the
+\ first such word rather than carry the image's copy. The engine compiles the
+\ first program's module inside the window and refuses the second program's
+\ name. The first program's module is one the engine does not bake: a baked
+\ module's words lie below the engine's seal watermark, where the band starts
+\ (src/habu/aot-closure.f PRE-WINDOW?), so every maker carries them and the
+\ image links a program that requires one. lib/executable-build.f is such a
+\ module (BUILD-AOT-EXBUILD).
 : KEYED-PRE-WINDOW-REFUSED ( ptr u8 n -- ) {: src:ptr srcu:n :}
    HBT-SPAN-SRC src srcu WRITE-ALL
    HBT-SPAN-SRC HBT-RUN-MAKER {: out:n err:n rc:n :}
@@ -267,7 +267,7 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
 \ (HBB-WERR-JSON-ONLY), so a refusal with no JSON arm reaches the caller as
 \ text.
 : KEYED-PRE-WINDOW-JSON ( -- )
-   HBT-SPAN-SRC HBT-EXBUILD-SRC$ WRITE-ALL
+   HBT-SPAN-SRC HBT-REQUIRED-SRC$ WRITE-ALL
    HBT-SPAN-OUT HBT-REMOVE-FILE?
    HBT-ARGV-BASE
    s" --json-errors" >LEN PROC-ARGV+
@@ -279,27 +279,32 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
    outu 0 T=
    HBT-ERR erru S\" \qschema_version\q:1," CONTAINS? TTRUE
    HBT-ERR erru S\" \qcode\q:\qE-AOT-PRE-WINDOW\q" CONTAINS? TTRUE
-   HBT-ERR erru S\" \qword\q:\qWITH\q" CONTAINS? TTRUE
+   HBT-ERR erru S\" \qword\q:\q.INT\q" CONTAINS? TTRUE
    HBT-SPAN-OUT EXISTS? TFALSE ;
 
 : BUILD-AOT-PRE-WINDOW ( -- )
    HBT-REQUIRED-SRC$ KEYED-PRE-WINDOW-REFUSED
    HBT-UNREQUIRED-SRC$ KEYED-PRE-WINDOW-REFUSED
-   HBT-EXBUILD-SRC$ KEYED-PRE-WINDOW-REFUSED
    KEYED-PRE-WINDOW-JSON ;
 
-\ THE ENGINE LINKS THE BUILD DRIVER, and runs it. Its maker latches the band
-\ before it requires lib/executable-build.f (tools/aot-build-open.f), so the
-\ band holds only the latch file's own private records and WITH is carried
-\ like any word above it. A band latched when the window opens holds WITH and
-\ refuses this program, as the linker image, which loaded that unbaked module
-\ below the window, does (KEYED-PRE-WINDOW-JSON).
+\ THE ENGINE LINKS THE BUILD DRIVER, and runs it, because it bakes
+\ lib/executable-build.f: WITH lies below the seal watermark and every maker
+\ carries it. Both makers link it: the keyed linker image, then the
+\ source-loaded maker, each running its own maker rather than taking the
+\ other's object from the store.
 : BUILD-AOT-EXBUILD ( -- )
    HBT-TMP BUILD-CACHE:ROOT!
    HBT-AOT-SRC HBT-EXBUILD-SRC$ WRITE-ALL
    HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   HBT-HBB-BUILD-OUT
+   HBB-MAKER-RUN @ 0 <> TTRUE
+   HBT-AOT-OUT S\" 2\n\n" HBT-RUN-IMAGE-OUT
+   HBT-REMOVE-ARTIFACT
+   HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE
    HBT-HBB-BUILD-OUT
+   HBB-MAKER-RUN @ 0 <> TTRUE
    HBT-AOT-OUT S\" 2\n\n" HBT-RUN-IMAGE-OUT
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT

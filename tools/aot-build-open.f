@@ -13,9 +13,7 @@
 \ Only lib-free files may be required here: each is baked into the engine or
 \ free of lib by construction, so none can pull a lib module in. The latch file
 \ comes first because the band aot-closure.f refuses to carry ends before
-\ anything an application can name loads (aot-window-latch.f OPENER-NDICT):
-\ a build driver requires lib/executable-build.f too, and the copy loaded here
-\ is the one its stripped image carries.
+\ anything an application can name loads (aot-window-latch.f OPENER-NDICT).
 1 set-tier
 require src/habu/aot-window-latch.f
 package AOT-LINK

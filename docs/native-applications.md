@@ -148,9 +148,10 @@ emitter may only `ADR,` a label its own definition binds.
 The maker child opens the capture window **before anything the application can
 `require` is loaded**, so the application's own require closure is the only
 library content inside the restored span. The maker's two halves enforce that:
-`tools/aot-build-open.f` loads a lib-free prefix (`lib/executable-build.f`,
-`src/os/script-argv.f`, `src/habu/aot-window-latch.f`), opens the window, loads
-the application and latches the span; `tools/aot-build-core.f` then brings in the
+`tools/aot-build-open.f` loads a lib-free prefix (`src/habu/aot-window-latch.f`,
+`src/os/script-argv.f`; `lib/executable-build.f`, which it also requires, is
+baked into the engine), opens the window, loads the application and latches the
+span; `tools/aot-build-core.f` then brings in the
 linker, `src/habu/app-image.f` and the eight `lib` modules it pulls in, which all
 land above the span. A module the application has already loaded is shared in the
 harmless direction: the linker uses the application's copy, at build time only.

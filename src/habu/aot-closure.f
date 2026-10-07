@@ -421,9 +421,7 @@ variable CLO-PROBE  variable CLO-RI
 \ engine only the latch file's private records, on the keyed linker image
 \ (test/preloaded-engine.f rule 3) the image's whole load. No production build
 \ carries such a record: the engine's maker compiles a module the application
-\ requires inside the window, carries the opener's own copy of
-\ lib/executable-build.f above the band (its names too when the application
-\ never required that file), and refuses any other name the application never
+\ requires inside the window, and refuses any other name the application never
 \ required.
 \ Without this the keyed image linked some of those programs and refused others
 \ only where a cell below the window was reached (`address refers to data

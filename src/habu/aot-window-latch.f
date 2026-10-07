@@ -56,10 +56,9 @@ variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN
 \ record above the engine's own seal watermark and below it was loaded by this
 \ process ahead of the maker - on the engine this file's own private records,
 \ on the keyed linker image the image's whole load (test/preloaded-engine.f
-\ rule 3) - and aot-closure.f ADD-CLO refuses to carry one. The window opens
-\ later, at AOT-DATA-START: the opener's own requires land between the two, so
-\ the module they load (lib/executable-build.f) is the copy a production build
-\ carries.
+\ rule 3) - and aot-closure.f ADD-CLO refuses to carry one. Between this latch
+\ and AOT-DATA-START the opener's baked requires add no record; the AOT-LINK
+\ definitions it makes do, above the latch.
 variable OPENER-NDICT
 
 \ The window owns a literal pool, and the application owns it only while it

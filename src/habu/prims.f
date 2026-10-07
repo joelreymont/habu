@@ -652,10 +652,13 @@ EPRIM: tier@          PE-N PE-OUT EPRIM;
 \ query established it. Order 0 is checking first; 1 is trusted gate first.
 EPRIM: tick-order@    PE-N PE-OUT PE-PTR-U8 PE-OUT EPRIM;
 EPRIM: code-origin    PE-N PE-IN PE-N PE-IN PE-N PE-OUT EPRIM;
-EPRIM: executable-build-enter EPRIM;
-ETRUSTED-ONLY!
-EPRIM: executable-build-leave EPRIM;
-ETRUSTED-ONLY!
+\ Choosing the build scope belongs to package EXECUTABLE-BUILD
+\ (lib/executable-build.f), and these rows are that owner's alone: its WITH is
+\ the checked caller every other scope calls, and a checked body outside
+\ EXECUTABLE-BUILD does not find the names. No TRUSTED: body outside it calls
+\ either, so no global row is kept for one.
+EPPRIM: EXECUTABLE-BUILD executable-build-enter ECLOSE-PRIVATE
+EPPRIM: EXECUTABLE-BUILD executable-build-leave ECLOSE-PRIVATE
 \ Compiler hook installation is an explicit engine boundary.
 EPRIM: set-check     PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!

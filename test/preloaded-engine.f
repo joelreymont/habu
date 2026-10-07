@@ -29,11 +29,9 @@
 \    require of one of those modules resolves to that copy, a name of one it
 \    never required resolves too, and a `package` line naming one of its
 \    packages reopens it; the engine's maker compiles the module inside the
-\    window (lib/executable-build.f excepted: it carries the copy its opener
-\    loaded, and that file's names even when the subject never required it),
-\    refuses the name and creates the package. So the maker refuses a closure
-\    that reaches such a word (`aot: closure reaches a word defined before the
-\    capture window opened word=NAME`, `E-AOT-PRE-WINDOW` under
+\    window, refuses the name and creates the package. So the maker refuses a
+\    closure that reaches such a word (`aot: closure reaches a word defined
+\    before the capture window opened word=NAME`, `E-AOT-PRE-WINDOW` under
 \    `--json-errors`, src/habu/aot-closure.f ADD-CLO) or such a cell (`aot:
 \    address refers to data outside the restored span`). A cell a named claim
 \    carries or refreshes is not such a cell: src/habu/aot-owned-cells.f
