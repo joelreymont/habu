@@ -29,6 +29,7 @@ Planned module files:
 - `lib/net/ws.f`
 - `lib/pg.f`
 - `lib/net/curl.f`
+- `lib/browser/host.f` ([browser-host.md](browser-host.md))
 - `lib/crypto/evp.f`
 - `lib/crypto/sha1.f`
 - `lib/serial.f`
@@ -109,6 +110,7 @@ theirs.
 | `lib/net/curl.f` | task-local |
 | `lib/net/http.f` | process-wide (one server per image; each worker's request state is a row of its own slot, found through a `TASK:+USER` row; see [http.md](http.md)) |
 | `lib/net/ws.f` | process-wide (one socket to an HTTP worker's slot, its buffers a mapping of its own; sends from any task are serialised by the slot's `TASK:FACILITY`, made ready at load; see [websocket.md](websocket.md)) |
+| `lib/browser/host.f` | process-wide (the page's buffers, filled as the file loads and only read after it; see [browser-host.md](browser-host.md)) |
 | `lib/serial.f` | task-local |
 | `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) |
 

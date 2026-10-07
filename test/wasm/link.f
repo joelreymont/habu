@@ -9,11 +9,12 @@
 \ holds its callee's index. An address field and a data cell hold WPROF's data
 \ base plus a target in the image, its length included, or a table slot; the
 \ table and its element segment list the slots' functions from slot 1, and
-\ slot 0 holds none. Memory's minimum and maximum are the pages the image ends
-\ in. W03: 140 functions and 137 types, chained by calls, have sections and
-\ bodies that walk out exactly. Refused, each by its code: an entry, call,
-\ address site, table slot or cell naming nothing the link holds, an address
-\ of kind NONE or of slot 0 among them; an address kind
+\ slot 0 holds none. Memory's minimum is the pages the image ends in and its
+\ maximum memory32's 65536, so a host may grow it. W03: 140 functions and 137
+\ types, chained by calls, have sections and bodies that walk out exactly.
+\ Refused, each by its code: an entry, call, address site, table slot or cell
+\ naming nothing the link holds, an address of kind NONE or of slot 0 among
+\ them; an address kind
 \ outside NONE, DATA and CODE; a site whose field is not padded or lies past its
 \ body; a cell past the image, one whose end would wrap past MAX-N included; an
 \ entry that takes or answers a lane; and an image of a negative length or one
@@ -166,7 +167,7 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    0 LINKED
    s" one function, no image: memory and four wrappers exported, as wasm-tools writes it" T-LABEL
    WANT-RESET
-   s" 0061736d01000000010e0360017f017f6000017f6000017e0306050001020101050401010404073205066d656d6f72790200" W+
+   s" 0061736d01000000010e0360017f017f6000017f6000017e03060500010201010506010104808004073205066d656d6f72790200" W+
    s" 0372756e00010a7468726f772d636f64650002086f75742d626173650003076f75742d6c656e00040a4905040041000b2700" W+
    s" 418080044180a008360200418080044180a0083602084180800441003602104180800410000b0900418080042903180b0600" W+
    s" 4180a0040b0900418080042802100b0b0801004180a00c0b00" W+
@@ -185,7 +186,7 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    s" kernel, captured, adapter, each as added, then the wrappers; types as first used" T-LABEL
    WANT-RESET
    s" 0061736d01000000012c0760027f7e017f60037f7e7e017f60047f7e7e7e017f60057f7e7e7e7e017f60017f017f6000017f" W+
-   s" 6000017e030a09000102030405060505050401010404073205066d656d6f727902000372756e00050a7468726f772d636f64" W+
+   s" 6000017e030a090001020304050605050506010104808004073205066d656d6f727902000372756e00050a7468726f772d636f64" W+
    s" 650006086f75742d626173650007076f75742d6c656e00080a5d090400410b0b0400410d0b0400410c0b0400410e0b040041" W+
    s" 0a0b2700418080044180a008360200418080044180a0083602084180800441003602104180800410040b0900418080042903" W+
    s" 180b06004180a0040b0900418080042802100b0b0801004180a00c0b00" W+
@@ -202,8 +203,8 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    0 LINKED
    s" types deduplicated by structure: the aligned frame shares the type of no lanes" T-LABEL
    WANT-RESET
-   s" 0061736d01000000011a0560017f017f60027f7e017f60017f027f7e6000017f6000017e030a090000010102030403030504" W+
-   s" 01010404073205066d656d6f727902000372756e00050a7468726f772d636f64650006086f75742d626173650007076f7574" W+
+   s" 0061736d01000000011a0560017f017f60027f7e017f60017f027f7e6000017f6000017e030a090000010102030403030506" W+
+   s" 010104808004073205066d656d6f727902000372756e00050a7468726f772d636f64650006086f75742d626173650007076f7574" W+
    s" 2d6c656e00080a5f09040041010b040041020b040041030b040041040b0600410542000b2700418080044180a00836020041" W+
    s" 8080044180a0083602084180800441003602104180800410000b0900418080042903180b06004180a0040b09004180800428" W+
    s" 02100b0b0801004180a00c0b00" W+
@@ -281,12 +282,12 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
    0 KERNEL drop
    BIG 61440 WLINK:DATA!
    0 LINKED
-   s" an image ending at a page's end: memory's minimum and maximum 4 pages" T-LABEL
-   S-MEMORY SECTION$ s" 01010404" T$=
+   s" an image ending at a page's end: memory's minimum 4 pages, its maximum 65536" T-LABEL
+   S-MEMORY SECTION$ s" 010104808004" T$=
    BIG 61441 WLINK:DATA!
    0 LINKED
-   s" one byte more: 5 pages" T-LABEL
-   S-MEMORY SECTION$ s" 01010505" T$= ;
+   s" one byte more: a minimum of 5 pages" T-LABEL
+   S-MEMORY SECTION$ s" 010105808004" T$= ;
 
 \ ---- W03 --------------------------------------------------------------------------
 \ WASM-W03:BUILD's module, test/wasm/w03.f.
