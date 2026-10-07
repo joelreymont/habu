@@ -697,7 +697,6 @@ variable HOLD-FD
       a u EXISTS? if E-FS-OPEN throw then
       FALSE exit
    then
-   FFI:ERRNO drop                     \ bound now, not after flock sets errno
    HOLD-FD @ LOCK-EX LOCK-NB or FLOCK-CALL 0<> if
       FFI:ERRNO WOULD-BLOCK = if FALSE exit then
       E-FS-IO throw

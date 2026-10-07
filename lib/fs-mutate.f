@@ -131,7 +131,6 @@ PROCESS-SYMBOLS
 FUNCTION: LINK-CALL link ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
 public
 : LINK-NEW? ( ptr u8 ptr u8 -- bool )
-   FFI:ERRNO drop
    LINK-CALL 0<> if
       FFI:ERRNO DEST-EXISTS = if false exit then
       E-FS-IO throw

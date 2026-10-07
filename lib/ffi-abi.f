@@ -332,18 +332,23 @@ variable FN-REGISTERED
    dup 0= if E-FFI-DLSYM throw then
    dup slot LIB-HANDLE! ;
 
-\ Resolution is lazy so a declaration never calls the loader, and a missing
-\ symbol is a named failure at the first call rather than at load time.
-: FN-RESOLVE ( n -- n ) {: idx:n :}
-   idx FN-ADDR@ dup 0 <> if exit then
-   drop
-   idx FN-LIB@ LIB-RESOLVE idx FN-NAME DLSYM-RAW
-   dup 0= if E-FFI-DLSYM throw then
-   dup idx FN-ADDR! ;
-
 variable ERRNO-FN-CELL
 
 : ERRNO-FN ( -- n ) ERRNO-FN-CELL @ ;
+
+\ Resolution is lazy so a declaration never calls the loader, and a missing
+\ symbol is a named failure at the first call rather than at load time.
+\ Every first resolution resolves the errno accessor first, so once a row's call
+\ returns, ERRNO's own lookup is the cached path and nothing runs the loader
+\ between the call and its errno read: the loader may change errno even when it
+\ succeeds.
+: FN-RESOLVE ( n -- n ) {: idx:n :}
+   idx FN-ADDR@ dup 0 <> if exit then
+   drop
+   idx ERRNO-FN <> if ERRNO-FN RECURSE drop then
+   idx FN-LIB@ LIB-RESOLVE idx FN-NAME DLSYM-RAW
+   dup 0= if E-FFI-DLSYM throw then
+   dup idx FN-ADDR! ;
 
 : NAME-ROOM ( n -- n ) {: u:n :}
    u 0 <= if E-FFI-SYNTAX throw then
