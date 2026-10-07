@@ -354,10 +354,6 @@ variable TDECL-FAM-ARITY
    id TFAM-CONCRETE-LINEAR? IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
-: TDECL-SCH-WIDTH ( n -- n ) {: node:n :}
-   node SCHEMA-APP? IF node SCHEMA-A@ TFAM-WIDTH@ EXIT THEN
-   1 ;
-
 : TDECL-PAY-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0= IF a u s" missing ;VARIANT" E-TDECL-SYNTAX TDECL-THROW THEN
    a u DELIM? IF a u s" bad payload token" E-TDECL-SYNTAX TDECL-THROW THEN
@@ -613,7 +609,7 @@ create TDV-BADLETTER 1 allot
    BEGIN
       TDECL-NEXT
       2dup s" ;variant" CORE-STR=CI IF 2drop fam TDECL-VARIANT-FINISH EXIT THEN
-      TDECL-VPAY-ELEM dup TDECL-SCH-WIDTH TDV-PW @ + TDV-PW !
+      TDECL-VPAY-ELEM dup fam swap TFAM-SCH-WIDTH TDV-PW @ + TDV-PW !
       TDV-PAY+
    AGAIN ;
 
@@ -934,7 +930,7 @@ private
    fna fnu TDECL-REQUIRE-FIELD-NAME
    SCHEMA-ROOT-N@ {: ss:n :}
    TDECL-NEXT TDECL-FIELD-ELEM SCHEMA-ROOT+ drop    \ one field type (family/letter/con/ptr T)
-   ss SCHEMA-ROOT@ TDECL-SCH-WIDTH {: fw:n :}
+   fam ss SCHEMA-ROOT@ TFAM-SCH-WIDTH {: fw:n :}
    fna fnu TDECL-TOK!
    s" duplicate field" TDECL-WHY!
    TDP-EVT @ fam fna fnu ss
@@ -1608,7 +1604,7 @@ TDECL-SCRATCH-SNAPSHOT-INSTALL
    root 0 < root SCHEMA-ROOT-N@ >= or IF
       fam s" payload provider returned an unknown schema root" TDPV-THROW THEN
    root SCHEMA-ROOT@ {: node:n :}
-   TDPV-W @ node TDECL-SCH-WIDTH + TDPV-W !
+   TDPV-W @ fam node TFAM-SCH-WIDTH + TDPV-W !
    TDPV-NODES @ 1 + TDPV-NODE-ENSURE
    node TDPV-NODE-P @ TDPV-NODES @ cells + !
    TDPV-NODES @ 1 + TDPV-NODES ! ;

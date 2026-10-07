@@ -327,9 +327,6 @@ defer SD-QUOT-ELEM ( ptr u8 n -- n )
 : SD-QUOT-INSTALL ( -- ) [: RESOLVE-TYPE ;] is SD-QUOT-ELEM ;
 SD-QUOT-INSTALL
 
-: SCH-WIDTH ( n -- n )                  \ physical cell width of a field schema node
-   dup SCHEMA-APP? IF SCHEMA-A@ TFAM-WIDTH@ EXIT THEN drop 1 ;
-
 \ ---------------------------------------------------------------------------
 \ clause drivers. Each emits its event through DECL-EVENT (which owns duplicate /
 \ ordinal / selector state) and mutates only the fresh family record.
@@ -391,7 +388,7 @@ SD-QUOT-INSTALL
 
 : EMIT-FIELD ( ptr u8 n n -- )          \ ( na nu node -- ) layout + drive the field event
    SCHEMA-ROOT+ {: sch:n :}                \ ( na nu )
-   sch SCHEMA-ROOT@ SCH-WIDTH {: fw:n :}
+   FAM @ sch SCHEMA-ROOT@ TFAM-SCH-WIDTH {: fw:n :}
    2dup DECL-REJECT:TOKEN!              \ the field name owns the field record's rejects
    s" duplicate field name" E-DUP DECL-REJECT:EXPECT
    TOK @ FAM @ 2swap sch                \ ( tok fam na nu sch )

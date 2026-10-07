@@ -734,6 +734,67 @@ s" : TB2M ( tbig2<xw2> -- n ) MATCH tbig2 wsm2 OF 2drop 2drop 0 ENDOF wbig2 OF +
 s" TAGLESS-ARITH-KEEPS-FAILCLOSED" type cr
 
 \ ---------------------------------------------------------------------------
+\ A nested parametric application is as wide as its arguments make it: a schema
+\ application's width is its family's width at its arguments' widths, with each
+\ parameter one cell at declaration and the term's argument width under a term.
+\ wnst's payload wopt<wres<n,n>> is 3 cells, so wnst is 4 wide and its store
+\ takes all 4 cells NESTED pushes; wapplied<wleaf> carries wholder<wleaf>'s 3.
+s" STRUCTURE wleaf 0 FIELD left n FIELD right n ;STRUCTURE" TCE-CATCH 0 T=
+s" STRUCTURE wholder 1 FIELD item a FIELD stamp n ;STRUCTURE" TCE-CATCH 0 T=
+s" STRUCTURE wapplied 1 FIELD nest wholder<a> FIELD stamp n ;STRUCTURE" TCE-CATCH 0 T=
+s" SUMTYPE wopt 1 VARIANT some a ;VARIANT VARIANT none ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
+s" SUMTYPE wres 2 VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
+s" SUMTYPE wnst 0 VARIANT nested wopt<wres<n,n>> ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
+s" STRUCTURE wsx 1 FIELD f init<a,wleaf> ;STRUCTURE" TCE-CATCH 0 T=
+
+s" WAPMK ( wholder<wleaf> n -- wapplied<wleaf> ) WAPPLIED:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" WAPFLAT ( wleaf n n -- wapplied<wleaf> ) WAPPLIED:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" WAPMIS ( wholder<n> n -- wapplied<wleaf> ) WAPPLIED:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" WNSTMK ( wopt<wres<n,n>> -- wnst ) WNST:NESTED" CHECK-QUIET-CANDIDATE! -1 T=
+s" WNSTBAD ( wopt<n> -- wnst ) WNST:NESTED" CHECK-QUIET-CANDIDATE! 0 T=
+\ An open argument hides the width only where the width reads it. init's first
+\ argument is a scope (init<n,wleaf> is E-BAD-SIGNATURE), so a signature names
+\ wsx only with its argument open. init reads just its element slot, so
+\ wsx<a>'s width is closed: the row expands it and drop takes the whole bundle.
+\ wapplied<a>'s width reads a through wholder<a>, so it stays one logical cell
+\ that drop's variable cannot bind.
+s" WSXDROP ( wsx<a> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+s" WAPDROP ( wapplied<a> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+\ record-at refuses a widened application: wapplied<wleaf> is 4 cells over 3
+\ committed slots. An accessor refuses a family argument at any width
+\ (structure-decl-suite SDAW1/SDAW2), so record-at is the reachable twin of the
+\ field projection's width condition.
+s" WAPAT ( ptr wapplied<wleaf> n -- ptr wapplied<wleaf> ) record-at" CHECK-QUIET-CANDIDATE! 0 T=
+s" WAPAT1 ( ptr wapplied<n> n -- ptr wapplied<n> ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
+
+TYPED-VARIABLE WNST-V wnst
+TYPED-VARIABLE WAP-V wapplied<wleaf>
+TYPED-VARIABLE WAPN-V wapplied<n>
+package NESTED-WIDTH-RT
+: WNST-OPT ( -- wopt<wres<n,n>> ) 5 WRES:OK WOPT:SOME ;
+: WNST-MK ( -- wnst ) WNST-OPT WNST:NESTED ;
+: WNST-GET ( wnst -- n ) MATCH wnst nested OF MATCH wopt some OF MATCH wres ok OF ENDOF err OF ENDOF ;MATCH ENDOF none OF 0 ENDOF ;MATCH ENDOF nop OF -1 ENDOF ;MATCH ;
+: WAPN-READ ( -- n n n )                    \ item, nested stamp, stamp
+   WAPN-V @ WAPPLIED:UNMAKE {: stamp:n :}
+   WHOLDER:UNMAKE stamp ;
+: WHOLD-MK ( wleaf n -- wholder<wleaf> ) WHOLDER:MAKE ;
+: WAP-MK ( wholder<wleaf> n -- wapplied<wleaf> ) WAPPLIED:MAKE ;
+public
+: RUN ( -- )
+   5551
+   depth WNST-MK WNST-V ! depth swap - 1 T=      \ the store consumes exactly the 4 cells NESTED pushed (base: 3 of 4)
+   WNST-V @ WNST-GET 5 T=
+   depth WNST:NOP WNST-V ! depth swap - 1 T=     \ NOP's 3 pads + tag are the same 4 cells
+   WNST-V @ WNST-GET -1 T=
+   depth 6 7 WHOLDER:MAKE 8 WAPPLIED:MAKE WAPN-V ! depth swap - 1 T=   \ wapplied<n> is 3 cells: wholder<n>'s 2 and the stamp
+   WAPN-READ 8 T= 7 T= 6 T=
+   depth 1 2 WLEAF:MAKE 3 WHOLD-MK 4 WAP-MK WAP-V ! depth swap - 1 T=
+   5551 T= ;
+;package
+NESTED-WIDTH-RT:RUN
+s" NESTED-APP-WIDTH" type cr
+
+\ ---------------------------------------------------------------------------
 \ dot habu-universal-enum-parametric-ad011c21: a parametric family APPLICATION
 \ and a single-effect QUOTATION as variant payloads construct and MATCH. The
 \ nested application rides the landed width-aware construct/MATCH lowering; the

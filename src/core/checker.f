@@ -2642,11 +2642,14 @@ variable NMOFF                           \ its token's offset in the checked tex
    REPEAT drop RES-FALSE ;
 
 \ --- an OPEN argument only hides the width when the WIDTH READS IT. The
-\ instantiated width substitutes an argument's own width at exactly one place
-\ (type-family.f SCH-NODE-IWIDTH): a schema root that IS a parameter node. A
-\ parameter occurring only under a pointer, a quotation or a concrete
-\ application therefore cannot move the family's width, and
-\ `span<t>` — `FIELD base ptr t  FIELD len n` — is two cells for every `t`.
+\ instantiated width (type-family.f TFW-NODE) reads an argument's own width
+\ where a schema root reads its slot: a root that IS the parameter node, or a
+\ nested application whose family reads the slot that argument fills. A
+\ parameter occurring only under a pointer, a quotation or an argument slot its
+\ application never reads therefore cannot move the family's width:
+\ `span<t>` — `FIELD base ptr t  FIELD len n` — is two cells for every `t`, and
+\ `sx<t>` for `FIELD f init<t,leaf>` is two cells for every `t`, since init
+\ reads only its element slot.
 \ Such an instance expands into its physical cells with the open argument still
 \ a var, so a declared row carrying it has one term per cell and the native
 \ chain can read the per-cell slots it places a row from (dict.f ROW-GLUE).
