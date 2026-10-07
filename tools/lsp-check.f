@@ -7,16 +7,16 @@
 \ its verdict: a check stopped by a later definition still publishes the
 \ packets written before it. A check that completed - the verdict verified,
 \ refused or deferred, or the engine providing the file, which leaves nothing
-\ to verify - keeps its definitions and uses in place of the last
-\ (LSP-DEFS:DEFS-KEEP) and publishes even when it wrote none. One that did
-\ not - the verifier's image holding the file, the verifier ending without a
-\ verdict, or a throw - keeps the document's last definitions, which workspace
-\ symbols go on listing, but none of its uses: RUN drops them as it starts
-\ (LSP-DEFS:DEFS-USES-DROP), since a use is bytes of the text a check
-\ completed on, and go to definition finds none until a check of the document
-\ completes. When it wrote no packets it publishes nothing, so the client
-\ keeps the last list it was sent. One stderr line says why it did not
-\ complete:
+\ to verify - keeps its definitions and uses, and whether its verdict was
+\ verified, in place of the last (LSP-DEFS:DEFS-KEEP) and publishes even when
+\ it wrote none. One that did not - the verifier's image holding the file, the
+\ verifier ending without a verdict, or a throw - keeps the document's last
+\ definitions, which workspace symbols go on listing, but none of its uses: RUN
+\ drops them as it starts (LSP-DEFS:DEFS-USES-DROP), since a use is bytes of
+\ the text a check completed on, and go to definition finds none until a check
+\ of the document completes. When it wrote no packets it publishes nothing, so
+\ the client keeps the last list it was sent. One stderr line says why it did
+\ not complete:
 \
 \    lsp: URI: not checked: exit N | signal N | deadline passed
 \    lsp: URI: not checked: the verifier's image holds it
@@ -55,7 +55,8 @@ private
 10 constant LF
 
 variable SUBJECT                         \ the slot being checked
-variable PUBLISHABLE                     \ whether its check completed
+variable PUBLISHABLE                     \ whether its check completed,
+TYPED-VARIABLE VERIFIED bool             \ whether its verdict was verified,
 variable CURSOR                          \ and the byte of its cursor, -1 for none
 
 : ERR ( ptr u8 n -- )
@@ -102,7 +103,7 @@ variable CURSOR                          \ and the byte of its cursor, -1 for no
    SUBJECT @ {: slot:n :}
    slot DOC-TEXT$ slot DOC-PATH$ CURSOR @ CHECK-MS >MS CHECK:VERIFY-BYTES-AT
    MATCH CHECK:verdict
-      verified OF s" verified" COMPLETED ENDOF
+      verified OF true VERIFIED ! s" verified" COMPLETED ENDOF
       refused OF s" refused" COMPLETED ENDOF
       engine-provided OF s" engine-provided" COMPLETED ENDOF
       held OF HEAD s" not checked: the verifier's image holds it" ERR NEWLINE RELAY ENDOF
@@ -123,13 +124,14 @@ public
    slot SUBJECT !
    at CURSOR !
    false PUBLISHABLE !
+   false VERIFIED !
    [: VERIFY ;] catch {: code:n :}
    code 0<> if
       HEAD s" not checked: throw " ERR code NUMBER$ ERR NEWLINE RELAY
    then
    PUBLISHABLE @ if
       CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ slot
-      LSP-DEFS:DEFS-KEEP
+      VERIFIED @ LSP-DEFS:DEFS-KEEP
    then
    CHECK:VERIFY-OUT$ nip 0<> PUBLISHABLE @ or if
       slot CHECK:VERIFY-OUT$ LSP-DIAG:PUBLISH

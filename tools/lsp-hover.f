@@ -73,15 +73,6 @@ variable TARGET-G                        \ and the group of the record it shows
    g GROUP-PATH$ WHERE+ s" :" V+
    r REC-RANGE 2drop drop 1+ SB-RESET FMT:SB-INT SB$ V+ ;
 
-\ The word as use U of the text T writes it: the bytes the use spans, held to
-\ the text.
-: USE-WORD$ ( ptr u8 n n -- ptr u8 n )
-   {: t:ptr tu:n u:n :}
-   u USE-BYTES {: from:n to:n :}
-   from 0 max tu min {: a:n :}
-   to a max tu min {: b:n :}
-   t a + b a - ;
-
 \ The lines of use U of the text T when TARGET-REC gives none: the word as the
 \ use writes it, then its declaration's file.
 : USE-LINES ( ptr u8 n n -- )

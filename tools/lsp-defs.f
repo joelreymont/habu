@@ -31,6 +31,12 @@
 \ there. DEFS-USE-AT finds the use that holds a byte of a document's text and
 \ USE-GROUP its group, which holds its declaration as the check read it: no
 \ other check's group for the file, whose text may differ, answers for a use.
+\ USE-WORD$ gives the word as a use writes it. DEFS-USE-RANGE gives the uses of
+\ a document's last completed check in the order the check published them.
+\ DEFS-KEEP also takes whether the check's verdict was verified, which
+\ DEFS-VERIFIED? answers while the check's positions are of the document's
+\ current text: a verified check reported every use in the document that it
+\ bound to a located declaration.
 \ DEFS-EACH gives the groups that answer for their files, the ones workspace
 \ symbols list. DEFS-OWN-GROUP gives the group of a document's own file while
 \ its last check's positions are of its current text, from that check's
@@ -80,15 +86,16 @@ private
 10 constant LF
 
 \ A check's block: the slot of the document checked, its first group,
-\ record, byte and use, and 1 while its positions are of the document's
-\ current text.
+\ record, byte and use, 1 while its positions are of the document's current
+\ text, and 1 when the check's verdict was verified.
 0 constant B-SLOT
 1 constant B-GROUP
 2 constant B-REC
 3 constant B-BYTE
 4 constant B-USE
 5 constant B-CURRENT
-6 constant BLOCK-CELLS
+6 constant B-VERIFIED
+7 constant BLOCK-CELLS
 
 \ A group: 1 while another group for its file answers in its place, its
 \ path's offset and length in BYTES, its URI's JSON string's, its first and
@@ -549,9 +556,10 @@ public
    ;MATCH ;
 
 \ Keeps these file, definition and use lines of the completed check of the
-\ document in this slot, in place of what its last check kept.
-: DEFS-KEEP ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: fa:ptr fu:n a:ptr u:n ua:ptr uu:n slot:n :}
+\ document in this slot, and whether its verdict was verified, in place of
+\ what its last check kept.
+: DEFS-KEEP ( ptr u8 n ptr u8 n ptr u8 n n bool -- )
+   {: fa:ptr fu:n a:ptr u:n ua:ptr uu:n slot:n verified:bool :}
    slot DEFS-DROP
    BLOCK-N @ {: k:n :}
    k 1+ BLOCK-CELLS * BLOCKS-RESERVE
@@ -561,6 +569,7 @@ public
    BYTES-U @ k B-BYTE BLOCK!
    USE-N @ k B-USE BLOCK!
    1 k B-CURRENT BLOCK!
+   verified if 1 else 0 then k B-VERIFIED BLOCK!
    1 BLOCK-N +!
    -1 CUR-G !
    a u [: RECORD ;] LINES
@@ -570,6 +579,9 @@ public
 
 \ Whether another group for the same file answers in this group's place.
 : GROUP-OVER? ( n -- bool )  G-OVER GROUP@ 0<> ;
+
+\ Whether the group's file is the one its check is of.
+: GROUP-OWN? ( n -- bool )  G-OWN GROUP@ 0<> ;
 
 \ Gives XT each group that answers for its file, in the store's order: each
 \ one no other group for the same file answers in place of.
@@ -630,6 +642,34 @@ public
    {: u:n :}
    u U-START USE@ u U-END USE@ ;
 
+\ The word as use U of the text T writes it: the bytes the use spans, held to
+\ the text.
+: USE-WORD$ ( ptr u8 n n -- ptr u8 n )
+   {: t:ptr tu:n u:n :}
+   u USE-BYTES {: from:n to:n :}
+   from 0 max tu min {: a:n :}
+   to a max tu min {: b:n :}
+   t a + b a - ;
+
+\ The uses of the last completed check of the document in this slot, as the
+\ limit and first index of a ?do loop over them, in the order the check
+\ published them; none if the store keeps no check of it or a check of it
+\ has started since.
+: DEFS-USE-RANGE ( n -- n n )
+   BLOCK-OF MATCH option
+      some OF {: k:n :} k B-USE USE-N @ BLOCK-END k B-USE BLOCK@ ENDOF
+      none OF 0 0 ENDOF
+   ;MATCH ;
+
+\ Whether the verdict of the last completed check of the document in this
+\ slot was verified while its positions are of the document's text; false if
+\ the store keeps no check of it or a check of it has started since.
+: DEFS-VERIFIED? ( n -- bool )
+   BLOCK-OF MATCH option
+      some OF {: k:n :} k B-CURRENT BLOCK@ 0<> k B-VERIFIED BLOCK@ 0<> and ENDOF
+      none OF false ENDOF
+   ;MATCH ;
+
 \ The first record of group G whose token starts and ends at these bytes, if
 \ one does.
 : GROUP-REC-AT ( n n n -- option<n> )
@@ -640,6 +680,17 @@ public
       R-NEXT REC@
    repeat
    drop OPTION:NONE ;
+
+\ The record of group G whose token starts and ends at these bytes, if exactly
+\ one does.
+: GROUP-REC-SOLE ( n n n -- option<n> )
+   {: g:n ts:n te:n :}
+   0 -1 g G-FIRST GROUP@
+   begin dup 0 >= while
+      dup REC-BYTES te = swap ts = and if nip swap 1+ swap dup then
+      R-NEXT REC@
+   repeat
+   drop swap 1 = if OPTION:SOME else drop OPTION:NONE then ;
 
 private
 
@@ -656,17 +707,6 @@ private
       R-NEXT REC@
    repeat
    drop OPTION:NONE ;
-
-\ The record of group G whose token starts and ends at these bytes, if exactly
-\ one does.
-: GROUP-REC-SOLE ( n n n -- option<n> )
-   {: g:n ts:n te:n :}
-   0 -1 g G-FIRST GROUP@
-   begin dup 0 >= while
-      dup REC-BYTES te = swap ts = and if nip swap 1+ swap dup then
-      R-NEXT REC@
-   repeat
-   drop swap 1 = if OPTION:SOME else drop OPTION:NONE then ;
 
 \ When no record of group G at these bytes is of word W: the one of W's tail,
 \ its bytes after the colon, when W is qualified as CHECKER-QUALIFIED? reads a
