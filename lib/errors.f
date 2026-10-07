@@ -182,8 +182,10 @@
 -3600 constant E-TASK-FIRST
 -3699 constant E-TASK-LAST
 -3600 constant E-TASK-SIZE
--3601 constant E-TASK-DLOPEN
--3602 constant E-TASK-DLSYM
+\ -3601 was E-TASK-DLOPEN: lib/task-test.f's strlen fixture, its only thrower,
+\ calls a declared FFI row instead of opening the C library. The number stays unused.
+\ -3602 was E-TASK-DLSYM: lib/task.f's C calls are FUNCTION: rows, and package
+\ FFI names a missing symbol E-FFI-DLSYM at its first call. The number stays unused.
 -3603 constant E-TASK-THREAD
 -3604 constant E-TASK-STATE
 -3605 constant E-TASK-USER

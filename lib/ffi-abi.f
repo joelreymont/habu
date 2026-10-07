@@ -434,6 +434,10 @@ public
 : DLOPEN ( ptr u8 n -- n ) DLOPEN-RAW ;
 : DLSYM ( n ptr u8 -- n ) DLSYM-RAW ;
 
+\ The C entry of engine callback stub n: an immutable code address, never a
+\ Habu xt. lib/ffi-callback.f answers it to C once the slot is bound.
+: CALLBACK-ENTRY ( n -- n ) callback-entry ;
+
 \ ---- the declared-function surface ----------------------------------------
 \ DECLARE publishes one row and answers its index; the declarer below is its
 \ only intended caller. PROCESS and LIBRARY-PATH answer the library index a

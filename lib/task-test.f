@@ -120,12 +120,6 @@ POOL-CAP TYPED-BUFFER POOL-SEMS TASK:sem
 create TASK-OUT TASK-CAP allot
 create TASK-ERR TASK-CAP allot
 create TASK-CODE-BUF TASK-CODE-CAP allot
-create TASK-SYM-STRLEN $73 c, $74 c, $72 c, $6C c, $65 c, $6E c, 0 c,
-create TASK-LIBC $6C c, $69 c, $62 c, $63 c, $2E c, $73 c, $6F c, $2E c, $36 c, 0 c,
-create TASK-LIBSYSTEM
-   $2F c, $75 c, $73 c, $72 c, $2F c, $6C c, $69 c, $62 c, $2F c,
-   $6C c, $69 c, $62 c, $53 c, $79 c, $73 c, $74 c, $65 c, $6D c,
-   $2E c, $42 c, $2E c, $64 c, $79 c, $6C c, $69 c, $62 c, 0 c,
 create APP-CSTR1 $61 c, 0 c,
 create APP-CSTR2 $61 c, $62 c, 0 c,
 create APP-CSTR3 $61 c, $62 c, $63 c, 0 c,
@@ -203,23 +197,15 @@ variable BUILD-FMT-READY
 : TASK-DQ ( -- )
    $22 SB-APPEND-C ;
 
-: TASK-LIB-PATH ( -- ptr u8 )
-   HB-TARGET-MACOS? if TASK-LIBSYSTEM exit then
-   TASK-LIBC ;
-
-: TASK-STRLEN-LOAD ( -- n )
-   TASK-LIB-PATH FFI:NOW FFI:DLOPEN dup 0= if E-TASK-DLOPEN throw then
-   TASK-SYM-STRLEN FFI:DLSYM dup 0= if E-TASK-DLSYM throw then ;
-
-TASK-STRLEN-LOAD constant TASK-STRLEN-XT
+s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
 
 \ Exact strlen fixture pauses after task-local argument staging to prove tasks
-\ do not share FFI tables. Retirement owner: habu-sweep-trusted-out-f872acb0.
-TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
+\ do not share FFI tables.
+: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    FFI:RESET
    cstr 0 FFI:READABLE!
    TASK:PAUSE
-   FFI:ARGS FFI:REG-LENS 1 TASK-STRLEN-XT ffi-call-bounded ;
+   TASK-STRLEN-ROW FFI:CALL ;
 
 : APP-BAD+ ( -- )
    1 APP-BAD atomic-add drop ;

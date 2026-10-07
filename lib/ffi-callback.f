@@ -52,9 +52,6 @@ CAST: N>CELLS ( n -- ptr n )
 CAST: N>FLOATS ( n -- ptr r )
 CAST: N>BYTES ( n -- ptr u8 )
 
-\ The C entry of engine stub n: an immutable code address, never a Habu xt.
-TRUSTED: STUB ( n -- n ) callback-entry ;
-
 \ The dispatch table the engine's thunk indexes by slot. Its cells are
 \ quotations, which only typed storage holds and capture relocates, and the
 \ count of a TYPED-BUFFER is a decimal literal (docs/forth.md "Rules learned
@@ -157,7 +154,7 @@ public
    cb CALLBACK>N {: k:n :}
    0 XTS FFI:>CELL TASK:MAIN-BASE CB-XTS + atomic!
    ctx k TASK:CONTEXT-BIND
-   k STUB ;
+   k FFI:CALLBACK-ENTRY ;
 
 : UNBIND ( callback -- )
    CALLBACK>N TASK:CONTEXT-UNBIND ;

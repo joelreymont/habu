@@ -126,31 +126,6 @@ END-STRUCTURE
 
 TASK-TCB-LAYOUT-CHECK
 
-create TASK-SYM-PTHREAD-CREATE
-   112 c, 116 c, 104 c, 114 c, 101 c, 97 c, 100 c, 95 c, 99 c,
-   114 c, 101 c, 97 c, 116 c, 101 c, 0 c,
-create TASK-SYM-PTHREAD-JOIN
-   112 c, 116 c, 104 c, 114 c, 101 c, 97 c, 100 c, 95 c, 106 c,
-   111 c, 105 c, 110 c, 0 c,
-create TASK-SYM-PTHREAD-EXIT
-   112 c, 116 c, 104 c, 114 c, 101 c, 97 c, 100 c, 95 c, 101 c,
-   120 c, 105 c, 116 c, 0 c,
-create TASK-SYM-SCHED-YIELD
-   115 c, 99 c, 104 c, 101 c, 100 c, 95 c, 121 c, 105 c, 101 c,
-   108 c, 100 c, 0 c,
-create TASK-SYM-PTHREAD-MUTEX-INIT
-   112 c, 116 c, 104 c, 114 c, 101 c, 97 c, 100 c, 95 c, 109 c,
-   117 c, 116 c, 101 c, 120 c, 95 c, 105 c, 110 c, 105 c, 116 c, 0 c,
-create TASK-SYM-PTHREAD-MUTEX-LOCK
-   112 c, 116 c, 104 c, 114 c, 101 c, 97 c, 100 c, 95 c, 109 c,
-   117 c, 116 c, 101 c, 120 c, 95 c, 108 c, 111 c, 99 c, 107 c, 0 c,
-create TASK-SYM-PTHREAD-MUTEX-UNLOCK
-   112 c, 116 c, 104 c, 114 c, 101 c, 97 c, 100 c, 95 c, 109 c,
-   117 c, 116 c, 101 c, 120 c, 95 c, 117 c, 110 c, 108 c, 111 c,
-   99 c, 107 c, 0 c,
-create TASK-SYM-MUNMAP
-   109 c, 117 c, 110 c, 109 c, 97 c, 112 c, 0 c,
-
 variable TASK-USER-NEXT
 
 \ Base and bound are USER-BAND's, declared in src/habu/layout.f. They used to be
@@ -184,16 +159,16 @@ USER-BAND:END constant TASK-USER-END
 : TASK-NULL ( -- ptr n )
    NULL$ drop CELL-VIEW ;
 
-\ TCB raw-cell pointer refinement and pointer-slot reinterpretation are outside
-\ checker inference. Retirement owner: habu-sweep-trusted-out-f872acb0.
-TRUSTED: TASK-N>PTR ( n -- ptr n ) ;
+\ An address this module keeps as a number: a TCB, DATA or a semaphore record.
+CAST: TASK-N>PTR ( n -- ptr n )
 
-TRUSTED: TASK-CELL>PTR-SLOT ( ptr n -- ptr ptr n ) ;
+\ A TCB cell this module stores an address in, as the pointer slot it is.
+CAST: TASK-CELL>PTR-SLOT ( ptr n -- ptr ptr n )
 
 \ These two cells are quotation slots in the fixed pthread entry ABI. The
 \ low-level structure definer describes offsets; every callback store and load
 \ below uses its declared empty stack effect.
-TRUSTED: TASK-CELL>XT-SLOT ( ptr n -- ptr [ -- ] ) ;
+CAST: TASK-CELL>XT-SLOT ( ptr n -- ptr [ -- ] )
 
 : TCB.XT ( ptr n -- ptr [ -- ] )
    TCB.XT-CELL TASK-CELL>XT-SLOT ;
@@ -205,116 +180,12 @@ TRUSTED: TASK-CELL>XT-SLOT ( ptr n -- ptr [ -- ] ) ;
    here FFI:>CELL 7 and dup 0= if drop exit then
    8 swap - allot ;
 
-variable MUNMAP-XT
-variable PTHREAD-CREATE-XT
-variable PTHREAD-JOIN-XT
-variable PTHREAD-EXIT-XT
-variable SCHED-YIELD-XT
-variable MUTEX-INIT-XT
-variable MUTEX-LOCK-XT
-variable MUTEX-UNLOCK-XT
-variable SYMBOLS-REGISTERED
-TASK-ALIGN8
-variable SYMBOLS-READY
-
-\ These symbols are borrowed from the process's libc/libSystem dependency.
-\ RTLD_DEFAULT is zero on Linux and -2 on macOS; no dlopen reference is owned.
-: TASK-SYM ( ptr u8 -- n ) {: name:ptr :}
-   HB-TARGET-MACOS? if -2 else 0 then
-   name FFI:DLSYM dup 0= if E-TASK-DLSYM throw then ;
-
-\ Capture is quiescent. Foreign addresses belong to this process; the next
-\ task operation resolves them afresh. The task entry itself is engine text.
-: RESET-SYMBOLS ( -- )
-   0 MUNMAP-XT ! 0 PTHREAD-CREATE-XT ! 0 PTHREAD-JOIN-XT !
-   0 PTHREAD-EXIT-XT ! 0 SCHED-YIELD-XT ! 0 MUTEX-INIT-XT !
-   0 MUTEX-LOCK-XT ! 0 MUTEX-UNLOCK-XT !
-   0 SYMBOLS-REGISTERED ! 0 SYMBOLS-READY atomic! ;
-
-: LOAD-SYMBOLS ( -- )
-   SYMBOLS-REGISTERED @ 0= if
-      [: RESET-SYMBOLS ;] IMAGE-LIFECYCLE:REGISTER
-      1 SYMBOLS-REGISTERED !
-   then
-   TASK-SYM-MUNMAP TASK-SYM MUNMAP-XT !
-   TASK-SYM-PTHREAD-CREATE TASK-SYM PTHREAD-CREATE-XT !
-   TASK-SYM-PTHREAD-JOIN TASK-SYM PTHREAD-JOIN-XT !
-   TASK-SYM-PTHREAD-EXIT TASK-SYM PTHREAD-EXIT-XT !
-   TASK-SYM-SCHED-YIELD TASK-SYM SCHED-YIELD-XT !
-   TASK-SYM-PTHREAD-MUTEX-INIT TASK-SYM MUTEX-INIT-XT !
-   TASK-SYM-PTHREAD-MUTEX-LOCK TASK-SYM MUTEX-LOCK-XT !
-   TASK-SYM-PTHREAD-MUTEX-UNLOCK TASK-SYM MUTEX-UNLOCK-XT ! ;
-
-\ A forked child keeps SYMBOLS-READY as it finds it (CHILD-RESET below). It is
-\ 1 only while a first call is inside this word, and no task's thread exists
-\ until that call has set 2 - PTHREAD-CREATE-CALL comes through here first - so
-\ no other thread can fork while it is 1. Only PREPARE sets it back, and only
-\ once every task has ended; the addresses it vouches for are the child's too.
-: TASK-SYMBOLS ( -- )
-   begin
-      SYMBOLS-READY atomic@ 2 = if exit then
-      0 1 SYMBOLS-READY atomic-cas 0= if
-         [: LOAD-SYMBOLS ;] catch dup 0 <> if
-            0 SYMBOLS-READY atomic! throw
-         then drop
-         2 SYMBOLS-READY atomic! exit
-      then
-   again ;
-
-\ Exact task-internal C bindings fix every pointer extent and scalar role before
-\ entering the bounded FFI trampoline. Retirement owner: habu-sweep-trusted-out-f872acb0.
-TRUSTED: MUNMAP-CALL ( ptr n n -- n ) {: a:ptr len:n :}
-   TASK-SYMBOLS FFI:RESET
-   a 0 FFI:READABLE!
-   len 1 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 2 MUNMAP-XT @ ffi-call-bounded ;
-
-TRUSTED: PTHREAD-CREATE-CALL ( ptr n n n ptr n -- n )
-   {: thread:ptr attr:n entry:n arg:ptr :}
-   TASK-SYMBOLS FFI:RESET
-   thread 8 0 FFI:WRITABLE!
-   attr 1 FFI:VALUE!
-   entry 2 FFI:VALUE!
-   arg 3 FFI:READABLE!
-   FFI:ARGS FFI:REG-LENS 4 PTHREAD-CREATE-XT @ ffi-call-bounded ;
-
-TRUSTED: PTHREAD-JOIN-CALL ( n ptr n -- n ) {: thread:n out:ptr :}
-   TASK-SYMBOLS FFI:RESET
-   thread 0 FFI:VALUE!
-   out 8 1 FFI:WRITABLE!
-   FFI:ARGS FFI:REG-LENS 2 PTHREAD-JOIN-XT @ ffi-call-bounded ;
-
-TRUSTED: PTHREAD-EXIT-CALL ( n -- ) {: value:n :}
-   TASK-SYMBOLS FFI:RESET
-   value 0 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 1 PTHREAD-EXIT-XT @ ffi-call-bounded drop ;
-
-TRUSTED: SCHED-YIELD-CALL ( -- n )
-   TASK-SYMBOLS FFI:RESET
-   FFI:ARGS FFI:REG-LENS 0 SCHED-YIELD-XT @ ffi-call-bounded ;
-
-TRUSTED: MUTEX-INIT-CALL ( ptr n n -- n ) {: mutex:ptr attr:n :}
-   TASK-SYMBOLS FFI:RESET
-   mutex TASK-MUTEX-BYTES 0 FFI:WRITABLE!
-   attr 1 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 2 MUTEX-INIT-XT @ ffi-call-bounded ;
-
-TRUSTED: MUTEX-LOCK-CALL ( ptr n -- n ) {: mutex:ptr :}
-   TASK-SYMBOLS FFI:RESET
-   mutex TASK-MUTEX-BYTES 0 FFI:WRITABLE!
-   FFI:ARGS FFI:REG-LENS 1 MUTEX-LOCK-XT @ ffi-call-bounded ;
-
-TRUSTED: MUTEX-UNLOCK-CALL ( ptr n -- n ) {: mutex:ptr :}
-   TASK-SYMBOLS FFI:RESET
-   mutex TASK-MUTEX-BYTES 0 FFI:WRITABLE!
-   FFI:ARGS FFI:REG-LENS 1 MUTEX-UNLOCK-XT @ ffi-call-bounded ;
-
 \ ---- host semaphore bindings ----------------------------------------
-\ Declared rather than hand-staged: these four arrived after the FUNCTION:
-\ declarer, so package FFI owns their symbol resolution and their bounded
-\ staging and this module states only the C prototypes. The single pointer
-\ argument is always one sem_t the semaphore records below own, so every
-\ declaration fixes its extent at TASK-SEM-BYTES; the callee writes it.
+\ Package FFI owns the symbol resolution and the bounded staging of every
+\ binding below, and this module states only the C prototypes. A semaphore
+\ call's single pointer argument is always one sem_t the semaphore records
+\ below own, so every declaration fixes its extent at TASK-SEM-BYTES; the
+\ callee writes it.
 \
 \ sem_wait blocks inside the call. That is the point of this module - a waiting
 \ task needs no PAUSE loop - and it is safe because the argument tables the
@@ -367,6 +238,41 @@ FUNCTION: MACH-SEM-TRY semaphore_timedwait ( n n -- i32 ) ;FUNCTION
 \ argument alone and the request stays a read-only pointer.
 FUNCTION: NANOSLEEP-CALL nanosleep ( ptr u8 ptr u8 -- i32 )
    1 TASK-TIMESPEC-BYTES WRITES-BYTES
+;FUNCTION
+
+\ PAUSE's yield and a halted task's exit. pthread_exit never returns; its one
+\ argument is the value a join reads, passed as a number.
+FUNCTION: PTHREAD-EXIT-CALL pthread_exit ( n -- ) ;FUNCTION
+FUNCTION: SCHED-YIELD-CALL sched_yield ( -- i32 ) ;FUNCTION
+
+\ A task region goes back to the system through munmap, which only reads the
+\ address it is given.
+FUNCTION: MUNMAP-CALL munmap ( ptr u8 n -- i32 ) ;FUNCTION
+
+\ A task's thread. pthread_create writes the pthread_t into the TCB's THREAD
+\ cell and hands the TCB itself to the entry as its one argument; the attribute
+\ is null and the entry is TASK-ABI's code address. pthread_join writes the
+\ value the thread exited with into the TCB's RET cell.
+FUNCTION: PTHREAD-CREATE-CALL pthread_create ( ptr u8 n n ptr u8 -- i32 )
+   0 8 WRITES-BYTES
+;FUNCTION
+
+FUNCTION: PTHREAD-JOIN-CALL pthread_join ( n ptr u8 -- i32 )
+   1 8 WRITES-BYTES
+;FUNCTION
+
+\ A FACILITY's lock: one pthread_mutex_t of TASK-MUTEX-BYTES in its record,
+\ which each call may write. The init attribute is null.
+FUNCTION: MUTEX-INIT-CALL pthread_mutex_init ( ptr u8 n -- i32 )
+   0 TASK-MUTEX-BYTES WRITES-BYTES
+;FUNCTION
+
+FUNCTION: MUTEX-LOCK-CALL pthread_mutex_lock ( ptr u8 -- i32 )
+   0 TASK-MUTEX-BYTES WRITES-BYTES
+;FUNCTION
+
+FUNCTION: MUTEX-UNLOCK-CALL pthread_mutex_unlock ( ptr u8 -- i32 )
+   0 TASK-MUTEX-BYTES WRITES-BYTES
 ;FUNCTION
 
 : TASK-RC0 ( n -- )
@@ -596,9 +502,8 @@ create TASK-SEM-POOL
 \ The main thread has no TCB - TASK:SELF answers the null TCB there - so its
 \ park is this one record and a WAKE of the null TCB posts it, which is what
 \ lets a program with no tasks of its own wait on a loop too. It is initialized
-\ on first use. The handshake is TASK-SYMBOLS', so two tasks waking the main
-\ thread at the same
-\ moment initialize the record once.
+\ on first use behind MAIN-PARK-READY's compare-and-swap handshake, so two tasks
+\ waking the main thread at the same moment initialize the record once.
 TASK-ALIGN8
 create MAIN-PARK-REC TASK-SEMAPHORE-BYTES 8 / TASK-ZERO-CELLS,
 TASK-ALIGN8
@@ -1035,7 +940,7 @@ create MOVES CB-POOL TASK-ZERO-CELLS,
 : TASK-LIVE- ( -- )
    -1 MAIN-BASE TASKS-LIVE-CELL + atomic-add drop ;
 
-: TASK-MUNMAP-SPAN ( ptr n n -- )
+: TASK-MUNMAP-SPAN ( ptr u8 n -- )
    MUNMAP-CALL TASK-RC0 ;
 
 \ AN EMPTY TCB HOLDS NOTHING THIS PROCESS TOOK BUT ITS PARK, which outlives
@@ -1070,7 +975,7 @@ create MOVES CB-POOL TASK-ZERO-CELLS,
       0 tcb TCB.LSTACK-U !
    then
    tcb TCB.REGION-U @ 0 <> if
-      tcb TCB.REGION @ tcb TCB.REGION-U @ TASK-MUNMAP-SPAN
+      tcb TCB.REGION @ BYTE-VIEW tcb TCB.REGION-U @ TASK-MUNMAP-SPAN
       TASK-NULL tcb TCB.REGION !
       0 tcb TCB.REGION-U !
    then
@@ -1106,8 +1011,8 @@ PERSISTED-PTR-VARIABLE TASK-CHAIN
 : TASK-LINK@ ( ptr n -- n )
    TASK-TCB-BYTES + @ ;
 
-\ A PREPARED TASK IS RELEASED AT CAPTURE, the same rule RESET-SYMBOLS keeps for
-\ the dlsym cells: process-local state is dropped here and taken afresh by the
+\ A PREPARED TASK IS RELEASED AT CAPTURE, the same rule package FFI keeps for
+\ resolved symbols: process-local state is dropped here and taken afresh by the
 \ next operation, which for a task is the ACTIVATE that prepares it again. So
 \ is every park, an EMPTY task's included: it outlives the release
 \ (PARK-CREATE), and a guard captured live would have the restored image skip
@@ -1163,14 +1068,12 @@ variable SWEEP-ARMED
 \ THE SWEEP IS A ONE-SHOT CLEANUP, ARMED BY THE WORD THAT TAKES WHAT IT GIVES
 \ BACK. It munmaps, so it has to run in the phase lib/image-lifecycle.f reserves
 \ for cleanup that calls foreign functions, before the persistent hooks forget
-\ their addresses: registered with REGISTER-PERSISTENT it ran after
-\ RESET-SYMBOLS instead, re-resolved munmap through TASK-SYMBOLS, and the build
-\ then refused this module's own cell (measured on a subject that only PREPAREs:
-\ `holds a pointer into memory the build mapped word=MUNMAP-XT`). A run of the
-\ sweep disarms it, and the next PREPARE - in this process or in the restored
-\ image - arms it again, so an image that captures again sweeps again. Two owners
-\ preparing at once may register two hooks; the second walk finds every task
-\ EMPTY and does nothing.
+\ their addresses: run after FFI's FORGET-SYMBOLS, MUNMAP-CALL would resolve
+\ munmap again and leave this process's address in a cell the capture carries.
+\ A run of the sweep disarms it, and the next PREPARE - in this process or in
+\ the restored image - arms it again, so an image that captures again sweeps
+\ again. Two owners preparing at once may register two hooks; the second walk
+\ finds every task EMPTY and does nothing.
 : TASK-ARM-SWEEP ( -- )
    SWEEP-ARMED @ 0= if
       [: TASK-CAPTURE-SWEEP ;] IMAGE-LIFECYCLE:REGISTER
@@ -1256,16 +1159,13 @@ variable SWEEP-ARMED
    TASK-CONSTRUCTED tcb TASK-STATE! ;
 
 \ This is a foreign C entry address with TASK-ABI's fixed argument contract.
-TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
+: PTHREAD-ENTRY ( -- n ) task-entry ;
 
 : TASK-PTHREAD-CREATE-RC ( ptr n -- n ) {: tcb:ptr :}
-   tcb TCB.THREAD 0 PTHREAD-ENTRY tcb PTHREAD-CREATE-CALL ;
+   tcb TCB.THREAD BYTE-VIEW 0 PTHREAD-ENTRY tcb BYTE-VIEW PTHREAD-CREATE-CALL ;
 
 : TASK-PTHREAD-JOIN-CALL ( ptr n -- ) {: tcb:ptr :}
-   tcb TCB.THREAD @ tcb TCB.RET PTHREAD-JOIN-CALL TASK-RC0 ;
-
-: TASK-READY ( -- )
-   TASK-SYMBOLS ;
+   tcb TCB.THREAD @ tcb TCB.RET BYTE-VIEW PTHREAD-JOIN-CALL TASK-RC0 ;
 
 : TASK-JOIN-RELEASE ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-PTHREAD-JOIN-CALL
@@ -1294,8 +1194,15 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
    TASK-RUN-USER dup 0= if drop else TASK-SELF TASK-THROW! then
    TASK-END ;
 
+\ A create attempt that failed started no thread, so this takes back what
+\ ACTIVATE published for one: the live count and RUNNING. The task stays
+\ prepared, its stacks and region kept for the next ACTIVATE or the capture
+\ sweep.
+: TASK-CREATE-ROLLBACK ( ptr n -- ) {: tcb:ptr :}
+   TASK-LIVE-
+   TASK-CONSTRUCTED tcb TASK-STATE! ;
+
 : ACTIVATE ( [ -- ] ptr n -- ) {: xt tcb:ptr :}
-   TASK-READY
    tcb TASK-STATE@ TASK-RUNNING = if E-TASK-STATE throw then
    tcb TASK-STATE@ TASK-HALT-REQ = if E-TASK-STATE throw then
    tcb TASK-STATE@ TASK-EXPOSED = if E-TASK-STATE throw then
@@ -1314,11 +1221,14 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
    \ entry adds none of its own, so a HALT in the create window stands.
    TASK-RUNNING tcb TASK-STATE!
    TASK-LIVE+
-   tcb TASK-PTHREAD-CREATE-RC dup 0 <> if
-      TASK-LIVE-
-      TASK-CONSTRUCTED tcb TASK-STATE!
-      E-TASK-THREAD throw
-   then
+   \ Every failure of the attempt returns the task to CONSTRUCTED and goes on
+   \ with its code: a nonzero return is E-TASK-THREAD, and any other throw comes
+   \ before pthread_create runs - the symbol resolves at its first call
+   \ (E-FFI-DLSYM) and the arguments are staged and bounds-checked ahead of it.
+   \ The caught body hands the TCB back, as checked catch needs a body that
+   \ leaves the stack it took.
+   tcb [: dup TASK-PTHREAD-CREATE-RC TASK-RC0 ;] catch nip
+   dup 0 <> if tcb TASK-CREATE-ROLLBACK throw then
    drop ;
 
 \ HALT'S REQUEST IS THE STATUS ITSELF: HALT-REQ, which only HALT's CAS writes,
@@ -1408,7 +1318,6 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
 \ at zero as ACTIVATE does: a hint left by an earlier run or exposure of this
 \ TCB is not this exposure's.
 : EXPOSE ( ptr n -- ) {: tcb:ptr :}
-   TASK-READY
    tcb PREPARE
    tcb TASK-STATE@ TASK-CONSTRUCTED <> if E-TASK-STATE throw then
    tcb PARK-DRAIN
@@ -1698,26 +1607,25 @@ generates: +USER ( -- ptr n )
 
 : FACILITY-INIT ( ptr n -- )
    0 over FACILITY-OWNER!
-   FACILITY-MUTEX 0 MUTEX-INIT-CALL TASK-RC0 ;
+   FACILITY-MUTEX BYTE-VIEW 0 MUTEX-INIT-CALL TASK-RC0 ;
 
 : GET ( ptr n -- ) {: f:ptr :}
    TASK-OWNER {: owner:n :}
    f FACILITY-OWNER@ owner = if exit then
-   f FACILITY-MUTEX MUTEX-LOCK-CALL TASK-RC0
+   f FACILITY-MUTEX BYTE-VIEW MUTEX-LOCK-CALL TASK-RC0
    owner f FACILITY-OWNER! ;
 
 : RELEASE ( ptr n -- ) {: f:ptr :}
    TASK-OWNER {: owner:n :}
    f FACILITY-OWNER@ owner <> if exit then
    0 f FACILITY-OWNER!
-   f FACILITY-MUTEX MUTEX-UNLOCK-CALL TASK-RC0 ;
+   f FACILITY-MUTEX BYTE-VIEW MUTEX-UNLOCK-CALL TASK-RC0 ;
 
 \ Shared counted-semaphore storage, one record per definition (see the
-\ address-kind note above). Unlike TASK and FACILITY this definer needs no
-\ TRUSTED:: the child's `does>` body converts the record address to the handle
-\ in checked code, and both converters are private to this package, so the only
-\ address a caller ever sees is already a SEM and no package outside can mint a
-\ handle over memory of its own.
+\ address-kind note above). The child's `does>` body converts the record
+\ address to the handle in checked code, and both converters are private to this
+\ package, so the only address a caller ever sees is already a SEM and no package
+\ outside can mint a handle over memory of its own.
 : SEMAPHORE ( -- )
    TASK-ALIGN8
    create TASK-SEMAPHORE-BYTES allot
@@ -2031,17 +1939,16 @@ TASK-MIN-STACK constant MIN-STACK
    MBOX-MSG? ;
 
 \ An engine that bakes TASK keeps these cells below a stripped application's
-\ DATA window. Symbol names and the user-slot cursor are declarations; the
-\ chain head points to the application's fixed-address TCBs. Foreign addresses
-\ and the symbols handshake are process-local and start unresolved after the
-\ capture lifecycle has run. A TASK loaded inside the application's window
-\ owns its own cells, so the baked-state guards apply only below that window.
+\ DATA window. The user-slot cursor is a declaration; the chain head points to
+\ the application's fixed-address TCBs. A TASK loaded inside the application's
+\ window owns its own cells, so the baked-state guards apply only below that
+\ window.
 \ Callback rows are process state too: ROWS-SWEEP refuses a row in flight at
 \ capture and unbinds the rest, so every row restarts at zero, and the store
 \ counts beside them (MOVES) are compared only within one process.
 : CHECK-OWNED ( n -- )
    {: window:n :}
-   TASK-SYM-PTHREAD-CREATE FFI:>CELL window < if
+   TASK-USER-NEXT FFI:>CELL window < if
       TASK-SEM-POOL-N 0 ?do
          i SEM-POOL-USED @ 0<> if
             s" task: stripped image cannot carry a live semaphore" 74 die
@@ -2053,14 +1960,8 @@ TASK-MIN-STACK constant MIN-STACK
 \ its carried run before cleanup, then checks live resources before collection.
 : OWNED-CELLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
    {: carry fresh :}
-   TASK-SYM-PTHREAD-CREATE
-   TASK-USER-NEXT FFI:>CELL TASK-SYM-PTHREAD-CREATE FFI:>CELL -
-   carry execute
    TASK-USER-NEXT BYTE-VIEW CELL carry execute
    TASK-CHAIN BYTE-VIEW CELL carry execute
-   MUNMAP-XT BYTE-VIEW 8 cells fresh execute
-   SYMBOLS-REGISTERED BYTE-VIEW CELL fresh execute
-   SYMBOLS-READY BYTE-VIEW CELL fresh execute
    SWEEP-ARMED BYTE-VIEW CELL fresh execute
    TASK-SEM-USED TASK-SEM-POOL-N cells fresh execute
    TASK-SEM-POOL TASK-SEM-POOL-N TASK-SEMAPHORE-BYTES * fresh execute

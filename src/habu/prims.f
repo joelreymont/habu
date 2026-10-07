@@ -855,10 +855,12 @@ EPRIM: ffi-call-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-N PE-IN PE-N PE-IN  PE-
 ETRUSTED-ONLY!
 EPRIM: task-entry PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
+EPPRIM: TASK task-entry PE-N PE-OUT ECLOSE-PRIVATE    \ lib/task.f PTHREAD-ENTRY
 \ callback-entry ( n -- n ): the C entry address of callback slot n, one of
 \ CB-POOL fixed stubs into habu1.f BCALLBACK-THUNK (docs/ffi-callback.md).
 EPRIM: callback-entry PE-N PE-IN PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
+EPPRIM: FFI callback-entry PE-N PE-IN PE-N PE-OUT ECLOSE-PRIVATE    \ lib/ffi-abi.f FFI:CALLBACK-ENTRY
 EPRIM: ffi-call-abi-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
                            PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
                            PE-N PE-OUT EPRIM;

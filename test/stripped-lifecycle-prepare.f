@@ -1,6 +1,6 @@
 \ A task still ACTIVATED when a capture begins is refused by name. The subjects
 \ whose LOAD-TIME task work left process-local state in the image's data - the
-\ maker's foreign addresses in lib/task.f's eight XT cells, and a TCB holding
+\ maker's foreign addresses in package FFI's symbol table, and a TCB holding
 \ this process's mappings - link and run in test/stripped-image.f's application
 \ (test/stripped-lifecycle-prepare-subject.f, -tasks-subject.f).
 require lib/test.f
