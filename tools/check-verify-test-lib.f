@@ -660,6 +660,26 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" loader-form: its column" T-LABEL p s" column" NUMBER$ s" 7" T$= ;
 
 
+\ A comment between a literal path and its loader word is skipped as the loader
+\ skips it: a subject that loads one file across a `( … )` comment and another
+\ across a `\` comment, and uses what both define, is verified. A file that is
+\ not there is refused at the loader word that names it, a comment between them
+\ or not.
+: COMMENTED-LITERAL ( -- )
+   s" lit-paren.f" s\" : CVT-PAREN ( -- n ) 1 ;\n" FIXTURE
+   s" lit-line.f" s\" : CVT-LINE ( -- n ) 2 ;\n" FIXTURE
+   s\" s\" lit-paren.f\" ( kept ) required\ns\" lit-line.f\" \\ kept\nrequired\n: CVT-LIT ( -- n ) CVT-PAREN CVT-LINE + ;\n"
+   s" lit.f" GUARD-MS CHECK-AS
+   0 s" commented-literal: verified" EXPECT-KIND
+   s\" s\" cvt-lit-gone.f\" ( kept ) required\n" s" lit-gone.f" GUARD-MS CHECK-AS
+   1 s" commented-literal: a missing one refused" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET {: p:n :}
+   s" commented-literal: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
+   s" commented-literal: at the loader word" T-LABEL p s" token" STRING$ s" required" T$=
+   s" commented-literal: its line" T-LABEL p s" line" NUMBER$ s" 1" T$=
+   s" commented-literal: its column" T-LABEL p s" column" NUMBER$ s" 29" T$= ;
+
+
 \ A require of a file the file system will not read refuses the subject, with
 \ a packet at the loader word that names it.
 : UNREADABLE-DEPENDENCY ( -- )
@@ -2838,6 +2858,7 @@ public
    s" stop-after-packet" [: STOP-AFTER-PACKET ;] RUN-CASE
    s" missing-dependency" [: MISSING-DEPENDENCY ;] RUN-CASE
    s" loader-form" [: LOADER-FORM ;] RUN-CASE
+   s" commented-literal" [: COMMENTED-LITERAL ;] RUN-CASE
    s" unreadable-dependency" [: UNREADABLE-DEPENDENCY ;] RUN-CASE
    s" long-resolved" [: LONG-RESOLVED ;] RUN-CASE
    s" wide-closure" [: WIDE-CLOSURE ;] RUN-CASE
