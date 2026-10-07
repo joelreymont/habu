@@ -94,6 +94,9 @@
 \   a refused signature type, which retains nothing, has one              uses-recovery
 \   a use of a body the checker defers has no target, or the name only
 \   its run defines has one                                               uses-deferred
+\   two declarations at one file span from separate includes share a use's
+\   identity, or a qualified/bare call selects the other package; DEFTYPE's
+\   two generated converters at one span merge                              uses-visit
 \   a refused duplicate takes the uses after it                           uses-duplicate
 \   a declaration loses or moves its location when the store or the
 \   location table grows                                                  uses-growth
@@ -3204,16 +3207,32 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses: top-level tick" DEFS-SRC$ s" : CVT-B" 5 s" uses.f" USE-TARGET
    s" uses: private over global" s" : CVT-PRIV ( -- n ) CVT-A" 5 USE
    s" uses: private over global" DEFS-SRC$ s\" package CVT-UP\n: CVT-A" 5 s" uses.f" USE-TARGET
+   s" uses: private over global identity" T-LABEL
+   USE-NODE @ s" decl_name" STRING$ s" cvt-a" T$=
+   USE-NODE @ s" package" STRING$ s" cvt-up" T$=
+   USE-NODE @ s" visibility" STRING$ s" private" T$=
    s" uses: private" s" : CVT-PUB ( -- n ) CVT-PRIV" 8 USE
    s" uses: private" DEFS-SRC$ s" : CVT-PRIV" 8 s" uses.f" USE-TARGET
+   s" uses: private identity" T-LABEL
+   USE-NODE @ s" decl_name" STRING$ s" cvt-priv" T$=
+   USE-NODE @ s" package" STRING$ s" cvt-up" T$=
+   USE-NODE @ s" visibility" STRING$ s" private" T$=
    s" uses: export operand" s" EXPORT CVT-UD:CVT-UTWO" 15 USE
    s" uses: export operand" USES-DEP$SRC s" : CVT-UTWO" 8 s" uses-dep.f" USE-TARGET
+   s" uses: export operand identity" T-LABEL
+   USE-NODE @ s" decl_name" STRING$ s" cvt-utwo" T$=
+   USE-NODE @ s" package" STRING$ s" cvt-ud" T$=
+   USE-NODE @ s" visibility" STRING$ s" public" T$=
    s" uses: qualified, dependency" s" CVT-UD:CVT-UONE" 15 USE
    s" uses: qualified, dependency" USES-DEP$SRC s" : CVT-UONE" 8 s" uses-dep.f" USE-TARGET
    s" uses: qualified" s" CVT-UP:CVT-PUB" 14 USE
    s" uses: qualified" DEFS-SRC$ s" : CVT-PUB" 7 s" uses.f" USE-TARGET
    s" uses: export alias" s" CVT-UP:CVT-UTWO" 15 USE
    s" uses: export alias" DEFS-SRC$ s" EXPORT CVT-UD:CVT-UTWO" 15 s" uses.f" USE-TARGET
+   s" uses: export alias identity" T-LABEL
+   USE-NODE @ s" decl_name" STRING$ s" cvt-utwo" T$=
+   USE-NODE @ s" package" STRING$ s" cvt-up" T$=
+   USE-NODE @ s" visibility" STRING$ s" public" T$=
    s" uses: used public" s" : CVT-USED ( -- n ) CVT-UONE" 8 USE
    s" uses: used public" USES-DEP$SRC s" : CVT-UONE" 8 s" uses-dep.f" USE-TARGET
    s" uses: dependency global" s" : CVT-DEP ( -- n ) CVT-UGLOBAL" 11 USE
@@ -3230,6 +3249,164 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses: no use line on the cli" T-LABEL
    0 OUT CLI-OUT-U @ s\" \"target_start\"" CONTAINS?
    0 ERR erru s\" \"target_start\"" CONTAINS? or TFALSE ;
+
+
+\ Two real includes of one file declare K at the same byte span in distinct
+\ packages. Qualified calls and each package's using scope select different
+\ declarations even though the shared source location is identical.
+: VISIT-COMMON$SRC ( -- ptr u8 n )
+   s\" : K ( -- n ) 1 ;\n" ;
+
+\ Missing or nonnumeric visit is not a declaration identity.
+: DECL-VISIT ( n -- n )
+   s" decl_visit" NUMBER$ STR>NUMBER? MATCH option
+      none OF -1 ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+: VISIT-USE ( ptr u8 n ptr u8 n n n ptr u8 n -- )
+   {: label:ptr labelu:n lead:ptr leadu:n u:n visit:n pkg:ptr pkgu:n :}
+   label labelu lead leadu u USE
+   label labelu T-LABEL USE-NODE @ DECL-VISIT visit T=
+   label labelu T-LABEL USE-NODE @ s" decl_name" STRING$ s" k" T$=
+   label labelu T-LABEL USE-NODE @ s" package" STRING$ pkg pkgu T$=
+   label labelu T-LABEL USE-NODE @ s" visibility" STRING$ s" public" T$= ;
+
+: USES-VISIT ( -- )
+   s" visit-common.f" VISIT-COMMON$SRC FIXTURE
+   0 GEN-U !
+   s\" require lib/type/deftype.f\n" GEN+
+   s\" package P\npublic\ninclude visit-common.f\n;package\npackage Q\npublic\ninclude visit-common.f\n;package\n" GEN+
+   s\" : BOTH ( -- n ) P:K Q:K + ;\nusing P\n: P-BARE ( -- n ) K ;\n;using\nusing Q\n: Q-BARE ( -- n ) K ;\n;using\n" GEN+
+   s\" DEFTYPE CVT-ID-T\n: CVT-ROUND ( -- n ) 1 >CVT-ID-T CVT-ID-T>N ;\n" GEN+
+   s" uses-visit.f" 0 GEN GEN-U @ FIXTURE
+   s" uses-visit.f" AT$ {: path:ptr pathu:n :}
+   s" uses-visit: native loads" T-LABEL path pathu NATIVE-RC 0 T=
+   s" uses-visit.f" DEFS-CHECK 0 s" uses-visit: verified" EXPECT-KIND
+   CHECK:VERIFY-DEFS$ s" package" s" p" PACKET DEF-NODE !
+   s" uses-visit: P declaration" s" :" s" p" s" public" DEF-WHO
+   s" uses-visit: P declaration" s" word" s" K" DEF-STR
+   s" uses-visit: P source" T-LABEL DEF-NODE @ s" file" STRING$ s" visit-common.f" AT$ T$=
+   s" uses-visit: P span" s" byte_start" 2 DEF-NUM
+   s" uses-visit: P span" s" byte_end" 3 DEF-NUM
+   CHECK:VERIFY-DEFS$ s" package" s" q" PACKET DEF-NODE !
+   s" uses-visit: Q declaration" s" :" s" q" s" public" DEF-WHO
+   s" uses-visit: Q declaration" s" word" s" K" DEF-STR
+   s" uses-visit: Q source" T-LABEL DEF-NODE @ s" file" STRING$ s" visit-common.f" AT$ T$=
+   s" uses-visit: Q span" s" byte_start" 2 DEF-NUM
+   s" uses-visit: Q span" s" byte_end" 3 DEF-NUM
+   CHECK:VERIFY-DEFS$ s" package" s" p" PACKET {: pd:n :}
+   s" uses-visit: P canonical tail" T-LABEL pd s" decl_name" STRING$ s" k" T$=
+   pd DECL-VISIT {: pv:n :}
+   CHECK:VERIFY-DEFS$ s" package" s" q" PACKET {: qd:n :}
+   s" uses-visit: Q canonical tail" T-LABEL qd s" decl_name" STRING$ s" k" T$=
+   qd DECL-VISIT {: qv:n :}
+   s" uses-visit: P visit" T-LABEL pv 0 > TTRUE
+   s" uses-visit: Q visit" T-LABEL qv 0 > TTRUE
+   s" uses-visit: distinct visits" T-LABEL pv qv T<>
+   s" uses-visit: qualified P" s" P:K" 3 pv s" p" VISIT-USE
+   s" uses-visit: qualified P" VISIT-COMMON$SRC s" : K" 1 s" visit-common.f" USE-TARGET
+   s" uses-visit: qualified Q" s" Q:K" 3 qv s" q" VISIT-USE
+   s" uses-visit: qualified Q" VISIT-COMMON$SRC s" : K" 1 s" visit-common.f" USE-TARGET
+   s" uses-visit: bare P" s" P-BARE ( -- n ) K" 1 pv s" p" VISIT-USE
+   s" uses-visit: bare P" VISIT-COMMON$SRC s" : K" 1 s" visit-common.f" USE-TARGET
+   s" uses-visit: bare Q" s" Q-BARE ( -- n ) K" 1 qv s" q" VISIT-USE
+   s" uses-visit: bare Q" VISIT-COMMON$SRC s" : K" 1 s" visit-common.f" USE-TARGET
+   CHECK:VERIFY-DEFS$ s" word" s" >CVT-ID-T" PACKET DEF-NODE !
+   s" uses-visit: converter in" s" DEFTYPE" s" " s" global" DEF-WHO
+   s" uses-visit: converter in" s" decl_name" s" >cvt-id-t" DEF-STR
+   s" uses-visit: converter in" s" DEFTYPE CVT-ID-T" 8 s" uses-visit.f" DEF-SPAN
+   DEF-NODE @ DECL-VISIT {: iv:n :}
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-ID-T>N" PACKET DEF-NODE !
+   s" uses-visit: converter out" s" DEFTYPE" s" " s" global" DEF-WHO
+   s" uses-visit: converter out" s" decl_name" s" cvt-id-t>n" DEF-STR
+   s" uses-visit: converter out" s" DEFTYPE CVT-ID-T" 8 s" uses-visit.f" DEF-SPAN
+   DEF-NODE @ DECL-VISIT {: ov:n :}
+   s" uses-visit: converter visit" T-LABEL iv 0 > TTRUE
+   s" uses-visit: shared converter visit" T-LABEL iv ov T=
+   s" uses-visit: converter in use" s" >CVT-ID-T" 9 USE
+   s" uses-visit: converter in target" DEFS-SRC$ s" DEFTYPE CVT-ID-T" 8 s" uses-visit.f" USE-TARGET
+   s" uses-visit: converter in binding" T-LABEL USE-NODE @ DECL-VISIT iv T=
+   s" uses-visit: converter in name" T-LABEL USE-NODE @ s" decl_name" STRING$ s" >cvt-id-t" T$=
+   s" uses-visit: converter in package" T-LABEL USE-NODE @ s" package" STRING$ s" " T$=
+   s" uses-visit: converter in visibility" T-LABEL USE-NODE @ s" visibility" STRING$ s" global" T$=
+   s" uses-visit: converter out use" s" CVT-ID-T>N" 10 USE
+   s" uses-visit: converter out target" DEFS-SRC$ s" DEFTYPE CVT-ID-T" 8 s" uses-visit.f" USE-TARGET
+   s" uses-visit: converter out binding" T-LABEL USE-NODE @ DECL-VISIT ov T=
+   s" uses-visit: converter out name" T-LABEL USE-NODE @ s" decl_name" STRING$ s" cvt-id-t>n" T$=
+   s" uses-visit: converter out package" T-LABEL USE-NODE @ s" package" STRING$ s" " T$=
+   s" uses-visit: converter out visibility" T-LABEL USE-NODE @ s" visibility" STRING$ s" global" T$=
+   s" uses-visit: six calls" 6 USE-COUNT ;
+
+
+\ Exporting a private K creates a public K in the same package. The operand
+\ and earlier bare use keep the private identity; the qualified use selects
+\ the public export, despite the same package and tail.
+: USES-VISIBILITY ( -- )
+   0 GEN-U !
+   s\" package CVT-TWIN\n: K ( -- n ) 1 ;\n: PRIVATE-USE ( -- n ) K ;\npublic\nEXPORT K\n;package\n: PUBLIC-USE ( -- n ) CVT-TWIN:K ;\n" GEN+
+   s" uses-visibility.f" DEFS-SRC$ FIXTURE
+   s" uses-visibility: native loads" T-LABEL
+   s" uses-visibility.f" AT$ NATIVE-RC 0 T=
+   s" uses-visibility.f" DEFS-CHECK 0 s" uses-visibility: verified" EXPECT-KIND
+   CHECK:VERIFY-DEFS$ s" visibility" s" private" PACKET {: pd:n :}
+   CHECK:VERIFY-DEFS$ s" kind" s" EXPORT" PACKET {: ed:n :}
+   s" uses-visibility: private declaration" T-LABEL pd s" decl_name" STRING$ s" k" T$=
+   pd s" package" STRING$ s" cvt-twin" T$=
+   pd s" visibility" STRING$ s" private" T$=
+   s" uses-visibility: public declaration" T-LABEL ed s" decl_name" STRING$ s" k" T$=
+   ed s" package" STRING$ s" cvt-twin" T$=
+   ed s" visibility" STRING$ s" public" T$=
+   pd DECL-VISIT {: pv:n :}
+   ed DECL-VISIT {: ev:n :}
+   s" uses-visibility: declaration visits" T-LABEL pv 0 > ev 0 > and TTRUE
+   s" uses-visibility: bare" s" PRIVATE-USE ( -- n ) K" 1 USE
+   s" uses-visibility: bare target" DEFS-SRC$ s" : K" 1 s" uses-visibility.f" USE-TARGET
+   s" uses-visibility: bare identity" T-LABEL USE-NODE @ DECL-VISIT pv T=
+   USE-NODE @ s" decl_name" STRING$ s" k" T$=
+   USE-NODE @ s" package" STRING$ s" cvt-twin" T$=
+   USE-NODE @ s" visibility" STRING$ s" private" T$=
+   s" uses-visibility: export operand" s" EXPORT K" 1 USE
+   s" uses-visibility: export operand target" DEFS-SRC$ s" : K" 1 s" uses-visibility.f" USE-TARGET
+   s" uses-visibility: export operand identity" T-LABEL USE-NODE @ DECL-VISIT pv T=
+   USE-NODE @ s" decl_name" STRING$ s" k" T$=
+   USE-NODE @ s" package" STRING$ s" cvt-twin" T$=
+   USE-NODE @ s" visibility" STRING$ s" private" T$=
+   s" uses-visibility: qualified" s" CVT-TWIN:K" 10 USE
+   s" uses-visibility: qualified target" DEFS-SRC$ s" EXPORT K" 1 s" uses-visibility.f" USE-TARGET
+   s" uses-visibility: qualified identity" T-LABEL USE-NODE @ DECL-VISIT ev T=
+   USE-NODE @ s" decl_name" STRING$ s" k" T$=
+   USE-NODE @ s" package" STRING$ s" cvt-twin" T$=
+   USE-NODE @ s" visibility" STRING$ s" public" T$=
+   s" uses-visibility: three uses" 3 USE-COUNT ;
+
+\ Amending an effect keeps its declaration; re-including the same token after
+\ undefine publishes another declaration lifetime in the same namespace.
+: USES-VISIT-LIFETIME ( -- )
+   s" visit-common.f" VISIT-COMMON$SRC FIXTURE
+   0 GEN-U !
+   s\" package P\npublic\ninclude visit-common.f\n: BEFORE ( -- n ) K ;\ns\" K\" s\" -- n\" TRUST\n: AFTER ( -- n ) K ;\nundefine K\ninclude visit-common.f\n: REPLACED ( -- n ) K ;\n;package\n" GEN+
+   s" uses-lifetime.f" 0 GEN GEN-U @ FIXTURE
+   s" uses-lifetime: native loads" T-LABEL
+   s" uses-lifetime.f" AT$ NATIVE-RC 0 T=
+   s" uses-lifetime.f" DEFS-CHECK
+   0 s" uses-lifetime: verified" EXPECT-KIND
+   s" uses-lifetime: declarations" T-LABEL CHECK:VERIFY-DEFS$ OBJECTS 5 T=
+   CHECK:VERIFY-DEFS$ JSONL-START
+   JSONL-NEXT-OBJECT DECL-VISIT {: first:n :}
+   JSONL-NEXT-OBJECT drop
+   JSONL-NEXT-OBJECT drop
+   JSONL-NEXT-OBJECT DECL-VISIT {: later:n :}
+   s" uses-lifetime: first visit" T-LABEL first 0 > TTRUE
+   s" uses-lifetime: later visit" T-LABEL later 0 > TTRUE
+   s" uses-lifetime: reinclude changes visit" T-LABEL first later T<>
+   s" uses-lifetime: before amendment" s" BEFORE ( -- n ) K" 1 USE
+   s" uses-lifetime: before amendment" T-LABEL USE-NODE @ DECL-VISIT first T=
+   s" uses-lifetime: amendment preserves visit" s" AFTER ( -- n ) K" 1 USE
+   s" uses-lifetime: amendment preserves visit" T-LABEL USE-NODE @ DECL-VISIT first T=
+   s" uses-lifetime: replacement visit" s" REPLACED ( -- n ) K" 1 USE
+   s" uses-lifetime: replacement visit" T-LABEL USE-NODE @ DECL-VISIT later T=
+   s" uses-lifetime: three uses" 3 USE-COUNT ;
 
 
 \ A name the checker refuses binds nothing: one two usings both export, one a
@@ -3754,6 +3931,9 @@ public
    s" identity-swap" [: IDENTITY-SWAP ;] RUN-CASE
    s" file-line-keys" [: FILE-LINE-KEYS ;] RUN-CASE
    s" uses" [: USES ;] RUN-CASE
+   s" uses-visit" [: USES-VISIT ;] RUN-CASE
+   s" uses-visibility" [: USES-VISIBILITY ;] RUN-CASE
+   s" uses-visit-lifetime" [: USES-VISIT-LIFETIME ;] RUN-CASE
    s" uses-refused" [: USES-REFUSED ;] RUN-CASE
    s" uses-order" [: USES-ORDER ;] RUN-CASE
    s" cands-body" [: CANDS-BODY ;] RUN-CASE

@@ -1113,7 +1113,7 @@ CAST: TICK-ORDER-ACTION ( n -- [ ptr u8 n n ptr u8 [ -- ] -- n ] )
 
 CAST: VERIFIER-ACTION ( n -- [ -- ] )
 CAST: ARM-ACTION ( n -- [ ptr u8 n n n n -- ] )
-CAST: USES-ACTION ( n -- [ [ n n n n n -- ] [ -- ] -- ] )
+CAST: USES-ACTION ( n -- [ [ n n n n n n -- ] [ -- ] -- ] )
 
 \ ---- navigation: where a declaration was written, what a use bound ----------
 \ Each file the composition scans is a visit, numbered from one counter that
@@ -1236,7 +1236,7 @@ CAST: VISIBLE-ACTION ( n -- [ ptr u8 n n [ ptr u8 n n n n -- ] -- ] )
 
 \ Run Q with H receiving each use Q's checks bind (src/core/checker.f
 \ CHECKER-WITH-USES): one scope at a time, closed on either exit.
-: WITH-USES ( [ n n n n n -- ] [ -- ] -- )
+: WITH-USES ( [ n n n n n n -- ] [ -- ] -- )
    NCOMP-DISPATCH:DECL-VERIFY-USES-OFF OWNER-XT USES-ACTION execute ;
 
 \ The checked dispatchers name their offsets through layout.f's
@@ -1838,19 +1838,20 @@ defer ON-DUPLICATE ( n n ptr u8 n bool -- )
 \ writes it, or a name the definer generates as spelled; the symbol the
 \ checker recorded it under; its declared effect, empty for none;
 \ where the token that declared it starts and ends in the file FILE$
-\ names; and its class, one of the four above. The strings are borrowed: a
-\ word installed here consumes them before it returns.
-defer ON-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n -- )
+\ names; its class, one of the four above; and its file visit. The strings are
+\ borrowed: a word installed here consumes them before it returns.
+defer ON-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
 
 \ A use in the subject that the checker bound to a located declaration
 \ (src/core/checker.f CHECKER-ON-USE): where the use starts and ends in the
 \ subject; the path the declaration's file was resolved to when the
 \ composition visited it; and where the token that declared it starts and
-\ ends there, all at the base TOKEN-BYTE@ counts from. The path is borrowed: a
+\ ends there, all at the base TOKEN-BYTE@ counts from; the selected symbol and
+\ declaration visit. The path is borrowed: a
 \ word installed here consumes it before it returns. A use in a file the
 \ subject loads, and one bound to a declaration with no location, are not
 \ reported.
-defer ON-USE ( n n ptr u8 n n n -- )
+defer ON-USE ( n n ptr u8 n n n n n -- )
 
 \ The file being scanned, named as its packets name it.
 : FILE$ ( -- ptr u8 n )
@@ -1880,8 +1881,8 @@ private
    a u s" defer" STR=CI or  a u s" create" STR=CI or
    a u s" variable" STR=CI or  a u s" constant" STR=CI or ;
 
-: DEFINITION-NONE ( ptr u8 n ptr u8 n n ptr u8 n n n n -- )
-   drop 2drop 2drop drop 2drop 2drop ;
+: DEFINITION-NONE ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
+   2drop 2drop 2drop drop 2drop 2drop ;
 
 : DEFINITION-INIT ( -- )
    ['] DEFINITION-NONE is ON-DEFINITION ;
@@ -1895,8 +1896,8 @@ DEFINITION-INIT
 
 FILE-INIT
 
-: USE-NONE ( n n ptr u8 n n n -- )
-   2drop 2drop 2drop ;
+: USE-NONE ( n n ptr u8 n n n n n -- )
+   2drop 2drop 2drop 2drop ;
 
 : USE-INIT ( -- )
    ['] USE-NONE is ON-USE ;
@@ -1912,11 +1913,11 @@ LENIENT-INIT
 
 \ A use the checker published, at the subject's base: reported when it is in
 \ the subject and its declaration lies in a file this composition visited.
-: USE-SEEN ( n n n n n -- )
-   {: s:n e:n v:n ds:n de:n :}
+: USE-SEEN ( n n n n n n -- )
+   {: s:n e:n sym:n v:n ds:n de:n :}
    VISIT-CUR @ VISIT-FIRST @ <> IF EXIT THEN
    v VISIT-IN? 0= IF EXIT THEN
-   s BASE-BYTE @ +  e BASE-BYTE @ +  v VISIT-PATH  ds de ON-USE ;
+   s BASE-BYTE @ +  e BASE-BYTE @ +  v VISIT-PATH  ds de sym v ON-USE ;
 
 : DUPLICATE-STOP ( n n ptr u8 n bool -- )
    drop 2drop
@@ -1974,7 +1975,7 @@ DUPLICATE-INIT
    name nameu RETAINED-SYM
    {: sym:n :}
    sym 0= IF EXIT THEN
-   kind kindu name nameu sym eff effu TRIM at end class ON-DEFINITION ;
+   kind kindu name nameu sym eff effu TRIM at end class VISIT-CUR @ ON-DEFINITION ;
 
 \ The same, for the name the statement token declares, written from byte at.
 : DEFINED-HERE ( ptr u8 n ptr u8 n n n -- )
@@ -2769,7 +2770,8 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
    name nameu RECORD-SYM? SYM-IDENTITY drop 2swap 2drop RETAINED-SYM
    {: sym:n :}
    sym 0= IF EXIT THEN
-   TOP-CUR-A @ TOP-CUR-U @ name nameu sym s" " at at nameu + DEF-EXPORT ON-DEFINITION ;
+   TOP-CUR-A @ TOP-CUR-U @ name nameu sym s" " at at nameu + DEF-EXPORT
+   VISIT-CUR @ ON-DEFINITION ;
 
 : RECORD-EXPORT ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}

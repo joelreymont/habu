@@ -39,10 +39,12 @@
 \                | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \    check-verify: duplicate 78 BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \    check-verify: file {"file":F,"sha256":H}
-\    check-verify: definition {"kind":K,"class":C,"word":W,"package":P,
-\       "visibility":V,"effect":E,"file":F,"byte_start":S,"byte_end":N}
+\    check-verify: definition {"kind":K,"class":C,"word":W,
+\       "decl_visit":D,"decl_name":T,"package":P,"visibility":V,
+\       "effect":E,"file":F,"byte_start":S,"byte_end":N}
 \    check-verify: use {"byte_start":S,"byte_end":N,"file":F,
-\       "target_start":TS,"target_end":TN}
+\       "target_start":TS,"target_end":TN,"decl_visit":D,
+\       "decl_name":T,"package":P,"visibility":V}
 \    check-verify: candidate {"word":W,"file":F,"target_start":TS,
 \       "target_end":TN}
 \    check-verify: loader LEN TARGET
@@ -66,15 +68,16 @@
 \ it names is), W its name as the source writes it
 \ (a name its definer generates, as spelled), P and V the package (empty for a
 \ global) and visibility (global, private or public) the checker recorded it
-\ under, E its declared effect, absent when it declared none, F the file as
-\ its packets name it, and S and N where the token that declared it starts and
-\ ends there.
+\ under, T its recorded canonical tail, D its local file visit, E its declared
+\ effect, absent when it declared none, F the file as its packets name it, and
+\ S and N where the token that declared it starts and ends there.
 \
 \ A use line names what src/habu/verify-source.f ON-USE reports, a use in the
 \ subject that the checker bound to a located declaration: S and N where the
 \ use starts and ends in the subject, F the path the declaration's file was
-\ resolved to, and TS and TN where the token that declared it starts and ends
-\ there.
+\ resolved to, TS and TN where the token that declared it starts and ends
+\ there, and D, T, P and V the selected declaration's local visit, canonical
+\ tail, package and visibility.
 \
 \ The third form is the first with a completion cursor at byte N of BYTES. It
 \ writes as well, for each spelling the checker offers at the cursor's place, a
@@ -338,17 +341,20 @@ variable LENIENT-FIRST                  \ the argument the --lenient paths start
 \ A definition the first form retained, as its definition line: the name as
 \ the event gives it, the package and visibility the checker recorded it
 \ under. The tail it recorded is its lookup key, not a name to show.
-: DEFINITION-LINE ( ptr u8 n ptr u8 n n ptr u8 n n n n -- )
-   {: kind:ptr kindu:n name:ptr nameu:n sym:n eff:ptr effu:n at:n end:n class:n :}
-   sym VERIFY:SYM-IDENTITY
-   {: vis:n :}
-   2drop DEF-PKG!
+: DEFINITION-LINE ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
+   {: kind:ptr kindu:n name:ptr nameu:n sym:n eff:ptr effu:n at:n end:n class:n visit:n :}
+   sym VERIFY:SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
+   pkg pkgu DEF-PKG!
    OUT-FD s\" check-verify: definition {\"kind\":" WRITE
    kind kindu JSON-STR
    OUT-FD s\" ,\"class\":" WRITE
    class CLASS$ JSON-STR
    OUT-FD s\" ,\"word\":" WRITE
    name nameu JSON-STR
+   OUT-FD s\" ,\"decl_visit\":" WRITE
+   OUT-FD visit FD-N
+   OUT-FD s\" ,\"decl_name\":" WRITE
+   tail tailu JSON-STR
    OUT-FD s\" ,\"package\":" WRITE
    DEF-PKG$ JSON-STR
    OUT-FD s\" ,\"visibility\":" WRITE
@@ -426,8 +432,10 @@ variable LENIENT-FIRST                  \ the argument the --lenient paths start
 
 \ A use the first form's subject bound to a located declaration, as its use
 \ line.
-: USE-LINE ( n n ptr u8 n n n -- )
-   {: at:n end:n path:ptr pathu:n tat:n tend:n :}
+: USE-LINE ( n n ptr u8 n n n n n -- )
+   {: at:n end:n path:ptr pathu:n tat:n tend:n sym:n visit:n :}
+   sym VERIFY:SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
+   pkg pkgu DEF-PKG!
    OUT-FD s\" check-verify: use {\"byte_start\":" WRITE
    OUT-FD at FD-N
    OUT-FD s\" ,\"byte_end\":" WRITE
@@ -438,6 +446,14 @@ variable LENIENT-FIRST                  \ the argument the --lenient paths start
    OUT-FD tat FD-N
    OUT-FD s\" ,\"target_end\":" WRITE
    OUT-FD tend FD-N
+   OUT-FD s\" ,\"decl_visit\":" WRITE
+   OUT-FD visit FD-N
+   OUT-FD s\" ,\"decl_name\":" WRITE
+   tail tailu JSON-STR
+   OUT-FD s\" ,\"package\":" WRITE
+   DEF-PKG$ JSON-STR
+   OUT-FD s\" ,\"visibility\":" WRITE
+   vis VISIBILITY$ JSON-STR
    OUT-FD s" }" WRITE
    OUT-FD NEWLINE ;
 
