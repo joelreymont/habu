@@ -216,5 +216,14 @@ s\" package TRWC\npublic\n: TRWC-USE ( -- n ) TRW-G7 ;\n;package" TRUST-ROW:TCE-
 s\" : TRWC-CK ( -- ) TRWC:TRWC-USE 7 <> if s\q a refused row bound the name\q 1 die then ;\nTRWC-CK"
    TRUST-ROW:TCE-CATCH 0 TRUST-ROW:T=
 
+\ --- a word the run renders -------------------------------------------------
+\ A word a called word renders is in the wordlist when the row after the call
+\ runs, so the row is accepted, and the same row misspelt is refused. This is
+\ the judgment `tools/check.f --verify-only` leaves to the load for a row under
+\ a rendering statement's mark (src/core/checker.f CHECKER-VERIFY-TRUST).
+s\" : TRW-REN ( -- ) s\q : TRW-MADE ( -- n ) 1 ;\q evaluate-closed ; TRW-REN" TRUST-ROW:TCE-CATCH 0 TRUST-ROW:T=
+s\" s\q TRW-MADE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH 0 TRUST-ROW:T=
+s\" s\q TRW-MAED\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
+
 \ ---------------------------------------------------------------------------
 TRUST-ROW:REPORT

@@ -229,6 +229,11 @@ $1F00 constant BINDING-ID-MASK
 0 constant VISIBLE-BODY
 1 constant VISIBLE-TOP
 2 constant VISIBLE-NAMED
+\ Whether a `trust` row is the run's to judge: ( ptr u8 n -- bool ), true when
+\ the row names no word in the wordlist its record lands in and a rendering
+\ statement read before it marked that wordlist (src/core/checker.f
+\ CHECKER-VERIFY-TRUST).
+$3D0 constant VERIFY-TRUST-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

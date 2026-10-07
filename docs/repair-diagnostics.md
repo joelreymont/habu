@@ -393,10 +393,15 @@ are the run's to know, none of them verified. A word that renders source opens
 no stretch: it reads only the text it renders. A definition's body names a word
 only such a statement, or an unlearned create caller, may define (`CHECK`
 verdict 2, `docs/forth.md`), and the token is where the checker's judgment of
-the body stops. Only `--verify-only` reports it: once per word that may read
-the source, once per rendered name's stretch that holds anything but blanks
-and comments, and once per such definition; see Checking Without Running for
-the file's verdict. It counts as no refusal and has no repair packet.
+the body stops. Or a `trust` row names no word in the wordlist its record lands
+in, and a rendering statement before it marked that same wordlist: the token is
+the row's name, an escaped literal's decoded as the engine decodes it, with no
+position fields when an escape changed it, and the row records no effect, so the
+load's `trust` judges it, a misspelt name included (`E-TRUST-UNRESOLVED`). Only
+`--verify-only` reports it: once per word that may read the source, once per
+rendered name's stretch that holds anything but blanks and comments, and once
+per such definition or row; see Checking Without Running for the file's
+verdict. It counts as no refusal and has no repair packet.
 
 A definition by `:`, `CAST:`, `EXPORT` or a typed storage definer of a name
 its wordlist already holds emits, with or without `--all-errors`, a
@@ -442,7 +447,7 @@ none are. It has no `throw_code` or definition-only field. The code names its re
 
 | `code` | `repair_class` | Added field | Refusal |
 | --- | --- | --- | --- |
-| `E-TRUST-UNRESOLVED` | `fix_stale_trust_row` | none | A `trust` row names no word where its record lands; `token` is the row's name, an escaped literal's decoded as the engine decodes it. |
+| `E-TRUST-UNRESOLVED` | `fix_stale_trust_row` | none | A `trust` row names no word where its record lands; `token` is the row's name, an escaped literal's decoded as the engine decodes it. `--verify-only` reports a deferral record instead when a rendering statement before the row marked that wordlist. |
 | `E-PKG-CONTEXT` | `use_storage_definer` | none | A checker storage registrar was called from source, outside the engine's verifier window; `token` is the name it would have recorded. |
 | `E-BAD-QUALIFIED-RECORD` | `fix_qualified_name` | none | A checker record was asked for a malformed qualified name, which keys no word; `token` is that name. A call to such a name is refused in its definition as `E-BAD-QUALIFIED`, under the same class with a definition's fields. |
 | `E-BAD-STORED-SIGNATURE` | `fix_signature_type`, `fix_bare_ptr_element`, `fix_signature_arity` or `fix_signature_syntax`, as for a definition's signature; `fix_signature_size` for a row too deep or too wide to record | `signature`, as written, empty when the row stored no text; and `reason` for a row too deep or too wide to record, naming the bound with the row's count and the limit | A stored signature, a `trust` row's or a `TRUSTED:` definition's, does not parse, or is more than 4096 levels deep or takes more than 255 cells, more than its record holds; `token` is the name it is stored for. |
