@@ -22,10 +22,13 @@
 \ whose text the range counts through, and for any other the open document's
 \ holding the file when the check completed, else the file URI of the path.
 \ A file a check reads again, as `include` into a second package or after
-\ `undefine` does, gives each of its definitions once. A record whose word a
-\ later reading declares at its token again stands for several words, which
-\ REC-SEVERAL? answers: each reading declares another word, in another
-\ wordlist or, after `undefine`, in the same one.
+\ `undefine` does, gives each of its definitions once, as the file spells
+\ it. A record whose word a later reading declares at its token again,
+\ letters compared without case as Habu compares names, stands for several
+\ words, which REC-SEVERAL? answers, and so does that reading's own record
+\ when the file changed its spelling between the readings: each reading
+\ declares another word, in another wordlist or, after `undefine`, in the
+\ same one.
 \
 \ A use is a use in the document that the check bound to a located
 \ declaration, in the order the check published them: the bytes of the
@@ -360,9 +363,28 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    repeat
    drop OPTION:NONE ;
 
-\ The line's record, new, last of group G's.
-: REC+ ( n -- )
-   {: g:n :}
+\ Whether record R is of the line's word, letters compared without case as
+\ Habu compares names, declared at the line's byte.
+: ALIKE? ( n -- bool )
+   {: r:n :}
+   r R-START REC@ START-V @ <> if false exit then
+   r R-WORD REC@ r R-WORD-U REC@ AT$ WORD-AT @ WORD-U @ AT$ STR=CI ;
+
+\ Marks each record of group G whose word is the line's, letters compared
+\ without case, declared at the line's byte, as standing for several words;
+\ true when one is.
+: SEVERAL! ( n -- bool )
+   false swap G-FIRST GROUP@
+   begin dup 0 >= while
+      dup ALIKE? if 1 over R-SEVERAL REC! nip true swap then
+      R-NEXT REC@
+   repeat
+   drop ;
+
+\ The line's record, new, last of group G's, standing for several words when
+\ SEVERAL is true.
+: REC+ ( n bool -- )
+   {: g:n several:bool :}
    REC-N @ {: r:n :}
    r 1+ REC-CELLS * RECS-RESERVE
    -1 r R-NEXT REC!
@@ -380,23 +402,24 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    KIND-U @ r R-KIND-U REC!
    EFF-AT @ r R-EFF REC!
    EFF-U @ r R-EFF-U REC!
-   0 r R-SEVERAL REC!
+   several if 1 else 0 then r R-SEVERAL REC!
    g G-LAST GROUP@ {: last:n :}
    last 0 < if r g G-FIRST GROUP! else r last R-NEXT REC! then
    r g G-LAST GROUP!
    1 REC-N +! ;
 
-\ The line's record, last of its group's; when the group holds it already,
-\ the line's reading declared another word at that record's token, which then
-\ stands for several, and the strings the line decoded are dropped instead.
+\ The line's record, last of its group's, unless the group holds it already,
+\ when the strings the line decoded are dropped instead. A line that declares
+\ a record's word again at its token, letters compared without case as Habu
+\ compares names, is of another reading of the file, which declared another
+\ word there: that record, and the line's own when it is new, stands for
+\ several from then on.
 : RECORD ( -- )
    GROUP {: g:n :}
+   g SEVERAL! {: several:bool :}
    g HOLDER MATCH option
-      some OF {: r:n :}
-         1 r R-SEVERAL REC!
-         LINE-AT @ BYTES-U !
-      ENDOF
-      none OF g REC+ ENDOF
+      some OF drop LINE-AT @ BYTES-U ! ENDOF
+      none OF g several REC+ ENDOF
    ;MATCH ;
 
 \ The group of the line's file, made if this check has none.
@@ -627,7 +650,7 @@ public
 : REC-EFFECT$ ( n -- ptr u8 n )  dup R-EFF REC@ swap R-EFF-U REC@ AT$ ;
 
 \ Whether the record stands for several words: the check read its file again
-\ and declared its word at its token again.
+\ and declared its word at its token again, letters compared without case.
 : REC-SEVERAL? ( n -- bool )  R-SEVERAL REC@ 0<> ;
 
 \ The line and character the record's token starts at, then ends at.

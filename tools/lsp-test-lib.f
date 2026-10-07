@@ -262,6 +262,14 @@
 \   one package's public section and its private one, or again after
 \   `undefine`, declares the other's word too, answered other than null: no
 \   use's spelling tells them apart ...................... highlight-included
+\ - a use of either of two words whose spellings differ only in case, which
+\   one check declared at one token by reading its file twice, the file
+\   changed on disk between the readings, answered other than null: Habu
+\   compares names without case, so neither spelling tells them apart. No
+\   conversation can change a file between a check's two readings of it
+\   without racing the check, so this one runs the store and the highlight in
+\   the test's own process, on the lines a verified check of such a race
+\   stated .......................................... highlight-case-reread
 \
 \ Completion
 \ - a cursor in a body not answered, in a list that is not incomplete, with
@@ -319,7 +327,12 @@ require lib/uri.f
 require lib/content-length.f
 require lib/json-read.f
 require lib/json-rpc.f
+require lib/json-write.f
 require tools/check-verify-core.f
+require tools/lsp-docs.f
+require tools/lsp-text.f
+require tools/lsp-defs.f
+require tools/lsp-highlight.f
 require tools/lsp-core.f
 
 package LSP-TEST
@@ -385,6 +398,7 @@ variable SENT                            \ and the bytes of its input written
 
 FS-PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file URI: file:// and each byte escaped
 create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
+TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
 
 : READY ( ptr a -- )  256 N>BLEN INIT ;
 
@@ -3102,6 +3116,77 @@ variable LENGTH-N                        \ the length of its directory's name
    HEAR s" 7" NULL-RESULT
    HEAR s" 8" NULL-RESULT ;
 
+\ hl-case.f, on disk, as the second of one check's two readings of it read it:
+\ hl-reread.f includes it into P's public section, then into Q's, and uses
+\ P:K and Q:k, and between the readings the file changed from
+\ `: K ( -- n ) 1 ;` to this text. The lines are the ones
+\ tools/check-verify-child.f stated for a verified check of that race: the two
+\ files, K of p and k of q both at hl-case.f's bytes 2 to 3, and the two uses,
+\ here at hl-reread.f's bytes 107 to 110 and 111 to 114.
+: HL-CASE-PATH ( -- ptr u8 n )  s" hl-case.f" FIXTURE ;
+: HL-REREAD-PATH ( -- ptr u8 n )  s" hl-reread.f" FIXTURE ;
+: TEXT-HL-CASE ( -- ptr u8 n )  s\" : k ( -- n ) 2 ;\n" ;
+: TEXT-HL-REREAD ( -- ptr u8 n )
+   s\" package P\npublic\ninclude hl-case.f\n;package\npackage Q\npublic\ninclude hl-case.f\n;package\n: HL-BOTH ( -- n ) P:K Q:k + ;\n" ;
+
+\ The definition of word W of package P at hl-case.f's bytes 2 to 3, a line
+\ in PAR.
+: HL-CASE-DEF+ ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n p:ptr pu:n :}
+   s\" {\"kind\":\":\",\"class\":\"word\",\"word\":\"" PAR+ w wu PAR+
+   s\" \",\"package\":\"" PAR+ p pu PAR+
+   s\" \",\"visibility\":\"public\",\"effect\":\"-- n\",\"file\":" PAR+
+   HL-CASE-PATH TEXT+ s\" ,\"byte_start\":2,\"byte_end\":3}\n" PAR+ ;
+
+\ A use from byte FROM to byte TO of hl-reread.f of the token at hl-case.f's
+\ bytes 2 to 3, a line in PAR.
+: HL-CASE-USE+ ( n n -- )
+   {: from:n to:n :}
+   s\" {\"byte_start\":" PAR+ from INT$ PAR+
+   s\" ,\"byte_end\":" PAR+ to INT$ PAR+
+   s\" ,\"file\":" PAR+ HL-CASE-PATH TEXT+
+   s\" ,\"target_start\":2,\"target_end\":3}\n" PAR+ ;
+
+\ The highlight at this line and character of the document in this slot, its
+\ byte found as the server finds a request's, must be null; it fails under
+\ this label.
+: HL-NULL-AT ( n n n ptr u8 n -- )
+   {: slot:n line:n ch:n l:ptr lu:n :}
+   slot LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT!
+   line ch LSP-TEXT:OFFSET-AT {: at:n :}
+   l lu T-LABEL
+   HL-W MSG-B JSON-WRITE:OPEN-BUF slot at LSP-HIGHLIGHT:ANSWER
+   JSON-WRITE:$ s" null" T$=
+   HL-W JSON-WRITE:CLOSE ;
+
+\ The check's lines kept for hl-reread.f, open in this slot, as the server
+\ keeps a completed check's, then the highlight asked at P:K and at Q:k.
+: HL-REREAD-ASK ( n -- )
+   {: slot:n :}
+   PAR-B CLEAR
+   s\" {\"file\":" PAR+ HL-REREAD-PATH TEXT+
+   s\" }\n{\"file\":" PAR+ HL-CASE-PATH TEXT+ s\" }\n" PAR+
+   PAR$ nip {: files:n :}
+   s" K" s" p" HL-CASE-DEF+
+   s" k" s" q" HL-CASE-DEF+
+   PAR$ nip {: defs:n :}
+   107 110 HL-CASE-USE+
+   111 114 HL-CASE-USE+
+   PAR$ {: a:ptr u:n :}
+   a files  a files + defs files -  a defs + u defs -  slot true
+   LSP-DEFS:DEFS-KEEP
+   slot 8 20 s" highlight-case-reread: P:K" HL-NULL-AT
+   slot 8 24 s" highlight-case-reread: Q:k" HL-NULL-AT ;
+
+: HIGHLIGHT-CASE-REREAD ( -- )
+   LSP-DEFS:DEFS-PREPARE
+   HL-CASE-PATH TEXT-HL-CASE WRITE-ALL
+   HL-REREAD-PATH URI-OF 1 HL-REREAD-PATH TEXT-HL-REREAD LSP-DOCS:DOC-OPEN
+   HL-REREAD-PATH URI-OF LSP-DOCS:DOC-FIND MATCH option
+      some OF HL-REREAD-ASK ENDOF
+      none OF s" highlight-case-reread: open" T-LABEL false TTRUE ENDOF
+   ;MATCH ;
+
 \ ---- completion --------------------------------------------------------------
 
 : CMP-A-PATH ( -- ptr u8 n )  s" cmpl-a.f" FIXTURE ;
@@ -3398,7 +3483,8 @@ variable LENGTH-N                        \ the length of its directory's name
    s" highlight-after-change" [: HIGHLIGHT-AFTER-CHANGE-TURNS ;] TALK
    s" highlight-unproved" [: HIGHLIGHT-UNPROVED-TURNS ;] TALK
    s" highlight-incomplete" [: HIGHLIGHT-INCOMPLETE-TURNS ;] TALK
-   s" highlight-included" [: HIGHLIGHT-INCLUDED-TURNS ;] TALK ;
+   s" highlight-included" [: HIGHLIGHT-INCLUDED-TURNS ;] TALK
+   HIGHLIGHT-CASE-REREAD ;
 
 : TEST-DEFINITIONS ( -- )
    s" definition" [: DEF-TURNS ;] TALK
