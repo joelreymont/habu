@@ -23,10 +23,11 @@ variable OBSERVED
 variable OLD-SLOT
 variable OLD-OCC
 
-TRUSTED: RUN-N ( n -- [ -- n ] ) ;
-TRUSTED: PATH-XT ( n -- [ ptr u8 n -- ] ) ;
-TRUSTED: SLOT-XT ( n -- [ n -- ptr u8 ] ) ;
-TRUSTED: LEN-XT ( n -- [ n -- n ] ) ;
+\ A target record's code address takes the effect its source declares.
+CAST: RUN-N ( n -- [ -- n ] )
+CAST: PATH-XT ( n -- [ ptr u8 n -- ] )
+CAST: SLOT-XT ( n -- [ n -- ptr u8 ] )
+CAST: LEN-XT ( n -- [ n -- n ] )
 CAST: CODE-BYTES ( n -- ptr u8 )
 
 TRUSTED: REWRITE-FIRST ( n -- )

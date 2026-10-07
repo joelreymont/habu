@@ -13,7 +13,7 @@ variable COUNT
 variable PRIOR
 variable PRIOR-HOOK
 
-TRUSTED: RETIRE ( ptr u8 n ptr u8 n n -- )
+: RETIRE ( ptr u8 n ptr u8 n n -- )
    drop 2drop 2drop
    CUT @ ndict!
    COUNT @ ndict! ;

@@ -972,13 +972,13 @@ create CBUF 32 allot
 3 TYPED-BUFFER IDS-SRC n
 3 TYPED-BUFFER IDS-DST IR-ID:ir-symbol-id
 1 TYPED-BUFFER IDS-SENTINEL IR-ID:ir-symbol-id
-create IDS-OVER 4 cells allot
+4 TYPED-BUFFER IDS-OVER IR-ID:ir-symbol-id
 variable IDS-N
 variable IDS-CAP
 
 \ Deliberately alias differently typed spans to exercise the copy boundary.
-: IDS-OVER-SRC ( -- ptr n ) IDS-OVER ;
-TRUSTED: IDS-OVER-DST ( -- ptr IR-ID:ir-symbol-id ) IDS-OVER ;
+: IDS-OVER-SRC ( -- ptr n ) 0 IDS-OVER BYTE-VIEW CELL-VIEW ;
+: IDS-OVER-DST ( -- ptr IR-ID:ir-symbol-id ) 0 IDS-OVER ;
 
 : IDS-RUN ( -- )
    0 IDS-ROWS @ 0 IDS-KEY @ 0 IDS-SRC IDS-N @ 0 IDS-DST IDS-CAP @ IR-SYM:IDS! ;

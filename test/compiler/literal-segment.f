@@ -21,8 +21,9 @@ BODY-N BUFFER: BODY
 variable K                           \ numbers every body any OPEN interns
 variable AT                          \ the body that opened the segment
 
-TRUSTED: PTR>N ( ptr a -- n ) ;
-TRUSTED: N>BYTES ( n -- ptr u8 ) ;
+: PTR>N ( ptr a -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - ;
+\ An interned body is answered as an integer address; reading its bytes needs a byte view.
+CAST: N>BYTES ( n -- ptr u8 )
 
 : BODY! ( n -- ) {: k:n :}
    BODY-N 0 ?do 76 BODY i + c! loop

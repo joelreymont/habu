@@ -421,13 +421,11 @@ private
    a u ns XREF-PKG-PRIVATE XREF-FIND-WL XREF-FOUND? TTRUE ;
 
 
-\ Read the public metadata surface; checker lookup helpers are private, so the
-\ family's package name comes through a trusted wrapper of the sealed accessor.
-TRUSTED: FAMILY-PKG$ ( n -- ptr u8 n ) TFAM:TFAM-PKG$ ;
-
+\ Read the public metadata surface; the unsealed image binds the sealed accessor
+\ TFAM:TFAM-PKG$ to its recorded row.
 : FAMILY-ID ( n -- n bool ) {: idx:n :}
    TFAM:TFAM-N@ 0 ?do
-      i FAMILY-PKG$ s" IR-ID" STR= if
+      i TFAM:TFAM-PKG$ s" IR-ID" STR= if
          i TFAM-NAME$ idx FAMILY$ STR= if i true unloop exit then
       then
    loop

@@ -18,10 +18,13 @@ ENUM hue
       blue OF 30 ENDOF
    ;MATCH ;
 
+\ The hostile tag: a plain cell that names no variant of hue.
+CAST: >HUE ( n -- hue )
+
 public
 
-TRUSTED: FORGE ( -- )
-   99 E-HUE drop ;
+: FORGE ( -- )
+   99 >HUE E-HUE drop ;
 
 ;package
 

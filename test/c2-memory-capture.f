@@ -17,7 +17,8 @@ TRUSTED: INSIDE-READ ( -- )
 TRUSTED: INSIDE-MUT-LOAN ( -- )
    BYTES 3 [: TRY-CAPTURE ;] C2-MEM:WITH-MUT-LOAN 2drop ;
 
-: TRY-OWNER ( ptr u8 n -- ptr u8 n ) TRY-CAPTURE ;
+: TRY-OWNER ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> )
+   [: IMAGE-LIFECYCLE:PREPARE ;] catch E-C2-CAPTURE T= ;
 
 : FAIL-LOAN ( ptr u8 n -- ptr u8 n ) -9363 throw ;
 
@@ -27,7 +28,7 @@ TRUSTED: THROW-READ ( -- )
 TRUSTED: THROW-MUT-LOAN ( -- )
    BYTES 3 [: FAIL-LOAN ;] C2-MEM:WITH-MUT-LOAN 2drop ;
 
-TRUSTED: INSIDE-OWNER ( -- )
+: INSIDE-OWNER ( -- )
    16 MEM:BYTES-ALLOC-LEN [: TRY-OWNER ;] C2-MEM:WITH-MUT ;
 
 public

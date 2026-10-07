@@ -19,28 +19,28 @@ private
 TRUSTED: ALLOCATED ( n -- n )
    16 MEM:BYTES-ALLOC-LEN [: CHANGE-ROW ;] C2-MEM:WITH-MUT ;
 
-TRUSTED: READ-ROOT ( ptr u8 n -- n n ptr u8 n ) {: p:ptr len:n :}
+TRUSTED: READ-ROOT ( mut-view<p,q,a,u8> -- n n mut-view<p,q,a,u8> ) {: p:ptr len:n :}
    67 p c!
    p len [: ALTER-READ ;] C2-MEM:WITH-READ {: value:n restored:ptr bound:n :}
    restored p = TTRUE
    value bound p len ;
 
-TRUSTED: READ-RESTORED ( -- n n )
+: READ-RESTORED ( -- n n )
    16 MEM:BYTES-ALLOC-LEN [: READ-ROOT ;] C2-MEM:WITH-MUT ;
 
-TRUSTED: MUT-ROOT ( ptr u8 n -- n n ptr u8 n ) {: p:ptr len:n :}
+TRUSTED: MUT-ROOT ( mut-view<p,q,a,u8> -- n n mut-view<p,q,a,u8> ) {: p:ptr len:n :}
    67 p c!
    p len [: ALTER-MUT ;] C2-MEM:WITH-MUT-LOAN {: value:n restored:ptr bound:n :}
    restored p = TTRUE
    value bound p len ;
 
-TRUSTED: MUT-RESTORED ( -- n n )
+: MUT-RESTORED ( -- n n )
    16 MEM:BYTES-ALLOC-LEN [: MUT-ROOT ;] C2-MEM:WITH-MUT ;
 
-TRUSTED: FAIL-CALLBACK ( ptr u8 n -- ptr u8 n )
+: FAIL-CALLBACK ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> )
    -9363 throw ;
 
-TRUSTED: FAIL-ALLOC ( -- )
+: FAIL-ALLOC ( -- )
    16 MEM:BYTES-ALLOC-LEN [: FAIL-CALLBACK ;] C2-MEM:WITH-MUT ;
 
 TRUSTED: GROW-ROW ( n -- n n )
