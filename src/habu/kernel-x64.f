@@ -987,6 +987,7 @@ $687461706C616572 constant REALPATH-NAME
 17 constant CLONE-SIGCHLD           \ SIGCHLD at exit, nothing shared
 $80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
 1030 constant F-DUPFD-CLOEXEC
+2 constant F-SETFD
 3 constant SPAWN-MIN-FD             \ the lowest the pipe's write end may sit
 127 constant SPAWN-FAIL-RC
 73 constant FCNTL-NOSIGPIPE         \ lib/process.f F-SETNOSIGPIPE
@@ -1043,20 +1044,38 @@ $80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
    R8 SPN-PIPE-W FRAME32!,
    high LBL, ;
 
-\ Dup the descriptor in the frame cell onto fd n, as LINUX-DUP2-FD: skipped
-\ when it is negative or n itself.
+\ Put the descriptor in the frame cell on fd n, as LINUX-DUP2-FD: dup3 it
+\ there, or, when it is n itself, clear the close-on-exec flag a dup3 would
+\ have cleared. A negative descriptor leaves n alone.
 : CHILD-DUP, ( n n label -- ) {: off:n fd:n fail:label :}
-   LBL {: skip:label :}
+   LBL LBL {: skip:label keep:label :}
    RDI off FRAME@,
    RDI RDI ASM-SINK ENC-TEST-RR  C-S skip JCC,
-   RDI fd >IMM8 ASM-SINK ENC-CMP-RI8  C-E skip JCC,
+   RDI fd >IMM8 ASM-SINK ENC-CMP-RI8  C-E keep JCC,
    RSI fd IMM32,  RDX ZERO-REG,  NR-DUP2 SYS,  C-B fail JCC,
+   skip JMP,
+   keep LBL,
+   RSI F-SETFD IMM32,  RDX ZERO-REG,  NR-FCNTL SYS,  C-B fail JCC,
+   skip LBL, ;
+
+\ Close the child's copy of the source in the stdio cell at off once all three
+\ are on 0, 1 and 2, as LINUX-CLOSE-SOURCE: not at or below 2, not when an
+\ earlier stdio cell holds it, and never the exec-failure pipe.
+: CLOSE-SOURCE, ( n label -- ) {: off:n fail:label :}
+   LBL {: skip:label :}
+   RDI off FRAME@,
+   RDI 2 >IMM8 ASM-SINK ENC-CMP-RI8  C-LE skip JCC,
+   off SPN-IN ?do
+      RAX i FRAME@,  RDI RAX ASM-SINK ENC-CMP-RR  C-E skip JCC,
+   CELL +loop
+   RAX SPN-PIPE-W FRAME32@,  RDI RAX ASM-SINK ENC-CMP-RR  C-E skip JCC,
+   NR-CLOSE SYS,  C-B fail JCC,
    skip LBL, ;
 
 \ LINUX-SPAWN-CHILD: its own process group, the directory, the three
-\ descriptors, then execve. A step that fails, execve included, writes one
-\ byte to the pipe and exits SPAWN-FAIL-RC; the pipe is O_CLOEXEC, so a
-\ successful execve closes it with nothing written.
+\ descriptors and their sources' close, then execve. A step that fails, execve
+\ included, writes one byte to the pipe and exits SPAWN-FAIL-RC; the pipe is
+\ O_CLOEXEC, so a successful execve closes it with nothing written.
 : SPAWN-CHILD, ( -- )
    LBL LBL {: fail:label nocwd:label :}
    SPN-PIPE-R CLOSE-SLOT,
@@ -1065,6 +1084,7 @@ $80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
    NR-CHDIR SYS,  C-B fail JCC,
    nocwd LBL,
    SPN-IN 0 fail CHILD-DUP,  SPN-OUT 1 fail CHILD-DUP,  SPN-ERR 2 fail CHILD-DUP,
+   SPN-IN fail CLOSE-SOURCE,  SPN-OUT fail CLOSE-SOURCE,  SPN-ERR fail CLOSE-SOURCE,
    RDI SPN-PATH FRAME@,  RSI SPN-ARGV FRAME@,  RDX SPN-ENV FRAME@,
    NR-EXECVE SYS,
    fail LBL,

@@ -21,21 +21,12 @@ variable PRIOR-HOOK
 : TRIGGER ( -- )
    s" : USER ( -- n ) RETIRED 51 ;" evaluate-closed ;
 
-TRUSTED: CHECK ( -- )
+: PRIOR! ( -- )
    s" NATIVE-HOST-IMMEDIATE:RETIRED" XREF-FIND DEF-OCC:SELECT
    drop CUT !
    ndict@ COUNT !
    data-base COMPILE-PREFLIGHT-CELL + @ PRIOR !
-   data-base HOOK-CELL + @ PRIOR-HOOK !
-   0 set-check
-   PRIOR-HOOK @ set-check
-   ['] RETIRE set-preflight
-   [: TRIGGER ;] catch
-   0 set-check
-   PRIOR-HOOK @ set-check
-   PRIOR @ set-preflight
-   DEF-OCC:E-STALE T=
-   RAN @ 0 T= ;
+   data-base HOOK-CELL + @ PRIOR-HOOK ! ;
 
 public
 
@@ -44,7 +35,12 @@ s" NATIVE-HOST-IMMEDIATE:RETIRED" 0 parse-imm
 
 T-RESET
 s" immediate preserves occurrence across preflight" T-LABEL
-CHECK
+PRIOR!
+0 set-check PRIOR-HOOK @ set-check ' RETIRE set-preflight
+' TRIGGER catch
+0 set-check PRIOR-HOOK @ set-check PRIOR @ set-preflight
+DEF-OCC:E-STALE T=
+RAN @ 0 T=
 T-REPORT
 
 ;package

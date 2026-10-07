@@ -41,14 +41,14 @@ ndict@ 3 - HIDE-REP
 
 public
 
-TRUSTED: WITH-MUT ( R NUM:alloc-byte-len [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S | U )
+: WITH-MUT ( R NUM:alloc-byte-len [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S | U )
    [: ALLOC-RUN ;] RUN ;
 
-TRUSTED: WITH-READ ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S ptr u8 n | U )
+: WITH-READ ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S ptr u8 n | U )
    {: parent:ptr bound:n callback :}
    parent bound callback LOAN-RUN 2drop parent bound ;
 
-TRUSTED: WITH-MUT-LOAN ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S ptr u8 n | U )
+: WITH-MUT-LOAN ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S ptr u8 n | U )
    {: parent:ptr bound:n callback :}
    parent bound callback LOAN-RUN 2drop parent bound ;
 
@@ -58,7 +58,7 @@ TRUSTED: WITH-INIT ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-lay
 TRUSTED: WITH-RECORDS ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
    RECORDS-RUN ;
 
-TRUSTED: WITH-RECORD ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] n n n | U -- S ptr u8 n | U )
+: WITH-RECORD ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] n n n | U -- S ptr u8 n | U )
    {: width:n stride:n align:n :}
    {: base:ptr count:n index:n callback :}
    index count CHECK-INDEX
@@ -68,7 +68,7 @@ TRUSTED: WITH-RECORD ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] n n n 
 \ The field offset and extent are emitted from the checker's committed layout
 \ fact for this exact call. The callback owns only that span; the parent's
 \ original base and bound return unchanged even when the field was edited.
-TRUSTED: WITH-FIELD ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] n n | U -- S ptr u8 n | U )
+: WITH-FIELD ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] n n | U -- S ptr u8 n | U )
    {: off:n extent:n :}
    {: base:ptr bound:n callback :}
    off 0 < extent 0 <= or off bound > or if E-SPAN-RANGE throw then

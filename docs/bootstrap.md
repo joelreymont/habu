@@ -243,13 +243,13 @@ dictionary rewind therefore goes through `seed-ndict!`, the engine's one
 authorized lowering (it refuses a raise, guards the record span it redirects
 the next write to, rebuilds the name index, and clears the floor as one
 operation; top-level text and `TRUSTED:` bodies call it, no checked body
-names it, and the engine refuses its tick): `src/habu/hide.f`
-`BFR-NDICT!` and `src/habu/prefix-rewind.f` `DICT!` are the two rows that drive
-it, both in payload-only files that no shipped engine carries, and
-`tools/bootstrap.sh`'s boot-hide prologue (`BOOT-NDICT!`) is the third: the
-launcher feeds one prologue to the gforth stage0 and to every sealed native
-stage after it, so the seed's prim table answers `seed-ndict!` with its
-unsealed lowering and the native stages take the authorized one.
+names it, and the engine refuses its tick). Each payload rewind lowers from
+its own top-level text: `src/habu/prefix-rewind.f`'s tokens, a payload-only
+file no shipped engine carries that a build `include`s or appends at its top
+level, and `tools/bootstrap.sh`'s boot-hide prologue, which the launcher feeds
+to the gforth stage0 and to every sealed native stage after it, so the seed's
+prim table answers `seed-ndict!` with its unsealed lowering and the native
+stages take the authorized one.
 `tools/native-build.f` `LOGICAL-RESET` drives the same seam for the in-process
 window build. `CORE-PREFIX:FIRST-RECORD` selects the earliest global `IMK-NDICT0`
 dictionary row, matching recovery; the marker cell is not a saved record index.

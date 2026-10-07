@@ -69,13 +69,6 @@ variable DEC-K
 create SRC SRC-CAP allot
 variable SRC-N
 
-\ ---- the trust boundary -----------------------------------------------------
-\ `set-check` is refused inside a plain checked body. It gets one row with
-\ nothing else in it, so the unchecked surface is the primitive and not the
-\ measurement around it.
-
-TRUSTED: HOOK-OFF ( -- ) 0 set-check ;   \ the name may not fold to `set-check`: UNSAFE-TOK? is a case-folded spelling test
-
 \ ---- output -----------------------------------------------------------------
 
 : EMIT-C ( n -- ) {: c :}
@@ -167,7 +160,19 @@ TRUSTED: HOOK-OFF ( -- ) 0 set-check ;   \ the name may not fold to `set-check`:
    s"  ns-per-def" EMIT$  defs 0 > if ns defs / else 0 then EMIT-FIELD
    LF EMIT-C ;
 
+\ Whether the mode argument names a `-raw` mode; MAIN refuses a short list.
+: RAW? ( -- bool )
+   script-argc 1 < if 0 0= 0= exit then
+   0 script-argv$ {: mode:ptr mu :}
+   mode mu s" corpus-raw" STR= mode mu s" trivial-raw" STR= or ;
+
 public
+
+\ The hook the run compiles under. `set-check` is refused inside a checked
+\ body, so the entry line installs this value at the top level: a `-raw` mode
+\ clears the hook, any other reinstalls the current one.
+: RAW-HOOK ( -- n )
+   RAW? if 0 else check@ then ;
 
 : MAIN ( -- )
    script-argc 3 < if USAGE then
@@ -176,7 +181,6 @@ public
    0 script-argv$ {: mode:ptr mu :}
    0 TIER:SELECT
    usec prof-rate
-   mode mu s" corpus-raw" STR= mode mu s" trivial-raw" STR= or if HOOK-OFF then
    mode mu s" corpus" STR= mode mu s" corpus-raw" STR= or if
       ndict@ {: first :}
       0 prof-on
@@ -200,4 +204,4 @@ public
 
 ;package
 
-TIER0-PROF:MAIN
+TIER0-PROF:RAW-HOOK set-check TIER0-PROF:MAIN

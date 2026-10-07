@@ -1306,6 +1306,15 @@ CTL-RENDERS constant MARK-RENDERS
 CTL-RENDERS CTL-CREATES or constant MARK-UNSEEN
 CTL-RENDERS CTL-NOMINAL or constant MARK-NOMINAL
 
+\ Only a reached call whose outputs this reader does not model can introduce
+\ nominal types absent from the source. A modeled declaration checks its own
+\ complete type before it publishes anything.
+: QUIET-NOMINAL ( ptr u8 n -- ) {: a:ptr u:n :}
+   QUIET @ 0= IF EXIT THEN
+   a u num-parse nip nip IF EXIT THEN
+   a u STRING-OPENER? IF EXIT THEN
+   a u MARK-NOMINAL RENDERS-MARK? drop ;
+
 \ A call in the body of the TRUSTED: word NAME: the checker adds what the word
 \ the token names may do when it runs to what NAME may do
 \ (src/core/checker.f CHECKER-VERIFY-REACH).
@@ -3274,6 +3283,7 @@ variable FFI-SIG-U
    \ name resolves and is checked against the row, and the mark covers what no
    \ row declares, such as COMMAND's NAME#VEC and NAME#BUF. A statement no arm
    \ takes is TOP-TOKEN's, which marks it again and resolves it.
+   a u QUIET-NOMINAL
    a u MARK-RENDERS RENDERS-MARK? drop
    \ … and last, a definer this pre-pass learned from a `does>` definition or a
    \ `generates:` row earlier in the closure. The created word is the NEXT
@@ -3451,18 +3461,10 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    {: a:ptr u:n :}
    a u num-parse nip nip IF EXIT THEN
    a u STRING-OPENER? 0= IF TICK-CONTEXT-UNKNOWN THEN
+   a u QUIET-NOMINAL
    a u MARK-UNSEEN RENDERS-MARK? drop
    COMPOSE-ON @ 0=  TOP-DEFER @ 0<>  or IF EXIT THEN
    a u 0 0= TOP-RESOLVE ;
-
-\ A quiet reader cannot run this reached top-level word. Ask the selected
-\ binding for registration/rendering effects before a definer consumes the
-\ statement; a tick or an uncalled body never reaches this path.
-: QUIET-NOMINAL ( ptr u8 n -- ) {: a:ptr u:n :}
-   QUIET @ 0= IF EXIT THEN
-   a u num-parse nip nip IF EXIT THEN
-   a u STRING-OPENER? IF EXIT THEN
-   a u MARK-NOMINAL RENDERS-MARK? drop ;
 
 \ A declaration a definer of the table above reads closes the stretch, unless
 \ the checker counted a refusal while it was read (MULTI-ERR-N, where refusals
@@ -3506,7 +3508,6 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       2dup TOP-PARSER? IF TOP-OPERAND ELSE
       2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
       2dup COMPOSE-TOP? IF 2drop TOP-CLOSE ELSE
-      2dup QUIET-NOMINAL
       2dup TOP-DEFINER? IF 2drop ELSE TOP-TOKEN THEN THEN THEN THEN
       FILE-NEUTRAL? TICK-REMAINDER @ 0= and IF PEND-RELEASE THEN
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !

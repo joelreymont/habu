@@ -327,8 +327,8 @@ $4000000000000000 constant DNAME-WIDE
 \ hook is installed. LFIND folds the bit into x13 bit 4; EM-INTERPRET-FIND and
 \ interpret ' fail closed on it with `hb: internal engine word: <token>` +
 \ rc 70 (dot habu-hb-crash-bare-c5be6634). Compile-mode references (explicitly
-\ unchecked user code, TRUSTED: bodies, hide.f refresh shims) are unaffected:
-\ those are declared trusted boundaries.
+\ unchecked user code, TRUSTED: bodies) are unaffected: those are declared
+\ trusted boundaries.
 $8000000000000000 constant DNAME-INT
 \ DNAME-OWNED (bit 49): an internal primitive its owner's rows type. A package
 \ row (src/habu/prims.f EPPRIM: ... ECLOSE-PRIVATE) states its effect, so

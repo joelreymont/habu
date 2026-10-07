@@ -1147,11 +1147,10 @@ Case folding uses GNU libunistring's
 [`u8_casecmp`](https://www.gnu.org/software/libunistring/manual/html_node/Case-insensitive-comparison.html)
 with NULL language and normalization parameters. It requires `libunistring.so.5`
 on Linux or `libunistring.5.dylib` on macOS; Unicode casefold data follows that
-installed library. The exact symbol resolves when source loads, with `E-LIBRARY`
-or `E-SYMBOL` on failure. Its process-local address must be resolved again if
-building a restored image in another process. The sealed binding uses per-task
-FFI scratch and exposes only the comparison operation. The `unicode-casefold`
-suite exercises the native library and strict UTF-8 boundary.
+installed library. Its `FUNCTION:` declarations resolve each symbol at its first
+call, `E-FFI-DLSYM` on failure, and again in a restored image. The sealed
+binding uses per-task FFI scratch and exposes only the comparison operation. The
+`unicode-casefold` suite exercises the native library and strict UTF-8 boundary.
 
 ## XML and byte edits
 
@@ -2264,7 +2263,11 @@ rc hands the deadline on to its parent.
 `PROC-SPAWN-IO` takes a counted executable path followed by stdin, stdout, and stderr
 `fd` roles. Negative fd values mean inherit/default; nonnegative fd values are passed
 through explicitly. `PIPE-PAIR` creates a pipe as read fd then write fd.
-Parent-only pipe and PTY fds must be marked close-on-exec with `FD-CLOEXEC!`
+A stdio fd may be marked close-on-exec: the spawn keeps it on 0, 1 or 2 in the
+child, even when it already sits on that number, and then closes each stdio fd
+above 2 in the child, once, so the child holds it on its stdio number alone. The
+parent's fds and their flags are unchanged.
+Parent-only pipe and PTY fds must still be marked close-on-exec with `FD-CLOEXEC!`
 before spawning; this sets the Darwin `FD_CLOEXEC` flag. Parent write fds that
 may outlive the peer reader use `FD-NOSIGPIPE!` so failed writes return an
 ordinary syscall failure instead of terminating the parent. Parent code then

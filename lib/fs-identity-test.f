@@ -3,7 +3,6 @@ require lib/fs-mutate.f
 require lib/fs-identity.f
 
 package FS-IDENTITY-TEST
-using FFI
 
 8 constant PATHS
 create ROOT FS-PATH-CAP allot
@@ -17,17 +16,14 @@ create PATH-BUFFERS PATHS FS-PATH-CAP * allot
    output ROOT ROOT-SIZE @ name bytes output JOIN-PATH ;
 
 
-\ Fixed test-fixture link signature, needed to exercise aliases beyond spelling.
-TRUSTED: LINK-CALL ( n -- n ) >r ARGS REG-LENS 2 r> ffi-call-bounded ;
+\ The test fixture's link binding, needed to exercise aliases beyond spelling.
+PROCESS-SYMBOLS
+FUNCTION: LINK-CALL link ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
 
 
 : HARD-LINK ( ptr u8 n ptr u8 n -- )
    {: source source-size:n target target-size:n :}
-   HB-TARGET-MACOS? if -2 else 0 then s\" link\z" drop DLSYM {: link-fn:n :}
-   link-fn 0<> TTRUE
-   RESET source source-size FS-PATHZ 0 READABLE!
-   target target-size FS-MUT-PATHZ2 1 READABLE!
-   link-fn LINK-CALL 0 T= ;
+   source source-size FS-PATHZ target target-size FS-MUT-PATHZ2 LINK-CALL 0 T= ;
 
 
 : SETUP ( -- )
@@ -63,5 +59,4 @@ TRUSTED: LINK-CALL ( n -- n ) >r ARGS REG-LENS 2 r> ffi-call-bounded ;
    code 0<> if code throw then T-REPORT ;
 
 TEST
-;using
 ;package

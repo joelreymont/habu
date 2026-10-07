@@ -25,20 +25,16 @@ require lib/test/eval.f                  \ TEST-EVAL:N - one cell out of a close
 \ The harness's own words and every candidate compile at tier 0, whatever tier
 \ the caller selected (the libraries above compile at the caller's tier). Tier 1 compiles against a static stack picture and the
 \ effect the checker recorded, and refuses what this harness compiles:
-\ CLEAR-MEAS's untyped row drain (E-NELAB-UNDER), a candidate CHK compiles
-\ after CHECK! recorded its signature (a duplicate definition, rc 78), and the
-\ rejected body CONFIRM-FR? runs, which has no recorded effect (KEEP-ARITY,
-\ rc 70).
+\ CLEAR-MEAS's untyped row drain (E-NELAB-UNDER) and the rejected body
+\ CONFIRM-FR? compiles through PROP-CORE and runs, which has no recorded effect
+\ (KEEP-ARITY, rc 70).
 0 set-tier
 
-\ PROP-INSTALL-HOOK arms the fail-closed hook through set-check.
-\ Retirement: habu-trusted-dies-prim-4fd12d60.
+variable VERD                     \ last verdict PROP-CHECK-HOOK read from CHECK!
+\ The top-level line below arms the fail-closed hook through set-check.
 : PROP-CHECK-HOOK ( ptr u8 n -- n )
-   CHECK! dup -1 <> if CHECKER-REJECT-RC throw then ;
-TRUSTED: PROP-INSTALL-HOOK ( -- )
-   LOWER-CERT-HOOK:INSTALL
-   ['] PROP-CHECK-HOOK set-check ;
-PROP-INSTALL-HOOK
+   CHECK! dup VERD ! dup -1 <> if CHECKER-REJECT-RC throw then ;
+LOWER-CERT-HOOK:INSTALL ' PROP-CHECK-HOOK set-check
 
 \ ---- measurement: compare stack depth before and after a certified run
 variable BASE  variable MC
@@ -46,14 +42,6 @@ variable BASE  variable MC
 \ Retirement owner: habu-give-tests-a-8d8cdc19.
 TRUSTED: CLEAR-MEAS  ( R n -- n )
    dup MC !  begin MC @ 0 > while  swap drop  MC @ 1- MC !  repeat ;
-variable VERD                     \ last verdict CHK read from CHECK!
-\ Reads the engine's evaluate-error cell by its NAMED layout constant
-\ (EVALERR-CELL, src/habu/layout.f) rather than a hardcoded offset, so a
-\ layout change can't silently point this peek at the wrong cell.
-\ Retirement: habu-give-tests-a-8d8cdc19, whose typed evaluate boundary returns the
-\ outcome itself.
-: ERR@  ( -- n )
-   data-base EVALERR-CELL + @ ; \ EVALERR-CELL: 0 = clean, 1 = recovered from an error
 
 package PROP-MEAS
 public
@@ -199,10 +187,10 @@ variable NCERT  variable PROP-NFC  variable NFR  variable RJ
 variable LAST-MEAS  variable LAST-TRAP
 variable FC-KIND  variable FC-EXP  variable FC-MEAS
 \ ---- complete checkpoint/rollback: a `: G ;` grows persistent code, dictionary,
-\ certified signatures, and no-return metadata. Rejected candidates are checked
-\ without compiling; accepted candidates are compiled with the hook off after
-\ CHECK! has already certified their effect. Two levels (program + shrink variant)
-\ let shrinking roll back inside a program's own checkpoint.
+\ certified signatures, and no-return metadata. Each candidate compiles under the
+\ check hook, which certifies every definition as it compiles, and a rejected
+\ candidate is rolled back. Two levels (program + shrink variant) let shrinking
+\ roll back inside a program's own checkpoint.
 \ The signature store rewinds through USIGS-RESTORE-END, the checker's own
 \ truncation seam, which pops only the index entries above the mark. A bare
 \ `UEND !` is a rewind those indexes did not see, so each re-derived itself from
@@ -216,6 +204,43 @@ variable CHKCPSV variable CHKNDSV variable CHKUESV
 : FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ USIGS-RESTORE-END ;
 : SMARK   ( -- )  cp@ SCPSV !   ndict@ SNDSV !   UEND @ SUESV ! ;
 : SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ USIGS-RESTORE-END ;
+\ ---- the harness core: compiling a text ----
+\ CHK compiles its caller's text with this file's check hook armed, so the bytes
+\ the checker certifies are the bytes the engine compiles. The text runs at top
+\ level, so a text that changes the hook itself (set-check) is outside CHK's
+\ contract; no candidate or primitive case does. RUN's fixed closed
+\ text clears the hook at its own top level, runs COMPILE under catch and
+\ restores the saved hook on every path, a throw included; RUN answers the
+\ text's throw code, 0 when it compiled. The fixed text runs in the caller's
+\ scope and so reaches SRC$, COMPILE and RC! only qualified. RUN and its one
+\ caller, CONFIRM-FR?, are private: no public word compiles a text of its
+\ caller's choosing with the hook cleared.
+package PROP-CORE
+
+PTR-VARIABLE SRC-A
+variable SRC-U
+variable RC-CELL
+
+public
+
+: SRC$ ( -- ptr u8 n )
+   SRC-A @ SRC-U @ ;
+
+: COMPILE ( -- )
+   SRC$ evaluate-closed ;
+
+: RC! ( n -- )
+   RC-CELL ! ;
+
+private
+
+: RUN ( ptr u8 n -- n )
+   SRC-U !
+   SRC-A !
+   s" check@ 0 set-check ' PROP-CORE:COMPILE catch swap LOWER-CERT-HOOK:INSTALL set-check PROP-CORE:RC!"
+   evaluate-closed
+   RC-CELL @ ;
+
 : CHK-MARK ( -- ) cp@ CHKCPSV ! ndict@ CHKNDSV ! UEND @ CHKUESV ! ;
 : CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ USIGS-RESTORE-END ;
 \ ---- shared measurement: build "depth BASE ! <nin×7> <nch> depth BASE @ - CLEAR-MEAS" ----
@@ -223,26 +248,30 @@ variable CHKCPSV variable CHKNDSV variable CHKUESV
    0 PBUF-U ! s" depth BASE ! " P+
    0 RJ ! begin RJ @ in-arity < while  s" 7 " P+  RJ @ 1+ RJ ! repeat
    name-ch PC  32 PC  s" depth BASE @ - CLEAR-MEAS" P+ ;
-\ Differential boundary: certification already happened via CHECK! in CHK;
-\ the compile stage runs unchecked so the fuzzer measures the candidate's
-\ true runtime arity without re-entering the hook.
-\ Retirement: habu-give-tests-a-8d8cdc19.
-TRUSTED: CHK-COMPILE-CERT ( ptr u8 n -- )
-   0 set-check
-   evaluate
-   PROP-INSTALL-HOOK ;
-: CHK-BODY$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   a 2 + u 4 - ;
+\ PROP-CHECK-HOOK stores each definition's verdict in VERD before it throws
+\ CHECKER-REJECT-RC on a reject; VERD stays NO-VERDICT while no definition has
+\ reached the hook. VERD -1 is a certified candidate the engine compiled,
+\ measured as compiled. CHK suppresses CHECKER-REJECT-RC when the last verdict
+\ is 0 or 1, forgetting that candidate, and rethrows every other nonzero
+\ rc/verdict combination: a compile that fails after certification, before the
+\ hook ran (the engine's duplicate-definition refusal, rc 78), or with another
+\ code after a rejection the text caught. The rule reads the code and the last
+\ verdict, not the throw's origin, so a later CHECKER-REJECT-RC after a caught
+\ rejection is indistinguishable from the hook's own and is suppressed too. The
+\ text runs at top level, so a text that changes the hook itself (set-check) is
+\ outside CHK's contract; no candidate or primitive case does.
+2 constant NO-VERDICT              \ outside CHECK!'s -1 / 0 / 1
+public
 : CHK  ( ptr u8 n -- )
    CHK-MARK
-   0 VERD !
-   2dup CHK-BODY$ CHECK! VERD !
-   VERD @ -1 = IF
-      CHK-COMPILE-CERT
-   ELSE
-      2drop
-      CHK-FORGET
-   THEN ;
+   NO-VERDICT VERD !
+   SRC-U !
+   SRC-A !
+   ['] COMPILE catch {: rc:n :}
+   rc 0<> IF
+      rc CHECKER-REJECT-RC <>  VERD @ 0 <>  VERD @ 1 <>  and  or IF rc throw THEN
+   THEN
+   VERD @ -1 <> IF CHK-FORGET THEN ;
 \ Dynamic measurement runs PBUF's text as a closed program that stores its
 \ measured residual depth in MEAS-OUT, and records that depth or a trap: a
 \ throw out of the text, a read below its floor among them, or a negative
@@ -250,9 +279,10 @@ TRUSTED: CHK-COMPILE-CERT ( ptr u8 n -- )
 variable MEAS-OUT
 : MEAS-PBUF ( -- )
    0 LAST-TRAP !
-   s"  MEAS-OUT !" P+
+   s"  PROP-CORE:MEAS-OUT !" P+
    PBUF PBUF-U @ TEST-EVAL:RC 0= 0= IF  -1 LAST-TRAP !  EXIT  THEN
    MEAS-OUT @ dup 0< IF  drop -1 LAST-TRAP !  ELSE  LAST-MEAS !  THEN ;
+private
 : RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
    RUN1  MEAS-PBUF ;
 : FC-SET-ARITY ( n n -- )
@@ -277,7 +307,9 @@ variable MEAS-OUT
 \ are capped/quiet but the finding is FATAL either way: the NSI/NRI/NCI
 \ counters fail the run at the summary (FINISH) and fail the shard (SHARD-CHILD)
 \ — an inconsistency-reporting property tester that exits 0 is error masking.
+public
 variable SWEEP-QUIET
+private
 : LOG-META  ( ptr u8 n -- ) {: a:ptr u:n :}
    SWEEP-QUIET @ if exit then
    s" prop-test: metamorphic " type a u type s"  inconsistency: " type POS. cr
@@ -287,7 +319,10 @@ variable SWEEP-QUIET
 \ ---- metamorphic subsumption: an i64-certified body must also certify under the
 \ generic ( n -- n ) sig (n subsumes i64). If it does, run it too (free false-cert
 \ coverage); i64-cert but n-reject is a checker inconsistency (fatal at FINISH). ----
-variable NSUB  variable NSI
+variable NSUB
+public
+variable NSI
+private
 : SUBSUME  ( -- )   \ pre: BBUF/NIN/DOUT is the certified i64 program G
    SMARK  1 TFLAG !  83 NIN @ DOUT @ HEAD  BODY+  0 TFLAG !  PBUF PBUF-U @ CHK
    VERD @ -1 = IF  NSUB @ 1+ NSUB !  83 NIN @ DOUT @ MEASURE
@@ -296,7 +331,11 @@ variable NSUB  variable NSI
 
 \ ---- metamorphic render round-trip: render the just-certified body's effect, then
 \ re-declare the SAME body with that exact rendered sig — it must re-certify. ----
-variable NRT  variable NRI  variable RSU
+variable NRT
+public
+variable NRI
+private
+variable RSU
 TYPED-VARIABLE RSA ptr u8
 : ROUNDTRIP  ( -- )   \ pre: G just certified; REND-SIG holds G's rendered effect
    REND-SIG  RSU !  RSA !
@@ -307,7 +346,11 @@ TYPED-VARIABLE RSA ptr u8
 
 \ ---- metamorphic composition: A:(x--y) and B:(y--z) both certified => ': C A B ;'
 \ must certify ( x -- z ) and run-match — chains arities; catches what one body can't. ----
-variable NCMP  variable NCI  variable CAI  variable CAO  variable CBO
+variable NCMP
+public
+variable NCI
+private
+variable CAI  variable CAO  variable CBO
 : COMPOSE  ( -- )
    SMARK  0 TFLAG !
    3 RND% 0 GEN-BODY  NIN @ CAI !  DEP @ CAO !  88 CAI @ CAO @ HEAD  BODY+  PBUF PBUF-U @ CHK   \ X=88
@@ -342,12 +385,11 @@ variable BSAVE
 : STILLCERT? ( -- bool )  SMARK  REBUILD-G  PBUF PBUF-U @ CHK  VERD @ -1 =  SFORGET ;
 \ Differential boundary: deliberately compiles a checker-REJECTED body to
 \ confirm a false reject, which only tier 0 does (`0 set-tier` above).
-\ Retirement: habu-give-tests-a-8d8cdc19.
-TRUSTED: CONFIRM-FR? ( -- bool )   \ compile unchecked, run, and prove the rejected true-sig body matches
-   SMARK  0 set-check  PBUF PBUF-U @ evaluate  PROP-INSTALL-HOOK
-   ERR@ 0 = IF  71 NIN @ RUN-MEAS
-      LAST-TRAP @ IF  0  ELSE  LAST-MEAS @ DOUT @ =  THEN
-   ELSE  0  THEN  SFORGET ;
+: CONFIRM-FR? ( -- bool )   \ compile unchecked, run, and prove the rejected true-sig body matches
+   SMARK  PBUF PBUF-U @ RUN
+   0 = IF  71 NIN @ RUN-MEAS
+      LAST-TRAP @ IF  0 0= 0=  ELSE  LAST-MEAS @ DOUT @ =  THEN
+   ELSE  0 0= 0=  THEN  SFORGET ;
 : LOG-FR ( -- )
    s" prop-test: false-reject confirmed: " type POS. cr
    s" definition: " type REBUILD-G DEF. ;
@@ -382,10 +424,11 @@ variable NFC0
    THEN THEN
    FORGET                                    \ forget G (code + dict entry + recorded sig)
    COMPOSE ;                                  \ independent two-body composition probe
+public
 : RUN-CORE  ( n n -- )   \ generate + measure across N programs; prints only findings
    N !  dup RUN-SEED !  SEED !  0 NCERT ! 0 PROP-NFC ! 0 NFR !  0 NSUB ! 0 NSI ! 0 NRT ! 0 NRI ! 0 NCMP ! 0 NCI !
    0 RI ! begin RI @ N @ < while  ONE  RI @ 1+ RI !  repeat ;
-: RUN  ( n n -- )   \ RUN-CORE plus the per-run summary (serial repro path)
+: REPRO  ( n n -- )   \ RUN-CORE plus the per-run summary (serial repro path)
    RUN-CORE
    s" prop-test: " type N @ FMT:.INT s"  programs, " type
    NCERT @ FMT:.INT s"  certified, " type  PROP-NFC @ FMT:.INT s"  FALSE-CERT(s), " type
@@ -396,9 +439,11 @@ variable NFC0
 
 \ regression baits: programs that a SOUND checker rejects. If a regression ever
 \ certifies one, either arity or type/signature soundness regressed.
+private
 : BAIT  ( ptr u8 n -- )   \ MUST NOT certify
    CHK
    VERD @ -1 = IF s" prop-test: BAIT certified - checker soundness regressed!" 1 die THEN ;
+public
 : BAITS ( -- )
    s" : G ( -- ) 3 0 ?do 99 leave loop ;"            BAIT   \ leave carries an extra value
    s" : G ( i64 -- i64 ) dup 0 < if 0 0 exit then ;" BAIT   \ exit-path arity != fall-through
@@ -413,6 +458,7 @@ variable NFC0
 \ the fuzzer within a capped deterministic-seed sweep - the class is reachable.
 \ A renumbered K table or a narrowed RND% bound that silently dropped a class
 \ from the explored space dies here instead of shrinking coverage unnoticed.
+private
 9 constant ALPHA-N
 400 constant ALPHA-CAP
 create ALPHA-SEEN ALPHA-N allot
@@ -466,6 +512,7 @@ variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
       ALPHA-SEEN ALPHA-J @ + c@ 0= IF ALPHA-J @ exit THEN
       ALPHA-J @ 1+ ALPHA-J !
    repeat -1 ;
+public
 : SELFTEST-ALPHABET ( -- )
    0 ALPHA-I ! begin ALPHA-I @ ALPHA-N < while
       ALPHA-I @ ALPHA-CERT1  ALPHA-I @ 1+ ALPHA-I !
@@ -500,6 +547,9 @@ variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
    CONFIRM-FR? 0= IF
       s" prop-test: self-test FALSE-REJECT ORACLE BROKEN (rejected body did not confirm)" 1 die THEN
    s" prop-test: false-reject oracle OK (a rejected body runs to its declared arity)" type cr ;
+
+;package
+using PROP-CORE
 
 \ Fail loudly on any false-cert (`die` exits with the code; IF/THEN are
 \ compile-only so this is wrapped in a word). A clean run reaches end-of-input,
@@ -755,7 +805,7 @@ public
    BAITS
    SELFTEST-ALPHABET
    SELFTEST-FR
-   RUN
+   REPRO
    FINISH ;
 
 \ ---- seed-sweep: shard the sweep across PROP-SHARD-N forked slots, each a
@@ -898,3 +948,4 @@ public
    MAIN ;
 
 ;package
+;using

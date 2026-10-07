@@ -35,8 +35,6 @@ public
    path PATH pathu BYTE-COPY pathu PATH-U !
    -2 ARMED ! ;
 
-: DISARM ( -- ) 0 ARMED ! ;
-
 : SIZE ( ptr u8 n -- n )
    {: path:ptr pathu:n :}
    path pathu FILE-SIZE {: size:n :}
@@ -121,12 +119,11 @@ package BUILD-FIXPOINT
    s" whole-cert" BFT-CERT BF-CERTIFY-RC 70 T=
    BF-CERT-DIAG BF-CERT-DIAG-U @ s" 'BAD'" CONTAINS? TTRUE
    BFT-CERT S\" package BFT-GROW public\n: HEAD ( -- n ) 1 ;\n;package\n" WRITE-ALL
-   BFT-CERT S\" : TAIL ( -- n ) 2 ;\n" BFT-SIZE:ARM
-   s" whole-core" BFT-CERT [: ;] BF-CERTIFY-GENERATED-CORE
-   BFT-CERT S\" : BAD ( -- n ) ;\n" BFT-SIZE:ARM
-   [: s" whole-core" BFT-CERT [: ;] BF-CERTIFY-GENERATED-CORE ;]
-      E-BUILD-CERTIFY TTHROWSQ
-   BFT-SIZE:DISARM ;
+   BFT-CERT S\" : TAIL ( -- n ) 2 ;\n" APPEND-FILE
+   s" whole-core" BFT-CERT s" " BF-CERTIFY-GENERATED-CORE
+   BFT-CERT S\" : BAD ( -- n ) ;\n" APPEND-FILE
+   [: s" whole-core" BFT-CERT s" " BF-CERTIFY-GENERATED-CORE ;]
+      E-BUILD-CERTIFY TTHROWSQ ;
 
 \ Self-certification guard: checker.f must certify as the tail of its exact
 \ pre-hook prefix. Its layout assertions consume cell.f's CORE-LAYOUT-RC and

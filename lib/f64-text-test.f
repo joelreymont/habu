@@ -80,16 +80,9 @@ RUN
 
 \ Reopen the owning package to witness restoration of the native thread state.
 package F64-TEXT
-using FFI
-using MEM
 
 create STATE-OUTPUT MAX-BYTES allot
-s" freelocale" SYMBOL-FIND constant FREELOCALE-FN
-TRUSTED: FREELOCALE-CALL ( -- ) ARGS REG-LENS 1 FREELOCALE-FN ffi-call-bounded drop ;
-: FREE-LOCALE ( n -- ) RESET 0 VALUE! FREELOCALE-CALL ;
-: TEST-LOCALE ( -- n )
-   s" C.UTF-8" CSTRING {: name:ptr :}
-   RESET 2 0 VALUE! name 1 READABLE! 0 2 VALUE! NEWLOCALE-CALL ;
+: TEST-LOCALE ( -- n ) 2 s\" C.UTF-8\z" drop 0 NEWLOCALE-CALL ;
 
 : STATE-PARSE ( ptr u8 n n -- ) {: expected:n :}
    PARSE MATCH result
@@ -128,9 +121,7 @@ TRUSTED: FREELOCALE-CALL ( -- ) ARGS REG-LENS 1 FREELOCALE-FN ffi-call-bounded d
       GET-ROUND mode T= 0 USE-LOCALE locale T=
    loop
    prior-round SET-ROUND 0 T= prior-locale USE-LOCALE 0 T<>
-   locale FREE-LOCALE T-REPORT ;
+   locale FREELOCALE-CALL T-REPORT ;
 
 RESTORATION
-;using
-;using
 ;package

@@ -3,8 +3,8 @@
 \ STORAGE CLASS. TASK-LOCAL for everything a call runs through: the termios
 \ struct and the saved termios are one task-local row, so each task drives
 \ its own port, and the byte spans READ and WRITE take are caller-owned. The
-\ resolved libc symbols and their one-time registration flags are PROCESS-WIDE,
-\ as symbol resolution should be.
+\ libc bindings are FUNCTION: rows in package FFI's PROCESS-WIDE table, which
+\ resolves each symbol at its first call.
 \ See docs/threads.md.
 \
 \ The wait is the AIO loop's (docs/aio.md): every READ and WRITE readiness
@@ -18,10 +18,8 @@ require lib/le.f
 require lib/type/deftype.f
 require lib/num-types.f
 require lib/task.f
-require lib/image-lifecycle.f
 require lib/memory.f
 require lib/aio.f
-require lib/fork-child.f
 
 package SERIAL
 public
@@ -50,7 +48,6 @@ SUMTYPE io-result 0
 
 E-SERIAL-OPERAND constant E-OPERAND
 E-SERIAL-PLATFORM constant E-PLATFORM
-E-SERIAL-SYMBOL constant E-SYMBOL
 E-SERIAL-RESULT constant E-RESULT
 
 private
@@ -62,17 +59,6 @@ private
 $100F100F constant BAUD-MASK
 $100018B0 constant RAW-CONTROL   \ BOTHER both ways, CS8 | CREAD | CLOCAL.
 1000000 constant NS-PER-MS
-
-variable FN-OPEN
-variable FN-IOCTL
-variable FN-READ
-variable FN-WRITE
-variable FN-CLOSE
-variable FN-ERRNO
-here FFI:>CELL 7 and 8 swap - 7 and allot
-variable READY
-variable REGISTERED
-create SYMBOL-NAME $20 allot
 
 \ No per-operation buffer is process-global; independent tasks may use ports.
 \ Two records: Darwin's 72-byte termios or Linux's 44-byte termios2.
@@ -102,10 +88,6 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : CHECK-HANDLE ( handle -- ) HANDLE>N 0 $7FFFFFFF RANGE ;
 
 
-: C-INT ( n -- n )
-   $FFFFFFFF and dup $80000000 and 0 <> if $100000000 - then ;
-
-
 : LE32! ( n ptr u8 -- ) {: value:n target :}
    4 0 do value i 8 * rshift $FF and target i + c! loop ;
 
@@ -115,132 +97,50 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    source $02 + c@ 16 lshift or source $03 + c@ 24 lshift or ;
 
 
-\ Image capture is quiescent. These are borrowed process addresses; clearing
-\ them needs no foreign call. Caller-owned descriptors must already be closed.
-: RESET-SYMBOLS ( -- )
-   0 FN-OPEN ! 0 FN-IOCTL ! 0 FN-READ !
-   0 FN-WRITE ! 0 FN-CLOSE !
-   0 FN-ERRNO !
-   0 REGISTERED ! 0 READY atomic! ;
-
-
-\ INIT holds this module's READY lock. The shared registry must support
-\ concurrent registration by different resource owners.
-: REGISTER-CLEANUP ( -- )
-   REGISTERED @ 0= if
-      [: RESET-SYMBOLS ;] IMAGE-LIFECYCLE:REGISTER
-      1 REGISTERED !
-   then ;
-
-
-\ RTLD_DEFAULT borrows process symbols; the native executable already needs
-\ libc on either target. No library reference is acquired or retained by this module.
-: SYMBOL ( ptr u8 n -- n )
-   SYMBOL-NAME FFI:CSTR HB-TARGET-MACOS? if -2 else 0 then SYMBOL-NAME FFI:DLSYM
-   dup 0= if E-SYMBOL throw then ;
-
-
-: LOAD-SYMBOLS ( -- )
-   s" open" SYMBOL FN-OPEN ! s" ioctl" SYMBOL FN-IOCTL !
-   s" read" SYMBOL FN-READ ! s" write" SYMBOL FN-WRITE !
-   s" close" SYMBOL FN-CLOSE !
-   HB-TARGET-MACOS? if s" __error" else s" __errno_location" then SYMBOL FN-ERRNO ! ;
-
-
-: INIT ( -- )
-   begin
-      READY atomic@ 2 = if exit then
-      0 1 READY atomic-cas 0= if
-         [: REGISTER-CLEANUP LOAD-SYMBOLS ;] catch dup 0 <> if 0 READY atomic! throw then drop
-         2 READY atomic! exit
-      then TASK:PAUSE
-   again ;
-
-\ A process just forked starts over a setup another task had begun
-\ (lib/fork-child.f): fork copies only the thread that called it, so a READY
-\ that task held at 1 stays 1 in the child with no thread to finish the setup,
-\ and the child's first INIT would wait for ever. A finished setup is the
-\ child's as well: the symbols are the same addresses there.
-: REGISTER-CHILD-RESET ( -- )
-   [: 1 0 READY atomic-cas drop ;] FORK-CHILD:REGISTER ;
-REGISTER-CHILD-RESET
-
-
-\ libc calls use separate pointer directions and target-specific termios
-\ extents. Darwin ioctl passes its variadic pointer on the stack.
-\ errno is a libc-owned, thread-local C int. The wait is not among them: it is
-\ AIO's. Retirement owner: habu-sweep-trusted-out-f872acb0.
+\ libc's calls, each staged with the pointer direction and extent it needs.
+\ The termios extent is the target's record; Darwin passes ioctl's variadic
+\ pointer on the stack. The wait is not among them: it is AIO's.
 \ test/serial.py covers these boundaries through real kernel pseudoterminals.
-TRUSTED: ERRNO-POINTER ( -- ptr u8 )
-   FFI:ARGS FFI:REG-LENS 0 FN-ERRNO @ ffi-call-bounded ;
+PROCESS-SYMBOLS
+FUNCTION: OPEN-CALL open ( ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: GET-CALL ioctl ( n n ptr u8 -- i32 )
+   2 VARIADIC
+   2 TERM-BYTES WRITES-BYTES             \ termios (Darwin) or termios2 (Linux)
+;FUNCTION
+FUNCTION: SET-CALL ioctl ( n n ptr u8 -- i32 ) 2 VARIADIC ;FUNCTION
+FUNCTION: READ-CALL read ( n ptr u8 n -- n )
+   1 2 WRITES-ARG                        \ the caller's capacity
+;FUNCTION
+FUNCTION: WRITE-CALL write ( n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 
-: LAST-ERROR ( -- errno ) FFI:RESET ERRNO-POINTER LE32@ >ERRNO ;
+\ errno is libc's thread-local C int.
+: LAST-ERROR ( -- errno ) FFI:ERRNO >ERRNO ;
 
 
-TRUSTED: OPEN-CALL ( -- n )
-   FFI:ARGS FFI:REG-LENS 2 FN-OPEN @ ffi-call-bounded ;
-
-
-: OPEN-RAW ( ptr u8 -- n ) {: path :}
-   FFI:RESET path 0 FFI:READABLE! OPEN-FLAGS 1 FFI:VALUE!
-   OPEN-CALL C-INT ;
-
-
-TRUSTED: GET-CALL ( -- n )
-   HB-TARGET-MACOS? if
-      FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
-      1 FN-IOCTL @ ffi-call-abi-bounded
-   else FFI:ARGS FFI:REG-LENS 3 FN-IOCTL @ ffi-call-bounded then ;
+: OPEN-RAW ( ptr u8 -- n ) OPEN-FLAGS OPEN-CALL ;
 
 
 : GET-RAW ( handle ptr u8 -- n ) {: handle:handle target :}
-   FFI:RESET handle HANDLE>N 0 FFI:VALUE! GET-TERM 1 FFI:VALUE!
-   HB-TARGET-MACOS? if target TERM-BYTES 0 FFI:STACK-WRITABLE!
-   else target TERM-BYTES 2 FFI:WRITABLE! then
-   GET-CALL C-INT ;
-
-
-: SET-CALL ( -- n )
-   GET-CALL ;
+   handle HANDLE>N GET-TERM target GET-CALL ;
 
 
 : SET-RAW ( handle ptr u8 -- n ) {: handle:handle source :}
-   FFI:RESET handle HANDLE>N 0 FFI:VALUE! SET-TERM 1 FFI:VALUE!
-   HB-TARGET-MACOS? if source 0 FFI:STACK-READABLE!
-   else source 2 FFI:READABLE! then
-   SET-CALL C-INT ;
-
-
-TRUSTED: READ-CALL ( -- n )
-   FFI:ARGS FFI:REG-LENS 3 FN-READ @ ffi-call-bounded ;
+   handle HANDLE>N SET-TERM source SET-CALL ;
 
 
 : READ-RAW ( handle ptr u8 NUM:byte-len -- n )
    {: handle:handle bytes capacity:NUM:byte-len :}
-   FFI:RESET handle HANDLE>N 0 FFI:VALUE!
-   bytes capacity BLEN>N 1 FFI:WRITABLE! capacity BLEN>N 2 FFI:VALUE!
-   READ-CALL ;
-
-
-TRUSTED: WRITE-CALL ( -- n )
-   FFI:ARGS FFI:REG-LENS 3 FN-WRITE @ ffi-call-bounded ;
+   handle HANDLE>N bytes capacity BLEN>N READ-CALL ;
 
 
 : WRITE-RAW ( handle ptr u8 NUM:byte-len -- n )
    {: handle:handle bytes size:NUM:byte-len :}
-   FFI:RESET handle HANDLE>N 0 FFI:VALUE!
-   bytes 1 FFI:READABLE! size BLEN>N 2 FFI:VALUE!
-   WRITE-CALL ;
+   handle HANDLE>N bytes size BLEN>N WRITE-CALL ;
 
 
-TRUSTED: CLOSE-CALL ( -- n )
-   FFI:ARGS FFI:REG-LENS 1 FN-CLOSE @ ffi-call-bounded ;
-
-
-: CLOSE-RAW ( handle -- n ) {: handle:handle :}
-   FFI:RESET handle HANDLE>N 0 FFI:VALUE!
-   CLOSE-CALL C-INT ;
+: CLOSE-RAW ( handle -- n ) HANDLE>N CLOSE-CALL ;
 
 
 : PATH-OPEN ( ptr u8 n -- n ) {: text size:n :}
@@ -339,7 +239,7 @@ TRUSTED: CLOSE-CALL ( -- n )
 
 
 : CHECK-IO ( handle NUM:byte-len -- )
-   BLEN>N 1 $7FFFF000 RANGE CHECK-HANDLE INIT ;
+   BLEN>N 1 $7FFFF000 RANGE CHECK-HANDLE ;
 
 
 public
@@ -351,7 +251,7 @@ public
 \ Opens a caller-owned nonblocking raw 8N1 stream, no flow control. Numeric
 \ speed is verified after configuration. The caller uses CLOSE exactly once.
 : OPEN8N1 ( ptr u8 n baud -- open-result ) {: path size:n baud:baud :}
-   baud BAUD>N 1 $FFFFFFFF RANGE INIT
+   baud BAUD>N 1 $FFFFFFFF RANGE
    path size PATH-OPEN dup 0 < if negate >ERRNO SERIAL-OPEN--RESULT:failed exit then
    >HANDLE {: handle:handle :}
    handle baud CONFIGURE MATCH open-result
@@ -397,7 +297,7 @@ public
 
 \ Linux consumes the fd even on EINTR. Do not retry CLOSE or reuse the handle.
 : CLOSE ( handle -- status )
-   dup CHECK-HANDLE INIT CLOSE-RAW 0 < if LAST-ERROR SERIAL-STATUS:failed else SERIAL-STATUS:ok then ;
+   dup CHECK-HANDLE CLOSE-RAW 0 < if LAST-ERROR SERIAL-STATUS:failed else SERIAL-STATUS:ok then ;
 
 
 ;package

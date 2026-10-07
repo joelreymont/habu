@@ -17,8 +17,8 @@ private
 \ HOLE-BYTES is test/stripped-sparse-data-subject.f's hole: an image that
 \ carried it is at least that long, as that subject's image alone was before
 \ sparse DATA extents (1,704,128 bytes). IMAGE-MAX bounds this whole image,
-\ every subject's code and DATA together, which measured 165,372 bytes, so it
-\ fails the image if it grows by 96,772 bytes or more, whatever grows.
+\ every subject's code and DATA together, which measured 181,884 bytes, so it
+\ fails the image if it grows by 80,260 bytes or more, whatever grows.
 \ Being below HOLE-BYTES it also refuses the hole by itself; the HOLE-BYTES
 \ check names that failure.
 1000000 constant HOLE-BYTES
@@ -84,7 +84,7 @@ variable RETURN-TREE-U
    bytes IMAGE-MAX < 0= if s" stripped image exceeds IMAGE-MAX" GE-FAIL then ;
 
 : EXPECTED-OUT$ ( -- ptr u8 n )
-   S\" exit-hook-subject: ok\nstripped-quotation: ok\n8\n0\n1\n23\nstripped-sparse-data: ok\nstripped\nsize=ok\nstripped-engine-id: ok\naot-xt-cells: ok\nstripped-lifecycle-prepare: ok\nstripped-lifecycle-tasks: ok\nstripped-lifecycle-semaphore: ok\n" ;
+   S\" exit-hook-subject: ok\nstripped-quotation: ok\n8\n0\n1\n23\nstripped-sparse-data: ok\nstripped\nsize=ok\nstripped-engine-id: ok\naot-xt-cells: ok\nstripped-lifecycle-prepare: ok\nstripped-lifecycle-tasks: ok\nstripped-lifecycle-semaphore: ok\nffi-library-lifetime: ok\n" ;
 
 \ A subject that fails dies with its own message and exit $4A, and a missing
 \ xt row is a wild call into builder code this process does not map, so only an

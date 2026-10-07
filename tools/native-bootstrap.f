@@ -1,8 +1,7 @@
 \ Private transition from an older optimizer with no provenance journal.
 \ The output remains explicitly unknown until its own tracked rebuild succeeds.
 1 set-tier
-require src/habu/prefix-rewind.f
-PREFIX-REWIND:TO-CORE
+include src/habu/prefix-rewind.f
 require src/compiler/native/compiler.f
 
 package NATIVE-BOOTSTRAP

@@ -608,16 +608,23 @@ variable NUM-FPOS
    FD>N LNX-NEW !
    REG>N LNX-FD ! ;
 
+\ Put the child's descriptor in the first reg on fd n: dup3 it there, or, when
+\ it already sits on n, clear the close-on-exec flag a dup3 would have cleared.
+\ A negative descriptor leaves n alone.
 : LINUX-DUP2-FD ( reg fd reg -- )
    LINUX-DUP2-ARGS
    LBL {: skip:label :}
-   LBL {: ok:label :}
+   LBL {: keep:label :}
+   LBL {: done:label :}
    LNX-FD @ 0 CMPI,  C-LT skip BCOND,
-   LNX-FD @ LNX-NEW @ CMPI,  C-EQ skip BCOND,
-   0 LNX-FD @ 0 ADDI,  1 LNX-NEW @ MOVZ,  2 0 MOVZ,  NR-DUP2 SYS,
-   9 C-CS CSET,  9 ok CBZ,
+   0 LNX-FD @ 0 ADDI,
+   LNX-FD @ LNX-NEW @ CMPI,  C-EQ keep BCOND,
+   1 LNX-NEW @ MOVZ,  2 0 MOVZ,  NR-DUP2 SYS,  done B,
+   keep LBL,
+   1 LINUX-F-SETFD MOVZ,  2 0 MOVZ,  NR-FCNTL SYS,
+   done LBL,
+   9 C-CS CSET,  9 skip CBZ,
       LNX-ERR @ LINUX-SPAWN-FAIL-N
-   ok LBL,
    skip LBL, ;
 
 : LINUX-CHDIR-ARGS ( reg reg -- )
@@ -694,6 +701,31 @@ variable NUM-FPOS
       9 SP LINUX-SPAWN-PID-OFF LDR,
    done LBL, ;
 
+\ Skip to the label when x9 holds the stdio source in the frame cell at n.
+: LINUX-SKIP-SAME ( n label -- )
+   {: off:n skip:label :}
+   10 SP off LDR,  9 10 CMP,  C-EQ skip BCOND, ;
+
+\ Close the stdio source in the frame cell at n (32, 40, 48: stdin, stdout,
+\ stderr) now that the three roles sit on 0, 1 and 2. Nothing is closed for a
+\ source at or below 2 (-1 or already a stdio number), for one an earlier cell
+\ also holds (that cell's step closes it), or for the exec-failure pipe's write
+\ end.
+: LINUX-CLOSE-SOURCE ( n -- )
+   {: off:n :}
+   LBL {: skip:label :}
+   9 SP off LDR,
+   9 2 CMPI,  C-LE skip BCOND,
+   32 BEGIN dup off < WHILE
+      dup skip LINUX-SKIP-SAME
+      8 +
+   REPEAT drop
+   14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,  9 14 CMP,  C-EQ skip BCOND,
+   0 9 0 ADDI,  NR-CLOSE SYS,
+   9 C-CS CSET,  9 skip CBZ,
+      14 LINUX-SPAWN-FAIL-N
+   skip LBL, ;
+
 : LINUX-SPAWN-CHILD ( -- )
    LINUX-SPAWN-CLOSE-R
    14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
@@ -706,6 +738,9 @@ variable NUM-FPOS
    9 SP 40 LDR,  9 >REG 1 >FD 14 >REG LINUX-DUP2-FD
    14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
    9 SP 48 LDR,  9 >REG 2 >FD 14 >REG LINUX-DUP2-FD
+   32 LINUX-CLOSE-SOURCE
+   40 LINUX-CLOSE-SOURCE
+   48 LINUX-CLOSE-SOURCE
    0 SP 0 LDR,  1 SP 8 LDR,  2 SP 16 LDR,
    NR-EXECVE SYS,
    14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
@@ -998,10 +1033,7 @@ variable NUM-FPOS
    SP SP 16 ADDI, ;
 
 1040 constant SPAWN-ACTION-SIZE
-3584 constant SPAWN-FRAME3
-2048 constant SPAWN-FRAME4-A
-2048 constant SPAWN-FRAME4-B
-512 constant SPAWN-FRAME4-C
+7 constant SPAWN-ACTION-CAP            \ a chdir, three stdio records, three closes
 0 constant SPAWN-PID-OFF
 16 constant SPAWN-ARGV-OFF
 24 constant SPAWN-ARGV-END-OFF
@@ -1025,36 +1057,75 @@ variable NUM-FPOS
 0 constant SPAWN-FA-CAP-OFF
 4 constant SPAWN-FA-COUNT-OFF
 8 constant SPAWN-FA-ACTS-OFF
+1 constant PSFA-CLOSE
 2 constant PSFA-DUP2
+3 constant PSFA-INHERIT
 5 constant PSFA-CHDIR
 8 constant SPAWN-CHDIR-PATH-OFF
 SPAWN-ACTION-SIZE SPAWN-CHDIR-PATH-OFF - constant SPAWN-CHDIR-PATH-CAP
 
+\ The frame ends with room for SPAWN-ACTION-CAP records, rounded to 16 bytes.
+\ SUBI takes at most 4095, so it is entered in two steps.
+SPAWN-ACTIONS-OFF SPAWN-FA-ACTS-OFF + SPAWN-ACTION-CAP SPAWN-ACTION-SIZE * +
+   15 + -16 and constant SPAWN-FRAME
+4080 constant SPAWN-FRAME-STEP
+
 variable SDA-FD  variable SDA-NEW  variable SDA-SKIP
 variable SCA-CWD  variable SCA-FAIL
 variable SCA-COPY  variable SCA-OVER  variable SCA-DONE
-variable SACT-CAP  variable SAD-HAS
+variable SAD-HAS
 variable SPD-PATH  variable SAE-ARGV  variable SAE-ENVP
 variable SDEF-PATH  variable SADV-ARGV
 variable SFIN-OK  variable SFIN-FAIL
 variable BSP-OK  variable BSP-DN  variable BSP-SAD
 variable SZA-I
 
-\ Emit one PSFA_DUP2 record into the runtime file-actions blob at x13.
+\ Point x14 at the next record of the runtime file-actions blob at x13.
+: SPAWN-NEXT-ACTION ( -- )
+   14 13 SPAWN-FA-COUNT-OFF LDRW,  15 SPAWN-ACTION-SIZE MOVZ,  14 14 15 MUL,
+   14 14 SPAWN-FA-ACTS-OFF ADDI,  14 14 13 ADD, ;
+
+\ Count the record SPAWN-NEXT-ACTION pointed at.
+: SPAWN-COUNT-ACTION ( -- )
+   14 13 SPAWN-FA-COUNT-OFF LDRW,  14 14 1 ADDI,  14 13 SPAWN-FA-COUNT-OFF STRW, ;
+
 : SPAWN-DUP2-ARGS ( reg fd -- )
    SDA-NEW !  SDA-FD ! ;
 
+\ Emit the record that puts the descriptor in reg on fd n: PSFA_DUP2, or
+\ PSFA_INHERIT when it already sits on n, since xnu's dup2 of a descriptor onto
+\ itself keeps close-on-exec. A negative descriptor emits nothing.
 : SPAWN-DUP2-ACTION ( reg fd -- )
    SPAWN-DUP2-ARGS
    LBL SDA-SKIP !
    SDA-FD @ 0 CMPI,  C-LT SDA-SKIP LABEL@ BCOND,
-   14 13 SPAWN-FA-COUNT-OFF LDRW,  15 SPAWN-ACTION-SIZE MOVZ,  14 14 15 MUL,
-   14 14 SPAWN-FA-ACTS-OFF ADDI,  14 14 13 ADD,
-   15 PSFA-DUP2 MOVZ,  15 14 0 STRW,
+   SPAWN-NEXT-ACTION
+   15 PSFA-DUP2 MOVZ,  16 PSFA-INHERIT MOVZ,
+   SDA-FD @ SDA-NEW @ CMPI,  15 16 15 C-EQ CSEL,
+   15 14 0 STRW,
    SDA-FD @ 14 4 STRW,
    15 SDA-NEW @ MOVZ,  15 14 8 STRW,
-   14 13 SPAWN-FA-COUNT-OFF LDRW,  14 14 1 ADDI,  14 13 SPAWN-FA-COUNT-OFF STRW,
+   SPAWN-COUNT-ACTION
    SDA-SKIP LABEL@ LBL, ;
+
+\ Emit a PSFA_CLOSE record for the stdio source in reg (x10, x11 or x12), after
+\ the three stdio records. No record for a source at or below 2 (-1 or already
+\ a stdio number) or for one an earlier stdio register also holds, whose record
+\ closes it: xnu fails the whole spawn when a close action fails, so each
+\ source is closed exactly once.
+: SPAWN-CLOSE-ACTION ( reg -- )
+   REG>N {: r:n :}
+   LBL {: skip:label :}
+   r 2 CMPI,  C-LE skip BCOND,
+   10 BEGIN dup r < WHILE
+      r over CMP,  C-EQ skip BCOND,
+      1+
+   REPEAT drop
+   SPAWN-NEXT-ACTION
+   15 PSFA-CLOSE MOVZ,  15 14 0 STRW,
+   r 14 4 STRW,
+   SPAWN-COUNT-ACTION
+   skip LBL, ;
 
 \ Emit one PSFA_CHDIR record into the runtime file-actions blob at x13.
 : SPAWN-CHDIR-ARGS ( reg label -- )
@@ -1066,8 +1137,7 @@ variable SZA-I
 : SPAWN-CHDIR-ACTION ( reg label -- )
    SPAWN-CHDIR-ARGS
    SPAWN-CHDIR-LABELS
-   14 13 SPAWN-FA-COUNT-OFF LDRW,  15 SPAWN-ACTION-SIZE MOVZ,  14 14 15 MUL,
-   14 14 SPAWN-FA-ACTS-OFF ADDI,  14 14 13 ADD,
+   SPAWN-NEXT-ACTION
    15 PSFA-CHDIR MOVZ,  15 14 0 STRW,
    16 SCA-CWD @ 0 ADDI,
    17 14 SPAWN-CHDIR-PATH-OFF ADDI,
@@ -1080,38 +1150,34 @@ variable SZA-I
       17 17 1 ADDI,
       5 5 1 SUBI,
       15 SCA-COPY LABEL@ CBNZ,
-   14 13 SPAWN-FA-COUNT-OFF LDRW,  14 14 1 ADDI,  14 13 SPAWN-FA-COUNT-OFF STRW,
+   SPAWN-COUNT-ACTION
    SCA-DONE LABEL@ B,
    SCA-OVER LABEL@ LBL,
    9 0 MOVN,  SCA-FAIL LABEL@ B,
    SCA-DONE LABEL@ LBL, ;
 
-: SPAWN-DARWIN-FRAME3-ENTER ( -- )
-   SP SP SPAWN-FRAME3 SUBI, ;
+: SPAWN-DARWIN-FRAME-ENTER ( -- )
+   SP SP SPAWN-FRAME-STEP SUBI,
+   SP SP SPAWN-FRAME SPAWN-FRAME-STEP - SUBI, ;
 
-: SPAWN-DARWIN-FRAME3-LEAVE ( -- )
-   SP SP SPAWN-FRAME3 ADDI, ;
+: SPAWN-DARWIN-FRAME-LEAVE ( -- )
+   SP SP SPAWN-FRAME SPAWN-FRAME-STEP - ADDI,
+   SP SP SPAWN-FRAME-STEP ADDI, ;
 
-: SPAWN-DARWIN-FRAME4-ENTER ( -- )
-   SP SP SPAWN-FRAME4-A SUBI,
-   SP SP SPAWN-FRAME4-B SUBI,
-   SP SP SPAWN-FRAME4-C SUBI, ;
-
-: SPAWN-DARWIN-FRAME4-LEAVE ( -- )
-   SP SP SPAWN-FRAME4-C ADDI,
-   SP SP SPAWN-FRAME4-B ADDI,
-   SP SP SPAWN-FRAME4-A ADDI, ;
-
-: SPAWN-DARWIN-ACTIONS-RESET ( count -- )
-   SACT-CAP !
+: SPAWN-DARWIN-ACTIONS-RESET ( -- )
    13 SP SPAWN-ACTIONS-OFF ADDI,
-   14 SACT-CAP @ MOVZ,  14 13 SPAWN-FA-CAP-OFF STRW,
+   14 SPAWN-ACTION-CAP MOVZ,  14 13 SPAWN-FA-CAP-OFF STRW,
    14 0 MOVZ,  14 13 SPAWN-FA-COUNT-OFF STRW, ;
 
+\ The stdio records, then the closes, so a source two roles share is closed
+\ after both records read it.
 : SPAWN-DARWIN-STDIO-ACTIONS ( -- )
    10 >REG 0 >FD SPAWN-DUP2-ACTION
    11 >REG 1 >FD SPAWN-DUP2-ACTION
-   12 >REG 2 >FD SPAWN-DUP2-ACTION ;
+   12 >REG 2 >FD SPAWN-DUP2-ACTION
+   10 >REG SPAWN-CLOSE-ACTION
+   11 >REG SPAWN-CLOSE-ACTION
+   12 >REG SPAWN-CLOSE-ACTION ;
 
 : SPAWN-DARWIN-ZERO-ADESC ( -- )
    14 0 MOVZ,
@@ -1223,9 +1289,9 @@ variable SZA-I
       exit
    THEN
    HB-TARGET-MACOS? IF
-      SPAWN-DARWIN-FRAME3-ENTER
+      SPAWN-DARWIN-FRAME-ENTER
       9 >REG SPAWN-DARWIN-DEFAULT-ARGV-ENVP
-      3 >COUNT SPAWN-DARWIN-ACTIONS-RESET
+      SPAWN-DARWIN-ACTIONS-RESET
       SPAWN-DARWIN-STDIO-ACTIONS
       SPAWN-DARWIN-ZERO-ADESC
       SPAWN-DARWIN-ZERO-ATTR
@@ -1234,7 +1300,7 @@ variable SZA-I
       SPAWN-DARWIN-USE-ADESC
       SPAWN-DARWIN-USE-DEFAULT-ARGV-ENVP
       BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
-      SPAWN-DARWIN-FRAME3-LEAVE
+      SPAWN-DARWIN-FRAME-LEAVE
       exit
    THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
@@ -1252,9 +1318,9 @@ variable SZA-I
       exit
    THEN
    HB-TARGET-MACOS? IF
-      SPAWN-DARWIN-FRAME3-ENTER
+      SPAWN-DARWIN-FRAME-ENTER
       SPAWN-DARWIN-DEFAULT-ENVP
-      3 >COUNT SPAWN-DARWIN-ACTIONS-RESET
+      SPAWN-DARWIN-ACTIONS-RESET
       SPAWN-DARWIN-STDIO-ACTIONS
       SPAWN-DARWIN-ZERO-ADESC
       SPAWN-DARWIN-ZERO-ATTR
@@ -1263,7 +1329,7 @@ variable SZA-I
       SPAWN-DARWIN-USE-ADESC
       9 >REG SPAWN-DARWIN-ARGV-DEFAULT-ENVP
       BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
-      SPAWN-DARWIN-FRAME3-LEAVE
+      SPAWN-DARWIN-FRAME-LEAVE
       exit
    THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
@@ -1277,8 +1343,8 @@ variable SZA-I
       exit
    THEN
    HB-TARGET-MACOS? IF
-      SPAWN-DARWIN-FRAME3-ENTER
-      3 >COUNT SPAWN-DARWIN-ACTIONS-RESET
+      SPAWN-DARWIN-FRAME-ENTER
+      SPAWN-DARWIN-ACTIONS-RESET
       SPAWN-DARWIN-STDIO-ACTIONS
       SPAWN-DARWIN-ZERO-ADESC
       SPAWN-DARWIN-ZERO-ATTR
@@ -1287,7 +1353,7 @@ variable SZA-I
       SPAWN-DARWIN-USE-ADESC
       9 >REG 7 >REG SPAWN-DARWIN-ARGV-ENVP
       BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
-      SPAWN-DARWIN-FRAME3-LEAVE
+      SPAWN-DARWIN-FRAME-LEAVE
       exit
    THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
@@ -1300,8 +1366,8 @@ variable SZA-I
       exit
    THEN
    HB-TARGET-MACOS? IF
-      SPAWN-DARWIN-FRAME4-ENTER
-      4 >COUNT SPAWN-DARWIN-ACTIONS-RESET
+      SPAWN-DARWIN-FRAME-ENTER
+      SPAWN-DARWIN-ACTIONS-RESET
       6 >REG BSP-DN @ >LABEL SPAWN-CHDIR-ACTION
       SPAWN-DARWIN-STDIO-ACTIONS
       SPAWN-DARWIN-ZERO-ADESC
@@ -1311,7 +1377,7 @@ variable SZA-I
       SPAWN-DARWIN-USE-ADESC
       9 >REG 7 >REG SPAWN-DARWIN-ARGV-ENVP
       BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
-      SPAWN-DARWIN-FRAME4-LEAVE
+      SPAWN-DARWIN-FRAME-LEAVE
       exit
    THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;

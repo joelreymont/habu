@@ -917,7 +917,7 @@ defer TFAM-INIT-RECORD-XT ( n -- n n n bool )          \ committed fixed-cell pr
 defer TFAM-INIT-FIELD-XT ( n ptr u8 n -- n n n bool ) \ committed field descriptor, offset, bytes
 defer CONSTRUCT-FAM-XT ( ptr u8 n -- n bool )           \ item 9 construct family resolve, active package only
 defer CONSTRUCT-STEP-XT ( ptr u8 n n -- bool )          \ item 9 construct variant resolve + step effect
-defer CTOR-STEP-XT ( n -- bool )                        \ generated-constructor CALL whose declared output has a direct closed layout arg routes through the bidirectionally seeded construct step; scalar/pointer/open/linear args fall through
+defer CTOR-STEP-XT ( n -- bool )                        \ generated-constructor CALL seeded by a direct closed layout arg (declared output; a product UNMAKE's live input) takes the construct step; scalar/pointer/open/linear args fall through
 defer MATCH-FAM-XT ( ptr u8 n -- n bool )               \ item 9 MATCH family resolve, signature scope
 defer MATCH-VAR-XT ( ptr u8 n n -- n bool )             \ variant tail -> SUMV id within a family
 defer MATCH-VTAG-XT ( n -- n )                           \ SUMV id -> declaration-order tag (seen-bitset index)
@@ -2643,11 +2643,14 @@ variable NMOFF                           \ its token's offset in the checked tex
    REPEAT drop RES-FALSE ;
 
 \ --- an OPEN argument only hides the width when the WIDTH READS IT. The
-\ instantiated width substitutes an argument's own width at exactly one place
-\ (type-family.f SCH-NODE-IWIDTH): a schema root that IS a parameter node. A
-\ parameter occurring only under a pointer, a quotation or a concrete
-\ application therefore cannot move the family's width, and
-\ `span<t>` — `FIELD base ptr t  FIELD len n` — is two cells for every `t`.
+\ instantiated width (type-family.f TFW-NODE) reads an argument's own width
+\ where a schema root reads its slot: a root that IS the parameter node, or a
+\ nested application whose family reads the slot that argument fills. A
+\ parameter occurring only under a pointer, a quotation or an argument slot its
+\ application never reads therefore cannot move the family's width:
+\ `span<t>` — `FIELD base ptr t  FIELD len n` — is two cells for every `t`, and
+\ `sx<t>` for `FIELD f init<t,leaf>` is two cells for every `t`, since init
+\ reads only its element slot.
 \ Such an instance expands into its physical cells with the open argument still
 \ a var, so a declared row carrying it has one term per cell and the native
 \ chain can read the per-cell slots it places a row from (dict.f ROW-GLUE).
@@ -3669,21 +3672,55 @@ variable CDT-ROW
 \ narrower: a closed, non-linear declared instantiation with a DIRECT layout-
 \ family arg needs pre-seeding because its hidden input cannot bind an ordinary
 \ payload var. Pointer-wrapped families are not direct args; nominal scalars and
-\ plain con/pointer args stay on the ordinary stored-effect word path.
+\ plain con/pointer args stay on the ordinary stored-effect word path. SEED-TERM?
+\ is that rule over one resolved family term, wherever the term came from.
+: SEED-TERM? ( n -- bool ) {: t:n :}
+   0 BEGIN dup t PARAM>ARGC < WHILE
+      t over PARAM>ARG T-WIDTH 1 > IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop
+   t TYPE-REP-CLOSED? 0= IF RES-FALSE EXIT THEN
+   t LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
+   0 BEGIN dup t PARAM>ARGC < WHILE
+      t over PARAM>ARG LAYOUT-PARAM? IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
 : CONSTRUCT-DECL-LAYOUT ( n -- n bool ) {: fam:n :}
    fam TFAM-ARITY* 0= IF 0 RES-FALSE EXIT THEN
    fam CONSTRUCT-DECL-TERM 0= IF drop 0 RES-FALSE EXIT THEN
    {: t:n :}
-   0 BEGIN dup t PARAM>ARGC < WHILE
-      t over PARAM>ARG T-WIDTH 1 > IF drop t RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop
-   t TYPE-REP-CLOSED? 0= IF 0 RES-FALSE EXIT THEN
-   t LAYOUT-MAYBE-LINEAR? IF 0 RES-FALSE EXIT THEN
-   0 BEGIN dup t PARAM>ARGC < WHILE
-      t over PARAM>ARG LAYOUT-PARAM? IF drop t RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop 0 RES-FALSE ;
+   t SEED-TERM? IF t RES-TRUE EXIT THEN
+   0 RES-FALSE ;
+
+\ UNMAKE-LIVE-TERM ( fam -- term bool ) : the live top of the data row when it is
+\ a term of FAM, a hidden cell of its bundle or a logical term alike. A row with
+\ no pushed top (a quotation body's fresh row), a stale cell (its wrapper is no
+\ T-PARAM), a variable or another type is no term.
+: UNMAKE-LIVE-TERM ( n -- n bool )
+   {: fam:n :}
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 RES-FALSE EXIT THEN
+   P>TYPE T-RES {: t:n :}
+   t TAG T-PARAM <> IF 0 RES-FALSE EXIT THEN
+   t PARAM>FAM fam <> IF 0 RES-FALSE EXIT THEN
+   t RES-TRUE ;
+
+\ UNMAKE-SEED-LAYOUT ( fam -- term bool ) : the same question for a product's
+\ generated UNMAKE, which runs the construct step backwards (type-family.f
+\ TFAM-UNMAKE-STEP?). The seed is only the value it takes apart, the live input
+\ UNMAKE-LIVE-TERM finds, and SEED-TERM? decides as it does for MAKE, so the
+\ logical term an ordinary MAKE leaves is no seed. A quotation body starts on a
+\ fresh row with no live input, and the enclosing definition's declared input is
+\ no substitute for it: that value may be consumed before the UNMAKE runs. With
+\ no seed, UNMAKE keeps the ordinary stored-effect word path, where a stale live
+\ cell is refused as a stale read.
+: UNMAKE-SEED-LAYOUT ( n -- n bool )
+   {: fam:n :}
+   fam TFAM-ARITY* 0= IF 0 RES-FALSE EXIT THEN
+   fam UNMAKE-LIVE-TERM 0= IF drop 0 RES-FALSE EXIT THEN
+   {: t:n :}
+   t SEED-TERM? IF t RES-TRUE EXIT THEN
+   0 RES-FALSE ;
 
 \ --- return row: >r r> r@ transfer types between DCUR and RCUR. A definition
 \ must leave the return row exactly as it found it (ANS 3.2.3.3) — the final
@@ -8057,9 +8094,9 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
 \ being built is not on it yet (its ER.NEXT is 0 until E-REC-FINISH), so the walk
 \ ends at the record in progress and the nodes above it belong to E-INTERN.
 \ UEND BOUNDS THE WALK, NOT THE CHAIN ALONE. UEND is the store's true top, and a
-\ rewind LEAVES THE BYTES ABOVE IT READABLE: src/habu/hide.f's refresh prelude
-\ assigns UEND directly, and a terminator only ends a chain that has not since
-\ been regrown over. So the walk states its own bound instead of trusting the
+\ rewind LEAVES THE BYTES ABOVE IT READABLE: E-INTERN's hit path assigns UEND
+\ directly, and a terminator only ends a chain that has not since been regrown
+\ over. So the walk states its own bound instead of trusting the
 \ links: a record is walked only while its whole header is below UEND, and a link
 \ that does not advance, or that leaves the live store, ends it. Otherwise the
 \ index would offer nodes in the dead region - entries the next append overwrites,
@@ -8553,13 +8590,13 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
 
 \ UEND BOUNDS THIS WALK, NOT THE CHAIN ALONE - the same three admissions
 \ UIX-BUILD states, for the same reason. UEND is the store's true top and a
-\ rewind LEAVES THE BYTES ABOVE IT READABLE: src/habu/hide.f's refresh prelude
-\ assigns UEND directly, E-INTERN's own hit rewinds mid-record without writing a
-\ terminator, and a terminator a rewind did write is overwritten by the very next
-\ append. Walking the chain alone therefore indexed the dead region and answered
-\ a symbol's newest record with an offset the store no longer holds - which the
-\ next definition of that name reads as a duplicate definition (measured:
-\ test/verify-prim-test.f's cold differential, rc 78 on `CAST: >IMG`).
+\ rewind LEAVES THE BYTES ABOVE IT READABLE: E-INTERN's own hit rewinds
+\ mid-record without writing a terminator, and a terminator a rewind did write
+\ is overwritten by the very next append. Walking the chain alone therefore
+\ indexed the dead region and answered a symbol's newest record with an offset
+\ the store no longer holds - which the next definition of that name reads as a
+\ duplicate definition (measured: test/verify-prim-test.f's cold differential,
+\ rc 78 on `CAST: >IMG`).
 \ THE LINEAR SPECIFICATION SHARED THE BLIND SPOT, which is why nothing caught it:
 \ USIG-NEWEST-LINEAR walked the same terminator, so the differential in
 \ test/checker-scan-index-suite.f compared two walks that agreed on the same wrong
@@ -10951,12 +10988,13 @@ PPRIM: PRIM-SPEC A-IN PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC A-OUT PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC A-NUM PE-N PE-OUT PPRIM;
 \ CHECKER-BOUND REWIND is the core-prefix boundary's restore half, declared and
-\ its MARK half deliberately not: src/habu/prefix-rewind.f TO-CORE is the one
-\ consumer and it only ever rewinds, so nothing outside this file can move the
-\ boundary. The rewind is guarded by its own body - it dies on an unrecorded
-\ boundary and inside a rollback scope — and what it restores is checker
-\ knowledge, so a caller that runs it in a booted engine loses the symbols above
-\ the prefix and every later reference fails closed with E-UNDEFINED (measured).
+\ its MARK half deliberately not: src/habu/prefix-rewind.f's top-level text is
+\ the one consumer and it only ever rewinds, so nothing outside this file can
+\ move the boundary. The rewind is guarded by its own body - it dies on an
+\ unrecorded boundary and inside a rollback scope — and what it restores is
+\ checker knowledge, so a caller that runs it in a booted engine loses the
+\ symbols above the prefix and every later reference fails closed with
+\ E-UNDEFINED (measured).
 PPRIM: CHECKER-BOUND REWIND PPRIM;
 \ CHECKER-BOUND EMPTY-STORE is the same package's other answer, for the other
 \ kind of reloading host: tools/bootstrap.sh's boot-hide prologue, which every
@@ -23991,8 +24029,9 @@ package CHECKER-REG
 \ ---------------------------------------------------------------------------
 \ THE CORE-PREFIX BOUNDARY. One mark, taken once at the end of the boot prefix
 \ (src/core/lower-cert-seal.f) and rewound to once at the head of a generated
-\ engine source (src/habu/prefix-rewind.f), which returns a compiling host to
-\ the end of its own boot instead of orphaning that prefix and recompiling it.
+\ engine source (src/habu/prefix-rewind.f's top-level text), which returns a
+\ compiling host to the end of its own boot instead of orphaning that prefix and
+\ recompiling it.
 \
 \ IT IS A RECORD, NOT A FRAME. A frame held open across the whole boot is one
 \ frame deeper than the core for its entire life, and the depth-lockstep assert

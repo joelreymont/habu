@@ -154,7 +154,6 @@ emit_boot_hide() {
   cat >> "$1" <<'EOF'
 TRUSTED: BOOT-N>REC ( n -- ptr n ) ;
 TRUSTED: BOOT-N>U8 ( n -- ptr u8 ) ;
-TRUSTED: BOOT-NDICT! ( n -- ) seed-ndict! ;
 $0 constant BOOT-XREF-START-SLOT
 $2 constant BOOT-XREF-FLAGS-SLOT
 $3 constant BOOT-XREF-NAME-SLOT
@@ -205,12 +204,11 @@ $3 constant BOOT-XREF-NAME-SLOT
    a 0 < if b exit then
    b 0 < if a exit then
    a b < if a else b then ;
-: BOOT-HIDE-DICT-FROM-EARLIEST ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
+: BOOT-XREF-MARKER-INDEX ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n b:ptr v:n :}
    a u BOOT-XREF-FIND-INDEX  b v BOOT-XREF-FIND-INDEX  BOOT-MIN-FOUND
-   dup 0 < if s" bootstrap: hide marker not found" 76 die then
-   BOOT-NDICT! ;
+   dup 0 < if s" bootstrap: hide marker not found" 76 die then ;
 CHECKER-BOUND:EMPTY-STORE
-s" IMK-NDICT0" s" SEQ" BOOT-HIDE-DICT-FROM-EARLIEST
+s" IMK-NDICT0" s" SEQ" BOOT-XREF-MARKER-INDEX seed-ndict!
 EOF
 }
 
@@ -292,11 +290,11 @@ emit_src() {
   # into hb-stage0 went without it, so the whole no-binary recovery path died at
   # src/habu/xref.f INSTALL with `hook: non-certified definition: install at
   # 'is'` and exit 70. There is one compiler source, so there is one prologue:
-  # every consumer of this function gets it. It lowers the dictionary through
-  # `seed-ndict!`, never public `ndict!`: the native stages this text is fed to
-  # in the fixpoint loop carry the seal floor, and public `ndict!` below it is
-  # a silent exit 83 (src/habu/hide.f says the same for its own rewind); the
-  # gforth stage0 answers the name with its unsealed lowering.
+  # every consumer of this function gets it. It lowers the dictionary with its
+  # own top-level `seed-ndict!` token, never public `ndict!`: the native stages
+  # this text is fed to in the fixpoint loop carry the seal floor, and public
+  # `ndict!` below it is a silent exit 83. hb-stage0 answers the token with
+  # the seed's BNDSET, its unsealed lowering.
   #
   # The checker half of that clearing is CHECKER-BOUND:EMPTY-STORE, a declared
   # public of the checker's own boundary package. It used to be a hand rewind --
@@ -307,8 +305,8 @@ emit_src() {
   # and a stage stripped to the names the checker knows could not compile the
   # prelude the whole recovery starts from (the shape dot
   # habu-give-the-build-4b825045 measured in the build chain as `ncomp: cannot
-  # compile REG-INCOMING?`). The call below is ordinary checked Habu, so the
-  # prologue is down to ONE trusted row, the dictionary's.
+  # compile REG-INCOMING?`). The call below is ordinary checked Habu, and no
+  # row lowers the dictionary: the prologue's own top-level token does.
   #
   # NOT CHECKER-BOUND:REWIND, the sibling src/habu/prefix-rewind.f uses for the
   # same job one layer up. That one returns to the prefix's END, because

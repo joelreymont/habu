@@ -1911,8 +1911,8 @@ public
 \ --- family facts memo (TFM) -----------------------------------------------------
 \ A checked use of a family's type asks three questions about the whole family:
 \ is its named payload sound (SUM-NAMED-PAYLOAD?), does it own a linear value
-\ (TFAM-CONCRETE-LINEAR?), and how wide is a closed instance (SUM-IWIDTH at arity
-\ 0). Each walks every variant, and certifying one generated constructor asks
+\ (TFAM-CONCRETE-LINEAR?), and how wide is a family with no parameter
+\ (TFW-FAM-IMPL). Each walks every variant, and certifying one generated constructor asks
 \ them several times, so generating an ENUM's constructors cost the square of its
 \ variant count. Each answer is memoized per family under TFM-EPOCH (see the
 \ family mutators): a cell stamped with the current epoch holds the answer a walk
@@ -2087,95 +2087,171 @@ public
       FVX-NEXT
    REPEAT drop ;
 
-\ --- arg-aware instantiated width (item 12 / layout-cap slice 1, docs §18). The
-\ registry TFAM-WIDTH@ assumes every parameter contributes one cell; that is exact
-\ WHILE family parameters stay cell-kinded, but §18's WIDTH function is defined
-\ over the INSTANTIATED field/variant types. TFAM-INST-WIDTH@ walks a resolved
-\ layout term's variant/product schemas and substitutes each param slot by the
-\ width of the term's matching arg (T-WIDTH, checker.f), so a layout arg widens
-\ the sum payload / product body. For every cell-kinded instantiation (all args
-\ width 1) it equals TFAM-WIDTH@, so routing T-WIDTH through it is behaviour-
-\ preserving groundwork. Nested parametric families propagate their own args in a
-\ later slice; a schema SC-APP is always an arity-0 concrete payload family today,
-\ whose instantiated width already equals its declared registry width.
+\ --- instantiated width (docs §18 WIDTH). A schema application's width is its
+\ family's width at its arguments' widths. Under a term, a parameter takes the
+\ term's argument width; at declaration (TFAM-SCH-WIDTH), a parameter counts as
+\ one cell. Every width follows that one rule, so a closed family's declared
+\ width equals its instantiated width, and a nested application such as
+\ opt<res<n,n>> is as wide as its arguments make it, never its family's
+\ registry width. A walk reads argument widths from a frame: the half-open cell
+\ range [base, top) of the TFW scratch row, cell base+i holding argument i's
+\ width. An application measures its arguments into the frame above top, so a
+\ nested frame never overlaps the one it reads and every cell is written before
+\ it is read; base and top are passed explicitly, so a throw leaks nothing.
+\ T-WIDTH (checker.f) reads TFAM-INST-WIDTH@, and typed storage, generated
+\ constructors and MATCH all read T-WIDTH.
 
 private
 
-: SCH-NODE-IWIDTH ( n n -- n ) {: node:n term:n :}   \ inst width of one schema node under term's args
-   node SCHEMA-PARAM? IF term node SCHEMA-A@ PARAM>ARG T-WIDTH EXIT THEN
-   node SCHEMA-APP?   IF node SCHEMA-A@ TFAM-WIDTH@ EXIT THEN
+16 constant TFW-INIT
+create TFW-BOOT   TFW-INIT cells allot   REG-PROTECT
+PERSISTED-PTR-VARIABLE TFW-P   TFW-BOOT TFW-P !   REG-PROTECT
+variable TFW-CAP   TFW-INIT TFW-CAP !   REG-PROTECT   \ cells TFW-P holds
+
+\ Grown, never zeroed: every frame cell is written before it is read.
+: TFW-ENSURE ( n -- ) {: need:n :}
+   need TFW-CAP @ <= IF EXIT THEN
+   need TFW-CAP @ 2 * max {: cap:n :}
+   TFW-P  TFW-CAP @ cells  cap cells  REG-GROW1
+   cap TFW-CAP ! ;
+
+: TFW@ ( n -- n ) cells TFW-P @ + @ ;
+: TFW! ( n n -- ) {: w:n idx:n :}
+   idx 1 + TFW-ENSURE
+   w idx cells TFW-P @ + ! ;
+
+\ Capture: back to the boot row. The frames are process-local scratch, like TFM.
+: TFW-SNAP-RESET ( -- )
+   TFW-BOOT TFW-P !
+   TFW-INIT TFW-CAP ! ;
+
+defer TFW-FAM ( n n n -- n )   \ ( fam base top -- width ) forward ref for a nested application
+
+: TFW-NODE ( n n n -- n ) {: node:n base:n top:n :}   \ width of one schema node under the frame [base, top)
+   node SCHEMA-PARAM? IF base node SCHEMA-A@ + TFW@ EXIT THEN
+   node SCHEMA-APP? IF
+      node SCHEMA-B@ {: start:n :}
+      node SCHEMA-C@ {: cnt:n :}
+      cnt 0 ?do                                  \ an argument's own frames live above top+cnt
+         start i + SCHEMA-ROOT@ base top cnt + RECURSE  top i + TFW!
+      loop
+      node SCHEMA-A@ top top cnt + TFW-FAM EXIT
+   THEN
    1 ;
-: SUMV-IWIDTH ( n n -- n ) {: vid:n term:n :}   \ legacy positional payload only
+
+: TFW-PRODUCT ( n n n -- n ) {: fam:n base:n top:n :}   \ sum of field widths (no tag)
+   fam TFAM-FLD-START@ {: fs:n :}
+   0
+   0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
+      fs over + PF-PENDING-SCH@ SCHEMA-ROOT@ base top TFW-NODE
+      rot + swap
+      1 +
+   REPEAT drop ;
+
+: TFW-SUMV ( n n n -- n ) {: vid:n base:n top:n :}   \ legacy positional payload only
    vid SUMV-SCH-COUNT@ {: count:n :}
-   vid SUMV-SCH-START@ {: base:n :}
+   vid SUMV-SCH-START@ {: start:n :}
    0                                            \ acc
    0 BEGIN dup count < WHILE                     \ ( acc j )
-      base over + SCHEMA-ROOT@ term SCH-NODE-IWIDTH   \ ( acc j wj )
+      start over + SCHEMA-ROOT@ base top TFW-NODE   \ ( acc j wj )
       rot + swap                                 \ ( acc' j )
       1 +
    REPEAT drop ;
 
 \ Called after validating the family once. It reads only this variant's rows,
 \ and the cursor stays on the stack while a field's width recurses.
-: SUMV-NAMED-IWIDTH ( n n -- n ) {: vid:n term:n :}
-   term PARAM>FAM {: fam:n :}
+: TFW-SUMV-NAMED ( n n n -- n ) {: vid:n base:n top:n :}
+   vid SUMV-FAM@ {: fam:n :}
    0  fam vid FVX-FIRST
    BEGIN dup 0 <> WHILE
       dup 1 - {: id:n :}
       fam vid id SUMV-SLICE-ROW? IF
-         swap id PF-SCH@ SCHEMA-ROOT@ term SCH-NODE-IWIDTH + swap
+         swap id PF-SCH@ SCHEMA-ROOT@ base top TFW-NODE + swap
       THEN
       FVX-NEXT
    REPEAT drop ;
 
-: SUM-IWIDTH-WALK ( n -- n ) {: term:n :}       \ tag + max variant payload inst-width
-   term PARAM>FAM {: fam:n :}
+: TFW-SUM ( n n n -- n ) {: fam:n base:n top:n :}   \ tag + max variant payload width
    fam SUM-NAMED-PAYLOAD? {: named:bool :}
    fam TFAM-VAR-START@ {: vs:n :}
    0                                            \ maxpay
    0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE        \ ( maxpay j )
-      vs over + term named IF SUMV-NAMED-IWIDTH ELSE SUMV-IWIDTH THEN
+      vs over + base top named IF TFW-SUMV-NAMED ELSE TFW-SUMV THEN
                                                  \ ( maxpay j payj )
       rot max swap                               \ ( maxpay' j )
       1 +
    REPEAT drop
    1 + ;                                         \ + tag cell
-\ A closed family has no parameter for an argument to widen, so every instance
-\ has one width and it is memoized; a parametric one is walked per instance.
-: SUM-IWIDTH ( n -- n ) {: term:n :}
-   term PARAM>FAM {: fam:n :}
-   fam TFAM-ARITY@ 0 <> IF term SUM-IWIDTH-WALK EXIT THEN
+
+: TFW-FAM-WALK ( n n n -- n ) {: fam:n base:n top:n :}
+   fam TFAM-BOXED-OR-NICHE? IF 1 EXIT THEN
+   fam TFAM-PRODUCT? IF fam base top TFW-PRODUCT EXIT THEN
+   fam TFAM-SUM? fam TFAM-ENUM? or IF fam base top TFW-SUM EXIT THEN
+   1 ;
+
+\ A family with no parameter has one width wherever it is applied, so it is
+\ walked once per TFM epoch and every later application reads the TFM-WIDTH
+\ memo: a chain of closed families that each carry the previous one twice is
+\ walked in linear time, not 2^N. A parametric family is walked per frame.
+: TFW-FAM-IMPL ( n n n -- n ) {: fam:n base:n top:n :}
+   fam TFAM-ARITY@ 0 > IF fam base top TFW-FAM-WALK EXIT THEN
    fam TFM-WIDTH TFM@ IF EXIT THEN drop
-   term SUM-IWIDTH-WALK dup fam TFM-WIDTH TFM! ;
-: PRODUCT-IWIDTH ( n -- n ) {: term:n :}        \ sum of field inst-widths (no tag)
-   term PARAM>FAM {: fam:n :}
-   fam TFAM-FLD-START@ {: fs:n :}
-   0
-   0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
-      fs over + PF-PENDING-SCH@ SCHEMA-ROOT@ term SCH-NODE-IWIDTH
-      rot + swap
-      1 +
-   REPEAT drop ;
+   fam base top TFW-FAM-WALK dup fam TFM-WIDTH TFM! ;
+: TFW-FAM-INSTALL ( -- ) [: TFW-FAM-IMPL ;] is TFW-FAM ;
+TFW-FAM-INSTALL
+
+public
+
+: TFAM-SCH-WIDTH ( n n -- n ) {: fam:n node:n :}   \ declared width of a schema node of fam: each parameter one cell
+   fam TFAM-ARITY@ {: ar:n :}
+   ar 0 ?do 1 i TFW! loop
+   node 0 ar TFW-NODE ;
+
+private
+
+\ Every argument is measured before any frame cell is written: T-WIDTH of an
+\ argument re-enters this walk at cell 0.
+: TERM-FRAME ( n n n -- ) {: term:n idx:n count:n :}   \ frame cells [idx, count) := term's argument widths
+   idx count >= IF EXIT THEN
+   term idx PARAM>ARG T-WIDTH {: w:n :}
+   term idx 1 + count RECURSE
+   w idx TFW! ;
+
+\ A closed family answers from TFW-FAM-IMPL's memo; a parametric one is walked
+\ per instance.
 : TFAM-INST-WIDTH@ ( n -- n ) {: term:n :}      \ instantiated logical width of a resolved layout term
    term PARAM>FAM {: fam:n :}
    fam TFAM-BOXED-OR-NICHE? IF 1 EXIT THEN
-   fam TFAM-PRODUCT? IF term PRODUCT-IWIDTH EXIT THEN
-   fam TFAM-SUM? fam TFAM-ENUM? or IF term SUM-IWIDTH EXIT THEN
-   1 ;
+   fam TFAM-LAYOUT? 0= IF 1 EXIT THEN
+   term PARAM>ARGC {: count:n :}
+   term 0 count TERM-FRAME
+   fam 0 count TFW-FAM ;
 
 \ --- which argument slots the width above READS (dot habu-place-an-open-d7bcba49).
-\ SCH-NODE-IWIDTH substitutes an argument's own width at exactly one kind of
-\ place: a schema root that IS a parameter node. Every other root — a pointer, a
-\ quotation, a concrete application — contributes a width the declaration fixes,
-\ so a parameter occurring only there cannot move the family's width whatever it
-\ binds to. These words walk the SAME schema roots as PRODUCT-IWIDTH and
-\ SUM-IWIDTH, one slot at a time, and the checker uses the answer to decide
-\ whether an instance with that slot still OPEN has a width it may place
-\ (checker.f LAYOUT-WIDTH-OPEN?). Keep the two walks together: a width site added
-\ to SCH-NODE-IWIDTH is an occurrence this must report.
+\ TFW-NODE reads an argument's own width where a schema root reads its slot:
+\ directly, a root that IS that parameter node, or through a nested application
+\ whose family reads the slot that argument fills. Every other occurrence —
+\ under a pointer or a quotation, or in an argument slot its application never
+\ reads — contributes a width the declaration fixes, so a parameter occurring
+\ only there cannot move the family's width whatever it binds to. These words
+\ walk the SAME schema roots as TFW-PRODUCT and TFW-SUM, one slot at a time, and
+\ the checker uses the answer to decide whether an instance with that slot still
+\ OPEN has a width it may place (checker.f LAYOUT-WIDTH-OPEN?). Keep the two
+\ walks together: a width site added to TFW-NODE is an occurrence this must
+\ report.
+defer TFAM-WIDTH-SLOT-FWD ( n n -- bool )   \ ( fam slot -- reads? ) forward ref for a nested application
 : SCH-ROOT-WIDTH-SLOT? ( n n -- bool ) {: node:n slot:n :}
-   node SCHEMA-PARAM? 0= IF RES-FALSE EXIT THEN
-   node SCHEMA-A@ slot = ;
+   node SCHEMA-PARAM? IF node SCHEMA-A@ slot = EXIT THEN
+   node SCHEMA-APP? IF
+      node SCHEMA-A@ {: g:n :}
+      node SCHEMA-B@ {: start:n :}
+      node SCHEMA-C@ 0 ?do
+         g i TFAM-WIDTH-SLOT-FWD IF
+            start i + SCHEMA-ROOT@ slot RECURSE IF unloop RES-TRUE EXIT THEN
+         THEN
+      loop
+   THEN
+   RES-FALSE ;
 : SUMV-WIDTH-SLOT? ( n n -- bool ) {: vid:n slot:n :}
    0 BEGIN dup vid SUMV-PAY-N < WHILE
       vid over SUMV-PAY-ROOT SCHEMA-ROOT@ slot SCH-ROOT-WIDTH-SLOT? IF drop RES-TRUE EXIT THEN
@@ -2206,6 +2282,8 @@ private
       REPEAT drop
    THEN
    RES-FALSE ;
+: TFAM-WIDTH-SLOT-INSTALL ( -- ) [: TFAM-WIDTH-SLOT? ;] is TFAM-WIDTH-SLOT-FWD ;
+TFAM-WIDTH-SLOT-INSTALL
 
 : PF-MATCH? ( n n ptr u8 n n -- bool ) {: fam:n var:n na:ptr nu:n id:n :}
    id PF-REC@ {: r:ptr :}
@@ -2737,10 +2815,6 @@ public
 
 private
 
-: PF-SCHEMA-WIDTH ( n -- n ) {: sch:n :}
-   sch SCHEMA-ROOT@ {: node:n :}
-   node SCHEMA-APP? IF node SCHEMA-A@ TFAM-WIDTH@ ELSE 1 THEN ;
-
 \ --- declaration-time parameter-arity walk for SUM variant payload schemas
 \ (dot habu-declaration-time-arity-4c70e37c). PRODUCT fields validate their whole
 \ field-schema tree at declaration through PF-SCHEMA-OK? / PF-NODE-KIND?; SUM
@@ -2836,7 +2910,7 @@ public
    boff bytesn PF-RANGE-OK? 0= IF E-PF-LAYOUT throw THEN
    al PF-POW2? 0= IF E-PF-LAYOUT throw THEN
    boff al mod 0 <> IF E-PF-LAYOUT throw THEN
-   sch PF-SCHEMA-WIDTH cellsn <> IF E-PF-LAYOUT throw THEN
+   fam sch SCHEMA-ROOT@ TFAM-SCH-WIDTH cellsn <> IF E-PF-LAYOUT throw THEN
    fam TFAM-LAYOUT-POLICY@ CASE
       TL-STACK-CELL-TAG OF
          slot PF-CELL-BYTES boff <> IF E-PF-LAYOUT throw THEN
@@ -4366,9 +4440,32 @@ private
 PTR-VARIABLE REG-AOT-MEMO
 variable REG-AOT-MEMO-U
 
+\ The width walk shares closed families the same way. Cell fam of REG-AOT-FAMW
+\ holds 1 + the width REG-AOT-FAM-W-IMPL walked for arity-0 family fam, 0 until
+\ that walk completes: computed widths only, never a persisted slot count. A
+\ check maps it fresh and unmaps it with the memo; a signature graph's width
+\ (REG-AOT-GRAPH-WIDTH) maps its own for its walk unless a check holds one.
+PTR-VARIABLE REG-AOT-FAMW
+variable REG-AOT-FAMW-U
+
+\ One cell per family id the payload can name: 0 up to row 0's base plus count,
+\ or the live registry's count for an empty payload, which REG-AOT-ITEM reads
+\ as the live registry (the graph check of the live signature pool). A
+\ registry without a family maps none.
+: REG-AOT-FAMW-START ( ptr u8 n -- ) {: src:ptr u:n :}
+   u 0= IF 0 REG-AOT-COUNT ELSE src 0 REG-AOT-ROW@ drop + THEN
+   cells {: bytes:n :}
+   bytes 0 > IF bytes ARENA-ALLOC REG-AOT-FAMW ! THEN
+   bytes REG-AOT-FAMW-U ! ;
+
+: REG-AOT-FAMW-DONE ( -- )
+   REG-AOT-FAMW @ REG-AOT-FAMW-U @ ASIG-RELEASE
+   NULL-PTR REG-AOT-FAMW ! 0 REG-AOT-FAMW-U ! ;
+
 : REG-AOT-MEMO-DONE ( -- )
    REG-AOT-MEMO @ REG-AOT-MEMO-U @ ASIG-RELEASE
-   NULL-PTR REG-AOT-MEMO ! 0 REG-AOT-MEMO-U ! ;
+   NULL-PTR REG-AOT-MEMO ! 0 REG-AOT-MEMO-U !
+   REG-AOT-FAMW-DONE ;
 
 \ One row per schema node id the payload can name, 0 up to row 6's base plus
 \ count, so the size is never zero, the request ARENA-ALLOC dies on: before
@@ -4378,7 +4475,8 @@ variable REG-AOT-MEMO-U
 \ count or restores one it had.
 : REG-AOT-MEMO-START ( ptr u8 n -- ) {: src:ptr u:n :}
    src 6 REG-AOT-ROW@ drop + 2 cells * {: bytes:n :}
-   bytes ARENA-ALLOC REG-AOT-MEMO ! bytes REG-AOT-MEMO-U ! ;
+   bytes ARENA-ALLOC REG-AOT-MEMO ! bytes REG-AOT-MEMO-U !
+   src u REG-AOT-FAMW-START ;
 
 : REG-AOT-MEMO-SLOT ( n -- ptr n )
    2 cells * REG-AOT-MEMO @ + CELL-VIEW ;
@@ -4397,70 +4495,70 @@ variable REG-AOT-MEMO-U
    kind TK-SUM = kind TK-ENUM = or IF row TF.SLOTS @ 1+ EXIT THEN
    1 ;
 
-: REG-AOT-NODE-WIDTH ( ptr u8 n n -- n ) {: src:ptr u:n node:n :}
-   src u 6 node REG-AOT-ITEM {: row:ptr :}
-   row @ SCH-APP = IF src u 0 row CELL + @ REG-AOT-ITEM REG-AOT-FAM-WIDTH EXIT THEN
-   1 ;
-
-\ Portable counterpart of SCH-NODE-IWIDTH / TFAM-INST-WIDTH@: substitute the
-\ graph's already validated logical argument widths for SCH-PARAM. A schema
-\ APP uses its declared family width, exactly as the live width authority does.
-\ The width memo is indexed by graph offsets, so shared arguments are read once
-\ rather than re-instantiated or published in the live checker to measure them.
-: REG-AOT-GRAPH-SCHEMA-WIDTH ( ptr u8 ptr u8 ptr u8 ptr u8 n n -- n )
-   {: term:ptr graph:ptr widths:ptr src:ptr u:n root:n :}
-   src u 7 root REG-AOT-ITEM @ {: node:n :}
-   src u 6 node REG-AOT-ITEM {: schema:ptr :}
-   schema @ SCH-PARAM = IF
-      schema CELL + @ {: arg:n :}
-      arg 0 < arg term EN.C @ >= or IF ASIG-GRAPH-DIE THEN
-      graph term EN.D @ + arg cells + CELL-VIEW @ widths + CELL-VIEW @ EXIT
-   THEN
-   schema @ SCH-APP = IF
-      src u 0 schema CELL + @ REG-AOT-ITEM REG-AOT-FAM-WIDTH EXIT
-   THEN
-   1 ;
-
 \ Leave room for the persisted width+1 encoding. Bounds precede addition.
 : REG-AOT-GRAPH-WIDTH+ ( n n -- n ) {: left:n right:n :}
    left 0 < right 0 < or IF ASIG-GRAPH-DIE THEN
    right $7FFFFFFFFFFFFFFE left - > IF ASIG-GRAPH-DIE THEN
    left right + ;
 
-: REG-AOT-GRAPH-FIELDS-WIDTH ( ptr u8 ptr u8 ptr u8 ptr u8 n ptr n n -- n )
-   {: term:ptr graph:ptr widths:ptr src:ptr u:n family:ptr variant:n :}
+\ Portable counterpart of TFW-NODE / TFW-FAM over the seeded rows, under the
+\ same frame. REG-AOT-OWNER-CHECK validates every family's members before any
+\ field schema, so this walk reaches roots nothing has validated yet: it refuses
+\ a parameter beyond its owner's arity and an application of a family that is
+\ not strictly older than its owner, the decreasing owner chain that bounds the
+\ recursion. REG-AOT-SHAPE-CHECK pins an application's argument count to its
+\ family's arity, so a nested frame holds exactly the applied family's arity.
+defer REG-AOT-FAM-W ( ptr u8 n n n n -- n )   \ ( src u fam base top -- width ) forward ref for a nested application
+
+: REG-AOT-NODE-W ( ptr u8 n n n n n -- n )
+   {: src:ptr u:n owner:n node:n base:n top:n :}
+   src u 6 node REG-AOT-ITEM {: row:ptr :}
+   row @ {: tag:n :}
+   row CELL + @ {: a:n :}
+   tag SCH-PARAM = IF
+      a  src u 0 owner REG-AOT-ITEM TF.ARITY @  >= IF
+         s" tfam: a seeded schema parameter exceeds its owner arity" REG-AOT-REFUSE THEN
+      base a + TFW@ EXIT
+   THEN
+   tag SCH-APP = IF
+      a owner >= IF
+         s" tfam: a seeded schema has a recursive or forward family" REG-AOT-REFUSE THEN
+      row 2 cells + @ {: b:n :}
+      row 3 cells + @ {: c:n :}
+      c 0 ?do                                    \ an argument's own frames live above top+c
+         src u owner  src u 7 b i + REG-AOT-ITEM @  base top c + RECURSE  top i + TFW!
+      loop
+      src u a top top c + REG-AOT-FAM-W EXIT
+   THEN
+   1 ;
+
+: REG-AOT-FIELDS-W ( ptr u8 n n ptr n n n n -- n )
+   {: src:ptr u:n owner:n family:ptr variant:n base:n top:n :}
    0 family TF.FLD-COUNT @ 0 ?do
       src u 3 family TF.FLD-START @ i + REG-AOT-ITEM {: field:ptr :}
       field PF.VAR @ variant = IF
-         term graph widths src u field PF.SCH @ REG-AOT-GRAPH-SCHEMA-WIDTH
+         src u owner  src u 7 field PF.SCH @ REG-AOT-ITEM @  base top REG-AOT-NODE-W
          REG-AOT-GRAPH-WIDTH+
       THEN
    loop ;
 
-: REG-AOT-GRAPH-WIDTH ( ptr u8 ptr u8 ptr u8 ptr u8 n -- n )
-   {: term:ptr graph:ptr widths:ptr src:ptr u:n :}
-   src u 0 term EN.H @ REG-AOT-ITEM {: family:ptr :}
-   \ With cell-width arguments the checked declaration already owns the exact
-   \ answer. This also handles nullary families without rescanning every field
-   \ for each hidden physical slot of a wide concrete value.
-   RES-TRUE term EN.C @ 0 ?do
-      graph term EN.D @ + i cells + CELL-VIEW @ widths + CELL-VIEW @ 1 = and
-   loop IF family REG-AOT-FAM-WIDTH EXIT THEN
+: REG-AOT-FAM-WALK ( ptr u8 n n ptr n n n -- n )
+   {: src:ptr u:n fam:n family:ptr base:n top:n :}
    family TF.LAYOUT @ {: policy:n :}
    policy TL-BOXED = policy TL-NICHE = or IF 1 EXIT THEN
    family TF.KIND @ {: kind:n :}
    kind TK-PRODUCT = IF
-      term graph widths src u family PF-NO-VARIANT REG-AOT-GRAPH-FIELDS-WIDTH EXIT
+      src u fam family PF-NO-VARIANT base top REG-AOT-FIELDS-W EXIT
    THEN
    kind TK-SUM = kind TK-ENUM = or IF
       0 family TF.VAR-COUNT @ 0 ?do
          family TF.VAR-START @ i + {: vid:n :}
          src u 2 vid REG-AOT-ITEM {: variant:ptr :}
          family TF.FLD-COUNT @ 0 > IF
-            term graph widths src u family vid REG-AOT-GRAPH-FIELDS-WIDTH
+            src u fam family vid base top REG-AOT-FIELDS-W
          ELSE
             0 variant SV.SCH-COUNT @ 0 ?do
-               term graph widths src u variant SV.SCH-START @ i + REG-AOT-GRAPH-SCHEMA-WIDTH
+               src u fam  src u 7 variant SV.SCH-START @ i + REG-AOT-ITEM @  base top REG-AOT-NODE-W
                REG-AOT-GRAPH-WIDTH+
             loop
          THEN
@@ -4469,6 +4567,48 @@ variable REG-AOT-MEMO-U
       1 REG-AOT-GRAPH-WIDTH+ EXIT
    THEN
    1 ;
+
+\ An arity-0 family is walked once while REG-AOT-FAMW is held (a check, or one
+\ signature graph's width), and every later application reads the width its
+\ walk recorded there; a parametric family is walked per frame.
+: REG-AOT-FAM-W-IMPL ( ptr u8 n n n n -- n ) {: src:ptr u:n fam:n base:n top:n :}
+   src u 0 fam REG-AOT-ITEM {: family:ptr :}
+   family TF.ARITY @ 0 >  fam cells REG-AOT-FAMW-U @ >= or IF
+      src u fam family base top REG-AOT-FAM-WALK EXIT THEN
+   fam cells REG-AOT-FAMW @ + CELL-VIEW {: memo:ptr :}
+   memo @ 0 > IF memo @ 1 - EXIT THEN
+   src u fam family base top REG-AOT-FAM-WALK
+   dup 1 + memo ! ;
+: REG-AOT-FAM-W-INSTALL ( -- ) [: REG-AOT-FAM-W-IMPL ;] is REG-AOT-FAM-W ;
+REG-AOT-FAM-W-INSTALL
+
+: REG-AOT-NODE-WIDTH ( ptr u8 n n n -- n ) {: src:ptr u:n owner:n node:n :}   \ declared width: each parameter one cell
+   src u 0 owner REG-AOT-ITEM TF.ARITY @ {: ar:n :}
+   ar 0 ?do 1 i TFW! loop
+   src u owner node 0 ar REG-AOT-NODE-W ;
+
+: REG-AOT-GRAPH-WIDTH ( ptr u8 ptr u8 ptr u8 ptr u8 n -- n )
+   {: term:ptr graph:ptr widths:ptr src:ptr u:n :}
+   src u 0 term EN.H @ REG-AOT-ITEM {: family:ptr :}
+   \ The seeded slots are validated against the declared walk
+   \ (REG-AOT-FIELD-SCHEMA, REG-AOT-OWNER-WIDTH, REG-AOT-FAMILY-MEMBERS), and the
+   \ declared walk is this walk at an all-ones frame, so with every argument one
+   \ cell REG-AOT-FAM-WIDTH is the rule's answer. This also handles nullary
+   \ families without rescanning every field for each hidden physical slot of a
+   \ wide concrete value.
+   RES-TRUE term EN.C @ 0 ?do
+      graph term EN.D @ + i cells + CELL-VIEW @ widths + CELL-VIEW @ 1 = and
+   loop IF family REG-AOT-FAM-WIDTH EXIT THEN
+   term EN.C @ 0 ?do                             \ the graph's memoized argument widths
+      graph term EN.D @ + i cells + CELL-VIEW @ widths + CELL-VIEW @  i TFW!
+   loop
+   \ The walk reads the family record a check holds; otherwise this call holds
+   \ its own for the walk and releases it on return or throw, so each arity-0
+   \ family is walked once per call.
+   src u term EN.H @ 0 term EN.C @
+   REG-AOT-FAMW-U @ 0 > IF REG-AOT-FAM-W EXIT THEN
+   src u REG-AOT-FAMW-START
+   [: REG-AOT-FAM-W ;] [: REG-AOT-FAMW-DONE ;] finally ;
 
 : REG-AOT-SAME-PKG? ( ptr u8 n ptr n ptr n -- bool )
    {: src:ptr u:n left:ptr right:ptr :}
@@ -4563,7 +4703,7 @@ variable REG-AOT-MEMO-U
       src u 6 node REG-AOT-ITEM CELL + @ 1 = owner C2-INIT-FAM @ = and 0= IF
          s" tfam: a seeded field directly owns a type parameter" REG-AOT-REFUSE THEN
    THEN
-   src u node REG-AOT-NODE-WIDTH ;
+   src u owner node REG-AOT-NODE-WIDTH ;
 
 : REG-AOT-FIELD-SCHEMA ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
    src u 3 id REG-AOT-ITEM {: row:ptr :}
@@ -5080,6 +5220,7 @@ private
    VNX-SNAP-RESET              \ variant tail-index buckets and links too
    FVX-SNAP-RESET              \ and the field owner index
    TFM-SNAP-RESET              \ and the family facts memo
+   TFW-SNAP-RESET              \ and the argument-width frames
    PF-TX-SNAP-RESET            \ field transactions are process-local
    RBF-SNAP-RESET               \ core rollback frames are process-local
    TFAM-RBF-SNAP-RESET          \ TFAM registry rollback frames
@@ -5459,9 +5600,9 @@ TFAM-MEMBERS-INSTALL
    extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ genuinely narrower than declared: add-only lowering cannot remove the surplus (until signed pass-2, dot habu-construct-asymmetric-growth-0f4df0fa)
 
 \ MATCH only ever sees a TAGGED family: TFAM-MATCH-FAM and TFL-MATCH-FAM? both reject a
-\ non-SUM/ENUM family (MD-FAM-KIND) before any arm is recorded, and a STRUCTURE UNMAKE
-\ takes a separate field-projection path, not this one. So the tag cell is always present
-\ here and `rt T-WIDTH 1 -` needs no kind guard.
+\ non-SUM/ENUM family (MD-FAM-KIND) before any arm is recorded, and a product's UNMAKE is
+\ the reversed construct step, which records no pad fact: only SUM/ENUM MATCH reaches this
+\ word. So the tag cell is always present here and `rt T-WIDTH 1 -` needs no kind guard.
 \
 \ THE SAME WALK ANSWERS BOTH CONSUMERS, WHICH IS WHY THE PAD COUNT IS LATCHED
 \ HERE AND NOT COMPUTED A SECOND TIME. Pass 2 needs the DIFFERENCE from the
@@ -5536,7 +5677,9 @@ private
 \ var effect cannot absorb a direct logical-layout argument. Reverse the resolved
 \ word symbol to its variant; if CONSTRUCT-DECL-LAYOUT finds an eligible declared
 \ output, apply the bidirectionally seeded step and report handled. Otherwise
-\ report unhandled so DO-TOK runs the ordinary word call.
+\ report unhandled so DO-TOK runs the ordinary word call. A product's UNMAKE row
+\ never takes the construct step: TFAM-UNMAKE-STEP? runs it backwards, seeded from
+\ the value it takes apart.
 
 public
 
@@ -5548,10 +5691,33 @@ public
 
 private
 
+\ A product's two generated rows are make then unmake, the order sumtype.f
+\ TDECL-PROD-PLAN generates their words in.
+: TFAM-UNMAKE-ROW? ( n n -- bool ) {: fam:n vid:n :}
+   fam TFAM-PRODUCT? 0= IF RES-FALSE EXIT THEN
+   vid fam TFAM-VAR-START@ 1 + = ;
+
+\ The construct step with its rows exchanged: the family value over the seeded
+\ args is the input and the instantiated fields are the output, over one base
+\ row. An open seeded term stays staged fail-closed, as it does for MAKE.
+: TFAM-UNMAKE-STEP? ( n n -- bool )
+   {: fam:n vid:n :}
+   fam UNMAKE-SEED-LAYOUT 0= IF drop RES-FALSE EXIT THEN
+   {: dt:n :}
+   dt TFC-ARGS!
+   fam TFC-FAM-TERM {: famterm:n :}
+   FRESH MK-ROW {: base:n :}
+   vid base TFC-PAY-ROW {: dout:n :}
+   famterm base PUSH-LOGICAL {: din:n :}
+   din dout RECORDED-STEP
+   dt TYPE-REP-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN
+   RES-TRUE ;
+
 : TFAM-CTOR-STEP? ( n -- bool ) {: sym:n :}
    sym SUMV-FROM-CTOR-SYM 0= IF drop RES-FALSE EXIT THEN
    {: vid:n :}
    vid SUMV-FAM@ {: fam:n :}
+   fam vid TFAM-UNMAKE-ROW? IF fam vid TFAM-UNMAKE-STEP? EXIT THEN
    fam CONSTRUCT-DECL-LAYOUT nip 0= IF RES-FALSE EXIT THEN
    fam vid TFC-CONSTRUCT-STEP-VID
    RES-TRUE ;

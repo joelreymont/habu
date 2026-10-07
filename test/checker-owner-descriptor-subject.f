@@ -9,8 +9,7 @@
 \ discards the compiler this engine carries, so its source loads afresh; it
 \ runs at the process entry because what loads after it compiles over what it
 \ discarded.
-require src/habu/prefix-rewind.f
-PREFIX-REWIND:TO-CORE
+include src/habu/prefix-rewind.f
 \ The extent is the cell before the record (src/core/checker-owner-guard.f VALIDATE).
 CHECKER-OWNER-ABI:DECLARED-ROW-OFF
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CELL - CELL-VIEW !

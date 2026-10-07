@@ -391,14 +391,9 @@ variable TDECL-FAM-ARITY
    id TFAM-CONCRETE-LINEAR? IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
-: TDECL-SCH-WIDTH ( n -- n ) {: node:n :}
-   node SCHEMA-APP? IF node SCHEMA-A@ TFAM-WIDTH@ EXIT THEN
-   1 ;
-
 : TDECL-ABSENT-MAY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE IF drop RES-FALSE EXIT THEN drop
    a u TFAM-MAY-ARRIVE? ;
-
 : TDECL-PAY-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0= IF a u s" missing ;VARIANT" E-TDECL-SYNTAX TDECL-THROW THEN
    a u DELIM? IF a u s" bad payload token" E-TDECL-SYNTAX TDECL-THROW THEN
@@ -705,7 +700,7 @@ create TDV-BADLETTER 1 allot
       2dup s" ;variant" CORE-STR=CI IF 2drop fam TDECL-VARIANT-FINISH EXIT THEN
       TDECL-VPAY-ELEM
       SIG-UNRES @ IF drop ELSE
-         dup TDECL-SCH-WIDTH TDV-PW @ + TDV-PW ! TDV-PAY+
+         dup fam swap TFAM-SCH-WIDTH TDV-PW @ + TDV-PW ! TDV-PAY+
       THEN
    AGAIN ;
 
@@ -949,11 +944,15 @@ public
 \ pending-constructor window — a product bundle IS its field cells in slot
 \ order (no tag, docs §18), so construction and destructure are physical
 \ no-ops and the declared sigs are checker-owned metadata truth. Parametric
-\ products publish both words: MAKE's open result and UNMAKE's open input
-\ expand/absorb at concrete sites through the LOGHID row coercion (U-ROW,
-\ checker.f), and linear instantiations stay fail-closed at the sig/arg-bind
-\ layers. The rows are registered here (preverify parity); dictionary words
-\ are generated only by the engine PRODUCT definer below. MATCH and
+\ products publish both words. Each is an ordinary stored-effect call unless the
+\ instantiation has a layout argument (checker.f SEED-TERM?): one wider than a
+\ cell, or a direct layout-family argument of a closed non-linear instantiation,
+\ one cell wide included (onebox<oneleaf>). There MAKE takes the construct step
+\ seeded from the declared output and UNMAKE the same step reversed, seeded from
+\ the value it takes apart, its live input (checker.f CTOR-STEP-XT,
+\ type-family.f TFAM-UNMAKE-STEP?). Linear instantiations stay fail-closed at
+\ the sig/arg-bind layers. The rows are registered here (preverify parity);
+\ dictionary words are generated only by the engine PRODUCT definer below. MATCH and
 \ `construct` stay kind-gated to sum/enum, so product rows are never matchable
 \ variants and private products have no construction surface (fail-closed).
 
@@ -1034,7 +1033,7 @@ private
    fna fnu TDECL-SEEN+
    SIG-UNRES @ IF EXIT THEN
    node SCHEMA-ROOT+ drop    \ one field type (family/letter/con/ptr T)
-   ss SCHEMA-ROOT@ TDECL-SCH-WIDTH {: fw:n :}
+   fam ss SCHEMA-ROOT@ TFAM-SCH-WIDTH {: fw:n :}
    fna fnu TDECL-TOK!
    s" duplicate field" TDECL-WHY!
    TDP-EVT @ fam fna fnu ss
@@ -1709,7 +1708,7 @@ TDECL-SCRATCH-SNAPSHOT-INSTALL
    root 0 < root SCHEMA-ROOT-N@ >= or IF
       fam s" payload provider returned an unknown schema root" TDPV-THROW THEN
    root SCHEMA-ROOT@ {: node:n :}
-   TDPV-W @ node TDECL-SCH-WIDTH + TDPV-W !
+   TDPV-W @ fam node TFAM-SCH-WIDTH + TDPV-W !
    TDPV-NODES @ 1 + TDPV-NODE-ENSURE
    node TDPV-NODE-P @ TDPV-NODES @ cells + !
    TDPV-NODES @ 1 + TDPV-NODES ! ;

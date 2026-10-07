@@ -2094,25 +2094,6 @@ TFQ -1 T=
 : TFG ( -- bool ) 5.0 3.0 f> ;
 TFG -1 T=
 
-\ FFI: AAPCS64 trampoline runtime proof. Inside a compiled word (so cp@ is the
-\ stable free code slot, not a transient top-level line buffer) emit a C-ABI
-\ leaf `add x0,x0,x1; ret` at cp@ via patch32, then call it through ffi-call
-\ with an 8-cell arg buffer [3,4,..]. Proves x0..x7 marshalling, blr, the x0
-\ return, and that XDS (x19) survives the C call. Trusted boundary (raw code +
-\ foreign call).
-create FFI-ARGS 8 cells allot
-TRUSTED: ES-PATCH32 ( n n -- ) patch32 ;   \ code-emission boundary (F3 gate):
-                                           \ patch32 is TRUSTED-ONLY; TFFI stays checked.
-TRUSTED: ES-FFI-CALL ( ptr a n n -- n ) ffi-call ;  \ foreign-call boundary:
-                                           \ ffi-call is TRUSTED-ONLY; TFFI stays checked.
-: TFFI ( -- n )
-   3 FFI-ARGS !  4 FFI-ARGS 8 + !
-   cp@ {: fn:n :}
-   $8B010000 fn ES-PATCH32         \ add x0, x0, x1   at fn
-   $D65F03C0 fn 4 + ES-PATCH32     \ ret             at fn+4
-   FFI-ARGS 2 fn ES-FFI-CALL ;
-TFFI 7 T=
-
 \ rejected definitions must not leak code space: the hooked publish path rolls
 \ CP back to the definition start (the pre-name CP for >16-char names) when
 \ the hook verdict is 0. ES-VERDICT-HOOK is the raw-verdict boundary: unlike

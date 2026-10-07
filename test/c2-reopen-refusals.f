@@ -82,8 +82,8 @@ create ERR CAP allot
 
 \ From test/c2-owner-producer-refusals.f.
 : SECTION-PRODUCER ( -- )
-   s" the raw publisher cannot be exported" T-LABEL
-   s" package C2-MEM public EXPORT PUBLISH-RAW ;package" 70 STATUS? TTRUE
+   s" the publish pack cannot be exported" T-LABEL
+   s" package C2-MEM public EXPORT PUB-PACK ;package" 70 STATUS? TTRUE
    s" a private unpacker cannot be exported by reopening its package" T-LABEL
    s" package C2-MEM public EXPORT MUT-UNPACK ;package" 70 STATUS? TTRUE
    s" reopening C2-MEM cannot call root frame lookup" T-LABEL

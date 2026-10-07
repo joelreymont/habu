@@ -1119,7 +1119,7 @@ create QNAME QNAME-CAP allot
 : BUILD-CHAIN-CALLEE-CASES ( -- )
    s" the merge comparator carries a row: aot-file.f MERGE-REG calls it checked" T-LABEL
    s" TFAM:REG-AOT-MERGE-INCOMING?" TSEAL-BRIDGE-AXIOM
-   s" the boundary rewind carries one too: prefix-rewind.f TO-CORE calls it checked" T-LABEL
+   s" the boundary rewind carries one too: prefix-rewind.f's top-level text calls it" T-LABEL
    s" CHECKER-BOUND:REWIND" TOKEN$ RUN-SUBJECT ASSERT-OK
    s" and a rewound boundary refuses the next reference instead of certifying it" T-LABEL
    BCC-REWIND-FORGE$ RUN-SUBJECT

@@ -174,13 +174,18 @@
 \ declaration made, or a dispatch whose body cell was never stored.
 -3506 constant E-FFI-CALLBACK-FULL
 -3507 constant E-FFI-CALLBACK-STATE
+\ dlclose refused an owned library reference while preparing an image; the
+\ handle stays and the next PREPARE retries it.
+-3508 constant E-FFI-DLCLOSE
 
 \ Tasking/threads: -3600..-3699
 -3600 constant E-TASK-FIRST
 -3699 constant E-TASK-LAST
 -3600 constant E-TASK-SIZE
--3601 constant E-TASK-DLOPEN
--3602 constant E-TASK-DLSYM
+\ -3601 was E-TASK-DLOPEN: lib/task-test.f's strlen fixture, its only thrower,
+\ calls a declared FFI row instead of opening the C library. The number stays unused.
+\ -3602 was E-TASK-DLSYM: lib/task.f's C calls are FUNCTION: rows, and package
+\ FFI names a missing symbol E-FFI-DLSYM at its first call. The number stays unused.
 -3603 constant E-TASK-THREAD
 -3604 constant E-TASK-STATE
 -3605 constant E-TASK-USER
@@ -1276,7 +1281,8 @@
 -9119 constant E-SERIAL-LAST
 -9110 constant E-SERIAL-OPERAND
 -9111 constant E-SERIAL-PLATFORM
--9112 constant E-SERIAL-SYMBOL
+\ -9112 was E-SERIAL-SYMBOL: the FUNCTION: declarer resolves this module's
+\ symbols and names its own failure, E-FFI-DLSYM. The number stays unused.
 -9113 constant E-SERIAL-RESULT
 
 \ XMODEM packet codec and serial transfer: -9120..-9139.

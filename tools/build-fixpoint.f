@@ -13,7 +13,7 @@ require lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consum
 require lib/string-roles.f               \ package STR: the typed string surface
 require src/habu/verify-source.f
 require tools/build-target.f              \ the target the emitted sources are for
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require tools/build-certify.f            \ the certify report and census lines
 
 \ The tool itself lives in package BUILD-FIXPOINT. Everything below is private
 \ to it; the export block at the end of the file names the whole surface other
@@ -135,11 +135,9 @@ BF-REQUIRE-WATERMARK
 \ would satisfy FS-PATH-CAP by side effect and the missing-preamble case would
 \ stop being reported at all.
 require lib/process-cwd.f
-require lib/process-fork.f
+require lib/engine-id.f                  \ PATH$: the engine a certify child runs
 require lib/span.f                       \ SPAN-BUFFER: destinations for FS-MUT-SUFFIX-PATH
 require lib/source.f                     \ whole descriptor reads of build sources
-require src/habu/hide.f
-require src/habu/prefix-rewind.f
 require lib/content-key.f                \ the chain fold
 require tools/event-closure-lib.f        \ the chain fold
 require lib/tree-copy.f                  \ the candidate's copied boot tree
@@ -561,12 +559,6 @@ public
 
 package BUILD-FIXPOINT
 
-\ The one line every generated engine source opens its payload with. The
-\ earliest-marker form src/habu/hide.f still carries is the recovery script's
-\ mirror, not this builder's.
-: BF-STAGE2-HIDE-DEFS ( ptr u8 n -- )
-   s" PREFIX-REWIND:TO-CORE" BF-APPEND-LINE ;
-
 : BF-APP-CLOSE ( ptr n -- ) {: p:ptr :}
    p @ dup 0 >= if close else drop then
    -1 p ! ;
@@ -836,7 +828,7 @@ package BUILD-FIXPOINT
 \ icode.f is emitted after the checker-boot hook reinstall, so the stage
 \ compile checks it, and the BLOCKING BF-CERTIFY static scan also covers its
 \ typed shape (VERIFY:SOURCE-BUF checks the whole emitted source, the
-\ BFR-CHECK-OFF prelude window included, and a reject kills the build), so
+\ prelude's `0 set-check` window included, and a reject kills the build), so
 \ the typed-shape asserts retired with habu1/habu2's. Kept below:
 \ runtime invariants the checker cannot express -- fail-closed mmap error
 \ handling, and the no-static-allot executable-memory shape (JIT code/label/
@@ -1044,10 +1036,11 @@ package BUILD-FIXPOINT
 \
 \ The assembly is CERTIFY-ONLY: nothing here is ever fed to a stage compile.
 \ The compiling host already carries these definitions from its own boot and
-\ the generated stage source rewinds to them (src/habu/hide.f) instead of
-\ recompiling them, so their static check has no other home. That check is the
-\ only gate they have (dot habu-staged-fixpoint-src-0b5fc6e6), which is why it
-\ is a build phase of its own rather than a side effect of the stage source.
+\ the generated stage source rewinds to them (src/habu/prefix-rewind.f's
+\ top-level text) instead of recompiling them, so their static check has no
+\ other home. That check is the only gate they have (dot
+\ habu-staged-fixpoint-src-0b5fc6e6), which is why it is a build phase of its
+\ own rather than a side effect of the stage source.
 : BF-APPEND-BOOT-CORE ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu BF-APPEND-CORE-FILES
    out outu BF-APPEND-ROLES
@@ -1117,10 +1110,10 @@ package BUILD-FIXPOINT
 
 \ WHAT IS NOT HERE. Every core-prefix file the compiling host already carries
 \ from its own boot is absent: the payload rewinds to the mark at the end of
-\ that prefix (BF-STAGE2-HIDE-DEFS) rather than truncating past it and
-\ recompiling. script-argv, prelude and errors load AFTER that mark, so the
-\ rewind takes them away and the payload has to bring them back. The absent
-\ files are still statically checked, as their
+\ that prefix (src/habu/prefix-rewind.f's text, BF-APPEND-RUN-PRELUDE) rather
+\ than truncating past it and recompiling. script-argv, prelude and errors
+\ load AFTER that mark, so the rewind takes them away and the payload has to
+\ bring them back. The absent files are still statically checked, as their
 \ own build phase: BF-APPEND-BOOT-PREFIX.
 : BF-APPEND-COMMON ( ptr u8 n -- ) {: out:ptr outu :}
    \ The rewind removed the prelude. Restore it before build-side dependencies
@@ -1161,10 +1154,8 @@ package BUILD-FIXPOINT
    out outu s" src/habu/driver-io.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-RUN-PRELUDE ( ptr u8 n -- ) {: out:ptr outu :}
-   out outu s" src/habu/hide.f" BF-APPEND-SOURCE
+   out outu s" 0 set-check" BF-APPEND-LINE
    out outu s" src/habu/prefix-rewind.f" BF-APPEND-SOURCE
-   out outu s" BFR-CHECK-OFF" BF-APPEND-LINE
-   out outu BF-STAGE2-HIDE-DEFS
    out outu s" LOWER-CERT-HOOK:INSTALL" BF-APPEND-LINE ;
 
 : BF-APPEND-STDIN-RUN-PRELUDE ( ptr u8 n -- ) {: out:ptr outu :}
@@ -1275,28 +1266,11 @@ package BUILD-FIXPOINT
    BF-CERT-LAB-U !
    BF-CERT-LAB-A! ;
 
-\ The one raw checking-disabled line a generated source must never carry: the
-\ generated-output tests (tools/build-fixpoint-test.f) pin its absence in the
-\ real emitted stage2 and snap sources, and BFR-CHECK-OFF (src/habu/hide.f) is
-\ the named boundary those sources call instead.
-: BF-BOUNDARY-RAW-OFF$ ( -- ptr u8 n )
-   s\" \n0 set-check\n" ;
-
 : BF-CERTIFY-ACT ( -- )
    BF-CERT-LABEL$ DIAG-FILE!
    BF-FALSE DIAG-JSON!
    BF-CERT-DIAG BF-CERT-DIAG-CAP DIAG-BUFFER!
    BF-CERT-PATH$ BF-READ-SOURCE
-   BF-SOURCE-BUF BF-SOURCE-LEN @ VERIFY:SOURCE-BUF ;
-
-: BF-CERTIFY-CORE-ACT ( -- )
-   BF-CERT-LABEL$ DIAG-FILE!
-   BF-FALSE DIAG-JSON!
-   BF-CERT-DIAG BF-CERT-DIAG-CAP DIAG-BUFFER!
-   BF-CERT-PATH$ BF-READ-SOURCE
-   BFR-CHECK-OFF
-   PREFIX-REWIND:TO-CORE
-   CHECKER-END-PACKAGE
    BF-SOURCE-BUF BF-SOURCE-LEN @ VERIFY:SOURCE-BUF ;
 
 : BF-CERTIFY-RC ( ptr u8 n ptr u8 n -- n )
@@ -1306,11 +1280,6 @@ package BUILD-FIXPOINT
    DIAG-BUFFER$ nip BF-CERT-DIAG-U !
    DIAG-BUFFER-OFF
    BF-CERT-RC @ ;
-
-: BF-CERTIFY-REPORT ( ptr u8 n -- ) {: lab:ptr labu:n :}
-   s" certify: " type lab labu type
-   s"  rejected rc " type BF-CERT-RC @ FMT:.INT s"  (blocking)" type cr
-   BF-CERT-DIAG-U @ 0 > IF BF-CERT-DIAG BF-CERT-DIAG-U @ type cr THEN ;
 
 \ BLOCKING: a generated stage source that fails VERIFY:SOURCE-BUF kills the
 \ build (E-BUILD-CERTIFY) after reporting the diagnostic. This is the staged trust induction (dot
@@ -1324,55 +1293,42 @@ package BUILD-FIXPOINT
 : BF-CERTIFY-GENERATED ( ptr u8 n ptr u8 n -- )
    BF-CERTIFY-RC
    0= IF exit THEN
-   BF-CERT-LABEL$ BF-CERTIFY-REPORT
+   BF-CERT-LABEL$ BF-CERT-RC @ BF-CERT-DIAG BF-CERT-DIAG-U @ BUILD-CERTIFY:REPORT
    E-BUILD-CERTIFY throw ;
 
+\ The driver a certify child loads.
+: BF-CERTIFY-DRIVER$ ( -- ptr u8 n )
+   s" tools/build-fixpoint-certify.f" ;
+
 \ Generated sources redeclare the stdlib. Verify them against the core prefix
-\ in a forked child: the parent retains its build tools and registry, while
-\ every source body is checked without filename exemptions. The rewind keeps
+\ in a child of the running engine (ENGINE-ID:PATH$), not BF-ENGINE$: that
+\ names the product maker, which a fixture points at this build's own output.
+\ The parent retains its build tools and registry, while every source body is
+\ checked without filename exemptions. tools/build-fixpoint-certify.f rewinds
+\ the child with src/habu/prefix-rewind.f's top-level text; the rewind keeps
 \ code/DATA alive, so the child's compiled verifier and diagnostic calls remain
-\ valid after their dictionary entries retire. The child runs DONE once its
-\ scan certified the source, because what the scan counted (VERIFY:CENSUS)
-\ exists only in the child.
-: BF-CERTIFY-CORE-CHILD ( [ -- ] -- )
-   [: BF-CERTIFY-CORE-ACT ;] catch BF-CERT-RC !
-   DIAG-BUFFER$ nip BF-CERT-DIAG-U !
-   DIAG-BUFFER-OFF
-   BF-CERT-RC @ 0<> if
-      BF-CERT-LABEL$ BF-CERTIFY-REPORT
-      s" " 70 die
+\ valid after their dictionary entries retire. A PHASE has the child print its
+\ census line once its scan certified the source, because what the scan counted
+\ (VERIFY:CENSUS) exists only in the child; the target goes with it because a
+\ cross build's target is this process's, not the child's. An empty PHASE
+\ prints none. The child exits 0 for a certified source and 70 after printing
+\ the rejection and its diagnostic; any status but 0 fails the build.
+: BF-CERTIFY-GENERATED-CORE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: lab:ptr labu:n path:ptr pathu:n phase:ptr phaseu:n :}
+   BF-PREPARE-ENV
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   BF-CERTIFY-DRIVER$ >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   lab labu >LEN PROC-ARGV+
+   path pathu >LEN PROC-ARGV+
+   phaseu 0 > if
+      phase phaseu >LEN PROC-ARGV+
+      BUILD-CERTIFY:TARGET$ >LEN PROC-ARGV+
    then
-   execute
-   s" " 0 die ;
-
-: BF-CERTIFY-GENERATED-CORE ( ptr u8 n ptr u8 n [ -- ] -- )
-   {: done :}
-   BF-CERTIFY-INPUT!
-   PROC-FORK:CHECKED {: pid:pid :}
-   pid PID>N 0= if done BF-CERTIFY-CORE-CHILD then
-   pid BF-FINISH-PID 0<> if E-BUILD-CERTIFY throw then ;
-
-: BF-CENSUS-TARGET$ ( -- ptr u8 n )
-   BUILD-TARGET:LINUX? if s" linux-arm64" exit then
-   BUILD-TARGET:MACOS? if s" macos-arm64" exit then
-   BUILD-TARGET:LINUX-X86-64? if s" linux-x86-64" exit then
-   BF-TARGET-UNKNOWN ;
-
-\ Self-check certification census (dot habu-census-assert-the-f3a20b1f). The
-\ boot prefix, which the host already carries, and the assembled stage source,
-\ which a stage compile consumes, each report on a line of their own, under
-\ PHASE, the colon definitions their certify scan certified and those it
-\ deferred to the run (VERIFY:CENSUS). The process that ran the scan prints
-\ the line, after the scan certified the source; a certify fails closed on the
-\ first definition its scan refuses, rejected or uncheckable, so a phase that
-\ reaches its line refused none. The target is named because both assemblies
-\ include its src/os leg.
-: BF-CENSUS ( ptr u8 n -- )
-   {: phase:ptr phaseu:n :}
-   VERIFY:CENSUS {: certified:n deferred:n :}
-   s" self-check census (" type BF-CENSUS-TARGET$ type s" ): " type phase phaseu type
-   s"  = " type certified FMT:.INT s"  certified, " type
-   deferred FMT:.INT s"  deferred to the run" type cr ;
+   ENGINE-ID:PATH$ >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE
+   -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW BF-FINISH-PID
+   0<> if E-BUILD-CERTIFY throw then ;
 
 \ The stage engine reads its source from the fixed `stage2-src` name in the temp
 \ root (BF-PREPARE-STAGE-ARGV runs hb-stage with just `-- <tmp>`, no --load), so
@@ -1386,14 +1342,13 @@ package BUILD-FIXPOINT
 \ step ever compiles that file.
 : BF-CERTIFY-PREFIX ( -- )
    s" prefix-src" s" prefix-src" BF-A$ BF-CERTIFY-GENERATED
-   s" boot prefix" BF-CENSUS ;
+   s" boot prefix" BUILD-CERTIFY:TARGET$ BUILD-CERTIFY:CENSUS ;
 
 : BF-CERTIFY-STAGE2 ( -- )
-   s" stage2-src" s" stage2-src" BF-A$ [: s" assembled" BF-CENSUS ;]
-   BF-CERTIFY-GENERATED-CORE ;
+   s" stage2-src" s" stage2-src" BF-A$ s" assembled" BF-CERTIFY-GENERATED-CORE ;
 
 : BF-CERTIFY-STDIN ( -- )
-   s" stdin-src" s" stage2-src" BF-A$ [: ;] BF-CERTIFY-GENERATED-CORE ;
+   s" stdin-src" s" stage2-src" BF-A$ s" " BF-CERTIFY-GENERATED-CORE ;
 
 : BF-SRC-DIGEST ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dg:ptr :}
    BF-FSHA-CTX a u BF-A$ dg SHA256-FILE-IN dup 0 <> if throw then drop ;
@@ -2256,6 +2211,7 @@ EXPORT BF-APPEND-DRIVER-IO
 EXPORT BF-APPEND-LF
 EXPORT BF-APPEND-RUN-PRELUDE
 EXPORT BF-BUILD-STDIN-FROM-STAGE
+EXPORT BF-CERTIFY-DRIVER$
 EXPORT BF-CERTIFY-STDIN
 EXPORT BF-CHAIN-DRIVER$
 EXPORT BF-CHAIN-DRIVER-FROM

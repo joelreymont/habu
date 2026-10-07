@@ -92,12 +92,12 @@ is covered by the existing transport tests; it does not prove this integration.
 
 ## Implementation and checks
 
-Seven small private `TRUSTED:` bindings describe exact libc calls through
-Habu's bounded FFI: `open`, two typed `ioctl` operations, `read`, `write`,
-`close`, and `__errno_location`. The wait is not among them: it is the loop's. C `int` returns are normalized from 32 bits;
-`ssize_t` retains 64 bits. Writable extents are explicit. All configuration,
-validation, argument preparation and result normalization is checked Habu.
-The trusted bodies contain only fixed foreign calls and have no locals.
+Six private `FUNCTION:` rows describe the exact libc calls: `open`, two typed
+`ioctl` operations, `read`, `write` and `close`; errno is read through
+`FFI:ERRNO`. The wait is not among them: it is the loop's. C `int` returns are
+normalized from 32 bits; `ssize_t` retains 64 bits. Writable extents are
+explicit. All configuration, validation, argument preparation and result
+normalization is checked Habu.
 
 The configuration boundary uses Linux's 44-byte kernel `termios2` and
 [`TCGETS2`/`TCSETS2` with `BOTHER`](https://man7.org/linux/man-pages/man2/TCSETS.2const.html).
@@ -108,14 +108,15 @@ own bindings and tests.
 
 Termios scratch storage is task-local: the working record and the saved one,
 `$58` in all. Each open allocates and releases
-its own NUL-terminated path. A synchronized first call publishes libc symbols
-borrowed through [`RTLD_DEFAULT`](https://man7.org/linux/man-pages/man3/dlsym.3.html).
-The native executable already depends on libc; this module acquires no library
-reference. Separate tasks may use separate ports and buffers concurrently; calls must not nest within one task.
+its own NUL-terminated path. Package FFI resolves each libc symbol through
+[`RTLD_DEFAULT`](https://man7.org/linux/man-pages/man3/dlsym.3.html) at its first
+call and forgets it when an image is prepared. The native executable already
+depends on libc; this module acquires no library reference. Separate tasks may use separate ports and buffers concurrently; calls must not nest within one task.
 
-Invalid operands throw `E-OPERAND` (`-9110`); unsupported OS, missing
-symbol, and impossible foreign results throw `E-PLATFORM` (`-9111`), `E-SYMBOL`
-(`-9112`), and `E-RESULT` (`-9113`). Ordinary OS failures use result variants.
+Invalid operands throw `E-OPERAND` (`-9110`); an unsupported OS and impossible
+foreign results throw `E-PLATFORM` (`-9111`) and `E-RESULT` (`-9113`). A missing
+libc symbol is FFI's `E-FFI-DLSYM` (`-3502`), thrown by its first call. Ordinary
+OS failures use result variants.
 
 ```sh
 python3 test/serial.py

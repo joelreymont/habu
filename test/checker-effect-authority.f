@@ -232,10 +232,22 @@ create DIAGS IO-CAP allot
    1 TIER:SELECT ;
 
 \ The evaluator owns the real publication and redefinition rollback below.
-\ The saved check hook is restored even when a definition throws.
-variable SAVED-HOOK
-TRUSTED: UNCHECKED+ ( -- ) check@ SAVED-HOOK ! 0 set-check ;
-TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
+\ HOOKLESS runs an xt with the check hook cleared and answers its throw code:
+\ the fixed closed text clears the hook at its own top level, runs RUN-SAVED
+\ under catch and restores the saved hook on every path, a throw included. RUN
+\ executes after `;package`, where the text reaches RUN-SAVED and RC! only
+\ qualified, so they are public.
+variable RC-CELL
+public
+TYPED-VARIABLE RUN-XT [ -- ]
+: RUN-SAVED ( -- ) RUN-XT @ execute ;
+: RC! ( n -- ) RC-CELL ! ;
+private
+: HOOKLESS ( [ -- ] -- n )
+   RUN-XT !
+   s" check@ 0 set-check ' EFFECT-AUTHORITY-TEST:RUN-SAVED catch swap LOWER-CERT-HOOK:INSTALL set-check EFFECT-AUTHORITY-TEST:RC!"
+   evaluate-closed
+   RC-CELL @ ;
 
 : PREHOOK-DECLARATIONS ( -- )
    s" : EAUTH-RAW ( n -- n ) ;" evaluate-closed
@@ -248,9 +260,7 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
 : LIVE-CASES ( -- )
    s" real pre-hook native publication preserves explicit declarations" T-LABEL
    1 TIER:SELECT
-   UNCHECKED+
-   [: PREHOOK-DECLARATIONS ;] catch
-   UNCHECKED- 0 T=
+   ['] PREHOOK-DECLARATIONS HOOKLESS 0 T=
    s" EAUTH-RAW" SIG-MIN-IN 1 T=
    s" EAUTH-RAW" SOURCE-MIN -1 T=
    s" EAUTH-TRUSTED" SOURCE-MIN 1 T=
@@ -290,9 +300,7 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    s" a hook-less tier-0 definition records its declaration without authority" T-LABEL
    tier@ {: saved:n :}
    0 TIER:SELECT
-   UNCHECKED+
-   [: TIER0-DECLARATIONS ;] catch
-   UNCHECKED- 0 T=
+   ['] TIER0-DECLARATIONS HOOKLESS 0 T=
    saved TIER:SELECT
    s" EAUTH-DECL" ROW-STATE 1 T=
    s" EAUTH-DECL" SIG-MIN-IN 1 T=
@@ -360,43 +368,43 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    s" a scan-refused hook-less tier-1 definition compiles against its declaration" T-LABEL
    1 TIER:SELECT
    DIAGS IO-CAP DIAG-BUFFER!  true DIAG-JSON!
-   UNCHECKED+ ['] REFUSED-SCAN catch UNCHECKED- 0 T=
+   ['] REFUSED-SCAN HOOKLESS 0 T=
    DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
    false DIAG-JSON!  DIAG-BUFFER-OFF
    s" EAUTH-T1-REFUSED" ROW-STATE 1 T=
    s" EAUTH-T1-REFUSED" SIG-MIN-IN 1 T=
    s" EAUTH-T1-REFUSED" SOURCE-MIN -1 T=
    s" a multi-error scan keeps its recovery row" T-LABEL
-   UNCHECKED+ MULTI+ ['] REFUSED-MULTI catch MULTI- UNCHECKED-
+   MULTI+ ['] REFUSED-MULTI HOOKLESS MULTI-
    1 T=  0 T=
    s" EAUTH-T1-MULTI" ROW-STATE 2 T=
    s" a body the elaborator refuses takes its declared row with it" T-LABEL
-   UNCHECKED+ ['] REFUSED-BODY catch UNCHECKED- E-NELAB-ARITY T=
+   ['] REFUSED-BODY HOOKLESS E-NELAB-ARITY T=
    s" EAUTH-T1-RETRACT" EFFECT-QUERY TFALSE
-   UNCHECKED+ ['] RETRY-BODY catch UNCHECKED- 0 T=
+   ['] RETRY-BODY HOOKLESS 0 T=
    s" EAUTH-T1-RETRACT" SIG-MIN-IN 2 T=
    s" a definition with no row of its own retracts no twin's row" T-LABEL
-   UNCHECKED+ ['] TWIN-ROWS catch UNCHECKED- 0 T=
-   UNCHECKED+ ['] TWIN-FAIL catch UNCHECKED- E-NELAB-UNDER T=
+   ['] TWIN-ROWS HOOKLESS 0 T=
+   ['] TWIN-FAIL HOOKLESS E-NELAB-UNDER T=
    s" EAUTH-TWIN" SIG-MIN-IN 1 T=
    s" EAUTH-TWIN-LATER" SIG-MIN-IN 1 T=
    s" a failed redefinition after undefine retracts only its own row" T-LABEL
-   UNCHECKED+ ['] GEN-ROWS catch UNCHECKED- 0 T=
-   UNCHECKED+ ['] GEN-FAIL catch UNCHECKED- E-NELAB-UNDER T=
+   ['] GEN-ROWS HOOKLESS 0 T=
+   ['] GEN-FAIL HOOKLESS E-NELAB-UNDER T=
    s" EAUTH-GEN" EFFECT-QUERY TFALSE
    s" EAUTH-GEN-MID" SIG-MIN-IN 1 T=
    s" EAUTH-GEN-LATER" SIG-MIN-IN 1 T=
    s" an unrecordable declaration is refused catchably and retracts nothing" T-LABEL
-   UNCHECKED+ ['] NO-ROW-FAIL catch UNCHECKED- RC-REJECT T=
-   UNCHECKED+ ['] SCHEME-FAIL catch UNCHECKED- RC-REJECT T=
+   ['] NO-ROW-FAIL HOOKLESS RC-REJECT T=
+   ['] SCHEME-FAIL HOOKLESS RC-REJECT T=
    s" EAUTH-T1-NO-ROW" EFFECT-QUERY TFALSE
    s" EAUTH-T1-SCHEME" EFFECT-QUERY TFALSE
    s" EAUTH-GEN-LATER" SIG-MIN-IN 1 T=
-   UNCHECKED+ ['] AFTER-ROW catch UNCHECKED- 0 T=
+   ['] AFTER-ROW HOOKLESS 0 T=
    s" EAUTH-T1-AFTER" SIG-MIN-IN 1 T=
    s" a callback's scan while a definition compiles is refused and records nothing" T-LABEL
-   UNCHECKED+ ['] CB-BEFORE catch UNCHECKED- 0 T=
-   UNCHECKED+ ['] CB-RUN catch UNCHECKED- 7329 T=
+   ['] CB-BEFORE HOOKLESS 0 T=
+   ['] CB-RUN HOOKLESS 7329 T=
    s" EAUTH-CB-OUTER" EFFECT-QUERY TFALSE
    s" EAUTH-CB-BEFORE" SIG-MIN-IN 1 T= ;
 
@@ -429,7 +437,7 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    ['] TBAD-RETRY catch 0 T=
    s" EAUTH-TBAD" SIG-MIN-IN 1 T=
    s" and so is one with the hook cell empty" T-LABEL
-   UNCHECKED+ ['] TBAD-HOOKLESS catch UNCHECKED- E-BAD-STORED-SIGNATURE T=
+   ['] TBAD-HOOKLESS HOOKLESS E-BAD-STORED-SIGNATURE T=
    s" EAUTH-TBAD-NH" EFFECT-QUERY TFALSE ;
 
 \ ---- the compile window --------------------------------------------------------
@@ -511,7 +519,7 @@ TYPED-VARIABLE GENERATES-XT [ -- ]
    s" EAUTH-WIN-MAKE-H EAUTH-WIN-PRED" PREDICT REFUSED T= REFUSED T= ACCEPTED T=
    s" a callback's generates: while a hook-less definition compiles is refused" T-LABEL
    s" EAUTH-WIN-MAKE-U EAUTH-WIN-PRED" PREDICT {: u1:n u2:n u3:n :}
-   UNCHECKED+ ['] WIN-HOOKLESS-RUN catch UNCHECKED- 7329 T=
+   ['] WIN-HOOKLESS-RUN HOOKLESS 7329 T=
    s" : EAUTH-WIN-FILL-U1 ( -- ) ;" evaluate-closed
    s" : EAUTH-WIN-FILL-U2 ( -- bool ) true ;" evaluate-closed
    s" EAUTH-WIN-MAKE-U EAUTH-WIN-PRED" PREDICT u3 T= u2 T= u1 T=
@@ -554,7 +562,7 @@ variable REG-SCH
 : REG-COMPILE ( -- ) ['] REG-OBSERVE ['] REG-OUTER NPUB:WITH-UNIT ;
 : REG-RUN ( [ -- ] -- ) REG-XT ! ['] REG-COMPILE catch 7329 T= ;
 : REG-RUN-HOOKLESS ( [ -- ] -- )
-   REG-XT ! UNCHECKED+ ['] REG-COMPILE catch UNCHECKED- 7329 T= ;
+   REG-XT ! ['] REG-COMPILE HOOKLESS 7329 T= ;
 \ A field frame opened before the definition compiles, as a declaration's is.
 : REG-TX-OPEN ( -- ) TYPE-FIELD-OWNER:OPEN REG-TX ! ;
 : REG-TX-PREPARE-RC ( -- n ) [: REG-TX @ TYPE-FIELD-OWNER:PREPARE drop ;] catch ;
