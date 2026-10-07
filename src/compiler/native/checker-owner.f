@@ -70,6 +70,7 @@ CAST: AS-WIDTH ( n -- [ n n -- n ] )
 CAST: AS-FAMILY ( n -- [ ptr u8 n -- n bool ] )
 CAST: AS-VARIANT ( n -- [ ptr u8 n n -- n bool ] )
 CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
+CAST: AS-TOKEN ( n -- [ -- ptr u8 n ] )
 
 \ Checked bodies name field offsets through layout.f's NCOMP-DISPATCH:DECL-*.
 \ CHECKER-OWNER-ABI loads before the checker, so build-fixpoint's stage-built
@@ -163,9 +164,13 @@ public
    dup 0= if drop SOURCE-REPORT exit then
    AS-ACTION execute ;
 
-\ The using refusal's spelling is valid until this scan's tape is released.
-\ It is a diagnostic read, not a new live-owner operation.
-TRUSTED: REFUSAL-TOKEN$ ( -- ptr u8 n ) CHECKER-USE:REFUSAL-TOKEN$ ;
+\ The using refusal's spelling belongs to the checker that scanned the source
+\ and remains valid until that scan's tape is released.
+TRUSTED: REFUSAL-TOKEN$ ( -- ptr u8 n )
+   \ The retained host knows the preceding field, but not this appended offset.
+   NCOMP-DISPATCH:DECL-JSON-REPORTED-OFF CELL + s" refusal token" FIELD
+   dup 0= if drop CHECKER-USE:REFUSAL-TOKEN$ exit then
+   AS-TOKEN execute ;
 
 : RESET-REPORT ( -- )
    NCOMP-DISPATCH:DECL-RESET-REPORT-OFF s" report reset" FIELD
