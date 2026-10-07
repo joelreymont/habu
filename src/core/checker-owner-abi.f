@@ -142,6 +142,7 @@ $390 constant CALL-QUOT-RGOUT-OFF
 $398 constant RESET-REPORT-OFF
 $3A0 constant JSON-REPORTED-OFF
 $3A8 constant REFUSAL-TOKEN-OFF
+$3B0 constant RECOVERY-USED-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

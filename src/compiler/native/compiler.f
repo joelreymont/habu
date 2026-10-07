@@ -391,9 +391,13 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    rc 0 <> if NFEED:ABANDON-UNIT rc throw then
    TRUSTED? 0= CERTIFYING? and if M-VERDICT @ -1 <> if
       M-DOES @ 0= M-VERDICT @ 0 = M-VERDICT @ 1 = or and if
-         CHECKER-OWNER:MULTI-ERROR? if E-NCOMP-REPORTED throw then
+         CHECKER-OWNER:MULTI-ERROR? if E-NCOMP-RECOVERY throw then
       then
       E-NCOMP-VERDICT throw
+   else
+      CHECKER-OWNER:MULTI-ERROR? if
+         CHECKER-OWNER:RECOVERY-USED? if E-NCOMP-RECOVERY throw then
+      then
    then then
    before ;
 
@@ -909,7 +913,7 @@ INSTALL-FORGET
       entry-rc throw
    then
    M-RC @ {: rc:n :}
-   rc E-NCOMP-REPORTED = if rc throw then
+   rc E-NCOMP-RECOVERY = if rc throw then
    rc ENGINE-ERROR:USING-AMBIGUOUS = if RETRACT rc throw then
    rc E-NELAB-QUOT = NELAB:SOURCE-UNDEFINED? and if
       REPORT-UNDEFINED-TICK

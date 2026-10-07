@@ -129,6 +129,7 @@ create OWNER-STORAGE
    0 , 0 , 0 , 0 ,
    0 , 0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -146,7 +147,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:REFUSAL-TOKEN-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:RECOVERY-USED-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -9566,6 +9567,14 @@ variable PRM-FIRST
    off1 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF 0 EXIT THEN
    sym ;
 
+\ A refused declaration is available only to the current multi-error run's
+\ checker walk. It never becomes an engine binding or an executable source row.
+: RECOVERY-LIVE ( n -- n )
+   {: sym:n :}
+   sym SYM-VISIBLE 0= IF 0 EXIT THEN
+   sym USIG-NEWEST-VISIBLE dup 0= IF drop 0 EXIT THEN
+   1 - E-PTR RECOVERY-ROW? IF sym ELSE 0 THEN ;
+
 \ A source `undefine` is stronger than a stale engine wordlist entry. The
 \ visible newest record decides, so a later declaration makes the name live.
 : SYM-DELETED? ( n -- bool )
@@ -11264,9 +11273,12 @@ PTR-VARIABLE RPL-TOK-A   variable RPL-TOK-U     \ the refused name (raw, valid w
 \
 \ Compiled code binds a token to the record the lookup binds, to a definition
 \ recorded and not yet published (CK-PENDING-SYM), or to a keyword's axiom
-\ (CK-AXIOM-SYM); a symbol the engine holds no record for - a TRUST with no
-\ body, a name only the source pre-verifier registered - binds nowhere, bare or
-\ qualified. An owner-private primitive row (CLOSE-PRIVATE) binds only as the
+\ (CK-AXIOM-SYM). During a multi-error run only, a current-run recovery row
+\ can bind ahead of a lower-priority live record for diagnostics; any native
+\ definition that uses it remains unpublished. Other symbols the engine holds
+\ no record for - a TRUST with no body, a name only the source pre-verifier
+\ registered - bind nowhere, bare or qualified. An owner-private primitive row
+\ (CLOSE-PRIVATE) binds only as the
 \ owner's view of the global record the engine holds (CK-REC-BIND), so a row
 \ for a word the dictionary does not carry binds nowhere either.
 \
@@ -11289,7 +11301,9 @@ PTR-VARIABLE RPL-TOK-A   variable RPL-TOK-U     \ the refused name (raw, valid w
 \ whose answer is the word it is about to shadow. The window is a fact the
 \ stores state, not a flag anyone clears: the dictionary count has not moved
 \ since the record (`ndict@`), and the record is still its symbol's newest one.
-\ A publication, a truncation, a rollback and `undefine` each end it. Only a
+\ A recovery record cannot open this window because the native compiler
+\ abandons its definition instead of publishing it. A publication, a
+\ truncation, a rollback and `undefine` each end the window. Only a
 \ check that runs while the engine holds the definition unpublished opens it
 \ (CK-CLOSE!): a check a program runs by hand publishes nothing.
 \
@@ -11341,7 +11355,11 @@ variable CK-PEND-IX      0 CK-PEND-IX !
    CHECKER-PKG-MIRROR-AUTHORITY? IF EXIT THEN
    CHK-CAND @ 0 <> IF EXIT THEN
    data-base CK-DEF-PEND-OFF + @ 0= IF EXIT THEN
-   sym CK-CLOSED-SYM !  ndict@ CK-CLOSED-IX !  sym USIG-NEWEST CK-CLOSED-OFF ! ;
+   sym USIG-NEWEST {: off:n :}
+   off 1 - E-PTR ER.ACTIVE @ EFF-RECOVERY = IF
+      0 CK-CLOSED-SYM ! EXIT
+   THEN
+   sym CK-CLOSED-SYM !  ndict@ CK-CLOSED-IX !  off CK-CLOSED-OFF ! ;
 
 \ A live check that certifies nothing ends the window: the definition recorded
 \ last is no longer the one being compiled. A replay or a candidate leaves the
@@ -11458,6 +11476,93 @@ TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
 \ A name the split refuses (CHECKER-QBAD-TOK: a malformed qualified name, or a
 \ length no name has) binds nothing in either binder: the engine never binds
 \ it, and neither the pending row nor the lookup reads it.
+: REPLAY-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? IF
+      CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? SYM-LIVE 0 EXIT
+   THEN
+   CHECKER-QBAD-TOK @ IF 0 0 EXIT THEN
+   CHECKER-RESOLVE:AUTHORITY 0= IF 2drop drop 0 CHECKER-REJECT-RC EXIT THEN
+   {: pkg:ptr pkgu:n mode:n :}
+   mode CHECKER-PACKAGE-NONE <> IF
+      pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-LIVE dup 0 <> IF 0 EXIT THEN drop
+      pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? SYM-LIVE dup 0 <> IF 0 EXIT THEN drop
+   THEN
+   a u CHECKER-GLOBAL-SYM? SYM-LIVE dup 0 <> IF
+      dup >r a u r> CHECKER-USED-SHADOW EXIT
+   THEN drop
+   a u CHECKER-USED-BIND ;
+
+\ During a multi-error run, a rejected signature can stand ahead of a live
+\ record in another scope. Ask each used wordlist for its real row first, then
+\ its current-run recovery row; duplicate imports of one wordlist count once.
+: CHECKER-USED-MIXED ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   0 CK-USED-FOUND !
+   -1 CK-USED-SLOT !
+   0 CK-USED-MASK !
+   0 CHECKER-USE:WHY !
+   CK-USE-SCAN-N 0 ?DO
+      data-base CK-USE-WIDS-OFF + i cells + @ {: wid:n :}
+      a u wid SCOPE-WL-PROBE {: rec:ptr :}
+      rec NULL-PTR <> IF a u rec CK-REC-BIND
+      ELSE a u i CK-USED-SYM@ RECOVERY-LIVE THEN {: sym:n :}
+      rec NULL-PTR <> sym 0 <> or IF
+         1 i lshift CK-USED-MASK @ or CK-USED-MASK !
+         CK-USED-SLOT @ 0 < IF
+            i CK-USED-SLOT !
+            sym CK-USED-FOUND !
+         ELSE
+            data-base CK-USE-WIDS-OFF + CK-USED-SLOT @ cells + @ wid <>
+            IF E-USING-AMBIGUOUS CHECKER-USE:WHY ! THEN
+         THEN
+      THEN
+   LOOP
+   CK-USED-FOUND @ CHECKER-USE:WHY @ ;
+
+\ The engine's bound record decides a same-wordlist tie. A recovery signature
+\ from an earlier scope wins over a later real record, but only for diagnostics:
+\ the native compiler suppresses publication when that signature was used.
+: LIVE-MIXED-BIND ( ptr u8 n ptr n -- n n ) {: a:ptr u:n rec:ptr :}
+   a u CHECKER-QUALIFIED? IF
+      CHECKER-QPKG$ -1 SCOPE-WL-PROBE {: ns:ptr :}
+      ns NULL-PTR = IF 0 0 EXIT THEN
+      ns @ {: pubwid:n :}
+      pubwid 0 <> IF
+         CHECKER-QTAIL$ pubwid SCOPE-WL-PROBE {: pubrec:ptr :}
+         pubrec NULL-PTR <> IF a u pubrec CK-REC-BIND 0 EXIT THEN
+         CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? RECOVERY-LIVE
+         dup 0 <> IF 0 EXIT THEN drop
+      THEN
+      rec NULL-PTR <> IF a u rec CK-REC-BIND 0 EXIT THEN
+      CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n mode:n :}
+      mode CHECKER-PACKAGE-NONE <>
+      CHECKER-QPKG$ pkg pkgu CORE-STR=CI and IF
+         CHECKER-QTAIL$ CHECKER-GLOBAL-SYM? RECOVERY-LIVE 0 EXIT
+      THEN
+      0 0 EXIT
+   THEN
+   CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n mode:n :}
+   rec NULL-PTR <> IF rec CK-REC-WID ELSE -2 THEN {: wid:n :}
+   wid -1 = IF a u rec CK-REC-BIND 0 EXIT THEN
+   mode CHECKER-PACKAGE-NONE <> IF
+      wid data-base CK-PKG-PRI-OFF + @ = IF a u rec CK-REC-BIND 0 EXIT THEN
+      pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? RECOVERY-LIVE
+      dup 0 <> IF 0 EXIT THEN drop
+      wid data-base CK-PKG-PUB-OFF + @ = IF a u rec CK-REC-BIND 0 EXIT THEN
+      pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? RECOVERY-LIVE
+      dup 0 <> IF 0 EXIT THEN drop
+   THEN
+   wid 0= IF a u rec CK-REC-BIND
+   ELSE a u CHECKER-GLOBAL-SYM? RECOVERY-LIVE THEN {: global:n :}
+   wid 0= global 0 <> or IF
+      a u CHECKER-USED-MIXED {: usym:n why:n :}
+      why 0 <> IF 0 why EXIT THEN
+      CK-USED-SLOT @ 0 >= IF 0 global usym CK-USED-SLOT @ CK-SHADOW-CAPTURE EXIT THEN
+      global 0 EXIT
+   THEN
+   a u CHECKER-USED-MIXED {: sym:n why:n :}
+   CK-USED-SLOT @ 0 >= why 0 <> or IF sym why EXIT THEN
+   a u CK-AXIOM-SYM 0 ;
+
 : LIVE-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? 0= IF
       CHECKER-QBAD-TOK @ IF 0 0 EXIT THEN
@@ -11467,6 +11572,7 @@ TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
    a u CK-PENDING-SYM {: pending:n :}
    pending 0 <> IF pending 0 EXIT THEN
    a u scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+   MULTI-ERR? IF a u rec LIVE-MIXED-BIND EXIT THEN
    flags SCOPE-FIND-AMBIGUOUS and 0 <> {: two:bool :}
    rec 0= IF
       two IF a u CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
@@ -11483,21 +11589,6 @@ TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
       THEN
    THEN
    sym 0 ;
-
-: REPLAY-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
-   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? SYM-LIVE 0 EXIT THEN
-   CHECKER-QBAD-TOK @ IF 0 0 EXIT THEN
-   CHECKER-RESOLVE:AUTHORITY 0= IF 2drop drop 0 CHECKER-REJECT-RC EXIT THEN
-   {: pkg:ptr pkgu:n mode:n :}
-   mode CHECKER-PACKAGE-NONE <> IF
-      pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-LIVE dup 0 <> IF 0 EXIT THEN drop
-      pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? SYM-LIVE dup 0 <> IF 0 EXIT THEN drop
-   THEN
-   a u CHECKER-GLOBAL-SYM? SYM-LIVE dup 0 <> IF
-      dup >r a u r> CHECKER-USED-SHADOW      \ refuses if a live used public also exports this bare tail
-      EXIT
-   THEN drop
-   a u CHECKER-USED-BIND ;                   \ engine-authoritative: no global may claim the tail
 
 package CHECKER-RESOLVE
 public
@@ -23423,6 +23514,7 @@ package CHECKER-REG
 ' MULTI-ERR? DECLARATIONS CHECKER-OWNER-ABI:MULTI-ERROR-OFF + xt!
 ' CHECKER-REPORT-RESET DECLARATIONS CHECKER-OWNER-ABI:RESET-REPORT-OFF + xt!
 ' CHECKER-JSON-REPORTED? DECLARATIONS CHECKER-OWNER-ABI:JSON-REPORTED-OFF + xt!
+' CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? DECLARATIONS CHECKER-OWNER-ABI:RECOVERY-USED-OFF + xt!
 
 \ The first cold checker has no retained owner to transfer from. Publish it
 \ only after every callback is installed. A replacement keeps the nonzero
