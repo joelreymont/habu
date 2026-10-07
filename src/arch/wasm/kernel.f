@@ -351,6 +351,8 @@ variable MADE                              \ blocks built, the next one's ordina
    a u s" /mod" STR=CI if s" WKWORDS:DIVREM" exit then
    a u s" 0<" STR=CI if s" WKWORDS:ZERO-NEG?" exit then
    a u s" 0<>" STR=CI if s" WKWORDS:NONZERO?" exit then
+   a u s" true" STR=CI if s" WKWORDS:YES" exit then
+   a u s" false" STR=CI if s" WKWORDS:NO" exit then
    s" " ;
 
 \ The row answering an engine name, or -1.

@@ -117,7 +117,9 @@ CAP BUFFER: ERR-K
    s" 0" s" 0<" s" ." SAME
    s" $8000000000000000" s" 0<" s" ." SAME
    s" 0" s" 0<>" s" ." SAME
-   s" -1" s" 0<>" s" ." SAME ;
+   s" -1" s" 0<>" s" ." SAME
+   s" " s" true" s" ." SAME
+   s" " s" false" s" ." SAME ;
 
 \ ---- the refusal -------------------------------------------------------------------
 : UNANSWERED ( -- )
