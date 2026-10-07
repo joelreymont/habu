@@ -9,6 +9,10 @@ require lib/string.f               \ SB / CONTAINS? - the child's stderr is matc
 require lib/fmt.f                  \ the code the child prints is rendered from its name
 require lib/process.f
 require lib/process-argv.f         \ the full-table case needs a child engine
+require lib/process-env.f          \ the stub child runs on the unsealed engine
+require lib/fs-mutate.f            \ CLEANUP-RUN - that engine's private copy
+require test/whitebox-child.f
+require test/suite-budget.f        \ CHILD-MS, the stub child's hang guard
 require lib/engine-candidate.f
 require lib/test/outcome.f
 require lib/test/guard-page.f      \ a path whose bytes end where memory does
@@ -29,7 +33,6 @@ create FFI-T-HELLO  104 c, 101 c, 108 c, 108 c, 111 c, 0 c,                     
 create FFI-T-HELP   104 c, 101 c, 108 c, 112 c, 0 c,                               \ "help"
 create FFI-T-CSTR-SRC 119 c, 111 c, 114 c, 108 c, 100 c,                           \ "world" (no NUL)
 create FFI-T-CSTR-DST 8 allot
-create FFI-T-X8-OUT 1 cells allot
 create FFI-T-SYM-BUF 64 allot
 
 variable FFI-T-LIB
@@ -52,12 +55,11 @@ variable FFI-T-MATH
 DEFTYPE FFI-DEV
 DEFTYPE FFI-CTX
 
-\ The libc bindings are FUNCTION: declarations: the declared effect is the
-\ generated word's effect and decides every argument's staging. What stays
-\ TRUSTED: below is the raw-stub half of this suite - five cp@/patch32 code
-\ minters and the five fixtures that call a stub address - because a
-\ declaration models a C function, and a code-injection minter and a
-\ deliberately non-AAPCS64 stub are neither.
+\ The libc and libm bindings are FUNCTION: declarations: the declared effect is
+\ the generated word's effect and decides every argument's staging. The staging
+\ shapes no C function reproduces on both ABIs - two stack integers past x0-x7,
+\ a float stack slot, an sret x8 output - run against fixed stubs in a window
+\ child (FFI-T-STUBS below).
 
 PROCESS-SYMBOLS
 FUNCTION: FFI-T-STRLEN$ strlen ( ptr u8 -- n ) ;FUNCTION
@@ -384,78 +386,64 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-CHECK-REJECTS ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ Fixed raw stubs: FFI-T-SUM10 reads x0-x7 plus two stack integers;
-\ FFI-T-FSUM3 reads d0-d2; FFI-T-FADD-X0 mixes x0/d0;
-\ FFI-T-FADD-FSTACK mixes d0/stack slot 0; FFI-T-X8-STORE writes sret x8.
-\ Leaf stub at cp@: x0 = x0+..+x7 + [sp+0] + [sp+8]; ret. Exercises ffi-call-n's
-\ register args + the 16-byte-aligned stack spill. Built inside a word so cp@ is
-\ the stable free code slot (a top-level cp@ patch would clobber the line buffer).
-TRUSTED: FFI-T-SUM10 ( -- n ) cp@ {: fn:n :}
-   $8B010000 fn       patch32  $8B020000 fn $4 +  patch32  $8B030000 fn $8 +  patch32
-   $8B040000 fn $C +  patch32  $8B050000 fn $10 + patch32  $8B060000 fn $14 + patch32
-   $8B070000 fn $18 + patch32
-   $F94003E9 fn $1C + patch32  $8B090000 fn $20 + patch32
-   $F94007E9 fn $24 + patch32  $8B090000 fn $28 + patch32
-   $D65F03C0 fn $2C + patch32  fn ;
+\ The staging shapes no C function reproduces on both ABIs: ten integers, x0-x7
+\ plus two stack cells; a float register beside a float stack slot; an sret
+\ output in x8. A variadic callee is the only system witness for a stack spill,
+\ and Apple's ABI puts every variadic argument on the stack, so it never reaches
+\ the register exhaustion that spills. test/ffi-stub-child.f mints fixed stubs
+\ for them and calls them through owner words test/mcode-window-prepare.f
+\ opens, so it runs as a window child of test/native-window-owner-child.f.
+\ Reopening the window is refused on the sealed product (`hb: internal engine
+\ word`, exit 70), so the child runs on the engine test/whitebox-child.f names.
+: FFI-T-WIN-ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
-TRUSTED: FFI-T-FSUM3 ( -- n ) cp@ {: fn:n :}
-   $1E612800 fn      patch32  $1E622800 fn $4 + patch32
-   $D65F03C0 fn $8 + patch32  fn ;
+: FFI-T-STUB-ARGS ( -- )
+   PROC-ARGV-RESET
+   s" --load" FFI-T-WIN-ARG
+   s" test/native-window-owner-child.f" FFI-T-WIN-ARG
+   s" --" FFI-T-WIN-ARG
+   s" test/ffi-stub-child.f" FFI-T-WIN-ARG
+   s" src/core/declaration-transaction.f" FFI-T-WIN-ARG
+   s" src/core/generated-declaration.f" FFI-T-WIN-ARG
+   s" src/core/decl-event.f" FFI-T-WIN-ARG
+   s" src/core/structure-make.f" FFI-T-WIN-ARG
+   s" src/core/structure-decl.f" FFI-T-WIN-ARG
+   s" src/core/enum-decl.f" FFI-T-WIN-ARG
+   s" src/core/structures.f" FFI-T-WIN-ARG
+   s" src/core/bytes.f" FFI-T-WIN-ARG
+   s" src/core/dynamic-storage.f" FFI-T-WIN-ARG
+   HB-TARGET-LINUX? if
+      s" src/os/linux/target.f" FFI-T-WIN-ARG s" src/os/linux/layout.f" FFI-T-WIN-ARG
+   else
+      s" src/os/macos/target.f" FFI-T-WIN-ARG s" src/os/macos/layout.f" FFI-T-WIN-ARG
+   then
+   s" src/habu/stack-abi.f" FFI-T-WIN-ARG
+   s" src/habu/layout.f" FFI-T-WIN-ARG
+   s" src/os/env-base.f" FFI-T-WIN-ARG
+   s" src/core/include.f" FFI-T-WIN-ARG
+   s" src/core/sha256.f" FFI-T-WIN-ARG
+   s" src/habu/code-span.f" FFI-T-WIN-ARG
+   s" test/mcode-window-prepare.f" FFI-T-WIN-ARG
+   WHITEBOX-CHILD:ENV! ;
 
-TRUSTED: FFI-T-FADD-X0 ( -- n ) cp@ {: fn:n :}
-   $9E620008 fn       patch32  $1E682800 fn $4 + patch32
-   $D65F03C0 fn $8 +  patch32  fn ;
+: FFI-T-STUB-RESULT ( -- )
+   WHITEBOX-CHILD:ENGINE$ >LEN FFI-T-OUT FFI-T-CAP >LEN FFI-T-ERR FFI-T-CAP >LEN
+   SUITE-BUDGET:CHILD-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   {: outu:len erru:len rc:n :}
+   FFI-T-OUT outu LEN>N S\" test: ok\nwindow: 0\n" STR= 0= rc 0 <> or
+      if FFI-T-OUT outu LEN>N type erru FFI-T-ERR$ type cr then
+   rc 0 T=
+   FFI-T-OUT outu LEN>N S\" test: ok\nwindow: 0\n" T$= ;
 
-TRUSTED: FFI-T-FADD-FSTACK ( -- n ) cp@ {: fn:n :}
-   $F94003E9 fn       patch32  $9E670128 fn $4 + patch32
-   $1E682800 fn $8 +  patch32  $D65F03C0 fn $C + patch32  fn ;
+: FFI-T-STUBS ( -- )
+   [: s" ffi-stub" WHITEBOX-CHILD:PROVIDE FFI-T-STUB-ARGS FFI-T-STUB-RESULT ;]
+   [: CLEANUP-RUN ;] finally ;
 
-TRUSTED: FFI-T-X8-STORE ( -- n ) cp@ {: fn:n :}
-   $F9000100 fn patch32  $D65F03C0 fn $4 + patch32  fn ;
-
-\ Exact ten-integer binding covers x0-x7 and two stack-spilled cells.
-TRUSTED: FFI-T-SUM10-CALL ( -- n )
-   FFI:RESET
-   10 0 ?do i 1+ i FFI:VALUE! loop
-   FFI:ARGS FFI:REG-LENS 10 FFI-T-SUM10 ffi-call-bounded ;
-
-\ Exact three-register floating binding.
-TRUSTED: FFI-T-FSUM3-CALL ( -- r )
-   FFI:RESET
-   1.25 0 FFI:FLOAT!
-   2.5 1 FFI:FLOAT!
-   3.0 2 FFI:FLOAT!
-   FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
-   0 FFI-T-FSUM3 ffi-call-abi-r-bounded ;
-
-\ Exact mixed x0/d0 binding.
-TRUSTED: FFI-T-FADD-X0-CALL ( -- r )
-   FFI:RESET
-   4 0 FFI:VALUE!
-   1.5 0 FFI:FLOAT!
-   FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
-   0 FFI-T-FADD-X0 ffi-call-abi-r-bounded ;
-
-\ Exact floating-register plus stack-spill binding with distinct extents.
-TRUSTED: FFI-T-FADD-FSTACK-CALL ( -- r )
-   FFI:RESET
-   1.25 0 FFI:FLOAT!
-   2.75 0 FFI:STACK-FLOAT!
-   FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
-   1 FFI-T-FADD-FSTACK ffi-call-abi-r-bounded ;
-
-\ Exact sret binding fixes x8 to an eight-byte output.
-TRUSTED: FFI-T-X8-ABI-CALL ( ptr a -- n ) {: out:ptr :}
-   FFI:RESET
-   42 0 FFI:VALUE!
-   out 8 FFI:X8-WRITABLE!
-   FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
-   0 FFI-T-X8-STORE ffi-call-abi-bounded ;
-
-\ The libm square root: a float argument and a float result, so the declaration
-\ rides the AAPCS64 call. The library is chosen at load time because the two
-\ targets keep it in different files, which is what the runtime-string form of
-\ LIBRARY is for.
+\ The libm rows ride the AAPCS64 call: sqrt a float argument and a float result,
+\ fma three float registers d0-d2, scalbln a float in d0 beside all 64 bits of x0.
+\ The library is chosen at load time because the two targets keep it in
+\ different files, which is what the runtime-string form of LIBRARY is for.
 : FFI-T-SELECT-MATH ( -- )
    HB-TARGET-MACOS? if
       s" /usr/lib/libSystem.B.dylib"
@@ -465,6 +453,8 @@ TRUSTED: FFI-T-X8-ABI-CALL ( ptr a -- n ) {: out:ptr :}
 
 FFI-T-SELECT-MATH
 FUNCTION: FFI-T-SQRT-CALL sqrt ( r -- r ) ;FUNCTION
+FUNCTION: FFI-T-FMA-CALL fma ( r r r -- r ) ;FUNCTION
+FUNCTION: FFI-T-SCALBLN-CALL scalbln ( r n -- r ) ;FUNCTION
 PROCESS-SYMBOLS
 
 \ The same declaration exercises Apple's stack varargs and Linux's registers.
@@ -599,15 +589,10 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    \ stages slot 0 and only then reaches DLSYM, which marshals through its own
    \ FFI-DLBUF -> the staged argument survives and strlen("hello") is 5.
    FFI-T-HELLO FFI-T-STRLEN-LATE 5 T=
-   \ 10-arg call: x0..x7 + 2 stack-spilled args, sum 1..10 == 55
-   FFI-T-SUM10-CALL 55 T=
+   FFI-T-STUBS
 
-   FFI-T-FSUM3-CALL 6.75 f= T-ASSERT
-   FFI-T-FADD-X0-CALL 5.5 f= T-ASSERT
-   FFI-T-FADD-FSTACK-CALL 4.0 f= T-ASSERT
-
-   FFI-T-X8-OUT FFI-T-X8-ABI-CALL drop
-   FFI-T-X8-OUT @ 42 T=
+   1.25 2.5 3.0 FFI-T-FMA-CALL 6.125 f= T-ASSERT
+   1.5 4 FFI-T-SCALBLN-CALL 24.0 f= T-ASSERT
 
    9.0 FFI-T-SQRT-CALL 3.0 f= T-ASSERT
 
