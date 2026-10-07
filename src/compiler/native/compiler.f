@@ -135,6 +135,7 @@ variable M-RC                        \ the code the run inside the context reach
 variable M-PUBLISHED-START           \ committed parent's index for notification
 variable M-VERDICT                   \ the verdict the recorded scan reached
 variable M-UNJUDGED                  \ a hook-cell-empty scan's verdict, else -1
+variable M-REQUIRED                  \ this definition's build-required hookless scan
 variable M-ROWS                      \ where the checker store ended at STAGE
 variable M-DOES-FRAME                \ checker-owned transaction spans a split compilation
 variable M-DOES                      \ byte split after `does> `, or zero
@@ -272,33 +273,36 @@ TRUSTED: REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
 \ moved at all.
 \
 \ So: a hook in the cell owns the verdict, and it is the live checker's own hook
-\ that scans. With the cell EMPTY the definition is published uncertified -
-\ exactly what tier 0 does under `0 set-check`, and what a window depends on,
-\ because LOGICAL-RESET clears the hook and the window's own check-hook.f
-\ installs one part-way through its prefix - but the tape still has to be filled,
-\ so the owner's scan runs and its verdict is reported rather than enforced.
+\ that scans. With the cell EMPTY an ordinary definition is published
+\ uncertified, as tier 0 does under `0 set-check`. The owner's scan still fills
+\ the tape and reports its verdict. A native build requires that verdict while
+\ LOGICAL-RESET has cleared the hook and the target's check-hook.f is not loaded.
 \ The hook cell stores a raw execution token; this view states the scan's signature.
 CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 
 \ Whether anything is certifying at all. With the hook cell empty nothing is, and
-\ the verdict the scan reports is then a fact about the source and not a refusal:
+\ ordinary compilation reports the scan's verdict without enforcing it:
 \ tier 0 publishes such a definition uncertified with its declaration as its row
 \ (habu2.f EM-COMPILE-PUBLISH-HOOKED reads HOOK-CELL), and the two tiers have to
-\ agree (DECLARE-HOOKLESS). A window depends on it - its core prefix is compiled
-\ between LOGICAL-RESET and its own check-hook.f - and so does every
-\ `0 set-check` session.
+\ agree (DECLARE-HOOKLESS). A build requires a successful scan before recording
+\ that unjudged row; ordinary `0 set-check` sessions retain their declared row.
 : CERTIFYING? ( -- bool )
    check@ 0 <> ;
 
-\ The scan with the hook cell empty. Its verdict refuses nothing: a body it did
-\ not certify compiles against its declaration (DECLARE-HOOKLESS), and KEEP-ARITY
-\ refuses over the verdict kept here only when no declaration could be recorded.
+70 constant RC-REJECT                 \ the check hook's reject status (check-hook.f CHECK-RC)
+
+\ The scan with the hook cell empty. Ordinary compilation does not enforce its
+\ verdict: a body it did not certify compiles against its declaration
+\ (DECLARE-HOOKLESS). A build-required scan refuses before that declaration is
+\ recorded. KEEP-ARITY refuses over an ordinary verdict only when no
+\ declaration could be recorded.
 \ The reason is printed now, while the owner still holds the scan that found it:
 \ a does> head's scan is replaced by its clause's before KEEP-ARITY runs.
 : CHECK-HOOKLESS ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u CHECKER-OWNER:CHECK-UNJUDGED {: v:n :}
    v -1 <> if CHECKER-OWNER:REPORT then
+   M-REQUIRED @ 0<> v -1 <> and if RC-REJECT throw then
    v M-UNJUDGED ! ;
 
 : CHECK-PARENT ( ptr u8 n -- n )
@@ -424,8 +428,6 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    then ;
 
 \ ---- what the definition takes and leaves ------------------------------------
-70 constant RC-REJECT     \ the check hook's reject status (check-hook.f CHECK-RC)
-
 \ THE CHECKER'S ANSWER AND NOT THE CALLER'S. Every callee's arity already comes
 \ from src/compiler/native/dict.f at the point it is used, and this is the same
 \ reader asked about the definition being compiled - so the routine's contract
@@ -859,9 +861,10 @@ INSTALL-FORGET
    M-RC @ {: rc:n :}
    rc 0 <> if REPORT-FAILURE RETRACT rc throw then ;
 
-: STAGE ( ptr u8 n -- )
-   {: sa su:n :}
+: STAGE ( ptr u8 n bool -- )
+   {: sa su:n required:bool :}
    IDLE-CK
+   required M-REQUIRED !
    0 CHECKER-OWNER:BIND-REGIME!
    NFETCH:RELEASE
    sa M-SRC ! su M-SRC-U !
@@ -884,9 +887,15 @@ INSTALL-FORGET
 
 private
 
-: LEASED ( ptr u8 n NLEASE:lease -- )
+: LEASED-MODE ( ptr u8 n bool NLEASE:lease -- )
    M-LEASE !
-   STAGE RUN ;
+   [: STAGE RUN ;] [: 0 M-REQUIRED ! ;] finally ;
+
+: LEASED ( ptr u8 n NLEASE:lease -- )
+   false swap LEASED-MODE ;
+
+: LEASED-CHECKED ( ptr u8 n NLEASE:lease -- )
+   true swap LEASED-MODE ;
 
 public
 
@@ -900,6 +909,12 @@ public
 \ Compile the captured body directly.
 : COMPILE ( ptr u8 n -- )
    [: LEASED ;] NLEASE:WITH ;
+
+\ A build window can require the live checker's verdict while the target's
+\ check hook has not loaded. Ordinary COMPILE still leaves that window
+\ explicitly unjudged.
+: COMPILE-CHECKED ( ptr u8 n -- )
+   [: LEASED-CHECKED ;] NLEASE:WITH ;
 
 \ Store a compile entry in NCOMP-DISPATCH:XT-CELL, the image-ABI cell the
 \ tier-1 `:` dispatches through. A tool that counts compiles borrows the cell
@@ -924,6 +939,7 @@ public
    NULL-PTR NAME-A !  0 NAME-U !
    NULL-PTR M-SRC !  0 M-SRC-U !
    NULL-PTR M-DOES-SIG !  0 M-DOES-SIG-U !
+   0 M-REQUIRED !
    0 PRIOR-ENTRY !  0 PRIOR-IN !  0 PRIOR-OUT !
    0 PRIOR-GLUE !  0 PRIOR-DEAD !  0 PRIOR-CAST !  0 PRIOR-CALLABLE !
    \ A shadow's map lives in mappings no image carries, so the capture ends it.

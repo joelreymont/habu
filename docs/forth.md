@@ -2164,7 +2164,7 @@ the rule.
   (`src/core/checker.f`).
 - **With the hook cell empty a definition's declaration is its row, without
   authority.** Nothing judges such a body: a cold boot's prefix up to
-  `src/core/check-hook.f`, a window's core prefix, and every `0 set-check`
+  `src/core/check-hook.f` and every ordinary `0 set-check`
   definition, at either tier. Where no live row states the symbol its
   signature becomes an active row (`src/core/checker.f`
   `CHECKER-DECLARED-ROW!`). Before `src/core/checker.f` claims a cold boot's
@@ -2184,9 +2184,11 @@ the rule.
   pre-hook checker word, is `E-UNDEFINED: FRESH`, rc 70, on `bin/hb` and runs
   on the whitebox image. A `TRUSTED:` declaration is the assertion and
   carries authority at both tiers. At tier 1 the scan still runs and its own
-  row wins; a body it refuses compiles against the declaration with the
-  reason on stderr, and the row goes with the definition when the native
-  compiler then refuses it. A definition with no signature, one the checker
+  row wins; ordinary compilation uses the declaration after a refused scan,
+  with the reason on stderr, and retracts the row if the native compiler then
+  refuses it. A native build instead requires the live checker's scan
+  through `src/core/check-hook.f`: a refusal throws 70 before publication and
+  the build exits 74 without a product. A definition with no signature, one the checker
   cannot parse or one with a scope scheme records nothing; when nothing else
   answers its arity tier 1 refuses it with the check hook's reject status
   (rc 70). When a twin in another scope or an owner-private primitive's axiom

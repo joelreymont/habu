@@ -1,12 +1,8 @@
-\ native-hookless-reject.f - with the check hook cell empty, a body the scan
-\ refuses compiles against its declaration, and what the native compiler then
-\ refuses it refuses after the checker's reason.
+\ native-hookless-reject.f - ordinary hookless compilation keeps the declared
+\ row; a native build requires a certified scan of its pre-hook prefix.
 \
-\ Nothing certifies while the cell is empty: a `0 set-check` session, and a
-\ window's core prefix, which tools/native-build-core.f LOGICAL-RESET compiles
-\ from src/core/util.f up to src/core/check-hook.f with the cell cleared. The
-\ owner's quiet scan prints its reason and enforces nothing
-\ (src/compiler/native/compiler.f CHECK-HOOKLESS); the declaration becomes the
+\ In an ordinary `0 set-check` session, the owner's quiet scan prints its
+\ reason and enforces nothing (CHECK-HOOKLESS); the declaration becomes the
 \ definition's row, without authority (DECLARE-HOOKLESS), and the native
 \ compiler compiles against it. A body it cannot compile against that row -
 \ branches that leave different depths, a callee that is not defined - dies
@@ -14,6 +10,7 @@
 \ declaration, or one the checker cannot record, has no row, and KEEP-ARITY
 \ refuses it with the check hook's reject status.
 \
+\ The native build requires the same scan's verdict for its hookless prefix.
 \ Tier-neutral by design: each session subject sets the tier it compiles at, and
 \ the window is built by the engine under test. The window cases build a private
 \ copy of src/, lib/ and tools/ whose src/core/util.f ends in one probe
@@ -205,15 +202,15 @@ variable RC
    s" HABU_WHITEBOX_IMAGE" >LEN NULL$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
-\ The copy's util.f is the checkout's with one definition appended. A window
-\ build exits RC-BUILD for any failure (tools/native-build-core.f EXIT-RC), so
-\ the reason and the refusal's code are read from what the build printed.
-: BUILD-PROBE ( ptr u8 n -- ) {: a:ptr u:n :}
+\ The copy's util.f is the checkout's with one definition appended. The entry
+\ selects either the production source builder or the child that also observes
+\ dispatch restoration after a caught refusal.
+: BUILD-PROBE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n entry:ptr entryu:n :}
    s" src/core/util.f" UTIL$ COPY-FILE-STREAM
    UTIL$ a u APPEND-FILE
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" ARGV+
-   s" tools/native-build.f" ARGV+
+   entry entryu ARGV+
    s" --" ARGV+
    IMAGE$ ARGV+
    ENV!
@@ -222,20 +219,32 @@ variable RC
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT ;
 
 : WINDOW-DECLARED ( -- )
-   s" the window's prefix compiles a refused body against its declaration" T-LABEL
-   S\" : PROBE-NZ ( n -- n ) 0= ;\n" BUILD-PROBE
-   RC @ 0 T=
+   s" the build refuses a mismatched pre-hook definition before publication" T-LABEL
+   S\" : PROBE-NZ ( n -- n ) 0= ;\n"
+      s" tools/native-build.f" BUILD-PROBE
+   RC @ RC-BUILD T=
    s" habu: in probe-nz: at '0='" SAYS
-   s" native-build OK" PRINTS ;
+   s" native-build: uncaught throw code 70" PRINTS
+   IMAGE$ FILE? 0= TTRUE ;
 
 \ `0<>` is lib/prelude.f's, which the window has not loaded at util.f.
 : WINDOW-PRELUDE ( -- )
-   s" the window's prefix names a prelude word it has not loaded" T-LABEL
-   S\" : PROBE-NZ ( n -- bool ) 0<> ;\n" BUILD-PROBE
-   RC @ RC-BUILD T=
+   s" a caught pre-hook refusal restores the prior compiler dispatch" T-LABEL
+   S\" : PROBE-NZ ( n -- bool ) 0<> ;\n"
+      s" test/compiler/native-build-dispatch-child.f" BUILD-PROBE
+   RC @ 0 T=
    s" E-UNDEFINED habu: in probe-nz: undefined word '0<>'" SAYS
-   s" ncomp: cannot compile PROBE-NZ at 0<>" SAYS
-   s" native-build: uncaught throw code -8286" PRINTS ;
+   s" native-build: uncaught throw code 70" PRINTS
+   s" native-build-dispatch: ok" PRINTS
+   IMAGE$ FILE? 0= TTRUE ;
+
+: WINDOW-TRUSTED ( -- )
+   s" an explicit trusted pre-hook definition remains buildable" T-LABEL
+   S\" TRUSTED: PROBE-NZ ( n -- n ) 0= ;\n"
+      s" tools/native-build.f" BUILD-PROBE
+   RC @ 0 T=
+   s" native-build OK" PRINTS
+   IMAGE$ FILE? TTRUE ;
 
 : RUN ( -- )
    T-RESET
@@ -249,8 +258,10 @@ variable RC
    SETUP
    s" native-hookless-reject artifacts: " type ROOT$ type cr
    TREE$ TREE-COPY:BUILD-SOURCES
+   s" test/compiler/native-build-dispatch-child.f" TREE$ TREE-COPY:FILE
    WINDOW-DECLARED
    WINDOW-PRELUDE
+   WINDOW-TRUSTED
    T-REPORT ;
 
 RUN

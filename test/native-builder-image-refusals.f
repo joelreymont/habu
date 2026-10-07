@@ -1,8 +1,7 @@
 \ native-builder-image-refusals.f - a saved native builder refuses a bad
-\ command line before it compiles anything, and source made invalid after it
-\ was saved, in the first prefix file the window's own checker compiles
-\ (src/core/roles.f, after src/core/check-hook.f), so the refusal costs the
-\ prefix up to the hook and not the build; it publishes no output for either.
+\ command line, a rejected checked definition after the hook, and a rejected
+\ definition in the checker source before the hook. No refusal publishes an
+\ output image.
 \ test/native-build-entry.f pins the usage wording for the source entry; the
 \ saved builder's refusal only has to name the options it accepts.
 \ test/native-builder-image-lib.f has the fixture and the other rows; run alone:
@@ -19,9 +18,11 @@ package NATIVE-BUILDER-IMAGE-TEST
 
 create REJECTED FS-PATH-CAP allot      variable REJECTED-U
 create ROLES FS-PATH-CAP allot         variable ROLES-U
+create CHECKER FS-PATH-CAP allot       variable CHECKER-U
 
 : REJECTED$ ( -- ptr u8 n ) REJECTED REJECTED-U @ ;
 : ROLES$ ( -- ptr u8 n ) ROLES ROLES-U @ ;
+: CHECKER$ ( -- ptr u8 n ) CHECKER CHECKER-U @ ;
 
 \ 74 is tools/native-build-args.f BUILD-RC, its exit for a refused command
 \ line; the refusal names both options.
@@ -65,6 +66,15 @@ create ROLES FS-PATH-CAP allot         variable ROLES-U
    ERR ERR-U @ s" actual:" CONTAINS? TTRUE
    REJECTED$ FILE? 0= TTRUE ;
 
+: REJECT-CHECKER-EDIT ( -- )
+   s" a saved builder rejects a mismatched definition in its pre-hook checker source" T-LABEL
+   s" src/core/roles.f" TREE$ TREE-COPY:FILE
+   CHECKER$ S\" \npackage BUILDER-IMAGE-PREHOOK public\n: BAD ( n -- n ) 0= ;\n;package\n" APPEND-FILE
+   REJECTED$ false false SAVED-BUILD
+   RC @ 74 T=
+   ERR ERR-U @ s" habu: in bad" CONTAINS? TTRUE
+   REJECTED$ FILE? 0= TTRUE ;
+
 public
 
 : REFUSALS-MAIN ( -- )
@@ -72,9 +82,11 @@ public
    s" native-builder-image-refusals" SETUP
    PRIVATE-TREE
    s" src/core/roles.f" ROLES ROLES-U TREE-PATH!
+   s" src/core/checker.f" CHECKER CHECKER-U TREE-PATH!
    s" rejected-hb" REJECTED REJECTED-U ROOT-PATH!
    SAVED-ARGS
    REJECT-EDIT
+   REJECT-CHECKER-EDIT
    T-REPORT ;
 
 ;package

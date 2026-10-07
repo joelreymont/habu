@@ -141,7 +141,7 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | `: W ( -- ) ;`, `create`, a new `package`, `wordlist` or `undefine W` inside a `CHECKER-SCOPE-START-NEUTRAL` pair | `ENGINE-ERROR:OVERLAY-OPEN`, rc 108 |
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION`, rc 78 |
 | a word defined before the check hook with no external row (a `PRIM:` axiom, or a `TRUSTED:` declaration after `src/core/checker.f`) in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a sealed from-source prefix boot only**, never on `bin/hb`; `PATH-CAP`, `E-PATH-RANGE` and `SCOPE-FIND-AMBIGUOUS` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP`. An unsealed boot binds a signed `:` word of the prefix to its declaration |
-| a body the scan refuses with the hook cell empty (`0 set-check`, a window's core prefix) at tier 1 | compiles against its declaration, the reason on stderr; the row has no authority (forth.md **Rules learned by refusal**) |
+| a body the scan refuses with the hook cell empty (`0 set-check`) at tier 1 | ordinary compilation uses its declaration, with the reason on stderr and no row authority; a native build requires the prefix scan and refuses before publication (forth.md **Rules learned by refusal**) |
 | `CHECK!`, `generates:`, a type registration (`CHECKER-DEFLINEAR`, `CHECKER-DEFFAMILY`, a `TYPE-FIELD-OWNER` phase) or another checker scan or store write in a compile callback (`NBACK:OBSERVE!`, `NPUB:WITH-UNIT`) | `E-NCOMP-STATE` (-8570), catchable, before anything changes |
 
 Checked C2 views carry owner and loan lifetimes: shared `read-view<p,q,T>` and
