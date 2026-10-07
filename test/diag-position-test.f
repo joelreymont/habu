@@ -1028,6 +1028,14 @@ variable RC
    GJA-LINE# @ 1 T=
    0 tok toku FX-PATH$ CANON$ UNPLACED-STALE ;
 
+\ Packet k of the last --verify-only check is a rejection: CODE at TOK, on LINE
+\ at COL, in bytes [BS, BE).
+: VERIFY-REJECTED-AT ( n ptr u8 n ptr u8 n n n n n -- )
+   {: k:n c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
+   k s" code" c cu FIELD=
+   k s" verdict" s" rejected" FIELD=
+   k tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+
 \ A top-level row the check replays from the literals before it gets the bytes
 \ the load's literals make: an escaped literal's are its escapes decoded, a hex
 \ or a letter escape, in either slot of a `trust` row. A decoded name nothing
@@ -1037,6 +1045,8 @@ variable RC
 \ reads no escape, and a defect it reads anywhere in the file is reported in
 \ its place before an earlier one, so a string after the bad escape that never
 \ closes is reported there, as after a definition that does not check.
+\ --verify-only composes the file as it reads it, so it keeps that definition's
+\ refusal before the string's.
 : TEST-ESCAPED-ROW ( -- )
    s" an escaped trust row: a hex escape" T-LABEL
    SB-RESET
@@ -1078,7 +1088,11 @@ variable RC
    s" : X ( -- ) NO-SUCH ;" SB-APPEND LF+
    s\" s\" abc" SB-APPEND LF+
    s" undefined-unterminated.f" FIXTURE!
-   s" E-UNTERMINATED-STRING" s\" s\"" 2 1 21 23 REFUSED-AT
+   s" E-UNTERMINATED-STRING" s\" s\"" 2 1 21 23 RUN-REFUSED-AT
+   s" --verify-only" CHECK
+   GJA-LINE# @ 2 T=
+   0 s" E-UNDEFINED" s" NO-SUCH" 1 12 11 18 VERIFY-REJECTED-AT
+   1 s" E-UNTERMINATED-STRING" s\" s\"" 2 1 21 23 VERIFY-REJECTED-AT
    s" E-UNDEFINED: NO-SUCH" REJECT-RC LOADED ;
 
 \ The u bytes at a end the fixture text, built in place for a fixture longer
@@ -1101,23 +1115,41 @@ variable RC
    s\" inc-target.f\" included\nINCLUDED-WORD drop\n" FX+
    FX-PATH$ FX$ WRITE-ALL ;
 
+\ The plain check and --all-errors certify the fixture; --verify-only gives one
+\ packet, the deferral of the stretch at TOK, on LINE at COL, in bytes [BS, BE).
+: VERIFY-DEFERRED-AT ( ptr u8 n n n n n -- )
+   {: tok:ptr toku:n line:n col:n bs:n be:n :}
+   s" " 0 CHECK-EXIT
+   GJA-LINE# @ 0 T=
+   s" --all-errors" 0 CHECK-EXIT
+   GJA-LINE# @ 0 T=
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 1 T=
+   0 s" code" s" W-CHECK-DEFERRED" FIELD=
+   0 s" verdict" s" deferred" FIELD=
+   0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+
 \ A string loader's path is the bytes the load's literal makes: an escaped
 \ literal's escapes decoded, which each check follows to the file the load
 \ reads, through `included` and through `required`, and a plain literal's
 \ spelling, backslash and all. The path capacity bounds the decoded path, as it
 \ bounds a plain one: a path that fits only decoded is followed, and one over
 \ it decoded is refused at its loader, as a plain path that long is. A loader
-\ in a body loads when the word runs, and each check follows its path after
-\ the definition, as it follows a plain one: decoded, or as written when it
-\ holds no escape, and kept for that load whatever the check decodes first,
-\ more paths in the same body or literals at top level while a package is
-\ open. A bad escape in a loader's literal at top level is where the load
-\ stops: each check refuses that literal once, at its opener, and follows
-\ nothing after it, here a file that is not there. In a body, opened by `:` or
-\ by its synonym `kernel:`, it is one more error of a definition the check
-\ rejects and reads past: its loader is neither followed nor refused, and that
-\ missing file, required after the body, is refused at its `require`, as after
-\ a body holding any other error.
+\ in a body loads when the word runs, and the plain check and --all-errors
+\ follow its path after the definition, as they follow a plain one: decoded,
+\ or as written when it holds no escape, and kept for that load whatever the
+\ check decodes first, more paths in the same body or literals at top level
+\ while a package is open. --verify-only runs no body and imports nothing from
+\ one, so the first use of a word that file defines, after a call of the body's
+\ word, is deferred to the run, as any name nothing in scope defines is after a
+\ call that may load source. A bad escape in a loader's literal at top level is
+\ where the load stops: each check refuses that literal once, at its opener,
+\ and follows nothing after it, here a file that is not there. In a body,
+\ opened by `:` or by its synonym `kernel:`, it is one more error of a
+\ definition the check rejects and reads past: its loader is neither followed
+\ nor refused, and that missing file, required after the body, is refused at
+\ its `require`, as after a body holding any other error; --verify-only keeps
+\ the definition's refusal before it.
 : TEST-ESCAPED-PATH ( -- )
    SB-RESET
    s" : INCLUDED-WORD ( -- n ) 7 ;" SB-APPEND LF+
@@ -1152,7 +1184,7 @@ variable RC
    s" L" SB-APPEND LF+
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escaped-body-path.f" FIXTURE!
-   CERTIFIED
+   s" INCLUDED-WORD" 3 1 45 58 VERIFY-DEFERRED-AT
    s" " 0 LOADED
    s" an escaped path with no escape in a body" T-LABEL
    SB-RESET
@@ -1160,7 +1192,7 @@ variable RC
    s" L" SB-APPEND LF+
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escape-free-body-path.f" FIXTURE!
-   CERTIFIED
+   s" INCLUDED-WORD" 3 1 42 55 VERIFY-DEFERRED-AT
    s" " 0 LOADED
    SB-RESET
    s" : BODY-A-WORD ( -- n ) 1 ;" SB-APPEND LF+
@@ -1178,7 +1210,7 @@ variable RC
    s" L" SB-APPEND LF+
    s" BODY-A-WORD drop BODY-B-WORD drop BODY-C-WORD drop" SB-APPEND LF+
    s" escaped-body-paths.f" FIXTURE!
-   CERTIFIED
+   s" BODY-A-WORD" 3 1 93 104 VERIFY-DEFERRED-AT
    s" " 0 LOADED
    s" an escaped path in a body, escaped literals before its package closes" T-LABEL
    SB-RESET
@@ -1191,7 +1223,7 @@ variable RC
    s" DPT-ESC:L" SB-APPEND LF+
    s" BODY-A-WORD drop" SB-APPEND LF+
    s" escaped-body-path-package.f" FIXTURE!
-   CERTIFIED
+   s" BODY-A-WORD" 8 1 147 158 VERIFY-DEFERRED-AT
    s" " 0 LOADED
    s" an escaped path over the capacity as written, within it decoded" T-LABEL
    250 s" escaped-steps-fit.f" STEPS-FIXTURE
@@ -1212,14 +1244,22 @@ variable RC
    s\" : L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
    s" require missing-dep.f" SB-APPEND LF+
    s" escaped-bad-body-path.f" FIXTURE!
-   s" E-MISSING-SOURCE" s" require" 2 1 42 49 REFUSED-AT
+   s" E-MISSING-SOURCE" s" require" 2 1 42 49 RUN-REFUSED-AT
+   s" --verify-only" CHECK
+   GJA-LINE# @ 2 T=
+   0 s" E-REJECTED" s\" s\\\"" 1 12 11 14 VERIFY-REJECTED-AT
+   1 s" E-MISSING-SOURCE" s" require" 2 1 42 49 VERIFY-REJECTED-AT
    s" bad string literal" 74 LOADED
    s" a bad escape in a loader's path in a kernel: body" T-LABEL
    SB-RESET
    s\" kernel: L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
    s" require missing-dep.f" SB-APPEND LF+
    s" escaped-bad-kernel-path.f" FIXTURE!
-   s" E-MISSING-SOURCE" s" require" 2 1 48 55 REFUSED-AT
+   s" E-MISSING-SOURCE" s" require" 2 1 48 55 RUN-REFUSED-AT
+   s" --verify-only" CHECK
+   GJA-LINE# @ 2 T=
+   0 s" E-REJECTED" s\" s\\\"" 1 18 17 20 VERIFY-REJECTED-AT
+   1 s" E-MISSING-SOURCE" s" require" 2 1 48 55 VERIFY-REJECTED-AT
    s" bad string literal" 74 LOADED ;
 
 \ A word the engine binds and no checker row types, as one a create caller
