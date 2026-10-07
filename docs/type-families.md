@@ -148,6 +148,7 @@ compact-enum   = header-clause* compact-variant+
 
 header-clause  = POLICY policy-name
                | DERIVE derive-name+
+               | OPAQUE
 
 field          = FIELD field-name type-expr
 
@@ -252,7 +253,13 @@ derives `addr` refuses a field named like any generated member — `make`,
 `unmake`, `at`, `bytes`, `cells`, `eq`, `hash` or `tag` — at that field's own
 token, and a fieldless family cannot derive `addr` at all.
 Private declarations expose generated operations only inside their owning
-package. Generated packages are sealed after publication.
+package. The header clause `OPAQUE` gives a public declaration the same
+placement for everything it generates — `MAKE`/`UNMAKE` and every `DERIVE`
+member — while the type stays nameable from every package: `BOX-MAKE` is the
+declaring package's private word, no `PKG-BOX:` namespace is reserved, and the
+package's own words are the only construction surface. `OPAQUE` is
+`STRUCTURE`-only, at most once, and requires a package and at least one field.
+Generated packages are sealed after publication.
 
 #### Field-projection checker capability (IMPLEMENTED)
 
@@ -376,7 +383,7 @@ all family, schema, wordlist, signature, reflection, snapshot, and AOT rows.
 
 Ownership within the transaction (settled 2026-07-20 after the STRUCTURE
 front-end lane stopped on an underspecified seam): the declaration-event
-module owns the transaction events for arity, `POLICY`, and `DERIVE` alongside
+module owns the transaction events for arity, `POLICY`, `DERIVE` and `OPAQUE` (with its package requirement) alongside
 the field event — front ends own only their grammar loops and hold no
 declaration state. Duplicate and reserved field-name rejects are raised by the
 unified field registry (§2.4) and surface unchanged through the field-event
@@ -519,33 +526,36 @@ qualified definition name to the named namespace's PUBLIC wid
 colon name as that package's public symbol (`src/core/checker.f`
 `CHECKER-RECORD-SYM`), so no name with a colon can land in a private wordlist.
 
-**Protection differs with it.** A public family's constructor namespace is
-marked protected (`prot-wid-add`), which is what refuses an extra tail in it and
-an `undefine` of a word in it. A private family has no namespace; its words sit
-in a wordlist the package goes on defining into, and marking that wid protected
-would refuse every later definition the package makes — in a sealed engine
-`EMIT-STORE-DEF-NAME` exits 84 `ENGINE-ERROR:SEAL-PACKAGE` on a publish into a
-protected wid. So a private family stages no wordlist, and its words are
-protected **by name** instead: `TFAM-CTOR-WORD?` recognises the private spelling
-while the declaring package is open, and `CTOR-WORD?-XT` refuses `undefine` with
-`E-CTOR-PROTECTED`. There is no extra-tail rule for a private family, because
-there is no reserved package for a stray tail to extend. `TFAM-CTOR-WORD?`
-answers for the whole generated membership — constructors, derived tails and,
-through `TFAM-ADDR-WORD-XT`, the address accessors — because the undefine guard,
-the closed-package extra-tail rule, `src/habu/xref.f`'s protected-WID assertions
-and its generated-declaration name preflight all ask that one question.
+**Protection differs with it.** The constructor namespace of a family whose
+generated words are public (a public family without OPAQUE) is marked protected
+(`prot-wid-add`), which is what refuses an extra tail in it and an `undefine` of
+a word in it. A family whose generated words are private (a private family, or a
+public one declared OPAQUE) has no namespace; its words sit in a wordlist the
+package goes on defining into, and marking that wid protected would refuse every
+later definition the package makes — in a sealed engine `EMIT-STORE-DEF-NAME`
+exits 84 `ENGINE-ERROR:SEAL-PACKAGE` on a publish into a protected wid. So such
+a family stages no wordlist, and its words are protected **by name** instead:
+`TFAM-CTOR-WORD?` recognises the private spelling while the declaring package is
+open, and `CTOR-WORD?-XT` refuses `undefine` with `E-CTOR-PROTECTED`. There is
+no extra-tail rule for such a family, because there is no reserved package for a
+stray tail to extend. `TFAM-CTOR-WORD?` answers for the whole generated
+membership — constructors, derived tails and, through `TFAM-ADDR-WORD-XT`, the
+address and initialized-field accessors — because the undefine guard, the
+closed-package extra-tail rule, `src/habu/xref.f`'s protected-WID assertions and
+its generated-declaration name preflight all ask that one question.
 
 The names that guard covers are exactly the **member set** the generator
 publishes for that family — `MAKE` and `UNMAKE`, the pair
 `src/core/structure-make.f` emits — spelled against the family tail, and nothing
 else. It is a list in `TF-PRIV-MEMBER$` (`src/core/type-family.f`) that a later
 generator extends. Three kinds of family therefore protect no private name at
-all: a public one (its words wear the qualified spelling), a private SUM or ENUM
-(which publishes no word — it constructs through the checker-owned token), and a
-zero-field opaque product (which publishes no pair). Inside a package that
-declares a private `SUMTYPE colour`, an ordinary `: COLOUR-RED … ;` is the
-package's own word and `undefine COLOUR-RED` succeeds: a variant name is not a
-generated member.
+all: one whose generated words are public (a public family without OPAQUE: its
+words wear the qualified spelling), a private SUM or ENUM (which publishes no
+word — it constructs through the checker-owned token), and a zero-field
+structure (the opaque one-cell family of §2.2, which publishes no pair). Inside
+a package that declares a private `SUMTYPE colour`, an ordinary
+`: COLOUR-RED … ;` is the package's own word and `undefine COLOUR-RED`
+succeeds: a variant name is not a generated member.
 
 For `option`:
 

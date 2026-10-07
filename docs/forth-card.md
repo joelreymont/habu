@@ -284,7 +284,7 @@ Every form loaded and its accessor effect certified.
 | `n PTR-U8-TABLE TT` | a fixed table of byte pointers | `( -- ptr ptr u8 )`, indexed with `ptr-field` |
 | `DYNAMIC-BUFFER DB t` | a growable mapped array, `u8` a byte row | `( n -- ptr t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire ptrs, release before an image save |
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
-| `STRUCTURE p 0 FIELD x n … ;STRUCTURE` | a by-value record; a 34-cell nested native roundtrip is tested | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled |
+| `STRUCTURE p 0 FIELD x n … ;STRUCTURE` | a by-value record; a 34-cell nested native roundtrip is tested | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled; `STRUCTURE p 0 OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE` |
 
 A definer that writes its word as text (`+USER`, `COMMAND`) states what it makes
 with `generates: D ( effect )` after D's definition, so `tools/check.f` checks

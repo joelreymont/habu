@@ -611,12 +611,17 @@ Inside the one declaration transaction, for a family `F` with fields
 `f₀ … fₙ`. **A family's visibility picks the spelling and the wordlist**, and the
 two forms are `TF-CTOR-PKG$` and `TF-CTOR-PRIV$` in `src/core/type-family.f`:
 
-| | public `F` | private `F` |
+| | public `F` | private or `OPAQUE` `F` |
 |---|---|---|
 | spelling | `PKG-FAMILY:member` | `FAMILY-member` |
 | derived from | package name, then the family tail, internal hyphens doubled, capped at `TF-CTOR-NAME-LIMIT` = 32 characters with a SHA-256 fallback past the cap | the family tail, `-`, the member — uppercased, no escaping, no cap, no hash |
 | lands in | the reserved constructor **namespace**, which is global | the **declaring package's private wordlist** |
 | resolvable from | anywhere, qualified | that one package only |
+
+A public family that says `OPAQUE` in its header takes the right column for
+every generated word while its type keeps the left column's reach: the registry
+predicate `TFAM-GEN-PUBLIC?` (`src/core/type-family.f`) answers placement,
+`TFAM-PUBLIC?` answers visibility.
 
 The private form drops the package segment and the escaping because every use of
 it is inside the one package that declared the family, where the package name

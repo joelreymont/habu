@@ -603,18 +603,24 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   single-shape record with named fields in declaration order, deepest field
   first on the stack. A structure with fields generates sealed `MAKE`/`UNMAKE`:
   `PKG-FAMILY:MAKE` in the constructor namespace for a public package family,
-  `FAMILY-MAKE` in the declaring package's private wordlist for a private one. A
-  fieldless structure is an opaque cell family with no generated constructor or
-  destructor.
+  `FAMILY-MAKE` in the declaring package's private wordlist for a private one.
+  The header `OPAQUE` keeps a public family's type nameable from every package
+  and gives its generated words — the pair and every `DERIVE` member — the
+  private placement: `STRUCTURE box 0 OPAQUE FIELD x n ;STRUCTURE` in `package
+  OP` defines `BOX-MAKE` / `BOX-UNMAKE` as OP's private words, reserves no
+  `OP-BOX:` namespace, and another package constructs a `box` only through the
+  words OP defines over them. A fieldless structure is an opaque cell family
+  with no generated constructor or destructor.
 - Full `ENUM name arity [ header… ] VARIANT v FIELD f type … ;VARIANT … ;ENUM`
   declares named alternatives with named payload fields; a variant may have
   none. Its tag is its declaration order; generated constructors feed an
   exhaustive `MATCH … ;MATCH`.
 - Compact `ENUM name [ header… ] v0 v1 … ;ENUM` declares payloadless variants
   from bare names, with implicit arity zero; never mix it with `VARIANT` blocks.
-- `POLICY` and `DERIVE` headers precede the first field or variant: after the
+- `POLICY`, `DERIVE` and `OPAQUE` headers precede the first field or variant: after the
   name on compact `ENUM`, after the arity on `STRUCTURE` or full `ENUM`;
-  repeating a feature rejects. `DERIVE addr` on a structure with fields
+  repeating a feature rejects; `OPAQUE` is `STRUCTURE`-only, once, and needs a
+  package and a field. `DERIVE addr` on a structure with fields
   generates typed field-address accessors plus `AT`, `BYTES` and `CELLS`: a
   global public `point` with `FIELD x n` gains `POINT:X ( ptr point -- ptr n )`,
   read and written with the field type's ordinary checked operations
@@ -1591,6 +1597,15 @@ passing suite.
 Each of these was measured on the engine; the fact that proved it is beside
 the rule.
 
+- **`OPAQUE` is refused where it would hide nothing.** `STRUCTURE b 0 FIELD x n
+  OPAQUE ;STRUCTURE` is `header clause after the first field` (7107), `0 OPAQUE
+  OPAQUE` is `a second OPAQUE clause in one declaration` (7206), `STRUCTURE b 0
+  OPAQUE ;STRUCTURE` is `opaque requires a family with fields` (7107), `ENUM e
+  0 OPAQUE …` is `unexpected token in enum declaration` (7107), and a top-level
+  `STRUCTURE b 0 OPAQUE FIELD x n ;STRUCTURE` is `OPAQUE requires a family
+  declared in a package` (7207): there is no private wordlist for the pair.
+  Each rolls the declaration back and the loader goes on
+  (test/structure-decl-suite.f section 16, test/structure-opaque-e2e.f).
 - **Nothing is defined live while a checker overlay is open.** The overlay's
   close puts the dictionary count, the code pointer and the wordlist counter
   back where `CHECKER-SCOPE-START-NEUTRAL` or the verifier window found them.
