@@ -1,6 +1,4 @@
 \ layout.f -- macos-aarch64 executable/data layout constants.
-\ A trusted cast refines computed header/GOT addresses for runtime reads.
-\ Retirement: habu-sweep-trusted-out-41e973ce.
 
 $D8 constant IMAGE-TEXT-SIZE-OFF
 0 constant IMAGE-TEXT-CONTENT-ADJ
@@ -10,13 +8,17 @@ $10000000000 constant DATA-SIZE
 $1000 constant CODE-OFF
 $3FFF constant MACHO-PAGE-MASK
 
-TRUSTED: MACHO>N-PTR ( n -- ptr n ) ;
-
-: MACHO-IMAGE-BASE ( -- n )
-   rbase CODE-OFF - ;
+package IMAGE-CELL
+private
+\ The running image's cells are addressed by byte offset from its base, an integer.
+CAST: N>CELL ( n -- ptr n )
+public
+\ The cell at byte offset n into the running image.
+: AT ( n -- ptr n ) rbase CODE-OFF - + N>CELL ;
+;package
 
 : MACHO-TEXT-CELL ( -- ptr n )
-   MACHO-IMAGE-BASE IMAGE-TEXT-SIZE-OFF + MACHO>N-PTR ;
+   IMAGE-TEXT-SIZE-OFF IMAGE-CELL:AT ;
 
 : MACHO-TEXT-CONTENT ( -- n )
    MACHO-TEXT-CELL @ ;
@@ -28,7 +30,7 @@ TRUSTED: MACHO>N-PTR ( n -- ptr n ) ;
    CODE-OFF MACHO-TEXT-CONTENT + MACHO-PAGE-ALIGN ;
 
 : DLOPEN-SLOT ( -- ptr n )
-   MACHO-IMAGE-BASE MACHO-TEXT-SIZE + MACHO>N-PTR ;
+   MACHO-TEXT-SIZE IMAGE-CELL:AT ;
 
 : DLSYM-SLOT ( -- ptr n )
    DLOPEN-SLOT $8 + ;

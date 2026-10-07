@@ -17590,7 +17590,10 @@ variable LCO
      1 + REPEAT drop ;
 
 \ a typed local `a:n` stores the BARE name (matching the engine) and unifies
-\ the local's type var with the asserted type — a wrong use then rejects.
+\ the local's type var with the asserted type — a wrong use then rejects. The
+\ type is read from the declaration's raw bytes, as a signature reads its own:
+\ CT-FIND matches a DEFLINEAR name by its declared spelling, so the folded
+\ `pkg:own` names nothing where `PKG:own` names the linear type.
 : LOC-SHOW-SUFFIX? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = if a c@ 63 = exit then
    RES-FALSE ;
@@ -17657,7 +17660,7 @@ variable LCO
      1 LOCSEQ @ cells LOC-HW + !
      LOCSEQ @ 1 + LOCSEQ !
      LCO @ u < IF
-      a u #LOC @ LOC-ANN
+      ra u #LOC @ LOC-ANN                          \ the type as written, as a signature reads it
      THEN
      #LOC @ 1 + #LOC ! THEN THEN ;
 

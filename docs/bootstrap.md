@@ -494,24 +494,21 @@ Three facts decide how a change reaches the fixpoint:
   `… DIE 0 ;` in a `( -- n )` word is `E-DEAD-CODE` under the new checker and
   `… DIE ;` a stack mismatch under the old one, while
   `cond 0= if … DIE then  value ;` certifies under both.
-- **A core-prefix definition the checker refuses compiles against its
-  declaration, and only its reason on stderr says so.** The window compiles
-  `src/core/util.f` through `src/core/layout-valid.f` before its own
-  `src/core/check-hook.f` installs a hook, so `src/compiler/native/compiler.f`
-  `CHECK-HOOKLESS` prints the scan's reason and enforces nothing, and
-  `DECLARE-HOOKLESS` records the declaration as the definition's row.
-  Measured: `: EXP-MIS ( n -- n ) 0= ;` appended to `src/core/util.f` prints
-  `habu: in exp-mis: at '0=' expected: n actual: bool` and the build ends
-  `native-build OK`, rc 0. A body the native compiler cannot lower against
-  that row dies after the reason:
-  `: EXP-FWD ( -- n ) EXP-LATER ;  : EXP-LATER ( -- n ) 5 ;` appended there
-  prints `E-UNDEFINED habu: in exp-fwd: undefined word 'EXP-LATER'`,
-  `ncomp: cannot compile EXP-FWD at EXP-LATER` and
-  `native-build: uncaught throw code -8286` (`E-HIR-UNMODELED`), rc 74. A
-  definition with no signature has no row to record, and `KEEP-ARITY` refuses
-  it after the reason. A prefix build's stderr is therefore the guard:
-  `test/native-window-owner.f` `TIER1-CASE` asserts it empty, and
-  `test/compiler/native-hookless-reject.f` pins both outcomes.
+- **A native build refuses a rejected core-prefix definition before
+  publication.** The window loads `src/core/util.f` through
+  `src/core/check-hook.f` before its own hook is installed, so the build borrows
+  the retained compiler's required-scan entry for that span, including the
+  checker handover. A non-certified, non-`TRUSTED:` body makes
+  `CHECK-HOOKLESS` report its reason and throw 70; the driver restores its prior
+  compiler dispatch on success or throw before loading `src/core/roles.f`.
+  The build's catch returns rc 74 and promotes no product. Measured by
+  `test/compiler/native-hookless-reject.f`: a mismatched
+  `: PROBE-NZ ( n -- n ) 0= ;` in `src/core/util.f` refuses, while the same
+  explicit `TRUSTED:` definition builds. Ordinary `0 set-check` compilation
+  still records the declaration and can run a body whose scan it did not
+  certify. A host built before `NCOMP:COMPILE-CHECKED` cannot load the new build
+  driver: first build the compiler with the old driver, then use that product
+  to build with the updated driver.
 - **A new `lib/errors.f` code or `src/habu/layout.f` band that `lib/fs.f`
   reads lands through a stage host.** `tools/native-build-core.f` requires
   `lib/fs.f` from the tree, and the host resolves its names against its own

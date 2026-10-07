@@ -208,7 +208,16 @@ TYPED-VARIABLE SOURCE-TAIL [ -- ]
       0 TARGET-SOURCE-BOUND !
    then ;
 
-: LOAD-TARGET ( -- )
+TYPED-VARIABLE PREFIX-DISPATCH [ ptr u8 n -- ]
+CAST: PREFIX-COMPILE-XT ( n -- [ ptr u8 n -- ] )
+
+: RESTORE-PREFIX-DISPATCH ( -- )
+   PREFIX-DISPATCH @ NCOMP:DISPATCH! ;
+
+\ Borrow the retained compiler only while the target has no check hook. The
+\ target's own NCOMP:INSTALL later replaces this dispatch after its source load.
+: LOAD-CHECKED-PREFIX ( -- )
+   ['] NCOMP:COMPILE-CHECKED NCOMP:DISPATCH!
    s" src/core/util.f" included
    s" src/core/cell.f" included
    s" src/core/pointer-storage.f" included
@@ -233,7 +242,15 @@ TYPED-VARIABLE SOURCE-TAIL [ -- ]
    \ the retained compiler's paired checker; later calls use this one.
    CHECKER-OWNER:CAPTURE-PREPARE
    CHECKER-OWNER AOT-ARM:PAYLOAD-PERSISTENT
-   s" src/core/check-hook.f" included
+   s" src/core/check-hook.f" included ;
+
+: CHECKED-PREFIX ( -- )
+   data-base NCOMP-DISPATCH:XT-CELL + CELL-VIEW @ PREFIX-COMPILE-XT
+      PREFIX-DISPATCH !
+   [: LOAD-CHECKED-PREFIX ;] [: RESTORE-PREFIX-DISPATCH ;] finally ;
+
+: LOAD-TARGET ( -- )
+   CHECKED-PREFIX
    s" src/core/roles.f" included
    s" src/core/cell-effects.f" included
    s" src/core/declaration-transaction.f" included
