@@ -29,13 +29,16 @@ execs. The test-pool timeout/reaper path depends on this invariant; parent-side
 `setpgid(child, child)` is racy and must not be used as the proof.
 
 - macOS wraps syscall 244, `posix_spawn(pid*, path, adesc, argv, envp)`. The
-  descriptor folds file actions and attributes; Habu emits dup2/chdir actions
-  and a `POSIX_SPAWN_SETPGROUP` attribute with pgroup 0.
+  descriptor folds file actions and attributes; Habu emits chdir, dup2,
+  inherit and close actions and a `POSIX_SPAWN_SETPGROUP` attribute with
+  pgroup 0. A stdio fd already on its number gets an inherit action, which
+  clears close-on-exec, since xnu's dup2 of an fd onto itself keeps the flag.
   Failures preserve the kernel errno as a negative pid code.
 - Linux uses a close-on-exec exec-failure pipe around `clone`/`execve`. The
-  child calls `setpgid(0,0)` before `chdir`, `dup2`, and `execve`; the parent
-  returns a pid only after the child has either successfully exec'd (pipe EOF)
-  or reported setup failure.
+  child calls `setpgid(0,0)` before `chdir`, `dup3` (`fcntl(F_SETFD, 0)` for
+  an fd already on its number), the close of each stdio source above 2, and
+  `execve`; the parent returns a pid only after the child has either
+  successfully exec'd (pipe EOF) or reported setup failure.
 
 `PROC-CMD:CWD! ( ptr u8 len -- )` runs every later `PROC-CMD` child from that
 directory instead of the loader's until `PROC-CMD:RESET` clears it; a missing
@@ -43,9 +46,11 @@ path or a non-directory is refused before any spawn (`E-PROC-PATH`). A gate uses
 it to start a relocated executable from a private directory and prove that it
 resolves nothing relative to the working directory.
 
-Pass a negative fd to leave that stream unchanged. Parent-only pipe and PTY fds
-must be marked close-on-exec before spawning, or children can inherit writers and
-prevent EOF.
+Pass a negative fd to leave that stream unchanged. A stdio fd may be marked
+close-on-exec: the spawn keeps it on 0, 1 or 2 and closes each stdio fd above 2
+in the child, once, leaving the parent's fds and flags alone. Parent-only pipe
+and PTY fds must still be marked close-on-exec before spawning, or children can
+inherit writers and prevent EOF.
 
 ## PTY Foundation
 

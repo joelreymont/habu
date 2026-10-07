@@ -2264,7 +2264,11 @@ rc hands the deadline on to its parent.
 `PROC-SPAWN-IO` takes a counted executable path followed by stdin, stdout, and stderr
 `fd` roles. Negative fd values mean inherit/default; nonnegative fd values are passed
 through explicitly. `PIPE-PAIR` creates a pipe as read fd then write fd.
-Parent-only pipe and PTY fds must be marked close-on-exec with `FD-CLOEXEC!`
+A stdio fd may be marked close-on-exec: the spawn keeps it on 0, 1 or 2 in the
+child, even when it already sits on that number, and then closes each stdio fd
+above 2 in the child, once, so the child holds it on its stdio number alone. The
+parent's fds and their flags are unchanged.
+Parent-only pipe and PTY fds must still be marked close-on-exec with `FD-CLOEXEC!`
 before spawning; this sets the Darwin `FD_CLOEXEC` flag. Parent write fds that
 may outlive the peer reader use `FD-NOSIGPIPE!` so failed writes return an
 ordinary syscall failure instead of terminating the parent. Parent code then

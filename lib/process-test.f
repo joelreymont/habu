@@ -656,6 +656,57 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
 : TEST-WAIT-BOUNDED-EDGE ( -- )
    [: PT-NOT-A-CHILD PT-LONGEST-MS PT-WAIT-AT drop ;] E-PROC-WAIT TTHROWSQ ;
 
+\ ---- spawned stdio -------------------------------------------------------------
+\ A child's stdio end may be close-on-exec, and one above 2 may be unmarked: the
+\ spawn keeps each on its stdio number and closes the source in the child.
+256 constant PT-SPAWN-ERR-CAP            \ room for cat's complaint on a red run
+create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
+
+\ Same number: the child program closes its fd 0, opens the capture's stdin pipe
+\ there and runs /bin/cat on it (test/process-stdin-zero-child.f). A spawn that
+\ left the close-on-exec flag on fd 0 hands cat a closed stdin.
+: TEST-SPAWN-SAME-NUMBER ( -- )
+   s" test/process-stdin-zero-child.f" PT-OUT 32 PT-SPAWN-ERR PT-SPAWN-ERR-CAP
+   PT-HB-TIMEOUT-MS PT-RUN-HB-SCRIPT {: outn errn code :}
+   s" spawn-stdio: same-number stdin: rc " type code FMT:.INT
+   s"  out " type PT-OUT outn type
+   s"  err " type PT-SPAWN-ERR errn type cr
+   code 0 T=
+   errn 0 T=
+   PT-OUT outn s" stdin-zero" T$= ;
+
+: PT-UNMARKED-SCRIPT ( -- ptr u8 n )
+   s" exec >&-; read x" ;
+
+\ Unmarked source: the stdout pipe's write end sits above 2 without
+\ close-on-exec. The child closes its stdout and lives on reading stdin, so the
+\ read end sees EOF only if the spawn closed the source in the child. The kill
+\ and the signal it answers prove the child was alive at EOF.
+: TEST-SPAWN-UNMARKED-SOURCE ( -- )
+   PIPE-PAIR {: in-r:fd in-w:fd :}
+   PIPE-PAIR {: out-r:fd out-w:fd :}
+   in-r FD-CLOEXEC!  in-w FD-CLOEXEC!  out-r FD-CLOEXEC!
+   PROC-ARGV-RESET
+   s" -c" >LEN PROC-ARGV+
+   PT-UNMARKED-SCRIPT >LEN PROC-ARGV+
+   s" /bin/sh" >LEN in-r out-w -1 >FD PROC-SPAWN-ARGV-IO {: child:pid :}
+   in-r FD>N close
+   out-w FD>N close
+   out-r PT-WAIT-MS >MS POLL-IN COUNT>N {: ready:n :}
+   ready 1 = if out-r FD>N PT-READ else -1 then {: got:n :}
+   child SIGKILL PROC-KILL-RAW RC>N {: killed:n :}
+   child PT-WAIT-MS >MS PROC-WAIT-BOUNDED {: oc :}
+   in-w FD>N close
+   out-r FD>N close
+   s" spawn-stdio: unmarked source: fd " type out-w FD>N FMT:.INT
+   s"  ready " type ready FMT:.INT
+   s"  read " type got FMT:.INT cr
+   out-w FD>N 2 > TTRUE
+   ready 1 T=
+   got 0 T=
+   killed 0 T=
+   PT-UNMARKED-SCRIPT s" " s" " oc SIGKILL T-OUTCOME-SIGNALED= ;
+
 : PROCESS-TEST-MAIN ( -- )
    T-RESET
    PT-PREPARE
@@ -674,6 +725,8 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
    TEST-WAIT-BOUNDED-EOF
    TEST-WAIT-BOUNDED-REFUSALS
    TEST-WAIT-BOUNDED-EDGE
+   TEST-SPAWN-SAME-NUMBER
+   TEST-SPAWN-UNMARKED-SOURCE
    TEST-PIPE
    TEST-WRITE-CLOSED-PIPE-NOSIGPIPE
    TEST-PROC-NONBLOCK-ARMED
