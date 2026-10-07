@@ -175,7 +175,10 @@
 \   definitions of the text before it, which workspace symbols still list
 \   ................................................. document-symbol-incomplete
 \ - an open document's outline answered from a later check of another
-\   document, which read its file from disk ... workspace-symbol-open-dependency
+\   document, which read its file from disk; with its file open again by
+\   another URI and other text, either document's outline answered with the
+\   other's definitions or at the other's URI
+\   ......................................... workspace-symbol-open-dependency
 \
 \ Go to definition
 \ - a use in an open document, at its first character or its last, or after a
@@ -189,6 +192,9 @@
 \ - a use of a dependency open with its lines swapped, unsaved, not answered
 \   with its declaring token's range in the text on disk the check read, at
 \   the URI the client opened it by ................. definition-dependency-open
+\ - a use in a document whose file is open by another URI too not answered at
+\   the URI the client opened the document by
+\   ......................................... workspace-symbol-open-dependency
 \ - a position in a document not open answered other than -32602
 \   ................................................... definition-not-open
 \ - a use asked about with the document's opening, answered before the check
@@ -1995,6 +2001,39 @@ CK-USE-MAX 1 + constant OVER-USINGS
    p pu URI-OF MSG+ s\" \"}}}" MSG+
    MSG$ FRAMED ;
 
+\ A request by this method and id's JSON text at character C of line L of
+\ the document opened from this path.
+: AT-ASK ( ptr u8 n ptr u8 n ptr u8 n n n -- )
+   {: m:ptr mu:n i:ptr iu:n p:ptr pu:n l:n c:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"method\":\"" MSG+ m mu MSG+
+   s\" \",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
+   p pu URI-OF MSG+
+   s\" \"},\"position\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c INT$ MSG+ s" }}}" MSG+
+   MSG$ FRAMED ;
+
+\ textDocument/definition, by its id's JSON text, at character C of line L of
+\ the document opened from this path.
+: DEFINITION-ASK ( ptr u8 n ptr u8 n n n -- )
+   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+   s" textDocument/definition" i iu p pu l c AT-ASK ;
+
+\ The next frame answers the request with this id's JSON text with one
+\ Location: this URI, from character C1 to C2 of line L.
+: LOCATED ( ptr u8 n ptr u8 n n n n -- )
+   {: i:ptr iu:n u:ptr uu:n l:n c1:n c2:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"result\":[{\"uri\":\"" MSG+ u uu MSG+
+   s\" \",\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c1 INT$ MSG+
+   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}}]}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
 \ The dependency's symbols: QUX-DEP in package QD, recorded folded, and the
 \ global QUX-V.
 : DEP-SYMBOLS+ ( -- )
@@ -2204,12 +2243,22 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" ( unsaved é🙂 comment )\n: REV-EDIT ( -- n ) 8 ;\n" ;
 : TEXT-OD ( -- ptr u8 n )  s\" require od-dep.f\n: REV-A ( -- n ) 1 ;\n" ;
 
+\ od-twin.f, a symlink to od-dep.f, and the other text its open document
+\ holds, whose definitions are on other lines than od-dep.f's.
+: OD-TWIN-PATH ( -- ptr u8 n )  s" od-twin.f" FIXTURE ;
+: TEXT-OD-TWIN ( -- ptr u8 n )
+   s\" \\ twin\n\n: REV-TWIN ( -- n ) 9 ;\n: REV-USE ( -- n ) REV-TWIN ;\n" ;
+
 \ od-dep.f open with text its disk file lacks, then od.f, which requires the
 \ file, open: a query lists REV-EDIT where the document places it, from its
 \ own check, and REV-A, and not REV-DISK, which od.f's check read from disk;
-\ od-dep.f's outline, after od.f's check, is REV-EDIT alone.
-\ od-dep.f closed, REV-DISK where the file on disk places it, answered before
-\ od.f's next check.
+\ od-dep.f's outline, after od.f's check, is REV-EDIT alone. The file open
+\ again through od-twin.f with its own text: each document's outline is its
+\ own definitions, at the URI the client opened it by, and a use in od-twin.f
+\ is at its declaration there.
+\ od-twin.f closed, and both documents checked again; then od-dep.f closed,
+\ REV-DISK where the file on disk places it, answered before od.f's next
+\ check.
 : OPEN-DEP-TURNS ( -- )
    OD-DEP-PATH TEXT-OD-DISK WRITE-ALL
    INITIALIZE
@@ -2230,11 +2279,32 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" 4" SYMBOLS-START
    s" REV-EDIT" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
    SYMBOLS-END
+   s" od-dep.f" OD-TWIN-PATH MAKE-SYMLINK
+   OD-TWIN-PATH TEXT-OD-TWIN 1 OPENS
+   SAY
+   TEXT-OD-TWIN OD-TWIN-PATH 1 s" verified" LISTED
+   s" 5" OD-TWIN-PATH OUTLINE-ASK
+   s" 6" OD-DEP-PATH OUTLINE-ASK
+   s" 7" OD-TWIN-PATH 3 19 DEFINITION-ASK
+   SAY
+   s" 5" SYMBOLS-START
+   s" REV-TWIN" 12 OD-TWIN-PATH URI-OF 2 2 10 s" " SYMBOL+
+   s" REV-USE" 12 OD-TWIN-PATH URI-OF 3 2 9 s" " SYMBOL+
+   SYMBOLS-END
+   s" 6" SYMBOLS-START
+   s" REV-EDIT" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
+   SYMBOLS-END
+   s" 7" OD-TWIN-PATH URI-OF 2 2 10 LOCATED
+   OD-TWIN-PATH CLOSES
+   SAY
+   OD-TWIN-PATH -1 EXPECT PUBLISHES
+   TEXT-OD-EDIT OD-DEP-PATH 1 s" verified" LISTED
+   TEXT-OD OD-PATH 1 s" verified" LISTED
    OD-DEP-PATH CLOSES
-   s" 5" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
+   s" 8" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
    SAY
    OD-DEP-PATH -1 EXPECT PUBLISHES
-   s" 5" SYMBOLS-START
+   s" 8" SYMBOLS-START
    s" REV-DISK" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
    s" REV-A" 12 OD-PATH URI-OF 1 2 7 s" " SYMBOL+
    SYMBOLS-END
@@ -2296,39 +2366,6 @@ variable LENGTH-N                        \ the length of its directory's name
 \ Uses of def-dep.f's global and, qualified, of its public word.
 : TEXT-DEF-B ( -- ptr u8 n )
    s\" require def-dep.f\n: DEF-USE ( -- n ) DEF-DEP DD:DEF-PUB + ;\n" ;
-
-\ A request by this method and id's JSON text at character C of line L of
-\ the document opened from this path.
-: AT-ASK ( ptr u8 n ptr u8 n ptr u8 n n n -- )
-   {: m:ptr mu:n i:ptr iu:n p:ptr pu:n l:n c:n :}
-   MSG-B CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
-   s\" ,\"method\":\"" MSG+ m mu MSG+
-   s\" \",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
-   p pu URI-OF MSG+
-   s\" \"},\"position\":{\"line\":" MSG+ l INT$ MSG+
-   s\" ,\"character\":" MSG+ c INT$ MSG+ s" }}}" MSG+
-   MSG$ FRAMED ;
-
-\ textDocument/definition, by its id's JSON text, at character C of line L of
-\ the document opened from this path.
-: DEFINITION-ASK ( ptr u8 n ptr u8 n n n -- )
-   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
-   s" textDocument/definition" i iu p pu l c AT-ASK ;
-
-\ The next frame answers the request with this id's JSON text with one
-\ Location: this URI, from character C1 to C2 of line L.
-: LOCATED ( ptr u8 n ptr u8 n n n n -- )
-   {: i:ptr iu:n u:ptr uu:n l:n c1:n c2:n :}
-   MSG-B CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
-   s\" ,\"result\":[{\"uri\":\"" MSG+ u uu MSG+
-   s\" \",\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
-   s\" ,\"character\":" MSG+ c1 INT$ MSG+
-   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
-   s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}}]}" MSG+
-   HEAR
-   MSG$ HEARD ;
 
 \ The next frame answers the request with this id's JSON text with no
 \ Location.

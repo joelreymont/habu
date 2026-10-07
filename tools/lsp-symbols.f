@@ -14,8 +14,9 @@
 \   word (tools/check-verify-child.f): 14 (Constant) for a constant, 13
 \   (Variable) for storage, 12 (Function) for a word or a re-export.
 \ - location: the range of the token that declared the word, at the URI of the
-\   open document that held its file when the check completed, else at the
-\   file URI of its path.
+\   checked document for its own file, whose text the range counts in, and
+\   for any other at the URI of the open document that held the file when the
+\   check completed, else at the file URI of its path.
 \ - containerName: the package the checker recorded the word under; a global
 \   has none.
 \ SYMBOL writes that SymbolInformation for one definition: document symbols

@@ -11,10 +11,10 @@
 \ definition, one whose last check did not complete and one that has none
 \ answer an empty list. Each is the SymbolInformation workspace symbols give
 \ (LSP-SYMBOLS:SYMBOL): its location is the token that declared the word, at
-\ the URI the client opened the document by.
+\ the URI the client opened the document by, whose text its range counts in.
 \
-\ STORAGE CLASS. PROCESS-GLOBAL: the answer being written belongs to the
-\ server's one task.
+\ STORAGE CLASS. CALLER-OWNED: the module keeps no state; the writer is the
+\ caller's, and the definitions are those tools/lsp-defs.f keeps.
 
 require lib/json-write.f
 require lib/adt/option.f
@@ -27,23 +27,21 @@ using LSP-DEFS
 
 private
 
-TYPED-VARIABLE OUT ptr JSON-WRITE:writer \ the answer's writer
-
 \ The symbol for record R of group G, a comma before it unless it is the
 \ group's first.
-: LISTED ( n n -- )
-   {: g:n r:n :}
-   OUT @
-   r g GROUP-FIRST <> if COMMA then
-   g r LSP-SYMBOLS:SYMBOL drop ;
+: LISTED ( ptr JSON-WRITE:writer n n -- ptr JSON-WRITE:writer )
+   {: w g:n r:n :}
+   w r g GROUP-FIRST <> if COMMA then
+   g r LSP-SYMBOLS:SYMBOL ;
 
 \ The symbols of group G.
-: SYMBOLS ( n -- )
-   {: g:n :}
+: SYMBOLS ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
+   {: w g:n :}
    g GROUP-FIRST begin dup 0 >= while
-      g over LISTED
+      w over g swap LISTED drop
       REC-NEXT
-   repeat drop ;
+   repeat drop
+   w ;
 
 public
 
@@ -51,13 +49,12 @@ public
 \ slot, the array the header describes, to the writer.
 : ANSWER ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
    {: w slot:n :}
-   w OUT !
-   w ARRAY-START drop
+   w ARRAY-START
    slot DEFS-OWN-GROUP MATCH option
       some OF SYMBOLS ENDOF
       none OF ENDOF
    ;MATCH
-   w ARRAY-END ;
+   ARRAY-END ;
 
 ;using
 ;using
