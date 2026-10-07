@@ -96,8 +96,6 @@ $20000 constant CAP
 create POOL CAP allot
 variable USED
 variable MARK
-variable SAVED-CHECK
-variable SAVED-TIER
 create KEY 32 allot
 create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 public
@@ -203,9 +201,6 @@ public
    s" graph width refusal preserved publication state" type cr ;
 
 : ARM ( -- ) CHECKER-SCOPE-START UEND @ MARK ! WINDOW-OPEN ;
-TRUSTED: ABI-BEGIN ( -- )
-   check@ SAVED-CHECK ! tier@ SAVED-TIER ! 0 set-check 1 TIER:SELECT ;
-TRUSTED: ABI-END ( -- ) SAVED-CHECK @ set-check SAVED-TIER @ TIER:SELECT ;
 : DECLARE-WIDE ( -- )
    s" payload-wide" s" 0 FIELD left n FIELD right r ;STRUCTURE" SD-REPLAY
    s" payload-empty" s" 0 ;STRUCTURE" SD-REPLAY
@@ -271,9 +266,9 @@ GRAPH-ROUNDTRIP:DECLARE-WIDE
 : PAYLOAD-NESTED-USE ( payload-option<payload-wide> -- payload-option<payload-wide> ) ;
 : PAYLOAD-POLY-USE ( payload-option<a> -- payload-option<a> ) ;
 : PAYLOAD-ZERO-ARG-USE ( payload-option<payload-empty> -- payload-option<payload-empty> ) ;
-GRAPH-ROUNDTRIP:ABI-BEGIN
+tier@ check@ 0 set-check 1 TIER:SELECT
 : PAYLOAD-ABI ( n -- n ) ;
-GRAPH-ROUNDTRIP:ABI-END
+LOWER-CERT-HOOK:INSTALL set-check TIER:SELECT
 \ Outside GRAPH-ROUNDTRIP, whose wordlist predates the window: the capture takes
 \ a record only from the global wordlist or one the window created
 \ (aot-capture.f ACAP-WID-IN?).

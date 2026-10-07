@@ -37,13 +37,7 @@ variable #CASE
 TYPED-VARIABLE SAE-A ptr u8   variable SAE-U
 : SAE-GO ( -- )  SAE-A @ SAE-U @ INCLUDE-EVALUATE ;
 
-variable SAVED-HOOK
-
 public
-
-\ A definition the checker never sees, bracketed at top level.
-TRUSTED: UNCHECKED+ ( -- ) check@ SAVED-HOOK ! 0 set-check ;
-TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
 
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
@@ -203,7 +197,7 @@ s\" package SAT-DT\n: SAT-DT-X ( n -- n ) 1 + ;\npublic\n: SAT-DT-X ( ptr u8 -- 
    SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
 s\" package SAT-DT\ns\q SAT-DT-X\q CHECKER-UNDEFINE\n: SAT-DT-USE ( -- n ) s\q ab\q drop SAT-DT-X ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT SHADOWED-ARITY:T=
-s\" package SAT-DU\nSHADOWED-ARITY:UNCHECKED+\n: SAT-DU-X ( n -- n ) 1 + ;\nSHADOWED-ARITY:UNCHECKED-\npublic\n: SAT-DU-X ( ptr u8 -- n ) drop 5 ;\n;package"
+s\" package SAT-DU\ncheck@ 0 set-check\n: SAT-DU-X ( n -- n ) 1 + ;\nLOWER-CERT-HOOK:INSTALL set-check\npublic\n: SAT-DU-X ( ptr u8 -- n ) drop 5 ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
 s\" package SAT-DU\n: SAT-DU-USE ( -- n ) s\q ab\q drop SAT-DU-X ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT SHADOWED-ARITY:T=
