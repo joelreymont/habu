@@ -275,16 +275,25 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    URI-SPAN URI:PATH>FILE {: n:n :}
    URI-SPAN SPAN:$ drop n ;
 
-\ The JSON string of the URI positions in the file at this path count at:
-\ the open document's that holds it, else the path's file URI.
-: URI-JSON ( ptr u8 n -- ptr u8 n )
+public
+
+\ The URI positions count at in the file at this path, another than the
+\ checked document's own: the open document's that holds it, else the path's
+\ file URI.
+: DEP-URI$ ( ptr u8 n -- ptr u8 n )
    {: p:ptr pu:n :}
-   ESC-W ESC-B JSON-WRITE:OPEN-BUF
    p pu DOC-HOLDING MATCH option
       some OF DOC-URI$ ENDOF
       none OF p pu FILE-URI$ ENDOF
-   ;MATCH
-   JSON-WRITE:STRING JSON-WRITE:$ ;
+   ;MATCH ;
+
+private
+
+\ The JSON string that writes this URI.
+: URI-JSON ( ptr u8 n -- ptr u8 n )
+   {: u:ptr uu:n :}
+   ESC-W ESC-B JSON-WRITE:OPEN-BUF
+   u uu JSON-WRITE:STRING JSON-WRITE:$ ;
 
 \ The slot of the document whose check the store is keeping: the newest
 \ block's.
@@ -297,7 +306,7 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    0 g G-OVER GROUP!
    FILE$ BYTES+ g G-PATH GROUP!
    FILE-U @ g G-PATH-U GROUP!
-   FILE$ URI-JSON {: ua:ptr uu:n :}
+   FILE$ DEP-URI$ URI-JSON {: ua:ptr uu:n :}
    ua uu BYTES+ g G-URI GROUP!
    uu g G-URI-U GROUP!
    -1 g G-FIRST GROUP!
