@@ -70,6 +70,18 @@ TDECL-SEEN-CAP PTR-U8-TABLE TDECL-SEEN-A
 create TDECL-SEEN-U TDECL-SEEN-CAP cells allot
 variable TDECL-SEEN-N
 : TDECL-SEEN-A-FIELD ( n -- ptr ptr u8 ) cells TDECL-SEEN-A + 0 ptr-field ;
+: TDECL-SEEN-CLEAR ( -- )
+   TDECL-SEEN-N @ 0 ?do
+      NULL-PTR i TDECL-SEEN-A-FIELD !
+      0 i cells TDECL-SEEN-U + !
+   loop
+   0 TDECL-SEEN-N ! ;
+
+\ The backing `allot` storage can contain pointers from the host's prior heap.
+\ A build captures DATA even when no declaration reads those scratch entries.
+TDECL-SEEN-CAP TDECL-SEEN-N !
+TDECL-SEEN-CLEAR
+
 : TDECL-SEEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 BEGIN dup TDECL-SEEN-N @ < WHILE
       dup TDECL-SEEN-A-FIELD @
@@ -169,7 +181,7 @@ private
    TDECL-MARK
    -1 TDECL-FAM-REG !               \ set by a successful sum registration only
    catch {: rc:n :}
-   0 TDECL-SEEN-N !
+   TDECL-SEEN-CLEAR
    rc 0= IF EXIT THEN
    TDECL-RESTORE
    rc E-TDECL-UNRESOLVED = IF rc throw THEN
@@ -188,7 +200,7 @@ private
    TDK-U ! TDK-A !
    0 TDT-U !  NULL-PTR TDT-A !
    SIG-UNRES-CLEAR
-   0 TDECL-SEEN-N !
+   TDECL-SEEN-CLEAR
    -1 TDECL-CUR-FAM !
    s" declaration failed" TDECL-WHY! ;
 
