@@ -31,9 +31,10 @@
 \ and writes for each duplicate, which the checker writes no packet for, a
 \ diagnostic line among the packets, for each file it reads a file line, once
 \ however often it reads the file and before anything in it, for each
-\ definition it retains a definition line, and for each use in the subject
-\ that the checker binds to a located declaration a use line, one JSON object
-\ each. It answers
+\ definition it retains a definition line, for each use in the subject that
+\ the checker binds to a located declaration a use line, and for each
+\ top-level loader of the subject whose load reached a file a load line, one
+\ JSON object each. It answers
 \
 \    check-verify: verified | refused | deferred | held
 \                | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
@@ -43,6 +44,7 @@
 \       "visibility":V,"effect":E,"file":F,"byte_start":S,"byte_end":N}
 \    check-verify: use {"byte_start":S,"byte_end":N,"file":F,
 \       "target_start":TS,"target_end":TN}
+\    check-verify: load {"byte_start":S,"byte_end":N,"path":P,"outcome":O}
 \    check-verify: candidate {"word":W,"file":F,"target_start":TS,
 \       "target_end":TN}
 \    check-verify: loader LEN TARGET
@@ -69,6 +71,14 @@
 \ use starts and ends in the subject, F the path the declaration's file was
 \ resolved to, and TS and TN where the token that declared it starts and ends
 \ there.
+\
+\ A load line names what src/habu/verify-source.f ON-LOADER reports, a
+\ top-level loader of the subject whose load reached a file, in the subject's
+\ order and before anything in that file: S and N where its operand starts and
+\ ends in the subject (the token after include or require, a string loader's
+\ literal between its quotes as written), P the canonical path, and O read,
+\ the file's bytes were acquired for this load, or held, a require of a path
+\ the engine provides or that was recorded before, which read nothing.
 \
 \ The third form is the first with a completion cursor at byte N of BYTES. It
 \ writes as well, for each spelling the checker offers at the cursor's place, a
@@ -415,6 +425,29 @@ variable LENIENT-FIRST                  \ the argument the --lenient paths start
    OUT-FD NEWLINE ;
 
 
+: LOAD-OUTCOME$ ( n -- ptr u8 n )
+   {: outcome:n :}
+   outcome VERIFY:LOAD-READ = if s" read" exit then
+   outcome VERIFY:LOAD-HELD = if s" held" exit then
+   s" check-verify: unknown load outcome" 74 die ;
+
+
+\ A top-level loader of the first form's subject whose load reached a file, as
+\ its load line.
+: LOAD-LINE ( n n ptr u8 n n -- )
+   {: at:n end:n path:ptr pathu:n outcome:n :}
+   OUT-FD s\" check-verify: load {\"byte_start\":" WRITE
+   OUT-FD at FD-N
+   OUT-FD s\" ,\"byte_end\":" WRITE
+   OUT-FD end FD-N
+   OUT-FD s\" ,\"path\":" WRITE
+   path pathu JSON-STR
+   OUT-FD s\" ,\"outcome\":" WRITE
+   outcome LOAD-OUTCOME$ JSON-STR
+   OUT-FD s" }" WRITE
+   OUT-FD NEWLINE ;
+
+
 \ A spelling the third form's cursor offers, as its candidate line.
 : CANDIDATE-LINE ( ptr u8 n ptr u8 n n n -- )
    {: w:ptr wu:n path:ptr pathu:n tat:n tend:n :}
@@ -453,6 +486,7 @@ variable LENIENT-FIRST                  \ the argument the --lenient paths start
    ['] FILE-LINE is VERIFY:ON-FILE
    ['] DEFINITION-LINE is VERIFY:ON-DEFINITION
    ['] USE-LINE is VERIFY:ON-USE
+   ['] LOAD-LINE is VERIFY:ON-LOADER
    ['] CANDIDATE-LINE is VERIFY:ON-CANDIDATE
    ['] LENIENT-ARG? is VERIFY:LENIENT-FILE?
    MULTI-ERR-BEGIN
