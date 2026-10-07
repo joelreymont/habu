@@ -282,13 +282,14 @@ public
 \ fault, as the legacy definers' reporter TDECL-RUN answers. Otherwise the
 \ reject is rethrown with its own code; the checker publishes rendered refusals
 \ before throwing, so an uncaught load exits as a refusal.
-: GUARD ( [ -- ] -- )
-   catch {: rc:n :}
+: GUARD-CODE ( n -- )
+   {: rc:n :}
    rc 0= IF FORGET-SRC EXIT THEN
    rc RENDER
    FORGET-SRC
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    rc CHECKER-REFUSE ;
+: GUARD ( [ -- ] -- ) catch GUARD-CODE ;
 
 \ Reflection for the suites: what the packet would report right now.
 : KIND$ ( -- ptr u8 n ) S-KIND SLOT@ ;

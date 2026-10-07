@@ -1288,6 +1288,7 @@ private
 \ no checked row for its constants (test/cold-naming-test.f).
 CTL-RENDERS constant MARK-RENDERS
 CTL-RENDERS CTL-CREATES or constant MARK-UNSEEN
+CTL-RENDERS CTL-NOMINAL or constant MARK-NOMINAL
 
 \ A call in the body of the TRUSTED: word NAME: the checker adds what the word
 \ the token names may do when it runs to what NAME may do
@@ -1452,6 +1453,13 @@ variable DEFER-SEEN                              \ and has reported one
 CAST: STRETCH-ACTION ( n -- [ ptr u8 n -- ] )
 : REPORT-STRETCH ( ptr u8 n -- )
    NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-OFF OWNER-XT STRETCH-ACTION execute ;
+
+: QUIET-TYPE-CLEAR ( -- )
+   0 SIG-UNRES !  NULL-PTR SIG-UNRES-A !  0 SIG-UNRES-U ! ;
+: QUIET-TYPE-REPORT ( -- )
+   DEFER-REPORT @ IF SIG-UNRES-A @ SIG-UNRES-U @ REPORT-STRETCH
+      -1 DEFER-SEEN ! THEN
+   QUIET-TYPE-CLEAR ;
 
 \ A body the checker deferred to the run (verdict 2) is reported where the
 \ checker's judgment of it stopped (CHECKER-VERIFY-DEFERRED-BODY), when the
@@ -2018,9 +2026,10 @@ DUPLICATE-INIT
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    {: kept:bool :}
-   name nameu CHECKER-DEFER
+   kept IF name nameu CHECKER-DEFER THEN
    DISARM
-   kept IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN ;
+   kept IF name nameu sig sigu at DEF-WORD DEFINED-HERE
+   ELSE SIG-UNRES @ IF QUIET-TYPE-REPORT THEN THEN ;
 
 : TRUST-DEFER ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
@@ -2061,7 +2070,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
 \ bodies in src/compiler/native/checker-owner.f name fields as `s" does> …"`).
 \ What running the word may do is still what its calls may do, and the tokens
 \ before its `does>` run when it does (TRUSTED-CALL).
-: SCAN-TRUSTED-BODY ( ptr u8 n -- ) {: na:ptr nu:n :}
+: SCAN-TRUSTED-BODY ( ptr u8 n bool -- ) {: na:ptr nu:n kept:bool :}
    BODY-LOAD-RESET
    LOCALS-RESET
    0 TRUSTED-DOES !
@@ -2070,10 +2079,11 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
       TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF EXIT THEN
       LOCAL-TOKEN? 0=  TOKEN-A @ TOKEN-U @ s" does>" STR=CI  and IF
-         REQUIRE-SIGNATURE na nu DEFINER-RECORD-AS
+         REQUIRE-SIGNATURE
+         kept IF na nu DEFINER-RECORD-AS ELSE 2drop THEN
          -1 TRUSTED-DOES !
       ELSE
-         na nu TRUSTED-CALL
+         kept IF na nu TRUSTED-CALL THEN
          SKIP-DEF-TOKEN
       THEN
    AGAIN ;
@@ -2092,11 +2102,13 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
+   {: kept:bool :}
    DISARM
-   IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN
-   name nameu SCAN-TRUSTED-BODY
+   kept IF name nameu sig sigu at DEF-WORD DEFINED-HERE
+   ELSE SIG-UNRES @ IF QUIET-TYPE-REPORT THEN THEN
+   name nameu kept SCAN-TRUSTED-BODY
    name nameu at TRUSTED-DOES @ 0<> REFUSE-SHAPE IF EXIT THEN
-   TRUSTED-DOES @ IF name nameu TRUSTED-CLAUSE THEN ;
+   TRUSTED-DOES @ kept and IF name nameu TRUSTED-CLAUSE THEN ;
 
 \ A cast has no body and no `;`, so unlike TRUSTED-DEFINITION above there is
 \ nothing to skip: the declaration ends at its closing paren. Registration goes
@@ -2127,6 +2139,12 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    name nameu sig sigu CHECKER-LINEAR
    DISARM
    name nameu sig sigu at DEF-WORD DEFINED-HERE ;
+
+: IDENTITY-OUTCOME ( n -- ) {: rc:n :}
+   rc 0= IF EXIT THEN
+   DISARM
+   rc E-CHECKER-IDENTITY-UNRESOLVED <> IF rc throw THEN
+   QUIET-TYPE-REPORT ;
 
 : UNDEFINE-WORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
@@ -2290,7 +2308,11 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
       dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
       2dup ENUM-END? IF
          BODY-APPEND
-         name nameu BODY$ ENUM-DECL:ED-REPLAY
+         name nameu BODY$ ENUM-DECL:ED-REPLAY-OUTCOME
+         IF
+            DEFER-REPORT @ IF REPORT-STRETCH -1 DEFER-SEEN !
+            ELSE 2drop THEN
+         ELSE 2drop THEN
          EXIT
       THEN
       BODY-APPEND
@@ -2317,7 +2339,11 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
       dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
       2dup STRUCTURE-DECL-END? IF
          BODY-APPEND
-         name nameu BODY$ STRUCTURE-DECL:SD-REPLAY
+         name nameu BODY$ STRUCTURE-DECL:SD-REPLAY-OUTCOME
+         IF
+            DEFER-REPORT @ IF REPORT-STRETCH -1 DEFER-SEEN !
+            ELSE 2drop THEN
+         ELSE 2drop THEN
          EXIT
       THEN
       BODY-APPEND
@@ -2347,6 +2373,11 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
       BODY-APPEND
    AGAIN ;
 
+: LEGACY-TYPE-OUTCOME ( n -- ) {: rc:n :}
+   rc 0= IF EXIT THEN
+   rc TYPE-DECL:E-TDECL-UNRESOLVED <> IF rc throw THEN
+   QUIET-TYPE-REPORT ;
+
 \ Every storage definer's gate registration reads its declaration here, as its
 \ definer does (src/core/layout-buffer.f STORAGE-PARSE-TYPE). A stored type may
 \ be `ptr* base`, a family application or a spaced quotation or scheme, so the
@@ -2360,6 +2391,8 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
 PTR-VARIABLE STG-A
 variable STG-U
 PTR-VARIABLE STG-START
+PTR-VARIABLE STG-TYPE-A
+variable STG-TYPE-U
 
 \ The next token, as the definer's parse-name reads it, when it stands on the
 \ scanner's line: the bytes before it hold no line feed
@@ -2384,7 +2417,8 @@ PTR-VARIABLE STG-START
    SCAN-LINE-TOKEN STG-U !  STG-A !
    STG-A @ STG-START !
    0 BEGIN STG-A @ STG-U @ CHECKER-TYPE-SPAN-STEP SCAN-STORAGE-MORE? 0= UNTIL drop
-   STG-START @  STG-A @ STG-U @ + STG-START @ - ;
+   STG-START @  STG-A @ STG-U @ + STG-START @ -
+   2dup STG-TYPE-U ! STG-TYPE-A ! ;
 
 \ The declared name. With none on the definer's line it is empty, and the
 \ definer's token is refused as its run refuses it.
@@ -2466,6 +2500,16 @@ PTR-VARIABLE STG-START
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
+\ Storage registrars resolve their complete type before publishing a word.
+\ A missing nominal outcome therefore leaves only the scoped uncertainty mark.
+: STORAGE-OUTCOME ( n -- ) {: rc:n :}
+   rc 0= IF EXIT THEN
+   DISARM
+   rc E-CHECKER-STORAGE-UNRESOLVED <> IF rc throw THEN
+   DEFER-REPORT @ IF STG-TYPE-A @ STG-TYPE-U @ REPORT-STRETCH
+      -1 DEFER-SEEN ! THEN
+   QUIET-TYPE-CLEAR ;
+
 \ The source byte body byte at was read from, in the newest run BODY-ROW!
 \ started at or before it.
 : BODY>BYTE ( n -- n )
@@ -2504,6 +2548,11 @@ PTR-VARIABLE STG-START
       THEN
       BODY-APPEND
    AGAIN ;
+
+: VALUE-RECORD-OUTCOME ( n -- ) {: rc:n :}
+   rc 0= IF EXIT THEN
+   rc E-CHECKER-RECORD-UNRESOLVED <> IF rc throw THEN
+   QUIET-TYPE-REPORT ;
 
 : RECORD-TRUST ( -- )
    STR-LAST-U @ 0= IF E-VS-BARE-TRUST STATEMENT-STOP THEN
@@ -3057,18 +3106,26 @@ variable FFI-SIG-U
    a u s" ;using" STR=CI IF RECORD-END-USING 0 0= EXIT THEN
    a u s" deftype" STR=CI IF RECORD-DEFTYPE 0 0= EXIT THEN
    a u s" deflinear" STR=CI IF RECORD-DEFLINEAR 0 0= EXIT THEN
-   a u s" value-record" STR=CI IF RECORD-VALUE-RECORD 0 0= EXIT THEN
+   a u s" value-record" STR=CI IF
+      [: RECORD-VALUE-RECORD ;] catch VALUE-RECORD-OUTCOME 0 0= EXIT THEN
    a u s" begin-structure" STR=CI IF RECORD-STRUCTURE 0 0= EXIT THEN
    a u s" structure" STR=CI IF RECORD-STRUCTURE-DECL 0 0= EXIT THEN
    a u s" newtype" STR=CI IF RECORD-NEWTYPE 0 0= EXIT THEN
-   a u s" sumtype" STR=CI IF RECORD-SUMTYPE 0 0= EXIT THEN
+   a u s" sumtype" STR=CI IF
+      [: RECORD-SUMTYPE ;] catch LEGACY-TYPE-OUTCOME 0 0= EXIT THEN
    a u s" enum" STR=CI IF RECORD-ENUM 0 0= EXIT THEN
-   a u s" product" STR=CI IF RECORD-PRODUCT 0 0= EXIT THEN
-   a u s" LAYOUT-BUFFER" STR=CI IF RECORD-LAYOUT-BUFFER 0 0= EXIT THEN
-   a u s" DEFER-LAYOUT-BUFFER" STR=CI IF RECORD-DEFER-LAYOUT-BUFFER 0 0= EXIT THEN
-   a u s" TYPED-BUFFER" STR=CI IF RECORD-TYPED-BUFFER 0 0= EXIT THEN
-   a u s" TYPED-VARIABLE" STR=CI IF RECORD-TYPED-VARIABLE 0 0= EXIT THEN
-   a u s" DYNAMIC-BUFFER" STR=CI IF RECORD-DYNAMIC-BUFFER 0 0= EXIT THEN
+   a u s" product" STR=CI IF
+      [: RECORD-PRODUCT ;] catch LEGACY-TYPE-OUTCOME 0 0= EXIT THEN
+   a u s" LAYOUT-BUFFER" STR=CI IF
+      [: RECORD-LAYOUT-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+   a u s" DEFER-LAYOUT-BUFFER" STR=CI IF
+      [: RECORD-DEFER-LAYOUT-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+   a u s" TYPED-BUFFER" STR=CI IF
+      [: RECORD-TYPED-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+   a u s" TYPED-VARIABLE" STR=CI IF
+      [: RECORD-TYPED-VARIABLE ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+   a u s" DYNAMIC-BUFFER" STR=CI IF
+      [: RECORD-DYNAMIC-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    \ `constant` bakes one physical cell, so its trust is the one-cell `-- a`
    \ model — identical to native C-CONSTANT, all-errors (which funnels here),
    \ and public-signatures. This is the PERMANENT contract (TFAM 12 verdict
@@ -3095,8 +3152,10 @@ variable FFI-SIG-U
    a u s" PRIM:" STR=CI IF RECORD-PRIM 0 0= EXIT THEN
    a u s" PPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN
    a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
-   a u s" cast:" STR=CI IF CAST-DECLARATION 0 0= EXIT THEN
-   a u s" linear:" STR=CI IF LINEAR-DECLARATION 0 0= EXIT THEN
+   a u s" cast:" STR=CI IF
+      [: CAST-DECLARATION ;] catch IDENTITY-OUTCOME 0 0= EXIT THEN
+   a u s" linear:" STR=CI IF
+      [: LINEAR-DECLARATION ;] catch IDENTITY-OUTCOME 0 0= EXIT THEN
    a u s" undefine" STR=CI IF TICK-CONTEXT-UNKNOWN UNDEFINE-WORD 0 0= EXIT THEN
    a u s" trust" STR=CI IF RECORD-TRUST 0 0= EXIT THEN
    a u s" generates:" STR=CI IF RECORD-GENERATES 0 0= EXIT THEN
@@ -3293,6 +3352,15 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    COMPOSE-ON @ 0=  TOP-DEFER @ 0<>  or IF EXIT THEN
    a u 0 0= TOP-RESOLVE ;
 
+\ A quiet reader cannot run this reached top-level word. Ask the selected
+\ binding for registration/rendering effects before a definer consumes the
+\ statement; a tick or an uncalled body never reaches this path.
+: QUIET-NOMINAL ( ptr u8 n -- ) {: a:ptr u:n :}
+   QUIET @ 0= IF EXIT THEN
+   a u num-parse nip nip IF EXIT THEN
+   a u STRING-OPENER? IF EXIT THEN
+   a u MARK-NOMINAL RENDERS-MARK? drop ;
+
 \ A declaration a definer of the table above reads closes the stretch, unless
 \ the checker counted a refusal while it was read (MULTI-ERR-N, where refusals
 \ do not throw): then the stretch opens, unreported.
@@ -3335,6 +3403,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       2dup TOP-PARSER? IF TOP-OPERAND ELSE
       2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
       2dup COMPOSE-TOP? IF 2drop TOP-CLOSE ELSE
+      2dup QUIET-NOMINAL
       2dup TOP-DEFINER? IF 2drop ELSE TOP-TOKEN THEN THEN THEN THEN
       FILE-NEUTRAL? TICK-REMAINDER @ 0= and IF PEND-RELEASE THEN
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !

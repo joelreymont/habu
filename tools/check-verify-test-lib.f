@@ -2110,7 +2110,7 @@ $180000 constant LARGE-STDIN-LEN
 \ All four sources load. The verifier cannot execute their reached renderer or
 \ original registrar, so the declaration depending on the new type is
 \ deferred at that type.
-: TYPE-DEFERRED ( -- )
+: TYPE-DEFERRED-DECLS ( -- )
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-G ( cbx -- cbx ) ;\n"
    s" type-sig-rendered.f" s" type-deferred: signature loads" TYPE-LOAD-CHECK
    5 s" type-deferred: signature defers" EXPECT-KIND
@@ -2131,6 +2131,109 @@ $180000 constant LARGE-STDIN-LEN
    5 s" type-deferred: sum defers" EXPECT-KIND
    s" type-deferred: sum has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
    s" type-deferred: sum signature type" s" chz" s" 2" s" 14" TYPE-DEFERRED-PACKET
+
+   s\" : CVT-REG ( -- ) s\" chz\" s\" 0 VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM ;\nCVT-REG\n: CVT-F ( -- chz ) CONSTRUCT chz first ;\n"
+   s" type-registrar-wrapper.f" s" type-deferred: registrar wrapper loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: registrar wrapper defers" EXPECT-KIND
+   s" type-deferred: registrar wrapper type" s" chz" s" 3" s" 14" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nTYPED-VARIABLE CVT-ST cbx\n"
+   s" type-storage-rendered.f" s" type-deferred: storage loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: storage defers" EXPECT-KIND
+   s" type-deferred: storage has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: stored type" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nTYPED-VARIABLE CVT-ST cbx\n: CVT-USE ( -- ) CVT-ST drop ;\n"
+   s" type-storage-use.f" s" type-deferred: storage dependency loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: storage dependency defers" EXPECT-KIND
+   s" type-deferred: storage dependency has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: storage dependency type" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
+   s" type-deferred: storage dependency word" s" CVT-ST" s" 3" s" 18" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nVALUE-RECORD CVT-VR x cbx END-VALUE-RECORD\n"
+   s" type-record-rendered.f" s" type-deferred: record loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: record defers" EXPECT-KIND
+   s" type-deferred: record has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: record field" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one cbx ;VARIANT ;SUMTYPE\n"
+   s" type-variant-rendered.f" s" type-deferred: variant loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: variant defers" EXPECT-KIND
+   s" type-deferred: variant has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: variant payload" s" cbx" s" 2" s" 27" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nPRODUCT cvp 0 FIELD f cbx ;PRODUCT\n"
+   s" type-product-rendered.f" s" type-deferred: product loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: product defers" EXPECT-KIND
+   s" type-deferred: product has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: product field" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 1 FIELD v a ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one cbx<n> ;VARIANT ;SUMTYPE\n"
+   s" type-variant-generic.f" s" type-deferred: applied payload loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: applied payload defers" EXPECT-KIND
+   s" type-deferred: applied payload has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: applied payload type" s" cbx" s" 2" s" 27" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one [ cbx -- n ] ;VARIANT ;SUMTYPE\n"
+   s" type-variant-quote.f" s" type-deferred: quoted payload loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: quoted payload defers" EXPECT-KIND
+   s" type-deferred: quoted payload has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: quoted payload type" s" cbx" s" 2" s" 29" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nPRODUCT cvp 0 FIELD f ptr cbx ;PRODUCT\n"
+   s" type-product-pointer.f" s" type-deferred: pointer field loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: pointer field defers" EXPECT-KIND
+   s" type-deferred: pointer field has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: pointer field type" s" cbx" s" 2" s" 27" TYPE-DEFERRED-PACKET
+
+   s\" s\" NEWTYPE cbx 0\" INCLUDE-EVALUATE\nCAST: CVT-C ( n -- cbx )\n"
+   s" type-cast-rendered.f" s" type-deferred: cast loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: cast defers" EXPECT-KIND
+   s" type-deferred: cast has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: cast type" s" cbx" s" 2" s" 20" TYPE-DEFERRED-PACKET
+
+   s\" s\" package CVT-L public DEFLINEAR CVT-L:tok ;package\" INCLUDE-EVALUATE\npackage CVT-L LINEAR: CVT-M ( n -- CVT-L:tok ) ;package\n"
+   s" type-linear-rendered.f" s" type-deferred: linear loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: linear defers" EXPECT-KIND
+   s" type-deferred: linear has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: linear type" s" CVT-L:tok" s" 2" s" 36" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\ndefer CVT-D ( cbx -- cbx )\n"
+   s" type-defer-rendered.f" s" type-deferred: defer loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: defer signature defers" EXPECT-KIND
+   s" type-deferred: defer has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: defer type" s" cbx" s" 2" s" 15" TYPE-DEFERRED-PACKET
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one cbx ;VARIANT VARIANT one n ;VARIANT ;SUMTYPE\n" TOP-CHECK
+   1 s" type-deferred: duplicate variant refuses after missing type" EXPECT-KIND
+   s" type-deferred: duplicate variant stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" one" PACKET s" verdict" STRING$ s" rejected" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nPRODUCT cvp 0 FIELD f cbx FIELD f n ;PRODUCT\n" TOP-CHECK
+   1 s" type-deferred: duplicate field refuses after missing type" EXPECT-KIND
+   s" type-deferred: duplicate field stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" f" PACKET s" verdict" STRING$ s" rejected" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one cbx<n ;VARIANT ;SUMTYPE\n" TOP-CHECK
+   1 s" type-deferred: malformed applied payload refuses" EXPECT-KIND
+   s" type-deferred: malformed applied payload stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" ;VARIANT" PACKET s" verdict" STRING$ s" rejected" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE cknown 1 FIELD v a ;STRUCTURE\nSUMTYPE cvs 0 VARIANT one cbx<cknown> ;VARIANT ;SUMTYPE\n" TOP-CHECK
+   1 s" type-deferred: known nested arity refuses" EXPECT-KIND
+   s" type-deferred: known nested arity stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" cknown" PACKET s" verdict" STRING$ s" rejected" T$= ;
+
+: TYPE-DEFERRED-CONTROLS ( -- )
+   s\" package CVT-SH private\n: INCLUDE-EVALUATE ( -- ) ;\nINCLUDE-EVALUATE\n: CVT-G ( cbx -- cbx ) ;\n;package\n" TOP-CHECK
+   1 s" type-deferred: shadowed nonproducer refuses" EXPECT-KIND
+   s" type-deferred: shadowed nonproducer code" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+
+   s\" package CVT-A private\ns\" cbx\" s\" 0 VARIANT first ;VARIANT\" CHECKER-DEFSUM\n;package\n: CVT-G ( CVT-B:cbx -- CVT-B:cbx ) ;\n" TOP-CHECK
+   1 s" type-deferred: private registrar cannot supply another package" EXPECT-KIND
+   s" type-deferred: other package type refuses" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" CVT-B:cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
 
    s\" : CVT-G ( cbx -- cbx ) ;\n" TOP-CHECK
    1 s" type-deferred: no producer refuses" EXPECT-KIND
@@ -2159,7 +2262,110 @@ $180000 constant LARGE-STDIN-LEN
    s\" s\" STRUCTURE cbx 1 FIELD v a ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-BAD ( cbx<n -- cbx<n ) ;\n" TOP-CHECK
    1 s" type-deferred: unclosed generic refuses" EXPECT-KIND
    s" type-deferred: unclosed generic stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" verdict" STRING$ s" rejected" T$= ;
+   CHECK:VERIFY-OUT$ s" token" s" --" PACKET s" verdict" STRING$ s" rejected" T$= ;
+
+: TYPE-DEFERRED-TRUSTED ( -- )
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nTRUSTED: CVT-T ( cbx -- cbx ) create does> ( -- n ) drop 7 ;\n: CVT-NEXT ( -- n ) 1 ;\n"
+   s" type-trusted-rendered.f" s" type-deferred: trusted loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: trusted signature defers" EXPECT-KIND
+   s" type-deferred: trusted has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: trusted signature type" s" cbx" s" 2" s" 18" TYPE-DEFERRED-PACKET
+   s" type-deferred: trusted parent absent" T-LABEL
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-T" PACKET 0 < TTRUE
+   s" type-deferred: trusted clause absent" T-LABEL
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-T;does" PACKET 0 < TTRUE
+   s" type-deferred: following declaration present" T-LABEL
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-NEXT" PACKET 0 >= TTRUE ;
+
+: TYPE-DEFERRED-DIRECT ( -- )
+   s\" s\" cbx\" CHECKER-DEFLINEAR\n: CVT-KEEP ( cbx -- cbx ) ;\n"
+   s" type-linear-direct.f" s" type-deferred: direct linear loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: direct linear defers" EXPECT-KIND
+   s" type-deferred: direct linear type" s" cbx" s" 2" s" 14" TYPE-DEFERRED-PACKET
+   s\" s\" cbx\" s\" f n\" CHECKER-DEFRECORD\n: CVT-KEEP ( cbx -- cbx ) ;\n"
+   s" type-record-direct.f" s" type-deferred: direct record loads" TYPE-LOAD-CHECK
+   5 s" type-deferred: direct record defers" EXPECT-KIND
+   s" type-deferred: direct record type" s" cbx" s" 2" s" 14" TYPE-DEFERRED-PACKET ;
+
+: TYPE-DEFERRED-REVIEW ( -- )
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one a ;VARIANT ;SUMTYPE\n" TOP-CHECK
+   1 s" type-deferred: known payload letter arity refuses" EXPECT-KIND
+   s" type-deferred: known payload letter stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" a" PACKET s" verdict" STRING$ s" rejected" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one n ;VARIANT ;SUMTYPE\n" TOP-CHECK
+   0 s" type-deferred: known payload scalar checks" EXPECT-KIND
+   s" type-deferred: known payload scalar has no packet" T-LABEL
+   CHECK:VERIFY-OUT$ PACKETS 0 T=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one bool ;VARIANT ;SUMTYPE\n" TOP-CHECK
+   0 s" type-deferred: known payload bool checks" EXPECT-KIND
+   s" type-deferred: known payload bool has no packet" T-LABEL
+   CHECK:VERIFY-OUT$ PACKETS 0 T=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE bad 0 FIELD x cbx FIELD x n ;STRUCTURE\n" TOP-CHECK
+   1 s" type-deferred: duplicate structure field refuses" EXPECT-KIND
+   s" type-deferred: duplicate structure field stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" x" PACKET s" verdict" STRING$ s" rejected" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nENUM bad 0 VARIANT one FIELD x cbx FIELD x n ;VARIANT ;ENUM\n" TOP-CHECK
+   1 s" type-deferred: duplicate enum field refuses" EXPECT-KIND
+   s" type-deferred: duplicate enum field stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" x" PACKET s" verdict" STRING$ s" rejected" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE bad 0 FIELD BAD cbx ;STRUCTURE\n" TOP-CHECK
+   1 s" type-deferred: reserved structure field refuses" EXPECT-KIND
+   s" type-deferred: reserved structure field stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" BAD" PACKET s" verdict" STRING$ s" rejected" T$=
+
+   s\" package CVT-P private STRUCTURE hidden 0 FIELD v n ;STRUCTURE ;package\ns\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-BAD ( CVT-P:hidden -- CVT-P:hidden ) ;\n" TOP-CHECK
+   1 s" type-deferred: other private family refuses" EXPECT-KIND
+   s" type-deferred: other private family code" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" CVT-P:hidden" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nCAST: CVT-BAD ( n n -- cbx )\n" TOP-CHECK
+   1 s" type-deferred: cast known row shape refuses" EXPECT-KIND
+   s" type-deferred: cast known row shape stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET 0 >= TTRUE
+
+   s\" s\" NEWTYPE cbx 0\" INCLUDE-EVALUATE\nCAST: CVT-BAD ( R n -- S cbx )\n" TOP-CHECK
+   1 s" type-deferred: cast known tail mismatch refuses" EXPECT-KIND
+   s" type-deferred: cast known tail mismatch stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET 0 >= TTRUE
+
+   s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n0 TYPED-BUFFER CVT-BAD cbx\n" TOP-CHECK
+   1 s" type-deferred: buffer known bad count refuses" EXPECT-KIND
+   s" type-deferred: buffer known bad count stays rejected" T-LABEL
+   CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET 0 >= TTRUE ;
+
+: TYPE-LONG-FIELDS ( -- )
+   33 0 DO
+      s" FIELD f" GEN+
+      252 0 DO 97 GEN-C+ LOOP
+      i 10 < IF 48 GEN-C+ THEN i GEN-N+
+      s"  n" GEN+  10 GEN-C+
+   LOOP ;
+
+: TYPE-LONG-LIVE ( -- )
+   0 GEN-U !
+   s" STRUCTURE cvtlong 0" GEN+  10 GEN-C+
+   TYPE-LONG-FIELDS
+   s" ;STRUCTURE" GEN+  10 GEN-C+
+   s" type-structure-long.f" 0 GEN GEN-U @ FIXTURE
+   s" type-deferred: long live structure loads" T-LABEL
+   s" type-structure-long.f" AT$ NATIVE-RC 0 T=
+
+   0 GEN-U !
+   s" ENUM cvtlong 0 VARIANT one" GEN+  10 GEN-C+
+   TYPE-LONG-FIELDS
+   s" ;VARIANT ;ENUM" GEN+  10 GEN-C+
+   s" type-enum-long.f" 0 GEN GEN-U @ FIXTURE
+   s" type-deferred: long live enum loads" T-LABEL
+   s" type-enum-long.f" AT$ NATIVE-RC 0 T= ;
+
+: TYPE-DEFERRED ( -- )
+   TYPE-DEFERRED-DECLS TYPE-DEFERRED-CONTROLS TYPE-DEFERRED-TRUSTED
+   TYPE-DEFERRED-DIRECT TYPE-DEFERRED-REVIEW TYPE-LONG-LIVE ;
 
 
 \ A deferred stretch at TOKEN on LINE at COLUMN.

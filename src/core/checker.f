@@ -5124,6 +5124,23 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 : SGBAD-SIZE? ( -- bool )
    SGBAD-DEPTH? SGBAD-WIDTH? or ;
 
+\ A quiet signature can contain a nominal type whose declaration an earlier
+\ reached producer may have made. Keep that status apart from SGBAD: the parser
+\ still checks the rest of the grammar, and any real syntax error wins.
+variable SIG-UNRES
+PTR-VARIABLE SIG-UNRES-A
+variable SIG-UNRES-U
+7203 constant E-CHECKER-RECORD-UNRESOLVED
+: SIG-UNRES-CLEAR ( -- )
+   0 SIG-UNRES !  NULL-PTR SIG-UNRES-A !  0 SIG-UNRES-U ! ;
+: SIG-UNRES! ( ptr u8 n -- ) {: a:ptr u:n :}
+   SIG-UNRES @ IF EXIT THEN
+   -1 SIG-UNRES !  a SIG-UNRES-A !  u SIG-UNRES-U ! ;
+
+\ Installed by the nominal resolver once its package and grammar rules exist.
+\ A pre-install parse retains the ordinary unknown-type refusal.
+defer TYPE-MAY-ARRIVE-XT ( ptr u8 n -- bool )
+
 : BAD-SIG-TYPE ( ptr u8 n -- n )
    SGBAD-UNKNOWN!
    1 MK-CON ;
@@ -5553,7 +5570,27 @@ defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
    ELSE drop THEN                                     \ not a family: drop the 0 family-id
    a u SIG-PTR-TOK? IF
       NEXT-SIG-TOK 2dup DELIM? IF a u SGBAD-BAREPTR! PK! 1 MK-CON ELSE RECURSE MK-PTR THEN
-   ELSE a u TOK-TYPE THEN ;
+   ELSE
+      a u TOK-TYPE {: term:n :}
+      SGBAD-UNKNOWN? SGBAD-A @ a = and SGBAD-U @ u = and
+      IF a u TYPE-MAY-ARRIVE-XT ELSE RES-FALSE THEN
+      IF
+         SGBAD-CLEAR  a u SIG-UNRES!
+         NEXT-SIG-TOK 2dup s" <" CORE-STR= IF
+            2drop
+            BEGIN
+               NEXT-SIG-TOK 2dup s" >" CORE-STR= IF 2drop term EXIT THEN
+               dup 0= IF 2drop a u SGBAD-SYNTAX! term EXIT THEN
+               2dup DELIM? IF 2drop a u SGBAD-SYNTAX! term EXIT THEN
+               2dup s" --" CORE-STR= IF 2drop a u SGBAD-SYNTAX! term EXIT THEN
+               2dup s" [" CORE-STR= IF 2drop SIG-QUOT-XT ELSE RECURSE THEN drop
+               NEXT-SIG-TOK 2dup s" >" CORE-STR= IF 2drop term EXIT THEN
+               2dup s" ," CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! term EXIT THEN
+            AGAIN
+         ELSE PK! THEN
+      THEN
+      term
+   THEN ;
 
 : SIG-BINDER-BODY ( -- n ) NEXT-SIG-TOK SIG-TYPE ;
 : SIG-BINDER-BODY-INSTALL ( -- )
@@ -5768,6 +5805,9 @@ variable SG-ROWS-PUBLISH
    THEN ;
 : SIG-QUOT-INSTALL ( -- ) [: SIG-PARSE-QUOT ;] is SIG-QUOT-XT ;
 SIG-QUOT-INSTALL
+: TYPE-CERTAIN ( ptr u8 n -- bool ) 2drop RES-FALSE ;
+: TYPE-CERTAIN-INSTALL ( -- ) [: TYPE-CERTAIN ;] is TYPE-MAY-ARRIVE-XT ;
+TYPE-CERTAIN-INSTALL
 
 variable SGHASR                          \ a return-stack clause ( ... | rin -- rout ) present?
 variable RR-SHARED                       \ the shared return row, allocated lazily on '|'
@@ -5925,6 +5965,7 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 \ so a length that describes no memory parses as the empty text, which has no
 \ `--`: each refuses it as a signature that does not parse, and no byte is read.
 : PARSE-SIG-RAW ( ptr u8 n -- n n n n ) {: a:ptr u:n :}
+   SIG-UNRES-CLEAR
    a SB!
    a u BYTE-SPAN? IF u ELSE 0 THEN SL !
    0 SI !
@@ -5941,7 +5982,7 @@ variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
 : STORAGE-RESOLVE? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ one closed stored type, resolved into LBI-T
    0 LBI-SCHEME !
    NEW
-   SGBAD-CLEAR
+   SGBAD-CLEAR SIG-UNRES-CLEAR
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
    a u CK-TEXT-SPAN? 0= IF RES-FALSE EXIT THEN
    a SB!  u SL !  0 SI !
@@ -5950,6 +5991,7 @@ variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
    NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
    SGBAD @ 0 <> LBI-BAD @ 0 <> or IF RES-FALSE EXIT THEN
    LBI-T @ SCHEME-TYPE? IF -1 LBI-SCHEME ! RES-FALSE EXIT THEN
+   SIG-UNRES @ IF RES-FALSE EXIT THEN
    LBI-T @ HIDDEN-PARAM? 0= ;
 
 \ Parse one type application for the generative LAYOUT-BUFFER definer. This is
@@ -6133,6 +6175,7 @@ variable VREC-AT
 \ dependency is refused before the field is stored.
 : VREC-PARSE-FIELDS ( n ptr u8 n ptr u8 n -- n ptr u8 n )
    {: id:n rec:ptr recu:n fields:ptr fieldsu:n :}
+   SIG-UNRES-CLEAR
    fields fieldsu BYTE-SPAN? 0= IF fieldsu fields 0 EXIT THEN
    fields SB! fieldsu SL ! 0 SI !
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET SGBAD-CLEAR
@@ -6179,12 +6222,17 @@ variable VREC-AT
    msgu 0 <> IF
       rn VREC-N !  fn VREC-FIELD-N !  dn VREC-NODE-N !  an VNARG-N !  su VREC-STR-U !
    THEN
+   SIG-UNRES @ 0 <> msgu 0= and IF
+      rn VREC-N !  fn VREC-FIELD-N !  dn VREC-NODE-N !  an VNARG-N !  su VREC-STR-U !
+      E-CHECKER-RECORD-UNRESOLVED throw
+   THEN
    at msg msgu ;
 
 : CHECKER-DEFRECORD ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n fields:ptr fieldsu:n :}
    name nameu fields fieldsu CHECKER-TRY-RECORD {: at:n msg:ptr msgu:n :}
    msgu 0 <> IF msg msgu 70 die THEN ;
+ndict@ 1- constant DEFRECORD-REC-ID
 
 \ Structured internal effects. Textual signatures are source-boundary input
 \ only; checker-owned token semantics construct rows directly.
@@ -9433,6 +9481,7 @@ variable ASIG-MISS-K
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
    SGBAD @ if sa su na nu at atu USIG-ADD-BAD RES-FALSE exit then
+   SIG-UNRES @ IF RES-FALSE EXIT THEN
    \ An effect deeper than a record holds, or an input row too wide for its
    \ min-in field, is a stored signature no record can hold: refused as a bad
    \ one, by the bound it passes, the depth first as a definition's is.
@@ -11173,6 +11222,8 @@ variable DEF-REFUSAL
 \ constructor package (closed-but-callable, PLAN Package Shape).
 7111 constant E-CTOR-PROTECTED
 7121 constant E-CHECKER-LAYOUT-BUFFER
+7202 constant E-CHECKER-STORAGE-UNRESOLVED
+7205 constant E-CHECKER-IDENTITY-UNRESOLVED
 \ ctor-protection query hooks (item 8), rebound by type-family.f. The
 \ registry-not-loaded default reports "not a protected ctor", matching the old
 \ 0-hook guards which skipped the throw before the registry existed.
@@ -12086,17 +12137,6 @@ STORAGE-DIAG-DEFAULT
 \ -DYNAMIC-INFO) leaves its parse state live: an unknown type names its own
 \ token, and any other refusal names the whole stored type. No type at all is
 \ reported at the name, as a missing count is.
-: CHECKER-STORAGE-TYPE-REFUSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ta:ptr tu:n :}
-   tu 0= IF na nu na nu STG-NO-TYPE CHECKER-STORAGE-REFUSE EXIT THEN
-   SGBAD-UNKNOWN? IF
-      na nu SGBAD-A @ SGBAD-U @ STG-UNKNOWN-TYPE CHECKER-STORAGE-REFUSE EXIT
-   THEN
-   na nu ta tu
-   SGBAD @ IF STG-MALFORMED-TYPE ELSE
-      LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE STG-UNSTORABLE-TYPE THEN
-   THEN
-   CHECKER-STORAGE-REFUSE ;
-
 \ A definer with no name on its line declares no word, so it is refused at its
 \ own token, which stands in for the word.
 : CHECKER-STORAGE-NAME-REFUSE ( ptr u8 n -- ) {: da:ptr du:n :}
@@ -12662,8 +12702,65 @@ package CHECKER-REG
 \ product's name the pre-pass cannot tell the two apart, and deferring every
 \ name behind a mark would defer every global a marked section calls.
 : UNSEEN-MARK$ ( -- ptr u8 n ) s" unseen products" ;
+: TYPE-MARK$ ( -- ptr u8 n ) s" unresolved nominal types" ;
+: RENDER-TYPE-MARK$ ( -- ptr u8 n ) s" rendered nominal types" ;
 
 : CHECKER-UNSEEN-MARK ( -- ) UNSEEN-MARK$ CHECKER-RECORD-SYM drop ;
+
+\ A missing nominal in a complete stored type leaves no allocation or row.
+\ A syntax fault, extra token, or known unstorable scheme keeps its refusal.
+: CHECKER-STORAGE-TYPE-REFUSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ta:ptr tu:n :}
+   tu 0= IF na nu na nu STG-NO-TYPE CHECKER-STORAGE-REFUSE EXIT THEN
+   SIG-UNRES @ 0 <> SGBAD @ 0= and LBI-BAD @ 0= and
+      LBI-SCHEME @ 0= and IF
+      CHECKER-UNSEEN-MARK
+      E-CHECKER-STORAGE-UNRESOLVED throw
+   THEN
+   SGBAD-UNKNOWN? IF
+      na nu SGBAD-A @ SGBAD-U @ STG-UNKNOWN-TYPE CHECKER-STORAGE-REFUSE EXIT
+   THEN
+   na nu ta tu
+   SGBAD @ IF STG-MALFORMED-TYPE ELSE
+      LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE STG-UNSTORABLE-TYPE THEN
+   THEN
+   CHECKER-STORAGE-REFUSE ;
+
+\ Direct registrars write in their authenticated declaration section. Rendered
+\ source can open any package, so its mark covers all nominal namespaces. Both
+\ are ordinary scoped symbols and retire with a candidate or enclosing scope.
+: CHECKER-TYPE-MARK ( bool -- )
+   IF RENDER-TYPE-MARK$ CHECKER-GLOBAL-SYM drop
+   ELSE TYPE-MARK$ CHECKER-RECORD-SYM drop THEN ;
+
+: ANY-PUBLIC-TYPE-MARK? ( -- bool )
+   1 BEGIN dup SYM-N @ < WHILE
+      dup SYM-RETIRED? 0= IF
+         dup SYM-ROW SYM.VIS @ SYM-PUBLIC = IF
+            dup SYM-NAME$ TYPE-MARK$ SYM-STR=CI IF drop RES-TRUE EXIT THEN
+         THEN
+      THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
+\ Asked only after the nominal resolver found no family. A public declaration
+\ could be the unique-public fallback for any bare tail; a private declaration
+\ affects only its own package, including an own-qualified spelling.
+: CHECKER-TYPE-MARK-COVERS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   RENDER-TYPE-MARK$ CHECKER-GLOBAL-SYM? 0 <> IF RES-TRUE EXIT THEN
+   a u CHECKER-QUALIFIED? IF
+      CHECKER-QPKG$ TYPE-MARK$ CHECKER-PUBLIC-SYM? 0 <> IF RES-TRUE EXIT THEN
+      CHECKER-QPKG$ SIG-SCOPE$ CORE-STR=CI IF
+         CHECKER-QPKG$ SYM-PRIVATE TYPE-MARK$ CHECKER-PKG-SYM? 0 <> EXIT
+      THEN RES-FALSE EXIT
+   THEN
+   CHECKER-QBAD-TOK @ IF RES-FALSE EXIT THEN
+   SIG-SCOPE$ {: pkg:ptr pkgu:n :}
+   pkgu 0 <> IF
+      pkg pkgu SYM-PRIVATE TYPE-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+      pkg pkgu SYM-PUBLIC TYPE-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+   THEN
+   TYPE-MARK$ CHECKER-GLOBAL-SYM? 0 <> IF RES-TRUE EXIT THEN
+   ANY-PUBLIC-TYPE-MARK? ;
 
 \ The chain CHECKER-FIND-ACTIVE-SYM walks for a bare token: the open package's
 \ private and public wordlists, the global wordlist and the used publics; for a
@@ -14137,7 +14234,11 @@ public
    {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-LAYOUT-INFO 0= IF
-      2drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+      2drop
+      SIG-UNRES @ SGBAD @ 0= and LBI-BAD @ 0= and LBI-SCHEME @ 0= and IF
+         name nameu count countu 1 CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
+      THEN
+      name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
    THEN
    nip LBUF-INFO-W !
    name nameu count countu LBUF-INFO-W @ CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
@@ -14159,7 +14260,11 @@ public
    {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-STORAGE-INFO 0= IF
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+      drop
+      SIG-UNRES @ SGBAD @ 0= and LBI-BAD @ 0= and LBI-SCHEME @ 0= and IF
+         name nameu count countu 1 CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
+      THEN
+      name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
    THEN
    LBUF-INFO-W !
    name nameu count countu LBUF-INFO-W @ CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
@@ -14324,7 +14429,7 @@ $80 constant CTL-RENDERS
 \ them with every other fact (CHECKER-UNDEFINE), a redefinition records none,
 \ and an export does not copy them (EXPORT-META-COPY).
 \ The control word's bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13
-\ CTL-PARSES and 14 CTL-CREATES (below), 15 free, 16 the defer bit
+\ CTL-PARSES and 14 CTL-CREATES (below), 15 CTL-NOMINAL, 16 the defer bit
 \ (ASIG-GRAPH-DEFER, TRANSFER-DEFER), 17-19 free outside the flag mask, 20-39
 \ and 40-59 the intact masks (XFER-PACK).
 CHECKER-OWNER-ABI:BINDING-ID-SHIFT constant CTL-INTRINSIC-SHIFT
@@ -14358,7 +14463,11 @@ CHECKER-OWNER-ABI:BINDING-PARSES constant CTL-PARSES
 \ (src/habu/verify-source.f RECORD-DEFINER?), so it marks only a statement no
 \ such definer takes (TOP-TOKEN, CHECKER-VERIFY-RENDERS).
 $4000 constant CTL-CREATES
-CTL-RENDERS CTL-PARSES or CTL-CREATES or constant CTL-INHERITED
+\ A call may register a nominal type without rendering source. The flag is a
+\ may-effect of the selected word, inherited by a wrapper as the other control
+\ effects are; it grants no registration authority to checked code.
+$8000 constant CTL-NOMINAL
+CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or constant CTL-INHERITED
 $1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or CTL-INHERITED or
 CTL-INTRINSIC-MASK or
    constant CTL-GRAPH-FLAGS
@@ -15023,6 +15132,7 @@ NORET-END @ constant NORET-PRIM-END
 
 : CHECKER-DEFLINEAR ( ptr u8 n -- )
    CHECKER-AUTH-PACKAGE$ CT-ADD-LINEAR ;
+ndict@ 1- constant DEFLINEAR-REC-ID
 
 variable NORET-FMEND
 
@@ -15241,6 +15351,11 @@ defer CK-AOT-REC-CONTROL ( ptr n -- n bool )
    {: a:ptr u:n mask:n :}
    a u CHECKER-TOP-SYM IF
       TOP-CONTROL {: flags:n deferred:bool :}
+      mask CTL-NOMINAL and 0 <> IF
+         flags CTL-RENDERS and 0 <> deferred or IF RES-TRUE CHECKER-TYPE-MARK ELSE
+            flags CTL-NOMINAL and 0 <> IF RES-FALSE CHECKER-TYPE-MARK THEN
+         THEN
+      THEN
       flags mask and 0 <> deferred or
    ELSE drop RES-FALSE THEN
    dup IF CHECKER-UNSEEN-MARK THEN ;
@@ -19556,6 +19671,7 @@ s" <input>" DIAG-FILE!
    0 DL-NEW !
    na nu sa su TRUST-USIG!
    {: kept:bool :}
+   SIG-UNRES @ IF DL-TAKE RES-FALSE EXIT THEN
    DL-TAKE
    \ The parser filled both input rows. An unchecked body may throw after
    \ replacing a scoped input on either stack; its scan does not prove intact
@@ -19610,7 +19726,7 @@ package CHECKER-REG
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
-   SGBAD @ IF EXIT THEN
+   SGBAD @ 0 <> SIG-UNRES @ 0 <> or IF EXIT THEN
    din SCHEME-TYPE? dout SCHEME-TYPE? or
    rin SCHEME-TYPE? or rout SCHEME-TYPE? or IF EXIT THEN
    din dout rin rout SGHASR @ RES-FALSE E-ADD-EFFECT
@@ -22543,7 +22659,8 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
    0 FAILB !  0 FAILE !  0 XSET !  0 XFACT !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
    0 THDMASK !  0 THRMASK !  0 THSET !  0 INHSET !
    0 REFUSAL !  0 CREFUSE !  0 CRTGT !  0 RCOMPILE !  0 CUSING !
-   SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
+   SGBAD-CLEAR  SIG-UNRES-CLEAR
+   0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
    0 NP-ORIG-N !  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
@@ -22690,6 +22807,12 @@ variable CUR-OPEN   variable CUR-PSIG
            TSTART @ TADDR SGA !  TI @ TSTART @ - SGU !
            TSTART @ TADDR  TI @ TSTART @ -  PARSE-SIG-RAW   \ ( din dout rin rout )
            SGBAD-FAIL!
+           SIG-UNRES @ SGBAD @ 0= and IF
+              2drop 2drop
+              SIG-UNRES-A @ TBASE@ - FAILB !
+              FAILB @ SIG-UNRES-U @ + FAILE !
+              EXIT
+           THEN
            PD-BASE @ SGDBASE !
            \ The return tail a body may not bind: the shared row behind `|`, or
            \ without a return clause the implicit base RBROW. Latching the base
@@ -23212,6 +23335,11 @@ variable CAST-PATH-N
    -1 PARSE-COMPLETE !
    a u CHECK-RESET
    CHECK-SCAN
+   SIG-UNRES @ SGBAD @ 0= and IF
+      0 LAYOUT-XPORT !  0 BIND-HORIZON !  CK-CLOSE-CLEAR
+      CHECKER-UNSEEN-MARK
+      2 EXIT
+   THEN
    \ A does> clause may be checked before the parent's closing body checks.
    \ Keep only an earlier parent compile or resolution refusal in this pass.
    TORDER-ACTIVE @ TORDER-PARENT-GATE >=
@@ -23285,7 +23413,7 @@ variable CAST-PATH-N
       \ defines INCLUDE-EVALUATE, and no body derives it. CTL-PARSES and
       \ CTL-CREATES need not: their axioms sit on primitives (`parse-name`,
       \ `create`) no definition re-records, and a body derives them (INHSET).
-      sym CTL-FLAGS-SYM CTL-INTRINSIC-MASK CTL-RENDERS or and CTLNEW !
+      sym CTL-FLAGS-SYM CTL-INTRINSIC-MASK CTL-RENDERS or CTL-NOMINAL or and CTLNEW !
       DEADP @ XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
       THSET @ IF CTLNEW @ CTL-THROW or CTLNEW ! THEN
       CTLNEW @ INHSET @ or CTLNEW !
@@ -24264,7 +24392,8 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
    SGIN @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
    SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
    SGIN @ R-RES P>REST R-RES
-   SGOUT @ R-RES P>REST R-RES <> IF E-CAST-ARITY throw THEN ;
+   SGOUT @ R-RES P>REST R-RES <> IF E-CAST-ARITY throw THEN
+   SIG-UNRES @ IF E-CHECKER-IDENTITY-UNRESOLVED throw THEN ;
 
 \ CHECKER-DEFCAST ( name$ effect$ -- ) : the checker half of `cast: NAME
 \ ( in -- out )`, and CHECKER-LINEAR the half of `linear: NAME ( in -- out )`.
@@ -24321,7 +24450,7 @@ package CHECKER-REG
    RES-TRUE SIG-RAW-DEFINER!
    sa su PARSE-SIG-RAW
    RES-FALSE SIG-RAW-DEFINER!
-   SGBAD @ 0 <> IF
+   SGBAD @ 0 <> SIG-UNRES @ 0 <> or IF
       2drop 2drop  was CHECKER-REC-SYM !  0 EXIT     \ unresolvable family: no record
    THEN
    SGHASR @ E-BUILD-EFFECT
@@ -24810,7 +24939,7 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    \ Target-checked rows win; the remaining retained rows are concrete boundary
    \ installers. Generic storage helpers load after this owner handover.
    sym USIG-NEWEST 0= 0= if exit then
-   packed XFER-FLAGS {: flags:n :}
+   packed XFER-FLAGS sym CTL-FLAGS-SYM CTL-NOMINAL and or {: flags:n :}
    NEW rec EW.TVN @ rec EW.RVN @ E-INST-COUNTS
    rec EW.DIN @ pool E-INST-FROM
    rec EW.DOUT @ pool E-INST-FROM
@@ -26118,3 +26247,39 @@ $4398 constant CK-DECLARED-LOG-CELL     \ = layout.f DECLARED-LOG:ADDR-CELL
    then ;
 CLAIM-COLD-SOURCE
 ;package
+
+\ Internal engine-build annotation, called immediately after a real registrar
+\ definition. The dictionary's last record and its defining wordlist identify
+\ the binding; neither the source spelling nor an active-package guess does.
+\ It has no PRIM row and the prefix's internal-word gate keeps it unavailable to
+\ ordinary source. Only the control may-effect is added, never an effect row.
+: NOMINAL-REC-SYM ( ptr n -- n ) {: rec:ptr :}
+   rec CK-REC-NAME$ {: name:ptr nameu:n :}
+   rec CK-REC-WID {: wid:n :}
+   nameu 0= wid -2 = or IF s" checker: nominal provider has no live record" 76 die THEN
+   wid 0= IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
+   ndict@ 0 ?DO
+      i CK-REC-AT {: ns:ptr :}
+      ns CK-REC-WID -1 = IF
+         wid ns @ = IF
+            ns CK-REC-NAME$ SYM-PUBLIC name nameu CHECKER-PKG-SYM
+            UNLOOP EXIT
+         THEN
+         wid ns CELL + @ = IF
+            ns CK-REC-NAME$ SYM-PRIVATE name nameu CHECKER-PKG-SYM
+            UNLOOP EXIT
+         THEN
+      THEN
+   LOOP
+   s" checker: nominal provider wordlist has no package" 76 die ;
+
+: NOMINAL-ADD-REC ( ptr n -- )
+   NOMINAL-REC-SYM {: sym:n :}
+   sym sym CTL-FLAGS-SYM CTL-NOMINAL or
+      sym CTL-MASKS-SYM NORET-ADD-SYM ;
+: NOMINAL-PROVIDER ( -- )
+   ndict@ 0= IF s" checker: nominal provider has no dictionary record" 76 die THEN
+   ndict@ 1- CK-REC-AT NOMINAL-ADD-REC ;
+DEFRECORD-REC-ID CK-REC-AT NOMINAL-ADD-REC
+DEFLINEAR-REC-ID CK-REC-AT NOMINAL-ADD-REC
+REG-PROTECT

@@ -69,6 +69,7 @@ E-TFAM-CASE constant E-CASE                   \ family name is not a lowercase c
 E-TFAM-DUP constant E-DUP                     \ duplicate family or field tail, raised by TFAM-DECL /
                                               \ the field-event path; named here only so a
                                               \ reason can be armed for it before those calls
+7192 constant E-UNRESOLVED                    \ private replay outcome after rollback
 
 110 constant ASCII-N
 102 constant ASCII-F
@@ -110,14 +111,31 @@ variable SEEN-FIELD \ a FIELD has appeared (header clauses must precede fields)
 variable SEEN-END   \ this declaration's ;STRUCTURE has been consumed
 variable SD-SI         \ private digit-scan index
 variable SD-TI         \ byte index within one field type token
+variable SD-FIELD-MISS
+PTR-VARIABLE SD-MISS-A
+variable SD-MISS-U
+PTR-VARIABLE SD-TYPE-A
+variable SD-TYPE-U
+$2000 constant SD-SEEN-CAP
+create SD-SEEN SD-SEEN-CAP allot
+variable SD-SEEN-U
+variable SD-SEEN-I
+variable SD-OUTCOME-NAMES
 
 $100 constant SD-ARG-CAP
 create SD-ARGS SD-ARG-CAP cells allot
 variable SD-ARG-N
 
 : SD-RESET ( -- )                      \ base state; re-seeded at load (process-local)
-   NULL-PTR 0 PEND!   0 TOK !   0 SEEN-FIELD !   0 SEEN-END ! ;
+   NULL-PTR 0 PEND!   0 TOK !   0 SEEN-FIELD !   0 SEEN-END !
+   0 SD-FIELD-MISS !  0 SD-SEEN-U ! ;
 SD-RESET
+
+: SD-MISS-CLEAR ( -- ) NULL-PTR SD-MISS-A ! 0 SD-MISS-U ! ;
+SD-MISS-CLEAR
+: SD-MISSING! ( -- )
+   -1 SD-FIELD-MISS !
+   SD-MISS-U @ 0= IF SD-TYPE-A @ SD-MISS-A ! SD-TYPE-U @ SD-MISS-U ! THEN ;
 
 \ Tokens come from the live input source, or — when a tool is replaying a
 \ declaration it has already lexed (SD-REPLAY below) — from that tool's token
@@ -279,6 +297,7 @@ defer SD-PARSE-NODE ( ptr u8 n n -- n )
          SD-TI @ 1 + SD-TI !
          dup fam TFAM-ARITY@ <> IF
             s" field type has wrong arity" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+         SD-FIELD-MISS @ IF base SD-ARG-N ! drop 0 EXIT THEN
          SCHEMA-ROOT-N@ {: start:n :}
          base BEGIN dup SD-ARG-N @ < WHILE
             dup cells SD-ARGS + @ SCHEMA-ROOT+ drop 1 +
@@ -290,11 +309,68 @@ defer SD-PARSE-NODE ( ptr u8 n n -- n )
       THEN THEN
    AGAIN ;
 
+defer SD-LOOSE-NODE ( ptr u8 n -- )
+: SD-LOOSE-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   SD-TI @ u >= IF
+      s" unclosed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   a SD-TI @ + c@ 62 = IF SD-TI @ 1 + SD-TI ! EXIT THEN
+   BEGIN
+      a u SD-LOOSE-NODE
+      SD-TI @ u >= IF
+         s" unclosed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      a SD-TI @ + c@ dup 62 = IF drop SD-TI @ 1 + SD-TI ! EXIT THEN
+      44 <> IF
+         s" malformed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      SD-TI @ 1 + SD-TI !
+   AGAIN ;
+
+: SD-LOOSE-ATOM ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 1 = IF
+      a c@ dup ASCII-N = over ASCII-F = or over ASCII-R = or
+      IF drop EXIT THEN
+      TFAM-DECL-CHAR>PARAM IF
+         SD-ARITY @ < IF EXIT THEN
+         s" type parameter is outside the declared arity" E-PAYLOAD DECL-REJECT:REJECT throw
+      ELSE drop THEN
+   THEN
+   a u CON-OF dup 0 <> IF drop EXIT THEN drop
+   a u FIELD-FAM? IF
+      dup TFAM-ARITY@ 0 <> IF
+         s" field type is parametric and needs type arguments" E-PAYLOAD DECL-REJECT:REJECT throw
+      THEN drop EXIT
+   THEN drop
+   a u TYPE-MAY-ARRIVE-XT IF SD-MISSING! EXIT THEN
+   s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw ;
+
+: SD-LOOSE-NODE-IMPL ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SD-ATOM {: na:ptr nu:n :}
+   SD-TI @ u < IF a SD-TI @ + c@ 60 = ELSE NO THEN IF
+      na nu FIELD-FAM? IF
+         {: fam:n :}
+         SD-TI @ 1 + SD-TI !
+         a u fam SD-APP drop EXIT
+      THEN drop
+      na nu TYPE-MAY-ARRIVE-XT 0= IF
+         s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      SD-MISSING!
+      SD-TI @ 1 + SD-TI !
+      a u SD-LOOSE-APP EXIT
+   THEN
+   na nu SD-LOOSE-ATOM ;
+: SD-LOOSE-INSTALL ( -- ) [: SD-LOOSE-NODE-IMPL ;] is SD-LOOSE-NODE ;
+SD-LOOSE-INSTALL
+
 : SD-PARSE-NODE-IMPL ( ptr u8 n n -- n ) {: a:ptr u:n want:n :}
    a u SD-ATOM {: na:ptr nu:n :}
    SD-TI @ u < IF a SD-TI @ + c@ 60 = ELSE NO THEN IF
       na nu FIELD-FAM? 0= IF
-         drop s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+         drop
+         na nu TYPE-MAY-ARRIVE-XT 0= IF
+            s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+         SD-MISSING!
+         SD-TI @ 1 + SD-TI !
+         a u SD-LOOSE-APP 0 EXIT
+      THEN
       {: fam:n :}
       SD-TI @ 1 + SD-TI !
       a u fam SD-APP EXIT
@@ -306,6 +382,7 @@ defer SD-PARSE-NODE ( ptr u8 n n -- n )
          s" field type is parametric and needs type arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
       fam 0 0 SCHEMA-APP EXIT
    THEN drop
+   na nu TYPE-MAY-ARRIVE-XT IF SD-MISSING! 0 EXIT THEN
    s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : SD-PARSER-INSTALL ( -- ) [: SD-PARSE-NODE-IMPL ;] is SD-PARSE-NODE ;
@@ -316,9 +393,13 @@ defer SD-QUOT-ELEM ( ptr u8 n -- n )
 
 : RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
    dup 0= IF 2drop s" missing field type" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup SD-TYPE-U ! SD-TYPE-A !
    2dup s" [" CORE-STR= IF
       2drop [: SD-NEXT ;] [: SD-QUOT-ELEM ;] [: SD-QUOT-FAIL ;] TYPE-DECL:PARSE-QUOT EXIT THEN
-   2dup s" ptr" CORE-STR=CI IF 2drop SD-NEXT RECURSE REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
+   2dup s" ptr" CORE-STR=CI IF
+      2drop SD-NEXT RECURSE
+      SD-FIELD-MISS @ IF drop 0 EXIT THEN
+      REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
    0 SD-TI ! 0 SD-ARG-N !
    2dup PK-CELL SD-PARSE-NODE {: node:n :}
    SD-TI @ over <> IF
@@ -415,14 +496,41 @@ SD-QUOT-INSTALL
    FAM @ TFAM-DERIVE-ADDR? 0= IF 2drop EXIT THEN
    MEMBER-CLASH? IF
       s" field name is a generated member name" E-NAME DECL-REJECT:REJECT throw THEN ;
+: SD-SEEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 SD-SEEN-I !
+   BEGIN SD-SEEN-I @ SD-SEEN-U @ < WHILE
+      SD-SEEN SD-SEEN-I @ + c@ {: len:n :}
+      len u = IF
+         SD-SEEN BYTE-VIEW SD-SEEN-I @ + 1+ len a u CORE-STR= IF YES EXIT THEN
+      THEN
+      SD-SEEN-I @ len 1+ + SD-SEEN-I !
+   REPEAT NO ;
+: SD-NAME-CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u DECL-REJECT:TOKEN!
+   s" duplicate field name" E-DUP DECL-REJECT:EXPECT
+   a u PF-NAME-REQUIRE
+   a u SD-SEEN? IF E-DUP throw THEN
+   SD-SEEN-U @ u + 1+ SD-SEEN-CAP > IF
+      s" structure field names exceed declaration window"
+      E-CAP DECL-REJECT:REJECT throw THEN
+   u SD-SEEN SD-SEEN-U @ + c!
+   0 SD-SEEN-I !
+   BEGIN SD-SEEN-I @ u < WHILE
+      a SD-SEEN-I @ + c@
+      SD-SEEN SD-SEEN-U @ + 1+ SD-SEEN-I @ + c!
+      SD-SEEN-I @ 1+ SD-SEEN-I !
+   REPEAT
+   SD-SEEN-U @ u + 1+ SD-SEEN-U ! ;
 : FIELD-CLAUSE ( -- )
    SD-NEXT dup 0= IF
       2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ field name
    {: na:ptr nu:n :}
    na nu NAME-LONG? IF TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    na nu REQUIRE-FIELD-NAME
+   SD-OUTCOME-NAMES @ 0 <> IF na nu SD-NAME-CHECK THEN
+   0 SD-FIELD-MISS !
    SD-NEXT RESOLVE-TYPE {: node:n :}
-   na nu node EMIT-FIELD
+   SD-FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN
    -1 SEEN-FIELD ! ;
 
 \ ---------------------------------------------------------------------------
@@ -466,6 +574,7 @@ SD-QUOT-INSTALL
          s" field type parameter has incompatible kinds"
          E-PAYLOAD DECL-REJECT:REJECT throw THEN
    loop
+   SD-MISS-U @ IF E-UNRESOLVED throw THEN
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    FAM @ SD-CELLS @ TFAM-SLOTS!
    \ The constructor generator's rejects use the packet's code table. The
@@ -495,6 +604,7 @@ SD-QUOT-INSTALL
 \ One provisional transaction: commit by persisting, roll the family + schema +
 \ layout + event stream back to a byte-identical registry on any reject.
 : SD-BODY ( -- )
+   SD-MISS-CLEAR
    [: SD-RESET DRIVE ;] GENERATED-DECL:RUN ;
 
 \ Resynchronize the input to the end of THIS declaration. Same contract, same
@@ -528,6 +638,7 @@ SD-QUOT-INSTALL
    TYPE-DECL:QUOT-ROLLBACK
    SD-RESYNC
    SD-RESET
+   rc E-UNRESOLVED <> IF SD-MISS-CLEAR THEN
    rc throw ;
 : SD-GUARDED ( -- )
    [: SD-DRIVE ;] DECL-REJECT:GUARD ;
@@ -535,10 +646,15 @@ SD-QUOT-INSTALL
 \ The replay stream is retired on BOTH exits. Closing only on success would
 \ leave a rejected replay installed, and the next live STRUCTURE would then read
 \ its tokens from a spent buffer instead of the input source.
-: SD-REPLAY-END ( n -- )               \ ( caught-code -- ) close, then re-raise unchanged
+: SD-REPLAY-END ( n -- ptr u8 n bool ) \ direct missing span after rollback
    DECL-REPLAY:RP-RELEASE
-   dup 0= IF drop EXIT THEN
-   throw ;
+   dup E-UNRESOLVED = IF
+      drop SD-MISS-A @ SD-MISS-U @
+      0 DECL-REJECT:GUARD-CODE
+      YES SD-MISS-CLEAR EXIT THEN
+   DECL-REJECT:GUARD-CODE
+   SD-MISS-CLEAR
+   NULL-PTR 0 NO ;
 
 public
 
@@ -562,12 +678,18 @@ public
 \ declaration that owns the live stream, and it must not close that stream on the
 \ way out. So it propagates as its own code with no packet of its own, and only a
 \ claim that SUCCEEDED reaches the close below.
-: SD-REPLAY ( ptr u8 n ptr u8 n -- )
-   {: na:ptr nu:n ba:ptr bu:n :}
+: SD-REPLAY-WITH ( ptr u8 n ptr u8 n bool -- ptr u8 n bool )
+   {: na:ptr nu:n ba:ptr bu:n names:bool :}
    na nu ba bu DECL-REPLAY:RP-CLAIM
    s" structure" DECL-REJECT:OPEN
-   [: SD-GUARDED ;] catch
+   names SD-OUTCOME-NAMES !
+   [: SD-DRIVE ;] catch
+   0 SD-OUTCOME-NAMES !
    SD-REPLAY-END ;
+: SD-REPLAY-OUTCOME ( ptr u8 n ptr u8 n -- ptr u8 n bool )
+   YES SD-REPLAY-WITH ;
+: SD-REPLAY ( ptr u8 n ptr u8 n -- )
+   NO SD-REPLAY-WITH IF 2drop E-UNRESOLVED throw THEN 2drop ;
 
 ;package
 

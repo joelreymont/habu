@@ -231,6 +231,13 @@ word (§ 4) are checked before the run, `--verify-only` included. At top level
 any other such name opens that stretch. The renderer reads none of the tokens
 after it, so they are checked.
 
+After a reached call that may render or register nominal types, quiet
+verification defers a later use of a missing type with `W-CHECK-DEFERRED` at
+that type. It consumes the declaration without publishing a type, layout,
+signature or generated words. Known syntax, visibility, arity and count errors
+still refuse. Defining a provider, taking its tick or reading an uncalled body
+does not create this uncertainty; ordinary loading keeps its existing rules.
+
 A trusted-only tick can outrank closing body checks at tier 0 only while the
 verifier knows the compiler tier and checker owner. A resident immediate in a
 body or a top-level loader makes later ordering uncertain; `--verify-only`

@@ -215,6 +215,11 @@ and `byte_end`; a run-time definer under `bin/hb --load` has no record of its
 token's place and carries none. It has no definition fields, and the checker
 continues past it under `--all-errors`, counting it as a refusal.
 
+Quiet verification reports `W-CHECK-DEFERRED` instead when a reached call may
+render or register the missing nominal type. It consumes the declaration but
+publishes no signature, layout or generated words. Known syntax, visibility,
+arity and count errors still refuse; ordinary loading is unchanged.
+
 A span record locates a refusal that is not a definition's. It carries `schema_version`, `code`, `repair_class`, `verdict`
 `rejected`, the `token` with its `file`, `line`, `column`, `byte_start` and
 `byte_end`, and `suggestion`, and no definition fields. There are six:

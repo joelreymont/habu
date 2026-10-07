@@ -88,6 +88,7 @@ E-TFAM-CASE constant E-CASE         \ family name is not a lowercase canonical t
 E-TFAM-DUP constant E-DUP           \ duplicate family, variant, or field tail, raised by
                                     \ TFAM-DECL / SUMV-ADD / the field-event path; named here
                                     \ only so a reason can be armed before those calls
+7193 constant E-UNRESOLVED            \ private replay outcome after rollback
 
 110 constant ASCII-N
 102 constant ASCII-F
@@ -131,10 +132,25 @@ variable MAXSLOTS   \ widest variant payload cell width (the sum's payload slots
 variable SEEN-VARIANT \ a VARIANT has appeared (header clauses must precede variants)
 variable SEEN-END     \ this declaration's ;ENUM has been consumed
 variable ED-SI         \ private digit-scan index
+variable ED-FIELD-MISS
+PTR-VARIABLE ED-MISS-A
+variable ED-MISS-U
+$2000 constant ED-SEEN-CAP
+create ED-SEEN ED-SEEN-CAP allot
+variable ED-SEEN-U
+variable ED-SEEN-I
+variable ED-OUTCOME-NAMES
 
 : ED-RESET ( -- )                      \ base state; re-seeded at load (process-local)
-   NULL-PTR 0 PEND!   0 TOK !   0 SEEN-VARIANT !   0 SEEN-END ! ;
+   NULL-PTR 0 PEND!   0 TOK !   0 SEEN-VARIANT !   0 SEEN-END !
+   0 ED-FIELD-MISS !  0 ED-SEEN-U ! ;
 ED-RESET
+
+: ED-MISS-CLEAR ( -- ) NULL-PTR ED-MISS-A ! 0 ED-MISS-U ! ;
+ED-MISS-CLEAR
+: ED-MISSING! ( ptr u8 n -- )
+   -1 ED-FIELD-MISS !
+   ED-MISS-U @ 0= IF ED-MISS-U ! ED-MISS-A ! ELSE 2drop THEN ;
 
 \ Tokens come from the live input source, or — when a tool is replaying a
 \ declaration it has already lexed (ED-REPLAY below) — from that tool's token
@@ -250,10 +266,14 @@ ED-RESET
 
 : RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
    dup 0= IF 2drop s" missing payload type" E-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup s" ptr" CORE-STR=CI IF 2drop ED-NEXT RECURSE REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
+   2dup s" ptr" CORE-STR=CI IF
+      2drop ED-NEXT RECURSE
+      ED-FIELD-MISS @ IF drop 0 EXIT THEN
+      REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
    dup 1 = IF LETTER-TYPE EXIT THEN
    2dup CON-OF dup 0 <> IF nip nip SCHEMA-CON EXIT THEN drop
    2dup FIELD-FAM? IF nip nip 0 0 SCHEMA-APP EXIT THEN drop
+   2dup TYPE-MAY-ARRIVE-XT IF ED-MISSING! 0 EXIT THEN
    2drop s" unknown payload type" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : SCH-WIDTH ( n -- n )                  \ physical cell width of a field schema node
@@ -321,19 +341,47 @@ ED-RESET
    DECL-EVENT:FIELD TOK !
    fw VCELLS @ + VCELLS !
    NFLD @ 1 + NFLD ! ;
+: ED-SEEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 ED-SEEN-I !
+   BEGIN ED-SEEN-I @ ED-SEEN-U @ < WHILE
+      ED-SEEN ED-SEEN-I @ + c@ {: len:n :}
+      len u = IF
+         ED-SEEN BYTE-VIEW ED-SEEN-I @ + 1+ len a u CORE-STR= IF YES EXIT THEN
+      THEN
+      ED-SEEN-I @ len 1+ + ED-SEEN-I !
+   REPEAT NO ;
+: ED-NAME-CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u DECL-REJECT:TOKEN!
+   s" duplicate field name" E-DUP DECL-REJECT:EXPECT
+   a u PF-NAME-REQUIRE
+   a u ED-SEEN? IF E-DUP throw THEN
+   ED-SEEN-U @ u + 1+ ED-SEEN-CAP > IF
+      s" enum field names exceed declaration window"
+      E-CAP DECL-REJECT:REJECT throw THEN
+   u ED-SEEN ED-SEEN-U @ + c!
+   0 ED-SEEN-I !
+   BEGIN ED-SEEN-I @ u < WHILE
+      a ED-SEEN-I @ + c@
+      ED-SEEN ED-SEEN-U @ + 1+ ED-SEEN-I @ + c!
+      ED-SEEN-I @ 1+ ED-SEEN-I !
+   REPEAT
+   ED-SEEN-U @ u + 1+ ED-SEEN-U ! ;
 : FIELD-CLAUSE ( -- )
    ED-NEXT dup 0= IF
       2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ field name
    {: na:ptr nu:n :}
    na nu NAME-LONG? IF TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
+   ED-OUTCOME-NAMES @ 0 <> IF na nu ED-NAME-CHECK THEN
+   0 ED-FIELD-MISS !
    ED-NEXT RESOLVE-TYPE {: node:n :}
-   na nu node EMIT-FIELD ;
+   ED-FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN ;
 
 : VARIANT-NAME ( -- ptr u8 n )          \ next token = variant name (must be present)
    ED-NEXT dup 0= IF
       2drop s" missing variant name" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup NAME-LONG? IF 2drop TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN ;
 : OPEN-VARIANT ( -- )
+   0 ED-SEEN-U !
    VARIANT-NAME {: na:ptr nu:n :}
    na nu DECL-REJECT:TOKEN!             \ the variant name owns the variant registry's rejects
    s" duplicate variant" E-DUP DECL-REJECT:EXPECT
@@ -441,6 +489,7 @@ ED-RESET
 : ED-CLOSE ( -- )                          \ bind variant + field ranges + width, bake layout, arm generation
    DECL-REJECT:AT-FAMILY                    \ close-stage faults belong to the whole declaration
    NVAR @ 0= IF s" empty enum" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ needs a variant
+   ED-MISS-U @ IF E-UNRESOLVED throw THEN
    FAM @ VBASE @ NVAR @ TFAM-VAR-RANGE!
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    FAM @ MAXSLOTS @ TFAM-SLOTS!
@@ -493,6 +542,7 @@ ED-RESET
 \ One provisional transaction: commit by persisting, roll the family + schema +
 \ layout + variant + event stream back to a byte-identical registry on any reject.
 : ED-BODY ( -- )
+   ED-MISS-CLEAR
    [: ED-RESET DRIVE ;] GENERATED-DECL:RUN ;
 
 \ Resynchronize the input to the end of THIS declaration.
@@ -536,6 +586,7 @@ ED-RESET
    rc 0= IF ED-RESET EXIT THEN
    ED-RESYNC
    ED-RESET
+   rc E-UNRESOLVED <> IF ED-MISS-CLEAR THEN
    rc throw ;
 : ED-GUARDED ( -- )
    [: ED-DRIVE ;] DECL-REJECT:GUARD ;
@@ -543,10 +594,15 @@ ED-RESET
 \ The replay stream is retired on BOTH exits. Closing only on success would
 \ leave a rejected replay installed, and the next live ENUM would then read its
 \ tokens from a spent buffer instead of the input source.
-: ED-REPLAY-END ( n -- )               \ ( caught-code -- ) close, then re-raise unchanged
+: ED-REPLAY-END ( n -- ptr u8 n bool ) \ direct missing span after rollback
    DECL-REPLAY:RP-RELEASE
-   dup 0= IF drop EXIT THEN
-   throw ;
+   dup E-UNRESOLVED = IF
+      drop ED-MISS-A @ ED-MISS-U @
+      0 DECL-REJECT:GUARD-CODE
+      YES ED-MISS-CLEAR EXIT THEN
+   DECL-REJECT:GUARD-CODE
+   ED-MISS-CLEAR
+   NULL-PTR 0 NO ;
 
 public
 
@@ -571,12 +627,18 @@ public
 \ declaration that owns the live stream, and it must not close that stream on the
 \ way out. So it propagates as its own code with no packet of its own, and only a
 \ claim that SUCCEEDED reaches the close below.
-: ED-REPLAY ( ptr u8 n ptr u8 n -- )
-   {: na:ptr nu:n ba:ptr bu:n :}
+: ED-REPLAY-WITH ( ptr u8 n ptr u8 n bool -- ptr u8 n bool )
+   {: na:ptr nu:n ba:ptr bu:n names:bool :}
    na nu ba bu DECL-REPLAY:RP-CLAIM
    s" enum" DECL-REJECT:OPEN
-   [: ED-GUARDED ;] catch
+   names ED-OUTCOME-NAMES !
+   [: ED-DRIVE ;] catch
+   0 ED-OUTCOME-NAMES !
    ED-REPLAY-END ;
+: ED-REPLAY-OUTCOME ( ptr u8 n ptr u8 n -- ptr u8 n bool )
+   YES ED-REPLAY-WITH ;
+: ED-REPLAY ( ptr u8 n ptr u8 n -- )
+   NO ED-REPLAY-WITH IF 2drop E-UNRESOLVED throw THEN 2drop ;
 
 ;package
 
