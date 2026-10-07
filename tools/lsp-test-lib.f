@@ -306,6 +306,20 @@
 \   text before it, or from the loads that check reported
 \   ................................................ document-link-incomplete
 \
+\ The files that reach a file
+\ - asked of tools/lsp-workspace.f in the test's own process, over a fixture
+\   tree, since no request asks it yet: a file whose loads reach the file
+\   left out, or one whose loads do not given; a file loading one whose text
+\   on disk loads the file but whose open text does not, or a file whose open
+\   text loads it but whose text on disk does not, left out; a file
+\   that reaches it only through a file outside the workspace left out, or
+\   that file given; a file under .jj-ws/ given; the file itself not given
+\   first, or given when neither the workspace nor an open document holds it;
+\   a load of a file not there refused; a file reached under two roots, whose
+\   loads resolve against the root, walked under one; a file of the walk
+\   whose loader names no literal path not refused, naming it
+\   ............................................................ workspace-reaching
+\
 \ Cancellation
 \ - a request with a cancel of it read behind it answered other than -32800,
 \   or its work done: two completions and a cancel of the first publish
@@ -354,6 +368,7 @@ require tools/lsp-docs.f
 require tools/lsp-text.f
 require tools/lsp-defs.f
 require tools/lsp-highlight.f
+require tools/lsp-workspace.f
 require tools/lsp-core.f
 
 package LSP-TEST
@@ -3579,6 +3594,112 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 3" LINKS-START LINKS-END
    LOGGED ;
 
+\ ---- the files that reach a file -----------------------------------------------
+
+\ The fixture tree lies under graph/ of the artifact directory: the workspace
+\ is w/, with dyn/ added for the last case, and out/ lies outside both. The
+\ number in a file's name is the case it serves: f1 is the file case 1 asks
+\ about. A case names a path by its bytes after the tree's canonical path and
+\ its slash.
+create WS-B HDR-BYTES allot              \ an answer, as a case states it
+variable WS-ROOT-U                       \ the bytes a case's names drop
+
+: WS+ ( ptr u8 n -- )  N>BLEN WS-B APPEND-SPAN ;
+: WS$ ( -- ptr u8 n )  WS-B SPAN$ BLEN>N ;
+
+: IN-GRAPH ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   SB-RESET s" graph/" SB-APPEND a u SB-APPEND SB$ FIXTURE ;
+
+: WS-DIR ( ptr u8 n -- )  IN-GRAPH MAKE-DIR ;
+
+: WS-FILE ( ptr u8 n ptr u8 n -- )
+   {: n:ptr nu:n t:ptr tu:n :}
+   n nu IN-GRAPH t tu WRITE-ALL ;
+
+: WS-CANON ( ptr u8 n -- ptr u8 n )  IN-GRAPH SOURCE-ROOT:CANONICAL drop ;
+
+\ A path of the tree by its name there; any other whole.
+: WS-NAME ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   u WS-ROOT-U @ < if a u exit then
+   a WS-ROOT-U @ + u WS-ROOT-U @ - ;
+
+\ 1: a1 loads b1, which loads f1; u1 loads nothing. 2: a2 loads b2, which
+\ loads f2 on disk and nothing open. 3: c3 loads nothing on disk and f3
+\ open. 4: a4 loads out/b4, which loads f4 from a4's root, w/. 5: .jj-ws/a5
+\ loads f5. 6: m6 loads a file not there, then f6. 7: p/a7 and q/b7 load
+\ s/x7, which loads y7 from the root it is reached under: p/y7 loads nothing,
+\ q/y7 loads f7. 8: dyn/d8 hands its loader a path no walk can read.
+: WS-TREE ( -- )
+   s" graph" FIXTURE MAKE-DIR
+   s" w" WS-DIR s" out" WS-DIR s" dyn" WS-DIR
+   s" w/.jj-ws" WS-DIR s" w/p" WS-DIR s" w/q" WS-DIR s" w/s" WS-DIR
+   s" w/a1.f" s\" require b1.f\n" WS-FILE
+   s" w/b1.f" s\" require f1.f\n" WS-FILE
+   s" w/f1.f" s\" : F1 ( -- ) ;\n" WS-FILE
+   s" w/u1.f" s\" : U1 ( -- ) ;\n" WS-FILE
+   s" w/a2.f" s\" require b2.f\n" WS-FILE
+   s" w/b2.f" s\" require f2.f\n" WS-FILE
+   s" w/f2.f" s\" : F2 ( -- ) ;\n" WS-FILE
+   s" w/c3.f" s\" : C3 ( -- ) ;\n" WS-FILE
+   s" w/f3.f" s\" : F3 ( -- ) ;\n" WS-FILE
+   s" w/a4.f" s\" require ../out/b4.f\n" WS-FILE
+   s" out/b4.f" s\" require f4.f\n" WS-FILE
+   s" w/f4.f" s\" : F4 ( -- ) ;\n" WS-FILE
+   s" w/.jj-ws/a5.f" s\" require ../f5.f\n" WS-FILE
+   s" w/f5.f" s\" : F5 ( -- ) ;\n" WS-FILE
+   s" w/m6.f" s\" require nothere.f\nrequire f6.f\n" WS-FILE
+   s" w/f6.f" s\" : F6 ( -- ) ;\n" WS-FILE
+   s" w/p/a7.f" s\" require ../s/x7.f\n" WS-FILE
+   s" w/q/b7.f" s\" require ../s/x7.f\n" WS-FILE
+   s" w/s/x7.f" s\" require y7.f\n" WS-FILE
+   s" w/p/y7.f" s\" : Y7 ( -- ) ;\n" WS-FILE
+   s" w/q/y7.f" s\" require ../f7.f\n" WS-FILE
+   s" w/f7.f" s\" : F7 ( -- ) ;\n" WS-FILE
+   s" dyn/d8.f" s\" : LD ( ptr u8 n -- ) included ;\n" WS-FILE ;
+
+\ The open documents, as the server would hand them over: b2 without its
+\ load, c3 with one.
+: WS-OPENS ( [ ptr u8 n ptr u8 n -- ] -- )
+   {: q :}
+   s" w/b2.f" WS-CANON s\" : B2 ( -- ) ;\n" q execute
+   s" w/c3.f" WS-CANON s\" require f3.f\n" q execute ;
+
+\ The last answer: its files by name, in its order, or the file it refused.
+: WS-ANSWER$ ( -- ptr u8 n )
+   WS-B CLEAR
+   LSP-WORKSPACE:REFUSED? if
+      s" refused " WS+ LSP-WORKSPACE:BLOCKED$ WS-NAME WS+ WS$ exit
+   then
+   LSP-WORKSPACE:SUBJECTS 0 ?do
+      i 0 > if s"  " WS+ then
+      i LSP-WORKSPACE:SUBJECT$ WS-NAME WS+
+   loop
+   WS$ ;
+
+\ The files that reach the file of this name must be these.
+: REACHES ( ptr u8 n ptr u8 n -- )
+   {: f:ptr fu:n w:ptr wu:n :}
+   f fu WS-CANON [: WS-OPENS ;] LSP-WORKSPACE:REACHING
+   SB-RESET s" workspace-reaching: " SB-APPEND f fu SB-APPEND SB$ T-LABEL
+   WS-ANSWER$ w wu T$= ;
+
+: WORKSPACE-REACHING ( -- )
+   WS-TREE
+   s" graph" FIXTURE SOURCE-ROOT:CANONICAL drop nip 1+ WS-ROOT-U !
+   s" w" IN-GRAPH LSP-WORKSPACE:ROOT+
+   s" w/f1.f" s" w/f1.f w/a1.f w/b1.f" REACHES
+   s" w/f2.f" s" w/f2.f w/a2.f w/b2.f" REACHES
+   s" w/f3.f" s" w/f3.f w/c3.f" REACHES
+   s" w/f4.f" s" w/f4.f w/a4.f" REACHES
+   s" out/b4.f" s" w/a4.f" REACHES
+   s" w/f5.f" s" w/f5.f" REACHES
+   s" w/f6.f" s" w/f6.f w/m6.f" REACHES
+   s" w/f7.f" s" w/f7.f w/q/b7.f w/q/y7.f" REACHES
+   s" dyn" IN-GRAPH LSP-WORKSPACE:ROOT+
+   s" w/f1.f" s" refused dyn/d8.f" REACHES ;
+
 \ ---- cancellation ------------------------------------------------------------
 
 \ A cancel of the request with this id's JSON text.
@@ -3861,6 +3982,7 @@ public
    EXP-B READY
    PATH-B READY
    TXT-B READY
+   WS-B READY
    s" habu-lsp-test" HB-TMP-MKDIR N>BLEN DIR-B REPLACE
    T-RESET
    TEST-EXIT-TIMEOUT
@@ -3890,6 +4012,7 @@ public
    TEST-HIGHLIGHTS
    TEST-COMPLETIONS
    TEST-LINKS
+   WORKSPACE-REACHING
    TEST-CANCELS
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
