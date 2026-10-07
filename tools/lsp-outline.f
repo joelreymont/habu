@@ -3,20 +3,15 @@
 \ check completed.
 \
 \ ANSWER writes the result of textDocument/documentSymbol for an open
-\ document: one DocumentSymbol for each definition the document's last
-\ completed check retained in the document's own file
+\ document: a flat list of SymbolInformation, one for each definition the
+\ document's last completed check retained in the document's own file
 \ (LSP-DEFS:DEFS-OWN-GROUP), in the order the check retained them, while that
 \ check's positions are of the document's text; none of another open
 \ document's or of a file the document requires. A document with no
 \ definition, one whose last check did not complete and one that has none
-\ answer an empty list.
-\ - name: the word as the source wrote it.
-\ - kind: the class's SymbolKind as workspace symbols give it
-\   (LSP-SYMBOLS:KIND).
-\ - range and selectionRange: both the range of the token that declared the
-\   word, in the document's text. The check states where that token starts
-\   and ends and nothing of the definition's extent, so the outline knows no
-\   more, and no symbol has children.
+\ answer an empty list. Each is the SymbolInformation workspace symbols give
+\ (LSP-SYMBOLS:SYMBOL): its location is the token that declared the word, at
+\ the URI the client opened the document by.
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer being written belongs to the
 \ server's one task.
@@ -24,7 +19,6 @@
 require lib/json-write.f
 require lib/adt/option.f
 require tools/lsp-defs.f
-require tools/lsp-text.f
 require tools/lsp-symbols.f
 
 package LSP-OUTLINE
@@ -35,23 +29,19 @@ private
 
 TYPED-VARIABLE OUT ptr JSON-WRITE:writer \ the answer's writer
 
-\ The DocumentSymbol of record R.
-: SYMBOL ( n -- )
-   {: r:n :}
+\ The symbol for record R of group G, a comma before it unless it is the
+\ group's first.
+: LISTED ( n n -- )
+   {: g:n r:n :}
    OUT @
-   OBJECT-START
-   s" name" r REC-WORD$ FIELD-S COMMA
-   s" kind" r REC-CLASS LSP-SYMBOLS:KIND FIELD-U COMMA
-   r REC-RANGE LSP-TEXT:RANGE-AT COMMA
-   s" selectionRange" KEY r REC-RANGE LSP-TEXT:RANGE-OBJECT
-   OBJECT-END drop ;
+   r g GROUP-FIRST <> if COMMA then
+   g r LSP-SYMBOLS:SYMBOL drop ;
 
-\ The symbols of group G, a comma before each but the first.
+\ The symbols of group G.
 : SYMBOLS ( n -- )
    {: g:n :}
    g GROUP-FIRST begin dup 0 >= while
-      dup g GROUP-FIRST <> if OUT @ COMMA drop then
-      dup SYMBOL
+      g over LISTED
       REC-NEXT
    repeat drop ;
 

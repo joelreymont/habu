@@ -18,8 +18,8 @@
 \   file URI of its path.
 \ - containerName: the package the checker recorded the word under; a global
 \   has none.
-\ KIND, the SymbolKind of a class, is public: document symbols
-\ (tools/lsp-outline.f) give the kind workspace symbols give.
+\ SYMBOL writes that SymbolInformation for one definition: document symbols
+\ (tools/lsp-outline.f) answer with it too.
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer being written belongs to the
 \ server's one task.
@@ -52,8 +52,6 @@ variable SHOWN-N                         \ and the symbols it lists so far
    loop
    false ;
 
-public
-
 \ The SymbolKind of a class.
 : KIND ( n -- n )
    {: class:n :}
@@ -61,13 +59,11 @@ public
    class CLASS-STORAGE = if VARIABLE-KIND exit then
    FUNCTION-KIND ;
 
-private
+public
 
-\ The SymbolInformation for record R of group G.
-: SYMBOL ( n n -- )
+\ The SymbolInformation the header describes for record R of group G.
+: SYMBOL ( ptr JSON-WRITE:writer n n -- ptr JSON-WRITE:writer )
    {: g:n r:n :}
-   OUT @
-   SHOWN-N @ 0 > if COMMA then
    OBJECT-START
    s" name" r REC-WORD$ FIELD-S COMMA
    s" kind" r REC-CLASS KIND FIELD-U COMMA
@@ -77,14 +73,23 @@ private
    OBJECT-END
    r REC-PACKAGE$ {: p:ptr pu:n :}
    pu 0 > if COMMA s" containerName" p pu FIELD-S then
-   OBJECT-END drop
+   OBJECT-END ;
+
+private
+
+\ The symbol for record R of group G listed next.
+: SHOWN ( n n -- )
+   {: g:n r:n :}
+   OUT @
+   SHOWN-N @ 0 > if COMMA then
+   g r SYMBOL drop
    1 SHOWN-N +! ;
 
 \ The symbols of group G whose words hold the query.
 : GROUP-SYMBOLS ( n -- )
    {: g:n :}
    g GROUP-FIRST begin dup 0 >= while
-      dup REC-WORD$ QUERY-A @ QUERY-U @ CONTAINS-CI? if g over SYMBOL then
+      dup REC-WORD$ QUERY-A @ QUERY-U @ CONTAINS-CI? if g over SHOWN then
       REC-NEXT
    repeat drop ;
 

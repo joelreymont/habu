@@ -7,20 +7,20 @@
 \ The server is starting, running or shut down. Starting, it answers initialize
 \ with its capabilities and any other request with -32002. Running, it answers
 \ shutdown with null, initialize with -32600, workspace/symbol with the open
-\ documents' definitions (tools/lsp-symbols.f), textDocument/documentSymbol
-\ with the outline of the document's definitions (tools/lsp-outline.f),
-\ textDocument/definition with the declaration the use at the position binds to
-\ (tools/lsp-definition.f), textDocument/hover with what the token at the
-\ position declares or binds to (tools/lsp-hover.f), as Markdown when the
-\ client's initialize listed it in textDocument.hover.contentFormat, else as
-\ plain text, textDocument/completion with the spellings that would bind at the
-\ position (tools/lsp-completion.f), a request whose params it cannot read, or
-\ that names a document not open, with -32602 and any other request with
-\ -32601, and it keeps the documents the client opens, changes and closes: Full
-\ sync, each change carrying the whole text, and positions in UTF-16 units.
-\ Shut down, it answers every request with -32600. Only a running server takes
-\ a notification other than exit; the rest are dropped, as unknown ones always
-\ are.
+\ documents' definitions (tools/lsp-symbols.f), textDocument/documentSymbol with
+\ the document's own definitions as the flat SymbolInformation list workspace
+\ symbols give (tools/lsp-outline.f), textDocument/definition with the
+\ declaration the use at the position binds to (tools/lsp-definition.f),
+\ textDocument/hover with what the token at the position declares or binds to
+\ (tools/lsp-hover.f), as Markdown when the client's initialize listed it in
+\ textDocument.hover.contentFormat, else as plain text, textDocument/completion
+\ with the spellings that would bind at the position (tools/lsp-completion.f), a
+\ request whose params it cannot read, or that names a document not open, with
+\ -32602 and any other request with -32601, and it keeps the documents the
+\ client opens, changes and closes: Full sync, each change carrying the whole
+\ text, and positions in UTF-16 units. Shut down, it answers every request with
+\ -32600. Only a running server takes a notification other than exit; the rest
+\ are dropped, as unknown ones always are.
 \
 \ The messages are served in the order they came, and the first one held is
 \ served only once no more input waits, so the messages that came behind a
@@ -35,6 +35,7 @@
 \ not a request's changes nothing, and a check already running is not stopped.
 \ The end of input and a fault in its framing come after the messages held:
 \ those are served first.
+\
 \ A running server checks the documents and publishes their diagnostics
 \ (tools/lsp-check.f, tools/lsp-diag.f). Opening or changing a document leaves
 \ it waiting for a check, and a save leaves every open document waiting, since
@@ -579,9 +580,9 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
    i p pu AT-READ? 0= if exit then
    WRITER i RESULT AT-SLOT @ AT-BYTE @ LSP-DEFINITION:ANSWER END SENT ;
 
-\ The outline of the open document params.textDocument names: the definitions
-\ its last completed check retained in it, the document checked first if it
-\ waits for a check.
+\ The symbols of the open document params.textDocument names, a flat list:
+\ the definitions its last completed check retained in it, the document
+\ checked first if it waits for a check.
 : DOCUMENT-SYMBOLS ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu DOCUMENT? 0= if exit then

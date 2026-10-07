@@ -159,16 +159,18 @@
 \
 \ Document symbols
 \ - a definition the document's last completed check retained in it missing,
-\   or answered with another name, kind or range than its line's, as both
-\   range and selectionRange; a definition of another open document or of a
+\   or answered other than as the flat SymbolInformation workspace symbols
+\   give it: its name, kind and location at the document's URI over the
+\   token that declared it; a definition of another open document or of a
 \   file the document requires listed; a document with no definition answered
 \   other than an empty list; a document not open, or params naming none,
 \   answered other than -32602 ................................. document-symbol
 \ - a request in the turn of a change answered before the check of the
 \   changed text published, or still listing a definition the change removed;
 \   a request with a change of its document read behind it answered other
-\   than -32801, or that change not applied and checked after it
-\   ............................................... document-symbol-after-change
+\   than -32801, or that change not applied and checked after it; a client
+\   whose initialize supports hierarchical document symbols answered other
+\   than that flat list ........................... document-symbol-after-change
 \ - a request after a change whose check did not complete answered with the
 \   definitions of the text before it, which workspace symbols still list
 \   ................................................. document-symbol-incomplete
@@ -1993,25 +1995,6 @@ CK-USE-MAX 1 + constant OVER-USINGS
    p pu URI-OF MSG+ s\" \"}}}" MSG+
    MSG$ FRAMED ;
 
-\ A Range from character C1 to C2 of line L, as JSON text, in MSG.
-: LINE-RANGE+ ( n n n -- )
-   {: l:n c1:n c2:n :}
-   s\" {\"start\":{\"line\":" MSG+ l INT$ MSG+
-   s\" ,\"character\":" MSG+ c1 INT$ MSG+
-   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
-   s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}" MSG+ ;
-
-\ The symbol the outline lists next: its name and kind, over characters C1 to
-\ C2 of line L as both its range and its selectionRange.
-: OUTLINE+ ( ptr u8 n n n n n -- )
-   {: w:ptr wu:n k:n l:n c1:n c2:n :}
-   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
-   s\" {\"name\":\"" MSG+ w wu MSG+
-   s\" \",\"kind\":" MSG+ k INT$ MSG+
-   s\" ,\"range\":" MSG+ l c1 c2 LINE-RANGE+
-   s\" ,\"selectionRange\":" MSG+ l c1 c2 LINE-RANGE+
-   s" }" MSG+ ;
-
 \ The dependency's symbols: QUX-DEP in package QD, recorded folded, and the
 \ global QUX-V.
 : DEP-SYMBOLS+ ( -- )
@@ -2245,7 +2228,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" REV-A" 12 OD-PATH URI-OF 1 2 7 s" " SYMBOL+
    SYMBOLS-END
    s" 4" SYMBOLS-START
-   s" REV-EDIT" 12 1 2 10 OUTLINE+
+   s" REV-EDIT" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
    SYMBOLS-END
    OD-DEP-PATH CLOSES
    s" 5" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
@@ -2516,9 +2499,9 @@ variable LENGTH-N                        \ the length of its directory's name
 
 \ Three open documents, A and B requiring sym-dep.f, on disk only, and one
 \ with no definition. Each outline lists its own document's definitions in
-\ source order, their kinds as workspace symbols give them, and none of the
-\ other document's or of sym-dep.f, which both checks read; the document with
-\ none answers an empty list. A document never opened, and params naming no
+\ source order, each as workspace symbols give it, and none of the other
+\ document's or of sym-dep.f, which both checks read; the document with none
+\ answers an empty list. A document never opened, and params naming no
 \ document, are -32602.
 : OUTLINE-TURNS ( -- )
    SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
@@ -2538,25 +2521,33 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 7" s" textDocument/documentSymbol" ASK
    SAY
    s" 3" SYMBOLS-START
-   s" QUX-A" 12 1 2 7 OUTLINE+
-   s" ZED" 12 2 2 5 OUTLINE+
+   s" QUX-A" 12 SYM-A-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" ZED" 12 SYM-A-PATH URI-OF 2 2 5 s" " SYMBOL+
    SYMBOLS-END
    s" 4" SYMBOLS-START
-   s" QUX-B" 12 1 2 7 OUTLINE+
-   s" QUX-K" 14 2 11 16 OUTLINE+
+   s" QUX-B" 12 SYM-B-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" QUX-K" 14 SYM-B-PATH URI-OF 2 11 16 s" " SYMBOL+
    SYMBOLS-END
    s" 5" SYMBOLS-START SYMBOLS-END
    HEAR s" 6" -32602 REFUSED
    HEAR s" 7" -32602 REFUSED ;
 
-\ A's outline asked in the turn of the change that removed QUX-A and ZED: the
-\ request checks the changed text first, so its list comes before the answer,
-\ QUX-AA alone. Asked again with a change of A read behind it, the request is
-\ -32801 and the change is applied and checked after it; asked once more, the
-\ restored definitions are answered without a check.
+\ initialize from a client that supports hierarchical document symbols.
+: HIERARCHICAL-CLIENT ( -- )
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":" MSG+
+   s\" {\"textDocument\":{\"documentSymbol\":{\"hierarchicalDocumentSymbolSupport\":true}}}}}" MSG+
+   MSG$ FRAMED ;
+
+\ From a client that supports hierarchical document symbols, answered the same
+\ flat list. A's outline asked in the turn of the change that removed QUX-A
+\ and ZED: the request checks the changed text first, so its list comes before
+\ the answer, QUX-AA alone. Asked again with a change of A read behind it, the
+\ request is -32801 and the change is applied and checked after it; asked once
+\ more, the restored definitions are answered without a check.
 : OUTLINE-AFTER-CHANGE-TURNS ( -- )
    SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
-   INITIALIZE
+   HIERARCHICAL-CLIENT
    SYM-A-PATH TEXT-SYM-A 1 OPENS
    SAY
    HEAR CAPABILITIES
@@ -2566,7 +2557,7 @@ variable LENGTH-N                        \ the length of its directory's name
    SAY
    TEXT-SYM-A2 SYM-A-PATH 2 s" verified" LISTED
    s" 3" SYMBOLS-START
-   s" QUX-AA" 12 1 2 8 OUTLINE+
+   s" QUX-AA" 12 SYM-A-PATH URI-OF 1 2 8 s" " SYMBOL+
    SYMBOLS-END
    s" 4" SYM-A-PATH OUTLINE-ASK
    SYM-A-PATH TEXT-SYM-A 3 CHANGES
@@ -2576,8 +2567,8 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 5" SYM-A-PATH OUTLINE-ASK
    SAY
    s" 5" SYMBOLS-START
-   s" QUX-A" 12 1 2 7 OUTLINE+
-   s" ZED" 12 2 2 5 OUTLINE+
+   s" QUX-A" 12 SYM-A-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" ZED" 12 SYM-A-PATH URI-OF 2 2 5 s" " SYMBOL+
    SYMBOLS-END ;
 
 \ The outline asked in the turn of a change whose check did not complete: the
