@@ -21,8 +21,14 @@
 \ for any other. The URI is the checked document's for its own file, the one
 \ whose text the range counts through, and for any other the open document's
 \ holding the file when the check completed, else the file URI of the path.
-\ A file a check reads twice, as `include` after `undefine` does, gives each
-\ of its definitions once.
+\ A file a check reads again, as `include` into a second package or after
+\ `undefine` does, gives each of its definitions once, as the file spells
+\ it. A record whose word a later reading declares at its token again,
+\ letters compared without case as Habu compares names, stands for several
+\ words, which REC-SEVERAL? answers, and so does that reading's own record
+\ when the file changed its spelling between the readings: each reading
+\ declares another word, in another wordlist or, after `undefine`, in the
+\ same one.
 \
 \ A use is a use in the document that the check bound to a located
 \ declaration, in the order the check published them: the bytes of the
@@ -31,6 +37,12 @@
 \ there. DEFS-USE-AT finds the use that holds a byte of a document's text and
 \ USE-GROUP its group, which holds its declaration as the check read it: no
 \ other check's group for the file, whose text may differ, answers for a use.
+\ USE-WORD$ gives the word as a use writes it. DEFS-USE-RANGE gives the uses of
+\ a document's last completed check in the order the check published them.
+\ DEFS-KEEP also takes whether the check's verdict was verified, which
+\ DEFS-VERIFIED? answers while the check's positions are of the document's
+\ current text: a verified check reported every use in the document that it
+\ bound to a located declaration.
 \ DEFS-EACH gives the groups that answer for their files, the ones workspace
 \ symbols list. DEFS-OWN-GROUP gives the group of a document's own file while
 \ its last check's positions are of its current text, from that check's
@@ -80,15 +92,16 @@ private
 10 constant LF
 
 \ A check's block: the slot of the document checked, its first group,
-\ record, byte and use, and 1 while its positions are of the document's
-\ current text.
+\ record, byte and use, 1 while its positions are of the document's current
+\ text, and 1 when the check's verdict was verified.
 0 constant B-SLOT
 1 constant B-GROUP
 2 constant B-REC
 3 constant B-BYTE
 4 constant B-USE
 5 constant B-CURRENT
-6 constant BLOCK-CELLS
+6 constant B-VERIFIED
+7 constant BLOCK-CELLS
 
 \ A group: 1 while another group for its file answers in its place, its
 \ path's offset and length in BYTES, its URI's JSON string's, its first and
@@ -105,8 +118,9 @@ private
 
 \ A record: its group's next record, -1 after the last, its class, the line
 \ and character its token starts at and ends at, its word's and package's
-\ offsets and lengths in BYTES, the bytes its token starts and ends at, and
-\ its kind's and effect's offsets and lengths in BYTES.
+\ offsets and lengths in BYTES, the bytes its token starts and ends at, its
+\ kind's and effect's offsets and lengths in BYTES, and 1 when it stands for
+\ several words.
 0 constant R-NEXT
 1 constant R-CLASS
 2 constant R-LINE
@@ -123,7 +137,8 @@ private
 13 constant R-KIND-U
 14 constant R-EFF
 15 constant R-EFF-U
-16 constant REC-CELLS
+16 constant R-SEVERAL
+17 constant REC-CELLS
 
 \ A use: the bytes it starts and ends at, its check's group for its
 \ declaration's file, and the bytes its declaring token starts and ends at.
@@ -338,21 +353,38 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    r R-START REC@ START-V @ <> if false exit then
    r R-WORD REC@ r R-WORD-U REC@ AT$ WORD-AT @ WORD-U @ AT$ STR= ;
 
-\ Whether group G holds the line's record already: a file the check reads
-\ again names each of its definitions again.
-: HELD? ( n -- bool )
+\ The record of group G that holds the line's record already, if one does: a
+\ file the check reads again names each of its definitions again.
+: HOLDER ( n -- option<n> )
    G-FIRST GROUP@
    begin dup 0 >= while
-      dup SAME? if drop true exit then
+      dup SAME? if OPTION:SOME exit then
       R-NEXT REC@
    repeat
-   drop false ;
+   drop OPTION:NONE ;
 
-\ The line's record, last of its group's; when the group holds it already,
-\ the strings the line decoded are dropped instead.
-: RECORD ( -- )
-   GROUP {: g:n :}
-   g HELD? if LINE-AT @ BYTES-U ! exit then
+\ Whether record R is of the line's word, letters compared without case as
+\ Habu compares names, declared at the line's byte.
+: ALIKE? ( n -- bool )
+   {: r:n :}
+   r R-START REC@ START-V @ <> if false exit then
+   r R-WORD REC@ r R-WORD-U REC@ AT$ WORD-AT @ WORD-U @ AT$ STR=CI ;
+
+\ Marks each record of group G whose word is the line's, letters compared
+\ without case, declared at the line's byte, as standing for several words;
+\ true when one is.
+: SEVERAL! ( n -- bool )
+   false swap G-FIRST GROUP@
+   begin dup 0 >= while
+      dup ALIKE? if 1 over R-SEVERAL REC! nip true swap then
+      R-NEXT REC@
+   repeat
+   drop ;
+
+\ The line's record, new, last of group G's, standing for several words when
+\ SEVERAL is true.
+: REC+ ( n bool -- )
+   {: g:n several:bool :}
    REC-N @ {: r:n :}
    r 1+ REC-CELLS * RECS-RESERVE
    -1 r R-NEXT REC!
@@ -370,10 +402,25 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    KIND-U @ r R-KIND-U REC!
    EFF-AT @ r R-EFF REC!
    EFF-U @ r R-EFF-U REC!
+   several if 1 else 0 then r R-SEVERAL REC!
    g G-LAST GROUP@ {: last:n :}
    last 0 < if r g G-FIRST GROUP! else r last R-NEXT REC! then
    r g G-LAST GROUP!
    1 REC-N +! ;
+
+\ The line's record, last of its group's, unless the group holds it already,
+\ when the strings the line decoded are dropped instead. A line that declares
+\ a record's word again at its token, letters compared without case as Habu
+\ compares names, is of another reading of the file, which declared another
+\ word there: that record, and the line's own when it is new, stands for
+\ several from then on.
+: RECORD ( -- )
+   GROUP {: g:n :}
+   g SEVERAL! {: several:bool :}
+   g HOLDER MATCH option
+      some OF drop LINE-AT @ BYTES-U ! ENDOF
+      none OF g several REC+ ENDOF
+   ;MATCH ;
 
 \ The group of the line's file, made if this check has none.
 : FILE-GROUP ( -- )
@@ -549,9 +596,10 @@ public
    ;MATCH ;
 
 \ Keeps these file, definition and use lines of the completed check of the
-\ document in this slot, in place of what its last check kept.
-: DEFS-KEEP ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: fa:ptr fu:n a:ptr u:n ua:ptr uu:n slot:n :}
+\ document in this slot, and whether its verdict was verified, in place of
+\ what its last check kept.
+: DEFS-KEEP ( ptr u8 n ptr u8 n ptr u8 n n bool -- )
+   {: fa:ptr fu:n a:ptr u:n ua:ptr uu:n slot:n verified:bool :}
    slot DEFS-DROP
    BLOCK-N @ {: k:n :}
    k 1+ BLOCK-CELLS * BLOCKS-RESERVE
@@ -561,6 +609,7 @@ public
    BYTES-U @ k B-BYTE BLOCK!
    USE-N @ k B-USE BLOCK!
    1 k B-CURRENT BLOCK!
+   verified if 1 else 0 then k B-VERIFIED BLOCK!
    1 BLOCK-N +!
    -1 CUR-G !
    a u [: RECORD ;] LINES
@@ -570,6 +619,9 @@ public
 
 \ Whether another group for the same file answers in this group's place.
 : GROUP-OVER? ( n -- bool )  G-OVER GROUP@ 0<> ;
+
+\ Whether the group's file is the one its check is of.
+: GROUP-OWN? ( n -- bool )  G-OWN GROUP@ 0<> ;
 
 \ Gives XT each group that answers for its file, in the store's order: each
 \ one no other group for the same file answers in place of.
@@ -596,6 +648,10 @@ public
 : REC-PACKAGE$ ( n -- ptr u8 n )  dup R-PKG REC@ swap R-PKG-U REC@ AT$ ;
 : REC-KIND$ ( n -- ptr u8 n )  dup R-KIND REC@ swap R-KIND-U REC@ AT$ ;
 : REC-EFFECT$ ( n -- ptr u8 n )  dup R-EFF REC@ swap R-EFF-U REC@ AT$ ;
+
+\ Whether the record stands for several words: the check read its file again
+\ and declared its word at its token again, letters compared without case.
+: REC-SEVERAL? ( n -- bool )  R-SEVERAL REC@ 0<> ;
 
 \ The line and character the record's token starts at, then ends at.
 : REC-RANGE ( n -- n n n n )
@@ -630,6 +686,34 @@ public
    {: u:n :}
    u U-START USE@ u U-END USE@ ;
 
+\ The word as use U of the text T writes it: the bytes the use spans, held to
+\ the text.
+: USE-WORD$ ( ptr u8 n n -- ptr u8 n )
+   {: t:ptr tu:n u:n :}
+   u USE-BYTES {: from:n to:n :}
+   from 0 max tu min {: a:n :}
+   to a max tu min {: b:n :}
+   t a + b a - ;
+
+\ The uses of the last completed check of the document in this slot, as the
+\ limit and first index of a ?do loop over them, in the order the check
+\ published them; none if the store keeps no check of it or a check of it
+\ has started since.
+: DEFS-USE-RANGE ( n -- n n )
+   BLOCK-OF MATCH option
+      some OF {: k:n :} k B-USE USE-N @ BLOCK-END k B-USE BLOCK@ ENDOF
+      none OF 0 0 ENDOF
+   ;MATCH ;
+
+\ Whether the verdict of the last completed check of the document in this
+\ slot was verified while its positions are of the document's text; false if
+\ the store keeps no check of it or a check of it has started since.
+: DEFS-VERIFIED? ( n -- bool )
+   BLOCK-OF MATCH option
+      some OF {: k:n :} k B-CURRENT BLOCK@ 0<> k B-VERIFIED BLOCK@ 0<> and ENDOF
+      none OF false ENDOF
+   ;MATCH ;
+
 \ The first record of group G whose token starts and ends at these bytes, if
 \ one does.
 : GROUP-REC-AT ( n n n -- option<n> )
@@ -640,6 +724,17 @@ public
       R-NEXT REC@
    repeat
    drop OPTION:NONE ;
+
+\ The record of group G whose token starts and ends at these bytes, if exactly
+\ one does.
+: GROUP-REC-SOLE ( n n n -- option<n> )
+   {: g:n ts:n te:n :}
+   0 -1 g G-FIRST GROUP@
+   begin dup 0 >= while
+      dup REC-BYTES te = swap ts = and if nip swap 1+ swap dup then
+      R-NEXT REC@
+   repeat
+   drop swap 1 = if OPTION:SOME else drop OPTION:NONE then ;
 
 private
 
@@ -656,17 +751,6 @@ private
       R-NEXT REC@
    repeat
    drop OPTION:NONE ;
-
-\ The record of group G whose token starts and ends at these bytes, if exactly
-\ one does.
-: GROUP-REC-SOLE ( n n n -- option<n> )
-   {: g:n ts:n te:n :}
-   0 -1 g G-FIRST GROUP@
-   begin dup 0 >= while
-      dup REC-BYTES te = swap ts = and if nip swap 1+ swap dup then
-      R-NEXT REC@
-   repeat
-   drop swap 1 = if OPTION:SOME else drop OPTION:NONE then ;
 
 \ When no record of group G at these bytes is of word W: the one of W's tail,
 \ its bytes after the colon, when W is qualified as CHECKER-QUALIFIED? reads a

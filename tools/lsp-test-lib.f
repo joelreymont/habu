@@ -20,8 +20,8 @@
 \
 \ Lifecycle
 \ - initialize answers other than its capabilities: positions in utf-16, open
-\   and close notifications, Full sync, workspace and document symbols, the
-\   name habu ........................................................ lifecycle
+\   and close notifications, Full sync, workspace and document symbols,
+\   document highlights, the name habu ............................... lifecycle
 \ - shutdown answers other than a null result; exit after it exits other than
 \   0 or writes to stderr ............................................ lifecycle
 \ - a reply held until more input comes, or the end of input .. answers-at-once
@@ -231,6 +231,46 @@
 \   declaration answered before the check of the changed text, or not with
 \   the declaration's new line ...................... hover-after-change
 \
+\ Document highlight
+\ - a use, at its first character or its last, or the token declaring its
+\   word, in an open document whose last check was verified, not answered
+\   with that token and every use of the word in the document, each a Text
+\   highlight over its range, the last after a character UTF-16 counts as one
+\   unit and UTF-8 as two bytes; a token no use names not answered with
+\   itself; the character after a use answered with any highlight; a negative
+\   character answered other than -32602 ........................ highlight
+\ - a use of either converter a DEFTYPE declares, both at its name's token,
+\   in either case or package-qualified, answered with the other converter's
+\   uses; that shared token, which selects neither word, answered other than
+\   null ................................................. highlight-deftype
+\ - a use of a dependency on disk, its global or, qualified, its public word,
+\   answered with its declaration, which is outside the document, or without
+\   the use ........................................... highlight-dependency
+\ - a position in a document not open answered other than -32602
+\   ..................................................... highlight-not-open
+\ - a use asked about in the turn of a change that moved it and its
+\   declaration answered before the check of the changed text published, or
+\   from the uses of the text before it; a request with a change of its
+\   document read behind it answered other than -32801 . highlight-after-change
+\ - a use in a document whose last check was refused, or deferred at a
+\   top-level word that parses, answered other than null: neither verdict
+\   says the check reported every use; go to definition at that byte not
+\   answered from the same check ......................... highlight-unproved
+\ - a use asked about after a change whose check did not complete answered
+\   other than null ................................... highlight-incomplete
+\ - a use of a word whose token, in a file included into two packages, into
+\   one package's public section and its private one, or again after
+\   `undefine`, declares the other's word too, answered other than null: no
+\   use's spelling tells them apart ...................... highlight-included
+\ - a use of either of two words whose spellings differ only in case, which
+\   one check declared at one token by reading its file twice, the file
+\   changed on disk between the readings, answered other than null: Habu
+\   compares names without case, so neither spelling tells them apart. No
+\   conversation can change a file between a check's two readings of it
+\   without racing the check, so this one runs the store and the highlight in
+\   the test's own process, on the lines a verified check of such a race
+\   stated .......................................... highlight-case-reread
+\
 \ Completion
 \ - a cursor in a body not answered, in a list that is not incomplete, with
 \   the words of the document and of a dependency that would bind there, each
@@ -287,7 +327,12 @@ require lib/uri.f
 require lib/content-length.f
 require lib/json-read.f
 require lib/json-rpc.f
+require lib/json-write.f
 require tools/check-verify-core.f
+require tools/lsp-docs.f
+require tools/lsp-text.f
+require tools/lsp-defs.f
+require tools/lsp-highlight.f
 require tools/lsp-core.f
 
 package LSP-TEST
@@ -316,8 +361,8 @@ using BUF
 \ its busiest measurement and CHECKED-MS about six times big-frame's 1230 to
 \ 1289 ms, and neither is larger. The one bounds 27 runs (the 24 conversations
 \ CONVERSE runs, answers-at-once, stdout-closed and TEST-EXIT-TIMEOUT's child)
-\ and the other 70 conversations. A server that blocks spends none of the
-\ row's CPU budget (test/suite-budget.f CPU-MS), so all 97 could reach their
+\ and the other 78 conversations. A server that blocks spends none of the
+\ row's CPU budget (test/suite-budget.f CPU-MS), so all 105 could reach their
 \ bounds, each failing by name, well inside the row's hang guard (ROW-MS). One
 \ that spins to its bound spends that much of the budget's 360 s, so at most
 \ 45 such runs fail by name before the budget ends the row.
@@ -353,6 +398,7 @@ variable SENT                            \ and the bytes of its input written
 
 FS-PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file URI: file:// and each byte escaped
 create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
+TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
 
 : READY ( ptr a -- )  256 N>BLEN INIT ;
 
@@ -732,7 +778,8 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\"," MSG+
    s\" \"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}," MSG+
    s\" \"completionProvider\":{},\"definitionProvider\":true," MSG+
-   s\" \"hoverProvider\":true,\"documentSymbolProvider\":true," MSG+
+   s\" \"hoverProvider\":true,\"documentHighlightProvider\":true," MSG+
+   s\" \"documentSymbolProvider\":true," MSG+
    s\" \"workspaceSymbolProvider\":true}," MSG+
    s\" \"serverInfo\":{\"name\":\"habu\"}}}" MSG+
    MSG$ HEARD ;
@@ -2846,6 +2893,300 @@ variable LENGTH-N                        \ the length of its directory's name
    TEXT-HOVER-A-MOVED HOVER-A-PATH 2 s" verified" LISTED
    4 HV-ONE-MD s" 3" s" markdown" 4 18 24 HOVERED ;
 
+\ ---- document highlight ------------------------------------------------------
+
+\ textDocument/documentHighlight, by its id's JSON text, at character C of
+\ line L of the document opened from this path.
+: HIGHLIGHT-ASK ( ptr u8 n ptr u8 n n n -- )
+   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+   s" textDocument/documentHighlight" i iu p pu l c AT-ASK ;
+
+\ The highlight the answer SYMBOLS-START began lists next: a Text one from
+\ character C1 to C2 of line L.
+: HIGHLIGHT+ ( n n n -- )
+   {: l:n c1:n c2:n :}
+   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   s\" {\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c1 INT$ MSG+
+   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c2 INT$ MSG+ s\" }},\"kind\":1}" MSG+ ;
+
+\ The next frame answers the request with this id's JSON text with DEF-ONE's
+\ declaring token and its two uses, in TEXT-DEF-A moved this many lines down.
+: DEF-ONE-LIT ( ptr u8 n n -- )
+   {: i:ptr iu:n down:n :}
+   i iu SYMBOLS-START
+   down 2 9 HIGHLIGHT+
+   down 1+ 19 26 HIGHLIGHT+
+   down 2 + 33 40 HIGHLIGHT+
+   SYMBOLS-END ;
+
+\ DEF-ONE's use in DEF-TWO, at its first character and its last, and DEF-ONE's
+\ declaring token, each answered with that token and both uses of DEF-ONE;
+\ DEF-TWO's token, which no use names, with itself alone; the character after
+\ the use with none; a negative character -32602.
+: HIGHLIGHT-TURNS ( -- )
+   INITIALIZE
+   DEF-A-PATH TEXT-DEF-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-A DEF-A-PATH 1 s" verified" LISTED
+   s" 3" DEF-A-PATH 1 19 HIGHLIGHT-ASK
+   s" 4" DEF-A-PATH 1 25 HIGHLIGHT-ASK
+   s" 5" DEF-A-PATH 0 3 HIGHLIGHT-ASK
+   s" 6" DEF-A-PATH 1 2 HIGHLIGHT-ASK
+   s" 7" DEF-A-PATH 1 26 HIGHLIGHT-ASK
+   s" 8" DEF-A-PATH 1 -1 HIGHLIGHT-ASK
+   SAY
+   s" 3" 0 DEF-ONE-LIT
+   s" 4" 0 DEF-ONE-LIT
+   s" 5" 0 DEF-ONE-LIT
+   s" 6" SYMBOLS-START 1 2 9 HIGHLIGHT+ SYMBOLS-END
+   s" 7" SYMBOLS-START SYMBOLS-END
+   HEAR s" 8" -32602 REFUSED ;
+
+\ A use of >CVT-T and a qualified use of CVT-T>N, each answered with CVT-T's
+\ token and the uses of its own converter, in either case and qualified, and
+\ none of the other's: the check states both converters at that one token. The
+\ token itself selects neither word, so it answers null.
+: HIGHLIGHT-DEFTYPE-TURNS ( -- )
+   INITIALIZE
+   HOVER-CVT-PATH TEXT-HOVER-CVT 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-CVT HOVER-CVT-PATH 1 s" verified" LISTED
+   s" 3" HOVER-CVT-PATH 4 20 HIGHLIGHT-ASK
+   s" 4" HOVER-CVT-PATH 6 30 HIGHLIGHT-ASK
+   s" 5" HOVER-CVT-PATH 3 9 HIGHLIGHT-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   3 8 13 HIGHLIGHT+ 4 20 26 HIGHLIGHT+ 4 35 41 HIGHLIGHT+ 6 18 29 HIGHLIGHT+
+   SYMBOLS-END
+   s" 4" SYMBOLS-START
+   3 8 13 HIGHLIGHT+ 4 27 34 HIGHLIGHT+ 4 42 49 HIGHLIGHT+ 6 30 42 HIGHLIGHT+
+   SYMBOLS-END
+   HEAR s" 5" NULL-RESULT ;
+
+\ The uses of def-dep.f's global and, qualified, of its public word, each
+\ answered with itself alone: the declarations are in the file on disk, not in
+\ the document.
+: HIGHLIGHT-DEP-TURNS ( -- )
+   DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
+   INITIALIZE
+   DEF-B-PATH TEXT-DEF-B 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
+   s" 3" DEF-B-PATH 1 19 HIGHLIGHT-ASK
+   s" 4" DEF-B-PATH 1 27 HIGHLIGHT-ASK
+   SAY
+   s" 3" SYMBOLS-START 1 19 26 HIGHLIGHT+ SYMBOLS-END
+   s" 4" SYMBOLS-START 1 27 37 HIGHLIGHT+ SYMBOLS-END ;
+
+\ A position in a document the client never opened: -32602.
+: HIGHLIGHT-NOT-OPEN-TURNS ( -- )
+   INITIALIZE
+   s" 3" DEF-A-PATH 1 19 HIGHLIGHT-ASK
+   SAY
+   HEAR CAPABILITIES
+   HEAR s" 3" -32602 REFUSED ;
+
+\ DEF-ONE's use asked about at its new place in the turn of the change that
+\ moved it and DEF-ONE two lines down: the request checks the changed text
+\ first, so its list comes before the answer, from the moved text. Asked again
+\ with a change back read behind it, the request is -32801 and the change is
+\ applied and checked after it; asked once more, the uses of the restored text
+\ are answered without a check.
+: HIGHLIGHT-AFTER-CHANGE-TURNS ( -- )
+   INITIALIZE
+   DEF-A-PATH TEXT-DEF-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-A DEF-A-PATH 1 s" verified" LISTED
+   DEF-A-PATH TEXT-DEF-A-MOVED 2 CHANGES
+   s" 3" DEF-A-PATH 3 19 HIGHLIGHT-ASK
+   SAY
+   TEXT-DEF-A-MOVED DEF-A-PATH 2 s" verified" LISTED
+   s" 3" 2 DEF-ONE-LIT
+   s" 4" DEF-A-PATH 3 19 HIGHLIGHT-ASK
+   DEF-A-PATH TEXT-DEF-A 3 CHANGES
+   SAY
+   HEAR s" 4" -32801 REFUSED
+   TEXT-DEF-A DEF-A-PATH 3 s" verified" LISTED
+   s" 5" DEF-A-PATH 1 19 HIGHLIGHT-ASK
+   SAY
+   s" 5" 0 DEF-ONE-LIT ;
+
+\ hu.f, refused for HU-BAD, whose body leaves the cell HU-ONE gives, and
+\ hd.f, deferred at the top-level PN, which parses: neither verdict says the
+\ check reported every use in the document.
+: HU-PATH ( -- ptr u8 n )  s" hu.f" FIXTURE ;
+: HD-PATH ( -- ptr u8 n )  s" hd.f" FIXTURE ;
+: TEXT-HU ( -- ptr u8 n )  s\" : HU-ONE ( -- n ) 1 ;\n: HU-BAD ( -- ) HU-ONE ;\n" ;
+: TEXT-HD ( -- ptr u8 n )
+   s\" : HD-ONE ( -- n ) 1 ;\n: HD-TWO ( -- n ) HD-ONE ;\n: PN ( -- ) parse-name 2drop ;\nPN anything\n" ;
+
+\ The use of HU-ONE in the refused document and of HD-ONE in the deferred
+\ one, each answered null, while go to definition at the same byte answers
+\ its declaration from the same check.
+: HIGHLIGHT-UNPROVED-TURNS ( -- )
+   INITIALIZE
+   HU-PATH TEXT-HU 1 OPENS
+   HD-PATH TEXT-HD 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HU HU-PATH CHECKS
+   HU-PATH s" refused" COMPLETED
+   HU-PATH 1 EXPECT 1 16 1 22 1 s" E-MISMATCH" DIAG+ PUBLISHES
+   TEXT-HD HD-PATH CHECKS
+   HD-PATH s" deferred" COMPLETED
+   HD-PATH 1 EXPECT 3 0 3 2 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
+   s" 3" HU-PATH 1 16 HIGHLIGHT-ASK
+   s" 4" HU-PATH 1 16 DEFINITION-ASK
+   s" 5" HD-PATH 1 18 HIGHLIGHT-ASK
+   s" 6" HD-PATH 1 18 DEFINITION-ASK
+   SAY
+   HEAR s" 3" NULL-RESULT
+   s" 4" HU-PATH URI-OF 0 2 8 LOCATED
+   HEAR s" 5" NULL-RESULT
+   s" 6" HD-PATH URI-OF 0 2 8 LOCATED ;
+
+\ DEF-ONE's use asked about in the turn of a change whose check did not
+\ complete: no check of the document's text was verified, so the answer is
+\ null, not the uses of the text before it.
+: HIGHLIGHT-INCOMPLETE-TURNS ( -- )
+   INITIALIZE
+   DEF-A-PATH TEXT-DEF-C 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-C DEF-A-PATH 1 s" verified" LISTED
+   DEF-A-PATH TEXT-DEF-C-SWAPPED 2 CHANGES
+   s" 3" DEF-A-PATH 2 19 HIGHLIGHT-ASK
+   SAY
+   TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
+   DEF-A-PATH s" not checked: exit 76" SAID
+   HEAR s" 3" NULL-RESULT
+   LOGGED ;
+
+\ hl-common.f, on disk only, defines HL-K in the package and section that
+\ include it. hl-twice.f includes it into HLP's public section and HLQ's,
+\ hl-vis.f into HLV's public section and then its private one, hl-undef.f
+\ into the globals, then again after `undefine HL-K`, and each uses both
+\ words: the check states two words at HL-K's one token, of two packages, of
+\ one package under two visibilities, then of one wordlist one after the
+\ other.
+: HL-COMMON-PATH ( -- ptr u8 n )  s" hl-common.f" FIXTURE ;
+: HL-TWICE-PATH ( -- ptr u8 n )  s" hl-twice.f" FIXTURE ;
+: HL-VIS-PATH ( -- ptr u8 n )  s" hl-vis.f" FIXTURE ;
+: HL-UNDEF-PATH ( -- ptr u8 n )  s" hl-undef.f" FIXTURE ;
+: TEXT-HL-COMMON ( -- ptr u8 n )  s\" : HL-K ( -- n ) 1 ;\n" ;
+: TEXT-HL-TWICE ( -- ptr u8 n )
+   s\" package HLP\npublic\ninclude hl-common.f\n;package\npackage HLQ\npublic\ninclude hl-common.f\n;package\n: HL-BOTH ( -- n ) HLP:HL-K HLQ:HL-K + ;\n" ;
+: TEXT-HL-VIS ( -- ptr u8 n )
+   s\" package HLV\npublic\ninclude hl-common.f\nprivate\ninclude hl-common.f\n: HL-IN ( -- n ) HL-K ;\n;package\n: HL-OUT ( -- n ) HLV:HL-K ;\n" ;
+: TEXT-HL-UNDEF ( -- ptr u8 n )
+   s\" include hl-common.f\n: HL-U1 ( -- n ) HL-K ;\nundefine HL-K\ninclude hl-common.f\n: HL-U2 ( -- n ) HL-K ;\n" ;
+
+\ HLP:HL-K and HLQ:HL-K, the private HL-K and the public HLV:HL-K, then the
+\ first global HL-K and the second, each answered null: the token their uses
+\ target declares two words, and no use is known to be of the one it names
+\ rather than of the other.
+: HIGHLIGHT-INCLUDED-TURNS ( -- )
+   HL-COMMON-PATH TEXT-HL-COMMON WRITE-ALL
+   INITIALIZE
+   HL-TWICE-PATH TEXT-HL-TWICE 1 OPENS
+   HL-VIS-PATH TEXT-HL-VIS 1 OPENS
+   HL-UNDEF-PATH TEXT-HL-UNDEF 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HL-TWICE HL-TWICE-PATH 1 s" verified" LISTED
+   TEXT-HL-VIS HL-VIS-PATH 1 s" verified" LISTED
+   TEXT-HL-UNDEF HL-UNDEF-PATH 1 s" verified" LISTED
+   s" 3" HL-TWICE-PATH 8 19 HIGHLIGHT-ASK
+   s" 4" HL-TWICE-PATH 8 28 HIGHLIGHT-ASK
+   s" 5" HL-VIS-PATH 5 17 HIGHLIGHT-ASK
+   s" 6" HL-VIS-PATH 7 18 HIGHLIGHT-ASK
+   s" 7" HL-UNDEF-PATH 1 17 HIGHLIGHT-ASK
+   s" 8" HL-UNDEF-PATH 4 17 HIGHLIGHT-ASK
+   SAY
+   HEAR s" 3" NULL-RESULT
+   HEAR s" 4" NULL-RESULT
+   HEAR s" 5" NULL-RESULT
+   HEAR s" 6" NULL-RESULT
+   HEAR s" 7" NULL-RESULT
+   HEAR s" 8" NULL-RESULT ;
+
+\ hl-case.f, on disk, as the second of one check's two readings of it read it:
+\ hl-reread.f includes it into P's public section, then into Q's, and uses
+\ P:K and Q:k, and between the readings the file changed from
+\ `: K ( -- n ) 1 ;` to this text. The lines are the ones
+\ tools/check-verify-child.f stated for a verified check of that race: the two
+\ files, K of p and k of q both at hl-case.f's bytes 2 to 3, and the two uses,
+\ here at hl-reread.f's bytes 107 to 110 and 111 to 114.
+: HL-CASE-PATH ( -- ptr u8 n )  s" hl-case.f" FIXTURE ;
+: HL-REREAD-PATH ( -- ptr u8 n )  s" hl-reread.f" FIXTURE ;
+: TEXT-HL-CASE ( -- ptr u8 n )  s\" : k ( -- n ) 2 ;\n" ;
+: TEXT-HL-REREAD ( -- ptr u8 n )
+   s\" package P\npublic\ninclude hl-case.f\n;package\npackage Q\npublic\ninclude hl-case.f\n;package\n: HL-BOTH ( -- n ) P:K Q:k + ;\n" ;
+
+\ The definition of word W of package P at hl-case.f's bytes 2 to 3, a line
+\ in PAR.
+: HL-CASE-DEF+ ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n p:ptr pu:n :}
+   s\" {\"kind\":\":\",\"class\":\"word\",\"word\":\"" PAR+ w wu PAR+
+   s\" \",\"package\":\"" PAR+ p pu PAR+
+   s\" \",\"visibility\":\"public\",\"effect\":\"-- n\",\"file\":" PAR+
+   HL-CASE-PATH TEXT+ s\" ,\"byte_start\":2,\"byte_end\":3}\n" PAR+ ;
+
+\ A use from byte FROM to byte TO of hl-reread.f of the token at hl-case.f's
+\ bytes 2 to 3, a line in PAR.
+: HL-CASE-USE+ ( n n -- )
+   {: from:n to:n :}
+   s\" {\"byte_start\":" PAR+ from INT$ PAR+
+   s\" ,\"byte_end\":" PAR+ to INT$ PAR+
+   s\" ,\"file\":" PAR+ HL-CASE-PATH TEXT+
+   s\" ,\"target_start\":2,\"target_end\":3}\n" PAR+ ;
+
+\ The highlight at this line and character of the document in this slot, its
+\ byte found as the server finds a request's, must be null; it fails under
+\ this label.
+: HL-NULL-AT ( n n n ptr u8 n -- )
+   {: slot:n line:n ch:n l:ptr lu:n :}
+   slot LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT!
+   line ch LSP-TEXT:OFFSET-AT {: at:n :}
+   l lu T-LABEL
+   HL-W MSG-B JSON-WRITE:OPEN-BUF slot at LSP-HIGHLIGHT:ANSWER
+   JSON-WRITE:$ s" null" T$=
+   HL-W JSON-WRITE:CLOSE ;
+
+\ The check's lines kept for hl-reread.f, open in this slot, as the server
+\ keeps a completed check's, then the highlight asked at P:K and at Q:k.
+: HL-REREAD-ASK ( n -- )
+   {: slot:n :}
+   PAR-B CLEAR
+   s\" {\"file\":" PAR+ HL-REREAD-PATH TEXT+
+   s\" }\n{\"file\":" PAR+ HL-CASE-PATH TEXT+ s\" }\n" PAR+
+   PAR$ nip {: files:n :}
+   s" K" s" p" HL-CASE-DEF+
+   s" k" s" q" HL-CASE-DEF+
+   PAR$ nip {: defs:n :}
+   107 110 HL-CASE-USE+
+   111 114 HL-CASE-USE+
+   PAR$ {: a:ptr u:n :}
+   a files  a files + defs files -  a defs + u defs -  slot true
+   LSP-DEFS:DEFS-KEEP
+   slot 8 20 s" highlight-case-reread: P:K" HL-NULL-AT
+   slot 8 24 s" highlight-case-reread: Q:k" HL-NULL-AT ;
+
+: HIGHLIGHT-CASE-REREAD ( -- )
+   LSP-DEFS:DEFS-PREPARE
+   HL-CASE-PATH TEXT-HL-CASE WRITE-ALL
+   HL-REREAD-PATH URI-OF 1 HL-REREAD-PATH TEXT-HL-REREAD LSP-DOCS:DOC-OPEN
+   HL-REREAD-PATH URI-OF LSP-DOCS:DOC-FIND MATCH option
+      some OF HL-REREAD-ASK ENDOF
+      none OF s" highlight-case-reread: open" T-LABEL false TTRUE ENDOF
+   ;MATCH ;
+
 \ ---- completion --------------------------------------------------------------
 
 : CMP-A-PATH ( -- ptr u8 n )  s" cmpl-a.f" FIXTURE ;
@@ -3134,6 +3475,17 @@ variable LENGTH-N                        \ the length of its directory's name
    s" hover-not-open" [: HOVER-NOT-OPEN-TURNS ;] TALK
    s" hover-after-change" [: HOVER-AFTER-CHANGE-TURNS ;] TALK ;
 
+: TEST-HIGHLIGHTS ( -- )
+   s" highlight" [: HIGHLIGHT-TURNS ;] TALK
+   s" highlight-deftype" [: HIGHLIGHT-DEFTYPE-TURNS ;] TALK
+   s" highlight-dependency" [: HIGHLIGHT-DEP-TURNS ;] TALK
+   s" highlight-not-open" [: HIGHLIGHT-NOT-OPEN-TURNS ;] TALK
+   s" highlight-after-change" [: HIGHLIGHT-AFTER-CHANGE-TURNS ;] TALK
+   s" highlight-unproved" [: HIGHLIGHT-UNPROVED-TURNS ;] TALK
+   s" highlight-incomplete" [: HIGHLIGHT-INCOMPLETE-TURNS ;] TALK
+   s" highlight-included" [: HIGHLIGHT-INCLUDED-TURNS ;] TALK
+   HIGHLIGHT-CASE-REREAD ;
+
 : TEST-DEFINITIONS ( -- )
    s" definition" [: DEF-TURNS ;] TALK
    s" definition-dependency" [: DEF-DEP-TURNS ;] TALK
@@ -3295,6 +3647,7 @@ public
    TEST-OUTLINES
    TEST-DEFINITIONS
    TEST-HOVERS
+   TEST-HIGHLIGHTS
    TEST-COMPLETIONS
    TEST-CANCELS
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
