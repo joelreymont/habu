@@ -1227,6 +1227,20 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- ptr u8 n ] )
    MULTI-ERR-MODE? IF 0 EXIT THEN
    70 throw ;
 
+\ The colon definitions this run judged, each counted once its verdict is
+\ final (CENSUS): a `:` or `kernel:` statement (COLON?) is certified when its
+\ body, and its does> clause if it has one, certified; it is deferred to the
+\ run when neither was refused and one was deferred, or when the scan stopped
+\ inside it (TICK-REMAINDER). A refused one counts in neither, and the scan
+\ reads nothing after a stop.
+variable CERTIFIED-N
+variable DEFERRED-N
+
+\ Count one definition by its verdict, as BODY-VERDICT answers one.
+: TALLY ( n -- )
+   dup -1 = IF drop 1 CERTIFIED-N +! EXIT THEN
+   2 = IF 1 DEFERRED-N +! THEN ;
+
 PTR-VARIABLE TICK-BODY-A
 variable TICK-BODY-U
 variable TICK-BODY-VERDICT
@@ -1459,7 +1473,10 @@ DYNAMIC-BUFFER TICK-QUAL u8
          ELSE
             DOES-DEF-VERDICT @ 2 <> IF clause REPORT-DEFERRED THEN
          THEN
-         DOES-DEF-VERDICT @ 0<> IF sig sigu DEFINER-RECORD THEN
+         DOES-DEF-VERDICT @ 0<> IF
+            sig sigu DEFINER-RECORD
+            DOES-DEF-VERDICT @ -1 =  clause -1 =  and IF -1 ELSE 2 THEN TALLY
+         THEN
          true EXIT
       THEN
       TICK-BODY-STEP
@@ -2780,11 +2797,14 @@ variable FFI-SIG-U
       BODY!
       TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
-         VERIFY-NAMED-BODY dup REPORT-DEFERRED -1 = IF VERIFY-WRAPPER THEN
+         VERIFY-NAMED-BODY dup REPORT-DEFERRED dup -1 = IF VERIFY-WRAPPER THEN TALLY
          TICK-REMAINDER @ 0= IF COLON-DEFINED THEN EXIT
       THEN
       LOCAL-TOKEN? 0= IF
-         TOKEN-A @ TOKEN-U @ s" does>" STR=CI IF VERIFY-DOES IF COLON-DEFINED THEN EXIT THEN
+         TOKEN-A @ TOKEN-U @ s" does>" STR=CI IF
+            VERIFY-DOES IF COLON-DEFINED THEN
+            TICK-REMAINDER @ IF 2 TALLY THEN EXIT
+         THEN
          TOKEN-A @ TOKEN-U @ WRAP-TOKEN
       THEN
       TICK-BODY-STEP
@@ -3029,6 +3049,7 @@ COMPOSE-INIT
 : RUN-IN-SCOPE ( [ -- ] -- )
    TICK-CONTEXT-RESET
    false TICK-REMAINDER !
+   0 CERTIFIED-N !  0 DEFERRED-N !
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
    catch
    NCOMP-DISPATCH:DECL-VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute
@@ -3087,6 +3108,12 @@ public
 
 : DEFERRED? ( -- bool )
    DEFER-SEEN @ 0<> ;
+
+\ The colon definitions the last run certified, and those it deferred to the
+\ run, up to where it stopped (TALLY): the build's self-check census reports
+\ them after each certify.
+: CENSUS ( -- n n )
+   CERTIFIED-N @ DEFERRED-N @ ;
 
 \ The next composition's completion cursor, subject byte N: the spellings its
 \ place offers go to ON-CANDIDATE (the cursor's section, at the top of this

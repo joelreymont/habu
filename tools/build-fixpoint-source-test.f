@@ -79,12 +79,26 @@ package BUILD-FIXPOINT
    BF-SOURCE-BUF BF-SOURCE-LEN @ BFT-READ-BUF BF-SOURCE-LEN @ STR= TTRUE
    BF-TMP-RESET ;
 
+\ checker.f's string-word rows, then definitions with a real literal after them,
+\ and one the certify leaves to the run: it calls what `evaluate` renders.
+: BFT-CENSUS-ROWS ( ptr u8 n -- )
+   {: p:ptr u:n :}
+   p u S\" PRIM: s\\\"    PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;\n" WRITE-ALL
+   p u S\" PRIM: c\\\"    PE-PTR-U8 PE-OUT PRIM;\nPRIM: .\\\"    PRIM;\n" APPEND-FILE
+   p u S\" : HEAD ( -- n ) 1 ;\n: MIDDLE ( -- n ) 2 ;\n" APPEND-FILE
+   p u S\" : TAIL ( -- ptr u8 n ) s\" quoted\" ;\n" APPEND-FILE
+   p u S\" s\" : MADE ( -- n ) 3 ;\" evaluate\n: USE ( -- n ) MADE ;\n" APPEND-FILE ;
+
+\ The census is what the certify scan judged: a string-word row's name is read
+\ as the row reads it, so it hides none of the definitions after it, and the
+\ body the scan leaves to the run is counted as deferred, not as certified.
 : BFT-TEST-WHOLE-CENSUS ( -- )
    BFT-ROOT BF-TMP!
-   BFT-WHOLE$ S\" : HEAD ( -- n ) 1 ;\n" WRITE-ALL
-   s" whole-src" BF-CENSUS-COUNT 1 T=
-   BFT-WHOLE$ S\" : TAIL ( -- n ) 2 ;\n" BFT-SIZE:ARM
-   s" whole-src" BF-CENSUS-COUNT 2 T=
+   BFT-WHOLE$ BFT-CENSUS-ROWS
+   s" census" BFT-WHOLE$ BF-CERTIFY-RC 0 T=
+   VERIFY:CENSUS {: certified:n deferred:n :}
+   certified 3 T=
+   deferred 1 T=
    BF-TMP-RESET ;
 
 : BFT-TEST-WHOLE-ERRORS ( -- )
@@ -108,9 +122,9 @@ package BUILD-FIXPOINT
    BF-CERT-DIAG BF-CERT-DIAG-U @ s" 'BAD'" CONTAINS? TTRUE
    BFT-CERT S\" package BFT-GROW public\n: HEAD ( -- n ) 1 ;\n;package\n" WRITE-ALL
    BFT-CERT S\" : TAIL ( -- n ) 2 ;\n" BFT-SIZE:ARM
-   s" whole-core" BFT-CERT BF-CERTIFY-GENERATED-CORE
+   s" whole-core" BFT-CERT [: ;] BF-CERTIFY-GENERATED-CORE
    BFT-CERT S\" : BAD ( -- n ) ;\n" BFT-SIZE:ARM
-   [: s" whole-core" BFT-CERT BF-CERTIFY-GENERATED-CORE ;]
+   [: s" whole-core" BFT-CERT [: ;] BF-CERTIFY-GENERATED-CORE ;]
       E-BUILD-CERTIFY TTHROWSQ
    BFT-SIZE:DISARM ;
 
