@@ -3,6 +3,7 @@
 require test/compiler/native-eval-fixture.f
 require lib/errors.f
 require lib/string.f
+require lib/le.f
 require lib/test.f
 require lib/process.f
 require lib/process-argv.f
@@ -593,8 +594,11 @@ variable CODE-LEN
    rec XREF-START CODE-BASE !
    rec XREF-CODE-BYTES CODE-LEN ! ;
 
-TRUSTED: CODE-WORD@ ( n -- n )
-   INSN-BYTES * CODE-BASE @ + @ $FFFFFFFF and ;
+\ A published record starts at an integer code address; its words are read as bytes.
+CAST: CODE-BYTES ( n -- ptr u8 )
+
+: CODE-WORD@ ( n -- n )
+   INSN-BYTES * CODE-BASE @ + CODE-BYTES LE:U32@ ;
 
 : CODE-INSNS ( -- n ) CODE-LEN @ INSN-BYTES / ;
 

@@ -2,6 +2,7 @@
 
 require lib/test.f
 require lib/string.f
+require lib/le.f
 require lib/fmt.f
 require lib/process.f
 require lib/process-argv.f
@@ -328,8 +329,11 @@ variable CODE-LEN
 : CODE-INSNS ( -- n )
    CODE-BASE @ 0<> if CODE-LEN @ 4 / exit then A64EMIT:INSNS ;
 
-TRUSTED: RECORD-WORD@ ( n -- n )
-   4 * CODE-BASE @ + @ $FFFFFFFF and ;
+\ A published record starts at an integer code address; its words are read as bytes.
+CAST: CODE-BYTES ( n -- ptr u8 )
+
+: RECORD-WORD@ ( n -- n )
+   4 * CODE-BASE @ + CODE-BYTES LE:U32@ ;
 
 : CODE-WORD@ ( n -- n )
    CODE-BASE @ 0<> if RECORD-WORD@ exit then A64EMIT:WORD@ ;

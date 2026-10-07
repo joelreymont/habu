@@ -6,8 +6,8 @@ require src/habu/xref.f
 
 package C2-MEMORY-SHADOW
 public
-TRUSTED: WITH-MUT ( n -- n ) ;
-TRUSTED: WITH-READ ( n -- n ) ;
+: WITH-MUT ( n -- n ) ;
+: WITH-READ ( n -- n ) ;
 ;package
 
 package C2-MEMORY-ALIAS

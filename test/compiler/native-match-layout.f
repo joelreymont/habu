@@ -27,16 +27,22 @@ defer ROWS-CAP ( -- ptr n )
    dup XREF-RETIRED? if drop s" native-match: checker word retired" 76 die then
    XREF-START dup 0= if drop s" native-match: checker word has no code" 76 die then ;
 
-TRUSTED: BIND ( -- )
-   s" REC-RESET" INTERNAL-XT is START-RECORD
-   s" REC-OFF" INTERNAL-XT is STOP-RECORD
-   s" REC-RELEASE" INTERNAL-XT is RELEASE-RECORD
-   s" MWIN-CELLS!" INTERNAL-XT is LAYOUT!
-   s" REC-COMMIT" INTERNAL-XT is COMMIT-ROW
-   s" REC-STEP" INTERNAL-XT is NEXT-ROW
-   s" CALL-FINALIZE" INTERNAL-XT is FINALIZE
-   s" CWIN-P" INTERNAL-XT is ROWS-PTR
-   s" CWIN-CAP" INTERNAL-XT is ROWS-CAP ;
+\ A live record's code address takes its slot's quotation type.
+CAST: >ACTION ( n -- [ -- ] )
+CAST: >STORE ( n -- [ n -- ] )
+CAST: >ROWS ( n -- [ -- ptr ptr n ] )
+CAST: >CAP ( n -- [ -- ptr n ] )
+
+: BIND ( -- )
+   s" REC-RESET" INTERNAL-XT >ACTION is START-RECORD
+   s" REC-OFF" INTERNAL-XT >ACTION is STOP-RECORD
+   s" REC-RELEASE" INTERNAL-XT >ACTION is RELEASE-RECORD
+   s" MWIN-CELLS!" INTERNAL-XT >STORE is LAYOUT!
+   s" REC-COMMIT" INTERNAL-XT >ACTION is COMMIT-ROW
+   s" REC-STEP" INTERNAL-XT >ACTION is NEXT-ROW
+   s" CALL-FINALIZE" INTERNAL-XT >ACTION is FINALIZE
+   s" CWIN-P" INTERNAL-XT >ROWS is ROWS-PTR
+   s" CWIN-CAP" INTERNAL-XT >CAP is ROWS-CAP ;
 BIND
 
 : ROW! ( n -- )

@@ -21,61 +21,58 @@ ENUM choice red blue ;ENUM
 
 private
 
-TRUSTED: FAMILY ( ptr u8 n -- n ) {: name:ptr size:n :}
+: FAMILY ( ptr u8 n -- n ) {: name:ptr size:n :}
    s" c2-init-record-schema" name size TFAM:TFAM-RESOLVE drop ;
 
-TRUSTED: TERM ( ptr u8 n -- n )
+: TERM ( ptr u8 n -- n )
    FAMILY {: fam:n :}
    PARAM-SCR-N @ fam TFAM-NAME$ fam MK-PARAM ;
 
-TRUSTED: APPLY ( n ptr u8 n -- n ) {: arg:n name:ptr size:n :}
+: APPLY ( n ptr u8 n -- n ) {: arg:n name:ptr size:n :}
    name size FAMILY {: fam:n :}
    PARAM-SCR-N @ {: base:n :}
    arg PARAM-SCR+
    base fam TFAM-NAME$ fam MK-PARAM ;
 
-TRUSTED: SCOPES ( ptr u8 n n n -- n )
+: SCOPES ( ptr u8 n n n -- n )
    {: name:ptr size:n owner:n ceiling:n :}
    name size FAMILY {: fam:n :}
    PARAM-SCR-N @ {: base:n :}
    owner PARAM-SCR+ ceiling PARAM-SCR+
    base fam TFAM-NAME$ fam MK-PARAM ;
 
-TRUSTED: SCOPES3 ( ptr u8 n n n n -- n )
+: SCOPES3 ( ptr u8 n n n n -- n )
    {: name:ptr size:n owner:n ceiling:n elem:n :}
    name size FAMILY {: fam:n :}
    PARAM-SCR-N @ {: base:n :}
    owner PARAM-SCR+ ceiling PARAM-SCR+ elem PARAM-SCR+
    base fam TFAM-NAME$ fam MK-PARAM ;
 
-TRUSTED: SCOPE ( -- n ) 0 MK-SCOPE ;
-TRUSTED: OPEN ( -- n ) NEW FRESH MK-VAR ;
-TRUSTED: U8 ( -- n ) CC-U8 MK-CON ;
-TRUSTED: WRAP ( n -- n ) {: elem:n :}
+: SCOPE ( -- n ) 0 MK-SCOPE ;
+: OPEN ( -- n ) NEW FRESH MK-VAR ;
+: U8 ( -- n ) CC-U8 MK-CON ;
+: WRAP ( n -- n ) {: elem:n :}
    s" " s" init" TFAM:TFAM-RESOLVE drop {: fam:n :}
    PARAM-SCR-N @ {: base:n :}
    0 MK-SCOPE PARAM-SCR+ elem PARAM-SCR+
    base s" init" fam MK-PARAM ;
-TRUSTED: READ ( -- n )
+: READ ( -- n )
    s" " s" read-view" TFAM:TFAM-RESOLVE drop {: fam:n :}
    PARAM-SCR-N @ {: base:n :}
    0 MK-SCOPE PARAM-SCR+ 0 MK-SCOPE PARAM-SCR+ U8 PARAM-SCR+
    base s" read-view" fam MK-PARAM ;
-TRUSTED: MUT ( -- n )
+: MUT ( -- n )
    s" " s" mut-view" TFAM:TFAM-RESOLVE drop {: fam:n :}
    PARAM-SCR-N @ {: base:n :}
    0 MK-SCOPE PARAM-SCR+ 0 MK-SCOPE PARAM-SCR+
    FRESH MK-VAR PARAM-SCR+ U8 PARAM-SCR+
    base s" mut-view" fam MK-PARAM ;
-TRUSTED: RECORD? ( n -- n n n bool ) TFAM:INIT-RECORD? ;
-TRUSTED: FIELD? ( n n -- n n n n bool ) TFAM:INIT-FIELD? ;
-TRUSTED: PAIR? ( n -- bool ) T-RES PARAM>FAM s" pair" FAMILY = ;
-TRUSTED: FIELD-ID ( ptr u8 n ptr u8 n -- n )
+: PAIR? ( n -- bool ) T-RES PARAM>FAM s" pair" FAMILY = ;
+: FIELD-ID ( ptr u8 n ptr u8 n -- n )
    {: family:ptr family-len:n field:ptr field-len:n :}
    family family-len FAMILY TYPE-FIELD:NO-VARIANT field field-len TYPE-FIELD:FIND
    IF EXIT THEN s" missing committed test field" 76 die ;
-TRUSTED: COMMITTED-END ( -- n ) TYPE-FIELD:COUNT ;
-TRUSTED: VIEW-SCOPES? ( n n n -- bool ) {: field:n owner:n ceiling:n :}
+: VIEW-SCOPES? ( n n n -- bool ) {: field:n owner:n ceiling:n :}
    field T-RES PARAM>FAM C2-READ-FAM @ <> IF RES-FALSE EXIT THEN
    field 0 PARAM>ARG T-RES owner =
    field 1 PARAM>ARG T-RES ceiling = and ;
@@ -84,52 +81,52 @@ public
 
 : CHECK ( -- )
    s" a committed two-cell product has a fixed schema" T-LABEL
-   s" pair" TERM RECORD? TTRUE CELL T= 2 CELL * T= 2 T=
+   s" pair" TERM TFAM:INIT-RECORD? TTRUE CELL T= 2 CELL * T= 2 T=
    s" a nested fixed product keeps its complete width" T-LABEL
-   s" nested" TERM RECORD? TTRUE CELL T= 3 CELL * T= 3 T=
+   s" nested" TERM TFAM:INIT-RECORD? TTRUE CELL T= 3 CELL * T= 3 T=
    s" its nested field retains the committed physical position" T-LABEL
-   s" nested" s" body" FIELD-ID s" nested" TERM FIELD?
+   s" nested" s" body" FIELD-ID s" nested" TERM TFAM:INIT-FIELD?
       TTRUE 2 CELL * T= 2 T= CELL T= PAIR? TTRUE
    s" a copied read field keeps both source scopes" T-LABEL
    SCOPE SCOPE {: p:n q:n :}
-   s" scoped" p q SCOPES RECORD? TTRUE CELL T= 3 CELL * T= 3 T=
-   s" scoped" s" source" FIELD-ID s" scoped" p q SCOPES FIELD?
+   s" scoped" p q SCOPES TFAM:INIT-RECORD? TTRUE CELL T= 3 CELL * T= 3 T=
+   s" scoped" s" source" FIELD-ID s" scoped" p q SCOPES TFAM:INIT-FIELD?
       TTRUE 2 CELL * T= 2 T= 0 T= p q VIEW-SCOPES? TTRUE
    s" a view's open phantom element does not hide its width" T-LABEL
    SCOPE {: r:n :}
    OPEN {: x:n :}
-   s" phantom" r r x SCOPES3 RECORD? TTRUE CELL T= 3 CELL * T= 3 T=
-   s" phantom" s" source" FIELD-ID s" phantom" r r x SCOPES3 FIELD?
+   s" phantom" r r x SCOPES3 TFAM:INIT-RECORD? TTRUE CELL T= 3 CELL * T= 3 T=
+   s" phantom" s" source" FIELD-ID s" phantom" r r x SCOPES3 TFAM:INIT-FIELD?
       TTRUE 2 CELL * T= 2 T= 0 T= r r VIEW-SCOPES? TTRUE
    s" ordinary fields return their instantiated type" T-LABEL
-   s" pair" s" right" FIELD-ID s" pair" TERM FIELD?
+   s" pair" s" right" FIELD-ID s" pair" TERM TFAM:INIT-FIELD?
       TTRUE CELL T= 1 T= CELL T= drop
    s" an open width-bearing field is not a fixed schema" T-LABEL
-   OPEN s" flexible" APPLY RECORD? TFALSE 0 T= 0 T= 0 T=
-   OPEN s" outer-flex" APPLY RECORD? TFALSE 0 T= 0 T= 0 T=
+   OPEN s" flexible" APPLY TFAM:INIT-RECORD? TFALSE 0 T= 0 T= 0 T=
+   OPEN s" outer-flex" APPLY TFAM:INIT-RECORD? TFALSE 0 T= 0 T= 0 T=
    s" a widened field cannot use its committed placement" T-LABEL
-   s" pair" TERM s" flexible" APPLY RECORD? TFALSE 0 T= 0 T= 0 T=
+   s" pair" TERM s" flexible" APPLY TFAM:INIT-RECORD? TFALSE 0 T= 0 T= 0 T=
    s" opposite field-width changes cannot cancel to a valid layout" T-LABEL
-   s" exchanged" s" pair" TERM s" empty" TERM SCOPES RECORD?
+   s" exchanged" s" pair" TERM s" empty" TERM SCOPES TFAM:INIT-RECORD?
       TFALSE 0 T= 0 T= 0 T=
    s" pair" TERM s" flexible" APPLY
-      s" flexible" s" mark" FIELD-ID swap FIELD?
+      s" flexible" s" mark" FIELD-ID swap TFAM:INIT-FIELD?
       TFALSE 0 T= 0 T= 0 T= drop
    s" field ids from another record cannot be projected" T-LABEL
-   s" other" s" item" FIELD-ID s" pair" TERM FIELD?
+   s" other" s" item" FIELD-ID s" pair" TERM TFAM:INIT-FIELD?
       TFALSE 0 T= 0 T= 0 T= drop
    s" an uncommitted field id is unknown" T-LABEL
-   COMMITTED-END s" pair" TERM FIELD? TFALSE 0 T= 0 T= 0 T= drop
+   TYPE-FIELD:COUNT s" pair" TERM TFAM:INIT-FIELD? TFALSE 0 T= 0 T= 0 T= drop
    s" reserved read, mutable, and initialized wrappers are not records" T-LABEL
-   READ RECORD? TFALSE 0 T= 0 T= 0 T=
-   MUT RECORD? TFALSE 0 T= 0 T= 0 T=
-   s" pair" TERM WRAP RECORD? TFALSE 0 T= 0 T= 0 T=
+   READ TFAM:INIT-RECORD? TFALSE 0 T= 0 T= 0 T=
+   MUT TFAM:INIT-RECORD? TFALSE 0 T= 0 T= 0 T=
+   s" pair" TERM WRAP TFAM:INIT-RECORD? TFALSE 0 T= 0 T= 0 T=
    s" a fieldless product has no initialized schema" T-LABEL
-   s" empty" TERM RECORD? TFALSE 0 T= 0 T= 0 T=
+   s" empty" TERM TFAM:INIT-RECORD? TFALSE 0 T= 0 T= 0 T=
    s" packed storage is outside the cell record surface" T-LABEL
-   s" packed" TERM RECORD? TFALSE 0 T= 0 T= 0 T=
+   s" packed" TERM TFAM:INIT-RECORD? TFALSE 0 T= 0 T= 0 T=
    s" a tagged alternative is not a record" T-LABEL
-   s" choice" TERM RECORD? TFALSE 0 T= 0 T= 0 T= ;
+   s" choice" TERM TFAM:INIT-RECORD? TFALSE 0 T= 0 T= 0 T= ;
 
 ;package
 

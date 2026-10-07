@@ -119,15 +119,13 @@ variable B-SCANS
 \ return; it must not turn a diagnostic-only outer row into a source grant.
 : TO-MULTI+ ( -- ) MULTI-ERR-BEGIN ;
 : TO-MULTI- ( -- n ) MULTI-ERR-END ;
-TRUSTED: TO-RECOVERY? ( -- bool ) CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? ;
-TRUSTED: TO-SOURCE-MIN ( ptr u8 n -- n ) EFFECT-EXTERNAL-MIN-IN ;
 variable NESTED-DONES
 
 : NESTED-DONE ( ptr u8 n n -- )
    2drop drop 1 NESTED-DONES +!
-   TO-RECOVERY? TTRUE
+   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? TTRUE
    s" TO-NESTED-INNER ( n -- n )" CHECK-CANDIDATE! -1 T=
-   TO-RECOVERY? TTRUE ;
+   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? TTRUE ;
 
 \ Every row here is CHECK!'s alone, a name the engine compiles no word for, so the
 \ case runs in the check tool's replay scope (test/replay-scope.f), where such a
@@ -145,11 +143,11 @@ variable NESTED-DONES
    s" TO-RECOVERY-OUTER ( n -- n ) TO-RECOVERY-BAD" CHECK! -1 T=
    CHECKER-TAPE:DISARM
    NESTED-DONES @ 1 T=
-   s" TO-RECOVERY-OUTER" TO-SOURCE-MIN -1 T=
+   s" TO-RECOVERY-OUTER" EFFECT-EXTERNAL-MIN-IN -1 T=
    TO-MULTI- 1 T=
    s" TO-NESTED-LATER ( n -- n )" CHECK! -1 T=
-   TO-RECOVERY? TFALSE
-   s" TO-NESTED-LATER" TO-SOURCE-MIN 1 T=
+   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? TFALSE
+   s" TO-NESTED-LATER" EFFECT-EXTERNAL-MIN-IN 1 T=
    REPLAY-SCOPE:CLOSE ;
 
 \ Put the engine's own observer back, and prove it is back by its identity. This

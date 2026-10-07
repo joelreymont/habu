@@ -20,7 +20,9 @@ CAST: REF-WORD ( n -- [ -- n ] )
 : EV ( ptr u8 n -- ) INCLUDE-EVALUATE ;
 variable REF-SLOT
 variable REF-OCC
-TRUSTED: OCC-COUNTER ( -- ptr n ) data-base DEF-OCC:PTR-CELL + @ ;
+\ The engine keeps the occurrence counter's address in a raw DATA cell.
+CAST: N>COUNTER ( n -- ptr n )
+: OCC-COUNTER ( -- ptr n ) data-base DEF-OCC:PTR-CELL + @ N>COUNTER ;
 variable SAVED-COUNT
 TYPED-VARIABLE RETRY-EMISSION NART:emission
 variable RETRY-HITS

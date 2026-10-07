@@ -23,7 +23,9 @@ private
 \ The dispatch cell's contents, and the engine's relocation table. Both are
 \ reads of memory the dictionary named; the deciding above them is ordinary
 \ checked Habu.
-TRUSTED: CELL@ ( n -- n ) @ ;
+\ A dictionary-named DATA address is an integer; reading its cell needs a pointer.
+CAST: N>CELL ( n -- ptr n )
+: CELL@ ( n -- n ) N>CELL @ ;
 : PCELL@ ( ptr n -- n ) @ ;
 \ The DATA base as an integer: its distance from the null address.
 : DBASE-N ( -- n ) data-base NULL-PTR BYTE-VIEW - ;
