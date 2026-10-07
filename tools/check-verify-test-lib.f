@@ -131,6 +131,10 @@
 \   a row binds a spelling: a defer, a resident word, a wrapper, a
 \   package's own parses: or a retired binding is bounded, or an EXPORT
 \   loses it                                                              top-parses-opaque
+\   a loader, definer or package word a row bounds is dispatched, or a
+\   loader, definition or loader's name after the window is not checked   top-parses-loader
+\   a loader after a word no usable row bounds is read or refused, in
+\   its file or in a file that loaded it                                  top-opaque-loader
 \   a malformed or misplaced row loads, or is refused for another reason  top-parses-row
 \   a declarer loses its identity, the binding query raises or answers a
 \   refused name, a rolled-back row survives, a lost field falls back     top-parses-whitebox
@@ -1833,6 +1837,86 @@ $180000 constant LARGE-STDIN-LEN
    s" top-parses-opaque: declarer row" s" PN" s" 4" s" g" s" E-MISMATCH" BOUND-REFUSED ;
 
 
+\ Loaded, PN takes `required`, `include nosuch.f` or `;package` as its operand
+\ and OKW loads; BLK takes every token through ;BLK, a loader and its path, a
+\ definer, package words and `:`, and the `s" nosuch.f" required` after it
+\ cannot open, exit 74. Past PN's operand, `s" dep.f" required` loads
+\ CVT-SEVEN for X, `require nosuch.f` cannot open, exit 74, G is E-MISMATCH,
+\ exit 70, and `: required` defines a loader's name again, exit 78. Declared,
+\ the operand is the parser's: no loader, definer or package word in it loads,
+\ refuses or opens anything, and the check goes on after the window, so the
+\ loader, the definition or the loader's name there is checked.
+: TOP-PARSES-LOADER ( -- )
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN required\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-parses-loader: required" s" PN" s" 3" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop parse-name 2drop ;\nparses: PN 2\nPN include nosuch.f\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-parses-loader: include" s" PN" s" 3" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN ;package\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-parses-loader: ;package" s" PN" s" 3" s" 1" DEFERRED-ONLY
+   s\" require lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nparses-through: BLK 0 ( ;BLK )\nBLK require nosuch.f s\" x.f\" included\n   variable package ;package using : X ;BLK\ns\" nosuch.f\" required\n" TOP-CHECK
+   1 s" top-parses-loader: through" EXPECT-KIND
+   s" top-parses-loader: through, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-parses-loader: through, the call" s" BLK" s" W-CHECK-DEFERRED" s" 5" s" 1" TOP-PACKET drop
+   s" top-parses-loader: through, the loader after" s" E-MISSING-SOURCE" s" required" s" 7" s" 14" AT-TOKEN
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN required\ns\" dep.f\" required\n: X ( -- n ) CVT-SEVEN ;\n" TOP-CHECK
+   s" top-parses-loader: a load after" s" PN" s" 3" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN required\nrequire nosuch.f\n" TOP-CHECK
+   1 s" top-parses-loader: a missing file after" EXPECT-KIND
+   s" top-parses-loader: a missing file after, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-parses-loader: a missing file after, the call" s" PN" s" W-CHECK-DEFERRED" s" 3" s" 1" TOP-PACKET drop
+   s" top-parses-loader: a missing file after" s" E-MISSING-SOURCE" s" require" s" 4" s" 1" AT-TOKEN
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN include\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-parses-loader: a definition after" s" PN" s" 3" s" g" s" E-MISMATCH" BOUND-REFUSED
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN required\n: required ( -- ) ;\n" s" top-name.f"
+   s" required" s" 4" s" 3" SHADOWED$ LOADER-REFUSED ;
+
+
+\ A deferred check whose only packet is the call TOKEN on LINE of the fixture
+\ DEP, a file the subject loads.
+: DEP-DEFERRED-ONLY ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: v label:ptr labelu:n tok:ptr toku:n dep:ptr depu:n line:ptr lineu:n :}
+   v 5 label labelu EXPECT-KIND
+   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:n :}
+   label labelu T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   label labelu T-LABEL p s" file" STRING$ dep depu AT$ T$=
+   label labelu T-LABEL p s" line" NUMBER$ line lineu T$= ;
+
+
+\ Loaded, PN takes `required`, or `include` and `nosuch.f`, and OKW loads;
+\ past PN, the redefined PN or GRAB, which take `required`, `require nosuch.f`
+\ cannot open, exit 74; DW, unset, throws, exit 76. A word that may read on
+\ with no row, or with a row it cannot use, a defer's or one its binding's
+\ retirement ended, may read any of the rest: it is deferred, and the check
+\ reads, loads and refuses nothing after it, in its file and in each file that
+\ loaded it. A dependency whose row bounds GRAB is gone past, and the subject's
+\ missing file is refused.
+: TOP-OPAQUE-LOADER ( -- )
+   s\" : PN ( -- ) parse-name 2drop ;\nPN required\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-opaque-loader: required" s" PN" s" 2" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop parse-name 2drop ;\nPN include nosuch.f\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
+   s" top-opaque-loader: include" s" PN" s" 2" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nPN required\nrequire nosuch.f\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-opaque-loader: no row" s" PN" s" 2" s" 1" DEFERRED-ONLY
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nundefine PN\n: PN ( -- ) parse-name 2drop ;\nPN required\nrequire nosuch.f\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-opaque-loader: retired row" s" PN" s" 5" s" 1" DEFERRED-ONLY
+   s\" defer DW ( -- )\nparses: DW 1\nDW include\nrequire nosuch.f\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-opaque-loader: defer" s" DW" s" 3" s" 1" DEFERRED-ONLY
+   s" opq-dep.f" s\" : GRAB ( -- ) parse-name 2drop ;\nGRAB required\n" FIXTURE
+   s\" require opq-dep.f\nrequire nosuch.f\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-opaque-loader: a dependency's" s" GRAB" s" opq-dep.f" s" 2" DEP-DEFERRED-ONLY
+   s" opq-defer-dep.f" s\" defer DW ( -- )\nparses: DW 1\nDW include\n" FIXTURE
+   s\" require opq-defer-dep.f\nrequire nosuch.f\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s" top-opaque-loader: a dependency's defer" s" DW" s" opq-defer-dep.f" s" 3" DEP-DEFERRED-ONLY
+   s" row-dep.f" s\" : GRAB ( -- ) parse-name 2drop ;\nparses: GRAB 1\nGRAB required\n" FIXTURE
+   s\" require row-dep.f\nrequire nosuch.f\n" TOP-CHECK
+   1 s" top-opaque-loader: a bounded dependency" EXPECT-KIND
+   s" top-opaque-loader: a bounded dependency, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-opaque-loader: a bounded dependency's call" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" GRAB" PACKET s" file" STRING$ s" row-dep.f" AT$ T$=
+   s" top-opaque-loader: the subject goes on" s" E-MISSING-SOURCE" s" require" s" 2" s" 1" AT-TOKEN ;
+
+
 \ A refused row: its one packet E-PARSES-ROW at TOKEN, with repair CLASS.
 : ROW-REFUSED ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: v label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n class:ptr classu:n :}
@@ -3206,6 +3290,8 @@ public
    s" top-parses-bound" [: TOP-PARSES-BOUND ;] RUN-CASE
    s" top-parses-through" [: TOP-PARSES-THROUGH ;] RUN-CASE
    s" top-parses-opaque" [: TOP-PARSES-OPAQUE ;] RUN-CASE
+   s" top-parses-loader" [: TOP-PARSES-LOADER ;] RUN-CASE
+   s" top-opaque-loader" [: TOP-OPAQUE-LOADER ;] RUN-CASE
    s" top-parses-row" [: TOP-PARSES-ROW ;] RUN-CASE
    s" top-parses-whitebox" [: TOP-PARSES-WHITEBOX ;] RUN-CASE
    s" top-renders" [: TOP-RENDERS ;] RUN-CASE

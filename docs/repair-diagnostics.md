@@ -361,6 +361,16 @@ what the run loads. The composition loads what the engine loads:
   `DEFTYPE` type family, an `ENUM` variant or a structure field, is no loader
   call: a bare `required` there, as in `package REQUIRED` or
   `0 FIELD required n`, verifies.
+- A parsed operand belongs to its parser. What a word a `parses:` or
+  `parses-through:` row bounds reads is its operand as written, as in
+  `PN required` or `BLK include x.f variable package ;BLK`: no loader, definer
+  or package word there loads, declares or refuses anything, and the check
+  goes on after it, where a loader, a definition or a loader word's name is
+  checked as anywhere. A word that may read on with no row it can use (none,
+  a deferred word's, or one its binding's retirement ended) may read any of
+  the rest: the check stops at it, in its file and in each file that loaded
+  it, and reads, loads and refuses no loader after it (`W-CHECK-DEFERRED`,
+  below).
 
 Under `--verify-only` the status line, `CHECK:VERIFY-LOG$`, is on stdout and
 names the file the loader form is in, or the file a loader word could not read:
