@@ -110,6 +110,9 @@ s" the shapes cast: refuses" T-LABEL
 s" LINEAR: LA1 ( n n -- LIN-OWN:tok )"             LIN-RUN:DECL E-CAST-ARITY T=
 s" LINEAR: LA2 ( -- LIN-OWN:tok )"                 LIN-RUN:DECL E-CAST-ARITY T=
 s" LINEAR: LA3 ( n -- neverdecl )"                 LIN-RUN:DECL E-CAST-FAM T=
+\ An output scope variable no input supplies is a bad signature here: only a
+\ cast: view pack leaves that fault to its scope rule.
+s" LINEAR: LA4 ( n -- read-view<p,q,u8> )"         LIN-RUN:DECL CHECKER-REJECT-RC T=
 s" cast: carries no linear type, in the owner too" T-LABEL
 s" cast: LC1 ( n -- LIN-OWN:tok )"                 LIN-RUN:DECL E-CAST-LINEAR T=
 s" cast: LC2 ( LIN-OWN:tok -- n )"                 LIN-RUN:DECL E-CAST-LINEAR T=

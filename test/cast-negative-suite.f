@@ -19,6 +19,9 @@
 \                    declaring package
 \   - E-CAST-MINT  : the destination introduces a pointer or a quotation, a
 \                    class mint, outside a package's private section
+\   - E-CAST-SCOPE : a scoped term (a view, a scope or region variable) on
+\                    either side, asked before arity, unless the cast is a view
+\                    representation cast its section admits
 \ The destination introduces what sits in an introduction position: the term, a
 \ pointee, a layout family's arguments, its fields and its variants' payloads,
 \ and a quotation's produced rows, recursively, with a quotation's consumed
@@ -347,6 +350,52 @@ s" cast: CNM8 ( ptr u8 -- n )"                    CN-RUN:DECL 0 T=
 s" cast: CNM9 ( [ n -- n ] -- n )"                CN-RUN:DECL 0 T=
 s" cast: CNM16 ( cnpbox<ptr u8> -- n )"           CN-RUN:DECL 0 T=
 s" cast: CNM24 ( pfbox -- n )"                   CN-RUN:DECL 0 T=
+
+\ scope: a cast with a scoped term on either side is E-CAST-SCOPE, asked before
+\ the arity rule, which would read a view's two cells as two terms. The legal
+\ scoped casts are the view representation casts: a read-view unpack
+\ ( read-view<p,q,T> -- ptr u8 n ) in any private section (test/cast-suite.f),
+\ and the pack ( ptr u8 n -- V ) and the mut-view unpack in C2-MEM's private
+\ section alone (test/c2-reopen-refusals.f). A pack's output variables are
+\ supplied by no input, which no other declaration admits. Each refusal leaves
+\ no name in the private wordlist, which sees the private probe.
+package CN-VIEW
+variable CV-WID
+get-current CV-WID !
+: CV-DECL ( ptr u8 n -- n )
+   CV-WID @ set-current
+   CN-RUN:DECL ;
+: CV-ABSENT? ( ptr u8 n -- bool )
+   CV-WID @ search-wl 0= ;
+: CV-PRIVATE-PROBE ( -- ) ;
+s" CV-PRIVATE-PROBE" CV-ABSENT? 0 T=
+s" cast: CNV1 ( ptr u8 n -- read-view<p,q,u8> )"        CV-DECL E-CAST-SCOPE T=
+s" CNV1" CV-ABSENT? -1 T=
+s" cast: CNV2 ( ptr u8 n -- mut-view<p,q,a,u8> )"       CV-DECL E-CAST-SCOPE T=
+s" CNV2" CV-ABSENT? -1 T=
+s" cast: CNV3 ( mut-view<p,l,a,u8> -- ptr u8 n )"       CV-DECL E-CAST-SCOPE T=
+s" CNV3" CV-ABSENT? -1 T=
+s" cast: CNV4 ( mut-view<p,l,a,u8> -- read-view<p,l,u8> )" CV-DECL E-CAST-SCOPE T=
+s" CNV4" CV-ABSENT? -1 T=
+s" cast: CNV5 ( read-view<p,q,u8> -- n )"               CV-DECL E-CAST-SCOPE T=
+s" CNV5" CV-ABSENT? -1 T=
+s" cast: CNV6 ( [ mut-view<p,p,fresh-region-b,u8> -- ] -- [ ptr u8 n -- ] )" CV-DECL E-CAST-SCOPE T=
+s" CNV6" CV-ABSENT? -1 T=
+s" cast: CNV7 ( n -- init<i,n> )"                       CV-DECL E-CAST-SCOPE T=
+s" CNV7" CV-ABSENT? -1 T=
+\ A qualified name selects that package's public wordlist, so the read-view
+\ unpack this section admits is refused under one, and once the package closes
+\ that wordlist holds no such name.
+s" cast: CN-VIEW:CNV9 ( read-view<p,q,u8> -- ptr u8 n )" CV-DECL E-CAST-SCOPE T=
+public
+get-current constant CV-PUBLIC-WID
+s" cast: CNV8 ( read-view<p,q,u8> -- ptr u8 n )"        CN-RUN:DECL E-CAST-SCOPE T=
+;package
+s" CNV9" CN-VIEW:CV-PUBLIC-WID search-wl 0= -1 T=
+\ The stored-signature intake still refuses an output variable no input
+\ supplies; a view whose variables its input supplies is a well-formed row.
+s" defer CNVD1 ( ptr u8 n -- read-view<p,q,u8> )"       CN-RUN:DECL E-BAD-STORED-SIGNATURE T=
+s" defer CNVD2 ( read-view<p,q,u8> -- read-view<p,q,u8> )" CN-RUN:DECL 0 T=
 \ The scope is the engine's live one: a parser mirror claiming a package's
 \ private section while the engine compiles at top level still refuses.
 s" CN" CHECKER-PACKAGE
