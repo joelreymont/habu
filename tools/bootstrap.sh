@@ -152,17 +152,20 @@ SRC_COMMON=(
 
 emit_boot_hide() {
   cat >> "$1" <<'EOF'
-TRUSTED: BOOT-N>REC ( n -- ptr n ) ;
-TRUSTED: BOOT-N>U8 ( n -- ptr u8 ) ;
 $0 constant BOOT-XREF-START-SLOT
 $2 constant BOOT-XREF-FLAGS-SLOT
 $3 constant BOOT-XREF-NAME-SLOT
-: BOOT-XREF-REC ( n -- ptr n )
-   DREC * dbase@ + BOOT-N>REC ;
+package BOOT-PRELUDE
+private
+CAST: N>REC ( n -- ptr n )
+public
+: REC ( n -- ptr n )
+   DREC * dbase@ + N>REC ;
+: LONG-NAME ( ptr n -- ptr u8 )
+   BOOT-XREF-NAME-SLOT ptr-field @ ;
+;package
 : BOOT-XREF-CELL@ ( ptr n n -- n )
    cells + @ ;
-: BOOT-XREF-PTR@ ( ptr n n -- ptr u8 )
-   BOOT-XREF-CELL@ BOOT-N>U8 ;
 : BOOT-XREF-START ( ptr n -- n )
    BOOT-XREF-START-SLOT BOOT-XREF-CELL@ ;
 : BOOT-XREF-FLAGS ( ptr n -- n )
@@ -174,7 +177,7 @@ $3 constant BOOT-XREF-NAME-SLOT
 : BOOT-XREF-INLINE-NAME ( ptr n -- ptr u8 )
    $18 + byte-view ;
 : BOOT-XREF-NAME-A ( ptr n -- ptr u8 ) {: rec:ptr :}
-   rec BOOT-XREF-EXT? if rec BOOT-XREF-NAME-SLOT BOOT-XREF-PTR@ exit then
+   rec BOOT-XREF-EXT? if rec BOOT-PRELUDE:LONG-NAME exit then
    rec BOOT-XREF-INLINE-NAME ;
 : BOOT-XREF-NAME$ ( ptr n -- ptr u8 n ) {: rec:ptr :}
    rec BOOT-XREF-NAME-A
@@ -196,7 +199,7 @@ $3 constant BOOT-XREF-NAME-SLOT
 : BOOT-XREF-FIND-INDEX ( ptr u8 n -- n ) {: name:ptr u:n :}
    0
    begin dup ndict@ < while
-      dup BOOT-XREF-REC name u BOOT-XREF-MATCH? if exit then
+      dup BOOT-PRELUDE:REC name u BOOT-XREF-MATCH? if exit then
       1+
    repeat drop
    -1 ;

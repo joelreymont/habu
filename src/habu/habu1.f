@@ -4086,7 +4086,7 @@ private
 \     a tail already live in the wordlist being defined into. At
 \     most one row, so first and last are the same row and the probe reproduces
 \     the scan exactly;
-\   - DICT-WL:RETIRED is not a wordlist. xref.f XREF-RETIRE stamps it onto rows
+\   - DICT-WL:RETIRED is not a wordlist. xref.f XREF:RETIRE stamps it onto rows
 \     that are ALREADY in the table under the wid they were published in, so
 \     such a row sits on another chain until a rebuild re-keys it onto this one -
 \     and retiring one name twice puts two rows under the key, which is the

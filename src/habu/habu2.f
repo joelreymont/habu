@@ -3467,7 +3467,7 @@ private
 \ A LASTC of zero names no record: none was created since boot, or the one it
 \ named was retired by a motion that lowered NDICT (habu1.f LASTC-TRIM,). A
 \ LASTC whose wordlist cell is DICT-WL:RETIRED names a record `undefine`
-\ retired in place (xref.f XREF-RETIRE), which leaves NDICT alone. Either is
+\ retired in place (xref.f XREF:RETIRE), which leaves NDICT alone. Either is
 \ refused before anything is patched, recoverable inside evaluate like the
 \ other definition errors.
 : EMIT-NONE ( label -- ) {: have:label :}

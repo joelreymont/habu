@@ -15,23 +15,28 @@
 -1 constant BFR-NOT-FOUND
 24 constant BFR-INLINE-OFF
 
-\ Dictionary records and long names are addressed by integers. This file
-\ defines globals, and a global pointer CAST: is E-CAST-MINT.
-\ Retirement: habu-sweep-trusted-out-41e973ce.
-TRUSTED: BFR-N>REC ( n -- ptr n ) ;
-TRUSTED: BFR-N>U8 ( n -- ptr u8 ) ;
+\ THE RECORD VIEW. A dictionary record is addressed by an integer: dbase@ plus
+\ an index times DREC. A pointer CAST: is declared only in a package's private
+\ section, so the one refinement, N>REC, a record by index, is package
+\ BFR-PRELUDE's. A long name is read through its record's pointer field.
+package BFR-PRELUDE
 
-: BFR-REC-ADDR ( n -- n )
-   DREC * dbase@ + ;
+private
 
-: BFR-REC ( n -- ptr n )
-   BFR-REC-ADDR BFR-N>REC ;
+CAST: N>REC ( n -- ptr n )
+
+public
+
+: REC ( n -- ptr n )
+   DREC * dbase@ + N>REC ;
+
+: LONG-NAME ( ptr n -- ptr u8 )
+   BFR-NAME-SLOT ptr-field @ ;
+
+;package
 
 : BFR-CELL@ ( ptr n n -- n )
    cells + @ ;
-
-: BFR-PTR@ ( ptr n n -- ptr u8 )
-   BFR-CELL@ BFR-N>U8 ;
 
 : BFR-START ( ptr n -- n )
    BFR-START-SLOT BFR-CELL@ ;
@@ -49,7 +54,7 @@ TRUSTED: BFR-N>U8 ( n -- ptr u8 ) ;
    BFR-INLINE-OFF + BYTE-VIEW ;
 
 : BFR-NAME-A ( ptr n -- ptr u8 )
-   dup BFR-EXT? if BFR-NAME-SLOT BFR-PTR@ exit then
+   dup BFR-EXT? if BFR-PRELUDE:LONG-NAME exit then
    BFR-INLINE-NAME ;
 
 : BFR-NAME$ ( ptr n -- ptr u8 n )
@@ -88,7 +93,7 @@ s" BFR-BYTE@" s" ptr u8 n -- u8" TRUST
 : BFR-FIND-FIRST-INDEX ( ptr u8 n -- n )
    BFR-SU ! BFR-SN !
    0 begin dup ndict@ < while
-      dup BFR-REC BFR-SN @ BFR-SU @ BFR-MATCH? if exit then
+      dup BFR-PRELUDE:REC BFR-SN @ BFR-SU @ BFR-MATCH? if exit then
       1+
    repeat drop
    BFR-NOT-FOUND ;

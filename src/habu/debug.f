@@ -28,27 +28,29 @@ $D4200000 constant BRK0
 : SLOT-OFF ( n -- n )
    32 * BPTAB-OFF + ;
 
-\ These helpers type the four fixed DATA slot fields, a null/code-pointer view,
-\ raw address display, and executable patching.
-\ Retirement: habu-sweep-trusted-out-41e973ce.
-TRUSTED: BP-SLOT-ADDR ( n -- ptr ptr u8 )
-   SLOT-OFF data-base + ;
+\ The four fixed DATA fields of a breakpoint slot. The address field holds a
+\ code pointer, so it is reached through `ptr-field`, the declared pointer-cell
+\ door; the other three hold numbers.
+: BP-SLOT-ADDR ( n -- ptr ptr u8 )
+   SLOT-OFF data-base + 0 ptr-field ;
 
-TRUSTED: BP-SLOT-INSTR ( n -- ptr n )
+: BP-SLOT-INSTR ( n -- ptr n )
    SLOT-OFF 8 + data-base + ;
 
-TRUSTED: BP-SLOT-HITS ( n -- ptr n )
+: BP-SLOT-HITS ( n -- ptr n )
    SLOT-OFF 16 + data-base + ;
 
-TRUSTED: BP-SLOT-CTRL ( n -- ptr n )
+: BP-SLOT-CTRL ( n -- ptr n )
    SLOT-OFF 24 + data-base + ;
 
 : BP-NULL ( -- ptr u8 )
    NULL-PTR ;
 
-TRUSTED: BP-PRINT-ADDR ( ptr u8 -- )
-   . ;
-
+\ Executable patching and the xt-to-code-pointer view stay trusted: each needs
+\ an owner package (a private patch32 row, a private CAST: or CODE-BYTES:AT),
+\ and this file cannot open or require one while test/engine-stack-debugger.f
+\ requires it inside its own package (packages do not nest, rc 75).
+\ Retirement: habu-sweep-trusted-out-41e973ce.
 TRUSTED: BP-PATCH32 ( n ptr u8 -- )
    patch32 ;
 
@@ -95,5 +97,5 @@ TRUSTED: BP-XT>PTR ( n -- ptr u8 )
 
 : BP. ( -- )                                  \ list active breakpoints (addrs)
    0 BEGIN dup MAXBP < WHILE
-      dup BP-SLOT-ADDR @ dup BP-NULL = 0= IF BP-PRINT-ADDR cr ELSE drop THEN
+      dup BP-SLOT-ADDR @ dup BP-NULL = 0= IF NULL-PTR BYTE-VIEW - . cr ELSE drop THEN
       1 + REPEAT  drop ;

@@ -212,7 +212,7 @@ REGION DICT-SIZE - constant BYTES
 \
 \ NAMESPACE keeps that rule: a package's own row carries it from birth, so the
 \ row is on this key's chain and LFIND's qualifier probe finds it there.
-\ RETIRED breaks it. src/habu/xref.f XREF-RETIRE stamps it on the cell of a
+\ RETIRED breaks it. src/habu/xref.f XREF:RETIRE stamps it on the cell of a
 \ record that is ALREADY in the table, so the row stays on the chain of the wid
 \ it was published under until a rebuild moves it to RETIRED's. Every lookup
 \ keyed on a REAL wid still agrees with a scan (the row's cell no longer

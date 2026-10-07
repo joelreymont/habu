@@ -22,7 +22,7 @@ require src/habu/native-observer-cells.f
 DICT-WORDLIST-SLOT constant XREF-WORDLIST-SLOT   \ src/core/util.f
 \ The two non-wordlist values a record's wordlist cell can carry. They are
 \ src/habu/layout.f's, not this file's: the engine's hash index is keyed on the
-\ same cell, and XREF-RETIRE below and the checker overlay's record-wid! are
+\ same cell, and XREF:RETIRE below and the checker overlay's record-wid! are
 \ the two writers that change it after a record is already in that index - see
 \ the DICT-WL comment there for what the lookup does about it.
 DICT-WL:NAMESPACE constant XREF-NAMESPACE-WL
@@ -453,16 +453,26 @@ get-current prot-wid-add
 
 ;package
 
-\ Explicit undefine patches raw wordlist/status cells in a live dictionary record.
+\ Its one caller is test/compiler/native-qualified-name.f REHOME-PENDING; undefine
+\ retires a record through XREF:RETIRE below.
 \ Retirement: habu-sweep-trusted-out-41e973ce.
 TRUSTED: XREF-PATCH32 ( n ptr n -- )
    patch32 ;
 
-: XREF-RETIRE ( ptr n -- )
-   dup XREF-WORDLIST-SLOT cells XREF-REC+
-   dup XREF-RETIRED-WL swap XREF-PATCH32
-   $4 XREF-REC+ -1 swap XREF-PATCH32
-   drop ;
+\ RETIRING A RECORD IN PLACE stamps XREF-RETIRED-WL over its wordlist cell. The
+\ records are write-protected, so the cell is written through patch32, as two
+\ 32-bit halves; that primitive is trusted-only everywhere but here, where this
+\ package's own row (src/habu/prims.f EPPRIM: XREF patch32) types it.
+package XREF
+
+public
+
+: RETIRE ( ptr n -- ) {: rec:ptr :}
+   rec XREF-WORDLIST-SLOT cells + {: wl:ptr :}
+   XREF-RETIRED-WL wl patch32
+   -1 wl 4 + patch32 ;
+
+;package
 
 : XREF-RETIRE-WL ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
    u XREF-FU !  a XREF-FN!
@@ -470,7 +480,7 @@ TRUSTED: XREF-PATCH32 ( n ptr n -- )
    begin dup 0 >= while
       dup XREF-REC XREF-WORDLIST wid = if
          dup XREF-REC XREF-FN@ XREF-FU @ XREF-MATCH? if
-            dup XREF-REC XREF-RETIRE
+            dup XREF-REC XREF:RETIRE
          then
       then
       1-
@@ -513,7 +523,7 @@ DOES-COMPANION-INSTALL
 \ answering for the new definer's words. Retiring moves no code: a word the old
 \ definer made still branches to the old clause.
 : XREF-RETIRE-INDEX ( n -- ) {: k:n :}
-   k XREF-DOES-COMPANION? if k 1+ XREF-REC XREF-RETIRE then
+   k XREF-DOES-COMPANION? if k 1+ XREF-REC XREF:RETIRE then
    k XREF-REC dup XREF-NAME$ rot XREF-WORDLIST XREF-RETIRE-WL ;
 
 \ While a checker overlay is open (src/habu/layout.f REPLAY-SCOPE) the engine
@@ -556,7 +566,7 @@ DOES-COMPANION-INSTALL
 \ rewind CP into engine code. Reject it fail-closed with ENGINE-ERROR:SEAL-VIOLATION. The
 \ zero watermark is the open build namespace; post-seal user marks at or above
 \ the watermark pass unchanged.
-TRUSTED: SEAL-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
+: SEAL-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
 
 : SEAL-DICT-GUARD ( n -- n )
    SEAL-NDICT@ {: floor:n :}
