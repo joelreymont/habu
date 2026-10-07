@@ -306,38 +306,68 @@ pre-verifier at either defect where it reads one (`VERIFY:E-UNTERMINATED-STRING`
 (`VERIFY:E-BAD-ESCAPE`). Without `--json-errors` it is the line
 `<code> <file>:<line>:<column>: string literal opened at '<token>' does not
 close`, or `primitive-axiom row` in place of `string literal`. Under
-`--verify-only` a string or group discovery stops at adds its record after the
-packets, and its status line, `<file>: discovery rejected: unterminated string
-or locals group`, is `CHECK:VERIFY-LOG$`, on stdout.
+`--verify-only`, which walks no closure (below), the verifier stops at such a
+string, or at a `{:` group a file never closes, where its composition meets
+it: the record follows the packets made before it, and the status line,
+`<file>: discovery rejected: unterminated string or locals group`, is
+`CHECK:VERIFY-LOG$`, on stdout.
 
 `tools/check.f` follows the subject's require closure, of any size, before it
-checks anything, on every path: `--verify-only` and the language server's check
-as well, and for standard input and `CHECK:SOURCE` bytes, whose requires resolve
-as the run resolves them. Every pass after the walk visits the files it found,
-those bytes under their label, so what a required file declares, such as the
-type a structure's field names, is in scope there as it is for a named file.
-Under `--json-errors` or `--verify-only` a closure
-it cannot follow for any other reason is a refusal, exit 70, with one
-source-span record in the file that holds the defect, a required file included,
-and `CHECK:VERIFY-BYTES` answers `refused` with that record:
+checks anything, by default and under `--all-errors`, for a named file and for
+standard input and `CHECK:SOURCE` bytes, whose requires resolve as the run
+resolves them. Every pass after the walk visits the files it found, those bytes
+under their label, so what a required file declares, such as the type a
+structure's field names, is in scope there as it is for a named file. Under
+`--json-errors` a closure it cannot follow for any other reason is a refusal,
+exit 70, with one source-span record in the file that holds the defect, a
+required file included. `--verify-only` and the language server's check
+(`CHECK:VERIFY-BYTES`) walk nothing first: the verifier's composition, which
+reads each file a loader loads, refuses the same forms and files where it meets
+them, so the packets it made before are kept and the record is the last, and
+`CHECK:VERIFY-BYTES` answers `refused` with it:
 
 - `E-LOADER-FORM`, repair class `literal_loader_form`, at a loader form
   discovery cannot follow: a loader word with no literal path (a computed one,
   or a `c"` or `."` string before it), a path over 1024 bytes as written (an
-  escaped literal's as decoded) or as resolved, or the name of a definition
-  that redefines or retires a loader word, unless
-  `tools/dynamic-tail-manifest.f` lists the file.
+  escaped literal's as decoded) or as resolved, or a loader word's name
+  declared as any word (a definition, storage, a deferred word or an export)
+  or retired, unless `tools/dynamic-tail-manifest.f` lists the file. The
+  manifest lists files of the tree it was loaded from, by their canonical
+  paths there, whatever the working directory or the spelling that names one.
 - `E-MISSING-SOURCE`, repair class `fix_load_path`, at the loader word that
   names a file that is not there.
 - `E-UNREADABLE-SOURCE`, repair class `make_source_readable`, at the loader
   word that names a file the file system will not read, such as one whose
   mode forbids it.
 
-Under `--verify-only` its status line, `CHECK:VERIFY-LOG$`, is on stdout and
-names the file that ended the walk: `<file>: discovery rejected: <reason>`,
-`<file>: no such source` or `cannot read <file>`. Without either option the
-line is `check.f: discovery rejected: <reason>`, exit 70, `check.f: no such
-source`, exit 66, or `check.f: cannot read <path>`, exit 74.
+The walk reads every literal loader form of a file as a load, a superset of
+what the run loads. The composition loads what the engine loads:
+
+- A string loader in a definition, `s" PATH" included` or `required`, loads
+  when the word runs, and the check runs none: the composition resolves no
+  path and reads no file for it, so one that is not there, that defines a word
+  again, that only a target test reaches, or whose path is empty or would
+  resolve past 1024 bytes refuses nothing, and the words it defines are not
+  there for the definitions after it. `include` and `require` in a definition
+  are immediate and load while it compiles, so their files are read there, and
+  a missing one is `E-MISSING-SOURCE` at the loader word.
+- `provided` records a path as loaded and opens no file: a path no file is at
+  refuses nothing. A path no literal gives, or one over 1024 bytes, is still
+  `E-LOADER-FORM`.
+- `script-required` resolves its path from the working directory and reads its
+  file as the other loaders do: a path no literal gives is `E-LOADER-FORM`,
+  and a file that is not there `E-MISSING-SOURCE`, at the loader word.
+- A name operand that declares no word, the name of a package, a using, a
+  `DEFTYPE` type family, an `ENUM` variant or a structure field, is no loader
+  call: a bare `required` there, as in `package REQUIRED` or
+  `0 FIELD required n`, verifies.
+
+Under `--verify-only` the status line, `CHECK:VERIFY-LOG$`, is on stdout and
+names the file the loader form is in, or the file a loader word could not read:
+`<file>: discovery rejected: <reason>`, `<file>: no such source` or
+`cannot read <file>`. Without either option the walk's line is
+`check.f: discovery rejected: <reason>`, exit 70, `check.f: no such source`,
+exit 66, or `check.f: cannot read <path>`, exit 74.
 
 A deferral record locates a stretch of top-level source the source pre-pass left
 to the run, or a definition the checker left to it, and is no refusal: code
@@ -503,11 +533,12 @@ at PATH, which need not exist. Both call `CHECK:VERIFY-BYTES`
 (`tools/check-verify-core.f`), the operation a language server calls in its own
 process.
 
-- The require closure is discovered over the bytes, with PATH's directory as
+- The require closure is composed over the bytes, with PATH's directory as
   root and PATH as the subject's identity, so a dependency that requires PATH
-  back meets the bytes, never the copy on disk. A closure that cannot be
-  followed, through a missing file or one discovery refuses, is `refused`
-  with that file named in the prose, and nothing is verified.
+  back meets the bytes, never the copy on disk. No walk of the closure runs
+  first: the composition reads each file a loader loads, and a loader form it
+  refuses, or a file a loader word cannot read, stops it there, `refused`,
+  with the packets made before it and that file named in the prose.
 - The closure in dependency order, then the subject, is verified with all
   errors in one checker scope, in a child whose image is the engine's boot
   prefix plus the verifier, so no word of the caller or of an earlier check is
@@ -543,10 +574,11 @@ Under `--verify-only` check.f writes the packets on stderr, as schema-1 JSON
 with or without `--json-errors`, and its prose on stdout, with a closing line
 for `engine-provided`, `held`, `incomplete` and `deferred`, for which it is
 `check.f: a stretch or definition deferred to the run is not verified`. A
-verification that stopped, at a word with no name after it, a string or
-primitive-axiom row its file never closes, a statement that threw, or where
-discovery stopped, adds the record the other modes write for it, at that place,
-after the packets made before it. Child output beyond the
+verification that stopped, at a word with no name after it, a string, locals
+group or primitive-axiom row its file never closes, a statement that threw, a
+loader form the composition refuses or a file a loader word cannot read, adds
+the record the other modes write for it, at that place, after the packets made
+before it. Child output beyond the
 operation's capture exits 69 with the complete packets received before it, the
 prose and a closing line. Usage errors (64), a missing FILE (66) and a FILE the
 file system will not read (74, `check.f: cannot read <path>` with its canonical
@@ -593,17 +625,20 @@ for it (`CHECK-ALL-ERRORS:DUP-RECORD$`), placed in the bytes or in the file of
 the closure that defined the name again. A throw that ended the verification
 refuses it: `CHECK:VERIFY-STOP` is its code, 0 for none, and
 `CHECK:VERIFY-STOP-AT`, `CHECK:VERIFY-STOP-SUBJECT?` and
-`CHECK:VERIFY-STOPPED$` say where, as for `CHECK:PREVERIFY-BYTES`. Discovery's
-stop at a string or a `{:` group a file of the closure never closes refuses it
-too, with `E-DISC-UNTERM` at the opener in that file. Either stop's record, the
-one `check.f --verify-only` writes, is the last line of `CHECK:VERIFY-OUT$`:
-for a definer or parsing word with nothing after it the nominal pass's
-`E-MISSING-NAME` packet, for an open string or row, or a bad escape before
-one, the lexer's record, else the record `--all-errors` writes for a statement
-that throws, at the stop, so a language server publishes it with the packets
-before it. Any other closure the walk cannot follow is its record (above), and
-the verdict is `refused`. An empty PATH throws `E-FS-PATH`, and a failed spawn
-throws as well.
+`CHECK:VERIFY-STOPPED$` say where, as for `CHECK:PREVERIFY-BYTES`. A loader's
+fault is such a throw (`VERIFY:LOADER-FAULT?`): a loader form the composition
+refuses, by its `E-DISC-` code, at the form; a file a loader word cannot read,
+`VERIFY:E-SOURCE-READ`, at the loader word; and a string or a `{:` group a file
+of the closure never closes, `E-DISC-UNTERM`, at the opener in that file. The
+stop's record, the one `check.f --verify-only` writes, is the last line of
+`CHECK:VERIFY-OUT$`: for a definer or parsing word with nothing after it the
+nominal pass's `E-MISSING-NAME` packet, for an open string or row, or a bad
+escape before one, the lexer's record, for a refused loader form or a file a
+loader word cannot read the packet the walk writes for it (above), else the
+record `--all-errors` writes for a statement that throws, at the stop, so a
+language server publishes it with the packets before it. A loader's fault also
+ends `CHECK:VERIFY-LOG$` with its status line (above). An empty PATH throws
+`E-FS-PATH`, and a failed spawn throws as well.
 The child's stdout is kept whole, in storage that grows to what it writes.
 Its stderr beyond the capture, 256 KiB, kills the child and throws
 `E-PROC-TRUNCATED`, with every complete packet received before it in
@@ -616,22 +651,29 @@ The child, `tools/check-verify-child.f`, is run only by this operation and by
 `CHECK:PREVERIFY-BYTES`, check.f's pre-pass:
 
 ```text
-ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < BYTES
+ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT [--lenient PATH...] < BYTES
 ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < BYTES
 ```
 
 SUBJECT is canonical and absolute. The child follows the loader forms of
 BYTES and of the files they load; a file the image holds is skipped, as
-`require` skips it. stdout carries the packets in verification order, each
-written as the checker makes it, so a child that dies has passed on every
-packet made before; then one result line. The first form verifies with all
-errors, going past a duplicate definition; for each it writes the second
-form's stopped line, code 78, among the packets, which the operation replaces
-by the duplicate's record. It answers `check-verify: verified`, `refused`,
-`deferred` or `held`, or the second form's `stopped` line for a throw that
-ended it; stderr
-carries prose, including `PATH: verification stopped by throw RC after N
-rejected definitions` for each file a throw stopped. The second form stops at
+`require` skips it. The first form composes quietly: it refuses the loader
+forms the closure walk refuses where it meets them, but in a file `--lenient`
+names, each PATH canonical and absolute; the operation names the entries of
+`tools/dynamic-tail-manifest.f`. stdout carries the packets in verification
+order, each written as the checker makes it, so a child that dies has passed
+on every packet made before; then one result line. The first form verifies
+with all errors, going past a duplicate definition; for each it writes the
+second form's stopped line, code 78, among the packets, which the operation
+replaces by the duplicate's record. It answers `check-verify: verified`,
+`refused`, `deferred` or `held`, or the second form's `stopped` line for a
+throw that ended it. For a loader's fault the line `check-verify: loader LEN
+TARGET` comes right before that one: LEN is the length of the loader token at
+its BYTE, 0 for a string or group never closed, and TARGET, absent when empty,
+the file the loader could not read, as it was resolved. stderr carries prose,
+including `PATH: verification stopped by throw RC after N rejected
+definitions` for each file a throw other than a loader's fault stopped. The
+second form stops at
 the first refused definition or top-level token, as the load does, names the
 subject LABEL in its packets and answers `check-verify: verified` or `check-verify: stopped RC BYTE
 DUP-AT DUP-LEN IN-SUBJECT FILE`: the code it stopped with, where the token it

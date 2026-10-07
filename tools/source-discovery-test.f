@@ -6,11 +6,12 @@
 \ replay-every-occurrence vs require dedup), canonical registry (equivalent spelling
 \ collapse), tool-preloaded require paths not hiding a later user require,
 \ colon-body loader capture with byte-exact token spans, a parsing keyword's
-\ operand read as data, the shared checked path emitter, fail-closed rejection
-\ when the artifact cannot be produced (loader word shadowed/undefined/retired,
-\ dynamic loader path, unsupported opener, serialization overflow), and the
-\ dynamic-tail manifest boundary (manifested repo files tolerated, the same
-\ shapes elsewhere rejected).
+\ operand read as data, a comment between a literal path and the word that takes
+\ it skipped as the loader skips it, the shared checked path emitter, fail-closed
+\ rejection when the artifact cannot be produced (loader word
+\ shadowed/undefined/retired, dynamic loader path, unsupported opener,
+\ serialization overflow), and the dynamic-tail manifest boundary (manifested
+\ repo files tolerated, the same shapes elsewhere rejected).
 
 require lib/errors.f
 require lib/string.f
@@ -242,6 +243,42 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    S\" : SDT-RT ( -- ) ['] require drop ;\nrequire sd-raw.f\n" SDT-RAW-ONE
    S\" : SDT-L ( n n -- n ) {: char require :} char ;\nrequire sd-raw.f\n" SDT-RAW-ONE ;
 
+\ --- a comment keeps a literal path ------------------------------------------
+
+\ The loader skips a comment as it skips blanks, so a literal path, a `( … )` or
+\ a `\` comment and the loader word are the literal load they are without the
+\ comment: the event the loader runs, at the loader word. A `c"` string across a
+\ comment is the opener it is without one (E-DISC-OPENER). A token that is no
+\ comment is code, whatever comments surround it, and the path is no longer
+\ the literal (E-DISC-DYNAMIC). A refused walk leaves no event to read: reading
+\ one past the log faults, so the event is read only when the walk left it.
+: SDT-COMMENTED-ONE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   s" commented.f" a u SDT-WRITE-ENTRY
+   SDT-ENTRY$ SDT-SRC SDT-SRC-CAP READ-ALL SDT-SRC-U !
+   [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
+   EVENT-COUNT 1 T=
+   EVENT-COUNT 1 <> if exit then
+   0 EVENT-PATH@ s" sd-commented.f" SDT-PATH T$=
+   0 SDT-EVENT-TOK$ s" required" T$= ;
+
+: SDT-TEST-COMMENTED-LITERAL ( -- )
+   S\" s\" sd-commented.f\" ( kept ) required\n" SDT-COMMENTED-ONE
+   S\" s\" sd-commented.f\" \\ kept\nrequired\n" SDT-COMMENTED-ONE
+   s" commented-opener.f" S\" c\" sd-commented.f\" ( kept ) required\n" SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] E-DISC-OPENER TTHROWSQ
+   s" commented-code.f" S\" s\" sd-commented.f\" ( kept ) 2dup \\ kept\nrequired 2drop\n" SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ ;
+
+\ UNDEFINE-IF-DEFINED takes the same literal across a comment: a name no loader
+\ word has retires nothing discovery reads, and a loader word's still refuses.
+: SDT-TEST-COMMENTED-RETIRE ( -- )
+   s" commented-retire.f" S\" s\" SDT-NOT-A-LOADER\" ( kept ) UNDEFINE-IF-DEFINED\n" SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
+   EVENT-COUNT 0 T=
+   s" commented-retire-loader.f" S\" s\" required\" \\ kept\nUNDEFINE-IF-DEFINED\n" SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] E-DISC-RETIRE TTHROWSQ ;
+
 \ --- fail-closed: dynamic/opener/retire forms inside colon bodies ------------
 
 : SDT-TEST-BODY-DYNAMIC ( -- )
@@ -411,6 +448,8 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    SDT-TEST-USER-DEFINER
    SDT-TEST-UNTERM-STRING
    SDT-TEST-PARSED-OPERAND
+   SDT-TEST-COMMENTED-LITERAL
+   SDT-TEST-COMMENTED-RETIRE
    SDT-TEST-BODY-DYNAMIC
    SDT-TEST-BODY-OPENER
    SDT-TEST-BODY-SHADOW

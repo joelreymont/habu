@@ -5,9 +5,11 @@
 \ takes the subject's bytes and the path they stand for and answers
 \ what `bin/hb --load PATH` would refuse of them, and runs none of it:
 \
-\ - The closure is discovered over the bytes with PATH's directory as root and
-\   PATH as the subject's identity, so a dependency that requires PATH back
-\   meets the bytes, never the copy on disk.
+\ - The closure is composed over the bytes with PATH as the subject's identity,
+\   so a dependency that requires PATH back meets the bytes, never the copy on
+\   disk. The composition reads each file a loader loads, and refuses where it
+\   meets them the loader forms the closure walk refuses (tools/source-discovery.f),
+\   but in a file tools/dynamic-tail-manifest.f lists: no walk runs before it.
 \ - The verification runs in a short-lived child, tools/check-verify-child.f,
 \   whose image is the engine's boot prefix plus the verifier: neither this
 \   process's words nor an earlier check's can stand in for, or collide with, a
@@ -25,25 +27,27 @@
 \ subject's name PATH's canonical absolute path and count positions in the
 \ bytes; a dependency's name the dependency and count in its file. A duplicate
 \ definition, which the checker writes no packet for, is the record
-\ --all-errors writes for it (CHECK-ALL-ERRORS:DUP-RECORD$), and a closure that
-\ cannot be discovered is a packet at the form discovery refused or at the
-\ loader word naming a file that is not there, but for a string or a locals
-\ group never closed, a stop at its opener (VERIFY-STOP). VERIFY-BYTES's stop
-\ is the last line, its record (STOP-RECORD$) in JSON. VERIFY-FILES$ is the
+\ --all-errors writes for it (CHECK-ALL-ERRORS:DUP-RECORD$). VERIFY-BYTES's
+\ stop (VERIFY-STOP) is the last line, its record (STOP-RECORD$) in JSON; a
+\ stop at a loader's fault (VERIFY:LOADER-FAULT?) is the packet at the loader
+\ form the composition refused or at the loader word naming a file that is not
+\ there or cannot be read, but for a string or a locals group never closed, the
+\ stop's record at its opener. VERIFY-FILES$ is the
 \ files the verifier read, the subject and its dependencies, VERIFY-DEFS$ the
 \ definitions it retained in them, VERIFY-USES$ the uses in the subject the
 \ checker bound to located declarations, and VERIFY-CANDIDATES$ the spellings
 \ CHECK:VERIFY-BYTES-AT's cursor offered, each one JSON object per line, never
-\ among the packets. VERIFY-LOG$ is the child's stderr, or for a closure the
-\ walk cannot follow, which runs no child, the status line naming the file that
-\ ended it and why. All six hold until the next call.
+\ among the packets. VERIFY-LOG$ is the child's stderr, then after a loader's
+\ fault the status line naming the file it is in, or the file it could not
+\ read, and why. All six hold until the next call.
 \
 \ CHECK:PREVERIFY-BYTES is check.f's pre-pass, on the same child and image: the
 \ first refused definition stops it, as it stops the load, and the subject's
 \ packets carry the label check.f reports the subject by.
 \
-\ The require closure, discovered for the command line's named files as well,
-\ is kept here, so a caller of the operation loads none of check.f's lints.
+\ The require closure walk, which check.f runs before its pre-pass for the
+\ command line's named files and for bytes, is kept here, so a caller of the
+\ operation loads none of check.f's lints.
 
 require lib/errors.f
 require lib/string.f
@@ -59,6 +63,7 @@ require lib/engine-candidate.f
 require tools/dynamic-tail-manifest.f
 require tools/source-discovery.f
 require tools/check-all-errors-core.f
+require src/habu/verify-source.f
 
 package CHECK
 using SOURCE-ROOT
@@ -184,7 +189,9 @@ variable CHK-EXPAND-TOP
    {: a:ptr u:n root:ptr rootu:n at:n len:n :}
    a u root rootu CHK-DEP-ID at len CHK-DIR-PUSH ;
 
-\ Dependency closure: the shared whole-file ordered-event producer
+\ Dependency closure, as check.f walks it before its pre-pass
+\ (tools/check-core.f); VERIFY-BYTES walks none, its child's composition
+\ refusing the same forms. The shared whole-file ordered-event producer
 \ (tools/source-discovery.f) scans every token of a file - colon bodies
 \ included - and records one event per literal loader form
 \ (include/included/require/required/provided). Every event path is a direct
@@ -348,9 +355,9 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    s" Load a file by a literal path of at most 1024 bytes, as written and as resolved, through a loader word no definition redefines or retires, or list this file in tools/dynamic-tail-manifest.f." ;
 
 \ The packet for fault RC at the token that starts at AT with length LEN in the
-\ file with id ID, whose bytes are A U: one JSON object, no line feed.
-: CHK-FAULT-JSON ( n n n n ptr u8 n -- ptr u8 n )
-   {: rc:n id:n at:n len:n a:ptr u:n :}
+\ bytes A U of the file the packet names NAME: one JSON object, no line feed.
+: CHK-FAULT-JSON ( n n n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: rc:n at:n len:n a:ptr u:n name:ptr nameu:n :}
    a at CHECK-ALL-ERRORS:BYTE-ORIGIN {: line:n col:n :}
    rc CHK-FAULT-CODE {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
    LJW-RESET
@@ -360,7 +367,7 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    s" repair_class" LJW-KEY class classu LJW-STRING LJW-COMMA
    s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
    s" token" LJW-KEY a at + len LJW-STRING LJW-COMMA
-   s" file" LJW-KEY id CHK-FILE-NAME$ LJW-STRING LJW-COMMA
+   s" file" LJW-KEY name nameu LJW-STRING LJW-COMMA
    s" line" LJW-KEY line LJW-U LJW-COMMA
    s" column" LJW-KEY col LJW-U LJW-COMMA
    s" byte_start" LJW-KEY at LJW-U LJW-COMMA
@@ -376,12 +383,14 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
 : CHK-FAULT$ ( n -- ptr u8 n )
    {: rc:n :}
    rc CHK-DISC-RC? if
-      rc CHK-DISC-ID @ DISCOVER:LAST-TOKEN DISCOVER:BYTES$ CHK-FAULT-JSON exit
+      rc DISCOVER:LAST-TOKEN DISCOVER:BYTES$ CHK-DISC-ID @ CHK-FILE-NAME$
+      CHK-FAULT-JSON exit
    then
    CHK-EDGE @ {: edge:n :}
    edge 0 < if NULL$ exit then
    edge CHK-DIR-FROM @ {: from:n :}
-   rc from edge CHK-DIR-AT @ edge CHK-DIR-LEN @ from CHK-FILE-BYTES CHK-FAULT-JSON ;
+   rc edge CHK-DIR-AT @ edge CHK-DIR-LEN @ from CHK-FILE-BYTES from CHK-FILE-NAME$
+   CHK-FAULT-JSON ;
 
 : CHK-TOK-END ( n -- n ) {: k:n :}
    k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
@@ -574,7 +583,9 @@ variable VFY-STOP-DUP-U                 \ starts and its length, 0 for none,
 TYPED-VARIABLE VFY-STOP-SUBJ bool       \ whether that is in the subject's bytes,
 variable VFY-STOP-OFF                   \ and the file it is in, in VFY-OUT,
 variable VFY-STOP-U
-TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
+variable VFY-FAULT-LEN                  \ a stop at a loader's fault: the loader token's length,
+create VFY-TARGET FS-PATH-CAP allot     \ and the file it could not read, empty for none
+variable VFY-TARGET-U
 
 
 : VFY-CHILD$ ( -- ptr u8 n )
@@ -591,7 +602,8 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    -1 VFY-AT !
    VFY-NONE VFY-ANSWER !
    0 VFY-STOP-RC !
-   false VFY-STOP-DISC !
+   0 VFY-FAULT-LEN !
+   0 VFY-TARGET-U !
    false VFY-PREPASS ! ;
 
 
@@ -628,29 +640,19 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    VFY-LOG+ s\" \n" VFY-LOG+ ;
 
 
-\ The status line of the fault RC that ended the walk, in the file CHK-DISC-ID
-\ names: `cannot read` that file, or the file and why: no such source, or
-\ discovery's reason.
-: VFY-CLOSURE-LOG ( n -- )
-   {: rc:n :}
+\ The status line of the loader's fault RC, as the closure walk classes it
+\ (VFY-FAULT-CLASS), about the file at PATH: `cannot read` PATH, or PATH and
+\ why: no such source, or discovery's reason.
+: VFY-CLOSURE-LOG ( n ptr u8 n -- )
+   {: rc:n path:ptr pathu:n :}
    rc CHK-E-IOERR = if
       s" cannot read " VFY-LOG+
-      CHK-DISC-ID @ CHK-DEP$ VFY-LOG-LN exit
+      path pathu VFY-LOG-LN exit
    then
-   CHK-DISC-ID @ CHK-DEP$ VFY-LOG+
+   path pathu VFY-LOG+
    s" : " VFY-LOG+
    rc CHK-E-NOINPUT = if s" no such source" VFY-LOG-LN exit then
    rc CHK-DISC-MSG$ VFY-LOG-LN ;
-
-
-\ The walk's fault, as its packet and its status line: a walk over the caller's
-\ bytes enters every other file through a loader word, so the fault is always
-\ placed.
-: VFY-CLOSURE-REPORT ( n -- )
-   {: rc:n :}
-   rc CHK-FAULT$ VFY-OUT+
-   s\" \n" VFY-OUT+
-   rc VFY-CLOSURE-LOG ;
 
 
 \ A line of VERIFY-OUT$, when there is one.
@@ -668,18 +670,11 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    VFY-STOP-RC @ VFY-STOP-AT @ label labelu src srcu true STOP-RECORD$ drop ;
 
 
-\ Discovery that ended the walk at a string or a locals group a file never
-\ closes stops the verification at its opener, in the file CHK-DISC-ID names,
-\ whose record ends the packets. Its status line is the log.
-: VFY-DISC-STOP ( -- )
-   E-DISC-UNTERM VFY-STOP-RC !
-   DISCOVER:OPENER-AT VFY-STOP-AT !
-   CHK-DISC-ID @ CHK-BYTES-ID @ = VFY-STOP-SUBJ !
-   true VFY-STOP-DISC !
-   CHK-DISC-ID @ CHK-DEP$ CHK-DISC-ID @ CHK-FILE-BYTES VFY-STOP-RECORD$ VFY-LINE+
-   E-DISC-UNTERM VFY-CLOSURE-LOG ;
-
-
+\ The child's arguments. Outside the pre-pass its composition keeps the loader
+\ forms it refuses in the files tools/dynamic-tail-manifest.f lists, named by
+\ their canonical paths in the tree that file was loaded from. `--lenient`
+\ goes only before a path: alone after SUBJECT, the child would read it as the
+\ pre-pass's LABEL.
 : VFY-ARGV ( -- )
    PROC-ARGV-ENV-RESET
    s" --load" CHK-ARG+
@@ -688,6 +683,10 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    VFY-PATH$ CHK-ARG+
    VFY-PREPASS @ if VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+ then
    VFY-AT @ 0 >= if s" --at" CHK-ARG+  SB-RESET VFY-AT @ FMT:SB-U SB$ CHK-ARG+ then
+   VFY-PREPASS @ 0=  DTM:COUNT 0 >  and if
+      s" --lenient" CHK-ARG+
+      DTM:COUNT 0 ?do i DTM:CANON$ CHK-ARG+ loop
+   then
    PROC-ENV-INHERIT-MISSING ;
 
 
@@ -742,6 +741,9 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 : VFY-CAND$ ( -- ptr u8 n )
    s" check-verify: candidate " ;
 
+: VFY-LOADER$ ( -- ptr u8 n )
+   s" check-verify: loader " ;
+
 
 \ Where the field of VFY-OUT that starts at AT ends: at its space, or at END.
 : VFY-FIELD-END ( n n -- n ) {: at:n end:n :}
@@ -783,6 +785,20 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    e5 1+ VFY-STOP-OFF !
    end e5 1+ - VFY-STOP-U !
    VFY-STOPPED ;
+
+
+\ The fields after a loader tag, from AT to END: LEN, then, after a space, the
+\ rest of the line, TARGET. True with them kept, or false for an invalid line.
+: VFY-LOADER-PARSE ( n n -- bool ) {: at:n end:n :}
+   at end VFY-FIELD-END {: e:n :}
+   at e VFY-FIELD-N {: len:n len-ok:bool :}
+   e end < if e 1+ else end then {: t:n :}
+   end t - {: tu:n :}
+   len-ok len 0 >= and tu FS-PATH-CAP <= and 0= if false exit then
+   len VFY-FAULT-LEN !
+   t VFY-OUT VFY-TARGET tu BYTE-COPY
+   tu VFY-TARGET-U !
+   true ;
 
 
 \ A result line grants a verdict only after a clean child exit. A complete
@@ -840,17 +856,50 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    VFY-STOP-FILE$ CHK-FILE-READ ;
 
 
+\ The file the loader line named, the one a loader could not read.
+: VFY-TARGET$ ( -- ptr u8 n )
+   VFY-TARGET VFY-TARGET-U @ ;
+
+
+\ The loader's fault RC as the closure walk classes it: a file a loader could
+\ not read is CHK-E-NOINPUT when no file is there, else CHK-E-IOERR; a form
+\ keeps discovery's code.
+: VFY-FAULT-CLASS ( n -- n ) {: rc:n :}
+   rc VERIFY:E-SOURCE-READ <> if rc exit then
+   VFY-TARGET$ FILE? if CHK-E-IOERR exit then
+   CHK-E-NOINPUT ;
+
+
+\ The record of the child's stop: for a loader's fault, but a string or a
+\ locals group never closed, the packet at the loader form, as the closure walk
+\ writes it (CHK-FAULT-JSON); else the stop's record (STOP-RECORD$).
+: VFY-STOP-REC$ ( n -- ptr u8 n ) {: class:n :}
+   VFY-STOP-RC @ {: rc:n :}
+   rc VERIFY:LOADER-FAULT? rc E-DISC-UNTERM <> and if
+      class VFY-STOP-AT @ VFY-FAULT-LEN @ VFY-STOP-SOURCE VFY-STOP-FILE$
+      CHK-FAULT-JSON exit
+   then
+   VFY-STOP-FILE$ VFY-STOP-SOURCE VFY-STOP-RECORD$ ;
+
+
 \ The child's stop: its record ends the packets, and the file the stopped line
-\ named stays after them, where VFY-STOP-FILE$ reads it.
+\ named stays after them, where VFY-STOP-FILE$ reads it. A loader's fault adds
+\ its status line to the log, about the file the loader could not read or the
+\ one that holds the form.
 : VFY-STOP-LINE ( -- )
-   VFY-STOP-FILE$ VFY-STOP-SOURCE VFY-STOP-RECORD$ {: a:ptr u:n :}
+   VFY-STOP-RC @ {: rc:n :}
+   rc VFY-FAULT-CLASS {: class:n :}
+   class VFY-STOP-REC$ {: a:ptr u:n :}
    VFY-STOP-U @ {: fileu:n :}
    fileu VFY-STOP-PATH-RESERVE
    VFY-STOP-FILE$ drop 0 VFY-STOP-PATH fileu BYTE-COPY
    a u VFY-LINE+
    VFY-OUT-U @ fileu + VFY-OUT-RESERVE
    VFY-OUT-U @ VFY-STOP-OFF !
-   0 VFY-STOP-PATH VFY-STOP-OFF @ VFY-OUT fileu BYTE-COPY ;
+   0 VFY-STOP-PATH VFY-STOP-OFF @ VFY-OUT fileu BYTE-COPY
+   rc VERIFY:LOADER-FAULT? 0= if exit then
+   rc VERIFY:E-SOURCE-READ = if class VFY-TARGET$ VFY-CLOSURE-LOG exit then
+   class VFY-STOP-FILE$ VFY-CLOSURE-LOG ;
 
 
 : VFY-REC+ ( ptr u8 n -- )
@@ -941,11 +990,15 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 \ The line of VFY-OUT that starts at AT, to VFY-REC, a duplicate line
 \ as the record --all-errors writes for it, a file line to VFY-FILES, a
 \ definition line to VFY-DEFS, a use line to VFY-USES and a candidate line to
-\ VFY-CANDS: where the next line starts.
+\ VFY-CANDS; a loader line's fields are kept for VFY-STOP-LINE: where the next
+\ line starts.
 : VFY-REC-LINE ( n -- n )
    {: at:n :}
    at VFY-LINE-END
    {: end:n :}
+   at VFY-OUT end at - VFY-LOADER$ STARTS-WITH? if
+      at VFY-LOADER$ nip + end VFY-LOADER-PARSE if end 1+ exit then
+   then
    at VFY-OUT end at - VFY-FILE$ STARTS-WITH? if
       at end VFY-FILE-LINE
       end 1+ exit
@@ -1087,11 +1140,12 @@ public
    0 VFY-CANDS VFY-CANDS-U @ ;
 
 \ Check the bytes as the file at PATH, the child given DEADLINE. A throw that
-\ ends the verification refuses it, as does a string or a locals group a file
-\ of the closure never closes: the stop's record ends VERIFY-OUT$, and
-\ VERIFY-STOP and the words after it say with what and where. Any other closure
-\ the walk cannot follow refuses it with the walk's packet in VERIFY-OUT$.
-\ Either way VERIFY-LOG$ is the walk's status line. An empty PATH is
+\ ends the verification refuses it: the stop's record ends VERIFY-OUT$, after
+\ every packet made before it, and VERIFY-STOP and the words after it say with
+\ what and where. A loader's fault is such a stop: a loader form the closure
+\ walk refuses, a string or a locals group a file never closes, or a file a
+\ loader word names that is not there or cannot be read, and VERIFY-LOG$ ends
+\ with its status line, the one the walk writes. An empty PATH is
 \ E-FS-PATH; an engine lib/engine-candidate.f refuses (E-FS-OPEN) or a failed
 \ spawn throws as well. stdout is kept whole; more than 256 KiB of the child's
 \ stderr is E-PROC-TRUNCATED, VERIFY-OUT$ then holding every complete packet
@@ -1105,9 +1159,8 @@ public
    at VFY-AT !
    path pathu VFY-PATH!
    VFY-PATH$ ENGINE-PROVIDES? if CHECK-VERDICT:engine-provided exit then
-   src srcu VFY-PATH$ VFY-PATH$ CHK-EXPAND-BYTES {: rc:n :}
-   rc E-DISC-UNTERM = if VFY-DISC-STOP CHECK-VERDICT:refused exit then
-   rc 0<> if rc VFY-CLOSURE-REPORT CHECK-VERDICT:refused exit then
+   src CHK-BYTES-A !
+   srcu CHK-BYTES-U !
    deadline VFY-DEADLINE !
    VFY-RUN {: o :}
    o VFY-CLEAN-EXIT? VFY-ANSWER @ VFY-STOPPED = and if VFY-STOP-LINE then
@@ -1139,8 +1192,8 @@ public
    deadline VFY-DEADLINE !
    VFY-RUN VFY-PREVERDICT ;
 
-\ The code a throw stopped the last VERIFY-BYTES or PREVERIFY-BYTES with,
-\ E-DISC-UNTERM for discovery's stop at a string or group, 0 when none did.
+\ The code a throw stopped the last VERIFY-BYTES or PREVERIFY-BYTES with, the
+\ child's, a loader's fault's among them (VERIFY:LOADER-FAULT?), 0 when none did.
 : VERIFY-STOP ( -- n )
    VFY-STOP-RC @ ;
 
@@ -1161,7 +1214,6 @@ public
    VFY-STOP-SUBJ @ ;
 
 : VERIFY-STOPPED$ ( -- ptr u8 n )
-   VFY-STOP-DISC @ if CHK-DISC-ID @ CHK-DEP$ exit then
    VFY-STOP-FILE$ ;
 
 ;using
