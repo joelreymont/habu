@@ -17,8 +17,8 @@
 \ arguments the source-level arithmetic takes and its answer compared. Those
 \ executing cases run in test/compiler/native-emit-run-child.f, a window child
 \ this suite starts (RUN-CHILD-CASE below), which builds the same shapes from
-\ test/compiler/native-emit-shapes.f and emits them with the unsealed image's own
-\ baked emitter, made from the same sources by the same native build; the sealed
+\ test/compiler/native-emit-shapes.f and emits them with the emitter loaded from
+\ the same sources inside the whitebox window; the sealed
 \ product's baked emitter runs through the real load path, which compiles every
 \ colon definition through src/compiler/native/compiler.f, whose ARM64 rows are
 \ src/arch/arm64/passes.f over A64EMIT. The byte cases stay here, on the product

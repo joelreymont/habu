@@ -7,8 +7,8 @@
 \ these private words: test/compiler/native-emit.f, the product suite, compares
 \ the emitted words, and test/compiler/native-emit-run-child.f, which that
 \ suite runs as a window child, publishes and calls them. The child runs the
-\ same shapes, emitted by the unsealed image's own baked emitter, which the same
-\ native build makes from the same sources.
+\ same shapes, emitted by the emitter loaded from the same sources inside the
+\ whitebox window.
 \
 \ WHERE THE CHAIN ITSELF IS DRIVEN. Binding the two dialects, selecting,
 \ allocating, accepting and emitting are the same four stages in the same order

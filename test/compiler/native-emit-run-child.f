@@ -1,8 +1,8 @@
 \ native-emit-run-child.f - the ARM64 emission cases that run the bytes.
 \
 \ test/compiler/native-emit.f compares the emitted words; this file emits the
-\ same shapes, built by test/compiler/native-emit-shapes.f, with the unsealed
-\ image's own baked emitter, made from the same sources by the same native build,
+\ same shapes, built by test/compiler/native-emit-shapes.f, with the emitter
+\ loaded from the same sources inside the whitebox window,
 \ publishes them into the engine's code space and calls them, comparing the
 \ source-level arithmetic's answer. Publishing the bytes (code-publish, package
 \ NPUB) and calling them (the bounded FFI call, package FFI) are owner rows a
