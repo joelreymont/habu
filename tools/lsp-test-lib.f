@@ -20,8 +20,8 @@
 \
 \ Lifecycle
 \ - initialize answers other than its capabilities: positions in utf-16, open
-\   and close notifications, Full sync, workspace symbols, the name habu
-\   .................................................................. lifecycle
+\   and close notifications, Full sync, workspace and document symbols, the
+\   name habu ........................................................ lifecycle
 \ - shutdown answers other than a null result; exit after it exits other than
 \   0 or writes to stderr ............................................ lifecycle
 \ - a reply held until more input comes, or the end of input .. answers-at-once
@@ -157,6 +157,29 @@
 \   their definition lines names at every even offset of the bytes the server
 \   keeps them in, one of them where those bytes fill their room .. path-length-N
 \
+\ Document symbols
+\ - a definition the document's last completed check retained in it missing,
+\   or answered other than as the flat SymbolInformation workspace symbols
+\   give it: its name, kind and location at the document's URI over the
+\   token that declared it; a definition of another open document or of a
+\   file the document requires listed; a document with no definition answered
+\   other than an empty list; a document not open, or params naming none,
+\   answered other than -32602 ................................. document-symbol
+\ - a request in the turn of a change answered before the check of the
+\   changed text published, or still listing a definition the change removed;
+\   a request with a change of its document read behind it answered other
+\   than -32801, or that change not applied and checked after it; a client
+\   whose initialize supports hierarchical document symbols answered other
+\   than that flat list ........................... document-symbol-after-change
+\ - a request after a change whose check did not complete answered with the
+\   definitions of the text before it, which workspace symbols still list
+\   ................................................. document-symbol-incomplete
+\ - an open document's outline answered from a later check of another
+\   document, which read its file from disk; with its file open again by
+\   another URI and other text, either document's outline answered with the
+\   other's definitions or at the other's URI
+\   ......................................... workspace-symbol-open-dependency
+\
 \ Go to definition
 \ - a use in an open document, at its first character or its last, or after a
 \   character UTF-16 counts as one unit and UTF-8 as two bytes, not answered
@@ -169,6 +192,9 @@
 \ - a use of a dependency open with its lines swapped, unsaved, not answered
 \   with its declaring token's range in the text on disk the check read, at
 \   the URI the client opened it by ................. definition-dependency-open
+\ - a use in a document whose file is open by another URI too not answered at
+\   the URI the client opened the document by
+\   ......................................... workspace-symbol-open-dependency
 \ - a position in a document not open answered other than -32602
 \   ................................................... definition-not-open
 \ - a use asked about with the document's opening, answered before the check
@@ -290,8 +316,8 @@ using BUF
 \ its busiest measurement and CHECKED-MS about six times big-frame's 1230 to
 \ 1289 ms, and neither is larger. The one bounds 27 runs (the 24 conversations
 \ CONVERSE runs, answers-at-once, stdout-closed and TEST-EXIT-TIMEOUT's child)
-\ and the other 67 conversations. A server that blocks spends none of the
-\ row's CPU budget (test/suite-budget.f CPU-MS), so all 94 could reach their
+\ and the other 70 conversations. A server that blocks spends none of the
+\ row's CPU budget (test/suite-budget.f CPU-MS), so all 97 could reach their
 \ bounds, each failing by name, well inside the row's hang guard (ROW-MS). One
 \ that spins to its bound spends that much of the budget's 360 s, so at most
 \ 45 such runs fail by name before the budget ends the row.
@@ -706,7 +732,7 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\"," MSG+
    s\" \"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}," MSG+
    s\" \"completionProvider\":{},\"definitionProvider\":true," MSG+
-   s\" \"hoverProvider\":true," MSG+
+   s\" \"hoverProvider\":true,\"documentSymbolProvider\":true," MSG+
    s\" \"workspaceSymbolProvider\":true}," MSG+
    s\" \"serverInfo\":{\"name\":\"habu\"}}}" MSG+
    MSG$ HEARD ;
@@ -1965,6 +1991,49 @@ CK-USE-MAX 1 + constant OVER-USINGS
    HEAR
    MSG$ HEARD ;
 
+\ textDocument/documentSymbol, by its id's JSON text, of the document opened
+\ from this path.
+: OUTLINE-ASK ( ptr u8 n ptr u8 n -- )
+   {: i:ptr iu:n p:ptr pu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"method\":\"textDocument/documentSymbol\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
+   p pu URI-OF MSG+ s\" \"}}}" MSG+
+   MSG$ FRAMED ;
+
+\ A request by this method and id's JSON text at character C of line L of
+\ the document opened from this path.
+: AT-ASK ( ptr u8 n ptr u8 n ptr u8 n n n -- )
+   {: m:ptr mu:n i:ptr iu:n p:ptr pu:n l:n c:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"method\":\"" MSG+ m mu MSG+
+   s\" \",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
+   p pu URI-OF MSG+
+   s\" \"},\"position\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c INT$ MSG+ s" }}}" MSG+
+   MSG$ FRAMED ;
+
+\ textDocument/definition, by its id's JSON text, at character C of line L of
+\ the document opened from this path.
+: DEFINITION-ASK ( ptr u8 n ptr u8 n n n -- )
+   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+   s" textDocument/definition" i iu p pu l c AT-ASK ;
+
+\ The next frame answers the request with this id's JSON text with one
+\ Location: this URI, from character C1 to C2 of line L.
+: LOCATED ( ptr u8 n ptr u8 n n n n -- )
+   {: i:ptr iu:n u:ptr uu:n l:n c1:n c2:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"result\":[{\"uri\":\"" MSG+ u uu MSG+
+   s\" \",\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c1 INT$ MSG+
+   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}}]}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
 \ The dependency's symbols: QUX-DEP in package QD, recorded folded, and the
 \ global QUX-V.
 : DEP-SYMBOLS+ ( -- )
@@ -2174,11 +2243,22 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" ( unsaved é🙂 comment )\n: REV-EDIT ( -- n ) 8 ;\n" ;
 : TEXT-OD ( -- ptr u8 n )  s\" require od-dep.f\n: REV-A ( -- n ) 1 ;\n" ;
 
+\ od-twin.f, a symlink to od-dep.f, and the other text its open document
+\ holds, whose definitions are on other lines than od-dep.f's.
+: OD-TWIN-PATH ( -- ptr u8 n )  s" od-twin.f" FIXTURE ;
+: TEXT-OD-TWIN ( -- ptr u8 n )
+   s\" \\ twin\n\n: REV-TWIN ( -- n ) 9 ;\n: REV-USE ( -- n ) REV-TWIN ;\n" ;
+
 \ od-dep.f open with text its disk file lacks, then od.f, which requires the
 \ file, open: a query lists REV-EDIT where the document places it, from its
-\ own check, and REV-A, and not REV-DISK, which od.f's check read from disk.
-\ od-dep.f closed, REV-DISK where the file on disk places it, answered before
-\ od.f's next check.
+\ own check, and REV-A, and not REV-DISK, which od.f's check read from disk;
+\ od-dep.f's outline, after od.f's check, is REV-EDIT alone. The file open
+\ again through od-twin.f with its own text: each document's outline is its
+\ own definitions, at the URI the client opened it by, and a use in od-twin.f
+\ is at its declaration there.
+\ od-twin.f closed, and both documents checked again; then od-dep.f closed,
+\ REV-DISK where the file on disk places it, answered before od.f's next
+\ check.
 : OPEN-DEP-TURNS ( -- )
    OD-DEP-PATH TEXT-OD-DISK WRITE-ALL
    INITIALIZE
@@ -2190,16 +2270,41 @@ CK-USE-MAX 1 + constant OVER-USINGS
    SAY
    TEXT-OD OD-PATH 1 s" verified" LISTED
    s" 3" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
+   s" 4" OD-DEP-PATH OUTLINE-ASK
    SAY
    s" 3" SYMBOLS-START
    s" REV-EDIT" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
    s" REV-A" 12 OD-PATH URI-OF 1 2 7 s" " SYMBOL+
    SYMBOLS-END
+   s" 4" SYMBOLS-START
+   s" REV-EDIT" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
+   SYMBOLS-END
+   s" od-dep.f" OD-TWIN-PATH MAKE-SYMLINK
+   OD-TWIN-PATH TEXT-OD-TWIN 1 OPENS
+   SAY
+   TEXT-OD-TWIN OD-TWIN-PATH 1 s" verified" LISTED
+   s" 5" OD-TWIN-PATH OUTLINE-ASK
+   s" 6" OD-DEP-PATH OUTLINE-ASK
+   s" 7" OD-TWIN-PATH 3 19 DEFINITION-ASK
+   SAY
+   s" 5" SYMBOLS-START
+   s" REV-TWIN" 12 OD-TWIN-PATH URI-OF 2 2 10 s" " SYMBOL+
+   s" REV-USE" 12 OD-TWIN-PATH URI-OF 3 2 9 s" " SYMBOL+
+   SYMBOLS-END
+   s" 6" SYMBOLS-START
+   s" REV-EDIT" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
+   SYMBOLS-END
+   s" 7" OD-TWIN-PATH URI-OF 2 2 10 LOCATED
+   OD-TWIN-PATH CLOSES
+   SAY
+   OD-TWIN-PATH -1 EXPECT PUBLISHES
+   TEXT-OD-EDIT OD-DEP-PATH 1 s" verified" LISTED
+   TEXT-OD OD-PATH 1 s" verified" LISTED
    OD-DEP-PATH CLOSES
-   s" 4" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
+   s" 8" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
    SAY
    OD-DEP-PATH -1 EXPECT PUBLISHES
-   s" 4" SYMBOLS-START
+   s" 8" SYMBOLS-START
    s" REV-DISK" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
    s" REV-A" 12 OD-PATH URI-OF 1 2 7 s" " SYMBOL+
    SYMBOLS-END
@@ -2261,39 +2366,6 @@ variable LENGTH-N                        \ the length of its directory's name
 \ Uses of def-dep.f's global and, qualified, of its public word.
 : TEXT-DEF-B ( -- ptr u8 n )
    s\" require def-dep.f\n: DEF-USE ( -- n ) DEF-DEP DD:DEF-PUB + ;\n" ;
-
-\ A request by this method and id's JSON text at character C of line L of
-\ the document opened from this path.
-: AT-ASK ( ptr u8 n ptr u8 n ptr u8 n n n -- )
-   {: m:ptr mu:n i:ptr iu:n p:ptr pu:n l:n c:n :}
-   MSG-B CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
-   s\" ,\"method\":\"" MSG+ m mu MSG+
-   s\" \",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
-   p pu URI-OF MSG+
-   s\" \"},\"position\":{\"line\":" MSG+ l INT$ MSG+
-   s\" ,\"character\":" MSG+ c INT$ MSG+ s" }}}" MSG+
-   MSG$ FRAMED ;
-
-\ textDocument/definition, by its id's JSON text, at character C of line L of
-\ the document opened from this path.
-: DEFINITION-ASK ( ptr u8 n ptr u8 n n n -- )
-   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
-   s" textDocument/definition" i iu p pu l c AT-ASK ;
-
-\ The next frame answers the request with this id's JSON text with one
-\ Location: this URI, from character C1 to C2 of line L.
-: LOCATED ( ptr u8 n ptr u8 n n n n -- )
-   {: i:ptr iu:n u:ptr uu:n l:n c1:n c2:n :}
-   MSG-B CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
-   s\" ,\"result\":[{\"uri\":\"" MSG+ u uu MSG+
-   s\" \",\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
-   s\" ,\"character\":" MSG+ c1 INT$ MSG+
-   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
-   s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}}]}" MSG+
-   HEAR
-   MSG$ HEARD ;
 
 \ The next frame answers the request with this id's JSON text with no
 \ Location.
@@ -2450,6 +2522,108 @@ variable LENGTH-N                        \ the length of its directory's name
    TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
    DEF-A-PATH s" not checked: exit 76" SAID
    s" 3" NOWHERE
+   s" 4" SYMBOLS-START
+   s" DEF-ONE" 12 DEF-A-PATH URI-OF 0 2 9 s" " SYMBOL+
+   s" DEF-TWO" 12 DEF-A-PATH URI-OF 1 2 9 s" " SYMBOL+
+   s" DEF-SUM" 12 DEF-A-PATH URI-OF 2 2 9 s" " SYMBOL+
+   SYMBOLS-END
+   LOGGED ;
+
+\ ---- document symbols --------------------------------------------------------
+
+: SYM-NONE-PATH ( -- ptr u8 n )  s" sym-none.f" FIXTURE ;
+: TEXT-SYM-NONE ( -- ptr u8 n )  s\" \\ no definition\n" ;
+
+\ Three open documents, A and B requiring sym-dep.f, on disk only, and one
+\ with no definition. Each outline lists its own document's definitions in
+\ source order, each as workspace symbols give it, and none of the other
+\ document's or of sym-dep.f, which both checks read; the document with none
+\ answers an empty list. A document never opened, and params naming no
+\ document, are -32602.
+: OUTLINE-TURNS ( -- )
+   SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
+   INITIALIZE
+   SYM-A-PATH TEXT-SYM-A 1 OPENS
+   SYM-B-PATH TEXT-SYM-B 1 OPENS
+   SYM-NONE-PATH TEXT-SYM-NONE 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
+   TEXT-SYM-B SYM-B-PATH 1 s" verified" LISTED
+   TEXT-SYM-NONE SYM-NONE-PATH 1 s" verified" LISTED
+   s" 3" SYM-A-PATH OUTLINE-ASK
+   s" 4" SYM-B-PATH OUTLINE-ASK
+   s" 5" SYM-NONE-PATH OUTLINE-ASK
+   s" 6" DEF-A-PATH OUTLINE-ASK
+   s" 7" s" textDocument/documentSymbol" ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" QUX-A" 12 SYM-A-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" ZED" 12 SYM-A-PATH URI-OF 2 2 5 s" " SYMBOL+
+   SYMBOLS-END
+   s" 4" SYMBOLS-START
+   s" QUX-B" 12 SYM-B-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" QUX-K" 14 SYM-B-PATH URI-OF 2 11 16 s" " SYMBOL+
+   SYMBOLS-END
+   s" 5" SYMBOLS-START SYMBOLS-END
+   HEAR s" 6" -32602 REFUSED
+   HEAR s" 7" -32602 REFUSED ;
+
+\ initialize from a client that supports hierarchical document symbols.
+: HIERARCHICAL-CLIENT ( -- )
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":" MSG+
+   s\" {\"textDocument\":{\"documentSymbol\":{\"hierarchicalDocumentSymbolSupport\":true}}}}}" MSG+
+   MSG$ FRAMED ;
+
+\ From a client that supports hierarchical document symbols, answered the same
+\ flat list. A's outline asked in the turn of the change that removed QUX-A
+\ and ZED: the request checks the changed text first, so its list comes before
+\ the answer, QUX-AA alone. Asked again with a change of A read behind it, the
+\ request is -32801 and the change is applied and checked after it; asked once
+\ more, the restored definitions are answered without a check.
+: OUTLINE-AFTER-CHANGE-TURNS ( -- )
+   SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
+   HIERARCHICAL-CLIENT
+   SYM-A-PATH TEXT-SYM-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
+   SYM-A-PATH TEXT-SYM-A2 2 CHANGES
+   s" 3" SYM-A-PATH OUTLINE-ASK
+   SAY
+   TEXT-SYM-A2 SYM-A-PATH 2 s" verified" LISTED
+   s" 3" SYMBOLS-START
+   s" QUX-AA" 12 SYM-A-PATH URI-OF 1 2 8 s" " SYMBOL+
+   SYMBOLS-END
+   s" 4" SYM-A-PATH OUTLINE-ASK
+   SYM-A-PATH TEXT-SYM-A 3 CHANGES
+   SAY
+   HEAR s" 4" -32801 REFUSED
+   TEXT-SYM-A SYM-A-PATH 3 s" verified" LISTED
+   s" 5" SYM-A-PATH OUTLINE-ASK
+   SAY
+   s" 5" SYMBOLS-START
+   s" QUX-A" 12 SYM-A-PATH URI-OF 1 2 7 s" " SYMBOL+
+   s" ZED" 12 SYM-A-PATH URI-OF 2 2 5 s" " SYMBOL+
+   SYMBOLS-END ;
+
+\ The outline asked in the turn of a change whose check did not complete: the
+\ definitions of the text before it are not of the document's text, so the
+\ answer is an empty list, while workspace symbols still list them.
+: OUTLINE-INCOMPLETE-TURNS ( -- )
+   INITIALIZE
+   DEF-A-PATH TEXT-DEF-C 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-C DEF-A-PATH 1 s" verified" LISTED
+   DEF-A-PATH TEXT-DEF-C-SWAPPED 2 CHANGES
+   s" 3" DEF-A-PATH OUTLINE-ASK
+   s" 4" s\" {\"query\":\"def-\"}" SYMBOLS-ASK
+   SAY
+   TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
+   DEF-A-PATH s" not checked: exit 76" SAID
+   s" 3" SYMBOLS-START SYMBOLS-END
    s" 4" SYMBOLS-START
    s" DEF-ONE" 12 DEF-A-PATH URI-OF 0 2 9 s" " SYMBOL+
    s" DEF-TWO" 12 DEF-A-PATH URI-OF 1 2 9 s" " SYMBOL+
@@ -2984,6 +3158,11 @@ variable LENGTH-N                        \ the length of its directory's name
       SB$ [: LENGTH-TURNS ;] TALK
    loop ;
 
+: TEST-OUTLINES ( -- )
+   s" document-symbol" [: OUTLINE-TURNS ;] TALK
+   s" document-symbol-after-change" [: OUTLINE-AFTER-CHANGE-TURNS ;] TALK
+   s" document-symbol-incomplete" [: OUTLINE-INCOMPLETE-TURNS ;] TALK ;
+
 \ A FUNCTION: whose group is empty stores a signature that does not parse: the
 \ packet is at its name F, line 1, characters 10-11.
 : EMPTY-FFI ( -- ptr u8 n )  s\" require lib/ffi-abi.f\nFUNCTION: F getpid ( )\n" ;
@@ -3113,6 +3292,7 @@ public
    TEST-STDOUT-CLOSED
    TEST-DIAGNOSTICS
    TEST-SYMBOLS
+   TEST-OUTLINES
    TEST-DEFINITIONS
    TEST-HOVERS
    TEST-COMPLETIONS

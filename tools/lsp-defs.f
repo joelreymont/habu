@@ -18,9 +18,11 @@
 \ missing end the start, both are held to the text and the end
 \ to no less than the start. The range counts through the bytes the check
 \ read: the document's text for the file the check is of, the file on disk
-\ for any other. The URI is the open document's holding the file when the
-\ check completed, else the file URI of the path. A file a check reads twice,
-\ as `include` after `undefine` does, gives each of its definitions once.
+\ for any other. The URI is the checked document's for its own file, the one
+\ whose text the range counts through, and for any other the open document's
+\ holding the file when the check completed, else the file URI of the path.
+\ A file a check reads twice, as `include` after `undefine` does, gives each
+\ of its definitions once.
 \
 \ A use is a use in the document that the check bound to a located
 \ declaration, in the order the check published them: the bytes of the
@@ -275,34 +277,42 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    URI-SPAN URI:PATH>FILE {: n:n :}
    URI-SPAN SPAN:$ drop n ;
 
-\ The JSON string of the URI positions in the file at this path count at:
-\ the open document's that holds it, else the path's file URI.
-: URI-JSON ( ptr u8 n -- ptr u8 n )
+\ The URI positions count at in the file at this path, another than the
+\ checked document's own: the open document's that holds it, else the path's
+\ file URI.
+: DEP-URI$ ( ptr u8 n -- ptr u8 n )
    {: p:ptr pu:n :}
-   ESC-W ESC-B JSON-WRITE:OPEN-BUF
    p pu DOC-HOLDING MATCH option
       some OF DOC-URI$ ENDOF
       none OF p pu FILE-URI$ ENDOF
-   ;MATCH
-   JSON-WRITE:STRING JSON-WRITE:$ ;
+   ;MATCH ;
+
+\ The JSON string that writes this URI.
+: URI-JSON ( ptr u8 n -- ptr u8 n )
+   {: u:ptr uu:n :}
+   ESC-W ESC-B JSON-WRITE:OPEN-BUF
+   u uu JSON-WRITE:STRING JSON-WRITE:$ ;
 
 \ The slot of the document whose check the store is keeping: the newest
 \ block's.
 : KEPT-SLOT ( -- n )  BLOCK-N @ 1- B-SLOT BLOCK@ ;
 
-\ A new group of this check's, for the line's file: its index.
+\ A new group of this check's, for the line's file: its index. The group of
+\ the document's own file is at the URI of that document, whose text its
+\ positions count in (COUNT-IN).
 : GROUP+ ( -- n )
    GROUP-N @ {: g:n :}
    g 1+ GROUP-CELLS * GROUPS-RESERVE
+   FILE$ KEPT-SLOT DOC-CANON$ STR= {: own:bool :}
    0 g G-OVER GROUP!
    FILE$ BYTES+ g G-PATH GROUP!
    FILE-U @ g G-PATH-U GROUP!
-   FILE$ URI-JSON {: ua:ptr uu:n :}
+   own if KEPT-SLOT DOC-URI$ else FILE$ DEP-URI$ then URI-JSON {: ua:ptr uu:n :}
    ua uu BYTES+ g G-URI GROUP!
    uu g G-URI-U GROUP!
    -1 g G-FIRST GROUP!
    -1 g G-LAST GROUP!
-   FILE$ KEPT-SLOT DOC-CANON$ STR= if 1 else 0 then g G-OWN GROUP!
+   own if 1 else 0 then g G-OWN GROUP!
    1 GROUP-N +!
    g ;
 

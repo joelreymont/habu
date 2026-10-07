@@ -7,18 +7,20 @@
 \ The server is starting, running or shut down. Starting, it answers initialize
 \ with its capabilities and any other request with -32002. Running, it answers
 \ shutdown with null, initialize with -32600, workspace/symbol with the open
-\ documents' definitions (tools/lsp-symbols.f), textDocument/definition with
-\ the declaration the use at the position binds to (tools/lsp-definition.f),
+\ documents' definitions (tools/lsp-symbols.f), textDocument/documentSymbol with
+\ the document's own definitions as the flat SymbolInformation list workspace
+\ symbols give (tools/lsp-outline.f), textDocument/definition with the
+\ declaration the use at the position binds to (tools/lsp-definition.f),
 \ textDocument/hover with what the token at the position declares or binds to
 \ (tools/lsp-hover.f), as Markdown when the client's initialize listed it in
 \ textDocument.hover.contentFormat, else as plain text, textDocument/completion
-\ with the spellings that would bind at the position (tools/lsp-completion.f),
-\ a request whose params it cannot read, or that names a document not open,
-\ with -32602 and any other request with -32601, and it keeps the documents the
+\ with the spellings that would bind at the position (tools/lsp-completion.f), a
+\ request whose params it cannot read, or that names a document not open, with
+\ -32602 and any other request with -32601, and it keeps the documents the
 \ client opens, changes and closes: Full sync, each change carrying the whole
-\ text, and positions in UTF-16 units. Shut down, it answers every request
-\ with -32600. Only a running server takes a notification other than exit;
-\ the rest are dropped, as unknown ones always are.
+\ text, and positions in UTF-16 units. Shut down, it answers every request with
+\ -32600. Only a running server takes a notification other than exit; the rest
+\ are dropped, as unknown ones always are.
 \
 \ The messages are served in the order they came, and the first one held is
 \ served only once no more input waits, so the messages that came behind a
@@ -26,13 +28,13 @@
 \ to come: reading it waits for the rest. A running server answers a request
 \ -32800, doing none of its work, when a $/cancelRequest naming its id was read
 \ behind it, an id that is a string by its decoded text and a number by its
-\ JSON text, and it answers textDocument/definition, hover or completion -32801
-\ when a textDocument/didChange of its document was, since the request asked
-\ about the text that change replaces. A cancel is otherwise an unknown
-\ notification, so one naming an id answered, unknown or not a request's
-\ changes nothing, and a check already running is not stopped. The end of
-\ input and a fault in its framing come after the messages held: those are
-\ served first.
+\ JSON text, and it answers textDocument/definition, hover, completion or
+\ documentSymbol -32801 when a textDocument/didChange of its document was,
+\ since the request asked about the text that change replaces. A cancel is
+\ otherwise an unknown notification, so one naming an id answered, unknown or
+\ not a request's changes nothing, and a check already running is not stopped.
+\ The end of input and a fault in its framing come after the messages held:
+\ those are served first.
 \
 \ A running server checks the documents and publishes their diagnostics
 \ (tools/lsp-check.f, tools/lsp-diag.f). Opening or changing a document leaves
@@ -43,8 +45,8 @@
 \ looked at again. So such a check takes a document's newest text, the edits that came
 \ while another check ran are all applied before it, and the versions
 \ published for a document only rise. A request about a document waiting for
-\ a check, textDocument/definition or textDocument/hover, is the exception: it
-\ checks that document
+\ a check, textDocument/definition, textDocument/hover or
+\ textDocument/documentSymbol, is the exception: it checks that document
 \ first, as its turn, and is answered from that check, which takes the text
 \ the client asked about, since LSP orders a request after the changes sent
 \ before it. textDocument/completion checks its document as its turn whether
@@ -85,6 +87,7 @@ require tools/lsp-defs.f
 require tools/lsp-diag.f
 require tools/lsp-check.f
 require tools/lsp-symbols.f
+require tools/lsp-outline.f
 require tools/lsp-definition.f
 require tools/lsp-hover.f
 require tools/lsp-completion.f
@@ -103,7 +106,7 @@ public
 -9400 constant E-LSP-FIRST
 -9401 constant E-LSP-LAST
 -9400 constant E-LSP-PARAMS    \ a notification's params lack a member the server reads, or hold one of another kind
--9401 constant E-LSP-NOT-OPEN  \ a change, close, definition, hover or completion of a document not open
+-9401 constant E-LSP-NOT-OPEN  \ a change, close, definition, hover, completion or document symbols of a document not open
 
 -32002 constant NOT-INITIALIZED          \ LSP's ServerNotInitialized
 -32800 constant REQUEST-CANCELLED        \ LSP's RequestCancelled
@@ -129,7 +132,7 @@ TYPED-VARIABLE PATH-SPAN SPAN:span<u8>    \ the file path it names
 TYPED-VARIABLE TEXT-SPAN SPAN:span<u8>    \ a document's text, decoded
 TYPED-VARIABLE QUERY-SPAN SPAN:span<u8>   \ workspace/symbol's query, decoded,
 variable QUERY-U                          \ and its length
-variable AT-SLOT                          \ a position's document,
+variable AT-SLOT                          \ a request's document,
 variable AT-LINE                          \ its line
 variable AT-CHAR                          \ and character,
 variable AT-BYTE                          \ and the byte they name in its text
@@ -207,6 +210,7 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
          s" completionProvider" KEY OBJECT-START OBJECT-END COMMA
          s" definitionProvider" true FIELD-BOOL COMMA
          s" hoverProvider" true FIELD-BOOL COMMA
+         s" documentSymbolProvider" true FIELD-BOOL COMMA
          s" workspaceSymbolProvider" true FIELD-BOOL
       OBJECT-END COMMA
       s" serverInfo" KEY OBJECT-START
@@ -508,12 +512,17 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
    v 0 < if E-LSP-PARAMS throw then
    v ;
 
+\ The slot of the open document params.textDocument names in AT-SLOT.
+: SLOT! ( ptr u8 n -- ptr u8 n )
+   {: p:ptr pu:n :}
+   p pu DOC-URI OPEN-SLOT AT-SLOT !
+   p pu ;
+
 \ The slot of the open document params.textDocument names in AT-SLOT, and
 \ params.position in AT-LINE and AT-CHAR.
 : POSITION! ( ptr u8 n -- ptr u8 n )
    {: p:ptr pu:n :}
-   p pu DOC-URI OPEN-SLOT AT-SLOT !
-   p pu s" line" POSITION-INT AT-LINE !
+   p pu SLOT! s" line" POSITION-INT AT-LINE !
    p pu s" character" POSITION-INT AT-CHAR !
    p pu ;
 
@@ -532,16 +541,28 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
    AT-SLOT @ DOC-TEXT$ LSP-TEXT:TEXT!
    AT-LINE @ AT-CHAR @ LSP-TEXT:OFFSET-AT AT-BYTE ! ;
 
-\ The open document params.textDocument names in AT-SLOT, and params.position
-\ in AT-LINE and AT-CHAR; false when the request is answered instead: -32602
-\ when its params cannot be read, -32801 when a change to that document was
-\ read behind it, since it asked about the text the change replaces.
-: POSITION? ( JSON-RPC:id ptr u8 n -- bool )
-   {: i p:ptr pu:n :}
-   i p pu [: POSITION! ;] READ? 0= if false exit then
+\ Whether no change to the document in AT-SLOT was read behind the request;
+\ else it is answered -32801, since it asked about the text the change
+\ replaces, and false.
+: UNCHANGED? ( JSON-RPC:id -- bool )
+   {: i :}
    AT-SLOT @ CHANGED? 0= if true exit then
    i CONTENT-MODIFIED s" content modified" REPLY-ERROR
    false ;
+
+\ The open document params.textDocument names in AT-SLOT; false when the
+\ request is answered instead: -32602 when its params cannot be read, -32801
+\ when a change to that document was read behind it.
+: DOCUMENT? ( JSON-RPC:id ptr u8 n -- bool )
+   {: i p:ptr pu:n :}
+   i p pu [: SLOT! ;] READ? 0= if false exit then
+   i UNCHANGED? ;
+
+\ As DOCUMENT?, with params.position in AT-LINE and AT-CHAR.
+: POSITION? ( JSON-RPC:id ptr u8 n -- bool )
+   {: i p:ptr pu:n :}
+   i p pu [: POSITION! ;] READ? 0= if false exit then
+   i UNCHANGED? ;
 
 \ The open document params.textDocument names in AT-SLOT, checked first if it
 \ waits for a check, and the byte of its text params.position names in
@@ -558,6 +579,15 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
    {: i p:ptr pu:n :}
    i p pu AT-READ? 0= if exit then
    WRITER i RESULT AT-SLOT @ AT-BYTE @ LSP-DEFINITION:ANSWER END SENT ;
+
+\ The symbols of the open document params.textDocument names, a flat list:
+\ the definitions its last completed check retained in it, the document
+\ checked first if it waits for a check.
+: DOCUMENT-SYMBOLS ( JSON-RPC:id ptr u8 n -- )
+   {: i p:ptr pu:n :}
+   i p pu DOCUMENT? 0= if exit then
+   AT-SLOT @ CHECK-WAITING
+   WRITER i RESULT AT-SLOT @ LSP-OUTLINE:ANSWER END SENT ;
 
 \ What the token at params.position in the open document params.textDocument
 \ names declares or binds to, as its last completed check stated it.
@@ -631,6 +661,7 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
       exit
    then
    m mu s" workspace/symbol" NAMED? if i p pu SYMBOLS exit then
+   m mu s" textDocument/documentSymbol" NAMED? if i p pu DOCUMENT-SYMBOLS exit then
    m mu s" textDocument/definition" NAMED? if i p pu DEFINITION exit then
    m mu s" textDocument/hover" NAMED? if i p pu HOVER exit then
    m mu s" textDocument/completion" NAMED? if i p pu COMPLETION exit then
