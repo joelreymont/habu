@@ -34,6 +34,16 @@ SUMTYPE pstsum 0 DERIVE eq VARIANT nada ;VARIANT VARIANT some n ;VARIANT ;SUMTYP
 PRODUCT pstprod 0 DERIVE eq FIELD aa n ;PRODUCT
 \ derive S3: a hash-only sum publishes HASH (+TAG) but no EQ row.
 SUMTYPE psthash 0 DERIVE hash VARIANT hh n ;VARIANT ;SUMTYPE
+\ An OPAQUE family's derived words are its package's private words, so the
+\ manifest names none; the same family without the clause is the control.
+package PSTCTL
+public
+STRUCTURE pstctl 0 DERIVE eq FIELD aa n ;STRUCTURE
+;package
+package PSTOPQ
+public
+STRUCTURE pstopq 0 OPAQUE DERIVE eq FIELD aa n ;STRUCTURE
+;package
 
 \ The largest report names the fixture path seventeen times, each beside
 \ under $100 bytes of JSON, and the path may take FS-PATH-CAP bytes.
@@ -501,6 +511,8 @@ variable PST-NUM-U
    PST-OUT outu s" (psthash -- n)" PST-SIG$ CONTAINS? TTRUE
    PST-OUT outu s" PSTHASH:TAG" PST-WORD$ CONTAINS? TTRUE       \ tag rides any derive
    PST-OUT outu s" PSTHASH:EQ" PST-WORD$ CONTAINS? TFALSE       \ hash-only: no eq row
+   PST-OUT outu s" PSTCTL-PSTCTL:EQ" PST-WORD$ CONTAINS? TTRUE   \ a package family's derived row
+   PST-OUT outu s" :EQ" PST-WORD$ CONTAINS? TFALSE  \ an OPAQUE family's: none
    PST-OUT outu s" PSTSUM:HASH" PST-WORD$ CONTAINS? TFALSE ;    \ eq-only: no hash row
 
 \ The real CLI runs in a child: queue its arguments after PROC-ARGV-RESET, then

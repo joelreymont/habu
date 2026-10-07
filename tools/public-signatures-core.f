@@ -883,9 +883,9 @@ private
       fam s" hash" file-a file-u 0 PS-EMIT-DRV THEN ;
 
 public
-: PS-DRV-PUBLIC? ( n -- bool ) {: fam:n :}
+: PS-DRV-PUBLIC? ( n -- bool ) {: fam:n :}   \ derived words the manifest may name: public placement only
    fam TFAM-DERIVE-EQ? fam TFAM-DERIVE-HASH? or
-   fam TFAM-PUBLIC? and ;
+   fam TFAM-GEN-PUBLIC? and ;
 private
 
 : PS-EMIT-REGISTRY ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
