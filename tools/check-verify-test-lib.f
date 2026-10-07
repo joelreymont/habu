@@ -3345,19 +3345,19 @@ variable USE-NODE                       \ the use line USE-FROM found
 : USES-VISIBILITY ( -- )
    0 GEN-U !
    s\" package CVT-TWIN\n: K ( -- n ) 1 ;\n: PRIVATE-USE ( -- n ) K ;\npublic\nEXPORT K\n;package\n: PUBLIC-USE ( -- n ) CVT-TWIN:K ;\n" GEN+
-   s" uses-visibility.f" DEFS-SRC$ FIXTURE
+   s" uses-visibility.f" 0 GEN GEN-U @ FIXTURE
    s" uses-visibility: native loads" T-LABEL
    s" uses-visibility.f" AT$ NATIVE-RC 0 T=
    s" uses-visibility.f" DEFS-CHECK 0 s" uses-visibility: verified" EXPECT-KIND
    CHECK:VERIFY-DEFS$ s" visibility" s" private" PACKET {: pd:n :}
-   CHECK:VERIFY-DEFS$ s" kind" s" EXPORT" PACKET {: ed:n :}
    s" uses-visibility: private declaration" T-LABEL pd s" decl_name" STRING$ s" k" T$=
    pd s" package" STRING$ s" cvt-twin" T$=
    pd s" visibility" STRING$ s" private" T$=
+   pd DECL-VISIT {: pv:n :}
+   CHECK:VERIFY-DEFS$ s" kind" s" EXPORT" PACKET {: ed:n :}
    s" uses-visibility: public declaration" T-LABEL ed s" decl_name" STRING$ s" k" T$=
    ed s" package" STRING$ s" cvt-twin" T$=
    ed s" visibility" STRING$ s" public" T$=
-   pd DECL-VISIT {: pv:n :}
    ed DECL-VISIT {: ev:n :}
    s" uses-visibility: declaration visits" T-LABEL pv 0 > ev 0 > and TTRUE
    s" uses-visibility: bare" s" PRIVATE-USE ( -- n ) K" 1 USE
