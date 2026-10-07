@@ -7,12 +7,14 @@
 <style>
 body { margin: 0; font: 14px system-ui, sans-serif; }
 canvas { display: block; width: 100vw; height: 80vh; touch-action: none; }
-#text { margin: 8px; white-space: pre-wrap; }
+form, #text { margin: 8px; }
+#text { white-space: pre-wrap; }
 #text.error { color: #b00020; }
 </style>
 </head>
 <body>
 <canvas></canvas>
+<form><input aria-label="text" autocomplete="off" disabled></form>
 <div id="text">loading /module.wasm</div>
 <script type="module" src="host.js"></script>
 </body>
