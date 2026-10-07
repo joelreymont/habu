@@ -1675,48 +1675,57 @@ s" COK-NODE-ROLE ( n -- n ) T->NODE T-NODE>N" T-CHECK-PASSES
 s" CBAD-NODE-LEN ( n -- len ) T->NODE" T-CHECK-REJECTS
 s" CBAD-NODE-IDX ( n -- ) >IDX T-NEED-NODE" T-CHECK-REJECTS
 s" CBAD-UNKNOWN-ROLE ( n -- track ) T->NODE" T-CHECK-REJECTS
-DEFLINEAR own
-\ own has no declaring package, so no checked word can mint or drop one:
-\ LINEAR: is E-LINEAR-OWNER and CAST: E-CAST-LINEAR. Its fixtures stay trusted.
-TRUSTED: T-MAKE-OWN ( -- own ) 0 ;
-TRUSTED: T-FREE-OWN ( own -- ) drop ;
-s" COK-OWN-PASS ( own -- own )" T-CHECK-PASSES
-s" COK-OWN-MAKE ( -- own ) T-MAKE-OWN" T-CHECK-PASSES
-s" COK-OWN-FREE ( own -- ) T-FREE-OWN" T-CHECK-PASSES
-s" CBAD-OWN-DUP ( own -- own own ) dup" T-CHECK-REJECTS
-s" CBAD-OWN-DROP ( own -- ) drop" T-CHECK-REJECTS
-s" CBAD-OWN-OVER ( own n -- own n own ) over" T-CHECK-REJECTS
-s" CBAD-OWN-FETCH ( ptr own -- own ) @" T-CHECK-REJECTS
-s" CBAD-OWN-STORE ( own ptr own -- ) !" T-CHECK-REJECTS
+\ ES-OWN declares the linear `own`, so T-MAKE-OWN and T-FREE-OWN, the abstract
+\ producer and consumer, are checked words over the package's private LINEAR:
+\ mint and erase rows. The cases name the type and both words by their
+\ qualified spelling, which a typed local reads exactly as a signature does.
+package ES-OWN
+public
+DEFLINEAR ES-OWN:own
+private
+LINEAR: N>OWN ( n -- ES-OWN:own )
+LINEAR: OWN>N ( ES-OWN:own -- n )
+public
+: T-MAKE-OWN ( -- ES-OWN:own ) 0 N>OWN ;
+: T-FREE-OWN ( ES-OWN:own -- ) OWN>N drop ;
+;package
+s" COK-OWN-PASS ( ES-OWN:own -- ES-OWN:own )" T-CHECK-PASSES
+s" COK-OWN-MAKE ( -- ES-OWN:own ) ES-OWN:T-MAKE-OWN" T-CHECK-PASSES
+s" COK-OWN-FREE ( ES-OWN:own -- ) ES-OWN:T-FREE-OWN" T-CHECK-PASSES
+s" CBAD-OWN-DUP ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) dup" T-CHECK-REJECTS
+s" CBAD-OWN-DROP ( ES-OWN:own -- ) drop" T-CHECK-REJECTS
+s" CBAD-OWN-OVER ( ES-OWN:own n -- ES-OWN:own n ES-OWN:own ) over" T-CHECK-REJECTS
+s" CBAD-OWN-FETCH ( ptr ES-OWN:own -- ES-OWN:own ) @" T-CHECK-REJECTS
+s" CBAD-OWN-STORE ( ES-OWN:own ptr ES-OWN:own -- ) !" T-CHECK-REJECTS
 \ execute (quotation application) enforces the same linear conservation as a
 \ direct step: a polymorphic quotation applied to a linear that copies or drops
 \ it is rejected; an explicit linear consumer/producer and a passthrough certify.
-s" COK-OWN-EXEC-FREE ( own -- ) [: T-FREE-OWN ;] execute" T-CHECK-PASSES
-s" COK-OWN-EXEC-ID ( own -- own ) [: ;] execute" T-CHECK-PASSES
-s" COK-OWN-EXEC-MAKE ( -- own ) [: T-MAKE-OWN ;] execute" T-CHECK-PASSES
+s" COK-OWN-EXEC-FREE ( ES-OWN:own -- ) [: ES-OWN:T-FREE-OWN ;] execute" T-CHECK-PASSES
+s" COK-OWN-EXEC-ID ( ES-OWN:own -- ES-OWN:own ) [: ;] execute" T-CHECK-PASSES
+s" COK-OWN-EXEC-MAKE ( -- ES-OWN:own ) [: ES-OWN:T-MAKE-OWN ;] execute" T-CHECK-PASSES
 s" COK-N-EXEC-DUP ( n -- n n ) [: dup ;] execute" T-CHECK-PASSES
-s" CBAD-OWN-EXEC-DUP ( own -- own own ) [: dup ;] execute" T-CHECK-REJECTS
-s" CBAD-OWN-EXEC-DROP ( own -- ) [: drop ;] execute" T-CHECK-REJECTS
-s" CBAD-OWN-EXEC-NEST ( own -- own own ) [: [: dup ;] execute ;] execute" T-CHECK-REJECTS
+s" CBAD-OWN-EXEC-DUP ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) [: dup ;] execute" T-CHECK-REJECTS
+s" CBAD-OWN-EXEC-DROP ( ES-OWN:own -- ) [: drop ;] execute" T-CHECK-REJECTS
+s" CBAD-OWN-EXEC-NEST ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) [: [: dup ;] execute ;] execute" T-CHECK-REJECTS
 \ acquire/release pairing proven through a work quotation: balanced certifies;
 \ leak (missing release) and double release are rejected.
-s" COK-OWN-FRAME-WORK ( -- ) T-MAKE-OWN [: ;] execute T-FREE-OWN" T-CHECK-PASSES
-s" CBAD-OWN-FRAME-LEAK ( -- ) T-MAKE-OWN [: ;] execute" T-CHECK-REJECTS
-s" CBAD-OWN-FRAME-DOUBLE ( -- ) T-MAKE-OWN [: ;] execute T-FREE-OWN T-FREE-OWN" T-CHECK-REJECTS
+s" COK-OWN-FRAME-WORK ( -- ) ES-OWN:T-MAKE-OWN [: ;] execute ES-OWN:T-FREE-OWN" T-CHECK-PASSES
+s" CBAD-OWN-FRAME-LEAK ( -- ) ES-OWN:T-MAKE-OWN [: ;] execute" T-CHECK-REJECTS
+s" CBAD-OWN-FRAME-DOUBLE ( -- ) ES-OWN:T-MAKE-OWN [: ;] execute ES-OWN:T-FREE-OWN ES-OWN:T-FREE-OWN" T-CHECK-REJECTS
 \ Polymorphic linear laundering (habu-linear-kind-inference): a linear copied or
 \ dropped while its type is still a polymorphic var — through KEEP/BI's `over` or
 \ an intra-quotation `dup`/`over`, before it binds linear — is rejected by the
 \ linear kind discipline, even though concrete-count conservation stays neutral
 \ at the call site. KEEP/BI copy `a` into a consumer quotation and also return it;
 \ the intra-quot cases copy the var, then FREE binds it linear (deferred taint).
-s" CBAD-OWN-KEEP-LAUNDER ( own -- own ) [: T-FREE-OWN ;] KEEP" T-CHECK-REJECTS
-s" CBAD-OWN-BI-LAUNDER ( own -- own ) [: ;] [: T-FREE-OWN ;] BI" T-CHECK-REJECTS
-s" CBAD-OWN-QUOT-DUP-FREE ( own -- own ) [: dup T-FREE-OWN ;] execute" T-CHECK-REJECTS
-s" CBAD-OWN-QUOT-OVER-FREE ( own n -- own n ) [: over T-FREE-OWN ;] execute" T-CHECK-REJECTS
+s" CBAD-OWN-KEEP-LAUNDER ( ES-OWN:own -- ES-OWN:own ) [: ES-OWN:T-FREE-OWN ;] KEEP" T-CHECK-REJECTS
+s" CBAD-OWN-BI-LAUNDER ( ES-OWN:own -- ES-OWN:own ) [: ;] [: ES-OWN:T-FREE-OWN ;] BI" T-CHECK-REJECTS
+s" CBAD-OWN-QUOT-DUP-FREE ( ES-OWN:own -- ES-OWN:own ) [: dup ES-OWN:T-FREE-OWN ;] execute" T-CHECK-REJECTS
+s" CBAD-OWN-QUOT-OVER-FREE ( ES-OWN:own n -- ES-OWN:own n ) [: over ES-OWN:T-FREE-OWN ;] execute" T-CHECK-REJECTS
 \ Positives the discipline must not touch: KEEP over non-linear data still
 \ certifies, and a sound DIP that only MOVES the linear (1-in / 1-out) certifies.
 s" COK-N-KEEP ( n -- n ) [: 1+ ;] KEEP drop" T-CHECK-PASSES
-s" COK-OWN-DIP-PASS ( n own -- n own ) [: 1+ ;] DIP" T-CHECK-PASSES
+s" COK-OWN-DIP-PASS ( n ES-OWN:own -- n ES-OWN:own ) [: 1+ ;] DIP" T-CHECK-PASSES
 \ Linear values may not launder through {: :} locals (dot
 \ habu-checker-linear-values-a5745699). A local reference re-pushes its binding
 \ outside the LIN-SNAPSHOT/LIN-CHECK count discipline, so binding a linear into a
@@ -1725,33 +1734,36 @@ s" COK-OWN-DIP-PASS ( n own -- n own ) [: 1+ ;] DIP" T-CHECK-PASSES
 \ resolves linear is rejected outright with E-LINEAR-LOCAL; the value must stay on
 \ the stack and be factored. Direct-stack linear discipline (COK-OWN-*/CBAD-OWN-*
 \ above) is unchanged, and non-linear locals are untouched.
-s" CBAD-OWN-LOCAL-DUP ( own -- own own ) {: x:own :} x x" T-CHECK-REJECTS
-s" CBAD-OWN-LOCAL-LEAK ( own -- ) {: x:own :}" T-CHECK-REJECTS
-s" CBAD-OWN-LOCAL-DOUBLE-FREE ( own -- ) {: x:own :} x T-FREE-OWN x T-FREE-OWN" T-CHECK-REJECTS
-s" CBAD-OWN-LOCAL-ONCE ( own -- ) {: x:own :} x T-FREE-OWN" T-CHECK-REJECTS
-s" CBAD-OWN-LOCAL-UNTYPED ( own -- own own ) {: x :} x x" T-CHECK-REJECTS
-s" CBAD-OWN-LOCAL-BRANCH ( bool own -- ) {: x:own :} if x T-FREE-OWN then" T-CHECK-REJECTS
-s" CBAD-OWN-LOCAL-MAKE ( -- ) T-MAKE-OWN {: x:own :} x T-FREE-OWN" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-DUP ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) {: x:ES-OWN:own :} x x" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-LEAK ( ES-OWN:own -- ) {: x:ES-OWN:own :}" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-DOUBLE-FREE ( ES-OWN:own -- ) {: x:ES-OWN:own :} x ES-OWN:T-FREE-OWN x ES-OWN:T-FREE-OWN" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-ONCE ( ES-OWN:own -- ) {: x:ES-OWN:own :} x ES-OWN:T-FREE-OWN" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-UNTYPED ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) {: x :} x x" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-BRANCH ( bool ES-OWN:own -- ) {: x:ES-OWN:own :} if x ES-OWN:T-FREE-OWN then" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-MAKE ( -- ) ES-OWN:T-MAKE-OWN {: x:ES-OWN:own :} x ES-OWN:T-FREE-OWN" T-CHECK-REJECTS
 \ Deferred laundering: a local bound to a still-polymorphic var referenced twice,
 \ that only later resolves linear, must reject through the taint discipline.
-s" CBAD-OWN-LOCAL-POLY-DUP ( a -- ) {: x :} x x T-FREE-OWN T-FREE-OWN" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-POLY-DUP ( a -- ) {: x :} x x ES-OWN:T-FREE-OWN ES-OWN:T-FREE-OWN" T-CHECK-REJECTS
 \ Positive controls: the linear kept on the stack still certifies, a non-linear
 \ local still binds/references (single AND duplicate), and a poly local that never
 \ resolves linear is untouched.
-s" COK-OWN-STACK-KEEP ( own -- ) T-FREE-OWN" T-CHECK-PASSES
+s" COK-OWN-STACK-KEEP ( ES-OWN:own -- ) ES-OWN:T-FREE-OWN" T-CHECK-PASSES
 s" COK-N-LOCAL-DUP ( n -- n n ) {: x:n :} x x" T-CHECK-PASSES
 s" COK-POLY-LOCAL-DUP ( a -- a a ) {: x :} x x" T-CHECK-PASSES
 \ The reject carries the dedicated E-LINEAR-LOCAL code and factor_linear_local class.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" linear-local reject carries E-LINEAR-LOCAL" T-LABEL
-s" CBAD-OWN-LOCAL-DIAG ( own -- own own ) {: x:own :} x x" CHECK-CANDIDATE! 0 T=
+s" CBAD-OWN-LOCAL-DIAG ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) {: x:ES-OWN:own :} x x" CHECK-CANDIDATE! 0 T=
 s" linear-local diagnostic names E-LINEAR-LOCAL" T-LABEL
 DIAG-BUFFER$ s" E-LINEAR-LOCAL" T-HAS? -1 T=
 DIAG-BUFFER-OFF
+\ A qualified name its package declares no type for stays an unknown type in a
+\ typed local, as it is in a signature.
+s" CBAD-LOCAL-QUAL-UNKNOWN ( n -- ) {: x:ES-OWN:nosuch :}" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-UNKNOWN? -1 T=
 VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
 VALUE-RECORD box value a END-VALUE-RECORD
-VALUE-RECORD hdl owner own raw ptr u8 END-VALUE-RECORD
+VALUE-RECORD hdl owner ES-OWN:own raw ptr u8 END-VALUE-RECORD
 : T->POINT ( n n -- point ) ;
 : T-POINT> ( point -- n n ) ;
 : T-POINT-DUP ( point -- point point ) over over ;
