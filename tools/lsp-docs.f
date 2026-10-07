@@ -4,9 +4,10 @@
 \
 \ A document is a slot of a growable table: byte buffers (lib/byte-buffer.f)
 \ for the URI, the path, the text, the path's canonical spelling, which the
-\ checker names it by, and the files besides it whose diagnostics its last
-\ check published, then the version, then 1 while it waits for a check, then 1
-\ while the slot holds a document.
+\ checker names it by, the files besides it whose diagnostics its last check
+\ published and the loads its last check reported once that check completed,
+\ then the version, then 1 while it waits for a check, then 1 while the slot
+\ holds a document.
 \ Closing a document frees its buffers and its slot, and an open takes the
 \ first free slot. A document is found by its URI's bytes, its path's or its
 \ canonical path's.
@@ -31,7 +32,8 @@ URI-AT HDR-CELLS + constant PATH-AT     \ the path's,
 PATH-AT HDR-CELLS + constant TEXT-AT    \ the text's,
 TEXT-AT HDR-CELLS + constant CANON-AT   \ the canonical path's,
 CANON-AT HDR-CELLS + constant DEPS-AT   \ the published files',
-DEPS-AT HDR-CELLS + constant VERSION-AT \ the version,
+DEPS-AT HDR-CELLS + constant LOADS-AT   \ the loads',
+LOADS-AT HDR-CELLS + constant VERSION-AT \ the version,
 VERSION-AT 1+ constant DIRTY-AT         \ 1 while it waits for a check,
 DIRTY-AT 1+ constant LIVE-AT            \ and 1 while the slot holds a document
 LIVE-AT 1+ constant SLOT-CELLS
@@ -94,6 +96,11 @@ public
 : DOC-DEPS$ ( n -- ptr u8 n )  DEPS-AT BYTES$ ;
 : DOC-DEPS! ( ptr u8 n n -- )  DEPS-AT STORE ;
 
+\ The loads the document's last check reported, once that check completed,
+\ one JSON object per line as CHECK:VERIFY-LOADS$ gives them.
+: DOC-LOADS$ ( n -- ptr u8 n )  LOADS-AT BYTES$ ;
+: DOC-LOADS! ( ptr u8 n n -- )  LOADS-AT STORE ;
+
 : DOC-DIRTY ( n -- )  1 swap DIRTY-AT SLOT-CELL ! ;
 : DOC-CLEAN ( n -- )  0 swap DIRTY-AT SLOT-CELL ! ;
 
@@ -134,6 +141,7 @@ public
    slot TEXT-AT SLOT-CELL DISPOSE
    slot CANON-AT SLOT-CELL DISPOSE
    slot DEPS-AT SLOT-CELL DISPOSE
+   slot LOADS-AT SLOT-CELL DISPOSE
    slot DOC-CLEAN
    0 slot LIVE-AT SLOT-CELL ! ;
 
@@ -158,6 +166,7 @@ private
    t tu slot TEXT-AT KEEP
    c cu slot CANON-AT KEEP
    NULL$ slot DEPS-AT KEEP
+   NULL$ slot LOADS-AT KEEP
    v slot VERSION-AT SLOT-CELL !
    slot DOC-DIRTY
    1 slot LIVE-AT SLOT-CELL ! ;

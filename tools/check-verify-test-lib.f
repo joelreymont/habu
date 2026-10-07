@@ -78,6 +78,18 @@
 \   a file line is keyed by its path alone, by its digest alone, by the
 \   path's last bytes alone, or by a path or bytes its caller reuses; the
 \   pre-pass writes one                                                   file-line-keys
+\   a top-level loader of the subject that reached its file has no load
+\   line, a span other than its operand's (the token after include or
+\   require, a string loader's literal as written, escapes and all), a
+\   path other than the canonical one, or read for a held file or held
+\   for a read one; provided, a comment or a dependency's loader has one  loads
+\   a file a loader cannot read has a load line, or its packet moves      loads-unread
+\   a file read for a loader loses its line when its scan then stops      loads-scan-fail
+\   an include of the subject's own path, read from the given bytes,
+\   has no line                                                           loads-supplied
+\   a body's immediate loader, or one after a word that may read on, has
+\   a line                                                                loads-none
+\   load lines outlive the next check, or check.f's pre-pass has one      loads-lifetime
 \   a use bound to a located declaration has no line, a range other than
 \   its token's, or a target other than the token that declared it: a
 \   body's call, a quotation's, ['], is, a top-level call and tick, an
@@ -456,6 +468,15 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" files-unread.f" s\" : CVT-UNREAD ( -- n ) 5 ;\n" FIXTURE
    s" same-a.f" SAME$SRC FIXTURE
    s" same-b.f" SAME$SRC FIXTURE
+   s" ld-dep.f" s\" require ld-nest.f\n" FIXTURE
+   s" ld-nest.f" s\" \\ loaded\n" FIXTURE
+   s" ld-inc.f" s\" \\ loaded\n" FIXTURE
+   s" ld-str-inc.f" s\" \\ loaded\n" FIXTURE
+   s" ld-str-req.f" s\" \\ loaded\n" FIXTURE
+   s" ld-script.f" s\" \\ loaded\n" FIXTURE
+   s" ld-esc.f" s\" \\ loaded\n" FIXTURE
+   s" ld-body.f" s\" \\ loaded\n" FIXTURE
+   s" ld-open.f" s\" : CVT-LDOPEN ( -- n ) 1\n" FIXTURE
    s" order-package.f" s\" package CVT-PKG public\nrequire order-package-dep.f\n;package\n: CVT-PKG-USE ( -- n ) CVT-PKG:CVT-PKG-VALUE ;\n" FIXTURE
    s" order-floor-child.f" s\" ;package\nusing CVT-FLOOR-CHILD\n" FIXTURE
    s" order-floor-include.f" s\" package CVT-FLOOR-BASE public\n: BASE-VALUE ( -- n ) 11 ;\n;package\npackage CVT-FLOOR-CHILD public\n: CHILD-VALUE ( -- n ) 29 ;\n;package\npackage CVT-FLOOR-PARENT\nusing CVT-FLOOR-BASE\ninclude order-floor-child.f\npackage CVT-FLOOR-AFTER public\n: AFTER-VALUE ( -- n ) CHILD-VALUE ;\n;package\n" FIXTURE
@@ -3100,6 +3121,146 @@ create DIGEST-HEX HEX-U allot
    0 OUT CLI-OUT-U @ SB$ T$= ;
 
 
+\ ---- the loads --------------------------------------------------------------
+
+\ The next load line of CHECK:VERIFY-LOADS$, once JSONL-START has started it:
+\ the load of PATH whose operand is the U bytes the first LEAD in the checked
+\ bytes ends with, and what became of it, OUTCOME.
+: LOAD-NEXT ( ptr u8 n ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n lead:ptr leadu:n u:n path:ptr pathu:n out:ptr outu:n :}
+   JSONL-NEXT-OBJECT  lead leadu LEAD-END
+   {: node:n end:n :}
+   label labelu T-LABEL node 0 >= TTRUE
+   label labelu T-LABEL node s" byte_start" NUMBER$
+   SB-RESET end u - FMT:SB-INT SB$ T$=
+   label labelu T-LABEL node s" byte_end" NUMBER$
+   SB-RESET end FMT:SB-INT SB$ T$=
+   label labelu T-LABEL node s" path" STRING$ path pathu T$=
+   label labelu T-LABEL node s" outcome" STRING$ out outu T$= ;
+
+
+: LOAD-COUNT ( ptr u8 n n -- )
+   {: label:ptr labelu:n want:n :}
+   label labelu T-LABEL CHECK:VERIFY-LOADS$ OBJECTS want T= ;
+
+
+\ `s" ROOT/NAME" script-required`, NAME in the fixture directory:
+\ script-required resolves from the working directory, so its path is
+\ absolute.
+: SCRIPT-REQUIRED+ ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   s\" s\" " GEN+  ROOT$ GEN+  s" /" GEN+  name nameu GEN+
+   s\" \" script-required\n" GEN+ ;
+
+
+\ Each top-level loader of the subject that reached its file has a load line,
+\ in the subject's order: where its operand stands (the token after include or
+\ require, past any blanks and line breaks, a string loader's literal between
+\ its quotes as written, escapes and all, not the word, nor the literal before
+\ it), the canonical path, and read, the file acquired for it, or held, a
+\ require of a path held already: required before under another spelling, the
+\ engine's, provided. provided itself, of a path held or not, a comment and the
+\ loader in a file the subject loads have none, though that file is read.
+: LOADS ( -- )
+   0 GEN-U !
+   s\" require ld-dep.f\ns\" ld-dep.f\" provided\ninclude\n   ld-inc.f\n" GEN+
+   s\" s\" ld-str-inc.f\" included\ns\" ld-str-req.f\" required\n" GEN+
+   s" ld-script.f" SCRIPT-REQUIRED+
+   s\" .\" x\" s\\\" ld-esc\\x2ef\" required\n" GEN+
+   s\" require ./ld-dep.f\nrequire lib/string.f\n" GEN+
+   s" ./ld-script.f" SCRIPT-REQUIRED+
+   s\" s\" ld-prov.f\" provided\nrequire ld-prov.f\n\\ require ld-inc.f\n" GEN+
+   s" loads.f" DEFS-CHECK 0 s" loads: verified" EXPECT-KIND
+   s" loads: ten lines" 10 LOAD-COUNT
+   s" loads: each a JSON object" T-LABEL CHECK:VERIFY-LOADS$ ALL-JSON? TTRUE
+   s" loads: the dependency's file read" T-LABEL
+   CHECK:VERIFY-FILES$ s" file" s" ld-nest.f" AT$ PACKET 0 >= TTRUE
+   CHECK:VERIFY-LOADS$ JSONL-START
+   s" loads: require" s" require ld-dep.f" 8 s" ld-dep.f" AT$ s" read" LOAD-NEXT
+   s" loads: include" s\" include\n   ld-inc.f" 8 s" ld-inc.f" AT$ s" read" LOAD-NEXT
+   s" loads: included" s" ld-str-inc.f" 12 s" ld-str-inc.f" AT$ s" read" LOAD-NEXT
+   s" loads: required" s" ld-str-req.f" 12 s" ld-str-req.f" AT$ s" read" LOAD-NEXT
+   s" loads: script-required" s" /ld-script.f" ROOT-U @ 12 +
+   s" ld-script.f" AT$ s" read" LOAD-NEXT
+   s" loads: escaped" s\" ld-esc\\x2ef" 11 s" ld-esc.f" AT$ s" read" LOAD-NEXT
+   s" loads: required again" s" require ./ld-dep.f" 10 s" ld-dep.f" AT$ s" held" LOAD-NEXT
+   s" loads: the engine's" s" lib/string.f" 12 s" lib/string.f" TREE$ s" held" LOAD-NEXT
+   s" loads: script-required again" s" /./ld-script.f" ROOT-U @ 14 +
+   s" ld-script.f" AT$ s" held" LOAD-NEXT
+   s" loads: provided" s" require ld-prov.f" 9 s" ld-prov.f" AT$ s" held" LOAD-NEXT ;
+
+
+\ A file a loader cannot read has no load line: the check stops at the loader
+\ word with the packet and status line it always had, and the loader after the
+\ stop is never reached.
+: LOADS-UNREAD ( -- )
+   s\" require ld-gone.f\nrequire ld-dep.f\n" s" loads-gone.f" GUARD-MS CHECK-AS
+   1 s" loads-unread: refused" EXPECT-KIND
+   s" loads-unread: no line" 0 LOAD-COUNT
+   s" loads-unread: at the loader word" s" E-MISSING-SOURCE" s" require" s" 1" s" 1" AT-TOKEN
+   s" loads-unread: its status line" s" ld-gone.f" MISSING-STATUS ;
+
+
+\ A file read for a loader keeps its read line when its own scan then stops.
+: LOADS-SCAN-FAIL ( -- )
+   0 GEN-U !
+   s\" require ld-open.f\n" GEN+
+   s" loads-open.f" DEFS-CHECK 1 s" loads-scan-fail: refused" EXPECT-KIND
+   s" loads-scan-fail: one line" 1 LOAD-COUNT
+   CHECK:VERIFY-LOADS$ JSONL-START
+   s" loads-scan-fail: read" s" require ld-open.f" 9 s" ld-open.f" AT$ s" read" LOAD-NEXT
+   s" loads-scan-fail: the stop is the file's" T-LABEL
+   CHECK:VERIFY-STOPPED$ s" ld-open.f" AT$ T$= ;
+
+
+\ An include of the subject's own path reads the bytes given for it, there
+\ being no file: read. In that second visit the buffer's name is free again,
+\ but a word the buffer makes is not, so the file stops there, as its load
+\ does, and that visit's loader is never reached.
+: LOADS-SUPPLIED ( -- )
+   0 GEN-U !
+   s\" DYNAMIC-BUFFER CVT-LDSELF u8\nundefine CVT-LDSELF\ninclude loads-self.f\n" GEN+
+   s" loads-self.f" DEFS-CHECK 1 s" loads-supplied: refused" EXPECT-KIND
+   s" loads-supplied: one line" 1 LOAD-COUNT
+   CHECK:VERIFY-LOADS$ JSONL-START
+   s" loads-supplied: read" s" include loads-self.f" 12 SUBJ$ s" read" LOAD-NEXT ;
+
+
+\ A loader no top-level statement of the subject makes has no line, though it
+\ loads: an immediate require in a body, loaded once the definition ends, here
+\ after a provided, which reports nothing. After a call of a word that may read
+\ on, nothing is loaded.
+: LOADS-NONE ( -- )
+   s\" s\" ld-p2.f\" provided\n: CVT-LDBODY ( -- n ) require ld-body.f 1 ;\n"
+   s" loads-body.f" GUARD-MS CHECK-AS 1 s" loads-none: body, refused" EXPECT-KIND
+   s" loads-none: body, no line" 0 LOAD-COUNT
+   s" loads-none: body, its file read" T-LABEL
+   CHECK:VERIFY-FILES$ s" file" s" ld-body.f" AT$ PACKET 0 >= TTRUE
+   s\" : CVT-GRAB ( -- ) parse-name 2drop ;\nCVT-GRAB x\nrequire ld-dep.f\n"
+   s" loads-opaque.f" GUARD-MS CHECK-AS 5 s" loads-none: opaque, deferred" EXPECT-KIND
+   s" loads-none: opaque, no line" 0 LOAD-COUNT ;
+
+
+\ The load lines are the last check's: the next check's replace them, none for
+\ a check that loads nothing, and check.f's pre-pass has none.
+: LOADS-LIFETIME ( -- )
+   s\" require ld-dep.f\n" s" loads-again.f" GUARD-MS CHECK-AS
+   0 s" loads-lifetime: verified" EXPECT-KIND
+   s" loads-lifetime: its line" 1 LOAD-COUNT
+   s\" : CVT-LDNONE ( -- n ) 1 ;\n" s" loads-nothing.f" GUARD-MS CHECK-AS
+   0 s" loads-lifetime: nothing loaded, verified" EXPECT-KIND
+   s" loads-lifetime: nothing loaded, no line" 0 LOAD-COUNT
+   s\" require ld-dep.f\n" s" loads-again.f" GUARD-MS CHECK-AS
+   0 s" loads-lifetime: again, verified" EXPECT-KIND
+   s" loads-lifetime: the pre-pass" T-LABEL
+   s\" require ld-dep.f\n" SUBJ$ s" loads-again.f" GUARD-MS >MS CHECK:PREVERIFY-BYTES
+   MATCH result
+      ok OF 0= ENDOF
+      err OF drop false ENDOF
+   ;MATCH TTRUE
+   s" loads-lifetime: the pre-pass, no line" 0 LOAD-COUNT ;
+
+
 \ ---- the uses ---------------------------------------------------------------
 
 variable USE-NODE                       \ the use line USE-FROM found
@@ -3753,6 +3914,12 @@ public
    s" identity-paths" [: IDENTITY-PATHS ;] RUN-CASE
    s" identity-swap" [: IDENTITY-SWAP ;] RUN-CASE
    s" file-line-keys" [: FILE-LINE-KEYS ;] RUN-CASE
+   s" loads" [: LOADS ;] RUN-CASE
+   s" loads-unread" [: LOADS-UNREAD ;] RUN-CASE
+   s" loads-scan-fail" [: LOADS-SCAN-FAIL ;] RUN-CASE
+   s" loads-supplied" [: LOADS-SUPPLIED ;] RUN-CASE
+   s" loads-none" [: LOADS-NONE ;] RUN-CASE
+   s" loads-lifetime" [: LOADS-LIFETIME ;] RUN-CASE
    s" uses" [: USES ;] RUN-CASE
    s" uses-refused" [: USES-REFUSED ;] RUN-CASE
    s" uses-order" [: USES-ORDER ;] RUN-CASE

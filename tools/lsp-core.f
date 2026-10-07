@@ -18,12 +18,15 @@
 \ textDocument/documentHighlight with the token that declares the word at the
 \ position and that word's uses in the document (tools/lsp-highlight.f),
 \ textDocument/completion with the spellings that would bind at the position
-\ (tools/lsp-completion.f), a request whose params it cannot read, or that
-\ names a document not open, with -32602 and any other request with -32601, and
-\ it keeps the documents the client opens, changes and closes: Full sync, each
-\ change carrying the whole text, and positions in UTF-16 units. Shut down, it
-\ answers every request with -32600. Only a running server takes a notification
-\ other than exit; the rest are dropped, as unknown ones always are.
+\ (tools/lsp-completion.f), textDocument/documentLink with a link over the
+\ operand of each top-level loader of the document that reached a file, to
+\ that file (tools/lsp-links.f), a request whose params it cannot read, or
+\ names a document not open, with -32602 and any other request with -32601,
+\ and it keeps the documents the client opens, changes and closes: Full sync,
+\ each change carrying the whole text, and positions in UTF-16 units. Shut
+\ down, it answers every request with -32600. Only a running server takes a
+\ notification other than exit; the rest are dropped, as unknown ones always
+\ are.
 \
 \ The messages are served in the order they came, and the first one held is
 \ served only once no more input waits, so the messages that came behind a
@@ -32,12 +35,12 @@
 \ -32800, doing none of its work, when a $/cancelRequest naming its id was read
 \ behind it, an id that is a string by its decoded text and a number by its
 \ JSON text, and it answers textDocument/definition, hover, documentHighlight,
-\ completion or documentSymbol -32801 when a textDocument/didChange of its
-\ document was, since the request asked about the text that change replaces. A
-\ cancel is otherwise an unknown notification, so one naming an id answered,
-\ unknown or not a request's changes nothing, and a check already running is
-\ not stopped. The end of input and a fault in its framing come after the
-\ messages held: those are served first.
+\ completion, documentSymbol or documentLink -32801 when a textDocument/didChange
+\ of its document was, since the request asked about the text that change
+\ replaces. A cancel is otherwise an unknown notification, so one naming an
+\ id answered, unknown or not a request's changes nothing, and a check
+\ already running is not stopped. The end of input and a fault in its framing
+\ come after the messages held: those are served first.
 \
 \ A running server checks the documents and publishes their diagnostics
 \ (tools/lsp-check.f, tools/lsp-diag.f). Opening or changing a document leaves
@@ -49,16 +52,16 @@
 \ while another check ran are all applied before it, and the versions
 \ published for a document only rise. A request about a document waiting for a
 \ check, textDocument/definition, textDocument/hover,
-\ textDocument/documentHighlight or textDocument/documentSymbol, is the
-\ exception: it checks that document first, as its turn, and is answered from
-\ that check, which takes the text the client asked about, since LSP orders a
-\ request after the changes sent before it. textDocument/completion checks its
-\ document as its turn whether it waits or not, with a cursor at the position,
-\ and is answered from that check: the spellings it offers belong to that
-\ cursor. Closing a document publishes an empty list for it, drops the
-\ definitions its last check kept and leaves every open document waiting: any
-\ of them may require the file, whose diagnostics their checks left to it while
-\ it was open.
+\ textDocument/documentHighlight, textDocument/documentSymbol or
+\ textDocument/documentLink, is the exception: it checks that document first,
+\ as its turn, and is answered from that check, which takes the text the client
+\ asked about, since LSP orders a request after the changes sent before it.
+\ textDocument/completion checks its document as its turn whether it waits or
+\ not, with a cursor at the position, and is answered from that check: the
+\ spellings it offers belong to that cursor. Closing a document publishes an
+\ empty list for it, drops the definitions its last check kept and leaves every
+\ open document waiting: any of them may require the file, whose diagnostics
+\ their checks left to it while it was open.
 \
 \ exit ends the process with 0 after shutdown and 1 before it, and so does the
 \ end of input, which before shutdown also says so on stderr. A notification
@@ -96,6 +99,7 @@ require tools/lsp-definition.f
 require tools/lsp-hover.f
 require tools/lsp-highlight.f
 require tools/lsp-completion.f
+require tools/lsp-links.f
 
 package LSP
 using SPAN
@@ -111,7 +115,7 @@ public
 -9400 constant E-LSP-FIRST
 -9401 constant E-LSP-LAST
 -9400 constant E-LSP-PARAMS    \ a notification's params lack a member the server reads, or hold one of another kind
--9401 constant E-LSP-NOT-OPEN  \ a change, close, definition, hover, highlight, completion or document symbols of a document not open
+-9401 constant E-LSP-NOT-OPEN  \ a change, close, definition, hover, highlight, completion, document symbols or links of a document not open
 
 -32002 constant NOT-INITIALIZED          \ LSP's ServerNotInitialized
 -32800 constant REQUEST-CANCELLED        \ LSP's RequestCancelled
@@ -217,6 +221,7 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
          s" hoverProvider" true FIELD-BOOL COMMA
          s" documentHighlightProvider" true FIELD-BOOL COMMA
          s" documentSymbolProvider" true FIELD-BOOL COMMA
+         s" documentLinkProvider" KEY OBJECT-START OBJECT-END COMMA
          s" workspaceSymbolProvider" true FIELD-BOOL
       OBJECT-END COMMA
       s" serverInfo" KEY OBJECT-START
@@ -621,6 +626,15 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
    AT-SLOT @ AT-BYTE @ LSP-CHECK:RUN-AT
    WRITER i RESULT AT-SLOT @ LSP-COMPLETION:ANSWER END SENT ;
 
+\ The links of the open document params.textDocument names, over the operands
+\ of the top-level loaders its last completed check reported, the document
+\ checked first if it waits for a check.
+: DOCUMENT-LINKS ( JSON-RPC:id ptr u8 n -- )
+   {: i p:ptr pu:n :}
+   i p pu DOCUMENT? 0= if exit then
+   AT-SLOT @ CHECK-WAITING
+   WRITER i RESULT AT-SLOT @ LSP-LINKS:ANSWER END SENT ;
+
 \ Whether the array the reader is at lists the string markdown.
 : LISTS-MARKDOWN? ( JR:reader -- JR:reader bool )
    begin NEXT dup T-ARR-END <> while
@@ -680,6 +694,7 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
    m mu s" textDocument/hover" NAMED? if i p pu HOVER exit then
    m mu s" textDocument/documentHighlight" NAMED? if i p pu HIGHLIGHT exit then
    m mu s" textDocument/completion" NAMED? if i p pu COMPLETION exit then
+   m mu s" textDocument/documentLink" NAMED? if i p pu DOCUMENT-LINKS exit then
    i METHOD-NOT-FOUND s" method not found" REPLY-ERROR ;
 
 : REQUESTED ( JSON-RPC:id ptr u8 n ptr u8 n -- )
@@ -778,6 +793,7 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
    LSP-DEFS:DEFS-PREPARE
    LSP-HOVER:PREPARE
    LSP-COMPLETION:PREPARE
+   LSP-LINKS:PREPARE
    false HOVER-MD !
    -1 LAST-CHECKED !
    construct state starting STATE!
