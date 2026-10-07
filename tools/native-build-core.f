@@ -217,7 +217,7 @@ CAST: PREFIX-COMPILE-XT ( n -- [ ptr u8 n -- ] )
 \ Borrow the retained compiler only while the target has no check hook. The
 \ target's own NCOMP:INSTALL later replaces this dispatch after its source load.
 : LOAD-CHECKED-PREFIX ( -- )
-   ['] NCOMP:COMPILE-CHECKED NCOMP:DISPATCH!
+   [: NCOMP:COMPILE-CHECKED ;] NCOMP:DISPATCH!
    s" src/core/util.f" included
    s" src/core/cell.f" included
    s" src/core/pointer-storage.f" included
