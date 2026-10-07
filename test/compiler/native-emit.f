@@ -12,34 +12,27 @@
 \ WHY THE BYTES ARE EXECUTED AND NOT ONLY COMPARED. A table of expected words is
 \ necessary and not sufficient: it can only disagree with an emitter that changed,
 \ never with one that was always wrong, because the expected words and the
-\ emitter can be wrong in the same way. Five of the shapes below are therefore
-\ published into the engine's own code space and CALLED as leaf routines, through
-\ test/compiler/native-run-fixture.f, with the arguments the source-level
-\ arithmetic takes and its answer compared. That file's header says why the byte
-\ offsets come from the source map and why the result register is asserted before
-\ every call; each executing case below makes that assertion.
-\
-\ WHERE THE CHAIN ITSELF IS DRIVEN. Binding the two dialects, selecting,
-\ allocating, accepting and emitting are the same four stages in the same order
-\ for every caller, so they live in test/compiler/native-chain-fixture.f and this
-\ suite drives them from there. What is this file's own is how each shape is
-\ built into HIR by hand, which is what a suite about encodings has to state
-\ itself.
+\ emitter can be wrong in the same way. The shapes are therefore also published
+\ into the engine's own code space and CALLED as leaf routines, with the
+\ arguments the source-level arithmetic takes and its answer compared. Those
+\ executing cases run in test/compiler/native-emit-run-child.f, a window child
+\ this suite starts (RUN-CHILD-CASE below), which builds the same shapes from
+\ test/compiler/native-emit-shapes.f and emits them with the unsealed image's own
+\ baked emitter, made from the same sources by the same native build; the sealed
+\ product's baked emitter runs through the real load path, which compiles every
+\ colon definition through src/compiler/native/compiler.f, whose ARM64 rows are
+\ src/arch/arm64/passes.f over A64EMIT. The byte cases stay here, on the product
+\ engine, where they exercise the emitter it bakes. The header of
+\ test/compiler/native-run-fixture.f says why the byte offsets come from the
+\ source map. The C-ABI cases other than division assert the allocated result
+\ register; division asserts three arithmetic answers and the Habu square one
+\ data-stack answer.
 \
 \ WHY ONE OF THE BYTE CASES ALLOCATES OUT OF A HIGH POOL. The low registers are
 \ where an emitter that ignored the allocation entirely would put things anyway.
 \ The three-argument shape is therefore emitted twice, once from a pool that
 \ starts at register zero and once from a pool that starts at register four, and
 \ the second one's expected words are different in every register field.
-\
-\ WHY THE HOSTILE MODULE IS BUILT IN THE MACHINE DIALECT. An operation of a form
-\ outside the dialect's family is a shape the selector never produces, so it is
-\ built straight into A64IR - and it is emitted without an allocation, because the
-\ allocator refuses it before the emitter would ever see it. That is the point:
-\ the emitter must refuse it under its own name rather than by never meeting it.
-\ A module of two functions is built the same way and for the opposite reason: it
-\ is what a definition that makes a quotation compiles to, and the emission has to
-\ hold both of them end to end.
 \
 \ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
 \ arena registry holds sixty-four, so a case that builds a source module and a
@@ -52,312 +45,17 @@
 \ that compiled this file.
 
 require lib/test.f
-require src/compiler/native/select.f
-require src/compiler/native/emit.f
-require src/compiler/native/spill.f
-require test/compiler/native-chain-fixture.f
-require test/compiler/native-run-fixture.f
+require lib/string.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f          \ the run child takes the unsealed engine
+require lib/fs-mutate.f            \ CLEANUP-RUN - that engine's private copy
+require test/whitebox-child.f
+require test/suite-budget.f        \ CHILD-MS, the run child's hang guard
+require test/compiler/native-emit-shapes.f
 
 package A64EMIT-TEST
 private
-
-\ ---- bindings ----------------------------------------------------------------
-\ The machine these instructions are for, from the shared chain fixture.
-: WBND ( -- CBIND:binding )
-   NFIX:BINDING ;
-
-\ The same numeric policy on an AArch64 core whose byte order this backend does
-\ not serve. Its architecture HAS a registered backend, so emission reaches this
-\ backend's own refusal instead of the registry's.
-: BEBND ( -- CBIND:binding )
-   CTARGET-ARCH:AARCH64 CTARGET-ABI:AAPCS64-LINUX CTARGET-ENDIAN:BIG
-   CTARGET-PTR--WIDTH:BITS64
-   CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH CTARGET:CONTRACT
-   CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
-   CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
-   CBIND:BIND ;
-
-\ The same numeric policy on a machine that executes none of these instructions.
-: PBND ( -- CBIND:binding )
-   CTARGET-ARCH:PTX CTARGET-ABI:PTX-KERNEL CTARGET-ENDIAN:LITTLE
-   CTARGET-PTR--WIDTH:BITS64
-   CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH CTARGET:CONTRACT
-   CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
-   CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
-   CBIND:BIND ;
-
-\ ---- the fixture's source text -----------------------------------------------
-create TXT
-   58 c, 32 c, 83 c, 81 c, 85 c, 65 c, 82 c, 69 c,            \ ": SQUARE"
-   32 c, 100 c, 117 c, 112 c, 32 c, 42 c, 32 c, 59 c,         \ " dup * ;"
-16 constant TXT-N
-
-2 constant NAME-ST                   \ the defined name inside TXT
-6 constant NAME-LN
-0 constant OPEN-ST                   \ the opening `:`
-1 constant OPEN-LN
-9 constant BODY-ST                   \ the body word
-3 constant BODY-LN
-15 constant CLOSE-ST                 \ the closing `;`
-1 constant CLOSE-LN
-
-\ ---- the module a fixture builds into ----------------------------------------
-1 TYPED-BUFFER W-CTX IR-CTX:ctx
-1 TYPED-BUFFER W-BLD IR-BUILD:builder
-1 TYPED-BUFFER W-SRC IR-ID:ir-source-id
-
-: CC ( -- IR-CTX:ctx )               0 W-CTX @ ;
-: BB ( -- IR-BUILD:builder )         0 W-BLD @ ;
-: SS ( -- IR-ID:ir-source-id )       0 W-SRC @ ;
-
-: SPN ( n n -- IR-SOURCE:span )
-   {: st:n ln:n :}
-   BB SS st ln IR-BUILD:ADD-SPAN ;
-
-: CELLT ( -- IR-ID:ir-type-id )
-   CC BB IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT ;
-
-: SIGN ( n n -- IR-ID:ir-type-id )
-   {: in:n out:n :}
-   CELLT {: t:IR-ID:ir-type-id :}
-   IR-TYPE:FN-BEGIN
-   in 0 ?do t IR-TYPE:FN-PARAM loop
-   out 0 ?do t IR-TYPE:FN-RESULT loop
-   CC BB IR-BUILD:INTERN-CODE-REF ;
-
-: OPEN-FUN ( ptr u8 n n n -- )
-   {: p u:n in:n out:n :}
-   CC BB  CC BB p u IR-BUILD:INTERN-SYMBOL  IR-BUILD:BEGIN-FUN
-   CC BB  in out SIGN  IR-BUILD:SET-SIGNATURE
-   CC BB IR--FUN-LINKAGE:DEFINED IR-BUILD:SET-LINKAGE
-   CC BB IR--FUN-VISIBILITY:EXPORTED IR-BUILD:SET-VISIBILITY
-   CC BB IR--FUN-CONVENTION:HABU IR-BUILD:SET-CONVENTION
-   CC BB  NAME-ST NAME-LN SPN  IR-BUILD:SET-FUN-SPAN
-   CC BB IR-BUILD:BEGIN-BLOCK
-   CC BB  OPEN-ST OPEN-LN SPN  IR-BUILD:SET-BLOCK-SPAN ;
-
-: ARG+ ( -- IR-ID:ir-value-id )
-   CC BB CELLT IR-BUILD:ADD-BLOCK-ARG ;
-
-: CLOSE-FUN ( -- )
-   CC BB IR-BUILD:END-BLOCK drop
-   CC BB IR-BUILD:END-FUN drop ;
-
-\ ---- source modules ----------------------------------------------------------
-: HIR-MOD ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   IR-BUILD:PLAN-BEGIN
-   IR-BUILD:PLAN-DEFAULT
-   c HIR:NEW-BUILDER {: b:IR-BUILD:builder :}
-   c b HIR:REGISTER
-   c 0 W-CTX !
-   b 0 W-BLD !
-   c b TXT TXT-N IR-BUILD:ADD-SOURCE 0 W-SRC ! ;
-
-: OPEN-OP ( HIR:opcode n n -- )
-   {: o:HIR:opcode st:n ln:n :}
-   CC BB  CC BB o HIR:OPCODE  IR-BUILD:BEGIN-OP
-   CC BB  st ln SPN  IR-BUILD:SET-OP-SPAN ;
-
-: CLOSE-VALUE ( -- IR-ID:ir-value-id )
-   CC BB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
-   CC BB id 0 IR-BUILD:OP-RESULT@ ;
-
-: BINOP ( HIR:opcode IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
-   {: o:HIR:opcode x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
-   o BODY-ST BODY-LN OPEN-OP
-   CC BB x IR-BUILD:ADD-OPERAND
-   CC BB y IR-BUILD:ADD-OPERAND
-   CC BB CELLT IR-BUILD:ADD-RESULT
-   CLOSE-VALUE ;
-
-: CONSTOP ( n -- IR-ID:ir-value-id )
-   {: v:n :}
-   HIR-OPCODE:CONST BODY-ST BODY-LN OPEN-OP
-   CC BB CELLT IR-BUILD:ADD-RESULT
-   CC BB  CC BB HIR:KEY-VALUE  CC BB v IR-BUILD:INTERN-INT-ATTR
-   IR-BUILD:ADD-ATTR
-   CC BB  CC BB HIR:KEY-ADDR  CC BB HIR:ADDR-NONE HIR:ADDR-ATTR
-   IR-BUILD:ADD-ATTR
-   CLOSE-VALUE ;
-
-: RET1 ( IR-ID:ir-value-id -- )
-   {: v:IR-ID:ir-value-id :}
-   HIR-OPCODE:RETURN CLOSE-ST CLOSE-LN OPEN-OP
-   CC BB v IR-BUILD:ADD-OPERAND
-   CC BB IR-BUILD:END-OP drop ;
-
-\ `: SQUARE ( n -- n ) dup * ;`
-: BUILD-SQUARE ( -- )
-   s" SQUARE" 1 1 OPEN-FUN
-   ARG+ {: a:IR-ID:ir-value-id :}
-   HIR-OPCODE:MUL a a BINOP RET1
-   CLOSE-FUN ;
-
-\ `: DIFF ( n n -- n ) - ;`
-: BUILD-DIFF ( -- )
-   s" DIFF" 2 1 OPEN-FUN
-   ARG+ {: x:IR-ID:ir-value-id :}
-   ARG+ {: y:IR-ID:ir-value-id :}
-   HIR-OPCODE:SUB x y BINOP RET1
-   CLOSE-FUN ;
-
-\ `: QUOT ( n n -- n ) / ;`
-: BUILD-DIV ( -- )
-   s" QUOT" 2 1 OPEN-FUN
-   ARG+ {: x:IR-ID:ir-value-id :}
-   ARG+ {: y:IR-ID:ir-value-id :}
-   HIR-OPCODE:DIV x y BINOP RET1
-   CLOSE-FUN ;
-
-\ `: SUM3 ( a b c -- n ) + + ;`
-: BUILD-SUM3 ( -- )
-   s" SUM3" 3 1 OPEN-FUN
-   ARG+ {: x:IR-ID:ir-value-id :}
-   ARG+ {: y:IR-ID:ir-value-id :}
-   ARG+ {: z:IR-ID:ir-value-id :}
-   HIR-OPCODE:ADD x y BINOP {: t:IR-ID:ir-value-id :}
-   HIR-OPCODE:ADD t z BINOP RET1
-   CLOSE-FUN ;
-
-\ `: REUSE ( a b -- n ) over + + ;`: the first argument is read again after the
-\ first sum, so the first sum lands in a register that is neither of its own
-\ operands' - the one shape here where an instruction's destination field and its
-\ first source field differ.
-: BUILD-REUSE ( -- )
-   s" REUSE" 2 1 OPEN-FUN
-   ARG+ {: x:IR-ID:ir-value-id :}
-   ARG+ {: y:IR-ID:ir-value-id :}
-   HIR-OPCODE:ADD x y BINOP {: t:IR-ID:ir-value-id :}
-   HIR-OPCODE:ADD x t BINOP RET1
-   CLOSE-FUN ;
-
-\ ---- a body that reads and writes memory -------------------------------------
-\ `: BUMP ( n -- n ) A ! A @ 1+ dup A ! ;` with A a fixed address, built by hand
-\ so the two addressed instructions can be read back as the exact words they are.
-\ The address is a small even number and this shape is never EXECUTED here: what
-\ is being proved is which register field each operand lands in, and running it
-\ would only prove that the number is not a real cell. The chain suite runs the
-\ same body against a cell the engine really created.
-$1000 constant BUMP-ADDR
-
-: MEMT ( -- IR-ID:ir-type-id )
-   CC BB HIR:MEM-TYPE ;
-
-\ The memory the definition is entered with: no operand, one order.
-: MEM0 ( -- IR-ID:ir-value-id )
-   HIR-OPCODE:MEM BODY-ST BODY-LN OPEN-OP
-   CC BB MEMT IR-BUILD:ADD-RESULT
-   CLOSE-VALUE ;
-
-\ One store: the value, the address, the order in - and the order out.
-: STORE1 ( IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
-   {: v:IR-ID:ir-value-id a:IR-ID:ir-value-id k:IR-ID:ir-value-id :}
-   HIR-OPCODE:STORE BODY-ST BODY-LN OPEN-OP
-   CC BB v IR-BUILD:ADD-OPERAND
-   CC BB a IR-BUILD:ADD-OPERAND
-   CC BB k IR-BUILD:ADD-OPERAND
-   CC BB MEMT IR-BUILD:ADD-RESULT
-   CLOSE-VALUE ;
-
-\ One load: the address and the order in, the loaded cell and the order out. The
-\ order is the second result, so the loaded value is read the way every other
-\ value-producing operation's is.
-: LOAD1 ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id IR-ID:ir-value-id )
-   {: a:IR-ID:ir-value-id k:IR-ID:ir-value-id :}
-   HIR-OPCODE:LOAD BODY-ST BODY-LN OPEN-OP
-   CC BB a IR-BUILD:ADD-OPERAND
-   CC BB k IR-BUILD:ADD-OPERAND
-   CC BB CELLT IR-BUILD:ADD-RESULT
-   CC BB MEMT IR-BUILD:ADD-RESULT
-   CC BB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
-   CC BB id 0 IR-BUILD:OP-RESULT@
-   CC BB id 1 IR-BUILD:OP-RESULT@ ;
-
-: BUILD-BUMP ( -- )
-   s" SQUARE" 1 1 OPEN-FUN
-   ARG+ {: x:IR-ID:ir-value-id :}
-   MEM0 {: k0:IR-ID:ir-value-id :}
-   BUMP-ADDR CONSTOP {: a0:IR-ID:ir-value-id :}
-   x a0 k0 STORE1 {: k1:IR-ID:ir-value-id :}
-   BUMP-ADDR CONSTOP {: a1:IR-ID:ir-value-id :}
-   a1 k1 LOAD1 {: got:IR-ID:ir-value-id k2:IR-ID:ir-value-id :}
-   1 CONSTOP {: one:IR-ID:ir-value-id :}
-   HIR-OPCODE:ADD got one BINOP {: up:IR-ID:ir-value-id :}
-   BUMP-ADDR CONSTOP {: a2:IR-ID:ir-value-id :}
-   up a2 k2 STORE1 drop
-   up RET1
-   CLOSE-FUN ;
-
-\ A literal across two halves: a move-wide, then an overwrite that keeps it.
-: BUILD-WIDE ( -- )
-   s" WIDE" 0 1 OPEN-FUN
-   $1234000000005678 CONSTOP RET1
-   CLOSE-FUN ;
-
-\ ---- running the whole chain -------------------------------------------------
-\ Select, allocate, accept and emit for a leaf routine of `n` registers. Every
-\ positive case goes through the whole chain, so nothing here emits from a claim
-\ the validator has not agreed with.
-: EMITTED ( n -- )
-   {: n:n :}
-   CC BB n NFIX:RUN ;
-
-\ The same, out of a pool that starts at `base`.
-: EMITTED-FROM ( n n -- )
-   {: base:n n:n :}
-   CC BB base n NFIX:RUN-FROM ;
-
-\ The same under the convention a Habu word is entered and left through. A body
-\ that touches memory needs it: the generic memory order of a routine begins
-\ where the routine takes the caller's operands, so a routine that takes none is
-\ refused at selection by name.
-: EMITTED-HABU ( n n n -- )
-   {: n:n in:n out:n :}
-   CC BB 0 n in out NFIX:RUN-HABU ;
-
-\ ---- reading the emission ----------------------------------------------------
-: BYTE-AT ( n -- n )
-   A64EMIT:BYTES swap + c@ ;
-
-: SPAN-START-AT ( n -- n )
-   A64EMIT:MAP-SPAN@ IR-SOURCE:SPAN-START ;
-
-: SPAN-LEN-AT ( n -- n )
-   A64EMIT:MAP-SPAN@ IR-SOURCE:SPAN-LEN ;
-
-\ The division's refusal branches to an ADDRESS and not to a constant, so the
-\ expected word cannot be written out: the displacement is decoded back into the
-\ address it names and held against the entry the dictionary gives for its callee.
-\ A word that is not a `bl` is refused as that rather than read as a distance.
-: BL-TARGET ( n -- n )
-   {: i:n :}
-   i A64EMIT:WORD@ {: w:n :}
-   w $FC000000 and $94000000 <> if s" native-emit: not a bl" 76 die then
-   w $03FFFFFF and {: imm:n :}
-   imm $02000000 and 0<> if imm $04000000 - else imm then
-   4 *  A64EMIT:PLACEMENT +  i 4 * + ;
-
-: DIV-ZERO-ENTRY ( -- n )
-   s" (DIV-ZERO)" NDICT:HELPER-TARGET ;
-
-: SPAN-SRC-AT ( n -- n )
-   A64EMIT:MAP-SPAN@ IR-SOURCE:SPAN-SRC IR-ID:SOURCE-LOCAL ;
-
-\ The register the returned value ended up in. The last value the module defines
-\ is the one the return carries in every shape below.
-: RESULT-REG ( -- n )
-   NFIX:RESULT-REG ;
-
-\ ---- publishing and calling the emitted bytes --------------------------------
-\ The store into code space and the C-ABI call are the two engine boundaries, and
-\ they live in test/compiler/native-run-fixture.f so the comparison harness runs
-\ the emitted bytes exactly the way this suite does.
-: PUBLISH ( -- n )       NRUN:PUBLISH ;
-: EXEC0 ( n -- n )       NRUN:EXEC0 ;
-: EXEC1 ( n n -- n )     NRUN:EXEC1 ;
-: EXEC2 ( n n n -- n )   NRUN:EXEC2 ;
-: EXEC3 ( n n n n -- n ) NRUN:EXEC3 ;
 
 \ ---- the emitted bytes -------------------------------------------------------
 \ `mul x0, x0, x0` then `ret`. The bytes are written out here rather than
@@ -416,11 +114,12 @@ $1000 constant BUMP-ADDR
 \ ARM64's Sdiv answers zero for a zero divisor, and the engine's own `/` branches
 \ to the same sealed (DIV-ZERO) helper, which throws ARITH-ABI:E-DIV-ZERO
 \ (src/habu/habu1.f BDIV0?). Deleting either, moving the guard's distance off
-\ two, or branching anywhere else reddens here.
+\ two, or branching anywhere else reddens here. The `bl` is measured from where
+\ the bytes land, so the emission is placed at the free code slot first.
 : DIV-BODY ( IR-CTX:ctx -- n n bool n n )
    HIR-MOD
    BUILD-DIV
-   NRUN:PLACE
+   cp@ A64EMIT:PLACE-AT
    4 EMITTED
    A64EMIT:INSNS
    0 A64EMIT:WORD@
@@ -432,24 +131,6 @@ $1000 constant BUMP-ADDR
    s" a division emits the zero-divisor refusal the engine's own divide has" T-LABEL
    WBND [: DIV-BODY ;] IR-CTX:WITH-CONTEXT
    $D65F03C0 T= $9AC10C00 T= TTRUE $B5000041 T= 4 T= ;
-
-\ And it computes what the engine computes, truncating toward zero rather than
-\ flooring: -7 over 2 is -3 and not -4. The two negative cases are what say the
-\ rounding of a compiled division is the rounding of an interpreted one.
-: RUN-DIV-BODY ( IR-CTX:ctx -- n n n )
-   HIR-MOD
-   BUILD-DIV
-   NRUN:PLACE
-   4 EMITTED
-   PUBLISH {: fn:n :}
-   7 2 fn EXEC2
-   -7 2 fn EXEC2
-   7 -2 fn EXEC2 ;
-
-: RUN-DIV-CASE ( -- )
-   s" the emitted division truncates toward zero, as the engine's does" T-LABEL
-   WBND [: RUN-DIV-BODY ;] IR-CTX:WITH-CONTEXT
-   -3 T= -3 T= 3 T= ;
 
 \ `add x0, x0, x1`, `add x0, x0, x2`, `ret`.
 : SUM3-BODY ( IR-CTX:ctx -- n n n n )
@@ -544,261 +225,7 @@ $1000 constant BUMP-ADDR
    BODY-LN T= BODY-ST T=
    0 T= 8 T= 4 T= 0 T= ;
 
-\ ---- the emitted bytes, executed ---------------------------------------------
-\ Published into the engine's own code space and called as a leaf routine. The
-\ answer is the source-level arithmetic's, not the emitter's idea of it.
-: RUN-SQUARE-BODY ( IR-CTX:ctx -- n n )
-   HIR-MOD
-   BUILD-SQUARE
-   4 EMITTED
-   RESULT-REG
-   7 PUBLISH EXEC1 ;
-
-: RUN-SQUARE-CASE ( -- )
-   s" the emitted square really squares when the machine runs it" T-LABEL
-   WBND [: RUN-SQUARE-BODY ;] IR-CTX:WITH-CONTEXT
-   49 T= 0 T= ;
-
-: RUN-DIFF-BODY ( IR-CTX:ctx -- n n )
-   HIR-MOD
-   BUILD-DIFF
-   4 EMITTED
-   RESULT-REG
-   9 4 PUBLISH EXEC2 ;
-
-: RUN-DIFF-CASE ( -- )
-   s" the emitted difference subtracts the second argument from the first" T-LABEL
-   WBND [: RUN-DIFF-BODY ;] IR-CTX:WITH-CONTEXT
-   5 T= 0 T= ;
-
-: RUN-SUM3-BODY ( IR-CTX:ctx -- n n )
-   HIR-MOD
-   BUILD-SUM3
-   4 EMITTED
-   RESULT-REG
-   1 2 3 PUBLISH EXEC3 ;
-
-: RUN-SUM3-CASE ( -- )
-   s" the emitted three-argument sum really adds all three" T-LABEL
-   WBND [: RUN-SUM3-BODY ;] IR-CTX:WITH-CONTEXT
-   6 T= 0 T= ;
-
-: RUN-REUSE-BODY ( IR-CTX:ctx -- n n )
-   HIR-MOD
-   BUILD-REUSE
-   4 EMITTED
-   RESULT-REG
-   10 3 PUBLISH EXEC2 ;
-
-: RUN-REUSE-CASE ( -- )
-   s" the emitted reuse shape adds the first argument in twice" T-LABEL
-   WBND [: RUN-REUSE-BODY ;] IR-CTX:WITH-CONTEXT
-   23 T= 0 T= ;
-
-: RUN-WIDE-BODY ( IR-CTX:ctx -- n n )
-   HIR-MOD
-   BUILD-WIDE
-   4 EMITTED
-   RESULT-REG
-   PUBLISH EXEC0 ;
-
-: RUN-WIDE-CASE ( -- )
-   s" the emitted move-wide chain materialises the whole literal" T-LABEL
-   WBND [: RUN-WIDE-BODY ;] IR-CTX:WITH-CONTEXT
-   $1234000000005678 T= 0 T= ;
-
 \ ---- machine modules built by hand -------------------------------------------
-\ The shapes the selector never produces. Everything below builds straight into
-\ the machine dialect. The bindings are taken separately from the building,
-\ because several of these cases need a module with one binding, or none.
-: A64-NEW ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   IR-BUILD:PLAN-BEGIN
-   IR-BUILD:PLAN-DEFAULT
-   c A64IR:NEW-BUILDER {: b:IR-BUILD:builder :}
-   c 0 W-CTX !
-   b 0 W-BLD !
-   c b A64IR:REGISTER
-   c b TXT TXT-N IR-BUILD:ADD-SOURCE 0 W-SRC ! ;
-
-: BIND-EMIT ( -- )
-   CC BB A64EMIT:BIND-DIALECT ;
-
-: BIND-RA ( -- )
-   CC BB A64IR:MACHINE  CC BB A64IR:VOCABULARY  A64RA:BIND-DIALECT ;
-
-: BIND-RAV ( -- )
-   CC BB  CC BB A64IR:VOCABULARY  A64RAV:BIND-DIALECT ;
-
-: M-OPEN ( A64IR:opcode -- )
-   {: o:A64IR:opcode :}
-   CC BB  CC BB o A64IR:OPCODE  IR-BUILD:BEGIN-OP
-   CC BB  BODY-ST BODY-LN SPN  IR-BUILD:SET-OP-SPAN ;
-
-: M-RESULT+ ( -- )
-   CC BB  CC BB A64IR:GPR-TYPE  IR-BUILD:ADD-RESULT ;
-
-: M-MOVZ ( n -- IR-ID:ir-value-id )
-   {: imm:n :}
-   A64IR-OPCODE:MOVZ M-OPEN
-   M-RESULT+
-   CC BB  CC BB A64IR:KEY-IMM    CC BB imm A64IR:IMM-ATTR   IR-BUILD:ADD-ATTR
-   CC BB  CC BB A64IR:KEY-SHIFT  CC BB 0 A64IR:SHIFT-ATTR   IR-BUILD:ADD-ATTR
-   CC BB  CC BB A64IR:KEY-ADDR   CC BB A64IR:ADDR-NONE A64IR:ADDR-ATTR IR-BUILD:ADD-ATTR
-   CLOSE-VALUE ;
-
-\ The same three move-wide forms with the relocation kind chosen by the caller,
-\ so a case can build a chain the producers in this tree never build. Every one
-\ of the shapes below is refused by the emitter, and each is a shape a rewrite
-\ between selection and emission could plausibly produce.
-: M-WIDE ( A64IR:opcode n n n -- IR-ID:ir-value-id )
-   {: o:A64IR:opcode imm:n sh:n kind:n :}
-   o M-OPEN
-   M-RESULT+
-   CC BB  CC BB A64IR:KEY-IMM    CC BB imm A64IR:IMM-ATTR   IR-BUILD:ADD-ATTR
-   CC BB  CC BB A64IR:KEY-SHIFT  CC BB sh A64IR:SHIFT-ATTR  IR-BUILD:ADD-ATTR
-   CC BB  CC BB A64IR:KEY-ADDR   CC BB kind A64IR:ADDR-ATTR IR-BUILD:ADD-ATTR
-   CLOSE-VALUE ;
-
-\ A movk keeps the halves already in place, so it takes the running value as an
-\ operand - which is what chains the four lanes into one register.
-: M-WIDE-K ( IR-ID:ir-value-id n n n -- IR-ID:ir-value-id )
-   {: v:IR-ID:ir-value-id imm:n sh:n kind:n :}
-   A64IR-OPCODE:MOVK M-OPEN
-   CC BB v IR-BUILD:ADD-OPERAND
-   M-RESULT+
-   CC BB  CC BB A64IR:KEY-IMM    CC BB imm A64IR:IMM-ATTR   IR-BUILD:ADD-ATTR
-   CC BB  CC BB A64IR:KEY-SHIFT  CC BB sh A64IR:SHIFT-ATTR  IR-BUILD:ADD-ATTR
-   CC BB  CC BB A64IR:KEY-ADDR   CC BB kind A64IR:ADDR-ATTR IR-BUILD:ADD-ATTR
-   CLOSE-VALUE ;
-
-: M-RET ( IR-ID:ir-value-id -- )
-   {: v:IR-ID:ir-value-id :}
-   A64IR-OPCODE:RET M-OPEN
-   CC BB v IR-BUILD:ADD-OPERAND
-   CC BB IR-BUILD:END-OP drop ;
-
-: M-ADD ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
-   {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
-   A64IR-OPCODE:ADD M-OPEN
-   CC BB x IR-BUILD:ADD-OPERAND
-   CC BB y IR-BUILD:ADD-OPERAND
-   M-RESULT+
-   CLOSE-VALUE ;
-
-: M-FREEZE ( -- IR-BUILD:module )
-   CC BB IR-BUILD:FREEZE ;
-
-: BIND-SPILL ( -- )
-   CC BB  CC BB A64IR:LOWERING  [: A64IR:ENSURE-NAMED ;] A64SPILL:BIND-DIALECT ;
-
-\ A CONSTANT NO RE-EMISSION CAN STAND FOR. A class whose one value was written
-\ by a move-wide is written AGAIN where it is read rather than put away
-\ (src/compiler/native/regalloc.f MB-REMATABLE?), so a body meant to reach the
-\ FRAME cannot hold its pressure in plain literals. Each of these is a literal
-\ added to itself: its defining operation reads a register, which is what
-\ excludes it structurally, and the seed is live for exactly one position so the
-\ peak is the same as five plain literals.
-: M-CONST ( n -- IR-ID:ir-value-id )
-   M-MOVZ {: z:IR-ID:ir-value-id :}
-   z z M-ADD ;
-
-\ Five values made before any of them is read, so five are live at once and
-\ three registers cannot hold them. This is the shape the whole spill route
-\ exists for, and the only way to know the route is right is to run the bytes it
-\ produces. BUILD-REMAT-CHAIN below is the same shape in plain move-wides, which
-\ takes the OTHER route and no frame at all.
-: BUILD-CHAIN ( -- )
-   s" CHAIN" 0 1 OPEN-FUN
-   $11 M-CONST {: a:IR-ID:ir-value-id :}
-   $22 M-CONST {: b:IR-ID:ir-value-id :}
-   $33 M-CONST {: c:IR-ID:ir-value-id :}
-   $44 M-CONST {: d:IR-ID:ir-value-id :}
-   $55 M-CONST {: e:IR-ID:ir-value-id :}
-   a b M-ADD {: s1:IR-ID:ir-value-id :}
-   s1 c M-ADD {: s2:IR-ID:ir-value-id :}
-   s2 d M-ADD {: s3:IR-ID:ir-value-id :}
-   s3 e M-ADD M-RET
-   CLOSE-FUN ;
-
-\ The same five values as plain move-wides. Every one of them is a class the walk
-\ can write again where it is read, so this body takes NO frame: what the bytes
-\ show is a routine with no reserve at all and a move-wide standing in front of
-\ each addition that reads one of the two the registers could not hold.
-: BUILD-REMAT-CHAIN ( -- )
-   s" RCHAIN" 0 1 OPEN-FUN
-   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
-   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
-   $33 M-MOVZ {: c:IR-ID:ir-value-id :}
-   $44 M-MOVZ {: d:IR-ID:ir-value-id :}
-   $55 M-MOVZ {: e:IR-ID:ir-value-id :}
-   a b M-ADD {: s1:IR-ID:ir-value-id :}
-   s1 c M-ADD {: s2:IR-ID:ir-value-id :}
-   s2 d M-ADD {: s3:IR-ID:ir-value-id :}
-   s3 e M-ADD M-RET
-   CLOSE-FUN ;
-
-\ A plain one-function machine module the state and identity cases can use.
-: BUILD-PLAIN ( -- )
-   s" PLAIN" 0 1 OPEN-FUN
-   7 M-MOVZ M-RET
-   CLOSE-FUN ;
-
-\ TWO FUNCTIONS IN ONE MODULE, which is what a definition that makes a quotation
-\ compiles to: the first is the routine the definition names and the second is the
-\ body of its quotation. They carry different literals so the emission can be read
-\ back and each function's instructions told from the other's - two functions
-\ emitting the same bytes would leave an emitter that wrote the first one twice
-\ indistinguishable from one that wrote both.
-: BUILD-TWO-FUNS ( -- )
-   s" ONE" 0 1 OPEN-FUN
-   7 M-MOVZ M-RET
-   CLOSE-FUN
-   s" TWO" 0 1 OPEN-FUN
-   9 M-MOVZ M-RET
-   CLOSE-FUN ;
-
-\ A seventh machine operation, defined into this dialect's own table. Nothing in
-\ the substrate forbids it and the module verifies, so the emitter has to refuse
-\ it by name rather than by never meeting it: an unmodelled form has no encoding
-\ here and there is nothing safe to emit in its place.
-: EXTRA-SCHEMA ( -- IR-ID:ir-symbol-id )
-   CC BB s" a64.neg" IR-BUILD:INTERN-SYMBOL {: op:IR-ID:ir-symbol-id :}
-   op IR-SCHEMA:BEGIN-OP
-   CC BB A64IR:GPR-TYPE IR-SCHEMA:ADD-OPERAND
-   CC BB A64IR:GPR-TYPE IR-SCHEMA:ADD-RESULT
-   false 0 0 IR-SCHEMA:SET-CONTROL
-   IR-SCHEMA:SET-PURE
-   false IR-SCHEMA:SET-TRAP
-   CTARGET-ARCH:AARCH64 CTARGET:F-BASE IR-SCHEMA:SET-TARGET
-   CC BB s" a64.rule.neg" IR-BUILD:INTERN-SYMBOL IR-SCHEMA:SET-RULE
-   CC BB s" a64.render.neg" IR-BUILD:INTERN-SYMBOL IR-SCHEMA:SET-RENDERER
-   CC BB IR-BUILD:DEFINE-OP
-   op ;
-
-: BUILD-EXTRA ( -- )
-   EXTRA-SCHEMA {: op:IR-ID:ir-symbol-id :}
-   s" NEG" 0 1 OPEN-FUN
-   7 M-MOVZ {: v:IR-ID:ir-value-id :}
-   CC BB op IR-BUILD:BEGIN-OP
-   CC BB  BODY-ST BODY-LN SPN  IR-BUILD:SET-OP-SPAN
-   CC BB v IR-BUILD:ADD-OPERAND
-   M-RESULT+
-   CLOSE-VALUE M-RET
-   CLOSE-FUN ;
-
-\ One hand-built module taken through the whole chain, so the cases that need a
-\ sealed emission cost one module rather than two.
-: PLAIN-EMITTED ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c A64-NEW
-   BIND-RA
-   BIND-RAV
-   BIND-EMIT
-   BUILD-PLAIN
-   M-FREEZE {: m:IR-BUILD:module :}
-   c m 0 4 NFIX:FINISH ;
-
 \ `movz x0, #7` then `ret`: a module built by hand emits exactly as one that came
 \ through selection does.
 : PLAIN-BODY ( IR-CTX:ctx -- n n n bool )
@@ -860,58 +287,23 @@ $1000 constant BUMP-ADDR
 \ wrong one reads a cell somewhere else entirely rather than failing to encode.
 \ Squaring one cell is the smallest routine that has both: it stands at 8, so its
 \ load and its store are both eight bytes under the pointer, and both are the
-\ negative form. The routine is also RUN, in RUN-SQUARE-CASE above, over the same
-\ contract - so a wrong field would answer something other than forty-nine as
-\ well as read differently here.
-: SQUARE-HABU-BODY ( IR-CTX:ctx -- n n n n )
+\ negative form. The routine is also RUN, over the same contract, in
+\ test/compiler/native-emit-run-child.f - so a wrong field would answer something
+\ other than forty-nine as well as read differently here.
+: SQUARE-HABU-BODY ( IR-CTX:ctx -- n n n )
    HIR-MOD
    BUILD-SQUARE
    4 1 1 EMITTED-HABU
    A64EMIT:INSNS
    0 A64EMIT:WORD@                   \ ldur x0, [x19, #-8] - the argument's cell
-   2 A64EMIT:WORD@                   \ stur x0, [x19, #-8] - the result into it
-   7 PUBLISH NRUN:ENTER1 ;
+   2 A64EMIT:WORD@ ;                 \ stur x0, [x19, #-8] - the result into it
 
 : SQUARE-HABU-CASE ( -- )
    s" a cell under the pointer is written in the unscaled signed form" T-LABEL
    WBND [: SQUARE-HABU-BODY ;] IR-CTX:WITH-CONTEXT
-   49 T= $F81F8260 T= $F85F8260 T= 4 T= ;
+   $F81F8260 T= $F85F8260 T= 4 T= ;
 
 \ ---- a program that does not fit ---------------------------------------------
-\ The whole spill route, ending in bytes that run: allocate the chain, lower the
-\ spill decisions into a module whose stores and loads are operations, allocate
-\ that, accept it, and emit. What the executed answer proves is what no table of
-\ expected words can - that the value put into a frame slot is the value that
-\ comes back out of it, that the frame the routine takes is the frame it gives
-\ back, and that the stack pointer the loads and stores are relative to is where
-\ the reserve left it.
-: SPILL-EMITTED ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c A64-NEW
-   BIND-RA
-   BIND-SPILL
-   BUILD-CHAIN
-   M-FREEZE {: m0:IR-BUILD:module :}
-   c m0 3 16 NFIX:LEAF-FRAMED A64RA:ALLOCATE
-   IR-BUILD:PLAN-BEGIN
-   IR-BUILD:PLAN-DEFAULT
-   c A64IR:NEW-BUILDER {: nb:IR-BUILD:builder :}
-   c nb A64IR:MACHINE  c nb A64IR:VOCABULARY  A64RA:BIND-DIALECT
-   c nb  c nb A64IR:VOCABULARY  A64RAV:BIND-DIALECT
-   c nb A64EMIT:BIND-DIALECT
-   c m0 nb  c nb A64IR:LOWERING  A64SPILL:REWRITE {: m1:IR-BUILD:module :}
-   c m1 3 16 NFIX:LEAF-FRAMED A64RA:ALLOCATE
-   m1 3 16 NFIX:LEAF-FRAMED A64RAV:ACCEPT
-   c m1 A64EMIT:EMIT
-   A64SPILL:RELEASE ;
-
-: HAS-WORD? ( n -- bool )
-   {: word:n :}
-   A64EMIT:INSNS 0 ?do
-      i A64EMIT:WORD@ word = if true unloop exit then
-   loop
-   false ;
-
 : SPILL-BODY ( IR-CTX:ctx -- n bool bool n )
    SPILL-EMITTED
    0 A64EMIT:WORD@                   \ sub sp, sp, #16 - the routine takes its frame
@@ -924,44 +316,7 @@ $1000 constant BUMP-ADDR
    WBND [: SPILL-BODY ;] IR-CTX:WITH-CONTEXT
    $910043FF T= TTRUE TTRUE $D10043FF T= ;
 
-: RUN-SPILL-BODY ( IR-CTX:ctx -- n n )
-   SPILL-EMITTED
-   NFIX:RESULT-REG
-   PUBLISH EXEC0 ;
-
-: RUN-SPILL-CASE ( -- )
-   s" the emitted spilled program computes what its values add up to" T-LABEL
-   WBND [: RUN-SPILL-BODY ;] IR-CTX:WITH-CONTEXT
-   $11 $22 + $33 + $44 + $55 + 2 * T= 0 T= ;
-
 \ ---- the same program, written again instead of put away ---------------------
-\ THE FIVE VALUES AS PLAIN MOVE-WIDES. Each is then a class the walk can write
-\ AGAIN in front of the addition that reads it, so the two it cannot hold cost
-\ two move-wides and no frame: the routine reserves nothing, gives nothing back,
-\ and its contract declares a frame of zero. What the bytes show is the whole of
-\ that - the first instruction is a move-wide and not a stack adjustment - and
-\ what the run shows is that a re-emitted constant is the constant it stood for,
-\ which no table of expected words can say.
-: REMAT-EMITTED ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c A64-NEW
-   BIND-RA
-   BIND-SPILL
-   BUILD-REMAT-CHAIN
-   M-FREEZE {: m0:IR-BUILD:module :}
-   c m0 3 0 NFIX:LEAF-FRAMED A64RA:ALLOCATE
-   IR-BUILD:PLAN-BEGIN
-   IR-BUILD:PLAN-DEFAULT
-   c A64IR:NEW-BUILDER {: nb:IR-BUILD:builder :}
-   c nb A64IR:MACHINE  c nb A64IR:VOCABULARY  A64RA:BIND-DIALECT
-   c nb  c nb A64IR:VOCABULARY  A64RAV:BIND-DIALECT
-   c nb A64EMIT:BIND-DIALECT
-   c m0 nb  c nb A64IR:LOWERING  A64SPILL:REWRITE {: m1:IR-BUILD:module :}
-   c m1 3 0 NFIX:LEAF-FRAMED A64RA:ALLOCATE
-   m1 3 0 NFIX:LEAF-FRAMED A64RAV:ACCEPT
-   c m1 A64EMIT:EMIT
-   A64SPILL:RELEASE ;
-
 : REMAT-EMIT-BODY ( IR-CTX:ctx -- n n n )
    REMAT-EMITTED
    A64EMIT:INSNS
@@ -974,56 +329,7 @@ $1000 constant BUMP-ADDR
    WBND [: REMAT-EMIT-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= $D2800220 T= 12 T= ;
 
-: RUN-REMAT-BODY ( IR-CTX:ctx -- n n )
-   REMAT-EMITTED
-   NFIX:RESULT-REG
-   PUBLISH EXEC0 ;
-
-: RUN-REMAT-CASE ( -- )
-   s" the emitted re-emitting program computes what its constants add up to"
-   T-LABEL
-   WBND [: RUN-REMAT-BODY ;] IR-CTX:WITH-CONTEXT
-   $11 $22 + $33 + $44 + $55 + T= 0 T= ;
-
 \ ---- a returned value put where the contract says it leaves ------------------
-\ `SECOND ( a b -- b )` under the C ABI: the arguments arrive in x0 and x1 and
-\ the returned value leaves in x0, so the value the return carries is in the
-\ register its caller chose and has to be in a different one where control
-\ leaves. The allocator plans a copy, the lowering makes it an operation, and
-\ this is what proves the copy is a real instruction: the emitted word is the
-\ ARM64 spelling of a move, and calling the routine gives back the SECOND
-\ argument - which it cannot do if the copy was dropped, encoded backwards, or
-\ landed in another register.
-: BUILD-SECOND ( -- )
-   s" SECOND" 2 1 OPEN-FUN
-   ARG+ drop
-   ARG+ {: b:IR-ID:ir-value-id :}
-   b M-RET
-   CLOSE-FUN ;
-
-: SECOND-ABI ( -- NEFF:routine )
-   0 4 2 1 NFIX:LEAF-ABI ;
-
-: SECOND-EMITTED ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c A64-NEW
-   BIND-RA
-   BIND-SPILL
-   BUILD-SECOND
-   M-FREEZE {: m0:IR-BUILD:module :}
-   c m0 SECOND-ABI A64RA:ALLOCATE
-   IR-BUILD:PLAN-BEGIN
-   IR-BUILD:PLAN-DEFAULT
-   c A64IR:NEW-BUILDER {: nb:IR-BUILD:builder :}
-   c nb A64IR:MACHINE  c nb A64IR:VOCABULARY  A64RA:BIND-DIALECT
-   c nb  c nb A64IR:VOCABULARY  A64RAV:BIND-DIALECT
-   c nb A64EMIT:BIND-DIALECT
-   c m0 nb  c nb A64IR:LOWERING  A64SPILL:REWRITE {: m1:IR-BUILD:module :}
-   c m1 SECOND-ABI A64RA:ALLOCATE
-   m1 SECOND-ABI A64RAV:ACCEPT
-   c m1 A64EMIT:EMIT
-   A64SPILL:RELEASE ;
-
 : SECOND-BODY ( IR-CTX:ctx -- n n n )
    SECOND-EMITTED
    A64EMIT:INSNS
@@ -1035,15 +341,65 @@ $1000 constant BUMP-ADDR
    WBND [: SECOND-BODY ;] IR-CTX:WITH-CONTEXT
    $D65F03C0 T= $AA0103E0 T= 2 T= ;
 
-: RUN-SECOND-BODY ( IR-CTX:ctx -- n n )
-   SECOND-EMITTED
-   NFIX:RESULT-REG
-   7 9 PUBLISH EXEC2 ;
+\ ---- the emitted bytes, executed ---------------------------------------------
+\ Publishing the bytes and calling them take two owner rows, code-publish and
+\ the bounded FFI call, which a checked caller outside their owners is refused,
+\ so the executing cases live in test/compiler/native-emit-run-child.f and call
+\ through the public words test/mcode-window-prepare.f opens before the seal.
+\ That makes the child a window child of test/native-window-owner-child.f, with
+\ the dependency list lib/ffi-test.f FFI-T-STUB-ARGS gives its stub child.
+\ Reopening the window is refused on the sealed product (`hb: internal engine
+\ word`, exit 70), so the child runs on the engine test/whitebox-child.f names.
+$4000 constant CHILD-CAP
+create CHILD-OUT CHILD-CAP allot
+create CHILD-ERR CHILD-CAP allot
 
-: RUN-SECOND-CASE ( -- )
-   s" the emitted copy really returns the second argument" T-LABEL
-   WBND [: RUN-SECOND-BODY ;] IR-CTX:WITH-CONTEXT
-   9 T= 0 T= ;
+: CHILD-ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+
+: CHILD-ARGS ( -- )
+   PROC-ARGV-RESET
+   s" --load" CHILD-ARG
+   s" test/native-window-owner-child.f" CHILD-ARG
+   s" --" CHILD-ARG
+   s" test/compiler/native-emit-run-child.f" CHILD-ARG
+   s" src/core/declaration-transaction.f" CHILD-ARG
+   s" src/core/generated-declaration.f" CHILD-ARG
+   s" src/core/decl-event.f" CHILD-ARG
+   s" src/core/structure-make.f" CHILD-ARG
+   s" src/core/structure-decl.f" CHILD-ARG
+   s" src/core/enum-decl.f" CHILD-ARG
+   s" src/core/structures.f" CHILD-ARG
+   s" src/core/bytes.f" CHILD-ARG
+   s" src/core/dynamic-storage.f" CHILD-ARG
+   HB-TARGET-LINUX? if
+      s" src/os/linux/target.f" CHILD-ARG s" src/os/linux/layout.f" CHILD-ARG
+   else
+      s" src/os/macos/target.f" CHILD-ARG s" src/os/macos/layout.f" CHILD-ARG
+   then
+   s" src/habu/stack-abi.f" CHILD-ARG
+   s" src/habu/layout.f" CHILD-ARG
+   s" src/os/env-base.f" CHILD-ARG
+   s" src/core/include.f" CHILD-ARG
+   s" src/core/sha256.f" CHILD-ARG
+   s" src/habu/code-span.f" CHILD-ARG
+   s" test/mcode-window-prepare.f" CHILD-ARG
+   WHITEBOX-CHILD:ENV! ;
+
+: CHILD-RESULT ( -- )
+   WHITEBOX-CHILD:ENGINE$ >LEN CHILD-OUT CHILD-CAP >LEN CHILD-ERR CHILD-CAP >LEN
+   SUITE-BUDGET:CHILD-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   {: outu:len erru:len rc:n :}
+   CHILD-OUT outu LEN>N S\" test: ok\nwindow: 0\n" STR= 0= rc 0 <> or
+      if CHILD-OUT outu LEN>N type CHILD-ERR erru LEN>N type cr then
+   s" the window child that runs the emitted bytes exits 0" T-LABEL
+   rc 0 T=
+   s" every executing case passes in the window child" T-LABEL
+   CHILD-OUT outu LEN>N S\" test: ok\nwindow: 0\n" T$= ;
+
+: RUN-CHILD-CASE ( -- )
+   [: s" native-emit-run" WHITEBOX-CHILD:PROVIDE CHILD-ARGS CHILD-RESULT ;]
+   [: CLEANUP-RUN ;] finally ;
 
 \ ---- refusals ----------------------------------------------------------------
 \ Nobody has accepted anything yet. This case runs FIRST in the suite, because an
@@ -1385,21 +741,13 @@ public
    BUMP-CASE
    SQUARE-HABU-CASE
    MAP-CASE
-   RUN-SQUARE-CASE
-   RUN-DIFF-CASE
-   RUN-DIV-CASE
-   RUN-SUM3-CASE
-   RUN-REUSE-CASE
-   RUN-WIDE-CASE
    PLAIN-CASE
    TWO-FUNS-CASE
    DATA-ADDR-CASE
    SPILL-CASE
-   RUN-SPILL-CASE
    REMAT-EMIT-CASE
-   RUN-REMAT-CASE
    SECOND-CASE
-   RUN-SECOND-CASE
+   RUN-CHILD-CASE
    WBND [: GROUP-ADDR ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-BIND ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MODULE ;] IR-CTX:WITH-CONTEXT

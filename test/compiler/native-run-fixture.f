@@ -1,10 +1,15 @@
 \ Publish an emission into the engine code space and execute its bytes.
-\ C ABI entries use the bounded FFI call. Habu ABI entries refine the emitted
-\ address to the quotation effect promised by the fixture's source program;
-\ that test-only machine-code boundary does not certify arbitrary addresses.
-\ The bytes run immediately in the free slot; no snapshot retains this slot.
+\ It runs only inside the window test/mcode-window-prepare.f opens: publication
+\ appends through NPUB:WRITE-AT and C ABI entries use FFI:CALL-AT, the public
+\ words that window gives the code arena's and the FFI's owner rows. Habu ABI
+\ entries refine the emitted address to the quotation effect promised by the
+\ fixture's source program; that test-only machine-code boundary does not
+\ certify arbitrary addresses. Publication advances the code pointer past the
+\ bytes, so each published routine keeps its slot for the call that follows and
+\ the next publication lands after it.
 \ Store at source-map offsets so execution also checks the emitted layout.
 
+require lib/le.f
 require lib/ffi-abi.f
 require src/compiler/native/emit.f
 
@@ -13,7 +18,10 @@ using A64EMIT
 
 private
 
-TRUSTED: POKE ( n n -- ) patch32 ;
+\ The most bytes one published routine holds: 64 instructions, more than any
+\ executing case emits.
+$100 constant CODE-CAP
+CODE-CAP BUFFER: CODE
 
 
 : MAP-CHECK ( -- )
@@ -44,40 +52,42 @@ public
 : PLACE ( -- )
    cp@ PLACE-AT ;
 
-\ Store the sealed emission into the free code slot and answer its entry address.
-\ It must be called from inside a definition: a top-level `cp@` patch overwrites
-\ the line being interpreted.
+\ Lay the sealed emission out little-endian in CODE, append it at the free code
+\ slot and answer its entry address. It must be called from inside a definition:
+\ a top-level publication would write over the line being interpreted.
 : PUBLISH ( -- n )
    cp@ {: fn:n :}
    MAP-CHECK fn PLACE-CHECK fn ROOM-CHECK
+   SIZE CODE-CAP > if E-NPUB-SIZE throw then
    INSNS 0 ?do
-      i WORD@ fn i MAP-OFFSET@ + POKE
+      i WORD@ CODE i MAP-OFFSET@ + LE:U32!
    loop
+   CODE fn SIZE NPUB:WRITE-AT
    fn ;
 
 ;using
 
-TRUSTED: EXEC0 ( n -- n ) {: fn:n :}
+: EXEC0 ( n -- n ) {: fn:n :}
    FFI:RESET
-   FFI:ARGS FFI:REG-LENS 0 fn ffi-call-bounded ;
+   0 fn FFI:CALL-AT ;
 
-TRUSTED: EXEC1 ( n n -- n ) {: a:n fn:n :}
+: EXEC1 ( n n -- n ) {: a:n fn:n :}
    FFI:RESET
    a 0 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 1 fn ffi-call-bounded ;
+   1 fn FFI:CALL-AT ;
 
-TRUSTED: EXEC2 ( n n n -- n ) {: a:n b:n fn:n :}
+: EXEC2 ( n n n -- n ) {: a:n b:n fn:n :}
    FFI:RESET
    a 0 FFI:VALUE!
    b 1 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 2 fn ffi-call-bounded ;
+   2 fn FFI:CALL-AT ;
 
-TRUSTED: EXEC3 ( n n n n -- n ) {: a:n b:n c:n fn:n :}
+: EXEC3 ( n n n n -- n ) {: a:n b:n c:n fn:n :}
    FFI:RESET
    a 0 FFI:VALUE!
    b 1 FFI:VALUE!
    c 2 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 3 fn ffi-call-bounded ;
+   3 fn FFI:CALL-AT ;
 
 private
 

@@ -33,7 +33,6 @@ CAST: CODE-BYTES ( n -- ptr u8 )
 TRUSTED: REWRITE-FIRST ( n -- )
    {: entry:n :}
    entry CODE-BYTES LE:U32@ entry patch32 ;
-TRUSTED: REWIND-CODE ( n -- ) cp! ;
 
 : LOAD-SOURCE ( ptr u8 n -- )
    s" script-required" OPEN-TARGET-XT PATH-XT execute ;
@@ -84,7 +83,7 @@ TRUSTED: REWIND-CODE ( n -- ) cp! ;
    s" NATIVE-HOST-RECLAIM:EARLY" HANDLE
    s" NATIVE-HOST-RECLAIM:OLD" HANDLE NHOST:ASSOCIATE
    s" NATIVE-HOST-RECLAIM:EARLY" SELECTED-N 11 T=
-   s" NATIVE-HOST-RECLAIM:OLD" XREF-FIND XREF-START REWIND-CODE
+   s" NATIVE-HOST-RECLAIM:OLD" XREF-FIND XREF-START cp!
    [: STALE-SELECT ;] DEF-OCC:E-STALE TTHROWSQ
    s" NATIVE-HOST-RECLAIM:EARLY" REFUSES
    \ The mark belongs to the fresh target checker, like the loaded source.
