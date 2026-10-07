@@ -47,8 +47,9 @@ variable FRAME-CAP CAP-INIT FRAME-CAP !
 
 \ A literal segment opened inside the transaction outlives its rollback: DP stops
 \ at the DATA floor (src/habu/layout.f DATA-FLOOR-CELL).
-TRUSTED: DICTIONARY-DP! ( ptr a -- )
-   data-base DATA-FLOOR-CELL + @ data-base + max
+: DICTIONARY-DP! ( ptr a -- )
+   BYTE-VIEW NULL-PTR BYTE-VIEW -
+   data-base DATA-FLOOR-CELL + @ data-base BYTE-VIEW NULL-PTR BYTE-VIEW - + max
    data-base DP-CELL + ! ;
 
 : CHECK-DEPTH ( n -- )

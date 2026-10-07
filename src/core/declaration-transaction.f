@@ -101,8 +101,12 @@ $7FFFFFFFFFFFFFFF ROW-BYTES / constant MAX-ROWS
 : ST.FAILURE-PHASE ( ptr n -- ptr n ) ST.FAILURE-PHASE-OFF + ;
 : ST.FAILURE-PARTICIPANT ( ptr n -- ptr n ) ST.FAILURE-PARTICIPANT-OFF + ;
 : ST.CLEANUP-PARTICIPANT ( ptr n -- ptr n ) ST.CLEANUP-PARTICIPANT-OFF + ;
-TRUSTED: ST.DIAGNOSTIC ( ptr n -- ptr [ n n -- ] )
-   ST.DIAGNOSTIC-OFF + ;
+\ The diagnostic cell and a row's step cells hold quotations in the `ptr n` state
+\ and table cells; each cast retypes one such cell's pointee.
+CAST: >DIAG-CELL ( ptr n -- ptr [ n n -- ] )
+CAST: >STEP-CELL ( ptr n -- ptr [ n -- n ] )
+CAST: >RELEASE-CELL ( ptr n -- ptr [ -- ] )
+: ST.DIAGNOSTIC ( ptr n -- ptr [ n n -- ] ) ST.DIAGNOSTIC-OFF + >DIAG-CELL ;
 
 : TABLE@ ( ptr n -- ptr n ) ST.TABLE @ ;
 : CAP@ ( ptr n -- n ) ST.CAP @ ;
@@ -117,11 +121,11 @@ TRUSTED: ST.DIAGNOSTIC ( ptr n -- ptr [ n n -- ] )
 
 : ROW.ID ( ptr n -- ptr n ) ROW.ID-OFF + ;
 : ROW.ORDER ( ptr n -- ptr n ) ROW.ORDER-OFF + ;
-TRUSTED: ROW.SNAPSHOT ( ptr n -- ptr [ n -- n ] ) ROW.SNAPSHOT-OFF + ;
-TRUSTED: ROW.PREPARE ( ptr n -- ptr [ n -- n ] ) ROW.PREPARE-OFF + ;
-TRUSTED: ROW.COMMIT ( ptr n -- ptr [ n -- n ] ) ROW.COMMIT-OFF + ;
-TRUSTED: ROW.ROLLBACK ( ptr n -- ptr [ n -- n ] ) ROW.ROLLBACK-OFF + ;
-TRUSTED: ROW.RELEASE ( ptr n -- ptr [ -- ] ) ROW.RELEASE-OFF + ;
+: ROW.SNAPSHOT ( ptr n -- ptr [ n -- n ] ) ROW.SNAPSHOT-OFF + >STEP-CELL ;
+: ROW.PREPARE ( ptr n -- ptr [ n -- n ] ) ROW.PREPARE-OFF + >STEP-CELL ;
+: ROW.COMMIT ( ptr n -- ptr [ n -- n ] ) ROW.COMMIT-OFF + >STEP-CELL ;
+: ROW.ROLLBACK ( ptr n -- ptr [ n -- n ] ) ROW.ROLLBACK-OFF + >STEP-CELL ;
+: ROW.RELEASE ( ptr n -- ptr [ -- ] ) ROW.RELEASE-OFF + >RELEASE-CELL ;
 
 : ID@ ( ptr n n -- n ) ROW ROW.ID @ ;
 : ORDER@ ( ptr n n -- n ) ROW ROW.ORDER @ ;

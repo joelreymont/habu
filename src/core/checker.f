@@ -10373,6 +10373,7 @@ PRIM: DIAG-JSON!     PE-F PE-IN PRIM;
 PRIM: DIAG-BUFFER!   PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: DIAG-BUFFER-OFF PRIM;
 PRIM: DIAG-BUFFER$   PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: DIAG>SRC       PE-PTR-U8 PE-IN PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: DIAG-FD!       PE-N PE-IN PRIM;
 PRIM: CHECKER-SCOPE-START PRIM;
 PRIM: CHECKER-SCOPE-START-NEUTRAL PRIM;
@@ -19699,6 +19700,7 @@ PTR-VARIABLE DCLOSE-A  variable DCLOSE-U
       p DSRC-A @ - 0 0= EXIT
    THEN
    0 0 0= 0= ;
+REG-PROTECT
 
 \ The pre-verifier needs the pinned token in the source it read, not in its
 \ reused body buffer: it may check a does> parent after its clause, then report

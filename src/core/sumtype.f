@@ -968,12 +968,16 @@ public
 
 \ TDECL-TXN-ARMED carries REG-PROTECT and the two flags further down do not, and
 \ the difference is one measured fact about their writers: this one is stored
-\ from inside a colon body in src/core/generated-declaration.f, which loads
-\ before the checker hook, so the store is a COMPILED reference and REG-PROTECT
-\ (which closes interpret and the tick, not compile mode) leaves it alone. The
-\ note beside TDECL-EVAL-ARMED below has the other half.
+\ only by TXN-INSTALL below, a compiled reference inside this file, so
+\ REG-PROTECT (which closes interpret and the tick, not compile mode) leaves it
+\ alone. The note beside TDECL-EVAL-ARMED below has the other half.
 defer TDECL-TXN-XT ( [ -- ] -- )   REG-PROTECT
 variable TDECL-TXN-ARMED   REG-PROTECT
+\ The declaration owner installs its runner once, at load; a second install is refused,
+\ so the public word cannot replace the transaction runner afterwards.
+: TXN-INSTALL ( [ [ -- ] -- ] -- )
+   TDECL-TXN-ARMED @ IF s" sumtype: declaration transaction already installed" 76 die THEN
+   is TDECL-TXN-XT  -1 TDECL-TXN-ARMED ! ;
 defer TDECL-EVENT-CURRENT-XT ( -- n )   REG-PROTECT
 defer TDECL-EVENT-DECL-XT ( n n -- n )   REG-PROTECT
 defer TDECL-EVENT-ARITY-XT ( n n n -- n )   REG-PROTECT

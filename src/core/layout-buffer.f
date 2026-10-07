@@ -201,10 +201,8 @@ PTR-VARIABLE STGT-START
 \ it. `create` rounds the same way, so the generated `create` finds an aligned
 \ pointer and leaves it in place. The pad bytes are dictionary space nothing
 \ names.
-TRUSTED: LBUF-ALIGN-PAD ( -- n )  here CELL 1- and CELL swap - CELL 1- and ;
-
 : LBUF-ALIGN ( -- )
-   LBUF-ALIGN-PAD allot ;
+   align ;
 
 \ The `create` in the generated source publishes the storage word at the DP the
 \ definer measured, and the definer allots and zeroes against that same DP once
@@ -220,7 +218,7 @@ TRUSTED: LBUF-ALIGN-PAD ( -- n )  here CELL 1- and CELL swap - CELL 1- and ;
 \ Whole-record stores move ordinary cells. Walk the admitted instantiated term
 \ at capture, using the active sum tag so shared payload slots are classified
 \ as code only while their active alternative holds a quotation.
-TRUSTED: STORAGE-MARK-TERM ( ptr a n -- ) {: base:ptr term:n :}
+: STORAGE-MARK-TERM ( ptr n n -- ) {: base:ptr term:n :}
    term TFAM:TFAM-STORAGE-QUOT? if base @ base xt! exit then
    term TFAM:TFAM-STORAGE-PRODUCT? if
       {: fam:n :}
@@ -246,7 +244,7 @@ TRUSTED: STORAGE-MARK-TERM ( ptr a n -- ) {: base:ptr term:n :}
       loop drop
    else drop then ;
 
-: STORAGE-MARK-FIXED ( ptr a ptr u8 n -- ) {: base:ptr type:ptr typeu:n :}
+: STORAGE-MARK-FIXED ( ptr n ptr u8 n -- ) {: base:ptr type:ptr typeu:n :}
    type typeu CHECKER-STORAGE-TERM 0= if drop E-LAYOUT-BUFFER throw then
    {: term:n :}
    LBUF-N @ 0 ?do
@@ -263,7 +261,7 @@ defer STORAGE-CLEAR-XT ( n n -- )
    ['] STORAGE-CLEAR-MISSING is STORAGE-CLEAR-XT ;
 STORAGE-CLEAR-DEFAULT
 
-TRUSTED: STORAGE-CAPTURE-WALK ( n n n -- ) {: off:n count:n term:n :}
+: STORAGE-CAPTURE-WALK ( n n n -- ) {: off:n count:n term:n :}
    term T-WIDTH {: width:n :}
    count width LBUF-EXTENT?
    0= if drop E-LAYOUT-BUFFER throw then {: bytes:n :}

@@ -97,12 +97,11 @@ package DECL-REJECT
 
 create SPAN-BUF  SLOTS REASON-CAP + SPAN-CAP * allot
 create SPAN-LEN  SLOTS REASON-CAP + cells allot
-create SLOT-SRC  SLOTS 2 * cells allot
+SLOTS PTR-U8-TABLE SLOT-SRC-A        \ the span a slot was copied from: its bytes
+create SLOT-SRC-U  SLOTS cells allot  \ and its length
 
-\ The raw-memory boundary of this package.  A checked body cannot type the
-\ address arithmetic from a `create` region to a `ptr u8` span; every other
-\ word here is ordinary checked Habu.  SLOT! clamps to SPAN-CAP, so no caller can
-\ write past its slot regardless of the span it was handed.
+\ SLOT! clamps to SPAN-CAP, so no caller can write past its slot regardless of
+\ the span it was handed.
 \
 \ A capped span is MARKED, not silently shortened: the last MARK-LEN bytes of the
 \ slot become "..." so the rendered packet says the value continued rather than
@@ -112,19 +111,19 @@ create SLOT-SRC  SLOTS 2 * cells allot
 \ honest while still refusing to read memory the declaration no longer owns.
 \
 \ SRC! and SRC@ hold the span a slot was copied from; FORGET-SRC drops them all.
-TRUSTED: SRC! ( ptr u8 n n -- )   \ span, slot
+: SRC! ( ptr u8 n n -- )   \ span, slot
    {: a:ptr u:n s:n :}
-   a  s 2 * cells SLOT-SRC + !
-   u  s 2 * 1 + cells SLOT-SRC + ! ;
-TRUSTED: SRC@ ( n -- ptr u8 n )
+   a SLOT-SRC-A s ptr-field !
+   u s cells SLOT-SRC-U + ! ;
+: SRC@ ( n -- ptr u8 n )
    {: s:n :}
-   s 2 * cells SLOT-SRC + @  s 2 * 1 + cells SLOT-SRC + @ ;
-TRUSTED: FORGET-SRC ( -- )
-   0 BEGIN dup SLOTS 2 * < WHILE
-      0 over cells SLOT-SRC + !
-      1 +
-   REPEAT drop ;
-TRUSTED: SLOT! ( ptr u8 n n -- ) {: a:ptr u:n s:n :}   \ span, slot
+   SLOT-SRC-A s ptr-field @  s cells SLOT-SRC-U + @ ;
+: FORGET-SRC ( -- )
+   SLOTS 0 ?do
+      NULL-PTR SLOT-SRC-A i ptr-field !
+      0 i cells SLOT-SRC-U + !
+   loop ;
+: SLOT! ( ptr u8 n n -- ) {: a:ptr u:n s:n :}   \ span, slot
    u SPAN-CAP > IF SPAN-CAP ELSE u THEN {: len:n :}
    len s cells SPAN-LEN + !
    s SPAN-CAP * SPAN-BUF + {: d:ptr :}
@@ -139,7 +138,7 @@ TRUSTED: SLOT! ( ptr u8 n n -- ) {: a:ptr u:n s:n :}   \ span, slot
       REPEAT drop
    THEN
    s SLOTS < IF a u s SRC! THEN ;
-TRUSTED: SLOT@ ( n -- ptr u8 n ) {: s:n :}
+: SLOT@ ( n -- ptr u8 n ) {: s:n :}
    s SPAN-CAP * SPAN-BUF +  s cells SPAN-LEN + @ ;
 
 \ The offending token RENDER hands the writer, which locates a token by its
@@ -151,7 +150,7 @@ TRUSTED: SLOT@ ( n -- ptr u8 n ) {: s:n :}
 \ in no armed text, so its stale bytes are never read. The borrowed span is
 \ whole: SPAN-CAP and its marker bound only the copy, so a located token renders
 \ in full and names the same bytes as its byte range.
-TRUSTED: TOKEN-SPAN@ ( -- ptr u8 n )
+: TOKEN-SPAN@ ( -- ptr u8 n )
    S-TOKEN SRC@
    {: a:ptr u:n :}
    a DIAG>SRC nip IF a u EXIT THEN
@@ -640,9 +639,7 @@ DECLARATION-TRANSACTION:PHASE-ROLLBACK constant PHASE-ROLLBACK
 
 private
 
-TRUSTED: INSTALL-DECLARATION-RUNNER ( -- )
-   [: GENERATED-DECL-OWNER:RUN ;] is TYPE-DECL:TDECL-TXN-XT
-   -1 TDECL-TXN-ARMED ! ;
+: INSTALL-DECLARATION-RUNNER ( -- ) [: GENERATED-DECL-OWNER:RUN ;] TYPE-DECL:TXN-INSTALL ;
 
 INSTALL-DECLARATION-RUNNER
 get-current prot-wid-add
