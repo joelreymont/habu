@@ -12488,8 +12488,11 @@ $2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
 \ lookup by name (scope-find, SCOPE-WL-PROBE), which cannot list a wordlist. A
 \ record spans CK-REC-WID's slot and those before it, the size the bound window
 \ divides by to name a record's index.
-TRUSTED: CK-N>REC ( n -- ptr n ) ;
-: CK-REC-AT ( n -- ptr n ) DICT-WORDLIST-SLOT 1+ cells * dbase@ + CK-N>REC ;
+package CHECKER-RESOLVE
+CAST: N>REC ( n -- ptr n )
+public
+: REC-AT ( n -- ptr n ) DICT-WORDLIST-SLOT 1+ cells * dbase@ + N>REC ;
+;package
 
 \ The used slot whose public wordlist is wid, or -1. The engine's USE-WIDS and
 \ this checker's name mirror share one index (CHECKER-USING records the name at
@@ -20564,7 +20567,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 : VIS-WL ( ptr u8 n n -- )
    {: qa:ptr qu:n wid:n :}
    ndict@ 0 ?do
-      i CK-REC-AT {: rec:ptr :}
+      i CHECKER-RESOLVE:REC-AT {: rec:ptr :}
       rec CK-REC-WID wid = IF
          rec CK-REC-NAME$ {: a:ptr u:n :}
          u 0 <> IF qa qu a u VIS-QWORD THEN
@@ -20584,7 +20587,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 \ Every package's public records, from the namespace wordlist's (-1) records.
 : VIS-PACKAGES ( -- )
    ndict@ 0 ?do
-      i CK-REC-AT {: rec:ptr :}
+      i CHECKER-RESOLVE:REC-AT {: rec:ptr :}
       rec CK-REC-WID -1 = IF rec VIS-PACKAGE THEN
    loop ;
 
@@ -20604,7 +20607,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 \ for are asked too. The selection, not this record, spells what is offered.
 : VIS-RECS ( -- )
    ndict@ 0 ?do
-      i CK-REC-AT CK-REC-NAME$ {: a:ptr u:n :}
+      i CHECKER-RESOLVE:REC-AT CK-REC-NAME$ {: a:ptr u:n :}
       u 0 <> IF a u VIS-WORD THEN
    loop ;
 
@@ -22350,7 +22353,7 @@ create CK-LEX-DOMAINS 64 cells allot
 \ depths is revisited at the shallower depth, where a free bound variable is
 \ visible. A memo hit needs matching domains for outer binders this node can
 \ name; paths differing only in unused domains share one result.
-TRUSTED: CK-GRAPH-LEX? ( n n n -- ) {: off:n ctx:n depth:n :}
+: CK-GRAPH-LEX? ( n n n -- ) {: off:n ctx:n depth:n :}
    off 0= IF EXIT THEN
    depth TWALK-MAX-DEPTH > depth 64 >= or IF ASIG-GRAPH-DIE THEN
    off EN-TAG-CELL CK-LEX-FIELD {: tag:n :}
@@ -22372,15 +22375,15 @@ TRUSTED: CK-GRAPH-LEX? ( n n n -- ) {: off:n ctx:n depth:n :}
    mark depth domains CK-LEX-MEMO-SEEN? IF EXIT THEN
    mark depth domains CK-LEX-MEMO-ADD
    tag EN-ROW = IF
-      ctx CK-LEX-SLOT and IF ASIG-GRAPH-DIE THEN EXIT THEN
+      ctx CK-LEX-SLOT and 0 <> IF ASIG-GRAPH-DIE THEN EXIT THEN
    tag EN-VAR = IF
       off EN-B-CELL CK-LEX-FIELD TVK-SCOPE =
       ctx CK-LEX-SLOT and 0 <> ctx CK-LEX-SCOPE and 0 <> and
-      <> IF ASIG-GRAPH-DIE THEN
+      xor IF ASIG-GRAPH-DIE THEN
       off EN-B-CELL CK-LEX-FIELD TVK-REGION =
       ctx CK-LEX-SLOT and 0 <> ctx CK-LEX-REGION and 0 <> and
-      <> IF ASIG-GRAPH-DIE THEN EXIT THEN
-   ctx CK-LEX-SLOT and IF ASIG-GRAPH-DIE THEN
+      xor IF ASIG-GRAPH-DIE THEN EXIT THEN
+   ctx CK-LEX-SLOT and 0 <> IF ASIG-GRAPH-DIE THEN
    tag EN-CON = tag EN-ATOM = or IF EXIT THEN
    tag EN-PUSH = IF
       off EN-A-CELL CK-LEX-FIELD ctx depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
@@ -25173,11 +25176,14 @@ defer SOURCE-CON-NAME ( n -- ptr u8 n )
 : CLAIM-SOURCE-OWNER ( -- )
    DECLARATIONS data-base SOURCE-CELL + 0 ptr-field ! ;
 
-\ Binding a private owner callback is the only raw execution-token boundary.
-TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
+\ The owner's two callbacks are stored as raw cells in its record; these casts
+\ are the one crossing from a stored execution token to the quotation each defer takes.
+CAST: AS-SOURCE-ROW ( n -- [ n -- ptr u8 ptr u8 ptr u8 n bool ] )
+CAST: AS-CON-NAME ( n -- [ n -- ptr u8 n ] )
+: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    ['] FOREIGN-CON is E-I-FOREIGN-CON
-   owner SOURCE-ROW-OFF + CELL-VIEW @ is SOURCE-ROW
-   owner SOURCE-CON-OFF + CELL-VIEW @ is SOURCE-CON-NAME ;
+   owner SOURCE-ROW-OFF + CELL-VIEW @ AS-SOURCE-ROW is SOURCE-ROW
+   owner SOURCE-CON-OFF + CELL-VIEW @ AS-CON-NAME is SOURCE-CON-NAME ;
 
 : TRANSFER-SYMBOL ( ptr u8 -- n ) {: sym:ptr :}
    sym SYM-XFER.PKG-A @ sym SYM.PKG-U @ sym SYM.VIS @
@@ -26517,7 +26523,7 @@ CLAIM-COLD-SOURCE
    nameu 0= wid -2 = or IF s" checker: nominal provider has no live record" 76 die THEN
    wid 0= IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
    ndict@ 0 ?DO
-      i CK-REC-AT {: ns:ptr :}
+      i CHECKER-RESOLVE:REC-AT {: ns:ptr :}
       ns CK-REC-WID -1 = IF
          wid ns @ = IF
             ns CK-REC-NAME$ SYM-PUBLIC name nameu CHECKER-PKG-SYM
@@ -26537,7 +26543,7 @@ CLAIM-COLD-SOURCE
       sym CTL-MASKS-SYM NORET-ADD-SYM ;
 : NOMINAL-PROVIDER ( -- )
    ndict@ 0= IF s" checker: nominal provider has no dictionary record" 76 die THEN
-   ndict@ 1- CK-REC-AT NOMINAL-ADD-REC ;
-DEFRECORD-REC-ID CK-REC-AT NOMINAL-ADD-REC
-DEFLINEAR-REC-ID CK-REC-AT NOMINAL-ADD-REC
+   ndict@ 1- CHECKER-RESOLVE:REC-AT NOMINAL-ADD-REC ;
+DEFRECORD-REC-ID CHECKER-RESOLVE:REC-AT NOMINAL-ADD-REC
+DEFLINEAR-REC-ID CHECKER-RESOLVE:REC-AT NOMINAL-ADD-REC
 REG-PROTECT
