@@ -60,9 +60,7 @@ variable TCF   variable TCOK
 \ checker-internal colon words it probes, at top level and in checked bodies;
 \ on the unsealed engine a checked body binds each one's recorded row. The
 \ TWX- words are checked aliases. tools/bootstrap.sh also runs this file,
-\ unsealed, on the recovery engine hb-stdin, whose cold prefix records declared
-\ rows only from src/core/checker.f's source claim at that file's end: there a
-\ checked body naming a word checker.f defines is E-UNDEFINED.
+\ unsealed, on the recovery engine hb-stdin, where the same bodies bind.
 : TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
 : TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
 : TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
@@ -891,9 +889,7 @@ TFAM:E-TFAM-PAYLOAD constant E-COMMITTED-PAYLOAD
 
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): the engine-private
 \ registration, event, generator, and plan words are named directly or through
-\ checked aliases. A TRUSTED: shim here forwards to a word src/core/checker.f
-\ defines, which hb-stdin's cold prefix records no row for (see TWX- above).
-\ The generator's three payload capabilities carry their exact effects across
+\ checked aliases (see TWX- above). The generator's three payload capabilities carry their exact effects across
 \ those boundaries, so the checker types every provider this suite builds.
 : SUM-DECL ( ptr u8 n ptr u8 n -- ) CHECKER-DEFSUM ;
 : PROD-DECL ( ptr u8 n ptr u8 n -- ) CHECKER-DEFPRODUCT ;
@@ -904,13 +900,13 @@ TFAM:E-TFAM-PAYLOAD constant E-COMMITTED-PAYLOAD
 : VAR-START ( n -- n ) TFAM-VAR-START@ ;
 : PKG-PUBLIC ( -- n ) CHECKER-VIS-PUBLIC ;
 : SUM-KIND ( -- n ) TK-SUM ;
-TRUSTED: CON-CODE ( ptr u8 n -- n ) CON-OF ;
+: CON-CODE ( ptr u8 n -- n ) CON-OF ;
 : SUMV-COUNT ( -- n ) SUMV-N @ ;
 : FLD-COUNT ( -- n ) TYPE-FIELD:COUNT ;
 : CELL-BYTES ( -- n ) CELL ;
-TRUSTED: PEND-CLEAR ( -- ) CTOR-PEND-CLEAR ;
-TRUSTED: CAND-START ( -- ) CHECK-CANDIDATE-START ;
-TRUSTED: CAND-DONE ( n -- n ) CHECK-CANDIDATE-DONE ;
+: PEND-CLEAR ( -- ) CTOR-PEND-CLEAR ;
+: CAND-START ( -- ) CHECK-CANDIDATE-START ;
+: CAND-DONE ( n -- n ) CHECK-CANDIDATE-DONE ;
 : PLAN-ROWS ( -- n ) TDPLAN-N @ ;
 
 \ --- provider 1: coherent, and deliberately not the committed view. It answers

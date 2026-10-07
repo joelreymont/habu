@@ -27,7 +27,7 @@ variable CURSOR variable USED variable COMPARING
 variable SCALAR
 public
 
-TRUSTED: BYTES ( ptr u8 n -- ) {: src:ptr u:n :}
+: BYTES ( ptr u8 n -- ) {: src:ptr u:n :}
    u CAP CURSOR @ - > IF 79 throw THEN
    SNAPSHOT CURSOR @ + {: saved:ptr :}
    COMPARING @ IF
@@ -108,7 +108,7 @@ public
    s" HABU_PAYLOAD_TEST_ARTIFACT" GETENV
    dup 0= IF s" graph roundtrip: missing artifact path" 79 die THEN ;
 
-TRUSTED: SAVE ( -- )
+: SAVE ( -- )
    AOT-SIG-BUF@ AOT-SIG-N @ SIG-ROW * AOT-SIG-STR-BUF@ AOT-SIG-STR-LEN @ {: rows:ptr rowu:n str:ptr stru:n :}
    3 POOL !
    56 POOL 8 + ! rowu POOL 16 + !

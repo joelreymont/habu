@@ -92,7 +92,7 @@ variable RI-CURSOR variable RI-COMPARE variable RI-USED
    REG-AOT-MEMO-U @ 0 RI-EQ
    REG-AOT-MEMO @ NULL-PTR = 0= IF 79 throw THEN ;
 
-TRUSTED: RI-COPY-A ( -- ) RI-A RI-BAD RI-A-U @ ARENA-COPY ;
+: RI-COPY-A ( -- ) RI-A RI-BAD RI-A-U @ ARENA-COPY ;
 
 : RI-COUNTS-AGREE ( -- )
    RI-A-U @ RI-B-U @ RI-EQ
@@ -189,7 +189,7 @@ TRUSTED: RI-COPY-A ( -- ) RI-A RI-BAD RI-A-U @ ARENA-COPY ;
 
 \ Keep the v8 table and carried prefix valid while its final nonempty store
 \ claims a fresh append and every earlier nonempty store is already installed.
-TRUSTED: RI-MIXED-STATE ( -- )
+: RI-MIXED-STATE ( -- )
    RI-COPY-A
    RI-BAD 7 REG-AOT-ROW@ {: base:n count:n bytes:n :}
    count 7 REG-AOT-WIDTH * {: extra:n :}

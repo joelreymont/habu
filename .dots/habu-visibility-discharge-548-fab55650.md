@@ -89,10 +89,10 @@ Landed; every id below is an ancestor of master.
 - B9 stack, the suites' shims checked on the unsealed engine: 9285d418 (B9a1, type-family suites), 26debbea (B9a2, type-decl and scan-index), 10baeb79 (B9b first half, effect and decl-event suites), bea8a267 (B9c, structure and layout) and 3f5e2054 (the eval follow-up, evaluate-closed), carried as 9684573b. The descriptions record 355 -> 36 TRUSTED: in the stack's suite files: B9a1 97 -> 0, B9a2 138 -> 43, B9b first half 61 -> 7 and B9c 59 -> 4, then 22 -> 4 at the evaluate sites.
 - Evaluate sweep: 63c90bd1 "Evaluate the remaining test texts closed", TRUSTED: 46 -> 27 in its 15 files, with the review's VALUE finding folded in.
 - B9b second half: "Check the engine and writer tests' shims", TRUSTED: 61 -> 14 in its files: test/engine-suite.f 41 -> 4, test/engine-writers.f 19 -> 10, test/prim-owner-scope-child.f 1 -> 0. Kept by class: T-MAKE-OWN and T-FREE-OWN (b, cast), ES-PATCH32 and ES-FFI-CALL (d), RECORD (d) and the nine EW-* writer-guard callers (w). Rows unchanged: engine (WHITEBOX-SUITE) 1454/0, engine-writers 386, prim-owner-scope 59.
+- The last eight shims, whose targets step 3 gave rows, are checked `:` definitions ("Check the last eight shims in three tests", Joel's approval 2026-10-07): test/type-ctor-suite.f CON-CODE, PEND-CLEAR, CAND-START, CAND-DONE; test/aot-payload-graph-child.f BYTES, SAVE; test/aot-registry-identity-child.f RI-COPY-A, RI-MIXED-STATE. Rows type-ctor (whitebox), aot-payload-graph, aot-registry-identity rc 0 and the Gforth recovery check (which runs type-ctor-suite.f on hb-stdin) rc 0, on master 3c6d98db's engine.
 
 Remaining with this dot:
-- The eight sites whose targets step 3 gave rows are still TRUSTED:. In test/type-ctor-suite.f: CON-CODE, PEND-CLEAR, CAND-START and CAND-DONE (907-913). In test/aot-payload-graph-child.f: BYTES (30) and SAVE (111). In test/aot-registry-identity-child.f: RI-COPY-A (95) and RI-MIXED-STATE (192). The session permission check refused converting them to `:`, so they wait for Joel.
-- test/ holds 281 TRUSTED: definitions after the B9b second half (`rg -c '^\s*TRUSTED:' -g '*.f' test`).
+- test/ holds 273 TRUSTED: definitions (`rg -c '^\s*TRUSTED:' -g '*.f' test`).
 Owned elsewhere:
 - The kept (d) sites (CERT-SIZE, DICT-MIN, UNCHECKED+/-) and step 4's forth-card.md section 9 row go with B12 (habu-delete-the-trusted-42b30edd).
 - TWX-XPG-CHECK (type-ctor-suite.f:702) is a cast for habu-turn-deliberate-cast-ad2e237d.
