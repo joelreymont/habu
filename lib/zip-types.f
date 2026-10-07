@@ -3,7 +3,8 @@ package ZIP
 public
 NEWTYPE archive 0
 NEWTYPE entry 0
-$7A00 constant E-LIBRARY
+\ $7A00 was E-LIBRARY: the FUNCTION: declarer resolves libzip and names its
+\ own failure, E-FFI-DLSYM. The number stays unused.
 $7A01 constant E-OPEN
 $7A02 constant E-HANDLE
 $7A03 constant E-ENTRY

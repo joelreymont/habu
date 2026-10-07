@@ -1279,7 +1279,8 @@
 -9119 constant E-SERIAL-LAST
 -9110 constant E-SERIAL-OPERAND
 -9111 constant E-SERIAL-PLATFORM
--9112 constant E-SERIAL-SYMBOL
+\ -9112 was E-SERIAL-SYMBOL: the FUNCTION: declarer resolves this module's
+\ symbols and names its own failure, E-FFI-DLSYM. The number stays unused.
 -9113 constant E-SERIAL-RESULT
 
 \ XMODEM packet codec and serial transfer: -9120..-9139.

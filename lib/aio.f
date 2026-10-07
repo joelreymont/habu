@@ -307,7 +307,7 @@ FUNCTION: URING-ENTER-CALL syscall ( n n n n n n n -- n )
 \ MEM-MAPPED>PTR. Three calls exist, one per mapping, each right after the mmap
 \ that produced the address, and every later read and write through the three
 \ pointers passes MAP-AT's bound, which is the length io_uring_params reported.
-TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
+CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 
 \ An offset and a width inside one mapping. Out of bounds is this module's own
 \ defect, not a condition a caller can provoke or recover from, so it ends the
@@ -1169,7 +1169,7 @@ public
 \ Select after the shared package is complete so the host module can reopen it.
 package AIO-LOAD
 public
-TRUSTED: HOST ( -- )
+: HOST ( -- )
    HB-TARGET-MACOS? if s" lib/aio-macos.f" required then ;
 ;package
 AIO-LOAD:HOST

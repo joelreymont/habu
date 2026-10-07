@@ -3,7 +3,6 @@
 require lib/unicode/class.f
 require lib/utf8-scalar.f
 require lib/ffi-abi.f
-require lib/image-lifecycle.f
 
 package UNICODE
 using FFI
@@ -11,8 +10,8 @@ using FFI
 public
 
 -9150 constant E-UTF8
--9151 constant E-LIBRARY
--9152 constant E-SYMBOL
+\ -9151 and -9152 were E-LIBRARY and E-SYMBOL: the FUNCTION: declarer resolves
+\ libunistring and names its own failure, E-FFI-DLSYM. The numbers stay unused.
 -9153 constant E-CASEFOLD
 -9154 constant E-CAPACITY
 
@@ -30,81 +29,7 @@ private
    size VALID-LENGTH
    source size UTF8:VALID? 0= if E-UTF8 throw then ;
 
-\ The soname this target loads, NUL-terminated for dlopen.
-FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER NAME-BUF
-create LIBRARY-NAME LIBRARY-PATH-CAP allot
-
-: LIBRARY$ ( -- ptr u8 )
-   s" unistring" 5 NAME-BUF LIBRARY-NAME$ LIBRARY-NAME CSTR LIBRARY-NAME ;
-
-variable LIBRARY
-variable COMPARE-XT
-variable FOLD-XT
-variable FREE-XT
-variable CLOSE-XT
-variable REGISTERED
-here data-base - negate 7 and allot
-variable READY
-
-: SYMBOL ( ptr u8 -- n )
-   LIBRARY @ swap DLSYM dup 0= if E-SYMBOL throw then ;
-
-\ Exact dlclose schema: one scalar library handle and one int result.
-\ Owner: Unicode foreign bindings; exercised by the image lifecycle regression.
-TRUSTED: CLOSE-CALL ( -- n )
-   ARGS REG-LENS 1 CLOSE-XT @ ffi-call-bounded ;
-
-: RELEASE-LIBRARY ( -- )
-   0 COMPARE-XT ! 0 FOLD-XT ! 0 FREE-XT !
-   LIBRARY @ 0<> if
-      RESET LIBRARY @ 0 VALUE!
-      CLOSE-CALL 0<> if E-LIBRARY throw then
-      0 LIBRARY !
-   then
-   0 CLOSE-XT ! ;
-
-\ Capture is quiescent. Release the owned dlopen reference and remove every
-\ process address before the image records these mutable cells.
-: RESET-SYMBOLS ( -- )
-   0 READY atomic!
-   RELEASE-LIBRARY
-   0 REGISTERED ! ;
-
-: REGISTER-CLEANUP ( -- )
-   REGISTERED @ 0= if
-      [: RESET-SYMBOLS ;] IMAGE-LIFECYCLE:REGISTER
-      1 REGISTERED !
-   then ;
-
-\ RTLD_DEFAULT is -2 on Darwin and NULL on Linux.
-: DEFAULT-HANDLE ( -- n )
-   HB-TARGET-MACOS? if -2 else 0 then ;
-
-: LOAD-SYMBOLS ( -- )
-   REGISTER-CLEANUP
-   RELEASE-LIBRARY
-   DEFAULT-HANDLE s\" dlclose\z" drop DLSYM dup 0= if E-SYMBOL throw then CLOSE-XT !
-   LIBRARY$ NOW DLOPEN dup 0= if E-LIBRARY throw then LIBRARY !
-   s\" u8_casecmp\z" drop SYMBOL COMPARE-XT !
-   s\" u8_casefold\z" drop SYMBOL FOLD-XT !
-   s\" free\z" drop SYMBOL FREE-XT ! ;
-
-: INIT ( -- )
-   begin
-      READY atomic@ 2 = if exit then
-      0 1 READY atomic-cas 0= if
-         [: LOAD-SYMBOLS ;] catch {: error:n :}
-         error 0<> if
-            [: RELEASE-LIBRARY ;] catch {: cleanup:n :}
-            0 READY atomic!
-            cleanup 0<> if cleanup throw then
-            error throw
-         then
-         2 READY atomic! exit
-      then
-   again ;
-
-\ Slot 15 is task-local FFI scratch, beyond this call's seven arguments.
+\ Slot 15 is task-local FFI scratch, beyond either call's arguments.
 \ Zero the complete cell, then expose exactly C's four-byte int output.
 \ FFI:ARGS declares the register area a cell array, so the slot is already a
 \ cell pointer and the byte round trip that used to reach it is gone.
@@ -112,36 +37,26 @@ TRUSTED: CLOSE-CALL ( -- n )
    ARGS 15 cells + ;
 
 \ Exact u8_casecmp schema: two counted, read-only UTF-8 spans, two NULL
-\ policy pointers, and one four-byte writable result. No callable raw binding
-\ or configurable foreign symbol escapes this package.
-TRUSTED: COMPARE ( ptr u8 n ptr u8 n -- n )
-   {: left:ptr left-size:n right:ptr right-size:n :}
-   RESET
-   left 0 READABLE! left-size 1 VALUE!
-   right 2 READABLE! right-size 3 VALUE!
-   0 4 VALUE! 0 5 VALUE!
-   RESULT 4 6 WRITABLE!
-   ARGS REG-LENS 7 COMPARE-XT @ ffi-call-bounded ;
-
-\ NULL resultbuf requests one owned allocation. The returned pointer is
-\ refined here; only the matched private free binding may consume it.
-TRUSTED: FOLD-CALL ( ptr u8 n -- ptr u8 )
-   {: source:ptr size:n :}
-   RESET
-   source 0 READABLE! size 1 VALUE!
-   0 2 VALUE! 0 3 VALUE! 0 4 VALUE!
-   RESULT CELL 5 WRITABLE!
-   ARGS REG-LENS 6 FOLD-XT @ ffi-call-bounded
-   dup 0= if E-CASEFOLD throw then ;
-
-TRUSTED: RELEASE ( ptr u8 -- )
-   RESET 0 READABLE!
-   ARGS REG-LENS 1 FREE-XT @ ffi-call-bounded drop ;
+\ policy pointers, and one four-byte writable result. NULL resultbuf asks
+\ u8_casefold for one owned allocation, which only the matched private free
+\ binding may consume. No callable raw binding or configurable foreign symbol
+\ escapes this package.
+VERSIONED-LIBRARY unistring 5
+FUNCTION: COMPARE-CALL u8_casecmp ( ptr u8 n ptr u8 n n n ptr u8 -- i32 )
+   6 4 WRITES-BYTES                      \ int *resultp
+;FUNCTION
+FUNCTION: FOLD-CALL u8_casefold ( ptr u8 n n n n ptr u8 -- ptr u8 )
+   5 CELL WRITES-BYTES                   \ size_t *lengthp
+;FUNCTION
+PROCESS-SYMBOLS
+FUNCTION: RELEASE free ( ptr u8 -- ) ;FUNCTION
 
 : ALLOCATE-FOLD ( ptr u8 n -- ptr u8 n )
    2dup VALID-UTF8
-   INIT
-   0 RESULT ! FOLD-CALL RESULT @ ;
+   0 RESULT !
+   0 0 0 RESULT BYTE-VIEW FOLD-CALL
+   dup >CELL 0= if E-CASEFOLD throw then
+   RESULT @ ;
 
 \ Keep the same stack shape on success and failure for the cleanup path.
 : COPY-FOLD ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
@@ -157,9 +72,8 @@ public
 : CASEFOLD= ( ptr u8 n ptr u8 n -- bool )
    {: left:ptr left-size:n right:ptr right-size:n :}
    left left-size VALID-UTF8 right right-size VALID-UTF8
-   INIT
    0 RESULT !
-   left left-size right right-size COMPARE
+   left left-size right right-size 0 0 RESULT BYTE-VIEW COMPARE-CALL
    0<> if E-CASEFOLD throw then
    RESULT @ 0= ;
 

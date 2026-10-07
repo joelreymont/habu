@@ -104,7 +104,7 @@ public
 \ bases. That is the refusal every Tender entry point stopped at once the path
 \ scratch let it open a file (measured: `caller=<unknown> value=13964713400
 \ target=<unknown>`, the same integer from a program whose only call was
-\ UNICODE:CASEFOLD=, which registers its cleanup on first use).
+\ UNICODE:CASEFOLD=, which then registered its cleanup on first use).
 \ THE ZERO OF A FRESH MAPPING IS THE CORRECT START FOR ALL FIVE. A new process
 \ has registered nothing: an open lock, two zero counts, no hook mapping and an
 \ empty persistent table. Declaration-time registrations belong to the process

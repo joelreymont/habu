@@ -32,9 +32,9 @@
 \ ADDRESS-CELLS finds its lock through data-base, a task's own context there.
 \
 \ A holder takes its lock with the word its owner takes it with. PROC-TREE's
-\ and SERIAL's are private, so those cases reopen their packages. TASK seals
-\ its package, and IMAGE-LIFECYCLE, DYNAMIC-STORAGE and ADDRESS-CELLS are baked
-\ into the engine (test/baked-owner.f), so none of them is reopened: their
+\ is private, so that case reopens its package. TASK seals its package, and
+\ IMAGE-LIFECYCLE, DYNAMIC-STORAGE and ADDRESS-CELLS are baked into the engine
+\ (test/baked-owner.f), so none of them is reopened: their
 \ holders take and free the lock through a public word over and over, and many
 \ children fork into it. TASK's one-time park setup, which holds
 \ MAIN-PARK-READY at 1 while it runs, has no public word that holds it at all;
@@ -48,7 +48,6 @@ require lib/image-lifecycle.f
 require lib/process.f
 require lib/process-fork.f
 require lib/process-tree.f
-require lib/serial.f
 require lib/test/fork-hold.f
 
 T-RESET
@@ -66,38 +65,6 @@ private
    FORK-HOLD:RELEASE ;
 
 FORK-UNDER-WALK
-
-;package
-
-package SERIAL
-
-private
-
-variable FORK-READY-WAS
-
-\ INIT holds READY at 1 while it resolves the symbols, so a task opening the
-\ first port holds it there.
-: HOLD-SETUP ( -- )
-   READY atomic@ FORK-READY-WAS !
-   1 READY atomic!
-   [: FORK-HOLD:HOLDING ;] [: FORK-READY-WAS @ READY atomic! ;] finally ;
-
-\ No such device: the open fails, after INIT.
-: OPEN-NONE ( -- )
-   s" /nonexistent/fork-child-serial" 9600 BAUD OPEN8N1
-   MATCH open-result
-      opened OF HANDLE>N drop ENDOF
-      failed OF ERRNO>N drop ENDOF
-      unsupported OF ENDOF
-   ;MATCH ;
-
-: FORK-UNDER-SETUP ( -- )
-   [: HOLD-SETUP ;] FORK-HOLD:HOLD
-   s" a child forked while a task set serial up made its own setup"
-   [: OPEN-NONE ;] 1 FORK-HOLD:FORK-CHECK
-   FORK-HOLD:RELEASE ;
-
-FORK-UNDER-SETUP
 
 ;package
 

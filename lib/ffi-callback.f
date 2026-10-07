@@ -48,9 +48,9 @@ $40 constant TOK-CAP
 
 \ The marshal frame is C's register file as the engine's thunk parked it, and a
 \ pointer argument is whatever address C passed.
-TRUSTED: N>CELLS ( n -- ptr n ) ;
-TRUSTED: N>FLOATS ( n -- ptr r ) ;
-TRUSTED: N>BYTES ( n -- ptr u8 ) ;
+CAST: N>CELLS ( n -- ptr n )
+CAST: N>FLOATS ( n -- ptr r )
+CAST: N>BYTES ( n -- ptr u8 )
 
 \ The C entry of engine stub n: an immutable code address, never a Habu xt.
 TRUSTED: STUB ( n -- n ) callback-entry ;

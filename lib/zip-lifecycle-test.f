@@ -1,4 +1,4 @@
-\ zip-lifecycle-test.f - process-local libzip reset and retry coverage.
+\ zip-lifecycle-test.f - live libzip archives retired by image preparation.
 require lib/zip.f
 require lib/zip-test-fixture.f
 require lib/test.f
@@ -13,7 +13,6 @@ using FFI
 using IMAGE-LIFECYCLE
 
 create LIFECYCLE-PATH $80 allot
-variable SAVED-DLCLOSE
 create BASE FS-PATH-CAP allot
 variable BASE-LEN
 create PATH-BUF FS-PATH-CAP allot
@@ -73,45 +72,7 @@ variable OWNER-RESULT
 
 
 : LIFECYCLE-ASSERT-CLEAR ( -- )
-   ASSERT-RETIRED
-   LIBRARY @ 0 T= INITIALIZED @ 0 T= REGISTERED @ 0 T=
-   DLCLOSE-FN @ 0 T= OPEN-FN @ 0 T= COUNT-FN @ 0 T=
-   STAT-FN @ 0 T= FOPEN-FN @ 0 T= FREAD-FN @ 0 T=
-   FCLOSE-FN @ 0 T= DISCARD-FN @ 0 T=
-   MKSTEMP-FN @ 0 T= CLOSE-FD-FN @ 0 T= ;
-
-
-\ Harmless native fixture: ignore x0 and return one so LIBRARY-CLOSE fails.
-TRUSTED: LIFECYCLE-FAIL-CLOSE ( -- n )
-   cp@ {: fn:n :}
-   $D2800020 fn patch32
-   $D65F03C0 fn 4 + patch32
-   fn ;
-
-
-: LIFECYCLE-PARTIAL ( -- )
-   REGISTER-CLEANUP
-   s" dlclose" GLOBAL-SYMBOL-FIND DLCLOSE-FN !
-   LIBRARY-OPEN
-   s" zip_open" SYMBOL-FIND OPEN-FN !
-   INITIALIZED @ 0 T= REGISTERED @ 1 T=
-   LIBRARY @ 0 T<> OPEN-FN @ 0 T<> COUNT-FN @ 0 T=
-   PREPARE
-   LIFECYCLE-ASSERT-CLEAR ;
-
-
-: LIFECYCLE-RETRY ( -- )
-   OWNER-OPEN dup READ-STORED drop {: archive:archive :}
-   DLCLOSE-FN @ SAVED-DLCLOSE !
-   LIFECYCLE-FAIL-CLOSE DLCLOSE-FN !
-   [: PREPARE ;] catch E-LIBRARY T=
-   ASSERT-RETIRED OWNER-LIVE @ 1 T=
-   archive [: STALE-COUNT ;] catch E-HANDLE T= drop
-   INITIALIZED @ 0 T= REGISTERED @ 1 T=
-   LIBRARY @ 0 T<> OPEN-FN @ 0 T<>
-   SAVED-DLCLOSE @ DLCLOSE-FN !
-   PREPARE LIFECYCLE-ASSERT-CLEAR
-   OWNER-LIVE @ 0 T= OWNER-RESULT @ E-HANDLE T= ;
+   ASSERT-RETIRED REGISTERED @ 0 T= ;
 
 
 : LIFECYCLE-ARCHIVES ( -- )
@@ -132,20 +93,14 @@ TRUSTED: LIFECYCLE-FAIL-CLOSE ( -- n )
    PREPARE LIFECYCLE-ASSERT-CLEAR ;
 
 
+\ Even a failed open registers the retirement; every PREPARE leaves nothing.
 : LIFECYCLE-RUN ( -- )
    T-RESET CLEANUP-RESET
    LIFECYCLE-SETUP
    PREPARE LIFECYCLE-ASSERT-CLEAR
-   LIFECYCLE-USE
-   INITIALIZED @ 1 T= REGISTERED @ 1 T=
-   LIBRARY @ 0 T<> OPEN-FN @ 0 T<>
+   LIFECYCLE-USE REGISTERED @ 1 T=
    PREPARE LIFECYCLE-ASSERT-CLEAR
-   LIFECYCLE-USE
-   INITIALIZED @ 1 T= REGISTERED @ 1 T=
-   PREPARE LIFECYCLE-ASSERT-CLEAR
-   LIFECYCLE-PARTIAL
    LIFECYCLE-ARCHIVES
-   LIFECYCLE-RETRY
    LIFECYCLE-USE PREPARE LIFECYCLE-ASSERT-CLEAR
    CLEANUP-RUN T-REPORT ;
 

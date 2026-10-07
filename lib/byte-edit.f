@@ -25,8 +25,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
 
 \ Representation leaf: a span's address as a number, used only by the range,
 \ alias and alignment checks; its extent and lifetime stay caller-owned.
-\ Retirement owner: cap:raw-pointer-lifetime. Tested by byte-edit-test.f.
-TRUSTED: ADDRESS ( ptr u8 -- n ) ;
+: ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
 
 LINEAR: MINT ( ptr n -- EDIT:editor )
 LINEAR: ERASE ( EDIT:editor -- ptr n )

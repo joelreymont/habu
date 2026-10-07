@@ -69,7 +69,7 @@ FUNCTION: MAC-SOCKET-ERROR getsockopt ( n n n ptr u8 ptr u8 -- i32 )
 
 \ CONNECT supplies the caller's borrowed sockaddr through SOCK-SUBMIT's cell
 \ ABI. The caller retains it until AWAIT, exactly as on the Linux backend.
-TRUSTED: MAC-SOCKADDR ( n -- ptr u8 ) ;
+CAST: MAC-SOCKADDR ( n -- ptr u8 )
 
 : MAC-NOTIFY ( -- n )
    MAC-WRITE-FD @ MAC-BYTE 1 MAC-WRITE MAC-RESULT

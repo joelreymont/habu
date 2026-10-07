@@ -1,13 +1,10 @@
-\ f64-text-lifecycle-test.f - process-local libm and C-locale reset coverage.
+\ f64-text-lifecycle-test.f - the process-local C locale across image preparation.
 require lib/f64-text.f
 require lib/test.f
 
 package F64-TEXT
-using FFI
 using IEEE754
 using result
-
-variable LIFECYCLE-DLCLOSE
 
 
 : LIFECYCLE-USE ( -- )
@@ -17,64 +14,27 @@ variable LIFECYCLE-DLCLOSE
    ;MATCH ;
 
 
+: LIFECYCLE-ASSERT-LIVE ( -- )
+   C-LOCALE @ 0 T<> REGISTERED @ 1 T= ;
+
+
 : LIFECYCLE-ASSERT-CLEAR ( -- )
-   LIBRARY @ 0 T= INITIALIZED @ 0 T= REGISTERED @ 0 T=
-   C-LOCALE @ 0 T= DLCLOSE-FN @ 0 T= FREE-FN @ 0 T=
-   NEWLOCALE-FN @ 0 T= USELOCALE-FN @ 0 T=
-   STRTOD-FN @ 0 T= STRFROM-FN @ 0 T=
-   GETROUND-FN @ 0 T= SETROUND-FN @ 0 T= ;
+   C-LOCALE @ 0 T= REGISTERED @ 0 T= ;
 
 
-\ Harmless native fixture: ignore x0 and return one so LIBRARY-CLOSE fails.
-TRUSTED: LIFECYCLE-FAIL-CLOSE ( -- n )
-   cp@ {: fn:n :}
-   $D2800020 fn patch32
-   $D65F03C0 fn 4 + patch32
-   fn ;
-
-
-: LIFECYCLE-PARTIAL ( -- )
-   REGISTER-CLEANUP
-   s" dlclose" GLOBAL-SYMBOL-FIND DLCLOSE-FN !
-   LIBRARY-OPEN
-   s" freelocale" SYMBOL-FIND FREE-FN !
-   INITIALIZED @ 0 T= REGISTERED @ 1 T=
-   LIBRARY @ 0 T<> FREE-FN @ 0 T<> NEWLOCALE-FN @ 0 T=
-   C-LOCALE @ 0 T=
-   IMAGE-LIFECYCLE:PREPARE
-   LIFECYCLE-ASSERT-CLEAR ;
-
-
-: LIFECYCLE-RETRY ( -- )
-   LIFECYCLE-USE
-   DLCLOSE-FN @ LIFECYCLE-DLCLOSE !
-   LIFECYCLE-FAIL-CLOSE DLCLOSE-FN !
-   [: IMAGE-LIFECYCLE:PREPARE ;] catch E-NATIVE T=
-   INITIALIZED @ 0 T= REGISTERED @ 1 T=
-   LIBRARY @ 0 T<> C-LOCALE @ 0 T= FREE-FN @ 0 T<>
-   LIFECYCLE-DLCLOSE @ DLCLOSE-FN !
-   IMAGE-LIFECYCLE:PREPARE
-   LIFECYCLE-ASSERT-CLEAR ;
-
-
+\ First use makes the locale and registers its release; preparing an image
+\ frees it, and the next use makes a new one through the re-resolved calls.
 : LIFECYCLE-RUN ( -- )
    T-RESET
    IMAGE-LIFECYCLE:PREPARE LIFECYCLE-ASSERT-CLEAR
-   LIFECYCLE-USE
-   INITIALIZED @ 1 T= REGISTERED @ 1 T=
-   LIBRARY @ 0 T<> C-LOCALE @ 0 T<> STRTOD-FN @ 0 T<>
+   LIFECYCLE-USE LIFECYCLE-ASSERT-LIVE
    IMAGE-LIFECYCLE:PREPARE LIFECYCLE-ASSERT-CLEAR
-   LIFECYCLE-USE
-   INITIALIZED @ 1 T= REGISTERED @ 1 T=
+   LIFECYCLE-USE LIFECYCLE-ASSERT-LIVE
    IMAGE-LIFECYCLE:PREPARE LIFECYCLE-ASSERT-CLEAR
-   LIFECYCLE-PARTIAL
-   LIFECYCLE-RETRY
-   LIFECYCLE-USE IMAGE-LIFECYCLE:PREPARE LIFECYCLE-ASSERT-CLEAR
    T-REPORT ;
 
 
 LIFECYCLE-RUN
-;using
 ;using
 ;using
 ;package

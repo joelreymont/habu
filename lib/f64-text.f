@@ -13,7 +13,6 @@ require lib/string.f
 require lib/adt/result.f
 
 package F64-TEXT
-using FFI
 using MEM
 
 public
@@ -27,71 +26,47 @@ $7FFFFFFFFFFFFFFF constant MAGNITUDE-MASK
 $7FF0000000000000 constant EXPONENT-MASK
 512 constant WORK-BYTES
 64 constant NATIVE-BYTES
-FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER NAME-BUF
-create SYMBOL 64 allot
-variable LIBRARY
-variable INITIALIZED
 variable REGISTERED
 variable C-LOCALE
-variable DLCLOSE-FN
-variable FREE-FN
-variable NEWLOCALE-FN
-variable USELOCALE-FN
-variable STRTOD-FN
-variable STRFROM-FN
-variable GETROUND-FN
-variable SETROUND-FN
 
-: CSTRING ( ptr u8 n -- ptr u8 ) SYMBOL CSTR SYMBOL ;
+\ Exact native C ABI effects; no application-specific foreign policy. The locale
+\ calls and the text conversions are libc's, which every process holds. The
+\ targets format through different calls: glibc's strfromd, and Darwin's
+\ snprintf_l, whose double is variadic and so rides the stack.
+PROCESS-SYMBOLS
+FUNCTION: NEWLOCALE-CALL newlocale ( n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: FREELOCALE-CALL freelocale ( n -- ) ;FUNCTION
+FUNCTION: USE-LOCALE uselocale ( n -- n ) ;FUNCTION
+FUNCTION: STRTOD-CALL strtod_l ( ptr u8 n n -- r ) ;FUNCTION
+FUNCTION: STRFROMD-CALL strfromd ( ptr u8 n ptr u8 r -- i32 )
+   0 1 WRITES-ARG                        \ the output and its capacity
+;FUNCTION
+FUNCTION: SNPRINTF-CALL snprintf_l ( ptr u8 n n ptr u8 r -- i32 )
+   4 VARIADIC
+   0 1 WRITES-ARG                        \ the output and its capacity
+;FUNCTION
 
+\ The rounding mode is libm's on glibc; Darwin keeps it in libSystem.
+: SELECT-MATH ( -- )
+   HB-TARGET-MACOS? if FFI-DECL:SELECT-PROCESS exit then
+   s" libm.so.6" FFI-DECL:SELECT-LIBRARY ;
 
-: LIBRARY-OPEN ( -- )
-   HB-TARGET-MACOS? if s" /usr/lib/libSystem.B.dylib"
-   else s" m" 6 NAME-BUF LIBRARY-NAME$ then CSTRING NOW DLOPEN
-   dup 0= if E-NATIVE throw then LIBRARY ! ;
-
-
-: SYMBOL-FIND ( ptr u8 n -- n )
-   CSTRING LIBRARY @ swap DLSYM dup 0= if E-NATIVE throw then ;
-
-
-: GLOBAL-SYMBOL-FIND ( ptr u8 n -- n )
-   CSTRING HB-TARGET-MACOS? if -2 else 0 then swap DLSYM dup 0= if E-NATIVE throw then ;
-
-
-TRUSTED: DLCLOSE-CALL ( -- n )
-   ARGS REG-LENS 1 DLCLOSE-FN @ ffi-call-bounded ;
-
-
-TRUSTED: FREE-CALL ( -- )
-   ARGS REG-LENS 1 FREE-FN @ ffi-call-bounded drop ;
+SELECT-MATH
+FUNCTION: GET-ROUND fegetround ( -- i32 ) ;FUNCTION
+FUNCTION: SET-ROUND fesetround ( n -- i32 ) ;FUNCTION
 
 
 : FREE-C-LOCALE ( -- )
    C-LOCALE @ 0= if exit then
-   RESET C-LOCALE @ 0 VALUE! FREE-CALL
+   C-LOCALE @ FREELOCALE-CALL
    0 C-LOCALE ! ;
 
 
-: LIBRARY-CLOSE ( -- )
-   LIBRARY @ 0= if exit then
-   RESET LIBRARY @ 0 VALUE!
-   DLCLOSE-CALL 0<> if E-NATIVE throw then
-   0 LIBRARY ! ;
-
-
-: CLEAR-NATIVE ( -- )
-   0 C-LOCALE ! 0 LIBRARY !
-   0 FREE-FN ! 0 NEWLOCALE-FN ! 0 USELOCALE-FN !
-   0 STRTOD-FN ! 0 STRFROM-FN ! 0 GETROUND-FN ! 0 SETROUND-FN !
-   0 DLCLOSE-FN ! 0 INITIALIZED ! 0 REGISTERED ! ;
-
-
+\ The locale is a process-local address: preparing an image frees it, and the
+\ first call after that makes a new one.
 : CLEANUP-NATIVE ( -- )
-   0 INITIALIZED !
    FREE-C-LOCALE
-   LIBRARY-CLOSE
-   CLEAR-NATIVE ;
+   0 REGISTERED ! ;
 
 
 : REGISTER-CLEANUP ( -- )
@@ -100,53 +75,25 @@ TRUSTED: FREE-CALL ( -- )
       1 REGISTERED !
    then ;
 
-\ Exact native C ABI effects; no application-specific foreign policy.
-TRUSTED: NEWLOCALE-CALL ( -- n ) ARGS REG-LENS 3 NEWLOCALE-FN @ ffi-call-bounded ;
-: NEW-LOCALE ( -- n )
-   s" C" CSTRING {: name:ptr :}
-   RESET HB-TARGET-MACOS? if 16 else 2 then 0 VALUE! name 1 READABLE! 0 2 VALUE! NEWLOCALE-CALL ;
 
-TRUSTED: USELOCALE-CALL ( -- n ) ARGS REG-LENS 1 USELOCALE-FN @ ffi-call-bounded ;
-: USE-LOCALE ( n -- n ) RESET 0 VALUE! USELOCALE-CALL ;
-TRUSTED: GETROUND-CALL ( -- n ) ARGS REG-LENS 0 GETROUND-FN @ ffi-call-bounded ;
-: GET-ROUND ( -- n ) RESET GETROUND-CALL ;
-TRUSTED: SETROUND-CALL ( -- n ) ARGS REG-LENS 1 SETROUND-FN @ ffi-call-bounded ;
-: SET-ROUND ( n -- n ) RESET 0 VALUE! SETROUND-CALL ;
+: NEW-LOCALE ( -- n )
+   HB-TARGET-MACOS? if 16 else 2 then s\" C\z" drop 0 NEWLOCALE-CALL ;
 
 
 : INITIALIZE ( -- )
-   INITIALIZED @ 0<> if exit then
+   C-LOCALE @ 0<> if exit then
    REGISTER-CLEANUP
-   DLCLOSE-FN @ 0= if s" dlclose" GLOBAL-SYMBOL-FIND DLCLOSE-FN ! then
-   LIBRARY @ 0= if LIBRARY-OPEN then
-   s" freelocale" SYMBOL-FIND FREE-FN !
-   s" newlocale" SYMBOL-FIND NEWLOCALE-FN !
-   s" uselocale" SYMBOL-FIND USELOCALE-FN !
-   s" strtod_l" SYMBOL-FIND STRTOD-FN !
-   HB-TARGET-MACOS? if s" snprintf_l" else s" strfromd" then SYMBOL-FIND STRFROM-FN !
-   s" fegetround" SYMBOL-FIND GETROUND-FN !
-   s" fesetround" SYMBOL-FIND SETROUND-FN !
-   C-LOCALE @ 0= if
-      NEW-LOCALE dup 0= if drop E-NATIVE throw then C-LOCALE !
-   then
-   1 INITIALIZED ! ;
+   NEW-LOCALE dup 0= if drop E-NATIVE throw then C-LOCALE ! ;
 
 
 : NATIVE-READY? ( -- bool ) [: INITIALIZE ;] catch 0= ;
 
-TRUSTED: STRTOD-CALL ( -- r )
-   ARGS FLOATS STACK REG-LENS STACK-LENS 0 STRTOD-FN @ ffi-call-abi-r-bounded ;
-: C-PARSE ( ptr u8 -- r )
-   RESET 0 READABLE! 0 1 VALUE! C-LOCALE @ 2 VALUE! STRTOD-CALL ;
+: C-PARSE ( ptr u8 -- r ) 0 C-LOCALE @ STRTOD-CALL ;
 
-TRUSTED: STRFROM-CALL ( -- n )
-   ARGS FLOATS STACK REG-LENS STACK-LENS
-   HB-TARGET-MACOS? if 1 else 0 then STRFROM-FN @ ffi-call-abi-bounded ;
 : C-FORMAT ( r ptr u8 ptr u8 -- n ) {: value:r out:ptr format:ptr :}
-   RESET out NATIVE-BYTES 0 WRITABLE! NATIVE-BYTES 1 VALUE!
    HB-TARGET-MACOS? if
-      C-LOCALE @ 2 VALUE! format 3 READABLE! value 0 STACK-FLOAT!
-   else format 2 READABLE! value 0 FLOAT! then STRFROM-CALL ;
+      out NATIVE-BYTES C-LOCALE @ format value SNPRINTF-CALL exit
+   then out NATIVE-BYTES format value STRFROMD-CALL ;
 
 : FINITE? ( r -- bool ) IEEE754:F64>BITS EXPONENT-MASK and EXPONENT-MASK <> ;
 : FREE-WORK ( ptr u8 n -- ) BYTES-ALLOC-LEN RELEASE-BYTES ;
@@ -184,17 +131,15 @@ TRUSTED: STRFROM-CALL ( -- n )
    work C-PARSE dup FINITE? 0= if drop E-FINITE throw then
    IEEE754:F64>BITS work CELL-VIEW ! work ;
 
-: PARSE-WORK ( ptr u8 n -- result<r,fault> ) {: work:ptr size:n :}
+\ Round to nearest around strtod_l and restore the caller's mode. PARSE owns
+\ the work buffer and frees it whatever this throws.
+: PARSE-SCOPED ( ptr u8 -- ptr u8 ) {: work:ptr :}
    GET-ROUND {: prior:n :}
-   prior 0 < if work size FREE-WORK F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
-   0 SET-ROUND 0 <> if work size FREE-WORK F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
+   prior 0 < if E-NATIVE throw then
+   0 SET-ROUND 0 <> if E-NATIVE throw then
    work [: PARSE-ROUND ;] catch nip {: code:n :}
-   prior SET-ROUND {: restored:n :}
-   work CELL-VIEW @ {: bits:n :}
-   work size FREE-WORK
-   restored 0 <> if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
-   code 0= if bits IEEE754:BITS>F64 RESULT:OK exit then
-   code E-FINITE = if F64--TEXT-FAULT:NONFINITE RESULT:ERR else F64--TEXT-FAULT:RUNTIME RESULT:ERR then ;
+   prior SET-ROUND 0 <> if E-NATIVE throw then
+   code 0 <> if code throw then work ;
 
 public
 : PARSE ( ptr u8 n -- result<r,fault> ) {: text:ptr len:n :}
@@ -207,7 +152,11 @@ public
    NATIVE-READY? 0= if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
    len 1+ 8 max MEM-ALLOC-BYTES {: work:ptr size:n :}
    text work len BYTE-COPY 0 work len + c!
-   work size PARSE-WORK ;
+   work [: PARSE-SCOPED ;] catch nip {: status:n :}
+   work CELL-VIEW @ {: bits:n :}
+   work size FREE-WORK
+   status 0= if bits IEEE754:BITS>F64 RESULT:OK exit then
+   status E-FINITE = if F64--TEXT-FAULT:NONFINITE RESULT:ERR else F64--TEXT-FAULT:RUNTIME RESULT:ERR then ;
 
 private
 : POW10 ( n -- n ) 1 swap 0 ?do 10 * loop ;
@@ -335,17 +284,24 @@ private
 : FORMAT-WORK ( n ptr u8 -- n ptr u8 ) {: bits:n work:ptr :}
    bits work FORMAT-LENGTH work 112 + CELL-VIEW ! bits work ;
 
-: FORMAT-SCOPED ( n ptr u8 -- n ptr u8 ) {: bits:n work:ptr :}
+: FORMAT-ROUNDED ( n ptr u8 -- n ptr u8 ) {: bits:n work:ptr :}
    GET-ROUND {: prior-round:n :}
    prior-round 0 < if E-NATIVE throw then
-   C-LOCALE @ USE-LOCALE {: prior-locale:n :}
-   prior-locale 0= if E-NATIVE throw then
-   0 SET-ROUND 0 <> if prior-locale USE-LOCALE drop E-NATIVE throw then
+   0 SET-ROUND 0 <> if E-NATIVE throw then
    bits work [: FORMAT-WORK ;] catch >r 2drop r> {: code:n :}
    prior-round SET-ROUND {: round-rc:n :}
+   code 0 <> if code throw then
+   round-rc 0 <> if E-NATIVE throw then bits work ;
+
+\ The C locale stays installed only inside the catch, so whatever throws under
+\ it, a rounding row's first-call resolution included, restores the caller's.
+: FORMAT-SCOPED ( n ptr u8 -- n ptr u8 ) {: bits:n work:ptr :}
+   C-LOCALE @ USE-LOCALE {: prior-locale:n :}
+   prior-locale 0= if E-NATIVE throw then
+   bits work [: FORMAT-ROUNDED ;] catch >r 2drop r> {: code:n :}
    prior-locale USE-LOCALE {: locale-rc:n :}
    code 0 <> if code throw then
-   round-rc 0 <> locale-rc 0= or if E-NATIVE throw then bits work ;
+   locale-rc 0= if E-NATIVE throw then bits work ;
 
 public
 : FORMAT ( r ptr u8 n -- result<n,fault> ) {: value:r out:ptr capacity:n :}
@@ -359,6 +315,5 @@ public
    len capacity > if work size FREE-WORK F64--TEXT-FAULT:CAPACITY RESULT:ERR exit then
    work 128 + out len BYTE-COPY work size FREE-WORK len RESULT:OK ;
 
-;using
 ;using
 ;package

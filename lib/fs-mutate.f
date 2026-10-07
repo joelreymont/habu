@@ -584,7 +584,7 @@ public
    S\" \n" SB-APPEND
    2 SB$ write drop ;
 
-\ This file's ONE raw boundary is FS-MUT-ARM-EXIT below: the exit vector is a
+\ This file's ONE raw boundary is package FS-EXIT below: the exit vector is a
 \ fixed engine DATA cell holding a code pointer, reached through `data-base`.
 \ Arming is the only place an opaque xt is handled; calling one back is ordinary
 \ checked code, because the saved vector lands in a typed xt cell.
@@ -632,12 +632,28 @@ FS-MUT-EXIT-INIT
    code 0<> if code FS-MUT-EXIT-REPORT then
    FS-MUT-EXIT-CHAIN ;
 
-TRUSTED: FS-MUT-ARM-EXIT ( -- )
-   data-base EXIT-HOOK-CELL + dup @
-   dup 0= if drop ['] CLEANUP-AT-EXIT swap ! exit then
-   dup ['] CLEANUP-AT-EXIT = if 2drop exit then
-   FS-MUT-EXIT-PREV !
-   ['] CLEANUP-AT-EXIT swap ! ;
+\ The vector cell holds a code pointer or zero, so it has two accessors: the
+\ number the zero and identity tests read, and the quotation slot a nonzero
+\ vector is read and every arming written through. Only a private CAST: gives a
+\ DATA address a quotation pointee.
+package FS-EXIT
+private
+CAST: >VECTOR ( n -- ptr [ -- ] )
+CAST: XT>N ( [ -- ] -- n )
+
+: VECTOR-N ( -- ptr n ) data-base EXIT-HOOK-CELL + ;
+
+: VECTOR ( -- ptr [ -- ] )
+   data-base BYTE-VIEW NULL-PTR BYTE-VIEW - EXIT-HOOK-CELL + >VECTOR ;
+
+public
+: ARM ( -- )
+   VECTOR-N @ {: current:n :}
+   current 0= if ['] CLEANUP-AT-EXIT VECTOR ! exit then
+   current ['] CLEANUP-AT-EXIT XT>N = if exit then
+   VECTOR @ FS-MUT-EXIT-PREV !
+   ['] CLEANUP-AT-EXIT VECTOR ! ;
+;package
 
 \ REGISTRATION IS SAFE FROM ANY TASK although the table is the process's: the
 \ slot is claimed with one atomic-add on the count - `atomic-add` is an engine
@@ -649,7 +665,7 @@ TRUSTED: FS-MUT-ARM-EXIT ( -- )
 \ registration that then throws is empty rather than whatever the last round
 \ left there, and CLEANUP-RUN steps over it.
 : FS-MUT-CLEANUP+ ( ptr u8 n n -- ) {: a:ptr u kind :}
-   FS-MUT-ARM-EXIT
+   FS-EXIT:ARM
    u 0 < if E-FS-PATH throw then
    kind FS-MUT-CLEANUP-FILE <>
    kind FS-MUT-CLEANUP-DIR <> and

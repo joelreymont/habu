@@ -29,8 +29,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
 2 constant DECODE-RAW
 
 \ A numeric address view is needed solely for extent and alias checks.
-\ Retirement owner: cap:raw-pointer-lifetime. Exercised by xml-test.f.
-TRUSTED: BYTE-ADDRESS ( ptr u8 -- n ) ;
+: BYTE-ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
 
 : SPAN-CHECK ( ptr u8 n -- )
    {: source size:n :}

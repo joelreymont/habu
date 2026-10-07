@@ -1147,11 +1147,10 @@ Case folding uses GNU libunistring's
 [`u8_casecmp`](https://www.gnu.org/software/libunistring/manual/html_node/Case-insensitive-comparison.html)
 with NULL language and normalization parameters. It requires `libunistring.so.5`
 on Linux or `libunistring.5.dylib` on macOS; Unicode casefold data follows that
-installed library. The exact symbol resolves when source loads, with `E-LIBRARY`
-or `E-SYMBOL` on failure. Its process-local address must be resolved again if
-building a restored image in another process. The sealed binding uses per-task
-FFI scratch and exposes only the comparison operation. The `unicode-casefold`
-suite exercises the native library and strict UTF-8 boundary.
+installed library. Its `FUNCTION:` declarations resolve each symbol at its first
+call, `E-FFI-DLSYM` on failure, and again in a restored image. The sealed
+binding uses per-task FFI scratch and exposes only the comparison operation. The
+`unicode-casefold` suite exercises the native library and strict UTF-8 boundary.
 
 ## XML and byte edits
 
