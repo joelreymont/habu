@@ -65,6 +65,10 @@ FUNCTION: FFI-T-STRNCMP$ strncmp ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: FFI-T-GETPID$ getpid ( -- i32 ) ;FUNCTION
 FUNCTION: FFI-T-CTX-CALL getpid ( n -- i32 ) ;FUNCTION
 
+\ crc32 through the process: the engine does not link libz, so process-wide
+\ resolution finds it exactly when a libz open made its symbols global.
+FUNCTION: FFI-T-GLOBAL-PROBE crc32 ( n ptr u8 n -- n ) ;FUNCTION
+
 \ A declaration with no result drops the machine return cell, so the word is
 \ stack-neutral for its caller.
 FUNCTION: FFI-T-VOID$ getpid ( -- ) ;FUNCTION
@@ -346,6 +350,33 @@ create FFI-T-LONG-PATH PATH-CAP allot
    erru FFI-T-ERR$ E-FFI-LIBRARY-FULL FFI-T-CODE$ CONTAINS? TTRUE
    FFI-T-LONG-PATH!
    erru FFI-T-ERR$ FFI-T-LONG-PATH PATH-CAP CONTAINS? TTRUE ;
+
+\ ---- process-wide symbols: FFI:GLOBAL --------------------------------------
+\ libz, which the VERSIONED-LIBRARY row below opens with FFI:NOW alone.
+\ dlopen(3) names the scope its symbols join: on Linux an open without
+\ RTLD_GLOBAL is RTLD_LOCAL, and RTLD_DEFAULT - what PROCESS-SYMBOLS resolves
+\ through - misses it; macOS defaults to RTLD_GLOBAL when an open names neither.
+\ The library's own handle finds crc32 either way, so a miss through the
+\ process is the scope and not the library. The second open promotes the
+\ already loaded library, as dlopen(3) does for a reopen with RTLD_GLOBAL.
+: FFI-T-GLOBAL-LIB$ ( -- ptr u8 )
+   HB-TARGET-MACOS? if s\" libz.1.dylib\z" drop exit then s\" libz.so.1\z" drop ;
+
+: FFI-T-GLOBAL ( -- )
+   s" an FFI:NOW open finds the function through its own handle" T-LABEL
+   FFI-T-GLOBAL-LIB$ FFI:NOW FFI:DLOPEN {: h:n :}
+   h 0 T<>
+   h s\" crc32\z" drop FFI:DLSYM 0 T<>
+   HB-TARGET-MACOS? if
+      s" macOS: an FFI:NOW open is global, so the process resolves it" T-LABEL
+      0 s" a" FFI-T-GLOBAL-PROBE $E8B7BE43 T=
+   else
+      s" Linux: an FFI:NOW open is local, so the process does not resolve it" T-LABEL
+      [: 0 s" a" FFI-T-GLOBAL-PROBE drop ;] E-FFI-DLSYM TTHROWSQ
+   then
+   s" an FFI:NOW FFI:GLOBAL or open puts the function in process-wide resolution" T-LABEL
+   FFI-T-GLOBAL-LIB$ FFI:NOW FFI:GLOBAL or FFI:DLOPEN 0 T<>
+   0 s" a" FFI-T-GLOBAL-PROBE $E8B7BE43 T= ;
 
 : FFI-T-CHECK-PASSES ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
@@ -660,6 +691,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-LONG-LIBRARY-TABLE-FULL
    FFI-T-FOREIGN-LIBRARY
    FFI-T-LONG-FOREIGN-LIBRARY
+   FFI-T-GLOBAL
    s" foreign symbol cleanup remains armed across captures" T-LABEL
    FFI-T-RECAPTURE ;
 

@@ -371,6 +371,11 @@ public
 : SCRATCH-END ( -- n ) FFI-SCRATCH-END ;
 : NOW ( -- n ) FFI-RTLD-NOW ;
 
+\ dlopen RTLD_GLOBAL, for `FFI:NOW FFI:GLOBAL or`: the library's symbols join
+\ process-wide resolution (RTLD_DEFAULT, which PROCESS-SYMBOLS resolves
+\ through). <dlfcn.h> spells it 0x100 in glibc and 0x8 on macOS.
+: GLOBAL ( -- n ) HB-TARGET-MACOS? if $8 else $100 then ;
+
 : >CELL ( ptr a -- n ) PTR>CELL ;
 
 : RESET ( -- )

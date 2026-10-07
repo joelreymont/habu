@@ -361,6 +361,22 @@ every cached address before each capture, so a restored image re-resolves
 against its new process, and no consumer exports a
 mutable function-pointer cell.
 
+`FFI:DLOPEN ( ptr u8 n -- n )` passes its flags to `dlopen` unchanged.
+`FFI:NOW` is `RTLD_NOW`, 2 on both targets. `FFI:GLOBAL` is `RTLD_GLOBAL`, which
+`<dlfcn.h>` spells `0x100` in glibc and `0x8` on macOS; combine it with NOW:
+`path FFI:NOW FFI:GLOBAL or FFI:DLOPEN`. A global library's symbols join
+process-wide resolution, so a `PROCESS-SYMBOLS` declaration, which resolves
+through `RTLD_DEFAULT`, finds them. Nothing opens a library global unless its
+caller passes the flag: `LIBRARY` and `VERSIONED-LIBRARY` rows open with
+`FFI:NOW` alone. Without the flag the targets differ. On Linux the open is
+`RTLD_LOCAL`: only the library's own handle finds its symbols, and a
+`PROCESS-SYMBOLS` call is `E-FFI-DLSYM`. On macOS an open that names neither
+`RTLD_GLOBAL` nor `RTLD_LOCAL` is global. See
+[dlopen(3) on Linux](https://man7.org/linux/man-pages/man3/dlopen.3.html) and
+Apple's [dlopen(3)](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/dlopen.3.html),
+which is `man 3 dlopen` on macOS. `lib/ffi-test.f` checks both targets
+against libz, which the engine does not link.
+
 A binding is a declaration:
 
 ```forth
@@ -458,6 +474,7 @@ FFI:KPARAMS       ( -- ptr n n )
 FFI:KPARAMS>CELL  ( -- n )
 FFI:CSTR          ( ptr u8 n ptr u8 -- )
 FFI:NOW           ( -- n )
+FFI:GLOBAL        ( -- n )
 FFI:DLOPEN        ( ptr u8 n -- n )
 FFI:DLSYM         ( n ptr u8 -- n )
 FFI:DECLARATION-MAX ( -- n )
