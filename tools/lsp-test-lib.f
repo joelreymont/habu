@@ -8,13 +8,14 @@
 \ come in the order of the messages they answer. The rest run over pipes the
 \ test holds: answers-at-once keeps the input open, stdout-closed closes the
 \ output first, and each diagnostics conversation is held turn by turn, the
-\ messages of a turn written together once the server has answered the last
-\ and every publish read as it comes, since the server checks a document only
-\ when no input waits. The directory the test prints after `artifact:` keeps
-\ every conversation byte for byte, NAME.in, NAME.out and NAME.err, and its
-\ exit code in `exits`: `bin/hb --load tools/lsp.f < NAME.in` replays one,
-\ though a held one's turns then come at once. A conversation whose wait ran
-\ out keeps what was read before it.
+\ messages of a turn written together once the server has answered the last and
+\ every publish read as it comes, since the server checks a document only when
+\ no input waits; references-eof and references-fault end their input before
+\ exit, and what the server writes after is read once it ends. The directory
+\ the test prints after `artifact:` keeps every conversation byte for byte,
+\ NAME.in, NAME.out and NAME.err, and its exit code in `exits`: `bin/hb --load
+\ tools/lsp.f < NAME.in` replays one, though a held one's turns then come at
+\ once. A conversation whose wait ran out keeps what was read before it.
 \
 \ How the server could fail, and the conversation that would show it:
 \
@@ -402,6 +403,19 @@
 \ - a request held when shutdown is read not answered first, a cancel of it
 \   read past shutdown not counted, or a request after shutdown answered other
 \   than -32600 .............................................. cancel-shutdown
+\ - a cancel of a references request, read between the checks of the files it
+\   gathers from, not answered -32800 before the next check begins
+\   ......................................................... references-cancel
+\ - a change of an open document a references request gathers from, read
+\   between its checks, not answered -32801 before the next check begins, or
+\   the change applied before that answer or not checked after it
+\   ....................................................... references-modified
+\ - another request and the end of the input, or a framing fault, read by a
+\   references request between its checks: either request left unanswered,
+\   or the server not stopped once both are answered
+\   ........................................... references-eof, references-fault
+\ - a references request answered with another id once a 700 KB message read
+\   between its checks moved the messages held ............ references-growth
 \
 \ Not proven here: a packet line that is not JSON, that names no file, or that
 \ names its file by a relative path, goes to stderr, but the checker writes
@@ -465,8 +479,8 @@ using BUF
 \ its busiest measurement and CHECKED-MS about six times big-frame's 1230 to
 \ 1289 ms, and neither is larger. The one bounds 27 runs (the 24 conversations
 \ CONVERSE runs, answers-at-once, stdout-closed and TEST-EXIT-TIMEOUT's child)
-\ and the other 97 conversations. A server that blocks spends none of the
-\ row's CPU budget (test/suite-budget.f CPU-MS), so all 124 could reach their
+\ and the other 102 conversations. A server that blocks spends none of the
+\ row's CPU budget (test/suite-budget.f CPU-MS), so all 129 could reach their
 \ bounds, each failing by name, well inside the row's hang guard (ROW-MS). One
 \ that spins to its bound spends that much of the budget's 360 s, so at most
 \ 45 such runs fail by name before the budget ends the row.
@@ -1396,13 +1410,16 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    SIGN-OFF
    SAY ;
 
-\ Holds the conversation of these turns with the server, every wait against
-\ one deadline CHECKED-MS from its start. Shutdown and exit end it, stdout and
-\ stderr are read to their ends, and the server must exit 0 with the null
-\ result to shutdown its last frame. A throw kills the server and fails the
-\ conversation by name.
-: HELD ( [ -- ] -- )
-   {: turns :}
+\ The conversation's turns alone: its input ends before exit.
+: UNFINISHED ( [ -- ] -- [ -- ] )  dup execute ;
+
+\ Holds the conversation RUN writes from these turns with the server, every
+\ wait against one deadline CHECKED-MS from its start. Its input then ends,
+\ stdout and stderr are read to their ends, and the server must exit RC. A
+\ throw kills the server and fails the conversation by name; whether none
+\ came.
+: HELD-BY ( [ -- ] [ [ -- ] -- [ -- ] ] n -- bool )
+   {: turns run rc:n :}
    PIPE-PAIR {: in-r:fd in-w:fd :}
    PIPE-PAIR {: out-r:fd out-w:fd :}
    PIPE-PAIR {: err-r:fd err-w:fd :}
@@ -1420,7 +1437,7 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    0 SENT !
    mono-ns {: t0:n :}
    CHECKED-MS >MS PROC-DEADLINE-AT DEADLINE !
-   turns [: FINISHED ;] catch {: code:n :}
+   turns run catch {: code:n :}
    drop
    in-w FD>N close
    code 0= if [: DRAINED ;] catch else code then {: why:n :}
@@ -1430,8 +1447,13 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    why 0= if 0 else E-PROC-TIMEOUT then pid SETTLED {: r :}
    SB-RESET LABEL$ SB-APPEND s" : throw" SB-APPEND SB$ T-LABEL
    why 0 T=
-   r 0 EXITED
-   why 0<> if exit then
+   r rc EXITED
+   why 0= ;
+
+\ Holds the conversation of these turns, which shutdown and exit end: the
+\ server must exit 0 with the null result to shutdown its last frame.
+: HELD ( [ -- ] -- )
+   [: FINISHED ;] 0 HELD-BY 0= if exit then
    s" 2" NULL-RESULT
    ENDS ;
 
@@ -1440,6 +1462,16 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    {: a:ptr u:n turns :}
    a u CONVERSATION
    turns HELD ;
+
+\ Holds the conversation of this name, whose turns end its input before exit
+\ and say what the server must write to stderr then; AFTER hears the frames
+\ the server wrote once its input ended. It must exit 1, nothing past them.
+: TALK-CUT ( ptr u8 n [ -- ] [ -- ] -- )
+   {: a:ptr u:n turns after :}
+   a u CONVERSATION
+   turns [: UNFINISHED ;] 1 HELD-BY 0= if exit then
+   after execute
+   ENDS ;
 
 \ ---- the diagnostics expected ----------------------------------------------------
 
@@ -1554,6 +1586,20 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    s" ]}}" EXP+
    HEAR
    EXP$ HEARD ;
+
+\ The next frame is the empty list of the document at PATH at this version,
+\ heard as it comes: the test runs no check of its own first, so the turn
+\ after it is written while the server goes on.
+: CLEAN ( ptr u8 n n -- )  EXPECT PUBLISHES ;
+
+\ Whether the next frame is that empty list; it is read only if it is.
+: CLEAN? ( ptr u8 n n -- bool )
+   EXPECT s" ]}}" EXP+
+   HEAR
+   OUT-AT @ {: at:n :}
+   NEXT-BODY EXP$ STR= {: same:bool :}
+   same 0= if at OUT-AT ! then
+   same ;
 
 \ ---- diagnostics ------------------------------------------------------------------
 
@@ -4706,12 +4752,132 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" 4" -32600 REFUSED
    ENDS ;
 
+\ refs-halt: d.f declares ROOK, and e.f, g.f and h.f require it and use it,
+\ on disk and opened with the same text. No folder is given, so a request
+\ about ROOK gathers from the open documents, d.f first, then the rest in
+\ the order of their paths.
+: TEXT-HE ( -- ptr u8 n )  s\" require d.f\n: EU ( -- n ) ROOK ;\n" ;
+: TEXT-HG ( -- ptr u8 n )  s\" require d.f\n: GU ( -- n ) ROOK ;\n" ;
+: TEXT-HH ( -- ptr u8 n )  s\" require d.f\n: HU ( -- n ) ROOK ;\n" ;
+: TEXT-HH-NEW ( -- ptr u8 n )  s\" require d.f\n: HU ( -- n ) ROOK ROOK + ;\n" ;
+
+: HALT-TREE ( -- )
+   s" refs-halt" REFS-DIR
+   s" refs-halt/d.f" TEXT-RF REFS-FILE
+   s" refs-halt/e.f" TEXT-HE REFS-FILE
+   s" refs-halt/g.f" TEXT-HG REFS-FILE
+   s" refs-halt/h.f" TEXT-HH REFS-FILE ;
+
+\ The four opened and ROOK's declaration asked about, by this id's JSON
+\ text, in one turn, so each waits for a check when the request is served:
+\ d.f's is its turn, and the request checks e.f's next. Once both lists are
+\ heard, the request goes on with g.f's check, as the next turn is written.
+: HALT-START ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   INITIALIZE
+   s" refs-halt/d.f" FIXTURE TEXT-RF 1 OPENS
+   s" refs-halt/e.f" FIXTURE TEXT-HE 1 OPENS
+   s" refs-halt/g.f" FIXTURE TEXT-HG 1 OPENS
+   s" refs-halt/h.f" FIXTURE TEXT-HH 1 OPENS
+   i iu s" refs-halt/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK
+   SAY
+   HEAR CAPABILITIES
+   s" refs-halt/d.f" FIXTURE 1 CLEAN
+   s" refs-halt/e.f" FIXTURE 1 CLEAN ;
+
+\ g.f's and h.f's lists, then the answer to the request with this id's JSON
+\ text: the declaration and the three uses.
+: HALT-ANSWER ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   s" refs-halt/g.f" FIXTURE 1 CLEAN
+   s" refs-halt/h.f" FIXTURE 1 CLEAN
+   i iu SYMBOLS-START
+   s" refs-halt/d.f" OPEN-URI 0 2 6 REF+
+   s" refs-halt/e.f" OPEN-URI 1 14 18 REF+
+   s" refs-halt/g.f" OPEN-URI 1 14 18 REF+
+   s" refs-halt/h.f" OPEN-URI 1 14 18 REF+
+   SYMBOLS-END ;
+
+\ A cancel of the request written once e.f's list is heard: g.f's check may
+\ have begun, and then ends and publishes first, but h.f's does not begin.
+\ The request is answered -32800, and h.f's list comes after, from the check
+\ of a document waiting for one.
+: REFS-CANCEL-TURNS ( -- )
+   s" 3" HALT-START
+   s" 3" CANCELS
+   SAY
+   s" refs-halt/g.f" FIXTURE 1 CLEAN? {: early:bool :}
+   HEAR s" 3" -32800 REFUSED
+   early 0= if s" refs-halt/g.f" FIXTURE 1 CLEAN then
+   s" refs-halt/h.f" FIXTURE 1 CLEAN ;
+
+\ A change of h.f written so: the request is answered -32801, since it would
+\ gather from the text the change replaces, and the change is applied after
+\ it, h.f's new text the one checked.
+: REFS-MODIFIED-TURNS ( -- )
+   s" 3" HALT-START
+   s" refs-halt/h.f" FIXTURE TEXT-HH-NEW 2 CHANGES
+   SAY
+   s" refs-halt/g.f" FIXTURE 1 CLEAN? {: early:bool :}
+   HEAR s" 3" -32801 REFUSED
+   early 0= if s" refs-halt/g.f" FIXTURE 1 CLEAN then
+   s" refs-halt/h.f" FIXTURE 2 CLEAN ;
+
+\ Another request and the end of the input written so: the request goes on
+\ and is answered, then the other one, and only then does the end of the
+\ input end the server.
+: REFS-EOF-TURNS ( -- )
+   s" 3" HALT-START
+   s" 4" s" habu/unknown" ASK
+   SAY
+   CUT-SHORT ;
+
+\ The same with a framing fault after the other request: the fault stops
+\ the server only once both are answered.
+: REFS-FAULT-TURNS ( -- )
+   s" 3" HALT-START
+   s" 4" s" habu/unknown" ASK
+   s\" Content-Length: abc\r\n\r\n" IN+
+   SAY
+   E-CONTENT-LENGTH-MALFORMED STOPPED ;
+
+: REFS-CUT-AFTER ( -- )
+   s" 3" HALT-ANSWER
+   HEAR s" 4" -32601 REFUSED ;
+
+\ big-frame's comment lines alone: about 700 KB that check clean.
+: BIG-QUIET ( -- )
+   TXT-B CLEAR
+   BIG-LINES 0 ?do s\" ( twenty-byte line )\n" N>BLEN TXT-B APPEND-SPAN loop ;
+
+\ A 700 KB didOpen written so, in many pieces, which the request reads
+\ before a later check: the room of the messages held grows past the
+\ request's own bytes, and the answer still carries its id, a string. The
+\ document opened is checked after the answer.
+: REFS-GROWTH-TURNS ( -- )
+   s\" \"refs-grow\"" HALT-START
+   BIG-QUIET
+   s" refs-halt/big.f" FIXTURE TXT$ 1 OPENS
+   STREAM
+   s\" \"refs-grow\"" HALT-ANSWER
+   s" refs-halt/big.f" FIXTURE 1 CLEAN ;
+
+\ The input that comes while a request checks the files it gathers from.
+: REFS-HALTS ( -- )
+   HALT-TREE
+   s" references-cancel" [: REFS-CANCEL-TURNS ;] TALK
+   s" references-modified" [: REFS-MODIFIED-TURNS ;] TALK
+   s" references-eof" [: REFS-EOF-TURNS ;] [: REFS-CUT-AFTER ;] TALK-CUT
+   s" references-fault" [: REFS-FAULT-TURNS ;] [: REFS-CUT-AFTER ;] TALK-CUT
+   s" references-growth" [: REFS-GROWTH-TURNS ;] TALK ;
+
 : TEST-CANCELS ( -- )
    TEST-CANCEL-SHUTDOWN
    s" cancel-completion" [: CANCEL-CMP-TURNS ;] TALK
    s" cancel-hover" [: CANCEL-HOVER-TURNS ;] TALK
    s" content-modified" [: MODIFIED-TURNS ;] TALK
-   s" cancel-stray" [: STRAY-TURNS ;] TALK ;
+   s" cancel-stray" [: STRAY-TURNS ;] TALK
+   REFS-HALTS ;
 
 : TEST-COMPLETIONS ( -- )
    s" completion" [: CMP-TURNS ;] TALK

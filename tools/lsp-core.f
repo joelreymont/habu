@@ -41,11 +41,18 @@
 \ JSON text, and it answers textDocument/definition, references, hover,
 \ documentHighlight, completion, documentSymbol or documentLink -32801 when a
 \ textDocument/didChange of its document was, since the request asked about
-\ the text that change replaces. A cancel is otherwise an unknown
-\ notification, so one naming an id answered, unknown or not a request's
-\ changes nothing, and a check already running is not stopped. The end of
-\ input and a fault in its framing come after the messages held: those are
-\ served first.
+\ the text that change replaces. textDocument/references, whose work is a
+\ check of each file it gathers from, reads the input that waits again before
+\ each of those checks and before its answer, holding every message it reads
+\ and serving none, and it is answered there -32800 when a cancel of it has
+\ been read, else -32801 when a change of its document or of an open document
+\ it gathers from has. The check under way is finished first, and a message
+\ begun is read whole, so how soon such a request stops has no bound. A
+\ cancel is otherwise an unknown notification, so one naming an id answered,
+\ unknown or not a request's changes nothing, and a check already running is
+\ not stopped. The end of input and a fault in its framing come after the
+\ messages held, even when a request read them: it is answered, and those
+\ are served, first.
 \
 \ A running server checks the documents and publishes their diagnostics
 \ (tools/lsp-check.f, tools/lsp-diag.f). Opening or changing a document leaves
@@ -169,7 +176,9 @@ DYNAMIC-BUFFER HELD-ENDS n                \ where each one ends there,
 variable HELD-COUNT                       \ how many are held,
 variable HELD-NEXT                        \ and the first of them not yet served
 TYPED-VARIABLE ID-SPAN SPAN:span<u8>      \ a request's string id, decoded
-TYPED-VARIABLE AT-END bool                \ whether the input has ended
+TYPED-VARIABLE KEPT-ID SPAN:span<u8>      \ a request's id, copied out of the held bodies
+TYPED-VARIABLE AT-END bool                \ whether the input has ended,
+variable FAULT                            \ and the throw a read of it took, 0 while none has
 
 : STATE! ( state -- )  0 STATE-BUF ! ;
 : STATE@ ( -- state )  0 STATE-BUF @ ;
@@ -501,6 +510,51 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
    loop
    false ;
 
+\ ---- input -------------------------------------------------------------------
+
+\ Whether reading is over: the input ended, or a read of it threw.
+: SETTLED? ( -- bool )  FAULT @ 0<> AT-END @ or ;
+
+\ The body of the message the reader is at, read and held.
+: RECEIVE ( n -- )
+   {: len:n :}
+   BODY-SPAN len ROOM
+   INPUT BODY-SPAN @ BODY
+   BODY-SPAN @ len TAKE SPAN:$ HOLD ;
+
+\ Whether stdin holds input, or its end, a poll that a signal cut short asked
+\ again.
+: POLLED? ( -- bool )
+   begin 0 >FD 0 >MS POLL-IN COUNT>N dup EINTR# negate = while drop repeat
+   0<> ;
+
+\ Whether a message waits: begun in the reader's buffer, or on stdin; or
+\ reading is over, which the loop then acts on.
+: INPUT? ( -- bool )
+   SETTLED? if true exit then
+   INPUT PENDING? if true exit then
+   POLLED? ;
+
+\ The next message read and held, or AT-END set at the end of input.
+: READ-NEXT ( -- )
+   INPUT NEXT-LENGTH MATCH option
+      none OF true AT-END ! ENDOF
+      some OF RECEIVE ENDOF
+   ;MATCH ;
+
+\ The next message read and held, unless reading is over. A throw the read
+\ takes, a fault in the framing among them, is kept in FAULT, and reading is
+\ then over.
+: READ-ON ( -- )
+   SETTLED? if exit then
+   [: READ-NEXT ;] catch FAULT ! ;
+
+\ Every message that waits read and held, none of them served, until none
+\ waits or reading is over. A message begun is read whole, which waits for
+\ the rest of it.
+: READ-WAITING ( -- )
+   begin INPUT? SETTLED? 0= and while READ-ON repeat ;
+
 \ ---- requests ----------------------------------------------------------------
 
 \ The request's params read by Q. A throw IGNORABLE? names answers the request
@@ -645,20 +699,60 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
 \ As POSITION!, with params.context.includeDeclaration in WITH-DECL.
 : REFS! ( ptr u8 n -- ptr u8 n )  POSITION! WITH-DECL! ;
 
-\ Each subject's uses gathered, an open one waiting for a check checked first.
-: GATHERED ( -- )
+\ The request's id copied out of the held bodies, which a request reading the
+\ input between its checks grows, and so may move.
+: KEEP-ID ( JSON-RPC:id -- JSON-RPC:id )
+   ID$ {: a:ptr u:n :}
+   KEPT-ID u ROOM
+   a u KEPT-ID @ SPAN:COPY
+   KEPT-ID @ SPAN:$ drop u JSON--RPC-ID:MAKE ;
+
+\ Whether a change of the request's document, or of an open document it
+\ gathers from, was read behind it.
+: GATHER-CHANGED? ( -- bool )
+   AT-SLOT @ CHANGED? if true exit then
    LSP-REFERENCES:SUBJECT-N 0 ?do
+      i LSP-REFERENCES:SUBJECT-SLOT dup 0 >= if CHANGED? else drop false then
+      if true unloop exit then
+   loop
+   false ;
+
+\ Whether the request with this id is answered once the input that waits is
+\ read: -32800 when a cancel of it was read behind it, else -32801 when a
+\ change GATHER-CHANGED? names was.
+: HALTED? ( JSON-RPC:id -- bool )
+   {: id :}
+   READ-WAITING
+   id CANCELLED? if
+      id REQUEST-CANCELLED s" request cancelled" REPLY-ERROR
+      true exit
+   then
+   GATHER-CHANGED? if
+      id CONTENT-MODIFIED s" content modified" REPLY-ERROR
+      true exit
+   then
+   false ;
+
+\ Each subject's uses gathered, an open one waiting for a check checked first;
+\ before each and once all are, the request is answered instead when HALTED?
+\ says, and false.
+: GATHERED? ( JSON-RPC:id -- bool )
+   {: id :}
+   LSP-REFERENCES:SUBJECT-N 0 ?do
+      id HALTED? if false unloop exit then
       i LSP-REFERENCES:SUBJECT-SLOT dup 0 >= if CHECK-WAITING else drop then
       i LSP-REFERENCES:GATHER
-   loop ;
+   loop
+   id HALTED? 0= ;
 
 \ Every use of the declaration at params.position in the open document
 \ params.textDocument names, and the declaration first when
 \ params.context.includeDeclaration is true, as tools/lsp-references.f states:
 \ -32803 when the request is refused, and a warning before the answer when a
-\ file is not covered.
+\ file is not covered. Its id is kept before any input is read.
 : REFERENCES ( JSON-RPC:id ptr u8 n -- )
-   {: i p:ptr pu:n :}
+   {: held p:ptr pu:n :}
+   held KEEP-ID {: i :}
    i p pu [: REFS! ;] READ? 0= if exit then
    i UNCHANGED? 0= if exit then
    AT-SLOT @ CHECK-WAITING
@@ -668,7 +762,7 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
       i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
       exit
    then
-   GATHERED
+   i GATHERED? 0= if exit then
    LSP-REFERENCES:UNCOVERED? if WRITER LSP-REFERENCES:WARNING END SENT then
    WRITER i RESULT LSP-REFERENCES:ANSWER END SENT ;
 
@@ -819,13 +913,6 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
       invalid OF {: c:n w:ptr wu:n i :} i c w wu REPLY-ERROR ENDOF
    ;MATCH ;
 
-\ The body of the message the reader is at, read and held.
-: RECEIVE ( n -- )
-   {: len:n :}
-   BODY-SPAN len ROOM
-   INPUT BODY-SPAN @ BODY
-   BODY-SPAN @ len TAKE SPAN:$ HOLD ;
-
 \ The first held message served. It is passed before it is dispatched, so the
 \ messages held behind it are the ones from HELD-NEXT on; once none is left,
 \ their room is reused.
@@ -849,19 +936,8 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
    rc 0= if s" " 0 die then
    s" lsp: input ended before exit" rc die ;
 
-\ Whether stdin holds input, or its end, a poll that a signal cut short asked
-\ again.
-: POLLED? ( -- bool )
-   begin 0 >FD 0 >MS POLL-IN COUNT>N dup EINTR# negate = while drop repeat
-   0<> ;
-
-\ Whether a message waits: begun in the reader's buffer, or on stdin.
-: INPUT? ( -- bool )
-   INPUT PENDING? if true exit then
-   POLLED? ;
-
 \ The document to check now: the next one waiting after the last checked,
-\ while the server runs and no message waits.
+\ while the server runs, no message waits and reading is not over.
 : DUE ( -- option<n> )
    RUNNING? 0= if OPTION:NONE exit then
    LAST-CHECKED @ DOC-NEXT-DIRTY MATCH option
@@ -869,20 +945,18 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
       some OF INPUT? if drop OPTION:NONE else OPTION:SOME then ENDOF
    ;MATCH ;
 
-\ The next message read and held, or AT-END set at the end of input.
-: READ-ON ( -- )
-   INPUT NEXT-LENGTH MATCH option
-      none OF true AT-END ! ENDOF
-      some OF RECEIVE ENDOF
-   ;MATCH ;
+\ When reading is over: the messages held are served, and then a fault stops
+\ the server with its throw, or the end of input ends it.
+: SETTLE ( -- )
+   FAULT @ {: code:n :}
+   code 0<> if TURNS code throw then
+   AT-END @ if ENDED then ;
 
 \ The next message, held, or the end of input, which ends the server. A fault
 \ in the framing stops the server, but only once the messages held before it
-\ are served, as they are before the end.
-: TAKE-INPUT ( -- )
-   [: READ-ON ;] catch {: code:n :}
-   code 0<> if TURNS code throw then
-   AT-END @ if ENDED then ;
+\ are served, as they are before the end. Either, read by a request between
+\ its checks, is acted on here, once that request is answered.
+: TAKE-INPUT ( -- )  READ-ON SETTLE ;
 
 : SERVE ( -- )
    1 >FD FD-NOSIGPIPE!
@@ -892,6 +966,7 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
    0 HELD-COUNT !
    0 HELD-NEXT !
    false AT-END !
+   0 FAULT !
    LSP-DIAG:PREPARE
    LSP-DEFS:DEFS-PREPARE
    LSP-HOVER:PREPARE
