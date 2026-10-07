@@ -22,7 +22,10 @@
 \
 \ THE MAP. PROVIDER answers a row by its function or a word by its qualified
 \ spelling. Any other name is refused with E-WLINK-UNRESOLVED, since a call
-\ site naming it names no function the link can hold.
+\ site naming it names no function the link can hold. lib/prelude.f loads
+\ before the capture window and cannot ship in it, so a prelude word links only
+\ through a word here: `true` and `false` do, while `fover`, `f<=` and `f>=`
+\ have none and are refused.
 
 require lib/prelude.f
 require lib/string.f
