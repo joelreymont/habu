@@ -341,8 +341,9 @@
 \   loads resolve against the root, walked under one; a file whose loader
 \   names no literal path, or one there that cannot be read, not named with
 \   its reason, or stopping the walk before a file it does not lie between;
-\   a root that is not there not refused, naming it
-\   ............................................................ workspace-reaching
+\   a root that is not there not refused, naming it; the requesting document
+\   not given in its place by path when its loads do not reach the file, or
+\   given twice when they do ................................ workspace-reaching
 \
 \ References
 \ - a use, at its first character or its last, or the token declaring its
@@ -385,6 +386,9 @@
 \   the declaration its check read ...................... references-requester
 \ - an empty workspaceFolders not winning over rootUri
 \   .................................................. references-folders-empty
+\ - a file whose check read the declaring file but declares the word there
+\   only into another package, binding its uses to that, named
+\   ........................................................ references-package
 \ - a check of a file on disk for its uses leaving its lines in the store
 \   once its gather returns or throws, in the test's own process, since no
 \   conversation can make a gather throw .................. references-probe
@@ -470,22 +474,25 @@ using BUF
 \ and fails by name.
 \
 \ Measured 2026-10-02 on a 12-core machine with six copies of this test running
-\ at once at a load average of 87 to 91: the diagnostics conversations took 528
-\ to 1230 ms, the heaviest big-frame, and every other one timed 418 to 793 ms;
-\ answers-at-once and stdout-closed, untimed, carry no more than lifecycle. The
-\ conversations added since, dependency-close, dependency-symlink and
-\ dependency-shared, took 660 to 1111 ms in single runs at a load average of
-\ about 140, when big-frame took up to 1289 ms. CONVERSATION-MS is ten times
-\ its busiest measurement and CHECKED-MS about six times big-frame's 1230 to
-\ 1289 ms, and neither is larger. The one bounds 27 runs (the 24 conversations
-\ CONVERSE runs, answers-at-once, stdout-closed and TEST-EXIT-TIMEOUT's child)
-\ and the other 102 conversations. A server that blocks spends none of the
-\ row's CPU budget (test/suite-budget.f CPU-MS), so all 129 could reach their
-\ bounds, each failing by name, well inside the row's hang guard (ROW-MS). One
-\ that spins to its bound spends that much of the budget's 360 s, so at most
-\ 45 such runs fail by name before the budget ends the row.
+\ at once at a load average of 87 to 91: the conversations CONVERSE runs timed
+\ 418 to 793 ms; answers-at-once and stdout-closed, untimed, carry no more than
+\ lifecycle. CONVERSATION-MS, ten times that busiest measurement and no larger,
+\ rests on it. Measured 2026-10-07 in one full run on that machine at a load
+\ average of 162 to 177: the held conversations took 508 to 1482 ms, the
+\ heaviest completion (1482), workspace-symbol-open-dependency (1404),
+\ references-workspace (1369) and completion-qualified (1201), with big-frame
+\ at 866 and the references conversations at 565 to 1369. CHECKED-MS is about
+\ six times completion's 1482 ms, and no larger. The one bounds 27 runs (the
+\ 24 conversations CONVERSE runs, answers-at-once, stdout-closed and
+\ TEST-EXIT-TIMEOUT's child) and the other 104 conversations. A server that
+\ blocks spends none of the row's CPU budget (test/suite-budget.f CPU-MS), so
+\ all 131 could reach their bounds, each failing by name, within 1152 s (27
+\ times 8 s and 104 times 9 s), inside the row's hang guard (ROW-MS, 1860 s).
+\ One that spins to its bound spends that much of the budget's 360 s, so at
+\ most 40 such held runs, or 45 at CONVERSATION-MS, fail by name before the
+\ budget ends the row.
 8000 constant CONVERSATION-MS
-8000 constant CHECKED-MS
+9000 constant CHECKED-MS
 
 $10000 constant OUT-CAP                  \ the most a conversation writes to stdout
 $1000 constant ERR-CAP                   \ and to stderr
@@ -511,6 +518,7 @@ create TXT-B HDR-BYTES allot             \ a generated document
 TYPED-VARIABLE IN-W fd                   \ a held conversation's ends of the server's stdin,
 TYPED-VARIABLE OUT-R fd                  \ stdout
 TYPED-VARIABLE ERR-R fd                  \ and stderr,
+TYPED-VARIABLE OUT-OPEN bool             \ whether its stdout end is still open,
 variable DEADLINE                        \ the mono-ns time its waits run out,
 variable SENT                            \ and the bytes of its input written
 
@@ -1382,10 +1390,12 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    len HEAD$ nip len + u <= ;
 
 \ Reads stdout until the output not yet read as frames holds a whole frame,
-\ stdout ends or the output fills its span.
+\ stdout ends or the output fills its span. Once HELD-BY has closed its end,
+\ it reads nothing: the frames are the ones read before, and one missing fails
+\ as the check that expects it.
 : HEAR ( -- )
    begin
-      WHOLE? 0= OUT-LEN @ OUT-SPAN SPAN:LEN < and if
+      WHOLE? 0= OUT-LEN @ OUT-SPAN SPAN:LEN < and OUT-OPEN @ and if
          OUT-LEN @ OUT-R @ OUT-SPAN DEADLINE @ BYTE
       else false then
    while 1 OUT-LEN +! repeat ;
@@ -1433,6 +1443,7 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    err-w FD>N close
    in-w IN-W !
    out-r OUT-R !
+   true OUT-OPEN !
    err-r ERR-R !
    0 SENT !
    mono-ns {: t0:n :}
@@ -1441,6 +1452,7 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    drop
    in-w FD>N close
    code 0= if [: DRAINED ;] catch else code then {: why:n :}
+   false OUT-OPEN !
    out-r FD>N close
    err-r FD>N close
    mono-ns t0 - TOOK
@@ -1464,8 +1476,9 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    turns HELD ;
 
 \ Holds the conversation of this name, whose turns end its input before exit
-\ and say what the server must write to stderr then; AFTER hears the frames
-\ the server wrote once its input ended. It must exit 1, nothing past them.
+\ and say what the server must write to stderr then; AFTER checks the frames
+\ the server wrote once its input ended, among those read to its stdout's end
+\ (HEAR). It must exit 1, nothing past them.
 : TALK-CUT ( ptr u8 n [ -- ] [ -- ] -- )
    {: a:ptr u:n turns after :}
    a u CONVERSATION
@@ -4120,31 +4133,38 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    loop
    WS$ ;
 
-\ The files that reach the file of this name must be these.
-: REACHES ( ptr u8 n ptr u8 n -- )
-   {: f:ptr fu:n w:ptr wu:n :}
-   f fu WS-CANON [: WS-OPENS ;] LSP-WORKSPACE:REACHING
-   SB-RESET s" workspace-reaching: " SB-APPEND f fu SB-APPEND SB$ T-LABEL
+\ The files that reach the file of the first name, given with the document of
+\ the second, must be these. WS-B holds the first's path while the second's
+\ is made.
+: REACHES ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: f:ptr fu:n d:ptr du:n w:ptr wu:n :}
+   WS-B CLEAR f fu WS-CANON WS+
+   WS$ d du WS-CANON [: WS-OPENS ;] LSP-WORKSPACE:REACHING
+   SB-RESET s" workspace-reaching: " SB-APPEND f fu SB-APPEND s" , " SB-APPEND d du SB-APPEND
+   SB$ T-LABEL
    WS-ANSWER$ w wu T$= ;
 
+\ Each case's document is one the walk gives anyway, but for p/a7, whose loads
+\ reach no f7: it is given in its place by path.
 : WORKSPACE-REACHING ( -- )
    WS-TREE
    s" graph" FIXTURE SOURCE-ROOT:CANONICAL drop nip 1+ WS-ROOT-U !
    s" w" IN-GRAPH LSP-WORKSPACE:ROOT+
-   s" w/f1.f" s" w/f1.f w/a1.f w/b1.f" REACHES
-   s" w/f2.f" s" w/f2.f w/a2.f w/b2.f" REACHES
-   s" w/f3.f" s" w/f3.f w/c3.f" REACHES
-   s" w/f4.f" s" w/f4.f w/a4.f" REACHES
-   s" out/b4.f" s" w/a4.f" REACHES
-   s" w/f5.f" s" w/f5.f" REACHES
-   s" w/f6.f" s" w/f6.f w/m6.f" REACHES
-   s" w/f7.f" s" w/f7.f w/q/b7.f w/q/y7.f" REACHES
+   s" w/f1.f" s" w/a1.f" s" w/f1.f w/a1.f w/b1.f" REACHES
+   s" w/f2.f" s" w/a2.f" s" w/f2.f w/a2.f w/b2.f" REACHES
+   s" w/f3.f" s" w/c3.f" s" w/f3.f w/c3.f" REACHES
+   s" w/f4.f" s" w/a4.f" s" w/f4.f w/a4.f" REACHES
+   s" out/b4.f" s" w/a4.f" s" w/a4.f" REACHES
+   s" w/f5.f" s" w/f5.f" s" w/f5.f" REACHES
+   s" w/f6.f" s" w/m6.f" s" w/f6.f w/m6.f" REACHES
+   s" w/f7.f" s" w/q/b7.f" s" w/f7.f w/q/b7.f w/q/y7.f" REACHES
+   s" w/f7.f" s" w/p/a7.f" s" w/f7.f w/p/a7.f w/q/b7.f w/q/y7.f" REACHES
    s" dyn" IN-GRAPH LSP-WORKSPACE:ROOT+
-   s" w/f1.f"
+   s" w/f1.f" s" w/f1.f"
    s" w/f1.f dyn/e8.f w/a1.f w/b1.f; dyn/d8.f: E-DISC-DYNAMIC; dyn/z8.f: cannot be read"
    REACHES
    s" gone" IN-GRAPH LSP-WORKSPACE:ROOT+
-   s" w/f1.f" s" refused gone" REACHES ;
+   s" w/f1.f" s" w/f1.f" s" refused gone" REACHES ;
 
 \ ---- references --------------------------------------------------------------
 
@@ -4342,9 +4362,8 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 
 \ The folders are an untitled: one, passed over, and refs-ws/w. ROOK's use in
 \ d.f is answered with its declaration in f.f and every use in the folder,
-\ the open documents' at the URIs the client opened them by; its last use in
-\ e.f, without the declaration, the same uses. No warning comes: every file
-\ is covered.
+\ the open documents' at the URIs the client opened them by. No warning
+\ comes: every file is covered.
 : REFS-WS-TURNS ( -- )
    REFS-WS-TREE
    PAR-B CLEAR
@@ -4358,10 +4377,8 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    TEXT-RD s" refs-ws/w/d.f" FIXTURE 1 s" verified" LISTED
    TEXT-RE s" refs-ws/w/e.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-ws/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
-   s" 4" s" refs-ws/w/e.f" FIXTURE 1 22 DECL-NOT REFS-ASK
    SAY
-   s" 3" SYMBOLS-START s" refs-ws/w/f.f" DISK-URI 0 2 6 REF+ WS-USES+ SYMBOLS-END
-   s" 4" SYMBOLS-START WS-USES+ SYMBOLS-END ;
+   s" 3" SYMBOLS-START s" refs-ws/w/f.f" DISK-URI 0 2 6 REF+ WS-USES+ SYMBOLS-END ;
 
 : KAY-DECL+ ( -- )  s" refs-id/g.f" DISK-URI 0 2 5 REF+ ;
 : ID-REF+ ( n n n -- )
@@ -4609,6 +4626,25 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    SAY
    s" 3" SYMBOLS-START s" refs-fe/w/d.f" OPEN-URI 1 14 18 REF+ SYMBOLS-END ;
 
+: TEXT-RPKG ( -- ptr u8 n )
+   s\" package RQ\npublic\ninclude f.f\n: QU ( -- n ) ROOK ;\n;package\n" ;
+
+\ q.f includes f.f into package RQ: its check read f.f's bytes, but declares
+\ RQ's ROOK at the token, not the global one, and binds QU's use to RQ's. It
+\ holds no use of the global ROOK, so it is covered: neither listed nor named.
+: REFS-PKG-TURNS ( -- )
+   s" refs-pkg" REFS-DIR s" refs-pkg/w" REFS-DIR
+   s" refs-pkg/w/f.f" TEXT-RF REFS-FILE
+   s" refs-pkg/w/q.f" TEXT-RPKG REFS-FILE
+   s" refs-pkg/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-pkg/w/f.f" FIXTURE TEXT-RF 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RF s" refs-pkg/w/f.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-pkg/w/f.f" FIXTURE 0 2 DECL-TOO REFS-ASK
+   SAY
+   s" 3" SYMBOLS-START s" refs-pkg/w/f.f" OPEN-URI 0 2 6 REF+ SYMBOLS-END ;
+
 variable PROBE-DECLS                     \ the decls a gather saw in the probe
 
 : PROBE-SEEN ( -- )  LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE - PROBE-DECLS ! ;
@@ -4646,6 +4682,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" references-stale" [: REFS-STALE-TURNS ;] TALK
    s" references-requester" [: REFS-REQ-TURNS ;] TALK
    s" references-folders-empty" [: REFS-FE-TURNS ;] TALK
+   s" references-package" [: REFS-PKG-TURNS ;] TALK
    REFS-PROBE ;
 
 \ ---- cancellation ------------------------------------------------------------
@@ -4768,34 +4805,44 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" refs-halt/g.f" TEXT-HG REFS-FILE
    s" refs-halt/h.f" TEXT-HH REFS-FILE ;
 
-\ The four opened and ROOK's declaration asked about, by this id's JSON
-\ text, in one turn, so each waits for a check when the request is served:
-\ d.f's is its turn, and the request checks e.f's next. Once both lists are
-\ heard, the request goes on with g.f's check, as the next turn is written.
-: HALT-START ( ptr u8 n -- )
-   {: i:ptr iu:n :}
+\ The four opened and ROOK's declaration asked about, by id 3, in one turn,
+\ so each waits for a check when the request is served: d.f's is its turn,
+\ and the request checks e.f's next. Once both lists are heard, the request
+\ goes on with g.f's check, as the next turn is written.
+: HALT-START ( -- )
    INITIALIZE
    s" refs-halt/d.f" FIXTURE TEXT-RF 1 OPENS
    s" refs-halt/e.f" FIXTURE TEXT-HE 1 OPENS
    s" refs-halt/g.f" FIXTURE TEXT-HG 1 OPENS
    s" refs-halt/h.f" FIXTURE TEXT-HH 1 OPENS
-   i iu s" refs-halt/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK
+   s" 3" s" refs-halt/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK
    SAY
    HEAR CAPABILITIES
    s" refs-halt/d.f" FIXTURE 1 CLEAN
    s" refs-halt/e.f" FIXTURE 1 CLEAN ;
 
-\ g.f's and h.f's lists, then the answer to the request with this id's JSON
-\ text: the declaration and the three uses.
-: HALT-ANSWER ( ptr u8 n -- )
+\ d.f and e.f alone opened and ROOK's declaration asked about, by this id's
+\ JSON text, in one turn: d.f's check is the request's, as its turn, and
+\ e.f's its next. Once d.f's list is heard the request has begun, and what is
+\ written next it reads by the time e.f's check is over.
+: PAIR-START ( ptr u8 n -- )
    {: i:ptr iu:n :}
-   s" refs-halt/g.f" FIXTURE 1 CLEAN
-   s" refs-halt/h.f" FIXTURE 1 CLEAN
+   INITIALIZE
+   s" refs-halt/d.f" FIXTURE TEXT-RF 1 OPENS
+   s" refs-halt/e.f" FIXTURE TEXT-HE 1 OPENS
+   i iu s" refs-halt/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK
+   SAY
+   HEAR CAPABILITIES
+   s" refs-halt/d.f" FIXTURE 1 CLEAN ;
+
+\ e.f's list, then the answer to the request with this id's JSON text: the
+\ declaration and e.f's use.
+: PAIR-ANSWER ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   s" refs-halt/e.f" FIXTURE 1 CLEAN
    i iu SYMBOLS-START
    s" refs-halt/d.f" OPEN-URI 0 2 6 REF+
    s" refs-halt/e.f" OPEN-URI 1 14 18 REF+
-   s" refs-halt/g.f" OPEN-URI 1 14 18 REF+
-   s" refs-halt/h.f" OPEN-URI 1 14 18 REF+
    SYMBOLS-END ;
 
 \ A cancel of the request written once e.f's list is heard: g.f's check may
@@ -4803,7 +4850,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ The request is answered -32800, and h.f's list comes after, from the check
 \ of a document waiting for one.
 : REFS-CANCEL-TURNS ( -- )
-   s" 3" HALT-START
+   HALT-START
    s" 3" CANCELS
    SAY
    s" refs-halt/g.f" FIXTURE 1 CLEAN? {: early:bool :}
@@ -4815,7 +4862,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ gather from the text the change replaces, and the change is applied after
 \ it, h.f's new text the one checked.
 : REFS-MODIFIED-TURNS ( -- )
-   s" 3" HALT-START
+   HALT-START
    s" refs-halt/h.f" FIXTURE TEXT-HH-NEW 2 CHANGES
    SAY
    s" refs-halt/g.f" FIXTURE 1 CLEAN? {: early:bool :}
@@ -4823,11 +4870,11 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    early 0= if s" refs-halt/g.f" FIXTURE 1 CLEAN then
    s" refs-halt/h.f" FIXTURE 2 CLEAN ;
 
-\ Another request and the end of the input written so: the request goes on
-\ and is answered, then the other one, and only then does the end of the
-\ input end the server.
+\ Another request and the end of the input written once d.f's list is heard:
+\ the request goes on and is answered, then the other one, and only then does
+\ the end of the input end the server.
 : REFS-EOF-TURNS ( -- )
-   s" 3" HALT-START
+   s" 3" PAIR-START
    s" 4" s" habu/unknown" ASK
    SAY
    CUT-SHORT ;
@@ -4835,32 +4882,33 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ The same with a framing fault after the other request: the fault stops
 \ the server only once both are answered.
 : REFS-FAULT-TURNS ( -- )
-   s" 3" HALT-START
+   s" 3" PAIR-START
    s" 4" s" habu/unknown" ASK
    s\" Content-Length: abc\r\n\r\n" IN+
    SAY
    E-CONTENT-LENGTH-MALFORMED STOPPED ;
 
 : REFS-CUT-AFTER ( -- )
-   s" 3" HALT-ANSWER
+   s" 3" PAIR-ANSWER
    HEAR s" 4" -32601 REFUSED ;
 
-\ big-frame's comment lines alone: about 700 KB that check clean.
+\ big-frame's comment lines alone: about 700 KB.
 : BIG-QUIET ( -- )
    TXT-B CLEAR
    BIG-LINES 0 ?do s\" ( twenty-byte line )\n" N>BLEN TXT-B APPEND-SPAN loop ;
 
-\ A 700 KB didOpen written so, in many pieces, which the request reads
-\ before a later check: the room of the messages held grows past the
-\ request's own bytes, and the answer still carries its id, a string. The
-\ document opened is checked after the answer.
+\ A 700 KB didOpen written in many pieces once d.f's list is heard, which
+\ the request, asked by a string id, reads before its answer: the room of the
+\ messages held grows past the request's own bytes, and the answer still
+\ carries its id. The document is lib/string.f, which the engine provides, so
+\ nothing checks its text.
 : REFS-GROWTH-TURNS ( -- )
-   s\" \"refs-grow\"" HALT-START
+   s\" \"refs-grow\"" PAIR-START
    BIG-QUIET
-   s" refs-halt/big.f" FIXTURE TXT$ 1 OPENS
+   s" lib/string.f" IN-TREE TXT$ 1 OPENS
    STREAM
-   s\" \"refs-grow\"" HALT-ANSWER
-   s" refs-halt/big.f" FIXTURE 1 CLEAN ;
+   s\" \"refs-grow\"" PAIR-ANSWER
+   s" lib/string.f" IN-TREE 1 CLEAN ;
 
 \ The input that comes while a request checks the files it gathers from.
 : REFS-HALTS ( -- )

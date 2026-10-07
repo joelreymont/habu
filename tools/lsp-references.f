@@ -17,16 +17,17 @@
 \ declaration is placed in the text of P, the open document's that holds P,
 \ else the file's, which must have that digest.
 \
-\ The subjects are the workspace files and open documents whose loads reach P
-\ (tools/lsp-workspace.f), and D, whose check read P though its loads on disk
-\ may no longer reach it, at its place by path. Each one's uses come from its
-\ own check: an open document's last completed one, a file on disk checked
-\ now (LSP-CHECK:USES). A check numbers only its own visits, so a subject's
-\ check must state P's digest the same and declare the word at P's token, by
-\ its identity, in exactly one visit, and its uses bound to that token of the
-\ word's identity must carry that visit. The locations are the declaration,
-\ when included, then each subject's uses in turn, the subjects in the order
-\ the walk gives them: P first, then by path.
+\ The subjects are the workspace files and open documents whose loads reach P,
+\ and D, whose check read P though its loads on disk may no longer reach it,
+\ as the walk gives them (tools/lsp-workspace.f): P first, then by path. Each
+\ one's uses come from its own check: an open document's last completed one,
+\ a file on disk checked now (LSP-CHECK:USES). A check numbers only its own
+\ visits, so a subject's check that read P must state P's digest the same and
+\ declare the word at P's token, by its identity, in one visit at most, and
+\ its uses bound to that token of the word's identity must carry that visit;
+\ one that declares the word there in no visit and binds no use of it there
+\ holds none, and contributes nothing. The locations are the declaration,
+\ when included, then each subject's uses in turn, in the subjects' order.
 \
 \ The request is refused, REFUSED? true and BLOCKED$ naming the file relative
 \ to the working directory and why, when D's check is not verified; the
@@ -39,8 +40,10 @@
 \ discovery cannot find, but P and D, whose checks say what they read; a
 \ subject whose check was not verified, a file on disk by its check's verdict
 \ (LSP-CHECK:OUTCOME$); one that cannot be read; one whose check states no
-\ digest of P, another one, no visit of the word at its token or several, or
-\ a use bound to that token without a whole identity or in another visit.
+\ digest of P or another one, declares at P's token a word without a whole
+\ identity or the word in several visits, or binds to that token a use
+\ without a whole identity, or one of the word in another visit or while it
+\ declares the word there in none.
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: the request being answered belongs to the
 \ server's one task, and SELECT starts each one afresh.
@@ -79,11 +82,6 @@ private
 5 constant L-END-CHAR
 6 constant LOC-CELLS
 
-\ A subject: its path's offset and length in POOL.
-0 constant S-PATH
-1 constant S-PATH-U
-2 constant SUBJ-CELLS
-
 \ A file named: its path's and its reason's offsets and lengths in POOL.
 0 constant M-PATH
 1 constant M-PATH-U
@@ -95,8 +93,6 @@ DYNAMIC-BUFFER POOL u8                   \ the request's paths, URIs, reasons an
 variable POOL-U
 DYNAMIC-BUFFER LOCS n                    \ the locations it answers,
 variable LOC-N
-DYNAMIC-BUFFER SUBJS n                   \ its subjects, in order,
-variable SUBJ-N
 DYNAMIC-BUFFER MISSES n                  \ the files it names,
 variable MISS-N
 DYNAMIC-BUFFER MSG u8                    \ and why it is refused, or its warning
@@ -118,9 +114,7 @@ variable H-AT                            \ and the digest of the bytes of P it r
 variable H-U
 variable D-AT                            \ D's path in POOL,
 variable D-U
-TYPED-VARIABLE PENDING bool              \ while it waits for its place among the subjects
-variable CUR-AT                          \ the subject being gathered,
-variable CUR-U
+variable CUR                             \ the subject being gathered, by the walk's index,
 variable URI-AT                          \ the URI its positions count at,
 variable URI-U
 variable SUB-VISIT                       \ and the visit its check declares the word in
@@ -135,8 +129,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
 
 : LOC@ ( n n -- n )  swap LOC-CELLS * + LOCS @ ;
 : LOC! ( n n n -- )  swap LOC-CELLS * + LOCS ! ;
-: SUBJ@ ( n n -- n )  swap SUBJ-CELLS * + SUBJS @ ;
-: SUBJ! ( n n n -- )  swap SUBJ-CELLS * + SUBJS ! ;
 : MISS@ ( n n -- n )  swap MISS-CELLS * + MISSES @ ;
 : MISS! ( n n n -- )  swap MISS-CELLS * + MISSES ! ;
 
@@ -149,11 +141,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
 : PKG$ ( -- ptr u8 n )  PKG-AT @ PKG-U @ POOL$ ;
 : H$ ( -- ptr u8 n )  H-AT @ H-U @ POOL$ ;
 : D$ ( -- ptr u8 n )  D-AT @ D-U @ POOL$ ;
-: CUR$ ( -- ptr u8 n )  CUR-AT @ CUR-U @ POOL$ ;
-
-: SUBJ-PATH$ ( n -- ptr u8 n )
-   {: k:n :}
-   k S-PATH SUBJ@ k S-PATH-U SUBJ@ POOL$ ;
+: CUR$ ( -- ptr u8 n )  CUR @ LSP-WORKSPACE:SUBJECT$ ;
 
 \ The bytes appended to POOL: their offset there. They never lie in POOL,
 \ which the append may move.
@@ -188,13 +176,11 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
    0 POOL-U !
    1 POOL-RESERVE
    0 LOC-N !
-   0 SUBJ-N !
    0 MISS-N !
    0 MSG-U !
    1 MSG-RESERVE
    false FOUND !
-   false REFUSED !
-   false PENDING ! ;
+   false REFUSED ! ;
 
 \ The request refused for this fact about the file at this path.
 : REFUSE ( ptr u8 n ptr u8 n -- )
@@ -206,9 +192,10 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
    true REFUSED !
    false FOUND ! ;
 
-\ The file at this offset and length in POOL named, for this reason.
-: MISS+ ( n n ptr u8 n -- )
-   {: at:n u:n w:ptr wu:n :}
+\ The file at this path named, for this reason. Neither string lies in POOL.
+: MISS+ ( ptr u8 n ptr u8 n -- )
+   {: p:ptr u:n w:ptr wu:n :}
+   p u POOL+ {: at:n :}
    w wu POOL+ {: why:n :}
    MISS-N @ {: k:n :}
    k 1+ MISS-CELLS * MISSES-RESERVE
@@ -225,14 +212,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
       i M-PATH MISS@ i M-PATH-U MISS@ POOL$ a u STR= if true unloop exit then
    loop
    false ;
-
-: SUBJ+ ( n n -- )
-   {: at:n u:n :}
-   SUBJ-N @ {: k:n :}
-   k 1+ SUBJ-CELLS * SUBJS-RESERVE
-   at k S-PATH SUBJ!
-   u k S-PATH-U SUBJ!
-   k 1+ SUBJ-N ! ;
 
 : URI! ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -433,53 +412,30 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
       i DOC-LIVE? if i DOC-CANON$ i DOC-TEXT$ q execute then
    loop ;
 
-\ Whether the walk gave D.
-: D-GIVEN? ( -- bool )
-   LSP-WORKSPACE:SUBJECTS 0 ?do
-      i LSP-WORKSPACE:SUBJECT$ D$ STR= if true unloop exit then
-   loop
-   false ;
-
-\ The subject at this path the walk gave, D before it when D is due there.
-: GIVEN ( ptr u8 n -- )
-   {: s:ptr su:n :}
-   PENDING @ if
-      s su P$ STR= 0= if
-         D$ s su LSP-WORKSPACE:PATH< if
-            D-AT @ D-U @ SUBJ+
-            false PENDING !
-         then
-      then
-   then
-   s su POOL+ su SUBJ+ ;
-
 \ A file whose loads the walk could not find named, unless it is P or D,
 \ whose checks say what they read.
 : UNREAD+ ( ptr u8 n ptr u8 n -- )
    {: p:ptr pu:n w:ptr wu:n :}
    p pu P$ STR= p pu D$ STR= or if exit then
-   p pu POOL+ pu w wu MISS+ ;
+   p pu w wu MISS+ ;
 
 \ The subjects of D, in this slot, and the files the walk could not read.
 : SUBJECTS! ( n -- )
    {: slot:n :}
-   P$ [: OPEN-DOCS ;] LSP-WORKSPACE:REACHING
-   LSP-WORKSPACE:REFUSED? if
-      LSP-WORKSPACE:BLOCKED$ s" the workspace folder cannot be walked" REFUSE exit
-   then
    slot DOC-CANON$ {: a:ptr u:n :}
    a u POOL+ D-AT !
    u D-U !
-   D-GIVEN? 0= PENDING !
-   LSP-WORKSPACE:SUBJECTS 0 ?do i LSP-WORKSPACE:SUBJECT$ GIVEN loop
-   PENDING @ if D-AT @ D-U @ SUBJ+ then
+   P$ D$ [: OPEN-DOCS ;] LSP-WORKSPACE:REACHING
+   LSP-WORKSPACE:REFUSED? if
+      LSP-WORKSPACE:BLOCKED$ s" the workspace folder cannot be walked" REFUSE exit
+   then
    LSP-WORKSPACE:UNREADABLE 0 ?do i LSP-WORKSPACE:UNREADABLE$ UNREAD+ loop ;
 
 \ ---- a subject's uses -----------------------------------------------------------
 
 \ Why the check of the subject in this slot, whose group for P is G, cannot
 \ place its uses of the declaration by their declaration, else empty, the
-\ visit it declares the word in, in SUB-VISIT.
+\ visit it declares the word in, in SUB-VISIT: -1 when none.
 : DECL-WHY ( n n -- ptr u8 n )
    {: slot:n g:n :}
    -1 SUB-VISIT !
@@ -492,7 +448,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
          then
       then
    loop
-   SUB-VISIT @ 0 < if s" no declaration visit" exit then
    s" " ;
 
 \ Why a use of that check bound to the declaration's token cannot be placed,
@@ -503,6 +458,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
       i g USE-AT? if
          i USE-VISIT 0 < if s" no use identity" unloop exit then
          i USE-KEY? if
+            SUB-VISIT @ 0 < if s" no declaration visit" unloop exit then
             i USE-VISIT SUB-VISIT @ <> if s" a use of another visit" unloop exit then
          then
       then
@@ -531,7 +487,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
 : CONTRIBUTED ( n n -- )
    {: slot:n g:n :}
    slot g WHY {: w:ptr wu:n :}
-   wu 0<> if CUR-AT @ CUR-U @ w wu MISS+ exit then
+   wu 0<> if CUR$ w wu MISS+ exit then
    slot g PLACED ;
 
 \ The subject's uses from the check of the document in this slot, or the
@@ -539,7 +495,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
 \ verified. A check that read no P has none.
 : CONTRIBUTE ( n ptr u8 n -- )
    {: slot:n w:ptr wu:n :}
-   slot DEFS-VERIFIED? 0= if CUR-AT @ CUR-U @ w wu MISS+ exit then
+   slot DEFS-VERIFIED? 0= if CUR$ w wu MISS+ exit then
    slot P$ DEFS-GROUP-OF MATCH option
       some OF slot swap CONTRIBUTED ENDOF
       none OF ENDOF
@@ -552,10 +508,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
 : READ-SRC ( ptr u8 n -- ptr u8 n )
    2dup [: SRC-ROOM ;] SOURCE:READ-WHOLE-FILE SRC-U ! ;
 
-: FS-RC? ( n -- bool )
-   {: rc:n :}
-   rc E-FS-FIRST <= rc E-FS-LAST >= and ;
-
 \ The subject's uses from its check as the probe, positions counting in the
 \ text read.
 : ON-DISK ( -- )
@@ -566,8 +518,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
 : FROM-DISK ( -- )
    CUR$ [: READ-SRC ;] catch {: code:n :} 2drop
    code 0<> if
-      code FS-RC? 0= if code throw then
-      CUR-AT @ CUR-U @ s" cannot be read" MISS+ exit
+      code LSP-TEXT:FS-RC? 0= if code throw then
+      CUR$ s" cannot be read" MISS+ exit
    then
    0 SRC SRC-U @ CUR$ [: ON-DISK ;] LSP-CHECK:USES ;
 
@@ -587,21 +539,20 @@ public
 : REFUSED? ( -- bool )  REFUSED @ ;
 : BLOCKED$ ( -- ptr u8 n )  MSG$ ;
 
-\ How many subjects the request gathers from.
-: SUBJECT-N ( -- n )  SUBJ-N @ ;
+\ How many subjects the request gathers from: none unless it selected a
+\ declaration, since only then did it walk.
+: SUBJECT-N ( -- n )  FOUND @ if LSP-WORKSPACE:SUBJECTS else 0 then ;
 
 \ The slot of the open document that holds subject K, -1 when none does.
 : SUBJECT-SLOT ( n -- n )
-   SUBJ-PATH$ DOC-HOLDING MATCH option
+   LSP-WORKSPACE:SUBJECT$ DOC-HOLDING MATCH option
       some OF ENDOF
       none OF -1 ENDOF
    ;MATCH ;
 
 \ Subject K's uses of the declaration, or the subject named.
 : GATHER ( n -- )
-   {: k:n :}
-   k S-PATH SUBJ@ CUR-AT !
-   k S-PATH-U SUBJ@ CUR-U !
+   CUR !
    CUR$ NAMED? if exit then
    CUR$ DEP-URI$ URI!
    CUR$ DOC-HOLDING MATCH option

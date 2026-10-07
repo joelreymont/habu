@@ -3,6 +3,7 @@
 \
 \ TEXT! names the text positions count in, and FILE-TEXT! names a file's text
 \ on disk, read into this module's buffer; TEXT$ gives back the text named.
+\ FS-RC? tells the code of a throw a file system call took from any other.
 \ LINE-CHARACTER answers an offset's position through a cursor: moving forward
 \ reads only the bytes between, moving back within the line keeps the line,
 \ further back starts over; so a run of offsets in order reads each byte of
@@ -79,6 +80,11 @@ public
 \ The text positions count in.
 : TEXT$ ( -- ptr u8 n )  TEXT-A @ TEXT-U @ ;
 
+\ Whether a throw of this code is a file system call's (lib/errors.f E-FS-*).
+: FS-RC? ( n -- bool )
+   {: rc:n :}
+   rc E-FS-FIRST <= rc E-FS-LAST >= and ;
+
 \ Positions count in the text of the file at this path, read from disk and
 \ taken after the read, which may move it, from now on. A file that cannot be
 \ read says so on stderr and counts as empty; it may have been refused before
@@ -87,7 +93,7 @@ public
    {: f:ptr fu:n :}
    f fu [: SLURP ;] catch {: code:n :} 2drop
    code 0<> if
-      code E-FS-LAST >= code E-FS-FIRST <= and 0= if code throw then
+      code FS-RC? 0= if code throw then
       s" lsp: " ERR f fu ERR
       SB-RESET s" : not read: throw " SB-APPEND code FMT:SB-INT LF SB-APPEND-C
       SB$ ERR

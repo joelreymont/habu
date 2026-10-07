@@ -2,11 +2,12 @@
 \
 \ The subjects are the `.f` files under the folders ROOT+ adds, as WALK-FILES
 \ finds them (lib/fs.f, which passes over .jj, .jj-ws, .git and .dots), and
-\ the documents open in the server. REACHING takes a file F by its canonical
-\ path, and the open documents as a word that hands the word it is given each
-\ open document's canonical path and text, and gives every subject whose
-\ closure holds F: F first when it is a subject, then the others in the byte
-\ order of their paths.
+\ the documents open in the server. REACHING takes a file F and a document D,
+\ each by its canonical path, and the open documents as a word that hands the
+\ word it is given each open document's canonical path and text, and gives
+\ every subject whose closure holds F, and D as a subject whatever its closure
+\ holds: F first when it is a subject, then the others in the byte order of
+\ their paths.
 \
 \ A closure is every file a check of its subject could read. A load resolves
 \ against the root that resolved the file holding it (docs/forth-card.md
@@ -38,6 +39,7 @@ require lib/string.f
 require lib/fs.f
 require lib/sort.f
 require tools/source-discovery.f
+require tools/lsp-text.f
 
 package LSP-WORKSPACE
 
@@ -91,8 +93,9 @@ DYNAMIC-BUFFER HITS n                    \ the subjects it gives, in order,
 variable HIT-N
 DYNAMIC-BUFFER BAD n                     \ and a node of each file it could not read
 variable BAD-N
-variable F-AT                            \ F's offset and length in POOL
+variable F-AT                            \ F's offset and length in POOL,
 variable F-U
+variable D-NODE                          \ D's node
 TYPED-VARIABLE BLOCKED bool              \ whether a root refused it,
 DYNAMIC-BUFFER BLOCK-B u8                \ and which
 variable BLOCK-U
@@ -138,15 +141,11 @@ variable CUR-ROOT                        \ and the root being walked
    u POOL-U +!
    at ;
 
-: FS-RC? ( n -- bool )
-   {: rc:n :}
-   rc E-FS-FIRST <= rc E-FS-LAST >= and ;
-
 \ Why a throw of this code kept a file's loads from being found, as
 \ lib/errors.f names a discovery's code, and whether it is such a throw.
 : FAULT$ ( n -- ptr u8 n bool )
    {: rc:n :}
-   rc FS-RC? if s" cannot be read" true exit then
+   rc LSP-TEXT:FS-RC? if s" cannot be read" true exit then
    rc E-DISC-SHADOW = if s" E-DISC-SHADOW" true exit then
    rc E-DISC-DYNAMIC = if s" E-DISC-DYNAMIC" true exit then
    rc E-DISC-OPENER = if s" E-DISC-OPENER" true exit then
@@ -267,7 +266,7 @@ variable CUR-ROOT                        \ and the root being walked
    r CUR-ROOT !
    [: WALK ;] catch {: rc:n :}
    rc 0= if exit then
-   rc FS-RC? if r ROOT-PATH$ REFUSE exit then
+   rc LSP-TEXT:FS-RC? if r ROOT-PATH$ REFUSE exit then
    rc throw ;
 
 : WALK-ROOTS ( -- )
@@ -376,12 +375,14 @@ variable CUR-ROOT                        \ and the root being walked
    id h HITS !
    h 1+ HIT-N ! ;
 
-: GIVE ( -- )
-   NODE-N @ 0 ?do
-      i N-SUBJECT NODE@ 0<> i REACHES? and if i HIT+ then
-   loop ;
+\ Whether node N is given: D, or a subject that reaches F.
+: GIVEN? ( n -- bool )
+   {: id:n :}
+   id D-NODE @ = if true exit then
+   id N-SUBJECT NODE@ 0<> id REACHES? and ;
 
-public
+: GIVE ( -- )
+   NODE-N @ 0 ?do i GIVEN? if i HIT+ then loop ;
 
 \ Whether path A comes before path B in byte order.
 : PATH< ( ptr u8 n ptr u8 n -- bool )
@@ -390,8 +391,6 @@ public
       a i + c@ b i + c@ <> if a i + c@ b i + c@ < unloop exit then
    loop
    u v < ;
-
-private
 
 \ Whether subject A comes before subject B: F first, then by path.
 : BEFORE? ( n n -- bool )
@@ -439,14 +438,16 @@ public
    u r R-PATH-U ROOT!
    r 1+ ROOT-N ! ;
 
-\ Finds the subjects whose closures hold the file at canonical path F. EACH
-\ is given a word taking an open document's canonical path and text, and
-\ calls it once for each open document.
-: REACHING ( ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
-   {: f:ptr fu:n each :}
+\ Finds the subjects whose closures hold the file at canonical path F, and
+\ gives the document at canonical path D among them; both paths are taken
+\ before EACH runs. EACH is given a word taking an open document's canonical
+\ path and text, and calls it once for each open document.
+: REACHING ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
+   {: f:ptr fu:n d:ptr du:n each :}
    RESET
    f fu POOL+ F-AT !
    fu F-U !
+   d du SUBJECT D-NODE !
    [: OPEN+ ;] each execute
    WALK-ROOTS
    BLOCKED @ if exit then
