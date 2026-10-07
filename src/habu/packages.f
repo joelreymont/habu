@@ -35,14 +35,12 @@ private
 \ DEFWRITE:NAME-ROOM).
 $4000 constant PKG-CODE-RESERVE
 
-\ ---- the definition writers, each a TRUSTED: boundary ------------------------
-TRUSTED: PKG-NS-RECORD ( ptr u8 n bool -- n ) namespace-record ;
-TRUSTED: PKG-NS-PRIVATE ( n -- ) namespace-private ;
-TRUSTED: PKG-SCOPE! ( n n -- ) package-scope! ;
-TRUSTED: PKG-ALIAS ( ptr u8 n n n -- ) alias-record ;
+\ ---- the definition writers --------------------------------------------------
+\ namespace-record, namespace-private, package-scope! and alias-record are
+\ OUTER's own rows (src/habu/prims.f), called below by name.
 
 \ A record's index: records sit DREC bytes apart from dbase@.
-TRUSTED: PKG-INDEX ( ptr n -- n ) dbase@ - DREC / ;
+: PKG-INDEX ( ptr n -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
 
 \ ---- the refusals ------------------------------------------------------------
 \ The token, then the engine's compile-die tail (habu2.f C-PACKAGE-FAIL).
@@ -153,7 +151,7 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
 \ An existing row keeps its wids and gains a private one only when it has none.
 : PKG-REOPEN ( ptr n -- n ) {: row:ptr :}
    row PKG-INDEX {: ix:n :}
-   row XREF-PKG-PRIVATE 0= if ix PKG-NS-PRIVATE then
+   row XREF-PKG-PRIVATE 0= if ix namespace-private then
    ix ;
 
 \ The index of the row `package` opens (habu2.f C-PACKAGE-ENSURE). A colon
@@ -165,7 +163,7 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
    OVERLAY-GUARD
    PKG-DICT-ROOM
    TOKEN$ PKG-CODE-ROOM
-   TOKEN$ true PKG-NS-RECORD ;
+   TOKEN$ true namespace-record ;
 
 \ The package opens on its private wordlist. The using depth it opens at is
 \ the one `;package` restores.
@@ -177,7 +175,7 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
    PKG-SEAL-GUARD
    PKG-ENSURE {: ix:n :}
    USE-DEPTH-CELL CELL@ USE-PKG-SAVE-CELL CELL!
-   ix get-current PKG-SCOPE!
+   ix get-current package-scope!
    PKG-PRI-CELL CELL@ set-current ;
 
 \ `public` and `private` select a wordlist of the open package.
@@ -192,7 +190,7 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
    PKG-PUB-CELL CELL@ 0= if PKG-RC-CONTEXT PKG-FAIL then
    NCOMP-DISPATCH:DECL-END-PACKAGE-OFF PKG-NOTIFY
    PKG-PARENT-CELL CELL@ set-current
-   -1 0 PKG-SCOPE!
+   -1 0 package-scope!
    USE-PKG-SAVE-CELL CELL@ USE-DEPTH-CELL CELL! ;
 
 \ ---- the package scope a throw puts back (habu1.f B-EVAL, habu2.f LEVALREC) --
@@ -209,7 +207,7 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
    floor USE-PKG-SAVE-CELL CELL!
    PKG-REC-CELL CELL@ rec <>  PKG-PARENT-CELL CELL@ parent <> or
    get-current cur <> or if
-      rec 0= if -1 0 PKG-SCOPE! else rec XREF-N>REC PKG-INDEX parent PKG-SCOPE! then
+      rec 0= if -1 0 package-scope! else rec XREF-N>REC PKG-INDEX parent package-scope! then
       cur set-current
    then
    NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY ;
@@ -335,7 +333,7 @@ variable USE-FLOOR
 : PKG-CLAUSE-ALIAS ( n -- ) {: k:n :}
    k XREF-REC XREF-NAME$ {: a:ptr u:n :}
    a u PKG-CODE-ROOM
-   a u k get-current PKG-ALIAS ;
+   a u k get-current alias-record ;
 
 \ In a package, publish an existing word under its tail into the current
 \ wordlist: its code, its immediate, wide and certified-input bits, and a
@@ -357,7 +355,7 @@ variable USE-FLOOR
    PKG-CHECK-EXPORT
    get-current PKG-OPEN-WID
    ta tu PKG-CODE-ROOM
-   ta tu src PKG-INDEX get-current PKG-ALIAS
+   ta tu src PKG-INDEX get-current alias-record
    clause 0 >= if clause PKG-CLAUSE-ALIAS then ;
 
 \ ---- the package keywords ----------------------------------------------------

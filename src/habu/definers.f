@@ -33,12 +33,16 @@ private
 76 constant DEF-RC-BAD-SIG       \ habu2.f C-SIG-BAD: `trusted:` or `does>` with no signature
 71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
 
-\ ---- the definition writers, each a TRUSTED: boundary ------------------------
-TRUSTED: DEF-OPEN ( ptr u8 n n n -- ) def-open ;
-TRUSTED: DEF-APPEND ( ptr u8 n -- ) body-append ;
+\ ---- the definition writers --------------------------------------------------
+\ def-open, body-append, created-sig! and def-close are OUTER's own rows
+\ (src/habu/prims.f), called below by name. trust-sig! has none: it is the
+\ `trusted:` head's alone.
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
-TRUSTED: DEF-CREATED-SIG ( ptr u8 n -- ) created-sig! ;
-TRUSTED: DEF-CLOSE ( -- ) def-close ;
+
+\ The compiler entry and the preflight are raw execution tokens in the engine's
+\ cells; these views state the signatures they are called with here.
+CAST: AS-COMPILE ( n -- [ ptr u8 n -- ] )
+CAST: AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] )
 
 \ ---- tier 0 ------------------------------------------------------------------
 \ The engine's tier 0 compiles each body token as it reads it, with its JIT,
@@ -83,7 +87,7 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
 : DEF-CAPTURE ( ptr u8 n -- ) {: a:ptr u:n :}
    BODYLEN-CELL CELL@ u + 1 + {: need:n :}
    need BODYBUF-CAP > if need DEF-BODY-FULL then
-   a u DEF-APPEND ;
+   a u body-append ;
 
 \ ---- the head's room (habu2.f EM-INTERPRET-COLON, C-TRUSTED) -----------------
 \ CP at the code ceiling and no record slot left each refuse, naming the
@@ -113,7 +117,7 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
    row XREF-FOUND? if row XREF-PKG-PUBLIC exit then
    PKG-DICT-ROOM
    a q PKG-CODE-ROOM
-   a q false PKG-NS-RECORD XREF-REC XREF-PKG-PUBLIC ;
+   a q false namespace-record XREF-REC XREF-PKG-PUBLIC ;
 
 \ The tail the record is named and the wordlist it goes into. DEF-TKA and
 \ DEF-TKL take the name token, which the refusals after them name, as TKA and
@@ -227,7 +231,7 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
    then
    wid PKG-OPEN-WID
    a u PKG-CODE-ROOM
-   a u wid 0 DEF-OPEN ;
+   a u wid 0 def-open ;
 
 \ The name opens a pending record with the capture it seeds. `trusted:` then
 \ sets the trusted cell and needs a signature; `:` takes one if it is there.
@@ -290,17 +294,17 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
 \ An armed checker's preflight gets the body so far, the token and the trusted
 \ cell first; one armed without a preflight is refused (habu2.f
 \ C-CALL-COMPILE-IMMEDIATE, LPREFMISS).
-TRUSTED: DEF-PREFLIGHT ( -- )
+: DEF-PREFLIGHT ( -- )
    HOOK-CELL CELL@ 0= if exit then
    COMPILE-PREFLIGHT-CELL CELL@ 0= if
       S\" hb: compile preflight hook missing\n" SAY RC-REJECT throw
    then
-   data-base BODYBUF-OFF + BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@
-   COMPILE-PREFLIGHT-CELL CELL@ execute ;
+   data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
+   COMPILE-PREFLIGHT-CELL CELL@ AS-PREFLIGHT execute ;
 
 \ Keep the original occurrence across preflight, then select its host body.
 \ A preflight that retires it cannot substitute a reused dictionary slot.
-TRUSTED: DEF-RUN ( ptr n -- )
+: DEF-RUN ( ptr n -- )
    DEF-OCC:SELECT {: slot:n occurrence:n :}
    DEF-PREFLIGHT
    slot occurrence DEF-OCC:RESOLVE NHOST:SELECT-REC execute-floor FLOORED ;
@@ -321,7 +325,7 @@ TRUSTED: DEF-RUN ( ptr n -- )
 : DEF-CREATED ( -- )
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    end INP-CELL ADDR!
-   s 1 + end s - 2 - COPY-HERE DEF-CREATED-SIG ;
+   s 1 + end s - 2 - COPY-HERE created-sig! ;
 
 : DEF-DOES ( -- )
    DOESB-CELL CELL@ 0<> if s" does>" SAY RC-REJECT THROW-AT then
@@ -373,14 +377,14 @@ variable ENTRY-PEND
 \ throws with the definition still pending, as the engine's does. On its
 \ return def-close closes the provenance window native and clears what
 \ def-open set.
-TRUSTED: DEF-COMPILE ( ptr u8 n -- )
-   DEF-DISPATCH NCOMP-DISPATCH:XT-CELL CELL@ execute ;
+: DEF-COMPILE ( ptr u8 n -- )
+   DEF-DISPATCH NCOMP-DISPATCH:XT-CELL CELL@ AS-COMPILE execute ;
 
 : DEF-SEMI? ( -- bool )
    s" ;" TOKEN-IS? 0= if false exit then
    DEF-SOURCE-CLOSE
    data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ DEF-COMPILE
-   DEF-CLOSE
+   def-close
    true ;
 
 \ ---- the body ----------------------------------------------------------------

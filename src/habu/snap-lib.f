@@ -155,30 +155,26 @@ s" SDB@" s" -- ptr u8" TRUST
 \ region is never touched: rewriting it in place would break the very call
 \ chains this writer executes. The trailer records base 0; the loader's
 \ delta and membership math are base-agnostic, so restore needs no change.
-$1002 constant SNC-MAP-ANON
-3 constant SNC-PROT-RW
+\ Each scratch region is fresh anonymous storage (`map-anon`), so its cell
+\ holds a typed pointer from the start; the writer exits after one image and
+\ never unmaps one.
+PTR-VARIABLE SNC-A
 
-variable SNC-N
-
-\ Scratch region view: raw anonymous mmap address held as a cell; the
-\ typed view is the one audited reinterpret (same class as IMGD-MMAP-PTR).
-\ All scratch views, zeroers, and quarantine-table reads share one owner.
-\ Retirement: habu-sweep-trusted-out-41e973ce.
-TRUSTED: SNC-PTR ( -- ptr u8 ) SNC-N @ ;
-TRUSTED: SNC-TEXT-N ( -- n ) STB @ ;
+: SNC-PTR ( -- ptr u8 ) SNC-A @ ;
 
 : SNC-ALLOC ( -- )
-   SNC-N @ 0 <> if exit then
-   0 SCL @ SNC-PROT-RW SNC-MAP-ANON -1 0 mmap
-   dup 0 < if s" snap: scratch mmap failed" 74 die then
-   SNC-N ! ;
+   SNC-PTR NULL-PTR = 0= if exit then
+   SCL @ map-anon 0 <> if drop s" snap: scratch mmap failed" 74 die then
+   SNC-A ! ;
 
 : SNC-COPY ( -- )
    SDB@ SNC-PTR SCL @ BYTE-COPY ;
 
+\ snap-rebase takes the copy's bounds as numbers: its distance from zero.
 : SNC-CANON ( -- )
-   SNC-N @  SNC-N @ SCL @ +  ndict@
-   SNC-TEXT-N  STSZ @  0
+   SNC-PTR NULL-PTR BYTE-VIEW - {: base:n :}
+   base  base SCL @ +  ndict@
+   STB @  STSZ @  0
    snap-rebase ;
 
 
@@ -189,18 +185,17 @@ TRUSTED: SNC-TEXT-N ( -- n ) STB @ ;
 \ byte-identical. tools/hb-build-repl-twin-test.f builds one program twice
 \ and compares the images, so a new live cell left out of this list fails
 \ that row loudly.
-variable SND-N
+PTR-VARIABLE SND-A
 
-TRUSTED: SND-PTR ( -- ptr u8 ) SND-N @ ;
+: SND-PTR ( -- ptr u8 ) SND-A @ ;
 
 : SND-ALLOC ( -- )
-   SND-N @ 0 <> if exit then
-   0 SDL @ SNC-PROT-RW SNC-MAP-ANON -1 0 mmap
-   dup 0 < if s" snap: data scratch mmap failed" 74 die then
-   SND-N ! ;
+   SND-PTR NULL-PTR = 0= if exit then
+   SDL @ map-anon 0 <> if drop s" snap: data scratch mmap failed" 74 die then
+   SND-A ! ;
 
-TRUSTED: SND-ZERO-CELL ( n -- )
-   SND-N @ + 0 swap ! ;
+: SND-ZERO-CELL ( n -- )
+   SND-PTR + CELL-VIEW 0 swap ! ;
 
 \ The return-stack window used to live at RSTK-OFF..RSTK-END inside this image
 \ and had to be zeroed: stale slots held dangling arena pointers from the build
@@ -286,8 +281,8 @@ TRUSTED: SND-ZERO-CELL ( n -- )
 \ SNAP-RELOC: the engine owns the declaring and the restoring, and the writer owns
 \ the one pass that runs over its own scratch copy. They read the table's shape
 \ from SNAP-RELOC and nothing else.
-TRUSTED: SND-XT-CELL@ ( n -- n ) SND-N @ + @ ;
-TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
+: SND-XT-CELL@ ( n -- n ) SND-PTR + CELL-VIEW @ ;
+: SND-XT-CELL! ( n n -- ) SND-PTR + CELL-VIEW ! ;
 
 : SND-ROWS ( -- ptr n n )
    ADDRESS-CELLS:CURRENT? if SND-PTR SDL @ ADDRESS-CELLS:DATA-SPAN exit then
@@ -340,8 +335,8 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    BYTE-VIEW data-base BYTE-VIEW - ;
 
 : SND-ZERO-WRITER ( -- )
-   SNC-N SND-ZERO-OFF SND-ZERO-CELL
-   SND-N SND-ZERO-OFF SND-ZERO-CELL
+   SNC-A SND-ZERO-OFF SND-ZERO-CELL
+   SND-A SND-ZERO-OFF SND-ZERO-CELL
    MBUF-A SND-ZERO-OFF SND-ZERO-CELL
    MP SND-ZERO-OFF SND-ZERO-CELL
    MLEN SND-ZERO-OFF SND-ZERO-CELL
@@ -396,15 +391,14 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
 \ CANON-DATA, and its scratch is mapped at the size of what it holds.
 variable SBL                         \ flat bitmap bytes, ending at the last present cell's byte
 variable SVL                         \ value bytes of the present cells
-variable SBM-N                       \ flat bitmap scratch
-variable SGR-N                       \ grid stream scratch
+PTR-VARIABLE SBM-A                   \ flat bitmap scratch
+PTR-VARIABLE SGR-A                   \ grid stream scratch
 
-TRUSTED: SBM-PTR ( -- ptr u8 ) SBM-N @ ;
-TRUSTED: SGR-PTR ( -- ptr u8 ) SGR-N @ ;
+: SBM-PTR ( -- ptr u8 ) SBM-A @ ;
+: SGR-PTR ( -- ptr u8 ) SGR-A @ ;
 
-: SCRATCH ( n -- n ) {: bytes:n :}
-   0 bytes SNC-PROT-RW SNC-MAP-ANON -1 0 mmap
-   dup 0 < if s" snap: heap scratch mmap failed" 74 die then ;
+: SCRATCH ( n -- ptr u8 )
+   map-anon 0 <> if drop s" snap: heap scratch mmap failed" 74 die then ;
 
 : HEAP-BYTES ( -- n ) SDL @ DATA-START - ;
 
@@ -449,7 +443,7 @@ TRUSTED: SGR-PTR ( -- ptr u8 ) SGR-N @ ;
    loop drop ;
 
 : WRITE-GRID ( -- )
-   SHL @ SCRATCH SGR-N !
+   SHL @ SCRATCH SGR-A !
    SBM-PTR SBL @ SGR-PTR SNAPSHOT-FORMAT:GRID-FRAME + CELL-GRID:COMPACT {: groups:n stored:n :}
    groups SGR-PTR CELL-VIEW !
    stored SGR-PTR 8 + CELL-VIEW !
@@ -458,7 +452,7 @@ TRUSTED: SGR-PTR ( -- ptr u8 ) SGR-N @ ;
 : ENCODE-HEAP ( -- )
    SNAPSHOT-FORMAT:HEAP-RAW SHF !  HEAP-BYTES SHL !
    HEAP-CELLS 0= if exit then
-   HEAP-CELLS CELL-GRID:CELL-BITS 1- + CELL-GRID:CELL-BITS / SCRATCH SBM-N !
+   HEAP-CELLS CELL-GRID:CELL-BITS 1- + CELL-GRID:CELL-BITS / SCRATCH SBM-A !
    HEAP-SCAN
    GRID-BYTES {: grid:n :}
    grid HEAP-BYTES >= if exit then
@@ -572,7 +566,11 @@ variable STAGED-U
    SNAP-DROP
    WRITE-BYTES ;
 
-TRUSTED: CF-DEPTH ( -- n ) dbase@ CFSTK-OFF + @ ;
+\ The control-flow stack's depth cell lies in the dictionary region, whose
+\ base dbase@ answers as a number.
+CAST: REGION-CELL ( n -- ptr n )
+
+: CF-DEPTH ( -- n ) dbase@ CFSTK-OFF + REGION-CELL @ ;
 
 : DATA-SET? ( n -- bool ) data-base + @ 0<> ;
 

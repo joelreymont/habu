@@ -27,10 +27,17 @@ public
 16 constant GRID-FRAME               \ the grid's framing: groups u64, stored group bytes u64
 
 private
-TRUSTED: VERSION-XT ( n -- [ -- n ] ) ;
-TRUSTED: TEXT-BASE ( -- n ) data-base RBASE-CELL + @ ;
-TRUSTED: TEXT-SIZE ( -- n )
-   TEXT-BASE CODE-OFF - IMAGE-TEXT-SIZE-OFF + @ IMAGE-TEXT-CONTENT-ADJ - ;
+\ The capability's code entry is a raw execution token; this view states the
+\ effect every format version gives it.
+CAST: VERSION-XT ( n -- [ -- n ] )
+
+: TEXT-BASE ( -- n )
+   data-base RBASE-CELL + @ ;
+
+\ The engine text's size field, read through the text base cell's address.
+: TEXT-SIZE ( -- n )
+   data-base RBASE-CELL + 0 ptr-field @
+   CODE-OFF - IMAGE-TEXT-SIZE-OFF + CELL-VIEW @ IMAGE-TEXT-CONTENT-ADJ - ;
 
 public
 

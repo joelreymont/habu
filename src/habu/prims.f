@@ -697,8 +697,10 @@ ETRUSTED-ONLY!                       \ CODE-RECLAIM's permitted CP rewind
 \ the seal: the friend arena (CUR, WIDN, DEF-WL, TSIG, TCSIG, PKG-*), BODYBUF,
 \ DEF-TIER-CELL, the TIER-PROV band and the records behind the PROT window.
 \ These nine rows are how an interpreter written in Habu writes it. Each is
-\ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so only a
-\ TRUSTED: body reaches one. A refusal exits and never throws: 79 while a task
+\ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so a checked
+\ body reaches one only through an owner-private row below: package OUTER's,
+\ the interpret loop written in Habu (src/habu/packages.f and
+\ src/habu/definers.f), and CHECKER-OVERLAY's. A refusal exits and never throws: 79 while a task
 \ is live (the four dictionary rows), 84 for a protected wid after
 \ the seal (`alias-record`, `def-open`) and 83 for every other refusal. A
 \ caller checks first and prints the engine's own text. One refusal is a
@@ -719,17 +721,19 @@ ETRUSTED-ONLY!                       \ CODE-RECLAIM's permitted CP rewind
 \ set and else 0, [40] DICT-WL:NAMESPACE. It refuses a colon in the name.
 EPRIM: namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
-\ namespace-record's and package-scope!'s owner-private rows: inside package
-\ CHECKER-OVERLAY they win, so the overlay's checked code calls the two writers,
-\ and each record carries DNAME-INT|DNAME-OWNED (src/habu/layout.f). The global
-\ trusted-only rows stay beside them for the TRUSTED: callers outside the owner
-\ (src/habu/packages.f); a checked caller elsewhere is refused by them.
+\ The owner-private rows of these writers: inside package CHECKER-OVERLAY or
+\ OUTER (the interpret loop written in Habu) a row wins, so that owner's checked
+\ code calls the writer, and each record carries DNAME-INT|DNAME-OWNED
+\ (src/habu/layout.f). The global trusted-only rows stay beside them; a checked
+\ caller elsewhere is refused by them.
 EPPRIM: CHECKER-OVERLAY namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: OUTER namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 \ namespace-private ( n -- ): give namespace row n, whose [8] is 0, a fresh
 \ private wid. It refuses an index at or above NDICT, unsigned, a row that is
 \ not a namespace row and one that already has a private wid.
 EPRIM: namespace-private PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
+EPPRIM: OUTER namespace-private PE-N PE-IN ECLOSE-PRIVATE
 \ alias-record ( ptr u8 n n n -- ) name, source index, wid: publish a record
 \ carrying the source's [0] and [8] and exactly its DNAME-IMM, DNAME-WIDE and
 \ DNAME-MIN-IN bits, as `export` does. It refuses wid -1 or -2, a source at or
@@ -740,6 +744,7 @@ ETRUSTED-ONLY!
 \ unsigned or prim source.
 EPRIM: alias-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
+EPPRIM: OUTER alias-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ package-scope! ( n n -- ) namespace index, parent wid: PKG-PUB and PKG-PRI
 \ from the row's [0] and [8], PKG-REC the row's address and PKG-PARENT the
 \ wid; `-1 0` clears all four. It refuses any other index at or above NDICT,
@@ -749,6 +754,7 @@ ETRUSTED-ONLY!
 EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: CHECKER-OVERLAY package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: OUTER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ def-open ( ptr u8 n n n -- ) name, wid, kind: write record NDICT unpublished,
 \ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR or
 \ DKIND:CAST) in [16] and the wid in [40]; PEND-CELL is that record; TSIG,
@@ -758,11 +764,13 @@ EPPRIM: CHECKER-OVERLAY package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ own head (its frame and resets) is not this row's.
 EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
+EPPRIM: OUTER def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ body-append ( ptr u8 n -- ): append the bytes and one space to BODYBUF
 \ through the capture routine `:` uses. It refuses BODYLEN + u + 1 past
 \ BODYBUF-CAP, with BODYLEN and u both unsigned.
 EPRIM: body-append PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
+EPPRIM: OUTER body-append PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
 \ TSIG-A and TSIG-U. It refuses when no definition is pending.
 EPRIM: trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
@@ -772,6 +780,7 @@ ETRUSTED-ONLY!
 \ refuses when no definition is pending.
 EPRIM: created-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
+EPPRIM: OUTER created-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ def-close ( -- ): end the pending definition the native compiler compiled,
 \ as the engine's tier-1 `;` ends one: the TIER-PROV window def-open opened
 \ closes native, origin 1 over [open, CP), and the state def-open set clears:
@@ -780,6 +789,7 @@ ETRUSTED-ONLY!
 \ (DEF-TIER-CELL other than 1), as ndict-append does.
 EPRIM: def-close EPRIM;
 ETRUSTED-ONLY!
+EPPRIM: OUTER def-close ECLOSE-PRIVATE
 \ ---- the replay writers ------------------------------------------------------
 \ Only package CHECKER-OVERLAY's rows type these six. With no global row, a
 \ checked caller elsewhere is E-UNDEFINED, and a TRUSTED: body elsewhere binds
@@ -842,11 +852,13 @@ EPRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ NDICT's private indexed-record boundary
 \ Its owners' readers: CHECKER-RESOLVE's scope probe (src/core/checker.f SCOPE-WL-PROBE), NDICT's record
-\ lookup (src/compiler/native/dict.f WL-RECORD) and CHECKER-SURFACE's record index (src/core/checker-surface.f
-\ RECORD-INDEX). Three rows, not one: each owner is a separate sealed package, and NDICT keeps the raw record private.
+\ lookup (src/compiler/native/dict.f WL-RECORD), CHECKER-SURFACE's record index (src/core/checker-surface.f
+\ RECORD-INDEX) and OUTER's dictionary probe (src/habu/outer.f WL-PROBE). Four rows, not one: each owner is a
+\ separate sealed package, and NDICT keeps the raw record private.
 EPPRIM: CHECKER-RESOLVE xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: NDICT xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: CHECKER-SURFACE xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: OUTER xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPRIM: scope-find     PE-PTR-U8 PE-IN PE-N PE-IN
                       PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-N PE-OUT EPRIM;
 EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM;
@@ -936,10 +948,11 @@ EPRIM: munmap   PE-PTR-A PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;   \ ( addr len -- 
 \ the true flag is pushed, so no cell is written to the stack's low guard page.
 \ `depth` and `catch` both push, so this is the one word an interpreter loop
 \ written in Habu can use to observe a token that underflowed. The row states
-\ no effect for the xt, so the xt travels as a number and only a TRUSTED: body
-\ may call it.
+\ no effect for the xt, so the xt travels as a number: outside package OUTER,
+\ that loop (src/habu/outer.f), a checked caller is refused.
 EPRIM: execute-floor PE-N PE-IN  PE-F PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ executes an xt whose effect nothing states
+EPPRIM: OUTER execute-floor PE-N PE-IN  PE-F PE-OUT ECLOSE-PRIVATE
 
 \ ---- primitives whose effect the checker elaborates --------------------------
 \ These have engine bodies and deliberately no row: their effect depends on the

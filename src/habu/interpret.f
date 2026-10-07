@@ -12,11 +12,14 @@ package OUTER
 private
 
 \ ---- the loop -------------------------------------------------------------------------
-\ A number is pushed and a word run: the token's effect on the stack is the
-\ program's, so this row, and every row in outer.f that runs program code,
-\ states none of it.
-TRUSTED: DISPATCH ( -- )
-   NUMERAL? if VALUE @ TOP-EV-NUM 0 HOOK exit then
+\ A number is pushed and a word run, each under the floor: the token's effect
+\ on the stack is the program's, so this row, and every row in outer.f that
+\ runs program code, states none of it.
+: PUSH-NUM ( -- )
+   [: VALUE @ TOP-EV-NUM 0 HOOK ;] CELL-LITERAL RUN-LITERAL ;
+
+: DISPATCH ( -- )
+   NUMERAL? if PUSH-NUM exit then
    RUN-WORD ;
 
 : STEP ( -- )

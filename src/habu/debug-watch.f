@@ -9,19 +9,18 @@
 
 8 constant BPW-MAX
 
-\ The table stores DATA pointers, so it is declared storage and needs no trust
-\ row of its own (dot habu-refuse-a-ptr-5ad2734e); its helpers refine one fixed
-\ DATA cell and print its raw address.
-\ Retirement: habu-sweep-trusted-out-41e973ce.
+\ The table stores DATA pointers, so it is declared storage (dot
+\ habu-refuse-a-ptr-5ad2734e); its helpers view one fixed DATA cell and print
+\ an address as its distance from zero.
 BPW-MAX TYPED-BUFFER BPW-TAB ptr n
 variable BPW-IDX
 variable BPW-LAST
 
-TRUSTED: BPW-PRINT-ADDR ( ptr n -- )
-   . ;
+: BPW-PRINT-ADDR ( ptr n -- )
+   BYTE-VIEW NULL-PTR BYTE-VIEW - . ;
 
-TRUSTED: BPW-DATA-CELL ( n -- ptr n )
-   data-base + ;
+: BPW-DATA-CELL ( n -- ptr n )
+   data-base + CELL-VIEW ;
 
 \ The cell holds the table's ADDRESS, so it is reached through `ptr-field`,
 \ the declared pointer-cell door, not by reading a plain DATA offset: nothing

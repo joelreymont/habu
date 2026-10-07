@@ -175,8 +175,8 @@ private
 \ `checker-export`, and the tail a definition or `export` would add, which must
 \ not be there yet.
 \ xref-search-wl walks the dictionary's hash index under the key the engine's
-\ own probe uses. Trusted-only by the primitive's own row (prims.f).
-TRUSTED: WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
+\ own probe uses; its row is OUTER's own (src/habu/prims.f).
+: WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 \ The index of the first colon at or after `from`, or -1: the shape the
 \ qualifier readers refuse a token by.
@@ -259,10 +259,11 @@ create NL NEWLINE c,
 : CELL! ( n n -- )
    data-base + ! ;
 
-\ The input cells hold byte addresses as integers (habu1.f B-EVAL, LTOK). These
-\ two are outer.f's one crossing between such a cell and a byte pointer.
-TRUSTED: ADDR@ ( n -- ptr u8 ) data-base + @ ;
-TRUSTED: ADDR! ( ptr u8 n -- ) data-base + ! ;
+\ The input cells hold byte addresses (habu1.f B-EVAL, LTOK). These two are
+\ outer.f's one crossing between such a cell and a byte pointer, through
+\ `ptr-field`, the declared door to a DATA cell that holds an address.
+: ADDR@ ( n -- ptr u8 ) data-base + 0 ptr-field @ ;
+: ADDR! ( ptr u8 n -- ) data-base + 0 ptr-field ! ;
 
 : TOKEN$ ( -- ptr u8 n )
    TKA-CELL ADDR@ TKL-CELL CELL@ ;
@@ -410,7 +411,7 @@ variable DIGIT-AT
 \ A word or the hook runs through execute-floor, which answers whether it left
 \ the stack below its base and then resets the stack to the base: the floor the
 \ engine checks after every token. The prim's row states no effect for the xt,
-\ so only a trusted body calls it.
+\ so it is OUTER's alone (src/habu/prims.f).
 : FLOORED ( bool -- )
    if s" E-UNDERFLOW: " REFUSE then ;
 
@@ -425,9 +426,20 @@ variable DIGIT-AT
 : HOOK@ ( -- n )
    TOP-HOOK-CELL CELL@ ;
 
-TRUSTED: HOOK ( n n -- )
+\ The hook cell holds a raw execution token; the event protocol is its effect.
+CAST: TOP-HOOK ( n -- [ ptr u8 n n n -- ] )
+CAST: HOOK-CALL ( [ -- ] -- n )
+
+\ The call runs under the floor, so it pushes the event itself: a quotation
+\ reads no local, and the class and flags wait in these cells.
+variable EVENT-CLASS
+variable EVENT-FLAGS
+
+: HOOK ( n n -- )
    HOOK@ 0= if 2drop exit then
-   TOKEN$ 2swap HOOK@ execute-floor FLOORED ;
+   EVENT-FLAGS ! EVENT-CLASS !
+   [: TOKEN$ EVENT-CLASS @ EVENT-FLAGS @ HOOK@ TOP-HOOK execute ;]
+   HOOK-CALL execute-floor FLOORED ;
 
 \ ---- numbers ------------------------------------------------------------------------
 variable VALUE
@@ -500,7 +512,7 @@ TYPED-VARIABLE REC ptr n
    f MIN-IN 8 lshift or ;
 
 \ The xt waits on the return stack while the hook runs.
-TRUSTED: RUN-WORD ( -- )
+: RUN-WORD ( -- )
    LOOKUP GATE
    REC @ NHOST:SELECT-REC >r
    TOP-EV-WORD WORD-FLAGS HOOK
@@ -670,24 +682,35 @@ TRUSTED: RUN-WORD ( -- )
    s q d 1 + ESC-COPY
    d ;
 
-\ ---- the string keywords ---------------------------------------------------------------
-\ A literal a program keeps is pushed, then the hook sees it with the keyword
-\ as its token. `."` types its text straight from the input and allots
-\ nothing; `.\"` keeps its decoded bytes, as the engine's C-EIDOTQ does.
-TRUSTED: PUSH-STR ( -- )
-   KEEP TOP-EV-STR 0 HOOK ;
+\ ---- running a literal ----------------------------------------------------------------
+\ A literal a program keeps is program code: a quotation pushes it, then the
+\ hook sees it with the keyword as its token, and the quotation runs under the
+\ floor as a word does. The cells it leaves are the program's, so these views
+\ state its effect only to project it to the number execute-floor takes.
+CAST: STR-LITERAL ( [ -- ptr u8 n ] -- n )
+CAST: CSTR-LITERAL ( [ -- ptr u8 ] -- n )
+CAST: CELL-LITERAL ( [ -- n ] -- n )
 
-TRUSTED: PUSH-CSTR ( -- )
-   COUNTED TOP-EV-CSTR 0 HOOK ;
+: RUN-LITERAL ( n -- )
+   execute-floor FLOORED ;
+
+\ ---- the string keywords ---------------------------------------------------------------
+\ `."` types its text straight from the input and allots nothing; `.\"` keeps
+\ its decoded bytes, as the engine's C-EIDOTQ does.
+: PUSH-STR ( -- )
+   [: KEEP TOP-EV-STR 0 HOOK ;] STR-LITERAL RUN-LITERAL ;
+
+: PUSH-CSTR ( -- )
+   [: COUNTED TOP-EV-CSTR 0 HOOK ;] CSTR-LITERAL RUN-LITERAL ;
 
 : TYPE-STR ( -- )
    TEXT type ;
 
-TRUSTED: PUSH-ESC-STR ( -- )
-   ESC-KEEP TOP-EV-STR 0 HOOK ;
+: PUSH-ESC-STR ( -- )
+   [: ESC-KEEP TOP-EV-STR 0 HOOK ;] STR-LITERAL RUN-LITERAL ;
 
-TRUSTED: PUSH-ESC-CSTR ( -- )
-   ESC-COUNTED TOP-EV-CSTR 0 HOOK ;
+: PUSH-ESC-CSTR ( -- )
+   [: ESC-COUNTED TOP-EV-CSTR 0 HOOK ;] CSTR-LITERAL RUN-LITERAL ;
 
 : TYPE-ESC-STR ( -- )
    ESC-KEEP type ;
@@ -700,8 +723,8 @@ TRUSTED: PUSH-ESC-CSTR ( -- )
    TOKEN$ drop c@ ;
 
 \ The hook sees the operand as the token.
-TRUSTED: PUSH-CHAR ( -- )
-   FIRST-BYTE TOP-EV-CHAR 0 HOOK ;
+: PUSH-CHAR ( -- )
+   [: FIRST-BYTE TOP-EV-CHAR 0 HOOK ;] CELL-LITERAL RUN-LITERAL ;
 
 \ ---- tick (habu2.f C-TICK) ---------------------------------------------------------------
 \ The seal guard (habu2.f C-QUALIFY-SEAL-GUARD): once the engine is sealed, a
@@ -754,8 +777,8 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
    TRUSTED-TICK? if s" hb: trusted-only tick: " REFUSE then ;
 
 \ The hook sees the operand as the token and the record's flags.
-TRUSTED: PUSH-XT ( -- )
-   TICKED REC @ XREF-START TOP-EV-TICK WORD-FLAGS HOOK ;
+: PUSH-XT ( -- )
+   [: TICKED REC @ XREF-START TOP-EV-TICK WORD-FLAGS HOOK ;] CELL-LITERAL RUN-LITERAL ;
 
 \ ---- the literal keywords -----------------------------------------------------------------
 \ The engine's EM-INTERPRET-STRING-KEYWORDS, with `'` and `char` from its
