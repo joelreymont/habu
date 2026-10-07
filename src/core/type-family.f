@@ -1560,18 +1560,19 @@ public
 
 private
 
-\ A private family's generated word is recognised only while its DECLARING
-\ PACKAGE is open. That is the only scope the word resolves in, so it is the only
-\ scope in which the undefine guard has anything to protect; outside it the name
-\ belongs to whoever spells it. The three gates before that ask whether this
-\ family generated anything at all: a public one wears the qualified spelling, a
-\ private sum or enum publishes nothing, and a zero-field opaque product
-\ published no variant rows and so no member pair either. Past the gates the
-\ name is a member of this family when it is the constructor pair or a tail the
-\ family derived; the addr accessors are the third membership, asked through
-\ TFAM-ADDR-WORD-XT below.
+\ A private family's generated word — and an OPAQUE family's, placed the same
+\ way — is recognised only while its DECLARING PACKAGE is open. That is the only
+\ scope the word resolves in, so it is the only scope in which the undefine
+\ guard has anything to protect; outside it the name belongs to whoever spells
+\ it. The three gates before that ask whether this family generated anything at
+\ all: a family whose generated words are public (TFAM-GEN-PUBLIC?) wears the
+\ qualified spelling, a private sum or enum publishes nothing, and a fieldless
+\ product published no variant rows and so no member pair either. Past the
+\ gates the name is a member of this family when it is the constructor pair or
+\ a tail the family derived; the addr accessors are the third membership, asked
+\ through TFAM-ADDR-WORD-XT below.
 : TF-CTOR-PRIV-FAM? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
-   fam TFAM-PUBLIC? IF RES-FALSE EXIT THEN
+   fam TFAM-GEN-PUBLIC? IF RES-FALSE EXIT THEN
    fam TFAM-PRODUCT? 0= IF RES-FALSE EXIT THEN
    fam TFAM-VAR-COUNT@ 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
@@ -3099,7 +3100,7 @@ private
 
 : TFAM-ADDR-PRIV-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
    id SUMV-FAM@ {: fam:n :}
-   fam TFAM-PUBLIC? IF RES-FALSE EXIT THEN
+   fam TFAM-GEN-PUBLIC? IF RES-FALSE EXIT THEN
    fam TFAM-DERIVE-ADDR? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE$ fam TFAM-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
@@ -3174,7 +3175,7 @@ private
 
 : TFAM-INIT-QUAL-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
    id SUMV-FAM@ {: fam:n :}
-   fam TFAM-PUBLIC? 0= IF RES-FALSE EXIT THEN
+   fam TFAM-GEN-PUBLIC? 0= IF RES-FALSE EXIT THEN
    a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
    a u TF-CW-TAIL$ fam TFAM-INIT-TAIL? ;
 
@@ -3190,7 +3191,7 @@ private
       fs TF-CI @ + {: fid:n :}
       fid PF-N@ < IF
          a u fam fid TFAM-INIT-HELPER$ CORE-STR=CI IF RES-TRUE EXIT THEN
-         fam TFAM-PUBLIC? 0= IF
+         fam TFAM-GEN-PUBLIC? 0= IF
             a u fam TFAM-NAME$ fid RES-FALSE TFAM-INIT-MEMBER$
                TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE EXIT THEN
             a u fam TFAM-NAME$ fid RES-TRUE TFAM-INIT-MEMBER$

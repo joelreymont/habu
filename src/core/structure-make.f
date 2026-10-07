@@ -39,6 +39,10 @@
 \ order (no tag, docs §18), so both bodies are physical no-ops the checker
 \ certifies against the field-derived metadata row; the generated text never
 \ contains TRUST, TRUSTED:, or set-check.
+\ Where the pair lands is the generator's choice, not this file's: a public
+\ family's words go to its constructor namespace unless it said OPAQUE, and an
+\ OPAQUE or private family's to the declaring package's private wordlist
+\ (src/core/sumtype.f TDECL-GEN-PLACED).
 \
 \ Atomic publication after validation. GENERATE decides every local condition
 \ in CHECKED code first — family liveness, product kind, at least one field,
@@ -128,8 +132,10 @@ public
 \ UNMAKE ( family -- fields ) checked words for a product family, from its
 \ declaration-order schemas in the current field transaction. A PUBLIC family
 \ gets FAMILY:MAKE / FAMILY:UNMAKE in its reserved constructor namespace; a
-\ PRIVATE one gets FAMILY-MAKE / FAMILY-UNMAKE in the declaring package's private
-\ wordlist (src/core/type-family.f TF-CTOR-PRIV$ owns both spellings).
+\ PRIVATE one, or a public one that said OPAQUE, gets FAMILY-MAKE /
+\ FAMILY-UNMAKE in the declaring package's private wordlist
+\ (src/core/type-family.f TF-CTOR-PRIV$ owns both spellings, TFAM-GEN-PUBLIC?
+\ picks).
 \ Throws E-SM-FAM (not a live product family), E-SM-EMPTY (no fields),
 \ a DECL-EVENT scope error (the token does not own that family/field), or E-SM-DUP
 \ (MAKE/UNMAKE already generated) — every reject

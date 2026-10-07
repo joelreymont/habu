@@ -728,7 +728,7 @@ create TDV-BADLETTER 1 allot
 public
 
 : TDECL-CTOR-PUBLISH ( n n n -- ) {: fam:n vstart:n count:n :}
-   fam TFAM-PUBLIC? 0= IF EXIT THEN
+   fam TFAM-GEN-PUBLIC? 0= IF EXIT THEN
    fam TFAM-PKG$ fam TFAM-NAME$ TF-CTOR-PKG$ {: ca:ptr cu:n :}
    ca cu TF-INTERN {: coff:n :}
    count 0 DO  vstart i +  coff cu SUMV-CTOR-PKG!  LOOP ;
@@ -1844,16 +1844,17 @@ private
    REPEAT
    62 TDGEN-C, ;
 
-\ ": PKG:VARIANT " for a public family, ": FAMILY-MEMBER " for a private one,
-\ with the name span recorded either way. The two spellings and the reason they
-\ differ are TF-CTOR-PKG$ / TF-CTOR-PRIV$ in src/core/type-family.f; the short
-\ version is that a private family's words go into the DECLARING PACKAGE's
-\ private wordlist, and a name carrying a colon can never land there.
+\ ": PKG:VARIANT " when the family's generated words are public, ": FAMILY-MEMBER "
+\ for a private or OPAQUE family (TFAM-GEN-PUBLIC?), with the name span recorded
+\ either way. The two spellings and the reason they differ are TF-CTOR-PKG$ /
+\ TF-CTOR-PRIV$ in src/core/type-family.f; the short version is that those
+\ families' words go into the DECLARING PACKAGE's private wordlist, and a name
+\ carrying a colon can never land there.
 : TDGEN-NAME ( n -- ) {: vid:n :}
    s" : " TDGEN-APP
    TDGEN-U @ {: n0:n :}
    vid SUMV-FAM@ {: fam:n :}
-   fam TFAM-PUBLIC? IF
+   fam TFAM-GEN-PUBLIC? IF
       vid SUMV-CTOR-PKG$ TDGEN-APP
       58 TDGEN-C,
       vid SUMV-NAME$ TDGEN-UPPER
@@ -1901,14 +1902,14 @@ public
 
 private
 
-\ A PRIVATE family protects no wordlist. Its words live in the declaring
+\ A PRIVATE or OPAQUE family protects no wordlist. Its words live in the declaring
 \ package's own private wordlist, and marking that wid protected would refuse
 \ every later definition the package makes: in a sealed engine
 \ EMIT-STORE-DEF-NAME (src/habu/habu2.f) exits 84 ENGINE-ERROR:SEAL-PACKAGE on a
 \ publish into a protected wid. The generated words stay protected BY NAME
 \ instead, through TFAM-CTOR-WORD? / the checker's CTOR-WORD?-XT undefine guard.
 : TDECL-CTOR-PROT-WID ( n -- ) {: vid:n :}
-   vid SUMV-FAM@ TFAM-PUBLIC? 0= IF EXIT THEN
+   vid SUMV-FAM@ TFAM-GEN-PUBLIC? 0= IF EXIT THEN
    TDECL-PROT-WID-ARMED @ 0= IF s" sumtype: protected-wid hook not installed" 76 die THEN
    TDGEN-CLEAR
    vid TDGEN-NAME
@@ -1957,12 +1958,12 @@ private
 \ pinned negative); the extend/undefine protection recognizes the fixed tails
 \ through TFAM-DERIVED-AT? (products: eq only), and the words ride the ctor
 \ package's item-8 closed-but-callable WID protection and registry rollback.
-\ "PKG-FAMILY:TAIL" for a public family, "FAMILY-TAIL" for a private one — the
-\ same two spellings, from the same two derivations, that TDGEN-NAME gives a
-\ constructor. A private family stamps no constructor package (TDECL-CTOR-PUBLISH
-\ exits early for one), so reading SUMV-CTOR-PKG$ for it would name nothing.
+\ "PKG-FAMILY:TAIL" for a public family, "FAMILY-TAIL" for a private or OPAQUE
+\ one — the same two spellings, from the same two derivations, that TDGEN-NAME
+\ gives a constructor. Neither of those stamps a constructor package
+\ (TDECL-CTOR-PUBLISH exits early), so reading SUMV-CTOR-PKG$ would name nothing.
 : TDGEN-DRV-REF ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}   \ member reference
-   fam TFAM-PUBLIC? 0= IF
+   fam TFAM-GEN-PUBLIC? 0= IF
       fam TFAM-NAME$ ta tu TF-CTOR-PRIV$ TDGEN-APP EXIT THEN
    fam TFAM-VAR-START@ SUMV-CTOR-PKG$ TDGEN-APP
    58 TDGEN-C,
@@ -2144,9 +2145,42 @@ variable TDD-H
    fam vstart 1 + 0 TDECL-PROD-WORD
    fam TDECL-DRV-WORDS ;
 
+\ A live declaration switches the engine's wordlist with `private` / `public`,
+\ and the engine passes each switch on to the checker (DECLARATIONS
+\ PRIVATE-OFF). A replay defines no word, and the pre-pass that runs it
+\ (src/habu/verify-source.f, tools/check-core.f) opens the source's package in
+\ the checker alone, so the engine has no package to switch: `private` there
+\ dies `private at tools/check.f:1`. A replay switches the checker's mode only.
+: TDECL-GEN-PRIVATE ( bool -- ) {: replay:bool :}
+   replay IF CHECKER-PRIVATE EXIT THEN
+   s" private" TDECL-EVAL-XT ;
+: TDECL-GEN-RESTORE ( n bool -- ) {: fam:n replay:bool :}
+   fam TFAM-PUBLIC? 0= IF replay TDECL-GEN-PRIVATE EXIT THEN
+   replay IF CHECKER-PUBLIC EXIT THEN
+   s" public" TDECL-EVAL-XT ;
+
+\ Run Q, which renders, preflights and evaluates (or replays) a family's
+\ generated rows, in the section those rows are placed in: when the family's
+\ generated words are public (TFAM-GEN-PUBLIC?) Q runs as is; a private or
+\ OPAQUE family's rows go into the declaring package's private wordlist, so Q
+\ runs between a switch to private and a restore of the declaration's own
+\ section, on either exit. Everything that interns a name runs inside the
+\ switch: the name preflight asks the wordlist the name will LAND in
+\ (src/habu/xref.f TARGET-RECORD), and a plan's constructor authorities are
+\ record symbols, which CHECKER-RECORD-SYM interns per section, so a plan
+\ rendered in another section queues authorities CTOR-PEND-MATCH? never finds.
+\ Q receives the family and hands it back: a quotation cannot read this word's
+\ locals, and catch takes only a stack-preserving quotation.
+: TDECL-GEN-PLACED ( n bool [ n -- n ] -- ) {: fam:n replay:bool q :}
+   fam TFAM-GEN-PUBLIC? IF fam q execute drop EXIT THEN
+   replay TDECL-GEN-PRIVATE
+   fam q catch {: rc:n :}
+   fam replay TDECL-GEN-RESTORE
+   rc 0 <> IF rc throw THEN
+   drop ;
+
 : TDECL-PROD-WORDS-BODY ( n -- ) {: fam:n :}
-   fam TDECL-PROD-PLAN
-   TDECL-GEN-EVAL
+   fam RES-FALSE [: dup TDECL-PROD-PLAN TDECL-GEN-EVAL ;] TDECL-GEN-PLACED
    fam TFAM-VAR-START@ TDECL-CTOR-PROT-WID ;
 
 \ Legacy adapter for the product generator, kept so the STRUCTURE make/unmake
@@ -2248,8 +2282,7 @@ variable TDAD-FAM                          \ the family under generation (read b
    REPEAT ;
 
 : TDECL-ADDR-BODY ( -- )
-   TDAD-FAM @ TDECL-ADDR-PLAN
-   TDECL-ADDR-EVAL ;
+   TDAD-FAM @ RES-FALSE [: dup TDECL-ADDR-PLAN TDECL-ADDR-EVAL ;] TDECL-GEN-PLACED ;
 
 \ Replay renders the same plan and takes only its FIRST reading: each row is
 \ armed and checked, so the accessor's effect is registered under its own name,
@@ -2258,8 +2291,7 @@ variable TDAD-FAM                          \ the family under generation (read b
 \ the committed field watermark, on the replay path exactly as on the live one,
 \ so the field ids the plan bakes are committed ids and the window reads them.
 : TDECL-ADDR-REPLAY-BODY ( -- )
-   TDAD-FAM @ TDECL-ADDR-PLAN
-   TDPLAN-PREFLIGHT-DEFINITIONS ;
+   TDAD-FAM @ RES-TRUE [: dup TDECL-ADDR-PLAN TDPLAN-PREFLIGHT-DEFINITIONS ;] TDECL-GEN-PLACED ;
 
 public
 
@@ -2432,40 +2464,29 @@ TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
 : TDINIT-NAME-PREFLIGHT ( -- )
    TDGEN-NA @ TDGEN-NU @ TDECL-NAME-PREFLIGHT-XT ;
 
-\ A live declaration switches the engine's wordlist with `private` / `public`,
-\ and the engine passes each switch on to the checker (DECLARATIONS
-\ PRIVATE-OFF). A replay defines no word, and the pre-pass that runs it
-\ (src/habu/verify-source.f, tools/check-core.f) opens the source's package in
-\ the checker alone, so the engine has no package to switch: `private` there
-\ dies `private at tools/check.f:1`. A replay switches the checker's mode only.
-: TDINIT-PRIVATE ( bool -- ) {: replay:bool :}
-   replay IF CHECKER-PRIVATE EXIT THEN
-   s" private" TDECL-EVAL-XT ;
-: TDINIT-RESTORE ( n bool -- ) {: fam:n replay:bool :}
-   fam TFAM-PUBLIC? 0= IF replay TDINIT-PRIVATE EXIT THEN
-   replay IF CHECKER-PUBLIC EXIT THEN
-   s" public" TDECL-EVAL-XT ;
-
+\ The receiver and helpers are private whatever the family's placement: their
+\ bracket is unconditional. The public GET/SET members follow the family
+\ (TDINIT-ROW below).
 : TDINIT-HELP-NAME-CHECK ( n bool -- ) {: fam:n replay:bool :}
-   replay TDINIT-PRIVATE
+   replay TDECL-GEN-PRIVATE
    [: TDINIT-NAME-PREFLIGHT ;] catch {: rc:n :}
-   fam replay TDINIT-RESTORE
+   fam replay TDECL-GEN-RESTORE
    rc 0 <> IF rc throw THEN ;
 
 : TDINIT-HELP-EVAL ( n -- ) {: fam:n :}
-   RES-FALSE TDINIT-PRIVATE
+   RES-FALSE TDECL-GEN-PRIVATE
    [: TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT TDINIT-MARK-LAST ;] catch {: rc:n :}
-   fam RES-FALSE TDINIT-RESTORE
+   fam RES-FALSE TDECL-GEN-RESTORE
    rc 0 <> IF rc throw THEN ;
 
 : TDINIT-HELP-REPLAY ( n -- ) {: fam:n :}
-   RES-TRUE TDINIT-PRIVATE
+   RES-TRUE TDECL-GEN-PRIVATE
    NAV-PAUSE {: on:n new:n :}
    [: TDGEN-NA @ TDGEN-NU @
       TDGEN-BUF TDINIT-SIG-OFF @ + TDINIT-SIG-U @ TDINIT-DECLARE ;]
       catch {: rc:n :}
    on new NAV-RESUME
-   fam RES-TRUE TDINIT-RESTORE
+   fam RES-TRUE TDECL-GEN-RESTORE
    rc 0 <> IF rc throw THEN ;
 
 \ An initialized-field row is generated: it is declared paused (NAV-PAUSE).
@@ -2477,6 +2498,12 @@ TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
    on new NAV-RESUME
    rc 0 <> IF rc throw THEN ;
 
+\ One public member row (GET or SET), rendered in TDGEN-BUF, placed as the
+\ family's generated words are.
+: TDINIT-ROW ( n bool -- ) {: fam:n replay:bool :}
+   replay IF fam replay [: TDINIT-REPLAY-ROW ;] TDECL-GEN-PLACED EXIT THEN
+   fam replay [: TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT ;] TDECL-GEN-PLACED ;
+
 : TDINIT-PREFLIGHT ( n bool -- ) {: fam:n replay:bool :}
    fam TDINIT-REQUIRE
    fam TFAM-FLD-START@ {: fs:n :}
@@ -2487,8 +2514,8 @@ TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
    BEGIN TDINIT-I @ fam TFAM-FLD-COUNT@ < WHILE
       fs TDINIT-I @ + {: fid:n :}
       fam fid TDINIT-HELP fam replay TDINIT-HELP-NAME-CHECK
-      fam fid TDINIT-GET TDINIT-NAME-PREFLIGHT
-      fam fid TDINIT-SET TDINIT-NAME-PREFLIGHT
+      fam fid TDINIT-GET fam replay [: TDINIT-NAME-PREFLIGHT ;] TDECL-GEN-PLACED
+      fam fid TDINIT-SET fam replay [: TDINIT-NAME-PREFLIGHT ;] TDECL-GEN-PLACED
       TDINIT-I @ 1 + TDINIT-I !
    REPEAT ;
 
@@ -2502,10 +2529,8 @@ TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
       fs TDINIT-I @ + {: fid:n :}
       fam fid TDINIT-HELP
       replay IF fam TDINIT-HELP-REPLAY ELSE fam TDINIT-HELP-EVAL THEN
-      fam fid TDINIT-GET
-      replay IF TDINIT-REPLAY-ROW ELSE TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT THEN
-      fam fid TDINIT-SET
-      replay IF TDINIT-REPLAY-ROW ELSE TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT THEN
+      fam fid TDINIT-GET fam replay TDINIT-ROW
+      fam fid TDINIT-SET fam replay TDINIT-ROW
       TDINIT-I @ 1 + TDINIT-I !
    REPEAT ;
 
@@ -2540,8 +2565,9 @@ TDECL-INIT-ARM-DEFAULT
 private
 
 \ Which families publish generated words. A PUBLIC family always has: its words
-\ go into the reserved constructor namespace. A PRIVATE PRODUCT does too, into
-\ its declaring package's private wordlist (dot habu-generate-a-private-80272413,
+\ go into the reserved constructor namespace, or, when it said OPAQUE, into its
+\ declaring package's private wordlist (TDECL-GEN-PLACED). A PRIVATE PRODUCT
+\ publishes into that private wordlist too (dot habu-generate-a-private-80272413,
 \ docs/type-system.md §10.4) — most memory records in the tree are
 \ package-private, so a public-only generator serves almost nothing. A private
 \ SUM or ENUM still publishes nothing: those construct through the checker-owned
@@ -2579,11 +2605,14 @@ private
 
 \ Replay publishes checked effects from the same constructor bodies as a live
 \ declaration. It emits no code and creates no runtime dictionary entries.
-: TDECL-REPLAY-BODY ( n -- n ) {: family:n :}
+: TDECL-REPLAY-PLAN ( n -- n ) {: family:n :}
    TDECL-SUMV-PROVIDER family TDECL-GEN-PLAN
    TDPLAN-PREFLIGHT-DEFINITIONS
    {: ctx:n qn qr qc fam:n :}
    fam ;
+: TDECL-REPLAY-BODY ( n -- n ) {: family:n :}
+   family RES-TRUE [: TDECL-REPLAY-PLAN ;] TDECL-GEN-PLACED
+   family ;
 
 
 public

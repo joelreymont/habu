@@ -1020,6 +1020,89 @@ DECL-DIAG:HAS? -1 T=
 s" STRUCTURE oloose 0 FIELD x n ;STRUCTURE" TRY 0 T=
 
 \ ---------------------------------------------------------------------------
+\ 17. What OPAQUE does: the family's generated words — MAKE/UNMAKE and every
+\     DERIVE member — take section 13's private-family placement, bare
+\     FAMILY-MEMBER in the declaring package's private wordlist, protected by
+\     name, with no constructor namespace stamped; the type stays nameable from
+\     any package and the declaration's own section is restored after
+\     generation. A reject after generation retires the privately placed words.
+\ ---------------------------------------------------------------------------
+package SDOPQ
+public
+STRUCTURE oaddr 0 OPAQUE DERIVE addr FIELD x n FIELD y n ;STRUCTURE
+STRUCTURE oeq 0 OPAQUE DERIVE eq hash FIELD u n ;STRUCTURE
+STRUCTURE oinit 0 OPAQUE DERIVE init FIELD a n FIELD b n ;STRUCTURE
+: OAFTER ( -- n ) 8 ;                                 \ defined after generation: still public
+: ORT ( n n -- n n ) OBOX-MAKE OBOX-UNMAKE ;          \ section 16's family, callable bare
+: OEQT ( -- bool ) 4 OEQ-MAKE 4 OEQ-MAKE OEQ-EQ ;
+: OEQF ( -- bool ) 4 OEQ-MAKE 5 OEQ-MAKE OEQ-EQ ;
+: OHSH ( -- bool ) 4 OEQ-MAKE OEQ-HASH 4 OEQ-MAKE OEQ-HASH = ;
+s" SDOI ( n n -- n n ) OBOX-MAKE OBOX-UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDOX ( ptr oaddr -- ptr n ) OADDR-X" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDON ( mut-view<a,b,c,init<d,oinit>> -- mut-view<a,b,c,init<d,oinit>> n ) OINIT-A@" CHECK-QUIET-CANDIDATE! -1 T=
+s" OADDR-AT" TFAM-ADDR-WORD? T-TRUE                   \ the accessor is a generated word here...
+private                                               \ the pair lives in the private wordlist
+s" undefine OBOX-MAKE" TRY 7111 T=                    \ ...and is protected by name there
+s" undefine OBOX-UNMAKE" TRY 7111 T=
+public
+;package
+11 22 SDOPQ:ORT 22 T= 11 T=
+SDOPQ:OAFTER 8 T=
+SDOPQ:OEQT -1 T=
+SDOPQ:OEQF 0 T=
+SDOPQ:OHSH -1 T=
+FID @ TFAM-VAR-START@ SUMV-CTOR-PKG$ nip 0 T=         \ no constructor package stamped (design7 7.2)
+s" SDOPQ-OADDR:AT" TFAM-ADDR-WORD? 0= T-TRUE          \ the qualified spelling is nobody's accessor
+s" SDOPQ-OBOX:MAKE" TFAM-CTOR-WORD? 0= T-TRUE         \ nor anybody's constructor
+
+\ Another package names the type and reaches none of the words, under any
+\ spelling: the probe answers 1 (unresolvable), as section 13's SDPO does.
+package SDOPQOTHER
+private
+s" SDOO ( n n -- n n ) OBOX-MAKE OBOX-UNMAKE" CHECK-QUIET-CANDIDATE! 1 T=
+s" SDOQ ( n n -- n n ) SDOPQ-OBOX:MAKE SDOPQ-OBOX:UNMAKE" CHECK-QUIET-CANDIDATE! 1 T=
+s" SDOC ( n n -- n n ) SDOPQ:OBOX-MAKE SDOPQ:OBOX-UNMAKE" CHECK-QUIET-CANDIDATE! 1 T=
+s" SDOE ( SDOPQ:oeq SDOPQ:oeq -- bool ) SDOPQ-OEQ:EQ" CHECK-QUIET-CANDIDATE! 1 T=
+s" SDOA ( ptr SDOPQ:oaddr -- ptr n ) SDOPQ-OADDR:X" CHECK-QUIET-CANDIDATE! 1 T=
+s" SDOB ( mut-view<a,b,c,init<d,SDOPQ:oinit>> -- mut-view<a,b,c,init<d,SDOPQ:oinit>> n ) OINIT-A@" CHECK-QUIET-CANDIDATE! 1 T=
+s" SDOT ( SDOPQ:obox -- SDOPQ:obox )" CHECK-QUIET-CANDIDATE! -1 T=
+public
+;package
+
+\ A reject AFTER generation (DERIVE init refuses a non-canonical record at commit,
+\ after MAKE/UNMAKE were placed privately; measured 7119 on master without OPAQUE)
+\ retires the privately placed words: the name is free and re-declaring it works.
+package SDOPQ
+public
+REJ-MARK
+s" STRUCTURE oroll 1 OPAQUE DERIVE init FIELD value a FIELD tail n ;STRUCTURE" TRY 7119 T=
+REJ-SAME
+STRUCTURE oroll 0 OPAQUE FIELD z n ;STRUCTURE
+: ORR ( n -- n ) OROLL-MAKE OROLL-UNMAKE ;
+;package
+9 SDOPQ:ORR 9 T=
+
+\ A reject inside generation: a private OCLASH-X already holds the name DERIVE
+\ addr generates for field x, so the declaration refuses (7110) after its
+\ MAKE/UNMAKE were placed. The colliding word still answers; once it is undefined
+\ the same declaration succeeds and its pair round-trips.
+package SDOPQ
+private
+: OCLASH-X ( -- n ) 77 ;
+public
+REJ-MARK
+s" STRUCTURE oclash 0 OPAQUE DERIVE addr FIELD x n ;STRUCTURE" TRY 7110 T=
+REJ-SAME
+private
+OCLASH-X 77 T=
+undefine OCLASH-X
+public
+STRUCTURE oclash 0 OPAQUE DERIVE addr FIELD x n ;STRUCTURE
+: OCR ( n -- n ) OCLASH-MAKE OCLASH-UNMAKE ;
+;package
+17 SDOPQ:OCR 17 T=
+
+\ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" structure-decl-suite: failures" 1 die ;

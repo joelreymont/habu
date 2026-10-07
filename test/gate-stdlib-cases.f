@@ -2816,6 +2816,10 @@ WHITEBOX-SUITE structure-decl
    test/structure-decl-suite.f
 ;SUITE
 
+SUITE structure-opaque
+   test/structure-opaque-e2e.f
+;SUITE
+
 WHITEBOX-SUITE structure-make
    test/structure-make-suite.f
 ;SUITE
