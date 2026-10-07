@@ -15,6 +15,7 @@ $4000 constant IO-CAP
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 variable PRE-OUT-U
+variable LINE-START
 create ART FS-PATH-CAP allot
 variable ART-U
 create IMAGE FS-PATH-CAP allot
@@ -152,12 +153,27 @@ variable SUBJECT-U
 : PREVERIFY-CHILD ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    true VERIFY-CHILD ;
 
+: DEFINITION-MEMBERS? ( ptr u8 n ptr u8 n ptr u8 n -- bool )
+   {: word:ptr wordu:n pkg:ptr pkgu:n vis:ptr visu:n :}
+   0 LINE-START !
+   begin
+      PRE-OUT$ 10 LINE-START @ SPLIT-NEXT
+      {: line:ptr lineu:n next:n found:bool :}
+      found 0= if false exit then
+      next LINE-START !
+      line lineu s" check-verify: definition {" STARTS-WITH?
+      line lineu word wordu CONTAINS? and if
+         line lineu pkg pkgu CONTAINS?
+         line lineu vis visu CONTAINS? and exit
+      then
+   again ;
+
 : VISIBILITY-CASE ( ptr u8 n -- )
    s" : SEED-GLOBAL ( -- n ) 1 ; package SEED-VIS private : HIDDEN ( -- n ) 2 ; public : SHOWN ( -- n ) 3 ; ;package"
    s" check-verify: verified" s" " false VERIFY-CHILD
-   PRE-OUT$ S\" \"word\":\"SEED-GLOBAL\",\"package\":\"\",\"visibility\":\"global\"" CONTAINS? TTRUE
-   PRE-OUT$ S\" \"word\":\"HIDDEN\",\"package\":\"seed-vis\",\"visibility\":\"private\"" CONTAINS? TTRUE
-   PRE-OUT$ S\" \"word\":\"SHOWN\",\"package\":\"seed-vis\",\"visibility\":\"public\"" CONTAINS? TTRUE ;
+   S\" \"word\":\"SEED-GLOBAL\"" S\" \"package\":\"\"" S\" \"visibility\":\"global\"" DEFINITION-MEMBERS? TTRUE
+   S\" \"word\":\"HIDDEN\"" S\" \"package\":\"seed-vis\"" S\" \"visibility\":\"private\"" DEFINITION-MEMBERS? TTRUE
+   S\" \"word\":\"SHOWN\"" S\" \"package\":\"seed-vis\"" S\" \"visibility\":\"public\"" DEFINITION-MEMBERS? TTRUE ;
 
 : PREVERIFY-CASES ( ptr u8 n -- )
    {: engine:ptr engineu:n :}
