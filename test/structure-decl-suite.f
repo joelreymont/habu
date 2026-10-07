@@ -948,6 +948,78 @@ s" STRUCTURE sdaroll 0 DERIVE addr FIELD z n ;STRUCTURE" TRY 0 T=
 s" SDAR1 ( ptr sdaroll -- ptr n ) SDAROLL:Z" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ ---------------------------------------------------------------------------
+\ 16. The OPAQUE header clause is recorded on the family record and in the
+\     event stream, and refused where it means nothing: after a field, twice,
+\     on a fieldless family, in an ENUM, and outside any package. Every reject
+\     returns every registry cursor to its mark and renders its line. What the
+\     clause does to the generated words is section 17.
+\ ---------------------------------------------------------------------------
+: REJ-MARK ( -- ) REG-MARK TYPE-FIELD:COUNT PFB ! DECL-EVENT:COUNT DEVB ! ;
+: REJ-SAME ( -- )
+   TFAM-N @ RB-TFAM @ T=  TF-STR-U @ RB-STR @ T=  TF-PK-N @ RB-PK @ T=
+   SUMV-N @ RB-SUMV @ T=  LAY-N @ RB-LAY @ T=  SCH-N @ RB-SCH @ T=
+   SCH-ROOT-N @ RB-ROOT @ T=  PF-N @ RB-PFN @ T=  PF-COMMIT-N @ RB-PFC @ T=
+   TYPE-FIELD:COUNT PFB @ T=  DECL-EVENT:COUNT DEVB @ T= ;
+DECL-EVENT:RESET
+package SDOPQ
+public
+STRUCTURE obox 0 OPAQUE FIELD x n FIELD y n ;STRUCTURE
+s" obox" FAMID FID !
+2 DECL-EVENT:OPAQUE? T-TRUE                           \ an OPAQUE event followed DECL + ARITY
+FID @ TFAM-OPAQUE? T-TRUE                             \ the family record carries it
+FID @ TFAM-PUBLIC? T-TRUE                             \ the family's visibility is unchanged
+FID @ TFAM-GEN-PUBLIC? 0= T-TRUE                      \ its generated words are placed privately
+;package
+
+\ A private family may say OPAQUE too: the placement is already private, so the
+\ clause changes nothing and is admitted.
+package SDOPQPRIV
+private
+s" STRUCTURE opriv 0 OPAQUE FIELD x n ;STRUCTURE" TRY 0 T=
+s" opriv" FAMID TFAM-OPAQUE? T-TRUE
+public
+;package
+
+\ The definer rejects, each at its token, each with every cursor back at its mark.
+package SDOPQREJ
+public
+DECL-DIAG:PROSE
+REJ-MARK
+s" STRUCTURE olate 0 FIELD x n OPAQUE ;STRUCTURE" TRY 7107 T=
+REJ-SAME
+s" habu: bad structure declaration 'olate': header clause after the first field at 'OPAQUE'"
+DECL-DIAG:HAS? -1 T=
+DECL-DIAG:PROSE
+REJ-MARK
+s" STRUCTURE otwice 0 OPAQUE OPAQUE FIELD x n ;STRUCTURE" TRY 7206 T=
+REJ-SAME
+s" habu: bad structure declaration 'otwice': a second OPAQUE clause in one declaration at 'OPAQUE'"
+DECL-DIAG:HAS? -1 T=
+DECL-DIAG:PROSE
+REJ-MARK
+s" STRUCTURE obare 0 OPAQUE ;STRUCTURE" TRY 7107 T=
+REJ-SAME
+s" habu: bad structure declaration 'obare': opaque requires a family with fields at 'obare'"
+DECL-DIAG:HAS? -1 T=
+DECL-DIAG:PROSE
+REJ-MARK
+s" ENUM oshade 0 OPAQUE VARIANT dark ;VARIANT ;ENUM" TRY 7107 T=
+REJ-SAME
+s" habu: bad enum declaration 'oshade': unexpected token in enum declaration at 'OPAQUE'"
+DECL-DIAG:HAS? -1 T=
+;package
+
+\ Outside any package there is no private wordlist for the pair to land in: the
+\ clause refuses before any name is checked, the loader goes on, the name is free.
+DECL-DIAG:PROSE
+REJ-MARK
+s" STRUCTURE oloose 0 OPAQUE FIELD x n ;STRUCTURE" TRY 7207 T=
+REJ-SAME
+s" habu: bad structure declaration 'oloose': OPAQUE requires a family declared in a package at 'OPAQUE'"
+DECL-DIAG:HAS? -1 T=
+s" STRUCTURE oloose 0 FIELD x n ;STRUCTURE" TRY 0 T=
+
+\ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" structure-decl-suite: failures" 1 die ;

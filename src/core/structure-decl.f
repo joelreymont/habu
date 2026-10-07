@@ -9,7 +9,7 @@
 \
 \ Grammar (docs §2.1):
 \   STRUCTURE type-name arity header-clause* field* ;STRUCTURE
-\   header-clause = POLICY policy-name | DERIVE derive-name+
+\   header-clause = POLICY policy-name | DERIVE derive-name+ | OPAQUE
 \   field         = FIELD field-name type-expr
 \ A malformed, duplicate, reserved, unresolved, or mixed-legacy token rejects at
 \ the exact offending token with the E-TDECL-* family (values mirror sumtype.f)
@@ -39,6 +39,10 @@
 \ habu-generate-a-private-80272413, docs/type-system.md §10.4), and without it
 \ the declared memory record serves almost nothing, because nearly every memory
 \ record under lib/ is package-private.
+\ The OPAQUE header clause moves a PUBLIC family's generated words to that
+\ private placement while the type stays nameable everywhere (docs/type-system.md
+\ §10.4): the only construction surface another package gets is what the
+\ declaring package defines over the pair.
 \ Generation remains inside the shared transaction. If evaluation or checker
 \ certification rejects either constructor, the coordinator restores every
 \ participant before the error returns to the caller.
@@ -428,6 +432,14 @@ SD-QUOT-INSTALL
    FAM @ code TFAM-LAYOUT!
    TOK @ FAM @ code DECL-EVENT:POLICY TOK ! ;
 
+\ OPAQUE: the family keeps its declared visibility and its generated words take
+\ the private-family placement (docs/type-system.md §10.4). The event validates
+\ (package, at most once), then the fresh family record is marked.
+: OPAQUE-CLAUSE ( -- )
+   HEADER-ORDER
+   TOK @ FAM @ DECL-EVENT:OPAQUE TOK !
+   FAM @ TFAM-OPAQUE! ;
+
 : DERIVE-FEATURE? ( ptr u8 n -- bool )  \ a known/recognised derive feature token
    2dup s" eq" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
@@ -575,6 +587,8 @@ SD-QUOT-INSTALL
    SD-MISS-U @ IF E-UNRESOLVED throw THEN
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    FAM @ SD-CELLS @ TFAM-SLOTS!
+   FAM @ TFAM-OPAQUE? SD-MAKEABLE? 0= and IF
+      s" opaque requires a family with fields" E-SYNTAX DECL-REJECT:REJECT throw THEN
    \ The constructor generator's rejects use the packet's code table. The
    \ initialized accessor's fixed-layout gate arms its own reason in SD-ADDR-ARM.
    SD-MAKEABLE? IF TOK @ FAM @ STRUCTURE-MAKE:GENERATE THEN
@@ -588,6 +602,7 @@ SD-QUOT-INSTALL
    2dup s" field" CORE-STR=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
    2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
    2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
+   2dup s" opaque" CORE-STR=CI IF 2drop OPAQUE-CLAUSE NO EXIT THEN
    2drop s" unexpected token in structure declaration" E-SYNTAX
    DECL-REJECT:REJECT throw ;           \ unexpected / mixed-legacy token at the exact token
 : CLAUSES ( -- ) BEGIN CLAUSE UNTIL ;
@@ -695,7 +710,7 @@ public
 \ documented global language surface (package-first exception, like the shipped
 \ SUMTYPE/PRODUCT openers): it parses its own body up to ;STRUCTURE at interpret
 \ time, so its checked effect is ( -- ).
-\ STRUCTURE type-name arity [POLICY p] [DERIVE f+] (FIELD name type)* ;STRUCTURE
+\ STRUCTURE type-name arity [POLICY p] [DERIVE f+] [OPAQUE] (FIELD name type)* ;STRUCTURE
 : STRUCTURE ( -- ) STRUCTURE-DECL:SD-RUN ;
 
 ;using

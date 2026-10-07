@@ -314,10 +314,13 @@ private
 \ chain. It is the registry's own lookup index (TFX-* below), which is why it
 \ lives in the record rather than in a side table that could drift from it.
 19 cells constant TF.TAILNEXT-OFF
+\ TF.OPAQUE: nonzero when the family's generated words take the private-family
+\ placement (the OPAQUE header clause, docs/type-system.md §10.4).
+20 cells constant TF.OPAQUE-OFF
 
 public
 
-20 cells constant TF-REC
+21 cells constant TF-REC
 CELL constant TF-REC-ALIGN
 0 constant TF-REC-PTR-MASK
 
@@ -349,6 +352,7 @@ private
 : TF.SPAN-U ( ptr a -- ptr a ) TF.SPAN-U-OFF + ;
 : TF.DERIVE ( ptr a -- ptr a ) TF.DERIVE-OFF + ;
 : TF.TAILNEXT ( ptr a -- ptr a ) TF.TAILNEXT-OFF + ;
+: TF.OPAQUE ( ptr a -- ptr a ) TF.OPAQUE-OFF + ;
 
 TF.PKG-OFF-AT 0 cells TF-LAYOUT=
 TF.PKG-U-OFF 1 cells TF-LAYOUT=
@@ -370,7 +374,8 @@ TF.SPAN-OFF-AT 16 cells TF-LAYOUT=
 TF.SPAN-U-OFF 17 cells TF-LAYOUT=
 TF.DERIVE-OFF 18 cells TF-LAYOUT=
 TF.TAILNEXT-OFF 19 cells TF-LAYOUT=
-TF-REC 20 cells TF-LAYOUT=
+TF.OPAQUE-OFF 20 cells TF-LAYOUT=
+TF-REC 21 cells TF-LAYOUT=
 TF-REC-ALIGN CELL TF-LAYOUT=
 TF-REC TF-REC-ALIGN mod 0 TF-LAYOUT=
 TF-REC-PTR-MASK 0 TF-LAYOUT=
@@ -394,6 +399,7 @@ TF-REC-PTR-MASK 0 TF-LAYOUT=
 0 TF.SPAN-U TF.SPAN-U-OFF TF-LAYOUT=
 0 TF.DERIVE TF.DERIVE-OFF TF-LAYOUT=
 0 TF.TAILNEXT TF.TAILNEXT-OFF TF-LAYOUT=
+0 TF.OPAQUE TF.OPAQUE-OFF TF-LAYOUT=
 
 4 constant TF-CAP-INIT
 variable TF-CAP-V   TF-CAP-INIT TF-CAP-V !   REG-PROTECT
@@ -492,6 +498,17 @@ public
 : TFAM-DERIVE-INIT! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-INIT or swap ! ;
 : TFAM-DERIVE-INIT? ( n -- bool ) TFAM-DERIVE@ DRV-INIT and 0 <> ;
 : TFAM-DERIVE-ANY? ( n -- bool ) TFAM-DERIVE@ 0 <> ;
+
+\ The OPAQUE header clause: the family stays as visible as it was declared, and
+\ every word it GENERATES takes the private-family placement (bare FAMILY-MEMBER
+\ spelling in the declaring package's private wordlist, protected by name).
+\ TFAM-GEN-PUBLIC? is the one predicate generation and recognition read; type
+\ resolution keeps reading TFAM-PUBLIC?. No TFM-EPOCH bump, as the derive
+\ setters: the memo keys on layout facts.
+: TFAM-OPAQUE! ( n -- ) TF-REC@ TF.OPAQUE -1 swap ! ;
+: TFAM-OPAQUE? ( n -- bool ) TF-REC@ TF.OPAQUE @ 0 <> ;
+: TFAM-GEN-PUBLIC? ( n -- bool ) {: fam:n :}
+   fam TFAM-PUBLIC? fam TFAM-OPAQUE? 0= and ;
 
 \ a boxed value is a single heap/DATA pointer (docs §22.4 `ptr fam-box`) and a
 \ niche value is a single cell with the discriminant folded into the payload
@@ -839,6 +856,7 @@ public
    0 r TF.SPAN-OFF !   0 r TF.SPAN-U !
    0 r TF.DERIVE !
    0 r TF.TAILNEXT !
+   0 r TF.OPAQUE !
    id TFX-ADD                             \ the row's tail is written: it can be found now
    arity TFAM-PK-RESERVE
    id ;

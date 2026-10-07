@@ -85,7 +85,7 @@ package DECL-REJECT
 \ slot also keeps the span it was copied from, which a token that locates
 \ renders instead (TOKEN-SPAN@), until GUARD ends the declaration.
 4 constant SLOTS
-32 constant REASON-CAP      \ reason-table rows: the codes the engine's owners explain
+34 constant REASON-CAP      \ reason-table rows: the codes the engine's owners explain
 96 constant SPAN-CAP        \ per-slot bytes; a longer copy is capped, never overruns
 3 constant MARK-LEN         \ bytes the truncation marker occupies inside SPAN-CAP
 46 constant MARK-BYTE       \ ASCII '.', repeated MARK-LEN times

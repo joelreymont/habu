@@ -17,8 +17,10 @@
 \ stream regardless of front end.
 \
 \ Ownership (settled by the chain orchestrator):
-\  - Header clauses (arity, POLICY, DERIVE) are events HERE, with duplicate-clause
-\    validation HERE (E-DEV-DUP-POLICY / E-DEV-DUP-DERIVE) and the arity value
+\  - Header clauses (arity, POLICY, DERIVE, OPAQUE) are events HERE, with
+\    duplicate-clause validation HERE (E-DEV-DUP-POLICY / E-DEV-DUP-DERIVE /
+\    E-DEV-DUP-OPAQUE), OPAQUE's package requirement HERE
+\    (E-DEV-OPAQUE-PACKAGE) and the arity value
 \    bound HERE (E-TDECL-ARITY). Their state is the event stream itself.
 \  - Variant open/close are events HERE; open enforces TYPE-NAME policy, performs
 \    SUMV-ADD duplicate registration, and surfaces the returned id as the
@@ -82,6 +84,7 @@ package DECL-EVENT
 \   DEV-K-VARIANT      VAR = variant id    FLD = none      (open one enum variant)
 \   DEV-K-VARIANT-END  VAR = variant id    FLD = none      (close the open variant)
 \   DEV-K-FIELD        VAR = owner variant FLD = field id  (shared field event)
+\   DEV-K-OPAQUE       VAR = none          FLD = none      (header clause)
 1 constant DEV-K-DECL
 2 constant DEV-K-ARITY
 3 constant DEV-K-POLICY
@@ -89,6 +92,7 @@ package DECL-EVENT
 5 constant DEV-K-VARIANT
 6 constant DEV-K-VARIANT-END
 7 constant DEV-K-FIELD
+8 constant DEV-K-OPAQUE
 
 -1 constant DEV-NO-VARIANT   \ VAR sentinel: no open variant (structure fields, framing)
 -1 constant DEV-NO-FIELD     \ FLD sentinel for every non-field event
@@ -109,6 +113,8 @@ package DECL-EVENT
 7164 constant E-DEV-DUP-DERIVE  \ the same DERIVE feature recorded twice in one declaration
 7172 constant E-DEV-FIELD-SCOPE \ provisional field is outside the token's declaration/family
 7173 constant E-DEV-FAMILY-SCOPE \ token does not own the requested declaration family
+7206 constant E-DEV-DUP-OPAQUE  \ a second OPAQUE clause in one declaration
+7207 constant E-DEV-OPAQUE-PACKAGE \ OPAQUE on a family declared outside any package
 \ What a declaration reject reports for each code (generated-declaration.f).
 s" stale or out-of-order declaration event" E-DEV-TX DECL-REJECT:EXPLAIN
 s" field publication broke field-id contiguity" E-DEV-STATE DECL-REJECT:EXPLAIN
@@ -116,6 +122,8 @@ s" a second POLICY clause in one declaration" E-DEV-DUP-POLICY DECL-REJECT:EXPLA
 s" the same DERIVE feature twice in one declaration" E-DEV-DUP-DERIVE DECL-REJECT:EXPLAIN
 s" field is outside this declaration" E-DEV-FIELD-SCOPE DECL-REJECT:EXPLAIN
 s" declaration does not own this family" E-DEV-FAMILY-SCOPE DECL-REJECT:EXPLAIN
+s" a second OPAQUE clause in one declaration" E-DEV-DUP-OPAQUE DECL-REJECT:EXPLAIN
+s" OPAQUE requires a family declared in a package" E-DEV-OPAQUE-PACKAGE DECL-REJECT:EXPLAIN
 
 \ The shared malformed-arity code is sumtype.f's, read at load time: a post-hook
 \ checked body cannot name that pre-hook constant on a from-source build. The
@@ -450,6 +458,17 @@ variable DEV-TX-SERIAL
    DEV-K-DERIVE fam feature DEV-NO-FIELD DEV-EMIT
    tok ;
 
+\ OPAQUE needs a package: the generated words land in the declaring package's
+\ private wordlist, which a top-level family does not have (DERIVE init asks the
+\ same of its family, sumtype.f TDINIT-REQUIRE). The clause refuses that before
+\ any name is checked.
+: DEV-OPAQUE ( n n -- n ) {: tok:n fam:n :}   \ header: OPAQUE clause (at most once)
+   tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
+   fam TFAM-PKG$ nip 0= IF E-DEV-OPAQUE-PACKAGE throw THEN
+   DEV-K-OPAQUE DEV-CUR-HAS-KIND? IF E-DEV-DUP-OPAQUE throw THEN
+   DEV-K-OPAQUE fam DEV-NO-VARIANT DEV-NO-FIELD DEV-EMIT
+   tok ;
+
 \ --- variant open/close. Open validates the variant tail before SUMV-ADD's
 \ canonical/duplicate registration and pins its id as the current-variant
 \ selector. Named-field variants carry no positional payload schema
@@ -559,6 +578,7 @@ DEV-RESET
 : DEV-ARITY? ( n -- bool ) DEV-KIND@ DEV-K-ARITY = ;
 : DEV-POLICY? ( n -- bool ) DEV-KIND@ DEV-K-POLICY = ;
 : DEV-DERIVE? ( n -- bool ) DEV-KIND@ DEV-K-DERIVE = ;
+: DEV-OPAQUE? ( n -- bool ) DEV-KIND@ DEV-K-OPAQUE = ;
 : DEV-VARIANT? ( n -- bool ) DEV-KIND@ DEV-K-VARIANT = ;
 : DEV-VARIANT-END? ( n -- bool ) DEV-KIND@ DEV-K-VARIANT-END = ;
 : DEV-FIELD? ( n -- bool ) DEV-KIND@ DEV-K-FIELD = ;
@@ -779,7 +799,7 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
 \ Phase constraints: CURRENT returns the frame opened by the coordinator
 \ snapshot and rejects outside an active coordinator; OPEN remains the explicit
 \ standalone interface. DECL/ARITY/
-\ POLICY/DERIVE/VARIANT/END-VARIANT/FIELD and provisional FIELD-SCHEMA@/
+\ POLICY/DERIVE/OPAQUE/VARIANT/END-VARIANT/FIELD and provisional FIELD-SCHEMA@/
 \ PAYLOAD-* queries are legal only between OPEN and its
 \ COMMIT or ROLLBACK, each takes and returns the same token, and each throws
 \ E-DEV-TX if the token is not the innermost open frame. COMMIT retains a
@@ -800,6 +820,7 @@ public
 : ARITY ( n n n -- n ) DEV-ARITY ;
 : POLICY ( n n n -- n ) DEV-POLICY ;
 : DERIVE ( n n n -- n ) DEV-DERIVE ;
+: OPAQUE ( n n -- n ) DEV-OPAQUE ;
 : VARIANT ( n n ptr u8 n -- n ) DEV-VARIANT ;
 : END-VARIANT ( n n -- n ) DEV-END-VARIANT ;
 : FIELD ( n n ptr u8 n n n n n n n n -- n ) DEV-FIELD ;
@@ -829,6 +850,7 @@ public
 : ARITY? ( n -- bool ) DEV-ARITY? ;
 : POLICY? ( n -- bool ) DEV-POLICY? ;
 : DERIVE? ( n -- bool ) DEV-DERIVE? ;
+: OPAQUE? ( n -- bool ) DEV-OPAQUE? ;
 : VARIANT? ( n -- bool ) DEV-VARIANT? ;
 : VARIANT-END? ( n -- bool ) DEV-VARIANT-END? ;
 : FIELD? ( n -- bool ) DEV-FIELD? ;
