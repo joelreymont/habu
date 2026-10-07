@@ -15,6 +15,12 @@
 \ capture used to come back in about a millisecond, not in a quarter second.
 \ Re-verify the signal storm itself by putting prof-report before the prof-off
 \ below: the quarter-second child reads some 260 samples, every one in `poll`.
+\
+\ The same storm runs through PROC-WAIT-BOUNDED's window on a child held alive.
+\ That wait sleeps between nonblocking waitpid probes, so a tick lands in
+\ TASK:SLEEP, which resumes on its remainder, in a probe or between the two;
+\ no path a tick took is asserted. The window must end as a timeout, neither
+\ early nor stretched, and the child released afterwards is still ours to reap.
 \ Run: bin/hb --load test/proc-capture-signal.f
 
 require lib/errors.f
@@ -24,6 +30,7 @@ require lib/test.f
 require lib/memory.f
 require lib/process.f
 require lib/process-argv.f
+require lib/test/outcome.f
 
 package PROC-CAPTURE-SIGNAL
 
@@ -69,9 +76,46 @@ create PCS-ERR PCS-ERR-CAP allot
    PCS-OUT outn PCS-MARK T$=
    elapsed PCS-MIN-NS >= TTRUE ;
 
+100 constant PCS-HOLD-MS             \ the held child's window
+99000000 constant PCS-HOLD-MIN-NS    \ that window less the whole-millisecond floor
+1000000000 constant PCS-HOLD-MAX-NS  \ ten windows: a window each tick renewed would not end
+
+: PCS-HOLD-SCRIPT ( -- ptr u8 n )
+   s" read x; exit 3" ;
+
+\ A child that lives until its stdin closes, then exits 3: the pid and the
+\ stdin's write end. Both pipe ends are close-on-exec, so closing that write end
+\ releases the child.
+: PCS-HOLD ( -- pid n )
+   PIPE-PAIR {: in-r:fd in-w:fd :}
+   in-r FD-CLOEXEC!  in-w FD-CLOEXEC!
+   PROC-ARGV-RESET
+   s" -c" >LEN PROC-ARGV+
+   PCS-HOLD-SCRIPT >LEN PROC-ARGV+
+   s" /bin/sh" >LEN in-r -1 >FD -1 >FD PROC-SPAWN-ARGV-IO
+   in-r FD>N close
+   in-w FD>N ;
+
+\ The held child's window and then its reap, with the 1 kHz SIGALRM landing in
+\ both throughout.
+: CHECK-WAIT-UNDER-SIGNALS ( -- )
+   PCS-HOLD {: pid:pid in-w:n :}
+   PCS-SAMPLE-LIMIT prof-on
+   mono-ns {: started :}
+   pid PCS-HOLD-MS >MS PROC-WAIT-BOUNDED {: held :}
+   mono-ns started - {: elapsed :}
+   in-w close
+   pid PCS-TIMEOUT-MS >MS PROC-WAIT-BOUNDED {: done :}
+   prof-off
+   held T-OUTCOME-TIMEOUT
+   elapsed PCS-HOLD-MIN-NS >= TTRUE
+   elapsed PCS-HOLD-MAX-NS < TTRUE
+   PCS-HOLD-SCRIPT s" " s" " done 3 T-OUTCOME-EXITED= ;
+
 : RUN ( -- )
    T-RESET
    CHECK-CAPTURE-UNDER-SIGNALS
+   CHECK-WAIT-UNDER-SIGNALS
    T-REPORT
    s" proc-capture-signal: ok" type cr ;
 

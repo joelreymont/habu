@@ -11,6 +11,7 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/process-command.f
 require lib/task.f
+require lib/test/outcome.f
 
 package PROCESS-TASK-TEST
 
@@ -274,6 +275,72 @@ TASK:MIN-STACK TASK:TASK PTT-T3
    PTT-T2 PTT-JOIN-ZERO
    PTT-T3 PTT-JOIN-ZERO ;
 
+\ ---- bounded waits beside each other and beside a capture -------------------
+\ This thread spawns both children before a task starts, because the argv table
+\ is process-wide. Then it waits out a window on the held child while one task
+\ reaps the sleeper and another captures a command of its own context. Each
+\ answers for its own pid: the sleeper's exit, the capture's output and status,
+\ and the window's timeout, after which the held child is still ours to reap.
+300 constant PTT-HOLD-MS                 \ outlasts the sleeper and the captured child
+
+TASK:MIN-STACK TASK:TASK PTT-WAITER
+TASK:MIN-STACK TASK:TASK PTT-CAPTURER
+CMD:COMMAND PTT-CMD-CAP
+
+variable PTT-SLEEPER                     \ exits 22 a fifth of a second after its spawn
+variable PTT-HELD                        \ exits 21 once its stdin closes
+variable PTT-HELD-W                      \ that stdin's write end
+
+: PTT-SH-ARGS ( ptr u8 n -- )
+   {: s:ptr su:n :}
+   PROC-ARGV-RESET
+   s" -c" >LEN PROC-ARGV+
+   s su >LEN PROC-ARGV+ ;
+
+: PTT-HOLD-SCRIPT ( -- ptr u8 n )
+   s" read x; exit 21" ;
+
+\ Both pipe ends are close-on-exec, so the held child's stdin is the one copy
+\ on its fd 0 and closing the write end here releases it.
+: PTT-SPAWN-CHILDREN ( -- )
+   s" sleep 0.2; exit 22" PTT-SH-ARGS
+   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N PTT-SLEEPER !
+   PIPE-PAIR {: in-r:fd in-w:fd :}
+   in-r FD-CLOEXEC!  in-w FD-CLOEXEC!
+   PTT-HOLD-SCRIPT PTT-SH-ARGS
+   s" /bin/sh" >LEN in-r -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N PTT-HELD !
+   in-r FD>N close
+   in-w FD>N PTT-HELD-W ! ;
+
+: PTT-WAITER-BODY ( -- )
+   PTT-SLEEPER @ >PID PTT-RUN-MS >MS PROC-WAIT-BOUNDED
+   PROC-OUTCOME>DEADLINE-RC RC>N TASK:RETURN ;
+
+: PTT-CAPTURER-BODY ( -- )
+   PTT-CMD-CAP CMD:RESET
+   PTT-CMD-CAP s" -c" >LEN CMD:ARG+
+   PTT-CMD-CAP s" sleep 0.2; printf capture-ok" >LEN CMD:ARG+
+   PTT-CMD-CAP s" /bin/sh" >LEN PTT-RUN-OK
+   PTT-CMD-CAP CMD:OUT$ s" capture-ok" STR= if 0 else 1 then TASK:RETURN ;
+
+: PTT-JOIN= ( ptr n n -- )
+   {: t:ptr want:n :}
+   t TASK:JOIN MATCH result
+     ok  OF want T= ENDOF
+     err OF PTT-WORKER-ERR ENDOF                  \ the worker threw; its code is not 0
+   ;MATCH ;
+
+: PTT-WAITS-BESIDE-CAPTURE ( -- )
+   PTT-SPAWN-CHILDREN
+   ['] PTT-WAITER-BODY PTT-WAITER TASK:ACTIVATE
+   ['] PTT-CAPTURER-BODY PTT-CAPTURER TASK:ACTIVATE
+   PTT-HELD @ >PID PTT-HOLD-MS >MS PROC-WAIT-BOUNDED T-OUTCOME-TIMEOUT
+   PTT-WAITER 22 PTT-JOIN=
+   PTT-CAPTURER 0 PTT-JOIN=
+   PTT-HELD-W @ close
+   PTT-HELD @ >PID PTT-RUN-MS >MS PROC-WAIT-BOUNDED {: done :}
+   PTT-HOLD-SCRIPT s" " s" " done 21 T-OUTCOME-EXITED= ;
+
 : PROCESS-TASK-TEST-MAIN ( -- )
    T-RESET
    PTT-CONCURRENT-CAPTURE-AND-POLL
@@ -281,6 +348,8 @@ TASK:MIN-STACK TASK:TASK PTT-T3
    PTT-TWO-COMMANDS
    s" four tasks keep their own environment row and stdin" T-LABEL
    PTT-FOUR-COMMANDS
+   s" bounded waits answer for their own pids beside a capture" T-LABEL
+   PTT-WAITS-BESIDE-CAPTURE
    T-REPORT
    s" process-task-test: ok" type cr ;
 

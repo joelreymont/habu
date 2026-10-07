@@ -10,7 +10,9 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-fork.f
 require lib/process-argv.f
+require lib/task.f
 require lib/test/outcome.f
+require lib/fmt.f
 require test/checker-assert.f
 
 variable PT-R
@@ -499,6 +501,161 @@ create PT-Z PT-Z-CAP allot
 : TEST-ZCOPY-HUGE-LEN ( -- )
    PT-BUF MEM-MAX-N >LEN PT-Z PT-Z-CAP >LEN PROC-ZCOPY drop ;
 
+\ ---- PROC-WAIT-BOUNDED -------------------------------------------------------
+5000 constant PT-WAIT-MS                 \ far above any child here that is meant to end
+100 constant PT-HOLD-MS                  \ a window the held child outlasts
+99000000 constant PT-HOLD-MIN-NS         \ that window less the whole-millisecond floor
+$100000000 constant PT-PID-WRAP          \ 2^32: what a C int pid_t drops
+1000 constant PT-LONGEST-SLACK-MS        \ room for the later mono-ns read the wait makes
+1 constant PT-NOT-A-CHILD                \ init or launchd: waitpid answers ECHILD
+
+variable PT-WAIT-PID
+variable PT-HOLD-PID                     \ the held child
+variable PT-HOLD-IN                      \ its stdin's write end: closing it releases the child
+variable PT-HOLD-OUT                     \ the read end its stdout and stderr share
+
+\ A child of /bin/sh running the script, on the test's own stdio.
+: PT-SH ( ptr u8 n -- pid )
+   {: s:ptr su:n :}
+   PROC-ARGV-RESET
+   s" -c" >LEN PROC-ARGV+
+   s su >LEN PROC-ARGV+
+   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO ;
+
+: PT-HOLD-SCRIPT ( -- ptr u8 n )
+   s" exec >&- 2>&-; read x; exit 5" ;
+
+\ A child that closes stdout and stderr at once, then lives until its stdin
+\ closes, and exits 5. Every pipe end is close-on-exec, so the child holds only
+\ the copies on its fds 0, 1 and 2: EOF at the read end means it closed both.
+: PT-HOLD ( -- )
+   PIPE-PAIR {: in-r:fd in-w:fd :}
+   PIPE-PAIR {: out-r:fd out-w:fd :}
+   in-r FD-CLOEXEC!  in-w FD-CLOEXEC!  out-r FD-CLOEXEC!  out-w FD-CLOEXEC!
+   PROC-ARGV-RESET
+   s" -c" >LEN PROC-ARGV+
+   PT-HOLD-SCRIPT >LEN PROC-ARGV+
+   s" /bin/sh" >LEN in-r out-w out-w PROC-SPAWN-ARGV-IO PID>N PT-HOLD-PID !
+   in-r FD>N close
+   out-w FD>N close
+   in-w FD>N PT-HOLD-IN !
+   out-r FD>N PT-HOLD-OUT ! ;
+
+: PT-HOLD-RELEASE ( -- )
+   PT-HOLD-IN @ close ;
+
+\ What one read at the shared end takes once it is readable: 0 is EOF.
+: PT-HOLD-EOF ( -- n )
+   PT-HOLD-OUT @ >FD PT-WAIT-MS >MS POLL-IN COUNT>N 1 T=
+   PT-HOLD-OUT @ PT-READ ;
+
+\ The pid and the window as plain cells, so a case can name any value.
+: PT-WAIT-AT ( n n -- outcome )
+   {: pid:n ms:n :}
+   pid >PID ms >MS PROC-WAIT-BOUNDED ;
+
+: PT-WAIT-HOLD ( n -- outcome )
+   PT-HOLD-PID @ swap PT-WAIT-AT ;
+
+\ The held child's exit, read once it is released.
+: PT-HOLD-EXITED= ( outcome -- )
+   {: oc :}
+   PT-HOLD-SCRIPT s" " s" " oc 5 T-OUTCOME-EXITED= ;
+
+: PT-TIMEOUT? ( outcome -- bool )
+   MATCH outcome
+     exited OF drop 0 0= 0= ENDOF
+     signaled OF drop 0 0= 0= ENDOF
+     timeout OF 0 0= ENDOF
+   ;MATCH ;
+
+\ ms 0, one probe a turn, after the release: the first probe that finds the exit
+\ answers it. A wait that read its deadline before it probed would answer timeout
+\ every turn, and after PT-WAIT-MS this hands that timeout back.
+: PT-HOLD-REAP-AT-ZERO ( -- outcome )
+   mono-ns PT-WAIT-MS PROC-NS-PER-MS * + {: until:n :}
+   begin
+      0 PT-WAIT-HOLD {: oc :}
+      oc PT-TIMEOUT? 0= if oc exit then
+      mono-ns until > if oc exit then
+      1 >MS TASK:SLEEP
+   again ;
+
+: PT-WAIT-AGAIN ( -- )
+   PT-WAIT-PID @ PT-WAIT-MS PT-WAIT-AT drop ;
+
+\ Exit 0, exit 7 and SIGTERM, each read exactly; a reaped pid is no child of
+\ ours any more.
+: TEST-WAIT-BOUNDED-STATUS ( -- )
+   s" exit 0" PT-SH {: child:pid :}
+   child PID>N PT-WAIT-PID !
+   child PT-WAIT-MS >MS PROC-WAIT-BOUNDED {: oc0 :}
+   s" exit 0" s" " s" " oc0 0 T-OUTCOME-EXITED=
+   [: PT-WAIT-AGAIN ;] E-PROC-WAIT TTHROWSQ
+   s" exit 7" PT-SH PT-WAIT-MS >MS PROC-WAIT-BOUNDED {: oc7 :}
+   s" exit 7" s" " s" " oc7 7 T-OUTCOME-EXITED=
+   s" kill -TERM $$" PT-SH PT-WAIT-MS >MS PROC-WAIT-BOUNDED {: ocs :}
+   s" kill -TERM $$" s" " s" " ocs 15 T-OUTCOME-SIGNALED= ;
+
+\ The run's evidence line for the EOF case.
+: PT-HOLD-EVIDENCE ( n n outcome -- )
+   {: eof:n waited:n oc :}
+   s" wait-bounded: read " type eof FMT:.INT
+   s"  at EOF; ms 0 -> timeout; ms " type PT-HOLD-MS FMT:.INT
+   s"  -> timeout after " type waited PROC-NS-PER-MS / FMT:.INT
+   s"  ms; released, ms 0 -> rc " type oc PROC-OUTCOME>RC RC>N FMT:.INT cr ;
+
+\ EOF is not exit. The held child has closed stdout and stderr, yet ms 0 probes
+\ once and a 100 ms window waits it out, each answering timeout and taking
+\ nothing; released, it exits 5 to us, so the pid stayed ours throughout.
+: TEST-WAIT-BOUNDED-EOF ( -- )
+   PT-HOLD
+   PT-HOLD-EOF {: eof:n :}
+   0 PT-WAIT-HOLD {: probed :}
+   mono-ns {: started:n :}
+   PT-HOLD-MS PT-WAIT-HOLD {: held :}
+   mono-ns started - {: waited:n :}
+   PT-HOLD-RELEASE
+   PT-HOLD-REAP-AT-ZERO {: done :}
+   PT-HOLD-OUT @ close
+   eof 0 T=
+   probed T-OUTCOME-TIMEOUT
+   held T-OUTCOME-TIMEOUT
+   waited PT-HOLD-MIN-NS >= TTRUE
+   done PT-HOLD-EXITED=
+   eof waited done PT-HOLD-EVIDENCE ;
+
+\ The first window whose nanoseconds carry mono-ns past the largest cell. The
+\ wait reads mono-ns after this does, so its own bound is no larger.
+: PT-PAST-CELL-MS ( -- n )
+   MEM-MAX-N mono-ns - PROC-NS-PER-MS / 1 + ;
+
+: PT-LONGEST-MS ( -- n )
+   PT-PAST-CELL-MS PT-LONGEST-SLACK-MS - ;
+
+\ Refused before any waitpid, while the held child lives: pids 0 and -1, a pid
+\ whose low 32 bits are the child's and one whose C int is minus the child's,
+\ its process group; a negative window, the largest cell and the first window
+\ past the cell. Released, the child still exits 5 to us.
+: TEST-WAIT-BOUNDED-REFUSALS ( -- )
+   PT-HOLD
+   [: 0 PT-HOLD-MS PT-WAIT-AT drop ;] E-PROC-WAIT TTHROWSQ
+   [: -1 PT-HOLD-MS PT-WAIT-AT drop ;] E-PROC-WAIT TTHROWSQ
+   [: PT-HOLD-PID @ PT-PID-WRAP + PT-HOLD-MS PT-WAIT-AT drop ;] E-PROC-WAIT TTHROWSQ
+   [: PT-PID-WRAP PT-HOLD-PID @ - PT-HOLD-MS PT-WAIT-AT drop ;] E-PROC-WAIT TTHROWSQ
+   [: -1 PT-WAIT-HOLD drop ;] E-PROC-TIMEOUT TTHROWSQ
+   [: MEM-MAX-N PT-WAIT-HOLD drop ;] E-PROC-TIMEOUT TTHROWSQ
+   [: PT-PAST-CELL-MS PT-WAIT-HOLD drop ;] E-PROC-TIMEOUT TTHROWSQ
+   PT-HOLD-RELEASE
+   PT-WAIT-MS PT-WAIT-HOLD {: done :}
+   PT-HOLD-OUT @ close
+   done PT-HOLD-EXITED= ;
+
+\ The bound is where the cell ends: the longest admitted window reaches
+\ waitpid, which answers ECHILD for a pid that is no child of ours.
+: TEST-WAIT-BOUNDED-EDGE ( -- )
+   [: PT-NOT-A-CHILD PT-LONGEST-MS PT-WAIT-AT drop ;] E-PROC-WAIT TTHROWSQ ;
+
 : PROCESS-TEST-MAIN ( -- )
    T-RESET
    PT-PREPARE
@@ -513,6 +670,10 @@ create PT-Z PT-Z-CAP allot
    TEST-PROC-OUTCOME-TYPES
    TEST-PROC-WAIT-RC-SIGNAL
    TEST-WAIT-FAIL
+   TEST-WAIT-BOUNDED-STATUS
+   TEST-WAIT-BOUNDED-EOF
+   TEST-WAIT-BOUNDED-REFUSALS
+   TEST-WAIT-BOUNDED-EDGE
    TEST-PIPE
    TEST-WRITE-CLOSED-PIPE-NOSIGPIPE
    TEST-PROC-NONBLOCK-ARMED

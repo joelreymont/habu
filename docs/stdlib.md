@@ -2120,6 +2120,7 @@ PROC-EXIT-RC             ( n n -- n )
 PROC-OUTCOME>DEADLINE-RC ( outcome -- rc )
 PROC-WAIT-OUTCOME        ( pid -- outcome )
 PROC-WAIT-RC             ( pid -- rc )
+PROC-WAIT-BOUNDED        ( pid ms -- outcome )
 PROC-SPAWN-IO            ( ptr u8 len fd fd fd -- pid )
 PROC-RUN-RC              ( ptr u8 len -- rc )
 PROC-RUN-IO-RC           ( ptr u8 len fd fd fd -- rc )
@@ -2169,9 +2170,12 @@ explicit stdin, stdout, and stderr fds. `PROC-SPAWN-IO` and `PROC-WAIT-RC` throw
 `PROC-WAIT-STATUS` returns the raw Darwin wait status for a pid and throws
 `E-PROC-WAIT` on primitive failure. `PROC-WAIT-OUTCOME` decodes that status into
 the `outcome` sum family: `exited` carrying the exit code, `signaled` carrying
-the signal number, or `timeout` (capture deadline; always SIGKILL-reaped, no
-payload), with generated constructors `OUTCOME:EXITED`, `OUTCOME:SIGNALED`, and
-`OUTCOME:TIMEOUT`. Consumers dispatch through exhaustive `MATCH outcome`.
+the signal number, or `timeout`, a deadline that passed before any terminal
+status was collected (no payload), with generated constructors `OUTCOME:EXITED`,
+`OUTCOME:SIGNALED`, and `OUTCOME:TIMEOUT`. What a timeout leaves behind is its
+producer's: a capture has killed its child's tree with SIGKILL and reaped the
+child, while `PROC-WAIT-BOUNDED` leaves the child running. Consumers dispatch
+through exhaustive `MATCH outcome`.
 `PROC-OUTCOME>RC` flattens an outcome to the historical rc: the exit code for
 normal exits and `128 + signal` for signal deaths, so a deliberate kill still
 reads 137. A capture's own expired deadline has no rc: it throws
@@ -2187,6 +2191,28 @@ API returns the sum:
 the `lib/test/outcome.f` assert helpers). The capture machine stores no pair
 state: it keeps only the raw wait status plus a timed-out flag, and
 `PROC-CAPTURE-OUTCOME ( -- outcome )` derives the sum on demand.
+
+`PROC-WAIT-BOUNDED ( pid ms -- outcome )` waits at most `ms` milliseconds for
+one child's terminal status, from the main task or a worker. It probes with
+`waitpid(pid, &status, WNOHANG)`
+([waitpid(2)](https://man7.org/linux/man-pages/man2/waitpid.2.html)) into a
+task-local status cell of its own and sleeps a millisecond between probes.
+`exited` and `signaled` mean the status was collected and the child reaped.
+`timeout` means none was collected: the child may still run, and the caller
+keeps the pid and the duty to reap it. The wait sends no signal, closes no
+descriptor and touches neither the capture row nor the reaper. EOF on a child's
+pipes is not its exit: a child can close stdout and stderr and keep running.
+Each turn probes before it reads the deadline, so `ms` 0 is one probe and a
+status already there wins; the time left floors to whole milliseconds, so a
+window can end under a millisecond early. A stop, which only a traced child
+reports without `WUNTRACED`, is not terminal, and a zero return leaves the
+status cell unread. `EINTR` probes again against the same deadline; every other
+failure, `ECHILD` for a pid that is not or no longer a child included, is
+`E-PROC-WAIT`. Before any `waitpid`, a pid at or below zero or above the signed
+32-bit `pid_t` is `E-PROC-WAIT` (`waitpid` takes a C int, so a wider cell would
+narrow to another process or a process group), and a negative `ms`, or one whose
+nanoseconds would carry the current `mono-ns` past the largest cell, is
+`E-PROC-TIMEOUT`.
 
 A throw code does not cross a process boundary: `die` and the uncaught-throw
 exit turn every negative code into exit 67. `PROC-TIMEOUT-RC` (124, the status

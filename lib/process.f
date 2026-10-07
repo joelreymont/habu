@@ -3,7 +3,8 @@
 \ STORAGE CLASS. TASK-LOCAL. The path staging buffer, the pollfd array and the
 \ per-call capture slots are one PROC-STORAGE-BYTES TASK:+USER row, so each task
 \ spawns, polls, drains and reaps through its own descriptors, lengths, deadline
-\ and wait status, and any number of tasks may run children at once. The byte
+\ and wait status, and any number of tasks may run children at once.
+\ PROC-WAIT-BOUNDED's status cell is a TASK:+USER slot of its own. The byte
 \ spans the capture and POLL words take are caller-owned. The PROC-REAP-ARM
 \ vector, and the PROC-STOP vector with its PROC-STOP-FD, are process-wide:
 \ each is one installed policy, not per-call state. A capture that ends its
@@ -12,19 +13,23 @@
 \ See docs/threads.md.
 
 s" lib/errors.f" required
+s" lib/memory.f" required                \ MEM-MAX-N bounds PROC-WAIT-BOUNDED's deadline
 s" lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC (switchover wave B)
 s" lib/task.f" required                  \ TASK:+USER carries the per-call row
 s" lib/process-tree.f" required          \ PROC-TREE:KILL-TREE ends a capture child's tree
 
 \ outcome - how a child process completed (switchover wave C): a clean exit
-\ carrying the exit code, a signal death carrying the signal, or a capture
-\ timeout (always SIGKILL-reaped, so no payload). The checker forces every
-\ consumer through exhaustive MATCH; PROC-OUTCOME>RC is the rc flattener. A
-\ timeout is a deadline, not a status of the child's: a reader that turns an
-\ outcome into a status or a test verdict throws E-PROC-TIMEOUT for it
-\ (PROC-OUTCOME>RC here, the asserts in lib/test/outcome.f), so a deadline that
-\ expires under a gate row reaches the pool as a timeout. Only a caller that
-\ acts on the deadline itself MATCHes it as data.
+\ carrying the exit code, a signal death carrying the signal, or a timeout,
+\ which carries nothing: no terminal status was collected before the deadline.
+\ What a timeout leaves behind is its producer's contract. A capture has killed
+\ its child's tree with SIGKILL and reaped the child; PROC-WAIT-BOUNDED leaves
+\ the child running and the pid, still to be reaped, with its caller. The
+\ checker forces every consumer through exhaustive MATCH; PROC-OUTCOME>RC is the
+\ rc flattener. A timeout is a deadline, not a status of the child's: a reader
+\ that turns an outcome into a status or a test verdict throws E-PROC-TIMEOUT
+\ for it (PROC-OUTCOME>RC here, the asserts in lib/test/outcome.f), so a
+\ deadline that expires under a gate row reaches the pool as a timeout. Only a
+\ caller that acts on the deadline itself MATCHes it as data.
 SUMTYPE outcome 0
   VARIANT exited n ;VARIANT
   VARIANT signaled n ;VARIANT
@@ -342,6 +347,65 @@ FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    rc 0 < if E-PROC-OUTPUT throw then
    rc 0= if E-PROC-TIMEOUT throw then
    rc >COUNT ;
+
+\ ---- a bounded wait for one child --------------------------------------------
+\
+\ PROC-WAIT-BOUNDED probes one child with a nonblocking waitpid(2) and sleeps a
+\ millisecond between probes until its window ends, from the main task or a
+\ worker. It sends no signal, closes no descriptor and leaves the capture row
+\ and the reaper alone: a capture owns its child, deadline and stop itself.
+
+\ waitpid's flag and pid_t bound, the same on Linux and macOS.
+1 constant WNOHANG                 \ answer 0 while the child runs
+$7FFFFFFF constant PROC-PID-MAX    \ the largest signed 32-bit pid_t
+
+\ The bounded wait's status cell, task-local and apart from the capture row.
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 1 cells TASK:+USER PROC-BOUNDED-STATUS drop
+
+\ The deadline ms from one mono-ns reading. A window below zero, or one whose
+\ nanoseconds would carry that reading past the largest cell, is E-PROC-TIMEOUT
+\ before anything is multiplied. PROC-DEADLINE-AT keeps its own arithmetic: its
+\ poll callers pass a negative ms for an unbounded wait.
+: PROC-WAIT-DEADLINE ( ms -- n )
+   {: timeout:ms :}
+   timeout MS>N 0 < if E-PROC-TIMEOUT throw then
+   mono-ns {: now:n :}
+   timeout MS>N MEM-MAX-N now - PROC-NS-PER-MS / > if E-PROC-TIMEOUT throw then
+   timeout MS>N PROC-NS-PER-MS * now + ;
+
+\ One nonblocking waitpid: true once pid's terminal status is in the cell and
+\ the child is reaped. A zero return leaves the cleared cell unread, and a stop
+\ (low status bits $7F, which only a traced child reports without WUNTRACED)
+\ ends nothing. EINTR collects nothing; any other failure, ECHILD included, is
+\ E-PROC-WAIT. waitpid writes a C int, so the whole cell is cleared first.
+: PROC-WAIT-PROBE ( pid -- bool )
+   {: pid:pid :}
+   0 PROC-BOUNDED-STATUS !
+   pid PID>N PROC-BOUNDED-STATUS BYTE-VIEW WNOHANG PROC-WAITPID-CALL {: got:n :}
+   got pid PID>N = if
+      PROC-BOUNDED-STATUS @ PROC-WAIT-TERM-MASK and PROC-WAIT-TERM-MASK <> exit
+   then
+   got 0= if 0 0= 0= exit then
+   FFI:ERRNO EINTR# <> if E-PROC-WAIT throw then
+   0 0= 0= ;
+
+\ pid's exited or signaled outcome, the child reaped, when its terminal status
+\ is collected within ms; else timeout, nothing collected and the pid still the
+\ caller's to reap. pid must be a pid_t above zero: waitpid takes a C int, which
+\ would narrow a wider cell to another process or a process group. Both
+\ arguments are refused before any waitpid. Each turn probes before it reads the
+\ deadline, so ms 0 is one probe and a status already there wins; PROC-LEFT-MS
+\ floors, so a window can end under a millisecond early.
+: PROC-WAIT-BOUNDED ( pid ms -- outcome )
+   {: pid:pid timeout:ms :}
+   pid PID>N 0 <= if E-PROC-WAIT throw then
+   pid PID>N PROC-PID-MAX > if E-PROC-WAIT throw then
+   timeout PROC-WAIT-DEADLINE {: deadline:n :}
+   begin pid PROC-WAIT-PROBE 0= while
+      deadline PROC-LEFT-MS MS>N 0= if OUTCOME:TIMEOUT exit then
+      1 >MS TASK:SLEEP
+   repeat
+   PROC-BOUNDED-STATUS @ PROC-STATUS>OUTCOME ;
 
 \ Capture-child death-reaper seam. Contexts that own a death-watch fd (a pool
 \ worker's worker-alive read end; lib/process-fork.f installs the live vector)

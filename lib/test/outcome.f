@@ -48,7 +48,7 @@ require lib/test/subject.f
      timeout OF src srcu out outu err erru T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: T-OUTCOME-TIMEOUT ( outcome -- )   \ hit the capture deadline
+: T-OUTCOME-TIMEOUT ( outcome -- )   \ the deadline passed before a terminal status
    MATCH outcome
      exited OF s" timeout" s" exit" T-OUTCOME-MISS ENDOF
      signaled OF s" timeout" s" signal" T-OUTCOME-MISS ENDOF
