@@ -2,10 +2,10 @@
 \
 \ qsort and pthread_create are the C callers. Each case's facts go into a
 \ transcript, one line each, beside the exit status and both streams of every
-\ child scenario (test/ffi-callback-child.f) and of the stripped image
-\ built from test/stripped-callback-subject.f. The transcript is written to
-\ build/ffi-callback-transcript.txt, read back and compared whole with the one
-\ this file expects.
+\ child scenario (test/ffi-callback-child.f, test/ffi-callback-direct-child.f)
+\ and of the stripped image built from test/stripped-callback-subject.f. The
+\ transcript is written to build/ffi-callback-transcript.txt, read back and
+\ compared whole with the one this file expects.
 \
 \ Every word is defined before the first task starts, because Habu forbids
 \ dictionary mutation while a task is live; the one definition made later is a
@@ -23,6 +23,7 @@ require lib/engine-candidate.f
 require lib/test/runner.f
 require lib/image-lifecycle.f
 require lib/task.f
+require test/whitebox-child.f
 require test/ffi-callback-fixture.f
 
 package FFI-CB-TEST
@@ -45,9 +46,6 @@ create OUT CAP allot
 create ERR CAP allot
 create SUBJECT-BUF FS-PATH-CAP allot
 create IMAGE-BUF FS-PATH-CAP allot
-create WANT-FLOATS                    \ 1.0 .. 8.0 as IEEE 754 doubles
-   $3FF0000000000000 , $4000000000000000 , $4008000000000000 , $4010000000000000 ,
-   $4014000000000000 , $4018000000000000 , $401C000000000000 , $4020000000000000 ,
 
 variable SCRIPT-U
 variable WANT-U
@@ -57,7 +55,6 @@ variable MAIN-OWNER                   \ the owner the main thread claims with
 variable MAIN-SELF                    \ its pthread_self
 variable OLD-CONTEXT                  \ CTX-TASK's context, kept past its UNEXPOSE
 variable HAMMERS
-TYPED-VARIABLE MARSHAL-RESULT r
 
 \ The fixture's ten callbacks and these six fill the engine's sixteen stubs, so
 \ the next declaration is the seventeenth.
@@ -122,44 +119,22 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" == the main task" SAY
    BIND-SELF SORTS SORT-FACTS ;
 
-\ ---- C calling a stub directly --------------------------------------------------
-: FLOAT-BITS ( ptr r -- n )
-   BYTE-VIEW CELL-VIEW @ ;
-
-: FLOATS-SEEN? ( -- bool )
-   true 8 0 ?do i SEEN-FLOATS FLOAT-BITS WANT-FLOATS i cells + @ = and loop ;
-
-: INTS-SEEN? ( -- bool )
-   4 SEEN-INTS @ 40 =
-   5 SEEN-INTS @ 50 = and
-   6 SEEN-INTS @ 60 = and
-   7 SEEN-INTS @ 70 = and ;
-
-: CASE-DIRECT ( -- )
-   s" == every argument register" SAY
-   MARSHAL TASK:SELF-CONTEXT ENTRY MARSHAL-CALL MARSHAL-RESULT !
-   0 SEEN-INTS @ $123456789ABCDEF0 = s" n arrives whole" FACT
-   1 SEEN-INTS @ -2 = s" i32 is sign-extended from the low half" FACT
-   2 SEEN-INTS @ $FFFFFFFD = s" u32 is the low half" FACT
-   3 SEEN-INTS @ $5A = s" ptr u8 is the address C passed" FACT
-   INTS-SEEN? s" x4..x7 arrive in order" FACT
-   FLOATS-SEEN? s" d0..d7 arrive in order" FACT
-   MARSHAL-RESULT FLOAT-BITS $4020000000000000 = s" an r result returns in d0" FACT
-   MARSHAL FAULT@ 0= s" and nothing faulted" FACT
-   MARSHAL UNBIND
-   9 UNSET TASK:SELF-CONTEXT ENTRY CALL1 7 = s" a body never stored answers the fallback" FACT
-   UNSET FAULT@ E-FFI-CALLBACK-STATE = s" and faults E-FFI-CALLBACK-STATE" FACT
-   UNSET UNBIND ;
-
 \ ---- the owner a thread claims with --------------------------------------------
-\ WHO answers CB-OWNER of the region it runs on. Every call here claims it
-\ afresh, so one value across a thousand calls with a yield between them is the
-\ thread pointer holding still; the foreign thread's half is CASE-THREAD's.
+\ WHO is a comparator that keeps CB-OWNER of the region it runs on. qsort of a
+\ two-cell row calls it on this thread, and every call claims the owner afresh,
+\ so one value across a thousand sorts with a yield between them is the thread
+\ pointer holding still; the foreign thread's half is CASE-THREAD's. The cell
+\ is cleared first, so a sort that never called WHO reads the free owner.
+: WHO-CLAIM ( n -- n ) {: fn:n :}
+   0 WHO-OWNER !
+   OUTER BYTE-VIEW 2 CELL fn QSORT
+   WHO-OWNER @ ;
+
 : OWNER-STABLE? ( n -- bool ) {: fn:n :}
-   0 fn CALL1 MAIN-OWNER !
+   fn WHO-CLAIM MAIN-OWNER !
    true OWNER-READS 0 ?do
       TASK:PAUSE
-      0 fn CALL1 MAIN-OWNER @ = and
+      fn WHO-CLAIM MAIN-OWNER @ = and
    loop ;
 
 : CASE-OWNER ( -- )
@@ -375,12 +350,15 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
 
 \ ---- children ---------------------------------------------------------------------
 \ The name, the exit status and both streams of one spawned process.
-: TRANSCRIBE ( ptr u8 n len len outcome -- )
-   PROC-OUTCOME>RC RC>N {: name:ptr nameu:n outu:len erru:len rc:n :}
+: TRANSCRIBE-RC ( ptr u8 n len len n -- )
+   {: name:ptr nameu:n outu:len erru:len rc:n :}
    s" == child " SCRIPT+ name nameu SCRIPT+ s" : exit " SCRIPT+ rc SCRIPT-N LF SCRIPT+C
    OUT outu LEN>N STREAM+
    s" --" SAY
    ERR erru LEN>N STREAM+ ;
+
+: TRANSCRIBE ( ptr u8 n len len outcome -- )
+   PROC-OUTCOME>RC RC>N TRANSCRIBE-RC ;
 
 : CHILD ( ptr u8 n -- len len outcome ) {: name:ptr nameu:n :}
    PROC-ARGV-ENV-RESET
@@ -410,6 +388,55 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" woken" CHILD-CASE
    s" fresh" CHILD-CASE
    s" captures" CHILD-CASE ;
+
+\ ---- C calling an entry directly ---------------------------------------------------
+\ test/ffi-callback-direct-child.f calls MARSHAL's and UNSET's entries through
+\ the FFI owner words test/mcode-window-prepare.f opens before the seal, so it
+\ runs as a window child of test/native-window-owner-child.f, on the unsealed
+\ engine test/whitebox-child.f names: the sealed product refuses the reopen.
+\ The list is lib/ffi-test.f's FFI-T-STUB-ARGS with this child in its place.
+: DIRECT-ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+
+: DIRECT-ARGS ( -- )
+   PROC-ARGV-RESET
+   s" --load" DIRECT-ARG
+   s" test/native-window-owner-child.f" DIRECT-ARG
+   s" --" DIRECT-ARG
+   s" test/ffi-callback-direct-child.f" DIRECT-ARG
+   s" src/core/declaration-transaction.f" DIRECT-ARG
+   s" src/core/generated-declaration.f" DIRECT-ARG
+   s" src/core/decl-event.f" DIRECT-ARG
+   s" src/core/structure-make.f" DIRECT-ARG
+   s" src/core/structure-decl.f" DIRECT-ARG
+   s" src/core/enum-decl.f" DIRECT-ARG
+   s" src/core/structures.f" DIRECT-ARG
+   s" src/core/bytes.f" DIRECT-ARG
+   s" src/core/dynamic-storage.f" DIRECT-ARG
+   HB-TARGET-LINUX? if
+      s" src/os/linux/target.f" DIRECT-ARG s" src/os/linux/layout.f" DIRECT-ARG
+   else
+      s" src/os/macos/target.f" DIRECT-ARG s" src/os/macos/layout.f" DIRECT-ARG
+   then
+   s" src/habu/stack-abi.f" DIRECT-ARG
+   s" src/habu/layout.f" DIRECT-ARG
+   s" src/os/env-base.f" DIRECT-ARG
+   s" src/core/include.f" DIRECT-ARG
+   s" src/core/sha256.f" DIRECT-ARG
+   s" src/habu/code-span.f" DIRECT-ARG
+   s" test/mcode-window-prepare.f" DIRECT-ARG
+   WHITEBOX-CHILD:ENV! ;
+
+: DIRECT-RUN ( -- )
+   s" ffi-callback-direct" WHITEBOX-CHILD:PROVIDE
+   DIRECT-ARGS
+   WHITEBOX-CHILD:ENGINE$ >LEN OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+   s" direct" outu erru rc TRANSCRIBE-RC
+   s" the direct child exits 0" T-LABEL
+   rc 0 T= ;
+
+: CASE-DIRECT ( -- )
+   [: DIRECT-RUN ;] [: CLEANUP-RUN ;] finally ;
 
 \ ---- a stripped image ---------------------------------------------------------------
 : SUBJECT$ ( -- ptr u8 n ) SUBJECT-BUF SUBJECT-U @ ;
@@ -469,7 +496,7 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
 : WANT-TASKS ( -- )
    s" == the main task" W
    WANT-SORTS
-   s" == every argument register" W
+   s" == child direct: exit 0" W
    s" ok   n arrives whole" W
    s" ok   i32 is sign-extended from the low half" W
    s" ok   u32 is the low half" W
@@ -480,6 +507,10 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" ok   and nothing faulted" W
    s" ok   a body never stored answers the fallback" W
    s" ok   and faults E-FFI-CALLBACK-STATE" W
+   s" ok   a normal n result preserves the high half" W
+   s" test: ok" W
+   s" window: 0" W
+   s" --" W
    s" == the owner a thread claims with" W
    s" ok   the main thread claims with one value, a thousand calls and yields apart" W
    s" ok   which is not the free owner" W
