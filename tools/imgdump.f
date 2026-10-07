@@ -66,10 +66,10 @@ create A-LEN DICT-CAP cells allot
 : IB! ( ptr u8 -- )
    IB ! ;
 
-\ Checked -1 validation refines the file mmap result.
-\ Retirement: habu-sweep-trusted-out-f872acb0.
-TRUSTED: IMG-MMAP-PTR ( n -- ptr u8 )
-   dup 0 < IF IFD @ close s" imgdump: mmap failed" 74 die THEN ;
+\ mmap answers the mapping's address as an integer; a failed map dies first.
+CAST: MAP>BYTES ( n -- ptr u8 )
+: IMG-MMAP-PTR ( n -- ptr u8 )
+   dup 0 < IF IFD @ close s" imgdump: mmap failed" 74 die THEN MAP>BYTES ;
 
 : IMG-USAGE ( -- )
    s" usage: bin/hb --load tools/imgdump.f -- image [image2] | --pc image pc [pc ...] | --wid image name | --data image off" 64 die ;

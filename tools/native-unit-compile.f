@@ -31,8 +31,10 @@ variable REQUIRE-XT
 5 constant CLOSED
 6 constant IMPORTED
 
-\ Code cells refuse a null until the quotation type kind (habu-campaign-c2-mem-c3d7662b).
-TRUSTED: CLEAR-BORROWED ( -- ) 0 BODY-XT ! ;
+\ The idle cell holds no caller's body. A code cell takes no null literal, so
+\ the null that WITH restores is a cast.
+CAST: NO-BODY ( n -- [ -- bool ] )
+: CLEAR-BORROWED ( -- ) 0 NO-BODY BODY-XT ! ;
 
 : TOKEN= ( ptr u8 n ptr u8 n -- bool ) STR= ;
 

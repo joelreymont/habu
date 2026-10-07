@@ -34,7 +34,8 @@ variable ACTIVE
 variable FINISHED
 TYPED-VARIABLE UNIT-BODY [ -- ]
 
-TRUSTED: CODE-BYTES ( n -- ptr u8 ) ;
+\ The capture records code and record addresses as integers.
+CAST: CODE-BYTES ( n -- ptr u8 )
 
 : CALL! ( n n n n -- ) {: site:n kind:n target:n row:n :}
    site row CALL-CELLS * CALL-ROW !

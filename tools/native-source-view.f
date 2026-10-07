@@ -210,8 +210,8 @@ create HASH-CELL 1 cells allot
       i FILE-BYTES$ HASH-BYTES
    loop ;
 
-TRUSTED: ADDRESS ( ptr u8 -- n ) ;
-TRUSTED: FRAME ( n -- ptr u8 ) ;
+\ The engine links evaluator frames through raw cells holding their addresses.
+CAST: FRAME ( n -- ptr u8 )
 
 variable INPUT-HITS
 variable INPUT-CURSOR
@@ -264,7 +264,7 @@ variable INPUT-CURSOR
    LOAD-N @ {: id:n :}
    id 1+ LOAD-CELLS * LOAD-ROW-RESERVE
    file id LOAD-FILE LOAD!
-   source ADDRESS id LOAD-BASE LOAD!
+   source NULL-PTR BYTE-VIEW - id LOAD-BASE LOAD!
    1 id LOAD-ACTIVE LOAD!
    id 1+ LOAD-N !
    id ;

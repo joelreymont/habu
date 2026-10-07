@@ -114,7 +114,7 @@ variable IMDT-LDRB-U
 
 \ Invalid digits and overflowing hex inputs are absent from the CLI fixtures.
 : IMDT-NUM-NONE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u IMGD>NUMBER? MATCH option
+   a u IMAGE-DISASM:IMGD>NUMBER? MATCH option
      none OF 0 0= ENDOF
      some OF drop 0 0= 0= ENDOF
    ;MATCH TTRUE ;

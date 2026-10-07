@@ -42,8 +42,9 @@ $2C0 constant UNIT-IMPORT-OFF
    CHECKER-OWNER UNIT-MARK-OFF + CELL-VIEW @
    RESET-XT execute ;
 
-TRUSTED: UNIT-EXPORT-XT ( n -- [ -- ptr u8 n ] ) ;
-TRUSTED: UNIT-IMPORT-XT ( n -- [ ptr u8 n -- ] ) ;
+\ The owner record holds its unit callbacks as code address integers.
+CAST: UNIT-EXPORT-XT ( n -- [ -- ptr u8 n ] )
+CAST: UNIT-IMPORT-XT ( n -- [ ptr u8 n -- ] )
 
 : UNIT-CHECKER$ ( -- ptr u8 n )
    CHECKER-OWNER UNIT-EXPORT-OFF + CELL-VIEW @
@@ -117,8 +118,9 @@ TRUSTED: UNIT-IMPORT-XT ( n -- [ ptr u8 n -- ] ) ;
    ['] UNIT-PREFLIGHT-BODY catch
    dup 0<> if SOURCE-VIEW:CLOSE throw then drop ;
 
-TRUSTED: SOURCE-USE-XT ( n -- [ [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] -- ] ) ;
-TRUSTED: SOURCE-UNIT-USE-XT ( n -- [ [ ptr u8 n ptr u8 n ptr u8 [ -- ] -- ] -- ] ) ;
+\ OPEN-TARGET-XT answers a target operation's entry as a code address integer.
+CAST: SOURCE-USE-XT ( n -- [ [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] -- ] )
+CAST: SOURCE-UNIT-USE-XT ( n -- [ [ ptr u8 n ptr u8 n ptr u8 [ -- ] -- ] -- ] )
 
 : BIND-TARGET-SOURCE ( -- )
    1 TARGET-SOURCE-BOUND !

@@ -8,9 +8,7 @@ require src/compiler/native/compiler.f
 package NATIVE-BOOTSTRAP
 private
 
-TRUSTED: INSTALL ( -- )
-   ['] NCOMP:COMPILE data-base NCOMP-DISPATCH:XT-CELL + xt! ;
-INSTALL
+NCOMP:INSTALL
 
 public
 

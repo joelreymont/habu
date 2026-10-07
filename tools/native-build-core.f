@@ -90,7 +90,8 @@ create SMOKE-ERR SMOKE-CAP allot
    then
    floor KEEP-ROWS-BELOW ;
 
-TRUSTED: RESET-XT ( n -- [ -- ] ) ;
+\ The checker owner's record holds its reset entry as a code address integer.
+CAST: RESET-XT ( n -- [ -- ] )
 
 \ The retained host's literal rows come from the package that owns them, which
 \ publishes them while it is open, one segment of the active pool at a time
@@ -102,14 +103,12 @@ TRUSTED: RESET-XT ( n -- [ -- ] ) ;
 : LITERAL-SOURCE-ROWS ( n -- ptr u8 n ptr n ptr n )
    NSTR:SOURCE-ROWS ;
 
-TRUSTED: LITERAL-ADDRESS ( ptr u8 -- n ) ;
-
 : LITERAL-SPAN-REFUSE ( -- )
    s" native-build: source literal arena outside capture" BUILD-RC die ;
 
 : CHECK-LITERAL-SPAN ( n -- )
    NSTR:SOURCE-SPAN {: arena:ptr size:n :}
-   arena LITERAL-ADDRESS {: start:n :}
+   arena NULL-PTR BYTE-VIEW - {: start:n :}
    start AOT-ARM:D0 @ < start AOT-ARM:D1 @ > or if LITERAL-SPAN-REFUSE then
    AOT-ARM:D1 @ start - {: remaining:n :}
    remaining CELL < if LITERAL-SPAN-REFUSE then
@@ -161,7 +160,8 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    CORE-PREFIX:FIRST-RECORD seed-ndict!
    RESET-ADDRESS-ROWS ;
 
-TRUSTED: SOURCE-RESET-XT ( n -- [ -- ] ) ;
+\ OPEN-TARGET-XT answers a target operation's entry as a code address integer.
+CAST: SOURCE-RESET-XT ( n -- [ -- ] )
 
 \ Resolve a fresh operation inside the open target code window. Its retained
 \ namesake would act for the host: SOURCE-INPUT:RESET would activate the wrong
@@ -293,10 +293,10 @@ TYPED-VARIABLE SOURCE-TAIL [ -- ]
    then
    XREF-START TARGET-CODE ;
 
-TRUSTED: PREPARE-XT ( n -- [ -- ] ) ;
-\ TARGET-XT hands the target's package seal over as a code address integer.
+\ TARGET-XT and TARGET-IMPORTER hand target entries over as code address integers.
+CAST: PREPARE-XT ( n -- [ -- ] )
 CAST: SEAL-XT ( n -- [ n -- ] )
-TRUSTED: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
+CAST: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] )
 
 \ Every segment's arena is checked before the target imports any of them.
 : TRANSFER-LITERALS ( -- )
@@ -365,9 +365,10 @@ variable SMOKE-DIR-U
    path size CLEANUP-TREE+
    path SMOKE-DIR size BYTE-COPY size SMOKE-DIR-U ! ;
 
-\ This private boundary has the source writer's exact compiled ABI. Its capture
-\ is a multi-cell value, which cannot be passed through interpret-mode evaluate.
-TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
+\ XREF-START answers the source writer's entry as a code address integer, and
+\ this private cast states its exact compiled ABI. Its capture is a multi-cell
+\ value, which cannot be passed through interpret-mode evaluate.
+CAST: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
 
 : SOURCE-WRITER-NAMED ( ptr u8 n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
    XREF-FIND dup XREF-FOUND? 0= if

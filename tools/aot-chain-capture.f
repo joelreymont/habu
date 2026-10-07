@@ -214,7 +214,7 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
 \ The rows preserve declared locations, kinds and exact null/window-relative
 \ targets. Check them against the live declarations, independently of the row
 \ writer. Counts alone cannot detect one missing row replaced by a duplicate.
-TRUSTED: DATA-N ( -- n ) data-base ;
+: DATA-N ( -- n ) data-base BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 
 : ROW-U32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@ p 1+ c@ 8 lshift or p 2 + c@ 16 lshift or p 3 + c@ 24 lshift or ;

@@ -144,7 +144,9 @@ BALANCED
 \ that does: the source pre-verifier registers a word a source creates through
 \ CTS-KEEPWD from that record (src/core/checker.f CHECKER-RECORD-CREATED), and
 \ the word must type as ( -- n ), and not as ( -- n n ), on both sides of the
-\ sweep. Only dropped words follow the last MARK: CTS-DROP1 and
+\ sweep. CTS-KEEPFA takes a quantified effect: its FORALL node's body and
+\ bounds are nodes, which the walk and the shape count must both reach, or no
+\ window holding one balances. Only dropped words follow the last MARK: CTS-DROP1 and
 \ CTS-DROP2 repeat shapes the store already holds, CTS-DROP3 takes a family
 \ twice, a row no other word has, so its record owns a content and a node, and
 \ the effect CTS-DROPMK2 gives the words it creates is that window's one
@@ -172,11 +174,19 @@ TRUSTED: CT-SWEEP ( -- ) [: CTS-POLICY? ;] CHECKER-SWEEP:RUN ;
 \ word, one effect that must certify and one that must not, and what the source
 \ pre-verifier answers for a word a source creates through CTS-KEEPWD.
 : VERDICTS ( -- )
+   s" CTV ( forall<q,forall<p inside [q,ctsbound],[ n -- n ]>> -- ) CTS-BOUND" CHECK-QUIET-CANDIDATE! -1 T=
+   s" CTV ( forall<q,forall<p,[ n -- n ]>> -- ) CTS-BOUND" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CTV ( forall<p,[ n -- n ]> -- ) CTS-SCOPE" CHECK-QUIET-CANDIDATE! -1 T=
+   s" CTV ( forall-region<p,[ n -- n ]> -- ) CTS-SCOPE" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CTV ( forall-region<p,[ n -- n ]> -- ) CTS-REGION" CHECK-QUIET-CANDIDATE! -1 T=
+   s" CTV ( forall<p,[ n -- n ]> -- ) CTS-REGION" CHECK-QUIET-CANDIDATE! 0 T=
    s" CTV ( n -- n ) CTS-KEEP" CHECK-QUIET-CANDIDATE! -1 T=
    s" CTV ( n n -- n ) CTS-KEEP" CHECK-QUIET-CANDIDATE! 0 T=
    s" CTV ( [ ptr ctswept -- ] -- ) CTS-KEEPQT" CHECK-QUIET-CANDIDATE! -1 T=
    s" CTV ( [ ctswept -- ] -- ) CTS-KEEPQT" CHECK-QUIET-CANDIDATE! 0 T=
    s" CTV ( n -- ) CTS-KEEPWD" CHECK-QUIET-CANDIDATE! -1 T=
+   s" CTV ( forall<q,[ R read-view<q,q,ctswept> -- R read-view<q,q,ctswept> | U -- U ]> -- ) CTS-KEEPFA" CHECK-QUIET-CANDIDATE! -1 T=
+   s" CTV ( n -- ) CTS-KEEPFA" CHECK-QUIET-CANDIDATE! 0 T=
    s" CTV ( -- n ) CTS-MADE1" CHECK-QUIET-CANDIDATE! -1 T=
    s" CTV ( -- n n ) CTS-MADE1" CHECK-QUIET-CANDIDATE! 0 T=
    [: CREATED-USE$ VERIFY:SOURCE-BUF ;] catch 0 T=
@@ -187,6 +197,13 @@ variable ZEROED
 
 s" enum ctswept ctsw-on ctsw-off ;enum" evaluate-closed
 s" : CTS-KEEP ( n -- n ) 1 + ;" evaluate-closed
+s" : CTS-KEEPFA ( forall<p,[ R read-view<p,p,ctswept> -- R read-view<p,p,ctswept> | U -- U ]> -- ) drop ;" evaluate-closed
+\ Kept quantifiers whose bounds and domain the walk and the shape hash must both reach:
+\ a nested quantifier with a parent and a second bound, and two that differ only in domain.
+s" enum ctsbound ctsbound-on ctsbound-off ;enum" evaluate-closed
+s" : CTS-BOUND ( forall<q,forall<p inside [q,ctsbound],[ n -- n ]>> -- ) drop ;" evaluate-closed
+s" : CTS-SCOPE ( forall<p,[ n -- n ]> -- ) drop ;" evaluate-closed
+s" : CTS-REGION ( forall-region<p,[ n -- n ]> -- ) drop ;" evaluate-closed
 EFF-CENSUS:MARK MK !
 s" : CTS-DROPQT ( [ ptr ctswept -- ] -- ) drop ;" evaluate-closed
 MK @ EFF-CENSUS:RUN
@@ -212,6 +229,7 @@ VERDICTS
 s" CTV ( n -- n ) CTS-DROP1" CHECK-QUIET-CANDIDATE! -1 T=   \ a dropped word certifies until swept
 0 EFF-CENSUS:RUN
 BALANCED
+EFF-CENSUS:NODES EFF-CENSUS:SHAPES T=
 EFF-CENSUS:RECORDS RECS0 !
 EFF-CENSUS:UNKEYED KEYLESS0 !
 EFF-CENSUS:WINDOW-BYTES WINDOW0 !

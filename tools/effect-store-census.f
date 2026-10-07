@@ -51,41 +51,21 @@ package EFF-CENSUS
 
 \ ---- the read boundary onto the checker's private store -----------------------
 \ Read-only: offsets in, cells and bytes out, no store word and no mutation. Each
-\ checker word is called once, from a named one-line definition. The boundary
+\ checker accessor is called from one named one-line definition below; the walk
+\ names the checker's size, offset and tag constants directly. The boundary
 \ does not cross the seal: the product strips E-PTR, SYM-RETIRED? and USIGS and
 \ refuses this file (header above).
-TRUSTED: STORE-END ( -- n ) UEND @ ;
-TRUSTED: CELL-AT ( n -- n ) USIGS-CELL-AT @ ;
-TRUSTED: REC-NEXT ( n -- n ) E-PTR E-NEXT@ ;
-TRUSTED: BYTE-AT ( n -- n ) USIGS swap + c@ ;
-TRUSTED: REC-BYTES ( -- n ) EFF-REC ;
-TRUSTED: NODE-BYTES ( -- n ) EFF-NODE ;
-TRUSTED: CONTENT-BYTES ( -- n ) EFF-CONTENT ;
-TRUSTED: R-CONTENT ( n -- n ) E-PTR ER.CONTENT @ ;
-TRUSTED: R-DIN ( n -- n ) E-PTR E-DIN@ ;
-TRUSTED: R-DOUT ( n -- n ) E-PTR E-DOUT@ ;
-TRUSTED: R-RIN ( n -- n ) E-PTR E-RIN@ ;
-TRUSTED: R-ROUT ( n -- n ) E-PTR E-ROUT@ ;
-TRUSTED: R-HASR ( n -- n ) E-PTR E-HASR@ ;
-TRUSTED: R-SYMPREV ( -- n ) ER-SYMPREV-OFF ;
-TRUSTED: R-SYM ( n -- n ) E-PTR ER.SYM @ ;
-TRUSTED: SYM-GONE? ( n -- bool ) SYM-RETIRED? ;
-TRUSTED: N-TAG ( -- n ) EN-TAG-OFF ;
-TRUSTED: N-A ( -- n ) EN-A-OFF ;
-TRUSTED: N-B ( -- n ) EN-B-OFF ;
-TRUSTED: N-C ( -- n ) EN-C-OFF ;
-TRUSTED: N-D ( -- n ) EN-D-OFF ;
-TRUSTED: N-E ( -- n ) EN-E-OFF ;
-TRUSTED: N-F ( -- n ) EN-F-OFF ;
-TRUSTED: N-G ( -- n ) EN-G-OFF ;
-TRUSTED: N-H ( -- n ) EN-H-OFF ;
-TRUSTED: T-PTR ( -- n ) EN-PTR ;
-TRUSTED: T-PUSH ( -- n ) EN-PUSH ;
-TRUSTED: T-QUOT ( -- n ) EN-QUOT ;
-TRUSTED: T-ATOM ( -- n ) EN-ATOM ;
-TRUSTED: T-PARAM ( -- n ) EN-PARAM ;
-TRUSTED: T-VAR ( -- n ) EN-VAR ;
-TRUSTED: T-ROW ( -- n ) EN-ROW ;
+: STORE-END ( -- n ) UEND @ ;
+: CELL-AT ( n -- n ) USIGS-CELL-AT @ ;
+: REC-NEXT ( n -- n ) E-PTR E-NEXT@ ;
+: BYTE-AT ( n -- n ) USIGS swap + c@ ;
+: R-CONTENT ( n -- n ) E-PTR ER.CONTENT @ ;
+: R-DIN ( n -- n ) E-PTR E-DIN@ ;
+: R-DOUT ( n -- n ) E-PTR E-DOUT@ ;
+: R-RIN ( n -- n ) E-PTR E-RIN@ ;
+: R-ROUT ( n -- n ) E-PTR E-ROUT@ ;
+: R-HASR ( n -- n ) E-PTR E-HASR@ ;
+: R-SYM ( n -- n ) E-PTR ER.SYM @ ;
 
 \ ---- the counters the walk fills ----------------------------------------------
 variable WINDOW-V   variable RECS-V     variable SHADOW-V
@@ -188,37 +168,42 @@ variable DUPCUR
    b NODEB-V @ + NODEB-V !
    off b CHARGE ;
 
-: TAG-AT ( n -- n ) N-TAG + CELL-AT ;
+: TAG-AT ( n -- n ) EN-TAG-OFF + CELL-AT ;
 : FIELD-AT ( n n -- n ) + CELL-AT ;
 : ARG-AT ( n n -- n ) {: p:n i:n :}   \ the i-th arg offset of an EN-PARAM node
-   p N-D FIELD-AT i cells + CELL-AT ;
+   p EN-D-OFF FIELD-AT i cells + CELL-AT ;
 
 \ WALK ( n -- ) : charge the subterm at `off` to the record being visited, once.
 \ A node below the window belongs to an earlier load and is counted as a
 \ reference, never as bytes - counting it would make the window's own arithmetic
 \ come out negative, which is how the sharing case first announced itself.
+\ A quantifier's body, parent and second bound are nodes and its domain (N-D) a
+\ scalar, as the checker's own sweep reads them; a bound variable is a leaf.
 : WALK ( n -- ) {: off:n :}
    off 0= IF EXIT THEN
    off BASE-V @ < IF BELOW-V @ 1 + BELOW-V ! EXIT THEN
    off SEEN? IF
       SHARES-V @ 1 + SHARES-V !
-      NODE-BYTES SHAREB-V @ + SHAREB-V !
+      EFF-NODE SHAREB-V @ + SHAREB-V !
       EXIT
    THEN
    off SEE
    NODES-V @ 1 + NODES-V !
-   off NODE-BYTES TAKE
+   off EFF-NODE TAKE
    off TAG-AT {: tg:n :}
-   tg T-PTR = IF off N-A FIELD-AT RECURSE EXIT THEN
-   tg T-PUSH = IF off N-A FIELD-AT RECURSE  off N-B FIELD-AT RECURSE EXIT THEN
-   tg T-QUOT = IF
-      off N-A FIELD-AT RECURSE  off N-B FIELD-AT RECURSE
-      off N-C FIELD-AT RECURSE  off N-D FIELD-AT RECURSE EXIT THEN
-   tg T-ATOM = IF off N-A FIELD-AT  off N-B FIELD-AT ALIGN8 TAKE EXIT THEN
-   tg T-PARAM = IF
-      off N-A FIELD-AT  off N-B FIELD-AT ALIGN8 TAKE
-      off N-C FIELD-AT {: argc:n :}
-      off N-D FIELD-AT  argc cells TAKE
+   tg EN-PTR = IF off EN-A-OFF FIELD-AT RECURSE EXIT THEN
+   tg EN-PUSH = IF off EN-A-OFF FIELD-AT RECURSE  off EN-B-OFF FIELD-AT RECURSE EXIT THEN
+   tg EN-QUOT = IF
+      off EN-A-OFF FIELD-AT RECURSE  off EN-B-OFF FIELD-AT RECURSE
+      off EN-C-OFF FIELD-AT RECURSE  off EN-D-OFF FIELD-AT RECURSE EXIT THEN
+   tg EN-FORALL = IF
+      off EN-A-OFF FIELD-AT RECURSE  off EN-B-OFF FIELD-AT RECURSE
+      off EN-C-OFF FIELD-AT RECURSE EXIT THEN
+   tg EN-ATOM = IF off EN-A-OFF FIELD-AT  off EN-B-OFF FIELD-AT ALIGN8 TAKE EXIT THEN
+   tg EN-PARAM = IF
+      off EN-A-OFF FIELD-AT  off EN-B-OFF FIELD-AT ALIGN8 TAKE
+      off EN-C-OFF FIELD-AT {: argc:n :}
+      off EN-D-OFF FIELD-AT  argc cells TAKE
       0 BEGIN dup argc < WHILE
          off over ARG-AT RECURSE
          1 +
@@ -237,33 +222,38 @@ variable DUPCUR
 : SHAPE ( n -- n ) {: off:n :}
    off 0= IF 0 EXIT THEN
    off TAG-AT {: tg:n :}
-   tg T-PTR = IF
-      off N-A FIELD-AT RECURSE {: ca:n :}
+   tg EN-PTR = IF
+      off EN-A-OFF FIELD-AT RECURSE {: ca:n :}
       H0 tg H+ ca H+ H@ dup SHT+ EXIT THEN
-   tg T-PUSH = IF
-      off N-A FIELD-AT RECURSE {: ca:n :}
-      off N-B FIELD-AT RECURSE {: cb:n :}
-      H0 tg H+ ca H+ cb H+ off N-C FIELD-AT H+ H@ dup SHT+ EXIT THEN
-   tg T-QUOT = IF
-      off N-A FIELD-AT RECURSE {: qa:n :}
-      off N-B FIELD-AT RECURSE {: qb:n :}
-      off N-C FIELD-AT RECURSE {: qc:n :}
-      off N-D FIELD-AT RECURSE {: qd:n :}
+   tg EN-PUSH = IF
+      off EN-A-OFF FIELD-AT RECURSE {: ca:n :}
+      off EN-B-OFF FIELD-AT RECURSE {: cb:n :}
+      H0 tg H+ ca H+ cb H+ off EN-C-OFF FIELD-AT H+ H@ dup SHT+ EXIT THEN
+   tg EN-QUOT = IF
+      off EN-A-OFF FIELD-AT RECURSE {: qa:n :}
+      off EN-B-OFF FIELD-AT RECURSE {: qb:n :}
+      off EN-C-OFF FIELD-AT RECURSE {: qc:n :}
+      off EN-D-OFF FIELD-AT RECURSE {: qd:n :}
       H0 tg H+ qa H+ qb H+ qc H+ qd H+
-      off N-E FIELD-AT H+ off N-F FIELD-AT H+ off N-G FIELD-AT H+ off N-H FIELD-AT H+
+      off EN-E-OFF FIELD-AT H+ off EN-F-OFF FIELD-AT H+ off EN-G-OFF FIELD-AT H+ off EN-H-OFF FIELD-AT H+
       H@ dup SHT+ EXIT THEN
-   tg T-ATOM = IF
-      off N-A FIELD-AT off N-B FIELD-AT STR-HASH {: sh:n :}
-      H0 tg H+ sh H+ off N-B FIELD-AT H+ off N-C FIELD-AT H+ H@ dup SHT+ EXIT THEN
+   tg EN-FORALL = IF
+      off EN-A-OFF FIELD-AT RECURSE {: fa:n :}
+      off EN-B-OFF FIELD-AT RECURSE {: fb:n :}
+      off EN-C-OFF FIELD-AT RECURSE {: fc:n :}
+      H0 tg H+ fa H+ fb H+ fc H+ off EN-D-OFF FIELD-AT H+ H@ dup SHT+ EXIT THEN
+   tg EN-ATOM = IF
+      off EN-A-OFF FIELD-AT off EN-B-OFF FIELD-AT STR-HASH {: sh:n :}
+      H0 tg H+ sh H+ off EN-B-OFF FIELD-AT H+ off EN-C-OFF FIELD-AT H+ H@ dup SHT+ EXIT THEN
    \ The running fold is parked on the RETURN stack across each argument, never in
    \ a variable: the recursion below re-enters this word and would overwrite a
    \ shared accumulator, which is how the count first came out ABOVE the node
    \ count - one node answering with two different shapes.
-   tg T-PARAM = IF
-      off N-A FIELD-AT off N-B FIELD-AT STR-HASH {: ph:n :}
-      off N-C FIELD-AT {: argc:n :}
-      H0 tg H+ ph H+ off N-B FIELD-AT H+ argc H+
-      off N-E FIELD-AT H+ off N-H FIELD-AT H+
+   tg EN-PARAM = IF
+      off EN-A-OFF FIELD-AT off EN-B-OFF FIELD-AT STR-HASH {: ph:n :}
+      off EN-C-OFF FIELD-AT {: argc:n :}
+      H0 tg H+ ph H+ off EN-B-OFF FIELD-AT H+ argc H+
+      off EN-E-OFF FIELD-AT H+ off EN-H-OFF FIELD-AT H+
       H@ >r
       0 BEGIN dup argc < WHILE
          off over ARG-AT RECURSE
@@ -271,9 +261,9 @@ variable DUPCUR
          1 +
       REPEAT drop
       r> dup SHT+ EXIT THEN
-   H0 tg H+ off N-A FIELD-AT H+ off N-B FIELD-AT H+
+   H0 tg H+ off EN-A-OFF FIELD-AT H+ off EN-B-OFF FIELD-AT H+
    \ The storage restriction is independent of the variable's ordinary kind.
-   tg T-VAR = tg T-ROW = or IF off N-C FIELD-AT H+ THEN
+   tg EN-VAR = tg EN-ROW = or IF off EN-C-OFF FIELD-AT H+ THEN
    H@ dup SHT+ ;
 
 \ ---- the two passes -----------------------------------------------------------
@@ -284,7 +274,7 @@ variable DUPCUR
 : MARK-SHADOWED ( -- )
    BASE-V @ CUR-V !
    BEGIN CUR-V @ REC-NEXT 0 <> WHILE
-      CUR-V @ R-SYMPREV FIELD-AT {: p:n :}
+      CUR-V @ ER-SYMPREV-OFF FIELD-AT {: p:n :}
       p 0 <> IF p 1 - BASE-V @ >= IF p 1 - SHADOW THEN THEN
       CUR-V @ REC-NEXT CUR-V !
    REPEAT ;
@@ -300,7 +290,7 @@ variable DUPCUR
 : VISIT-CONTENT ( n -- ) R-CONTENT
    dup BASE-V @ < IF drop EXIT THEN
    dup SEEN? IF drop EXIT THEN
-   dup SEE  CONTENT-BYTES CHARGE
+   dup SEE  EFF-CONTENT CHARGE
    1 CONTENTS-V +! ;
 
 \ A binding keyed on no symbol is a retired one the capture's sweep reduced to
@@ -311,7 +301,7 @@ variable DUPCUR
 : KEY ( n -- ) {: rec:n :}
    rec R-SYM {: sym:n :}
    sym 0= IF 1 UNKEYED-V +! EXIT THEN
-   sym SYM-GONE? IF 1 RETIRED-V +! THEN ;
+   sym SYM-RETIRED? IF 1 RETIRED-V +! THEN ;
 
 \ A record whose ER.CONTENT is 0 has no content and no rows: the sweep left it
 \ only the link to the next record, so there is nothing below it to visit.
@@ -323,7 +313,7 @@ variable DUPCUR
       CUR-V @ SHADOWED? IF
          -1 DUPCUR !  SHADOW-V @ 1 + SHADOW-V !
       ELSE 0 DUPCUR ! THEN
-      CUR-V @ REC-BYTES CHARGE
+      CUR-V @ EFF-REC CHARGE
       CUR-V @ R-CONTENT 0 <> IF
          CUR-V @ VISIT-CONTENT
          CUR-V @ VISIT-ROWS
@@ -359,7 +349,7 @@ public
    base BASE-V !
    STORE-END base - WINDOW-V !
    STORE-END GRANULE 1 + ALLOC-VIS
-   WINDOW-V @ NODE-BYTES / 4 * 64 max POW2-AT-LEAST ALLOC-SHT
+   WINDOW-V @ EFF-NODE / 4 * 64 max POW2-AT-LEAST ALLOC-SHT
    MARK-SHADOWED
    VISIT-RECORDS
    COUNT-DEAD ;
@@ -367,9 +357,9 @@ public
 : WINDOW-BYTES ( -- n ) WINDOW-V @ ;
 : RECORDS ( -- n ) RECS-V @ ;
 : SHADOWED ( -- n ) SHADOW-V @ ;
-: HEADER-BYTES ( -- n ) RECS-V @ REC-BYTES * ;
+: HEADER-BYTES ( -- n ) RECS-V @ EFF-REC * ;
 : CONTENTS ( -- n ) CONTENTS-V @ ;
-: CONTENT-TOTAL-BYTES ( -- n ) CONTENTS-V @ CONTENT-BYTES * ;
+: CONTENT-TOTAL-BYTES ( -- n ) CONTENTS-V @ EFF-CONTENT * ;
 : NODES ( -- n ) NODES-V @ ;
 : NODE-TOTAL-BYTES ( -- n ) NODEB-V @ ;
 : SHARES ( -- n ) SHARES-V @ ;

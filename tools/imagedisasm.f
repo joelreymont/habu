@@ -3,6 +3,9 @@
 
 require lib/adt/option.f                 \ option<n> for the number parsers (switchover wave A)
 
+package IMAGE-DISASM
+private
+
 PATH-CAP constant IMGD-PATH-CAP
 144 constant IMGD-STAT-U
 $7FFFFFFFFFFFFFF constant IMGD-HEX-MAX-PRE
@@ -41,10 +44,10 @@ variable IMGD-LOWER
    REPEAT drop
    0 IMGD-PATH u + c! ;
 
-\ Checked failure validation refines the raw file mmap result.
-\ Retirement: habu-sweep-trusted-out-f872acb0.
-TRUSTED: IMGD-MMAP-PTR ( n -- ptr u8 )
-   dup 0 < IF IMGD-FD @ close s" imagedisasm: mmap failed" 74 die THEN ;
+\ mmap answers the mapping's address as an integer; a failed map dies first.
+CAST: MAP>BYTES ( n -- ptr u8 )
+: IMGD-MMAP-PTR ( n -- ptr u8 )
+   dup 0 < IF IMGD-FD @ close s" imagedisasm: mmap failed" 74 die THEN MAP>BYTES ;
 
 : IMGD-READ ( ptr u8 n -- )
    IMGD-ZPATH
@@ -98,9 +101,13 @@ TRUSTED: IMGD-MMAP-PTR ( n -- ptr u8 )
    THEN
    a u STR-FALSE ;
 
+public
+
 : IMGD>NUMBER? ( ptr u8 n -- option<n> )   \ SOME parsed $hex/0xhex/decimal, else NONE
    IMGD-HEX-BODY IF IMGD-PARSE-HEX EXIT THEN
    STR>NUMBER? ;
+
+private
 
 : IMGD-POS-NUM ( ptr u8 n -- n )
    IMGD>NUMBER? MATCH option
@@ -132,3 +139,5 @@ TRUSTED: IMGD-MMAP-PTR ( n -- ptr u8 )
    SCRIPT-ARGC 0 > IF IMGD-MAIN THEN ;
 
 IMGD-RUN?
+
+;package

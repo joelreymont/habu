@@ -9,13 +9,6 @@
 \ read, so each number carries the same small constant of its own; the parent
 \ compares two such lines, never a line against a source figure.
 \
-\ Every engine field goes through a named trusted shim, a lineage boundary: a
-\ seed-lineage engine records no effect for checker.f's pre-hook variables
-\ (SYM-N, UEND, USIGS-CAP-U, NORET-END, NORET-CAP-U), so it refuses them inside
-\ a checked definition, and the parent must be able to probe every generation
-\ with one fixture. habu-delete-the-trusted-42b30edd retires these shims: it
-\ gives seed-lineage engines those rows or drops the probe's need for them.
-\
 \ Nothing here may print a number the way the engine's own `.` does: that ends
 \ the line, and the whole shape has to arrive as one line.
 
@@ -24,14 +17,14 @@ package TWO-GEN-PROBE
 48 constant TGP-ZERO               \ ASCII '0'
 32 constant TGP-SPACE              \ ASCII ' '
 
-TRUSTED: TGP-SYMS ( -- n ) SYM-N @ ;
-TRUSTED: TGP-USIGS ( -- n ) UEND @ CELL + ;
-TRUSTED: TGP-UCAP ( -- n ) USIGS-CAP-U @ ;
-TRUSTED: TGP-NORETS ( -- n ) NORET-END @ CELL + ;
-TRUSTED: TGP-NCAP ( -- n ) NORET-CAP-U @ ;
-TRUSTED: TGP-ROWS ( -- n ) data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
-TRUSTED: TGP-HEAP ( -- n ) here data-base - ;
-TRUSTED: TGP-DPCAP ( -- n ) DATA-SIZE PROF-CNT-BYTES - ;
+: TGP-SYMS ( -- n ) SYM-N @ ;
+: TGP-USIGS ( -- n ) UEND @ CELL + ;
+: TGP-UCAP ( -- n ) USIGS-CAP-U @ ;
+: TGP-NORETS ( -- n ) NORET-END @ CELL + ;
+: TGP-NCAP ( -- n ) NORET-CAP-U @ ;
+: TGP-ROWS ( -- n ) data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
+: TGP-HEAP ( -- n ) here data-base - ;
+: TGP-DPCAP ( -- n ) DATA-SIZE PROF-CNT-BYTES - ;
 
 : TGP-U. ( n -- ) {: v:n :}
    v 0 < if s" two-gen-probe: negative count" 76 die then

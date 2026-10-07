@@ -1395,9 +1395,10 @@ variable CHK-PKG-NAME-I
    off CELL + CHECKER-OWNER-GUARD:VALIDATE
    off + CELL-VIEW @ dup 0= IF E-NCOMP-OWNER throw THEN ;
 
-TRUSTED: CHK-VERIFIER-ACTION ( n -- [ -- ] ) ;
+\ The checker owner's record holds the verifier's entries as code address integers.
+CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
 
-TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
+: CHK-RUN-NOMINAL-AUTH ( -- )
    CHECKER-OWNER-ABI:VERIFY-START-OFF CHK-VERIFIER-XT CHK-VERIFIER-ACTION execute
    [: CHK-RUN-NOMINAL ;] catch
    DIAG-SOURCE-OFF
