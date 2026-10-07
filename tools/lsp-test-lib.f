@@ -258,6 +258,10 @@
 \   answered from the same check ......................... highlight-unproved
 \ - a use asked about after a change whose check did not complete answered
 \   other than null ................................... highlight-incomplete
+\ - a use of a word whose token, in a file included into two packages, into
+\   one package's public section and its private one, or again after
+\   `undefine`, declares the other's word too, answered other than null: no
+\   use's spelling tells them apart ...................... highlight-included
 \
 \ Completion
 \ - a cursor in a body not answered, in a list that is not incomplete, with
@@ -344,8 +348,8 @@ using BUF
 \ its busiest measurement and CHECKED-MS about six times big-frame's 1230 to
 \ 1289 ms, and neither is larger. The one bounds 27 runs (the 24 conversations
 \ CONVERSE runs, answers-at-once, stdout-closed and TEST-EXIT-TIMEOUT's child)
-\ and the other 77 conversations. A server that blocks spends none of the
-\ row's CPU budget (test/suite-budget.f CPU-MS), so all 104 could reach their
+\ and the other 78 conversations. A server that blocks spends none of the
+\ row's CPU budget (test/suite-budget.f CPU-MS), so all 105 could reach their
 \ bounds, each failing by name, well inside the row's hang guard (ROW-MS). One
 \ that spins to its bound spends that much of the budget's 360 s, so at most
 \ 45 such runs fail by name before the budget ends the row.
@@ -3050,6 +3054,54 @@ variable LENGTH-N                        \ the length of its directory's name
    HEAR s" 3" NULL-RESULT
    LOGGED ;
 
+\ hl-common.f, on disk only, defines HL-K in the package and section that
+\ include it. hl-twice.f includes it into HLP's public section and HLQ's,
+\ hl-vis.f into HLV's public section and then its private one, hl-undef.f
+\ into the globals, then again after `undefine HL-K`, and each uses both
+\ words: the check states two words at HL-K's one token, of two packages, of
+\ one package under two visibilities, then of one wordlist one after the
+\ other.
+: HL-COMMON-PATH ( -- ptr u8 n )  s" hl-common.f" FIXTURE ;
+: HL-TWICE-PATH ( -- ptr u8 n )  s" hl-twice.f" FIXTURE ;
+: HL-VIS-PATH ( -- ptr u8 n )  s" hl-vis.f" FIXTURE ;
+: HL-UNDEF-PATH ( -- ptr u8 n )  s" hl-undef.f" FIXTURE ;
+: TEXT-HL-COMMON ( -- ptr u8 n )  s\" : HL-K ( -- n ) 1 ;\n" ;
+: TEXT-HL-TWICE ( -- ptr u8 n )
+   s\" package HLP\npublic\ninclude hl-common.f\n;package\npackage HLQ\npublic\ninclude hl-common.f\n;package\n: HL-BOTH ( -- n ) HLP:HL-K HLQ:HL-K + ;\n" ;
+: TEXT-HL-VIS ( -- ptr u8 n )
+   s\" package HLV\npublic\ninclude hl-common.f\nprivate\ninclude hl-common.f\n: HL-IN ( -- n ) HL-K ;\n;package\n: HL-OUT ( -- n ) HLV:HL-K ;\n" ;
+: TEXT-HL-UNDEF ( -- ptr u8 n )
+   s\" include hl-common.f\n: HL-U1 ( -- n ) HL-K ;\nundefine HL-K\ninclude hl-common.f\n: HL-U2 ( -- n ) HL-K ;\n" ;
+
+\ HLP:HL-K and HLQ:HL-K, the private HL-K and the public HLV:HL-K, then the
+\ first global HL-K and the second, each answered null: the token their uses
+\ target declares two words, and no use is known to be of the one it names
+\ rather than of the other.
+: HIGHLIGHT-INCLUDED-TURNS ( -- )
+   HL-COMMON-PATH TEXT-HL-COMMON WRITE-ALL
+   INITIALIZE
+   HL-TWICE-PATH TEXT-HL-TWICE 1 OPENS
+   HL-VIS-PATH TEXT-HL-VIS 1 OPENS
+   HL-UNDEF-PATH TEXT-HL-UNDEF 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HL-TWICE HL-TWICE-PATH 1 s" verified" LISTED
+   TEXT-HL-VIS HL-VIS-PATH 1 s" verified" LISTED
+   TEXT-HL-UNDEF HL-UNDEF-PATH 1 s" verified" LISTED
+   s" 3" HL-TWICE-PATH 8 19 HIGHLIGHT-ASK
+   s" 4" HL-TWICE-PATH 8 28 HIGHLIGHT-ASK
+   s" 5" HL-VIS-PATH 5 17 HIGHLIGHT-ASK
+   s" 6" HL-VIS-PATH 7 18 HIGHLIGHT-ASK
+   s" 7" HL-UNDEF-PATH 1 17 HIGHLIGHT-ASK
+   s" 8" HL-UNDEF-PATH 4 17 HIGHLIGHT-ASK
+   SAY
+   HEAR s" 3" NULL-RESULT
+   HEAR s" 4" NULL-RESULT
+   HEAR s" 5" NULL-RESULT
+   HEAR s" 6" NULL-RESULT
+   HEAR s" 7" NULL-RESULT
+   HEAR s" 8" NULL-RESULT ;
+
 \ ---- completion --------------------------------------------------------------
 
 : CMP-A-PATH ( -- ptr u8 n )  s" cmpl-a.f" FIXTURE ;
@@ -3345,7 +3397,8 @@ variable LENGTH-N                        \ the length of its directory's name
    s" highlight-not-open" [: HIGHLIGHT-NOT-OPEN-TURNS ;] TALK
    s" highlight-after-change" [: HIGHLIGHT-AFTER-CHANGE-TURNS ;] TALK
    s" highlight-unproved" [: HIGHLIGHT-UNPROVED-TURNS ;] TALK
-   s" highlight-incomplete" [: HIGHLIGHT-INCOMPLETE-TURNS ;] TALK ;
+   s" highlight-incomplete" [: HIGHLIGHT-INCOMPLETE-TURNS ;] TALK
+   s" highlight-included" [: HIGHLIGHT-INCLUDED-TURNS ;] TALK ;
 
 : TEST-DEFINITIONS ( -- )
    s" definition" [: DEF-TURNS ;] TALK

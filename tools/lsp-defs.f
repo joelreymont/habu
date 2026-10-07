@@ -21,8 +21,11 @@
 \ for any other. The URI is the checked document's for its own file, the one
 \ whose text the range counts through, and for any other the open document's
 \ holding the file when the check completed, else the file URI of the path.
-\ A file a check reads twice, as `include` after `undefine` does, gives each
-\ of its definitions once.
+\ A file a check reads again, as `include` into a second package or after
+\ `undefine` does, gives each of its definitions once. A record whose word a
+\ later reading declares at its token again stands for several words, which
+\ REC-SEVERAL? answers: each reading declares another word, in another
+\ wordlist or, after `undefine`, in the same one.
 \
 \ A use is a use in the document that the check bound to a located
 \ declaration, in the order the check published them: the bytes of the
@@ -112,8 +115,9 @@ private
 
 \ A record: its group's next record, -1 after the last, its class, the line
 \ and character its token starts at and ends at, its word's and package's
-\ offsets and lengths in BYTES, the bytes its token starts and ends at, and
-\ its kind's and effect's offsets and lengths in BYTES.
+\ offsets and lengths in BYTES, the bytes its token starts and ends at, its
+\ kind's and effect's offsets and lengths in BYTES, and 1 when it stands for
+\ several words.
 0 constant R-NEXT
 1 constant R-CLASS
 2 constant R-LINE
@@ -130,7 +134,8 @@ private
 13 constant R-KIND-U
 14 constant R-EFF
 15 constant R-EFF-U
-16 constant REC-CELLS
+16 constant R-SEVERAL
+17 constant REC-CELLS
 
 \ A use: the bytes it starts and ends at, its check's group for its
 \ declaration's file, and the bytes its declaring token starts and ends at.
@@ -345,21 +350,19 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    r R-START REC@ START-V @ <> if false exit then
    r R-WORD REC@ r R-WORD-U REC@ AT$ WORD-AT @ WORD-U @ AT$ STR= ;
 
-\ Whether group G holds the line's record already: a file the check reads
-\ again names each of its definitions again.
-: HELD? ( n -- bool )
+\ The record of group G that holds the line's record already, if one does: a
+\ file the check reads again names each of its definitions again.
+: HOLDER ( n -- option<n> )
    G-FIRST GROUP@
    begin dup 0 >= while
-      dup SAME? if drop true exit then
+      dup SAME? if OPTION:SOME exit then
       R-NEXT REC@
    repeat
-   drop false ;
+   drop OPTION:NONE ;
 
-\ The line's record, last of its group's; when the group holds it already,
-\ the strings the line decoded are dropped instead.
-: RECORD ( -- )
-   GROUP {: g:n :}
-   g HELD? if LINE-AT @ BYTES-U ! exit then
+\ The line's record, new, last of group G's.
+: REC+ ( n -- )
+   {: g:n :}
    REC-N @ {: r:n :}
    r 1+ REC-CELLS * RECS-RESERVE
    -1 r R-NEXT REC!
@@ -377,10 +380,24 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    KIND-U @ r R-KIND-U REC!
    EFF-AT @ r R-EFF REC!
    EFF-U @ r R-EFF-U REC!
+   0 r R-SEVERAL REC!
    g G-LAST GROUP@ {: last:n :}
    last 0 < if r g G-FIRST GROUP! else r last R-NEXT REC! then
    r g G-LAST GROUP!
    1 REC-N +! ;
+
+\ The line's record, last of its group's; when the group holds it already,
+\ the line's reading declared another word at that record's token, which then
+\ stands for several, and the strings the line decoded are dropped instead.
+: RECORD ( -- )
+   GROUP {: g:n :}
+   g HOLDER MATCH option
+      some OF {: r:n :}
+         1 r R-SEVERAL REC!
+         LINE-AT @ BYTES-U !
+      ENDOF
+      none OF g REC+ ENDOF
+   ;MATCH ;
 
 \ The group of the line's file, made if this check has none.
 : FILE-GROUP ( -- )
@@ -608,6 +625,10 @@ public
 : REC-PACKAGE$ ( n -- ptr u8 n )  dup R-PKG REC@ swap R-PKG-U REC@ AT$ ;
 : REC-KIND$ ( n -- ptr u8 n )  dup R-KIND REC@ swap R-KIND-U REC@ AT$ ;
 : REC-EFFECT$ ( n -- ptr u8 n )  dup R-EFF REC@ swap R-EFF-U REC@ AT$ ;
+
+\ Whether the record stands for several words: the check read its file again
+\ and declared its word at its token again.
+: REC-SEVERAL? ( n -- bool )  R-SEVERAL REC@ 0<> ;
 
 \ The line and character the record's token starts at, then ends at.
 : REC-RANGE ( n -- n n n n )
