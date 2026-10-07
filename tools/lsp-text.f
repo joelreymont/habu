@@ -2,11 +2,11 @@
 \ line by LF and the character in UTF-16 units.
 \
 \ TEXT! names the text positions count in, and FILE-TEXT! names a file's text
-\ on disk, read into this module's buffer. LINE-CHARACTER answers an offset's
-\ position through a cursor: moving forward reads only the bytes between,
-\ moving back within the line keeps the line, further back starts over; so a
-\ run of offsets in order reads each byte of the text once. OFFSET-AT goes
-\ back, from a position to its offset.
+\ on disk, read into this module's buffer; TEXT$ gives back the text named.
+\ LINE-CHARACTER answers an offset's position through a cursor: moving forward
+\ reads only the bytes between, moving back within the line keeps the line,
+\ further back starts over; so a run of offsets in order reads each byte of
+\ the text once. OFFSET-AT goes back, from a position to its offset.
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: the text, the file read and the cursor belong
 \ to the server's one task.
@@ -75,6 +75,9 @@ public
    a TEXT-A !
    u TEXT-U !
    CUR-RESET ;
+
+\ The text positions count in.
+: TEXT$ ( -- ptr u8 n )  TEXT-A @ TEXT-U @ ;
 
 \ Positions count in the text of the file at this path, read from disk and
 \ taken after the read, which may move it, from now on. A file that cannot be

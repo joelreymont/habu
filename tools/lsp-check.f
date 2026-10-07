@@ -36,6 +36,14 @@
 \ publishing and keeping what RUN's does, which leaves the spellings the
 \ checker offers at that byte in CHECK:VERIFY-CANDIDATES$.
 \
+\ USES checks a file on disk that no open document holds for its uses, as
+\ references gathers them: the bytes given as the file at the path given, with
+\ no cursor, publishing nothing and writing nothing to stderr. A check whose
+\ verdict was verified is the store's probe (LSP-DEFS:DEFS-PROBE) while the
+\ gather given runs, and the store keeps no probe once the gather returns or
+\ throws, the throw going on. OUTCOME$ names what the check came to: its
+\ verdict's name, or `throw N` when it threw.
+\
 \ STORAGE CLASS. PROCESS-GLOBAL: the check in progress belongs to the server's
 \ one task.
 
@@ -65,6 +73,12 @@ variable SUBJECT                         \ the slot being checked
 variable PUBLISHABLE                     \ whether its check completed,
 TYPED-VARIABLE VERIFIED bool             \ whether its verdict was verified,
 variable CURSOR                          \ and the byte of its cursor, -1 for none
+TYPED-VARIABLE DISK-A ptr u8             \ the bytes of a file on disk checked for its uses,
+variable DISK-U
+TYPED-VARIABLE DISK-P ptr u8             \ its path,
+variable DISK-PU
+40 BUFFER: OUTCOME-B                     \ and what its check came to
+variable OUTCOME-U
 
 : ERR ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -118,6 +132,38 @@ variable CURSOR                          \ and the byte of its cursor, -1 for no
       deferred OF s" deferred" COMPLETED ENDOF
    ;MATCH ;
 
+: OUTCOME! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a OUTCOME-B u BYTE-COPY
+   u OUTCOME-U ! ;
+
+\ The check of the file on disk, its verdict's name in OUTCOME-B.
+: CHECKED ( -- )
+   DISK-A @ DISK-U @ DISK-P @ DISK-PU @ CHECK-MS >MS CHECK:VERIFY-BYTES
+   MATCH CHECK:verdict
+      verified OF true VERIFIED ! s" verified" OUTCOME! ENDOF
+      refused OF s" refused" OUTCOME! ENDOF
+      engine-provided OF s" engine-provided" OUTCOME! ENDOF
+      held OF s" held" OUTCOME! ENDOF
+      incomplete OF
+         MATCH outcome
+            exited OF drop ENDOF
+            signaled OF drop ENDOF
+            timeout OF ENDOF
+         ;MATCH
+         s" incomplete" OUTCOME!
+      ENDOF
+      deferred OF s" deferred" OUTCOME! ENDOF
+   ;MATCH ;
+
+\ The check's lines as the probe when its verdict was verified, then GATHER.
+: PROBED ( [ -- ] -- [ -- ] )
+   VERIFIED @ if
+      CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ true
+      LSP-DEFS:DEFS-PROBE
+   then
+   dup execute ;
+
 public
 
 \ Checks the document in this slot, its cursor at this byte of its text, none
@@ -149,6 +195,27 @@ public
 \ Checks the document in this slot, with no cursor, and publishes what its
 \ check found.
 : RUN ( n -- )  -1 RUN-AT ;
+
+\ Checks these bytes as the file at this path on disk for its uses, and runs
+\ GATHER with the check as the store's probe when its verdict was verified,
+\ removing the probe once GATHER returns or throws.
+: USES ( ptr u8 n ptr u8 n [ -- ] -- )
+   {: a:ptr u:n p:ptr pu:n gather :}
+   a DISK-A !
+   u DISK-U !
+   p DISK-P !
+   pu DISK-PU !
+   false VERIFIED !
+   [: CHECKED ;] catch {: code:n :}
+   code 0<> if
+      SB-RESET s" throw " SB-APPEND code FMT:SB-INT SB$ OUTCOME!
+   then
+   gather [: PROBED ;] catch {: rc:n :} drop
+   LSP-DEFS:DEFS-UNPROBE
+   rc 0<> if rc throw then ;
+
+\ What the last check USES ran came to.
+: OUTCOME$ ( -- ptr u8 n )  OUTCOME-B OUTCOME-U @ ;
 
 ;using
 ;package

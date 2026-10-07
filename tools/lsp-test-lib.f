@@ -21,7 +21,8 @@
 \ Lifecycle
 \ - initialize answers other than its capabilities: positions in utf-16, open
 \   and close notifications, Full sync, workspace and document symbols,
-\   document highlights, document links without resolve, the name habu .. lifecycle
+\   references, document highlights, document links without resolve, the
+\   name habu .......................................................... lifecycle
 \ - shutdown answers other than a null result; exit after it exits other than
 \   0 or writes to stderr ............................................ lifecycle
 \ - a reply held until more input comes, or the end of input .. answers-at-once
@@ -342,6 +343,51 @@
 \   a root that is not there not refused, naming it
 \   ............................................................ workspace-reaching
 \
+\ References
+\ - a use, at its first character or its last, or the token declaring its
+\   word, in an open document whose check was verified, not answered with
+\   every use of the word there, the declaration first when the request
+\   includes it and only then; an engine word's use answered with any
+\   location .................................................... references
+\ - a document not open answered other than -32602 ...... references-not-open
+\ - params without context.includeDeclaration true or false, or with a
+\   negative character, answered other than -32602 ......... references-params
+\ - a file of a workspace folder whose loads reach the declaration, open or
+\   on disk, directly, through another or through a file outside the
+\   folders, left out; a same-spelled private word's uses listed; a folder
+\   whose URI is not a file's not passed over; the declaration's file not
+\   first or the rest not in the order of their paths; a warning sent when
+\   every file is covered ................................ references-workspace
+\ - P:K, Q:K, a public and a private twin from one included file, an
+\   EXPORT's operand and a use of the export not each answered with its own
+\   word's uses ........................................... references-identity
+\ - the token a DEFTYPE's converters share answered other than -32803
+\   naming the document; a use of either answered with the other's
+\   ........................................................ references-deftype
+\ - a file whose check declares the word in two visits (include, undefine,
+\   include) not named, or its uses listed ............... references-lifetimes
+\ - a file of the folder whose check was refused or deferred not named with
+\   its verdict, its uses listed or the answer withheld; a request in a
+\   document whose check is not verified answered other than -32803 naming it
+\   ..................................................... references-unverified
+\ - a file whose loads discovery cannot find not named with its reason
+\   ................................................ references-undiscoverable
+\ - a file whose check read the declaring file on disk while the document
+\   open there holds other bytes not named, or its uses listed; once saved,
+\   not the whole answer with no warning .................. references-unsaved
+\ - the same when the open document differs from those bytes only after the
+\   declaration, its span and visit unchanged ............. references-digest
+\ - a declaring file changed on disk since the requesting check read it
+\   answered other than -32803 naming it; once that document is checked
+\   again, not the whole answer ............................. references-stale
+\ - the requesting document left out when its loads on disk no longer reach
+\   the declaration its check read ...................... references-requester
+\ - an empty workspaceFolders not winning over rootUri
+\   .................................................. references-folders-empty
+\ - a check of a file on disk for its uses leaving its lines in the store
+\   once its gather returns or throws, in the test's own process, since no
+\   conversation can make a gather throw .................. references-probe
+\
 \ Cancellation
 \ - a request with a cancel of it read behind it answered other than -32800,
 \   or its work done: two completions and a cancel of the first publish
@@ -419,8 +465,8 @@ using BUF
 \ its busiest measurement and CHECKED-MS about six times big-frame's 1230 to
 \ 1289 ms, and neither is larger. The one bounds 27 runs (the 24 conversations
 \ CONVERSE runs, answers-at-once, stdout-closed and TEST-EXIT-TIMEOUT's child)
-\ and the other 84 conversations. A server that blocks spends none of the
-\ row's CPU budget (test/suite-budget.f CPU-MS), so all 111 could reach their
+\ and the other 97 conversations. A server that blocks spends none of the
+\ row's CPU budget (test/suite-budget.f CPU-MS), so all 124 could reach their
 \ bounds, each failing by name, well inside the row's hang guard (ROW-MS). One
 \ that spins to its bound spends that much of the budget's 360 s, so at most
 \ 45 such runs fail by name before the budget ends the row.
@@ -836,6 +882,7 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\"," MSG+
    s\" \"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}," MSG+
    s\" \"completionProvider\":{},\"definitionProvider\":true," MSG+
+   s\" \"referencesProvider\":true," MSG+
    s\" \"hoverProvider\":true,\"documentHighlightProvider\":true," MSG+
    s\" \"documentSymbolProvider\":true," MSG+
    s\" \"documentLinkProvider\":{}," MSG+
@@ -4053,6 +4100,508 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" gone" IN-GRAPH LSP-WORKSPACE:ROOT+
    s" w/f1.f" s" refused gone" REACHES ;
 
+\ ---- references --------------------------------------------------------------
+
+\ A file the server reads from disk is named by its canonical path, at that
+\ path's file URI; an open document is at the URI the client opened it by.
+: CANON ( ptr u8 n -- ptr u8 n )  FIXTURE SOURCE-ROOT:CANONICAL drop ;
+: DISK-URI ( ptr u8 n -- ptr u8 n )  CANON URI-OF ;
+: OPEN-URI ( ptr u8 n -- ptr u8 n )  FIXTURE URI-OF ;
+
+\ The file of this name in the artifact directory holds this text.
+: REFS-FILE ( ptr u8 n ptr u8 n -- )
+   {: n:ptr nu:n t:ptr tu:n :}
+   n nu FIXTURE t tu WRITE-ALL ;
+
+: REFS-DIR ( ptr u8 n -- )  FIXTURE MAKE-DIR ;
+
+: REF-A-PATH ( -- ptr u8 n )  s" ref-a.f" FIXTURE ;
+: TEXT-REF-A ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\n: TWO ( -- n ) ROOK ROOK + ;\n" ;
+: TEXT-RF ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\n" ;
+: TEXT-RF-MOVED ( -- ptr u8 n )  s\" \\ moved\n: ROOK ( -- n ) 1 ;\n" ;
+: TEXT-RF-TAIL ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\n\\ tail\n" ;
+: TEXT-RD ( -- ptr u8 n )  s\" require f.f\n: DU ( -- n ) ROOK ;\n" ;
+: TEXT-RE ( -- ptr u8 n )  s\" require f.f\n: EU ( -- n ) ROOK ROOK + ;\n" ;
+: TEXT-RS ( -- ptr u8 n )  s\" require f.f\n: SU ( -- n ) ROOK ;\n" ;
+: TEXT-RS-BAD ( -- ptr u8 n )  s\" require f.f\n: SU ( -- ) ROOK ;\n" ;
+: TEXT-RS-PN ( -- ptr u8 n )
+   s\" require f.f\n: SU ( -- n ) ROOK ;\n: PN ( -- ) parse-name 2drop ;\nPN anything\n" ;
+: TEXT-RT ( -- ptr u8 n )  s\" require s.f\n: TU ( -- n ) ROOK SU + ;\n" ;
+: TEXT-RO ( -- ptr u8 n )  s\" require ../out/m.f\n: OU ( -- n ) ROOK ;\n" ;
+: TEXT-RM ( -- ptr u8 n )  s\" require f.f\n" ;
+: TEXT-RY ( -- ptr u8 n )
+   s\" require f.f\npackage YP\n: ROOK ( -- n ) 3 ;\n: YU ( -- n ) ROOK ;\n;package\n" ;
+: TEXT-RG ( -- ptr u8 n )  s\" : KAY ( -- n ) 1 ;\n" ;
+: TEXT-LIFE ( -- ptr u8 n )
+   s\" include g.f\nundefine KAY\ninclude g.f\n: LU ( -- n ) KAY ;\n" ;
+
+\ g.f included into RP's and RQ's public sections and RV's public and
+\ private ones, each use naming one, then EK, private in EX, used, exported
+\ and used through the export, in TXT.
+: TEXT-RID ( -- ptr u8 n )
+   TXT-B CLEAR
+   s\" package RP\npublic\ninclude g.f\n: PU ( -- n ) KAY ;\n;package\n" HV+
+   s\" package RQ\npublic\ninclude g.f\n;package\n" HV+
+   s\" package RV\npublic\ninclude g.f\nprivate\ninclude g.f\n: VIN ( -- n ) KAY ;\n;package\n" HV+
+   s\" : UQ ( -- n ) RP:KAY RQ:KAY + RV:KAY + ;\n" HV+
+   s\" package EX\n: EK ( -- n ) 1 ;\n: EIN ( -- n ) EK ;\npublic\nEXPORT EK\n;package\n" HV+
+   s\" : EOUT ( -- n ) EX:EK ;\n" HV+
+   TXT$ ;
+
+\ initialize with these members of its params after its capabilities.
+: INITIALIZE-WITH ( ptr u8 n -- )
+   {: m:ptr mu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{}," MSG+
+   m mu MSG+ s" }}" MSG+
+   MSG$ FRAMED ;
+
+\ initialize's member naming the folder of this name as the root, in PAR.
+: ROOT-URI+ ( ptr u8 n -- )
+   PAR-B CLEAR s\" \"rootUri\":" PAR+ FIXTURE URI+ ;
+
+: DECL-TOO ( -- ptr u8 n )  s\" ,\"context\":{\"includeDeclaration\":true}" ;
+: DECL-NOT ( -- ptr u8 n )  s\" ,\"context\":{\"includeDeclaration\":false}" ;
+
+\ textDocument/references, by its id's JSON text, at character C of line L
+\ of the document opened from this path, with these params members after
+\ the position.
+: REFS-ASK ( ptr u8 n ptr u8 n n n ptr u8 n -- )
+   {: i:ptr iu:n p:ptr pu:n l:n c:n x:ptr xu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"method\":\"textDocument/references\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
+   p pu URI-OF MSG+
+   s\" \"},\"position\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c INT$ MSG+ s" }" MSG+
+   x xu MSG+ s" }}" MSG+
+   MSG$ FRAMED ;
+
+\ The Location the answer SYMBOLS-START began lists next: this URI, from
+\ character C1 to C2 of line L.
+: REF+ ( ptr u8 n n n n -- )
+   {: u:ptr uu:n l:n c1:n c2:n :}
+   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   s\" {\"uri\":\"" MSG+ u uu MSG+
+   s\" \",\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c1 INT$ MSG+
+   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}}" MSG+ ;
+
+\ The warning the next frame must be, sent before an answer that leaves N
+\ files out, begun in EXP: NAMED+ adds each file, NAMED-END hears it.
+: NAMED ( n -- )
+   {: n:n :}
+   EXP-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"method\":\"window/showMessage\",\"params\":{\"type\":2," EXP+
+   s\" \"message\":\"References may be incomplete: " EXP+ n INT$ EXP+
+   n 1 = if s"  file not covered:" else s"  files not covered:" then EXP+ ;
+
+\ The file at this canonical path left out, named relative to the working
+\ directory the server shares, and why.
+: NAMED+ ( ptr u8 n ptr u8 n -- )
+   {: p:ptr pu:n w:ptr wu:n :}
+   s" \n" EXP+
+   p pu SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE EXP+
+   s" : " EXP+ w wu EXP+ ;
+
+: NAMED-END ( -- )
+   s\" \"}}" EXP+
+   HEAR
+   EXP$ HEARD ;
+
+\ The next frame refuses the request with this id's JSON text -32803, its
+\ message naming the file at this canonical path relative to the working
+\ directory.
+: FAILED ( ptr u8 n ptr u8 n -- )
+   {: i:ptr iu:n p:ptr pu:n :}
+   HEAR
+   OUT-AT @ {: from:n :}
+   i iu -32803 REFUSED
+   OUT-SPAN SPAN:$ drop from + OUT-AT @ from -
+   p pu SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE CONTAINS?
+   s" -32803 names the file" HOLDS ;
+
+: ROOK-DECL+ ( -- )  REF-A-PATH URI-OF 0 2 6 REF+ ;
+: ROOK-USES+ ( -- )
+   REF-A-PATH URI-OF 1 15 19 REF+
+   REF-A-PATH URI-OF 1 20 24 REF+ ;
+
+\ ROOK's use at its first character and at its last, and its declaring
+\ token, each answered with both uses, the declaration first when asked for;
+\ the engine's +, whose check states no use, with none.
+: REFS-TURNS ( -- )
+   INITIALIZE
+   REF-A-PATH TEXT-REF-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-REF-A REF-A-PATH 1 s" verified" LISTED
+   s" 3" REF-A-PATH 1 15 DECL-TOO REFS-ASK
+   s" 4" REF-A-PATH 1 23 DECL-NOT REFS-ASK
+   s" 5" REF-A-PATH 0 2 DECL-TOO REFS-ASK
+   s" 6" REF-A-PATH 1 25 DECL-TOO REFS-ASK
+   SAY
+   s" 3" SYMBOLS-START ROOK-DECL+ ROOK-USES+ SYMBOLS-END
+   s" 4" SYMBOLS-START ROOK-USES+ SYMBOLS-END
+   s" 5" SYMBOLS-START ROOK-DECL+ ROOK-USES+ SYMBOLS-END
+   s" 6" SYMBOLS-START SYMBOLS-END ;
+
+: REFS-NOT-OPEN-TURNS ( -- )
+   INITIALIZE
+   s" 3" REF-A-PATH 1 15 DECL-TOO REFS-ASK
+   SAY
+   HEAR CAPABILITIES
+   HEAR s" 3" -32602 REFUSED ;
+
+\ No context, a context without includeDeclaration, one that is a string,
+\ and a negative character: each -32602.
+: REFS-PARAMS-TURNS ( -- )
+   INITIALIZE
+   REF-A-PATH TEXT-REF-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-REF-A REF-A-PATH 1 s" verified" LISTED
+   s" 3" REF-A-PATH 1 15 s" " REFS-ASK
+   s" 4" REF-A-PATH 1 15 s\" ,\"context\":{}" REFS-ASK
+   s" 5" REF-A-PATH 1 15 s\" ,\"context\":{\"includeDeclaration\":\"yes\"}" REFS-ASK
+   s" 6" REF-A-PATH 1 -1 DECL-TOO REFS-ASK
+   SAY
+   HEAR s" 3" -32602 REFUSED
+   HEAR s" 4" -32602 REFUSED
+   HEAR s" 5" -32602 REFUSED
+   HEAR s" 6" -32602 REFUSED ;
+
+\ refs-ws/w, the folder: f.f declares ROOK; d.f and e.f, open and on disk,
+\ use it; s.f does, and t.f through s.f; o.f through out/m.f, outside the
+\ folder; y.f declares and uses a private ROOK of its own.
+: REFS-WS-TREE ( -- )
+   s" refs-ws" REFS-DIR s" refs-ws/w" REFS-DIR s" refs-ws/out" REFS-DIR
+   s" refs-ws/w/f.f" TEXT-RF REFS-FILE
+   s" refs-ws/w/d.f" TEXT-RD REFS-FILE
+   s" refs-ws/w/e.f" TEXT-RE REFS-FILE
+   s" refs-ws/w/s.f" TEXT-RS REFS-FILE
+   s" refs-ws/w/t.f" TEXT-RT REFS-FILE
+   s" refs-ws/w/o.f" TEXT-RO REFS-FILE
+   s" refs-ws/out/m.f" TEXT-RM REFS-FILE
+   s" refs-ws/w/y.f" TEXT-RY REFS-FILE ;
+
+\ The uses of f.f's ROOK in the folder, in the order of their files' paths.
+: WS-USES+ ( -- )
+   s" refs-ws/w/d.f" OPEN-URI 1 14 18 REF+
+   s" refs-ws/w/e.f" OPEN-URI 1 14 18 REF+
+   s" refs-ws/w/e.f" OPEN-URI 1 19 23 REF+
+   s" refs-ws/w/o.f" DISK-URI 1 14 18 REF+
+   s" refs-ws/w/s.f" DISK-URI 1 14 18 REF+
+   s" refs-ws/w/t.f" DISK-URI 1 14 18 REF+ ;
+
+\ The folders are an untitled: one, passed over, and refs-ws/w. ROOK's use in
+\ d.f is answered with its declaration in f.f and every use in the folder,
+\ the open documents' at the URIs the client opened them by; its last use in
+\ e.f, without the declaration, the same uses. No warning comes: every file
+\ is covered.
+: REFS-WS-TURNS ( -- )
+   REFS-WS-TREE
+   PAR-B CLEAR
+   s\" \"workspaceFolders\":[{\"uri\":\"untitled:x\",\"name\":\"x\"},{\"uri\":" PAR+
+   s" refs-ws/w" FIXTURE URI+ s\" ,\"name\":\"w\"}]" PAR+
+   PAR$ INITIALIZE-WITH
+   s" refs-ws/w/d.f" FIXTURE TEXT-RD 1 OPENS
+   s" refs-ws/w/e.f" FIXTURE TEXT-RE 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RD s" refs-ws/w/d.f" FIXTURE 1 s" verified" LISTED
+   TEXT-RE s" refs-ws/w/e.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-ws/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
+   s" 4" s" refs-ws/w/e.f" FIXTURE 1 22 DECL-NOT REFS-ASK
+   SAY
+   s" 3" SYMBOLS-START s" refs-ws/w/f.f" DISK-URI 0 2 6 REF+ WS-USES+ SYMBOLS-END
+   s" 4" SYMBOLS-START WS-USES+ SYMBOLS-END ;
+
+: KAY-DECL+ ( -- )  s" refs-id/g.f" DISK-URI 0 2 5 REF+ ;
+: ID-REF+ ( n n n -- )
+   {: l:n c1:n c2:n :}
+   s" refs-id/id.f" OPEN-URI l c1 c2 REF+ ;
+
+\ RP:KAY, RQ:KAY, RV's private KAY and RV:KAY, one token of g.f each
+\ declares, each answered with that declaration and its own word's uses
+\ alone; EK's EXPORT operand, a use of the private EK, with the private
+\ word's; the use of the export with the export's.
+: REFS-ID-TURNS ( -- )
+   s" refs-id" REFS-DIR
+   s" refs-id/g.f" TEXT-RG REFS-FILE
+   INITIALIZE
+   s" refs-id/id.f" FIXTURE TEXT-RID 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RID s" refs-id/id.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-id/id.f" FIXTURE 16 14 DECL-TOO REFS-ASK
+   s" 4" s" refs-id/id.f" FIXTURE 16 21 DECL-TOO REFS-ASK
+   s" 5" s" refs-id/id.f" FIXTURE 14 15 DECL-TOO REFS-ASK
+   s" 6" s" refs-id/id.f" FIXTURE 16 30 DECL-TOO REFS-ASK
+   s" 7" s" refs-id/id.f" FIXTURE 21 7 DECL-TOO REFS-ASK
+   s" 8" s" refs-id/id.f" FIXTURE 23 16 DECL-TOO REFS-ASK
+   SAY
+   s" 3" SYMBOLS-START KAY-DECL+ 3 14 17 ID-REF+ 16 14 20 ID-REF+ SYMBOLS-END
+   s" 4" SYMBOLS-START KAY-DECL+ 16 21 27 ID-REF+ SYMBOLS-END
+   s" 5" SYMBOLS-START KAY-DECL+ 14 15 18 ID-REF+ SYMBOLS-END
+   s" 6" SYMBOLS-START KAY-DECL+ 16 30 36 ID-REF+ SYMBOLS-END
+   s" 7" SYMBOLS-START 18 2 4 ID-REF+ 19 15 17 ID-REF+ 21 7 9 ID-REF+ SYMBOLS-END
+   s" 8" SYMBOLS-START 21 7 9 ID-REF+ 23 16 21 ID-REF+ SYMBOLS-END ;
+
+: CVT-REF+ ( n n n -- )
+   {: l:n c1:n c2:n :}
+   HOVER-CVT-PATH URI-OF l c1 c2 REF+ ;
+
+\ A use of >CVT-T and a qualified use of CVT-T>N, each answered with its own
+\ converter's uses, in either case and qualified, CVT-T's token first when
+\ asked for; that token, which declares both, -32803.
+: REFS-DEFTYPE-TURNS ( -- )
+   INITIALIZE
+   HOVER-CVT-PATH TEXT-HOVER-CVT 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-CVT HOVER-CVT-PATH 1 s" verified" LISTED
+   s" 3" HOVER-CVT-PATH 4 20 DECL-TOO REFS-ASK
+   s" 4" HOVER-CVT-PATH 6 30 DECL-NOT REFS-ASK
+   s" 5" HOVER-CVT-PATH 3 9 DECL-TOO REFS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   3 8 13 CVT-REF+ 4 20 26 CVT-REF+ 4 35 41 CVT-REF+ 6 18 29 CVT-REF+
+   SYMBOLS-END
+   s" 4" SYMBOLS-START
+   4 27 34 CVT-REF+ 4 42 49 CVT-REF+ 6 30 42 CVT-REF+
+   SYMBOLS-END
+   s" 5" HOVER-CVT-PATH FAILED ;
+
+\ life.f includes g.f, undefines KAY and includes it again: its check
+\ declares KAY at g.f's token in two visits, so life.f is named and its use
+\ not listed, while the declaration is.
+: REFS-LIFE-TURNS ( -- )
+   s" refs-life" REFS-DIR
+   s" refs-life/g.f" TEXT-RG REFS-FILE
+   INITIALIZE
+   s" refs-life/life.f" FIXTURE TEXT-LIFE 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-LIFE s" refs-life/life.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-life/life.f" FIXTURE 3 14 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED s" refs-life/life.f" CANON s" several declaration visits" NAMED+ NAMED-END
+   s" 3" SYMBOLS-START s" refs-life/g.f" DISK-URI 0 2 5 REF+ SYMBOLS-END ;
+
+: UNV-ANSWER ( ptr u8 n -- )
+   SYMBOLS-START
+   s" refs-unv/w/f.f" DISK-URI 0 2 6 REF+
+   s" refs-unv/w/d.f" OPEN-URI 1 14 18 REF+
+   SYMBOLS-END ;
+
+\ s.f on disk, refused, then deferred: named with its verdict each time, and
+\ the answer comes without its use. Opened deferred, a request in it -32803.
+: REFS-UNV-TURNS ( -- )
+   s" refs-unv" REFS-DIR s" refs-unv/w" REFS-DIR
+   s" refs-unv/w/f.f" TEXT-RF REFS-FILE
+   s" refs-unv/w/d.f" TEXT-RD REFS-FILE
+   s" refs-unv/w/s.f" TEXT-RS-BAD REFS-FILE
+   s" refs-unv/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-unv/w/d.f" FIXTURE TEXT-RD 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RD s" refs-unv/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-unv/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED s" refs-unv/w/s.f" CANON s" refused" NAMED+ NAMED-END
+   s" 3" UNV-ANSWER
+   s" refs-unv/w/s.f" TEXT-RS-PN REFS-FILE
+   s" 4" s" refs-unv/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED s" refs-unv/w/s.f" CANON s" deferred" NAMED+ NAMED-END
+   s" 4" UNV-ANSWER
+   s" refs-unv/w/s.f" FIXTURE TEXT-RS-PN 1 OPENS
+   s" 5" s" refs-unv/w/s.f" FIXTURE 1 14 DECL-TOO REFS-ASK
+   SAY
+   TEXT-RS-PN s" refs-unv/w/s.f" FIXTURE CHECKS
+   s" refs-unv/w/s.f" FIXTURE s" deferred" COMPLETED
+   s" refs-unv/w/s.f" FIXTURE 1 EXPECT 3 0 3 2 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
+   s" 5" s" refs-unv/w/s.f" CANON FAILED ;
+
+\ ld.f hands its loader a path no walk can read: named with discovery's
+\ reason, the answer coming without it.
+: REFS-LD-TURNS ( -- )
+   s" refs-ld" REFS-DIR s" refs-ld/w" REFS-DIR
+   s" refs-ld/w/f.f" TEXT-RF REFS-FILE
+   s" refs-ld/w/d.f" TEXT-RD REFS-FILE
+   s" refs-ld/w/ld.f" s\" : LD ( ptr u8 n -- ) included ;\n" REFS-FILE
+   s" refs-ld/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-ld/w/d.f" FIXTURE TEXT-RD 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RD s" refs-ld/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-ld/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED s" refs-ld/w/ld.f" CANON s" E-DISC-DYNAMIC" NAMED+ NAMED-END
+   s" 3" SYMBOLS-START
+   s" refs-ld/w/f.f" DISK-URI 0 2 6 REF+
+   s" refs-ld/w/d.f" OPEN-URI 1 14 18 REF+
+   SYMBOLS-END ;
+
+\ f.f open a line down, unsaved: s.f's check reads the file on disk, so s.f
+\ is named and the answer holds the open document's declaration alone. Once
+\ saved, the whole answer and no warning.
+: REFS-UNSAVED-TURNS ( -- )
+   s" refs-uns" REFS-DIR s" refs-uns/w" REFS-DIR
+   s" refs-uns/w/f.f" TEXT-RF REFS-FILE
+   s" refs-uns/w/s.f" TEXT-RS REFS-FILE
+   s" refs-uns/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-uns/w/f.f" FIXTURE TEXT-RF-MOVED 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RF-MOVED s" refs-uns/w/f.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-uns/w/f.f" FIXTURE 1 2 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED s" refs-uns/w/s.f" CANON s" digest differs" NAMED+ NAMED-END
+   s" 3" SYMBOLS-START s" refs-uns/w/f.f" OPEN-URI 1 2 6 REF+ SYMBOLS-END
+   s" refs-uns/w/f.f" TEXT-RF-MOVED REFS-FILE
+   s" refs-uns/w/f.f" FIXTURE SAVES
+   s" 4" s" refs-uns/w/f.f" FIXTURE 1 2 DECL-TOO REFS-ASK
+   SAY
+   TEXT-RF-MOVED s" refs-uns/w/f.f" FIXTURE 1 s" verified" LISTED
+   s" 4" SYMBOLS-START
+   s" refs-uns/w/f.f" OPEN-URI 1 2 6 REF+
+   s" refs-uns/w/s.f" DISK-URI 1 14 18 REF+
+   SYMBOLS-END ;
+
+\ f.f open with a comment line after the declaration, unsaved: the declaring
+\ token's span and visit match what s.f's check read on disk, and only the
+\ digest tells them apart, so s.f is named and the answer holds the open
+\ document's declaration alone. Once saved, the whole answer and no warning.
+: REFS-DIGEST-TURNS ( -- )
+   s" refs-dig" REFS-DIR s" refs-dig/w" REFS-DIR
+   s" refs-dig/w/f.f" TEXT-RF REFS-FILE
+   s" refs-dig/w/s.f" TEXT-RS REFS-FILE
+   s" refs-dig/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-dig/w/f.f" FIXTURE TEXT-RF-TAIL 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RF-TAIL s" refs-dig/w/f.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-dig/w/f.f" FIXTURE 0 2 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED s" refs-dig/w/s.f" CANON s" digest differs" NAMED+ NAMED-END
+   s" 3" SYMBOLS-START s" refs-dig/w/f.f" OPEN-URI 0 2 6 REF+ SYMBOLS-END
+   s" refs-dig/w/f.f" TEXT-RF-TAIL REFS-FILE
+   s" refs-dig/w/f.f" FIXTURE SAVES
+   s" 4" s" refs-dig/w/f.f" FIXTURE 0 2 DECL-TOO REFS-ASK
+   SAY
+   TEXT-RF-TAIL s" refs-dig/w/f.f" FIXTURE 1 s" verified" LISTED
+   s" 4" SYMBOLS-START
+   s" refs-dig/w/f.f" OPEN-URI 0 2 6 REF+
+   s" refs-dig/w/s.f" DISK-URI 1 14 18 REF+
+   SYMBOLS-END ;
+
+: TEXT-RDB ( -- ptr u8 n )  s\" require b.f\n: DU ( -- n ) ROOK ;\n" ;
+: TEXT-RSTL ( -- ptr u8 n )  s\" require ../lib/f.f\n: DU ( -- n ) ROOK ;\n" ;
+
+\ lib/f.f, outside the folder, moved a line down on disk after d.f's check
+\ read it: the declaration cannot be placed, -32803 naming it. Once d.f is
+\ checked again, the whole answer.
+: REFS-STALE-TURNS ( -- )
+   s" refs-stl" REFS-DIR s" refs-stl/lib" REFS-DIR s" refs-stl/w" REFS-DIR
+   s" refs-stl/lib/f.f" TEXT-RF REFS-FILE
+   s" refs-stl/w/d.f" TEXT-RSTL REFS-FILE
+   s" refs-stl/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-stl/w/d.f" FIXTURE TEXT-RSTL 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RSTL s" refs-stl/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" refs-stl/lib/f.f" TEXT-RF-MOVED REFS-FILE
+   s" 3" s" refs-stl/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
+   SAY
+   s" 3" s" refs-stl/lib/f.f" CANON FAILED
+   s" refs-stl/w/d.f" FIXTURE SAVES
+   s" 4" s" refs-stl/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
+   SAY
+   TEXT-RSTL s" refs-stl/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 4" SYMBOLS-START
+   s" refs-stl/lib/f.f" DISK-URI 1 2 6 REF+
+   s" refs-stl/w/d.f" OPEN-URI 1 14 18 REF+
+   SYMBOLS-END ;
+
+\ d.f reaches f.f through b.f, which on disk then loads nothing: d.f's check
+\ still read f.f, so its use is listed in its place by path.
+: REFS-REQ-TURNS ( -- )
+   s" refs-req" REFS-DIR s" refs-req/w" REFS-DIR
+   s" refs-req/w/f.f" TEXT-RF REFS-FILE
+   s" refs-req/w/b.f" TEXT-RM REFS-FILE
+   s" refs-req/w/d.f" TEXT-RDB REFS-FILE
+   s" refs-req/w/s.f" TEXT-RS REFS-FILE
+   s" refs-req/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-req/w/d.f" FIXTURE TEXT-RDB 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RDB s" refs-req/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" refs-req/w/b.f" s\" \\ nothing\n" REFS-FILE
+   s" 3" s" refs-req/w/d.f" FIXTURE 1 14 DECL-NOT REFS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" refs-req/w/d.f" OPEN-URI 1 14 18 REF+
+   s" refs-req/w/s.f" DISK-URI 1 14 18 REF+
+   SYMBOLS-END ;
+
+\ An empty workspaceFolders beside a rootUri: no folder, so s.f, on disk in
+\ rootUri's folder, is no subject.
+: REFS-FE-TURNS ( -- )
+   s" refs-fe" REFS-DIR s" refs-fe/w" REFS-DIR
+   s" refs-fe/w/f.f" TEXT-RF REFS-FILE
+   s" refs-fe/w/d.f" TEXT-RD REFS-FILE
+   s" refs-fe/w/s.f" TEXT-RS REFS-FILE
+   PAR-B CLEAR s\" \"workspaceFolders\":[],\"rootUri\":" PAR+ s" refs-fe/w" FIXTURE URI+
+   PAR$ INITIALIZE-WITH
+   s" refs-fe/w/d.f" FIXTURE TEXT-RD 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RD s" refs-fe/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-fe/w/d.f" FIXTURE 1 14 DECL-NOT REFS-ASK
+   SAY
+   s" 3" SYMBOLS-START s" refs-fe/w/d.f" OPEN-URI 1 14 18 REF+ SYMBOLS-END ;
+
+variable PROBE-DECLS                     \ the decls a gather saw in the probe
+
+: PROBE-SEEN ( -- )  LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE - PROBE-DECLS ! ;
+: PROBE-THROWN ( -- )  PROBE-SEEN LSP:E-LSP-PARAMS throw ;
+
+\ id-probe.f's text checked for its uses, as references checks a file on
+\ disk: its gather sees the check's decls as the probe's, and the store keeps
+\ none once the check returns, or once the gather throws, the throw going on.
+: REFS-PROBE ( -- )
+   0 PROBE-DECLS !
+   TEXT-ID-PROBE ID-PROBE-PATH [: PROBE-SEEN ;] LSP-CHECK:USES
+   s" references-probe: verified" T-LABEL LSP-CHECK:OUTCOME$ s" verified" T$=
+   s" references-probe: gathered" T-LABEL PROBE-DECLS @ 0 > TTRUE
+   s" references-probe: removed" T-LABEL
+   LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE = TTRUE
+   0 PROBE-DECLS !
+   [: TEXT-ID-PROBE ID-PROBE-PATH [: PROBE-THROWN ;] LSP-CHECK:USES ;]
+   LSP:E-LSP-PARAMS TTHROWSQ
+   s" references-probe: gathered, then thrown" T-LABEL PROBE-DECLS @ 0 > TTRUE
+   s" references-probe: removed after the throw" T-LABEL
+   LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE = TTRUE ;
+
+: TEST-REFERENCES ( -- )
+   s" references" [: REFS-TURNS ;] TALK
+   s" references-not-open" [: REFS-NOT-OPEN-TURNS ;] TALK
+   s" references-params" [: REFS-PARAMS-TURNS ;] TALK
+   s" references-workspace" [: REFS-WS-TURNS ;] TALK
+   s" references-identity" [: REFS-ID-TURNS ;] TALK
+   s" references-deftype" [: REFS-DEFTYPE-TURNS ;] TALK
+   s" references-lifetimes" [: REFS-LIFE-TURNS ;] TALK
+   s" references-unverified" [: REFS-UNV-TURNS ;] TALK
+   s" references-undiscoverable" [: REFS-LD-TURNS ;] TALK
+   s" references-unsaved" [: REFS-UNSAVED-TURNS ;] TALK
+   s" references-digest" [: REFS-DIGEST-TURNS ;] TALK
+   s" references-stale" [: REFS-STALE-TURNS ;] TALK
+   s" references-requester" [: REFS-REQ-TURNS ;] TALK
+   s" references-folders-empty" [: REFS-FE-TURNS ;] TALK
+   REFS-PROBE ;
+
 \ ---- cancellation ------------------------------------------------------------
 
 \ A cancel of the request with this id's JSON text.
@@ -4370,6 +4919,7 @@ public
    TEST-COMPLETIONS
    TEST-LINKS
    WORKSPACE-REACHING
+   TEST-REFERENCES
    TEST-CANCELS
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;

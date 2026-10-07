@@ -11,7 +11,11 @@
 \ the document's own definitions as a flat SymbolInformation list, each as
 \ workspace symbols give it but named by its word alone (tools/lsp-outline.f),
 \ textDocument/definition with the declaration the use at the position binds
-\ to (tools/lsp-definition.f),
+\ to (tools/lsp-definition.f), textDocument/references with every use, in the
+\ workspace, of the declaration the position selects, and that declaration
+\ first when context.includeDeclaration is true (tools/lsp-references.f),
+\ -32803 when it refuses, and a window/showMessage warning naming the files
+\ it could not cover sent just before an answer that leaves any out,
 \ textDocument/hover with what the token at the position declares or binds to
 \ (tools/lsp-hover.f), as Markdown when the client's initialize listed it in
 \ textDocument.hover.contentFormat, else as plain text,
@@ -34,13 +38,14 @@
 \ to come: reading it waits for the rest. A running server answers a request
 \ -32800, doing none of its work, when a $/cancelRequest naming its id was read
 \ behind it, an id that is a string by its decoded text and a number by its
-\ JSON text, and it answers textDocument/definition, hover, documentHighlight,
-\ completion, documentSymbol or documentLink -32801 when a textDocument/didChange
-\ of its document was, since the request asked about the text that change
-\ replaces. A cancel is otherwise an unknown notification, so one naming an
-\ id answered, unknown or not a request's changes nothing, and a check
-\ already running is not stopped. The end of input and a fault in its framing
-\ come after the messages held: those are served first.
+\ JSON text, and it answers textDocument/definition, references, hover,
+\ documentHighlight, completion, documentSymbol or documentLink -32801 when a
+\ textDocument/didChange of its document was, since the request asked about
+\ the text that change replaces. A cancel is otherwise an unknown
+\ notification, so one naming an id answered, unknown or not a request's
+\ changes nothing, and a check already running is not stopped. The end of
+\ input and a fault in its framing come after the messages held: those are
+\ served first.
 \
 \ A running server checks the documents and publishes their diagnostics
 \ (tools/lsp-check.f, tools/lsp-diag.f). Opening or changing a document leaves
@@ -51,17 +56,23 @@
 \ looked at again. So such a check takes a document's newest text, the edits that came
 \ while another check ran are all applied before it, and the versions
 \ published for a document only rise. A request about a document waiting for a
-\ check, textDocument/definition, textDocument/hover,
-\ textDocument/documentHighlight, textDocument/documentSymbol or
-\ textDocument/documentLink, is the exception: it checks that document first,
-\ as its turn, and is answered from that check, which takes the text the client
-\ asked about, since LSP orders a request after the changes sent before it.
+\ check, textDocument/definition, textDocument/references,
+\ textDocument/hover, textDocument/documentHighlight,
+\ textDocument/documentSymbol or textDocument/documentLink, is the exception:
+\ it checks that document first, as its turn, and is answered from that check,
+\ which takes the text the client asked about, since LSP orders a request
+\ after the changes sent before it. textDocument/references checks each open
+\ document it gathers uses from the same way when it waits for a check.
 \ textDocument/completion checks its document as its turn whether it waits or
 \ not, with a cursor at the position, and is answered from that check: the
 \ spellings it offers belong to that cursor. Closing a document publishes an
 \ empty list for it, drops the definitions its last check kept and leaves every
 \ open document waiting: any of them may require the file, whose diagnostics
 \ their checks left to it while it was open.
+\
+\ The workspace folders references walks (tools/lsp-workspace.f) are those
+\ initialize's params.workspaceFolders lists, an empty list naming none, else
+\ its rootUri; a folder whose URI names no file here is passed over.
 \
 \ exit ends the process with 0 after shutdown and 1 before it, and so does the
 \ end of input, which before shutdown also says so on stderr. A notification
@@ -100,6 +111,8 @@ require tools/lsp-hover.f
 require tools/lsp-highlight.f
 require tools/lsp-completion.f
 require tools/lsp-links.f
+require tools/lsp-workspace.f
+require tools/lsp-references.f
 
 package LSP
 using SPAN
@@ -115,11 +128,12 @@ public
 -9400 constant E-LSP-FIRST
 -9401 constant E-LSP-LAST
 -9400 constant E-LSP-PARAMS    \ a notification's params lack a member the server reads, or hold one of another kind
--9401 constant E-LSP-NOT-OPEN  \ a change, close, definition, hover, highlight, completion, document symbols or links of a document not open
+-9401 constant E-LSP-NOT-OPEN  \ a change, close, definition, references, hover, highlight, completion, document symbols or links of a document not open
 
 -32002 constant NOT-INITIALIZED          \ LSP's ServerNotInitialized
 -32800 constant REQUEST-CANCELLED        \ LSP's RequestCancelled
 -32801 constant CONTENT-MODIFIED         \ LSP's ContentModified
+-32803 constant REQUEST-FAILED           \ LSP's RequestFailed
 \ The longest body taken, room for a document's whole text escaped. A header
 \ that announces more is refused before any of the body is read.
 64 1024 * 1024 * constant MAX-BODY
@@ -146,6 +160,7 @@ variable AT-LINE                          \ its line
 variable AT-CHAR                          \ and character,
 variable AT-BYTE                          \ and the byte they name in its text
 TYPED-VARIABLE HOVER-MD bool              \ whether the client takes hovers as Markdown
+TYPED-VARIABLE WITH-DECL bool             \ whether a references request includes the declaration
 TYPED-VARIABLE W JSON-WRITE:writer
 variable TEXT-LEN                         \ the last change's text length, -1 before one is read
 variable LAST-CHECKED                     \ the slot checked last, -1 before any
@@ -218,6 +233,7 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
          OBJECT-END COMMA
          s" completionProvider" KEY OBJECT-START OBJECT-END COMMA
          s" definitionProvider" true FIELD-BOOL COMMA
+         s" referencesProvider" true FIELD-BOOL COMMA
          s" hoverProvider" true FIELD-BOOL COMMA
          s" documentHighlightProvider" true FIELD-BOOL COMMA
          s" documentSymbolProvider" true FIELD-BOOL COMMA
@@ -615,6 +631,47 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
    i p pu AT-READ? 0= if exit then
    WRITER i RESULT AT-SLOT @ AT-BYTE @ LSP-HIGHLIGHT:ANSWER END SENT ;
 
+\ params.context.includeDeclaration, true or false, in WITH-DECL.
+: WITH-DECL! ( ptr u8 n -- ptr u8 n )
+   {: p:ptr pu:n :}
+   p pu s" context" PARAM T-OBJ <> if E-LSP-PARAMS throw then
+   s" includeDeclaration" FIND-KEY 0= if E-LSP-PARAMS throw then
+   TOKEN {: t:n :}
+   t T-TRUE <> t T-FALSE <> and if E-LSP-PARAMS throw then
+   t T-TRUE = WITH-DECL !
+   JR:CLOSE
+   p pu ;
+
+\ As POSITION!, with params.context.includeDeclaration in WITH-DECL.
+: REFS! ( ptr u8 n -- ptr u8 n )  POSITION! WITH-DECL! ;
+
+\ Each subject's uses gathered, an open one waiting for a check checked first.
+: GATHERED ( -- )
+   LSP-REFERENCES:SUBJECT-N 0 ?do
+      i LSP-REFERENCES:SUBJECT-SLOT dup 0 >= if CHECK-WAITING else drop then
+      i LSP-REFERENCES:GATHER
+   loop ;
+
+\ Every use of the declaration at params.position in the open document
+\ params.textDocument names, and the declaration first when
+\ params.context.includeDeclaration is true, as tools/lsp-references.f states:
+\ -32803 when the request is refused, and a warning before the answer when a
+\ file is not covered.
+: REFERENCES ( JSON-RPC:id ptr u8 n -- )
+   {: i p:ptr pu:n :}
+   i p pu [: REFS! ;] READ? 0= if exit then
+   i UNCHANGED? 0= if exit then
+   AT-SLOT @ CHECK-WAITING
+   AT-BYTE!
+   AT-SLOT @ AT-BYTE @ WITH-DECL @ LSP-REFERENCES:SELECT
+   LSP-REFERENCES:REFUSED? if
+      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
+      exit
+   then
+   GATHERED
+   LSP-REFERENCES:UNCOVERED? if WRITER LSP-REFERENCES:WARNING END SENT then
+   WRITER i RESULT LSP-REFERENCES:ANSWER END SENT ;
+
 \ The spellings that would bind at params.position in the open document
 \ params.textDocument names: the document checked now, as its turn, with its
 \ cursor at that byte of its text, and answered from that check.
@@ -663,10 +720,55 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
    JR:CLOSE
    md ;
 
+\ A workspace folder by the URI string the reader is at; one that names no
+\ file here is passed over.
+: ROOT-AT ( JR:reader -- JR:reader )
+   URI-SPAN DECODE {: n:n :}
+   URI-SPAN @ SPAN:$ drop n
+   [: 2dup PATH LSP-WORKSPACE:ROOT+ ;] catch {: code:n :} 2drop
+   code 0= if exit then
+   code E-PATH-RANGE =  code E-URI-LAST >= code E-URI-FIRST <= and  or 0= if code throw then ;
+
+\ One member of a workspace folder: its uri a root.
+: FOLDER-MEMBER ( JR:reader -- JR:reader )
+   s" uri" STR-EQ? if
+      NEXT T-STR = if ROOT-AT else SKIP-VALUE then
+   else
+      NEXT drop SKIP-VALUE
+   then ;
+
+: FOLDER ( JR:reader -- JR:reader )
+   TOKEN T-OBJ = if
+      begin NEXT T-KEY = while FOLDER-MEMBER repeat
+   else
+      SKIP-VALUE
+   then ;
+
+\ initialize's params.workspaceFolders, an array, each folder's uri a root;
+\ else params.rootUri, a string, the root.
+: WORKSPACE! ( ptr u8 n -- )
+   {: p:ptr pu:n :}
+   pu 0= if exit then
+   JR-ST STORAGE-BYTES p pu INIT
+   NEXT T-OBJ =
+   if s" workspaceFolders" FIND-KEY else false then
+   if TOKEN T-ARR = else false then
+   {: folders:bool :}
+   folders if begin NEXT T-ARR-END <> while FOLDER repeat then
+   JR:CLOSE
+   folders if exit then
+   JR-ST STORAGE-BYTES p pu INIT
+   NEXT T-OBJ =
+   if s" rootUri" FIND-KEY else false then
+   if TOKEN T-STR = else false then
+   if ROOT-AT then
+   JR:CLOSE ;
+
 : STARTING-REQUEST ( JSON-RPC:id ptr u8 n ptr u8 n -- )
    {: i m:ptr mu:n p:ptr pu:n :}
    m mu s" initialize" NAMED? if
       p pu MARKDOWN? HOVER-MD !
+      p pu WORKSPACE!
       i REPLY-CAPABILITIES
       construct state running STATE!
    else
@@ -691,6 +793,7 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
    m mu s" workspace/symbol" NAMED? if i p pu SYMBOLS exit then
    m mu s" textDocument/documentSymbol" NAMED? if i p pu DOCUMENT-SYMBOLS exit then
    m mu s" textDocument/definition" NAMED? if i p pu DEFINITION exit then
+   m mu s" textDocument/references" NAMED? if i p pu REFERENCES exit then
    m mu s" textDocument/hover" NAMED? if i p pu HOVER exit then
    m mu s" textDocument/documentHighlight" NAMED? if i p pu HIGHLIGHT exit then
    m mu s" textDocument/completion" NAMED? if i p pu COMPLETION exit then
