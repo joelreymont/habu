@@ -470,8 +470,8 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 \ Match by the dictionary entry, not by bytes: folding and a qualified spelling
 \ can both name the same prior word.  `recurse` has no callable dictionary
 \ target and therefore keeps its separate elaborator rule.
-: PRIOR-STEP ( IR-ARENA:arena IR-ARENA:arena n -- )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
+: PRIOR-STEP ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
    PRIOR-ENTRY @ 0= if exit then
    TAPE ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
    \ Structural operands and locals have no source call decision here.
@@ -491,18 +491,19 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    PRIOR-CAST @ if
       NHOST:CAST TAPE MKEY ix NTAPE:SPAN@ IR-SOURCE:SPAN-START
          NHOST:SOURCE-REFUSE
-      CC BB p r sy HIR-WORD:DECLARE-BOUND-CAST exit
+      CC BB r sy PRIOR-IN @ PRIOR-OUT @ PRIOR-GLUE @
+         HIR-WORD:DECLARE-BOUND-CAST exit
    then
    CC BB r sy
    PRIOR-ENTRY @ PRIOR-IN @ PRIOR-OUT @ PRIOR-GLUE @ PRIOR-DEAD @
    HIR-WORD:DECLARE-BOUND-CALLABLE ;
 
-: BIND-PRIOR ( IR-ARENA:arena IR-ARENA:arena -- )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+: BIND-PRIOR ( IR-ARENA:arena -- )
+   {: r:IR-ARENA:arena :}
    PRIOR-ENTRY @ 0= if exit then
    TAPE NFEED:PRODUCED-CK
    TAPE NTAPE:TOKENS 1 ?do
-      p r i PRIOR-STEP
+      r i PRIOR-STEP
    loop ;
 
 \ ---- the chain ---------------------------------------------------------------
@@ -659,7 +660,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
    KEEP-ARITY
-   p r BIND-PRIOR
+   r BIND-PRIOR
    NAME$ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
    p r ELABORATE
    HOST-ARITIES

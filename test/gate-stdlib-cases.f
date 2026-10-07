@@ -1287,6 +1287,21 @@ SUITE compiler-native-rename-rows
    test/compiler/native-rename-rows.f
 ;SUITE
 
+\ A read-view unpacked by a CAST: used as its two cells: the base row is the
+\ tier-0 reference, its -aot twin the tier-1 regrouping (test/compiler/aot-mode.f).
+SUITE compiler-native-view-cast
+   test/compiler/native-view-cast.f
+;SUITE
+
+SUITE compiler-native-view-cast-aot
+   lib/test.f
+   lib/memory.f
+   lib/c2-memory.f
+   test/compiler/aot-mode.f
+   ENTRIES
+   test/compiler/native-view-cast.f
+;SUITE
+
 SUITE compiler-native-wide-mem
    test/compiler/native-wide-mem.f
 ;SUITE
@@ -2839,6 +2854,11 @@ WHITEBOX-SUITE c2-init-record-schema
 \ engine packages open; a product seals C2-MEM, which c2-memory pins.
 WHITEBOX-SUITE c2-reopen-refusals
    test/c2-reopen-refusals.f
+;SUITE
+
+\ C2-MEM's own view packs and unpacks compiled at tier 1 in the reopened package.
+WHITEBOX-SUITE c2-view-cast
+   test/c2-view-cast.f
 ;SUITE
 
 SUITE c2-init-accessors

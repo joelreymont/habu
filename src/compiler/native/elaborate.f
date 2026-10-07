@@ -317,8 +317,22 @@ variable VRW-N                       \ values still to find
    depth 0 < depth in >= or if E-NELAB-SHAPE throw then
    in 1- depth - ;
 
+\ A cast keeps the top w cells where they are, the same SSA values, and regroups
+\ them by its output glue. A window that starts inside a value would take that
+\ value apart; checked source never reaches it, since the checker proved the top
+\ w cells are the cast's whole input values.
+: REGROUP ( n n -- ) {: w:n glue:n :}
+   VN @ w - {: base:n :}
+   base 0 < if E-NELAB-UNDER throw then
+   base VRUN-DOWN? if E-NELAB-BUNDLE throw then
+   base w VGLUE-CLEAR
+   base glue VGLUE-RUN ;
+
 : RENAME ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena sym:IR-ID:ir-symbol-id :}
+   r sym HIR-WORD:HOST-RENAME@ HIR-WORD:HOST-CAST = if
+      r sym HIR-WORD:CAST-CELLS@  r sym HIR-WORD:CAST-GLUE@  REGROUP exit
+   then
    r sym HIR-WORD:INPUTS@ {: in:n :}
    r sym HIR-WORD:PICKS {: picks:n :}
    in VROWS-CELLS {: w:n :}
@@ -2239,8 +2253,8 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    k HIR-CTRL:C2-INVOKE HIR-CTRL:EQ or
    k HIR-CTRL:EVAL HIR-CTRL:EQ or 0= ;
 
-: RESOLVE-STEP ( IR-ARENA:arena IR-ARENA:arena n -- )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
+: RESOLVE-STEP ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
    ix MOPERAND? if exit then
    ix IN-DECL? if exit then
    ix LOCAL-OF 0 >= if exit then
@@ -2250,7 +2264,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    EXACT-SOURCE @ 0= if
       r sy HIR-WORD:MODELS? if exit then
       CTX BLD r sy HIR-WORD:RESOLVE-FIXED if exit then
-      CTX BLD p r sy HIR-WORD:RESOLVE-CALLABLE drop
+      CTX BLD r sy HIR-WORD:RESOLVE-CALLABLE drop
       exit
    then
    ix CHECKER-OWNER:SOURCE-BINDING {: bound:ptr bytes:n :}
@@ -2265,24 +2279,24 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
             DKIND:MASK and DKIND:CAST = if NHOST:CAST ix HOST-REFUSE then
       then
    then
-   CTX BLD p r sy ix HIR-WORD:RESOLVE-SITE drop ;
+   CTX BLD r sy ix HIR-WORD:RESOLVE-SITE drop ;
 
-: RESOLVE-SCAN ( IR-ARENA:arena IR-ARENA:arena n n -- )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}
+: RESOLVE-SCAN ( IR-ARENA:arena n n -- )
+   {: r:IR-ARENA:arena lo:n hi:n :}
    hi lo ?do
       i RF-AT !
-      p r i RESOLVE-STEP
+      r i RESOLVE-STEP
       -1 RF-AT !
    loop ;
 
-: RESOLVE-KEEP ( IR-ARENA:arena IR-ARENA:arena n n -- IR-ARENA:arena IR-ARENA:arena n n )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}
-   p r lo hi RESOLVE-SCAN
-   p r lo hi ;
+: RESOLVE-KEEP ( IR-ARENA:arena n n -- IR-ARENA:arena n n )
+   {: r:IR-ARENA:arena lo:n hi:n :}
+   r lo hi RESOLVE-SCAN
+   r lo hi ;
 
-: RESOLVE-TRY ( IR-ARENA:arena IR-ARENA:arena n n -- )
+: RESOLVE-TRY ( IR-ARENA:arena n n -- )
    [: RESOLVE-KEEP ;] catch {: rc:n :}
-   2drop 2drop
+   2drop drop
    rc 0= if exit then
    RF-RECORD
    rc throw ;
@@ -4384,15 +4398,15 @@ private
 : BEFORE-RETURN ( -- )
    FUN-KIND @ FUN-DOES-PARENT = if STAGE-DOES-PATCH then ;
 
-: SCAN-FUN ( IR-ARENA:arena IR-ARENA:arena n n -- )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}
+: SCAN-FUN ( IR-ARENA:arena n n -- )
+   {: r:IR-ARENA:arena lo:n hi:n :}
    r lo hi QUOT-SCAN
    FUN-KIND @ FUN-DOES-PARENT = if QBASE @ QN @ + 1+ DOES-FUN ! then
    r lo hi LOCALS-SCAN
    QLOCALS-CK
    r lo hi MATCH-SCAN
    r lo hi DEFER-SCAN
-   p r lo hi RESOLVE-TRY
+   r lo hi RESOLVE-TRY
    r lo hi MEM-SCAN
    r lo hi CROSS-SCAN ;
 
@@ -4417,7 +4431,7 @@ private
    IN-GLUE @ NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
    OUT-GLUE @ NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
    b IR-BUILD:FUNS QBASE !
-   p r lo hi SCAN-FUN
+   r lo hi SCAN-FUN
    r lo hi SKELETON-TRY
    b FUN-STATE!
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}

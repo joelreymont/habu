@@ -6,6 +6,9 @@
 \ window, zero being the top, and picks are listed BOTTOM first - so `over`
 \ ( a b -- a b a ) consumes 2 and puts back 1 0 1, and `rot` ( a b c -- b c a )
 \ consumes 3 and puts back 1 0 2. It may only put back an input it consumed.
+\ A cast's row (DECLARE-BOUND-CAST) is the one row with no pick list:
+\ HOST-RENAME@ answers HOST-CAST, and the row stores the cells the cast
+\ regroups and the glue it lays over them (CAST-CELLS@, CAST-GLUE@).
 \
 \ Every row is keyed by the FOLD of its word's spelling, which is the fold the
 \ engine applies when it decides what a token of a checked body means, so `IF`,
@@ -60,9 +63,9 @@ $48575231 constant WROW-MAGIC        \ "HWR1": the word-table header format tag
 2 constant LINK-SESSION              \ the session's own vocabulary table
 0 constant OFF-SYM                   \ the source word's symbol ordinal
 1 constant OFF-MEAN                  \ the stored meaning code
-2 constant OFF-A                     \ op and const-op: the opcode code; rename: the pick-list start; control: the control code; rstack: the transfer code; unmodeled: the reason ordinal plus one; callable: the callee's entry address
-3 constant OFF-IN                    \ rename: the number of values consumed; rstack: the number of cells moved; const-op: the constant; fixed: the value the word pushes; callable: the values the callee takes; otherwise zero
-4 constant OFF-N                     \ rename: the number of values put back; callable: the values the callee leaves; otherwise zero
+2 constant OFF-A                     \ op and const-op: the opcode code; rename: the pick-list start, a cast's output glue; control: the control code; rstack: the transfer code; unmodeled: the reason ordinal plus one; callable: the callee's entry address
+3 constant OFF-IN                    \ rename: the number of values consumed, a cast's cells; rstack: the number of cells moved; const-op: the constant; fixed: the value the word pushes; callable: the values the callee takes; otherwise zero
+4 constant OFF-N                     \ rename: the number of values put back, none for a cast; callable: the values the callee leaves; otherwise zero
 5 constant OFF-GLUE                  \ callable result glue; rename host semantic class
 6 constant OFF-DEAD                  \ callable: whether control comes back from the callee; otherwise zero
 7 constant ROW-CELLS
@@ -878,17 +881,21 @@ public
    STG-TAKE
    c p r  sy id SYM-CK  RENAME-ROW ;
 
-\ A CAST: binding is one value renamed to itself. The checker retains the
-\ nominal input/output terms; this model retains the very same SSA value.
-\ Unlike vocabulary renames, its authority is the captured dictionary definer.
-: DECLARE-BOUND-CAST ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
-      id:IR-ID:ir-symbol-id :}
-   1 BEGIN-RENAME
-   0 ADD-PICK
-   HOST-CAST STG-HOST !
-   STG-TAKE
-   c p r  c b id BKEY-CK  RENAME-ROW ;
+\ A CAST: binding keeps the very cells it consumes, in place, the same SSA
+\ values, and regroups them as its output's values by the output glue: a view
+\ unpack makes one two-cell value two, a pack makes two values one, and a
+\ one-cell cast leaves its value as it was. The checker retains the nominal
+\ input/output terms and admits only casts whose sides hold the same cells; `in`
+\ and `out` are those cell counts and `glue` the output row's glue, so the row
+\ stores the cells and the glue and puts no value back by pick. Unlike
+\ vocabulary renames, its authority is the captured dictionary definer.
+: DECLARE-BOUND-CAST ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id n n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id in:n out:n glue:n :}
+   in 1 < in out <> or if E-HIR-PICK throw then
+   c r  c b id BKEY-CK
+   HIR-MEANING:RENAME MEAN-CODE glue in UNUSED HOST-CAST UNUSED
+   ROW-ADD ;
 
 private
 
@@ -922,9 +929,8 @@ public
 : OVERLAY? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
    OVERLAY-MODELS? ;
 
-: RESOLVE-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
-      id:IR-ID:ir-symbol-id :}
+: RESOLVE-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    c b id FIX-SPELL {: a:ptr u:n :}
    a u NDICT:CALL-BINDING {: entry:n kind:n :}
    entry 0= if false exit then
@@ -932,7 +938,7 @@ public
    in NDICT:ARITY-NONE = if false exit then
    neutral 0= if false exit then
    glue NDICT:GLUE-UNKNOWN = if false exit then
-   kind DKIND:CAST = if c b p r id DECLARE-BOUND-CAST true exit then
+   kind DKIND:CAST = if c b r id in out glue DECLARE-BOUND-CAST true exit then
    c r  c b id BKEY-CK  entry in out glue
    a u entry a u NDICT:SPELL-DEAD? RESOLVED-NORET CALLABLE-ROW
    true ;
@@ -943,9 +949,8 @@ public
 \ A call to an internal record binds as NDICT:CALL-BINDING binds one
 \ (NDICT:INT-CALL?): an owned primitive's checked call compiles, since the
 \ checker's binder bound the site to that record through its owner's row.
-: RESOLVE-SITE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id n -- bool )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
-      id:IR-ID:ir-symbol-id ix:n :}
+: RESOLVE-SITE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id n -- bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena id:IR-ID:ir-symbol-id ix:n :}
    ix CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
    size 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
    size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if E-NCOMP-OWNER throw then
@@ -984,7 +989,7 @@ public
    row CHECKER-OWNER-ABI:BOUND-GLUE BOUND@ {: glue:n :}
    in 0< out 0< or glue NDICT:GLUE-UNKNOWN = or if CHECKER-OWNER-ABI:BINDING-RC throw then
    row CHECKER-OWNER-ABI:BOUND-NEUTRAL BOUND@ 0= if false exit then
-   kind DKIND:CAST = if c b p r id DECLARE-BOUND-CAST true exit then
+   kind DKIND:CAST = if c b r id in out glue DECLARE-BOUND-CAST true exit then
    c b id FIX-SPELL {: a:ptr u:n :}
    c r  c b id BKEY-CK  entry in out glue
    a u entry row CHECKER-OWNER-ABI:BOUND-DEAD BOUND@ 0= 0=
@@ -1209,7 +1214,27 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    r id HIR-MEANING:CALLABLE ROW-AS {: ra:IR-ARENA:arena l:n :}
    ra l OFF-GLUE RC@ ;
 
-\ How many values a rename consumes off the top of the value vector.
+private
+
+\ Only a cast row answers for its cells and glue: another rename keeps its pick
+\ list in those cells.
+: CAST-ROW ( IR-ARENA:arena IR-ID:ir-symbol-id -- IR-ARENA:arena n )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:RENAME ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-GLUE RC@ HOST-CAST <> if E-HIR-CLASS throw then
+   ra l ;
+
+public
+
+\ The cells a cast regroups and the glue it lays over them (DECLARE-BOUND-CAST).
+: CAST-CELLS@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+   CAST-ROW OFF-IN RC@ ;
+
+: CAST-GLUE@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+   CAST-ROW OFF-A RC@ ;
+
+\ How many values a pick-list rename consumes off the top of the value vector.
+\ A cast row keeps its regrouped cell count in this slot: read CAST-CELLS@.
 : INPUTS@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:RENAME ROW-AS {: ra:IR-ARENA:arena l:n :}
@@ -1220,7 +1245,8 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    r id HIR-MEANING:RENAME ROW-AS {: ra:IR-ARENA:arena l:n :}
    ra l OFF-GLUE RC@ ;
 
-\ How many values it puts back.
+\ How many values a pick-list rename puts back; a cast row puts none back by
+\ pick (CAST-GLUE@ gives its output grouping).
 : PICKS ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:RENAME ROW-AS {: ra:IR-ARENA:arena l:n :}

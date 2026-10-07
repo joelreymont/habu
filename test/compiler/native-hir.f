@@ -671,8 +671,8 @@ $4000 constant CALLEE-ENTRY          \ an instruction address, four-byte aligned
 : TERMINAL-MODEL-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b 4 HIR-WORD:PICK-CELLS WORDS-NEW
-   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b 4 HIR-WORD:PICK-CELLS WORDS-NEW nip
+   {: r:IR-ARENA:arena :}
    CHECKER-OWNER:TAPE-DISARM
    1 [: NO-BIND-SCAN ;] [: NO-BIND-TOKEN ;] [: NO-BIND-DONE ;]
       CHECKER-OWNER:TAPE-INSTALL
@@ -680,14 +680,14 @@ $4000 constant CALLEE-ENTRY          \ an instruction address, four-byte aligned
    c b s" throw" HIR-WORD:KEY-SPELL {: th:IR-ID:ir-symbol-id :}
    s" HIR-THROW-SCAN ( -- ) 1 throw" CHECKER-OWNER:CHECK-UNJUDGED drop
    -1 CHECKER-OWNER:BIND-REGIME!
-   c b p r th 2 HIR-WORD:RESOLVE-SITE TTRUE
+   c b r th 2 HIR-WORD:RESOLVE-SITE TTRUE
    r th HIR-WORD:CALLEE-DEAD? TTRUE
    r th HIR-WORD:TERMINAL? TTRUE
    CHECKER-OWNER:TAPE-DISARM
    CHECKER-OWNER:TAPE-ARM
    c b s" die" HIR-WORD:KEY-SPELL {: di:IR-ID:ir-symbol-id :}
    s" HIR-DIE-SCAN ( -- ) 1 die" CHECKER-OWNER:CHECK-UNJUDGED drop
-   c b p r di 2 HIR-WORD:RESOLVE-SITE TTRUE
+   c b r di 2 HIR-WORD:RESOLVE-SITE TTRUE
    r di HIR-WORD:TERMINAL? TTRUE
    0 CHECKER-OWNER:BIND-REGIME!
    CHECKER-OWNER:TAPE-DISARM
