@@ -18,6 +18,8 @@
 \   file URI of its path.
 \ - containerName: the package the checker recorded the word under; a global
 \   has none.
+\ KIND, the SymbolKind of a class, is public: document symbols
+\ (tools/lsp-outline.f) give the kind workspace symbols give.
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer being written belongs to the
 \ server's one task.
@@ -50,12 +52,16 @@ variable SHOWN-N                         \ and the symbols it lists so far
    loop
    false ;
 
+public
+
 \ The SymbolKind of a class.
 : KIND ( n -- n )
    {: class:n :}
    class CLASS-CONSTANT = if CONSTANT-KIND exit then
    class CLASS-STORAGE = if VARIABLE-KIND exit then
    FUNCTION-KIND ;
+
+private
 
 \ The SymbolInformation for record R of group G.
 : SYMBOL ( n n -- )

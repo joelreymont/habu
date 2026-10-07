@@ -20,8 +20,8 @@
 \
 \ Lifecycle
 \ - initialize answers other than its capabilities: positions in utf-16, open
-\   and close notifications, Full sync, workspace symbols, the name habu
-\   .................................................................. lifecycle
+\   and close notifications, Full sync, workspace and document symbols, the
+\   name habu ........................................................ lifecycle
 \ - shutdown answers other than a null result; exit after it exits other than
 \   0 or writes to stderr ............................................ lifecycle
 \ - a reply held until more input comes, or the end of input .. answers-at-once
@@ -157,6 +157,24 @@
 \   their definition lines names at every even offset of the bytes the server
 \   keeps them in, one of them where those bytes fill their room .. path-length-N
 \
+\ Document symbols
+\ - a definition the document's last completed check retained in it missing,
+\   or answered with another name, kind or range than its line's, as both
+\   range and selectionRange; a definition of another open document or of a
+\   file the document requires listed; a document with no definition answered
+\   other than an empty list; a document not open, or params naming none,
+\   answered other than -32602 ................................. document-symbol
+\ - a request in the turn of a change answered before the check of the
+\   changed text published, or still listing a definition the change removed;
+\   a request with a change of its document read behind it answered other
+\   than -32801, or that change not applied and checked after it
+\   ............................................... document-symbol-after-change
+\ - a request after a change whose check did not complete answered with the
+\   definitions of the text before it, which workspace symbols still list
+\   ................................................. document-symbol-incomplete
+\ - an open document's outline answered from a later check of another
+\   document, which read its file from disk ... workspace-symbol-open-dependency
+\
 \ Go to definition
 \ - a use in an open document, at its first character or its last, or after a
 \   character UTF-16 counts as one unit and UTF-8 as two bytes, not answered
@@ -290,8 +308,8 @@ using BUF
 \ its busiest measurement and CHECKED-MS about six times big-frame's 1230 to
 \ 1289 ms, and neither is larger. The one bounds 27 runs (the 24 conversations
 \ CONVERSE runs, answers-at-once, stdout-closed and TEST-EXIT-TIMEOUT's child)
-\ and the other 67 conversations. A server that blocks spends none of the
-\ row's CPU budget (test/suite-budget.f CPU-MS), so all 94 could reach their
+\ and the other 70 conversations. A server that blocks spends none of the
+\ row's CPU budget (test/suite-budget.f CPU-MS), so all 97 could reach their
 \ bounds, each failing by name, well inside the row's hang guard (ROW-MS). One
 \ that spins to its bound spends that much of the budget's 360 s, so at most
 \ 45 such runs fail by name before the budget ends the row.
@@ -706,7 +724,7 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\"," MSG+
    s\" \"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}," MSG+
    s\" \"completionProvider\":{},\"definitionProvider\":true," MSG+
-   s\" \"hoverProvider\":true," MSG+
+   s\" \"hoverProvider\":true,\"documentSymbolProvider\":true," MSG+
    s\" \"workspaceSymbolProvider\":true}," MSG+
    s\" \"serverInfo\":{\"name\":\"habu\"}}}" MSG+
    MSG$ HEARD ;
@@ -1965,6 +1983,35 @@ CK-USE-MAX 1 + constant OVER-USINGS
    HEAR
    MSG$ HEARD ;
 
+\ textDocument/documentSymbol, by its id's JSON text, of the document opened
+\ from this path.
+: OUTLINE-ASK ( ptr u8 n ptr u8 n -- )
+   {: i:ptr iu:n p:ptr pu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"method\":\"textDocument/documentSymbol\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
+   p pu URI-OF MSG+ s\" \"}}}" MSG+
+   MSG$ FRAMED ;
+
+\ A Range from character C1 to C2 of line L, as JSON text, in MSG.
+: LINE-RANGE+ ( n n n -- )
+   {: l:n c1:n c2:n :}
+   s\" {\"start\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c1 INT$ MSG+
+   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}" MSG+ ;
+
+\ The symbol the outline lists next: its name and kind, over characters C1 to
+\ C2 of line L as both its range and its selectionRange.
+: OUTLINE+ ( ptr u8 n n n n n -- )
+   {: w:ptr wu:n k:n l:n c1:n c2:n :}
+   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   s\" {\"name\":\"" MSG+ w wu MSG+
+   s\" \",\"kind\":" MSG+ k INT$ MSG+
+   s\" ,\"range\":" MSG+ l c1 c2 LINE-RANGE+
+   s\" ,\"selectionRange\":" MSG+ l c1 c2 LINE-RANGE+
+   s" }" MSG+ ;
+
 \ The dependency's symbols: QUX-DEP in package QD, recorded folded, and the
 \ global QUX-V.
 : DEP-SYMBOLS+ ( -- )
@@ -2176,7 +2223,8 @@ CK-USE-MAX 1 + constant OVER-USINGS
 
 \ od-dep.f open with text its disk file lacks, then od.f, which requires the
 \ file, open: a query lists REV-EDIT where the document places it, from its
-\ own check, and REV-A, and not REV-DISK, which od.f's check read from disk.
+\ own check, and REV-A, and not REV-DISK, which od.f's check read from disk;
+\ od-dep.f's outline, after od.f's check, is REV-EDIT alone.
 \ od-dep.f closed, REV-DISK where the file on disk places it, answered before
 \ od.f's next check.
 : OPEN-DEP-TURNS ( -- )
@@ -2190,16 +2238,20 @@ CK-USE-MAX 1 + constant OVER-USINGS
    SAY
    TEXT-OD OD-PATH 1 s" verified" LISTED
    s" 3" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
+   s" 4" OD-DEP-PATH OUTLINE-ASK
    SAY
    s" 3" SYMBOLS-START
    s" REV-EDIT" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
    s" REV-A" 12 OD-PATH URI-OF 1 2 7 s" " SYMBOL+
    SYMBOLS-END
+   s" 4" SYMBOLS-START
+   s" REV-EDIT" 12 1 2 10 OUTLINE+
+   SYMBOLS-END
    OD-DEP-PATH CLOSES
-   s" 4" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
+   s" 5" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
    SAY
    OD-DEP-PATH -1 EXPECT PUBLISHES
-   s" 4" SYMBOLS-START
+   s" 5" SYMBOLS-START
    s" REV-DISK" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
    s" REV-A" 12 OD-PATH URI-OF 1 2 7 s" " SYMBOL+
    SYMBOLS-END
@@ -2450,6 +2502,100 @@ variable LENGTH-N                        \ the length of its directory's name
    TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
    DEF-A-PATH s" not checked: exit 76" SAID
    s" 3" NOWHERE
+   s" 4" SYMBOLS-START
+   s" DEF-ONE" 12 DEF-A-PATH URI-OF 0 2 9 s" " SYMBOL+
+   s" DEF-TWO" 12 DEF-A-PATH URI-OF 1 2 9 s" " SYMBOL+
+   s" DEF-SUM" 12 DEF-A-PATH URI-OF 2 2 9 s" " SYMBOL+
+   SYMBOLS-END
+   LOGGED ;
+
+\ ---- document symbols --------------------------------------------------------
+
+: SYM-NONE-PATH ( -- ptr u8 n )  s" sym-none.f" FIXTURE ;
+: TEXT-SYM-NONE ( -- ptr u8 n )  s\" \\ no definition\n" ;
+
+\ Three open documents, A and B requiring sym-dep.f, on disk only, and one
+\ with no definition. Each outline lists its own document's definitions in
+\ source order, their kinds as workspace symbols give them, and none of the
+\ other document's or of sym-dep.f, which both checks read; the document with
+\ none answers an empty list. A document never opened, and params naming no
+\ document, are -32602.
+: OUTLINE-TURNS ( -- )
+   SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
+   INITIALIZE
+   SYM-A-PATH TEXT-SYM-A 1 OPENS
+   SYM-B-PATH TEXT-SYM-B 1 OPENS
+   SYM-NONE-PATH TEXT-SYM-NONE 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
+   TEXT-SYM-B SYM-B-PATH 1 s" verified" LISTED
+   TEXT-SYM-NONE SYM-NONE-PATH 1 s" verified" LISTED
+   s" 3" SYM-A-PATH OUTLINE-ASK
+   s" 4" SYM-B-PATH OUTLINE-ASK
+   s" 5" SYM-NONE-PATH OUTLINE-ASK
+   s" 6" DEF-A-PATH OUTLINE-ASK
+   s" 7" s" textDocument/documentSymbol" ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" QUX-A" 12 1 2 7 OUTLINE+
+   s" ZED" 12 2 2 5 OUTLINE+
+   SYMBOLS-END
+   s" 4" SYMBOLS-START
+   s" QUX-B" 12 1 2 7 OUTLINE+
+   s" QUX-K" 14 2 11 16 OUTLINE+
+   SYMBOLS-END
+   s" 5" SYMBOLS-START SYMBOLS-END
+   HEAR s" 6" -32602 REFUSED
+   HEAR s" 7" -32602 REFUSED ;
+
+\ A's outline asked in the turn of the change that removed QUX-A and ZED: the
+\ request checks the changed text first, so its list comes before the answer,
+\ QUX-AA alone. Asked again with a change of A read behind it, the request is
+\ -32801 and the change is applied and checked after it; asked once more, the
+\ restored definitions are answered without a check.
+: OUTLINE-AFTER-CHANGE-TURNS ( -- )
+   SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
+   INITIALIZE
+   SYM-A-PATH TEXT-SYM-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
+   SYM-A-PATH TEXT-SYM-A2 2 CHANGES
+   s" 3" SYM-A-PATH OUTLINE-ASK
+   SAY
+   TEXT-SYM-A2 SYM-A-PATH 2 s" verified" LISTED
+   s" 3" SYMBOLS-START
+   s" QUX-AA" 12 1 2 8 OUTLINE+
+   SYMBOLS-END
+   s" 4" SYM-A-PATH OUTLINE-ASK
+   SYM-A-PATH TEXT-SYM-A 3 CHANGES
+   SAY
+   HEAR s" 4" -32801 REFUSED
+   TEXT-SYM-A SYM-A-PATH 3 s" verified" LISTED
+   s" 5" SYM-A-PATH OUTLINE-ASK
+   SAY
+   s" 5" SYMBOLS-START
+   s" QUX-A" 12 1 2 7 OUTLINE+
+   s" ZED" 12 2 2 5 OUTLINE+
+   SYMBOLS-END ;
+
+\ The outline asked in the turn of a change whose check did not complete: the
+\ definitions of the text before it are not of the document's text, so the
+\ answer is an empty list, while workspace symbols still list them.
+: OUTLINE-INCOMPLETE-TURNS ( -- )
+   INITIALIZE
+   DEF-A-PATH TEXT-DEF-C 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-C DEF-A-PATH 1 s" verified" LISTED
+   DEF-A-PATH TEXT-DEF-C-SWAPPED 2 CHANGES
+   s" 3" DEF-A-PATH OUTLINE-ASK
+   s" 4" s\" {\"query\":\"def-\"}" SYMBOLS-ASK
+   SAY
+   TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
+   DEF-A-PATH s" not checked: exit 76" SAID
+   s" 3" SYMBOLS-START SYMBOLS-END
    s" 4" SYMBOLS-START
    s" DEF-ONE" 12 DEF-A-PATH URI-OF 0 2 9 s" " SYMBOL+
    s" DEF-TWO" 12 DEF-A-PATH URI-OF 1 2 9 s" " SYMBOL+
@@ -2984,6 +3130,11 @@ variable LENGTH-N                        \ the length of its directory's name
       SB$ [: LENGTH-TURNS ;] TALK
    loop ;
 
+: TEST-OUTLINES ( -- )
+   s" document-symbol" [: OUTLINE-TURNS ;] TALK
+   s" document-symbol-after-change" [: OUTLINE-AFTER-CHANGE-TURNS ;] TALK
+   s" document-symbol-incomplete" [: OUTLINE-INCOMPLETE-TURNS ;] TALK ;
+
 \ A FUNCTION: whose group is empty stores a signature that does not parse: the
 \ packet is at its name F, line 1, characters 10-11.
 : EMPTY-FFI ( -- ptr u8 n )  s\" require lib/ffi-abi.f\nFUNCTION: F getpid ( )\n" ;
@@ -3113,6 +3264,7 @@ public
    TEST-STDOUT-CLOSED
    TEST-DIAGNOSTICS
    TEST-SYMBOLS
+   TEST-OUTLINES
    TEST-DEFINITIONS
    TEST-HOVERS
    TEST-COMPLETIONS

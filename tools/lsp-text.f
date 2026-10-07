@@ -112,14 +112,20 @@ private
 
 public
 
+\ The Range object from the line and character of its start to those of its
+\ end.
+: RANGE-OBJECT ( ptr JSON-WRITE:writer n n n n -- ptr JSON-WRITE:writer )
+   {: l1:n c1:n l2:n c2:n :}
+   OBJECT-START
+   s" start" KEY l1 c1 POSITION COMMA
+   s" end" KEY l2 c2 POSITION
+   OBJECT-END ;
+
 \ The range member from the line and character of its start to those of its
 \ end.
 : RANGE-AT ( ptr JSON-WRITE:writer n n n n -- ptr JSON-WRITE:writer )
    {: l1:n c1:n l2:n c2:n :}
-   s" range" KEY OBJECT-START
-   s" start" KEY l1 c1 POSITION COMMA
-   s" end" KEY l2 c2 POSITION
-   OBJECT-END ;
+   s" range" KEY l1 c1 l2 c2 RANGE-OBJECT ;
 
 \ The range member for a line that holds one JSON object with byte_start and
 \ byte_end, as the checker's packets do: a missing start is 0, a missing end
