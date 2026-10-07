@@ -21,7 +21,7 @@
 \ Family ABI (EFAM-*, mirrored below as ERA-* to pin the numeric contract):
 \   0 gray (var/row/atom/param)   1 scalar (con)   2 pointer (ptr)   3 xt (quot)
 \
-\ Only EFFECT-QUERY's implementation is trusted; the readers are checked.
+\ EFFECT-QUERY and the readers are checked code.
 \ EFFECT-DIN-FAM and EFFECT-DOUT-FAM are engine-internal: the sealed engine strips
 \ their names (E-UNDEFINED from checked code and bare interpret), so prefix
 \ consumers reach them as compiled calls from a trusted boundary. This test runs on

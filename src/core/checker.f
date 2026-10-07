@@ -6480,11 +6480,11 @@ variable CHX-HI
    USIGS UIX-BASE! ;
 
 \ USIGS is a byte-addressed store (ptr u8), but its head cell holds a real cell
-\ value the checker metadata writes with `!`. USIGS-CELL-AT refines a cell-aligned
-\ offset into that byte store to a cell pointer so the head/metadata stores stay
-\ typed while the byte-copy paths keep ptr u8.
-TRUSTED: USIGS-CELL-AT ( n -- ptr a )
-   USIGS swap + ;
+\ value the checker metadata writes with `!`. USIGS-CELL-AT views a cell-aligned
+\ offset into that byte store as a cell (CELL-VIEW) so the head/metadata stores
+\ stay typed while the byte-copy paths keep ptr u8.
+: USIGS-CELL-AT ( n -- ptr n )
+   USIGS swap + CELL-VIEW ;
 
 : USIGS-HEAD ( -- ptr n )
    0 USIGS-CELL-AT ;
@@ -8818,7 +8818,7 @@ ON-USE-DEFAULT
 
 \ The owner slot: run Q with H receiving the uses its checks publish. Either
 \ exit puts NO-USE back and drops what Q left pending.
-TRUSTED: CHECKER-WITH-USES ( [ n n n n n n -- ] [ -- ] -- ) {: h q :}
+: CHECKER-WITH-USES ( [ n n n n n n -- ] [ -- ] -- ) {: h q :}
    PU-N @ {: pu0 :}
    h USES-INSTALL
    q catch {: rc :}
@@ -12142,7 +12142,7 @@ REG-PROTECT
 \ native evaluator drops them (CHECKER-OVERLAY:FILE-DONE); a throw puts back
 \ the scope it started in. The outer verifier window keeps the declarations and
 \ the pass floor either way.
-TRUSTED: CHECKER-VERIFY-FILE ( [ -- ] -- ) {: q :}
+: CHECKER-VERIFY-FILE ( [ -- ] -- ) {: q :}
    CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF E-PKG-CONTEXT throw THEN
    CHECKER-OVERLAY:SCOPE-BYTES map-anon 0= 0= IF
       s" checker: file scope allocation failed" 76 die
@@ -13030,8 +13030,8 @@ REG-PROTECT
 \ habu-typed-top-tier-589c550f) cannot reach the effect store directly: FIND-SIG,
 \ E-DIN@/E-DOUT@, E-PTR and the EN-* node accessors are sig-less colon words, so
 \ internal-mark.f marks them DNAME-INT and they fail closed at interpret time. This
-\ is the ONE stable, minimal query surface the prefix sees. Each PUBLIC entry carries
-\ a declared TRUSTED: signature, so SIG-MIN-IN finds it and internal-mark leaves it
+\ is the ONE stable, minimal query surface the prefix sees. Each PUBLIC entry has a
+\ PRIM: row, so EFFECT-EXTERNAL-MIN-IN finds it and internal-mark leaves it
 \ top-level callable; the readers project the private EN-node graph onto a coarse,
 \ stable family enum, so the graph representation stays free to evolve behind them.
 \ They answer three different questions and a consumer has to know which it wants:
@@ -13078,17 +13078,15 @@ variable EFFQ-QUOT          \ the EN-QUOT node the latch is currently inside, 0 
 variable EFFQ-SAVE-DIN      \ the row pair the open descent displaced
 variable EFFQ-SAVE-DOUT
 
-\ The EN-node graph lives in the byte-addressed USIGS arena; USIGS-CELL-AT turns an
-\ E-OFF into a cell pointer the checked readers can fetch (E-PTR yields a ptr u8 that
-\ cell-fetch rejects). The stored offsets are node-aligned, so this is the same
-\ address E-PTR computes, typed for a checked cell read.
-: EFF-TAG@ ( n -- n )   USIGS-CELL-AT EN.TAG @ ;    \ node tag at offset n
-: EFF-A@   ( n -- n )   USIGS-CELL-AT EN.A @ ;      \ EN.A field (head term offset)
-: EFF-B@   ( n -- n )   USIGS-CELL-AT EN.B @ ;      \ EN.B field (rest-of-row offset)
-: EFF-C@   ( n -- n )   USIGS-CELL-AT EN.C @ ;      \ EN.C field (on a row cell: width+1; on a quot: rin)
-: EFF-D@   ( n -- n )   USIGS-CELL-AT EN.D @ ;      \ EN.D field (on a quot: rout)
-: EFF-E@   ( n -- n )   USIGS-CELL-AT EN.E @ ;      \ EN.E field (on a param term: hidden slot+1; on a quot: has a throw edge)
-: EFF-F@   ( n -- n )   USIGS-CELL-AT EN.F @ ;      \ EN.F field (on a quot: the fall-through path is dead)
+\ The EN-node graph lives in the byte-addressed USIGS arena: E-PTR addresses a node
+\ and each EN.x field word views its cell, so the readers are checked cell fetches.
+: EFF-TAG@ ( n -- n )   E-PTR EN.TAG @ ;    \ node tag at offset n
+: EFF-A@   ( n -- n )   E-PTR EN.A @ ;      \ EN.A field (head term offset)
+: EFF-B@   ( n -- n )   E-PTR EN.B @ ;      \ EN.B field (rest-of-row offset)
+: EFF-C@   ( n -- n )   E-PTR EN.C @ ;      \ EN.C field (on a row cell: width+1; on a quot: rin)
+: EFF-D@   ( n -- n )   E-PTR EN.D @ ;      \ EN.D field (on a quot: rout)
+: EFF-E@   ( n -- n )   E-PTR EN.E @ ;      \ EN.E field (on a param term: hidden slot+1; on a quot: has a throw edge)
+: EFF-F@   ( n -- n )   E-PTR EN.F @ ;      \ EN.F field (on a quot: the fall-through path is dead)
 
 : EFF-TERM-FAM ( n -- n )       \ n = term-node offset (E-OFF); 0 -> gray
    dup 0= if drop EFAM-GRAY exit then
@@ -13155,17 +13153,15 @@ variable EFFQ-SAVE-DOUT
 : EFF-ROW-SLOT ( n n -- n )                   \ bundle slot+1 of the i-th term from the top (0-based)
    EFF-ROW-TERM EFF-TERM-SLOT ;
 
-\ Only EFFECT-QUERY is trusted: it reads FEP / E-DIN@ / E-DOUT@ (raw checker state
-\ the checker cannot type, like its sibling USIGS readers). Every reader below it
-\ is an ordinary checked word over EFF-ROW-N / EFF-ROW-TERM, so the trusted base
-\ grows by exactly one site; internal-mark strips their names past the seal, but
-\ the query boundary (and the prefix consumers) reach them as compiled calls.
+\ Every reader below EFFECT-QUERY is an ordinary checked word over EFF-ROW-N /
+\ EFF-ROW-TERM; internal-mark strips their names past the seal, but the query
+\ boundary (and the prefix consumers) reach them as compiled calls.
 \
 \ A FRESH QUERY IS A FRESH LATCH, so it closes any open quotation descent: the
 \ rows it installs are the queried NAME's, and leaving a descent marked open over
 \ them would make EFFECT-QUOT-SIMPLE? answer about a quotation of the PREVIOUS
 \ name and EFFECT-QUOT-UP put that name's rows back.
-TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect into query state
+: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect into query state
    0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
    FIND-SIG dup EFFQ-OK !
    if FEP @ E-DIN@ EFFQ-DIN !  FEP @ E-DOUT@ EFFQ-DOUT !
@@ -14405,7 +14401,7 @@ public
 \ The allocator binds the actual generated accessor only after its DATA cells
 \ exist. A verifier's projected signature, an alias, or an imported effect has
 \ no allocation to own and keeps the zero count E-REC-INIT gave it.
-TRUSTED: CHECKER-STORAGE-BIND ( n ptr a n -- )
+: CHECKER-STORAGE-BIND ( n ptr a n -- )
    {: handle:n base:ptr count:n :}
    count 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
    handle 0= count 0= or IF EXIT THEN
@@ -14417,7 +14413,7 @@ TRUSTED: CHECKER-STORAGE-BIND ( n ptr a n -- )
 
 \ A deferred accessor owns a persistent three-cell control, not an allocation
 \ at declaration. Resolve its current region through that control at capture.
-TRUSTED: CHECKER-STORAGE-DEFER ( n ptr n -- )
+: CHECKER-STORAGE-DEFER ( n ptr n -- )
    {: handle:n cb:ptr :}
    handle 0= IF EXIT THEN
    cb BYTE-VIEW data-base BYTE-VIEW - {: off:n :}
@@ -16442,7 +16438,7 @@ variable WF-I
 \ binding's dictionary record in its own wordlist (SCOPE-WL-PROBE), then ask the
 \ engine about its code entry. The code entry, not the name or a persisted
 \ control flag, is the authority for the public C2 scope operations.
-TRUSTED: SCOPE-CODE-KIND ( n -- n ) scope-kind? ;
+: SCOPE-CODE-KIND ( n -- n ) scope-kind? ;
 : SCOPE-SYM-WID ( n -- n ) {: sym:n :}
    sym SYM-PKG$ {: pkg:ptr pkgu:n :}
    pkgu 0= IF 0 EXIT THEN
@@ -18199,9 +18195,9 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF-ROW ( n -- ptr n )
    CFS-REC * CFS + ;
 
-TRUSTED: SCOPE-LOC-TYPE ( n -- n )
+: SCOPE-LOC-TYPE ( n -- n )
    cells LOCVAL + @ dup 0 <> IF CP-TYPE THEN ;
-TRUSTED: SCOPE-CF-ROWS ( n -- n n n n ) {: idx:n :}
+: SCOPE-CF-ROWS ( n -- n n n n ) {: idx:n :}
    idx CF-ROW {: rec:ptr :}
    rec CF.SA @ rec CF.SB @ rec CF.RA @ rec CF.RB @ ;
 
@@ -22275,12 +22271,12 @@ create CK-LEX-DOMAINS 64 cells allot
    need CK-LEX-MEMO-U !
    at ;
 
-TRUSTED: CK-LEX-MEMO-MATCH? ( ptr n n n -- bool ) {: rec:ptr depth:n mask:n :}
-   rec CELL + CELL-VIEW @ {: prior:n :}
+: CK-LEX-MEMO-MATCH? ( ptr n n n -- bool ) {: rec:ptr depth:n mask:n :}
+   rec CELL + @ {: prior:n :}
    prior depth > IF RES-FALSE EXIT THEN
-   mask rec 2 cells + CELL-VIEW @ = ;
+   mask rec 2 cells + @ = ;
 
-TRUSTED: CK-LEX-MEMO-SEEN? ( ptr n n n -- bool ) {: head:ptr depth:n mask:n :}
+: CK-LEX-MEMO-SEEN? ( ptr n n n -- bool ) {: head:ptr depth:n mask:n :}
    head @ dup -1 = IF drop RES-TRUE EXIT THEN
    BEGIN dup 0 > WHILE
       1- CK-LEX-MEMO-PTR {: rec:ptr :}
@@ -22288,23 +22284,23 @@ TRUSTED: CK-LEX-MEMO-SEEN? ( ptr n n n -- bool ) {: head:ptr depth:n mask:n :}
       rec @
    REPEAT drop RES-FALSE ;
 
-TRUSTED: CK-LEX-MEMO-ADD ( ptr n n n -- ) {: head:ptr depth:n mask:n :}
+: CK-LEX-MEMO-ADD ( ptr n n n -- ) {: head:ptr depth:n mask:n :}
    depth 0= IF -1 head ! EXIT THEN
    CK-LEX-MEMO-ALLOC CK-LEX-MEMO-PTR {: rec:ptr :}
    head @ rec !
-   depth rec CELL + CELL-VIEW !
-   mask rec 2 cells + CELL-VIEW !
+   depth rec CELL + !
+   mask rec 2 cells + !
    rec CK-LEX-MEMO-P @ - 1+ head ! ;
 
-TRUSTED: CK-LEX-FIELD ( n n -- n ) {: off:n field:n :}
+: CK-LEX-FIELD ( n n -- n ) {: off:n field:n :}
    off CK-GRAPH-PTR field cells + CELL-VIEW @ ;
-TRUSTED: CK-LEX-ARG ( n n -- n ) {: off:n idx:n :}
+: CK-LEX-ARG ( n n -- n ) {: off:n idx:n :}
    off CK-GRAPH-PTR EN.D @ idx cells + CK-GRAPH-PTR CELL-VIEW @ ;
 
 \ The structural pass has already proved an acyclic graph. This mask records
 \ which binders outside each node can be named by its descendants. A forall
 \ body consumes bit zero; its other references shift toward the new caller.
-TRUSTED: CK-GRAPH-RELEVANCE ( n -- n ) {: off:n :}
+: CK-GRAPH-RELEVANCE ( n -- n ) {: off:n :}
    off 0= IF 0 EXIT THEN
    off CK-GRAPH-RELEVANCE-SLOT {: slot:ptr :}
    slot @ dup 0 <> IF 1- EXIT THEN drop
@@ -22334,11 +22330,11 @@ TRUSTED: CK-GRAPH-RELEVANCE ( n -- n ) {: off:n :}
    ELSE 0 THEN THEN THEN THEN THEN THEN
    dup 1+ slot ! ;
 
-TRUSTED: CK-LEX-SCOPE-SLOT? ( n n -- bool ) {: off:n idx:n :}
+: CK-LEX-SCOPE-SLOT? ( n n -- bool ) {: off:n idx:n :}
    off CK-GRAPH-PTR CK-GRAPH-REG$ idx REG-EXT-AOT-SCOPE-XT ;
-TRUSTED: CK-LEX-REGION-SLOT? ( n n -- bool ) {: off:n idx:n :}
+: CK-LEX-REGION-SLOT? ( n n -- bool ) {: off:n idx:n :}
    off CK-GRAPH-PTR CK-GRAPH-REG$ idx REG-EXT-AOT-REGION-XT ;
-TRUSTED: CK-GRAPH-LEX-PARAM-CTX ( n n n -- n ) {: off:n ctx:n idx:n :}
+: CK-GRAPH-LEX-PARAM-CTX ( n n n -- n ) {: off:n ctx:n idx:n :}
    off idx CK-LEX-SCOPE-SLOT? IF
       ctx CK-LEX-SCOPE and CK-LEX-SLOT or EXIT THEN
    off idx CK-LEX-REGION-SLOT? IF
@@ -25171,7 +25167,7 @@ defer SOURCE-CON-NAME ( n -- ptr u8 n )
 
 \ The handover: the retained checker certifies the window only up to the
 \ transfer, and from here the window is the sole certifier for its own source.
-TRUSTED: CLAIM-SOURCE-OWNER ( -- )
+: CLAIM-SOURCE-OWNER ( -- )
    DECLARATIONS data-base SOURCE-CELL + 0 ptr-field ! ;
 
 \ Binding a private owner callback is the only raw execution-token boundary.
