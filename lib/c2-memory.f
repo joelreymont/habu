@@ -30,14 +30,25 @@ ndict@ 1- constant LOAN-RUN-ID
 : CHECK-INDEX ( n n -- ) {: idx:n bound:n :}
    idx 0 < idx bound >= or if E-SPAN-RANGE throw then ;
 
-\ Reinterpret the two physical cells only inside this trusted package boundary.
-TRUSTED: READ-UNPACK ( read-view<p,q,u8> -- ptr u8 n ) ;
-TRUSTED: MUT-UNPACK ( mut-view<p,q,a,u8> -- ptr u8 n ) ;
+: CHECK-SLICE ( n n n -- ) {: off:n count:n bound:n :}
+   \ Subtract only after the offset is inside the bound; off + count may wrap.
+   off 0 < count 0 < or off bound > or if E-SPAN-RANGE throw then
+   count bound off - > if E-SPAN-RANGE throw then ;
+
+\ The view representation casts: a view is two cells, base and byte bound.
+\ Only C2-MEM's private section may pack, and every pack below keeps or
+\ narrows the cells it unpacked.
+CAST: READ-UNPACK ( read-view<p,q,u8> -- ptr u8 n )
+ndict@ 1- constant READ-UNPACK-ID
+CAST: MUT-UNPACK ( mut-view<p,q,a,u8> -- ptr u8 n )
+ndict@ 1- constant MUT-UNPACK-ID
+CAST: READ-PACK ( ptr u8 n -- read-view<p,q,u8> )
+ndict@ 1- constant READ-PACK-ID
+CAST: MUT-PACK ( ptr u8 n -- mut-view<p,q,a,u8> )
+ndict@ 1- constant MUT-PACK-ID
 
 TRUSTED: HIDE-REP ( n -- ) int-mark ;
 ndict@ 1- constant HIDE-REP-ID
-ndict@ 4 - HIDE-REP
-ndict@ 3 - HIDE-REP
 
 public
 
@@ -76,29 +87,55 @@ TRUSTED: WITH-RECORDS ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] sto
    base off + extent callback LOAN-RUN 2drop
    base bound ;
 
-\ A view is two cells: base and byte bound. These three narrow trusted bodies
-\ unpack that ABI, check the index before access, and return the same view.
-TRUSTED: BYTE@ ( read-view<p,q,u8> n -- u8 read-view<p,q,u8> )
-   swap READ-UNPACK {: idx:n base:ptr bound:n :}
+\ These three bodies unpack a view's base and byte bound, check the index
+\ before access, and return the view with the cells it came with.
+: BYTE@ ( read-view<p,q,u8> n -- u8 read-view<p,q,u8> )
+   {: idx:n :}
+   dup READ-UNPACK {: base:ptr bound:n :}
    idx bound CHECK-INDEX
-   base idx + c@ base bound ;
+   base idx + c@ swap ;
 
-TRUSTED: MUT-BYTE@ ( mut-view<p,q,a,u8> n -- u8 mut-view<p,q,a,u8> )
+: MUT-BYTE@ ( mut-view<p,q,a,u8> n -- u8 mut-view<p,q,a,u8> )
    swap MUT-UNPACK {: idx:n base:ptr bound:n :}
    idx bound CHECK-INDEX
-   base idx + c@ base bound ;
+   base idx + c@ base bound MUT-PACK ;
 
-TRUSTED: MUT-BYTE! ( mut-view<p,q,a,u8> n u8 -- mut-view<p,q,a,u8> )
+: MUT-BYTE! ( mut-view<p,q,a,u8> n u8 -- mut-view<p,q,a,u8> )
    rot MUT-UNPACK {: idx:n value:u8 base:ptr bound:n :}
    idx bound CHECK-INDEX
    value base idx + c!
-   base bound ;
+   base bound MUT-PACK ;
+
+\ SLICE and PREFIX narrow a view inside its bound; LENGTH and MUT-LENGTH
+\ return the bound without exposing the base.
+: SLICE ( read-view<p,q,u8> n n -- read-view<p,q,u8> )
+   {: off:n count:n :}
+   READ-UNPACK {: base:ptr bound:n :}
+   off count bound CHECK-SLICE
+   base off + count READ-PACK ;
+
+: PREFIX ( mut-view<p,q,a,u8> n -- mut-view<p,q,a,u8> )
+   {: count:n :}
+   MUT-UNPACK {: base:ptr bound:n :}
+   0 count bound CHECK-SLICE
+   base count MUT-PACK ;
+
+: LENGTH ( read-view<p,q,u8> -- n read-view<p,q,u8> )
+   dup READ-UNPACK nip swap ;
+
+: MUT-LENGTH ( mut-view<p,q,a,u8> -- n mut-view<p,q,a,u8> )
+   MUT-UNPACK {: base:ptr bound:n :}
+   bound base bound MUT-PACK ;
 
 private
 HIDE-RUNTIME
 HIDE-RUNTIME-ID HIDE-REP
 ALLOC-RUN-ID HIDE-REP
 LOAN-RUN-ID HIDE-REP
+READ-UNPACK-ID HIDE-REP
+MUT-UNPACK-ID HIDE-REP
+READ-PACK-ID HIDE-REP
+MUT-PACK-ID HIDE-REP
 HIDE-REP-ID HIDE-REP
 
 ;package

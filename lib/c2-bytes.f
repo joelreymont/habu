@@ -2,40 +2,12 @@
 require lib/c2-memory.f
 
 package C2-BYTES
-private
-
-TRUSTED: HIDE ( n -- ) int-mark ;
-ndict@ 1- constant HIDE-ID
-TRUSTED: READ-UNPACK ( read-view<p,q,u8> -- ptr u8 n ) ;
-ndict@ 1- constant READ-UNPACK-ID
-TRUSTED: MUT-UNPACK ( mut-view<p,q,a,u8> -- ptr u8 n ) ;
-ndict@ 1- constant MUT-UNPACK-ID
-
-: CHECK-SLICE ( n n n -- ) {: off:n count:n bound:n :}
-   \ Subtract only after the offset is inside the bound; off + count may wrap.
-   off 0 < count 0 < or off bound > or if E-SPAN-RANGE throw then
-   count bound off - > if E-SPAN-RANGE throw then ;
-
-TRUSTED: C-SLICE ( read-view<p,q,u8> n n -- read-view<p,q,u8> )
-   {: off:n count:n :} READ-UNPACK {: base:ptr bound:n :}
-   off count bound CHECK-SLICE
-   base off + count ;
-ndict@ 1- constant SLICE-ID
-
-TRUSTED: C-PREFIX ( mut-view<p,q,a,u8> n -- mut-view<p,q,a,u8> )
-   {: count:n :} MUT-UNPACK {: base:ptr bound:n :}
-   0 count bound CHECK-SLICE
-   base count ;
-ndict@ 1- constant PREFIX-ID
-
 public
 
 \ A read view is (base, byte bound). Return its bound without exposing base.
-TRUSTED: LENGTH ( read-view<p,q,u8> -- n read-view<p,q,u8> )
-   READ-UNPACK dup -rot ;
+: LENGTH ( read-view<p,q,u8> -- n read-view<p,q,u8> ) C2-MEM:LENGTH ;
 
-TRUSTED: MUT-LENGTH ( mut-view<p,q,a,u8> -- n mut-view<p,q,a,u8> )
-   MUT-UNPACK dup -rot ;
+: MUT-LENGTH ( mut-view<p,q,a,u8> -- n mut-view<p,q,a,u8> ) C2-MEM:MUT-LENGTH ;
 
 : COPY$ ( mut-view<p,q,a,u8> ptr u8 n -- mut-view<p,q,a,u8> n )
    {: source:ptr size:n :}
@@ -45,11 +17,9 @@ TRUSTED: MUT-LENGTH ( mut-view<p,q,a,u8> -- n mut-view<p,q,a,u8> )
    size 0 ?do i source + c@ i swap C2-MEM:MUT-BYTE! loop
    size ;
 
-: SLICE ( read-view<p,q,u8> n n -- read-view<p,q,u8> )
-   C-SLICE ;
+: SLICE ( read-view<p,q,u8> n n -- read-view<p,q,u8> ) C2-MEM:SLICE ;
 
-: PREFIX ( mut-view<p,q,a,u8> n -- mut-view<p,q,a,u8> )
-   C-PREFIX ;
+: PREFIX ( mut-view<p,q,a,u8> n -- mut-view<p,q,a,u8> ) C2-MEM:PREFIX ;
 
 \ A shared source is read synchronously, before its caller resumes or closes
 \ its loan. The destination keeps the same unique authority and byte bound.
@@ -75,12 +45,5 @@ TRUSTED: MUT-LENGTH ( mut-view<p,q,a,u8> -- n mut-view<p,q,a,u8> )
       <> if false unloop exit then
    loop
    true ;
-
-private
-SLICE-ID HIDE
-PREFIX-ID HIDE
-READ-UNPACK-ID HIDE
-MUT-UNPACK-ID HIDE
-HIDE-ID HIDE
 
 ;package

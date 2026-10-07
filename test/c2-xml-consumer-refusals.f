@@ -50,10 +50,9 @@ public
    s" : X-C2-READ-COPY ( read-view<p,q,u8> read-view<x,y,u8> -- read-view<p,q,u8> n ) C2-BYTES:COPY ;" 70 STATUS? TTRUE
    s" a mutable prefix cannot be called through a read view" T-LABEL
    s" : X-C2-READ-PREFIX ( read-view<p,q,u8> -- read-view<p,q,u8> ) 0 C2-BYTES:PREFIX ;" 70 STATUS? TTRUE
-   s" the private slice bridge cannot be called or exported" T-LABEL
-   s" : X-C2-UNPACK ( read-view<p,q,u8> -- ptr u8 n ) C2-BYTES:READ-UNPACK ;" 70 STATUS? TTRUE
-   s" ' C2-BYTES:READ-UNPACK drop" 70 STATUS? TTRUE
-   s" package C2-BYTES public EXPORT READ-UNPACK ;package" 70 STATUS? TTRUE
+   s" the private read pack cannot be called or ticked" T-LABEL
+   s" : X-C2-PACK ( ptr u8 n -- read-view<p,q,u8> ) C2-MEM:READ-PACK ;" 70 STATUS? TTRUE
+   s" ' C2-MEM:READ-PACK drop" 70 STATUS? TTRUE
    s" private XML scalar adapters cannot be reexported" T-LABEL
    s" package XML-C2 public EXPORT C-RAW ;package" 70 STATUS? TTRUE
    T-REPORT
