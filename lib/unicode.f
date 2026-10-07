@@ -25,16 +25,10 @@ private
 : VALID-LENGTH ( n -- )
    0 < if E-UTF8 throw then ;
 
-: NEXT-SCALAR ( ptr u8 n n -- n )
-   UTF8:NEXT MATCH UTF8:scalar-step
-      scalar OF nip ENDOF
-      raw-byte OF 2drop E-UTF8 throw ENDOF
-   ;MATCH ;
-
 : VALID-UTF8 ( ptr u8 n -- )
    {: source:ptr size:n :}
    size VALID-LENGTH
-   0 begin dup size < while source size rot NEXT-SCALAR repeat drop ;
+   source size UTF8:VALID? 0= if E-UTF8 throw then ;
 
 \ The soname this target loads, NUL-terminated for dlopen.
 FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER NAME-BUF

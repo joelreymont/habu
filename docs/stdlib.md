@@ -782,7 +782,8 @@ flag.
 
 ## UTF-8 Scalar
 
-`lib/utf8-scalar.f` provides one reentrant decoder in `package UTF8`.
+`lib/utf8-scalar.f` provides one reentrant decoder in `package UTF8`, and a
+whole-span check built on it.
 `UTF8:NEXT` takes a counted byte span and an explicit absolute cursor. Its
 `UTF8:scalar-step` result has two exhaustive arms: `scalar` carries the valid
 Unicode scalar and next cursor, while `raw-byte` carries the exact lead byte and
@@ -792,6 +793,15 @@ any read. The package owns no mutable cursor, scratch cell, or return buffer.
 
 ```forth
 UTF8:NEXT ( ptr u8 n n -- scalar-step )
+```
+
+`UTF8:VALID?` answers whether a whole counted span is strict canonical UTF-8:
+every step `UTF8:NEXT` takes across it is a `scalar`, and a span with no bytes
+is valid. A negative length is `E-STR-BOUNDS`, as for `NEXT`; malformed bytes
+are data and never throw.
+
+```forth
+UTF8:VALID? ( ptr u8 n -- bool )
 ```
 
 ## UTF-16 Units

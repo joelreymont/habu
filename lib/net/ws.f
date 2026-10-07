@@ -638,17 +638,6 @@ ARM-LOCKS
 
 \ ---- what a frame means ------------------------------------------------------
 
-: UTF8? ( ptr u8 n -- bool ) {: a u:n :}
-   0 begin dup u < while
-      a u rot UTF8:NEXT
-      MATCH UTF8:scalar-step
-         scalar OF nip ENDOF
-         raw-byte OF 2drop false exit ENDOF
-      ;MATCH
-   repeat
-   drop true ;
-
-
 \ The socket closes under this status, which goes to the peer in a close frame,
 \ due STALL-MS after the worker comes for the lock, when this end has not sent
 \ one.
@@ -683,7 +672,7 @@ ARM-LOCKS
    idx F-WIRE @ 0 <> if idx F-WIRE @ idx MSG-WIRE ! then
    idx F-FIN @ 0= if exit then
    idx MSG-WIRE @ TEXT? if
-      idx MESSAGE$ UTF8? 0= if idx STATUS-DATA SHUT exit then
+      idx MESSAGE$ UTF8:VALID? 0= if idx STATUS-DATA SHUT exit then
    then
    1 idx MSG-READY ! ;
 
@@ -719,7 +708,7 @@ ARM-LOCKS
    u CODE-BYTES < if STATUS-PROTOCOL exit then
    idx CONTROL-BUF SPAN:$ drop CODE-BYTES BE@ {: code:n :}
    code WIRE-STATUS? 0= if STATUS-PROTOCOL exit then
-   idx CONTROL-BUF CODE-BYTES u CODE-BYTES - SPAN:SUB SPAN:$ UTF8? 0= if STATUS-DATA exit then
+   idx CONTROL-BUF CODE-BYTES u CODE-BYTES - SPAN:SUB SPAN:$ UTF8:VALID? 0= if STATUS-DATA exit then
    code ;
 
 
@@ -1064,7 +1053,7 @@ public
 \ carries only UTF-8 (section 5.6). E-WS-CLOSED when the socket is not open
 \ to it.
 : SEND-TEXT ( socket ptr u8 n -- ) {: sock a u:n :}
-   a u UTF8? 0= if E-WS-TEXT throw then
+   a u UTF8:VALID? 0= if E-WS-TEXT throw then
    sock SOCKET>N WS-OPCODE:text OPCODE>WIRE a u SEND? 0= if E-WS-CLOSED throw then ;
 
 

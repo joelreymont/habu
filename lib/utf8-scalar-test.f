@@ -1,4 +1,5 @@
-\ utf8-scalar-test.f - direct and property tests for UTF8:NEXT.
+\ utf8-scalar-test.f - direct and property tests for UTF8:NEXT, and the
+\ whole-span check UTF8:VALID? built on it.
 
 require lib/test.f
 require lib/property.f
@@ -286,6 +287,7 @@ variable STATE-B-CURSOR
    [: BAD-NEGATIVE-CURSOR ;] E-STR-BOUNDS TTHROWSQ
    [: BAD-END-CURSOR ;] E-STR-BOUNDS TTHROWSQ
    [: BAD-PAST-CURSOR ;] E-STR-BOUNDS TTHROWSQ
+   [: CASE-BUF 1+ -1 UTF8:VALID? drop ;] E-STR-BOUNDS TTHROWSQ
    CANARIES ;
 
 : CONTINUATION? ( n -- bool )
@@ -436,6 +438,21 @@ variable STATE-B-CURSOR
       CANARIES
    loop ;
 
+\ The span's length bounds the check: the $FF past it is never read.
+: VALID-ACCEPTS ( -- )
+   CASE-BUF 1+ 0 UTF8:VALID? TTRUE
+   $41 $42 $43 $7F PREP4 4 UTF8:VALID? TTRUE
+   $41 $FF 0 0 PREP4 1 UTF8:VALID? TTRUE
+   $C2 $80 $DF $BF PREP4 4 UTF8:VALID? TTRUE
+   CANARIES ;
+
+\ A bad lead, a bad byte after valid scalars, and a span that cuts a scalar.
+: VALID-REFUSES ( -- )
+   $FF 0 0 0 PREP4 1 UTF8:VALID? TFALSE
+   $41 $C2 $80 $FF PREP4 4 UTF8:VALID? TFALSE
+   $E0 $A0 $80 0 PREP4 2 UTF8:VALID? TFALSE
+   CANARIES ;
+
 public
 
 : RUN ( -- )
@@ -443,7 +460,8 @@ public
    WIDTH-BOUNDARIES OVERLONG RAW-REMAINDER LONE-CONTINUATIONS
    TRUNCATIONS FINAL-LEAD BAD-CONTINUATIONS SURROGATES ABOVE-SCALAR-LIMIT
    ADJACENT-CALLS NESTED-CALL
-   INTERLEAVED-STATES CURSOR-BOUNDS PROPERTY-WIDTHS RANDOM-PROPERTY ;
+   INTERLEAVED-STATES CURSOR-BOUNDS PROPERTY-WIDTHS RANDOM-PROPERTY
+   VALID-ACCEPTS VALID-REFUSES ;
 
 ;package
 

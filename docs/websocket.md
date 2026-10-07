@@ -314,7 +314,8 @@ reserve. The connection words' is -9410..-9419 (`E-WS-CONN-FIRST`,
 | `E-WS-WAIT` -9413 | a `RECEIVE` wait below zero, or longer than a readiness poll takes |
 | `E-WS-TEXT` -9414 | `SEND-TEXT` of bytes that are not UTF-8 |
 
-A send of a negative length is the codec's `E-WS-LENGTH`.
+A negative length is `E-STR-BOUNDS` for `SEND-TEXT`, whose UTF-8 check runs
+first, and the codec's `E-WS-LENGTH` for `SEND-BINARY`.
 
 ## Tests
 

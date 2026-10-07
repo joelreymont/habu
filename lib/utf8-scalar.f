@@ -4,6 +4,11 @@
 \ sequence returns SCALAR with its code point and absolute next cursor. Invalid
 \ UTF-8 returns RAW-BYTE with the exact lead byte and cursor+1. Cursor misuse is
 \ a bounds error; malformed input is data and never throws.
+\
+\ VALID? answers whether a whole counted span is strict canonical UTF-8: every
+\ step NEXT takes across it is a SCALAR, and a span with no bytes is valid. A
+\ negative length is E-STR-BOUNDS, as for NEXT; malformed bytes are data and
+\ never throw.
 
 require lib/errors.f
 
@@ -165,5 +170,17 @@ public
 : NEXT ( ptr u8 n n -- scalar-step ) {: source:ptr length:n cursor:n :}
    source length cursor LEAD@ {: lead:n :}
    source cursor + length cursor - cursor lead DECODE-LEAD ;
+
+: VALID? ( ptr u8 n -- bool )
+   {: source:ptr length:n :}
+   length NONNEGATIVE
+   0 begin dup length < while
+      source length rot NEXT
+      MATCH scalar-step
+         scalar OF nip ENDOF
+         raw-byte OF 2drop NO exit ENDOF
+      ;MATCH
+   repeat
+   drop YES ;
 
 ;package
