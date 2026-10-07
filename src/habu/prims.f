@@ -678,7 +678,7 @@ EPPRIM: TIER set-tier PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: ndict@         PE-N PE-OUT EPRIM;
 EPRIM: ndict!         PE-N PE-IN EPRIM;
 EPRIM: seed-ndict!    PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ explicit trusted reset boundary
+ETRUSTED-ONLY!                       \ top-level boundary: no checked body names it
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native pending-record publication
 EPRIM: def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT EPRIM;

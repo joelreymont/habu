@@ -2698,7 +2698,8 @@ private
    done LBL, ;
 
 \ seed-ndict! ( n -- ): lower the count below the live one, rebuild the index
-\ and clear the seal floor, which the native builder's trusted reset opens.
+\ and clear the seal floor; the build rewinds call it from top-level text or
+\ a TRUSTED: body.
 \ A negative count or one that does not lower exits COUNT-RC.
 : SEED-NDICT-BODY ( -- )
    LBL LBL {: lower:label bad:label :}
@@ -2770,7 +2771,7 @@ private
       DEF-CODE-RECLAIM-BODY
       CP-REG RDI ASM-SINK ENC-MOV-RR ;] PRIM
    s" ndict!" [: NDICT-SET-BODY ;] PRIM
-   s" seed-ndict!" [: SEED-NDICT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" seed-ndict!" [: SEED-NDICT-BODY ;] PRIM
    s" ndict-append" [: NDICT-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-occ-select" [: DEF-SELECT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-occ-resolve" [: DEF-RESOLVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;

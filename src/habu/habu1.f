@@ -1451,10 +1451,9 @@ variable LDIE
    done LBL, ;
 
 \ Lower the dictionary and open the namespace as one engine operation. Its
-\ global DNAME-INT record is hidden from interpretation, tick, and BSWL; the
-\ real `( n -- )` checker row admits it only inside an explicit TRUSTED:
-\ boundary. TRUSTED: is authority by design (docs/registry-band.md), and the
-\ native builder keeps this reset inside one named boundary.
+\ `( n -- )` checker row is a top-level boundary: top-level text (evaluated
+\ text included) and TRUSTED: bodies call it, no checked body names it, and the
+\ engine refuses its tick.
 : BSEEDNDICTSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                         \ ( n -- )
    LBL LBL {: lower:label bad:label :}
    A 0 CMPI,  C-LT bad BCOND,
@@ -4246,7 +4245,7 @@ package ENGINE-EMIT
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM   s" ndict!" ['] BNDSET FPRIM
-   s" seed-ndict!" ['] BSEEDNDICTSET ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" seed-ndict!" ['] BSEEDNDICTSET FPRIM
    s" ndict-append" ['] BNDAPPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-occ-select" ['] BDEFSELECT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-occ-resolve" ['] BDEFRESOLVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
