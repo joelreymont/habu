@@ -116,10 +116,12 @@ the ARM host, its source recovery, JIT, or tier 0:
   format, restore, rebase and refusal checks. The synthetic format and
   transfer checks remain in shared AOT rows.
 - `aot-capture-compact`, `aot-named-cells`, `aot-prelude-band`,
-  `aot-payload-graph`, `aot-prefix-literal`, `aot-effect-pool`: these capture
-  live ARM windows or inspect four-byte AArch64 instruction sites. The native
-  named-cell capture, inert signature-pool storage/refusal checks, and saved
-  graph width/publication checks stay shared.
+  `aot-payload-graph`, `aot-prefix-literal`, `aot-effect-pool`: their original
+  rows capture live ARM windows or inspect four-byte AArch64 instruction sites.
+  Shared rows exercise native named-cell capture, checker-produced signature-pool
+  transfer, staging and refusals with an inert code blob, and saved-metadata
+  graph width, publication, corruption, source-authority and acceptance. The
+  live ARM capture and fresh ARM image rows remain ARM-only.
 - `compiler-native-code-span`, `compiler-aot-nested-body`: these inspect the
   ARM compact-blob planner, four-byte record trailers and ADR extent inference.
   Shared create/does and stripped-image rows cover the runtime behavior.

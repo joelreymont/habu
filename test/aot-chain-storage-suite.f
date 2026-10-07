@@ -59,6 +59,7 @@ create ART-BUF FS-PATH-CAP allot   variable ART-U
 
 : PROBE-SIGSTR-STORAGE ( -- )
    s" rows" RUN-SIGSTR 0 ROW-RC s" aot-sigstr-storage: ok" SAID?
+   s" large" RUN-SIGSTR 0 ROW-RC s" aot-sigstr-large: ok" SAID?
    s" reserve-negative" RUN-SIGSTR REFUSE-RC ROW-RC
    s" effect pool exceeds the section byte budget" ERR-SAID?
    s" reserve-overflow" RUN-SIGSTR REFUSE-RC ROW-RC
