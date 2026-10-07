@@ -4,71 +4,27 @@
 require lib/test.f
 require lib/ffi-abi.f
 
+package FFI-ABI-TEST
+private
+
 create FFI-T-OUT 1 cells allot
 create FFI-T-KP-CELL 1 cells allot
+create FFI-T-KP-DST 2 cells allot
 
-\ Local stubs, instruction bytes, and call targets are fixed. Caller data pointers
-\ are constrained by each exact FFI schema and its registered READABLE/WRITABLE
-\ extents. Retirement owner: habu-sweep-trusted-out-f872acb0.
-TRUSTED: FFI-T-STORE-X1 ( -- n ) cp@ {: fn:n :}
-   $F9000001 fn patch32
-   $D65F03C0 fn $4 + patch32
-   fn ;
+\ A kernel-parameter entry is an address handed to C as a cell.
+CAST: FFI-T-CELL-AT ( n -- ptr n )
 
-\ Exact test writer fixes one eight-byte output and one scalar argument.
-TRUSTED: FFI-T-STORE ( ptr a n -- n ) {: out:ptr value:n :}
-   FFI:RESET  out 8 0 FFI:WRITABLE!  value 1 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 2 FFI-T-STORE-X1 ffi-call-bounded ;
-
-\ Fixed two-parameter kernel stub.
-TRUSTED: FFI-T-KPARAM-SUM2 ( -- n ) cp@ {: fn:n :}
-   $F9400009 fn       patch32
-   $F940040A fn $4 +  patch32
-   $F9400129 fn $8 +  patch32
-   $F940014A fn $C +  patch32
-   $8B0A0120 fn $10 + patch32
-   $D65F03C0 fn $14 + patch32
-   fn ;
-
-\ Fixed x8-store stub.
-TRUSTED: FFI-T-X8-STORE ( -- n ) cp@ {: fn:n :}
-   $F9000100 fn patch32
-   $D65F03C0 fn $4 + patch32
-   fn ;
-
-\ Fixed stack-argument store stub.
-TRUSTED: FFI-T-STACK-STORE ( -- n ) cp@ {: fn:n :}
-   $F94003E9 fn patch32
-   $F9000120 fn $4 + patch32
-   $D65F03C0 fn $8 + patch32
-   fn ;
-
-\ Exact mixed-ABI call fixes x8 as an eight-byte output.
-TRUSTED: FFI-T-X8-CALL ( ptr a -- n ) {: out:ptr :}
-   FFI:RESET
-   42 0 FFI:VALUE!
-   out 8 FFI:X8-WRITABLE!
-   FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
-   0 FFI-T-X8-STORE ffi-call-abi-bounded ;
-
-\ Exact mixed-ABI call fixes stack slot zero as an eight-byte output.
-TRUSTED: FFI-T-STACK-CALL ( ptr a -- n ) {: out:ptr :}
-   FFI:RESET
-   77 0 FFI:VALUE!
-   out 8 0 FFI:STACK-WRITABLE!
-   FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
-   1 FFI-T-STACK-STORE ffi-call-abi-bounded ;
-
-\ Exact one-argument read-only kernel-parameter fixture.
-TRUSTED: FFI-T-KPARAM-CALL ( ptr a -- n ) {: params:ptr :}
-   FFI:RESET
-   params 0 FFI:READABLE!
-   FFI:ARGS FFI:REG-LENS 1 FFI-T-KPARAM-SUM2 ffi-call-bounded ;
+\ C writes through a staged cell: strtol stores its end pointer in argument 1,
+\ an eight-byte output. memcpy copies the kernel-parameter block out whole.
+PROCESS-SYMBOLS
+FUNCTION: FFI-T-STRTOL strtol ( ptr u8 ptr u8 n -- n ) 1 8 WRITES-BYTES ;FUNCTION
+FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n ) 0 2 WRITES-ARG ;FUNCTION
 
 : FFI-T-OUT-PARAM ( -- )
+   s\" 42x\z" drop {: num:ptr :}
    0 FFI-T-OUT FFI:OUT!
-   FFI-T-OUT 99 FFI-T-STORE drop
-   FFI-T-OUT FFI:OUT@ 99 T=
+   num FFI-T-OUT BYTE-VIEW 10 FFI-T-STRTOL 42 T=
+   FFI-T-OUT FFI:OUT@ num FFI:>CELL 2 + T=
    [: FFI-T-OUT 0 0 FFI:WRITABLE! ;] E-FFI-ARITY TTHROWSQ ;
 
 : FFI-T-KPARAM-CAP ( -- )
@@ -84,28 +40,32 @@ TRUSTED: FFI-T-KPARAM-CALL ( ptr a -- n ) {: params:ptr :}
    EVALREC-CELL FFI:BUF-OFF <
    EVALREC-CELL FFI:KPARAM-END-OFF >= or TTRUE ;
 
+\ The first entry points at the FFI-owned cell holding 13, the second at the
+\ caller's cell.
 : FFI-T-KPARAMS ( -- )
    FFI:KPARAM-RESET
    13 FFI:KPARAM-VALUE+
    21 FFI-T-KP-CELL FFI:OUT!
    FFI-T-KP-CELL FFI:KPARAM+
    FFI:KPARAM-COUNT 2 T=
-   FFI:KPARAMS drop FFI-T-KPARAM-CALL 34 T=
+   FFI-T-KP-DST BYTE-VIEW FFI:KPARAMS drop BYTE-VIEW 16 FFI-T-MEMCPY drop
+   FFI-T-KP-DST @ FFI-T-CELL-AT @ 13 T=
+   FFI-T-KP-DST 1 cells + @ FFI-T-KP-CELL FFI:>CELL T=
    FFI-T-KPARAM-CAP
    FFI:KPARAM-RESET
    FFI:KPARAM-COUNT 0 T= ;
+
+\ The sret x8 and stack-slot outputs have no C function that writes them on
+\ both ABIs: test/ffi-stub-child.f covers them with fixed stubs, and
+\ lib/ffi-test.f runs that child.
 
 : FFI-ABI-RUN ( -- )
    T-RESET
    FFI-T-EVALREC-DISJOINT
    FFI-T-OUT-PARAM
-   0 FFI-T-OUT FFI:OUT!
-   FFI-T-OUT FFI-T-X8-CALL drop
-   FFI-T-OUT @ 42 T=
-   0 FFI-T-OUT FFI:OUT!
-   FFI-T-OUT FFI-T-STACK-CALL drop
-   FFI-T-OUT @ 77 T=
    FFI-T-KPARAMS
    T-REPORT ;
 
 FFI-ABI-RUN
+
+;package
