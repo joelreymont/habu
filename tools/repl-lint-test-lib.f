@@ -141,7 +141,7 @@ create RLT-ERR RLT-CAP allot
 \ it. The CLI cannot show this: its 32 KiB read buffer sits in the dictionary,
 \ so the byte after a source that fills it is the next buffer's.
 : RLT-TEST-SPAN-END ( -- )
-   STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED {: a:ptr u:n :}
+   STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED {: a:ptr u:n :}
    s" die" {: t:ptr tu:n :}
    u tu - 0 ?do 32 a i + c! loop
    t a u tu - + tu BYTE-COPY
@@ -149,7 +149,7 @@ create RLT-ERR RLT-CAP allot
    RLT-OUT RLT-CAP LINT-OUT-BUFFER!
    s" src/habu/repl.f" a u LINT-REPL-SOURCE
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF {: outu:n :}
-   a u MEM-RELEASE-GUARDED
+   a u MEM:RELEASE-GUARDED
    REPL-BAD @ 1 T=
    RLT-OUT outu RLT-BAD-FINDING$ CONTAINS? TTRUE ;
 

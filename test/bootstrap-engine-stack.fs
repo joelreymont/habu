@@ -21,7 +21,7 @@ require nf.fs
 \ boot, return and loop stacks come from -- so every mapping these programs
 \ run on is its output rather than a library's. Not because the seed cannot
 \ reach the library: it can, and test/bootstrap-wide-memory-src.f bakes
-\ `require lib/memory.f` and MEM-ALLOC-GUARDED into a stage0 program that
+\ `require lib/memory.f` and MEM:ALLOC-GUARDED into a stage0 program that
 \ builds and runs. Leaves the mapped base on the data stack.
 : BES-MKSTACK ( -- )
    STACK-ABI:PAGE-BYTES 10 STACK-GUARD:EMIT-MAP

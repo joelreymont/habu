@@ -257,14 +257,14 @@ variable IDT-DECOY-U
    IDT-HB$ >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
    IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
 
-\ Source for the child that pins PRN?'s read bound. MEM-ALLOC-GUARDED keeps an
+\ Source for the child that pins PRN?'s read bound. MEM:ALLOC-GUARDED keeps an
 \ inaccessible page past the capacity it hands back, so a span that starts on
 \ the last readable byte and declares a whole page of name has exactly one byte
 \ the scan may touch. That byte is not printable, so PRN? has its answer at
 \ once; a scan that keeps going reads the guard page and the child dies on the
 \ fault. Nothing here is timed - the pin is which bytes the scan may touch.
 : IDT-PRN-GUARD-SRC$ ( -- ptr u8 n )
-   S\" require tools/imgdump.f\nrequire lib/memory.f\n: PRN-GUARD ( -- )\n   STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED {: base:ptr cap:n :}\n   1 base cap 1 - BYTE+ c!\n   base cap 1 - BYTE+ cap IMAGE-DUMP:PRN? if s\q imgdump-test: PRN? read past the first non-printable byte\q 70 die then\n   s\q prn-guard ok\q type cr ;\nPRN-GUARD\n" ;
+   S\" require tools/imgdump.f\nrequire lib/memory.f\n: PRN-GUARD ( -- )\n   STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED {: base:ptr cap:n :}\n   1 base cap 1 - BYTE+ c!\n   base cap 1 - BYTE+ cap IMAGE-DUMP:PRN? if s\q imgdump-test: PRN? read past the first non-printable byte\q 70 die then\n   s\q prn-guard ok\q type cr ;\nPRN-GUARD\n" ;
 
 \ hb evaluates stdin only when no --load names a file, so this child compiles
 \ imgdump from the source it is fed rather than through IDT-ARGV-BASE.

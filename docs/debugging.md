@@ -602,7 +602,7 @@ this die", and they are not interchangeable:
   callback ever runs and before any stack switch happens — catchable, not a
   crash. It is a STRUCTURAL test of the extent, not a provenance test: it
   knows nothing about where the extent came from and never asks whether
-  `lib/memory.f` `MEM-ALLOC-GUARDED` made it. It tests six things in a fixed
+  `lib/memory.f` `MEM:ALLOC-GUARDED` made it. It tests six things in a fixed
   order, and the first that fails is the one that decides — base non-zero,
   capacity non-zero, base a whole `STACK-ABI:PAGE-BYTES` multiple, capacity a
   whole `STACK-ABI:PAGE-BYTES` multiple, base + capacity not wrapping, base
@@ -613,7 +613,7 @@ this die", and they are not interchangeable:
   case that means to exercise the region clause has to hand over an address
   that is page-aligned to begin with (`test/stack-guard.f`
   DATA-REGION-REFUSAL uses `data-base` itself). In practice
-  `MEM-ALLOC-GUARDED` is the only thing that returns an extent all six
+  `MEM:ALLOC-GUARDED` is the only thing that returns an extent all six
   clauses accept. Because a guarded mapping only comes in whole-page sizes,
   there is no way to hand run-in-stack a "slightly too small" guarded stack
   any more: a request is either refused up front with `E-STACK-UNGUARDED`, or
@@ -648,7 +648,7 @@ changing a single field of an extent the same fixture shows being accepted, so
 the clause named in the label is the one that decided. `test/engine-stack-wide.f`
 and `test/engine-stack-jit.f` add the capacity boundary of individual
 transfers: each wraps the transfer in a ratchet that grows the stack by one
-cell per recursion level on a `MEM-ALLOC-GUARDED` stack, so the transfer is
+cell per recursion level on a `MEM:ALLOC-GUARDED` stack, so the transfer is
 what fills the stack and, being wider than the ratchet, its own write is what
 first crosses the guard page.
 

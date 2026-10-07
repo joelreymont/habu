@@ -951,10 +951,10 @@ variable REG-I
    s" MINT-BYTE-LEN" s" MINT-INDEX" -1 ASSERT-CMP ;
 
 \ The split words read no byte outside the caller's span. Each span here lies
-\ against an inaccessible page (MEM-ALLOC-GUARDED keeps one on either side), so
+\ against an inaccessible page (MEM:ALLOC-GUARDED keeps one on either side), so
 \ a read past its end or before its start faults instead of answering.
 : TEST-SPLIT-EDGES ( -- )
-   STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED {: a:ptr u:n :}
+   STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED {: a:ptr u:n :}
    s" x yz" {: t:ptr tu:n :}
    t  a u tu - +  tu BYTE-COPY
    a u tu - +  tu SPLIT-WHITESPACE                      \ the last word ends at the edge
@@ -967,7 +967,7 @@ variable REG-I
    a 1 SPLIT-LINES                                      \ an empty first line starts at it
    SN# @ 1 ASSERT=
    0 S@ nip 0 ASSERT=
-   a u MEM-RELEASE-GUARDED ;
+   a u MEM:RELEASE-GUARDED ;
 
 : RUN  ( -- )
    1 TEST-N !

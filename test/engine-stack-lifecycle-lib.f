@@ -10,11 +10,11 @@ require lib/process-env.f
 package STACK-LIFECYCLE-TEST
 
 \ Every VM stack the engine will run on is a guarded mapping (lib/memory.f
-\ MEM-ALLOC-GUARDED): an inaccessible page on each side of the capacity, sized
+\ MEM:ALLOC-GUARDED): an inaccessible page on each side of the capacity, sized
 \ in whole STACK-ABI:PAGE-BYTES multiples. POOL is that mapping, made once and
 \ reused by every in-process case below; POOL-BYTES is its exact capacity.
 PTR-VARIABLE POOL-A
-STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED constant POOL-BYTES POOL-A !
+STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED constant POOL-BYTES POOL-A !
 : POOL ( -- ptr u8 ) POOL-A @ ;
 PTR-VARIABLE SAVED-BASE
 variable SAVED-CAP
@@ -64,7 +64,7 @@ private
    SEEN-CAP @ POOL-BYTES T=
    CALLER-RESTORED
    \ There is no such thing as a zero-capacity guarded mapping any more:
-   \ MEM-ALLOC-GUARDED refuses a size that is not a whole STACK-ABI:PAGE-BYTES
+   \ MEM:ALLOC-GUARDED refuses a size that is not a whole STACK-ABI:PAGE-BYTES
    \ multiple, and run-in-stack's own GUARDED-EXTENT? proof (src/habu/habu1.f)
    \ refuses capacity 0 before the callback ever runs, catchable as
    \ E-STACK-UNGUARDED. The caller's own allocation is therefore never

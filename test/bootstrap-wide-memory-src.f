@@ -277,7 +277,7 @@ variable BWM-GXT
 \ in the source it bakes.
 require lib/memory.f
 PTR-VARIABLE BWM-POOL-A
-STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop BWM-POOL-A !
+STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BWM-POOL-A !
 : BWM-POOL ( -- ptr u8 ) BWM-POOL-A @ ;
 
 : BWM-SWITCHED-STORE ( -- ) BWM-MK2 BWM-STORE2 ;

@@ -21,7 +21,7 @@ package STACK-LIFECYCLE-TEST
 \ `constant BUF` this used to be stopped certifying with the child's `BUF` as a
 \ `ptr u8` (E-RAW-CELL-PTR).
 : GUARDED-BUF ( -- )
-   s" require lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; " SB-APPEND ;
+   s" require lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; " SB-APPEND ;
 
 : PAIR-SOURCE ( -- )
    PAIR-TYPE-SOURCE GUARDED-BUF ;
@@ -64,7 +64,7 @@ package STACK-LIFECYCLE-TEST
 
 : PRIMITIVE-GROUPS ( -- )
    s" a primitive result pair fits on a guarded stack" T-LABEL
-   S\" require lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : COUNTED ( -- ) c\" x\" count 2drop ; : GO ( -- ) ['] COUNTED BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
+   S\" require lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : COUNTED ( -- ) c\" x\" count 2drop ; : GO ( -- ) ['] COUNTED BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
    CHILD-RC 0 T=
    s" count past the capacity faults the data guard page" T-LABEL
    S\" : COUNTED ( -- ) c\" x\" count 2drop ; " s" COUNTED" PLAIN-OVERFLOW
@@ -75,7 +75,7 @@ package STACK-LIFECYCLE-TEST
    \ them long before 64 KB of stack, so this transfer is executed rather than
    \ overflowed.
    s" a primitive multi-result push runs on a guarded stack" T-LABEL
-   s" require lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : PIPES ( -- ) pipe drop close close ; : GO ( -- ) ['] PIPES BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
+   s" require lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : PIPES ( -- ) pipe drop close close ; : GO ( -- ) ['] PIPES BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
    CHILD-RC 0 T= ;
 
 : PAIR-TRANSFERS ( -- )

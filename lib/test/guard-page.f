@@ -3,7 +3,7 @@
 \ A word that must bound a length before it reads the caller's bytes is proved
 \ to by bytes followed by an inaccessible page: claimed one past what the tail
 \ holds, a read that runs before the bound faults, and a bound that runs first
-\ refuses. The page is one MEM-ALLOC-GUARDED keeps between two inaccessible
+\ refuses. The page is one MEM:ALLOC-GUARDED keeps between two inaccessible
 \ ones, mapped once per process and refilled on every call.
 
 require lib/memory.f
@@ -19,7 +19,7 @@ PTR-VARIABLE PAGE-A
 
 : PAGE ( -- ptr u8 )
    PAGE@ 0= if
-      STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop PAGE-A !
+      STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop PAGE-A !
    then
    PAGE@ ;
 

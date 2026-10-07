@@ -304,9 +304,10 @@ FUNCTION: URING-ENTER-CALL syscall ( n n n n n n n -- n )
 \ ---- the module's one address crossing ---------------------------------------
 \ An address the kernel has just mapped for this ring, as the byte pointer of
 \ that mapping - the same crossing lib/memory.f makes for its own mappings with
-\ MEM-MAPPED>PTR. Three calls exist, one per mapping, each right after the mmap
-\ that produced the address, and every later read and write through the three
-\ pointers passes MAP-AT's bound, which is the length io_uring_params reported.
+\ package MEM's private MAPPED>PTR. Three calls exist, one per mapping, each
+\ right after the mmap that produced the address, and every later read and
+\ write through the three pointers passes MAP-AT's bound, which is the length
+\ io_uring_params reported.
 CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 
 \ An offset and a width inside one mapping. Out of bounds is this module's own

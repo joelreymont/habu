@@ -11,9 +11,12 @@ public
 : OCC-SUBJECT ( -- n ) 29 ;
 private
 
+\ The return stack's base cell holds the address the engine mapped; this file's one crossing to a pointer.
+CAST: MAPPED>PTR ( n -- ptr u8 )
+
 \ The live return stack: the mapping the engine published in its base cell.
 : RETURN-STACK ( -- ptr u8 )
-   data-base STACK-ABI:RETURN-BASE-CELL + @ MEM-MAPPED>PTR ;
+   data-base STACK-ABI:RETURN-BASE-CELL + @ MAPPED>PTR ;
 
 \ The bottom slot is free at the top level (depth 0) and the top slot is never
 \ reached by a fixture this shallow. The planted values are the constants

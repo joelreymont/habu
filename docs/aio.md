@@ -216,12 +216,12 @@ Two, both small and both in this module.
 2. **One address crossing.** The submission ring, the completion ring and the
    submission entries are three `mmap`s (`MEM-PROT-RW`, `MEM-MAP-SHARED`, the
    ring fd, at `IORING_OFF_SQ_RING`, `IORING_OFF_CQ_RING` and
-   `IORING_OFF_SQES`). One private `TRUSTED:` word turns each returned address
-   into the `ptr u8` of that mapping, the way `lib/memory.f`'s
-   `MEM-MAPPED>PTR` does for its own. Every later read and write goes through
-   an offset-and-width bound taken from the lengths `io_uring_params` reported,
-   and a violation of that bound is this module's own defect, so it ends the
-   process by name instead of throwing.
+   `IORING_OFF_SQES`). One private `CAST:`, `AIO-MAPPED>PTR`, turns each
+   returned address into the `ptr u8` of that mapping, the way package MEM's
+   private `MAPPED>PTR` does for its own. Every later read and write goes
+   through an offset-and-width bound taken from the lengths `io_uring_params`
+   reported, and a violation of that bound is this module's own defect, so it
+   ends the process by name instead of throwing.
 
 Everything else - the SQE and CQE fields, the ring indexes, the record table,
 the group rows - is ordinary checked Habu over `lib/le.f`'s little-endian byte

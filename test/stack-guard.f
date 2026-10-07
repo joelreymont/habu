@@ -83,7 +83,7 @@ create LIT-SRC LIT-SRC-CAP allot
    ['] EMPTY POOL 0 run-in-stack ;
 
 \ One cell over a whole number of pages: a guarded mapping is only ever sized
-\ in whole PAGE-BYTES (MEM-ALLOC-GUARDED throws E-MEM-SIZE otherwise), so a
+\ in whole PAGE-BYTES (MEM:ALLOC-GUARDED throws E-MEM-SIZE otherwise), so a
 \ capacity like this names bytes no guard page stands behind.
 : PARTIAL-PAGE-CAPACITY-REFUSAL ( -- )
    ['] EMPTY POOL POOL-BYTES 8 + run-in-stack ;

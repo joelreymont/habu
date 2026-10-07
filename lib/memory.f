@@ -81,58 +81,6 @@ $1012 constant MEM-MAP-PRIVATE-ANON-FIXED   \ the engine's mmap treats $10 as MA
 : MEM-ALLOC-64K ( -- ptr u8 n )
    1 MEM-ALLOC-64K-BUFFERS ;
 
-\ The address a raw `mmap` returned, as the byte pointer of the mapping this
-\ word just made; the only place in this file a bare address becomes a pointer.
-TRUSTED: MEM-MAPPED>PTR ( n -- ptr u8 ) ;
-
-\ ---- guarded VM stacks -------------------------------------------------------
-\ A stack the engine may run on (run-in-stack, a task's data, return and loop
-\ stacks) is a mapping with an inaccessible page on each side: a push past its
-\ capacity or a read below its base faults, and the engine's crash handler
-\ names the stack (src/habu/crash.f). This is the only way to make such a
-\ stack: run-in-stack refuses any other extent (E-STACK-UNGUARDED), because a
-\ heap buffer has nothing beyond it to stop an overflow. The layout is the one
-\ src/habu/rt.f STACK-GUARD:EMIT-MAP gives the boot stacks: the whole span is
-\ mapped inaccessible first, then the capacity is remapped read/write at a
-\ STACK-ABI:PAGE-BYTES boundary inside it, so the pages on both sides stay
-\ inaccessible whatever granule the kernel returned.
-: MEM-GUARDED-SPAN-BYTES ( n -- n ) {: cap:n :}
-   cap STACK-ABI:PAGE-BYTES 3 * + ;
-
-: MEM-GUARDED-BASE ( n n -- n ) {: span:n cap:n :}
-   span STACK-ABI:PAGE-BYTES 2 * + 1 - STACK-ABI:PAGE-BYTES negate and ;
-
-: MEM-UNMAP-SLIVER ( n n -- ) {: at:n bytes:n :}
-   bytes 0 = if exit then
-   at MEM-MAPPED>PTR bytes munmap 0 <> if E-MEM-UNMAP throw then ;
-
-\ The kernel hands back a span on its own granule, so the page-aligned base
-\ lands up to one page into it. The head and tail slivers outside
-\ [base - PAGE, base + cap + PAGE) are unmapped right away, so the extent that
-\ stays mapped is exactly the two guard pages around the capacity and the
-\ release below can unmap exactly that: a release computed from the span
-\ instead reached past the span's end into whatever the kernel mapped next
-\ (a task's DATA region, found by test/address-cell-tasks.f, 2026-09-16).
-: MEM-ALLOC-GUARDED ( n -- ptr u8 n ) {: cap:n :}
-   cap STACK-ABI:PAGE-BYTES mod 0 <> if E-MEM-SIZE throw then
-   cap MEM-GUARDED-SPAN-BYTES {: span-bytes:n :}
-   MEM-ADDR-ANY span-bytes MEM-PROT-NONE MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap {: span:n :}
-   span 0 < if E-MEM-MAP throw then
-   span cap MEM-GUARDED-BASE {: base:n :}
-   base STACK-ABI:PAGE-BYTES - {: lo:n :}
-   base cap + STACK-ABI:PAGE-BYTES + {: hi:n :}
-   span lo span - MEM-UNMAP-SLIVER
-   hi span span-bytes + hi - MEM-UNMAP-SLIVER
-   base cap MEM-PROT-RW MEM-MAP-PRIVATE-ANON-FIXED MEM-ANON-FD MEM-OFF-ZERO mmap base <> if
-      E-MEM-MAP throw
-   then
-   base MEM-MAPPED>PTR cap ;
-
-\ Release a guarded stack: exactly the extent MEM-ALLOC-GUARDED kept, the
-\ capacity and its two guard pages.
-: MEM-RELEASE-GUARDED ( ptr u8 n -- ) {: base:ptr cap:n :}
-   base STACK-ABI:PAGE-BYTES - cap STACK-ABI:PAGE-BYTES 2 * + munmap 0 <> if E-MEM-UNMAP throw then ;
-
 \ ---- package-first typed allocation surface -----------------------------------
 \
 \ The raw MEM-ALLOC-* words above enforce positivity at RUNTIME on interchangeable
@@ -369,4 +317,61 @@ public
    WB-BUFFERS#base BYTE-VIEW claim execute
    WB-LENGTHS#base BYTE-VIEW claim execute
    WB-DEPTH BYTE-VIEW claim execute ;
+
+private
+
+\ ---- guarded VM stacks -------------------------------------------------------
+\ A stack the engine may run on (run-in-stack, a task's data, return and loop
+\ stacks) is a mapping with an inaccessible page on each side: a push past its
+\ capacity or a read below its base faults, and the engine's crash handler
+\ names the stack (src/habu/crash.f). This is the only way to make such a
+\ stack: run-in-stack refuses any other extent (E-STACK-UNGUARDED), because a
+\ heap buffer has nothing beyond it to stop an overflow. The layout is the one
+\ src/habu/rt.f STACK-GUARD:EMIT-MAP gives the boot stacks: the whole span is
+\ mapped inaccessible first, then the capacity is remapped read/write at a
+\ STACK-ABI:PAGE-BYTES boundary inside it, so the pages on both sides stay
+\ inaccessible whatever granule the kernel returned.
+
+\ The address a raw mmap returned, as the byte pointer of the mapping the
+\ word below just made; the only place in this file a bare address becomes a pointer.
+CAST: MAPPED>PTR ( n -- ptr u8 )
+
+: GUARDED-SPAN-BYTES ( n -- n ) {: cap:n :}
+   cap STACK-ABI:PAGE-BYTES 3 * + ;
+
+: GUARDED-BASE ( n n -- n ) {: span:n cap:n :}
+   span STACK-ABI:PAGE-BYTES 2 * + 1 - STACK-ABI:PAGE-BYTES negate and ;
+
+: UNMAP-SLIVER ( n n -- ) {: at:n bytes:n :}
+   bytes 0 = if exit then
+   at MAPPED>PTR bytes munmap 0 <> if E-MEM-UNMAP throw then ;
+
+public
+
+\ The kernel hands back a span on its own granule, so the page-aligned base
+\ lands up to one page into it. The head and tail slivers outside
+\ [base - PAGE, base + cap + PAGE) are unmapped right away, so the extent that
+\ stays mapped is exactly the two guard pages around the capacity and the
+\ release below can unmap exactly that: a release computed from the span
+\ instead reached past the span's end into whatever the kernel mapped next
+\ (a task's DATA region, found by test/address-cell-tasks.f, 2026-09-16).
+: ALLOC-GUARDED ( n -- ptr u8 n ) {: cap:n :}
+   cap STACK-ABI:PAGE-BYTES mod 0 <> if E-MEM-SIZE throw then
+   cap GUARDED-SPAN-BYTES {: span-bytes:n :}
+   MEM-ADDR-ANY span-bytes MEM-PROT-NONE MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap {: span:n :}
+   span 0 < if E-MEM-MAP throw then
+   span cap GUARDED-BASE {: base:n :}
+   base STACK-ABI:PAGE-BYTES - {: lo:n :}
+   base cap + STACK-ABI:PAGE-BYTES + {: hi:n :}
+   span lo span - UNMAP-SLIVER
+   hi span span-bytes + hi - UNMAP-SLIVER
+   base cap MEM-PROT-RW MEM-MAP-PRIVATE-ANON-FIXED MEM-ANON-FD MEM-OFF-ZERO mmap base <> if
+      E-MEM-MAP throw
+   then
+   base MAPPED>PTR cap ;
+
+\ Release a guarded stack: exactly the extent ALLOC-GUARDED kept, the
+\ capacity and its two guard pages.
+: RELEASE-GUARDED ( ptr u8 n -- ) {: base:ptr cap:n :}
+   base STACK-ABI:PAGE-BYTES - cap STACK-ABI:PAGE-BYTES 2 * + munmap 0 <> if E-MEM-UNMAP throw then ;
 ;package

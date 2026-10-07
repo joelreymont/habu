@@ -205,7 +205,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 
 \ An uncaught throw from inside run-in-stack reaches the tty REPL while the
 \ callback's guarded allocation is active -- run-in-stack now refuses anything
-\ that is not a real guarded mapping (lib/memory.f MEM-ALLOC-GUARDED), so
+\ that is not a real guarded mapping (lib/memory.f MEM:ALLOC-GUARDED), so
 \ TTY-POOL is one, and TTY-RAISE's throw still escapes uncaught from inside it.
 \ Recovery must reinstate the REPL's own allocation, not merely the prompt,
 \ and `depth` is the value that says so: src/habu/habu1.f BDEPTH subtracts the
@@ -224,7 +224,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 \ line one byte over that loses its tail silently -- the definitions after the
 \ cut are simply never made and the case fails on E-UNDEFINED much later.
 : STACK-DEFS$ ( -- ptr u8 n )
-   s" require lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED constant TTY-POOL-CAP POOL-A ! : TTY-POOL ( -- ptr u8 ) POOL-A @ ; : TTY-RAISE ( -- ) 7 throw ; : TTY-CROSS ( -- ) ['] TTY-RAISE TTY-POOL TTY-POOL-CAP run-in-stack ;" ;
+   s" require lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED constant TTY-POOL-CAP POOL-A ! : TTY-POOL ( -- ptr u8 ) POOL-A @ ; : TTY-RAISE ( -- ) 7 throw ; : TTY-CROSS ( -- ) ['] TTY-RAISE TTY-POOL TTY-POOL-CAP run-in-stack ;" ;
 
 : TTY-STACK-RECOVERS ( -- )
    BUF-CLEAR

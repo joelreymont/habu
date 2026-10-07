@@ -7,7 +7,7 @@
 \ persistent cell holds an address the linking process mapped.
 \
 \ WHY THE KERNEL AND NOT A REGISTRY. `mmap` is reached from lib/memory.f
-\ (MEM-MMAP-RC, MEM-ALLOC-GUARDED), lib/vector.f, lib/aio.f,
+\ (MEM-MMAP-RC, MEM:ALLOC-GUARDED), lib/vector.f, lib/aio.f,
 \ src/compiler/native/string.f, src/os/image-bytes.f, src/arch/arm64/icode.f and
 \ more, and a foreign allocator linked into the process calls the primitive
 \ without passing any of them. A registry kept by one library would answer for

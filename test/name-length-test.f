@@ -62,7 +62,7 @@ create ERR ERR-CAP allot
 TEXT-CAP 1 + STACK-ABI:PAGE-BYTES / 1 + STACK-ABI:PAGE-BYTES * constant ROOM
 PTR-VARIABLE NAMES
 : NAMES! ( -- )
-   ROOM MEM-ALLOC-GUARDED drop {: p:ptr :}
+   ROOM MEM:ALLOC-GUARDED drop {: p:ptr :}
    ROOM 0 ?do 113 p i + c! loop
    p NAMES ! ;
 NAMES!
@@ -83,7 +83,7 @@ variable LEN
 \ The text the next case hands its word: LEN bytes ending at the guard page,
 \ `head` and then spaces, or for a length no span has, two spaces.
 PTR-VARIABLE TEXTS
-: TEXTS! ( -- ) ROOM MEM-ALLOC-GUARDED drop TEXTS ! ;
+: TEXTS! ( -- ) ROOM MEM:ALLOC-GUARDED drop TEXTS ! ;
 TEXTS!
 : TEXT ( ptr u8 n -- ptr u8 n )
    {: h:ptr hu:n :}
