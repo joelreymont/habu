@@ -5581,9 +5581,9 @@ TFAM-MEMBERS-INSTALL
    extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ genuinely narrower than declared: add-only lowering cannot remove the surplus (until signed pass-2, dot habu-construct-asymmetric-growth-0f4df0fa)
 
 \ MATCH only ever sees a TAGGED family: TFAM-MATCH-FAM and TFL-MATCH-FAM? both reject a
-\ non-SUM/ENUM family (MD-FAM-KIND) before any arm is recorded, and a STRUCTURE UNMAKE
-\ takes a separate field-projection path, not this one. So the tag cell is always present
-\ here and `rt T-WIDTH 1 -` needs no kind guard.
+\ non-SUM/ENUM family (MD-FAM-KIND) before any arm is recorded, and a product's UNMAKE is
+\ the reversed construct step, which records no pad fact: only SUM/ENUM MATCH reaches this
+\ word. So the tag cell is always present here and `rt T-WIDTH 1 -` needs no kind guard.
 \
 \ THE SAME WALK ANSWERS BOTH CONSUMERS, WHICH IS WHY THE PAD COUNT IS LATCHED
 \ HERE AND NOT COMPUTED A SECOND TIME. Pass 2 needs the DIFFERENCE from the
@@ -5658,7 +5658,9 @@ private
 \ var effect cannot absorb a direct logical-layout argument. Reverse the resolved
 \ word symbol to its variant; if CONSTRUCT-DECL-LAYOUT finds an eligible declared
 \ output, apply the bidirectionally seeded step and report handled. Otherwise
-\ report unhandled so DO-TOK runs the ordinary word call.
+\ report unhandled so DO-TOK runs the ordinary word call. A product's UNMAKE row
+\ never takes the construct step: TFAM-UNMAKE-STEP? runs it backwards, seeded from
+\ the value it takes apart.
 
 public
 
@@ -5670,10 +5672,33 @@ public
 
 private
 
+\ A product's two generated rows are make then unmake, the order sumtype.f
+\ TDECL-PROD-PLAN generates their words in.
+: TFAM-UNMAKE-ROW? ( n n -- bool ) {: fam:n vid:n :}
+   fam TFAM-PRODUCT? 0= IF RES-FALSE EXIT THEN
+   vid fam TFAM-VAR-START@ 1 + = ;
+
+\ The construct step with its rows exchanged: the family value over the seeded
+\ args is the input and the instantiated fields are the output, over one base
+\ row. An open seeded term stays staged fail-closed, as it does for MAKE.
+: TFAM-UNMAKE-STEP? ( n n -- bool )
+   {: fam:n vid:n :}
+   fam UNMAKE-SEED-LAYOUT 0= IF drop RES-FALSE EXIT THEN
+   {: dt:n :}
+   dt TFC-ARGS!
+   fam TFC-FAM-TERM {: famterm:n :}
+   FRESH MK-ROW {: base:n :}
+   vid base TFC-PAY-ROW {: dout:n :}
+   famterm base PUSH-LOGICAL {: din:n :}
+   din dout RECORDED-STEP
+   dt TYPE-REP-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN
+   RES-TRUE ;
+
 : TFAM-CTOR-STEP? ( n -- bool ) {: sym:n :}
    sym SUMV-FROM-CTOR-SYM 0= IF drop RES-FALSE EXIT THEN
    {: vid:n :}
    vid SUMV-FAM@ {: fam:n :}
+   fam vid TFAM-UNMAKE-ROW? IF fam vid TFAM-UNMAKE-STEP? EXIT THEN
    fam CONSTRUCT-DECL-LAYOUT nip 0= IF RES-FALSE EXIT THEN
    fam vid TFC-CONSTRUCT-STEP-VID
    RES-TRUE ;

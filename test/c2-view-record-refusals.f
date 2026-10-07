@@ -46,8 +46,6 @@ public
    s" STRUCTURE c2mixelement 3 FIELD source read-view<a,b,c> FIELD extra read-view<c,b,u8> ;STRUCTURE" 70 STATUS? TTRUE
    s" a phantom element cannot become an owning field" T-LABEL
    s" STRUCTURE c2ownstype 3 FIELD source read-view<a,b,c> FIELD value c ;STRUCTURE" 70 STATUS? TTRUE
-   s" a wide value cannot bind a constructor cell" T-LABEL
-   s" STRUCTURE c2vowner 1 FIELD payload a ;STRUCTURE : C2V-WIDE-OWNER ( c2vowner<c2vpair> -- c2vpair ) C2VOWNER:UNMAKE ;" 70 STATUS? TTRUE
    s" a raw pointer cannot hide a borrowed field" T-LABEL
    s" STRUCTURE c2ptrview 2 FIELD source ptr read-view<a,b,u8> ;STRUCTURE" 70 STATUS? TTRUE
    s" a parametric field cannot recursively name its owner" T-LABEL

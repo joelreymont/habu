@@ -852,11 +852,15 @@ public
 \ pending-constructor window — a product bundle IS its field cells in slot
 \ order (no tag, docs §18), so construction and destructure are physical
 \ no-ops and the declared sigs are checker-owned metadata truth. Parametric
-\ products publish both words: MAKE's open result and UNMAKE's open input
-\ expand/absorb at concrete sites through the LOGHID row coercion (U-ROW,
-\ checker.f), and linear instantiations stay fail-closed at the sig/arg-bind
-\ layers. The rows are registered here (preverify parity); dictionary words
-\ are generated only by the engine PRODUCT definer below. MATCH and
+\ products publish both words. Each is an ordinary stored-effect call unless the
+\ instantiation has a layout argument (checker.f SEED-TERM?): one wider than a
+\ cell, or a direct layout-family argument of a closed non-linear instantiation,
+\ one cell wide included (onebox<oneleaf>). There MAKE takes the construct step
+\ seeded from the declared output and UNMAKE the same step reversed, seeded from
+\ the value it takes apart, its live input (checker.f CTOR-STEP-XT,
+\ type-family.f TFAM-UNMAKE-STEP?). Linear instantiations stay fail-closed at
+\ the sig/arg-bind layers. The rows are registered here (preverify parity);
+\ dictionary words are generated only by the engine PRODUCT definer below. MATCH and
 \ `construct` stay kind-gated to sum/enum, so product rows are never matchable
 \ variants and private products have no construction surface (fail-closed).
 

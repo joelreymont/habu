@@ -668,40 +668,40 @@ s" LOWER-WIDTH-ASYM-FAILCLOSED" type cr
 \ accept/reject a widest-variant discriminator gave. Families use string-eval so the derived
 \ accessors resolve at global scope; the runtime value/width check lives in package XPAD-TAGLESS.
 \ ---------------------------------------------------------------------------
-\ (a) POSITIVE: a parametric STRUCTURE widens with its argument and certifies (extra is now 0,
-\ not the old spurious -1 — if the reject still fired, XPGWIDE would read 0). A COMPILED
-\ generated constructor at the wide instantiation lowers to an exact bundle: XPGW-RT builds it
-\ through XPG:MAKE, and TWX-XPG-CHECK reads the bundle's cells top->bottom (z=3, b=2, a=1) and
-\ asserts each value in declaration order. The three value checks prove content and order; the
-\ 5551 canary below the build, asserted equal afterward, proves the leaf consumed EXACTLY the
-\ bundle (a wrong width or mis-sized consume shifts it) — value+canary parity is the
-\ content-and-width proof. A checked MAKE->UNMAKE value round-trip (the SCOUTR precedent,
-\ structure-certify-suite.f:118-136) is NOT expressible for a GENERIC family at a wide
-\ instantiation, so this trusted read is the only runtime proof: SCOUTR is a CONCRETE (arity-0)
-\ structure whose wide field is fixed, so its MAKE/UNMAKE effects are concrete and the wide
-\ UNMAKE lowers through the arity-0 hidden-field expansion. xpg is GENERIC (arity 1):
-\ structure-make.f generates make(row 0) and unmake(row 1) over the same open-param field
-\ schema, a FIXED one-cell-per-param stored effect. Construct has an arg-aware escape —
-\ layout-cap slice 3 (checker.f CTOR-STEP-XT) routes a generated ctor whose declared OUTPUT
-\ instantiates the param at a multi-cell arg through the width-aware construct step, so the
-\ OUTPUT-annotated wide XPG:MAKE certifies. UNMAKE has NO such escape: its stored effect is fixed
-\ at one cell per open parameter, and no arg-aware lane instantiates it wide, so `XPG:UNMAKE` on
-\ a concrete `xpg<xpginr>` rejects at the widened field slot — an independent generic-wide UNMAKE
-\ checker gap owned by campaign habu-campaign-c3-the-a2477c89. Hence the trusted leaf
-\ TWX-XPG-CHECK reads the cells directly.
+\ (a) POSITIVE: a parametric STRUCTURE widens with its argument. At the wide instantiation
+\ XPG:MAKE certifies through the construct step seeded from the declared output, and XPG:UNMAKE
+\ through the same step run backwards, seeded only from the value it takes apart; a flattened or
+\ mismatched shape, or a quoted UNMAKE with no live input, still fails closed. XPGW-RT runs the
+\ checked MAKE->UNMAKE round trip: the field values read top-down (z=3, b=2, a=1) and the 5551
+\ canary below the bundle prove content, order and width.
 s" STRUCTURE xpginr 0 FIELD a n FIELD b n ;STRUCTURE" TCE-CATCH 0 T=          \ width-2 structure leaf
 s" STRUCTURE xpg 1 FIELD u a FIELD z n ;STRUCTURE" TCE-CATCH 0 T=             \ parametric structure: payload widens with a
 s" XPGWIDE ( xpginr n -- xpg<xpginr> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! -1 T= \ wide instantiation certifies (was rejected before the tagless-arithmetic fix)
 s" XPGFLAT ( n n n -- xpg<xpginr> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! 0 T=      \ flattened (a b z) is not (xpginr z): still fail-closed
 s" XPGCONC ( n n -- xpg<n> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! -1 T=            \ concrete non-widening instantiation certifies
+s" XPGUNW ( xpg<xpginr> -- xpginr n ) XPG:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=  \ wide UNMAKE certifies with the instantiated field types
+s" XPGUNFLAT ( xpg<xpginr> -- n n n ) XPG:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=   \ flattened fields are not (xpginr z): still fail-closed
+s" XPGUNC ( xpg<n> -- n n ) XPG:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=            \ concrete non-widening UNMAKE certifies
+s" XPGUNMIS ( xpginr n -- xpg<xpginr> ) XPG:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=  \ UNMAKE is not typed as MAKE
+s" XPGUNQ ( xpg<xpginr> -- xpginr n ) [: XPG:UNMAKE ;] execute" CHECK-QUIET-CANDIDATE! 0 T=  \ a quotation body has no live input and the declared input is no seed: the stored effect fails closed
+s" XPGUNQBAD ( xpg<xpginr> -- n n n ) [: XPG:UNMAKE ;] execute" CHECK-QUIET-CANDIDATE! 0 T=  \ flattened fields still fail closed through the quotation
+s" XPGMKQ ( xpginr n -- xpg<xpginr> ) [: XPG:MAKE ;] execute" CHECK-QUIET-CANDIDATE! -1 T=     \ a quoted MAKE seeds from the declared output
 package XPAD-TAGLESS
 : XPGW-MK ( xpginr n -- xpg<xpginr> ) XPG:MAKE ;              \ compiled generated STRUCTURE constructor at the wide instantiation
-\ Retirement owner: habu-trusted-dies-prim-4fd12d60.
-TRUSTED: TWX-XPG-CHECK ( xpg<xpginr> -- )                    \ trusted leaf: read the wide bundle's cells top->bottom (z, b, a) and assert their values in declaration order
-   3 T= 2 T= 1 T= ;
-: XPGW-RT ( -- )                                             \ build the certified wide bundle and verify its content + exact width
-   5551 1 2 XPGINR:MAKE 3 XPGW-MK TWX-XPG-CHECK 5551 T= ;
+: XPGW-RT ( -- )                                             \ checked wide round trip: field values top-down, then the canary
+   5551 1 2 XPGINR:MAKE 3 XPGW-MK XPG:UNMAKE 3 T= XPGINR:UNMAKE 2 T= 1 T= 5551 T= ;
 XPGW-RT
+\ The seed is only the live input: after the wide input is dropped, the xpg<n> an ordinary MAKE
+\ leaves has no layout argument, so UNMAKE takes it apart through the stored effect, directly and
+\ through a quotation.
+: XPGW-DROP ( xpg<xpginr> -- n n )
+   drop 7 8 XPG:MAKE XPG:UNMAKE ;
+: XPGW-DROPQ ( xpg<xpginr> -- n n )
+   drop 7 8 XPG:MAKE [: XPG:UNMAKE ;] execute ;
+: XPGW-DROP-RT ( -- )                                        \ each leaves stamp 8 over item 7 over the canary
+   5551 1 2 XPGINR:MAKE 3 XPGW-MK XPGW-DROP 8 T= 7 T= 5551 T=
+   5551 1 2 XPGINR:MAKE 3 XPGW-MK XPGW-DROPQ 8 T= 7 T= 5551 T= ;
+XPGW-DROP-RT
 ;package
 \ (b) NEGATIVE: genuine tagged-sum contradictions that fail closed (candidate 0 / rc 70). Each
 \ is exercised through the REAL generated variant constructor (FAM:VARIANT), proven resolvable
@@ -766,6 +766,10 @@ s" WAPDROP ( wapplied<a> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 \ field projection's width condition.
 s" WAPAT ( ptr wapplied<wleaf> n -- ptr wapplied<wleaf> ) record-at" CHECK-QUIET-CANDIDATE! 0 T=
 s" WAPAT1 ( ptr wapplied<n> n -- ptr wapplied<n> ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
+\ UNMAKE's empty body must give back exactly the bundle's cells: wapplied<wleaf>
+\ is 4 cells and its fields wholder<wleaf> n are 4.
+s" WAPUN ( wapplied<wleaf> -- wholder<wleaf> n ) WAPPLIED:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" WAPUNFLAT ( wapplied<wleaf> -- wleaf n n ) WAPPLIED:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 
 TYPED-VARIABLE WNST-V wnst
 TYPED-VARIABLE WAP-V wapplied<wleaf>
@@ -779,6 +783,10 @@ package NESTED-WIDTH-RT
    WHOLDER:UNMAKE stamp ;
 : WHOLD-MK ( wleaf n -- wholder<wleaf> ) WHOLDER:MAKE ;
 : WAP-MK ( wholder<wleaf> n -- wapplied<wleaf> ) WAPPLIED:MAKE ;
+: WAP-READ ( -- n n n n )                   \ left, right, nested stamp, stamp
+   WAP-V @ WAPPLIED:UNMAKE {: stamp:n :}
+   WHOLDER:UNMAKE {: nstamp:n :}
+   WLEAF:UNMAKE nstamp stamp ;
 public
 : RUN ( -- )
    5551
@@ -789,6 +797,7 @@ public
    depth 6 7 WHOLDER:MAKE 8 WAPPLIED:MAKE WAPN-V ! depth swap - 1 T=   \ wapplied<n> is 3 cells: wholder<n>'s 2 and the stamp
    WAPN-READ 8 T= 7 T= 6 T=
    depth 1 2 WLEAF:MAKE 3 WHOLD-MK 4 WAP-MK WAP-V ! depth swap - 1 T=
+   WAP-READ 4 T= 3 T= 2 T= 1 T=                  \ the typed read gives back all 4 cells, the canary below them
    5551 T= ;
 ;package
 NESTED-WIDTH-RT:RUN
