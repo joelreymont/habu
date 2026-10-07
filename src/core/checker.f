@@ -7337,6 +7337,7 @@ HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
 1 constant EFF-ACTIVE
 2 constant EFF-RECOVERY          \ current-run analysis fact, never a source grant
 3 constant EFF-SEEDED            \ taken from the baked signature pool: the engine's word since boot
+4 constant EFF-UNRESOLVED        \ quiet TRUST changed this binding; no effect content
 
 0 constant EN-CON
 1 constant EN-VAR
@@ -8676,6 +8677,10 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
       1 - E-PTR ER.SYMPREV @
    REPEAT ;
 
+: SYM-EFFECT-UNRESOLVED? ( n -- bool )
+   USIG-NEWEST-VISIBLE dup 0= IF drop RES-FALSE EXIT THEN
+   1 - E-PTR ER.ACTIVE @ EFF-UNRESOLVED = ;
+
 \ ---- navigation: what a use bound ---------------------------------------------
 \ A use is reported at the five places one source occurrence resolves: a body
 \ token (BIND-TOK), a swallowed `[']` or `is` target (IS-TARGET-SYM), a
@@ -8757,7 +8762,13 @@ ON-USE-DEFAULT
    DL-NEW @ {: rec1:n :}
    0 DL-NEW !
    rec1 0= IF EXIT THEN
-   rec1 1 - E-PTR ER.SYMPREV @ {: prev:n :}
+   rec1 1 - E-PTR ER.SYMPREV @
+   BEGIN
+      dup 0 <> IF dup 1 - E-PTR ER.ACTIVE @ EFF-UNRESOLVED =
+      ELSE RES-FALSE THEN
+   WHILE
+      1 - E-PTR ER.SYMPREV @
+   REPEAT {: prev:n :}
    prev 0= IF EXIT THEN
    prev 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF EXIT THEN
    prev CHECKER-REC-DECL-AT {: v:n s:n e:n found:bool :}
@@ -9119,6 +9130,20 @@ variable RECMI   0 RECMI !
    EFF-DELETED r@ E-PTR ER.ACTIVE !
    0 0 0 0 0 0 0 0 E-CONTENT-NEW r@ E-PTR ER.CONTENT !
    r> E-PTR E-REC-FINISH
+   CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
+      0 CHECKER-REC-SYM @ HIDX-EFF!
+      UEND @ HIDX-EFF-DEP+
+   THEN ;
+
+\ Quiet TRUST cannot retain the former effect when its new nominal type may
+\ be made by earlier rendered source. Append only binding status: no guessed
+\ signature. UEND rollback and a later resolved assertion supersede it.
+: E-ADD-UNRESOLVED ( -- )
+   WRITE-WINDOW-CK
+   0 DL-NEW !  0 RECW !  0 RECMI !
+   E-REC-START {: rec:ptr :}
+   EFF-UNRESOLVED rec ER.ACTIVE !
+   rec E-REC-FINISH
    CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
       0 CHECKER-REC-SYM @ HIDX-EFF!
       UEND @ HIDX-EFF-DEP+
@@ -9572,7 +9597,8 @@ variable FMEND
    sym USIG-NEWEST-VISIBLE dup 0= if drop exit then
    1 - E-PTR {: rec:ptr :}
    rec E-NEXT@ FMEND !
-   rec ER.ACTIVE @ 0 <> if rec FEP-SET then ;
+   rec ER.ACTIVE @ dup EFF-DELETED <> swap EFF-UNRESOLVED <> and
+   if rec FEP-SET then ;
 
 : E-INST-COUNTS ( n n -- ) {: tvn:n rvn:n :}
    E-I-AK-RESET
@@ -12944,6 +12970,7 @@ REG-PROTECT
 
 : FIND-SIG-SYM ( n -- bool ) {: sym:n :}
    FEP-CLEAR
+   sym SYM-EFFECT-UNRESOLVED? IF RES-FALSE EXIT THEN
    sym CHECKER-FIND-USIG-SYM drop
    FEP-HIT? IF RES-TRUE EXIT THEN
    sym PRIM-FIRST-SYM
@@ -14111,7 +14138,8 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
 : SBA-CELLS ( n -- n n ) {: sym:n :}
    sym USIG-NEWEST-VISIBLE dup 0= IF drop CELLS-NONE CELLS-NONE EXIT THEN
    1 - {: off:n :}
-   off E-PTR ER.ACTIVE @ EFF-DELETED = IF CELLS-NONE CELLS-NONE EXIT THEN
+   off E-PTR ER.ACTIVE @ dup EFF-DELETED = swap EFF-UNRESOLVED = or
+   IF CELLS-NONE CELLS-NONE EXIT THEN
    off E-PTR E-DIN@ EFF-ROW-CELLS  off E-PTR E-DOUT@ EFF-ROW-CELLS ;
 
 \ The private sym of the package and tail the name would be recorded under, 0
@@ -15451,6 +15479,10 @@ defer CK-AOT-REC-CONTROL ( ptr n -- n bool )
    CHECKER-QBAD-TOK @ 0= IF
       a u sym TOP-BOUND-SYM IF
          dup TOP-CONTROL {: flags:n deferred:bool :}
+         dup SYM-EFFECT-UNRESOLVED? IF
+            drop flags deferred runs TOP-RUNS
+            dup -1 = IF drop 3 THEN EXIT
+         THEN
          dup a u NAV-USE-NOW drop
          flags deferred runs TOP-RUNS EXIT
       THEN drop
@@ -15566,6 +15598,7 @@ get-current prot-wid-add
 \ interpret/tick restrictions on such entries.
 : EFFECT-EXTERNAL-MIN-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   sym SYM-EFFECT-UNRESOLVED? IF -1 EXIT THEN
    sym CHECKER-FIND-USIG-SYM IF
       sym EFFECT-EXTERNAL-SYM? IF FEP @ E-MINI@ EXIT THEN
    THEN
@@ -17231,6 +17264,12 @@ C2-STOW-BORROW-INSTALL
    a u LITERAL-TOK? IF EXIT THEN
    a u TOK-INTRINSIC {: id:n :}
    a u BIND-SOURCE-CALL
+   CUSING @ 0= TOK-SYM @ SYM-EFFECT-UNRESOLVED? and IF
+      TOK-SYM @ PRIM-TRUSTED-SYM? IF
+         C2-STOW-BORROW  -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT
+      THEN
+      -1 UNSEEN !  -1 UNCK !  EXIT
+   THEN
    \ What the call may do at run time is its symbol's, read before an identity
    \ arm takes the token: `create` leaves through DEFINER-TOK and still carries
    \ its axiom (NORET-AXIOMS).
@@ -19863,8 +19902,9 @@ REG-PROTECT
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
    0 DL-NEW !
-   na nu sa su TRUST-USIG! drop
-   DL-AMEND ;
+   na nu sa su TRUST-USIG! IF DL-AMEND EXIT THEN
+   SIG-UNRES @ SGBAD @ 0= and IF E-ADD-UNRESOLVED
+   ELSE SIG-UNRES-CLEAR THEN ;
 
 \ A blank, a byte at or below 32, ends a token (src/habu/habu1.f EMIT-TOK), so
 \ no token spells a name holding one and no definer gives it to a word.
@@ -20717,7 +20757,11 @@ variable IS-PEND-U                   \ and its length
 
 : IS-TOK ( -- )
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
-   IS-TARGET-SYM DFER-FIND-SYM 0= IF IS-FAIL EXIT THEN
+   IS-TARGET-SYM {: sym:n :}
+   sym DFER-FIND-SYM 0= IF IS-FAIL EXIT THEN
+   CUSING @ 0= sym SYM-EFFECT-UNRESOLVED? and IF
+      -1 UNSEEN !  -1 UNCK !  EXIT
+   THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? 0= IF IS-FAIL EXIT THEN
    FEP @ EFF-QUOT IS-APPLY ;
@@ -20814,6 +20858,9 @@ variable IS-PEND-U                   \ and its length
       THEN
       FAILSET @ 0= IF TICK-PIN  -1 CAPREQ ! THEN
       0 OK !  -1 FAILSET !  EXIT
+   THEN
+   CUSING @ 0= sym SYM-EFFECT-UNRESOLVED? and IF
+      TICK-PIN  -1 UNSEEN !  -1 UNCK !  EXIT
    THEN
    FEP-CLEAR
    sym CHECKER-FIND-USIG-SYM drop
@@ -24572,6 +24619,7 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
    CAST-SCOPED? IF
       VIEW-CAST-CERTIFY
       na nu CHECKER-QUALIFIED? IF E-CAST-SCOPE throw THEN
+      SIG-UNRES @ IF E-CHECKER-IDENTITY-UNRESOLVED throw THEN
       sa su na nu CHECKER-USIG-CERT-ROWS EXIT
    THEN
    na nu sa su IDENTITY-ROWS
@@ -25060,7 +25108,8 @@ CHECKER-OWNER-ABI:BINDING-DEFER constant TRANSFER-DEFER
    id USIG-NEWEST {: off:n :}
    off 0= if NULL-PTR NULL-PTR NULL-PTR 0 RES-TRUE exit then
    off 1- E-PTR {: rec:ptr :}
-   rec ER.ACTIVE @ 0= if NULL-PTR NULL-PTR NULL-PTR 0 RES-TRUE exit then
+   rec ER.ACTIVE @ dup EFF-DELETED = swap EFF-UNRESOLVED = or
+   if NULL-PTR NULL-PTR NULL-PTR 0 RES-TRUE exit then
    id CTL-FLAGS-SYM
    id DFER-FIND-SYM if TRANSFER-DEFER or then
    id CTL-MASKS-SYM XFER-PACK {: flags:n :}

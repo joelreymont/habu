@@ -2574,9 +2574,11 @@ CAST: TRUST-ACTION ( n -- [ ptr u8 n -- bool ] )
       DEFER-REPORT @ IF STR-PREV-A @ STR-PREV-U @ REPORT-STRETCH  -1 DEFER-SEEN ! THEN
       EXIT
    THEN
+   QUIET-TYPE-CLEAR
    STR-PREV-A @ STR-PREV-U @
    STR-LAST-A @ STR-LAST-U @
-   TRUST-SIGNATURE ;
+   TRUST-SIGNATURE
+   QUIET-TYPE-REPORT ;
 
 \ ---- parses: rows -----------------------------------------------------------
 \ A ROW BOUNDS WHAT A WORD THAT READS THE SOURCE TAKES: `parses: W n` n raw

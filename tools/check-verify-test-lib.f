@@ -2436,6 +2436,78 @@ $180000 constant LARGE-STDIN-LEN
    s" type-deferred: buffer known bad count stays rejected" T-LABEL
    CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET 0 >= TTRUE ;
 
+\ A reached renderer makes the type at load time. TRUST changes a seen word's
+\ effect, and a view cast depends on that type too: the quiet scan must not
+\ publish an unresolved row or use the old effect to certify the next body.
+\ The complete sources below load-refuse at that next body, exit 70.
+: TYPE-DEFERRED-ROWS ( -- )
+   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\n: CVT-AFTER ( -- n ) CVT-K ;\n"
+   {: src:ptr srcu:n :}
+   s" type-trust-rendered.f" src srcu FIXTURE
+   s" type-deferred: asserted effect changes at load" T-LABEL
+   s" type-trust-rendered.f" AT$ NATIVE-RC 70 T=
+   src srcu TOP-CHECK
+   5 s" type-deferred: asserted effect defers" EXPECT-KIND
+   s" type-deferred: assertion and dependent body" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: assertion type" s" cvt-nom" s" 5" s" 17" TYPE-DEFERRED-PACKET
+   s" type-deferred: old effect is unavailable" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" CVT-K" PACKET s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+
+   s\" require lib/type/deftype.f\npackage CVT-VIEW\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\nCAST: CVT-UNPACK ( read-view<p,q,cvt-nom> -- ptr u8 n )\n: CVT-AFTER ( read-view<p,q,n> -- ptr u8 n ) CVT-UNPACK ;\n;package\n"
+   {: vsrc:ptr vsrcu:n :}
+   s" type-view-rendered.f" vsrc vsrcu FIXTURE
+   s" type-deferred: view element differs at load" T-LABEL
+   s" type-view-rendered.f" AT$ NATIVE-RC 70 T=
+   vsrc vsrcu TOP-CHECK
+   5 s" type-deferred: view cast defers" EXPECT-KIND
+   s" type-deferred: view cast and dependent body" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: unresolved view cast is absent" T-LABEL
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-UNPACK" PACKET 0 < TTRUE
+
+   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom ptr\" TRUST\n" TOP-CHECK
+   1 s" type-deferred: invalid assertion grammar refuses" EXPECT-KIND
+   s" type-deferred: invalid assertion has no extra deferral" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: invalid assertion code" T-LABEL
+   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" code" STRING$ s" E-BAD-STORED-SIGNATURE" T$=
+
+   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\ns\" CVT-K\" s\" -- n\" TRUST\n: CVT-RESTORED ( -- n ) CVT-K ;\n"
+   TOP-CHECK
+   5 s" type-deferred: known assertion restores checking" EXPECT-KIND
+   s" type-deferred: restored assertion has only original warning" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: restored caller is recorded" T-LABEL
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-RESTORED" PACKET 0 >= TTRUE
+
+   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\ns\" CVT-K\" s\" -- n\" TRUST\n: CVT-BAD ( -- bool ) CVT-K ;\n"
+   TOP-CHECK
+   1 s" type-deferred: restored assertion rejects mismatch" EXPECT-KIND
+   s" type-deferred: restored caller mismatch" T-LABEL
+   CHECK:VERIFY-OUT$ s" word" s" cvt-bad" PACKET s" code" STRING$ s" E-MISMATCH" T$=
+
+   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\npackage CVT-OTHER\n: CVT-K ( -- n ) 2 ;\n: CVT-KEPT ( -- n ) CVT-K ;\n;package\n"
+   TOP-CHECK
+   5 s" type-deferred: another binding stays checkable" EXPECT-KIND
+   s" type-deferred: another binding has only original warning" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+
+   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\n: CVT-TICK ( -- [ -- n ] ) ['] CVT-K ;\n' CVT-K drop\n"
+   TOP-CHECK
+   5 s" type-deferred: ticks keep no old effect" EXPECT-KIND
+   s" type-deferred: assertion and both ticks" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+
+   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\ndefer CVT-K ( -- n )\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\n: CVT-SET ( [ -- n ] -- ) is CVT-K ;\n"
+   TOP-CHECK
+   5 s" type-deferred: deferred setter keeps no old effect" EXPECT-KIND
+   s" type-deferred: assertion and deferred setter" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+
+   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-PN ( -- ) parse-name 2drop ;\ns\" CVT-PN\" s\" -- cvt-nom\" TRUST\nCVT-PN : CVT-PAYLOAD ( -- n ) 1 ;\n" TOP-CHECK
+   5 s" type-deferred: parser still owns its operands" EXPECT-KIND
+   s" type-deferred: parser payload is not a declaration" T-LABEL
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-PAYLOAD" PACKET 0 < TTRUE
+
+   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\ns\" patch32\" s\" n n -- cvt-nom\" TRUST\n: CVT-BAD ( n n -- ) patch32 ;\n" TOP-CHECK
+   1 s" type-deferred: trusted-only call still refuses" EXPECT-KIND
+   s" type-deferred: trusted-only call code" T-LABEL
+   CHECK:VERIFY-OUT$ s" word" s" cvt-bad" PACKET s" code" STRING$ s" E-CAP-TRUSTED" T$= ;
+
 : TYPE-LONG-FIELDS ( -- )
    33 0 DO
       s" FIELD f" GEN+
@@ -2463,7 +2535,7 @@ $180000 constant LARGE-STDIN-LEN
 
 : TYPE-DEFERRED ( -- )
    TYPE-DEFERRED-DECLS TYPE-DEFERRED-CONTROLS TYPE-DEFERRED-TRUSTED
-   TYPE-DEFERRED-DIRECT TYPE-DEFERRED-REVIEW TYPE-LONG-LIVE ;
+   TYPE-DEFERRED-DIRECT TYPE-DEFERRED-REVIEW TYPE-DEFERRED-ROWS TYPE-LONG-LIVE ;
 
 
 \ A deferred stretch at TOKEN on LINE at COLUMN.
@@ -2549,7 +2621,7 @@ $180000 constant LARGE-STDIN-LEN
    TOP-CHECK s" top-trust: a called body's loader" s" CVT-TDW" s" 3" s" 4" DEFERRED-ONLY
    s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\n: CVT-TK ( -- n ) 1 ;\ns\" CVT-TK\" s\" -- n\" TRUST\n: CVT-TU ( -- n ) CVT-TK ;\n"
    s" top-trust: a seen word's row" LOADS-CLEAN
-   s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\n: CVT-TK ( -- n ) 1 ;\ns\" CVT-TK\" s\" -- nosuchtype\" TRUST\n: CVT-TU ( -- n ) CVT-TK ;\n"
+   s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\n: CVT-TK ( -- n ) 1 ;\ns\" CVT-TK\" s\" -- ptr\" TRUST\n: CVT-TU ( -- n ) CVT-TK ;\n"
    TOP-CHECK
    1 s" top-trust: a seen word's bad row" EXPECT-KIND
    s" top-trust: a seen word's bad row, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
