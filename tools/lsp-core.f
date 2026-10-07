@@ -16,6 +16,11 @@
 \ first when context.includeDeclaration is true (tools/lsp-references.f),
 \ -32803 when it refuses, and a window/showMessage warning naming the files
 \ it could not cover sent just before an answer that leaves any out,
+\ textDocument/prepareRename with the range a rename of the declaration the
+\ position selects would edit in the token there, its tail after any
+\ qualifier's colon (tools/lsp-rename.f), null when it selects none and
+\ -32803 when the selection refuses or a token selecting the declaration
+\ does not spell its tail,
 \ textDocument/hover with what the token at the position declares or binds to
 \ (tools/lsp-hover.f), as Markdown when the client's initialize listed it in
 \ textDocument.hover.contentFormat, else as plain text,
@@ -40,8 +45,8 @@
 \ to come: reading it waits for the rest. A running server answers a request
 \ -32800, doing none of its work, when a $/cancelRequest naming its id was read
 \ behind it, an id that is a string by its decoded text and a number by its
-\ JSON text, and it answers textDocument/definition, references, hover,
-\ documentHighlight, semanticTokens/full, completion, documentSymbol or
+\ JSON text, and it answers textDocument/definition, references, prepareRename,
+\ hover, documentHighlight, semanticTokens/full, completion, documentSymbol or
 \ documentLink -32801 when a textDocument/didChange of its document was, since
 \ the request asked about the text that change replaces.
 \ textDocument/references, whose work is a check of each file it gathers
@@ -74,13 +79,13 @@
 \ while another check ran are all applied before it, and the versions
 \ published for a document only rise.
 \ A request about a document waiting for a check, textDocument/definition,
-\ textDocument/references, textDocument/hover, textDocument/documentHighlight,
-\ textDocument/semanticTokens/full, textDocument/documentSymbol or
-\ textDocument/documentLink, is the exception: it checks that document first,
-\ as its turn, and is answered from that check, which takes the text the
-\ client asked about, since LSP orders a request after the changes sent
-\ before it. textDocument/references checks each open document it gathers
-\ uses from the same way when it waits for a check.
+\ textDocument/references, textDocument/prepareRename, textDocument/hover,
+\ textDocument/documentHighlight, textDocument/semanticTokens/full,
+\ textDocument/documentSymbol or textDocument/documentLink, is the exception:
+\ it checks that document first, as its turn, and is answered from that check,
+\ which takes the text the client asked about, since LSP orders a request
+\ after the changes sent before it. textDocument/references checks each open
+\ document it gathers uses from the same way when it waits for a check.
 \ textDocument/completion checks its document as its turn whether it waits or
 \ not, with a cursor at the position, and is answered from that check: the
 \ spellings it offers belong to that cursor. Closing a document publishes an
@@ -132,6 +137,7 @@ require tools/lsp-completion.f
 require tools/lsp-links.f
 require tools/lsp-workspace.f
 require tools/lsp-references.f
+require tools/lsp-rename.f
 
 package LSP
 using SPAN
@@ -147,7 +153,7 @@ public
 -9400 constant E-LSP-FIRST
 -9401 constant E-LSP-LAST
 -9400 constant E-LSP-PARAMS    \ a notification's params lack a member the server reads, or hold one of another kind
--9401 constant E-LSP-NOT-OPEN  \ a change, close, definition, references, hover, highlight, semantic tokens, completion, document symbols or links of a document not open
+-9401 constant E-LSP-NOT-OPEN  \ a change, close, definition, references, prepareRename, hover, highlight, semantic tokens, completion, document symbols or links of a document not open
 
 -32002 constant NOT-INITIALIZED          \ LSP's ServerNotInitialized
 -32800 constant REQUEST-CANCELLED        \ LSP's RequestCancelled
@@ -255,6 +261,9 @@ variable FAULT                            \ and the throw a read of it took, 0 w
          s" completionProvider" KEY OBJECT-START OBJECT-END COMMA
          s" definitionProvider" true FIELD-BOOL COMMA
          s" referencesProvider" true FIELD-BOOL COMMA
+         s" renameProvider" KEY OBJECT-START
+            s" prepareProvider" true FIELD-BOOL
+         OBJECT-END COMMA
          s" hoverProvider" true FIELD-BOOL COMMA
          s" documentHighlightProvider" true FIELD-BOOL COMMA
          s" documentSymbolProvider" true FIELD-BOOL COMMA
@@ -803,6 +812,26 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    LSP-REFERENCES:UNCOVERED? if WRITER LSP-REFERENCES:WARNING END SENT then
    WRITER i RESULT LSP-REFERENCES:ANSWER END SENT ;
 
+\ The range a rename of the declaration at params.position in the open
+\ document params.textDocument names would edit there, as
+\ tools/lsp-rename.f states: null when the position selects none, and
+\ -32803 when the selection is refused or a token selecting the declaration
+\ does not spell its tail.
+: PREPARE-RENAME ( JSON-RPC:id ptr u8 n -- )
+   {: i p:ptr pu:n :}
+   i p pu AT-READ? 0= if exit then
+   AT-SLOT @ AT-BYTE @ LSP-REFERENCES:PLACE
+   LSP-REFERENCES:REFUSED? if
+      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
+      exit
+   then
+   LSP-REFERENCES:FOUND? 0= if i REPLY-NULL exit then
+   LSP-REFERENCES:SPELT? 0= if
+      i REQUEST-FAILED LSP-REFERENCES:UNSPELT$ REPLY-ERROR
+      exit
+   then
+   WRITER i RESULT AT-SLOT @ AT-BYTE @ LSP-RENAME:PREPARED END SENT ;
+
 \ The spellings that would bind at params.position in the open document
 \ params.textDocument names: the document checked now, as its turn, with its
 \ cursor at that byte of its text, and answered from that check.
@@ -925,6 +954,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    m mu s" textDocument/documentSymbol" NAMED? if i p pu DOCUMENT-SYMBOLS exit then
    m mu s" textDocument/definition" NAMED? if i p pu DEFINITION exit then
    m mu s" textDocument/references" NAMED? if i p pu REFERENCES exit then
+   m mu s" textDocument/prepareRename" NAMED? if i p pu PREPARE-RENAME exit then
    m mu s" textDocument/hover" NAMED? if i p pu HOVER exit then
    m mu s" textDocument/documentHighlight" NAMED? if i p pu HIGHLIGHT exit then
    m mu s" textDocument/semanticTokens/full" NAMED? if i p pu SEMANTIC-TOKENS exit then

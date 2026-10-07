@@ -22,8 +22,9 @@
 \ Lifecycle
 \ - initialize answers other than its capabilities: positions in utf-16, open
 \   and close notifications, Full sync, workspace and document symbols,
-\   references, document highlights, document links without resolve, full
-\   semantic tokens with their legend, the name habu ................ lifecycle
+\   references, rename with its prepare step, document highlights, document
+\   links without resolve, full semantic tokens with their legend, the name
+\   habu ............................................................. lifecycle
 \ - shutdown answers other than a null result; exit after it exits other than
 \   0 or writes to stderr ............................................ lifecycle
 \ - a reply held until more input comes, or the end of input .. answers-at-once
@@ -426,6 +427,18 @@
 \   once its gather returns or throws, in the test's own process, since no
 \   conversation can make a gather throw .................. references-probe
 \
+\ Rename
+\ - a use at its first character or its last, a qualified use asked on its
+\   qualifier, or the token declaring a word qualified into another wordlist
+\   (Q:Y), in an open document whose check was verified, not answered with
+\   the range of the token's tail, the bytes after its qualifier's colon,
+\   which a rename edits; whitespace answered other than null
+\   ............................................................ rename-prepare
+\ - a use of a DEFTYPE converter, whose declaring token spells the type and
+\   not the converter, or a use in a document whose check was refused,
+\   answered other than -32803 naming the file; a document not open answered
+\   other than -32602 .......................................... rename-prepare
+\
 \ Cancellation
 \ - a request with a cancel of it read behind it answered other than -32800,
 \   or its work done: two completions and a cancel of the first publish
@@ -517,10 +530,10 @@ using BUF
 \ at 866 and the references conversations at 565 to 1369. CHECKED-MS is about
 \ six times completion's 1482 ms, and no larger. The one bounds 27 runs (the
 \ 24 conversations CONVERSE runs, answers-at-once, stdout-closed and
-\ TEST-EXIT-TIMEOUT's child) and the other 105 conversations. A server that
+\ TEST-EXIT-TIMEOUT's child) and the other 107 conversations. A server that
 \ blocks spends none of the row's CPU budget (test/suite-budget.f CPU-MS), so
-\ all 132 could reach their bounds, each failing by name, within 1161 s (27
-\ times 8 s and 105 times 9 s), inside the row's hang guard (ROW-MS, 1860 s).
+\ all 134 could reach their bounds, each failing by name, within 1179 s (27
+\ times 8 s and 107 times 9 s), inside the row's hang guard (ROW-MS, 1860 s).
 \ One that spins to its bound spends that much of the budget's 360 s, so at
 \ most 40 such held runs, or 45 at CONVERSATION-MS, fail by name before the
 \ budget ends the row.
@@ -940,6 +953,7 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    s\" \"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}," MSG+
    s\" \"completionProvider\":{},\"definitionProvider\":true," MSG+
    s\" \"referencesProvider\":true," MSG+
+   s\" \"renameProvider\":{\"prepareProvider\":true}," MSG+
    s\" \"hoverProvider\":true,\"documentHighlightProvider\":true," MSG+
    s\" \"documentSymbolProvider\":true," MSG+
    s\" \"documentLinkProvider\":{}," MSG+
@@ -4978,6 +4992,72 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" references-named" [: REFS-NAMED-TURNS ;] TALK
    REFS-PROBE ;
 
+\ ---- rename ------------------------------------------------------------------
+
+\ textDocument/prepareRename, by its id's JSON text, at character C of line L
+\ of the document opened from this path.
+: PREPARE-ASK ( ptr u8 n ptr u8 n n n -- )
+   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+   s" textDocument/prepareRename" i iu p pu l c AT-ASK ;
+
+\ The next frame answers the request with this id's JSON text with the Range
+\ from character C1 to C2 of line L.
+: RANGED ( ptr u8 n n n n -- )
+   {: i:ptr iu:n l:n c1:n c2:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"result\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c1 INT$ MSG+
+   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
+\ rn-prep.f: ROOK, public in RNP, used twice there and qualified outside it in
+\ Q:Y, which defines Y into the wordlist Q, used in RU.
+: RN-PREP-PATH ( -- ptr u8 n )  s" rn-prep.f" FIXTURE ;
+: TEXT-RN-PREP ( -- ptr u8 n )
+   s\" package RNP\npublic\n: ROOK ( -- n ) 1 ;\n: TWO ( -- n ) ROOK ROOK + ;\n;package\n: Q:Y ( -- n ) RNP:ROOK ;\n: RU ( -- n ) Q:Y 1 + ;\n" ;
+
+\ ROOK's use at its first character and at its last, Q:Y's declaring token
+\ and RNP:ROOK asked on its qualifier, each answered with the range of the
+\ tail a rename edits; the space before the use null. A use of the converter
+\ >CVT-T, whose declaring token CVT-T does not spell it, -32803 naming
+\ hover-cvt.f; a use in hu.f, whose check was refused, -32803 naming it;
+\ ref-a.f, never opened, -32602.
+: RENAME-PREPARE-TURNS ( -- )
+   INITIALIZE
+   RN-PREP-PATH TEXT-RN-PREP 1 OPENS
+   HOVER-CVT-PATH TEXT-HOVER-CVT 1 OPENS
+   HU-PATH TEXT-HU 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RN-PREP RN-PREP-PATH 1 s" verified" LISTED
+   TEXT-HOVER-CVT HOVER-CVT-PATH 1 s" verified" LISTED
+   TEXT-HU HU-PATH CHECKS
+   HU-PATH s" refused" COMPLETED
+   HU-PATH 1 EXPECT 1 16 1 22 1 s" E-MISMATCH" DIAG+ PUBLISHES
+   s" 3" RN-PREP-PATH 3 15 PREPARE-ASK
+   s" 4" RN-PREP-PATH 3 18 PREPARE-ASK
+   s" 5" RN-PREP-PATH 5 2 PREPARE-ASK
+   s" 6" RN-PREP-PATH 5 15 PREPARE-ASK
+   s" 7" RN-PREP-PATH 3 14 PREPARE-ASK
+   s" 8" HOVER-CVT-PATH 4 20 PREPARE-ASK
+   s" 9" HU-PATH 1 16 PREPARE-ASK
+   s" 10" REF-A-PATH 1 15 PREPARE-ASK
+   SAY
+   s" 3" 3 15 19 RANGED
+   s" 4" 3 15 19 RANGED
+   s" 5" 5 4 5 RANGED
+   s" 6" 5 19 23 RANGED
+   HEAR s" 7" NULL-RESULT
+   s" 8" HOVER-CVT-PATH FAILED
+   s" 9" s" hu.f" CANON FAILED
+   HEAR s" 10" -32602 REFUSED ;
+
+: TEST-RENAMES ( -- )
+   s" rename-prepare" [: RENAME-PREPARE-TURNS ;] TALK ;
+
 \ ---- cancellation ------------------------------------------------------------
 
 \ A cancel of the request with this id's JSON text.
@@ -5438,6 +5518,7 @@ public
    TEST-LINKS
    WORKSPACE-REACHING
    TEST-REFERENCES
+   TEST-RENAMES
    TEST-CANCELS
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;

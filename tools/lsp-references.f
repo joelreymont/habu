@@ -48,6 +48,19 @@
 \ without a whole identity, or one of the word in another visit or while it
 \ declares the word there in none.
 \
+\ PLACE selects as SELECT does and places the declaration, finding no
+\ subjects: textDocument/prepareRename answers from it. TAIL-FROM gives where
+\ the declaration's tail starts in a token: at the token's start when the
+\ token spells the tail, letters compared without case as Habu compares
+\ names; else, when the token is qualified as the checker reads a name, by
+\ one colon neither its first byte nor its last, after that colon when the
+\ bytes after it spell the tail; else nowhere. Each location keeps where its
+\ tail starts, the bytes a rename edits. SPELT? holds while the use at the
+\ byte that selected the declaration and every location placed spell the
+\ tail, and UNSPELT$ says why, from the declaration, when one does not: a
+\ DEFTYPE declares its two converters at its name's token, which spells
+\ neither.
+\
 \ STORAGE CLASS. PROCESS-GLOBAL: the request being answered belongs to the
 \ server's one task, and SELECT starts each one afresh.
 
@@ -76,14 +89,16 @@ private
 2 constant WARNING-TYPE                  \ MessageType.Warning
 
 \ A location: its URI's offset and length in POOL, then the line and
-\ character it starts at and those it ends at.
+\ character it starts at, those it ends at and those its tail starts at.
 0 constant L-URI
 1 constant L-URI-U
 2 constant L-LINE
 3 constant L-CHAR
 4 constant L-END-LINE
 5 constant L-END-CHAR
-6 constant LOC-CELLS
+6 constant L-TAIL-LINE
+7 constant L-TAIL-CHAR
+8 constant LOC-CELLS
 
 \ A file named: its path's and its reason's offsets and lengths in POOL.
 0 constant M-PATH
@@ -101,12 +116,15 @@ variable MISS-N
 DYNAMIC-BUFFER MSG u8                    \ and why it is refused, or its warning
 variable MSG-U
 TYPED-VARIABLE FOUND bool                \ whether a declaration is selected,
-TYPED-VARIABLE REFUSED bool              \ whether the request is refused
+TYPED-VARIABLE REFUSED bool              \ whether the request is refused,
+TYPED-VARIABLE SPELT bool                \ and whether its tokens spell the tail
 variable G                               \ the declaration: D's check's group for P,
 variable P-AT                            \ P's path in POOL,
 variable P-U
 variable TS                              \ the bytes its token starts and ends at there,
 variable TE
+variable TOK-AT                          \ the token's text, once placed, in POOL,
+variable TOK-U
 variable NAME-AT                         \ its tail,
 variable NAME-U
 variable PKG-AT                          \ package
@@ -183,7 +201,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
    0 MSG-U !
    1 MSG-RESERVE
    false FOUND !
-   false REFUSED ! ;
+   false REFUSED !
+   true SPELT ! ;
 
 \ The request refused for this fact about the file at this path.
 : REFUSE ( ptr u8 n ptr u8 n -- )
@@ -221,15 +240,49 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
    a u POOL+ URI-AT !
    u URI-U ! ;
 
+\ The bytes from byte FROM to byte TO of the text positions count in, held to
+\ it as LSP-TEXT:LINE-CHARACTER holds an offset, and the byte they start at.
+: SPAN-IN ( n n -- ptr u8 n n )
+   {: from:n to:n :}
+   LSP-TEXT:TEXT$ {: t:ptr tu:n :}
+   from 0 max tu min {: a:n :}
+   to a max tu min {: b:n :}
+   t a + b a - a ;
+
+public
+
+\ Where the selected declaration's tail starts in the token from byte FROM to
+\ byte TO of the text positions count in: at the token's start when it spells
+\ the tail, letters compared without case as Habu compares names; else,
+\ when the token is qualified as CHECKER-QUALIFIED? reads a name, by one
+\ colon neither its first byte nor its last, after that colon when the bytes
+\ after it spell the tail; else -1. SPLIT-NEXT gives the byte after the
+\ colon it finds, else one past the token's end.
+: TAIL-FROM ( n n -- n )
+   SPAN-IN {: w:ptr wu:n a:n :}
+   w wu NAME$ STR=CI if a exit then
+   w wu [char] : 0 SPLIT-NEXT drop nip nip
+   {: at:n :}
+   w wu [char] : at SPLIT-NEXT drop nip nip
+   {: at2:n :}
+   at 1 >  at wu < and  at2 wu > and 0= if -1 exit then
+   w at + wu at - NAME$ STR=CI if a at + else -1 then ;
+
+private
+
 \ A location at URI-AT from byte FROM to byte TO of the text positions count
-\ in.
+\ in, and where the declaration's tail starts in it, its start when it spells
+\ none, which clears SPELT.
 : LOC+ ( n n -- )
    {: from:n to:n :}
+   from to TAIL-FROM {: tail:n :}
+   tail 0 < if false SPELT ! then
    LOC-N @ {: k:n :}
    k 1+ LOC-CELLS * LOCS-RESERVE
    URI-AT @ k L-URI LOC!
    URI-U @ k L-URI-U LOC!
    from LSP-TEXT:LINE-CHARACTER k L-CHAR LOC! k L-LINE LOC!
+   tail from max LSP-TEXT:LINE-CHARACTER k L-TAIL-CHAR LOC! k L-TAIL-LINE LOC!
    to from max LSP-TEXT:LINE-CHARACTER k L-END-CHAR LOC! k L-END-LINE LOC!
    k 1+ LOC-N ! ;
 
@@ -299,11 +352,13 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
    true FOUND ! ;
 
 \ The declaration use U of D's check, in this slot, is bound to; refused
-\ when the use's line states no whole identity.
+\ when the use's line states no whole identity. A use that does not spell
+\ the declaration's tail in D's text clears SPELT.
 : AT-USE ( n n -- )
    {: slot:n u:n :}
    u USE-VISIT 0 < if slot DOC-CANON$ s" the use has no declaration identity" REFUSE exit then
-   u FROM-USE ;
+   u FROM-USE
+   u USE-BYTES TAIL-FROM 0 < if false SPELT ! then ;
 
 : HOLDS? ( n n n -- bool )
    {: from:n to:n at:n :}
@@ -398,12 +453,15 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
       none OF P$ LSP-TEXT:FILE-TEXT! ENDOF
    ;MATCH ;
 
-\ The declaration's location, first, while P's text has the digest D's check
-\ read.
+\ The declaration's location, first, and its token's text, while P's text has
+\ the digest D's check read.
 : DECLARATION ( -- )
    P-TEXT!
    LSP-TEXT:TEXT$ DIGEST$ H$ STR= 0= if P$ s" changed since it was checked" REFUSE exit then
    P$ DEP-URI$ URI!
+   TS @ TE @ SPAN-IN drop {: a:ptr u:n :}
+   a u POOL+ TOK-AT !
+   u TOK-U !
    TS @ TE @ LOC+ ;
 
 \ ---- the subjects ---------------------------------------------------------------
@@ -519,21 +577,54 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
    then
    0 SRC SRC-U @ CUR$ [: ON-DISK ;] LSP-CHECK:USES ;
 
+\ The declaration at this byte of the text of D, in this slot, selected, and
+\ placed when TOO holds.
+: LOCATED ( n n bool -- )
+   {: slot:n at:n too:bool :}
+   FRESH
+   slot at LOCATE
+   FOUND @ too and if DECLARATION then ;
+
 public
+
+\ Selects the declaration at this byte of the text of the open document in
+\ this slot, which positions count in, and places it; or refuses the request.
+: PLACE ( n n -- )  true LOCATED ;
 
 \ Selects the declaration at this byte of the text of the open document in
 \ this slot, which positions count in, places it when the request includes
 \ it, and finds the subjects; or refuses the request.
 : SELECT ( n n bool -- )
    {: slot:n at:n too:bool :}
-   FRESH
-   slot at LOCATE
-   FOUND @ too and if DECLARATION then
+   slot at too LOCATED
    FOUND @ if slot SUBJECTS! then ;
 
 \ Whether the request is refused, and why.
 : REFUSED? ( -- bool )  REFUSED @ ;
 : BLOCKED$ ( -- ptr u8 n )  MSG$ ;
+
+\ Whether a declaration is selected, and the bytes its token starts and ends
+\ at in P's text.
+: FOUND? ( -- bool )  FOUND @ ;
+: TOKEN ( -- n n )  TS @ TE @ ;
+
+\ Whether the use that selected the declaration and every location placed
+\ spell its tail.
+: SPELT? ( -- bool )  SPELT @ ;
+
+\ Why a token does not spell the tail, said of the declaration once placed,
+\ the first location: its file, the line and text of its token, and its tail.
+: UNSPELT$ ( -- ptr u8 n )
+   0 MSG-U !
+   P$ SHOWN$ MSG+
+   s" : the token " MSG+
+   TOK-AT @ TOK-U @ POOL$ MSG+
+   s"  at line " MSG+
+   SB-RESET 0 L-LINE LOC@ 1+ FMT:SB-INT SB$ MSG+
+   s"  declares " MSG+
+   NAME$ MSG+
+   s" , but a token naming it does not spell it" MSG+
+   MSG$ ;
 
 \ How many subjects the request gathers from: none unless it selected a
 \ declaration, since only then did it walk.
