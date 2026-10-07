@@ -348,17 +348,19 @@ them, so the packets it made before are kept and the record is the last, and
 The walk reads every literal loader form of a file as a load, a superset of
 what the run loads. The composition loads what the engine loads:
 
-- A string loader in a definition, `s" PATH" included` or `required`, loads
-  when the word runs, and the check runs none: the composition resolves no
-  path and reads no file for it, so one that is not there, that defines a word
-  again, that only a target test reaches, or whose path is empty or would
-  resolve past 1024 bytes refuses nothing, and the words it defines are not
-  there for the definitions after it. `include` and `require` in a definition
-  are immediate and load while it compiles, so their files are read there, and
-  a missing one is `E-MISSING-SOURCE` at the loader word.
-- `provided` records a path as loaded and opens no file: a path no file is at
-  refuses nothing. A path no literal gives, or one over 1024 bytes, is still
-  `E-LOADER-FORM`.
+- A runtime string loader in a definition, `included`, `required` or
+  `provided`, is checked as an ordinary call. Its path may come from a local
+  or `SCRIPT-ARGV$`; the composition does not run the word or read its file.
+  A missing file, duplicate definition in it, or path beyond 1024 bytes
+  therefore refuses nothing, and the words it might define are unavailable
+  to later definitions. A wrong argument effect is a checker refusal at the
+  call. Source discovery for ordinary checks still requires literal loader
+  forms in bodies when it walks their closure. `include` and `require` in a
+  definition are immediate and load while it compiles, so their files are
+  read there, and a missing one is `E-MISSING-SOURCE` at the loader word.
+- At top level, `provided` records a path as loaded and opens no file: a path
+  no file is at refuses nothing. A path no literal gives, or one over 1024
+  bytes, is still `E-LOADER-FORM`.
 - `script-required` resolves its path from the working directory and reads its
   file as the other loaders do: a path no literal gives is `E-LOADER-FORM`,
   and a file that is not there `E-MISSING-SOURCE`, at the loader word.

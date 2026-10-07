@@ -667,13 +667,14 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
    a u WRAP-BRACKET-TOK? or ;
 
 \ ---- a quiet composition ------------------------------------------------------
-\ A quiet composition (SOURCE-COMPOSE-QUIET-IN-SCOPE) refuses the loader forms
-\ discovery refuses (tools/source-discovery.f), where it refuses them, so that
-\ walk need not run before it: a loader whose path is no literal
-\ (E-DISC-DYNAMIC), a literal no loader takes (E-DISC-OPENER), a path past
-\ PATH-CAP (E-DISC-CAPACITY), a declaration of a loader's name (E-DISC-SHADOW)
-\ and a retirement of one, or of a word it cannot read (E-DISC-RETIRE). A
-\ refusal stands at TOKEN-BYTE@, FAULT-LEN bytes long, unless the file being
+\ A quiet composition (SOURCE-COMPOSE-QUIET-IN-SCOPE) refuses top-level
+\ loader forms discovery refuses (tools/source-discovery.f), where it meets
+\ them, so that walk need not run first: a path that is no literal
+\ (E-DISC-DYNAMIC), a literal no loader takes (E-DISC-OPENER), or a path past
+\ PATH-CAP (E-DISC-CAPACITY). It also refuses a declaration of a loader's name
+\ (E-DISC-SHADOW) and a retirement of one, or of a word it cannot read
+\ (E-DISC-RETIRE). A refusal stands at TOKEN-BYTE@, FAULT-LEN bytes long,
+\ unless the file being
 \ scanned is lenient (LENIENT-FILE?): such a file keeps the form, and a loader
 \ it would refuse loads nothing.
 : LENIENT? ( -- bool )
@@ -735,19 +736,19 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
 \ targets' files define the same words. A source cannot define a predicate's
 \ spelling (tools/reserved-name-lint-core.f reserves it), so the answer is the
 \ engine's. The path is the literal right before the loader word, the bytes the
-\ engine's literal makes of it (BODY-LIT!); any other loader form in a body is
-\ refused by discovery (tools/source-discovery.f) or by a quiet composition. An
-\ entry keeps a copy of its path: a decoded one lives only until the decode
-\ after next, and the release comes after later bodies, top-level statements
-\ and nested files have decoded theirs. A file's entries sit above its
+\ engine's literal makes of it (BODY-LIT!); discovery may require that form
+\ when walking a closure, while a quiet composition leaves runtime loaders
+\ to the ordinary effect checker. An entry keeps a copy of its path: a
+\ decoded one lives only until the next decode, and the release comes after
+\ later bodies, top-level statements and nested files have decoded theirs. A file's entries sit above its
 \ loader's, and their paths go with them. The entries grow with the loads
 \ waiting at once.
 \
 \ A quiet composition loads none of these: a word's run is no part of the
-\ check, so its string loaders, called or not, are only refused where
-\ discovery refuses them (QUIET-BODY). What it loads from a body is what the
-\ engine loads while it compiles one: `include` and `require` are immediate
-\ (src/core/include.f), so the file each names in a body waits here as a
+\ check, so the ordinary effect checker judges its runtime loader calls.
+\ What it loads from a body is what the engine loads while it compiles one:
+\ `include` and `require` are immediate (src/core/include.f), so the file
+\ each names in a body waits here as a
 \ string loader's does in an ordinary composition, and a fault loading it
 \ stands at that loader word (IMM-OPERAND, CLAIMED-LOAD).
 DYNAMIC-BUFFER PEND-PATH u8                   \ the waiting loads' paths, end to end
@@ -848,20 +849,10 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    BODY-DEAD @ 1 - BODY-DEAD !
    BODY-DEAD @ 0= IF BODY-ARMS @ 1 - BODY-ARMS ! THEN ;
 
-\ A body token a quiet composition refuses where discovery refuses it, by the
-\ literal before it, in any arm and whether the body runs or not: a string
-\ loader word, whose file it never loads, and `UNDEFINE-IF-DEFINED`.
-: QUIET-BODY ( ptr u8 n -- ) {: a:ptr u:n :}
-   QUIET @ 0= IF EXIT THEN
-   a u s" included" STR=CI  a u s" required" STR=CI or  a u s" provided" STR=CI or IF
-      BODY-LIT-KIND @ BODY-LIT-U @ u LITERAL-LOAD? drop EXIT
-   THEN
-   a u BODY-LIT-KIND @ BODY-LIT-A @ BODY-LIT-U @ QUIET-RETIRE ;
-
 \ A body token that is no string literal: a loader word right after one, on a
 \ straight line, waits while an ordinary composition reads the source.
 : BODY-TOKEN-SEEN ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u QUIET-BODY
+   a u BODY-LIT-KIND @ BODY-LIT-A @ BODY-LIT-U @ QUIET-RETIRE
    BODY-DEAD @ 0 > IF a u DEAD-TOKEN BODY-PREV-CLEAR EXIT THEN
    BODY-BENT @ 0= IF a u ARM-TOKEN? IF BODY-PREV-CLEAR EXIT THEN THEN
    a u WRAP-CTL-TOK? IF 1 BODY-BENT ! THEN

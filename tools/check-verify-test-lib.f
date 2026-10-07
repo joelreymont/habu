@@ -37,8 +37,8 @@
 \   a closure that cannot be followed reads as verified, or is no packet at
 \   the form that stops it                          missing-dependency, loader-form
 \   a loader call in a body, which runs only when the body does, reads its
-\   file, is refused for it or defines its words for the definitions after
-\   it; a form no run could follow verifies                              body-uncalled
+\   file, is refused for its path or defines its words for definitions after
+\   it; a valid dynamic form is refused before effect checking             body-uncalled
 \   an immediate loader in a body leaves its file unread                  body-immediate
 \   a loader word's name stored, deferred, exported or defined as a word
 \   verifies, or is refused for another reason; a package or using name
@@ -891,9 +891,8 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ A loader call in a body loads when the body runs, and the verifier runs
 \ none: the file is not read, so one that is not there, one that defines a word
 \ again or one behind a target test refuses nothing, and the words it defines
-\ are not there for the definitions after the body. A form no run could follow
-\ is refused where it is: a path no literal gives, one a string opener other
-\ than s" gives, one past the 1024 bytes a loader word takes.
+\ are not there for the definitions after the body. The ordinary checker
+\ judges a dynamic argument and rejects an invalid stack effect.
 : BODY-UNCALLED ( -- )
    s\" : CVT-BODY-MISSING ( -- ) s\" nosuch.f\" included ;\n" s" body-missing.f" VERIFIED
    s" dupdep.f" s\" : CVT-DUPW ( -- n ) 1 ;\n" FIXTURE
@@ -910,15 +909,23 @@ CK-USE-MAX 1 + constant OVER-USINGS
    CHECK:VERIFY-FILES$ s" file" s" files-inc.f" AT$ PACKET 0 < TTRUE
    s" body-uncalled: the top level's is" T-LABEL
    CHECK:VERIFY-FILES$ s" file" s" dep.f" AT$ PACKET 0 >= TTRUE
-   s\" : CVT-DYN ( ptr u8 n -- ) included ;\n" s" body-dyn.f"
-   s" included" s" 1" s" 27" DYNAMIC$ LOADER-REFUSED
-   s\" : CVT-OPENER ( -- ) c\" x.f\" included ;\n" s" body-opener.f"
-   s" included" s" 1" s" 29" OPENER$ LOADER-REFUSED
+   s\" : CVT-ARGV-LOAD ( -- ) 0 SCRIPT-ARGV$ included ;\n" s" body-argv.f" VERIFIED
+   s\" : CVT-ENTRY ( ptr u8 n -- ) {: entry:ptr eu:n :} entry eu included ;\n"
+   s" body-entry.f" VERIFIED
+   s\" : CVT-DYN ( ptr u8 n -- ) included ;\n" s" body-dyn.f" VERIFIED
+   s\" : CVT-DYN-REQ ( ptr u8 n -- ) required ;\n" s" body-dyn-req.f" VERIFIED
+   s\" : CVT-DYN-PROV ( ptr u8 n -- ) provided ;\n" s" body-dyn-prov.f" VERIFIED
+   s\" : CVT-BAD ( -- ) 0 included ;\n" s" body-bad.f" GUARD-MS CHECK-AS
+   1 s" body-uncalled: invalid effect refused" EXPECT-KIND
+   s" body-uncalled: effect at included" s" E-INPUT-UNDERFLOW" s" included" s" 1" s" 20" AT-TOKEN
+   s\" : CVT-OPENER ( -- ) c\" x.f\" included ;\n" s" body-opener.f" GUARD-MS CHECK-AS
+   1 s" body-uncalled: counted string effect refused" EXPECT-KIND
+   s" body-uncalled: effect at counted string" s" E-MISMATCH" s" included" s" 1" s" 29" AT-TOKEN
    0 GEN-U !
    s\" : CVT-LONG ( -- ) s\" " GEN+
    1025 0 ?do s" a" GEN+ loop
    s\" \" included ;\n" GEN+
-   0 GEN GEN-U @ s" body-long.f" s" included" s" 1" s" 1049" CAPACITY$ LOADER-REFUSED ;
+   0 GEN GEN-U @ s" body-long.f" VERIFIED ;
 
 
 \ include and require in a body are immediate: they load while the body
