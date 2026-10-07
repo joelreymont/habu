@@ -2,6 +2,7 @@
 1 set-tier
 require lib/test.f
 require src/habu/layout.f
+require src/habu/sites.f
 
 package AOT-SEEDED-ADDRESS-TEST
 private
@@ -9,18 +10,18 @@ private
 variable FRESH-FIELD
 get-current constant FIELD-WL
 
-: MARKED? ( n -- bool ) {: off:n :}
-   data-base SNAP-RELOC:ADDRMAP-OFF + off 5 rshift + BYTE-VIEW c@
-   off 2 rshift 7 and rshift 1 and 0<> ;
+variable ADDR-SITES
+
+: COUNT-ADDR ( n n -- )
+   SNAP-RELOC:SITE-ADDR = if 1 ADDR-SITES +! then drop ;
 
 \ The address chain need not be the word's first instruction - what the field
 \ word emits ahead of it is the emitter's business - so the site is looked for
 \ anywhere in the word's own code.
-: SITE-MARKED? ( n n -- bool ) {: off:n len:n :}
-   off begin dup off len + < while
-      dup MARKED? if drop true exit then
-      CODE-SPAN:INSN-BYTES +
-   repeat drop false ;
+: SITE-MARKED? ( n n -- bool )
+   0 ADDR-SITES !
+   [: COUNT-ADDR ;] SITES:EACH-IN-SPAN
+   ADDR-SITES @ 0<> ;
 
 : CHECK-FIELD ( ptr n -- ) {: rec:ptr :}
    rec XREF-FOUND? dup TTRUE 0= if exit then
