@@ -1848,10 +1848,13 @@ defer ON-USE ( n n ptr u8 n n n -- )
 : FILE$ ( -- ptr u8 n )
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @ COMPOSE-DIAG$ ;
 
-\ A file the scan starts, named as FILE$ names it: each time the scan starts
-\ one, the subject first, before anything in it is reported. The string is
-\ borrowed: a word installed here consumes it before it returns.
-defer ON-FILE ( ptr u8 n -- )
+\ A file the scan starts, named as FILE$ names it, and the bytes the scan reads
+\ there, which every position it reports in the file counts in: the bytes
+\ supplied for the subject, the file's bytes as this composition read them for
+\ any other. It runs each time the scan starts a file, the subject first,
+\ before anything in it is reported. Both strings are borrowed and read-only:
+\ a word installed here consumes them before it returns and writes neither.
+defer ON-FILE ( ptr u8 n ptr u8 n -- )
 
 private
 
@@ -1877,7 +1880,7 @@ private
 
 DEFINITION-INIT
 
-: FILE-NONE ( ptr u8 n -- )  2drop ;
+: FILE-NONE ( ptr u8 n ptr u8 n -- )  2drop 2drop ;
 
 : FILE-INIT ( -- )
    ['] FILE-NONE is ON-FILE ;
@@ -3336,7 +3339,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ throw the checker is armed with the caller's bytes
 \ again, or disarmed when the subject's scan ends, so no nested file's bytes,
 \ which its loader frame releases, stay armed. The scan of each file starts
-\ with ON-FILE.
+\ with ON-FILE, handed the bytes SOURCE! has just made the source.
 : COMPOSE-FILE-SCAN ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n :}
    path pathu COMPOSE-DIAG$ {: diag:ptr diagu:n :}
@@ -3357,7 +3360,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    diag diagu DIAG-FILE!
    path pathu VISIT-OPEN
    VISIT-CUR @ VISIT-FIRST @ = CSR-SUBJ !
-   [: FILE$ ON-FILE VERIFY-SOURCE ;] catch {: rc:n :}
+   [: FILE$ SOURCE@ SOURCE-U @ ON-FILE VERIFY-SOURCE ;] catch {: rc:n :}
    DISARM
    oldvisit VISIT-CUR !
    oldsubj CSR-SUBJ !

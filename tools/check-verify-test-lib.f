@@ -68,8 +68,16 @@
 \   one                                                                   definitions-refused
 \   a name defined again after undefine loses a line                      definitions-undefine
 \   a dependency's definitions are dropped, or named by the subject       definitions-dependency
-\   a file a check read has no file line or several, or one it did not
-\   read has one                                                          files
+\   a file a check read has no file line, or several for the same bytes,
+\   or one it did not read has one; a file line's digest is other than
+\   the SHA-256 of the bytes the check read of the file                   files
+\   the subject's file line states its copy on disk, not the bytes        identity-subject
+\   two paths that hold the same bytes share one file line                identity-paths
+\   a dependency rewritten between two checks keeps its file line's
+\   digest, though a span in it names another word in each                identity-swap
+\   a file line is keyed by its path alone, by its digest alone, by the
+\   path's last bytes alone, or by a path or bytes its caller reuses; the
+\   pre-pass writes one                                                   file-line-keys
 \   a use bound to a located declaration has no line, a range other than
 \   its token's, or a target other than the token that declared it: a
 \   body's call, a quotation's, ['], is, a top-level call and tick, an
@@ -242,7 +250,7 @@ variable CLI-OUT-U
    SUBJ$ ;
 
 
-\ A tree file's bytes, in FILE-BYTES.
+\ A file's bytes, in FILE-BYTES.
 : TREE-BYTES ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    a u FILE-SIZE {: size:n :}
    size 1 max FILE-BYTES-RESERVE
@@ -421,6 +429,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
    OVER-USINGS 0 ?do s\" using SOURCE-ROOT\n" GEN+ loop
    0 GEN GEN-U @ ;
 
+\ What same-a.f and same-b.f both hold.
+: SAME$SRC ( -- ptr u8 n )
+   s\" \\ the same bytes at two paths\n" ;
+
 : FIXTURES ( -- )
    s" cvt" HB-TMP-MKDIR SOURCE-ROOT:CANONICAL drop ROOT ROOT-U COPY!
    s" dep.f" DEP$SRC FIXTURE
@@ -440,6 +452,8 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" files-nested.f" s\" : CVT-NESTED ( -- n ) 4 ;\n" FIXTURE
    s" files-inc.f" s\" \\ no definition\n" FIXTURE
    s" files-unread.f" s\" : CVT-UNREAD ( -- n ) 5 ;\n" FIXTURE
+   s" same-a.f" SAME$SRC FIXTURE
+   s" same-b.f" SAME$SRC FIXTURE
    s" order-package.f" s\" package CVT-PKG public\nrequire order-package-dep.f\n;package\n: CVT-PKG-USE ( -- n ) CVT-PKG:CVT-PKG-VALUE ;\n" FIXTURE
    s" order-floor-child.f" s\" ;package\nusing CVT-FLOOR-CHILD\n" FIXTURE
    s" order-floor-include.f" s\" package CVT-FLOOR-BASE public\n: BASE-VALUE ( -- n ) 11 ;\n;package\npackage CVT-FLOOR-CHILD public\n: CHILD-VALUE ( -- n ) 29 ;\n;package\npackage CVT-FLOOR-PARENT\nusing CVT-FLOOR-BASE\ninclude order-floor-child.f\npackage CVT-FLOOR-AFTER public\n: AFTER-VALUE ( -- n ) CHILD-VALUE ;\n;package\n" FIXTURE
@@ -2593,10 +2607,40 @@ variable DEF-NODE                       \ the definition line DEF found
    s" definitions-dependency: the subject's" s" : CVT-USE7" 8 s" defs-dep.f" DEF-SPAN ;
 
 
+32 constant DIGEST-U                    \ a SHA-256 digest's bytes
+64 constant HEX-U                       \ the digest as a file line states it
+create SHA-CTX SHA256-CTX-BYTES allot
+create DIGEST DIGEST-U allot
+create DIGEST-HEX HEX-U allot
+
+
+\ The SHA-256 of the bytes, as a file line states it.
+: SHA$ ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   SHA-CTX a u DIGEST SHA256-IN
+   DIGEST DIGEST-HEX SHA256>HEX
+   DIGEST-HEX HEX-U ;
+
+
+\ SHA$ of the bytes on disk of the fixture NAME.
+: DISK-SHA$ ( ptr u8 n -- ptr u8 n )
+   AT$ TREE-BYTES SHA$ ;
+
+
+\ The next file line names the fixture NAME and states the digest SHA.
+: NEXT-FILE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n name:ptr nameu:n sha:ptr shau:n :}
+   JSONL-NEXT-OBJECT {: node:n :}
+   label labelu T-LABEL node s" file" STRING$ name nameu AT$ T$=
+   label labelu T-LABEL node s" sha256" STRING$ sha shau T$= ;
+
+
 \ Each file a check read has one file line, in the order it started them: the
 \ subject, a file it requires, the file that one requires, and a file it
-\ includes twice and so reads twice. A file required again, one the image
-\ holds and one only a comment names have none.
+\ includes twice and so reads twice, the same bytes each time. Each line states
+\ the SHA-256 of the bytes the check read, the subject's the bytes checked. A
+\ file required again, one the image holds and one only a comment names have
+\ none.
 : FILES ( -- )
    0 GEN-U !
    s\" require files-mid.f\nrequire files-mid.f\ninclude files-inc.f\ninclude files-inc.f\n" GEN+
@@ -2604,14 +2648,83 @@ variable DEF-NODE                       \ the definition line DEF found
    s" files.f" DEFS-CHECK 0 s" files: verified" EXPECT-KIND
    s" files: four lines" T-LABEL CHECK:VERIFY-FILES$ OBJECTS 4 T=
    CHECK:VERIFY-FILES$ JSONL-START
-   s" files: the subject" T-LABEL
-   JSONL-NEXT-OBJECT s" file" STRING$ s" files.f" AT$ T$=
-   s" files: the required file" T-LABEL
-   JSONL-NEXT-OBJECT s" file" STRING$ s" files-mid.f" AT$ T$=
-   s" files: the file it requires" T-LABEL
-   JSONL-NEXT-OBJECT s" file" STRING$ s" files-nested.f" AT$ T$=
-   s" files: the included file" T-LABEL
-   JSONL-NEXT-OBJECT s" file" STRING$ s" files-inc.f" AT$ T$= ;
+   s" files: the subject" s" files.f" DEFS-SRC$ SHA$ NEXT-FILE
+   s" files: the required file" s" files-mid.f" 2dup DISK-SHA$ NEXT-FILE
+   s" files: the file it requires" s" files-nested.f" 2dup DISK-SHA$ NEXT-FILE
+   s" files: the included file" s" files-inc.f" 2dup DISK-SHA$ NEXT-FILE ;
+
+
+\ loop.f's copy on disk is a string never closed: the subject's file line
+\ states the bytes checked as loop.f, and back.f's require of it reads nothing.
+: IDENTITY-SUBJECT ( -- )
+   0 GEN-U !
+   s\" require back.f\n: CVT-LOOP ( -- n ) CVT-BACK ;\n" GEN+
+   s" loop.f" DEFS-CHECK 0 s" identity-subject: verified" EXPECT-KIND
+   s" identity-subject: two lines" T-LABEL CHECK:VERIFY-FILES$ OBJECTS 2 T=
+   CHECK:VERIFY-FILES$ JSONL-START
+   s" identity-subject: the bytes checked" s" loop.f" DEFS-SRC$ SHA$ NEXT-FILE ;
+
+
+\ same-a.f and same-b.f hold the same bytes: after the subject's, each has its
+\ own file line, with the same digest.
+: IDENTITY-PATHS ( -- )
+   0 GEN-U !
+   s\" require same-a.f\nrequire same-b.f\n: CVT-SAME ( -- n ) 1 ;\n" GEN+
+   s" same.f" DEFS-CHECK 0 s" identity-paths: verified" EXPECT-KIND
+   CHECK:VERIFY-FILES$ JSONL-START JSONL-NEXT-OBJECT drop
+   s" identity-paths: one path" s" same-a.f" SAME$SRC SHA$ NEXT-FILE
+   s" identity-paths: the other" s" same-b.f" SAME$SRC SHA$ NEXT-FILE ;
+
+
+\ file-line-keys.f, loaded into the child after its pre-pass, gives the child's
+\ own FILE-LINE five reads through one path buffer and one bytes buffer: P
+\ alpha, P alpha, P bravo, P alpha, Q alpha.
+: KEYS$SRC ( -- ptr u8 n )
+   0 GEN-U !
+   s\" package CHECK-VERIFY-CHILD\ncreate KEY-PATH 8 allot\ncreate KEY-BYTES 5 allot\n" GEN+
+   s\" : KEY-READ ( ptr u8 n ptr u8 n -- )\n   {: f:ptr fu:n a:ptr u:n :}\n" GEN+
+   s\"    f KEY-PATH fu BYTE-COPY\n   a KEY-BYTES u BYTE-COPY\n   KEY-PATH fu KEY-BYTES u FILE-LINE ;\n" GEN+
+   s\" : KEY-READS ( -- )\n   s\" /cvt/p.f\" s\" alpha\" KEY-READ\n   s\" /cvt/p.f\" s\" alpha\" KEY-READ\n" GEN+
+   s\"    s\" /cvt/p.f\" s\" bravo\" KEY-READ\n   s\" /cvt/p.f\" s\" alpha\" KEY-READ\n" GEN+
+   s\"    s\" /cvt/q.f\" s\" alpha\" KEY-READ ;\nKEY-READS\n;package\n" GEN+
+   0 GEN GEN-U @ ;
+
+
+\ The file line FILE-LINE writes for the path F read as the bytes A, onto SB.
+: KEY-LINE+ ( ptr u8 n ptr u8 n -- )
+   {: f:ptr fu:n a:ptr u:n :}
+   s\" check-verify: file {\"file\":\"" SB-APPEND
+   f fu SB-APPEND
+   s\" \",\"sha256\":\"" SB-APPEND
+   a u SHA$ SB-APPEND
+   s\" \"}\n" SB-APPEND ;
+
+
+\ Exactly P alpha, P bravo and Q alpha have file lines, in that order, after
+\ the pre-pass's result, which comes with none: a key of the path alone, of
+\ the digest alone or of the path's last bytes alone, or one that keeps the
+\ caller's buffers in place of their bytes, writes other lines. Two reads of
+\ one file in one check give it different bytes only when a disk write comes
+\ between them, which nothing here can schedule: that is untested.
+: FILE-LINE-KEYS ( -- )
+   s" file-line-keys.f" KEYS$SRC FIXTURE
+   PROC-ARGV-ENV-RESET
+   s" --load" ARG+
+   s" tools/check-verify-child.f" TREE$ ARG+
+   s" file-line-keys.f" AT$ ARG+
+   s" --" ARG+
+   s" file-line-subject.f" AT$ ARG+
+   s" file-line-keys" ARG+
+   PROC-ENV-INHERIT-MISSING
+   s" " CLI nip
+   s" file-line-keys: loaded" T-LABEL 0 T=
+   SB-RESET
+   s\" check-verify: verified\n" SB-APPEND
+   s" /cvt/p.f" s" alpha" KEY-LINE+
+   s" /cvt/p.f" s" bravo" KEY-LINE+
+   s" /cvt/q.f" s" alpha" KEY-LINE+
+   s" file-line-keys: a line per path and bytes" T-LABEL
+   0 OUT CLI-OUT-U @ SB$ T$= ;
 
 
 \ ---- the uses ---------------------------------------------------------------
@@ -2856,6 +2969,35 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-growth: the last declaration" s" CVT-GFIRST CVT-GLAST" 9 USE
    s" uses-growth: the last declaration" DEFS-SRC$ s" : CVT-GLAST" 9 s" uses-growth.f" USE-TARGET
    s" uses-growth: two lines" 2 USE-COUNT ;
+
+
+: SWAP-A$SRC ( -- ptr u8 n )
+   s\" : DEF-DEPA ( -- n ) 1 ;\n: DEF-DEPB ( -- n n ) 2 3 ;\n" ;
+
+\ SWAP-A$SRC's two definitions swapped.
+: SWAP-B$SRC ( -- ptr u8 n )
+   s\" : DEF-DEPB ( -- n n ) 2 3 ;\n: DEF-DEPA ( -- n ) 1 ;\n" ;
+
+
+\ swap-dep.f rewritten between two checks of the same subject, its two
+\ definitions swapped: the second check's use of DEF-DEPB names the span the
+\ first check's use of DEF-DEPA named, bytes 2 to 10 of swap-dep.f, and only
+\ the digests on swap-dep.f's file lines tell the two declarations apart.
+: IDENTITY-SWAP ( -- )
+   s" swap-dep.f" SWAP-A$SRC FIXTURE
+   0 GEN-U !
+   s\" require swap-dep.f\n: CVT-SWAP-A ( -- n ) DEF-DEPA ;\n: CVT-SWAP-B ( -- n n ) DEF-DEPB ;\n" GEN+
+   s" swap.f" DEFS-CHECK 0 s" identity-swap: the first check" EXPECT-KIND
+   s" identity-swap: DEF-DEPA" s" ) DEF-DEPA" 8 USE
+   s" identity-swap: DEF-DEPA" SWAP-A$SRC s" : DEF-DEPA" 8 s" swap-dep.f" USE-TARGET
+   CHECK:VERIFY-FILES$ JSONL-START JSONL-NEXT-OBJECT drop
+   s" identity-swap: the first bytes" s" swap-dep.f" SWAP-A$SRC SHA$ NEXT-FILE
+   s" swap-dep.f" SWAP-B$SRC FIXTURE
+   s" swap.f" DEFS-CHECK 0 s" identity-swap: the second check" EXPECT-KIND
+   s" identity-swap: DEF-DEPB" s" ) DEF-DEPB" 8 USE
+   s" identity-swap: DEF-DEPB at DEF-DEPA's span" SWAP-A$SRC s" : DEF-DEPA" 8 s" swap-dep.f" USE-TARGET
+   CHECK:VERIFY-FILES$ JSONL-START JSONL-NEXT-OBJECT drop
+   s" identity-swap: the second bytes" s" swap-dep.f" SWAP-B$SRC SHA$ NEXT-FILE ;
 
 
 \ ---- the candidates ---------------------------------------------------------
@@ -3234,6 +3376,10 @@ public
    s" definitions-undefine" [: DEFINITIONS-UNDEFINE ;] RUN-CASE
    s" definitions-dependency" [: DEFINITIONS-DEPENDENCY ;] RUN-CASE
    s" files" [: FILES ;] RUN-CASE
+   s" identity-subject" [: IDENTITY-SUBJECT ;] RUN-CASE
+   s" identity-paths" [: IDENTITY-PATHS ;] RUN-CASE
+   s" identity-swap" [: IDENTITY-SWAP ;] RUN-CASE
+   s" file-line-keys" [: FILE-LINE-KEYS ;] RUN-CASE
    s" uses" [: USES ;] RUN-CASE
    s" uses-refused" [: USES-REFUSED ;] RUN-CASE
    s" uses-order" [: USES-ORDER ;] RUN-CASE
