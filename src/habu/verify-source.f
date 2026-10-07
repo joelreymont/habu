@@ -121,6 +121,8 @@ variable COMPOSE-REQ0
 create COMPOSE-STOP-PATH PATH-CAP allot
 variable COMPOSE-STOP-U
 variable COMPOSE-STOP-SUBJ               \ the stop was in the supplied bytes
+DYNAMIC-BUFFER COMPOSE-STOP-BYTES u8        \ the stopped frame is released on throw
+variable COMPOSE-STOP-SRC-U
 
 \ A quiet composition (SOURCE-COMPOSE-QUIET-IN-SCOPE) and the load fault it
 \ stopped at: the loader token's length, 0 when no loader stopped it, and the
@@ -3550,6 +3552,9 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       diag COMPOSE-STOP-PATH diagu BYTE-COPY
       diagu COMPOSE-STOP-U !
       path pathu COMPOSE-SUBJ? COMPOSE-STOP-SUBJ !
+      srcu COMPOSE-STOP-BYTES-RESERVE
+      src 0 COMPOSE-STOP-BYTES srcu BYTE-COPY
+      srcu COMPOSE-STOP-SRC-U !
    THEN
    olda SOURCE-A !  oldu SOURCE-U !  oldi SCAN-I !
    oldbl BASE-LINE !  oldbc BASE-COL !  oldbb BASE-BYTE !
@@ -3611,13 +3616,9 @@ COMPOSE-INIT
 : RUN-COMPOSE ( -- )
    [: COMPOSE-SUBJECT ;] RUN-IN-SCOPE ;
 
-: COMPOSE-WITH-ROOT ( -- )
-   COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ SOURCE-ROOT:DIRNAME
-   [: RUN-COMPOSE ;] SOURCE-ROOT:WITH ;
-
 \ The composition's checks report each use they bind to USE-SEEN.
 : COMPOSE-WITH-USES ( -- )
-   ['] USE-SEEN ['] COMPOSE-WITH-ROOT WITH-USES ;
+   ['] USE-SEEN ['] RUN-COMPOSE WITH-USES ;
 
 \ Stash-and-body, the shape src/core/checker.f CHECK-QUIET-CANDIDATE! takes: a
 \ quotation cannot read its caller's locals.
@@ -3722,8 +3723,9 @@ public
    DUPLICATE-AT @ DUPLICATE-U @ ;
 
 \ Verify one supplied source through loader composition at each top-level
-\ loader token. The registry suffix and the caller's checker scope survive both
-\ success and throw; the supplied bytes remain authoritative for this path.
+\ loader token under the caller's active SOURCE-ROOT owner. The registry suffix
+\ and the caller's checker scope survive success and throw; the supplied bytes
+\ remain authoritative for this path.
 : SOURCE-COMPOSE-LABELED-IN-SCOPE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
    COMPOSE-ON @ 0<> IF E-PKG-CONTEXT throw THEN
@@ -3735,6 +3737,7 @@ public
    src COMPOSE-SUBJ-A !  srcu COMPOSE-SUBJ-U !
    NULL-PTR COMPOSE-CUR-PATH-A !  0 COMPOSE-CUR-PATH-U !
    0 COMPOSE-STOP-U !
+   0 COMPOSE-STOP-SRC-U !
    0 PEND-N !
    REQUIRE-REG:COUNT COMPOSE-REQ0 !
    COMPOSE-SUBJ-PATH pathu REQUIRE-KNOWN? 0= IF
@@ -3781,6 +3784,11 @@ public
 \ otherwise.
 : SOURCE-COMPOSE-STOPPED-SUBJECT? ( -- bool )
    COMPOSE-STOP-U @ 0= COMPOSE-STOP-SUBJ @ or ;
+
+\ The bytes scanned at the stopped file, retained before its loader frame
+\ closes. A nested loader may have replaced the quiet reader's scratch buffer.
+: SOURCE-COMPOSE-STOPPED-SOURCE$ ( -- ptr u8 n )
+   0 COMPOSE-STOP-BYTES COMPOSE-STOP-SRC-U @ ;
 
 \ Whether N, the code a quiet composition stopped with, is a loader's fault: a
 \ form discovery refuses (E-DISC-FIRST..E-DISC-LAST) or a file not read

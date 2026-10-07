@@ -669,6 +669,19 @@ Its stderr beyond the capture, 256 KiB, kills the child and throws
 one-definition file and 230 ms for `tools/check-core.f`, whose closure is over
 thirty files.
 
+For a same-process check against words already loaded, open a neutral checker
+scope and call `VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE` with the supplied bytes
+and their canonical path. The composition resolves dependencies under the
+caller's active `SOURCE-ROOT` owner, so a caller selecting a root with
+`SOURCE-ROOT:WITH` uses that same scope for verification and the later load.
+Catch the throw code. For a loader fault (`VERIFY:LOADER-FAULT?`),
+`CHECK-ALL-ERRORS:COMPOSE-FAULT-RECORD$ ( rc -- ptr u8 n )` renders the same
+schema-1 loader packet from the stopped file's scanned bytes and recorded
+loader span; the caller keeps the original code. The stopped source remains
+valid until the next composition, and the packet uses the diagnostics writer's
+borrowed buffer. `VERIFY:FAULT-TARGET$` names the
+canonical file that an `E-SOURCE-READ` load could not read.
+
 The child, `tools/check-verify-child.f`, is run only by this operation and by
 `CHECK:PREVERIFY-BYTES`, check.f's pre-pass:
 

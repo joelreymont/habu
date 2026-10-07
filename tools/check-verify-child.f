@@ -239,8 +239,12 @@ variable LENIENT-FIRST                  \ the argument the --lenient paths start
    OUT-FD NEWLINE ;
 
 
-: VERIFY-CUR ( -- )
+: VERIFY-CUR-ACT ( -- )
    0 SUBJECT SUBJECT-U @ 0 SCRIPT-ARGV$ VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
+
+: VERIFY-CUR ( -- )
+   0 SCRIPT-ARGV$ SOURCE-ROOT:DIRNAME
+   [: VERIFY-CUR-ACT ;] SOURCE-ROOT:WITH ;
 
 
 \ Fields shared by a duplicate diagnostic and a terminal stop.
@@ -582,9 +586,13 @@ variable LENIENT-FIRST                  \ the argument the --lenient paths start
    s" verified" RESULT ;
 
 
-: PREVERIFY-CUR ( -- )
+: PREVERIFY-CUR-ACT ( -- )
    0 SUBJECT SUBJECT-U @ 0 SCRIPT-ARGV$ 1 SCRIPT-ARGV$
    VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
+
+: PREVERIFY-CUR ( -- )
+   0 SCRIPT-ARGV$ SOURCE-ROOT:DIRNAME
+   [: PREVERIFY-CUR-ACT ;] SOURCE-ROOT:WITH ;
 
 
 70 constant REFUSED-RC                  \ a refused definition's stop (verify-source.f BODY-VERDICT)

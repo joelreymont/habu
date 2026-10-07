@@ -457,10 +457,14 @@ variable CA-COMPOSE-LABEL-U
 \ A source checked as the loader runs it: each top-level loader statement
 \ verifies the file it loads where it stands (VERIFY:SOURCE-COMPOSE-LABELED-IN-
 \ SCOPE), in the session's one checker scope.
-: CA-CHECK-COMPOSE-ACT ( -- )
+: CA-CHECK-COMPOSE-VERIFY ( -- )
    CA-SRC-A@ CA-SRC-U @ CA-COMPOSE-PATH-A @ CA-COMPOSE-PATH-U @
    CA-COMPOSE-LABEL-A @ CA-COMPOSE-LABEL-U @
    VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
+
+: CA-CHECK-COMPOSE-ACT ( -- )
+   CA-COMPOSE-PATH-A @ CA-COMPOSE-PATH-U @ SOURCE-ROOT:DIRNAME
+   [: CA-CHECK-COMPOSE-VERIFY ;] SOURCE-ROOT:WITH ;
 
 : CA-CHECK-COMPOSE ( -- n )
    CA-RESET-CAPTURE
@@ -810,5 +814,60 @@ public
    labela labelu CA-START
    srca srcu CA-SOURCE-BUF!
    at u CA-DUP-RECORD$ ;
+
+private
+
+66 constant CA-MISSING-SOURCE
+74 constant CA-UNREADABLE-SOURCE
+
+: CA-LOADER-CODE ( n -- ptr u8 n ptr u8 n ptr u8 n )
+   {: rc:n :}
+   rc CA-MISSING-SOURCE = IF
+      s" E-MISSING-SOURCE" s" fix_load_path"
+      s" No file is at the path this loader word names. Correct the path, or create the file." EXIT
+   THEN
+   rc CA-UNREADABLE-SOURCE = IF
+      s" E-UNREADABLE-SOURCE" s" make_source_readable"
+      s" The file this loader word names cannot be read. Make it readable, or correct the path." EXIT
+   THEN
+   s" E-LOADER-FORM" s" literal_loader_form"
+   s" Load a file by a literal path of at most 1024 bytes, as written and as resolved, through a loader word no definition redefines or retires, or list this file in tools/dynamic-tail-manifest.f." ;
+
+public
+
+\ The same schema-1 loader packet the closure check writes, from the stopped
+\ file's scanned bytes, token span, and canonical file name.
+: LOADER-RECORD$ ( n n n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: rc:n at:n len:n a:ptr u:n name:ptr nameu:n :}
+   a at BYTE-ORIGIN {: line:n col:n :}
+   rc CA-LOADER-CODE {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
+   LJW-RESET
+   LJW-OBJECT-START
+   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
+   s" code" LJW-KEY code codeu LJW-STRING LJW-COMMA
+   s" repair_class" LJW-KEY class classu LJW-STRING LJW-COMMA
+   s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
+   s" token" LJW-KEY a at + len LJW-STRING LJW-COMMA
+   s" file" LJW-KEY name nameu LJW-STRING LJW-COMMA
+   s" line" LJW-KEY line LJW-U LJW-COMMA
+   s" column" LJW-KEY col LJW-U LJW-COMMA
+   s" byte_start" LJW-KEY at LJW-U LJW-COMMA
+   s" byte_end" LJW-KEY at len + LJW-U LJW-COMMA
+   s" suggestion" LJW-KEY sug sugu LJW-STRING
+   LJW-OBJECT-END
+   LJW$ ;
+
+\ Render the loader fault the last quiet composition recorded. The caller
+\ keeps the original throw code; this word only formats its diagnostic.
+: COMPOSE-FAULT-RECORD$ ( n -- ptr u8 n )
+   {: rc:n :}
+   rc VERIFY:E-SOURCE-READ = IF
+      VERIFY:FAULT-TARGET$ FILE? IF CA-UNREADABLE-SOURCE
+      ELSE CA-MISSING-SOURCE THEN
+   ELSE rc THEN
+   VERIFY:TOKEN-BYTE@ VERIFY:FAULT-LEN@
+   VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$
+   VERIFY:SOURCE-COMPOSE-STOPPED$
+   LOADER-RECORD$ ;
 
 ;package

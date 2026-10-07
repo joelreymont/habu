@@ -341,43 +341,6 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    id CHK-BYTES-ID @ = if CHK-BYTES-LABEL-A @ CHK-BYTES-LABEL-U @ exit then
    id CHK-DEP$ ;
 
-\ A fault's code, repair class and suggestion: a loader word naming a file that
-\ is not there or that cannot be read, or a loader form discovery cannot follow.
-: CHK-FAULT-CODE ( n -- ptr u8 n ptr u8 n ptr u8 n )
-   {: rc:n :}
-   rc CHK-E-NOINPUT = if
-      s" E-MISSING-SOURCE" s" fix_load_path"
-      s" No file is at the path this loader word names. Correct the path, or create the file." exit
-   then
-   rc CHK-E-IOERR = if
-      s" E-UNREADABLE-SOURCE" s" make_source_readable"
-      s" The file this loader word names cannot be read. Make it readable, or correct the path." exit
-   then
-   s" E-LOADER-FORM" s" literal_loader_form"
-   s" Load a file by a literal path of at most 1024 bytes, as written and as resolved, through a loader word no definition redefines or retires, or list this file in tools/dynamic-tail-manifest.f." ;
-
-\ The packet for fault RC at the token that starts at AT with length LEN in the
-\ bytes A U of the file the packet names NAME: one JSON object, no line feed.
-: CHK-FAULT-JSON ( n n n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: rc:n at:n len:n a:ptr u:n name:ptr nameu:n :}
-   a at CHECK-ALL-ERRORS:BYTE-ORIGIN {: line:n col:n :}
-   rc CHK-FAULT-CODE {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
-   LJW-RESET
-   LJW-OBJECT-START
-   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
-   s" code" LJW-KEY code codeu LJW-STRING LJW-COMMA
-   s" repair_class" LJW-KEY class classu LJW-STRING LJW-COMMA
-   s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
-   s" token" LJW-KEY a at + len LJW-STRING LJW-COMMA
-   s" file" LJW-KEY name nameu LJW-STRING LJW-COMMA
-   s" line" LJW-KEY line LJW-U LJW-COMMA
-   s" column" LJW-KEY col LJW-U LJW-COMMA
-   s" byte_start" LJW-KEY at LJW-U LJW-COMMA
-   s" byte_end" LJW-KEY at len + LJW-U LJW-COMMA
-   s" suggestion" LJW-KEY sug sugu LJW-STRING
-   LJW-OBJECT-END
-   LJW$ ;
-
 \ The packet for the fault RC that ended the walk, CHK-EXPAND's code, at the
 \ token that shows it: the form discovery refused in the file it read, or the
 \ loader word that names a file that is not there or cannot be read. Empty for
@@ -386,13 +349,13 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    {: rc:n :}
    rc CHK-DISC-RC? if
       rc DISCOVER:LAST-TOKEN DISCOVER:BYTES$ CHK-DISC-ID @ CHK-FILE-NAME$
-      CHK-FAULT-JSON exit
+      CHECK-ALL-ERRORS:LOADER-RECORD$ exit
    then
    CHK-EDGE @ {: edge:n :}
    edge 0 < if NULL$ exit then
    edge CHK-DIR-FROM @ {: from:n :}
    rc edge CHK-DIR-AT @ edge CHK-DIR-LEN @ from CHK-FILE-BYTES from CHK-FILE-NAME$
-   CHK-FAULT-JSON ;
+   CHECK-ALL-ERRORS:LOADER-RECORD$ ;
 
 : CHK-TOK-END ( n -- n ) {: k:n :}
    k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
@@ -880,12 +843,12 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 
 \ The record of the child's stop: for a loader's fault, but a string or a
 \ locals group never closed, the packet at the loader form, as the closure walk
-\ writes it (CHK-FAULT-JSON); else the stop's record (STOP-RECORD$).
+\ writes it (CHECK-ALL-ERRORS:LOADER-RECORD$); else the stop's record (STOP-RECORD$).
 : VFY-STOP-REC$ ( n -- ptr u8 n ) {: class:n :}
    VFY-STOP-RC @ {: rc:n :}
    rc VERIFY:LOADER-FAULT? rc E-DISC-UNTERM <> and if
       class VFY-STOP-AT @ VFY-FAULT-LEN @ VFY-STOP-SOURCE VFY-STOP-FILE$
-      CHK-FAULT-JSON exit
+      CHECK-ALL-ERRORS:LOADER-RECORD$ exit
    then
    VFY-STOP-FILE$ VFY-STOP-SOURCE VFY-STOP-RECORD$ ;
 
