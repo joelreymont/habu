@@ -271,6 +271,26 @@
 \   the test's own process, on the lines a verified check of such a race
 \   stated .......................................... highlight-case-reread
 \
+\ Declaration identities, which no reply states yet: each case runs the store
+\ in the test's own process, on the lines the test's own check of the text
+\ states, or, for what no check can be made to state, on lines it writes
+\ - a file a check's file lines state one valid digest for not given it, or
+\   given one when two of them state different digests, one states none or a
+\   malformed one, whichever comes first; a definition or use line without
+\   identity members given a visit .................... identities-digest
+\ - a file included into two packages not giving two decls at its token, one
+\   per package, each with its own visit: each use of P:K and Q:K must name
+\   the package it selects and that package's decl's visit; a file's digest
+\   not that of the bytes the check read .............. identities-included
+\ - DEFTYPE's two converters not giving two decls at its name's token under
+\   one visit, or a use of either not naming its own converter
+\   ..................................................... identities-deftype
+\ - an earlier check, replaced by its document's next one, changing a later
+\   check's digests, decls or uses ....................... identities-remove
+\ - a probe of a file on disk changing an open document's groups, decls or
+\   uses while kept or once removed, or not keeping its use's identity
+\   ....................................................... identities-probe
+\
 \ Completion
 \ - a cursor in a body not answered, in a list that is not incomplete, with
 \   the words of the document and of a dependency that would bind there, each
@@ -3221,13 +3241,330 @@ variable LENGTH-N                        \ the length of its directory's name
    slot 8 24 s" highlight-case-reread: Q:k" HL-NULL-AT ;
 
 : HIGHLIGHT-CASE-REREAD ( -- )
-   LSP-DEFS:DEFS-PREPARE
    HL-CASE-PATH TEXT-HL-CASE WRITE-ALL
    HL-REREAD-PATH URI-OF 1 HL-REREAD-PATH TEXT-HL-REREAD LSP-DOCS:DOC-OPEN
    HL-REREAD-PATH URI-OF LSP-DOCS:DOC-FIND MATCH option
       some OF HL-REREAD-ASK ENDOF
       none OF s" highlight-case-reread: open" T-LABEL false TTRUE ENDOF
    ;MATCH ;
+
+\ ---- declaration identities --------------------------------------------------
+
+\ No reply states a declaration identity yet, so these cases run the store in
+\ the test's own process, on the lines the test's own check of each text
+\ states, as the server's check of it would.
+
+create SNAP-B HDR-BYTES allot            \ the store's decls and uses, as SNAP-SLOT states them,
+create WAS-B HDR-BYTES allot             \ and as they were before the store changed
+SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
+32 BUFFER: SHA-RAW
+64 BUFFER: SHA-HEX                       \ as a file line states it
+
+: SNAP$ ( -- ptr u8 n )  SNAP-B SPAN$ BLEN>N ;
+: WAS$ ( -- ptr u8 n )  WAS-B SPAN$ BLEN>N ;
+: SNAP+ ( ptr u8 n -- )  N>BLEN SNAP-B APPEND-SPAN ;
+: SNAP-INT+ ( n -- )  s"  " SNAP+ INT$ SNAP+ ;
+
+\ The digest of these bytes as a file line states it.
+: SHA$ ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   SHA-CTX a u SHA-RAW SHA256-IN
+   SHA-RAW SHA-HEX SHA256>HEX
+   SHA-HEX 64 ;
+
+\ id-inc.f, on disk: the global K. id-twice.f includes it into P's public
+\ section, then into Q's, and uses P:K and Q:K. id-dt.f declares DEFTYPE
+\ ID-CVT public in ID-DT and uses both its converters. id-probe.f, on disk
+\ and never open, includes id-inc.f into R's public section and uses R:K.
+\ id-sha.f is a document whose checks state the lines the test writes for
+\ id-f.f, on disk with id-inc.f's text.
+: ID-INC-PATH ( -- ptr u8 n )  s" id-inc.f" FIXTURE ;
+: ID-TWICE-PATH ( -- ptr u8 n )  s" id-twice.f" FIXTURE ;
+: ID-DT-PATH ( -- ptr u8 n )  s" id-dt.f" FIXTURE ;
+: ID-PROBE-PATH ( -- ptr u8 n )  s" id-probe.f" FIXTURE ;
+: ID-SHA-PATH ( -- ptr u8 n )  s" id-sha.f" FIXTURE ;
+: ID-F-PATH ( -- ptr u8 n )  s" id-f.f" FIXTURE ;
+: TEXT-ID-INC ( -- ptr u8 n )  s\" : K ( -- n ) 1 ;\n" ;
+: TEXT-ID-TWICE ( -- ptr u8 n )
+   s\" package P\npublic\ninclude id-inc.f\n;package\npackage Q\npublic\ninclude id-inc.f\n;package\n: ID-BOTH ( -- n ) P:K Q:K + ;\n" ;
+: TEXT-ID-DT ( -- ptr u8 n )
+   s\" require lib/type/deftype.f\npackage ID-DT\npublic\nDEFTYPE ID-CVT\n: ID-USE ( -- n ) 5 >ID-CVT ID-CVT>N ;\n;package\n" ;
+: TEXT-ID-PROBE ( -- ptr u8 n )
+   s\" package R\npublic\ninclude id-inc.f\n;package\n: ID-R ( -- n ) R:K ;\n" ;
+
+\ The test's own check of this text as the file at PATH: whether it was
+\ verified.
+: ID-CHECK ( ptr u8 n ptr u8 n -- bool )
+   CHECKED-MS >MS CHECK:VERIFY-BYTES MATCH CHECK:verdict
+      verified OF true ENDOF
+      refused OF false ENDOF
+      engine-provided OF false ENDOF
+      held OF false ENDOF
+      incomplete OF drop false ENDOF
+      deferred OF false ENDOF
+   ;MATCH ;
+
+\ The document at PATH opened with this text: its slot.
+: ID-OPEN ( ptr u8 n ptr u8 n -- n )
+   {: p:ptr pu:n t:ptr tu:n :}
+   p pu URI-OF 1 p pu t tu LSP-DOCS:DOC-OPEN
+   p pu URI-OF LSP-DOCS:DOC-FIND MATCH option
+      some OF ENDOF
+      none OF s" identities: open" T-LABEL false TTRUE -1 ENDOF
+   ;MATCH ;
+
+\ The test's own check of the document in this slot, its lines kept as the
+\ server keeps a completed check's; it fails under this label unless the
+\ check was verified.
+: ID-KEEP ( n ptr u8 n -- )
+   {: slot:n l:ptr lu:n :}
+   slot LSP-DOCS:DOC-TEXT$ slot LSP-DOCS:DOC-PATH$ ID-CHECK {: ok:bool :}
+   l lu T-LABEL ok TTRUE
+   CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ slot ok
+   LSP-DEFS:DEFS-KEEP ;
+
+\ Group G as SNAP-SLOT states it: its path, its URI, its digest, whether it
+\ answers for its file and whether its file is its check's own.
+: SNAP-GROUP ( n -- )
+   {: g:n :}
+   s"  " SNAP+ g LSP-DEFS:GROUP-PATH$ SNAP+
+   s"  " SNAP+ g LSP-DEFS:GROUP-URI$ SNAP+
+   s"  " SNAP+ g LSP-DEFS:GROUP-SHA$ SNAP+
+   g LSP-DEFS:GROUP-OVER? if s"  over" else s"  answers" then SNAP+
+   g LSP-DEFS:GROUP-OWN? if s"  own" else s"  dependency" then SNAP+ ;
+
+\ The decls and uses the store keeps for the last check of the document in
+\ this slot, a line each, appended to SNAP.
+: SNAP-SLOT ( n -- )
+   {: slot:n :}
+   slot LSP-DEFS:DEFS-DECL-RANGE ?do
+      s" decl" SNAP+ i LSP-DEFS:DECL-GROUP SNAP-GROUP
+      i LSP-DEFS:DECL-BYTES swap SNAP-INT+ SNAP-INT+
+      i LSP-DEFS:DECL-VISIT SNAP-INT+
+      s"  " SNAP+ i LSP-DEFS:DECL-NAME$ SNAP+
+      s"  " SNAP+ i LSP-DEFS:DECL-PACKAGE$ SNAP+
+      i LSP-DEFS:DECL-VIS SNAP-INT+ s\" \n" SNAP+
+   loop
+   slot LSP-DEFS:DEFS-USE-RANGE ?do
+      s" use" SNAP+ i LSP-DEFS:USE-GROUP SNAP-GROUP
+      i LSP-DEFS:USE-BYTES swap SNAP-INT+ SNAP-INT+
+      i LSP-DEFS:USE-TARGET swap SNAP-INT+ SNAP-INT+
+      i LSP-DEFS:USE-VISIT SNAP-INT+
+      s"  " SNAP+ i LSP-DEFS:USE-NAME$ SNAP+
+      s"  " SNAP+ i LSP-DEFS:USE-PACKAGE$ SNAP+
+      i LSP-DEFS:USE-VIS SNAP-INT+ s\" \n" SNAP+
+   loop ;
+
+\ SNAP holds what the store keeps for the last checks of the documents in
+\ these slots.
+: SNAP ( n n -- )
+   {: a:n b:n :}
+   SNAP-B CLEAR
+   a SNAP-SLOT b SNAP-SLOT ;
+
+: WAS! ( -- )  SNAP$ N>BLEN WAS-B REPLACE ;
+
+\ How many decls of the last check of the document in this slot group G
+\ holds at bytes S to E.
+: DECLS-AT ( n n n n -- n )
+   {: slot:n g:n s:n e:n :}
+   0 slot LSP-DEFS:DEFS-DECL-RANGE ?do
+      i LSP-DEFS:DECL-GROUP g =
+      i LSP-DEFS:DECL-BYTES e = swap s = and and if 1+ then
+   loop ;
+
+\ The declaration visit of the decl of that check that group G holds at bytes
+\ S to E under this name and package and with visibility V, 0 if none is.
+: VISIT-OF ( n n n n ptr u8 n ptr u8 n n -- n )
+   {: slot:n g:n s:n e:n nm:ptr nu:n p:ptr pu:n v:n :}
+   slot LSP-DEFS:DEFS-DECL-RANGE ?do
+      i LSP-DEFS:DECL-GROUP g =
+      i LSP-DEFS:DECL-BYTES e = swap s = and and
+      i LSP-DEFS:DECL-NAME$ nm nu STR= and
+      i LSP-DEFS:DECL-PACKAGE$ p pu STR= and
+      i LSP-DEFS:DECL-VIS v = and
+      if i LSP-DEFS:DECL-VISIT unloop exit then
+   loop
+   0 ;
+
+\ Use U of the last check of the document in this slot names the declaration
+\ of this name in this package: its visit, one the check gave, is the visit
+\ of that decl at the use's declaring token; each assertion fails under this
+\ label.
+: USE-NAMES ( n n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: slot:n u:n nm:ptr nu:n p:ptr pu:n l:ptr lu:n :}
+   l lu T-LABEL u LSP-DEFS:USE-NAME$ nm nu T$=
+   l lu T-LABEL u LSP-DEFS:USE-PACKAGE$ p pu T$=
+   l lu T-LABEL u LSP-DEFS:USE-VISIT 0 > TTRUE
+   u LSP-DEFS:USE-TARGET {: s:n e:n :}
+   slot u LSP-DEFS:USE-GROUP s e nm nu p pu u LSP-DEFS:USE-VIS VISIT-OF
+   l lu T-LABEL u LSP-DEFS:USE-VISIT T= ;
+
+\ id-twice.f's check, kept: its two readings of id-inc.f give two decls at
+\ K's token, one per package, each with its own visit, which each use of P:K
+\ and Q:K names with the package it selects; each file's digest is of the
+\ bytes the check read.
+: ID-INCLUDED ( n -- )
+   {: slot:n :}
+   slot LSP-DEFS:DEFS-USE-RANGE {: lim:n first:n :}
+   s" identities-included: uses" T-LABEL lim first - 2 T=
+   lim first - 2 <> if exit then
+   first LSP-DEFS:USE-GROUP {: g:n :}
+   first LSP-DEFS:USE-TARGET {: s:n e:n :}
+   slot first s" k" s" p" s" identities-included: P:K" USE-NAMES
+   slot first 1+ s" k" s" q" s" identities-included: Q:K" USE-NAMES
+   s" identities-included: one token" T-LABEL first 1+ LSP-DEFS:USE-GROUP g T=
+   s" identities-included: two decls" T-LABEL slot g s e DECLS-AT 2 T=
+   s" identities-included: two visits" T-LABEL
+   first LSP-DEFS:USE-VISIT first 1+ LSP-DEFS:USE-VISIT <> TTRUE
+   s" identities-included: digest" T-LABEL
+   g LSP-DEFS:GROUP-SHA$ TEXT-ID-INC SHA$ T$=
+   s" identities-included: own digest" T-LABEL
+   slot LSP-DEFS:DEFS-OWN-GROUP MATCH option
+      some OF LSP-DEFS:GROUP-SHA$ TEXT-ID-TWICE SHA$ T$= ENDOF
+      none OF false TTRUE ENDOF
+   ;MATCH ;
+
+\ id-dt.f's check, kept: DEFTYPE's two converters give two decls at its
+\ name's token under one visit, and each use names its own converter.
+: ID-DEFTYPE ( n -- )
+   {: slot:n :}
+   slot LSP-DEFS:DEFS-USE-RANGE {: lim:n first:n :}
+   s" identities-deftype: uses" T-LABEL lim first - 2 T=
+   lim first - 2 <> if exit then
+   first LSP-DEFS:USE-GROUP {: g:n :}
+   first LSP-DEFS:USE-TARGET {: s:n e:n :}
+   slot first s" >id-cvt" s" id-dt" s" identities-deftype: >ID-CVT" USE-NAMES
+   slot first 1+ s" id-cvt>n" s" id-dt" s" identities-deftype: ID-CVT>N" USE-NAMES
+   first 1+ LSP-DEFS:USE-TARGET {: s2:n e2:n :}
+   s" identities-deftype: one token" T-LABEL first 1+ LSP-DEFS:USE-GROUP g T=
+   s" identities-deftype: one token" T-LABEL s2 s T=
+   s" identities-deftype: one token" T-LABEL e2 e T=
+   s" identities-deftype: two decls" T-LABEL slot g s e DECLS-AT 2 T=
+   s" identities-deftype: one visit" T-LABEL
+   first LSP-DEFS:USE-VISIT first 1+ LSP-DEFS:USE-VISIT T= ;
+
+\ id-dt.f's check, kept before id-twice.f's, replaced by its next check, whose
+\ bytes the store keeps where id-twice.f's were before they moved down:
+\ id-twice.f's digests, decls and uses read as they did.
+: ID-REMOVE ( n n -- )
+   {: dt:n twice:n :}
+   SNAP-B CLEAR twice SNAP-SLOT WAS!
+   dt s" identities-remove: verified" ID-KEEP
+   SNAP-B CLEAR twice SNAP-SLOT
+   s" identities-remove" T-LABEL SNAP$ WAS$ T$=
+   twice ID-INCLUDED ;
+
+\ id-probe.f, on disk, checked by the test's own check, its lines kept as a
+\ probe: the open documents' decls, uses and groups stay as they were while
+\ it is kept and once it is removed, and it keeps R:K's use with the
+\ declaration it names.
+: ID-PROBE ( n n -- )
+   {: dt:n twice:n :}
+   dt twice SNAP WAS!
+   TEXT-ID-PROBE ID-PROBE-PATH ID-CHECK {: ok:bool :}
+   s" identities-probe: verified" T-LABEL ok TTRUE
+   CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ ok
+   LSP-DEFS:DEFS-PROBE
+   dt twice SNAP
+   s" identities-probe: kept" T-LABEL SNAP$ WAS$ T$=
+   LSP-DEFS:PROBE LSP-DEFS:DEFS-USE-RANGE {: lim:n first:n :}
+   s" identities-probe: R:K" T-LABEL lim first - 1 T=
+   lim first - 1 = if
+      LSP-DEFS:PROBE first s" k" s" r" s" identities-probe: R:K" USE-NAMES
+      s" identities-probe: digest" T-LABEL
+      first LSP-DEFS:USE-GROUP LSP-DEFS:GROUP-SHA$ TEXT-ID-INC SHA$ T$=
+   then
+   LSP-DEFS:DEFS-UNPROBE
+   dt twice SNAP
+   s" identities-probe: removed" T-LABEL SNAP$ WAS$ T$=
+   s" identities-probe: no decl" T-LABEL
+   LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE = TTRUE ;
+
+\ Digests no producer of this tree states, and a file line of id-f.f with
+\ one, in PAR.
+: SHA-A ( -- ptr u8 n )
+   s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" ;
+: SHA-B ( -- ptr u8 n )
+   s" fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210" ;
+: SHA-UPPER ( -- ptr u8 n )
+   s" 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF" ;
+: ID-FILE+ ( ptr u8 n -- )
+   {: h:ptr hu:n :}
+   s\" {\"file\":" PAR+ ID-F-PATH TEXT+
+   s\" ,\"sha256\":\"" PAR+ h hu PAR+ s\" \"}\n" PAR+ ;
+
+\ id-f.f's file line without a digest, as a verifier before digests states it.
+: ID-BARE+ ( -- )
+   s\" {\"file\":" PAR+ ID-F-PATH TEXT+ s\" }\n" PAR+ ;
+
+\ The file lines in PAR kept as the check of the document in this slot, with
+\ no definition or use: the store's digest for id-f.f must be W; it fails
+\ under this label.
+: DIGEST-IS ( n ptr u8 n ptr u8 n -- )
+   {: slot:n w:ptr wu:n l:ptr lu:n :}
+   PAR$ {: a:ptr u:n :}
+   a u a 0 a 0 slot true LSP-DEFS:DEFS-KEEP
+   l lu T-LABEL
+   slot ID-F-PATH LSP-DEFS:DEFS-GROUP-OF MATCH option
+      some OF LSP-DEFS:GROUP-SHA$ w wu T$= ENDOF
+      none OF false TTRUE ENDOF
+   ;MATCH ;
+
+\ A check's file lines for one file give it a digest only when each states
+\ the same valid one: equal ones keep it; two, one missing or one malformed,
+\ in either order, leave none. A definition and a use line without identity
+\ members, as a verifier before them states them, give no visit.
+: ID-DIGESTS ( n -- )
+   {: slot:n :}
+   PAR-B CLEAR SHA-A ID-FILE+
+   slot SHA-A s" identities-digest: one" DIGEST-IS
+   PAR-B CLEAR SHA-A ID-FILE+ SHA-A ID-FILE+
+   slot SHA-A s" identities-digest: equal" DIGEST-IS
+   PAR-B CLEAR SHA-A ID-FILE+ SHA-B ID-FILE+ SHA-A ID-FILE+
+   slot s" " s" identities-digest: A B A" DIGEST-IS
+   PAR-B CLEAR ID-BARE+
+   slot s" " s" identities-digest: absent" DIGEST-IS
+   PAR-B CLEAR ID-BARE+ SHA-A ID-FILE+
+   slot s" " s" identities-digest: absent, valid" DIGEST-IS
+   PAR-B CLEAR SHA-A ID-FILE+ ID-BARE+
+   slot s" " s" identities-digest: valid, absent" DIGEST-IS
+   PAR-B CLEAR SHA-UPPER ID-FILE+ SHA-A ID-FILE+
+   slot s" " s" identities-digest: malformed, valid" DIGEST-IS
+   PAR-B CLEAR SHA-A ID-FILE+
+   PAR$ nip {: files:n :}
+   s\" {\"kind\":\":\",\"class\":\"word\",\"word\":\"K\",\"package\":\"\",\"visibility\":\"global\",\"file\":" PAR+
+   ID-F-PATH TEXT+ s\" ,\"byte_start\":2,\"byte_end\":3}\n" PAR+
+   PAR$ nip {: defs:n :}
+   s\" {\"byte_start\":0,\"byte_end\":1,\"file\":" PAR+
+   ID-F-PATH TEXT+ s\" ,\"target_start\":2,\"target_end\":3}\n" PAR+
+   PAR$ {: a:ptr u:n :}
+   a files  a files + defs files -  a defs + u defs -  slot true
+   LSP-DEFS:DEFS-KEEP
+   slot LSP-DEFS:DEFS-DECL-RANGE {: dlim:n dfirst:n :}
+   s" identities-digest: one decl" T-LABEL dlim dfirst - 1 T=
+   dlim dfirst - 1 = if
+      s" identities-digest: decl visit" T-LABEL dfirst LSP-DEFS:DECL-VISIT -1 T=
+   then
+   slot LSP-DEFS:DEFS-USE-RANGE {: ulim:n ufirst:n :}
+   s" identities-digest: one use" T-LABEL ulim ufirst - 1 T=
+   ulim ufirst - 1 = if
+      s" identities-digest: use visit" T-LABEL ufirst LSP-DEFS:USE-VISIT -1 T=
+   then ;
+
+: TEST-IDENTITIES ( -- )
+   ID-INC-PATH TEXT-ID-INC WRITE-ALL
+   ID-PROBE-PATH TEXT-ID-PROBE WRITE-ALL
+   ID-F-PATH TEXT-ID-INC WRITE-ALL
+   ID-SHA-PATH s\" \n" ID-OPEN ID-DIGESTS
+   ID-DT-PATH TEXT-ID-DT ID-OPEN {: dt:n :}
+   ID-TWICE-PATH TEXT-ID-TWICE ID-OPEN {: twice:n :}
+   dt s" identities-deftype: verified" ID-KEEP
+   twice s" identities-included: verified" ID-KEEP
+   dt ID-DEFTYPE
+   twice ID-INCLUDED
+   dt twice ID-REMOVE
+   dt twice ID-PROBE ;
 
 \ ---- completion --------------------------------------------------------------
 
@@ -3861,6 +4198,9 @@ public
    EXP-B READY
    PATH-B READY
    TXT-B READY
+   SNAP-B READY
+   WAS-B READY
+   LSP-DEFS:DEFS-PREPARE
    s" habu-lsp-test" HB-TMP-MKDIR N>BLEN DIR-B REPLACE
    T-RESET
    TEST-EXIT-TIMEOUT
@@ -3888,6 +4228,7 @@ public
    TEST-DEFINITIONS
    TEST-HOVERS
    TEST-HIGHLIGHTS
+   TEST-IDENTITIES
    TEST-COMPLETIONS
    TEST-LINKS
    TEST-CANCELS
