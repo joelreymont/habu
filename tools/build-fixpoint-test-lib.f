@@ -257,7 +257,9 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 \ ahead of every fault these fixtures inject: the stale-seed crash and the
 \ certify injection both came back as a bare uncaught throw. The entry is asked
 \ from the tool - ENTRY$ - rather than spelled here, so whatever the key walks
-\ is what the sandbox carries.
+\ is what the sandbox carries. A third closure is the certify driver's: the
+\ refresh spawns BF-CERTIFY-DRIVER$ as its own child, so the sandbox carries
+\ what that driver requires too.
 
 variable IX
 
@@ -277,6 +279,7 @@ variable IX
    s" lib" BFT-STALE TREE-COPY:TREE
    s" tools/build-fixpoint.f" COPY-CLOSURE
    ENTRY$ COPY-CLOSURE
+   BF-CERTIFY-DRIVER$ COPY-CLOSURE
    s" tools/build-fixpoint-main.f" BFT-STALE TREE-COPY:FILE
    s" bin/hb" BFT-STALE TREE-COPY:FILE
    BFT-STALE-HB CHMOD-X ;

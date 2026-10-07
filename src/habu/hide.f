@@ -1,22 +1,12 @@
-\ hide.f - refresh prelude dictionary truncation.
+\ hide.f - the executable spec of tools/bootstrap.sh's BOOT-* index words.
 \
-\ Loaded before the native refresh source reloads common engine files. The words
-\ intentionally use a BFR prefix so they can be defined in old engines that lack
-\ xref.f, then hide themselves by truncating back to the requested marker.
-\
-\ WHAT IS NOT MIRRORED HERE ANY MORE. This file carried a BFR-* signature-store
-\ reset, and nothing in the tree ever called it - the native refresh rewinds the
-\ checker through its own boundary instead (src/habu/prefix-rewind.f). Its only
-\ body was a TRUSTED: row naming `USIGS`, a signature-less colon word of the
-\ checker's that the seal marks DNAME-INT, so the uncalled words were also the
-\ reason a product image that keeps only the names the checker knows could not
-\ compile this payload. They are gone rather than given a declared surface,
-\ because the seal is not wrongly covering `USIGS`: no consumer needs it (dot
-\ habu-give-the-build-4b825045). tools/bootstrap.sh's prologue carried the same
-\ row for a rewind it really does call, and it is gone the same way: that
-\ prologue asks the checker's own boundary package to empty the store now
-\ (CHECKER-BOUND:EMPTY-STORE, dot habu-route-the-recovery-4ef43bd9), so neither
-\ side of this mirror spells `USIGS` any more.
+\ tools/bootstrap.sh's boot-hide prologue finds the record it lowers the
+\ dictionary to with BOOT-* words it emits as text, for the gforth stage0 and
+\ the sealed native stages alike, and lowers it with its own top-level
+\ `seed-ndict!`. These are their BFR-* twins - the record walk, the case-folded
+\ name match and the earlier-of-two-markers index - and
+\ tools/bootstrap-codegen-test.f includes this file to drive them against the
+\ running dictionary. Nothing else loads it.
 
 0 constant BFR-START-SLOT
 2 constant BFR-FLAGS-SLOT
@@ -25,33 +15,11 @@
 -1 constant BFR-NOT-FOUND
 24 constant BFR-INLINE-OFF
 
-\ Dictionary records and long names are addressed by integers. This prelude
-\ defines globals and truncates them away, and a global pointer CAST: is
-\ E-CAST-MINT. Retirement: habu-sweep-trusted-out-41e973ce.
+\ Dictionary records and long names are addressed by integers. This file
+\ defines globals, and a global pointer CAST: is E-CAST-MINT.
+\ Retirement: habu-sweep-trusted-out-41e973ce.
 TRUSTED: BFR-N>REC ( n -- ptr n ) ;
 TRUSTED: BFR-N>U8 ( n -- ptr u8 ) ;
-\ THE LOWERING SEAM, and `seed-ndict!` rather than public `ndict!` because the
-\ host this prelude runs on has its seal floor armed: the watermark is set
-\ before any entry (habu2.f EM-SEAL-SEEDED-RUNTIME) and BNDSET refuses every
-\ count below it with a silent exit 83, so the payload used to die with no
-\ diagnostic at all. `seed-ndict!` is the engine's one authorized lowering: it
-\ refuses a raise, guards the record span, rebuilds the name index and clears
-\ the floor, and its checker row is admitted only inside a TRUSTED: boundary -
-\ which is exactly what this row is, and this file is payload-only.
-\ src/habu/prefix-rewind.f drives the same seam for the other rewind.
-\
-\ tools/bootstrap.sh's BOOT-* twin of these words lowers through `seed-ndict!`
-\ as well: the launcher feeds one prologue to the gforth stage0 and to the
-\ sealed native stages after it, and the stage0 prim table
-\ (bootstrap/cg/forth.fs) answers the name with its unsealed BNDSET.
-TRUSTED: BFR-NDICT! ( n -- ) seed-ndict! ;
-\ Named refresh-prelude boundary (staged fixpoint source checking,
-\ habu-staged-fixpoint-src-0b5fc6e6): the stage compile loads the checker-boot
-\ region with the hook silenced, but the blocking pre-pass (tools/
-\ build-fixpoint.f BF-CERTIFY-*) statically checks THROUGH the window, so the
-\ window's only effect is stage-compile hook silence.
-\ Retirement: habu-sweep-trusted-out-41e973ce.
-TRUSTED: BFR-CHECK-OFF ( -- ) 0 set-check ;
 
 : BFR-REC-ADDR ( n -- n )
    DREC * dbase@ + ;
@@ -138,13 +106,3 @@ s" BFR-BYTE@" s" ptr u8 n -- u8" TRUST
    a u BFR-FIND-FIRST-INDEX
    b v BFR-FIND-FIRST-INDEX
    BFR-MIN-FOUND BFR-REQUIRE-INDEX ;
-
-\ THE EARLIEST-MARKER REWIND. Truncates to whichever named marker sits earlier,
-\ which is util.f's first record - the start of the whole core prefix. The
-\ native builder no longer emits it (src/habu/prefix-rewind.f rewinds to the
-\ prefix END instead), and it stays because tools/bootstrap.sh's recovery
-\ prelude emits its own BOOT-* twin of exactly these words: this file is the
-\ executable spec that tools/bootstrap-codegen-test.f drives to keep the two
-\ sides honest.
-: BFR-HIDE-DICT-FROM-EARLIEST ( ptr u8 n ptr u8 n -- )
-   BFR-MARKER-INDEX BFR-NDICT! ;

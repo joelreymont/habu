@@ -9,8 +9,8 @@
 \ src/habu/aot-capture.f fills the capture buffers and only the stdin driver
 \ carries it, so every stage2 and maker engine is the second kind - the kind the
 \ no-binary recovery chain (docs/bootstrap.md) and hb-build's cached maker are
-\ made of, and the kind src/habu/hide.f and src/habu/prefix-rewind.f are written
-\ against: they rewind a dictionary that already holds the core prefix.
+\ made of, and the kind src/habu/prefix-rewind.f is written against: it rewinds
+\ a dictionary that already holds the core prefix.
 \
 \ RED-FIRST. While the emitter emitted the seeded arm for both kinds, EM-SEED-AOT's
 \ mandatory-seed check and EM-SEAL-SEEDED-RUNTIME's friend latch went into an
@@ -18,8 +18,8 @@
 \ `hb: AOT metadata corrupt` and exit 82 (ENGINE-ERROR:AOT-SEED) before its driver
 \ ran, which is why case 2 asserts that message's ABSENCE alongside the driver's
 \ own named refusal. Relaxing only the count check moved the death to the payload
-\ instead (`E-UNDEFINED: USIGS`, src/habu/hide.f naming a checker word no prefix
-\ had loaded) - the failure case 3 names from the other side.
+\ instead (`E-UNDEFINED: USIGS`, the payload naming a checker word no prefix had
+\ loaded) - the failure case 3 names from the other side.
 \
 \ THE BAKED SOURCE HAS ITS OWN ROOM. A cold engine copies its prefix and then
 \ its baked source into one boot arena, so the engine built here bakes a stage

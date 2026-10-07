@@ -1709,11 +1709,12 @@ immediate
 \ it says whether the boot registry is still open, not where a row is, and while
 \ it is set REQUIRE-BOOT-LIMIT reads REQUIRE-N, which this word already moves.
 \
-\ ITS CALLER IS THE BUILD'S CORE-PREFIX REWIND (src/habu/prefix-rewind.f), which
-\ returns a compiling host to the end of its own boot prefix: the rows the boot
-\ recorded after that point describe files whose definitions the rewind removes,
-\ and a snapshot taken afterwards would otherwise persist an image that claims
-\ to provide what it no longer carries (measured: the stdlib).
+\ ITS CALLER IS THE BUILD'S CORE-PREFIX REWIND (src/habu/prefix-rewind.f's
+\ top-level text), which returns a compiling host to the end of its own boot
+\ prefix: the rows the boot recorded after that point describe files whose
+\ definitions the rewind removes, and a snapshot taken afterwards would
+\ otherwise persist an image that claims to provide what it no longer carries
+\ (measured: the stdlib).
 \
 \ The two words are a package block because the rest of this file is legacy
 \ global surface and the ownership gate refuses a new global here (measured:

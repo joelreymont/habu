@@ -26,9 +26,6 @@ require lib/string.f
 require lib/test.f
 require lib/test/outcome.f
 require lib/test/subject.f
-\ Load the payload's typed boundary binding through the ordinary JIT path.
-\ Its native-only tick previously hid a default-tier stage-build regression.
-require src/habu/prefix-rewind.f
 
 package PREFIX-MARK-TEST
 
@@ -53,9 +50,9 @@ private
 \ Only the dictionary gets a live upper bound here. The boundary width has no
 \ reachable one: the record it is the width OF belongs to CHECKER-BOUND, which
 \ sits below the lower-cert seal and answers CHECKER-RESOLVES? with 0 from out
-\ here - the same wall that makes src/habu/prefix-rewind.f reach the seam through
-\ a trusted row. Nonzero, above, is what this side can state, and it is exactly
-\ the clause tools/build-fixpoint.f requires of a host.
+\ here - the same wall that makes src/habu/prefix-rewind.f lower the dictionary
+\ from top-level text. Nonzero, above, is what this side can state, and it is
+\ exactly the clause tools/build-fixpoint.f requires of a host.
 : UPPER-BOUND ( -- )
    PREFIX-MARK:DICT ndict@ < TTRUE
    s" CHECKER-BOUND:CURSORS" CHECKER-RESOLVES? TFALSE ;

@@ -34,10 +34,11 @@ undefine FULL-SET
 \ boundary is the end of this file. src/habu/habu2.f EMIT-HOST-LOAD-PREFIX
 \ loads it after the core files and their provided rows, before the stdlib.
 \
-\ WHO READS IT. src/habu/prefix-rewind.f, at the head of every generated engine
-\ source. That source used to truncate the dictionary back to util.f's first
-\ record and recompile this whole prefix on top of the orphaned copy; it rewinds
-\ to HERE instead, so the compiling host's own boot copy stays live.
+\ WHO READS IT. src/habu/prefix-rewind.f's top-level text, at the head of every
+\ generated engine source. That source used to truncate the dictionary back to
+\ util.f's first record and recompile this whole prefix on top of the orphaned
+\ copy; it rewinds to HERE instead, so the compiling host's own boot copy stays
+\ live.
 \
 \ EVERY CURSOR THAT ADVANCES PAST THIS POINT goes back through its owner's
 \ truncation seam, and the count is not written down here: the checker owns the

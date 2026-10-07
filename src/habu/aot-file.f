@@ -273,9 +273,10 @@ variable CUR
    v p c!  v 8 rshift p 1+ c!  v 16 rshift p 2 + c!  v 24 rshift p 3 + c! ;
 
 \ Counted rather than short-circuited, and that is not a style choice: this file
-\ compiles in the stdin metabuild host, where src/habu/hide.f has already retired
-\ `true` and `false` (measured - the host build died E-UNDEFINED: false). Every
-\ other host-side AOT source is written the same way, without a boolean literal.
+\ compiles in the stdin metabuild host, where the core-prefix rewind
+\ (src/habu/prefix-rewind.f) has already retired `true` and `false` (measured -
+\ the host build died E-UNDEFINED: false). Every other host-side AOT source is
+\ written the same way, without a boolean literal.
 : BYTES= ( ptr u8 ptr u8 n -- bool ) {: a:ptr b:ptr n:n :}
    0  n 0 ?do  a i + c@ b i + c@ <> if 1+ then  loop  0= ;
 

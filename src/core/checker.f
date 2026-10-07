@@ -8000,9 +8000,9 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
 \ being built is not on it yet (its ER.NEXT is 0 until E-REC-FINISH), so the walk
 \ ends at the record in progress and the nodes above it belong to E-INTERN.
 \ UEND BOUNDS THE WALK, NOT THE CHAIN ALONE. UEND is the store's true top, and a
-\ rewind LEAVES THE BYTES ABOVE IT READABLE: src/habu/hide.f's refresh prelude
-\ assigns UEND directly, and a terminator only ends a chain that has not since
-\ been regrown over. So the walk states its own bound instead of trusting the
+\ rewind LEAVES THE BYTES ABOVE IT READABLE: E-INTERN's hit path assigns UEND
+\ directly, and a terminator only ends a chain that has not since been regrown
+\ over. So the walk states its own bound instead of trusting the
 \ links: a record is walked only while its whole header is below UEND, and a link
 \ that does not advance, or that leaves the live store, ends it. Otherwise the
 \ index would offer nodes in the dead region - entries the next append overwrites,
@@ -8496,13 +8496,13 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
 
 \ UEND BOUNDS THIS WALK, NOT THE CHAIN ALONE - the same three admissions
 \ UIX-BUILD states, for the same reason. UEND is the store's true top and a
-\ rewind LEAVES THE BYTES ABOVE IT READABLE: src/habu/hide.f's refresh prelude
-\ assigns UEND directly, E-INTERN's own hit rewinds mid-record without writing a
-\ terminator, and a terminator a rewind did write is overwritten by the very next
-\ append. Walking the chain alone therefore indexed the dead region and answered
-\ a symbol's newest record with an offset the store no longer holds - which the
-\ next definition of that name reads as a duplicate definition (measured:
-\ test/verify-prim-test.f's cold differential, rc 78 on `CAST: >IMG`).
+\ rewind LEAVES THE BYTES ABOVE IT READABLE: E-INTERN's own hit rewinds
+\ mid-record without writing a terminator, and a terminator a rewind did write
+\ is overwritten by the very next append. Walking the chain alone therefore
+\ indexed the dead region and answered a symbol's newest record with an offset
+\ the store no longer holds - which the next definition of that name reads as a
+\ duplicate definition (measured: test/verify-prim-test.f's cold differential,
+\ rc 78 on `CAST: >IMG`).
 \ THE LINEAR SPECIFICATION SHARED THE BLIND SPOT, which is why nothing caught it:
 \ USIG-NEWEST-LINEAR walked the same terminator, so the differential in
 \ test/checker-scan-index-suite.f compared two walks that agreed on the same wrong
@@ -10858,12 +10858,13 @@ PPRIM: PRIM-SPEC A-IN PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC A-OUT PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC A-NUM PE-N PE-OUT PPRIM;
 \ CHECKER-BOUND REWIND is the core-prefix boundary's restore half, declared and
-\ its MARK half deliberately not: src/habu/prefix-rewind.f TO-CORE is the one
-\ consumer and it only ever rewinds, so nothing outside this file can move the
-\ boundary. The rewind is guarded by its own body - it dies on an unrecorded
-\ boundary and inside a rollback scope — and what it restores is checker
-\ knowledge, so a caller that runs it in a booted engine loses the symbols above
-\ the prefix and every later reference fails closed with E-UNDEFINED (measured).
+\ its MARK half deliberately not: src/habu/prefix-rewind.f's top-level text is
+\ the one consumer and it only ever rewinds, so nothing outside this file can
+\ move the boundary. The rewind is guarded by its own body - it dies on an
+\ unrecorded boundary and inside a rollback scope — and what it restores is
+\ checker knowledge, so a caller that runs it in a booted engine loses the
+\ symbols above the prefix and every later reference fails closed with
+\ E-UNDEFINED (measured).
 PPRIM: CHECKER-BOUND REWIND PPRIM;
 \ CHECKER-BOUND EMPTY-STORE is the same package's other answer, for the other
 \ kind of reloading host: tools/bootstrap.sh's boot-hide prologue, which every
@@ -23768,8 +23769,9 @@ package CHECKER-REG
 \ ---------------------------------------------------------------------------
 \ THE CORE-PREFIX BOUNDARY. One mark, taken once at the end of the boot prefix
 \ (src/core/lower-cert-seal.f) and rewound to once at the head of a generated
-\ engine source (src/habu/prefix-rewind.f), which returns a compiling host to
-\ the end of its own boot instead of orphaning that prefix and recompiling it.
+\ engine source (src/habu/prefix-rewind.f's top-level text), which returns a
+\ compiling host to the end of its own boot instead of orphaning that prefix and
+\ recompiling it.
 \
 \ IT IS A RECORD, NOT A FRAME. A frame held open across the whole boot is one
 \ frame deeper than the core for its entire life, and the depth-lockstep assert

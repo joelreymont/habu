@@ -1,14 +1,15 @@
 \ build-rewind-test.f - the build ABI's dictionary rewind, at the process entry.
 \
 \ WHAT THIS PINS. Every generated engine source opens with the core-prefix
-\ rewind (src/habu/prefix-rewind.f PREFIX-REWIND:TO-CORE): it returns the
+\ rewind (src/habu/prefix-rewind.f's top-level text): it returns the
 \ compiling host to the end of its own core prefix so the target's source
 \ compiles on top of the host's live copy instead of an orphaned one. The
 \ dictionary half of that rewind lowers the record count BELOW the engine's seal
 \ floor - the watermark that says "records under here are the engine's own" - and
 \ the floor is armed before any entry runs, on every boot mode. So the rewind
 \ needs the ONE engine seam allowed to lower past it, `seed-ndict!`, and not the
-\ public `ndict!`.
+\ public `ndict!`. That seam is a top-level boundary primitive: no checked body
+\ names it, so the payload `include`s the rewind at its own top level.
 \
 \ RED-FIRST, AND WHY IT HAS TO BE A SPAWN. With the rewind on public `ndict!`
 \ this payload exits 83 (ENGINE-ERROR:SEAL-VIOLATION) with ZERO bytes on both
@@ -21,8 +22,10 @@
 \ child checks them: that there was something above the mark to discard, that the
 \ rewind landed exactly ON the mark, and that the floor followed it down instead
 \ of standing above the dictionary it describes (SEAL-CAPTURE, the rewind's last
-\ act). The second case then proves the floor is a floor still: public `ndict!`
-\ below the re-armed watermark traps, from the same payload, after the rewind.
+\ act). The checks after the rewind are a word the payload ticks before it and
+\ executes after it, the way every caller of the rewind runs code past it. The
+\ second case then proves the floor is a floor still: public `ndict!` below the
+\ re-armed watermark traps, from the same payload, after the rewind.
 \
 \ Run: bin/hb --load test/build-rewind-test.f
 
@@ -54,49 +57,55 @@ create BR-ERR   BR-CAP allot
    SB-APPEND
    s\" \n" SB-APPEND ;
 
-\ The first three rows are tools/build-fixpoint.f BF-APPEND-RUN-PRELUDE's own:
-\ the refresh prelude, the rewind, and the named checking boundary the generated
-\ sources call instead of a raw `0 set-check`. `include` and not `require`
-\ because both files are payload-only and carry no registry row.
+\ The first row is tools/build-fixpoint.f BF-APPEND-RUN-PRELUDE's own: the
+\ `0 set-check` window the generated sources open before their rewind.
 : BR-PRELUDE ( -- )
    SB-RESET
-   s" include src/habu/hide.f" BR-LINE
-   s" include src/habu/prefix-rewind.f" BR-LINE
-   s" BFR-CHECK-OFF" BR-LINE ;
+   s" 0 set-check" BR-LINE ;
 
-\ One body, because the rewind discards this word's own record while the body
-\ runs: a check that needed a second top-level lookup afterwards would be
-\ looking for a name the rewind had just taken away, and a check defined after
-\ it would raise the very count it is comparing.
-: BR-REWIND-BODY ( -- )
-   s" : BR-RUN ( -- )" BR-LINE
-   s"    ndict@ PREFIX-MARK:DICT > 0= if" BR-LINE
-   s\"       s\" build-rewind: nothing above the mark\" 74 die then" BR-LINE
-   s"    PREFIX-REWIND:TO-CORE" BR-LINE
+\ BR-AFTER holds the checks past the rewind: the payload ticks it before the
+\ rewind takes its name and executes it after, since the rewind removes records
+\ and keeps code. It is defined before BR-BEFORE, so the record count the checks
+\ compare is the one the rewind leaves. BR-REWIND ends it, after the floor
+\ case's tail.
+: BR-AFTER-BODY ( -- )
+   s" : BR-AFTER ( -- )" BR-LINE
    s"    ndict@ PREFIX-MARK:DICT <> if" BR-LINE
    s\"       s\" build-rewind: not at the mark\" 74 die then" BR-LINE
    s\"    s\" true\" 0 XREF-FIND-WL-INDEX 0 >= if" BR-LINE
    s\"       s\" build-rewind: post-prefix prelude survived\" 74 die then" BR-LINE
    s"    SEAL-NDICT@ ndict@ <> if" BR-LINE
    s\"       s\" build-rewind: floor not re-armed\" 74 die then" BR-LINE
-   s\"    s\" build-rewind: rewound\" type cr ;" BR-LINE
-   s" BR-RUN" BR-LINE ;
+   s\"    s\" build-rewind: rewound\" type cr" BR-LINE ;
 
-: BR-FLOOR-BODY ( -- )
-   s" : BR-BELOW ( -- )" BR-LINE
+\ The floor case's tail: public `ndict!` below the re-armed floor, after the
+\ rewind.
+: BR-FLOOR-TAIL ( -- )
    s"    0 ndict!" BR-LINE
-   s\"    s\" build-rewind: floor did not refuse\" type cr ;" BR-LINE
-   s" BR-BELOW" BR-LINE ;
+   s\"    s\" build-rewind: floor did not refuse\" type cr" BR-LINE ;
+
+\ BR-AFTER's end, the check before the rewind, then the rewind itself between
+\ BR-AFTER's tick and its execution.
+: BR-REWIND ( -- )
+   s"    ;" BR-LINE
+   s" : BR-BEFORE ( -- )" BR-LINE
+   s"    ndict@ PREFIX-MARK:DICT > 0= if" BR-LINE
+   s\"       s\" build-rewind: nothing above the mark\" 74 die then ;" BR-LINE
+   s" ' BR-AFTER BR-BEFORE" BR-LINE
+   s" include src/habu/prefix-rewind.f" BR-LINE
+   s" execute" BR-LINE ;
 
 : BR-WRITE-OK ( -- )
    BR-PRELUDE
-   BR-REWIND-BODY
+   BR-AFTER-BODY
+   BR-REWIND
    BR-OK$ SB$ WRITE-ALL ;
 
 : BR-WRITE-FLOOR ( -- )
    BR-PRELUDE
-   BR-REWIND-BODY
-   BR-FLOOR-BODY
+   BR-AFTER-BODY
+   BR-FLOOR-TAIL
+   BR-REWIND
    BR-FLOOR$ SB$ WRITE-ALL ;
 
 : BR-SETUP ( -- )
@@ -111,8 +120,7 @@ create BR-ERR   BR-CAP allot
    BR-WRITE-FLOOR ;
 
 \ The real build command line: tools/build-fixpoint.f COMPILER-BUILD:ARGV spells
-\ it `--build <payload> -- <tmp>`, and the payload-only rewind exists at no other
-\ entry.
+\ it `--build <payload> -- <tmp>`.
 : BR-ARGV ( ptr u8 n -- ) {: src:ptr srcu:n :}
    PROC-ARGV-RESET
    s" --build" >LEN PROC-ARGV+
@@ -156,9 +164,8 @@ create BR-ERR   BR-CAP allot
 \ Refuse the whole invalid index range before deriving a dictionary address.
 : BR-SEED-REFUSED ( ptr u8 n -- ) {: value:ptr valueu:n :}
    SB-RESET
-   s" TRUSTED: BR-SEED ( -- ) " SB-APPEND
    value valueu SB-APPEND
-   s"  seed-ndict! ; BR-SEED" BR-LINE
+   s"  seed-ndict!" BR-LINE
    BR-FLOOR$ SB$ WRITE-ALL
    BR-FLOOR$ BR-ARGV
    BR-RUN {: outu:n erru:n rc:n :}
