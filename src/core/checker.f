@@ -5137,6 +5137,13 @@ variable SIG-UNRES-U
    SIG-UNRES @ IF EXIT THEN
    -1 SIG-UNRES !  a SIG-UNRES-A !  u SIG-UNRES-U ! ;
 
+\ The source verifier consumes a quiet unresolved-type outcome through this
+\ operation. The latch stays private to the checker, including on a cold boot
+\ whose sealed prefix has no external rows for its storage cells.
+: CHECKER-SIG-UNRES-TAKE ( -- ptr u8 n bool )
+   SIG-UNRES-A @ SIG-UNRES-U @ SIG-UNRES @ 0= 0=
+   SIG-UNRES-CLEAR ;
+
 \ Installed by the nominal resolver once its package and grammar rules exist.
 \ A pre-install parse retains the ordinary unknown-type refusal.
 defer TYPE-MAY-ARRIVE-XT ( ptr u8 n -- bool )
@@ -10404,6 +10411,13 @@ PRIM: CHECKER-TYPE-SPAN-STEP
    PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: CHECKER-TYPE-SPAN-BREAK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-SIG-SPAN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
+PRIM: CHECKER-SIG-UNRES-TAKE PE-PTR-U8 PE-OUT PE-N PE-OUT PE-F PE-OUT PRIM;
+\ The verifier compares these named quiet-replay outcomes after the prefix is
+\ sealed. Each is a public code; the private checker latch is read only above.
+PRIM: E-CHECKER-RECORD-UNRESOLVED PE-N PE-OUT PRIM;
+PRIM: E-CHECKER-STORAGE-UNRESOLVED PE-N PE-OUT PRIM;
+PRIM: E-CHECKER-IDENTITY-UNRESOLVED PE-N PE-OUT PRIM;
+PPRIM: TYPE-DECL E-TDECL-UNRESOLVED PE-N PE-OUT PPRIM;
 PRIM: CHECKER-VERIFY-SOURCE!
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 \ Two name queries, because a query about a name asks one of two different

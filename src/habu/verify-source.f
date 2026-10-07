@@ -1455,11 +1455,11 @@ CAST: STRETCH-ACTION ( n -- [ ptr u8 n -- ] )
    NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-OFF OWNER-XT STRETCH-ACTION execute ;
 
 : QUIET-TYPE-CLEAR ( -- )
-   0 SIG-UNRES !  NULL-PTR SIG-UNRES-A !  0 SIG-UNRES-U ! ;
+   CHECKER-SIG-UNRES-TAKE drop 2drop ;
 : QUIET-TYPE-REPORT ( -- )
-   DEFER-REPORT @ IF SIG-UNRES-A @ SIG-UNRES-U @ REPORT-STRETCH
-      -1 DEFER-SEEN ! THEN
-   QUIET-TYPE-CLEAR ;
+   CHECKER-SIG-UNRES-TAKE {: a:ptr u:n found:bool :}
+   found DEFER-REPORT @ and IF a u REPORT-STRETCH
+      -1 DEFER-SEEN ! THEN ;
 
 \ A body the checker deferred to the run (verdict 2) is reported where the
 \ checker's judgment of it stopped (CHECKER-VERIFY-DEFERRED-BODY), when the
@@ -2029,7 +2029,7 @@ DUPLICATE-INIT
    kept IF name nameu CHECKER-DEFER THEN
    DISARM
    kept IF name nameu sig sigu at DEF-WORD DEFINED-HERE
-   ELSE SIG-UNRES @ IF QUIET-TYPE-REPORT THEN THEN ;
+   ELSE QUIET-TYPE-REPORT THEN ;
 
 : TRUST-DEFER ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
@@ -2105,7 +2105,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    {: kept:bool :}
    DISARM
    kept IF name nameu sig sigu at DEF-WORD DEFINED-HERE
-   ELSE SIG-UNRES @ IF QUIET-TYPE-REPORT THEN THEN
+   ELSE QUIET-TYPE-REPORT THEN
    name nameu kept SCAN-TRUSTED-BODY
    name nameu at TRUSTED-DOES @ 0<> REFUSE-SHAPE IF EXIT THEN
    TRUSTED-DOES @ kept and IF name nameu TRUSTED-CLAUSE THEN ;
