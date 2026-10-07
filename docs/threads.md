@@ -312,6 +312,7 @@ read the source to find out. There are three:
 | `lib/serial.f` | task-local | 144-byte row: termios and saved termios |
 | `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) | the input and output indices are per-task DATA cells `TASK-REGION-INIT` copies; the rows and their eight operations are shared |
 | `lib/content-length.f` | task-local (`SEND`) / caller-owned (the reader) | 39-byte row: `SEND`'s header, so a body the caller built in its own SB goes out as it was; the reader record and its buffer are the caller's |
+| `lib/source-lex.f` | process-wide | the token table, the locals state and the scan cursors are one set for the image, and `SOURCE` replaces the last scan's tokens, so one task scans and reads them at a time |
 
 ### Which mechanism a task-local library uses
 

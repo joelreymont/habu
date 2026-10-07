@@ -2,7 +2,7 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f tools/lint/text.f
 \ tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
-\ tools/lint/source-lex.f tools/aot-lint-core.f tools/aot-lint-test.f
+\ lib/source-lex.f tools/aot-lint-core.f tools/aot-lint-test.f
 
 package AOT-LINT-TEST
 private

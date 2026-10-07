@@ -1,6 +1,7 @@
 \ repl-lint-core.f -- REPL-baked code must never exit the interactive session.
 
 require tools/lint/text.f
+require lib/source.f
 require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
@@ -258,8 +259,8 @@ variable REPL-ROOT-U
       R-ADV drop
    repeat
    REPL-X @ REPL-TMP @ - REPL-TOK-U !
-   REPL-TOK-A@ REPL-TOK-U @ LINT-ESC-STRING-OPENER? if R-SKIP-ESC-QUOTE else
-   REPL-TOK-A@ REPL-TOK-U @ LINT-NORMAL-STRING-OPENER? if R-SKIP-QUOTE then then
+   REPL-TOK-A@ REPL-TOK-U @ SOURCE:ESC-STRING-OPENER? if R-SKIP-ESC-QUOTE else
+   REPL-TOK-A@ REPL-TOK-U @ SOURCE:NORMAL-STRING-OPENER? if R-SKIP-QUOTE then then
    LINT-TRUE ;
 
 : REPL-FINDING  ( ptr u8 n ptr u8 n n -- ) {: fa:ptr fu:n ta:ptr tu:n line:n :}

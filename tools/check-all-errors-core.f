@@ -12,7 +12,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/json-writer.f
-require tools/lint/source-lex.f
+require lib/source-lex.f
 
 \ The checked source verifier is a load-time dependency: every checker scope
 \ opened below replays source through VERIFY. It is required here, at top

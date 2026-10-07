@@ -3,6 +3,7 @@
 \ tools/public-signatures-core.f` works without the resident DAG ordering.
 
 require tools/lint/text.f
+require lib/source.f
 require lib/string-roles.f               \ package STR: the typed string surface
 require tools/lint/intern.f
 require tools/event-closure-lib.f
@@ -514,8 +515,8 @@ private
       PS-ADV drop
    repeat
    PS-SRC-A@ PS-START @ +  PS-X @ PS-START @ -  PS-ONE 0  PS-WORD PS-SAVE-TOKEN
-   PS-TOK-A@ PS-TOK-U @ LINT-ESC-STRING-OPENER? IF PS-SKIP-ESC-QUOTE ELSE
-   PS-TOK-A@ PS-TOK-U @ LINT-NORMAL-STRING-OPENER? IF PS-SKIP-QUOTE THEN THEN ;
+   PS-TOK-A@ PS-TOK-U @ SOURCE:ESC-STRING-OPENER? IF PS-SKIP-ESC-QUOTE ELSE
+   PS-TOK-A@ PS-TOK-U @ SOURCE:NORMAL-STRING-OPENER? IF PS-SKIP-QUOTE THEN THEN ;
 
 \ `(` opens a comment only as a STANDALONE token (next byte is whitespace or
 \ EOF); a paren-initial word name like `(CMP)` lexes as a WORD. This is the

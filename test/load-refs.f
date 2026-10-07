@@ -16,11 +16,11 @@
 \ such as a computed string handed to `required` or a literal with a bad
 \ escape, is OPAQUE: EACH skips it and OPAQUE-EACH names it.
 \
-\ Both read the tokens tools/lint/source-lex.f holds for the source their caller
+\ Both read the tokens lib/source-lex.f holds for the source their caller
 \ lexed last.
 
 require lib/string.f
-require tools/lint/source-lex.f
+require lib/source-lex.f
 
 package LOAD-REFS
 

@@ -10,7 +10,7 @@
 \ <closer>`, closed by `LBL,` where a label is bound and by `ADR,` where one is
 \ reached. TRIPLE? pins all three roles, so the same three tokens in any other
 \ order are neither, and `TEXT-ADR,` / `TADR,` are not `ADR,`. The scan runs on
-\ the shared string-aware lexer (tools/lint/source-lex.f), so the same tokens
+\ the shared string-aware lexer (lib/source-lex.f), so the same tokens
 \ inside a comment or inside a string literal are not a triple at all; each
 \ lint's test pins those cases.
 \
@@ -34,7 +34,7 @@
 \ Run: the lints; this file defines no entry of its own.
 
 require tools/lint/text.f
-require tools/lint/source-lex.f
+require lib/source-lex.f
 
 package LINT-LABEL-TRIPLE
 

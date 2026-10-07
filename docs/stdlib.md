@@ -42,6 +42,7 @@ Planned module files:
 - `lib/tree-copy.f`
 - `lib/build-cache.f`
 - `lib/source.f`
+- `lib/source-lex.f`
 - `lib/object.f`
 - `lib/object-cache.f`
 - `lib/object-index.f`
@@ -113,6 +114,7 @@ theirs.
 | `lib/browser/host.f` | process-wide (the page's buffers, filled as the file loads and only read after it; see [browser-host.md](browser-host.md)) |
 | `lib/serial.f` | task-local |
 | `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) |
+| `lib/source-lex.f` | process-wide (one scan's tokens; `SOURCE` replaces them) |
 
 A task-local module reaches its storage one of two ways, and which one is
 forced rather than chosen: a module the engine bakes, or one the engine's own
@@ -2040,6 +2042,40 @@ a trailing newline, strips a trailing carriage return before `\n`, and throws
 `E-FS-CAPACITY` rather than truncating a line that exceeds the supplied line
 buffer. `SOURCE-LS-*` words are the checked implementation steps behind that
 streaming API.
+
+## Source Lexer
+
+`lib/source-lex.f` owns package `LINT-LEX`, the one lexer for Habu source. The
+lint, checker and codegen tools read source through it, and so can an
+application that finds a call by its tokens and rewrites its bytes. It reads
+tokens as the engine does: `\` line comments and `( ... )` and `.( ... )`
+bodies stay out of the code tokens, a string literal is one token whose payload
+is its `CONTENT`, a primitive-axiom row is one `REGISTRY` token, a parsing
+keyword's operand and a `{: ... :}` group's names are read raw, and a live local
+spelled like a keyword is that local. Tokens point into the span `SOURCE` was
+given, so that span must stay in place while they are read.
+
+```forth
+LINT-LEX:SOURCE                 ( ptr u8 n -- )    scan; replaces the last scan
+LINT-LEX:COUNT                  ( -- n )
+LINT-LEX:TOKEN                  ( n -- ptr u8 n )
+LINT-LEX:CONTENT                ( n -- ptr u8 n )  comment body or string payload
+LINT-LEX:LITERAL?               ( n -- bool )
+LINT-LEX:KIND@                  ( n -- n )         WORD, COMMENT or REGISTRY
+LINT-LEX:BYTE@ LINE@ COL@       ( n -- n )         0-based byte, 1-based line, column
+LINT-LEX:OPERAND                ( n -- )           token n parses the next: rescan
+LINT-LEX:OPERAND?               ( n -- bool )
+LINT-LEX:ERROR?                 ( -- bool )
+LINT-LEX:ERROR-KIND@ ERROR-BYTE@ ERROR-LINE@ ERROR-COL@ ( -- n )
+```
+
+An unterminated string literal or a malformed row ends the scan at its site:
+`ERROR?` answers true, `ERROR-KIND@` is `UNTERMINATED-QUOTE` or
+`MALFORMED-REGISTRY`, and no token after the site is exposed. The token
+classes the lexer shares with other scanners are `lib/source.f`'s:
+`SOURCE:PARSING-KEYWORD?`, `BLOCK-OPENER?` and `BLOCK-CLOSER?`, and
+`NORMAL-STRING-OPENER?` and `ESC-STRING-OPENER?` for `s"`, `c"`, `."` and
+their `\"` forms. Tests: `lib/source-lex-test.f`.
 
 ## Descriptor IO
 

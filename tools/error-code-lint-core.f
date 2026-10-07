@@ -9,7 +9,7 @@
 \ owned by two different E- names.
 \
 \ Which bytes are code is decided by the one shared source lexer, package
-\ LINT-LEX in tools/lint/source-lex.f. It consumes `\` line comments, `( ... )`
+\ LINT-LEX in lib/source-lex.f. It consumes `\` line comments, `( ... )`
 \ and `.( ... )` comment bodies, and every string literal body - the plain
 \ `s" c" ."` openers and the escaped `s\" c\" .\"` openers alike - so none of
 \ that text ever reaches this scan as a token. This lint used to decide string
@@ -63,7 +63,7 @@ require lib/fs.f
 require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
-require tools/lint/source-lex.f
+require lib/source-lex.f
 
 package ERROR-CODE-LINT
 using LINT-INTERN

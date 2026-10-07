@@ -38,7 +38,7 @@
 \ Structure, not text: the three-token shape, the qualified-name tail rule and
 \ the label table live in tools/lint/label-triple.f, shared with the sibling
 \ section lint and stated there. The scan runs on the shared string-aware lexer
-\ (tools/lint/source-lex.f), so the same three tokens inside a comment, inside a
+\ (lib/source-lex.f), so the same three tokens inside a comment, inside a
 \ string literal, or in the wrong order are not a binding and not a reference.
 \ tools/aot-startup-reach-lint-test.f pins each of those.
 \
@@ -51,7 +51,7 @@ require lib/vector.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/lint/source-lex.f
+require lib/source-lex.f
 require tools/lint/label-triple.f
 
 package AOT-STARTUP-REACH-LINT

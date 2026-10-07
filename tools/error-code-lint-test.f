@@ -20,7 +20,7 @@ require lib/fs.f
 require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
-require tools/lint/source-lex.f
+require lib/source-lex.f
 require tools/error-code-lint-core.f
 
 package ERROR-CODE-LINT-TEST

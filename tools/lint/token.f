@@ -1,5 +1,7 @@
 \ token.f - legacy token table projected from the shared source lexer.
-require tools/lint/source-lex.f
+require tools/lint/text.f
+require lib/source.f
+require lib/source-lex.f
 
 $10000 constant TMAX            \ largest linted source (src/core/checker.f) + headroom
                                 \ (item 9 grew checker.f past the old $8000 tokens)
@@ -72,8 +74,8 @@ variable TOKEN-LINE
    k LINT-LEX:LINE@ TOKEN-LINE @ <> TOKEN+
    k LINT-LEX:LINE@ TOKEN-LINE !
    k LINT-LEX:KIND@ LINT-LEX:WORD <> if exit then
-   k LINT-LEX:TOKEN LINT-NORMAL-STRING-OPENER?
-   k LINT-LEX:TOKEN LINT-ESC-STRING-OPENER? or if
+   k LINT-LEX:TOKEN SOURCE:NORMAL-STRING-OPENER?
+   k LINT-LEX:TOKEN SOURCE:ESC-STRING-OPENER? or if
       k LINT-LEX:CONTENT 1+ LINT-FALSE TOKEN+
    then ;
 

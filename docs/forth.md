@@ -1745,7 +1745,7 @@ the rule.
   outside its own state. The source pre-verifier (`verify-source.f`
   `TOP-PARSER?` with `'` and `char`, `BODY-PARSER?` with `char`, `[']` and
   `[char]`, `OPERAND`) skips it. The rest share `SOURCE:PARSING-KEYWORD?`
-  (`lib/source.f`): `tools/lint/source-lex.f` reads the operand raw where it
+  (`lib/source.f`): `lib/source-lex.f` reads the operand raw where it
   makes the token and marks it (`LINT-LEX:OPERAND?`), as `LINT-LEX:OPERAND`
   marks a definer's name, and the reserved-name lint and the nominal pass skip
   a marked token; source discovery reads it with `SD-RAW` (`SD-STEP`); the
@@ -1798,7 +1798,7 @@ the rule.
   and `DEFLINEAR \` the type `\`, which it then refuses. The
   source pre-verifier reads every definer's name with `NAME-TOKEN`
   (`verify-source.f`). The nominal pass and the reserved-name lint work on
-  `tools/lint/source-lex.f` tokens and ask `LINT-LEX:OPERAND` to read the token
+  `lib/source-lex.f` tokens and ask `LINT-LEX:OPERAND` to read the token
   after a definer again, because only they know the definer is at top level:
   inside a body `DEFLINEAR` is a call and a `(` after it opens a comment.
   `create \`, `variable \` and `1 constant \` name `\` the same way. A name the

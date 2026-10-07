@@ -1,8 +1,10 @@
-\ source-lex.f — package LINT-LEX: the one shared source lexer for self-hosted
-\ lint, checker, and codegen tooling.
-\ It states its own dependencies below rather than naming them in a load order,
-\ the way text.f and intern.f do: lib/vector.f is no longer in the engine, so a
-\ consumer that loaded this file without it now fails at VEC-HEADER-CELLS.
+\ source-lex.f — package LINT-LEX: the one shared lexer for Habu source, used by
+\ the lint, checker and codegen tooling and by applications that read source by
+\ its tokens. Storage class: process-wide. The token table and the scan state
+\ are one set for the image, and SOURCE replaces the last scan's tokens.
+\ It states its own dependencies below rather than naming them in a load order:
+\ lib/vector.f is no longer in the engine, so a consumer that loaded this file
+\ without it would fail at VEC-HEADER-CELLS.
 \
 \ Public surface (the package owns every cell):
 \   WORD COMMENT REGISTRY              token kinds returned by KIND@
@@ -31,16 +33,17 @@
 \ must reject when ERROR? is true, and should read ERROR-KIND@ to name which
 \ defect it hit.
 
+require lib/string.f
 require lib/memory.f
 require lib/vector.f
 require lib/source.f
-require tools/lint/text.f
 
 package LINT-LEX
 private
 
 1024 constant MIN-CAP
 0 constant NO-ERROR
+$22 constant DQUOTE             \ the byte that closes a string literal
 
 0 constant ROW-BARE             \ FAM: bare `PRIM:` row, closed by `PRIM;`
 1 constant ROW-PKG              \ FAM: `PPRIM:` row, closed by `PPRIM;` or `CLOSE-PRIVATE`
@@ -150,7 +153,7 @@ variable IN-GROUP               \ those tokens end inside a `{: … :}` group
    LDEPTH-V CLEAR-ONE
    0 STEPPED !
    0 DEPTH !
-   LINT-FALSE IN-GROUP ! ;
+   false IN-GROUP ! ;
 
 : RESET-TABLES ( -- )
    CAP @ 0= if INIT-VECTORS else CLEAR-VECTORS then
@@ -174,12 +177,12 @@ variable IN-GROUP               \ those tokens end inside a `{: … :}` group
    col COL-V VEC:PUSH drop
    ca 0 CADDR-V VEC:PUSH drop
    cu CLEN-V VEC:PUSH drop
-   LINT-FALSE OPND-V VEC:PUSH drop
+   false OPND-V VEC:PUSH drop
    SYNC-COUNT ;
 
 \ The locals state reads the marks, so a mark on a token it has read forgets it.
 : MARK-OPERAND ( n -- ) {: k:n :}
-   LINT-TRUE OPND-V k N>INDEX VEC:!
+   true OPND-V k N>INDEX VEC:!
    k STEPPED @ < if LOCALS-RESET then ;
 
 public
@@ -220,7 +223,7 @@ public
    OPND-V k N>INDEX VEC:@ ;
 
 : ERROR? ( -- bool )
-   ERR-KIND @ NO-ERROR = if LINT-FALSE else LINT-TRUE then ;
+   ERR-KIND @ NO-ERROR <> ;
 
 : ERROR-KIND@ ( -- n )
    ERR-KIND @ ;
@@ -254,29 +257,29 @@ private
 \ buffer sized to the source ends there (a source whose last token ended on a
 \ 64 KiB boundary faulted in the reserved-name lint).
 : CUR-NOT? ( n -- bool ) {: c:n :}
-   END? if LINT-FALSE exit then
+   END? if false exit then
    CUR c <> ;
 
 : SKIP-QUOTE ( -- bool )
-   begin END? 0= while ADV DQUOTE = if LINT-TRUE exit then repeat
-   LINT-FALSE ;
+   begin END? 0= while ADV DQUOTE = if true exit then repeat
+   false ;
 
 : SKIP-ESC-QUOTE ( -- bool )
    begin END? 0= while
       ADV dup 92 = if
          drop END? 0= if ADV drop then
       else
-         DQUOTE = if LINT-TRUE exit then
+         DQUOTE = if true exit then
       then
    repeat
-   LINT-FALSE ;
+   false ;
 
 : CLEAR-ERROR ( -- )
    NO-ERROR ERR-KIND !
    0 ERR-BYTE !
    0 ERR-LINE !
    0 ERR-COL !
-   LINT-FALSE HALTED ! ;
+   false HALTED ! ;
 
 : MARK-UNTERM ( n -- ) {: k:n :}
    UNTERMINATED-QUOTE ERR-KIND !
@@ -305,17 +308,17 @@ private
    $20 <= ;
 
 : GAP? ( -- bool )
-   END? if LINT-FALSE exit then
+   END? if false exit then
    CUR ENGINE-DELIM? ;
 
 : INK? ( -- bool )
-   END? if LINT-FALSE exit then
+   END? if false exit then
    CUR ENGINE-DELIM? 0= ;
 
 \ Engine parity: `(` opens a comment only as a standalone token (followed by
 \ an engine delimiter or EOF). A `(`-initial token such as `(CMP)` is one word.
 : PAREN-STANDALONE? ( -- bool )
-   POS @ 1+ SRC-U @ >= if LINT-TRUE exit then
+   POS @ 1+ SRC-U @ >= if true exit then
    SRC@ POS @ 1+ + c@ ENGINE-DELIM? ;
 
 \ Emit one COMMENT token for a paren-delimited inert span whose opener is already
@@ -346,7 +349,7 @@ private
 \ the engine never performs - test/bootstrap-wide-memory.fs really does open a
 \ file with one.
 : PRINT-OPEN? ( ptr u8 n -- bool )
-   s" .(" LINT-STR= ;
+   s" .(" STR= ;
 
 \ ---- primitive-axiom rows (`PRIM: ... PRIM;`, `PPRIM: pkg ... PPRIM;`) ---------
 \ The engine reads a row's name (and a package row's package) with `parse-name`,
@@ -397,23 +400,23 @@ private
    NEXT-FIELD ;
 
 : PRIM-OPEN? ( ptr u8 n -- bool )
-   s" PRIM:" LINT-STR=CI ;
+   s" PRIM:" STR=CI ;
 
 : PPRIM-OPEN? ( ptr u8 n -- bool )
-   s" PPRIM:" LINT-STR=CI ;
+   s" PPRIM:" STR=CI ;
 
 : ROW-OPEN? ( ptr u8 n -- bool )
-   2dup PPRIM-OPEN? if 2drop LINT-TRUE exit then
+   2dup PPRIM-OPEN? if 2drop true exit then
    PRIM-OPEN? ;
 
 : PRIM-CLOSE? ( ptr u8 n -- bool )
-   s" PRIM;" LINT-STR=CI ;
+   s" PRIM;" STR=CI ;
 
 : PPRIM-CLOSE? ( ptr u8 n -- bool )
-   s" PPRIM;" LINT-STR=CI ;
+   s" PPRIM;" STR=CI ;
 
 : PRIVATE-CLOSE? ( ptr u8 n -- bool )
-   s" CLOSE-PRIVATE" LINT-STR=CI ;
+   s" CLOSE-PRIVATE" STR=CI ;
 
 \ `PRIM;` closes a bare row; a package row closes with `PPRIM;` (public wordlist)
 \ or `CLOSE-PRIVATE`
@@ -421,7 +424,7 @@ private
 \ `CLOSE-PRIVATE` there is an ordinary effect field, not a closer.
 : ROW-CLOSE? ( ptr u8 n -- bool )
    FAM @ ROW-PKG = if
-      2dup PPRIM-CLOSE? if 2drop LINT-TRUE exit then
+      2dup PPRIM-CLOSE? if 2drop true exit then
       PRIVATE-CLOSE? exit
    then
    PRIM-CLOSE? ;
@@ -445,23 +448,23 @@ private
 \ when it starts consuming REGISTRY tokens (dot habu-consume-registry-events-
 \ efe7fe5e), and that leaf owns the differential fixture for `char`.
 : PARSE-NEXT? ( ptr u8 n -- bool )
-   2dup s" [']" LINT-STR= if 2drop LINT-TRUE exit then
-   s" [char]" LINT-STR=CI ;
+   2dup s" [']" STR= if 2drop true exit then
+   s" [char]" STR=CI ;
 
 : MARK-BAD ( -- )
    MALFORMED-REGISTRY ERR-KIND !
    R-BYTE @ ERR-BYTE !
    R-LINE @ ERR-LINE !
    R-COL @ ERR-COL !
-   LINT-TRUE HALTED ! ;
+   true HALTED ! ;
 
 \ A header field names the primitive (and, for a package row, its package). An
 \ opener or a closer of this row's family there is never a name: the row is
 \ missing its header.
 : HDR-BAD? ( -- bool )
-   FLEN @ 0= if LINT-TRUE exit then
-   F$ ROW-OPEN? if LINT-TRUE exit then
-   F$ ROW-CLOSE? if LINT-TRUE exit then
+   FLEN @ 0= if true exit then
+   F$ ROW-OPEN? if true exit then
+   F$ ROW-CLOSE? if true exit then
    F$ WRONG-CLOSE? ;
 
 : HDR-FIELD ( -- )
@@ -478,16 +481,16 @@ private
 \ row's closer. false = the print body ran past end of input.
 : SKIP-PRINT ( -- bool )
    TO-PAREN
-   END? if LINT-FALSE exit then
-   ADV drop LINT-TRUE ;
+   END? if false exit then
+   ADV drop true ;
 
 \ false = the operand ran past end of input, so the row can never close.
 : FIELD-OPERAND ( -- bool )
-   F$ LINT-ESC-STRING-OPENER? if SKIP-ESC-QUOTE exit then
-   F$ LINT-NORMAL-STRING-OPENER? if SKIP-QUOTE exit then
+   F$ SOURCE:ESC-STRING-OPENER? if SKIP-ESC-QUOTE exit then
+   F$ SOURCE:NORMAL-STRING-OPENER? if SKIP-QUOTE exit then
    F$ PRINT-OPEN? if SKIP-PRINT exit then
    F$ PARSE-NEXT? if NEXT-FIELD FLEN @ 0 <> exit then
-   LINT-TRUE ;
+   true ;
 
 : ROW-BODY ( -- )
    begin
@@ -517,15 +520,15 @@ private
 \ never executes it, so `: PRIM: ( -- ) parse-name PE-OPEN ;` in
 \ src/core/checker.f declares the opener rather than opening a row.
 : NAMER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" :" LINT-STR= if LINT-TRUE exit then
-   a u s" undefine" LINT-STR=CI ;
+   a u s" :" STR= if true exit then
+   a u s" undefine" STR=CI ;
 
 \ Token k is a name: the word before it is a namer. A `:` that is itself an
 \ operand (`' :`) is data and names nothing.
 : NAMED-AT? ( n -- bool ) {: k:n :}
-   k 0= if LINT-FALSE exit then
-   k 1- KIND@ WORD <> if LINT-FALSE exit then
-   k 1- OPERAND? if LINT-FALSE exit then
+   k 0= if false exit then
+   k 1- KIND@ WORD <> if false exit then
+   k 1- OPERAND? if false exit then
    k 1- TOKEN NAMER? ;
 
 \ The word the scan reads now is a name.
@@ -549,7 +552,7 @@ private
 \ The name the group word k declares.
 : LOCAL$ ( n -- ptr u8 n ) {: k:n :}
    k TOKEN {: a:ptr u:n :}
-   0 begin dup u < if a over + c@ $3A <> else LINT-FALSE then while 1+ repeat
+   0 begin dup u < if a over + c@ $3A <> else false then while 1+ repeat
    a swap ;
 
 : LIVE ( -- n )
@@ -557,9 +560,9 @@ private
 
 : LOCAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    LIVE 0 ?do
-      a u LOCAL-V i N>INDEX VEC:@ LOCAL$ LINT-STR= if LINT-TRUE unloop exit then
+      a u LOCAL-V i N>INDEX VEC:@ LOCAL$ STR= if true unloop exit then
    loop
-   LINT-FALSE ;
+   false ;
 
 : LOCAL-PUSH ( n -- )
    LOCAL-V VEC:PUSH drop
@@ -571,7 +574,7 @@ private
 
 \ Drop the locals the innermost open block declared.
 : BLOCK-DROP ( -- )
-   begin LIVE 0 > if LDEPTH-V LIVE 1- N>INDEX VEC:@ DEPTH @ >= else LINT-FALSE then while
+   begin LIVE 0 > if LDEPTH-V LIVE 1- N>INDEX VEC:@ DEPTH @ >= else false then while
       LIVE 1- VEC-LEN {: l :}
       l LOCAL-V VEC-LEN!
       l LDEPTH-V VEC-LEN!
@@ -579,14 +582,14 @@ private
 
 \ Block word k acts unless it is a name or names a live local.
 : BLOCK-WORD? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k NAMED-AT? if LINT-FALSE exit then
-   a u LOCAL? LINT-NOT ;
+   k NAMED-AT? if false exit then
+   a u LOCAL? 0= ;
 
 : BLOCK-STEP ( n ptr u8 n -- ) {: k:n a:ptr u:n :}
    a u SOURCE:BLOCK-OPENER? if
       k a u BLOCK-WORD? if DEPTH @ 1+ DEPTH ! then exit
    then
-   a u s" else" LINT-STR=CI if
+   a u s" else" STR=CI if
       k a u BLOCK-WORD? if BLOCK-DROP then exit
    then
    a u SOURCE:BLOCK-CLOSER? if
@@ -598,14 +601,14 @@ private
    k KIND@ WORD <> if exit then
    k TOKEN {: a:ptr u:n :}
    IN-GROUP @ if
-      a u s" :}" LINT-STR= if LINT-FALSE IN-GROUP ! exit then
+      a u s" :}" STR= if false IN-GROUP ! exit then
       k LOCAL-PUSH exit
    then
    k OPERAND? if exit then
-   a u s" ;" LINT-STR= if LOCALS-DROP exit then
-   a u s" :" LINT-STR= if LOCALS-DROP exit then
-   a u s" {:" LINT-STR= if
-      k NAMED-AT? 0= if LINT-TRUE IN-GROUP ! then exit
+   a u s" ;" STR= if LOCALS-DROP exit then
+   a u s" :" STR= if LOCALS-DROP exit then
+   a u s" {:" STR= if
+      k NAMED-AT? 0= if true IN-GROUP ! then exit
    then
    LIVE 0= if exit then
    k a u BLOCK-STEP ;
@@ -626,30 +629,30 @@ private
 \ A group opener; named after `:` or `undefine`, it is a name. No local is
 \ spelled `{:`, nor a row opener, since a local's name ends before its `:`.
 : GROUP-START? ( -- bool )
-   CUR$ s" {:" LINT-STR= 0= if LINT-FALSE exit then
-   NAME-POS? LINT-NOT ;
+   CUR$ s" {:" STR= 0= if false exit then
+   NAME-POS? 0= ;
 
 : ROW-START? ( -- bool )
-   CUR$ ROW-OPEN? 0= if LINT-FALSE exit then
-   NAME-POS? LINT-NOT ;
+   CUR$ ROW-OPEN? 0= if false exit then
+   NAME-POS? 0= ;
 
 \ The same name-position rule a row opener obeys: after `:` or `undefine` the
 \ engine parses the next word as a name and never executes it, so
 \ `: .( ( -- ) ;` DEFINES a word spelled `.(` instead of opening a printing
 \ comment.
 : PRINT-START? ( -- bool )
-   CUR$ PRINT-OPEN? 0= if LINT-FALSE exit then
-   NAME-POS? if LINT-FALSE exit then
-   LOCAL-START? LINT-NOT ;
+   CUR$ PRINT-OPEN? 0= if false exit then
+   NAME-POS? if false exit then
+   LOCAL-START? 0= ;
 
 \ A parsing keyword the engine runs reads the next token raw, whatever it
 \ spells, so `char \` hides nothing after it and `['] (` opens no comment.
 \ Named after `:` or `undefine`, the keyword is a name and takes nothing, and a
 \ live local of its name is that local.
 : PARSER-START? ( -- bool )
-   CUR$ SOURCE:PARSING-KEYWORD? 0= if LINT-FALSE exit then
-   NAME-POS? if LINT-FALSE exit then
-   LOCAL-START? LINT-NOT ;
+   CUR$ SOURCE:PARSING-KEYWORD? 0= if false exit then
+   NAME-POS? if false exit then
+   LOCAL-START? 0= ;
 
 \ The span from START to POS is one WORD token.
 : ADD-WORD ( -- )
@@ -659,11 +662,11 @@ private
 \ false at end of input, where there is none.
 : RAW-WORD ( -- bool )
    SKIP-RAW-WS
-   END? if LINT-FALSE exit then
+   END? if false exit then
    POS @ START !  LINE-N @ START-LINE !  COL-N @ START-COL !
    begin INK? while ADV drop repeat
    ADD-WORD
-   LINT-TRUE ;
+   true ;
 
 : RAW-OPERAND ( -- )
    RAW-WORD if COUNT 1- MARK-OPERAND then ;
@@ -671,7 +674,7 @@ private
 \ The names of a `{: … :}` group, read raw and marked, up to its plain closer.
 : GROUP ( -- )
    begin RAW-WORD while
-      CUR$ s" :}" LINT-STR= if exit then
+      CUR$ s" :}" STR= if exit then
       COUNT 1- MARK-OPERAND
    repeat ;
 
@@ -687,13 +690,13 @@ private
    SRC@ pstart + POS @ 1- pstart - closed ;
 
 : STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u LINT-ESC-STRING-OPENER? if LINT-TRUE exit then
-   a u LINT-NORMAL-STRING-OPENER? ;
+   a u SOURCE:ESC-STRING-OPENER? if true exit then
+   a u SOURCE:NORMAL-STRING-OPENER? ;
 
 \ A string opener opens a literal unless a live local has its spelling.
 : LITERAL-START? ( ptr u8 n -- bool )
-   STRING-OPENER? 0= if LINT-FALSE exit then
-   LOCAL-START? LINT-NOT ;
+   STRING-OPENER? 0= if false exit then
+   LOCAL-START? 0= ;
 
 \ A string-literal token carries its payload in CONTENT, exactly as a paren
 \ comment carries its body there. The payload is deliberately never tokenized -
@@ -718,7 +721,7 @@ private
    a u LITERAL-START? 0= if
       WORD a u byte line col SRC@ 0 ADD exit
    then
-   a u LINT-ESC-STRING-OPENER? STRING-PAYLOAD {: pa:ptr pu:n closed:bool :}
+   a u SOURCE:ESC-STRING-OPENER? STRING-PAYLOAD {: pa:ptr pu:n closed:bool :}
    WORD a u byte line col pa pu ADD
    closed 0= if COUNT 1- MARK-UNTERM then ;
 
@@ -747,13 +750,13 @@ private
 \ The first byte at or after a byte index that is not an engine delimiter, or
 \ the end of the source.
 : INK-FROM ( n -- n )
-   begin dup SRC-U @ < if SRC@ over + c@ ENGINE-DELIM? else LINT-FALSE then while
+   begin dup SRC-U @ < if SRC@ over + c@ ENGINE-DELIM? else false then while
       1+
    repeat ;
 
 \ The first engine delimiter at or after a byte index, or the end of the source.
 : GAP-FROM ( n -- n )
-   begin dup SRC-U @ < if SRC@ over + c@ ENGINE-DELIM? 0= else LINT-FALSE then while
+   begin dup SRC-U @ < if SRC@ over + c@ ENGINE-DELIM? 0= else false then while
       1+
    repeat ;
 
@@ -761,12 +764,12 @@ private
 \ word. A string opener of that spelling is not one: the scan swallowed its
 \ literal as well.
 : PLAIN-AT? ( n n n -- bool ) {: k:n a:n u:n :}
-   k COUNT >= if LINT-FALSE exit then
-   k KIND@ WORD <> if LINT-FALSE exit then
-   k BYTE@ a <> if LINT-FALSE exit then
+   k COUNT >= if false exit then
+   k KIND@ WORD <> if false exit then
+   k BYTE@ a <> if false exit then
    k TOKEN {: ta:ptr tu:n :}
-   tu u <> if LINT-FALSE exit then
-   ta tu STRING-OPENER? LINT-NOT ;
+   tu u <> if false exit then
+   ta tu STRING-OPENER? 0= ;
 
 \ Keep the first n tokens and drop the rest, and the locals state when it read
 \ a dropped one.
@@ -786,8 +789,8 @@ private
 
 \ A token whose spelling steers how the scan reads the token after it.
 : STEERS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u SOURCE:PARSING-KEYWORD? if LINT-TRUE exit then
-   a u s" {:" LINT-STR= if LINT-TRUE exit then
+   a u SOURCE:PARSING-KEYWORD? if true exit then
+   a u s" {:" STR= if true exit then
    a u NAMER? ;
 
 public
@@ -797,9 +800,9 @@ public
 \ nothing, such as a live local `s"`, holds none.
 : LITERAL? ( n -- bool )
    {: k:n :}
-   k KIND@ WORD <> if LINT-FALSE exit then
+   k KIND@ WORD <> if false exit then
    k TOKEN {: a:ptr u:n :}
-   a u STRING-OPENER? 0= if LINT-FALSE exit then
+   a u STRING-OPENER? 0= if false exit then
    k CONTENT drop a u + 1+ = ;
 
 : SOURCE ( ptr u8 n -- ) {: a:ptr u:n :}

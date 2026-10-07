@@ -22,7 +22,7 @@
 \ and only the words carrying a PRIM: axiom can be named. Adding six axioms so a
 \ test could read six literals would grow the checker's public surface for a
 \ test's convenience. So the checker's side is read where it is DEFINED: the
-\ source, through tools/lint/source-lex.f, and only a `<number> constant <NAME>` whose
+\ source, through lib/source-lex.f, and only a `<number> constant <NAME>` whose
 \ three tokens are all real code tokens counts. The layout side is read from the
 \ LIVE ENGINE, by naming the constants, which is the authority a compiled
 \ reference would use.
@@ -34,7 +34,7 @@
 \ below, and nothing else runs this reader, so a reader that took any of them
 \ would pass the live mirrors whatever the checker said. That the lexer keeps
 \ `\` comments, `( ... )` bodies and string payloads out of the code tokens is
-\ tools/lint/text-foundation-test.f's to prove, and a reader that misreads a
+\ lib/source-lex-test.f's to prove, and a reader that misreads a
 \ real definition fails the live mirrors themselves.
 \
 \ THE SECOND HALF IS THE BAND. Two cells were taken out of the unclaimed run
@@ -54,7 +54,7 @@ require src/habu/xref.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/lint/source-lex.f
+require lib/source-lex.f
 
 package AOT-SIG-POOL-TEST
 private

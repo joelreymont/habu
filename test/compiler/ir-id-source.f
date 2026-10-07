@@ -6,8 +6,9 @@ require lib/errors.f
 require lib/string.f
 require lib/adt/option.f
 require tools/lint/text.f
+require lib/source.f
 require tools/lint/token.f
-require tools/lint/source-lex.f
+require lib/source-lex.f
 require tools/lint/def.f
 
 package COMPILER-ID-SRC
@@ -171,8 +172,8 @@ public
    FOUND @ LINT-LEX:TOKEN {: ta:ptr tu:n :}
    FOUND @ LINT-LEX:CONTENT {: pa:ptr pu:n :}
    ta c@ $20 or $73 <> if E-CID-CONST throw then   \ s" or S\", never c" or ."
-   ta tu LINT-ESC-STRING-OPENER? if pa pu ESC-LEN exit then
-   ta tu LINT-NORMAL-STRING-OPENER? 0= if E-CID-CONST throw then
+   ta tu SOURCE:ESC-STRING-OPENER? if pa pu ESC-LEN exit then
+   ta tu SOURCE:NORMAL-STRING-OPENER? 0= if E-CID-CONST throw then
    pu ;
 
 \ ---- raw token access --------------------------------------------------------

@@ -13,7 +13,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/json-writer.f
-require tools/lint/source-lex.f
+require lib/source-lex.f
 require lib/argv.f
 require tools/cli-run.f
 require tools/reserved-name-lint-core.f

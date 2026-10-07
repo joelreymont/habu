@@ -213,8 +213,8 @@ variable DO-OUT-BUF?
       DO-ADV drop
    repeat
    DO-WORD start DO-X @ line col DO-SAVE-TOKEN
-   DO-TOK-A@ DO-TOK-U @ LINT-ESC-STRING-OPENER? if DO-SKIP-ESC-QUOTE else
-   DO-TOK-A@ DO-TOK-U @ LINT-NORMAL-STRING-OPENER? if DO-SKIP-QUOTE then then ;
+   DO-TOK-A@ DO-TOK-U @ SOURCE:ESC-STRING-OPENER? if DO-SKIP-ESC-QUOTE else
+   DO-TOK-A@ DO-TOK-U @ SOURCE:NORMAL-STRING-OPENER? if DO-SKIP-QUOTE then then ;
 
 : DO-NEXT-TOKEN ( -- bool )
    DO-SKIP-IGNORED
@@ -253,8 +253,8 @@ variable DO-OUT-BUF?
 
 \ The word opens a string literal, whose text the scan has skipped.
 : DO-STRING? ( -- bool )
-   DO-TOK-A@ DO-TOK-U @ LINT-ESC-STRING-OPENER? if DO-TRUE exit then
-   DO-TOK-A@ DO-TOK-U @ LINT-NORMAL-STRING-OPENER? ;
+   DO-TOK-A@ DO-TOK-U @ SOURCE:ESC-STRING-OPENER? if DO-TRUE exit then
+   DO-TOK-A@ DO-TOK-U @ SOURCE:NORMAL-STRING-OPENER? ;
 
 : DO-ORIGIN-WORD? ( -- bool )
    DO-TOK-K @ DO-WORD = ;

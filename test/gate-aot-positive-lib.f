@@ -14,7 +14,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/json-writer.f
-require tools/lint/source-lex.f
+require lib/source-lex.f
 require tools/aot-lint-core.f
 require tools/hb-build-direct-lints.f    \ the builds lint in process, not in a child
 require tools/json.f

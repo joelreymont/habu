@@ -5,13 +5,13 @@
 \ Two classes of false alarm are avoided so the report only names real clobbers.
 \ First, a definer keyword written inside a string literal — for example
 \ `s" declare it with variable or create"` — is prose, not a definition, so
-\ per-file scanning runs through the string-aware lexer in tools/lint/source-lex.f,
+\ per-file scanning runs through the string-aware lexer in lib/source-lex.f,
 \ which consumes s" / s\" / ." / c" bodies as opaque spans exactly like the real
 \ parser. Second, a definition inside a `package ... ;package` block is a scoped
 \ tail (docs/forth.md § Packages: unqualified global lookup never finds it), so it
 \ cannot clobber a global prim and is not flagged; only true global-scope shadows
 \ are reported.
-\ Run: bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/source-lex.f tools/lint/shadow-lint.f
+\ Run: bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f lib/source-lex.f tools/lint/shadow-lint.f
 \ Prim-name extraction still tokenizes habu1.f: SCAN-PRIMS reads prim names out of
 \ its `s" NAME"` literals, so that pass keeps the plain whitespace tokenizer.
 
@@ -22,7 +22,7 @@ require lib/vector.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/lint/source-lex.f
+require lib/source-lex.f
 require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package SHADOW-LINT-TOOL

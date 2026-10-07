@@ -10123,7 +10123,7 @@ variable PE-EFF-ID
 \ defined inside package CHECKER-DECL-FRAME, which made the declaration frame's
 \ four rows the only private primitive rows the tree could spell: a second owner
 \ had to reopen that package to reach the closer. The token itself was already
-\ the toolchain's - src/habu/verify-source.f scans for it, tools/lint/source-lex.f
+\ the toolchain's - src/habu/verify-source.f scans for it, lib/source-lex.f
 \ classifies it, tools/check-all-errors-core.f names it in the unterminated-row
 \ repair hint - so only the definition's scope was wrong.
 \

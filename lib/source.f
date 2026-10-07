@@ -383,4 +383,29 @@ public
    a u s" ;match" STR=CI if STR-TRUE exit then
    a u s" ;]" STR= ;
 
+private
+
+\ The first byte of a string opener: `s` or `c` in either case, or `.`.
+: STRING-LEAD? ( n -- bool )
+   ASCII-LOWER {: c:n :}
+   c 115 = c 99 = or c $2E = or ;
+
+public
+
+\ The words that open a string literal, matched case-folded as the dictionary
+\ is: `s"`, `c"` and `."` take the bytes up to the next `"`, and `s\"`, `c\"`
+\ and `.\"` the same with a backslash escaping the byte after it.
+: NORMAL-STRING-OPENER? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   u 2 <> if STR-FALSE exit then
+   a 1 BYTE@ $22 <> if STR-FALSE exit then
+   a 0 BYTE@ STRING-LEAD? ;
+
+: ESC-STRING-OPENER? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   u 3 <> if STR-FALSE exit then
+   a 1 BYTE@ $5C <> if STR-FALSE exit then
+   a 2 BYTE@ $22 <> if STR-FALSE exit then
+   a 0 BYTE@ STRING-LEAD? ;
+
 ;package

@@ -16,7 +16,7 @@
 \ convert their files and the band that finishes them turns REPORT into a die.
 \
 \ Three false alarms are ruled out by construction. Prose is not code: the scan
-\ runs on tools/lint/source-lex.f, which consumes `s" ... "`, `."`, `c"` bodies
+\ runs on lib/source-lex.f, which consumes `s" ... "`, `."`, `c"` bodies
 \ and `( ... )` / `\ ...` comments the way the real parser does, so the words
 \ named in this very comment are not findings. A longer name that merely starts
 \ the same way is not the word: BYTE-COPY-LEN is counted separately and never
@@ -31,7 +31,7 @@ require lib/fs.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/lint/source-lex.f
+require lib/source-lex.f
 
 package BARE-COPY-LINT
 

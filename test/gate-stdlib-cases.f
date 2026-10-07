@@ -1815,6 +1815,10 @@ SUITE stdlib-source-default
    lib/source-test.f
 ;SUITE
 
+SUITE source-lex
+   lib/source-lex-test.f
+;SUITE
+
 SUITE stdlib-process-fixtures
    tools/hb-cli-contracts-test.f
    tools/standalone-load-test.f

@@ -43,7 +43,7 @@ require lib/fs.f
 require lib/test/suite.f
 require lib/test/runner.f
 require tools/lint/text.f
-require tools/lint/source-lex.f
+require lib/source-lex.f
 require test/load-refs.f
 require test/gate-pool.f
 require test/image-grant.f
