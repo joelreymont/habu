@@ -15,13 +15,11 @@
 \   catch/is fit + misfit, and an unsafe-definer tick (`['] deflinear`) -> REJ.
 \ Tier interop with the top-row tracker (src/core/top-row.f): the child tier is
 \ staged by HABU_TOP_TIER (XE-RUN = tier-1 warn, XE-RUN2 = tier-2 reject). XE-TIER1
-\ pins the tier-1 warn contract: `' FOO2 execute` warns once and still runs, and
-\ FOO2's `dup` then reads below the base INSIDE COMPILED CODE, which carries no
-\ per-transfer bounds check under guard pages -- the read faults the data
-\ stack's guard page before the interpreter's own depth floor can see it, and
-\ the crash handler turns that fault into the underdepth throw: the run ends
-\ `hb: interpret stack underdepth: execute`, rc 70, never the "(data)" bounds
-\ exit. XE-TIER2 pins
+\ pins the tier-1 underdepth contract: `' FOO2 execute` warns once and exits
+\ 70. AArch64's compiled `dup` reads below the base and the guard-page handler
+\ reports interpret stack underdepth. x86-64's top-row transfer guard rejects
+\ the xt before that read. Neither reaches a generic data-stack bounds exit.
+\ XE-TIER2 pins
 \ the sub-dot-7 flip: `' FOO2 execute` and `0 0 catch` REJECT pre-execution with a
 \ clean rc-70 diagnostic and no crash (`0 0 catch` no longer reaches the
 \ BLR-into-xt-0 rc-134 crash it hit at tier-1).
@@ -294,19 +292,18 @@ variable XE-CNT
    s" 0 0 catch" XE-LINE
    SB$ ;
 
-\ FOO2's `dup` runs inside COMPILED code (called through execute, not
-\ interpreted directly), and compiled code carries no per-transfer bounds
-\ check under guard pages: the read below the base faults the data stack's
-\ guard page before the interpreter's own depth floor ever sees it, and the
-\ crash handler throws that fault as the underdepth reject (70) naming the
-\ token the interpreter was running -- `execute`, not FOO2 (see
-\ test/runtime-regression-test.f for a top-level word interpreted directly).
-: XE-TIER1 ( -- )                        \ tier-1: the tracker observes, the fault throws underdepth
+\ Both hosts refuse the same underdepth. AArch64 observes it at the guard page;
+\ x86-64's top-row transfer guard can refuse before entering compiled FOO2.
+: XE-TIER1 ( -- )
    s" tier-1: ' FOO2 execute still warns exactly once at underdepth" T-LABEL
    XE-EXEC$ XE-RUN  XE-WARN-COUNT 1 T=
-   s" tier-1: ' FOO2 execute's dup below the base throws underdepth (rc 70)" T-LABEL
+   s" tier-1: ' FOO2 execute refuses underdepth (rc 70)" T-LABEL
    XE-EXITED @ TTRUE  XE-RC @ 70 T=
-   XE-ERR$ s" hb: interpret stack underdepth: execute" CONTAINS? TTRUE
+   HB-TARGET-LINUX-X86-64? if
+      XE-ERR$ s" hb: top-row: execute: xt target underflows the interpret stack" CONTAINS? TTRUE
+   else
+      XE-ERR$ s" hb: interpret stack underdepth: execute" CONTAINS? TTRUE
+   then
    XE-ERR$ s" stack bounds exceeded" CONTAINS? TFALSE ;
 
 : XE-TIER2 ( -- )                        \ tier-2 (sub-dot 7): the pre-armed pins now REJECT
