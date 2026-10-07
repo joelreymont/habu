@@ -98,4 +98,14 @@ public
 : NO ( -- bool )
    0 0 <> ;
 
+\ lib/prelude.f's f<= and f>=: both false when either real is a NaN, and -0.0
+\ equals +0.0.
+: F-AT-MOST? ( r r -- bool )
+   {: a:r b:r :}
+   a b f< a b f= or ;
+
+: F-AT-LEAST? ( r r -- bool )
+   {: a:r b:r :}
+   a b f> a b f= or ;
+
 ;package

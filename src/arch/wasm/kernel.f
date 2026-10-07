@@ -24,8 +24,8 @@
 \ spelling. Any other name is refused with E-WLINK-UNRESOLVED, since a call
 \ site naming it names no function the link can hold. lib/prelude.f loads
 \ before the capture window and cannot ship in it, so a prelude word links only
-\ through a word here: `true` and `false` do, while `fover`, `f<=` and `f>=`
-\ have none and are refused.
+\ through a word here: `true`, `false`, `f<=` and `f>=` do, while `fover` has
+\ none and is refused.
 
 require lib/prelude.f
 require lib/string.f
@@ -356,6 +356,8 @@ variable MADE                              \ blocks built, the next one's ordina
    a u s" 0<>" STR=CI if s" WKWORDS:NONZERO?" exit then
    a u s" true" STR=CI if s" WKWORDS:YES" exit then
    a u s" false" STR=CI if s" WKWORDS:NO" exit then
+   a u s" f<=" STR=CI if s" WKWORDS:F-AT-MOST?" exit then
+   a u s" f>=" STR=CI if s" WKWORDS:F-AT-LEAST?" exit then
    s" " ;
 
 \ The row answering an engine name, or -1.

@@ -5,8 +5,10 @@
 \ names. The two print the same bytes to stdout and to stderr and exit alike.
 \ The arguments sit at each primitive's edges: zero, both signs, MIN-N and
 \ MAX-N, a zero divisor; for `f.` the signed zeros and NaNs, the infinities, a
-\ magnitude past MAX-N, a fraction that pads and one that truncates. A name no
-\ provider answers is refused with E-WLINK-UNRESOLVED.
+\ magnitude past MAX-N, a fraction that pads and one that truncates; for `f<=`
+\ and `f>=` equal, lesser and greater reals, a NaN on either side and the signed
+\ zeros both ways. A name no provider answers is refused with
+\ E-WLINK-UNRESOLVED.
 \
 \ The rows the map answers with hand-built functions run in Wasm, in
 \ test/wasm/device.f.
@@ -121,6 +123,22 @@ CAP BUFFER: ERR-K
    s" " s" true" s" ." SAME
    s" " s" false" s" ." SAME ;
 
+\ The engine name on equal, lesser and greater reals, a NaN on either side and
+\ the signed zeros both ways, each real by its bits.
+: ORDER ( ptr u8 n -- )
+   {: nm:ptr nu:n :}
+   s" 1 s>f 1 s>f" nm nu s" ." SAME
+   s" 1 s>f 2 s>f" nm nu s" ." SAME
+   s" 2 s>f 1 s>f" nm nu s" ." SAME
+   s" $7FF8000000000000 IEEE754:BITS>F64 1 s>f" nm nu s" ." SAME   \ a NaN left
+   s" 1 s>f $7FF8000000000000 IEEE754:BITS>F64" nm nu s" ." SAME   \ a NaN right
+   s" $8000000000000000 IEEE754:BITS>F64 0 s>f" nm nu s" ." SAME   \ -0.0, +0.0
+   s" 0 s>f $8000000000000000 IEEE754:BITS>F64" nm nu s" ." SAME ; \ +0.0, -0.0
+
+: COMPARISONS ( -- )
+   s" f<=" ORDER
+   s" f>=" ORDER ;
+
 \ ---- the refusal -------------------------------------------------------------------
 : UNANSWERED ( -- )
    s" key" WKERNEL:PROVIDER MATCH provider
@@ -141,6 +159,7 @@ public
    TEXT
    NUMBERS
    TESTS
+   COMPARISONS
    REFUSAL
    T-REPORT ;
 
