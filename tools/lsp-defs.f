@@ -10,10 +10,11 @@
 \ retained none: the file's canonical path, the URI its positions count at,
 \ held as the JSON string that writes it, and its records in the order the
 \ check retained them. A record is a definition's class, its word as the source writes it,
-\ the package the checker recorded it under, empty for a global, the
-\ statement token that declared it, its declared effect, empty when it
-\ declared none, the bytes the token that declared it starts and ends at, as
-\ its line states them, and that token's range in LSP positions (LSP-TEXT),
+\ the package the checker recorded it under, empty for a global, whether it
+\ recorded it public there, the statement token that declared it, its
+\ declared effect, empty when it declared none, the bytes the token that
+\ declared it starts and ends at, as its line states them, and that token's
+\ range in LSP positions (LSP-TEXT),
 \ which gives the line it is on: a missing start is 0, a
 \ missing end the start, both are held to the text and the end
 \ to no less than the start. The range counts through the bytes the check
@@ -120,7 +121,7 @@ private
 \ and character its token starts at and ends at, its word's and package's
 \ offsets and lengths in BYTES, the bytes its token starts and ends at, its
 \ kind's and effect's offsets and lengths in BYTES, and 1 when it stands for
-\ several words.
+\ several words, then 1 when it is public.
 0 constant R-NEXT
 1 constant R-CLASS
 2 constant R-LINE
@@ -138,7 +139,8 @@ private
 14 constant R-EFF
 15 constant R-EFF-U
 16 constant R-SEVERAL
-17 constant REC-CELLS
+17 constant R-PUBLIC
+18 constant REC-CELLS
 
 \ A use: the bytes it starts and ends at, its check's group for its
 \ declaration's file, and the bytes its declaring token starts and ends at.
@@ -176,6 +178,7 @@ variable KIND-AT                         \ its kind's,
 variable KIND-U
 variable EFF-AT                          \ its effect's,
 variable EFF-U
+variable PUBLIC-V                        \ 1 when it is public,
 variable START-V                         \ its token's offsets,
 variable END-V
 variable TARGET-V                        \ a use's declaring token's,
@@ -244,6 +247,9 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    s" package" JR:STR-EQ? if JR:NEXT drop STRING>BYTES PKG-U ! PKG-AT ! exit then
    s" kind" JR:STR-EQ? if JR:NEXT drop STRING>BYTES KIND-U ! KIND-AT ! exit then
    s" effect" JR:STR-EQ? if JR:NEXT drop STRING>BYTES EFF-U ! EFF-AT ! exit then
+   s" visibility" JR:STR-EQ? if
+      JR:NEXT drop s" public" JR:STR-EQ? if 1 else 0 then PUBLIC-V ! exit
+   then
    s" file" JR:STR-EQ? if JR:NEXT drop STRING>FILE exit then
    s" byte_start" JR:STR-EQ? if JR:NEXT drop JR:INT START-V ! exit then
    s" byte_end" JR:STR-EQ? if JR:NEXT drop JR:INT END-V ! exit then
@@ -265,6 +271,7 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    0 KIND-U !
    BYTES-U @ EFF-AT !
    0 EFF-U !
+   0 PUBLIC-V !
    0 FILE-U !
    0 START-V !
    0 END-V !
@@ -403,6 +410,7 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    EFF-AT @ r R-EFF REC!
    EFF-U @ r R-EFF-U REC!
    several if 1 else 0 then r R-SEVERAL REC!
+   PUBLIC-V @ r R-PUBLIC REC!
    g G-LAST GROUP@ {: last:n :}
    last 0 < if r g G-FIRST GROUP! else r last R-NEXT REC! then
    r g G-LAST GROUP!
@@ -652,6 +660,9 @@ public
 \ Whether the record stands for several words: the check read its file again
 \ and declared its word at its token again, letters compared without case.
 : REC-SEVERAL? ( n -- bool )  R-SEVERAL REC@ 0<> ;
+
+\ Whether the checker recorded the record's word public in its package.
+: REC-PUBLIC? ( n -- bool )  R-PUBLIC REC@ 0<> ;
 
 \ The line and character the record's token starts at, then ends at.
 : REC-RANGE ( n -- n n n n )

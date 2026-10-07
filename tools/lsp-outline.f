@@ -9,7 +9,8 @@
 \ check's positions are of the document's text; none of another open
 \ document's or of a file the document requires. A document with no
 \ definition, one whose last check did not complete and one that has none
-\ answer an empty list. Each is the SymbolInformation workspace symbols give
+\ answer an empty list. Each is the SymbolInformation workspace symbols give,
+\ named by its word as the source wrote it, without its package
 \ (LSP-SYMBOLS:SYMBOL): its location is the token that declared the word, at
 \ the URI the client opened the document by, whose text its range counts in.
 \

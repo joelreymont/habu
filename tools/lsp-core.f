@@ -8,9 +8,10 @@
 \ with its capabilities and any other request with -32002. Running, it answers
 \ shutdown with null, initialize with -32600, workspace/symbol with the open
 \ documents' definitions (tools/lsp-symbols.f), textDocument/documentSymbol with
-\ the document's own definitions as the flat SymbolInformation list workspace
-\ symbols give (tools/lsp-outline.f), textDocument/definition with the
-\ declaration the use at the position binds to (tools/lsp-definition.f),
+\ the document's own definitions as a flat SymbolInformation list, each as
+\ workspace symbols give it but named by its word alone (tools/lsp-outline.f),
+\ textDocument/definition with the declaration the use at the position binds
+\ to (tools/lsp-definition.f),
 \ textDocument/hover with what the token at the position declares or binds to
 \ (tools/lsp-hover.f), as Markdown when the client's initialize listed it in
 \ textDocument.hover.contentFormat, else as plain text,
@@ -499,8 +500,8 @@ TYPED-VARIABLE AT-END bool                \ whether the input has ended
 
 : QUERY$ ( -- ptr u8 n )  QUERY-SPAN @ SPAN:$ drop QUERY-U @ ;
 
-\ The definitions of the open documents' last completed checks whose word
-\ holds params.query.
+\ The definitions of the open documents' last completed checks that
+\ params.query lists, as tools/lsp-symbols.f states.
 : SYMBOLS ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu [: QUERY! ;] READ? 0= if exit then

@@ -2000,7 +2000,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : TEXT-SYM-A2 ( -- ptr u8 n )  s\" require sym-dep.f\n: QUX-AA ( -- n ) 1 ;\n" ;
 : TEXT-SYM-B ( -- ptr u8 n )  s\" require sym-dep.f\n: QUX-B ( -- n ) 2 ;\n3 constant QUX-K\n" ;
 : TEXT-SYM-DEP ( -- ptr u8 n )
-   s\" package QD\npublic\n: QUX-DEP ( -- n ) 3 ;\n;package\nvariable QUX-V\n" ;
+   s\" package QD\n: QUX-P ( -- n ) 5 ;\n: QE:QUX-Q ( -- n ) 6 ;\npublic\n: QUX-DEP ( -- n ) 3 ;\nEXPORT QE:QUX-Q\n;package\nvariable QUX-V\n" ;
 
 \ workspace/symbol, by its id's JSON text, with these params' JSON text.
 : SYMBOLS-ASK ( ptr u8 n ptr u8 n -- )
@@ -2081,29 +2081,40 @@ CK-USE-MAX 1 + constant OVER-USINGS
    HEAR
    MSG$ HEARD ;
 
-\ The dependency's symbols: QUX-DEP in package QD, recorded folded, and the
-\ global QUX-V.
+\ The dependency's symbols, each under the package the checker recorded it
+\ in, folded: QUX-P, private in QD, bare; QE:QUX-Q, public in QE, by its
+\ tail; QUX-DEP, public in QD, qualified by the package as recorded; QE:QUX-Q
+\ re-exported public in QD, by its tail under QD; and the global QUX-V, bare,
+\ in none.
 : DEP-SYMBOLS+ ( -- )
-   s" QUX-DEP" 12 SYM-DEP-CANON URI-OF 2 2 9 s" qd" SYMBOL+
-   s" QUX-V" 13 SYM-DEP-CANON URI-OF 4 9 14 s" " SYMBOL+ ;
+   s" QUX-P" 12 SYM-DEP-CANON URI-OF 1 2 7 s" qd" SYMBOL+
+   s" qe:QUX-Q" 12 SYM-DEP-CANON URI-OF 2 2 10 s" qe" SYMBOL+
+   s" qd:QUX-DEP" 12 SYM-DEP-CANON URI-OF 4 2 9 s" qd" SYMBOL+
+   s" qd:QUX-Q" 12 SYM-DEP-CANON URI-OF 5 7 15 s" qd" SYMBOL+
+   s" QUX-V" 13 SYM-DEP-CANON URI-OF 7 9 14 s" " SYMBOL+ ;
 
 \ The dependency changed on disk: QUX-NEW where QUX-DEP was.
 : TEXT-SYM-DEP2 ( -- ptr u8 n )
    s\" package QD\npublic\n: QUX-NEW ( -- n ) 3 ;\n;package\nvariable QUX-V\n" ;
 
 : DEP2-SYMBOLS+ ( -- )
-   s" QUX-NEW" 12 SYM-DEP-CANON URI-OF 2 2 9 s" qd" SYMBOL+
+   s" qd:QUX-NEW" 12 SYM-DEP-CANON URI-OF 2 2 9 s" qd" SYMBOL+
    s" QUX-V" 13 SYM-DEP-CANON URI-OF 4 9 14 s" " SYMBOL+ ;
 
 \ Two open documents require sym-dep.f, on disk only. A query in another case
 \ lists each definition whose word holds it once, the dependency's at its
 \ canonical file URI and positions in its text on disk, the documents' at the
 \ URIs the client opened them by, check after check, oldest first; the word
-\ ZED is not one. A changed document's check replaces its definitions. A
-\ query that is no string, or none, is -32602. A file both documents' checks
-\ reached is listed once, from the later check: sym-dep.f changed on disk and
-\ B checked again, B's QUX-NEW and not A's QUX-DEP; B closed, A's QUX-DEP
-\ again, answered before A's next check.
+\ ZED is not one. A word public in a package is named qualified by it, any
+\ other bare. A changed document's check replaces its definitions. A query
+\ holding a colon lists as well each word a caller spells qualified whose
+\ package is the text before the colon, whole, and whose tail holds the text
+\ after it, in another case: QUX-DEP and the re-exported QUX-Q, not QD's
+\ private QUX-P nor QE's QUX-Q; QD:QE fits no name, so lists none.
+\ A query that is no string, or none, is -32602. A file both documents'
+\ checks reached is listed once, from the later check: sym-dep.f changed on
+\ disk and B checked again, B's QUX-NEW and not A's QUX-DEP; B closed, A's
+\ QUX-DEP again, answered before A's next check.
 : SYMBOL-TURNS ( -- )
    SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
    INITIALIZE
@@ -2132,28 +2143,37 @@ CK-USE-MAX 1 + constant OVER-USINGS
    DEP-SYMBOLS+
    s" QUX-AA" 12 SYM-A-PATH URI-OF 1 2 8 s" " SYMBOL+
    SYMBOLS-END
-   s" 5" s\" {\"query\":7}" SYMBOLS-ASK
-   s" 6" s" workspace/symbol" ASK
+   s" 5" s\" {\"query\":\"QD:qux\"}" SYMBOLS-ASK
    SAY
-   HEAR s" 5" -32602 REFUSED
+   s" 5" SYMBOLS-START
+   s" qd:QUX-DEP" 12 SYM-DEP-CANON URI-OF 4 2 9 s" qd" SYMBOL+
+   s" qd:QUX-Q" 12 SYM-DEP-CANON URI-OF 5 7 15 s" qd" SYMBOL+
+   SYMBOLS-END
+   s" 10" s\" {\"query\":\"QD:qe\"}" SYMBOLS-ASK
+   SAY
+   s" 10" SYMBOLS-START SYMBOLS-END
+   s" 6" s\" {\"query\":7}" SYMBOLS-ASK
+   s" 7" s" workspace/symbol" ASK
+   SAY
    HEAR s" 6" -32602 REFUSED
+   HEAR s" 7" -32602 REFUSED
    SYM-DEP-PATH TEXT-SYM-DEP2 WRITE-ALL
    SYM-B-PATH TEXT-SYM-B 2 CHANGES
    SAY
    TEXT-SYM-B SYM-B-PATH 2 s" verified" LISTED
-   s" 7" s\" {\"query\":\"qux\"}" SYMBOLS-ASK
+   s" 8" s\" {\"query\":\"qux\"}" SYMBOLS-ASK
    SAY
-   s" 7" SYMBOLS-START
+   s" 8" SYMBOLS-START
    s" QUX-AA" 12 SYM-A-PATH URI-OF 1 2 8 s" " SYMBOL+
    DEP2-SYMBOLS+
    s" QUX-B" 12 SYM-B-PATH URI-OF 1 2 7 s" " SYMBOL+
    s" QUX-K" 14 SYM-B-PATH URI-OF 2 11 16 s" " SYMBOL+
    SYMBOLS-END
    SYM-B-PATH CLOSES
-   s" 8" s\" {\"query\":\"qux\"}" SYMBOLS-ASK
+   s" 9" s\" {\"query\":\"qux\"}" SYMBOLS-ASK
    SAY
    SYM-B-PATH -1 EXPECT PUBLISHES
-   s" 8" SYMBOLS-START
+   s" 9" SYMBOLS-START
    DEP-SYMBOLS+
    s" QUX-AA" 12 SYM-A-PATH URI-OF 1 2 8 s" " SYMBOL+
    SYMBOLS-END
