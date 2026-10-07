@@ -44,6 +44,7 @@ package INTERNAL-WORD-GATE
 70 constant REJECT-RC           \ interpret-level reject exit (RC-REJECT)
 67 constant THROW-RC            \ engine uncaught-throw boundary exit
 84 constant SEAL-RC             \ ENGINE-ERROR:SEAL-PACKAGE, the reserved-name guard
+74 constant COUNT-RC            \ seed-ndict!'s refusal of a count that does not lower
 
 variable ROOT-U
 variable CHILD-U
@@ -233,13 +234,7 @@ create EMPTY 1 allot            \ zero-length stdin
    SB$ ;
 
 : SEED-RESET-SEARCH$ ( -- ptr u8 n )
-   S\" s\" seed-ndict!\" 0 search-wl . cr" ;
-
-: SEED-RESET-EQUAL$ ( -- ptr u8 n )
-   SB-RESET
-   s" TRUSTED: IWG-SEED-EQUAL ( -- ) ndict@ seed-ndict! ;" SB-APPEND LF
-   s" IWG-SEED-EQUAL" SB-APPEND LF
-   SB$ ;
+   S\" s\" seed-ndict!\" 0 search-wl 0<> . cr" ;
 
 : NULL-PTR-BARE$ ( -- ptr u8 n )
    SB-RESET
@@ -285,29 +280,27 @@ create EMPTY 1 allot            \ zero-length stdin
    RC @ ENGINE-ERROR:SEAL-VIOLATION T=
    ;
 
-\ seed-ndict! has a global record so the native compiler can resolve the direct
-\ call in a TRUSTED reset. Its DNAME-INT record and BSWL refusal close ordinary
-\ interpretation, tick, checked-source, and dynamic-lookup routes. TRUSTED:
-\ remains authority by the documented design.
+\ seed-ndict! is a top-level boundary primitive: a normal-wid record whose only
+\ checker row is trusted-only, as set-check's is. Top-level text and
+\ TRUSTED: bodies call it (the build rewinds do), the engine refuses its tick, a checked body naming it is
+\ E-CAP-TRUSTED, and search-wl finds its record.
 : SEED-RESET-CASES ( -- )
-   s" bare seed-ndict! is engine-internal" T-LABEL
-   s" seed-ndict!" NEG
-   s" tick of seed-ndict! is engine-internal" T-LABEL
+   s" top-level seed-ndict! refuses an equal dictionary count" T-LABEL
+   s" ndict@ seed-ndict!" TOKEN$ RUN-SUBJECT
+   EXITED @ TTRUE
+   RC @ COUNT-RC T=
+   OUT-U @ 0 T=
+   ERR-U @ 0 T=
+   s" tick of seed-ndict! is the engine's trusted-only refusal" T-LABEL
    SEED-RESET-TICK$ RUN-SUBJECT
-   s" seed-ndict!" ASSERT-INTERNAL
+   s" hb: trusted-only tick: seed-ndict!" ASSERT-DIAG
    s" checked source cannot compile seed-ndict!" T-LABEL
    SEED-RESET-CHECKED$ RUN-SUBJECT
-   \ The engine now refuses this internal call before the checker sees its
-   \ trusted-only primitive row; the checker verdict is covered separately.
-   s" E-UNDEFINED: seed-ndict!" ASSERT-DIAG
-   s" search-wl cannot launder seed-ndict! to execute" T-LABEL
+   s" E-CAP-TRUSTED habu: in iwg-seed-reset: 'seed-ndict!' is a trust-boundary primitive; call it only from a TRUSTED: definition" ASSERT-DIAG
+   s" search-wl finds the seed-ndict! record" T-LABEL
    SEED-RESET-SEARCH$ RUN-SUBJECT
    ASSERT-OK
-   OUT$ S\" 0\n\n" T$=
-   s" trusted seed-ndict! refuses an equal dictionary count" T-LABEL
-   SEED-RESET-EQUAL$ RUN-SUBJECT
-   EXITED @ TTRUE
-   RC @ 74 T= ;
+   OUT$ S\" -1\n\n" T$= ;
 
 \ --- positives: the public top-level surface is untouched -------------------
 
