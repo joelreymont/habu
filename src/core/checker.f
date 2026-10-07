@@ -11300,7 +11300,9 @@ PTR-VARIABLE RPL-TOK-A   variable RPL-TOK-U     \ the refused name (raw, valid w
 \ whose answer is the word it is about to shadow. The window is a fact the
 \ stores state, not a flag anyone clears: the dictionary count has not moved
 \ since the record (`ndict@`), and the record is still its symbol's newest one.
-\ A publication, a truncation, a rollback and `undefine` each end it. Only a
+\ A recovery record cannot open this window because the native compiler
+\ abandons its definition instead of publishing it. A publication, a
+\ truncation, a rollback and `undefine` each end the window. Only a
 \ check that runs while the engine holds the definition unpublished opens it
 \ (CK-CLOSE!): a check a program runs by hand publishes nothing.
 \
@@ -11352,7 +11354,11 @@ variable CK-PEND-IX      0 CK-PEND-IX !
    CHECKER-PKG-MIRROR-AUTHORITY? IF EXIT THEN
    CHK-CAND @ 0 <> IF EXIT THEN
    data-base CK-DEF-PEND-OFF + @ 0= IF EXIT THEN
-   sym CK-CLOSED-SYM !  ndict@ CK-CLOSED-IX !  sym USIG-NEWEST CK-CLOSED-OFF ! ;
+   sym USIG-NEWEST {: off:n :}
+   off 1 - E-PTR ER.ACTIVE @ EFF-RECOVERY = IF
+      0 CK-CLOSED-SYM ! EXIT
+   THEN
+   sym CK-CLOSED-SYM !  ndict@ CK-CLOSED-IX !  off CK-CLOSED-OFF ! ;
 
 \ A live check that certifies nothing ends the window: the definition recorded
 \ last is no longer the one being compiled. A replay or a candidate leaves the

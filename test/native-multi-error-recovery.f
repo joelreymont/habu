@@ -79,4 +79,41 @@ public
 CHECK-CLOSED
 ;package
 
+\ A refused public definition must not hide a live private word of the same
+\ name while the recovery run continues, or after its recovery rows expire.
+package NATIVE-RECOVERY-PENDING
+private
+: ACTUAL ( n -- n ) 1+ ;
+public
+: START ( -- ) MULTI-ERR-BEGIN ;
+: FINISH ( -- n ) MULTI-ERR-END ;
+: CHECK-COUNT ( -- )
+   FINISH 2 <> if s" native pending fallback count" 1 die then ;
+START
+: OTHER-BAD ( n -- n ) drop ;
+: ACTUAL ( n -- n ) drop ;
+: USE-ACTUAL ( n -- n ) ACTUAL ;
+CHECK-COUNT
+: CHECK-ACTUAL ( -- )
+   41 USE-ACTUAL 42 <> if s" native pending private fallback" 1 die then ;
+CHECK-ACTUAL
+;package
+
+package NATIVE-RECOVERY-EXPIRED
+private
+: ACTUAL ( n -- n ) 1+ ;
+public
+: START ( -- ) MULTI-ERR-BEGIN ;
+: FINISH ( -- n ) MULTI-ERR-END ;
+: CHECK-COUNT ( -- )
+   FINISH 1 <> if s" native expired fallback count" 1 die then ;
+START
+: ACTUAL ( n -- n ) drop ;
+CHECK-COUNT
+: USE-EXPIRED ( n -- n ) ACTUAL ;
+: CHECK-EXPIRED ( -- )
+   41 USE-EXPIRED 42 <> if s" native expired private fallback" 1 die then ;
+CHECK-EXPIRED
+;package
+
 s" ok" type cr
