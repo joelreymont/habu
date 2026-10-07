@@ -481,9 +481,8 @@ private
 \ ---- and which cell a deferred word dispatches through ------------------------
 \ The trailer is recognised by DEFER-MAGIC and never by its shape, because an
 \ ordinary integer may hold any value.
-\ Retirement: habu-sweep-trusted-out-41e973ce.
-TRUSTED: TRAILER@ ( n -- n )
-   @ ;
+CAST: >TRAILER-CELL ( n -- ptr n )
+: TRAILER@ ( n -- n ) >TRAILER-CELL @ ;
 
 public
 

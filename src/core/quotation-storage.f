@@ -6,8 +6,10 @@ private
 
 \ DATA-VA is the image's fixed mapping on both native targets. data-base is
 \ task-local: a worker has only a 64 KiB context, not the image's DATA extent.
-\ This boundary gives the layout's integer address its runtime pointer type.
-TRUSTED: IMAGE-BASE ( -- ptr u8 ) DATA-VA ;
+\ The cast types the target image's DATA-VA; it does not translate
+\ that address to the host's mapping in a foreign window.
+CAST: N>IMAGE ( n -- ptr u8 )
+: IMAGE-BASE ( -- ptr u8 ) DATA-VA N>IMAGE ;
 
 public
 

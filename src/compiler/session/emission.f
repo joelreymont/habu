@@ -32,7 +32,7 @@ STRUCTURE artifact 0 DERIVE addr
 
 \ The side span belongs to the same context as its frozen arena. The arena
 \ validates the handle before this one typed projection of the span is used.
-TRUSTED: ARTIFACT-PTR ( ptr u8 -- ptr artifact ) ;
+CAST: ARTIFACT-PTR ( ptr u8 -- ptr artifact )
 
 : VIEW ( NART:emission -- IR-ARENA:view )
    NART-EMISSION:UNMAKE KEY-UNMAKE ;

@@ -202,16 +202,15 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
 \ checker's effect-read export API (src/core/checker.f EFFECT-QUERY / EFFECT-DOUT-N,
 \ dot habu-expose-checker-effect-95e853eb) lets the tracker pop the din precisely and
 \ KEEP the tail's precise families, instead of graying the whole row at the next
-\ event. Same warning gates; better shadow fidelity across pure consumers. The query
-\ reads raw effect-store state the checker cannot type, so it sits behind a TRUSTED:
-\ boundary. Precise OUTPUT family propagation and row unification are not
-\ built; dot habu-unify-a-certified-e16b3f8d owns them.
+\ event. Same warning gates; better shadow fidelity across pure consumers. Precise
+\ OUTPUT family propagation and row unification are not built; dot
+\ habu-unify-a-certified-e16b3f8d owns them.
 \ EFFECT-QUERY resolves the name as a definition would and refuses where the scope
 \ does: no authority names a package context (inside a package after `0
 \ set-current`), or a used public collides with the tail. The tracker only
 \ observes, so it asks CHECKER-RESOLVE:REFUSES? first: a word it cannot query in
 \ this scope is unmodeled, and TR-WORD grays its outputs.
-TRUSTED: TR-CERT-DOUT-EMPTY? ( ptr u8 n -- bool )   \ certified word producing no fixed outputs?
+: TR-CERT-DOUT-EMPTY? ( ptr u8 n -- bool )   \ certified word producing no fixed outputs?
    2dup CHECKER-RESOLVE:REFUSES? if 2drop 0 0= 0= exit then
    EFFECT-QUERY if EFFECT-DOUT-N 0= else 0 0= 0= then ;
 

@@ -302,8 +302,8 @@ public
 \ by calling this, and the identity below is how either side is read back.
 \ The tape compares an opaque identity; it never calls it. Two compiler
 \ instances own different cells, even when they observe the same checker.
-TRUSTED: SCAN-ID ( -- n )
-   OBSERVER-ID ;
+: SCAN-ID ( -- n )
+   OBSERVER-ID BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 
 : OBSERVE ( -- )
    SCAN-ID [: ON-SCAN ;] [: ON-TOKEN ;] [: ON-DONE ;] CHECKER-OWNER:TAPE-INSTALL ;
