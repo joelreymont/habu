@@ -128,7 +128,8 @@ variable SD-ARG-N
 
 : SD-RESET ( -- )                      \ base state; re-seeded at load (process-local)
    NULL-PTR 0 PEND!   0 TOK !   0 SEEN-FIELD !   0 SEEN-END !
-   0 SD-FIELD-MISS !  0 SD-SEEN-U ! ;
+   0 SD-FIELD-MISS !  0 SD-SEEN-U !
+   NULL-PTR SD-TYPE-A !  0 SD-TYPE-U ! ;
 SD-RESET
 
 : SD-MISS-CLEAR ( -- ) NULL-PTR SD-MISS-A ! 0 SD-MISS-U ! ;
