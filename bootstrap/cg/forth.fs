@@ -2373,8 +2373,9 @@ HB-TARGET-LINUX? [IF]
    s" seal-captured?" ['] BSEALCAPQ FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
+   \ min-in-mark and xref-search-wl are owned as in src/habu/prims.f: their owners' rows type them.
    s" int-mark" ['] BINTMARK PRIM-INT-WID FPRIM-WID
-   s" min-in-mark" ['] BMININMARK PRIM-INT-WID FPRIM-WID
+   s" min-in-mark" ['] BMININMARK PRIM-OWNED-WID FPRIM-WID
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" prot-wid-room" ['] BPROTWIDROOM FPRIM
    s" die"  ['] BDIE   FPRIM-L ;
@@ -2396,7 +2397,7 @@ HB-TARGET-LINUX? [IF]
    s" c2-invoke" ['] BC2-INVOKE FPRIM
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
-   s" xref-search-wl" ['] BCOMPILERSWL PRIM-INT-WID FPRIM-WID
+   s" xref-search-wl" ['] BCOMPILERSWL PRIM-OWNED-WID FPRIM-WID
    s" scope-find" ['] BSCOPEFIND FPRIM
    s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
    s" tick-order@" ['] BTICKORDER FPRIM-L

@@ -305,8 +305,9 @@ variable RC     variable EXITED
    ERR$ s" trust-boundary primitive" CONTAINS? TTRUE
 
    s" min-in-mark is refused in a plain checked body" T-LABEL
+   \ NPUB's owner row makes it an owned name: refused at the trust boundary.
    s" : BADM ( n n -- ) min-in-mark ;" RUN  REJECT-RC ASSERT-RC
-   ERR$ s" E-UNDEFINED" CONTAINS? TTRUE
+   ERR$ s" E-CAP-TRUSTED" CONTAINS? TTRUE
    ERR$ s" min-in-mark" CONTAINS? TTRUE
 
    \ The row records an effect; it does not open the name. Both records still

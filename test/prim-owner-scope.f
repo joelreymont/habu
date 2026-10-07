@@ -387,7 +387,13 @@ variable EXP-U
    s" package POS-ALIAS public EXPORT FFI-PTR>CELL ;package : POS-SEALED-TALIAS ( -- ) ['] POS-ALIAS:FFI-PTR>CELL drop ;"
    s" E-CAP-TRUSTED habu: in pos-sealed-talias: 'POS-ALIAS:FFI-PTR>CELL' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED
    s" : POS-SEALED-ST ( n -- ) set-tier ;"
-   s" E-UNDEFINED habu: in pos-sealed-st: undefined word 'set-tier'" SEALED ;
+   s" E-UNDEFINED habu: in pos-sealed-st: undefined word 'set-tier'" SEALED
+   s" : POS-SEALED-XSW ( ptr u8 n n -- ptr n ) xref-search-wl ;"
+   s" E-CAP-TRUSTED habu: in pos-sealed-xsw: 'xref-search-wl' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED
+   s" : POS-SEALED-MIM ( n n -- ) min-in-mark ;"
+   s" E-CAP-TRUSTED habu: in pos-sealed-mim: 'min-in-mark' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED
+   s" : POS-SEALED-NDA ( n -- ) ndict-append ;"
+   s" E-CAP-TRUSTED habu: in pos-sealed-nda: 'ndict-append' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED ;
 
 \ set-tier is a seed primitive, not a prefix word, so no ABI-only row stands in
 \ for its owner's: outside TIER the shipped answer is E-UNDEFINED, and the

@@ -49,11 +49,12 @@
 \ registry and dictionary savepoint until that work succeeds, so either all
 \ metadata and both words publish or every participant rolls back.
 \
-\ TRUSTED boundary. The checkable DECISIONS stay checked; the trusted set is
-\ one SM-EMIT-ROWS that performs the sealed mutation — build the field schema
-\ run, add the two variant rows, set the variant range, derive the constructor
-\ package. Provisional field-schema reads go through DECL-EVENT with the exact live
-\ declaration token and family, so no uncommitted field row is globally readable.
+\ SM-EMIT-ROWS performs the sealed mutation - build the field schema run, add
+\ the two variant rows, set the variant range, derive the constructor package -
+\ as checked code: it compiles before the seal, through the registry packages it
+\ uses below. Provisional field-schema reads go through DECL-EVENT with the exact
+\ live declaration token and family, so no uncommitted field row is globally
+\ readable.
 \ When the type-DSL cutover factors the shared
 \ generator into its own module, GENERATE re-points there; nothing else changes.
 
@@ -85,11 +86,11 @@ package STRUCTURE-MAKE
 \ carry — exactly the run shape the PRODUCT ctor path builds while parsing its fields),
 \ adds the make(0)/unmake(1) variant rows over it at the family's product width,
 \ sets the variant range, and derives the constructor package.
-\ TRUSTED: because every word it calls is a sealed pre-hook registry word.
 \ GENERATE has already validated its local preconditions; any evaluator or checker
 \ rejection propagates to GENERATED-DECL for full rollback.
 variable SM-RSTART   variable SM-VSTART
-TRUSTED: SM-EMIT-ROWS ( n n n n -- ) {: tok:n fam:n fs:n fc:n :}
+: SM-EMIT-ROWS ( n n n n -- )
+   {: tok:n fam:n fs:n fc:n :}
    SCHEMA-ROOT-N@ SM-RSTART !
    0 BEGIN dup fc < WHILE
       dup tok fam fs SM-FIELD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-ROOT+ drop

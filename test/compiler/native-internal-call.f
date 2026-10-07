@@ -107,9 +107,11 @@ variable EXITED
 
 : RUN ( -- )
    T-RESET
-   s" ndict-append" 0 search-wl 0 T=
-   s" ndict-append" NDICT:CALL-TARGET 0 T=
-   s" BAD-INTERNAL ( n -- ) ndict-append" CHECK-QUIET-CANDIDATE! 0 T=
+   \ int-mark has no owner row: an owned primitive (DNAME-OWNED) is a call
+   \ target by design, and its owner rows decide who may call it.
+   s" int-mark" 0 search-wl 0 T=
+   s" int-mark" NDICT:CALL-TARGET 0 T=
+   s" BAD-INTERNAL ( n -- ) int-mark" CHECK-QUIET-CANDIDATE! 0 T=
    0 REJECT-CALL 1 REJECT-CALL
    0 TRUST-CALL 1 TRUST-CALL
    0 REJECT-EXPORT 1 REJECT-EXPORT

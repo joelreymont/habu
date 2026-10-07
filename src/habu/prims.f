@@ -616,6 +616,8 @@ EPRIM: int-mark      PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ sets DNAME-INT on one live record
 EPRIM: min-in-mark   PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ records a certified minimum input arity on one
+\ The publisher's reader (src/compiler/native/publish.f MIN-IN-REC) calls it inside NPUB.
+EPPRIM: NPUB min-in-mark PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: reloc-maps-clear PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ clears metadata over reclaimed code
 \ FORGET's code reclamation (src/habu/xref.f) is the engine's one caller.
@@ -684,6 +686,7 @@ EPRIM: seed-ndict!    PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ top-level boundary: no checked body names it
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native pending-record publication
+EPPRIM: NPUB ndict-append PE-N PE-IN ECLOSE-PRIVATE    \ src/compiler/native/publish.f APPEND-PENDING
 EPRIM: def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ exact resolved dictionary record
 EPRIM: def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT EPRIM;
@@ -838,6 +841,12 @@ EPRIM: set-current    PE-N PE-IN EPRIM;
 EPRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ NDICT's private indexed-record boundary
+\ Its owners' readers: CHECKER-RESOLVE's scope probe (src/core/checker.f SCOPE-WL-PROBE), NDICT's record
+\ lookup (src/compiler/native/dict.f WL-RECORD) and CHECKER-SURFACE's record index (src/core/checker-surface.f
+\ RECORD-INDEX). Three rows, not one: each owner is a separate sealed package, and NDICT keeps the raw record private.
+EPPRIM: CHECKER-RESOLVE xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: NDICT xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: CHECKER-SURFACE xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPRIM: scope-find     PE-PTR-U8 PE-IN PE-N PE-IN
                       PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-N PE-OUT EPRIM;
 EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM;

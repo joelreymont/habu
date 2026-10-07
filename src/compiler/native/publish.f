@@ -47,7 +47,8 @@ variable UNIT-ARMED
    xref-retarget ;
 
 \ min-in-mark and ndict-append are seed records the engine marks internal
-\ (ENGINE-PRIMS:GLOBAL-INT-WID), and only a TRUSTED: body compiles a call to one.
+\ (ENGINE-PRIMS:GLOBAL-INT-WID). Package NPUB's rows (src/habu/prims.f) admit a
+\ checked call here only on an engine built with them; until then this is TRUSTED:.
 TRUSTED: MIN-IN-REC ( n n -- )
    min-in-mark ;
 
