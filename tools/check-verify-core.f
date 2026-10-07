@@ -33,7 +33,8 @@
 \ form the composition refused or at the loader word naming a file that is not
 \ there or cannot be read, but for a string or a locals group never closed, the
 \ stop's record at its opener. VERIFY-FILES$ is the
-\ files the verifier read, the subject and its dependencies, VERIFY-DEFS$ the
+\ files the verifier read, the subject and its dependencies, each with the
+\ digest of the bytes it read there, VERIFY-DEFS$ the
 \ definitions it retained in them, VERIFY-USES$ the uses in the subject the
 \ checker bound to located declarations, and VERIFY-CANDIDATES$ the spellings
 \ CHECK:VERIFY-BYTES-AT's cursor offered, each one JSON object per line, never
@@ -1118,9 +1119,9 @@ public
    VFY-DEFS-U @ 0= if NULL$ exit then
    0 VFY-DEFS VFY-DEFS-U @ ;
 
-\ The files the last VERIFY-BYTES read, one JSON object per line as
-\ tools/check-verify-child.f's file line states it, each once, in the order
-\ the verifier started them.
+\ The files the last VERIFY-BYTES read and the digests of the bytes it read of
+\ them, one JSON object per line as tools/check-verify-child.f's file line
+\ states it, each file and digest once, in the order the verifier started them.
 : VERIFY-FILES$ ( -- ptr u8 n )
    VFY-FILES-U @ 0= if NULL$ exit then
    0 VFY-FILES VFY-FILES-U @ ;

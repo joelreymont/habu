@@ -29,16 +29,16 @@
 \ packet made before; then one result line. The first form verifies with all
 \ errors, going past a duplicate definition as past any refused definition,
 \ and writes for each duplicate, which the checker writes no packet for, a
-\ diagnostic line among the packets, for each file it reads a file line, once
-\ however often it reads the file and before anything in it, for each
-\ definition it retains a definition line, and for each use in the subject
-\ that the checker binds to a located declaration a use line, one JSON object
-\ each. It answers
+\ diagnostic line among the packets, for each file it reads a file line for
+\ the bytes it reads there, once however often it reads the same bytes and
+\ before anything in them, for each definition it retains a definition line,
+\ and for each use in the subject that the checker binds to a located
+\ declaration a use line, one JSON object each. It answers
 \
 \    check-verify: verified | refused | deferred | held
 \                | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \    check-verify: duplicate 78 BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
-\    check-verify: file {"file":F}
+\    check-verify: file {"file":F,"sha256":H}
 \    check-verify: definition {"kind":K,"class":C,"word":W,"package":P,
 \       "visibility":V,"effect":E,"file":F,"byte_start":S,"byte_end":N}
 \    check-verify: use {"byte_start":S,"byte_end":N,"file":F,
@@ -54,7 +54,13 @@
 \ not read, as it was resolved.
 \
 \ A file line names a file src/habu/verify-source.f ON-FILE reports, F as
-\ its packets name it. A definition line names what ON-DEFINITION reports:
+\ its packets name it, and H, the SHA-256 of the bytes ON-FILE hands over with
+\ it, the bytes the scan reads there, in 64 lowercase hexadecimal digits: for
+\ the subject, BYTES. A file read again with the same bytes has no other line.
+\ One whose bytes differ between two reads, which only a write to the file
+\ between them can make, has a line for each, in the order they were read, and
+\ its definition and use lines, which name F alone, cannot say which bytes
+\ they are in. A definition line names what ON-DEFINITION reports:
 \ K the statement token that declared it, C its class as that token's path
 \ knows it (word, constant, storage, or export: a re-export, whatever the word
 \ it names is), W its name as the source writes it
@@ -134,6 +140,8 @@ $10000 constant CHUNK                   \ bytes asked of one read
 10 constant LF
 1 constant OUT-FD
 2 constant ERR-FD
+32 constant DIGEST-U                    \ a SHA-256 digest's bytes
+64 constant HEX-U                       \ a digest in lowercase hexadecimal
 
 DYNAMIC-BUFFER SUBJECT u8               \ the subject's bytes, from stdin
 variable SUBJECT-U
@@ -147,7 +155,10 @@ create ESC 6 allot                      \ one \u00XX escape
 variable RUN-AT                         \ where the bytes not yet written start
 DYNAMIC-BUFFER DEF-PKG u8               \ a definition's package
 variable DEF-PKG-U
-DYNAMIC-BUFFER SEEN u8                  \ the files file lines named, end to end,
+create SHA-CTX SHA256-CTX-BYTES allot   \ FILE-LINE's digest context
+create DIGEST DIGEST-U allot            \ the digest of the bytes FILE-LINE was handed
+create DIGEST-HEX HEX-U allot           \ that digest as its file line states it
+DYNAMIC-BUFFER SEEN u8                  \ each file line's digest, then its file, end to end,
 variable SEEN-U
 DYNAMIC-BUFFER SEEN-AT n                \ each one's offset there and length
 variable SEEN-N
@@ -356,43 +367,59 @@ variable LENIENT-FIRST                  \ the argument the --lenient paths start
    OUT-FD NEWLINE ;
 
 
-\ The file the Kth file line named.
+\ The digest and the file the Kth file line stated, end to end.
 : SEEN$ ( n -- ptr u8 n )
    {: k:n :}
    k 2 * SEEN-AT @ SEEN  k 2 * 1+ SEEN-AT @ ;
 
 
-\ Whether a file line named the file.
+\ Whether the Kth file line stated the file with DIGEST.
+: SEEN-KEY? ( n ptr u8 n -- bool )
+   {: k:n f:ptr fu:n :}
+   k SEEN$ {: row:ptr rowu:n :}
+   row DIGEST-U DIGEST DIGEST-U CORE-STR=
+   row DIGEST-U + rowu DIGEST-U - f fu CORE-STR= and ;
+
+
+\ Whether a file line stated the file with DIGEST.
 : SEEN? ( ptr u8 n -- bool )
    {: f:ptr fu:n :}
    SEEN-N @ 0 ?do
-      i SEEN$ f fu CORE-STR= if unloop true exit then
+      i f fu SEEN-KEY? if unloop true exit then
    loop
    false ;
 
 
-\ The file kept as one a file line named. A path is never empty, so its
-\ offset lies inside SEEN.
+\ DIGEST and the file kept as a file line stated them. The digest comes first
+\ and a path is never empty, so both offsets lie inside SEEN.
 : SEEN+ ( ptr u8 n -- )
    {: f:ptr fu:n :}
    SEEN-U @ {: at:n :}
    SEEN-N @ {: k:n :}
-   at fu + SEEN-RESERVE
-   f at SEEN fu BYTE-COPY
+   DIGEST-U fu + {: rowu:n :}
+   at rowu + SEEN-RESERVE
+   DIGEST at SEEN DIGEST-U BYTE-COPY
+   f at DIGEST-U + SEEN fu BYTE-COPY
    k 1+ 2 * SEEN-AT-RESERVE
    at k 2 * SEEN-AT !
-   fu k 2 * 1+ SEEN-AT !
-   at fu + SEEN-U !
+   rowu k 2 * 1+ SEEN-AT !
+   at rowu + SEEN-U !
    1 SEEN-N +! ;
 
 
-\ A file the first form starts reading, as its file line the first time.
-: FILE-LINE ( ptr u8 n -- )
-   {: f:ptr fu:n :}
+\ A file the first form starts reading and the bytes it reads there, as a file
+\ line the first time the file comes with those bytes. It keeps the file and
+\ the bytes' digest, never the strings, which are borrowed.
+: FILE-LINE ( ptr u8 n ptr u8 n -- )
+   {: f:ptr fu:n a:ptr u:n :}
+   SHA-CTX a u DIGEST SHA256-IN
    f fu SEEN? if exit then
    f fu SEEN+
+   DIGEST DIGEST-HEX SHA256>HEX
    OUT-FD s\" check-verify: file {\"file\":" WRITE
    f fu JSON-STR
+   OUT-FD s\" ,\"sha256\":" WRITE
+   DIGEST-HEX HEX-U JSON-STR
    OUT-FD s" }" WRITE
    OUT-FD NEWLINE ;
 
