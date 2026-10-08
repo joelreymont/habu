@@ -39,12 +39,23 @@ does not follow one yet, its **Now** line says what differs.
    a second interpret loop written in Habu (`src/habu/interpret.f`
    `OUTER:INTERPRET`, with `src/habu/packages.f` `PKG-PACKAGE`,
    `PKG-SEAL-GUARD`), which only tests load.
-6. **Two ways to build an engine.** The Gforth bootstrap makes one from zero.
-   The snapshot build (`tools/native-build.f`) loads the sources into a running
-   engine and captures its memory; it alone makes the product. The test suite
-   builds `hb` once and runs every test against it. The two-generation build
-   and the Gforth bootstrap are occasional integration tests.
-   **Now:** `tools/build-fixpoint.f` also compiles glued source text to a byte
+6. **One build program.** Every engine is built by one program written in
+   Habu. It loads the sources, runs a word's host body when the build needs
+   its value, compiles each definition for the product's platform through that
+   platform's codegen, keeps build-time data as target objects, and links the
+   image from them (`docs/portability.md` §7, §13). A build names the platform
+   it runs on and the platform it produces: any `hb` builds `hb` for every
+   required host (`docs/portability.md` §1.1). Building for a platform never
+   runs on it: `hb` on a macOS ARM64 machine cross-compiles the x86-64 `hb`,
+   and only running the product needs a machine of its kind
+   (`docs/portability.md` §2.3). The test suite builds `hb` once and runs every
+   test against it. The two-generation build and the build from zero are
+   occasional integration tests.
+   **Now:** the snapshot build (`tools/native-build.f`) loads the sources into
+   the running engine and captures its memory; only the x86-64 cross-build
+   compiles definitions a second time for the target and links them
+   (`src/compiler/native/shadow.f`, `src/habu/link-x64.f`).
+   `tools/build-fixpoint.f` also compiles glued source text to a byte
    fixpoint, and test files build engines of their own.
 7. **One interpreter, one codegen per platform.** The interpret loop,
    definers, packages and source loading are written once in Habu and run on
@@ -55,3 +66,12 @@ does not follow one yet, its **Now** line says what differs.
    (`src/habu/interpret.f`) runs only under tests; x86-64 has no interpreter
    (`src/habu/kernel-x64.f:1752`). The platform codegen compiles 2.51 ms per
    word against the JIT's 0.105 ms (`docs/compiler-measurements.md:361`).
+8. **Gforth is one more host.** The build from zero is the build program run
+   on Gforth. Gforth supplies the host bodies of the kernel primitives and
+   reads the code loaded before the checker; the checker then runs as host
+   code and types the rest. There is no seed interpreter. A host without
+   Gforth gets its first `hb` by cross-build from any `hb`.
+   **Now:** `bootstrap/cg/*.fs` (12,027 lines) is a second engine builder in
+   Gforth. It writes an ARM64-only `hb-stage0` with a hand-written
+   machine-code interpreter, which then loads the Habu sources
+   (`bootstrap/cg/forth.fs` `EMIT-HOST-LOAD-PREFIX`).
