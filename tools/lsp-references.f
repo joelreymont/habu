@@ -40,8 +40,10 @@
 \ included and P's text no longer has the digest; or a workspace folder's walk
 \ fails. Otherwise the answer comes, and each file it could not cover is named
 \ with why (WARNING), contributing no location: a workspace file whose loads
-\ discovery cannot find, but P and D, whose checks say what they read; a
-\ subject whose check was not verified, a file on disk by its check's verdict
+\ discovery cannot find, but P and D, whose checks say what they read; P
+\ when it is no subject, and each other file no subject is whose loads reach
+\ P, outside every folder, whose uses no check reads; a subject whose check
+\ was not verified, a file on disk by its check's verdict
 \ (LSP-CHECK:OUTCOME$); one that cannot be read; one whose check states no
 \ digest of P or another one, declares at P's token a word without a whole
 \ identity or the word in several visits, or binds to that token a use
@@ -59,7 +61,14 @@
 \ byte that selected the declaration and every location placed spell the
 \ tail, and UNSPELT$ says why, from the declaration, when one does not: a
 \ DEFTYPE declares its two converters at its name's token, which spells
-\ neither.
+\ neither. EXPORT? holds when D's check records the declaration as an EXPORT
+\ of another word, and EXPORT$ says so. RE-EXPORTED? holds when a location
+\ placed is a token that also declares another word in its subject's file,
+\ as an EXPORT's operand does: a rename that edited the token would leave
+\ that word's uses naming the old one. RE-EXPORT$ names the first such one.
+\ LOCATIONS counts the locations, LOC-URI$ gives one's URI and LOC-TAIL its
+\ range from where its tail starts. UNCOVERED$ says how many files are named,
+\ after a phrase, then each one and why, as WARNING sends it.
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: the request being answered belongs to the
 \ server's one task, and SELECT starts each one afresh.
@@ -139,7 +148,9 @@ variable CUR                             \ the subject being gathered, by the wa
 variable URI-AT                          \ the URI its positions count at,
 variable URI-U
 variable SUB-VISIT                       \ and the visit its check declares the word in
-DYNAMIC-BUFFER SRC u8                    \ a subject's text, read from disk,
+variable RX-AT                           \ the first location that also declares
+variable RX-U                            \ another word, said in POOL
+DYNAMIC-BUFFER SRC u8                   \ a subject's text, read from disk,
 variable SRC-U
 SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
 32 BUFFER: SHA-RAW
@@ -198,6 +209,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
    1 POOL-RESERVE
    0 LOC-N !
    0 MISS-N !
+   0 RX-U !
    0 MSG-U !
    1 MSG-RESERVE
    false FOUND !
@@ -214,10 +226,10 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
    true REFUSED !
    false FOUND ! ;
 
-\ The file at this path named, for this reason. Neither string lies in POOL.
-: MISS+ ( ptr u8 n ptr u8 n -- )
-   {: p:ptr u:n w:ptr wu:n :}
-   p u POOL+ {: at:n :}
+\ The file whose path is at this offset and length in POOL named, for this
+\ reason, which does not lie in POOL.
+: MISSED ( n n ptr u8 n -- )
+   {: at:n u:n w:ptr wu:n :}
    w wu POOL+ {: why:n :}
    MISS-N @ {: k:n :}
    k 1+ MISS-CELLS * MISSES-RESERVE
@@ -226,6 +238,11 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
    why k M-WHY MISS!
    wu k M-WHY-U MISS!
    k 1+ MISS-N ! ;
+
+\ The file at this path named, for this reason. Neither string lies in POOL.
+: MISS+ ( ptr u8 n ptr u8 n -- )
+   {: p:ptr u:n w:ptr wu:n :}
+   p u POOL+ u w wu MISSED ;
 
 \ Whether the file at this path is named.
 : NAMED? ( ptr u8 n -- bool )
@@ -254,18 +271,13 @@ public
 \ Where the selected declaration's tail starts in the token from byte FROM to
 \ byte TO of the text positions count in: at the token's start when it spells
 \ the tail, letters compared without case as Habu compares names; else,
-\ when the token is qualified as CHECKER-QUALIFIED? reads a name, by one
-\ colon neither its first byte nor its last, after that colon when the bytes
-\ after it spell the tail; else -1. SPLIT-NEXT gives the byte after the
-\ colon it finds, else one past the token's end.
+\ when the token is qualified (QUALIFIER-AT), after its qualifier when the
+\ bytes after it spell the tail; else -1.
 : TAIL-FROM ( n n -- n )
    SPAN-IN {: w:ptr wu:n a:n :}
    w wu NAME$ STR=CI if a exit then
-   w wu [char] : 0 SPLIT-NEXT drop nip nip
-   {: at:n :}
-   w wu [char] : at SPLIT-NEXT drop nip nip
-   {: at2:n :}
-   at 1 >  at wu < and  at2 wu > and 0= if -1 exit then
+   w wu QUALIFIER-AT {: at:n :}
+   at 0 < if -1 exit then
    w at + wu at - NAME$ STR=CI if a at + else -1 then ;
 
 private
@@ -474,6 +486,10 @@ private
    p pu w wu MISS+ ;
 
 \ The subjects of D, in this slot, and the files the walk could not read.
+\ P is named when it is no subject: outside every workspace folder and open
+\ in no document, its own uses are not read. When it is one it is the first,
+\ as REACHING orders them. So is each other file outside them whose loads
+\ reach P, whose uses no check reads either.
 : SUBJECTS! ( n -- )
    {: slot:n :}
    slot DOC-CANON$ {: a:ptr u:n :}
@@ -483,7 +499,11 @@ private
    LSP-WORKSPACE:REFUSED? if
       LSP-WORKSPACE:BLOCKED$ s" the workspace folder cannot be walked" REFUSE exit
    then
-   LSP-WORKSPACE:UNREADABLE 0 ?do i LSP-WORKSPACE:UNREADABLE$ UNREAD+ loop ;
+   LSP-WORKSPACE:UNREADABLE 0 ?do i LSP-WORKSPACE:UNREADABLE$ UNREAD+ loop
+   0 LSP-WORKSPACE:SUBJECT$ P$ STR= 0= if P-AT @ P-U @ s" not in a workspace folder" MISSED then
+   LSP-WORKSPACE:OUTSIDE 0 ?do
+      i LSP-WORKSPACE:OUTSIDE$ s" not in a workspace folder" MISS+
+   loop ;
 
 \ ---- a subject's uses -----------------------------------------------------------
 
@@ -530,12 +550,65 @@ private
    wu 0<> if w wu exit then
    slot g USE-WHY ;
 
+\ The first decl of the check of the subject in this slot, of group G, whose
+\ token starts and ends at these bytes and declares another word than the
+\ selected declaration, if one does.
+: OTHER-DECL ( n n n n -- option<n> )
+   {: slot:n g:n from:n to:n :}
+   slot DEFS-DECL-RANGE ?do
+      i DECL-GROUP g = if
+         i DECL-BYTES to = swap from = and if
+            i DECL-KEY? 0= if i OPTION:SOME unloop exit then
+         then
+      then
+   loop
+   OPTION:NONE ;
+
+\ The location just placed, from use U, whose token also declares decl D,
+\ said in POOL: the subject's file, the line and text of the token, and the
+\ word it declares, whose uses a rename would not edit.
+: RE-EXPORT! ( n n -- )
+   {: u:n d:n :}
+   0 MSG-U !
+   CUR$ SHOWN$ MSG+
+   s" : the token " MSG+
+   u USE-BYTES SPAN-IN drop MSG+
+   s"  at line " MSG+
+   SB-RESET LOC-N @ 1- L-LINE LOC@ 1+ FMT:SB-INT SB$ MSG+
+   s"  also declares " MSG+
+   d DECL-PACKAGE$ {: k:ptr ku:n :}
+   ku 0<> if k ku MSG+ s" :" MSG+ then
+   d DECL-NAME$ MSG+
+   s" , whose uses a rename would not edit" MSG+
+   MSG$ POOL+ RX-AT !
+   MSG-U @ RX-U !
+   0 MSG-U ! ;
+
+\ Use U, just placed, kept for RE-EXPORT$ when its token also declares another
+\ word in group OWN of the check in this slot, the subject's own file's,
+\ unless a location is kept already.
+: RE-EXPORTS ( n n n -- )
+   {: slot:n own:n u:n :}
+   RX-U @ 0<> if exit then
+   slot own u USE-BYTES OTHER-DECL MATCH option
+      some OF u swap RE-EXPORT! ENDOF
+      none OF ENDOF
+   ;MATCH ;
+
 \ The uses of the declaration the check of the subject in this slot, whose
-\ group for P is G, states, in the text positions count in.
+\ group for P is G, states, in the text positions count in, each kept for
+\ RE-EXPORT$ when its token also declares another word in the subject's file.
 : PLACED ( n n -- )
    {: slot:n g:n :}
+   slot CUR$ DEFS-GROUP-OF MATCH option
+      some OF ENDOF
+      none OF -1 ENDOF
+   ;MATCH {: own:n :}
    slot DEFS-USE-RANGE ?do
-      i g USE-AT? if i USE-KEY? if i USE-BYTES LOC+ then then
+      i g USE-AT? if i USE-KEY? if
+         i USE-BYTES LOC+
+         slot own i RE-EXPORTS
+      then then
    loop ;
 
 : CONTRIBUTED ( n n -- )
@@ -585,6 +658,18 @@ private
    slot at LOCATE
    FOUND @ too and if DECLARATION then ;
 
+\ The declaration once placed, the first location, said in MSG: its file, the
+\ line and text of its token, and its tail.
+: DECLARED-AT ( -- )
+   0 MSG-U !
+   P$ SHOWN$ MSG+
+   s" : the token " MSG+
+   TOK-AT @ TOK-U @ POOL$ MSG+
+   s"  at line " MSG+
+   SB-RESET 0 L-LINE LOC@ 1+ FMT:SB-INT SB$ MSG+
+   s"  declares " MSG+
+   NAME$ MSG+ ;
+
 public
 
 \ Selects the declaration at this byte of the text of the open document in
@@ -615,16 +700,27 @@ public
 \ Why a token does not spell the tail, said of the declaration once placed,
 \ the first location: its file, the line and text of its token, and its tail.
 : UNSPELT$ ( -- ptr u8 n )
-   0 MSG-U !
-   P$ SHOWN$ MSG+
-   s" : the token " MSG+
-   TOK-AT @ TOK-U @ POOL$ MSG+
-   s"  at line " MSG+
-   SB-RESET 0 L-LINE LOC@ 1+ FMT:SB-INT SB$ MSG+
-   s"  declares " MSG+
-   NAME$ MSG+
+   DECLARED-AT
    s" , but a token naming it does not spell it" MSG+
    MSG$ ;
+
+\ Whether D's check records the declaration as an EXPORT of another word,
+\ and that said of it as UNSPELT$ says why.
+: EXPORT? ( -- bool )
+   G @ TS @ TE @ GROUP-REC-AT MATCH option
+      some OF REC-CLASS CLASS-EXPORT = ENDOF
+      none OF false ENDOF
+   ;MATCH ;
+: EXPORT$ ( -- ptr u8 n )
+   DECLARED-AT
+   s"  as an EXPORT of another word" MSG+
+   MSG$ ;
+
+\ Whether a location placed is a token that also declares another word in its
+\ subject's file, and the first such one said: its file, the line and text
+\ of the token, and the word.
+: RE-EXPORTED? ( -- bool )  RX-U @ 0<> ;
+: RE-EXPORT$ ( -- ptr u8 n )  RX-AT @ RX-U @ POOL$ ;
 
 \ How many subjects the request gathers from: none unless it selected a
 \ declaration, since only then did it walk.
@@ -650,10 +746,12 @@ public
 \ Whether a file is named.
 : UNCOVERED? ( -- bool )  MISS-N @ 0 > ;
 
-\ The window/showMessage warning naming the files, to the writer.
-: WARNING ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+\ This phrase, then how many files are named and, a line each, every one's
+\ path relative to the working directory and why.
+: UNCOVERED$ ( ptr u8 n -- ptr u8 n )
    0 MSG-U !
-   s" References may be incomplete: " MSG+
+   MSG+
+   s" : " MSG+
    SB-RESET MISS-N @ FMT:SB-INT SB$ MSG+
    MISS-N @ 1 = if s"  file not covered:" else s"  files not covered:" then MSG+
    MISS-N @ 0 ?do
@@ -662,18 +760,37 @@ public
       s" : " MSG+
       i M-WHY MISS@ i M-WHY-U MISS@ POOL$ MSG+
    loop
+   MSG$ ;
+
+\ The window/showMessage warning naming the files, to the writer.
+: WARNING ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+   s" References may be incomplete" UNCOVERED$ {: m:ptr mu:n :}
    s" window/showMessage" JSON-RPC:NOTIFY
    OBJECT-START
    s" type" WARNING-TYPE FIELD-U COMMA
-   s" message" MSG$ FIELD-S
+   s" message" m mu FIELD-S
    OBJECT-END ;
+
+\ How many locations the request answers; location K's URI, the range from
+\ where its tail starts to its end, the bytes a rename edits, and whether a
+\ qualifier precedes that tail.
+: LOCATIONS ( -- n )  LOC-N @ ;
+: LOC-URI$ ( n -- ptr u8 n )
+   {: k:n :}
+   k L-URI LOC@ k L-URI-U LOC@ POOL$ ;
+: LOC-TAIL ( n -- n n n n )
+   {: k:n :}
+   k L-TAIL-LINE LOC@ k L-TAIL-CHAR LOC@ k L-END-LINE LOC@ k L-END-CHAR LOC@ ;
+: LOC-QUALIFIED? ( n -- bool )
+   {: k:n :}
+   k L-TAIL-LINE LOC@ k L-LINE LOC@ <>  k L-TAIL-CHAR LOC@ k L-CHAR LOC@ <>  or ;
 
 private
 
 : LOCATION ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
    {: k:n :}
    OBJECT-START
-   s" uri" k L-URI LOC@ k L-URI-U LOC@ POOL$ FIELD-S COMMA
+   s" uri" k LOC-URI$ FIELD-S COMMA
    k L-LINE LOC@ k L-CHAR LOC@ k L-END-LINE LOC@ k L-END-CHAR LOC@ LSP-TEXT:RANGE-AT
    OBJECT-END ;
 

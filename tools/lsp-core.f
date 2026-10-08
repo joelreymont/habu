@@ -19,8 +19,14 @@
 \ textDocument/prepareRename with the range a rename of the declaration the
 \ position selects would edit in the token there, its tail after any
 \ qualifier's colon (tools/lsp-rename.f), null when it selects none and
-\ -32803 when the selection refuses or a token selecting the declaration
-\ does not spell its tail,
+\ -32803 when the selection refuses, a token selecting the declaration does
+\ not spell its tail or the declaration is an EXPORT of another word,
+\ textDocument/rename with the changes that write newName over the tail of
+\ that declaration's token and of every use references would list, -32803
+\ before any check when newName is empty or holds a byte that ends a token,
+\ a colon, a quote or a backslash, and -32803, applying no edit, when
+\ prepareRename would refuse, a location's token also declares another word
+\ or a file is not covered,
 \ textDocument/hover with what the token at the position declares or binds to
 \ (tools/lsp-hover.f), as Markdown when the client's initialize listed it in
 \ textDocument.hover.contentFormat, else as plain text,
@@ -46,13 +52,13 @@
 \ -32800, doing none of its work, when a $/cancelRequest naming its id was read
 \ behind it, an id that is a string by its decoded text and a number by its
 \ JSON text, and it answers textDocument/definition, references, prepareRename,
-\ hover, documentHighlight, semanticTokens/full, completion, documentSymbol or
-\ documentLink -32801 when a textDocument/didChange of its document was, since
-\ the request asked about the text that change replaces.
-\ textDocument/references, whose work is a check of each file it gathers
-\ from, reads the input that waits again before each of those checks and
-\ before its answer, holding every message it reads and serving none, and it
-\ is answered there -32800 when a cancel of it has
+\ rename, hover, documentHighlight, semanticTokens/full, completion,
+\ documentSymbol or documentLink -32801 when a textDocument/didChange of its
+\ document was, since the request asked about the text that change replaces.
+\ textDocument/references and textDocument/rename, whose work is a check of
+\ each file they gather from, read the input that waits again before each of
+\ those checks and before the answer, holding every message read and serving
+\ none, and such a request is answered there -32800 when a cancel of it has
 \ been read, else -32801 when a change of any open document has, since each
 \ check it gathers from reads them all. The check under way is finished
 \ first, and a message begun is read whole, so how soon such a request stops
@@ -79,13 +85,15 @@
 \ while another check ran are all applied before it, and the versions
 \ published for a document only rise.
 \ A request about a document waiting for a check, textDocument/definition,
-\ textDocument/references, textDocument/prepareRename, textDocument/hover,
-\ textDocument/documentHighlight, textDocument/semanticTokens/full,
-\ textDocument/documentSymbol or textDocument/documentLink, is the exception:
+\ textDocument/references, textDocument/prepareRename, textDocument/rename,
+\ textDocument/hover, textDocument/documentHighlight,
+\ textDocument/semanticTokens/full, textDocument/documentSymbol or
+\ textDocument/documentLink, is the exception:
 \ it checks that document first, as its turn, and is answered from that check,
 \ which takes the text the client asked about, since LSP orders a request
-\ after the changes sent before it. textDocument/references checks each open
-\ document it gathers uses from the same way when it waits for a check.
+\ after the changes sent before it. textDocument/references and
+\ textDocument/rename check each open document they gather uses from the
+\ same way when it waits for a check.
 \ textDocument/completion checks its document as its turn whether it waits or
 \ not, with a cursor at the position, and is answered from that check: the
 \ spellings it offers belong to that cursor. Closing a document publishes an
@@ -153,7 +161,7 @@ public
 -9400 constant E-LSP-FIRST
 -9401 constant E-LSP-LAST
 -9400 constant E-LSP-PARAMS    \ a notification's params lack a member the server reads, or hold one of another kind
--9401 constant E-LSP-NOT-OPEN  \ a change, close, definition, references, prepareRename, hover, highlight, semantic tokens, completion, document symbols or links of a document not open
+-9401 constant E-LSP-NOT-OPEN  \ a change, close, definition, references, prepareRename, rename, hover, highlight, semantic tokens, completion, document symbols or links of a document not open
 
 -32002 constant NOT-INITIALIZED          \ LSP's ServerNotInitialized
 -32800 constant REQUEST-CANCELLED        \ LSP's RequestCancelled
@@ -180,7 +188,9 @@ TYPED-VARIABLE PATH-SPAN SPAN:span<u8>    \ the file path it names
 TYPED-VARIABLE TEXT-SPAN SPAN:span<u8>    \ a document's text, decoded
 TYPED-VARIABLE QUERY-SPAN SPAN:span<u8>   \ workspace/symbol's query, decoded,
 variable QUERY-U                          \ and its length
-variable AT-SLOT                          \ a request's document,
+TYPED-VARIABLE NAME-SPAN SPAN:span<u8>    \ a rename's newName, decoded,
+variable NAME-U                           \ and its length
+variable AT-SLOT                         \ a request's document,
 variable AT-LINE                          \ its line
 variable AT-CHAR                          \ and character,
 variable AT-BYTE                          \ and the byte they name in its text
@@ -747,6 +757,17 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ As POSITION!, with params.context.includeDeclaration in WITH-DECL.
 : REFS! ( ptr u8 n -- ptr u8 n )  POSITION! WITH-DECL! ;
 
+\ params.newName decoded into NAME-SPAN, its length in NAME-U.
+: NEW-NAME! ( ptr u8 n -- ptr u8 n )
+   {: p:ptr pu:n :}
+   p pu s" newName" PARAM NAME-SPAN STRING-AT NAME-U ! drop
+   p pu ;
+
+: NEW-NAME$ ( -- ptr u8 n )  NAME-SPAN @ SPAN:$ drop NAME-U @ ;
+
+\ As POSITION!, with params.newName in NAME-SPAN.
+: RENAME! ( ptr u8 n -- ptr u8 n )  POSITION! NEW-NAME! ;
+
 \ The request's id copied out of the held bodies, which a request reading the
 \ input between its checks grows, and so may move.
 : KEEP-ID ( JSON-RPC:id -- JSON-RPC:id )
@@ -812,25 +833,82 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    LSP-REFERENCES:UNCOVERED? if WRITER LSP-REFERENCES:WARNING END SENT then
    WRITER i RESULT LSP-REFERENCES:ANSWER END SENT ;
 
+\ Whether a rename of the declaration LSP-REFERENCES selected may go on; else
+\ the request is answered, and false: null when it selects none, -32803 when
+\ the selection is refused, a token selecting the declaration does not spell
+\ its tail, or the declaration is an EXPORT of another word.
+: RENAMEABLE? ( JSON-RPC:id -- bool )
+   {: i :}
+   LSP-REFERENCES:REFUSED? if
+      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
+      false exit
+   then
+   LSP-REFERENCES:FOUND? 0= if i REPLY-NULL false exit then
+   LSP-REFERENCES:SPELT? 0= if
+      i REQUEST-FAILED LSP-REFERENCES:UNSPELT$ REPLY-ERROR
+      false exit
+   then
+   LSP-REFERENCES:EXPORT? if
+      i REQUEST-FAILED LSP-REFERENCES:EXPORT$ REPLY-ERROR
+      false exit
+   then
+   true ;
+
+\ Whether every location gathered may be edited; else the request is answered
+\ -32803, and false, since a rename applies every edit or none: a token
+\ naming the declaration does not spell its tail, a location's token also
+\ declares another word, a file is not covered, or the new name's colon
+\ would follow a location's qualifier.
+: APPLIES? ( JSON-RPC:id -- bool )
+   {: i :}
+   LSP-REFERENCES:SPELT? 0= if
+      i REQUEST-FAILED LSP-REFERENCES:UNSPELT$ REPLY-ERROR
+      false exit
+   then
+   LSP-REFERENCES:RE-EXPORTED? if
+      i REQUEST-FAILED LSP-REFERENCES:RE-EXPORT$ REPLY-ERROR
+      false exit
+   then
+   LSP-REFERENCES:UNCOVERED? if
+      i REQUEST-FAILED s" Rename not applied" LSP-REFERENCES:UNCOVERED$ REPLY-ERROR
+      false exit
+   then
+   NEW-NAME$ LSP-RENAME:QUALIFIED-WHY$ {: w:ptr wu:n :}
+   wu 0<> if i REQUEST-FAILED w wu REPLY-ERROR false exit then
+   true ;
+
 \ The range a rename of the declaration at params.position in the open
 \ document params.textDocument names would edit there, as
 \ tools/lsp-rename.f states: null when the position selects none, and
-\ -32803 when the selection is refused or a token selecting the declaration
-\ does not spell its tail.
+\ -32803 when the selection is refused, a token selecting the declaration
+\ does not spell its tail, or the declaration is an EXPORT of another word.
 : PREPARE-RENAME ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu AT-READ? 0= if exit then
    AT-SLOT @ AT-BYTE @ LSP-REFERENCES:PLACE
-   LSP-REFERENCES:REFUSED? if
-      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
-      exit
-   then
-   LSP-REFERENCES:FOUND? 0= if i REPLY-NULL exit then
-   LSP-REFERENCES:SPELT? 0= if
-      i REQUEST-FAILED LSP-REFERENCES:UNSPELT$ REPLY-ERROR
-      exit
-   then
+   i RENAMEABLE? 0= if exit then
    WRITER i RESULT AT-SLOT @ AT-BYTE @ LSP-RENAME:PREPARED END SENT ;
+
+\ The changes that write params.newName over the tail of the declaration at
+\ params.position in the open document params.textDocument names and of
+\ every use of it, as tools/lsp-rename.f states: -32803 before any check
+\ when the name cannot be written over a tail, null when the position
+\ selects none, and else -32803, applying no edit, when prepareRename would
+\ refuse or APPLIES? does. Its id is kept before any input is read.
+: RENAME ( JSON-RPC:id ptr u8 n -- )
+   {: held p:ptr pu:n :}
+   held KEEP-ID {: i :}
+   i p pu [: RENAME! ;] READ? 0= if exit then
+   i UNCHANGED? 0= if exit then
+   NEW-NAME$ LSP-RENAME:WHY$ {: w:ptr wu:n :}
+   wu 0<> if i REQUEST-FAILED w wu REPLY-ERROR exit then
+   AT-SLOT @ CHECK-WAITING
+   AT-BYTE!
+   AT-SLOT @ AT-BYTE @ true LSP-REFERENCES:SELECT
+   i RENAMEABLE? 0= if exit then
+   i GATHERED? 0= if exit then
+   i APPLIES? 0= if exit then
+   WRITER i RESULT NEW-NAME$ LSP-RENAME:ANSWER END SENT ;
 
 \ The spellings that would bind at params.position in the open document
 \ params.textDocument names: the document checked now, as its turn, with its
@@ -955,6 +1033,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    m mu s" textDocument/definition" NAMED? if i p pu DEFINITION exit then
    m mu s" textDocument/references" NAMED? if i p pu REFERENCES exit then
    m mu s" textDocument/prepareRename" NAMED? if i p pu PREPARE-RENAME exit then
+   m mu s" textDocument/rename" NAMED? if i p pu RENAME exit then
    m mu s" textDocument/hover" NAMED? if i p pu HOVER exit then
    m mu s" textDocument/documentHighlight" NAMED? if i p pu HIGHLIGHT exit then
    m mu s" textDocument/semanticTokens/full" NAMED? if i p pu SEMANTIC-TOKENS exit then

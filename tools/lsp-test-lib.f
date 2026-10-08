@@ -367,7 +367,9 @@
 \   it but whose text on disk does not left out, or a file loading one whose
 \   text on disk loads it but whose open text does not given; a file
 \   that reaches it only through a file outside the workspace left out, or
-\   that file given; a file under .jj-ws/ given; the file itself not given
+\   that file given; a file outside the workspace that reaches it not named
+\   outside, once whatever roots reach it, or one that does not or the file
+\   itself named; a file under .jj-ws/ given; the file itself not given
 \   first, or given when neither the workspace nor an open document holds it;
 \   a load of a file not there refused; a file reached under two roots, whose
 \   loads resolve against the root, walked under one; a file whose loader
@@ -438,6 +440,39 @@
 \   not the converter, or a use in a document whose check was refused,
 \   answered other than -32803 naming the file; a document not open answered
 \   other than -32602 .......................................... rename-prepare
+\ - a use at its first character or its last, a qualified use asked on its
+\   qualifier, or the token declaring a word qualified into another wordlist
+\   (Q:Y), in an open document whose check was verified, not answered with
+\   the changes that write the new name over the tail of the declaring token
+\   and of each use, a qualifier kept; whitespace answered other than null
+\   .................................................................... rename
+\ - newName missing or not a string answered other than -32602; empty, or
+\   holding a space, a control byte, a colon, a quote or a backslash,
+\   answered other than -32803, or once the document is checked
+\   ............................................................. rename-params
+\ - a file of a workspace folder whose loads reach the declaration, open or
+\   on disk, not edited, or under another URI than references gives; the
+\   declaration's file not first or the rest not in the order of their paths
+\   .......................................................... rename-workspace
+\ - a file of the folder whose loads discovery cannot find not named, with
+\   its reason as references' warning gives it, in a -32803 applying no edit
+\   .......................................................... rename-uncovered
+\ - a declaration in a file outside every workspace folder and open in no
+\   document, or a use in such a file a file of a folder loads, edited, or
+\   the file not named "not in a workspace folder" in a -32803 applying no
+\   edit ....................................................... rename-outside
+\ - a use of an EXPORT, the EXPORT's operand, or the word it exports while a
+\   file on disk exports it, answered other than -32803 naming the file that
+\   exports it; prepareRename at the use answered other than -32803
+\   ............................................................. rename-export
+\ - a word named in a string literal before a call of a word a names: row
+\   declares, in a body or at top level, not edited between the quotes, or a
+\   qualified one beyond its tail, beside the declaration and a body use;
+\   asked at the literal, answered other than the same edits; a new name
+\   with a colon first or last not written where no use is qualified, or
+\   answered other than -32803 where one is ...................... rename-named
+\ - a declaring file open with lines added above its declaration, unsaved,
+\   not edited where its open text holds the declaration .......... rename-open
 \
 \ Cancellation
 \ - a request with a cancel of it read behind it answered other than -32800,
@@ -460,6 +495,9 @@
 \   between its checks, not answered -32801 before the next check begins, or
 \   the change applied before that answer or not checked after it
 \   ....................................................... references-modified
+\ - a change of an open document a rename gathers from, read between its
+\   checks, not answered -32801 before the next check begins, or the change
+\   applied before that answer or not checked after it ........ rename-modified
 \ - another request and the end of the input, or a framing fault, read by a
 \   references request between its checks: either request left unanswered,
 \   or the server not stopped once both are answered
@@ -530,10 +568,10 @@ using BUF
 \ at 866 and the references conversations at 565 to 1369. CHECKED-MS is about
 \ six times completion's 1482 ms, and no larger. The one bounds 27 runs (the
 \ 24 conversations CONVERSE runs, answers-at-once, stdout-closed and
-\ TEST-EXIT-TIMEOUT's child) and the other 107 conversations. A server that
+\ TEST-EXIT-TIMEOUT's child) and the other 116 conversations. A server that
 \ blocks spends none of the row's CPU budget (test/suite-budget.f CPU-MS), so
-\ all 134 could reach their bounds, each failing by name, within 1179 s (27
-\ times 8 s and 107 times 9 s), inside the row's hang guard (ROW-MS, 1860 s).
+\ all 143 could reach their bounds, each failing by name, within 1260 s (27
+\ times 8 s and 116 times 9 s), inside the row's hang guard (ROW-MS, 1860 s).
 \ One that spins to its bound spends that much of the budget's 360 s, so at
 \ most 40 such held runs, or 45 at CONVERSATION-MS, fail by name before the
 \ budget ends the row.
@@ -2335,17 +2373,23 @@ CK-USE-MAX 1 + constant OVER-USINGS
    MSG$ FRAMED ;
 
 \ A request by this method and id's JSON text at character C of line L of
-\ the document opened from this path.
-: AT-ASK ( ptr u8 n ptr u8 n ptr u8 n n n -- )
-   {: m:ptr mu:n i:ptr iu:n p:ptr pu:n l:n c:n :}
+\ the document opened from this path, with these params members after the
+\ position.
+: AT-ASK-WITH ( ptr u8 n ptr u8 n ptr u8 n n n ptr u8 n -- )
+   {: m:ptr mu:n i:ptr iu:n p:ptr pu:n l:n c:n x:ptr xu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"method\":\"" MSG+ m mu MSG+
    s\" \",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
    p pu URI-OF MSG+
    s\" \"},\"position\":{\"line\":" MSG+ l INT$ MSG+
-   s\" ,\"character\":" MSG+ c INT$ MSG+ s" }}}" MSG+
+   s\" ,\"character\":" MSG+ c INT$ MSG+ s" }" MSG+
+   x xu MSG+ s" }}" MSG+
    MSG$ FRAMED ;
+
+\ A request by this method and id's JSON text at character C of line L of
+\ the document opened from this path.
+: AT-ASK ( ptr u8 n ptr u8 n ptr u8 n n n -- )  s" " AT-ASK-WITH ;
 
 \ textDocument/definition, by its id's JSON text, at character C of line L of
 \ the document opened from this path.
@@ -4357,7 +4401,8 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 \ s/x7, which loads y7 from the root it is reached under: p/y7 loads nothing,
 \ q/y7 loads f7. 8: dyn/d8 loads at top level a path its command line names,
 \ which no walk can read, z8 cannot be read, and e8 loads out/h8, which loads
-\ f1 from e8's root, dyn/.
+\ f1 from e8's root, dyn/. 9: p/a9 and q/b9 load out/x9, which loads f9 from
+\ either root.
 : WS-TREE ( -- )
    s" graph" FIXTURE MAKE-DIR
    s" w" WS-DIR s" out" WS-DIR s" dyn" WS-DIR
@@ -4384,6 +4429,10 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" w/p/y7.f" s\" : Y7 ( -- ) ;\n" WS-FILE
    s" w/q/y7.f" s\" require ../f7.f\n" WS-FILE
    s" w/f7.f" s\" : F7 ( -- ) ;\n" WS-FILE
+   s" w/p/a9.f" s\" require ../../out/x9.f\n" WS-FILE
+   s" w/q/b9.f" s\" require ../../out/x9.f\n" WS-FILE
+   s" out/x9.f" s\" require ../f9.f\n" WS-FILE
+   s" w/f9.f" s\" : F9 ( -- ) ;\n" WS-FILE
    s" dyn/d8.f" s\" 0 SCRIPT-ARGV$ included\n" WS-FILE
    s" dyn/e8.f" s\" require ../out/h8.f\n" WS-FILE
    s" out/h8.f" s\" require ../w/f1.f\n" WS-FILE
@@ -4398,7 +4447,8 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" w/c3.f" WS-CANON s\" require f3.f\n" q execute ;
 
 \ The last answer: its files by name, in its order, then each file it could
-\ not read and why; or the root it refused.
+\ not read and why, then each file outside it that reaches the file; or the
+\ root it refused.
 : WS-ANSWER$ ( -- ptr u8 n )
    WS-B CLEAR
    LSP-WORKSPACE:REFUSED? if
@@ -4411,6 +4461,9 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    LSP-WORKSPACE:UNREADABLE 0 ?do
       s" ; " WS+
       i LSP-WORKSPACE:UNREADABLE$ 2swap WS-NAME WS+ s" : " WS+ WS+
+   loop
+   LSP-WORKSPACE:OUTSIDE 0 ?do
+      s" ; outside " WS+ i LSP-WORKSPACE:OUTSIDE$ WS-NAME WS+
    loop
    WS$ ;
 
@@ -4435,15 +4488,16 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" w/f1.f" s" w/a1.f" s" w/f1.f w/a1.f w/b1.f" REACHES
    s" w/f2.f" s" w/a2.f" s" w/f2.f w/a2.f" REACHES
    s" w/f3.f" s" w/c3.f" s" w/f3.f w/c3.f" REACHES
-   s" w/f4.f" s" w/a4.f" s" w/f4.f w/a4.f" REACHES
+   s" w/f4.f" s" w/a4.f" s" w/f4.f w/a4.f; outside out/b4.f" REACHES
    s" out/b4.f" s" w/a4.f" s" w/a4.f" REACHES
    s" w/f5.f" s" w/f5.f" s" w/f5.f" REACHES
    s" w/f6.f" s" w/m6.f" s" w/f6.f w/m6.f" REACHES
    s" w/f7.f" s" w/q/b7.f" s" w/f7.f w/q/b7.f w/q/y7.f" REACHES
    s" w/f7.f" s" w/p/a7.f" s" w/f7.f w/p/a7.f w/q/b7.f w/q/y7.f" REACHES
+   s" w/f9.f" s" w/p/a9.f" s" w/f9.f w/p/a9.f w/q/b9.f; outside out/x9.f" REACHES
    s" dyn" IN-GRAPH LSP-WORKSPACE:ROOT+
    s" w/f1.f" s" w/f1.f"
-   s" w/f1.f dyn/e8.f w/a1.f w/b1.f; dyn/d8.f: E-DISC-DYNAMIC; dyn/z8.f: cannot be read"
+   s" w/f1.f dyn/e8.f w/a1.f w/b1.f; dyn/d8.f: E-DISC-DYNAMIC; dyn/z8.f: cannot be read; outside out/h8.f"
    REACHES
    s" gone" IN-GRAPH LSP-WORKSPACE:ROOT+
    s" w/f1.f" s" w/f1.f" s" refused gone" REACHES ;
@@ -4516,14 +4570,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 \ the position.
 : REFS-ASK ( ptr u8 n ptr u8 n n n ptr u8 n -- )
    {: i:ptr iu:n p:ptr pu:n l:n c:n x:ptr xu:n :}
-   MSG-B CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
-   s\" ,\"method\":\"textDocument/references\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
-   p pu URI-OF MSG+
-   s\" \"},\"position\":{\"line\":" MSG+ l INT$ MSG+
-   s\" ,\"character\":" MSG+ c INT$ MSG+ s" }" MSG+
-   x xu MSG+ s" }}" MSG+
-   MSG$ FRAMED ;
+   s" textDocument/references" i iu p pu l c x xu AT-ASK-WITH ;
 
 \ The Location the answer SYMBOLS-START began lists next: this URI, from
 \ character C1 to C2 of line L.
@@ -4536,14 +4583,29 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}}" MSG+ ;
 
+\ The count of N files left out, in EXP, as a message states it before
+\ naming them.
+: NOT-COVERED ( n -- )
+   {: n:n :}
+   n INT$ EXP+
+   n 1 = if s"  file not covered:" else s"  files not covered:" then EXP+ ;
+
 \ The warning the next frame must be, sent before an answer that leaves N
 \ files out, begun in EXP: NAMED+ adds each file, NAMED-END hears it.
 : NAMED ( n -- )
    {: n:n :}
    EXP-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"window/showMessage\",\"params\":{\"type\":2," EXP+
-   s\" \"message\":\"References may be incomplete: " EXP+ n INT$ EXP+
-   n 1 = if s"  file not covered:" else s"  files not covered:" then EXP+ ;
+   s\" \"message\":\"References may be incomplete: " EXP+ n NOT-COVERED ;
+
+\ The refusal the next frame must be, of the rename with this id's JSON text
+\ whose gather left N files out, begun in EXP: NAMED+ adds each file,
+\ NAMED-END hears it.
+: NOT-APPLIED ( ptr u8 n n -- )
+   {: i:ptr iu:n n:n :}
+   EXP-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" EXP+ i iu EXP+
+   s\" ,\"error\":{\"code\":-32803,\"message\":\"Rename not applied: " EXP+ n NOT-COVERED ;
 
 \ The file at this canonical path left out, named relative to the working
 \ directory the server shares, and why.
@@ -4557,6 +4619,13 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s\" \"}}" EXP+
    HEAR
    EXP$ HEARD ;
+
+\ The warning that names the declaring file at this path under the fixture
+\ directory, outside every folder and open in no document, whose own uses
+\ are not read.
+: OUTSIDE ( ptr u8 n -- )
+   {: p:ptr pu:n :}
+   1 NAMED p pu CANON s" not in a workspace folder" NAMED+ NAMED-END ;
 
 \ The next frame refuses the request with this id's JSON text -32803, its
 \ message naming the file at this canonical path relative to the working
@@ -4644,8 +4713,9 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 
 \ The folders are an untitled: one, passed over, and refs-ws/w. ROOK's use in
 \ d.f is answered with its declaration in f.f and every use in the folder,
-\ the open documents' at the URIs the client opened them by. No warning
-\ comes: every file is covered.
+\ the open documents' at the URIs the client opened them by, after a
+\ warning naming out/m.f, whose loads reach f.f and whose uses no check
+\ reads.
 : REFS-WS-TURNS ( -- )
    REFS-WS-TREE
    PAR-B CLEAR
@@ -4660,6 +4730,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    TEXT-RE s" refs-ws/w/e.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-ws/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
+   s" refs-ws/out/m.f" OUTSIDE
    s" 3" SYMBOLS-START s" refs-ws/w/f.f" DISK-URI 0 2 6 REF+ WS-USES+ SYMBOLS-END ;
 
 : KAY-DECL+ ( -- )  s" refs-id/g.f" DISK-URI 0 2 5 REF+ ;
@@ -4669,8 +4740,9 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 
 \ RP:KAY, RQ:KAY, RV's private KAY and RV:KAY, one token of g.f each
 \ declares, each answered with that declaration and its own word's uses
-\ alone; EK's EXPORT operand, a use of the private EK, with the private
-\ word's; the use of the export with the export's.
+\ alone, after the warning naming g.f, which no folder holds; EK's EXPORT
+\ operand, a use of the private EK, with the private word's; the use of the
+\ export with the export's.
 : REFS-ID-TURNS ( -- )
    s" refs-id" REFS-DIR
    s" refs-id/g.f" TEXT-RG REFS-FILE
@@ -4686,9 +4758,13 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" 7" s" refs-id/id.f" FIXTURE 21 7 DECL-TOO REFS-ASK
    s" 8" s" refs-id/id.f" FIXTURE 23 16 DECL-TOO REFS-ASK
    SAY
+   s" refs-id/g.f" OUTSIDE
    s" 3" SYMBOLS-START KAY-DECL+ 3 14 17 ID-REF+ 16 14 20 ID-REF+ SYMBOLS-END
+   s" refs-id/g.f" OUTSIDE
    s" 4" SYMBOLS-START KAY-DECL+ 16 21 27 ID-REF+ SYMBOLS-END
+   s" refs-id/g.f" OUTSIDE
    s" 5" SYMBOLS-START KAY-DECL+ 14 15 18 ID-REF+ SYMBOLS-END
+   s" refs-id/g.f" OUTSIDE
    s" 6" SYMBOLS-START KAY-DECL+ 16 30 36 ID-REF+ SYMBOLS-END
    s" 7" SYMBOLS-START 18 2 4 ID-REF+ 19 15 17 ID-REF+ 21 7 9 ID-REF+ SYMBOLS-END
    s" 8" SYMBOLS-START 21 7 9 ID-REF+ 23 16 21 ID-REF+ SYMBOLS-END ;
@@ -4720,7 +4796,8 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 
 \ life.f includes g.f, undefines KAY and includes it again: its check
 \ declares KAY at g.f's token in two visits, so life.f is named and its use
-\ not listed, while the declaration is.
+\ not listed, while the declaration is; g.f, which no folder holds, is named
+\ first.
 : REFS-LIFE-TURNS ( -- )
    s" refs-life" REFS-DIR
    s" refs-life/g.f" TEXT-RG REFS-FILE
@@ -4731,7 +4808,8 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    TEXT-LIFE s" refs-life/life.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-life/life.f" FIXTURE 3 14 DECL-TOO REFS-ASK
    SAY
-   1 NAMED s" refs-life/life.f" CANON s" several declaration visits" NAMED+ NAMED-END
+   2 NAMED s" refs-life/g.f" CANON s" not in a workspace folder" NAMED+
+   s" refs-life/life.f" CANON s" several declaration visits" NAMED+ NAMED-END
    s" 3" SYMBOLS-START s" refs-life/g.f" DISK-URI 0 2 5 REF+ SYMBOLS-END ;
 
 : UNV-ANSWER ( ptr u8 n -- )
@@ -4838,7 +4916,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 
 \ lib/f.f, outside the folder, moved a line down on disk after d.f's check
 \ read it: the declaration cannot be placed, -32803 naming it. Once a change
-\ has d.f checked again, the whole answer.
+\ has d.f checked again, the whole answer, after the warning naming f.f.
 : REFS-STALE-TURNS ( -- )
    s" refs-stl" REFS-DIR s" refs-stl/lib" REFS-DIR s" refs-stl/w" REFS-DIR
    s" refs-stl/lib/f.f" TEXT-RF REFS-FILE
@@ -4856,6 +4934,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" 4" s" refs-stl/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
    TEXT-RSTL s" refs-stl/w/d.f" FIXTURE 2 s" verified" LISTED
+   s" refs-stl/lib/f.f" OUTSIDE
    s" 4" SYMBOLS-START
    s" refs-stl/lib/f.f" DISK-URI 1 2 6 REF+
    s" refs-stl/w/d.f" OPEN-URI 1 14 18 REF+
@@ -4883,7 +4962,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    SYMBOLS-END ;
 
 \ An empty workspaceFolders beside a rootUri: no folder, so s.f, on disk in
-\ rootUri's folder, is no subject.
+\ rootUri's folder, is no subject, and f.f, declaring the word, is named.
 : REFS-FE-TURNS ( -- )
    s" refs-fe" REFS-DIR s" refs-fe/w" REFS-DIR
    s" refs-fe/w/f.f" TEXT-RF REFS-FILE
@@ -4897,6 +4976,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    TEXT-RD s" refs-fe/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-fe/w/d.f" FIXTURE 1 14 DECL-NOT REFS-ASK
    SAY
+   s" refs-fe/w/f.f" OUTSIDE
    s" 3" SYMBOLS-START s" refs-fe/w/d.f" OPEN-URI 1 14 18 REF+ SYMBOLS-END ;
 
 : TEXT-RPKG ( -- ptr u8 n )
@@ -5055,8 +5135,288 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" 9" s" hu.f" CANON FAILED
    HEAR s" 10" -32602 REFUSED ;
 
+\ textDocument/rename, by its id's JSON text, at character C of line L of
+\ the document opened from this path, with these params members after the
+\ position.
+: RENAME-ASK ( ptr u8 n ptr u8 n n n ptr u8 n -- )
+   {: i:ptr iu:n p:ptr pu:n l:n c:n x:ptr xu:n :}
+   s" textDocument/rename" i iu p pu l c x xu AT-ASK-WITH ;
+
+\ The new name the renames here ask for.
+: CROW ( -- ptr u8 n )  s\" ,\"newName\":\"CROW\"" ;
+
+\ The answer the next frame must be to the request with this id's JSON text,
+\ begun in MSG: EDITS-IN starts each document's edits, EDIT+ adds each,
+\ EDITS-END hears it.
+: EDITS-START ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"result\":{\"changes\":{" MSG+ ;
+
+\ The edits of the document at this URI come next.
+: EDITS-IN ( ptr u8 n -- )
+   {: u:ptr uu:n :}
+   MSG$ s" {" ENDS-WITH? 0= if s" ]," MSG+ then
+   s\" \"" MSG+ u uu MSG+ s\" \":[" MSG+ ;
+
+\ The edit that writes this text from character C1 to C2 of line L, and
+\ the one that writes CROW.
+: EDIT-AS+ ( n n n ptr u8 n -- )
+   {: l:n c1:n c2:n t:ptr tu:n :}
+   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   s\" {\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c1 INT$ MSG+
+   s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
+   s\" ,\"character\":" MSG+ c2 INT$ MSG+
+   s\" }},\"newText\":\"" MSG+ t tu MSG+ s\" \"}" MSG+ ;
+: EDIT+ ( n n n -- )  s" CROW" EDIT-AS+ ;
+
+: EDITS-END ( -- )
+   s" ]}}}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
+\ rn-prep.f's ROOK edited where it is declared and used, RNP:ROOK's qualifier
+\ kept, in the answer to the request with this id's JSON text.
+: ROOK-EDITS ( ptr u8 n -- )
+   EDITS-START RN-PREP-PATH URI-OF EDITS-IN
+   2 2 6 EDIT+  3 15 19 EDIT+  3 20 24 EDIT+  5 19 23 EDIT+
+   EDITS-END ;
+
+\ ROOK asked at a use's first character, at its last and on RNP:ROOK's
+\ qualifier, each answered with the edits of the declaring token's tail and
+\ each use's; Q:Y's declaring token with those of its tail and its use's;
+\ the space before a use null.
+: RENAME-TURNS ( -- )
+   INITIALIZE
+   RN-PREP-PATH TEXT-RN-PREP 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RN-PREP RN-PREP-PATH 1 s" verified" LISTED
+   s" 3" RN-PREP-PATH 3 15 CROW RENAME-ASK
+   s" 4" RN-PREP-PATH 3 18 CROW RENAME-ASK
+   s" 5" RN-PREP-PATH 5 15 CROW RENAME-ASK
+   s" 6" RN-PREP-PATH 5 2 CROW RENAME-ASK
+   s" 7" RN-PREP-PATH 3 14 CROW RENAME-ASK
+   SAY
+   s" 3" ROOK-EDITS
+   s" 4" ROOK-EDITS
+   s" 5" ROOK-EDITS
+   s" 6" EDITS-START RN-PREP-PATH URI-OF EDITS-IN 5 4 5 EDIT+  6 16 17 EDIT+ EDITS-END
+   HEAR s" 7" NULL-RESULT ;
+
+\ newName missing or a number, each -32602; empty, or holding a space, a
+\ tab, a colon that qualifies it, a quote or a backslash, each -32803. All are answered before
+\ the document's check, whose list comes after them.
+: RENAME-PARAMS-TURNS ( -- )
+   INITIALIZE
+   RN-PREP-PATH TEXT-RN-PREP 1 OPENS
+   s" 3" RN-PREP-PATH 3 15 s" " RENAME-ASK
+   s" 4" RN-PREP-PATH 3 15 s\" ,\"newName\":5" RENAME-ASK
+   s" 5" RN-PREP-PATH 3 15 s\" ,\"newName\":\"\"" RENAME-ASK
+   s" 6" RN-PREP-PATH 3 15 s\" ,\"newName\":\"RO OK\"" RENAME-ASK
+   s" 7" RN-PREP-PATH 3 15 s\" ,\"newName\":\"RO\\tOK\"" RENAME-ASK
+   s" 8" RN-PREP-PATH 3 15 s\" ,\"newName\":\"RNP:ROOT\"" RENAME-ASK
+   s" 9" RN-PREP-PATH 3 15 s\" ,\"newName\":\"RO\\\"OK\"" RENAME-ASK
+   s" 10" RN-PREP-PATH 3 15 s\" ,\"newName\":\"RO\\\\OK\"" RENAME-ASK
+   SAY
+   HEAR CAPABILITIES
+   HEAR s" 3" -32602 REFUSED
+   HEAR s" 4" -32602 REFUSED
+   HEAR s" 5" -32803 REFUSED
+   HEAR s" 6" -32803 REFUSED
+   HEAR s" 7" -32803 REFUSED
+   HEAR s" 8" -32803 REFUSED
+   HEAR s" 9" -32803 REFUSED
+   HEAR s" 10" -32803 REFUSED
+   TEXT-RN-PREP RN-PREP-PATH 1 s" verified" LISTED ;
+
+\ rn-ws/w, the folder: f.f declares ROOK, d.f, open, and s.f, on disk, use
+\ it. ROOK's use in d.f is answered with the edits of f.f, then of d.f and
+\ s.f in the order of their paths, each under the URI references gives it.
+: RENAME-WS-TURNS ( -- )
+   s" rn-ws" REFS-DIR s" rn-ws/w" REFS-DIR
+   s" rn-ws/w/f.f" TEXT-RF REFS-FILE
+   s" rn-ws/w/d.f" TEXT-RD REFS-FILE
+   s" rn-ws/w/s.f" TEXT-RS REFS-FILE
+   s" rn-ws/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" rn-ws/w/d.f" FIXTURE TEXT-RD 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RD s" rn-ws/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" rn-ws/w/d.f" FIXTURE 1 14 CROW RENAME-ASK
+   SAY
+   s" 3" EDITS-START
+   s" rn-ws/w/f.f" DISK-URI EDITS-IN 0 2 6 EDIT+
+   s" rn-ws/w/d.f" OPEN-URI EDITS-IN 1 14 18 EDIT+
+   s" rn-ws/w/s.f" DISK-URI EDITS-IN 1 14 18 EDIT+
+   EDITS-END ;
+
+\ ld.f loads at top level a path its command line names, which no walk can
+\ read: the rename is refused -32803, naming it with discovery's reason, and
+\ no edit comes.
+: RENAME-LD-TURNS ( -- )
+   s" rn-ld" REFS-DIR s" rn-ld/w" REFS-DIR
+   s" rn-ld/w/f.f" TEXT-RF REFS-FILE
+   s" rn-ld/w/d.f" TEXT-RD REFS-FILE
+   s" rn-ld/w/ld.f" s\" 0 SCRIPT-ARGV$ included\n" REFS-FILE
+   s" rn-ld/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" rn-ld/w/d.f" FIXTURE TEXT-RD 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RD s" rn-ld/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" rn-ld/w/d.f" FIXTURE 1 14 CROW RENAME-ASK
+   SAY
+   s" 3" 1 NOT-APPLIED s" rn-ld/w/ld.f" CANON s" E-DISC-DYNAMIC" NAMED+ NAMED-END ;
+
+\ rn-out/f.f, above the folder rn-out/w, declares ROOK and uses it; d.f in
+\ the folder requires it and uses ROOK. The rename asked in d.f is refused
+\ -32803 naming f.f, whose own use no subject reads, and no edit comes.
+\ rn-out/h.f loads lib/g.f from e.f's root, the folder, and uses GROOK, which
+\ g.f declares; e.f in the folder requires h.f and uses GROOK. The rename
+\ asked in e.f is refused -32803 naming h.f, whose use no subject reads,
+\ though it declares nothing, and no edit comes.
+: TEXT-RVF ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\n: FU ( -- n ) ROOK ;\n" ;
+: TEXT-RVD ( -- ptr u8 n )  s\" require ../f.f\n: DU ( -- n ) ROOK ;\n" ;
+: TEXT-RVG ( -- ptr u8 n )  s\" : GROOK ( -- n ) 1 ;\n" ;
+: TEXT-RVH ( -- ptr u8 n )  s\" require lib/g.f\n: HU ( -- n ) GROOK ;\n" ;
+: TEXT-RVE ( -- ptr u8 n )  s\" require ../h.f\n: EU ( -- n ) GROOK ;\n" ;
+
+: RENAME-OUT-TURNS ( -- )
+   s" rn-out" REFS-DIR s" rn-out/w" REFS-DIR s" rn-out/w/lib" REFS-DIR
+   s" rn-out/f.f" TEXT-RVF REFS-FILE
+   s" rn-out/w/d.f" TEXT-RVD REFS-FILE
+   s" rn-out/w/lib/g.f" TEXT-RVG REFS-FILE
+   s" rn-out/h.f" TEXT-RVH REFS-FILE
+   s" rn-out/w/e.f" TEXT-RVE REFS-FILE
+   s" rn-out/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" rn-out/w/d.f" FIXTURE TEXT-RVD 1 OPENS
+   s" rn-out/w/e.f" FIXTURE TEXT-RVE 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RVD s" rn-out/w/d.f" FIXTURE 1 s" verified" LISTED
+   TEXT-RVE s" rn-out/w/e.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" rn-out/w/d.f" FIXTURE 1 14 CROW RENAME-ASK
+   s" 4" s" rn-out/w/e.f" FIXTURE 1 14 CROW RENAME-ASK
+   SAY
+   s" 3" 1 NOT-APPLIED s" rn-out/f.f" CANON s" not in a workspace folder" NAMED+ NAMED-END
+   s" 4" 1 NOT-APPLIED s" rn-out/h.f" CANON s" not in a workspace folder" NAMED+ NAMED-END ;
+
+\ rn-exp/w: f.f declares ROOK, x.f exports it from RX, and u.f uses RX:ROOK.
+: TEXT-RX ( -- ptr u8 n )  s\" require f.f\npackage RX\npublic\nEXPORT ROOK\n;package\n" ;
+: TEXT-RU ( -- ptr u8 n )  s\" require x.f\n: UU ( -- n ) RX:ROOK ;\n" ;
+
+\ ROOK asked in f.f while x.f on disk exports it, and RX:ROOK asked in u.f by
+\ rename and by prepareRename: each -32803 naming x.f. Once x.f is opened
+\ and checked, and u.f checked again over it, the EXPORT's operand asked
+\ there: -32803 naming x.f.
+: RENAME-EXP-TURNS ( -- )
+   s" rn-exp" REFS-DIR s" rn-exp/w" REFS-DIR
+   s" rn-exp/w/f.f" TEXT-RF REFS-FILE
+   s" rn-exp/w/x.f" TEXT-RX REFS-FILE
+   s" rn-exp/w/u.f" TEXT-RU REFS-FILE
+   s" rn-exp/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" rn-exp/w/f.f" FIXTURE TEXT-RF 1 OPENS
+   s" rn-exp/w/u.f" FIXTURE TEXT-RU 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RF s" rn-exp/w/f.f" FIXTURE 1 s" verified" LISTED
+   TEXT-RU s" rn-exp/w/u.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" rn-exp/w/f.f" FIXTURE 0 2 CROW RENAME-ASK
+   s" 4" s" rn-exp/w/u.f" FIXTURE 1 14 CROW RENAME-ASK
+   s" 5" s" rn-exp/w/u.f" FIXTURE 1 14 PREPARE-ASK
+   SAY
+   s" 3" s" rn-exp/w/x.f" CANON FAILED
+   s" 4" s" rn-exp/w/x.f" CANON FAILED
+   s" 5" s" rn-exp/w/x.f" CANON FAILED
+   s" rn-exp/w/x.f" FIXTURE TEXT-RX 1 OPENS
+   s" 6" s" rn-exp/w/x.f" FIXTURE 3 7 CROW RENAME-ASK
+   SAY
+   s" rn-exp/w/x.f" FIXTURE 1 CLEAN
+   s" rn-exp/w/u.f" FIXTURE 1 CLEAN
+   s" 6" s" rn-exp/w/x.f" CANON FAILED ;
+
+\ rn-named.f: ROOK named by literals before LOOK, whose names: row the text
+\ declares, one in a body and one at top level, beside a body use; RNN's
+\ public ROOK named qualified the same two ways.
+: RNN-PATH ( -- ptr u8 n )  s" rn-named.f" FIXTURE ;
+: TEXT-RNN ( -- ptr u8 n )
+   TXT-B CLEAR
+   s\" : ROOK ( -- n ) 1 ;\n: LOOK ( ptr u8 n -- ) 2drop ;\nnames: LOOK\n" HV+
+   s\" : SEEK ( -- ) s\" ROOK\" LOOK ;\n: TWO ( -- n ) ROOK 1 + ;\ns\" ROOK\" LOOK\n" HV+
+   s\" package RNN\npublic\n: ROOK ( -- n ) 2 ;\n;package\n" HV+
+   s\" : SEEK2 ( -- ) s\" RNN:ROOK\" LOOK ;\ns\" RNN:ROOK\" LOOK\n" HV+
+   TXT$ ;
+
+\ rn-named.f's global ROOK edited to this text where it is declared and used
+\ and between each literal's quotes, in the answer to the request with this
+\ id's JSON text.
+: RNN-EDITS ( ptr u8 n ptr u8 n -- )
+   {: i:ptr iu:n t:ptr tu:n :}
+   i iu EDITS-START RNN-PATH URI-OF EDITS-IN
+   0 2 6 t tu EDIT-AS+  3 17 21 t tu EDIT-AS+  4 15 19 t tu EDIT-AS+  5 3 7 t tu EDIT-AS+
+   EDITS-END ;
+
+\ ROOK's declaring token and its name in the body literal, each answered with
+\ the edits of the declaration, the body use and each literal; RNN's ROOK
+\ with those of its declaration and each qualified literal's tail. CROW: and
+\ :CROW, a colon last and first, each written over every global ROOK, none
+\ qualified; CROW: over RNN's ROOK, whose literals qualify it, -32803.
+: RENAME-NAMED-TURNS ( -- )
+   INITIALIZE
+   RNN-PATH TEXT-RNN 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RNN RNN-PATH 1 s" verified" LISTED
+   s" 3" RNN-PATH 0 2 CROW RENAME-ASK
+   s" 4" RNN-PATH 3 18 CROW RENAME-ASK
+   s" 5" RNN-PATH 8 2 CROW RENAME-ASK
+   s" 6" RNN-PATH 0 2 s\" ,\"newName\":\"CROW:\"" RENAME-ASK
+   s" 7" RNN-PATH 0 2 s\" ,\"newName\":\":CROW\"" RENAME-ASK
+   s" 8" RNN-PATH 8 2 s\" ,\"newName\":\"CROW:\"" RENAME-ASK
+   SAY
+   s" 3" s" CROW" RNN-EDITS
+   s" 4" s" CROW" RNN-EDITS
+   s" 5" EDITS-START RNN-PATH URI-OF EDITS-IN
+   8 2 6 EDIT+  10 22 26 EDIT+  11 7 11 EDIT+
+   EDITS-END
+   s" 6" s" CROW:" RNN-EDITS
+   s" 7" s" :CROW" RNN-EDITS
+   HEAR s" 8" -32803 REFUSED ;
+
+\ f.f opened two lines down, unsaved, and s.f opened: s.f's check reads the
+\ open text, so ROOK's use in s.f is answered with the edit of the
+\ declaration where that text holds it.
+: TEXT-RF-DOWN ( -- ptr u8 n )  s\" \\ one\n\\ two\n: ROOK ( -- n ) 1 ;\n" ;
+: RENAME-OPEN-TURNS ( -- )
+   s" rn-uns" REFS-DIR s" rn-uns/w" REFS-DIR
+   s" rn-uns/w/f.f" TEXT-RF REFS-FILE
+   s" rn-uns/w/s.f" TEXT-RS REFS-FILE
+   s" rn-uns/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" rn-uns/w/f.f" FIXTURE TEXT-RF-DOWN 1 OPENS
+   s" rn-uns/w/s.f" FIXTURE TEXT-RS 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RF-DOWN s" rn-uns/w/f.f" FIXTURE 1 s" verified" LISTED
+   TEXT-RS s" rn-uns/w/s.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" rn-uns/w/s.f" FIXTURE 1 14 CROW RENAME-ASK
+   SAY
+   s" 3" EDITS-START
+   s" rn-uns/w/f.f" OPEN-URI EDITS-IN 2 2 6 EDIT+
+   s" rn-uns/w/s.f" OPEN-URI EDITS-IN 1 14 18 EDIT+
+   EDITS-END ;
+
 : TEST-RENAMES ( -- )
-   s" rename-prepare" [: RENAME-PREPARE-TURNS ;] TALK ;
+   s" rename-prepare" [: RENAME-PREPARE-TURNS ;] TALK
+   s" rename" [: RENAME-TURNS ;] TALK
+   s" rename-params" [: RENAME-PARAMS-TURNS ;] TALK
+   s" rename-workspace" [: RENAME-WS-TURNS ;] TALK
+   s" rename-uncovered" [: RENAME-LD-TURNS ;] TALK
+   s" rename-outside" [: RENAME-OUT-TURNS ;] TALK
+   s" rename-export" [: RENAME-EXP-TURNS ;] TALK
+   s" rename-named" [: RENAME-NAMED-TURNS ;] TALK
+   s" rename-open" [: RENAME-OPEN-TURNS ;] TALK ;
 
 \ ---- cancellation ------------------------------------------------------------
 
@@ -5178,21 +5538,26 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" refs-halt/g.f" TEXT-HG REFS-FILE
    s" refs-halt/h.f" TEXT-HH REFS-FILE ;
 
-\ The four opened and ROOK's declaration asked about, by id 3, in one turn,
-\ so each waits for a check when the request is served: d.f's is its turn,
-\ and the request checks e.f's next. Once both lists are heard, the request
-\ goes on with g.f's check, as the next turn is written.
-: HALT-START ( -- )
+\ The four opened and ROOK's declaration asked about by the request ASK
+\ writes, id 3, in one turn, so each waits for a check when the request is
+\ served: d.f's is its turn, and the request checks e.f's next. Once both
+\ lists are heard, the request goes on with g.f's check, as the next turn is
+\ written.
+: HALT-START ( [ -- ] -- )
+   {: ask :}
    INITIALIZE
    s" refs-halt/d.f" FIXTURE TEXT-RF 1 OPENS
    s" refs-halt/e.f" FIXTURE TEXT-HE 1 OPENS
    s" refs-halt/g.f" FIXTURE TEXT-HG 1 OPENS
    s" refs-halt/h.f" FIXTURE TEXT-HH 1 OPENS
-   s" 3" s" refs-halt/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK
+   ask execute
    SAY
    HEAR CAPABILITIES
    s" refs-halt/d.f" FIXTURE 1 CLEAN
    s" refs-halt/e.f" FIXTURE 1 CLEAN ;
+
+: HALT-REFS ( -- )  s" 3" s" refs-halt/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK ;
+: HALT-RENAME ( -- )  s" 3" s" refs-halt/d.f" FIXTURE 0 2 CROW RENAME-ASK ;
 
 \ d.f and e.f alone opened and ROOK's declaration asked about, by this id's
 \ JSON text, in one turn: d.f's check is the request's, as its turn, and
@@ -5223,7 +5588,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ The request is answered -32800, and h.f's list comes after, from the check
 \ of a document waiting for one.
 : REFS-CANCEL-TURNS ( -- )
-   HALT-START
+   [: HALT-REFS ;] HALT-START
    s" 3" CANCELS
    SAY
    s" refs-halt/g.f" FIXTURE 1 CLEAN? {: early:bool :}
@@ -5231,10 +5596,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    early 0= if s" refs-halt/g.f" FIXTURE 1 CLEAN then
    s" refs-halt/h.f" FIXTURE 1 CLEAN ;
 
-\ A change of h.f written so: the request is answered -32801, since it would
-\ gather from the text the change replaces, and the change is applied after
-\ it, h.f's new text the one checked.
-: REFS-MODIFIED-TURNS ( -- )
+\ A change of h.f written so: the request ASK writes is answered -32801,
+\ since it would gather from the text the change replaces, and the change is
+\ applied after it, h.f's new text the one checked.
+: HALT-MODIFIED ( [ -- ] -- )
    HALT-START
    s" refs-halt/h.f" FIXTURE TEXT-HH-NEW 2 CHANGES
    SAY
@@ -5242,6 +5607,9 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    HEAR s" 3" -32801 REFUSED
    early 0= if s" refs-halt/g.f" FIXTURE 1 CLEAN then
    s" refs-halt/h.f" FIXTURE 2 CLEAN ;
+
+: REFS-MODIFIED-TURNS ( -- )  [: HALT-REFS ;] HALT-MODIFIED ;
+: RENAME-MODIFIED-TURNS ( -- )  [: HALT-RENAME ;] HALT-MODIFIED ;
 
 \ Another request and the end of the input written once d.f's list is heard:
 \ the request goes on and is answered, then the other one, and only then does
@@ -5288,6 +5656,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    HALT-TREE
    s" references-cancel" [: REFS-CANCEL-TURNS ;] TALK
    s" references-modified" [: REFS-MODIFIED-TURNS ;] TALK
+   s" rename-modified" [: RENAME-MODIFIED-TURNS ;] TALK
    s" references-eof" [: REFS-EOF-TURNS ;] [: REFS-CUT-AFTER ;] TALK-CUT
    s" references-fault" [: REFS-FAULT-TURNS ;] [: REFS-CUT-AFTER ;] TALK-CUT
    s" references-growth" [: REFS-GROWTH-TURNS ;] TALK ;

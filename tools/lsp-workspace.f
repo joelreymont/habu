@@ -18,8 +18,9 @@
 \ discovery (tools/source-discovery.f) records in the text of the first open
 \ document at its path, which every check reads in place of the file, else in
 \ its file on disk, when it is there. A file outside the workspace is followed
-\ like any other and never given. A load of a file that is not there is followed
-\ no further.
+\ like any other and never given: OUTSIDE names each one but F whose closure
+\ holds F, which a subject's check reads and no check gives the uses of. A
+\ load of a file that is not there is followed no further.
 \
 \ A file whose loads cannot be found, one discovery refuses (an E-DISC-*
 \ code) or one that is there and will not be read (an E-FS-* code), loads
@@ -90,8 +91,10 @@ DYNAMIC-BUFFER OPENS n                   \ its open documents,
 variable OPEN-N
 DYNAMIC-BUFFER HITS n                    \ the subjects it gives, in order,
 variable HIT-N
-DYNAMIC-BUFFER BAD n                     \ and a node of each file it could not read
+DYNAMIC-BUFFER BAD n                     \ a node of each file it could not read,
 variable BAD-N
+DYNAMIC-BUFFER OUT n                     \ and of each file outside the subjects that reaches F
+variable OUT-N
 variable F-AT                            \ F's offset and length in POOL,
 variable F-U
 variable D-NODE                          \ D's node
@@ -292,11 +295,11 @@ variable CUR-ROOT                        \ and the root being walked
       k i EVENT-PATH@ i SOURCE-EVENT:ROOT@ NODE-OF EDGE+
    loop ;
 
-\ Whether a node of this path's file is already named as one not read.
-: NAMED? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
-   BAD-N @ 0 ?do
-      i BAD @ PATH$ a u STR= if true unloop exit then
+\ Whether one of the first N nodes NODE-AT gives by index is of this path.
+: LISTED? ( ptr u8 n n [ n -- n ] -- bool )
+   {: a:ptr u:n cnt:n node-at :}
+   cnt 0 ?do
+      i node-at execute PATH$ a u STR= if true unloop exit then
    loop
    false ;
 
@@ -304,7 +307,7 @@ variable CUR-ROOT                        \ and the root being walked
 : FAULT ( n n -- )
    {: k:n rc:n :}
    rc k N-FAULT NODE!
-   k PATH$ NAMED? if exit then
+   k PATH$ BAD-N @ [: BAD @ ;] LISTED? if exit then
    BAD-N @ {: b:n :}
    b 1+ BAD-RESERVE
    k b BAD !
@@ -387,6 +390,35 @@ variable CUR-ROOT                        \ and the root being walked
 : GIVE ( -- )
    NODE-N @ 0 ?do i GIVEN? if i HIT+ then loop ;
 
+\ Whether a subject has this canonical path: the node of it rooted at its
+\ directory is one. The path may lie in POOL, as nothing is appended to it.
+: SUBJECT? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u SOURCE-ROOT:DIRNAME {: r:ptr ru:n :}
+   a u r ru a u r ru KEY SLOT SLOTS @ {: s:n :}
+   s 0= if false exit then
+   s 1- N-SUBJECT NODE@ 0<> ;
+
+\ Whether node K is of a file but F that reaches F, which no subject is and
+\ no node named before it is of.
+: OUT? ( n -- bool )
+   {: k:n :}
+   k REACHES? 0= if false exit then
+   k PATH$ {: a:ptr u:n :}
+   a u F$ STR= if false exit then
+   a u SUBJECT? if false exit then
+   a u OUT-N @ [: OUT @ ;] LISTED? 0= ;
+
+: OUT+ ( n -- )
+   {: k:n :}
+   OUT-N @ {: o:n :}
+   o 1+ OUT-RESERVE
+   k o OUT !
+   o 1+ OUT-N ! ;
+
+: OUTSIDE! ( -- )
+   NODE-N @ 0 ?do i OUT? if i OUT+ then loop ;
+
 \ Whether path A comes before path B in byte order.
 : PATH< ( ptr u8 n ptr u8 n -- bool )
    {: a:ptr u:n b:ptr v:n :}
@@ -406,13 +438,18 @@ variable CUR-ROOT                        \ and the root being walked
    HIT-N @ 2 < if exit then
    0 HITS HIT-N @ [: BEFORE? ;] SORT:SORT! ;
 
-: BAD< ( n n -- bool )
+\ Whether node A's path comes before node B's.
+: NODE< ( n n -- bool )
    {: a:n b:n :}
    a PATH$ b PATH$ PATH< ;
 
 : ORDER-BAD ( -- )
    BAD-N @ 2 < if exit then
-   0 BAD BAD-N @ [: BAD< ;] SORT:SORT! ;
+   0 BAD BAD-N @ [: NODE< ;] SORT:SORT! ;
+
+: ORDER-OUT ( -- )
+   OUT-N @ 2 < if exit then
+   0 OUT OUT-N @ [: NODE< ;] SORT:SORT! ;
 
 : RESET ( -- )
    0 POOL-U !
@@ -422,6 +459,7 @@ variable CUR-ROOT                        \ and the root being walked
    0 OPEN-N !
    0 HIT-N !
    0 BAD-N !
+   0 OUT-N !
    0 BLOCK-U !
    1 BLOCK-B-RESERVE
    false BLOCKED ! ;
@@ -459,7 +497,9 @@ public
    SPREAD
    GIVE
    ORDER
-   ORDER-BAD ;
+   ORDER-BAD
+   OUTSIDE!
+   ORDER-OUT ;
 
 \ Whether the last REACHING refused, and the root it named.
 : REFUSED? ( -- bool )  BLOCKED @ ;
@@ -476,5 +516,11 @@ public
 : UNREADABLE$ ( n -- ptr u8 n ptr u8 n )
    BAD @ {: k:n :}
    k PATH$ k N-FAULT NODE@ FAULT$ drop ;
+
+\ The files but F whose closures hold F that no subject is, outside every
+\ folder and open in no document, in the byte order of their paths: a
+\ subject's check reads each, and none is given.
+: OUTSIDE ( -- n )  OUT-N @ ;
+: OUTSIDE$ ( n -- ptr u8 n )  OUT @ PATH$ ;
 
 ;package

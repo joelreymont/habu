@@ -20,6 +20,7 @@
 \   KIND@ BYTE@ LINE@ COL@ ( n -- n )  kind, 0-based byte, 1-based line, 1-based column
 \   ERROR? ( -- bool )                 the last scan hit malformed input
 \   ERROR-KIND@ ERROR-BYTE@ ERROR-LINE@ ERROR-COL@ ( -- n )
+\   ENGINE-DELIM? ( n -- bool )        byte n ends a token, as parse-name reads
 \
 \ A complete `PRIM: ... PRIM;`, `PPRIM: pkg ... PPRIM;`, `EPRIM: ... EPRIM;` or
 \ `EPPRIM: pkg ... ECLOSE-PRIVATE` primitive-axiom row is one REGISTRY token
@@ -242,6 +243,10 @@ public
 : ERROR-COL@ ( -- n )
    ERR-COL @ ;
 
+\ `parse-name` and the engine token loop delimit on every byte at or below space.
+: ENGINE-DELIM? ( n -- bool )
+   $20 <= ;
+
 private
 
 : END? ( -- bool )
@@ -305,10 +310,6 @@ private
 \ The span from the token start the main loop recorded to the current position.
 : CUR$ ( -- ptr u8 n )
    SRC@ START @ + POS @ START @ - ;
-
-\ `parse-name` and the engine token loop delimit on every byte at or below space.
-: ENGINE-DELIM? ( n -- bool )
-   $20 <= ;
 
 : GAP? ( -- bool )
    END? if false exit then

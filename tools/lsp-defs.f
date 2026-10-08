@@ -1041,6 +1041,18 @@ public
    repeat
    drop swap 1 = if OPTION:SOME else drop OPTION:NONE then ;
 
+\ Where name W's tail starts when W is qualified as CHECKER-QUALIFIED? reads
+\ a name, by one colon neither its first byte nor its last: the byte after
+\ that colon; else -1. SPLIT-NEXT's flag says only that its start was valid:
+\ the position it returns lies past W's end when no colon follows that start.
+: QUALIFIER-AT ( ptr u8 n -- n )
+   {: w:ptr wu:n :}
+   w wu [char] : 0 SPLIT-NEXT drop nip nip
+   {: at:n :}
+   w wu [char] : at SPLIT-NEXT drop nip nip
+   {: at2:n :}
+   at 1 >  at wu < and  at2 wu > and if at else -1 then ;
+
 private
 
 \ The first record of group G whose token starts and ends at these bytes and
@@ -1057,18 +1069,13 @@ private
    repeat
    drop OPTION:NONE ;
 
-\ When no record of group G at these bytes is of word W: the one of W's tail,
-\ its bytes after the colon, when W is qualified as CHECKER-QUALIFIED? reads a
-\ name, by one non-edge colon; else the one record there, if exactly one is.
-\ SPLIT-NEXT's flag says only that its start was valid: the position it
-\ returns lies past W's end when no colon follows that start.
+\ When no record of group G at these bytes is of word W: the one of W's tail
+\ when W is qualified (QUALIFIER-AT); else the one record there, if exactly
+\ one is.
 : GROUP-REC-TAIL ( n n n ptr u8 n -- option<n> )
    {: g:n ts:n te:n w:ptr wu:n :}
-   w wu [char] : 0 SPLIT-NEXT drop nip nip
-   {: at:n :}
-   w wu [char] : at SPLIT-NEXT drop nip nip
-   {: at2:n :}
-   at 1 >  at wu < and  at2 wu > and 0= if g ts te GROUP-REC-SOLE exit then
+   w wu QUALIFIER-AT {: at:n :}
+   at 0 < if g ts te GROUP-REC-SOLE exit then
    g ts te w at + wu at - GROUP-REC-WORD MATCH option
       some OF OPTION:SOME ENDOF
       none OF g ts te GROUP-REC-SOLE ENDOF
