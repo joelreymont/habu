@@ -41,7 +41,7 @@ variable READY
 : LEX-CODE$ ( -- ptr u8 n ptr u8 n ptr u8 n )
    LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = if
       s" E-MALFORMED-REGISTRY-ROW" s" close_primitive_row"
-      s" Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE." exit
+      s" Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM; or EPRIM: name effect... EPRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE, or EPPRIM: package name effect... ECLOSE-PRIVATE." exit
    then
    s" E-UNTERMINATED-STRING" s" close_string"
    s" Close the string literal before the definition ends." ;

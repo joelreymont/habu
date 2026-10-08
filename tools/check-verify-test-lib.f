@@ -21,6 +21,9 @@
 \   a child that dies drops the packets it made before                    no-result
 \   a statement the source leaves open is no refusal, or is not placed
 \   at its opener in its file, or its record not among the packets        open-stop
+\   an engine table row (EPRIM:, EPPRIM:) is read token by token or past
+\   its first closer, or one the source ends inside is not refused at its
+\   opener by the record check.f writes for a row                         engine-rows
 \   a closure the verifier cannot follow, a string or locals group never
 \   closed, a dynamic loader path, a missing or unreadable required
 \   file, stops with no status line                  disc-stop, closure-line
@@ -1697,6 +1700,38 @@ $180000 constant LARGE-STDIN-LEN
    s" top-cold-prim: cold scanner" T-LABEL
    PROC-ARGV-ENV-RESET s" --load" ARG+ scan scanu ARG+
    PROC-ENV-INHERIT-MISSING s" " COLD-CLI nip 0 T= ;
+
+
+\ The engine's table (src/habu/prims.f) opens a row with EPRIM: or EPPRIM:,
+\ which parse the row's name, EPPRIM: its package first, so a row named
+\ `create` or `:` is a row and its closer no name. Both closers write the open
+\ row, so either ends either row, and the definition after a row the other one
+\ ends is code, as its use shows. Each fixture defines the words as prims.f
+\ does. SRC, as the fixture NAME, loads and verifies with no packet.
+: ENGINE-ROWS-READ ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
+   name nameu src srcu FIXTURE
+   name nameu T-LABEL name nameu AT$ NATIVE-RC 0 T=
+   src srcu name nameu VERIFIED
+   name nameu T-LABEL CHECK:VERIFY-OUT$ PACKETS 0 T= ;
+
+\ A row SRC ends inside, after the words on lines 1-5, stops the verifier at
+\ its opener TOK, on line 6 at column 3, with the record check.f writes for a
+\ primitive-axiom row that does not close.
+: ENGINE-ROW-OPEN ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n name:ptr nameu:n tok:ptr toku:n :}
+   src srcu name nameu GUARD-MS CHECK-AS
+   name nameu tok toku s" E-MALFORMED-REGISTRY-ROW" s" 6" s" 3" REFUSED-AT
+   name nameu T-LABEL CHECK:VERIFY-STOP 7189 T= ;
+
+: ENGINE-ROWS ( -- )
+   s\" : ROW-NAME ( -- ) parse-name 2drop ;\n: EPRIM: ( -- ) ROW-NAME ;\n: EPRIM; ( -- ) ;\n: EPPRIM: ( -- ) parse-name 2drop ROW-NAME ;\n: ECLOSE-PRIVATE ( -- ) ;\nEPRIM: create EPRIM;\nEPRIM: : EPRIM;\nEPRIM: CVT-EM ECLOSE-PRIVATE\n: CVT-EB ( -- ) ;\nCVT-EB\n"
+   s" engine-rows-bare.f" ENGINE-ROWS-READ
+   s\" : ROW-NAME ( -- ) parse-name 2drop ;\n: EPRIM: ( -- ) ROW-NAME ;\n: EPRIM; ( -- ) ;\n: EPPRIM: ( -- ) parse-name 2drop ROW-NAME ;\n: ECLOSE-PRIVATE ( -- ) ;\nEPPRIM: CVT-ER create ECLOSE-PRIVATE\nEPPRIM: CVT-ER : ECLOSE-PRIVATE\nEPPRIM: CVT-ER CVT-EM EPRIM;\n: CVT-EP ( -- ) ;\nCVT-EP\n"
+   s" engine-rows-package.f" ENGINE-ROWS-READ
+   s\" : ROW-NAME ( -- ) parse-name 2drop ;\n: EPRIM: ( -- ) ROW-NAME ;\n: EPRIM; ( -- ) ;\n: EPPRIM: ( -- ) parse-name 2drop ROW-NAME ;\n: ECLOSE-PRIVATE ( -- ) ;\n  EPRIM: CVT-EO\n"
+   s" engine-row-bare-open.f" s" EPRIM:" ENGINE-ROW-OPEN
+   s\" : ROW-NAME ( -- ) parse-name 2drop ;\n: EPRIM: ( -- ) ROW-NAME ;\n: EPRIM; ( -- ) ;\n: EPPRIM: ( -- ) parse-name 2drop ROW-NAME ;\n: ECLOSE-PRIVATE ( -- ) ;\n  EPPRIM: CVT-ER CVT-EO\n"
+   s" engine-row-package-open.f" s" EPPRIM:" ENGINE-ROW-OPEN ;
 
 
 \ `undefine` retires the global dictionary entry before the used public binds.
@@ -4372,6 +4407,7 @@ public
    s" top-retired-public" [: TOP-RETIRED-PUBLIC ;] RUN-CASE
    s" top-axiom" [: TOP-AXIOM ;] RUN-CASE
    s" top-cold-prim" [: TOP-COLD-PRIM ;] RUN-CASE
+   s" engine-rows" [: ENGINE-ROWS ;] RUN-CASE
    s" top-retired-import" [: TOP-RETIRED-IMPORT ;] RUN-CASE
    s" top-order" [: TOP-ORDER ;] RUN-CASE
    s" top-number" [: TOP-NUMBER ;] RUN-CASE

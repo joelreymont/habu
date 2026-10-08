@@ -15,14 +15,14 @@ public
 
 \ A source the scan cannot read on stops it with one of these, TOKEN-BYTE@ at
 \ the word that cannot finish: a reader (a definer, a parsing word) with no
-\ token after it, a string opener with no closing quote, a PRIM: or PPRIM: row
-\ with no closer, a top-level escaped literal holding an escape the engine
-\ refuses. tools/check.f reports the first three where they stand, by the
-\ record it writes when it finds the same defect itself. Its lexer reads no
-\ escape, so it reports a bad escape by the record of a statement that throws,
-\ at the literal's opener, under a code of its own that names the defect; as
-\ before any error, a defect its lexer reads anywhere in the file is reported
-\ instead, in its place (CHECK-ALL-ERRORS:LEX-FIRST?).
+\ token after it, a string opener with no closing quote, a PRIM:, PPRIM:,
+\ EPRIM: or EPPRIM: row with no closer, a top-level escaped literal holding an
+\ escape the engine refuses. tools/check.f reports the first three where they
+\ stand, by the record it writes when it finds the same defect itself. Its lexer
+\ reads no escape, so it reports a bad escape by the record of a statement that
+\ throws, at the literal's opener, under a code of its own that names the
+\ defect; as before any error, a defect its lexer reads anywhere in the file is
+\ reported instead, in its place (CHECK-ALL-ERRORS:LEX-FIRST?).
 7187 constant E-MISSING-NAME
 7188 constant E-UNTERMINATED-STRING
 7189 constant E-MALFORMED-REGISTRY-ROW
@@ -3140,20 +3140,33 @@ variable FILE-USE
    a u s" provided" STR=CI IF COMPOSE-STRING-PATH COMPOSE-PROVIDED 0 0= EXIT THEN
    0 0= 0= ;
 
-\ A package primitive row has two closers, and this verifier models them exactly
-\ as the source lexer does:
-\ `PPRIM;` interns the axiom into the package public wordlist and `CLOSE-PRIVATE`
-\ interns it into the package private one. Visibility is part of the row, not a
-\ different row shape, so either token ends a `PPRIM:` row. A bare `PRIM:` row has
-\ no package to be private in, so it declares no alternate closer and
-\ `CLOSE-PRIVATE` stays an ordinary effect token there.
+\ A primitive row is read as the word that opens it reads it, and this verifier
+\ models the rows exactly as the source lexer does. The opener parses the row's
+\ name, and a package row's package before it, so either may be spelled as a
+\ definer or a parsing word (`EPRIM: create EPRIM;`) and is read raw; the body
+\ runs to the row's first closer. The checker's rows (src/core/checker.f) are
+\ `PRIM: name ... PRIM;` and `PPRIM: package name ... PPRIM;`, or `...
+\ CLOSE-PRIVATE`: `PPRIM;` interns the axiom into the package public wordlist
+\ and `CLOSE-PRIVATE` interns it into the package private one. Visibility is
+\ part of the row, not a different row shape, so either token ends a `PPRIM:`
+\ row. A bare `PRIM:` row has no package to be private in, so it declares no
+\ alternate closer and `CLOSE-PRIVATE` stays an ordinary effect token there.
+\ The engine's specification rows (src/habu/prims.f) are `EPRIM: name ...
+\ EPRIM;` and `EPPRIM: package name ... ECLOSE-PRIVATE`, but both closers
+\ write the open row (ROW-WRITE), so the engine ends either row at the first.
+\ A row is known by its opener's spelling, as the checker's are: a binding
+\ cannot tell prims.f's own opener from a file's own definition when the scan
+\ reads prims.f itself. Nor is an engine row a `parses-through:` row: prims.f
+\ loads before src/core/cell-effects.f defines `parses-through:`
+\ (tools/build-fixpoint.f BF-APPEND-CHECKER-BOOT), so no row can state where
+\ an engine row ends.
 : ROW-CLOSER? ( ptr u8 n ptr u8 n -- bool ) {: end:ptr endu:n alt:ptr altu:n :}
    TOKEN-A @ TOKEN-U @ end endu STR=CI IF 0 0= EXIT THEN
    altu 0= IF 0 0= 0= EXIT THEN
    TOKEN-A @ TOKEN-U @ alt altu STR=CI ;
 
-\ PRIM:/PPRIM: bodies use the canonical body scanner so parsing words consume
-\ their comments, strings, and raw operands before a live closer is considered.
+\ Row bodies use the canonical body scanner so parsing words consume their
+\ comments, strings, and raw operands before a live closer is considered.
 \ A row declares no locals, so none of the last body's stay live in it, and as
 \ every body reader it starts clear of the last body's literal and line: that
 \ literal may lie in decoded bytes a decode since has moved. Discovery refuses a
@@ -3178,14 +3191,16 @@ variable FILE-USE
       SKIP-BODY-TOKEN
    AGAIN ;
 
-: RECORD-PRIM ( -- )
-   TOKEN-BYTE @ s" PRIM;" s" " RECORD-PRIM-ROW ;
+\ A bare row and a package row, whose package comes first. Each ends at END or,
+\ when ALT is not empty, at ALT.
+: RECORD-PRIM ( ptr u8 n ptr u8 n -- ) {: end:ptr endu:n alt:ptr altu:n :}
+   TOKEN-BYTE @ end endu alt altu RECORD-PRIM-ROW ;
 
-: RECORD-PPRIM ( -- )
+: RECORD-PPRIM ( ptr u8 n ptr u8 n -- ) {: end:ptr endu:n alt:ptr altu:n :}
    TOKEN-BYTE @ {: at:n :}
    NEXT-RAW dup 0= IF at ROW-UNCLOSED THEN
    2drop
-   at s" PPRIM;" s" CLOSE-PRIVATE" RECORD-PRIM-ROW ;
+   at end endu alt altu RECORD-PRIM-ROW ;
 
 : STRUCTURE-END? ( ptr u8 n -- bool )
    s" END-STRUCTURE" STR=CI ;
@@ -3369,8 +3384,10 @@ TYPED-VARIABLE FFI-GROUP bool
    \ definer's declared clause.
    a u s" RESERVED-PTR-U8-CELL" STR=CI IF s" -- ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
-   a u s" PRIM:" STR=CI IF RECORD-PRIM 0 0= EXIT THEN
-   a u s" PPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN
+   a u s" PRIM:" STR=CI IF s" PRIM;" s" " RECORD-PRIM 0 0= EXIT THEN
+   a u s" PPRIM:" STR=CI IF s" PPRIM;" s" CLOSE-PRIVATE" RECORD-PPRIM 0 0= EXIT THEN
+   a u s" EPRIM:" STR=CI IF s" EPRIM;" s" ECLOSE-PRIVATE" RECORD-PRIM 0 0= EXIT THEN
+   a u s" EPPRIM:" STR=CI IF s" ECLOSE-PRIVATE" s" EPRIM;" RECORD-PPRIM 0 0= EXIT THEN
    a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
    a u s" cast:" STR=CI IF
       [: CAST-DECLARATION ;] catch IDENTITY-OUTCOME 0 0= EXIT THEN

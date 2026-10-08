@@ -80,7 +80,7 @@ public
 \ -4808..-4810 continue the unclaimed lint-tool gap that holds E-SHADOW-UNTERM
 \ (-4800) through E-PKGDIFF-NONAME (-4807).
 -4808 constant E-QUOTE   \ a string literal ran past end of input
--4809 constant E-ROW     \ a `PRIM:`/`PPRIM:` axiom row lacked a header or its closer
+-4809 constant E-ROW     \ a primitive-axiom row lacked a header or its closer
 \ The residual arm: a diagnostic or token kind added to LINT-LEX after this
 \ consumer was written. It must reach a named refusal rather than borrow one of
 \ the two labels above, and it must never pass in silence.
@@ -336,7 +336,7 @@ variable JX
    k LINT-LEX:KIND@ LINT-LEX:WORD = ;
 
 \ Kinds this scan understands. A WORD is code. A `( ... )` or `.( ... )` comment
-\ and a complete `PRIM:`/`PPRIM:` axiom row are inert spans that declare no
+\ and a complete primitive-axiom row are inert spans that declare no
 \ constant, so they are stepped over whole. Any other kind is one this lint was
 \ never taught, and skipping it in silence is how a scanner goes blind: the token
 \ would span source the scan never reads while the ledger still reports zero

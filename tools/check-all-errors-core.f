@@ -330,7 +330,7 @@ variable CA-COMPOSE-LABEL-U
    CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + CA-LEX-TOKEN-U ;
 
 \ ---- malformed primitive-axiom row --------------------------------------------
-\ The lexer's second diagnostic. An incomplete `PRIM:`/`PPRIM:` row stops the scan
+\ The lexer's second diagnostic. An incomplete primitive-axiom row stops the scan
 \ exactly like an open string does, but it needs its own code and its own repair
 \ text: a caller told to close a string literal will look for a quote that is not
 \ there.

@@ -819,6 +819,66 @@ variable REG-I
    REG-COUNT 8 ASSERT=
    11 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
+\ The engine's table (src/habu/prims.f) writes `EPRIM: name ... EPRIM;` and
+\ `EPPRIM: pkg name ... ECLOSE-PRIVATE`, and its opener parses the name, so a
+\ row named `create` or `:` is a row: neither name defines the closer after it.
+\ The definition after the rows proves the scanner handed the source back.
+: ENGINE-ROWS$  ( -- ptr u8 n )
+   ROW-RESET
+   s" EPRIM: create EPRIM;" ROW+  ROW-NL
+   s" EPRIM: : EPRIM;" ROW+  ROW-NL
+   s" EPPRIM: PK create ECLOSE-PRIVATE" ROW+  ROW-NL
+   s" EPPRIM: PK : PE-N PE-OUT ECLOSE-PRIVATE" ROW+  ROW-NL
+   s" : AFTER dup ;" ROW+
+   ROW$ ;
+
+: TEST-ROW-ENGINE ( -- )
+   ENGINE-ROWS$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 8 ASSERT=
+   REG-COUNT 4 ASSERT=
+   0 1 20 ASSERT-ROW-SPAN  0 LINT-LEX:TOKEN s" EPRIM: create EPRIM;" ASSERT$
+   1 2 15 ASSERT-ROW-SPAN  1 LINT-LEX:TOKEN s" EPRIM: : EPRIM;" ASSERT$
+   2 3 32 ASSERT-ROW-SPAN
+   2 LINT-LEX:TOKEN s" EPPRIM: PK create ECLOSE-PRIVATE" ASSERT$
+   3 4 39 ASSERT-ROW-SPAN
+   3 LINT-LEX:TOKEN s" EPPRIM: PK : PE-N PE-OUT ECLOSE-PRIVATE" ASSERT$
+   4 LINT-LEX:TOKEN s" :" ASSERT$      4 LINT-LEX:LINE@ 5 ASSERT=
+   5 LINT-LEX:TOKEN s" AFTER" ASSERT$
+   7 LINT-LEX:TOKEN s" ;" ASSERT$ ;
+
+\ An engine row the source ends inside, or that lacks its header, is malformed
+\ at its opener.
+: TEST-ROW-ENGINE-BAD ( -- )
+   ROW-RESET  s" EPRIM: FOO PE-N" ROW+
+   LEX-ROW  0 1 1 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT=
+   ROW-RESET  s" EPPRIM: PK FOO PE-N" ROW+
+   LEX-ROW  0 1 1 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT=
+   ROW-RESET  s" EPRIM:" ROW+
+   LEX-ROW  0 1 1 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT=
+   ROW-RESET  s" EPPRIM: PK" ROW+
+   LEX-ROW  0 1 1 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT= ;
+
+\ Both engine closers write the open row (src/habu/prims.f ROW-WRITE), so an
+\ engine row ends at the first of them, whichever row it opened, and the closer
+\ after it is a word of the source again.
+: TEST-ROW-ENGINE-MIXED ( -- )
+   ROW-RESET  s" EPRIM: FOO PE-N ECLOSE-PRIVATE EPRIM;" ROW+
+   LEX-ROW
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 2 ASSERT=
+   0 1 30 ASSERT-ROW-SPAN
+   0 LINT-LEX:TOKEN s" EPRIM: FOO PE-N ECLOSE-PRIVATE" ASSERT$
+   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=  1 LINT-LEX:TOKEN s" EPRIM;" ASSERT$
+   ROW-RESET  s" EPPRIM: PK FOO PE-N EPRIM; ECLOSE-PRIVATE" ROW+
+   LEX-ROW
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 2 ASSERT=
+   0 1 26 ASSERT-ROW-SPAN
+   0 LINT-LEX:TOKEN s" EPPRIM: PK FOO PE-N EPRIM;" ASSERT$
+   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=
+   1 LINT-LEX:TOKEN s" ECLOSE-PRIVATE" ASSERT$ ;
+
 : TEST-BIG-LEXER  ( -- )
    BIG-LEX$ LINT-LEX:SOURCE
    LINT-LEX:COUNT BIG-LEX-TOKENS ASSERT=
@@ -860,6 +920,9 @@ variable REG-I
    TEST-ROW-DIAGNOSTIC-SPAN
    TEST-ROW-DEFINER-POSITION
    TEST-ROW-REUSE-AFTER-ERROR
+   TEST-ROW-ENGINE
+   TEST-ROW-ENGINE-BAD
+   TEST-ROW-ENGINE-MIXED
    TEST-BIG-LEXER
    s" source-lex-test: ok (" type TEST-N @ 1- FMT:.INT s"  assertions)" type cr ;
 

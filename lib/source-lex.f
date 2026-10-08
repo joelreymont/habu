@@ -21,10 +21,11 @@
 \   ERROR? ( -- bool )                 the last scan hit malformed input
 \   ERROR-KIND@ ERROR-BYTE@ ERROR-LINE@ ERROR-COL@ ( -- n )
 \
-\ A complete `PRIM: ... PRIM;` or `PPRIM: pkg ... PPRIM;` primitive-axiom row is
-\ one REGISTRY token spanning the whole row, positioned at its opener; its fields
-\ never appear as separate tokens and CONTENT is empty for it. An incomplete row
-\ is the MALFORMED-REGISTRY diagnostic at the opener site.
+\ A complete `PRIM: ... PRIM;`, `PPRIM: pkg ... PPRIM;`, `EPRIM: ... EPRIM;` or
+\ `EPPRIM: pkg ... ECLOSE-PRIVATE` primitive-axiom row is one REGISTRY token
+\ spanning the whole row, positioned at its opener; its fields never appear as
+\ separate tokens and CONTENT is empty for it. An incomplete row is the
+\ MALFORMED-REGISTRY diagnostic at the opener site.
 \
 \ The diagnostic is one generic record, not a quote-specific flag. A scan writes
 \ it at most once: the writer runs at the malformed site and stops the scan, so
@@ -47,6 +48,8 @@ $22 constant DQUOTE             \ the byte that closes a string literal
 
 0 constant ROW-BARE             \ FAM: bare `PRIM:` row, closed by `PRIM;`
 1 constant ROW-PKG              \ FAM: `PPRIM:` row, closed by `PPRIM;` or `CLOSE-PRIVATE`
+2 constant ROW-EBARE            \ FAM: engine `EPRIM:` row, closed by either engine closer
+3 constant ROW-EPKG             \ FAM: engine `EPPRIM:` row, closed by either engine closer
 
 variable CAP
 TYPED-VARIABLE SRC-A ptr u8   \ start of the source span being lexed
@@ -189,7 +192,7 @@ public
 
 1 constant WORD                 \ KIND@: whitespace-delimited word token
 2 constant COMMENT              \ KIND@: `( ... )` or `.( ... )` comment, body via CONTENT
-3 constant REGISTRY             \ KIND@: one complete PRIM:/PPRIM: primitive-axiom row
+3 constant REGISTRY             \ KIND@: one complete primitive-axiom row
 
 1 constant UNTERMINATED-QUOTE   \ ERROR-KIND@: a string literal ran past end of input
 2 constant MALFORMED-REGISTRY   \ ERROR-KIND@: a primitive-axiom row lacked a header or its closer
@@ -359,6 +362,9 @@ private
 \ scanner, `PRIM: s"     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;` on checker.f line
 \ 5093 consumed everything through the quote in the NEXT row, losing five tokens
 \ of its own row plus the following opener from the table with no diagnostic.
+\ The engine's own table (src/habu/prims.f) writes its rows `EPRIM: name ...
+\ EPRIM;` and `EPPRIM: pkg name ... ECLOSE-PRIVATE`, and names a definer there:
+\ `EPRIM: create EPRIM;` read word at a time defines `EPRIM;`.
 \ So each complete row becomes one REGISTRY token and its fields never reach the
 \ word path. The row model is src/habu/verify-source.f RECORD-PRIM-ROW, the
 \ authoritative source replay of the same engine text: header fields raw, then
@@ -399,15 +405,20 @@ private
    SKIP-INERT
    NEXT-FIELD ;
 
-: PRIM-OPEN? ( ptr u8 n -- bool )
-   s" PRIM:" STR=CI ;
-
-: PPRIM-OPEN? ( ptr u8 n -- bool )
-   s" PPRIM:" STR=CI ;
+\ The family of the row a token opens, or -1 for a token that opens none.
+: ROW-FAMILY ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" PRIM:" STR=CI if ROW-BARE exit then
+   a u s" PPRIM:" STR=CI if ROW-PKG exit then
+   a u s" EPRIM:" STR=CI if ROW-EBARE exit then
+   a u s" EPPRIM:" STR=CI if ROW-EPKG exit then
+   -1 ;
 
 : ROW-OPEN? ( ptr u8 n -- bool )
-   2dup PPRIM-OPEN? if 2drop true exit then
-   PRIM-OPEN? ;
+   ROW-FAMILY -1 <> ;
+
+\ A package row names its package before the primitive.
+: PKG-ROW? ( -- bool )
+   FAM @ ROW-PKG =  FAM @ ROW-EPKG =  or ;
 
 : PRIM-CLOSE? ( ptr u8 n -- bool )
    s" PRIM;" STR=CI ;
@@ -418,20 +429,33 @@ private
 : PRIVATE-CLOSE? ( ptr u8 n -- bool )
    s" CLOSE-PRIVATE" STR=CI ;
 
-\ `PRIM;` closes a bare row; a package row closes with `PPRIM;` (public wordlist)
-\ or `CLOSE-PRIVATE`
-\ (package private wordlist). A bare row has no package wordlist, so
-\ `CLOSE-PRIVATE` there is an ordinary effect field, not a closer.
-: ROW-CLOSE? ( ptr u8 n -- bool )
-   FAM @ ROW-PKG = if
-      2dup PPRIM-CLOSE? if 2drop true exit then
-      PRIVATE-CLOSE? exit
-   then
-   PRIM-CLOSE? ;
+: EPRIM-CLOSE? ( ptr u8 n -- bool )
+   s" EPRIM;" STR=CI ;
 
-: WRONG-CLOSE? ( ptr u8 n -- bool )
-   FAM @ ROW-PKG = if PRIM-CLOSE? exit then
-   PPRIM-CLOSE? ;
+: EPRIVATE-CLOSE? ( ptr u8 n -- bool )
+   s" ECLOSE-PRIVATE" STR=CI ;
+
+\ `PRIM;` closes a bare row; a package row closes with `PPRIM;` (public wordlist)
+\ or `CLOSE-PRIVATE` (package private wordlist). A bare row has no package
+\ wordlist, so `CLOSE-PRIVATE` there is an ordinary effect field, not a closer.
+\ Both engine closers write the open row (src/habu/prims.f ROW-WRITE), so the
+\ engine ends either engine row at the first `EPRIM;` or `ECLOSE-PRIVATE`.
+: ROW-CLOSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   FAM @ ROW-BARE = if a u PRIM-CLOSE? exit then
+   FAM @ ROW-PKG = if
+      a u PPRIM-CLOSE? if true exit then
+      a u PRIVATE-CLOSE? exit
+   then
+   a u EPRIM-CLOSE? if true exit then
+   a u EPRIVATE-CLOSE? ;
+
+\ The other family's closer, which cannot end this row: `PPRIM;` in a bare row,
+\ `PRIM;` in a package row. Either engine closer ends an engine row, so an
+\ engine row has none.
+: WRONG-CLOSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   FAM @ ROW-BARE = if a u PPRIM-CLOSE? exit then
+   FAM @ ROW-PKG = if a u PRIM-CLOSE? exit then
+   false ;
 
 \ `[']` and `[char]` parse one raw operand, so a closer-shaped token there is that
 \ operand and not a closer.
@@ -474,7 +498,7 @@ private
 : HDR ( -- )
    HDR-FIELD
    HALTED @ if exit then
-   FAM @ ROW-PKG = if HDR-FIELD then ;
+   PKG-ROW? if HDR-FIELD then ;
 
 \ A row body is interpreted, so `.( ... )` there parses its own text exactly like
 \ `s" ... "` does: a closer spelled inside a print body is that text and not this
@@ -710,7 +734,7 @@ private
    begin INK? while ADV drop repeat
    GROUP-START? if ADD-WORD GROUP exit then
    ROW-START? if
-      CUR$ PPRIM-OPEN? if ROW-PKG else ROW-BARE then SCAN-ROW
+      CUR$ ROW-FAMILY SCAN-ROW
       exit
    then
    \ `.(` is already consumed by the word scan, so the print body starts at POS.

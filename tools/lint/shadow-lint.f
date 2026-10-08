@@ -96,7 +96,7 @@ variable SI
 \ and the -5000 cluster; lib/errors.f owns -2000..-4499 and the verdict policy
 \ blocks E-PV / E-TRV own -4500..-4699. It claims no reserved range.
 -4800 constant E-SHADOW-UNTERM
-\ The second lexer defect: a `PRIM:`/`PPRIM:` axiom row with no header or no
+\ The second lexer defect: a primitive-axiom row with no header or no
 \ closer. It hides definitions the same way an open string does, but a scan that
 \ names it "unterminated string literal" sends the reader hunting for a quote, so
 \ it gets its own code in the same unclaimed gap.

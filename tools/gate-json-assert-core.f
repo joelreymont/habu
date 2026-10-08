@@ -372,7 +372,7 @@ variable GJA-DIRECT
    GJA-MAP-ROW IF exit THEN
    s" literal_loader_form" s" Load a file by a literal path that resolves within 1024 bytes, written in at most 1024 bytes after include or require and otherwise in under 2050 counting, when relative, a slash and the longest root searched for it, through a loader word no definition redefines or retires."
    GJA-MAP-ROW IF exit THEN
-   s" close_primitive_row" s" Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE."
+   s" close_primitive_row" s" Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM; or EPRIM: name effect... EPRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE, or EPPRIM: package name effect... ECLOSE-PRIVATE."
    GJA-MAP-ROW IF exit THEN
    s" fix_generates_row" s" This generates: row names no word here. Write it after the definer's definition, spelled as the definition spells it."
    GJA-MAP-ROW IF exit THEN

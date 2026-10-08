@@ -310,8 +310,9 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
   qualified name`.
 - `E-UNTERMINATED-STRING`, repair class `close_string`: a string literal opened
   at `token` does not close in the checked source.
-- `E-MALFORMED-REGISTRY-ROW`, repair class `close_primitive_row`: a `PRIM:` or
-  `PPRIM:` primitive-axiom row opened at `token` does not close.
+- `E-MALFORMED-REGISTRY-ROW`, repair class `close_primitive_row`: a `PRIM:`,
+  `PPRIM:`, `EPRIM:` or `EPPRIM:` primitive-axiom row opened at `token` does not
+  close.
 
 The lexer cannot read past either defect, so it is reported in place of
 checking that source, in the file that holds it (a required file included,
@@ -1017,8 +1018,8 @@ Current checker classes:
 - `literal_loader_form`: a top-level loader form names no literal path, or a
   declaration or top-level retirement takes a loader word's name, so the
   require closure cannot be read from the source.
-- `close_primitive_row`: a `PRIM:` or `PPRIM:` primitive-axiom row does not
-  close.
+- `close_primitive_row`: a `PRIM:`, `PPRIM:`, `EPRIM:` or `EPPRIM:`
+  primitive-axiom row does not close.
 - `rebuild_engine`: the input is a source the engine provides, so loading it
   checks nothing; rebuild `bin/hb` to check a change to it.
 - `fix_stale_trust_row`: a `trust` row names no word in the wordlist its record
@@ -1075,7 +1076,7 @@ table it is derived only from `repair_class`. It does not replace the raw
 | `fix_load_path` | `No file is at the path this loader word names. Correct the path, or create the file.` |
 | `make_source_readable` | `The file this loader word names cannot be read. Make it readable, or correct the path.` |
 | `literal_loader_form` | `Load a file by a literal path that resolves within 1024 bytes, written in at most 1024 bytes after include or require and otherwise in under 2050 counting, when relative, a slash and the longest root searched for it, through a loader word no definition redefines or retires.` |
-| `close_primitive_row` | `Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE.` |
+| `close_primitive_row` | `Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM; or EPRIM: name effect... EPRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE, or EPPRIM: package name effect... ECLOSE-PRIVATE.` |
 | `fix_generates_row` | `This generates: row names no word here. Write it after the definer's definition, spelled as the definition spells it.` |
 | `delete_generates_row` | `This definer already states what it makes: its does> clause, an earlier generates: row or the definer it wraps. Delete the row.` |
 | `fix_parses_row` | `This row's target is no word here that reads the source after it. Write the row after the definition of a word that parses, spelled as the definition spells it.` |
