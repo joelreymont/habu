@@ -507,7 +507,6 @@ HBB-INSTALL-CHILD-LINT
    s" tools/build-target.f" HBB-KEY-FILE+
    s" tools/cli-run.f" HBB-KEY-FILE+
    s" tools/object-image.f" HBB-KEY-FILE+
-   s" tools/dynamic-tail-manifest.f" HBB-KEY-FILE+
    s" tools/source-discovery.f" HBB-KEY-FILE+
    s" tools/event-closure-lib.f" HBB-KEY-FILE+
    s" tools/hb-build-report.f" HBB-KEY-FILE+

@@ -12,8 +12,8 @@
 \ unsupported opener, a loader word the file defined or retired, serialization
 \ overflow), a body's loader read past as the run of a word no check runs, a
 \ name a definer takes read as data, a loader word's defined, undefined or
-\ retired name refusing nothing, and the dynamic-tail manifest (the loader's
-\ own definition site tolerated).
+\ retired name refusing nothing, and the loader's own definition site read with
+\ no refusal.
 
 require lib/errors.f
 require lib/string.f
@@ -478,10 +478,10 @@ $7F0 constant SDT-OVER
 
 \ --- a tree file: the loader's own definitions ---------------------------------
 
-\ The loader's own definition site. The manifest tolerates the reserved names it
-\ defines, and it loads no source itself, so the walk that keys the engine's
+\ The loader's own definition site. Its definitions of the loader words refuse
+\ nothing, and it loads no source itself, so the walk that keys the engine's
 \ prefix (test/whitebox-engine.f) crosses it without losing a file.
-: SDT-TEST-MANIFEST-INCLUDE ( -- )
+: SDT-TEST-LOADER-SITE ( -- )
    s" src/core/include.f" DISCOVER:RUN
    EVENT-COUNT 0 T= ;
 
@@ -577,7 +577,7 @@ $7F0 constant SDT-OVER
    SDT-TEST-BIG-STRING-LOADER
    SDT-TEST-BIG-STRING-BODY
    SDT-TEST-BIG-STRING-PAD
-   SDT-TEST-MANIFEST-INCLUDE
+   SDT-TEST-LOADER-SITE
    SDT-TEST-EMIT-CAP
    SDT-TEST-LOCALS
    SDT-TEST-LOCAL-SCOPES

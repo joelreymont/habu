@@ -1,7 +1,7 @@
 \ source-discovery.f - whole-file ordered source-composition discovery pass.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f
-\ lib/source.f tools/dynamic-tail-manifest.f tools/source-discovery.f
+\ lib/source.f tools/source-discovery.f
 \
 \ DISCOVER:RUN lexes an entry file's ENTIRE token stream - colon bodies
 \ included - and replays every literal source-composition form against a fresh
@@ -20,10 +20,7 @@
 \ that spelling names after it, so a later loader form with it that the walk
 \ would follow, at top level or in a body, rejects fail-closed at the word, as
 \ a dynamic (non-literal) loader path and an unsupported string opener (C\" /
-\ .\") before a loader word at top level do - unless the entry file is a
-\ declared dynamic-tail boundary in tools/dynamic-tail-manifest.f, in which
-\ case exactly those forms are tolerated (skipped, never recorded) and only the
-\ statically-visible loader events are produced. An escaped literal (S\")
+\ .\") before a loader word at top level do. An escaped literal (S\")
 \ names the path its escapes decode to. A bad escape refuses nothing: at top
 \ level it ends the walk where the load stops, and in a definition, which the
 \ check rejects and reads past, the walk reads past it and follows no loader
@@ -35,7 +32,6 @@ require lib/memory.f
 require lib/span.f
 require lib/fs.f
 require lib/source.f
-require tools/dynamic-tail-manifest.f
 
 package DISCOVER
 using SOURCE                             \ the shared source-string emitters
@@ -73,7 +69,6 @@ variable SD-U
 variable SD-I
 variable SD-PATH-U
 variable SD-PEND
-variable SD-LENIENT
 variable SD-EMIT-LEN
 variable SD-OPENER                       \ where the last string or group opener starts
 variable SD-TOK-OFF                      \ the token read last: where it starts
@@ -115,16 +110,6 @@ variable SD-SCOPES
 : SD-AT? ( n -- bool )  SD-U @ < ;
 : SD-PATH$ ( -- ptr u8 n )  0 SD-PATH SD-PATH-U @ ;
 : SD-TOK$ ( n n -- ptr u8 n ) {: off:n len:n :}  off SD-BUF + len ;
-
-: SD-LENIENT? ( -- bool )   SD-LENIENT @ 0= 0= ;
-
-\ Fail-closed guard trip: throw, unless the entry file is a declared
-\ dynamic-tail boundary - then the refusal is dropped and the walk goes on,
-\ past a form with no path to follow or through a replaced loader word's form
-\ (SD-CHECK-USE).
-: SD-REJECT ( n -- )
-   SD-LENIENT? if drop exit then
-   throw ;
 
 : SD-SKIP-WS ( -- )
    begin SD-I @ SD-AT? while
@@ -263,12 +248,11 @@ $1F constant SD-LOADERS                  \ every loader word's bit
 
 \ A loader form the walk reads, whose loader word stands at OFF LEN, is refused
 \ at the word when the file has defined that word's name (E-DISC-SHADOW), and
-\ else when it has retired it (E-DISC-RETIRE). A declared dynamic-tail boundary
-\ drops the refusal and the form is followed, so its closure keeps the load.
+\ else when it has retired it (E-DISC-RETIRE).
 : SD-CHECK-USE ( n n -- ) {: off:n len:n :}
    off len SD-TOK$ SD-LOADER-BIT {: bit:n :}
-   bit SD-SHADOWED @ and 0<> if E-DISC-SHADOW SD-REJECT exit then
-   bit SD-RETIRED @ and 0<> if E-DISC-RETIRE SD-REJECT then ;
+   bit SD-SHADOWED @ and 0<> if E-DISC-SHADOW throw then
+   bit SD-RETIRED @ and 0<> if E-DISC-RETIRE throw then ;
 
 : SD-CALL-ACT ( -- )
    SD-CALL-KIND @ {: kind:n :}
@@ -300,7 +284,7 @@ $1F constant SD-LOADERS                  \ every loader word's bit
    off len kind SD-LOAD? if exit then
    off SD-TOK-OFF !
    len SD-TOK-LEN !
-   E-DISC-CAPACITY SD-REJECT ;
+   E-DISC-CAPACITY throw ;
 
 \ A loader word in a body is a call the word makes when it runs, which no check
 \ runs: right after a path literal the resolver takes it is recorded, the
@@ -319,8 +303,8 @@ $1F constant SD-LOADERS                  \ every loader word's bit
       exit
    then
    off len SD-CHECK-USE
-   pend SD-PEND-OTHER = if E-DISC-OPENER SD-REJECT exit then
-   pend SD-PEND-PATH = 0= if E-DISC-DYNAMIC SD-REJECT exit then
+   pend SD-PEND-OTHER = if E-DISC-OPENER throw then
+   pend SD-PEND-PATH = 0= if E-DISC-DYNAMIC throw then
    off len kind SD-CALL-LOADER ;
 
 \ `include` and `require` take the next token as their path and refuse one
@@ -331,8 +315,8 @@ $1F constant SD-LOADERS                  \ every loader word's bit
 : SD-LOADER-IMM ( n n n -- ) {: toff:n tlen:n kind:n :}
    toff tlen SD-CHECK-USE
    SD-RAW {: poff:n plen:n :}
-   plen 0= if E-DISC-DYNAMIC SD-REJECT exit then
-   plen PATH-CAP > if E-DISC-CAPACITY SD-REJECT exit then
+   plen 0= if E-DISC-DYNAMIC throw then
+   plen PATH-CAP > if E-DISC-CAPACITY throw then
    poff plen SD-TOK$ SD-PATH-FILL
    toff tlen kind SD-CALL-LOADER ;
 
@@ -513,7 +497,6 @@ private
    SD-ENTRY SD-ENTRY-U @ rc READ-THROW ;
 
 : RUN-SELECTED ( -- )
-   SD-ENTRY SD-ENTRY-U @ DTM:KNOWN? SD-LENIENT !
    REQUIRE-SNAPSHOT
    SD-LOADING-U @ 0<> if SD-LOADING SD-LOADING-U @ REQUIRE-STORE 2drop then
    EVENTS-RESET EVENT-ON DISCOVERY-ON

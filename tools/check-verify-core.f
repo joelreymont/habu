@@ -203,8 +203,8 @@ variable CHK-EXPAND-TOP
 \ (include/included/require/required/provided). Every event path is a direct
 \ dep, so the closure is a superset of the runtime load set; a top-level
 \ dynamic loader form, and a loader form whose word the file defined or
-\ retired, rejects fail-closed unless manifested; one in a body is otherwise a
-\ call no check makes.
+\ retired, rejects fail-closed; one in a body is otherwise a call no check
+\ makes.
 \
 \ A walk ends at the first file it cannot follow: discovery refuses it, with an
 \ E-DISC-* code, it does not exist, CHK-E-NOINPUT, or the file system will not

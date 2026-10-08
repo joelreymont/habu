@@ -10,17 +10,13 @@
 \
 \ The tree cannot be edited to show that, so the closure is copied into a private
 \ root and keyed there through WHITEBOX-KEY:ENTRY-PATH!, the same derivation
-\ test/whitebox-engine.f resolves with. Manifested files must keep their real
-\ pathname for discovery. Their static require closures stay there too, so those
-\ files resolve the same dependencies in the copied and real builder closures.
+\ test/whitebox-engine.f resolves with.
 
 require lib/test.f
 require lib/string.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/engine-candidate.f
-require lib/process-cwd.f
-require tools/dynamic-tail-manifest.f
 require tools/event-closure-lib.f
 require test/whitebox-key.f
 
@@ -43,8 +39,6 @@ create PATH-D CAP allot
 create ENG-A DG-LEN allot
 create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 create ENG-B DG-LEN allot
-create CHILD-OUT $4000 allot
-create CHILD-ERR $4000 allot
 
 variable ROOT-U
 variable ENTRY-U
@@ -89,34 +83,14 @@ variable SEAL-SEEN?
 : ENGINE-DIGEST! ( ptr u8 -- ) {: dst:ptr :}
    FSHA-CTX ENGINE-CANDIDATE:PATH$ dst SHA256-FILE-IN dup 0 <> if throw then drop ;
 
-\ One closure member into the copy. Discovery recognizes a manifested file by
-\ its real pathname, so it must stay there.
+\ One closure member into the copy.
 : MEMBER-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u DTM:KNOWN? if exit then
    a u CWD$ BELOW? 0= if E-FS-PATH throw then
    a u CWD$ RELATIVE {: r:ptr ru:n :}
    r ru SEAL-REL$ STR= if 0 0= SEAL-SEEN? ! then
    r ru DST DST-U UNDER-ROOT!
    DST$ DIRNAME MAKE-DIRS
    a u DST$ COPY-FILE-STREAM ;
-
-\ A real-path boundary's static requires also resolve from the real tree.
-\ Leave their closure there instead of introducing shadow copies that the
-\ copied builder would load before reaching the boundary.
-: BOUNDARY-MEMBER-UNCOPY ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CWD$ BELOW? 0= if exit then
-   a u CWD$ RELATIVE DST DST-U UNDER-ROOT!
-   DST$ FILE? if DST$ REMOVE-FILE then ;
-
-: LEAVE-BOUNDARY-CLOSURES ( -- )
-   DTM:COUNT 0 ?do
-      CWD$ i DTM:PATH$ JOIN EC:BUILD
-      0 IDX !
-      begin IDX @ EC:COUNT < while
-         IDX @ EC:PATH$ BOUNDARY-MEMBER-UNCOPY
-         IDX @ 1+ IDX !
-      repeat
-   loop ;
 
 : COPY-CLOSURE ( -- )
    0 SEAL-SEEN? !
@@ -126,8 +100,7 @@ variable SEAL-SEEN?
    begin IDX @ REAL-N @ < while
       IDX @ EC:PATH$ MEMBER-COPY
       IDX @ 1+ IDX !
-   repeat
-   LEAVE-BOUNDARY-CLOSURES ;
+   repeat ;
 
 \ The entry sits at the copy's own root, because a dependency resolves under the
 \ directory the entry file was found in: at <root>/native-build.f every
@@ -189,48 +162,6 @@ variable SEAL-SEEN?
    ENG-B ENGINE-DIGEST!
    ENG-A DG-LEN ENG-B DG-LEN STR= TTRUE ;
 
-\ Manifest identity is relative to the child's invocation root. Give it a real
-\ copy of the boundary file, one private dependency, and links to the unchanged
-\ test/tool libs.
-: MANIFEST$ ( -- ptr u8 n ) ROOT$ s" manifest" JOIN ;
-
-: MANIFEST-LINK ( ptr u8 n -- ) {: a:ptr u:n :}
-   CWD$ a u JOIN DST DST-U COPY!
-   DST$ MANIFEST$ a u JOIN MAKE-SYMLINK ;
-
-: MANIFEST-PREP ( -- )
-   MANIFEST$ s" src/core" JOIN MAKE-DIRS
-   s" lib" MANIFEST-LINK s" tools" MANIFEST-LINK s" test" MANIFEST-LINK
-   MANIFEST$ s" whitebox-manifest-private.f" JOIN
-   s\" \\ private dependency\n" WRITE-ALL ;
-
-: MANIFEST-RUN ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   PROC-ARGV-RESET PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
-   s" --load" >LEN PROC-ARGV+
-   s" test/whitebox-manifest-child.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   path pathu >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ CANONICAL TTRUE >LEN MANIFEST$ >LEN
-   CHILD-OUT $4000 >LEN CHILD-ERR $4000 >LEN 30000 >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE 0 ENDOF
-      err OF PCAP-FAILED:UNMAKE RC>N ENDOF
-   ;MATCH {: outu:len erru:len rc:n :}
-   rc 0 <> if CHILD-OUT outu LEN>N type CHILD-ERR erru LEN>N type then
-   rc 0 T= ;
-
-: MANIFEST-CASE ( ptr u8 n -- ) {: a:ptr u:n :}
-   MANIFEST$ a u JOIN DST DST-U COPY!
-   a u DST$ COPY-FILE-STREAM
-   DST$ S\" \nrequire whitebox-manifest-private.f\n" APPEND-FILE
-   a u MANIFEST-RUN ;
-
-: TEST-MANIFEST-LOADS ( -- )
-   s" a manifested member keys its static private dependency" T-LABEL
-   MANIFEST-PREP
-   s" src/core/include.f" MANIFEST-CASE ;
-
 : RUN ( -- )
    T-RESET
    PREP
@@ -240,7 +171,6 @@ variable SEAL-SEEN?
    TEST-PREFIX-EDIT-MOVES-KEY
    TEST-RESTORE-RESTORES-KEY
    TEST-UNLOADED-FILE-IS-IGNORED
-   TEST-MANIFEST-LOADS
    TEST-ENGINE-UNTOUCHED
    CLEANUP-RUN
    T-REPORT ;

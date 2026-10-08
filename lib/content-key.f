@@ -7,11 +7,9 @@
 \ CONTENT-KEY:DISCARD closes one whose key is not going to be taken. Because
 \ every operation names its own fold, two keys derived at overlapping times
 \ cannot mix bytes - see the fold-handle section below for what that replaced.
-\ FILE+ digests the file's current bytes on every call. The read-only
-\ diagnostic views CONTENT-KEY:BUF$ (one fold's preimage) and FOLDS / FOLD-FILL
-\ (the fold census a throw handler reads) serve the gate cache-key
-\ participation test and the capacity-throw reporter. Every other helper and
-\ all buffers are package-private.
+\ FILE+ digests the file's current bytes on every call. The read-only fold
+\ census FOLDS / FOLD-FILL serves the capacity-throw reporter. Every other
+\ helper and all buffers are package-private.
 \
 \ Requires the SHA-256 words; native bin/hb already carries src/core/sha256.f.
 
@@ -209,15 +207,9 @@ public
    f CK-DG FINAL
    CK-DG hex SHA256>HEX ;
 
-\ Read-only introspection. BUF$ names the exact bytes its fold's FINAL will
-\ hash, so a gate can prove a manifest path participates in that key. The fold
-\ census (FOLDS/FOLD-FILL) lets the capacity-throw reporter name the fold that
-\ overflowed without holding a handle - it runs from a throw handler, where
-\ there is no fold to pass.
-: BUF$ ( fold -- ptr u8 n ) {: f:fold :}
-   f CK-LIVE {: s:n :}
-   s CK-SLOT-BUF s CK-SLOT-U@ ;
-
+\ Read-only introspection. The fold census (FOLDS/FOLD-FILL) lets the
+\ capacity-throw reporter name the fold that overflowed without holding a
+\ handle - it runs from a throw handler, where there is no fold to pass.
 : BUF-CAP ( -- n )   CK-CAP ;
 
 : FOLDS ( -- n )   CK-FOLD-N ;
