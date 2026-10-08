@@ -7,23 +7,34 @@
 \   ' WORD BP-      remove      BP. = list active breakpoints (addrs)
 \ Up to 8 at once. Not in the engine: `require src/habu/debug.f` loads it, the
 \ stepper and the shared watch cells over the baked repl.
+\
+\ The three files make one package, DEBUG. Its publics are these commands, the
+\ watch commands (BPW+ BPW- BPW. BPW-CLEAR), STEP, the two installers, MAXBP and
+\ the E-BP- codes; the rest is private, so a program keeps its own FIND, FREE or
+\ STEP. A session opens `using DEBUG` once and types the commands bare, or
+\ qualifies one: `' WORD DEBUG:BP+`.
 
+require src/habu/code-bytes.f
 require src/habu/debug-watch.f
 require src/habu/stepper.f
 
-8 constant MAXBP
+package DEBUG
+
 $D4200000 constant BRK0
+
+public
+
+8 constant MAXBP
 
 \ Debugger-owned refusal range, outside the library and build-tool ranges.
 -9300 constant E-BP-FIRST
 -9309 constant E-BP-LAST
 -9300 constant E-BP-TARGET
 
+private
+
 : W32@ ( ptr u8 -- n ) {: a :}
    a c@  a 1 + c@ 8 lshift or  a 2 + c@ 16 lshift or  a 3 + c@ 24 lshift or ;
-
-: W32! ( n ptr u8 -- ) {: w a :}
-   w a c!  w 8 rshift a 1 + c!  w 16 rshift a 2 + c!  w 24 rshift a 3 + c! ;
 
 : SLOT-OFF ( n -- n )
    32 * BPTAB-OFF + ;
@@ -46,16 +57,15 @@ $D4200000 constant BRK0
 : BP-NULL ( -- ptr u8 )
    NULL-PTR ;
 
-\ Executable patching and the xt-to-code-pointer view stay trusted: each needs
-\ an owner package (a private patch32 row, a private CAST: or CODE-BYTES:AT),
-\ and this file cannot open or require one while test/engine-stack-debugger.f
-\ requires it inside its own package (packages do not nest, rc 75).
-\ Retirement: habu-sweep-trusted-out-41e973ce.
+\ Executable patching stays trusted until the engine carries a patch32 row
+\ private to DEBUG. Retirement: habu-sweep-trusted-out-41e973ce.
 TRUSTED: BP-PATCH32 ( n ptr u8 -- )
    patch32 ;
 
-TRUSTED: BP-XT>PTR ( n -- ptr u8 )
-   ;
+\ The instruction word at an xt: CODE-BYTES:AT is the one bounded view of a code
+\ address, and it dies on one outside the code region.
+: XT>CODE ( n -- ptr u8 )
+   4 CODE-BYTES:AT drop ;
 
 : FIND ( ptr u8 -- n ) {: addr:ptr :}   \ slot holding addr, else -1
    0 BEGIN dup MAXBP < WHILE
@@ -80,17 +90,23 @@ TRUSTED: BP-XT>PTR ( n -- ptr u8 )
    \ patch32 runs in engine text while opening the target's pages RW. An
    \ engine-text target can remove X from the patcher itself. Only the live
    \ compiled region is supported; refuse before publishing a slot or patching.
+   \ That region lies inside CODE-BYTES:AT's code band, so XT>CODE cannot die.
    xt dbase@ DICT-SIZE + <  xt cp@ 4 - > or  xt 3 and 0<> or if
       E-BP-TARGET throw
    then
-   xt BP-XT>PTR ctrl BPADD-PTR ;
+   xt XT>CODE ctrl BPADD-PTR ;
+
+public
 
 : BP+ ( n -- )    0 BPADD ;                  \ one-shot
 : BP* ( n -- )    1 BPADD ;                  \ persistent (re-fires every call)
 : BPN ( n n -- )  swap 1 lshift 1 or BPADD ; \ persistent, silent for the first n hits
 
+\ An xt outside the code region has no breakpoint to remove; returning before
+\ XT>CODE keeps a mistyped number from killing the REPL session.
 : BP- ( n -- ) {: xt :}                      \ remove a breakpoint
-   xt BP-XT>PTR {: xp:ptr :}
+   xt 4 CODE-BYTES:IN-CODE? 0= IF exit THEN
+   xt XT>CODE {: xp:ptr :}
    xp FIND dup 0 < IF drop exit THEN
    dup BP-SLOT-INSTR @ xp BP-PATCH32          \ restore orig instr, clear slot
    BP-NULL swap BP-SLOT-ADDR ! ;
@@ -99,3 +115,5 @@ TRUSTED: BP-XT>PTR ( n -- ptr u8 )
    0 BEGIN dup MAXBP < WHILE
       dup BP-SLOT-ADDR @ dup BP-NULL = 0= IF NULL-PTR BYTE-VIEW - . cr ELSE drop THEN
       1 + REPEAT  drop ;
+
+;package

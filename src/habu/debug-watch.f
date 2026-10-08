@@ -1,26 +1,28 @@
 \ debug-watch.f - shared REPL watch cells for stepper and breakpoints.
-\ Loaded on demand: `require src/habu/debug.f` pulls this file and stepper.f
-\ with it. Nothing outside the debugger requires it, so it is not in the
-\ engine manifest (src/habu/native-runtime.f).
+\ Part of package DEBUG, the breakpoint debugger and token stepper that this
+\ file, stepper.f and debug.f make together. Loaded on demand: `require
+\ src/habu/debug.f` pulls this file and stepper.f with it. Nothing outside the
+\ debugger requires it, so it is not in the engine manifest
+\ (src/habu/native-runtime.f). A session then writes `WV DEBUG:BPW+`, or opens
+\ `using DEBUG` once and writes `WV BPW+`.
 \
 \ Load after repl.f and before stepper/debug.f. The watch table itself lives in
 \ normal dictionary data; fixed DATA header cells only publish its address/count
 \ to the signal-safe breakpoint handler.
 
+package DEBUG
+
 8 constant BPW-MAX
 
 \ The table stores DATA pointers, so it is declared storage (dot
-\ habu-refuse-a-ptr-5ad2734e); its helpers view one fixed DATA cell and print
-\ an address as its distance from zero.
+\ habu-refuse-a-ptr-5ad2734e); its helper prints an address as its distance
+\ from zero.
 BPW-MAX TYPED-BUFFER BPW-TAB ptr n
 variable BPW-IDX
 variable BPW-LAST
 
 : BPW-PRINT-ADDR ( ptr n -- )
    BYTE-VIEW NULL-PTR BYTE-VIEW - . ;
-
-: BPW-DATA-CELL ( n -- ptr n )
-   data-base + CELL-VIEW ;
 
 \ The cell holds the table's ADDRESS, so it is reached through `ptr-field`,
 \ the declared pointer-cell door, not by reading a plain DATA offset: nothing
@@ -48,6 +50,8 @@ variable BPW-LAST
    repeat
    drop -1 ;
 
+public
+
 : BPW-CLEAR ( -- )
    0 BPW-N! ;
 
@@ -65,22 +69,16 @@ variable BPW-LAST
    BPW-LAST @ BPW-IDX @ <> if BPW-LAST @ BPW-SLOT @ BPW-IDX @ BPW-SLOT ! then
    BPW-LAST @ BPW-N! ;
 
-: BPW-CELL+ ( n -- )
-   BPW-DATA-CELL BPW+ ;
-
 : BPW. ( -- )
    0 begin dup BPW-N@ < while
       dup BPW-SLOT @ dup BPW-PRINT-ADDR @ .
       1+
    repeat drop ;
 
-: BPW-DUMP ( -- )
-   BPW-N@ 0 <= if exit then
-   s" watch:" type cr
-   BPW. ;
-
 : BPW-INSTALL ( -- )
    BPW-BASE!
    BPW-CLEAR ;
 
 BPW-INSTALL
+
+;package

@@ -7,15 +7,11 @@ require src/habu/code-bytes.f
 \ Inline usage when disasm.f is already loaded: <program> ' WORD JITDUMP:JD
 \ Walks from the xt to the first RET (inclusive), capped at 512 instructions.
 \
-\ The word reader below used to be the global `W32@`, which is also the 32-bit
-\ fetch the engine's baked breakpoint debugger (src/habu/debug.f) publishes.
-\ The AOT seed now runs at the end of the engine prefix on every boot (dot
-\ habu-decide-arm-the-5234727b), so both would land in one dictionary and this
-\ file would die `duplicate definition` at load. Every other reader of that
-\ shape in the tree already carries an owner prefix (AOT-W32@, ACAP-W32@); this
-\ one gets a package, which is what docs/forth.md asks for anyway. The public
-\ spellings do not move: the one test that calls three of them imports the
-\ package with `using` and keeps its own definitions untouched.
+\ The word reader below, `W32@`, is private to this package, as the breakpoint
+\ debugger's fetch of the same name is to package DEBUG (src/habu/debug.f), so
+\ the two never collide in one dictionary. The public spellings do not move:
+\ the one test that calls three of them imports the package with `using` and
+\ keeps its own definitions untouched.
 package JITDUMP
 private
 

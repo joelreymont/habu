@@ -8,7 +8,7 @@ package DEBUGGER-RESUME
 : SOURCE ( -- )
    GE-SRC-RESET
    s" 0 set-tier" GE-SRC-LINE
-   s" require src/habu/debug.f" GE-SRC-LINE   \ BPW+/BP+ are loaded on demand
+   s" require src/habu/debug.f" GE-SRC-LINE   \ package DEBUG loads on demand
    s" package BPR" GE-SRC-LINE
    s" variable WV 17 WV !" GE-SRC-LINE
    s" : TARGET ( n -- n ) WV @ + ;" GE-SRC-LINE
@@ -36,7 +36,7 @@ package DEBUGGER-RESUME
    \ The address comparison only establishes the test's page separation.
    s" TRUSTED: PAGES? ( -- bool ) cp@ $FFFF invert and TARGET-XT $FFFF invert and <> ;" GE-SRC-LINE
    s" : CHECK-PAGES ( -- ) PAGES? 0= if 99 throw then ; CHECK-PAGES" GE-SRC-LINE
-   s" WV BPW+ TARGET-XT BP+" GE-SRC-LINE
+   s" WV DEBUG:BPW+ TARGET-XT DEBUG:BP+" GE-SRC-LINE
    s" 2 TARGET . 2 TARGET ." GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 

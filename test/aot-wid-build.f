@@ -329,8 +329,8 @@ create DRV-CH 1 allot
 
 : REPL-BOOTRUN-LINES ( -- )
    S\" s\" INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE
-   S\" s\" BPW-INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE
-   S\" s\" S-INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
+   S\" s\" DEBUG:BPW-INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE
+   S\" s\" DEBUG:S-INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
 
 \ --- the protected-WID fixture (the default build) -----------------------------
 \ TWO PACKAGES, ONE PROTECTED. The unprotected one is defined first so the
@@ -533,12 +533,15 @@ create DRV-CH 1 allot
 \ same record search. One emitted definition of each, in one reopened AOT-CAPTURE
 \ block that the caller's own lines continue: the modes are mutually exclusive
 \ (FIXTURE-LINES picks one), so a single copy is all any driver ever carries.
+\ The search walks every verbatim record, ACAP-REC-ALL of them: AOT-REC-N counts
+\ only the named rows the capture ships, so a private record in the window
+\ would leave the fixture's own record past its end.
 : BODY-CHECK-OPEN ( -- )
    DRV-AOT-CAPTURE
    s" : AWB-NAME= ( ptr u8 ptr u8 n -- bool ) {: a:ptr b:ptr u:n :}" DRV-LINE
    s"    u 0 ?do a i + c@ b i + c@ <> if 0 0= 0= unloop exit then loop  0 0= ;" DRV-LINE
    s" : AWB-REC-BY-NAME ( ptr u8 n -- n ) {: a:ptr u:n :}" DRV-LINE
-   s"    AOT-REC-N @ 0 ?do" DRV-LINE
+   s"    ACAP-REC-ALL @ 0 ?do" DRV-LINE
    s"       i ACAP-REC-DST {: v:ptr :}" DRV-LINE
    s"       v 16 + ACAP-W32@ u = if" DRV-LINE
    s"          v 24 + a u AWB-NAME= if i unloop exit then" DRV-LINE

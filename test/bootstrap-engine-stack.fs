@@ -233,20 +233,21 @@ require nf.fs
    \ carries neither: it has no REPL, so src/habu/stepper.f cannot compile here
    \ at all (it calls repl.f's RD-LINE), and the watch cells belong to that same
    \ REPL. Both paths are declared provided so the requires are no-ops, which is
-   \ also what keeps the module itself read exactly once.
+   \ also what keeps the module itself read exactly once. The module opens its
+   \ own package DEBUG and packages do not nest, so BES-BP opens after it.
    s" src/habu/debug.f" slurp-file {: module bytes :}
    s\" s\" src/habu/debug-watch.f\" provided s\" src/habu/stepper.f\" provided\n"
-   s\" package BES-BP : EMITS ( ptr u8 n -- ) type ;\n"
-   BES-CAT {: decls declsize :}
-   decls declsize module bytes BES-CAT {: head headsize :}
-   head headsize tail size BES-CAT {: source sourcesize :}
-   module free throw decls free throw head free throw
+   module bytes BES-CAT {: head headsize :}
+   head headsize s\" package BES-BP\n"
+   BES-CAT {: body bodysize :}
+   body bodysize tail size BES-CAT {: source sourcesize :}
+   module free throw head free throw body free throw
    source sourcesize BES-OK source free throw ;
 
 : BES-DEBUGGER ( -- )
-   s" : EMPTY ( -- ) ; ' EMPTY BP+ : GO ( -- ) ['] EMPTY bes-mkstack STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package" BES-DEBUG-RUN
+   s" : EMPTY ( -- ) ; ' EMPTY DEBUG:BP+ : GO ( -- ) ['] EMPTY bes-mkstack STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package" BES-DEBUG-RUN
    NFOUT 2@ nip 26 BES=
-   s" : KEEP ( n -- n ) ; ' KEEP BP+ : ONE ( -- ) 17 KEEP drop ; : GO ( -- ) ['] ONE bes-mkstack STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package" BES-DEBUG-RUN
+   s" : KEEP ( n -- n ) ; ' KEEP DEBUG:BP+ : ONE ( -- ) 17 KEEP drop ; : GO ( -- ) ['] ONE bes-mkstack STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package" BES-DEBUG-RUN
    NFOUT 2@ nip 43 BES=
    NFOUT 2@ 26 /string s\" 0000000000000011\n" compare 0<>
       abort" recovery breakpoint lost its actual top cell" ;

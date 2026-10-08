@@ -2,10 +2,14 @@
 \ the line ONE TOKEN at a time, echoing each token and printing the data stack
 \ after it executes. No EVALUATE needed: while stepping, the REPL hook returns
 \ one token per call, so the engine's own interpret loop is the evaluator.
-\ Loaded on demand over the baked layout.f and repl.f (uses REPLH-CELL/
-\ TTY?/RD-LINE/BPW-DUMP); tools/hb-build.f programs never see it.
+\ Part of package DEBUG (debug.f): a REPL session types `DEBUG:STEP <code>`, or
+\ `step <code>` after `using DEBUG`. Loaded on demand over the baked layout.f
+\ and repl.f (uses REPLH-CELL/TTY?/RD-LINE and debug-watch.f's watch table);
+\ tools/hb-build.f programs never see it.
 
 require src/habu/debug-watch.f
+
+package DEBUG
 
 create SBUF 1024 allot          \ captured rest-of-line
 variable SLEN  variable SPOS  variable STEPPING
@@ -40,15 +44,6 @@ variable SLEN  variable SPOS  variable STEPPING
 : S-NONWS? ( -- bool )
    S-HAS? IF S-CUR 32 > ELSE S-FALSE THEN ;
 
-\ capture everything after `step` and consume it; the loop then drains us
-: STEP ( -- )
-   SINP@ {: p :}
-   SINE@ p - SLEN !
-   SLEN @ 1023 > IF 1023 SLEN ! THEN
-   SLEN @ 0 ?do p i + c@ SBUF i + c! loop
-   0 SPOS !  -1 STEPPING !
-   SINE@ SINP! ;
-
 : S-SKIP ( -- )
    BEGIN S-WS? WHILE
       SPOS @ 1 + SPOS ! REPEAT ;
@@ -65,6 +60,12 @@ variable SLEN  variable SPOS  variable STEPPING
 : COLON? ( ptr u8 n -- bool ) {: a u :}  u 1 = a c@ 58 = and ;
 : REST-OF ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}  a  SBUF SLEN @ +  a -  ;     \ token start .. end
 
+\ The watches print after every token.
+: BPW-DUMP ( -- )
+   BPW-N@ 0 <= if exit then
+   s" watch:" type cr
+   BPW. ;
+
 \ between tokens: show the stack the last token left, then feed the next one
 : S-NEXT-TOK ( -- ptr u8 n )
    .s
@@ -80,7 +81,20 @@ variable SLEN  variable SPOS  variable STEPPING
 
 : SRD-LINE ( -- ptr u8 n )  STEPPING @ IF S-NEXT-TOK ELSE RD-LINE THEN ;
 
+public
+
+\ capture everything after `step` and consume it; the loop then drains us
+: STEP ( -- )
+   SINP@ {: p :}
+   SINE@ p - SLEN !
+   SLEN @ 1023 > IF 1023 SLEN ! THEN
+   SLEN @ 0 ?do p i + c@ SBUF i + c! loop
+   0 SPOS !  -1 STEPPING !
+   SINE@ SINP! ;
+
 : S-INSTALL ( -- )
    [: SRD-LINE ;] is REPL-READ
    REPL-ENABLE ;
 S-INSTALL
+
+;package

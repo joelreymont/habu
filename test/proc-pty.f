@@ -378,9 +378,13 @@ variable PTY-LONG-U
 
 \ The engine bakes the REPL and nothing else (src/habu/native-runtime.f,
 \ src/habu/stdin.f): a session that wants breakpoints, watch cells or the token
-\ stepper loads them here, which is also how a REPL user reaches them.
+\ stepper loads package DEBUG here, which is also how a REPL user reaches them.
+\ `using DEBUG` holds for the rest of the session, so the BP, BPW and step lines
+\ below type the commands bare.
 : PTY-DEBUGGER-LOAD ( -- )
    s" require src/habu/debug.f" STEP-LN
+   s"  ok" PROMPT-AFTER
+   s" using DEBUG" STEP-LN
    s"  ok" PROMPT-AFTER ;
 
 : PTY-BP-SOURCE ( -- )
