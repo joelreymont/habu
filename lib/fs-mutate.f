@@ -42,6 +42,7 @@ require lib/span.f
 
 $FFF constant FS-MUT-MODE-PERM
 73 constant FS-MUT-MODE-EXEC
+384 constant FS-MUT-MODE-PRIVATE-FILE
 448 constant FS-MUT-MODE-PRIVATE-DIR
 493 constant FS-MUT-MODE-DIR
 8192 constant FS-MUT-COPY-CAP
@@ -393,24 +394,24 @@ public
 
 \ Habu's portable `open` flags do not include O_EXCL. This narrow libc call
 \ selects the host flag while keeping exclusive creation in one syscall.
-: OPEN-EXCLUSIVE ( ptr u8 -- n )
-   OPEN-FLAGS FS-MODE-0644 OPEN-CALL ;
+: OPEN-EXCLUSIVE ( ptr u8 n -- n )
+   OPEN-FLAGS swap OPEN-CALL ;
 
 : CLOSE-FD ( n -- n )
    CLOSE-CALL ;
 ;package
 
-: FS-MUT-ATOMIC-OPEN-CANDIDATE ( ptr u8 n -- n ) {: path:ptr pathu :}
-   path pathu FS-PATHZ FS-ATOMIC:OPEN-EXCLUSIVE {: fd :}
+: FS-MUT-ATOMIC-OPEN-CANDIDATE ( ptr u8 n n -- n ) {: path:ptr pathu mode :}
+   path pathu FS-PATHZ mode FS-ATOMIC:OPEN-EXCLUSIVE {: fd :}
    fd 0 >= if fd exit then
    path pathu FS-MUT-PATH-COLLISION? if -1 exit then
    E-FS-OPEN throw ;
 
-: FS-MUT-ATOMIC-RESERVE ( ptr u8 n n -- ptr u8 n n ) {: path:ptr pathu seed :}
+: FS-MUT-ATOMIC-RESERVE ( ptr u8 n n n -- ptr u8 n n ) {: path:ptr pathu seed mode :}
    0 begin dup FS-MUT-ATOMIC-RETRIES < while
       dup {: attempt:n :}
       path pathu seed attempt FS-MUT-BUILD-ATOMIC-TMP
-      2dup FS-MUT-ATOMIC-OPEN-CANDIDATE {: fd:n :}
+      2dup mode FS-MUT-ATOMIC-OPEN-CANDIDATE {: fd:n :}
       fd 0 >= if rot drop fd exit then
       2drop 1+
    repeat drop
@@ -425,9 +426,11 @@ public
       off wr +
    repeat drop ;
 
-: FS-MUT-ATOMIC-WRITE-RUN ( n ptr u8 n -- n ptr u8 n ) {: fd src:ptr srcu :}
+: FS-MUT-ATOMIC-WRITE-RUN ( n ptr u8 n ptr u8 n n -- n ptr u8 n ptr u8 n n )
+   {: fd src:ptr srcu temp:ptr tempu mode :}
    fd src srcu FS-MUT-ATOMIC-WRITE-FD
-   fd src srcu ;
+   mode 0 >= if temp tempu mode CHMOD-MODE then
+   fd src srcu temp tempu mode ;
 
 : FS-MUT-ATOMIC-RENAME-RUN ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
    {: temp:ptr tempu path:ptr pathu :}
@@ -437,11 +440,32 @@ public
 : FS-MUT-ATOMIC-CLEAN-TEMP ( ptr u8 n -- ) {: temp:ptr tempu :}
    temp tempu FS-MUT-PATH-COLLISION? if temp tempu REMOVE-FILE then ;
 
+\ Resolve a final symlink before staging: rename on its spelling would replace
+\ the link itself. realpath follows relative targets and chains. It cannot
+\ resolve a dangling or looping link, so refuse one before reserving a sibling.
+: FS-MUT-ATOMIC-TARGET ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu :}
+   path pathu SYMLINK? 0= if path pathu exit then
+   path pathu FS-PATHZ FS-MUT-PATHZ2-BUF SPAN:$ drop FS-PATHZ-CAP realpath {: u:n :}
+   u -2 = if E-FS-PATH throw then
+   u 0 < if E-FS-STAT throw then
+   FS-MUT-PATHZ2-BUF SPAN:$ drop u ;
+
+: FS-MUT-ATOMIC-OLD-MODE ( ptr u8 n -- n ) {: path:ptr pathu :}
+   path pathu FS-TRY-STAT if
+      FS-STAT-MODE@ dup S-IFMT and S-IFREG = if FS-MUT-MODE-PERM and exit then
+      drop
+   then
+   -1 ;
+
 : FS-MUT-ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu src:ptr srcu seed :}
    srcu 0 < if E-FS-CAPACITY throw then
-   path pathu seed FS-MUT-ATOMIC-RESERVE {: temp:ptr tempu fd :}
-   fd src srcu [: FS-MUT-ATOMIC-WRITE-RUN ;] catch {: write-code:n :}
-   2drop drop
+   path pathu FS-MUT-ATOMIC-TARGET {: dst:ptr dstu :}
+   dst dstu FS-MUT-ATOMIC-OLD-MODE {: mode:n :}
+   dst dstu seed
+   mode 0 >= if FS-MUT-MODE-PRIVATE-FILE else FS-MODE-0644 then
+   FS-MUT-ATOMIC-RESERVE {: temp:ptr tempu fd :}
+   fd src srcu temp tempu mode [: FS-MUT-ATOMIC-WRITE-RUN ;] catch {: write-code:n :}
+   2drop 2drop 2drop
    \ Close exactly once, before publish. A failed close may already have freed
    \ the descriptor, so retrying it could close an unrelated recycled fd.
    fd FS-ATOMIC:CLOSE-FD {: close-code:n :}
@@ -450,7 +474,7 @@ public
       close-code 0<> if E-FS-IO throw then
       write-code throw
    then
-   temp tempu path pathu [: FS-MUT-ATOMIC-RENAME-RUN ;] catch {: rename-code:n :}
+   temp tempu dst dstu [: FS-MUT-ATOMIC-RENAME-RUN ;] catch {: rename-code:n :}
    2drop 2drop
    rename-code 0<> if
       temp tempu FS-MUT-ATOMIC-CLEAN-TEMP
@@ -470,7 +494,7 @@ public
 \ publishes it. Answers the sibling's path, which stays this task's until its
 \ next reservation, and the descriptor. The caller owns both and the removal.
 : RESERVE-SIBLING ( ptr u8 n -- ptr u8 n n )
-   FS-MUT-ATOMIC-SEED FS-MUT-ATOMIC-RESERVE ;
+   FS-MUT-ATOMIC-SEED FS-MODE-0644 FS-MUT-ATOMIC-RESERVE ;
 
 \ The longest base MAKE-TEMP-DIR makes a directory in for a prefix of n bytes:
 \ its `<base>/<prefix>-<seed>-<attempt>` path still fits FS-PATH-CAP with the
