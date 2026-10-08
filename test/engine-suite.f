@@ -1204,7 +1204,8 @@ create TR-REG-REC 12 cells allot
    TR-REG-REC NORET.SYM TR-REG-REC NORET-SYM-OFF + =
    TR-REG-REC NORET.FLAG TR-REG-REC NORET-FLAG-OFF + = and
    TR-REG-REC NORET.SYMPREV TR-REG-REC NORET-SYMPREV-OFF + = and
-   TR-REG-REC NORET.CREATES TR-REG-REC NORET-CREATES-OFF + = and ;
+   TR-REG-REC NORET.CREATES TR-REG-REC NORET-CREATES-OFF + = and
+   TR-REG-REC NORET.SOURCE TR-REG-REC NORET-SOURCE-OFF + = and ;
 
 ;package
 
@@ -1264,7 +1265,7 @@ public
 : TR-NORET-LAYOUT ( -- )
    TR-NORET-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
    s" control-record-layout" T-LABEL
-   stride 4 cells T=  align $8 T=  mask 0 T=
+   stride 5 cells T=  align $8 T=  mask 0 T=
    ok TR-BOOL= ;
 
 ;package

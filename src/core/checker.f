@@ -132,6 +132,7 @@ create OWNER-STORAGE
    0 , 0 ,
    0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -149,7 +150,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:VERIFY-TRUST-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:VERIFY-SYM-SOURCE-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -8725,13 +8726,15 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
 \ top-level token or tick (TOP-ANSWER), an export operand (EXPORT-RESOLVE) and a
 \ `generates:` definer (CHECKER-GENERATES), never from CHECKER-BIND itself. It
 \ takes the location of the record the binding selects at that moment, the
-\ newest one under BIND-HORIZON, and nothing when that record is a tombstone or
-\ carries none: no older row stands in. The use is the spelling's byte range in
-\ its source (NAV-SRC-XT); a spelling the source map does not hold reports
-\ nothing.
+\ newest one under BIND-HORIZON, never an older row's, and 0 0 0 when that
+\ record has none: a word the image holds has none. A tombstone reports nothing,
+\ nor does a primitive, which has no record. The use is the spelling's byte
+\ range in its source (NAV-SRC-XT); a spelling the source map does not hold
+\ reports nothing.
 defer NAV-SRC-XT ( ptr u8 -- n bool )   \ DIAG>SRC, bound beside it (NAV-SRC-INSTALL)
 \ A use: its start and end, selected symbol, and its declaration's visit,
-\ start and end. The symbol is read from the selected record at publication.
+\ start and end, 0 0 0 when it has no location. The symbol is read from the
+\ selected record at publication.
 defer CHECKER-ON-USE ( n n n n n n -- )
 : NO-USE ( n n n n n n -- ) 2drop 2drop 2drop ;
 variable USES-OPEN                      \ a CHECKER-WITH-USES scope is running
@@ -8752,15 +8755,15 @@ ON-USE-DEFAULT
    0 0 0 0 0 0 RES-FALSE ;
 
 \ SYM spelled at A U: the use's range, the bound record's offset+1 and its
-\ location, true; false when there is nothing to report.
+\ location (0 0 0 for a record that has none), true; false when there is
+\ nothing to report.
 : NAV-USE-AT ( n ptr u8 n -- n n n n n n bool )
    {: sym:n a:ptr u:n :}
    sym 0= IF NAV-NO-USE EXIT THEN
    sym USIG-NEWEST-VISIBLE {: rec1:n :}
    rec1 0= IF NAV-NO-USE EXIT THEN
    rec1 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF NAV-NO-USE EXIT THEN
-   rec1 CHECKER-REC-DECL-AT {: v:n ds:n de:n found:bool :}
-   found 0= IF NAV-NO-USE EXIT THEN
+   rec1 CHECKER-REC-DECL-AT drop {: v:n ds:n de:n :}
    a NAV-SRC-XT {: s:n mapped:bool :}
    mapped 0= IF NAV-NO-USE EXIT THEN
    s s u + rec1 v ds de RES-TRUE ;
@@ -14620,12 +14623,12 @@ CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
 $1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or CTL-INHERITED or
 CTL-INTRINSIC-MASK or CTL-NAMES or
    constant CTL-GRAPH-FLAGS
-\ $20000 not $10000: the entry carries two cells beyond (sym, flags) — the
-\ back-link and the created-word effect below — so the byte cap is scaled with
-\ them and the store still holds the same number of entries.
-$20000 constant NORET-INIT-CAP
+\ $28000 not $10000: the entry carries three cells beyond (sym, flags) — the
+\ back-link, the created-word effect and the exported word below — so the byte
+\ cap is scaled with them and the store still holds the same number of entries.
+$28000 constant NORET-INIT-CAP
 
-\ THE ENTRY IS FOUR CELLS, and this is where they are stated.
+\ THE ENTRY IS FIVE CELLS, and this is where they are stated.
 \   SYM      the symbol the facts are about; 0 terminates the store.
 \   FLAG     the symbol's whole CONTROL WORD in the XFER-PACK format: the flags
 \            below and, above them, which of the word's DECLARED inputs every
@@ -14638,16 +14641,20 @@ $20000 constant NORET-INIT-CAP
 \   SYMPREV  the per-symbol back-link that makes NORET-SCAN-SYM sublinear.
 \   CREATES  the effect a `create … does>` definer gives every word it creates,
 \            as an effect-record offset+1, 0 when the symbol is not a definer.
-\ test/engine-suite.f pins the four.
+\   SOURCE   for an export, the symbol of the word it is, through any
+\            re-exports (EXPORT-META-COPY); 0 when the symbol is its own word.
+\ test/engine-suite.f pins the five.
 0 constant NORET-SYM-CELL
 1 constant NORET-FLAG-CELL
 2 constant NORET-SYMPREV-CELL
 3 constant NORET-CREATES-CELL
+4 constant NORET-SOURCE-CELL
 $0 constant NORET-SYM-OFF
 $8 constant NORET-FLAG-OFF
 $10 constant NORET-SYMPREV-OFF
 $18 constant NORET-CREATES-OFF
-$20 constant NORET-ENTRY
+$20 constant NORET-SOURCE-OFF
+$28 constant NORET-ENTRY
 $8 constant NORET-ENTRY-ALIGN
 0 constant NORET-ENTRY-PTR-MASK
 
@@ -14655,13 +14662,15 @@ $8 constant NORET-ENTRY-ALIGN
 : NORET.FLAG ( ptr a -- ptr a ) NORET-FLAG-OFF + ;
 : NORET.SYMPREV ( ptr a -- ptr a ) NORET-SYMPREV-OFF + ;
 : NORET.CREATES ( ptr a -- ptr a ) NORET-CREATES-OFF + ;
+: NORET.SOURCE ( ptr a -- ptr a ) NORET-SOURCE-OFF + ;
 
 : NORET-LAYOUT-ASSERT ( -- )
    NORET-SYM-CELL cells NORET-SYM-OFF CHECKER-RECORD-LAYOUT=
    NORET-FLAG-CELL cells NORET-FLAG-OFF CHECKER-RECORD-LAYOUT=
    NORET-SYMPREV-CELL cells NORET-SYMPREV-OFF CHECKER-RECORD-LAYOUT=
    NORET-CREATES-CELL cells NORET-CREATES-OFF CHECKER-RECORD-LAYOUT=
-   NORET-CREATES-OFF CELL + NORET-ENTRY CHECKER-RECORD-LAYOUT=
+   NORET-SOURCE-CELL cells NORET-SOURCE-OFF CHECKER-RECORD-LAYOUT=
+   NORET-SOURCE-OFF CELL + NORET-ENTRY CHECKER-RECORD-LAYOUT=
    CELL NORET-ENTRY-ALIGN CHECKER-RECORD-LAYOUT=
    NORET-ENTRY NORET-ENTRY-ALIGN mod 0 CHECKER-RECORD-LAYOUT=
    NORET-ENTRY-PTR-MASK 0 CHECKER-RECORD-LAYOUT= ;
@@ -15125,6 +15134,14 @@ REG-EXT-AOT-DEFAULTS
 : NORET-CTL@ ( ptr n -- n )
    NORET.FLAG @ ;
 
+\ NORET-NEWEST@ ( n n -- n ) : the cell at byte offset OFF of sym's NEWEST
+\ entry, 0 when sym has no entry.
+: NORET-NEWEST@ ( n n -- n )
+   {: sym:n off:n :}
+   sym 0= IF 0 EXIT THEN
+   sym NORET-NEWEST dup 0= IF drop 0 EXIT THEN
+   1 - off + NORET-CELL @ ;
+
 \ NORET-CREATES@ ( n -- n ) : the effect sym's definer gives the words it
 \ creates, as an effect-record offset+1, 0 when sym is not a definer. Read from
 \ the NEWEST entry like the flags beside it, so a redefinition that publishes no
@@ -15132,10 +15149,20 @@ REG-EXT-AOT-DEFAULTS
 \ cached in HIDX, which holds the packed control word: the per-symbol head
 \ already answers this one in a single load, which is all an append's
 \ carry-forward and a pre-pass token that resolved to a definer need.
-: NORET-CREATES@ ( n -- n ) {: sym:n :}
-   sym 0= IF 0 EXIT THEN
-   sym NORET-NEWEST dup 0= IF drop 0 EXIT THEN
-   1 - NORET-CELL NORET.CREATES @ ;
+: NORET-CREATES@ ( n -- n ) NORET-CREATES-OFF NORET-NEWEST@ ;
+
+\ NORET-SOURCE@ ( n -- n ) : for an export, the symbol of the word it is
+\ (EXPORT-META-COPY); 0 otherwise. Read from the NEWEST entry like CREATES, so
+\ the entry an `undefine` appends retires it and the name defined afresh is its
+\ own word.
+: NORET-SOURCE@ ( n -- n ) NORET-SOURCE-OFF NORET-NEWEST@ ;
+
+\ The word a symbol is: for an export, the symbol of the word it exports,
+\ through any re-exports; otherwise the symbol itself. A source the capture
+\ swept (a private word of a sealed package, src/core/checker-surface.f) keeps
+\ its id and answers no identity.
+: CHECKER-SYM-SOURCE ( n -- n ) {: sym:n :}
+   sym NORET-SOURCE@ dup 0= IF drop sym THEN ;
 
 \ HIDX-CTL-SYNC ( -- ) : flush the cache when NORETS rewound below a cached
 \ dependency. The store swap paths (persist/reset) keep values or rewind END.
@@ -15154,7 +15181,7 @@ REG-EXT-AOT-DEFAULTS
 \ appender that wrote only its own part would retire the rest by silence: a
 \ definition records its flags and its intact masks, and on the same record the
 \ effect authority appends its provenance flag and the created-word effect.
-: NORET-APPEND {: sym:n flag:n dmask:n rmask:n creates:n :}
+: NORET-APPEND {: sym:n flag:n dmask:n rmask:n creates:n source:n :}
    WRITE-WINDOW-CK
    sym 0= IF EXIT THEN
    flag dmask rmask XFER-PACK {: ctl:n :}
@@ -15165,6 +15192,7 @@ REG-EXT-AOT-DEFAULTS
    ctl NORET-REC NORET.FLAG !
    0 NORET-REC NORET.SYMPREV !
    creates NORET-REC NORET.CREATES !
+   source NORET-REC NORET.SOURCE !
    NORET-END @ sym NRX-LINK
    NORET-END @ NORET-ENTRY + NORET-END !
    NORET-TERM
@@ -15174,11 +15202,21 @@ REG-EXT-AOT-DEFAULTS
       NORET-END @ HIDX-CTL-DEP+
    THEN ;
 
+\ The flags, masks and created-effect appender: what the effect authority
+\ (STORE), a definer's native clause and a `generates:` row have to say, and
+\ NORET-ADD-SYM below. None of them says which word the symbol exports, so that
+\ fact is carried forward from its newest entry: only an export, an `undefine`
+\ and a unit's import name one, through NORET-APPEND (EXPORT-META-COPY,
+\ CHECKER-UNDEFINE, UNIT-IMPORT-CONTROLS).
+: NORET-ADD-CREATES ( n n n n n -- )
+   {: sym:n flag:n dmask:n rmask:n creates:n :}
+   sym flag dmask rmask creates sym NORET-SOURCE@ NORET-APPEND ;
+
 \ The flags-and-masks appender: what a definition, a transfer or a barrier has
 \ to say. None of them says anything about what the symbol creates, so that
 \ fact is carried forward from the symbol's newest entry.
 : NORET-ADD-SYM {: sym:n flag:n dmask:n rmask:n :}
-   sym flag dmask rmask sym NORET-CREATES@ NORET-APPEND ;
+   sym flag dmask rmask sym NORET-CREATES@ NORET-ADD-CREATES ;
 
 \ The name-keyed appender records NO intact evidence: every caller of it has
 \ none to give (the axioms below, a body that failed to check, a test pinning a
@@ -15265,10 +15303,27 @@ REG-EXT-AOT-DEFAULTS
 NORET-AXIOMS
 NORET-END @ constant NORET-PRIM-END
 
-\ Undefining retires every fact the name carried, the created-word effect with
-\ them: the entry is appended through NORET-APPEND rather than NORET-ADD-SYM
-\ precisely because the carry-forward there would keep a definer's created
-\ effect alive under a name that no longer exists. Inside the verifier window
+\ The entry at OFF appended again with no source, when it is its symbol's
+\ newest and names SRC as the word it is: that symbol is then its own word.
+: NORET-SOURCE-RETIRE ( n n -- )
+   {: off:n src:n :}
+   off NORET-CELL NORET.SOURCE @ src <> IF EXIT THEN
+   off NORET-CELL NORET.SYM @ {: sym:n :}
+   sym NORET-NEWEST off 1 + <> IF EXIT THEN
+   off NORET-CELL NORET-CTL@ {: ctl:n :}
+   sym ctl XFER-FLAGS ctl XFER-DMASK ctl XFER-RMASK
+   off NORET-CELL NORET.CREATES @ 0 NORET-APPEND ;
+
+\ Undefining retires every fact the name carried, the created-word effect and
+\ the exported word with them: the entry is appended through NORET-APPEND
+\ rather than NORET-ADD-SYM precisely because the carry-forward there would
+\ keep a definer's created effect, or an export's link, alive under a name
+\ that no longer exists. It retires every link that names the word as well:
+\ the symbol outlives the name, and the name defined afresh takes it, while an
+\ export of the old word still runs that word. The walk reads the entries
+\ present before it and appends past them (NORET-SOURCE-RETIRE); a rollback
+\ rewinds those entries and a capture compacts them as it does any other.
+\ Inside the verifier window
 \ the replayed `undefine` also retires the engine records of the name, as the
 \ engine's own does (CHECKER-OVERLAY:RETIRE).
 : CHECKER-UNDEFINE ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -15276,7 +15331,9 @@ NORET-END @ constant NORET-PRIM-END
    a u CHECKER-RECORD-NAME {: name:ptr nameu:n :}
    name nameu USIG-DELETE
    name nameu DFER-DELETE
-   name nameu CHECKER-RECORD-SYM 0 0 0 0 NORET-APPEND
+   name nameu CHECKER-RECORD-SYM {: sym:n :}
+   sym 0 0 0 0 0 NORET-APPEND
+   NORET-END @ NORET-ENTRY / 0 ?do i NORET-ENTRY * sym NORET-SOURCE-RETIRE loop
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF a u CHECKER-OVERLAY:RETIRE THEN ;
 
 : CHECKER-DEFLINEAR ( ptr u8 n -- )
@@ -15625,7 +15682,7 @@ private
    old EFFECT-EXTERNAL invert and
    external IF EFFECT-EXTERNAL or THEN {: flags:n :}
    old flags <>  creates sym NORET-CREATES@ <>  or IF
-      sym flags sym CTL-MASKS-SYM creates NORET-APPEND
+      sym flags sym CTL-MASKS-SYM creates NORET-ADD-CREATES
    THEN ;
 \ Each record is then published to the checker overlay, so a replay's later
 \ bodies bind its name through the engine (CHECKER-OVERLAY:PUBLISH).
@@ -16026,16 +16083,19 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 \ about it is the exported name's too: the evidence its body proved about its
 \ declared inputs, and the words it creates if it is a definer. The exported
 \ tail is a symbol of its own and carries nothing forward, so all three are
-\ copied here - all but its identity (CTL-IDENTITY). The export is another
-\ record, which both compilers call instead of lowering it as the engine word
-\ (habu2.f C-OP-ROW-GATE and NDICT SPELL-PRIM? claim only the seeded record), so
-\ a rule that types the engine word must not judge it.
+\ copied here - all but its identity (CTL-IDENTITY). Its entry also names the
+\ word it is, the source's own word when the source is an export too, so one
+\ hop from any export reaches the word (CHECKER-SYM-SOURCE). The export is
+\ another record, which both compilers call instead of lowering it as the
+\ engine word (habu2.f C-OP-ROW-GATE and NDICT SPELL-PRIM? claim only the
+\ seeded record), so a rule that types the engine word must not judge it.
 : EXPORT-META-COPY ( ptr u8 n n -- ) {: a:ptr u:n src:n :}
    src DFER-FIND-SYM IF a u EXPORT-TAIL$ DFER-ADD THEN
    src CTL-FLAGS-SYM CTL-IDENTITY invert and {: ctl:n :}
    src CTL-MASKS-SYM {: dm:n rm:n :}
    src NORET-CREATES@ {: creates:n :}
-   a u EXPORT-TAIL$ CHECKER-RECORD-SYM ctl dm rm creates NORET-APPEND ;
+   a u EXPORT-TAIL$ CHECKER-RECORD-SYM ctl dm rm creates
+   src CHECKER-SYM-SOURCE NORET-APPEND ;
 
 \ An export of a does> definer publishes the definer's clause too, under the
 \ clause's name in the export's wordlist (src/habu/habu2.f C-EXPORT). The live
@@ -24936,7 +24996,7 @@ variable TOP-ASK-ANSWER
    sym CHECKER-FIND-USIG-SYM 0= IF EXIT THEN
    sym EFFECT-EXTERNAL-SYM? 0= IF EXIT THEN
    creates sym NORET-CREATES@ = IF EXIT THEN
-   sym sym CTL-FLAGS-SYM sym CTL-MASKS-SYM creates NORET-APPEND ;
+   sym sym CTL-FLAGS-SYM sym CTL-MASKS-SYM creates NORET-ADD-CREATES ;
 
 : CHECKER-NATIVE-DOES-FINISH ( ptr u8 n bool -- )
    {: a:ptr u:n committed:bool :}
@@ -25070,7 +25130,7 @@ TRUSTED: generates: ( -- )
    na nu sa su RES-FALSE CHECKER-GENERATES
    {: sym:n rec:n :}
    rec 0= IF EXIT THEN
-   sym sym CTL-FLAGS-SYM sym CTL-MASKS-SYM rec NORET-APPEND ;
+   sym sym CTL-FLAGS-SYM sym CTL-MASKS-SYM rec NORET-ADD-CREATES ;
 
 \ ---- parses: rows -------------------------------------------------------------
 \ A TOP-LEVEL WORD THAT READS THE SOURCE AFTER IT (CTL-PARSES) TAKES TOKENS NO
@@ -25612,6 +25672,8 @@ private
 : UNIT-CONTROL-SYM? ( n -- ) NORET-CELL NORET.SYM @ UNIT-SYM-ORD drop ;
 : UNIT-CONTROL-CREATES? ( n -- )
    NORET-CELL NORET.CREATES @ 0 <> IF UNIT-BAD THEN ;
+: UNIT-CONTROL-SOURCE? ( n -- )
+   NORET-CELL NORET.SOURCE @ 0 <> IF UNIT-BAD THEN ;
 
 : UNIT-SOURCE-CONTROLS ( -- )
    0 UNIT-NCTL !
@@ -25619,6 +25681,7 @@ private
    BEGIN UNIT-CUR @ NORET-END @ < WHILE
       UNIT-CUR @ UNIT-CONTROL-SYM?
       UNIT-CUR @ UNIT-CONTROL-CREATES?
+      UNIT-CUR @ UNIT-CONTROL-SOURCE?
       1 UNIT-NCTL +!
       UNIT-CUR @ NORET-ENTRY + UNIT-CUR !
    REPEAT ;
@@ -25867,7 +25930,7 @@ UNIT-CON-INSTALL
    UNIT-READ-CTLS @ 0 ?do
       UNIT-READ-ORD UNIT-SYMN @ + {: sym:n :}
       UNIT-READ-CELL {: packed:n :}
-      sym packed XFER-FLAGS packed XFER-DMASK packed XFER-RMASK 0 NORET-APPEND
+      sym packed XFER-FLAGS packed XFER-DMASK packed XFER-RMASK 0 0 NORET-APPEND
    loop ;
 
 : UNIT-IMPORT-RUN ( -- )
@@ -26556,6 +26619,7 @@ package CHECKER-REG
 ' CHECKER-VERIFY-DEFERRED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-OFF + xt!
 ' CHECKER-VERIFY-REACH DECLARATIONS CHECKER-OWNER-ABI:VERIFY-REACH-OFF + xt!
 ' CHECKER-SYM-IDENTITY DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SYM-IDENTITY-OFF + xt!
+' CHECKER-SYM-SOURCE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SYM-SOURCE-OFF + xt!
 ' CHECKER-VERIFY-DEFERRED-BODY DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-BODY-OFF + xt!
 ' CHECKER-DECL-AT! DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DECL-ARM-OFF + xt!
 ' CHECKER-DECL-AT-OFF DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DECL-DISARM-OFF + xt!

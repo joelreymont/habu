@@ -702,6 +702,13 @@ loader span; the caller keeps the original code. The stopped source remains
 valid until the next composition, and the packet uses the diagnostics writer's
 borrowed buffer. `VERIFY:FAULT-TARGET$` names the
 canonical file that an `E-SOURCE-READ` load could not read.
+For the binding each reference selected, in the subject and every file its
+loads read, install `VERIFY:ON-BINDING ( n n n -- )`: the use's byte range in
+`VERIFY:FILE$` and the symbol, reported for image-held words too;
+`VERIFY:SYM-SOURCE ( n -- n )` answers the word a symbol is through re-exports;
+a source the capture swept answers an empty `VERIFY:SYM-IDENTITY`, which a
+caller reads as no word. `ON-USE` keeps reporting only located declarations
+used in the subject.
 
 The child, `tools/check-verify-child.f`, is run only by this operation and by
 `CHECK:PREVERIFY-BYTES`, check.f's pre-pass:

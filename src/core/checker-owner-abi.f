@@ -237,6 +237,10 @@ $1F00 constant BINDING-ID-MASK
 \ statement read before it marked that wordlist (src/core/checker.f
 \ CHECKER-VERIFY-TRUST).
 $3D0 constant VERIFY-TRUST-OFF
+\ The word a symbol is (src/core/checker.f CHECKER-SYM-SOURCE): ( n -- n ), for
+\ an export the symbol of the word it exports, through any re-exports;
+\ otherwise the symbol itself.
+$3D8 constant VERIFY-SYM-SOURCE-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

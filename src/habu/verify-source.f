@@ -1109,6 +1109,7 @@ TRUSTED: CHECK-BODY ( ptr u8 n -- n )
 \ of the field it calls.
 CAST: SYM-ACTION ( n -- [ ptr u8 n -- n ] )
 CAST: IDENTITY-ACTION ( n -- [ n -- ptr u8 n ptr u8 n n ] )
+CAST: SOURCE-ACTION ( n -- [ n -- n ] )
 CAST: CREATES-ACTION ( n -- [ n -- n ] )
 CAST: CREATED-ACTION ( n -- [ ptr u8 n n -- bool ] )
 CAST: DOES-ACTION ( n -- [ ptr u8 n ptr u8 n ptr u8 n -- n ] )
@@ -1269,6 +1270,13 @@ public
 \ checker owner until that owner next interns a symbol.
 : SYM-IDENTITY ( n -- ptr u8 n ptr u8 n n )
    NCOMP-DISPATCH:DECL-VERIFY-SYM-IDENTITY-OFF OWNER-XT IDENTITY-ACTION execute ;
+
+\ The word a symbol is: for an export, the symbol of the word it names, through
+\ any re-exports, or the export itself once that word is undefined; otherwise
+\ the symbol itself. A source the capture swept, such as a private word of a
+\ sealed package, keeps its symbol with an empty SYM-IDENTITY: no word.
+: SYM-SOURCE ( n -- n )
+   NCOMP-DISPATCH:DECL-VERIFY-SYM-SOURCE-OFF OWNER-XT SOURCE-ACTION execute ;
 
 private
 
@@ -1887,6 +1895,17 @@ defer ON-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
 \ reported.
 defer ON-USE ( n n ptr u8 n n n n n -- )
 
+\ A use the checker bound, in the file FILE$ names, as its scan reads it: where
+\ the use starts and ends there, at the base TOKEN-BYTE@ counts from, and the
+\ selected symbol (SYM-IDENTITY; SYM-SOURCE for the word it is through
+\ re-exports). Reported for the subject and for every file a load reads, each
+\ time it is read, whether or not the declaration has a location: a word the
+\ image holds is reported like any other. A primitive has no record and is not
+\ reported. A use in a colon body is reported when the body's check publishes
+\ it, at the definition's end. A source the capture swept has an empty
+\ identity, which is no word.
+defer ON-BINDING ( n n n -- )
+
 \ A top-level loader of the subject whose load reached a file, once the file
 \ was selected: where its operand starts and ends in the subject, at the base
 \ TOKEN-BYTE@ counts from (the token after `include` or `require`, a string
@@ -1969,6 +1988,13 @@ SUPPLIED-INIT
 
 USE-INIT
 
+: BINDING-NONE ( n n n -- )  2drop drop ;
+
+: BINDING-INIT ( -- )
+   ['] BINDING-NONE is ON-BINDING ;
+
+BINDING-INIT
+
 : LOADER-NONE ( n n ptr u8 n n -- )
    2drop 2drop drop ;
 
@@ -1977,10 +2003,12 @@ USE-INIT
 
 LOADER-INIT
 
-\ A use the checker published, at the subject's base: reported when it is in
-\ the subject and its declaration lies in a file this composition visited.
+\ A use the checker published, at the base of the file being read: always a
+\ binding, and a use when it is in the subject and its declaration lies in a
+\ file this composition visited.
 : USE-SEEN ( n n n n n n -- )
    {: s:n e:n sym:n v:n ds:n de:n :}
+   s BASE-BYTE @ +  e BASE-BYTE @ +  sym ON-BINDING
    VISIT-CUR @ VISIT-FIRST @ <> IF EXIT THEN
    v VISIT-IN? 0= IF EXIT THEN
    s BASE-BYTE @ +  e BASE-BYTE @ +  v VISIT-PATH  ds de sym v ON-USE ;

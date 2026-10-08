@@ -355,6 +355,10 @@ SUITE check-verify
    tools/check-verify-test.f
 ;SUITE
 
+SUITE verify-binding
+   test/verify-binding.f
+;SUITE
+
 SUITE lsp-boundary
    tools/lsp-test.f
 ;SUITE
