@@ -113,8 +113,8 @@ public
 
 \ The result of textDocument/rename, the changes that write this name over
 \ the tail of each location, to the writer. The declaration is the first
-\ location, then each subject's uses: the walk gives each subject once, P
-\ first, so each URI's locations are one run.
+\ location, then the uses by file, P's first (LSP-REFERENCES:SETTLE), so
+\ each URI's locations are one run.
 : ANSWER ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
    {: name:ptr nu:n :}
    OBJECT-START

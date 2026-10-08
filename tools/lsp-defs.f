@@ -33,15 +33,17 @@
 \ declares another word, in another wordlist or, after `undefine`, in the
 \ same one.
 \
-\ A use is a use in the document that the check bound to a located
-\ declaration, in the order the check published them: the bytes of the
-\ document's text it starts and ends at, the check's group for the file the
-\ declaration is in, and the bytes its declaring token starts and ends at
-\ there. DEFS-USE-AT finds the use that holds a byte of a document's text and
-\ USE-GROUP its group, which holds its declaration as the check read it: no
-\ other check's group for the file, whose text may differ, answers for a use.
-\ USE-WORD$ gives the word as a use writes it. DEFS-USE-RANGE gives the uses of
-\ a document's last completed check in the order the check published them.
+\ A use is a use that the check bound to a located declaration, in the order
+\ the check published them: the check's group for the file the use is in,
+\ which USE-IN gives, the document's own file for a document's check, the
+\ bytes of that file's text it starts and ends at, the check's group for the
+\ file the declaration is in, and the bytes its declaring token starts and
+\ ends at there. DEFS-USE-AT finds the use that holds a byte of a document's
+\ text and USE-GROUP its declaration's group, which holds its declaration as
+\ the check read it: no other check's group for the file, whose text may
+\ differ, answers for a use. USE-WORD$ gives the word as a use writes it.
+\ DEFS-USE-RANGE gives the uses of a document's last completed check, or of
+\ the probe's, in the order the check published them.
 \ DEFS-KEEP also takes whether the check's verdict was verified, which
 \ DEFS-VERIFIED? answers while the check's positions are of the document's
 \ current text: a verified check reported every use in the document that it
@@ -73,12 +75,12 @@
 \ digests and strings are the store's own: a caller copies what it needs
 \ before the store keeps or drops another check.
 \
-\ DEFS-PROBE keeps a completed check of a file on disk that no open document
-\ holds as the probe, under the slot PROBE, until DEFS-UNPROBE removes it: its
-\ groups, digests, decls and uses, but no record, and none of its groups its
-\ own file's or answering in another's place, so that it leaves every open
-\ document's groups, decls and uses as they were. Nothing is kept or dropped
-\ while a probe is kept.
+\ DEFS-PROBE keeps a completed check of a file, of an open document's text or
+\ of the file on disk, as the probe, under the slot PROBE, until DEFS-UNPROBE
+\ removes it: its groups, which DEFS-GROUP-RANGE gives, digests, decls and
+\ uses, but no record, and none of its groups its own file's or answering in
+\ another's place, so that it leaves every open document's groups, decls and
+\ uses as they were. Nothing is kept or dropped while a probe is kept.
 \
 \ The store holds the groups check after check, oldest first, each check's in
 \ the order its definition lines first name their files, then the files it
@@ -184,9 +186,10 @@ private
 18 constant REC-CELLS
 
 \ A use: the bytes it starts and ends at, its check's group for its
-\ declaration's file, the bytes its declaring token starts and ends at, and
-\ its declaration's identity: its visit, -1 for none, its name's and
-\ package's offsets and lengths in BYTES, and its visibility.
+\ declaration's file, the bytes its declaring token starts and ends at, its
+\ declaration's identity: its visit, -1 for none, its name's and package's
+\ offsets and lengths in BYTES, and its visibility; then its check's group
+\ for the file it is in.
 0 constant U-START
 1 constant U-END
 2 constant U-GROUP
@@ -198,7 +201,8 @@ private
 8 constant U-PKG
 9 constant U-PKG-U
 10 constant U-VIS
-11 constant USE-CELLS
+11 constant U-IN
+12 constant USE-CELLS
 
 \ A decl: its check's group for its declaration's file, the bytes its token
 \ starts and ends at, its visit, -1 for none, its name's and package's
@@ -234,6 +238,8 @@ variable BYTES-U
 create JR-ST JR:STORAGE-BYTES allot      \ JR storage for decoding a line
 DYNAMIC-BUFFER FILE-B u8                 \ the line's file, decoded,
 variable FILE-U
+DYNAMIC-BUFFER IN-B u8                   \ the file a use line's use is in,
+variable IN-U
 variable CLASS-V                         \ its class,
 variable WORD-AT                         \ its word's offset in BYTES,
 variable WORD-U
@@ -278,6 +284,7 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
 
 : PATH$ ( n -- ptr u8 n )  dup G-PATH GROUP@ swap G-PATH-U GROUP@ AT$ ;
 : FILE$ ( -- ptr u8 n )  0 FILE-B FILE-U @ ;
+: IN$ ( -- ptr u8 n )  0 IN-B IN-U @ ;
 
 \ The bytes appended to BYTES: their offset there.
 : BYTES+ ( ptr u8 n -- n )
@@ -303,6 +310,12 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    JR:SPAN$ nip {: raw:n :}
    raw 1 max FILE-B-RESERVE
    0 FILE-B raw JR:STR FILE-U ! ;
+
+\ The string the reader is at, decoded into IN-B.
+: STRING>IN ( JR:reader -- JR:reader )
+   JR:SPAN$ nip {: raw:n :}
+   raw 1 max IN-B-RESERVE
+   0 IN-B raw JR:STR IN-U ! ;
 
 \ The class the string the reader is at names; a word for any class the
 \ verifier names but this store does not tell apart.
@@ -342,6 +355,7 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    then
    s" visibility" JR:STR-EQ? if JR:NEXT drop VIS-OF VIS-V ! exit then
    s" file" JR:STR-EQ? if JR:NEXT drop STRING>FILE exit then
+   s" in" JR:STR-EQ? if JR:NEXT drop STRING>IN exit then
    s" byte_start" JR:STR-EQ? if JR:NEXT drop JR:INT START-V ! exit then
    s" byte_end" JR:STR-EQ? if JR:NEXT drop JR:INT END-V ! exit then
    s" target_start" JR:STR-EQ? if JR:NEXT drop JR:INT TARGET-V ! exit then
@@ -370,6 +384,7 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    0 VISIT-V !
    -1 VIS-V !
    0 FILE-U !
+   0 IN-U !
    0 START-V !
    0 END-V !
    0 TARGET-V !
@@ -379,15 +394,16 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    begin JR:NEXT JR:T-KEY = while MEMBER repeat
    JR:CLOSE ;
 
-\ The group of the line's file among this check's, if it has one: the group
-\ positions count for first, then the others.
-: FOUND ( -- option<n> )
+\ The group of the file at this path among this check's, if it has one: the
+\ group positions count for first, then the others.
+: FOUND ( ptr u8 n -- option<n> )
+   {: p:ptr pu:n :}
    CUR-G @ {: cur:n :}
    cur 0 >= if
-      cur PATH$ FILE$ STR= if cur OPTION:SOME exit then
+      cur PATH$ p pu STR= if cur OPTION:SOME exit then
    then
    GROUP-N @ BLOCK-N @ 1- B-GROUP BLOCK@ ?do
-      i PATH$ FILE$ STR= if i OPTION:SOME unloop exit then
+      i PATH$ p pu STR= if i OPTION:SOME unloop exit then
    loop
    OPTION:NONE ;
 
@@ -420,20 +436,21 @@ private
 \ block's.
 : KEPT-SLOT ( -- n )  BLOCK-N @ 1- B-SLOT BLOCK@ ;
 
-\ A new group of this check's, for the line's file, with no digest yet: its
-\ index. The group of the document's own file is at the URI of that
-\ document, whose text its positions count in (COUNT-IN); the probe's
-\ check is of no document's.
-: GROUP+ ( -- n )
+\ A new group of this check's, for the file at this path, which does not lie
+\ in BYTES, with no digest yet: its index. The group of the document's own
+\ file is at the URI of that document, whose text its positions count in
+\ (COUNT-IN); the probe's check is of no document's.
+: GROUP+ ( ptr u8 n -- n )
+   {: p:ptr pu:n :}
    GROUP-N @ {: g:n :}
    g 1+ GROUP-CELLS * GROUPS-RESERVE
    KEPT-SLOT {: slot:n :}
-   slot 0 >= if FILE$ slot DOC-CANON$ STR= else false then {: own:bool :}
+   slot 0 >= if p pu slot DOC-CANON$ STR= else false then {: own:bool :}
    0 g G-OVER GROUP!
    UNSEEN g G-SHA GROUP!
-   FILE$ BYTES+ g G-PATH GROUP!
-   FILE-U @ g G-PATH-U GROUP!
-   own if KEPT-SLOT DOC-URI$ else FILE$ DEP-URI$ then URI-JSON {: ua:ptr uu:n :}
+   p pu BYTES+ g G-PATH GROUP!
+   pu g G-PATH-U GROUP!
+   own if KEPT-SLOT DOC-URI$ else p pu DEP-URI$ then URI-JSON {: ua:ptr uu:n :}
    ua uu BYTES+ g G-URI GROUP!
    uu g G-URI-U GROUP!
    -1 g G-FIRST GROUP!
@@ -455,12 +472,17 @@ private
    ;MATCH
    g CUR-G ! ;
 
-\ The group of the line's file, made if this check has none.
-: FILE-GROUP ( -- n )
-   FOUND MATCH option
+\ The group of the file at this path, which does not lie in BYTES, made if
+\ this check has none.
+: GROUP-AT ( ptr u8 n -- n )
+   {: p:ptr pu:n :}
+   p pu FOUND MATCH option
       some OF ENDOF
-      none OF GROUP+ ENDOF
+      none OF p pu GROUP+ ENDOF
    ;MATCH ;
+
+\ The group of the line's file, made if this check has none.
+: FILE-GROUP ( -- n )  FILE$ GROUP-AT ;
 
 \ The group of the line's file, positions counting in its text.
 : GROUP ( -- n )
@@ -625,17 +647,19 @@ private
 \ has none: the digest's fate is settled before a new group's strings follow
 \ it.
 : FILE-LINE ( -- )
-   FOUND MATCH option
+   FILE$ FOUND MATCH option
       some OF {: g:n :} g G-SHA GROUP@ DIGEST-AFTER g G-SHA GROUP! ENDOF
-      none OF UNSEEN DIGEST-AFTER GROUP+ G-SHA GROUP! ENDOF
+      none OF UNSEEN DIGEST-AFTER FILE$ GROUP+ G-SHA GROUP! ENDOF
    ;MATCH ;
 
 \ The line's use, last of this check's, with the identity of the
-\ declaration it is bound to: the strings the line decoded are dropped but
-\ that identity's, before a new group's are added.
+\ declaration it is bound to and the group of the file it is in: the strings
+\ the line decoded are dropped but that identity's, before a new group's are
+\ added.
 : KEEP-USE ( -- )
    IDS-DOWN
    FILE-GROUP {: g:n :}
+   IN$ GROUP-AT {: in:n :}
    USE-N @ {: u:n :}
    u 1+ USE-CELLS * USES-RESERVE
    START-V @ u U-START USE!
@@ -649,6 +673,7 @@ private
    PKG-AT @ u U-PKG USE!
    PKG-U @ u U-PKG-U USE!
    VIS-V @ u U-VIS USE!
+   in u U-IN USE!
    1 USE-N +! ;
 
 \ The line at offset O of the lines, decoded, given to XT; the offset after it.
@@ -732,10 +757,11 @@ private
    d D-NAME DECL@ dt - d D-NAME DECL!
    d D-PKG DECL@ dt - d D-PKG DECL! ;
 
-\ Use U's group DG groups down, and its strings DT bytes.
+\ Use U's groups DG groups down, and its strings DT bytes.
 : USE-DOWN ( n n n -- )
    {: u:n dg:n dt:n :}
    u U-GROUP USE@ dg - u U-GROUP USE!
+   u U-IN USE@ dg - u U-IN USE!
    u U-NAME USE@ dt - u U-NAME USE!
    u U-PKG USE@ dt - u U-PKG USE! ;
 
@@ -801,7 +827,7 @@ private
 
 \ The first use of block K whose bytes, from its start to before its end, hold
 \ this byte, if one does.
-: USE-IN ( n n -- option<n> )
+: USE-HOLDING ( n n -- option<n> )
    {: k:n at:n :}
    k B-USE USE-N @ BLOCK-END k B-USE BLOCK@ ?do
       i U-START USE@ at <= i U-END USE@ at > and
@@ -867,10 +893,11 @@ public
       none OF ENDOF
    ;MATCH ;
 
-\ Keeps these file, definition and use lines of a completed check of a file
-\ on disk that no open document holds, and whether its verdict was verified,
-\ as the probe, in place of the one the store keeps: the newest block, under
-\ the slot PROBE, with no record, whose groups answer in no other's place.
+\ Keeps these file, definition and use lines of a completed check of a file,
+\ of an open document's text or of the file on disk, and whether its verdict
+\ was verified, as the probe, in place of the one the store keeps: the newest
+\ block, under the slot PROBE, with no record, whose groups answer in no
+\ other's place.
 : DEFS-PROBE ( ptr u8 n ptr u8 n ptr u8 n bool -- )
    {: fa:ptr fu:n a:ptr u:n ua:ptr uu:n verified:bool :}
    DEFS-UNPROBE
@@ -934,12 +961,15 @@ public
 : DEFS-USE-AT ( n n -- option<n> )
    {: slot:n at:n :}
    slot BLOCK-OF MATCH option
-      some OF at USE-IN ENDOF
+      some OF at USE-HOLDING ENDOF
       none OF OPTION:NONE ENDOF
    ;MATCH ;
 
 \ The check's group for the file the use's declaration is in.
 : USE-GROUP ( n -- n )  U-GROUP USE@ ;
+
+\ The check's group for the file the use is in.
+: USE-IN ( n -- n )  U-IN USE@ ;
 
 \ The bytes the use's declaring token starts and ends at, in that file.
 : USE-TARGET ( n -- n n )
@@ -960,10 +990,10 @@ public
    to a max tu min {: b:n :}
    t a + b a - ;
 
-\ The uses of the last completed check of the document in this slot, as the
-\ limit and first index of a ?do loop over them, in the order the check
-\ published them; none if the store keeps no check of it or a check of it
-\ has started since.
+\ The uses of the last completed check of the document in this slot, or of
+\ the probe's for PROBE, as the limit and first index of a ?do loop over
+\ them, in the order the check published them; none if the store keeps no
+\ check of it or a check of it has started since.
 : DEFS-USE-RANGE ( n -- n n )
    BLOCK-OF MATCH option
       some OF {: k:n :} k B-USE USE-N @ BLOCK-END k B-USE BLOCK@ ENDOF
@@ -994,6 +1024,15 @@ public
 : DEFS-DECL-RANGE ( n -- n n )
    BLOCK-OF MATCH option
       some OF {: k:n :} k B-DECL DECL-N @ BLOCK-END k B-DECL BLOCK@ ENDOF
+      none OF 0 0 ENDOF
+   ;MATCH ;
+
+\ The groups of the last completed check of the document in this slot, or of
+\ the probe's for PROBE, as the limit and first index of a ?do loop over
+\ them; none if the store keeps no such check.
+: DEFS-GROUP-RANGE ( n -- n n )
+   BLOCK-OF MATCH option
+      some OF {: k:n :} k B-GROUP GROUP-N @ BLOCK-END k B-GROUP BLOCK@ ENDOF
       none OF 0 0 ENDOF
    ;MATCH ;
 

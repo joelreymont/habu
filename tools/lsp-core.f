@@ -92,8 +92,9 @@
 \ it checks that document first, as its turn, and is answered from that check,
 \ which takes the text the client asked about, since LSP orders a request
 \ after the changes sent before it. textDocument/references and
-\ textDocument/rename check each open document they gather uses from the
-\ same way when it waits for a check.
+\ textDocument/rename check their document the same way when it waits for a
+\ check, then each file they gather uses from, an open document's text or
+\ the file on disk, for those uses alone, publishing nothing.
 \ textDocument/completion checks its document as its turn whether it waits or
 \ not, with a cursor at the position, and is answered from that check: the
 \ spellings it offers belong to that cursor. Closing a document publishes an
@@ -800,17 +801,18 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    then
    false ;
 
-\ Each subject's uses gathered, an open one waiting for a check checked first;
-\ before each and once all are, the request is answered instead when HALTED?
-\ says, and false.
+\ Each subject's uses gathered, then settled (LSP-REFERENCES:SETTLE); before
+\ each and once all are, the request is answered instead when HALTED? says,
+\ and false.
 : GATHERED? ( JSON-RPC:id -- bool )
    {: id :}
    LSP-REFERENCES:SUBJECT-N 0 ?do
       id HALTED? if false unloop exit then
-      i LSP-REFERENCES:SUBJECT-SLOT dup 0 >= if CHECK-WAITING else drop then
       i LSP-REFERENCES:GATHER
    loop
-   id HALTED? 0= ;
+   id HALTED? if false exit then
+   LSP-REFERENCES:SETTLE
+   true ;
 
 \ Every use of the declaration at params.position in the open document
 \ params.textDocument names, and the declaration first when

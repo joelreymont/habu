@@ -367,9 +367,7 @@
 \   it but whose text on disk does not left out, or a file loading one whose
 \   text on disk loads it but whose open text does not given; a file
 \   that reaches it only through a file outside the workspace left out, or
-\   that file given; a file outside the workspace that reaches it not named
-\   outside, once whatever roots reach it, or one that does not or the file
-\   itself named; a file under .jj-ws/ given; the file itself not given
+\   that file given; a file under .jj-ws/ given; the file itself not given
 \   first, or given when neither the workspace nor an open document holds it;
 \   a load of a file not there refused; a file reached under two roots, whose
 \   loads resolve against the root, walked under one; a file whose loader
@@ -415,10 +413,18 @@
 \   again, not the whole answer ............................. references-stale
 \ - the same when it changed only after the declaration, its span unchanged
 \   ...................................................... references-digest
-\ - the requesting document left out when its loads on disk no longer reach
-\   the declaration its check read ...................... references-requester
+\ - a use in the requesting document listed, or the document not named as
+\   refused, once its loads on disk no longer reach the declaration its
+\   check read ........................................... references-requester
 \ - an empty workspaceFolders not winning over rootUri
 \   .................................................. references-folders-empty
+\ - a use in a file that is no subject, read by a subject's check: in the
+\   folder, reached under another root than its own, or above it and open,
+\   its own check refused; not listed, or the file named
+\   ....................................................... references-reaching
+\ - a use in a file that loads nothing, read by the declaring document's
+\   check, in the folder or above it, not listed, or the file named
+\   ....................................................... references-fragment
 \ - a file whose check read the declaring file but declares the word there
 \   only into another package, binding its uses to that, named
 \   ........................................................ references-package
@@ -458,9 +464,11 @@
 \   its reason as references' warning gives it, in a -32803 applying no edit
 \   .......................................................... rename-uncovered
 \ - a declaration in a file outside every workspace folder and open in no
-\   document, or a use in such a file a file of a folder loads, edited, or
-\   the file not named "not in a workspace folder" in a -32803 applying no
-\   edit ....................................................... rename-outside
+\   document, or a use in such a file a file of a folder loads, not edited,
+\   or under another URI than references gives ................. rename-outside
+\ - a use references-reaching lists not edited, or under another URI than
+\   references gives .......................................... rename-reaching
+\ - a use references-fragment lists not edited ................ rename-fragment
 \ - a use of an EXPORT, the EXPORT's operand, or the word it exports while a
 \   file on disk exports it, answered other than -32803 naming the file that
 \   exports it; prepareRename at the use answered other than -32803
@@ -568,10 +576,10 @@ using BUF
 \ at 866 and the references conversations at 565 to 1369. CHECKED-MS is about
 \ six times completion's 1482 ms, and no larger. The one bounds 27 runs (the
 \ 24 conversations CONVERSE runs, answers-at-once, stdout-closed and
-\ TEST-EXIT-TIMEOUT's child) and the other 116 conversations. A server that
+\ TEST-EXIT-TIMEOUT's child) and the other 125 conversations. A server that
 \ blocks spends none of the row's CPU budget (test/suite-budget.f CPU-MS), so
-\ all 143 could reach their bounds, each failing by name, within 1260 s (27
-\ times 8 s and 116 times 9 s), inside the row's hang guard (ROW-MS, 1860 s).
+\ all 152 could reach their bounds, each failing by name, within 1341 s (27
+\ times 8 s and 125 times 9 s), inside the row's hang guard (ROW-MS, 1860 s).
 \ One that spins to its bound spends that much of the budget's 360 s, so at
 \ most 40 such held runs, or 45 at CONVERSATION-MS, fail by name before the
 \ budget ends the row.
@@ -1711,15 +1719,6 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 \ heard as it comes: the test runs no check of its own first, so the turn
 \ after it is written while the server goes on.
 : CLEAN ( ptr u8 n n -- )  EXPECT PUBLISHES ;
-
-\ Whether the next frame is that empty list; it is read only if it is.
-: CLEAN? ( ptr u8 n n -- bool )
-   EXPECT s" ]}}" EXP+
-   HEAR
-   OUT-AT @ {: at:n :}
-   NEXT-BODY EXP$ STR= {: same:bool :}
-   same 0= if at OUT-AT ! then
-   same ;
 
 \ ---- diagnostics ------------------------------------------------------------------
 
@@ -3501,6 +3500,7 @@ variable LENGTH-N                        \ the length of its directory's name
    {: from:n to:n :}
    s\" {\"byte_start\":" PAR+ from INT$ PAR+
    s\" ,\"byte_end\":" PAR+ to INT$ PAR+
+   s\" ,\"in\":" PAR+ HL-REREAD-PATH TEXT+
    s\" ,\"file\":" PAR+ HL-CASE-PATH TEXT+
    s\" ,\"target_start\":2,\"target_end\":3}\n" PAR+ ;
 
@@ -3960,7 +3960,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 \ A check's file lines for one file give it a digest only when each states
 \ the same valid one: equal ones keep it; two, one missing or one malformed,
 \ in either order, leave none. A definition and a use line without identity
-\ members, as a verifier before them states them, give no visit.
+\ members give no visit.
 : ID-DIGESTS ( n -- )
    {: slot:n :}
    PAR-B CLEAR SHA-A ID-FILE+
@@ -3982,7 +3982,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
    s\" {\"kind\":\":\",\"class\":\"word\",\"word\":\"K\",\"package\":\"\",\"visibility\":\"global\",\"file\":" PAR+
    ID-F-PATH TEXT+ s\" ,\"byte_start\":2,\"byte_end\":3}\n" PAR+
    PAR$ nip {: defs:n :}
-   s\" {\"byte_start\":0,\"byte_end\":1,\"file\":" PAR+
+   s\" {\"byte_start\":0,\"byte_end\":1,\"in\":" PAR+
+   ID-SHA-PATH TEXT+ s\" ,\"file\":" PAR+
    ID-F-PATH TEXT+ s\" ,\"target_start\":2,\"target_end\":3}\n" PAR+
    PAR$ {: a:ptr u:n :}
    a files  a files + defs files -  a defs + u defs -  slot true
@@ -4447,8 +4448,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" w/c3.f" WS-CANON s\" require f3.f\n" q execute ;
 
 \ The last answer: its files by name, in its order, then each file it could
-\ not read and why, then each file outside it that reaches the file; or the
-\ root it refused.
+\ not read and why; or the root it refused.
 : WS-ANSWER$ ( -- ptr u8 n )
    WS-B CLEAR
    LSP-WORKSPACE:REFUSED? if
@@ -4461,9 +4461,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    LSP-WORKSPACE:UNREADABLE 0 ?do
       s" ; " WS+
       i LSP-WORKSPACE:UNREADABLE$ 2swap WS-NAME WS+ s" : " WS+ WS+
-   loop
-   LSP-WORKSPACE:OUTSIDE 0 ?do
-      s" ; outside " WS+ i LSP-WORKSPACE:OUTSIDE$ WS-NAME WS+
    loop
    WS$ ;
 
@@ -4488,16 +4485,16 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" w/f1.f" s" w/a1.f" s" w/f1.f w/a1.f w/b1.f" REACHES
    s" w/f2.f" s" w/a2.f" s" w/f2.f w/a2.f" REACHES
    s" w/f3.f" s" w/c3.f" s" w/f3.f w/c3.f" REACHES
-   s" w/f4.f" s" w/a4.f" s" w/f4.f w/a4.f; outside out/b4.f" REACHES
+   s" w/f4.f" s" w/a4.f" s" w/f4.f w/a4.f" REACHES
    s" out/b4.f" s" w/a4.f" s" w/a4.f" REACHES
    s" w/f5.f" s" w/f5.f" s" w/f5.f" REACHES
    s" w/f6.f" s" w/m6.f" s" w/f6.f w/m6.f" REACHES
    s" w/f7.f" s" w/q/b7.f" s" w/f7.f w/q/b7.f w/q/y7.f" REACHES
    s" w/f7.f" s" w/p/a7.f" s" w/f7.f w/p/a7.f w/q/b7.f w/q/y7.f" REACHES
-   s" w/f9.f" s" w/p/a9.f" s" w/f9.f w/p/a9.f w/q/b9.f; outside out/x9.f" REACHES
+   s" w/f9.f" s" w/p/a9.f" s" w/f9.f w/p/a9.f w/q/b9.f" REACHES
    s" dyn" IN-GRAPH LSP-WORKSPACE:ROOT+
    s" w/f1.f" s" w/f1.f"
-   s" w/f1.f dyn/e8.f w/a1.f w/b1.f; dyn/d8.f: E-DISC-DYNAMIC; dyn/z8.f: cannot be read; outside out/h8.f"
+   s" w/f1.f dyn/e8.f w/a1.f w/b1.f; dyn/d8.f: E-DISC-DYNAMIC; dyn/z8.f: cannot be read"
    REACHES
    s" gone" IN-GRAPH LSP-WORKSPACE:ROOT+
    s" w/f1.f" s" w/f1.f" s" refused gone" REACHES ;
@@ -4536,6 +4533,9 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 : TEXT-RG ( -- ptr u8 n )  s\" : KAY ( -- n ) 1 ;\n" ;
 : TEXT-LIFE ( -- ptr u8 n )
    s\" include g.f\nundefine KAY\ninclude g.f\n: LU ( -- n ) KAY ;\n" ;
+: TEXT-RVG ( -- ptr u8 n )  s\" : GROOK ( -- n ) 1 ;\n" ;
+: TEXT-RVH ( -- ptr u8 n )  s\" require lib/g.f\n: HU ( -- n ) GROOK ;\n" ;
+: TEXT-RVE ( -- ptr u8 n )  s\" require ../h.f\n: EU ( -- n ) GROOK ;\n" ;
 
 \ g.f included into RP's and RQ's public sections and RV's public and
 \ private ones, each use naming one, then EK, private in EX, used, exported
@@ -4619,13 +4619,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s\" \"}}" EXP+
    HEAR
    EXP$ HEARD ;
-
-\ The warning that names the declaring file at this path under the fixture
-\ directory, outside every folder and open in no document, whose own uses
-\ are not read.
-: OUTSIDE ( ptr u8 n -- )
-   {: p:ptr pu:n :}
-   1 NAMED p pu CANON s" not in a workspace folder" NAMED+ NAMED-END ;
 
 \ The next frame refuses the request with this id's JSON text -32803, its
 \ message naming the file at this canonical path relative to the working
@@ -4713,9 +4706,8 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 
 \ The folders are an untitled: one, passed over, and refs-ws/w. ROOK's use in
 \ d.f is answered with its declaration in f.f and every use in the folder,
-\ the open documents' at the URIs the client opened them by, after a
-\ warning naming out/m.f, whose loads reach f.f and whose uses no check
-\ reads.
+\ the open documents' at the URIs the client opened them by. No warning
+\ comes: out/m.f, which o.f's check reads, holds no use.
 : REFS-WS-TURNS ( -- )
    REFS-WS-TREE
    PAR-B CLEAR
@@ -4730,7 +4722,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    TEXT-RE s" refs-ws/w/e.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-ws/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
-   s" refs-ws/out/m.f" OUTSIDE
    s" 3" SYMBOLS-START s" refs-ws/w/f.f" DISK-URI 0 2 6 REF+ WS-USES+ SYMBOLS-END ;
 
 : KAY-DECL+ ( -- )  s" refs-id/g.f" DISK-URI 0 2 5 REF+ ;
@@ -4740,9 +4731,9 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 
 \ RP:KAY, RQ:KAY, RV's private KAY and RV:KAY, one token of g.f each
 \ declares, each answered with that declaration and its own word's uses
-\ alone, after the warning naming g.f, which no folder holds; EK's EXPORT
-\ operand, a use of the private EK, with the private word's; the use of the
-\ export with the export's.
+\ alone; EK's EXPORT operand, a use of the private EK, with the private
+\ word's; the use of the export with the export's. g.f, which no folder
+\ holds, is not named: a verified check reads it.
 : REFS-ID-TURNS ( -- )
    s" refs-id" REFS-DIR
    s" refs-id/g.f" TEXT-RG REFS-FILE
@@ -4758,13 +4749,9 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" 7" s" refs-id/id.f" FIXTURE 21 7 DECL-TOO REFS-ASK
    s" 8" s" refs-id/id.f" FIXTURE 23 16 DECL-TOO REFS-ASK
    SAY
-   s" refs-id/g.f" OUTSIDE
    s" 3" SYMBOLS-START KAY-DECL+ 3 14 17 ID-REF+ 16 14 20 ID-REF+ SYMBOLS-END
-   s" refs-id/g.f" OUTSIDE
    s" 4" SYMBOLS-START KAY-DECL+ 16 21 27 ID-REF+ SYMBOLS-END
-   s" refs-id/g.f" OUTSIDE
    s" 5" SYMBOLS-START KAY-DECL+ 14 15 18 ID-REF+ SYMBOLS-END
-   s" refs-id/g.f" OUTSIDE
    s" 6" SYMBOLS-START KAY-DECL+ 16 30 36 ID-REF+ SYMBOLS-END
    s" 7" SYMBOLS-START 18 2 4 ID-REF+ 19 15 17 ID-REF+ 21 7 9 ID-REF+ SYMBOLS-END
    s" 8" SYMBOLS-START 21 7 9 ID-REF+ 23 16 21 ID-REF+ SYMBOLS-END ;
@@ -4796,8 +4783,8 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 
 \ life.f includes g.f, undefines KAY and includes it again: its check
 \ declares KAY at g.f's token in two visits, so life.f is named and its use
-\ not listed, while the declaration is; g.f, which no folder holds, is named
-\ first.
+\ not listed, while the declaration is. g.f, which no folder holds, is not
+\ named: a verified check reads it.
 : REFS-LIFE-TURNS ( -- )
    s" refs-life" REFS-DIR
    s" refs-life/g.f" TEXT-RG REFS-FILE
@@ -4808,8 +4795,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    TEXT-LIFE s" refs-life/life.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-life/life.f" FIXTURE 3 14 DECL-TOO REFS-ASK
    SAY
-   2 NAMED s" refs-life/g.f" CANON s" not in a workspace folder" NAMED+
-   s" refs-life/life.f" CANON s" several declaration visits" NAMED+ NAMED-END
+   1 NAMED s" refs-life/life.f" CANON s" several declaration visits" NAMED+ NAMED-END
    s" 3" SYMBOLS-START s" refs-life/g.f" DISK-URI 0 2 5 REF+ SYMBOLS-END ;
 
 : UNV-ANSWER ( ptr u8 n -- )
@@ -4916,7 +4902,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 
 \ lib/f.f, outside the folder, moved a line down on disk after d.f's check
 \ read it: the declaration cannot be placed, -32803 naming it. Once a change
-\ has d.f checked again, the whole answer, after the warning naming f.f.
+\ has d.f checked again, the whole answer.
 : REFS-STALE-TURNS ( -- )
    s" refs-stl" REFS-DIR s" refs-stl/lib" REFS-DIR s" refs-stl/w" REFS-DIR
    s" refs-stl/lib/f.f" TEXT-RF REFS-FILE
@@ -4934,14 +4920,14 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" 4" s" refs-stl/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
    TEXT-RSTL s" refs-stl/w/d.f" FIXTURE 2 s" verified" LISTED
-   s" refs-stl/lib/f.f" OUTSIDE
    s" 4" SYMBOLS-START
    s" refs-stl/lib/f.f" DISK-URI 1 2 6 REF+
    s" refs-stl/w/d.f" OPEN-URI 1 14 18 REF+
    SYMBOLS-END ;
 
-\ d.f reaches f.f through b.f, which on disk then loads nothing: d.f's check
-\ still read f.f, so its use is listed in its place by path.
+\ d.f reaches f.f through b.f, which on disk then loads nothing: the request
+\ checks d.f's text over the disk, where ROOK is not defined, so d.f is named
+\ as refused and only s.f's use is listed.
 : REFS-REQ-TURNS ( -- )
    s" refs-req" REFS-DIR s" refs-req/w" REFS-DIR
    s" refs-req/w/f.f" TEXT-RF REFS-FILE
@@ -4956,13 +4942,13 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-req/w/b.f" s\" \\ nothing\n" REFS-FILE
    s" 3" s" refs-req/w/d.f" FIXTURE 1 14 DECL-NOT REFS-ASK
    SAY
+   1 NAMED s" refs-req/w/d.f" CANON s" refused" NAMED+ NAMED-END
    s" 3" SYMBOLS-START
-   s" refs-req/w/d.f" OPEN-URI 1 14 18 REF+
    s" refs-req/w/s.f" DISK-URI 1 14 18 REF+
    SYMBOLS-END ;
 
 \ An empty workspaceFolders beside a rootUri: no folder, so s.f, on disk in
-\ rootUri's folder, is no subject, and f.f, declaring the word, is named.
+\ rootUri's folder, is no subject.
 : REFS-FE-TURNS ( -- )
    s" refs-fe" REFS-DIR s" refs-fe/w" REFS-DIR
    s" refs-fe/w/f.f" TEXT-RF REFS-FILE
@@ -4976,8 +4962,86 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    TEXT-RD s" refs-fe/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-fe/w/d.f" FIXTURE 1 14 DECL-NOT REFS-ASK
    SAY
-   s" refs-fe/w/f.f" OUTSIDE
    s" 3" SYMBOLS-START s" refs-fe/w/d.f" OPEN-URI 1 14 18 REF+ SYMBOLS-END ;
+
+\ A tree of the folder w whose files' own loads reach no declaration that a
+\ check reads them under: f.f declares ROOK; q/b.f, open, requires ../s/x.f,
+\ which requires y.f, found only under q/, the root that reached x.f, where
+\ q/y.f requires ../f.f; b.f and x.f use ROOK. lib/g.f declares GROOK; e.f,
+\ open, requires ../h.f, above the folder and open, whose load of lib/g.f
+\ resolves against e.f's root, the folder, and whose own check is refused; e.f
+\ and h.f use GROOK.
+: TEXT-RXB ( -- ptr u8 n )  s\" require ../s/x.f\n: BU ( -- n ) ROOK ;\n" ;
+: TEXT-RXX ( -- ptr u8 n )  s\" require y.f\n: XU ( -- n ) ROOK ;\n" ;
+: TEXT-RXY ( -- ptr u8 n )  s\" require ../f.f\n" ;
+
+\ ROOK's use in b.f is answered with its declaration, b.f's use and x.f's,
+\ which b.f's check reads; GROOK's in e.f with its declaration, h.f's use at
+\ the URI the client opened h.f by, which e.f's check reads, and e.f's.
+\ Neither x.f nor h.f is named.
+: REFS-RCH-TURNS ( -- )
+   s" refs-rch" REFS-DIR s" refs-rch/w" REFS-DIR s" refs-rch/w/q" REFS-DIR
+   s" refs-rch/w/s" REFS-DIR s" refs-rch/w/lib" REFS-DIR
+   s" refs-rch/w/f.f" TEXT-RF REFS-FILE
+   s" refs-rch/w/q/b.f" TEXT-RXB REFS-FILE
+   s" refs-rch/w/s/x.f" TEXT-RXX REFS-FILE
+   s" refs-rch/w/q/y.f" TEXT-RXY REFS-FILE
+   s" refs-rch/w/lib/g.f" TEXT-RVG REFS-FILE
+   s" refs-rch/h.f" TEXT-RVH REFS-FILE
+   s" refs-rch/w/e.f" TEXT-RVE REFS-FILE
+   s" refs-rch/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-rch/w/q/b.f" FIXTURE TEXT-RXB 1 OPENS
+   s" refs-rch/w/e.f" FIXTURE TEXT-RVE 1 OPENS
+   s" refs-rch/h.f" FIXTURE TEXT-RVH 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RXB s" refs-rch/w/q/b.f" FIXTURE 1 s" verified" LISTED
+   TEXT-RVE s" refs-rch/w/e.f" FIXTURE 1 s" verified" LISTED
+   TEXT-RVH s" refs-rch/h.f" FIXTURE CHECKS
+   s" refs-rch/h.f" FIXTURE s" refused" COMPLETED
+   s" refs-rch/h.f" FIXTURE 1 EXPECT 0 0 0 7 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
+   s" 3" s" refs-rch/w/q/b.f" FIXTURE 1 14 DECL-TOO REFS-ASK
+   s" 4" s" refs-rch/w/e.f" FIXTURE 1 14 DECL-TOO REFS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" refs-rch/w/f.f" DISK-URI 0 2 6 REF+
+   s" refs-rch/w/q/b.f" OPEN-URI 1 14 18 REF+
+   s" refs-rch/w/s/x.f" DISK-URI 1 14 18 REF+
+   SYMBOLS-END
+   s" 4" SYMBOLS-START
+   s" refs-rch/w/lib/g.f" DISK-URI 0 2 7 REF+
+   s" refs-rch/h.f" OPEN-URI 1 14 19 REF+
+   s" refs-rch/w/e.f" OPEN-URI 1 14 19 REF+
+   SYMBOLS-END ;
+
+\ d.f, open in the folder w, declares ROOK, requires ../z.f, above the folder,
+\ then y.f, in it, and uses ROOK; z.f and y.f use ROOK and load nothing, so
+\ neither one's own loads reach d.f.
+: TEXT-RFD ( -- ptr u8 n )
+   s\" : ROOK ( -- n ) 1 ;\nrequire ../z.f\nrequire y.f\n: DU ( -- n ) ROOK ;\n" ;
+: TEXT-RFZ ( -- ptr u8 n )  s\" : ZU ( -- n ) ROOK ;\n" ;
+: TEXT-RFY ( -- ptr u8 n )  s\" : YU ( -- n ) ROOK ;\n" ;
+
+\ ROOK's declaring token in d.f is answered with the declaration, d.f's use,
+\ then y.f's and z.f's, which d.f's check reads, and nothing named.
+: REFS-FRG-TURNS ( -- )
+   s" refs-frg" REFS-DIR s" refs-frg/w" REFS-DIR
+   s" refs-frg/w/d.f" TEXT-RFD REFS-FILE
+   s" refs-frg/z.f" TEXT-RFZ REFS-FILE
+   s" refs-frg/w/y.f" TEXT-RFY REFS-FILE
+   s" refs-frg/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-frg/w/d.f" FIXTURE TEXT-RFD 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RFD s" refs-frg/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-frg/w/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" refs-frg/w/d.f" OPEN-URI 0 2 6 REF+
+   s" refs-frg/w/d.f" OPEN-URI 3 14 18 REF+
+   s" refs-frg/w/y.f" DISK-URI 0 14 18 REF+
+   s" refs-frg/z.f" DISK-URI 0 14 18 REF+
+   SYMBOLS-END ;
 
 : TEXT-RPKG ( -- ptr u8 n )
    s\" package RQ\npublic\ninclude f.f\n: QU ( -- n ) ROOK ;\n;package\n" ;
@@ -5036,18 +5100,19 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 : PROBE-SEEN ( -- )  LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE - PROBE-DECLS ! ;
 : PROBE-THROWN ( -- )  PROBE-SEEN LSP:E-LSP-PARAMS throw ;
 
-\ id-probe.f's text checked for its uses, as references checks a file on
-\ disk: its gather sees the check's decls as the probe's, and the store keeps
-\ none once the check returns, or once the gather throws, the throw going on.
+\ id-probe.f's text checked for its uses, as references checks a subject,
+\ with no word's uses in the files it reads: its gather sees the check's
+\ decls as the probe's, and the store keeps none once the check returns, or
+\ once the gather throws, the throw going on.
 : REFS-PROBE ( -- )
    0 PROBE-DECLS !
-   TEXT-ID-PROBE ID-PROBE-PATH [: PROBE-SEEN ;] LSP-CHECK:USES
+   TEXT-ID-PROBE ID-PROBE-PATH s" " [: PROBE-SEEN ;] LSP-CHECK:USES
    s" references-probe: verified" T-LABEL LSP-CHECK:OUTCOME$ s" verified" T$=
    s" references-probe: gathered" T-LABEL PROBE-DECLS @ 0 > TTRUE
    s" references-probe: removed" T-LABEL
    LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE = TTRUE
    0 PROBE-DECLS !
-   [: TEXT-ID-PROBE ID-PROBE-PATH [: PROBE-THROWN ;] LSP-CHECK:USES ;]
+   [: TEXT-ID-PROBE ID-PROBE-PATH s" " [: PROBE-THROWN ;] LSP-CHECK:USES ;]
    LSP:E-LSP-PARAMS TTHROWSQ
    s" references-probe: gathered, then thrown" T-LABEL PROBE-DECLS @ 0 > TTRUE
    s" references-probe: removed after the throw" T-LABEL
@@ -5068,6 +5133,8 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" references-stale" [: REFS-STALE-TURNS ;] TALK
    s" references-requester" [: REFS-REQ-TURNS ;] TALK
    s" references-folders-empty" [: REFS-FE-TURNS ;] TALK
+   s" references-reaching" [: REFS-RCH-TURNS ;] TALK
+   s" references-fragment" [: REFS-FRG-TURNS ;] TALK
    s" references-package" [: REFS-PKG-TURNS ;] TALK
    s" references-named" [: REFS-NAMED-TURNS ;] TALK
    REFS-PROBE ;
@@ -5271,17 +5338,13 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" 3" 1 NOT-APPLIED s" rn-ld/w/ld.f" CANON s" E-DISC-DYNAMIC" NAMED+ NAMED-END ;
 
 \ rn-out/f.f, above the folder rn-out/w, declares ROOK and uses it; d.f in
-\ the folder requires it and uses ROOK. The rename asked in d.f is refused
-\ -32803 naming f.f, whose own use no subject reads, and no edit comes.
-\ rn-out/h.f loads lib/g.f from e.f's root, the folder, and uses GROOK, which
-\ g.f declares; e.f in the folder requires h.f and uses GROOK. The rename
-\ asked in e.f is refused -32803 naming h.f, whose use no subject reads,
-\ though it declares nothing, and no edit comes.
+\ the folder requires it and uses ROOK. The rename asked in d.f edits f.f's
+\ declaration and use, then d.f's. rn-out/h.f loads lib/g.f from e.f's root,
+\ the folder, and uses GROOK, which g.f declares; e.f in the folder requires
+\ h.f and uses GROOK. The rename asked in e.f edits g.f's declaration, then
+\ h.f's use, which e.f's check reads, then e.f's.
 : TEXT-RVF ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\n: FU ( -- n ) ROOK ;\n" ;
 : TEXT-RVD ( -- ptr u8 n )  s\" require ../f.f\n: DU ( -- n ) ROOK ;\n" ;
-: TEXT-RVG ( -- ptr u8 n )  s\" : GROOK ( -- n ) 1 ;\n" ;
-: TEXT-RVH ( -- ptr u8 n )  s\" require lib/g.f\n: HU ( -- n ) GROOK ;\n" ;
-: TEXT-RVE ( -- ptr u8 n )  s\" require ../h.f\n: EU ( -- n ) GROOK ;\n" ;
 
 : RENAME-OUT-TURNS ( -- )
    s" rn-out" REFS-DIR s" rn-out/w" REFS-DIR s" rn-out/w/lib" REFS-DIR
@@ -5300,8 +5363,75 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" 3" s" rn-out/w/d.f" FIXTURE 1 14 CROW RENAME-ASK
    s" 4" s" rn-out/w/e.f" FIXTURE 1 14 CROW RENAME-ASK
    SAY
-   s" 3" 1 NOT-APPLIED s" rn-out/f.f" CANON s" not in a workspace folder" NAMED+ NAMED-END
-   s" 4" 1 NOT-APPLIED s" rn-out/h.f" CANON s" not in a workspace folder" NAMED+ NAMED-END ;
+   s" 3" EDITS-START
+   s" rn-out/f.f" DISK-URI EDITS-IN 0 2 6 EDIT+ 1 14 18 EDIT+
+   s" rn-out/w/d.f" OPEN-URI EDITS-IN 1 14 18 EDIT+
+   EDITS-END
+   s" 4" EDITS-START
+   s" rn-out/w/lib/g.f" DISK-URI EDITS-IN 0 2 7 EDIT+
+   s" rn-out/h.f" DISK-URI EDITS-IN 1 14 19 EDIT+
+   s" rn-out/w/e.f" OPEN-URI EDITS-IN 1 14 19 EDIT+
+   EDITS-END ;
+
+\ The tree of references-reaching in rn-rch: ROOK's use in b.f is answered
+\ with the edits of its declaration, b.f's use and x.f's; GROOK's in e.f
+\ with those of its declaration, h.f's use under the URI the client opened
+\ h.f by, and e.f's.
+: RENAME-RCH-TURNS ( -- )
+   s" rn-rch" REFS-DIR s" rn-rch/w" REFS-DIR s" rn-rch/w/q" REFS-DIR
+   s" rn-rch/w/s" REFS-DIR s" rn-rch/w/lib" REFS-DIR
+   s" rn-rch/w/f.f" TEXT-RF REFS-FILE
+   s" rn-rch/w/q/b.f" TEXT-RXB REFS-FILE
+   s" rn-rch/w/s/x.f" TEXT-RXX REFS-FILE
+   s" rn-rch/w/q/y.f" TEXT-RXY REFS-FILE
+   s" rn-rch/w/lib/g.f" TEXT-RVG REFS-FILE
+   s" rn-rch/h.f" TEXT-RVH REFS-FILE
+   s" rn-rch/w/e.f" TEXT-RVE REFS-FILE
+   s" rn-rch/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" rn-rch/w/q/b.f" FIXTURE TEXT-RXB 1 OPENS
+   s" rn-rch/w/e.f" FIXTURE TEXT-RVE 1 OPENS
+   s" rn-rch/h.f" FIXTURE TEXT-RVH 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RXB s" rn-rch/w/q/b.f" FIXTURE 1 s" verified" LISTED
+   TEXT-RVE s" rn-rch/w/e.f" FIXTURE 1 s" verified" LISTED
+   TEXT-RVH s" rn-rch/h.f" FIXTURE CHECKS
+   s" rn-rch/h.f" FIXTURE s" refused" COMPLETED
+   s" rn-rch/h.f" FIXTURE 1 EXPECT 0 0 0 7 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
+   s" 3" s" rn-rch/w/q/b.f" FIXTURE 1 14 CROW RENAME-ASK
+   s" 4" s" rn-rch/w/e.f" FIXTURE 1 14 CROW RENAME-ASK
+   SAY
+   s" 3" EDITS-START
+   s" rn-rch/w/f.f" DISK-URI EDITS-IN 0 2 6 EDIT+
+   s" rn-rch/w/q/b.f" OPEN-URI EDITS-IN 1 14 18 EDIT+
+   s" rn-rch/w/s/x.f" DISK-URI EDITS-IN 1 14 18 EDIT+
+   EDITS-END
+   s" 4" EDITS-START
+   s" rn-rch/w/lib/g.f" DISK-URI EDITS-IN 0 2 7 EDIT+
+   s" rn-rch/h.f" OPEN-URI EDITS-IN 1 14 19 EDIT+
+   s" rn-rch/w/e.f" OPEN-URI EDITS-IN 1 14 19 EDIT+
+   EDITS-END ;
+
+\ The tree of references-fragment in rn-frg: ROOK's declaring token in d.f
+\ is answered with the edits of the declaration and d.f's use, then y.f's
+\ and z.f's.
+: RENAME-FRG-TURNS ( -- )
+   s" rn-frg" REFS-DIR s" rn-frg/w" REFS-DIR
+   s" rn-frg/w/d.f" TEXT-RFD REFS-FILE
+   s" rn-frg/z.f" TEXT-RFZ REFS-FILE
+   s" rn-frg/w/y.f" TEXT-RFY REFS-FILE
+   s" rn-frg/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" rn-frg/w/d.f" FIXTURE TEXT-RFD 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RFD s" rn-frg/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" rn-frg/w/d.f" FIXTURE 0 2 CROW RENAME-ASK
+   SAY
+   s" 3" EDITS-START
+   s" rn-frg/w/d.f" OPEN-URI EDITS-IN 0 2 6 EDIT+ 3 14 18 EDIT+
+   s" rn-frg/w/y.f" DISK-URI EDITS-IN 0 14 18 EDIT+
+   s" rn-frg/z.f" DISK-URI EDITS-IN 0 14 18 EDIT+
+   EDITS-END ;
 
 \ rn-exp/w: f.f declares ROOK, x.f exports it from RX, and u.f uses RX:ROOK.
 : TEXT-RX ( -- ptr u8 n )  s\" require f.f\npackage RX\npublic\nEXPORT ROOK\n;package\n" ;
@@ -5309,8 +5439,8 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 
 \ ROOK asked in f.f while x.f on disk exports it, and RX:ROOK asked in u.f by
 \ rename and by prepareRename: each -32803 naming x.f. Once x.f is opened
-\ and checked, and u.f checked again over it, the EXPORT's operand asked
-\ there: -32803 naming x.f.
+\ and checked, the EXPORT's operand asked there: -32803 naming x.f, then
+\ u.f's list, from its check over the open x.f, a turn after the answer.
 : RENAME-EXP-TURNS ( -- )
    s" rn-exp" REFS-DIR s" rn-exp/w" REFS-DIR
    s" rn-exp/w/f.f" TEXT-RF REFS-FILE
@@ -5334,8 +5464,8 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" 6" s" rn-exp/w/x.f" FIXTURE 3 7 CROW RENAME-ASK
    SAY
    s" rn-exp/w/x.f" FIXTURE 1 CLEAN
-   s" rn-exp/w/u.f" FIXTURE 1 CLEAN
-   s" 6" s" rn-exp/w/x.f" CANON FAILED ;
+   s" 6" s" rn-exp/w/x.f" CANON FAILED
+   s" rn-exp/w/u.f" FIXTURE 1 CLEAN ;
 
 \ rn-named.f: ROOK named by literals before LOOK, whose names: row the text
 \ declares, one in a body and one at top level, beside a body use; RNN's
@@ -5414,6 +5544,8 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rename-workspace" [: RENAME-WS-TURNS ;] TALK
    s" rename-uncovered" [: RENAME-LD-TURNS ;] TALK
    s" rename-outside" [: RENAME-OUT-TURNS ;] TALK
+   s" rename-reaching" [: RENAME-RCH-TURNS ;] TALK
+   s" rename-fragment" [: RENAME-FRG-TURNS ;] TALK
    s" rename-export" [: RENAME-EXP-TURNS ;] TALK
    s" rename-named" [: RENAME-NAMED-TURNS ;] TALK
    s" rename-open" [: RENAME-OPEN-TURNS ;] TALK ;
@@ -5540,9 +5672,9 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 
 \ The four opened and ROOK's declaration asked about by the request ASK
 \ writes, id 3, in one turn, so each waits for a check when the request is
-\ served: d.f's is its turn, and the request checks e.f's next. Once both
-\ lists are heard, the request goes on with g.f's check, as the next turn is
-\ written.
+\ served: d.f's is its turn, and the request then checks each text itself.
+\ Once d.f's list is heard, the request reads what is written next by the
+\ time its first check is over.
 : HALT-START ( [ -- ] -- )
    {: ask :}
    INITIALIZE
@@ -5553,16 +5685,16 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    ask execute
    SAY
    HEAR CAPABILITIES
-   s" refs-halt/d.f" FIXTURE 1 CLEAN
-   s" refs-halt/e.f" FIXTURE 1 CLEAN ;
+   s" refs-halt/d.f" FIXTURE 1 CLEAN ;
 
 : HALT-REFS ( -- )  s" 3" s" refs-halt/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK ;
 : HALT-RENAME ( -- )  s" 3" s" refs-halt/d.f" FIXTURE 0 2 CROW RENAME-ASK ;
 
 \ d.f and e.f alone opened and ROOK's declaration asked about, by this id's
-\ JSON text, in one turn: d.f's check is the request's, as its turn, and
-\ e.f's its next. Once d.f's list is heard the request has begun, and what is
-\ written next it reads by the time e.f's check is over.
+\ JSON text, in one turn: d.f's check is the request's, as its turn, and the
+\ request then checks both texts itself. Once d.f's list is heard the request
+\ has begun, and what is written next it reads by the time its first check is
+\ over.
 : PAIR-START ( ptr u8 n -- )
    {: i:ptr iu:n :}
    INITIALIZE
@@ -5573,27 +5705,25 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    HEAR CAPABILITIES
    s" refs-halt/d.f" FIXTURE 1 CLEAN ;
 
-\ e.f's list, then the answer to the request with this id's JSON text: the
-\ declaration and e.f's use.
+\ The answer to the request with this id's JSON text: the declaration and
+\ e.f's use.
 : PAIR-ANSWER ( ptr u8 n -- )
    {: i:ptr iu:n :}
-   s" refs-halt/e.f" FIXTURE 1 CLEAN
    i iu SYMBOLS-START
    s" refs-halt/d.f" OPEN-URI 0 2 6 REF+
    s" refs-halt/e.f" OPEN-URI 1 14 18 REF+
    SYMBOLS-END ;
 
-\ A cancel of the request written once e.f's list is heard: g.f's check may
-\ have begun, and then ends and publishes first, but h.f's does not begin.
-\ The request is answered -32800, and h.f's list comes after, from the check
-\ of a document waiting for one.
+\ A cancel of the request written once d.f's list is heard: the request is
+\ answered -32800, and e.f's, g.f's and h.f's lists come after, from the
+\ checks of documents waiting for one.
 : REFS-CANCEL-TURNS ( -- )
    [: HALT-REFS ;] HALT-START
    s" 3" CANCELS
    SAY
-   s" refs-halt/g.f" FIXTURE 1 CLEAN? {: early:bool :}
    HEAR s" 3" -32800 REFUSED
-   early 0= if s" refs-halt/g.f" FIXTURE 1 CLEAN then
+   s" refs-halt/e.f" FIXTURE 1 CLEAN
+   s" refs-halt/g.f" FIXTURE 1 CLEAN
    s" refs-halt/h.f" FIXTURE 1 CLEAN ;
 
 \ A change of h.f written so: the request ASK writes is answered -32801,
@@ -5603,9 +5733,9 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    HALT-START
    s" refs-halt/h.f" FIXTURE TEXT-HH-NEW 2 CHANGES
    SAY
-   s" refs-halt/g.f" FIXTURE 1 CLEAN? {: early:bool :}
    HEAR s" 3" -32801 REFUSED
-   early 0= if s" refs-halt/g.f" FIXTURE 1 CLEAN then
+   s" refs-halt/e.f" FIXTURE 1 CLEAN
+   s" refs-halt/g.f" FIXTURE 1 CLEAN
    s" refs-halt/h.f" FIXTURE 2 CLEAN ;
 
 : REFS-MODIFIED-TURNS ( -- )  [: HALT-REFS ;] HALT-MODIFIED ;
@@ -5613,7 +5743,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 
 \ Another request and the end of the input written once d.f's list is heard:
 \ the request goes on and is answered, then the other one, and only then does
-\ the end of the input end the server.
+\ the end of the input end the server, before e.f's own check.
 : REFS-EOF-TURNS ( -- )
    s" 3" PAIR-START
    s" 4" s" habu/unknown" ASK
@@ -5641,17 +5771,22 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ A 700 KB didOpen written in many pieces once d.f's list is heard, which
 \ the request, asked by a string id, reads before its answer: the room of the
 \ messages held grows past the request's own bytes, and the answer still
-\ carries its id. The document is lib/string.f, which the engine provides, so
-\ nothing checks its text.
+\ carries its id; e.f's list and then the new document's follow it. The
+\ document is lib/string.f, which the engine provides, so nothing checks its
+\ text.
 : REFS-GROWTH-TURNS ( -- )
    s\" \"refs-grow\"" PAIR-START
    BIG-QUIET
    s" lib/string.f" IN-TREE TXT$ 1 OPENS
    STREAM
    s\" \"refs-grow\"" PAIR-ANSWER
+   s" refs-halt/e.f" FIXTURE 1 CLEAN
    s" lib/string.f" IN-TREE 1 CLEAN ;
 
 \ The input that comes while a request checks the files it gathers from.
+\ Those checks publish nothing, as intended: a document's list comes only from
+\ its own check, a turn after the answer. So each conversation writes its next
+\ turn once it hears d.f's list, which the request's own turn publishes.
 : REFS-HALTS ( -- )
    HALT-TREE
    s" references-cancel" [: REFS-CANCEL-TURNS ;] TALK

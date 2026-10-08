@@ -40,12 +40,15 @@
 \ file on disk, its text under the file's canonical path: RUN's and RUN-AT's
 \ every open document but the one checked, USES's every open document.
 \
-\ USES checks a file on disk that no open document holds for its uses, as
-\ references gathers them: the bytes given as the file at the path given, with
-\ no cursor, publishing nothing and writing nothing to stderr. A check whose
-\ verdict was verified is the store's probe (LSP-DEFS:DEFS-PROBE) while the
-\ gather given runs, and the store keeps no probe once the gather returns or
-\ throws, the throw going on. OUTCOME$ names what the check came to: its
+\ USES checks a file for the uses of a word, as references gathers them: the
+\ bytes given, an open document's text or the file on disk, as the file at
+\ the path given, with no cursor, publishing nothing and writing nothing to
+\ stderr. Its uses are every use the check binds to a located declaration in
+\ the file and, in every other file the check reads, each one bound to a
+\ declaration of the canonical tail given (CHECK:VERIFY-BYTES-OF). A check
+\ whose verdict was verified is the store's probe (LSP-DEFS:DEFS-PROBE) while
+\ the gather given runs, and the store keeps no probe once the gather returns
+\ or throws, the throw going on. OUTCOME$ names what the check came to: its
 \ verdict's name, or `throw N` when it threw.
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: the check in progress belongs to the server's
@@ -77,10 +80,12 @@ variable SUBJECT                         \ the slot being checked
 variable PUBLISHABLE                     \ whether its check completed,
 TYPED-VARIABLE VERIFIED bool             \ whether its verdict was verified,
 variable CURSOR                          \ and the byte of its cursor, -1 for none
-TYPED-VARIABLE DISK-A ptr u8             \ the bytes of a file on disk checked for its uses,
-variable DISK-U
-TYPED-VARIABLE DISK-P ptr u8             \ its path,
-variable DISK-PU
+TYPED-VARIABLE SRC-A ptr u8              \ the bytes checked for uses,
+variable SRC-U
+TYPED-VARIABLE SRC-P ptr u8              \ its path,
+variable SRC-PU
+TYPED-VARIABLE SRC-T ptr u8              \ the tail of the word they are of,
+variable SRC-TU
 40 BUFFER: OUTCOME-B                     \ and what its check came to
 variable OUTCOME-U
 
@@ -145,10 +150,12 @@ variable OUTCOME-U
    a OUTCOME-B u BYTE-COPY
    u OUTCOME-U ! ;
 
-\ The check of the file on disk, its verdict's name in OUTCOME-B.
+\ The check of the bytes as the file at the path, for the uses of the tail,
+\ its verdict's name in OUTCOME-B.
 : CHECKED ( -- )
-   DISK-A @ DISK-U @ DISK-P @ DISK-PU @ [: -1 swap DOC-EACH-BUT ;] CHECK-MS >MS
-   CHECK:VERIFY-BYTES
+   SRC-A @ SRC-U @ SRC-P @ SRC-PU @ SRC-T @ SRC-TU @
+   [: -1 swap DOC-EACH-BUT ;] CHECK-MS >MS
+   CHECK:VERIFY-BYTES-OF
    MATCH CHECK:verdict
       verified OF true VERIFIED ! s" verified" OUTCOME! ENDOF
       refused OF s" refused" OUTCOME! ENDOF
@@ -205,15 +212,18 @@ public
 \ check found.
 : RUN ( n -- )  -1 RUN-AT ;
 
-\ Checks these bytes as the file at this path on disk for its uses, and runs
-\ GATHER with the check as the store's probe when its verdict was verified,
-\ removing the probe once GATHER returns or throws.
-: USES ( ptr u8 n ptr u8 n [ -- ] -- )
-   {: a:ptr u:n p:ptr pu:n gather :}
-   a DISK-A !
-   u DISK-U !
-   p DISK-P !
-   pu DISK-PU !
+\ Checks these bytes as the file at this path for the uses of the word with
+\ this canonical tail, and runs GATHER with the check as the store's probe
+\ when its verdict was verified, removing the probe once GATHER returns or
+\ throws.
+: USES ( ptr u8 n ptr u8 n ptr u8 n [ -- ] -- )
+   {: a:ptr u:n p:ptr pu:n t:ptr tu:n gather :}
+   a SRC-A !
+   u SRC-U !
+   p SRC-P !
+   pu SRC-PU !
+   t SRC-T !
+   tu SRC-TU !
    false VERIFIED !
    [: CHECKED ;] catch {: code:n :}
    code 0<> if
