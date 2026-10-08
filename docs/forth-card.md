@@ -128,6 +128,7 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | a `trust` row leaving 4097 cells, or one, `TRUSTED:` or `defer` taking 256 | `E-BAD-STORED-SIGNATURE`, `fix_signature_size`, the same reasons |
 | a family, variant or field name over 255 bytes | `E-BAD-DECLARATION`, `name longer than 255 bytes`; `--load` exits 70 |
 | `package` with a name over 255 bytes | `E-STATEMENT-THROW`, throw code 7154; `--load` exits 67 |
+| `: IR-ID:X ( -- ) ;`, `variable IR-ID:V` or `package IR-ID`: a definition into, or the reopening of, a package the engine bakes | `E-STATEMENT-THROW`, throw code 84 at the name; `--load` exits 84 |
 | a non-preserving `[: G ;] catch`, a read of what its throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-REJECTED`, `E-STALE-READ` |
 | `exit` after a word ending in `die` | `E-DEAD-CODE` |
 | `: I ( -- ) ;` | `E-RESERVED-DEFINITION` |

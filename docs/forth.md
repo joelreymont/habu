@@ -236,10 +236,11 @@ private
   (`src/core/internal-mark.f` `SEAL-PACKAGES`): on the product engine `package
   NAME` exits 84 with the package name on stderr, and a definition into either
   of its wordlists exits 84 naming the word (`hb: cannot publish into protected
-  word: NAME:X`). Use its public words qualified or through `using`. Only the
-  whitebox image keeps engine packages open; an application image (a `--repl`
-  snapshot, `APP-IMAGE:SAVE`) keeps its own packages reopenable
-  (`test/package-seal.f`, `test/checker-surface.f`).
+  word: NAME:X`). `tools/check.f` refuses each at the name it reports,
+  `E-STATEMENT-THROW` with throw code 84. Use its public words qualified or
+  through `using`. Only the whitebox image keeps engine packages open; an
+  application image (a `--repl` snapshot, `APP-IMAGE:SAVE`) keeps its own
+  packages reopenable (`test/package-seal.f`, `test/checker-surface.f`).
 - **Qualify only across package boundaries.** In `NAME`'s own files reopen the
   package and use bare names; `NAME:WORD` there is noise. A call into another
   package qualifies (`OTHER:WORD`) or reopens it. A subsystem is a few internal

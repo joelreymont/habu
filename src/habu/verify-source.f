@@ -2056,6 +2056,59 @@ DUPLICATE-INIT
    u DUPLICATE!
    true ;
 
+\ ---- a publication into a sealed package ---------------------------------------
+\ Once the engine is sealed, the load ends at a definition into a protected
+\ wordlist, at its name, and at `package` of a sealed package, at the
+\ package's name (src/habu/packages.f PKG-SEAL-GUARD): it exits
+\ ENGINE-ERROR:SEAL-PACKAGE. A definition's load asks its name for a duplicate
+\ first (src/habu/habu2.f EMIT-QUALIFY-DEF, then EMIT-STORE-DEF-NAME), so each
+\ definer here refuses a duplicate (REFUSE-DUPLICATE) before it asks the seal,
+\ which it asks where its load does: before the signature of a colon or
+\ `trusted:` definition, after the signature of a `cast:`, a deferred word or
+\ a foreign function. It asks only under composition, which models the load
+\ by this engine as it does the top-level tokens (TOP-RESOLVE): the build
+\ certifies a stage source without one (tools/build-fixpoint-certify.f), and
+\ the stage that loads it keeps its packages open until its capture seals
+\ them. It asks the wordlists of this image, where the engine has baked its
+\ packages and sealed both wordlists of each (src/core/internal-mark.f
+\ SEAL-PACKAGES). The scan runs no top-level code, so a wordlist the source
+\ protects as it loads (`get-current prot-wid-add`) is not protected here. A
+\ qualified name lands in its package's public wordlist, and only a qualified
+\ name is asked: an unqualified definition lands in the source's current
+\ wordlist, which the scan never protects, because `package` stops at a
+\ sealed one. So an export, which lands there, needs no guard, nor does a
+\ `linear:` row, whose certifier refuses a qualified name first.
+
+\ The public wordlist of the package NAME names, -1 when it has no row.
+: PUBLIC-WID ( ptr u8 n -- n )
+   XREF-NAMESPACE-WL XREF-FIND-WL {: row:ptr :}
+   row XREF-FOUND? 0= IF -1 EXIT THEN
+   row XREF-PKG-PUBLIC ;
+
+\ Whether the scan models the load of a sealed engine: this one, composing.
+: SEALED-LOAD? ( -- bool )
+   COMPOSE-ON @ 0<>  SEAL-NDICT@ 0<>  and ;
+
+\ Stop at byte AT, where the load ends.
+: SEAL-STOP ( n -- )
+   TOKEN-BYTE !  ENGINE-ERROR:SEAL-PACKAGE throw ;
+
+\ Stop at the name NAME, read from byte AT, when it is qualified and its
+\ package's public wordlist is protected. A package with no row gets a
+\ wordlist of its own (habu2.f EMIT-QUALIFY-DEF), which is not.
+: SEALED-NAME ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
+   SEALED-LOAD? 0= IF EXIT THEN
+   a u XREF-QUAL-INDEX {: q:n :}
+   q 0 < IF EXIT THEN
+   a q PUBLIC-WID XREF-WID-PROTECTED? IF at SEAL-STOP THEN ;
+
+\ Stop at the name `package` read from byte AT when it names a sealed package
+\ (packages.f PKG-SEALED?): one the checker lists, or one whose public
+\ wordlist is protected.
+: SEALED-PACKAGE ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
+   SEALED-LOAD? 0= IF EXIT THEN
+   a u CHECKER-SEALED-PKG?  a u PUBLIC-WID XREF-WID-PROTECTED?  or IF at SEAL-STOP THEN ;
+
 \ The symbol the name's recording scope holds a live record under, 0 for none.
 \ Where a guard refused a live record before the registrar ran, one there now
 \ is the record that registrar retained: certified, deferred or kept with a
@@ -2097,6 +2150,8 @@ DUPLICATE-INIT
    TOKEN-BYTE @
    {: name:ptr nameu:n at:n :}
    name nameu QUIET-NAME
+   name nameu REFUSE-DUPLICATE IF EXIT THEN
+   name nameu at SEALED-NAME
    -1 SIG-RAW-MODE!
    name nameu at nameu ARM
    name nameu sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! DISARM ;] finally
@@ -2104,8 +2159,9 @@ DUPLICATE-INIT
 
 \ CREATED-TRUST-NEXT?: RAW-TRUST-NEXT's twin for a definer the checker knows and
 \ this pre-pass never read. The row is the checker's own certified one, so there
-\ is no signature text to re-parse and no seal to re-apply here; what is left is
-\ the same shape - the created word is the NEXT token - and the same answer.
+\ is no signature text to re-parse and no raw seal to re-apply here; what is
+\ left is the same shape - the created word is the NEXT token - and the same
+\ answer.
 \ DSYM is the definer's symbol, which its caller tested (CREATES-SYM?) before
 \ the name is taken: NAME-TOKEN consumes a token, and a token that is not a
 \ definer must leave the scan exactly where it was.
@@ -2115,6 +2171,8 @@ DUPLICATE-INIT
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu QUIET-NAME
    TOKEN-BYTE @ {: at:n :}
+   name nameu REFUSE-DUPLICATE IF 0 0= EXIT THEN
+   name nameu at SEALED-NAME
    name nameu at nameu ARM
    name nameu dsym RECORD-CREATED
    DISARM
@@ -2125,6 +2183,8 @@ DUPLICATE-INIT
 : TRUST-DEFER-SIGNATURE ( ptr u8 n n -- )
    {: name:ptr nameu:n at:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   name nameu REFUSE-DUPLICATE IF EXIT THEN
+   name nameu at SEALED-NAME
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    {: kept:bool :}
@@ -2201,6 +2261,10 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu QUIET-NAME
    TOKEN-BYTE @ {: at:n :}
+   name nameu REFUSE-DUPLICATE IF
+      REQUIRE-SIGNATURE 2drop  name nameu false SCAN-TRUSTED-BODY EXIT
+   THEN
+   name nameu at SEALED-NAME
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
@@ -2223,6 +2287,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    TOKEN-BYTE @ {: at:n :}
    name nameu REFUSE-DUPLICATE IF REQUIRE-SIGNATURE 2drop EXIT THEN
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   name nameu at SEALED-NAME
    name nameu at nameu ARM
    name nameu sig sigu DEFCAST-SIGNATURE
    DISARM
@@ -2256,9 +2321,10 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    name nameu RECORD-SYM? DEFINER-RETIRE ;
 
 : RECORD-PACKAGE ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu CHECKER-PACKAGE ;
+   name nameu CHECKER-PACKAGE
+   name nameu at SEALED-PACKAGE ;
 
 : RECORD-PUBLIC ( -- )
    CHECKER-PUBLIC ;
@@ -2526,7 +2592,7 @@ variable STG-TYPE-U
    dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
    2dup QUIET-NAME
    2dup CHECKER-LBUF-NAME-OK? IF
-      2dup REFUSE-DUPLICATE 0= IF EXIT THEN
+      2dup REFUSE-DUPLICATE 0= IF 2dup TOKEN-BYTE @ SEALED-NAME EXIT THEN
    THEN
    2drop SCAN-STORAGE-TYPE 2drop SOURCE@ 0 ;
 
@@ -3223,21 +3289,29 @@ variable FILE-USE
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu QUIET-NAME
+   name nameu REFUSE-DUPLICATE IF EXIT THEN
+   name nameu at SEALED-NAME
    name nameu at nameu ARM
    name nameu sig sigu TRUST-STRUCTURE-FIELD
    DISARM
    IF kind kindu name nameu sig sigu at at nameu + DEF-WORD DEFINED THEN ;
 
-\ Record the size word (`-- n`) then each field accessor with its runtime effect
+\ The size word NAME (`-- n`), written from byte AT, unless it is a duplicate.
+: STRUCTURE-SIZE ( ptr u8 n n -- ) {: name:ptr nameu:n at:n :}
+   name nameu REFUSE-DUPLICATE IF EXIT THEN
+   name nameu at SEALED-NAME
+   name nameu at nameu ARM
+   name nameu s" -- n" DECL-SIGNATURE
+   DISARM
+   IF name nameu s" -- n" at DEF-CONSTANT DEFINED-HERE THEN ;
+
+\ Record the size word then each field accessor with its runtime effect
 \ so BEGIN-STRUCTURE layouts self-certify their field uses.
 : RECORD-STRUCTURE ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu QUIET-NAME
-   name nameu at nameu ARM
-   name nameu s" -- n" DECL-SIGNATURE
-   DISARM
-   IF name nameu s" -- n" at DEF-CONSTANT DEFINED-HERE THEN
+   name nameu at STRUCTURE-SIZE
    BEGIN
       NEXT-SCAN
       dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
@@ -3279,9 +3353,11 @@ variable FILE-USE
 \ The live declaration pins this reading: test/certify-does-definer.f section 10.
 \ The effect is rebuilt in a byte row of its own, which grows with the group:
 \ BODY-BUF holds only runs read out of the source (BODY-APPEND), and the
-\ rewritten `n` is not one. Whether the group was kept is held until a
-\ `;FUNCTION` closes it, since that closer renders the word the group declares
-\ (FFI-CLOSER?).
+\ rewritten `n` is not one. Whether the scan accounts for the word the group
+\ declares is held until a `;FUNCTION` closes it, since that closer renders the
+\ word (FFI-CLOSER?): it does when it kept the declaration, and when it refused
+\ it as a duplicate, where the load stops; a refused effect leaves the word the
+\ load still renders to the run.
 variable FFI-OUT
 DYNAMIC-BUFFER FFI-SIG u8
 variable FFI-SIG-U
@@ -3321,13 +3397,16 @@ TYPED-VARIABLE FFI-GROUP bool
    name nameu QUIET-NAME
    NEXT-SCAN nip 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
    FFI-SIGNATURE {: sig:ptr sigu:n :}
+   at TOKEN-BYTE !
+   name nameu REFUSE-DUPLICATE IF true FFI-GROUP ! EXIT THEN
+   name nameu at SEALED-NAME
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    DISARM
    dup FFI-GROUP !
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN ;
 
-\ A `;FUNCTION` closing a group this scan kept.
+\ A `;FUNCTION` closing a group this scan accounts for.
 : FFI-CLOSER? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u s" ;FUNCTION" STR=CI FFI-GROUP @ and ;
@@ -3465,6 +3544,7 @@ TYPED-VARIABLE FFI-GROUP bool
    DEF-NAME!
    DEF-NAME-A @ DEF-NAME-U @ QUIET-NAME
    DEF-NAME-A @ DEF-NAME-U @ REFUSE-DUPLICATE IF SKIP-DEFINITION EXIT THEN
+   DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ SEALED-NAME
    WRAP-RESET
    BODY-LOAD-RESET
    LOCALS-RESET

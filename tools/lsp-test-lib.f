@@ -147,13 +147,14 @@
 \ - a file a later check read with no definition left answered from an
 \   earlier check, or still empty once the later one's document closes
 \   .................................................. workspace-symbol-empty
-\ - a redeclaration whose effect the registrar refused listed beside the
-\   declaration it retained ........................ workspace-symbol-retained
-\ - a redeclaration too wide to record listed or its refusal not published;
-\   the declaration retained before it, a definition after it, an identical
-\   redeclaration the registrar retained, or a refused body whose signature
-\   the checker kept not listed; a malformed declaration with none before it
-\   listed ....................................... workspace-symbol-redeclared
+\ - a duplicate declaration with a malformed effect published other than as
+\   a duplicate, or listed beside the declaration retained before it
+\   ................................................ workspace-symbol-retained
+\ - a duplicate declaration with a row too wide to record, or with the
+\   effect of the one before it, published other than as a duplicate or
+\   listed; the declaration retained before it, a definition after it, or a
+\   refused body whose signature the checker kept not listed; a malformed
+\   declaration with none before it listed ....... workspace-symbol-redeclared
 \ - a definition in a file a check reads twice listed twice
 \   ........................................... workspace-symbol-reinclude
 \ - an open document's definitions answered from another document's check,
@@ -2486,14 +2487,14 @@ CK-USE-MAX 1 + constant OVER-USINGS
    SYMBOLS-END ;
 
 \ NAV-RETAIN declared, then declared again with a bare ptr, an effect the
-\ registrar refuses.
+\ registrar would refuse.
 : TEXT-RETAINED ( -- ptr u8 n )
    s\" TRUSTED: NAV-RETAIN ( -- n ) 1 ;\nTRUSTED: NAV-RETAIN ( -- ptr ) ;\n" ;
 
 \ NAV-WIDE declared, then declared again taking 256 cells, a row too wide to
-\ record, which the registrar refuses; NAV-SAME declared twice with one effect,
-\ both retained; NAV-ODD malformed with nothing declared before it; NAV-KEPT's
-\ body refused with its signature kept; NAV-LATER after them.
+\ record; NAV-SAME declared twice with one effect; NAV-ODD malformed with
+\ nothing declared before it; NAV-KEPT's body refused with its signature kept;
+\ NAV-LATER after them.
 : REDECLARED-TEXT ( -- )
    TXT-B CLEAR
    s\" TRUSTED: NAV-WIDE ( n -- ) drop ;\nTRUSTED: NAV-WIDE (" N>BLEN TXT-B APPEND-SPAN
@@ -2505,8 +2506,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
 
 : REDECLARED-PATH ( -- ptr u8 n )  s" redeclared.f" FIXTURE ;
 
-\ The refused redeclaration keeps no record, so a query lists NAV-RETAIN once,
-\ where the declaration the registrar retained names it.
+\ The load refuses the redeclaration at its name as a duplicate, before its
+\ effect (exit 78), and so does the check; the refused redeclaration keeps no
+\ record, so a query lists NAV-RETAIN once, where the first declaration names
+\ it.
 : RETAINED-TURNS ( -- )
    INITIALIZE
    RETAINED-PATH TEXT-RETAINED 1 OPENS
@@ -2514,16 +2517,17 @@ CK-USE-MAX 1 + constant OVER-USINGS
    HEAR CAPABILITIES
    TEXT-RETAINED RETAINED-PATH CHECKS
    RETAINED-PATH s" refused" COMPLETED
-   RETAINED-PATH 1 EXPECT 1 9 1 19 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES
+   RETAINED-PATH 1 EXPECT 1 9 1 19 1 s" E-DUPLICATE-DEFINITION" DIAG+ PUBLISHES
    s" 3" s\" {\"query\":\"nav-retain\"}" SYMBOLS-ASK
    SAY
    s" 3" SYMBOLS-START
    s" NAV-RETAIN" 12 RETAINED-PATH URI-OF 0 9 19 s" " SYMBOL+
    SYMBOLS-END ;
 
-\ Each refusal is published, and a query lists NAV-WIDE where the declaration
-\ the registrar retained names it, NAV-SAME at each declaration, NAV-KEPT and
-\ NAV-LATER, and not NAV-ODD.
+\ Each refusal is published, each redeclaration as a duplicate at its name, as
+\ the load refuses it before its effect; a query lists NAV-WIDE and NAV-SAME
+\ where their first declarations name them, NAV-KEPT and NAV-LATER, and not
+\ NAV-ODD.
 : REDECLARED-TURNS ( -- )
    REDECLARED-TEXT
    INITIALIZE
@@ -2533,7 +2537,8 @@ CK-USE-MAX 1 + constant OVER-USINGS
    TXT$ REDECLARED-PATH CHECKS
    REDECLARED-PATH s" refused" COMPLETED
    REDECLARED-PATH 1 EXPECT
-   1 9 1 17 1 s" E-BAD-STORED-SIGNATURE" DIAG+
+   1 9 1 17 1 s" E-DUPLICATE-DEFINITION" DIAG+
+   3 9 3 17 1 s" E-DUPLICATE-DEFINITION" DIAG+
    4 9 4 16 1 s" E-BAD-STORED-SIGNATURE" DIAG+
    5 22 5 23 1 s" E-MISMATCH" DIAG+
    PUBLISHES
@@ -2542,7 +2547,6 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" 3" SYMBOLS-START
    s" NAV-WIDE" 12 REDECLARED-PATH URI-OF 0 9 17 s" " SYMBOL+
    s" NAV-SAME" 12 REDECLARED-PATH URI-OF 2 9 17 s" " SYMBOL+
-   s" NAV-SAME" 12 REDECLARED-PATH URI-OF 3 9 17 s" " SYMBOL+
    s" NAV-KEPT" 12 REDECLARED-PATH URI-OF 5 2 10 s" " SYMBOL+
    s" NAV-LATER" 12 REDECLARED-PATH URI-OF 6 2 11 s" " SYMBOL+
    SYMBOLS-END ;

@@ -244,8 +244,13 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
   (7200) and at a `VALUE-RECORD` field the checker refuses, or the
   `END-VALUE-RECORD` of a record with none (7198); outside `--verify-only` the
   nominal pass reports those first as `E-BAD-NOMINAL-TYPE` and
-  `E-BAD-RECORD-FIELD`. Its own tables grow with the source, so none of them
-  stops it. Source discovery's stop at a `{:` group a file never closes is
+  `E-BAD-RECORD-FIELD`. It stops at a definition into a package the engine
+  bakes, at the definition's name, and at `package` naming one, at that name,
+  with `throw_code` 84 (`ENGINE-ERROR:SEAL-PACKAGE`), the load's exit code
+  where the seal is what ends it: a duplicate name there is
+  `E-DUPLICATE-DEFINITION`, which the load asks first (exit 78). Its own
+  tables grow with the source, so none of them stops it. Source discovery's
+  stop at a `{:` group a file never closes is
   this record at the `{:`, with `throw_code` `E-DISC-UNTERM` (-4103). A
   top-level escaped literal (`s\"`, `c\"`, `.\"`) holding an escape the engine
   refuses, a bad string literal to the load, is this record at its opener,

@@ -149,6 +149,10 @@
 \   a number out of range, or a token only shaped like one, verifies      top-number
 \   a compile-only keyword resolves at top level                          top-keyword
 \   a retired engine name or compiler-only axiom verifies as a top word    top-retired, top-axiom
+\   a definition into a sealed package, or its reopening, verifies or is
+\   refused elsewhere or otherwise than the load refuses it, a duplicate
+\   there as sealed; a retirement there, or a definition into a package
+\   left open, is refused                                                 sealed
 \   a qualified name the load refuses verifies, or is refused otherwise
 \   than a body refuses it                                                top-qualified
 \   a parsing word's operand is resolved, or the stretch after it is
@@ -1662,6 +1666,117 @@ $180000 constant LARGE-STDIN-LEN
    s" top-retired-public: tick load" T-LABEL tick ticku NATIVE-RC 70 T=
    s" top-retired-public: tick verify" T-LABEL tick ticku true false CHECK-RC 70 T=
    s" top-retired-public: tick check" T-LABEL tick ticku false false CHECK-RC 70 T= ;
+
+
+\ IR-ID's wordlists are protected (src/compiler/ir/id.f, which the engine
+\ bakes). The load refuses a definition into one at its name, before a colon
+\ definition's body, and the package's reopening at the package's name, exit
+\ 84 (ENGINE-ERROR:SEAL-PACKAGE). SRC, as the fixture NAME, loads with exit 84,
+\ and the check stops at TOK, on LINE at COLUMN, with that code.
+: SEALED-AT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n name:ptr nameu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
+   name nameu src srcu FIXTURE
+   name nameu T-LABEL name nameu AT$ NATIVE-RC 84 T=
+   src srcu name nameu GUARD-MS CHECK-AS
+   name nameu tok toku s" E-STATEMENT-THROW" line lineu col colu REFUSED-AT
+   name nameu T-LABEL CHECK:VERIFY-OUT$ 0 NTH-PACKET s" throw_code" NUMBER$ s" 84" T$= ;
+
+\ A deferred word and a cast read their signature before the seal is asked: an
+\ unclosed one in SRC, as the fixture NAME, ends the load with exit 76, and the
+\ check stops at the definer TOK, on line 2, for the signature.
+: SEALED-SIGNATURE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n name:ptr nameu:n tok:ptr toku:n :}
+   name nameu src srcu FIXTURE
+   name nameu T-LABEL name nameu AT$ NATIVE-RC 76 T=
+   src srcu name nameu GUARD-MS CHECK-AS
+   name nameu tok toku s" E-STATEMENT-THROW" s" 2" s" 1" REFUSED-AT
+   name nameu T-LABEL CHECK:VERIFY-OUT$ 0 NTH-PACKET s" throw_code" NUMBER$ s" 7157" T$= ;
+
+\ SRC, as the fixture NAME, loads and verifies.
+: UNSEALED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
+   name nameu src srcu FIXTURE
+   name nameu T-LABEL name nameu AT$ NATIVE-RC 0 T=
+   src srcu name nameu GUARD-MS CHECK-AS 0 name nameu EXPECT-KIND ;
+
+\ The load asks a definition's name for a duplicate before it asks the seal
+\ (src/habu/habu2.f EMIT-QUALIFY-DEF, then EMIT-STORE-DEF-NAME). SRC, as the
+\ fixture NAME, defines IR-ID's public COUNT again and loads with exit 78, and
+\ the check refuses it once, a duplicate at the name, on LINE at COLUMN.
+: SEALED-DUPLICATE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n name:ptr nameu:n line:ptr lineu:n col:ptr colu:n :}
+   name nameu src srcu FIXTURE
+   name nameu T-LABEL name nameu AT$ NATIVE-RC 78 T=
+   src srcu name nameu GUARD-MS CHECK-AS 1 name nameu EXPECT-KIND
+   name nameu T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   CHECK:VERIFY-OUT$ 0 NTH-PACKET {: p:n :}
+   name nameu T-LABEL p s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   name nameu T-LABEL p s" token" STRING$ s" IR-ID:COUNT" T$=
+   name nameu T-LABEL p s" file" STRING$ SUBJ$ T$=
+   name nameu T-LABEL p s" line" NUMBER$ line lineu T$=
+   name nameu T-LABEL p s" column" NUMBER$ col colu T$= ;
+
+\ Each definer the scan reads, and `package` of a package the checker lists as
+\ sealed; the command line exits 70 for the refusal. A duplicate there is
+\ refused as a duplicate by each definer whose scan asks the seal after its
+\ own duplicate test. A retirement in a sealed package loads, and so does a
+\ definition into a package the source leaves open, qualified or after
+\ reopening it.
+: SEALED ( -- )
+   s\" require src/compiler/ir/id.f\n: IR-ID:CVT-SZ ( -- n ) 1 ;\n"
+   s" sealed-colon.f" s" IR-ID:CVT-SZ" s" 2" s" 3" SEALED-AT
+   s" sealed-colon.f" T-LABEL s" sealed-colon.f" AT$ true false CHECK-RC 70 T=
+   s\" require src/compiler/ir/id.f\ntrusted: IR-ID:CVT-ST ( -- n ) 1 ;\n"
+   s" sealed-trusted.f" s" IR-ID:CVT-ST" s" 2" s" 10" SEALED-AT
+   s\" require src/compiler/ir/id.f\nvariable IR-ID:CVT-SV\n"
+   s" sealed-variable.f" s" IR-ID:CVT-SV" s" 2" s" 10" SEALED-AT
+   s\" require src/compiler/ir/id.f\n4 BUFFER: IR-ID:CVT-SU\n"
+   s" sealed-created.f" s" IR-ID:CVT-SU" s" 2" s" 11" SEALED-AT
+   s\" require src/compiler/ir/id.f\ndefer IR-ID:CVT-SD ( -- )\n"
+   s" sealed-defer.f" s" IR-ID:CVT-SD" s" 2" s" 7" SEALED-AT
+   s\" require src/compiler/ir/id.f\nCAST: IR-ID:CVT-SC ( n -- ptr u8 )\n"
+   s" sealed-cast.f" s" IR-ID:CVT-SC" s" 2" s" 7" SEALED-AT
+   s\" require src/compiler/ir/id.f\nDYNAMIC-BUFFER IR-ID:CVT-SB u8\n"
+   s" sealed-buffer.f" s" IR-ID:CVT-SB" s" 2" s" 16" SEALED-AT
+   s\" require src/compiler/ir/id.f\nBEGIN-STRUCTURE IR-ID:CVT-SS\nEND-STRUCTURE\n"
+   s" sealed-structure.f" s" IR-ID:CVT-SS" s" 2" s" 17" SEALED-AT
+   s\" require src/compiler/ir/id.f\nBEGIN-STRUCTURE CVT-SQ\nCELL +FIELD IR-ID:CVT-SF\nEND-STRUCTURE\n"
+   s" sealed-field.f" s" IR-ID:CVT-SF" s" 3" s" 13" SEALED-AT
+   s\" require src/compiler/ir/id.f\nPROCESS-SYMBOLS\nFUNCTION: IR-ID:CVT-SN fstat ( n ptr u8 -- i32 )\n;FUNCTION\n"
+   s" sealed-function.f" s" IR-ID:CVT-SN" s" 3" s" 11" SEALED-AT
+   s\" require src/compiler/ir/id.f\npackage IR-ID\n: CVT-SZ ( -- n ) 1 ;\n;package\n"
+   s" sealed-reopen.f" s" IR-ID" s" 2" s" 9" SEALED-AT
+   s\" package type\n;package\n"
+   s" sealed-listed.f" s" type" s" 1" s" 9" SEALED-AT
+   s\" require src/compiler/ir/id.f\nvariable IR-ID:COUNT\n"
+   s" sealed-dup-variable.f" s" 2" s" 10" SEALED-DUPLICATE
+   s\" require src/compiler/ir/id.f\n1 constant IR-ID:COUNT\n"
+   s" sealed-dup-constant.f" s" 2" s" 12" SEALED-DUPLICATE
+   s\" require src/compiler/ir/id.f\ncreate IR-ID:COUNT 4 allot\n"
+   s" sealed-dup-create.f" s" 2" s" 8" SEALED-DUPLICATE
+   s\" require src/compiler/ir/id.f\nPTR-VARIABLE IR-ID:COUNT\n"
+   s" sealed-dup-pointer.f" s" 2" s" 14" SEALED-DUPLICATE
+   s\" require src/compiler/ir/id.f\n: CVT-MK ( n -- ) create , does> ( -- n ) @ ;\n5 CVT-MK IR-ID:COUNT\n"
+   s" sealed-dup-learned.f" s" 3" s" 10" SEALED-DUPLICATE
+   s\" require src/compiler/ir/id.f\n4 BUFFER: IR-ID:COUNT\n"
+   s" sealed-dup-created.f" s" 2" s" 11" SEALED-DUPLICATE
+   s\" require src/compiler/ir/id.f\ntrusted: IR-ID:COUNT ( n -- ) create , does> ( -- n ) @ ;\n"
+   s" sealed-dup-trusted.f" s" 2" s" 10" SEALED-DUPLICATE
+   s\" require src/compiler/ir/id.f\ndefer IR-ID:COUNT ( -- n )\n"
+   s" sealed-dup-defer.f" s" 2" s" 7" SEALED-DUPLICATE
+   s\" require src/compiler/ir/id.f\nBEGIN-STRUCTURE IR-ID:COUNT\nEND-STRUCTURE\n"
+   s" sealed-dup-structure.f" s" 2" s" 17" SEALED-DUPLICATE
+   s\" require src/compiler/ir/id.f\nBEGIN-STRUCTURE CVT-SQD\nCELL +FIELD IR-ID:COUNT\nEND-STRUCTURE\n"
+   s" sealed-dup-field.f" s" 3" s" 13" SEALED-DUPLICATE
+   s\" require src/compiler/ir/id.f\nPROCESS-SYMBOLS\nFUNCTION: IR-ID:COUNT fstat ( n ptr u8 -- i32 )\n;FUNCTION\n"
+   s" sealed-dup-function.f" s" 3" s" 11" SEALED-DUPLICATE
+   s\" require src/compiler/ir/id.f\ndefer IR-ID:CVT-SE ( -- n\n"
+   s" sealed-defer-signature.f" s" defer" SEALED-SIGNATURE
+   s\" require src/compiler/ir/id.f\nCAST: IR-ID:CVT-SC ( n --\n"
+   s" sealed-cast-signature.f" s" CAST:" SEALED-SIGNATURE
+   s\" require src/compiler/ir/id.f\nundefine IR-ID:SPAN-LOCAL\n"
+   s" sealed-undefine.f" UNSEALED
+   s\" package CVT-SO\npublic\n: A ( -- n ) 1 ;\n;package\n: CVT-SO:B ( -- n ) 2 ;\npackage CVT-SO\n: C ( -- n ) 3 ;\n;package\n"
+   s" sealed-open.f" UNSEALED ;
 
 
 \ Return-stack keywords have checker axioms for compiled bodies but no
@@ -4405,6 +4520,7 @@ public
    s" top-tick" [: TOP-TICK ;] RUN-CASE
    s" top-retired" [: TOP-RETIRED ;] RUN-CASE
    s" top-retired-public" [: TOP-RETIRED-PUBLIC ;] RUN-CASE
+   s" sealed" [: SEALED ;] RUN-CASE
    s" top-axiom" [: TOP-AXIOM ;] RUN-CASE
    s" top-cold-prim" [: TOP-COLD-PRIM ;] RUN-CASE
    s" engine-rows" [: ENGINE-ROWS ;] RUN-CASE
