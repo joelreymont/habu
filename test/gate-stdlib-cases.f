@@ -1185,10 +1185,6 @@ SUITE compiler-native-chain-aot
    test/compiler/native-chain.f
 ;SUITE
 
-SUITE compiler-native-qualified-name
-   test/compiler/native-qualified-name.f
-;SUITE
-
 SUITE compiler-native-qualified-trusted
    test/compiler/native-qualified-trusted.f
 ;SUITE

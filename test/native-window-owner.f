@@ -27,8 +27,9 @@
 \
 \ The bindings fixture then loads its source closure at tier 0, and the last
 \ case is ONE window at the optimizing tier that loads every tier-1 fixture
-\ (TIER1-CASE below): compiling the window's core prefix through the optimizing
-\ chain is nearly all of a case's cost, so the fixtures share one.
+\ (TIER1-CASE below), the qualified-name gate among them: compiling the window's
+\ core prefix through the optimizing chain is nearly all of a case's cost, so
+\ the fixtures share one.
 \
 \ Every child takes the long row's child deadline (test/suite-budget.f): the
 \ tier-1 window runs about 24 s of CPU, and the bound is there to catch a hang,
@@ -93,17 +94,19 @@ create ERR IO-CAP allot
 \ that bumped the quiet counter by name bumped the counter of the checker it was
 \ compiled into while the window's checker did the rendering, and this window then
 \ printed `habu: in install: at 'set-preflight'` for check-hook.f's own INSTALL --
-\ measured on the engine before the fix, with the same `window: 0` on stdout. Any
-\ byte here means a scan nobody judges reached a renderer again.
-: WINDOW-RESULT ( ptr u8 n -- ) {: want:ptr wantu:n :}
+\ measured on the engine before the fix, with the same `window: 0` on stdout. So
+\ stderr is asserted byte-exact: the bindings window expects none, and the tier-1
+\ window exactly the one refusal a fixture judges, the optimizing compiler's
+\ `ncomp: cannot compile NCOMP-NAME-A:SAME` from the qualified-name gate. Any
+\ other byte means a scan nobody judges reached a renderer again.
+: WINDOW-RESULT ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n ewant:ptr ewantu:n :}
    WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
    SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
    rc 0 <> if ERR erru LEN>N type cr then
    rc 0 T=
    OUT outu LEN>N want wantu T$=
-   erru LEN>N 0 <> if ERR erru LEN>N type cr then
-   erru LEN>N 0 T= ;
+   ERR erru LEN>N ewant ewantu T$= ;
 
 \ The source loader and layout a fixture's real require closure needs.
 : SOURCE-DEPS+ ( -- )
@@ -134,7 +137,7 @@ create ERR IO-CAP allot
 : BINDINGS-CASE ( -- )
    s" test/native-window-owner-bindings.f" ARGS!
    SOURCE-DEPS+
-   S\" window: 0\n" WINDOW-RESULT ;
+   S\" window: 0\n" s" " WINDOW-RESULT ;
 
 \ The tier-1 window loads its script arguments in order, then the fixture
 \ argument last; a fixture that refuses stops it at its own code. The order is
@@ -144,6 +147,10 @@ create ERR IO-CAP allot
 \     adopted the bootstrap one (call-store), and the rebuilt checker's
 \     pointer-pool clear (test/compiler/native-checker-storage.f);
 \   - the source loader and layout the later require closures need;
+\   - the qualified-name gate (test/compiler/native-qualified-name.f), once
+\     src/habu/xref.f and lib/errors.f are in: it reopens XREF, patch32's
+\     owner, to move a pending record to another namespace, which the
+\     optimizing compiler's name-identity gate must refuse;
 \   - the declared row of a prefix word compiled with the hook cell empty
 \     (declared-row): the tier-1 scan's row, else the declaration;
 \   - the dictionary boundary (fixed), asserting a FRESH owner at its load;
@@ -174,13 +181,15 @@ create ERR IO-CAP allot
    s" src/core/combinators.f" ARG+
    s" src/habu/code-span.f" ARG+
    s" src/habu/xref.f" ARG+
+   s" lib/errors.f" ARG+
+   s" test/compiler/native-qualified-name.f" ARG+
    s" src/core/generated-declaration-dictionary.f" ARG+
    s" src/core/generated-declaration-protection.f" ARG+
    s" src/core/dynamic-storage.f" ARG+
    s" test/native-window-declared-row.f" ARG+
    s" test/native-window-owner-fixed.f" ARG+
    WHITEBOX-CHILD:ENV!
-   S\" window: 0\n" WINDOW-RESULT ;
+   S\" window: 0\n" S\" ncomp: cannot compile NCOMP-NAME-A:SAME\n" WINDOW-RESULT ;
 
 : OWNER-CASES ( -- )
    PREPARE

@@ -469,12 +469,6 @@ get-current prot-wid-add
 
 ;package
 
-\ Its one caller is test/compiler/native-qualified-name.f REHOME-PENDING; undefine
-\ retires a record through XREF:RETIRE below.
-\ Retirement: habu-sweep-trusted-out-41e973ce.
-TRUSTED: XREF-PATCH32 ( n ptr n -- )
-   patch32 ;
-
 \ RETIRING A RECORD IN PLACE stamps XREF-RETIRED-WL over its wordlist cell. The
 \ records are write-protected, so the cell is written through patch32, as two
 \ 32-bit halves; that primitive is trusted-only everywhere but here, where this

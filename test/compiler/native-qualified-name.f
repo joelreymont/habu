@@ -5,11 +5,18 @@
 \ ordinary colon path in both directions: a RESULT:OK-shaped definition must
 \ compile, and a pending record moved to another package with the same tail must
 \ fail at the compiler's name-identity gate rather than pass on its tail alone.
-require src/compiler/native/compiler.f
+\
+\ It runs in test/native-window-owner.f's tier-1 window (TIER1-CASE), which
+\ supplies the optimizing compiler, src/habu/xref.f and the tier: that gate is
+\ the optimizing compiler's - at the default tier the rehomed record passes it
+\ and the file dies on its own diagnostic. A failure dies with its message, and
+\ the window reports the exit.
 
-\ Tier 1 below: that gate is the optimizing compiler's - at the default tier
-\ the rehomed record passes it and the file dies on its own diagnostic.
-1 set-tier
+package XREF
+public
+\ Rewrite one wordlist cell of a dictionary record (this test's rehome).
+: REHOME-WID ( n ptr n -- ) patch32 ;
+;package
 
 package NCOMP-NAME-A ;package
 package NCOMP-NAME-B ;package
@@ -50,7 +57,7 @@ public
 \ live namespace with the same prospective tail; the source token stays A:SAME.
 : REHOME-PENDING ( -- )
    ndict@ XREF-REC XREF-WORDLIST-SLOT cells XREF-REC+
-   OTHER-WID swap XREF-PATCH32 ;
+   OTHER-WID swap XREF:REHOME-WID ;
 immediate
 s" NCOMP-NAME-TEST:REHOME-PENDING" 0 parse-imm
 
@@ -58,8 +65,7 @@ private
 
 : RUN ( -- )
    POSITIVE
-   NEGATIVE
-   s" test: ok" type cr ;
+   NEGATIVE ;
 
 RUN
 
