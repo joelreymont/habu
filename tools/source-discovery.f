@@ -9,20 +9,23 @@
 \ (included/required/provided) in record-only discovery mode so the ordered
 \ event log (src/core/include.f) captures include multiplicity and
 \ require/provided canonical registry state without loading or compiling
-\ anything. A guarded loader inside a colon body is recorded unconditionally,
-\ so the event closure over-approximates (superset of the runtime closure)
-\ and can never under-approximate a statically-visible loader call.
-\ Redefining or undefining a loader word, retiring one through
-\ UNDEFINE-IF-DEFINED, a dynamic (non-literal) loader path, and an unsupported
-\ string opener (C\" / .\") before a loader word each reject fail-closed -
-\ unless the entry file is a declared dynamic-tail boundary in
-\ tools/dynamic-tail-manifest.f, in which case exactly those forms are
-\ tolerated (skipped, never recorded) and only the statically-visible loader
-\ events are produced. An escaped literal (S\") names the path its escapes
-\ decode to. A bad escape refuses nothing: at top level it ends the walk where
-\ the load stops, and in a definition, which the check rejects and reads past,
-\ the walk reads past it and follows no loader taking it. Recorded loader-token
-\ spans are entry-file byte offsets.
+\ anything. A guarded loader inside a colon body taking a literal path the loader
+\ resolves is recorded unconditionally, so the event closure over-approximates
+\ (superset of the runtime closure) and can never under-approximate a
+\ statically-visible loader call. A string loader word in a body after anything
+\ else, a path the engine's resolver refuses among them, and UNDEFINE-IF-DEFINED
+\ in a body, is a call the word makes when it runs, which no check runs, and the
+\ walk reads past it. Redefining or undefining a loader word and, at top
+\ level, retiring one through UNDEFINE-IF-DEFINED, a dynamic
+\ (non-literal) loader path, and an unsupported string opener (C\" / .\")
+\ before a loader word each reject fail-closed - unless the entry file is a
+\ declared dynamic-tail boundary in tools/dynamic-tail-manifest.f, in which
+\ case exactly those forms are tolerated (skipped, never recorded) and only the
+\ statically-visible loader events are produced. An escaped literal (S\")
+\ names the path its escapes decode to. A bad escape refuses nothing: at top
+\ level it ends the walk where the load stops, and in a definition, which the
+\ check rejects and reads past, the walk reads past it and follows no loader
+\ taking it. Recorded loader-token spans are entry-file byte offsets.
 
 require lib/errors.f
 require lib/string.f
@@ -51,9 +54,10 @@ $20 constant SD-SP
 
 1 constant SD-PEND-PATH
 2 constant SD-PEND-OTHER
-3 constant SD-PEND-BAD                   \ a literal the engine refuses, in a body
 
-create SD-PATH SD-PATH-CAP allot
+\ The literal path a loader word takes, however long: the engine's resolver is
+\ the only cap on it.
+DYNAMIC-BUFFER SD-PATH u8
 create SD-ROOT SD-PATH-CAP 1+ allot
 create SD-ENTRY SD-PATH-CAP 1+ allot
 create SD-LOADING SD-PATH-CAP allot
@@ -66,7 +70,6 @@ PTR-VARIABLE SD-A
 variable SD-U
 variable SD-I
 variable SD-PATH-U
-variable SD-PATH-OVF
 variable SD-PEND
 variable SD-LENIENT
 variable SD-EMIT-LEN
@@ -106,8 +109,7 @@ variable SD-SCOPES
 
 : SD-BYTE ( n -- u8 )   SD-BUF + c@ ;
 : SD-AT? ( n -- bool )  SD-U @ < ;
-: SD-PATH-AT ( n -- ptr u8 )  SD-PATH + ;
-: SD-PATH$ ( -- ptr u8 n )  0 SD-PATH-AT SD-PATH-U @ ;
+: SD-PATH$ ( -- ptr u8 n )  0 SD-PATH SD-PATH-U @ ;
 : SD-TOK$ ( n n -- ptr u8 n ) {: off:n len:n :}  off SD-BUF + len ;
 
 : SD-LENIENT? ( -- bool )   SD-LENIENT @ 0= 0= ;
@@ -170,18 +172,12 @@ variable SD-SCOPES
    then
    0 ;
 
-\ An oversized string literal is fine as data (the runtime loader path cap is
-\ INCLUDE-PATH-CAP anyway); it only rejects when it reaches a loader word.
-: SD-PATH-APPEND ( u8 -- ) {: c:n :}
-   SD-PATH-U @ SD-PATH-CAP >= if 1 SD-PATH-OVF ! exit then
-   c SD-PATH-U @ SD-PATH-AT c!
-   SD-PATH-U @ 1+ SD-PATH-U ! ;
-
-\ The u bytes at a become the path, as far as SD-PATH holds them.
+\ The u bytes at a become the path, with a byte more so that an empty one still
+\ has a byte 0.
 : SD-PATH-FILL ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 SD-PATH-U !
-   0 SD-PATH-OVF !
-   u 0 ?do a i + c@ SD-PATH-APPEND loop ;
+   u 1+ SD-PATH-RESERVE
+   a 0 SD-PATH u BYTE-COPY
+   u SD-PATH-U ! ;
 
 \ Room for an escaped literal's decode: as many bytes as its payload, since a
 \ decode is never longer than its spelling.
@@ -192,12 +188,11 @@ DYNAMIC-BUFFER SD-DEC u8
 \ follows nothing at or after the literal and refuses nothing, leaving the
 \ literal to the check, which refuses it at its opener. In a definition it is
 \ one more error of a body the check rejects and reads past, so the walk reads
-\ past it as well, and a loader or retirement taking it is a call in a word
-\ never made, with nothing to follow or refuse: SD-PEND-BAD replaces the kind
-\ its opener left.
+\ past it as well, with no path pending: a loader or retirement taking it is a
+\ call in a body, nothing to follow or refuse.
 : SD-REFUSED-LITERAL ( -- )
    SD-DEF @ 0= if SD-U @ SD-I ! exit then
-   SD-PEND-BAD SD-PEND ! ;
+   0 SD-PEND ! ;
 
 \ An escaped literal's path is what the engine's literal makes of its payload,
 \ the payload decoded by the engine's escape table (src/core/checker.f
@@ -227,10 +222,6 @@ DYNAMIC-BUFFER SD-DEC u8
    repeat
    E-DISC-UNTERM throw ;
 
-: SD-COPY-PATH ( n n -- ) {: off:n len:n :}
-   off SD-BUF + 0 SD-PATH-AT len BYTE-COPY
-   len SD-PATH-U ! ;
-
 : SD-LOADER-KIND ( n n -- n )
    SD-TOK$ {: a:ptr u:n :}
    a u s" included" STR=CI if SD-K-INCLUDED exit then
@@ -254,26 +245,46 @@ DYNAMIC-BUFFER SD-DEC u8
    kind SD-K-REQUIRED = if SD-PATH$ required exit then
    SD-PATH$ provided ;
 
-\ The loader resolves the literal against its roots before it records the load.
-\ A path it cannot resolve (E-PATH-RANGE: longer resolved than the engine's path
-\ capacity, or holding a NUL) is a form discovery cannot follow, refused at the
-\ loader word that names it.
-: SD-CALL-LOADER ( n n n -- )
+\ The loader resolves the literal against its roots before it records the load:
+\ false, and nothing recorded, for a path the resolver refuses (E-PATH-RANGE:
+\ empty, holding a NUL, absolute and 2050 bytes or more, relative and 2050 bytes
+\ or more joined as root, `/` and path to a root searched before one holds the
+\ file, or over PATH-CAP bytes once normalized; src/core/include.f SOURCE-ROOT
+\ CHECK, SEARCH-ROOTS, JOIN! and NORMALIZE).
+: SD-LOAD? ( n n n -- bool )
    {: off:n len:n kind:n :}
    off len DISC-TOK!
    kind SD-CALL-KIND !
    [: SD-CALL-ACT ;] catch {: rc:n :}
-   rc 0= if exit then
+   rc 0= if true exit then
    rc E-PATH-RANGE <> if rc throw then
+   false ;
+
+\ A load at top level, which runs while the file loads, or an `include` or
+\ `require` in a body, which the engine refuses there but whose file the quiet
+\ composition reads: a path it cannot resolve is a form discovery cannot
+\ follow, refused at the loader word that names it.
+: SD-CALL-LOADER ( n n n -- )
+   {: off:n len:n kind:n :}
+   off len kind SD-LOAD? if exit then
    off SD-TOK-OFF !
    len SD-TOK-LEN !
    E-DISC-CAPACITY SD-REJECT ;
 
+\ A loader word in a body is a call the word makes when it runs, which no check
+\ runs: right after a path literal the resolver takes it is recorded, the
+\ superset an ordinary composition loads (src/habu/verify-source.f, a loader in
+\ a definition). After anything else, or after a path the resolver refuses,
+\ which the call loads nothing from, it is nothing to follow or refuse.
+\ At top level the load runs while the file loads, so a path the walk cannot
+\ follow is refused.
 : SD-DISPATCH-LOADER ( n n n n -- ) {: off:n len:n kind:n pend:n :}
-   pend SD-PEND-BAD = if exit then
+   SD-DEF @ 0<> if
+      pend SD-PEND-PATH = if off len kind SD-LOAD? drop then
+      exit
+   then
    pend SD-PEND-OTHER = if E-DISC-OPENER SD-REJECT exit then
    pend SD-PEND-PATH = 0= if E-DISC-DYNAMIC SD-REJECT exit then
-   SD-PATH-OVF @ 0= 0= if E-DISC-CAPACITY SD-REJECT exit then
    off len kind SD-CALL-LOADER ;
 
 \ A name reader with nothing after it ends the source, so no loader form is left
@@ -284,18 +295,23 @@ DYNAMIC-BUFFER SD-DEC u8
    len 0= if exit then
    off len SD-RESERVED? if E-DISC-SHADOW SD-REJECT then ;
 
-\ UNDEFINE-IF-DEFINED retiring a loader word (or fed a non-literal name that
-\ cannot be proven safe) breaks loader identity for the rest of the file.
+\ UNDEFINE-IF-DEFINED at top level retiring a loader word (or fed a non-literal
+\ name that cannot be proven safe) breaks loader identity for the rest of the
+\ file. In a body it is a retirement the word makes when it runs, as a loader
+\ word there is a call.
 : SD-RETIRE ( n -- ) {: pend:n :}
-   pend SD-PEND-BAD = if exit then
+   SD-DEF @ 0<> if exit then
    pend SD-PEND-PATH = 0= if E-DISC-RETIRE SD-REJECT exit then
    SD-PATH$ SD-RESERVED$? if E-DISC-RETIRE SD-REJECT then ;
 
+\ `include` and `require` take the next token as their path and refuse one
+\ over INCLUDE-PATH-CAP bytes, which is PATH-CAP, before they resolve it
+\ (src/core/include.f INCLUDE-CHECK-PATH); the resolver decides the rest.
 : SD-LOADER-IMM ( n n n -- ) {: toff:n tlen:n kind:n :}
    SD-RAW {: poff:n plen:n :}
    plen 0= if E-DISC-DYNAMIC SD-REJECT exit then
-   plen SD-PATH-CAP > if E-DISC-CAPACITY SD-REJECT exit then
-   poff plen SD-COPY-PATH
+   plen PATH-CAP > if E-DISC-CAPACITY SD-REJECT exit then
+   poff plen SD-TOK$ SD-PATH-FILL
    toff tlen kind SD-CALL-LOADER ;
 
 
@@ -475,6 +491,7 @@ private
    DISCOVERY-OFF EVENT-OFF
    REQUIRE-RESTORE
    SD-LOCALS-RELEASE
+   SD-PATH-RELEASE
    SD-DEC-RELEASE
    rc 0= 0= if rc throw then ;
 

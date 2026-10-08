@@ -8,8 +8,8 @@
 \ - The closure is composed over the bytes with PATH as the subject's identity,
 \   so a dependency that requires PATH back meets the bytes, never the copy on
 \   disk. The composition reads each file a loader loads, and refuses where it
-\   meets them the loader forms the closure walk refuses (tools/source-discovery.f),
-\   but in a file tools/dynamic-tail-manifest.f lists: no walk runs before it.
+\   meets them the loader forms the closure walk refuses
+\   (tools/source-discovery.f): no walk runs before it.
 \ - The verification runs in a short-lived child, tools/check-verify-child.f,
 \   whose image is the engine's boot prefix plus the verifier: neither this
 \   process's words nor an earlier check's can stand in for, or collide with, a
@@ -62,7 +62,6 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/engine-candidate.f
-require tools/dynamic-tail-manifest.f
 require tools/source-discovery.f
 require tools/check-all-errors-core.f
 require lib/verify-diagnostics.f
@@ -198,8 +197,9 @@ variable CHK-EXPAND-TOP
 \ (tools/source-discovery.f) scans every token of a file - colon bodies
 \ included - and records one event per literal loader form
 \ (include/included/require/required/provided). Every event path is a direct
-\ dep, so the closure is a superset of the runtime load set; dynamic or
-\ retired loader forms reject fail-closed unless manifested.
+\ dep, so the closure is a superset of the runtime load set; a top-level
+\ dynamic or retired loader form rejects fail-closed unless manifested, and one
+\ in a body is a call no check makes.
 \
 \ A walk ends at the first file it cannot follow: discovery refuses it, with an
 \ E-DISC-* code, it does not exist, CHK-E-NOINPUT, or the file system will not
@@ -648,11 +648,7 @@ variable VFY-TARGET-U
    VFY-STOP-RC @ VFY-STOP-AT @ label labelu src srcu true STOP-RECORD$ drop ;
 
 
-\ The child's arguments. Outside the pre-pass its composition keeps the loader
-\ forms it refuses in the files tools/dynamic-tail-manifest.f lists, named by
-\ their canonical paths in the tree that file was loaded from. `--lenient`
-\ goes only before a path: alone after SUBJECT, the child would read it as the
-\ pre-pass's LABEL.
+\ The child's arguments.
 : VFY-ARGV ( -- )
    PROC-ARGV-ENV-RESET
    s" --load" CHK-ARG+
@@ -661,10 +657,6 @@ variable VFY-TARGET-U
    VFY-PATH$ CHK-ARG+
    VFY-PREPASS @ if VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+ then
    VFY-AT @ 0 >= if s" --at" CHK-ARG+  SB-RESET VFY-AT @ FMT:SB-U SB$ CHK-ARG+ then
-   VFY-PREPASS @ 0=  DTM:COUNT 0 >  and if
-      s" --lenient" CHK-ARG+
-      DTM:COUNT 0 ?do i DTM:CANON$ CHK-ARG+ loop
-   then
    PROC-ENV-INHERIT-MISSING ;
 
 

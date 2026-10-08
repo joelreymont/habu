@@ -10,13 +10,14 @@
 \ occurrence) and a fresh (first-seen) `required` are followed; a `required`
 \ already known through an earlier `provided`/`require` is not re-loaded, and a
 \ bare `provided` registers a path without loading it, so neither adds content.
-\ Distinct entries are deduplicated by canonical absolute pathname. Discovery itself
-\ rejects fail-closed (shadowed/undefined loader word, dynamic path, unsupported
-\ opener); this file propagates that so a broken closure cannot be keyed. A
-\ loading event whose path is not a file joins the list like any other, and the
-\ walk refuses it where it reads the file (DISCOVER:RUN-IN names it on fd 2 and
-\ rethrows E-FS-STAT), as BUILD-WITH's reader refuses it: a closure that left it
-\ out would key fewer files than the build reads.
+\ Distinct entries are deduplicated by canonical absolute pathname. Discovery
+\ itself rejects fail-closed (a shadowed/undefined loader word, or a top-level
+\ dynamic path or unsupported opener); this file propagates that so a broken
+\ closure cannot be keyed. A loading event whose path is not a file joins the
+\ list like any other, and the walk refuses it where it reads the file
+\ (DISCOVER:RUN-IN names it on fd 2 and rethrows E-FS-STAT), as BUILD-WITH's
+\ reader refuses it: a closure that left it out would key fewer files than the
+\ build reads.
 \
 \ This file only produces the ordered list (BUILD / COUNT / PATH$). Content
 \ hashing and package-scope replay live in the consumers.

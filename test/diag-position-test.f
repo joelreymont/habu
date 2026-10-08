@@ -1106,7 +1106,11 @@ variable RC
 \ the step `./`, before inc-target.f, then a use of the word that file defines.
 \ A step is five bytes as written and two decoded, so with 250 steps the path
 \ is longer than the path capacity (PATH-CAP, 1024 bytes) as written but not
-\ decoded, and with 600 decoded too.
+\ decoded, and with 600 decoded too. The engine's resolver measures the path
+\ decoded and refuses it only at 2050 bytes or more, joined when relative to
+\ each root searched before one holds the file, or over PATH-CAP once
+\ normalized, so it loads both, 600 steps at
+\ 3012 bytes as written.
 : STEPS-FIXTURE ( n ptr u8 n -- ) {: steps:n name:ptr nameu:n :}
    BASE$ name nameu FX-P JOIN-PATH FX-PU !
    0 FX-U !
@@ -1229,9 +1233,10 @@ variable RC
    250 s" escaped-steps-fit.f" STEPS-FIXTURE
    CERTIFIED
    s" " 0 LOADED
-   s" an escaped path over the capacity decoded" T-LABEL
+   s" an escaped path over the capacity decoded, within it normalized" T-LABEL
    600 s" escaped-steps-over.f" STEPS-FIXTURE
-   s" E-LOADER-FORM" s" included" 1 3019 3018 3026 REFUSED-AT
+   CERTIFIED
+   s" " 0 LOADED
    s" a bad escape in a loader's path" T-LABEL
    SB-RESET
    s\" s\\\" inc-t\\yarget.f\" included" SB-APPEND LF+

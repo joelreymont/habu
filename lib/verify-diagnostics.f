@@ -56,7 +56,7 @@ variable READY
       s" The file this loader word names cannot be read. Make it readable, or correct the path." exit
    then
    s" E-LOADER-FORM" s" literal_loader_form"
-   s" Load a file by a literal path of at most 1024 bytes, as written and as resolved, through a loader word no definition redefines or retires, or list this file in tools/dynamic-tail-manifest.f." ;
+   s" Load a file by a literal path that resolves within 1024 bytes, written in at most 1024 bytes after include or require and otherwise in under 2050 counting, when relative, a slash and the longest root searched for it, through a loader word no definition redefines or retires." ;
 
 public
 

@@ -41,12 +41,6 @@ PTR-VARIABLE ENTRY-TICK-OWNER
 : ENTRY-TICK-ORDER! ( n ptr u8 -- )
    ENTRY-TICK-OWNER !  ENTRY-TICK-ORDER ! ;
 
-\ Whether a quiet composition keeps, in the file it is scanning, the loader
-\ forms it refuses (the quiet composition's section below). The file is named
-\ by its canonical path, the subject's as the caller supplied it; the path is
-\ borrowed. By default no file is.
-defer LENIENT-FILE? ( ptr u8 n -- bool )
-
 private
 
 \ A statement the source ends inside, one that lacks a part it must have, or one
@@ -672,18 +666,13 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
 \ A quiet composition (SOURCE-COMPOSE-QUIET-IN-SCOPE) refuses top-level
 \ loader forms discovery refuses (tools/source-discovery.f), where it meets
 \ them, so that walk need not run first: a path that is no literal
-\ (E-DISC-DYNAMIC), a literal no loader takes (E-DISC-OPENER), or a path past
-\ PATH-CAP (E-DISC-CAPACITY). It also refuses a declaration of a loader's name
-\ (E-DISC-SHADOW) and a retirement of one, or of a word it cannot read
-\ (E-DISC-RETIRE). A refusal stands at TOKEN-BYTE@, FAULT-LEN bytes long,
-\ unless the file being
-\ scanned is lenient (LENIENT-FILE?): such a file keeps the form, and a loader
-\ it would refuse loads nothing.
-: LENIENT? ( -- bool )
-   COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @ LENIENT-FILE? ;
-
+\ (E-DISC-DYNAMIC), a literal no loader takes (E-DISC-OPENER), or a path the
+\ loader refuses (E-DISC-CAPACITY): an `include` or `require` operand past
+\ PATH-CAP (LOADER-OPERAND), or one the resolver refuses (CLAIMED-LOAD). It
+\ also refuses a declaration of a loader's name (E-DISC-SHADOW) and a top-level
+\ retirement of one, or of a word it cannot read (E-DISC-RETIRE). A refusal
+\ stands at TOKEN-BYTE@, FAULT-LEN bytes long.
 : QUIET-REJECT ( n n -- ) {: code:n len:n :}
-   LENIENT? IF EXIT THEN
    len FAULT-LEN !
    code throw ;
 
@@ -701,24 +690,25 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
    QUIET @ 0= IF EXIT THEN
    a u RESERVED-NAME? IF E-DISC-SHADOW u QUIET-REJECT THEN ;
 
-\ `UNDEFINE-IF-DEFINED` (src/habu/xref.f) retires the word the literal before
-\ it names, a literal of the given kind: one that is no path literal, or that
-\ names a loader, is refused; one holding a bad escape is the checker's.
+\ `UNDEFINE-IF-DEFINED` (src/habu/xref.f) at top level retires the word the
+\ literal before it names, a literal of the given kind: one that is no path
+\ literal, or that names a loader, is refused; one holding a bad escape is the
+\ checker's. In a body it retires nothing until the word runs, which no check
+\ does.
 : QUIET-RETIRE ( ptr u8 n n ptr u8 n -- ) {: a:ptr u:n kind:n lit:ptr litu:n :}
    QUIET @ 0= IF EXIT THEN
    a u s" UNDEFINE-IF-DEFINED" STR=CI 0= IF EXIT THEN
    kind LIT-BAD = IF EXIT THEN
    kind LIT-PATH <>  lit litu RESERVED-NAME?  or IF E-DISC-RETIRE u QUIET-REJECT THEN ;
 
-\ A string loader u bytes long, after a literal of the given kind and length:
-\ refused after none, after one no loader takes and after a path past
-\ PATH-CAP. True when it may load the literal's path.
-: LITERAL-LOAD? ( n n n -- bool ) {: kind:n litu:n u:n :}
-   kind 0= IF E-DISC-DYNAMIC u QUIET-REJECT false EXIT THEN
-   kind LIT-OTHER = IF E-DISC-OPENER u QUIET-REJECT false EXIT THEN
-   kind LIT-PATH <> IF false EXIT THEN
-   litu PATH-CAP > IF E-DISC-CAPACITY u QUIET-REJECT false EXIT THEN
-   true ;
+\ A string loader u bytes long, after a literal of the given kind: refused
+\ after none and after one no loader takes. True when it may load the
+\ literal's path, which the resolver alone may still refuse (CLAIMED-LOAD),
+\ false after a literal holding a bad escape, which is the checker's.
+: LITERAL-LOAD? ( n n -- bool ) {: kind:n u:n :}
+   kind 0= IF E-DISC-DYNAMIC u QUIET-REJECT THEN
+   kind LIT-OTHER = IF E-DISC-OPENER u QUIET-REJECT THEN
+   kind LIT-PATH = ;
 
 \ ---- a loader in a definition -------------------------------------------------
 \ `s" PATH" required` or `s" PATH" included` in a definition loads PATH when the
@@ -738,21 +728,23 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
 \ targets' files define the same words. A source cannot define a predicate's
 \ spelling (tools/reserved-name-lint-core.f reserves it), so the answer is the
 \ engine's. The path is the literal right before the loader word, the bytes the
-\ engine's literal makes of it (BODY-LIT!); discovery may require that form
-\ when walking a closure, while a quiet composition leaves runtime loaders
-\ to the ordinary effect checker. An entry keeps a copy of its path: a
-\ decoded one lives only until the next decode, and the release comes after
-\ later bodies, top-level statements and nested files have decoded theirs. A file's entries sit above its
-\ loader's, and their paths go with them. The entries grow with the loads
-\ waiting at once.
+\ engine's literal makes of it (BODY-LIT!); discovery records a body loader
+\ after a path literal the engine's resolver takes, wherever it stands, and
+\ reads past one taking anything else. So the composition loads nothing for a
+\ path the resolver refuses (BODY-LOAD?). An entry keeps a copy of its
+\ path: a decoded one lives only until the next decode, and the release comes
+\ after later bodies, top-level statements and nested files have decoded
+\ theirs. A file's entries sit above its loader's, and their paths go with
+\ them. The entries grow with the loads waiting at once.
 \
 \ A quiet composition loads none of these: a word's run is no part of the
 \ check, so the ordinary effect checker judges its runtime loader calls.
-\ What it loads from a body is what the engine loads while it compiles one:
-\ `include` and `require` are immediate (src/core/include.f), so the file
-\ each names in a body waits here as a
-\ string loader's does in an ordinary composition, and a fault loading it
-\ stands at that loader word (IMM-OPERAND, CLAIMED-LOAD).
+\ What it loads from a body is the file an `include` or `require` names there.
+\ Both are immediate (src/core/include.f), and the engine refuses either in a
+\ body (E-UNMODELED-IMMEDIATE) and loads nothing, but the file each names
+\ waits here as a string loader's does in an ordinary composition, a superset
+\ of what the engine loads, and a fault loading it stands at that loader word
+\ (IMM-OPERAND, CLAIMED-LOAD).
 DYNAMIC-BUFFER PEND-PATH u8                   \ the waiting loads' paths, end to end
 DYNAMIC-BUFFER PEND-AT n                      \ a waiting load's path's offset
 DYNAMIC-BUFFER PEND-U n                       \ and its length
@@ -851,14 +843,19 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    BODY-DEAD @ 1 - BODY-DEAD !
    BODY-DEAD @ 0= IF BODY-ARMS @ 1 - BODY-ARMS ! THEN ;
 
-\ A body token that is no string literal: a loader word right after one, on a
-\ straight line, waits while an ordinary composition reads the source.
+\ A body token that is no string literal: a loader word right after a path
+\ literal (`s"`, `s\"`), on a straight line, waits while an ordinary composition
+\ reads the source. Only a path literal makes a waiting load, as in the walk
+\ (tools/source-discovery.f SD-PEND-PATH): a `c"` or `."` one gives the loader
+\ no path, so the walk records no file and the composition reads none. The
+\ path waits however long it is: the resolver alone refuses one, when its
+\ turn comes (BODY-LOAD?).
 : BODY-TOKEN-SEEN ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u BODY-LIT-KIND @ BODY-LIT-A @ BODY-LIT-U @ QUIET-RETIRE
    BODY-DEAD @ 0 > IF a u DEAD-TOKEN BODY-PREV-CLEAR EXIT THEN
    BODY-BENT @ 0= IF a u ARM-TOKEN? IF BODY-PREV-CLEAR EXIT THEN THEN
    a u WRAP-CTL-TOK? IF 1 BODY-BENT ! THEN
-   COMPOSE-ON @ 0<> BODY-LIT-U @ 0 > and BODY-BENT @ 0= and QUIET @ 0= and IF
+   COMPOSE-ON @ 0<> QUIET @ 0= and BODY-BENT @ 0= and BODY-LIT-KIND @ LIT-PATH = and
+   BODY-LIT-U @ 0 > and IF
       a u s" required" STR=CI IF BODY-LIT-A @ BODY-LIT-U @ 0 TOKEN-BYTE @ u PEND-PUSH THEN
       a u s" included" STR=CI IF BODY-LIT-A @ BODY-LIT-U @ 1 TOKEN-BYTE @ u PEND-PUSH THEN
    THEN
@@ -996,16 +993,18 @@ variable GROUP-AT
 
 \ The path `include` or `require` takes, the next token as the engine reads it
 \ (parse-name), the word wu bytes long and standing at TOKEN-BYTE: none is
-\ refused at the word, one past PATH-CAP at itself, and true when the path may
-\ load. A lenient file keeps the form and loads nothing.
-: LOADER-OPERAND ( n -- ptr u8 n bool ) {: wu:n :}
+\ refused at the word, and one past PATH-CAP at itself, as the word refuses it
+\ before the resolver sees it (src/core/include.f INCLUDE-CHECK-PATH).
+: LOADER-OPERAND ( n -- ptr u8 n ) {: wu:n :}
    NEXT-RAW {: p:ptr pu:n :}
-   pu 0= IF E-DISC-DYNAMIC wu QUIET-REJECT p pu false EXIT THEN
-   pu PATH-CAP > IF E-DISC-CAPACITY pu QUIET-REJECT p pu false EXIT THEN
-   p pu true ;
+   pu 0= IF E-DISC-DYNAMIC wu QUIET-REJECT THEN
+   pu PATH-CAP > IF E-DISC-CAPACITY pu QUIET-REJECT THEN
+   p pu ;
 
-\ `include` or `require` in a body, which the engine runs while it compiles the
-\ body (src/core/include.f): a quiet composition loads its file (PEND-PUSH).
+\ `include` or `require` in a body, an immediate word the engine refuses there
+\ (E-UNMODELED-IMMEDIATE), loading nothing: a quiet composition still loads
+\ its file (PEND-PUSH), as discovery records it, a superset of what the engine
+\ loads.
 : BODY-LOADER-IMM? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    QUIET @ 0= IF false EXIT THEN
    a u s" include" STR=CI  a u s" require" STR=CI or ;
@@ -1014,10 +1013,8 @@ variable GROUP-AT
 \ file waits for the statement's end.
 : IMM-OPERAND ( -- ptr u8 n )
    TOKEN-A @ TOKEN-U @ TOKEN-BYTE @ {: w:ptr wu:n at:n :}
-   wu LOADER-OPERAND {: p:ptr pu:n load:bool :}
-   load IF
-      p pu  w wu s" include" STR=CI IF 1 ELSE 0 THEN  at wu PEND-PUSH
-   THEN
+   wu LOADER-OPERAND {: p:ptr pu:n :}
+   p pu  w wu s" include" STR=CI IF 1 ELSE 0 THEN  at wu PEND-PUSH
    p pu ;
 
 \ A local, a group and a block word in a body, ahead of the parsing keywords and
@@ -1048,7 +1045,7 @@ variable GROUP-AT
    TOKEN-A @ TOKEN-U @ BODY-LOADER-IMM? IF
       TOKEN-A @ TOKEN-U @ BODY-TOKEN-SEEN
       TOKEN-A @ TOKEN-U @ BODY-APPEND
-      IMM-OPERAND dup 0 > IF BODY-APPEND ELSE 2drop THEN
+      IMM-OPERAND BODY-APPEND
       EXIT
    THEN
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF
@@ -1947,13 +1944,6 @@ USE-INIT
 
 LOADER-INIT
 
-: LENIENT-NONE ( ptr u8 n -- bool )  2drop false ;
-
-: LENIENT-INIT ( -- )
-   ['] LENIENT-NONE is LENIENT-FILE? ;
-
-LENIENT-INIT
-
 \ A use the checker published, at the subject's base: reported when it is in
 \ the subject and its declaration lies in a file this composition visited.
 : USE-SEEN ( n n n n n n -- )
@@ -2844,9 +2834,9 @@ CAST: FILE-ACTION ( n -- [ [ -- ] -- ] )
 \ byte). A quiet top-level loader in the subject's first visit arms it
 \ (ARM-LOAD) right before its claimed load; the one load it was armed for
 \ takes it before descending (LOADED); and CLAIMED-LOAD clears it once that
-\ load ends, however it ends: reported, held, provided, skipped as lenient or
-\ thrown. So no other load can report it: not a file the load reads, nor the
-\ load after it, nor a pending body load (PEND-RELEASE).
+\ load ends, however it ends: reported, held, provided or thrown. So no other
+\ load can report it: not a file the load reads, nor the load after it, nor a
+\ pending body load (PEND-RELEASE).
 variable LOAD-AT
 variable LOAD-END
 
@@ -2908,10 +2898,10 @@ variable LOAD-END
 \ A quiet composition loads the file a loader word names under the word's
 \ claim (CLAIMED-LOAD): a fault no loader in a file below claimed stands at the
 \ word, when the file is not there or does not read (E-SOURCE-READ) and when
-\ its path resolves past PATH-CAP (E-PATH-RANGE), which discovery refuses as a
-\ capacity exceeded (E-DISC-CAPACITY) and for which a lenient file loads
-\ nothing. Any other fault keeps the place where it was made.
-PTR-VARIABLE LOAD-A                           \ the path the claimed load loads
+\ the resolver refuses its path (E-PATH-RANGE), which discovery refuses as a
+\ capacity exceeded (E-DISC-CAPACITY). Any other fault keeps the place where it
+\ was made.
+PTR-VARIABLE LOAD-A                           \ the path a claimed or body load loads
 variable LOAD-U
 
 : LOAD$ ( -- ptr u8 n )
@@ -2928,12 +2918,7 @@ variable LOAD-U
    {: q w:n wu:n :}
    q catch  0 LOAD-END !
    {: rc:n :}
-   rc E-PATH-RANGE = IF
-      LENIENT? IF EXIT THEN
-      E-DISC-CAPACITY
-   ELSE
-      rc
-   THEN {: code:n :}
+   rc E-PATH-RANGE = IF E-DISC-CAPACITY ELSE rc THEN {: code:n :}
    code E-SOURCE-READ =  code E-DISC-CAPACITY =  or  FAULT-LEN @ 0=  and IF
       w TOKEN-BYTE !  wu FAULT-LEN !
    THEN
@@ -2944,8 +2929,7 @@ variable LOAD-U
 : QUIET-WORD-LOAD ( n bool -- )
    {: u:n inc:bool :}
    TOKEN-BYTE @ {: at:n :}
-   u LOADER-OPERAND {: p:ptr pu:n load:bool :}
-   load 0= IF EXIT THEN
+   u LOADER-OPERAND {: p:ptr pu:n :}
    TOKEN-BYTE @ dup pu + ARM-LOAD
    p LOAD-A !  pu LOAD-U !
    inc FILE-LOAD at u CLAIMED-LOAD ;
@@ -2955,7 +2939,7 @@ variable LOAD-U
 \ that literal's path, and the literal is the operand its load reports.
 : QUIET-STRING-LOAD ( n [ -- ] -- )
    {: u:n q :}
-   STR-LAST-KIND @ STR-LAST-U @ u LITERAL-LOAD? 0= IF EXIT THEN
+   STR-LAST-KIND @ u LITERAL-LOAD? 0= IF EXIT THEN
    STR-LAST-AT @ STR-LAST-END @ ARM-LOAD
    STR-LAST-A @ LOAD-A !  STR-LAST-U @ LOAD-U !
    q TOKEN-BYTE @ u CLAIMED-LOAD ;
@@ -2976,22 +2960,38 @@ variable LOAD-U
    THEN
    false ;
 
+\ Whether a string loader's body load of LOAD$ loads its file: not when the
+\ resolver refuses the path (E-PATH-RANGE: holding a NUL, absolute and 2050
+\ bytes or more, relative and 2050 bytes or more joined as root, `/` and path
+\ to a root searched before one holds the file, or over PATH-CAP once
+\ normalized; src/core/include.f SOURCE-ROOT CHECK, SEARCH-ROOTS, JOIN! and
+\ NORMALIZE), as the engine's loader does when the
+\ word runs, so discovery reads past it (tools/source-discovery.f SD-LOAD?).
+\ The catch holds this path's resolution alone; the load resolves it again and
+\ reads the file outside it, so that file keeps its own refusals.
+: BODY-LOAD? ( -- bool )
+   [: LOAD$ SOURCE-ROOT:RESOLVE drop 2drop ;] catch {: rc:n :}
+   rc 0= IF true EXIT THEN
+   rc E-PATH-RANGE <> IF rc throw THEN
+   false ;
+
 \ The loads that wait in this file, in the order of their loaders. A file one
 \ of them loads keeps its own entries above them, and they end with it. Its
 \ entries may grow PEND-PATH and move it, so an entry's path is fetched when its
-\ turn comes, and the resolver copies it before the file is read.
+\ turn comes, and the resolver copies it before the file is read. In an
+\ ordinary composition every entry is a string loader's (BODY-TOKEN-SEEN).
 : PEND-RELEASE ( -- )
    PEND-N @ PEND-BASE @ ?do
       TICK-REMAINDER @ IF leave THEN
-      i PEND-AT @ PEND-PATH i PEND-U @
+      i PEND-AT @ PEND-PATH i PEND-U @  LOAD-U !  LOAD-A !
+      i PEND-INC @ 0<> FILE-LOAD
       QUIET @ IF
          \ No span is armed while this load runs, so it reports nothing: a
          \ span is armed only from a top-level loader's ARM-LOAD until its
          \ load takes it (LOADED) or ends, and no file is scanned in between.
-         LOAD-U !  LOAD-A !
-         i PEND-INC @ 0<> FILE-LOAD  i PEND-WORD-AT @  i PEND-WORD-U @  CLAIMED-LOAD
+         i PEND-WORD-AT @  i PEND-WORD-U @  CLAIMED-LOAD
       ELSE
-         i PEND-INC @ 0<> IF COMPOSE-INCLUDED ELSE COMPOSE-REQUIRED THEN
+         BODY-LOAD? IF execute ELSE drop THEN
       THEN
    loop
    PEND-BASE @ PEND-N ! ;
@@ -3484,7 +3484,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ definition makes waits for the first statement after which the file has
 \ closed every scope it opened, and for the file's end at the latest. A quiet
 \ composition refuses a top-level `UNDEFINE-IF-DEFINED` by the literal before
-\ it, as in a body (QUIET-RETIRE).
+\ it (QUIET-RETIRE).
 : VERIFY-SOURCE ( -- )
    SCAN-RESET
    0 DUPLICATE-U !
@@ -3758,9 +3758,9 @@ public
 \ SOURCE-COMPOSE-IN-SCOPE, quiet: the composition itself refuses the loader
 \ forms discovery refuses (tools/source-discovery.f), where it meets them and
 \ after the packets it made before, and reads each file a loader loads, so no
-\ walk need run first. A file LENIENT-FILE? names keeps its forms. A stop at a
-\ loader (LOADER-FAULT?) stands at TOKEN-BYTE@, FAULT-LEN@ bytes long, and
-\ FAULT-TARGET$ names a file it could not read.
+\ walk need run first. A stop at a loader (LOADER-FAULT?) stands at
+\ TOKEN-BYTE@, FAULT-LEN@ bytes long, and FAULT-TARGET$ names a file it could
+\ not read.
 : SOURCE-COMPOSE-QUIET-IN-SCOPE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n :}
    COMPOSE-ON @ 0<> IF E-PKG-CONTEXT throw THEN

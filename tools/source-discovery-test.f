@@ -10,8 +10,9 @@
 \ it skipped as the loader skips it, the shared checked path emitter, fail-closed
 \ rejection when the artifact cannot be produced (loader word
 \ shadowed/undefined/retired, dynamic loader path, unsupported opener,
-\ serialization overflow), and the dynamic-tail manifest boundary (manifested
-\ repo files tolerated, the same shapes elsewhere rejected).
+\ serialization overflow), a body's loader or retirement read past as the run
+\ of a word no check runs, and the dynamic-tail manifest (the loader's own
+\ definition site tolerated).
 
 require lib/errors.f
 require lib/string.f
@@ -279,31 +280,58 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    s" commented-retire-loader.f" S\" s\" required\" \\ kept\nUNDEFINE-IF-DEFINED\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-RETIRE TTHROWSQ ;
 
-\ --- fail-closed: dynamic/opener/retire forms inside colon bodies ------------
+\ --- a loader form in a body is the run of a word no check runs ---------------
 
+\ The walk reads the entry whole, refusing nothing, and records one event: the
+\ load of PATH. A refused walk leaves no event to read.
+: SDT-ONE-LOAD ( ptr u8 n -- ) {: pa:ptr pu:n :}
+   [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
+   EVENT-COUNT 1 T=
+   EVENT-COUNT 1 <> if exit then
+   0 EVENT-PATH@ pa pu SDT-PATH T$= ;
+
+\ SDT-ONE-LOAD of an entry holding SOURCE.
+: SDT-ONE-EVENT ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n pa:ptr pu:n :}
+   s" one-event.f" a u SDT-WRITE-ENTRY
+   pa pu SDT-ONE-LOAD ;
+
+\ A loader word in a body after anything but a path literal is nothing to
+\ follow or refuse. The walk reads on past it: a later literal load in the body
+\ is recorded, and `;` ends the body, so a top-level loader taking no literal
+\ after it is refused at itself.
 : SDT-TEST-BODY-DYNAMIC ( -- )
    s" body-dyn.f" S\" : L ( ptr u8 n -- ) included ;\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ ;
+   [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
+   EVENT-COUNT 0 T=
+   S\" : L ( ptr u8 n -- ) included ;\nrequire sd-top.f\n" s" sd-top.f" SDT-ONE-EVENT
+   S\" : L ( ptr u8 n -- ) included s\" sd-body.f\" required ;\n" s" sd-body.f" SDT-ONE-EVENT
+   s" body-dyn-top.f" S\" : L ( ptr u8 n -- ) included ;\nrequired\n" SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ
+   DISCOVER:LAST-TOKEN {: off:n len:n :}
+   off 31 T=
+   len 8 T= ;
 
 : SDT-TEST-BODY-OPENER ( -- )
    s" body-opener.f" S\" : L ( -- ) C\\\" sd-i.f\" required ;\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-OPENER TTHROWSQ ;
+   [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
+   EVENT-COUNT 0 T= ;
 
+\ A definition of a loader word's name is no call a body makes: after a body,
+\ as anywhere, it is refused at its name.
 : SDT-TEST-BODY-SHADOW ( -- )
    s" body-shadow.f" S\" : HELP ( -- ) ;\n: included ( ptr u8 n -- ) 2drop ;\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-SHADOW TTHROWSQ ;
 
+\ UNDEFINE-IF-DEFINED in a body retires nothing while the file loads, whatever
+\ name it takes: a loader word's or one computed when the word runs.
 : SDT-TEST-RETIRE ( -- )
    s" retire.f" S\" : R ( -- ) s\" require\" UNDEFINE-IF-DEFINED ;\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-RETIRE TTHROWSQ ;
+   [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
+   EVENT-COUNT 0 T= ;
 
 : SDT-TEST-RETIRE-DYNAMIC ( -- )
    s" retire-dyn.f" S\" : R ( ptr u8 n -- ) UNDEFINE-IF-DEFINED ;\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-RETIRE TTHROWSQ ;
-
-: SDT-TEST-RETIRE-OTHER ( -- )
-   s" retire-ok.f" S\" : R ( -- ) s\" SDT-NOT-A-LOADER\" UNDEFINE-IF-DEFINED ;\n" SDT-WRITE-ENTRY
-   SDT-DISCOVER
+   [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
    EVENT-COUNT 0 T= ;
 
 \ --- oversized string literals: data tolerated, loader path rejected ---------
@@ -311,21 +339,61 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 : SDT-X16$ ( -- ptr u8 n )
    s" xxxxxxxxxxxxxxxx" ;
 
-\ writes name = `s" <1280 x bytes>` + tail (tail supplies the closing quote)
-: SDT-WRITE-BIG ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n tail:ptr tailu:n :}
+: SDT-DOT16$ ( -- ptr u8 n )
+   s" ././././././././" ;
+
+\ The engine's resolver alone caps a loader's path: it refuses an absolute one
+\ of 2050 bytes or more, a relative one that is 2050 bytes or more joined as
+\ root, `/` and path to a root searched before one holds the file, and one over
+\ PATH-CAP once normalized (src/core/include.f SOURCE-ROOT CHECK,
+\ SEARCH-ROOTS, JOIN! and NORMALIZE). Paths of 1280
+\ and of PATH-CAP x bytes resolve past PATH-CAP against any root. PATH-CAP
+\ bytes of `./` before a file name resolve within it; SDT-OVER bytes of them
+\ and an 18-byte name are 2050 bytes.
+$500 constant SDT-BIG
+$7F0 constant SDT-OVER
+
+\ writes name = head + u bytes of the 16-byte piece, u a multiple of 16, + tail
+: SDT-WRITE-BIG ( ptr u8 n ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n head:ptr headu:n u:n piece:ptr pieceu:n tail:ptr tailu:n :}
    SDT-ROOT$ name nameu SDT-ENTRY JOIN-PATH SDT-ENTRY-U !
-   SDT-ENTRY$ S\" s\" " WRITE-ALL
-   $50 0 ?do SDT-ENTRY$ SDT-X16$ APPEND-FILE loop
+   SDT-ENTRY$ head headu WRITE-ALL
+   u 16 / 0 ?do SDT-ENTRY$ piece pieceu APPEND-FILE loop
    SDT-ENTRY$ tail tailu APPEND-FILE ;
 
 : SDT-TEST-BIG-STRING-DATA ( -- )
-   s" big-ok.f" S\" \" 2drop\n" SDT-WRITE-BIG
+   s" big-ok.f" S\" s\" " SDT-BIG SDT-X16$ S\" \" 2drop\n" SDT-WRITE-BIG
    SDT-DISCOVER
    EVENT-COUNT 0 T= ;
 
 : SDT-TEST-BIG-STRING-LOADER ( -- )
-   s" big-bad.f" S\" \" required\n" SDT-WRITE-BIG
+   s" big-bad.f" S\" s\" " SDT-BIG SDT-X16$ S\" \" required\n" SDT-WRITE-BIG
+   [: SDT-RUN-ENTRY ;] E-DISC-CAPACITY TTHROWSQ
+   s" big-resolved.f" S\" s\" " PATH-CAP SDT-X16$ S\" \" required\n" SDT-WRITE-BIG
+   [: SDT-RUN-ENTRY ;] E-DISC-CAPACITY TTHROWSQ
+   s" big-over.f" S\" s\" " SDT-OVER SDT-DOT16$ S\" sd-pad-over-caps.f\" required\n" SDT-WRITE-BIG
    [: SDT-RUN-ENTRY ;] E-DISC-CAPACITY TTHROWSQ ;
+
+\ In a body the same loads are calls the word makes when it runs, which load
+\ nothing: a path the resolver refuses is nothing to follow or refuse.
+: SDT-TEST-BIG-STRING-BODY ( -- )
+   s" big-body.f" S\" : L ( -- ) s\" " SDT-BIG SDT-X16$ S\" \" required ;\n" SDT-WRITE-BIG
+   [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
+   EVENT-COUNT 0 T=
+   s" big-body-resolved.f" S\" : L ( -- ) s\" " PATH-CAP SDT-X16$ S\" \" required ;\n" SDT-WRITE-BIG
+   [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
+   EVENT-COUNT 0 T=
+   s" big-body-over.f" S\" : L ( -- ) s\" " SDT-OVER SDT-DOT16$ S\" sd-pad-over-caps.f\" required ;\n" SDT-WRITE-BIG
+   [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
+   EVENT-COUNT 0 T= ;
+
+\ A path over PATH-CAP as written that the resolver takes is a load the walk
+\ follows, at top level and in a body.
+: SDT-TEST-BIG-STRING-PAD ( -- )
+   s" big-pad.f" S\" s\" " PATH-CAP SDT-DOT16$ S\" sd-pad.f\" required\n" SDT-WRITE-BIG
+   s" sd-pad.f" SDT-ONE-LOAD
+   s" big-body-pad.f" S\" : L ( -- ) s\" " PATH-CAP SDT-DOT16$ S\" sd-pad.f\" required ;\n" SDT-WRITE-BIG
+   s" sd-pad.f" SDT-ONE-LOAD ;
 
 \ Find loaders beyond the former 1 MiB ceiling, then grow the same scratch
 \ again. The normal smaller-file fixtures after this must not see stale text.
@@ -348,11 +416,12 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    1 EVENT-PATH@ s" sd-large-b.f" SDT-PATH T$=
    1 EVENT-TOK@ 7 T= end T= ;
 
-\ --- dynamic-tail manifest: seeded repo files tolerated, path-keyed ----------
+\ --- tree files: a body's retirement, and the loader's own definitions --------
 
-\ The manifest tolerates the loader names driver-io.f retires, and the walk still
-\ records the file's one static require.
-: SDT-TEST-MANIFEST-DRIVER ( -- )
+\ driver-io.f retires loader names in a body (DRV-RETIRE-RELOADS), the run of a
+\ word no check runs: the walk reads past them and records the file's one
+\ require.
+: SDT-TEST-TREE-BODY-RETIRE ( -- )
    s" src/habu/driver-io.f" DISCOVER:RUN
    EVENT-COUNT 1 T=
    0 EVENT-PATH@ s" src/habu/sign-id.f" CANONICAL drop T$= ;
@@ -410,15 +479,13 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    0 EVENT-PATH@ s" sd-uppercase.f" SDT-PATH T$= ;
 
 
+\ A local of a loader word's name is the local from its group's closer to the
+\ end of its block: before and after that, the name is the loader word.
 : SDT-TEST-LOCAL-LIFETIME ( -- )
-   s" before-local.f"
-   S\" : EXAMPLE ( n -- n ) required {: required:n :} required ;\n"
-   SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ
-   s" after-local.f"
-   S\" : EXAMPLE ( n -- ) if 1 {: required:n :} required drop then required ;\n"
-   SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ ;
+   S\" : EXAMPLE ( n -- n ) s\" sd-before.f\" required {: required:n :} s\" sd-in.f\" required ;\n"
+   s" sd-before.f" SDT-ONE-EVENT
+   S\" : EXAMPLE ( n -- ) if 1 {: required:n :} s\" sd-in.f\" required drop then s\" sd-after.f\" required ;\n"
+   s" sd-after.f" SDT-ONE-EVENT ;
 
 
 : SDT-TEST-LOCAL-CONTROL ( -- )
@@ -455,10 +522,11 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    SDT-TEST-BODY-SHADOW
    SDT-TEST-RETIRE
    SDT-TEST-RETIRE-DYNAMIC
-   SDT-TEST-RETIRE-OTHER
    SDT-TEST-BIG-STRING-DATA
    SDT-TEST-BIG-STRING-LOADER
-   SDT-TEST-MANIFEST-DRIVER
+   SDT-TEST-BIG-STRING-BODY
+   SDT-TEST-BIG-STRING-PAD
+   SDT-TEST-TREE-BODY-RETIRE
    SDT-TEST-MANIFEST-INCLUDE
    SDT-TEST-EMIT-CAP
    SDT-TEST-LOCALS

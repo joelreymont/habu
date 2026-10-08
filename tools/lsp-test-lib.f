@@ -4075,8 +4075,9 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 \ open. 4: a4 loads out/b4, which loads f4 from a4's root, w/. 5: .jj-ws/a5
 \ loads f5. 6: m6 loads a file not there, then f6. 7: p/a7 and q/b7 load
 \ s/x7, which loads y7 from the root it is reached under: p/y7 loads nothing,
-\ q/y7 loads f7. 8: dyn/d8 hands its loader a path no walk can read, z8
-\ cannot be read, and e8 loads out/h8, which loads f1 from e8's root, dyn/.
+\ q/y7 loads f7. 8: dyn/d8 loads at top level a path its command line names,
+\ which no walk can read, z8 cannot be read, and e8 loads out/h8, which loads
+\ f1 from e8's root, dyn/.
 : WS-TREE ( -- )
    s" graph" FIXTURE MAKE-DIR
    s" w" WS-DIR s" out" WS-DIR s" dyn" WS-DIR
@@ -4103,7 +4104,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" w/p/y7.f" s\" : Y7 ( -- ) ;\n" WS-FILE
    s" w/q/y7.f" s\" require ../f7.f\n" WS-FILE
    s" w/f7.f" s\" : F7 ( -- ) ;\n" WS-FILE
-   s" dyn/d8.f" s\" : LD ( ptr u8 n -- ) included ;\n" WS-FILE
+   s" dyn/d8.f" s\" 0 SCRIPT-ARGV$ included\n" WS-FILE
    s" dyn/e8.f" s\" require ../out/h8.f\n" WS-FILE
    s" out/h8.f" s\" require ../w/f1.f\n" WS-FILE
    s" dyn/z8.f" s\" : Z8 ( -- ) ;\n" WS-FILE
@@ -4487,13 +4488,13 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-unv/w/s.f" FIXTURE 1 EXPECT 3 0 3 2 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
    s" 5" s" refs-unv/w/s.f" CANON FAILED ;
 
-\ ld.f hands its loader a path no walk can read: named with discovery's
-\ reason, the answer coming without it.
+\ ld.f loads at top level a path its command line names, which no walk can
+\ read: named with discovery's reason, the answer coming without it.
 : REFS-LD-TURNS ( -- )
    s" refs-ld" REFS-DIR s" refs-ld/w" REFS-DIR
    s" refs-ld/w/f.f" TEXT-RF REFS-FILE
    s" refs-ld/w/d.f" TEXT-RD REFS-FILE
-   s" refs-ld/w/ld.f" s\" : LD ( ptr u8 n -- ) included ;\n" REFS-FILE
+   s" refs-ld/w/ld.f" s\" 0 SCRIPT-ARGV$ included\n" REFS-FILE
    s" refs-ld/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-ld/w/d.f" FIXTURE TEXT-RD 1 OPENS
    SAY

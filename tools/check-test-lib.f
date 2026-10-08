@@ -3925,6 +3925,13 @@ variable REQ-U
    p pu FILE
    [: RUN-ACT ;] IN-PROC ;
 
+\ `--verify-only` on the file at a path.
+: VO-FILE-RUN ( ptr u8 n -- n n n )
+   RESET
+   s" verify-only" OPT
+   FILE
+   [: RUN-ACT ;] IN-PROC ;
+
 : REQ-ORDER-FILES ( -- )
    SB-RESET s" : CKT-RQ-USE ( -- n ) CKT-RQ-SECRET ;" REQ-LINE+
    s" req-order-dep.f" REQ-WRITE
@@ -4272,15 +4279,21 @@ variable REQ-U
    SB-RESET s" ckt-ut.f" REQ-LOAD+
    s" ckt-ut-req.f" REQ-WRITE ;
 
-\ A refusal reported by one record: its code and class, token and place.
-: EXPECT-ONE ( n n n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: outu:n erru:n rc:n code:ptr codeu:n tok:ptr toku:n at:ptr atu:n :}
+\ A refusal reported by one record on standard error: its code and class,
+\ token and place.
+: EXPECT-RECORD ( n n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: erru:n rc:n code:ptr codeu:n tok:ptr toku:n at:ptr atu:n :}
    rc 70 T=
-   outu 0 T=
    CAP-ERR erru 10 COUNT-CHAR 1 T=
    CAP-ERR erru code codeu CONTAINS? TTRUE
    CAP-ERR erru tok toku CONTAINS? TTRUE
    CAP-ERR erru at atu CONTAINS? TTRUE ;
+
+\ A refusal reported by one record, and nothing on standard output.
+: EXPECT-ONE ( n n n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: outu:n erru:n rc:n code:ptr codeu:n tok:ptr toku:n at:ptr atu:n :}
+   outu 0 T=
+   erru rc code codeu tok toku at atu EXPECT-RECORD ;
 
 : ONE-MODES ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: a:ptr u:n code:ptr codeu:n tok:ptr toku:n at:ptr atu:n :}
@@ -4310,7 +4323,7 @@ variable REQ-U
    s" ckt-ut-esc.f" UT-CODE$ UT-ESC-TOKEN$ UT-ESC-AT$ ONE-MODES ;
 
 \ A require of a file that is not there, of one the file system will not read,
-\ or of a literal path within the 1024 bytes a loader word takes that resolves
+\ or of a literal path within the 1024 bytes `require` takes that resolves
 \ past them, and a loader form discovery cannot follow, stop the require
 \ closure. Every --json-errors mode reports each by one record at the loader
 \ word, in the file that holds it, and fails as a refusal; a source that
@@ -4367,6 +4380,129 @@ variable REQ-U
    s" ckt-cl-dyn.f" CL-DYN-CODE$ CL-DYN-TOKEN$ CL-DYN-AT$ ONE-MODES
    s" ckt-cl-dyn-req.f" CL-DYN-CODE$ CL-DYN-TOKEN$ CL-DYN-AT$ ONE-MODES
    s" ckt-cl-long.f" CL-DYN-CODE$ CL-REQUIRE-TOKEN$ CL-LONG-AT$ ONE-MODES ;
+
+\ The engine's resolver alone caps a loader's path: it refuses an absolute one
+\ of 2050 bytes or more, a relative one that is 2050 bytes or more joined as
+\ root, `/` and path to a root searched before one holds the file, and one over
+\ 1024 bytes once normalized (src/core/include.f SOURCE-ROOT CHECK,
+\ SEARCH-ROOTS, JOIN! and NORMALIZE). At top level
+\ the load runs while the file loads, so every mode refuses such a path at its
+\ loader word and follows any other literal one, however long as written: 512
+\ `./` before a file name load that file, which reports its own refusal. A
+\ string loader in a definition is a call the word makes when it runs. One
+\ after a path the resolver refuses loads nothing, so every --json-errors mode
+\ verifies its source: the walk reads past it and the composition loads
+\ nothing from it, here even where the path names a file the check would
+\ refuse. One after any other literal path loads its file, which keeps its
+\ own refusals, such as its top-level loader whose path resolves past 1024
+\ bytes. Each source is over the string builder, so the BIG row holds it.
+: CLB-OPEN ( ptr u8 n -- )   \ `: NAME ( -- ) s" `
+   0 BIG-U !
+   s" : " BIG-APP BIG-APP s"  ( -- ) s" BIG-APP $22 BIG-C, $20 BIG-C, ;
+
+: CLB-TOP ( -- )   \ `s" ` at top level
+   0 BIG-U !
+   s" s" BIG-APP $22 BIG-C, $20 BIG-C, ;
+
+: CLB-REPEAT ( ptr u8 n n -- ) {: a:ptr u:n k:n :}
+   k 0 ?do a u BIG-APP loop ;
+
+: CLB-WRITE ( ptr u8 n ptr u8 n -- )   \ `" required` and TAIL, then the named fixture
+   {: tail:ptr tailu:n :}
+   $22 BIG-C, s"  required" BIG-APP tail tailu BIG-APP $0a BIG-C,
+   REQ$ BIG BIG-U @ WRITE-ALL ;
+
+\ 1018 `./` and the 14 bytes of ckt-cl-under.f are 2050 bytes.
+: CLB-FILES ( -- )
+   SB-RESET s" : CKT-CL-UNDER ( -- ) dup ;" REQ-LINE+
+   s" ckt-cl-under.f" REQ-WRITE
+   SB-RESET CL-LONG+ s" ckt-cl-top-long.f" REQ-WRITE
+   CLB-TOP s" ./" 512 CLB-REPEAT s" ckt-cl-under.f" BIG-APP
+   s" ckt-cl-top-pad.f" s" " CLB-WRITE
+   CLB-TOP s" ./" 1018 CLB-REPEAT s" ckt-cl-under.f" BIG-APP
+   s" ckt-cl-top-over.f" s" " CLB-WRITE
+   s" CKT-CL-BL" CLB-OPEN s" a" 1025 CLB-REPEAT s" ckt-cl-body-long.f" s"  ;" CLB-WRITE
+   s" CKT-CL-BR" CLB-OPEN s" a" 1024 CLB-REPEAT s" ckt-cl-body-res.f" s"  ;" CLB-WRITE
+   s" CKT-CL-BO" CLB-OPEN s" ./" 1018 CLB-REPEAT s" ckt-cl-under.f" BIG-APP
+   s" ckt-cl-body-over.f" s"  ;" CLB-WRITE
+   s" CKT-CL-BP" CLB-OPEN s" ./" 512 CLB-REPEAT s" ckt-cl-under.f" BIG-APP
+   s" ckt-cl-body-pad.f" s"  ;" CLB-WRITE
+   s" CKT-CL-BT" CLB-OPEN s" ckt-cl-top-long.f" REQ$ BIG-APP
+   s" ckt-cl-body-top.f" s"  ;" CLB-WRITE ;
+
+: CLB-TOP-AT$ ( -- ptr u8 n )
+   s\" /ckt-cl-top-long.f\",\"line\":1,\"column\":1,\"byte_start\":0,\"byte_end\":7," ;
+
+: CLB-REQUIRED-TOKEN$ ( -- ptr u8 n )
+   s\" \"token\":\"required\",\"file\":" ;
+
+: CLB-OVER-AT$ ( -- ptr u8 n )
+   s\" /ckt-cl-top-over.f\",\"line\":1,\"column\":2056,\"byte_start\":2055,\"byte_end\":2063," ;
+
+: CLB-UNDER-CODE$ ( -- ptr u8 n )
+   s\" \"code\":\"E-INPUT-UNDERFLOW\",\"repair_class\":\"supply_missing_input\"," ;
+
+: CLB-DUP-TOKEN$ ( -- ptr u8 n )
+   s\" \"token\":\"dup\"," ;
+
+: CLB-UNDER-AT$ ( -- ptr u8 n )
+   s\" /ckt-cl-under.f\",\"line\":1,\"column\":23,\"byte_start\":22,\"byte_end\":25," ;
+
+: CLB-ACCEPTED ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u ST-JSON-RUN EXPECT-ACCEPTED
+   a u REQ-PLAIN-RUN EXPECT-ACCEPTED
+   a u REQ-ALL-RUN EXPECT-ACCEPTED ;
+
+\ --verify-only reports the file the `./` path loads as the other modes do, and
+\ writes nothing on standard output.
+: EXPECT-VO-PAD ( n n n -- )
+   CLB-UNDER-CODE$ CLB-DUP-TOKEN$ CLB-UNDER-AT$ EXPECT-ONE ;
+
+\ --verify-only refuses the 2050-byte path at its loader word as the other modes
+\ do, and writes the verdict's reason on standard output: the subject's
+\ canonical path and why. The test root may lie behind a symlink (macOS's /var).
+: EXPECT-VO-OVER ( n n n -- ) {: outu:n erru:n rc:n :}
+   SB-RESET s" ckt-cl-top-over.f" REQ$ SOURCE-ROOT:CANONICAL drop SB-APPEND
+   s" : discovery rejected: capacity exceeded" REQ-LINE+
+   CAP-OUT outu SB$ T$=
+   erru rc CL-DYN-CODE$ CLB-REQUIRED-TOKEN$ CLB-OVER-AT$ EXPECT-RECORD ;
+
+: TEST-CLOSURE-CAP ( -- )
+   CLB-FILES
+   s" ckt-cl-top-pad.f" CLB-UNDER-CODE$ CLB-DUP-TOKEN$ CLB-UNDER-AT$ ONE-MODES
+   s" ckt-cl-top-pad.f" REQ$ VO-FILE-RUN EXPECT-VO-PAD
+   s" ckt-cl-top-over.f" CL-DYN-CODE$ CLB-REQUIRED-TOKEN$ CLB-OVER-AT$ ONE-MODES
+   s" ckt-cl-top-over.f" REQ$ VO-FILE-RUN EXPECT-VO-OVER
+   s" ckt-cl-body-long.f" CLB-ACCEPTED
+   s" ckt-cl-body-res.f" CLB-ACCEPTED
+   s" ckt-cl-body-over.f" CLB-ACCEPTED
+   s" ckt-cl-body-pad.f" CLB-UNDER-CODE$ CLB-DUP-TOKEN$ CLB-UNDER-AT$ ONE-MODES
+   s" ckt-cl-body-top.f" CL-DYN-CODE$ CL-REQUIRE-TOKEN$ CLB-TOP-AT$ ONE-MODES ;
+
+\ Only a path literal (`s"`, `s\"`) before a body loader names a file the word
+\ loads. After a `c"` one the checker refuses the body, the walk records no
+\ file and the composition reads none, so no mode reports a refusal in the
+\ file the literal names.
+: CLC-FILES ( -- )
+   SB-RESET s" : CKT-CL-CUNDER ( -- ) dup ;" REQ-LINE+
+   s" ckt-cl-c-under.f" REQ-WRITE
+   SB-RESET s" : CKT-CL-BC ( -- ) c" SB-APPEND $22 SB-APPEND-C $20 SB-APPEND-C
+   s" ckt-cl-c-under.f" REQ$ SB-APPEND
+   $22 SB-APPEND-C s"  required ;" REQ-LINE+
+   s" ckt-cl-body-c.f" REQ-WRITE ;
+
+: CLC-CODE$ ( -- ptr u8 n )
+   s\" \"code\":\"E-MISMATCH\",\"repair_class\":\"add_producer\"," ;
+
+: CLC-TOKEN$ ( -- ptr u8 n )
+   s\" \"token\":\"required\",\"token_index\":2,\"file\":" ;
+
+: CLC-AT$ ( -- ptr u8 n )
+   s\" /ckt-cl-body-c.f\",\"line\":1," ;
+
+: TEST-CLOSURE-BODY-CSTR ( -- )
+   CLC-FILES
+   s" ckt-cl-body-c.f" CLC-CODE$ CLC-TOKEN$ CLC-AT$ ONE-MODES ;
 
 \ A source given on standard input, or through SOURCE under a label, is walked
 \ as a named file is: a require of a file that is not there is the same record,
@@ -4556,12 +4692,6 @@ variable REQ-U
 \ the file the stop is in and the place of the reader or the row opener. The
 \ subject is a file, or standard input under --stdin-path, a path that need
 \ not exist; a file the subject requires stops it the same way.
-: VO-FILE-RUN ( ptr u8 n -- n n n )
-   RESET
-   s" verify-only" OPT
-   FILE
-   [: RUN-ACT ;] IN-PROC ;
-
 : VO-STDIN-RUN ( ptr u8 n ptr u8 n -- n n n )
    {: src:ptr srcu:n path:ptr pathu:n :}
    SCRATCH-MAKE
@@ -7046,6 +7176,8 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    s" check/require-size-all-list" [: TEST-REQUIRE-SIZE-ALL-LIST ;] CASE-RUN
    s" check/require-size-prose" [: TEST-REQUIRE-SIZE-PROSE ;] CASE-RUN
    s" check/closure-stop" [: TEST-CLOSURE-STOP ;] CASE-RUN
+   s" check/closure-cap" [: TEST-CLOSURE-CAP ;] CASE-RUN
+   s" check/closure-body-cstr" [: TEST-CLOSURE-BODY-CSTR ;] CASE-RUN
    s" check/closure-wide" [: TEST-CLOSURE-WIDE ;] CASE-RUN
    s" check/closure-stdin" [: TEST-CLOSURE-STDIN ;] CASE-RUN
    s" check/success-stderr" [: TEST-SUCCESS-STDERR ;] CASE-RUN ;

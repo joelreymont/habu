@@ -189,9 +189,9 @@ variable SEAL-SEEN?
    ENG-B ENGINE-DIGEST!
    ENG-A DG-LEN ENG-B DG-LEN STR= TTRUE ;
 
-\ Manifest identity is relative to the child's invocation root. Give it real
-\ copies of the two boundary files, one private dependency, and links to the
-\ unchanged test/tool libs and to driver-io.f's own require, src/habu/sign-id.f.
+\ Manifest identity is relative to the child's invocation root. Give it a real
+\ copy of the boundary file, one private dependency, and links to the unchanged
+\ test/tool libs.
 : MANIFEST$ ( -- ptr u8 n ) ROOT$ s" manifest" JOIN ;
 
 : MANIFEST-LINK ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -199,11 +199,8 @@ variable SEAL-SEEN?
    DST$ MANIFEST$ a u JOIN MAKE-SYMLINK ;
 
 : MANIFEST-PREP ( -- )
-   MANIFEST$ s" src/habu" JOIN MAKE-DIRS
    MANIFEST$ s" src/core" JOIN MAKE-DIRS
    s" lib" MANIFEST-LINK s" tools" MANIFEST-LINK s" test" MANIFEST-LINK
-   s" src/habu/task-abi.f" MANIFEST-LINK
-   s" src/habu/sign-id.f" MANIFEST-LINK
    MANIFEST$ s" whitebox-manifest-private.f" JOIN
    s\" \\ private dependency\n" WRITE-ALL ;
 
@@ -232,7 +229,6 @@ variable SEAL-SEEN?
 : TEST-MANIFEST-LOADS ( -- )
    s" a manifested member keys its static private dependency" T-LABEL
    MANIFEST-PREP
-   s" src/habu/driver-io.f" MANIFEST-CASE
    s" src/core/include.f" MANIFEST-CASE ;
 
 : RUN ( -- )

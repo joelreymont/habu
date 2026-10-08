@@ -332,35 +332,44 @@ them, so the packets it made before are kept and the record is the last, and
 `CHECK:VERIFY-BYTES` answers `refused` with it:
 
 - `E-LOADER-FORM`, repair class `literal_loader_form`, at a loader form
-  discovery cannot follow: a loader word with no literal path (a computed one,
-  or a `c"` or `."` string before it), a path over 1024 bytes as written (an
-  escaped literal's as decoded) or as resolved, or a loader word's name
-  declared as any word (a definition, storage, a deferred word or an export)
-  or retired, unless `tools/dynamic-tail-manifest.f` lists the file. The
-  manifest lists files of the tree it was loaded from, by their canonical
-  paths there, whatever the working directory or the spelling that names one.
+  discovery cannot follow: a loader word at top level with no literal path (a
+  computed one, or a `c"` or `."` string before it) or with a path the
+  engine's resolver refuses (empty, holding a NUL, absolute and 2050 bytes or
+  more, relative and 2050 bytes or more joined as root, `/` and path to a root
+  searched before one holds the file: the requiring file's root (the root
+  that resolved it; a command-line entry's directory), the working directory,
+  then the engine root; an escaped literal counted as decoded; or over 1024
+  bytes once normalized), `include` or `require` at top level or in a
+  definition with a path over 1024 bytes as written or as resolved, or a
+  loader word's name declared as any word (a definition, storage, a deferred
+  word or an export) or retired at top level.
 - `E-MISSING-SOURCE`, repair class `fix_load_path`, at the loader word that
   names a file that is not there.
 - `E-UNREADABLE-SOURCE`, repair class `make_source_readable`, at the loader
   word that names a file the file system will not read, such as one whose
   mode forbids it.
 
-The walk reads every literal loader form of a file as a load, a superset of
-what the run loads. The composition loads what the engine loads:
+The walk reads every literal loader form of a file whose path the resolver
+takes as a load, a superset of what the run loads, which loads nothing from a
+path the resolver refuses. The composition loads what the engine loads:
 
 - A runtime string loader in a definition, `included`, `required` or
   `provided`, is checked as an ordinary call. Its path may come from a local
   or `SCRIPT-ARGV$`; the composition does not run the word or read its file.
-  A missing file, duplicate definition in it, or path beyond 1024 bytes
+  A missing file, duplicate definition in it, or path the resolver refuses
   therefore refuses nothing, and the words it might define are unavailable
   to later definitions. A wrong argument effect is a checker refusal at the
-  call. Source discovery for ordinary checks still requires literal loader
-  forms in bodies when it walks their closure. `include` and `require` in a
-  definition are immediate and load while it compiles, so their files are
-  read there, and a missing one is `E-MISSING-SOURCE` at the loader word.
+  call. The walk records such a loader only right after a path literal the
+  resolver takes, however long as written, and reads past any other, as
+  both read past `UNDEFINE-IF-DEFINED` in a definition: each is the word's
+  run, which no check makes. `include` and `require` in a definition are
+  immediate: the engine refuses the definition as `E-UNMODELED-IMMEDIATE`
+  and loads nothing, while the walk and `--verify-only`'s composition still
+  read the file each names, a superset, so a missing one is
+  `E-MISSING-SOURCE` at the loader word.
 - At top level, `provided` records a path as loaded and opens no file: a path
-  no file is at refuses nothing. A path no literal gives, or one over 1024
-  bytes, is still `E-LOADER-FORM`.
+  no file is at refuses nothing. A path no literal gives, or one the resolver
+  refuses, is still `E-LOADER-FORM`.
 - `script-required` resolves its path from the working directory and reads its
   file as the other loaders do: a path no literal gives is `E-LOADER-FORM`,
   and a file that is not there `E-MISSING-SOURCE`, at the loader word.
@@ -687,18 +696,17 @@ The child, `tools/check-verify-child.f`, is run only by this operation and by
 `CHECK:PREVERIFY-BYTES`, check.f's pre-pass:
 
 ```text
-ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT [--lenient PATH...] < BYTES
+ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < BYTES
 ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < BYTES
 ```
 
 SUBJECT is canonical and absolute. The child follows the loader forms of
 BYTES and of the files they load; a file the image holds is skipped, as
 `require` skips it. The first form composes quietly: it refuses the loader
-forms the closure walk refuses where it meets them, but in a file `--lenient`
-names, each PATH canonical and absolute; the operation names the entries of
-`tools/dynamic-tail-manifest.f`. stdout carries the packets in verification
-order, each written as the checker makes it, so a child that dies has passed
-on every packet made before; then one result line. The first form verifies
+forms the closure walk refuses where it meets them. stdout carries the packets
+in verification order, each written as the checker makes it, so a child that
+dies has passed on every packet made before; then one result line. The first
+form verifies
 with all errors, going past a duplicate definition; for each it writes the
 second form's stopped line, code 78, among the packets, which the operation
 replaces by the duplicate's record. It answers `check-verify: verified`,
@@ -977,8 +985,9 @@ Current checker classes:
 - `fix_load_path`: a loader word names a file that is not there.
 - `make_source_readable`: a loader word names a file the file system will not
   read.
-- `literal_loader_form`: a loader form names no literal path, or redefines or
-  retires a loader word, so the require closure cannot be read from the source.
+- `literal_loader_form`: a top-level loader form names no literal path, or a
+  declaration or top-level retirement takes a loader word's name, so the
+  require closure cannot be read from the source.
 - `close_primitive_row`: a `PRIM:` or `PPRIM:` primitive-axiom row does not
   close.
 - `rebuild_engine`: the input is a source the engine provides, so loading it
@@ -1036,7 +1045,7 @@ table it is derived only from `repair_class`. It does not replace the raw
 | `close_string` | `Close the string literal before the definition ends.` |
 | `fix_load_path` | `No file is at the path this loader word names. Correct the path, or create the file.` |
 | `make_source_readable` | `The file this loader word names cannot be read. Make it readable, or correct the path.` |
-| `literal_loader_form` | `Load a file by a literal path of at most 1024 bytes, as written and as resolved, through a loader word no definition redefines or retires, or list this file in tools/dynamic-tail-manifest.f.` |
+| `literal_loader_form` | `Load a file by a literal path that resolves within 1024 bytes, written in at most 1024 bytes after include or require and otherwise in under 2050 counting, when relative, a slash and the longest root searched for it, through a loader word no definition redefines or retires.` |
 | `close_primitive_row` | `Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE.` |
 | `fix_generates_row` | `This generates: row names no word here. Write it after the definer's definition, spelled as the definition spells it.` |
 | `delete_generates_row` | `This definer already states what it makes: its does> clause, an earlier generates: row or the definer it wraps. Delete the row.` |

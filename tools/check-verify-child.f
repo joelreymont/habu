@@ -5,9 +5,9 @@
 \ names, by its absolute path in the tree that file was loaded from, in the
 \ caller's working directory; nothing else runs it:
 \
-\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT [--lenient PATH...] < BYTES
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < BYTES
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < BYTES
-\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N [--lenient PATH...] < BYTES
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N < BYTES
 \
 \ BYTES is the subject's text and SUBJECT the canonical absolute path it is
 \ checked as. The image is the engine's boot prefix, the verifier and
@@ -20,9 +20,7 @@
 \ `include` verifies every occurrence. The first and third forms compose
 \ quietly (VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE), so no walk of the closure
 \ runs before them: the composition reads each file a loader loads and refuses
-\ the loader forms tools/source-discovery.f refuses where it meets them, but in
-\ a file --lenient names, each PATH canonical and absolute (the entries of
-\ tools/dynamic-tail-manifest.f).
+\ the loader forms tools/source-discovery.f refuses where it meets them.
 \
 \ stdout is the schema-1 JSON packets, one per line in verification order, each
 \ written as the checker makes it, so a child that dies has passed on every
@@ -175,7 +173,6 @@ DYNAMIC-BUFFER SEEN u8                  \ each file line's digest, then its file
 variable SEEN-U
 DYNAMIC-BUFFER SEEN-AT n                \ each one's offset there and length
 variable SEEN-N
-variable LENIENT-FIRST                  \ the argument the --lenient paths start at, SCRIPT-ARGC for none
 
 
 : WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
@@ -512,15 +509,6 @@ variable LENIENT-FIRST                  \ the argument the --lenient paths start
    OUT-FD NEWLINE ;
 
 
-\ Whether the file at PATH, canonical and absolute, is one --lenient names
-\ (VERIFY:LENIENT-FILE?).
-: LENIENT-ARG? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   SCRIPT-ARGC LENIENT-FIRST @ ?do
-      a u i SCRIPT-ARGV$ CORE-STR= if true unloop exit then
-   loop
-   false ;
-
-
 \ One multi-error window covers the complete load composition, and goes past
 \ a duplicate as past any refused definition. A duplicate it cannot go past,
 \ a name the definer generates, stops it with its stopped line. A loader's fault
@@ -535,7 +523,6 @@ variable LENIENT-FIRST                  \ the argument the --lenient paths start
    ['] USE-LINE is VERIFY:ON-USE
    ['] LOAD-LINE is VERIFY:ON-LOADER
    ['] CANDIDATE-LINE is VERIFY:ON-CANDIDATE
-   ['] LENIENT-ARG? is VERIFY:LENIENT-FILE?
    MULTI-ERR-BEGIN
    [: VERIFY-CUR ;] catch {: rc:n :}
    MULTI-ERR-END {: rejects:n :}
@@ -612,7 +599,7 @@ variable LENIENT-FIRST                  \ the argument the --lenient paths start
 public
 
 : USAGE ( -- )
-   s" usage: check-verify-child.f -- SUBJECT [LABEL | [--at N] [--lenient PATH...]]" 64 die ;
+   s" usage: check-verify-child.f -- SUBJECT [LABEL | --at N]" 64 die ;
 
 \ N in the third form's `--at N`; -1 for none.
 : CURSOR-ARG ( -- n )
@@ -623,17 +610,10 @@ public
       none OF -1 ENDOF
    ;MATCH ;
 
-\ The arguments from the K-th on, after SUBJECT and a cursor: none, or
-\ `--lenient` and the paths LENIENT-ARG? answers for.
-: LENIENT-ARGS ( n -- ) {: k:n :}
-   k SCRIPT-ARGC >= if SCRIPT-ARGC LENIENT-FIRST ! exit then
-   k SCRIPT-ARGV$ s" --lenient" CORE-STR= 0= if USAGE then
-   k 1+ LENIENT-FIRST ! ;
-
 : MAIN ( -- )
    SCRIPT-ARGC 2 = if READ-SUBJECT PREVERIFY exit then
    CURSOR-ARG {: at:n :}
-   at 0 >= if at VERIFY:CURSOR! 3 LENIENT-ARGS else 1 LENIENT-ARGS then
+   at 0 >= if at VERIFY:CURSOR! 3 else 1 then SCRIPT-ARGC <> if USAGE then
    READ-SUBJECT
    0 SCRIPT-ARGV$ HELD? if s" held" RESULT exit then
    VERIFY-CLOSURE ;

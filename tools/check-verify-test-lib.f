@@ -41,17 +41,16 @@
 \   it; a valid dynamic form is refused before effect checking             body-uncalled
 \   an immediate loader in a body leaves its file unread                  body-immediate
 \   a loader word's name stored, deferred, exported or defined as a word
-\   verifies, or is refused for another reason; a package or using name
-\   is refused                                                            reserved-names
+\   verifies, or is refused for another reason; a package or using name,
+\   or a retirement in a body, is refused                                 reserved-names
 \   a loader form's fault drops the packets made before it, is not the
 \   last, leaks a line that is no packet, or loses the child's code and
 \   place                                                                 fault-after-packet
 \   provided reads its file, or takes a form no loader takes              provided-meta
 \   script-required stops the verifier without a packet at the loader     script-loader
 \   a literal whose escape the checker refuses gives a loader its path    bad-escape
-\   a file the dynamic-tail manifest names is told by the working
-\   directory's spelling of it, so a check from outside the tree refuses
-\   it                                                                    manifest
+\   a tree file whose computed loads are all in bodies is refused, from
+\   the tree root or from outside the tree                                body-computed
 \   a closure wider than a fixed table is refused                         wide-closure
 \   output past 4 MiB is cut short, or puts prose on --verify-only's
 \   stderr                                              whole-output, cli-whole-output
@@ -841,8 +840,8 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" unreadable-dependency: its line" T-LABEL p s" line" NUMBER$ s" 2" T$= ;
 
 
-\ A literal path within the 1024 bytes a loader word takes that resolves past
-\ them refuses the subject, with a packet at the loader word.
+\ A literal path within the 1024 bytes `require` takes that resolves past them
+\ refuses the subject, with a packet at the loader word.
 : LONG-RESOLVED ( -- )
    0 GEN-U !
    s" require " GEN+
@@ -928,10 +927,11 @@ CK-USE-MAX 1 + constant OVER-USINGS
    0 GEN GEN-U @ s" body-long.f" VERIFIED ;
 
 
-\ include and require in a body are immediate: they load while the body
-\ compiles, so the verifier reads their file there. One that is not there is
-\ refused at the loader word; one that is defines its words for the
-\ definitions after the body, which the checker refuses for the immediate.
+\ include and require in a body are immediate: the engine refuses the body
+\ (E-UNMODELED-IMMEDIATE) and loads nothing, but the verifier reads their file
+\ there, a superset. One that is not there is refused at the loader word; one
+\ that is defines its words for the definitions after the body, which the
+\ checker refuses for the immediate.
 : BODY-IMMEDIATE ( -- )
    s\" : CVT-IMM-MISSING ( -- n ) include nosuch.f 1 ;\n" s" imm-missing.f" GUARD-MS CHECK-AS
    1 s" body-immediate: a missing file" EXPECT-KIND
@@ -946,10 +946,11 @@ CK-USE-MAX 1 + constant OVER-USINGS
 
 \ A loader word's name as any word's name - a definition's, a storage word's,
 \ a deferred word's, an export's, a retired one's - refuses the file at the
-\ name, as UNDEFINE-IF-DEFINED with a loader's name or none does at itself:
-\ past them a loader word may not be the loader. A package's name, or a
-\ using's, names no word, and UNDEFINE-IF-DEFINED of another name retires no
-\ loader.
+\ name, as UNDEFINE-IF-DEFINED at top level with a loader's name or none does
+\ at itself: past them a loader word may not be the loader. A package's name,
+\ or a using's, names no word, UNDEFINE-IF-DEFINED of another name retires no
+\ loader, and one in a body retires nothing until the word runs, which no check
+\ does.
 : RESERVED-NAMES ( -- )
    s\" package CVT-RES\nprivate\nvariable REQUIRED\n;package\n" s" res-variable.f"
    s" REQUIRED" s" 3" s" 10" SHADOWED$ LOADER-REFUSED
@@ -969,6 +970,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" UNDEFINE-IF-DEFINED\n" s" res-retire-bare.f"
    s" UNDEFINE-IF-DEFINED" s" 1" s" 1" RETIRED$ LOADER-REFUSED
    s\" s\" CVT-NONE\" UNDEFINE-IF-DEFINED\n: CVT-R ( -- n ) 1 ;\n" s" res-other.f" VERIFIED
+   s\" : CVT-RET ( -- ) s\" required\" UNDEFINE-IF-DEFINED ;\n" s" body-retire.f" VERIFIED
    s\" package REQUIRED\npublic\n: CVT-RQ ( -- n ) 1 ;\n;package\nusing REQUIRED\n: CVT-RQ-USE ( -- n ) CVT-RQ ;\n;using\n"
    s" res-package.f" VERIFIED ;
 
@@ -1302,20 +1304,20 @@ $180000 constant LARGE-STDIN-LEN
       err OF PCAP-FAILED:UNMAKE RC>N nip nip ENDOF
    ;MATCH ;
 
-\ The dynamic-tail manifest names tree files: tools/source-discovery.f, whose
-\ loader path is dynamic, is one of them from the tree root and from outside
-\ the tree, in the operation and in each mode of check.f.
-: MANIFEST ( -- )
+\ tools/source-discovery.f loads by computed paths, every one in a body
+\ (SD-CALL-ACT): calls no check makes, so the file verifies from the tree root
+\ and from outside the tree, in the operation and in each mode of check.f.
+: BODY-COMPUTED ( -- )
    s" tools/source-discovery.f" TREE-BYTES s" tools/source-discovery.f" TREE$
    GUARD-MS >MS CHECK:VERIFY-BYTES
-   0 s" manifest: the operation" EXPECT-KIND
+   0 s" body-computed: the operation" EXPECT-KIND
    SUBJ$ {: path:ptr pathu:n :}
-   s" manifest: verify-only from the root" T-LABEL path pathu true false CHECK-RC 0 T=
-   s" manifest: a check from the root" T-LABEL path pathu false false CHECK-RC 0 T=
-   s" manifest: all errors from the root" T-LABEL path pathu false true CHECK-RC 0 T=
-   s" manifest: verify-only from outside" T-LABEL s" --verify-only" OUTSIDE-RC 0 T=
-   s" manifest: a check from outside" T-LABEL s" " OUTSIDE-RC 0 T=
-   s" manifest: all errors from outside" T-LABEL s" --all-errors" OUTSIDE-RC 0 T= ;
+   s" body-computed: verify-only from the root" T-LABEL path pathu true false CHECK-RC 0 T=
+   s" body-computed: a check from the root" T-LABEL path pathu false false CHECK-RC 0 T=
+   s" body-computed: all errors from the root" T-LABEL path pathu false true CHECK-RC 0 T=
+   s" body-computed: verify-only from outside" T-LABEL s" --verify-only" OUTSIDE-RC 0 T=
+   s" body-computed: a check from outside" T-LABEL s" " OUTSIDE-RC 0 T=
+   s" body-computed: all errors from outside" T-LABEL s" --all-errors" OUTSIDE-RC 0 T= ;
 
 : DUPLICATE-AFTER-PACKET ( -- )
    s" order-errors.f"
@@ -4215,7 +4217,7 @@ public
    s" load-package" [: LOAD-PACKAGE ;] RUN-CASE
    s" load-using-floor" [: LOAD-USING-FLOOR ;] RUN-CASE
    s" load-repeat" [: LOAD-REPEAT ;] RUN-CASE
-   s" manifest" [: MANIFEST ;] RUN-CASE
+   s" body-computed" [: BODY-COMPUTED ;] RUN-CASE
    s" duplicate-after-packet" [: DUPLICATE-AFTER-PACKET ;] RUN-CASE
    s" duplicate-in-dependency" [: DUPLICATE-IN-DEPENDENCY ;] RUN-CASE
    s" duplicate-made" [: DUPLICATE-MADE ;] RUN-CASE
