@@ -45,6 +45,8 @@ $2C0 constant UNIT-IMPORT-OFF
 \ The owner record holds its unit callbacks as code address integers.
 CAST: UNIT-EXPORT-XT ( n -- [ -- ptr u8 n ] )
 CAST: UNIT-IMPORT-XT ( n -- [ ptr u8 n -- ] )
+\ OPEN-PRIVATE-XT answers the target publisher's unit importer the same way.
+CAST: UNIT-IMPORT-UNIT-XT ( n -- [ ptr u8 n ptr u8 n ptr n n ptr n n -- ] )
 
 : UNIT-CHECKER$ ( -- ptr u8 n )
    CHECKER-OWNER UNIT-EXPORT-OFF + CELL-VIEW @
@@ -63,6 +65,7 @@ CAST: UNIT-IMPORT-XT ( n -- [ ptr u8 n -- ] )
       NUNIT-CAPTURE:START-UNIT false exit
    then
    UNIT-MODE @ UNIT-IMPORT = if
+      s" NPUB" s" IMPORT-UNIT" OPEN-PRIVATE-XT UNIT-IMPORT-UNIT-XT
       UNIT-ARTIFACT$ UNIT-KEY-BUF 64 NUNIT-OBJECT:IMPORT
       UNIT-CHECKER-IMPORT
       NUNIT-OBJECT:CLOSE

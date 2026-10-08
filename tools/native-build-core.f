@@ -165,6 +165,14 @@ CAST: RESET-XT ( n -- [ -- ] )
 \ OPEN-TARGET-XT answers a target operation's entry as a code address integer.
 CAST: SOURCE-RESET-XT ( n -- [ -- ] )
 
+\ A fresh operation's entry lies inside the open target code window, from B0 up
+\ to the code pointer.
+: OPEN-CODE ( n -- n ) {: xt:n :}
+   xt AOT-ARM:B0 @ < xt cp@ >= or if
+      s" native-build: operation outside target window" BUILD-RC die
+   then
+   xt ;
+
 \ Resolve a fresh operation inside the open target code window. Its retained
 \ namesake would act for the host: SOURCE-INPUT:RESET would activate the wrong
 \ loader after LOGICAL-RESET, and CHECKER-REG:HANDOVER would leave the host's
@@ -173,11 +181,36 @@ CAST: SOURCE-RESET-XT ( n -- [ -- ] )
    XREF-FIND dup XREF-FOUND? 0= if
       drop s" native-build: target operation missing" BUILD-RC die
    then
-   XREF-START {: xt:n :}
-   xt AOT-ARM:B0 @ < xt cp@ >= or if
-      s" native-build: operation outside target window" BUILD-RC die
+   XREF-START OPEN-CODE ;
+
+\ Find a private word of a package in the FRESHLY LOADED target's pool, which
+\ did not exist when this file was compiled: the package's namespace record,
+\ then the word in its private wordlist. The alternatives are a public wrapper
+\ or a fixed engine cell for the token. Two words are found this way.
+\ NSTR:IMPORT-ROWS, the literal row importer, after the window closes
+\ (TARGET-IMPORTER): a public wrapper would be a well-typed way for any source
+\ to invoke literal ownership import, which test/compiler/native-string.f
+\ forbids, and the capture keeps its name for this lookup
+\ (src/habu/aot-capture.f ACAP-KEEP?).
+\ NPUB:IMPORT-UNIT, the package unit importer, while the window is open, at a
+\ unit cut (tools/native-unit-build-core.f UNIT-CUT): a public one would let any
+\ source publish code bytes and dictionary rows, and the lookup precedes the
+\ capture, so the capture keeps no name for it.
+: PRIVATE-TARGET-XT ( ptr u8 n ptr u8 n -- n )
+   {: pkg:ptr pkgu:n name:ptr nameu:n :}
+   pkg pkgu XREF-NAMESPACE-WL XREF-FIND-WL
+   dup XREF-FOUND? 0= if
+      drop s" native-build: literal owner missing" 76 die
    then
-   xt ;
+   XREF-PKG-PRIVATE  name nameu rot XREF-FIND-WL
+   dup XREF-FOUND? 0= if
+      drop s" native-build: literal importer missing" 76 die
+   then
+   XREF-START ;
+
+\ A private word of a package loaded into the open target code window.
+: OPEN-PRIVATE-XT ( ptr u8 n ptr u8 n -- n )
+   PRIVATE-TARGET-XT OPEN-CODE ;
 
 variable TARGET-SOURCE-BOUND
 
@@ -295,22 +328,9 @@ CAST: PREFIX-COMPILE-XT ( n -- [ ptr u8 n -- ] )
    then
    XREF-START TARGET-CODE ;
 
-\ The target's row importer is the one private word this driver still finds by
-\ name: it belongs to the FRESHLY LOADED target's pool, which did not exist when
-\ this file was compiled, and the alternatives are a public wrapper - a
-\ well-typed way for any source to invoke literal ownership import, which
-\ test/compiler/native-string.f forbids - or a fixed engine cell for the token.
-\ The capture keeps its name for this lookup: src/habu/aot-capture.f ACAP-KEEP?.
+\ The target's row importer, a private word (PRIVATE-TARGET-XT).
 : TARGET-IMPORTER ( -- n )
-   s" NSTR" XREF-NAMESPACE-WL XREF-FIND-WL
-   dup XREF-FOUND? 0= if
-      drop s" native-build: literal owner missing" 76 die
-   then
-   XREF-PKG-PRIVATE  s" IMPORT-ROWS" rot XREF-FIND-WL
-   dup XREF-FOUND? 0= if
-      drop s" native-build: literal importer missing" 76 die
-   then
-   XREF-START TARGET-CODE ;
+   s" NSTR" s" IMPORT-ROWS" PRIVATE-TARGET-XT TARGET-CODE ;
 
 \ TARGET-XT and TARGET-IMPORTER hand target entries over as code address integers.
 CAST: PREPARE-XT ( n -- [ -- ] )

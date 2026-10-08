@@ -53,9 +53,14 @@ lives here; build, test and environment rules live in
   `replay-open`, `replay-close`, `replay-widn!`, `replay-record`,
   `record-wid!` and `replay-private`, which no global row types: elsewhere a
   checked caller is `E-UNDEFINED`, and a `TRUSTED:` body binds one at tier 0
-  only (tier 1 cannot compile it); `source-unit-run`'s `SOURCE-ROOT` row is
-  trusted-only, so no checked caller is admitted, inside `SOURCE-ROOT`
-  included: a `TRUSTED:` body or unchecked tier-0 code calls it.
+  only (tier 1 cannot compile it). `native-unit-publish` is `NPUB`'s and
+  `unit-compile-run` is `SOURCE-UNIT`'s, whose public `GUARDED` is how other
+  code runs one source under a token guard; both keep their global
+  trusted-only rows, so a checked caller elsewhere is `E-CAP-TRUSTED`.
+  `source-unit-run`'s
+  `SOURCE-ROOT` row is trusted-only, so no checked caller is admitted,
+  inside `SOURCE-ROOT` included: a `TRUSTED:` body or unchecked tier-0 code
+  calls it.
   `test/owner-access.f` and `test/prim-owner-scope.f` pin the rule.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with

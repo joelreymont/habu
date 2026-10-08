@@ -15,8 +15,8 @@ package UNIT-COMPILE
 public
 : BORROWED-CLEAR? ( -- bool )
    BODY-XT @ 0= ;
-TRUSTED: NESTED-RUN ( [ -- ] -- n )
-   ['] GUARD swap unit-compile-run ;
+: NESTED-RUN ( [ -- ] -- n )
+   ['] GUARD swap SOURCE-UNIT:GUARDED ;
 ;package
 
 package NATIVE-UNIT-COMPILE-TEST
@@ -30,6 +30,8 @@ variable CONTINUED
 create OUT 1024 allot
 create ERR 1024 allot
 variable ERR-U
+\ A code cell takes no null literal, so BAD-HOOK's null guard is a cast.
+CAST: NO-GUARD ( n -- [ ptr u8 n n n -- n ] )
 public
 variable SIDE-EFFECT
 
@@ -95,8 +97,8 @@ create LONG-NAME LONG-U allot
 : ON-BODY ( -- bool ) 1 BODY-SEEN ! false ;
 : ON-SKIP ( -- bool ) 2 BODY-SEEN ! true ;
 : CONTINUE ( -- ) 1 CONTINUED +! ;
-TRUSTED: BAD-HOOK ( [ -- ] -- n )
-   0 swap unit-compile-run ;
+: BAD-HOOK ( [ -- ] -- n )
+   0 NO-GUARD swap SOURCE-UNIT:GUARDED ;
 : ON-THROW ( -- bool ) E-STR-BOUNDS throw ;
 : ON-NESTED ( -- bool )
    [: CONTINUE ;] UNIT-COMPILE:NESTED-RUN 70 T=
@@ -261,8 +263,8 @@ CAST: XT>N ( [ -- ] -- n )
 
 package UNIT-HOOK-SHAPE
 variable CONTINUED
-TRUSTED: CALL ( [ ptr u8 n n n -- n ] [ -- ] -- n )
-   unit-compile-run ;
+: CALL ( [ ptr u8 n n n -- n ] [ -- ] -- n )
+   SOURCE-UNIT:GUARDED ;
 : GUARD ( ptr u8 n n n -- n ) 2drop 2drop 0 ;
 : CONTINUE ( -- ) 1 CONTINUED +! ;
 public

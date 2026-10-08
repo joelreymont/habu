@@ -26,6 +26,8 @@ DYNAMIC-BUFFER CODE-BUF u8
 DYNAMIC-BUFFER REC-BUF u8
 DYNAMIC-BUFFER CALL-BUF u8
 DYNAMIC-BUFFER ADDR-BUF u8
+DYNAMIC-BUFFER CALL-SITES n
+DYNAMIC-BUFFER ADDR-SITES n
 variable CODE-U
 variable REC-U
 variable CALL-U
@@ -253,27 +255,36 @@ variable IMPORT-WID
    a c@ dup dup 3 and <> if BAD then
    PROTECTION c! ;
 
-TRUSTED: PUBLISH ( ptr u8 n ptr u8 n -- ) native-unit-publish ;
-TRUSTED: CALL-MAP ( n -- ) callmap-set ;
-TRUSTED: ADDR-MAP ( n -- ) addrmap-set ;
-
 : OUTSIDE-REGION? ( n -- bool ) {: target:n :}
    target dbase@ < if true exit then
    target dbase@ REGION + >= ;
 
-: RESTORE-MAPS ( -- )
-   2 NUNIT-FILE:SECTION$ nip CALL-BYTES / 0 ?do
+\ The relocation sites the publisher maps (src/compiler/native/publish.f
+\ NPUB:IMPORT-UNIT), as unit offsets it adds its code pointer to: every prefix
+\ call that leaves the region, and every address chain. An empty list has no
+\ storage, and the publisher reads no cell of it.
+: CALL-SITES$ ( -- ptr n n )
+   2 NUNIT-FILE:SECTION$ nip CALL-BYTES / {: rows:n :}
+   rows CALL-SITES-RESERVE
+   0 rows 0 ?do
       2 i CALL-BYTES ROW-SECTION {: src:ptr :}
       src 16 + LE:U64@ PREFIX-REF =
       src 8 + LE:U64@ NEMIT:CALL = and
       src 16 + LE:U64@ src 24 + LE:U64@ IMPORT-REF OUTSIDE-REGION? and if
-         IMPORT-CODE @ src LE:U64@ + CALL-MAP
+         src LE:U64@ over CALL-SITES ! 1+
       then
+   loop {: u:n :}
+   u 0= if NULL-PTR 0 exit then
+   0 CALL-SITES u ;
+
+: ADDR-SITES$ ( -- ptr n n )
+   3 NUNIT-FILE:SECTION$ nip ADDR-BYTES / {: rows:n :}
+   rows 0= if NULL-PTR 0 exit then
+   rows ADDR-SITES-RESERVE
+   rows 0 ?do
+      3 i ADDR-BYTES ROW-SECTION LE:U64@ i ADDR-SITES !
    loop
-   3 NUNIT-FILE:SECTION$ nip ADDR-BYTES / 0 ?do
-      3 i ADDR-BYTES ROW-SECTION LE:U64@
-      IMPORT-CODE @ + ADDR-MAP
-   loop ;
+   0 ADDR-SITES rows ;
 
 : RESTORE-PROTECTION ( -- )
    PROTECTION c@ 1 and 0<> if IMPORT-WID @ prot-wid-add then
@@ -294,8 +305,10 @@ public
    5 checker checku NUNIT-FILE:SECTION!
    path pathu NUNIT-FILE:ARCH-AARCH64 s" NBR" key keyu NUNIT-FILE:WRITE ;
 
-: IMPORT ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: path:ptr pathu:n key:ptr keyu:n :}
+\ The importer is the target publisher's NPUB:IMPORT-UNIT, which the build
+\ resolves at the unit cut (tools/native-unit-build-core.f UNIT-CUT).
+: IMPORT ( [ ptr u8 n ptr u8 n ptr n n ptr n n -- ] ptr u8 n ptr u8 n -- ptr u8 n )
+   {: importer path:ptr pathu:n key:ptr keyu:n :}
    path pathu NUNIT-FILE:ARCH-AARCH64 s" NBR" key keyu NUNIT-FILE:READ
    0 COPY-IMPORT 1 COPY-IMPORT
    IMPORT-PROTECTION
@@ -305,8 +318,10 @@ public
    IMPORT-RECORDS IMPORT-CALLS IMPORT-ADDRS
    wordlist IMPORT-WID @ <> if BAD then
    wordlist IMPORT-WID @ 1+ <> if BAD then
-   0 CODE-BUF CODE-U @ 0 REC-BUF REC-U @ DREC / PUBLISH
-   RESTORE-MAPS RESTORE-PROTECTION
+   0 CODE-BUF CODE-U @ 0 REC-BUF REC-U @ DREC /
+   CALL-SITES$ ADDR-SITES$ importer execute
+   CALL-SITES-RELEASE ADDR-SITES-RELEASE
+   RESTORE-PROTECTION
    5 NUNIT-FILE:SECTION$ ;
 
 : CLOSE ( -- )

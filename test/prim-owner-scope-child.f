@@ -332,6 +332,10 @@ $0A constant LF-C
    s" : POS-TCP0-TOP ( -- ) ['] code-publish drop ;" EVAL
    s" t0 does-record top level"
    s" : POS-DR0-TOP ( n n -- ) does-record ;" EVAL
+   s" t0 native-unit-publish top level"
+   s" : POS-NUP0-TOP ( ptr u8 n ptr u8 n -- ) native-unit-publish ;" EVAL
+   s" t0 unit-compile-run top level"
+   s" : POS-UCR0-TOP ( [ ptr u8 n n n -- n ] [ -- ] -- n ) unit-compile-run ;" EVAL
    OTHER-OPEN
    s" t0 xref-retarget other package"
    s" : POS-XR0-OTH ( n n n -- ) xref-retarget ;" EVAL

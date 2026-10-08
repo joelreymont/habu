@@ -204,6 +204,8 @@ variable EXP-U
    s" t0 code-publish top level"             s" rejected" CASE+
    s" t0 tick code-publish top level"        s" rejected" CASE+
    s" t0 does-record top level"              s" rejected" CASE+
+   s" t0 native-unit-publish top level"      s" rejected" CASE+
+   s" t0 unit-compile-run top level"         s" rejected" CASE+
    s" t0 xref-retarget other package"        s" rejected" CASE+
    s" t0 callmap-set other package"          s" rejected" CASE+
    s" t0 callmap-set trusted top level"      s" compiled" CASE+
@@ -305,6 +307,8 @@ variable EXP-U
    ea eu s" E-UNDEFINED habu: in pos-cp0-top: undefined word 'code-publish'" ERR-HAS
    ea eu s" E-UNDEFINED habu: in pos-tcp0-top: undefined word 'code-publish'" ERR-HAS
    ea eu s" E-UNDEFINED habu: in pos-dr0-top: undefined word 'does-record'" ERR-HAS
+   ea eu s" E-CAP-TRUSTED habu: in pos-nup0-top: 'native-unit-publish' is a trust-boundary primitive" ERR-HAS
+   ea eu s" E-CAP-TRUSTED habu: in pos-ucr0-top: 'unit-compile-run' is a trust-boundary primitive" ERR-HAS
    ea eu s" E-UNDEFINED habu: in pos-xr0-oth: undefined word 'xref-retarget'" ERR-HAS
    ea eu s" E-UNDEFINED habu: in pos-xr1-top: undefined word 'xref-retarget'" ERR-HAS
    ea eu s" E-UNDEFINED habu: in pos-tdr1-oth: undefined word 'does-record'" ERR-HAS
@@ -370,12 +374,14 @@ variable EXP-U
 \ neither record yields an xt outside its owner. Nor does an EXPORT alias: it
 \ carries its source's row under its source's tail, and its call and its tick
 \ answer as the source's do.
-: SEALED ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n la:ptr lu:n :}
+: REFUSED ( ptr u8 n ptr u8 n n -- ) {: sa:ptr su:n la:ptr lu:n want:n :}
    sa su OUT IO-CAP >LEN ERR IO-CAP >LEN SUBJECT-MS >MS SUBJECT:RUN
    PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
    la lu T-LABEL
-   rc REJECT-RC T=
+   rc want T=
    ERR erru LEN>N la lu ERR-HAS ;
+
+: SEALED ( ptr u8 n ptr u8 n -- ) REJECT-RC REFUSED ;
 
 : RUNNING-ENGINE ( -- )
    s" : POS-SEALED-P2C ( ptr a -- n ) FFI-PTR>CELL ;"
@@ -425,12 +431,21 @@ variable EXP-U
    s" : POS-SEALED-DR ( n n -- ) does-record ;"
    s" E-UNDEFINED habu: in pos-sealed-dr: undefined word 'does-record'" SEALED ;
 
+\ The product seals every package it bakes (src/core/internal-mark.f
+\ SEAL-PACKAGES), so source cannot reopen an owner to reach its private rows:
+\ `package NPUB` and `package SOURCE-UNIT` exit 84 naming the package before
+\ the checker sees a body.
+: OWNERS-SEALED ( -- )
+   s" package NPUB ;package" s" NPUB" ENGINE-ERROR:SEAL-PACKAGE REFUSED
+   s" package SOURCE-UNIT ;package" s" SOURCE-UNIT" ENGINE-ERROR:SEAL-PACKAGE REFUSED ;
+
 public
 : RUN ( -- )
    T-RESET
    RUNNING-ENGINE
    TIER-SELECT-RUNS
    SITE-RUNNING-ENGINE
+   OWNERS-SEALED
    [: PREPARE WINDOW ;] [: CLEANUP-RUN ;] finally
    T-REPORT ;
 ;package

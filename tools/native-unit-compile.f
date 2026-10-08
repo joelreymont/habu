@@ -118,7 +118,7 @@ CAST: NO-BODY ( n -- [ -- bool ] )
    event 2 = if a u PACKAGE-ENTRY if -1 else 0 then exit then
    a u cls INTERPRET-TOKEN ;
 
-TRUSTED: RUN ( [ -- ] -- n ) ['] GUARD swap unit-compile-run ;
+: RUN ( [ -- ] -- n ) ['] GUARD swap SOURCE-UNIT:GUARDED ;
 
 public
 

@@ -593,11 +593,11 @@ EPPRIM: XREF patch32 PE-N PE-IN PE-PTR-N PE-IN ECLOSE-PRIVATE
 \ anywhere else is refused by name. code-publish, xref-retarget and does-record
 \ (below) are that row alone: outside NPUB the name is undefined to a checked
 \ caller. callmap-set and addrmap-set keep a global trusted-only row beside it
-\ for their TRUSTED: callers outside NPUB (tools/native-unit-object.f CALL-MAP
-\ and ADDR-MAP, the relocation-map tests): the optimizing compiler builds such
-\ a caller's call window from a global row, and a seed primitive with none is
-\ E-HIR-UNMODELED there. The same reason keeps the global rows of
-\ reloc-maps-clear and set-top-check beside their owners' rows below.
+\ for their TRUSTED: callers outside NPUB (the relocation-map tests): the
+\ optimizing compiler builds such a caller's call window from a global row, and
+\ a seed primitive with none is E-HIR-UNMODELED there. The same reason keeps
+\ the global rows of reloc-maps-clear and set-top-check beside their owners'
+\ rows below.
 EPPRIM: NPUB code-publish PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: native-unit-publish
    PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
