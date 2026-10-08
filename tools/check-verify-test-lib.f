@@ -2198,9 +2198,12 @@ $180000 constant LARGE-STDIN-LEN
 \ only a name the text may define is the run's: its stretch opens at CVT-EV.
 \ The text may define a package too, so a qualified name is the run's as a bare
 \ one is, whether `evaluate` renders it or a word that reaches the loader under
-\ `catch` (test/using-test.f). Each subject loads, exit 0.
+\ `catch` (test/using-test.f). Each subject loads, exit 0. A reached renderer
+\ itself leaves source unchecked even when every later token resolves.
 : TOP-RENDERS ( -- )
-   s\" s\" : CVT-EV ( -- n ) 1 ;\" evaluate 1 drop\n" s" top-renders: tokens after it" LOADS-CLEAN
+   s\" s\" : CVT-EV ( -- n ) 1 ;\" evaluate 1 drop\n" TOP-CHECK
+   5 s" top-renders: tokens after it are checked, source deferred" EXPECT-KIND
+   s" top-renders: no dependent packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 0 T=
    s\" s\" : CVT-EV ( -- n ) 1 ;\" evaluate CVT-EV drop\n" TOP-CHECK
    5 s" top-renders: a product, deferred" EXPECT-KIND
    s" top-renders: one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
@@ -2423,12 +2426,12 @@ $180000 constant LARGE-STDIN-LEN
    CHECK:VERIFY-OUT$ s" token" s" a" PACKET s" verdict" STRING$ s" rejected" T$=
 
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one n ;VARIANT ;SUMTYPE\n" TOP-CHECK
-   0 s" type-deferred: known payload scalar checks" EXPECT-KIND
+   5 s" type-deferred: known payload scalar has no type uncertainty" EXPECT-KIND
    s" type-deferred: known payload scalar has no packet" T-LABEL
    CHECK:VERIFY-OUT$ PACKETS 0 T=
 
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one bool ;VARIANT ;SUMTYPE\n" TOP-CHECK
-   0 s" type-deferred: known payload bool checks" EXPECT-KIND
+   5 s" type-deferred: known payload bool has no type uncertainty" EXPECT-KIND
    s" type-deferred: known payload bool has no packet" T-LABEL
    CHECK:VERIFY-OUT$ PACKETS 0 T=
 
@@ -2651,7 +2654,10 @@ $180000 constant LARGE-STDIN-LEN
    s\" : CVT-TL ( -- ) s\" trust-dep.f\" included ;\nCVT-TL\ns\" CVT-TDW\" s\" -- n\" TRUST\n"
    TOP-CHECK s" top-trust: a called body's loader" s" CVT-TDW" s" 3" s" 4" DEFERRED-ONLY
    s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\n: CVT-TK ( -- n ) 1 ;\ns\" CVT-TK\" s\" -- n\" TRUST\n: CVT-TU ( -- n ) CVT-TK ;\n"
-   s" top-trust: a seen word's row" LOADS-CLEAN
+   TOP-CHECK
+   5 s" top-trust: a seen word's row leaves rendered source deferred" EXPECT-KIND
+   s" top-trust: a seen word's row has no dependent packet" T-LABEL
+   CHECK:VERIFY-OUT$ PACKETS 0 T=
    s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\n: CVT-TK ( -- n ) 1 ;\ns\" CVT-TK\" s\" -- ptr\" TRUST\n: CVT-TU ( -- n ) CVT-TK ;\n"
    TOP-CHECK
    1 s" top-trust: a seen word's bad row" EXPECT-KIND

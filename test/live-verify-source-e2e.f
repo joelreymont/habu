@@ -5,6 +5,7 @@ require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/string.f
+require lib/test/eval.f
 require src/habu/verify-source.f
 require lib/verify-diagnostics.f
 
@@ -59,6 +60,8 @@ private
    ROOT$ s" nested.f" SOURCE-ROOT:JOIN NESTED NESTED-U COPY!
    ROOT$ s" shared.f" SOURCE-ROOT:JOIN
       S\" package LV-ROOT\npublic\n: VALUE ( -- n ) 41 ;\n;package\n" WRITE-ALL
+   ROOT$ s" runtime.f" SOURCE-ROOT:JOIN
+      S\" 29 LIVE-VERIFY-SOURCE-TEST:ACTUAL !\n" WRITE-ALL
    ENTRY$ s" shared.f" SOURCE-ROOT:JOIN
       S\" package LV-ENTRY\npublic\n: VALUE ( -- n ) 99 ;\n;package\n" WRITE-ALL
    DESIGN$ DESIGN-SRC$ WRITE-ALL
@@ -72,7 +75,7 @@ private
    CHECKER-SCOPE-DONE ;
 
 : ROOT-COLLISION ( -- )
-   ROOT$ [: VERIFY-DESIGN 0 T= ;] SOURCE-ROOT:WITH
+   ROOT$ [: VERIFY-DESIGN 0 T= VERIFY:DEFERRED? TFALSE ;] SOURCE-ROOT:WITH
    ROOT$ [: DESIGN$ included ;] SOURCE-ROOT:WITH
    ACTUAL @ 41 T= ;
 
@@ -151,6 +154,66 @@ private
    rec recu s\" \"repair_class\":\"close_primitive_row\"" CONTAINS? TTRUE
    rec recu s\" \"token\":\"PRIM:\"" CONTAINS? TTRUE ;
 
+\ A quiet check cannot read text that a selected top-level call renders at
+\ run time. Its coverage answer is useful to direct callers without requesting
+\ diagnostic packets. A checked body with a string loader still imports no
+\ source into the quiet composition.
+PTR-VARIABLE RUNTIME-A
+variable RUNTIME-U
+
+: RUNTIME-DO ( -- )
+   RUNTIME-A @ RUNTIME-U @ s" runtime-verify.f"
+   VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
+
+: RUNTIME-COMPOSE ( ptr u8 n -- n bool )
+   RUNTIME-U !  RUNTIME-A !
+   CHECKER-SCOPE-START-NEUTRAL
+   [: RUNTIME-DO ;] catch
+   CHECKER-SCOPE-DONE
+   VERIFY:DEFERRED? ;
+
+: RUNTIME-LOAD ( -- n )
+   S\" : LV-LOAD ( -- ) s\" runtime.f\" included ; LV-LOAD"
+   TEST-EVAL:RC ;
+
+: RUNTIME-COVERAGE ( -- )
+   s" selected body loader leaves its runtime file to the load" T-LABEL
+   S\" package LV-RUNTIME public\n: LOAD ( -- ) s\" absent-file.f\" included ;\n;package\nLV-RUNTIME:LOAD\n"
+   RUNTIME-COMPOSE swap 0 T= TTRUE
+   s" an uncalled body loader stays a checked definition" T-LABEL
+   S\" package LV-RUNTIME public\n: LOAD ( -- ) s\" absent-file.f\" included ;\n;package\n"
+   RUNTIME-COMPOSE swap 0 T= TFALSE
+   s" a called loader reads its file at runtime" T-LABEL
+   0 ACTUAL !
+   ROOT$ [: RUNTIME-LOAD 0 T= ;] SOURCE-ROOT:WITH
+   ACTUAL @ 29 T=
+   s" top-level evaluate leaves its text to the load" T-LABEL
+   S\" s\" NO-SUCH-WORD\" evaluate\n"
+   RUNTIME-COMPOSE swap 0 T= TTRUE
+   s" a simple checked call has complete coverage" T-LABEL
+   S\" package LV-SIMPLE public\n: TWICE ( n -- n ) 2 * ;\n;package\n2 LV-SIMPLE:TWICE drop\n"
+   RUNTIME-COMPOSE swap 0 T= TFALSE
+   s" a shadowed evaluate has no renderer fact" T-LABEL
+   S\" package LV-SHADOW public\n: evaluate ( ptr u8 n -- ) 2drop ;\n;package\ns\" NO-SUCH-WORD\" LV-SHADOW:evaluate\n"
+   RUNTIME-COMPOSE swap 0 T= TFALSE
+   s" a learned definer's reached loader loses coverage" T-LABEL
+   S\" : LV-D ( n -- ) create , s\" absent-file.f\" included does> ( -- n ) @ ;\n1 LV-D LV-X\n"
+   RUNTIME-COMPOSE swap 0 T= TTRUE
+   s" an unresolved storage type loses coverage without packets" T-LABEL
+   S\" s\" chz\" s\" 0 VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM\nTYPED-VARIABLE LV-V chz\n"
+   RUNTIME-COMPOSE swap 0 T= TTRUE
+   s" an unresolved structure field loses coverage without packets" T-LABEL
+   S\" s\" chz\" s\" 0 VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM\nSTRUCTURE lv-box 0 FIELD v chz ;STRUCTURE\n"
+   RUNTIME-COMPOSE swap 0 T= TTRUE
+   s" an unresolved enum field loses coverage without packets" T-LABEL
+   S\" s\" chz\" s\" 0 VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM\nENUM lv-enum 0 VARIANT first FIELD v chz ;VARIANT ;ENUM\n"
+   RUNTIME-COMPOSE swap 0 T= TTRUE
+   s" runtime evaluate executes earlier statements before it refuses" T-LABEL
+   0 ACTUAL !
+   S\" 21 LIVE-VERIFY-SOURCE-TEST:ACTUAL ! s\" NO-SUCH-WORD\" evaluate"
+   TEST-EVAL:RC 70 T=
+   ACTUAL @ 21 T= ;
+
 public
 
 : MAIN ( -- )
@@ -168,6 +231,7 @@ public
    OPEN-GROUP-FAULT
    s" malformed primitive row keeps its own diagnostic" T-LABEL
    MALFORMED-ROW
+   RUNTIME-COVERAGE
    CLEANUP-RUN
    T-REPORT ;
 

@@ -1466,18 +1466,21 @@ DYNAMIC-BUFFER DEFINER-SIG u8
    1 - DEFINER-SIG@ ;
 
 variable DEFER-REPORT                            \ the child reports deferrals
-variable DEFER-SEEN                              \ and has reported one
+variable DEFER-SEEN                              \ the last run reached uncertain source
 
 CAST: STRETCH-ACTION ( n -- [ ptr u8 n -- ] )
 : REPORT-STRETCH ( ptr u8 n -- )
    NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-OFF OWNER-XT STRETCH-ACTION execute ;
 
+: DEFER-AT ( ptr u8 n -- )
+   -1 DEFER-SEEN !
+   DEFER-REPORT @ IF REPORT-STRETCH ELSE 2drop THEN ;
+
 : QUIET-TYPE-CLEAR ( -- )
    CHECKER-SIG-UNRES-TAKE drop 2drop ;
 : QUIET-TYPE-REPORT ( -- )
    CHECKER-SIG-UNRES-TAKE {: a:ptr u:n found:bool :}
-   found DEFER-REPORT @ and IF a u REPORT-STRETCH
-      -1 DEFER-SEEN ! THEN ;
+   found IF a u DEFER-AT THEN ;
 
 \ A body the checker deferred to the run (verdict 2) is reported where the
 \ checker's judgment of it stopped (CHECKER-VERIFY-DEFERRED-BODY), when the
@@ -1487,9 +1490,8 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- ptr u8 n ] )
    NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-BODY-OFF OWNER-XT DEFERRED-BODY-ACTION execute ;
 : REPORT-DEFERRED ( n -- )
    2 <> IF EXIT THEN
-   DEFER-REPORT @ 0= IF EXIT THEN
-   DEFERRED-BODY$ REPORT-STRETCH
-   -1 DEFER-SEEN ! ;
+   -1 DEFER-SEEN !
+   DEFER-REPORT @ IF DEFERRED-BODY$ REPORT-STRETCH THEN ;
 
 \ A body's verdict as this scan acts on it: -1 certified, 2 deferred to the run
 \ (see RENDERS-MARK?), 0 refused. In MULTI-ERR mode a refusal, rejected (0) or
@@ -1566,9 +1568,8 @@ PTR-VARIABLE DOES-CLAUSE-A
 variable DOES-CLAUSE-U
 
 : REPORT-DOES-CLAUSE ( -- )
-   DOES-CLAUSE-U @ 0= DEFER-REPORT @ 0= or IF EXIT THEN
-   DOES-CLAUSE-A @ DOES-CLAUSE-U @ REPORT-STRETCH
-   -1 DEFER-SEEN ! ;
+   DOES-CLAUSE-U @ 0= IF EXIT THEN
+   DOES-CLAUSE-A @ DOES-CLAUSE-U @ DEFER-AT ;
 
 : TICK-DOES-CHECK ( -- )
    TICK-BODY-A @ TICK-BODY-U @
@@ -1735,7 +1736,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
          THEN
          clause 0= IF false EXIT THEN
          gate unknown or IF
-            clause 2 = DEFER-REPORT @ 0<> and IF
+            clause 2 = IF
                DEFERRED-BODY$ DOES-CLAUSE-U ! DOES-CLAUSE-A !
             THEN
             TOKEN-A @ {: end:ptr :}  TOKEN-U @ {: endu:n :}
@@ -2355,10 +2356,7 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
       2dup ENUM-END? IF
          BODY-APPEND
          name nameu BODY$ ENUM-DECL:ED-REPLAY-OUTCOME
-         IF
-            DEFER-REPORT @ IF REPORT-STRETCH -1 DEFER-SEEN !
-            ELSE 2drop THEN
-         ELSE 2drop THEN
+         IF DEFER-AT ELSE 2drop THEN
          EXIT
       THEN
       BODY-APPEND
@@ -2386,10 +2384,7 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
       2dup STRUCTURE-DECL-END? IF
          BODY-APPEND
          name nameu BODY$ STRUCTURE-DECL:SD-REPLAY-OUTCOME
-         IF
-            DEFER-REPORT @ IF REPORT-STRETCH -1 DEFER-SEEN !
-            ELSE 2drop THEN
-         ELSE 2drop THEN
+         IF DEFER-AT ELSE 2drop THEN
          EXIT
       THEN
       BODY-APPEND
@@ -2552,8 +2547,7 @@ variable STG-TYPE-U
    rc 0= IF EXIT THEN
    DISARM
    rc E-CHECKER-STORAGE-UNRESOLVED <> IF rc throw THEN
-   DEFER-REPORT @ IF STG-TYPE-A @ STG-TYPE-U @ REPORT-STRETCH
-      -1 DEFER-SEEN ! THEN
+   STG-TYPE-A @ STG-TYPE-U @ DEFER-AT
    QUIET-TYPE-CLEAR ;
 
 \ The source byte body byte at was read from, in the newest run BODY-ROW!
@@ -2614,7 +2608,7 @@ CAST: TRUST-ACTION ( n -- [ ptr u8 n -- bool ] )
    STR-LAST-U @ 0= IF E-VS-BARE-TRUST STATEMENT-STOP THEN
    STR-PREV-U @ 0= IF E-VS-BARE-TRUST STATEMENT-STOP THEN
    STR-PREV-A @ STR-PREV-U @ TRUST-UNSEEN? IF
-      DEFER-REPORT @ IF STR-PREV-A @ STR-PREV-U @ REPORT-STRETCH  -1 DEFER-SEEN ! THEN
+      STR-PREV-A @ STR-PREV-U @ DEFER-AT
       EXIT
    THEN
    QUIET-TYPE-CLEAR
@@ -3276,8 +3270,9 @@ variable FFI-SIG-U
    \ name resolves and is checked against the row, and the mark covers what no
    \ row declares, such as COMMAND's NAME#VEC and NAME#BUF. A statement no arm
    \ takes is TOP-TOKEN's, which marks it again and resolves it.
+   \ A learned definer below consumes its call, so note renderer coverage here.
    a u QUIET-NOMINAL
-   a u MARK-RENDERS RENDERS-MARK? drop
+   a u MARK-RENDERS RENDERS-MARK? IF -1 DEFER-SEEN ! THEN
    \ … and last, a definer this pre-pass learned from a `does>` definition or a
    \ `generates:` row earlier in the closure. The created word is the NEXT
    \ token, as it is for `constant` above - the definer's own arguments precede
@@ -3380,7 +3375,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ end: its opener is a token the run reads.
 : TOP-DUE ( -- )
    TOP-DEFER-U @ 0= IF EXIT THEN
-   DEFER-REPORT @ IF TOP-DEFER-A @ TOP-DEFER-U @ REPORT-STRETCH  -1 DEFER-SEEN ! THEN
+   TOP-DEFER-A @ TOP-DEFER-U @ DEFER-AT
    0 TOP-DEFER-U ! ;
 
 \ A word that may read the source after it and states no operand shape: what
@@ -3389,7 +3384,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ load reached it (TICK-REMAINDER), keeping what it found before the word.
 : TOP-OPAQUE ( ptr u8 n -- )
    {: a:ptr u:n :}
-   DEFER-REPORT @ IF a u REPORT-STRETCH  -1 DEFER-SEEN ! THEN
+   a u DEFER-AT
    true TICK-REMAINDER ! ;
 
 \ A token that runs a word that may read the source after it (TOP-VERDICT 2):
@@ -3405,7 +3400,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0<> IF a u TOP-OPAQUE EXIT THEN
    sym eff1 PRS-FIND {: row:n :}
    row 0= IF a u TOP-OPAQUE EXIT THEN
-   DEFER-REPORT @ IF a u REPORT-STRETCH  -1 DEFER-SEEN ! THEN
+   a u DEFER-AT
    row 1 - PRS-CONSUME ;
 
 \ The checker's answer for a token: a word that may read on is TOP-PARSER's,
@@ -3450,12 +3445,18 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ top level, is left to the run (src/core/checker.f CTL-RENDERS, CTL-CREATES,
 \ UNSEEN-MARK$). Only here does a word that calls `create` mark: a definer arm
 \ that takes the statement (RECORD-DEFINER?) records the name it makes.
+\ A reached renderer's text is outside this scan even when no later name uses
+\ it. DEFERRED? records that coverage gap without adding a diagnostic packet.
 : TOP-TOKEN ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u num-parse nip nip IF EXIT THEN
    a u STRING-OPENER? 0= IF TICK-CONTEXT-UNKNOWN THEN
    a u QUIET-NOMINAL
-   a u MARK-UNSEEN RENDERS-MARK? drop
+   a u MARK-RENDERS RENDERS-MARK? IF
+      -1 DEFER-SEEN !
+   ELSE
+      a u MARK-UNSEEN RENDERS-MARK? drop
+   THEN
    COMPOSE-ON @ 0=  TOP-DEFER @ 0<>  or IF EXIT THEN
    a u 0 0= TOP-RESOLVE ;
 
@@ -3591,7 +3592,7 @@ COMPOSE-INIT
 : RUN-IN-SCOPE ( [ -- ] -- )
    TICK-CONTEXT-RESET
    false TICK-REMAINDER !
-   0 CERTIFIED-N !  0 DEFERRED-N !
+   0 CERTIFIED-N !  0 DEFERRED-N !  0 DEFER-SEEN !
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
    catch
    NCOMP-DISPATCH:DECL-VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute
@@ -3687,9 +3688,9 @@ variable QUIET-PATH-U
 
 public
 
-\ The verifier's child has the deferred stretches and definitions of its
-\ composition reported (tools/check-verify-child.f); DEFERRED? says whether one
-\ was.
+\ The verifier's child asks for deferred packets (tools/check-verify-child.f).
+\ DEFERRED? reports coverage for the last run whether or not packets were asked
+\ for; RUN-IN-SCOPE clears that fact before each run.
 : REPORT-DEFERRALS ( -- )
    -1 DEFER-REPORT !  0 DEFER-SEEN ! ;
 
