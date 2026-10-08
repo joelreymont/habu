@@ -69,10 +69,10 @@
 \ at once. A body standing 61 up was allocated at A64RA:SPILLS 0, and its value
 \ count grew 7 per extra standing value against 2.8 lower down, which is the
 \ selector lowering the deep ones onto the data stack before the allocator sees
-\ them. And a routine that arrives with 32 register arguments is refused
-\ outright with E-A64RA-POOL, before any spill is considered. So what this tool
-\ measures is what the allocator costs with an EMPTY spill plan, and since those
-\ ceilings are the compiler's and not this fixture's, that is the term the
+\ them. And a wide entry run is put away load by load (regalloc.f MB-ANCHOR),
+\ so the shapes stay below the pool to keep an empty spill plan. So what this
+\ tool measures is what the allocator costs with an EMPTY spill plan, and since
+\ those ceilings are the compiler's and not this fixture's, that is the term the
 \ Tender load pays too.
 \
 \ WHY THE VALUE COUNT IS A MEASUREMENT AND NOT AN ASSUMPTION. Each set's size is

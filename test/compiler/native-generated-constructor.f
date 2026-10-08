@@ -164,9 +164,9 @@ private
       s" twenty-four consumed entry cells compile and sum correctly" T-LABEL
       s" : NCTOR-SUM24 ( n n n n n n n n n n n n n n n n n n n n n n n n -- n ) {: a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20 a21 a22 a23 a24 :} a1 a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16 + a17 + a18 + a19 + a20 + a21 + a22 + a23 + a24 + ; : NCTOR-CHECK24 ( -- ) 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 NCTOR-SUM24 300 T= ; NCTOR-CHECK24"
       NATIVE-EVAL:DEFINE-RC 0 T=
-      s" twenty-five simultaneously consumed entry cells refuse at the register pool" T-LABEL
-      s" : NCTOR-SUM25 ( n n n n n n n n n n n n n n n n n n n n n n n n n -- n ) {: a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20 a21 a22 a23 a24 a25 :} a1 a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16 + a17 + a18 + a19 + a20 + a21 + a22 + a23 + a24 + a25 + ;"
-      NATIVE-EVAL:DEFINE-RC E-A64RA-POOL T=
+      s" twenty-five consumed entry cells, one more than the register pool, compile and sum correctly" T-LABEL
+      s" : NCTOR-SUM25 ( n n n n n n n n n n n n n n n n n n n n n n n n n -- n ) {: a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20 a21 a22 a23 a24 a25 :} a1 a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16 + a17 + a18 + a19 + a20 + a21 + a22 + a23 + a24 + a25 + ; : NCTOR-CHECK25 ( -- ) 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 NCTOR-SUM25 325 T= ; NCTOR-CHECK25"
+      NATIVE-EVAL:DEFINE-RC 0 T=
       T-REPORT
    then ;
 

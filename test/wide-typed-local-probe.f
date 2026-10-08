@@ -10,7 +10,10 @@
 \ still carries its family so `MATCH` dispatches on it, a PARAMETRIC instance
 \ (`opt<n>`) rides the same path, and the annotation is still asserted (a wrong
 \ family, a scalar annotation, a wrong argument and a bare arity>0 tail all
-\ stay refused).
+\ stay refused). A 26-cell record, wider than a routine's registers, keeps every
+\ cell through swap, rot, -rot, over and nip against narrower values and through
+\ a call's take-back, and 33 reals, more than the floating registers, sum
+\ exactly.
 \ It is registered twice in test/gate-stdlib-cases.f, once per tier.
 
 require lib/test.f
@@ -33,6 +36,36 @@ STRUCTURE trip 0
    FIELD a n
    FIELD b n
    FIELD c n
+;STRUCTURE
+
+\ twenty-six cells: with a pair, more than the registers a routine may destroy
+STRUCTURE wide 0
+   FIELD c0 n
+   FIELD c1 n
+   FIELD c2 n
+   FIELD c3 n
+   FIELD c4 n
+   FIELD c5 n
+   FIELD c6 n
+   FIELD c7 n
+   FIELD c8 n
+   FIELD c9 n
+   FIELD c10 n
+   FIELD c11 n
+   FIELD c12 n
+   FIELD c13 n
+   FIELD c14 n
+   FIELD c15 n
+   FIELD c16 n
+   FIELD c17 n
+   FIELD c18 n
+   FIELD c19 n
+   FIELD c20 n
+   FIELD c21 n
+   FIELD c22 n
+   FIELD c23 n
+   FIELD c24 n
+   FIELD c25 n
 ;STRUCTURE
 
 \ a W=2 SUM that is still arity 0, so a local may name it
@@ -117,6 +150,61 @@ private
    {: q:ptr p:pair :}
    p WLP-PAIR:UNMAKE +  q @ WLP-PAIR:UNMAKE +  + ;
 
+\ ---- a record wider than the register pool, shuffled whole -----------------
+\ Each shuffle moves more cells than a routine has registers, so tier 1 loads
+\ them in a run it cannot hold whole and stores each value it puts away right
+\ after that value's own load (src/compiler/native/regalloc.f MB-ANCHOR).
+: WL-SWAP2 ( wide pair -- pair wide ) swap ;
+: WL-UNSWAP2 ( pair wide -- wide pair ) swap ;
+: WL-SWAP1 ( wide n -- n wide ) swap ;
+: WL-ROT ( wide n n -- n n wide ) rot ;
+: WL-MROT ( n n wide -- wide n n ) -rot ;
+: WL-OVER ( wide n -- wide n wide ) over ;
+: WL-NIP ( n wide -- wide ) nip ;
+
+: WL-WIDE ( -- wide )
+   100 101 102 103 104 105 106 107 108 109 110 111 112
+   113 114 115 116 117 118 119 120 121 122 123 124 125
+   WLP-WIDE:MAKE ;
+
+: WL-TAKEN ( -- n wide ) WL-WIDE 7 swap ;   \ the call's results taken back
+
+\ One cell against the value it should hold; the next cell down holds one less.
+: WL-NEXT= ( n n -- n )
+   {: v:n want:n :}
+   v want T=  want 1- ;
+
+: WL-WIDE= ( wide -- )                    \ every cell of WL-WIDE, top first
+   WLP-WIDE:UNMAKE 125
+   WL-NEXT= WL-NEXT= WL-NEXT= WL-NEXT= WL-NEXT= WL-NEXT= WL-NEXT=
+   WL-NEXT= WL-NEXT= WL-NEXT= WL-NEXT= WL-NEXT= WL-NEXT= WL-NEXT=
+   WL-NEXT= WL-NEXT= WL-NEXT= WL-NEXT= WL-NEXT= WL-NEXT= WL-NEXT=
+   WL-NEXT= WL-NEXT= WL-NEXT= WL-NEXT= WL-NEXT=
+   99 T= ;
+
+: WL-SHUFFLES ( -- )
+   WL-WIDE 3 5 WLP-PAIR:MAKE WL-SWAP2 WL-WIDE= WLP-PAIR:UNMAKE 5 T= 3 T=
+   WL-WIDE 3 5 WLP-PAIR:MAKE WL-SWAP2 WL-UNSWAP2
+   WLP-PAIR:UNMAKE 5 T= 3 T= WL-WIDE=
+   WL-WIDE 7 WL-SWAP1 WL-WIDE= 7 T=
+   WL-WIDE 7 9 WL-ROT WL-WIDE= 9 T= 7 T=
+   7 9 WL-WIDE WL-MROT 9 T= 7 T= WL-WIDE=
+   WL-WIDE 7 WL-OVER WL-WIDE= 7 T= WL-WIDE=
+   7 WL-WIDE WL-NIP WL-WIDE=
+   WL-TAKEN WL-WIDE= 7 T= ;
+
+\ Thirty-three reals are more than the floating registers: the same holds there.
+: WL-FSUM ( r r r r r r r r r r r r r r r r r r r r r r r r r r r r r r r r r -- r )
+   f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+
+   f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ ;
+
+: WL-REALS ( -- )
+   1 s>f 2 s>f 3 s>f 4 s>f 5 s>f 6 s>f 7 s>f 8 s>f 9 s>f 10 s>f 11 s>f
+   12 s>f 13 s>f 14 s>f 15 s>f 16 s>f 17 s>f 18 s>f 19 s>f 20 s>f 21 s>f
+   22 s>f 23 s>f 24 s>f 25 s>f 26 s>f 27 s>f 28 s>f 29 s>f 30 s>f 31 s>f
+   32 s>f 33 s>f
+   WL-FSUM f>s 561 T= ;
+
 public
 : MAIN ( -- )
    1 2 WLP-PAIR:MAKE WL-CELL !
@@ -136,7 +224,9 @@ public
    3 4 WL-MADE 7 T=
    10 WLP-RES:OK WL-MATCH 11 T=
    10 WLP-RES:ERR WL-MATCH 9 T=
-   21 WLP-OPT:SOME WL-OPT-ID WL-OPT-MATCH 42 T= ;
+   21 WLP-OPT:SOME WL-OPT-ID WL-OPT-MATCH 42 T=
+   WL-SHUFFLES
+   WL-REALS ;
 
 private
 \ ---- checker verdicts: the annotation is asserted, not ignored --------------

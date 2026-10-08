@@ -1551,18 +1551,64 @@ variable N-PINS
    {: f:IR-ID:ir-fun-id r:n from:n :}
    r from 0 max MB-USE-FROM ;
 
-\ Address carriers and data-stack load runs stay contiguous. Store their
-\ results after the run; other definitions can be stored immediately.
+\ ---- where a value put away is stored ----------------------------------------
+\ Address carriers stay contiguous, and other definitions are stored right after
+\ the operation that writes them. A data-stack load run (the entry's loads, a
+\ call's take-back) stays contiguous only while it can be held whole: every
+\ value it loads is live at its end, in a register or waiting there for its
+\ store, so the run waits for its stores only when the values it loads into a
+\ file fit that file's pool. A wider run, such as a shuffle of more cells than
+\ the pool has registers, stores each value of the overfull file that it puts
+\ away right after that value's own load, so a value put away holds a register
+\ only at its own load, whatever the run's width.
+
+\ The register file of the value a data-stack load writes; its other result is
+\ the memory-order token, which is in no file.
+: MB-LOAD-FILE ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   NOFILE
+   id RESULTS-OF 0 ?do
+      id i RESULT-AT SLOT FILE-AT {: fl:n :}
+      fl NOFILE <> if drop fl leave then
+   loop
+   dup NOFILE = if E-A64RA-SHAPE throw then ;
+
+\ The first load of the run the load at `at` stands in.
+: MB-RUN-START ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id at:n :}
+   at
+   begin
+      dup 0 > if bk over 1- OP-AT DLOAD? else false then
+   while
+      1-
+   repeat ;
+
+\ The first operation after that run.
+: MB-RUN-END ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk OP-COUNT {: n:n :}
+   n
+   n at 1+ ?do
+      bk i OP-AT DLOAD? 0= if drop i leave then
+   loop ;
+
+\ Whether the loads from `s` up to `e` write no more values into file `fl` than
+\ the routine's pool of that file holds.
+: MB-RUN-HELD? ( IR-ID:ir-block-id n n n -- bool )
+   {: bk:IR-ID:ir-block-id s:n e:n fl:n :}
+   0
+   e s ?do  bk i OP-AT MB-LOAD-FILE fl = if 1+ then  loop
+   fl POOL-N-AT <= ;
+
 : MB-ANCHOR ( IR-ID:ir-block-id n -- n )
    {: bk:IR-ID:ir-block-id at:n :}
    bk OP-COUNT {: n:n :}
    bk at OP-AT ADDRESS-HALF {: half:n :}
    half 0 >= if at BND-LANES @ + half - n min exit then
    bk at OP-AT DLOAD? 0= if at 1+ n min exit then
-   n
-   n at 1+ ?do
-      bk i OP-AT DLOAD? 0= if drop i leave then
-   loop ;
+   bk at MB-RUN-END {: e:n :}
+   bk  bk at MB-RUN-START  e  bk at OP-AT MB-LOAD-FILE  MB-RUN-HELD?
+   if e else at 1+ then ;
 
 : MB-ANCH-POS ( IR-ID:ir-fun-id n -- n )
    {: f:IR-ID:ir-fun-id p:n :}
@@ -2086,34 +2132,25 @@ variable N-PINS
       then
    loop ;
 
-\ Bucket producers once by the same anchors as MB-ANCHOR. Walking backwards
-\ finds each data-load run's end once and prepends producers in their original
-\ order; anchors themselves need not be monotonic.
-: MB-PLAN-ANCHOR1 ( n IR-ID:ir-block-id n -- n )
-   {: load-end:n bk:IR-ID:ir-block-id d:n :}
+\ Bucket the producer at `d` under its MB-ANCHOR, the anchor the fit charged
+\ its store's register to (MB-FRAME-COST+).
+: MB-PLAN-ANCHOR1 ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id d:n :}
    bk OP-COUNT {: n:n :}
-   bk d OP-AT {: id:IR-ID:ir-op-id :}
-   id DLOAD? {: dload:bool :}
-   id ADDRESS-HALF {: half:n :}
-   half 0 >= if
-      d BND-LANES @ + half - n min
-   else
-      dload if load-end else d 1+ then
-   then {: at:n :}
+   bk d MB-ANCHOR {: at:n :}
    \ Only later in-block anchors can receive stores; the tail is checked below.
    at d > at n < and if
       at cells ANCH-HEAD + @ d cells ANCH-NEXT + !
       d at cells ANCH-HEAD + !
-   then
-   dload if load-end else d then ;
+   then ;
 
+\ Walking backwards prepends producers in their original order; anchors
+\ themselves need not be monotonic.
 : MB-PLAN-ANCHORS ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
    n 0 ?do NOPOS i cells ANCH-HEAD + ! loop
-   n
-   n 0 ?do bk n i - 1- MB-PLAN-ANCHOR1 loop
-   drop ;
+   n 0 ?do bk n i - 1- MB-PLAN-ANCHOR1 loop ;
 
 : MB-PLAN-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}

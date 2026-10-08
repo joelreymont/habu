@@ -2120,14 +2120,14 @@ the rule.
   `DER:HASH` runs (test/structure-certify-suite.f).
 - **Native width depends on how the cells are used.** A 63-cell identity
   compiles and runs in native AOT; the same 64-cell definition currently
-  refuses with `E-A64RAV-DKEEP` (-8611). At tier 1 on Darwin ARM64, consuming
-  all 25 entry cells in a sum currently refuses with `E-A64RA-POOL` (-8446);
-  the 24-cell sum passes. Forwarding cells does not require that same
-  simultaneous register set. The IR signature list itself holds at most
-  64 cells: its sixty-fifth staged input or output rejects with
-  `E-IR-TYPE-ARITY` (-6688, `test/compiler/ir-type.f`). A record uses the same
-  list, with one staged value per cell. A checked 34-cell nested record
-  roundtrip and the consumed-entry boundary are exercised by
+  refuses with `E-A64RAV-DKEEP` (-8611). At tier 1 a body may consume more
+  entry cells than the register pool holds: the entry's load run stores each
+  value it puts away right after that value's own load, so a 25-cell sum
+  compiles on Darwin ARM64, whose pool is 24 registers. The IR signature list
+  itself holds at most 64 cells: its sixty-fifth staged input or output rejects
+  with `E-IR-TYPE-ARITY` (-6688, `test/compiler/ir-type.f`). A record uses the
+  same list, with one staged value per cell. A checked 34-cell nested record
+  roundtrip and that 25-cell sum are exercised by
   `test/compiler/native-generated-constructor.f`.
 - **`s"` reads no escapes; `S\"` does.** `S\"` needs its delimiter space
   (`s\"\n"` is one undefined token) and reads `\u` as its own escape, so a

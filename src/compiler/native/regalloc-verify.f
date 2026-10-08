@@ -1574,7 +1574,7 @@ create VD-VCUR VDSLOTS cells allot
 create VD-DCUR VDSLOTS cells allot
 create VD-VMEET VDSLOTS cells allot
 create VD-DMEET VDSLOTS cells allot
-variable VD-EL                       \ argument loads the entry sequence really built
+variable VD-EL                       \ positions from the take to the entry's last load
 variable VD-ES                       \ result stores the exit sequence really built
 variable VD-P                        \ the position one of the scans below stands at
 variable VD-J                        \ the declared place one of them stands at
@@ -1980,6 +1980,22 @@ DKEEP-HOOK-DEFAULT
    id DCELL? 0= if false exit then
    id STORES? ;
 
+\ A store into a frame slot: a value the allocation put away.
+: VDSPILL? ( IR-ID:ir-block-id n -- bool )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   id SLOT-OF NOSLOT = if false exit then
+   id STORES? ;
+
+\ A load run - the entry's argument loads, a call's take-back - is its loads and
+\ the spills between them. A run that loads more values into a file than the
+\ routine's pool holds stores each value it puts away right after that value's
+\ own load (regalloc.f MB-ANCHOR); a narrower run keeps its loads together.
+: VDRUN-OP? ( IR-ID:ir-block-id n -- bool )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk at VDLOAD? if true exit then
+   bk at VDSPILL? ;
+
 : VDSLOT-AT ( IR-ID:ir-block-id n -- n )
    OP-AT VDSLOT-CELL ;
 
@@ -2011,11 +2027,13 @@ DKEEP-HOOK-DEFAULT
    0 VD-J !
    0 VD-EL !
    begin
-      VD-P @ eb OP-COUNT < if eb VD-P @ VDLOAD? else false then
+      VD-P @ eb OP-COUNT < if eb VD-P @ VDRUN-OP? else false then
    while
-      args a  eb VD-P @ VDSLOT-AT  VDSEQ-FIND
+      eb VD-P @ VDLOAD? if
+         args a  eb VD-P @ VDSLOT-AT  VDSEQ-FIND
+         VD-P @ PRO-N - VD-EL !
+      then
       VD-P @ 1+ VD-P !
-      VD-EL @ 1+ VD-EL !
    repeat ;
 
 \ The exit's stores may have register or frame operations between them. The
@@ -2119,23 +2137,29 @@ DKEEP-HOOK-DEFAULT
       drop i 1+
    loop ;
 
+\ The take-back's span ends at its last load, so a store after the run is not
+\ counted in it.
 : DLOAD-RUN ( IR-ID:ir-block-id n -- n )
    {: bk:IR-ID:ir-block-id at:n :}
    bk OP-COUNT {: n:n :}
    -1 VD-PREV !
    0
    n at - 0 ?do
-      bk at i + VDLOAD? 0= if leave then
-      bk at i + VDSLOT-AT VD-S !
-      VD-S @ VD-PREV @ <= if E-A64RAV-CALL throw then
-      VD-S @ VD-PREV !
-      drop i 1+
+      bk at i + VDRUN-OP? 0= if leave then
+      bk at i + VDLOAD? if
+         bk at i + VDSLOT-AT VD-S !
+         VD-S @ VD-PREV @ <= if E-A64RAV-CALL throw then
+         VD-S @ VD-PREV !
+         drop i 1+
+      then
    loop ;
 
 : VDRUN-BOUND ( IR-ID:ir-block-id n n n -- )
-   {: bk:IR-ID:ir-block-id at:n k:n limit:n :}
-   k 0 ?do
-      bk at i + VDSLOT-AT limit >= if E-A64RAV-CALL throw then
+   {: bk:IR-ID:ir-block-id at:n span:n limit:n :}
+   span 0 ?do
+      bk at i + VDLOAD? if
+         bk at i + VDSLOT-AT limit >= if E-A64RAV-CALL throw then
+      then
    loop ;
 
 : VDSTORE-BOUND ( IR-ID:ir-block-id n n n -- )

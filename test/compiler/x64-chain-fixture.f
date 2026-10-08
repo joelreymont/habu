@@ -204,10 +204,8 @@ private
 \ `: LEAF ( a -- n ) a a + a a + ... twelve times ... and then sum the twelve`.
 \ All twelve doublings are live at once where the last of them is made, and this
 \ machine has nine allocatable registers, so the values read furthest away lose
-\ theirs. The interface is ONE argument because the data-stack entry transfer
-\ takes every argument's bytes in a single operation: a routine of twelve would
-\ need twelve registers at that one instant and no spill can free one
-\ (E-A64RA-POOL). Pressure here is over values the body makes one at a time.
+\ theirs. The interface is ONE argument, so the pressure is over values the body
+\ makes one at a time, not an entry run the allocator puts away load by load.
 \
 \ The doubling is two-address and its operand is live after it, so selection
 \ copies the argument before each one - the copies are short-lived and the
