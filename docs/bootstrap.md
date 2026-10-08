@@ -283,7 +283,11 @@ registers them owned (`EMIT-OVERLAY-PRIMS`) with one body that prints
 `REFUSE-BODY` does for its absent rows: a seed-built image never opens the
 overlay, and the recovery check passes with those bodies. Without the rows its
 first gate, `test/bootstrap-engine-stack.fs`, dies 70 naming
-`namespace-record`.
+`namespace-record`. `src/core/include.f` likewise calls `unit-compile-run`
+from `SOURCE-UNIT:GUARDED`; stage0 registers it owned with a body that prints
+`hb: stage0 has no unit guard` and exits 76, since stage0 only compiles stage2
+and every unit build runs on a native engine. Without it the same gate dies 70
+naming `unit-compile-run`.
 The stage0 `J-QUOT` keeps one quotation open at a time, where the engine's
 tier 0 nests to `JIT-QUOT:LEVELS`: a boot-prefix source keeps `[:` one level
 deep until the seed mirrors those frames, or the stage0 build exits 75.

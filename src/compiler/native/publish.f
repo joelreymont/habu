@@ -58,6 +58,19 @@ variable UNIT-ARMED
 : APPEND-PENDING ( n -- )
    ndict-append ;
 
+\ A prepared package unit (tools/native-unit-object.f): the build host has
+\ relocated its code and dictionary rows and names each relocation site as a
+\ unit-relative byte offset. The publication itself is this owner's alone.
+: PUBLISH-UNIT ( ptr u8 n ptr u8 n -- )
+   native-unit-publish ;
+
+: IMPORT-UNIT ( ptr u8 n ptr u8 n ptr n n ptr n n -- )
+   {: code:ptr codeu:n recs:ptr recn:n calls:ptr callu:n addrs:ptr addru:n :}
+   cp@ {: base:n :}
+   code codeu recs recn PUBLISH-UNIT
+   callu 0 ?do calls i cells + @ base + RELOC-EXTERNAL loop
+   addru 0 ?do addrs i cells + @ base + RELOC-ADDR loop ;
+
 : CODE-CEILING ( -- n )
    dbase@ REGION + CODE-RESERVE - ;
 

@@ -2008,6 +2008,22 @@ HB-TARGET-LINUX? [IF]
    9 G-PUSH  BTHROW
    done LBL, ;
 
+\ The body of a row that a seed-built image compiles a caller for but never
+\ reaches: it prints its message on fd 2 and exits 76, as src/habu/kernel-x64.f
+\ REFUSE-BODY does for its absent rows.
+: B-REFUSE ( addr u -- )
+   LBL {: ma mu msg :}
+   0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
+   0 76 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  ma mu BYTES, ;
+
+\ src/core/include.f, which every seed-built image compiles at boot, calls
+\ unit-compile-run from SOURCE-UNIT:GUARDED, the package row src/habu/prims.f
+\ registers, so the seed registers it owned. No seed-built image guards a unit:
+\ stage0 only compiles stage2, and the native engine runs every unit build.
+: NOUNIT$ ( -- addr u ) s\" hb: stage0 has no unit guard\n" ;
+: B-NO-UNIT ( -- ) NOUNIT$ B-REFUSE ;
+
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
 \ finally ( body cleanup -- ): mirrors src/habu/habu1.f BFINALLY. The body's
 \ result row survives a clean run; the cleanup runs outside the body's handler,
@@ -2353,7 +2369,8 @@ HB-TARGET-LINUX? [IF]
    s" num-parse" ['] BNUMPARSE FPRIM
    s" evaluate" ['] B-EVAL FPRIM-L
    s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM
-   s" source-unit-run" ['] B-SOURCE-UNIT-RUN PRIM-INT-WID FPRIM-WID ;
+   s" source-unit-run" ['] B-SOURCE-UNIT-RUN PRIM-INT-WID FPRIM-WID
+   s" unit-compile-run" ['] B-NO-UNIT PRIM-OWNED-WID FPRIM-WID ;
 
 : EMIT-ENGINE-PRIMS ( -- )
    s" run-in-stack" ['] BRUNSTACK FPRIM-L
@@ -2409,14 +2426,9 @@ HB-TARGET-LINUX? [IF]
 \ eight rows src/habu/prims.f registers for package CHECKER-OVERLAY, so the seed
 \ registers them owned and EMIT-COMPILE-CALL admits checked calls to them. No
 \ seed-built image opens the overlay: stage0 only compiles stage2, and the
-\ recovery gates replay nothing (docs/bootstrap.md). Each body says so on fd 2
-\ and exits 76, as src/habu/kernel-x64.f REFUSE-BODY does for its absent rows.
+\ recovery gates replay nothing (docs/bootstrap.md), so each body refuses.
 : NOOVERLAY$ ( -- addr u ) s\" hb: stage0 has no checker overlay\n" ;
-: B-NO-OVERLAY ( -- )
-   LBL {: msg :}
-   0 2 MOVZ,  1 msg ADR,  2 NOOVERLAY$ nip MOVZ,  NR-WRITE SYS,
-   0 76 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  NOOVERLAY$ BYTES, ;
+: B-NO-OVERLAY ( -- ) NOOVERLAY$ B-REFUSE ;
 
 : EMIT-OVERLAY-PRIMS ( -- )
    s" namespace-record" ['] B-NO-OVERLAY PRIM-OWNED-WID FPRIM-WID
