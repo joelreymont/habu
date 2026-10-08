@@ -32,7 +32,7 @@ SNAP-RELOC:XTCELL-END BOOT-OFF - CELL / constant BOOT-CAP
 $7FFFFFFFFFFFFFFF CELL / constant MAX-ROWS
 
 private
-TRUSTED: VERSION-XT ( n -- [ -- n ] ) ;
+CAST: VERSION-XT ( n -- [ -- n ] )
 
 \ All engine emitters publish these primitives consecutively in global
 \ wordlist zero. Retirement changes a marker's wordlist, but preserves its
@@ -82,9 +82,8 @@ private
    count cap > if REFUSE then ;
 
 : HEADER ( -- ptr n ) data-base SNAP-RELOC:XTCELL-N-CELL + ;
-\ The header's base and the index cell hold an outside mapping's address as an
-\ integer. An old donor loading this source refuses a pointer CAST:.
-TRUSTED: N>ROWS ( n -- ptr n ) ;
+\ The header's base and the index cell hold an outside mapping's address as an integer.
+CAST: N>ROWS ( n -- ptr n )
 : ROWS>N ( ptr n -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 : DATA-ROWS ( n -- ptr n ) data-base + ;
 

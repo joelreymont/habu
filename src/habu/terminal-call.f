@@ -6,9 +6,9 @@ package TERMINAL-CALL
 
 \ This engine's actual text extent authenticates the primitive binding; a
 \ source definition with the same global name must retain its continuation.
-TRUSTED: ENGINE-TEXT ( -- n n )
+: ENGINE-TEXT ( -- n n )
    data-base RBASE-CELL + @
-   dup CODE-OFF - IMAGE-TEXT-SIZE-OFF + @ IMAGE-TEXT-CONTENT-ADJ - ;
+   data-base RBASE-CELL + 0 ptr-field @ CODE-OFF - IMAGE-TEXT-SIZE-OFF + CELL-VIEW @ IMAGE-TEXT-CONTENT-ADJ - ;
 
 public
 
