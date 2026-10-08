@@ -118,6 +118,8 @@ ENUM opcode DERIVE eq
    unreachable
    call
    call-indirect
+   memory-grow
+   memory-fill
 ;ENUM
 
 \ ---- the dialect identity ----------------------------------------------------
@@ -127,7 +129,7 @@ ENUM opcode DERIVE eq
 \ Every consumer compares the version exactly, so a table with a form and one
 \ without are two different tables.
 0 constant MAJOR
-3 constant MINOR
+4 constant MINOR
 
 \ ---- the opcode spellings ----------------------------------------------------
 \ The Wasm mnemonic under the dialect's prefix. A Wasm instruction's semantic
@@ -187,12 +189,14 @@ ENUM opcode DERIVE eq
       unreachable         OF s" wstruct.unreachable" ENDOF
       call                OF s" wstruct.call" ENDOF
       call-indirect       OF s" wstruct.call_indirect" ENDOF
+      memory-grow         OF s" wstruct.memory.grow" ENDOF
+      memory-fill         OF s" wstruct.memory.fill" ENDOF
    ;MATCH ;
 
 \ ---- the closed opcode vocabulary --------------------------------------------
 \ The ordinal is a position in this one table, stated here and never derived
 \ from the enum's declaration order.
-51 constant OPCODES
+53 constant OPCODES
 
 : NTH ( n -- WSTRUCT:opcode )
    case
@@ -247,6 +251,8 @@ ENUM opcode DERIVE eq
       48 of WSTRUCT-OPCODE:UNREACHABLE endof
       49 of WSTRUCT-OPCODE:CALL endof
       50 of WSTRUCT-OPCODE:CALL-INDIRECT endof
+      51 of WSTRUCT-OPCODE:MEMORY-GROW endof
+      52 of WSTRUCT-OPCODE:MEMORY-FILL endof
       E-WSTRUCT-OPCODE throw
    endcase ;
 
@@ -454,6 +460,35 @@ private
    true IR-SCHEMA:SET-TRAP
    c b op F-INT FINISH ;
 
+\ memory.grow on memory zero: the i32 pages to add in, the previous page count
+\ or -1 out, which the consumer tests before widening it.
+: GROW-FORM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id w:IR-ID:ir-type-id
+      k:IR-ID:ir-type-id :}
+   op IR-SCHEMA:BEGIN-OP
+   w IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-OPERAND
+   w IR-SCHEMA:ADD-RESULT
+   k IR-SCHEMA:ADD-RESULT
+   IR--SCHEMA-EFFECT:WRITE LINEAR-MEMORY
+   false IR-SCHEMA:SET-TRAP
+   c b op F-INT FINISH ;
+
+\ memory.fill on memory zero: the i32 address, byte and count in; it traps past
+\ the memory's end.
+: FILL-FORM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id w:IR-ID:ir-type-id
+      k:IR-ID:ir-type-id :}
+   op IR-SCHEMA:BEGIN-OP
+   w IR-SCHEMA:ADD-OPERAND
+   w IR-SCHEMA:ADD-OPERAND
+   w IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-RESULT
+   IR--SCHEMA-EFFECT:WRITE LINEAR-MEMORY
+   true IR-SCHEMA:SET-TRAP
+   c b op F-INT FINISH ;
+
 \ The operands are the destination's block arguments. With one successor the
 \ verifier types each against the argument it becomes, never against the
 \ schema, so the tail's i64 is the arity rule and not a type rule.
@@ -594,6 +629,8 @@ private
       unreachable         OF c b op UNREACHABLE-FORM ENDOF
       call                OF c b op w x k CALL-FORM ENDOF
       call-indirect       OF c b op w x k CALL-INDIRECT-FORM ENDOF
+      memory-grow         OF c b op w k GROW-FORM ENDOF
+      memory-fill         OF c b op w k FILL-FORM ENDOF
    ;MATCH ;
 
 \ ---- the machine this compilation is for --------------------------------------

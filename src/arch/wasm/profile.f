@@ -10,19 +10,23 @@ public
 \ spells them: multi-value for the (status, outputs) signature, and
 \ saturating-float-to-int for `f>s`, whose i64.trunc_sat_f64_s truncates,
 \ saturates and answers 0 for a NaN exactly as src/compiler/native/hir-word.f
-\ defines realint.
+\ defines realint, and bulk-memory for clearing reused page runs.
 : FEATURES ( -- ptr u8 n )
-   s" multi-value,saturating-float-to-int" ;
+   s" multi-value,saturating-float-to-int,bulk-memory" ;
 
 \ The most input and output lanes a direct call passes; past either a function
 \ takes the aligned frame (docs/wasm-backend.md section 7.3).
 16 constant PARAMS-MAX
 16 constant RESULTS-MAX
 
+\ A Wasm page's bytes, and memory32's most pages.
+$10000 constant PAGE-BYTES
+$10000 constant PAGES-MAX
+
 \ Section 17.5's layout: null [0,$10000), ctx [$10000,$11000), output
 \ [$11000,$21000), data stack [$21000,$31000) - the native boot stack's 8192
-\ cells - and static data from $31000. The slice has no allocator, so the
-\ memory never grows.
+\ cells - and static data from $31000. Dynamic mappings lie past the image's
+\ last page, in the pages map-anon grows (src/arch/wasm/kernel.f).
 $10000 constant CTX-BASE
 $11000 constant OUT-BASE
 $21000 constant STACK-BASE
@@ -37,5 +41,6 @@ $31000 constant DATA-BASE
 24 constant CTX-THROW-CODE
 32 constant CTX-FAULT-KIND
 40 constant CTX-FAULT-ADDR
+48 constant CTX-FREE-HEAD                 \ the first free page run, 0 for none; runs keep it
 
 ;package

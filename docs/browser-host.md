@@ -13,7 +13,9 @@ The module imports nothing and exports `memory`, `run() -> i32`,
 ([wasm-backend.md](wasm-backend.md) §17.6). Its memory's minimum is the pages
 holding its image and its maximum memory32's 65536, so the host can grow it and
 place received bytes past the image, where the module's checked loads reach
-them. The host and the module take turns through memory.
+them. The module grows it too, for its dynamic buffers, whose pages are never
+the host's ([wasm-backend.md](wasm-backend.md) §17.5). The host and the module
+take turns through memory.
 
 ## Turns
 
@@ -181,6 +183,14 @@ and a 200 also fetches. The cases:
 It needs bun and wasm-tools, so it runs in the wasm device check,
 `bin/hb --load test/wasm/device.f` ([bootstrap.md](bootstrap.md)), not the
 ordinary gate.
+
+`test/browser/storage-test.f` builds `test/browser/storage.f`, whose dynamic
+buffer grows, is released and is reserved again around the pages the host adds
+for a fetch larger than the module's image. The module throws unless the buffer
+lies past the host's bytes each time it is reserved after the fetch, kept its
+bytes as it grew and gets its first pages back cleared; its text is the
+checksum of the host's bytes, so a host page the module wrote changes it. It
+runs in the wasm device check too.
 
 `lib/browser/host-test.f` (gate row `browser-host`) starts Habu's HTTP server
 with `BROWSER-HOST:ROUTES` on a loopback port, and CURL checks that `/`,

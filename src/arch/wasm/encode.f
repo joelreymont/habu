@@ -104,8 +104,9 @@ $0B constant OP-END
 $20 constant OP-LOCAL-GET
 $21 constant OP-LOCAL-SET
 $40 constant EMPTY-TYPE              \ a block, loop or if taking and leaving nothing
-$FC constant SAT-PREFIX              \ the saturating truncations' prefix
+$FC constant MISC-PREFIX             \ the saturating truncations' and bulk memory's prefix
 6 constant SAT-I64-F64-S             \ i64.trunc_sat_f64_s under it
+11 constant BULK-FILL                \ memory.fill under it
 10 constant LEB-MOST                 \ the widest LEB, a 64-bit one
 
 \ A local's class is its Wasm value type; a memory token has none.
@@ -395,6 +396,8 @@ public
       unreachable         OF $00 ENDOF
       call                OF $10 ENDOF
       call-indirect       OF $11 ENDOF
+      memory-grow         OF $40 ENDOF
+      memory-fill         OF E-WENC-FORM throw ENDOF
    ;MATCH ;
 
 private
@@ -527,13 +530,17 @@ SPELL-MAX BUFFER: SPELL
    {: code:WSTRUCT:opcode o:IR-ID:ir-op-id :}
    code WSTRUCT-OPCODE:CALL-INDIRECT SAME-OP? if E-WENC-FORM throw then
    code WSTRUCT-OPCODE:I64-TRUNC-SAT-F64-S SAME-OP? if
-      SAT-PREFIX PUT-BYTE  SAT-I64-F64-S PUT-U32  exit
+      MISC-PREFIX PUT-BYTE  SAT-I64-F64-S PUT-U32  exit
+   then
+   code WSTRUCT-OPCODE:MEMORY-FILL SAME-OP? if
+      MISC-PREFIX PUT-BYTE  BULK-FILL PUT-U32  0 PUT-U32  exit
    then
    code OPCODE-BYTE PUT-BYTE
    code WSTRUCT-OPCODE:I32-CONST SAME-OP? if  o WSTRUCT:KEY-VALUE$ INT-ATTR PUT-S32  exit  then
    code WSTRUCT-OPCODE:I64-CONST SAME-OP? if  o CELL-CONST  exit  then
    code WSTRUCT-OPCODE:F64-CONST SAME-OP? if  o WSTRUCT:KEY-VALUE$ INT-ATTR PUT-F64  exit  then
    code WSTRUCT-OPCODE:CALL SAME-OP? if  o CALL-FIELD  exit  then
+   code WSTRUCT-OPCODE:MEMORY-GROW SAME-OP? if  0 PUT-U32 exit  then
    code ACCESS? if  o MEMARG  then ;
 
 : OP ( IR-ID:ir-op-id -- )

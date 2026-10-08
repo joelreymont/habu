@@ -105,8 +105,8 @@ $70 constant FUNCREF
 $0B constant OP-END
 2 constant ALIGN-32                  \ an i32 access's natural alignment, 2^2
 3 constant ALIGN-64
-$10000 constant PAGE-BYTES
-$10000 constant PAGES-MAX            \ memory32's most pages
+WPROF:PAGE-BYTES constant PAGE-BYTES
+WPROF:PAGES-MAX constant PAGES-MAX
 \ The most image bytes those pages hold above the data base.
 PAGES-MAX PAGE-BYTES * WPROF:DATA-BASE - constant IMAGE-MAX
 10 constant LEB-MOST                 \ the widest LEB, a 64-bit one

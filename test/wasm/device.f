@@ -15,11 +15,15 @@
 \ it links a captured window with WASMLINK and runs execute and catch through
 \ table slots and .s through kernel-words.f's `.`. test/wasm/build.f runs next
 \ and reports on its own: it builds modules by tools/wasm-build.f's command
-\ line and runs the checked-memory rows. test/wasm/differential.f runs after it
-\ and reports on its own: each row's program run natively and as a module, both
-\ held to the row. test/browser/echo-test.f runs after it and reports on its
-\ own: the browser host's turns, lib/browser/host-cli.mjs on its echo fixture.
-\ The modules stay in the printed directories.
+\ line and runs the checked-memory rows. test/wasm/storage-test.f runs next and
+\ reports on its own: dynamic buffers grow, release and reuse pages, and a page
+\ freed twice traps. test/wasm/differential.f runs after it and reports on its
+\ own: each row's program run natively and as a module, both held to the row.
+\ test/browser/echo-test.f runs after it and reports on its own: the browser
+\ host's turns, lib/browser/host-cli.mjs on its echo fixture.
+\ test/browser/storage-test.f runs after it and reports on its own: a dynamic
+\ buffer beside the pages the host adds. The modules stay in the printed
+\ directories.
 
 require lib/test.f
 require lib/fs.f
@@ -35,8 +39,10 @@ require test/wasm/w03.f
 
 require test/wasm/dynamic.f                    \ installs the backend WKERNEL builds under
 require test/wasm/build.f
+require test/wasm/storage-test.f
 require test/wasm/differential.f
 require test/browser/echo-test.f
+require test/browser/storage-test.f
 
 package WASM-DEVICE
 private

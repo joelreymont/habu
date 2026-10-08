@@ -1,10 +1,15 @@
 \ kernel-words.f - WKWORDS, the engine primitives a Wasm module calls that are
-\ written in checked Habu over `emit` instead of hand-built: WKERNEL's map
-\ (src/arch/wasm/kernel.f) names each by the engine name it answers for. The file
-\ is for the Wasm driver to load into the capture window ahead of the program
-\ and keep shipped, so these words compile for Wasm as the program's own do:
-\ each uses only words HIR models, `emit` and one another. No word spells a
-\ primitive.
+\ written in checked Habu over the kernel's rows instead of hand-built: WKERNEL's
+\ map (src/arch/wasm/kernel.f) names each by the engine name it answers for. The
+\ file is for the Wasm driver to load into the capture window ahead of the
+\ program and keep shipped, so these words compile for Wasm as the program's own
+\ do: each uses only words HIR models, the rows emit, map-anon and munmap, and
+\ one another.
+\
+\ DYN-OFFSET, DYN-RESERVE and DYN-RELEASE are src/core/dynamic-storage.f's
+\ OFFSET, RESERVE and RELEASE on the control record DYNAMIC-BUFFER generates,
+\ without its registry: a module saves no image, so nothing releases its
+\ buffers before one.
 \
 \ The printers are the engine's (src/habu/rt.f G-PRINT9, G-PRINTU9; habu1.f
 \ BFDOT): the digits, then a newline. f. prints the integer part of the real's
@@ -14,6 +19,39 @@
 
 package WKWORDS
 private
+
+$7FFFFFFFFFFFFFFF constant MAX-BYTES
+\ src/core/dynamic-storage.f's codes, so a refusal throws what it does natively.
+E-LAYOUT-BUFFER constant E-SIZE
+E-LAYOUT-BOUNDS constant E-BOUNDS
+DYNAMIC-STORAGE:E-MAP constant E-MAP
+DYNAMIC-STORAGE:E-UNMAP constant E-UNMAP
+
+: EXTENT ( n n -- n )
+   {: count:n width:n :}
+   count 0 < width 0 <= or if E-SIZE throw then
+   count MAX-BYTES width / > if E-SIZE throw then
+   count width * ;
+
+: CELL-CEIL ( n -- n )
+   {: bytes:n :}
+   bytes 8 mod {: part:n :}
+   part 0= if bytes exit then
+   bytes MAX-BYTES 8 part - - > if E-SIZE throw then
+   bytes 8 part - + ;
+
+: CAPACITY ( n n -- n )
+   {: need:n old:n :}
+   old MAX-BYTES 2 / > if need CELL-CEIL exit then
+   need old 2 * 64 max max CELL-CEIL ;
+
+: CAP ( ptr ptr a -- ptr n )
+   {: cb:ptr :}
+   cb byte-view 8 + cell-view ;
+
+: COPY ( ptr a ptr a n -- )
+   {: src:ptr dst:ptr bytes:n :}
+   bytes 8 / 0 ?do src i cells + @ dst i cells + ! loop ;
 
 \ A real's bits: a rename HIR models (hir-word.f DECLARE-BOUND-CAST), where
 \ IEEE754:F64>BITS would be a call the map does not answer.
@@ -36,6 +74,36 @@ CAST: F>BITS ( r -- n )
    repeat drop ;
 
 public
+
+: DYN-OFFSET ( n ptr ptr a n -- n )
+   {: idx:n cb:ptr width:n :}
+   idx 0 < if E-BOUNDS throw then
+   idx cb CAP @ width / >= if E-BOUNDS throw then
+   idx width * ;
+
+: DYN-RESERVE ( n ptr ptr a n -- )
+   {: count:n cb:ptr width:n :}
+   count width EXTENT {: need:n :}
+   cb CAP @ {: old:n :}
+   need old <= if exit then
+   need old CAPACITY {: cap:n :}
+   cap map-anon 0< if drop E-MAP throw then {: fresh:ptr :}
+   old 0 > if
+      cb @ fresh old COPY
+      cb @ old munmap 0< if
+         fresh cap munmap drop E-UNMAP throw
+      then
+   then
+   fresh cb !
+   cap cb CAP ! ;
+
+: DYN-RELEASE ( ptr ptr a -- )
+   {: cb:ptr :}
+   cb CAP @ {: cap:n :}
+   cap 0= if exit then
+   cb @ cap munmap 0< if E-UNMAP throw then
+   0 cb byte-view cell-view !
+   0 cb CAP ! ;
 
 : NEWLINE ( -- )
    10 emit ;

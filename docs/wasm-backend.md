@@ -101,7 +101,7 @@ Base Wasm arithmetic has no scalar fused multiply-add instruction. Do not substi
 
 ### 4.3 Feature and deployment identity
 
-WPROF (src/arch/wasm/profile.f) states the one feature set the backend emits (core Wasm with multi-value and saturating float-to-int), the 16/16 lane ABI and the memory layout, as constants.
+WPROF (src/arch/wasm/profile.f) states the one feature set the backend emits (core Wasm with multi-value, saturating float-to-int and bulk memory), the 16/16 lane ABI and the memory layout, as constants.
 
 The current upstream specification identifies itself as WebAssembly 3.0, dated 21 September 2026. That does not imply every requested browser supports every instruction. Qualify the exact selected subset with feature probes and browser execution tests. [WS1, WS3]
 
@@ -513,10 +513,27 @@ P6 pins this layout:
 - data stack [$21000,$31000);
 - static DATA from $31000.
 
-The memory minimum is the pages holding the image and its maximum memory32's
-65536 pages. The module has no allocator; the maximum lets a host grow the
-memory and place bytes past the image ([browser-host.md](browser-host.md)). A
-failed pointer check records the fault in ctx and traps (§8.2).
+The memory minimum is the pages holding the image and its maximum is memory32's
+65536 pages. `map-anon` and `munmap` are kernel rows over whole pages
+(`src/arch/wasm/kernel.f`), and the `DYNAMIC-BUFFER` provider in
+`src/arch/wasm/kernel-words.f` calls them as the native provider calls the
+system's, with its sizes, capacities and throw codes. `map-anon` hands out,
+cleared, the first run of ctx's address-sorted free list that holds the
+request's pages, and leaves a longer run's tail free; with none, `memory.grow`
+adds the pages at the memory's current end. A request outside 1 byte to 4 GiB,
+or a growth the memory refuses, answers 0 -1, which the provider throws as
+`E-MAP`, keeping the buffer's bytes and capacity. `munmap` puts a run back,
+merged with the free runs it touches. A length outside 1 byte to 4 GiB, or an
+address that is not a page-aligned offset below 4 GiB, answers -1 and leaves
+the list as it was, as the native `munmap` refuses a zero length or an
+unaligned address; the provider throws it as `E-UNMAP`. It records nothing of
+what `map-anon` handed out; a run that overlaps a free run, as one freed twice
+does, traps, and so does a free whose address is at or past the memory's end. A
+host that grows the memory itself, as the browser host does for fetched bytes
+([browser-host.md](browser-host.md)), adds its pages at the end too: `map-anon`
+never hands them out, since it grows past them, and they never join the free
+list, which holds only runs the module freed. A failed pointer check records
+the fault in ctx and traps (§8.2).
 
 ### 17.6 Acceptance
 

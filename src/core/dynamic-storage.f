@@ -12,13 +12,18 @@
 \ This runtime belongs below the core-prefix mark: generated declarations in
 \ a rewound build source already call it, before lib/errors.f is available.
 package DYNAMIC-STORAGE
+public
+
+\ A refused map and a refused unmap, which src/arch/wasm/kernel-words.f's
+\ provider throws too.
+7138 constant E-MAP
+7139 constant E-UNMAP
+
 private
 
 $7FFFFFFFFFFFFFFF constant MAX-BYTES
 E-LAYOUT-BUFFER constant E-SIZE    \ src/core/layout-buffer.f's size and bounds refusals
 E-LAYOUT-BOUNDS constant E-BOUNDS
-7138 constant E-MAP
-7139 constant E-UNMAP
 
 $40 constant REG-INIT
 1 constant REG-HEAD
