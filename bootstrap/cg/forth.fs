@@ -3068,6 +3068,7 @@ variable LTRAPH   variable LBPH
 variable LSRCRD   variable LSRCRDP   variable LSHBANG
 variable LPLINUXTARGET  variable LPMACOSTARGET  variable LPX64TARGET
 variable LPLINUXLAYOUT  variable LPMACOSLAYOUT  variable LPX64LAYOUT
+variable LPLINUXLAYOUTCONST  variable LPX64LAYOUTCONST
 variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
 variable LPENGINEERROR  variable LPENGINEERROREFFECTS
 variable LPBYTES        variable LPFETCHABI     variable LPOWNERABI     variable LPCHECKER      variable LPRENDER
@@ -3400,9 +3401,11 @@ create ZBYTE 0 c,
       PFX-LINUX LPLINUXTARGET s" src/os/linux/target.f" row execute
       PFX-MACOS LPMACOSTARGET s" src/os/macos/target.f" row execute
       PFX-X64 LPX64TARGET s" src/os/linux-x86-64/target.f" row execute
+      PFX-LINUX LPLINUXLAYOUTCONST s" src/os/linux/layout-constants.f" row execute
       PFX-LINUX LPLINUXLAYOUT s" src/os/linux/layout.f" row execute
       PFX-MACOS LPMACOSLAYOUT s" src/os/macos/layout.f" row execute
-      PFX-X64 LPX64LAYOUT s" src/os/linux-x86-64/layout.f" row execute
+      PFX-X64 LPX64LAYOUTCONST s" src/os/linux/layout-constants.f" row execute
+      PFX-X64 LPX64LAYOUT s" src/os/linux/layout.f" row execute
       PFX-COMMON LPSTACKABI s" src/habu/stack-abi.f" row execute
       PFX-COMMON LPHABULAYOUT s" src/habu/layout.f" row execute
       PFX-COMMON LPENVBASE s" src/os/env-base.f" row execute
@@ -8555,6 +8558,7 @@ variable P2SK
 : EMIT-LABEL-SOURCES ( -- )
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !  LBL LPX64TARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !  LBL LPX64LAYOUT !
+   LBL LPLINUXLAYOUTCONST !  LBL LPX64LAYOUTCONST !
    LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
    LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPENGINEERROR !  LBL LPFETCHABI !  LBL LPOWNERABI !  LBL LPPRIMS !  LBL LPDOESCLAUSE !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !

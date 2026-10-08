@@ -853,16 +853,13 @@ package BUILD-FIXPOINT
 \ not this engine's predicates. Nothing here points it elsewhere, so it is this
 \ engine's own target: the stage compiler is this machine's engine.
 : BF-APPEND-TARGET-LAYOUT ( ptr u8 n -- ) {: out:ptr outu :}
-   BUILD-TARGET:LINUX? if
+   BUILD-TARGET:LINUX? BUILD-TARGET:LINUX-X86-64? or if
+      out outu s" src/os/linux/layout-constants.f" BF-APPEND-SOURCE
       out outu s" src/os/linux/layout.f" BF-APPEND-SOURCE
       exit
    then
    BUILD-TARGET:MACOS? if
       out outu s" src/os/macos/layout.f" BF-APPEND-SOURCE
-      exit
-   then
-   BUILD-TARGET:LINUX-X86-64? if
-      out outu s" src/os/linux-x86-64/layout.f" BF-APPEND-SOURCE
       exit
    then
    BF-TARGET-UNKNOWN ;

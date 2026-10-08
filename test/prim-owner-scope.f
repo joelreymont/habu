@@ -69,10 +69,14 @@ variable EXP-U
 \ fixture's rows and the pass itself (test/prim-owner-scope-prepare.f).
 : TARGET-ARGS ( -- )
    HB-TARGET-LINUX-X86-64? if
-      s" src/os/linux-x86-64/target.f" ARG s" src/os/linux-x86-64/layout.f" ARG exit
+      s" src/os/linux-x86-64/target.f" ARG
+      s" src/os/linux/layout-constants.f" ARG
+      s" src/os/linux/layout.f" ARG exit
    then
    HB-TARGET-LINUX? if
-      s" src/os/linux/target.f" ARG s" src/os/linux/layout.f" ARG exit
+      s" src/os/linux/target.f" ARG
+      s" src/os/linux/layout-constants.f" ARG
+      s" src/os/linux/layout.f" ARG exit
    then
    s" src/os/macos/target.f" ARG s" src/os/macos/layout.f" ARG ;
 

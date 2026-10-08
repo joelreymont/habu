@@ -83,10 +83,10 @@ require tools/macho-read.f
 \ same way and for the same reason.
 : ES-LOAD-TARGET-LAYOUT ( -- )
    s" DATA-SIZE" XREF-FIND 0= if
-      HB-TARGET-LINUX? if s" src/os/linux/layout.f" included exit then
+      HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
+         s" src/os/linux/layout-constants.f" included
+         s" src/os/linux/layout.f" included exit then
       HB-TARGET-MACOS? if s" src/os/macos/layout.f" included exit then
-      HB-TARGET-LINUX-X86-64? if
-         s" src/os/linux-x86-64/layout.f" included exit then
       s" image-size: unknown target" 74 die
    then ;
 

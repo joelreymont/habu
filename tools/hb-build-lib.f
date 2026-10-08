@@ -516,6 +516,7 @@ HBB-INSTALL-CHILD-LINT
 : HBB-KEY-LINUX-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" target:linux-aarch64" CONTENT-KEY:TEXT+
    s" src/os/linux/target.f" HBB-KEY-FILE+
+   s" src/os/linux/layout-constants.f" HBB-KEY-FILE+
    s" src/os/linux/layout.f" HBB-KEY-FILE+
    s" src/os/linux/sys.f" HBB-KEY-FILE+
    s" src/os/linux/elf.f" HBB-KEY-FILE+
@@ -534,7 +535,8 @@ HBB-INSTALL-CHILD-LINT
 : HBB-KEY-LINUX-X86-64-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" target:linux-x86-64" CONTENT-KEY:TEXT+
    s" src/os/linux-x86-64/target.f" HBB-KEY-FILE+
-   s" src/os/linux-x86-64/layout.f" HBB-KEY-FILE+
+   s" src/os/linux/layout-constants.f" HBB-KEY-FILE+
+   s" src/os/linux/layout.f" HBB-KEY-FILE+
    s" src/os/linux-x86-64/target-layout.f" HBB-KEY-FILE+
    s" src/os/linux-x86-64/sys.f" HBB-KEY-FILE+
    s" src/os/linux-x86-64/elf.f" HBB-KEY-FILE+

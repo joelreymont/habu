@@ -28,6 +28,7 @@ create ERR IO-CAP allot
    s" src/core/bytes.f" >LEN PROC-ARGV+
    HB-TARGET-LINUX? if
       s" src/os/linux/target.f" >LEN PROC-ARGV+
+      s" src/os/linux/layout-constants.f" >LEN PROC-ARGV+
       s" src/os/linux/layout.f" >LEN PROC-ARGV+
    else
       s" src/os/macos/target.f" >LEN PROC-ARGV+

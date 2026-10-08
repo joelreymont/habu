@@ -749,9 +749,10 @@ variable PADDED
    TAIL-REFUSED-CASE ;
 
 \ The dense fixture allots 48 MiB past the engine's own heap, so it runs where
-\ DATA holds twice that. Linux's DATA window is 32 MiB (src/os/linux/layout.f):
-\ there the engine heap's zero cells save more than any dense heap that fits
-\ could cost, so no snapshot keeps its heap's bytes.
+\ DATA holds twice that. Linux's DATA window is 32 MiB
+\ (src/os/linux/layout-constants.f): there the engine heap's zero cells save
+\ more than any dense heap that fits could cost, so no snapshot keeps its
+\ heap's bytes.
 48 1024 * 1024 * 2 * constant DENSE-DATA
 
 : DENSE-CASE ( -- )

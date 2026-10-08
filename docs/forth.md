@@ -1245,10 +1245,11 @@ by name with the count it saw and the ceiling, and none truncates.
   one: `E-BAD-STORED-SIGNATURE` under `fix_signature_size`, with the same
   reason. Pass bulk values in a buffer, not on the stack.
 - **Data space: `DATA-SIZE - PROF-CNT-BYTES`**, 33,030,080 bytes on
-  linux-aarch64 (`src/os/linux/layout.f`, `src/habu/layout.f`; `DATA-SIZE` is
-  per host). `allot`, `align`, `,`, `c,`, `create`/`variable`/`defer` and the
-  interpret-mode string literals that keep their text (all but `."`) advance the
-  DP through `DP-CHECK` (`src/habu/habu1.f`). Past it: `hb: data space out of
+  linux-aarch64 (`src/os/linux/layout-constants.f`, `src/habu/layout.f`;
+  `DATA-SIZE` is per host). `allot`, `align`, `,`, `c,`, `create`/`variable`/
+  `defer` and the interpret-mode string literals that keep their text (all but
+  `."`) advance the DP through `DP-CHECK` (`src/habu/habu1.f`). Past it:
+  `hb: data space out of
   range: DP <dp> of <cap> bytes`, rc 76, catchable inside `evaluate`, both
   numbers offsets from `data-base`. The refusal names no definition; it reports
   the line it came from (` at <path>:<line>`, added when a source file is open).

@@ -413,7 +413,9 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s" src/core/bytes.f" FFI-T-WIN-ARG
    s" src/core/dynamic-storage.f" FFI-T-WIN-ARG
    HB-TARGET-LINUX? if
-      s" src/os/linux/target.f" FFI-T-WIN-ARG s" src/os/linux/layout.f" FFI-T-WIN-ARG
+      s" src/os/linux/target.f" FFI-T-WIN-ARG
+      s" src/os/linux/layout-constants.f" FFI-T-WIN-ARG
+      s" src/os/linux/layout.f" FFI-T-WIN-ARG
    else
       s" src/os/macos/target.f" FFI-T-WIN-ARG s" src/os/macos/layout.f" FFI-T-WIN-ARG
    then

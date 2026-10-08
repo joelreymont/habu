@@ -136,6 +136,7 @@ CAST: RESET-XT ( n -- [ -- ] )
 : NB-TARGET-CORE-FILES ( -- )
    BUILD-TARGET:LINUX? if
       s" src/os/linux/target.f" included
+      s" src/os/linux/layout-constants.f" included
       s" src/os/linux/layout.f" included
       exit
    then
@@ -146,7 +147,8 @@ CAST: RESET-XT ( n -- [ -- ] )
    then
    BUILD-TARGET:LINUX-X86-64? if
       s" src/os/linux-x86-64/target.f" included
-      s" src/os/linux-x86-64/layout.f" included
+      s" src/os/linux/layout-constants.f" included
+      s" src/os/linux/layout.f" included
       exit
    then
    s" native-build: unknown target" 76 die ;

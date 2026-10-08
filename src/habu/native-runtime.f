@@ -33,6 +33,7 @@ package NATIVE-RUNTIME
 : PROVIDE-TARGET ( -- )
    HB-TARGET-LINUX? if
       s" src/os/linux/target.f" provided
+      s" src/os/linux/layout-constants.f" provided
       s" src/os/linux/layout.f" provided
       exit
    then
@@ -43,7 +44,8 @@ package NATIVE-RUNTIME
    then
    HB-TARGET-LINUX-X86-64? if
       s" src/os/linux-x86-64/target.f" provided
-      s" src/os/linux-x86-64/layout.f" provided
+      s" src/os/linux/layout-constants.f" provided
+      s" src/os/linux/layout.f" provided
       exit
    then
    s" native-runtime: unknown target" 76 die ;

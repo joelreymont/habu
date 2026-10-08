@@ -413,7 +413,9 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" src/core/bytes.f" DIRECT-ARG
    s" src/core/dynamic-storage.f" DIRECT-ARG
    HB-TARGET-LINUX? if
-      s" src/os/linux/target.f" DIRECT-ARG s" src/os/linux/layout.f" DIRECT-ARG
+      s" src/os/linux/target.f" DIRECT-ARG
+      s" src/os/linux/layout-constants.f" DIRECT-ARG
+      s" src/os/linux/layout.f" DIRECT-ARG
    else
       s" src/os/macos/target.f" DIRECT-ARG s" src/os/macos/layout.f" DIRECT-ARG
    then

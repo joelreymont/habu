@@ -1,13 +1,7 @@
-\ layout.f -- linux-aarch64 executable/data layout constants.
-
-96 constant IMAGE-TEXT-SIZE-OFF
-$1000 constant IMAGE-TEXT-CONTENT-ADJ
-0 constant IMAGE-TEXT-TRAILER-ADJ
-$340000000 constant DATA-VA
-$2000000 constant DATA-SIZE
-$1000 constant CODE-OFF
-$B0 constant LINUX-DLOPEN-SLOT-OFF
-$B8 constant LINUX-DLSYM-SLOT-OFF
+\ layout.f -- the executable/data layout of both Linux targets (aarch64,
+\ x86-64). Its constants are src/os/linux/layout-constants.f, which every
+\ loader names just before this file: the boot prefix and the build window
+\ load both ahead of src/core/include.f, which defines `require`.
 
 package IMAGE-CELL
 private

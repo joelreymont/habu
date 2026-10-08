@@ -372,7 +372,9 @@ create CHILD-ERR CHILD-CAP allot
    s" src/core/bytes.f" CHILD-ARG
    s" src/core/dynamic-storage.f" CHILD-ARG
    HB-TARGET-LINUX? if
-      s" src/os/linux/target.f" CHILD-ARG s" src/os/linux/layout.f" CHILD-ARG
+      s" src/os/linux/target.f" CHILD-ARG
+      s" src/os/linux/layout-constants.f" CHILD-ARG
+      s" src/os/linux/layout.f" CHILD-ARG
    else
       s" src/os/macos/target.f" CHILD-ARG s" src/os/macos/layout.f" CHILD-ARG
    then

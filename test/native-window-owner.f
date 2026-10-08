@@ -112,6 +112,7 @@ create ERR IO-CAP allot
 : SOURCE-DEPS+ ( -- )
    HB-TARGET-LINUX? if
       s" src/os/linux/target.f" ARG+
+      s" src/os/linux/layout-constants.f" ARG+
       s" src/os/linux/layout.f" ARG+
    else
       s" src/os/macos/target.f" ARG+

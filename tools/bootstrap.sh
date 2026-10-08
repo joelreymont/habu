@@ -26,7 +26,7 @@ export HABU_TARGET
 case "$HABU_TARGET" in
   macos-aarch64)
     OS_TARGET=src/os/macos/target.f
-    OS_LAYOUT=src/os/macos/layout.f
+    OS_LAYOUT=(src/os/macos/layout.f)
     OS_SYS=src/os/macos/sys.f
     OS_PROCWATCH=src/os/macos/proc-watch.f
     OS_PROCCONTROL=src/os/macos/proc-control.f
@@ -35,7 +35,7 @@ case "$HABU_TARGET" in
     ;;
   linux-aarch64)
     OS_TARGET=src/os/linux/target.f
-    OS_LAYOUT=src/os/linux/layout.f
+    OS_LAYOUT=(src/os/linux/layout-constants.f src/os/linux/layout.f)
     OS_SYS=src/os/linux/sys.f
     OS_PROCWATCH=src/os/linux/proc-watch.f
     OS_PROCCONTROL=src/os/linux/proc-control.f
@@ -105,7 +105,7 @@ SRC_COMMON=(
   src/core/roles.f
   src/core/bytes.f
   "$OS_TARGET"
-  "$OS_LAYOUT"
+  "${OS_LAYOUT[@]}"
   src/habu/stack-abi.f
   src/habu/layout.f
   src/os/env-base.f
