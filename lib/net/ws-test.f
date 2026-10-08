@@ -1764,10 +1764,22 @@ variable HEADLESS-AT
 
 $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under a hang (lib/net/http-test.f)
 
-\ The pushing task writes to a client that reads none until a push is
-\ refused, and answers the code that refused it.
-: PUSH-UNREAD ( -- )
-   REFUSED-PUSH TASK:RETURN ;
+\ 48 MiB in one frame, far more than a connection holds: the most a loopback
+\ connection on Darwin took was 6158 KiB, Darwin grows each of its buffers to
+\ 4 MiB at most, and Linux by default to 4 MiB to send and 6 MiB to receive. A
+\ push of it to a client that reads none never ends its frame, so it keeps the
+\ slot's lock from its first byte until it gives up; on a host whose connection
+\ holds the whole frame the push answers 0 and PUSH-REFUSED fails.
+$3000000 constant BIG-BYTES
+1 TYPED-BUFFER BIG-SPAN SPAN:span<u8>
+
+: SEND-BIG ( -- )
+   0 HELD @ 0 BIG-SPAN @ SPAN:$ WS:SEND-BINARY ;
+
+\ Another task writes one BIG-BYTES frame through the kept socket and answers
+\ the code that refused it: 0 when the frame went out whole.
+: PUSH-BIG ( -- )
+   [: SEND-BIG ;] catch TASK:RETURN ;
 
 \ 1 once the write in hand on the kept socket has stopped moving bytes, a push
 \ held with the slot's lock, its client reading nothing; 0 while no write is
@@ -1783,13 +1795,15 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
 
 \ A one-worker server whose handler keeps its socket and receives, and another
 \ task's push to a client that reads none, held in its write with the slot's
-\ lock: the connection, and whether the push was seen held.
+\ lock: the connection, and whether the push was seen held. A stall seen here
+\ may pass while the connection's buffers grow, but the push's one frame never
+\ ends, so the lock stays with the push until it gives up.
 : PUSH-STALLED ( -- TCP4:connection bool )
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    0 KEPT ! 0 GO-HOME ! 0 LAST-CLOSE !
    s" /goodbye" UPGRADE {: conn:TCP4:connection :}
    KEPT? TTRUE
-   [: PUSH-UNREAD ;] PUSH-TASK TASK:ACTIVATE
+   [: PUSH-BIG ;] PUSH-TASK TASK:ACTIVATE
    s" the push is held, its client reading nothing" T-LABEL
    [: PUSH-STALL ;] REACH-MS AWAITED 0 <> {: held:bool :}
    held TTRUE
@@ -2016,27 +2030,16 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
 
 \ The client takes SIP-BYTES every SIP-MS, 3.2 MB/s, so no write to it ever
 \ waits out a bound on silence: only the cut of a write that keeps moving bytes
-\ ends one.
+\ ends one. A BIG-BYTES frame takes it more than 15 s: long enough to span the
+\ WS:STALL-MS claim of a pong due behind it. Each case waits for its push to be
+\ under way, its client taking bytes (PUSH-TAKEN), before relying on it.
 $10000 constant SIP-BYTES
 $14 constant SIP-MS
-\ 48 MiB in one frame, more than 15 s at the client's pace: long enough to span
-\ the WS:STALL-MS claim of a pong due behind it. Each case waits for its push
-\ to be under way, its client taking bytes (PUSH-TAKEN), before relying on it.
-$3000000 constant BIG-BYTES
 $FA0 constant SIP-FOR-MS          \ how long past the wait for the handler's own pushes their client takes bytes: past the stop's ceiling
-1 TYPED-BUFFER BIG-SPAN SPAN:span<u8>
 SIP-BYTES SPAN-BUFFER: SIP-BUF
 TASK-STACK TASK:TASK SIP-TASK
 variable SIP-UNTIL                \ the mono-ns past which the client takes no more
 variable SIPPED                   \ what it has taken
-
-: SEND-BIG ( -- )
-   0 HELD @ 0 BIG-SPAN @ SPAN:$ WS:SEND-BINARY ;
-
-\ Another task writes one BIG-BYTES frame through the kept socket and answers
-\ the code that refused it: 0 when the frame went out whole.
-: PUSH-BIG ( -- )
-   [: SEND-BIG ;] catch TASK:RETURN ;
 
 \ The client takes bytes until its stream ends or SIP-UNTIL passes. Each turn
 \ ends in a TASK:PAUSE, where a KILL that came during its sleep ends it.
@@ -2176,14 +2179,11 @@ variable SIPPED                   \ what it has taken
    conn TCP4:CLOSE DROP-STATUS ;
 
 \ Every write here is to a client that keeps taking bytes, so only the cut of
-\ a write that keeps moving them ends it. The big frame's bytes are held only
-\ while these cases run.
+\ a write that keeps moving them ends it.
 : SIP-CASES ( -- )
-   BIG-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN 0 BIG-SPAN !
    TRICKLE-GOODBYE-CASE
    PONG-DUE-CASE
-   FLOOD-SIP-CASE
-   0 BIG-SPAN @ MEM:FREE-SPAN ;
+   FLOOD-SIP-CASE ;
 
 
 \ ---- the transcript this file expects ----------------------------------------
@@ -2529,7 +2529,8 @@ public
 \ The loop first: every wait the server and this client make rides it. Every
 \ handler has returned by the time the first server stops, so that stop kills
 \ no task; the one-worker server's next stop kills a parked worker on purpose
-\ (KILLED-CASE), and no later stop kills any.
+\ (KILLED-CASE), and no later stop kills any. The big frame's bytes are held
+\ only from the first case that pushes it to the last.
 : RUN ( -- )
    T-RESET
    0 SCRIPT-U !
@@ -2547,9 +2548,11 @@ public
    HTTP:KILLED-TASKS 0 T=
    SLOT-CASES
    STALL-CASE
+   BIG-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN 0 BIG-SPAN !
    GOODBYE-CASE
    STOP-CASES
    SIP-CASES
+   0 BIG-SPAN @ MEM:FREE-SPAN
    AIO-STOP
    PUSH-GO TASK:SEMAPHORE-DESTROY
    BLAST-GO TASK:SEMAPHORE-DESTROY
