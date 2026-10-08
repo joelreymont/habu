@@ -397,7 +397,9 @@ variable EXP-U
    s" : POS-SEALED-MIM ( n n -- ) min-in-mark ;"
    s" E-CAP-TRUSTED habu: in pos-sealed-mim: 'min-in-mark' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED
    s" : POS-SEALED-NDA ( n -- ) ndict-append ;"
-   s" E-CAP-TRUSTED habu: in pos-sealed-nda: 'ndict-append' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED ;
+   s" E-CAP-TRUSTED habu: in pos-sealed-nda: 'ndict-append' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED
+   s" : POS-SEALED-DOS ( ptr n -- n n ) def-occ-select ;"
+   s" E-CAP-TRUSTED habu: in pos-sealed-dos: 'def-occ-select' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED ;
 
 \ set-tier is a seed primitive, not a prefix word, so no ABI-only row stands in
 \ for its owner's: outside TIER the shipped answer is E-UNDEFINED, and the

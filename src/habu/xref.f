@@ -598,10 +598,12 @@ DOES-COMPANION-INSTALL
 \ A selected record is borrowed from the resolver at SELECT. The slot alone is
 \ never identity: lowering and re-exposing the count issues another occurrence.
 \ These references stay in this process and carry no checker effect or code lease.
+\ The two primitives' rows are DEF-OCC's own (src/habu/prims.f), so no other
+\ checked body calls them.
 package DEF-OCC
 public
-TRUSTED: SELECT ( ptr n -- n n ) def-occ-select ;
-TRUSTED: RESOLVE ( n n -- ptr n ) def-occ-resolve ;
+: SELECT ( ptr n -- n n ) def-occ-select ;
+: RESOLVE ( n n -- ptr n ) def-occ-resolve ;
 
 : CALLABLE ( n n -- n )
    RESOLVE dup XREF-WORDLIST DICT-WL:NAMESPACE = if E-NONCALLABLE throw then
