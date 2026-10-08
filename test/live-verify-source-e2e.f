@@ -6,7 +6,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/string.f
 require src/habu/verify-source.f
-require tools/check-all-errors-core.f
+require lib/verify-diagnostics.f
 
 package LIVE-VERIFY-SOURCE-TEST
 
@@ -88,7 +88,7 @@ private
    VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? TTRUE
    VERIFY:TOKEN-BYTE@ 0 T=
    VERIFY:FAULT-LEN@ 7 T=
-   VERIFY:E-SOURCE-READ CHECK-ALL-ERRORS:COMPOSE-FAULT-RECORD$
+   VERIFY:E-SOURCE-READ VERIFY-DIAGNOSTICS:COMPOSE-FAULT-RECORD$
    {: rec:ptr recu:n :}
    rec recu s\" \"code\":\"E-MISSING-SOURCE\"" CONTAINS? TTRUE
    rec recu s\" \"token\":\"require\"" CONTAINS? TTRUE
@@ -108,7 +108,7 @@ private
    VERIFY:TOKEN-BYTE@ 9 T=
    VERIFY:FAULT-LEN@ 7 T=
    NESTED$ s" changed after the scan" WRITE-ALL
-   VERIFY:E-SOURCE-READ CHECK-ALL-ERRORS:COMPOSE-FAULT-RECORD$
+   VERIFY:E-SOURCE-READ VERIFY-DIAGNOSTICS:COMPOSE-FAULT-RECORD$
    {: rec:ptr recu:n :}
    rec recu s\" \"code\":\"E-MISSING-SOURCE\"" CONTAINS? TTRUE
    rec recu s\" \"token\":\"require\"" CONTAINS? TTRUE
@@ -123,12 +123,33 @@ private
 
 : UNTERMINATED-SOURCE ( -- )
    ROOT$ [: VERIFY-UNTERMINATED E-DISC-UNTERM T= ;] SOURCE-ROOT:WITH
-   E-DISC-UNTERM CHECK-ALL-ERRORS:COMPOSE-FAULT-RECORD$
+   E-DISC-UNTERM VERIFY-DIAGNOSTICS:COMPOSE-FAULT-RECORD$
    {: rec:ptr recu:n :}
    rec recu s\" \"code\":\"E-UNTERMINATED-STRING\"" CONTAINS? TTRUE
    rec recu s\" \"token\":\"s\\\"\"" CONTAINS? TTRUE
    rec recu s\" \"line\":1,\"column\":1,\"byte_start\":0,\"byte_end\":2" CONTAINS? TTRUE
    rec recu MISSING$ CONTAINS? TTRUE ;
+
+: VERIFY-OPEN-GROUP ( -- n )
+   CHECKER-SCOPE-START-NEUTRAL
+   [: S\" : GROUP ( n -- n ) {: a\\n" MISSING$
+      VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
+   CHECKER-SCOPE-DONE ;
+
+: OPEN-GROUP-FAULT ( -- )
+   ROOT$ [: VERIFY-OPEN-GROUP E-DISC-UNTERM T= ;] SOURCE-ROOT:WITH
+   E-DISC-UNTERM VERIFY-DIAGNOSTICS:COMPOSE-FAULT-RECORD$
+   {: rec:ptr recu:n :}
+   rec recu s\" \"code\":\"E-STATEMENT-THROW\"" CONTAINS? TTRUE
+   rec recu s\" \"throw_code\":" CONTAINS? TTRUE
+   rec recu s\" \"code\":\"E-UNTERMINATED-STRING\"" CONTAINS? TFALSE ;
+
+: MALFORMED-ROW ( -- )
+   MISSING$ s" PRIM: X ( -- n )" VERIFY-DIAGNOSTICS:LEX-RECORD$
+   {: rec:ptr recu:n :}
+   rec recu s\" \"code\":\"E-MALFORMED-REGISTRY-ROW\"" CONTAINS? TTRUE
+   rec recu s\" \"repair_class\":\"close_primitive_row\"" CONTAINS? TTRUE
+   rec recu s\" \"token\":\"PRIM:\"" CONTAINS? TTRUE ;
 
 public
 
@@ -143,6 +164,10 @@ public
    NESTED-LOAD
    s" unterminated source has its lexical diagnostic" T-LABEL
    UNTERMINATED-SOURCE
+   s" open locals group falls back to statement JSON" T-LABEL
+   OPEN-GROUP-FAULT
+   s" malformed primitive row keeps its own diagnostic" T-LABEL
+   MALFORMED-ROW
    CLEANUP-RUN
    T-REPORT ;
 

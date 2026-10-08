@@ -65,6 +65,7 @@ require lib/engine-candidate.f
 require tools/dynamic-tail-manifest.f
 require tools/source-discovery.f
 require tools/check-all-errors-core.f
+require lib/verify-diagnostics.f
 require src/habu/verify-source.f
 
 package CHECK
@@ -349,13 +350,13 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    {: rc:n :}
    rc CHK-DISC-RC? if
       rc DISCOVER:LAST-TOKEN DISCOVER:BYTES$ CHK-DISC-ID @ CHK-FILE-NAME$
-      CHECK-ALL-ERRORS:LOADER-RECORD$ exit
+      VERIFY-DIAGNOSTICS:LOADER-RECORD$ exit
    then
    CHK-EDGE @ {: edge:n :}
    edge 0 < if NULL$ exit then
    edge CHK-DIR-FROM @ {: from:n :}
    rc edge CHK-DIR-AT @ edge CHK-DIR-LEN @ from CHK-FILE-BYTES from CHK-FILE-NAME$
-   CHECK-ALL-ERRORS:LOADER-RECORD$ ;
+   VERIFY-DIAGNOSTICS:LOADER-RECORD$ ;
 
 : CHK-TOK-END ( n -- n ) {: k:n :}
    k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
@@ -468,11 +469,20 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    rc CHECK-ALL-ERRORS:THREW? 0= if NULL$ false exit then
    json CHECK-ALL-ERRORS:JSON!
    rc CHECK-ALL-ERRORS:LEX-FIRST? rc VERIFY:E-MISSING-NAME = or if
-      label labelu src srcu CHECK-ALL-ERRORS:LEX-RECORD$
+      json if
+         label labelu src srcu VERIFY-DIAGNOSTICS:LEX-RECORD$
+      else
+         label labelu src srcu CHECK-ALL-ERRORS:LEX-RECORD$
+      then
       dup 0<> if true exit then
       2drop
    then
-   rc at label labelu src srcu CHECK-ALL-ERRORS:THROW-RECORD$ false ;
+   json if
+      rc at label labelu src srcu VERIFY-DIAGNOSTICS:THROW-RECORD$
+   else
+      rc at label labelu src srcu CHECK-ALL-ERRORS:THROW-RECORD$
+   then
+   false ;
 
 \ The files walked, dependencies first: the id at this place.
 : CHK-DEP-ORDER@ ( n -- n )
@@ -843,12 +853,12 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 
 \ The record of the child's stop: for a loader's fault, but a string or a
 \ locals group never closed, the packet at the loader form, as the closure walk
-\ writes it (CHECK-ALL-ERRORS:LOADER-RECORD$); else the stop's record (STOP-RECORD$).
+\ writes it (VERIFY-DIAGNOSTICS:LOADER-RECORD$); else the stop's record (STOP-RECORD$).
 : VFY-STOP-REC$ ( n -- ptr u8 n ) {: class:n :}
    VFY-STOP-RC @ {: rc:n :}
    rc VERIFY:LOADER-FAULT? rc E-DISC-UNTERM <> and if
       class VFY-STOP-AT @ VFY-FAULT-LEN @ VFY-STOP-SOURCE VFY-STOP-FILE$
-      CHECK-ALL-ERRORS:LOADER-RECORD$ exit
+      VERIFY-DIAGNOSTICS:LOADER-RECORD$ exit
    then
    VFY-STOP-FILE$ VFY-STOP-SOURCE VFY-STOP-RECORD$ ;
 

@@ -13,6 +13,7 @@ require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/json-writer.f
 require lib/source-lex.f
+require lib/verify-diagnostics.f
 
 \ The checked source verifier is a load-time dependency: every checker scope
 \ opened below replays source through VERIFY. It is required here, at top
@@ -328,46 +329,11 @@ variable CA-COMPOSE-LABEL-U
 : CA-LEX-TOKEN$ ( -- ptr u8 n )
    CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + CA-LEX-TOKEN-U ;
 
-: CA-JSON-LEX-UNTERM ( -- )
-   LJW-RESET
-   LJW-OBJECT-START
-   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
-   s" code" LJW-KEY s" E-UNTERMINATED-STRING" LJW-STRING LJW-COMMA
-   s" repair_class" LJW-KEY s" close_string" LJW-STRING LJW-COMMA
-   s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
-   s" token" LJW-KEY CA-LEX-TOKEN$ LJW-STRING LJW-COMMA
-   s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
-   s" line" LJW-KEY LINT-LEX:ERROR-LINE@ LJW-U LJW-COMMA
-   s" column" LJW-KEY LINT-LEX:ERROR-COL@ LJW-U LJW-COMMA
-   s" byte_start" LJW-KEY LINT-LEX:ERROR-BYTE@ LJW-U LJW-COMMA
-   s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ CA-LEX-TOKEN-U + LJW-U LJW-COMMA
-   s" suggestion" LJW-KEY s" Close the string literal before the definition ends." LJW-STRING
-   LJW-OBJECT-END ;
-
 \ ---- malformed primitive-axiom row --------------------------------------------
 \ The lexer's second diagnostic. An incomplete `PRIM:`/`PPRIM:` row stops the scan
 \ exactly like an open string does, but it needs its own code and its own repair
 \ text: a caller told to close a string literal will look for a quote that is not
 \ there.
-: CA-ROW-SUGGESTION$ ( -- ptr u8 n )
-   s" Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE." ;
-
-: CA-JSON-LEX-ROW ( -- )
-   LJW-RESET
-   LJW-OBJECT-START
-   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
-   s" code" LJW-KEY s" E-MALFORMED-REGISTRY-ROW" LJW-STRING LJW-COMMA
-   s" repair_class" LJW-KEY s" close_primitive_row" LJW-STRING LJW-COMMA
-   s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
-   s" token" LJW-KEY CA-LEX-TOKEN$ LJW-STRING LJW-COMMA
-   s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
-   s" line" LJW-KEY LINT-LEX:ERROR-LINE@ LJW-U LJW-COMMA
-   s" column" LJW-KEY LINT-LEX:ERROR-COL@ LJW-U LJW-COMMA
-   s" byte_start" LJW-KEY LINT-LEX:ERROR-BYTE@ LJW-U LJW-COMMA
-   s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ CA-LEX-TOKEN-U + LJW-U LJW-COMMA
-   s" suggestion" LJW-KEY CA-ROW-SUGGESTION$ LJW-STRING
-   LJW-OBJECT-END ;
-
 \ The prose names the code, the file, line and column of the opener, what it
 \ opens, and the opener as written.
 : CA-PROSE-LEX ( ptr u8 n ptr u8 n -- )
@@ -391,19 +357,20 @@ variable CA-COMPOSE-LABEL-U
 : CA-LEX-ROW? ( -- bool )
    LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = ;
 
-: CA-JSON-LEX ( -- )
-   CA-LEX-ROW? IF CA-JSON-LEX-ROW ELSE CA-JSON-LEX-UNTERM THEN ;
-
 \ The record of the defect the lexer hit, in the selected mode, built in the
 \ JSON writer's buffer. The lexer reports more than one defect, so the record
 \ names the one it hit.
-: CA-LEX-RECORD ( -- )
-   CA-JSON? IF CA-JSON-LEX EXIT THEN
-   CA-LEX-ROW? IF CA-PROSE-LEX-ROW ELSE CA-PROSE-LEX-UNTERM THEN ;
+: CA-LEX-RECORD$ ( -- ptr u8 n )
+   CA-JSON? IF
+      CA-FILE-A@ CA-FILE-U @ CA-SRC-A@ CA-SRC-U @
+      VERIFY-DIAGNOSTICS:LEX-RECORD$ EXIT
+   THEN
+   CA-LEX-ROW? IF CA-PROSE-LEX-ROW ELSE CA-PROSE-LEX-UNTERM THEN
+   LJW$ ;
 
 : CA-HANDLE-LEX-DEFECT ( -- )
    LINT-LEX:ERROR? 0= IF exit THEN
-   CA-LEX-RECORD LJW$ CA-ERR-LN
+   CA-LEX-RECORD$ CA-ERR-LN
    CA-REFUSED throw ;
 
 
@@ -514,24 +481,6 @@ variable CA-COMPOSE-LABEL-U
 : CA-THROW-ORIGIN ( -- n n )
    CA-SRC-A@ CA-THROW-AT @ BYTE-ORIGIN ;
 
-: CA-JSON-THROW ( -- )
-   CA-THROW-ORIGIN {: line:n col:n :}
-   LJW-RESET
-   LJW-OBJECT-START
-   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
-   s" code" LJW-KEY s" E-STATEMENT-THROW" LJW-STRING LJW-COMMA
-   s" repair_class" LJW-KEY s" unknown_rejection" LJW-STRING LJW-COMMA
-   s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
-   s" token" LJW-KEY CA-THROW-TOKEN$ LJW-STRING LJW-COMMA
-   s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
-   s" line" LJW-KEY line LJW-U LJW-COMMA
-   s" column" LJW-KEY col LJW-U LJW-COMMA
-   s" byte_start" LJW-KEY CA-THROW-AT @ LJW-U LJW-COMMA
-   s" byte_end" LJW-KEY CA-THROW-END LJW-U LJW-COMMA
-   s" throw_code" LJW-KEY CA-THROW-RC @ LJW-INT LJW-COMMA
-   s" suggestion" LJW-KEY s" Inspect the token, signature, and raw stack evidence." LJW-STRING
-   LJW-OBJECT-END ;
-
 : CA-PROSE-THROW ( -- )
    CA-THROW-ORIGIN {: line:n col:n :}
    LJW-RESET
@@ -544,7 +493,11 @@ variable CA-COMPOSE-LABEL-U
    s" '" LJW-RAW ;
 
 : CA-THROW-RECORD$ ( -- ptr u8 n )
-   CA-JSON? IF CA-JSON-THROW ELSE CA-PROSE-THROW THEN
+   CA-JSON? IF
+      CA-THROW-RC @ CA-THROW-AT @ CA-FILE-A@ CA-FILE-U @
+      CA-SRC-A@ CA-SRC-U @ VERIFY-DIAGNOSTICS:THROW-RECORD$ EXIT
+   THEN
+   CA-PROSE-THROW
    LJW$ ;
 
 : CA-THROW! ( n -- )                     \ what threw, at the token read last
@@ -766,9 +719,8 @@ public
    labela labelu CA-START
    srca srcu CA-SOURCE-BUF!
    CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
-   LJW-RESET
-   LINT-LEX:ERROR? IF CA-LEX-RECORD THEN
-   LJW$ ;
+   LINT-LEX:ERROR? IF CA-LEX-RECORD$ EXIT THEN
+   s" " ;
 
 \ Check the given source bytes as the file at the given path, reporting them under
 \ the given label: the composition verifies every file a top-level loader
@@ -814,72 +766,5 @@ public
    labela labelu CA-START
    srca srcu CA-SOURCE-BUF!
    at u CA-DUP-RECORD$ ;
-
-private
-
-66 constant CA-MISSING-SOURCE
-74 constant CA-UNREADABLE-SOURCE
-
-: CA-LOADER-CODE ( n -- ptr u8 n ptr u8 n ptr u8 n )
-   {: rc:n :}
-   rc CA-MISSING-SOURCE = IF
-      s" E-MISSING-SOURCE" s" fix_load_path"
-      s" No file is at the path this loader word names. Correct the path, or create the file." EXIT
-   THEN
-   rc CA-UNREADABLE-SOURCE = IF
-      s" E-UNREADABLE-SOURCE" s" make_source_readable"
-      s" The file this loader word names cannot be read. Make it readable, or correct the path." EXIT
-   THEN
-   s" E-LOADER-FORM" s" literal_loader_form"
-   s" Load a file by a literal path of at most 1024 bytes, as written and as resolved, through a loader word no definition redefines or retires, or list this file in tools/dynamic-tail-manifest.f." ;
-
-public
-
-\ The same schema-1 loader packet the closure check writes, from the stopped
-\ file's scanned bytes, token span, and canonical file name.
-: LOADER-RECORD$ ( n n n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: rc:n at:n len:n a:ptr u:n name:ptr nameu:n :}
-   a at BYTE-ORIGIN {: line:n col:n :}
-   rc CA-LOADER-CODE {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
-   LJW-RESET
-   LJW-OBJECT-START
-   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
-   s" code" LJW-KEY code codeu LJW-STRING LJW-COMMA
-   s" repair_class" LJW-KEY class classu LJW-STRING LJW-COMMA
-   s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
-   s" token" LJW-KEY a at + len LJW-STRING LJW-COMMA
-   s" file" LJW-KEY name nameu LJW-STRING LJW-COMMA
-   s" line" LJW-KEY line LJW-U LJW-COMMA
-   s" column" LJW-KEY col LJW-U LJW-COMMA
-   s" byte_start" LJW-KEY at LJW-U LJW-COMMA
-   s" byte_end" LJW-KEY at len + LJW-U LJW-COMMA
-   s" suggestion" LJW-KEY sug sugu LJW-STRING
-   LJW-OBJECT-END
-   LJW$ ;
-
-\ Render the loader fault the last quiet composition recorded. The caller
-\ keeps the original throw code; this word only formats its diagnostic.
-: COMPOSE-FAULT-RECORD$ ( n -- ptr u8 n )
-   {: rc:n :}
-   rc E-DISC-UNTERM = IF
-      VERIFY:SOURCE-COMPOSE-STOPPED$ CA-START
-      VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$ CA-SOURCE-BUF!
-      CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
-      LINT-LEX:ERROR? IF CA-JSON-LEX
-      ELSE
-         rc CA-THROW-RC !
-         VERIFY:TOKEN-BYTE@ CA-THROW-AT !
-         CA-JSON-THROW
-      THEN
-      LJW$ EXIT
-   THEN
-   rc VERIFY:E-SOURCE-READ = IF
-      VERIFY:FAULT-TARGET$ FILE? IF CA-UNREADABLE-SOURCE
-      ELSE CA-MISSING-SOURCE THEN
-   ELSE rc THEN
-   VERIFY:TOKEN-BYTE@ VERIFY:FAULT-LEN@
-   VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$
-   VERIFY:SOURCE-COMPOSE-STOPPED$
-   LOADER-RECORD$ ;
 
 ;package

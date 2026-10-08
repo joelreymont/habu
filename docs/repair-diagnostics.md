@@ -675,7 +675,8 @@ and their canonical path. The composition resolves dependencies under the
 caller's active `SOURCE-ROOT` owner, so a caller selecting a root with
 `SOURCE-ROOT:WITH` uses that same scope for verification and the later load.
 Catch the throw code. For a loader fault (`VERIFY:LOADER-FAULT?`),
-`CHECK-ALL-ERRORS:COMPOSE-FAULT-RECORD$ ( rc -- ptr u8 n )` renders the same
+`VERIFY-DIAGNOSTICS:COMPOSE-FAULT-RECORD$ ( rc -- ptr u8 n )` from
+`lib/verify-diagnostics.f` renders the same
 schema-1 loader packet from the stopped file's scanned bytes and recorded
 loader span; the caller keeps the original code. The stopped source remains
 valid until the next composition, and the packet uses the diagnostics writer's
