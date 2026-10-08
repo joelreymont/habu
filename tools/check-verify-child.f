@@ -5,12 +5,20 @@
 \ names, by its absolute path in the tree that file was loaded from, in the
 \ caller's working directory; nothing else runs it:
 \
-\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < BYTES
-\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < BYTES
-\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N < BYTES
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < STDIN
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < STDIN
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N < STDIN
 \
-\ BYTES is the subject's text and SUBJECT the canonical absolute path it is
-\ checked as. The image is the engine's boot prefix, the verifier and
+\ STDIN is the open documents, each a line `PU U` then PU bytes of PATH and U
+\ bytes of TEXT, the counts in decimal; then an empty line; then BYTES, to the
+\ end. BYTES is the subject's text and SUBJECT the canonical absolute path it is
+\ checked as. PATH is a file's canonical absolute path, and a load of that file
+\ other than SUBJECT scans TEXT in place of its bytes on disk
+\ (VERIFY:SUPPLIED); of two entries for one PATH the first holds. The file
+\ must still be on disk: the loader resolves it there, and one that is not is
+\ no such source. check.f's pre-pass, the second form, sends none.
+\
+\ The image is the engine's boot prefix, the verifier and
 \ this file, so no tool's word stands in for, or collides with, a word of the
 \ subject. Nothing of SUBJECT or its closure runs: the verifier scans source and
 \ records what it declares.
@@ -58,7 +66,8 @@
 \ A file line names a file src/habu/verify-source.f ON-FILE reports, F as
 \ its packets name it, and H, the SHA-256 of the bytes ON-FILE hands over with
 \ it, the bytes the scan reads there, in 64 lowercase hexadecimal digits: for
-\ the subject, BYTES. A file read again with the same bytes has no other line.
+\ the subject, BYTES, and for an open document's file, its TEXT. A file read
+\ again with the same bytes has no other line.
 \ One whose bytes differ between two reads, which only a write to the file
 \ between them can make, has a line for each, in the order they were read, and
 \ its definition and use lines, which name F alone, cannot say which bytes
@@ -154,8 +163,12 @@ $10000 constant CHUNK                   \ bytes asked of one read
 32 constant DIGEST-U                    \ a SHA-256 digest's bytes
 64 constant HEX-U                       \ a digest in lowercase hexadecimal
 
-DYNAMIC-BUFFER SUBJECT u8               \ the subject's bytes, from stdin
-variable SUBJECT-U
+DYNAMIC-BUFFER IN u8                    \ stdin's bytes: the open documents, then the subject's
+variable IN-U
+variable POS                            \ where the next of the open documents' lines starts in IN
+DYNAMIC-BUFFER OPEN-AT n                \ each open document's path's offset in IN and length, then its text's
+variable OPEN-N
+variable SUBJECT-AT                     \ where the subject's bytes start in IN
 variable RD
 variable FAILED
 variable STOP                           \ the code a throw ended the composition with, 0 for none
@@ -199,16 +212,97 @@ variable SEEN-N
    fd n U$ WRITE ;
 
 
-: READ-SUBJECT ( -- )
-   0 SUBJECT-U !
+: READ-IN ( -- )
+   0 IN-U !
    begin
-      SUBJECT-U @ CHUNK + SUBJECT-RESERVE
-      0 SUBJECT-U @ SUBJECT CHUNK read RD !
-      RD @ 0 < if s" check-verify: cannot read the subject" 74 die then
+      IN-U @ CHUNK + IN-RESERVE
+      0 IN-U @ IN CHUNK read RD !
+      RD @ 0 < if s" check-verify: cannot read the open documents and the subject" 74 die then
       RD @ 0 >
    while
-      SUBJECT-U @ RD @ + SUBJECT-U !
+      IN-U @ RD @ + IN-U !
    repeat ;
+
+
+: TABLE-FAULT ( -- )
+   s" check-verify: malformed open documents" 74 die ;
+
+
+\ The count in IN from POS up to the byte C, POS moved past C. READ-IN keeps
+\ room past IN-U, so POS at IN-U is an index of IN.
+: COUNT-TO ( n -- n ) {: c:n :}
+   POS @ IN IN-U @ POS @ - c INDEX-OF MATCH option
+      none OF -1 ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH {: k:n :}
+   k 0 < if TABLE-FAULT then
+   POS @ IN k STR>NUMBER? MATCH option
+      none OF -1 ENDOF
+      some OF ENDOF
+   ;MATCH {: count:n :}
+   count 0 < if TABLE-FAULT then
+   POS @ k + 1+ POS !
+   count ;
+
+
+\ The open document whose line starts at POS, into OPEN-AT, POS moved past its
+\ text.
+: OPEN-ENTRY ( -- )
+   STR-SPACE COUNT-TO {: pu:n :}
+   LF COUNT-TO {: tu:n :}
+   POS @ pu + tu + IN-U @ > if TABLE-FAULT then
+   OPEN-N @ 4 * {: at:n :}
+   at 4 + OPEN-AT-RESERVE
+   POS @ at OPEN-AT !
+   pu at 1+ OPEN-AT !
+   POS @ pu + at 2 + OPEN-AT !
+   tu at 3 + OPEN-AT !
+   POS @ pu + tu + POS !
+   OPEN-N @ 1+ OPEN-N ! ;
+
+
+\ The open documents IN starts with, up to the empty line the subject's bytes
+\ follow.
+: READ-OPEN ( -- )
+   0 POS !
+   0 OPEN-N !
+   begin
+      POS @ IN-U @ >= if TABLE-FAULT then
+      POS @ IN c@ LF <>
+   while
+      OPEN-ENTRY
+   repeat
+   POS @ 1+ SUBJECT-AT ! ;
+
+
+: OPEN-PATH$ ( n -- ptr u8 n )
+   4 * {: at:n :}
+   at OPEN-AT @ IN at 1+ OPEN-AT @ ;
+
+: OPEN-TEXT$ ( n -- ptr u8 n )
+   4 * {: at:n :}
+   at 2 + OPEN-AT @ IN at 3 + OPEN-AT @ ;
+
+
+\ The text of the first open document at this canonical path and true, else
+\ false (VERIFY:SUPPLIED).
+: OPEN-TEXT ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
+   OPEN-N @ 0 ?do
+      i OPEN-PATH$ a u CORE-STR= if i OPEN-TEXT$ true unloop exit then
+   loop
+   NULL$ false ;
+
+
+\ The subject's bytes, after the open documents in IN.
+: SUBJECT$ ( -- ptr u8 n )
+   SUBJECT-AT @ IN IN-U @ SUBJECT-AT @ - ;
+
+
+\ stdin read, and a load of an open document's file given its text.
+: READ-STDIN ( -- )
+   READ-IN
+   READ-OPEN
+   ['] OPEN-TEXT is VERIFY:SUPPLIED ;
 
 
 \ The definitions after the throw went unverified, and a throw the checker
@@ -237,7 +331,7 @@ variable SEEN-N
 
 
 : VERIFY-CUR-ACT ( -- )
-   0 SUBJECT SUBJECT-U @ 0 SCRIPT-ARGV$ VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
+   SUBJECT$ 0 SCRIPT-ARGV$ VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 
 : VERIFY-CUR ( -- )
    0 SCRIPT-ARGV$ SOURCE-ROOT:DIRNAME
@@ -574,7 +668,7 @@ variable SEEN-N
 
 
 : PREVERIFY-CUR-ACT ( -- )
-   0 SUBJECT SUBJECT-U @ 0 SCRIPT-ARGV$ 1 SCRIPT-ARGV$
+   SUBJECT$ 0 SCRIPT-ARGV$ 1 SCRIPT-ARGV$
    VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
 
 : PREVERIFY-CUR ( -- )
@@ -611,10 +705,10 @@ public
    ;MATCH ;
 
 : MAIN ( -- )
-   SCRIPT-ARGC 2 = if READ-SUBJECT PREVERIFY exit then
+   SCRIPT-ARGC 2 = if READ-STDIN PREVERIFY exit then
    CURSOR-ARG {: at:n :}
    at 0 >= if at VERIFY:CURSOR! 3 else 1 then SCRIPT-ARGC <> if USAGE then
-   READ-SUBJECT
+   READ-STDIN
    0 SCRIPT-ARGV$ HELD? if s" held" RESULT exit then
    VERIFY-CLOSURE ;
 

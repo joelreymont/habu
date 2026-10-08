@@ -1874,13 +1874,13 @@ defer ON-USE ( n n ptr u8 n n n n n -- )
 \ TOKEN-BYTE@ counts from (the token after `include` or `require`, a string
 \ loader's literal between its quotes as written); the canonical path; and
 \ what became of it. Read: the file's source bytes were acquired for this
-\ load, from disk or as the bytes supplied for the subject, whether or not
-\ their scan then completes. Held: a `require`, `required` or
-\ `script-required` of a path already held, which the engine provides or which
-\ was recorded before, so nothing was read. Nothing else is reported: not
-\ `provided`, a file that could not be read, a loader in a definition or in a
-\ file the subject loads. The path is borrowed: a word installed here consumes
-\ it before it returns.
+\ load, from disk or as the bytes supplied for the subject or for the file
+\ (SUPPLIED), whether or not their scan then completes. Held: a `require`,
+\ `required` or `script-required` of a path already held, which the engine
+\ provides or which was recorded before, so nothing was read. Nothing else is
+\ reported: not `provided`, a file that could not be read, a loader in a
+\ definition or in a file the subject loads. The path is borrowed: a word
+\ installed here consumes it before it returns.
 0 constant LOAD-READ
 1 constant LOAD-HELD
 defer ON-LOADER ( n n ptr u8 n n -- )
@@ -1891,11 +1891,19 @@ defer ON-LOADER ( n n ptr u8 n n -- )
 
 \ A file the scan starts, named as FILE$ names it, and the bytes the scan reads
 \ there, which every position it reports in the file counts in: the bytes
-\ supplied for the subject, the file's bytes as this composition read them for
-\ any other. It runs each time the scan starts a file, the subject first,
-\ before anything in it is reported. Both strings are borrowed and read-only:
-\ a word installed here consumes them before it returns and writes neither.
+\ supplied for the subject, or for the file (SUPPLIED), else the file's bytes
+\ as this composition read them. It runs each time the scan starts a file, the
+\ subject first, before anything in it is reported. Both strings are borrowed
+\ and read-only: a word installed here consumes them before it returns and
+\ writes neither.
 defer ON-FILE ( ptr u8 n ptr u8 n -- )
+
+\ The bytes supplied for the file other than the subject at this canonical
+\ path, as the loader resolved it, and true: a load of the file scans them in
+\ place of its bytes on disk, which it still needs to resolve. Else false, and
+\ the load reads the disk. The bytes are borrowed and read-only, and stay so
+\ while the composition runs.
+defer SUPPLIED ( ptr u8 n -- ptr u8 n bool )
 
 private
 
@@ -1927,6 +1935,13 @@ DEFINITION-INIT
    ['] FILE-NONE is ON-FILE ;
 
 FILE-INIT
+
+: SUPPLIED-NONE ( ptr u8 n -- ptr u8 n bool )  2drop NULL$ false ;
+
+: SUPPLIED-INIT ( -- )
+   ['] SUPPLIED-NONE is SUPPLIED ;
+
+SUPPLIED-INIT
 
 : USE-NONE ( n n ptr u8 n n n n n -- )
    2drop 2drop 2drop 2drop ;
@@ -2856,8 +2871,8 @@ variable LOAD-END
    LOAD-AT @ LOAD-END @  0 LOAD-END !
    path pathu outcome ON-LOADER ;
 
-\ A load's file, its bytes acquired, from disk or as the subject's supplied
-\ bytes: the load reads it, whatever the scan then meets.
+\ A load's file, its bytes acquired, from disk or as the bytes supplied for it
+\ or for the subject: the load reads it, whatever the scan then meets.
 : COMPOSE-LOADED ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n path:ptr pathu:n :}
    path pathu LOAD-READ LOADED
@@ -2871,6 +2886,8 @@ variable LOAD-END
       path pathu COMPOSE-SUBJ-A @ COMPOSE-SUBJ-U @
       [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT
    THEN
+   path pathu SUPPLIED {: t:ptr tu:n open:bool :}
+   open IF path pathu t tu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT THEN
    path pathu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-BYTES ;
 
 : COMPOSE-INCLUDED ( ptr u8 n -- )

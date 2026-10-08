@@ -36,6 +36,10 @@
 \ publishing and keeping what RUN's does, which leaves the spellings the
 \ checker offers at that byte in CHECK:VERIFY-CANDIDATES$.
 \
+\ Every check reads each other document open in the server in place of that
+\ file on disk, its text under the file's canonical path: RUN's and RUN-AT's
+\ every open document but the one checked, USES's every open document.
+\
 \ USES checks a file on disk that no open document holds for its uses, as
 \ references gathers them: the bytes given as the file at the path given, with
 \ no cursor, publishing nothing and writing nothing to stderr. A check whose
@@ -119,10 +123,14 @@ variable OUTCOME-U
    ;MATCH
    NEWLINE RELAY ;
 
+\ Gives EACH every open document but the one being checked.
+: OTHERS ( [ ptr u8 n ptr u8 n -- ] -- )  SUBJECT @ swap DOC-EACH-BUT ;
+
 \ The check of the document's text as the file its path names.
 : VERIFY ( -- )
    SUBJECT @ {: slot:n :}
-   slot DOC-TEXT$ slot DOC-PATH$ CURSOR @ CHECK-MS >MS CHECK:VERIFY-BYTES-AT
+   slot DOC-TEXT$ slot DOC-PATH$ CURSOR @ [: OTHERS ;] CHECK-MS >MS
+   CHECK:VERIFY-BYTES-AT
    MATCH CHECK:verdict
       verified OF true VERIFIED ! s" verified" COMPLETED ENDOF
       refused OF s" refused" COMPLETED ENDOF
@@ -139,7 +147,8 @@ variable OUTCOME-U
 
 \ The check of the file on disk, its verdict's name in OUTCOME-B.
 : CHECKED ( -- )
-   DISK-A @ DISK-U @ DISK-P @ DISK-PU @ CHECK-MS >MS CHECK:VERIFY-BYTES
+   DISK-A @ DISK-U @ DISK-P @ DISK-PU @ [: -1 swap DOC-EACH-BUT ;] CHECK-MS >MS
+   CHECK:VERIFY-BYTES
    MATCH CHECK:verdict
       verified OF true VERIFIED ! s" verified" OUTCOME! ENDOF
       refused OF s" refused" OUTCOME! ENDOF

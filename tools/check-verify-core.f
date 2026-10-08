@@ -10,6 +10,10 @@
 \   disk. The composition reads each file a loader loads, and refuses where it
 \   meets them the loader forms the closure walk refuses
 \   (tools/source-discovery.f): no walk runs before it.
+\ - The caller names the documents it holds open, each by a file's canonical
+\   path and its text, and a load of such a file other than PATH meets that
+\   text, never the copy on disk, which the load still resolves. Of two for
+\   one path the first holds.
 \ - The verification runs in a short-lived child, tools/check-verify-child.f,
 \   whose image is the engine's boot prefix plus the verifier: neither this
 \   process's words nor an earlier check's can stand in for, or collide with, a
@@ -530,6 +534,10 @@ DYNAMIC-BUFFER VFY-FILES u8             \ VERIFY-FILES$
 DYNAMIC-BUFFER VFY-USES u8              \ VERIFY-USES$
 DYNAMIC-BUFFER VFY-LOADS u8             \ VERIFY-LOADS$
 DYNAMIC-BUFFER VFY-CANDS u8             \ VERIFY-CANDIDATES$
+DYNAMIC-BUFFER VFY-IN u8                \ the child's stdin: the open documents, then the subject's bytes
+DYNAMIC-BUFFER VFY-OPEN-AT n            \ each open document's path's offset in VFY-IN and length, then its text's
+variable VFY-IN-U
+variable VFY-OPEN-N
 variable VFY-REC-U
 variable VFY-DEFS-U
 variable VFY-FILES-U
@@ -577,6 +585,8 @@ variable VFY-TARGET-U
    0 VFY-USES-U !
    0 VFY-LOADS-U !
    0 VFY-CANDS-U !
+   0 VFY-IN-U !
+   0 VFY-OPEN-N !
    -1 VFY-AT !
    VFY-NONE VFY-ANSWER !
    0 VFY-STOP-RC !
@@ -633,6 +643,62 @@ variable VFY-TARGET-U
    rc CHK-DISC-MSG$ VFY-LOG-LN ;
 
 
+\ VFY-IN, these bytes after it.
+: VFY-IN+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0= if exit then
+   VFY-IN-U @ u + VFY-IN-RESERVE
+   a VFY-IN-U @ VFY-IN u BYTE-COPY
+   VFY-IN-U @ u + VFY-IN-U ! ;
+
+
+\ An open document after VFY-IN, as tools/check-verify-child.f reads it: the
+\ byte counts of its canonical path and of its text on a line, then both.
+: VFY-OPEN+ ( ptr u8 n ptr u8 n -- )
+   {: p:ptr pu:n t:ptr tu:n :}
+   SB-RESET pu FMT:SB-U SB$ VFY-IN+
+   s"  " VFY-IN+
+   SB-RESET tu FMT:SB-U SB$ VFY-IN+
+   s\" \n" VFY-IN+
+   VFY-OPEN-N @ 4 * {: at:n :}
+   at 4 + VFY-OPEN-AT-RESERVE
+   VFY-IN-U @ at VFY-OPEN-AT !
+   pu at 1+ VFY-OPEN-AT !
+   p pu VFY-IN+
+   VFY-IN-U @ at 2 + VFY-OPEN-AT !
+   tu at 3 + VFY-OPEN-AT !
+   t tu VFY-IN+
+   VFY-OPEN-N @ 1+ VFY-OPEN-N ! ;
+
+
+\ The child's stdin: the open documents OPEN gives, an empty line, then the
+\ subject's bytes, CHK-BYTES-A and CHK-BYTES-U.
+: VFY-IN! ( [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
+   {: open :}
+   [: VFY-OPEN+ ;] open execute
+   s\" \n" VFY-IN+
+   CHK-BYTES-A @ CHK-BYTES-U @ VFY-IN+ ;
+
+
+: VFY-OPEN-PATH$ ( n -- ptr u8 n )
+   4 * {: at:n :}
+   at VFY-OPEN-AT @ VFY-IN at 1+ VFY-OPEN-AT @ ;
+
+: VFY-OPEN-TEXT$ ( n -- ptr u8 n )
+   4 * {: at:n :}
+   at 2 + VFY-OPEN-AT @ VFY-IN at 3 + VFY-OPEN-AT @ ;
+
+
+\ The text of the first open document at this canonical path and true, else
+\ false, as the child finds it.
+: VFY-OPEN-TEXT ( ptr u8 n -- ptr u8 n bool )
+   {: a:ptr u:n :}
+   VFY-OPEN-N @ 0 ?do
+      i VFY-OPEN-PATH$ a u CORE-STR= if i VFY-OPEN-TEXT$ true unloop exit then
+   loop
+   NULL$ false ;
+
+
 \ A line of VERIFY-OUT$, when there is one.
 : VFY-LINE+ ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -678,7 +744,7 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    VFY-OUT-RESERVE 0 VFY-OUT ;
 
 
-\ The child's run on the subject's bytes, CHK-BYTES-A and CHK-BYTES-U: its
+\ The child's run on VFY-IN, the open documents and the subject's bytes: its
 \ stdout into VFY-OUT, which grows to what the child writes, and its stderr
 \ into VFY-LOG, their lengths and its end left where PROC-CAPTURE-OUTCOME@
 \ reads them. The end is read there, so the one returned here is dropped
@@ -687,7 +753,7 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 : VFY-CAPTURE ( -- )
    VFY-ARGV
    VFY-ERR-CAP VFY-LOG-RESERVE
-   CHK-ENGINE$ >LEN CHK-BYTES-A @ CHK-BYTES-U @ >LEN
+   CHK-ENGINE$ >LEN 0 VFY-IN VFY-IN-U @ >LEN
    [: VFY-OUT-ROOM ;] 0 VFY-LOG VFY-ERR-CAP >LEN
    VFY-DEADLINE @ RUN-ARGV-ENV-STDIN-GROWING-CAPTURE-OUTCOME
    PROC-OUTCOME>DEADLINE-RC drop 2drop ;
@@ -823,10 +889,12 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    VFY-STOP-OFF @ VFY-OUT VFY-STOP-U @ ;
 
 
-\ That file's bytes: the subject's, or the file's own (CHK-FILE-READ).
+\ That file's bytes: the subject's, an open document's text, or the file's own
+\ (CHK-FILE-READ).
 : VFY-STOP-SOURCE ( -- ptr u8 n )
    VFY-STOP-SUBJ @ if CHK-BYTES-A @ CHK-BYTES-U @ exit then
-   VFY-STOP-FILE$ CHK-FILE-READ ;
+   VFY-STOP-FILE$ VFY-OPEN-TEXT if exit then
+   2drop VFY-STOP-FILE$ CHK-FILE-READ ;
 
 
 \ The file the loader line named, the one a loader could not read.
@@ -1140,7 +1208,9 @@ public
    VFY-CANDS-U @ 0= if NULL$ exit then
    0 VFY-CANDS VFY-CANDS-U @ ;
 
-\ Check the bytes as the file at PATH, the child given DEADLINE. A throw that
+\ Check the bytes as the file at PATH, the child given DEADLINE, with the
+\ documents open that OPEN gives: OPEN is given a word taking an open
+\ document's canonical path and text, and calls it once for each. A throw that
 \ ends the verification refuses it: the stop's record ends VERIFY-OUT$, after
 \ every packet made before it, and VERIFY-STOP and the words after it say with
 \ what and where. A loader's fault is such a stop: a loader form the closure
@@ -1151,25 +1221,26 @@ public
 \ spawn throws as well. stdout is kept whole; more than 256 KiB of the child's
 \ stderr is E-PROC-TRUNCATED, VERIFY-OUT$ then holding every complete packet
 \ received before it. A file of the closure that a stop or a duplicate
-\ definition is in and can no longer be read throws as reading it does.
+\ definition is in, not open and no longer readable, throws as reading it does.
 \ VERIFY-BYTES-AT has the child offer, as well, the spellings that would bind
 \ at byte AT of the bytes, VERIFY-CANDIDATES$; a negative AT is no cursor.
-: VERIFY-BYTES-AT ( ptr u8 n ptr u8 n n ms -- verdict )
-   {: src:ptr srcu:n path:ptr pathu:n at:n deadline :}
+: VERIFY-BYTES-AT ( ptr u8 n ptr u8 n n [ [ ptr u8 n ptr u8 n -- ] -- ] ms -- verdict )
+   {: src:ptr srcu:n path:ptr pathu:n at:n open deadline :}
    VFY-RESET
    at VFY-AT !
    path pathu VFY-PATH!
    VFY-PATH$ ENGINE-PROVIDES? if CHECK-VERDICT:engine-provided exit then
    src CHK-BYTES-A !
    srcu CHK-BYTES-U !
+   open VFY-IN!
    deadline VFY-DEADLINE !
    VFY-RUN {: o :}
    o VFY-CLEAN-EXIT? VFY-ANSWER @ VFY-STOPPED = and if VFY-STOP-LINE then
    o VFY-VERDICT ;
 
-: VERIFY-BYTES ( ptr u8 n ptr u8 n ms -- verdict )
-   {: src:ptr srcu:n path:ptr pathu:n deadline :}
-   src srcu path pathu -1 deadline VERIFY-BYTES-AT ;
+: VERIFY-BYTES ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] ms -- verdict )
+   {: src:ptr srcu:n path:ptr pathu:n open deadline :}
+   src srcu path pathu -1 open deadline VERIFY-BYTES-AT ;
 
 \ check.f's pre-pass of the bytes as the file at PATH, the subject named LABEL
 \ in its packets, the child given DEADLINE. The child's image is the one
@@ -1190,6 +1261,7 @@ public
    labelu VFY-LABEL-U !
    src CHK-BYTES-A !
    srcu CHK-BYTES-U !
+   [: drop ;] VFY-IN!
    deadline VFY-DEADLINE !
    VFY-RUN VFY-PREVERDICT ;
 

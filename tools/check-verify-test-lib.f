@@ -253,7 +253,7 @@ variable CLI-OUT-U
 \ Check SRC as the fixture NAME, which keeps its spelling in SUBJ.
 : CHECK-AS ( ptr u8 n ptr u8 n n -- CHECK:verdict ) {: src:ptr srcu:n name:ptr nameu:n ms:n :}
    name nameu AT$ SUBJ SUBJ-U COPY!
-   src srcu SUBJ SUBJ-U @ ms >MS CHECK:VERIFY-BYTES ;
+   src srcu SUBJ SUBJ-U @ [: drop ;] ms >MS CHECK:VERIFY-BYTES ;
 
 
 : SUBJ$ ( -- ptr u8 n )
@@ -567,14 +567,14 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ Bytes no loader would accept, as the engine's own lib/string.f.
 : ENGINE-PROVIDED ( -- )
    s\" : STR= ( -- ) drop ;\ns\" never closed\n" s" lib/string.f" TREE$
-   GUARD-MS >MS CHECK:VERIFY-BYTES
+   [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES
    2 s" engine-provided: whatever the bytes hold" EXPECT-KIND
    s" engine-provided: no packet" T-LABEL CHECK:VERIFY-OUT$ nip 0 T= ;
 
 
 : HELD ( -- )
    s" src/habu/verify-source.f" TREE-BYTES s" src/habu/verify-source.f" TREE$
-   GUARD-MS >MS CHECK:VERIFY-BYTES
+   [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES
    3 s" held: the verifier's own source" EXPECT-KIND ;
 
 
@@ -1309,7 +1309,7 @@ $180000 constant LARGE-STDIN-LEN
 \ and from outside the tree, in the operation and in each mode of check.f.
 : BODY-COMPUTED ( -- )
    s" tools/source-discovery.f" TREE-BYTES s" tools/source-discovery.f" TREE$
-   GUARD-MS >MS CHECK:VERIFY-BYTES
+   [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES
    0 s" body-computed: the operation" EXPECT-KIND
    SUBJ$ {: path:ptr pathu:n :}
    s" body-computed: verify-only from the root" T-LABEL path pathu true false CHECK-RC 0 T=
@@ -1414,7 +1414,7 @@ $180000 constant LARGE-STDIN-LEN
    CHECK:VERIFY-OUT$ s" code" s" E-MISMATCH" PACKET 0 >= TTRUE
    s" unclean-answer: refused frame is not a packet" T-LABEL CHECK:VERIFY-OUT$ ALL-JSON? TTRUE
    s" src/habu/verify-source.f" TREE-BYTES s" src/habu/verify-source.f" TREE$
-   GUARD-MS >MS CHECK:VERIFY-BYTES {: held :}
+   [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES {: held :}
    held 4 s" unclean-answer: held frame is incomplete" EXPECT-KIND
    s" unclean-answer: held frame is not a packet" T-LABEL CHECK:VERIFY-OUT$ nip 0 T=
    s\" : CVT-OPEN ( -- n ) 1\n\\" s" unclean-open.f" GUARD-MS CHECK-AS {: stopped :}
@@ -3200,7 +3200,7 @@ create DIGEST-HEX HEX-U allot
    s" file-line-subject.f" AT$ ARG+
    s" file-line-keys" ARG+
    PROC-ENV-INHERIT-MISSING
-   s" " CLI nip
+   s\" \n" CLI nip
    s" file-line-keys: loaded" T-LABEL 0 T=
    SB-RESET
    s\" check-verify: verified\n" SB-APPEND
@@ -3810,7 +3810,7 @@ variable SEEN-U
    {: name:ptr nameu:n at:n :}
    0 GEN DEFS-SRC-A !  GEN-U @ DEFS-SRC-U !
    name nameu AT$ SUBJ SUBJ-U COPY!
-   DEFS-SRC$ SUBJ$ at GUARD-MS >MS CHECK:VERIFY-BYTES-AT ;
+   DEFS-SRC$ SUBJ$ at [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES-AT ;
 
 
 \ CANDS-AT where the first LEAD in the generated source ends.
@@ -4125,7 +4125,7 @@ variable SEEN-U
    s" measure: one-definition file " type MS. s" , outcome " type FMT:.INT cr
    s" tools/check-core.f" TREE-BYTES s" tools/check-core.f" TREE$
    mono-ns START-NS !
-   GUARD-MS >MS CHECK:VERIFY-BYTES KIND
+   [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES KIND
    s" measure: tools/check-core.f " type MS. s" , outcome " type FMT:.INT cr ;
 
 

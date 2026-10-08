@@ -647,15 +647,16 @@ With `--verify-only`, a source list, a FILE beside `--stdin-path` and stdin
 without it are usage errors; so is `--stdin-path` given twice or without
 `--verify-only`.
 
-`CHECK:VERIFY-BYTES ( ptr u8 n ptr u8 n ms -- CHECK:verdict )` takes the bytes,
-PATH, a relative one read from the working directory, and the child's
-deadline. `CHECK:VERIFY-OUT$` holds the packets, one JSON object per line, and
-`CHECK:VERIFY-LOG$` the prose, until the next call. A duplicate definition,
-for which the checker writes no packet, is the record `--all-errors` writes
-for it (`CHECK-ALL-ERRORS:DUP-RECORD$`), placed in the bytes or in the file of
-the closure that defined the name again. A throw that ended the verification
-refuses it: `CHECK:VERIFY-STOP` is its code, 0 for none, and
-`CHECK:VERIFY-STOP-AT`, `CHECK:VERIFY-STOP-SUBJECT?` and
+`CHECK:VERIFY-BYTES ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] ms --
+CHECK:verdict )` takes the bytes, PATH, a relative one read from the working
+directory, OPEN, which gives a word each open document's canonical path and
+text, and the child's deadline. `CHECK:VERIFY-OUT$` holds the packets, one
+JSON object per line, and `CHECK:VERIFY-LOG$` the prose, until the next call.
+A duplicate definition, for which the checker writes no packet, is the record
+`--all-errors` writes for it (`CHECK-ALL-ERRORS:DUP-RECORD$`), placed in the
+bytes or in the file of the closure that defined the name again. A throw that
+ended the verification refuses it: `CHECK:VERIFY-STOP` is its code, 0 for
+none, and `CHECK:VERIFY-STOP-AT`, `CHECK:VERIFY-STOP-SUBJECT?` and
 `CHECK:VERIFY-STOPPED$` say where, as for `CHECK:PREVERIFY-BYTES`. A loader's
 fault is such a throw (`VERIFY:LOADER-FAULT?`): a loader form the composition
 refuses, by its `E-DISC-` code, at the form; a file a loader word cannot read,
@@ -696,14 +697,20 @@ The child, `tools/check-verify-child.f`, is run only by this operation and by
 `CHECK:PREVERIFY-BYTES`, check.f's pre-pass:
 
 ```text
-ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < BYTES
-ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < BYTES
+ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < STDIN
+ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < STDIN
 ```
 
-SUBJECT is canonical and absolute. The child follows the loader forms of
-BYTES and of the files they load; a file the image holds is skipped, as
-`require` skips it. The first form composes quietly: it refuses the loader
-forms the closure walk refuses where it meets them. stdout carries the packets
+SUBJECT is canonical and absolute. STDIN is the open documents, each a line
+`PU U` then PU bytes of PATH and U bytes of TEXT, the counts in decimal; then
+an empty line; then BYTES, the subject's text, to the end. PATH is a file's
+canonical absolute path, and a load of that file other than SUBJECT scans TEXT
+in place of its bytes on disk; of two entries for one PATH the first holds.
+The file must still be on disk: the loader resolves it there. The pre-pass
+sends no open document. The child follows the loader forms of BYTES and of
+the files they load; a file the image holds is skipped, as `require` skips
+it. The first form composes quietly: it refuses the loader forms the closure
+walk refuses where it meets them. stdout carries the packets
 in verification order, each written as the checker makes it, so a child that
 dies has passed on every packet made before; then one result line. The first
 form verifies

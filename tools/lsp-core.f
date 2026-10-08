@@ -45,26 +45,33 @@
 \ check of each file it gathers from, reads the input that waits again before
 \ each of those checks and before its answer, holding every message it reads
 \ and serving none, and it is answered there -32800 when a cancel of it has
-\ been read, else -32801 when a change of its document or of an open document
-\ it gathers from has. The check under way is finished first, and a message
-\ begun is read whole, so how soon such a request stops has no bound. A
-\ cancel is otherwise an unknown notification, so one naming an id answered,
-\ unknown or not a request's changes nothing, and a check already running is
-\ not stopped. The end of input and a fault in its framing come after the
-\ messages held, even when a request read them: it is answered, and those
-\ are served, first.
+\ been read, else -32801 when a change of any open document has, since each
+\ check it gathers from reads them all. The check under way is finished
+\ first, and a message begun is read whole, so how soon such a request stops
+\ has no bound. A cancel is otherwise an unknown notification, so one naming
+\ an id answered, unknown or not a request's changes nothing, and a check
+\ already running is not stopped. The end of input and a fault in its framing
+\ come after the messages held, even when a request read them: it is
+\ answered, and those are served, first.
 \
 \ A running server checks the documents and publishes their diagnostics
-\ (tools/lsp-check.f, tools/lsp-diag.f). Opening or changing a document leaves
-\ it waiting for a check, and a save leaves every open document waiting, since
-\ any of them may require the file saved. Input comes first: only when no
-\ message waits, in the reader's buffer or on stdin, or is held is one waiting
-\ document checked, the next after the last one checked, and then input is
-\ looked at again. So such a check takes a document's newest text, the edits that came
+\ (tools/lsp-check.f, tools/lsp-diag.f). Every check reads each other open
+\ document's text in place of its file. Opening or changing a document leaves
+\ it waiting for a check, and with it every other open document whose last
+\ completed check read its file (LSP-DEFS:DEFS-READ?): that check's list and
+\ definitions are of text a check no longer reads. The loader finds a file on
+\ disk, so an open document whose file is not there is no check's source
+\ (tools/check-verify-child.f), and a save may bring it there: a save, which
+\ the server asks for without its text, leaves every open document waiting,
+\ since a file saved may be one a check's loader could not find or one that
+\ now comes before the file it found. Input comes first: only when no message
+\ waits, in the reader's buffer or on stdin, or is held is one waiting document
+\ checked, the next after the last one checked, and then input is looked at
+\ again. So such a check takes a document's newest text, the edits that came
 \ while another check ran are all applied before it, and the versions
-\ published for a document only rise. A request about a document waiting for a
-\ check, textDocument/definition, textDocument/references,
-\ textDocument/hover, textDocument/documentHighlight,
+\ published for a document only rise.
+\ A request about a document waiting for a check, textDocument/definition,
+\ textDocument/references, textDocument/hover, textDocument/documentHighlight,
 \ textDocument/documentSymbol or textDocument/documentLink, is the exception:
 \ it checks that document first, as its turn, and is answered from that check,
 \ which takes the text the client asked about, since LSP orders a request
@@ -73,9 +80,9 @@
 \ textDocument/completion checks its document as its turn whether it waits or
 \ not, with a cursor at the position, and is answered from that check: the
 \ spellings it offers belong to that cursor. Closing a document publishes an
-\ empty list for it, drops the definitions its last check kept and leaves every
-\ open document waiting: any of them may require the file, whose diagnostics
-\ their checks left to it while it was open.
+\ empty list for it, drops the definitions its last check kept and leaves
+\ waiting each open document whose last completed check read its file: that
+\ check read the closed text, and left the file's diagnostics to it.
 \
 \ The workspace folders references walks (tools/lsp-workspace.f) are those
 \ initialize's params.workspaceFolders lists, an empty list naming none, else
@@ -354,6 +361,21 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 \ ---- notifications -----------------------------------------------------------
 
+\ Every open document of another file whose last completed check read the
+\ file of the document in this slot waits for a check: what that check read of
+\ the file is no longer what a check would read. A document holding the same
+\ file reads its own text for it.
+: READERS-DIRTY ( n -- )
+   {: slot:n :}
+   slot DOC-CANON$ {: c:ptr cu:n :}
+   DOC-SLOTS 0 ?do
+      i DOC-LIVE? if
+         i DOC-CANON$ c cu STR= 0= if
+            i c cu LSP-DEFS:DEFS-READ? if i DOC-DIRTY then
+         then
+      then
+   loop ;
+
 \ Each handler reads all of its params before it changes a document, so one
 \ that throws has changed nothing.
 : DID-OPEN ( ptr u8 n -- ptr u8 n )
@@ -363,6 +385,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    p pu DOC-VERSION {: v:n :}
    p pu s" text" TEXT-SPAN DOC-STRING {: t:ptr tu:n :}
    u uu v a au t tu DOC-OPEN
+   u uu OPEN-SLOT READERS-DIRTY
    p pu ;
 
 : DID-CHANGE ( ptr u8 n -- ptr u8 n )
@@ -371,15 +394,16 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    p pu DOC-VERSION {: v:n :}
    p pu CHANGES {: n:n :}
    slot v TEXT-SPAN @ SPAN:$ drop n DOC-CHANGE
+   slot READERS-DIRTY
    p pu ;
 
 : DID-CLOSE ( ptr u8 n -- ptr u8 n )
    {: p:ptr pu:n :}
    p pu DOC-URI OPEN-SLOT {: slot:n :}
    slot LSP-DIAG:RETRACT
+   slot READERS-DIRTY
    slot LSP-DEFS:DEFS-DROP
    slot DOC-CLOSE
-   DOC-DIRTY-ALL
    p pu ;
 
 \ The throws that come of params the server cannot apply: a notification is
@@ -707,13 +731,11 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    a u KEPT-ID @ SPAN:COPY
    KEPT-ID @ SPAN:$ drop u JSON--RPC-ID:MAKE ;
 
-\ Whether a change of the request's document, or of an open document it
-\ gathers from, was read behind it.
+\ Whether a change of any open document was read behind the request: every
+\ check it gathers from reads them all.
 : GATHER-CHANGED? ( -- bool )
-   AT-SLOT @ CHANGED? if true exit then
-   LSP-REFERENCES:SUBJECT-N 0 ?do
-      i LSP-REFERENCES:SUBJECT-SLOT dup 0 >= if CHANGED? else drop false then
-      if true unloop exit then
+   DOC-SLOTS 0 ?do
+      i DOC-LIVE? if i CHANGED? if true unloop exit then then
    loop
    false ;
 

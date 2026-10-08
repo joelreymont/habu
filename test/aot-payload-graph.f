@@ -14,6 +14,7 @@ package PAYLOAD-GRAPH-SUITE
 $4000 constant IO-CAP
 create OUT IO-CAP allot
 create ERR IO-CAP allot
+create IN IO-CAP allot                  \ a verifier child's stdin
 variable PRE-OUT-U
 variable LINE-START
 create ART FS-PATH-CAP allot
@@ -128,6 +129,15 @@ variable SUBJECT-U
    WHITEBOX-CHILD:ENV! ;
 
 
+\ The verifier child's stdin for SOURCE: the empty line that ends the open
+\ documents, none here, then SOURCE.
+: CHILD-IN$ ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   u 1+ IO-CAP > if E-STR-CAPACITY throw then
+   10 IN c!
+   a IN 1+ u BYTE-COPY
+   IN u 1+ ;
+
 : VERIFY-WITH ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n bool ptr u8 n -- )
    {: engine:ptr engineu:n source:ptr sourceu:n status:ptr statusu:n packet:ptr packetu:n pre:bool child:ptr childu:n :}
    PROC-ARGV-RESET
@@ -137,7 +147,7 @@ variable SUBJECT-U
    PROC-ENV-RESET
    s" HABU_UNDER_TEST" >LEN engine engineu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   engine engineu >LEN source sourceu >LEN
+   engine engineu >LEN source sourceu CHILD-IN$ >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN 30000 >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
@@ -226,7 +236,7 @@ variable SUBJECT-U
    PROC-ENV-RESET
    s" HABU_UNDER_TEST" >LEN IMAGE$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   IMAGE$ >LEN source sourceu >LEN
+   IMAGE$ >LEN source sourceu CHILD-IN$ >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN 30000 >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}

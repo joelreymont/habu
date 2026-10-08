@@ -18,10 +18,12 @@
 \ which gives the line it is on: a missing start is 0, a
 \ missing end the start, both are held to the text and the end
 \ to no less than the start. The range counts through the bytes the check
-\ read: the document's text for the file the check is of, the file on disk
-\ for any other. The URI is the checked document's for its own file, the one
-\ whose text the range counts through, and for any other the open document's
-\ holding the file when the check completed, else the file URI of the path.
+\ read: the document's text for the file the check is of; for any other, the
+\ text of the open document holding it, which the check read in its place,
+\ else the file on disk. The URI is the checked document's for its own file,
+\ the one whose text the range counts through, and for any other the open
+\ document's holding the file when the check completed, else the file URI of
+\ the path.
 \ A file a check reads again, as `include` into a second package or after
 \ `undefine` does, gives each of its definitions once, as the file spells
 \ it. A record whose word a later reading declares at its token again,
@@ -441,11 +443,16 @@ private
    g ;
 
 \ Positions count in the bytes the check read of the group's file from now
-\ on: the text of the document the check is of, the file on disk for any
-\ other, an open document's or not.
+\ on: the text of the document the check is of; for any other file, the text
+\ of the open document holding it, which the check read in its place, else
+\ the file on disk.
 : COUNT-IN ( n -- )
    {: g:n :}
-   g G-OWN GROUP@ 0<> if KEPT-SLOT DOC-TEXT$ TEXT! else g PATH$ FILE-TEXT! then
+   g G-OWN GROUP@ 0<> if KEPT-SLOT DOC-TEXT$ TEXT! g CUR-G ! exit then
+   g PATH$ DOC-HOLDING MATCH option
+      some OF DOC-TEXT$ TEXT! ENDOF
+      none OF g PATH$ FILE-TEXT! ENDOF
+   ;MATCH
    g CUR-G ! ;
 
 \ The group of the line's file, made if this check has none.
@@ -661,8 +668,9 @@ private
    0 begin dup u < while a u rot xt STEP repeat drop ;
 
 \ Whether group H answers for its file in place of group G: the group of the
-\ check of the document holding the file in place of a group of a check that
-\ read the file from disk, else the later group, which is a later check's.
+\ check of the document holding the file in place of another check's, which
+\ read the file as that check found it, the text of the document open there
+\ or else the bytes on disk; else the later group, which is a later check's.
 : OUTRANKS? ( n n -- bool )
    {: h:n g:n :}
    h G-OWN GROUP@ g G-OWN GROUP@ {: ho:n go:n :}
@@ -1104,15 +1112,19 @@ private
    loop
    OPTION:NONE ;
 
-\ The group for the file at this path among block K's, while K's positions
-\ are of the document's current text, if K has one.
-: PATH-IN ( n ptr u8 n -- option<n> )
+\ The group for the file at this path among block K's, if K has one.
+: GROUP-IN ( n ptr u8 n -- option<n> )
    {: k:n p:ptr pu:n :}
-   k B-CURRENT BLOCK@ 0= if OPTION:NONE exit then
    k B-GROUP GROUP-N @ BLOCK-END k B-GROUP BLOCK@ ?do
       i PATH$ p pu STR= if i OPTION:SOME unloop exit then
    loop
    OPTION:NONE ;
+
+\ GROUP-IN, while K's positions are of the document's current text.
+: PATH-IN ( n ptr u8 n -- option<n> )
+   {: k:n p:ptr pu:n :}
+   k B-CURRENT BLOCK@ 0= if OPTION:NONE exit then
+   k p pu GROUP-IN ;
 
 public
 
@@ -1124,6 +1136,21 @@ public
    BLOCK-OF MATCH option
       some OF OWN-IN ENDOF
       none OF OPTION:NONE ENDOF
+   ;MATCH ;
+
+\ Whether the last completed check of the document in this slot read the file
+\ at this canonical path, whether or not a check of it has started since;
+\ false if the store keeps no check of it.
+: DEFS-READ? ( n ptr u8 n -- bool )
+   {: slot:n p:ptr pu:n :}
+   slot BLOCK-OF MATCH option
+      some OF
+         p pu GROUP-IN MATCH option
+            some OF drop true ENDOF
+            none OF false ENDOF
+         ;MATCH
+      ENDOF
+      none OF false ENDOF
    ;MATCH ;
 
 \ The group for the file at this path in the last completed check of the

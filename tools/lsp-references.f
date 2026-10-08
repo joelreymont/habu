@@ -21,7 +21,10 @@
 \ and D, whose check read P though its loads on disk may no longer reach it,
 \ as the walk gives them (tools/lsp-workspace.f): P first, then by path. Each
 \ one's uses come from its own check: an open document's last completed one,
-\ a file on disk checked now (LSP-CHECK:USES). A check numbers only its own
+\ a file on disk checked now (LSP-CHECK:USES). Every check reads each open
+\ document's text in place of its file (tools/lsp-check.f), so a subject's
+\ check reads the bytes of P that D's read, the open text when a document
+\ holds P, unless P changed on disk between them. A check numbers only its own
 \ visits, so a subject's check that read P must state P's digest the same and
 \ declare the word at P's token, by its identity, in one visit at most, and
 \ its uses bound to that token of the word's identity must carry that visit;
@@ -405,13 +408,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
 
 \ ---- the subjects ---------------------------------------------------------------
 
-\ Each open document's canonical path and text, given to Q.
-: OPEN-DOCS ( [ ptr u8 n ptr u8 n -- ] -- )
-   {: q :}
-   DOC-SLOTS 0 ?do
-      i DOC-LIVE? if i DOC-CANON$ i DOC-TEXT$ q execute then
-   loop ;
-
 \ A file whose loads the walk could not find named, unless it is P or D,
 \ whose checks say what they read.
 : UNREAD+ ( ptr u8 n ptr u8 n -- )
@@ -425,7 +421,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
    slot DOC-CANON$ {: a:ptr u:n :}
    a u POOL+ D-AT !
    u D-U !
-   P$ D$ [: OPEN-DOCS ;] LSP-WORKSPACE:REACHING
+   P$ D$ [: -1 swap DOC-EACH-BUT ;] LSP-WORKSPACE:REACHING
    LSP-WORKSPACE:REFUSED? if
       LSP-WORKSPACE:BLOCKED$ s" the workspace folder cannot be walked" REFUSE exit
    then

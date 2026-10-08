@@ -1902,7 +1902,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
 
 : CHK-VERIFY-ACT ( -- )
    CHK-VERIFY-SELECT {: path:ptr pathu:n :}
-   CHK-SRC-BUF CHK-SRC-U @ path pathu CHK-DEADLINE@ VERIFY-BYTES
+   CHK-SRC-BUF CHK-SRC-U @ path pathu [: drop ;] CHK-DEADLINE@ VERIFY-BYTES
    CHK-VERIFY-REPORT ;
 
 \ More output than the verifier's capture holds leaves no verdict: the packets

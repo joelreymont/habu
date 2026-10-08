@@ -14,12 +14,11 @@
 \ section 7), so a file is followed once under each root a load reaches it
 \ under: a node is a path and a root, and a subject's node is rooted at the
 \ directory holding it, as the checker roots a document it checks
-\ (tools/check-verify-core.f CHK-EXPAND-BYTES). A node's loads are every
-\ event discovery (tools/source-discovery.f) records in its file on disk,
-\ when the file is there, and in the text of each open document at its path:
-\ a check of that document reads its text, while a check of another subject
-\ that loads it reads the file. A file outside the workspace is followed like
-\ any other and never given. A load of a file that is not there is followed
+\ (tools/check-verify-core.f CHK-EXPAND-BYTES). A node's loads are the events
+\ discovery (tools/source-discovery.f) records in the text of the first open
+\ document at its path, which every check reads in place of the file, else in
+\ its file on disk, when it is there. A file outside the workspace is followed
+\ like any other and never given. A load of a file that is not there is followed
 \ no further.
 \
 \ A file whose loads cannot be found, one discovery refuses (an E-DISC-*
@@ -322,19 +321,23 @@ variable CUR-ROOT                        \ and the root being walked
    rc FAULT$ nip nip if CUR @ rc FAULT exit then
    rc throw ;
 
-\ Node K's loads: those of its file on disk, when it is there, and of the
-\ text of each open document at its path; none when one of them cannot be
-\ found.
+\ The first open document at the path of node K, -1 for none.
+: OPEN-OF ( n -- n )
+   {: k:n :}
+   OPEN-N @ 0 ?do
+      i O-NODE OPEN@ PATH$ k PATH$ STR= if i unloop exit then
+   loop
+   -1 ;
+
+\ Node K's loads: those of the text of the first open document at its path,
+\ which a check reads in place of the file, else of its file on disk, when it
+\ is there; none when they cannot be found.
 : EXPAND ( n -- )
    {: k:n :}
    k CUR !
-   EDGE-N @ {: e:n :}
-   k PATH$ FILE? if [: DISK-TEXT ;] FOLLOW then
-   0 begin dup OPEN-N @ < k FAULT? 0= and while
-      dup O-NODE OPEN@ PATH$ k PATH$ STR= if dup CUR-OPEN ! [: OPEN-TEXT ;] FOLLOW then
-      1+
-   repeat drop
-   k FAULT? if e EDGE-N ! then ;
+   k OPEN-OF {: o:n :}
+   o 0 >= if o CUR-OPEN ! [: OPEN-TEXT ;] FOLLOW exit then
+   k PATH$ FILE? if [: DISK-TEXT ;] FOLLOW then ;
 
 \ Every node the subjects reach, each followed once: a node a load makes is
 \ followed in its turn.

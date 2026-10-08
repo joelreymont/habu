@@ -88,8 +88,6 @@
 \   checked again .................................... diagnostics-require
 \ - a change that came while another waited checked on its own, or a version
 \   other than the newest published ................. diagnostics-supersede
-\ - a save leaving an open document unchecked, or documents waiting together
-\   not checked in turn ................................... save-dirties-all
 \ - a close publishing anything but an empty list without a version, or a
 \   document opened and closed in one turn checked ...................... close
 \ - a file the engine provides checked, or its list kept from the client
@@ -99,10 +97,17 @@
 \   positions in its text on disk, its list not withdrawn once its packets are
 \   gone, or published over the list of the open document that holds it
 \   ............................................................. dependency
+\ - a document whose check read a dependency not checked again once the
+\   dependency is opened with other text, unsaved, or that check reading the
+\   text on disk ....................................... dependency-open-edit
 \ - a dependency's list not published again from disk once the document that
 \   held it open closes ................................... dependency-close
+\ - a document whose check found no dependency on disk not checked again once
+\   the dependency, open, is written there and saved, or one whose check
+\   verified not checked again then ....................... dependency-saved
 \ - a dependency's list at its canonical URI kept once the client, naming it
-\   through a symlink, opens it fixed ..................... dependency-symlink
+\   through a symlink, opens it with other text, or a check reading the text
+\   on disk in place of that one .......................... dependency-symlink
 \ - a dependency two documents require withdrawn while one still does, not
 \   published again by that one's check, or kept once neither does
 \   ...................................................... dependency-shared
@@ -152,8 +157,10 @@
 \ - a definition in a file a check reads twice listed twice
 \   ........................................... workspace-symbol-reinclude
 \ - an open document's definitions answered from another document's check,
-\   which read the file from disk, or that check's definitions there placed
-\   through the document's text ............ workspace-symbol-open-dependency
+\   or that check's definitions there placed other than where the open text,
+\   which it read, places them; once the document closes, not where the file
+\   on disk places them after that check runs again
+\   ......................................... workspace-symbol-open-dependency
 \ - a document in a directory whose name is 1, 2, 3 or 4 bytes long stopping the
 \   server: its global words, two bytes each, put the empty package each of
 \   their definition lines names at every even offset of the bytes the server
@@ -177,9 +184,9 @@
 \   definitions of the text before it, which workspace symbols still list
 \   ................................................. document-symbol-incomplete
 \ - an open document's outline answered from a later check of another
-\   document, which read its file from disk; with its file open again by
-\   another URI and other text, either document's outline answered with the
-\   other's definitions or at the other's URI
+\   document; with its file open again by another URI and other text, either
+\   document's outline answered with the other's definitions or at the
+\   other's URI
 \   ......................................... workspace-symbol-open-dependency
 \
 \ Go to definition
@@ -191,9 +198,9 @@
 \ - a use of a dependency on disk only, its global or, qualified, its public
 \   word, not answered with the declaring token's range in its text on disk
 \   at its canonical file URI ............................ definition-dependency
-\ - a use of a dependency open with its lines swapped, unsaved, not answered
-\   with its declaring token's range in the text on disk the check read, at
-\   the URI the client opened it by ................. definition-dependency-open
+\ - a use of a dependency open with lines inserted and swapped, unsaved, not
+\   answered with its declaring token's range in the open text, which the
+\   check read, at the URI the client opened it by .. definition-dependency-open
 \ - a use in a document whose file is open by another URI too not answered at
 \   the URI the client opened the document by
 \   ......................................... workspace-symbol-open-dependency
@@ -215,8 +222,8 @@
 \   directory and 1-based line as a fenced habu block, over the use .... hover
 \ - a use of a dependency on disk, its global or, qualified, its public word,
 \   not answered with its declaration there ............... hover-dependency
-\ - a use of a dependency open with its lines swapped, unsaved, not answered
-\   with its declaration in the text on disk, which the check read
+\ - a use of a dependency open with lines inserted and swapped, unsaved, not
+\   answered with its declaration in the open text, which the check read
 \   ...................................................... hover-dependency-open
 \ - a declaring token not answered with its definition, over it
 \   ...................................................... hover-definition
@@ -315,7 +322,8 @@
 \   than there with a tooltip naming the file as hover does; a loader whose
 \   file is not there linked ................................. document-link
 \ - a loader's file open, through a symlink, not linked at the URI the client
-\   opened it by, or linked there before it opened ...... document-link-open
+\   opened it by, or linked there before it opened, or the document requiring
+\   it not checked again once it opens ..................... document-link-open
 \ - a document not open, or params naming none, answered other than -32602
 \   .................................................. document-link-not-open
 \ - links asked with the document's opening answered before the check it
@@ -331,9 +339,9 @@
 \ The files that reach a file
 \ - asked of tools/lsp-workspace.f in the test's own process, over a fixture
 \   tree, since no request asks it yet: a file whose loads reach the file
-\   left out, or one whose loads do not given; a file loading one whose text
-\   on disk loads the file but whose open text does not, or a file whose open
-\   text loads it but whose text on disk does not, left out; a file
+\   left out, or one whose loads do not given; a file whose open text loads
+\   it but whose text on disk does not left out, or a file loading one whose
+\   text on disk loads it but whose open text does not given; a file
 \   that reaches it only through a file outside the workspace left out, or
 \   that file given; a file under .jj-ws/ given; the file itself not given
 \   first, or given when neither the workspace nor an open document holds it;
@@ -374,14 +382,13 @@
 \   ..................................................... references-unverified
 \ - a file whose loads discovery cannot find not named with its reason
 \   ................................................ references-undiscoverable
-\ - a file whose check read the declaring file on disk while the document
-\   open there holds other bytes not named, or its uses listed; once saved,
-\   not the whole answer with no warning .................. references-unsaved
-\ - the same when the open document differs from those bytes only after the
-\   declaration, its span and visit unchanged ............. references-digest
+\ - a file on disk whose loads reach the declaring document, open a line
+\   down and unsaved, named, or its uses not listed ...... references-unsaved
 \ - a declaring file changed on disk since the requesting check read it
 \   answered other than -32803 naming it; once that document is checked
 \   again, not the whole answer ............................. references-stale
+\ - the same when it changed only after the declaration, its span unchanged
+\   ...................................................... references-digest
 \ - the requesting document left out when its loads on disk no longer reach
 \   the declaration its check read ...................... references-requester
 \ - an empty workspaceFolders not winning over rootUri
@@ -484,10 +491,10 @@ using BUF
 \ at 866 and the references conversations at 565 to 1369. CHECKED-MS is about
 \ six times completion's 1482 ms, and no larger. The one bounds 27 runs (the
 \ 24 conversations CONVERSE runs, answers-at-once, stdout-closed and
-\ TEST-EXIT-TIMEOUT's child) and the other 104 conversations. A server that
+\ TEST-EXIT-TIMEOUT's child) and the other 105 conversations. A server that
 \ blocks spends none of the row's CPU budget (test/suite-budget.f CPU-MS), so
-\ all 131 could reach their bounds, each failing by name, within 1152 s (27
-\ times 8 s and 104 times 9 s), inside the row's hang guard (ROW-MS, 1860 s).
+\ all 132 could reach their bounds, each failing by name, within 1161 s (27
+\ times 8 s and 105 times 9 s), inside the row's hang guard (ROW-MS, 1860 s).
 \ One that spins to its bound spends that much of the budget's 360 s, so at
 \ most 40 such held runs, or 45 at CONVERSATION-MS, fail by name before the
 \ budget ends the row.
@@ -514,6 +521,8 @@ create DIR-B HDR-BYTES allot             \ the artifact directory
 create EXP-B HDR-BYTES allot             \ a publish expected
 create PATH-B HDR-BYTES allot            \ a document's path
 create TXT-B HDR-BYTES allot             \ a generated document
+create BESIDE-B HDR-BYTES allot          \ the canonical path of the document open
+create BESIDE-TEXT-B HDR-BYTES allot     \ beside the test's check, and its text
 
 TYPED-VARIABLE IN-W fd                   \ a held conversation's ends of the server's stdin,
 TYPED-VARIABLE OUT-R fd                  \ stdout
@@ -1490,10 +1499,11 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
 
 variable PACKET-NEXT                     \ where the check's next packet starts
 
-\ The test's own check of the text as the file at PATH, whose packets and prose
-\ the server's check of them must publish and write, given what is left of the
-\ conversation's time. The words below read it.
-: CHECKS ( ptr u8 n ptr u8 n -- )
+\ The test's own check of the text as the file at PATH, with the documents open
+\ that OPEN gives, whose packets and prose the server's check of them must
+\ publish and write, given what is left of the conversation's time. The words
+\ below read it.
+: CHECKS-WITH ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
    0 PACKET-NEXT !
    DEADLINE @ PROC-LEFT-MS CHECK:VERIFY-BYTES MATCH CHECK:verdict
       verified OF ENDOF
@@ -1503,6 +1513,23 @@ variable PACKET-NEXT                     \ where the check's next packet starts
       incomplete OF PROC-OUTCOME>RC drop ENDOF
       deferred OF ENDOF
    ;MATCH ;
+
+\ CHECKS-WITH no document open.
+: CHECKS ( ptr u8 n ptr u8 n -- )  [: drop ;] CHECKS-WITH ;
+
+\ The document at PATH is open with this text beside CHECKS-BESIDE's subject.
+: BESIDE! ( ptr u8 n ptr u8 n -- )
+   {: p:ptr pu:n t:ptr tu:n :}
+   p pu SOURCE-ROOT:CANONICAL drop N>BLEN BESIDE-B REPLACE
+   t tu N>BLEN BESIDE-TEXT-B REPLACE ;
+
+\ Gives EACH the document BESIDE! named.
+: BESIDE ( [ ptr u8 n ptr u8 n -- ] -- )
+   {: each :}
+   BESIDE-B SPAN$ BLEN>N BESIDE-TEXT-B SPAN$ BLEN>N each execute ;
+
+\ CHECKS, with the document BESIDE! named open beside the text.
+: CHECKS-BESIDE ( ptr u8 n ptr u8 n -- )  [: BESIDE ;] CHECKS-WITH ;
 
 \ The check's packet AT bytes into its output: the line from there, empty
 \ past the last.
@@ -1695,20 +1722,6 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    A-PATH s" refused" COMPLETED
    A-PATH 2 EXPECT 1 11 1 19 1 s" E-INPUT-UNDERFLOW" DIAG+ PUBLISHES ;
 
-\ A and B, waiting together, are checked in turn, and a save checks both again.
-: SAVE-TURNS ( -- )
-   INITIALIZE
-   A-PATH TEXT-F 1 OPENS
-   B-PATH TEXT-F 1 OPENS
-   SAY
-   HEAR CAPABILITIES
-   A-PATH 1 F-LISTED
-   B-PATH 1 F-LISTED
-   A-PATH SAVES
-   SAY
-   A-PATH 1 F-LISTED
-   B-PATH 1 F-LISTED ;
-
 \ A close publishes an empty list without a version. A opened and closed in one
 \ turn is never checked: that list is all it gets.
 : CLOSE-TURNS ( -- )
@@ -1768,6 +1781,10 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 : DEP-BROKEN ( -- ptr u8 n )  s\" : D ( n -- n ) drop ;\n" ;
 : DEP-FIXED ( -- ptr u8 n )  s\" : D ( n -- n ) ;\n" ;
 
+\ S calling D, and a D its call does not give enough cells.
+: TEXT-SD ( -- ptr u8 n )  s\" require dep.f\n: S ( -- n ) 1 D ;\n" ;
+: DEP-TWO ( -- ptr u8 n )  s\" : D ( n n -- n ) + ;\n" ;
+
 \ dep.f on disk holds this text.
 : DEP-WRITTEN ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -1790,9 +1807,10 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    EXPECT 0 15 0 19 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
 \ S requires dep.f, which is not open. Broken on disk, dep.f gets a list of its
-\ own; fixed and saved, S's check withdraws it. Opened with its fix while
-\ broken on disk, its own check's list stands, and S's check, which reads the
-\ disk, publishes nothing over it: shutdown's reply comes next.
+\ own; fixed on disk, S's next check withdraws it. Opened with its fix while
+\ broken on disk, its own check's list stands, and S, whose check read dep.f,
+\ is checked again over the open text and publishes nothing over that list:
+\ shutdown's reply comes next.
 : DEPENDENCY-TURNS ( -- )
    DEP-BROKEN DEP-WRITTEN
    INITIALIZE
@@ -1802,9 +1820,9 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    TEXT-S S-PATH 1 s" refused" LISTED
    DEP-CANON -1 D-LISTED
    DEP-FIXED DEP-WRITTEN
-   S-PATH SAVES
+   S-PATH TEXT-S 2 CHANGES
    SAY
-   TEXT-S S-PATH 1 s" verified" LISTED
+   TEXT-S S-PATH 2 s" verified" LISTED
    DEP-CANON -1 EXPECT PUBLISHES
    DEP-BROKEN DEP-WRITTEN
    DEP-PATH DEP-FIXED 1 OPENS
@@ -1812,13 +1830,33 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    DEP-FIXED DEP-PATH CHECKS
    DEP-PATH s" verified" COMPLETED
    DEP-PATH 1 EXPECT PUBLISHES
-   S-PATH TEXT-S 2 CHANGES
-   SAY
-   TEXT-S S-PATH 2 s" refused" LISTED ;
+   DEP-PATH DEP-FIXED BESIDE!
+   TEXT-S S-PATH CHECKS-BESIDE
+   S-PATH s" verified" COMPLETED
+   S-PATH 2 EXPECT PUBLISHES ;
 
-\ dep.f, broken on disk, opened and then closed: its close publishes its empty
-\ list, and S's check, which left dep.f to that list while it was open,
-\ publishes dep.f's list from disk again.
+\ S calls D in dep.f, fixed on disk. Opened with a D taking two cells, unsaved,
+\ dep.f has its own list, and S, whose check read dep.f, is checked again with
+\ no save, over the open text: its list holds its call's underflow.
+: DEP-OPEN-EDIT-TURNS ( -- )
+   DEP-FIXED DEP-WRITTEN
+   INITIALIZE
+   S-PATH TEXT-SD 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-SD S-PATH 1 s" verified" LISTED
+   DEP-PATH DEP-TWO 1 OPENS
+   SAY
+   DEP-TWO DEP-PATH 1 s" verified" LISTED
+   DEP-PATH DEP-TWO BESIDE!
+   TEXT-SD S-PATH CHECKS-BESIDE
+   S-PATH s" refused" COMPLETED
+   S-PATH 1 EXPECT 1 15 1 16 1 s" E-INPUT-UNDERFLOW" DIAG+ PUBLISHES ;
+
+\ dep.f, broken on disk, opened and then closed. Open, it has its own list, and
+\ S, whose check read dep.f, is checked again over the open text and leaves
+\ dep.f to that list. dep.f's close publishes its empty list, and S, checked
+\ again, publishes dep.f's list from disk again.
 : DEP-CLOSE-TURNS ( -- )
    DEP-BROKEN DEP-WRITTEN
    INITIALIZE
@@ -1832,11 +1870,48 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    DEP-BROKEN DEP-PATH CHECKS
    DEP-PATH s" refused" COMPLETED
    DEP-PATH 1 D-LISTED
+   DEP-PATH DEP-BROKEN BESIDE!
+   TEXT-S S-PATH CHECKS-BESIDE
+   S-PATH s" refused" COMPLETED
+   S-PATH 1 EXPECT PUBLISHES
    DEP-PATH CLOSES
    SAY
    DEP-PATH -1 EXPECT PUBLISHES
    TEXT-S S-PATH 1 s" refused" LISTED
    DEP-CANON -1 D-LISTED ;
+
+: SV-PATH ( -- ptr u8 n )  s" sv.f" FIXTURE ;
+: SV-NEW-PATH ( -- ptr u8 n )  s" sv-new.f" FIXTURE ;
+: TEXT-SV ( -- ptr u8 n )  s\" require sv-new.f\n: S ( -- ) ;\n" ;
+: TEXT-SV-NEW ( -- ptr u8 n )  s\" : N ( -- ) ;\n" ;
+
+\ sv.f requires sv-new.f, which is open but on no disk: the loader finds no
+\ file to read the open text for, so sv.f's list holds E-MISSING-SOURCE, and
+\ sv-new.f's opening, which sv.f's check did not read, leaves sv.f as it is.
+\ Written to disk and saved, sv-new.f is found: a save leaves every open
+\ document waiting, so sv.f, unchanged, is checked again over the open text
+\ and verifies, and sv-new.f, verified, is checked again too. sv.f comes first:
+\ the server checks the next waiting document after the last one checked,
+\ sv-new.f, wrapping round to the first.
+: SAVE-TURNS ( -- )
+   INITIALIZE
+   SV-PATH TEXT-SV 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-SV SV-PATH CHECKS
+   SV-PATH s" refused" COMPLETED
+   SV-PATH 1 EXPECT 0 0 0 7 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
+   SV-NEW-PATH TEXT-SV-NEW 1 OPENS
+   SAY
+   TEXT-SV-NEW SV-NEW-PATH 1 s" verified" LISTED
+   SV-NEW-PATH TEXT-SV-NEW WRITE-ALL
+   SV-NEW-PATH SAVES
+   SAY
+   SV-NEW-PATH TEXT-SV-NEW BESIDE!
+   TEXT-SV SV-PATH CHECKS-BESIDE
+   SV-PATH s" verified" COMPLETED
+   SV-PATH 1 EXPECT PUBLISHES
+   TEXT-SV-NEW SV-NEW-PATH 1 s" verified" LISTED ;
 
 : LINK-S ( -- ptr u8 n )  s" link/s.f" FIXTURE ;
 : LINK-DEP ( -- ptr u8 n )  s" link/dep.f" FIXTURE ;
@@ -1847,28 +1922,29 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 
 \ The client names S and dep.f through link, a symlink to real, and the
 \ packets name dep.f by its canonical path, under real. Broken on disk, dep.f
-\ gets a list at that canonical URI. Fixed on disk and opened through link, it
-\ has its own list at the link URI, and S's check after a save withdraws the
-\ canonical one.
+\ gets a list at that canonical URI. Opened through link with a D taking two
+\ cells, it has its own list at the link URI, and S, whose check read dep.f,
+\ is checked again over the open text, which it reads under the canonical
+\ path: its list holds its call's underflow, and the canonical one is
+\ withdrawn.
 : DEP-SYMLINK-TURNS ( -- )
    s" real" FIXTURE MAKE-DIR
    s" real" s" link" FIXTURE MAKE-SYMLINK
    REAL-DEP DEP-BROKEN WRITE-ALL
    INITIALIZE
-   LINK-S TEXT-S 1 OPENS
+   LINK-S TEXT-SD 1 OPENS
    SAY
    HEAR CAPABILITIES
-   TEXT-S LINK-S 1 s" refused" LISTED
+   TEXT-SD LINK-S 1 s" refused" LISTED
    REAL-CANON -1 D-LISTED
-   REAL-DEP DEP-FIXED WRITE-ALL
-   LINK-DEP DEP-FIXED 1 OPENS
+   LINK-DEP DEP-TWO 1 OPENS
    SAY
-   DEP-FIXED LINK-DEP 1 s" verified" LISTED
-   LINK-S SAVES
-   SAY
-   TEXT-S LINK-S 1 s" verified" LISTED
-   REAL-CANON -1 EXPECT PUBLISHES
-   DEP-FIXED LINK-DEP 1 s" verified" LISTED ;
+   DEP-TWO LINK-DEP 1 s" verified" LISTED
+   LINK-DEP DEP-TWO BESIDE!
+   TEXT-SD LINK-S CHECKS-BESIDE
+   LINK-S s" refused" COMPLETED
+   LINK-S 1 EXPECT 1 15 1 16 1 s" E-INPUT-UNDERFLOW" DIAG+ PUBLISHES
+   REAL-CANON -1 EXPECT PUBLISHES ;
 
 : T-PATH ( -- ptr u8 n )  s" t.f" FIXTURE ;
 : TEXT-T ( -- ptr u8 n )  s\" require dep.f\n: T ( -- ) ;\n" ;
@@ -2279,7 +2355,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ A query that is no string, or none, is -32602. A file both documents'
 \ checks reached is listed once, from the later check: sym-dep.f changed on
 \ disk and B checked again, B's QUX-NEW and not A's QUX-DEP; B closed, A's
-\ QUX-DEP again, answered before A's next check.
+\ QUX-DEP again, and A, whose check did not read B's file, not checked again.
 : SYMBOL-TURNS ( -- )
    SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
    INITIALIZE
@@ -2341,16 +2417,15 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" 9" SYMBOLS-START
    DEP-SYMBOLS+
    s" QUX-AA" 12 SYM-A-PATH URI-OF 1 2 8 s" " SYMBOL+
-   SYMBOLS-END
-   TEXT-SYM-A2 SYM-A-PATH 2 s" verified" LISTED ;
+   SYMBOLS-END ;
 
 \ The dependency emptied on disk.
 : TEXT-SYM-DEP3 ( -- ptr u8 n )  s\" \\ no definition remains\n" ;
 
 \ Two open documents require sym-dep.f, on disk only, which then loses every
 \ definition, and B is checked again: B's check read it, so none of its
-\ definitions is listed, not even A's older ones; B closed, A's again,
-\ answered before A's next check.
+\ definitions is listed, not even A's older ones; B closed, A's again, and A,
+\ whose check did not read B's file, not checked again.
 : EMPTY-TURNS ( -- )
    SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
    INITIALIZE
@@ -2378,8 +2453,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" 4" SYMBOLS-START
    DEP-SYMBOLS+
    s" QUX-A" 12 SYM-A-PATH URI-OF 1 2 7 s" " SYMBOL+
-   SYMBOLS-END
-   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED ;
+   SYMBOLS-END ;
 
 \ NAV-RETAIN declared, then declared again with a bare ptr, an effect the
 \ registrar refuses.
@@ -2483,14 +2557,14 @@ CK-USE-MAX 1 + constant OVER-USINGS
 
 \ od-dep.f open with text its disk file lacks, then od.f, which requires the
 \ file, open: a query lists REV-EDIT where the document places it, from its
-\ own check, and REV-A, and not REV-DISK, which od.f's check read from disk;
-\ od-dep.f's outline, after od.f's check, is REV-EDIT alone. The file open
-\ again through od-twin.f with its own text: each document's outline is its
-\ own definitions, at the URI the client opened it by, and a use in od-twin.f
-\ is at its declaration there.
-\ od-twin.f closed, and both documents checked again; then od-dep.f closed,
-\ REV-DISK where the file on disk places it, answered before od.f's next
-\ check.
+\ own check, and REV-A; od-dep.f's outline, after od.f's check, is REV-EDIT
+\ alone. The file open again through od-twin.f with its own text: od.f, whose
+\ check read the file, is checked again, each document's outline is its own
+\ definitions, at the URI the client opened it by, and a use in od-twin.f is
+\ at its declaration there.
+\ od-twin.f closed, and od.f checked again; then od-dep.f closed: answered
+\ before od.f's next check, REV-EDIT where that check read it, and once od.f
+\ is checked again, REV-DISK where the file on disk places it.
 : OPEN-DEP-TURNS ( -- )
    OD-DEP-PATH TEXT-OD-DISK WRITE-ALL
    INITIALIZE
@@ -2515,6 +2589,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    OD-TWIN-PATH TEXT-OD-TWIN 1 OPENS
    SAY
    TEXT-OD-TWIN OD-TWIN-PATH 1 s" verified" LISTED
+   TEXT-OD OD-PATH 1 s" verified" LISTED
    s" 5" OD-TWIN-PATH OUTLINE-ASK
    s" 6" OD-DEP-PATH OUTLINE-ASK
    s" 7" OD-TWIN-PATH 3 19 DEFINITION-ASK
@@ -2530,17 +2605,22 @@ CK-USE-MAX 1 + constant OVER-USINGS
    OD-TWIN-PATH CLOSES
    SAY
    OD-TWIN-PATH -1 EXPECT PUBLISHES
-   TEXT-OD-EDIT OD-DEP-PATH 1 s" verified" LISTED
    TEXT-OD OD-PATH 1 s" verified" LISTED
    OD-DEP-PATH CLOSES
    s" 8" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
    SAY
    OD-DEP-PATH -1 EXPECT PUBLISHES
    s" 8" SYMBOLS-START
-   s" REV-DISK" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
+   s" REV-EDIT" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
    s" REV-A" 12 OD-PATH URI-OF 1 2 7 s" " SYMBOL+
    SYMBOLS-END
-   TEXT-OD OD-PATH 1 s" verified" LISTED ;
+   TEXT-OD OD-PATH 1 s" verified" LISTED
+   s" 9" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
+   SAY
+   s" 9" SYMBOLS-START
+   s" REV-DISK" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
+   s" REV-A" 12 OD-PATH URI-OF 1 2 7 s" " SYMBOL+
+   SYMBOLS-END ;
 
 \ path-length's document: the global word Q, then a global word of two bytes on
 \ each line after it, QA to Q9, XA to X9 and ZA to Z9.
@@ -2649,23 +2729,23 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 3" DEF-DEP-CANON URI-OF 4 2 9 LOCATED
    s" 4" DEF-DEP-CANON URI-OF 2 2 9 LOCATED ;
 
-\ def-od-dep.f on disk, and the text its open document holds, its two lines
-\ swapped: DEF-DEPB's token there has the bytes DEF-DEPA's has on disk, and
-\ DEF-DEPA's token, after DEF-DEPB's longer line, those of no token on disk.
+\ def-od-dep.f on disk, and the text its open document holds: three lines
+\ inserted atop and its two lines swapped, so that DEF-DEPB's and DEF-DEPA's
+\ tokens lie on lines the text on disk does not have.
 : DEF-OD-DEP-PATH ( -- ptr u8 n )  s" def-od-dep.f" FIXTURE ;
 : DEF-OD-DEP-CANON ( -- ptr u8 n )  DEF-OD-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
 : DEF-OD-PATH ( -- ptr u8 n )  s" def-od.f" FIXTURE ;
 : TEXT-DEF-OD-DISK ( -- ptr u8 n )
    s\" : DEF-DEPA ( -- n ) 1 ;\n: DEF-DEPB ( -- n n ) 2 3 ;\n" ;
 : TEXT-DEF-OD-EDIT ( -- ptr u8 n )
-   s\" : DEF-DEPB ( -- n n ) 2 3 ;\n: DEF-DEPA ( -- n ) 1 ;\n" ;
+   s\" \\ one\n\\ two\n\\ three\n: DEF-DEPB ( -- n n ) 2 3 ;\n: DEF-DEPA ( -- n ) 1 ;\n" ;
 : TEXT-DEF-OD ( -- ptr u8 n )
    s\" require def-od-dep.f\n: DEF-USE ( -- n ) DEF-DEPA DEF-DEPB + + ;\n" ;
 
-\ def-od-dep.f open with its lines swapped, unsaved, then def-od.f, which
-\ requires it and whose check reads it from disk: the uses of DEF-DEPA and
-\ DEF-DEPB, each answered with its declaring token's range in the text on
-\ disk, at the URI the client opened def-od-dep.f by.
+\ def-od-dep.f open with its edit, unsaved, then def-od.f, which requires it
+\ and whose check reads its open text: the uses of DEF-DEPA and DEF-DEPB, each
+\ answered with its declaring token's range in that text, at the URI the
+\ client opened def-od-dep.f by.
 : DEF-OPEN-DEP-TURNS ( -- )
    DEF-OD-DEP-PATH TEXT-DEF-OD-DISK WRITE-ALL
    INITIALIZE
@@ -2679,8 +2759,8 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 3" DEF-OD-PATH 1 19 DEFINITION-ASK
    s" 4" DEF-OD-PATH 1 28 DEFINITION-ASK
    SAY
-   s" 3" DEF-OD-DEP-PATH URI-OF 0 2 10 LOCATED
-   s" 4" DEF-OD-DEP-PATH URI-OF 1 2 10 LOCATED ;
+   s" 3" DEF-OD-DEP-PATH URI-OF 4 2 10 LOCATED
+   s" 4" DEF-OD-DEP-PATH URI-OF 3 2 10 LOCATED ;
 
 \ A position in a document the client never opened: -32602.
 : DEF-NOT-OPEN-TURNS ( -- )
@@ -2956,9 +3036,9 @@ variable LENGTH-N                        \ the length of its directory's name
    TXT-B CLEAR s\" ```habu\n: DEF-PUB ( -- n )\n\\ package dd, " HV+ DEF-DEP-CANON WHERE+ s\" :3\n```" HV+
    s" 4" s" markdown" 1 27 37 HOVERED ;
 
-\ def-od-dep.f open with its lines swapped, unsaved, then def-od.f, which
-\ requires it and whose check reads it from disk: the uses of DEF-DEPA and
-\ DEF-DEPB, each answered with its declaration in the text on disk.
+\ def-od-dep.f open with its edit, unsaved, then def-od.f, which requires it
+\ and whose check reads its open text: the uses of DEF-DEPA and DEF-DEPB, each
+\ answered with its declaration in that text.
 : HOVER-OPEN-DEP-TURNS ( -- )
    DEF-OD-DEP-PATH TEXT-DEF-OD-DISK WRITE-ALL
    MARKDOWN-CLIENT
@@ -2972,9 +3052,9 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 3" DEF-OD-PATH 1 19 HOVER-ASK
    s" 4" DEF-OD-PATH 1 28 HOVER-ASK
    SAY
-   TXT-B CLEAR s\" ```habu\n: DEF-DEPA ( -- n )\n\\ " HV+ DEF-OD-DEP-CANON WHERE+ s\" :1\n```" HV+
+   TXT-B CLEAR s\" ```habu\n: DEF-DEPA ( -- n )\n\\ " HV+ DEF-OD-DEP-CANON WHERE+ s\" :5\n```" HV+
    s" 3" s" markdown" 1 19 27 HOVERED
-   TXT-B CLEAR s\" ```habu\n: DEF-DEPB ( -- n n )\n\\ " HV+ DEF-OD-DEP-CANON WHERE+ s\" :2\n```" HV+
+   TXT-B CLEAR s\" ```habu\n: DEF-DEPB ( -- n n )\n\\ " HV+ DEF-OD-DEP-CANON WHERE+ s\" :4\n```" HV+
    s" 4" s" markdown" 1 28 36 HOVERED ;
 
 \ HV-ONE's declaring token, at its first character and its last, answered
@@ -3418,7 +3498,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 \ The test's own check of this text as the file at PATH: whether it was
 \ verified.
 : ID-CHECK ( ptr u8 n ptr u8 n -- bool )
-   CHECKED-MS >MS CHECK:VERIFY-BYTES MATCH CHECK:verdict
+   [: drop ;] CHECKED-MS >MS CHECK:VERIFY-BYTES MATCH CHECK:verdict
       verified OF true ENDOF
       refused OF false ENDOF
       engine-provided OF false ENDOF
@@ -3956,8 +4036,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 \ lk.f, opened through lk-link, a symlink to lk-real, requires lk-dep.f, on
 \ disk there: its link is at lk-dep.f's canonical file URI, under lk-real,
 \ until lk-dep.f is opened through lk-link, and then at the URI the client
-\ opened it by. That open leaves lk.f's check as it was, and lk-dep.f is
-\ checked after the links are answered.
+\ opened it by. That open has lk.f, whose check read lk-dep.f, checked again
+\ before the links are answered, and lk-dep.f checked after them.
 : LINK-OPEN-TURNS ( -- )
    s" lk-real" FIXTURE MAKE-DIR
    s" lk-real" s" lk-link" FIXTURE MAKE-SYMLINK
@@ -3973,6 +4053,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
    LK-LINK-DEP TEXT-LK-LOADED 1 OPENS
    s" 4" LK-LINK-DOC LINKS-ASK
    SAY
+   TEXT-LK-ONE LK-LINK-DOC 1 s" verified" LISTED
    s" 4" LINKS-START 0 8 16 LK-LINK-DEP READ-LINK+ LINKS-END
    TEXT-LK-LOADED LK-LINK-DEP 1 s" verified" LISTED ;
 
@@ -4145,14 +4226,15 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    SB$ T-LABEL
    WS-ANSWER$ w wu T$= ;
 
-\ Each case's document is one the walk gives anyway, but for p/a7, whose loads
-\ reach no f7: it is given in its place by path.
+\ Each case's document is one the walk gives anyway, but for a2, whose loads
+\ reach no f2 once b2's open text drops its load, and p/a7, whose loads reach
+\ no f7: each is given in its place by path.
 : WORKSPACE-REACHING ( -- )
    WS-TREE
    s" graph" FIXTURE SOURCE-ROOT:CANONICAL drop nip 1+ WS-ROOT-U !
    s" w" IN-GRAPH LSP-WORKSPACE:ROOT+
    s" w/f1.f" s" w/a1.f" s" w/f1.f w/a1.f w/b1.f" REACHES
-   s" w/f2.f" s" w/a2.f" s" w/f2.f w/a2.f w/b2.f" REACHES
+   s" w/f2.f" s" w/a2.f" s" w/f2.f w/a2.f" REACHES
    s" w/f3.f" s" w/c3.f" s" w/f3.f w/c3.f" REACHES
    s" w/f4.f" s" w/a4.f" s" w/f4.f w/a4.f" REACHES
    s" out/b4.f" s" w/a4.f" s" w/a4.f" REACHES
@@ -4508,9 +4590,8 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-ld/w/d.f" OPEN-URI 1 14 18 REF+
    SYMBOLS-END ;
 
-\ f.f open a line down, unsaved: s.f's check reads the file on disk, so s.f
-\ is named and the answer holds the open document's declaration alone. Once
-\ saved, the whole answer and no warning.
+\ f.f open a line down, unsaved: s.f's check reads the open text, so the
+\ answer is whole, with no warning.
 : REFS-UNSAVED-TURNS ( -- )
    s" refs-uns" REFS-DIR s" refs-uns/w" REFS-DIR
    s" refs-uns/w/f.f" TEXT-RF REFS-FILE
@@ -4522,51 +4603,43 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    TEXT-RF-MOVED s" refs-uns/w/f.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-uns/w/f.f" FIXTURE 1 2 DECL-TOO REFS-ASK
    SAY
-   1 NAMED s" refs-uns/w/s.f" CANON s" digest differs" NAMED+ NAMED-END
-   s" 3" SYMBOLS-START s" refs-uns/w/f.f" OPEN-URI 1 2 6 REF+ SYMBOLS-END
-   s" refs-uns/w/f.f" TEXT-RF-MOVED REFS-FILE
-   s" refs-uns/w/f.f" FIXTURE SAVES
-   s" 4" s" refs-uns/w/f.f" FIXTURE 1 2 DECL-TOO REFS-ASK
-   SAY
-   TEXT-RF-MOVED s" refs-uns/w/f.f" FIXTURE 1 s" verified" LISTED
-   s" 4" SYMBOLS-START
+   s" 3" SYMBOLS-START
    s" refs-uns/w/f.f" OPEN-URI 1 2 6 REF+
    s" refs-uns/w/s.f" DISK-URI 1 14 18 REF+
    SYMBOLS-END ;
 
-\ f.f open with a comment line after the declaration, unsaved: the declaring
-\ token's span and visit match what s.f's check read on disk, and only the
-\ digest tells them apart, so s.f is named and the answer holds the open
-\ document's declaration alone. Once saved, the whole answer and no warning.
+\ f.f given a comment line after the declaration on disk after d.f's check
+\ read it: the declaration keeps its place, but the text no longer has the
+\ digest that check read, -32803 naming it. Once a change has d.f checked
+\ again, the whole answer.
 : REFS-DIGEST-TURNS ( -- )
    s" refs-dig" REFS-DIR s" refs-dig/w" REFS-DIR
    s" refs-dig/w/f.f" TEXT-RF REFS-FILE
-   s" refs-dig/w/s.f" TEXT-RS REFS-FILE
+   s" refs-dig/w/d.f" TEXT-RD REFS-FILE
    s" refs-dig/w" ROOT-URI+ PAR$ INITIALIZE-WITH
-   s" refs-dig/w/f.f" FIXTURE TEXT-RF-TAIL 1 OPENS
+   s" refs-dig/w/d.f" FIXTURE TEXT-RD 1 OPENS
    SAY
    HEAR CAPABILITIES
-   TEXT-RF-TAIL s" refs-dig/w/f.f" FIXTURE 1 s" verified" LISTED
-   s" 3" s" refs-dig/w/f.f" FIXTURE 0 2 DECL-TOO REFS-ASK
-   SAY
-   1 NAMED s" refs-dig/w/s.f" CANON s" digest differs" NAMED+ NAMED-END
-   s" 3" SYMBOLS-START s" refs-dig/w/f.f" OPEN-URI 0 2 6 REF+ SYMBOLS-END
+   TEXT-RD s" refs-dig/w/d.f" FIXTURE 1 s" verified" LISTED
    s" refs-dig/w/f.f" TEXT-RF-TAIL REFS-FILE
-   s" refs-dig/w/f.f" FIXTURE SAVES
-   s" 4" s" refs-dig/w/f.f" FIXTURE 0 2 DECL-TOO REFS-ASK
+   s" 3" s" refs-dig/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
-   TEXT-RF-TAIL s" refs-dig/w/f.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-dig/w/f.f" CANON FAILED
+   s" refs-dig/w/d.f" FIXTURE TEXT-RD 2 CHANGES
+   s" 4" s" refs-dig/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
+   SAY
+   TEXT-RD s" refs-dig/w/d.f" FIXTURE 2 s" verified" LISTED
    s" 4" SYMBOLS-START
-   s" refs-dig/w/f.f" OPEN-URI 0 2 6 REF+
-   s" refs-dig/w/s.f" DISK-URI 1 14 18 REF+
+   s" refs-dig/w/f.f" DISK-URI 0 2 6 REF+
+   s" refs-dig/w/d.f" OPEN-URI 1 14 18 REF+
    SYMBOLS-END ;
 
 : TEXT-RDB ( -- ptr u8 n )  s\" require b.f\n: DU ( -- n ) ROOK ;\n" ;
 : TEXT-RSTL ( -- ptr u8 n )  s\" require ../lib/f.f\n: DU ( -- n ) ROOK ;\n" ;
 
 \ lib/f.f, outside the folder, moved a line down on disk after d.f's check
-\ read it: the declaration cannot be placed, -32803 naming it. Once d.f is
-\ checked again, the whole answer.
+\ read it: the declaration cannot be placed, -32803 naming it. Once a change
+\ has d.f checked again, the whole answer.
 : REFS-STALE-TURNS ( -- )
    s" refs-stl" REFS-DIR s" refs-stl/lib" REFS-DIR s" refs-stl/w" REFS-DIR
    s" refs-stl/lib/f.f" TEXT-RF REFS-FILE
@@ -4580,10 +4653,10 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" 3" s" refs-stl/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
    s" 3" s" refs-stl/lib/f.f" CANON FAILED
-   s" refs-stl/w/d.f" FIXTURE SAVES
+   s" refs-stl/w/d.f" FIXTURE TEXT-RSTL 2 CHANGES
    s" 4" s" refs-stl/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
-   TEXT-RSTL s" refs-stl/w/d.f" FIXTURE 1 s" verified" LISTED
+   TEXT-RSTL s" refs-stl/w/d.f" FIXTURE 2 s" verified" LISTED
    s" 4" SYMBOLS-START
    s" refs-stl/lib/f.f" DISK-URI 1 2 6 REF+
    s" refs-stl/w/d.f" OPEN-URI 1 14 18 REF+
@@ -5057,13 +5130,14 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" diagnostics-require" [: REQUIRE-TURNS ;] TALK
    s" diagnostics-supersede" [: SUPERSEDE-TURNS ;] TALK
    s" diagnostics-one-refusal" [: ONE-REFUSAL-TURNS ;] TALK
-   s" save-dirties-all" [: SAVE-TURNS ;] TALK
    s" close" [: CLOSE-TURNS ;] TALK
    s" engine-provided" [: ENGINE-TURNS ;] TALK
    s" utf16-column" [: UTF16-TURNS ;] TALK
    s" big-frame" [: BIG-TURNS ;] TALK
    s" dependency" [: DEPENDENCY-TURNS ;] TALK
+   s" dependency-open-edit" [: DEP-OPEN-EDIT-TURNS ;] TALK
    s" dependency-close" [: DEP-CLOSE-TURNS ;] TALK
+   s" dependency-saved" [: SAVE-TURNS ;] TALK
    s" dependency-symlink" [: DEP-SYMLINK-TURNS ;] TALK
    s" dependency-shared" [: DEP-SHARED-TURNS ;] TALK
    s" two-in-turn" [: TWO-TURNS ;] TALK
@@ -5099,6 +5173,8 @@ public
    EXP-B READY
    PATH-B READY
    TXT-B READY
+   BESIDE-B READY
+   BESIDE-TEXT-B READY
    SNAP-B READY
    WAS-B READY
    WS-B READY

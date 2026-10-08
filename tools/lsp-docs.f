@@ -123,6 +123,14 @@ public
    loop
    OPTION:NONE ;
 
+\ Gives EACH the canonical path and text of every open document, in slot
+\ order, but the one in slot N; -1 for none.
+: DOC-EACH-BUT ( n [ ptr u8 n ptr u8 n -- ] -- )
+   {: but:n each :}
+   SLOT-COUNT @ 0 ?do
+      i LIVE? i but <> and if i DOC-CANON$ i DOC-TEXT$ each execute then
+   loop ;
+
 \ The slot of the open document with this URI.
 : DOC-FIND ( ptr u8 n -- option<n> )  URI-AT HOLDER ;
 
