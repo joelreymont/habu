@@ -32,10 +32,13 @@ does not follow one yet, its **Now** line says what differs.
    **Now:** engine-internal primitives sit in the global dictionary and are
    refused by marks (`DNAME-INT`, the trusted-only flag, `DNAME-OWNED`);
    `PPRIM:`/`EPPRIM:` owner rows type words per package.
-5. **One package seal guard.** Reopening a sealed package is refused by one
-   implementation.
-   **Now:** `src/habu/packages.f` `PKG-SEAL-GUARD` and `src/habu/habu2.f`
-   `C-PACKAGE-SEAL-GUARD` both exist.
+5. **A sealed package cannot be reopened.** `package NAME` on a sealed package
+   is refused.
+   **Now:** the refusal is written twice because `package` is: in the engine's
+   machine code (`src/habu/habu2.f` `C-PACKAGE`, `C-PACKAGE-SEAL-GUARD`) and in
+   a second interpret loop written in Habu (`src/habu/interpret.f`
+   `OUTER:INTERPRET`, with `src/habu/packages.f` `PKG-PACKAGE`,
+   `PKG-SEAL-GUARD`), which only tests load.
 6. **Two ways to build an engine.** The Gforth bootstrap makes one from zero.
    The snapshot build (`tools/native-build.f`) loads the sources into a running
    engine and captures its memory; it alone makes the product. The test suite
