@@ -15,6 +15,13 @@ defer HOOK ( n -- n )
 : COMMENTS ( n -- n ) ( zdup 77 )
    dup  \ ignored by source reconstruction
    * 3 + ;
+\ Each variant's tag differs from the pads its family declares for it, so a
+\ match arm's event cannot pass with its two arguments swapped.
+ENUM shape 0
+   VARIANT dot ;VARIANT
+   VARIANT bar FIELD size n ;VARIANT
+   VARIANT box FIELD wide n FIELD high n FIELD deep n ;VARIANT
+;ENUM
 ;package
 
 package NFEED-TEST
@@ -303,6 +310,106 @@ create INPUT TEXT-CAP allot
    [: 0 U-VIEW @ NFEED:RECORD-WINDOW ;] E-NCOMP-BINDING TTHROWSQ
    NFEED:OBSERVE ;
 
+\ An observer of its own records each token's class as it is handed over, and
+\ once told the verdict asks the tape what the checker judged each of those
+\ tokens to be, by the token's ordinal. A row holds the token's class and its
+\ event's kind, a0 and a1.
+32 constant OBS-CAP
+create OBS-ROWS OBS-CAP 4 * cells allot
+variable OBS-N
+
+: OBS@ ( n n -- n )
+   {: row:n col:n :}
+   row 4 * col + cells OBS-ROWS + @ ;
+
+: OBS! ( n n n -- )
+   {: v:n row:n col:n :}
+   v  row 4 * col + cells OBS-ROWS +  ! ;
+
+: OBS-SCAN ( ptr u8 n -- ) 2drop ;
+
+: OBS-TOKEN ( ptr u8 n n n n n -- )
+   {: a:ptr u:n off:n ru:n class:n first:n :}
+   OBS-N @ {: row:n :}
+   row OBS-CAP < IF class row 0 OBS! THEN
+   row 1 + OBS-N ! ;
+
+: OBS-EVENT ( n -- )
+   {: row:n :}
+   row CHECKER-TAPE:EVENT {: kind:n a0:n a1:n :}
+   kind row 1 OBS!  a0 row 2 OBS!  a1 row 3 OBS! ;
+
+: OBS-DONE ( ptr u8 n n -- )
+   2drop drop
+   OBS-N @ OBS-CAP min 0 ?do i OBS-EVENT loop ;
+
+\ Check the text under this observer, then give the tape back to the
+\ compiler's own.
+: OBSERVED ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   0 OBS-N !
+   72 [: OBS-SCAN ;] [: OBS-TOKEN ;] [: OBS-DONE ;] CHECKER-TAPE:INSTALL
+   CHECKER-TAPE:ARM
+   a u CHECK! -1 T=
+   CHECKER-TAPE:DISARM
+   NFEED:OBSERVE ;
+
+: OBS= ( n n n n n -- )
+   {: row:n class:n kind:n a0:n a1:n :}
+   row 0 OBS@ class T=  row 1 OBS@ kind T=
+   row 2 OBS@ a0 T=  row 3 OBS@ a1 T= ;
+
+using CHECKER-TAPE
+
+\ Two locals, the second named 1: its reference keeps the class its spelling
+\ gives while its event says it reads a local. A literal's event carries its
+\ value, and the token after a judged one carries only its own class.
+: LOCAL-EVENTS ( -- )
+   s" an observer reads each token's event by its ordinal once told the verdict" T-LABEL
+   s" NF-EV-LOCALS ( n n -- n ) {: x:n 1:n :} 1 x + 7 +" OBSERVED
+   OBS-N @ 10 T=
+   0 K-NAME K-NAME 0 0 OBS=
+   1 K-NAME K-OPERAND 0 0 OBS=
+   2 K-NAME K-LOCAL-DECL 0 0 OBS=
+   3 K-NAME K-LOCAL-DECL 1 0 OBS=
+   4 K-NAME K-LOCAL-CLOSE 0 0 OBS=
+   5 K-INT K-LOCAL-REF 1 0 OBS=
+   6 K-NAME K-LOCAL-REF 0 0 OBS=
+   7 K-NAME K-NAME 0 0 OBS=
+   8 K-INT K-INT 7 0 OBS=
+   9 K-NAME K-NAME 0 0 OBS= ;
+
+\ Arms out of declaration order: each arm's event names its variant's tag and
+\ declared pads, and the match opens and closes on one family.
+: ARM-EVENTS ( -- )
+   s" a match arm's event names its variant's tag and declared pads" T-LABEL
+   s" NF-EV-MATCH ( NFEED-FIXTURE:shape -- n ) MATCH NFEED-FIXTURE:shape box OF + + ENDOF dot OF 5 ENDOF bar OF ENDOF ;MATCH" OBSERVED
+   OBS-N @ 16 T=
+   2 1 OBS@ K-MATCH T=  2 3 OBS@ 0 T=
+   15 1 OBS@ K-MATCH-END T=  15 3 OBS@ 0 T=
+   2 2 OBS@ 15 2 OBS@ T=  2 2 OBS@ 0 T<>
+   3 K-NAME K-MATCH-ARM 2 0 OBS=
+   4 K-NAME K-MATCH-OF 0 0 OBS=
+   5 K-NAME K-NAME 0 0 OBS=
+   8 K-NAME K-MATCH-ARM 0 3 OBS=
+   12 K-NAME K-MATCH-ARM 1 2 OBS= ;
+
+;using
+
+\ An observer that throws while a token is handed over stops the check before
+\ the definition is published, so the same name checks again afterwards.
+: THROW-TOKEN ( ptr u8 n n n n n -- ) 2drop 2drop 2drop 77 throw ;
+: ABORT-ONE ( -- ) s" NF-ABORT ( -- n ) 1" CHECK! -1 T= ;
+: ABORTED ( -- )
+   73 [: OBS-SCAN ;] [: THROW-TOKEN ;] [: OBS-DONE ;] CHECKER-TAPE:INSTALL
+   CHECKER-TAPE:ARM
+   s" an observer's throw aborts the check it observes" T-LABEL
+   [: ABORT-ONE ;] 77 TTHROWSQ
+   CHECKER-TAPE:DISARM
+   NFEED:OBSERVE
+   s" an aborted check publishes nothing" T-LABEL
+   [: ABORT-ONE ;] 0 TTHROWSQ ;
+
 : PARSED? ( ptr u8 n -- bool )
    num-parse {: v:n flt:bool ok:bool :} ok ;
 
@@ -363,6 +470,9 @@ public
    BND [: CAPACITY ;] IR-CTX:WITH-CONTEXT
    s" a sealed unit refuses a later observer's checker window" T-LABEL
    BND [: STALE-WINDOW ;] IR-CTX:WITH-CONTEXT
+   LOCAL-EVENTS
+   ARM-EVENTS
+   ABORTED
    T-REPORT ;
 ;package
 NFEED-TEST:RUN

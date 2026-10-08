@@ -243,6 +243,10 @@ $3D0 constant VERIFY-TRUST-OFF
 \ an export the symbol of the word it exports, through any re-exports;
 \ otherwise the symbol itself.
 $3D8 constant VERIFY-SYM-SOURCE-OFF
+\ A local's final width (src/core/checker.f LOCW-HW@): ( n -- n ), the cells
+\ the local of bind sequence n holds once its body is checked. The tape's
+\ K-LOCAL-DECL and K-LOCAL-REF events carry that sequence.
+$3E0 constant LOCAL-WIDTH-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

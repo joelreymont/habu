@@ -133,6 +133,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -150,7 +151,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:VERIFY-SYM-SOURCE-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:LOCAL-WIDTH-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -922,6 +923,7 @@ defer CTOR-STEP-XT ( n -- bool )                        \ generated-constructor 
 defer MATCH-FAM-XT ( ptr u8 n -- n bool )               \ item 9 MATCH family resolve, signature scope
 defer MATCH-VAR-XT ( ptr u8 n n -- n bool )             \ variant tail -> SUMV id within a family
 defer MATCH-VTAG-XT ( n -- n )                           \ SUMV id -> declaration-order tag (seen-bitset index)
+defer VARIANT-PADS-XT ( n n -- n )                       \ family id + SUMV id -> the pads its family declares for that variant
 defer MATCH-VCOUNT-XT ( n -- n )                        \ family id -> variant count (exhaustiveness domain)
 defer MATCH-PAY-XT ( n n n -- n )                        \ vid famterm row -- row + instantiated payload
 defer FIELD-PROJ-XT ( n n n -- n bool )                 \ field-id off famterm -- fieldterm ok : instantiated field type from a committed field id + the input pointer's family args (dot habu-checker-type-structure)
@@ -10835,7 +10837,7 @@ PPRIM;
 \ ... and the policy asks the capture in progress whether a record ships named.
 PPRIM: CHECKER-SWEEP NAMED? PE-N PE-IN PE-F PE-OUT PPRIM;
 \ The source-tape observer's arming surface (dot habu-feed-the-src-f7ed8733).
-\ Checked callers may install and arm an observer: it is called before a token
+\ Checked callers may install and arm an observer: it is called after a token
 \ is judged and its answer is never read, so it can abort a compilation but
 \ never accept one, and it needs no trust boundary to hold the checker sound.
 PPRIM: CHECKER-TAPE INSTALL
@@ -10848,6 +10850,7 @@ PPRIM: CHECKER-TAPE ARM PPRIM;
 PPRIM: CHECKER-TAPE INSTALLED-BY PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE DISARM PPRIM;
 PPRIM: CHECKER-TAPE ADVANCE PPRIM;
+PPRIM: CHECKER-TAPE EVENT PE-N PE-IN PE-N PE-OUT PE-N PE-OUT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-NAME PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-INT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-REAL PE-N PE-OUT PPRIM;
@@ -12515,6 +12518,12 @@ package CHECKER-RESOLVE
 CAST: N>REC ( n -- ptr n )
 public
 : REC-AT ( n -- ptr n ) DICT-WORDLIST-SLOT 1+ cells * dbase@ + N>REC ;
+\ Its inverse, the index the bound window and the tape's K-TICK and K-IS name a
+\ record by; 0, an index no record has, names none.
+: REC>INDEX ( ptr n -- n )
+   {: rec:ptr :}
+   rec NULL-PTR = IF 0 EXIT THEN
+   rec BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ - DICT-WORDLIST-SLOT 1+ cells / ;
 ;package
 
 \ The used slot whose public wordlist is wid, or -1. The engine's USE-WIDS and
@@ -13477,9 +13486,7 @@ variable BGLUE-I
       0 i CHECKER-OWNER-ABI:BOUND-ENTRY BWIN-AT !
       0 i CHECKER-OWNER-ABI:BOUND-FLAGS BWIN-AT !
    ELSE
-      TOK-REC @ BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ -
-         DICT-WORDLIST-SLOT 1+ cells /
-         i CHECKER-OWNER-ABI:BOUND-RECORD BWIN-AT !
+      TOK-REC @ CHECKER-RESOLVE:REC>INDEX i CHECKER-OWNER-ABI:BOUND-RECORD BWIN-AT !
       TOK-REC @ CK-REC-WID i CHECKER-OWNER-ABI:BOUND-WID BWIN-AT !
       TOK-REC @ @ i CHECKER-OWNER-ABI:BOUND-ENTRY BWIN-AT !
       TOK-REC @ 2 cells + @ i CHECKER-OWNER-ABI:BOUND-FLAGS BWIN-AT !
@@ -13919,6 +13926,97 @@ variable MWIN-VAL                    \ and this is it
    REC-ON @ 0= IF EXIT THEN
    w MWIN-VAL !  -1 MWIN-HIT ! ;
 
+\ ---- what the source tape says each token was ---------------------------------
+\ The tape's events name what a codegen reads (docs/compilation.md "Defining a
+\ word"), so the checker records each fact where it judges the token and no
+\ codegen reads a checker internal. The table below holds them, one row per
+\ token, and the observer reads it through CHECKER-TAPE:EVENT.
+package CHECKER-TAPE
+public
+
+\ The reader's own token vocabulary, as codes an observer can store. `name` is
+\ every token to be resolved later. String classes preserve the opener's
+\ counted, printed or address/length behavior, and the
+\ bytes reported for it are its BODY rather than the opener that introduced it —
+\ the opener is what the reader read, the body is what the literal is, and a
+\ stage that has to compile one needs the second. These classes are closed: an
+\ observer that meets something else has met a construct this reader does not
+\ have, which is a class to add here rather than a number to smuggle past.
+\ An event (CHECKER-TAPE:EVENT) is a kind and two arguments, a0 and a1, zero
+\ where none is named; a token no step judged further is an event of its class.
+0 constant K-NAME
+1 constant K-INT                \ a0: the value
+2 constant K-REAL               \ a0: the value's bits
+3 constant K-STRING
+4 constant K-CHAR               \ a0: the payload's first byte
+5 constant K-COUNTED-STRING
+6 constant K-PRINTED-STRING
+\ The kinds below are what the checker judged a token to be, which its
+\ spelling does not say: a local named 1 is a K-LOCAL-REF of class K-INT.
+7 constant K-CONTROL            \ a0: the marker's place in CF-TOK?'s list
+8 constant K-LOCAL-DECL         \ a0: the local's bind sequence
+9 constant K-LOCAL-REF          \ a0: the bind sequence it reads
+10 constant K-LOCAL-CLOSE       \ the `:}` that binds the group
+11 constant K-CONSTRUCT         \ a0: variant tag, a1: pads its family declares for it
+12 constant K-MATCH             \ a0: family id
+13 constant K-MATCH-ARM         \ a0: variant tag, a1: pads its family declares for it
+14 constant K-MATCH-OF
+15 constant K-MATCH-END         \ a0: family id
+16 constant K-TICK              \ a0: the target's record index, 0 for none
+17 constant K-IS                \ a0: the target's record index, 0 for none
+18 constant K-OPERAND           \ consumed by its keyword, compiling nothing itself
+
+;package
+
+\ The event the token now being judged publishes, latched by the step that
+\ judged it and filed by the report that follows (SCAN-REPORT), as MWIN-HIT is.
+\ The walk clears it each turn; outside a recording unit nothing is latched.
+variable EV-HIT   variable EV-KIND   variable EV-A0   variable EV-A1
+
+: EVENT! ( n n n -- )
+   {: kind:n a0:n a1:n :}
+   REC-ON @ 0= IF EXIT THEN
+   kind EV-KIND !  a0 EV-A0 !  a1 EV-A1 !  -1 EV-HIT ! ;
+
+: EV-OPERAND ( -- )
+   CHECKER-TAPE:K-OPERAND 0 0 EVENT! ;
+
+\ A construction's or a match arm's variant: its declaration-order tag and the
+\ pads its family declares for it.
+: EV-VARIANT ( n n n -- )
+   {: kind:n fam:n vid:n :}
+   kind  vid MATCH-VTAG-XT  fam vid VARIANT-PADS-XT  EVENT! ;
+
+\ The table of events: one row, a kind, a0 and a1, per token a scan reports.
+\ Row i is the token at ordinal EV-LO + i. A scan starts the table at the
+\ ordinal its first token takes - 0 for a definition's body, and for every pass
+\ of it, since a retry rewinds REC-IX (CHECK-RETRY) - so the table holds one
+\ pass, and once the last pass is judged it holds the scan that publishes. It is
+\ a process-local mapping that REC-RELEASE gives back, so no image carries one.
+PTR-VARIABLE EV-P   variable EV-CAP
+variable EV-LO   variable EV-N
+3 constant EV-ROW
+
+: EV-START ( -- )
+   REC-IX @ EV-LO !  0 EV-N ! ;
+
+: EV-RELEASE ( -- )
+   EV-P EV-CAP EV-ROW ARENA-ROWS-RELEASE
+   0 EV-LO !  0 EV-N ! ;
+
+\ File the event of the token at ordinal ORD. Every report files one row as it
+\ takes its ordinal, in order, so ORD is always the table's next row; one that
+\ is not would misfile every row after it, and dies instead.
+: EV-FILE ( n n n n -- )
+   {: kind:n a0:n a1:n ord:n :}
+   ord EV-LO @ EV-N @ + <> IF
+      s" checker: a source-tape event filed out of its token's order" 76 die
+   THEN
+   EV-P EV-CAP EV-N @ 1 + EV-ROW ARENA-ROWS-ENSURE
+   EV-P EV-N @ EV-ROW NAV-CELL {: p:ptr :}
+   kind p !  a0 p CELL + !  a1 p 2 cells + !
+   EV-N @ 1 + EV-N ! ;
+
 \ ---- the recording unit's lifecycle ------------------------------------------
 \ Opened by the observer that wants the tape, so all facts describe exactly the
 \ definition that tape is of. Recording stops with the unit; the rows stay,
@@ -13934,7 +14032,7 @@ variable MWIN-VAL                    \ and this is it
 : REC-RELEASE ( -- )
    REC-OFF
    0 REC-IX !
-   MWIN-RESET  CWIN-RELEASE  BWIN-RELEASE ;
+   MWIN-RESET  CWIN-RELEASE  BWIN-RELEASE  EV-RELEASE ;
 
 : REC-COMMIT ( -- )
    REC-ON @ 0= IF EXIT THEN
@@ -16262,15 +16360,17 @@ variable FLD  variable FLI  variable FLO  variable FLC
    FLD @ 1 = FLO @ 0 <> and
    u 0 > IF a u 1 - + c@ 46 = IF drop RES-FALSE THEN THEN ;
 
-: FLOAT-LITERAL-ADMITTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+\ A literal's value as the engine parses it (a real's bits), and whether the
+\ engine admits it.
+: FLOAT-LITERAL-ADMITTED? ( ptr u8 n -- n bool )
+   {: a:ptr u:n :}
    a u num-parse {: v:n flt:bool ok:bool :}
-   v drop
-   flt ok and ;
+   v  flt ok and ;
 
-: INTEGER-LITERAL-ADMITTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: INTEGER-LITERAL-ADMITTED? ( ptr u8 n -- n bool )
+   {: a:ptr u:n :}
    a u num-parse {: v:n flt:bool ok:bool :}
-   v drop
-   flt 0= ok and ;
+   v  flt 0= ok and ;
 
 \ The engine's definers inside a body, by the identity of the word the token
 \ binds (TOK-INTRINSIC below).
@@ -16290,13 +16390,18 @@ variable FLD  variable FLI  variable FLO  variable FLC
    THEN
    RES-TRUE ;
 
-: LITERAL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: LITERAL-TOK? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
    a u ALLDIG? IF
-      a u INTEGER-LITERAL-ADMITTED? IF STEP-N-OUT ELSE 0 OK ! -1 FAILSET ! THEN
+      a u INTEGER-LITERAL-ADMITTED? IF
+         CHECKER-TAPE:K-INT swap 0 EVENT!  STEP-N-OUT
+      ELSE drop 0 OK ! -1 FAILSET ! THEN
       RES-TRUE EXIT
    THEN
    a u FLODIG? IF
-      a u FLOAT-LITERAL-ADMITTED? IF STEP-R-OUT ELSE 0 OK ! -1 FAILSET ! THEN
+      a u FLOAT-LITERAL-ADMITTED? IF
+         CHECKER-TAPE:K-REAL swap 0 EVENT!  STEP-R-OUT
+      ELSE drop 0 OK ! -1 FAILSET ! THEN
       RES-TRUE EXIT
    THEN
    RES-FALSE ;
@@ -17215,6 +17320,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    off bytes SCOPE-FIELD-FACTS ;
 
 : SCOPE-FIELD-TOK ( ptr u8 n -- )
+   EV-OPERAND                       \ the loaned field's name; the loan step compiles it
    0 FIELD-LOAN-PENDING !
    SCOPE-FIELD-STEP ;
 
@@ -17784,10 +17890,37 @@ variable XG-N   variable XG-TN   variable XG-ROW
       1 +
    REPEAT drop ;
 
-: XPORT-APPLY ( ptr u8 n -- ) {: a:ptr u:n :}
+\ Every group read, back in the order it was read off: ( row -- row ).
+: XG-PUSH-ALL ( n -- n )
+   XG-N @ 1 - BEGIN dup 0 >= WHILE
+      swap over XG-PUSH-GROUP swap
+      1 -
+   REPEAT drop ;
+
+\ A wide transport's call: the groups it takes from the data row and the ones it
+\ leaves there, over one open tail, latched as a core op's instantiated effect
+\ is (CALL-FREEZE), so CWIN-COMMIT and CALL-FINALIZE file its call and glue
+\ rows. The return row is no call row's to describe: r> and its kin take
+\ nothing from the data row, and >r leaves nothing on it.
+: XPORT-CALL ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   FRESH MK-ROW {: base:n :}
+   a u WF-XPORT-RROW? IF
+      base  base XG-PUSH-ALL
+   ELSE a u XP-RS? IF
+      base XG-PUSH-ALL  base
+   ELSE
+      base XG-PUSH-ALL  base a u XP-DATA-SEQ$ XG-REPLAY
+   THEN THEN
+   CALL-DOUT !  CALL-DIN !
+   CALL-FREEZE ;
+
+: XPORT-APPLY ( ptr u8 n -- )
+   {: a:ptr u:n :}
    LIN-SNAPSHOT
    a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
    a u WF-XPORT-K  XG-READ 0= IF EXIT THEN
+   REC-ON @ IF a u XPORT-CALL THEN
    a u XP-RS? IF
       a u XPORT-RS-APPLY
    ELSE
@@ -18008,7 +18141,8 @@ variable LCO
    THEN
    -1 LOCALBAD !  0 OK !  -1 FAILSET ! ;
 
-: LOC-ADD ( ptr u8 ptr u8 n -- ) {: ra:ptr a:ptr u:n :}   \ raw declaration, folded declaration, their shared length
+: LOC-ADD ( ptr u8 ptr u8 n -- )   \ raw declaration, folded declaration, their shared length
+   {: ra:ptr a:ptr u:n :}
    a u LCOLON
    #LOC @ LOC-CAP 1 - > IF 0 1 LOC-REJECT ELSE
    LCO @ LOC-NAME-W > IF LCO @ 2 LOC-REJECT ELSE
@@ -18021,6 +18155,7 @@ variable LCO
      1 #LOC @ cells LOCW + !
      LOCSEQ @ #LOC @ cells LOCSEQIX + !    \ this bind's monotone sequence
      1 LOCSEQ @ cells LOC-HW + !
+     CHECKER-TAPE:K-LOCAL-DECL LOCSEQ @ 0 EVENT!
      LOCSEQ @ 1 + LOCSEQ !
      LCO @ u < IF
       ra u #LOC @ LOC-ANN                          \ the type as written, as a signature reads it
@@ -18148,12 +18283,14 @@ variable LCO
    LOC-SHOW-GROUP
    LIN-LOCAL-BIND-CHECK ;
 
-: LOC-TOK {: ra a u :}
-   a u s" :}" CORE-STR= IF 0 LMODE ! LOC-BIND ELSE
-   a u s" --" CORE-STR= IF -1 UNCK ! ELSE
+: LOC-TOK
+   {: ra a u :}
+   a u s" :}" CORE-STR= IF CHECKER-TAPE:K-LOCAL-CLOSE 0 0 EVENT!  0 LMODE ! LOC-BIND ELSE
+   a u s" --" CORE-STR= IF EV-OPERAND  -1 UNCK ! ELSE
    ra a u LOC-ADD THEN THEN ;
 
 : LOC-BEGIN ( -- )
+   EV-OPERAND
    QDEPTH @ 0 >  DEADP @ or IF 0 0 LOC-REJECT ELSE
    1 LMODE !  #LOC @ LGRP ! THEN ;
 
@@ -18180,7 +18317,8 @@ variable LCO
 \ against the raw declaration, byte for byte. The engine's own lookup
 \ (src/habu/habu2.f EMIT-LOC-FIND) compares the same two spans the same way, so
 \ the checker's reading of a body and the compiled body's own reading agree.
-: LOC-REF? {: a u :}
+: LOC-REF?
+   {: a u :}
    0 LRF !  #LOC @ LI !
    BEGIN LI @ 0 >  LRF @ 0=  and WHILE
      LI @ 1 - LI !
@@ -18188,6 +18326,7 @@ variable LCO
        QDEPTH @ 0 > IF
           0 0 LOC-REJECT
        ELSE
+          CHECKER-TAPE:K-LOCAL-REF  LI @ cells LOCSEQIX + @  0 EVENT!
           LI @ LOC-PUSH-REF
        THEN
        -1 LRF ! THEN
@@ -19171,13 +19310,16 @@ variable MSKIP   \ matches open in a refused match the walk reads unmodeled (CHE
 : MATCH-ABANDON ( -- )
    MATCH-REJECT  1 MSKIP !  4 CHECKER-MATCH-MODE ! ;
 
-: MATCH-SKIP-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+: MATCH-SKIP-TOK ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   EV-OPERAND                                \ an abandoned match compiles nothing
    a u s" match" CORE-STR= IF 1 MSKIP +! EXIT THEN
    a u s" ;match" CORE-STR= 0= IF EXIT THEN
    -1 MSKIP +!
    MSKIP @ 0= IF 0 CHECKER-MATCH-MODE ! THEN ;
 
 : MATCH-BEGIN ( -- )
+   EV-OPERAND
    1 CHECKER-MATCH-MODE ! ;   \ enter match mode; an unarmed registry fails closed at the family resolve (MATCH-FAM-XT default rejects)
 
 variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
@@ -19247,9 +19389,11 @@ variable MTCH-W                      \ the bundle width the walk below really co
    DCUR @ MTCH-ROW !  0 MTCH-TAGT !
    fam 0 MATCH-OPEN ;
 
-: MATCH-FAM-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u MATCH-FAM-XT 0= IF drop MATCH-ABANDON EXIT THEN
+: MATCH-FAM-TOK ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u MATCH-FAM-XT 0= IF drop EV-OPERAND MATCH-ABANDON EXIT THEN
    {: fam:n :}
+   CHECKER-TAPE:K-MATCH fam 0 EVENT!
    #CFC @ 30 > IF MD-DEPTH MDIAG! MATCH-ABANDON EXIT THEN   \ two CFS frames per match: reject, never UNCK
    fam MATCH-SCRUT? 0= IF fam MATCH-SCRUT-FAIL EXIT THEN
    DCUR @ MTCH-W @ ROW-TOP-LOST {: lost:n :}
@@ -19315,18 +19459,24 @@ variable MTCH-W                      \ the bundle width the walk below really co
    MF-DEPTH @ 1 - MF-DEPTH !
    0 CHECKER-MATCH-MODE ! ;
 
-: MATCH-VARIANT-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u s" ;match" CORE-STR= IF MATCH-SEMI EXIT THEN
+: MATCH-VARIANT-TOK ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u s" ;match" CORE-STR= IF
+      CHECKER-TAPE:K-MATCH-END MF-CUR MF.FAM @ 0 EVENT!
+      MATCH-SEMI EXIT THEN
    a u MF-CUR MF.FAM @ MATCH-VAR-XT 0= IF
-      drop MD-VAR-UNKNOWN MDIAG-COMPILE! 0 OK !  -1 MREJ !  -1 MPEND !  3 CHECKER-MATCH-MODE !  EXIT THEN
+      drop EV-OPERAND MD-VAR-UNKNOWN MDIAG-COMPILE! 0 OK !  -1 MREJ !  -1 MPEND !  3 CHECKER-MATCH-MODE !  EXIT THEN
    {: vid:n :}
+   CHECKER-TAPE:K-MATCH-ARM  MF-CUR MF.FAM @  vid EV-VARIANT
    vid MATCH-VTAG-XT {: tag:n :}
    MF-CUR MF.SEEN @ tag MSEEN-GET IF MD-VAR-DUP MDIAG! 0 OK !  -1 MREJ ! THEN   \ duplicate variant
    MF-CUR MF.SEEN @ tag MSEEN-SET
    vid MPEND !
    3 CHECKER-MATCH-MODE ! ;
 
-: MATCH-OF-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+: MATCH-OF-TOK ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   CHECKER-TAPE:K-MATCH-OF 0 0 EVENT!
    a u s" of" CORE-STR= 0= IF MD-MISSING-OF MDIAG-COMPILE! 0 OK !  -1 MREJ ! THEN   \ variant token without OF
    MF-CUR {: r:ptr :}
    r MF.BASE @ DCUR !
@@ -19355,32 +19505,41 @@ variable MTCH-W                      \ the bundle width the walk below really co
    CF@K 10 = IF MATCH-ENDOF EXIT THEN
    CF-ENDOF ;
 
-: CF-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" [:" CORE-STR= IF CF-QUOT RES-TRUE EXIT THEN
-   a u s" ;]" CORE-STR= IF CF-SEMIQ RES-TRUE EXIT THEN
-   a u s" if" CORE-STR= IF CF-IF RES-TRUE EXIT THEN
-   a u s" else" CORE-STR= IF CF-ELSE RES-TRUE EXIT THEN
-   a u s" then" CORE-STR= IF CF-THEN RES-TRUE EXIT THEN
-   a u s" case" CORE-STR= IF CF-CASE RES-TRUE EXIT THEN
-   a u s" of" CORE-STR= IF CF-OF RES-TRUE EXIT THEN
-   a u s" endof" CORE-STR= IF CF-ENDOF-DISPATCH RES-TRUE EXIT THEN
-   a u s" endcase" CORE-STR= IF CF-ENDCASE RES-TRUE EXIT THEN
-   a u s" ;match" CORE-STR= IF MD-STRAY MDIAG-COMPILE! CF-FAIL RES-TRUE EXIT THEN   \ stray ;match: hard reject
-   a u s" begin" CORE-STR= IF CF-BEGIN RES-TRUE EXIT THEN
-   a u s" until" CORE-STR= IF CF-UNTIL RES-TRUE EXIT THEN
-   a u s" again" CORE-STR= IF CF-AGAIN RES-TRUE EXIT THEN
-   a u s" while" CORE-STR= IF CF-WHILE RES-TRUE EXIT THEN
-   a u s" repeat" CORE-STR= IF CF-REPEAT RES-TRUE EXIT THEN
-   a u s" do" CORE-STR= IF CF-DO RES-TRUE EXIT THEN
-   a u s" ?do" CORE-STR= IF CF-?DO RES-TRUE EXIT THEN
-   a u s" loop" CORE-STR= IF CF-LOOP RES-TRUE EXIT THEN
-   a u s" +loop" CORE-STR= IF CF-+LOOP RES-TRUE EXIT THEN
-   a u s" i" CORE-STR= IF CF-I RES-TRUE EXIT THEN
-   a u s" j" CORE-STR= IF CF-J RES-TRUE EXIT THEN
-   a u s" exit" CORE-STR= IF CF-EXIT RES-TRUE EXIT THEN
-   a u s" leave" CORE-STR= IF CF-LEAVE RES-TRUE EXIT THEN
-   a u s" unloop" CORE-STR= IF CF-UNLOOP RES-TRUE EXIT THEN
-   a u s" recurse" CORE-STR= IF CF-RECURSE RES-TRUE EXIT THEN
+\ Whether the token is the control word B V, latching its marker event when it
+\ is: CODE is the word's place in CF-TOK?'s list, [: 0 through recurse 24.
+: CF-IS? ( ptr u8 n ptr u8 n n -- bool )
+   {: a:ptr u:n b:ptr v:n code:n :}
+   a u b v CORE-STR= 0= IF RES-FALSE EXIT THEN
+   CHECKER-TAPE:K-CONTROL code 0 EVENT!
+   RES-TRUE ;
+
+: CF-TOK? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u s" [:" 0 CF-IS? IF CF-QUOT RES-TRUE EXIT THEN
+   a u s" ;]" 1 CF-IS? IF CF-SEMIQ RES-TRUE EXIT THEN
+   a u s" if" 2 CF-IS? IF CF-IF RES-TRUE EXIT THEN
+   a u s" else" 3 CF-IS? IF CF-ELSE RES-TRUE EXIT THEN
+   a u s" then" 4 CF-IS? IF CF-THEN RES-TRUE EXIT THEN
+   a u s" case" 5 CF-IS? IF CF-CASE RES-TRUE EXIT THEN
+   a u s" of" 6 CF-IS? IF CF-OF RES-TRUE EXIT THEN
+   a u s" endof" 7 CF-IS? IF CF-ENDOF-DISPATCH RES-TRUE EXIT THEN
+   a u s" endcase" 8 CF-IS? IF CF-ENDCASE RES-TRUE EXIT THEN
+   a u s" ;match" 9 CF-IS? IF MD-STRAY MDIAG-COMPILE! CF-FAIL RES-TRUE EXIT THEN   \ stray ;match: hard reject
+   a u s" begin" 10 CF-IS? IF CF-BEGIN RES-TRUE EXIT THEN
+   a u s" until" 11 CF-IS? IF CF-UNTIL RES-TRUE EXIT THEN
+   a u s" again" 12 CF-IS? IF CF-AGAIN RES-TRUE EXIT THEN
+   a u s" while" 13 CF-IS? IF CF-WHILE RES-TRUE EXIT THEN
+   a u s" repeat" 14 CF-IS? IF CF-REPEAT RES-TRUE EXIT THEN
+   a u s" do" 15 CF-IS? IF CF-DO RES-TRUE EXIT THEN
+   a u s" ?do" 16 CF-IS? IF CF-?DO RES-TRUE EXIT THEN
+   a u s" loop" 17 CF-IS? IF CF-LOOP RES-TRUE EXIT THEN
+   a u s" +loop" 18 CF-IS? IF CF-+LOOP RES-TRUE EXIT THEN
+   a u s" i" 19 CF-IS? IF CF-I RES-TRUE EXIT THEN
+   a u s" j" 20 CF-IS? IF CF-J RES-TRUE EXIT THEN
+   a u s" exit" 21 CF-IS? IF CF-EXIT RES-TRUE EXIT THEN
+   a u s" leave" 22 CF-IS? IF CF-LEAVE RES-TRUE EXIT THEN
+   a u s" unloop" 23 CF-IS? IF CF-UNLOOP RES-TRUE EXIT THEN
+   a u s" recurse" 24 CF-IS? IF CF-RECURSE RES-TRUE EXIT THEN
    RES-FALSE ;
 \ first token of the checked text is the word's NAME (skipped, kept for the
 \ recorder). RECXT (installed by render.f) records certified sigs by name; DIAGXT
@@ -20914,6 +21073,7 @@ variable IS-PEND-U                   \ and its length
 : IS-TOK ( -- )
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    IS-TARGET-SYM {: sym:n :}
+   CHECKER-TAPE:K-IS  BIND-REC @ CHECKER-RESOLVE:REC>INDEX  0 EVENT!
    sym DFER-FIND-SYM 0= IF IS-FAIL EXIT THEN
    CUSING @ 0= sym SYM-EFFECT-UNRESOLVED? and IF
       -1 UNSEEN !  -1 UNCK !  EXIT
@@ -21003,6 +21163,7 @@ variable IS-PEND-U                   \ and its length
    -1 CRTGT !                              \ the load's tick refuses its target while compiling
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE EXIT THEN
    IS-TARGET-SYM  WALK-REC @  {: sym:n rec:n :}
+   CHECKER-TAPE:K-TICK  BIND-REC @ CHECKER-RESOLVE:REC>INDEX  0 EVENT!
    sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
    sym PRIM-TRUSTED-SYM? IF
       TORDER-ACTIVE @ TORDER-GATE = TORDER-ACTIVE @ TORDER-PARENT-GATE = or
@@ -21091,19 +21252,24 @@ variable CONM      \ 0 off | 1 expecting family token | 2 expecting variant toke
 variable CONFAM    \ resolved family id while CONM = 2
 
 : CONSTRUCT-BEGIN ( -- )
+   EV-OPERAND
    1 CONM ! ;   \ enter family-token mode; an unarmed registry rejects at the family resolve (CONSTRUCT-FAM-XT default)
 
 \ A failed family resolve still consumes the variant token (poisoned CONFAM
 \ -1): the three-token form always captures whole, so the trailing operand can
 \ never fall through to locals/word lookup and blur the hard reject into an
 \ uncheckable-undefined verdict.
-: CONSTRUCT-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+: CONSTRUCT-TOK ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   EV-OPERAND                          \ the family compiles nothing, nor does a variant that never resolves
    CONM @ 1 = IF
       a u CONSTRUCT-FAM-XT IF CONFAM ! ELSE drop 0 OK !  -1 CONFAM ! THEN
       2 CONM !
       EXIT THEN
    CONFAM @ 0 < 0= IF
-      a u CONFAM @ MATCH-VAR-XT IF CVLIVE ! ELSE drop THEN   \ latch variant SUMV id for the mismatch capture
+      a u CONFAM @ MATCH-VAR-XT IF                           \ latch variant SUMV id for the mismatch capture
+         dup CVLIVE !  CHECKER-TAPE:K-CONSTRUCT CONFAM @ rot EV-VARIANT
+      ELSE drop THEN
       a u CONFAM @ CONSTRUCT-STEP-XT 0= IF 0 OK ! THEN
       -1 CVLIVE !                                                      \ variant leaves scope with the step
    THEN
@@ -21677,35 +21843,20 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
 \ WHAT THIS PACKAGE OWNS. Three event points on the one reader - the text a
 \ scan is about to consume, each token as it is consumed, and the verdict that
 \ scan reached - and the classification of a token into the reader's own
-\ literal vocabulary, which is ALLDIG?/FLODIG? and nothing new.
+\ literal vocabulary, which is ALLDIG?/FLODIG? and nothing new. Beside them,
+\ what the checker judged each token of the scan to be (EVENT), which the
+\ observer reads by the token's ordinal while it is told the verdict.
 \
 \ WHAT IT REFUSES. Installing a second observer over a live one, and arming an
 \ observer that was never installed. Both die by name rather than dispatching
-\ into an unset cell.
+\ into an unset cell. So does asking for an event outside the verdict, or for a
+\ token the scan did not report, rather than reading a row no scan published.
 \
 \ WHAT IT DOES NOT DECIDE. Nothing about a verdict. The observer is called
-\ before the token is judged and its answer is never read, so it can abort a
+\ after the token is judged and its answer is never read, so it can abort a
 \ compilation by throwing but it can never turn a rejected definition into an
 \ accepted one. Off, it is one variable fetch and a branch per token.
 package CHECKER-TAPE
-public
-
-\ The reader's own token vocabulary, as codes an observer can store. `name` is
-\ every token to be resolved later. String classes preserve the opener's
-\ counted, printed or address/length behavior, and the
-\ bytes reported for it are its BODY rather than the opener that introduced it —
-\ the opener is what the reader read, the body is what the literal is, and a
-\ stage that has to compile one needs the second. These classes are closed: an
-\ observer that meets something else has met a construct this reader does not
-\ have, which is a class to add here rather than a number to smuggle past.
-0 constant K-NAME
-1 constant K-INT
-2 constant K-REAL
-3 constant K-STRING
-4 constant K-CHAR
-5 constant K-COUNTED-STRING
-6 constant K-PRINTED-STRING
-
 private
 
 \ The three events reach the observer through DECLARED dispatch cells for the
@@ -21735,6 +21886,10 @@ variable SET   0 SET !
 \ interprets the number, and INSTALLED-BY below is how a test or a diagnostic
 \ reads it back.
 variable BY   0 BY !
+
+\ Whether the observer is being told a verdict (DONE): the one time the table of
+\ events holds the scan that publishes, so the one time EVENT may read it.
+variable TELLING   0 TELLING !
 
 public
 
@@ -21783,8 +21938,6 @@ public
 : ADVANCE ( -- )
    REC-STEP ;
 
-private
-
 \ Which of the reader's three token classes this token is. It asks the two
 \ predicates DO-TOK's own literal step asks, so the tape cannot disagree with
 \ the checker about what a literal is.
@@ -21792,8 +21945,6 @@ private
    a u ALLDIG? IF K-INT EXIT THEN
    a u FLODIG? IF K-REAL EXIT THEN
    K-NAME ;
-
-public
 
 \ The reader is about to consume this text.
 : SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -21822,16 +21973,12 @@ public
 \ interpreter before the parser switches to compiling, and the reader reports
 \ that one token before it has consumed any payload at all, so `first` is not a
 \ question this event can be asked.
-private
 
 \ The reader already recognized the opener; preserve its behavior with its body.
 : STRING-KIND ( -- n )
    TKF c@ $63 = if K-COUNTED-STRING exit then
    TKF c@ $2E = if K-PRINTED-STRING exit then
    K-STRING ;
-
-
-public
 
 : STRING ( ptr u8 n n n -- ) {: a:ptr u:n off:n ru:n :}
    a u off ru STRING-KIND 0 TOKEN-XT
@@ -21841,9 +21988,26 @@ public
    a u off ru K-CHAR 0 TOKEN-XT
    REC-STEP ;
 
-\ The verdict that scan reached, with the text it reached it over.
+\ What the checker judged the token at ordinal ORD to be, in the vocabulary
+\ K-NAME opens: its event's kind, a0 and a1. The observer asks while it is told
+\ the verdict, when the table holds the scan that verdict is of, under the
+\ ordinals the tape numbers its tokens by.
+: EVENT ( n -- n n n )
+   {: ord:n :}
+   TELLING @ 0= IF
+      s" checker: source-tape event asked for outside the observer's verdict" 76 die
+   THEN
+   ord EV-LO @ <  ord EV-LO @ EV-N @ + >=  or IF
+      s" checker: source-tape event asked for a token the scan did not report" 76 die
+   THEN
+   EV-P ord EV-LO @ - EV-ROW NAV-CELL {: p:ptr :}
+   p @  p CELL + @  p 2 cells + @ ;
+
+\ The verdict that scan reached, with the text it reached it over. The scan's
+\ events can be read while the observer is told it, and on no other exit.
 : DONE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
-   a u verdict DONE-XT ;
+   -1 TELLING !
+   a u verdict [: DONE-XT ;] [: 0 TELLING ! ;] finally ;
 
 ;package
 
@@ -23008,11 +23172,29 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
    0 IS-PEND !
    IS-PEND-OFF @ TADDR  IS-PEND-U @  IS-PEND-OFF @  0  CHECKER-TAPE:TOKEN ;
 
+\ The event of a token no step latched one for: its class, as the reports below
+\ class it, and for a character literal its payload's first byte, which is what
+\ `[char]` compiles.
+: EV-UNJUDGED ( -- n n n )
+   CPAY-ON @ IF CHECKER-TAPE:K-CHAR  CPAY-B @ TADDR c@  0 EXIT THEN
+   SPAY-ON @ IF CHECKER-TAPE:STRING-KIND 0 0 EXIT THEN
+   TSTART @ TADDR  SCAN-U @  CHECKER-TAPE:KIND 0 0 ;
+
+\ This turn's events, filed under the ordinals the reports below take, on every
+\ pass: the token's, which is what the step that judged it latched, else
+\ EV-UNJUDGED; and a swallowed token's, an operand, since it compiles nothing of
+\ its own and its keyword's event names what it resolved to.
+: EV-COMMIT ( -- )
+   EV-HIT @ IF EV-KIND @ EV-A0 @ EV-A1 @ ELSE EV-UNJUDGED THEN
+   REC-IX @ EV-FILE
+   IS-PEND @ IF CHECKER-TAPE:K-OPERAND 0 0 REC-IX @ 1 + EV-FILE THEN ;
+
 \ What THIS token instantiated is filed before the token is reported, so the row
 \ and the ordinal it is filed under are made in one step: the ordinal a report is
 \ about is the one the observer has not yet advanced.
 : SCAN-REPORT ( -- )
    REC-COMMIT
+   EV-COMMIT
    RESCAN @ IF
       REC-STEP
       IS-PEND @ IF 0 IS-PEND ! REC-STEP THEN
@@ -23083,6 +23265,7 @@ variable CUR-OPEN   variable CUR-PSIG
 
 : CHECK-SCAN-WALK ( -- )
    0 SCAN-TOKS !  0 SPAY-S !
+   EV-START
    TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
    BEGIN TI @ TBLEN @ < WHILE
      TI @ CUR-GAP !
@@ -23130,7 +23313,7 @@ variable CUR-OPEN   variable CUR-PSIG
          BEGIN TI @ TBREAK? 0= WHILE TI @ 1 + TI ! REPEAT
          CHECKER-TAPE:ARMED @ IF
             TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !
-            0 IS-PEND !
+            0 IS-PEND !  0 EV-HIT !
          THEN
          CUR-TOKEN
          TOK0 @ {: was-name:bool :}
@@ -26607,6 +26790,7 @@ package CHECKER-REG
 ' EFFECT-MATCH-CELLS                DECLARATIONS EFFECT-MATCH-CELLS-OFF + xt!
 ' CTL-DEAD?                         DECLARATIONS CTL-DEAD-OFF + xt!
 ' WF-W-AT                           DECLARATIONS WF-W-AT-OFF + xt!
+' LOCW-HW@                          DECLARATIONS CHECKER-OWNER-ABI:LOCAL-WIDTH-OFF + xt!
 ' REC-MIN-IN@                       DECLARATIONS REC-MIN-IN-OFF + xt!
 ' REC-WIDE-PUBLISH                  DECLARATIONS REC-WIDE-PUBLISH-OFF + xt!
 ' CHECK-UNJUDGED!                   DECLARATIONS CHECK-UNJUDGED-OFF + xt!

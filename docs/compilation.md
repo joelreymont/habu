@@ -58,13 +58,11 @@ definition. Bytes the definition lays down while it is read, such as its
 string literals, go at `HERE`, into its body.
 **Now:** the tape keeps the token stream with names, modes, spans and digests
 (`src/compiler/native/tape.f:24-33`), and tier 1 recovers the rest by reading
-the definition again. Seven facts a codegen needs are recorded nowhere: which
-control word a marker is, locals and their uses, a construction's tag, a
-`MATCH` arm's tag, a literal's value, the target of `[']` and `is`, and the
-widths a stack word moves when its operands are expanded layouts, which get no
-call row (`src/core/checker.f` `SPELLED-STEP?`, `XPORT-STEP?`); the native
-compiler reads those from the checker's width table
-(`src/habu/habu2.f` `EM-P2-QUERY-WIDTHS`).
+the definition again. Beside the tape, the checker files each token's event, a
+kind and two arguments, under the token's ordinal in a table every pass of the
+scan refills (`src/core/checker.f` `EV-COMMIT`). An observer reads it with
+`CHECKER-TAPE:EVENT` while it is told the verdict, so what it reads is the scan
+that publishes.
 
 A definition becomes visible only after its code is in place. The publisher
 places the emission in the code space, resolving each of its rows against the

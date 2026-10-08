@@ -5977,6 +5977,7 @@ private
    [: TFAM-MATCH-FAM ;]     is MATCH-FAM-XT     \ item 9: MATCH family resolution (signature scope)
    [: TFAM-MATCH-VARIANT ;] is MATCH-VAR-XT     \ item 9: MATCH branch variant resolve
    [: SUMV-TAG@ ;]          is MATCH-VTAG-XT    \ item 9: variant id -> declaration-order tag (bitset index)
+   [: TFL-VPADS ;]          is VARIANT-PADS-XT  \ family id + variant id -> declared pads (the tape's construct and arm events)
    [: TFAM-VAR-COUNT@ ;]    is MATCH-VCOUNT-XT  \ item 9: exhaustiveness domain size
    [: TFAM-MATCH-PAY ;]     is MATCH-PAY-XT     \ item 9: branch payload row from the scrutinee's args
    [: TFAM-FIELD-PROJ ;]    is FIELD-PROJ-XT ;  \ dot habu-checker-type-structure: instantiated field type for the FAMILY:FIELD projection window
