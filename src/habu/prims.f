@@ -362,6 +362,10 @@ EPRIM: unit-compile-run
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QOUT ;PE-Q PE-IN
    PE-Q ;PE-Q PE-IN PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ owns the protected unit hook for one source invocation
+\ The unit loader (src/core/include.f SOURCE-UNIT:GUARDED) runs one source under a token guard.
+EPPRIM: SOURCE-UNIT unit-compile-run
+   PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QOUT ;PE-Q PE-IN
+   PE-Q ;PE-Q PE-IN PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: source-unit-run PE-Q ;PE-Q PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ closes one whole source unit without an evaluator frame
 EPPRIM: SOURCE-ROOT source-unit-run PE-Q ;PE-Q PE-IN ECLOSE-PRIVATE
@@ -598,6 +602,8 @@ EPPRIM: NPUB code-publish PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: native-unit-publish
    PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ installs relocated package code and dictionary rows
+\ The publisher imports a prepared package unit (IMPORT-UNIT) under this row.
+EPPRIM: NPUB native-unit-publish PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: callmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ relocation metadata for code the publisher just wrote
 EPPRIM: NPUB callmap-set PE-N PE-IN ECLOSE-PRIVATE
