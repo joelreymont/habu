@@ -1921,15 +1921,15 @@ defer ON-DUPLICATE ( n n ptr u8 n bool -- )
 \ borrowed: a word installed here consumes them before it returns.
 defer ON-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
 
-\ A use the checker bound to a located declaration (src/core/checker.f
+\ A use the checker bound (src/core/checker.f
 \ CHECKER-ON-USE), in the subject and in every file a load reads, each time it
 \ is read: where the use starts and ends in the file FILE$ names, SUBJECT?
 \ telling the subject's own; the path the declaration's file was resolved to
 \ when the composition visited it; and where the token that declared it starts
 \ and ends there, all at the base TOKEN-BYTE@ counts from; the selected symbol
 \ and declaration visit. The path is borrowed: a word installed here consumes
-\ it before it returns. A use bound to a declaration with no location is not
-\ reported.
+\ it before it returns. A use bound to a word with no declaration location has
+\ an empty path, zero target bytes and visit -1.
 defer ON-USE ( n n ptr u8 n n n n n -- )
 
 \ A use the checker bound, in the file FILE$ names, as its scan reads it: where
@@ -1937,8 +1937,8 @@ defer ON-USE ( n n ptr u8 n n n n n -- )
 \ selected symbol (SYM-IDENTITY; SYM-SOURCE for the word it is through
 \ re-exports). Reported for the subject and for every file a load reads, each
 \ time it is read, whether or not the declaration has a location: a word the
-\ image holds is reported like any other. A primitive has no record and is not
-\ reported. A use in a colon body is reported when the body's check publishes
+\ image holds, including a primitive without a record, is reported like any
+\ other. A use in a colon body is reported when the body's check publishes
 \ it, at the definition's end. A source the capture swept has an empty
 \ identity, which is no word.
 defer ON-BINDING ( n n n -- )
@@ -2046,13 +2046,15 @@ BINDING-INIT
 LOADER-INIT
 
 \ A use the checker published, at the base of the file being read: always a
-\ binding, and a use when its declaration lies in a file this composition
-\ visited.
+\ binding, with a declaration location only when this composition visited it.
 : USE-SEEN ( n n n n n n -- )
    {: s:n e:n sym:n v:n ds:n de:n :}
    s BASE-BYTE @ +  e BASE-BYTE @ +  sym ON-BINDING
-   v VISIT-IN? 0= IF EXIT THEN
-   s BASE-BYTE @ +  e BASE-BYTE @ +  v VISIT-PATH  ds de sym v ON-USE ;
+   v VISIT-IN? IF
+      s BASE-BYTE @ +  e BASE-BYTE @ +  v VISIT-PATH  ds de sym v ON-USE
+   ELSE
+      s BASE-BYTE @ +  e BASE-BYTE @ +  NULL$ 0 0 sym -1 ON-USE
+   THEN ;
 
 : DUPLICATE-STOP ( n n ptr u8 n bool -- )
    drop 2drop

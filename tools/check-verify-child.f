@@ -83,13 +83,14 @@
 \ S and N where the token that declared it starts and ends there.
 \
 \ A use line names what src/habu/verify-source.f ON-USE reports, a use that
-\ the checker bound to a located declaration: S and N where the use starts and
+\ the checker bound: S and N where the use starts and
 \ ends in I, the file it is in as its packets name it, a token, or the bytes
 \ between the quotes of a string literal naming a word before a call of a word
 \ a `names:` row marks (src/core/checker.f CHECKER-NAMES-ROW), F the path the
 \ declaration's file was resolved to, TS and TN where the token that declared
 \ it starts and ends there, and D, T, P and V the selected declaration's local
-\ visit, canonical tail, package and visibility.
+\ visit, canonical tail, package and visibility. In the fourth form, a word
+\ without a source declaration has an empty F, zero TS and TN, and D of -1.
 \
 \ A load line names what src/habu/verify-source.f ON-LOADER reports, a
 \ top-level loader of the subject whose load reached a file, in the subject's
@@ -546,23 +547,21 @@ variable OF-U                           \ 0 for the other forms
    OUT-FD NEWLINE ;
 
 
-\ Whether the use of the symbol has a use line: in the subject always, in
-\ another file in the fourth form alone, when the symbol's tail is TAIL. The
-\ other forms ask no identity outside the subject, where most of a check's
-\ uses are: every diagnostics check is one of them.
-: USE-WRITTEN? ( n -- bool )
-   {: sym:n :}
-   VERIFY:SUBJECT? if true exit then
+\ Located uses in the subject have a line in every form. Other uses have a
+\ line only in the fourth form, for the requested tail; this includes an
+\ unlocated binding in the subject, needed to compare shared source tokens.
+: USE-WRITTEN? ( n bool -- bool )
+   {: sym:n located:bool :}
+   located VERIFY:SUBJECT? and if true exit then
    OF-U @ 0= if false exit then
    sym VERIFY:SYM-IDENTITY drop {: tail:ptr tailu:n :} 2drop
    tail tailu OF-A @ OF-U @ CORE-STR= ;
 
 
-\ A use the checker bound to a located declaration, as its use line when it
-\ has one.
+\ A checked binding, as its use line when it has one.
 : USE-LINE ( n n ptr u8 n n n n n -- )
    {: at:n end:n path:ptr pathu:n tat:n tend:n sym:n visit:n :}
-   sym USE-WRITTEN? 0= if exit then
+   sym pathu 0<> USE-WRITTEN? 0= if exit then
    sym VERIFY:SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
    pkg pkgu DEF-PKG!
    OUT-FD s\" check-verify: use {\"byte_start\":" WRITE

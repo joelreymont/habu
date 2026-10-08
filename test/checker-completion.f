@@ -455,9 +455,9 @@ variable USE-N   variable USE-SUM
    rc0 0 T=
    s" the armed body certifies" T-LABEL
    rc1 0 T=
-   s" both publish their two calls" T-LABEL
-   n0 2 T=
-   n1 2 T=
+   s" both publish CMPA, CMPB and +" T-LABEL
+   n0 3 T=
+   n1 3 T=
    s" at the same bytes" T-LABEL
    sum1 sum0 T=
    s" the store grows the same" T-LABEL
@@ -575,15 +575,22 @@ variable NEST-ARM   variable NEST-ENUM
    CALLS @ 0 T= ;
 
 \ The same throw from a does> clause, which the verifier checks after the
-\ definer's body (CHECKER-SOURCE-DOES!). The body's use arms the cursor, so
-\ the clause takes the arm; the clause's use throws. The clause's checked text
+\ definer's body (CHECKER-SOURCE-DOES!). The body's CMPA use arms the cursor,
+\ so the clause takes the arm; its CMPB use throws. The other bound uses do
+\ not control this test. The clause's checked text
 \ is `@ CMPB + `, so its byte 4 is in CMPB after `CM`.
 variable DOES-USES
 : DOES-USE ( n n n n n n -- )
-   1 DOES-USES +!
-   DOES-USES @ 1 > IF USE-THROWS EXIT THEN
-   2drop 2drop 2drop
-   4 [: KEEP ;] CURSOR! ;
+   {: s:n e:n sym:n v:n ds:n de:n :}
+   sym s" CMPA" CHECKER-FIND-ACTIVE-SYM = IF
+      1 DOES-USES +!
+      4 [: KEEP ;] CURSOR!
+      EXIT
+   THEN
+   sym s" CMPB" CHECKER-FIND-ACTIVE-SYM = IF
+      1 DOES-USES +!
+      1 0 / drop
+   THEN ;
 
 : DOES-USES-THROW ( -- ) [: DOES-USE ;] [: REPLAY ;] WITH-USES ;
 

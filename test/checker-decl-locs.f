@@ -82,9 +82,9 @@ private
    [: INNER ;] 0 TTHROWSQ ;
 
 \ ---- 4. a does> clause publishes its uses -------------------------------------
-\ Only NAVT is located, so a published use is a call of it: the spelling's
-\ range in the replayed text, and NAVT's armed location. The handler keeps the
-\ last use and counts them, so a count of one pins the only use. The later
+\ Only NAVT is located; engine-word uses have no source declaration. The
+\ handler keeps NAVT's last use and counts its calls, so a count of one pins
+\ the only NAVT use. The later
 \ replays bind NAVT and NAVS where the earlier ones declared them, so the case
 \ runs in one neutral checker scope (MAIN), as a verifier child runs its
 \ composition.
@@ -93,6 +93,7 @@ variable USE-V   variable USE-DS   variable USE-DE
 
 : KEEP-USE ( n n n n n n -- )
    {: s:n e:n sym:n v:n ds:n de:n :}
+   sym s" NAVT" CHECKER-FIND-ACTIVE-SYM <> IF EXIT THEN
    1 USE-N +!
    s USE-S !  e USE-E !  sym USE-SYM !
    v USE-V !  ds USE-DS !  de USE-DE ! ;

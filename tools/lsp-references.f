@@ -33,11 +33,26 @@
 \ declare the word at P's token, by its identity, in one visit at most, and
 \ its uses bound to that token of the word's identity must carry that visit;
 \ one that declares the word there in no visit and binds no use of it there
-\ holds none, and contributes nothing. Each of those uses is placed in the
-\ text of the file it is in, the open document's that holds the file, else
-\ the file's, which must have the digest the check read of it, once however
-\ many checks give it. Once every subject is gathered, SETTLE names the
-\ subjects as below and orders the locations: the declaration, when
+\ holds none. Each of those uses is placed in the text of the file it is in,
+\ the open document's that holds the file, else the file's, which must have
+\ the digest the check read of it, once however many checks give it. Each
+\ visit of P that declares a word at P's token must declare the word there,
+\ beside any other, as a DEFTYPE's converters are declared beside each
+\ other: a check with a visit that declares another word there and not the
+\ word conflicts, since a rename of the token would change that word too.
+\ Its file is named, and its uses of the word are placed still.
+\
+\ A file a use is placed in may also be read by a composition that does not
+\ reach P, which only a fragment or a file that depends on its loader's
+\ definitions makes, and there the same token may be bound to another word.
+\ So, once the subjects before it are gathered, pass 2 (MORE?) takes each
+\ file a location is in but P, once, and gives the subjects whose loads
+\ reach it (LSP-WORKSPACE:REACHING-AGAIN) that are no subject yet, gathered
+\ as the rest are; it runs again while they place locations in other files.
+\ Every use of the tail bound to another word by a verified check that read
+\ no P, or whose uses were placed, is kept with the subject whose check bound
+\ it. Once every subject is gathered, SETTLE
+\ names files as below and orders the locations: the declaration, when
 \ included, first, then the uses by file, P's first and the others in the
 \ byte order of their paths, then by the bytes they start and end at.
 \
@@ -51,16 +66,22 @@
 \ uses were placed read it, a verified check that read P and passed the tests
 \ above: only that check's bindings are to this declaration, so a check that
 \ read no P, or failed those tests, says nothing of the file's uses of it.
-\ Each file the answer could not cover is named with why (WARNING),
-\ contributing no location: a workspace file whose loads discovery cannot
-\ find, but P and D, whose checks say what they read; a subject whose check
-\ was not verified, by its check's verdict (LSP-CHECK:OUTCOME$), unless
-\ another check covers its file; a file a use is in whose text no longer has
-\ the digest the check read; a subject that cannot be read; one whose check
-\ states no digest of P or another one, declares at P's token a word without
-\ a whole identity or the word in several visits, or binds to that token a
-\ use without a whole identity, or one of the word in another visit or while
-\ it declares the word there in none.
+\ Each file the answer could not cover is named with why (WARNING): first a
+\ workspace file whose loads discovery cannot find, but P and D, whose
+\ checks say what they read; then, as the gather finds them, a file a use is
+\ in whose text no longer has the digest the check read, a subject that
+\ cannot be read, and one whose check states no digest of P or another one,
+\ declares at P's token a word without a whole identity or the word in
+\ several visits, or binds to that token a use without a whole identity, or
+\ one of the word in another visit or while it declares the word there in
+\ none, which contributes no location, or that conflicts as above; then a
+\ file a use is placed in at whose bytes a kept use is, since its token
+\ means another word in that use's check, whose composition a rename would
+\ change; last a subject whose check was not verified, by its check's
+\ verdict (LSP-CHECK:OUTCOME$), unless another check covers its file. A subject
+\ pass 2 gave, whose loads do not reach P, is covered once any verified check
+\ read its file: it is then a fragment of that check's composition, whose
+\ uses of the tail that check gave.
 \
 \ PLACE selects as SELECT does and places the declaration, finding no
 \ subjects: textDocument/prepareRename answers from it. TAIL-FROM gives where
@@ -124,12 +145,35 @@ private
 8 constant L-TAIL-CHAR
 9 constant LOC-CELLS
 
-\ A file placed in: its path's and its URI's offsets and lengths in POOL.
+\ A file placed in: its path's and its URI's offsets and lengths in POOL,
+\ and 1 once pass 2 took it.
 0 constant F-PATH
 1 constant F-PATH-U
 2 constant F-URI
 3 constant F-URI-U
-4 constant FILE-CELLS
+4 constant F-AGAIN
+5 constant FILE-CELLS
+
+\ A file the request knows, a subject or one a verified check read: its
+\ path's offset and length in POOL, its index as a subject, -1 when it is
+\ none, and how it was read, 0 when by no verified check.
+0 constant K-PATH
+1 constant K-PATH-U
+2 constant K-SUB
+3 constant K-READ
+4 constant KNOWN-CELLS
+
+1 constant BY-VERIFIED                   \ read by a verified check,
+2 constant BY-PLACING                    \ by one whose uses were placed
+
+\ A use of the tail bound to another word: its file, by its index among the
+\ known files, the bytes it starts and ends at there, and the subject whose
+\ check bound it.
+0 constant O-FILE
+1 constant O-FROM
+2 constant O-TO
+3 constant O-SUB
+4 constant OTHER-CELLS
 
 \ A file named: its path's and its reason's offsets and lengths in POOL.
 0 constant M-PATH
@@ -156,7 +200,15 @@ DYNAMIC-BUFFER MISSES n                  \ the files it names,
 variable MISS-N
 DYNAMIC-BUFFER PENDING n                 \ the subjects SETTLE may name,
 variable PENDING-N
-DYNAMIC-BUFFER COVERED n                 \ whether a placing check read each subject,
+DYNAMIC-BUFFER KNOWN n                   \ the files it knows,
+variable KNOWN-N
+DYNAMIC-BUFFER BY-PATH n                 \ them in the byte order of their paths,
+DYNAMIC-BUFFER SUBS n                    \ the subjects, known files in the order gathered,
+variable SUB-N
+variable WALKED                          \ how many of them pass 2 did not give,
+variable FOLLOWED                        \ how many locations it took the files of,
+DYNAMIC-BUFFER OTHERS n                  \ the uses of the tail bound to other words,
+variable OTHER-N
 DYNAMIC-BUFFER MSG u8                    \ and why it is refused, or its warning
 variable MSG-U
 TYPED-VARIABLE FOUND bool                \ whether a declaration is selected,
@@ -180,8 +232,7 @@ variable H-AT                            \ and the digest of the bytes of P it r
 variable H-U
 variable D-AT                            \ D's path in POOL,
 variable D-U
-variable AHEAD                           \ how many subjects come before the walk's,
-variable CUR                             \ the subject being gathered, by the gather's index,
+variable CUR                             \ the subject being gathered, by its index,
 variable SUB-VISIT                       \ the visit its check declares the word in,
 variable TEXT-IN                         \ the probe's group whose file positions count in,
 TYPED-VARIABLE TEXT-OK bool              \ and whether its text has the digest read
@@ -202,6 +253,10 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
 : FILE! ( n n n -- )  swap FILE-CELLS * + FILES ! ;
 : PENDING@ ( n n -- n )  swap PENDING-CELLS * + PENDING @ ;
 : PENDING! ( n n n -- )  swap PENDING-CELLS * + PENDING ! ;
+: KNOWN@ ( n n -- n )  swap KNOWN-CELLS * + KNOWN @ ;
+: KNOWN! ( n n n -- )  swap KNOWN-CELLS * + KNOWN ! ;
+: OTHER@ ( n n -- n )  swap OTHER-CELLS * + OTHERS @ ;
+: OTHER! ( n n n -- )  swap OTHER-CELLS * + OTHERS ! ;
 
 \ The location K-th in the answer's order.
 : RANKED ( n -- n )  RANKS @ ;
@@ -218,22 +273,13 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
 : H$ ( -- ptr u8 n )  H-AT @ H-U @ POOL$ ;
 : D$ ( -- ptr u8 n )  D-AT @ D-U @ POOL$ ;
 
-\ The path of subject K: P's when the gather takes P before the walk's
-\ subjects, else the walk's.
-: SUBJECT-PATH$ ( n -- ptr u8 n )
-   AHEAD @ - {: k:n :}
-   k 0 < if P$ exit then
-   k LSP-WORKSPACE:SUBJECT$ ;
+\ The path of known file K.
+: KNOWN$ ( n -- ptr u8 n )  dup K-PATH KNOWN@ swap K-PATH-U KNOWN@ POOL$ ;
+
+\ The path of subject K.
+: SUBJECT-PATH$ ( n -- ptr u8 n )  SUBS @ KNOWN$ ;
 
 : CUR$ ( -- ptr u8 n )  CUR @ SUBJECT-PATH$ ;
-
-\ The index of the subject at this canonical path, -1 when none is.
-: SUBJECT-AT ( ptr u8 n -- n )
-   {: a:ptr u:n :}
-   AHEAD @ 0<> if a u P$ STR= if 0 exit then then
-   a u LSP-WORKSPACE:SUBJECT-OF {: k:n :}
-   k 0 < if -1 exit then
-   k AHEAD @ + ;
 
 \ The path of file F placed in.
 : FILE$ ( n -- ptr u8 n )  dup F-PATH FILE@ swap F-PATH-U FILE@ POOL$ ;
@@ -274,7 +320,11 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
    0 FILE-N !
    0 MISS-N !
    0 PENDING-N !
-   0 AHEAD !
+   0 KNOWN-N !
+   0 SUB-N !
+   0 WALKED !
+   0 FOLLOWED !
+   0 OTHER-N !
    0 RX-U !
    0 MSG-U !
    1 MSG-RESERVE
@@ -311,6 +361,13 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
    p u POOL+ {: at:n :}
    w wu POOL+ {: why:n :}
    at u why wu NAMED! ;
+
+\ Subject K named, for this reason, which does not lie in POOL.
+: SUBJECT-MISS+ ( n ptr u8 n -- )
+   {: s:n w:ptr wu:n :}
+   s SUBS @ {: k:n :}
+   w wu POOL+ {: why:n :}
+   k K-PATH KNOWN@ k K-PATH-U KNOWN@ why wu NAMED! ;
 
 \ Whether the file at this path is named.
 : NAMED? ( ptr u8 n -- bool )
@@ -360,6 +417,7 @@ private
    a u DEP-URI$ {: ua:ptr uu:n :}
    ua uu POOL+ f F-URI FILE!
    uu f F-URI-U FILE!
+   0 f F-AGAIN FILE!
    f 1+ FILE-N !
    f ;
 
@@ -391,6 +449,69 @@ private
       if true unloop exit then
    loop
    false ;
+
+\ ---- the files the request knows ------------------------------------------------
+
+\ The first of known files LOW to HIGH, HIGH excluded, in BY-PATH's order,
+\ whose path does not come before path A.
+: KNOWN-FROM ( ptr u8 n n n -- n )
+   {: a:ptr u:n low:n high:n :}
+   low high >= if low exit then
+   low high low - 2 / + {: mid:n :}
+   mid BY-PATH @ KNOWN$ a u LSP-WORKSPACE:PATH<
+   if a u mid 1+ high else a u low mid then
+   recurse ;
+
+\ The file at this canonical path, which does not lie in POOL, known, AT-th
+\ in BY-PATH's order: its index.
+: KNOWN+ ( ptr u8 n n -- n )
+   {: a:ptr u:n at:n :}
+   KNOWN-N @ {: k:n :}
+   k 1+ KNOWN-CELLS * KNOWN-RESERVE
+   a u POOL+ k K-PATH KNOWN!
+   u k K-PATH-U KNOWN!
+   -1 k K-SUB KNOWN!
+   0 k K-READ KNOWN!
+   k 1+ BY-PATH-RESERVE
+   k at - 0 ?do k i - dup 1- BY-PATH @ swap BY-PATH ! loop
+   k at BY-PATH !
+   k 1+ KNOWN-N !
+   k ;
+
+\ The known file at this canonical path, which does not lie in POOL, known
+\ when it is not yet: its index.
+: KNOWN-AT ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   a u 0 KNOWN-N @ KNOWN-FROM {: at:n :}
+   at KNOWN-N @ < if
+      at BY-PATH @ KNOWN$ a u STR= if at BY-PATH @ exit then
+   then
+   a u at KNOWN+ ;
+
+\ The file at this canonical path, which does not lie in POOL, read so:
+\ BY-VERIFIED or BY-PLACING, whichever says more of it.
+: READ! ( ptr u8 n n -- )
+   {: a:ptr u:n by:n :}
+   a u KNOWN-AT {: k:n :}
+   k K-READ KNOWN@ by max k K-READ KNOWN! ;
+
+\ Each file the probe read a text of read so.
+: READS ( n -- )
+   {: by:n :}
+   PROBE DEFS-GROUP-RANGE ?do
+      i GROUP-SHA$ nip 0<> if i GROUP-PATH$ by READ! then
+   loop ;
+
+\ The file at this canonical path, which does not lie in POOL, the last
+\ subject, unless it is one.
+: SUBJECT+ ( ptr u8 n -- )
+   KNOWN-AT {: k:n :}
+   k K-SUB KNOWN@ 0 >= if exit then
+   SUB-N @ {: s:n :}
+   s k K-SUB KNOWN!
+   s 1+ SUBS-RESERVE
+   k s SUBS !
+   s 1+ SUB-N ! ;
 
 \ ---- the declaration -----------------------------------------------------------
 
@@ -582,9 +703,8 @@ private
    p pu w wu MISS+ ;
 
 \ The subjects of D, in this slot, and the files the walk could not read. P
-\ is the first subject, as REACHING orders them, or one before them when the
-\ walk gives none at its path, so that its own uses are read; no placing
-\ check has read any yet.
+\ is the first subject, as REACHING orders them, so that its own uses are
+\ read even when the walk gives none at its path; pass 2 gives none of them.
 : SUBJECTS! ( n -- )
    {: slot:n :}
    slot DOC-CANON$ {: a:ptr u:n :}
@@ -595,10 +715,9 @@ private
       LSP-WORKSPACE:BLOCKED$ s" the workspace folder cannot be walked" REFUSE exit
    then
    LSP-WORKSPACE:UNREADABLE 0 ?do i LSP-WORKSPACE:UNREADABLE$ UNREAD+ loop
-   0 LSP-WORKSPACE:SUBJECT$ P$ STR= if 0 else 1 then AHEAD !
-   LSP-WORKSPACE:SUBJECTS AHEAD @ + {: n:n :}
-   n COVERED-RESERVE
-   n 0 ?do 0 i COVERED ! loop ;
+   P$ SUBJECT+
+   LSP-WORKSPACE:SUBJECTS 0 ?do i LSP-WORKSPACE:SUBJECT$ SUBJECT+ loop
+   SUB-N @ WALKED ! ;
 
 \ ---- a subject's uses -----------------------------------------------------------
 
@@ -644,6 +763,20 @@ private
    slot g DECL-WHY {: w:ptr wu:n :}
    wu 0<> if w wu exit then
    slot g USE-WHY ;
+
+\ Whether the check of the subject in this slot, whose group for P is G,
+\ declares another word at the declaration's token in a visit other than
+\ SUB-VISIT, the one it declares the word in, if any: a rename of the token
+\ would change that word too. One declared there beside the word in
+\ SUB-VISIT, as a DEFTYPE's converters are beside each other, is not.
+: OTHER-VISIT? ( n n -- bool )
+   {: slot:n g:n :}
+   slot DEFS-DECL-RANGE ?do
+      i g DECL-AT? if
+         i DECL-KEY? 0= i DECL-VISIT SUB-VISIT @ <> and if true unloop exit then
+      then
+   loop
+   false ;
 
 \ The first decl of the check of the subject in this slot, of group G, whose
 \ token starts and ends at these bytes and declares another word than the
@@ -719,35 +852,60 @@ private
    f from to LOC+
    in u RE-EXPORTS ;
 
+\ Use U of the probe, when it is of the tail, as Habu compares names, kept
+\ with the subject being gathered: it is bound to another word than the
+\ declaration.
+: OTHER+ ( n -- )
+   {: u:n :}
+   u USE-NAME$ NAME$ STR=CI 0= if exit then
+   u USE-IN GROUP-PATH$ KNOWN-AT {: k:n :}
+   u USE-BYTES {: from:n to:n :}
+   OTHER-N @ {: o:n :}
+   o 1+ OTHER-CELLS * OTHERS-RESERVE
+   k o O-FILE OTHER!
+   from o O-FROM OTHER!
+   to o O-TO OTHER!
+   CUR @ o O-SUB OTHER!
+   o 1+ OTHER-N ! ;
+
+\ Whether use U of the probe, whose group for P is G, is bound to the
+\ declaration.
+: BOUND? ( n n -- bool )
+   {: u:n g:n :}
+   u g USE-AT? if u USE-KEY? else false then ;
+
 \ The uses of the declaration the probe, whose group for P is G, states,
-\ each placed in the file it is in.
+\ each placed in the file it is in, and its other uses of the tail kept.
 : PLACED ( n -- )
    {: g:n :}
    -1 TEXT-IN !
    PROBE DEFS-USE-RANGE ?do
-      i g USE-AT? if i USE-KEY? if i PLACE-USE then then
+      i g BOUND? if i PLACE-USE else i OTHER+ then
    loop ;
 
-\ The subject at this canonical path, if one is, marked read by a check whose
-\ uses are placed.
-: COVER! ( ptr u8 n -- )
-   SUBJECT-AT {: k:n :}
-   k 0 >= if 1 k COVERED ! then ;
-
-\ Each subject whose file the probe read one text of marked read.
-: COVERS ( -- )
-   PROBE DEFS-GROUP-RANGE ?do
-      i GROUP-SHA$ nip 0<> if i GROUP-PATH$ COVER! then
-   loop ;
+\ The subject named, unless its file is: its check declares another word at
+\ the declaration's token, which a rename of the token would change too.
+: DECL-CONFLICT ( -- )
+   CUR$ NAMED? if exit then
+   CUR @ s" declares another word at the declaration's token" SUBJECT-MISS+ ;
 
 \ The uses the probe, whose group for P is G, binds to the declaration
-\ placed, and the subjects it read marked; or the subject named.
+\ placed, its other uses of the tail kept, the files it read marked, and the
+\ subject named when it conflicts; or the subject named, those files marked
+\ read by a verified check.
 : CONTRIBUTED ( n -- )
    {: g:n :}
    PROBE g WHY {: w:ptr wu:n :}
-   wu 0<> if CUR$ w wu MISS+ exit then
-   COVERS
-   g PLACED ;
+   wu 0<> if BY-VERIFIED READS CUR @ w wu SUBJECT-MISS+ exit then
+   BY-PLACING READS
+   g PLACED
+   PROBE g OTHER-VISIT? if DECL-CONFLICT then ;
+
+\ The uses of the tail the probe, a verified check that read no P and so
+\ binds none to the declaration, states kept, and the files it read marked.
+: WITHOUT-P ( -- )
+   BY-VERIFIED READS
+   PROBE DEFS-USE-RANGE ?do i OTHER+ loop ;
 
 \ The subject being gathered held for SETTLE with its check's verdict, which
 \ does not lie in POOL.
@@ -763,12 +921,12 @@ private
 
 \ The subject's uses from the probe, the check of its text, or the subject
 \ held for SETTLE, with its check's verdict, when that check was not
-\ verified. A check that read no P has none.
+\ verified. A check that read no P has none, but its uses of the tail.
 : CONTRIBUTE ( -- )
    PROBE DEFS-VERIFIED? 0= if LSP-CHECK:OUTCOME$ PENDING+ exit then
    PROBE P$ DEFS-GROUP-OF MATCH option
       some OF CONTRIBUTED ENDOF
-      none OF ENDOF
+      none OF WITHOUT-P ENDOF
    ;MATCH ;
 
 : SRC-ROOM ( n -- ptr u8 )
@@ -787,18 +945,66 @@ private
    CUR$ [: READ-SRC ;] catch {: code:n :} 2drop
    code 0<> if
       code LSP-TEXT:FS-RC? 0= if code throw then
-      CUR$ s" cannot be read" MISS+ exit
+      CUR @ s" cannot be read" SUBJECT-MISS+ exit
    then
    0 SRC SRC-U @ FROM-TEXT ;
 
 \ Pending subject K named by its check's verdict, unless a check whose uses
-\ are placed read its file.
+\ are placed read its file, or any verified check did when pass 2 gave it.
 : SETTLED ( n -- )
    {: k:n :}
    k X-SUB PENDING@ {: s:n :}
-   s COVERED @ 0<> if exit then
-   s SUBJECT-PATH$ {: a:ptr u:n :}
-   a u POOL+ u k X-WHY PENDING@ k X-WHY-U PENDING@ NAMED! ;
+   s SUBS @ {: f:n :}
+   s WALKED @ < if BY-PLACING else BY-VERIFIED then {: need:n :}
+   f K-READ KNOWN@ need >= if exit then
+   f K-PATH KNOWN@ f K-PATH-U KNOWN@ k X-WHY PENDING@ k X-WHY-U PENDING@ NAMED! ;
+
+\ The first location of a use: the declaration, when placed, is first.
+: FIRST-USE ( -- n )  DECLARED @ if 1 else 0 then ;
+
+\ The location of a use from byte FROM to byte TO of known file K, if one
+\ is. The declaration's token is no use: a use there is an EXPORT's operand.
+: LOCATION-AT ( n n n -- option<n> )
+   {: k:n from:n to:n :}
+   LOC-N @ FIRST-USE ?do
+      i L-FROM LOC@ from = i L-TO LOC@ to = and if
+         i L-FILE LOC@ FILE$ k KNOWN$ STR= if i OPTION:SOME unloop exit then
+      then
+   loop
+   OPTION:NONE ;
+
+\ The file of location L named, unless it is, since its token, at kept use
+\ O's bytes, is bound to another word by the check of O's subject.
+: CONFLICT! ( n n -- )
+   {: o:n l:n :}
+   l L-FILE LOC@ {: f:n :}
+   f FILE$ NAMED? if exit then
+   0 MSG-U !
+   s" the token at line " MSG+
+   SB-RESET l L-LINE LOC@ 1+ FMT:SB-INT SB$ MSG+
+   s"  is bound to another word under " MSG+
+   o O-SUB OTHER@ SUBJECT-PATH$ SHOWN$ MSG+
+   MSG$ POOL+ {: why:n :}
+   f F-PATH FILE@ f F-PATH-U FILE@ why MSG-U @ NAMED!
+   0 MSG-U ! ;
+
+\ The file of the use placed at kept use O's bytes, if one is, named.
+: CONFLICT ( n -- )
+   {: o:n :}
+   o O-FILE OTHER@ o O-FROM OTHER@ o O-TO OTHER@ LOCATION-AT MATCH option
+      some OF {: l:n :} o l CONFLICT! ENDOF
+      none OF ENDOF
+   ;MATCH ;
+
+\ The subjects whose loads reach the file of location L, which is not P,
+\ given unless they are subjects already, once pass 2 first takes that file.
+: FOLLOW ( n -- )
+   L-FILE LOC@ {: f:n :}
+   f F-AGAIN FILE@ 0<> if exit then
+   1 f F-AGAIN FILE!
+   f FILE$ P$ STR= if exit then
+   f FILE$ LSP-WORKSPACE:REACHING-AGAIN
+   LSP-WORKSPACE:SUBJECTS 0 ?do i LSP-WORKSPACE:SUBJECT$ SUBJECT+ loop ;
 
 \ Whether location A comes before location B in the answer: by file, P's
 \ first and the others in the byte order of their paths, then by the bytes
@@ -887,9 +1093,18 @@ public
 : RE-EXPORTED? ( -- bool )  RX-U @ 0<> ;
 : RE-EXPORT$ ( -- ptr u8 n )  RX-AT @ RX-U @ POOL$ ;
 
-\ How many subjects the request gathers from: none unless it selected a
-\ declaration, since only then did it walk.
-: SUBJECT-N ( -- n )  FOUND @ if LSP-WORKSPACE:SUBJECTS AHEAD @ + else 0 then ;
+\ How many subjects the request gathers from so far: none until a
+\ declaration is selected and walked.
+: SUBJECT-N ( -- n )  SUB-N @ ;
+
+\ Pass 2, once the subjects before it are gathered: the subjects it gives
+\ from the files the locations placed since it last ran are in, and whether
+\ it gave any.
+: MORE? ( -- bool )
+   SUB-N @ {: was:n :}
+   LOC-N @ FOLLOWED @ ?do i FOLLOW loop
+   LOC-N @ FOLLOWED !
+   SUB-N @ was > ;
 
 \ Subject K's uses of the declaration, from a check of the text of the open
 \ document that holds its file, else of the file on disk; or the subject
@@ -902,13 +1117,14 @@ public
       none OF FROM-DISK ENDOF
    ;MATCH ;
 
-\ Once every subject is gathered: each subject whose check was not verified
-\ named by its verdict, unless a check whose uses are placed read its file,
-\ and the locations in the answer's order, the declaration first when it is
-\ placed.
+\ Once every subject is gathered: each file a location is in at whose bytes
+\ a use is kept named, then each subject whose check was not verified named
+\ by its verdict, unless a check covers its file, and the locations in the
+\ answer's order, the declaration first when it is placed.
 : SETTLE ( -- )
+   OTHER-N @ 0 ?do i CONFLICT loop
    PENDING-N @ 0 ?do i SETTLED loop
-   DECLARED @ if 1 else 0 then {: first:n :}
+   FIRST-USE {: first:n :}
    LOC-N @ first - {: n:n :}
    n 2 < if exit then
    first RANKS n [: LOC< ;] SORT:SORT! ;

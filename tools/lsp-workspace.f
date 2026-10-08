@@ -7,7 +7,8 @@
 \ word it is given each open document's canonical path and text, and gives
 \ every subject whose closure holds F, and D as a subject whatever its closure
 \ holds: F first when it is a subject, then the others in the byte order of
-\ their paths, which PATH< answers. SUBJECT-OF finds a subject by its path.
+\ their paths, which PATH< answers. REACHING-AGAIN does the same for another
+\ file over the graph REACHING found, walking and discovering nothing.
 \
 \ A closure is every file a check of its subject could read. A load resolves
 \ against the root that resolved the file holding it (docs/forth-card.md
@@ -410,15 +411,6 @@ private
    HIT-N @ 2 < if exit then
    0 HITS HIT-N @ [: BEFORE? ;] SORT:SORT! ;
 
-\ The first of subjects LOW to HIGH, HIGH excluded, which are in the byte
-\ order of their paths, whose path does not come before path A.
-: FIRST-AT ( ptr u8 n n n -- n )
-   {: a:ptr u:n low:n high:n :}
-   low high >= if low exit then
-   low high low - 2 / + {: mid:n :}
-   mid HITS @ PATH$ a u PATH< if a u mid 1+ high else a u low mid then
-   recurse ;
-
 : BAD< ( n n -- bool )
    {: a:n b:n :}
    a PATH$ b PATH$ PATH< ;
@@ -474,6 +466,21 @@ public
    ORDER
    ORDER-BAD ;
 
+\ Finds, over the graph the last REACHING found, the subjects whose closures
+\ hold the file at canonical path F, and gives that REACHING's document among
+\ them; nothing is walked or discovered, so the files it could not read stay
+\ those UNREADABLE names.
+: REACHING-AGAIN ( ptr u8 n -- )
+   {: f:ptr fu:n :}
+   f fu POOL+ F-AT !
+   fu F-U !
+   NODE-N @ 0 ?do 0 i N-REACH NODE! loop
+   0 HIT-N !
+   MARK
+   SPREAD
+   GIVE
+   ORDER ;
+
 \ Whether the last REACHING refused, and the root it named.
 : REFUSED? ( -- bool )  BLOCKED @ ;
 : BLOCKED$ ( -- ptr u8 n )  0 BLOCK-B BLOCK-U @ ;
@@ -481,18 +488,6 @@ public
 \ The subjects the last REACHING gave, in its order.
 : SUBJECTS ( -- n )  HIT-N @ ;
 : SUBJECT$ ( n -- ptr u8 n )  HITS @ PATH$ ;
-
-\ The index of the last REACHING's subject at canonical path A, or -1 when no
-\ subject is at it: F's when A is F, else a search of the others, which
-\ follow it in the byte order of their paths.
-: SUBJECT-OF ( ptr u8 n -- n )
-   {: a:ptr u:n :}
-   HIT-N @ 0= if -1 exit then
-   0 HITS @ PATH$ F$ STR= {: lead:bool :}
-   a u F$ STR= if lead if 0 else -1 then exit then
-   a u lead if 1 else 0 then HIT-N @ FIRST-AT {: k:n :}
-   k HIT-N @ = if -1 exit then
-   k HITS @ PATH$ a u STR= if k else -1 then ;
 
 \ The files whose loads the last REACHING could not find, in the byte order
 \ of their paths: each one's path, and why, a discovery's code as

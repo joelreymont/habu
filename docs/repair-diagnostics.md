@@ -717,12 +717,16 @@ borrowed buffer. `VERIFY:FAULT-TARGET$` names the
 canonical file that an `E-SOURCE-READ` load could not read.
 For the binding each reference selected, in the subject and every file its
 loads read, install `VERIFY:ON-BINDING ( n n n -- )`: the use's byte range in
-`VERIFY:FILE$` and the symbol, reported for image-held words too;
+`VERIFY:FILE$` and the symbol, reported for image-held words and primitives too;
 `VERIFY:SYM-SOURCE ( n -- n )` answers the word a symbol is through re-exports;
 a source the capture swept answers an empty `VERIFY:SYM-IDENTITY`, which a
-caller reads as no word. `ON-USE` reports the uses bound to located
-declarations, in the subject and every file its loads read alike;
-`VERIFY:SUBJECT?` tells the subject's own.
+caller reads as no word. `ON-USE` reports the same bindings with their
+declaration locations, in the subject and every file its loads read alike;
+an unlocated word has an empty declaration path, zero target bytes and visit
+`-1`. `VERIFY:SUBJECT?` tells the subject's own. The child's `--of TAIL`
+form includes unlocated bindings of that tail so references can detect a
+shared token bound to another word. Ordinary document checks still emit only
+located uses.
 
 The child, `tools/check-verify-child.f`, is run only by this operation and by
 `CHECK:PREVERIFY-BYTES`, check.f's pre-pass:

@@ -375,7 +375,9 @@
 \   its reason, or stopping the walk before a file it does not lie between;
 \   a root that is not there not refused, naming it; the requesting document
 \   not given in its place by path when its loads do not reach the file, or
-\   given twice when they do ................................ workspace-reaching
+\   given twice when they do; asked again of another file over the same
+\   graph, a file that reaches only the first given, or one that reaches the
+\   other, under either root, left out ...................... workspace-reaching
 \
 \ References
 \ - a use, at its first character or its last, or the token declaring its
@@ -394,7 +396,9 @@
 \   every file is covered ................................ references-workspace
 \ - P:K, Q:K, a public and a private twin from one included file, an
 \   EXPORT's operand and a use of the export not each answered with its own
-\   word's uses ........................................... references-identity
+\   word's uses, or the included file, whose own check declares the global
+\   K at their token, and the including file, whose other visits declare
+\   the other three there, not named with those four ...... references-identity
 \ - the token a DEFTYPE's converters share answered other than -32803
 \   naming the document; a use of either answered with the other's
 \   ........................................................ references-deftype
@@ -425,9 +429,17 @@
 \ - a use in a file that loads nothing, read by the declaring document's
 \   check, in the folder or above it, not listed, or the file named
 \   ....................................................... references-fragment
+\ - a use whose token another file's check, which does not reach the
+\   declaration, binds to another word, not listed, or its file not named
+\   ....................................................... references-conflict
+\ - a shared use that another check binds to an engine word or primitive
+\   not listed for the declaration, or its file not named .... references-engine
 \ - a file whose check read the declaring file but declares the word there
-\   only into another package, binding its uses to that, named
-\   ........................................................ references-package
+\   only into another package, binding its uses to that, not named, or its
+\   use listed ............................................. references-package
+\ - a file whose check includes the declaring file twice, declaring the
+\   word at its token in one visit and another package's word there in the
+\   other, not named, or its use of the word not listed ..... references-visits
 \ - a word named in a string literal before a call of a word a names: row
 \   declares, the file's own or the engine's XREF-FIND, not listed among
 \   its uses at the bytes between the quotes ................. references-named
@@ -469,6 +481,18 @@
 \ - a use references-reaching lists not edited, or under another URI than
 \   references gives .......................................... rename-reaching
 \ - a use references-fragment lists not edited ................ rename-fragment
+\ - a use references-conflict names edited, or no -32803 naming its file; a
+\   file that loads it, not verified and read by no verified check, not named
+\   with its verdict in a -32803, or a file that loads nothing and that a
+\   verified check read named for its own refused check ...... rename-conflict
+\ - a shared use bound to an engine word or primitive in another check
+\   edited, or no -32803 naming its file ....................... rename-engine
+\ - a declaring token that a check of a file including it into a package
+\   declares as that package's word edited, or no -32803 naming that file,
+\   on disk or open ............................................ rename-package
+\ - a declaring token that a check of a file including it twice declares
+\   as the word in one visit and as a package's word in the other edited,
+\   or no -32803 naming that file ............................... rename-visits
 \ - a use of an EXPORT, the EXPORT's operand, or the word it exports while a
 \   file on disk exports it, answered other than -32803 naming the file that
 \   exports it; prepareRename at the use answered other than -32803
@@ -569,17 +593,15 @@ using BUF
 \ at once at a load average of 87 to 91: the conversations CONVERSE runs timed
 \ 418 to 793 ms; answers-at-once and stdout-closed, untimed, carry no more than
 \ lifecycle. CONVERSATION-MS, ten times that busiest measurement and no larger,
-\ rests on it. Measured 2026-10-07 in one full run on that machine at a load
-\ average of 162 to 177: the held conversations took 508 to 1482 ms, the
-\ heaviest completion (1482), workspace-symbol-open-dependency (1404),
-\ references-workspace (1369) and completion-qualified (1201), with big-frame
-\ at 866 and the references conversations at 565 to 1369. CHECKED-MS is about
-\ six times completion's 1482 ms, and no larger. The one bounds 27 runs (the
-\ 24 conversations CONVERSE runs, answers-at-once, stdout-closed and
-\ TEST-EXIT-TIMEOUT's child) and the other 125 conversations. A server that
-\ blocks spends none of the row's CPU budget (test/suite-budget.f CPU-MS), so
-\ all 152 could reach their bounds, each failing by name, within 1341 s (27
-\ times 8 s and 125 times 9 s), inside the row's hang guard (ROW-MS, 1860 s).
+\ rests on it. Measured 2026-10-08 in two back-to-back full runs on that
+\ machine at a load average of 7 to 12, the heaviest held conversation,
+\ references-identity, took 2226 and 1889 ms. CHECKED-MS is about four times
+\ its 2226 ms, and no larger. The one bounds 27 runs (the 24 conversations
+\ CONVERSE runs, answers-at-once, stdout-closed and TEST-EXIT-TIMEOUT's
+\ child) and the other 130 conversations. A server that blocks spends none
+\ of the row's CPU budget (test/suite-budget.f CPU-MS), so all 157 could
+\ reach their bounds, each failing by name, within 1386 s (27 times 8 s and
+\ 130 times 9 s), inside the row's hang guard (ROW-MS, 1860 s).
 \ One that spins to its bound spends that much of the budget's 360 s, so at
 \ most 40 such held runs, or 45 at CONVERSATION-MS, fail by name before the
 \ budget ends the row.
@@ -4475,14 +4497,27 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    SB$ T-LABEL
    WS-ANSWER$ w wu T$= ;
 
+\ The files that reach the file of this name, over the last answer's graph,
+\ must be these.
+: REACHES-AGAIN ( ptr u8 n ptr u8 n -- )
+   {: f:ptr fu:n w:ptr wu:n :}
+   WS-B CLEAR f fu WS-CANON WS+
+   WS$ LSP-WORKSPACE:REACHING-AGAIN
+   SB-RESET s" workspace-reaching: again " SB-APPEND f fu SB-APPEND
+   SB$ T-LABEL
+   WS-ANSWER$ w wu T$= ;
+
 \ Each case's document is one the walk gives anyway, but for a2, whose loads
 \ reach no f2 once b2's open text drops its load, and p/a7, whose loads reach
-\ no f7: each is given in its place by path.
+\ no f7: each is given in its place by path. Asked again of b1, then of s/x7,
+\ which p/a7 and q/b7 load under their roots, over the graph just found: the
+\ files that reach that file, and none that reach only the first.
 : WORKSPACE-REACHING ( -- )
    WS-TREE
    s" graph" FIXTURE SOURCE-ROOT:CANONICAL drop nip 1+ WS-ROOT-U !
    s" w" IN-GRAPH LSP-WORKSPACE:ROOT+
    s" w/f1.f" s" w/a1.f" s" w/f1.f w/a1.f w/b1.f" REACHES
+   s" w/b1.f" s" w/b1.f w/a1.f" REACHES-AGAIN
    s" w/f2.f" s" w/a2.f" s" w/f2.f w/a2.f" REACHES
    s" w/f3.f" s" w/c3.f" s" w/f3.f w/c3.f" REACHES
    s" w/f4.f" s" w/a4.f" s" w/f4.f w/a4.f" REACHES
@@ -4491,6 +4526,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" w/f6.f" s" w/m6.f" s" w/f6.f w/m6.f" REACHES
    s" w/f7.f" s" w/q/b7.f" s" w/f7.f w/q/b7.f w/q/y7.f" REACHES
    s" w/f7.f" s" w/p/a7.f" s" w/f7.f w/p/a7.f w/q/b7.f w/q/y7.f" REACHES
+   s" w/s/x7.f" s" w/s/x7.f w/p/a7.f w/q/b7.f" REACHES-AGAIN
    s" w/f9.f" s" w/p/a9.f" s" w/f9.f w/p/a9.f w/q/b9.f" REACHES
    s" dyn" IN-GRAPH LSP-WORKSPACE:ROOT+
    s" w/f1.f" s" w/f1.f"
@@ -4620,6 +4656,22 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    HEAR
    EXP$ HEARD ;
 
+\ A conflict's first frame is its warning or refusal. Consume an unexpected
+\ edit or location answer too, so a regression fails on that answer directly.
+: CONFLICT-FIRST? ( -- bool )
+   s\" \"}}" EXP+
+   HEAR
+   NEXT-BODY EXP$ STR= ;
+
+\ The file of this name left out for its token at line L, which a check of
+\ the file of the other name binds to another word.
+: ELSEWHERE+ ( ptr u8 n n ptr u8 n -- )
+   {: p:ptr pu:n l:n s:ptr su:n :}
+   p pu CANON s" the token at line " NAMED+
+   l INT$ EXP+
+   s"  is bound to another word under " EXP+
+   s su CANON SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE EXP+ ;
+
 \ The next frame refuses the request with this id's JSON text -32803, its
 \ message naming the file at this canonical path relative to the working
 \ directory.
@@ -4731,9 +4783,16 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 
 \ RP:KAY, RQ:KAY, RV's private KAY and RV:KAY, one token of g.f each
 \ declares, each answered with that declaration and its own word's uses
-\ alone; EK's EXPORT operand, a use of the private EK, with the private
-\ word's; the use of the export with the export's. g.f, which no folder
-\ holds, is not named: a verified check reads it.
+\ alone, g.f and id.f named: g.f's own check declares the global KAY there,
+\ and id.f's declares the other three there in its other visits, which a
+\ rename of the token would change too. EK's EXPORT operand, a use of the
+\ private EK, answered with the private word's; the use of the export with
+\ the export's.
+: KAY-NAMED ( -- )
+   2 NAMED s" refs-id/g.f" CANON
+   s" declares another word at the declaration's token" NAMED+
+   s" refs-id/id.f" CANON
+   s" declares another word at the declaration's token" NAMED+ NAMED-END ;
 : REFS-ID-TURNS ( -- )
    s" refs-id" REFS-DIR
    s" refs-id/g.f" TEXT-RG REFS-FILE
@@ -4749,10 +4808,11 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" 7" s" refs-id/id.f" FIXTURE 21 7 DECL-TOO REFS-ASK
    s" 8" s" refs-id/id.f" FIXTURE 23 16 DECL-TOO REFS-ASK
    SAY
+   KAY-NAMED
    s" 3" SYMBOLS-START KAY-DECL+ 3 14 17 ID-REF+ 16 14 20 ID-REF+ SYMBOLS-END
-   s" 4" SYMBOLS-START KAY-DECL+ 16 21 27 ID-REF+ SYMBOLS-END
-   s" 5" SYMBOLS-START KAY-DECL+ 14 15 18 ID-REF+ SYMBOLS-END
-   s" 6" SYMBOLS-START KAY-DECL+ 16 30 36 ID-REF+ SYMBOLS-END
+   KAY-NAMED s" 4" SYMBOLS-START KAY-DECL+ 16 21 27 ID-REF+ SYMBOLS-END
+   KAY-NAMED s" 5" SYMBOLS-START KAY-DECL+ 14 15 18 ID-REF+ SYMBOLS-END
+   KAY-NAMED s" 6" SYMBOLS-START KAY-DECL+ 16 30 36 ID-REF+ SYMBOLS-END
    s" 7" SYMBOLS-START 18 2 4 ID-REF+ 19 15 17 ID-REF+ 21 7 9 ID-REF+ SYMBOLS-END
    s" 8" SYMBOLS-START 21 7 9 ID-REF+ 23 16 21 ID-REF+ SYMBOLS-END ;
 
@@ -5043,12 +5103,90 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-frg/z.f" DISK-URI 0 14 18 REF+
    SYMBOLS-END ;
 
+\ d.f and e.f, in the folder w, each declare a ROOK of their own and then
+\ require z.f, which uses ROOK and whose own check, declaring none, is
+\ refused. E-BAD is e.f with an undefined word after its load, refused.
+: TEXT-RCD ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\nrequire z.f\n" ;
+: TEXT-RCE ( -- ptr u8 n )  s\" : ROOK ( -- n ) 2 ;\nrequire z.f\n" ;
+: TEXT-RCE-BAD ( -- ptr u8 n )
+   s\" : ROOK ( -- n ) 2 ;\nrequire z.f\n: EU ( -- n ) NOPE ;\n" ;
+
+\ ROOK's declaring token in d.f is answered with the declaration and z.f's
+\ use, which d.f's check reads, after a warning naming z.f, whose token
+\ e.f's check binds to e.f's ROOK.
+: REFS-CNF-TURNS ( -- )
+   s" refs-cnf" REFS-DIR s" refs-cnf/w" REFS-DIR
+   s" refs-cnf/w/d.f" TEXT-RCD REFS-FILE
+   s" refs-cnf/w/e.f" TEXT-RCE REFS-FILE
+   s" refs-cnf/w/z.f" TEXT-RFZ REFS-FILE
+   s" refs-cnf/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-cnf/w/d.f" FIXTURE TEXT-RCD 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RCD s" refs-cnf/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-cnf/w/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED s" refs-cnf/w/z.f" 1 s" refs-cnf/w/e.f" ELSEWHERE+ NAMED-END
+   s" 3" SYMBOLS-START
+   s" refs-cnf/w/d.f" OPEN-URI 0 2 6 REF+
+   s" refs-cnf/w/z.f" DISK-URI 0 14 18 REF+
+   SYMBOLS-END ;
+
+\ d.f checks z.f inside REVIEW, where DUP and ASCII-LOWER are private.
+\ z.f alone, and e.f requiring it, check the same bytes outside REVIEW,
+\ binding the engine's primitive and image word. These checks verify, so each
+\ shared token conflicts.
+: TEXT-ENG-D ( -- ptr u8 n )
+   s\" package REVIEW\n: DUP ( n -- n n ) 0 over + ;\n: ASCII-LOWER ( n -- n ) ;\nrequire z.f\n;package\n" ;
+: TEXT-ENG-Z ( -- ptr u8 n )
+   s\" : ZU ( n -- n n ) DUP ;\n: AU ( n -- n ) ASCII-LOWER ;\n" ;
+: TEXT-ENG-E ( -- ptr u8 n )  s\" require z.f\n" ;
+
+: REFS-ENG-TURNS ( -- )
+   s" refs-eng" REFS-DIR s" refs-eng/w" REFS-DIR
+   s" refs-eng/w/d.f" TEXT-ENG-D REFS-FILE
+   s" refs-eng/w/z.f" TEXT-ENG-Z REFS-FILE
+   s" refs-eng/w/e.f" TEXT-ENG-E REFS-FILE
+   s" refs-eng/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-eng/w/d.f" FIXTURE TEXT-ENG-D 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-ENG-D s" refs-eng/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-eng/w/d.f" FIXTURE 1 2 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED s" refs-eng/w/z.f" 1 s" refs-eng/w/z.f" ELSEWHERE+
+   CONFLICT-FIRST? dup s" primitive binding conflicts" HOLDS if
+      s" 3" SYMBOLS-START
+      s" refs-eng/w/d.f" OPEN-URI 1 2 5 REF+
+      s" refs-eng/w/z.f" DISK-URI 0 18 21 REF+ SYMBOLS-END
+   then ;
+
+: REFS-IMG-TURNS ( -- )
+   s" refs-img" REFS-DIR s" refs-img/w" REFS-DIR
+   s" refs-img/w/d.f" TEXT-ENG-D REFS-FILE
+   s" refs-img/w/z.f" TEXT-ENG-Z REFS-FILE
+   s" refs-img/w/e.f" TEXT-ENG-E REFS-FILE
+   s" refs-img/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-img/w/d.f" FIXTURE TEXT-ENG-D 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-ENG-D s" refs-img/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-img/w/d.f" FIXTURE 2 2 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED s" refs-img/w/z.f" 2 s" refs-img/w/z.f" ELSEWHERE+
+   CONFLICT-FIRST? dup s" image binding conflicts" HOLDS if
+      s" 3" SYMBOLS-START
+      s" refs-img/w/d.f" OPEN-URI 2 2 13 REF+
+      s" refs-img/w/z.f" DISK-URI 1 16 27 REF+ SYMBOLS-END
+   then ;
+
 : TEXT-RPKG ( -- ptr u8 n )
    s\" package RQ\npublic\ninclude f.f\n: QU ( -- n ) ROOK ;\n;package\n" ;
 
 \ q.f includes f.f into package RQ: its check read f.f's bytes, but declares
-\ RQ's ROOK at the token, not the global one, and binds QU's use to RQ's. It
-\ holds no use of the global ROOK, so it is covered: neither listed nor named.
+\ RQ's ROOK at the token, not the global one, and binds QU's use to RQ's. A
+\ rename of the token would change q.f's composition, so q.f is named, and
+\ its use, not the global ROOK's, is not listed.
 : REFS-PKG-TURNS ( -- )
    s" refs-pkg" REFS-DIR s" refs-pkg/w" REFS-DIR
    s" refs-pkg/w/f.f" TEXT-RF REFS-FILE
@@ -5060,7 +5198,34 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    TEXT-RF s" refs-pkg/w/f.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-pkg/w/f.f" FIXTURE 0 2 DECL-TOO REFS-ASK
    SAY
+   1 NAMED s" refs-pkg/w/q.f" CANON
+   s" declares another word at the declaration's token" NAMED+ NAMED-END
    s" 3" SYMBOLS-START s" refs-pkg/w/f.f" OPEN-URI 0 2 6 REF+ SYMBOLS-END ;
+
+\ q2.f includes f.f twice: first at the top, where it declares the global
+\ ROOK at the token, then into RQ's public section, where it declares RQ's
+\ ROOK there. QU uses both words. A rename of the token would change RQ's
+\ word too, so q2.f is named, and its use of the global ROOK is listed.
+: TEXT-RVIS ( -- ptr u8 n )
+   TXT-B CLEAR
+   s\" include f.f\npackage RQ\npublic\ninclude f.f\n;package\n" HV+
+   s\" : QU ( -- n ) RQ:ROOK ROOK + ;\n" HV+
+   TXT$ ;
+: REFS-VIS-TURNS ( -- )
+   s" refs-vis" REFS-DIR s" refs-vis/w" REFS-DIR
+   s" refs-vis/w/f.f" TEXT-RF REFS-FILE
+   s" refs-vis/w/q2.f" TEXT-RVIS REFS-FILE
+   s" refs-vis/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-vis/w/f.f" FIXTURE TEXT-RF 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RF s" refs-vis/w/f.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-vis/w/f.f" FIXTURE 0 2 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED s" refs-vis/w/q2.f" CANON
+   s" declares another word at the declaration's token" NAMED+ NAMED-END
+   s" 3" SYMBOLS-START s" refs-vis/w/f.f" OPEN-URI 0 2 6 REF+
+   s" refs-vis/w/q2.f" DISK-URI 5 22 26 REF+ SYMBOLS-END ;
 
 \ ROOK named by two literals: one before LOOK, whose names: row the text
 \ declares, and one before the engine's XREF-FIND, whose row the engine's own
@@ -5135,7 +5300,11 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" references-folders-empty" [: REFS-FE-TURNS ;] TALK
    s" references-reaching" [: REFS-RCH-TURNS ;] TALK
    s" references-fragment" [: REFS-FRG-TURNS ;] TALK
+   s" references-conflict" [: REFS-CNF-TURNS ;] TALK
+   s" references-engine" [: REFS-ENG-TURNS ;] TALK
+   s" references-engine-image" [: REFS-IMG-TURNS ;] TALK
    s" references-package" [: REFS-PKG-TURNS ;] TALK
+   s" references-visits" [: REFS-VIS-TURNS ;] TALK
    s" references-named" [: REFS-NAMED-TURNS ;] TALK
    REFS-PROBE ;
 
@@ -5433,6 +5602,100 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-frg/z.f" DISK-URI EDITS-IN 0 14 18 EDIT+
    EDITS-END ;
 
+\ The tree of references-conflict in rn-cnf: ROOK's declaring token in d.f
+\ is refused -32803 naming z.f. Once e.f on disk is refused, no check binds
+\ z.f's token to another word, and no verified check read e.f: -32803 naming
+\ e.f as refused, but not z.f, whose own check is refused too, since d.f's
+\ verified check read it.
+: RENAME-CNF-TURNS ( -- )
+   s" rn-cnf" REFS-DIR s" rn-cnf/w" REFS-DIR
+   s" rn-cnf/w/d.f" TEXT-RCD REFS-FILE
+   s" rn-cnf/w/e.f" TEXT-RCE REFS-FILE
+   s" rn-cnf/w/z.f" TEXT-RFZ REFS-FILE
+   s" rn-cnf/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" rn-cnf/w/d.f" FIXTURE TEXT-RCD 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RCD s" rn-cnf/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" rn-cnf/w/d.f" FIXTURE 0 2 CROW RENAME-ASK
+   SAY
+   s" 3" 1 NOT-APPLIED s" rn-cnf/w/z.f" 1 s" rn-cnf/w/e.f" ELSEWHERE+ NAMED-END
+   s" rn-cnf/w/e.f" TEXT-RCE-BAD REFS-FILE
+   s" 4" s" rn-cnf/w/d.f" FIXTURE 0 2 CROW RENAME-ASK
+   SAY
+   s" 4" 1 NOT-APPLIED s" rn-cnf/w/e.f" CANON s" refused" NAMED+ NAMED-END ;
+
+: RENAME-ENG-TURNS ( -- )
+   s" rn-eng" REFS-DIR s" rn-eng/w" REFS-DIR
+   s" rn-eng/w/d.f" TEXT-ENG-D REFS-FILE
+   s" rn-eng/w/z.f" TEXT-ENG-Z REFS-FILE
+   s" rn-eng/w/e.f" TEXT-ENG-E REFS-FILE
+   s" rn-eng/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" rn-eng/w/d.f" FIXTURE TEXT-ENG-D 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-ENG-D s" rn-eng/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" rn-eng/w/d.f" FIXTURE 1 2 CROW RENAME-ASK
+   SAY
+   s" 3" 1 NOT-APPLIED s" rn-eng/w/z.f" 1 s" rn-eng/w/z.f" ELSEWHERE+
+   CONFLICT-FIRST? s" primitive rename refuses edits" HOLDS ;
+
+: RENAME-IMG-TURNS ( -- )
+   s" rn-img" REFS-DIR s" rn-img/w" REFS-DIR
+   s" rn-img/w/d.f" TEXT-ENG-D REFS-FILE
+   s" rn-img/w/z.f" TEXT-ENG-Z REFS-FILE
+   s" rn-img/w/e.f" TEXT-ENG-E REFS-FILE
+   s" rn-img/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" rn-img/w/d.f" FIXTURE TEXT-ENG-D 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-ENG-D s" rn-img/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" rn-img/w/d.f" FIXTURE 2 2 CROW RENAME-ASK
+   SAY
+   s" 3" 1 NOT-APPLIED s" rn-img/w/z.f" 2 s" rn-img/w/z.f" ELSEWHERE+
+   CONFLICT-FIRST? s" image rename refuses edits" HOLDS ;
+
+\ The tree of references-package in rn-pkg: ROOK's declaring token in f.f,
+\ which q.f's check declares as RQ's word, is refused -32803 naming q.f,
+\ with q.f on disk and again once it is open, the answer before q.f's own
+\ list.
+: RENAME-PKG-TURNS ( -- )
+   s" rn-pkg" REFS-DIR s" rn-pkg/w" REFS-DIR
+   s" rn-pkg/w/f.f" TEXT-RF REFS-FILE
+   s" rn-pkg/w/q.f" TEXT-RPKG REFS-FILE
+   s" rn-pkg/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" rn-pkg/w/f.f" FIXTURE TEXT-RF 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RF s" rn-pkg/w/f.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" rn-pkg/w/f.f" FIXTURE 0 2 CROW RENAME-ASK
+   SAY
+   s" 3" 1 NOT-APPLIED s" rn-pkg/w/q.f" CANON
+   s" declares another word at the declaration's token" NAMED+ NAMED-END
+   s" rn-pkg/w/q.f" FIXTURE TEXT-RPKG 1 OPENS
+   s" 4" s" rn-pkg/w/f.f" FIXTURE 0 2 CROW RENAME-ASK
+   SAY
+   s" 4" 1 NOT-APPLIED s" rn-pkg/w/q.f" CANON
+   s" declares another word at the declaration's token" NAMED+ NAMED-END
+   s" rn-pkg/w/q.f" FIXTURE 1 CLEAN ;
+
+\ The tree of references-visits in rn-vis: ROOK's declaring token in f.f,
+\ which q2.f's check declares as the global word in one visit and as RQ's
+\ in the other, is refused -32803 naming q2.f.
+: RENAME-VIS-TURNS ( -- )
+   s" rn-vis" REFS-DIR s" rn-vis/w" REFS-DIR
+   s" rn-vis/w/f.f" TEXT-RF REFS-FILE
+   s" rn-vis/w/q2.f" TEXT-RVIS REFS-FILE
+   s" rn-vis/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" rn-vis/w/f.f" FIXTURE TEXT-RF 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RF s" rn-vis/w/f.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" rn-vis/w/f.f" FIXTURE 0 2 CROW RENAME-ASK
+   SAY
+   s" 3" 1 NOT-APPLIED s" rn-vis/w/q2.f" CANON
+   s" declares another word at the declaration's token" NAMED+ NAMED-END ;
+
 \ rn-exp/w: f.f declares ROOK, x.f exports it from RX, and u.f uses RX:ROOK.
 : TEXT-RX ( -- ptr u8 n )  s\" require f.f\npackage RX\npublic\nEXPORT ROOK\n;package\n" ;
 : TEXT-RU ( -- ptr u8 n )  s\" require x.f\n: UU ( -- n ) RX:ROOK ;\n" ;
@@ -5546,6 +5809,11 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rename-outside" [: RENAME-OUT-TURNS ;] TALK
    s" rename-reaching" [: RENAME-RCH-TURNS ;] TALK
    s" rename-fragment" [: RENAME-FRG-TURNS ;] TALK
+   s" rename-conflict" [: RENAME-CNF-TURNS ;] TALK
+   s" rename-engine" [: RENAME-ENG-TURNS ;] TALK
+   s" rename-engine-image" [: RENAME-IMG-TURNS ;] TALK
+   s" rename-package" [: RENAME-PKG-TURNS ;] TALK
+   s" rename-visits" [: RENAME-VIS-TURNS ;] TALK
    s" rename-export" [: RENAME-EXP-TURNS ;] TALK
    s" rename-named" [: RENAME-NAMED-TURNS ;] TALK
    s" rename-open" [: RENAME-OPEN-TURNS ;] TALK ;

@@ -33,21 +33,22 @@
 \ declares another word, in another wordlist or, after `undefine`, in the
 \ same one.
 \
-\ A use is a use that the check bound to a located declaration, in the order
-\ the check published them: the check's group for the file the use is in,
-\ which USE-IN gives, the document's own file for a document's check, the
+\ A use is a binding the check published, in order: the check's group for the
+\ file the use is in, which USE-IN gives, the document's own file for a check,
 \ bytes of that file's text it starts and ends at, the check's group for the
 \ file the declaration is in, and the bytes its declaring token starts and
-\ ends at there. DEFS-USE-AT finds the use that holds a byte of a document's
-\ text and USE-GROUP its declaration's group, which holds its declaration as
-\ the check read it: no other check's group for the file, whose text may
+\ ends at there. A binding to a word without a source declaration has group
+\ -1, target bytes zero and visit -1. DEFS-USE-AT finds a located use that
+\ holds a byte of a document's text and USE-GROUP its declaration's group,
+\ which holds its declaration as the check read it: no other check's group for
+\ the file, whose text may
 \ differ, answers for a use. USE-WORD$ gives the word as a use writes it.
-\ DEFS-USE-RANGE gives the uses of a document's last completed check, or of
+\ DEFS-USE-RANGE gives all bindings of a document's last completed check, or of
 \ the probe's, in the order the check published them.
 \ DEFS-KEEP also takes whether the check's verdict was verified, which
 \ DEFS-VERIFIED? answers while the check's positions are of the document's
-\ current text: a verified check reported every use in the document that it
-\ bound to a located declaration.
+\ current text: a verified check reported every located use in the document.
+\ A references probe also reports unlocated bindings of its requested tail.
 \ DEFS-EACH gives the groups that answer for their files, the ones workspace
 \ symbols list. DEFS-OWN-GROUP gives the group of a document's own file while
 \ its last check's positions are of its current text, from that check's
@@ -658,7 +659,7 @@ private
 \ added.
 : KEEP-USE ( -- )
    IDS-DOWN
-   FILE-GROUP {: g:n :}
+   FILE$ nip 0= if -1 else FILE-GROUP then {: g:n :}
    IN$ GROUP-AT {: in:n :}
    USE-N @ {: u:n :}
    u 1+ USE-CELLS * USES-RESERVE
@@ -830,7 +831,8 @@ private
 : USE-HOLDING ( n n -- option<n> )
    {: k:n at:n :}
    k B-USE USE-N @ BLOCK-END k B-USE BLOCK@ ?do
-      i U-START USE@ at <= i U-END USE@ at > and
+      i U-GROUP USE@ 0 >=
+      i U-START USE@ at <= and  i U-END USE@ at > and
       if i OPTION:SOME unloop exit then
    loop
    OPTION:NONE ;

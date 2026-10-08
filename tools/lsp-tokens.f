@@ -101,6 +101,7 @@ variable PREV-CHAR                       \ one written last
 \ The token of use U of the text T, when its spelling names a record.
 : USED ( ptr u8 n n -- )
    {: t:ptr tu:n u:n :}
+   u USE-GROUP 0 < if exit then
    u USE-GROUP u USE-TARGET t tu u USE-WORD$ GROUP-REC-NAMED MATCH option
       some OF {: r:n :} u USE-BYTES r REC-CLASS GATHER ENDOF
       none OF ENDOF

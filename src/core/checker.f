@@ -6575,7 +6575,7 @@ PTR-VARIABLE DL-P   variable DL-CAP   variable DL-N      \ DECL-LOCS, in rows
 PTR-VARIABLE DLB-P  variable DLB-CAP  variable DLB-N     \ their names: cells, bytes
 PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
 6 constant DL-ROW                      \ record offset, visit, start, end, name offset, length
-6 constant PU-ROW                      \ use start, end, record offset, visit, start, end
+7 constant PU-ROW                      \ use start, end, record offset, symbol, visit, start, end
 
 : NAV-CELL ( ptr ptr n n n -- ptr n )   \ row i's first cell
    {: pv:ptr i:n row:n :}
@@ -6683,6 +6683,7 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    PU-ROW 0 ?do src i cells + @  dst i cells + ! loop ;
 
 \ A pending use bound to a record at or above offset N goes with that record.
+\ A primitive has no record; its offset is -1 and survives a store rewind.
 : PU-TRUNCATE ( n -- )
    {: n:n :}
    0 PU-N @ 0 ?do                          \ the count kept so far
@@ -8757,14 +8758,13 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
 \ `generates:` definer (CHECKER-GENERATES), never from CHECKER-BIND itself. It
 \ takes the location of the record the binding selects at that moment, the
 \ newest one under BIND-HORIZON, never an older row's, and 0 0 0 when that
-\ record has none: a word the image holds has none. A tombstone reports nothing,
-\ nor does a primitive, which has no record. The use is the spelling's byte
-\ range in its source (NAV-SRC-XT); a spelling the source map does not hold
-\ reports nothing.
+\ record has none: a word the image holds has none. A primitive has no record,
+\ but its binding still reports its symbol. A tombstone reports nothing.
+\ The use is the spelling's byte range in its source (NAV-SRC-XT); a spelling
+\ the source map does not hold reports nothing.
 defer NAV-SRC-XT ( ptr u8 -- n bool )   \ DIAG>SRC, bound beside it (NAV-SRC-INSTALL)
 \ A use: its start and end, selected symbol, and its declaration's visit,
-\ start and end, 0 0 0 when it has no location. The symbol is read from the
-\ selected record at publication.
+\ start and end, 0 0 0 when it has no location.
 defer CHECKER-ON-USE ( n n n n n n -- )
 : NO-USE ( n n n n n n -- ) 2drop 2drop 2drop ;
 variable USES-OPEN                      \ a CHECKER-WITH-USES scope is running
@@ -8781,46 +8781,48 @@ ON-USE-DEFAULT
    is CHECKER-ON-USE
    1 USES-OPEN ! ;
 
-: NAV-NO-USE ( -- n n n n n n bool )
-   0 0 0 0 0 0 RES-FALSE ;
+: NAV-NO-USE ( -- n n n n n n n bool )
+   0 0 0 0 0 0 0 RES-FALSE ;
 
-\ SYM spelled at A U: the use's range, the bound record's offset+1 and its
-\ location (0 0 0 for a record that has none), true; false when there is
-\ nothing to report.
-: NAV-USE-AT ( n ptr u8 n -- n n n n n n bool )
+\ SYM spelled at A U: the use's range, the bound record's offset+1 (0 for a
+\ primitive), symbol and location (0 0 0 when absent), true; false when there
+\ is nothing to report.
+: NAV-USE-AT ( n ptr u8 n -- n n n n n n n bool )
    {: sym:n a:ptr u:n :}
    sym 0= IF NAV-NO-USE EXIT THEN
    sym USIG-NEWEST-VISIBLE {: rec1:n :}
-   rec1 0= IF NAV-NO-USE EXIT THEN
-   rec1 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF NAV-NO-USE EXIT THEN
-   rec1 CHECKER-REC-DECL-AT drop {: v:n ds:n de:n :}
+   rec1 0= IF sym USIG-NEWEST 0 <> IF NAV-NO-USE EXIT THEN THEN
+   rec1 0 <> IF
+      rec1 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF NAV-NO-USE EXIT THEN
+      rec1 CHECKER-REC-DECL-AT drop
+   ELSE 0 0 0 THEN {: v:n ds:n de:n :}
    a NAV-SRC-XT {: s:n mapped:bool :}
    mapped 0= IF NAV-NO-USE EXIT THEN
-   s s u + rec1 v ds de RES-TRUE ;
+   s s u + rec1 sym v ds de RES-TRUE ;
 
 \ A body's uses wait in the pending table until the entry that walked it
 \ publishes them (NAV-PUBLISH): CHECK! its last attempt's, CHECKER-SOURCE-DOES!
 \ a clause's. A row keeps its record's offset so a rewind drops it.
 : NAV-USE ( n ptr u8 n -- )
-   NAV-USE-AT 0= IF 2drop 2drop 2drop EXIT THEN
-   {: s:n e:n rec1:n v:n ds:n de:n :}
+   NAV-USE-AT 0= IF 2drop 2drop 2drop drop EXIT THEN
+   {: s:n e:n rec1:n sym:n v:n ds:n de:n :}
    PU-P PU-CAP PU-N @ 1 + PU-ROW ARENA-ROWS-ENSURE
    PU-P PU-N @ PU-ROW NAV-CELL {: p:ptr :}
    s p !  e p CELL + !  rec1 1 - p 2 cells + !
-   v p 3 cells + !  ds p 4 cells + !  de p 5 cells + !
+   sym p 3 cells + !  v p 4 cells + !  ds p 5 cells + !  de p 6 cells + !
    PU-N @ 1 + PU-N ! ;
 
 \ A use outside a body is published at once.
 : NAV-USE-NOW ( n ptr u8 n -- )
-   NAV-USE-AT 0= IF 2drop 2drop 2drop EXIT THEN
-   {: s:n e:n rec1:n v:n ds:n de:n :}
-   s e rec1 1 - E-PTR ER.SYM @ v ds de CHECKER-ON-USE ;
+   NAV-USE-AT 0= IF 2drop 2drop 2drop drop EXIT THEN
+   {: s:n e:n rec1:n sym:n v:n ds:n de:n :}
+   s e sym v ds de CHECKER-ON-USE ;
 
 : PU-SEND ( n -- )                      \ publish pending use i
    {: i:n :}
    PU-P i PU-ROW NAV-CELL {: p:ptr :}
-   p @  p CELL + @  p 2 cells + @ E-PTR ER.SYM @
-   p 3 cells + @  p 4 cells + @  p 5 cells + @  CHECKER-ON-USE ;
+   p @  p CELL + @  p 3 cells + @
+   p 4 cells + @  p 5 cells + @  p 6 cells + @  CHECKER-ON-USE ;
 
 \ Publish the pending uses from FROM and drop them. The rows stay counted while
 \ the handler runs, so a check it starts appends above them.

@@ -801,15 +801,27 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    then
    false ;
 
-\ Each subject's uses gathered, then settled (LSP-REFERENCES:SETTLE); before
-\ each and once all are, the request is answered instead when HALTED? says,
+\ The uses of each subject from the K-th on gathered for the request with
+\ this id; before each, the request is answered instead when HALTED? says,
 \ and false.
-: GATHERED? ( JSON-RPC:id -- bool )
-   {: id :}
-   LSP-REFERENCES:SUBJECT-N 0 ?do
+: GATHERED-FROM? ( n JSON-RPC:id -- bool )
+   {: k:n id :}
+   LSP-REFERENCES:SUBJECT-N k ?do
       id HALTED? if false unloop exit then
       i LSP-REFERENCES:GATHER
    loop
+   true ;
+
+\ Each subject's uses gathered, again while pass 2 (LSP-REFERENCES:MORE?)
+\ gives subjects, then settled (LSP-REFERENCES:SETTLE); before each and once
+\ all are, the request is answered instead when HALTED? says, and false.
+: GATHERED? ( JSON-RPC:id -- bool )
+   {: id :}
+   0 begin
+      dup id GATHERED-FROM? 0= if drop false exit then
+      drop LSP-REFERENCES:SUBJECT-N
+   LSP-REFERENCES:MORE? 0= until
+   drop
    id HALTED? if false exit then
    LSP-REFERENCES:SETTLE
    true ;
