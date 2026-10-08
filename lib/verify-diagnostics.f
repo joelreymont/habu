@@ -58,6 +58,27 @@ variable READY
    s" E-LOADER-FORM" s" literal_loader_form"
    s" Load a file by a literal path that resolves within 1024 bytes, written in at most 1024 bytes after include or require and otherwise in under 2050 counting, when relative, a slash and the longest root searched for it, through a loader word no definition redefines or retires." ;
 
+\ The record of the name the scan refused (VERIFY:DUPLICATE): its start and
+\ length in the stopped source, and the stopped file. A length of 0 kept no
+\ name, as for one a definer generates, and its start is stale: the record
+\ places an empty token at the statement the scan stopped in (TOKEN-BYTE@).
+: DUP-RECORD$ ( n n ptr u8 ptr u8 n -- ptr u8 n )
+   {: at:n u:n src:ptr name:ptr nameu:n :}
+   u 0= if VERIFY:TOKEN-BYTE@ else at then {: start:n :}
+   src start ORIGIN {: line:n col:n :}
+   START
+   s" code" s" E-DUPLICATE-DEFINITION" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" repair_class" s" rename_duplicate" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" verdict" s" rejected" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" token" src start + u JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" file" name nameu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" line" line JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" column" col JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" byte_start" start JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" byte_end" start u + JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" suggestion" s" Rename the word or undefine the old definition before redefining it." JSON-WRITE:FIELD-S
+   END$ ;
+
 public
 
 \ Scan the supplied source and render its first lexical fault, or an empty span.
@@ -124,6 +145,10 @@ public
       LEX-RECORD$ dup 0<> if exit then 2drop
       rc RC>N VERIFY:TOKEN-BYTE@ VERIFY:SOURCE-COMPOSE-STOPPED$
       VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$ THROW-RECORD$ exit
+   then
+   rc RC>N E-DUP-DEFINITION = if
+      VERIFY:DUPLICATE VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$ drop
+      VERIFY:SOURCE-COMPOSE-STOPPED$ DUP-RECORD$ exit
    then
    rc RC>N VERIFY:E-SOURCE-READ = if
       VERIFY:FAULT-TARGET$ FILE? if UNREADABLE-SOURCE else MISSING-SOURCE then

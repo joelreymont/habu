@@ -20,6 +20,8 @@ create MISSING FS-PATH-CAP allot variable MISSING-U
 create TARGET FS-PATH-CAP allot variable TARGET-U
 create NESTED FS-PATH-CAP allot variable NESTED-U
 create NESTED-DESIGN FS-PATH-CAP allot variable NESTED-DESIGN-U
+create DUP-DEP FS-PATH-CAP allot variable DUP-DEP-U
+create DUP-MADE FS-PATH-CAP allot variable DUP-MADE-U
 
 public
 variable ACTUAL
@@ -36,6 +38,8 @@ private
 : TARGET$ ( -- ptr u8 n ) TARGET TARGET-U @ ;
 : NESTED$ ( -- ptr u8 n ) NESTED NESTED-U @ ;
 : NESTED-DESIGN$ ( -- ptr u8 n ) NESTED-DESIGN NESTED-DESIGN-U @ ;
+: DUP-DEP$ ( -- ptr u8 n ) DUP-DEP DUP-DEP-U @ ;
+: DUP-MADE$ ( -- ptr u8 n ) DUP-MADE DUP-MADE-U @ ;
 
 : COPY! ( ptr u8 n ptr u8 ptr n -- )
    {: a:ptr u:n dst:ptr len:ptr :}
@@ -72,7 +76,11 @@ private
    DESIGN$ DESIGN-SRC$ WRITE-ALL
    MISSING$ MISSING-SRC$ WRITE-ALL
    NESTED$ NESTED-SRC$ WRITE-ALL
-   NESTED-DESIGN$ S\" require nested.f\n" WRITE-ALL ;
+   NESTED-DESIGN$ S\" require nested.f\n" WRITE-ALL
+   ROOT$ s" dup-dep.f" SOURCE-ROOT:JOIN DUP-DEP DUP-DEP-U COPY!
+   DUP-DEP$ S\" \\ dep\n: ZQX-B ( -- n ) 1 ;\n: ZQX-B ( -- n ) 2 ;\n" WRITE-ALL
+   ROOT$ s" dup-made.f" SOURCE-ROOT:JOIN DUP-MADE DUP-MADE-U COPY!
+   DUP-MADE$ S\" DYNAMIC-BUFFER LV-GD u8\n" WRITE-ALL ;
 
 : VERIFY-DESIGN ( -- n )
    CHECKER-SCOPE-START-NEUTRAL
@@ -158,6 +166,55 @@ private
    rec recu s\" \"code\":\"E-MALFORMED-REGISTRY-ROW\"" CONTAINS? TTRUE
    rec recu s\" \"repair_class\":\"close_primitive_row\"" CONTAINS? TTRUE
    rec recu s\" \"token\":\"PRIM:\"" CONTAINS? TTRUE ;
+
+\ A duplicate definition stops the quiet composition, and its record names the
+\ definition the scan refused, in the file and bytes the scan stopped in.
+PTR-VARIABLE DUP-SRC-A
+variable DUP-SRC-U
+
+: VERIFY-DUP ( ptr u8 n -- n )
+   DUP-SRC-U !  DUP-SRC-A !
+   CHECKER-SCOPE-START-NEUTRAL
+   [: DUP-SRC-A @ DUP-SRC-U @ DESIGN$ VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
+   CHECKER-SCOPE-DONE ;
+
+\ The whole record of a duplicate: its token, its file and its place.
+: EXPECTED-DUP$ ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: tok:ptr toku:n file:ptr fileu:n place:ptr placeu:n :}
+   SB-RESET
+   S\" {\"schema_version\":1,\"code\":\"E-DUPLICATE-DEFINITION\",\"repair_class\":\"rename_duplicate\",\"verdict\":\"rejected\",\"token\":\"" SB-APPEND
+   tok toku SB-APPEND
+   S\" \",\"file\":\"" SB-APPEND
+   file fileu SB-APPEND
+   S\" \"," SB-APPEND
+   place placeu SB-APPEND
+   S\" ,\"suggestion\":\"Rename the word or undefine the old definition before redefining it.\"}" SB-APPEND
+   SB$ ;
+
+: SUBJECT-DUP ( -- )
+   S\" : ZQX-A ( -- n ) 1 ;\n: ZQX-A ( -- n ) 1 ;\n" VERIFY-DUP E-DUP-DEFINITION T=
+   E-DUP-DEFINITION VERIFY-DIAGNOSTICS:COMPOSE-FAULT-RECORD$
+   s" ZQX-A" DESIGN$ S\" \"line\":2,\"column\":3,\"byte_start\":23,\"byte_end\":28"
+   EXPECTED-DUP$ T$= ;
+
+\ The scan stops in the required file, so the record names that file and places
+\ the name in its bytes.
+: REQUIRED-DUP ( -- )
+   ROOT$ [: S\" require dup-dep.f\n" VERIFY-DUP E-DUP-DEFINITION T= ;] SOURCE-ROOT:WITH
+   E-DUP-DEFINITION VERIFY-DIAGNOSTICS:COMPOSE-FAULT-RECORD$
+   s" ZQX-B" DUP-DEP$ S\" \"line\":3,\"column\":3,\"byte_start\":29,\"byte_end\":34"
+   EXPECTED-DUP$ T$= ;
+
+\ DYNAMIC-BUFFER LV-GD generates LV-GD-RESERVE, which the subject defined first.
+\ The checker's guard refuses the generated name and keeps none: its length is
+\ 0 and the byte VERIFY:DUPLICATE answers is stale. The record places an empty
+\ token at the statement the scan stopped in, its last token `u8`.
+: MADE-DUP ( -- )
+   ROOT$ [: S\" : LV-GD-RESERVE ( n -- ) drop ;\nrequire dup-made.f\n" VERIFY-DUP E-DUP-DEFINITION T= ;]
+   SOURCE-ROOT:WITH
+   E-DUP-DEFINITION VERIFY-DIAGNOSTICS:COMPOSE-FAULT-RECORD$
+   s" " DUP-MADE$ S\" \"line\":1,\"column\":22,\"byte_start\":21,\"byte_end\":21"
+   EXPECTED-DUP$ T$= ;
 
 \ A quiet check cannot read text that a selected top-level call renders at
 \ run time. Its coverage answer is useful to direct callers without requesting
@@ -264,6 +321,12 @@ public
    OPEN-GROUP-FAULT
    s" malformed primitive row keeps its own diagnostic" T-LABEL
    MALFORMED-ROW
+   s" duplicate in the subject has its exact record" T-LABEL
+   SUBJECT-DUP
+   s" duplicate in a required file names that file" T-LABEL
+   REQUIRED-DUP
+   s" generated duplicate name reads no source bytes" T-LABEL
+   MADE-DUP
    RUNTIME-COVERAGE
    CLEANUP-RUN
    T-REPORT ;
