@@ -8,8 +8,10 @@
 \ the fixture, the thrown code when it refused. Printing rather than exiting
 \ keeps a refusal distinguishable from an acceptance for the parent test.
 \
-\ lib/memory.f is required HERE and in no window file, so NUM's families
-\ are host-only: the retained checker knows them and the window must not.
+\ lib/memory.f is required HERE and in no window prefix file, so through the
+\ checker handover NUM's families are host-only: the retained checker knows
+\ them and the window must not. A suite child that loads after the window's
+\ seal may require it (test/sites-child.f, lib/test/subject.f).
 
 require lib/errors.f
 require src/core/prefix-boundary.f

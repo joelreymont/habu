@@ -82,7 +82,7 @@ variable WANT-U
 
 \ Eliding the branch does not elide the record. Every does> clause gets one, so
 \ that the branch a patched clause plants aims at a record ENTRY an AOT capture
-\ can name (test/does-clause-record.f); an elided clause keeps its because
+\ can name (test/does-clause-record-child.f); an elided clause keeps its because
 \ removing it would mean unwinding CP and the derived name at `;`.
 : ?CLAUSE-RECORD ( ptr u8 n -- ) {: a:ptr u:n :}
    a u WANT!

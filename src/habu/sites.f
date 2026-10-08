@@ -19,7 +19,7 @@
 \
 \ Both arms are public and take the band - its first byte, SNAP-RELOC's
 \ CALLMAP-OFF - as bytes, so a caller can hand either one a band that is not the
-\ engine's own; test/sites.f does. EACH-IN-SPAN is the entry the rest of the
+\ engine's own; test/sites-child.f does. EACH-IN-SPAN is the entry the rest of the
 \ tree calls: it picks the arm by target and hands it the engine's band.
 \
 \ A span is [off, off+len) and a site is inside it when its first byte is. Every

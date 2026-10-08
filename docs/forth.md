@@ -359,7 +359,7 @@ public
   (`APP:RESET`, `MK:RESET`). A `does>` definer `MK` also publishes its clause
   as `MK;does` in its own wordlist, so a live `MK;does` there refuses `MK` at
   `does>` and a later `MK;does` is refused, rc 78 either way
-  (test/does-clause-record.f).
+  (test/does-clause-record-child.f).
 - A **public** definition whose tail a **private** word of the same package owns
   is the forwarder pattern (`lib/task.f` publishes `: PREPARE ( ptr n -- )
   PREPARE ;` over its private `PREPARE`): legal, but both effects must move the
@@ -387,7 +387,8 @@ public
   a primitive, a duplicate tail in the target section and a failed
   declaration's row outside its own diagnostic run (E-EXPORT-UNDEFINED). An
   exported `does>` definer `MK` brings its clause along as `MK;does`, so a live
-  `MK;does` in the target section refuses it, rc 78 (test/does-clause-record.f).
+  `MK;does` in the target section refuses it, rc 78
+  (test/does-clause-record-child.f).
   Re-exporting a generated constructor under a second name is allowed; adding
   tails INTO a generated constructor package is not. AOT tree-shake keeps one
   body; alias rows roll back with checker scope frames. At TOP LEVEL `EXPORT

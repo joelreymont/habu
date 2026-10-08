@@ -13,7 +13,7 @@ private
 
 \ ---- the boundaries ----------------------------------------------------------
 \ Reading the engine's own relocation bands and its own compiled code needs the
-\ same raw views src/habu/aot-capture.f, test/addrmap-set.f and
+\ same raw views src/habu/aot-capture.f, test/addrmap-set-child.f and
 \ test/addrmap-call.f take. The code-address cast chooses nothing, because every
 \ address handed to it is computed by the checked words below from `cp@`.
 : DATA-A ( -- ptr u8 )

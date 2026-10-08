@@ -6410,12 +6410,14 @@ $140 constant LC-MODE-0500   \ a directory its owner may list and enter, not wri
    s" sub/lc-use.f" LC-IN-ROOT CHECK-ARG+
    LC-OTHER$ LC-CAPTURE s" load-context: the verifier child of check.f's own tree" LC-EXPECT-CLEAN ;
 
+\ A tree suite that runs on the product alone: a parent that provides the
+\ whitebox engine for a window child exits 67 here (E-BUILD-PATH uncaught).
 : LC-TREE-CASE ( -- )
-   s" test/addrmap-set.f" LC-ALL
-   s" load-context: test/addrmap-set.f" T-LABEL 0 T=
+   s" test/aot-seeded-address-sites.f" LC-ALL
+   s" load-context: test/aot-seeded-address-sites.f" T-LABEL 0 T=
    {: outu:n erru:n :}
    erru 0 T=
-   CAP-OUT outu s" addrmap-set: ok" CONTAINS? TTRUE ;
+   CAP-OUT outu s" aot-seeded-address-sites: ok" CONTAINS? TTRUE ;
 
 \ Nothing checks a file the engine provides, so it is refused at its own
 \ spelling, by an E-ENGINE-PROVIDED record, with the usage status.
