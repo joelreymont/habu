@@ -198,6 +198,11 @@ SUITE native-unit-refusals
    test/native-unit-compile-e2e.f
 ;SUITE
 
+\ A package's checker facts survive an artifact boundary.
+SUITE checker-unit-codec
+   test/checker-unit-codec-e2e.f
+;SUITE
+
 SUITE native-window-owner
    test/native-window-owner.f
 ;SUITE

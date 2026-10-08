@@ -6,6 +6,7 @@ require src/compiler/native/feed.f
 require src/compiler/native/compiler.f
 require lib/ffi-abi.f
 require test/compiler/native-eval-fixture.f
+require test/checker-owner-reset.f
 
 package NCB-LEFT
 public
@@ -143,8 +144,6 @@ private
    MULTI-ERR-END 0 > TTRUE
    CHECKER-OWNER:TAPE-DISARM ;
 
-TRUSTED: RESET-SOURCE ( -- ) CHECKER-RESET-SOURCE ;
-
 : JUDGED-RECORDED ( -- )
    CHECKER-OWNER:TAPE-ARM
    s" RESET-JUDGED-PROBE ( -- n ) EARLIER" CHECKER-OWNER:CHECK -1 T=
@@ -233,7 +232,7 @@ TRUSTED: RESET-SOURCE ( -- ) CHECKER-RESET-SOURCE ;
    CHECKER-OWNER:TAPE-ARM
    s" PROBE ( -- n ) 5 @ EARLIER" CHECKER-OWNER:CHECK-UNJUDGED -1 <> TTRUE
    3 CHECKER-OWNER:UNJUDGED-BINDING nip 0 > TTRUE
-   RESET-SOURCE
+   OWNER-RESET:SOURCE
    [: 3 CHECKER-OWNER:UNJUDGED-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
    CHECKER-OWNER:TAPE-DISARM ;
 

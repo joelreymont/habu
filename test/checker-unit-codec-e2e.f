@@ -7,6 +7,7 @@ require lib/test.f
 require lib/string.f
 require lib/fs.f
 require lib/fs-mutate.f
+require test/checker-owner-reset.f
 
 package CHECKER-UNIT-CODEC-TEST
 
@@ -43,7 +44,6 @@ CAST: IMPORT-XT ( n -- [ ptr u8 n -- ] )
 : IMPORT ( ptr u8 n -- )
    OWNER CHECKER-OWNER-ABI:UNIT-IMPORT-OFF + CELL-VIEW @ IMPORT-XT execute ;
 
-TRUSTED: RESET-SOURCE ( -- ) CHECKER-RESET-SOURCE ;
 : LOAD-UNIT ( -- )
    s" package UNIT-NBR public : BL-ALPHA ( -- n ) 1 ; : BL-OMEGA ( -- n ) 2 ; : BL-WORD ( n n -- n ) + ; : BL-TARGET ( n n -- n ) + ; : BL? ( n -- bool ) 0= ; : BL-SCHEME ( forall<p,[ R n -- R n | U -- U ]> -- ) drop ; : BL-INFER BL-SCHEME ; ;package" evaluate-closed ;
 : SHADOW ( -- )
@@ -163,13 +163,13 @@ TRUSTED: RESET-SOURCE ( -- ) CHECKER-RESET-SOURCE ;
    SERIAL BASE-SERIAL @ T= ;
 
 : CHECK-BOUNDARIES ( -- )
-   RESET-SOURCE MARK
+   OWNER-RESET:SOURCE MARK
    SERIAL BASE-SERIAL !
    ART BAD ART-U @ BYTE-COPY
    0 BAD 6 cells + CELL-VIEW !
    BAD ART-U @ IMPORT
    SERIAL BASE-SERIAL @ T=
-   RESET-SOURCE MARK
+   OWNER-RESET:SOURCE MARK
    SERIAL BASE-SERIAL !
    ART BAD ART-U @ BYTE-COPY
    $8000000000000000 BAD 6 cells + CELL-VIEW !
@@ -185,7 +185,7 @@ public
    LOAD-UNIT SHADOW
    s" UNIT-EXTRA ( -- n ) UNIT-NBR:BL-ALPHA" CHECK-CANDIDATE! -1 T=
    SAVE
-   RESET-SOURCE
+   OWNER-RESET:SOURCE
    MARK
    s" imported unit refuses defer graph metadata" T-LABEL
    CHECK-DEFER-GRAPH

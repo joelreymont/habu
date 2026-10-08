@@ -1,5 +1,7 @@
 \ The parent saves two application images and runs the later phases in those
 \ restored processes. Each phase asks the active checker what source can do.
+require test/checker-owner-reset.f
+
 package CONTROL-CAPTURE-SUBJECT
 public
 
@@ -24,7 +26,6 @@ variable TEST-CASE
    s" CONTROL-CAPTURE-SUBJECT:CC-MAKE" CHECKER-FIND-ACTIVE-SYM CHECKER-RECORD-CREATED ;
 : THROW-STATE! ( n -- ) s" throw" rot NORET-ADD ;
 : CLEAR-MAKER ( -- ) s" CONTROL-CAPTURE-SUBJECT:CC-MAKE" CHECKER-UNDEFINE ;
-TRUSTED: RESET-SOURCE ( -- ) CHECKER-RESET-SOURCE ;
 : SCOPE+ ( -- ) CHECKER-SCOPE-START ;
 : SCOPE- ( -- ) CHECKER-SCOPE-DONE ;
 : BAD-DEF ( -- ) s" : CC-FAILED ( n -- n ) drop ;" evaluate-closed ;
@@ -102,7 +103,7 @@ public
    s" CC-FINAL-CREATED" RECORD-CREATED ASSERT
    CHECKER-BOUND:REWIND
    BOUNDARY
-   RESET-SOURCE
+   OWNER-RESET:SOURCE
    CTL-DEAD CTL-THROW FLAGS!      \ primitive prefix survived both captures
    CREATED 0 EQ!
    s" control capture: restored" type cr ;
