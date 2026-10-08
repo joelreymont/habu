@@ -391,15 +391,15 @@ variable CA-COMPOSE-LABEL-U
 : CA-LEX-ROW? ( -- bool )
    LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = ;
 
+: CA-JSON-LEX ( -- )
+   CA-LEX-ROW? IF CA-JSON-LEX-ROW ELSE CA-JSON-LEX-UNTERM THEN ;
+
 \ The record of the defect the lexer hit, in the selected mode, built in the
 \ JSON writer's buffer. The lexer reports more than one defect, so the record
 \ names the one it hit.
 : CA-LEX-RECORD ( -- )
-   CA-LEX-ROW? IF
-      CA-JSON? IF CA-JSON-LEX-ROW ELSE CA-PROSE-LEX-ROW THEN
-   ELSE
-      CA-JSON? IF CA-JSON-LEX-UNTERM ELSE CA-PROSE-LEX-UNTERM THEN
-   THEN ;
+   CA-JSON? IF CA-JSON-LEX EXIT THEN
+   CA-LEX-ROW? IF CA-PROSE-LEX-ROW ELSE CA-PROSE-LEX-UNTERM THEN ;
 
 : CA-HANDLE-LEX-DEFECT ( -- )
    LINT-LEX:ERROR? 0= IF exit THEN
@@ -861,6 +861,18 @@ public
 \ keeps the original throw code; this word only formats its diagnostic.
 : COMPOSE-FAULT-RECORD$ ( n -- ptr u8 n )
    {: rc:n :}
+   rc E-DISC-UNTERM = IF
+      VERIFY:SOURCE-COMPOSE-STOPPED$ CA-START
+      VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$ CA-SOURCE-BUF!
+      CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
+      LINT-LEX:ERROR? IF CA-JSON-LEX
+      ELSE
+         rc CA-THROW-RC !
+         VERIFY:TOKEN-BYTE@ CA-THROW-AT !
+         CA-JSON-THROW
+      THEN
+      LJW$ EXIT
+   THEN
    rc VERIFY:E-SOURCE-READ = IF
       VERIFY:FAULT-TARGET$ FILE? IF CA-UNREADABLE-SOURCE
       ELSE CA-MISSING-SOURCE THEN

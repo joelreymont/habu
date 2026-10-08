@@ -115,6 +115,21 @@ private
    rec recu s\" \"line\":2,\"column\":1,\"byte_start\":9,\"byte_end\":16" CONTAINS? TTRUE
    rec recu NESTED$ CONTAINS? TTRUE ;
 
+: VERIFY-UNTERMINATED ( -- n )
+   CHECKER-SCOPE-START-NEUTRAL
+   [: S\" s\" unfinished" MISSING$
+      VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
+   CHECKER-SCOPE-DONE ;
+
+: UNTERMINATED-SOURCE ( -- )
+   ROOT$ [: VERIFY-UNTERMINATED E-DISC-UNTERM T= ;] SOURCE-ROOT:WITH
+   E-DISC-UNTERM CHECK-ALL-ERRORS:COMPOSE-FAULT-RECORD$
+   {: rec:ptr recu:n :}
+   rec recu s\" \"code\":\"E-UNTERMINATED-STRING\"" CONTAINS? TTRUE
+   rec recu s\" \"token\":\"s\\\"\"" CONTAINS? TTRUE
+   rec recu s\" \"line\":1,\"column\":1,\"byte_start\":0,\"byte_end\":2" CONTAINS? TTRUE
+   rec recu MISSING$ CONTAINS? TTRUE ;
+
 public
 
 : MAIN ( -- )
@@ -126,6 +141,8 @@ public
    MISSING-LOAD
    s" nested fault reports scanned bytes after frame closes" T-LABEL
    NESTED-LOAD
+   s" unterminated source has its lexical diagnostic" T-LABEL
+   UNTERMINATED-SOURCE
    CLEANUP-RUN
    T-REPORT ;
 
