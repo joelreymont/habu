@@ -468,6 +468,15 @@ including its Gforth child, but does not make every native suite pay for it.
 The fixture supplies each build a root of a chosen length; a pool path in front
 of it would overflow `NF-PATH-CAP`.
 
+Run `HB_TMP=$TMP bin/hb --load test/gforth/host-test.f` from the repository
+root when changing the Gforth host (`src/host/gforth/`) or its cases. It runs
+each program in `test/gforth/cases/` under `gforth -m 1G
+src/host/gforth/boot.fs` and under `bin/hb --load`, stdin from `/dev/null`,
+and exits 0 only when every case's exit code, stdout and stderr (the
+diagnostic JSON) are byte-identical: the Gforth host refuses and runs each
+case as native does. One line per case; `$HB_TMP/gforth-host/` keeps
+`<case>.{gf,hb}.{out,err,rc}` for that run.
+
 Run the [no-binary recovery check](bootstrap.md#periodic-no-binary-check) for
 changes to the recovery seed, mirror, launcher or dependencies, or as an
 explicit release recovery audit. The [DDC audit](bootstrap.md#ddc-audit-diverse-double-compiling)

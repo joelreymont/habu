@@ -138,6 +138,10 @@ seed; the release copy for other agents is `/tmp/hazel-release/hb`.
   `usr/lib/<triplet>` (for `libpq.so.5`) on `LD_LIBRARY_PATH`.
 - Gforth with `{:` locals support. Homebrew `gforth` 0.7.3 is too old.
   A current Gforth snapshot such as `0.7.9_20260610` works.
+- A C compiler for Gforth's libcc: the Gforth host (`src/host/gforth/layout.fs`)
+  calls `mmap` and `munmap` through it. Gforth builds that binding on first
+  use and caches it; the run that builds or rebuilds it writes the build's
+  messages to stderr.
 - GB10 device gates (sm_121a) **require** the pinned 13.3 `ptxas` in
   `~/.habu/toolchain/ptxas-13.3.33`: since `habu-enforce-pinned-ptxas-4598a743`,
   an sm_121 assemble fails closed (`E-PTXTC-STALE`/`E-PTXTC-DIGEST`) unless the
