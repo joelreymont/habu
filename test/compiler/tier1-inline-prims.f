@@ -30,6 +30,7 @@
 
 require lib/test.f
 require src/habu/xref.f
+require src/habu/code-bytes.f
 
 1 set-tier
 
@@ -37,13 +38,14 @@ package TIER1-INLINE-PRIMS
 private
 
 \ ---- reading a word's own emitted code ---------------------------------------
-\ XREF-N>U8 is src/habu/xref.f's own boundary between an engine address and a
+\ CODE-BYTES:AT is the bounded view between an engine code address and a
 \ readable pointer; this file adds none of its own.
-: CODE@ ( n -- n ) {: at:n :}
-   at XREF-N>U8 c@
-   at 1+ XREF-N>U8 c@ 8 lshift or
-   at 2 + XREF-N>U8 c@ 16 lshift or
-   at 3 + XREF-N>U8 c@ 24 lshift or ;
+: CODE@ ( n -- n )
+   4 CODE-BYTES:AT drop {: p:ptr :}
+   p c@
+   p 1+ c@ 8 lshift or
+   p 2 + c@ 16 lshift or
+   p 3 + c@ 24 lshift or ;
 
 \ AArch64 BL has top six bits $25 and a signed 26-bit instruction displacement.
 : BL? ( n -- bool ) CODE@ 26 rshift $25 = ;

@@ -21,6 +21,9 @@ public
 \ TASK:FACILITY, say, which is the same machine shape - cannot reach TASK:WAIT.
 NEWTYPE sem 0
 
+\ The C entry address pthread_create takes, as an integer.
+: PTHREAD-ENTRY ( -- n ) task-entry ;
+
 private
 
 \ The converters are this package's alone: a handle names a record TASK owns,
@@ -1157,9 +1160,6 @@ variable SWEEP-ARMED
    tcb PARK-CREATE
    tcb DONE-INIT
    TASK-CONSTRUCTED tcb TASK-STATE! ;
-
-\ This is a foreign C entry address with TASK-ABI's fixed argument contract.
-: PTHREAD-ENTRY ( -- n ) task-entry ;
 
 : TASK-PTHREAD-CREATE-RC ( ptr n -- n ) {: tcb:ptr :}
    tcb TCB.THREAD BYTE-VIEW 0 PTHREAD-ENTRY tcb BYTE-VIEW PTHREAD-CREATE-CALL ;

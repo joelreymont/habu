@@ -26,9 +26,9 @@
 \ ones in the process's own data. Every absurd address - a wordlist id read as a
 \ start, a negative, a number past the emitted code - is refused either way.
 \
-\ The pointer itself is minted by src/habu/xref.f's XREF-N>U8, the engine's one
-\ declared n -> ptr u8 refinement. This file adds no TRUST row of its own; it
-\ adds the bound that row never had.
+\ The pointer itself is minted by this package's private cast N>U8, and AT
+\ bounds it: AT is the only word that applies the cast, and only to a span
+\ IN-CODE? admits.
 \
 \ This file requires nothing, so a tool that must not disturb its own
 \ measurement (tools/tier-census.f, tools/tier-dump.f) can load it.
@@ -36,6 +36,9 @@
 package CODE-BYTES
 
 private
+
+\ A code address is an integer; AT is the one bounded view of it.
+CAST: N>U8 ( n -- ptr u8 )
 
 \ [rbase, dbase@) - the engine's baked text.
 : TEXT-LO ( -- n ) rbase ;
@@ -66,6 +69,6 @@ public
    at bytes IN-CODE? 0= if
       s" hb: span outside the code region" 74 die
    then
-   at XREF-N>U8 bytes ;
+   at N>U8 bytes ;
 
 ;package

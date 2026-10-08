@@ -12487,7 +12487,7 @@ $2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
    rec CK-REC-NAME-SLOT cells + BYTE-VIEW u ;
 
 \ The dictionary record at index IX, minted as src/habu/xref.f XREF-REC mints it
-\ (XREF-N>REC). This file cannot use XREF-REC: the boot prefix loads it before
+\ (XREF:REC). This file cannot use XREF-REC: the boot prefix loads it before
 \ xref.f (src/habu/habu2.f), and everywhere else it reaches a record only by a
 \ lookup by name (scope-find, CHECKER-RESOLVE:WL-PROBE), which cannot list a
 \ wordlist. A record spans CK-REC-WID's slot and those before it, the size the

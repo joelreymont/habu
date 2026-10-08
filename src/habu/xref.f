@@ -30,11 +30,8 @@ DICT-WL:RETIRED constant XREF-RETIRED-WL
 
 32 constant XREF-SP
 
-\ Xref casts expose mixed dictionary records and their inline/long name bytes.
-\ Retirement: habu-sweep-trusted-out-41e973ce.
-TRUSTED: XREF-N>REC ( n -- ptr n ) ;
 : XREF-A>U8 ( ptr n -- ptr u8 ) BYTE-VIEW ;
-TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
+
 : XREF-REC+ ( ptr n n -- ptr n )
    + ;
 
@@ -50,8 +47,30 @@ TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
 : XREF-REC-ADDR ( n -- n )
    DREC * dbase@ + ;
 
-: XREF-REC ( n -- ptr n )
-   XREF-REC-ADDR XREF-N>REC ;
+: XREF-CELL@ ( ptr n n -- n )
+   cells + @ ;
+
+package XREF
+private
+\ A dictionary record's address and a record cell's name address are integers.
+CAST: N>REC ( n -- ptr n )
+CAST: N>U8 ( n -- ptr u8 )
+public
+\ The record at dictionary index n.
+: REC ( n -- ptr n ) XREF-REC-ADDR N>REC ;
+\ The bytes a record's cell n points at (a name).
+: PTR@ ( ptr n n -- ptr u8 ) XREF-CELL@ N>U8 ;
+;package
+
+: XREF-REC ( n -- ptr n ) XREF:REC ;
+
+\ The dictionary index of a record address an engine cell holds as an integer.
+\ n must be a live record's address; 0 and unaligned addresses are not
+\ refused here (REC-LIVE? tests an address).
+: XREF-ADDR>INDEX ( n -- n ) dbase@ - DREC / ;
+
+\ The record at such an address, under the same precondition.
+: XREF-ADDR>REC ( n -- ptr n ) XREF-ADDR>INDEX XREF-REC ;
 
 : LATEST ( -- ptr n )
    ndict@ dup 0 <= if drop XREF-NULL exit then
@@ -60,11 +79,7 @@ TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
 : XREF-FOUND? ( ptr n -- bool )
    XREF-NULL <> ;
 
-: XREF-CELL@ ( ptr n n -- n )
-   cells + @ ;
-
-: XREF-PTR@ ( ptr n n -- ptr u8 )
-   XREF-CELL@ XREF-N>U8 ;
+: XREF-PTR@ ( ptr n n -- ptr u8 ) XREF:PTR@ ;
 
 : XREF-START ( ptr n -- n )
    XREF-START-SLOT XREF-CELL@ ;
@@ -242,7 +257,7 @@ private
    recn REC-LIVE? 0= if
       s" " MODE-NONE XREF-FALSE exit
    then
-   recn XREF-N>REC
+   recn XREF-ADDR>REC
    dup XREF-WORDLIST XREF-NAMESPACE-WL <> if
       drop s" " MODE-NONE XREF-FALSE exit
    then

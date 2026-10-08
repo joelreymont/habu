@@ -103,10 +103,10 @@ package STACK-LIFECYCLE-TEST
 \ call. The ratchet advances by one cell, so VALUES first crosses the data
 \ guard with its second result while its first result still fits.
 : NATIVE-PAIR-SOURCE ( -- )
-   SB-RESET s" 1 set-tier require src/habu/xref.f " SB-APPEND GUARDED-BUF
+   SB-RESET s" 1 set-tier require src/habu/xref.f require src/habu/code-bytes.f " SB-APPEND GUARDED-BUF
    s" : VALUES ( -- n n ) 11 22 ; " SB-APPEND
-   s" : CODE@ ( n -- n ) {: at:n :} at XREF-N>U8 c@ at 1+ XREF-N>U8 c@ 8 lshift or " SB-APPEND
-   s" at 2 + XREF-N>U8 c@ 16 lshift or at 3 + XREF-N>U8 c@ 24 lshift or ; " SB-APPEND
+   s" : CODE@ ( n -- n ) 4 CODE-BYTES:AT drop {: p:ptr :} p c@  p 1+ c@ 8 lshift or " SB-APPEND
+   s" p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ; " SB-APPEND
    S\" : SELECTED ( -- ) s\" VALUES\" XREF-FIND {: rec:ptr :} rec XREF-FOUND? 0= if s\" missing VALUES\" 1 die then " SB-APPEND
    s" 0 rec XREF-CODE-BYTES 4 / 0 ?do rec XREF-START i 4 * + CODE@ {: w:n :} " SB-APPEND
    s" w 4290772992 and 2826960896 = w 5 rshift 31 and 19 = and if 1+ then loop " SB-APPEND

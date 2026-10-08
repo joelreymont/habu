@@ -798,9 +798,9 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   region's code band from `dbase@ + DICT-SIZE` up to `cp@`, with a span having to
   lie wholly inside ONE of them — and answers the bytes, or refuses with
   `hb: span outside the code region` and exit code 74. It is not a new seam and
-  it adds no `TRUST` row of its own: it is the bound on `XREF-N>U8`
-  (`src/habu/xref.f`), the engine's one declared `n -> ptr u8` refinement, which
-  never had one. `src/compiler/native/codewalk.f`,
+  it adds no `TRUST` row: the pointer comes from the package's private
+  `CAST: N>U8`, which only `CODE-BYTES:AT` applies, and only to a span it has
+  bounded. `src/compiler/native/codewalk.f`,
   `tools/codegen-tail-probe.f`, `tools/jitdump-core.f`, `tools/tier-dump.f` and
   `tools/tier-census.f` read through it, and `test/compiler/code-bytes.f` is the
   test of its bound. A site that only carries a code address on rather than

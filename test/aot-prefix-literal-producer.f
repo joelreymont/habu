@@ -36,6 +36,7 @@ require src/habu/aot-capture.f
 require src/habu/aot-ident.f
 require src/habu/fdio.f
 require src/habu/aot-file.f
+require src/habu/code-bytes.f
 
 package PREFIX-LITERAL-PRODUCER
 public
@@ -115,7 +116,7 @@ TRUSTED: PATCH ( n n -- ) patch32 ;
       then
    loop
    CHAIN-SITE @ 0= if 79 throw then
-   CHAIN-SITE @ XREF-N>U8 CHAIN 16 BYTE-COPY
+   CHAIN-SITE @ 16 CODE-BYTES:AT drop CHAIN 16 BYTE-COPY
    CHAIN CHAINV {: old:n :}
    s" ASCII-UPPER" XREF-FIND XREF-START old EQ
    ndict@ 0 ?do i XREF-REC XREF-START old 2 + = if 79 throw then loop

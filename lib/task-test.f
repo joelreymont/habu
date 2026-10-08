@@ -9,7 +9,7 @@ require lib/process-argv.f
 require lib/task.f
 require lib/time-cpu.f            \ TIME:THREAD-CPU-NS, the clock the sleeping cases read
 require src/habu/task-abi.f       \ the baked TCB size this suite pins
-require src/habu/xref.f           \ XREF-N>U8: the byte view the entry is read through
+require src/habu/code-bytes.f     \ CODE-BYTES:AT: the byte view the entry is read through
 require lib/adt/result.f          \ the join's answer is MATCHed here
 require lib/test/outcome.f
 require test/checker-assert.f
@@ -1483,11 +1483,8 @@ $D65F03C0 constant W-RET
 \ bound, not a measurement: a walk that runs past it read the wrong address.
 128 constant ENTRY-WORD-CAP
 
-\ A foreign C entry address, the way lib/task.f takes it for pthread_create.
-TRUSTED: TASK-ENTRY-ADDR ( -- n ) task-entry ;
-
 : ENTRY-W32@ ( n -- n ) {: a:n :}
-   a XREF-N>U8 {: p:ptr :}
+   a 4 CODE-BYTES:AT drop {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
 variable ENTRY-STLR-ANY               \ release stores of any shape
@@ -1497,7 +1494,7 @@ variable ENTRY-WORDS
 
 : ENTRY-SCAN ( -- )
    0 ENTRY-STLR-ANY !  0 ENTRY-STLR-DONE !  0 ENTRY-STR-PLAIN !  0 ENTRY-WORDS !
-   TASK-ENTRY-ADDR {: base:n :}
+   TASK:PTHREAD-ENTRY {: base:n :}
    ENTRY-WORD-CAP 0 do
       base i 4 * + ENTRY-W32@
       dup W-STLR-MASK and W-STLR-BITS = if 1 ENTRY-STLR-ANY +! then

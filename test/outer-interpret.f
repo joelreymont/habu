@@ -128,7 +128,7 @@ variable SPIN-U
    s" variable OI-WANT" GE-SRC-LINE
    s" : OI-B. ( bool -- ) if 1 else 0 then . ;" GE-SRC-LINE
    s" : OI-CELL@ ( n -- n ) data-base + @ ;" GE-SRC-LINE
-   s" : OI-PEND ( -- ptr n ) PEND-CELL OI-CELL@ XREF-N>REC ;" GE-SRC-LINE
+   s" : OI-PEND ( -- ptr n ) PEND-CELL OI-CELL@ XREF-ADDR>REC ;" GE-SRC-LINE
    s" TRUSTED: OI-ORIGIN ( ptr u8 -- n ) dup 1 + code-origin ;" GE-SRC-LINE
    s" : OI-REC. ( ptr n -- ) {: r:ptr :} r XREF-NAME$ type cr r XREF-FLAGS ." GE-SRC+
    s"  r XREF-WORDLIST OI-WANT @ = OI-B. r XREF-START TIER-PROV:OPEN-CELL OI-CELL@ = OI-B." GE-SRC+

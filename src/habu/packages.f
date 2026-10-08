@@ -207,7 +207,7 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
    floor USE-PKG-SAVE-CELL CELL!
    PKG-REC-CELL CELL@ rec <>  PKG-PARENT-CELL CELL@ parent <> or
    get-current cur <> or if
-      rec 0= if -1 0 package-scope! else rec XREF-N>REC PKG-INDEX parent package-scope! then
+      rec 0= if -1 0 package-scope! else rec XREF-ADDR>INDEX parent package-scope! then
       cur set-current
    then
    NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY ;

@@ -42,6 +42,7 @@ require lib/test/outcome.f
 require lib/test/subject.f
 require lib/engine-candidate.f
 require src/habu/xref.f
+require src/habu/code-bytes.f
 require test/gate-common.f
 require test/preloaded-engine.f
 
@@ -135,13 +136,14 @@ variable SRC-U
    SRC$ ;
 
 \ ---- the guard as tier 1 wrote it ---------------------------------------------
-\ XREF-N>U8 is src/habu/xref.f's own boundary between an engine address and a
+\ CODE-BYTES:AT is the bounded view between an engine code address and a
 \ readable pointer; this file adds none of its own.
-: CODE@ ( n -- n ) {: at:n :}
-   at XREF-N>U8 c@
-   at 1+ XREF-N>U8 c@ 8 lshift or
-   at 2 + XREF-N>U8 c@ 16 lshift or
-   at 3 + XREF-N>U8 c@ 24 lshift or ;
+: CODE@ ( n -- n )
+   4 CODE-BYTES:AT drop {: p:ptr :}
+   p c@
+   p 1+ c@ 8 lshift or
+   p 2 + c@ 16 lshift or
+   p 3 + c@ 24 lshift or ;
 
 \ Masks over the fields DDI 0487 gives each form, so a register this file does
 \ not name cannot make a word match.
