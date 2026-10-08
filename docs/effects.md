@@ -428,14 +428,15 @@ therefore opened on the `xt!` **token** and closes with it, so
 judged by the rule again.
 
 An accessor that must hand out a code cell at a fixed **image-ABI** offset
-cannot be written in checked Habu for the same reason, so the two the engine
-needs are named `TRUSTED:` boundaries with the address computation as their whole
-body: `src/habu/repl.f` `REPLH-PTR` and `lib/genio.f` `ENGINE-ROW`. They retire
-when the checker gains a quotation type kind (`habu-campaign-c2-mem-c3d7662b`).
-A borrower that never reads the cell back as code needs no accessor: the
-owner's store, `NCOMP:DISPATCH! ( [ ptr u8 n -- ] -- )`, certifies, so the
-compile-scaling tools store their counter with it and end the borrow with
-`NCOMP:INSTALL`, which puts the compiler's own entry back.
+cannot be a checked `data-base <off> +` body for the same reason, so its
+owner declares the retype once as a package-private `CAST:` and checks the
+accessor over it: `lib/genio.f`'s `>ENGINE-ROW` under `ENGINE-ROW`, which
+`QUOTATION-STORAGE:STORE` consumes. No accessor is needed where nothing reads
+the cell back as code: the owner `src/habu/repl.f` installs its reader with
+`[: REPL-READ ;] data-base REPLH-CELL + xt!`, and a borrower stores through the
+owner's certified store, `NCOMP:DISPATCH! ( [ ptr u8 n -- ] -- )`, as the
+compile-scaling tools do, ending the borrow with `NCOMP:INSTALL`, which puts
+the compiler's own entry back.
 
 The price is measured and deliberate: the null's permissive pointee arm is where
 a code cell declared over the null lands, so the executable value is fenced
