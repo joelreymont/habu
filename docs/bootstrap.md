@@ -46,8 +46,9 @@ allowance; `SOURCE-ARENA-LEN` in `src/habu/habu2.f` and its seed mirror in
 74 with `hb: source prefix buffer full`.
 What is still narrower on the recovery lineage than on a `tools/native-build.f`
 engine is recorded in the tracker: the AOT capture carries the captured REPL's
-signatures but not its defer rows, so `require src/habu/debug.f` refuses on a
-product engine (`habu-carry-the-captured-bf931ced`), and the optimizing tier
+signatures but not its defer rows, so `require src/habu/debug.f` refuses on
+that lineage's product engine, which does not bake the debugger
+(`habu-carry-the-captured-bf931ced`), and the optimizing tier
 refuses `TFAM:REG-AOT-MERGE-INCOMING?` there (`habu-let-the-product-2f39e054`),
 which keeps the cold-host fixtures off that lineage.
 
@@ -750,10 +751,9 @@ on the row), and refuses a row that nothing in the closure requires. Run it as
 line reader against the near misses and then checks the live tree.
 
 A library the engine does not bake is still one `require` away, and that is the
-intended cost: `require lib/vector.f` is about 19 ms at tier 0, and the
-debugger — `require src/habu/debug.f`, which pulls the stepper and the shared
-watch cells with it — about 14 ms. `bootstrap/cg/forth.fs` mirrors the
-manifest's prefix rows, so a row that moves here moves there too.
+intended cost: `require lib/vector.f` is about 19 ms at tier 0.
+`bootstrap/cg/forth.fs` mirrors the manifest's prefix rows, so a row that moves
+here moves there too.
 
 The other side of that cost: a file the manifest bakes is answered from the
 baked copy, so editing it and re-running `bin/hb --load` changes nothing — a

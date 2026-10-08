@@ -11,10 +11,10 @@
 \ against this file - every row is either a declared entry point, with its reason
 \ on the row there, or a file some file in the closure requires - so a row added
 \ here for convenience fails the lint rather than growing the binary quietly.
-\ Two rows that were here by choice rather than by closure have left: lib/vector.f,
-\ which nothing in the closure requires, and the debugger trio (debug-watch.f,
-\ stepper.f, debug.f), which the REPL reaches by `require src/habu/debug.f` at the
-\ moment a session wants a breakpoint. lib/num-*.f stay, because lib/memory.f
+\ lib/vector.f, a row here by choice rather than by closure, has left: nothing in
+\ the closure requires it. The debugger trio (debug-watch.f, stepper.f, debug.f,
+\ over code-bytes.f) is baked as the debugger the REPL offers; a session reaches
+\ it with `using DEBUG` or `DEBUG:` names. lib/num-*.f stay, because lib/memory.f
 \ states the allocator's own contract in NUM roles and the compiler allocates;
 \ lib/adt/option.f stays, because lib/string.f returns option<n>; lib/float.f and
 \ lib/fmt.f stay, because src/habu/habu2.f requires fmt for number text.
@@ -135,6 +135,10 @@ package NATIVE-RUNTIME
 ;package
 execute
 s" src/habu/repl.f" required
+s" src/habu/code-bytes.f" required
+s" src/habu/debug-watch.f" required
+s" src/habu/stepper.f" required
+s" src/habu/debug.f" required
 s" src/core/top-row.f" required
 s" lib/c2-owner.f" required
 s" lib/executable-build.f" required

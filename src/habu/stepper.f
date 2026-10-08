@@ -3,9 +3,9 @@
 \ after it executes. No EVALUATE needed: while stepping, the REPL hook returns
 \ one token per call, so the engine's own interpret loop is the evaluator.
 \ Part of package DEBUG (debug.f): a REPL session types `DEBUG:STEP <code>`, or
-\ `step <code>` after `using DEBUG`. Loaded on demand over the baked layout.f
-\ and repl.f (uses REPLH-CELL/TTY?/RD-LINE and debug-watch.f's watch table);
-\ tools/hb-build.f programs never see it.
+\ `step <code>` after `using DEBUG`. Baked after layout.f and repl.f
+\ (src/habu/native-runtime.f); uses REPLH-CELL/TTY?/RD-LINE and
+\ debug-watch.f's watch table.
 
 require src/habu/debug-watch.f
 

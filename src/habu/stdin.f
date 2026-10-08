@@ -8,11 +8,11 @@
 
 \ The REPL source this driver compiles and captures (paths are repo-root
 \ relative; run the maker from the repo root). The debugger trio is NOT here.
-\ The engine carries the compiler, the JIT and the REPL and nothing else, which
-\ src/habu/native-runtime.f states for the other emitter and this list states
-\ here, so a session reaches breakpoints with `require src/habu/debug.f`. An
-\ engine that captured the trio as well would carry a second BPW-MAX and that
-\ require would die on the duplicate instead of loading.
+\ This recovery engine carries the compiler, the JIT and the REPL and nothing
+\ else, so a session on it reaches breakpoints with `require src/habu/debug.f`;
+\ the product bakes the trio through src/habu/native-runtime.f instead. Captured
+\ here as well, the trio would carry a second BPW-MAX and that require would die
+\ on the duplicate instead of loading.
 : REPL-SRC ( -- ptr u8 n ) s" src/habu/repl.f" ;
 PTR-VARIABLE HB  variable HL  variable HFD  variable HRD
 $20000 constant HMAX
@@ -77,9 +77,10 @@ s" HB@" s" -- ptr u8" TRUST
 \ a piped or `--load` program sees. Adding a file to the two above therefore adds
 \ its global names to the engine's contract, and a spelling that some batch
 \ program already defines at global scope makes that program die `duplicate
-\ definition`. That is also why the debugger stays out: it is a file a session
-\ REQUIRES, and a required file whose names the engine already carries cannot
-\ load at all. Check a new name against the tree before capturing it.
+\ definition`. That is also why the debugger stays out of this lineage: here it
+\ is a file a session REQUIRES, and a required file whose names the engine
+\ already carries cannot load at all. Check a new name against the tree before
+\ capturing it.
 package STDIN-DRIVER
 public
 

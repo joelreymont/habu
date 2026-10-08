@@ -1432,9 +1432,10 @@ passing suite.
 ## Habu Native Tooling Gotchas
 
 - **Use the native debugger before print probes**: `docs/debugging.md`, `.s`,
-  `BPW+` watch cells, REPL `step`, compiled-word breakpoints (`BP+`, `BP*`,
-  `BPN`), `tools/jitdump.f`, `tools/imgdump.f`. Extend them rather than hide a
-  missing surface behind prints.
+  then, after `using DEBUG` opens the baked debugger, `BPW+` watch cells, REPL
+  `step` and compiled-word breakpoints (`BP+`, `BP*`, `BPN`); `tools/jitdump.f`,
+  `tools/imgdump.f`. Extend them rather than hide a missing surface behind
+  prints.
 - **Semantic xref is in-image**: ownership, references and call RCA use
   `XREF`/`SEE`/`USES`/`USED-BY` in the live image with CLIs as thin wrappers;
   source search where it answers, native inspection where runtime state matters.

@@ -823,6 +823,7 @@ create DRV-CH 1 allot
       S\"    s\" src/os/macos/repl-term.f\" AOT-IDENT:PATH+"
    then DRV-LINE
    S\"    s\" src/habu/repl.f\" AOT-IDENT:PATH+" DRV-LINE
+   S\"    s\" src/habu/code-bytes.f\" AOT-IDENT:PATH+" DRV-LINE
    S\"    s\" src/habu/debug-watch.f\" AOT-IDENT:PATH+" DRV-LINE
    S\"    s\" src/habu/stepper.f\" AOT-IDENT:PATH+" DRV-LINE
    S\"    s\" src/habu/debug.f\" AOT-IDENT:PATH+" DRV-LINE

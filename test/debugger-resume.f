@@ -8,7 +8,7 @@ package DEBUGGER-RESUME
 : SOURCE ( -- )
    GE-SRC-RESET
    s" 0 set-tier" GE-SRC-LINE
-   s" require src/habu/debug.f" GE-SRC-LINE   \ package DEBUG loads on demand
+   s" require src/habu/debug.f" GE-SRC-LINE   \ a no-op on the product, which bakes DEBUG
    s" package BPR" GE-SRC-LINE
    s" variable WV 17 WV !" GE-SRC-LINE
    s" : TARGET ( n -- n ) WV @ + ;" GE-SRC-LINE

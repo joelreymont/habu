@@ -376,9 +376,8 @@ variable PTY-LONG-U
    PTY-LINE-CAP-UNDEFINED
    PTY-LINE-CAP-CONTINUES ;
 
-\ The engine bakes the REPL and nothing else (src/habu/native-runtime.f,
-\ src/habu/stdin.f): a session that wants breakpoints, watch cells or the token
-\ stepper loads package DEBUG here, which is also how a REPL user reaches them.
+\ The product bakes package DEBUG after the REPL (src/habu/native-runtime.f),
+\ so the `require` below is a no-op there and states the session's dependency.
 \ `using DEBUG` holds for the rest of the session, so the BP, BPW and step lines
 \ below type the commands bare.
 : PTY-DEBUGGER-LOAD ( -- )

@@ -1,10 +1,10 @@
 \ debug-watch.f - shared REPL watch cells for stepper and breakpoints.
 \ Part of package DEBUG, the breakpoint debugger and token stepper that this
-\ file, stepper.f and debug.f make together. Loaded on demand: `require
-\ src/habu/debug.f` pulls this file and stepper.f with it. Nothing outside the
-\ debugger requires it, so it is not in the engine manifest
-\ (src/habu/native-runtime.f). A session then writes `WV DEBUG:BPW+`, or opens
-\ `using DEBUG` once and writes `WV BPW+`.
+\ file, stepper.f and debug.f make together. The product bakes it after the
+\ repl (src/habu/native-runtime.f); the hb-stdin recovery engine loads it with
+\ `require src/habu/debug.f`, which pulls this file and stepper.f with it. A
+\ session writes `WV DEBUG:BPW+`, or opens `using DEBUG` once and writes
+\ `WV BPW+`.
 \
 \ Load after repl.f and before stepper/debug.f. The watch table itself lives in
 \ normal dictionary data; fixed DATA header cells only publish its address/count

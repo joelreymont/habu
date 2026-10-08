@@ -5,8 +5,9 @@
 \   ' WORD BP*      persistent (fires every call; emulates the entry prologue)
 \   N ' WORD BPN    persistent, but silent for the first N hits (skip-count)
 \   ' WORD BP-      remove      BP. = list active breakpoints (addrs)
-\ Up to 8 at once. Not in the engine: `require src/habu/debug.f` loads it, the
-\ stepper and the shared watch cells over the baked repl.
+\ Up to 8 at once. The product bakes it, the stepper and the shared watch cells
+\ after the repl (src/habu/native-runtime.f); the hb-stdin recovery engine still
+\ loads them with `require src/habu/debug.f`.
 \
 \ The three files make one package, DEBUG. Its publics are these commands, the
 \ watch commands (BPW+ BPW- BPW. BPW-CLEAR), STEP, the two installers, MAXBP and
@@ -57,10 +58,7 @@ private
 : BP-NULL ( -- ptr u8 )
    NULL-PTR ;
 
-\ Executable patching stays trusted until the engine carries a patch32 row
-\ private to DEBUG. Retirement: habu-sweep-trusted-out-41e973ce.
-TRUSTED: BP-PATCH32 ( n ptr u8 -- )
-   patch32 ;
+: BP-PATCH32 ( n ptr u8 -- ) patch32 ;
 
 \ The instruction word at an xt: CODE-BYTES:AT is the one bounded view of a code
 \ address, and it dies on one outside the code region.

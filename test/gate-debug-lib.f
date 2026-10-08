@@ -507,6 +507,34 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    S\" -9300\n1\n1\n" s" named breakpoint refusal preserves table and code" GE-EXPECT-OUT
    s" PASS: unsupported breakpoint refuses before changing slots or code" type cr ;
 
+\ patch32's private row belongs to the baked package DEBUG: a body in any other
+\ package is refused, and the check hook names the definition.
+: GDB-PATCH32-OUTSIDE ( -- )
+   GE-HB-RESET GE-SRC-RESET
+   s" package GDBX : P ( n ptr u8 -- ) patch32 ; ;package" GE-SRC-LINE
+   GDB-PROF-RUN
+   70 s" patch32 outside DEBUG exits 70" GE-EXPECT-RC
+   s" non-certified definition: p at 'patch32'" s" the check hook refuses patch32 outside DEBUG" GE-EXPECT-ERR-HAS
+   s" PASS: patch32 outside package DEBUG is refused" type cr ;
+
+\ The debugger's names live in package DEBUG, so a program defines its own FIND
+\ and STEP beside the baked debugger.
+: GDB-DEBUG-NAMES ( -- )
+   GE-HB-RESET GE-SRC-RESET
+   S\" : FIND ( ptr u8 -- n ) drop 0 ; : STEP ( -- ) ; s\" ok\" type" GE-SRC-LINE
+   GDB-PROF-RUN
+   s" a program defines FIND and STEP" GE-EXPECT-OK
+   s" ok" s" FIND and STEP beside the baked debugger" GE-EXPECT-OUT
+   s" PASS: a program defines FIND and STEP beside the baked debugger" type cr ;
+
+\ A baked package is sealed: no source reopens DEBUG.
+: GDB-DEBUG-SEALED ( -- )
+   GE-HB-RESET GE-SRC-RESET
+   s" package DEBUG ;package" GE-SRC-LINE
+   GDB-PROF-RUN
+   84 s" reopening package DEBUG exits 84" GE-EXPECT-RC
+   s" PASS: the baked package DEBUG is sealed" type cr ;
+
 : GDB-BREAKPOINT-NATIVE ( -- )
    GE-HB-RESET GE-SRC-RESET
    s" 1 set-tier require src/habu/debug.f" GE-SRC-LINE
@@ -538,6 +566,9 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GDB-PROFILER-RETIRED
    GDB-JITDUMP
    GDB-BREAKPOINT-REFUSAL
+   GDB-PATCH32-OUTSIDE
+   GDB-DEBUG-NAMES
+   GDB-DEBUG-SEALED
    GDB-BREAKPOINT-NATIVE
    GT-CLEANUP
    s" PASS: native profiler/debug tests" type cr ;

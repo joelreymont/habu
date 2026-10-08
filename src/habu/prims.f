@@ -548,6 +548,8 @@ ETRUSTED-ONLY!                       \ code injection: only a TRUSTED: boundary 
 \ Retiring a dictionary record rewrites its write-protected wordlist cell, and
 \ that is package XREF's (src/habu/xref.f RETIRE) to do.
 EPPRIM: XREF patch32 PE-N PE-IN PE-PTR-N PE-IN ECLOSE-PRIVATE
+\ Planting and clearing a breakpoint instruction is package DEBUG's (src/habu/debug.f BP-PATCH32).
+EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \ The four relocation-record primitives below, per target.
 \ `code-publish ( src dst len -- )` copies an emission into the code arena,
 \ `callmap-set ( addr -- )` and `addrmap-set ( addr -- )` record a call or an
