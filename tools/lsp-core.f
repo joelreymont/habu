@@ -21,16 +21,18 @@
 \ textDocument.hover.contentFormat, else as plain text,
 \ textDocument/documentHighlight with the token that declares the word at the
 \ position and that word's uses in the document (tools/lsp-highlight.f),
-\ textDocument/completion with the spellings that would bind at the position
-\ (tools/lsp-completion.f), textDocument/documentLink with a link over the
-\ operand of each top-level loader of the document that reached a file, to
-\ that file (tools/lsp-links.f), a request whose params it cannot read, or
-\ names a document not open, with -32602 and any other request with -32601,
-\ and it keeps the documents the client opens, changes and closes: Full sync,
-\ each change carrying the whole text, and positions in UTF-16 units. Shut
-\ down, it answers every request with -32600. Only a running server takes a
-\ notification other than exit; the rest are dropped, as unknown ones always
-\ are.
+\ textDocument/semanticTokens/full with a token over each word the document's
+\ last completed check bound in it, typed by what the check states the word
+\ is (tools/lsp-tokens.f), textDocument/completion with the spellings that
+\ would bind at the position (tools/lsp-completion.f), textDocument/documentLink
+\ with a link over the operand of each top-level loader of the document that
+\ reached a file, to that file (tools/lsp-links.f), a request whose params it
+\ cannot read, or names a document not open, with -32602 and any other request
+\ with -32601, and it keeps the documents the client opens, changes and
+\ closes: Full sync, each change carrying the whole text, and positions in
+\ UTF-16 units. Shut down, it answers every request with -32600. Only a
+\ running server takes a notification other than exit; the rest are dropped,
+\ as unknown ones always are.
 \
 \ The messages are served in the order they came, and the first one held is
 \ served only once no more input waits, so the messages that came behind a
@@ -39,12 +41,13 @@
 \ -32800, doing none of its work, when a $/cancelRequest naming its id was read
 \ behind it, an id that is a string by its decoded text and a number by its
 \ JSON text, and it answers textDocument/definition, references, hover,
-\ documentHighlight, completion, documentSymbol or documentLink -32801 when a
-\ textDocument/didChange of its document was, since the request asked about
-\ the text that change replaces. textDocument/references, whose work is a
-\ check of each file it gathers from, reads the input that waits again before
-\ each of those checks and before its answer, holding every message it reads
-\ and serving none, and it is answered there -32800 when a cancel of it has
+\ documentHighlight, semanticTokens/full, completion, documentSymbol or
+\ documentLink -32801 when a textDocument/didChange of its document was, since
+\ the request asked about the text that change replaces.
+\ textDocument/references, whose work is a check of each file it gathers
+\ from, reads the input that waits again before each of those checks and
+\ before its answer, holding every message it reads and serving none, and it
+\ is answered there -32800 when a cancel of it has
 \ been read, else -32801 when a change of any open document has, since each
 \ check it gathers from reads them all. The check under way is finished
 \ first, and a message begun is read whole, so how soon such a request stops
@@ -72,11 +75,12 @@
 \ published for a document only rise.
 \ A request about a document waiting for a check, textDocument/definition,
 \ textDocument/references, textDocument/hover, textDocument/documentHighlight,
-\ textDocument/documentSymbol or textDocument/documentLink, is the exception:
-\ it checks that document first, as its turn, and is answered from that check,
-\ which takes the text the client asked about, since LSP orders a request
-\ after the changes sent before it. textDocument/references checks each open
-\ document it gathers uses from the same way when it waits for a check.
+\ textDocument/semanticTokens/full, textDocument/documentSymbol or
+\ textDocument/documentLink, is the exception: it checks that document first,
+\ as its turn, and is answered from that check, which takes the text the
+\ client asked about, since LSP orders a request after the changes sent
+\ before it. textDocument/references checks each open document it gathers
+\ uses from the same way when it waits for a check.
 \ textDocument/completion checks its document as its turn whether it waits or
 \ not, with a cursor at the position, and is answered from that check: the
 \ spellings it offers belong to that cursor. Closing a document publishes an
@@ -123,6 +127,7 @@ require tools/lsp-outline.f
 require tools/lsp-definition.f
 require tools/lsp-hover.f
 require tools/lsp-highlight.f
+require tools/lsp-tokens.f
 require tools/lsp-completion.f
 require tools/lsp-links.f
 require tools/lsp-workspace.f
@@ -142,7 +147,7 @@ public
 -9400 constant E-LSP-FIRST
 -9401 constant E-LSP-LAST
 -9400 constant E-LSP-PARAMS    \ a notification's params lack a member the server reads, or hold one of another kind
--9401 constant E-LSP-NOT-OPEN  \ a change, close, definition, references, hover, highlight, completion, document symbols or links of a document not open
+-9401 constant E-LSP-NOT-OPEN  \ a change, close, definition, references, hover, highlight, semantic tokens, completion, document symbols or links of a document not open
 
 -32002 constant NOT-INITIALIZED          \ LSP's ServerNotInitialized
 -32800 constant REQUEST-CANCELLED        \ LSP's RequestCancelled
@@ -254,6 +259,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
          s" documentHighlightProvider" true FIELD-BOOL COMMA
          s" documentSymbolProvider" true FIELD-BOOL COMMA
          s" documentLinkProvider" KEY OBJECT-START OBJECT-END COMMA
+         LSP-TOKENS:LEGEND COMMA
          s" workspaceSymbolProvider" true FIELD-BOOL
       OBJECT-END COMMA
       s" serverInfo" KEY OBJECT-START
@@ -709,6 +715,15 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    i p pu AT-READ? 0= if exit then
    WRITER i RESULT AT-SLOT @ AT-BYTE @ LSP-HIGHLIGHT:ANSWER END SENT ;
 
+\ The tokens of the words the last completed check of the open document
+\ params.textDocument names bound in it, the document checked first if it
+\ waits for a check.
+: SEMANTIC-TOKENS ( JSON-RPC:id ptr u8 n -- )
+   {: i p:ptr pu:n :}
+   i p pu DOCUMENT? 0= if exit then
+   AT-SLOT @ CHECK-WAITING
+   WRITER i RESULT AT-SLOT @ LSP-TOKENS:ANSWER END SENT ;
+
 \ params.context.includeDeclaration, true or false, in WITH-DECL.
 : WITH-DECL! ( ptr u8 n -- ptr u8 n )
    {: p:ptr pu:n :}
@@ -912,6 +927,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    m mu s" textDocument/references" NAMED? if i p pu REFERENCES exit then
    m mu s" textDocument/hover" NAMED? if i p pu HOVER exit then
    m mu s" textDocument/documentHighlight" NAMED? if i p pu HIGHLIGHT exit then
+   m mu s" textDocument/semanticTokens/full" NAMED? if i p pu SEMANTIC-TOKENS exit then
    m mu s" textDocument/completion" NAMED? if i p pu COMPLETION exit then
    m mu s" textDocument/documentLink" NAMED? if i p pu DOCUMENT-LINKS exit then
    i METHOD-NOT-FOUND s" method not found" REPLY-ERROR ;

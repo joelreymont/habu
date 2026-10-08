@@ -22,8 +22,8 @@
 \ Lifecycle
 \ - initialize answers other than its capabilities: positions in utf-16, open
 \   and close notifications, Full sync, workspace and document symbols,
-\   references, document highlights, document links without resolve, the
-\   name habu .......................................................... lifecycle
+\   references, document highlights, document links without resolve, full
+\   semantic tokens with their legend, the name habu ................ lifecycle
 \ - shutdown answers other than a null result; exit after it exits other than
 \   0 or writes to stderr ............................................ lifecycle
 \ - a reply held until more input comes, or the end of input .. answers-at-once
@@ -279,6 +279,28 @@
 \   without racing the check, so this one runs the store and the highlight in
 \   the test's own process, on the lines a verified check of such a race
 \   stated .......................................... highlight-case-reread
+\
+\ Semantic tokens
+\ - a word the last check bound in an open document not given one token over
+\   each token declaring it and each use, in the order the tokens start, each
+\   placed from the one before as LSP encodes them, typed function for a
+\   word, variable for storage and variable readonly for a constant; the
+\   string literal before a call of a word `names:` states not given its
+\   token between its quotes, though the check publishes it after the call;
+\   a character after one UTF-16 counts as one unit and UTF-8 as two bytes;
+\   an EXPORT's operand not given the token of the word it is a use of; an
+\   export's declaration, a use bound to it or a use of an engine word given
+\   one ................................................... semantic-tokens
+\ - the token at which a DEFTYPE declares both converters, neither word,
+\   given one; a use of either, in either case or qualified, not a function
+\   ............................................... semantic-tokens-deftype
+\ - a use of a dependency on disk, its global or, qualified, its public word,
+\   not typed by its declaration there ........... semantic-tokens-dependency
+\ - a document whose last check was refused, or deferred at a top-level word
+\   that parses, not given the tokens of the words that check bound
+\   .............................................. semantic-tokens-unproved
+\ - tokens asked after a change whose check did not complete answered from
+\   the check of the text before it ............ semantic-tokens-incomplete
 \
 \ Declaration identities, which no reply states yet: each case runs the store
 \ in the test's own process, on the lines the test's own check of the text
@@ -920,6 +942,8 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    s\" \"hoverProvider\":true,\"documentHighlightProvider\":true," MSG+
    s\" \"documentSymbolProvider\":true," MSG+
    s\" \"documentLinkProvider\":{}," MSG+
+   s\" \"semanticTokensProvider\":{\"legend\":{\"tokenTypes\":[\"function\",\"variable\"]," MSG+
+   s\" \"tokenModifiers\":[\"readonly\"]},\"full\":true}," MSG+
    s\" \"workspaceSymbolProvider\":true}," MSG+
    s\" \"serverInfo\":{\"name\":\"habu\"}}}" MSG+
    MSG$ HEARD ;
@@ -3457,6 +3481,157 @@ variable LENGTH-N                        \ the length of its directory's name
       none OF s" highlight-case-reread: open" T-LABEL false TTRUE ENDOF
    ;MATCH ;
 
+\ ---- semantic tokens ---------------------------------------------------------
+
+\ textDocument/semanticTokens/full, by its id's JSON text, of the document
+\ opened from this path.
+: TOKENS-ASK ( ptr u8 n ptr u8 n -- )
+   {: i:ptr iu:n p:ptr pu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" ,\"method\":\"textDocument/semanticTokens/full\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
+   p pu URI-OF MSG+ s\" \"}}}" MSG+
+   MSG$ FRAMED ;
+
+\ The answer to the request with this id's JSON text, begun in MSG, up to its
+\ data's bracket.
+: TOKENS-START ( ptr u8 n -- )
+   {: i:ptr iu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":{\"data\":[" MSG+ ;
+
+\ The token the answer TOKENS-START began lists next, as LSP encodes one: the
+\ lines after the last token's line, the characters after the last token's
+\ start on that line, else after its line's start, its length, its type's
+\ index in the legend and its modifiers' bits.
+: TOKEN+ ( n n n n n -- )
+   {: dl:n dc:n len:n ty:n mods:n :}
+   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   dl INT$ MSG+ s" ," MSG+ dc INT$ MSG+ s" ," MSG+ len INT$ MSG+ s" ," MSG+
+   ty INT$ MSG+ s" ," MSG+ mods INT$ MSG+ ;
+
+\ TOKEN+ for a function, a variable, and a variable readonly, by the legend
+\ initialize states.
+: FUNCTION+ ( n n n -- )  0 0 TOKEN+ ;
+: VARIABLE+ ( n n n -- )  1 0 TOKEN+ ;
+: READONLY+ ( n n n -- )  1 1 TOKEN+ ;
+
+\ The next frame is the answer begun.
+: TOKENS-END ( -- )
+   s" ]}}" MSG+
+   HEAR
+   MSG$ HEARD ;
+
+\ tok.f, in the artifact directory, never on disk: ROOK, LOOK, whose string
+\ operand `names:` states is a name, the constant K7, the variable V7, PRIV
+\ and PUB in package TP, which re-exports ROOK, and SEEK, whose line holds,
+\ after a character of one UTF-16 unit and two bytes, the literal ROOK before
+\ a call of LOOK, TP:PUB, `dup` and a use of the re-export.
+: TOK-PATH ( -- ptr u8 n )  s" tok.f" FIXTURE ;
+: TEXT-TOK ( -- ptr u8 n )
+   TXT-B CLEAR
+   s\" : ROOK ( -- n ) 1 ;\n: LOOK ( ptr u8 n -- ) 2drop ;\nnames: LOOK\n" HV+
+   s\" 7 constant K7\nvariable V7\npackage TP\n: PRIV ( -- n ) K7 V7 @ + ;\n" HV+
+   s\" public\n: PUB ( -- n ) PRIV ROOK + ;\nEXPORT ROOK\n;package\n" HV+
+   s\" : SEEK ( -- n ) s\" é\" 2drop s\" ROOK\" LOOK TP:PUB dup + TP:ROOK + ;\n" HV+
+   TXT$ ;
+
+\ Each token declaring a word of tok.f and each use the check bound, by where
+\ it starts: LOOK's operand of `names:`, K7's readonly, and ROOK's literal,
+\ which the check publishes after the call of LOOK that follows it, placed
+\ before it. EXPORT's operand is a use of ROOK; the export's declaration and
+\ TP:ROOK, bound to it, get none, nor does `dup`, an engine word.
+: TOKENS-TURNS ( -- )
+   INITIALIZE
+   TOK-PATH TEXT-TOK 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-TOK TOK-PATH 1 s" verified" LISTED
+   s" 3" TOK-PATH TOKENS-ASK
+   SAY
+   s" 3" TOKENS-START
+   0 2 4 FUNCTION+  1 2 4 FUNCTION+  1 7 4 FUNCTION+
+   1 11 2 READONLY+  1 9 2 VARIABLE+
+   2 2 4 FUNCTION+  0 14 2 READONLY+  0 3 2 VARIABLE+
+   2 2 3 FUNCTION+  0 13 4 FUNCTION+  0 5 4 FUNCTION+
+   1 7 4 FUNCTION+
+   2 2 4 FUNCTION+  0 29 4 FUNCTION+  0 6 4 FUNCTION+  0 5 6 FUNCTION+
+   TOKENS-END ;
+
+\ CVT-T's token, at which the check declares both converters, gets none; each
+\ use of either, in either case and qualified, is a function.
+: TOKENS-DEFTYPE-TURNS ( -- )
+   INITIALIZE
+   HOVER-CVT-PATH TEXT-HOVER-CVT 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HOVER-CVT HOVER-CVT-PATH 1 s" verified" LISTED
+   s" 3" HOVER-CVT-PATH TOKENS-ASK
+   SAY
+   s" 3" TOKENS-START
+   4 2 6 FUNCTION+  0 18 6 FUNCTION+  0 7 7 FUNCTION+
+   0 8 6 FUNCTION+  0 7 7 FUNCTION+
+   2 2 4 FUNCTION+  0 16 11 FUNCTION+  0 12 12 FUNCTION+
+   TOKENS-END ;
+
+\ The uses of def-dep.f's global and, qualified, of its public word, typed by
+\ their declarations in the file on disk.
+: TOKENS-DEP-TURNS ( -- )
+   DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
+   INITIALIZE
+   DEF-B-PATH TEXT-DEF-B 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
+   s" 3" DEF-B-PATH TOKENS-ASK
+   SAY
+   s" 3" TOKENS-START
+   1 2 7 FUNCTION+  0 17 7 FUNCTION+  0 8 10 FUNCTION+
+   TOKENS-END ;
+
+\ The refused hu.f and hd.f, deferred at the top-level PN: each answered with
+\ the words its check bound, as hover answers from that check, PN's top-level
+\ use among them.
+: TOKENS-UNPROVED-TURNS ( -- )
+   INITIALIZE
+   HU-PATH TEXT-HU 1 OPENS
+   HD-PATH TEXT-HD 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-HU HU-PATH CHECKS
+   HU-PATH s" refused" COMPLETED
+   HU-PATH 1 EXPECT 1 16 1 22 1 s" E-MISMATCH" DIAG+ PUBLISHES
+   TEXT-HD HD-PATH CHECKS
+   HD-PATH s" deferred" COMPLETED
+   HD-PATH 1 EXPECT 3 0 3 2 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
+   s" 3" HU-PATH TOKENS-ASK
+   s" 4" HD-PATH TOKENS-ASK
+   SAY
+   s" 3" TOKENS-START
+   0 2 6 FUNCTION+  1 2 6 FUNCTION+  0 14 6 FUNCTION+
+   TOKENS-END
+   s" 4" TOKENS-START
+   0 2 6 FUNCTION+  1 2 6 FUNCTION+  0 16 6 FUNCTION+
+   1 2 2 FUNCTION+  1 0 2 FUNCTION+
+   TOKENS-END ;
+
+\ Tokens asked in the turn of a change whose check did not complete: no check
+\ is of the document's text, so none is answered, not those of the text
+\ before it.
+: TOKENS-INCOMPLETE-TURNS ( -- )
+   INITIALIZE
+   DEF-A-PATH TEXT-DEF-C 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-C DEF-A-PATH 1 s" verified" LISTED
+   DEF-A-PATH TEXT-DEF-C-SWAPPED 2 CHANGES
+   s" 3" DEF-A-PATH TOKENS-ASK
+   SAY
+   TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
+   DEF-A-PATH s" not checked: exit 76" SAID
+   s" 3" TOKENS-START TOKENS-END
+   LOGGED ;
+
 \ ---- declaration identities --------------------------------------------------
 
 \ No reply states a declaration identity yet, so these cases run the store in
@@ -5077,6 +5252,13 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" highlight-included" [: HIGHLIGHT-INCLUDED-TURNS ;] TALK
    HIGHLIGHT-CASE-REREAD ;
 
+: TEST-TOKENS ( -- )
+   s" semantic-tokens" [: TOKENS-TURNS ;] TALK
+   s" semantic-tokens-deftype" [: TOKENS-DEFTYPE-TURNS ;] TALK
+   s" semantic-tokens-dependency" [: TOKENS-DEP-TURNS ;] TALK
+   s" semantic-tokens-unproved" [: TOKENS-UNPROVED-TURNS ;] TALK
+   s" semantic-tokens-incomplete" [: TOKENS-INCOMPLETE-TURNS ;] TALK ;
+
 : TEST-DEFINITIONS ( -- )
    s" definition" [: DEF-TURNS ;] TALK
    s" definition-dependency" [: DEF-DEP-TURNS ;] TALK
@@ -5246,6 +5428,7 @@ public
    TEST-DEFINITIONS
    TEST-HOVERS
    TEST-HIGHLIGHTS
+   TEST-TOKENS
    TEST-IDENTITIES
    TEST-COMPLETIONS
    TEST-LINKS
