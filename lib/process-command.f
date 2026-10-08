@@ -69,10 +69,10 @@ ENV-BUF-OFF ENV-BUF-CAP + constant IN-OFF
 IN-OFF IN-CAP + constant OUT-OFF
 32768 constant OUT-CAP
 OUT-OFF OUT-CAP + constant ERR-OFF
-32768 constant ERR-CAP
 
 public
 
+32768 constant ERR-CAP                   \ the most stderr bytes a run captures, ERR$'s bound
 ERR-OFF ERR-CAP + constant BYTES
 
 private

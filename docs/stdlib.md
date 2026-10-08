@@ -2562,7 +2562,8 @@ in a `result<n,n>` (ok on a clean exit, err carrying the nonzero exit code or
 killed has no completion code: `RUN-RC` and `RC@` throw `E-PROC-TIMEOUT` for it,
 as `PROC-OUTCOME>RC` does, while `RUN-OUTCOME` and `OUTCOME@` keep the deadline
 as data for a caller that acts on it. `OUT$`, `ERR$`, `OUTCOME@` and `RC@`
-expose the stored result after the run. `WIPE` explicitly zero-fills the
+expose the stored result after the run; `ERR$` holds at most `CMD:ERR-CAP`
+bytes, the bound a caller that keeps a copy sizes its storage by. `WIPE` explicitly zero-fills the
 full stdin, stdout and stderr buffers and clears their lengths, including after
 a refused run. `RESET` only resets lengths and state; no run wipes implicitly.
 Wiping leaves the command's arguments, environment, working directory and
