@@ -23,7 +23,7 @@ code per instruction set and a host body for Gforth, and the build refuses a
 body without a row or a row without a body. Where a primitive can be written
 without itself, a reference implementation in checked Habu runs beside every
 body in tests (`test/prim-parity.f`).
-**Now:** 231 primitives in 276 rows, 47 of them per-owner rows that
+**Now:** 233 primitives in 285 rows, 47 of them per-owner rows that
 [privacy](#packages-and-privacy) removes. Gforth has no host bodies;
 `bootstrap/cg/forth.fs` carries a second copy of the ARM64 bodies (`FPRIM`).
 
