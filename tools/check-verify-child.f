@@ -8,6 +8,7 @@
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N < STDIN
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --of TAIL < STDIN
 \
 \ STDIN is the open documents, each a line `PU U` then PU bytes of PATH and U
 \ bytes of TEXT, the counts in decimal; then an empty line; then BYTES, to the
@@ -25,7 +26,7 @@
 \
 \ The verifier follows top-level loader acts in one neutral checker scope, with
 \ each file's path and positions while it is open. `require` skips held paths;
-\ `include` verifies every occurrence. The first and third forms compose
+\ `include` verifies every occurrence. The first, third and fourth forms compose
 \ quietly (VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE), so no walk of the closure
 \ runs before them: the composition reads each file a loader loads and refuses
 \ the loader forms tools/source-discovery.f refuses where it meets them.
@@ -49,7 +50,7 @@
 \    check-verify: definition {"kind":K,"class":C,"word":W,
 \       "decl_visit":D,"decl_name":T,"package":P,"visibility":V,
 \       "effect":E,"file":F,"byte_start":S,"byte_end":N}
-\    check-verify: use {"byte_start":S,"byte_end":N,"file":F,
+\    check-verify: use {"byte_start":S,"byte_end":N,"in":I,"file":F,
 \       "target_start":TS,"target_end":TN,"decl_visit":D,
 \       "decl_name":T,"package":P,"visibility":V}
 \    check-verify: load {"byte_start":S,"byte_end":N,"path":P,"outcome":O}
@@ -81,14 +82,14 @@
 \ effect, absent when it declared none, F the file as its packets name it, and
 \ S and N where the token that declared it starts and ends there.
 \
-\ A use line names what src/habu/verify-source.f ON-USE reports, a use in the
-\ subject that the checker bound to a located declaration: S and N where the
-\ use starts and ends in the subject, a token, or the bytes between the quotes
-\ of a string literal naming a word before a call of a word a `names:` row
-\ marks (src/core/checker.f CHECKER-NAMES-ROW), F the path the declaration's
-\ file was resolved to, TS and TN where the token that declared it starts and
-\ ends there, and D, T, P and V the selected declaration's local visit,
-\ canonical tail, package and visibility.
+\ A use line names what src/habu/verify-source.f ON-USE reports, a use that
+\ the checker bound to a located declaration: S and N where the use starts and
+\ ends in I, the file it is in as its packets name it, a token, or the bytes
+\ between the quotes of a string literal naming a word before a call of a word
+\ a `names:` row marks (src/core/checker.f CHECKER-NAMES-ROW), F the path the
+\ declaration's file was resolved to, TS and TN where the token that declared
+\ it starts and ends there, and D, T, P and V the selected declaration's local
+\ visit, canonical tail, package and visibility.
 \
 \ A load line names what src/habu/verify-source.f ON-LOADER reports, a
 \ top-level loader of the subject whose load reached a file, in the subject's
@@ -106,6 +107,12 @@
 \ TS and TN are absent for a declaration in no file the composition read, or
 \ with no location. A cursor the scan passes in a comment, a string or a
 \ signature, or never reaches, has none.
+\
+\ The fourth form is the first that writes as well a use line for each use
+\ the checker binds to a located declaration in a file a load reads, each time
+\ it is read, when the declaration's canonical tail T is TAIL, byte for byte:
+\ every use outside the subject (VERIFY:SUBJECT?) of a word whose tail is TAIL.
+\ The other forms write the subject's uses alone.
 \
 \ deferred: nothing is refused, but a stretch of top-level source or a
 \ definition was deferred to the run, and a W-CHECK-DEFERRED packet locates each
@@ -188,6 +195,8 @@ DYNAMIC-BUFFER SEEN u8                  \ each file line's digest, then its file
 variable SEEN-U
 DYNAMIC-BUFFER SEEN-AT n                \ each one's offset there and length
 variable SEEN-N
+TYPED-VARIABLE OF-A ptr u8              \ the fourth form's TAIL,
+variable OF-U                           \ 0 for the other forms
 
 
 : WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
@@ -537,16 +546,31 @@ variable SEEN-N
    OUT-FD NEWLINE ;
 
 
-\ A use the first form's subject bound to a located declaration, as its use
-\ line.
+\ Whether the use of the symbol has a use line: in the subject always, in
+\ another file in the fourth form alone, when the symbol's tail is TAIL. The
+\ other forms ask no identity outside the subject, where most of a check's
+\ uses are: every diagnostics check is one of them.
+: USE-WRITTEN? ( n -- bool )
+   {: sym:n :}
+   VERIFY:SUBJECT? if true exit then
+   OF-U @ 0= if false exit then
+   sym VERIFY:SYM-IDENTITY drop {: tail:ptr tailu:n :} 2drop
+   tail tailu OF-A @ OF-U @ CORE-STR= ;
+
+
+\ A use the checker bound to a located declaration, as its use line when it
+\ has one.
 : USE-LINE ( n n ptr u8 n n n n n -- )
    {: at:n end:n path:ptr pathu:n tat:n tend:n sym:n visit:n :}
+   sym USE-WRITTEN? 0= if exit then
    sym VERIFY:SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
    pkg pkgu DEF-PKG!
    OUT-FD s\" check-verify: use {\"byte_start\":" WRITE
    OUT-FD at FD-N
    OUT-FD s\" ,\"byte_end\":" WRITE
    OUT-FD end FD-N
+   OUT-FD s\" ,\"in\":" WRITE
+   VERIFY:FILE$ JSON-STR
    OUT-FD s\" ,\"file\":" WRITE
    path pathu JSON-STR
    OUT-FD s\" ,\"target_start\":" WRITE
@@ -695,7 +719,7 @@ variable SEEN-N
 public
 
 : USAGE ( -- )
-   s" usage: check-verify-child.f -- SUBJECT [LABEL | --at N]" 64 die ;
+   s" usage: check-verify-child.f -- SUBJECT [LABEL | --at N | --of TAIL]" 64 die ;
 
 \ N in the third form's `--at N`; -1 for none.
 : CURSOR-ARG ( -- n )
@@ -706,10 +730,19 @@ public
       none OF -1 ENDOF
    ;MATCH ;
 
+\ The fourth form's `--of TAIL`, TAIL kept for USE-WRITTEN?: whether it is
+\ that form.
+: OF-ARG ( -- bool )
+   SCRIPT-ARGC 3 < if false exit then
+   1 SCRIPT-ARGV$ s" --of" CORE-STR= 0= if false exit then
+   2 SCRIPT-ARGV$ OF-U ! OF-A !
+   true ;
+
 : MAIN ( -- )
    SCRIPT-ARGC 2 = if READ-STDIN PREVERIFY exit then
    CURSOR-ARG {: at:n :}
-   at 0 >= if at VERIFY:CURSOR! 3 else 1 then SCRIPT-ARGC <> if USAGE then
+   at 0 >= if at VERIFY:CURSOR! then
+   at 0 >= OF-ARG or if 3 else 1 then SCRIPT-ARGC <> if USAGE then
    READ-STDIN
    0 SCRIPT-ARGV$ HELD? if s" held" RESULT exit then
    VERIFY-CLOSURE ;

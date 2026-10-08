@@ -720,8 +720,9 @@ loads read, install `VERIFY:ON-BINDING ( n n n -- )`: the use's byte range in
 `VERIFY:FILE$` and the symbol, reported for image-held words too;
 `VERIFY:SYM-SOURCE ( n -- n )` answers the word a symbol is through re-exports;
 a source the capture swept answers an empty `VERIFY:SYM-IDENTITY`, which a
-caller reads as no word. `ON-USE` keeps reporting only located declarations
-used in the subject.
+caller reads as no word. `ON-USE` reports the uses bound to located
+declarations, in the subject and every file its loads read alike;
+`VERIFY:SUBJECT?` tells the subject's own.
 
 The child, `tools/check-verify-child.f`, is run only by this operation and by
 `CHECK:PREVERIFY-BYTES`, check.f's pre-pass:

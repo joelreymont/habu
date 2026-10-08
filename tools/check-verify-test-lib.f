@@ -106,6 +106,10 @@
 \   a use of a dependency's or its dependency's declaration names another
 \   file; a use inside a dependency, or of a word the engine provides,
 \   has a line; a use line reaches --verify-only's output                 uses
+\   a use in a file the subject loads, a required dependency or an
+\   included fragment, has a line unless asked for its tail, then none or
+\   one naming another file; one of another tail there has a line; asked
+\   for a tail, the subject's uses lose their lines or name another file  uses-loaded
 \   an ambiguous, shadowed or undefined name has a target, or the scan
 \   binds nothing after them                                              uses-refused
 \   a use binds other than the declaration undefine left visible          uses-order
@@ -3777,6 +3781,90 @@ variable USE-NODE                       \ the use line USE-FROM found
    0 ERR erru s\" \"target_start\"" CONTAINS? or TFALSE ;
 
 
+\ The first use line of the last check in the file IN, as its line names it,
+\ whose use starts at AT; -1 for none.
+: USE-IN-FROM ( n ptr u8 n -- )
+   {: at:n in:ptr inu:n :}
+   CHECK:VERIFY-USES$ JSONL-START
+   begin
+      JSONL-NEXT-OBJECT
+      dup 0 < if USE-NODE ! exit then
+      dup s" in" STRING$ in inu STR=
+      over s" byte_start" NUMBER$ SB-RESET at FMT:SB-INT SB$ STR= and 0=
+   while
+      drop
+   repeat
+   USE-NODE ! ;
+
+
+\ The use line in the file IN, whose bytes are TEXT, of the U bytes the first
+\ LEAD in TEXT ends with.
+: USE-IN ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: label:ptr labelu:n text:ptr textu:n lead:ptr leadu:n u:n in:ptr inu:n :}
+   text textu lead leadu END-IN
+   {: end:n :}
+   end u - in inu USE-IN-FROM
+   label labelu T-LABEL USE-NODE @ 0 >= TTRUE
+   label labelu s" byte_end" end USE-NUM ;
+
+
+\ No use line in the file IN starts where the U bytes the first LEAD in TEXT,
+\ its bytes, end.
+: NO-USE-IN ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: label:ptr labelu:n text:ptr textu:n lead:ptr leadu:n u:n in:ptr inu:n :}
+   text textu lead leadu END-IN u - in inu USE-IN-FROM
+   label labelu T-LABEL USE-NODE @ 0 < TTRUE ;
+
+
+\ What uses-loaded.f requires and includes: each uses the word the subject
+\ declares before loading it, and the dependency uses as well a word it
+\ declares and another the subject declares.
+: LD-DEP$SRC ( -- ptr u8 n )
+   s\" : CVT-LDOWN ( -- n ) 2 ;\n: CVT-LDUSE ( -- n ) CVT-LDROOT CVT-LDOWN + CVT-LDOTHER + ;\n" ;
+
+: LD-FRAG$SRC ( -- ptr u8 n )
+   s\" CVT-LDROOT drop\n" ;
+
+
+\ uses-loaded.f's three uses, each a line naming the subject.
+: LD-OWN ( ptr u8 n -- )
+   {: label:ptr labelu:n :}
+   label labelu DEFS-SRC$ s" CVT-LDMINE ( -- n ) CVT-LDROOT" 10 SUBJ$ USE-IN
+   label labelu DEFS-SRC$ s" : CVT-LDROOT" 10 s" uses-loaded.f" USE-TARGET
+   label labelu DEFS-SRC$ s" CVT-LDROOT CVT-LDOTHER" 11 SUBJ$ USE-IN
+   label labelu DEFS-SRC$ s" : CVT-LDOTHER" 11 s" uses-loaded.f" USE-TARGET
+   label labelu DEFS-SRC$ s" + CVT-LDUSE" 9 SUBJ$ USE-IN
+   label labelu LD-DEP$SRC s" : CVT-LDUSE" 9 s" uses-ld-dep.f" USE-TARGET ;
+
+
+\ A use in a file the subject loads, a dependency it requires or a fragment it
+\ includes, has a line, naming that file, only when the check is asked for
+\ the uses of its word's tail, and a use of another tail there has none. The
+\ subject's uses have their lines, naming the subject, either way.
+: USES-LOADED ( -- )
+   s" uses-ld-dep.f" LD-DEP$SRC FIXTURE
+   s" uses-ld-frag.f" LD-FRAG$SRC FIXTURE
+   0 GEN-U !
+   s\" : CVT-LDROOT ( -- n ) 1 ;\n: CVT-LDOTHER ( -- n ) 4 ;\nrequire uses-ld-dep.f\ninclude uses-ld-frag.f\n" GEN+
+   s\" : CVT-LDMINE ( -- n ) CVT-LDROOT CVT-LDOTHER + CVT-LDUSE + ;\n" GEN+
+   s" uses-loaded.f" DEFS-CHECK 0 s" uses-loaded: verified" EXPECT-KIND
+   s" uses-loaded: the subject's" LD-OWN
+   s" uses-loaded: none in the dependency" LD-DEP$SRC s" CVT-LDUSE ( -- n ) CVT-LDROOT" 10 s" uses-ld-dep.f" AT$ NO-USE-IN
+   s" uses-loaded: none in the fragment" LD-FRAG$SRC s" CVT-LDROOT" 10 s" uses-ld-frag.f" AT$ NO-USE-IN
+   s" uses-loaded: the subject's alone" 3 USE-COUNT
+   DEFS-SRC$ SUBJ$ s" cvt-ldroot" [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES-OF
+   0 s" uses-loaded: of a tail, verified" EXPECT-KIND
+   s" uses-loaded: of a tail, the subject's" LD-OWN
+   s" uses-loaded: of a tail, the dependency's" LD-DEP$SRC s" CVT-LDUSE ( -- n ) CVT-LDROOT" 10 s" uses-ld-dep.f" AT$ USE-IN
+   s" uses-loaded: of a tail, the dependency's" DEFS-SRC$ s" : CVT-LDROOT" 10 s" uses-loaded.f" USE-TARGET
+   s" uses-loaded: of a tail, the dependency's" T-LABEL USE-NODE @ s" decl_name" STRING$ s" cvt-ldroot" T$=
+   s" uses-loaded: of a tail, the fragment's" LD-FRAG$SRC s" CVT-LDROOT" 10 s" uses-ld-frag.f" AT$ USE-IN
+   s" uses-loaded: of a tail, the fragment's" DEFS-SRC$ s" : CVT-LDROOT" 10 s" uses-loaded.f" USE-TARGET
+   s" uses-loaded: of a tail, not the dependency's own word" LD-DEP$SRC s" CVT-LDROOT CVT-LDOWN" 9 s" uses-ld-dep.f" AT$ NO-USE-IN
+   s" uses-loaded: of a tail, not another of the subject's" LD-DEP$SRC s" + CVT-LDOTHER" 11 s" uses-ld-dep.f" AT$ NO-USE-IN
+   s" uses-loaded: of a tail, five lines" 5 USE-COUNT ;
+
+
 \ A string literal just before a call of a word a names: row declares binds
 \ what XREF-FIND finds by the bytes between its quotes, at those bytes: a bare
 \ name the global, never the open package's private twin; PKG:TAIL a public
@@ -4522,6 +4610,7 @@ public
    s" loads-none" [: LOADS-NONE ;] RUN-CASE
    s" loads-lifetime" [: LOADS-LIFETIME ;] RUN-CASE
    s" uses" [: USES ;] RUN-CASE
+   s" uses-loaded" [: USES-LOADED ;] RUN-CASE
    s" named-uses" [: NAMED-USES ;] RUN-CASE
    s" uses-visit" [: USES-VISIT ;] RUN-CASE
    s" uses-visibility" [: USES-VISIBILITY ;] RUN-CASE

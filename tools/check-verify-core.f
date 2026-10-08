@@ -40,8 +40,9 @@
 \ files the verifier read, the subject and its dependencies, each with the
 \ digest of the bytes it read there, VERIFY-DEFS$ the
 \ definitions it retained in them, VERIFY-USES$ the uses in the subject the
-\ checker bound to located declarations, VERIFY-LOADS$ the subject's top-level
-\ loaders that reached a file, and VERIFY-CANDIDATES$ the spellings
+\ checker bound to located declarations, and for CHECK:VERIFY-BYTES-OF those
+\ of its tail in the files the subject loads, VERIFY-LOADS$ the subject's
+\ top-level loaders that reached a file, and VERIFY-CANDIDATES$ the spellings
 \ CHECK:VERIFY-BYTES-AT's cursor offered, each one JSON object per line, never
 \ among the packets. VERIFY-LOG$ is the child's stderr, then after a loader's
 \ fault the status line naming the file it is in, or the file it could not
@@ -562,6 +563,8 @@ SOURCE-ROOT:CURRENT$ s" tools/check-verify-child.f" VFY-CHILD JOIN-PATH VFY-CHIL
 TYPED-VARIABLE VFY-PREPASS bool         \ the child runs check.f's pre-pass ...
 TYPED-VARIABLE VFY-LABEL-A ptr u8       \ ... naming the subject by this label
 variable VFY-LABEL-U
+TYPED-VARIABLE VFY-OF-A ptr u8          \ the tail whose uses the child writes in every file,
+variable VFY-OF-U                       \ 0 for none
 variable VFY-STOP-RC                    \ a stopped child: its code, 0 for none,
 variable VFY-STOP-AT                    \ the byte of the token it read last,
 variable VFY-STOP-DUP-AT                \ where the name it refused as a duplicate
@@ -589,6 +592,7 @@ variable VFY-TARGET-U
    0 VFY-IN-U !
    0 VFY-OPEN-N !
    -1 VFY-AT !
+   0 VFY-OF-U !
    VFY-NONE VFY-ANSWER !
    0 VFY-STOP-RC !
    0 VFY-FAULT-LEN !
@@ -724,6 +728,7 @@ variable VFY-TARGET-U
    VFY-PATH$ CHK-ARG+
    VFY-PREPASS @ if VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+ then
    VFY-AT @ 0 >= if s" --at" CHK-ARG+  SB-RESET VFY-AT @ FMT:SB-U SB$ CHK-ARG+ then
+   VFY-OF-U @ 0 > if s" --of" CHK-ARG+  VFY-OF-A @ VFY-OF-U @ CHK-ARG+ then
    PROC-ENV-INHERIT-MISSING ;
 
 
@@ -1161,6 +1166,21 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    then
    o RESULT:ERR ;
 
+
+\ The check of VERIFY-BYTES-AT and VERIFY-BYTES-OF, once VFY-RESET has run and
+\ the cursor or the tail is set.
+: VFY-BYTES ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] ms -- verdict )
+   {: src:ptr srcu:n path:ptr pathu:n open deadline :}
+   path pathu VFY-PATH!
+   VFY-PATH$ ENGINE-PROVIDES? if CHECK-VERDICT:engine-provided exit then
+   src CHK-BYTES-A !
+   srcu CHK-BYTES-U !
+   open VFY-IN!
+   deadline VFY-DEADLINE !
+   VFY-RUN {: o :}
+   o VFY-CLEAN-EXIT? VFY-ANSWER @ VFY-STOPPED = and if VFY-STOP-LINE then
+   o VFY-VERDICT ;
+
 public
 
 \ The packets of the last VERIFY-BYTES or PREVERIFY-BYTES, one JSON object per
@@ -1188,7 +1208,8 @@ public
    VFY-FILES-U @ 0= if NULL$ exit then
    0 VFY-FILES VFY-FILES-U @ ;
 
-\ The uses the last VERIFY-BYTES's subject bound to located declarations, one
+\ The uses the last VERIFY-BYTES's subject bound to located declarations, and
+\ for VERIFY-BYTES-OF those of its tail in the files the subject loads, one
 \ JSON object per line as tools/check-verify-child.f's use line states it, in
 \ the order the checker published them.
 : VERIFY-USES$ ( -- ptr u8 n )
@@ -1229,19 +1250,22 @@ public
    {: src:ptr srcu:n path:ptr pathu:n at:n open deadline :}
    VFY-RESET
    at VFY-AT !
-   path pathu VFY-PATH!
-   VFY-PATH$ ENGINE-PROVIDES? if CHECK-VERDICT:engine-provided exit then
-   src CHK-BYTES-A !
-   srcu CHK-BYTES-U !
-   open VFY-IN!
-   deadline VFY-DEADLINE !
-   VFY-RUN {: o :}
-   o VFY-CLEAN-EXIT? VFY-ANSWER @ VFY-STOPPED = and if VFY-STOP-LINE then
-   o VFY-VERDICT ;
+   src srcu path pathu open deadline VFY-BYTES ;
 
 : VERIFY-BYTES ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] ms -- verdict )
    {: src:ptr srcu:n path:ptr pathu:n open deadline :}
    src srcu path pathu -1 open deadline VERIFY-BYTES-AT ;
+
+\ VERIFY-BYTES with VERIFY-USES$ holding as well every use the check binds to
+\ a located declaration in a file other than the subject when the declaration's
+\ canonical tail is TAIL, byte for byte: a use of the word wherever the
+\ composition reads it. An empty TAIL names no word.
+: VERIFY-BYTES-OF ( ptr u8 n ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] ms -- verdict )
+   {: src:ptr srcu:n path:ptr pathu:n tail:ptr tailu:n open deadline :}
+   VFY-RESET
+   tail VFY-OF-A !
+   tailu VFY-OF-U !
+   src srcu path pathu open deadline VFY-BYTES ;
 
 \ check.f's pre-pass of the bytes as the file at PATH, the subject named LABEL
 \ in its packets, the child given DEADLINE. The child's image is the one

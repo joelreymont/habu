@@ -1165,9 +1165,9 @@ CAST: USES-ACTION ( n -- [ [ n n n n n n -- ] [ -- ] -- ] )
 \ never goes back: no number names two files in one process, so a declaration
 \ an earlier composition located names no file of this one. A visit keeps a
 \ copy of the path its file was resolved to, because the loader releases its
-\ own when the file ends while a use in the subject may bind a declaration in
-\ a file whose visit has ended. The composition's first visit is the
-\ subject's. The copies go when the composition ends.
+\ own when the file ends while a later use may bind a declaration in a file
+\ whose visit has ended. The composition's first visit is the subject's. The
+\ copies go when the composition ends.
 variable VISIT-NEXT                     \ the last visit number given
 variable VISIT-CUR                      \ the file being scanned, 0 outside a visit
 variable VISIT-FIRST                    \ this composition's first visit
@@ -1921,14 +1921,14 @@ defer ON-DUPLICATE ( n n ptr u8 n bool -- )
 \ borrowed: a word installed here consumes them before it returns.
 defer ON-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
 
-\ A use in the subject that the checker bound to a located declaration
-\ (src/core/checker.f CHECKER-ON-USE): where the use starts and ends in the
-\ subject; the path the declaration's file was resolved to when the
-\ composition visited it; and where the token that declared it starts and
-\ ends there, all at the base TOKEN-BYTE@ counts from; the selected symbol and
-\ declaration visit. The path is borrowed: a
-\ word installed here consumes it before it returns. A use in a file the
-\ subject loads, and one bound to a declaration with no location, are not
+\ A use the checker bound to a located declaration (src/core/checker.f
+\ CHECKER-ON-USE), in the subject and in every file a load reads, each time it
+\ is read: where the use starts and ends in the file FILE$ names, SUBJECT?
+\ telling the subject's own; the path the declaration's file was resolved to
+\ when the composition visited it; and where the token that declared it starts
+\ and ends there, all at the base TOKEN-BYTE@ counts from; the selected symbol
+\ and declaration visit. The path is borrowed: a word installed here consumes
+\ it before it returns. A use bound to a declaration with no location is not
 \ reported.
 defer ON-USE ( n n ptr u8 n n n n n -- )
 
@@ -1962,6 +1962,11 @@ defer ON-LOADER ( n n ptr u8 n n -- )
 \ The file being scanned, named as its packets name it.
 : FILE$ ( -- ptr u8 n )
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @ COMPOSE-DIAG$ ;
+
+\ Whether the file being scanned is the subject, the composition's first
+\ visit: a later read of the subject's path, an include of it, is not.
+: SUBJECT? ( -- bool )
+   VISIT-CUR @ VISIT-FIRST @ = ;
 
 \ A file the scan starts, named as FILE$ names it, and the bytes the scan reads
 \ there, which every position it reports in the file counts in: the bytes
@@ -2041,12 +2046,11 @@ BINDING-INIT
 LOADER-INIT
 
 \ A use the checker published, at the base of the file being read: always a
-\ binding, and a use when it is in the subject and its declaration lies in a
-\ file this composition visited.
+\ binding, and a use when its declaration lies in a file this composition
+\ visited.
 : USE-SEEN ( n n n n n n -- )
    {: s:n e:n sym:n v:n ds:n de:n :}
    s BASE-BYTE @ +  e BASE-BYTE @ +  sym ON-BINDING
-   VISIT-CUR @ VISIT-FIRST @ <> IF EXIT THEN
    v VISIT-IN? 0= IF EXIT THEN
    s BASE-BYTE @ +  e BASE-BYTE @ +  v VISIT-PATH  ds de sym v ON-USE ;
 
