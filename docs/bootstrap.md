@@ -1,5 +1,59 @@
 # Bootstrap
 
+How the first `hb` is made from nothing, then today's recovery path.
+
+## The bootstrap process
+
+**Gforth is one more host.** The build from zero is the
+[build program](compilation.md#building-an-image) run on Gforth. There is no
+seed interpreter. A host without Gforth gets its first `hb` by cross-build from
+any `hb` ([cross-compilation](architecture.md#cross-compilation)).
+
+1. **Untyped Gforth.** Gforth supplies a body for each primitive in the
+   [primitive table](architecture.md#kernel), the
+   [two spaces](architecture.md#memory), a reader, and the Gforth platform's
+   [codegen](architecture.md#platforms-and-code-generation), which compiles
+   each definition's checked events into a Gforth word at `;`, a value of
+   several cells as that many Gforth cells. Gforth reads the
+   kernel: the untyped files up to and including the one that switches the
+   checker on.
+   Habu's dictionary space is a region of its own. Gforth's dictionary is the
+   code space and holds the Gforth words the codegen compiles, so `HERE` counts
+   only Habu headers and data, and a `create`d word's Gforth code pushes its
+   body's address in Habu's space. A definer that measures `HERE` around the
+   definitions it generates depends on this: with one shared space, Gforth's
+   48-byte header for a generated colon definition moves `HERE`, and
+   `DBUF-ALLOT` (`src/core/layout-buffer.f:679`) refuses
+   `DYNAMIC-BUFFER WB-BUFFERS` at `lib/memory.f:260`.
+2. **Typed Habu.** From the end of the kernel every definition is checked and
+   compiled into a Gforth word. Until the Habu interpreter is loaded, Gforth's
+   reader hands each definition to the checker; once it is loaded, the
+   interpreter reads the rest.
+   A prototype on Gforth `0.7.9_20260610` loads the 62 files of the native
+   engine's boot stream this way, compiling 1,366 checked definitions from the
+   checker's records, and 32 programs give native's output and exit codes. It
+   reads the seven facts the checker does not yet record
+   ([checked events](compilation.md#defining-a-word)) from the checker's state.
+3. **The build.** The interpreter loads the build program, which builds `hb`
+   for the named target. From Gforth every target is a cross-build, since
+   Gforth cannot run the code it produces.
+4. **Self-check.** That `hb` rebuilds itself on its own host, and the two
+   generations are compared ([portability.md](portability.md) §22.3).
+
+**Habu source sees only Habu words.** Under Gforth, the search order Habu
+source is resolved against holds only the wordlists the kernel makes. Gforth's
+own words are reached only through primitive bodies. When the Gforth wordlist
+was visible, the `LOAD` in `src/core/include.f` found Gforth's block loader
+instead of `SOURCE-ROOT`'s, and created `blocks.fb` in the current directory.
+
+**Now:** `bootstrap/cg/*.fs` (12,027 lines) is a second engine builder in
+Gforth. It writes an ARM64-only `hb-stage0` with a hand-written machine-code
+interpreter and its own copy of the ARM64 primitive bodies, and that
+interpreter loads the Habu sources (`bootstrap/cg/forth.fs`
+`EMIT-HOST-LOAD-PREFIX`). The 19 kernel files (`src/habu/habu2.f:1100-1137`,
+40,829 lines) use 101 of the 231 primitives. The rest of this document is that
+recovery path.
+
 ## Current recovery status
 
 Run it with
