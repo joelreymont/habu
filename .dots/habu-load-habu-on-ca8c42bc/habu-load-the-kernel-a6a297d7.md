@@ -1,0 +1,13 @@
+---
+title: Load the kernel on Gforth through Habu words
+status: active
+priority: 1
+issue-type: task
+created-at: "\"2026-10-08T23:10:46.507452+02:00\""
+---
+
+Problem: docs/bootstrap.md stage 1 and "Habu source sees only Habu words": Gforth supplies a body per src/habu/prims.f row, the two spaces and a reader. docs/architecture.md Kernel Now: Gforth has no host bodies; the prototype (~/.cache/tmp/stage2-proof shim.fs, proto.fs, names.fs, seed.fs) dumps bin/hb's records and allocates its data region eagerly, against the Memory rule (one reservation, pages fill as the pointer advances).
+Acceptance: src/host/gforth/layout.fs holds the layout and owner-ABI constants the host needs before src/habu/layout.f loads, each naming its source line, and the data space: one mmap reservation of the host OS's DATA-SIZE (src/os/macos/layout.f:7, src/os/linux/layout-constants.f:15), DP in DP-CELL from DATA-START, here/allot/align/,/c, refusing out of range as native DP-CHECK does (exit 76); created bodies live in Habu's space and does> starts from the body. src/host/gforth/prims.fs gives one body per prims.f row, registered as a seeded record (no dump); a row the host cannot perform gets a body that prints `hb: gforth has no <row>` and exits 76, as kernel-x64.f REFUSE-BODY; after prims.f loads, a missing body or a body without a row dies naming it. src/host/gforth/reader.fs reads with the native recognizer order and keyword rows (habu2.f:10083-10116, 11288-11347; LFIND order habu1.f:5364) against kernel-made wordlists only; unchecked and TRUSTED: bodies compile through Gforth's compiler. src/host/gforth/boot.fs loads the 19 kernel files in PFX-FILES order (habu2.f:1112-1210). E2E: test/gforth/host-test.f (Habu) runs each program in test/gforth/cases/ under Gforth after the boot and under bin/hb --load, and compares rc, stdout and the diagnostic JSON; this dot lands it with the 12 refusal cases r01-r12 from ~/.cache/tmp/stage2-proof/cases, which must match native. Artifact: $HB_TMP/gforth-host/<case>.{gf,hb}.{out,err,rc}; the exit code is the verdict.
+Files: src/host/gforth/layout.fs, prims.fs, reader.fs, boot.fs; test/gforth/host-test.f, test/gforth/cases/; docs/bootstrap.md Requirements (a C compiler for Gforth's libcc, used for mmap, realpath, open, access); docs/gate.md (the Gforth checks: the command).
+Verify: `HB_TMP=$PWD/build/tmp bin/hb --load test/gforth/host-test.f`; confirm the src/ lints and tools/check.f do not take .fs files as Habu.
+Depends: none. Ownership: the files above. Worker: worker-max. Claim: agent=worker-max (lead carl) workspace=.jj-ws/carl-gfkernel.
