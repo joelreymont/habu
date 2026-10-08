@@ -109,8 +109,8 @@
 \
 \ deferred: nothing is refused, but a stretch of top-level source or a
 \ definition was deferred to the run, and a W-CHECK-DEFERRED packet locates each
-\ (src/habu/verify-source.f TOP-TOKEN, REPORT-DEFERRED): those tokens are not
-\ verified.
+\ (src/habu/verify-source.f TOP-TOKEN, RENDER-GAP, REPORT-DEFERRED): those
+\ tokens are not verified.
 \ held is answered before anything is verified: this image holds SUBJECT though
 \ the engine does not provide it (the verifier's source and this file), so it
 \ cannot be verified here. The parent answers engine-provided itself. stopped

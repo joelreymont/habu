@@ -2202,7 +2202,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    A-PATH 2 EXPECT 1 0 1 4 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
 
 \ A body naming a word only the text `evaluate` renders may define, deferred to
-\ the run at that name.
+\ the run at that name, after `evaluate` itself, deferred at its token.
 : DEFERRED-IN-BODY ( -- ptr u8 n )  s\" s\" : G ( -- n ) 2 ;\" evaluate\n: F ( -- n ) NOSUCH ;\n" ;
 
 : DEFINITION-TURNS ( -- )
@@ -2212,11 +2212,13 @@ CK-USE-MAX 1 + constant OVER-USINGS
    HEAR CAPABILITIES
    DEFERRED-IN-BODY A-PATH CHECKS
    A-PATH s" deferred" COMPLETED
-   A-PATH 1 EXPECT 1 13 1 19 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
+   A-PATH 1 EXPECT
+   0 21 0 29 3 s" W-CHECK-DEFERRED" DIAG+
+   1 13 1 19 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
 
-\ That deferral, then a definition never ended: the verifier stops at its
-\ opener and refuses the document, and both the deferral and the stop's record
-\ are published.
+\ Those deferrals, then a definition never ended: the verifier stops at its
+\ opener and refuses the document, and the deferrals and the stop's record are
+\ all published.
 : DEFERRED-UNENDED-TEXT ( -- )
    TXT-B CLEAR
    DEFERRED-IN-BODY N>BLEN TXT-B APPEND-SPAN
@@ -2231,6 +2233,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    TXT$ A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT
+   0 21 0 29 3 s" W-CHECK-DEFERRED" DIAG+
    1 13 1 19 3 s" W-CHECK-DEFERRED" DIAG+
    2 0 2 1 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
 

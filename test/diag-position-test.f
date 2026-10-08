@@ -762,9 +762,11 @@ variable RC
    s" x" s" X" 3 10 39 40 2 STORED-AT ;
 
 \ RECORD-PLACED for the record CODE refuses in each check of the fixture: plain,
-\ --all-errors and --verify-only each give COUNT packets, that refusal first.
-: RECORD-AT ( ptr u8 n ptr u8 n ptr u8 n n n n n n -- )
-   {: code:ptr codeu:n tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n count:n :}
+\ --all-errors and --verify-only each give COUNT packets, that refusal first,
+\ but --verify-only gives LEAD more before it, each a reached renderer's
+\ deferral.
+: RECORD-AT ( ptr u8 n ptr u8 n ptr u8 n n n n n n n -- )
+   {: code:ptr codeu:n tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n count:n lead:n :}
    s" " CHECK
    GJA-LINE# @ count T=
    0 code codeu tok toku sp spu line col bs be FX-PATH$ RECORD-PLACED
@@ -772,14 +774,14 @@ variable RC
    GJA-LINE# @ count T=
    0 code codeu tok toku sp spu line col bs be FX-PATH$ RECORD-PLACED
    s" --verify-only" CHECK
-   GJA-LINE# @ count T=
-   0 code codeu tok toku sp spu line col bs be FX-PATH$ CANON$ RECORD-PLACED ;
+   GJA-LINE# @ count lead + T=
+   lead code codeu tok toku sp spu line col bs be FX-PATH$ CANON$ RECORD-PLACED ;
 
 \ RECORD-AT for E-BAD-QUALIFIED-RECORD: each check gives the record, then its
 \ statement's throw.
 : MALFORMED-AT ( ptr u8 n ptr u8 n n n n n -- )
    {: tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n :}
-   s" E-BAD-QUALIFIED-RECORD" tok toku sp spu line col bs be 2 RECORD-AT ;
+   s" E-BAD-QUALIFIED-RECORD" tok toku sp spu line col bs be 2 0 RECORD-AT ;
 
 \ A colon definition CHECK rejects, here for the undefined NOPE: the plain check
 \ stops at that refusal, and --all-errors and --verify-only follow it with the
@@ -802,7 +804,7 @@ variable RC
 \ colon definition, certified, rejected or deferred to the run). A `trust` row
 \ asks the engine for its word before any record, as the load does, and a
 \ malformed name names none: each check refuses the row as stale at that name,
-\ its packet alone.
+\ its packet alone. --verify-only defers the `evaluate` that renders MADE.
 : TEST-MALFORMED-RECORD ( -- )
    s" a malformed defer" T-LABEL
    s" defer DIAG:MAL:NAME ( -- )" s" malformed-defer.f" LINE-FIXTURE
@@ -815,7 +817,7 @@ variable RC
    s" : R ( -- ) ;" SB-APPEND LF+
    s\" s\" P:Q:R\" s\" --\" trust" SB-APPEND LF+
    s" malformed-trust.f" FIXTURE!
-   s" E-TRUST-UNRESOLVED" s" P:Q:R" s" P:Q:R" 2 4 16 21 1 RECORD-AT
+   s" E-TRUST-UNRESOLVED" s" P:Q:R" s" P:Q:R" 2 4 16 21 1 0 RECORD-AT
    s" a malformed undefine" T-LABEL
    SB-RESET
    s" : R ( -- ) ;" SB-APPEND LF+
@@ -832,7 +834,9 @@ variable RC
    s\" s\" : MADE ( -- ) ;\" evaluate" SB-APPEND LF+
    s" : P:Q:R ( -- ) MADE ;" SB-APPEND LF+
    s" malformed-deferred.f" FIXTURE!
-   s" p:q:r" s" P:Q:R" 2 3 31 36 MALFORMED-AT ;
+   s" E-BAD-QUALIFIED-RECORD" s" p:q:r" s" P:Q:R" 2 3 31 36 2 1 RECORD-AT
+   0 s" code" s" W-CHECK-DEFERRED" FIELD=
+   0 s" evaluate" 1 21 20 28 FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ The same order without a signature fault: a body word the load cannot
 \ compile refuses the definition at that word before any check made at `;`, and
@@ -1119,19 +1123,23 @@ variable RC
    s\" inc-target.f\" included\nINCLUDED-WORD drop\n" FX+
    FX-PATH$ FX$ WRITE-ALL ;
 
-\ The plain check and --all-errors certify the fixture; --verify-only gives one
-\ packet, the deferral of the stretch at TOK, on LINE at COL, in bytes [BS, BE).
-: VERIFY-DEFERRED-AT ( ptr u8 n n n n n -- )
-   {: tok:ptr toku:n line:n col:n bs:n be:n :}
+\ The plain check and --all-errors certify the fixture; --verify-only gives two
+\ deferrals: the call CALL of a body's loader, at the start of line CLINE from
+\ byte CBS, then the stretch at TOK, on LINE at COL, in bytes [BS, BE).
+: VERIFY-DEFERRED-AT ( ptr u8 n n n ptr u8 n n n n n -- )
+   {: call:ptr callu:n cline:n cbs:n tok:ptr toku:n line:n col:n bs:n be:n :}
    s" " 0 CHECK-EXIT
    GJA-LINE# @ 0 T=
    s" --all-errors" 0 CHECK-EXIT
    GJA-LINE# @ 0 T=
    s" --verify-only" 0 CHECK-EXIT
-   GJA-LINE# @ 1 T=
+   GJA-LINE# @ 2 T=
    0 s" code" s" W-CHECK-DEFERRED" FIELD=
    0 s" verdict" s" deferred" FIELD=
-   0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+   0 call callu cline 1 cbs cbs callu + FX-PATH$ CANON$ FX$ AT-IN
+   1 s" code" s" W-CHECK-DEFERRED" FIELD=
+   1 s" verdict" s" deferred" FIELD=
+   1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ A string loader's path is the bytes the load's literal makes: an escaped
 \ literal's escapes decoded, which each check follows to the file the load
@@ -1144,9 +1152,9 @@ variable RC
 \ or as written when it holds no escape, and kept for that load whatever the
 \ check decodes first, more paths in the same body or literals at top level
 \ while a package is open. --verify-only runs no body and imports nothing from
-\ one, so the first use of a word that file defines, after a call of the body's
-\ word, is deferred to the run, as any name nothing in scope defines is after a
-\ call that may load source. A bad escape in a loader's literal at top level is
+\ one, so a call of the body's word is deferred to the run, and so is the first
+\ use of a word that file defines after it, as any name nothing in scope
+\ defines is after a call that may load source. A bad escape in a loader's literal at top level is
 \ where the load stops: each check refuses that literal once, at its opener,
 \ and follows nothing after it, here a file that is not there. In a body,
 \ opened by `:` or by its synonym `kernel:`, it is one more error of a
@@ -1188,7 +1196,7 @@ variable RC
    s" L" SB-APPEND LF+
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escaped-body-path.f" FIXTURE!
-   s" INCLUDED-WORD" 3 1 45 58 VERIFY-DEFERRED-AT
+   s" L" 2 43 s" INCLUDED-WORD" 3 1 45 58 VERIFY-DEFERRED-AT
    s" " 0 LOADED
    s" an escaped path with no escape in a body" T-LABEL
    SB-RESET
@@ -1196,7 +1204,7 @@ variable RC
    s" L" SB-APPEND LF+
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escape-free-body-path.f" FIXTURE!
-   s" INCLUDED-WORD" 3 1 42 55 VERIFY-DEFERRED-AT
+   s" L" 2 40 s" INCLUDED-WORD" 3 1 42 55 VERIFY-DEFERRED-AT
    s" " 0 LOADED
    SB-RESET
    s" : BODY-A-WORD ( -- n ) 1 ;" SB-APPEND LF+
@@ -1214,7 +1222,7 @@ variable RC
    s" L" SB-APPEND LF+
    s" BODY-A-WORD drop BODY-B-WORD drop BODY-C-WORD drop" SB-APPEND LF+
    s" escaped-body-paths.f" FIXTURE!
-   s" BODY-A-WORD" 3 1 93 104 VERIFY-DEFERRED-AT
+   s" L" 2 91 s" BODY-A-WORD" 3 1 93 104 VERIFY-DEFERRED-AT
    s" " 0 LOADED
    s" an escaped path in a body, escaped literals before its package closes" T-LABEL
    SB-RESET
@@ -1227,7 +1235,7 @@ variable RC
    s" DPT-ESC:L" SB-APPEND LF+
    s" BODY-A-WORD drop" SB-APPEND LF+
    s" escaped-body-path-package.f" FIXTURE!
-   s" BODY-A-WORD" 8 1 147 158 VERIFY-DEFERRED-AT
+   s" DPT-ESC:L" 7 137 s" BODY-A-WORD" 8 1 147 158 VERIFY-DEFERRED-AT
    s" " 0 LOADED
    s" an escaped path over the capacity as written, within it decoded" T-LABEL
    250 s" escaped-steps-fit.f" STEPS-FIXTURE

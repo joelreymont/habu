@@ -1480,7 +1480,9 @@ DYNAMIC-BUFFER DEFINER-SIG u8
    1 - DEFINER-SIG@ ;
 
 variable DEFER-REPORT                            \ the child reports deferrals
-variable DEFER-SEEN                              \ the last run reached uncertain source
+\ The last run reached uncertain source. Only DEFER-AT and REPORT-DEFERRED set
+\ it, and each writes the packet that locates it when the child asks for one.
+variable DEFER-SEEN
 
 CAST: STRETCH-ACTION ( n -- [ ptr u8 n -- ] )
 : REPORT-STRETCH ( ptr u8 n -- )
@@ -2718,6 +2720,14 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
    a u DEFINER-OF dup 0<> IF 1 - DEFINER-GEN @ EXIT THEN drop
    a u TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-GENERATES and 0<> ;
 
+\ A reached call that renders text no row or group declares: that text is
+\ source this scan never reads, so the call is deferred at its token
+\ (W-CHECK-DEFERRED).
+: RENDER-GAP ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u DECLARED-RENDER? IF EXIT THEN
+   a u DEFER-AT ;
+
 \ A call of a word a names: row marks, right after an `s"` literal the ring
 \ holds as written: the literal is a use of the word its bytes name, at the
 \ bytes between its quotes (checker.f CHECKER-NAMED-USE). One written with an
@@ -2727,6 +2737,16 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
    STR-LAST-KIND @ LIT-PATH <> IF EXIT THEN
    STR-LAST-END @ STR-LAST-AT @ -  STR-LAST-U @ <> IF EXIT THEN
    STR-LAST-A @ STR-LAST-U @ NAMED-USE ;
+
+\ A top-level call that binds a word, RENDERS when the word renders source: a
+\ renderer is deferred at it (RENDER-GAP), and the literal before it binds when
+\ a names: row marks the word (TOP-NAMED). A definer's call an arm of
+\ RECORD-DEFINER? takes with the name after it is one, before the created word
+\ exists, as is a call TOP-RESOLVE binds.
+: BOUND-CALL ( ptr u8 n bool -- )
+   {: a:ptr u:n renders:bool :}
+   renders IF a u RENDER-GAP THEN
+   a u TOP-NAMED ;
 
 \ The id of the engine word a control word names (checker.f CTL-INTRINSIC).
 : BINDING-ID ( n -- n )
@@ -3371,37 +3391,34 @@ TYPED-VARIABLE FFI-GROUP bool
    \ name resolves and is checked against the row, and the mark covers what no
    \ row declares, such as COMMAND's NAME#VEC and NAME#BUF. A statement no arm
    \ takes is TOP-TOKEN's, which marks it again and resolves it.
-   \ A definer below consumes its call, so note renderer coverage here: the
-   \ text is outside this scan unless a `generates:` row states what it makes
-   \ (DECLARED-RENDER?) or it is a `;FUNCTION` closing a group the scan read,
-   \ which this arm takes. A word no row or group declares is still the mark's,
-   \ and where a later token uses it, that stretch or definition is deferred.
+   \ The text is outside this scan unless a `generates:` row states what it
+   \ makes (DECLARED-RENDER?) or it is a `;FUNCTION` closing a group the scan
+   \ read, which this arm takes. Any other renderer is deferred at its token
+   \ (RENDER-GAP): here when a definer arm below takes its call (BOUND-CALL),
+   \ else by TOP-TOKEN. What the text defines is still the mark's, and where a
+   \ later token uses it, that stretch or definition is deferred too.
    a u QUIET-NOMINAL
-   a u MARK-RENDERS RENDERS-MARK? IF
-      a u FFI-CLOSER? IF false FFI-GROUP ! 0 0= EXIT THEN
-      a u DECLARED-RENDER? 0= IF -1 DEFER-SEEN ! THEN
-   THEN
+   a u MARK-RENDERS RENDERS-MARK? {: renders:bool :}
+   renders a u FFI-CLOSER? and IF false FFI-GROUP ! 0 0= EXIT THEN
    \ … and last, a definer this pre-pass learned from a `does>` definition or a
    \ `generates:` row earlier in the closure. The created word is the NEXT
    \ token, as it is for `constant` above - the definer's own arguments precede
    \ it - and the effect is the clause's or the row's, registered with the same
-   \ raw seal the storage definers use. The call is still a call: when a names:
-   \ row marks the definer, the literal before it is a use (TOP-NAMED, as
-   \ TOP-RESOLVE has it for a call no arm takes), bound before the created word
-   \ exists.
+   \ raw seal the storage definers use. The call is still a call
+   \ (BOUND-CALL).
    a u DEFINER-EFFECT dup 0<> IF
-      a u TOP-NAMED
+      a u renders BOUND-CALL
       TICK-CONTEXT-UNKNOWN DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT
    THEN 2drop
    \ … and last of all, a definer this pre-pass never read: one compiled in the
    \ checking process itself, whose clause the checker certified and kept, or a
    \ wrapper of one, which the checker's body walk recorded. The token resolves
    \ through the same FIND-SYM every other name does, so the qualified and the
-   \ bare-under-`using` spelling reach the one row. Its literal binds as the
-   \ learned definer's does.
+   \ bare-under-`using` spelling reach the one row. Its call is a call as the
+   \ learned definer's is.
    a u FIND-SYM {: dsym:n :}
    dsym CREATES-SYM? 0= IF 0 0= 0= EXIT THEN
-   a u TOP-NAMED
+   a u renders BOUND-CALL
    dsym CREATED-TRUST-NEXT? IF TICK-CONTEXT-UNKNOWN 0 0= EXIT THEN
    0 0= 0= ;
 
@@ -3473,7 +3490,8 @@ TYPED-VARIABLE FFI-GROUP bool
 \ - a definition, a loader, a definer of the table above, where the scan
 \ already takes a statement to start - the stretch is deferred to the run, and
 \ nothing in it is resolved. A word that renders source opens no stretch: it
-\ reads only the text it renders. The verifier's child, which opts in
+\ reads only the text it renders, and is reported at its token when no row or
+\ group declares that text (RENDER-GAP). The verifier's child, which opts in
 \ (REPORT-DEFERRALS), has each stop and each such stretch reported once, at its
 \ token (W-CHECK-DEFERRED, verdict deferred), and answers `deferred` when
 \ nothing is refused. A refusal opens a stretch too, unreported: the load stops
@@ -3521,14 +3539,16 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    a u DEFER-AT
    row 1 - PRS-CONSUME ;
 
-\ The checker's answer for a token: a word that may read on is TOP-PARSER's,
-\ a call it binds may make the literal before it a use (TOP-NAMED), and a
-\ refusal, or a name the run must judge, opens the stretch at the token.
-: TOP-RESOLVE ( ptr u8 n bool -- )
-   {: a:ptr u:n runs:bool :}
+\ The checker's answer for a token, a call when RUNS, else a tick's operand: a
+\ word that may read on is TOP-PARSER's, a call it binds is BOUND-CALL's, and a
+\ refusal, or a name the run must judge, opens the stretch at the token. Every
+\ answer but a binding reports the token itself, so BOUND-CALL reports a gap
+\ only where none is, and a token has one packet at most.
+: TOP-RESOLVE ( ptr u8 n bool bool -- )
+   {: a:ptr u:n runs:bool renders:bool :}
    a u runs TOP-VERDICT {: v:n :}
    v -1 = IF
-      runs IF a u TOP-NAMED THEN
+      runs IF a u renders BOUND-CALL THEN
       EXIT
    THEN
    v 2 = IF a u TOP-PARSER EXIT THEN
@@ -3557,7 +3577,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    a u CHAR-KEYWORD? IF EXIT THEN
    CSR-TOP
    COMPOSE-ON @ 0=  TOP-DEFER @ 0<>  or IF EXIT THEN
-   o ou 0 0= 0= TOP-RESOLVE ;
+   o ou false false TOP-RESOLVE ;
 
 \ Any other token: a number the engine's reader takes is done. A word that may
 \ define words this scan never reads when it runs - it renders source
@@ -3568,19 +3588,21 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ UNSEEN-MARK$). Only here does a word that calls `create` mark: a definer arm
 \ that takes the statement (RECORD-DEFINER?) records the name it makes.
 \ A reached renderer's text is outside this scan even when no later name uses
-\ it. DEFERRED? records that coverage gap without adding a diagnostic packet.
+\ it, so a renderer no row or group declares is deferred at its token
+\ (RENDER-GAP): where the checker binds the call (TOP-RESOLVE), and wherever
+\ nothing is resolved, inside an open stretch too.
 : TOP-TOKEN ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u num-parse nip nip IF EXIT THEN
    a u STRING-OPENER? 0= IF TICK-CONTEXT-UNKNOWN THEN
    a u QUIET-NOMINAL
-   a u MARK-RENDERS RENDERS-MARK? IF
-      -1 DEFER-SEEN !
-   ELSE
-      a u MARK-UNSEEN RENDERS-MARK? drop
+   a u MARK-RENDERS RENDERS-MARK? {: renders:bool :}
+   renders 0= IF a u MARK-UNSEEN RENDERS-MARK? drop THEN
+   COMPOSE-ON @ 0=  TOP-DEFER @ 0<>  or IF
+      renders IF a u RENDER-GAP THEN
+      EXIT
    THEN
-   COMPOSE-ON @ 0=  TOP-DEFER @ 0<>  or IF EXIT THEN
-   a u 0 0= TOP-RESOLVE ;
+   a u true renders TOP-RESOLVE ;
 
 \ A declaration a definer of the table above reads closes the stretch, unless
 \ the checker counted a refusal while it was read (MULTI-ERR-N, where refusals

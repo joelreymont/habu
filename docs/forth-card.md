@@ -250,7 +250,9 @@ A word that renders definitions at load time (`FUNCTION:`/`;FUNCTION`,
 the source declares them: uses of a `FUNCTION:` word and of a `generates:` row's
 word (§ 4) are checked before the run, `--verify-only` included. At top level
 any other such name opens that stretch. The renderer reads none of the tokens
-after it, so they are checked.
+after it, so they are checked. A reached renderer no row or group declares is
+`W-CHECK-DEFERRED` at its own token, so a `deferred` verdict always locates its
+gap.
 
 After a reached call that may render or register nominal types, quiet
 verification defers a later use of a missing type with `W-CHECK-DEFERRED` at

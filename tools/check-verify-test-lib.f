@@ -1815,6 +1815,17 @@ $180000 constant LARGE-STDIN-LEN
    s" verdict" STRING$ s" deferred" T$= ;
 
 
+\ The deferred stretch packet IDX holds, counted from 0: TOKEN on LINE at COLUMN.
+: DEFERRED-NTH ( ptr u8 n n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n idx:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
+   CHECK:VERIFY-OUT$ idx NTH-PACKET {: p:n :}
+   label labelu T-LABEL p s" token" STRING$ tok toku T$=
+   label labelu T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
+   label labelu T-LABEL p s" column" NUMBER$ col colu T$=
+   label labelu T-LABEL p s" verdict" STRING$ s" deferred" T$= ;
+
+
 \ A refused check of two packets: the call TOKEN deferred at the start of
 \ LINE, then the definition WORD refused with CODE.
 : BOUND-REFUSED ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
@@ -2108,14 +2119,14 @@ $180000 constant LARGE-STDIN-LEN
 
 \ A body naming a word only the run can define is deferred where the checker's
 \ judgment of it stops: a name the evaluated text may define, and a create
-\ caller's product. Loaded, each refuses that name (E-UNDEFINED, exit 70), so
-\ neither is answered verified. A refusal anywhere keeps the file refused. A
-\ create caller no row bounds may read any of the rest, so the check discovers
-\ nothing after its call.
+\ caller's product. The renderer's call is deferred too. Loaded, each refuses
+\ that name (E-UNDEFINED, exit 70), so neither is answered verified. A refusal
+\ anywhere keeps the file refused. A create caller no row bounds may read any
+\ of the rest, so the check discovers nothing after its call.
 : DEF-DEFERRED ( -- )
    s\" s\" : CVT-EG ( -- n ) 2 ;\" evaluate\n: CVT-EF ( -- n ) CVT-NOSUCH ;\n" TOP-CHECK
    5 s" def-deferred: evaluate, deferred" EXPECT-KIND
-   s" def-deferred: evaluate, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" def-deferred: evaluate, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" def-deferred: at the name" s" CVT-NOSUCH" s" W-CHECK-DEFERRED" s" 2" s" 19" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$=
    s\" : CVT-MK ( -- ) create 0 , ;\nparses: CVT-MK 1\nCVT-MK CVT-FOO\n: CVT-UF ( -- n ) CVT-FOO @ ;\n" TOP-CHECK
@@ -2129,7 +2140,7 @@ $180000 constant LARGE-STDIN-LEN
    s" def-deferred: undeclared create caller, the stop" s" CVT-MK" s" 2" s" 1" DEFERRED-ONLY
    s\" : CVT-E ( -- n ) CVT-NOPE ;\ns\" : CVT-EG ( -- n ) 2 ;\" evaluate\n: CVT-EF ( -- n ) CVT-NOSUCH ;\n" TOP-CHECK
    1 s" def-deferred: after a refusal, refused" EXPECT-KIND
-   s" def-deferred: after a refusal, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" def-deferred: after a refusal, three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" def-deferred: the refusal" T-LABEL
    CHECK:VERIFY-OUT$ s" token" s" CVT-NOPE" PACKET s" code" STRING$ s" E-UNDEFINED" T$=
    s" def-deferred: the deferral" s" CVT-NOSUCH" s" W-CHECK-DEFERRED" s" 3" s" 19" TOP-PACKET
@@ -2218,8 +2229,8 @@ $180000 constant LARGE-STDIN-LEN
    s" W-CHECK-DEFERRED" T$=
    S\" s\" : CVT-GENERATED ( -- ) ;\" evaluate\n: CVT-DOES ( -- ) CVT-GENERATED create does> ( -- ) CVT-GENERATED ;" TOP-CHECK
    5 s" trusted-tick-order: parent and clause both defer" EXPECT-KIND
-   s" trusted-tick-order: one warning for the definition" T-LABEL
-   CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" trusted-tick-order: one warning for the definition, one for the renderer" T-LABEL
+   CHECK:VERIFY-OUT$ PACKETS 2 T=
    CHECK:VERIFY-OUT$ s" token" s" CVT-GENERATED" PACKET {: parent-warning:n :}
    s" trusted-tick-order: parent warning wins" T-LABEL
    parent-warning s" line" NUMBER$ s" 2" T$=
@@ -2253,27 +2264,29 @@ $180000 constant LARGE-STDIN-LEN
 \ The text may define a package too, so a qualified name is the run's as a bare
 \ one is, whether `evaluate` renders it or a word that reaches the loader under
 \ `catch` (test/using-test.f). Each subject loads, exit 0. A reached renderer
-\ itself leaves source unchecked even when every later token resolves.
+\ itself leaves source unchecked even when every later token resolves, so it
+\ is deferred at its token, a definer's call a definer arm takes among them.
 : TOP-RENDERS ( -- )
    s\" s\" : CVT-EV ( -- n ) 1 ;\" evaluate 1 drop\n" TOP-CHECK
-   5 s" top-renders: tokens after it are checked, source deferred" EXPECT-KIND
-   s" top-renders: no dependent packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 0 T=
+   s" top-renders: at the renderer" s" evaluate" s" 1" s" 27" DEFERRED-ONLY
    s\" s\" : CVT-EV ( -- n ) 1 ;\" evaluate CVT-EV drop\n" TOP-CHECK
    5 s" top-renders: a product, deferred" EXPECT-KIND
-   s" top-renders: one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
-   s" top-renders: at the product" s" CVT-EV" s" W-CHECK-DEFERRED" s" 1" s" 36" TOP-PACKET
-   s" verdict" STRING$ s" deferred" T$=
+   s" top-renders: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-renders: the renderer first" 0 s" evaluate" s" 1" s" 27" DEFERRED-NTH
+   s" top-renders: then the product" 1 s" CVT-EV" s" 1" s" 36" DEFERRED-NTH
    s\" s\" package CVT-RP public : CVT-RW ( -- n ) 1 ; ;package\" evaluate\nCVT-RP:CVT-RW drop\n" TOP-CHECK
    5 s" top-renders: a qualified product, deferred" EXPECT-KIND
-   s" top-renders: qualified, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
-   s" top-renders: at the qualified product" s" CVT-RP:CVT-RW" s" W-CHECK-DEFERRED" s" 2" s" 1" TOP-PACKET
-   s" verdict" STRING$ s" deferred" T$=
+   s" top-renders: qualified, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-renders: qualified, the renderer first" 0 s" evaluate" s" 1" s" 58" DEFERRED-NTH
+   s" top-renders: at the qualified product" 1 s" CVT-RP:CVT-RW" s" 2" s" 1" DEFERRED-NTH
    s\" require lib/prelude.f\nTYPED-VARIABLE CVT-UA ptr u8   variable CVT-UU\n: CVT-UGO ( -- ) CVT-UA @ CVT-UU @ INCLUDE-EVALUATE ;\n: CVT-UCATCH ( ptr u8 n -- n ) CVT-UU ! CVT-UA ! [: CVT-UGO ;] catch ;\ns\" package CVT-UQ public : CVT-UR ( -- n ) 42 ; ;package\" CVT-UCATCH drop\nCVT-UQ:CVT-UR drop\n"
    TOP-CHECK
    5 s" top-renders: under catch, deferred" EXPECT-KIND
-   s" top-renders: under catch, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
-   s" top-renders: under catch, at the product" s" CVT-UQ:CVT-UR" s" W-CHECK-DEFERRED" s" 6" s" 1" TOP-PACKET
-   s" verdict" STRING$ s" deferred" T$= ;
+   s" top-renders: under catch, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-renders: under catch, the renderer first" 0 s" CVT-UCATCH" s" 5" s" 59" DEFERRED-NTH
+   s" top-renders: under catch, at the product" 1 s" CVT-UQ:CVT-UR" s" 6" s" 1" DEFERRED-NTH
+   s\" : CVT-LD ( n -- ) create , s\" : CVT-LZ ( -- n ) 3 ;\" evaluate-closed does> ( -- n ) @ ;\n1 CVT-LD CVT-LX\nCVT-LX drop\n" TOP-CHECK
+   s" top-renders: a learned definer's call" s" CVT-LD" s" 2" s" 3" DEFERRED-ONLY ;
 
 
 \ A source whose type is made at load time must really load with the same
@@ -2295,22 +2308,23 @@ $180000 constant LARGE-STDIN-LEN
 
 \ All four sources load. The verifier cannot execute their reached renderer or
 \ original registrar, so the declaration depending on the new type is
-\ deferred at that type.
+\ deferred at that type, and a renderer's call is deferred at itself.
 : TYPE-DEFERRED-DECLS ( -- )
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-G ( cbx -- cbx ) ;\n"
    s" type-sig-rendered.f" s" type-deferred: signature loads" TYPE-LOAD-CHECK
    5 s" type-deferred: signature defers" EXPECT-KIND
-   s" type-deferred: signature has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: signature has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: signature renderer" s" INCLUDE-EVALUATE" s" 1" s" 42" TYPE-DEFERRED-PACKET
    s" type-deferred: signature type" s" cbx" s" 2" s" 11" TYPE-DEFERRED-PACKET
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE cob 0 FIELD b cbx ;STRUCTURE\n"
    s" type-field-rendered.f" s" type-deferred: field loads" TYPE-LOAD-CHECK
    5 s" type-deferred: field defers" EXPECT-KIND
-   s" type-deferred: field has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: field has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: field type" s" cbx" s" 2" s" 25" TYPE-DEFERRED-PACKET
    s\" s\" STRUCTURE cbx 1 FIELD v a ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE cob 0 FIELD b cbx<n> ;STRUCTURE\n"
    s" type-generic-rendered.f" s" type-deferred: generic field loads" TYPE-LOAD-CHECK
    5 s" type-deferred: generic field defers" EXPECT-KIND
-   s" type-deferred: generic field has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: generic field has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: generic field type" s" cbx<n>" s" 2" s" 25" TYPE-DEFERRED-PACKET
    s\" s\" chz\" s\" 0 VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM\n: CVT-F ( -- chz ) CONSTRUCT chz first ;\n"
    s" type-sum-registered.f" s" type-deferred: sum loads" TYPE-LOAD-CHECK
@@ -2326,68 +2340,68 @@ $180000 constant LARGE-STDIN-LEN
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nTYPED-VARIABLE CVT-ST cbx\n"
    s" type-storage-rendered.f" s" type-deferred: storage loads" TYPE-LOAD-CHECK
    5 s" type-deferred: storage defers" EXPECT-KIND
-   s" type-deferred: storage has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: storage has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: stored type" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nTYPED-VARIABLE CVT-ST cbx\n: CVT-USE ( -- ) CVT-ST drop ;\n"
    s" type-storage-use.f" s" type-deferred: storage dependency loads" TYPE-LOAD-CHECK
    5 s" type-deferred: storage dependency defers" EXPECT-KIND
-   s" type-deferred: storage dependency has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: storage dependency has three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" type-deferred: storage dependency type" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
    s" type-deferred: storage dependency word" s" CVT-ST" s" 3" s" 18" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nVALUE-RECORD CVT-VR x cbx END-VALUE-RECORD\n"
    s" type-record-rendered.f" s" type-deferred: record loads" TYPE-LOAD-CHECK
    5 s" type-deferred: record defers" EXPECT-KIND
-   s" type-deferred: record has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: record has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: record field" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one cbx ;VARIANT ;SUMTYPE\n"
    s" type-variant-rendered.f" s" type-deferred: variant loads" TYPE-LOAD-CHECK
    5 s" type-deferred: variant defers" EXPECT-KIND
-   s" type-deferred: variant has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: variant has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: variant payload" s" cbx" s" 2" s" 27" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nPRODUCT cvp 0 FIELD f cbx ;PRODUCT\n"
    s" type-product-rendered.f" s" type-deferred: product loads" TYPE-LOAD-CHECK
    5 s" type-deferred: product defers" EXPECT-KIND
-   s" type-deferred: product has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: product has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: product field" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx 1 FIELD v a ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one cbx<n> ;VARIANT ;SUMTYPE\n"
    s" type-variant-generic.f" s" type-deferred: applied payload loads" TYPE-LOAD-CHECK
    5 s" type-deferred: applied payload defers" EXPECT-KIND
-   s" type-deferred: applied payload has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: applied payload has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: applied payload type" s" cbx" s" 2" s" 27" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one [ cbx -- n ] ;VARIANT ;SUMTYPE\n"
    s" type-variant-quote.f" s" type-deferred: quoted payload loads" TYPE-LOAD-CHECK
    5 s" type-deferred: quoted payload defers" EXPECT-KIND
-   s" type-deferred: quoted payload has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: quoted payload has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: quoted payload type" s" cbx" s" 2" s" 29" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nPRODUCT cvp 0 FIELD f ptr cbx ;PRODUCT\n"
    s" type-product-pointer.f" s" type-deferred: pointer field loads" TYPE-LOAD-CHECK
    5 s" type-deferred: pointer field defers" EXPECT-KIND
-   s" type-deferred: pointer field has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: pointer field has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: pointer field type" s" cbx" s" 2" s" 27" TYPE-DEFERRED-PACKET
 
    s\" s\" NEWTYPE cbx 0\" INCLUDE-EVALUATE\nCAST: CVT-C ( n -- cbx )\n"
    s" type-cast-rendered.f" s" type-deferred: cast loads" TYPE-LOAD-CHECK
    5 s" type-deferred: cast defers" EXPECT-KIND
-   s" type-deferred: cast has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: cast has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: cast type" s" cbx" s" 2" s" 20" TYPE-DEFERRED-PACKET
 
    s\" s\" package CVT-L public DEFLINEAR CVT-L:tok ;package\" INCLUDE-EVALUATE\npackage CVT-L LINEAR: CVT-M ( n -- CVT-L:tok ) ;package\n"
    s" type-linear-rendered.f" s" type-deferred: linear loads" TYPE-LOAD-CHECK
    5 s" type-deferred: linear defers" EXPECT-KIND
-   s" type-deferred: linear has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: linear has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: linear type" s" CVT-L:tok" s" 2" s" 36" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\ndefer CVT-D ( cbx -- cbx )\n"
    s" type-defer-rendered.f" s" type-deferred: defer loads" TYPE-LOAD-CHECK
    5 s" type-deferred: defer signature defers" EXPECT-KIND
-   s" type-deferred: defer has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: defer has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: defer type" s" cbx" s" 2" s" 15" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one cbx ;VARIANT VARIANT one n ;VARIANT ;SUMTYPE\n" TOP-CHECK
@@ -2436,7 +2450,7 @@ $180000 constant LARGE-STDIN-LEN
 
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-G ( cbx -- cbx ) ;\n: CVT-BAD ( n -- n n ) drop ;\n" TOP-CHECK
    1 s" type-deferred: later mismatch refuses" EXPECT-KIND
-   s" type-deferred: later mismatch has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: later mismatch has three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" type-deferred: prior type" s" cbx" s" 2" s" 11" TYPE-DEFERRED-PACKET
    s" type-deferred: later mismatch code" T-LABEL
    CHECK:VERIFY-OUT$ s" token" s" drop" PACKET s" code" STRING$ s" E-MISMATCH" T$=
@@ -2454,7 +2468,7 @@ $180000 constant LARGE-STDIN-LEN
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nTRUSTED: CVT-T ( cbx -- cbx ) create does> ( -- n ) drop 7 ;\n: CVT-NEXT ( -- n ) 1 ;\n"
    s" type-trusted-rendered.f" s" type-deferred: trusted loads" TYPE-LOAD-CHECK
    5 s" type-deferred: trusted signature defers" EXPECT-KIND
-   s" type-deferred: trusted has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: trusted has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: trusted signature type" s" cbx" s" 2" s" 18" TYPE-DEFERRED-PACKET
    s" type-deferred: trusted parent absent" T-LABEL
    CHECK:VERIFY-DEFS$ s" word" s" CVT-T" PACKET 0 < TTRUE
@@ -2481,13 +2495,13 @@ $180000 constant LARGE-STDIN-LEN
 
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one n ;VARIANT ;SUMTYPE\n" TOP-CHECK
    5 s" type-deferred: known payload scalar has no type uncertainty" EXPECT-KIND
-   s" type-deferred: known payload scalar has no packet" T-LABEL
-   CHECK:VERIFY-OUT$ PACKETS 0 T=
+   s" type-deferred: known payload scalar has only the renderer's packet" T-LABEL
+   CHECK:VERIFY-OUT$ PACKETS 1 T=
 
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs 0 VARIANT one bool ;VARIANT ;SUMTYPE\n" TOP-CHECK
    5 s" type-deferred: known payload bool has no type uncertainty" EXPECT-KIND
-   s" type-deferred: known payload bool has no packet" T-LABEL
-   CHECK:VERIFY-OUT$ PACKETS 0 T=
+   s" type-deferred: known payload bool has only the renderer's packet" T-LABEL
+   CHECK:VERIFY-OUT$ PACKETS 1 T=
 
    s\" s\" STRUCTURE cbx 0 FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE bad 0 FIELD x cbx FIELD x n ;STRUCTURE\n" TOP-CHECK
    1 s" type-deferred: duplicate structure field refuses" EXPECT-KIND
@@ -2536,7 +2550,7 @@ $180000 constant LARGE-STDIN-LEN
    s" type-trust-rendered.f" AT$ NATIVE-RC 70 T=
    src srcu TOP-CHECK
    5 s" type-deferred: asserted effect defers" EXPECT-KIND
-   s" type-deferred: assertion and dependent body" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: renderer, assertion and dependent body" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" type-deferred: assertion type" s" cvt-nom" s" 5" s" 17" TYPE-DEFERRED-PACKET
    s" type-deferred: old effect is unavailable" T-LABEL
    CHECK:VERIFY-OUT$ s" token" s" CVT-K" PACKET s" code" STRING$ s" W-CHECK-DEFERRED" T$=
@@ -2548,20 +2562,20 @@ $180000 constant LARGE-STDIN-LEN
    s" type-view-rendered.f" AT$ NATIVE-RC 70 T=
    vsrc vsrcu TOP-CHECK
    5 s" type-deferred: view cast defers" EXPECT-KIND
-   s" type-deferred: view cast and dependent body" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: renderer, view cast and dependent body" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" type-deferred: unresolved view cast is absent" T-LABEL
    CHECK:VERIFY-DEFS$ s" word" s" CVT-UNPACK" PACKET 0 < TTRUE
 
    s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom ptr\" TRUST\n" TOP-CHECK
    1 s" type-deferred: invalid assertion grammar refuses" EXPECT-KIND
-   s" type-deferred: invalid assertion has no extra deferral" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: invalid assertion adds no deferral to the renderer's" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: invalid assertion code" T-LABEL
-   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" code" STRING$ s" E-BAD-STORED-SIGNATURE" T$=
+   CHECK:VERIFY-OUT$ 1 NTH-PACKET s" code" STRING$ s" E-BAD-STORED-SIGNATURE" T$=
 
    s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\ns\" CVT-K\" s\" -- n\" TRUST\n: CVT-RESTORED ( -- n ) CVT-K ;\n"
    TOP-CHECK
    5 s" type-deferred: known assertion restores checking" EXPECT-KIND
-   s" type-deferred: restored assertion has only original warning" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: restored assertion has only the renderer's and original warnings" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: restored caller is recorded" T-LABEL
    CHECK:VERIFY-DEFS$ s" word" s" CVT-RESTORED" PACKET 0 >= TTRUE
 
@@ -2574,17 +2588,17 @@ $180000 constant LARGE-STDIN-LEN
    s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\npackage CVT-OTHER\n: CVT-K ( -- n ) 2 ;\n: CVT-KEPT ( -- n ) CVT-K ;\n;package\n"
    TOP-CHECK
    5 s" type-deferred: another binding stays checkable" EXPECT-KIND
-   s" type-deferred: another binding has only original warning" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: another binding has only the renderer's and original warnings" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
 
    s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\n: CVT-TICK ( -- [ -- n ] ) ['] CVT-K ;\n' CVT-K drop\n"
    TOP-CHECK
    5 s" type-deferred: ticks keep no old effect" EXPECT-KIND
-   s" type-deferred: assertion and both ticks" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" type-deferred: renderer, assertion and both ticks" T-LABEL CHECK:VERIFY-OUT$ PACKETS 4 T=
 
    s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\ndefer CVT-K ( -- n )\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\n: CVT-SET ( [ -- n ] -- ) is CVT-K ;\n"
    TOP-CHECK
    5 s" type-deferred: deferred setter keeps no old effect" EXPECT-KIND
-   s" type-deferred: assertion and deferred setter" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: renderer, assertion and deferred setter" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
 
    s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-PN ( -- ) parse-name 2drop ;\ns\" CVT-PN\" s\" -- cvt-nom\" TRUST\nCVT-PN : CVT-PAYLOAD ( -- n ) 1 ;\n" TOP-CHECK
    5 s" type-deferred: parser still owns its operands" EXPECT-KIND
@@ -2657,20 +2671,32 @@ $180000 constant LARGE-STDIN-LEN
    s\" package CVT-RA public : CVT-RMAKE ( -- ) s\" : CVT-RSEVEN ( -- n ) 7 ;\" INCLUDE-EVALUATE ; CVT-RMAKE ;package\n: CVT-DEFR ( n -- ) create , does> ( -- n ) @ ;\n: CVT-MK ( n -- ) CVT-RA:CVT-RSEVEN + CVT-DEFR ;\n5 CVT-MK CVT-Y\n"
    TOP-CHECK
    5 s" top-create: through a word the run checks" EXPECT-KIND
-   s" top-create: two packets, through a word" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-create: three packets, through a word" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" top-create: the renderer's call" s" CVT-RMAKE" s" 1" s" 91" DEFERRED-AT
    s" top-create: that word's body" s" CVT-RA:CVT-RSEVEN" s" 3" s" 19" DEFERRED-AT
    s" top-create: at that word" s" CVT-MK" s" 4" s" 3" DEFERRED-AT ;
 
 
-\ The deferred stretch packet IDX holds, counted from 0: TOKEN on LINE at COLUMN.
-: DEFERRED-NTH ( ptr u8 n n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: label:ptr labelu:n idx:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
-   CHECK:VERIFY-OUT$ idx NTH-PACKET {: p:n :}
-   label labelu T-LABEL p s" token" STRING$ tok toku T$=
-   label labelu T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
-   label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
-   label labelu T-LABEL p s" column" NUMBER$ col colu T$=
-   label labelu T-LABEL p s" verdict" STRING$ s" deferred" T$= ;
+\ A deferred check of two packets: CVT-TL's call on TLINE at TCOL, then the
+\ row's name TOKEN on LINE at COLUMN.
+: TL-DEFERRED-AT ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: v label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n tline:ptr tlineu:n tcol:ptr tcolu:n :}
+   v 5 label labelu EXPECT-KIND
+   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   label labelu 0 s" CVT-TL" tline tlineu tcol tcolu DEFERRED-NTH
+   label labelu 1 tok toku line lineu col colu DEFERRED-NTH ;
+
+
+\ A refused check of two packets: the row's name TOKEN unresolved on LINE at
+\ COLUMN, and CVT-TL's call deferred on TLINE at TCOL.
+: TL-REFUSED-AT ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: v label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n tline:ptr tlineu:n tcol:ptr tcolu:n :}
+   v 1 label labelu EXPECT-KIND
+   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   label labelu tok toku s" E-TRUST-UNRESOLVED" line lineu col colu TOP-PACKET
+   s" verdict" STRING$ s" rejected" T$=
+   label labelu s" CVT-TL" s" W-CHECK-DEFERRED" tline tlineu tcol tcolu TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$= ;
 
 
 \ A `trust` row naming a word a statement before it renders: loaded, CVT-TL
@@ -2681,43 +2707,43 @@ $180000 constant LARGE-STDIN-LEN
 \ loads, and the statement marked the wordlist the row's record lands in - the
 \ open section, or PKG's public one for PKG:TAIL - where a product and a
 \ misspelt name look alike, so the row is the run's at its name. It records
-\ nothing: each use after it is the run's too.
+\ nothing: each use after it is the run's too. The statement is the run's at
+\ its call.
 \ A row naming a word the scan has seen is checked as ever: the last subject is
 \ E-BAD-STORED-SIGNATURE loaded, exit 70.
 : TOP-TRUST ( -- )
    s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TDW\" s\" -- n\" TRUST\n: CVT-TU ( -- n ) CVT-TDW ;\nCVT-TDW drop\n"
    TOP-CHECK
    5 s" top-trust: a product's row, deferred" EXPECT-KIND
-   s" top-trust: three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
-   s" top-trust: at the row's name" 0 s" CVT-TDW" s" 3" s" 4" DEFERRED-NTH
-   s" top-trust: a use in a body" 1 s" CVT-TDW" s" 4" s" 19" DEFERRED-NTH
-   s" top-trust: a use at top level" 2 s" CVT-TDW" s" 5" s" 1" DEFERRED-NTH
+   s" top-trust: four packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 4 T=
+   s" top-trust: at the statement" 0 s" CVT-TL" s" 2" s" 1" DEFERRED-NTH
+   s" top-trust: at the row's name" 1 s" CVT-TDW" s" 3" s" 4" DEFERRED-NTH
+   s" top-trust: a use in a body" 2 s" CVT-TDW" s" 4" s" 19" DEFERRED-NTH
+   s" top-trust: a use at top level" 3 s" CVT-TDW" s" 5" s" 1" DEFERRED-NTH
    s\" package CVT-TP\n: CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TDW\" s\" -- n\" TRUST\n;package\npackage CVT-TP s\" CVT-TDW\" s\" -- n\" TRUST ;package\n"
    TOP-CHECK
    5 s" top-trust: private, deferred" EXPECT-KIND
-   s" top-trust: private, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
-   s" top-trust: in the private section" 0 s" CVT-TDW" s" 4" s" 4" DEFERRED-NTH
-   s" top-trust: in that section reopened" 1 s" CVT-TDW" s" 6" s" 19" DEFERRED-NTH
+   s" top-trust: private, three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" top-trust: private, at the statement" 0 s" CVT-TL" s" 3" s" 1" DEFERRED-NTH
+   s" top-trust: in the private section" 1 s" CVT-TDW" s" 4" s" 4" DEFERRED-NTH
+   s" top-trust: in that section reopened" 2 s" CVT-TDW" s" 6" s" 19" DEFERRED-NTH
    s\" package CVT-TP public\n: CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TDW\" s\" -- n\" TRUST\n;package\n"
-   TOP-CHECK s" top-trust: in the public section" s" CVT-TDW" s" 4" s" 4" DEFERRED-ONLY
+   TOP-CHECK s" top-trust: in the public section" s" CVT-TDW" s" 4" s" 4" s" 3" s" 1" TL-DEFERRED-AT
    s\" package CVT-TQ public : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ; CVT-TL ;package\ns\" CVT-TQ:CVT-TDW\" s\" -- n\" TRUST\n"
-   TOP-CHECK s" top-trust: qualified, in its public" s" CVT-TQ:CVT-TDW" s" 2" s" 4" DEFERRED-ONLY
+   TOP-CHECK s" top-trust: qualified, in its public" s" CVT-TQ:CVT-TDW" s" 2" s" 4" s" 1" s" 84" TL-DEFERRED-AT
    s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TDWX\" s\" -- n\" TRUST\n"
-   TOP-CHECK s" top-trust: a misspelt name" s" CVT-TDWX" s" 3" s" 4" DEFERRED-ONLY
+   TOP-CHECK s" top-trust: a misspelt name" s" CVT-TDWX" s" 3" s" 4" s" 2" s" 1" TL-DEFERRED-AT
    s" trust-dep.f" s\" : CVT-TDW ( -- n ) 1 ;\n" FIXTURE
    s\" : CVT-TL ( -- ) s\" trust-dep.f\" included ;\nCVT-TL\ns\" CVT-TDW\" s\" -- n\" TRUST\n"
-   TOP-CHECK s" top-trust: a called body's loader" s" CVT-TDW" s" 3" s" 4" DEFERRED-ONLY
+   TOP-CHECK s" top-trust: a called body's loader" s" CVT-TDW" s" 3" s" 4" s" 2" s" 1" TL-DEFERRED-AT
    s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\n: CVT-TK ( -- n ) 1 ;\ns\" CVT-TK\" s\" -- n\" TRUST\n: CVT-TU ( -- n ) CVT-TK ;\n"
-   TOP-CHECK
-   5 s" top-trust: a seen word's row leaves rendered source deferred" EXPECT-KIND
-   s" top-trust: a seen word's row has no dependent packet" T-LABEL
-   CHECK:VERIFY-OUT$ PACKETS 0 T=
+   TOP-CHECK s" top-trust: a seen word's row, deferred only at the statement" s" CVT-TL" s" 2" s" 1" DEFERRED-ONLY
    s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\n: CVT-TK ( -- n ) 1 ;\ns\" CVT-TK\" s\" -- ptr\" TRUST\n: CVT-TU ( -- n ) CVT-TK ;\n"
    TOP-CHECK
    1 s" top-trust: a seen word's bad row" EXPECT-KIND
-   s" top-trust: a seen word's bad row, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-trust: a seen word's bad row, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-trust: a seen word's bad row, its code" T-LABEL
-   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" code" STRING$ s" E-BAD-STORED-SIGNATURE" T$= ;
+   CHECK:VERIFY-OUT$ 1 NTH-PACKET s" code" STRING$ s" E-BAD-STORED-SIGNATURE" T$= ;
 
 
 \ The rows the scan still refuses where the load does, each E-TRUST-UNRESOLVED,
@@ -2729,33 +2755,33 @@ $180000 constant LARGE-STDIN-LEN
 \ package's mark or a used public's, PKG's public wordlist under a global mark -
 \ and a name no word can have: a malformed one, or one holding a blank or a tab,
 \ which no token holds, the mark's own spelling among them (checker.f
-\ UNSEEN-MARK$).
+\ UNSEEN-MARK$). A statement that runs CVT-TL is deferred at its call.
 : TOP-TRUST-REFUSED ( -- )
    s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\ns\" CVT-TDW\" s\" -- n\" TRUST\nCVT-TL\n" TOP-CHECK
-   s" top-trust: before the statement" s" CVT-TDW" s" E-TRUST-UNRESOLVED" s" 2" s" 4" REFUSED-AT
+   s" top-trust: before the statement" s" CVT-TDW" s" 2" s" 4" s" 3" s" 1" TL-REFUSED-AT
    s" trust-dep.f" s\" : CVT-TDW ( -- n ) 1 ;\n" FIXTURE
    s\" : CVT-TL ( -- ) s\" trust-dep.f\" included ;\ns\" CVT-TDW\" s\" -- n\" TRUST\n" TOP-CHECK
    s" top-trust: an uncalled body's loader" s" CVT-TDW" s" E-TRUST-UNRESOLVED" s" 2" s" 4" REFUSED-AT
    s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\npackage CVT-TP s\" CVT-TDW\" s\" -- n\" TRUST ;package\n"
-   TOP-CHECK s" top-trust: a package's row" s" CVT-TDW" s" E-TRUST-UNRESOLVED" s" 3" s" 19" REFUSED-AT
+   TOP-CHECK s" top-trust: a package's row" s" CVT-TDW" s" 3" s" 19" s" 2" s" 1" TL-REFUSED-AT
    s\" package CVT-TP : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ; CVT-TL\npublic s\" CVT-TDW\" s\" -- n\" TRUST ;package\n"
-   TOP-CHECK s" top-trust: a public row" s" CVT-TDW" s" E-TRUST-UNRESOLVED" s" 2" s" 11" REFUSED-AT
+   TOP-CHECK s" top-trust: a public row" s" CVT-TDW" s" 2" s" 11" s" 1" s" 77" TL-REFUSED-AT
    s\" package CVT-TP : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ; CVT-TL ;package\ns\" CVT-TDW\" s\" -- n\" TRUST\n"
-   TOP-CHECK s" top-trust: a global row" s" CVT-TDW" s" E-TRUST-UNRESOLVED" s" 2" s" 4" REFUSED-AT
+   TOP-CHECK s" top-trust: a global row" s" CVT-TDW" s" 2" s" 4" s" 1" s" 77" TL-REFUSED-AT
    s\" package CVT-TQ public : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ; CVT-TL ;package\nusing CVT-TQ s\" CVT-TDW\" s\" -- n\" TRUST ;using\n"
-   TOP-CHECK s" top-trust: a used public's mark" s" CVT-TDW" s" E-TRUST-UNRESOLVED" s" 2" s" 17" REFUSED-AT
+   TOP-CHECK s" top-trust: a used public's mark" s" CVT-TDW" s" 2" s" 17" s" 1" s" 84" TL-REFUSED-AT
    s\" package CVT-TQ public : CVT-TK ( -- n ) 1 ; ;package\n: CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TQ:CVT-TDW\" s\" -- n\" TRUST\n"
-   TOP-CHECK s" top-trust: a qualified row" s" CVT-TQ:CVT-TDW" s" E-TRUST-UNRESOLVED" s" 4" s" 4" REFUSED-AT
+   TOP-CHECK s" top-trust: a qualified row" s" CVT-TQ:CVT-TDW" s" 4" s" 4" s" 3" s" 1" TL-REFUSED-AT
    s\" package CVT-TQ public : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ; CVT-TL ;package\ns\" CVT-TQ:CVT-TDW:X\" s\" -- n\" TRUST\n"
-   TOP-CHECK s" top-trust: a malformed qualified name" s" CVT-TQ:CVT-TDW:X" s" E-TRUST-UNRESOLVED" s" 2" s" 4" REFUSED-AT
+   TOP-CHECK s" top-trust: a malformed qualified name" s" CVT-TQ:CVT-TDW:X" s" 2" s" 4" s" 1" s" 84" TL-REFUSED-AT
    s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-A:B:C\" s\" -- n\" TRUST\n"
-   TOP-CHECK s" top-trust: a malformed name" s" CVT-A:B:C" s" E-TRUST-UNRESOLVED" s" 3" s" 4" REFUSED-AT
+   TOP-CHECK s" top-trust: a malformed name" s" CVT-A:B:C" s" 3" s" 4" s" 2" s" 1" TL-REFUSED-AT
    s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TDW X\" s\" -- n\" TRUST\n"
-   TOP-CHECK s" top-trust: a name holding a blank" s" CVT-TDW X" s" E-TRUST-UNRESOLVED" s" 3" s" 4" REFUSED-AT
+   TOP-CHECK s" top-trust: a name holding a blank" s" CVT-TDW X" s" 3" s" 4" s" 2" s" 1" TL-REFUSED-AT
    s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" unseen products\" s\" -- n\" TRUST\n"
-   TOP-CHECK s" top-trust: the mark's own spelling" s" unseen products" s" E-TRUST-UNRESOLVED" s" 3" s" 4" REFUSED-AT
+   TOP-CHECK s" top-trust: the mark's own spelling" s" unseen products" s" 3" s" 4" s" 2" s" 1" TL-REFUSED-AT
    s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TDW\tX\" s\" -- n\" TRUST\n"
-   TOP-CHECK s" top-trust: a name holding a tab" s\" CVT-TDW\tX" s" E-TRUST-UNRESOLVED" s" 3" s" 4" REFUSED-AT ;
+   TOP-CHECK s" top-trust: a name holding a tab" s\" CVT-TDW\tX" s" 3" s" 4" s" 2" s" 1" TL-REFUSED-AT ;
 
 
 \ A word a top-level `create` makes pushes its address when it runs: it reads
@@ -2779,7 +2805,8 @@ $180000 constant LARGE-STDIN-LEN
 : TOP-TRUSTED ( -- )
    s\" TRUSTED: CVT-EVW ( ptr u8 n -- ) evaluate ;\ns\" : CVT-EVY ( -- n ) 2 ;\" CVT-EVW\nCVT-EVY drop\n" TOP-CHECK
    5 s" top-trusted: renders" EXPECT-KIND
-   s" top-trusted: renders, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-trusted: renders, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-trusted: renders, at its call" s" CVT-EVW" s" 2" s" 28" DEFERRED-AT
    s" top-trusted: its product" s" CVT-EVY" s" 3" s" 1" DEFERRED-AT
    s\" TRUSTED: CVT-TP ( -- ) parse-name 2drop ;\nCVT-TP NOSUCH\n" TOP-CHECK
    5 s" top-trusted: parses" EXPECT-KIND
@@ -2787,7 +2814,8 @@ $180000 constant LARGE-STDIN-LEN
    s" top-trusted: its stretch" s" CVT-TP" s" 2" s" 1" DEFERRED-AT
    s\" s\" : CVT-HID ( -- ) ;\" evaluate\nTRUSTED: CVT-TU ( -- ) CVT-HID ;\nCVT-TU 1 drop\n" TOP-CHECK
    5 s" top-trusted: binds to nothing" EXPECT-KIND
-   s" top-trusted: binds to nothing, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-trusted: binds to nothing, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-trusted: binds to nothing, the renderer's call" s" evaluate" s" 1" s" 24" DEFERRED-AT
    s" top-trusted: that stretch" s" CVT-TU" s" 3" s" 1" DEFERRED-AT
    s\" TRUSTED: CVT-TB ( -- n ) 1 dup drop ;\nCVT-TB NOSUCH\n" TOP-CHECK
    s" top-trusted: does neither" s" NOSUCH" s" E-UNDEFINED-TOP-LEVEL" s" 2" s" 8" REFUSED-AT ;
@@ -2825,7 +2853,8 @@ $180000 constant LARGE-STDIN-LEN
    s" top-package-tail: closed" s" CVT-OFP:CVT-OFG" s" E-UNDEFINED-TOP-LEVEL" s" 5" s" 1" REFUSED-AT
    s\" package CVT-OFP\ns\" : CVT-OFQ ( -- n ) 7 ;\" CVT-OFP:evaluate\nCVT-OFQ drop\n;package\n" TOP-CHECK
    5 s" top-package-tail: a renderer" EXPECT-KIND
-   s" top-package-tail: a renderer, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-package-tail: a renderer, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-package-tail: its call" s" CVT-OFP:evaluate" s" 2" s" 28" DEFERRED-AT
    s" top-package-tail: its product" s" CVT-OFQ" s" 3" s" 1" DEFERRED-AT
    s\" : CVT-OFMK ( -- ) create ;\nparses: CVT-OFMK 1\npackage CVT-OFP\nCVT-OFP:CVT-OFMK CVT-OFQ\n: CVT-AFTER ( -- ) ;\nCVT-OFQ drop\n;package\n" TOP-CHECK
    5 s" top-package-tail: a create caller" EXPECT-KIND

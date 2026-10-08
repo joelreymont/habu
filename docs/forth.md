@@ -1935,6 +1935,8 @@ the rule.
   stays the run's. Nor is a `;FUNCTION` that closes a declaration group the
   check read a gap. A word no row or group declares stays the run's where a
   later token uses it, and a `;FUNCTION` with no group read before it is a gap.
+  A reached renderer no row or group declares is `W-CHECK-DEFERRED` at its
+  token, so a `deferred` verdict always locates its gap.
   Measured after `require lib/process-command.f
   CMD:COMMAND C`: `: U ( -- ptr ptr u8 ) C ;`, the same with `C#VEC`, and
   `: U ( -- ) C#BUF drop ;` check 0 plain, under `--verify-only` and under
@@ -2064,7 +2066,8 @@ the rule.
   marks the wordlist (the rule above), and a later top-level name only that
   text may define opens the stretch at the name. Measured:
   `s" : EVX ( -- n ) 1 ;" evaluate  EVX drop` loads 0, checks 0, and is
-  `deferred` at `EVX` under `--verify-only`.
+  `deferred` under `--verify-only`, with `W-CHECK-DEFERRED` at `evaluate` and
+  at `EVX`.
   Three limits remain. A call through an execution token binds no callee, in
   a checked body and a `TRUSTED:` one alike, so it gives its caller no facts:
   `execute`, `catch` or `finally` of an xt, and a body's call to a `defer`,
