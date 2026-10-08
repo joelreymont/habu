@@ -72,7 +72,9 @@ public
    loop
    SOURCE$ S\" ;package\n" APPEND-FILE ;
 
-: DEFINITIONS$ ( -- ptr u8 n ) SOURCE$ ;
+\ Loads the generated definitions. The path is computed, so the load is a call
+\ in a body, which discovery reads past rather than refusing.
+: LOAD-DEFINITIONS ( -- ) SOURCE$ included ;
 
 ;using
 ;using
@@ -80,7 +82,7 @@ public
 
 EFFECT-POOL-TEST:GENERATE
 AOT-ARM:WINDOW-OPEN
-EFFECT-POOL-TEST:DEFINITIONS$ included
+EFFECT-POOL-TEST:LOAD-DEFINITIONS
 AOT-ARM:WINDOW-CLOSE
 
 package EFFECT-POOL-TEST
