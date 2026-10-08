@@ -340,6 +340,36 @@ variable CUR-ROOT                        \ and the root being walked
    o 0 >= if o CUR-OPEN ! [: OPEN-TEXT ;] FOLLOW exit then
    k PATH$ FILE? if [: DISK-TEXT ;] FOLLOW then ;
 
+\ Harvest with the same open-document reader and root as expansion. A source
+\ refusal still gives the loads before it; a later row can let a retry read
+\ farther. The node's edges are built only in the final expansion.
+: HARVEST-NODE ( n -- )
+   {: k:n :}
+   k CUR !
+   k OPEN-OF {: o:n :}
+   o 0 >= if
+      o CUR-OPEN ! [: OPEN-TEXT ;] DISCOVER:HARVEST
+   else
+      k PATH$ FILE? 0= if exit then
+      [: DISK-TEXT ;] DISCOVER:HARVEST
+   then
+   EVENT-COUNT 0 ?do
+      i EVENT-PATH@ i SOURCE-EVENT:ROOT@ NODE-OF drop
+   loop ;
+
+\ A newly found dependency may declare the row needed to read a previous
+\ subject farther. Continue until a pass adds neither a node nor a source
+\ occurrence; repeated file occurrences are deduplicated by discovery.
+: HARVEST-ALL ( -- )
+   begin
+      NODE-N @ DISCOVER:ROWS-VERSION
+      DISCOVER:ROWS-PASS-BEGIN
+      0 begin dup NODE-N @ < while dup HARVEST-NODE 1+ repeat drop
+      DISCOVER:ROWS-PASS-END
+      DISCOVER:ROWS-VERSION = swap NODE-N @ = and
+      DISCOVER:ROWS-PASS-STABLE? and
+   until ;
+
 \ Every node the subjects reach, each followed once: a node a load makes is
 \ followed in its turn.
 : EXPAND-ALL ( -- )
@@ -420,6 +450,7 @@ private
    0 BAD BAD-N @ [: BAD< ;] SORT:SORT! ;
 
 : RESET ( -- )
+   DISCOVER:ROWS-RESET
    0 POOL-U !
    0 NODE-N !
    0 SLOT-CAP !
@@ -459,6 +490,7 @@ public
    [: OPEN+ ;] each execute
    WALK-ROOTS
    BLOCKED @ if exit then
+   HARVEST-ALL
    EXPAND-ALL
    MARK
    SPREAD

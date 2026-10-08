@@ -1351,6 +1351,20 @@ $180000 constant LARGE-STDIN-LEN
    s" load-repeat: ordinary sees second include" T-LABEL path pathu false false CHECK-RC 78 T=
    s" load-repeat: all-errors sees second include" T-LABEL path pathu false true CHECK-RC 78 T= ;
 
+\ Discovery must learn a dependency's parsing row before it reads the
+\ subject's operands. The native load and both closure-walking modes agree.
+: LOAD-PARSING ( -- )
+   s" row-lib.f"
+   s\" require lib/string.f\npackage CVT-ROWS public\n: W ( -- ) parse-name 2drop begin parse-name dup 0= if 2drop exit then s\" CVT-ROWS:;W\" STR= until ;\nparses-through: W 1 ( CVT-ROWS:;W )\n;package\n" FIXTURE
+   s" row-lib2.f"
+   s\" require lib/string.f\npackage CVT-ROWS2 public\n: V ( -- ) parse-name 2drop begin parse-name dup 0= if 2drop exit then s\" CVT-ROWS2:;V\" STR= until ;\nparses-through: V 1 ( CVT-ROWS2:;V )\n;package\n" FIXTURE
+   s" row-use.f"
+   s\" require row-lib.f\nCVT-ROWS:W required nosuch.f CVT-ROWS:;W\nrequire row-lib2.f\nCVT-ROWS2:V required nosuch2.f CVT-ROWS2:;V\n: CVT-ROW-AFTER ( -- n ) 1 ;\n" FIXTURE
+   s" row-use.f" AT$ {: path:ptr pathu:n :}
+   s" load-parsing: native consumes raw operands" T-LABEL path pathu NATIVE-RC 0 T=
+   s" load-parsing: ordinary follows the row" T-LABEL path pathu false false CHECK-RC 0 T=
+   s" load-parsing: all-errors follows the row" T-LABEL path pathu false true CHECK-RC 0 T= ;
+
 
 \ The exit status of check.f, given FLAG unless it is empty, on the tree's
 \ tools/source-discovery.f, run from the fixture directory, outside the tree,
@@ -4644,6 +4658,7 @@ public
    s" load-package" [: LOAD-PACKAGE ;] RUN-CASE
    s" load-using-floor" [: LOAD-USING-FLOOR ;] RUN-CASE
    s" load-repeat" [: LOAD-REPEAT ;] RUN-CASE
+   s" load-parsing" [: LOAD-PARSING ;] RUN-CASE
    s" body-computed" [: BODY-COMPUTED ;] RUN-CASE
    s" duplicate-after-packet" [: DUPLICATE-AFTER-PACKET ;] RUN-CASE
    s" duplicate-in-dependency" [: DUPLICATE-IN-DEPENDENCY ;] RUN-CASE

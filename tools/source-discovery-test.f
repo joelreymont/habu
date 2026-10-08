@@ -549,6 +549,245 @@ $7F0 constant SDT-OVER
    0 EVENT-PATH@ s" sd-control.f" SDT-PATH T$= ;
 
 
+\ A parsing word's raw operands are data even when they spell loaders or
+\ source delimiters. Rows are collected before any consumer walks its files.
+: SDT-HARVEST-ENTRY ( -- )
+   [: SDT-DISCOVER ;] DISCOVER:HARVEST ;
+
+: SDT-SELECT-NAMED ( ptr u8 n -- ) {: name:ptr u:n :}
+   SDT-ROOT$ name u SDT-ENTRY JOIN-PATH SDT-ENTRY-U ! ;
+
+: SDT-HARVEST-NAMED ( ptr u8 n -- )
+   SDT-SELECT-NAMED SDT-HARVEST-ENTRY ;
+
+: SDT-ROW-LIB ( -- )
+   s" row-lib.f"
+   S\" package SDT-R public\n: W ( -- ) ;\nparses-through: W 1 ( ;W SDT-R:;W )\n;package\n"
+   SDT-WRITE-ENTRY SDT-HARVEST-ENTRY ;
+
+: SDT-TEST-ROWS ( -- )
+   DISCOVER:ROWS-RESET
+   SDT-ROW-LIB
+   DISCOVER:ROWS-VERSION SDT-ROW-LIB DISCOVER:ROWS-VERSION T=
+   S\" SDT-R:W required : ( s\" ;W\nrequire sd-raw.f\n"
+   s" sd-raw.f" SDT-ONE-EVENT
+   S\" SDT-R:W include missing.f SDT-R:;W\nrequire sd-raw.f\n"
+   s" sd-raw.f" SDT-ONE-EVENT
+   \ Harvesting the same file twice must not invent a second declaration.
+   SDT-ROW-LIB
+   S\" SDT-R:W required SDT-R:;W\nrequire sd-raw.f\n"
+   s" sd-raw.f" SDT-ONE-EVENT
+   \ A normal walk records no rows, and reset removes the earlier harvest.
+   DISCOVER:ROWS-RESET
+   s" row-lib.f" S\" package SDT-R : W ( -- ) ; parses: W 1 ;package\n"
+   SDT-WRITE-ENTRY SDT-DISCOVER
+   s" row-use.f" s" SDT-R:W required" SDT-WRITE-ENTRY
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ ;
+
+: SDT-TEST-ROW-KEYS ( -- )
+   DISCOVER:ROWS-RESET
+   SDT-ROW-LIB
+   s" row-use.f" s" OTHER:W required" SDT-WRITE-ENTRY
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ
+   s" row-use.f" s" package SDT-R W required" SDT-WRITE-ENTRY
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ
+   DISCOVER:ROWS-RESET
+   s" row-bare.f" s" : PN ( -- ) ; parses: PN 1 parses: PN 2" SDT-WRITE-ENTRY
+   SDT-HARVEST-ENTRY
+   S\" PN required\nrequire sd-raw.f\n" s" sd-raw.f" SDT-ONE-EVENT
+   DISCOVER:ROWS-RESET
+   s" row-qualified.f"
+   s" package SDT-Q : W ( -- ) ; ;package package OTHER parses: SDT-Q:W 1 ;package"
+   SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
+   S\" SDT-Q:W required\nrequire sd-raw.f\n" s" sd-raw.f" SDT-ONE-EVENT ;
+
+\ A redeclaration or retirement makes a spelling insufficient to select the
+\ row's word. This holds whichever file was harvested first.
+: SDT-TEST-ROW-CONFLICT ( -- )
+   DISCOVER:ROWS-RESET
+   s" row-other.f" s" package SDT-R : W ( -- ) ; ;package" SDT-WRITE-ENTRY
+   SDT-HARVEST-ENTRY
+   SDT-ROW-LIB
+   s" row-use.f" s" SDT-R:W required" SDT-WRITE-ENTRY
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ
+   DISCOVER:ROWS-RESET
+   SDT-ROW-LIB
+   s" row-retire.f" s" undefine SDT-R:W" SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
+   s" row-use.f" s" SDT-R:W required" SDT-WRITE-ENTRY
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ
+   DISCOVER:ROWS-RESET
+   s" row-bare.f" s" : PN ( -- ) ; parses: PN 1" SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
+   s" row-other.f" s" package OTHER : PN ( -- ) ; ;package" SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
+   s" row-use.f" s" PN required" SDT-WRITE-ENTRY
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ
+   DISCOVER:ROWS-RESET ;
+
+: SDT-TEST-MISSING-PATH ( -- )
+   s" missing-path.f" s" include" SDT-WRITE-ENTRY
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ
+   s" missing-path.f" s" require" SDT-WRITE-ENTRY
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ ;
+
+: SDT-HARVEST-MISSING ( -- )
+   s" never-existing.f" SDT-PATH SDT-ROOT$ DISCOVER:READ-IN
+   DISCOVER:RUN-READ ;
+
+: SDT-HARVEST-OTHER ( -- ) E-TBL-BOUNDS throw ;
+
+: SDT-TEST-HARVEST-FAULT ( -- )
+   DISCOVER:ROWS-RESET
+   s" harvest-fault.f" S\" require sd-first.f\nrequired\n" SDT-WRITE-ENTRY
+   [: SDT-DISCOVER ;] DISCOVER:HARVEST
+   EVENT-COUNT 1 T=
+   0 EVENT-PATH@ s" sd-first.f" SDT-PATH T$=
+   [: SDT-HARVEST-MISSING ;] DISCOVER:HARVEST
+   EVENT-COUNT 0 T=
+   [: [: SDT-HARVEST-OTHER ;] DISCOVER:HARVEST ;] E-TBL-BOUNDS TTHROWSQ ;
+
+\ A compiled parsing call does not consume the definition's source text.
+\ Its following immediate require is still a load the walk must find.
+: SDT-TEST-ROW-BODY ( -- )
+   DISCOVER:ROWS-RESET
+   SDT-ROW-LIB
+   S\" : B ( -- ) SDT-R:W require sd-body.f SDT-R:;W ;\n"
+   s" sd-body.f" SDT-ONE-EVENT
+   S\" [: SDT-R:W require sd-quote.f SDT-R:;W ;] drop\n"
+   s" sd-quote.f" SDT-ONE-EVENT ;
+
+\ A prior partial scan may mistake raw operands for declarations. Replacing
+\ that file's evidence on retry removes those false declarations, while a
+\ genuine later declaration remains a conflict on every retry.
+: SDT-TEST-ROW-ORDER ( -- )
+   DISCOVER:ROWS-RESET
+   s" row-use.f"
+   S\" require row-lib.f\npackage SDT-R\nSDT-R:W : W ; required SDT-R:;W\n;package\n"
+   SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
+   SDT-ROW-LIB
+   s" row-use.f" S\" require row-lib.f\npackage SDT-R\nSDT-R:W : W ; required SDT-R:;W\n;package\n"
+   SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
+   [: SDT-DISCOVER ;] 0 TTHROWSQ
+   EVENT-COUNT 1 T=
+   DISCOVER:ROWS-RESET
+   SDT-ROW-LIB
+   s" row-real.f" S\" require row-lib.f\nSDT-R:W required SDT-R:;W\npackage SDT-R : W ( -- ) ; ;package\n"
+   SDT-WRITE-ENTRY SDT-HARVEST-ENTRY SDT-HARVEST-ENTRY
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ ;
+
+: SDT-CROSS-PASS ( bool -- ) {: lib-first:bool :}
+   DISCOVER:ROWS-PASS-BEGIN
+   lib-first if s" cross-lib.f" SDT-HARVEST-NAMED then
+   s" cross-a.f" SDT-HARVEST-NAMED
+   s" cross-b.f" SDT-HARVEST-NAMED
+   lib-first 0= if s" cross-lib.f" SDT-HARVEST-NAMED then
+   DISCOVER:ROWS-PASS-END ;
+
+: SDT-CROSS-SETTLE ( bool -- ) {: lib-first:bool :}
+   8 0 ?do
+      DISCOVER:ROWS-VERSION
+      lib-first SDT-CROSS-PASS
+      DISCOVER:ROWS-VERSION = DISCOVER:ROWS-PASS-STABLE? and
+      if unloop exit then
+   loop
+   false TTRUE ;
+
+\ The first scan of either consumer sees the other's raw `: W` or `: V`.
+\ A complete pass with both library rows must remove both false declarations.
+: SDT-TEST-ROW-CROSS ( -- )
+   s" cross-lib.f"
+   S\" package SDT-CROSS public\n: W ( -- ) ;\nparses-through: W 1 ( ;W )\n: V ( -- ) ;\nparses-through: V 1 ( ;V )\n;package\n"
+   SDT-WRITE-ENTRY
+   s" cross-a.f" S\" require cross-lib.f\npackage SDT-CROSS\nSDT-CROSS:W : V ; required ;W\n;package\nrequire cross-dep.f\n" SDT-WRITE-ENTRY
+   s" cross-b.f" S\" require cross-lib.f\npackage SDT-CROSS\nSDT-CROSS:V : W ; required ;V\n;package\nrequire cross-dep.f\n" SDT-WRITE-ENTRY
+   DISCOVER:ROWS-RESET
+   false SDT-CROSS-SETTLE
+   s" cross-a.f" SDT-SELECT-NAMED [: SDT-DISCOVER ;] 0 TTHROWSQ
+   EVENT-COUNT 2 T=
+   s" cross-b.f" SDT-SELECT-NAMED [: SDT-DISCOVER ;] 0 TTHROWSQ
+   EVENT-COUNT 2 T=
+   DISCOVER:ROWS-RESET
+   true SDT-CROSS-SETTLE
+   s" cross-a.f" SDT-SELECT-NAMED [: SDT-DISCOVER ;] 0 TTHROWSQ
+   EVENT-COUNT 2 T= ;
+
+: SDT-CASCADE-PASS ( -- )
+   DISCOVER:ROWS-PASS-BEGIN
+   s" cascade-lib.f" SDT-HARVEST-NAMED
+   s" cascade-dup.f" SDT-HARVEST-NAMED
+   s" cascade-bridge.f" SDT-HARVEST-NAMED
+   s" cascade-use.f" SDT-HARVEST-NAMED
+   DISCOVER:ROWS-PASS-END ;
+
+\ Disabling W exposes a second real V declaration. A later complete pass
+\ must disable V too, so its `required` operand is no longer hidden.
+: SDT-TEST-ROW-CASCADE ( -- )
+   s" cascade-lib.f"
+   S\" package SDT-CASCADE public\n: W ( -- ) ;\nparses: W 1\n: V ( -- ) ;\nparses: V 1\n;package\n"
+   SDT-WRITE-ENTRY
+   s" cascade-dup.f" s" package SDT-CASCADE : W ( -- ) ; ;package" SDT-WRITE-ENTRY
+   s" cascade-bridge.f" s" package SDT-CASCADE SDT-CASCADE:W : V ; ;package" SDT-WRITE-ENTRY
+   s" cascade-use.f" S\" SDT-CASCADE:V required\nrequire cascade-dep.f\n" SDT-WRITE-ENTRY
+   DISCOVER:ROWS-RESET
+   8 0 ?do
+      DISCOVER:ROWS-VERSION
+      SDT-CASCADE-PASS
+      DISCOVER:ROWS-VERSION = DISCOVER:ROWS-PASS-STABLE? and
+      if leave then
+   loop
+   DISCOVER:ROWS-PASS-STABLE? TTRUE
+   s" cascade-use.f" SDT-SELECT-NAMED
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ ;
+
+\ Replacing an unchanged early row must not let a later row for the same
+\ spelling take precedence, including while the early file is being read.
+: SDT-TEST-ROW-REPEAT ( -- )
+   DISCOVER:ROWS-RESET
+   s" repeat-a.f"
+   S\" package SDT-REP public\n: W ( -- ) ;\nparses: W 1\nSDT-REP:W : variable X\n;package\n"
+   SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
+   s" repeat-b.f" s" parses: SDT-REP:W 2" SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
+   s" repeat-use.f" S\" SDT-REP:W required\nrequire repeat-dep.f\n" SDT-WRITE-ENTRY
+   [: SDT-DISCOVER ;] 0 TTHROWSQ
+   EVENT-COUNT 1 T=
+   DISCOVER:ROWS-VERSION
+   10 0 ?do
+      s" repeat-a.f" SDT-HARVEST-NAMED
+      s" repeat-b.f" SDT-HARVEST-NAMED
+   loop
+   DISCOVER:ROWS-VERSION T=
+   s" repeat-use.f" SDT-SELECT-NAMED
+   [: SDT-DISCOVER ;] 0 TTHROWSQ
+   EVENT-COUNT 1 T= ;
+
+: SDT-CYCLE-PASS ( -- )
+   DISCOVER:ROWS-PASS-BEGIN
+   s" cycle-lib.f" SDT-HARVEST-NAMED
+   s" cycle-a.f" SDT-HARVEST-NAMED
+   s" cycle-b.f" SDT-HARVEST-NAMED
+   DISCOVER:ROWS-PASS-END ;
+
+\ Both apparent rows are operands of the other's parsing word. They vanish
+\ under provisional use, so each vanished identity must stay disabled.
+: SDT-TEST-ROW-CYCLE ( -- )
+   s" cycle-lib.f" s" package SDT-CYC public : W ( -- ) ; : V ( -- ) ; ;package"
+   SDT-WRITE-ENTRY
+   s" cycle-a.f" s" SDT-CYC:W parses-through: SDT-CYC:V 0 ( ;V ) ;W"
+   SDT-WRITE-ENTRY
+   s" cycle-b.f" s" SDT-CYC:V parses-through: SDT-CYC:W 0 ( ;W ) ;V"
+   SDT-WRITE-ENTRY
+   DISCOVER:ROWS-RESET
+   8 0 ?do
+      DISCOVER:ROWS-VERSION
+      SDT-CYCLE-PASS
+      DISCOVER:ROWS-VERSION = DISCOVER:ROWS-PASS-STABLE? and
+      if leave then
+   loop
+   DISCOVER:ROWS-PASS-STABLE? TTRUE
+   DISCOVER:ROWS-VERSION
+   8 0 ?do SDT-CYCLE-PASS loop
+   DISCOVER:ROWS-VERSION T=
+   s" cycle-use.f" s" SDT-CYC:W required" SDT-WRITE-ENTRY
+   [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ ;
+
 : SDT-MAIN ( -- )
    T-RESET
    SDT-PREP
@@ -585,6 +824,17 @@ $7F0 constant SDT-OVER
    SDT-TEST-LOCAL-CASE
    SDT-TEST-LOCAL-LIFETIME
    SDT-TEST-LOCAL-CONTROL
+   SDT-TEST-ROWS
+   SDT-TEST-ROW-KEYS
+   SDT-TEST-ROW-CONFLICT
+   SDT-TEST-MISSING-PATH
+   SDT-TEST-HARVEST-FAULT
+   SDT-TEST-ROW-BODY
+   SDT-TEST-ROW-ORDER
+   SDT-TEST-ROW-CROSS
+   SDT-TEST-ROW-CASCADE
+   SDT-TEST-ROW-REPEAT
+   SDT-TEST-ROW-CYCLE
    EVENT-OFF DISCOVERY-OFF EVENTS-RESET
    CLEANUP-RUN
    T-REPORT

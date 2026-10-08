@@ -2054,11 +2054,19 @@ the rule.
   tells apart from its replacement, stay undeclared under a row. A later
   row for the same binding replaces it, `undefine` or a new definition drops
   it, `EXPORT` copies it to the new name, and a word that calls the declared
-  one does not take it. This is a contract of the source pre-pass only, not
-  of the language: an ordinary load reads and checks the row and keeps
-  nothing, so a word from a resident, precompiled or cached dependency whose
-  row this check did not read is undeclared. A row before the call supplies
+  one does not take it. The binding and effect contract belongs to the
+  source pre-pass, not the language runtime: an ordinary load checks the row
+  and keeps nothing. A word from a resident, precompiled or cached dependency
+  whose row this check did not read is undeclared. A row before the call supplies
   its boundary only when the binding has a checker symbol and effect record.
+  The separate dependency discovery walk harvests rows over the closure
+  before following loads. Each complete harvest pass reads with a frozen set
+  of candidate rows, then disables any row whose complete evidence is unsafe.
+  The final walk uses a row by spelling only when the harvested files have
+  exactly one declaration of that word and no retirement; a bare
+  key counts declarations in every package, while a qualified key counts
+  declarations in its package. Otherwise the walk reads the token's operands
+  as source. This does not change the pre-pass's binding rule.
   A cold captured binding may have neither: its row is accepted but not kept,
   and its call stays opaque. Declare the row again after a checked use has
   materialized that binding. A refused token leaves the rest of its stretch

@@ -227,9 +227,13 @@ through form then reads through the first token that equals a listed one,
 byte for byte, inclusive (`)` cannot be listed). A `:`, a definer, a comment or
 string opener among the operands is data. The word is still
 `W-CHECK-DEFERRED`: the row is trusted, as `parse-imm`'s is, never compared with
-the body. Only the check reads it, from the source it checks, so a word whose
-row it did not read, a resident or precompiled one among them, is undeclared;
+the body. The check reads it from the source it checks, so a word whose row it
+did not read, a resident or precompiled one among them, is undeclared;
 `EXPORT` carries a row, a word that calls the declared one does not.
+The separate dependency discovery walk harvests rows before it follows loads.
+It skips a parsing word's operands only when the harvested files have one
+declaration of that word and no retirement; otherwise it reads the operands
+as source.
 
 A word that looks its string operand up as a name states it after its
 definition, and a string literal right before a call of it is then a use of

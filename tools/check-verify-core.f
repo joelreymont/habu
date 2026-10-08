@@ -260,6 +260,34 @@ variable CHK-EXPAND-TOP
       1+
    repeat drop ;
 
+\ The harvest grows the same dependency set as expansion, but creates no
+\ ordered edges. A later dependency's row can let an earlier file read past a
+\ parsing call, so repeat until no node or source occurrence is added.
+: CHK-HARVEST-ACT ( -- )
+   CHK-DISC-ID @ {: id:n :}
+   id CHK-BYTES-ID @ = if
+      id CHK-DEP$ id CHK-DEP-ROOT$ CHK-BYTES-A @ CHK-BYTES-U @ DISCOVER:RUN-BYTES exit
+   then
+   CHK-READ-ACT
+   DISCOVER:RUN-READ ;
+
+: CHK-HARVEST-ID ( n -- ) {: id:n :}
+   id CHK-DISC-ID !
+   [: CHK-HARVEST-ACT ;] DISCOVER:HARVEST
+   EVENT-COUNT 0 ?do
+      i EVENT-PATH@ i SOURCE-EVENT:ROOT@ CHK-DEP-ID drop
+   loop ;
+
+: CHK-HARVEST ( -- )
+   begin
+      CHK-DEP-N @ DISCOVER:ROWS-VERSION
+      DISCOVER:ROWS-PASS-BEGIN
+      0 begin dup CHK-DEP-N @ < while dup CHK-HARVEST-ID 1+ repeat drop
+      DISCOVER:ROWS-PASS-END
+      DISCOVER:ROWS-VERSION = swap CHK-DEP-N @ = and
+      DISCOVER:ROWS-PASS-STABLE? and
+   until ;
+
 : CHK-EXPAND-ID ( n -- ) {: id:n :}
    id CHK-DEP-CHECK
    id CHK-DEP-STATE @ 2 = if exit then
@@ -283,12 +311,14 @@ variable CHK-EXPAND-TOP
    2 id CHK-DEP-STATE ! ;
 
 : CHK-EXPAND-RESET ( -- )
+   DISCOVER:ROWS-RESET
    0 CHK-DEP-N !
    0 CHK-DIR-N !
    0 CHK-DEP-ORDER-N !
    -1 CHK-BYTES-ID ! ;
 
 : CHK-EXPAND-TOP-ACT ( -- )
+   CHK-HARVEST
    CHK-EXPAND-TOP @ CHK-EXPAND-ID ;
 
 \ Walk the closure below ID into the dependency order: 0, or the code of the

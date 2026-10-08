@@ -77,6 +77,49 @@ variable SD-CALL-KIND                    \ the loader SD-CALL-LOADER calls
 variable SD-DEF                          \ 1 from a definition's opener to its ;
 variable SD-SHADOWED                     \ the loader words (SD-LOADER-BIT) the file defined
 variable SD-RETIRED                      \ and those it retired
+variable SD-PKG-OFF                      \ the package open in this source
+variable SD-PKG-U
+variable SD-HARVESTING                  \ only the harvest records declarations and rows
+variable SD-FILE-ID
+
+1 constant SD-R-DECL
+2 constant SD-R-RETIRE
+3 constant SD-R-PARSES
+4 constant SD-R-THROUGH
+
+\ A source occurrence is kept once, even when the same canonical file is
+\ reached under several roots or a harvest retries it after learning a row.
+DYNAMIC-BUFFER SD-R-BYTES u8
+variable SD-R-BYTES-U
+DYNAMIC-BUFFER SD-F-AT n
+DYNAMIC-BUFFER SD-F-U n
+DYNAMIC-BUFFER SD-F-HEAD n
+variable SD-F-N
+DYNAMIC-BUFFER SD-R-OFF n
+DYNAMIC-BUFFER SD-R-FILE n
+DYNAMIC-BUFFER SD-R-NEXT n
+DYNAMIC-BUFFER SD-R-KIND n
+DYNAMIC-BUFFER SD-R-NAME n
+DYNAMIC-BUFFER SD-R-NAME-U n
+DYNAMIC-BUFFER SD-R-PKG n
+DYNAMIC-BUFFER SD-R-PKG-U n
+DYNAMIC-BUFFER SD-R-COUNT n
+DYNAMIC-BUFFER SD-R-TERMS n
+DYNAMIC-BUFFER SD-R-TERMS-U n
+DYNAMIC-BUFFER SD-R-ACTIVE n
+DYNAMIC-BUFFER SD-R-DISABLED n
+DYNAMIC-BUFFER SD-R-ROWS n
+DYNAMIC-BUFFER SD-R-FROZEN n
+variable SD-R-N
+variable SD-R-ROWS-N
+variable SD-R-VERSION
+variable SD-R-F-N
+variable SD-R-F-LOOKUP-N
+variable SD-R-PASS
+variable SD-R-PASS-STABLE
+variable SD-R-OLD-HEAD
+variable SD-R-START-N
+variable SD-R-START-BYTES
 
 \ Local spellings are byte-exact and become visible after their group's closer.
 \ Keep source offsets so discovery need not copy names or impose a locals cap.
@@ -111,6 +154,310 @@ variable SD-SCOPES
 : SD-PATH$ ( -- ptr u8 n )  0 SD-PATH SD-PATH-U @ ;
 : SD-TOK$ ( n n -- ptr u8 n ) {: off:n len:n :}  off SD-BUF + len ;
 
+: SD-R-COPY ( ptr u8 n -- n ) {: a:ptr u:n :}
+   SD-R-BYTES-U @ {: at:n :}
+   at u + 1+ SD-R-BYTES-RESERVE
+   a at SD-R-BYTES u BYTE-COPY
+   at u + SD-R-BYTES-U !
+   at ;
+
+: SD-FILE-OF ( -- n )
+   SD-F-N @ 0 ?do
+      SD-ENTRY SD-ENTRY-U @
+      i SD-F-AT @ SD-R-BYTES i SD-F-U @ STR= if i unloop exit then
+   loop
+   SD-F-N @ {: id:n :}
+   id 1+ dup SD-F-AT-RESERVE dup SD-F-U-RESERVE SD-F-HEAD-RESERVE
+   SD-ENTRY SD-ENTRY-U @ SD-R-COPY id SD-F-AT !
+   SD-ENTRY-U @ id SD-F-U !
+   -1 id SD-F-HEAD !
+   id 1+ SD-F-N !
+   id ;
+
+: SD-R-NAME$ ( n -- ptr u8 n ) {: r:n :}
+   r SD-R-NAME @ SD-R-BYTES r SD-R-NAME-U @ ;
+
+: SD-R-PKG$ ( n -- ptr u8 n ) {: r:n :}
+   r SD-R-PKG @ SD-R-BYTES r SD-R-PKG-U @ ;
+
+: SD-R-SEEN? ( n -- bool ) {: off:n :}
+   SD-FILE-ID @ SD-F-HEAD @
+   begin dup 0 >= while
+      dup SD-R-OFF @ off = if drop true exit then
+      SD-R-NEXT @
+   repeat drop
+   false ;
+
+\ All declarations and retirements the walk understands are collected, even
+\ before their row is known. A row's safety is decided from the complete set.
+: SD-R-RECORD ( n n n n -- n ) {: off:n noff:n nu:n kind:n :}
+   SD-HARVESTING @ 0= if -1 exit then
+   off SD-R-SEEN? if -1 exit then
+   SD-R-N @ {: r:n :}
+   r 1+ dup SD-R-OFF-RESERVE dup SD-R-FILE-RESERVE dup SD-R-NEXT-RESERVE
+   dup SD-R-KIND-RESERVE
+   dup SD-R-NAME-RESERVE dup SD-R-NAME-U-RESERVE
+   dup SD-R-PKG-RESERVE dup SD-R-PKG-U-RESERVE
+   dup SD-R-COUNT-RESERVE dup SD-R-TERMS-RESERVE
+   dup SD-R-TERMS-U-RESERVE dup SD-R-ACTIVE-RESERVE
+   SD-R-DISABLED-RESERVE
+   SD-FILE-ID @ SD-F-HEAD @ r SD-R-NEXT !
+   r SD-FILE-ID @ SD-F-HEAD !
+   off r SD-R-OFF !
+   SD-FILE-ID @ r SD-R-FILE !
+   kind r SD-R-KIND !
+   noff nu SD-TOK$ SD-R-COPY r SD-R-NAME !
+   nu r SD-R-NAME-U !
+   SD-PKG-OFF @ SD-PKG-U @ SD-TOK$ SD-R-COPY r SD-R-PKG !
+   SD-PKG-U @ r SD-R-PKG-U !
+   0 r SD-R-COUNT !
+   0 r SD-R-TERMS !
+   0 r SD-R-TERMS-U !
+   1 r SD-R-ACTIVE !
+   0 r SD-R-DISABLED !
+   r 1+ SD-R-N !
+   r ;
+
+\ Exactly one non-edge colon qualifies a name. The tail is the word defined
+\ or called, irrespective of the spelling's package prefix.
+: SD-QCOLON ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u 2 < if -1 exit then
+   -1
+   u 1- 1 ?do
+      a i + c@ $3A = if
+         dup 0 >= if drop -1 unloop exit then
+         drop i
+      then
+   loop ;
+
+: SD-TAIL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u SD-QCOLON {: col:n :}
+   col 0 < if a u exit then
+   a col 1+ + u col 1+ - ;
+
+: SD-R-KEY$ ( n -- ptr u8 n ptr u8 n ) {: r:n :}
+   r SD-R-NAME$ {: a:ptr u:n :}
+   a u SD-QCOLON {: col:n :}
+   col 0 >= if a col a col 1+ + u col 1+ - exit then
+   r SD-R-PKG$ a u ;
+
+: SD-R-KEY-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n r:n :}
+   r SD-R-KEY$ {: pkg:ptr pkgu:n tail:ptr tailu:n :}
+   pkgu 0= if a u tail tailu STR=CI exit then
+   u pkgu tailu + 1+ <> if false exit then
+   a pkgu pkg pkgu STR=CI 0= if false exit then
+   a pkgu + c@ $3A <> if false exit then
+   a pkgu 1+ + tailu tail tailu STR=CI ;
+
+: SD-R-BEFORE? ( n n -- bool ) {: row:n next:n :}
+   row SD-R-FILE @ next SD-R-FILE @ <> if
+      row SD-R-FILE @ next SD-R-FILE @ < exit
+   then
+   row SD-R-OFF @ next SD-R-OFF @ < ;
+
+: SD-R-ROWS+ ( n -- ) {: row:n :}
+   SD-R-ROWS-N @ {: at:n :}
+   at 1+ SD-R-ROWS-RESERVE
+   row at SD-R-ROWS !
+   at 1+ SD-R-ROWS-N ! ;
+
+: SD-R-ROWS-REBUILD ( -- )
+   0 SD-R-ROWS-N !
+   SD-R-N @ 0 ?do
+      i SD-R-ACTIVE @ 0<> i SD-R-KIND @ SD-R-PARSES >= and if
+         i SD-R-ROWS+
+      then
+   loop ;
+
+: SD-R-SAME? ( n n -- bool ) {: old:n new:n :}
+   old SD-R-FILE @ new SD-R-FILE @ <> if false exit then
+   old SD-R-OFF @ new SD-R-OFF @ <> if false exit then
+   old SD-R-KIND @ new SD-R-KIND @ <> if false exit then
+   old SD-R-COUNT @ new SD-R-COUNT @ <> if false exit then
+   old SD-R-NAME$ new SD-R-NAME$ STR= 0= if false exit then
+   old SD-R-PKG$ new SD-R-PKG$ STR= 0= if false exit then
+   old SD-R-TERMS @ SD-R-BYTES old SD-R-TERMS-U @
+   new SD-R-TERMS @ SD-R-BYTES new SD-R-TERMS-U @ STR= ;
+
+: SD-R-FROZEN-OF ( n -- n ) {: row:n :}
+   SD-R-F-N @ 0 ?do
+      i SD-R-FROZEN @ dup row SD-R-SAME? if unloop exit then drop
+   loop
+   -1 ;
+
+: SD-R-FREEZE ( -- )
+   SD-R-ROWS-N @ SD-R-FROZEN-RESERVE
+   SD-R-ROWS-N @ 0 ?do i SD-R-ROWS @ i SD-R-FROZEN ! loop
+   SD-R-ROWS-N @ dup SD-R-F-N ! SD-R-F-LOOKUP-N !
+   \ A vanished row remains a disabled identity. It cannot claim a lookup
+   \ slot, but a later reappearance inherits its refusal instead of cycling.
+   SD-R-N @ 0 ?do
+      i SD-R-ACTIVE @ 0= i SD-R-DISABLED @ 0<> and if
+         i SD-R-FROZEN-OF 0 < if
+            SD-R-F-N @ {: at:n :}
+            at 1+ SD-R-FROZEN-RESERVE
+            i at SD-R-FROZEN !
+            at 1+ SD-R-F-N !
+         then
+      then
+   loop ;
+
+: SD-R-CHAIN-SAME? ( n n -- bool )
+   begin
+      over 0< over 0< or if = exit then
+      2dup SD-R-SAME? 0= if 2drop false exit then
+      swap SD-R-NEXT @ swap SD-R-NEXT @
+   again ;
+
+: SD-R-BEGIN ( -- )
+   SD-R-N @ SD-R-START-N !
+   SD-R-BYTES-U @ SD-R-START-BYTES !
+   SD-FILE-ID @ SD-F-HEAD @ dup SD-R-OLD-HEAD !
+   begin dup 0 >= while
+      0 over SD-R-ACTIVE !
+      SD-R-NEXT @
+   repeat drop
+   -1 SD-FILE-ID @ SD-F-HEAD ! ;
+
+: SD-R-END ( -- )
+   SD-R-OLD-HEAD @ SD-FILE-ID @ SD-F-HEAD @ SD-R-CHAIN-SAME? if
+      SD-R-OLD-HEAD @ SD-FILE-ID @ SD-F-HEAD !
+      SD-R-OLD-HEAD @
+      begin dup 0 >= while
+         1 over SD-R-ACTIVE !
+         SD-R-NEXT @
+      repeat drop
+      SD-R-START-N @ SD-R-N !
+      SD-R-START-BYTES @ SD-R-BYTES-U !
+   else
+      1 SD-R-VERSION +!
+   then
+   SD-R-PASS @ 0= if SD-R-ROWS-REBUILD then ;
+
+: SD-R-AFFECTS? ( n n -- bool ) {: row:n r:n :}
+   r SD-R-KIND @ SD-R-RETIRE = r SD-R-NAME-U @ 0= and if true exit then
+   row SD-R-KEY$ {: pkg:ptr pkgu:n tail:ptr tailu:n :}
+   r SD-R-NAME$ SD-TAIL$ tail tailu STR=CI 0= if false exit then
+   pkgu 0= if true exit then
+   r SD-R-NAME$ {: name:ptr nameu:n :}
+   name nameu SD-QCOLON {: col:n :}
+   col 0 >= if name col pkg pkgu STR=CI exit then
+   r SD-R-PKG$ pkg pkgu STR=CI ;
+
+: SD-R-USABLE? ( n -- bool ) {: row:n :}
+   0 0
+   SD-R-N @ 0 ?do
+      i SD-R-ACTIVE @ 0<> row i SD-R-AFFECTS? and if
+         i SD-R-KIND @ SD-R-DECL = if swap 1+ swap then
+         i SD-R-KIND @ SD-R-RETIRE = if 1+ then
+      then
+   loop
+   {: decls:n retires:n :}
+   decls 1 = retires 0= and ;
+
+: SD-R-FROZEN-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+   -1
+   SD-R-F-LOOKUP-N @ 0 ?do
+      i SD-R-FROZEN @ {: row:n :}
+      a u row SD-R-KEY-MATCH? if
+         dup 0 < if drop row else
+            row over SD-R-BEFORE? if drop row then
+         then
+      then
+   loop
+   dup 0 < if exit then
+   dup SD-R-DISABLED @ 0= if exit then
+   drop -1 ;
+
+: SD-R-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+   SD-HARVESTING @ SD-R-PASS @ and 0<> if a u SD-R-FROZEN-FIND exit then
+   -1
+   SD-R-ROWS-N @ 0 ?do
+      i SD-R-ROWS @ {: row:n :}
+      row SD-R-ACTIVE @ 0<> a u row SD-R-KEY-MATCH? and if
+         dup 0 < if drop row else
+            row over SD-R-BEFORE? if drop row then
+         then
+      then
+   loop
+   dup 0 < if exit then
+   dup SD-R-DISABLED @ 0= over SD-R-USABLE? and if exit then
+   drop -1 ;
+
+: SD-R-ACTIVE-MATCH? ( n -- bool ) {: old:n :}
+   SD-R-N @ 0 ?do
+      i SD-R-ACTIVE @ 0<> i SD-R-KIND @ SD-R-PARSES >= and if
+         old i SD-R-SAME? if true unloop exit then
+      then
+   loop
+   false ;
+
+: SD-R-PASS-END ( -- )
+   1 SD-R-PASS-STABLE !
+   SD-R-N @ 0 ?do
+      i SD-R-ACTIVE @ 0<> i SD-R-KIND @ SD-R-PARSES >= and if
+         i SD-R-FROZEN-OF dup 0 < if
+            drop 0 SD-R-PASS-STABLE !
+         else
+            SD-R-DISABLED @ i SD-R-DISABLED !
+         then
+      then
+   loop
+   SD-R-F-N @ 0 ?do
+      i SD-R-FROZEN @ dup SD-R-ACTIVE-MATCH? 0= if
+         dup SD-R-DISABLED @ 0= if
+            1 over SD-R-DISABLED !
+            0 SD-R-PASS-STABLE !
+            1 SD-R-VERSION +!
+         then
+      then
+      drop
+   loop
+   \ A changed candidate set needs a complete scan under its new assumptions.
+   \ A fixed candidate set can only lose enabled rows. New candidates need
+   \ another full pass; finite source occurrences make this settle without a
+   \ pass count. Re-enabling a row could hide evidence exposed by a disable.
+   SD-R-PASS-STABLE @ if
+      SD-R-N @ 0 ?do
+         i SD-R-ACTIVE @ 0<> i SD-R-KIND @ SD-R-PARSES >= and if
+            i SD-R-DISABLED @ 0= i SD-R-USABLE? 0= and if
+               1 i SD-R-DISABLED !
+               0 SD-R-PASS-STABLE !
+               1 SD-R-VERSION +!
+            then
+         then
+      loop
+   then
+   0 SD-R-PASS !
+   SD-R-ROWS-REBUILD ;
+
+: SD-R-SPACE-END ( n n -- n ) {: end:n :}
+   begin dup end < while
+      dup SD-R-BYTES c@ 32 > if exit then
+      1+
+   repeat ;
+
+: SD-R-TOKEN-END ( n n -- n ) {: end:n :}
+   begin dup end < while
+      dup SD-R-BYTES c@ 32 > 0= if exit then
+      1+
+   repeat ;
+
+: SD-R-TERM-MATCH? ( n n n n -- bool ) {: off:n len:n start:n stop:n :}
+   off len SD-TOK$ start SD-R-BYTES stop start - STR= ;
+
+: SD-R-TERM? ( n n n -- bool ) {: off:n len:n row:n :}
+   row SD-R-TERMS @
+   row SD-R-TERMS @ row SD-R-TERMS-U @ + {: end:n :}
+   begin dup end < while
+      end SD-R-SPACE-END
+      dup end >= if drop false exit then
+      dup end SD-R-TOKEN-END
+      2dup off len 2swap SD-R-TERM-MATCH? if 2drop true exit then
+      nip
+   repeat
+   drop false ;
+
 : SD-SKIP-WS ( -- )
    begin SD-I @ SD-AT? while
       SD-I @ SD-BYTE 32 > if exit then
@@ -136,6 +483,69 @@ variable SD-SCOPES
       len SD-TOK-LEN !
    then
    off len ;
+
+: SD-R-CONSUME ( n -- ) {: row:n :}
+   row SD-R-COUNT @ 0 ?do SD-RAW nip 0= if unloop exit then loop
+   row SD-R-KIND @ SD-R-THROUGH <> if exit then
+   begin
+      SD-RAW {: off:n len:n :}
+      len 0= if exit then
+      off len row SD-R-TERM?
+   until ;
+
+: SD-R-USE? ( n n -- bool ) {: off:n len:n :}
+   SD-DEF @ 0<> SD-SCOPES @ 0<> or if false exit then
+   off len SD-TOK$ SD-R-FIND {: row:n :}
+   row 0 < if false exit then
+   row SD-R-CONSUME
+   true ;
+
+variable SD-TERM-START
+variable SD-TERM-END
+
+\ The through list is read as raw tokens. Only a complete nonempty list can
+\ describe operands safely; malformed declarations remain ordinary source.
+: SD-R-LIST ( -- bool )
+   -1 SD-TERM-START !
+   SD-RAW SD-TOK$ s" (" STR= 0= if false exit then
+   begin
+      SD-RAW {: off:n len:n :}
+      len 0= if false exit then
+      off len SD-TOK$ s" )" STR= if SD-TERM-START @ 0 >= exit then
+      SD-TERM-START @ 0 < if off SD-TERM-START ! then
+      off len + SD-TERM-END !
+   again ;
+
+: SD-R-ROW ( n n -- ) {: off:n kind:n :}
+   SD-RAW {: noff:n nu:n :}
+   SD-RAW {: coff:n cu:n :}
+   kind SD-R-THROUGH = if SD-R-LIST 0= if exit then then
+   nu 0= cu 0= or if exit then
+   coff cu SD-TOK$ num-parse {: count:n flt:bool ok:bool :}
+   ok 0= flt or count 0 < or if exit then
+   off noff nu kind SD-R-RECORD {: row:n :}
+   row 0 < if exit then
+   count row SD-R-COUNT !
+   kind SD-R-THROUGH = if
+      SD-TERM-END @ SD-TERM-START @ - {: u:n :}
+      SD-TERM-START @ u SD-TOK$ SD-R-COPY row SD-R-TERMS !
+      u row SD-R-TERMS-U !
+   then
+   SD-R-PASS @ 0= if row SD-R-ROWS+ then ;
+
+: SD-R-DECL-NAME ( n n -- ) {: off:n len:n :}
+   len 0= if exit then
+   off off len SD-R-DECL SD-R-RECORD drop ;
+
+: SD-R-RETIRE-NAME ( n n -- ) {: off:n len:n :}
+   len 0= if exit then
+   off off len SD-R-RETIRE SD-R-RECORD drop ;
+
+: SD-R-RETIRE-STACK ( n n -- ) {: off:n pend:n :}
+   off off 0 SD-R-RETIRE SD-R-RECORD {: r:n :}
+   r 0 < pend SD-PEND-PATH <> or if exit then
+   SD-PATH$ SD-R-COPY r SD-R-NAME !
+   SD-PATH-U @ r SD-R-NAME-U ! ;
 
 : SD-SKIP-TO ( n -- ) {: stop:n :}
    begin SD-I @ SD-AT? while
@@ -415,20 +825,56 @@ $1F constant SD-LOADERS                  \ every loader word's bit
    off len SD-TOK$ s" ;]" STR= if SD-SCOPE-CLOSE exit then
    off len SD-LOCAL? if exit then
    off len SD-TOK$ PARSING-KEYWORD? if SD-RAW 2drop exit then
-   SD-DEF @ 0= off len SD-TOK$ DEFINER-KEYWORD? and if SD-RAW SD-TOK$ SD-SHADOW exit then
-   SD-DEF @ 0= off len SD-TOK$ PACKAGE-KEYWORD? and if SD-RAW 2drop exit then
+   SD-DEF @ 0= off len SD-TOK$ DEFINER-KEYWORD? and if
+      SD-RAW {: noff:n nu:n :}
+      noff nu SD-R-DECL-NAME
+      noff nu SD-TOK$ SD-SHADOW exit
+   then
+   SD-DEF @ 0= off len SD-TOK$ s" package" STR=CI and if
+      SD-RAW {: poff:n pu:n :}
+      poff SD-PKG-OFF ! pu SD-PKG-U ! exit
+   then
+   SD-DEF @ 0= off len SD-TOK$ s" ;package" STR=CI and if
+      0 SD-PKG-U ! exit
+   then
+   SD-DEF @ 0= off len SD-TOK$ PACKAGE-KEYWORD? and if
+      SD-RAW {: noff:n nu:n :}
+      off len SD-TOK$ s" export" STR=CI if noff nu SD-R-DECL-NAME then
+      exit
+   then
    off len SD-TOK$ s" {:" STR= if off SD-OPENER ! SD-LOCAL-GROUP exit then
    off len SD-OPENER-KIND {: opener:n :}
    opener 0= 0= if off SD-OPENER ! opener SD-PEND ! len 3 = SD-SCAN-STRING exit then
    off len SD-LOADER-KIND {: lkind:n :}
    lkind 0= 0= if off len lkind pend SD-DISPATCH-LOADER exit then
-   off len SD-TOK$ s" :" STR= if SD-DEF-OPEN SD-RAW SD-TOK$ SD-SHADOW exit then
-   off len SD-TOK$ s" kernel:" STR=CI if SD-DEF-OPEN SD-RAW SD-TOK$ SD-SHADOW exit then
-   off len SD-TOK$ s" TRUSTED:" STR=CI if SD-DEF-OPEN SD-RAW SD-TOK$ SD-SHADOW exit then
-   SD-DEF @ 0= off len SD-TOK$ s" undefine" STR=CI and if SD-RAW SD-TOK$ SD-RETIRE exit then
-   SD-DEF @ 0= off len SD-TOK$ s" UNDEFINE-IF-DEFINED" STR=CI and if pend SD-RETIRE-NAMED exit then
+   off len SD-TOK$ s" :" STR= if
+      SD-DEF-OPEN SD-RAW {: noff:n nu:n :}
+      noff nu SD-R-DECL-NAME noff nu SD-TOK$ SD-SHADOW exit
+   then
+   off len SD-TOK$ s" kernel:" STR=CI if
+      SD-DEF-OPEN SD-RAW {: noff:n nu:n :}
+      noff nu SD-R-DECL-NAME noff nu SD-TOK$ SD-SHADOW exit
+   then
+   off len SD-TOK$ s" TRUSTED:" STR=CI if
+      SD-DEF-OPEN SD-RAW {: noff:n nu:n :}
+      noff nu SD-R-DECL-NAME noff nu SD-TOK$ SD-SHADOW exit
+   then
+   SD-DEF @ 0= off len SD-TOK$ s" undefine" STR=CI and if
+      SD-RAW {: noff:n nu:n :}
+      noff nu SD-R-RETIRE-NAME noff nu SD-TOK$ SD-RETIRE exit
+   then
+   SD-DEF @ 0= off len SD-TOK$ s" UNDEFINE-IF-DEFINED" STR=CI and if
+      off pend SD-R-RETIRE-STACK pend SD-RETIRE-NAMED exit
+   then
+   SD-DEF @ 0= SD-SCOPES @ 0= and off len SD-TOK$ s" parses:" STR=CI and if
+      off SD-R-PARSES SD-R-ROW exit
+   then
+   SD-DEF @ 0= SD-SCOPES @ 0= and off len SD-TOK$ s" parses-through:" STR=CI and if
+      off SD-R-THROUGH SD-R-ROW exit
+   then
    off len SD-TOK$ s" include" STR=CI if off len SD-K-INCLUDED SD-LOADER-IMM exit then
    off len SD-TOK$ s" require" STR=CI if off len SD-K-REQUIRED SD-LOADER-IMM exit then
+   off len SD-R-USE? if exit then
    off len SD-SCOPE-STEP ;
 
 : SD-WALK ( -- )
@@ -439,6 +885,7 @@ $1F constant SD-LOADERS                  \ every loader word's bit
    0 SD-DEF !
    0 SD-SHADOWED !
    0 SD-RETIRED !
+   0 SD-PKG-U !
    SD-LOCALS-RESET
    begin
       SD-RAW {: off:n len:n :}
@@ -497,11 +944,13 @@ private
    SD-ENTRY SD-ENTRY-U @ rc READ-THROW ;
 
 : RUN-SELECTED ( -- )
+   SD-HARVESTING @ if SD-FILE-OF SD-FILE-ID ! SD-R-BEGIN then
    REQUIRE-SNAPSHOT
    SD-LOADING-U @ 0<> if SD-LOADING SD-LOADING-U @ REQUIRE-STORE 2drop then
    EVENTS-RESET EVENT-ON DISCOVERY-ON
    [: SD-WALK-IN ;] catch {: rc:n :}
    DISCOVERY-OFF EVENT-OFF
+   SD-HARVESTING @ if SD-R-END then
    REQUIRE-RESTORE
    SD-LOCALS-RELEASE
    SD-PATH-RELEASE
@@ -509,6 +958,45 @@ private
    rc 0= 0= if rc throw then ;
 
 public
+
+: ROWS-RESET ( -- )
+   0 SD-R-N !
+   0 SD-F-N !
+   0 SD-R-ROWS-N !
+   0 SD-R-F-N !
+   0 SD-R-F-LOOKUP-N !
+   0 SD-R-PASS !
+   0 SD-R-PASS-STABLE !
+   0 SD-R-BYTES-U !
+   0 SD-R-VERSION !
+   SD-R-BYTES-RELEASE
+   SD-F-AT-RELEASE SD-F-U-RELEASE SD-F-HEAD-RELEASE
+   SD-R-OFF-RELEASE SD-R-FILE-RELEASE SD-R-NEXT-RELEASE SD-R-KIND-RELEASE
+   SD-R-NAME-RELEASE SD-R-NAME-U-RELEASE
+   SD-R-PKG-RELEASE SD-R-PKG-U-RELEASE
+   SD-R-COUNT-RELEASE SD-R-TERMS-RELEASE SD-R-TERMS-U-RELEASE
+   SD-R-ACTIVE-RELEASE SD-R-DISABLED-RELEASE
+   SD-R-ROWS-RELEASE SD-R-FROZEN-RELEASE ;
+
+: ROWS-VERSION ( -- n ) SD-R-VERSION @ ;
+
+\ A pass reads only rows frozen before any file in it was scanned. Its new
+\ evidence cannot make a row valid or invalid halfway through the pass.
+: ROWS-PASS-BEGIN ( -- ) SD-R-FREEZE 1 SD-R-PASS ! ;
+: ROWS-PASS-END ( -- ) SD-R-PASS-END ;
+: ROWS-PASS-STABLE? ( -- bool ) SD-R-PASS-STABLE @ 0<> ;
+
+\ The caller's discovery run keeps its events up to a source refusal. They
+\ give consumers a closure to harvest before their final expansion.
+: HARVEST ( [ -- ] -- ) {: q :}
+   EVENTS-RESET
+   1 SD-HARVESTING !
+   q catch {: rc:n :}
+   0 SD-HARVESTING !
+   rc 0= if exit then
+   rc E-DISC-FIRST <= rc E-DISC-LAST >= and if exit then
+   rc E-FS-FIRST <= rc E-FS-LAST >= and if EVENTS-RESET exit then
+   rc throw ;
 
 \ Discovery takes the canonical PATH as a file the loader has begun, as
 \ `bin/hb --load PATH` registers PATH before it loads PATH's closure: a require

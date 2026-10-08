@@ -4532,6 +4532,16 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" w/f1.f" s" w/f1.f"
    s" w/f1.f dyn/e8.f w/a1.f w/b1.f; dyn/d8.f: E-DISC-DYNAMIC; dyn/z8.f: cannot be read"
    REACHES
+   s" r9" WS-DIR
+   s" r9/l9.f"
+   s\" package R9 public\n: W ( -- ) ;\nparses-through: W 1 ( ;W R9:;W )\n;package\n" WS-FILE
+   s" r9/u9.f" s\" require l9.f\nR9:W required f9.f R9:;W\nrequire f9.f\n" WS-FILE
+   s" r9/a9.f" s\" require u9.f\n" WS-FILE
+   s" r9/f9.f" s\" : F9 ( -- ) ;\n" WS-FILE
+   s" r9" IN-GRAPH LSP-WORKSPACE:ROOT+
+   s" r9/f9.f" s" r9/u9.f"
+   s" r9/f9.f r9/a9.f r9/u9.f; dyn/d8.f: E-DISC-DYNAMIC; dyn/z8.f: cannot be read"
+   REACHES
    s" gone" IN-GRAPH LSP-WORKSPACE:ROOT+
    s" w/f1.f" s" w/f1.f" s" refused gone" REACHES ;
 
