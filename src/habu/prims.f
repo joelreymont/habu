@@ -692,9 +692,10 @@ ETRUSTED-ONLY!                       \ native pending-record publication
 EPPRIM: NPUB ndict-append PE-N PE-IN ECLOSE-PRIVATE    \ src/compiler/native/publish.f APPEND-PENDING
 EPRIM: def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ exact resolved dictionary record
+EPPRIM: DEF-OCC def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE   \ src/habu/xref.f DEF-OCC:SELECT
 EPRIM: def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ slot and nonzero process-local occurrence
-ETRUSTED-ONLY!                       \ CODE-RECLAIM's permitted CP rewind
+EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRIVATE   \ src/habu/xref.f DEF-OCC:RESOLVE
 \ ---- the definition writers --------------------------------------------------
 \ What `package`, `export`, `:`, `does>` and `;` change is sealed state after
 \ the seal: the friend arena (CUR, WIDN, DEF-WL, TSIG, TCSIG, PKG-*), BODYBUF,
