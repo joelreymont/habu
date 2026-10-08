@@ -328,31 +328,6 @@ variable VRW-N                       \ values still to find
    base w VGLUE-CLEAR
    base glue VGLUE-RUN ;
 
-: RENAME ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena sym:IR-ID:ir-symbol-id :}
-   r sym HIR-WORD:HOST-RENAME@ HIR-WORD:HOST-CAST = if
-      r sym HIR-WORD:CAST-CELLS@  r sym HIR-WORD:CAST-GLUE@  REGROUP exit
-   then
-   r sym HIR-WORD:INPUTS@ {: in:n :}
-   r sym HIR-WORD:PICKS {: picks:n :}
-   in VROWS-CELLS {: w:n :}
-   w 0 < if E-NELAB-UNDER throw then
-   VN @ w - {: base:n :}
-   w WW !
-   VGLUE @ base rshift  w VGLUE-LOW  WGLUE !
-   w 0 ?do
-      base i + VAT  i VWIN !
-      base i + VQ@  i cells VQWIN + !
-   loop
-   w VDROP
-   0 picks 0 ?do
-      in  p r sym i HIR-WORD:PICK@  RENAME-VALUE  W-VALUE-CELLS +
-   loop
-   VN @ + VMAX > if E-NELAB-CAP throw then
-   picks 0 ?do
-      in  p r sym i HIR-WORD:PICK@  RENAME-VALUE  RENAME-PICK
-   loop ;
-
 \ ---- the return-stack transfers ----------------------------------------------
 \ The checker has already proved the return row at every join and loop edge, so
 \ the depth is a compile-time number.
@@ -1852,6 +1827,49 @@ PTR-VARIABLE TOK-TABLES
    a skip + VN @ > if exit then
    a 0 ?do
       ix i skip QARG-FILL
+   loop ;
+
+\ A cast takes its cells where they stand, so a quotation under it keeps its
+\ row, and the cast's input term names the row's calling convention. Only the
+\ top cell can hold one: the checker admits one term per side (E-CAST-ARITY),
+\ DECLARE-BOUND-CAST stores that term's cell count, and a quotation is one
+\ cell. A term that is no quotation leaves the row to a later consumer, and to
+\ QCONSUMED-CK.
+: QCAST-FILL ( n -- ) {: ix:n :}
+   VN @ 1- VQ@ {: k:n :}
+   k 0 >= if
+      ix 0 SITE-QUOT-IN {: qi:n qo:n :}
+      qi NDICT:QUOT-NONE <> if k qi qo 0 max QFILL then
+   then ;
+
+\ A rename consumes its window and pushes the values its picks name. A cast
+\ regroups its window in place, once each quotation in it has the calling
+\ convention the cast states.
+: RENAME ( IR-ARENA:arena IR-ARENA:arena n -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
+   ix WSYM {: sym:IR-ID:ir-symbol-id :}
+   r sym HIR-WORD:HOST-RENAME@ HIR-WORD:HOST-CAST = if
+      ix QCAST-FILL
+      r sym HIR-WORD:CAST-CELLS@  r sym HIR-WORD:CAST-GLUE@  REGROUP exit
+   then
+   r sym HIR-WORD:INPUTS@ {: in:n :}
+   r sym HIR-WORD:PICKS {: picks:n :}
+   in VROWS-CELLS {: w:n :}
+   w 0 < if E-NELAB-UNDER throw then
+   VN @ w - {: base:n :}
+   w WW !
+   VGLUE @ base rshift  w VGLUE-LOW  WGLUE !
+   w 0 ?do
+      base i + VAT  i VWIN !
+      base i + VQ@  i cells VQWIN + !
+   loop
+   w VDROP
+   0 picks 0 ?do
+      in  p r sym i HIR-WORD:PICK@  RENAME-VALUE  W-VALUE-CELLS +
+   loop
+   VN @ + VMAX > if E-NELAB-CAP throw then
+   picks 0 ?do
+      in  p r sym i HIR-WORD:PICK@  RENAME-VALUE  RENAME-PICK
    loop ;
 
 : QRET1-FILL ( n -- )
@@ -4007,7 +4025,7 @@ variable IX                          \ the body token the walk stands on
       fixed        OF r ix EMIT-FIXED ENDOF
       callable     OF r ix DO-CALL ENDOF
       control      OF r ix DO-CONTROL ENDOF
-      rename       OF p r  ix WSYM  RENAME ENDOF
+      rename       OF p r ix RENAME ENDOF
       rstack       OF r  ix WSYM  RSTACK-STEP ENDOF
       open-locals  OF E-NELAB-LOCAL throw ENDOF
       close-locals OF ix DO-CLOSE-LOCALS ENDOF

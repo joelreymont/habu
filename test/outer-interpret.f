@@ -1349,6 +1349,18 @@ variable WANT-RC
    s" hb: source ended inside definition: OI-HELD at " CASE$ GE-EXPECT-ERR-HAS
    S\" oi-caught-head.f:1\n" CASE$ GE-EXPECT-ERR-HAS ;
 
+\ The loop compiled at tier 1: in the engine's run the require is the first
+\ load of src/habu/interpret.f, whose literal and hook quotations each reach
+\ only a cast. The Habu loop's run loaded the file before the case, so there
+\ the require is a no-op.
+: LOOP-TIER-1 ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier require src/habu/interpret.f" GE-SRC-LINE
+   s" s~ 1 2 + .~ OUTER:INTERPRET" QLINE
+   s" oi-loop-tier-1.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 3\n" CASE$ GE-EXPECT-OUT ;
+
 \ An immediate word's evaluate compiles into the definition it runs in, at
 \ tier 0 and tier 1, and the definition goes on after it. The engine's loop
 \ reads the head through evaluate, and at tier 1 the loop under test reads it
@@ -1812,6 +1824,7 @@ private
    INCLUDE-UNDER-HEAD
    INCLUDE-CLOSES-HEAD
    CAUGHT-HEAD
+   LOOP-TIER-1
    IMMEDIATES
    BODY-FULL
    BODY-STRINGS

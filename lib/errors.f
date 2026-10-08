@@ -1153,7 +1153,7 @@
 \ capability; while it is open the refusal is what the chain answers, and it is
 \ its own code rather than the generic unmodelled-word one so a census can tell a
 \ quotation the chain declined from a word it has never heard of.
--8651 constant E-NELAB-QUOT     \ a quotation this elaborator has no rule for: a `[:` the body never closes; a `;]` with no `[:` open; a quotation nothing consumes, or one two consumers reach because its value was duplicated; a body whose declared effect is not an ordinary routine's; or a body holding a locals group
+-8651 constant E-NELAB-QUOT     \ a quotation this elaborator has no rule for: a `[:` the body never closes; a `;]` with no `[:` open; a quotation nothing consumes (a cast whose input is a quotation does), or one two consumers reach because its value was duplicated; a body whose declared effect is not an ordinary routine's; or a body holding a locals group
 
 \ `is NAME` binds a quotation to a deferred word by storing into that word's
 \ dispatch cell, so what the elaborator has to be sure of is that NAME really

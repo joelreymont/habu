@@ -360,6 +360,33 @@ private
       CHECK-QUIET-CANDIDATE! 0 T=
    [: UNKNOWN-NESTED ;] E-NELAB-QUOT TTHROWSQ ;
 
+\ A cast that takes a quotation literal states the literal's calling
+\ convention, so the cast alone is a consumer: NQ-AS-N hands its literal on as
+\ a number, and the caller turns the number back and runs it. A literal of
+\ another effect is the checker's refusal at the cast, never the chain's.
+CAST: Q>N ( [ -- n ] -- n )
+CAST: N>Q ( n -- [ -- n ] )
+
+: NQ-AS-N ( -- n ) [: 42 ;] Q>N ;
+
+: MISCAST ( -- )
+   s" package NQUOT-TEST : NQ-MISCAST ( -- n ) [: 1 2 ;] Q>N ; ;package"
+   evaluate-closed ;
+
+\ MISCAST's diagnostic, captured as JSON so the case can name its code and token.
+create MISCAST-BUF 8192 allot
+8192 constant MISCAST-CAP
+
+: CAST-CASE ( -- )
+   s" a cast that takes a quotation literal gives it its calling convention" T-LABEL
+   NQ-AS-N N>Q execute 42 T=
+   s" a literal of another effect is the checker's refusal at the cast" T-LABEL
+   MISCAST-BUF MISCAST-CAP DIAG-BUFFER!  true DIAG-JSON!
+   [: MISCAST ;] 70 TTHROWSQ
+   DIAG-BUFFER$ S\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
+   DIAG-BUFFER$ S\" \"token\":\"Q>N\"" CONTAINS? TTRUE
+   false DIAG-JSON!  DIAG-BUFFER-OFF ;
+
 public
 
 : RUN ( -- )
@@ -375,6 +402,7 @@ public
    MINT-CASE
    QUOT-FRAME-CASE
    LEXICAL-CASE
+   CAST-CASE
    T-REPORT ;
 
 ;package
