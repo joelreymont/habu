@@ -83,10 +83,12 @@
 \
 \ A use line names what src/habu/verify-source.f ON-USE reports, a use in the
 \ subject that the checker bound to a located declaration: S and N where the
-\ use starts and ends in the subject, F the path the declaration's file was
-\ resolved to, TS and TN where the token that declared it starts and ends
-\ there, and D, T, P and V the selected declaration's local visit, canonical
-\ tail, package and visibility.
+\ use starts and ends in the subject, a token, or the bytes between the quotes
+\ of a string literal naming a word before a call of a word a `names:` row
+\ marks (src/core/checker.f CHECKER-NAMES-ROW), F the path the declaration's
+\ file was resolved to, TS and TN where the token that declared it starts and
+\ ends there, and D, T, P and V the selected declaration's local visit,
+\ canonical tail, package and visibility.
 \
 \ A load line names what src/habu/verify-source.f ON-LOADER reports, a
 \ top-level loader of the subject whose load reached a file, in the subject's

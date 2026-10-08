@@ -2078,6 +2078,34 @@ the rule.
   `does>` part that reaches a parsing, rendering or defining word:
   test/certify-does-definer.f:112 `CDD-RES-CD`, whose clause calls the
   definer `CDD-RES-D`.
+- **A string literal before a call of a `names:` word is a use of the word it
+  names.** `names: W`, after W's definition, states that W looks its top
+  string operand ( ptr u8 n ) up as a name, as `XREF-FIND` (src/habu/xref.f)
+  does, so a string literal just before a call of W, in a body or at top
+  level, is a use of the word its bytes name, at the bytes between its
+  quotes: the verifier reports it among the uses, so the language server's
+  references list it. The engine states `names: XREF-FIND` and
+  `names: XREF-FIND-INDEX`. The name resolves as `XREF-FIND` resolves it:
+  `PKG:TAIL` is PKG's public TAIL, and a bare name the global word, never the
+  open package's private one; the word bound is the record visible where the
+  literal stands, so a word defined after it binds nothing. A computed
+  operand, a literal a caller passes on to W and a literal with an escape in
+  it, whose text is not the name its bytes spell, bind nothing. The row is a
+  trusted claim, as a `parses:` row is, never compared with W's body. It
+  marks W's symbol (`checker.f` `CTL-NAMES`), so an engine word keeps its
+  row, `EXPORT` copies it, a new definition after `undefine` drops it, and a
+  word that calls W declares its own row. A row with no target, or whose
+  target the top-level find binds to no word or to a word whose declared
+  input row does not end in the string pair `ptr u8 n` `XREF-FIND` takes, is
+  `E-NAMES-ROW` (7208; a load exits 67, `--verify-only` 70) and marks
+  nothing, so a row on the wrong word cannot make every string before that
+  word a use. A primitive, which has no record, is read by its first row.
+  Measured: after
+  `: ROOK ( -- n ) 1 ;  : LOOK ( ptr u8 n -- ) 2drop ;  names: LOOK`, the
+  verifier reports `ROOK` in `: SEEK ( -- ) s" ROOK" LOOK ;` and in
+  `: SEEK2 ( -- ) s" ROOK" XREF-FIND drop ;` as uses of ROOK, and
+  `names: NOSUCH`, `names: dup` and `names: ROOK` each load 67 and check 70
+  under `--verify-only`, while `names: type` (`( ptr u8 n -- )`) stands.
 - **A `TRUSTED:` body may answer a family value from loose cells; a checked body
   groups its own result.** The native elaborator takes the declared row as the
   grouping of the cells the body leaves (`elaborate.f` `TRUSTED-FRAME-RESHAPE`):

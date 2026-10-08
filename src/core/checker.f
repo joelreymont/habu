@@ -3800,20 +3800,21 @@ $FFFFFFFFFFFF constant XMASK-ALL         \ 2^48-1: every window cell intact
    k XMASK-BITS >= IF mask EXIT THEN
    mask 1 k lshift 1 - and ;
 
-\ A SYMBOL'S CONTROL WORD, ONE CELL. The control flags live in bits 0-15 and a
-\ defer flag in bit 16 -- the shape the owner-ABI handover (CHECKED-ROW /
-\ TRANSFER-ROW) has always travelled in. The intact masks ride above them, 20
-\ bits each, and the NORET store keeps its entries in this same shape, so the
-\ fact a definition proved about its inputs reaches a later engine without a
-\ wider record or a second cell. Twenty is what fits beside the flags with room
-\ to spare: a word with more than 20 declared inputs keeps no evidence for the
-\ deeper ones, which is the conservative answer, and it is the one a producer
-\ that never heard of masks gives by leaving those bits zero.
+\ A SYMBOL'S CONTROL WORD, ONE CELL. The control flags live in bits 0-15, a
+\ defer flag in bit 16 and CTL-NAMES in bit 17 -- the shape the owner-ABI
+\ handover (CHECKED-ROW / TRANSFER-ROW) travels in. The intact masks ride
+\ above them, 20 bits each, and the NORET store keeps its entries in this same
+\ shape, so the fact a definition proved about its inputs reaches a later
+\ engine without a wider record or a second cell. Twenty is what fits beside
+\ the flags with room to spare: a word with more than 20 declared inputs keeps
+\ no evidence for the deeper ones, which is the conservative answer, and it is
+\ the one a producer that never heard of masks gives by leaving those bits
+\ zero.
 20 constant XFER-MASK-BITS
 $FFFFF constant XFER-MASK-ALL
 20 constant XFER-DMASK-SHIFT
 40 constant XFER-RMASK-SHIFT
-$1FFFF constant XFER-FLAG-MASK       \ the control flags plus the defer bit
+$3FFFF constant XFER-FLAG-MASK       \ the control flags, the defer bit and CTL-NAMES
 
 : XFER-PACK ( n n n -- n ) {: flags:n dmask:n rmask:n :}
    flags XFER-FLAG-MASK and
@@ -10593,6 +10594,16 @@ PRIM: generates: PRIM;
 \ capability. The two engine words load after the hook, which records them, so
 \ they need no axiom of their own.
 PRIM: CHECKER-PARSES-ROW PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT PE-N PE-OUT PE-N PE-OUT PRIM;
+\ CHECKER-NAMES-ROW ( keyword$ target$ -- ) is the checker half of a `names:`
+\ row, and CHECKER-NAMED-USE ( ptr u8 n -- ) publishes a top-level string that
+\ names a word as a use of it (both defined after the parses rows below). The
+\ engine word `names:` (src/core/cell-effects.f) and the source pre-verifier's
+\ TRUSTED NAMES-CHECK and NAMED-USE boundaries reach them as CHECKER-PARSES-ROW
+\ is reached, so they need the same axiom to stay findable; UNSAFE-TOK? rejects
+\ `checker-names-row` and `checker-named-use` inside checked bodies, so the
+\ axioms add no checked-code capability.
+PRIM: CHECKER-NAMES-ROW PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-NAMED-USE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECK-DOES! PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
 \ The native compiler's does> split (src/compiler/native/checker-owner.f
@@ -10747,10 +10758,12 @@ PPRIM: CHECKER-OWNER-ABI BOUND-UNRESOLVED PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI VERIFY-TOP-BINDING-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-PARSES PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-DEFER PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI BINDING-NAMES PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-ID-SHIFT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-ID-MASK PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-PARSES-ID PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-THROUGH-ID PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI BINDING-NAMES-ID PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI VERIFY-TRUST-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-FETCH-ABI CERTIFICATE-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-FETCH-ABI BYTES PE-N PE-OUT PPRIM;
@@ -11239,6 +11252,8 @@ PTR-VARIABLE TSR-AT-A    variable TSR-AT-U      \ declaring name (valid while re
 \ A `parses:` or `parses-through:` row the checker refuses (CHECKER-PARSES-ROW):
 \ one code for its target's refusals and its syntax's, told apart by kind.
 7186 constant E-PARSES-ROW
+\ A `names:` row the checker refuses (CHECKER-NAMES-ROW), told apart likewise.
+7208 constant E-NAMES-ROW
 \ ONE hook for the three refused-record diagnostics, selected by its argument,
 \ for the pre-trust slot reason SHADOW-DIAG-XT below gives: 0 renders the stale
 \ `trust` row here, 1 the storage record refused outside the verifier window
@@ -14557,8 +14572,8 @@ $80 constant CTL-RENDERS
 \ and an export does not copy them (EXPORT-META-COPY).
 \ The control word's bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13
 \ CTL-PARSES and 14 CTL-CREATES (below), 15 CTL-NOMINAL, 16 the defer bit
-\ (ASIG-GRAPH-DEFER, TRANSFER-DEFER), 17-19 free outside the flag mask, 20-39
-\ and 40-59 the intact masks (XFER-PACK).
+\ (ASIG-GRAPH-DEFER, TRANSFER-DEFER), 17 CTL-NAMES (below), 18-19 free outside
+\ the flag mask, 20-39 and 40-59 the intact masks (XFER-PACK).
 CHECKER-OWNER-ABI:BINDING-ID-SHIFT constant CTL-INTRINSIC-SHIFT
 CHECKER-OWNER-ABI:BINDING-ID-MASK constant CTL-INTRINSIC-MASK
 CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
@@ -14574,6 +14589,7 @@ CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
 10 constant INTRINSIC-CONSTANT                 \ constant
 CHECKER-OWNER-ABI:BINDING-PARSES-ID constant INTRINSIC-PARSES    \ parses: (src/core/cell-effects.f)
 CHECKER-OWNER-ABI:BINDING-THROUGH-ID constant INTRINSIC-PARSES-THROUGH \ parses-through: (src/core/cell-effects.f)
+CHECKER-OWNER-ABI:BINDING-NAMES-ID constant INTRINSIC-NAMES      \ names: (src/core/cell-effects.f)
 : INTRINSIC>CTL ( n -- n ) CTL-INTRINSIC-SHIFT lshift ;
 : CTL>INTRINSIC ( n -- n ) CTL-INTRINSIC-MASK and CTL-INTRINSIC-SHIFT rshift ;
 
@@ -14595,8 +14611,14 @@ $4000 constant CTL-CREATES
 \ effects are; it grants no registration authority to checked code.
 $8000 constant CTL-NOMINAL
 CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or constant CTL-INHERITED
+\ CTL-NAMES means a `names:` row declared that the word looks its top string
+\ operand up as XREF-FIND does, so a string literal just before a call of it
+\ is a use of the word it names (NAMED-OPERAND-USE, CHECKER-NAMED-USE). The
+\ row is a trusted claim about that word alone: a caller passing its own
+\ operand on inherits nothing and declares its own row.
+CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
 $1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or CTL-INHERITED or
-CTL-INTRINSIC-MASK or
+CTL-INTRINSIC-MASK or CTL-NAMES or
    constant CTL-GRAPH-FLAGS
 \ $20000 not $10000: the entry carries two cells beyond (sym, flags) — the
 \ back-link and the created-word effect below — so the byte cap is scaled with
@@ -15344,12 +15366,14 @@ variable NORET-FMEND
 \ pass leaves it callable by the engine's own source alone, so no program can
 \ claim that its word is an engine word. An id the field cannot hold, or no
 \ recorded definition to tag, is a broken registration.
-\ The operand declarers' ids also publish CTL-PARSES (INTRINSIC-CTL): each
-\ reads its row after it, but its trusted body calls the registrar the scan
-\ refuses, so no checked body records the flag its parse-name calls give.
+\ The row declarers' ids also publish CTL-PARSES (INTRINSIC-CTL): each reads
+\ its row after it, but its trusted body calls the registrar the scan refuses,
+\ so no checked body records the flag its parse-name calls give.
 : INTRINSIC-CTL ( n -- n ) {: id:n :}
    id INTRINSIC>CTL
-   id INTRINSIC-PARSES =  id INTRINSIC-PARSES-THROUGH =  or IF CTL-PARSES or THEN ;
+   id INTRINSIC-PARSES =  id INTRINSIC-PARSES-THROUGH =  or  id INTRINSIC-NAMES =  or IF
+      CTL-PARSES or
+   THEN ;
 
 : INTRINSIC ( n -- ) {: id:n :}
    id 0 <=  id INTRINSIC>CTL CTL-INTRINSIC-MASK invert and 0 <>  or IF
@@ -15752,6 +15776,9 @@ variable CURSYM
    a u s" parses:" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" parses-through:" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" checker-parses-row" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" names:" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" checker-names-row" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" checker-named-use" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" set-check" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" set-preflight" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" parse-imm" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -17119,6 +17146,11 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    0 FIELD-LOAN-PENDING !
    SCOPE-FIELD-STEP ;
 
+\ A bound call of a word a `names:` row marks (CTL-NAMES) publishes the string
+\ literal just before it as a use of the word it names (NAMED-OPERAND-USE,
+\ installed with the names: rows below).
+defer NAMED-OPERAND-XT ( -- )
+
 \ The body token's one resolution: the symbol the shared lookup binds it to
 \ (CHECKER-BIND), whether it bound the engine's record (WALK-REC) and the
 \ identity that symbol carries (CTL-IDENTITY). Made on the first ask for the
@@ -17149,7 +17181,10 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    BIND-SEEDED @ TOK-SEEDED !
    TOK-SYM @ CTL-FLAGS-SYM CTL-DEAD and 0= IF 0 ELSE 1 THEN TOK-DEAD !
    WALK-REC @ TOK-LIVE-REC !
-   why 0= IF TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ NAV-USE THEN
+   why 0= IF
+      TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ NAV-USE
+      TOK-SYM @ CTL-FLAGS-SYM CTL-NAMES and 0 <> IF NAMED-OPERAND-XT THEN
+   THEN
    a u CHECKER-QUALIFIED? IF EXIT THEN
    TOK-SYM @ CTL-FLAGS-SYM CTL-IDENTITY and TOK-CTL ! ;
 
@@ -19459,14 +19494,17 @@ variable SPAY-ON      \ did the token just judged spend a payload?
 variable SPAY-ESC     \ was it the escaped spelling?
 variable SPAY-B       \ raw payload start, as a byte offset into the scan text
 variable SPAY-U       \ raw payload length
+variable SPAY-S       \ was the token just judged an `s"` literal, plain or escaped?
+variable SPAY-ARMED   \ was the token before this one? (CHECK-SCAN-WALK hands it over)
 
 \ TI stood on the single delimiter after the opener when the skip started and
 \ stands one past the closing quote now, so the payload is what lies strictly
-\ between the two.
+\ between the two. The opener is the folded token in TKF.
 : SPAY-RECORD ( n n -- ) {: before:n esc:n :}
    before 1 + SPAY-B !
    TI @ before - 2 - SPAY-U !
    esc SPAY-ESC !
+   TKF 0 CHECKER-BYTE@ $73 = SPAY-S !
    -1 SPAY-ON ! ;
 
 : ESC-HEX-VAL ( n -- n ) {: c:n :}
@@ -22972,7 +23010,7 @@ variable CUR-OPEN   variable CUR-PSIG
    TBASE@ 0 CHECKER-OWNER-ABI:VISIBLE-BODY CUR-FIRE ;
 
 : CHECK-SCAN-WALK ( -- )
-   0 SCAN-TOKS !
+   0 SCAN-TOKS !  0 SPAY-S !
    TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
    BEGIN TI @ TBLEN @ < WHILE
      TI @ CUR-GAP !
@@ -23024,6 +23062,7 @@ variable CUR-OPEN   variable CUR-PSIG
          THEN
          CUR-TOKEN
          TOK0 @ {: was-name:bool :}
+         SPAY-S @ SPAY-ARMED !  0 SPAY-S !
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
          TORDER-SCAN-UNKNOWN @ IF EXIT THEN
          was-name 0= IF TSTART @ TADDR TI @ TSTART @ - ZSUMMARY-TOKEN THEN
@@ -25066,19 +25105,26 @@ PARSES-DIAG-DEFAULT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-PARSES-ROW throw ;
 
-\ A target the top-level find binds to no word: the load's reason, which the
-\ walk answers before the find falls back (CHECKER-RESOLVE:WALK, TOP-ANSWER). A name only a
-\ rendering statement in scope may define is the run's to judge, as a call of
-\ it is (UNSEEN-COVERS?): no refusal, and no row.
-: PARSES-UNBOUND ( ptr u8 n -- )
+\ A row's target the top-level find binds to no word: the kind of the load's
+\ reason, which the walk answers before the find falls back
+\ (CHECKER-RESOLVE:WALK, TOP-ANSWER), for the row to refuse; or -1 when the
+\ walk's refusal is raised here, or for a name only a rendering statement in
+\ scope may define, the run's to judge, as a call of it is (UNSEEN-COVERS?): no
+\ refusal, and no row. The names: rows share it (CHECKER-NAMES-ROW).
+: ROW-UNBOUND ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u CHECKER-RESOLVE:WALK nip {: why:n :}
-   why E-USING-SHADOW-GLOBAL = IF a u PARSES-SHADOW PARSES-REFUSE EXIT THEN
-   why E-USING-AMBIGUOUS = IF a u PARSES-AMBIGUOUS PARSES-REFUSE EXIT THEN
-   why 0 <> IF a u why CHECKER-RESOLVE:RAISE EXIT THEN
-   CHECKER-QBAD-TOK @ IF a u PARSES-QUALIFIED PARSES-REFUSE EXIT THEN
-   a u UNSEEN-COVERS? IF EXIT THEN
-   a u PARSES-UNDEFINED PARSES-REFUSE ;
+   why E-USING-SHADOW-GLOBAL = IF PARSES-SHADOW EXIT THEN
+   why E-USING-AMBIGUOUS = IF PARSES-AMBIGUOUS EXIT THEN
+   why 0 <> IF a u why CHECKER-RESOLVE:RAISE -1 EXIT THEN
+   CHECKER-QBAD-TOK @ IF PARSES-QUALIFIED EXIT THEN
+   a u UNSEEN-COVERS? IF -1 EXIT THEN
+   PARSES-UNDEFINED ;
+
+: PARSES-UNBOUND ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u ROW-UNBOUND {: kind:n :}
+   kind 0 >= IF a u kind PARSES-REFUSE THEN ;
 
 \ The binding a row's target selects, as the top-level find selects it for a
 \ call (TOP-BINDING): its symbol and visible record's offset + 1, both 0 when
@@ -25137,6 +25183,108 @@ PARSES-DIAG-DEFAULT
    0 BEGIN parse-name PARSES-ITEM dup 0= WHILE drop 1 + REPEAT
    {: terms:n end:n :}
    end 2 =  terms 0=  or ;
+
+\ ---- names: rows --------------------------------------------------------------
+\ A WORD THAT LOOKS ITS STRING OPERAND UP AS A NAME MAKES A STRING A USE.
+\ `names: W` states that W finds the word its top string operand ( ptr u8 n )
+\ names as XREF-FIND (src/habu/xref.f) finds one, so a string literal just
+\ before a call of W is a use of that word, at the bytes between its quotes:
+\ in a body (NAMED-OPERAND-USE) and at top level, where the source
+\ pre-verifier finds the literal (verify-source.f TOP-NAMED). The row is a
+\ trusted claim, as a parses: row is, never compared with W's body; it marks
+\ W's symbol (CTL-NAMES), so a redefinition drops it, an export carries it
+\ (EXPORT-META-COPY), and a caller passing its own operand on declares its own
+\ row. A refused row has the parses: rows' kinds under its own code:
+\ PARSES-NO-TARGET at the keyword (fix_names_syntax), ROW-UNBOUND's and
+\ NAMES-NO-STRING at the target (fix_names_row).
+8 constant NAMES-NO-STRING                \ it names a word whose input row does not end in ptr u8 n
+defer NAMES-DIAG-XT ( n -- )              \ render.f installs the diagnostic, selected by kind
+: NAMES-DIAG-DEFAULT ( -- ) [: drop ;] is NAMES-DIAG-XT ;
+NAMES-DIAG-DEFAULT
+
+: NAMES-REFUSE ( ptr u8 n n -- )
+   {: a:ptr u:n kind:n :}
+   a PRS-TOK-A !  u PRS-TOK-U !
+   kind NAMES-DIAG-XT
+   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   E-NAMES-ROW throw ;
+
+\ Effect record REC's input row ends in the string pair a lookup takes, as
+\ XREF-FIND declares it: n on top and ptr u8 below it. A record quiet TRUST
+\ left unresolved holds no row.
+: STRING-IN? ( ptr u8 -- bool )
+   {: rec:ptr :}
+   rec ER.ACTIVE @ EFF-UNRESOLVED = IF RES-FALSE EXIT THEN
+   rec E-DIN@ {: din:n :}
+   0 din EFF-ROW-CON CC-N <> IF RES-FALSE EXIT THEN
+   1 din EFF-ROW-TERM {: t:n :}
+   t 0= IF RES-FALSE EXIT THEN
+   t EFF-TAG@ EN-PTR <> IF RES-FALSE EXIT THEN
+   t EFF-A@ {: p:n :}
+   p EFF-TAG@ EN-CON =  p EFF-A@ CC-U8 =  and ;
+
+\ The binding TOP-BINDING selected takes that string: its visible record's row,
+\ else, for a primitive or an axiom, which has none, its first primitive row,
+\ the one FIND-SIG-SYM answers. A word with neither declares no row.
+: NAMES-TAKES-STRING? ( n n -- bool )
+   {: sym:n eff1:n :}
+   eff1 0 <> IF eff1 1 - E-PTR STRING-IN? EXIT THEN
+   sym PRIM-FIRST-SYM {: off:n :}
+   off 0= IF RES-FALSE EXIT THEN
+   off E-PTR STRING-IN? ;
+
+\ CHECKER-NAMES-ROW ( keyword$ target$ -- ) : the check of a row, for the engine
+\ word (src/core/cell-effects.f names:) and for the source pre-verifier
+\ (verify-source.f NAMES-CHECK). A target the top-level find binds is a use.
+\ Its symbol takes the mark when its declared input row ends in the string
+\ pair ( ptr u8 n ) XREF-FIND takes, and a word whose row does not, one with
+\ no inputs among them, refuses the row (NAMES-NO-STRING), so that a row on
+\ the wrong word cannot make every string before it a use. A cold selected
+\ record, with control but no checker symbol to key the mark, leaves the row
+\ standing and binding nothing, as a parses: row (PARSES-TARGET).
+: CHECKER-NAMES-ROW ( ptr u8 n ptr u8 n -- )
+   {: ka:ptr ku:n ta:ptr tu:n :}
+   tu 0= IF ka ku PARSES-NO-TARGET NAMES-REFUSE EXIT THEN
+   ta tu TOP-BINDING {: sym:n eff1:n ctl:n :}
+   sym 0= IF
+      ctl 0 <> IF EXIT THEN
+      ta tu ROW-UNBOUND {: kind:n :}
+      kind 0 >= IF ta tu kind NAMES-REFUSE THEN
+      EXIT
+   THEN
+   sym ta tu NAV-USE-NOW
+   sym eff1 NAMES-TAKES-STRING? 0= IF ta tu NAMES-NO-STRING NAMES-REFUSE EXIT THEN
+   sym  sym CTL-FLAGS-SYM CTL-NAMES or  sym CTL-MASKS-SYM  NORET-ADD-SYM ;
+
+\ The word a string names, as XREF-FIND finds it: PKG:TAIL is PKG's public
+\ TAIL, a bare name a global and never a package's own word, and a name with a
+\ second colon none, though the checker's split reads one whose first colon is
+\ at an edge as bare (XREF-QUAL-INDEX). NAV-USE-AT then takes the record
+\ visible where the string is.
+: NAMED-SYM ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT THEN
+   CHECKER-QBAD-TOK @ 0 <>  CHECKER-COLON-N @ 1 >  or IF 0 EXIT THEN
+   a u CHECKER-GLOBAL-SYM? ;
+
+\ The call BIND-TOK bound, right after an `s"` literal (SPAY-ARMED): the
+\ literal's body as written names the word. One with an escape binds nothing,
+\ since a rename could not edit it as written, and every escape is shorter than
+\ its spelling, so the body is as written when the bytes it makes are as long.
+: NAMED-OPERAND-USE ( -- )
+   SPAY-ARMED @ 0= IF EXIT THEN
+   SPAY-BYTES nip SPAY-U @ <> IF EXIT THEN
+   SPAY-B @ TADDR SPAY-U @ {: a:ptr u:n :}
+   a u NAMED-SYM a u NAV-USE ;
+: NAMED-OPERAND-INSTALL ( -- ) [: NAMED-OPERAND-USE ;] is NAMED-OPERAND-XT ;
+NAMED-OPERAND-INSTALL
+
+\ CHECKER-NAMED-USE ( ptr u8 n -- ) : a top-level literal's body the source
+\ pre-verifier found before a call of a marked word (verify-source.f
+\ TOP-NAMED) is a use of the word it names, published at once.
+: CHECKER-NAMED-USE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u NAMED-SYM a u NAV-USE-NOW ;
 
 \ The retained compiler checked the replacement prefix before its new hooks
 \ existed. Transfer those actual graphs into the new owner before enabling

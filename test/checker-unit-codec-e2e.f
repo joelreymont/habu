@@ -126,9 +126,10 @@ CAST: IMPORT-XT ( n -- [ ptr u8 n -- ] )
 
 : CHECK-ROOT-GRAPH ( -- )
    ART BAD ART-U @ BYTE-COPY
-   \ A private root bit cannot be imported as graph control metadata.
+   \ Bit 18 lies outside the graph control flags (src/core/checker.f, the
+   \ control word's bits), so a graph header carrying it cannot be imported.
    BAD FIRST-GRAPH-OFF + 9 cells + CELL-VIEW
-   dup @ $20000 or swap !
+   dup @ $40000 or swap !
    [: BAD ART-U @ IMPORT ;] catch E-UNIT-FORMAT T= ;
 
 : CHECK-DEFER-CONTROL ( -- )

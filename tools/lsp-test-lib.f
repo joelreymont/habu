@@ -396,6 +396,9 @@
 \ - a file whose check read the declaring file but declares the word there
 \   only into another package, binding its uses to that, named
 \   ........................................................ references-package
+\ - a word named in a string literal before a call of a word a names: row
+\   declares, the file's own or the engine's XREF-FIND, not listed among
+\   its uses at the bytes between the quotes ................. references-named
 \ - a check of a file on disk for its uses leaving its lines in the store
 \   once its gather returns or throws, in the test's own process, since no
 \   conversation can make a gather throw .................. references-probe
@@ -4719,6 +4722,39 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    SAY
    s" 3" SYMBOLS-START s" refs-pkg/w/f.f" OPEN-URI 0 2 6 REF+ SYMBOLS-END ;
 
+\ ROOK named by two literals: one before LOOK, whose names: row the text
+\ declares, and one before the engine's XREF-FIND, whose row the engine's own
+\ source declares; then called.
+: TEXT-RN ( -- ptr u8 n )
+   TXT-B CLEAR
+   s\" : ROOK ( -- n ) 1 ;\n: LOOK ( ptr u8 n -- ) 2drop ;\nnames: LOOK\n" HV+
+   s\" : SEEK ( -- ) s\" ROOK\" LOOK ;\n: SEEK2 ( -- ) s\" ROOK\" XREF-FIND drop ;\n" HV+
+   s\" : TWO ( -- n ) ROOK 1 + ;\n" HV+
+   TXT$ ;
+
+: RN-PATH ( -- ptr u8 n )  s" ref-n.f" FIXTURE ;
+: RN-REF+ ( n n n -- )
+   {: l:n c1:n c2:n :}
+   RN-PATH URI-OF l c1 c2 REF+ ;
+: RN-USES+ ( -- )  3 17 21 RN-REF+  4 18 22 RN-REF+  5 15 19 RN-REF+ ;
+
+\ ROOK's declaring token and its name in LOOK's literal, each answered with
+\ the declaration and every use, the name between each literal's quotes among
+\ them; its name in XREF-FIND's literal with the uses alone.
+: REFS-NAMED-TURNS ( -- )
+   INITIALIZE
+   RN-PATH TEXT-RN 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RN RN-PATH 1 s" verified" LISTED
+   s" 3" RN-PATH 0 2 DECL-TOO REFS-ASK
+   s" 4" RN-PATH 3 17 DECL-TOO REFS-ASK
+   s" 5" RN-PATH 4 21 DECL-NOT REFS-ASK
+   SAY
+   s" 3" SYMBOLS-START 0 2 6 RN-REF+ RN-USES+ SYMBOLS-END
+   s" 4" SYMBOLS-START 0 2 6 RN-REF+ RN-USES+ SYMBOLS-END
+   s" 5" SYMBOLS-START RN-USES+ SYMBOLS-END ;
+
 variable PROBE-DECLS                     \ the decls a gather saw in the probe
 
 : PROBE-SEEN ( -- )  LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE - PROBE-DECLS ! ;
@@ -4757,6 +4793,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" references-requester" [: REFS-REQ-TURNS ;] TALK
    s" references-folders-empty" [: REFS-FE-TURNS ;] TALK
    s" references-package" [: REFS-PKG-TURNS ;] TALK
+   s" references-named" [: REFS-NAMED-TURNS ;] TALK
    REFS-PROBE ;
 
 \ ---- cancellation ------------------------------------------------------------

@@ -217,15 +217,18 @@ $3C0 constant VERIFY-EACH-VISIBLE-OFF
 \ live binds it (src/core/checker.f CHECKER-VERIFY-TOP-BINDING).
 $3C8 constant VERIFY-TOP-BINDING-OFF
 \ The control word's facts its reader tests: the word may read the source after
-\ it, it is deferred, and the field holding the id of an engine word
-\ (src/core/checker.f CTL-INTRINSIC), with the ids of `parses:` and
-\ `parses-through:`, the declarers of what such a word reads.
+\ it, it is deferred, its string operand names a word (a `names:` row), and the
+\ field holding the id of an engine word (src/core/checker.f CTL-INTRINSIC),
+\ with the ids of `parses:` and `parses-through:`, the declarers of what such a
+\ word reads, and of `names:`.
 $2000 constant BINDING-PARSES
 $10000 constant BINDING-DEFER
+$20000 constant BINDING-NAMES
 8 constant BINDING-ID-SHIFT
 $1F00 constant BINDING-ID-MASK
 11 constant BINDING-PARSES-ID
 12 constant BINDING-THROUGH-ID
+13 constant BINDING-NAMES-ID
 0 constant VISIBLE-BODY
 1 constant VISIBLE-TOP
 2 constant VISIBLE-NAMED

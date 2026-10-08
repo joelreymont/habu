@@ -227,6 +227,23 @@ the body. Only the check reads it, from the source it checks, so a word whose
 row it did not read, a resident or precompiled one among them, is undeclared;
 `EXPORT` carries a row, a word that calls the declared one does not.
 
+A word that looks its string operand up as a name states it after its
+definition, and a string literal right before a call of it is then a use of
+the word between its quotes, which references list:
+
+```forth
+names: LOOK                         \ LOOK finds ( ptr u8 n ) as XREF-FIND does
+: SEEK ( -- ) s" ROOK" LOOK ;       \ ROOK between the quotes is a use of ROOK
+```
+
+The engine states it for `XREF-FIND` and `XREF-FIND-INDEX`. The name resolves
+as `XREF-FIND` resolves it: `PKG:TAIL` a public word, a bare name the global
+one. A computed operand, a literal a caller passes on and a literal with an
+escape in it bind nothing. The row is trusted, never compared with the body;
+`EXPORT` carries it, a word that calls the declared one declares its own. A
+row with no target, naming no word or naming a word whose input row does not
+end in the string `( ptr u8 n )`, as `names: dup` does, is `E-NAMES-ROW`.
+
 A word that renders definitions at load time (`FUNCTION:`/`;FUNCTION`,
 `CMD:COMMAND`, `TASK:+USER`, anything reaching `INCLUDE-EVALUATE`) makes names
 `tools/check.f` leaves to its run, which type-checks their uses there, unless

@@ -359,12 +359,16 @@ variable XREF-QI
    dup -2 = if drop XREF-NULL exit then
    dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED exit then
    drop XREF-SN@ XREF-SU @ 0 XREF-FIND-WL ;
+\ The operand names a word: a string literal before a call is a use of it
+\ (src/core/cell-effects.f names:), here and for XREF-FIND-INDEX below.
+names: XREF-FIND
 
 : XREF-FIND-INDEX ( ptr u8 n -- n )
    XREF-QUAL-INDEX
    dup -2 = if drop -1 exit then
    dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED-INDEX exit then
    drop XREF-SN@ XREF-SU @ 0 XREF-FIND-WL-INDEX ;
+names: XREF-FIND-INDEX
 
 : XREF-FIND-CURRENT-INDEX ( ptr u8 n -- n )
    get-current XREF-FIND-WL-INDEX ;

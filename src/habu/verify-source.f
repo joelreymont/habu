@@ -318,8 +318,9 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
 
 \ Skipped top-level string literals feed a two-slot ring so the strings the
 \ scanner would otherwise discard reach the rows that replay them: a bare
-\ top-level `s" NAME" s" SIG" TRUST` (RECORD-TRUST) and a string loader's path,
-\ `s" FILE" included` (COMPOSE-STRING-PATH). A slot holds the bytes the engine's
+\ top-level `s" NAME" s" SIG" TRUST` (RECORD-TRUST), a string loader's path,
+\ `s" FILE" included` (COMPOSE-STRING-PATH), and a name before a call of a word
+\ a names: row marks (TOP-NAMED). A slot holds the bytes the engine's
 \ literal makes: a plain literal's source span, an escaped one's decoded payload
 \ (RECORD-ESCAPED-STRING). The ring resets per NEXT-SCAN call, so at a TRUST
 \ token it holds exactly the two preceding literals from the same statement.
@@ -327,7 +328,7 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
 \ composition refuses a string loader by it (QUIET-STRING-LOAD). So is where
 \ its text between the quotes starts and ends in the file, as written, escapes
 \ and all, the end 0 when there is none: the span a string loader's load
-\ reports (ARM-LOAD).
+\ reports (ARM-LOAD), and the text TOP-NAMED compares with the bytes.
 : STR-RING-RESET ( -- )
    NULL-PTR STR-PREV-A !  0 STR-PREV-U !
    NULL-PTR STR-LAST-A !  0 STR-LAST-U !  0 STR-LAST-KIND !
@@ -387,11 +388,11 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
 \ goes to the ring, which the handler of the token NEXT-SCAN answers reads
 \ before the next NEXT-SCAN resets it: only STR-PREV may hold an older answer,
 \ and the push after the next decode drops it. Only `trust`, the string
-\ loaders and a quiet composition's `UNDEFINE-IF-DEFINED` read the ring, and
-\ none of them reads a body. A body literal's answer is
-\ BODY-LIT, which the body's next token clears or consumes (PEND-PUSH keeps a
-\ copy), and a body token is read with SKIP-STRINGS off, so no decode comes
-\ between.
+\ loaders, a call of a word a names: row marks and a quiet composition's
+\ `UNDEFINE-IF-DEFINED` read the ring, and none of them reads a body. A body
+\ literal's answer is BODY-LIT, which the body's next token clears or consumes
+\ (PEND-PUSH keeps a copy), and a body token is read with SKIP-STRINGS off, so
+\ no decode comes between.
 DYNAMIC-BUFFER STR-DEC0 u8
 DYNAMIC-BUFFER STR-DEC1 u8
 variable STR-DEC-TURN
@@ -862,10 +863,15 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    BODY-PREV-CLEAR
    a u TARGET-GUARD BODY-GUARD ! ;
 
+\ A string literal joins the body as the engine reads it. The rest starts with
+\ the opener's one delimiter, which the blank BODY-APPEND writes after the
+\ opener stands for, so it joins past that delimiter: the checker reads the
+\ literal's bytes as the engine makes them (checker.f SPAY-RECORD), and a
+\ names: row binds the word they name (NAMED-OPERAND-USE).
 : APPEND-STRING ( ptr u8 n -- ) {: a:ptr u:n :}
    a u BODY-APPEND
    a u STRING-REST {: s:ptr su:n :}
-   s su BODY-APPEND
+   s 1 + su 1 - BODY-APPEND
    a u s su BODY-LIT! ;
 
 : SKIP-STRING-REST ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -1799,6 +1805,18 @@ TRUSTED: GENERATES-SIGNATURE ( ptr u8 n ptr u8 n bool -- n n )
 TRUSTED: PARSES-CHECK ( ptr u8 n ptr u8 n ptr u8 n bool -- n n n )
    CHECKER-PARSES-ROW ;
 
+\ A `names:` row's check, on the same boundary for the same reason:
+\ UNSAFE-TOK? rejects `checker-names-row` inside a checked body. The checker
+\ marks the word the row names (checker.f CHECKER-NAMES-ROW), so this pre-pass
+\ keeps nothing of the row.
+TRUSTED: NAMES-CHECK ( ptr u8 n ptr u8 n -- )
+   CHECKER-NAMES-ROW ;
+
+\ A top-level literal that names a word, published as a use of it, on the same
+\ boundary: UNSAFE-TOK? rejects `checker-named-use` inside a checked body.
+TRUSTED: NAMED-USE ( ptr u8 n -- )
+   CHECKER-NAMED-USE ;
+
 : CAST-TRUST ( -- bool )
    DTC-NAME$ DTC-SIG$ DECL-SIGNATURE ;
 
@@ -2730,6 +2748,12 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
    count row PRS-COUNT !  len row PRS-LEN !
    row 1 + VERIFY-PARSES-N ! ;
 
+\ `names: W`, known by the identity of the word the token selects, as a parses:
+\ row is: its target read as the engine word reads it (cell-effects.f names:)
+\ and checked by the engine's own check.
+: NAMES-ROW ( ptr u8 n -- )
+   NEXT-RAW NAMES-CHECK ;
+
 \ From byte I of PRS-TERMS to END: the blank that ends the terminator at I.
 : PRS-TERM-END ( n n -- n )
    {: end:n :}
@@ -3414,18 +3438,33 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    ctl BINDING-ID {: id:n :}
    id CHECKER-OWNER-ABI:BINDING-PARSES-ID = IF a u 0 0= 0= PARSES-ROW EXIT THEN
    id CHECKER-OWNER-ABI:BINDING-THROUGH-ID = IF a u 0 0= PARSES-ROW EXIT THEN
+   id CHECKER-OWNER-ABI:BINDING-NAMES-ID = IF a u NAMES-ROW EXIT THEN
    ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0<> IF a u TOP-OPAQUE EXIT THEN
    sym eff1 PRS-FIND {: row:n :}
    row 0= IF a u TOP-OPAQUE EXIT THEN
    a u DEFER-AT
    row 1 - PRS-CONSUME ;
 
+\ A call of a word a names: row marks, right after an `s"` literal the ring
+\ holds as written: the literal is a use of the word its bytes name, at the
+\ bytes between its quotes (checker.f CHECKER-NAMED-USE). One written with an
+\ escape binds nothing: its slot's bytes are shorter than its text (ESC-BYTES).
+: TOP-NAMED ( ptr u8 n -- )
+   TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-NAMES and 0= IF EXIT THEN
+   STR-LAST-KIND @ LIT-PATH <> IF EXIT THEN
+   STR-LAST-END @ STR-LAST-AT @ -  STR-LAST-U @ <> IF EXIT THEN
+   STR-LAST-A @ STR-LAST-U @ NAMED-USE ;
+
 \ The checker's answer for a token: a word that may read on is TOP-PARSER's,
-\ and a refusal, or a name the run must judge, opens the stretch at the token.
+\ a call it binds may make the literal before it a use (TOP-NAMED), and a
+\ refusal, or a name the run must judge, opens the stretch at the token.
 : TOP-RESOLVE ( ptr u8 n bool -- )
    {: a:ptr u:n runs:bool :}
    a u runs TOP-VERDICT {: v:n :}
-   v -1 = IF EXIT THEN
+   v -1 = IF
+      runs IF a u TOP-NAMED THEN
+      EXIT
+   THEN
    v 2 = IF a u TOP-PARSER EXIT THEN
    -1 TOP-DEFER !
    v 0= IF a TOP-REFUSED ! EXIT THEN

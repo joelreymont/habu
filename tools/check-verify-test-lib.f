@@ -111,6 +111,10 @@
 \   a refused duplicate takes the uses after it                           uses-duplicate
 \   a declaration loses or moves its location when the store or the
 \   location table grows                                                  uses-growth
+\   a string literal before a call of a word a names: row declares binds
+\   other than what XREF-FIND finds by its bytes, or at other than the
+\   bytes between its quotes; a computed operand, a caller with no row of
+\   its own or an escape the bytes do not hold as written binds           named-uses
 \   a cursor's word is missing, or names a declaration other than the one
 \   it binds: a body's prefix, an engine word the body has not used, a
 \   word a TRUSTED: body before it declares; or the body's own word, or a
@@ -158,6 +162,9 @@
 \   a loader after a word no usable row bounds is read or refused, in
 \   its file or in a file that loaded it                                  top-opaque-loader
 \   a malformed or misplaced row loads, or is refused for another reason  top-parses-row
+\   a names: row with no target, naming no word or naming a word that
+\   takes no string verifies or loads, or a body calling its declarer or
+\   the checker words behind it is admitted                               names-row
 \   a declarer loses its identity, the binding query raises or answers a
 \   refused name, a rolled-back row survives, a lost field falls back     top-parses-whitebox
 \   the tokens after a word that renders source are deferred, though it
@@ -2016,6 +2023,50 @@ $180000 constant LARGE-STDIN-LEN
    CHECK:VERIFY-OUT$ s" token" s" checker-parses-row" PACKET s" code" STRING$ s" E-UNSAFE" T$= ;
 
 
+\ A names: row whose target names no word, or a word whose input row does not
+\ end in the string pair ( ptr u8 n ) a lookup takes, is E-NAMES-ROW at the
+\ target, fix_names_row, and one with no target at the keyword,
+\ fix_names_syntax; loaded, either target exits 67. A checked body calling the
+\ declarer or either word the verifier reaches the checker through is E-UNSAFE.
+: NAMES-ROW ( -- )
+   s\" : CVT-LOOK ( ptr u8 n -- ) 2drop ;\nnames: CVT-NOSUCH\n" TOP-CHECK
+   s" names-row: undefined" s" CVT-NOSUCH" s" E-NAMES-ROW" s" 2" s" 8" REFUSED-AT
+   s" names-row: undefined" T-LABEL
+   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ s" fix_names_row" T$=
+   s\" : CVT-LOOK ( ptr u8 n -- ) 2drop ;\nnames:\n" TOP-CHECK
+   s" names-row: no target" s" names:" s" E-NAMES-ROW" s" 2" s" 1" REFUSED-AT
+   s" names-row: no target" T-LABEL
+   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ s" fix_names_syntax" T$=
+   s\" names: dup\n" TOP-CHECK
+   s" names-row: takes no string" s" dup" s" E-NAMES-ROW" s" 1" s" 8" REFUSED-AT
+   s" names-row: takes no string" T-LABEL
+   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ s" fix_names_row" T$=
+   s\" : CVT-ROOK ( -- n ) 1 ;\nnames: CVT-ROOK\n" TOP-CHECK
+   s" names-row: no inputs" s" CVT-ROOK" s" E-NAMES-ROW" s" 2" s" 8" REFUSED-AT
+   s" names-row: no inputs" T-LABEL
+   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ s" fix_names_row" T$=
+   s" names-row.f" s\" names: CVT-NOSUCH\n" FIXTURE
+   s" names-row: loaded, exit 67" T-LABEL
+   PROC-ARGV-ENV-RESET s" --load" ARG+ s" names-row.f" AT$ ARG+
+   PROC-ENV-INHERIT-MISSING s" " CLI nip 67 T=
+   s" names-none.f" s\" : CVT-ROOK ( -- n ) 1 ;\nnames: CVT-ROOK\n" FIXTURE
+   s" names-row: no inputs, loaded, exit 67" T-LABEL
+   PROC-ARGV-ENV-RESET s" --load" ARG+ s" names-none.f" AT$ ARG+
+   PROC-ENV-INHERIT-MISSING s" " CLI nip 67 T=
+   s\" : W ( -- ) names: ;\n" TOP-CHECK
+   1 s" names-row: declarer in a body" EXPECT-KIND
+   s" names-row: declarer in a body" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" names:" PACKET s" code" STRING$ s" E-UNSAFE" T$=
+   s\" : W2 ( -- ) checker-names-row ;\n" TOP-CHECK
+   1 s" names-row: registrar in a body" EXPECT-KIND
+   s" names-row: registrar in a body" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" checker-names-row" PACKET s" code" STRING$ s" E-UNSAFE" T$=
+   s\" : W3 ( -- ) checker-named-use ;\n" TOP-CHECK
+   1 s" names-row: use publisher in a body" EXPECT-KIND
+   s" names-row: use publisher in a body" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" checker-named-use" PACKET s" code" STRING$ s" E-UNSAFE" T$= ;
+
+
 \ The rows' checker side, from loaded files that ask the live checker owner
 \ (CHECKER-OWNER-ABI) as the verifier does. Each file dies, exit 76, naming the
 \ first fact that fails, and prints NAME: ok after the last. A call of either
@@ -3499,6 +3550,47 @@ variable USE-NODE                       \ the use line USE-FROM found
    0 ERR erru s\" \"target_start\"" CONTAINS? or TFALSE ;
 
 
+\ A string literal just before a call of a word a names: row declares binds
+\ what XREF-FIND finds by the bytes between its quotes, at those bytes: a bare
+\ name the global, never the open package's private twin; PKG:TAIL a public
+\ alone; a word defined before the call. A computed operand, a caller with no
+\ row of its own and an escape the bytes do not hold as written bind nothing,
+\ not even the word spelled as that escape is written.
+\ The row is a use of its word, which binds at top level too.
+: NAMED-USES ( -- )
+   0 GEN-U !
+   s\" : CVT-ROOK ( -- n ) 1 ;\n: CVT-LOOK ( ptr u8 n -- ) 2drop ;\nnames: CVT-LOOK\n" GEN+
+   s\" : CVT-SEEK ( -- ) s\" CVT-ROOK\" CVT-LOOK ;\n: CVT-HID ( -- n ) 5 ;\npackage CVT-NP\n" GEN+
+   s\" : CVT-HID ( -- n ) 2 ;\n: CVT-PRIV ( -- ) s\" CVT-HID\" CVT-LOOK ;\n" GEN+
+   s\" : CVT-QHID ( -- ) s\" CVT-NP:CVT-HID\" CVT-LOOK ;\npublic\n: CVT-PUB ( -- n ) 3 ;\n;package\n" GEN+
+   s\" : CVT-QUAL ( -- ) s\" CVT-NP:CVT-PUB\" CVT-LOOK ;\n" GEN+
+   s\" : CVT-COMP ( ptr u8 n -- ) s\" CVT-ROOK\" 2drop CVT-LOOK ;\n" GEN+
+   s\" : CVT-THRU ( ptr u8 n -- ) CVT-LOOK ;\n: CVT-VIA ( -- ) s\" CVT-ROOK\" CVT-THRU ;\n" GEN+
+   s\" : CVT-R\\x4fOK ( -- n ) 6 ;\n: CVT-ESC ( -- ) s\\\" CVT-R\\x4fOK\" CVT-LOOK ;\n" GEN+
+   s\" : CVT-PLAIN ( -- ) s\\\" CVT-ROOK\" CVT-LOOK ;\n" GEN+
+   s\" : CVT-EARLY ( -- ) s\" CVT-LATER\" CVT-LOOK ;\n: CVT-LATER ( -- n ) 4 ;\n" GEN+
+   s\" s\" CVT-ROOK\" CVT-LOOK\n" GEN+
+   s" named-uses.f" DEFS-CHECK 0 s" names: verified" EXPECT-KIND
+   s" names: literal body" s\" CVT-SEEK ( -- ) s\" CVT-ROOK" 8 USE
+   s" names: literal body" DEFS-SRC$ s" : CVT-ROOK" 8 s" named-uses.f" USE-TARGET
+   s" names: a bare name is the global" s\" CVT-PRIV ( -- ) s\" CVT-HID" 7 USE
+   s" names: a bare name is the global" DEFS-SRC$ s" : CVT-HID" 7 s" named-uses.f" USE-TARGET
+   s" names: qualified names a public only" s\" CVT-QHID ( -- ) s\" CVT-NP:CVT-HID" 14 NO-USE
+   s" names: qualified" s\" CVT-QUAL ( -- ) s\" CVT-NP:CVT-PUB" 14 USE
+   s" names: qualified" DEFS-SRC$ s" : CVT-PUB" 7 s" named-uses.f" USE-TARGET
+   s" names: computed operand" s\" CVT-COMP ( ptr u8 n -- ) s\" CVT-ROOK" 8 NO-USE
+   s" names: caller without a row" s\" CVT-VIA ( -- ) s\" CVT-ROOK" 8 NO-USE
+   s" names: escaped bytes differ" s\" CVT-ESC ( -- ) s\\\" CVT-R\\x4fOK" 11 NO-USE
+   s" names: escaped spelling, plain bytes" s\" CVT-PLAIN ( -- ) s\\\" CVT-ROOK" 8 USE
+   s" names: escaped spelling, plain bytes" DEFS-SRC$ s" : CVT-ROOK" 8 s" named-uses.f" USE-TARGET
+   s" names: defined later" s\" CVT-EARLY ( -- ) s\" CVT-LATER" 9 NO-USE
+   s" names: top level" s\" \ns\" CVT-ROOK" 8 USE
+   s" names: top level" DEFS-SRC$ s" : CVT-ROOK" 8 s" named-uses.f" USE-TARGET
+   s" names: row is a use of W" s" names: CVT-LOOK" 8 USE
+   s" names: row is a use of W" DEFS-SRC$ s" : CVT-LOOK" 8 s" named-uses.f" USE-TARGET
+   s" names: one line each" 17 USE-COUNT ;
+
+
 \ Two real includes of one file declare K at the same byte span in distinct
 \ packages. Qualified calls and each package's using scope select different
 \ declarations even though the shared source location is identical.
@@ -4185,6 +4277,7 @@ public
    s" loads-none" [: LOADS-NONE ;] RUN-CASE
    s" loads-lifetime" [: LOADS-LIFETIME ;] RUN-CASE
    s" uses" [: USES ;] RUN-CASE
+   s" named-uses" [: NAMED-USES ;] RUN-CASE
    s" uses-visit" [: USES-VISIT ;] RUN-CASE
    s" uses-visibility" [: USES-VISIBILITY ;] RUN-CASE
    s" uses-visit-lifetime" [: USES-VISIT-LIFETIME ;] RUN-CASE
@@ -4246,6 +4339,7 @@ public
    s" top-parses-loader" [: TOP-PARSES-LOADER ;] RUN-CASE
    s" top-opaque-loader" [: TOP-OPAQUE-LOADER ;] RUN-CASE
    s" top-parses-row" [: TOP-PARSES-ROW ;] RUN-CASE
+   s" names-row" [: NAMES-ROW ;] RUN-CASE
    s" top-parses-whitebox" [: TOP-PARSES-WHITEBOX ;] RUN-CASE
    s" top-renders" [: TOP-RENDERS ;] RUN-CASE
    s" type-deferred" [: TYPE-DEFERRED ;] RUN-CASE

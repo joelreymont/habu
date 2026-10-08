@@ -285,6 +285,16 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
   refused row bounds nothing. A load refuses the row with
   `hb: uncaught throw code 7186` and exits 67; `tools/check.f` exits 70 under
   `--verify-only` and, under `--all-errors`, counts it and goes on.
+- `E-NAMES-ROW`: a `names: W` row the checker refused, its `token` W, or the
+  declarer when nothing follows it. `fix_names_row` when W is refused where
+  the row stands: it names no word, is a malformed qualified name, is
+  shadowed by a used public or exported by two used packages, or names a word
+  whose declared input row does not end in the string pair `( ptr u8 n )`
+  `XREF-FIND` takes (a primitive's first row when it has no record); the
+  diagnostic's text says which. `fix_names_syntax` when the row has no
+  target. A refused row marks nothing. A load refuses the row with
+  `hb: uncaught throw code 7208` and exits 67; `tools/check.f` exits 70 under
+  `--verify-only` and, under `--all-errors`, counts it and goes on.
 - `E-UNDEFINED-TOP-LEVEL`, repair class `unknown_rejection`, and
   `E-BAD-QUALIFIED-TOP-LEVEL`, repair class `fix_qualified_name`: a top-level
   token the load runs or ticks resolves nowhere, or is a malformed qualified
@@ -872,7 +882,7 @@ position fields when its named token locates in the checked text:
 | `signature` or `package` | string | the field its code adds | Copied from the record. |
 | `file` | string | required | Source label or path. |
 | `line`, `column`, `byte_start`, `byte_end` | integer | all four or none | Copied source positions when known. |
-| `code` | string | required | A refused-record code, `E-GENERATES-ROW` or `E-PARSES-ROW`. |
+| `code` | string | required | A refused-record code, `E-GENERATES-ROW`, `E-PARSES-ROW` or `E-NAMES-ROW`. |
 | `repair_class` | string | required | One its code names. |
 | `suggestion` | string | required | Checker repair hint. |
 | `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
@@ -959,6 +969,11 @@ Current checker classes:
   the definition of a word that parses, spelled as the definition spells it.
 - `fix_parses_syntax`: a `parses:` or `parses-through:` row is malformed;
   write `parses: W n` or `parses-through: W n ( E1 E2 )`.
+- `fix_names_row`: a `names:` row's target is no word where the row stands
+  that takes a string `( ptr u8 n )`; write the row after the definition of a
+  word that looks its string operand up as a name, spelled as the definition
+  spells it.
+- `fix_names_syntax`: a `names:` row has no target; write `names: W`.
 - `fix_signature_size`: a stored signature is more than 4096 levels deep or takes
   more than 255 cells, more than its record holds; `reason` names the bound, the
   row's count and the limit. Keep bulk values in a buffer.
@@ -1058,6 +1073,8 @@ table it is derived only from `repair_class`. It does not replace the raw
 | `delete_generates_row` | `This definer already states what it makes: its does> clause, an earlier generates: row or the definer it wraps. Delete the row.` |
 | `fix_parses_row` | `This row's target is no word here that reads the source after it. Write the row after the definition of a word that parses, spelled as the definition spells it.` |
 | `fix_parses_syntax` | `Write the row as parses: W n or parses-through: W n ( E1 E2 ): a count of 0 or more, then at least one terminator between a standalone ( and ).` |
+| `fix_names_row` | `This row's target is no word here that takes a string ( ptr u8 n ). Write the row after the definition of a word that looks its string operand up as a name, spelled as the definition spells it.` |
+| `fix_names_syntax` | `Write the row as names: W, after the definition of a word W that looks its string operand up as a name.` |
 | `rebuild_engine` | `The engine provides this source; rebuild bin/hb to check a change to it.` |
 | `fix_stale_trust_row` | `This trust row names no word in the wordlist its record lands in: the open section's, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word.` |
 | `use_storage_definer` | `A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar.` |

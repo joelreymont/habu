@@ -1819,25 +1819,65 @@ GENERATES-DIAG-INSTALL
 : PRS-CLASS$ ( n -- ptr u8 n )
    PRS-SYNTAX? IF s" fix_parses_syntax" EXIT THEN
    s" fix_parses_row" ;
-: PRS-JSON ( n -- )
-   {: kind:n :}
+\ A refused row's packet, at the token PRS-TOK holds: its code, repair class
+\ and suggestion.
+: ROW-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: ca:ptr cu:n la:ptr lu:n sa:ptr su:n :}
    123 EMIT1
    s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY s" E-PARSES-ROW" JSTR 44 EMIT1
-   s" repair_class" JKEY kind PRS-CLASS$ JSTR 44 EMIT1
+   s" code" JKEY ca cu JSTR 44 EMIT1
+   s" repair_class" JKEY la lu JSTR 44 EMIT1
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY PRS-TOK-A @ PRS-TOK-U @ JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
    PRS-TOK-A @ PRS-TOK-U @ JTOKEN-FIELDS
-   s" suggestion" JKEY kind PRS-SUGGEST$ JSTR
+   s" suggestion" JKEY sa su JSTR
    125 EMIT1 ;
 : PRS-DIAG ( n -- )
    {: kind:n :}
    1 RDST !  0 RSN !  0 RQM !
-   JSON-DIAGS @ IF kind PRS-JSON ELSE kind PRS-PROSE THEN
+   JSON-DIAGS @ IF
+      s" E-PARSES-ROW" kind PRS-CLASS$ kind PRS-SUGGEST$ ROW-JSON
+   ELSE
+      kind PRS-PROSE
+   THEN
    10 EMIT1
    RSBUF-FLUSH ;
 : PARSES-DIAG-INSTALL ( -- ) [: PRS-DIAG ;] is PARSES-DIAG-XT ;
 PARSES-DIAG-INSTALL
+
+\ A `names:` row the checker refused (checker.f CHECKER-NAMES-ROW), named and
+\ explained as a parses: row is, or as a word that takes no string: with no
+\ target fix_names_syntax, else fix_names_row.
+: NMS-SYNTAX? ( n -- bool )
+   PARSES-NO-TARGET = ;
+: NMS-PROSE ( n -- )
+   {: kind:n :}
+   s" E-NAMES-ROW habu: names: row '" DTXT  PRS-TOK-A @ PRS-TOK-U @ DTXT
+   kind NAMES-NO-STRING = IF
+      s" ' names a word that takes no string: only a word whose input row ends in" DTXT
+      s"  ptr u8 n takes a row" DTXT EXIT
+   THEN
+   kind PRS-REASON ;
+: NMS-SUGGEST$ ( n -- ptr u8 n )
+   NMS-SYNTAX? IF
+      s" Write the row as names: W, after the definition of a word W that looks its string operand up as a name." EXIT
+   THEN
+   s" This row's target is no word here that takes a string ( ptr u8 n ). Write the row after the definition of a word that looks its string operand up as a name, spelled as the definition spells it." ;
+: NMS-CLASS$ ( n -- ptr u8 n )
+   NMS-SYNTAX? IF s" fix_names_syntax" EXIT THEN
+   s" fix_names_row" ;
+: NMS-DIAG ( n -- )
+   {: kind:n :}
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF
+      s" E-NAMES-ROW" kind NMS-CLASS$ kind NMS-SUGGEST$ ROW-JSON
+   ELSE
+      kind NMS-PROSE
+   THEN
+   10 EMIT1
+   RSBUF-FLUSH ;
+: NAMES-DIAG-INSTALL ( -- ) [: NMS-DIAG ;] is NAMES-DIAG-XT ;
+NAMES-DIAG-INSTALL
 
 ;using

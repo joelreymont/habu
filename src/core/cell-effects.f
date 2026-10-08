@@ -79,6 +79,17 @@ TRUSTED: parses-through: ( -- )
    parse-name parse-name PARSES-LIST-LOAD CHECKER-PARSES-ROW drop drop drop ;
 INTRINSIC-PARSES-THROUGH INTRINSIC
 
+\ `names: W`, at top level after W's definition: W looks its string operand up
+\ as a name, so a string literal before a call of W is a use of the word it
+\ names. Read as the source pre-verifier reads it (src/habu/verify-source.f
+\ NAMES-ROW), checked by the checker, which marks W's symbol
+\ (src/core/checker.f CHECKER-NAMES-ROW), barred from checked bodies and
+\ tagged as the two above are.
+TRUSTED: names: ( -- )
+   data-base CK-TKA-OFF + @  data-base CK-TKL-OFF + @
+   parse-name CHECKER-NAMES-ROW ;
+INTRINSIC-NAMES INTRINSIC
+
 \ Read finalized numeric call facts without exposing the unification graph.
 package CHECKER-CALLS
 

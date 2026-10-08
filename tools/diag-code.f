@@ -57,6 +57,8 @@ private
       s" " EXIT THEN
    c u s" E-PARSES-ROW" STR= IF
       construct shape record s" fix_parses_row fix_parses_syntax" s" " EXIT THEN
+   c u s" E-NAMES-ROW" STR= IF
+      construct shape record s" fix_names_row fix_names_syntax" s" " EXIT THEN
    c u s" E-ENGINE-PROVIDED" STR= IF
       construct shape input s" rebuild_engine" s" " EXIT THEN
    c u s" E-TRUST-UNRESOLVED" STR= IF
