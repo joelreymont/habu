@@ -8,6 +8,7 @@ require lib/errors.f
 require src/core/checker-owner-guard.f
 require lib/string.f
 require src/habu/layout.f
+require src/habu/xref.f
 
 package VERIFY
 
@@ -3441,6 +3442,35 @@ TYPED-VARIABLE FFI-GROUP bool
    {: a:ptr u:n :}
    a u s" ;FUNCTION" STR=CI FFI-GROUP @ and ;
 
+\ The library's storage definers (src/core/layout-buffer.f,
+\ src/core/pointer-storage.f) are words, not keywords: a package's word of the
+\ spelling, or a global one an `undefine` of it made room for, in this file or
+\ one loaded before it, is the word the load calls. An arm below reads a name
+\ only when the record the engine's lookup binds the token to (scope-find,
+\ which the checker's overlay drives) runs the library word's code; any other
+\ word of the spelling is a call, TOP-TOKEN's. Its symbol cannot tell: a global
+\ word defined after `undefine` keeps the library word's (FIND-SYM). Each
+\ library word's record is found as this file loads, before any source it
+\ reads can give the spelling to another word: checked code may not take a
+\ layout definer's xt (E-UNSAFE).
+s" LAYOUT-BUFFER" XREF-FIND-INDEX constant LAYOUT-BUFFER-REC
+s" DEFER-LAYOUT-BUFFER" XREF-FIND-INDEX constant DEFER-LAYOUT-BUFFER-REC
+s" TYPED-BUFFER" XREF-FIND-INDEX constant TYPED-BUFFER-REC
+s" TYPED-VARIABLE" XREF-FIND-INDEX constant TYPED-VARIABLE-REC
+s" DYNAMIC-BUFFER" XREF-FIND-INDEX constant DYNAMIC-BUFFER-REC
+s" PTR-VARIABLE" XREF-FIND-INDEX constant PTR-VARIABLE-REC
+s" PERSISTED-PTR-VARIABLE" XREF-FIND-INDEX constant PERSISTED-PTR-VARIABLE-REC
+s" PTR-U8-TABLE" XREF-FIND-INDEX constant PTR-U8-TABLE-REC
+s" PERSISTED-PTR-U8-TABLE-VARIABLE" XREF-FIND-INDEX constant PERSISTED-PTR-U8-TABLE-VARIABLE-REC
+s" RESERVED-PTR-U8-CELL" XREF-FIND-INDEX constant RESERVED-PTR-U8-CELL-REC
+
+: LIBRARY-DEFINER? ( ptr u8 n n -- bool ) {: a:ptr u:n ix:n :}
+   ix XREF-REC {: lib:ptr :}
+   a u lib XREF-NAME$ STR=CI 0= IF false EXIT THEN
+   a u scope-find drop drop drop {: rec:ptr :}
+   rec XREF-FOUND? 0= IF false EXIT THEN
+   rec XREF-START  lib XREF-START = ;
+
 : RECORD-DEFINER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" package" STR=CI IF RECORD-PACKAGE 0 0= EXIT THEN
    a u s" public" STR=CI IF RECORD-PUBLIC 0 0= EXIT THEN
@@ -3460,15 +3490,15 @@ TYPED-VARIABLE FFI-GROUP bool
    a u s" enum" STR=CI IF RECORD-ENUM 0 0= EXIT THEN
    a u s" product" STR=CI IF
       [: RECORD-PRODUCT ;] catch LEGACY-TYPE-OUTCOME 0 0= EXIT THEN
-   a u s" LAYOUT-BUFFER" STR=CI IF
+   a u LAYOUT-BUFFER-REC LIBRARY-DEFINER? IF
       [: RECORD-LAYOUT-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
-   a u s" DEFER-LAYOUT-BUFFER" STR=CI IF
+   a u DEFER-LAYOUT-BUFFER-REC LIBRARY-DEFINER? IF
       [: RECORD-DEFER-LAYOUT-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
-   a u s" TYPED-BUFFER" STR=CI IF
+   a u TYPED-BUFFER-REC LIBRARY-DEFINER? IF
       [: RECORD-TYPED-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
-   a u s" TYPED-VARIABLE" STR=CI IF
+   a u TYPED-VARIABLE-REC LIBRARY-DEFINER? IF
       [: RECORD-TYPED-VARIABLE ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
-   a u s" DYNAMIC-BUFFER" STR=CI IF
+   a u DYNAMIC-BUFFER-REC LIBRARY-DEFINER? IF
       [: RECORD-DYNAMIC-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    \ `constant` bakes one physical cell, so its trust is the one-cell `-- a`
    \ model — identical to native C-CONSTANT, all-errors (which funnels here),
@@ -3481,17 +3511,22 @@ TYPED-VARIABLE FFI-GROUP bool
    a u s" constant" STR=CI IF s" -- a" DEF-CONSTANT RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" create" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u s" PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u s" PERSISTED-PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u PTR-VARIABLE-REC LIBRARY-DEFINER? IF
+      s" -- ptr ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u PERSISTED-PTR-VARIABLE-REC LIBRARY-DEFINER? IF
+      s" -- ptr ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    \ The declared-pointee forms: the clause names the pointee, so the effect has
    \ no type variable and the raw registration seals nothing. Same word, same row
    \ as the native path publishes through `trust-raw`.
-   a u s" PTR-U8-TABLE" STR=CI IF s" -- ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u s" PERSISTED-PTR-U8-TABLE-VARIABLE" STR=CI IF s" -- ptr ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u PTR-U8-TABLE-REC LIBRARY-DEFINER? IF
+      s" -- ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u PERSISTED-PTR-U8-TABLE-VARIABLE-REC LIBRARY-DEFINER? IF
+      s" -- ptr ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    \ The reserved-offset cell: the offset token precedes the name, as the table
    \ count does, so the created word is still the NEXT token and the row is the
    \ definer's declared clause.
-   a u s" RESERVED-PTR-U8-CELL" STR=CI IF s" -- ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u RESERVED-PTR-U8-CELL-REC LIBRARY-DEFINER? IF
+      s" -- ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
    a u s" PRIM:" STR=CI IF s" PRIM;" s" " RECORD-PRIM 0 0= EXIT THEN
    a u s" PPRIM:" STR=CI IF s" PPRIM;" s" CLOSE-PRIVATE" RECORD-PPRIM 0 0= EXIT THEN

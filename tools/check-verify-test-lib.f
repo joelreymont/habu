@@ -49,6 +49,8 @@
 \   a loader form whose word the file defined or retired before it is
 \   followed or refused elsewhere, or a use the walk reads past, a package
 \   name or a retirement in a body is refused                             loader-use
+\   a word given a library storage definer's spelling, here or in a
+\   required file, takes the next token as its name                       storage-binding
 \   a loader form's fault drops the packets made before it, is not the
 \   last, leaks a line that is no packet, or loses the child's code and
 \   place                                                                 fault-after-packet
@@ -1017,6 +1019,22 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" use-package.f" VERIFIED
    s\" : R ( -- ) s\" required\" UNDEFINE-IF-DEFINED ;\n: U ( ptr u8 n -- ) undefine required ;\ns\" ld-inc.f\" required\n"
    s" use-body-retire.f" VERIFIED ;
+
+
+\ A library storage definer reads a name only as the word it is. A package's
+\ word of its spelling, in the file or in one it requires, and a global word
+\ an `undefine` of it made room for, are calls, and the require after each
+\ loads its file: every source here loads. Read as the library's definer, the
+\ require is the name and the path an undefined word.
+: STORAGE-BINDING ( -- )
+   s\" package CVT-BIND\n: LAYOUT-BUFFER ( -- ) ;\n: DEFER-LAYOUT-BUFFER ( -- ) ;\n: TYPED-BUFFER ( -- ) ;\n: TYPED-VARIABLE ( -- ) ;\n: DYNAMIC-BUFFER ( -- ) ;\n: PTR-VARIABLE ( -- ) ;\n: PERSISTED-PTR-VARIABLE ( -- ) ;\n: PTR-U8-TABLE ( -- ) ;\n: PERSISTED-PTR-U8-TABLE-VARIABLE ( -- ) ;\n: RESERVED-PTR-U8-CELL ( -- ) ;\nLAYOUT-BUFFER require ld-inc.f\nDEFER-LAYOUT-BUFFER require ld-inc.f\nTYPED-BUFFER require ld-inc.f\nTYPED-VARIABLE require ld-inc.f\nDYNAMIC-BUFFER require ld-inc.f\nPTR-VARIABLE require ld-inc.f\nPERSISTED-PTR-VARIABLE require ld-inc.f\nPTR-U8-TABLE require ld-inc.f\nPERSISTED-PTR-U8-TABLE-VARIABLE require ld-inc.f\nRESERVED-PTR-U8-CELL require ld-inc.f\n;package\n"
+   s" bind-package.f" VERIFIED
+   s" bind-cx-x.f" s\" undefine PTR-VARIABLE\n: PTR-VARIABLE ( -- ) ;\n" FIXTURE
+   s\" require bind-cx-x.f\nPTR-VARIABLE require ld-inc.f\n" s" bind-cx.f" VERIFIED
+   s" bind-cp-x.f" s\" package CVT-BIND\n: PTR-VARIABLE ( -- ) ;\n;package\n" FIXTURE
+   s\" require bind-cp-x.f\npackage CVT-BIND\nPTR-VARIABLE require ld-inc.f\n;package\n" s" bind-cp.f" VERIFIED
+   s" bind-cu-x.f" s\" undefine PTR-VARIABLE\npackage CVT-BIND\npublic\n: PTR-VARIABLE ( -- ) ;\n;package\n" FIXTURE
+   s\" require bind-cu-x.f\nusing CVT-BIND\nPTR-VARIABLE require ld-inc.f\n;using\n" s" bind-cu.f" VERIFIED ;
 
 
 \ A loader form's fault is the verifier's, met where its walk reaches the form:
@@ -4479,6 +4497,7 @@ public
    s" body-immediate" [: BODY-IMMEDIATE ;] RUN-CASE
    s" reserved-names" [: RESERVED-NAMES ;] RUN-CASE
    s" loader-use" [: LOADER-USE ;] RUN-CASE
+   s" storage-binding" [: STORAGE-BINDING ;] RUN-CASE
    s" fault-after-packet" [: FAULT-AFTER-PACKET ;] RUN-CASE
    s" provided-meta" [: PROVIDED-META ;] RUN-CASE
    s" script-loader" [: SCRIPT-LOADER ;] RUN-CASE
