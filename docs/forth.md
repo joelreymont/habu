@@ -74,7 +74,10 @@ lives here; build, test and environment rules live in
   - `seed-ndict!` lowers the dictionary below the seal floor and clears it
     (the build rewinds). Top-level code calls it, text a checked word
     evaluates included; no checked body names it, and legacy `TRUSTED:`
-    bodies still do.
+    bodies still do. The window build's reset is such text: its checked
+    `LOGICAL-RESET` `included`s `src/habu/window-rewind.f`, whose top level
+    runs `0 set-check`, `0 set-top-check` and the rewind, as a build
+    includes `src/habu/prefix-rewind.f`.
 - Existing TRUST forms are legacy awaiting removal, tracked in [Campaign
   C2](../.dots/habu-campaign-c2-mem-c3d7662b/habu-campaign-c2-mem-c3d7662b.md);
   mentions below describe legacy syntax only.

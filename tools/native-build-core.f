@@ -155,11 +155,11 @@ CAST: RESET-XT ( n -- [ -- ] )
 
 \ The discarded build host remains callable through this compiled continuation,
 \ but none of its dictionary records or address declarations enters the window.
-TRUSTED: LOGICAL-RESET ( ptr u8 -- )
-   0 set-check
-   0 set-top-check
+\ The hook clears and the dictionary rewind are src/habu/window-rewind.f's
+\ top-level text: seed-ndict! is a top-level boundary no checked body names.
+: LOGICAL-RESET ( ptr u8 -- )
    RESET-CHECKER
-   CORE-PREFIX:FIRST-RECORD seed-ndict!
+   [: s" src/habu/window-rewind.f" included ;] SOURCE-ROOT:WITH-CWD
    RESET-ADDRESS-ROWS ;
 
 \ OPEN-TARGET-XT answers a target operation's entry as a code address integer.

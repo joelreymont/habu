@@ -250,8 +250,12 @@ level, and `tools/bootstrap.sh`'s boot-hide prologue, which the launcher feeds
 to the gforth stage0 and to every sealed native stage after it, so the seed's
 prim table answers `seed-ndict!` with its unsealed lowering and the native
 stages take the authorized one.
-`tools/native-build.f` `LOGICAL-RESET` drives the same seam for the in-process
-window build. `CORE-PREFIX:FIRST-RECORD` selects the earliest global `IMK-NDICT0`
+The in-process window build takes the same seam: the checked `LOGICAL-RESET`
+(`tools/native-build-core.f`) resets the retained checker, `included`s
+`src/habu/window-rewind.f`, whose top-level text clears the check and
+top-level hooks and runs `CORE-PREFIX:FIRST-RECORD seed-ndict!`, as a build
+includes `prefix-rewind.f`, then discards the host's address rows.
+`CORE-PREFIX:FIRST-RECORD` selects the earliest global `IMK-NDICT0`
 dictionary row, matching recovery; the marker cell is not a saved record index.
 `seed-ndict!` requires `0 <= n < ndict@` before deriving its target address.
 Public `ndict!` still refuses a count below the floor, from a

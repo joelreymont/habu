@@ -86,11 +86,9 @@ CAST: RESET-XT ( n -- [ -- ] )
    data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @ source = if
       s" window: replacement checker did not publish a distinct target" 76 die then ;
 
-TRUSTED: LOGICAL-RESET ( ptr u8 -- )
-   0 set-check
-   0 set-top-check
+: LOGICAL-RESET ( ptr u8 -- )
    RESET-CHECKER
-   CORE-PREFIX:FIRST-RECORD seed-ndict!
+   [: s" src/habu/window-rewind.f" included ;] SOURCE-ROOT:WITH-CWD
    RESET-ADDRESS-ROWS ;
 
 \ The dictionary rows hold the fresh source reset and checker handover as code
