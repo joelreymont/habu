@@ -18,3 +18,5 @@ Claim: unassigned.
 Lead note (2026-09-30, from the I8/I5a design): `jit-open` does the JIT half of the head: the P2-nesting refusal (rc 76, `habu2.f:7825-7827`), the resets at `7843-7861`, EXECUTABLE-JIT-GUARD, FRAME-CELL and the link-save (`2799-2802`); it replaces I5a's tier-0 refusal. P2-CELL is set only by the JIT's pass 2 (`9349`).
 
 Lead note (2026-10-01, from I5a): nothing writes TIER-CELL at x86 boot (`boot-x64.f` has no tier store and DATA maps zeroed), so it reads 0 and the Habu head refuses with the tier-0 message on x86 until something stores 1; x86 `set-tier` stores only 1 (`kernel-x64.f` SET-TIER-BODY), and `executable-build-enter` also sets it. The x86 boot must select tier 1 when this dot makes x86 refuse tier 0.
+
+Ruling (Joel, 2026-10-08; docs/compilation.md decision 7): one interpreter, one codegen per platform. The Habu loop compiles every definition through the current platform's codegen on ARM64 and x86-64 alike; ARM64's tier-0 JIT (src/habu/jit.f) and machine-code interpreter are not kept in the product. B1 is withdrawn.
