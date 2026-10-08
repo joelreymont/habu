@@ -1400,8 +1400,17 @@ passing suite.
 
 - `\` line comments, terse, in one or two lines: only what the code cannot state
   (units, ownership or ordering invariants, a hardware encoding, a checker
-  boundary). No restating the code, no design essays, rationale or refutation
-  history: that belongs in documentation; meaning lives in names and factoring.
+  boundary, why a non-obvious choice is required). Meaning lives in names and
+  factoring; design belongs in `docs/`.
+- A comment states what is true now. When a claim needs proof, name the fact
+  that proves it: the test, the refusal and its code, the measured behaviour.
+- No history: no "used to", "no longer", "was", earlier designs, what was tried,
+  dates, dot, commit or review ids, agent or person names. A failure that
+  motivates a rule is stated as a present fact: "a stage without X dies
+  `E-UNDEFINED` at Y", never "when this was tried it died".
+- No restating the code, no design essays, no arguments for or against a
+  design. A fact lives in one comment or one doc section; others point to it.
+- A change that makes a comment false corrects the comment in the same change.
   Remove scratch and debug prints before commit.
 - A definition that fails to compile in raw engine mode reports the undefined
   word on stderr and may spill the rest of the definition through the
