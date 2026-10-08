@@ -355,6 +355,29 @@ public
    a u s" '" STR= if STR-TRUE exit then
    a u s" [']" STR= ;
 
+\ The interpret keywords of src/habu/habu2.f EM-INTERPRET-DEFINE-KEYWORDS that
+\ read a name take the next whitespace-delimited token raw, whatever it spells,
+\ and open no definition, but for `trusted:`, which opens one as `:` does, and
+\ the parsing keywords above. An engine definer makes a word of that name; a
+\ package keyword makes none: `package` and `using` take a package's name, and
+\ `export` an existing word's, which it re-exports as that word. Matched
+\ case-folded as the engine's keyword compare folds. They are keywords only
+\ while the engine interprets: in a body `create` is a call that reads its name
+\ when the word runs and the others are undefined, so a scanner asks these
+\ outside a definition.
+: DEFINER-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" cast:" STR=CI if STR-TRUE exit then
+   a u s" linear:" STR=CI if STR-TRUE exit then
+   a u s" defer" STR=CI if STR-TRUE exit then
+   a u s" create" STR=CI if STR-TRUE exit then
+   a u s" variable" STR=CI if STR-TRUE exit then
+   a u s" constant" STR=CI ;
+
+: PACKAGE-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" package" STR=CI if STR-TRUE exit then
+   a u s" using" STR=CI if STR-TRUE exit then
+   a u s" export" STR=CI ;
+
 \ The control words that open and close a block in a body, matched case-folded.
 \ The engine and the checker keep the live locals count on their control-flow
 \ stack (src/habu/habu2.f LCFPUSH and LCFPOP, src/core/checker.f CF-PUSH), so a

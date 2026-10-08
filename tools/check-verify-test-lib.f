@@ -43,9 +43,12 @@
 \   file, is refused for its path or defines its words for definitions after
 \   it; a valid dynamic form is refused before effect checking             body-uncalled
 \   an immediate loader in a body leaves its file unread                  body-immediate
-\   a loader word's name stored, deferred, exported or defined as a word
-\   verifies, or is refused for another reason; a package or using name,
-\   or a retirement in a body, is refused                                 reserved-names
+\   a loader word's name stored, deferred, exported, defined, undefined or
+\   retired is refused at the name, or one the global wordlist holds is no
+\   duplicate                                                             reserved-names
+\   a loader form whose word the file defined or retired before it is
+\   followed or refused elsewhere, or a use the walk reads past, a package
+\   name or a retirement in a body is refused                             loader-use
 \   a loader form's fault drops the packets made before it, is not the
 \   last, leaks a line that is no packet, or loses the child's code and
 \   place                                                                 fault-after-packet
@@ -753,10 +756,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" discovery rejected: capacity exceeded" ;
 
 : SHADOWED$ ( -- ptr u8 n )
-   s" discovery rejected: loader word shadowed or undefined" ;
+   s" discovery rejected: loader word used after the file defined its name" ;
 
 : RETIRED$ ( -- ptr u8 n )
-   s" discovery rejected: loader word retired (UNDEFINE-IF-DEFINED)" ;
+   s" discovery rejected: loader word used after the file retired it" ;
 
 
 \ The first packet of the last check with CODE is in the subject, at TOKEN on
@@ -959,35 +962,61 @@ CK-USE-MAX 1 + constant OVER-USINGS
    CHECK:VERIFY-OUT$ s" code" s" E-UNDEFINED" PACKET 0 < TTRUE ;
 
 
-\ A loader word's name as any word's name - a definition's, a storage word's,
-\ a deferred word's, an export's, a retired one's - refuses the file at the
-\ name, as UNDEFINE-IF-DEFINED at top level with a loader's name or none does
-\ at itself: past them a loader word may not be the loader. A package's name,
-\ or a using's, names no word, UNDEFINE-IF-DEFINED of another name retires no
-\ loader, and one in a body retires nothing until the word runs, which no check
-\ does.
+\ A loader word's name is a name like any other. A definition, storage, a
+\ deferred word or an export that takes one verifies, as each loads, in a
+\ package, whose wordlist does not hold the global loader; so do `undefine` and
+\ UNDEFINE-IF-DEFINED of one. At top level the global wordlist holds it
+\ already: the load refuses a second definition as the duplicate, exit 78, and
+\ so does the check, at the name. A package's name, or a using's, names no word.
 : RESERVED-NAMES ( -- )
-   s\" package CVT-RES\nprivate\nvariable REQUIRED\n;package\n" s" res-variable.f"
-   s" REQUIRED" s" 3" s" 10" SHADOWED$ LOADER-REFUSED
-   s\" create INCLUDED\n" s" res-create.f" s" INCLUDED" s" 1" s" 8" SHADOWED$ LOADER-REFUSED
-   s\" TYPED-VARIABLE PROVIDED n\n" s" res-typed.f"
-   s" PROVIDED" s" 1" s" 16" SHADOWED$ LOADER-REFUSED
-   s\" 1 constant INCLUDE\n" s" res-constant.f" s" INCLUDE" s" 1" s" 12" SHADOWED$ LOADER-REFUSED
-   s\" defer included ( -- )\n" s" res-defer.f" s" included" s" 1" s" 7" SHADOWED$ LOADER-REFUSED
-   s\" package CVT-EXP\npublic\nEXPORT required\n;package\n" s" res-export.f"
-   s" required" s" 3" s" 8" SHADOWED$ LOADER-REFUSED
-   s\" : include ( -- ) ;\n" s" res-colon.f" s" include" s" 1" s" 3" SHADOWED$ LOADER-REFUSED
-   s\" TRUSTED: require ( -- ) ;\n" s" res-trusted.f"
-   s" require" s" 1" s" 10" SHADOWED$ LOADER-REFUSED
-   s\" undefine required\n" s" res-undefine.f" s" required" s" 1" s" 10" SHADOWED$ LOADER-REFUSED
-   s\" s\" required\" UNDEFINE-IF-DEFINED\n" s" res-retire.f"
-   s" UNDEFINE-IF-DEFINED" s" 1" s" 14" RETIRED$ LOADER-REFUSED
-   s\" UNDEFINE-IF-DEFINED\n" s" res-retire-bare.f"
-   s" UNDEFINE-IF-DEFINED" s" 1" s" 1" RETIRED$ LOADER-REFUSED
-   s\" s\" CVT-NONE\" UNDEFINE-IF-DEFINED\n: CVT-R ( -- n ) 1 ;\n" s" res-other.f" VERIFIED
-   s\" : CVT-RET ( -- ) s\" required\" UNDEFINE-IF-DEFINED ;\n" s" body-retire.f" VERIFIED
+   s\" package CVT-RES\nprivate\nvariable REQUIRED\n;package\n" s" res-variable.f" VERIFIED
+   s\" package CVT-RES\ncreate INCLUDED\n;package\n" s" res-create.f" VERIFIED
+   s\" package CVT-RES\nTYPED-VARIABLE PROVIDED n\n;package\n" s" res-typed.f" VERIFIED
+   s\" package CVT-RES\n1 constant INCLUDE\n;package\n" s" res-constant.f" VERIFIED
+   s\" package CVT-RES\ndefer included ( -- )\n;package\n" s" res-defer.f" VERIFIED
+   s\" package CVT-EXP\npublic\nEXPORT required\n;package\n" s" res-export.f" VERIFIED
+   s\" package CVT-RES\n: include ( -- ) ;\n;package\n" s" res-colon.f" VERIFIED
+   s\" package CVT-RES\nTRUSTED: require ( -- ) ;\n;package\n" s" res-trusted.f" VERIFIED
+   s\" undefine required\n" s" res-undefine.f" VERIFIED
+   s\" s\" required\" UNDEFINE-IF-DEFINED\n" s" res-retire.f" VERIFIED
+   s\" : include ( -- ) ;\n" s" res-global.f" GUARD-MS CHECK-AS
+   1 s" res-global.f" EXPECT-KIND
+   s" res-global.f" s" E-DUPLICATE-DEFINITION" s" include" s" 1" s" 3" AT-TOKEN
    s\" package REQUIRED\npublic\n: CVT-RQ ( -- n ) 1 ;\n;package\nusing REQUIRED\n: CVT-RQ-USE ( -- n ) CVT-RQ ;\n;using\n"
    s" res-package.f" VERIFIED ;
+
+
+\ Past a definition or retirement of a loader word's name, the walk cannot tell
+\ which word the spelling names, so a loader form it reads with that word, at
+\ top level or in a body, is refused at the word: E-DISC-SHADOW when the file
+\ defined the name, before E-DISC-RETIRE when it retired it. A top-level
+\ UNDEFINE-IF-DEFINED with no path literal before it may retire any loader word.
+\ A use the walk reads past, a call in a body, is no loader form; another loader
+\ word, a package, using or export name, and a retirement in a body that only
+\ its run would make, replace nothing.
+: LOADER-USE ( -- )
+   s\" undefine require\n: require ( -- ) parse-name required ;\nrequire ld-inc.f\n"
+   s" use-colon.f" s" require" s" 3" s" 1" SHADOWED$ LOADER-REFUSED
+   s\" package CVT-SH\nkernel: include ( -- ) ;\n;package\ninclude ld-inc.f\n"
+   s" use-kernel.f" s" include" s" 4" s" 1" SHADOWED$ LOADER-REFUSED
+   s\" package CVT-SH\n: required ( ptr u8 n -- ) 2drop ;\n;package\n: L ( -- ) s\" ld-inc.f\" required ;\n"
+   s" use-body.f" s" required" s" 4" s" 25" SHADOWED$ LOADER-REFUSED
+   s\" package CVT-SH\n: include ( -- ) ;\n;package\n: L ( -- ) include ld-inc.f ;\n"
+   s" use-body-include.f" s" include" s" 4" s" 12" SHADOWED$ LOADER-REFUSED
+   s\" package CVT-RES\nprivate\nvariable REQUIRED\n;package\ns\" ld-inc.f\" required\n"
+   s" use-variable.f" s" required" s" 5" s" 14" SHADOWED$ LOADER-REFUSED
+   s\" undefine required\ns\" ld-inc.f\" required\n"
+   s" use-undefine.f" s" required" s" 2" s" 14" RETIRED$ LOADER-REFUSED
+   s\" s\" required\" UNDEFINE-IF-DEFINED\n: L ( -- ) s\" ld-inc.f\" required ;\n"
+   s" use-retire-body.f" s" required" s" 2" s" 25" RETIRED$ LOADER-REFUSED
+   s\" s\" CVT-NONE\" 2dup 2drop UNDEFINE-IF-DEFINED\nrequire ld-inc.f\n"
+   s" use-retire-any.f" s" require" s" 2" s" 1" RETIRED$ LOADER-REFUSED
+   s\" package CVT-SH\nprivate\nvariable REQUIRED\n: L ( -- n ) REQUIRED @ ;\n;package\nrequire ld-inc.f\n"
+   s" use-read-past.f" VERIFIED
+   s\" package REQUIRED\n;package\nusing REQUIRED\n;using\npackage CVT-EXP\npublic\nEXPORT required\n;package\ns\" ld-inc.f\" required\n"
+   s" use-package.f" VERIFIED
+   s\" : R ( -- ) s\" required\" UNDEFINE-IF-DEFINED ;\n: U ( ptr u8 n -- ) undefine required ;\ns\" ld-inc.f\" required\n"
+   s" use-body-retire.f" VERIFIED ;
 
 
 \ A loader form's fault is the verifier's, met where its walk reaches the form:
@@ -2085,8 +2114,8 @@ $180000 constant LARGE-STDIN-LEN
    s" top-parses-loader: a missing file after" s" E-MISSING-SOURCE" s" require" s" 4" s" 1" AT-TOKEN
    s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN include\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
    s" top-parses-loader: a definition after" s" PN" s" 3" s" g" s" E-MISMATCH" BOUND-REFUSED
-   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN required\n: required ( -- ) ;\n" s" top-name.f"
-   s" required" s" 4" s" 3" SHADOWED$ LOADER-REFUSED ;
+   s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN required\n: required ( -- ) ;\n" TOP-CHECK
+   s" top-parses-loader: a loader's name after" s" PN" s" 3" s" required" s" E-DUPLICATE-DEFINITION" BOUND-REFUSED ;
 
 
 \ A deferred check whose only packet is the call TOKEN on LINE of the fixture
@@ -4449,6 +4478,7 @@ public
    s" body-uncalled" [: BODY-UNCALLED ;] RUN-CASE
    s" body-immediate" [: BODY-IMMEDIATE ;] RUN-CASE
    s" reserved-names" [: RESERVED-NAMES ;] RUN-CASE
+   s" loader-use" [: LOADER-USE ;] RUN-CASE
    s" fault-after-packet" [: FAULT-AFTER-PACKET ;] RUN-CASE
    s" provided-meta" [: PROVIDED-META ;] RUN-CASE
    s" script-loader" [: SCRIPT-LOADER ;] RUN-CASE

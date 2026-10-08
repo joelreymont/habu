@@ -13,12 +13,14 @@
 \ resolves is recorded unconditionally, so the event closure over-approximates
 \ (superset of the runtime closure) and can never under-approximate a
 \ statically-visible loader call. A string loader word in a body after anything
-\ else, a path the engine's resolver refuses among them, and UNDEFINE-IF-DEFINED
-\ in a body, is a call the word makes when it runs, which no check runs, and the
-\ walk reads past it. Redefining or undefining a loader word and, at top
-\ level, retiring one through UNDEFINE-IF-DEFINED, a dynamic
-\ (non-literal) loader path, and an unsupported string opener (C\" / .\")
-\ before a loader word each reject fail-closed - unless the entry file is a
+\ else, a path the engine's resolver refuses among them, is a call the word
+\ makes when it runs, which no check runs, and the walk reads past it. The name
+\ a definer takes is data, a loader word's too: defining, undefining or
+\ retiring one refuses nothing. The walk holds no wordlists to tell which word
+\ that spelling names after it, so a later loader form with it that the walk
+\ would follow, at top level or in a body, rejects fail-closed at the word, as
+\ a dynamic (non-literal) loader path and an unsupported string opener (C\" /
+\ .\") before a loader word at top level do - unless the entry file is a
 \ declared dynamic-tail boundary in tools/dynamic-tail-manifest.f, in which
 \ case exactly those forms are tolerated (skipped, never recorded) and only the
 \ statically-visible loader events are produced. An escaped literal (S\")
@@ -78,6 +80,8 @@ variable SD-TOK-OFF                      \ the token read last: where it starts
 variable SD-TOK-LEN                      \ and its length
 variable SD-CALL-KIND                    \ the loader SD-CALL-LOADER calls
 variable SD-DEF                          \ 1 from a definition's opener to its ;
+variable SD-SHADOWED                     \ the loader words (SD-LOADER-BIT) the file defined
+variable SD-RETIRED                      \ and those it retired
 
 \ Local spellings are byte-exact and become visible after their group's closer.
 \ Keep source offsets so discovery need not copy names or impose a locals cap.
@@ -115,7 +119,9 @@ variable SD-SCOPES
 : SD-LENIENT? ( -- bool )   SD-LENIENT @ 0= 0= ;
 
 \ Fail-closed guard trip: throw, unless the entry file is a declared
-\ dynamic-tail boundary - then the offending form is tolerated (skipped).
+\ dynamic-tail boundary - then the refusal is dropped and the walk goes on,
+\ past a form with no path to follow or through a replaced loader word's form
+\ (SD-CHECK-USE).
 : SD-REJECT ( n -- )
    SD-LENIENT? if drop exit then
    throw ;
@@ -229,15 +235,40 @@ DYNAMIC-BUFFER SD-DEC u8
    a u s" provided" STR=CI if SD-K-PROVIDED exit then
    0 ;
 
-: SD-RESERVED$? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" include" STR=CI if STR-TRUE exit then
-   a u s" included" STR=CI if STR-TRUE exit then
-   a u s" require" STR=CI if STR-TRUE exit then
-   a u s" required" STR=CI if STR-TRUE exit then
-   a u s" provided" STR=CI ;
+\ A loader word's bit in SD-SHADOWED and SD-RETIRED, 0 for any other token.
+: SD-LOADER-BIT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" include" STR=CI if $01 exit then
+   a u s" included" STR=CI if $02 exit then
+   a u s" require" STR=CI if $04 exit then
+   a u s" required" STR=CI if $08 exit then
+   a u s" provided" STR=CI if $10 exit then
+   0 ;
 
-: SD-RESERVED? ( n n -- bool )
-   SD-TOK$ SD-RESERVED$? ;
+$1F constant SD-LOADERS                  \ every loader word's bit
+
+\ A definition of a loader word's name, or a retirement of it, refuses nothing,
+\ but past it the walk cannot tell which word the spelling names, so a later
+\ loader form with it is refused (SD-CHECK-USE).
+: SD-SHADOW ( ptr u8 n -- )   SD-LOADER-BIT SD-SHADOWED @ or SD-SHADOWED ! ;
+
+: SD-RETIRE ( ptr u8 n -- )   SD-LOADER-BIT SD-RETIRED @ or SD-RETIRED ! ;
+
+\ UNDEFINE-IF-DEFINED at top level retires the word the path literal right
+\ before it names, and when no path literal does, a word the walk cannot read,
+\ any loader word among them. In a body it retires nothing until the word runs,
+\ which no check runs.
+: SD-RETIRE-NAMED ( n -- ) {: pend:n :}
+   pend SD-PEND-PATH = if SD-PATH$ SD-RETIRE exit then
+   SD-RETIRED @ SD-LOADERS or SD-RETIRED ! ;
+
+\ A loader form the walk reads, whose loader word stands at OFF LEN, is refused
+\ at the word when the file has defined that word's name (E-DISC-SHADOW), and
+\ else when it has retired it (E-DISC-RETIRE). A declared dynamic-tail boundary
+\ drops the refusal and the form is followed, so its closure keeps the load.
+: SD-CHECK-USE ( n n -- ) {: off:n len:n :}
+   off len SD-TOK$ SD-LOADER-BIT {: bit:n :}
+   bit SD-SHADOWED @ and 0<> if E-DISC-SHADOW SD-REJECT exit then
+   bit SD-RETIRED @ and 0<> if E-DISC-RETIRE SD-REJECT then ;
 
 : SD-CALL-ACT ( -- )
    SD-CALL-KIND @ {: kind:n :}
@@ -277,37 +308,28 @@ DYNAMIC-BUFFER SD-DEC u8
 \ a definition). After anything else, or after a path the resolver refuses,
 \ which the call loads nothing from, it is nothing to follow or refuse.
 \ At top level the load runs while the file loads, so a path the walk cannot
-\ follow is refused.
+\ follow is refused. A form the walk reads, any at top level and one right after
+\ a path literal in a body, is refused first when the file has replaced its
+\ loader word.
 : SD-DISPATCH-LOADER ( n n n n -- ) {: off:n len:n kind:n pend:n :}
    SD-DEF @ 0<> if
-      pend SD-PEND-PATH = if off len kind SD-LOAD? drop then
+      pend SD-PEND-PATH = 0= if exit then
+      off len SD-CHECK-USE
+      off len kind SD-LOAD? drop
       exit
    then
+   off len SD-CHECK-USE
    pend SD-PEND-OTHER = if E-DISC-OPENER SD-REJECT exit then
    pend SD-PEND-PATH = 0= if E-DISC-DYNAMIC SD-REJECT exit then
    off len kind SD-CALL-LOADER ;
 
-\ A name reader with nothing after it ends the source, so no loader form is left
-\ to find. The missing name is the loader's to refuse; tools/check.f refuses it
-\ at the definer.
-: SD-CHECK-NAME ( -- )
-   SD-RAW {: off:n len:n :}
-   len 0= if exit then
-   off len SD-RESERVED? if E-DISC-SHADOW SD-REJECT then ;
-
-\ UNDEFINE-IF-DEFINED at top level retiring a loader word (or fed a non-literal
-\ name that cannot be proven safe) breaks loader identity for the rest of the
-\ file. In a body it is a retirement the word makes when it runs, as a loader
-\ word there is a call.
-: SD-RETIRE ( n -- ) {: pend:n :}
-   SD-DEF @ 0<> if exit then
-   pend SD-PEND-PATH = 0= if E-DISC-RETIRE SD-REJECT exit then
-   SD-PATH$ SD-RESERVED$? if E-DISC-RETIRE SD-REJECT then ;
-
 \ `include` and `require` take the next token as their path and refuse one
 \ over INCLUDE-PATH-CAP bytes, which is PATH-CAP, before they resolve it
-\ (src/core/include.f INCLUDE-CHECK-PATH); the resolver decides the rest.
+\ (src/core/include.f INCLUDE-CHECK-PATH); the resolver decides the rest. The
+\ walk reads either wherever it stands, refused first when the file has
+\ replaced it.
 : SD-LOADER-IMM ( n n n -- ) {: toff:n tlen:n kind:n :}
+   toff tlen SD-CHECK-USE
    SD-RAW {: poff:n plen:n :}
    plen 0= if E-DISC-DYNAMIC SD-REJECT exit then
    plen PATH-CAP > if E-DISC-CAPACITY SD-REJECT exit then
@@ -392,7 +414,11 @@ DYNAMIC-BUFFER SD-DEC u8
 \ A comment is skipped first, as the loader skips it, and like blanks it keeps a
 \ pending literal path: `s" x.f" ( why ) required` loads x.f. Every other token
 \ ends it. A local is looked up before the parsing keywords: in a body a local
-\ named `char` is that local and takes no operand.
+\ named `char` is that local and takes no operand. A definition's opener and,
+\ outside a definition, an engine definer, a package keyword and `undefine`
+\ take the next token as the name they give, take or retire, a loader word's
+\ too, and load nothing; a name missing at the source's end is theirs to
+\ refuse. A name given or retired is a loader word's spelling replaced.
 : SD-STEP ( n n -- )
    {: off:n len:n :}
    len 1 = off SD-BYTE SD-BACKSLASH = and if SD-SKIP-LINE exit then
@@ -405,16 +431,18 @@ DYNAMIC-BUFFER SD-DEC u8
    off len SD-TOK$ s" ;]" STR= if SD-SCOPE-CLOSE exit then
    off len SD-LOCAL? if exit then
    off len SD-TOK$ PARSING-KEYWORD? if SD-RAW 2drop exit then
+   SD-DEF @ 0= off len SD-TOK$ DEFINER-KEYWORD? and if SD-RAW SD-TOK$ SD-SHADOW exit then
+   SD-DEF @ 0= off len SD-TOK$ PACKAGE-KEYWORD? and if SD-RAW 2drop exit then
    off len SD-TOK$ s" {:" STR= if off SD-OPENER ! SD-LOCAL-GROUP exit then
    off len SD-OPENER-KIND {: opener:n :}
    opener 0= 0= if off SD-OPENER ! opener SD-PEND ! len 3 = SD-SCAN-STRING exit then
    off len SD-LOADER-KIND {: lkind:n :}
    lkind 0= 0= if off len lkind pend SD-DISPATCH-LOADER exit then
-   off len SD-TOK$ s" :" STR= if SD-DEF-OPEN SD-CHECK-NAME exit then
-   off len SD-TOK$ s" kernel:" STR=CI if SD-DEF-OPEN SD-CHECK-NAME exit then
-   off len SD-TOK$ s" TRUSTED:" STR=CI if SD-DEF-OPEN SD-CHECK-NAME exit then
-   off len SD-TOK$ s" undefine" STR=CI if SD-CHECK-NAME exit then
-   off len SD-TOK$ s" UNDEFINE-IF-DEFINED" STR=CI if pend SD-RETIRE exit then
+   off len SD-TOK$ s" :" STR= if SD-DEF-OPEN SD-RAW SD-TOK$ SD-SHADOW exit then
+   off len SD-TOK$ s" kernel:" STR=CI if SD-DEF-OPEN SD-RAW SD-TOK$ SD-SHADOW exit then
+   off len SD-TOK$ s" TRUSTED:" STR=CI if SD-DEF-OPEN SD-RAW SD-TOK$ SD-SHADOW exit then
+   SD-DEF @ 0= off len SD-TOK$ s" undefine" STR=CI and if SD-RAW SD-TOK$ SD-RETIRE exit then
+   SD-DEF @ 0= off len SD-TOK$ s" UNDEFINE-IF-DEFINED" STR=CI and if pend SD-RETIRE-NAMED exit then
    off len SD-TOK$ s" include" STR=CI if off len SD-K-INCLUDED SD-LOADER-IMM exit then
    off len SD-TOK$ s" require" STR=CI if off len SD-K-REQUIRED SD-LOADER-IMM exit then
    off len SD-SCOPE-STEP ;
@@ -425,6 +453,8 @@ DYNAMIC-BUFFER SD-DEC u8
    0 SD-TOK-OFF !
    0 SD-TOK-LEN !
    0 SD-DEF !
+   0 SD-SHADOWED !
+   0 SD-RETIRED !
    SD-LOCALS-RESET
    begin
       SD-RAW {: off:n len:n :}
@@ -539,7 +569,7 @@ public
 
 \ The bytes the last run read, and where the token it read last starts in them
 \ and its length. A run that refused a loader form read that form last: a
-\ loader word with no literal path, or the name a definer gave a loader word.
+\ loader word with no literal path, or one whose spelling the file replaced.
 : BYTES$ ( -- ptr u8 n )
    SD-BUF SD-U @ ;
 

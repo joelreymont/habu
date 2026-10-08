@@ -357,8 +357,10 @@ them, so the packets it made before are kept and the record is the last, and
   then the engine root; an escaped literal counted as decoded; or over 1024
   bytes once normalized), `include` or `require` at top level or in a
   definition with a path over 1024 bytes as written or as resolved, or a
-  loader word's name declared as any word (a definition, storage, a deferred
-  word or an export) or retired at top level.
+  loader form discovery reads, at top level or in a definition, whose loader
+  word the file has defined as any word (a definition, storage or a deferred
+  word) or retired at top level before it: past that the walk, which holds no
+  wordlists, cannot tell which word the spelling names.
 - `E-MISSING-SOURCE`, repair class `fix_load_path`, at the loader word that
   names a file that is not there.
 - `E-UNREADABLE-SOURCE`, repair class `make_source_readable`, at the loader
@@ -389,10 +391,15 @@ path the resolver refuses. The composition loads what the engine loads:
 - `script-required` resolves its path from the working directory and reads its
   file as the other loaders do: a path no literal gives is `E-LOADER-FORM`,
   and a file that is not there `E-MISSING-SOURCE`, at the loader word.
-- A name operand that declares no word, the name of a package, a using, a
-  `DEFTYPE` type family, an `ENUM` variant or a structure field, is no loader
-  call: a bare `required` there, as in `package REQUIRED` or
-  `0 FIELD required n`, verifies.
+- A name operand is no loader call, whether it defines a word, as a
+  definition, storage or a deferred word does, re-exports one, or names a
+  package, a using, a `DEFTYPE` type family, an `ENUM` variant or a structure
+  field: a bare `required` there, as in `package REQUIRED`,
+  `0 FIELD required n` or a package's `variable REQUIRED`, verifies.
+  `undefine required` and `s" required" UNDEFINE-IF-DEFINED` retire a word and
+  refuse nothing. A later loader form with a word the file so defined or
+  retired is `E-LOADER-FORM`; a call in a definition that discovery reads
+  past, as `REQUIRED @`, is none.
 - A parsed operand belongs to its parser. What a word a `parses:` or
   `parses-through:` row bounds reads is its operand as written, as in
   `PN required` or `BLK include x.f variable package ;BLK`: no loader, definer
@@ -1021,8 +1028,8 @@ Current checker classes:
 - `make_source_readable`: a loader word names a file the file system will not
   read.
 - `literal_loader_form`: a top-level loader form names no literal path, or a
-  declaration or top-level retirement takes a loader word's name, so the
-  require closure cannot be read from the source.
+  loader form uses a loader word the file defined or retired, so the require
+  closure cannot be read from the source.
 - `close_primitive_row`: a `PRIM:`, `PPRIM:`, `EPRIM:` or `EPPRIM:`
   primitive-axiom row does not close.
 - `rebuild_engine`: the input is a source the engine provides, so loading it

@@ -8,11 +8,12 @@
 \ colon-body loader capture with byte-exact token spans, a parsing keyword's
 \ operand read as data, a comment between a literal path and the word that takes
 \ it skipped as the loader skips it, the shared checked path emitter, fail-closed
-\ rejection when the artifact cannot be produced (loader word
-\ shadowed/undefined/retired, dynamic loader path, unsupported opener,
-\ serialization overflow), a body's loader or retirement read past as the run
-\ of a word no check runs, and the dynamic-tail manifest (the loader's own
-\ definition site tolerated).
+\ rejection when the artifact cannot be produced (dynamic loader path,
+\ unsupported opener, a loader word the file defined or retired, serialization
+\ overflow), a body's loader read past as the run of a word no check runs, a
+\ name a definer takes read as data, a loader word's defined, undefined or
+\ retired name refusing nothing, and the dynamic-tail manifest (the loader's
+\ own definition site tolerated).
 
 require lib/errors.f
 require lib/string.f
@@ -153,17 +154,6 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 : SDT-RUN-ENTRY ( -- )   SDT-DISCOVER ;
 
-\ `kernel:` is the engine's synonym for `:`, so it shadows a loader word too.
-: SDT-TEST-SHADOW ( -- )
-   s" shadow.f" S\" : required ( ptr u8 n -- ) 2drop ;\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-SHADOW TTHROWSQ
-   s" kernel-shadow.f" S\" kernel: required ( ptr u8 n -- ) 2drop ;\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-SHADOW TTHROWSQ ;
-
-: SDT-TEST-UNDEFINE ( -- )
-   s" undef.f" S\" undefine required\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-SHADOW TTHROWSQ ;
-
 : SDT-TEST-DYNAMIC ( -- )
    s" dyn.f" S\" required\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ ;
@@ -201,8 +191,10 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ A USER DEFINER'S NAME ENDS IN `:` AND IS STILL AN ORDINARY CALL. `64
 \ SPAN-BUFFER: SB` (lib/span.f) names a buffer through a `create ... does>`
 \ word, and the walk reads the whole line as calls: it consumes no name of its
-\ own, so the require after it is the event it always was. Only `:`, `TRUSTED:`
-\ and `undefine` take the token that follows them.
+\ own, so the require after it is the event it always was. Only `:`, `kernel:`,
+\ `TRUSTED:` and, outside a definition, the engine's definers, the package
+\ keywords and `undefine` take the token that follows them as a name; a library
+\ storage definer is a call here too.
 : SDT-TEST-USER-DEFINER ( -- )
    s" user-definer.f"
    S\" require sd-j.f\n64 SPAN-BUFFER: SB\n: EXAMPLE ( n -- ) {: required:n :} SB SPAN:LEN drop required drop ;\ns\" sd-k.f\" required\n"
@@ -271,15 +263,6 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    s" commented-code.f" S\" s\" sd-commented.f\" ( kept ) 2dup \\ kept\nrequired 2drop\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ ;
 
-\ UNDEFINE-IF-DEFINED takes the same literal across a comment: a name no loader
-\ word has retires nothing discovery reads, and a loader word's still refuses.
-: SDT-TEST-COMMENTED-RETIRE ( -- )
-   s" commented-retire.f" S\" s\" SDT-NOT-A-LOADER\" ( kept ) UNDEFINE-IF-DEFINED\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
-   EVENT-COUNT 0 T=
-   s" commented-retire-loader.f" S\" s\" required\" \\ kept\nUNDEFINE-IF-DEFINED\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-RETIRE TTHROWSQ ;
-
 \ --- a loader form in a body is the run of a word no check runs ---------------
 
 \ The walk reads the entry whole, refusing nothing, and records one event: the
@@ -316,23 +299,100 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
    EVENT-COUNT 0 T= ;
 
-\ A definition of a loader word's name is no call a body makes: after a body,
-\ as anywhere, it is refused at its name.
-: SDT-TEST-BODY-SHADOW ( -- )
-   s" body-shadow.f" S\" : HELP ( -- ) ;\n: included ( ptr u8 n -- ) 2drop ;\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-SHADOW TTHROWSQ ;
+\ --- a name is data, a loader word's too --------------------------------------
 
-\ UNDEFINE-IF-DEFINED in a body retires nothing while the file loads, whatever
-\ name it takes: a loader word's or one computed when the word runs.
-: SDT-TEST-RETIRE ( -- )
-   s" retire.f" S\" : R ( -- ) s\" require\" UNDEFINE-IF-DEFINED ;\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
-   EVENT-COUNT 0 T= ;
+\ Defining, undefining or retiring a loader word's name refuses nothing: `:`,
+\ `kernel:` and `TRUSTED:` take the name as data, `include` and `require` among
+\ them, as `undefine` does at top level, and UNDEFINE-IF-DEFINED is a call
+\ whatever it takes. A loader form with another word is the one event, as is
+\ one after a package, a using or an export of the word's name, which replace
+\ no word, and after UNDEFINE-IF-DEFINED or `undefine` in a body, which retire
+\ nothing until the word runs. Each source loads.
+: SDT-TEST-LOADER-NAME ( -- )
+   S\" package SDT-SH\n: include ( -- ) ;\nkernel: require ( -- ) ;\n;package\npackage SDT-SH2\nTRUSTED: include ( -- ) ;\n;package\ns\" sd-raw.f\" required\n"
+   s" sd-raw.f" SDT-ONE-EVENT
+   S\" undefine required\nrequire sd-raw.f\n" s" sd-raw.f" SDT-ONE-EVENT
+   S\" s\" required\" UNDEFINE-IF-DEFINED\nrequire sd-raw.f\n" s" sd-raw.f" SDT-ONE-EVENT
+   S\" package REQUIRED\npublic\n: CVT-RQ ( -- n ) 1 ;\n;package\nusing REQUIRED\n;using\npackage CVT-EXP\npublic\nEXPORT required\n;package\ns\" sd-raw.f\" required\n"
+   s" sd-raw.f" SDT-ONE-EVENT
+   S\" : R ( -- ) s\" required\" UNDEFINE-IF-DEFINED ;\n: U ( ptr u8 n -- ) undefine required ;\ns\" sd-raw.f\" required\n"
+   s" sd-raw.f" SDT-ONE-EVENT ;
 
-: SDT-TEST-RETIRE-DYNAMIC ( -- )
-   s" retire-dyn.f" S\" : R ( ptr u8 n -- ) UNDEFINE-IF-DEFINED ;\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
-   EVENT-COUNT 0 T= ;
+\ SOURCE, as an entry, is refused with CODE at its loader word at OFF, LEN bytes
+\ long.
+: SDT-REPLACED-AT ( ptr u8 n n n n -- ) {: a:ptr u:n code:n off:n len:n :}
+   s" replaced.f" a u SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] code TTHROWSQ
+   DISCOVER:LAST-TOKEN {: at:n atu:n :}
+   at off T=
+   atu len T= ;
+
+\ After the file defines a loader word's name (E-DISC-SHADOW), or else retires
+\ it (E-DISC-RETIRE), the walk cannot tell which word the spelling names, so a
+\ later loader form with it that the walk reads is refused at the word: any at
+\ top level, `include` or `require` anywhere, and a string loader right after a
+\ path literal in a body. A retirement whose name no path literal gives may
+\ retire any loader word. Elsewhere in a body the spelling is a call the walk
+\ reads past, as a loader word there is: a package's variable REQUIRED read in
+\ its body refuses nothing. The first four and the dynamic retirement load;
+\ the retired two die at the use, E-UNDEFINED, and the immediate `include` in
+\ a body at its definition, E-UNMODELED-IMMEDIATE.
+: SDT-TEST-LOADER-USE ( -- )
+   S\" undefine require\n: require ( -- ) parse-name required ;\nrequire sd-raw.f\n"
+   E-DISC-SHADOW 56 7 SDT-REPLACED-AT
+   S\" package SDT-SH\nkernel: include ( -- ) ;\n;package\ninclude sd-raw.f\n"
+   E-DISC-SHADOW 49 7 SDT-REPLACED-AT
+   S\" package SDT-SH\n: required ( ptr u8 n -- ) 2drop ;\n;package\n: L ( -- ) s\" sd-raw.f\" required ;\n"
+   E-DISC-SHADOW 83 8 SDT-REPLACED-AT
+   S\" package SDT-SH\n: include ( -- ) ;\n;package\n: L ( -- ) include sd-raw.f ;\n"
+   E-DISC-SHADOW 54 7 SDT-REPLACED-AT
+   S\" package CVT-RES\nprivate\nvariable REQUIRED\n;package\ns\" sd-raw.f\" required\n"
+   E-DISC-SHADOW 64 8 SDT-REPLACED-AT
+   S\" undefine required\ns\" sd-raw.f\" required\n" E-DISC-RETIRE 31 8 SDT-REPLACED-AT
+   S\" s\" required\" UNDEFINE-IF-DEFINED\n: L ( -- ) s\" sd-raw.f\" required ;\n"
+   E-DISC-RETIRE 57 8 SDT-REPLACED-AT
+   S\" s\" CVT-NONE\" 2dup 2drop UNDEFINE-IF-DEFINED\nrequire sd-raw.f\n"
+   E-DISC-RETIRE 44 7 SDT-REPLACED-AT
+   S\" package SDT-SH\nprivate\nvariable REQUIRED\n: L ( -- n ) REQUIRED @ ;\n;package\nrequire sd-raw.f\n"
+   s" sd-raw.f" SDT-ONE-EVENT ;
+
+\ An engine definer takes the next token as the name it gives, whatever it
+\ spells, as a package keyword takes one (lib/source.f DEFINER-KEYWORD? and
+\ PACKAGE-KEYWORD?): a loader word's name there names a package, a using, an
+\ export, a cast, a linear row, storage or a deferred word, and the require
+\ after them is the one event. Each source loads.
+: SDT-TEST-DEFINER-OPERAND ( -- )
+   S\" package REQUIRED\npublic\n: CVT-RQ ( -- n ) 1 ;\n;package\nusing REQUIRED\n;using\nrequire sd-raw.f\n"
+   s" sd-raw.f" SDT-ONE-EVENT
+   S\" package CVT-RES\nprivate\nvariable REQUIRED\ncreate INCLUDED\n1 constant INCLUDE\ndefer PROVIDED ( -- )\n;package\nrequire sd-raw.f\n"
+   s" sd-raw.f" SDT-ONE-EVENT
+   S\" package CVT-DEF\npublic\nDEFLINEAR CVT-DEF:tok\nEXPORT required\nprivate\nCAST: include ( n -- ptr u8 )\nLINEAR: provided ( ptr n -- CVT-DEF:tok )\n;package\nrequire sd-raw.f\n"
+   s" sd-raw.f" SDT-ONE-EVENT ;
+
+\ A library storage definer (src/core/layout-buffer.f, pointer-storage.f) is a
+\ word, not a keyword, so the walk reads its operand as code: storage named with
+\ a loader word's spelling is refused at it, E-DISC-DYNAMIC at PROVIDED, though
+\ it loads and the checker verifies it (check-verify-test-lib.f res-typed.f).
+\ A package may redefine the definer, and a file in the closure may do it, and
+\ the walk has no wordlists to tell which word the spelling names; after a
+\ redefinition the operand is the next statement, and `require x.f` there loads
+\ x.f. A refusal is safe, a missed load is not.
+: SDT-TEST-STORAGE-DEFINER ( -- )
+   s" storage.f" S\" package CVT-RES\nTYPED-VARIABLE PROVIDED n\n;package\n" SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ
+   DISCOVER:LAST-TOKEN {: off:n len:n :}
+   off 31 T=
+   len 8 T= ;
+
+\ The definers are interpret keywords: in a body one is a call that takes its
+\ name when the word runs. The `;` after `create` ends MK, so the top-level
+\ loader after it, which takes no literal, is refused at itself.
+: SDT-TEST-DEFINER-IN-BODY ( -- )
+   s" definer-body.f" S\" : MK ( -- ) create ;\nrequired\n" SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ
+   DISCOVER:LAST-TOKEN {: off:n len:n :}
+   off 21 T=
+   len 8 T= ;
 
 \ --- oversized string literals: data tolerated, loader path rejected ---------
 
@@ -416,15 +476,7 @@ $7F0 constant SDT-OVER
    1 EVENT-PATH@ s" sd-large-b.f" SDT-PATH T$=
    1 EVENT-TOK@ 7 T= end T= ;
 
-\ --- tree files: a body's retirement, and the loader's own definitions --------
-
-\ driver-io.f retires loader names in a body (DRV-RETIRE-RELOADS), the run of a
-\ word no check runs: the walk reads past them and records the file's one
-\ require.
-: SDT-TEST-TREE-BODY-RETIRE ( -- )
-   s" src/habu/driver-io.f" DISCOVER:RUN
-   EVENT-COUNT 1 T=
-   0 EVENT-PATH@ s" src/habu/sign-id.f" CANONICAL drop T$= ;
+\ --- a tree file: the loader's own definitions ---------------------------------
 
 \ The loader's own definition site. The manifest tolerates the reserved names it
 \ defines, and it loads no source itself, so the walk that keys the engine's
@@ -506,8 +558,6 @@ $7F0 constant SDT-OVER
    SDT-TEST-FRESH
    SDT-TEST-WIDE
    SDT-TEST-EMIT
-   SDT-TEST-SHADOW
-   SDT-TEST-UNDEFINE
    SDT-TEST-DYNAMIC
    SDT-TEST-OPENER
    SDT-TEST-COLON-BODY
@@ -516,17 +566,17 @@ $7F0 constant SDT-OVER
    SDT-TEST-UNTERM-STRING
    SDT-TEST-PARSED-OPERAND
    SDT-TEST-COMMENTED-LITERAL
-   SDT-TEST-COMMENTED-RETIRE
    SDT-TEST-BODY-DYNAMIC
    SDT-TEST-BODY-OPENER
-   SDT-TEST-BODY-SHADOW
-   SDT-TEST-RETIRE
-   SDT-TEST-RETIRE-DYNAMIC
+   SDT-TEST-LOADER-NAME
+   SDT-TEST-LOADER-USE
+   SDT-TEST-DEFINER-OPERAND
+   SDT-TEST-STORAGE-DEFINER
+   SDT-TEST-DEFINER-IN-BODY
    SDT-TEST-BIG-STRING-DATA
    SDT-TEST-BIG-STRING-LOADER
    SDT-TEST-BIG-STRING-BODY
    SDT-TEST-BIG-STRING-PAD
-   SDT-TEST-TREE-BODY-RETIRE
    SDT-TEST-MANIFEST-INCLUDE
    SDT-TEST-EMIT-CAP
    SDT-TEST-LOCALS

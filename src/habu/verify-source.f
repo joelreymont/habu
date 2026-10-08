@@ -669,38 +669,60 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
 \ them, so that walk need not run first: a path that is no literal
 \ (E-DISC-DYNAMIC), a literal no loader takes (E-DISC-OPENER), or a path the
 \ loader refuses (E-DISC-CAPACITY): an `include` or `require` operand past
-\ PATH-CAP (LOADER-OPERAND), or one the resolver refuses (CLAIMED-LOAD). It
-\ also refuses a declaration of a loader's name (E-DISC-SHADOW) and a top-level
-\ retirement of one, or of a word it cannot read (E-DISC-RETIRE). A refusal
-\ stands at TOKEN-BYTE@, FAULT-LEN bytes long.
+\ PATH-CAP (LOADER-OPERAND), or one the resolver refuses (CLAIMED-LOAD). A
+\ declaration, `undefine` or `UNDEFINE-IF-DEFINED` of a loader word's name
+\ refuses nothing, as the walk refuses nothing for it, but a later loader form
+\ with that word the walk reads, at top level or in a body, is refused at the
+\ word as the walk refuses it (QUIET-USE). A refusal stands at TOKEN-BYTE@,
+\ FAULT-LEN bytes long.
 : QUIET-REJECT ( n n -- ) {: code:n len:n :}
    len FAULT-LEN !
    code throw ;
 
-\ The loader names discovery reserves (SD-RESERVED$?); `script-required` is
-\ not one.
-: RESERVED-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" include" STR=CI
-   a u s" included" STR=CI or
-   a u s" require" STR=CI or
-   a u s" required" STR=CI or
-   a u s" provided" STR=CI or ;
+\ A loader word's bit in SHADOWED and RETIRED, 0 for any other name: the words
+\ discovery reads as loaders (SD-LOADER-BIT), `script-required` not one.
+: LOADER-BIT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" include" STR=CI IF $01 EXIT THEN
+   a u s" included" STR=CI IF $02 EXIT THEN
+   a u s" require" STR=CI IF $04 EXIT THEN
+   a u s" required" STR=CI IF $08 EXIT THEN
+   a u s" provided" STR=CI IF $10 EXIT THEN
+   0 ;
 
-\ The name a declaration has just read, where it stands: a loader's is refused.
-: QUIET-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
-   QUIET @ 0= IF EXIT THEN
-   a u RESERVED-NAME? IF E-DISC-SHADOW u QUIET-REJECT THEN ;
+$1F constant LOADER-BITS                      \ every loader word's bit
+
+\ The loader words the file being read has declared a word of, and those it has
+\ retired: past either, the walk, which holds no wordlists, cannot tell which
+\ word the spelling names.
+variable SHADOWED
+variable RETIRED
+
+\ The name a declaration has just read.
+: NAME-DECLARED ( ptr u8 n -- )
+   LOADER-BIT SHADOWED @ or SHADOWED ! ;
+
+\ The name `undefine` has just retired at top level.
+: NAME-RETIRED ( ptr u8 n -- )
+   LOADER-BIT RETIRED @ or RETIRED ! ;
 
 \ `UNDEFINE-IF-DEFINED` (src/habu/xref.f) at top level retires the word the
-\ literal before it names, a literal of the given kind: one that is no path
-\ literal, or that names a loader, is refused; one holding a bad escape is the
-\ checker's. In a body it retires nothing until the word runs, which no check
-\ does.
-: QUIET-RETIRE ( ptr u8 n n ptr u8 n -- ) {: a:ptr u:n kind:n lit:ptr litu:n :}
-   QUIET @ 0= IF EXIT THEN
+\ literal before it names, a literal of the given kind: a path literal's, and
+\ with none, a word the walk cannot read, any loader word among them; one
+\ holding a bad escape is the checker's. In a body it retires nothing until
+\ the word runs, which no check does.
+: TOP-RETIRED ( ptr u8 n n ptr u8 n -- ) {: a:ptr u:n kind:n lit:ptr litu:n :}
    a u s" UNDEFINE-IF-DEFINED" STR=CI 0= IF EXIT THEN
    kind LIT-BAD = IF EXIT THEN
-   kind LIT-PATH <>  lit litu RESERVED-NAME?  or IF E-DISC-RETIRE u QUIET-REJECT THEN ;
+   kind LIT-PATH = IF lit litu NAME-RETIRED EXIT THEN
+   RETIRED @ LOADER-BITS or RETIRED ! ;
+
+\ A loader form the walk reads, its word u bytes long at TOKEN-BYTE: refused
+\ when the file has declared the word's name (E-DISC-SHADOW), and else when it
+\ has retired it (E-DISC-RETIRE).
+: QUIET-USE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u LOADER-BIT {: bit:n :}
+   bit SHADOWED @ and 0<> IF E-DISC-SHADOW u QUIET-REJECT THEN
+   bit RETIRED @ and 0<> IF E-DISC-RETIRE u QUIET-REJECT THEN ;
 
 \ A string loader u bytes long, after a literal of the given kind: refused
 \ after none and after one no loader takes. True when it may load the
@@ -850,8 +872,17 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
 \ (tools/source-discovery.f SD-PEND-PATH): a `c"` or `."` one gives the loader
 \ no path, so the walk records no file and the composition reads none. The
 \ path waits however long it is: the resolver alone refuses one, when its
-\ turn comes (BODY-LOAD?).
+\ turn comes (BODY-LOAD?). A loader form the walk reads in a body, `include` or
+\ `require` or a word right after a path literal, is refused first in a quiet
+\ composition when the file has replaced its loader word (QUIET-USE), on a
+\ straight line or not, as the walk refuses it.
+: BODY-USE ( ptr u8 n -- ) {: a:ptr u:n :}
+   QUIET @ 0= IF EXIT THEN
+   a u s" include" STR=CI  a u s" require" STR=CI or
+   BODY-LIT-KIND @ LIT-PATH = or IF a u QUIET-USE THEN ;
+
 : BODY-TOKEN-SEEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u BODY-USE
    BODY-DEAD @ 0 > IF a u DEAD-TOKEN BODY-PREV-CLEAR EXIT THEN
    BODY-BENT @ 0= IF a u ARM-TOKEN? IF BODY-PREV-CLEAR EXIT THEN THEN
    a u WRAP-CTL-TOK? IF 1 BODY-BENT ! THEN
@@ -2149,7 +2180,7 @@ DUPLICATE-INIT
    dup 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @
    {: name:ptr nameu:n at:n :}
-   name nameu QUIET-NAME
+   name nameu NAME-DECLARED
    name nameu REFUSE-DUPLICATE IF EXIT THEN
    name nameu at SEALED-NAME
    -1 SIG-RAW-MODE!
@@ -2169,7 +2200,7 @@ DUPLICATE-INIT
    {: dsym:n :}
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu QUIET-NAME
+   name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu REFUSE-DUPLICATE IF 0 0= EXIT THEN
    name nameu at SEALED-NAME
@@ -2196,7 +2227,7 @@ DUPLICATE-INIT
 : TRUST-DEFER ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu QUIET-NAME
+   name nameu NAME-DECLARED
    name nameu TOKEN-BYTE @ TRUST-DEFER-SIGNATURE ;
 
 variable TRUSTED-DOES                         \ the trusted body's `does>` was read
@@ -2259,7 +2290,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
 : TRUSTED-DEFINITION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu QUIET-NAME
+   name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu REFUSE-DUPLICATE IF
       REQUIRE-SIGNATURE 2drop  name nameu false SCAN-TRUSTED-BODY EXIT
@@ -2283,7 +2314,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
 : CAST-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu QUIET-NAME
+   name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu REFUSE-DUPLICATE IF REQUIRE-SIGNATURE 2drop EXIT THEN
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
@@ -2299,7 +2330,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
 : LINEAR-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu QUIET-NAME
+   name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    name nameu at nameu ARM
@@ -2316,7 +2347,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
 : UNDEFINE-WORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu QUIET-NAME
+   name nameu NAME-RETIRED
    name nameu CHECKER-UNDEFINE
    name nameu RECORD-SYM? DEFINER-RETIRE ;
 
@@ -2590,7 +2621,7 @@ variable STG-TYPE-U
 : SCAN-STORAGE-NAME ( -- ptr u8 n )
    SCAN-LINE-TOKEN
    dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
-   2dup QUIET-NAME
+   2dup NAME-DECLARED
    2dup CHECKER-LBUF-NAME-OK? IF
       2dup REFUSE-DUPLICATE 0= IF 2dup TOKEN-BYTE @ SEALED-NAME EXIT THEN
    THEN
@@ -2980,7 +3011,6 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
 : RECORD-EXPORT ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu QUIET-NAME
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
    name nameu TOP-BINDING drop PRS-FIND {: from:n :}
    name DEF-NAME-A !  nameu DEF-NAME-U !
@@ -3197,7 +3227,7 @@ variable FILE-USE
    a u s" script-required" STR=CI or  a u s" provided" STR=CI or IF
       TICK-CONTEXT-UNKNOWN
    THEN
-   QUIET @ IF a u QUIET-TOP? EXIT THEN
+   QUIET @ IF a u QUIET-USE a u QUIET-TOP? EXIT THEN
    a u s" include" STR=CI IF COMPOSE-RAW-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
    a u s" require" STR=CI IF COMPOSE-RAW-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
    a u s" included" STR=CI IF COMPOSE-STRING-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
@@ -3288,7 +3318,7 @@ variable FILE-USE
    {: kind:ptr kindu:n sig:ptr sigu:n :}
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu QUIET-NAME
+   name nameu NAME-DECLARED
    name nameu REFUSE-DUPLICATE IF EXIT THEN
    name nameu at SEALED-NAME
    name nameu at nameu ARM
@@ -3310,7 +3340,7 @@ variable FILE-USE
 : RECORD-STRUCTURE ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu QUIET-NAME
+   name nameu NAME-DECLARED
    name nameu at STRUCTURE-SIZE
    BEGIN
       NEXT-SCAN
@@ -3394,7 +3424,7 @@ TYPED-VARIABLE FFI-GROUP bool
    NEXT-SCAN TOKEN-BYTE @
    {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu QUIET-NAME
+   name nameu NAME-DECLARED
    NEXT-SCAN nip 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
    FFI-SIGNATURE {: sig:ptr sigu:n :}
    at TOKEN-BYTE !
@@ -3542,7 +3572,7 @@ TYPED-VARIABLE FFI-GROUP bool
    NAME-TOKEN TOKEN-U !  TOKEN-A !
    TOKEN-U @ 0= if E-MISSING-NAME throw then
    DEF-NAME!
-   DEF-NAME-A @ DEF-NAME-U @ QUIET-NAME
+   DEF-NAME-A @ DEF-NAME-U @ NAME-DECLARED
    DEF-NAME-A @ DEF-NAME-U @ REFUSE-DUPLICATE IF SKIP-DEFINITION EXIT THEN
    DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ SEALED-NAME
    WRAP-RESET
@@ -3723,15 +3753,16 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ the keyword stays the token before whatever follows: `char 0 TYPED-BUFFER B n`
 \ hands the count reader `char`, which names the count's word. A load a
 \ definition makes waits for the first statement after which the file has
-\ closed every scope it opened, and for the file's end at the latest. A quiet
-\ composition refuses a top-level `UNDEFINE-IF-DEFINED` by the literal before
-\ it (QUIET-RETIRE).
+\ closed every scope it opened, and for the file's end at the latest. A
+\ top-level `UNDEFINE-IF-DEFINED` retires the loader word the literal before it
+\ names (TOP-RETIRED).
 : VERIFY-SOURCE ( -- )
    SCAN-RESET
    0 DUPLICATE-U !
    SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @ CHECKER-VERIFY-SOURCE!
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
    0 FILE-PKG !  0 FILE-USE !  PEND-N @ PEND-BASE !
+   0 SHADOWED !  0 RETIRED !
    TOP-CLOSE
    BEGIN
       NEXT-SCAN dup 0 > TICK-REMAINDER @ 0= and WHILE
@@ -3739,7 +3770,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       2dup TOP-CUR-U ! TOP-CUR-A !
       CSR-TOP
       2dup FILE-SCOPE-STEP
-      2dup STR-LAST-KIND @ STR-LAST-A @ STR-LAST-U @ QUIET-RETIRE
+      2dup STR-LAST-KIND @ STR-LAST-A @ STR-LAST-U @ TOP-RETIRED
       2dup TOP-PARSER? IF TOP-OPERAND ELSE
       2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
       2dup COMPOSE-TOP? IF 2drop TOP-CLOSE ELSE
@@ -3758,14 +3789,14 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @ DIAG-SOURCE! ;
 
 \ Nested files share the checker window but not the scanner cursor. The saved
-\ source, token and open-stretch context, and whether the file scanned is the
-\ subject a completion's cursor is in, belong to the caller; declarations,
-\ learned definers and the fact that a stretch was reported belong to the
-\ entire composition. A file's packets locate in that file, and on return or
-\ throw the checker is armed with the caller's bytes
-\ again, or disarmed when the subject's scan ends, so no nested file's bytes,
-\ which its loader frame releases, stay armed. The scan of each file starts
-\ with ON-FILE, handed the bytes SOURCE! has just made the source.
+\ source, token and open-stretch context, the loader words the file replaced,
+\ and whether the file scanned is the subject a completion's cursor is in,
+\ belong to the caller; declarations, learned definers and the fact that a
+\ stretch was reported belong to the entire composition. A file's packets
+\ locate in that file, and on return or throw the checker is armed with the
+\ caller's bytes again, or disarmed when the subject's scan ends, so no nested
+\ file's bytes, which its loader frame releases, stay armed. The scan of each
+\ file starts with ON-FILE, handed the bytes SOURCE! has just made the source.
 : COMPOSE-FILE-SCAN ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n :}
    path pathu COMPOSE-DIAG$ {: diag:ptr diagu:n :}
@@ -3775,11 +3806,13 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-REFUSED @
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
    FILE-PKG @ FILE-USE @ PEND-BASE @ VISIT-CUR @ CSR-SUBJ @
+   SHADOWED @ RETIRED @
    {: olda:ptr oldu:n oldi:n oldbl:n oldbc:n oldbb:n
       oldprev:ptr oldprevu:n oldcur:ptr oldcuru:n
       olddefer:n olddefa:ptr olddefu:n oldrefused:ptr
       oldpath:ptr oldpathu:n
-      oldpkg:n olduse:n oldbase:n oldvisit:n oldsubj:n :}
+      oldpkg:n olduse:n oldbase:n oldvisit:n oldsubj:n
+      oldshadowed:n oldretired:n :}
    src srcu SOURCE!
    SOURCE-ARM
    path COMPOSE-CUR-PATH-A !  pathu COMPOSE-CUR-PATH-U !
@@ -3806,6 +3839,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    olddefu TOP-DEFER-U !  oldrefused TOP-REFUSED !
    oldpath COMPOSE-CUR-PATH-A !  oldpathu COMPOSE-CUR-PATH-U !
    oldpkg FILE-PKG !  olduse FILE-USE !  oldbase PEND-BASE !
+   oldshadowed SHADOWED !  oldretired RETIRED !
    oldpathu 0 > IF
       oldpath oldpathu COMPOSE-DIAG$ DIAG-FILE!
       SOURCE-ARM
