@@ -2104,12 +2104,11 @@ DUPLICATE-INIT
 \ this pre-pass never read. The row is the checker's own certified one, so there
 \ is no signature text to re-parse and no seal to re-apply here; what is left is
 \ the same shape - the created word is the NEXT token - and the same answer.
-\ THE TOKEN IS TESTED BEFORE THE NAME IS TAKEN: NAME-TOKEN consumes a token, and
-\ a token that is not a definer must leave the scan exactly where it was.
-: CREATED-TRUST-NEXT? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
-   a u FIND-SYM {: dsym:n :}
-   dsym CREATES-SYM? 0= IF 0 0= 0= EXIT THEN
+\ DSYM is the definer's symbol, which its caller tested (CREATES-SYM?) before
+\ the name is taken: NAME-TOKEN consumes a token, and a token that is not a
+\ definer must leave the scan exactly where it was.
+: CREATED-TRUST-NEXT? ( n -- bool )
+   {: dsym:n :}
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu QUIET-NAME
@@ -2718,6 +2717,16 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
    {: a:ptr u:n :}
    a u DEFINER-OF dup 0<> IF 1 - DEFINER-GEN @ EXIT THEN drop
    a u TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-GENERATES and 0<> ;
+
+\ A call of a word a names: row marks, right after an `s"` literal the ring
+\ holds as written: the literal is a use of the word its bytes name, at the
+\ bytes between its quotes (checker.f CHECKER-NAMED-USE). One written with an
+\ escape binds nothing: its slot's bytes are shorter than its text (ESC-BYTES).
+: TOP-NAMED ( ptr u8 n -- )
+   TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-NAMES and 0= IF EXIT THEN
+   STR-LAST-KIND @ LIT-PATH <> IF EXIT THEN
+   STR-LAST-END @ STR-LAST-AT @ -  STR-LAST-U @ <> IF EXIT THEN
+   STR-LAST-A @ STR-LAST-U @ NAMED-USE ;
 
 \ The id of the engine word a control word names (checker.f CTL-INTRINSIC).
 : BINDING-ID ( n -- n )
@@ -3376,15 +3385,24 @@ TYPED-VARIABLE FFI-GROUP bool
    \ `generates:` row earlier in the closure. The created word is the NEXT
    \ token, as it is for `constant` above - the definer's own arguments precede
    \ it - and the effect is the clause's or the row's, registered with the same
-   \ raw seal the storage definers use.
+   \ raw seal the storage definers use. The call is still a call: when a names:
+   \ row marks the definer, the literal before it is a use (TOP-NAMED, as
+   \ TOP-RESOLVE has it for a call no arm takes), bound before the created word
+   \ exists.
    a u DEFINER-EFFECT dup 0<> IF
+      a u TOP-NAMED
       TICK-CONTEXT-UNKNOWN DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT
    THEN 2drop
    \ … and last of all, a definer this pre-pass never read: one compiled in the
-   \ checking process itself, whose clause the checker certified and kept. The
-   \ token resolves through the same FIND-SYM every other name does, so the
-   \ qualified and the bare-under-`using` spelling reach the one row.
-   a u CREATED-TRUST-NEXT? IF TICK-CONTEXT-UNKNOWN 0 0= EXIT THEN
+   \ checking process itself, whose clause the checker certified and kept, or a
+   \ wrapper of one, which the checker's body walk recorded. The token resolves
+   \ through the same FIND-SYM every other name does, so the qualified and the
+   \ bare-under-`using` spelling reach the one row. Its literal binds as the
+   \ learned definer's does.
+   a u FIND-SYM {: dsym:n :}
+   dsym CREATES-SYM? 0= IF 0 0= 0= EXIT THEN
+   a u TOP-NAMED
+   dsym CREATED-TRUST-NEXT? IF TICK-CONTEXT-UNKNOWN 0 0= EXIT THEN
    0 0= 0= ;
 
 \ The colon definition just scanned, once its body was judged.
@@ -3502,16 +3520,6 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    row 0= IF a u TOP-OPAQUE EXIT THEN
    a u DEFER-AT
    row 1 - PRS-CONSUME ;
-
-\ A call of a word a names: row marks, right after an `s"` literal the ring
-\ holds as written: the literal is a use of the word its bytes name, at the
-\ bytes between its quotes (checker.f CHECKER-NAMED-USE). One written with an
-\ escape binds nothing: its slot's bytes are shorter than its text (ESC-BYTES).
-: TOP-NAMED ( ptr u8 n -- )
-   TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-NAMES and 0= IF EXIT THEN
-   STR-LAST-KIND @ LIT-PATH <> IF EXIT THEN
-   STR-LAST-END @ STR-LAST-AT @ -  STR-LAST-U @ <> IF EXIT THEN
-   STR-LAST-A @ STR-LAST-U @ NAMED-USE ;
 
 \ The checker's answer for a token: a word that may read on is TOP-PARSER's,
 \ a call it binds may make the literal before it a use (TOP-NAMED), and a

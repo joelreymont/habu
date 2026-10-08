@@ -112,9 +112,10 @@
 \   a declaration loses or moves its location when the store or the
 \   location table grows                                                  uses-growth
 \   a string literal before a call of a word a names: row declares binds
-\   other than what XREF-FIND finds by its bytes, or at other than the
-\   bytes between its quotes; a computed operand, a caller with no row of
-\   its own or an escape the bytes do not hold as written binds           named-uses
+\   other than what XREF-FIND finds by its bytes, at other than the bytes
+\   between its quotes, or nothing before a definer's call; a computed
+\   operand, a caller with no row of its own or an escape the bytes do not
+\   hold as written binds                                                 named-uses
 \   a cursor's word is missing, or names a declaration other than the one
 \   it binds: a body's prefix, an engine word the body has not used, a
 \   word a TRUSTED: body before it declares; or the body's own word, or a
@@ -3556,7 +3557,9 @@ variable USE-NODE                       \ the use line USE-FROM found
 \ alone; a word defined before the call. A computed operand, a caller with no
 \ row of its own and an escape the bytes do not hold as written bind nothing,
 \ not even the word spelled as that escape is written.
-\ The row is a use of its word, which binds at top level too.
+\ The row is a use of its word, which binds at top level too, and before a
+\ definer's call the scan takes with the name after it: a `generates:` or
+\ `does>` definer, a wrapper of one and a wrapper of a resident definer.
 : NAMED-USES ( -- )
    0 GEN-U !
    s\" : CVT-ROOK ( -- n ) 1 ;\n: CVT-LOOK ( ptr u8 n -- ) 2drop ;\nnames: CVT-LOOK\n" GEN+
@@ -3570,6 +3573,12 @@ variable USE-NODE                       \ the use line USE-FROM found
    s\" : CVT-PLAIN ( -- ) s\\\" CVT-ROOK\" CVT-LOOK ;\n" GEN+
    s\" : CVT-EARLY ( -- ) s\" CVT-LATER\" CVT-LOOK ;\n: CVT-LATER ( -- n ) 4 ;\n" GEN+
    s\" s\" CVT-ROOK\" CVT-LOOK\n" GEN+
+   s\" : CVT-NALIAS ( ptr u8 n -- ) 2drop parse-name 2drop s\" : CVT-NAX ( -- n ) 7 ;\" evaluate-closed ;\n" GEN+
+   s\" generates: CVT-NALIAS ( -- n )\nnames: CVT-NALIAS\ns\" CVT-LATER\" CVT-NALIAS CVT-NAX\n" GEN+
+   s\" : CVT-NDOES ( ptr u8 n -- ) 2drop create 0 , does> ( -- n ) @ ;\nnames: CVT-NDOES\n" GEN+
+   s\" s\" CVT-HID\" CVT-NDOES CVT-NDX\n" GEN+
+   s\" : CVT-NWRAP ( ptr u8 n -- ) CVT-NDOES ;\nnames: CVT-NWRAP\ns\" CVT-NP:CVT-PUB\" CVT-NWRAP CVT-NWX\n" GEN+
+   s\" : CVT-NBUF ( ptr u8 n -- ) 2drop 16 BUFFER: ;\nnames: CVT-NBUF\ns\" CVT-LOOK\" CVT-NBUF CVT-NBX\n" GEN+
    s" named-uses.f" DEFS-CHECK 0 s" names: verified" EXPECT-KIND
    s" names: literal body" s\" CVT-SEEK ( -- ) s\" CVT-ROOK" 8 USE
    s" names: literal body" DEFS-SRC$ s" : CVT-ROOK" 8 s" named-uses.f" USE-TARGET
@@ -3588,7 +3597,15 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" names: top level" DEFS-SRC$ s" : CVT-ROOK" 8 s" named-uses.f" USE-TARGET
    s" names: row is a use of W" s" names: CVT-LOOK" 8 USE
    s" names: row is a use of W" DEFS-SRC$ s" : CVT-LOOK" 8 s" named-uses.f" USE-TARGET
-   s" names: one line each" 17 USE-COUNT ;
+   s" names: a generates: definer's call" s\" \ns\" CVT-LATER" 9 USE
+   s" names: a generates: definer's call" DEFS-SRC$ s" : CVT-LATER" 9 s" named-uses.f" USE-TARGET
+   s" names: a does> definer's call" s\" \ns\" CVT-HID" 7 USE
+   s" names: a does> definer's call" DEFS-SRC$ s" : CVT-HID" 7 s" named-uses.f" USE-TARGET
+   s" names: a definer wrapper's call" s\" \ns\" CVT-NP:CVT-PUB" 14 USE
+   s" names: a definer wrapper's call" DEFS-SRC$ s" : CVT-PUB" 7 s" named-uses.f" USE-TARGET
+   s" names: a resident definer's wrapper" s\" \ns\" CVT-LOOK" 8 USE
+   s" names: a resident definer's wrapper" DEFS-SRC$ s" : CVT-LOOK" 8 s" named-uses.f" USE-TARGET
+   s" names: one line each" 27 USE-COUNT ;
 
 
 \ Two real includes of one file declare K at the same byte span in distinct
