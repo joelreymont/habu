@@ -1927,7 +1927,15 @@ the rule.
   pre-verifier reads its declaration group as the word's effect, an `i32`
   result as `n`. A statement naming D still marks its wordlist, so what the row
   does not declare stays the run's: `COMMAND`'s row declares `NAME`, not
-  `NAME#VEC` or `NAME#BUF`. Measured after `require lib/process-command.f
+  `NAME#VEC` or `NAME#BUF`. A call of D is no coverage gap for
+  `--verify-only` or `VERIFY:DEFERRED?`, whether the check reads D's row or the
+  engine provides D, as it does `TASK:+USER`: the checker keeps a row's origin
+  with D's created effect (`CTL-GENERATES`), so an `EXPORT` of an
+  engine-provided D keeps it too, while an `EXPORT` of a D the check reads
+  stays the run's. Nor is a `;FUNCTION` that closes a declaration group the
+  check read a gap. A word no row or group declares stays the run's where a
+  later token uses it, and a `;FUNCTION` with no group read before it is a gap.
+  Measured after `require lib/process-command.f
   CMD:COMMAND C`: `: U ( -- ptr ptr u8 ) C ;`, the same with `C#VEC`, and
   `: U ( -- ) C#BUF drop ;` check 0 plain, under `--verify-only` and under
   `--all-errors`; `: U ( -- n ) C ;` checks 70 under all three, where without

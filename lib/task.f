@@ -1566,6 +1566,8 @@ SLOT-GEN-CAP CODEGEN:BUFFER SLOT-GEN
 : SLOT-NAME ( -- ptr u8 n )
    parse-name dup 0= if E-TASK-USER throw then ;
 
+public
+
 : +USER ( n n -- n ) {: off:n size:n :}
    off size USER-NEXT {: next:n :}
    next TASK-USER-NEXT !
@@ -1579,6 +1581,8 @@ SLOT-GEN-CAP CODEGEN:BUFFER SLOT-GEN
    SLOT-GEN CODEGEN:CONTENTS INCLUDE-EVALUATE
    next ;
 generates: +USER ( -- ptr n )
+
+private
 
 : HIS ( ptr n ptr n -- ptr n ) {: tcb:ptr cur:ptr :}
    cur data-base - tcb TCB.REGION @ + ;
@@ -1866,9 +1870,6 @@ TASK-MIN-STACK constant MIN-STACK
 
 : #USER ( -- n )
    #USER ;
-
-: +USER ( n n -- n )
-   +USER ;
 
 : HIS ( ptr n ptr n -- ptr n )
    HIS ;

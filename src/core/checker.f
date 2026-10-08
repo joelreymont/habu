@@ -3802,20 +3802,20 @@ $FFFFFFFFFFFF constant XMASK-ALL         \ 2^48-1: every window cell intact
    mask 1 k lshift 1 - and ;
 
 \ A SYMBOL'S CONTROL WORD, ONE CELL. The control flags live in bits 0-15, a
-\ defer flag in bit 16 and CTL-NAMES in bit 17 -- the shape the owner-ABI
-\ handover (CHECKED-ROW / TRANSFER-ROW) travels in. The intact masks ride
-\ above them, 20 bits each, and the NORET store keeps its entries in this same
-\ shape, so the fact a definition proved about its inputs reaches a later
-\ engine without a wider record or a second cell. Twenty is what fits beside
-\ the flags with room to spare: a word with more than 20 declared inputs keeps
-\ no evidence for the deeper ones, which is the conservative answer, and it is
-\ the one a producer that never heard of masks gives by leaving those bits
-\ zero.
+\ defer flag in bit 16, CTL-NAMES in bit 17 and CTL-GENERATES in bit 18 -- the
+\ shape the owner-ABI handover (CHECKED-ROW / TRANSFER-ROW) travels in. The
+\ intact masks ride above them, 20 bits each, and the NORET store keeps its
+\ entries in this same shape, so the fact a definition proved about its inputs
+\ reaches a later engine without a wider record or a second cell. Twenty is
+\ what fits beside the flags with room to spare: a word with more than 20
+\ declared inputs keeps no evidence for the deeper ones, which is the
+\ conservative answer, and it is the one a producer that never heard of masks
+\ gives by leaving those bits zero.
 20 constant XFER-MASK-BITS
 $FFFFF constant XFER-MASK-ALL
 20 constant XFER-DMASK-SHIFT
 40 constant XFER-RMASK-SHIFT
-$3FFFF constant XFER-FLAG-MASK       \ the control flags, the defer bit and CTL-NAMES
+$7FFFF constant XFER-FLAG-MASK       \ the control flags, the defer bit, CTL-NAMES and CTL-GENERATES
 
 : XFER-PACK ( n n n -- n ) {: flags:n dmask:n rmask:n :}
    flags XFER-FLAG-MASK and
@@ -10762,6 +10762,7 @@ PPRIM: CHECKER-OWNER-ABI VERIFY-TOP-BINDING-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-PARSES PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-DEFER PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-NAMES PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI BINDING-GENERATES PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-ID-SHIFT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-ID-MASK PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-PARSES-ID PE-N PE-OUT PPRIM;
@@ -14575,8 +14576,9 @@ $80 constant CTL-RENDERS
 \ and an export does not copy them (EXPORT-META-COPY).
 \ The control word's bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13
 \ CTL-PARSES and 14 CTL-CREATES (below), 15 CTL-NOMINAL, 16 the defer bit
-\ (ASIG-GRAPH-DEFER, TRANSFER-DEFER), 17 CTL-NAMES (below), 18-19 free outside
-\ the flag mask, 20-39 and 40-59 the intact masks (XFER-PACK).
+\ (ASIG-GRAPH-DEFER, TRANSFER-DEFER), 17 CTL-NAMES and 18 CTL-GENERATES
+\ (below), 19 free outside the flag mask, 20-39 and 40-59 the intact masks
+\ (XFER-PACK).
 CHECKER-OWNER-ABI:BINDING-ID-SHIFT constant CTL-INTRINSIC-SHIFT
 CHECKER-OWNER-ABI:BINDING-ID-MASK constant CTL-INTRINSIC-MASK
 CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
@@ -14613,6 +14615,13 @@ $4000 constant CTL-CREATES
 \ may-effect of the selected word, inherited by a wrapper as the other control
 \ effects are; it grants no registration authority to checked code.
 $8000 constant CTL-NOMINAL
+\ CTL-GENERATES means the symbol's created effect (NORET-CREATES@) is what a
+\ `generates:` row states: its own row (CHECKER-GENERATES) or the exported
+\ word's (EXPORT-META-COPY). The source pre-pass then reads a call of it as
+\ declared, not as text it never reads (src/habu/verify-source.f
+\ DECLARED-RENDER?). It describes that cell, not what a call may do, so
+\ CTL-INHERITED leaves it out and a wrapper never takes it (STORE).
+CHECKER-OWNER-ABI:BINDING-GENERATES constant CTL-GENERATES
 CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or constant CTL-INHERITED
 \ CTL-NAMES means a `names:` row declared that the word looks its top string
 \ operand up as XREF-FIND does, so a string literal just before a call of it
@@ -14621,7 +14630,7 @@ CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or constant CTL-INHERITED
 \ operand on inherits nothing and declares its own row.
 CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
 $1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or CTL-INHERITED or
-CTL-INTRINSIC-MASK or CTL-NAMES or
+CTL-INTRINSIC-MASK or CTL-NAMES or CTL-GENERATES or
    constant CTL-GRAPH-FLAGS
 \ $28000 not $10000: the entry carries three cells beyond (sym, flags) — the
 \ back-link, the created-word effect and the exported word below — so the byte
@@ -15667,6 +15676,9 @@ private
 \ A DEFINER'S OWN CLAUSE WINS over the wrapper rule, which is only reached when
 \ the record is not a definer's: a definer whose body also calls a definer arms
 \ both latches, and what it creates is what its own `does>` clause declared.
+\ A new record clears CTL-GENERATES: only a `generates:` row after the
+\ definition states its effect (CHECKER-GENERATES), and a wrapper, which takes
+\ its definer's effect, states nothing about the rest of its body.
 \
 \ A TRUSTED definer's clause reaches this word too. It has no body check of its
 \ own to step the latch, so TRUST-DECL steps it at the publication instead and
@@ -15679,7 +15691,7 @@ private
    DOES-EFF-TAKE WRAP-TAKE {: latched:n wrapped:n :}
    external IF latched 0 <> IF latched ELSE wrapped THEN ELSE 0 THEN {: creates:n :}
    sym CTL-FLAGS-SYM {: old:n :}
-   old EFFECT-EXTERNAL invert and
+   old EFFECT-EXTERNAL CTL-GENERATES or invert and
    external IF EFFECT-EXTERNAL or THEN {: flags:n :}
    old flags <>  creates sym NORET-CREATES@ <>  or IF
       sym flags sym CTL-MASKS-SYM creates NORET-ADD-CREATES
@@ -25020,8 +25032,10 @@ variable TOP-ASK-ANSWER
 \ a word here, that nothing already states what D makes (its clause, an
 \ earlier row, or the definer it wraps), and that the effect parses. It is the
 \ third writer of the cell, beside STORE's latch take and
-\ CHECKER-NATIVE-DOES-PUBLISH, and appends through NORET-APPEND like them,
-\ carrying D's flags and masks forward.
+\ CHECKER-NATIVE-DOES-PUBLISH, and appends through NORET-ADD-CREATES like them,
+\ carrying D's flags and masks forward, with CTL-GENERATES set: the word a call
+\ of D makes is the one the row declares, so the pre-pass reads the call as
+\ declared (verify-source.f DECLARED-RENDER?).
 0 constant GENR-UNRESOLVED                \ D names no word here
 1 constant GENR-CREATES                   \ something already states what D makes
 2 constant GENR-BADSIG                    \ the effect does not parse; SGBAD says why
@@ -25130,7 +25144,7 @@ TRUSTED: generates: ( -- )
    na nu sa su RES-FALSE CHECKER-GENERATES
    {: sym:n rec:n :}
    rec 0= IF EXIT THEN
-   sym sym CTL-FLAGS-SYM sym CTL-MASKS-SYM rec NORET-ADD-CREATES ;
+   sym sym CTL-FLAGS-SYM CTL-GENERATES or sym CTL-MASKS-SYM rec NORET-ADD-CREATES ;
 
 \ ---- parses: rows -------------------------------------------------------------
 \ A TOP-LEVEL WORD THAT READS THE SOURCE AFTER IT (CTL-PARSES) TAKES TOKENS NO

@@ -351,6 +351,10 @@ SUITE check-cli-boundary
    tools/check-test.f
 ;SUITE
 
+SUITE live-verify-source
+   test/live-verify-source-e2e.f
+;SUITE
+
 SUITE check-verify
    tools/check-verify-test.f
 ;SUITE

@@ -1382,6 +1382,7 @@ CTL-RENDERS CTL-NOMINAL or constant MARK-NOMINAL
 DYNAMIC-BUFFER DEFINER-SYM n
 DYNAMIC-BUFFER DEFINER-LEN n               \ its effect's length, 0 for a retired row
 DYNAMIC-BUFFER DEFINER-AT n                \ where its effect starts in DEFINER-SIG
+DYNAMIC-BUFFER DEFINER-GEN bool            \ its own `generates:` row states it
 DYNAMIC-BUFFER DEFINER-SIG u8
 
 : DEFINER-SIG@ ( n -- ptr u8 n ) {: row:n :}
@@ -1413,7 +1414,8 @@ DYNAMIC-BUFFER DEFINER-SIG u8
    VERIFY-DEFINER-N @
    {: row:n :}
    row 1 + DEFINER-SYM-RESERVE  row 1 + DEFINER-LEN-RESERVE  row 1 + DEFINER-AT-RESERVE
-   sym row DEFINER-SYM !  0 row DEFINER-LEN !  0 row DEFINER-AT !
+   row 1 + DEFINER-GEN-RESERVE
+   sym row DEFINER-SYM !  0 row DEFINER-LEN !  0 row DEFINER-AT !  false row DEFINER-GEN !
    row 1 + VERIFY-DEFINER-N !
    row ;
 
@@ -1429,16 +1431,17 @@ DYNAMIC-BUFFER DEFINER-SIG u8
    at u + DEFINER-SIG-RESERVE
    at ;
 
-\ Record `sig` as the effect the definer named by `sym` creates. A name with a
-\ live row keeps that row and takes the newer effect, which is what the run
-\ time does: a replacement clause replaces the old created-word effect. An
-\ empty effect holds no byte: its row's length is 0, which DEFINER-FIND reads
-\ as retired, and no place in DEFINER-SIG, which may hold no byte yet, is
-\ formed for it.
-: DEFINER-ADD ( ptr u8 n n -- ) {: sig:ptr sigu:n sym:n :}
+\ Record `sig` as the effect the definer named by `sym` creates, and `gen`,
+\ whether a `generates:` row states it. A name with a live row keeps that row
+\ and takes the newer effect, which is what the run time does: a replacement
+\ clause replaces the old created-word effect. An empty effect holds no byte:
+\ its row's length is 0, which DEFINER-FIND reads as retired, and no place in
+\ DEFINER-SIG, which may hold no byte yet, is formed for it.
+: DEFINER-ADD ( ptr u8 n bool n -- ) {: sig:ptr sigu:n gen:bool sym:n :}
    sym 0= IF EXIT THEN                        \ never recorded: nothing to hang it on
    sym DEFINER-ROW
    {: row:n :}
+   gen row DEFINER-GEN !
    sigu 0= IF 0 row DEFINER-AT !  0 row DEFINER-LEN !  EXIT THEN
    sigu DEFINER-ROOM
    {: at:n :}
@@ -1628,7 +1631,7 @@ variable WRAP-ROW                             \ the definer row the last call na
    0 WRAP-DEFINERS !  0 WRAP-CTL !  0 WRAP-ROW ! ;
 
 : DEFINER-RECORD-AS ( ptr u8 n ptr u8 n -- ) {: sig:ptr sigu:n na:ptr nu:n :}
-   sig sigu na nu RECORD-SYM? DEFINER-ADD ;
+   sig sigu false na nu RECORD-SYM? DEFINER-ADD ;
 
 : DEFINER-RECORD ( ptr u8 n -- )
    DEF-NAME-A @ DEF-NAME-U @ DEFINER-RECORD-AS ;
@@ -2705,6 +2708,17 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
 : TOP-BINDING ( ptr u8 n -- n n n )
    CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF OWNER-XT BINDING-ACTION execute ;
 
+\ Whether the token's definer has its own `generates:` row, so the text a call
+\ renders is the word the row declares: the row this scan read
+\ (RECORD-GENERATES, DEFINER-GEN) or, for a definer it never read, the one the
+\ engine keeps with the definer's created effect (src/core/checker.f
+\ CTL-GENERATES). A wrapper has none: it states nothing about the rest of its
+\ body.
+: DECLARED-RENDER? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u DEFINER-OF dup 0<> IF 1 - DEFINER-GEN @ EXIT THEN drop
+   a u TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-GENERATES and 0<> ;
+
 \ The id of the engine word a control word names (checker.f CTL-INTRINSIC).
 : BINDING-ID ( n -- n )
    CHECKER-OWNER-ABI:BINDING-ID-MASK and CHECKER-OWNER-ABI:BINDING-ID-SHIFT rshift ;
@@ -3212,7 +3226,7 @@ variable FILE-USE
    name nameu FIND-SYM
    {: sym:n :}
    name nameu sig sigu sym DEFINER-FIND 0<> GENERATES-SIGNATURE nip 0= IF EXIT THEN
-   sig sigu sym DEFINER-ADD ;
+   sig sigu true sym DEFINER-ADD ;
 
 \ `FUNCTION: NAME symbol ( effect ) ... ;FUNCTION` (lib/ffi-abi.f) makes NAME
 \ from its declaration group, so the group is NAME's effect with the one rewrite
@@ -3221,10 +3235,13 @@ variable FILE-USE
 \ The live declaration pins this reading: test/certify-does-definer.f section 10.
 \ The effect is rebuilt in a byte row of its own, which grows with the group:
 \ BODY-BUF holds only runs read out of the source (BODY-APPEND), and the
-\ rewritten `n` is not one.
+\ rewritten `n` is not one. Whether the group was kept is held until a
+\ `;FUNCTION` closes it, since that closer renders the word the group declares
+\ (FFI-CLOSER?).
 variable FFI-OUT
 DYNAMIC-BUFFER FFI-SIG u8
 variable FFI-SIG-U
+TYPED-VARIABLE FFI-GROUP bool
 
 : FFI-APPEND ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -3263,7 +3280,13 @@ variable FFI-SIG-U
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    DISARM
+   dup FFI-GROUP !
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN ;
+
+\ A `;FUNCTION` closing a group this scan kept.
+: FFI-CLOSER? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u s" ;FUNCTION" STR=CI FFI-GROUP @ and ;
 
 : RECORD-DEFINER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" package" STR=CI IF RECORD-PACKAGE 0 0= EXIT THEN
@@ -3339,9 +3362,16 @@ variable FFI-SIG-U
    \ name resolves and is checked against the row, and the mark covers what no
    \ row declares, such as COMMAND's NAME#VEC and NAME#BUF. A statement no arm
    \ takes is TOP-TOKEN's, which marks it again and resolves it.
-   \ A learned definer below consumes its call, so note renderer coverage here.
+   \ A definer below consumes its call, so note renderer coverage here: the
+   \ text is outside this scan unless a `generates:` row states what it makes
+   \ (DECLARED-RENDER?) or it is a `;FUNCTION` closing a group the scan read,
+   \ which this arm takes. A word no row or group declares is still the mark's,
+   \ and where a later token uses it, that stretch or definition is deferred.
    a u QUIET-NOMINAL
-   a u MARK-RENDERS RENDERS-MARK? IF -1 DEFER-SEEN ! THEN
+   a u MARK-RENDERS RENDERS-MARK? IF
+      a u FFI-CLOSER? IF false FFI-GROUP ! 0 0= EXIT THEN
+      a u DECLARED-RENDER? 0= IF -1 DEFER-SEEN ! THEN
+   THEN
    \ … and last, a definer this pre-pass learned from a `does>` definition or a
    \ `generates:` row earlier in the closure. The created word is the NEXT
    \ token, as it is for `constant` above - the definer's own arguments precede
@@ -3675,7 +3705,7 @@ COMPOSE-INIT
 \ path alike.
 : RUN-IN-SCOPE ( [ -- ] -- )
    TICK-CONTEXT-RESET
-   false TICK-REMAINDER !
+   false TICK-REMAINDER !  false FFI-GROUP !
    0 CERTIFIED-N !  0 DEFERRED-N !  0 DEFER-SEEN !
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
    catch

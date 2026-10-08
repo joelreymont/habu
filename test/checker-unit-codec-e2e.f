@@ -126,10 +126,10 @@ CAST: IMPORT-XT ( n -- [ ptr u8 n -- ] )
 
 : CHECK-ROOT-GRAPH ( -- )
    ART BAD ART-U @ BYTE-COPY
-   \ Bit 18 lies outside the graph control flags (src/core/checker.f, the
-   \ control word's bits), so a graph header carrying it cannot be imported.
+   \ A root header bit outside the graph flags (src/core/checker.f
+   \ CTL-GRAPH-FLAGS) cannot be imported as graph control metadata.
    BAD FIRST-GRAPH-OFF + 9 cells + CELL-VIEW
-   dup @ $40000 or swap !
+   dup @ CTL-GRAPH-FLAGS invert dup negate and or swap !
    [: BAD ART-U @ IMPORT ;] catch E-UNIT-FORMAT T= ;
 
 : CHECK-DEFER-CONTROL ( -- )

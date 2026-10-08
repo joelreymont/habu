@@ -8,6 +8,8 @@ require lib/string.f
 require lib/test/eval.f
 require src/habu/verify-source.f
 require lib/verify-diagnostics.f
+require lib/task.f
+require lib/ffi-abi.f
 
 package LIVE-VERIFY-SOURCE-TEST
 
@@ -21,6 +23,9 @@ create NESTED-DESIGN FS-PATH-CAP allot variable NESTED-DESIGN-U
 
 public
 variable ACTUAL
+\ A definer resident in this process whose body reaches a loader: its words
+\ are its does> clause's, and no row states what the loaded text makes.
+: LOADER-D ( n -- ) create , s" absent-file.f" included does> ( -- n ) @ ;
 
 private
 
@@ -157,7 +162,11 @@ private
 \ A quiet check cannot read text that a selected top-level call renders at
 \ run time. Its coverage answer is useful to direct callers without requesting
 \ diagnostic packets. A checked body with a string loader still imports no
-\ source into the quiet composition.
+\ source into the quiet composition. A `generates:` row states what its
+\ definer's text makes, so a call of that definer keeps coverage, whether the
+\ check reads the row or the engine holds it, and so does a `;FUNCTION` closing
+\ a declaration group the check read. A word that calls the definer states
+\ nothing about the rest of its body, so its call stays a gap.
 PTR-VARIABLE RUNTIME-A
 variable RUNTIME-U
 
@@ -198,6 +207,30 @@ variable RUNTIME-U
    RUNTIME-COMPOSE swap 0 T= TFALSE
    s" a learned definer's reached loader loses coverage" T-LABEL
    S\" : LV-D ( n -- ) create , s\" absent-file.f\" included does> ( -- n ) @ ;\n1 LV-D LV-X\n"
+   RUNTIME-COMPOSE swap 0 T= TTRUE
+   s" a generates: definer's call keeps coverage" T-LABEL
+   S\" : LV-GEN ( -- ) parse-name {: a:ptr u:n :} SB-RESET s\" : \" SB-APPEND a u SB-APPEND s\"  ( -- n ) 7 ;\" SB-APPEND SB$ evaluate-closed ;\ngenerates: LV-GEN ( -- n )\nLV-GEN LV-SEVEN\nLV-SEVEN drop\n"
+   RUNTIME-COMPOSE swap 0 T= TFALSE
+   s" a read definer's wrapper that also loads loses coverage" T-LABEL
+   S\" : LV-GL ( -- ) parse-name 2drop s\" : LV-GLX ( -- n ) 7 ;\" evaluate-closed ;\ngenerates: LV-GL ( -- n )\n: LV-WL ( -- ) LV-GL s\" absent-file.f\" included ;\nLV-WL LV-GLX\nLV-GLX drop\n"
+   RUNTIME-COMPOSE swap 0 T= TTRUE
+   s" an engine definer's wrapper that also loads loses coverage" T-LABEL
+   S\" : LV-UW ( n n -- n ) TASK:+USER s\" absent-file.f\" included ;\nTASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 1 cells LV-UW LV-USLOT drop\nLV-USLOT drop\n"
+   RUNTIME-COMPOSE swap 0 T= TTRUE
+   s" an engine definer's generates: row keeps coverage" T-LABEL
+   S\" TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 1 cells TASK:+USER LV-SLOT drop\nLV-SLOT drop\n"
+   RUNTIME-COMPOSE swap 0 T= TFALSE
+   s" an export of an engine definer keeps its row" T-LABEL
+   S\" package LV-EXP public EXPORT TASK:+USER ;package\nTASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 1 cells LV-EXP:+USER LV-SLOT2 drop\nLV-SLOT2 drop\n"
+   RUNTIME-COMPOSE swap 0 T= TFALSE
+   s" a resident definer's reached loader loses coverage" T-LABEL
+   S\" 1 LIVE-VERIFY-SOURCE-TEST:LOADER-D LV-Y\n"
+   RUNTIME-COMPOSE swap 0 T= TTRUE
+   s" a closed FUNCTION: group keeps coverage" T-LABEL
+   S\" PROCESS-SYMBOLS\nFUNCTION: LV-PID getpid ( -- i32 ) ;FUNCTION\n: LV-H ( -- n ) LV-PID ;\n"
+   RUNTIME-COMPOSE swap 0 T= TFALSE
+   s" a ;FUNCTION closing no group loses coverage" T-LABEL
+   S\" ;FUNCTION\n"
    RUNTIME-COMPOSE swap 0 T= TTRUE
    s" an unresolved storage type loses coverage without packets" T-LABEL
    S\" s\" chz\" s\" 0 VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM\nTYPED-VARIABLE LV-V chz\n"
