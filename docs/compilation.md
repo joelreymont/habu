@@ -46,3 +46,12 @@ does not follow one yet, its **Now** line says what differs.
    and the Gforth bootstrap are occasional integration tests.
    **Now:** `tools/build-fixpoint.f` also compiles glued source text to a byte
    fixpoint, and test files build engines of their own.
+7. **One interpreter, one codegen per platform.** The interpret loop,
+   definers, packages and source loading are written once in Habu and run on
+   every target. Each definition compiles through the current platform's
+   codegen. Hand-written code per target is only the kernel's primitives.
+   **Now:** ARM64 runs a machine-code interpreter (`src/habu/habu2.f`) with
+   a codegen of its own, the tier-0 JIT (`src/habu/jit.f`); the Habu loop
+   (`src/habu/interpret.f`) runs only under tests; x86-64 has no interpreter
+   (`src/habu/kernel-x64.f:1752`). The platform codegen compiles 2.51 ms per
+   word against the JIT's 0.105 ms (`docs/compiler-measurements.md:361`).
