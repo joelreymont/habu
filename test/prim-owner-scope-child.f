@@ -473,7 +473,7 @@ $0A constant LF-C
 \ only before the seal - where src/core/sumtype.f's caller compiles, and where
 \ test/prim-owner-scope-prepare.f measures it. After the seal a reopened owner
 \ is refused too, and only a TRUSTED: body reaches the record, through the
-\ global row the field-projection tests' TRUSTED: armer keeps.
+\ global trusted-only row (src/core/checker.f FIELD-PROJ!).
 : TYPE-DECL-CASES ( -- )
    0 TIER:SELECT
    TYPE-DECL-OPEN

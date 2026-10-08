@@ -10435,8 +10435,8 @@ PRIM: CHECKER-RESET-SOURCE PRIM;
 PRIM-TRUSTED-ONLY!
 PRIM: CHECKER-TRUSTED-TICK? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
-\ Outside TYPE-DECL only a TRUSTED: caller, such as test/field-proj-lib.f FP-ARM,
-\ arms the window through this global row.
+\ Outside TYPE-DECL only a TRUSTED: caller arms the window through this global
+\ row.
 PRIM: FIELD-PROJ! PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!
 \ The type declarer arms the window for each generated accessor

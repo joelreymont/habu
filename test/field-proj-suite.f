@@ -7,11 +7,12 @@
 \ `ptr <field-type>` from a `ptr family<args>` input and a committed field id —
 \ the one shape the ordinary layout fence refuses. The generate-field lane will
 \ emit accessor words that call the `field-project` op inside this window; this
-\ suite drives the op directly under a test-armed window (arming through a
-\ TRUSTED forwarder to the sealed FIELD-PROJ!, exactly as the whitebox suites
-\ reach CTOR-PEND! / TFAM-FIND-IN), so it pins the exact contract the generator
-\ binds to. The forwarder, the lookups and the accessors are
-\ test/field-proj-lib.f's, which test/field-proj-boundary-child.f shares.
+\ suite drives the op directly under a test-armed window (arming through
+\ TYPE-DECL's checked forwarder FP-ARM, which FIELD-PROJ!'s owner row types), so
+\ it pins the exact contract the generator binds to. The forwarder and the
+\ family lookup FAM-ID are test/field-proj-arm.f's; the field lookup and the
+\ accessors are test/field-proj-lib.f's, which test/field-proj-boundary-child.f
+\ shares.
 \
 \ Sections:
 \   1. positives: cell field, byte-offset field, and a generic-substituted field
@@ -38,6 +39,7 @@ variable #CASE
    then ;
 
 require test/checker-assert.f
+require test/field-proj-arm.f
 require test/field-proj-lib.f
 using FIELD-PROJ-LIB
 
@@ -60,14 +62,14 @@ PRODUCT fpptr 0
   FIELD k n
 ;PRODUCT
 variable FPPTR-FAM   variable FID-P
-s" fpptr" FAM-ID FPPTR-FAM !
+s" fpptr" FIELD-PROJ-ARM:FAM-ID FPPTR-FAM !
 FPPTR-FAM @ s" p" FLD-ID FID-P !
-s" FPX-P" FID-P @ 0 FP-ARM
+s" FPX-P" FID-P @ 0 TYPE-DECL:FP-ARM
 s" FPX-P ( ptr fpptr -- ptr ptr u8 ) 0 field-project" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ generic-substituted field: the generic accessor certifies with the substituted
 \ output type, and at fpg<n> reads the stored value back.
-s" FPX-V" FID-V @ 0 FP-ARM
+s" FPX-V" FID-V @ 0 TYPE-DECL:FP-ARM
 s" FPX-V ( ptr fpg<a> -- ptr a ) 0 field-project" CHECK-QUIET-CANDIDATE! -1 T=
 42 0 FPG-STORE
 0 FPG-GET 42 T=
@@ -80,35 +82,35 @@ FP-CLEAR
 s" FPX-U ( ptr fprec -- ptr n ) 0 field-project" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ forged offset: the baked offset disagrees with the committed offset of the id.
-s" FPX-WO" FID-A @ CELL FP-ARM
+s" FPX-WO" FID-A @ CELL TYPE-DECL:FP-ARM
 s" FPX-WO ( ptr fprec -- ptr n ) 0 field-project" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ offset past the family width (also disagrees with the committed offset).
-s" FPX-PW" FID-A @ 999 FP-ARM
+s" FPX-PW" FID-A @ 999 TYPE-DECL:FP-ARM
 s" FPX-PW ( ptr fprec -- ptr n ) 999 field-project" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ projection on a non-layout pointer: the input pointee is a scalar, not a family.
-s" FPX-NL" FID-A @ 0 FP-ARM
+s" FPX-NL" FID-A @ 0 TYPE-DECL:FP-ARM
 s" FPX-NL ( ptr n -- ptr n ) 0 field-project" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ foreign family: field id from fprec applied to a pointer of another family.
 PRODUCT fprec2 0
   FIELD a n
 ;PRODUCT
-s" FPX-FF" FID-A @ 0 FP-ARM
+s" FPX-FF" FID-A @ 0 TYPE-DECL:FP-ARM
 s" FPX-FF ( ptr fprec2 -- ptr n ) 0 field-project" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ value/pointer role confusion: field p is a POINTER (`ptr u8`), so its
 \ projection is `ptr ptr u8`; declaring a scalar output `ptr n` rejects.
-s" FPX-RO" FID-P @ 0 FP-ARM
+s" FPX-RO" FID-P @ 0 TYPE-DECL:FP-ARM
 s" FPX-RO ( ptr fpptr -- ptr n ) 0 field-project" CHECK-QUIET-CANDIDATE! 0 T=
 \ wrong scalar type: field a is `n` (integer cell), declaring `ptr r` (real)
 \ rejects — the projected `ptr n` does not coerce to `ptr r`.
-s" FPX-RS" FID-A @ 0 FP-ARM
+s" FPX-RS" FID-A @ 0 TYPE-DECL:FP-ARM
 s" FPX-RS ( ptr fprec -- ptr r ) 0 field-project" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ malformed arming: an uncommitted field id fails closed (E-PF-ID caught).
-s" FPX-BID" TYPE-FIELD:COUNT 100 + 0 FP-ARM
+s" FPX-BID" TYPE-FIELD:COUNT 100 + 0 TYPE-DECL:FP-ARM
 s" FPX-BID ( ptr fprec -- ptr n ) 0 field-project" CHECK-QUIET-CANDIDATE! 0 T=
 FP-CLEAR
 

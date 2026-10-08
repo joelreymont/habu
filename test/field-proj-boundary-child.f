@@ -1,5 +1,6 @@
-\ This also executes generated accessor bodies through the trusted arming
+\ This also runs generated accessor bodies through TYPE-DECL's checked arming
 \ forwarder, with scalar, offset and generic field projections read by value.
+require test/field-proj-arm.f
 require test/field-proj-lib.f
 
 package FIELD-BOUNDARY-TEST
@@ -58,7 +59,7 @@ public
    10 20 0 FP-STORE 30 40 1 FP-STORE 42 0 FPG-STORE
    \ A projection rule refuses through the transferred checker: field a's
    \ committed offset is 0, not the CELL the single-shot window is armed with.
-   s" FPX-WO" FID-A @ CELL FP-ARM
+   s" FPX-WO" FID-A @ CELL TYPE-DECL:FP-ARM
    s" FPX-WO ( ptr fprec -- ptr n ) 0 field-project" CHECK-QUIET-CANDIDATE! 0 =ASSERT
    s" FIELD-PROJ!" 0 search-wl 0 =ASSERT
    s" FP-GOOD ( -- n ) 42" CHECK-CANDIDATE! -1 =ASSERT
@@ -79,9 +80,9 @@ public
    s" ;package" TRY 0 =ASSERT
    s" FPX-FORGE ( ptr u8 n n n -- ) FIELD-PROJ!" CHECK-CANDIDATE! 0 =ASSERT
 
-   \ The trusted forwarder really used this tier, and the earlier projections
-   \ remain callable after all refusals.
-   s" ' FIELD-PROJ-LIB:FP-ARM dup 4 + code-origin FIELD-BOUNDARY-TEST:RESULT !"
+   \ The lib's projection reader really used this tier, and the earlier
+   \ projections remain callable after all refusals.
+   s" ' FIELD-PROJ-LIB:FP-GETA dup 4 + code-origin FIELD-BOUNDARY-TEST:RESULT !"
       evaluate-closed
    RESULT @ tier@ =ASSERT
    0 FP-GETA 10 =ASSERT

@@ -1,14 +1,10 @@
 \ A JIT-hosted source window need not record pre-hook declarations. Replay the
-\ real arming declaration so the policy is tested with an active user effect.
+\ armer's storage declarations so the policy is tested with an active user
+\ effect.
 package FIELD-BOUNDARY-PREPARE
 public
 
 TRUSTED: DECLARATION ( -- )
-   s" FIELD-PROJ!" s" ptr u8 n n n --" TRUST-DECL
-   \ field-proj-lib.f's checked calls to these two need their real pre-hook
-   \ signatures for native call lowering in this JIT-hosted source window.
-   s" FIELD-PROJ-CLEAR" s" --" TRUST-DECL
-   s" TFAM:TFAM-FIND-IN" s" ptr u8 n ptr u8 n -- n bool" TRUST-DECL
    s" FIELD-PROJ-A" s" -- ptr ptr u8" TRUST-DECL
    s" FIELD-PROJ-U" s" -- ptr n" TRUST-DECL
    s" FIELD-PROJ-FID" s" -- ptr n" TRUST-DECL
@@ -21,11 +17,14 @@ TRUSTED: DECLARATION ( -- )
 
 ;package
 FIELD-BOUNDARY-PREPARE:DECLARATION
-s" FIELD-PROJ!" FIELD-BOUNDARY-PREPARE:REQUIRE-USER-ROW
 s" FIELD-PROJ-A" FIELD-BOUNDARY-PREPARE:REQUIRE-USER-ROW
 s" FIELD-PROJ-U" FIELD-BOUNDARY-PREPARE:REQUIRE-USER-ROW
 s" FIELD-PROJ-FID" FIELD-BOUNDARY-PREPARE:REQUIRE-USER-ROW
 s" FIELD-PROJ-OFF" FIELD-BOUNDARY-PREPARE:REQUIRE-USER-ROW
+
+\ TYPE-DECL's checked arming word and FIELD-PROJ-ARM:FAM-ID compile before the
+\ seal.
+require test/field-proj-arm.f
 
 \ Complete the production declaration participants before loading library
 \ families in the projection suite. The last participant seals registration.
