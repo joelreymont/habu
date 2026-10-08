@@ -57,10 +57,11 @@ lives here; build, test and environment rules live in
   `unit-compile-run` is `SOURCE-UNIT`'s, whose public `GUARDED` is how other
   code runs one source under a token guard; both keep their global
   trusted-only rows, so a checked caller elsewhere is `E-CAP-TRUSTED`.
-  `source-unit-run`'s
-  `SOURCE-ROOT` row is trusted-only, so no checked caller is admitted,
-  inside `SOURCE-ROOT` included: a `TRUSTED:` body or unchecked tier-0 code
-  calls it.
+  `source-unit-run`'s `SOURCE-ROOT` row admits its owner's checked bodies
+  (`test/closed-unit-suite.f`, on the whitebox engine, since the product
+  seals `SOURCE-ROOT`); outside `SOURCE-ROOT` a checked caller gets the
+  global trusted-only row's `E-CAP-TRUSTED` at both tiers, and a `TRUSTED:`
+  body or unchecked tier-0 code calls it.
   `test/owner-access.f` and `test/prim-owner-scope.f` pin the rule.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with

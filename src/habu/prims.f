@@ -368,8 +368,8 @@ EPPRIM: SOURCE-UNIT unit-compile-run
    PE-Q ;PE-Q PE-IN PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: source-unit-run PE-Q ;PE-Q PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ closes one whole source unit without an evaluator frame
+\ Checked caller: test/closed-unit-suite.f CU-RUN, on the whitebox engine.
 EPPRIM: SOURCE-ROOT source-unit-run PE-Q ;PE-Q PE-IN ECLOSE-PRIVATE
-ETRUSTED-ONLY!
 
 EPRIM: dup   PE-A PE-IN  PE-A PE-OUT PE-A PE-OUT REF PRIM-REF:S-DUP EPRIM;
 EPRIM: drop  PE-A PE-IN REF PRIM-REF:S-DROP EPRIM;

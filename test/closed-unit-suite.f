@@ -7,7 +7,7 @@ require src/habu/stack-abi.f
 package SOURCE-ROOT
 private
 
-TRUSTED: CU-RUN ( [ -- ] -- ) source-unit-run ;
+: CU-RUN ( [ -- ] -- ) source-unit-run ;
 
 : CU-BASE ( -- ptr u8 )
    data-base STACK-ABI:BASE-CELL + 0 ptr-field @ ;

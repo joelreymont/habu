@@ -87,9 +87,9 @@ private
    s" E-CAP-TRUSTED habu: in oa-ns1: 'namespace-record' is a trust-boundary primitive"
    REACHES-REPORTED ;
 
-\ OWNED comes from the rows, not a name list: source-unit-run's trusted-only
-\ SOURCE-ROOT row makes it owned too, so unchecked tier-0 code compiles a call
-\ to it, and the call runs its callback, which prints the marker.
+\ OWNED comes from the rows, not a name list: source-unit-run's SOURCE-ROOT
+\ row makes it owned too, so unchecked tier-0 code compiles a call to it, and
+\ the call runs its callback, which prints the marker.
 : UNIT-RUN ( -- )
    s" 0 set-check : OA-UNIT ( xt -- ) source-unit-run ; ' OA-AT OA-UNIT"
    0 REACHES ;
@@ -123,14 +123,18 @@ private
    s" : OA-NS-OUT0 ( ptr u8 n bool -- n ) namespace-record ;"
    s" E-CAP-TRUSTED habu: in oa-ns-out0: 'namespace-record' is a trust-boundary primitive" REJECTS
    s" 1 set-tier : OA-NS-OUT1 ( ptr u8 n bool -- n ) namespace-record ;"
-   s" E-CAP-TRUSTED habu: in oa-ns-out1: 'namespace-record' is a trust-boundary primitive" REJECTS ;
+   s" E-CAP-TRUSTED habu: in oa-ns-out1: 'namespace-record' is a trust-boundary primitive" REJECTS
+   s" : OA-SUR0 ( [ -- ] -- ) source-unit-run ;"
+   s" E-CAP-TRUSTED habu: in oa-sur0: 'source-unit-run' is a trust-boundary primitive" REJECTS
+   s" 1 set-tier : OA-SUR1 ( [ -- ] -- ) source-unit-run ;"
+   s" E-CAP-TRUSTED habu: in oa-sur1: 'source-unit-run' is a trust-boundary primitive" REJECTS ;
 
 public
 
 : OA-RUN ( -- )
    T-RESET
    s" unchecked code calls an owned primitive at both tiers" T-LABEL UNCHECKED T-NEXT
-   s" a trusted-only package row owns source-unit-run" T-LABEL UNIT-RUN T-NEXT
+   s" a package row owns source-unit-run" T-LABEL UNIT-RUN T-NEXT
    s" an unowned internal primitive stays uncompilable" T-LABEL INTERNAL-ONLY T-NEXT
    s" the prompt and tick refuse an owned primitive" T-LABEL HIDDEN T-NEXT
    s" a checked caller outside the owner is refused by its row" T-LABEL OUTSIDE T-NEXT
