@@ -140,6 +140,13 @@ create ERR IO-CAP allot
    s" the source verifier loads on the cold host" T-LABEL
    S\" require src/habu/verify-source.f\n" LOAD nip 0 T= ;
 
+\ The Habu loop's checked bodies throw ENGINE-ERROR's `using` failure codes
+\ (src/habu/packages.f, src/habu/outer.f), constants src/core/engine-error.f
+\ defines before the hook, so it loads only while each has its row.
+: INTERPRETER-CASE ( -- )
+   s" the Habu loop, which names ENGINE-ERROR's using codes, loads on the cold host" T-LABEL
+   S\" require src/habu/interpret.f\n" LOAD nip 0 T= ;
+
 public
 
 : COLD-NAMING-TEST-MAIN ( -- )
@@ -152,6 +159,7 @@ public
    SEALED-PRE-CLAIM-CASE
    UNSEALED-PRE-CLAIM-CASES
    VERIFIER-CASE
+   INTERPRETER-CASE
    CLEANUP-RUN
    T-REPORT
    s" cold-naming-test: ok" type cr ;
