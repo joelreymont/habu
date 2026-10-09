@@ -403,7 +403,7 @@ $37F8 constant SNAP-CELL    \ nonzero after snapshot restore; source setup skips
 \ it, $600..$800 holds SIGNAL-ABI, LVF, LVQ and FRAME/QFRAME (data-claims.fs).
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
 8000 constant BODYBUF-CAP \ fatal above this (truncation would let the checker certify unseen code)
-BODYBUF-CAP 2 + constant BODYBUF-LEN \ the band BAND-TAB guards (native data-bands.f, data-claims.f)
+BODYBUF-CAP 2 + constant BODYBUF-LEN \ the band BAND-TAB guards (native layout.f DATA-BANDS, data-claims.f)
 \ The user return stack is a guarded mapping (STACK-ABI:RETURN-BASE-CELL) now,
 \ not the $2800..$3000 header band it used to be: a band inside a $8000 header
 \ cannot carry an inaccessible page, and an overflow there silently overwrote
@@ -867,7 +867,7 @@ require data-claims.fs  \ build-time refusal of overlapping DATA cells and bands
    DREG len LIT64,
    EREG DREG CMP,  C-CC trap BCOND, ;
 
-\ The protected bands, as one table, mirroring src/habu/data-bands.f DATA-BANDS.
+\ The protected bands, as one table, mirroring src/habu/layout.f DATA-BANDS.
 \ GUARD-SPAN reads it twice - once for the hull [BAND-LO, BAND-HI) its bounding
 \ test compares against, once for the per-band interval tests - and PROT-GUARD
 \ reads the same rows for its address tests, so stage0 has one list where it

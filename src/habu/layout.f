@@ -1630,7 +1630,7 @@ $5000 constant TXN-STATE-OFF
 \ THE DECLARED EXTENT, not a reservation. This used to be $3000, which is where
 \ PD-TABLE-OFF had to land rather than anything the transaction owned: the cells
 \ end at TXN-LIVE-W-OFF + TXN-LIVE-W-CAP cells = $5300, and $5300..$8000 was
-\ 11520 bytes of slack. The DATA-BANDS table (src/habu/data-bands.f) guards
+\ 11520 bytes of slack. The DATA-BANDS table (below) guards
 \ this length, so the slack was
 \ guarded too, and PROT-GUARD refused a store anywhere in it - which is why the
 \ task-user arena could not be moved there while it read $3000. It is the
@@ -2199,7 +2199,7 @@ TIER-PROV:END constant UNIT-COMPILE-CELL
 \ replay-close checks the live state against these cells, restores them and
 \ zeroes the whole band, LATCH included; replay-widn! lowers WIDN no further
 \ than the saved one. The band is zero whenever no overlay is open, so a
-\ snapshot carries nothing new. It is a guarded band (data-bands.f), not
+\ snapshot carries nothing new. It is a guarded band (DATA-BANDS below), not
 \ scratch: replay-close and replay-widn! trust it as the state replay-open
 \ found, so a raw store that forged the saved NDICT, HW or WIDN would turn
 \ replay-close into a record eraser and either into a WIDN setter.
@@ -2221,6 +2221,63 @@ PKG-REC CELL + constant USE-DEPTH
 USE-DEPTH CELL + constant USE-PKG-SAVE
 USE-PKG-SAVE CELL + constant USE-WIDS               \ USE-MAX cells
 USE-WIDS USE-MAX cells + constant END
+;package
+
+\ --- The protected DATA bands, as one table ----------------------------------
+\ Every engine's span guard walks this table: native's ARM64 GUARD-SPAN
+\ (src/habu/habu1.f) and x86-64 (PROT-SPAN) helper (src/habu/kernel-x64.f),
+\ and the Gforth host's SPAN-GUARD (src/host/gforth/prims.fs), which reads it
+\ once its prefix has loaded this file. It follows the last fact its rows are
+\ built from, in the file every engine's prefix loads, so every engine
+\ publishes the same names. Each native builder reads it twice - once for the
+\ hull [LO, HI) its bounding test compares against, once to emit the per-band
+\ interval tests - so a band added here widens both targets' bounding tests in
+\ the same edit that adds their band tests, which a hull written out beside
+\ the list, or a copy of the rows per target, could not promise. The
+\ zero-length row ends every walk: no count sits beside the table to fall out
+\ of step with its rows. src/habu/data-bands.f checks every row against its
+\ DATA-CLAIMS claim when an engine is built. bootstrap/cg/forth.fs mirrors the
+\ five bands its stage0 engine owns.
+package DATA-BANDS
+
+create TAB
+   FRIEND-ARENA ,                 FRIEND-ARENA-LEN ,
+   PROT-REG-OFF ,                 PROT-REG-LEN ,
+   ENGINE-HOOK-OFF ,              ENGINE-HOOK-LEN ,
+   NCOMP-DISPATCH:TIER-CELL ,     1 cells ,
+   NCOMP-DISPATCH:DEF-TIER-CELL , 3 cells ,
+   TIER-PROV:OPEN-CELL ,          TIER-PROV:END TIER-PROV:OPEN-CELL - ,
+   UNIT-COMPILE-CELL ,            1 cells ,
+   REPLAY-SCOPE:LATCH ,           REPLAY-SCOPE:END REPLAY-SCOPE:LATCH - ,
+   BODYBUF-OFF ,                  BODYBUF-CAP 2 + ,
+   TXN-STATE-OFF ,                TXN-STATE-LEN ,
+   0 ,                            0 ,
+
+public
+
+\ Row ix's DATA offset and byte length. The row whose length is zero ends the
+\ table.
+: OFF ( n -- n )
+   {: ix:n :}
+   ix 2 * cells TAB + @ ;
+
+: LEN ( n -- n )
+   {: ix:n :}
+   ix 2 * 1 + cells TAB + @ ;
+
+\ The hull: the lowest band base and the highest band end over the whole table.
+\ Each opens on the first row and widens by every later one, so it needs no
+\ sentinel start value that a band could one day sit outside of.
+: LO ( -- n )
+   0 OFF  1 BEGIN dup LEN 0 <> WHILE
+      dup OFF rot min swap  1+
+   REPEAT drop ;
+
+: HI ( -- n )
+   0 OFF 0 LEN +  1 BEGIN dup LEN 0 <> WHILE
+      dup OFF over LEN + rot max swap  1+
+   REPEAT drop ;
+
 ;package
 
 \ Pending storage is private to the engine's capture/drain primitives. Its

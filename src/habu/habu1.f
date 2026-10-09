@@ -61,7 +61,7 @@ $F2E00009 constant W-MOVK3
 \ Pass-2 transaction cells are defined as one protected band in layout.f.
 \ --- primitive registry (build-side, for the seed dictionary) ---
 require src/habu/primitive-registry.f
-require src/habu/data-bands.f           \ the protected bands GUARD-SPAN tests
+require src/habu/data-bands.f           \ each band GUARD-SPAN tests is a claim
 require src/habu/arith-abi.f           \ E-DIV-ZERO, the dividing bodies' refusal
 require src/habu/task-abi.f
 require src/habu/code-span.f
@@ -281,8 +281,8 @@ variable LFINDSHADOW
 \ friend latch. x12/x13 are the only clobbers.
 package ENGINE-EMIT
 
-\ The protected bands are src/habu/data-bands.f's table, which the x86-64
-\ (PROT-SPAN) helper reads as well.
+\ The protected bands are src/habu/layout.f's DATA-BANDS table, which the
+\ x86-64 (PROT-SPAN) helper and the Gforth host's SPAN-GUARD read as well.
 variable BAND-IX
 
 : BANDS-EMIT ( n label -- ) {: addr:n trap:label :}

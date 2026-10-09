@@ -425,12 +425,14 @@ variable DEF-XT
 : I-CONSTANT ( x "name" -- )
    s" constant" SEED-NAME {: a u wid :} CONST-XT a u wid DKIND-VAL STORE-DEF
    s" constant" DEFHOOK  s" -- a" RAW-PUBLISH ;
-\ ndict! ( n -- ) (prims.f 695, habu1.f BNDSET): a count above DICT-CAP exits
-\ 74; no seal sets a floor. A slot answers only while its record is counted,
-\ so a raise needs no index rebuild. A count at or below the old one clears
-\ LASTC when it names a record at or above it.
+\ ndict! ( n -- ) (prims.f 695, habu1.f:1463 BNDSET): a count above DICT-CAP
+\ exits 74, and one below the seal-time watermark SEAL-CAPTURE recorded exits
+\ ENGINE-ERROR:SEAL-VIOLATION with no message and no exit hook. A slot answers
+\ only while its record is counted, so a raise needs no index rebuild. A count
+\ at or below the old one clears LASTC when it names a record at or above it.
 : HB-NDICT! ( n -- )
    dup DICT-CAP u> if drop s" hb: dictionary count out of range" 74 RC-DIE then
+   dup SEAL-NDICT-CELL D@ u< if RC-SEAL-VIOLATION (bye) then
    dup NDICT @ > if NDICT ! exit then
    dup NDICT !  REC LASTC-CELL D@ u<= if 0 LASTC-CELL D! then ;
 : HB-IMMEDIATE ( -- ) DNAME-IMM NDICT @ 1- FLAG! ;   \ habu2.f C-IMMEDIATE

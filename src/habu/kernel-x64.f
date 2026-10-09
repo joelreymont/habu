@@ -34,7 +34,7 @@ require src/habu/stack-abi.f
 require src/habu/primitive-registry.f
 require src/habu/boot-x64.f
 require src/habu/data-claims.f
-require src/habu/data-bands.f
+require src/habu/data-bands.f           \ each band (PROT-SPAN) tests is a claim
 require src/habu/snapshot-format.f
 require src/habu/code-span.f
 require src/habu/code-origin-x64.f

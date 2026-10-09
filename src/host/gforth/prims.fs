@@ -8,25 +8,37 @@
 \ PRIMS-CHECK runs once prims.f has loaded: a row with no body, or a body with
 \ no row, dies naming it, and each body's record takes its row's min-in byte.
 
-\ ---- the friend band's span guard (habu1.f:295 GUARD-SPAN) -------------------
-\ The friend band is [FRIEND-ARENA, FRIEND-ARENA+FRIEND-ARENA-LEN) of the data
-\ space, and its first cell is the latch: 0 while the boot stream loads, then
-\ FRIEND-ARENA-LEN once SEAL-FRIEND closes it. From then on a write of len
-\ bytes at addr whose span wraps or meets the band exits
-\ ENGINE-ERROR:SEAL-VIOLATION with no message and no exit hook; a zero-length
-\ write passes. Every sink native guards that the host performs takes it before
-\ it writes (src/habu/layout.f:413-424): ! xt! +! c! patch32, and the spans
-\ read, realpath and munmap name. Native's guard walks nine more bands
-\ (src/habu/data-bands.f:20-28); the host guards this one.
-$20 constant FRIEND-ARENA              \ src/habu/layout.f:439
-$90 constant FRIEND-ARENA-LEN          \ src/habu/layout.f:440
-FRIEND-ARENA constant FRIEND-LATCH-CELL  \ src/habu/layout.f:441
-83 constant RC-SEAL-VIOLATION          \ src/core/engine-error.f:6 ENGINE-ERROR:SEAL-VIOLATION
+\ ---- the span guard (habu1.f:295 GUARD-SPAN) ----------------------------------
+\ The protected bands are src/habu/layout.f's DATA-BANDS table, which the
+\ prefix loads before the seal: row ix is DATA-BANDS:LEN bytes from the
+\ data-space offset DATA-BANDS:OFF, and the row whose length is zero ends it.
+\ SEAL-FRIEND copies the rows into BANDS as [start, end) addresses; until
+\ BANDS is set the guard passes every write, as native's does while the
+\ friend latch is open. From then on a write of len bytes at addr whose span
+\ wraps or meets a band exits ENGINE-ERROR:SEAL-VIOLATION with no message and
+\ no exit hook; a zero-length write passes. Every sink native guards that the
+\ host performs takes it before it writes (src/habu/layout.f:413-424): ! xt!
+\ +! c! patch32, and the spans read, realpath and munmap name.
+variable BANDS  variable BANDS-N
+\ A word the seal reads, by its name or its qualified name; a missing one ends
+\ the boot naming it, as GLOBAL-XT does.
+: SEAL-XT ( c-addr u -- xt ) 2dup LFIND ?dup if nip nip @ exit then RC-REJECT RC-DIE ;
+: READ-BANDS ( -- )
+   s" DATA-BANDS:OFF" SEAL-XT  s" DATA-BANDS:LEN" SEAL-XT {: row-off row-len :}
+   0 begin dup row-len execute while 1+ repeat {: n :}
+   n 2* cells allocate throw {: t :}
+   n 0 ?do
+      i row-off execute D  dup i row-len execute +  t i 2* cells + 2!
+   loop
+   t BANDS !  n BANDS-N ! ;
+: MEETS? ( addr end band -- flag ) 2@ {: a e s t :} a t u<  e s u>  and ;
 : SPAN-GUARD ( addr len -- ) {: a u :}
-   FRIEND-LATCH-CELL D@ 0= u 0= or ?exit
+   BANDS @ 0= u 0= or ?exit
    a u + {: e :}
-   e a u<  a FRIEND-ARENA FRIEND-ARENA-LEN + D u<  e FRIEND-ARENA D u> and  or
-   if RC-SEAL-VIOLATION (bye) then ;
+   e a u< if RC-SEAL-VIOLATION (bye) then
+   BANDS @ BANDS-N @ 2* cells bounds ?do
+      a e i MEETS? if RC-SEAL-VIOLATION (bye) then
+   2 cells +loop ;
 : HB-! ( x addr -- ) dup cell SPAN-GUARD ! ;            \ habu1.f:1789 BSTORE, habu2.f:8002 BXTSTORE
 : HB-+! ( n addr -- ) dup cell SPAN-GUARD +! ;          \ habu1.f:1795 BPLUSSTORE
 : HB-C! ( c addr -- ) dup 1 SPAN-GUARD c! ;             \ habu1.f:1801 BCSTORE
@@ -121,12 +133,14 @@ s" run-rc" REFUSAL-XT constant RUN-RC-REFUSAL
 \ prot-wid-room (habu1.f:4038 BPROTWIDROOM): the wids left below the bound, 0
 \ once WIDN reaches it.
 : HB-PROT-WID-ROOM ( -- n ) PROT-WID-MAX WIDN-CELL D@ - 0 max ;
-\ The seal (habu1.f:3817 BSEALCAPQ, :3820 BSEALCAP, :3841 BSEALFRIEND).
+\ The seal (habu1.f:3817 BSEALCAPQ, :3821 BSEALCAP, :3839 BSEALFRIEND).
 \ SEAL-CAPTURE names each pre-trust defer still pending on fd 2 and exits 73
 \ with no exit hook; with the table drained it records NDICT as the seal-time
-\ watermark, which seal-captured? reports. SEAL-FRIEND closes the friend latch,
-\ which arms SPAN-GUARD.
-$A8 constant SEAL-NDICT-CELL           \ src/habu/layout.f:442
+\ watermark, which seal-captured? reports and ndict! keeps. SEAL-FRIEND stores
+\ FRIEND-ARENA-LEN in FRIEND-LATCH-CELL, both src/habu/layout.f facts, and arms
+\ SPAN-GUARD with the band table. The seal is one-way: a later SEAL-FRIEND
+\ changes nothing, as native's stores the latch's own value again, and it
+\ resolves no name in its caller's scope.
 73 constant UNDRAINED-RC               \ habu1.f:3837 BSEALCAP
 : HB-SEAL-CAPTURE ( -- )
    PD-N @ ?dup if
@@ -134,7 +148,10 @@ $A8 constant SEAL-NDICT-CELL           \ src/habu/layout.f:442
       UNDRAINED-RC (bye) then
    NDICT @ SEAL-NDICT-CELL D! ;
 : HB-SEAL-CAPTURED? ( -- flag ) SEAL-NDICT-CELL D@ 0<> ;
-: HB-SEAL-FRIEND ( -- ) FRIEND-ARENA-LEN FRIEND-LATCH-CELL D! ;
+: HB-SEAL-FRIEND ( -- )
+   BANDS @ ?exit
+   s" FRIEND-ARENA-LEN" SEAL-XT execute  s" FRIEND-LATCH-CELL" SEAL-XT execute D!
+   READ-BANDS ;
 \ Hook cells (habu1.f:3611 BSETCHECK, :3782 BSETTOPCHECK, :3747 BSETPREFLIGHT).
 \ set-check and set-top-check take 0 to uninstall; any other xt must be a live
 \ code entry, else the installer's diagnostic goes to fd 2 and the process
@@ -142,7 +159,9 @@ $A8 constant SEAL-NDICT-CELL           \ src/habu/layout.f:442
 \ (DBASE <= xt < CP). The host's code is Gforth's dictionary, the sections
 \ Gforth's in-dictionary? walks (Gforth sections.fs:62-66 which-section?),
 \ each live from its start to its dp. 0 set-check also clears the preflight
-\ cell.
+\ cell. set-preflight installs once: into the empty cell only a live code
+\ entry, so never 0; over an installed hook only the same xt, which changes
+\ nothing. Each refusal names itself on fd 2 and exits 70 with no exit hook.
 : LIVE-XT? ( xt -- flag )
    false [: over section-start @ section-dp @ within or ;] sections-execute nip ;
 : HOOK-XT ( xt c-addr u -- xt ) {: xt a u :}
@@ -152,7 +171,11 @@ $A8 constant SEAL-NDICT-CELL           \ src/habu/layout.f:442
    dup HOOK-CELL D!  0= if 0 COMPILE-PREFLIGHT-CELL D! then ;
 : HB-SET-TOP-CHECK ( xt -- )
    s" set-top-check: invalid top-row hook xt" HOOK-XT TOP-HOOK-CELL D! ;
-: HB-SET-PREFLIGHT ( xt -- ) COMPILE-PREFLIGHT-CELL D! ;
+: HB-SET-PREFLIGHT ( xt -- )
+   COMPILE-PREFLIGHT-CELL D@ ?dup if
+      = ?exit  s" set-preflight: invalid or replaced hook" RC-REJECT RC-DIE then
+   dup LIVE-XT? 0= if s" set-preflight: invalid hook" RC-REJECT RC-DIE then
+   COMPILE-PREFLIGHT-CELL D! ;
 \ The code pointer (prims.f 578-590, 657-658). The host's code is Gforth words
 \ in Gforth's own dictionary, placed only for a definition that succeeds, so
 \ no reader rewinds code and CP never moves from the code area's first slot,

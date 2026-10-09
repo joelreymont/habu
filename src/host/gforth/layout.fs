@@ -46,6 +46,7 @@ $78 constant PKG-PUB-CELL            \ src/habu/layout.f:466
 $80 constant PKG-PRI-CELL            \ src/habu/layout.f:467
 $88 constant PKG-PARENT-CELL         \ src/habu/layout.f:468
 $90 constant PKG-REC-CELL            \ src/habu/layout.f:469
+$A8 constant SEAL-NDICT-CELL         \ src/habu/layout.f:442
 $1B8 constant BODYLEN-CELL           \ src/habu/layout.f:512
 $3688 constant PEND-CELL             \ src/habu/layout.f:525
 $3690 constant TKA-CELL              \ src/habu/layout.f:526
@@ -79,17 +80,17 @@ USE-BAND-OFF 24 + constant USE-WIDS-OFF        \ src/habu/layout.f:1891
 PD-NAME-OFF PD-NAME-CAP + constant PD-SIG-OFF   \ src/habu/layout.f:1847
 PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT        \ src/habu/layout.f:1848
 8 constant PD-SLOTS-REL              \ src/habu/layout.f:1849
-2859072 constant PD-TABLE-OFF        \ src/habu/layout.f:2228 REPLAY-SCOPE:END
-PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END   \ src/habu/layout.f:2229
-$4398 constant DLOG-ADDR-CELL        \ src/habu/layout.f:2263 DECLARED-LOG:ADDR-CELL
-4096 constant DLOG-CAP               \ src/habu/layout.f:2264
-8 constant DLOG-PKG-OFF              \ src/habu/layout.f:2266
-16 constant DLOG-SIG-A-OFF           \ src/habu/layout.f:2267
-24 constant DLOG-SIG-U-OFF           \ src/habu/layout.f:2268
-32 constant DLOG-SLOT                \ src/habu/layout.f:2269
-8 constant DLOG-SLOTS-REL            \ src/habu/layout.f:2270
-PD-TABLE-END constant DLOG-OFF       \ src/habu/layout.f:2271
-DLOG-OFF DLOG-SLOTS-REL + DLOG-CAP DLOG-SLOT * + constant DATA-START   \ src/habu/layout.f:2272-2274
+2859072 constant PD-TABLE-OFF        \ src/habu/layout.f:2285 REPLAY-SCOPE:END
+PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END   \ src/habu/layout.f:2286
+$4398 constant DLOG-ADDR-CELL        \ src/habu/layout.f:2320 DECLARED-LOG:ADDR-CELL
+4096 constant DLOG-CAP               \ src/habu/layout.f:2321
+8 constant DLOG-PKG-OFF              \ src/habu/layout.f:2323
+16 constant DLOG-SIG-A-OFF           \ src/habu/layout.f:2324
+24 constant DLOG-SIG-U-OFF           \ src/habu/layout.f:2325
+32 constant DLOG-SLOT                \ src/habu/layout.f:2326
+8 constant DLOG-SLOTS-REL            \ src/habu/layout.f:2327
+PD-TABLE-END constant DLOG-OFF       \ src/habu/layout.f:2328
+DLOG-OFF DLOG-SLOTS-REL + DLOG-CAP DLOG-SLOT * + constant DATA-START   \ src/habu/layout.f:2329-2331
 
 \ ---- the dictionary (src/habu/layout.f) ---------------------------------------
 $301000 constant DICT-SIZE           \ src/habu/layout.f:182
@@ -128,6 +129,7 @@ $390 constant DECLARED-ROW-OFF       \ src/core/checker-owner-abi.f:193
 67 constant UNCAUGHT-RC              \ src/habu/layout.f:451
 70 constant RC-REJECT                \ src/habu/habu2.f:11636
 76 constant REFUSE-RC                \ src/habu/kernel-x64.f:63
+83 constant RC-SEAL-VIOLATION        \ src/core/engine-error.f:6 ENGINE-ERROR:SEAL-VIOLATION
 
 \ ---- libc (Gforth libcc; docs/bootstrap.md Requirements) ---------------------
 c-library habu_gforth_host

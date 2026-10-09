@@ -1,9 +1,11 @@
 ---
 title: Enforce the seal guards on Gforth
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-10-09T20:26:37.151402+03:00\""
+created-at: "2026-10-09T20:26:37.151402+03:00"
+closed-at: "2026-10-10T02:39:26.114931+03:00"
+close-reason: "The host's span guard reads native's band table, now src/habu/layout.f DATA-BANDS (data-bands.f keeps only the claim check, BAND-CLAIMS), and traps a post-seal write into any band at every host sink native guards, exit 83; no band offset in a host file. ndict! below the watermark exits 83; set-preflight follows BSETPREFLIGHT. Both engines publish the same names (98 probed, s27-s30). Gates on the rebased tree: native build OK, aot-wid-build, cold-naming, test/run.f 632/632, host-test 109/109, error-code-lint 0. Fable review ACCEPT; the SEALED simplification got a focused ACCEPT. x86 images built, not run (no x86 host)."
 ---
 
 Problem: native traps every post-seal write into the ten bands of src/habu/data-bands.f:20-28 (GUARD-SPAN, src/habu/habu1.f:295-317: exit 83 ENGINE-ERROR:SEAL-VIOLATION, no message, no hook), refuses `ndict!` below the seal watermark SEAL-NDICT-CELL with exit 83 (habu1.f:1474-1478), and installs the preflight hook once (BSETPREFLIGHT, habu1.f:3740-3770: an identical reinstall is inert; a replacement or an xt outside the live code window is refused with a named rc-70 line). The Gforth codegen dot gave the host the friend band only (prims.fs SPAN-GUARD, its band constants copied into prims.fs). The host's ndict! (reader.fs HB-NDICT!) has no watermark check (`0 ndict!` exits 83 on native and goes on on the host), and its set-preflight has neither rule (~/.cache/tmp/heron-arm64/evidence/gfcodegen/report-4.md). data-bands.f is one table so that every engine's guard widens in the edit that adds a band; a host copy of its rows would not.
