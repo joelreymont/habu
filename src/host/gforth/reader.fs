@@ -47,6 +47,17 @@ variable LSP  LSTK LSP !
    RSP @ dup RSTK u<= if s" return" STACK-FAULT then cell- ;
 : RT-R> ( -- x ) RS-TOP dup RSP ! @ ;
 : RT-R@ ( -- x ) RS-TOP @ ;
+\ A block of w cells keeps its order on the return stack, its deepest cell
+\ deepest, as native's LP2RS moves one (habu2.f:10275-10290): one transfer
+\ for 2>r's pair or a value of w cells, so any later transfer of its values
+\ finds their cells in place.
+: RT-N>R ( x*w w -- )
+   dup cells RSP @ + dup RSTK RSTK-BYTES + u> if s" return" STACK-FAULT then
+   {: w top :}  w 0 ?do  top i 1+ cells - !  loop  top RSP ! ;
+: RT-NR@ ( w -- x*w )
+   dup cells RSP @ swap - dup RSTK u< if s" return" STACK-FAULT then
+   {: w base :}  w 0 ?do  base i cells + @  loop ;
+: RT-NR> ( w -- x*w ) dup >r RT-NR@  r> cells negate RSP +! ;
 : FRAME ( -- addr ) LSP @ 2 cells - ;
 : RT-DO ( limit start -- )
    LSP @ dup LSTK LSTK-BYTES + u>= if s" loop" STACK-FAULT then
@@ -68,7 +79,8 @@ variable LSP  LSTK LSP !
    f @ f cell+ @ - old xor  old step xor and 0< ;
 : RT-?DO ( limit start mode-addr -- enter? ) @ >r 2dup RT-DO r> if <> else > then ;
 : HB-CATCH ( i*x xt -- j*x 0 | i*x n )
-   RSP @ >r LSP @ >r catch r> r> rot ?dup if >r RSP ! LSP ! r> else 2drop 0 then ;
+   RSP @ >r LSP @ >r  catch
+   r> r> rot ?dup if >r RSP ! LSP ! r> else 2drop 0 then ;
 : HB-FINALLY ( i*x xt1 xt2 -- j*x ) >r HB-CATCH r> execute throw ;
 
 \ ---- the input cursor (habu1.f EMIT-TOK, BPARSE-NAME) ------------------------
@@ -365,16 +377,11 @@ $7FFFFFFFFFFFFFFF constant INT64-MAX
    TCSIG-A-CELL D@ TCSIG-U-CELL D@  s" check-does!" GLOBAL-XT execute
    -1 <> if DIE-DOES then ;
 : DEFINER-LEN ( -- u ) DOESB-CELL D@ ?dup if 6 - else BODYLEN-CELL D@ then ;
-\ A body the checker admits needs native code, which this host does not make.
-: CERTIFIED ( -- )
-   s" hb: gforth has no codegen: " ERR DREC-NAME REFUSE-RC RC-DIE ;
-: PUBLISH-HOOKED ( -- )
-   TSIG-U-CELL D@ if                               \ EM-COMPILE-PUBLISH-TRUSTED
-      DOESB-CELL D@ if TCSIG-U-CELL D@ 0= if DIE-DOES then CHECK-DOES then
-      TRUSTED-CELL D@ if TSIG EFFECT-OFF SIG-REGISTER exit then
-      BODY DEFINER-LEN HOOK-CELL D@ execute 0= if DIE-DOES then CERTIFIED
-   then
-   BODY$ HOOK-CELL D@ execute 0= if RC-REJECT throw then CERTIFIED ;
+\ Under the hook only a TRUSTED: body reaches `;` here; every other colon
+\ definition is codegen.fs's CG-COLON.
+: PUBLISH-HOOKED ( -- )                          \ EM-COMPILE-PUBLISH-TRUSTED
+   DOESB-CELL D@ if TCSIG-U-CELL D@ 0= if DIE-DOES then CHECK-DOES then
+   TSIG EFFECT-OFF SIG-REGISTER ;
 : PUBLISH-NOHOOK ( -- )                          \ EM-COMPILE-PUBLISH-HOOKED nohook arm
    TSIG-U-CELL D@ 0= if exit then
    TRUSTED-CELL D@ if TSIG EFFECT-OFF SRC-SIG exit then
@@ -466,14 +473,15 @@ create PD-TABLE PD-CAP 4 * cells allot   variable PD-N
 \ is (habu2.f C-IS) compiles a store of the xt into its target's dispatch
 \ cell. The target resolves through LFIND alone, never a used public.
 : IS-DIE ( c-addr u msg-a msg-u rc -- ) >r ERR ERR ERR-NL r> throw ;
-: HB-IS ( "name" -- )
+: IS-TARGET ( "name" -- xt )         \ the defer `is` names, through C-IS's walls
    TOKEN dup 0= if s" is" s" hb: is: missing target word after " $4A IS-DIE then
    2dup LFIND ?dup 0= if
       s" hb: is: no deferred word named " ERR ERR ERR-NL
       s" hb: is: parsing words resolve outside using-imports; qualify the target"
       ERR ERR-NL $46 throw then
    @ dup DEFER? 0= if drop s" hb: is: not a deferred word: " $4C IS-DIE then
-   nip nip >body @ postpone literal postpone ! ;
+   nip nip ;
+: HB-IS ( "name" -- ) IS-TARGET >body @ postpone literal postpone ! ;
 
 \ ---- export (habu2.f C-EXPORT 10051) ----------------------------------------
 \ Inside a package, export publishes the word LFIND finds under the token's
@@ -500,6 +508,54 @@ DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or constant EXPORT-BITS
    src @ ta tu CUR-CELL D@ REC-PEND {: rec :}
    src cell+ @ rec cell+ !
    src >FLAGS @ EXPORT-BITS and rec REC-FLAG+  REC-PUBLISH ;
+
+\ ---- the top-row hook (habu2.f LTOPHOOK; src/habu/outer.f HOOK) ------------
+\ With a hook installed (set-top-check), the interpreter passes it
+\ ( token class flags ) for each number, string, counted string, char and tick
+\ after its push and for each word before it runs. The token is TOKEN$: the
+\ number's or word's spelling, a string's keyword, a char's or tick's operand.
+\ Flags are 0 for a literal and, for a word or tick, LFIND's flag word as
+\ outer.f WORD-FLAGS reads it: bit 0 found, bit 1 immediate, bits 8-15 the
+\ certified inputs.
+$27F0 constant TOP-HOOK-CELL          \ src/habu/layout.f:1408
+1 constant TOP-EV-NUM    2 constant TOP-EV-STR    3 constant TOP-EV-CSTR   \ layout.f:1596-1601
+4 constant TOP-EV-CHAR   5 constant TOP-EV-TICK   6 constant TOP-EV-WORD
+: TOP-HOOK ( class flags -- )
+   TOP-HOOK-CELL D@ ?dup if >r TOKEN$ 2swap r> execute else 2drop then ;
+: WORD-FLAGS ( rec -- n )
+   >FLAGS @ {: f :}
+   f DNAME-IMM and if 3 else 1 then  f DNAME-MIN-IN-MASK and 52 rshift 8 lshift or ;
+
+\ ---- the walls (habu2.f:11933-11952 LWIDE, LINTERNAL, LMININ) --------------
+\ A wall's refusal is its message and the token on fd 2, then a throw of
+\ RC-REJECT, as native's inside an evaluate frame, where a `--load` program
+\ always runs (habu2.f:11908-11921 LDIAGRET to LEVALREC). With no catch to
+\ receive it, it leaves through boot.fs's UNCAUGHT, the exit hook and then rc
+\ 70, as LEVALREC with no handler falls into LUNCAUGHT (habu2.f:11795-11826).
+: WALL ( c-addr u -- ) ERR TOKEN$ ERR ERR-NL  RC-REJECT throw ;
+\ A record's walls, raised before its name becomes a call or an address, in
+\ native's order: a word whose effect is wider than a cell (DNAME-WIDE) would
+\ land a bundle on the untyped interpret stack, and an internal engine word
+\ (DNAME-INT) has no effect the checker knows. The interpreter's call and `'`
+\ raise both (habu2.f:10162-10163 EM-INTERPRET-FIND, 5772-5773 C-TICK); a
+\ body's `[']` raises DNAME-INT alone (habu2.f:5814 C-BTICK).
+: REC-GATE ( rec mask -- rec )
+   over >FLAGS @ and {: f :}
+   f DNAME-WIDE and if s" hb: interpret-mode layout value: " WALL then
+   f DNAME-INT and if s" hb: internal engine word: " WALL then ;
+
+\ ---- the stack floor (habu1.f:3411 B-EVAL-CLOSED; habu2.f LMININ, LFLOORREC) --
+\ Native reads each text on a stack of its own, so a token that would take a
+\ cell below the text's first is refused: a word whose certified inputs
+\ (DNAME-MIN-IN) the stack lacks before it runs, any other token at its first
+\ read under the base. The refusal is the wall
+\ `hb: interpret stack underdepth: <token>`. The host's texts share Gforth's
+\ stack, and FLOOR-DEPTH is the depth the text began at: the inputs are checked
+\ against it before a word runs, and a token that took cells from under it is
+\ refused as it returns.
+variable FLOOR-DEPTH
+: UNDERDEPTH ( -- ) s" hb: interpret stack underdepth: " WALL ;
+: MIN-IN ( rec -- n ) >FLAGS @ DNAME-MIN-IN-MASK and 52 rshift ;
 
 \ ---- strings, char and tick (habu2.f 5372-5727, C-TICK 5761, C-BTICK 5803) --
 \ A string's text runs from one past its keyword's delimiter to the next `"`
@@ -557,10 +613,10 @@ variable ESC-BUF  variable ESC-CAP
 : CSTR-CHECK ( u -- u )
    dup 255 > if s" hb: counted string too long (max 255)" ERR REFUSE-RC COMPILE-DIE then ;
 : DP-CSTR ( c-addr u -- addr ) CSTR-CHECK dup HB-C, DP-STR drop 1- ;
-: HB-ISQ ( "text" -- addr u ) STR-TEXT DP-STR ;
-: HB-IESQ ( "text" -- addr u ) ESC-TEXT DP-STR ;
-: HB-ICQ ( "text" -- addr ) STR-TEXT DP-CSTR ;
-: HB-IECQ ( "text" -- addr ) ESC-TEXT DP-CSTR ;
+: HB-ISQ ( "text" -- addr u ) STR-TEXT DP-STR TOP-EV-STR 0 TOP-HOOK ;
+: HB-IESQ ( "text" -- addr u ) ESC-TEXT DP-STR TOP-EV-STR 0 TOP-HOOK ;
+: HB-ICQ ( "text" -- addr ) STR-TEXT DP-CSTR TOP-EV-CSTR 0 TOP-HOOK ;
+: HB-IECQ ( "text" -- addr ) ESC-TEXT DP-CSTR TOP-EV-CSTR 0 TOP-HOOK ;
 : HB-IDOTQ ( "text" -- ) STR-TEXT HB-TYPE ;
 : HB-IEDOTQ ( "text" -- ) ESC-TEXT HB-TYPE ;
 \ Compiled strings live with the code: Gforth's sliteral copies the bytes into
@@ -575,34 +631,102 @@ variable ESC-BUF  variable ESC-CAP
 : KC-DOTQ ( "text" -- ) STR-TEXT postpone sliteral ['] HB-TYPE compile, ;
 : KC-EDOTQ ( "text" -- ) ESC-TEXT postpone sliteral ['] HB-TYPE compile, ;
 : CHAR-OF ( kw-a kw-u -- c ) DEF-NAME drop c@ ;
-: HB-ICHAR ( "name" -- c ) s" char" CHAR-OF ;
+: HB-ICHAR ( "name" -- c ) s" char" CHAR-OF TOP-EV-CHAR 0 TOP-HOOK ;
 : KC-BCHAR ( "name" -- ) s" [char]" CHAR-OF postpone literal ;
 \ ' and ['] resolve through LFIND then LFINDUSED, never a keyword row, a
 \ number or a local.
 : TICK-REC ( -- c-addr u rec ) TOKEN 2dup LOOKUP-REC dup 0= if drop UNDEF-DIE then ;
-: HB-ITICK ( "name" -- xt ) TICK-REC nip nip @ ;
-: HB-BTICK ( "name" -- ) TICK-REC nip nip @ postpone literal ;
+: HB-ITICK ( "name" -- xt )
+   TICK-REC nip nip DNAME-WIDE DNAME-INT or REC-GATE
+   dup @ swap TOP-EV-TICK swap WORD-FLAGS TOP-HOOK ;
+: HB-BTICK ( "name" -- ) TICK-REC nip nip DNAME-INT REC-GATE @ postpone literal ;
 
 \ ---- locals ----------------------------------------------------------------
 \ {: name:type ... :} declares Gforth cell locals, the first name deepest:
 \ Gforth's (local) gives its first name the top cell, so the names go in
 \ reverse. A type is stripped; each local holds one cell.
-create LOC-NAMES LOC-RECS 2* cells allot
-variable HAS-LOCALS
 : STRIP-TYPE ( c-addr u -- c-addr u' ) 2dup s" :" search if nip - else 2drop then ;
-: HB-LOCALS ( "names :}" -- )
+\ The locals in scope, counted, as native counts them (LOCN-CELL): every
+\ control opener saves the count and its closer restores it (habu2.f LCFPUSH,
+\ LCFPOP), so a local declared inside a structure is gone after it. A name is
+\ the latest local in scope of exactly its bytes, unlike a word (habu2.f
+\ LLOC-FIND), on both paths: the capture (codegen.fs) and this reader's
+\ compile (LOCAL-REF?). A record holds the name's offset in the body buffer,
+\ which no other local of the definition shares, and its length. A frame
+\ holds its kind and the count its opener saved. Every local and opener is a
+\ captured token of at least two bytes, so half the body buffer bounds both
+\ tables.
+create CLOC BODYBUF-CAP 2/ 2* cells allot  variable CLOCN
+create CFR BODYBUF-CAP 2/ 2* cells allot  variable CFRN
+: LOC ( i -- addr ) 2* cells CLOC + ;
+: LOC$ ( i -- c-addr u ) LOC 2@ BODY + swap ;
+: LOC-ADD ( c-addr u -- )              \ the name token BCS just captured
+   dup BODYLEN-CELL D@ swap - 1-  -rot STRIP-TYPE nip swap  CLOCN @ LOC 2!  1 CLOCN +! ;
+: LOCAL-FIND ( c-addr u -- off|-1 )    \ the latest local of the name in scope
+   CLOCN @ begin dup while 1-
+      >r 2dup r@ LOC$ str= if 2drop r> LOC @ exit then  r>
+   repeat drop 2drop -1 ;
+: LOCAL? ( c-addr u -- flag ) LOCAL-FIND 0>= ;
+1 constant ARM                          \ a match arm's frame (codegen.fs CAP-MODE)
+2 constant QUOT                         \ a quotation's
+: FR ( i -- addr ) 2* cells CFR + ;
+: FR-PUSH ( kind -- ) CLOCN @ swap CFRN @ FR 2!  1 CFRN +! ;
+: FR-TOP ( -- kind ) CFRN @ if CFRN @ 1- FR @ else 0 then ;
+: FR-POP ( -- ) CFRN @ if -1 CFRN +!  CFRN @ FR cell+ @ CLOCN ! then ;
+: IN-QUOT? ( -- flag ) false  CFRN @ 0 ?do i FR @ QUOT = or loop ;
+\ The frames each control word closes, then opens, and the opened frame's
+\ kind, as native's handlers pop and push its control-flow stack (habu2.f
+\ J-IF, J-THEN, J-ELSE 2510-2525; J-CASE, J-OF, J-ENDOF, J-ENDCASE 2527-2604;
+\ J-BEGIN, J-AGAIN, J-UNTIL, J-WHILE, J-REPEAT 2609-2627; J-DO, J-?DO, J-LOOP,
+\ J-+LOOP 2723-2782; J-QUOT, J-SEMIQUOT 3373-3399). Native's endof opens a
+\ frame its endcase pops, saving what its arm's `of` saved, so holding none
+\ between arms restores the same count at every token.
+: CF-ROW ( closes opens kind "name" -- ) rot c, swap c, c, parse-name string, ;
+create CF-ROWS
+   0 1 0 CF-ROW if      1 0 0 CF-ROW then    1 1 0 CF-ROW else
+   0 1 0 CF-ROW case    0 1 0 CF-ROW of      1 0 0 CF-ROW endof   1 0 0 CF-ROW endcase
+   0 1 0 CF-ROW begin   1 0 0 CF-ROW again   1 0 0 CF-ROW until
+   0 1 0 CF-ROW while   2 0 0 CF-ROW repeat
+   0 1 0 CF-ROW do      0 1 0 CF-ROW ?do     1 0 0 CF-ROW loop    1 0 0 CF-ROW +loop
+   0 1 QUOT CF-ROW [:   1 0 0 CF-ROW ;]      0 c, 0 c, 0 c, 0 c,
+: CF-SCOPE ( c-addr u -- )             \ a compile keyword's frames
+   CF-ROWS begin dup 3 + c@ while
+      >r 2dup r@ 3 + count NAME= if
+         2drop r>  dup c@ 0 ?do FR-POP loop  dup 2 + c@ swap 1+ c@ 0 ?do dup FR-PUSH loop
+         drop exit then
+      r> 3 + count +
+   repeat drop 2drop ;
+\ A quotation names no local and declares none: native refuses either there
+\ (habu2.f C-LOCAL-REF, C-LBRACE-GUARDS), as it refuses a local in scope at
+\ does> (J-DOES), with the same exit status.
+75 constant LOCAL-RC
+: QUOT-REF ( c-addr u -- c-addr u ) IN-QUOT? if ERR LOCAL-RC COMPILE-DIE then ;
+: LOCALS-READ ( "names :}" -- n )      \ a group's names, captured and in scope
+   IN-QUOT? if s" habu: local cannot be inside quotation" ERR LOCAL-RC COMPILE-DIE then
    s" {:" BCS  0 {: n :}
    begin TOKEN dup 0= if SIG-ENDED then  2dup BCS  2dup s" :}" str= 0= while
       n LOC-RECS >= if
          2drop s" hb: more than 64 locals in one definition: " ERR DREC-NAME ERR
          $4D COMPILE-DIE then
-      STRIP-TYPE n 2* cells LOC-NAMES + 2!  n 1+ to n
-   repeat 2drop
-   n 0 ?do LOC-NAMES n 1- i - 2* cells + 2@ (local) loop  0 0 (local)
-   true HAS-LOCALS ! ;
-: LOCAL-REF? ( c-addr u -- flag )    \ a local's reference, compiled
-   HAS-LOCALS @ 0= if 2drop false exit then
-   rec-local dup translate-none = if drop false exit then execute true ;
+      LOC-ADD  n 1+ to n
+   repeat 2drop n ;
+\ A Gforth local is named %L<id>.<cell>: the checked walk's id is the
+\ checker's local sequence number (codegen.fs H-LOCAL-DECL), this reader's the
+\ record's body offset, so the name a body spells reaches Gforth only through
+\ the records, and Gforth's own scope never decides what it names.
+create LN-BUF 48 allot
+: LNAME ( id c -- c-addr u )
+   swap >r 0 <# #s 2drop [char] . hold r> 0 #s [char] L hold [char] % hold #>
+   tuck LN-BUF swap move  LN-BUF swap ;
+: HB-LOCALS ( "names :}" -- )
+   LOCALS-READ {: n :}
+   n 0 ?do CLOCN @ 1- i - LOC @ 0 LNAME (local) loop  0 0 (local) ;
+: LOCAL-REF? ( c-addr u -- flag )      \ a local in scope, its reference compiled
+   2dup LOCAL-FIND dup 0< if drop 2drop false exit then {: a u off :}
+   a u QUOT-REF 2drop
+   off 0 LNAME rec-local dup translate-none = if
+      drop s" hb: gforth has no local for " ERR a u ERR REFUSE-RC COMPILE-DIE then
+   execute true ;
 
 \ ---- control flow and loops ----------------------------------------------
 \ Branches are Gforth's, their items on Gforth's control-flow stack. A do
@@ -624,10 +748,15 @@ create LEAVES LEAVE-CAP cells allot   variable LEAVE-SP
    LEAVE-SP @ cs-item-size + LEAVE-CAP > if CF-DEEP then
    cs-item-size 0 ?do LEAVES LEAVE-SP @ cells + !  1 LEAVE-SP +! loop ;
 : UNPARK ( -- orig ) cs-item-size 0 ?do -1 LEAVE-SP +!  LEAVES LEAVE-SP @ cells + @ loop ;
-: KC-DO ( -- ) postpone RT-DO  0 OPEN-LEVEL  postpone begin ;
+\ A begin no path reaches assumes on Gforth the locals UNREACHABLE left
+\ (kernel/cond.fs backedge-locals, glocals.fs (begin-like)), often none;
+\ native's begin keeps the scope it is in, so each assumes the locals visible
+\ where it stands, as ASSUME-LIVE assumes an orig's.
+: KC-BEGIN ( -- ) locals-list @ backedge-locals !  postpone begin ;
+: KC-DO ( -- ) postpone RT-DO  0 OPEN-LEVEL  KC-BEGIN ;
 : KC-?DO ( -- )
    1 cells allocate throw dup 0 swap !
-   dup postpone literal postpone RT-?DO  OPEN-LEVEL  postpone if PARK  postpone begin ;
+   dup postpone literal postpone RT-?DO  OPEN-LEVEL  postpone if PARK  KC-BEGIN ;
 : CLOSE-LEVEL ( -- )
    begin LEAVE-SP @ LEVEL cell+ @ > while UNPARK postpone then repeat
    postpone RT-UNLOOP  -1 LEVEL-N +! ;
@@ -640,7 +769,7 @@ create LEAVES LEAVE-CAP cells allot   variable LEAVE-SP
    postpone RT-+LOOP postpone until CLOSE-LEVEL ;
 : KC-LEAVE ( -- ) LEVEL-N @ 0= if s" leave" ORPHAN then postpone ahead PARK ;
 : KC-IF postpone if ;          : KC-THEN postpone then ;      : KC-ELSE postpone else ;
-: KC-BEGIN postpone begin ;    : KC-UNTIL postpone until ;    : KC-AGAIN postpone again ;
+: KC-UNTIL postpone until ;    : KC-AGAIN postpone again ;
 : KC-WHILE postpone while ;    : KC-REPEAT postpone repeat ;
 : KC-CASE postpone case ;      : KC-OF postpone of ;          : KC-ENDOF postpone endof ;
 : KC-ENDCASE postpone endcase ;
@@ -656,17 +785,25 @@ create LEAVES LEAVE-CAP cells allot   variable LEAVE-SP
 \ The keyword is captured; the created word's signature stays out of the
 \ body, published when the defining word runs (C-EMIT-CRSIG-SET and the
 \ does-patch runtime's LASTC-TRUST:PUBLISH). The clause starts with Gforth's
-\ does>, then the fetch of the Habu body its created word holds.
+\ does>, then the fetch of the Habu body its created word holds. A local in
+\ scope at the keyword is refused there, the token named, before anything else,
+\ then a structure left open, as J-DOES orders them (habu2.f:4515-4520 LOCF,
+\ C-CF-NONE). A second does> is the host's own refusal: native has no gate for
+\ it at the token.
 : CRSIG-PUBLISH ( a u -- ) 2dup CRSIG-U-CELL D! CRSIG-A-CELL D!  RAW-PUBLISH  REC-WIDE ;
-: DO-DOES ( c-addr u -- )
+: DOES-TAKE ( c-addr u -- )          \ the keyword captured, its created signature kept
+   CLOCN @ if ERR LOCAL-RC COMPILE-DIE then
+   CFRN @ if s" hb: control-flow word does not match the open structure: " ERR ERR RC-REJECT COMPILE-DIE then
    DOESB-CELL D@ if 2drop DIE-DOES then
    BCS
    SIG-PEEK
    2dup + 1+ INP-CELL D!
    save-mem TCSIG-U-CELL D! TCSIG-A-CELL D!
-   BODYLEN-CELL D@ DOESB-CELL D!
+   BODYLEN-CELL D@ DOESB-CELL D! ;
+: DOES-COMPILE ( -- )
    TCSIG-A-CELL D@ TCSIG-U-CELL D@ postpone 2literal postpone CRSIG-PUBLISH
    postpone does> postpone @ ;
+: DO-DOES ( c-addr u -- ) DOES-TAKE DOES-COMPILE ;
 
 \ ---- keyword rows ----------------------------------------------------------
 \ Each row is a spelling folded A-Z and the host word that serves it. KW-I:
@@ -704,7 +841,7 @@ variable KW-I   variable KW-C
    @ compile, ;
 : RUN-COMPILE ( c-addr u -- )
    2dup LOCAL-REF? if 2drop exit then
-   2dup KW-C KW-FIND ?dup if nip nip execute exit then
+   2dup KW-C KW-FIND ?dup if >r CF-SCOPE r> execute exit then
    2dup NUM-PARSE if drop nip nip postpone literal exit then 2drop
    2dup LOOKUP-REC ?dup if nip nip COMPILE-REC exit then
    UNDEF-DIE ;
@@ -713,7 +850,7 @@ variable KW-I   variable KW-C
    2dup 10 scan nip if 2drop r> drop exit then
    r> if 1 /string 0 max BCS else BCS-TOKENS then ;
 : COMPILE-TOKEN ( c-addr u -- )
-   2dup s" does>" str= if DO-DOES exit then
+   2dup s" does>" NAME= if DO-DOES exit then
    2dup s" {:" str= if 2drop HB-LOCALS exit then
    2dup BCS  2dup + >r  2dup STRING-WORD? >r  RUN-COMPILE  r> r> swap CAPTURE-TAIL ;
 : NEXT-TOKEN ( -- c-addr u ) TOKEN dup 0= if SIG-ENDED then ;
@@ -722,13 +859,15 @@ variable KW-I   variable KW-C
       2dup COMMENT if 2drop else COMPILE-TOKEN then
    repeat 2drop ;
 : DEF-OPEN ( trusted -- xt colon-sys )   \ C-COLON, C-TRUSTED
-   CLEAR-DEF  0 HAS-LOCALS !  0 LEVEL-N !  0 LEAVE-SP !
+   CLEAR-DEF  0 LEVEL-N !  0 LEAVE-SP !  0 CLOCN !  0 CFRN !
    s" :" DEF-NAME  over PENDTKA-CELL D!  2dup BODY-SEED  QUALIFY {: t a u wid :}
    0 a u wid REC-PEND PEND-CELL D!  t TRUSTED-CELL D!
    :noname  latestxt DEF-XT !
    t SIG-OPEN 0= if 0 0 then
    TSIG-U-CELL D! TSIG-A-CELL D! ;
-: HB-COLON ( "name" -- ) 0 DEF-OPEN BODY-LOOP SEMI ;
+require ./codegen.fs
+: HB-COLON ( "name" -- )
+   HOOK-CELL D@ if CG-COLON exit then  0 DEF-OPEN BODY-LOOP SEMI ;
 : HB-TRUSTED ( "name" -- ) 1 DEF-OPEN BODY-LOOP SEMI ;
 : HB-CAST ( "name sig" -- )          \ habu2.f C-IDENTITY, C-CAST
    CLEAR-DEF
@@ -736,16 +875,21 @@ variable KW-I   variable KW-C
    ['] noop a u wid REC-PEND dup PEND-CELL D!  DKIND-CAST swap REC-FLAG+
    SIG-REQUIRE TSIG-U-CELL D! TSIG-A-CELL D!
    TSIG CAST-OFF SIG-REGISTER  REC-PUBLISH REC-WIDE CLEAR-DEF ;
+: RUN-WORD ( rec -- )                \ habu2.f EM-INTERPRET-FIND: the walls, the hook, the call
+   DNAME-WIDE DNAME-INT or REC-GATE
+   >r  depth FLOOR-DEPTH @ - r@ MIN-IN < if UNDERDEPTH then
+   TOP-EV-WORD r@ WORD-FLAGS TOP-HOOK  r> @ execute ;
 : INTERPRET-TOKEN ( c-addr u -- )
    2dup s" :" str= if 2drop HB-COLON exit then
    2dup KW-I KW-FIND ?dup if nip nip execute exit then
-   2dup NUM-PARSE if drop nip nip exit then 2drop
-   2dup LOOKUP-REC ?dup if nip nip @ execute exit then
+   2dup NUM-PARSE if drop nip nip TOP-EV-NUM 0 TOP-HOOK exit then 2drop
+   2dup LOOKUP-REC ?dup if nip nip RUN-WORD exit then
    UNDEF-DIE ;
 \ The state is native's: a definition is open while PEND-CELL holds it.
 : EVAL-TOKEN ( c-addr u -- )
    2dup COMMENT if 2drop exit then
-   PEND-CELL D@ if COMPILE-TOKEN else INTERPRET-TOKEN then ;
+   PEND-CELL D@ if COMPILE-TOKEN exit then
+   INTERPRET-TOKEN  depth FLOOR-DEPTH @ < if UNDERDEPTH then ;
 : EVAL-LOOP ( -- ) begin TOKEN dup while EVAL-TOKEN repeat 2drop ;
 \ A whole source file is one buffer, kept for the run: signatures and
 \ captures point into it. The source-location cells stay 0, as in native's
@@ -756,12 +900,21 @@ variable KW-I   variable KW-C
 \ prints none either.
 \ A file that does not open names its path and exits 74 with no exit hook
 \ (habu2.f:906-915 EMIT-SOURCE-READ).
+\ Each text's floor is the depth it began at.
 74 constant SRC-OPEN-RC
 : LOAD-FILE ( c-addr u -- )
    2dup r/o bin open-file if drop s" hb: cannot open " ERR SRC-OPEN-RC RC-DIE then
    nip nip  dup slurp-fid  rot close-file throw
    over INP-CELL D!  + INE-CELL D!
-   EVAL-LOOP ;
+   depth FLOOR-DEPTH !  EVAL-LOOP ;
+\ A text read as LOAD-FILE reads a file, inside whatever read is under way:
+\ the cursor and the floor come back after it, and a throw leaves through it
+\ unchanged.
+: EVAL-TEXT ( c-addr u -- )
+   INP-CELL D@ INE-CELL D@ 2>r  FLOOR-DEPTH @ >r
+   over + INE-CELL D! INP-CELL D!  depth FLOOR-DEPTH !
+   ['] EVAL-LOOP catch
+   r> FLOOR-DEPTH !  2r> INE-CELL D! INP-CELL D!  throw ;
 
 \ ---- the rows ---------------------------------------------------------------
 KW-I ' HB-PACKAGE KW package           KW-I ' HB-PUBLIC KW public

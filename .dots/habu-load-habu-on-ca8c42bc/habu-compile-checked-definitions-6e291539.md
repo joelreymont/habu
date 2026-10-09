@@ -1,9 +1,11 @@
 ---
 title: Compile checked definitions on Gforth from events
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-10-08T23:11:00.276267+02:00\""
+created-at: "\"\\\"2026-10-08T23:11:00.276267+02:00\\\"\""
+closed-at: "2026-10-10T00:36:00.605265+03:00"
+close-reason: "Landed: the Gforth codegen compiles checked definitions; host-test 79/79 match native"
 ---
 
 Problem: docs/bootstrap.md stages 1-2: the Gforth platform's codegen compiles each checked definition from its events at ;, a value of several cells as that many Gforth cells (docs/architecture.md "The codegen is one pass over the checked events"). The prototype's ~/.cache/tmp/stage2-proof/codegen.fs (545 lines) does this but reads checker variables and owner offsets by number.

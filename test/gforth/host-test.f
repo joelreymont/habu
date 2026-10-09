@@ -8,6 +8,12 @@
 \ exit codes, stdouts and stderrs (the diagnostic JSON) are byte-identical.
 \ $HB_TMP/gforth-host holds this run's <case>.{gf,hb}.{out,err,rc}, an rc file
 \ the decimal exit code. One line per case; the exit code is the verdict.
+\
+\ Gforth builds a c-library's wrappers the first time a run declares it and
+\ reports the build on that run's stderr. Before any case, one run of the
+\ host's entry with no program loads every host file, builds the wrappers and
+\ must leave by boot.fs's usage exit; its streams are warm-up.gf.* and are not
+\ compared.
 
 require lib/errors.f
 require lib/string.f
@@ -30,6 +36,7 @@ $10000 constant CAP                       \ the most one stream of one run may w
 60000 constant RUN-TIMEOUT-MS             \ the longest one run of one case may take
 4096 constant LISTING-CAP
 10 constant LF
+64 constant USAGE-RC                      \ src/host/gforth/boot.fs USAGE-RC
 
 create ROOT-BUF FS-PATH-CAP allot  variable ROOT-U
 create PROG-BUF FS-PATH-CAP allot
@@ -71,14 +78,17 @@ variable CASES-BAD
    s" GFORTH" GETENV dup 0= if 2drop s" gforth" then ;
 
 \ Stage one side's arguments and answer the executable that runs them.
-: GF-ARGV ( ptr u8 n -- ptr u8 n ) {: prog:ptr progu:n :}
+: GF-BOOT ( -- ptr u8 n )
    PROC-ARGV-RESET
    GFORTH$ >LEN PROC-ARGV+
    s" -m" >LEN PROC-ARGV+
    s" 1G" >LEN PROC-ARGV+
    s" src/host/gforth/boot.fs" >LEN PROC-ARGV+
-   prog progu >LEN PROC-ARGV+
    s" /usr/bin/env" ;
+
+: GF-ARGV ( ptr u8 n -- ptr u8 n ) {: prog:ptr progu:n :}
+   GF-BOOT
+   prog progu >LEN PROC-ARGV+ ;
 
 : HB-ARGV ( ptr u8 n -- ptr u8 n ) {: prog:ptr progu:n :}
    PROC-ARGV-RESET
@@ -86,8 +96,7 @@ variable CASES-BAD
    prog progu >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ ;
 
-: RUN-SIDE ( ptr u8 n n -- ) {: prog:ptr progu:n side:n :}
-   prog progu side GF-SIDE = if GF-ARGV else HB-ARGV then {: path:ptr pathu:n :}
+: RUN-ARGV ( ptr u8 n n -- ) {: path:ptr pathu:n side:n :}
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN
@@ -107,6 +116,9 @@ variable CASES-BAD
    side SIDE-RC !
    side SIDE-ERR-U !
    side SIDE-OUT-U ! ;
+
+: RUN-SIDE ( ptr u8 n n -- ) {: prog:ptr progu:n side:n :}
+   prog progu side GF-SIDE = if GF-ARGV else HB-ARGV then side RUN-ARGV ;
 
 \ <root>/<case>.<side><ext>, in ART-BUF.
 : ART$ ( ptr u8 n n ptr u8 n -- ptr u8 n )
@@ -142,13 +154,22 @@ variable CASES-BAD
    RC-SAME? OUT-SAME? and ERR-SAME? and
    dup if s"  match" type else TELL-MISMATCH then cr ;
 
-\ One directory entry, a case program <name>.f.
-: PROGRAM? ( ptr u8 n -- bool ) {: entry:ptr entryu:n :}
-   entryu 2 <= if false exit then
-   entry entryu + 2 - 2 s" .f" STR= ;
+\ The run that builds the wrappers before any case is compared.
+: WARM-UP ( -- )
+   GF-BOOT GF-SIDE RUN-ARGV
+   s" warm-up" GF-SIDE SAVE-SIDE
+   GF-SIDE SIDE-RC @ USAGE-RC = if exit then
+   s" boot.fs without a program missed its usage exit: " s" warm-up.gf.err" FAIL ;
+
+\ One directory entry: a case program <name>.f, or <name>.inc, a file a case
+\ requires beside it, which runs only through that case.
+: SUFFIX? ( ptr u8 n ptr u8 n -- bool ) {: entry:ptr entryu:n suf:ptr sufu:n :}
+   entryu sufu <= if false exit then
+   entry entryu + sufu - sufu suf sufu STR= ;
 
 : RUN-CASE ( ptr u8 n -- ) {: entry:ptr entryu:n :}
-   entry entryu PROGRAM? 0= if s" not a .f case program: " entry entryu FAIL then
+   entry entryu s" .inc" SUFFIX? if exit then
+   entry entryu s" .f" SUFFIX? 0= if s" not a .f case program: " entry entryu FAIL then
    CASES$ entry entryu PROG-BUF JOIN-PATH {: progu:n :}
    entry entryu 2 - {: name:ptr nameu:n :}
    PROG-BUF progu GF-SIDE RUN-SIDE
@@ -171,6 +192,7 @@ public
 
 : RUN ( -- )
    ROOT!
+   WARM-UP
    0 CASES-RUN !
    0 CASES-BAD !
    CASES$ LISTING LISTING-CAP FS-LIST:NAMES {: u:n :}
