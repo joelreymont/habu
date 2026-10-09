@@ -44,9 +44,29 @@ using PTY-HARNESS
    then
    STOP ;
 
+\ A line that publishes a definition and then fails takes the definition back,
+\ and the checker's record of it too: the next definition of that name is no
+\ duplicate, and runs as its own row says. The line fails where an immediate
+\ underflows inside a definition it opened, so the recovery starts with the
+\ code region writable. Tier 1 compiles no body that underflows its own row,
+\ so the immediate is compiled at tier 0.
+: REDEFINE-CASE ( n -- ) {: tier:n :}
+   ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY PROMPT
+   s" 0 set-tier TRUSTED: SINK ( -- ) drop ; immediate" STEP
+   S\" s\" SINK\" 0 parse-imm" STEP
+   tier 0= if s" 0 set-tier" else s" 1 set-tier" then STEP
+   BUF-CLEAR s" : DROPPED ( -- n n ) 1 2 ; : UNDER ( -- ) SINK ;" SEND-LINE
+   s" E-UNDERFLOW: SINK" WAIT-FOR TTRUE
+   s" E-UNDERFLOW: SINK" PROMPT-AFTER
+   s" : DROPPED ( -- n ) 7 ;" STEP
+   s" DROPPED ." STEP
+   s" 7" IN-BUF? TTRUE
+   STOP ;
+
 : RUN ( -- )
    T-RESET
    2 0 do
+      i REDEFINE-CASE
       s" defer FAILED ( -- n ) NOSUCH-WORD"
       s" PERSISTED-PTR-VARIABLE AFTER" i REUSE-CASE
       s" TYPED-VARIABLE FAILED [ n -- n ] NOSUCH-WORD"

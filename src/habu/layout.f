@@ -519,6 +519,14 @@ $3650 constant RSAVND-CELL
 $3658 constant RSAVDP-CELL
 $3660 constant RSAVSP-CELL
 $3668 constant RRECP-CELL
+\ RSAVROWS-CELL: the checker's record end as the REPL line began, plus one,
+\ read through the source owner (habu2.f EM-REPL-READ); 0 when no owner
+\ records. A failed line cuts the records back to it as it rolls CP, NDICT and
+\ DP back (EM-REPL-RECOVER), so no definition the line drops keeps a record or
+\ a pending window. It sits in the $2800..$3000 free header band past
+\ NATIVE-HOST-CELLS:FACTS ($2D30), swept for a claimant across src lib tools
+\ test bootstrap maki docs, below $7FF8 for the `DATA <off> LDR` form.
+$2D38 constant RSAVROWS-CELL
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
@@ -540,9 +548,9 @@ $48 constant EVAL-PKG
 \ EVAL-PKG..$80 (its last cell, PKGSNAP:FLOOR, is $78) and STACK-ABI:EVAL-BASE
 \ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, EVAL-FRAME:USE-FLOOR $98,
 \ EVAL-FRAME:USE-WIDS $A0..$120 and EVAL-FRAME:PEND $120; $128 is held for the
-\ frame's saved next wordlist id (WIDN), STACK-ABI:EVAL-SEG takes $130 and $138
-\ pads the frame to STACK-ABI:EVAL-BYTES ($140), keeping the native stack
-\ 16-byte aligned.
+\ frame's saved next wordlist id (WIDN), STACK-ABI:EVAL-SEG takes $130 and
+\ EVAL-FRAME:ROWS $138, filling the frame to STACK-ABI:EVAL-BYTES ($140), which
+\ keeps the native stack 16-byte aligned.
 $90 constant EVAL-INB
 package EVAL-FRAME
 public
@@ -566,6 +574,12 @@ $A0 constant USE-WIDS
 \ compiles into it, and a throw that unwinds this buffer leaves it compiling
 \ (habu2.f EM-EVAL-THROW-RECOVER).
 $120 constant PEND
+\ ROWS: the checker's record end as the buffer began, plus one, read through
+\ the source owner (habu1.f EVAL-ENTER); 0 when no owner records. A throw that
+\ unwinds a buffer owning the compile cuts the records back to it as it rolls
+\ the dictionary back (habu2.f EM-EVAL-THROW-RECOVER), so no definition the
+\ rollback drops keeps a record or a pending window.
+$138 constant ROWS
 ;package
 
 \ --- refusal location band (dot habu-name-the-file-70acbf10) --------------------

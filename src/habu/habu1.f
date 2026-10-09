@@ -1569,6 +1569,35 @@ public
    USE-MAX 0 do  tmp base off i cells + LDR,  tmp band i cells STR,  loop ;
 ;package
 
+\ The source checker's operations and the record mark EVAL-ENTER takes; habu2.f
+\ DECL-OWNER holds the rest of the package.
+package DECL-OWNER
+public
+
+\ x11 = the operation at off in the source owner's record, or 0 with no record.
+: FIND ( n -- ) {: off:n :}
+   LBL {: done:label :}
+   11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 done CBZ,
+   11 11 off LDR,
+   done LBL, ;
+
+\ Store the checker's record end at [base+off] as a mark: end+1, popped into
+\ x<r>, or 0 when no owner records rows.
+: MARK-END ( n n n -- ) {: r:n base:n off:n :}
+   LBL {: unmarked:label :}
+   9 0 MOVZ,  9 base off STR,
+   NCOMP-DISPATCH:DECL-ROWS-END-OFF FIND  11 unmarked CBZ,
+      11 BLR,  r G-POP  r r 1 ADDI,  r base off STR,
+   unmarked LBL, ;
+
+\ Cut the checker's records back to the mark MARK-END left at [base+off],
+\ through x9; a 0 mark or no owner branches to kept, which the caller places.
+: RETRACT-TO ( n n label -- ) {: base:n off:n kept:label :}
+   9 base off LDR,  9 kept CBZ,
+   NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF FIND  11 kept CBZ,
+      9 9 1 SUBI,  9 G-PUSH  11 BLR, ;
+;package
+
 \ ( a u -- ) re-entrant interpret of the string a/u in this process: save the
 \ outer input cursor + compile state, point INP/INE at a/u, bump EVALD, and jump
 \ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
@@ -1582,7 +1611,9 @@ public
 \ x10 and x13 the data stack the frame owns (0 for evaluate). The frame records
 \ the data-stack extent in force, that stack and the definition open at entry
 \ (EVAL-FRAME:PEND), and the clean exit returns to x30: B-EVAL's caller, or the
-\ continuation of B-EVAL-CLOSED, which inlines it on a stack of its own.
+\ continuation of B-EVAL-CLOSED, which inlines it on a stack of its own. The
+\ checker's record end (EVAL-FRAME:ROWS) is read last, when x9, x10, x13, x14
+\ and x30 are spent: the owner's ROWS-END field is checked code.
 : EVAL-ENTER ( -- )
    SP SP STACK-ABI:EVAL-BYTES SUBI,
    14 SP 0 ADDI,
@@ -1620,6 +1651,7 @@ public
    9 DATA INP-CELL STR,                              \ INP = a
    9 DATA SRCLOC:INB-CELL STR,                       \ INB = a (this buffer's first byte)
    11 9 10 ADD,  11 DATA INE-CELL STR,               \ INE = a + u
+   10 SP EVAL-FRAME:ROWS DECL-OWNER:MARK-END        \ the frame is SP's, whole before the call
    9 DATA LMAINP-CELL LDR,  9 BR, ;
 
 : B-EVAL ( -- )

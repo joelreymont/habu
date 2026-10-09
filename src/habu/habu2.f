@@ -2865,14 +2865,9 @@ package LOOP-EMIT
 \ The active native compiler retains its checker even while a build replaces
 \ the source dictionary. The record's fields are the actual checker operations;
 \ a distinct target checker owns a second record during source replacement.
+\ FIND, MARK-END and RETRACT-TO open the package in habu1.f, before EVAL-ENTER.
 package DECL-OWNER
 public
-
-: FIND ( n -- ) {: off:n :}
-   LBL {: done:label :}
-   11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 done CBZ,
-   11 11 off LDR,
-   done LBL, ;
 
 : TARGET ( n label -- ) {: off:n absent:label :}
    11 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  11 absent CBZ,
@@ -3175,6 +3170,26 @@ public
       C-DIE-DOES
    good LBL, ;
 
+\ Call the check hook on the body it was pushed and leave its verdict in x10.
+\ A zero verdict drops the definition, so it also cuts the rows the hook
+\ recorded for it: the source owner's record end, read before the call, bounds
+\ the cut (checker.f CHECKER-RETRACT-ROWS), as tier 1's RETRACT cuts a refused
+\ definition's rows (src/compiler/native/compiler.f). Otherwise the dropped
+\ definition's record and pending window outlive it and a later word is
+\ checked against it while the engine binds another. The mark rides the
+\ machine-stack frame at [sp+8] as end+1; 0 means no owner, which records
+\ nothing to cut.
+: C-CALL-HOOK ( -- )
+   LBL {: kept:label :}
+   SP SP 16 SUBI,  30 SP 0 STR,
+   10 SP 8 DECL-OWNER:MARK-END
+   9 DATA HOOK-CELL LDR,  9 BLR,
+   10 G-POP  10 kept CBNZ,
+   SP 8 kept DECL-OWNER:RETRACT-TO
+      10 0 MOVZ,                                    \ the verdict the cut's call overwrote
+   kept LBL,
+   30 SP 0 LDR,  SP SP 16 ADDI, ;
+
 : C-CALL-CHECK-DEFINER ( -- )
    LBL LBL LBL LBL {: nohook fulllen lenok good :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
@@ -3185,9 +3200,7 @@ public
       10 DATA BODYLEN-CELL LDR,
    lenok LBL,
    10 G-PUSH
-   9 DATA HOOK-CELL LDR,
-   SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
-   10 G-POP  10 good CBNZ,
+   C-CALL-HOOK  10 good CBNZ,
       C-DIE-DOES
    good LBL,
    nohook LBL, ;
@@ -11240,8 +11253,9 @@ public
    full LBL,  C-DECLARED-LOG-DIE-FULL
    done LBL, ;
 
-\ A zero hook verdict rejects the pending definition. Any non-zero verdict
-\ certifies it and reaches the ordinary publication tail.
+\ A zero hook verdict rejects the pending definition and cuts the rows the hook
+\ recorded for it (C-CALL-HOOK). Any non-zero verdict certifies it and reaches
+\ the ordinary publication tail.
 \ With the hook cell empty nothing judges the body, and its declaration is its
 \ row, as at tier 1 (compiler.f SCAN): a TRUSTED: declaration through TRUST-DECL
 \ with its authority, any other through the owner's DECLARED-ROW field without
@@ -11260,8 +11274,7 @@ public
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
-      SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
-      10 G-POP  10 rejected CBZ,
+      C-CALL-HOOK  10 rejected CBZ,
       \ certified sig-less definition: same pass-2 dispatch as the sig'd
       \ publish path (item 12 slice 3b).
       LOWER-TXN:FREEZE
@@ -11674,8 +11687,9 @@ public
 \ frame gives back what it owns — input cursor, data-stack base (XDS), package
 \ and using scope — and EVALERR-CELL records the code, so the handler resumes
 \ with clean state. A frame that began with no definition open also owns
-\ everything compiled since: dictionary top (CP/NDICT), data pointer (DP) and
-\ compile state roll back, dropping any definition it opened. A frame that
+\ everything compiled since: dictionary top (CP/NDICT), data pointer (DP),
+\ compile state and the checker's records (EVAL-FRAME:ROWS) roll back, dropping
+\ any definition it opened with its record and pending window. A frame that
 \ began inside an open definition (EVAL-FRAME:PEND) is an immediate word's evaluate
 \ compiling into an outer buffer's definition, which it neither opened nor may
 \ close (C-DEF-SOURCE-CLOSE): that definition stays open with what the frame
@@ -11718,7 +11732,7 @@ public
    done LBL,  RET, ;
 
 : EM-EVAL-THROW-RECOVER ( -- )
-   LBL LBL LBL LBL LBL {: bounds:label owned:label scope:label unowned:label unrefused:label :}
+   LBL LBL LBL LBL LBL LBL {: bounds:label owned:label scope:label unowned:label unrefused:label kept:label :}
    S\" hb: catch frame corrupt\n" {: ma:ptr mu:n :}
    LEVALREC LABEL@ LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,                        \ region -> RX before any handler runs
@@ -11775,7 +11789,11 @@ public
       CODE-ORIGIN:ABANDON,
       10 13 40 LDR,  LCODEINV LABEL@ BL,
       SP SP 32 SUBI,  11 SP 0 STR,  13 SP 8 STR,  15 SP 16 STR,
-      9 13 40 LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
+      \ The checker's records go with the definitions: back to the end as the
+      \ buffer began (layout.f EVAL-FRAME:ROWS, end+1, 0 with no owner then).
+      13 EVAL-FRAME:ROWS kept DECL-OWNER:RETRACT-TO
+      kept LBL,
+      13 SP 8 LDR,  9 13 40 LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
       11 SP 0 LDR,  13 SP 8 LDR,  15 SP 16 LDR,  SP SP 32 ADDI,
       CP 13 40 LDR,
       9 13 48 LDR,  EM-DEF-OCC:LCOUNT LABEL@ BL,  NDICT 13 48 LDR,
@@ -11889,9 +11907,13 @@ public
    LEVCORRUPTMSG LABEL@ LBL,  ma mu BYTES,
    bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
 
+\ The recovery runs checked code - the invalidation callback and the checker's
+\ retract - so the region closes first, as LEVALREC's does: the underflow path
+\ (EM-INTERPRET-UNDERFLOW) arrives as an immediate word left it.
 : EM-REPL-RECOVER ( -- )
-   LBL {: bounds:label :}
+   LBL LBL {: bounds:label kept:label :}
    LRREC LABEL@ LBL,
+   PROT-EMIT:LCLOSE LABEL@ BL,                         \ region -> RX
    14 DATA STACK-ABI:REPL-BASE-CELL LDR,  10 DATA STACK-ABI:REPL-CAP-CELL LDR,
    12 14 0 ADDI,  0 bounds STACK-GUARD:CHECK-CURSOR
    14 DATA STACK-ABI:BASE-CELL STR,
@@ -11901,6 +11923,8 @@ public
    CODE-ORIGIN:ABANDON,
    10 DATA RSAVCP-CELL LDR,  LCODEINV LABEL@ BL,
    9 DATA RSAVCP-CELL LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
+   DATA RSAVROWS-CELL kept DECL-OWNER:RETRACT-TO     \ the checker's records go with the line's definitions
+   kept LBL,
    CP DATA RSAVCP-CELL LDR,
    9 DATA RSAVND-CELL LDR,  EM-DEF-OCC:LCOUNT LABEL@ BL,
    NDICT DATA RSAVND-CELL LDR,
@@ -12400,6 +12424,8 @@ public
    9 DATA RPKG:FLOOR STR,
    DATA RPKG:WIDS 10 9 ENGINE-EMIT:USE-WIDS-SAVE,                 \ and the used publics, which a `;package` and a `using` can overwrite
    PROT-EMIT:LCLOSE LABEL@ BL,                        \ region -> RX: a definition may span lines, and the reader is compiled code
+   \ and the checker's record end, end+1 (0 = no owner), which a failed line cuts back to
+   9 DATA RSAVROWS-CELL DECL-OWNER:MARK-END
    9 DATA REPLH-CELL LDR,  9 BLR,
    XDS XDS 8 SUBI,  10 XDS 0 LDR,
    XDS XDS 8 SUBI,  11 XDS 0 LDR,

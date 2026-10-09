@@ -237,10 +237,13 @@ variable M-DOES-FUN                  \ hidden clause function ordinal
 
 \ ---- stage N0: the definition the engine compiles ----------------------------
 \ Parked rather than left on the stack, because this runs inside the quotation
-\ the recovery below catches.
+\ the recovery below catches. The tape's verdict is the scan's; a hook's zero
+\ verdict stands over it, so a hook that certifies through the checker and then
+\ answers 0 refuses the definition (RECORD), as tier 0 drops it (habu2.f
+\ EM-COMPILE-PUBLISH-HOOKED), and the refusal retracts the rows it recorded.
 : END-RECORDED ( -- )
    NFEED:END-UNIT {: view:IR-ARENA:view verdict:n :}
-   verdict M-VERDICT !
+   M-VERDICT @ 0<> if verdict M-VERDICT ! then
    view 0 M-TAPE ! ;
 
 \ Row zero's structural span names the exact spelling already copied into TXT.

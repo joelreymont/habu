@@ -72,8 +72,9 @@ $88 constant EVAL-CAP
 \ of EVAL-FRAME:USE-WIDS and EVAL-FRAME:PEND at $120. $128 is held for the
 \ frame's saved next wordlist id (WIDN).
 \ The data stack the frame owns: evaluate-closed's pooled stack, which the clean
-\ return and the throw recovery give back to the pool; 0 for evaluate. $138
-\ pads the frame to EVAL-BYTES, a multiple of 16 for the machine stack.
+\ return and the throw recovery give back to the pool; 0 for evaluate. $138 is
+\ layout.f's EVAL-FRAME:ROWS, the checker's record end as the buffer began, and
+\ fills the frame to EVAL-BYTES, a multiple of 16 for the machine stack.
 $130 constant EVAL-SEG
 $140 constant EVAL-BYTES
 

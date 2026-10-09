@@ -13032,14 +13032,20 @@ package CHECKER-REG
 \ multi-error recovery fact, with the nodes they interned - and never a row
 \ recorded before it began: a twin's, or one of its own name that CHECK!
 \ recorded with no definition. An end at or below the mark holds nothing the
-\ definition recorded, and the store stays as it is. Sealed as
-\ CHECKER-DECLARED-ROW! is: from top level the cut would drop any name's rows.
+\ definition recorded, and the store stays as it is. A cut that takes the
+\ record the live window names (CK-CLOSED-OFF, offset+1) ends the window: a
+\ later record of that symbol at the same offset, which a hand CHECK! can
+\ write, would otherwise reopen it. Sealed as CHECKER-DECLARED-ROW! is: from
+\ top level the cut would drop any name's rows.
 : CHECKER-ROWS-END ( -- n ) UEND @ ;
 REG-PROTECT
 
 : CHECKER-RETRACT-ROWS ( n -- )
    {: mark:n :}
-   mark UEND @ < IF mark USIGS-RESTORE-END THEN ;
+   mark UEND @ < IF
+      CK-CLOSED-OFF @ mark > IF 0 CK-CLOSED-SYM ! THEN
+      mark USIGS-RESTORE-END
+   THEN ;
 REG-PROTECT
 
 : CHECKER-FIND-ACTIVE-SIG ( ptr u8 n -- ) {: a:ptr u:n :}

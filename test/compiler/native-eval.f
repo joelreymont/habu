@@ -2,9 +2,12 @@
 \ stack of its own and refuses residue by name, which is what lets a checked
 \ word evaluate source. Tier-neutral by design: the boundary asserted is the
 \ engine primitive and the checker's row for it, which no compiler tier moves.
+\ The texts a throw takes back run at each tier that reaches their throw, since
+\ each tier records the definitions it compiles its own way.
 require src/core/engine-error.f
 require src/habu/stack-abi.f
 require lib/errors.f
+require lib/string.f
 require lib/test.f
 require lib/test/subject.f
 
@@ -308,6 +311,78 @@ $4F constant TASK-LIVE                  \ habu1.f B-TASK-LIVE-GUARD's exit
    s" and nothing is printed" T-LABEL
    LEN>N 0 T=  LEN>N 0 T= ;
 
+\ ---- a definition a thrown text takes back keeps no row ----------------------
+\ A text that throws takes back what it defined, and its frame cuts the
+\ checker's records back to where the text began, so a later word is checked
+\ against the word the engine binds. Each child sets the tier it compiles at,
+\ and the texts outrun a source line, so each is assembled in TEXT.
+create TEXT IO-CAP allot
+variable TEXT-U
+variable OUT-U
+variable ERR-U
+
+: TEXT+ ( ptr u8 n -- ) TEXT IO-CAP TEXT-U BUF-APPEND ;
+
+: TIER-TEXT ( n -- ) {: tier:n :}
+   TEXT-U BUF-RESET
+   tier 0= if s" 0 set-tier " else s" 1 set-tier " then TEXT+ ;
+
+\ Runs TEXT in a child and leaves its exit code, its output in OUT and ERR.
+: TEXT-RC ( -- n )
+   TEXT TEXT-U BUF-LEN@ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
+   PROC-OUTCOME>RC RC>N {: rc:n :}
+   LEN>N ERR-U !  LEN>N OUT-U !  rc ;
+
+: OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
+
+: SAYS ( ptr u8 n -- ) {: a:ptr u:n :}
+   ERR ERR-U @ a u CONTAINS? TTRUE ;
+
+\ The hook records W-FORGET's row and then throws. To the engine, T-FORGET's
+\ bare W-FORGET is both the global and the used P-FORGET:W-FORGET, so T-FORGET
+\ is refused; typed against the thrown row ( -- n n ), it certified and ran one
+\ cell short. It runs at tier 0 alone: tier 1 refuses W-FORGET itself for that
+\ ambiguity before its hook runs.
+: HOOK-THROWN ( -- )
+   s" a definition its hook threw back keeps no row" T-LABEL
+   0 TIER-TEXT
+   s" : W-FORGET ( -- n ) 1 ; package P-FORGET public : W-FORGET ( -- n ) 2 ; ;package " TEXT+
+   s" : THROWER-FORGET ( ptr u8 n -- n ) over c@ [char] W = >r " TEXT+
+   s" LOWER-CERT-HOOK:HOOK r> if 77 throw then ; ' THROWER-FORGET set-check " TEXT+
+   s" package Q-FORGET public using P-FORGET " TEXT+
+   S\" s\" : W-FORGET 3 4 ;\" ' evaluate catch . 2drop cr " TEXT+
+   s" : T-FORGET ( -- n n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . . cr" TEXT+
+   TEXT-RC 70 T=
+   OUT$ S\" 77\n\n" T$=
+   s" E-USING-SHADOW-GLOBAL" SAYS ;
+
+\ A text that defines X-FORGET and then throws takes X-FORGET back, row and
+\ all, so the next X-FORGET is no duplicate.
+: NAME-THROWN ( n -- ) {: tier:n :}
+   s" a definition its text threw back leaves its name free" T-LABEL
+   tier TIER-TEXT
+   S\" s\" : X-FORGET ( -- n ) 1 ; 77 throw\" ' evaluate catch . 2drop cr " TEXT+
+   s" : X-FORGET ( -- n ) 2 ; X-FORGET . cr" TEXT+
+   TEXT-RC 0 T=
+   OUT$ S\" 77\n\n2\n\n" T$= ;
+
+\ The same text inside Q-FORGET: T-FORGET's X-FORGET is the global ( -- n ),
+\ not the thrown-back Q-FORGET:X-FORGET ( -- n n ), so T-FORGET ( -- n n ) is
+\ refused; typed against the thrown row, it certified and ran one cell short.
+: ROW-THROWN ( n -- ) {: tier:n :}
+   s" a definition its text threw back does not type a later caller" T-LABEL
+   tier TIER-TEXT
+   s" : X-FORGET ( -- n ) 1 ; package Q-FORGET public " TEXT+
+   S\" s\" : X-FORGET ( -- n n ) 1 2 ; 77 throw\" ' evaluate catch . 2drop cr " TEXT+
+   s" : T-FORGET ( -- n n ) X-FORGET ; ;package Q-FORGET:T-FORGET . . cr" TEXT+
+   TEXT-RC 70 T=
+   OUT$ S\" 77\n\n" T$=
+   s" habu: in t-forget: at 'X-FORGET' expected: n n actual: n" SAYS ;
+
+: THROWN-BACK ( n -- ) {: tier:n :}
+   tier NAME-THROWN
+   tier ROW-THROWN ;
+
 : CHECKED ( -- )
    s" a checked body naming evaluate is refused" T-LABEL
    s" NATIVE-EVAL-OPEN ( ptr u8 n -- ) evaluate" CHECK! 0 T=
@@ -320,7 +395,10 @@ $4F constant TASK-LIVE                  \ habu1.f B-TASK-LIVE-GUARD's exit
    UNFINISHED
    UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED AGREEMENT OVERFLOW FLOOR-JUMP
    TOP-LEVEL
-   UNFINISHED-LINE LIVE CHECKED
+   UNFINISHED-LINE LIVE
+   HOOK-THROWN
+   2 0 do i THROWN-BACK loop
+   CHECKED
    T-REPORT ;
 
 ' RUN
