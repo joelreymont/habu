@@ -1,6 +1,6 @@
 ---
 title: Forget a definition a check hook rejects
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-10-09T22:14:02.812162+03:00"
@@ -10,4 +10,4 @@ Problem: a check hook that answers 0 for a definition with no signature (pk1-pk6
 Acceptance: rejecting a recorded definition leaves no pending window or record for it, so every later word is checked against the definition the engine binds. pk1-pk6 join the native suite with the corrected outcomes and join test/gforth/cases/ matching native. If codegen.fs CALLEE's `binding kind` and H-TICK's `tick target` deaths are then unreachable, they go.
 Files: src/core/checker.f, src/habu/habu2.f, the native tests of the check-hook path a search finds, src/host/gforth/codegen.fs, test/gforth/cases/.
 Verify: rebuild bin/hb per docs/gate.md; `bin/hb --load test/run.f`; two-generation build converges; `HB_TMP=$PWD/build/tmp bin/hb --load test/gforth/host-test.f`.
-Depends: none. Ownership: the files above. Worker: worker-max. Claim: unassigned.
+Depends: none. Ownership: the files above. Worker: worker-max. Claim: agent=worker-max (lead carl) workspace=.jj-ws/carl-forget.
