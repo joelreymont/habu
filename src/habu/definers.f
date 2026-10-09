@@ -1,7 +1,8 @@
 \ definers.f - the definition heads of the interpret loop written in Habu:
 \ `:`, `kernel:` and `trusted:`, as the engine's EM-INTERPRET-COLON and
 \ C-TRUSTED (habu2.f) open a definition, and the capture of the body that
-\ follows one. STEP (src/habu/interpret.f) asks COMPILING? after a comment and
+\ follows one, and `create` and `variable`, as C-CREATE and C-VARIABLE make
+\ their words. STEP (src/habu/interpret.f) asks COMPILING? after a comment and
 \ DEFINE? after the package keywords.
 \
 \ A head opens record NDICT through def-open, unpublished, and the definition
@@ -34,8 +35,8 @@ private
 71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
 
 \ ---- the definition writers --------------------------------------------------
-\ def-open, body-append, created-sig! and def-close are OUTER's own rows
-\ (src/habu/prims.f), called below by name. trust-sig! has none: it is the
+\ def-open, body-append, created-sig!, def-close and def-create are OUTER's own
+\ rows (src/habu/prims.f), called below by name. trust-sig! has none: it is the
 \ `trusted:` head's alone.
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 
@@ -43,6 +44,8 @@ TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 \ cells; these views state the signatures they are called with here.
 CAST: AS-COMPILE ( n -- [ ptr u8 n -- ] )
 CAST: AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] )
+CAST: AS-DEF-HOOK ( n -- [ ptr u8 n -- n ] )
+CAST: AS-TRUST-RAW ( n -- [ ptr u8 n ptr u8 n -- ] )
 
 \ ---- tier 0 ------------------------------------------------------------------
 \ The engine's tier 0 compiles each body token as it reads it, with its JIT,
@@ -92,10 +95,13 @@ CAST: AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] )
 \ ---- the head's room (habu2.f EM-INTERPRET-COLON, C-TRUSTED) -----------------
 \ CP at the code ceiling and no record slot left each refuse, naming the
 \ keyword. Both comparisons are signed, as the engine's head makes them.
-: DEF-ROOM ( -- )
+: DEF-CODE-ROOM ( -- )
    cp@ dbase@ REGION + PKG-CODE-RESERVE - >= if
       s" hb: code space full at: " SAY PKG-RC-CODE-FULL PKG-FAIL
-   then
+   then ;
+
+: DEF-ROOM ( -- )
+   DEF-CODE-ROOM
    ndict@ DICT-CAP >= if
       s" hb: dictionary full at: " SAY PKG-RC-DICT-FULL PKG-FAIL
    then ;
@@ -222,8 +228,10 @@ CAST: AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] )
 \ The tail and its wordlist pass the wall, the room, the duplicate test and the
 \ seal's protected wordlists, then the name's code room, before def-open
 \ writes anything (habu2.f EMIT-QUALIFY-DEF, EMIT-STORE-DEF-NAME). The
-\ refusals name the token, but the wall and the code room name the tail.
-: DEF-RECORD ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
+\ refusals name the token, but the wall and the code room name the tail. The
+\ kind is the record's: 0 for a body the compiler compiles, DKIND:ADDR for a
+\ created word.
+: DEF-RECORD ( ptr u8 n n n -- ) {: a:ptr u:n wid:n kind:n :}
    a u DEF-WALL
    PKG-DICT-ROOM
    a u wid WL-PROBE XREF-FOUND? if
@@ -231,7 +239,15 @@ CAST: AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] )
    then
    wid PKG-OPEN-WID
    a u PKG-CODE-ROOM
-   a u wid 0 def-open ;
+   a u wid kind def-open ;
+
+\ A head's start: the capture seeded with the name, qualified and recorded as
+\ the given kind.
+: DEF-START ( n -- )
+   {: kind:n :}
+   0 BODYLEN-CELL CELL!
+   TOKEN$ DEF-CAPTURE
+   DEF-QUALIFY kind DEF-RECORD ;
 
 \ The name opens a pending record with the capture it seeds. `trusted:` then
 \ sets the trusted cell and needs a signature; `:` takes one if it is there.
@@ -240,9 +256,7 @@ CAST: AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] )
    TASK-GUARD
    DEF-ROOM
    trusted DEF-NAME
-   0 BODYLEN-CELL CELL!
-   TOKEN$ DEF-CAPTURE
-   DEF-QUALIFY DEF-RECORD
+   0 DEF-START
    trusted if
       1 TRUSTED-CELL CELL!
       DEF-REQUIRED-SIG
@@ -402,13 +416,79 @@ variable ENTRY-PEND
    DEF-STRING-TEXT
    true ;
 
+\ ---- `create` and `variable` (habu2.f C-CREATE, EMIT-CREATE, C-VARIABLE) -----
+\ A created word is published whole where its keyword is read: def-create
+\ writes the code that pushes its data address and appends the record. The
+\ checker then reads it as the engine hands it over. `variable` is `create`
+\ and one cell more, and the engine names `create` for both: in the missing
+\ name's refusal and in the def hook's text.
+
+\ The def hook takes the capture with the keyword after the name, `NAME
+\ create`, and its verdict is dropped: a created word always publishes
+\ (habu2.f C-DEFHOOK). The hook runs on the program's stack, so neither this
+\ word nor its callers keep locals.
+: DEF-ADDR-HOOK ( -- )
+   s" create" DEF-CAPTURE
+   HOOK-CELL CELL@ 0= if exit then
+   data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@
+   HOOK-CELL CELL@ AS-DEF-HOOK execute drop ;
+
+\ The created word's effect goes to the trust-raw xt given: a cell of raw
+\ dictionary storage, which the checker seals through its trust-raw (habu2.f
+\ LASTC-TRUST:PUBLISH-PTR-A).
+: DEF-TRUST-RAW ( n -- )
+   {: xt:n :}
+   DEF-CAPTURED-NAME s" -- ptr a" xt AS-TRUST-RAW execute ;
+
+\ The active owner's trust-raw. With none and a hook set the target owner's,
+\ and with no target's either the process ends naming it; with neither an
+\ owner's nor a hook, 0 (LASTC-TRUST:FIND-ACTIVE, FIND-RAW).
+: DEF-RAW-ACTIVE ( -- n )
+   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION {: own:n :}
+   own 0<> if own exit then
+   HOOK-CELL CELL@ 0= if 0 exit then
+   NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
+   target 0= if s" trust-raw" RC-REJECT FAIL-CLOSED then
+   target ;
+
+\ The effect goes to the active owner's trust-raw, then to the target owner's
+\ while an active owner record exists, unless the two are the same
+\ (LASTC-TRUST:FIND-TARGET).
+: DEF-ADDR-PUBLISH ( -- )
+   DEF-RAW-ACTIVE {: own:n :}
+   own 0= if exit then
+   own DEF-TRUST-RAW
+   NCOMP-DISPATCH:DECL-CELL CELL@ 0= if exit then
+   NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
+   target 0= if exit then
+   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION target = if exit then
+   target DEF-TRUST-RAW ;
+
+\ The head refuses as `:`'s does, at any tier, def-create publishes the word,
+\ DP rounded up to a cell, and the checker is told of it. No record slot left
+\ is refused after the name, naming it, as the engine's `create` refuses it
+\ (C-QUALIFY-CAP, here DEF-RECORD). The engine's `create` writes at CP at the
+\ code ceiling, which def-open refuses, so the code room refuses first, naming
+\ the keyword, as `:`'s does.
+: DEF-ADDR ( -- )
+   TASK-GUARD
+   DEF-CODE-ROOM
+   s" create" OPERAND
+   DKIND:ADDR DEF-START
+   def-create
+   DEF-ADDR-HOOK
+   DEF-ADDR-PUBLISH ;
+
 \ ---- the definition keywords --------------------------------------------------
-\ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:` is
-\ matched as LITERAL? matches its keywords.
+\ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:`,
+\ `create` and `variable` are matched as LITERAL? matches its keywords.
+\ `variable` then allots one cell more and stores nothing.
 : DEFINE? ( -- bool )
    s" :" TOKEN-IS? if false DEF-HEAD true exit then
    s" kernel:" TOKEN-IS? if false DEF-HEAD true exit then
    s" trusted:" TOKEN-IS? if true DEF-HEAD true exit then
+   s" create" TOKEN-IS? if DEF-ADDR true exit then
+   s" variable" TOKEN-IS? if DEF-ADDR 1 cells allot true exit then
    false ;
 
 ;package

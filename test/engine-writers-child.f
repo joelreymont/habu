@@ -161,6 +161,16 @@ TRUSTED: EW-SIG ( ptr u8 n -- ) trust-sig! ;
 : EW-OPEN-CLOSE ( -- )
    s" EW-FIRST" get-current 0 EW-OPEN  EW-AT  EW-CLOSE ;
 
+\ def-create on a kind-0 definition just opened, and on an address one with CP
+\ at the code ceiling.
+: EW-OPEN-CREATE ( -- )
+   s" EW-FIRST" get-current 0 EW-OPEN  EW-AT  EW-CREATE ;
+: EW-CREATE-CEILING ( -- )
+   s" EW-FIRST" get-current DKIND:ADDR EW-OPEN  EW-CEILING cp!  EW-AT  EW-CREATE ;
+
+\ An address definition CW, opened and ended by def-create.
+: EW-CREATE-CW ( -- ) s" CW" get-current DKIND:ADDR EW-OPEN  EW-CREATE ;
+
 \ ---- the scope replay-open saves ----------------------------------------------
 \ Cell k of the scope: 0 NDICT, 1 CP, then EW-OFFS's DATA cells, then the used
 \ wids. A case marks it before replay-open and compares it after replay-close.
@@ -230,6 +240,7 @@ private
    s" trust-sig!" s" EWX ( ptr u8 n -- ) trust-sig!" INTERNAL
    s" created-sig!" s" EWX ( ptr u8 n -- ) created-sig!" INTERNAL
    s" def-close" s" EWX ( -- ) def-close" INTERNAL
+   s" def-create" s" EWX ( -- ) def-create" INTERNAL
    s" replay-open" s" EWX ( -- ) replay-open" OWNER-ONLY
    s" replay-close" s" EWX ( -- ) replay-close" OWNER-ONLY
    s" replay-widn!" s" EWX ( n -- ) replay-widn!" OWNER-ONLY
@@ -268,6 +279,12 @@ private
    s\" 42\n1\n" 0 RUNS
    s" 1 set-tier parse-name DEFINED-THROUGH-DEF-OPEN EW-COLON 42 ; DEFINED-THROUGH-DEF-OPEN . ndict@ 1- EW-NAME-ORIGIN ."
    s\" 42\n1\n" 0 RUNS ;
+
+\ An address definition def-create ends runs as `create`'s word: it pushes its
+\ DATA address, which holds what is stored there.
+: CREATES ( -- )
+   s" EW-CREATE-CW 0 , 7 CW ! CW @ ."
+   s\" 7\n" 0 RUNS ;
 
 \ The capture takes the bytes and one space up to the buffer's last byte.
 : BODIES ( -- )
@@ -335,7 +352,10 @@ private
    s" parse-name abc EW-AT EW-SIG" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" parse-name abc EW-AT EW-CSIG" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" EW-AT EW-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" 0 set-tier EW-OPEN-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REFUSES ;
+   s" 0 set-tier EW-OPEN-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" EW-AT EW-CREATE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" EW-OPEN-CREATE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" EW-CREATE-CEILING" ENGINE-ERROR:SEAL-VIOLATION REFUSES ;
 
 \ ---- the replay writers -------------------------------------------------------
 \ No global row types them, so a checked caller reaches one only inside package
@@ -490,6 +510,7 @@ public
    s" package-scope! opens a private scope ;package closes" T-LABEL SCOPES T-NEXT
    s" an alias runs its source and stays immediate" T-LABEL ALIASES T-NEXT
    s" def-open body-append trust-sig! then 42 ; publish natively" T-LABEL DEFINITIONS T-NEXT
+   s" def-open DKIND:ADDR then def-create ends a created word" T-LABEL CREATES T-NEXT
    s" body-append fills BODYBUF to its last byte" T-LABEL BODIES T-NEXT
    s" the four dictionary rows refuse a live task" T-LABEL LIVE-REFUSALS T-NEXT
    s" record writers refuse what would corrupt the dictionary" T-LABEL RECORD-REFUSALS T-NEXT

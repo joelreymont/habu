@@ -3958,7 +3958,7 @@ public
    9 DATA TRUSTED-CELL STR, ;
 
 \ ---- the definition writers --------------------------------------------------
-\ The bodies of the nine rows src/habu/prims.f specifies under "the definition
+\ The bodies of the ten rows src/habu/prims.f specifies under "the definition
 \ writers" and of the six replay writers after them, registered with
 \ ENGINE-PRIMS:GLOBAL-INT-WID in EMIT-PRIMITIVE-SECTIONS. Each checks
 \ everything before it writes, and a refusal exits the process, so no reader
@@ -4470,6 +4470,44 @@ variable LREPLAYTRAP
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
+\ The end of `create` (EMIT-CREATE) and of the def-create row alike, for record
+\ x9 in slot NDICT with the code band open at CP and the record declared: [0]
+\ is CP, DP rounds up to a cell under DP-CHECK, the code pushes that address
+\ as an address-map site and returns, [8] is its length and [16] carries
+\ DKIND:ADDR, LASTC is the record, which is counted and indexed, its code is
+\ native, the band closes and the code is flushed.
+: ADDR-TAIL, ( -- )
+   CP 9 0 STR,
+   11 DATA 0 LDR,  11 11 7 ADDI,  11 11 3 LSRI,  11 11 3 LSLI,   \ standard CREATE: round the data field up to a cell
+   11 DP-CHECK  11 DATA 0 STR,
+   C-DATA-ADDR
+   9 W-RET LIT64,  LCEMIT LABEL@ BL,
+   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
+   10 9 16 LDR,  10 10 DKIND:ADDR ORRI,  10 9 16 STR,     \ this record's body pushes its DATA address
+   9 DATA LASTC-CELL STR,
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
+   9 CP CODE-ORIGIN:NATIVE-RANGE,
+   PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL, ;
+
+\ def-create ( -- ): def-open's provenance window holds no code yet, so it
+\ closes empty and ADDR-TAIL, marks the code it writes native, as `create`
+\ marks its own; then the state def-open set clears, PEND-CELL last.
+: DEF-CREATE ( -- )
+   LBL LBL {: bad done :}
+   9 DATA PEND-CELL LDR,  9 bad CBZ,
+   9 NDICT REC-AT,                                    \ the pending record, slot NDICT
+   10 9 16 LDR,  10 10 DKIND:MASK ANDI,  11 DKIND:ADDR LIT64,  10 11 CMP,  C-NE bad BCOND,
+   10 REGION $4000 - LIT64,  10 DBASE 10 ADD,  CP 10 CMP,  C-CS bad BCOND,
+   1 CODE-ORIGIN:CLOSE,
+   NAME-BANDS,
+   ADDR-TAIL,
+   C-CLEAR-TRUSTED-STATE
+   9 0 MOVZ,  9 DATA PEND-CELL STR,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
 ;package
 
 : J-DOES ( -- )
@@ -4780,18 +4818,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    1 9 0 ADDI,  2 DREC MOVZ,  PROT-EMIT:LSPAN LABEL@ BL, \ the record this create publishes
    C-STORE-DEF-NAME
-   CP 9 0 STR,
-   11 DATA 0 LDR,  11 11 7 ADDI,  11 11 3 LSRI,  11 11 3 LSLI,   \ standard CREATE: round the data field up to a cell
-   11 DP-CHECK  11 DATA 0 STR,
-   C-DATA-ADDR
-   9 W-RET LIT64,  LCEMIT LABEL@ BL,
-   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-   10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
-   10 9 16 LDR,  10 10 DKIND:ADDR ORRI,  10 9 16 STR,     \ this record's body pushes its DATA address
-   9 DATA LASTC-CELL STR,
-   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
-   9 CP CODE-ORIGIN:NATIVE-RANGE,
-   PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
+   DEFWRITE:ADDR-TAIL,
    15 SP 8 LDR,  15 nokind CBZ,
    LKWCREATE KWCREATE$ nip C-DEFHOOK
    nokind LBL,
@@ -13471,6 +13498,7 @@ package ENGINE-EMIT
    s" trust-sig!" ['] DEFWRITE:TRUST-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" created-sig!" ['] DEFWRITE:CREATED-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-close" ['] DEFWRITE:DEF-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" def-create" ['] DEFWRITE:DEF-CREATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-open" ['] DEFWRITE:REPLAY-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-close" ['] DEFWRITE:REPLAY-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-widn!" ['] DEFWRITE:REPLAY-WIDN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID

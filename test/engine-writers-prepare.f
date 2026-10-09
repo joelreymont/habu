@@ -28,6 +28,7 @@ public
 : EW-APPEND ( ptr u8 n -- ) body-append ;
 : EW-CSIG ( ptr u8 n -- ) created-sig! ;
 : EW-CLOSE ( -- ) def-close ;
+: EW-CREATE ( -- ) def-create ;
 ;package
 
 package CHECKER-OVERLAY

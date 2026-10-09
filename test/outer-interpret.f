@@ -10,12 +10,12 @@
 \ it exercised, so two runs failing alike do not pass.
 \
 \ The prelude defines with keywords the Habu loop does not read yet
-\ (`immediate`, `SUMTYPE`, `constant`, `variable`), so it loads before the
-\ switch, and a case holds only numbers, comments, the literal keywords (`s"`,
-\ `c"`, `."`, their escaped forms, `char` and `'`), the package keywords
-\ (`package`, `public`, `private`, `;package`, `using`, `;using` and
-\ `export`), words, and definitions (`:`, `kernel:` or `trusted:`) that end at
-\ `;` or refuse, at the latest where the input ends inside them. A case
+\ (`immediate`, `SUMTYPE`, `constant`), so it loads before the switch, and a
+\ case holds only numbers, comments, the literal keywords (`s"`, `c"`, `."`,
+\ their escaped forms, `char` and `'`), the package keywords (`package`,
+\ `public`, `private`, `;package`, `using`, `;using` and `export`), words,
+\ `create` and `variable`, and definitions (`:`, `kernel:` or `trusted:`) that
+\ end at `;` or refuse, at the latest where the input ends inside them. A case
 \ defines with the other keywords through evaluate, which the engine's loop
 \ reads.
 \
@@ -1095,6 +1095,8 @@ variable WANT-RC
    s" OI-SPIN using OI-FXA" s" using" s" oi-live-using.f" LIVE
    s" using OI-FXA OI-SPIN ;using" s" ;using" s" oi-live-end-using.f" LIVE
    s" package OI-T public OI-SPIN export OI-TWO" s" export" s" oi-live-export.f" LIVE
+   s" OI-SPIN create OI-T" s" create" s" oi-live-create.f" LIVE
+   s" OI-SPIN variable OI-T" s" variable" s" oi-live-variable.f" LIVE
    0 SPIN-U ! ;
 
 \ ---- the definition heads -------------------------------------------------------
@@ -1710,6 +1712,52 @@ variable WANT-RC
    s" oi-semi-tier-0.f" HABU
    76 s" hb: tier 0 is not in the Habu loop: ; at " S\" oi-semi-tier-0-nested.f:1\n" DIED-AT ;
 
+\ ---- `create` and `variable` -------------------------------------------------------
+\ A created word pushes its cell, and a checked word reads it through the
+\ effect the checker was given; a variable's cell is its own.
+: CREATED ( -- )
+   s" 1 set-tier variable OI-V variable OI-W 5 OI-V ! 6 OI-W ! : OI-F ( -- n ) OI-V @ OI-W @ + ; OI-F . OI-V @ ."
+   s" oi-variable.f" LINE-CASE
+   CASE$ GE-EXPECT-OK
+   S\" 11\n5\n" CASE$ GE-EXPECT-OUT
+   s" 1 set-tier create OI-B 16 allot 7 OI-B c! 9 OI-B 15 + c! : OI-G ( -- n ) OI-B c@ OI-B 15 + c@ + ; OI-G ."
+   s" oi-create.f" LINE-CASE
+   CASE$ GE-EXPECT-OK
+   S\" 16\n" CASE$ GE-EXPECT-OUT ;
+
+\ With the input at its end the refusal names `create`, for `variable` too.
+: CREATED-NO-NAME ( -- )
+   GE-SRC-RESET
+   s" 1 ." GE-SRC-LINE
+   s" create" GE-SRC+
+   s" oi-create-no-name.f" BOTH
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   74 s" hb: reader keyword needs a name: create at " S\" oi-create-no-name.f:2\n" DIED-AT
+   GE-SRC-RESET
+   s" 1 ." GE-SRC-LINE
+   s" variable" GE-SRC+
+   s" oi-variable-no-name.f" BOTH
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   74 s" hb: reader keyword needs a name: create at " S\" oi-variable-no-name.f:2\n" DIED-AT ;
+
+\ A full dictionary refuses after the name, naming the word, not the keyword.
+: CREATED-DICT-FULL ( -- )
+   GE-SRC-RESET
+   s" OI-DICT-FULL create OI-T" GE-SRC-LINE
+   s" oi-create-dictionary-full.f" BOTH
+   77 s" hb: dictionary full at: OI-T at " S\" oi-create-dictionary-full.f:1\n" DIED-AT ;
+
+\ The def hook gets the name and `create`, for `variable` too, and the word
+\ publishes whatever its verdict.
+: CREATED-HOOK ( -- )
+   GE-SRC-RESET
+   s" s~ : OI-HK ( ptr u8 n -- n ) type cr 0 ;~ evaluate" QLINE
+   s" 0 set-check ' OI-HK set-check" GE-SRC-LINE
+   s" create OI-B variable OI-V 5 OI-V ! OI-V @ ." GE-SRC-LINE
+   s" oi-create-hook.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" OI-B create \nOI-V create \n5\n" CASE$ GE-EXPECT-OUT ;
+
 \ ---- in a forked copy of this process -----------------------------------------------
 
 variable SPY-N
@@ -1846,6 +1894,10 @@ private
    SEMI-REFUSALS
    SEMI-DISPATCH-UNSET
    SEMI-TIER-0
+   CREATED
+   CREATED-NO-NAME
+   CREATED-DICT-FULL
+   CREATED-HOOK
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;

@@ -147,8 +147,11 @@ token in the program's text (`src/habu/treeshake.f:1-7`).
 **One interpreter.** The interpret loop, definers, packages and source loading
 are written once in typed Habu and run on every platform.
 **Now:** ARM64 runs a machine-code interpreter (`src/habu/habu2.f`); the Habu
-loop (`src/habu/interpret.f`) runs only under tests; x86-64 has no interpreter
-(`src/habu/kernel-x64.f:1752`).
+loop (`src/habu/interpret.f`) runs only under tests and does not yet read
+`constant`, `defer`, `cast:`, `linear:` or `immediate`. Its `create` and
+`variable` publish the word through the `def-create` writer row, whose ARM64
+body is the tail of the engine's own `create` (`DEFWRITE:ADDR-TAIL,`); x86-64
+has no interpreter (`src/habu/kernel-x64.f:1752`) and refuses the row.
 
 **The loop is Forth's.** `INTERPRET` reads a token and looks it up. Outside a
 definition the word runs; inside one, an immediate word runs and any other word

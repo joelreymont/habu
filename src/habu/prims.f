@@ -705,21 +705,22 @@ EPRIM: def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ slot and nonzero process-local occurrence
 EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRIVATE   \ src/habu/xref.f DEF-OCC:RESOLVE
 \ ---- the definition writers --------------------------------------------------
-\ What `package`, `export`, `:`, `does>` and `;` change is sealed state after
+\ What `package`, `export`, `:`, `create`, `does>` and `;` change is sealed state after
 \ the seal: the friend arena (CUR, WIDN, DEF-WL, TSIG, TCSIG, PKG-*), BODYBUF,
 \ DEF-TIER-CELL, the TIER-PROV band and the records behind the PROT window.
-\ These nine rows are how an interpreter written in Habu writes it. Each is
+\ These ten rows are how an interpreter written in Habu writes it. Each is
 \ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so a checked
 \ body reaches one only through an owner-private row below: package OUTER's,
 \ the interpret loop written in Habu (src/habu/packages.f and
 \ src/habu/definers.f), and CHECKER-OVERLAY's. A refusal exits and never throws: 79 while a task
 \ is live (the four dictionary rows), 84 for a protected wid after
 \ the seal (`alias-record`, `def-open`) and 83 for every other refusal. A
-\ caller checks first and prints the engine's own text. One refusal is a
-\ compile die instead: while a checker overlay is open (layout.f REPLAY-SCOPE)
-\ `namespace-private`, `alias-record` and `def-open`, like `native-unit-publish`
-\ above, name the token and die ENGINE-ERROR:OVERLAY-OPEN, which `evaluate`
-\ delivers as a throw (habu1.f OVERLAY-EMIT:GUARD,).
+\ caller checks first and prints the engine's own text. Two refusals are
+\ compile dies instead, which `evaluate` delivers as throws: while a checker
+\ overlay is open (layout.f REPLAY-SCOPE) `namespace-private`, `alias-record`
+\ and `def-open`, like `native-unit-publish` above, name the token and die
+\ ENGINE-ERROR:OVERLAY-OPEN (habu1.f OVERLAY-EMIT:GUARD,), and `def-create`
+\ dies 76 as `allot` does when DP would pass the data region.
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
 \ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64
@@ -802,6 +803,17 @@ EPPRIM: OUTER created-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: def-close EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: OUTER def-close ECLOSE-PRIVATE
+\ def-create ( -- ): end the pending DKIND:ADDR definition as the engine's
+\ `create` ends its record (habu2.f EMIT-CREATE): DP rounds up to a cell, the
+\ code at CP pushes that address, an address-map site, and returns, [8] takes
+\ the code's length, LASTC the record, the record is counted and indexed, its
+\ code is native provenance and the state def-open set clears, PEND-CELL with
+\ it. DP past the data region refuses as `allot` does, 76 (habu1.f DP-CHECK).
+\ It refuses no pending definition, a pending one of another kind and CP at
+\ or past the code ceiling.
+EPRIM: def-create EPRIM;
+ETRUSTED-ONLY!
+EPPRIM: OUTER def-create ECLOSE-PRIVATE
 \ ---- the replay writers ------------------------------------------------------
 \ Only package CHECKER-OVERLAY's rows type these six. With no global row, a
 \ checked caller elsewhere is E-UNDEFINED, and a TRUSTED: body elsewhere binds
