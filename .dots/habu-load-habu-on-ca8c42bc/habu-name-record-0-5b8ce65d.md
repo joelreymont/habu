@@ -1,9 +1,10 @@
 ---
 title: Name record 0 in the bound window and tick events
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-10-09T18:58:37.318658+03:00\""
+created-at: "\"\\\"2026-10-09T18:58:37.318658+03:00\\\"\""
+closed-at: "2026-10-09T19:27:57.382529+03:00"
 ---
 
 Problem: src/core/checker.f:12521-12526 REC>INDEX says index 0 "an index no record has, names none", but record 0 exists: native's is `engine-code-origin-set`, which no source can name, and the Gforth host's is `finally`, which src/core/dynamic-storage.f and lib/memory.f use. Index 0 then reads as no record in the tape's K-TICK and K-IS a0 (checker.f:13965-13966, 21076, 21166) and in the bound window's BOUND-RECORD tests (checker.f:13666, 13728; src/compiler/native/elaborate.f:899), so on the host a checked call or tick of `finally` reads as unbound.

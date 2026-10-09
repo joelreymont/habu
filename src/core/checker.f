@@ -12519,10 +12519,11 @@ CAST: N>REC ( n -- ptr n )
 public
 : REC-AT ( n -- ptr n ) DICT-WORDLIST-SLOT 1+ cells * dbase@ + N>REC ;
 \ Its inverse, the index the bound window and the tape's K-TICK and K-IS name a
-\ record by; 0, an index no record has, names none.
+\ record by. Every index from 0 names a record (native's record 0 is
+\ engine-code-origin-set, the Gforth host's is finally); -1 names none.
 : REC>INDEX ( ptr n -- n )
    {: rec:ptr :}
-   rec NULL-PTR = IF 0 EXIT THEN
+   rec NULL-PTR = IF -1 EXIT THEN
    rec BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ - DICT-WORDLIST-SLOT 1+ cells / ;
 ;package
 
@@ -13456,7 +13457,7 @@ variable BGLUE-I
       CHECKER-OWNER-ABI:BOUND-UNRESOLVED i CHECKER-OWNER-ABI:BOUND-KIND BWIN-AT !
       0 i CHECKER-OWNER-ABI:BOUND-SYM BWIN-AT !
       0 i CHECKER-OWNER-ABI:BOUND-EFFECT BWIN-AT !
-      0 i CHECKER-OWNER-ABI:BOUND-RECORD BWIN-AT !
+      -1 i CHECKER-OWNER-ABI:BOUND-RECORD BWIN-AT !
       0 i CHECKER-OWNER-ABI:BOUND-WID BWIN-AT !
       0 i CHECKER-OWNER-ABI:BOUND-ENTRY BWIN-AT !
       0 i CHECKER-OWNER-ABI:BOUND-FLAGS BWIN-AT !
@@ -13481,7 +13482,7 @@ variable BGLUE-I
    eff NULL-PTR = IF 0 ELSE eff E-OFF 1+ THEN
       i CHECKER-OWNER-ABI:BOUND-EFFECT BWIN-AT !
    TOK-REC @ NULL-PTR = IF
-      0 i CHECKER-OWNER-ABI:BOUND-RECORD BWIN-AT !
+      -1 i CHECKER-OWNER-ABI:BOUND-RECORD BWIN-AT !
       0 i CHECKER-OWNER-ABI:BOUND-WID BWIN-AT !
       0 i CHECKER-OWNER-ABI:BOUND-ENTRY BWIN-AT !
       0 i CHECKER-OWNER-ABI:BOUND-FLAGS BWIN-AT !
@@ -13663,7 +13664,6 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if CHECKER-OWNER-ABI:BINDING-RC throw then
    row CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
       CHECKER-OWNER-ABI:BOUND-DICT <> if -1 -1 -1 -1 exit then
-   row CHECKER-OWNER-ABI:BOUND-RECORD cells + CELL-VIEW @ 0= if -1 -1 -1 -1 exit then
    row CHECKER-OWNER-ABI:BOUND-ENTRY cells + CELL-VIEW @ 0= if -1 -1 -1 -1 exit then
    row CHECKER-OWNER-ABI:BOUND-NEUTRAL cells + CELL-VIEW @ 0= if -1 -1 -1 -1 exit then
    row CHECKER-OWNER-ABI:BOUND-EFFECT cells + CELL-VIEW @ {: eff:n :}
@@ -13725,7 +13725,6 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if CHECKER-OWNER-ABI:BINDING-RC throw then
    row CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
       CHECKER-OWNER-ABI:BOUND-DICT <> if -1 -1 exit then
-   row CHECKER-OWNER-ABI:BOUND-RECORD cells + CELL-VIEW @ 0= if -1 -1 exit then
    row CHECKER-OWNER-ABI:BOUND-EFFECT cells + CELL-VIEW @ {: eff:n :}
    eff 0= if -1 -1 exit then
    eff 1- E-PTR E-TVN@ 0= 0= if -1 -1 exit then
@@ -13962,8 +13961,8 @@ public
 13 constant K-MATCH-ARM         \ a0: variant tag, a1: pads its family declares for it
 14 constant K-MATCH-OF
 15 constant K-MATCH-END         \ a0: family id
-16 constant K-TICK              \ a0: the target's record index, 0 for none
-17 constant K-IS                \ a0: the target's record index, 0 for none
+16 constant K-TICK              \ a0: the target's record index from 0, -1 for none
+17 constant K-IS                \ a0: the target's record index from 0, -1 for none
 18 constant K-OPERAND           \ consumed by its keyword, compiling nothing itself
 
 ;package

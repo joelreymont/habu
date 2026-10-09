@@ -169,6 +169,8 @@ $388 constant C2-STOW-OFF
 1 constant BOUND-KIND
 2 constant BOUND-SYM
 3 constant BOUND-EFFECT
+\ A BOUND-DICT row's record index (src/core/checker.f REC>INDEX), where every
+\ index from 0 names a record; a row of any other kind holds -1.
 4 constant BOUND-RECORD
 5 constant BOUND-WID
 6 constant BOUND-ENTRY
