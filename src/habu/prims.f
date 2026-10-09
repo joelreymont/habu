@@ -627,8 +627,10 @@ EPRIM: int-mark      PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ sets DNAME-INT on one live record
 EPRIM: min-in-mark   PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ records a certified minimum input arity on one
-\ The publisher's reader (src/compiler/native/publish.f MIN-IN-REC) calls it inside NPUB.
+\ The publisher's reader (src/compiler/native/publish.f MIN-IN-REC) calls it inside NPUB,
+\ and the interpret loop written in Habu after a cast (src/habu/definers.f) inside OUTER.
 EPPRIM: NPUB min-in-mark PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: OUTER min-in-mark PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: reloc-maps-clear PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ clears metadata over reclaimed code
 \ FORGET's code reclamation (src/habu/xref.f) is the engine's one caller.
@@ -705,10 +707,11 @@ EPRIM: def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ slot and nonzero process-local occurrence
 EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRIVATE   \ src/habu/xref.f DEF-OCC:RESOLVE
 \ ---- the definition writers --------------------------------------------------
-\ What `package`, `export`, `:`, `create`, `does>` and `;` change is sealed state after
-\ the seal: the friend arena (CUR, WIDN, DEF-WL, TSIG, TCSIG, PKG-*), BODYBUF,
-\ DEF-TIER-CELL, the TIER-PROV band and the records behind the PROT window.
-\ These ten rows are how an interpreter written in Habu writes it. Each is
+\ What `package`, `export`, `:`, `create`, `does>`, `;`, `immediate` and `cast:`
+\ change is sealed state after the seal: the friend arena (CUR, WIDN, DEF-WL,
+\ TSIG, TCSIG, PKG-*), BODYBUF, DEF-TIER-CELL, the TIER-PROV band and the
+\ records behind the PROT window.
+\ These twelve rows are how an interpreter written in Habu writes it. Each is
 \ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so a checked
 \ body reaches one only through an owner-private row below: package OUTER's,
 \ the interpret loop written in Habu (src/habu/packages.f and
@@ -814,6 +817,23 @@ EPPRIM: OUTER def-close ECLOSE-PRIVATE
 EPRIM: def-create EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: OUTER def-create ECLOSE-PRIVATE
+\ imm-mark ( -- ): set DNAME-IMM on the newest record, as the engine's
+\ `immediate` (habu2.f C-IMMEDIATE) sets it. Like that keyword it checks
+\ nothing and refuses nothing.
+EPRIM: imm-mark EPRIM;
+ETRUSTED-ONLY!
+EPPRIM: OUTER imm-mark ECLOSE-PRIVATE
+\ def-cast ( -- ): end the pending DKIND:CAST definition as the engine's
+\ `cast:` ends its record (habu2.f C-IDENTITY): the code at CP is the empty
+\ checked body, an entry slot that a leaf leaves a nop and a return, native
+\ provenance; [8] takes its length, the record is counted and indexed, and the
+\ state def-open set clears, PEND-CELL with it. Asking the checker's registrar
+\ before and draining the record facts it latched after are the caller's. It
+\ refuses no pending definition, a pending one of another kind and CP at or
+\ past the code ceiling.
+EPRIM: def-cast EPRIM;
+ETRUSTED-ONLY!
+EPPRIM: OUTER def-cast ECLOSE-PRIVATE
 \ ---- the replay writers ------------------------------------------------------
 \ Only package CHECKER-OVERLAY's rows type these six. With no global row, a
 \ checked caller elsewhere is E-UNDEFINED, and a TRUSTED: body elsewhere binds

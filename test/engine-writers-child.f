@@ -1,10 +1,10 @@
 \ engine-writers-child.f - the definition writers an interpreter written in Habu
 \ publishes through: namespace-record, namespace-private, alias-record,
-\ package-scope!, def-open, body-append, trust-sig!, created-sig! and
-\ def-close (src/habu/prims.f, "the definition writers"), and the replay
-\ writers the checker's overlay replays a package through: replay-open,
-\ replay-close, replay-widn!, replay-record, record-wid! and replay-private
-\ (src/habu/prims.f, "the replay writers").
+\ package-scope!, def-open, body-append, trust-sig!, created-sig!, def-close,
+\ def-create, imm-mark and def-cast (src/habu/prims.f, "the definition
+\ writers"), and the replay writers the checker's overlay replays a package
+\ through: replay-open, replay-close, replay-widn!, replay-record, record-wid!
+\ and replay-private (src/habu/prims.f, "the replay writers").
 \
 \ Each case forks a child that hands its source to `evaluate`, the engine's own
 \ interpret loop, and judges the child by its status and its fd 1. A row is
@@ -83,7 +83,7 @@ create ERR IO-CAP allot
 \ checked caller: HIDDEN asks what the engine finds, not what an XREF scan finds.
 
 \ The record is hidden from ordinary source, and the checker refuses a checked
-\ caller outside the owner with the verdict given. A nine definition writer's
+\ caller outside the owner with the verdict given. A definition writer's
 \ global trusted-only row refuses it by name (0) and types a TRUSTED: body's
 \ call. No global row types a replay writer, so there the checker reports an
 \ unknown name (1), which the load path refuses as E-UNDEFINED.
@@ -171,6 +171,19 @@ TRUSTED: EW-SIG ( ptr u8 n -- ) trust-sig! ;
 \ An address definition CW, opened and ended by def-create.
 : EW-CREATE-CW ( -- ) s" CW" get-current DKIND:ADDR EW-OPEN  EW-CREATE ;
 
+\ A cast definition CX, opened and ended by def-cast in one word: once a
+\ definition is pending, the engine loop captures the tokens after it.
+: EW-CAST-CX ( -- ) s" CX" get-current DKIND:CAST EW-OPEN  EW-CAST ;
+
+\ def-cast on a kind-0 definition and on an address one, each just opened,
+\ and on a cast one with CP at the code ceiling.
+: EW-OPEN-CAST ( -- )
+   s" EW-FIRST" get-current 0 EW-OPEN  EW-AT  EW-CAST ;
+: EW-ADDR-CAST ( -- )
+   s" EW-FIRST" get-current DKIND:ADDR EW-OPEN  EW-AT  EW-CAST ;
+: EW-CAST-CEILING ( -- )
+   s" EW-FIRST" get-current DKIND:CAST EW-OPEN  EW-CEILING cp!  EW-AT  EW-CAST ;
+
 \ ---- the scope replay-open saves ----------------------------------------------
 \ Cell k of the scope: 0 NDICT, 1 CP, then EW-OFFS's DATA cells, then the used
 \ wids. A case marks it before replay-open and compares it after replay-close.
@@ -241,6 +254,8 @@ private
    s" created-sig!" s" EWX ( ptr u8 n -- ) created-sig!" INTERNAL
    s" def-close" s" EWX ( -- ) def-close" INTERNAL
    s" def-create" s" EWX ( -- ) def-create" INTERNAL
+   s" imm-mark" s" EWX ( -- ) imm-mark" INTERNAL
+   s" def-cast" s" EWX ( -- ) def-cast" INTERNAL
    s" replay-open" s" EWX ( -- ) replay-open" OWNER-ONLY
    s" replay-close" s" EWX ( -- ) replay-close" OWNER-ONLY
    s" replay-widn!" s" EWX ( n -- ) replay-widn!" OWNER-ONLY
@@ -285,6 +300,18 @@ private
 : CREATES ( -- )
    s" EW-CREATE-CW 0 , 7 CW ! CW @ ."
    s\" 7\n" 0 RUNS ;
+
+\ imm-mark marks the newest record immediate and no other, as `immediate` does.
+: MARKS ( -- )
+   s" : R ( -- ) ; : S ( -- ) ; EW-IMM parse-name R tok-imm? . parse-name S tok-imm? ."
+   s\" 0\n2\n" 0 RUNS ;
+
+\ A cast definition def-cast ends runs as `cast:`'s word does, as the
+\ identity; its code is native, its flags carry DKIND:CAST alone and nothing
+\ stays pending.
+: CASTS ( -- )
+   s" EW-CAST-CX 5 CX . ' CX dup 4 + code-origin . ndict@ 1- XREF-REC XREF-FLAGS 48 rshift . data-base PEND-CELL + @ ."
+   s\" 5\n1\n12\n0\n" 0 RUNS ;
 
 \ The capture takes the bytes and one space up to the buffer's last byte.
 : BODIES ( -- )
@@ -355,7 +382,11 @@ private
    s" 0 set-tier EW-OPEN-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" EW-AT EW-CREATE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" EW-OPEN-CREATE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" EW-CREATE-CEILING" ENGINE-ERROR:SEAL-VIOLATION REFUSES ;
+   s" EW-CREATE-CEILING" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" EW-AT EW-CAST" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" EW-OPEN-CAST" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" EW-ADDR-CAST" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" EW-CAST-CEILING" ENGINE-ERROR:SEAL-VIOLATION REFUSES ;
 
 \ ---- the replay writers -------------------------------------------------------
 \ No global row types them, so a checked caller reaches one only inside package
@@ -511,6 +542,8 @@ public
    s" an alias runs its source and stays immediate" T-LABEL ALIASES T-NEXT
    s" def-open body-append trust-sig! then 42 ; publish natively" T-LABEL DEFINITIONS T-NEXT
    s" def-open DKIND:ADDR then def-create ends a created word" T-LABEL CREATES T-NEXT
+   s" imm-mark marks the newest record immediate" T-LABEL MARKS T-NEXT
+   s" def-open DKIND:CAST then def-cast ends a cast" T-LABEL CASTS T-NEXT
    s" body-append fills BODYBUF to its last byte" T-LABEL BODIES T-NEXT
    s" the four dictionary rows refuse a live task" T-LABEL LIVE-REFUSALS T-NEXT
    s" record writers refuse what would corrupt the dictionary" T-LABEL RECORD-REFUSALS T-NEXT

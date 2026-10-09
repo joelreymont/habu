@@ -215,8 +215,8 @@ public
 \ `;package`, `using`, `;using` and `export`), and with src/habu/definers.f for
 \ the definition heads (`:`, `kernel:` and `trusted:`) and the body one opens,
 \ with the immediates the body runs, its `does>` and the `;` that ends it, and
-\ for `create` and `variable`. The engine's other keywords (`constant`,
-\ `defer`, `cast:`, `linear:` and `immediate`) are not read yet: a body
+\ for `create`, `variable`, `cast:` and `immediate`. The engine's other
+\ keywords (`constant`, `defer` and `linear:`) are not read yet: a body
 \ captures them as it captures any token, and elsewhere they are not
 \ dictionary words, so they refuse as undefined.
 \

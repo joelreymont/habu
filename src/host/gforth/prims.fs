@@ -186,6 +186,15 @@ HB-DBASE DICT-SIZE + constant CP-SLOT
 : HB-CP! ( n -- )
    CP-SLOT <> if s" hb: gforth has no code rewind" ERR ERR-NL REFUSE-RC HB-EXIT then ;
 : HB-NDICT@ ( -- n ) NDICT @ ;
+\ def-cast (habu2.f DEFWRITE:DEF-CAST): the pending DKIND:CAST record takes the
+\ cast's body, the identity, and is published as reader.fs HB-CAST publishes
+\ its own; the state def-open set clears. No pending record and one of another
+\ kind exit ENGINE-ERROR:SEAL-VIOLATION. CP never moves here, so no ceiling
+\ refuses.
+: HB-DEF-CAST ( -- )
+   PEND-CELL D@ ?dup 0= if RC-SEAL-VIOLATION (bye) then
+   >FLAGS @ DKIND-CAST and DKIND-CAST <> if RC-SEAL-VIOLATION (bye) then
+   ['] noop PEND-CELL D@ !  REC-PUBLISH CLEAR-DEF ;
 
 \ ---- registration ------------------------------------------------------------
 \ PRIM ( xt "row" -- ) seeds the row's global record with body xt; REFUSE
@@ -300,6 +309,8 @@ REFUSE trust-sig! INT
 REFUSE created-sig! INT
 REFUSE def-close INT
 REFUSE def-create INT
+' HB-IMMEDIATE PRIM imm-mark INT
+' HB-DEF-CAST PRIM def-cast INT
 REFUSE replay-open INT
 REFUSE replay-close INT
 REFUSE replay-widn! INT

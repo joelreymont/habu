@@ -36,6 +36,8 @@
 \ - hb-x64-kernel-def-close ends a tier-1 definition whose state cells are set
 \   and whose CP moved: the provenance window closed with code-origin 1 over
 \   the span, and DEF-TIER, the six signature and clause cells and PEND clear.
+\ - hb-x64-kernel-imm-mark sets DNAME-IMM on the newest record, keeping its
+\   other bits, and leaves the record before it alone.
 \ hb-x64-kernel-definition-negative runs the def-open case expecting the wrong
 \ pending record and exits 21.
 \
@@ -335,6 +337,16 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    0 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
    0 PEND-CELL X64HARNESS:EXPECT-CELL, ;
 
+\ Record 1 is the newest, a cast whose kind the mark keeps.
+: IMM-MARK-CASE, ( -- )
+   HELLO$ WID 0 X64HARNESS:RECORD,                    \ record 0
+   s" w" WID DKIND:CAST X64HARNESS:RECORD,           \ record 1
+   X64HARNESS:REST,
+   s" imm-mark" X64HARNESS:CALL-ROW,
+   s" w" nip DKIND:CAST or DNAME-IMM or 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
+   HELLO$ nip 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
+   1 CLOSED, ;
+
 \ ---- the refusals -------------------------------------------------------------
 \ Each call but for its refusal is one the row admits.
 : NAMESPACE-LIVE, ( -- ) LIVE,  X64HARNESS:REST,  s" ns" BOTH-WIDS NAMESPACE, ;
@@ -418,6 +430,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    [: TRUST-SIG-CASE, ;] false s" hb-x64-kernel-trust-sig" TMP-PATH IMAGE
    [: CREATED-SIG-CASE, ;] false s" hb-x64-kernel-created-sig" TMP-PATH IMAGE
    [: DEF-CLOSE-CASE, ;] false s" hb-x64-kernel-def-close" TMP-PATH IMAGE
+   [: IMM-MARK-CASE, ;] false s" hb-x64-kernel-imm-mark" TMP-PATH IMAGE
    [: DEF-OPEN-CASE, ;] true s" hb-x64-kernel-definition-negative" TMP-PATH IMAGE ;
 
 : REFUSALS ( -- )

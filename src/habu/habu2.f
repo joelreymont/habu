@@ -3958,9 +3958,11 @@ public
    9 DATA TRUSTED-CELL STR, ;
 
 \ ---- the definition writers --------------------------------------------------
-\ The bodies of the ten rows src/habu/prims.f specifies under "the definition
+\ The bodies of the twelve rows src/habu/prims.f specifies under "the definition
 \ writers" and of the six replay writers after them, registered with
-\ ENGINE-PRIMS:GLOBAL-INT-WID in EMIT-PRIMITIVE-SECTIONS. Each checks
+\ ENGINE-PRIMS:GLOBAL-INT-WID in EMIT-PRIMITIVE-SECTIONS. Two lie further on:
+\ def-cast's past the ends of a publish it shares with `cast:`, and imm-mark's
+\ is the `immediate` keyword's own, C-IMMEDIATE. Each checks
 \ everything before it writes, and a refusal exits the process, so no reader
 \ ever sees a half-written row.
 \ FPRIM-WID frames x30 around each body.
@@ -4490,23 +4492,33 @@ variable LREPLAYTRAP
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL, ;
 
-\ def-create ( -- ): def-open's provenance window holds no code yet, so it
-\ closes empty and ADDR-TAIL, marks the code it writes native, as `create`
-\ marks its own; then the state def-open set clears, PEND-CELL last.
-: DEF-CREATE ( -- )
+private
+
+\ The end of a definition with no compiled body, the def-create and def-cast
+\ rows alike: the pending record must be of kind `kind`, with CP below the
+\ code ceiling. def-open's provenance window holds no code yet, so it closes
+\ empty and `tail` marks the code it writes native, as the row's keyword marks
+\ its own; then the state def-open set clears, PEND-CELL last.
+: TAIL-CLOSE ( n [ -- ] -- )
+   {: kind:n tail :}
    LBL LBL {: bad done :}
    9 DATA PEND-CELL LDR,  9 bad CBZ,
    9 NDICT REC-AT,                                    \ the pending record, slot NDICT
-   10 9 16 LDR,  10 10 DKIND:MASK ANDI,  11 DKIND:ADDR LIT64,  10 11 CMP,  C-NE bad BCOND,
+   10 9 16 LDR,  10 10 DKIND:MASK ANDI,  11 kind LIT64,  10 11 CMP,  C-NE bad BCOND,
    10 REGION $4000 - LIT64,  10 DBASE 10 ADD,  CP 10 CMP,  C-CS bad BCOND,
    1 CODE-ORIGIN:CLOSE,
    NAME-BANDS,
-   ADDR-TAIL,
+   tail execute
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    done B,
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
+
+public
+
+\ def-create ( -- ): a pending DKIND:ADDR record takes ADDR-TAIL,.
+: DEF-CREATE ( -- ) DKIND:ADDR ['] ADDR-TAIL, TAIL-CLOSE ;
 
 ;package
 
@@ -4945,7 +4957,7 @@ package INTERP-EMIT
    NCOMP-EMIT:TIER-COLON-DISPATCH ;
 
 \ The second end of every definition's publish, emitted by the `;` tail below and
-\ by the cast declarer just under here. It sits this early because the cast has
+\ by the cast's empty body just under here. It sits this early because the cast has
 \ no `;` to wait for: it publishes inside its own keyword handler, and a keyword
 \ handler must be defined before the interpret dispatch rows name it. Its
 \ callers and the order they are called in are unchanged, so the emitted image
@@ -4962,6 +4974,33 @@ package INTERP-EMIT
    1 11 0 ADDI,  2 DREC MOVZ,  PROT-EMIT:LSPAN LABEL@ BL,
    9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL, ;
+
+\ The cast's body and the def-cast row join the definition writers, past the
+\ two ends of a publish they emit.
+package DEFWRITE
+public
+
+\ The empty checked body of a cast, for record x9 pending in slot NDICT with
+\ the code band open at CP and the record declared: [0] is CP, the entry slot
+\ a leaf leaves a nop, then a return; the code is native, [8] takes its length
+\ and the band closes, flushed. The end of `cast:` (C-IDENTITY) and of the
+\ def-cast row alike, as ADDR-TAIL, is of `create` and def-create.
+: EMPTY-BODY, ( -- )
+   CP 9 0 STR,
+   9 CP 0 ADDI,  9 DATA FRAME-CELL STR,              \ the entry slot
+   9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,            \ str x30,[sp,#-16]!
+   EM-COMPILE-RET                                    \ empty body: the slot becomes a nop
+   9 DATA PEND-CELL LDR,  9 9 0 LDR,
+   9 CP CODE-ORIGIN:NATIVE-RANGE,
+   EM-COMPILE-FLUSH-PEND ;
+
+\ def-cast ( -- ): a pending DKIND:CAST record takes EMPTY-BODY, and is
+\ counted and indexed.
+: DEF-CAST ( -- )
+   DKIND:CAST [: EMPTY-BODY,  EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL, ;]
+   TAIL-CLOSE ;
+
+;package
 
 \ The cast declarer joins the other interpret-mode defining-word handlers in
 \ their package: the define-keyword dispatch rows below reopen it and resolve
@@ -5077,13 +5116,7 @@ package INTERP-EMIT
    1 9 0 ADDI,  2 DREC MOVZ,  PROT-EMIT:LSPAN LABEL@ BL, \ the record this declaration publishes
    C-STORE-DEF-NAME
    10 9 16 LDR,  10 10 DKIND:CAST ORRI,  10 9 16 STR,
-   CP 9 0 STR,
-   9 CP 0 ADDI,  9 DATA FRAME-CELL STR,              \ the entry slot
-   9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,            \ str x30,[sp,#-16]!
-   EM-COMPILE-RET                                    \ empty body: the slot becomes a nop
-   9 DATA PEND-CELL LDR,  9 9 0 LDR,
-   9 CP CODE-ORIGIN:NATIVE-RANGE,
-   EM-COMPILE-FLUSH-PEND
+   DEFWRITE:EMPTY-BODY,
    off DEF-TRUST:REGISTER-IDENTITY
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
@@ -5362,7 +5395,8 @@ public
 \ so it is the stateless-flip shape, not a bracket: the target is fixed across the
 \ pair and the word owns no other span. It now reads exactly like its two
 \ siblings, habu1.f BWIDEMARK and BINTMARK, whose prose already claimed the
-\ mirror. Interpret-mode only, so no compile bracket is open around it.
+\ mirror. Interpret-mode only, so no compile bracket is open around it. The
+\ imm-mark row's body is this word too (EMIT-PRIMITIVE-SECTIONS), framed there.
 : C-IMMEDIATE ( -- )
    9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    2 3 MOVZ,  LPROTREC LABEL@ BL,
@@ -13499,6 +13533,8 @@ package ENGINE-EMIT
    s" created-sig!" ['] DEFWRITE:CREATED-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-close" ['] DEFWRITE:DEF-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-create" ['] DEFWRITE:DEF-CREATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" imm-mark" ['] C-IMMEDIATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" def-cast" ['] DEFWRITE:DEF-CAST ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-open" ['] DEFWRITE:REPLAY-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-close" ['] DEFWRITE:REPLAY-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-widn!" ['] DEFWRITE:REPLAY-WIDN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID

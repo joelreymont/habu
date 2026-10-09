@@ -10,14 +10,14 @@
 \ it exercised, so two runs failing alike do not pass.
 \
 \ The prelude defines with keywords the Habu loop does not read yet
-\ (`immediate`, `SUMTYPE`, `constant`), so it loads before the switch, and a
-\ case holds only numbers, comments, the literal keywords (`s"`, `c"`, `."`,
-\ their escaped forms, `char` and `'`), the package keywords (`package`,
-\ `public`, `private`, `;package`, `using`, `;using` and `export`), words,
-\ `create` and `variable`, and definitions (`:`, `kernel:` or `trusted:`) that
-\ end at `;` or refuse, at the latest where the input ends inside them. A case
-\ defines with the other keywords through evaluate, which the engine's loop
-\ reads.
+\ (`SUMTYPE`, `constant`), so it loads before the switch, and a case holds
+\ only numbers, comments, the literal keywords (`s"`, `c"`, `."`, their
+\ escaped forms, `char` and `'`), the package keywords (`package`, `public`,
+\ `private`, `;package`, `using`, `;using` and `export`), words, `create`,
+\ `variable`, `cast:` and `immediate`, and definitions (`:`, `kernel:` or
+\ `trusted:`) that end at `;` or refuse, at the latest where the input ends
+\ inside them. A case defines with the other keywords through evaluate, which
+\ the engine's loop reads.
 \
 \ Some cases are the Habu loop's alone: tier 0, whose definitions the engine's
 \ loop compiles and the Habu loop refuses. And one check runs in a forked copy
@@ -1758,6 +1758,149 @@ variable WANT-RC
    CASE$ GE-EXPECT-OK
    S\" OI-B create \nOI-V create \n5\n" CASE$ GE-EXPECT-OUT ;
 
+\ ---- `immediate` and `cast:` ---------------------------------------------------------
+\ `immediate` marks the newest record, as spelled in any case, and after a
+\ does> definer that is its clause, not the definer.
+: MARKED ( -- )
+   s" 1 set-tier : OI-A ( -- ) ; IMMEDIATE parse-name OI-A tok-imm? ." s" oi-immediate.f" LINE-CASE
+   CASE$ GE-EXPECT-OK
+   S\" 2\n" CASE$ GE-EXPECT-OUT
+   s" 1 set-tier : OI-K ( n -- ) create , does> ( -- n ) @ ; immediate parse-name OI-K tok-imm? . parse-name OI-K;does tok-imm? ."
+   s" oi-immediate-does.f" LINE-CASE
+   CASE$ GE-EXPECT-OK
+   S\" 0\n2\n" CASE$ GE-EXPECT-OUT ;
+
+\ A cast is the identity, called or executed, at any tier, into a qualifier's
+\ public wordlist or a namespace the qualifier makes, its long name past the
+\ record. With the hook cell empty its record carries DKIND:CAST alone; with
+\ the checker's hook also the registrar's minimum input arity, so a bare call
+\ on an empty stack is refused.
+: CAST-DECLARED ( -- )
+   s" 1 set-tier 0 set-check cast: OI-X ( n -- n ) 1 OI-X . 2 ' OI-X execute . ndict@ 1- XREF-REC XREF-FLAGS 48 rshift ."
+   s" oi-cast.f" LINE-CASE
+   CASE$ GE-EXPECT-OK
+   S\" 1\n2\n12\n" CASE$ GE-EXPECT-OUT
+   s" 1 set-tier cast: OI-X ( n -- n ) 1 OI-X . ndict@ 1- XREF-REC XREF-FLAGS 48 rshift . OI-X"
+   s" oi-cast-hooked.f" LINE-CASE
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n28\n" CASE$ GE-EXPECT-OUT
+   S\" hb: interpret stack underdepth: OI-X\n" CASE$ GE-EXPECT-ERR
+   s" 0 set-tier cast: OI-X ( n -- n ) 3 OI-X ." s" oi-cast-tier-0.f" LINE-CASE
+   CASE$ GE-EXPECT-OK
+   S\" 3\n" CASE$ GE-EXPECT-OUT
+   s" 1 set-tier package OI-CP public ;package cast: OI-CP:OI-Y ( n -- n ) 4 OI-CP:OI-Y . cast: OI-NS:OI-Q ( n -- n ) 5 OI-NS:OI-Q ."
+   s" oi-cast-qualified.f" LINE-CASE
+   CASE$ GE-EXPECT-OK
+   S\" 4\n5\n" CASE$ GE-EXPECT-OUT
+   s" 1 set-tier cast: A-LONG-CAST-NAME-PAST-INLINE ( n -- n ) 6 A-LONG-CAST-NAME-PAST-INLINE . ndict@ 1- XREF-REC XREF-NAME-A OI-ORIGIN ."
+   s" oi-cast-long-name.f" LINE-CASE
+   CASE$ GE-EXPECT-OK
+   S\" 6\n1\n" CASE$ GE-EXPECT-OUT ;
+
+\ A cast in a package's private section mints a pointer, the checked word
+\ after it calls it, and it is no public word.
+: CAST-PRIVATE ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier ndict@ package OI-CX private" GE-SRC-LINE
+   s" cast: >OI-V ( n -- ptr [ -- ] )" GE-SRC-LINE
+   s" : OI-F ( n -- ptr [ -- ] ) >OI-V ;" GE-SRC-LINE
+   s" public ;package ndict@ swap - . ndict@ 1- XREF-REC XREF-NAME$ type cr" GE-SRC-LINE
+   s" ' OI-CX:>OI-V" GE-SRC-LINE
+   s" oi-cast-private.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   S\" 3\nOI-F\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-CX:>OI-V\n" CASE$ GE-EXPECT-ERR ;
+
+\ `cast:` refuses in the engine's order: a full code space or dictionary,
+\ naming the keyword, then a missing name, at the line the input ends on past
+\ the keyword's, then a signature missing, unclosed or not opened, naming the
+\ name at its line, then the qualifier's refusals. The signature is passed
+\ before those, so they name the line it ends on, and a duplicate name with a
+\ bad signature refuses the signature.
+: CAST-REFUSALS ( -- )
+   s" dbase@ REGION + $4000 - cp! cast: OI-X ( n -- n )" s" oi-cast-code-full.f" HEAD
+   76 s" hb: code space full at: cast: at " S\" oi-cast-code-full.f:1\n" DIED-AT
+   s" OI-DICT-FULL cast: OI-X ( n -- n )" s" oi-cast-dictionary-full.f" HEAD
+   77 s" hb: dictionary full at: cast: at " S\" oi-cast-dictionary-full.f:1\n" DIED-AT
+   GE-SRC-RESET
+   s" 1 set-tier 1 ." GE-SRC-LINE
+   s" CAST:" GE-SRC-LINE
+   GE-SRC-LF
+   GE-SRC-LF
+   s" oi-cast-no-name.f" BOTH
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   74 s" hb: cast: missing name after CAST: at " S\" oi-cast-no-name.f:5\n" DIED-AT
+   GE-SRC-RESET
+   s" 1 set-tier 1 . cast: OI-X" GE-SRC-LINE
+   s" 2 ." GE-SRC-LINE
+   s" oi-cast-no-signature.f" BOTH
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   76 s" OI-X at " S\" oi-cast-no-signature.f:1\n" DIED-AT
+   GE-SRC-RESET
+   s" 1 set-tier cast: OI-X ( n -- n" GE-SRC-LINE
+   s" 2 ." GE-SRC-LINE
+   s" oi-cast-open-signature.f" BOTH
+   76 s" OI-X at " S\" oi-cast-open-signature.f:1\n" DIED-AT
+   GE-SRC-RESET
+   s" 1 set-tier cast: OI-X" GE-SRC+
+   s" oi-cast-ended.f" BOTH
+   76 s" OI-X at " S\" oi-cast-ended.f:1\n" DIED-AT
+   s" cast: OI-TWO n -- n ) 2 ." s" oi-cast-bad-signature.f" HEAD
+   76 s" OI-TWO at " S\" oi-cast-bad-signature.f:1\n" DIED-AT
+   s" cast: if ( n -- n )" s" oi-cast-if.f" HEAD
+   70 s" hb: compile keyword cannot be a definition name: if at " S\" oi-cast-if.f:1\n" DIED-AT
+   s" cast: oi-two ( n -- n )" s" oi-cast-duplicate.f" HEAD
+   78 s" duplicate definition: oi-two at " S\" oi-cast-duplicate.f:1\n" DIED-AT
+   GE-SRC-RESET
+   s" 1 set-tier cast: OI-TWO" GE-SRC-LINE
+   s" ( n -- n )" GE-SRC-LINE
+   s" oi-cast-duplicate-next-line.f" BOTH
+   78 s" duplicate definition: OI-TWO at " S\" oi-cast-duplicate-next-line.f:2\n" DIED-AT
+   s" dbase@ REGION + $4000 - 8 - cp! cast: A-LONG-CAST-NAME-PAST-INLINE ( n -- n )" s" oi-cast-name-full.f" HEAD
+   76 s" hb: code space full at: A-LONG-CAST-NAME-PAST-INLINE at " S\" oi-cast-name-full.f:1\n" DIED-AT ;
+
+\ The checker's registrar refuses a mint outside a private section and a
+\ retype that changes the arity with a catchable throw, before the record is
+\ counted. Uncaught, the load ends with the exit hook run; caught, the name is
+\ absent and nothing stays pending.
+: CAST-REGISTRAR ( -- )
+   GE-SRC-RESET
+   s" ' cr data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
+   s" 1 set-tier cast: OI-X ( n -- ptr u8 )" GE-SRC-LINE
+   s" oi-cast-mint.f" BOTH
+   67 CASE$ GE-EXPECT-RC
+   S\" \n" CASE$ GE-EXPECT-OUT
+   S\" hb: uncaught throw code 7147\n" CASE$ GE-EXPECT-ERR
+   GE-SRC-RESET
+   s" require src/habu/interpret.f" GE-SRC-LINE
+   s" 1 set-tier s~ cast: OI-Y ( n n -- n )~ ' OUTER:INTERPRET catch . depth . 2drop" QLINE
+   s" : OI-NEW ( -- ) 5 . ; OI-NEW" GE-SRC-LINE
+   s" ' OI-Y" GE-SRC-LINE
+   s" oi-cast-caught.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   S\" 7129\n2\n5\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-Y\n" CASE$ GE-EXPECT-ERR ;
+
+\ The def hook never sees a cast: it gets only the created word after it.
+: CAST-HOOK ( -- )
+   GE-SRC-RESET
+   s" s~ : OI-HK ( ptr u8 n -- n ) type cr 0 ;~ evaluate" QLINE
+   s" 0 set-check ' OI-HK set-check" GE-SRC-LINE
+   s" cast: OI-X ( n -- n ) create OI-G 5 OI-X ." GE-SRC-LINE
+   s" oi-cast-hook.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" OI-G create \n5\n" CASE$ GE-EXPECT-OUT ;
+
+\ While a task is live `cast:` exits 79, the keyword its whole diagnostic, and
+\ `immediate`, which checks nothing, marks.
+: CAST-LIVE ( -- )
+   SPIN-PRELUDE
+   s" 1 set-tier OI-SPIN CAST: OI-X ( n -- n )" s" CAST:" s" oi-live-cast.f" LIVE
+   s" 1 set-tier : OI-A ( -- ) ; OI-SPIN immediate parse-name OI-A tok-imm? ." s" oi-live-immediate.f" LINE-CASE
+   CASE$ GE-EXPECT-OK
+   S\" 2\n" CASE$ GE-EXPECT-OUT
+   0 SPIN-U ! ;
+
 \ ---- in a forked copy of this process -----------------------------------------------
 
 variable SPY-N
@@ -1898,6 +2041,13 @@ private
    CREATED-NO-NAME
    CREATED-DICT-FULL
    CREATED-HOOK
+   MARKED
+   CAST-DECLARED
+   CAST-PRIVATE
+   CAST-REFUSALS
+   CAST-REGISTRAR
+   CAST-HOOK
+   CAST-LIVE
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;

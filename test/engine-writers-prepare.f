@@ -29,6 +29,8 @@ public
 : EW-CSIG ( ptr u8 n -- ) created-sig! ;
 : EW-CLOSE ( -- ) def-close ;
 : EW-CREATE ( -- ) def-create ;
+: EW-IMM ( -- ) imm-mark ;
+: EW-CAST ( -- ) def-cast ;
 ;package
 
 package CHECKER-OVERLAY

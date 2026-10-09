@@ -2945,14 +2945,15 @@ private
    C-L RAX RCX ASM-SINK ENC-CMOVCC
    RAX PUSH, ;
 
-\ wide-mark ( -- ): set DNAME-WIDE on the newest record, r14 - 1, between two
-\ flips of its pages, read/write and then back to read/execute, as habu1.f
-\ BWIDEMARK brackets its store with LPROTREC.
-: WIDE-MARK-BODY ( -- )
+\ wide-mark ( -- ) and imm-mark ( -- ): set the flag, DNAME-WIDE or DNAME-IMM,
+\ on the newest record, r14 - 1, between two flips of its pages, read/write and
+\ then back to read/execute, as habu1.f BWIDEMARK and habu2.f C-IMMEDIATE
+\ bracket their stores with LPROTREC.
+: NEWEST-MARK-BODY ( n -- ) {: flag:n :}
    R8 NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    R8 DBASE-REG R8 1 DREC negate MEM-IDX ASM-SINK ENC-LEA
    R8 PROT-RW PROT-REC,
-   RAX DNAME-WIDE IMM64,
+   RAX flag IMM64,
    RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
    R8 PROT-RX PROT-REC, ;
 
@@ -2969,7 +2970,7 @@ private
    s" prot-wid-room" [: PROT-WID-ROOM-BODY ;] PRIM
    s" policy-admit" REFUSE
    s" policy-seal" REFUSE
-   s" wide-mark" [: WIDE-MARK-BODY ;] PRIM ;
+   s" wide-mark" [: DNAME-WIDE NEWEST-MARK-BODY ;] PRIM ;
 
 \ ---- persisted cells, the tier and the build scope ---------------------------
 \ The x86-64 image has a fixed region and DATA, and its restore is the ordinary
@@ -3252,14 +3253,15 @@ public
    s" callback-entry" REFUSE ;
 
 \ ---- definition writers ------------------------------------------------------
-\ The nine rows an interpreter written in Habu publishes definitions, namespace
-\ rows, aliases and package scope through (src/habu/prims.f, "the definition
-\ writers"): the twins of habu2.f DEFWRITE's bodies, in each twin's check
-\ order. Every refusal comes before the first store and writes nothing on fd
-\ 2: a live task exits TASK-LIVE-RC in the four dictionary rows, a
-\ protected wid after the seal ENGINE-ERROR:SEAL-PACKAGE, and every other
-\ refusal ENGINE-ERROR:SEAL-VIOLATION. Past the checks two helper exits can
-\ still end a row: 74 when the index cannot be kept, and
+\ The twelve rows an interpreter written in Habu publishes definitions,
+\ namespace rows, aliases and package scope through and marks a word immediate
+\ with (src/habu/prims.f, "the definition writers"): the twins of habu2.f
+\ DEFWRITE's bodies and of its `immediate`, C-IMMEDIATE, in each twin's check
+\ order. Every refusal of a row with a body comes before the first store and
+\ writes nothing on fd 2: a live task exits TASK-LIVE-RC in the four
+\ dictionary rows, a protected wid after the seal ENGINE-ERROR:SEAL-PACKAGE,
+\ and every other refusal ENGINE-ERROR:SEAL-VIOLATION. Past the checks two
+\ helper exits can still end a row: 74 when the index cannot be kept, and
 \ ENGINE-ERROR:CODE-ORIGIN-FULL. Each record carries
 \ ENGINE-PRIMS:GLOBAL-INT-WID, as on ARM64.
 
@@ -3608,8 +3610,9 @@ $3A constant NAME-COLON                \ a qualified name's separator
 
 public
 
-\ def-create, the tail of the engine's interpret-mode `create`, refuses as
-\ `create` does: the x86-64 kernel carries no interpreter.
+\ def-create and def-cast, the tails of the engine's interpret-mode `create`
+\ and `cast:`, refuse as those keywords do: the x86-64 kernel carries no
+\ interpreter.
 : DEFINITION, ( -- )
    s" namespace-record" [: NAMESPACE-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" namespace-private" [: NAMESPACE-PRIVATE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
@@ -3620,7 +3623,9 @@ public
    s" trust-sig!" [: TRUST-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" created-sig!" [: CREATED-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-close" [: DEF-CLOSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" def-create" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID ;
+   s" def-create" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" imm-mark" [: DNAME-IMM NEWEST-MARK-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" def-cast" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID ;
 
 \ ---- pure rows ---------------------------------------------------------------
 \ The arithmetic, comparison, shuffle, memory and float rows. Every row but

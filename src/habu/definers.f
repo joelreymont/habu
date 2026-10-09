@@ -1,9 +1,10 @@
 \ definers.f - the definition heads of the interpret loop written in Habu:
 \ `:`, `kernel:` and `trusted:`, as the engine's EM-INTERPRET-COLON and
 \ C-TRUSTED (habu2.f) open a definition, and the capture of the body that
-\ follows one, and `create` and `variable`, as C-CREATE and C-VARIABLE make
-\ their words. STEP (src/habu/interpret.f) asks COMPILING? after a comment and
-\ DEFINE? after the package keywords.
+\ follows one, `create` and `variable`, as C-CREATE and C-VARIABLE make
+\ their words, `cast:`, as C-CAST declares a retype, and `immediate`, as
+\ C-IMMEDIATE marks a word. STEP (src/habu/interpret.f) asks COMPILING? after
+\ a comment and DEFINE? after the package keywords.
 \
 \ A head opens record NDICT through def-open, unpublished, and the definition
 \ stays pending: each body token is captured into BODYBUF, as the engine's
@@ -12,6 +13,7 @@
 \ creates, and `;` compiles the body whole and ends the definition through
 \ def-close. Only tier 1 is read here. The engine's tier 0 compiles each token
 \ as it reads it (its JIT), so at tier 0 a head or a body token is refused.
+\ `cast:` and `immediate` compile nothing, so they are read at any tier.
 \
 \ The head refuses in the engine's order and with its text. A definition
 \ writer's own refusal exits without a word (src/habu/prims.f), so every
@@ -35,17 +37,20 @@ private
 71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
 
 \ ---- the definition writers --------------------------------------------------
-\ def-open, body-append, created-sig!, def-close and def-create are OUTER's own
-\ rows (src/habu/prims.f), called below by name. trust-sig! has none: it is the
-\ `trusted:` head's alone.
+\ def-open, body-append, created-sig!, def-close, def-create, def-cast,
+\ imm-mark and min-in-mark are OUTER's own rows (src/habu/prims.f), called
+\ below by name. trust-sig! has none: it is the `trusted:` and `cast:` heads'
+\ alone.
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 
-\ The compiler entry and the preflight are raw execution tokens in the engine's
-\ cells; these views state the signatures they are called with here.
+\ The compiler entry, the preflight, the def hook and the checker's
+\ declaration operations, which take a name and a signature, are raw execution
+\ tokens in the engine's cells; these views state the signatures they are
+\ called with here.
 CAST: AS-COMPILE ( n -- [ ptr u8 n -- ] )
 CAST: AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] )
 CAST: AS-DEF-HOOK ( n -- [ ptr u8 n -- n ] )
-CAST: AS-TRUST-RAW ( n -- [ ptr u8 n ptr u8 n -- ] )
+CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 
 \ ---- tier 0 ------------------------------------------------------------------
 \ The engine's tier 0 compiles each body token as it reads it, with its JIT,
@@ -66,6 +71,12 @@ CAST: AS-TRUST-RAW ( n -- [ ptr u8 n ptr u8 n -- ] )
    while 1+ repeat
    {: u:n :}
    b u ;
+
+\ The checker declaration xt given takes the name as the capture spells it,
+\ qualified, and the signature given.
+: DEF-DECLARE ( ptr u8 n n -- )
+   {: sig:ptr len:n xt:n :}
+   DEF-CAPTURED-NAME sig len xt AS-DECLARE execute ;
 
 \ A capture that would take the body past BODYBUF-CAP ends the definition,
 \ naming the ceiling, the definition and the size it needed.
@@ -187,13 +198,20 @@ CAST: AS-TRUST-RAW ( n -- [ ptr u8 n ptr u8 n -- ] )
    c e < if c 1 + true exit then
    e false ;
 
-\ INP passes the signature, trust-sig! takes the text inside its parentheses
-\ and the capture all of it. The inner length is the engine's, two less than
-\ the whole: one less than the text for a signature the input ends inside.
-: DEF-SIG-TAKE ( ptr u8 ptr u8 -- ) {: s:ptr end:ptr :}
+\ INP passes the signature and the capture takes all of it.
+: DEF-SIG-PASS ( ptr u8 ptr u8 -- ) {: s:ptr end:ptr :}
    end INP-CELL ADDR!
-   s 1 + end s - 2 - DEF-TRUST-SIG
    s end s - DEF-CAPTURE ;
+
+\ trust-sig! takes the text inside the parentheses. The inner length is the
+\ engine's, two less than the whole: one less than the text for a signature
+\ the input ends inside.
+: DEF-SIG-INNER ( ptr u8 ptr u8 -- ) {: s:ptr end:ptr :}
+   s 1 + end s - 2 - DEF-TRUST-SIG ;
+
+: DEF-SIG-TAKE ( ptr u8 ptr u8 -- ) {: s:ptr end:ptr :}
+   s end DEF-SIG-INNER
+   s end DEF-SIG-PASS ;
 
 \ `:` takes one if it is there, to the input's end if it is not closed.
 : DEF-MAYBE-SIG ( -- )
@@ -241,12 +259,16 @@ CAST: AS-TRUST-RAW ( n -- [ ptr u8 n ptr u8 n -- ] )
    a u PKG-CODE-ROOM
    a u wid kind def-open ;
 
-\ A head's start: the capture seeded with the name, qualified and recorded as
-\ the given kind.
+\ The capture seeded with the name, the spelling the checker is told.
+: DEF-SEED ( -- )
+   0 BODYLEN-CELL CELL!
+   TOKEN$ DEF-CAPTURE ;
+
+\ A head's start: the capture seeded, the name qualified and recorded as the
+\ given kind.
 : DEF-START ( n -- )
    {: kind:n :}
-   0 BODYLEN-CELL CELL!
-   TOKEN$ DEF-CAPTURE
+   DEF-SEED
    DEF-QUALIFY kind DEF-RECORD ;
 
 \ The name opens a pending record with the capture it seeds. `trusted:` then
@@ -433,13 +455,6 @@ variable ENTRY-PEND
    data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@
    HOOK-CELL CELL@ AS-DEF-HOOK execute drop ;
 
-\ The created word's effect goes to the trust-raw xt given: a cell of raw
-\ dictionary storage, which the checker seals through its trust-raw (habu2.f
-\ LASTC-TRUST:PUBLISH-PTR-A).
-: DEF-TRUST-RAW ( n -- )
-   {: xt:n :}
-   DEF-CAPTURED-NAME s" -- ptr a" xt AS-TRUST-RAW execute ;
-
 \ The active owner's trust-raw. With none and a hook set the target owner's,
 \ and with no target's either the process ends naming it; with neither an
 \ owner's nor a hook, 0 (LASTC-TRUST:FIND-ACTIVE, FIND-RAW).
@@ -451,18 +466,19 @@ variable ENTRY-PEND
    target 0= if s" trust-raw" RC-REJECT FAIL-CLOSED then
    target ;
 
-\ The effect goes to the active owner's trust-raw, then to the target owner's
-\ while an active owner record exists, unless the two are the same
-\ (LASTC-TRUST:FIND-TARGET).
+\ The created word's effect, a cell of raw dictionary storage, goes to the
+\ active owner's trust-raw, then to the target owner's while an active owner
+\ record exists, unless the two are the same (LASTC-TRUST:FIND-TARGET); the
+\ checker seals it through trust-raw (habu2.f LASTC-TRUST:PUBLISH-PTR-A).
 : DEF-ADDR-PUBLISH ( -- )
    DEF-RAW-ACTIVE {: own:n :}
    own 0= if exit then
-   own DEF-TRUST-RAW
+   s" -- ptr a" own DEF-DECLARE
    NCOMP-DISPATCH:DECL-CELL CELL@ 0= if exit then
    NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
    target 0= if exit then
    NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION target = if exit then
-   target DEF-TRUST-RAW ;
+   s" -- ptr a" target DEF-DECLARE ;
 
 \ The head refuses as `:`'s does, at any tier, def-create publishes the word,
 \ DP rounded up to a cell, and the checker is told of it. No record slot left
@@ -479,16 +495,81 @@ variable ENTRY-PEND
    DEF-ADDR-HOOK
    DEF-ADDR-PUBLISH ;
 
+\ ---- `cast:` (habu2.f C-CAST, C-IDENTITY) -------------------------------------
+\ `cast: NAME ( in -- out )` declares a retype. It has no body and no `;`, so
+\ it completes where its keyword is read, at any tier: the checker's registrar
+\ proves the row legal and records it, def-cast publishes the empty checked
+\ body as the identity, and the record facts the registrar latched go into
+\ the record. Nothing calls the def hook.
+
+\ With the input at its end the refusal names the keyword as spelled, at the
+\ end's line (habu2.f C-CAST-DIE-NO-NAME).
+: DEF-CAST-NAME ( -- )
+   TOKEN if exit then
+   s" hb: cast: missing name after " SAY
+   TOKEN$ SAY RC-NO-NAME THROW-AT ;
+
+\ The signature must be there, opened and closed, before the qualifier's
+\ refusals, and INP passes it first, so those name the line it ends on
+\ (C-PARSE-REQUIRED-SIG precedes C-QUALIFY-DEF). def-open clears TSIG, so
+\ trust-sig! takes the signature once the record is open.
+: DEF-CAST-HEAD ( -- )
+   DEF-SEED
+   false DEF-SIG-SPAN {: s:ptr end:ptr :}
+   s end DEF-SIG-PASS
+   DEF-QUALIFY DKIND:CAST DEF-RECORD
+   s end DEF-SIG-INNER ;
+
+\ The signature's inside goes to the active owner's cast registrar, then to
+\ the target owner's unless the active owner holds the same one; a missing
+\ owner or registrar is skipped
+\ (habu2.f DEF-TRUST:REGISTER-IDENTITY). A row the checker refuses throws
+\ before def-cast counts the record, so no callable name is left.
+: DEF-REGISTER-CAST ( -- )
+   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-CAST-OFF PKG-OPERATION {: own:n :}
+   own 0<> if TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@ own DEF-DECLARE then
+   NCOMP-DISPATCH:DECL-CAST-OFF PKG-TARGET {: target:n :}
+   target 0= if exit then
+   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-CAST-OFF PKG-OPERATION target = if exit then
+   TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@ target DEF-DECLARE ;
+
+\ With a hook set, the published record takes the facts the registrar latched,
+\ through the owner the registrar asked, as the native publisher drains them
+\ (src/compiler/native/publish.f PENDING-FACTS): the wide mark, then the
+\ minimum input arity, which the interpret dispatch refuses an underdepth
+\ call on. With none they wait, as the engine's do (habu2.f
+\ EM-REC-WIDE-PUBLISH).
+: DEF-CAST-FACTS ( -- )
+   HOOK-CELL CELL@ 0= if exit then
+   CHECKER-OWNER:WIDE-PUBLISH
+   CHECKER-OWNER:MIN-IN {: mi:n :}
+   mi 0<> if ndict@ 1- mi min-in-mark then ;
+
+\ The keyword refuses a live task, then a full code space or dictionary,
+\ naming itself, then a missing name, as the engine's does.
+: DEF-CAST ( -- )
+   TASK-GUARD
+   DEF-ROOM
+   DEF-CAST-NAME
+   DEF-CAST-HEAD
+   DEF-REGISTER-CAST
+   def-cast
+   DEF-CAST-FACTS ;
+
 \ ---- the definition keywords --------------------------------------------------
 \ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:`,
-\ `create` and `variable` are matched as LITERAL? matches its keywords.
-\ `variable` then allots one cell more and stores nothing.
+\ `create`, `variable`, `cast:` and `immediate` are matched as LITERAL?
+\ matches its keywords. `variable` then allots one cell more and stores
+\ nothing. `immediate` marks the newest record, whatever it is, and checks
+\ nothing (habu2.f C-IMMEDIATE).
 : DEFINE? ( -- bool )
    s" :" TOKEN-IS? if false DEF-HEAD true exit then
    s" kernel:" TOKEN-IS? if false DEF-HEAD true exit then
    s" trusted:" TOKEN-IS? if true DEF-HEAD true exit then
    s" create" TOKEN-IS? if DEF-ADDR true exit then
    s" variable" TOKEN-IS? if DEF-ADDR 1 cells allot true exit then
+   s" cast:" TOKEN-IS? if DEF-CAST true exit then
+   s" immediate" TOKEN-IS? if imm-mark true exit then
    false ;
 
 ;package

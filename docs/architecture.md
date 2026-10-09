@@ -148,10 +148,13 @@ token in the program's text (`src/habu/treeshake.f:1-7`).
 are written once in typed Habu and run on every platform.
 **Now:** ARM64 runs a machine-code interpreter (`src/habu/habu2.f`); the Habu
 loop (`src/habu/interpret.f`) runs only under tests and does not yet read
-`constant`, `defer`, `cast:`, `linear:` or `immediate`. Its `create` and
-`variable` publish the word through the `def-create` writer row, whose ARM64
-body is the tail of the engine's own `create` (`DEFWRITE:ADDR-TAIL,`); x86-64
-has no interpreter (`src/habu/kernel-x64.f:1752`) and refuses the row.
+`constant`, `defer` or `linear:`. Its `create` and `variable` publish the word
+through the `def-create` writer row, whose ARM64 body is the tail of the
+engine's own `create` (`DEFWRITE:ADDR-TAIL,`), and its `cast:` through
+`def-cast`, which ends with the engine cast's empty body
+(`DEFWRITE:EMPTY-BODY,`); x86-64 has no interpreter
+(`src/habu/kernel-x64.f:1752`) and refuses both rows. Its `immediate` is the
+`imm-mark` row, whose ARM64 body is the engine's own keyword (`C-IMMEDIATE`).
 
 **The loop is Forth's.** `INTERPRET` reads a token and looks it up. Outside a
 definition the word runs; inside one, an immediate word runs and any other word
