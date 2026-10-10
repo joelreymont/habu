@@ -19,13 +19,13 @@ no type, is private to the system package and is stripped from the delivered
 
 **One primitive table.** Each primitive is one row in `src/habu/prims.f` that
 names it and states its effect. Each platform supplies one body per row, native
-code per instruction set and a host body for Gforth, and the build refuses a
+code per instruction set, and the build refuses a
 body without a row or a row without a body. Where a primitive can be written
 without itself, a reference implementation in checked Habu runs beside every
 body in tests (`test/prim-parity.f`).
 **Now:** 233 primitives in 285 rows, 47 of them per-owner rows that
-[privacy](#packages-and-privacy) removes. Gforth has no host bodies;
-`bootstrap/cg/forth.fs` carries a second copy of the ARM64 bodies (`FPRIM`).
+[privacy](#packages-and-privacy) removes. The seed in `bootstrap/cg/forth.fs`
+carries a second copy of the ARM64 bodies (`FPRIM`) ([bootstrap.md](bootstrap.md)).
 
 ## Dictionary
 
@@ -179,8 +179,6 @@ for interpreting and about 70 for compiling (`src/habu/habu2.f`
 - file reading;
 - the checker and the codegen's hook cell.
 
-Gforth's reader and the interpreter share that lookup, so both resolve names
-only against Habu wordlists ([bootstrap.md](bootstrap.md#the-bootstrap-process)).
 When `hb` reads the kernel, its definitions go through the same definer and
 codegen with checking off: the checker records each construct with every value
 one cell wide, and the definer writes a null type.

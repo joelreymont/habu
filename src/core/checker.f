@@ -12520,7 +12520,7 @@ public
 : REC-AT ( n -- ptr n ) DICT-WORDLIST-SLOT 1+ cells * dbase@ + N>REC ;
 \ Its inverse, the index the bound window and the tape's K-TICK and K-IS name a
 \ record by. Every index from 0 names a record (native's record 0 is
-\ engine-code-origin-set, the Gforth host's is finally); -1 names none.
+\ engine-code-origin-set); -1 names none.
 : REC>INDEX ( ptr n -- n )
    {: rec:ptr :}
    rec NULL-PTR = IF -1 EXIT THEN

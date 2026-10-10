@@ -10,7 +10,6 @@ Problem: ~/.cache/tmp/carl-gfrest/c/c6-wide-make.f (a 65-field STRUCTURE, never 
 Acceptance: at tier 1 a STRUCTURE of up to 255 fields declares, c6-make-64.f, c6-make-65.f and c6-make-255.f print what tier 0 prints, rc 0, and c6-wide-make.f prints 1; c6-make-256.f is still refused at its declaration, rc 70; docs/forth.md:2171-2178 states the tier-1 width. The reproducers join test/compiler/native-generated-constructor.f, where docs/forth.md places the 34-cell record roundtrip.
 Files: src/compiler/native/elaborate.f, src/compiler/ir/type.f, src/compiler/native/regalloc-verify.f and the native call ABI they bound, docs/forth.md, test/compiler/native-generated-constructor.f.
 Verify: rebuild bin/hb per docs/gate.md; each reproducer under `bin/hb --load test/outer-loop-on.f <file holding 1 set-tier> <case>`; `bin/hb --load test/compiler/native-generated-constructor.f`; `bin/hb --load test/run.f`; two-generation build converges.
-Host cases: the Gforth host's r67 (~/.cache/tmp/carl-gfrest/c/waiting/) joins test/gforth/cases/ and matches native.
 Depends: none.
 Worker: worker-max.
 Superseded: the one-pass codegen (docs/architecture.md, "The codegen is one pass over the checked events") deletes the tier-1 code this fixes; its reproducers become that codegen's cases. Do not start.

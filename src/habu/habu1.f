@@ -282,7 +282,7 @@ variable LFINDSHADOW
 package ENGINE-EMIT
 
 \ The protected bands are src/habu/layout.f's DATA-BANDS table, which the
-\ x86-64 (PROT-SPAN) helper and the Gforth host's SPAN-GUARD read as well.
+\ x86-64 (PROT-SPAN) helper reads as well.
 variable BAND-IX
 
 : BANDS-EMIT ( n label -- ) {: addr:n trap:label :}

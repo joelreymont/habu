@@ -2239,11 +2239,10 @@ USE-WIDS USE-MAX cells + constant END
 
 \ --- The protected DATA bands, as one table ----------------------------------
 \ Every engine's span guard walks this table: native's ARM64 GUARD-SPAN
-\ (src/habu/habu1.f) and x86-64 (PROT-SPAN) helper (src/habu/kernel-x64.f),
-\ and the Gforth host's SPAN-GUARD (src/host/gforth/prims.fs), which reads it
-\ once its prefix has loaded this file. It follows the last fact its rows are
-\ built from, in the file every engine's prefix loads, so every engine
-\ publishes the same names. Each native builder reads it twice - once for the
+\ (src/habu/habu1.f) and x86-64 (PROT-SPAN) helper (src/habu/kernel-x64.f).
+\ It follows the last fact its rows are built from, in the file every
+\ engine's prefix loads, so every engine publishes the same names. Each
+\ native builder reads it twice - once for the
 \ hull [LO, HI) its bounding test compares against, once to emit the per-band
 \ interval tests - so a band added here widens both targets' bounding tests in
 \ the same edit that adds their band tests, which a hull written out beside
