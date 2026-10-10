@@ -1,9 +1,9 @@
-\ ndict-spell-call.f - one resolution answers what three used to.
+\ ndict-spell-call.f - one resolution answers what two used to.
 \
-\ NDICT:SPELL-CALL runs EFFECT-QUERY once and reads the latched rows three ways.
-\ NDICT:SPELL-ARITY, NDICT:SPELL-GLUE and NDICT:SPELL-RET-NEUTRAL? each run it
-\ themselves. The combined reader is therefore checked the only way that means
-\ anything: against those three, over a corpus of words with different shapes,
+\ NDICT:SPELL-CALL runs EFFECT-QUERY once and reads the latched rows two ways.
+\ NDICT:SPELL-ARITY and NDICT:SPELL-GLUE each run it themselves. The combined
+\ reader is therefore checked the only way that means anything: against those
+\ two, over a corpus of words with different shapes,
 \ rather than against a table of expected numbers this file would be free to
 \ agree with by writing them down twice.
 \
@@ -15,8 +15,8 @@
 \ for exactly that reason: it fails if the corpus ever stops denoting words.
 \
 \ THE CONTRACT WHEN THERE IS NOTHING TO SAY is asserted separately and exactly.
-\ A name the checker holds no sizeable effect for answers ARITY-NONE twice,
-\ GLUE-NONE and false - one refusal a caller tests once, in the first value.
+\ A name the checker holds no sizeable effect for answers ARITY-NONE twice and
+\ GLUE-NONE - one refusal a caller tests once, in the first value.
 \ The separate readers do not agree there and are not meant to: SPELL-GLUE keeps
 \ computing and answers GLUE-UNKNOWN for an unsizeable row, which a caller that
 \ already saw ARITY-NONE never looks at. Pinning the sentinel row here is what
@@ -43,17 +43,15 @@ package SPCALL-TEST
 
 private
 
-\ Every value of the row must come from the same query as the three readers.
+\ Every value of the row must come from the same query as the two readers.
 : AGREE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u NDICT:SPELL-ARITY {: in0:n out0:n :}
    a u NDICT:SPELL-GLUE nip {: glue0:n :}
-   a u NDICT:SPELL-RET-NEUTRAL? {: neu0:bool :}
-   a u NDICT:SPELL-CALL {: in1:n out1:n glue1:n neu1:bool :}
+   a u NDICT:SPELL-CALL {: in1:n out1:n glue1:n :}
    in1 in0 T=
    out1 out0 T=
    in0 NDICT:ARITY-NONE = if exit then
-   glue1 glue0 T=
-   neu1 if neu0 TTRUE else neu0 TFALSE then ;
+   glue1 glue0 T= ;
 
 : CORPUS ( -- )
    s" SPCALL-PLAIN" AGREE
@@ -68,17 +66,17 @@ private
    s" @" AGREE ;
 
 : CORPUS-CASE ( -- )
-   s" one query answers what three queries answered" T-LABEL
+   s" one query answers what two queries answered" T-LABEL
    CORPUS ;
 
 : IN-OF ( ptr u8 n -- n )
-   NDICT:SPELL-CALL {: in:n out:n glue:n neu:bool :} in ;
+   NDICT:SPELL-CALL {: in:n out:n glue:n :} in ;
 
 : OUT-OF ( ptr u8 n -- n )
-   NDICT:SPELL-CALL {: in:n out:n glue:n neu:bool :} out ;
+   NDICT:SPELL-CALL {: in:n out:n glue:n :} out ;
 
 : GLUE-OF ( ptr u8 n -- n )
-   NDICT:SPELL-CALL {: in:n out:n glue:n neu:bool :} glue ;
+   NDICT:SPELL-CALL {: in:n out:n glue:n :} glue ;
 
 \ The corpus really does denote words, and really does cover more than one
 \ shape. Without this the agreement case can pass on rows that are all absent.
@@ -111,11 +109,10 @@ private
 : ABSENT-CASE ( -- )
    s" a name the checker holds no effect for answers the sentinel row" T-LABEL
    s" SPCALL-NO-SUCH-WORD-ANYWHERE" NDICT:SPELL-CALL
-   {: in:n out:n glue:n neu:bool :}
+   {: in:n out:n glue:n :}
    in NDICT:ARITY-NONE T=
    out NDICT:ARITY-NONE T=
-   glue NDICT:GLUE-NONE T=
-   neu TFALSE ;
+   glue NDICT:GLUE-NONE T= ;
 
 public
 

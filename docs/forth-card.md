@@ -126,6 +126,9 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | a definition leaving 4097 cells, or returning a quotation that leaves 4095 | `E-UNCHECKABLE`, `effect too deep to record (depth 4097, at most 4096)` |
 | a definition taking 256 cells, declared or inferred | `E-UNCHECKABLE`, `input row too wide to record (256 cells, at most 255)` |
 | a `trust` row leaving 4097 cells, or one, `TRUSTED:` or `defer` taking 256 | `E-BAD-STORED-SIGNATURE`, `fix_signature_size`, the same reasons |
+| a return-stack cell in a signature or quotation type: `( n \| -- \| n )`, `( R n \| S -- R )`, `[ n -- \| U -- U n ]`; only `\| U -- U` (one row variable, both sides) is admitted | `E-BAD-SIGNATURE`, `fix_return_stack`, at both tiers; `E-BAD-STORED-SIGNATURE` for `TRUSTED:`, `defer`, `trust`, `CAST:` — park a value with `>r … r>` inside one definition |
+| a quotation literal that pushes a cell its caller pops, or pops one its caller pushed: `[: >r ;] execute r>`, `>r [: r> ;] execute` | `E-REJECTED` at `;]`, `fix_return_stack` |
+| a definition with no signature that reads or pops a cell it did not push: `: X r@ ;`, `: X r> ;` | `E-REJECTED` at the token, `fix_return_stack`, at both tiers |
 | a family, variant or field name over 255 bytes | `E-BAD-DECLARATION`, `name longer than 255 bytes`; `--load` exits 70 |
 | `package` with a name over 255 bytes | `E-STATEMENT-THROW`, throw code 7154; `--load` exits 67 |
 | `: IR-ID:X ( -- ) ;`, `variable IR-ID:V` or `package IR-ID`: a definition into, or the reopening of, a package the engine bakes | `E-STATEMENT-THROW`, throw code 84 at the name; `--load` exits 84 |

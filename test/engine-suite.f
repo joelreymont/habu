@@ -381,12 +381,6 @@ TESC-C-COMPILED$ TESC-C-WANT$ T$=
 \ quotations + combinators
 : TQ1 ( -- n ) 5 [: 1 + ;] execute ;
 TQ1 6 T=
-: RUN-R> ( [ -- i64 | i64 -- ] -- i64 ) 7 >r execute ;
-: TQRIN ( -- n ) [: r> ;] RUN-R> ;
-TQRIN 7 T=
-: RUN->R ( [ -- | -- i64 ] -- i64 ) execute r> ;
-: TQROUT ( -- n ) [: 9 >r ;] RUN->R ;
-TQROUT 9 T=
 : TDIP ( -- n ) 10 3 [: 2 * ;] DIP + ;
 TDIP 23 T=
 : TKEEP ( -- n ) 7 [: 1+ ;] KEEP + ;
@@ -1605,12 +1599,12 @@ s" CBAD-BIG6-A7-DIAG ( tfam6r-big<a,b,c,d,e,f,g> -- ) drop" 2dup T-LABEL CHECK-Q
 \ parses [ in -- out | rin -- rout ] as one param arg (a T-QUOT term), threaded
 \ through parse, persist (E-COPY/VREC-COPY), instantiate (E-INST), and render.
 \ Prove: bare parse; a STORED-sig reference (E-COPY + REND-SIG record + E-INST);
-\ an explicit return-stack clause; a quotation nested inside the quot arg's stack;
+\ an explicit neutral return-stack clause; a quotation nested inside the quot arg's stack;
 \ and malformed effect rows (missing '--' or ']') reject.
 s" scq-fam" 2 TFAM-REG-CELL
 : COK-SCQ ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) ;
 s" COK-SCQ-CALL ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) COK-SCQ" T-CHECK-PASSES
-s" COK-SCQ-RET ( scq-fam<[ n -- n | a -- a ],f32> -- scq-fam<[ n -- n | a -- a ],f32> )" T-CHECK-PASSES
+s" COK-SCQ-RET ( scq-fam<[ n -- n | U -- U ],f32> -- scq-fam<[ n -- n | U -- U ],f32> )" T-CHECK-PASSES
 s" COK-SCQ-QNEST ( scq-fam<[ [ n -- n ] -- n ],f32> -- scq-fam<[ [ n -- n ] -- n ],f32> )" T-CHECK-PASSES
 \ Malformed-row first causes are asserted by KIND (destruction review): a missing
 \ '--' hits SIG-PARSE-QUOT's EXPECT-SIG -> SGBAD-SYNTAX; a missing ']' after the
@@ -1619,12 +1613,13 @@ s" COK-SCQ-QNEST ( scq-fam<[ [ n -- n ] -- n ],f32> -- scq-fam<[ [ n -- n ] -- n
 \ that genuinely reaches the return-branch s" ]" EXPECT-SIG -> SGBAD-SYNTAX.
 s" CBAD-SCQ-NODASH ( scq-fam<[ n n ],f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-SYNTAX? -1 T=
 s" CBAD-SCQ-NOCLOSE ( scq-fam<[ n -- n ,f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-UNKNOWN? -1 T=
-s" CBAD-SCQ-RETCLOSE ( scq-fam<[ n -- n | a -- a -- ],f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-SYNTAX? -1 T=
+s" CBAD-SCQ-RETCLOSE ( scq-fam<[ n -- n | U -- U -- ],f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-SYNTAX? -1 T=
 \ Render acceptance (destruction review): a mismatch diagnostic must render the
 \ full parametric type — all six args of an arity-6 application, and an SC-QUOT
-\ arg's din/dout rows plus the return clause — never a collapsed string or '?'.
+\ arg's din/dout rows, where a neutral return clause renders as none — never a
+\ collapsed string or '?'.
 defer T-BIG6-MK ( -- tfam6r-big<n,f32,u8,u16,i64,bool> )
-defer T-SCQ-MK ( -- scq-fam<[ n -- n | a -- a ],f32> )
+defer T-SCQ-MK ( -- scq-fam<[ n -- n | U -- U ],f32> )
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" arity-6 mismatch diagnostic rejects" T-LABEL
 s" CBAD-BIG6-REND ( -- n ) T-BIG6-MK" CHECK-CANDIDATE! 0 T=
@@ -1633,8 +1628,8 @@ DIAG-BUFFER$ s" tfam6r-big<n,f32,u8,u16,i64,bool>" T-HAS? -1 T=
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" SC-QUOT mismatch diagnostic rejects" T-LABEL
 s" CBAD-SCQ-REND ( -- n ) T-SCQ-MK" CHECK-CANDIDATE! 0 T=
-s" SC-QUOT diagnostic renders quot rows and return clause" T-LABEL
-DIAG-BUFFER$ s" scq-fam<[ n-- n | a-- a],f32>" T-HAS? -1 T=
+s" SC-QUOT diagnostic renders quot rows" T-LABEL
+DIAG-BUFFER$ s" scq-fam<[ n-- n],f32>" T-HAS? -1 T=
 DIAG-BUFFER-OFF
 variable TSHOW-N
 : TSHOW-HOOK ( ptr u8 n n -- )

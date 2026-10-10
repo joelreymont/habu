@@ -489,7 +489,7 @@ none are. It has no `throw_code` or definition-only field. The code names its re
 | `E-TRUST-UNRESOLVED` | `fix_stale_trust_row` | none | A `trust` row names no word where its record lands; `token` is the row's name, an escaped literal's decoded as the engine decodes it. `--verify-only` reports a deferral record instead when a rendering statement before the row marked that wordlist. |
 | `E-PKG-CONTEXT` | `use_storage_definer` | none | A checker storage registrar was called from source, outside the engine's verifier window; `token` is the name it would have recorded. |
 | `E-BAD-QUALIFIED-RECORD` | `fix_qualified_name` | none | A checker record was asked for a malformed qualified name, which keys no word; `token` is that name. A call to such a name is refused in its definition as `E-BAD-QUALIFIED`, under the same class with a definition's fields. |
-| `E-BAD-STORED-SIGNATURE` | `fix_signature_type`, `fix_bare_ptr_element`, `fix_signature_arity` or `fix_signature_syntax`, as for a definition's signature; `fix_signature_size` for a row too deep or too wide to record | `signature`, as written, empty when the row stored no text; and `reason` for a row too deep or too wide to record, naming the bound with the row's count and the limit | A stored signature, a `trust` row's or a `TRUSTED:` definition's, does not parse, or is more than 4096 levels deep or takes more than 255 cells, more than its record holds; `token` is the name it is stored for. |
+| `E-BAD-STORED-SIGNATURE` | `fix_signature_type`, `fix_bare_ptr_element`, `fix_signature_arity`, `fix_signature_syntax` or `fix_return_stack`, as for a definition's signature; `fix_signature_size` for a row too deep or too wide to record | `signature`, as written, empty when the row stored no text; and `reason` for a row too deep or too wide to record, naming the bound with the row's count and the limit | A stored signature, a `trust` row's or a `TRUSTED:` definition's, does not parse, or is more than 4096 levels deep or takes more than 255 cells, more than its record holds; `token` is the name it is stored for. |
 | `E-SHADOWED-ARITY` | `match_shadowed_private_effect` | `package` | The package public `token` moves another number of cells than the private word of its package with the same tail. |
 
 A named checker record refuses before its load can continue. If the run
@@ -941,9 +941,11 @@ Current checker classes:
 - `remove_producer`: the body leaves more data-stack values than declared.
 - `add_producer`: the body leaves fewer data-stack values than declared.
 - `fix_type`: data-stack arity matches, but one or more types differ.
-- `fix_return_stack`: the return-stack row refused the definition: it differs
-  from the declaration, or the body read return-row cells below its declared
-  frame.
+- `fix_return_stack`: the return stack refused the definition: its signature,
+  a quotation type in it or a stored signature declares a return-stack cell
+  (after `|` only one row variable, the same on both sides, is admitted); the
+  body or a quotation literal in it does not leave the return row as it found
+  it; or either read return-row cells it did not push.
 - `supply_missing_input`: a call inside the body consumed more cells than the
   declared inputs leave, so it reached under them into the caller's stack. The
   reason names both counts. Push the missing inputs before the call or declare
@@ -1053,7 +1055,8 @@ Current checker classes:
 - `unknown_rejection`: rejection did not fit a more specific class.
 
 The checker `suggestion` field is stable short text; for each class in this
-table it is derived only from `repair_class`. It does not replace the raw
+table it is derived only from `repair_class`, except `fix_return_stack`, whose
+text names the return-stack rule that refused. It does not replace the raw
 `expected`, `actual`, or `return_stack` evidence:
 
 | `repair_class` | `suggestion` |
@@ -1061,7 +1064,7 @@ table it is derived only from `repair_class`. It does not replace the raw
 | `remove_producer` | `Remove an extra producer or drop the surplus value.` |
 | `add_producer` | `Add the missing producer or stop consuming a required value.` |
 | `fix_type` | `Change the body so produced types match the signature.` |
-| `fix_return_stack` | `Balance return-stack transfers before the definition exits.` |
+| `fix_return_stack` | `Balance return-stack transfers before the definition exits.`; for a read below the definition's own cells `Read or pop only return-row cells this definition pushed with >r; below them lies the caller's frame.`; at a quotation literal's `;]` `Balance return-stack transfers before the quotation returns.` or `Read or pop only return-row cells this quotation pushed with >r; below them lies the caller's frame.`; for a signature that declares a return-stack cell `Declare no return-stack effect: after '\|' write one row variable, the same on both sides, or no '\|'; park a value with >r and take it back with r> in one definition.` |
 | `supply_missing_input` | `Push the missing inputs before the call, or declare them in the signature; a definition may not consume below its declared inputs.` |
 | `trusted_boundary_required` | `Move this compiler or runtime boundary behind audited TRUST.` |
 | `model_compile_immediate` | `Declare a stack-neutral parsing immediate with parse-imm, or remove it from the compiled body.` |

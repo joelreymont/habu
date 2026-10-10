@@ -133,11 +133,10 @@ s" cast: CNL5 ( CAST-NEG:nested -- n )" CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL6 ( n -- ptr a )"        CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL7 ( ptr a -- n )"        CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL8 ( n -- [ -- a ] )"     CN-RUN:DECL E-CAST-LINEAR T=
-\ A linear type behind a pointer, or in any of a quotation's four rows, is
+\ A linear type behind a pointer, or in either of a quotation's rows, is
 \ carried ownership too, on either side of the cast.
 s" cast: CNL9 ( n -- ptr ptr CAST-NEG:lease )"      CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL10 ( n -- [ CAST-NEG:lease -- ] )"      CN-RUN:DECL E-CAST-LINEAR T=
-s" cast: CNL11 ( n -- [ -- | -- CAST-NEG:lease ] )" CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL12 ( [ -- CAST-NEG:nested ] -- n )"     CN-RUN:DECL E-CAST-LINEAR T=
 \ A layout's fields are what its projection yields, so a field holding a linear
 \ value behind a pointer or in a quotation row carries it through the cast as
@@ -212,7 +211,6 @@ s" cast: CNP2 ( CN:cncell<n> -- n )"             CN-RUN:DECL 0 T=
 s" cast: CNG2 ( n -- ptr CN:cnfam )"             CN-RUN:DECL E-CAST-OWNER T=
 s" cast: CNG3 ( n -- ptr ptr CN:cncell<n> )"     CN-RUN:DECL E-CAST-OWNER T=
 s" cast: CNG4 ( n -- [ -- CN:cnfam ] )"          CN-RUN:DECL E-CAST-OWNER T=
-s" cast: CNG5 ( n -- [ -- | -- CN:cnfam ] )"     CN-RUN:DECL E-CAST-OWNER T=
 s" cast: CNG6 ( n -- [ [ CN:cnfam -- ] -- ] )"   CN-RUN:DECL E-CAST-OWNER T=
 \ A layout family's arguments are introduction positions as well: projecting
 \ the field of a minted `cnpbox` yields a value of its argument family.

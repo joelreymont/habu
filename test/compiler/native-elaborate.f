@@ -2152,9 +2152,6 @@ create TW-BUF TW-CAP allot
 : QP-TAKE2! ( -- )
    s" QP-TAKE2" s" : QP-TAKE2 ( [ n n -- n ] n -- n ) swap drop ;" QDEF ;
 
-: QP-RET! ( -- )
-   s" QP-RET" s" : QP-RET ( [ n -- n | a -- a ] n -- n ) swap drop ;" QDEF ;
-
 : QP-THREE! ( -- )
    s" QP-THREE"
    s" : QP-THREE ( -- n [ n n -- n ] [ n n n -- n ] ) 0 [: drop ;] [: drop drop ;] ;"
@@ -2311,24 +2308,6 @@ create TW-BUF TW-CAP allot
 
 : QUOT-DEEP ( -- )
    BND [: QUOT-DEEP-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-\ A BODY THAT IS NOT AN ORDINARY ROUTINE. `QP-RET` declares the quotation it
-\ takes as ( n -- n ) on the data stack AND ( a -- a ) on the RETURN stack, which
-\ is a body a caller cannot reach with a branch and come back from: what it does
-\ to the return stack is not what a call's own return expects to find there. The
-\ checker owns that three-clause question - neutral return rows, no throw edge, a
-\ live fall-through - and src/compiler/native/dict.f asks it rather than
-\ re-deriving it, so the descent answers "no quotation there" and this refuses.
-: QUOT-RSTACK-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   QP-RET!
-   s" QRET [: 1 + ;] 2 QP-RET" TEXT!
-   c 1 SEALED-ROOM
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 0 1 NELAB:COLON drop ;
-
-: QUOT-RSTACK ( -- )
-   BND [: QUOT-RSTACK-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- the two ways a body never gets an arity ---------------------------------
 \ NOTHING CONSUMES IT. The value is dropped, so no term ever says what the body
@@ -2537,10 +2516,6 @@ create QHID-TXT
    [: QUOT-DISAGREE ;] E-NELAB-QUOT TTHROWSQ
    NELAB:REFUSED-ROW 1 T=
    NELAB:REFUSED$ s" [:" T$=
-   s" a body whose declared effect is not an ordinary routine's is refused"
-   T-LABEL
-   [: QUOT-RSTACK ;] E-NELAB-QUOT TTHROWSQ
-   NELAB:REFUSED-ROW 1 T=
    s" a body leaving more than its consumer declared is refused at its opener"
    T-LABEL
    [: QUOT-DEEP ;] E-NELAB-QUOT TTHROWSQ

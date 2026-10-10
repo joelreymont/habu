@@ -343,14 +343,18 @@ public
 \ field read: it resolves the spelling to a checker symbol - a hash lookup plus,
 \ inside an open package, up to two `search-wl` probes the checker's own tables
 \ missed - and latches that symbol's rows. A caller deciding whether a name is
-\ a call it can build wants the arity, the result glue and the return-stack
-\ answer together, and asking for them one at a time resolved one name three
-\ times and latched one set of rows three times.
+\ a call it can build wants the arity and the result glue together, and asking
+\ for them one at a time resolved one name twice and latched one set of rows
+\ twice.
 \
-\ So this asks once and reads the latch three ways. ARITY-NONE in the first
+\ So this asks once and reads the latch both ways. ARITY-NONE in the first
 \ answer is the same refusal SPELL-ARITY gives, so a caller tests that one value
 \ and the rest of the row is meaningless when it fires - which is what the
-\ separate readers already meant by answering ARITY-NONE, GLUE-NONE and false.
+\ separate readers already meant by answering ARITY-NONE and GLUE-NONE.
+\
+\ THERE IS NO RETURN-STACK ANSWER: no declaration may move a return-stack cell
+\ (docs/effects.md "The return-stack clause"), so every call leaves the
+\ caller's return stack as it found it.
 \
 \ IT ANSWERS THE RESULT GLUE ONLY. SPELL-GLUE's first answer is the ARGUMENT
 \ row's glue, and a call site's concern is what the callee LEAVES; the two
@@ -362,14 +366,13 @@ public
 \ is asked from; folding it in would hide that behind a word that looks like one
 \ lookup. What the two share is the name-to-symbol half, and sharing THAT is a
 \ checker-side question, not one this file can answer.
-: SPELL-CALL ( ptr u8 n -- n n n bool )  \ din cells, dout cells, result glue, returns?
-   CHECKER-OWNER:QUERY 0= if ARITY-NONE ARITY-NONE GLUE-NONE false exit then
+: SPELL-CALL ( ptr u8 n -- n n n )  \ din cells, dout cells, result glue
+   CHECKER-OWNER:QUERY 0= if ARITY-NONE ARITY-NONE GLUE-NONE exit then
    CHECKER-OWNER:DIN-CELLS {: din:n :}
    CHECKER-OWNER:DOUT-CELLS {: dout:n :}
-   din 0 < dout 0 < or if ARITY-NONE ARITY-NONE GLUE-NONE false exit then
+   din 0 < dout 0 < or if ARITY-NONE ARITY-NONE GLUE-NONE exit then
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}
-   on oc RS-DOUT ROW-GLUE {: glue:n :}
-   din dout glue CHECKER-OWNER:RET-NEUTRAL? ;
+   din dout  on oc RS-DOUT ROW-GLUE ;
 
 \ ---- the quotation a term of one of those rows IS ----------------------------
 public
@@ -468,13 +471,6 @@ public
 \ ordinary word; SPELL-ARITY refuses an uncertified name before this is reached.
 : SPELL-DEAD? ( ptr u8 n -- bool )
    CHECKER-OWNER:DEAD-TOKEN? ;
-
-\ ---- and whether a call to it leaves the caller's return stack alone ----------
-\ It asks what the ROWS say and not what the signature spells: a word with no
-\ `|` clause records two empty rows because the balance check proved it moves none.
-: SPELL-RET-NEUTRAL? ( ptr u8 n -- bool )
-   CHECKER-OWNER:QUERY 0= if false exit then
-   CHECKER-OWNER:RET-NEUTRAL? ;
 
 private
 

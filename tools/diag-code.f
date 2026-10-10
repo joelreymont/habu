@@ -53,7 +53,7 @@ private
       construct shape deferral s" rewrite_uncheckable" s" " EXIT THEN
    c u s" E-GENERATES-ROW" STR= IF
       construct shape record
-      s" fix_generates_row delete_generates_row fix_signature_syntax fix_signature_type fix_signature_arity fix_bare_ptr_element"
+      s" fix_generates_row delete_generates_row fix_signature_syntax fix_signature_type fix_signature_arity fix_bare_ptr_element fix_return_stack"
       s" " EXIT THEN
    c u s" E-PARSES-ROW" STR= IF
       construct shape record s" fix_parses_row fix_parses_syntax" s" " EXIT THEN
@@ -69,7 +69,7 @@ private
       construct shape record s" fix_qualified_name" s" " EXIT THEN
    c u s" E-BAD-STORED-SIGNATURE" STR= IF
       construct shape record
-      s" fix_signature_type fix_bare_ptr_element fix_signature_arity fix_signature_syntax fix_signature_size"
+      s" fix_signature_type fix_bare_ptr_element fix_signature_arity fix_signature_syntax fix_signature_size fix_return_stack"
       s" signature" EXIT THEN
    c u s" E-USING-SHADOW-GLOBAL" STR= IF
       construct shape using-refusal s" disambiguate_using_shadow" s" " EXIT THEN

@@ -250,21 +250,6 @@ create DIAG-BUF 8192 allot
    s" a round trip through a declared pointer cell is refused by the raw rule" T-LABEL
    s" BPA-RT ( -- bpathing ) data-base 8 + BPA-SLOT ! BPA-SLOT @ @" CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ ---- the same forgery, landing on the RETURN row ------------------------------
-\ `>r` moves any one cell, so it accepts the value the base cell hands out and
-\ only the declared RETURN row refuses it. That row is unified by the same
-\ unifier and fenced by the same pointee kind, so it has to answer the same
-\ reason; until the return row had a first-failure capture of its own these two
-\ answered a bare return-stack imbalance (dot habu-name-a-raw-09fe04d0).
-
-: CASE-RETURN-NOMINAL ( -- )
-   s" the declared return row refuses the nominal forgery, and names it" T-LABEL
-   s" BPA-RN ( | -- | bpathing ) data-base 8 + @ >r" DB-REFUSED ;
-
-: CASE-RETURN-POINTER ( -- )
-   s" and the address half of it on the return row" T-LABEL
-   s" BPA-RP ( | -- | ptr n ) data-base 8 + @ >r" DB-REFUSED ;
-
 \ ---- the pointee CHAIN: the fence follows it all the way down -----------------
 \ NOMPTR-BLOCK? already stops a nominal at the FIRST pointee, which is what made
 \ the first cut look complete. Put the element one `ptr` deeper and the fence
@@ -579,8 +564,6 @@ public
    CASE-REVERSED-ADD
    CASE-THROUGH-QUOTATION
    CASE-THROUGH-DECLARED-CELL
-   CASE-RETURN-NOMINAL
-   CASE-RETURN-POINTER
    CASE-PUBLISH-VAR
    CASE-PUBLISH-INOUT
    CASE-DEPTH-2-POINTER

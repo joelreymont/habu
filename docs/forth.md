@@ -2491,6 +2491,23 @@ the rule.
   (`expected: bool actual: n`), and a text that ends inside a definition it
   opened is refused at its own end, rc 74. N keeps `evaluate-closed`'s open
   cases.
+- **No signature declares a return-stack cell, and a quotation literal is
+  sealed at its `;]`.** A definition reads only the return-stack cells it
+  pushed with `>r` and leaves the return stack as it found it. Without the
+  rule `: RC1 ( | n -- | n ) r> drop 0 >r ;` certified and ran at tier 0 and
+  failed in the native compiler at tier 1 (`E-NELAB-UNDER`), and
+  `: F ( n -- n ) [: >r ;] execute r> ;` likewise (-8304). A `|` clause other
+  than one row variable on both sides — a cell on either side, a bar on one
+  side only, or the same inside a quotation type — is refused at the
+  declaration at both tiers (`E-BAD-SIGNATURE`, or `E-BAD-STORED-SIGNATURE` for
+  `TRUSTED:`, `defer`, a `trust` row and `CAST:`; `fix_return_stack`, exit 70),
+  and a quotation literal that pushes a cell its caller pops or pops one its
+  caller pushed is refused at its `;]` (`E-REJECTED`, `fix_return_stack`).
+  A definition with no signature is held to the same rule: `: X r@ ;`
+  certified at tier 0 and failed at tier 1 (-8304); it and `: X r> ;` are
+  refused at the token (`E-REJECTED`, `fix_return_stack`).
+  Park a value with `>r … r>` inside one definition
+  (test/compiler/native-rstack-input.f).
 
 ## Spans: a pointer that carries its reach
 

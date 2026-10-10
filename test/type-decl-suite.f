@@ -1166,14 +1166,14 @@ s" SUMTYPE tdpay3 1 VARIANT ok tdres<a> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-N
 s" SUMTYPE tdpay4 1 VARIANT ok tdres<a,z> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 \ quotation effect sides now carry full rows (dot habu-sc-quot-full-db4d0518): an
 \ empty input side, a multi-type input side, an empty output side, and a multi-type
-\ input (with a ptr element) plus an explicit return clause all declare and resolve.
+\ input with a ptr element all declare and resolve.
 SUMTYPE tdpq0 0 VARIANT run [ -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 s" " s" tdpq0" TFAM-FIND-IN nip -1 T=
 SUMTYPE tdpq2 0 VARIANT run [ n n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 s" " s" tdpq2" TFAM-FIND-IN nip -1 T=
 SUMTYPE tdpqd 0 VARIANT run [ n -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 s" " s" tdpqd" TFAM-FIND-IN nip -1 T=
-SUMTYPE tdpqm 0 VARIANT run [ n ptr u8 -- n | n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+SUMTYPE tdpqm 0 VARIANT run [ n ptr u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 s" " s" tdpqm" TFAM-FIND-IN nip -1 T=
 
 \ ---------------------------------------------------------------------------

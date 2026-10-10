@@ -260,7 +260,7 @@ ARM
 NEWTYPE payload-tag 0
 : PAYLOAD-TAG ( payload-tag -- payload-tag ) ;
 : ANON-PROVIDER [: 1+ ;] ;
-: RETURN-PROVIDER ( n | -- | n ) >r ;
+: RETURN-PROVIDER ( n | R -- n | R ) ;
 GRAPH-ROUNDTRIP:DECLARE-WIDE
 : PAYLOAD-WIDE-USE ( payload-wide -- payload-wide ) ;
 : PAYLOAD-NESTED-USE ( payload-option<payload-wide> -- payload-option<payload-wide> ) ;
@@ -300,14 +300,15 @@ s" ROUND-QUANT-PTR ( ptr u8 -- ptr u8 ) [: ;] PAYLOAD-QUANT" CHECK! -1 EQ
 s" ROUND-TAG ( payload-tag -- payload-tag ) PAYLOAD-TAG" CHECK! -1 EQ
 s" ROUND-TAG-BAD ( n -- n ) PAYLOAD-TAG" CHECK! 0 EQ
 s" ROUND-ANON-BAD ( ptr u8 -- ptr u8 ) ANON-PROVIDER execute" CHECK! 0 EQ
-s" ROUND-RETURN ( n | -- | n ) RETURN-PROVIDER" CHECK! -1 EQ
+s" RETURN-PROVIDER" EFFECT-QUERY -1 EQ EFFECT-RET-NEUTRAL? -1 EQ
+s" ROUND-RETURN ( n | R -- n | R ) RETURN-PROVIDER" CHECK! -1 EQ
 \ Checked consumers execute after the source effect bytes have been erased.
 : GRAPH-JIT-USE ( n -- n ) ANON-PROVIDER execute ;
 17 GRAPH-JIT-USE 18 EQ
 1 set-tier
 : GRAPH-NATIVE-USE ( n -- n ) [: 1+ ;] PAYLOAD-QUANT ;
 0 set-tier
-: GRAPH-JIT-RETURN ( n -- n ) RETURN-PROVIDER r> ;
+: GRAPH-JIT-RETURN ( n -- n ) RETURN-PROVIDER ;
 17 GRAPH-NATIVE-USE 18 EQ
 17 GRAPH-JIT-RETURN 17 EQ
 s" graph metadata file roundtrip: ok" type cr

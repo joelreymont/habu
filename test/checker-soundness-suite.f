@@ -14,14 +14,10 @@ PRODUCT point 0 FIELD x n FIELD y n ;PRODUCT
 
 : TAKE-U8 ( u8 -- ) drop ;
 : TAKE-I64 ( i64 -- ) drop ;
-: TAKE-RU8 ( | u8 -- ) r> drop ;
-: TAKE-RI64 ( | i64 -- ) r> drop ;
 : MK-I64 ( -- i64 ) 300 ;
 : MK-U8 ( -- u8 ) 3 ;
 : CALL-I64 ( [ i64 -- ] -- ) MK-I64 swap execute ;
 : CALL-U8 ( [ u8 -- ] -- ) MK-U8 swap execute ;
-: CALL-RI64 ( [ -- | i64 -- ] -- ) MK-I64 >r execute ;
-: CALL-RU8 ( [ -- | u8 -- ] -- ) MK-U8 >r execute ;
 : CALL-I64-Q ( [ [ i64 -- ] -- ] -- ) ['] TAKE-I64 swap execute ;
 : CALL-U8-Q ( [ [ u8 -- ] -- ] -- ) ['] TAKE-U8 swap execute ;
 
@@ -36,11 +32,6 @@ PRODUCT point 0 FIELD x n FIELD y n ;PRODUCT
    s" an exact quotation input still passes" T-LABEL
    s" CS-Q3 ( -- ) [: CHECKER-SOUNDNESS:TAKE-I64 ;] CHECKER-SOUNDNESS:CALL-I64"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" return-row inputs read the same direction" T-LABEL
-   s" CS-Q4 ( -- ) [: CHECKER-SOUNDNESS:TAKE-RU8 ;] CHECKER-SOUNDNESS:CALL-RI64"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" CS-Q5 ( -- ) [: CHECKER-SOUNDNESS:TAKE-RI64 ;] CHECKER-SOUNDNESS:CALL-RU8"
-      CHECK-QUIET-CANDIDATE! -1 T=
    s" a nested quotation input reverses the direction twice" T-LABEL
    s" CS-Q6 ( -- ) [: CHECKER-SOUNDNESS:CALL-U8 ;] CHECKER-SOUNDNESS:CALL-I64-Q"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -48,7 +39,6 @@ PRODUCT point 0 FIELD x n FIELD y n ;PRODUCT
       CHECK-QUIET-CANDIDATE! 0 T=
    s" the accepted shapes execute" T-LABEL
    [: TAKE-I64 ;] CALL-U8
-   [: TAKE-RI64 ;] CALL-RU8
    [: CALL-U8 ;] CALL-I64-Q
    depth 0 T= ;
 
@@ -73,8 +63,8 @@ PRODUCT point 0 FIELD x n FIELD y n ;PRODUCT
    s" CS-R11 ( n -- n n ) >r begin r@ 0= until r@ r>" CHECK-QUIET-CANDIDATE! -1 T=
    s" CS-R12 ( CHECKER-SOUNDNESS:point -- CHECKER-SOUNDNESS:point CHECKER-SOUNDNESS:point ) >r r@ r>"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" a declared return cell may be read" T-LABEL
-   s" CS-R13 ( R | S n -- R n | S n ) r@" CHECK-QUIET-CANDIDATE! -1 T= ;
+   s" a signature may not declare a return cell" T-LABEL
+   s" CS-R13 ( R | S n -- R n | S n ) r@" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : SIGNATURE-END ( -- )
    s" tokens after the output side are a syntax error" T-LABEL

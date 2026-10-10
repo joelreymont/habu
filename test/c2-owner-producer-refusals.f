@@ -64,30 +64,22 @@ create ERR CAP allot
 : EARLY-THROW ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> )
    -9363 throw ;
 
-TRUSTED: REPLACE-R-OWNER ( | C2-MEM:owner<p,i,a> -- | C2-MEM:owner<p,i,a> )
-   r> drop 0 >r -9363 throw ;
-
-TRUSTED: REPLACE-R-VIEW ( | read-view<p,q,u8> -- | read-view<p,q,u8> )
-   r> r> 2drop 0 0 >r >r -9363 throw ;
-
-: REPLACE-R-CALLBACK ( | [ read-view<p,q,u8> -- read-view<p,q,u8> ] -- | [ read-view<p,q,u8> -- read-view<p,q,u8> ] )
-   r> drop 0 >r -9363 throw ;
-
-: EARLY-R-OWNER ( | C2-MEM:owner<p,i,a> -- | C2-MEM:owner<p,i,a> )
+TRUSTED: TRUSTED-THROW-OWNER ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> )
    -9363 throw ;
 
-: EARLY-R-CALLBACK ( | [ read-view<p,q,u8> -- read-view<p,q,u8> ] -- | [ read-view<p,q,u8> -- read-view<p,q,u8> ] )
+TRUSTED: TRUSTED-THROW-VIEW ( read-view<p,q,u8> -- read-view<p,q,u8> )
    -9363 throw ;
+
+: REPLACE-R-CALLBACK ( [ read-view<p,q,u8> -- read-view<p,q,u8> ] -- [ read-view<p,q,u8> -- read-view<p,q,u8> ] )
+   >r r> drop 0 >r -9363 throw ;
 
 public
 EXPORT FAIL-APPEND
 EXPORT FAIL-WRAPPER
 EXPORT EARLY-THROW
-EXPORT REPLACE-R-OWNER
-EXPORT REPLACE-R-VIEW
+EXPORT TRUSTED-THROW-OWNER
+EXPORT TRUSTED-THROW-VIEW
 EXPORT REPLACE-R-CALLBACK
-EXPORT EARLY-R-OWNER
-EXPORT EARLY-R-CALLBACK
 
 : RUN ( -- )
    T-RESET
@@ -97,16 +89,16 @@ EXPORT EARLY-R-CALLBACK
    s" -1 JSON-DIAGS ! : C2OP-WRAP-CATCH ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) [: C2-OWNER-PRODUCER-REFUSALS:FAIL-WRAPPER ;] catch drop 17 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC C2-MEM:PUBLISH drop ;" STALE? TTRUE
    s" a throw before consuming an owner leaves the owner usable" T-LABEL
    s" : C2OP-EARLY-CATCH ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) [: C2-OWNER-PRODUCER-REFUSALS:EARLY-THROW ;] catch drop 17 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC C2-MEM:PUBLISH drop ;" ACCEPT? TTRUE
-   s" a trusted throw cannot restore a replaced return owner" T-LABEL
-   s" -1 JSON-DIAGS ! : C2OP-R-OWNER-CATCH ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) >r [: C2-OWNER-PRODUCER-REFUSALS:REPLACE-R-OWNER ;] catch drop r> 17 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC C2-MEM:PUBLISH drop ;" STALE? TTRUE
-   s" a checked early throw keeps a return owner usable" T-LABEL
-   s" : C2OP-EARLY-R-OWNER-CATCH ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) >r [: C2-OWNER-PRODUCER-REFUSALS:EARLY-R-OWNER ;] catch drop r> 17 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC C2-MEM:PUBLISH drop ;" ACCEPT? TTRUE
-   s" a trusted throw cannot restore a replaced return read view" T-LABEL
-   s" -1 JSON-DIAGS ! : C2OP-R-VIEW-CATCH ( read-view<p,q,u8> -- u8 read-view<p,q,u8> ) >r [: C2-OWNER-PRODUCER-REFUSALS:REPLACE-R-VIEW ;] catch drop r> 0 C2-MEM:BYTE@ ;" STALE? TTRUE
-   s" a trusted throw cannot restore a nested scoped return callback" T-LABEL
-   s" : C2OP-R-CALLBACK-CATCH ( read-view<p,q,u8> [ read-view<p,q,u8> -- read-view<p,q,u8> ] -- read-view<p,q,u8> ) >r [: C2-OWNER-PRODUCER-REFUSALS:REPLACE-R-CALLBACK ;] catch drop r> execute ;" REJECT TTRUE
-   s" a checked early throw keeps a return callback usable" T-LABEL
-   s" : C2OP-EARLY-R-CALLBACK-CATCH ( read-view<p,q,u8> [ read-view<p,q,u8> -- read-view<p,q,u8> ] -- read-view<p,q,u8> ) >r [: C2-OWNER-PRODUCER-REFUSALS:EARLY-R-CALLBACK ;] catch drop r> execute ;" ACCEPT? TTRUE
+   s" a trusted callee that throws leaves its owner stale" T-LABEL
+   s" -1 JSON-DIAGS ! : C2OP-TRUSTED-OWNER-CATCH ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) [: C2-OWNER-PRODUCER-REFUSALS:TRUSTED-THROW-OWNER ;] catch drop 17 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC C2-MEM:PUBLISH drop ;" STALE? TTRUE
+   s" an early throw keeps an owner parked on the return stack usable" T-LABEL
+   s" : C2OP-EARLY-R-OWNER-CATCH ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) >r [: -9363 throw ;] catch drop r> 17 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC C2-MEM:PUBLISH drop ;" ACCEPT? TTRUE
+   s" a trusted callee that throws leaves its read view stale" T-LABEL
+   s" -1 JSON-DIAGS ! : C2OP-TRUSTED-VIEW-CATCH ( read-view<p,q,u8> -- u8 read-view<p,q,u8> ) [: C2-OWNER-PRODUCER-REFUSALS:TRUSTED-THROW-VIEW ;] catch drop 0 C2-MEM:BYTE@ ;" STALE? TTRUE
+   s" a throw cannot restore a scoped callback it replaced on its return stack" T-LABEL
+   s" : C2OP-R-CALLBACK-CATCH ( read-view<p,q,u8> [ read-view<p,q,u8> -- read-view<p,q,u8> ] -- read-view<p,q,u8> ) [: C2-OWNER-PRODUCER-REFUSALS:REPLACE-R-CALLBACK ;] catch drop execute ;" REJECT TTRUE
+   s" an early throw keeps a callback parked on the return stack usable" T-LABEL
+   s" : C2OP-EARLY-R-CALLBACK-CATCH ( read-view<p,q,u8> [ read-view<p,q,u8> -- read-view<p,q,u8> ] -- read-view<p,q,u8> ) >r [: -9363 throw ;] catch drop r> execute ;" ACCEPT? TTRUE
    s" an owner cannot be duplicated" T-LABEL
    s" : C2OP-DUP ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) dup drop ;" REJECT TTRUE
    s" a published mutable view cannot be reused" T-LABEL

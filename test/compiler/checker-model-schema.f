@@ -174,26 +174,6 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
       s" MATCH cmres cmok OF"
       V-REJECT MATCH-DEPTH-ROW ;
 
-\ Two rows about the per-step linear conservation count, which the three
-\ linear rows above do NOT reach: those are all decided by the deferred-taint
-\ rule, which rejects a polymorphic copy or drop the moment the variable it
-\ laundered resolves linear, and they answer the same either way if the count
-\ check itself stops deciding anything. The count is over the data row AND the
-\ return row together, so the case that only the count can decide is a value
-\ that is on NEITHER row at the moment the check runs. `>r` never produces one -
-\ it is its own rule and snapshots the whole transfer - but an ORDINARY word
-\ declared with the same effect does, because a call checks the count inside the
-\ data-row step, before the return rows move. The second row is the control: the
-\ same word and the same tokens with nothing linear in play certify, so what the
-\ first row records is the linear, not the transfer.
-: BUILD-LINEAR-TRANSFER-VECTORS ( -- )
-   s" a_linear_on_neither_row_when_the_step_is_checked"
-      s" CMV17 ( cmltok -- cmltok ) CHECKER-MODEL-CASES:TO-R-WORD r>"
-      V-REJECT VEC-ROW
-   s" the_same_transfer_with_nothing_linear_certifies"
-      s" CMV18 ( i64 -- i64 ) CHECKER-MODEL-CASES:TO-R-WORD r>"
-      V-CERT VEC-ROW ;
-
 \ Eight rows about `construct`, which nothing else here reaches. `construct` is
 \ a three-token form and a small state machine, not a word call, so the rules
 \ that decide it are the capture, the truncation test at the definition
@@ -500,11 +480,11 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
       V-CERT VEC-ROW ;
 
 : BUILD-LOOP-RETURN-VECTORS ( -- )
-   s" unloop_exit_preserves_declared_return_rows"
-      s" CMV79 ( | n -- | n ) 3 0 do unloop exit loop"
+   s" unloop_exit_after_taking_back_a_parked_cell"
+      s" CMV79 ( n -- n ) >r 3 0 do r> unloop exit loop"
       V-CERT VEC-ROW
-   s" unloop_exit_cannot_erase_a_declared_return_cell"
-      s" CMV80 ( | n -- | n ) 3 0 do r> drop unloop exit loop"
+   s" unloop_exit_cannot_leave_a_parked_cell"
+      s" CMV80 ( n -- ) >r 3 0 do unloop exit loop"
       V-REJECT VEC-ROW ;
 
 : BUILD-VECTORS ( -- )
@@ -541,7 +521,6 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
    BUILD-WIDENING-VECTORS
    BUILD-FRAME-CAP-VECTORS
    BUILD-MATCH-DEPTH-VECTORS
-   BUILD-LINEAR-TRANSFER-VECTORS
    BUILD-CONSTRUCT-VECTORS
    BUILD-SCRUTINEE-VECTORS
    BUILD-ATOM-VECTORS

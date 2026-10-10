@@ -126,15 +126,11 @@ $94000000 constant BL-FORM
    s" NX-APPLY" BL-TARGET  s" execute" NDICT:CALL-TARGET  T= ;
 
 \ The checker certifies an inline quotation's calling convention at execute.
-\ An untyped stored xt has no such effect; a quotation with a return-stack
-\ clause also remains outside the native calling convention.
+\ An untyped stored xt has no such effect.
 : SELF-EXEC ( -- )
    s" : NX-SELF ( n -- n ) [: 1 + ;] execute ;" evaluate-closed ;
 
 70 constant CHECK-RC                 \ the engine refusing a definition it cannot certify
-
-: RSTACK-EXEC ( -- )
-   s" : NX-RS ( [ n -- n | a -- a ] n -- n ) swap execute ;" evaluate-closed ;
 
 create DIAG-BUF 8192 allot
 
@@ -158,13 +154,6 @@ create DIAG-BUF 8192 allot
    s" an ordinary quotation parameter answers the arity its declaration states"
    T-LABEL
    s" NX-APPLY" 1 NDICT:SPELL-QUOT-DIN 1 T= 1 T=
-   s" a return-stack quotation answers no quotation at all" T-LABEL
-   s" : NX-RET ( [ n -- n | a -- a ] n -- n ) swap drop ;" evaluate-closed
-   s" NX-RET" 1 NDICT:SPELL-QUOT-DIN
-   NDICT:QUOT-NONE T= NDICT:QUOT-NONE T=
-   s" and executing one never reaches the chain: the checker refuses it first"
-   T-LABEL
-   [: RSTACK-EXEC ;] CHECK-RC TTHROWSQ
    OPAQUE-CASE ;
 
 \ ---- the real multishot site --------------------------------------------------

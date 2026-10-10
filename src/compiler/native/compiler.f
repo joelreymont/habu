@@ -196,9 +196,8 @@ variable M-DOES-FUN                  \ hidden clause function ordinal
    a u NDICT:CALL-BINDING {: entry:n kind:n :}
    entry PRIOR-ENTRY !
    entry 0= if exit then
-   a u NDICT:SPELL-CALL {: in:n out:n glue:n neutral:bool :}
+   a u NDICT:SPELL-CALL {: in:n out:n glue:n :}
    in NDICT:ARITY-NONE = if exit then
-   neutral 0= if exit then
    glue NDICT:GLUE-UNKNOWN = if exit then
    a u NDICT:SPELL-DEAD? {: dead:bool :}
    in PRIOR-IN !  out PRIOR-OUT !  glue PRIOR-GLUE !  dead PRIOR-DEAD !

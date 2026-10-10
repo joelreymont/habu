@@ -206,35 +206,14 @@ create DIAG-BUF 8192 allot
 \ ---- and the one that lands on the RETURN row --------------------------------
 \ The return row is judged by the same unifier and refused by the same rule, so
 \ it has to name it the same way. `>r` accepts the value the cell hands out --
-\ it moves any one cell -- and only the declared RETURN row refuses it as an
-\ address. Before the return row had a first-failure capture of its own this
-\ answered a bare return-stack imbalance (dot habu-name-a-raw-09fe04d0).
-: CASE-RETURN-BOUNDARY ( -- )
-   s" the declared return row refuses it too, and names the same rule" T-LABEL
-   ARM
-   [: s" : RCP-VRET ( | -- | ptr n ) RCP-V @ >r ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   NAMED
-   DISARM ;
-
-\ A branch join judges two return rows against each other rather than against a
-\ declaration, and it is the same unify: one arm carries the raw cell's value,
-\ the other the TASK slot's real address.
+\ it moves any one cell -- and a branch join judges the two arms' return rows
+\ against each other: one arm carries the raw cell's value, the other the TASK
+\ slot's real address. Before the return row had a first-failure capture of its
+\ own this answered a bare return-stack imbalance (dot habu-name-a-raw-09fe04d0).
 : CASE-RETURN-JOIN ( -- )
    s" a branch join on the return row names it as well" T-LABEL
    ARM
-   [: s" : RCP-VJOIN ( n | -- | ptr n ) 0= IF RCP-V @ >r ELSE RCP-SLOT >r THEN ;" evaluate-closed ;]
-      CHECK-RC TTHROWSQ
-   NAMED
-   DISARM ;
-
-\ A CALL is the third shape. The called word declares a return-row INPUT, and
-\ what the caller left on that row is the raw cell's value. The data-row half of
-\ that same step has always named itself; the return half was judged by a bare
-\ unify.
-: CASE-RETURN-CALL ( -- )
-   s" a call whose declared return inputs refuse the value names it too" T-LABEL
-   ARM
-   [: s" : RCP-RTAKE ( | ptr n -- | ) r> drop ;  : RCP-RPASS ( -- ) RCP-V @ >r RCP-RTAKE ;" evaluate-closed ;]
+   [: s" : RCP-VJOIN ( n -- ) 0= IF RCP-V @ >r ELSE RCP-SLOT >r THEN r> drop ;" evaluate-closed ;]
       CHECK-RC TTHROWSQ
    NAMED
    DISARM ;
@@ -274,14 +253,14 @@ create DIAG-BUF 8192 allot
 
 \ ---- the controls ------------------------------------------------------------
 
-\ The control for the three cases above. A return row that simply does not balance
+\ The control for the return-row case above. A return row that simply does not balance
 \ is not this rule and never was: it keeps the return-stack repair class and
 \ stays unnamed, which is what keeps the capture from relabelling every
 \ return-row mismatch as a laundered pointer.
 : CASE-RETURN-BALANCE ( -- )
    s" an ordinary return-stack mismatch is still not named by this rule" T-LABEL
    ARM
-   [: s" : RCP-RBAL ( | -- | n ) ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-RBAL ( -- ) 1 >r ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    CODE$ LACKS?  VALUE-REASON$ LACKS?  RETURN-REPAIR$ HAS?
    DISARM ;
 
@@ -368,9 +347,7 @@ public
    CASE-FIELD-FORGE
    CASE-FIELD-FORGE-NOMINAL
    CASE-SIGNATURE-BOUNDARY
-   CASE-RETURN-BOUNDARY
    CASE-RETURN-JOIN
-   CASE-RETURN-CALL
    CASE-RETURN-BALANCE
    CASE-ABANDONED-CANDIDATE
    CASE-VARIABLE-AS-XT-CELL

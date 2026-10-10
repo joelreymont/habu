@@ -3581,7 +3581,10 @@ variable MDIAG-WIDTH  \ input width: the cells of the input row a record would h
 \ the row pair is already rendered from the declared and inferred return rows
 \ (`return_stack`), and claiming DEXP/DACT as well would relabel every ordinary
 \ return-stack mismatch as a value mismatch.
-variable RSBAD   \ the first failure is the return row's: 1 a row that does not fit, 2 a frame borrowed below
+variable RSBAD   \ the first failure is the return row's: 1 a row that does not fit, 2 a frame borrowed below; 3 and 4 the same at a quotation literal's ;]
+\ The quotation literal's own return rows, base and current, latched with RSBAD
+\ 3 or 4: CF-SEMIQ restores the definition's before the field is rendered.
+variable QRS-EXP   variable QRS-ACT
 : RS-CAPTURE ( -- )
    CELL-DIAG!
    1 RSBAD !
@@ -4921,6 +4924,8 @@ variable NRES  variable NDI  variable NDH
 \ An output scope or region variable no input supplies: the one fault
 \ IDENTITY-PARSE withholds, for a view representation pack cast.
 6 constant SGBAD-UNSUPPLIED-KIND
+\ A `|` clause that moves the return stack (RCLAUSE-CHECK).
+7 constant SGBAD-RETURN-KIND
 variable SGBAD
 PTR-VARIABLE SGBAD-A
 variable SGBAD-U
@@ -5146,6 +5151,10 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
    SGBAD-UNSUPPLIED-KIND SGBAD-SET ;
 : SGBAD-UNSUPPLIED? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-UNSUPPLIED-KIND = and ;
+: SGBAD-RETURN! ( ptr u8 n -- )
+   SGBAD-RETURN-KIND SGBAD-SET ;
+: SGBAD-RETURN? ( -- bool )
+   SGBAD @ SGBAD-KIND @ SGBAD-RETURN-KIND = and ;
 
 : SGBAD-UNKNOWN! ( ptr u8 n -- )
    SGBAD-UNKNOWN-KIND SGBAD-SET ;
@@ -5788,6 +5797,22 @@ variable SG-ROWS-PUBLISH
    THEN
    t row MK-PUSH ;
 
+\ A source signature declares no return-stack cell (docs/effects.md "The
+\ return-stack clause"): a `|` clause, at the top or in a quotation type,
+\ carries one row, the same on both sides. A cell after `|`, two different rows,
+\ or a bar on one side only that pairs a written row with the implicit one
+\ would let a body read cells its caller parked, which the native compiler
+\ cannot reach. `>r`, `r>`, `2>r` and the loop words build their rows
+\ structurally and never come through here. Every quotation type is parsed by
+\ PSTACK or SIG-PARSE-QUOT, which ask this of its clause, and PSIG asks it of
+\ the top-level one.
+: RCLAUSE-NEUTRAL? ( n n -- bool ) {: rin:n rout:n :}
+   rin 0=  rout 0=  or IF RES-FALSE EXIT THEN
+   rin R-RES TAG S-PUSH = IF RES-FALSE EXIT THEN
+   rin R-RES rout R-RES = ;
+: RCLAUSE-CHECK ( n n -- )
+   RCLAUSE-NEUTRAL? 0= IF SB@ SL @ SGBAD-RETURN! THEN ;
+
 \ PSTACK ( tail -- row ) : parse one stack onto a tail row. A leading single
 \ upper-case token names the row (shared by letter); else the passed implicit
 \ tail is used. Types fold bottom->top; '[' in -- out [ '|' rin -- rout ] ']'
@@ -5824,6 +5849,7 @@ variable SG-ROWS-PUBLISH
            THEN
            r> swap >r swap r> dup                     \ row qin qout qrin qrout
         THEN
+        2dup RCLAUSE-CHECK
         MK-QUOT
         swap MK-PUSH
      ELSE
@@ -5854,6 +5880,7 @@ variable SG-ROWS-PUBLISH
       s" --" EXPECT-SIG
       qrbase PSTACK {: qrout:n :}
       s" ]" EXPECT-SIG
+      qrin qrout RCLAUSE-CHECK
       qin qout qrin qrout MK-QUOT
    ELSE
       2dup s" ]" CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
@@ -6006,10 +6033,11 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
    \ Malformed family applications have already supplied their diagnostic;
    \ dependency walks consume only admitted parameter slots. The supplied check
    \ runs last and SGBAD-SET is first-wins, so its own kind is latched only when
-   \ the sort and forall checks passed: an unsupplied output variable is then the
-   \ row's only fault. Every check records the same span, so the order changes
-   \ nothing any other row records.
+   \ the return-clause, sort and forall checks passed: an unsupplied output
+   \ variable is then the row's only fault. Every check records the same span,
+   \ so the order changes nothing any other row records.
    SGBAD @ 0= IF
+      SGHASR @ IF PR-IN @ PR-OUT @ RCLAUSE-CHECK THEN
       PD-IN @ SCOPE-SORT? PD-OUT @ SCOPE-SORT? and
       PR-IN @ SCOPE-SORT? PR-OUT @ SCOPE-SORT? and and 0= IF SB@ SL @ SGBAD-SYNTAX! THEN
       PD-IN @ RES-TRUE FORALL-PLACE? PD-OUT @ RES-FALSE FORALL-PLACE? and
@@ -9861,10 +9889,6 @@ variable LMNEG  variable LMPOS  variable LMV
    v LMV !  0 LMNEG !  0 LMPOS !
    h E-DIN@ RES-FALSE EN-MULT
    h E-DOUT@ RES-TRUE EN-MULT
-   h E-HASR@ 0 <> IF
-      h E-RIN@ RES-FALSE EN-MULT
-      h E-ROUT@ RES-TRUE EN-MULT
-   THEN
    LMNEG @ LMPOS @ ;
 
 \ After an effect is applied and its input vars are bound, examine each canonical
@@ -13099,8 +13123,6 @@ REG-PROTECT
 variable EFFQ-OK            \ bool: last EFFECT-QUERY resolved an active effect
 variable EFFQ-DIN           \ din row offset (E-OFF) of the queried effect, 0 = none
 variable EFFQ-DOUT          \ dout row offset
-variable EFFQ-RIN           \ rin row offset — the RETURN stack the word takes
-variable EFFQ-ROUT          \ rout row offset — the return stack it leaves
 
 \ ---- reading INSIDE a quotation term -----------------------------------------
 \ A quotation is one term of a row and it carries a whole effect of its own: its
@@ -13209,8 +13231,7 @@ variable EFFQ-SAVE-DOUT
    0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
    FIND-SIG dup EFFQ-OK !
    if FEP @ E-DIN@ EFFQ-DIN !  FEP @ E-DOUT@ EFFQ-DOUT !
-      FEP @ E-RIN@ EFFQ-RIN !  FEP @ E-ROUT@ EFFQ-ROUT !
-   else 0 EFFQ-DIN !  0 EFFQ-DOUT !  0 EFFQ-RIN !  0 EFFQ-ROUT ! then
+   else 0 EFFQ-DIN !  0 EFFQ-DOUT ! then
    EFFQ-OK @ ;
 
 \ EFF-ROW-CELLS: the row's width in STACK CELLS — what a call site actually
@@ -13277,65 +13298,18 @@ variable EFFQ-SAVE-DOUT
    0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
    0 0= ;
 
-\ ARE THE QUOTATION'S TWO RETURN ROWS THE SAME STACK? They are when neither holds
-\ a fixed term and both end in the same row variable, which is what a signature
-\ with no `| rin -- rout` clause records and what a body that leaves the return
-\ stack alone infers.
-\
-\ THE TWO ROWS ARE NOT COMPARED BY IDENTITY, and that is not a shortcut avoided
-\ but a wrong answer avoided. E-COPY* copies the live term graph node by node, so
-\ the rin and rout of a quotation whose signature named ONE row are copied into
-\ TWO nodes; comparing the stored offsets would call every quotation in the tree
-\ non-neutral. What survives the copy is what the nodes SAY - no terms, and the
-\ same row-variable id - so that is what is asked.
-: EFF-RET-NEUTRAL? ( n n -- bool )
-   {: rin:n rout:n :}
-   rin EFF-ROW-N 0= 0= if 0 0= 0= exit then
-   rout EFF-ROW-N 0= 0= if 0 0= 0= exit then
-   rin EFF-ROW-TAIL {: a:n :}
-   rout EFF-ROW-TAIL {: b:n :}
-   a EFF-TAG@ EN-ROW = 0= if 0 0= 0= exit then
-   b EFF-TAG@ EN-ROW = 0= if 0 0= 0= exit then
-   a EFF-A@ b EFF-A@ = ;
-
-\ THE SAME QUESTION ABOUT THE QUERIED WORD ITSELF, which is what a caller
-\ compiling a CALL has to ask before it may treat the return stack as its own.
-\ A word whose rin and rout are the same stack touches nothing of its caller's
-\ return stack across the call; one whose rows differ moves cells the caller
-\ cannot see, and a compiler that models the return stack at compile time has
-\ nowhere to put that motion.
-\
-\ IT ASKS THE ROWS AND NOT THE `|` CLAUSE, and that is the whole point of
-\ exposing it here rather than exposing E-HASR@. The clause is SYNTAX - whether
-\ an author wrote `| rin -- rout` - and a signature may carry one and still be
-\ neutral: `( n | R -- n | R )` names a row variable on both sides and moves
-\ nothing. Refusing on the clause would refuse that word for how it is spelled.
-\ What decides is what the rows SAY, which is the invariant a caller depends on,
-\ and EFF-RET-NEUTRAL? above already derives it correctly across the term-graph
-\ copy.
-\
-\ NO RECORDED ROWS IS THE NEUTRAL ANSWER, AND IT IS A PROOF RATHER THAN A
-\ DEFAULT. E-BUILD-EFFECT copies rin and rout only when the signature carried a
-\ clause, so a word without one records two zeros - and a word without one is
-\ exactly the word CHECK held to CHECK-RBALANCE, the balance check that
-\ refuses a body leaving the return row anything but as it found it.
-\ The absent rows are therefore where the checker WROTE DOWN that it proved
-\ neutrality, which is why reading them as neutral is not the same move as
-\ reading the clause: the clause says what an author spelled, the absence says
-\ what the checker established. Almost every word in the tree is this case.
-\
-\ False when no name is resolved: nothing was asked, so nothing is promised, and
-\ answering true would let a caller compile an unresolved name as a neutral one.
-\ That is the same fail-closed direction EFFECT-QUOT-SIMPLE? takes with no
+\ DOES THE QUERIED WORD LEAVE ITS CALLER'S RETURN STACK ALONE? Every word does:
+\ no signature declares a return-stack cell (RCLAUSE-CHECK), and every body reads
+\ only the return cells it pushed and leaves the row as it found it
+\ (CHECK-NO-BORROW, CHECK-RBALANCE, QUOT-RSEAL). So the answer is whether a name
+\ was resolved: false when none was, since nothing was asked and nothing is
+\ promised - the same fail-closed direction EFFECT-QUOT-SIMPLE? takes with no
 \ descent open.
 : EFFECT-RET-NEUTRAL? ( -- bool )
-   EFFQ-OK @ 0= if 0 0= 0= exit then
-   EFFQ-RIN @ 0=  EFFQ-ROUT @ 0=  and if 0 0= exit then
-   EFFQ-RIN @ EFFQ-ROUT @ EFF-RET-NEUTRAL? ;
+   EFFQ-OK @ 0 <> ;
 
 : EFFECT-STACK-STABLE? ( -- bool )
    EFFQ-OK @ 0= if 0 0= 0= exit then
-   EFFECT-RET-NEUTRAL? 0= if 0 0= 0= exit then
    EFFQ-DIN @ EFF-ROW-TAIL {: a:n :}
    EFFQ-DOUT @ EFF-ROW-TAIL {: b:n :}
    a 0= b 0= or if 0 0= 0= exit then
@@ -13343,10 +13317,8 @@ variable EFFQ-SAVE-DOUT
    a EFF-A@ b EFF-A@ = ;
 
 \ IS THE QUOTATION THE LATCH IS INSIDE ONE A CALLER MAY COMPILE AS AN ORDINARY
-\ ROUTINE? Three clauses, and none of them is decoration.
-\   the return rows are NEUTRAL (EN.C against EN.D, above): the body neither takes
-\     anything off the return stack nor leaves anything on it, so a caller that
-\     reaches it with an ordinary branch finds the return stack as it left it.
+\ ROUTINE? Two clauses, and neither is decoration. (Its return rows need none:
+\ every quotation leaves the return stack as it found it, EFFECT-RET-NEUTRAL?.)
 \   there is NO THROW EDGE (EN.E = 0): a body that can throw leaves by a path the
 \     caller's own control flow does not have, so its exit is not the one return.
 \   the FALL-THROUGH IS LIVE (EN.F = 0): a body that never comes back delivers
@@ -13359,7 +13331,6 @@ variable EFFQ-SAVE-DOUT
 : EFF-QUOT-SIMPLE? ( n -- bool )
    {: q:n :}
    q 0= if 0 0= 0= exit then
-   q EFF-C@ q EFF-D@ EFF-RET-NEUTRAL? 0= if 0 0= 0= exit then
    q EFF-E@ 0= 0= if 0 0= 0= exit then
    q EFF-F@ 0= ;
 
@@ -13502,11 +13473,7 @@ variable BGLUE-I
    TOK-PEND-OFF @ i CHECKER-OWNER-ABI:BOUND-PEND-OFF BWIN-AT !
    TOK-CTL @ TOK-SEEDED @ IF CHECKER-OWNER-ABI:BOUND-SEEDED or THEN
       i CHECKER-OWNER-ABI:BOUND-CTL BWIN-AT !
-   eff NULL-PTR = IF RES-FALSE ELSE
-      eff E-RIN@ 0= eff E-ROUT@ 0= and IF RES-TRUE ELSE
-         eff E-RIN@ eff E-ROUT@ EFF-RET-NEUTRAL?
-      THEN
-   THEN IF 1 ELSE 0 THEN i CHECKER-OWNER-ABI:BOUND-NEUTRAL BWIN-AT !
+   eff NULL-PTR = IF 0 ELSE 1 THEN i CHECKER-OWNER-ABI:BOUND-NEUTRAL BWIN-AT !
    TOK-DEAD @ i CHECKER-OWNER-ABI:BOUND-DEAD BWIN-AT !
    eff NULL-PTR = IF
       -1 i CHECKER-OWNER-ABI:BOUND-IN BWIN-AT !
@@ -13671,7 +13638,6 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    row CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
       CHECKER-OWNER-ABI:BOUND-DICT <> if -1 -1 -1 -1 exit then
    row CHECKER-OWNER-ABI:BOUND-ENTRY cells + CELL-VIEW @ 0= if -1 -1 -1 -1 exit then
-   row CHECKER-OWNER-ABI:BOUND-NEUTRAL cells + CELL-VIEW @ 0= if -1 -1 -1 -1 exit then
    row CHECKER-OWNER-ABI:BOUND-EFFECT cells + CELL-VIEW @ {: eff:n :}
    eff 0= if -1 -1 -1 -1 exit then
    eff 1- E-PTR E-TVN@ 0= 0= if
@@ -14449,7 +14415,6 @@ package CHECKER-LBUF
    a u CHECKER-RESOLVE:REFUSES? IF RES-FALSE EXIT THEN
    a u EFFECT-QUERY 0= IF RES-FALSE EXIT THEN
    EFFECT-DIN-N 0 <> IF RES-TRUE EXIT THEN
-   EFFECT-RET-NEUTRAL? 0= IF RES-FALSE EXIT THEN
    FEP @ E-INST-RESET
    EFFQ-DIN @ E-INST {: din:n :}
    EFFQ-DOUT @ E-INST  CC-N MK-CON din MK-PUSH  UNIFY-IN ;
@@ -18676,14 +18641,37 @@ SCOPE-INTRO-FENCE-INSTALL
    dup 0= IF drop RES-FALSE EXIT THEN
    ROW-OPEN? 0= ;
 
-\ A borrowed return frame that is the definition's first failure is the return
-\ row's (RSBAD 2).
+\ The body read below a base it may not bind: the declared data base (none
+\ without a signature, whose inputs are inferred) or the return base every
+\ definition has, signed or not. A borrowed return frame that is the
+\ definition's first failure is the return row's (RSBAD 2).
 : CHECK-NO-BORROW ( -- )
    SGDBASE @ ROW-BORROWED? IF 0 OK ! THEN
    SGRBASE @ ROW-BORROWED? IF
       FAILSET @ 0=  OK @ and IF 2 RSBAD !  -1 FAILSET ! THEN
       0 OK !
    THEN ;
+
+\ Some path through the body returns.
+: CHECK-RETURNS? ( -- bool )
+   DEADP @ 0= XSET @ 0 <> or ;
+
+\ A quotation literal declares no return clause, so `;]` seals its return row as
+\ `;` seals a definition's that has none (CHECK-NO-BORROW, CHECK-RBALANCE): it
+\ reads only the cells it pushed and leaves the row as it found it. Unsealed,
+\ `[: >r ;] execute r>` and `>r [: r> ;] execute` certified and failed in the
+\ native compiler (-8304, -8503). Asked with the literal's own rows, before
+\ CF-SEMIQ restores the outer ones.
+: QUOT-RSEAL ( -- )
+   RBROW @ ROW-BORROWED? IF 4 ELSE
+      CHECK-RETURNS? 0= IF EXIT THEN
+      RCUR @ R-RES  RBROW @ R-RES  = IF EXIT THEN
+      3
+   THEN {: why:n :}
+   FAILSET @ 0=  OK @ and IF
+      why RSBAD !  RBROW @ QRS-EXP !  RCUR @ QRS-ACT !  -1 FAILSET !
+   THEN
+   0 OK ! ;
 
 variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SYM
 
@@ -19113,6 +19101,7 @@ variable QTMP
           XROW @ DCUR @ XRROW @ RCUR @ XFACT @ FACTS @ CF-JOIN-LIVE
        THEN
      THEN
+     QUOT-RSEAL
      DCUR @ ROW-NO-PROOF DCUR !  RCUR @ ROW-NO-PROOF RCUR !
      BROW @  DCUR @  RBROW @  RCUR @  MK-QUOT QTMP !
      \ A literal infers its fixed window before its implicit tails generalize.
@@ -20426,8 +20415,7 @@ variable PIMM-N
    a u CHECKER-FIND-ACTIVE-SYM PIMM-IX 0 < IF RES-FALSE EXIT THEN
    a u EFFECT-QUERY 0= IF RES-FALSE EXIT THEN
    EFFECT-DIN-N 0=
-   EFFECT-DOUT-N 0= and
-   EFFECT-RET-NEUTRAL? and ;
+   EFFECT-DOUT-N 0= and ;
 \ The native compiler asks this prefix API after internal-mark has sealed the
 \ engine. Its declared row is what keeps that one shared decision callable.
 s" neutral-parse-imm?" s" ptr u8 n -- bool" TRUST
@@ -23115,7 +23103,8 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
    0 MDIAG-DEPTH !  0 MDIAG-WIDTH !  0 UNFIT !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DACT !  0 RSBAD !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
-   0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
+   0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !
+   RBROW @ SGRBASE !   \ a definition with no signature reads only what it pushed too
    NULL-PTR SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !  0 BIND-HORIZON !
    0 FAILB !  0 FAILE !  0 XSET !  0 XFACT !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
@@ -23357,9 +23346,6 @@ variable CUR-OPEN   variable CUR-PSIG
 
 : CHECK-SIG? ( -- bool )
    VSIG-ON? SGSEEN? and ;
-
-: CHECK-RETURNS? ( -- bool )
-   DEADP @ 0= XSET @ 0 <> or ;
 
 : CHECK-RET-SIG? ( -- bool )
    CHECK-SIG? SGHASR? and CHECK-RETURNS? and ;
@@ -23894,7 +23880,7 @@ variable CAST-PATH-N
    CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
    FIELD-LOAN-PENDING @ IF SCOPE-FIELD-REJECT THEN
    CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN   \ unify pins its own mismatch
-   CHECK-SIG? IF CHECK-NO-BORROW THEN
+   CHECK-NO-BORROW
    CHECK-SIG? CHECK-RETURNS? and IF
       CTOR-PEND-MATCH? IF
          \ Matching consumes exactly one row from the sealed constructor plan.
@@ -26586,7 +26572,7 @@ variable MARK-U                          \ the map's length in bytes
    ZERO-UNMARKED
    MARK-P @ BYTE-VIEW MARK-U @ ASIG-RELEASE
    NULL-PTR MARK-P !  0 MARK-U !
-   0 EFFQ-OK !  0 EFFQ-DIN !  0 EFFQ-DOUT !  0 EFFQ-RIN !  0 EFFQ-ROUT !
+   0 EFFQ-OK !  0 EFFQ-DIN !  0 EFFQ-DOUT !
    0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
    0 USX-GEN !
    UIX-READY? IF UIX-DROP UIX-BUILD THEN

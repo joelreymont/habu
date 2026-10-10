@@ -27,40 +27,48 @@ tyvar    = a..z, except the reserved `n`, `f`, `r`
 rowvar   = A..Z          (same letter → same row var; leading position only)
 ```
 
-### The two return-stack conventions
+### The return-stack clause
 
-There are two of them, and they are not the same shape. Getting them backwards
-is the single most damaging mistake in this grammar, so both are spelled out.
+A definition reads only the return-stack cells it pushed with `>r` and leaves
+the return stack as it found it, so no signature declares a return-stack cell.
+A `|` clause may name one row variable, the same on both sides: the word leaves
+its caller's return stack alone, which is what a signature with no bar says.
+Any other clause is refused at the declaration, at both tiers, before the body
+is checked: `habu: in NAME: return-stack effect in signature '<sig>'; after '|'
+write one row variable, the same on both sides, or no '|'` (`E-BAD-SIGNATURE`,
+repair class `fix_return_stack`, exit 70). A stored signature — a `TRUSTED:`
+definition's, a `defer`'s, a `trust` row's or a `CAST:` — is refused as
+`E-BAD-STORED-SIGNATURE` with the same repair class. To keep a value across
+other work, park it with `>r` and take it back with `r>` in the same
+definition.
+
+The clause is written in two places, and they are not the same shape.
 
 **Top level — the bar goes inside each side.** `PSIDE` parses one side as
 `data-stack ( '|' return-stack )?`, and the top-level `--` separates the two
 sides:
 
 ```
-( Din | Rin -- Dout | Rout )
->R  ( R a | S -- R | S a )      \ certifies
-R>  ( R | S a -- R a | S )      \ certifies
+( Din | U -- Dout | U )
+( R n | U -- S n | U )          \ certifies: neutral
+( n | -- | n )                  \ refused: a cell on the output side
+( | n -- n | )                  \ refused: a cell on the input side
 ```
 
-A signature with no bar anywhere has no return-stack clause at all, and the
-checker ignores those rows — that is the ordinary case.
-
-**If you use the return clause, put a bar on both sides.** The grammar lets you
-write only one, and the declaration is accepted, but the result is an
-unusable word. With a bar on just one side the checker allocates a *fresh,
-unrelated* row for the missing end, so the declared return effect goes from one
-row to a different row that nothing can satisfy. Both `( R n | S -- R )` and
-`( R n -- R | S )` declare at exit 0 and then reject at every call site with
-exit 70 — the same silent-acceptance failure shape as the truncation trap below.
-`( R n | S -- R | S )` is the return-stack-neutral spelling you actually want.
+A signature with no bar anywhere has no return-stack clause at all — that is
+the ordinary case. A bar on one side only, `( R n | S -- R )`, pairs the
+written row with a fresh one for the missing end and is refused like any other
+clause that moves the return stack.
 
 **Quotations — the bar separates two full `in -- out` pairs.** Inside `[ … ]`,
-`SIG-PARSE-QUOT` parses `in -- out` and then optionally `| rin -- rout`:
+`SIG-PARSE-QUOT` parses `in -- out` and then optionally `| rin -- rout`, under
+the same rule:
 
 ```
 [ in -- out ]                   \ return-stack neutral
-[ in -- out | rin -- rout ]
-( R a [ R a -- R | S -- S a ] -- R )    \ certifies
+[ in -- out | U -- U ]          \ the same, spelled out
+( R n [ R n -- S n | U -- U ] | U -- S n | U )    \ certifies
+( n [ n -- | U -- U n ] | U -- n | U )            \ refused
 ```
 
 **Do not write the quotation shape at the top level.** `( R a -- R | S -- S a )`
@@ -88,12 +96,16 @@ uncaught throw ends the load (exit 70).
   needed and the cells the declaration left (`E-INPUT-UNDERFLOW`, repair class
   `supply_missing_input`). A call that is short *and* mistyped keeps the type
   mismatch instead, since that names the fix.
-- The implicit return row is sealed the same way: `r>`, `r@`, `2r>` and `2r@` may
-  reach only cells this definition pushed with `>r` or declared after `|`;
-  reading or popping below them is refused (`fix_return_stack`), even when a
-  later `>r` restores the balance. This
-  rejects hidden underflow such as a trusted `img -- img` boundary called from a
-  word declared `( -- )`.
+- The implicit return row is sealed the same way, in a definition with or
+  without a signature: `r>`, `r@`, `2r>` and `2r@` may reach only cells this
+  definition pushed with `>r`; reading or popping below them is refused
+  (`fix_return_stack`), even when a later `>r` restores the balance, so
+  `: X r@ ;` and `: X r> ;` are refused at both tiers. This rejects hidden underflow such as a trusted `img -- img`
+  boundary called from a word declared `( -- )`.
+- A quotation literal's return row is sealed at its `;]` the same way: it reads
+  only the cells it pushed and leaves the row as it found it, so
+  `[: >r ;] execute r>` and `>r [: r> ;] execute` are refused at the `;]`
+  (`E-REJECTED`, `fix_return_stack`, exit 70) at both tiers.
 - A **type var** (`a`, `b`, …) is a fresh polymorphic type; reusing the same
   letter in one signature means the same type. `n`, `f`, and `r` are **not**
   type vars — they are the reserved single-letter concrete types below.
@@ -618,8 +630,6 @@ SWAP   ( R a b -- R b a )
 <      ( R n n -- R bool )         \ also ( R ptr a ptr a -- R bool ); comparisons yield bool
 @      ( R ptr a -- R a )
 DEPTH  ( R -- R n )
->R     ( R a | S -- R | S a )      \ moves a value data→return stack
-R>     ( R | S a -- R a | S )
 EXECUTE( R [ R -- S ] -- S )       \ run a quotation
 DIP    ( R a [ R -- S ] -- S a )   \ run a quotation under the top item
 KEEP   ( R a [ R a -- S ] -- S a ) \ run with a copy, keep original
@@ -635,9 +645,8 @@ Two notes on that list. The arithmetic and comparison axioms are declared over
 plain `n`, not `i64`; because `n` unifies with every integer type, writing
 `: F ( i64 i64 -- i64 ) + ;` still certifies — but `n` is what the axiom says,
 and it is what a diagnostic will print. And `>R`/`R>` are not `PRIM:` rows at
-all: the checker models the return-stack transfer structurally, and the
-signatures above are how you would spell that transfer for a `TRUSTED:` word of
-your own.
+all: the checker models the return-stack transfer structurally inside one
+definition, and no signature spells it (see "The return-stack clause").
 
 `WITHIN`, `?DUP`, `?DUP-IF`, `PICK`, and `ROLL` are **not defined in `bin/hb`**.
 They exist only in the Gforth bootstrap word set; naming any of them in checked

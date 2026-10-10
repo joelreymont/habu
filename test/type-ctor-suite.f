@@ -843,12 +843,12 @@ SUMTYPE pqd 0 VARIANT run [ n -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 : PQD-APP ( pqd -- n ) MATCH pqd run OF 5 swap execute PQD-SINK @ ENDOF nop OF 0 ENDOF ;MATCH ;
 : PQD-RUN ( -- n ) 0 PQD-SINK ! [: PQD-SINK ! ;] PQD:RUN PQD-APP ;
 PQD-RUN 5 T=
-\ [ n ptr u8 -- n | n -- n ]: multi-type input with a ptr element and an explicit
-\ return clause; the arm sets up the return cell, executes, and recovers both sides.
+\ [ n ptr u8 -- n ]: multi-type input with a ptr element; the arm parks a cell
+\ around the call and recovers it.
 create PQM-BUF 4 allot  3 PQM-BUF c!
-SUMTYPE pqm 0 VARIANT run [ n ptr u8 -- n | n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+SUMTYPE pqm 0 VARIANT run [ n ptr u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 : PQM-APP ( pqm -- n ) MATCH pqm run OF 5 PQM-BUF 100 >r rot execute r> + ENDOF nop OF 0 ENDOF ;MATCH ;
-: PQM-RUN ( -- n ) [: drop r> swap >r ;] PQM:RUN PQM-APP ;
+: PQM-RUN ( -- n ) [: drop ;] PQM:RUN PQM-APP ;
 PQM-RUN 105 T=
 s" PARAMETRIC-QUOT-PAYLOAD" type cr
 

@@ -154,11 +154,6 @@ public
 \ refuses a word for how it is spelled.
 : NRS-RVAR ( n | R -- n | R ) ;
 
-\ Declared callees with non-neutral return rows. Their calls must be rejected;
-\ no unsupported native body needs to compile to establish these effects.
-defer NRS-PUSH ( n | -- | n )
-defer NRS-POP ( | n -- n | )
-
 : NRS-QCALL ( n [ n -- n ] -- n ) >r 2 * r> execute ;
 : NRS-QPEEK ( n [ n -- n ] -- n ) >r r@ execute r> execute ;
 
@@ -288,11 +283,9 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    2.5 f= TTRUE 109 T= ;
 
 : CALLEE-CASE ( -- )
-   s" neutral return-stack callees compile and a moving callee is refused" T-LABEL
+   s" neutral return-stack callees compile" T-LABEL
    s" : NRS-Z1 ( n -- n ) NRS-FIXTURE:NRS-BAL 1 + ;" EV-RC 0 T=
-   s" : NRS-Z2 ( n -- n ) NRS-FIXTURE:NRS-RVAR 1 + ;" EV-RC 0 T=
-   s" : NRS-Z3 ( n -- n ) NRS-FIXTURE:NRS-PUSH NRS-FIXTURE:NRS-POP 1 + ;"
-   EV-RC E-HIR-UNMODELED T= ;
+   s" : NRS-Z2 ( n -- n ) NRS-FIXTURE:NRS-RVAR 1 + ;" EV-RC 0 T= ;
 
 : CEILING-CASE ( -- )
    s" sixteen parked cells fit and a seventeenth exceeds the vector" T-LABEL

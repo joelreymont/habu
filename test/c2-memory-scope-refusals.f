@@ -154,12 +154,6 @@ public
    s" : C2-QUOTE-OUTPUT ( [ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ] -- [ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ] ) ;" 0 STATUS? TTRUE
    s" a scheme cannot be declared as an effect output" T-LABEL
    s" : C2-SCOPE-OUTPUT ( forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> -- forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> ) ;" 70 STATUS? TTRUE
-   s" an ordinary quotation may pass through a return-stack output" T-LABEL
-   s" : C2-QUOTE-RETURN-OUTPUT ( [ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ] | U -- | U [ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ] ) >r ;" 0 STATUS? TTRUE
-   s" a scheme cannot be declared on the return-stack output" T-LABEL
-   s" : C2-SCOPE-RETURN-OUTPUT ( forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> | U -- | U forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> ) >r ;" 70 STATUS? TTRUE
-   s" a scheme cannot be declared on the return-stack input" T-LABEL
-   s" : C2-SCOPE-RETURN-INPUT ( | U forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | V -- V ]> -- | U ) r> drop ;" 70 STATUS? TTRUE
    s" an ordinary quotation may be a pointer referent" T-LABEL
    s" : C2-QUOTE-POINTER ( ptr [ n -- n ] -- ) drop ;" 0 STATUS? TTRUE
    s" a scheme cannot be placed behind a pointer" T-LABEL
@@ -177,8 +171,6 @@ public
    s" : C2-CHILD-AGG ( read-view<p,q,u8> -- read-view<p,q,u8> ) [: dup OPTION:SOME swap ;] C2-MEM:WITH-READ ;" 70 STATUS? TTRUE
    s" a quotation cannot retain a child view" T-LABEL
    s" : C2-CHILD-QUOTE ( read-view<p,q,u8> -- read-view<p,q,u8> ) [: 0 ['] C2-MEM:BYTE@ dup >r execute r> swap ;] C2-MEM:WITH-READ ;" 70 STATUS? TTRUE
-   s" the return stack cannot retain a child view" T-LABEL
-   s" : C2-CHILD-RETURN ( read-view<p,q,u8> -- read-view<p,q,u8> ) [: dup >r ;] C2-MEM:WITH-READ r> drop ;" 70 STATUS? TTRUE
    s" an exterior local cannot retain a child view" T-LABEL
    s" : C2-CHILD-LOCAL ( read-view<p,q,u8> -- read-view<p,q,u8> ) [: dup ;] C2-MEM:WITH-READ {: escaped restored :} escaped drop restored ;" 70 STATUS? TTRUE
    s" raw storage cannot retain a child view" T-LABEL

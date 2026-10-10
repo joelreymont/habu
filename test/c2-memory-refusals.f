@@ -97,8 +97,6 @@ public
    s" : C2-MEM-CHILD-RECORD ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: dup C2-MEMORY-REFUSALS-HOLDER:MAKE swap ;] C2-MEM:WITH-READ swap drop ;" 70 STATUS? TTRUE
    s" a read child cannot escape through a quotation result" T-LABEL
    s" : C2-MEM-CHILD-QUOTE ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: 0 ['] C2-MEM:BYTE@ dup >r execute r> swap ;] C2-MEM:WITH-READ swap drop ;" 70 STATUS? TTRUE
-   s" a read child cannot escape on the return stack" T-LABEL
-   s" : C2-MEM-CHILD-RETURN ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: dup >r ;] C2-MEM:WITH-READ r> drop ;" 70 STATUS? TTRUE
    s" a read child cannot escape through raw global storage" T-LABEL
    s" variable C2-MEM-SLOT : C2-MEM-CHILD-STORE ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: dup C2-MEM-SLOT ! ;] C2-MEM:WITH-READ ;" 70 STATUS? TTRUE
    s" a caught exclusive callback cannot restore its consumed parent" T-LABEL

@@ -90,7 +90,6 @@ TYPED-VARIABLE STORED [ -- ]
    s" FC-PUSH ( -- ) [: ;] [: 1 ;] finally" REJECT
    s" FC-BORROW ( n -- n ) [: ;] [: 1+ ;] finally" REJECT
    s" FC-DROP ( n -- ) [: ;] [: drop ;] finally" REJECT
-   s" FC-RSTACK ( -- ) [: ;] [: 1 >r ;] finally" REJECT
    s" FC-OPAQUE-CLEANUP ( -- ) [: ;] OPAQUE @ finally" REJECT
    s" FC-OPAQUE-BODY ( -- ) OPAQUE @ [: ;] finally" REJECT
    T-REPORT ;

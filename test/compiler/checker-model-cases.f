@@ -70,11 +70,6 @@ SUMTYPE cmtwin 0
 : DROP-POLY ( a -- ) drop ;
 : KEEP-POLY ( a -- a ) ;
 
-\ A declared call effect moves its argument to the return row. Unlike the
-\ intrinsic >r rule, a call checks conservation before transferring return rows.
-\ This is the model's wToRAsWord; the model cases never execute the callee.
-defer TO-R-WORD ( a | -- | a )
-
 \ The four words the rigid host-identity vectors need. A `fresh-*` name in a
 \ signature is a TEMPLATE slot the checker mints an identity for at every call
 \ site, so a word that PRODUCES one cannot be written in checked Habu at all:

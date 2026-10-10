@@ -110,6 +110,11 @@ create ERR BUF-CAP allot
 : FIX-RSTACK$ ( -- ptr u8 n )
    s" : DIAG-FIX-RSTACK ( i64 -- ) >r ;" LINE$ ;
 
+\ A quotation literal pushes a cell and returns: the return rows named are the
+\ quotation's own, not the definition's around it.
+: QUOT-RSTACK$ ( -- ptr u8 n )
+   s" : DIAG-QUOT-RSTACK ( i64 -- i64 ) [: >r ;] execute r> ;" LINE$ ;
+
 \ The data row fails first, at `;`, so it names the repair, not the return row.
 : MIXED-RSTACK$ ( -- ptr u8 n )
    s" : DIAG-MIXED-RSTACK ( i64 -- ) dup >r ;" LINE$ ;
@@ -242,6 +247,7 @@ create ERR BUF-CAP allot
    ADD-PRODUCER$ SRC+
    FIX-TYPE$ SRC+
    FIX-RSTACK$ SRC+
+   QUOT-RSTACK$ SRC+
    MIXED-RSTACK$ SRC+
    ROW-DUP-EXTRA$ SRC+
    TRUSTED-EVAL$ SRC+
@@ -278,6 +284,7 @@ create ERR BUF-CAP allot
    s" diag-fix-type" s" fix_type" ASSERT-WORD-CLASS
    s" diag-fix-rstack" s" fix_return_stack" ASSERT-WORD-CLASS
    s" diag-fix-rstack" EMPTY$ s" i64 " ASSERT-WORD-RSTACK
+   s" diag-quot-rstack" EMPTY$ s" i64 " ASSERT-WORD-RSTACK
    s" diag-mixed-rstack" s" remove_producer" ASSERT-WORD-CLASS
    s" diag-mixed-rstack" s" i64 --" EMPTY$ s" i64 " s" remove_producer" ASSERT-WORD-ROW-EFFECT
    s" diag-row-dup-extra" s" remove_producer" ASSERT-WORD-CLASS

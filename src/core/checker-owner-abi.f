@@ -50,6 +50,7 @@ $138 constant EFFECT-DOUT-SLOT-OFF
 $140 constant EFFECT-DIN-QUOT-OFF
 $148 constant EFFECT-DOUT-QUOT-OFF
 $150 constant EFFECT-QUOT-UP-OFF
+\ The slot has no reader in this tree; checker.f fills it for a master-host build's compiler.
 $158 constant EFFECT-RET-NEUTRAL-OFF
 $160 constant EFFECT-QUOT-SIMPLE-OFF
 $168 constant EFFECT-CATCH-CELLS-OFF
@@ -178,6 +179,12 @@ $388 constant C2-STOW-OFF
 8 constant BOUND-PEND-IX
 9 constant BOUND-PEND-OFF
 10 constant BOUND-CTL
+\ Every resolved row's return effect is neutral (docs/effects.md "The
+\ return-stack clause") and this tree reads no cell 11, but a retained compiler
+\ built before that rule sizes these rows by BOUND-CELLS and refuses a call
+\ whose cell 11 holds 0: with the field deleted, a native build from such a
+\ host stopped at src/core/check-hook.f (E-NCOMP-OWNER). So the checker still
+\ writes 1 there for every resolved effect.
 11 constant BOUND-NEUTRAL
 12 constant BOUND-DEAD
 13 constant BOUND-IN

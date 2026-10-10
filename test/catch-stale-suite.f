@@ -69,31 +69,12 @@ variable CS-TICK
 : WBIND ( ptr u8 -- ptr u8 ) {: p :} p drop E-CS-BOOM throw ; \ the input went into the frame
 : WKEEPTOP ( ptr u8 n -- ptr u8 n )       \ keeps the top cell, replaces the one below it
    swap drop 5 swap E-CS-BOOM throw ;
-: WRSWAP ( n | ptr u8 -- n | ptr u8 ) r> swap >r E-CS-BOOM throw ;  \ R2's body as a callee
 : WNUMBER-NEW ( -- n )
    CS-TICK @ 0= if E-CS-BOOM throw then
    31 ;
 : WNUMBER ( n -- n )
    drop WNUMBER-NEW ;
 
-\ A caught callee can replace a return-window value before either outcome.
-\ Its successful replacement is read only after its own status is proved.
-83 constant E-CS-RETURN
-variable CS-RETURN-FAIL
-create CS-RETURN-OLD 1 allot
-create CS-RETURN-NEW 1 allot
-: CS-MAKE-RETURN ( -- n )
-   CS-RETURN-FAIL @ 0<> if E-CS-RETURN throw then
-   66 ;
-: CS-RETURN-READER ( n | ptr u8 -- n | ptr u8 )
-   r> drop CS-RETURN-NEW >r
-   drop CS-MAKE-RETURN ;
-: CS-RETURN-GUARD ( n -- ptr u8 )
-   dup 0< if 1 else 0 then CS-RETURN-FAIL !
-   CS-RETURN-OLD >r [: CS-RETURN-READER ;] catch {: code:n :}
-   code 0<> if drop r> drop code throw then
-   drop r> ;
-: CS-RETURN-NEW? ( ptr u8 -- bool ) CS-RETURN-NEW = ;
 : OUTER-ZERO-QUOTE ( n -- n )
    drop
    [: 5 ['] WNUMBER catch dup 0= if drop 1+ else 2drop 0 then ;] execute
@@ -123,14 +104,12 @@ create CS-DBUF 8192 allot
 : CS-CODE-END ( -- ) 0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
 : CS-STALE? ( -- ) s\" \"code\":\"E-STALE-READ\"" CS-CODE? ;
 
-\ ---- the two reproducers from the dot ---------------------------------------
+\ ---- the reproducer from the dot ---------------------------------------------
 \ SWAP-THROW returned (address, 17, code) where its signature said (n, ptr u8,
 \ n): the throw path had swapped the two cells and `catch` put back only the
-\ depth. RETURN-THROW is the same defect on the return stack.
+\ depth.
 : CS-SECTION-REPRODUCERS ( -- )
    s" R1 ( n ptr u8 -- n ptr u8 n ) [: swap -99 throw ;] catch" CS-CODE<
-   CS-STALE?  CS-CODE-END
-   s" R2 ( n | ptr u8 -- n n | ptr u8 ) [: r> swap >r -99 throw ;] catch" CS-CODE<
    CS-STALE?  CS-CODE-END ;
 
 \ ---- reading a stale cell ----------------------------------------------------
@@ -363,9 +342,6 @@ variable CS-CHILD-ERR-U
    \ the input was bound to a local: the cells the callee was given are spent
    s" C4 ( ptr u8 -- ptr u8 n ) [: WBIND ;] catch" CS-CODE<
    CS-STALE?  CS-CODE-END
-   \ R2's body as a callee: the return-stack twin
-   s" C5 ( n | ptr u8 -- n n | ptr u8 ) [: WRSWAP ;] catch" CS-CODE<
-   CS-STALE?  CS-CODE-END
    \ per cell, not per word: WKEEPTOP keeps the top of its window and not the
    \ cell below it, so the `n` comes back typed ...
    s" C6 ( ptr u8 n -- n ) [: WKEEPTOP ;] catch {: code:n :} nip"
@@ -386,7 +362,6 @@ variable CS-CHILD-ERR-U
    s" WBIND" CTL-MASKS drop 0 T=
    s" WSWAPT" CTL-MASKS drop 0 T=                 \ two inputs, the throw path swapped them
    s" WKEEPTOP" CTL-MASKS drop 1 T=               \ top kept, the cell below it not
-   s" WRSWAP" CTL-MASKS 0 T= 0 T=                 \ the return cell was moved, and so was the data one
    \ a word with no throw edge at all records nothing: its call takes no edge
    s" WKEEP" CTL-MASKS 0 T= 0 T= ;
 
@@ -565,9 +540,6 @@ TYPED-VARIABLE CS-XT [ ptr u8 -- ptr u8 ]
 
 : RUN ( -- )
    T-RESET
-   s" caught return replacement needs its matching success status" T-LABEL
-   1 CS-RETURN-GUARD CS-RETURN-NEW? TTRUE
-   [: -1 CS-RETURN-GUARD drop ;] E-CS-RETURN TTHROWSQ
    CS-SECTION-REPRODUCERS
    CS-SECTION-READS
    CS-SECTION-PROOF

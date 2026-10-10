@@ -853,11 +853,15 @@ variable MDV-I   variable MDV-F
    SGBAD-ARITY? IF s" E-WRONG-ARITY" EXIT THEN
    s" E-BAD-SIGNATURE" ;
 : SGBAD-CLASS$ ( -- ptr u8 n )
+   SGBAD-RETURN? IF s" fix_return_stack" EXIT THEN
    SGBAD-UNKNOWN? IF s" fix_signature_type" EXIT THEN
    SGBAD-BAREPTR? IF s" fix_bare_ptr_element" EXIT THEN
    SGBAD-ARITY? IF s" fix_signature_arity" EXIT THEN
    SGBAD-SIZE? IF s" fix_signature_size" EXIT THEN
    s" fix_signature_syntax" ;
+\ The repair a `|` clause that moves the return stack names (SGBAD-RETURN?).
+: RCLAUSE-FIX$ ( -- ptr u8 n )
+   s" after '|' write one row variable, the same on both sides, or no '|'" ;
 \ A syntax fault has no line of its own: it reads as a refusal at its token.
 : SGBAD-PROSE ( -- )
    s" habu: in " DTXT  NMA @ NMU @ DTXT
@@ -869,6 +873,10 @@ variable MDV-I   variable MDV-F
    THEN
    SGBAD-ARITY? IF
      s" : wrong arity for type family '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
+   THEN
+   SGBAD-RETURN? IF
+     s" : return-stack effect in signature '" DTXT  FAILTK FAILTU @ DTXT
+     s" '; " DTXT  RCLAUSE-FIX$ DTXT EXIT
    THEN
    s" : at '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT ;
 
@@ -923,6 +931,7 @@ variable MDV-I   variable MDV-F
 \ SUGGEST-TEXT below, a bad stored signature's diagnostic and a refused
 \ `generates:` row's.
 : SGBAD-SUGGEST$ ( -- ptr u8 n )
+   SGBAD-RETURN? IF s" Declare no return-stack effect: after '|' write one row variable, the same on both sides, or no '|'; park a value with >r and take it back with r> in one definition." EXIT THEN
    SGBAD-UNKNOWN? IF s" Use a known stack-signature type or a single-letter type variable." EXIT THEN
    SGBAD-BAREPTR? IF s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'." EXIT THEN
    SGBAD-ARITY? IF s" Give the type family its exact declared number of arguments." EXIT THEN
@@ -963,7 +972,9 @@ variable MDV-I   variable MDV-F
    k RF-REASON = IF MDIAG-SUGGEST$ EXIT THEN
    k RF-UNCHECKABLE = IF s" Rewrite with modeled words or isolate an audited primitive." EXIT THEN
    k RF-RETURN = IF
-      RSBAD @ 2 = IF s" Read or pop only return-row cells this definition pushed with >r or declared after |; below them lies the caller's frame." EXIT THEN
+      RSBAD @ 2 = IF s" Read or pop only return-row cells this definition pushed with >r; below them lies the caller's frame." EXIT THEN
+      RSBAD @ 3 = IF s" Balance return-stack transfers before the quotation returns." EXIT THEN
+      RSBAD @ 4 = IF s" Read or pop only return-row cells this quotation pushed with >r; below them lies the caller's frame." EXIT THEN
       s" Balance return-stack transfers before the definition exits." EXIT
    THEN
    k RF-MISMATCH <> IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
@@ -1131,6 +1142,12 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
       44 EMIT1 s" family" JKEY  JOPEN fam FAM-QNAME-REND JCLOSE
    THEN
    DIAG-VARIANT ;
+\ The return rows `return_stack` names, expected then actual: a quotation
+\ literal's own when its seal refused it (RSBAD 3, 4), else the definition's.
+: RS-ROWS ( -- n n )
+   RSBAD @ 3 >= IF QRS-EXP @ QRS-ACT @ EXIT THEN
+   SGHASR @ IF SGROUT @ ELSE RBROW @ THEN  RCUR @ ;
+
 \ A field that belongs to one refusal goes only on that refusal's packet: the
 \ flags of a failure the refusal outranks leave their fields behind.
 : DIAG-JSON
@@ -1170,8 +1187,9 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    SGHASR @ JEFFECT  44 EMIT1
    s" return_stack" JKEY
    123 EMIT1
-   s" expected" JKEY  SGHASR @ IF SGROUT @ ELSE RBROW @ THEN JROW  44 EMIT1
-   s" actual" JKEY    RCUR @ JROW
+   RS-ROWS swap
+   s" expected" JKEY  JROW  44 EMIT1
+   s" actual" JKEY    JROW
    125 EMIT1
    k ROWS-REFUSAL? IF
      DEXP @ 0 <> IF
@@ -1233,7 +1251,8 @@ DIAG-PRINT-INSTALL
    {: sa:ptr su:n na:ptr nu:n :}
    s" habu: in " DTXT  na nu DTXT  s" : bad stored signature '" DTXT
    sa su SIG-TRIM DTXT  s" '" DTXT
-   SGBAD-SIZE? IF s"  " DTXT BADSIG-REASON THEN ;
+   SGBAD-SIZE? IF s"  " DTXT BADSIG-REASON THEN
+   SGBAD-RETURN? IF s" ; return-stack effect: " DTXT RCLAUSE-FIX$ DTXT THEN ;
 : BADSIG-DIAG ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
    1 RDST !  0 RSN !
@@ -1725,6 +1744,7 @@ STGR-DIAG-INSTALL
    SGBAD-ARITY? IF
       s" wrong arity for type family '" DTXT  SGBAD-A @ SGBAD-U @ DTXT  s" '" DTXT EXIT
    THEN
+   SGBAD-RETURN? IF s" return-stack effect: " DTXT  RCLAUSE-FIX$ DTXT EXIT THEN
    s" its effect is not a stack-effect comment" DTXT ;
 : GENR-PROSE ( n -- )
    {: kind:n :}

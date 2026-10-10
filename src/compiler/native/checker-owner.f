@@ -429,11 +429,6 @@ TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
    dup 0= if drop EFFECT-QUOT-UP exit then
    AS-BOOL execute ;
 
-: RET-NEUTRAL? ( -- bool )
-   NCOMP-DISPATCH:DECL-EFFECT-RET-NEUTRAL-OFF s" return neutrality" FIELD
-   dup 0= if drop EFFECT-RET-NEUTRAL? exit then
-   AS-BOOL execute ;
-
 : QUOT-SIMPLE? ( -- bool )
    NCOMP-DISPATCH:DECL-EFFECT-QUOT-SIMPLE-OFF s" simple quotation" FIELD
    dup 0= if drop EFFECT-QUOT-SIMPLE? exit then

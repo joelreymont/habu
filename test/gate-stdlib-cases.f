@@ -1047,6 +1047,10 @@ SUITE compiler-native-rstack
    test/compiler/native-rstack.f
 ;SUITE
 
+SUITE compiler-native-rstack-input
+   test/compiler/native-rstack-input.f
+;SUITE
+
 SUITE compiler-native-catch
    test/compiler/native-catch.f
 ;SUITE
