@@ -5,6 +5,11 @@ priority: 1
 issue-type: task
 created-at: "2026-10-10T02:02:07.956141+03:00"
 blocks:
+  - habu-move-whole-values-6bcab743
+  - habu-compile-records-over-9e5f9ea6
+  - habu-compile-an-empty-2d88de28
+  - habu-refuse-an-unsigned-ea48c18b
+  - habu-refuse-a-second-382f76b5
   - habu-inventory-the-gate-9d02ff35
 ---
 
@@ -12,4 +17,4 @@ Problem: docs/compilation.md decision 7 (Joel, 2026-10-08): ARM64's tier-0 JIT (
 Acceptance: bin/hb compiles every definition through tier 1 on ARM64; jit.f, the tier-0 compile path and pass 2 go, and `set-tier 0` is refused as on x86. d5 prints 19 20 21, s-does-tr2 `3 2 1 7`, trd and trp their tier-1 output, all in the native suite. The gate's tier-0 rows are retired or rewritten per habu-inventory-the-gate-9d02ff35.
 Files: src/habu/jit.f, src/habu/habu2.f (the tier-0 compile path and pass 2), src/habu/prims.f and kernel bodies of set-tier, the gate rows habu-inventory-the-gate-9d02ff35 lists, bootstrap/cg/forth.fs (the seed mirror's tier-0 path), docs naming tier 0.
 Verify: rebuild bin/hb per docs/gate.md; `bin/hb --load test/run.f`; two-generation build converges; the periodic no-binary check (docs/bootstrap.md).
-Depends: habu-inventory-the-gate-9d02ff35; the native tier-1 dots habu-hand-the-rest-32631946's cause table names (tier 1 must compile what tier 0 compiles). Ownership: the files above. Worker: worker-max, after decomposition. Claim: unassigned.
+Depends: habu-inventory-the-gate-9d02ff35; the native tier-1 dots habu-move-whole-values-6bcab743, habu-compile-records-over-9e5f9ea6, habu-compile-an-empty-2d88de28, habu-refuse-an-unsigned-ea48c18b and habu-refuse-a-second-382f76b5 (tier 1 must compile what the language admits and refuse what it refuses). Ownership: the files above. Worker: worker-max, after decomposition. Claim: unassigned.
