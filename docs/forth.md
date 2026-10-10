@@ -972,6 +972,21 @@ Factor raw compiler and emitter code to the same standard.
   exclusive `mut-view<p,q,a,T>` values, lexical loans, initialized fields and
   task-local cleanup. A view occupies two cells and travels as one value through
   stack permutations. Ordinary `ptr T` and `SPAN` remain lifetime-free.
+- **Prefer owner-scoped bump allocation when practical.** Many small objects
+  sharing a lifetime belong in chunks released together. Allocate a chunk with
+  `capacity MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES`; keep its original base,
+  returned `NUM:alloc-byte-len` and used byte offset in the owner. These raw
+  mappings are caller-owned; the owner supplies their cleanup.
+  For cell-bearing objects, compute padding to the next `CELL` boundary.
+  Check padding against the remaining extent, then the object's size against
+  the remainder after padding, before advancing the cursor. Return
+  the chunk base plus that aligned offset. When it does not fit, allocate
+  another chunk; never resize or move a chunk whose pointers have escaped.
+  Pointers stay valid until the owner closes. On close or failure cleanup,
+  release each original `(base, allocation length)` exactly once through
+  `MEM:RELEASE-BYTES`, not an interior pointer or the used length. Individual
+  allocations remain appropriate for independent lifetimes or when bulk
+  ownership would retain significant dead storage.
 - **`CHECK!` is the user contract.** `CHECK` proves internal consistency; user
   builds verify the body against the declared effect and make rejection fatal.
   Tests for bad programs assert build rejection, not runtime failure.
