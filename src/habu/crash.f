@@ -6,7 +6,7 @@
 variable LCRASHH   variable LHEX   variable LHDR   variable LSIGH
 create CRH 80 allot  variable CRHL
 variable CR-L1  variable CR-L2  variable CR-L3
-variable CR-OFF  variable CR-HANDLER
+variable CR-OFF  variable CR-HANDLER  variable CR-FLAGS
 \ The crash helpers emit ARM64 signal entry, mcontext/register reads, and
 \ guarded saved-PC instruction accesses.
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
@@ -24,8 +24,25 @@ using A64ICODE
    REPEAT drop
    $A CRH u CRH-BYTE+ c!  u 1 + CRHL ! ;
 CRH-INIT
-$28 constant MACOS-SA-SIGINFO
+\ The sa_flags bits the installs set. SA_ONSTACK runs the crash handler on the
+\ thread's alternate signal stack (C-SIGNAL-STACK below); the trap handler
+\ (habu2.f G-INSTALL-TRAP) keeps the interrupted stack.
+$40 constant MACOS-SA-SIGINFO
+$1 constant MACOS-SA-ONSTACK
 $4 constant LINUX-SA-SIGINFO
+$08000000 constant LINUX-SA-ONSTACK
+: SIGACT-SIGINFO ( -- n )  HB-TARGET-LINUX? IF LINUX-SA-SIGINFO ELSE MACOS-SA-SIGINFO THEN ;
+: SIGACT-ONSTACK ( -- n )  HB-TARGET-LINUX? IF LINUX-SA-ONSTACK ELSE MACOS-SA-ONSTACK THEN ;
+\ stack_t, the struct sigaltstack reads and writes: ss_sp first on both, then
+\ Linux puts the int ss_flags before ss_size and Darwin after it.
+32 constant SIGSTK-FRAME                \ the 24-byte struct, rounded to sp's alignment
+: SIGSTK-FLAGS ( -- n )  HB-TARGET-LINUX? IF 8 ELSE 16 THEN ;
+: SIGSTK-SIZE ( -- n )  HB-TARGET-LINUX? IF 16 ELSE 8 THEN ;
+: SIGSTK-DISABLE ( -- n )  HB-TARGET-LINUX? IF 2 ELSE 4 THEN ;      \ SS_DISABLE
+\ `sub/add xd, xn, #n` for n in whole 4 KiB units: the shifted-immediate form,
+\ which also takes sp. A remainder is refused (asm.f SCALE/).
+: SUBI-4K, ( n n n -- )  $1000 SCALE/ ENC-SUBI-LSL12 EMITW ;
+: ADDI-4K, ( n n n -- )  $1000 SCALE/ ENC-ADDI-LSL12 EMITW ;
 $8 constant CRASH-LINUX-SIGSET-SIZE
 $30 constant MCTX-OFF           \ macOS ucontext -> mcontext pointer offset
 $10 constant SS-OFF             \ macOS mcontext -> __ss.__x[0] offset
@@ -112,17 +129,19 @@ $110 constant MACOS-MCTX-PC-OFF
    HB-TARGET-LINUX? IF 9 21 LINUX-MCTX-PC-OFF LDR, exit THEN
    9 21 MACOS-MCTX-PC-OFF LDR, ;
 
+: C-CRASH-SP>R9 ( -- )
+   HB-TARGET-LINUX? IF 9 21 LINUX-MCTX-SP-OFF LDR, exit THEN
+   9 21 MACOS-MCTX-SP-OFF LDR, ;
+
 : C-CRASH-PRINT-REGS ( -- )
    HB-TARGET-LINUX? IF
       9 21 LINUX-MCTX-FP-OFF LDR,  LHEX LABEL@ BL,
       9 21 LINUX-MCTX-LR-OFF LDR,  LHEX LABEL@ BL,
-      9 21 LINUX-MCTX-SP-OFF LDR,  LHEX LABEL@ BL,
-      C-CRASH-PC>R9  LHEX LABEL@ BL,
-      exit
+   ELSE
+      9 21 MACOS-MCTX-FP-OFF LDR,  LHEX LABEL@ BL,
+      9 21 MACOS-MCTX-LR-OFF LDR,  LHEX LABEL@ BL,
    THEN
-   9 21 MACOS-MCTX-FP-OFF LDR,  LHEX LABEL@ BL,
-   9 21 MACOS-MCTX-LR-OFF LDR,  LHEX LABEL@ BL,
-   9 21 MACOS-MCTX-SP-OFF LDR,  LHEX LABEL@ BL,
+   C-CRASH-SP>R9  LHEX LABEL@ BL,
    C-CRASH-PC>R9  LHEX LABEL@ BL, ;
 
 \ x10 = the live region base = the interrupted engine's DBASE (x26, the pinned
@@ -200,11 +219,13 @@ variable CRS-NEXT   variable CRS-SKIP  variable CRS-FAULT
 variable CRS-DATA-M variable CRS-RET-M variable CRS-LOOP-M
 variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
 variable CRS-DATA-LOW-H
+variable CRS-MACHINE-M variable CRS-MACHINE-H
 
-\ The three diagnostics, each a single line written in one system call.
+\ The four diagnostics, each a single line written in one system call.
 : CRS-DATA$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (data)\n" ;
 : CRS-RET$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (return)\n" ;
 : CRS-LOOP$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (loop)\n" ;
+: CRS-MACHINE$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (machine)\n" ;
 
 11 constant CRASH-SIGSEGV
 : CRASH-SIGBUS ( -- n )  HB-TARGET-LINUX? IF 7 ELSE 10 THEN ;
@@ -264,13 +285,22 @@ variable CRS-DATA-LOW-H
 
 : C-CRASH-STACK-GUARDS ( -- )
    LBL CRS-SKIP !  LBL CRS-FAULT !
-   LBL CRS-DATA-M !  LBL CRS-RET-M !  LBL CRS-LOOP-M !
+   LBL CRS-DATA-M !  LBL CRS-RET-M !  LBL CRS-LOOP-M !  LBL CRS-MACHINE-M !
    LBL CRS-DATA-H !  LBL CRS-RET-H !  LBL CRS-LOOP-H !  LBL CRS-DATA-LOW-H !
+   LBL CRS-MACHINE-H !
    \ si_addr only describes a memory fault; a trap or an FPE carries no address.
    20 CRASH-SIGSEGV CMPI,  C-EQ CRS-FAULT LABEL@ BCOND,
    20 CRASH-SIGBUS CMPI,   C-NE CRS-SKIP LABEL@ BCOND,
    CRS-FAULT LABEL@ LBL,
    C-CRASH-FAULT-ADDR>R25
+   \ The machine stack first, by the interrupted sp alone (stack-abi.f
+   \ MACHINE-REACH): it needs no DATA, so it holds in foreign code and on a
+   \ thread whose x20 is not a region. x1 and x5 stay the trampoline's.
+   C-CRASH-SP>R9
+   11 STACK-ABI:MACHINE-REACH LIT64,
+   10 25 9 SUB,  10 10 11 ADD,                   \ fault - sp + reach
+   11 11 1 LSLI,
+   10 11 CMP,  C-CC CRS-MACHINE-H LABEL@ BCOND,
    C-CRASH-DATA>R24
    11 STACK-ABI:PAGE-BYTES LIT64,
    12 STACK-ABI:PAGE-BYTES 1 - LIT64,
@@ -290,9 +320,11 @@ variable CRS-DATA-LOW-H
    CRS-DATA-H LABEL@ LBL,  CRS-DATA-M LABEL@ CRS-DATA$ nip C-CRASH-GUARD-REPORT
    CRS-RET-H  LABEL@ LBL,  CRS-RET-M  LABEL@ CRS-RET$  nip C-CRASH-GUARD-REPORT
    CRS-LOOP-H LABEL@ LBL,  CRS-LOOP-M LABEL@ CRS-LOOP$ nip C-CRASH-GUARD-REPORT
+   CRS-MACHINE-H LABEL@ LBL,  CRS-MACHINE-M LABEL@ CRS-MACHINE$ nip C-CRASH-GUARD-REPORT
    CRS-DATA-M LABEL@ LBL,  CRS-DATA$ BYTES,
    CRS-RET-M  LABEL@ LBL,  CRS-RET$  BYTES,
    CRS-LOOP-M LABEL@ LBL,  CRS-LOOP$ BYTES,
+   CRS-MACHINE-M LABEL@ LBL,  CRS-MACHINE$ BYTES,
    CRS-SKIP LABEL@ LBL, ;
 
 : EMIT-CRASH-HANDLER ( -- )
@@ -321,17 +353,20 @@ variable CRS-DATA-LOW-H
    HB-TARGET-LINUX? IF 3 CRASH-LINUX-SIGSET-SIZE MOVZ, THEN
    NR-SIGACTION SYS, ;
 
-: C-SIGACTION-FRAME ( n -- )
-   CR-HANDLER !
+\ The sigaction frame for the handler in a register and the sa_flags given.
+\ Darwin's __sigaction is the handler, sa_tramp, then the u32 sa_mask and the
+\ u32 sa_flags: the flags are the high half of the cell at +16.
+: C-SIGACTION-FRAME ( n n -- )
+   CR-FLAGS !  CR-HANDLER !
    SP SP $40 SUBI,
    CR-HANDLER @ SP 0 STR,
    HB-TARGET-LINUX? IF
-      10 LINUX-SA-SIGINFO MOVZ,  10 SP $8 STR,
+      10 CR-FLAGS @ LIT64,  10 SP $8 STR,
       10 0 MOVZ,  10 SP $10 STR,  10 SP $18 STR,
       exit
    THEN
    CR-HANDLER @ SP $8 STR,
-   10 MACOS-SA-SIGINFO MOVZ,  10 10 $20 LSLI,  10 SP $10 STR, ;
+   10 CR-FLAGS @ $20 lshift LIT64,  10 SP $10 STR, ;
 
 : C-SIGACTION-FRAME-DONE ( -- )
    SP SP $40 ADDI, ;
@@ -344,13 +379,68 @@ variable CRS-DATA-LOW-H
 \ label outside its own definition, which is what tools/aot-startup-reach-lint.f
 \ checks.
 : G-INSTALL-CRASH-X11 ( -- )                     \ x11 = the crash handler's address
-   11 C-SIGACTION-FRAME
+   11 SIGACT-SIGINFO SIGACT-ONSTACK or C-SIGACTION-FRAME
    HB-TARGET-LINUX? IF
       4 INSTALL-SIGACT  5 INSTALL-SIGACT  7 INSTALL-SIGACT  8 INSTALL-SIGACT  11 INSTALL-SIGACT
    ELSE
       4 INSTALL-SIGACT  5 INSTALL-SIGACT  8 INSTALL-SIGACT  10 INSTALL-SIGACT  11 INSTALL-SIGACT
    THEN
    C-SIGACTION-FRAME-DONE ;
+
+\ ---- the alternate signal stack ------------------------------------------------
+\ A machine-stack overflow faults with sp in the kernel's guard, where no signal
+\ frame fits: without an alternate stack the handler never runs and the kernel
+\ kills the process unnamed. So the handler is installed SA_ONSTACK, and every
+\ thread that runs Habu code registers its own alternate stack before it can
+\ overflow, carved off its machine stack (stack-abi.f SIGNAL-BYTES): the
+\ engine's and a stripped image's startup (habu2.f EM-STARTUP, aot-lib.f
+\ EMIT-ENTRY), a task's thread (habu1.f BTASK-ENTRY) and a thread C started,
+\ at the callback that brings it into Habu code (habu1.f BCALLBACK-THUNK). The
+\ profiler's SA_ONSTACK handler runs on the same one.
+\
+\ Each of the three writes x0, x1, x12 and the system call's own registers, and
+\ x2 on the path that exits, and nothing else, and holds no BL and no ADR into
+\ x9: test/gate-aot-image.f SCAN-STARTUP reads a stripped startup up to its
+\ first BL.
+: SIGSTKMSG$ ( -- ptr u8 n ) S\" hb: cannot install the signal stack\n" ;
+
+\ sp drops SIGNAL-BYTES and the band above it is registered. A refused
+\ registration is named and fatal: the handler would run on the interrupted
+\ stack, and a machine-stack overflow would die unnamed again.
+: C-SIGNAL-STACK ( -- )
+   LBL LBL {: ok:label msg:label :}
+   SP SP STACK-ABI:SIGNAL-BYTES SUBI-4K,
+   SP SP SIGSTK-FRAME SUBI,
+   12 0 MOVZ,  12 SP SIGSTK-FLAGS STR,
+   12 STACK-ABI:SIGNAL-BYTES LIT64,  12 SP SIGSTK-SIZE STR,
+   12 SP SIGSTK-FRAME ADDI,  12 SP 0 STR,             \ ss_sp: the band, right above this frame
+   0 SP 0 ADDI,  1 0 MOVZ,  NR-SIGALTSTACK SYS,
+   SP SP SIGSTK-FRAME ADDI,                           \ ADD, not ADDS: the flags are the call's
+   C-CC ok BCOND,
+      0 2 MOVZ,  1 msg ADR,  2 SIGSTKMSG$ nip MOVZ,  NR-WRITE SYS,
+      0 STACK-GUARD:MAP-FAIL-RC MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  SIGSTKMSG$ BYTES,
+   ok LBL, ;
+
+\ The way out of the code that registered: SS_DISABLE, then the caller gives
+\ the band back. Its result goes unchecked because it cannot fail off the
+\ alternate stack: the one refusal of a well-formed disable is a thread running
+\ on its alternate stack, and sp is below the band.
+: C-SIGNAL-STACK-OFF ( -- )
+   SP SP SIGSTK-FRAME SUBI,
+   12 SIGSTK-DISABLE MOVZ,  12 SP SIGSTK-FLAGS STR,
+   0 SP 0 ADDI,  1 0 MOVZ,  NR-SIGALTSTACK SYS,
+   SP SP SIGSTK-FRAME ADDI, ;
+
+\ x12 = nonzero when this thread has no alternate stack registered: the query
+\ sigaltstack(NULL, old) answers SS_DISABLE in old's flags. A query cannot be
+\ refused: its one error is an unwritable buffer, and the buffer is this frame.
+: C-SIGNAL-STACK-ABSENT>R12 ( -- )
+   SP SP SIGSTK-FRAME SUBI,
+   0 0 MOVZ,  1 SP 0 ADDI,  NR-SIGALTSTACK SYS,
+   12 SP SIGSTK-FLAGS LDRW,                           \ ss_flags is an int
+   12 12 SIGSTK-DISABLE ANDI,
+   SP SP SIGSTK-FRAME ADDI, ;
 
 \ LSIGH: the async-signal-safe stub, installed through sigaction by a program
 \ that wants a signal on a file descriptor. No Forth word is async-signal-safe,

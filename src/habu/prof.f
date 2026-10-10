@@ -20,9 +20,10 @@
 \ prof-on records the dictionary base there; the interrupted context's x20 and
 \ x26 are read from the signal frame and compared with those two facts, and only
 \ a context that holds both is attributed; any other context is a "(foreign)"
-\ sample. The handler runs on its own alternate stack, so a tick with the
-\ machine stack deep never pushes the signal frame over the data stack. The
-\ report reads the same band, so it needs no register either.
+\ sample. The handler runs on the thread's alternate signal stack, the crash
+\ handler's (src/habu/crash.f C-SIGNAL-STACK), so a tick with the machine stack
+\ deep never pushes the signal frame over the data stack. The report reads the
+\ same band, so it needs no register either.
 require src/habu/prof-abi.f
 
 require src/arch/arm64/icode.f
@@ -760,39 +761,6 @@ public
 
 private
 
-\ The handler's alternate stack: mapped on the first prof-on of the process,
-\ kept in the band, registered with sigaltstack before every sigaction so the
-\ SA_ONSTACK handler never runs on the interrupted program's stack.
-: C-PROF-ALTSTACK ( -- )
-   LBL LBL LBL LBL LBL {: have mok pmsg sok smsg :}
-   7 PROF-BAND-VA LIT64,  9 7 PROF-STACK LDR,  9 have CBNZ,
-      0 0 MOVZ,  1 PROF-STACK-BYTES LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
-      NR-MMAP SYS,
-      C-CC mok BCOND,
-         1 pmsg ADR,  2 PROFMMAPMSG$ nip MOVZ,  0 2 MOVZ,  NR-WRITE SYS,
-         0 PROF-MAP-RC MOVZ,  NR-EXIT-GROUP SYS,
-      pmsg LBL,  PROFMMAPMSG$ BYTES,   \ BYTES, pads the stream back to a word
-      mok LBL,
-      7 PROF-BAND-VA LIT64,  0 7 PROF-STACK STR,
-   have LBL,
-   7 PROF-BAND-VA LIT64,
-   SP SP 32 SUBI,
-   9 7 PROF-STACK LDR,  9 SP 0 STR,
-   HB-TARGET-LINUX? IF
-      10 0 MOVZ,  10 SP 8 STR,                       \ ss_flags (int) and its padding
-      10 PROF-STACK-BYTES LIT64,  10 SP 16 STR,      \ ss_size
-   ELSE
-      10 PROF-STACK-BYTES LIT64,  10 SP 8 STR,       \ Darwin: ss_size second
-      10 0 MOVZ,  10 SP 16 STR,                      \ ss_flags third
-   THEN
-   0 SP 0 ADDI,  1 0 MOVZ,  NR-SIGALTSTACK SYS,
-   C-CC sok BCOND,                                   \ a refused alternate stack would leave the handler on the interrupted one: fail closed, named
-      1 smsg ADR,  2 PROFSTKMSG$ nip MOVZ,  0 2 MOVZ,  NR-WRITE SYS,
-      0 PROF-MAP-RC MOVZ,  NR-EXIT-GROUP SYS,
-      smsg LBL,  PROFSTKMSG$ BYTES,
-   sok LBL,
-   SP SP 32 ADDI, ;
-
 : C-PROF-SIGACTION-FRAME ( -- )
    SP SP 32 SUBI,
    9 LPROFH LABEL@ ADR,  9 SP 0 STR,
@@ -843,9 +811,8 @@ private
    SP SP 32 ADDI, ;
 
 \ The arena, mapped on the first prof-on of the process and kept in the band.
-\ A refused mapping is named and fatal for the same reason the handler stack is:
-\ a profiler that silently kept the old dictionary walk would report numbers
-\ nobody could trust.
+\ A refused mapping is named and fatal: a profiler that silently kept the old
+\ dictionary walk would report numbers nobody could trust.
 : C-PROF-ARENA-MAP ( -- )
    LBL LBL LBL {: have mok amsg :}
    7 PROF-BAND-VA LIT64,  9 7 PROF-ARENA LDR,  9 have CBNZ,
@@ -1106,11 +1073,10 @@ private
    C-PROF-SORT
    C-PROF-COUNTERS-CLEAR
    C-PROF-CALL-CLEAR
-   C-PROF-ALTSTACK
    C-PROF-SIGACTION-FRAME
    C-PROF-SIGACTION
    C-PROF-SIGACTION-DONE
-   7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,   \ the stack syscalls above own x0
+   7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,   \ the sigaction calls above own x0
    9 ARMED-RUNS MOVZ,  9 7 PROF-ARMED STR,
    C-PROF-TIMER-FRAME
    C-PROF-TIMER

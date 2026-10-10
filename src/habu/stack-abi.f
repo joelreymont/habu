@@ -78,4 +78,18 @@ $88 constant EVAL-CAP
 $130 constant EVAL-SEG
 $140 constant EVAL-BYTES
 
+\ THE MACHINE STACK IS THE OS THREAD'S OWN, so its guard is the kernel's and its
+\ overflow faults with sp at or in that guard, where the kernel cannot build a
+\ signal frame. Every thread that runs Habu code therefore carves SIGNAL-BYTES
+\ off its machine stack just below its entry's frame and registers them with
+\ sigaltstack before it runs any (src/habu/crash.f C-SIGNAL-STACK, its x86-64
+\ twin src/habu/boot-x64.f SIGNAL-STACK,): the crash handler is installed
+\ SA_ONSTACK and runs there. A fault whose address lies within MACHINE-REACH
+\ of the interrupted sp, either side, is that overflow: the faulting access
+\ lies within one frame of sp, below it when the access itself moves sp (a
+\ push, a pre-indexed store) and above it when sp moved first. A frame wider
+\ than MACHINE-REACH that faults farther from sp keeps the register dump.
+$10000 constant SIGNAL-BYTES
+$10000 constant MACHINE-REACH
+
 ;package

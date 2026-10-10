@@ -257,7 +257,11 @@ are one set for the image: they are process-wide in
   8. restores `CB-FRAME`, then releases the owner and then the row, each by
      STLR.
 
-  The result goes back in the x0 or d0 slot of the marshal frame.
+  The result goes back in the x0 or d0 slot of the marshal frame. An entry
+  that claims an idle exposed context pays a `sigaltstack` query before the
+  branch, and a carve of the thread's alternate signal stack below the frame
+  when its thread has none (`src/habu/crash.f` C-SIGNAL-STACK); an entry whose
+  thread already holds the owner pays neither.
 - **Slot rows.** `CB-ROW-BYTES` 16 per slot: the region and the owner, the
   owner `CB-ROW-BUSY` 1 while a bind, unbind or drop moves the row, and a bind
   names only a row it found free and holds BUSY. A call that meets BUSY waits

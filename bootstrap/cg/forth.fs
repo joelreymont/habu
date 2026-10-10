@@ -161,6 +161,12 @@ $47F8 constant STACK-ABI:REPL-CAP-CELL
 \ (64 KiB), not this host's own page size. Mirrors layout.f PROT-PAGE-MAX.
 $10000 constant STACK-ABI:PAGE-BYTES
 
+\ The alternate signal stack each thread carves off its machine stack, and the
+\ distance from the interrupted sp within which a fault is that stack's
+\ overflow. Mirrors stack-abi.f SIGNAL-BYTES and MACHINE-REACH.
+$10000 constant STACK-ABI:SIGNAL-BYTES
+$10000 constant STACK-ABI:MACHINE-REACH
+
 \ Boot data stack: one guarded page of cells.
 STACK-ABI:PAGE-BYTES constant STACK-ABI:BOOT-BYTES
 
@@ -320,9 +326,12 @@ $2D08 constant OCC-PTR-CELL       \ this process's definition occurrence mapping
 -7234 constant OCC-E-EXHAUSTED
 DICT-CAP 1+ cells constant OCC-BYTES
 
+78 constant STACK-GUARD:MAP-FAIL-RC     \ the rc the two fixed-region mappings already use
+
 require crash.fs           \ in-binary crash handler + the signal stub; needs
-                            \ STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS, the
-                            \ SIGNAL-ABI: block, RBASE-CELL and the cells above
+                            \ STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS,
+                            \ STACK-GUARD:MAP-FAIL-RC, the SIGNAL-ABI: block,
+                            \ RBASE-CELL and the cells above
 $5000 constant TXN-STATE-OFF
 $10000 constant PROT-PAGE-MAX \ maximum supported arm64 page granule (DGX/Jetson Linux: 64 KiB)
 TXN-STATE-OFF       constant TXN-ACTIVE-CELL
@@ -747,7 +756,6 @@ previous definitions
    10 10 12 SUB, 10 above CMPI, C-CC fail BCOND, ;
 
 31 constant STACK-GUARD:MAP-MSG-LEN     \ "hb: cannot map guarded VM stack"
-78 constant STACK-GUARD:MAP-FAIL-RC     \ the rc the two fixed-region mappings already use
 
 \ EMIT-MAP ( cap dst -- ) : emit the code that maps ONE guarded VM stack of
 \ `cap` bytes and leaves its base in register `dst`. Mirrors src/habu/rt.f
@@ -3219,9 +3227,10 @@ create ZBYTE 0 c,
    LBPH @ LBL,  BPH-KW 9 BYTES, ;
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
-\ at the dumper; this repoints just TRAP once LTRAPH is bound).
+\ at the dumper; this repoints just TRAP once LTRAPH is bound). SA_SIGINFO alone:
+\ a breakpoint stops a thread whose stack is sound, so it is served there.
 : G-INSTALL-TRAP ( -- )
-   9 LTRAPH @ ADR,  9 C-SIGACTION-FRAME
+   9 LTRAPH @ ADR,  9 SIGACT-SIGINFO C-SIGACTION-FRAME
    5 INSTALL-SIGACT
    C-SIGACTION-FRAME-DONE ;
 
@@ -6455,6 +6464,7 @@ variable CFSK2
 : EMIT-STARTUP ( -- )
    LANCHOR @ LBL,
    EMIT-ENTRY-ARGS
+   C-SIGNAL-STACK                       \ before any code can overflow; x13-x15 kept
    EMIT-RUNTIME-STACK
    EMIT-MMAP-CODE-REGION
    EMIT-SEED-DICT

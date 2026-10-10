@@ -283,6 +283,47 @@ UC-GREGS 16 CELL * + constant UC-RIP
    RAX handler MOVABS,
    sig flags RAX rest SIGACTION-AT, ;
 
+\ The flag that runs a handler on the thread's alternate signal stack.
+$08000000 constant SA-ONSTACK
+
+\ The kernel's stack_t, which sigaltstack reads and writes: the base, the int
+\ flags, the size; and the flag that ends a registration.
+0 constant SS-SP
+8 constant SS-FLAGS
+16 constant SS-SIZE
+24 constant SS-BYTES
+2 constant SS-DISABLE
+
+\ The twin of crash.f C-SIGNAL-STACK: rsp drops STACK-ABI:SIGNAL-BYTES and the
+\ band above it is registered, so the crash handler, installed SA_ONSTACK, has
+\ a stack when a machine-stack overflow has left rsp in the kernel's guard. A
+\ refused registration writes its line and exits MAP-FAIL-RC. It clobbers rax
+\ rcx rdi rsi r11.
+: SIGNAL-STACK, ( -- )
+   LBL LBL {: ok:label bad:label :}
+   RSP STACK-ABI:SIGNAL-BYTES >IMM32 ASM-SINK ENC-SUB-RI32
+   RAX RSP ASM-SINK ENC-MOV-RR                                   \ the band's base
+   RSP SS-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   RAX RSP SS-SP MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX ZERO-REG,  RAX RSP SS-FLAGS MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX STACK-ABI:SIGNAL-BYTES IMM,  RAX RSP SS-SIZE MEM-OFF ASM-SINK ENC-MOV-MR
+   RDI RSP ASM-SINK ENC-MOV-RR  RSI ZERO-REG,  NR-SIGALTSTACK SYS,
+   RSP RSP SS-BYTES MEM-OFF ASM-SINK ENC-LEA                     \ the frame back, CF kept
+   C-AE ok JCC,
+   bad S\" hb: cannot install the signal stack\n" MAP-FAIL-RC FAIL,
+   ok LBL, ;
+
+\ The way out of the code that registered: SS_DISABLE, then the caller gives
+\ the band back. Its result goes unchecked because it cannot fail off the
+\ alternate stack: the one refusal of a well-formed disable is a thread running
+\ on its alternate stack, and rsp is below the band. It clobbers rax rcx rdi
+\ rsi r11.
+: SIGNAL-STACK-OFF, ( -- )
+   RSP SS-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   RAX SS-DISABLE IMM,  RAX RSP SS-FLAGS MEM-OFF ASM-SINK ENC-MOV-MR
+   RDI RSP ASM-SINK ENC-MOV-RR  RSI ZERO-REG,  NR-SIGALTSTACK SYS,
+   RSP SS-BYTES >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
 private
 
 \ ---- the crash handler -------------------------------------------------------
@@ -291,8 +332,11 @@ private
 \ owns every register: it keeps those three and the text base where neither
 \ the printer nor `syscall` writes.
 \
-\ A SIGSEGV or SIGBUS whose saved rip lies in Habu's own code, from the text
-\ base to the code region's end, is classified first, as crash.f classifies
+\ A SIGSEGV or SIGBUS whose fault address lies within STACK-ABI:MACHINE-REACH
+\ of the saved rsp, either side, is a machine-stack overflow, whatever code
+\ faulted: it writes MACHINE-HIT$ and exits ENGINE-ERROR:STACK-BOUNDS, as
+\ crash.f does. Otherwise one whose saved rip lies in Habu's own code, from the
+\ text base to the code region's end, is classified next, as crash.f classifies
 \ one. Only there is the saved rbp DATA; foreign SysV code keeps a frame
 \ pointer in it. A fault address in the page below a VM stack's base, or in
 \ the page at its capacity, writes that stack's line and exits
@@ -337,11 +381,13 @@ DIGITS 1+ constant LINE-BYTES
 $F constant NIBBLE
 
 : HEX$ ( -- ptr u8 n ) s" 0123456789abcdef" ;
-\ crash.f's CRS-DATA$, CRS-RET$ and CRS-LOOP$, byte for byte. crash.f itself
-\ is not loaded here: only the ARM64 build driver loads it, beside A64ASM.
+\ crash.f's CRS-DATA$, CRS-RET$, CRS-LOOP$ and CRS-MACHINE$, byte for byte.
+\ crash.f itself is not loaded here: only the ARM64 build driver loads it,
+\ beside A64ASM.
 : DATA-HIT$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (data)\n" ;
 : RETURN-HIT$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (return)\n" ;
 : LOOP-HIT$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (loop)\n" ;
+: MACHINE-HIT$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (machine)\n" ;
 : HEAD$ ( -- ptr u8 n )
    S\" habu-crash regs [sig rax rcx rdx rbx rsp rbp rsi rdi r8..r15 rip] code [rip-8 rip rip+8], hex one-per-line:\n" ;
 
@@ -393,18 +439,23 @@ $F constant NIBBLE
    RCX STACK-ABI:PAGE-BYTES >IMM32 ASM-SINK ENC-CMP-RI32  C-B hit JCC,
    next LBL, ;
 
-\ Classify a SIGSEGV or SIGBUS from Habu's own code by the three VM stacks,
-\ crash.f's order; any other signal or address goes on to `dump`.
+\ Classify a SIGSEGV or SIGBUS by the machine stack, then one from Habu's own
+\ code by the three VM stacks, crash.f's order; any other signal or address
+\ goes on to `dump`.
 : GUARDS, ( label -- ) {: dump:label :}
-   LBL LBL LBL LBL {: fault:label dhit:label rhit:label lhit:label :}
+   LBL LBL LBL LBL LBL {: fault:label dhit:label rhit:label lhit:label mhit:label :}
    SIG-REG SIGSEGV >IMM8 ASM-SINK ENC-CMP-RI8  C-E fault JCC,
    SIG-REG SIGBUS >IMM8 ASM-SINK ENC-CMP-RI8  C-NE dump JCC,
    fault LBL,
+   RSI INFO-REG SI-ADDR MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RSI ASM-SINK ENC-MOV-RR
+   RAX UC-REG RSP UC-GREG MEM-OFF ASM-SINK ENC-SUB-RM
+   RAX STACK-ABI:MACHINE-REACH >IMM32 ASM-SINK ENC-ADD-RI32       \ fault - rsp + reach
+   RAX STACK-ABI:MACHINE-REACH 2 * >IMM32 ASM-SINK ENC-CMP-RI32  C-B mhit JCC,
    RAX UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-RM
    RAX TEXT-REG ASM-SINK ENC-SUB-RR
    RAX HABU-SPAN >IMM32 ASM-SINK ENC-CMP-RI32  C-AE dump JCC,
    RDI UC-REG RBP UC-GREG MEM-OFF ASM-SINK ENC-MOV-RM
-   RSI INFO-REG SI-ADDR MEM-OFF ASM-SINK ENC-MOV-RM
    [: RAX RDI STACK-ABI:CAP-CELL MEM-OFF ASM-SINK ENC-ADD-RM ;]
    STACK-ABI:BASE-CELL dhit GUARD-CASE,
    [: RAX STACK-ABI:RETURN-BYTES >IMM32 ASM-SINK ENC-ADD-RI32 ;]
@@ -414,7 +465,8 @@ $F constant NIBBLE
    dump JMP,
    dhit DATA-HIT$ ENGINE-ERROR:STACK-BOUNDS FAIL,
    rhit RETURN-HIT$ ENGINE-ERROR:STACK-BOUNDS FAIL,
-   lhit LOOP-HIT$ ENGINE-ERROR:STACK-BOUNDS FAIL, ;
+   lhit LOOP-HIT$ ENGINE-ERROR:STACK-BOUNDS FAIL,
+   mhit MACHINE-HIT$ ENGINE-ERROR:STACK-BOUNDS FAIL, ;
 
 \ One code line: the cell at the saved rip plus `off`, in memory order, when
 \ all eight of its bytes lie in the code region at REGION-REG; 0 otherwise.
@@ -459,14 +511,16 @@ $F constant NIBBLE
    HEAD$ TEXT-BYTES, ;
 
 \ Install the handler at a label for crash.f's signals, each returning through
-\ the restorer at the other. Unchecked, as crash.f's install is: a refused
-\ install leaves that signal's default action.
+\ the restorer at the other, on the alternate stack SIGNAL-STACK, registered.
+\ Unchecked, as crash.f's install is: a refused install leaves that signal's
+\ default action.
 : INSTALL-CRASH, ( label label -- ) {: at:label rest:label :}
-   SIGILL SA-SIGINFO at rest SIGACTION,
-   SIGTRAP SA-SIGINFO at rest SIGACTION,
-   SIGBUS SA-SIGINFO at rest SIGACTION,
-   SIGFPE SA-SIGINFO at rest SIGACTION,
-   SIGSEGV SA-SIGINFO at rest SIGACTION, ;
+   SA-SIGINFO SA-ONSTACK or {: flags:n :}
+   SIGILL flags at rest SIGACTION,
+   SIGTRAP flags at rest SIGACTION,
+   SIGBUS flags at rest SIGACTION,
+   SIGFPE flags at rest SIGACTION,
+   SIGSEGV flags at rest SIGACTION, ;
 
 public
 
@@ -482,6 +536,7 @@ public
    CODE-REGION,
    DATA-REGION,
    DATA-INIT,
+   SIGNAL-STACK,                 \ once DATA-INIT, has read argc and argv off rsp
    OCC-INIT,
    stub PUBLISH-STUB,
    FRAME-STACKS,

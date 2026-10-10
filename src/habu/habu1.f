@@ -2318,6 +2318,8 @@ public
 \ argument is the TASK-ABI descriptor; the body enters that task's VM state.
 \ Preserve the complete base AAPCS64 callee-save set, including d8..d15:
 \ https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst
+\ The thread's alternate signal stack is registered below that frame before the
+\ body runs and disabled and given back after it (crash.f C-SIGNAL-STACK).
 \ It writes two cells of the task's own: the TCB address into the task's data
 \ region, and DONE into the status once the body returns. RUNNING is not among
 \ them - ACTIVATE stores it before pthread_create (lib/task.f), which orders it
@@ -2341,6 +2343,9 @@ public
    29 SP $50 STR, 30 SP $58 STR,
    16 8 do i SP i 8 - cells $60 + ENC-STRD EMITW loop
    29 SP $50 ADDI,                         \ previous FP/LR form the C frame
+   19 0 0 ADDI,                            \ the descriptor across the registration
+   C-SIGNAL-STACK                          \ this thread's own (crash.f): below the frame
+   0 19 0 ADDI,
    9 0 TASK-ABI:XT-OFF LDR,
    XDS 0 TASK-ABI:STACK-OFF LDR,
    DATA 0 TASK-ABI:REGION-OFF LDR,
@@ -2349,6 +2354,8 @@ public
    CP 0 TASK-ABI:CP-OFF LDR,
    0 DATA TASK-TCB-CELL STR,
    9 BLR,
+   C-SIGNAL-STACK-OFF
+   SP SP STACK-ABI:SIGNAL-BYTES ADDI-4K,   \ the band back: sp is the frame's again
    9 DATA TASK-TCB-CELL LDR,
    10 TASK-ABI:DONE MOVZ, 11 9 TASK-ABI:STATUS-OFF ADDI,  10 11 STLR,
    0 0 MOVZ,
@@ -2392,12 +2399,20 @@ $150 constant CBT-BYTES
 \ restores C's callee-saved registers, the caller's VM among them, and would
 \ drop the records and code a definition added. Otherwise CB-FRAME is restored,
 \ then the owner released if claimed, then the row, each by STLR.
+\ A thread C started has no alternate signal stack, so the crash handler could
+\ not name its machine-stack overflow. Only an entry that claims the owner can
+\ be on such a thread: one that finds the owner its own is on a thread that
+\ registered already (startup, BTASK-ENTRY or an outer entry) and asks nothing.
+\ A claiming entry queries before the branch, and a thread with none registered
+\ gets one carved below the frame (crash.f C-SIGNAL-STACK). A 16-byte cell at
+\ the branch's sp records whether this entry carved, so the way out disables
+\ the band and gives it back before it reads the frame.
 : BCALLBACK-THUNK ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: row-read:label row-wait:label row-held:label owner-held:label
       owner-kept:label row-kept:label no-table:label row-busy:label
       unbound:label owner-busy:label no-frame:label no-xt:label
-      defined:label :}
+      defined:label signal-had:label signal-kept:label :}
    SP SP CBT-BYTES SUBI,
    \ C's callee-saved set is saved and restored in this body, as BTASK-ENTRY
    \ does: tools/lint/clobber-lint.f proves x30 from the routine's own text.
@@ -2453,7 +2468,20 @@ $150 constant CBT-BYTES
    DBASE 14 CB-DBASE LDR,
    NDICT 14 CB-NDICT LDR,
    CP 14 CB-CP LDR,
+   12 0 MOVZ,
+   16 signal-had CBZ,                                  \ x16 = the owner claim, still live
+      C-SIGNAL-STACK-ABSENT>R12
+      12 signal-had CBZ,
+      C-SIGNAL-STACK                                   \ sp drops below the band
+      12 1 MOVZ,
+   signal-had LBL,
+   SP SP 16 SUBI,  12 SP 0 STR,                        \ 1 when the band below the frame is this entry's
    13 BLR,
+   12 SP 0 LDR,  SP SP 16 ADDI,
+   12 signal-kept CBZ,
+      C-SIGNAL-STACK-OFF
+      SP SP STACK-ABI:SIGNAL-BYTES ADDI-4K,            \ the band back: sp is the frame's again
+   signal-kept LBL,
    14 SP CBT-REGION LDR,
    12 14 CB-NDICT LDR,  12 NDICT CMP,  C-NE defined BCOND,
    12 14 CB-CP LDR,  12 CP CMP,  C-NE defined BCOND,

@@ -265,8 +265,9 @@ CAST: TASK-EXIT-SLOT ( ptr n -- ptr [ -- ] )
 \ other emitted instruction: it is the only point at which SP still names the
 \ kernel's frame (G-INSTALL-CRASH-X11 builds a frame of its own below it) and x0-x2
 \ still hold the macOS entry's own three arguments. Nothing between here and
-\ EMIT-OWNED-CELLS touches x13-x15 - STACK-GUARD:EMIT-MAP works in x0-x6/x9/x10,
-\ and a Linux syscall returns in x0 and preserves the rest.
+\ EMIT-OWNED-CELLS touches x13-x15 - crash.f C-SIGNAL-STACK works in x0/x1/x12,
+\ STACK-GUARD:EMIT-MAP in x0-x6/x9/x10, and a Linux syscall returns in x0 and
+\ preserves the rest.
 : EMIT-ENTRY-ARGS ( -- )
    HB-TARGET-LINUX? IF
       13 SP 0 LDR,  14 SP 8 ADDI,
@@ -626,6 +627,7 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
 : EMIT-ENTRY
    LTEXT LABEL@ LBL,                             \ text offset zero: this image's code base
    EMIT-ENTRY-ARGS                               \ argc/argv/envp into x13/x14/x15, off the untouched kernel frame
+   C-SIGNAL-STACK                                \ the crash handler's stack, carved below the kernel frame (crash.f)
    STACK-ABI:BOOT-BYTES XDS STACK-GUARD:EMIT-MAP
    EMIT-DATA-REGION-MAP                          \ map DATA-VA, set x20/S0
    EMIT-OWNED-CELLS                              \ the engine runtime cells this entry owns

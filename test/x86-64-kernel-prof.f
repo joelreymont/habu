@@ -33,11 +33,7 @@
 \                                    250 then prof-on arm the timer at 250 us
 \                                    and prof-off disarms it
 \    hb-x64-kernel-prof-negative 21  the same, expecting B's spin to fail
-\    hb-x64-kernel-prof-refused  78  prof-rate maps the arena, RLIMIT_AS 0,
-\                                    then prof-on cannot map the handler
-\                                    stack: `hb: prof-on: cannot map the
-\                                    handler stack` on fd 2
-\    hb-x64-kernel-prof-report    0  prof-report, prof-json and prof-row with
+\    hb-x64-kernel-prof-report   0  prof-report, prof-json and prof-row with
 \                                    no arena; prof-on, prof-off, prof-reset
 \                                    and state S, then prof-report, B's
 \                                    prof-row and prof-json, each the host's
@@ -120,10 +116,8 @@ $40000000 constant SPIN-BOUND           \ turns a spin waits: about a second, a 
 250 constant RATE                       \ the prof-rate case's interval, microseconds
 -1 constant POISON                      \ an answer no check expects
 36 constant NR-GETITIMER
-160 constant NR-SETRLIMIT
 0 constant ITIMER-REAL
-9 constant RLIMIT-AS
-32 constant ITIMER-BYTES                \ struct itimerval: the interval, then the value
+32 constant ITIMER-BYTES               \ struct itimerval: the interval, then the value
 8 constant IT-USEC                      \ the interval's microseconds
 
 \ ---- the report case's facts ---------------------------------------------------
@@ -423,18 +417,6 @@ C-IX XREF-REC XREF-START constant C-START
    b a-end PC-CHECK,
    s" prof-reset" ROW  RESET-CHECK,
    RATE-CHECK, ;
-
-\ The arena comes from prof-rate before the limit, so the first mapping
-\ prof-on asks for is the handler's stack.
-: REFUSED-CASE ( -- )
-   RATE N,  s" prof-rate" ROW
-   RSP 2 CELL * SUBI,
-   RAX ZERO-REG,  RAX RSP MEM-AT STORE,  RAX RSP CELL MEM-OFF STORE,
-   RDI RLIMIT-AS >IMM32 ASM-SINK ENC-MOV-RI32
-   RSI RSP COPY,
-   NR-SETRLIMIT SYS,
-   RSP 2 CELL * ADDI,
-   0 N,  s" prof-on" ROW ;
 
 \ ---- the host's own bytes --------------------------------------------------------
 TEXTS TEXT-CAP * BUFFER: TEXT-BYTES
@@ -820,7 +802,6 @@ public
    X64HARNESS:INIT
    [: SAMPLES-CASE ;] false s" hb-x64-kernel-prof" TMP-PATH BUILD
    [: SAMPLES-CASE ;] true s" hb-x64-kernel-prof-negative" TMP-PATH BUILD
-   [: REFUSED-CASE ;] false s" hb-x64-kernel-prof-refused" TMP-PATH BUILD
    [: REPORT-CASE ;] false s" hb-x64-kernel-prof-report" TMP-PATH BUILD
    [: LIMIT-CASE ;] false s" hb-x64-kernel-prof-limit" TMP-PATH BUILD
    [: SLOW-CASE ;] false s" hb-x64-kernel-prof-slow" TMP-PATH BUILD

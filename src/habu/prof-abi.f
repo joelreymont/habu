@@ -24,9 +24,8 @@ public
 16 constant PROF-OTHER      \ Habu-code samples outside any dict word (main loop, helpers)
 24 constant PROF-FOREIGN    \ samples in a context that is not Habu code
 32 constant PROF-DBASE      \ the dictionary base, recorded by prof-on
-40 constant PROF-STACK      \ the handler's alternate stack, mapped once per process
-48 constant PROF-ARENA      \ the profiler arena, mapped once per process
-56 constant PROF-ARMED      \ the clock: ARMED-RUNS, ARMED-HELD, or 0 while stopped
+40 constant PROF-ARENA      \ the profiler arena, mapped once per process
+48 constant PROF-ARMED      \ the clock: ARMED-RUNS, ARMED-HELD, or 0 while stopped
 1  constant ARMED-RUNS      \ the timer runs and the handler counts each tick
 2  constant ARMED-HELD      \ a report, row or reset stopped the timer and starts it again
 \ STOPPING THE TIMER DOES NOT STOP THE TICKS. On Darwin a tick can arrive after
@@ -48,8 +47,8 @@ public
 \
 \ The band cell PROF-ARENA holds the arena base and every table below it sits at
 \ a build-time offset from that base, so the handler reaches any of them with one
-\ load and no bound of its own. The arena is mapped once per process, like the
-\ alternate stack, and rebuilt in place by each prof-on.
+\ load and no bound of its own. The arena is mapped once per process and rebuilt
+\ in place by each prof-on.
 \
 \ WHAT THE INDEX ANSWERS, exactly, so a linear reference can state the same rule:
 \ the entry with the greatest start <= pc, reported only when pc < that entry's
@@ -117,9 +116,11 @@ ARN-CALL ARN-CALL-BYTES + constant ARN-INCL    \ inclusive samples, one per RECO
 ARN-INCL ARN-INCL-BYTES + constant ARN-STAMP   \ the sample serial each record was last counted in
 ARN-STAMP ARN-INCL-BYTES + constant ARN-DEF    \ the deferred samples
 ARN-DEF ARN-DEF-BYTES + constant ARN-BYTES
-$10000 constant PROF-STACK-BYTES
 1000000 constant USEC-PER-SEC   \ setitimer refuses a tv_usec at or above it: prof-on splits the interval
 14  constant SIGALRM
+\ SA_ONSTACK: the handler runs on the thread's alternate signal stack, the one
+\ the crash handler runs on (src/habu/crash.f C-SIGNAL-STACK, its x86-64 twin
+\ src/habu/boot-x64.f SIGNAL-STACK,).
 $18000004 constant LINUX-SA-PROF-FLAGS   \ SA_SIGINFO | SA_ONSTACK | SA_RESTART
 40 constant DICT-WL-OFF                   \ the record's wordlist cell (habu1.f BSWL reads the same 40)
 
@@ -131,8 +132,6 @@ $18000004 constant LINUX-SA-PROF-FLAGS   \ SA_SIGINFO | SA_ONSTACK | SA_RESTART
 \ report and exits PROF-LIMIT-RC.
 78 constant PROF-MAP-RC
 99 constant PROF-LIMIT-RC
-: PROFMMAPMSG$ ( -- ptr u8 n ) S\" hb: prof-on: cannot map the handler stack\n" ;
-: PROFSTKMSG$ ( -- ptr u8 n ) S\" hb: prof-on: cannot install the handler stack\n" ;
 : PROFARNMSG$ ( -- ptr u8 n ) S\" hb: prof-on: cannot map the profiler arena\n" ;
 : PROFARMMSG$ ( -- ptr u8 n ) S\" hb: prof-on: cannot arm the interval timer\n" ;
 

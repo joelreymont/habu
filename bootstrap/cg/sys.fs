@@ -39,6 +39,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 57  constant NR-CLOSE
 48  constant NR-ACCESS     \ faccessat(dirfd, path, mode, flags)
 134 constant NR-SIGACTION
+132 constant NR-SIGALTSTACK
 226 constant NR-MPROTECT
 215 constant NR-MUNMAP
 103 constant NR-SETITIMER
@@ -104,6 +105,7 @@ $1012 constant MAP-ANON-PRIVATE-FIXED
 6   constant NR-CLOSE
 $21 constant NR-ACCESS
 46  constant NR-SIGACTION
+$35 constant NR-SIGALTSTACK
 74  constant NR-MPROTECT
 $49 constant NR-MUNMAP
 83  constant NR-SETITIMER

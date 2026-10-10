@@ -1255,7 +1255,7 @@ by name with the count it saw and the ceiling, and none truncates.
   `trust` row's, a `TRUSTED:` definition's or a `defer`'s, is refused as a bad
   one: `E-BAD-STORED-SIGNATURE` under `fix_signature_size`, with the same
   reason. Pass bulk values in a buffer, not on the stack.
-- **Data space: `DATA-SIZE - PROF-CNT-BYTES`**, 33,030,080 bytes on
+- **Data space: `DATA-SIZE - PROF-CNT-BYTES`**, 33,030,088 bytes on
   linux-aarch64 (`src/os/linux/layout-constants.f`, `src/habu/layout.f`;
   `DATA-SIZE` is per host). `allot`, `align`, `,`, `c,`, `create`/`variable`/
   `defer` and the interpret-mode string literals that keep their text (all but

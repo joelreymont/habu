@@ -1479,7 +1479,8 @@ $F9000000 TASK-ABI:STATUS-OFF 8 / 10 lshift or 9 5 lshift or 10 or
    constant W-STR-DONE-PLAIN                               \ STR x10,[x9,#STATUS-OFF]
 $D65F03C0 constant W-RET
 
-\ The entry is 57 instruction words. The cap is the "this is not the entry"
+\ The entry is 99 words to its RET, the signal stack's refusal text among
+\ them (crash.f C-SIGNAL-STACK). The cap is the "this is not the entry"
 \ bound, not a measurement: a walk that runs past it read the wrong address.
 128 constant ENTRY-WORD-CAP
 

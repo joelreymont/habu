@@ -845,9 +845,10 @@ here BPL-KW - constant BPL-LEN
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH-X11 pointed all four
-\ at the dumper; this repoints just TRAP once LTRAPH is bound).
+\ at the dumper; this repoints just TRAP once LTRAPH is bound). SA_SIGINFO alone:
+\ a breakpoint stops a thread whose stack is sound, so it is served there.
 : G-INSTALL-TRAP ( -- )
-   9 LTRAPH LABEL@ ADR,  9 C-SIGACTION-FRAME
+   9 LTRAPH LABEL@ ADR,  9 SIGACT-SIGINFO C-SIGACTION-FRAME
    5 INSTALL-SIGACT
    C-SIGACTION-FRAME-DONE ;
 
@@ -9039,6 +9040,7 @@ ardone LBL,
 : EM-STARTUP ( -- )
    LANCHOR LABEL@ LBL,
    EM-ENTRY-ARGS
+   C-SIGNAL-STACK                       \ before any Habu code can overflow; x13-x15 kept
    EM-RUNTIME-STACK
    EM-MMAP-CODE-REGION
    EM-SEED-DICT

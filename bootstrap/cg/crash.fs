@@ -6,9 +6,10 @@
 \
 \ bootstrap/cg/forth.fs is the only file that requires this one, and it requires
 \ it only once the names below are its own: DATA, DATA-VA, RBASE-VA, REGION, the
-\ STACK-ABI: block, the SIGNAL-ABI: block, ENGINE-ERROR:STACK-BOUNDS and the
-\ header cells RBASE-CELL, FLOORREC-CELL and CODE-END-CELL. Loading this file on
-\ its own leaves every one of them undefined.
+\ STACK-ABI: block, the SIGNAL-ABI: block, ENGINE-ERROR:STACK-BOUNDS,
+\ STACK-GUARD:MAP-FAIL-RC and the header cells RBASE-CELL, FLOORREC-CELL and
+\ CODE-END-CELL. Loading this file on its own leaves every one of them
+\ undefined.
 \
 \ macOS arm64 signal delivery: sigaction(#46) records sa_handler + sa_tramp; on a
 \ signal the kernel enters sa_tramp with x0=catcher, x2=sig, x3=siginfo,
@@ -28,8 +29,27 @@ create CRH 80 allot  variable CRHL
    10 CRH u + c!  u 1 + CRHL ! ;
 CRH-INIT
 
-40 constant MACOS-SA-SIGINFO
+\ The sa_flags bits the installs set. SA_ONSTACK runs the crash handler on the
+\ thread's alternate signal stack (C-SIGNAL-STACK below); the trap handler
+\ (forth.fs G-INSTALL-TRAP) keeps the interrupted stack.
+$40 constant MACOS-SA-SIGINFO
+$1 constant MACOS-SA-ONSTACK
 4 constant LINUX-SA-SIGINFO
+$08000000 constant LINUX-SA-ONSTACK
+: SIGACT-SIGINFO ( -- n )  HB-TARGET-LINUX? IF LINUX-SA-SIGINFO ELSE MACOS-SA-SIGINFO THEN ;
+: SIGACT-ONSTACK ( -- n )  HB-TARGET-LINUX? IF LINUX-SA-ONSTACK ELSE MACOS-SA-ONSTACK THEN ;
+\ stack_t, the struct sigaltstack reads: ss_sp first on both, then Linux puts
+\ the int ss_flags before ss_size and Darwin after it.
+32 constant SIGSTK-FRAME                \ the 24-byte struct, rounded to sp's alignment
+: SIGSTK-FLAGS ( -- n )  HB-TARGET-LINUX? IF 8 ELSE 16 THEN ;
+: SIGSTK-SIZE ( -- n )  HB-TARGET-LINUX? IF 16 ELSE 8 THEN ;
+\ `sub xd, xn, #n` for n in whole 4 KiB units: the shifted-immediate form,
+\ which also takes sp. ICode has no such op, so the word goes in as its four
+\ bytes, the way forth.fs STACK-GUARD:WORD, embeds one.
+: SUBI-4K, ( rd rn n -- ) {: rd rn n :}
+   n $1000 /mod swap IF E-IMM-RANGE throw THEN ?IMM12
+   10 lshift $D1400000 or  rn 5 lshift or  rd or
+   here swap , 4 BYTES, ;
 8 constant CRASH-LINUX-SIGSET-SIZE
 48 constant MCTX-OFF           \ macOS ucontext -> mcontext pointer offset
 16 constant SS-OFF             \ macOS mcontext -> __ss.__x[0] offset
@@ -130,18 +150,23 @@ CRH-INIT
       9 21 MACOS-MCTX-PC-OFF LDR,
    THEN ;
 
+: C-CRASH-SP>R9 ( -- )
+   HB-TARGET-LINUX? IF
+      9 21 LINUX-MCTX-SP-OFF LDR,
+   ELSE
+      9 21 MACOS-MCTX-SP-OFF LDR,
+   THEN ;
+
 : C-CRASH-PRINT-REGS ( -- )
    HB-TARGET-LINUX? IF
       9 21 LINUX-MCTX-FP-OFF LDR,  LHEX @ BL,
       9 21 LINUX-MCTX-LR-OFF LDR,  LHEX @ BL,
-      9 21 LINUX-MCTX-SP-OFF LDR,  LHEX @ BL,
-      C-CRASH-PC>R9  LHEX @ BL,
    ELSE
       9 21 MACOS-MCTX-FP-OFF LDR,  LHEX @ BL,
       9 21 MACOS-MCTX-LR-OFF LDR,  LHEX @ BL,
-      9 21 MACOS-MCTX-SP-OFF LDR,  LHEX @ BL,
-      C-CRASH-PC>R9  LHEX @ BL,
-   THEN ;
+   THEN
+   C-CRASH-SP>R9  LHEX @ BL,
+   C-CRASH-PC>R9  LHEX @ BL, ;
 
 : C-CRASH-PC-WORD ( n -- ) {: off :}
    LBL LBL {: zero done :}
@@ -198,14 +223,16 @@ variable CRS-NEXT   variable CRS-SKIP  variable CRS-FAULT
 variable CRS-DATA-M variable CRS-RET-M variable CRS-LOOP-M
 variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
 variable CRS-DATA-LOW-H
+variable CRS-MACHINE-M variable CRS-MACHINE-H
 
-\ The three diagnostics, each a single line emitted by one BYTES, call: the
+\ The four diagnostics, each a single line emitted by one BYTES, call: the
 \ newline lives inside the string literal, so the length that reaches
 \ C-CRASH-GUARD-REPORT and the length BYTES, embeds are the same read of the
 \ same spelling -- no separately maintained length constant to drift from it.
 : CRS-DATA$ ( -- a u ) s\" hb: stack bounds exceeded (data)\n" ;
 : CRS-RET$  ( -- a u ) s\" hb: stack bounds exceeded (return)\n" ;
 : CRS-LOOP$ ( -- a u ) s\" hb: stack bounds exceeded (loop)\n" ;
+: CRS-MACHINE$ ( -- a u ) s\" hb: stack bounds exceeded (machine)\n" ;
 
 11 constant CRASH-SIGSEGV
 : CRASH-SIGBUS ( -- n )  HB-TARGET-LINUX? IF 7 ELSE 10 THEN ;
@@ -261,13 +288,22 @@ variable CRS-DATA-LOW-H
 
 : C-CRASH-STACK-GUARDS ( -- )
    LBL CRS-SKIP !  LBL CRS-FAULT !
-   LBL CRS-DATA-M !  LBL CRS-RET-M !  LBL CRS-LOOP-M !
+   LBL CRS-DATA-M !  LBL CRS-RET-M !  LBL CRS-LOOP-M !  LBL CRS-MACHINE-M !
    LBL CRS-DATA-H !  LBL CRS-RET-H !  LBL CRS-LOOP-H !  LBL CRS-DATA-LOW-H !
+   LBL CRS-MACHINE-H !
    \ si_addr only describes a memory fault; a trap or an FPE carries no address.
    20 CRASH-SIGSEGV CMPI,  C-EQ CRS-FAULT @ BCOND,
    20 CRASH-SIGBUS CMPI,   C-NE CRS-SKIP @ BCOND,
    CRS-FAULT @ LBL,
    C-CRASH-FAULT-ADDR>R25
+   \ The machine stack first, by the interrupted sp alone (stack-abi.f
+   \ MACHINE-REACH): it needs no DATA, so it holds in foreign code and on a
+   \ thread whose x20 is not a region. x1 and x5 stay the trampoline's.
+   C-CRASH-SP>R9
+   11 STACK-ABI:MACHINE-REACH LIT64,
+   10 25 9 SUB,  10 10 11 ADD,                   \ fault - sp + reach
+   11 11 1 LSLI,
+   10 11 CMP,  C-CC CRS-MACHINE-H @ BCOND,
    C-CRASH-DATA>R24
    11 STACK-ABI:PAGE-BYTES LIT64,
    12 STACK-ABI:PAGE-BYTES 1 - LIT64,
@@ -287,9 +323,11 @@ variable CRS-DATA-LOW-H
    CRS-DATA-H @ LBL,  CRS-DATA-M @ CRS-DATA$ nip C-CRASH-GUARD-REPORT
    CRS-RET-H  @ LBL,  CRS-RET-M  @ CRS-RET$  nip C-CRASH-GUARD-REPORT
    CRS-LOOP-H @ LBL,  CRS-LOOP-M @ CRS-LOOP$ nip C-CRASH-GUARD-REPORT
+   CRS-MACHINE-H @ LBL,  CRS-MACHINE-M @ CRS-MACHINE$ nip C-CRASH-GUARD-REPORT
    CRS-DATA-M @ LBL,  CRS-DATA$ BYTES,
    CRS-RET-M  @ LBL,  CRS-RET$  BYTES,
    CRS-LOOP-M @ LBL,  CRS-LOOP$ BYTES,
+   CRS-MACHINE-M @ LBL,  CRS-MACHINE$ BYTES,
    CRS-SKIP @ LBL, ;
 
 \ The crash handler is entered DIRECTLY as the trampoline (sa_tramp=Lcrashh), so
@@ -323,29 +361,58 @@ variable CRS-DATA-LOW-H
    HB-TARGET-LINUX? IF 3 CRASH-LINUX-SIGSET-SIZE MOVZ, THEN
    NR-SIGACTION SYS, ;
 
-: C-SIGACTION-FRAME ( n -- )
-   {: handler :}
+\ The sigaction frame for the handler in a register and the sa_flags given.
+\ Darwin's __sigaction is the handler, sa_tramp, then the u32 sa_mask and the
+\ u32 sa_flags: the flags are the high half of the cell at +16.
+: C-SIGACTION-FRAME ( n n -- )
+   {: handler flags :}
    SP SP 64 SUBI,
    handler SP 0 STR,
    HB-TARGET-LINUX? IF
-      10 LINUX-SA-SIGINFO MOVZ,  10 SP 8 STR,
+      10 flags LIT64,  10 SP 8 STR,
       10 0 MOVZ,  10 SP 16 STR,  10 SP 24 STR,
    ELSE
       handler SP 8 STR,
-      10 MACOS-SA-SIGINFO MOVZ,  10 10 32 LSLI,  10 SP 16 STR,
+      10 flags 32 lshift LIT64,  10 SP 16 STR,
    THEN ;
 
 : C-SIGACTION-FRAME-DONE ( -- )
    SP SP 64 ADDI, ;
 
 : G-INSTALL-CRASH ( -- )
-   9 LCRASHH @ ADR,  9 C-SIGACTION-FRAME
+   9 LCRASHH @ ADR,  9 SIGACT-SIGINFO SIGACT-ONSTACK or C-SIGACTION-FRAME
    HB-TARGET-LINUX? IF
       4 INSTALL-SIGACT  5 INSTALL-SIGACT  7 INSTALL-SIGACT  8 INSTALL-SIGACT  11 INSTALL-SIGACT
    ELSE
       4 INSTALL-SIGACT  5 INSTALL-SIGACT  8 INSTALL-SIGACT  10 INSTALL-SIGACT  11 INSTALL-SIGACT
    THEN
    C-SIGACTION-FRAME-DONE ;
+
+\ The alternate signal stack, mirroring src/habu/crash.f C-SIGNAL-STACK. A
+\ machine-stack overflow faults with sp in the kernel's guard, where no signal
+\ frame fits, so the handler is installed SA_ONSTACK and the startup
+\ (forth.fs EMIT-STARTUP) registers this stack before any code can overflow:
+\ sp drops STACK-ABI:SIGNAL-BYTES and the band above it is registered. It writes
+\ x0, x1, x12 and the system call's own registers, and x2 on the path that
+\ exits. A refused registration is
+\ named and fatal: the handler would run on the interrupted stack, and a
+\ machine-stack overflow would die unnamed again.
+: SIGSTKMSG$ ( -- a u ) s\" hb: cannot install the signal stack\n" ;
+
+: C-SIGNAL-STACK ( -- )
+   LBL LBL {: ok msg :}
+   SP SP STACK-ABI:SIGNAL-BYTES SUBI-4K,
+   SP SP SIGSTK-FRAME SUBI,
+   12 0 MOVZ,  12 SP SIGSTK-FLAGS STR,
+   12 STACK-ABI:SIGNAL-BYTES LIT64,  12 SP SIGSTK-SIZE STR,
+   12 SP SIGSTK-FRAME ADDI,  12 SP 0 STR,             \ ss_sp: the band, right above this frame
+   0 SP 0 ADDI,  1 0 MOVZ,  NR-SIGALTSTACK SYS,
+   SP SP SIGSTK-FRAME ADDI,                           \ ADD, not ADDS: the flags are the call's
+   C-CC ok BCOND,
+      0 2 MOVZ,  1 msg ADR,  2 SIGSTKMSG$ nip MOVZ,  NR-WRITE SYS,
+      0 STACK-GUARD:MAP-FAIL-RC MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  SIGSTKMSG$ BYTES,
+   ok LBL, ;
 
 \ LSIGH: the async-signal-safe stub a program installs through sigaction. It is
 \ an ordinary `void (int)` sa_handler, so the signal number is its first

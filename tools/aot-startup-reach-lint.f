@@ -30,7 +30,7 @@
 \ src/habu/crash.f C-CRASH-GUARD-REPORT takes `msg:label` and writes
 \ `1 msg ADR,` — carries no `LABEL@` and is no triple. That is acceptable here
 \ because such a label is bound by the caller inside its own emitted run
-\ (C-CRASH-STACK-GUARDS binds all three message labels in its own body, a few
+\ (C-CRASH-STACK-GUARDS binds all four message labels in its own body, a few
 \ instructions from the reads), and because the alternative — following a value
 \ through a call — is a dataflow the lexer cannot do. The rule this lint enforces
 \ is the one that can be read off three adjacent tokens.

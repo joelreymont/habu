@@ -21,7 +21,9 @@
 \                                       exit 102 and the line naming it
 \    hb-x64-kernel-crash-return      0  a store at the return stack's end
 \    hb-x64-kernel-crash-loop        0  a store below the loop stack's base
-\    hb-x64-kernel-crash-past        0  rbp not canonical and a jump to the
+\    hb-x64-kernel-crash-machine     0  a call to itself, forever: exit 102
+\                                       and the machine stack's line
+\    hb-x64-kernel-crash-past       0  rbp not canonical and a jump to the
 \                                       first byte past the region, text base
 \                                       + HABU-SPAN, never mapped: the dump,
 \                                       its three code lines 0
@@ -220,6 +222,14 @@ $1716151413121110 constant CELL-C
    RAX RAX CELL negate MEM-OFF ASM-SINK ENC-MOV-MR
    S\" hb: stack bounds exceeded (loop)\n" LINE-TEXT ;
 
+\ A call to itself, forever: the return addresses walk rsp down the machine
+\ stack until a push lands in the kernel's guard below it, where no signal
+\ frame fits; the handler runs on the alternate stack START, registered.
+: MACHINE-CHILD ( -- )
+   LBL {: self:label :}
+   self LBL,  self CALL,
+   S\" hb: stack bounds exceeded (machine)\n" LINE-TEXT ;
+
 \ A jump to the first byte past the region, which nothing maps: rip one past
 \ the span whose rbp the guard cases read, so rbp, not canonical, is never
 \ read. The cell before rip is the region's last, never written.
@@ -320,6 +330,7 @@ public
    [: DATA-CHILD ;] NAMED false s" hb-x64-kernel-crash-data" TMP-PATH IMAGE
    [: RETURN-CHILD ;] NAMED false s" hb-x64-kernel-crash-return" TMP-PATH IMAGE
    [: LOOP-CHILD ;] NAMED false s" hb-x64-kernel-crash-loop" TMP-PATH IMAGE
+   [: MACHINE-CHILD ;] NAMED false s" hb-x64-kernel-crash-machine" TMP-PATH IMAGE
    [: PAST-CHILD ;] DUMPED false s" hb-x64-kernel-crash-past" TMP-PATH IMAGE
    [: REGION-GUARD-CHILD ;] NAMED false s" hb-x64-kernel-crash-region-guard" TMP-PATH IMAGE
    [: ZERO-BASE-CHILD ;] DUMPED false s" hb-x64-kernel-crash-zero-base" TMP-PATH IMAGE

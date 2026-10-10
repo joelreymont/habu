@@ -593,6 +593,26 @@ this die", and they are not interchangeable:
   pages, only the `(name)` suffix is new, so match it as a prefix
   (`hb: stack bounds exceeded`) rather than the whole line if the specific
   stack does not matter to the assertion.
+- A machine-stack overflow: the OS thread's own stack, which every call and
+  local frame uses, runs into the kernel's guard, with sp already in it, where
+  no signal frame fits. So every thread that runs Habu code registers
+  `STACK-ABI:SIGNAL-BYTES` carved off its own stack as its alternate signal
+  stack before it runs any (`src/habu/crash.f` C-SIGNAL-STACK: the engine's
+  and a stripped image's startup, a task's thread, and a thread C started at
+  the callback that brings it in), and the crash handler runs there. A SIGSEGV
+  or SIGBUS whose fault address lies within `STACK-ABI:MACHINE-REACH` of the
+  interrupted sp, either side, is `hb: stack bounds exceeded (machine)`, exit
+  102, whatever code faulted, checked before the three VM stacks; `catch` does
+  not receive it. So a fault on a VM stack's guard is also named `(machine)`
+  when that guard lies within `MACHINE-REACH` (64 KiB) of the interrupted sp,
+  as on a task whose nearly exhausted machine stack the kernel mapped next to
+  one of its VM stacks, and a data low-guard hit so named exits instead of
+  resuming. A word that calls itself with nothing on the data stack, or
+  adds a cell per call, ends so at tier 0 and tier 1, plain and under `catch`,
+  on a task's thread, on a thread C started and in a stripped image
+  (`test/engine-stack-machine.f`). A frame wider than `MACHINE-REACH` that
+  faults farther from sp keeps the register dump. A refused registration
+  writes `hb: cannot install the signal stack` and exits 78.
 - `E-STACK-UNGUARDED` (-3802, `lib/errors.f`; `STACK-ABI:E-STACK-UNGUARDED` spells
   the same number for the engine emitters, and `test/stack-guard.f` proves
   the two agree) is run-in-stack's own admission check
@@ -900,9 +920,10 @@ a shared library, resolve to nothing and stay hex.
   self-build runs end to end and needs no sample-limit workaround. A `prof-on`
   limit still reports and exits 99 at that many samples, so give a whole
   self-build a limit it cannot reach (or `0`) and call `prof-report` yourself.
-- The handler runs on an alternate stack registered for the thread that called
-  `prof-on`; a tick delivered to a `lib/task.f` thread runs on that thread's own
-  stack.
+- The handler runs on the thread's alternate signal stack, the crash
+  handler's, which every thread that runs Habu code registers
+  (`src/habu/crash.f` C-SIGNAL-STACK); a tick delivered to a thread C started
+  that is not inside a callback runs on that thread's own stack.
 - When the `n`-th sample is foreign the report waits for the next Habu sample, so
   a program that exits or stays blocked in a foreign call from that point on
   never reports; call `prof-report` yourself in that case.

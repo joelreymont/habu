@@ -387,10 +387,10 @@ CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX         \ 127 = min
 \ indexes (NDICT never exceeds DICT-CAP); src/habu/prof-abi.f PROF-BAND-AT
 \ derives the band base offset as DATA-SIZE - PROF-CNT-BYTES. The band opens
 \ with PROF-STATE-BYTES of the profiler's own cells (sample total and limit, the
-\ two buckets, the dictionary base recorded by prof-on, its alternate stack, the
-\ dump count) and the counters follow. Grows in step with DICT-CAP with no
-\ magic byte count, so the band can never fall short of the slots it serves.
-64 constant PROF-STATE-BYTES
+\ two buckets, the dictionary base recorded by prof-on, the arena, the clock)
+\ and the counters follow. Grows in step with DICT-CAP with no magic byte
+\ count, so the band can never fall short of the slots it serves.
+56 constant PROF-STATE-BYTES
 DICT-CAP cells PROF-STATE-BYTES + constant PROF-CNT-BYTES
 
 \ Cold prefix and argv or stdin input share the read allowance. Baked source

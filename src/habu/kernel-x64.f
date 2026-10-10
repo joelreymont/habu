@@ -3195,7 +3195,9 @@ public
 \ rdi, is the TASK-ABI descriptor, and which enters that task's VM state. It
 \ saves rbx rbp r12-r15, the SysV callee-saved set, which is exactly the VM's
 \ registers (docs/x86-64.md "Machine model"), so no vector register needs
-\ BTASK-ENTRY's d8..d15 save. It writes two cells of the task's own: the TCB
+\ BTASK-ENTRY's d8..d15 save. The thread's alternate signal stack is registered
+\ below the pushes before the body and disabled and given back after it
+\ (X64BOOT:SIGNAL-STACK,). It writes two cells of the task's own: the TCB
 \ address into the task's region, and DONE into the status once the body
 \ returns. It never writes RUNNING: lib/task.f ACTIVATE stores that before
 \ pthread_create, and a store here could put RUNNING back over the HALT-REQ a
@@ -3221,6 +3223,9 @@ private
 \ aligns rsp itself before any C call.
 : TASK-ENTRY, ( -- )
    SAVE-VM,
+   INTERP-REG RDI ASM-SINK ENC-MOV-RR          \ the descriptor across the registration
+   X64BOOT:SIGNAL-STACK,                       \ this thread's own, below the pushes
+   RDI INTERP-REG ASM-SINK ENC-MOV-RR
    DATA-REG RDI TASK-ABI:REGION-OFF MOV-LOAD,
    DSP RDI TASK-ABI:STACK-OFF MOV-LOAD,
    DBASE-REG RDI TASK-ABI:DBASE-OFF MOV-LOAD,
@@ -3229,6 +3234,8 @@ private
    INTERP-REG ZERO-REG,
    RDI DATA-REG TASK-TCB-CELL MOV-STORE,
    RAX RDI TASK-ABI:XT-OFF MOV-LOAD,  RAX ASM-SINK ENC-CALL-REG
+   X64BOOT:SIGNAL-STACK-OFF,
+   RSP STACK-ABI:SIGNAL-BYTES >IMM32 ASM-SINK ENC-ADD-RI32      \ the band back
    RCX DATA-REG TASK-TCB-CELL MOV-LOAD,
    RAX TASK-ABI:DONE IMM32,
    RAX RCX TASK-ABI:STATUS-OFF MEM-OFF ASM-SINK ENC-XCHG-MR

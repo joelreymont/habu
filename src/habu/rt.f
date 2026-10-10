@@ -47,8 +47,6 @@ variable MAP-CAP  variable MAP-DST
 variable MAP-MSG  variable MAP-OK   variable MAP-ROK
 variable MAP-BAD  variable MAP-DONE
 
-78 constant MAP-FAIL-RC     \ the rc the two fixed-region mappings already use
-
 : EMIT-FAIL ( -- )
    S\" hb: stack bounds exceeded\n" {: ma:ptr mu:n :}
    LBL FAIL-MESSAGE !
@@ -72,6 +70,8 @@ variable MAP-BAD  variable MAP-DONE
    DESCRIPTOR-BASE @ dup ENC-MVN EMITW ;
 
 public
+
+78 constant MAP-FAIL-RC     \ the rc the two fixed-region mappings already use
 
 \ Lifecycle admission at a stack switch (run-in-stack, catch, evaluate, task
 \ and REPL recovery): x14=base, x10=capacity, x12=cursor. Leaves base intact;
