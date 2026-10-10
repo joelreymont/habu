@@ -10,5 +10,6 @@ Problem: ~/.cache/tmp/carl-gfrest/c/c3-bundle-rstack.f (`: F ( trip n -- trip n 
 Acceptance: at tier 1 `>r r> r@ 2>r 2r> 2r@` move or copy the whole values the checker moved, whatever their cell count; both reproducers print what tier 0 prints, rc 0; C-TORB compiles and runs; lib/errors.f:928 no longer names the return stack. The reproducers join test/compiler/native-rstack.f (tier 1, production return-stack operations).
 Files: src/compiler/native/hir-word.f, src/compiler/native/elaborate.f, lib/errors.f, test/compiler/native-rename-rows.f, test/compiler/native-rstack.f.
 Verify: rebuild bin/hb per docs/gate.md; each reproducer under `bin/hb --load test/outer-loop-on.f <file holding 1 set-tier> <case>`; `bin/hb --load test/compiler/native-rstack.f` and `bin/hb --load test/compiler/native-rename-rows.f`; `bin/hb --load test/run.f`; two-generation build converges.
+Host cases: the Gforth host's r30 r34 r35 (~/.cache/tmp/carl-gfrest/c/waiting/) join test/gforth/cases/ and match native.
 Depends: none.
 Worker: worker.

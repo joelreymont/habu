@@ -10,5 +10,6 @@ Problem: ~/.cache/tmp/carl-gfrest/c/c7-nosig-definer.f (`: MK create , does> ( -
 Acceptance: at tier 1 c7-nosig-definer.f is refused with the checker's verdict (E-UNDEFINED at `does>`), rc 70, and publishes neither MK nor X; a signed definer (`: MK ( n -- ) create , does> ( -- n ) @ ;`) compiles and runs as before; c9-tick-pending.f stays refused. The reproducer joins test/compiler/native-create-does.f (tier 1).
 Files: src/compiler/native/compiler.f, src/compiler/native/checker-owner.f if the owner ABI must answer the whole-body verdict, test/compiler/native-create-does.f.
 Verify: rebuild bin/hb per docs/gate.md; the reproducer under `bin/hb --load test/outer-loop-on.f <file holding 1 set-tier> <case>`; `bin/hb --load test/compiler/native-create-does.f`; `bin/hb --load test/run.f`.
+Host cases: the Gforth host's r48 (~/.cache/tmp/carl-gfrest/c/waiting/) joins test/gforth/cases/ and matches native.
 Depends: none.
 Worker: worker.
