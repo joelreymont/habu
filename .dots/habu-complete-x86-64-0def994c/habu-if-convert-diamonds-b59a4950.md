@@ -14,3 +14,4 @@ Depends: none (off the path to X6).
 Route: direct.
 Ownership: krait (Intel lane).
 Claim: unassigned.
+Superseded: the one-pass codegen (docs/architecture.md, "The codegen is one pass over the checked events") deletes the tier-1 code this fixes; its reproducers become that codegen's cases. Do not start.

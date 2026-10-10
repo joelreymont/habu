@@ -13,3 +13,4 @@ Acceptance: BOUND-NEUTRAL is gone and BOUND-CELLS shrinks to fit, with the build
 Files: src/core/checker-owner-abi.f and its readers, src/compiler/native/ (NDICT:SPELL-CALL and its callers), test/ndict-spell-call.f.
 Verify: native build per docs/gate.md with a post-rule host; `bin/hb --load test/run.f`; two-generation build converges.
 Depends: habu-compile-a-declared-21cc269d landed. Worker: worker.
+Superseded: the one-pass codegen (docs/architecture.md, "The codegen is one pass over the checked events") deletes the tier-1 code this fixes; its reproducers become that codegen's cases. Do not start.

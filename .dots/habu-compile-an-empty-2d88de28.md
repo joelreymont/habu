@@ -12,3 +12,4 @@ Files: src/compiler/native/elaborate.f, the tier-1 quotation suite file.
 Verify: rebuild bin/hb per docs/gate.md; each reproducer under `bin/hb --load test/outer-loop-on.f <file holding 1 set-tier> <case>`; that suite file; `bin/hb --load test/run.f`.
 Depends: none.
 Worker: worker.
+Superseded: the one-pass codegen (docs/architecture.md, "The codegen is one pass over the checked events") deletes the tier-1 code this fixes; its reproducers become that codegen's cases. Do not start.

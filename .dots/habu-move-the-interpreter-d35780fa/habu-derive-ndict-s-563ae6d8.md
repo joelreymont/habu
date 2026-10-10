@@ -16,3 +16,4 @@ Depends: I9a (`habu-move-evaluate-and-9119f746`), which puts `outer.f` in the pr
 Route: Alder (shared: `dict.f`).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+Superseded: the one-pass codegen (docs/architecture.md, "The codegen is one pass over the checked events") deletes the tier-1 code this fixes; its reproducers become that codegen's cases. Do not start.

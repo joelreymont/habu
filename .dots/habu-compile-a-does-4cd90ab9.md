@@ -11,3 +11,4 @@ Acceptance: at tier 1, under both loops, a definer with an empty head compiles a
 Files: src/compiler/native/ (the does> head's elaboration), a native tier-1 test, test/gforth/cases/.
 Verify: native build per docs/gate.md; `bin/hb --load test/run.f`.
 Depends: none. Worker: worker-max.
+Superseded: the one-pass codegen (docs/architecture.md, "The codegen is one pass over the checked events") deletes the tier-1 code this fixes; its reproducers become that codegen's cases. Do not start.

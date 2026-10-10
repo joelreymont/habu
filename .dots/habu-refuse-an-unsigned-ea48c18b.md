@@ -13,3 +13,4 @@ Verify: rebuild bin/hb per docs/gate.md; the reproducer under `bin/hb --load tes
 Host cases: the Gforth host's r48 (~/.cache/tmp/carl-gfrest/c/waiting/) joins test/gforth/cases/ and matches native.
 Depends: none.
 Worker: worker.
+Superseded: the one-pass codegen (docs/architecture.md, "The codegen is one pass over the checked events") deletes the tier-1 code this fixes; its reproducers become that codegen's cases. Do not start.

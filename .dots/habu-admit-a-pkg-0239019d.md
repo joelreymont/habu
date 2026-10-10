@@ -11,3 +11,4 @@ Acceptance: at tier 1 a definition's own name is admitted as at tier 0, while a 
 Files: src/compiler/native/compiler.f, src/core/checker.f if the lookup lives there, test/outer-interpret.f, test/compiler/native-hookless-reject.f, test/gforth/cases/.
 Verify: native build per docs/gate.md; `bin/hb --load test/run.f`; `bin/hb --load test/outer-interpret.f`.
 Depends: none. Worker: worker-max.
+Partly superseded: the tier-1 part goes with the one-pass codegen (docs/architecture.md, "The codegen is one pass over the checked events"); the checker part stands. Do not start the tier-1 part.
