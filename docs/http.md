@@ -35,7 +35,8 @@ an interpreted `s"` after `AIO:START` ends the process.
    HTTP:ROUTES-RESET
    s" GET" s" /api/ping" [: PING ;] HTTP:ROUTE
    s" /srv/site" HTTP:STATIC-ROOT
-   $7F000001 0 2 500 HTTP:START   \ address, port (0: ephemeral), workers, idle ms
+   $4000000 HTTP:BODY-CAP!          \ accept incoming bodies up to 64 MiB
+   $7F000001 0 2 300000 HTTP:START   \ address, port, workers, request deadline ms
    HTTP:PORT .                    \ the port the listener bound
    \ ... serve ...
    HTTP:STOP
@@ -44,7 +45,9 @@ an interpreted `s"` after `AIO:START` ends the process.
 
 | word | effect | meaning |
 | --- | --- | --- |
-| `START` | `( n n n n -- )` | bind address and port, start that many workers (1..`MAX-WORKERS`), wait for all worker start hooks, then start the listener; a connection silent for the idle milliseconds is closed |
+| `START` | `( n n n n -- )` | bind address and port, start that many workers (1..`MAX-WORKERS`), wait for all worker start hooks, then start the listener; the final argument is the whole-request deadline in milliseconds |
+| `BODY-CAP!` | `( n -- )` | set the maximum incoming body size in bytes before `START`; zero accepts only empty bodies, a negative value is `E-CAPACITY` |
+| `BODY-CAP` | `( -- n )` | the current incoming body limit; defaults to 1 MiB |
 | `STOP` | `( -- )` | ask every task to end, wait for them to the stop bound, kill any still inside its body, give everything back |
 | `RUNNING?` | `( -- bool )` | during startup and until `STOP`, or false after a failed `START` |
 | `PORT`, `ADDRESS` | `( -- n )` | what the listener actually bound |
@@ -54,6 +57,11 @@ an interpreted `s"` after `AIO:START` ends the process.
 The AIO loop is the caller's to start: every wait the listener and the workers
 make is an AIO submission, so `START` with no loop running is `E-AIO-STATE`,
 thrown to the caller rather than inside a task nobody reads.
+The body limit persists across `STOP` and failed starts. Changing it during
+startup or while the server runs is `E-STATE`.
+The request deadline begins when a worker starts reading each request and
+covers its headers and entire body. Progress does not renew it. Choose a
+deadline long enough for the largest permitted upload over the expected link.
 If a worker start hook throws, `START` throws an actual hook error after every
 started worker has run its exit hooks and been joined. The listener is closed,
 the server's resources are released, and `RUNNING?` is false; the same address
@@ -70,9 +78,12 @@ stop lasts as long as its slowest task takes to notice, not its whole bound.
 However full the job queue is, `STOP` waits on none of it: each connection
 queued when it begins, or left behind a killed worker, is closed unserved.
 
-The pool is a fixed eight worker TCBs (`MAX-WORKERS`), each with one slot: a
-1 MiB input body, a 1 MiB generated body, a header table and the scratch one
-request needs, carved from one mapping per worker at `START`.
+The pool is a fixed eight worker TCBs (`MAX-WORKERS`), each with a slot holding
+the input window, a 1 MiB generated body, a header table and request scratch.
+The incoming body has its own small initial mapping in that slot. It grows as
+bytes arrive, up to `BODY-CAP`, and is released after the response has been
+sent or the taken connection's release hook has run. Refusals, disconnects and
+worker shutdown release it as well.
 
 ## Handlers
 
@@ -106,6 +117,11 @@ began, so a handle kept past its request is `E-HANDLE`.
 | `HEADER-COUNT-OF` | `( request ptr u8 n -- n )`: trust a header only when exactly one arrived |
 | `SEGMENT-OF$` | `( request ptr u8 n -- ptr u8 n bool )`, the decoded text `{name}` bound |
 | `BODY-READER` | `( request -- JR:reader )`, a [json-read](json.md) reader over the body on the slot's own storage; the caller closes it |
+
+`BODY$` and `BODY-READER` borrow the current request's body. The body remains
+available while its handler runs and through response sending, so a handler
+may pass it to `BODY!`. A request handle used after that request is answered
+throws `E-HANDLE`.
 
 | response word | effect |
 | --- | --- |
@@ -243,13 +259,13 @@ answers its client routes with its one page:
 
 ## Limits
 
-| constant | value | bound |
+| limit | value | bound |
 | --- | --- | --- |
 | `MAX-WORKERS` | 8 | request workers |
 | `MAX-HEADERS` | 64 | headers in one request |
 | `MAX-SEGMENTS` | 8 | bound segments in one route |
 | `HEAD-CAP` | 7 KiB | request line and headers (431 past it) |
-| `BODY-CAP` | 1 MiB | request body (413 past it) |
+| `BODY-CAP` | 1 MiB by default | configurable request body limit (413 past it) |
 | `HDR-CAP` | 2 KiB | response header lines a handler adds |
 | `JSON-CAP` | 1 MiB | a generated body: `JSON!` or the default error text |
 
@@ -260,10 +276,10 @@ published in the package under short names:
 
 | name | code | meaning |
 | --- | --- | --- |
-| `HTTP:E-STATE` | -9340 | `START` on a running server, `STOP` on a stopped one, a hook installed while one runs, a second `STATIC-ROOT`, a `TAKE-OVER` outside a running handler or a second one inside it |
+| `HTTP:E-STATE` | -9340 | `START` on a running server, `STOP` on a stopped one, a body limit changed during startup or while running, a hook installed while one runs, a second `STATIC-ROOT`, a `TAKE-OVER` outside a running handler or a second one inside it |
 | `HTTP:E-HANDLE` | -9341 | a handle past its request, or one over another worker's slot |
 | `HTTP:E-WORKERS` | -9342 | a worker count outside 1..`MAX-WORKERS`, or an idle deadline under 1 ms |
-| `HTTP:E-CAPACITY` | -9343 | more hooks, headers or bound segments than a table holds, or a negative body length |
+| `HTTP:E-CAPACITY` | -9343 | more hooks, headers or bound segments than a table holds, or a negative body limit or response body length |
 | `HTTP:E-ROUTE` | -9344 | more routes than the table holds, an empty method, a pattern not starting with `/` |
 | `HTTP:E-STATIC` | -9345 | a static root that is not a directory, or a tree larger than its tables |
 | `HTTP:E-SOCKET` | -9346 | the listener could not be bound, put to listen or asked its address |

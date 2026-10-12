@@ -348,14 +348,45 @@ MAX-WORKERS TYPED-BUFFER SERVING-LIVE n
    construct served answered ;
 
 
-: SERVE-ONE ( TCP4:connection n -- served ) {: conn:TCP4:connection idx:n :}
-   conn idx IDLE-MS @ READ-REQUEST {: result:parse-result :}
+MAX-WORKERS TYPED-BUFFER READ-RESULT parse-result
+
+
+\ The parser can allocate while appending a body. Keep that failure at this
+\ request boundary so a failed mapping does not end the worker's task.
+: READ-CURRENT ( -- )
+   SELF-SLOT {: idx:n :}
+   idx SERVING @ idx IDLE-MS @ READ-REQUEST idx READ-RESULT ! ;
+
+
+: READ-FAULT ( TCP4:connection n n -- served )
+   {: conn:TCP4:connection idx:n code:n :}
+   idx MAKE-ID
+   0 idx KEEP-ALIVE!
+   idx code REPORT-FAULT
+   code idx FAULT-CODE !
+   500 idx SLOT-STATUS!
+   [: RENDER-FAULT ;] catch {: failed:n :}
+   idx failed HOOK-FAULT
+   conn idx RESPONSE-OF SEND if construct served answered exit then
+   construct served silent ;
+
+
+: SERVE-ONE-RUN ( TCP4:connection n -- served ) {: conn:TCP4:connection idx:n :}
+   [: READ-CURRENT ;] catch {: code:n :}
+   code 0 <> if conn idx code READ-FAULT exit then
+   idx READ-RESULT @ {: result:parse-result :}
    result COMPLETE? if conn idx ANSWER exit then
    result REFUSAL-STATUS {: status:n :}
    status 0= if construct served silent exit then
    idx status REFUSE
    conn idx RESPONSE-OF SEND 0= if construct served silent exit then
    construct served answered ;
+
+
+: SERVE-ONE ( TCP4:connection n -- served ) {: conn:TCP4:connection idx:n :}
+   conn idx SERVE-ONE-RUN {: result:served :}
+   idx SLOT-FINISH
+   result ;
 
 
 \ One connection until a request says otherwise: a peer that has been answered
@@ -440,6 +471,7 @@ variable EXIT-HOOK-N
 \ connection, whatever another hook threw. The first throw then goes on to the
 \ task.
 : RUN-EXIT-HOOKS ( -- )
+   SELF-SLOT SLOT-FINISH
    SELF-SLOT CLOSE-FILE
    RUN-EXIT-HOOK-ROWS {: code:n :}
    DROP-SERVING
@@ -712,6 +744,13 @@ variable EXIT-HOOK-N
 
 
 public
+
+\ Configure the incoming body bound before START. Zero accepts only empty
+\ bodies; the setting persists across STOP and a failed START.
+: BODY-CAP! ( n -- ) {: limit:n :}
+   RUNNING @ 0 <> if E-STATE throw then
+   limit 0 < if E-CAPACITY throw then
+   limit BODY-LIMIT ! ;
 
 \ Opens what a request worker needs of its own, inside that worker, once per
 \ worker and before its first request. START waits for every start hook; a

@@ -4,9 +4,10 @@
 \ so the request survives until the worker starts the next one.
 \
 \ The limits are answered, not thrown: a header block past HEAD-CAP is 431, a
-\ body past BODY-CAP is 413, a transfer coding other than chunked is 501, and
-\ anything the grammar refuses is 400. One absolute deadline covers the whole
-\ request, and every wait for the peer is a readiness poll on the AIO loop
+\ body past the configured BODY-CAP is 413, and a transfer coding other than
+\ chunked is 501. Anything the grammar refuses is 400. One absolute deadline
+\ covers the whole request, and every wait for the peer is a readiness poll on
+\ the AIO loop
 \ (TCP4's READABLE-WITHIN? is an AIO:POLL and an AIO:AWAIT, docs/aio.md),
 \ which parks the task and not its thread until the peer speaks or that
 \ deadline passes.
@@ -81,7 +82,6 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 59 constant SEMICOLON
 1000000 constant NS-PER-MS
 16 constant HEX-BASE
-$7FFFFFF constant MAX-CHUNK        \ a chunk size larger than any body we accept
 
 
 : OK ( -- parse-result )          construct parse-result complete ;
@@ -611,23 +611,12 @@ $5D constant CLOSE-BRACKET
 : TAKE-WINDOW ( n n -- ) {: idx:n end:n :}
    end idx BODY-U@ - idx AVAIL min {: take:n :}
    take 0 <= if exit then
-   idx IN-BUF idx IN-AT@ take SPAN:SUB SPAN:$ idx BODY-BUF idx BODY-U@ SPAN:SKIP SPAN:COPY
-   idx IN-AT@ take + idx IN-AT!
-   idx BODY-U@ take + idx BODY-U! ;
+   idx IN-BUF idx IN-AT@ take SPAN:SUB SPAN:$ idx BODY-APPEND
+   idx IN-AT@ take + idx IN-AT! ;
 
 
-: READ-BODY-CHUNK ( TCP4:connection n n -- fill-outcome )
-   {: conn:TCP4:connection idx:n end:n :}
-   conn idx BODY-BUF idx BODY-U@ end idx BODY-U@ - SPAN:SUB SPAN:$ TCP4:TRANSFER-BYTES TCP4:READ
-   MATCH TCP4:read-result
-      data OF BLEN>N idx BODY-U@ + idx BODY-U! construct fill-outcome filled ENDOF
-      closed OF drop construct fill-outcome ended ENDOF
-      failed OF drop construct fill-outcome broken ENDOF
-   ;MATCH ;
-
-
-\ A Content-Length body: the window first, then straight into the body buffer,
-\ never one byte past the length the head declared.
+\ Both body framings append through the input window. Its surplus stays there
+\ for a pipelined request, while BUF grows only with bytes actually received.
 : PUMP-BODY ( TCP4:connection n n n -- parse-result )
    {: conn:TCP4:connection idx:n end:n deadline:n :}
    begin
@@ -635,8 +624,8 @@ $5D constant CLOSE-BRACKET
       idx AVAIL 0 > if
          idx end TAKE-WINDOW
       else
-         conn deadline WAIT-READABLE 0= if TOO-LATE exit then
-         conn idx end READ-BODY-CHUNK {: outcome:fill-outcome :}
+         idx COMPACT
+         conn idx deadline FILL {: outcome:fill-outcome :}
          outcome FILLED? 0= if outcome OUTCOME>RESULT exit then
       then
    again ;
@@ -671,8 +660,9 @@ $5D constant CLOSE-BRACKET
    idx at AT-BYTE {: c:n :}
    c SEMICOLON = if value exit then
    c HEX-BYTE? 0= if -1 exit then
-   value HEX-BASE * c HEX-VALUE + {: next:n :}
-   next MAX-CHUNK > if -1 exit then
+   c HEX-VALUE {: digit:n :}
+   value MEM-MAX-N digit - HEX-BASE / > if -1 exit then
+   value HEX-BASE * digit + {: next:n :}
    idx at 1+ end next RECURSE ;
 
 
@@ -680,21 +670,6 @@ $5D constant CLOSE-BRACKET
 : CHUNK-SIZE ( n n n -- n ) {: idx:n at:n end:n :}
    end at <= if -1 exit then
    idx at end 0 HEX-SCAN ;
-
-
-\ One chunk's data moved through the window into the body buffer.
-: PUMP-CHUNK ( TCP4:connection n n n -- parse-result )
-   {: conn:TCP4:connection idx:n end:n deadline:n :}
-   begin
-      idx BODY-U@ end >= if OK exit then
-      idx AVAIL 0 > if
-         idx end TAKE-WINDOW
-      else
-         idx COMPACT
-         conn idx deadline FILL {: outcome:fill-outcome :}
-         outcome FILLED? 0= if outcome OUTCOME>RESULT exit then
-      then
-   again ;
 
 
 \ The CRLF that closes a chunk's data, and nothing else.
@@ -727,8 +702,8 @@ $5D constant CLOSE-BRACKET
       size 0 < if BAD exit then
       at 2 + idx IN-AT!
       size 0= if conn idx deadline READ-TRAILERS exit then
-      idx BODY-U@ size + BODY-CAP > if TOO-MUCH-BODY exit then
-      conn idx idx BODY-U@ size + deadline PUMP-CHUNK {: moved:parse-result :}
+      size BODY-CAP idx BODY-U@ - > if TOO-MUCH-BODY exit then
+      conn idx idx BODY-U@ size + deadline PUMP-BODY {: moved:parse-result :}
       moved COMPLETE? 0= if moved exit then
       conn idx deadline EXPECT-CRLF {: closed:parse-result :}
       closed COMPLETE? 0= if closed exit then

@@ -27,12 +27,19 @@ require lib/json-write.f
 require lib/json-read.f
 require lib/num-types.f
 require lib/span.f
+require lib/memory.f
 require lib/net/http.f
 
 \ Force the real startup semaphore initializer to refuse after the job queue
 \ has opened. These helpers exist only in this test image.
 package HTTP
 public
+variable TEST-READ-FAULT
+
+: TEST-READ-FAULT-START ( -- )
+   TEST-READ-FAULT @ 0= if exit then
+   SELF-SLOT BODY-OPEN ;
+
 : TEST-PREOPEN ( -- )
    0 START-READY TASK:SEMAPHORE-INIT ;
 
@@ -65,6 +72,9 @@ $3000 constant REQ-CAP
 $2800 constant BIG-HEADER-BYTES   \ past HTTP:HEAD-CAP
 $41 constant FILL-BYTE
 $80 constant ETAG-CAP             \ the longest ETag a case keeps
+$200001 constant LARGE-CAP        \ odd limit: crosses the original 1 MiB bound
+$100000 constant LARGE-CHUNK
+$1388 constant LARGE-IDLE-MS
 $2000 constant SCRIPT-CAP         \ the whole transcript
 13 constant CR
 10 constant LF
@@ -108,6 +118,8 @@ TASK:SEMAPHORE HOOK-READY
 TASK:SEMAPHORE HOOK-GATE
 TASK:MIN-STACK TASK:TASK HOOK-RELEASER
 variable PARKED                   \ set by the handler that never answers
+1 TYPED-BUFFER LARGE-SPAN SPAN:span<u8>
+1 TYPED-BUFFER OLD-REQUEST HTTP:request
 
 
 : ROOT$ ( -- ptr u8 n )
@@ -213,6 +225,19 @@ variable ECHO-LEN
    len ECHO-LEN !
    answer 200 HTTP:STATUS!
    answer [: ECHO-BODY ;] HTTP:JSON! ;
+
+
+\ Keep a borrowed body and the handle through the answer, then ask from the
+\ client after SEND whether that handle was retired.
+: LARGE-ECHO ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   asked 0 OLD-REQUEST !
+   asked HTTP:BODY$ {: bytes:ptr len:n :}
+   len LARGE-CAP <> if E-BOOM throw then
+   bytes c@ 32 <> if E-BOOM throw then
+   bytes len 1- + c@ 32 <> if E-BOOM throw then
+   answer bytes 1 HTTP:BODY!
+   answer 200 HTTP:STATUS! ;
 
 
 \ The request body read back through lib/json-read.f, on the reader the server
@@ -433,6 +458,16 @@ SLOTS TYPED-BUFFER TRACE-U n
 : EXIT-1 ( -- )    MARK-EXIT-1 MARK ;
 : EXIT-2 ( -- )    MARK-EXIT-2 MARK ;
 
+variable PROBE-EXIT
+variable EXIT-HANDLE-CODE
+
+: TRY-OLD-BODY ( -- )
+   0 OLD-REQUEST @ HTTP:BODY$ 2drop ;
+
+: PROBE-EXIT-HANDLE ( -- )
+   PROBE-EXIT @ 0= if exit then
+   [: TRY-OLD-BODY ;] catch EXIT-HANDLE-CODE ! ;
+
 
 \ Fails in every worker's exit, after its mark.
 : EXIT-THROWS ( -- )
@@ -460,6 +495,7 @@ $2710 constant PARK-MS            \ far past every stop bound
 \ is, which is the one thing a cooperative stop cannot wait out. Its kill ends
 \ it at the TASK:PAUSE inside AIO:AWAIT.
 : PARK ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+   asked 0 OLD-REQUEST !
    1 PARKED !
    PARK-MS >MS AIO:TIMEOUT AIO:AWAIT
    MATCH AIO:outcome
@@ -506,6 +542,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    s" GET" s" /api/items/{id}" [: ITEM ;] HTTP:ROUTE
    s" GET" s" /api/version" [: ASKED-VERSION ;] HTTP:ROUTE
    s" POST" s" /api/echo" [: ECHO ;] HTTP:ROUTE
+   s" POST" s" /api/large-echo" [: LARGE-ECHO ;] HTTP:ROUTE
    s" GET" s" /api/boom" [: BOOM ;] HTTP:ROUTE
    s" GET" s" /api/boom-json" [: BOOM-JSON ;] HTTP:ROUTE
    s" POST" s" /api/answer" [: ANSWER-TEXT ;] HTTP:ROUTE
@@ -1223,16 +1260,120 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" chunked" TRANSCRIBE ;
 
 
-: KEEP-ALIVE-CASE ( -- )
-   REQ-RESET
-   s\" GET /api/ping HTTP/1.1\r\nHost: x\r\n\r\n" REQ+
-   s\" GET /api/items/7 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" REQ+
-   REQ$ RAW-EXCHANGE
+\ An odd configured limit catches exact and one-past comparisons for both
+\ framings. The body is read through a real TCP connection and returned through
+\ a borrowed BODY$ byte, so its mapping must live through SEND.
+: LARGE-CONTENT-CASE ( -- )
+   0 LARGE-SPAN @ SPAN:$ s" /api/large-echo" POST-JSON 200 T=
+   RES$ s"  " T$=
+   [: 0 OLD-REQUEST @ HTTP:BODY$ 2drop ;] HTTP:E-HANDLE TTHROWSQ
+   s\" POST /api/large-echo HTTP/1.1\r\nHost: x\r\nContent-Length: 2097154\r\n\r\n" RAW-ONE
+   s" HTTP/1.1 413" BEGINS? TTRUE
+   s" body_too_large: " HAS? TTRUE
+   s" GET" s" /api/ping" FETCH 200 T= ;
+
+
+: LARGE-CHUNK-OPEN ( -- TCP4:connection )
+   RAW-OPEN {: conn:TCP4:connection :}
+   conn s\" POST /api/large-echo HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" RAW-SEND
+   conn ;
+
+
+: LARGE-CHUNK-FIRST ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   conn s\" 100000\r\n" RAW-SEND
+   conn 0 LARGE-SPAN @ LARGE-CHUNK SPAN:TAKE SPAN:$ RAW-SEND
+   conn s\" \r\n" RAW-SEND ;
+
+
+: LARGE-CHUNK-CASE ( -- )
+   LARGE-CHUNK-OPEN {: conn:TCP4:connection :}
+   conn LARGE-CHUNK-FIRST
+   conn s\" 100001\r\n" RAW-SEND
+   conn 0 LARGE-SPAN @ LARGE-CHUNK 1+ SPAN:TAKE SPAN:$ RAW-SEND
+   conn s\" \r\n0\r\n\r\n" RAW-SEND
+   conn RAW-DRAIN
+   conn TCP4:CLOSE DROP-TCP-STATUS
+   s" HTTP/1.1 200 OK" BEGINS? TTRUE
+   s"  " HAS? TTRUE
+   [: 0 OLD-REQUEST @ HTTP:BODY$ 2drop ;] HTTP:E-HANDLE TTHROWSQ
+   LARGE-CHUNK-OPEN {: over:TCP4:connection :}
+   over LARGE-CHUNK-FIRST
+   over s\" 100002\r\n" RAW-SEND
+   over RAW-DRAIN
+   over TCP4:CLOSE DROP-TCP-STATUS
+   s" HTTP/1.1 413" BEGINS? TTRUE
+   s" body_too_large: " HAS? TTRUE
+   LARGE-CHUNK-OPEN {: whole:TCP4:connection :}
+   whole s\" 200001\r\n" RAW-SEND
+   whole 0 LARGE-SPAN @ SPAN:$ RAW-SEND
+   whole s\" \r\n0\r\n\r\n" RAW-SEND
+   whole RAW-DRAIN
+   whole TCP4:CLOSE DROP-TCP-STATUS
+   s" HTTP/1.1 200 OK" BEGINS? TTRUE
+   LARGE-CHUNK-OPEN {: too-big:TCP4:connection :}
+   too-big s\" 8000000\r\n" RAW-SEND
+   too-big RAW-DRAIN
+   too-big TCP4:CLOSE DROP-TCP-STATUS
+   s" HTTP/1.1 413" BEGINS? TTRUE
+   s" GET" s" /api/ping" FETCH 200 T= ;
+
+
+\ The last window fill can contain the first bytes of the next request. Its
+\ Content-Length body ends exactly where the declared length says it does.
+: LARGE-PIPELINE-CASE ( -- )
+   RAW-OPEN {: conn:TCP4:connection :}
+   conn s\" POST /api/large-echo HTTP/1.1\r\nHost: x\r\nContent-Length: 2097153\r\n\r\n" RAW-SEND
+   conn 0 LARGE-SPAN @ SPAN:$ RAW-SEND
+   conn s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-SEND
+   conn RAW-DRAIN
+   conn TCP4:CLOSE DROP-TCP-STATUS
    RESPONSES 2 T=
-   s" Connection: keep-alive" HAS? TTRUE
    S\" {\qservice\q:\qhttp-test\q}" HAS? TTRUE
-   S\" {\qid\q:\q7\q,\qquery\q:\q\q,\qhost\q:\qx\q}" HAS? TTRUE
-   s" keep-alive" TRANSCRIBE ;
+   [: 0 OLD-REQUEST @ HTTP:BODY$ 2drop ;] HTTP:E-HANDLE TTHROWSQ ;
+
+
+\ A length that cannot fit a signed cell is malformed framing, not wrapped
+\ into an allowed size. A partial body discarded on disconnect must leave its
+\ worker ready for another request.
+: LARGE-RECOVERY-CASE ( -- )
+   s\" POST /api/echo HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\nFFFFFFFFFFFFFFFF\r\n" RAW-ONE
+   s" HTTP/1.1 400" BEGINS? TTRUE
+   LARGE-CHUNK-OPEN {: wrong:TCP4:connection :}
+   wrong LARGE-CHUNK-FIRST
+   wrong s\" X\r\n" RAW-SEND
+   wrong RAW-DRAIN
+   wrong TCP4:CLOSE DROP-TCP-STATUS
+   s" HTTP/1.1 400" BEGINS? TTRUE
+   RAW-OPEN {: conn:TCP4:connection :}
+   conn s\" POST /api/echo HTTP/1.1\r\nHost: x\r\nContent-Length: 2097153\r\n\r\n" RAW-SEND
+   conn 0 LARGE-SPAN @ LARGE-CHUNK SPAN:TAKE SPAN:$ RAW-SEND
+   conn TCP4:CLOSE DROP-TCP-STATUS
+   s" GET" s" /api/ping" FETCH 200 T= ;
+
+
+: LARGE-HANDLER-FAULT-CASE ( -- )
+   33 0 LARGE-SPAN @ LARGE-CAP 1- SPAN:U8!
+   0 LARGE-SPAN @ SPAN:$ s" /api/large-echo" POST-JSON 500 T=
+   32 0 LARGE-SPAN @ LARGE-CAP 1- SPAN:U8!
+   0 LARGE-SPAN @ SPAN:$ s" /api/large-echo" POST-JSON 200 T=
+   RES$ s"  " T$= ;
+
+
+\ Leading JSON whitespace forces the reader to traverse a grown body, then a
+\ small parsed request checks that no old bytes remain in the worker's slot.
+: LARGE-READER-CASE ( -- )
+   32 0 LARGE-SPAN @ SPAN:FILL
+   S\" {\qtext\q:\qok\q}" {: obj:ptr len:n :}
+   obj len 0 LARGE-SPAN @ LARGE-CAP len - len SPAN:SUB SPAN:COPY
+   0 LARGE-SPAN @ SPAN:$ s" /api/answer" POST-JSON 200 T=
+   RES$ S\" {\qtext\q:\qok\q}" T$=
+   S\" {\qtext\q:\qsmall\q}" s" /api/answer" POST-JSON 200 T=
+   RES$ S\" {\qtext\q:\qsmall\q}" T$= ;
+
+
+: LARGE-HALF ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   conn s\" POST /api/echo HTTP/1.1\r\nHost: x\r\nContent-Length: 2097153\r\n\r\n" RAW-SEND
+   conn 0 LARGE-SPAN @ LARGE-CHUNK SPAN:TAKE SPAN:$ RAW-SEND ;
 
 
 \ True when the server ends the stream before the collect deadline: the read
@@ -1245,6 +1386,120 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
       closed OF drop true ENDOF
       failed OF drop false ENDOF
    ;MATCH ;
+
+
+\ Wait until the worker is inside the parked handler before stopping it.
+: PARK-REACHED? ( -- bool )
+   mono-ns COLLECT-MS NS-PER-MS * + {: deadline:n :}
+   begin
+      PARKED @ 0 <> if true exit then
+      mono-ns deadline >= if false exit then
+      TASK:PAUSE
+   again ;
+
+
+\ Timeout and STOP can interrupt an allocated body. The same worker slot then
+\ serves a fresh request after timeout, and a fresh pool serves after STOP.
+: LARGE-INTERRUPTED-CASES ( -- )
+   TRACE-RESET
+   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   RAW-OPEN {: late:TCP4:connection :}
+   late LARGE-HALF
+   late CLOSED-WITHIN? TTRUE
+   late TCP4:CLOSE DROP-TCP-STATUS
+   s" GET" s" /api/ping" FETCH 200 T=
+   RAW-OPEN {: held:TCP4:connection :}
+   held LARGE-HALF
+   20 >MS TASK:SLEEP
+   HTTP:STOP
+   HTTP:RUNNING? TFALSE
+   held CLOSED-WITHIN? TTRUE
+   held TCP4:CLOSE DROP-TCP-STATUS
+   TRACE-RESET
+   HTTP:BODY-CAP LARGE-CAP T=
+   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   s" GET" s" /api/ping" FETCH 200 T=
+   HTTP:STOP
+   HTTP:KILLED-TASKS 0 T= ;
+
+
+\ A killed handler never reaches SERVE-ONE's normal retirement. The exit hook
+\ must see its saved handle retired before the body mapping is released.
+: LARGE-EXIT-HANDLE-CASE ( -- )
+   TRACE-RESET
+   0 PARKED !
+   0 EXIT-HANDLE-CODE !
+   1 PROBE-EXIT !
+   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   RAW-OPEN {: held:TCP4:connection :}
+   held s\" GET /api/park HTTP/1.1\r\nHost: x\r\n\r\n" RAW-SEND
+   PARK-REACHED? TTRUE
+   HTTP:STOP
+   0 PROBE-EXIT !
+   EXIT-HANDLE-CODE @ HTTP:E-HANDLE T=
+   held TCP4:CLOSE DROP-TCP-STATUS ;
+
+
+: LARGE-BODY-CASES ( -- )
+   TRACE-RESET
+   [: PROBE-EXIT-HANDLE ;] HTTP:ON-WORKER-EXIT
+   HTTP:BODY-CAP $100000 T=
+   [: -1 HTTP:BODY-CAP! ;] HTTP:E-CAPACITY TTHROWSQ
+   LARGE-CAP HTTP:BODY-CAP!
+   HTTP:BODY-CAP LARGE-CAP T=
+   LARGE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN 0 LARGE-SPAN !
+   32 0 LARGE-SPAN @ SPAN:FILL
+   LOOPBACK 0 ONE-WORKER LARGE-IDLE-MS HTTP:START
+   [: LARGE-CAP HTTP:BODY-CAP! ;] HTTP:E-STATE TTHROWSQ
+   LARGE-CONTENT-CASE
+   LARGE-CHUNK-CASE
+   LARGE-PIPELINE-CASE
+   TRACE-RESET
+   LARGE-RECOVERY-CASE
+   LARGE-HANDLER-FAULT-CASE
+   LARGE-READER-CASE
+   HTTP:STOP
+   HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
+   HTTP:KILLED-TASKS 0 T=
+   LARGE-INTERRUPTED-CASES
+   LARGE-EXIT-HANDLE-CASE
+   0 LARGE-SPAN @ MEM:FREE-SPAN
+   HTTP:BODY-CAP LARGE-CAP T=
+   0 HTTP:BODY-CAP!
+   TRACE-RESET
+   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   s"  " s" /api/echo" POST-JSON 413 T=
+   s" " s" /api/echo" POST-JSON 200 T=
+   RES$ S\" {\qbytes\q:0}" T$=
+   HTTP:STOP
+   $100000 HTTP:BODY-CAP!
+   TRACE-RESET ;
+
+
+\ A preopened body header makes SLOT-RESET's BODY-OPEN fail while reading a
+\ real request. The error reply must describe the connection the worker closes.
+: READ-FAULT-CASE ( -- )
+   1 HTTP:TEST-READ-FAULT !
+   [: HTTP:TEST-READ-FAULT-START ;] HTTP:ON-WORKER-START
+   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   s\" GET /api/ping HTTP/1.1\r\nHost: x\r\n\r\n" RAW-ONE
+   s" HTTP/1.1 500" BEGINS? TTRUE
+   s" Connection: close" HAS? TTRUE
+   s" GET" s" /api/ping" FETCH 200 T=
+   HTTP:STOP
+   0 HTTP:TEST-READ-FAULT ! ;
+
+
+: KEEP-ALIVE-CASE ( -- )
+   REQ-RESET
+   s\" GET /api/ping HTTP/1.1\r\nHost: x\r\n\r\n" REQ+
+   s\" GET /api/items/7 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" REQ+
+   REQ$ RAW-EXCHANGE
+   RESPONSES 2 T=
+   s" Connection: keep-alive" HAS? TTRUE
+   S\" {\qservice\q:\qhttp-test\q}" HAS? TTRUE
+   S\" {\qid\q:\q7\q,\qquery\q:\q\q,\qhost\q:\qx\q}" HAS? TTRUE
+   s" keep-alive" TRANSCRIBE ;
 
 
 \ A connection the peer keeps open and says nothing more on is closed by the
@@ -1360,15 +1615,6 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
 
 \ True once the parked handler has been reached, which is when its worker can no
 \ longer end itself.
-: PARK-REACHED? ( -- bool )
-   mono-ns COLLECT-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      PARKED @ 0 <> if true exit then
-      mono-ns deadline >= if false exit then
-      TASK:PAUSE
-   again ;
-
-
 \ A worker parked inside a handler is the one task a cooperative stop cannot
 \ wait out: the stop asks, waits its own bound - under a second for this
 \ IDLE-MS, well under the ceiling here - and then kills it, which is what
@@ -1767,6 +2013,8 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    HTTP:KILLED-TASKS 0 T=
    HTTP:RUNNING? TFALSE
    HOOK-TRACE-CASES
+   LARGE-BODY-CASES
+   READ-FAULT-CASE
    POLICY-CASES
    TRANSCRIPT-CASE
    PARKED-WORKER-CASE

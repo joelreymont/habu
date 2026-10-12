@@ -1,7 +1,8 @@
 \ http-arena.f - per-worker storage for the HTTP/1.1 server (lib/net/http.f):
-\ one OS-backed span per request worker, carved into the input, body, header,
-\ JSON and output buffers one request needs, plus the nominal request and
-\ response handles that name a worker's slot. Nothing here touches a socket.
+\ one OS-backed span per request worker, carved into the input, body header,
+\ JSON and output buffers one request needs; the body header owns a separate
+\ mapping while a request is live. Nominal request and response handles name
+\ the worker's slot. Nothing here touches a socket.
 \
 \ STORAGE CLASS. PROCESS-WIDE tables indexed by the worker's own slot: every
 \ per-request cell below is a row of a typed buffer, never a bare global,
@@ -18,6 +19,7 @@ require lib/span.f
 require lib/type/deftype.f
 require lib/task.f
 require lib/json-read.f
+require lib/byte-buffer.f
 
 package HTTP
 
@@ -44,7 +46,8 @@ DEFTYPE RESPONSE
 $1C00 constant HEAD-CAP          \ the header block limit answered with 431
 $400 constant STREAM-CAP         \ chunk framing and the head of a pipelined request
 HEAD-CAP STREAM-CAP + constant IN-CAP
-$100000 constant BODY-CAP        \ the body limit answered with 413
+$100000 constant DEFAULT-BODY-CAP
+$2000 constant BODY-START-CAP    \ small mapping, grown only for the current request
 $800 constant HDR-CAP            \ response header lines
 $100000 constant JSON-CAP        \ one generated body: what JSON! writes, or the default error text
 $1000 constant OUT-CAP           \ status line plus headers of one response
@@ -56,7 +59,7 @@ JR:STORAGE-BYTES constant READER-CAP   \ one JSON reader over one request body
 private
 
 IN-CAP constant BODY-OFF
-BODY-OFF BODY-CAP + constant HDR-OFF
+BODY-OFF BUF:HDR-BYTES + constant HDR-OFF
 HDR-OFF HDR-CAP + constant JSON-OFF
 JSON-OFF JSON-CAP + constant OUT-OFF
 OUT-OFF OUT-CAP + constant SEG-OFF
@@ -73,11 +76,12 @@ $FF constant SLOT-MASK
 MAX-WORKERS TYPED-BUFFER SLOT-REGION SPAN:span<u8>
 MAX-WORKERS TYPED-BUFFER SLOT-GEN n
 MAX-WORKERS TYPED-BUFFER SLOT-LIVE n
+variable BODY-LIMIT
+DEFAULT-BODY-CAP BODY-LIMIT !
 
 MAX-WORKERS TYPED-BUFFER IN-U n           \ bytes read into the input buffer
 MAX-WORKERS TYPED-BUFFER IN-AT n          \ bytes of it already consumed
 MAX-WORKERS TYPED-BUFFER HEAD-U n         \ bytes of the current request head
-MAX-WORKERS TYPED-BUFFER BODY-U n
 MAX-WORKERS TYPED-BUFFER HDR-U n
 MAX-WORKERS TYPED-BUFFER OUT-U n
 
@@ -201,10 +205,19 @@ private
    then ;
 
 
+: BODY-HDR ( n -- ptr n )
+   SLOT-SPAN BODY-OFF BUF:HDR-BYTES SPAN:SUB SPAN:$ drop CELL-VIEW ;
+
+
+: BODY-CLOSE ( n -- )
+   BODY-HDR BUF:DISPOSE ;
+
+
 : ARENA-CLOSE ( -- )
    MAX-WORKERS 0 ?do
       i SLOT-LIVE @ 0 <> if
          i CLOSE-FILE
+         i BODY-CLOSE
          i SLOT-REGION @ MEM:FREE-SPAN
          0 i SLOT-LIVE !
       then
@@ -220,8 +233,12 @@ private
    SLOT-SPAN IN-CAP SPAN:TAKE ;
 
 
-: BODY-BUF ( n -- SPAN:span<u8> )
-   SLOT-SPAN BODY-OFF BODY-CAP SPAN:SUB ;
+: BODY-OPEN ( n -- )
+   BODY-HDR BODY-START-CAP BUF:N>BLEN BUF:INIT ;
+
+
+: BODY-APPEND ( ptr u8 n n -- ) {: bytes:ptr len:n idx:n :}
+   bytes len BUF:N>BLEN idx BODY-HDR BUF:APPEND-SPAN ;
 
 
 : HDR-BUF ( n -- SPAN:span<u8> )
@@ -269,8 +286,7 @@ private
 : IN-AT! ( n n -- )       BOUNDED IN-AT ! ;
 : HEAD-U@ ( n -- n )      BOUNDED HEAD-U @ ;
 : HEAD-U! ( n n -- )      BOUNDED HEAD-U ! ;
-: BODY-U@ ( n -- n )      BOUNDED BODY-U @ ;
-: BODY-U! ( n n -- )      BOUNDED BODY-U ! ;
+: BODY-U@ ( n -- n )      BODY-HDR BUF:LEN@ BUF:BLEN>N ;
 : HDR-U@ ( n -- n )       BOUNDED HDR-U @ ;
 : HDR-U! ( n n -- )       BOUNDED HDR-U ! ;
 : OUT-U@ ( n -- n )       BOUNDED OUT-U @ ;
@@ -341,7 +357,7 @@ private
 
 
 : SLOT-BODY$ ( n -- ptr u8 n ) {: idx:n :}
-   idx BODY-BUF idx BODY-U@ SPAN:TAKE SPAN:$ ;
+   idx BODY-HDR BUF:SPAN$ BUF:BLEN>N ;
 
 
 : SLOT-ID$ ( n -- ptr u8 n ) {: idx:n :}
@@ -419,7 +435,6 @@ private
    0 idx PATH-AT ! 0 idx PATH-N !
    0 idx QUERY-AT ! 0 idx QUERY-N !
    0 idx VERSION-AT ! 0 idx VERSION-N !
-   0 idx BODY-U !
    0 idx HDR-U !
    0 idx OUT-U !
    0 idx SEG-U !
@@ -430,10 +445,21 @@ private
    200 idx STATUS !
    0 idx BODY-LEN !
    1 idx KEEP-ALIVE !
-   idx IN-BUF 0 SPAN:TAKE SPAN:$ idx RESPONSE-BODY! ;
+   idx IN-BUF 0 SPAN:TAKE SPAN:$ idx RESPONSE-BODY!
+   idx BODY-OPEN ;
+
+
+\ A request handle is valid through SEND or takeover release, then retired
+\ before its body mapping goes away. Disposal also accepts a partial read.
+: SLOT-FINISH ( n -- ) {: idx:n :}
+   idx BOUNDED SLOT-GEN @ 1+ idx SLOT-GEN !
+   idx BODY-CLOSE ;
 
 
 public
+
+\ The configured incoming body maximum, in bytes; zero accepts empty bodies.
+: BODY-CAP ( -- n ) BODY-LIMIT @ ;
 
 \ The slot of the worker that is running, bounded by MAX-WORKERS: the identity
 \ a handler package indexes its own per-request storage by, because ordinary
