@@ -57,7 +57,9 @@ create HBT-EXP-HEX2 64 allot
    HBT-AOT-HEX HBT-KEY-U HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$
    HBT-SRC-KEY OBJIDX:SOURCE-KEY-HEX ;
 
-: HBT-BUILD-EXIT-OBJ ( ptr u8 n -- ) {: target:ptr targetu:n :}
+: HBT-BUILD-EXIT-OBJ ( ptr u8 n -- )
+   {: target:ptr targetu:n :}
+   HBB-MAKER-KEY!
    HBT-AOT-HEX!
    OBJ:RESET
    HBT-AOT-HEX HBT-KEY-U OBJ:SOURCE!
@@ -176,6 +178,7 @@ create HBT-EXP-HEX2 64 allot
 
 : HBT-ABI-MAKER-QUALIFIED ( -- )
    HBB-RESET-OPTIONS
+   HBB-MAKER-KEY!
    HBB-CHECKER-ABI$ s" checker-effect-v1+" STARTS-WITH? TTRUE
    HBB-COMPILER-ABI$ s" hb-arm64-v1+" STARTS-WITH? TTRUE
    HBB-CHECKER-ABI$ nip 82 T=
@@ -204,6 +207,7 @@ create HBT-EXP-HEX2 64 allot
 
 : HBT-PRODUCER-KEY-MISS ( -- )
    HBB-RESET-OPTIONS
+   HBB-MAKER-KEY!
    HBT-TMP OBJRES:ROOT!
    HBT-AOT-HEX!
    HBT-ALT-CHECKER$ {: alt:ptr altu:n :}

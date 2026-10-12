@@ -480,108 +480,31 @@ HBB-INSTALL-CHILD-LINT
 : HBB-KEY-FILE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
    a u CONTENT-KEY:FILE+ ;
 
-: HBB-KEY-LOAD-FILES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   s" tools/hb-build.f" HBB-KEY-FILE+
-   s" lib/errors.f" HBB-KEY-FILE+
-   s" lib/string.f" HBB-KEY-FILE+
-   s" lib/memory.f" HBB-KEY-FILE+
-   s" lib/fs.f" HBB-KEY-FILE+
-   s" lib/fs-root.f" HBB-KEY-FILE+
-   s" lib/fs-mutate.f" HBB-KEY-FILE+
-   s" lib/process.f" HBB-KEY-FILE+
-   s" lib/process-argv.f" HBB-KEY-FILE+
-   s" lib/process-env.f" HBB-KEY-FILE+
-   s" lib/source.f" HBB-KEY-FILE+
-   s" lib/build.f" HBB-KEY-FILE+
-   s" lib/codesign.f" HBB-KEY-FILE+
-   s" lib/sort.f" HBB-KEY-FILE+
-   s" lib/content-key.f" HBB-KEY-FILE+
-   s" lib/build-cache.f" HBB-KEY-FILE+
-   s" lib/json-write.f" HBB-KEY-FILE+
-   s" lib/object.f" HBB-KEY-FILE+
-   s" lib/object-cache.f" HBB-KEY-FILE+
-   s" lib/object-index.f" HBB-KEY-FILE+
-   s" lib/object-resolve.f" HBB-KEY-FILE+
-   s" lib/object-link.f" HBB-KEY-FILE+
-   s" tools/build-fixpoint.f" HBB-KEY-FILE+
-   s" tools/build-target.f" HBB-KEY-FILE+
-   s" tools/cli-run.f" HBB-KEY-FILE+
-   s" tools/object-image.f" HBB-KEY-FILE+
-   s" tools/source-discovery.f" HBB-KEY-FILE+
-   s" tools/event-closure-lib.f" HBB-KEY-FILE+
-   s" tools/hb-build-report.f" HBB-KEY-FILE+
-   s" tools/hb-build-lib.f" HBB-KEY-FILE+ ;
+\ Discover the producer's loaded source closure instead of maintaining a
+\ second dependency list. The target selector is part of the key; discovery
+\ includes every statically reachable target branch.
+: HBB-KEY-CLOSURE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
+   a u EC:BUILD
+   0 HBB-KEY-I !
+   begin HBB-KEY-I @ EC:COUNT < while
+      HBB-KEY-I @ EC:PATH$ CONTENT-KEY:FILE+
+      HBB-KEY-I @ 1+ HBB-KEY-I !
+   repeat ;
 
-: HBB-KEY-LINUX-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   s" target:linux-aarch64" CONTENT-KEY:TEXT+
-   s" src/os/linux/target.f" HBB-KEY-FILE+
-   s" src/os/linux/layout-constants.f" HBB-KEY-FILE+
-   s" src/os/linux/layout.f" HBB-KEY-FILE+
-   s" src/os/linux/sys.f" HBB-KEY-FILE+
-   s" src/os/linux/elf.f" HBB-KEY-FILE+
-   s" src/os/linux/sign.f" HBB-KEY-FILE+ ;
-
-: HBB-KEY-MACOS-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   s" target:macos-aarch64" CONTENT-KEY:TEXT+
-   s" src/os/macos/target.f" HBB-KEY-FILE+
-   s" src/os/macos/layout.f" HBB-KEY-FILE+
-   s" src/os/macos/sys.f" HBB-KEY-FILE+
-   s" src/os/macos/macho.f" HBB-KEY-FILE+
-   s" src/os/macos/sign2.f" HBB-KEY-FILE+ ;
-
-\ The x86-64 seam's process primitives are emitters, so a change to either one
-\ changes the engine this key names.
-: HBB-KEY-LINUX-X86-64-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   s" target:linux-x86-64" CONTENT-KEY:TEXT+
-   s" src/os/linux-x86-64/target.f" HBB-KEY-FILE+
-   s" src/os/linux/layout-constants.f" HBB-KEY-FILE+
-   s" src/os/linux/layout.f" HBB-KEY-FILE+
-   s" src/os/linux-x86-64/target-layout.f" HBB-KEY-FILE+
-   s" src/os/linux-x86-64/sys.f" HBB-KEY-FILE+
-   s" src/os/linux-x86-64/elf.f" HBB-KEY-FILE+
-   s" src/os/linux-x86-64/sign.f" HBB-KEY-FILE+
-   s" src/os/linux-x86-64/proc-watch.f" HBB-KEY-FILE+
-   s" src/os/linux-x86-64/proc-control.f" HBB-KEY-FILE+ ;
-
-: HBB-KEY-TARGET-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   HB-TARGET-LINUX? if HBB-KEY-LINUX-SOURCES exit then
-   HB-TARGET-MACOS? if HBB-KEY-MACOS-SOURCES exit then
-   HB-TARGET-LINUX-X86-64? if HBB-KEY-LINUX-X86-64-SOURCES exit then
+: HBB-KEY-TARGET+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
+   HB-TARGET-LINUX? if s" target:linux-aarch64" CONTENT-KEY:TEXT+ exit then
+   HB-TARGET-MACOS? if s" target:macos-aarch64" CONTENT-KEY:TEXT+ exit then
+   HB-TARGET-LINUX-X86-64? if s" target:linux-x86-64" CONTENT-KEY:TEXT+ exit then
    s" hb-build: unknown target" HBB-BUILD-RC die ;
-
-: HBB-KEY-DRIVER-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   \ v2: the maker opens the capture window before any library loads, so the same
-   \ application source yields a different image than a v1 artifact holds.
-   s" native-stripped:v2" CONTENT-KEY:TEXT+
-   s" lib/executable-build.f" HBB-KEY-FILE+
-   s" tools/aot-build-open.f" HBB-KEY-FILE+
-   s" tools/aot-build.f" HBB-KEY-FILE+
-   s" tools/aot-build-core.f" HBB-KEY-FILE+
-   s" src/habu/app-image.f" HBB-KEY-FILE+
-   s" src/habu/app-image-core.f" HBB-KEY-FILE+
-   s" src/habu/snap-lib.f" HBB-KEY-FILE+
-   s" src/habu/address-cells.f" HBB-KEY-FILE+
-   s" src/arch/arm64/asm.f" HBB-KEY-FILE+
-   s" src/arch/arm64/icode.f" HBB-KEY-FILE+
-   s" src/arch/arm64/mnem.f" HBB-KEY-FILE+
-   s" src/os/image-bytes.f" HBB-KEY-FILE+
-   s" src/os/script-argv.f" HBB-KEY-FILE+
-   s" src/habu/fdio.f" HBB-KEY-FILE+
-   s" src/habu/sign-id.f" HBB-KEY-FILE+
-   s" src/habu/driver-io.f" HBB-KEY-FILE+
-   s" src/habu/aot-decl.f" HBB-KEY-FILE+
-   s" src/habu/cell-grid.f" HBB-KEY-FILE+
-   s" src/habu/aot-window-latch.f" HBB-KEY-FILE+
-   s" src/habu/aot-closure.f" HBB-KEY-FILE+
-   s" src/habu/aot-lib.f" HBB-KEY-FILE+ ;
 
 : HBB-MAKER-KEY! ( -- )
    CONTENT-KEY:OPEN
-   s" hb-build-native-producer-v1" CONTENT-KEY:TEXT+
+   s" hb-build-native-producer-v2" CONTENT-KEY:TEXT+
    BF-ENGINE$ HBB-KEY-FILE+
-   HBB-KEY-LOAD-FILES
-   HBB-KEY-TARGET-SOURCES
-   HBB-KEY-DRIVER-SOURCES
+   HBB-KEY-TARGET+
+   s" tools/hb-build.f" HBB-KEY-CLOSURE+
+   s" tools/aot-build-open.f" HBB-KEY-CLOSURE+
+   s" tools/aot-build.f" HBB-KEY-CLOSURE+
    HBB-MAKER-KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
 : HBB-TARGET-UNKNOWN ( -- )
@@ -707,14 +630,6 @@ variable HBB-FILLING
 \ actually loads, so the cache keys fold the whole ordered closure content, not
 \ only the top-level source. Discovery rejects fail-closed, so a closure that
 \ cannot be reproduced cannot be keyed.
-: HBB-CLOSURE-CK+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
-   a u EC:BUILD
-   0 HBB-KEY-I !
-   begin HBB-KEY-I @ EC:COUNT < while
-      HBB-KEY-I @ EC:PATH$ CONTENT-KEY:FILE+
-      HBB-KEY-I @ 1+ HBB-KEY-I !
-   repeat ;
-
 \ Fold the selected-entry / seed / test-mode axis into a content key. A no-op for
 \ a normal MAIN build (so non-preseed keys and object bytes stay byte-identical),
 \ but for a preseeded run it diverges every cache layer in lockstep: the artifact
@@ -729,21 +644,23 @@ variable HBB-FILLING
 
 : HBB-SRC-CLOSURE+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" user-source-closure-v1" CONTENT-KEY:TEXT+
-   HBB-SRC$ HBB-CLOSURE-CK+ ;
+   HBB-SRC$ HBB-KEY-CLOSURE+ ;
 
 : HBB-CLOSURE-HEX! ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
    CONTENT-KEY:OPEN
    s" user-source-closure-v1" CONTENT-KEY:TEXT+
-   a u HBB-CLOSURE-CK+
+   a u HBB-KEY-CLOSURE+
    HBB-PRESEED-CK+
    dst CONTENT-KEY:FINAL-HEX ;
 
 : HBB-SRC-CLOSURE-HEX! ( -- )
    HBB-SRC$ HBB-SRC-CLOSURE-HEX HBB-CLOSURE-HEX! ;
 
-: HBB-ABI! ( ptr u8 n ptr u8 ptr n -- ) {: sem:ptr semu:n dst:ptr up:ptr :}
+\ HBB-ARTIFACT-KEY! selects this build's producer before the maker runs.
+\ ABI headers must keep that key when producer files change during the maker.
+: HBB-ABI! ( ptr u8 n ptr u8 ptr n -- )
+   {: sem:ptr semu:n dst:ptr up:ptr :}
    semu HBB-HEX-U + 1 + HBB-ABI-CAP > if E-STR-CAPACITY throw then
-   HBB-MAKER-KEY!
    sem dst semu BYTE-COPY
    HBB-PLUS dst semu + c!
    HBB-MAKER-KEY-HEX dst semu 1 + + HBB-HEX-U BYTE-COPY

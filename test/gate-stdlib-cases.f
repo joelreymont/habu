@@ -146,6 +146,7 @@ SUITE hb-build-aot
 
 SUITE hb-build-aot-cache
    tools/hb-build-aot-cache-test.f
+   tools/hb-build-producer-cache-test.f
    lib/codesign-test.f
    tools/hb-build-direct-lints-test.f
 ;SUITE
