@@ -89,6 +89,13 @@ running engine and captures its memory. `tools/build-fixpoint.f` also compiles
 glued source text to a byte fixpoint, and test files build engines of their
 own.
 
+**Incremental-build implementation guidance.** Read files from disk and use
+packages as compilation units, following the C compiler / make model. Finish
+the current build if a file changes during it: a file already compiled is
+picked up on the next build, and a file not yet compiled is read in due course.
+Do not require an immutable source snapshot or reject the running build solely
+because an editor changed a file.
+
 **The linker places everything at fixed addresses.** It takes the product's
 dictionary space with its reference cells, one unplaced emission per
 definition and the product platform's primitive bodies. It keeps what the
