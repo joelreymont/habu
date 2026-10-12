@@ -41,13 +41,17 @@ Run the periodic no-install recovery check:
 HABU_BOOTSTRAP_CHECK_ONLY=1 HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth tools/bootstrap.sh
 ```
 
-Refresh the self-hosted engine:
+Build a private native product from the current tree with a trusted native host:
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
-  lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f \
-  tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
+HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST HB_TMP=$TMP \
+  "$HOST" --load tools/native-build.f -- "$OUT"
 ```
+
+Build again with `$OUT` as `HOST` and compare successive products. Gate the
+converged product with its matching source tree before replacing `bin/hb`;
+see `docs/gate.md`. `tools/build-fixpoint-refresh.f -- install` produces the
+source-only recovery engine, not the gated native product.
 
 If the package manager lacks Gforth 0.7.9+, build a current snapshot and install
 or wrap it under `~/.local/bin/gforth`; keep the exact snapshot command in

@@ -846,6 +846,20 @@ private product image with `tools/native-build.f -- <out>` and qualify that
 image against its matching source tree as described in [gate.md](gate.md).
 Promote the verified product to `bin/hb` only after the gate passes.
 
+If the checkout's `bin/hb` is missing or too old to load current source, use a
+trusted installed native engine as `HOST` and build from the checkout root:
+
+```sh
+HABU_UNDER_TEST="$HOST" HABU_FIXPOINT_ENGINE="$HOST" HB_TMP="$TMP" \
+  "$HOST" --load tools/native-build.f -- "$OUT"
+```
+
+Build a second product with `$OUT` as `HOST`; if those bytes differ, build
+another generation until successive products match. Keep each output private,
+with its paired `.names` file, and run the [native gate](gate.md) on the
+converged product before promotion. A stale host can fail to compile an
+application against newer source while still compiling the current engine.
+
 Build from the tree. A build's boot files are recorded and opened under the
 working directory; the target's prefix sources may be read from the host
 executable's tree. A build from a directory without the tree dies at the

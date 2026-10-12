@@ -7,10 +7,11 @@ description: Use when running Habu focused tests or the full native gate.
 
 Use native `bin/hb` for all gate work.
 
-Build and install the exact tree, then run the full native gate:
+Build a private product from the exact tree with `tools/native-build.f`, then
+copy the candidate and its `.names` file into that private tree's `bin/` as
+`hb` and `hb.names`. Run the full native gate there:
 
 ```sh
-bin/hb --load tools/build-fixpoint-refresh.f -- install --force
 bin/hb --load test/run.f
 ```
 
