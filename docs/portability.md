@@ -6,7 +6,7 @@ host, compiler product and output target roles, reusable ISA backends, ABI and
 image policies, and qualification on the machine that runs a produced binary.
 The concrete incremental-build direction is in
 [package-build.md](package-build.md): read editable files from disk and compile
-PACKAGES as units. The Wasm design is in [wasm-backend.md](wasm-backend.md).
+files as units; packages remain namespaces. The Wasm design is in [wasm-backend.md](wasm-backend.md).
 
 Some source observations below reflect the proposal's original baseline.
 Check current code before treating a listed gap or path as current.
@@ -63,7 +63,7 @@ target, Wasm included:
 The precedence for this work is:
 
 1. Existing language and primitive contracts, for language behavior.
-2. [package-build.md](package-build.md), for the disk-file and PACKAGES build
+2. [package-build.md](package-build.md), for the file compilation and package namespace
    model.
 3. This page, for target composition, context ownership, cross-target data
    and backend results.
@@ -466,7 +466,7 @@ A mutable `defer` binding is owner-managed state with a prior-generation precond
 
 Portable compile-time execution admits deterministic declared input reads and owner-managed state construction. File generation and external tools are separate declared actions. Arbitrary network/process/FFI activity while loading source is either forbidden under reproducible/cross-required mode or explicitly source-only and uncacheable. A type signature is not proof of purity.
 
-Transactions can undo unpublished declarations and private target allocations. They cannot undo an already issued external operation. The driver must not automatically retry an effectful build after discovering an undeclared input. It reports an effect boundary and preserves a receipt of any observed external work.
+Transactions can undo unpublished declarations and private target allocations. They cannot undo an already issued external operation. The driver must not automatically retry an effectful build after discovering an undeclared input. It reports external work that has already occurred.
 
 ### 7.7 Cross-width example
 
@@ -474,29 +474,31 @@ A helper constructs a record containing a language integer and a pointer to a st
 
 ## 8. Packages, source order and retention
 
-PACKAGES are the proposed compilation units. Build source is read from disk in
-the loader's ordinary order. If a file changes while a build runs, a package
+Files are compilation units; packages remain namespaces. Read source from disk
+in the loader's ordinary order. If a file changes while a build runs, a file
 already compiled keeps what that build read and changes on the next build; a
-package not yet compiled reads the changed file in due course. There is no
+file not yet compiled is read in due course. There is no
 required immutable source-tree view or edit-triggered rejection. See
 [package-build.md](package-build.md).
 
 ### 8.1 Dependencies
 
-The build records dependencies needed to decide which packages to recompile.
+The build records dependencies needed to decide which files to recompile.
 A generator runs on the build host; its output is compiled for the selected
 target. Normal package visibility and require/include behavior still govern
 which declarations a later package can see. A dependency scheduler cannot
 introduce forward visibility by reordering source.
 
-### 8.2 Compiled package results
+### 8.2 Compiled file objects
 
-A reusable compiled package result may contain code, data, checked
-declarations and logical references needed by a later link. Validate its
-compiler, target, ABI and layout compatibility before reuse. The exact object
-format and cache policy are implementation choices, and this proposal does
-not claim an importer exists today. A cache hit must preserve the same visible
-language behavior as compiling that package in normal order.
+Complete the object format before enabling automatic reuse. A file object
+preserves definitions, code, literals, initialized data, persistent changes to
+previous data, and checker and loader state needed by later compilation and
+linking. Addresses are relocatable references; temporary compiler scratch is
+excluded. Validate compiler, target, ABI and layout compatibility before reuse.
+Import at the original load position must match compiling the file there,
+including effects visible to subsequent source. Verify that behavior through
+clean-versus-import builds in fresh processes.
 
 ### 8.3 Retention
 
@@ -986,10 +988,10 @@ Stripping follows whole-program roots after compilation and linking. A future pa
 
 ## 23. Incremental build inputs and reuse
 
-The build reads files from disk as it reaches each package. It finishes a
-running build after an edit: already compiled packages retain the bytes they
-read for that run, and packages still ahead read their inputs in due course.
-The next build recompiles packages affected by changed inputs. This is the
+The build reads files from disk as it reaches them. It finishes a running
+build after an edit: already compiled files retain the bytes read for that run,
+and files still ahead are read in due course. The next build recompiles files
+affected by changed inputs. This is the
 ordinary compiler/make behavior specified in
 [package-build.md](package-build.md), not an immutable input-world
 requirement.
@@ -1004,7 +1006,7 @@ it. Reuse must be conservative when these facts cannot be established.
 
 ### 23.2 Source and build dependencies
 
-Record the files and generated inputs actually used by a package, including
+Record the files and generated inputs actually used while compiling a file, including
 required files and build-time computations whose results affect emitted code
 or data. A runtime-only call and a call executed while compiling can have
 different rebuild needs. A missing file that later appears can change source
@@ -1013,7 +1015,7 @@ source snapshot to observe those inputs.
 
 ### 23.3 Reusable artifact integrity
 
-If compiled package results are stored, their bytes should be completed before
+When compiled file objects are stored, their bytes should be completed before
 publication and validated before reuse. This describes cache artifact
 integrity, not source-file immutability. A corrupt or incompatible result is a
 cache miss or a clear error. Cache eviction cannot remove an artifact while a
@@ -1024,7 +1026,7 @@ live build is using it.
 Compare incremental and full builds on changes to a package body, declaration,
 required file, generated input, compiler owner, target profile and compile-time
 dependency. Include an edit during a running build: it completes, and the
-following build incorporates any packages compiled before the edit. These are
+following build incorporates changes to files compiled before the edit. These are
 future implementation checks, not existing gate results.
 
 ## 24. Toolchains, runners and command surface
@@ -1138,9 +1140,9 @@ When incremental builds exist, verify their behavior through the real build
 path. A full build and a cached build should produce equivalent behavior for
 unchanged inputs. A body edit, declaration edit, newly appearing required
 file, compiler-owner change or target-profile change must rebuild affected
-PACKAGES. An edit during a build must let that build finish; the following
-build picks up packages compiled before the edit. If compiled package
-artifacts are stored, truncated or incompatible bytes must never be reused.
+files. An edit during a build must let that build finish; the following build
+picks up changes to files compiled before the edit. Truncated or incompatible
+object bytes must never be reused.
 These are proposed checks, not current gate results.
 
 ### 25.3 Numeric and layout tests
