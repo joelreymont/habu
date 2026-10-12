@@ -78,6 +78,7 @@ MAX-WORKERS TYPED-BUFFER SLOT-GEN n
 MAX-WORKERS TYPED-BUFFER SLOT-LIVE n
 variable BODY-LIMIT
 DEFAULT-BODY-CAP BODY-LIMIT !
+variable BODY-TIMEOUT-MS             \ 0 shares START's deadline with the head
 
 MAX-WORKERS TYPED-BUFFER IN-U n           \ bytes read into the input buffer
 MAX-WORKERS TYPED-BUFFER IN-AT n          \ bytes of it already consumed

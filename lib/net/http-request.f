@@ -5,8 +5,9 @@
 \
 \ The limits are answered, not thrown: a header block past HEAD-CAP is 431, a
 \ body past the configured BODY-CAP is 413, and a transfer coding other than
-\ chunked is 501. Anything the grammar refuses is 400. One absolute deadline
-\ covers the whole request, and every wait for the peer is a readiness poll on
+\ chunked is 501. Anything the grammar refuses is 400. START bounds each head;
+\ a configured body timeout starts after a valid head, otherwise that same
+\ deadline also bounds the body. Every wait for the peer is a readiness poll on
 \ the AIO loop
 \ (TCP4's READABLE-WITHIN? is an AIO:POLL and an AIO:AWAIT, docs/aio.md),
 \ which parks the task and not its thread until the peer speaks or that
@@ -109,7 +110,9 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 \ ---- reading ----------------------------------------------------------------
 
 : DEADLINE-AT ( n -- n ) {: ms:n :}
-   mono-ns ms NS-PER-MS * + ;
+   mono-ns {: now:n :}
+   ms MEM-MAX-N now - NS-PER-MS / > if MEM-MAX-N exit then
+   now ms NS-PER-MS * + ;
 
 
 \ What is left of the request's deadline, as the timed poll takes it: a
@@ -154,7 +157,9 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 \ One transfer into the slot's window. The caller proves there is room for it.
 : FILL ( TCP4:connection n n -- fill-outcome ) {: conn:TCP4:connection idx:n deadline:n :}
    idx IN-U@ IN-CAP >= if E-CAPACITY throw then
+   mono-ns deadline >= if construct fill-outcome late exit then
    conn deadline WAIT-READABLE 0= if construct fill-outcome late exit then
+   mono-ns deadline >= if construct fill-outcome late exit then
    conn idx READ-INTO ;
 
 
@@ -770,9 +775,10 @@ $5D constant CLOSE-BRACKET
    again ;
 
 
-\ One whole request into the slot: its head, its limits and its body, all
-\ within one idle deadline. The head spans stay valid until the next call on
-\ the same slot.
+\ One whole request into the slot: the head uses START's deadline. A positive
+\ body timeout begins only after the head and Host pass validation. Zero keeps
+\ the head deadline for the body. The head spans stay valid until the next call
+\ on the same slot.
 : READ-REQUEST ( TCP4:connection n n -- parse-result )
    {: conn:TCP4:connection idx:n ms:n :}
    ms DEADLINE-AT {: deadline:n :}
@@ -784,6 +790,10 @@ $5D constant CLOSE-BRACKET
    parsed COMPLETE? 0= if parsed exit then
    idx HOST-OK? 0= if BAD exit then
    idx DECIDE-KEEP-ALIVE
+   BODY-TIMEOUT-MS @ {: body-ms:n :}
+   body-ms 0 > if
+      conn idx body-ms DEADLINE-AT READ-BODY exit
+   then
    conn idx deadline READ-BODY ;
 
 

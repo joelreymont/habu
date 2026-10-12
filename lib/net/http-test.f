@@ -212,6 +212,7 @@ $40 constant TEXT-CAP
 create TEXT-BUF TEXT-CAP allot
 variable TEXT-N
 variable ECHO-LEN
+variable ECHO-HITS
 
 
 : ECHO-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
@@ -222,6 +223,7 @@ variable ECHO-LEN
 
 : ECHO ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    asked HTTP:BODY$ {: bytes:ptr len:n :}
+   1 ECHO-HITS atomic-add drop
    len ECHO-LEN !
    answer 200 HTTP:STATUS!
    answer [: ECHO-BODY ;] HTTP:JSON! ;
@@ -1402,6 +1404,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 \ serves a fresh request after timeout, and a fresh pool serves after STOP.
 : LARGE-INTERRUPTED-CASES ( -- )
    TRACE-RESET
+   1000 HTTP:BODY-TIMEOUT!
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    RAW-OPEN {: late:TCP4:connection :}
    late LARGE-HALF
@@ -1417,10 +1420,12 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    held TCP4:CLOSE DROP-TCP-STATUS
    TRACE-RESET
    HTTP:BODY-CAP LARGE-CAP T=
+   HTTP:BODY-TIMEOUT 1000 T=
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    s" GET" s" /api/ping" FETCH 200 T=
    HTTP:STOP
-   HTTP:KILLED-TASKS 0 T= ;
+   HTTP:KILLED-TASKS 0 T=
+   0 HTTP:BODY-TIMEOUT! ;
 
 
 \ A killed handler never reaches SERVE-ONE's normal retirement. The exit hook
@@ -1474,6 +1479,66 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    HTTP:STOP
    $100000 HTTP:BODY-CAP!
    TRACE-RESET ;
+
+
+\ Headers and idle keep-alive use START's short deadline. Once a valid head
+\ arrives, a configured body gets one longer deadline; progress cannot renew it.
+: BODY-TIMEOUT-CASES ( -- )
+   s" default body deadline" T-LABEL
+   0 ECHO-HITS atomic!
+   HTTP:BODY-TIMEOUT 0 T=
+   [: -1 HTTP:BODY-TIMEOUT! ;] HTTP:E-CAPACITY TTHROWSQ
+   HTTP:BODY-TIMEOUT 0 T=
+   $7FFFFFFF HTTP:BODY-TIMEOUT!
+   [: $80000000 HTTP:BODY-TIMEOUT! ;] HTTP:E-CAPACITY TTHROWSQ
+   HTTP:BODY-TIMEOUT $7FFFFFFF T=
+   0 HTTP:BODY-TIMEOUT!
+   LOOPBACK 0 ONE-WORKER 200 HTTP:START
+   RAW-OPEN {: old:TCP4:connection :}
+   old s\" POST /api/echo HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\n" RAW-SEND
+   300 >MS TASK:SLEEP
+   old CLOSED-WITHIN? TTRUE
+   old TCP4:CLOSE DROP-TCP-STATUS
+   ECHO-HITS atomic@ 0 T=
+   HTTP:STOP
+   s" separate body deadline" T-LABEL
+   1000 HTTP:BODY-TIMEOUT!
+   HTTP:BODY-TIMEOUT 1000 T=
+   LOOPBACK 0 ONE-WORKER 200 HTTP:START
+   [: -1 HTTP:BODY-TIMEOUT! ;] HTTP:E-STATE TTHROWSQ
+   HTTP:BODY-TIMEOUT 1000 T=
+   RAW-OPEN {: delayed:TCP4:connection :}
+   delayed s\" POST /api/echo HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\nConnection: close\r\n\r\n" RAW-SEND
+   300 >MS TASK:SLEEP
+   delayed s" ok" RAW-SEND
+   delayed RAW-DRAIN
+   s" HTTP/1.1 200 OK" BEGINS? TTRUE
+   delayed TCP4:CLOSE DROP-TCP-STATUS
+   ECHO-HITS atomic@ 1 T=
+   s" progressing body expires" T-LABEL
+   RAW-OPEN {: slow:TCP4:connection :}
+   slow s\" POST /api/echo HTTP/1.1\r\nHost: x\r\nContent-Length: 32\r\n\r\n" RAW-SEND
+   16 0 ?do
+      slow s" x" RAW-SEND
+      80 >MS TASK:SLEEP
+   loop
+   slow RAW-READY? TTRUE
+   slow TCP4:CLOSE DROP-TCP-STATUS
+   ECHO-HITS atomic@ 1 T=
+   s" idle client releases worker" T-LABEL
+   s" GET" s" /api/ping" FETCH 200 T=
+   RAW-OPEN {: idle:TCP4:connection :}
+   idle s\" GET /api/ping HTTP/1.1\r\nHost: x\r\n\r\n" RAW-SEND
+   idle S\" {\qservice\q:\qhttp-test\q}" RAW-COLLECT TTRUE
+   mono-ns {: began:n :}
+   s" GET" s" /api/ping" FETCH 200 T=
+   mono-ns began - 900 NS-PER-MS * < TTRUE
+   idle CLOSED-WITHIN? TTRUE
+   idle TCP4:CLOSE DROP-TCP-STATUS
+   HTTP:STOP
+   HTTP:KILLED-TASKS 0 T=
+   HTTP:BODY-TIMEOUT 1000 T=
+   0 HTTP:BODY-TIMEOUT! ;
 
 
 \ A preopened body header makes SLOT-RESET's BODY-OPEN fail while reading a
@@ -1627,6 +1692,7 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
 \ inherited hooks mark are emptied first. Its own servers, started after the
 \ first ones have been stopped and before the controlled start hook is added.
 : PARKED-WORKER-CASE ( -- )
+   TRACE-RESET
    0 PARKED !
    ROOT$ HTTP:STATIC-ROOT
    LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START
@@ -1809,10 +1875,12 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
 \ Setup can fail after the queue opens. The failed start must release it and
 \ its static tree, leaving the same port usable without a half-open pool.
 : SETUP-REFUSAL-CASE ( -- )
+   1000 HTTP:BODY-TIMEOUT!
    ROOT$ HTTP:STATIC-ROOT
    HTTP:TEST-PREOPEN
    [: START-TWO ;] E-TASK-SEM-STATE TTHROWSQ
    HTTP:RUNNING? TFALSE
+   HTTP:BODY-TIMEOUT 1000 T=
    HTTP:STATIC-COUNT 0 T=
    HTTP:PORT FAILED-PORT !
    HTTP:TEST-UNINJECT
@@ -1822,7 +1890,9 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
    s" GET" s" /api/ping" FETCH 200 T=
    HTTP:STOP
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
-   HTTP:KILLED-TASKS 0 T= ;
+   HTTP:KILLED-TASKS 0 T=
+   HTTP:BODY-TIMEOUT 1000 T=
+   0 HTTP:BODY-TIMEOUT! ;
 
 
 \ One hook fails while its peer succeeds. The returned code and both complete
@@ -2014,6 +2084,7 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    HTTP:RUNNING? TFALSE
    HOOK-TRACE-CASES
    LARGE-BODY-CASES
+   BODY-TIMEOUT-CASES
    READ-FAULT-CASE
    POLICY-CASES
    TRANSCRIPT-CASE

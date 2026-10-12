@@ -45,6 +45,7 @@ $8 constant MAX-HOOKS             \ packages that give a worker a resource of it
 $C8 constant LINGER-MS            \ how long a refused peer may still be sending
 $C8 constant ACCEPT-WAIT-MS       \ how long the listener parks before reading the stop flag
 $C8 constant STOP-MARGIN-MS       \ scheduling slack over the longest park a stop waits out
+$7FFFFFFF constant MAX-BODY-TIMEOUT-MS  \ TCP4's largest READABLE-WITHIN? poll
 
 ENUM served keep-open answered silent ;ENUM
 2 constant STDERR-FD
@@ -619,7 +620,8 @@ variable EXIT-HOOK-N
 \ How long a stop waits for the tasks to end themselves: the longest park any
 \ of them can be in when the flag rises, plus the scheduling slack. The
 \ listener re-reads STOPPING every ACCEPT-WAIT-MS. A worker inside a request is
-\ bounded by that request's own deadline (IDLE-MS, SERVE-ONE into
+\ bounded by that request's own deadlines (IDLE-MS plus BODY-TIMEOUT-MS,
+\ SERVE-ONE into
 \ lib/net/http-request.f WAIT-READABLE) and after it by LINGER-MS in
 \ LINGER-CLOSE. A worker whose handler took its connection over waits out its
 \ taker and then lingers. The taker reads STOPPING? within STOP-WAIT-MS. The
@@ -632,11 +634,19 @@ variable EXIT-HOOK-N
 \ passed, the write then in hand gives up when its slice ends, one more slice,
 \ and every later one before its first. So the term is STOP-WAIT-MS, a slice,
 \ RELEASE-MS, a slice, and LINGER-MS.
+\ Bound sums stay representable as milliseconds in DEADLINE-AT.
+MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
+
+: BOUND+ ( n n -- n ) {: left:n right:n :}
+   right MAX-DEADLINE-MS left - > if MAX-DEADLINE-MS exit then
+   left right + ;
+
 : STOP-BOUND-MS ( -- n )
-   IDLE-MS @ LINGER-MS +
+   IDLE-MS @ BODY-TIMEOUT-MS @ BOUND+ LINGER-MS BOUND+
    ACCEPT-WAIT-MS max
-   STOP-WAIT-MS TCP4:SEND-SLICE-MS + RELEASE-MS + TCP4:SEND-SLICE-MS + LINGER-MS + max
-   STOP-MARGIN-MS + ;
+   STOP-WAIT-MS TCP4:SEND-SLICE-MS BOUND+ RELEASE-MS BOUND+
+   TCP4:SEND-SLICE-MS BOUND+ LINGER-MS BOUND+ max
+   STOP-MARGIN-MS BOUND+ ;
 
 
 \ True once the listener and every worker have left their body, which is when
@@ -751,6 +761,16 @@ public
    RUNNING @ 0 <> if E-STATE throw then
    limit 0 < if E-CAPACITY throw then
    limit BODY-LIMIT ! ;
+
+\ Zero shares START's absolute deadline across head and body. Positive values
+\ grant the body a fresh absolute deadline after valid headers and Host.
+: BODY-TIMEOUT! ( n -- ) {: ms:n :}
+   RUNNING @ 0 <> if E-STATE throw then
+   ms 0 < ms MAX-BODY-TIMEOUT-MS > or if E-CAPACITY throw then
+   ms BODY-TIMEOUT-MS ! ;
+
+: BODY-TIMEOUT ( -- n )
+   BODY-TIMEOUT-MS @ ;
 
 \ Opens what a request worker needs of its own, inside that worker, once per
 \ worker and before its first request. START waits for every start hook; a

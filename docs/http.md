@@ -36,7 +36,8 @@ an interpreted `s"` after `AIO:START` ends the process.
    s" GET" s" /api/ping" [: PING ;] HTTP:ROUTE
    s" /srv/site" HTTP:STATIC-ROOT
    $4000000 HTTP:BODY-CAP!          \ accept incoming bodies up to 64 MiB
-   $7F000001 0 2 300000 HTTP:START   \ address, port, workers, request deadline ms
+   300000 HTTP:BODY-TIMEOUT!         \ five minutes for a complete body
+   $7F000001 0 2 5000 HTTP:START     \ address, port, workers, header/idle ms
    HTTP:PORT .                    \ the port the listener bound
    \ ... serve ...
    HTTP:STOP
@@ -45,9 +46,11 @@ an interpreted `s"` after `AIO:START` ends the process.
 
 | word | effect | meaning |
 | --- | --- | --- |
-| `START` | `( n n n n -- )` | bind address and port, start that many workers (1..`MAX-WORKERS`), wait for all worker start hooks, then start the listener; the final argument is the whole-request deadline in milliseconds |
+| `START` | `( n n n n -- )` | bind address and port, start that many workers (1..`MAX-WORKERS`), wait for all worker start hooks, then start the listener; the final argument bounds each request head and idle keep-alive wait in milliseconds |
 | `BODY-CAP!` | `( n -- )` | set the maximum incoming body size in bytes before `START`; zero accepts only empty bodies, a negative value is `E-CAPACITY` |
 | `BODY-CAP` | `( -- n )` | the current incoming body limit; defaults to 1 MiB |
+| `BODY-TIMEOUT!` | `( n -- )` | set the body deadline in milliseconds before `START`; zero uses the `START` deadline, values outside 0..2,147,483,647 are `E-CAPACITY` |
+| `BODY-TIMEOUT` | `( -- n )` | the current body deadline; defaults to zero |
 | `STOP` | `( -- )` | ask every task to end, wait for them to the stop bound, kill any still inside its body, give everything back |
 | `RUNNING?` | `( -- bool )` | during startup and until `STOP`, or false after a failed `START` |
 | `PORT`, `ADDRESS` | `( -- n )` | what the listener actually bound |
@@ -57,19 +60,22 @@ an interpreted `s"` after `AIO:START` ends the process.
 The AIO loop is the caller's to start: every wait the listener and the workers
 make is an AIO submission, so `START` with no loop running is `E-AIO-STATE`,
 thrown to the caller rather than inside a task nobody reads.
-The body limit persists across `STOP` and failed starts. Changing it during
-startup or while the server runs is `E-STATE`.
-The request deadline begins when a worker starts reading each request and
-covers its headers and entire body. Progress does not renew it. Choose a
-deadline long enough for the largest permitted upload over the expected link.
+The body limit and timeout persist across `STOP` and failed starts. Changing
+either during startup or while the server runs is `E-STATE`. `BODY-TIMEOUT`
+can be read at any time. With the default zero body timeout, the `START`
+deadline begins when a worker starts reading each request and covers its head
+and entire body. With a positive body timeout, `START` still bounds the head
+and an idle keep-alive connection; after headers parse and Host validation
+succeed, one fresh absolute deadline bounds the whole body, including chunk
+framing and trailers. Progress does not renew either deadline.
 If a worker start hook throws, `START` throws an actual hook error after every
 started worker has run its exit hooks and been joined. The listener is closed,
 the server's resources are released, and `RUNNING?` is false; the same address
 and port can be started again. No request is accepted during worker startup.
 
 `STOP` waits the bound `STOP-BOUND-MS` in `lib/net/http.f` derives: at least
-1000 ms, more with a longer `IDLE-MS`. A worker parked inside a handler past
-that bound is killed with the rest of its body unrun; `KILLED-TASKS` counts
+1000 ms, more with longer head or body deadlines. A worker parked inside a
+handler past that bound is killed with the rest of its body unrun; `KILLED-TASKS` counts
 it, and its exit closes the connection it was serving. A worker killed inside
 a send leaves within one send slice, which ends within `TCP4:SEND-SLICE-MS`
 and two sends that never wait before it pauses.
