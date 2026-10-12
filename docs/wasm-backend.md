@@ -1,12 +1,14 @@
 # Habu WebAssembly backend
 
-The design of Habu's WebAssembly backend: checked Habu compiled directly to
-core Wasm, and the first implementation slice. It is a design, not an
-implemented or qualified backend.
+The design and first implementation slice of Habu's WebAssembly backend:
+checked Habu compiled directly to core Wasm. The backend, build driver and
+tests now exist under src/arch/wasm, tools/wasm-build.f and test/wasm.
+This design is not evidence that every profile below is qualified; check
+the current code and device results for support claims.
 
 [portability.md](portability.md) is the parent design. It owns target
 resolution, compiler sessions, compile-time execution and target data, package
-contributions, linking, publication and the work packages. This page holds its
+artifacts, linking and publication. This page holds its
 Wasm code generation section (17) and the Wasm detail beneath it; where the two
 differ, portability.md wins (its §0.1).
 
@@ -19,8 +21,8 @@ depends on no LLVM, MLIR, Emscripten or Binaryen.
 
 | Concern | Decision |
 |---|---|
-| Product profiles | The core module P6 builds (§3, §17) |
-| Architecture row | Add a `wasm` architecture and ABI in one commit (P1a); memory32 and a future memory64 are profiles, told apart by address width and features |
+| Product profiles | The core Wasm module (§3, §17) |
+| Architecture row | A `wasm` architecture and ABI; memory32 and a future memory64 are distinct profiles by address width and features |
 | External target label | Proposed `wasm32-habu`; not an existing command-line option |
 | Language cell | 64 bits; `CELL = 8`; do not shrink `n`, products, masks or dictionary cells |
 | Linear-memory addressing | 32-bit offsets, not native process pointers |
@@ -32,7 +34,7 @@ depends on no LLVM, MLIR, Emscripten or Binaryen.
 | Fatal failures | Diagnostic plus Wasm trap / discarded execution instance, not a catchable language error |
 | Host interop | The module imports nothing (§17.6); a browser host takes turns with it through its memory ([browser-host.md](browser-host.md)) |
 | NaN | Every NaN an operation makes is `$7FF8000000000000`, as on native targets; the selector implements §17.3 without branches |
-| First slice | P6 through `NSHADOW`: unplaced emissions whose call and address immediates are fixed-width padded LEBs, patched by the linker as `NEMIT` rows (§17.1) |
+| Current build path | `NSHADOW` carries unplaced emissions whose call and address immediates are fixed-width padded LEBs, patched by the linker as `NEMIT` rows (§17.1) |
 | Optimizer | Habu-owned; engine native optimization is the embedding's job |
 | First deployment | Single worker, one unshared memory, scalar instructions plus multi-value; no mandatory threads, GC, memory64 or JSPI |
 | Proof posture | Preserve checker and ownership obligations; validate every stage; do not equate valid Wasm with semantic correctness |
@@ -64,7 +66,7 @@ Additional instruction features are individually listed and validated; the
 version number of an evolving WebAssembly specification is not a feature set.
 [WW1]
 
-The one product is the core module P6 builds (§17). No silent native fallback
+The core Wasm module is described in §17. No silent native fallback
 is possible in a browser.
 
 ## 4. Target identity and numeric capabilities
@@ -309,7 +311,7 @@ pointers with a dependency path to the export that required them. A target data
 builder produces static bytes from layouts; do not copy a native dictionary, AOT
 code buffer or snapshot containing native addresses into Wasm.
 
-The first slice links the whole set of routines from the capture (§17.1); no package cache is needed for that. Once package contributions exist (P4), persist Wasm function plans/symbolic operands inside the package contribution, not native-style machine addresses. Final assembly:
+The first slice links the whole set of routines from the capture (§17.1); no package cache is needed for that. When package contributions exist, persist Wasm function plans/symbolic operands inside the package contribution, not native-style machine addresses. Final assembly:
 
 1. Resolve reachable functions, imports, data objects and dynamic adapters.
 2. Deduplicate identical function types deterministically by structural signature, retaining Habu effect identities separately.
@@ -378,29 +380,17 @@ A witness bound to input/output hashes is only useful when the validator checks 
 
 Place maximums on source bytes, graph nodes, nesting, function arity/locals, type count, code bytes, table entries and memory.
 
-## 14. Repository layout and integration changes
+## 14. Implementation pointers
 
-Physical layout follows [portability.md](portability.md) §26.1, and its moves
-wait for P13. The Wasm path adds:
+tools/wasm-build.f loads the Wasm backend, compiles a source file at tier 1,
+captures its shadow emissions and links a module. src/arch/wasm holds the
+backend and test/wasm holds the fixtures and device check. Rebuild the
+native engine when a changed engine package is baked into it.
 
-| Path | Holds |
-|---|---|
-| `src/arch/wasm/` | The Wasm backend: selector, WSTRUCT dialect, encoder, LEB routines and module linker, registered as a complete row through its `passes.f` module |
-| `test/wasm/` | Wasm tests and fixtures |
+## 15. Scope
 
-When the backend needs more from an engine package (one compiled into bin/hb), that package gains the word and the engine is rebuilt.
-
-## 15. Work packages
-
-The Wasm path is P1a -> P6, with P0w alongside; it never waits on P2-P5
-([portability.md](portability.md) §27).
-
-| Package | Dot | Delivers |
-|---|---|---|
-| P0w | habu-pin-hbr2-wire-0b340032 | Wasm numeric goldens N01-N06 with the NaN print rows and the three `?do` rows, run natively |
-| P1a | habu-add-the-wasm-4c32353e | The `wasm` architecture and ABI rows, the scalar-FP bit and the decoders, in one commit |
-| P6 | habu-emit-a-wasm-05443776 | The first slice (§17) |
-| P13 | habu-retire-target-selecting-affc4d65 | Retires target-selecting host predicates and does the moves |
+The implementation description below explains the Wasm build path.
+Use the current driver and tests to determine which parts run today.
 
 ## 16. Test matrix
 
@@ -426,13 +416,14 @@ Use official Wasm validation through at least two independent execution engines 
 
 Generate well-typed Habu programs for differential execution against the pinned native/reference semantics. Compare observable outputs and explicit memory effects, not unspecified stack contents after throw or unspecified NaN payloads. Preserve failing seeds and input profiles.
 
-## 17. The first slice (P6)
+## 17. The current build path
 
 ### 17.1 The route through NSHADOW
 
-P6 emits a genuine Habu-generated module by riding master's audited legacy owner
-adapter ([portability.md](portability.md) §7.4) instead of waiting for
-symbolic target data (P3). A Wasm shadow binding is opened, and `NCOMP`
+The current path emits a Habu-generated module through the existing legacy owner
+adapter ([portability.md](portability.md) §7.4). The symbolic target-data
+builder in that design is a possible later replacement. A Wasm shadow binding
+is opened, and `NCOMP`
 compiles each definition for it from the module `NBACK:FREEZE` froze for the
 engine's own selector (§2). The Wasm backend's `EMIT-UNPLACED` row writes a
 sealed `NEMIT` emission measured from no slot. Every call and address immediate
@@ -506,7 +497,7 @@ Logical pointers lower to canonical memory offsets, checked before narrowing. Re
 
 Wasm memory growth failure follows an explicit allocator error path. The memory page count must be widened before converting it to bytes. Numeric i64 values do not require memory64, and JavaScript i64 interchange uses BigInt rather than Number (§6). [WW2]
 
-P6 pins this layout:
+The current memory32 profile uses this layout:
 - null [0,$10000);
 - ctx [$10000,$11000);
 - output region [$11000,$21000);
@@ -553,7 +544,9 @@ passes only.
 
 ## Sources
 
-Repository references are paths on master, re-audited at 67a66d28. Public specification pages were consulted on 29 September 2026; implementation should pin exact revisions in its own test/tool manifests.
+Repository references record the design's source baseline; check current code
+before treating a path or behavior as current. External specifications give
+the target contracts, while the device tests establish implemented behavior.
 
 [R1] Habu README: `README.md`
 

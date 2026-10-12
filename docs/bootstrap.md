@@ -16,317 +16,61 @@ Habu sources, and `bootstrap/cg/forth.fs` names each mirror where it stands. A
 change to the seed or to anything it mirrors runs the
 [no-binary recovery check](#periodic-no-binary-check).
 
-## Current recovery status
+## Recovery routes
 
-Run it with
+Use a trusted native hb from the same OS and architecture when one is
+available; [seed.md](seed.md) gives that route. On ARM64 macOS or Linux with
+no native binary, tools/bootstrap.sh uses the Gforth seed in bootstrap/cg
+to build a small recovery engine, then refreshes it from current source.
+The recovery engine is a host for a native product build. Qualification
+of that product is in [gate.md](gate.md).
 
-```
-HABU_ALLOW_BOOTSTRAP=1 HABU_BOOTSTRAP_CHECK_ONLY=1 HABU_TARGET=linux-aarch64 \
-  HB_TMP=/tmp/hz-chain tools/bootstrap.sh
-```
-
-Measured on linux-aarch64. The chain builds four engines under `HB_TMP` and
-they are the artifacts to look at after a run:
-
-| artifact | built by | what it is |
-| --- | --- | --- |
-| `hb-stage0` | Gforth, through `bootstrap/cg/forth.fs` | the seed engine |
-| `hb-stage` | `hb-stage0` from `stage2-src`, then itself to a fixpoint | the stage engine |
-| `hb-stdin-mk` | `hb-stage` from `stage2-src` with the stdin driver | the maker for `hb-stdin` |
-| `hb-stdin` | `hb-stdin-mk` | the recovery engine the check suites run on |
-
-All four boot their prefix from source, where a signed `:` definition's
-declaration is its row, without authority
-([forth.md](forth.md#rules-learned-by-refusal)), and
-the chain completes: the check-only run ends `bootstrap check OK: <HB_TMP>/hb-stdin`
-after the five check suites pass on `hb-stdin`, and the full run (no
-`HABU_BOOTSTRAP_CHECK_ONLY`) goes on through the native self-refresh to
-`bootstrap OK: bin/hb`, installing an engine byte-identical to the one
-`tools/build-fixpoint.f` refreshes. Three defects stood between the chain and
-that state on 2026-09-16 and each is fixed at its layer: the cold prefix plus
-`hb-stdin-mk`'s baked payload had crossed `IBUFSZ` (the prefix rows now drop
-their comment and blank lines as they are read, `src/habu/habu2.f`
-`EMIT-SOURCE-READ-PREFIX` and its mirror in `bootstrap/cg/forth.fs`, which took
-the linux-aarch64 cold prefix from 1,635,735 to 963,642 bytes); the argv scan
-read its index across the cold-prefix call (`C-SOURCE-FIND-SEP` now sets its
-own); and the check suites named checker internals a from-source prefix
-gives no row with authority (the checker publishes `CHECK-QUIET-CANDIDATE!` and
-`CHECKER-VIS-PUBLIC` with axioms instead).
-
-The generated engine maps `IBUFSZ + SRCN` bytes: `IBUFSZ` for the cold prefix
-and argv or stdin input, plus exactly the bytes baked into the image. The stage2
-reader grows its buffer with `stage2-src`, so the source the recovery chain bakes
-is bounded only by the image's code window. Baked source cannot consume the read
-allowance; `SOURCE-ARENA-LEN` in `src/habu/habu2.f` and its seed mirror in
-`bootstrap/cg/forth.fs` govern the mapping and baked copy. Reader overflow exits
-74 with `hb: source prefix buffer full`.
-What is still narrower on the recovery lineage than on a `tools/native-build.f`
-engine is recorded in the tracker: the AOT capture carries the captured REPL's
-signatures but not its defer rows, so `require src/habu/debug.f` refuses on
-that lineage's product engine, which does not bake the debugger
-(`habu-carry-the-captured-bf931ced`), and the optimizing tier
-refuses `TFAM:REG-AOT-MERGE-INCOMING?` there (`habu-let-the-product-2f39e054`),
-which keeps the cold-host fixtures off that lineage.
-
-The pinned engine at `bin/hb` is the integrated product engine, not a recovery
-seed; the release copy for other agents is `/tmp/hazel-release/hb`.
+The installed release, a copied seed and a newly recovered source-only
+engine are different artifacts. Build and test a native product from the
+exact source tree before using it as a release candidate.
 
 ## Requirements
 
-- macOS ARM64 or Linux AArch64.
-- The macOS library tests use Homebrew `libzip`, `libunistring`, `openssl@3`,
-  `libpq`, and `socat`. Generated Mach-O executables carry runpaths for
-  `/opt/homebrew/lib` and the keg-only `/opt/homebrew/opt/libpq/lib`; system
-  libraries retain dyld's normal lookup. This applies to recovery engines,
-  product engines, and application images. Other library installations can use
-  dyld's `DYLD_FALLBACK_LIBRARY_PATH` at launch. Runpaths follow Apple's
-  [dynamic-library loading rules](https://developer.apple.com/library/archive/documentation/DeveloperTools/Conceptual/DynamicLibraries/100-Articles/DynamicLibraryUsageGuidelines.html).
-- Linux gates require a working devpts setup: `/dev/ptmx`, `/dev/pts`, and PTY
-  ioctls must be available to the user running the gate.
-- Every gate host needs the PostgreSQL server binaries: `initdb` and
-  `postgres` on `PATH`. The `pg` row starts a private cluster with them
-  (`test/db/pg-cluster.f`, see [db.md](db.md#tests)) and fails naming a
-  missing one; it never skips. The gate must run as an ordinary user, because
-  `initdb` refuses to run as root. On macOS, Homebrew
-  `postgresql@18` is keg-only and installs no links into `/opt/homebrew/bin`:
-  run `brew link postgresql@18`, or put `/opt/homebrew/opt/postgresql@18/bin`
-  on `PATH`. On Linux, install the distribution's PostgreSQL server package and
-  put its `bin` directory on `PATH` when the package keeps it elsewhere (Debian
-  and Ubuntu use `/usr/lib/postgresql/<version>/bin`). Without root on Debian
-  or Ubuntu, `apt-get download postgresql-<version> postgresql-client-<version>
-  libpq5` and `dpkg -x` each into one prefix: the server finds its share files
-  relative to its binary, so it runs from there with the prefix's
-  `usr/lib/postgresql/<version>/bin` on `PATH` and its
-  `usr/lib/<triplet>` (for `libpq.so.5`) on `LD_LIBRARY_PATH`.
-- Gforth with `{:` locals support. Homebrew `gforth` 0.7.3 is too old.
-  A current Gforth snapshot such as `0.7.9_20260610` works.
-- GB10 device gates (sm_121a) **require** the pinned 13.3 `ptxas` in
-  `~/.habu/toolchain/ptxas-13.3.33`: since `habu-enforce-pinned-ptxas-4598a743`,
-  an sm_121 assemble fails closed (`E-PTXTC-STALE`/`E-PTXTC-DIGEST`) unless the
-  resolved assembler hashes to the pinned SHA-256 and reports version ≥ 13.3 — the
-  older system CUDA 13.0 assembler (which costs ~27% GEMM throughput) is refused,
-  not merely warned. Provisioning recipe (archive, sha256, install):
-  `../loom/docs/ptx.md` "Pinned ptxas toolchain" (the PTX backend and its recipe live in Loom).
+The Gforth seed emits ARM64 code and supports macOS ARM64 and Linux AArch64.
+It requires Gforth 0.7.9 or newer with locals support. Check the selected
+interpreter before recovery:
 
-The native toolchain and test suite have no external theorem-prover dependency.
+    printf ': x {: a :} a . ; 7 x bye\n' | /path/to/gforth
 
-Verify the Gforth requirement:
+The command must print 7 and exit zero. Gforth 0.7.3 lacks the required
+locals. A known-good release is 0.7.9_20260610. If no Gforth is installed,
+use its complang dist tarball, which includes the prebuilt bootstrap images:
+https://www.complang.tuwien.ac.at/forth/gforth/Snapshots/0.7.9_20260610/gforth-0.7.9_20260610.tar.xz
+The GitHub tag archive requires an existing Gforth to build.
 
-```sh
-tmp=$(mktemp)
-printf ': f {: a :} a . cr ; 1 f bye\n' > "$tmp"
-gforth "$tmp"
-rm -f "$tmp"
-```
-
-That command must print `1` and exit zero. If the usable Gforth is not first on
-`PATH`, set `GFORTH=/path/to/gforth`.
-
-The preferred persistent local install path is `~/.local/bin/gforth`; verify it
-with:
-
-```sh
-~/.local/bin/gforth --version
-```
-
-The known-good recovery version is `gforth 0.7.9_20260610`.
-
-On macOS, a local snapshot build can be used as the recovery host without
-installing it:
-
-```sh
-curl -L https://github.com/forthy42/gforth/archive/refs/tags/0.7.9_20260610.tar.gz -o gforth-0.7.9_20260610.tar.gz
-tar -xzf gforth-0.7.9_20260610.tar.gz
-cd gforth-0.7.9_20260610
-./autogen.sh
-UNSUITABLE_CC=none ./configure --prefix="$HOME/.local/gforth"
-ENGINE=./gforth-itc make -j"$(sysctl -n hw.ncpu)" gforth-itc gforth.fi GEN=gforth-itc
-```
-
-If `gforth-fast` is not installed, point `GFORTH` at a tiny wrapper around the
-snapshot interpreter and image:
-
-```sh
-#!/bin/sh
-exec /path/to/gforth-0.7.9_20260610/gforth-itc \
-  -i /path/to/gforth-0.7.9_20260610/gforth.fi "$@"
-```
-
-The full `gforth.fi` image supplies `getpid`, which the recovery test harness
-uses. The light image passes the locals probe but cannot run that harness.
-The indirect-threaded engine avoids relying on Clang's unsupported register
-allocation options. Gforth does not need to be installed globally.
+The full native suite has additional host requirements. On Linux its PTY
+tests need working /dev/ptmx and /dev/pts. The database row needs initdb
+and postgres on PATH, run as an ordinary user because initdb refuses root.
+On macOS the library rows use Homebrew libzip, libunistring, openssl@3,
+libpq and socat; keg-only postgresql@18 needs its bin directory on PATH.
+See [gate.md](gate.md) for the suite and its boundaries.
 
 ## No-Binary Recovery
 
-```sh
-HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth-or-wrapper tools/bootstrap.sh
-```
+From the repository root on a supported ARM64 host:
 
-The script defaults `HABU_TARGET` from the host (`macos-aarch64` or
-`linux-aarch64`). Set `HABU_TARGET` explicitly only when the host cannot be
-detected.
+    HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth tools/bootstrap.sh
 
-`linux-x86-64` is a recognised target name here and not a recovery route:
-everything under `bootstrap/cg/` emits ARM64 instructions, so both the script
-and `bootstrap/cg/sys.fs` refuse that target by name rather than build an
-aarch64 engine under an x86_64 label. Recovery for `linux-x86-64` is a
-CROSS-BUILD from a working arm64 engine - the OS seam and image writer are
-ordinary Habu, so an arm64 engine can write the x86_64 image - and a native
-x86_64 recovery chain is later work (docs/x86-64.md).
+The launcher selects macos-aarch64 or linux-aarch64 from the host unless
+HABU_TARGET is set. It validates Gforth, builds private stages under HB_TMP
+(or a new temporary directory), runs recovery checks and installs bin/hb.
+The successful full run ends with “bootstrap OK: bin/hb”. The installed
+source-only engine can build the native product; it is not itself the
+product qualified by the native suite.
 
-The compiler and image writer can be checked on an x86-64 device before the
-complete engine exists. With `HOST` naming a private copy of the integrated
-arm64 engine and `TMP` a private output directory, build the peer fixtures:
+The Gforth seed cannot emit an x86-64 engine. For Linux x86-64, use a
+working ARM64 compiler with the x86-64 backend loaded to cross-build the
+native engine, then execute and qualify it on an x86-64 host. See
+[x86-64.md](x86-64.md) for the target-specific build and execution path.
 
-```sh
-HB_TMP="$TMP" "$HOST" --load test/x86-64-peer-image.f
-```
-
-The `x86-64-peer-image` gate row checks that the ELF contains the actual HIR
-pass chain's emitted routine. Copy `hb-x64-peer` and `hb-x64-peer-negative`
-from `TMP` to a scratch directory on the Linux/x86-64 peer and run both there.
-The first must exit **0**; the deliberately wrong first arithmetic expectation
-in the second must exit **21**. Other statuses fail the device check. The
-executables check signed subtraction and wraparound, the data and machine
-stack positions, reserved registers, the OS seam's getpid/invalid-close result
-and carry flag, and that a linked `MOVABS` label site holds the address the
-kernel loaded its label at. Building them on arm64 alone does not prove those
-runtime properties, and neither executable is a complete Habu engine.
-
-The `x86-64-peer-routines` gate row does the same for every HIR fixture of
-`test/compiler/x64-emit.f` that the rows emit and that returns. It also writes
-a `signal` image that installs a handler through `src/habu/boot-x64.f` and
-raises a real signal (`docs/x86-64.md` "Signal install and frames"). The
-header of `test/x86-64-peer-routines.f` names the fixtures left out and why:
-
-```sh
-HB_TMP="$TMP" "$HOST" --load test/x86-64-peer-routines.f
-```
-
-It writes `$TMP/x64-routines`: one executable per fixture, the `signal`
-image, one `diff-negative` image whose first case expects a wrong answer,
-and a `manifest` of `<file> <status>` lines. Copy the directory to the peer
-with executable permissions intact, then run every file there and compare its
-status with the manifest:
-
-```sh
-bad=0; while read -r file want; do timeout 10 ./"$file" </dev/null; got=$?
-echo "$file want $want got $got"; [ "$got" = "$want" ] || bad=1
-done < manifest; [ "$bad" = 0 ]
-```
-
-The command exits 0 only when every image exited with its listed status: 0
-for a fixture, 21 for `diff-negative`. Any other status names the failed check,
-as `test/x86-64-peer-harness.f` numbers them; 124 is `timeout` stopping an
-image that did not exit.
-
-Two engines independent of Habu check its Wasm modules. wasm-tools validates a
-module under core Wasm and the backend's features, and bun runs it through
-`test/wasm/run.mjs`; bun also runs the browser host's `lib/browser/host-cli.mjs`
-on its echo and storage fixtures through `test/browser/echo-test.f` and
-`test/browser/storage-test.f` ([browser-host.md](browser-host.md)). Neither
-tool is part of the ordinary gate. Install both once and put them on `PATH`:
-`cargo install --locked wasm-tools` (into `~/.cargo/bin`; 1.243.0 verified) and
-`curl -fsSL https://bun.sh/install | bash` (into `~/.bun/bin`; 1.3.3
-verified). Then, from the tree's root, run
-`bin/hb --load test/wasm/device.f`. It prints the directory holding the
-modules it wrote and ends `test: ok`, exit 0.
-
-`tools/bootstrap.sh` does the whole recovery and installs exactly one file:
-`bin/hb`.
-
-1. validates that Gforth supports `{:` locals;
-2. uses `test/nf.fs` and `bootstrap/` to create private bootstrap executables in
-   `HB_TMP` from the same native source layers used by `tools/build-fixpoint.f`;
-3. uses those private executables to produce the small stdin engine as `bin/hb`;
-4. runs the normal `bin/hb` self-refresh so the installed binary is rebuilt from
-   current source and reaches the byte-for-byte fixpoint.
-
-The native refresh certifies each generated compiler payload, then loads it
-through the build-only `--build` source mode. That mode does not apply the
-ordinary pre-source friend seal; the generated payload owns a mandatory
-`SEAL-FRIEND` boundary after the compiler prefix and before its driver. Normal
-`--load`, stdin, baked-program, and REPL paths remain sealed before their first
-user token.
-
-The ndict seal floor is the other half of that boundary, and `--build` does
-**not** open it. The floor - the watermark under which the records are the
-engine's own - is armed for every entry before any source runs, because
-`--build` is a flag any caller of a shipped engine can pass and the pre-pass
-that makes a payload trustworthy is the tool's, not the engine's. A payload's
-dictionary rewind therefore goes through `seed-ndict!`, the engine's one
-authorized lowering (it refuses a raise, guards the record span it redirects
-the next write to, rebuilds the name index, and clears the floor as one
-operation; top-level text and `TRUSTED:` bodies call it, no checked body
-names it, and the engine refuses its tick). Each payload rewind lowers from
-its own top-level text: `src/habu/prefix-rewind.f`'s tokens, a payload-only
-file no shipped engine carries that a build `include`s or appends at its top
-level, and `tools/bootstrap.sh`'s boot-hide prologue, which the launcher feeds
-to the gforth stage0 and to every sealed native stage after it, so the seed's
-prim table answers `seed-ndict!` with its unsealed lowering and the native
-stages take the authorized one.
-The in-process window build takes the same seam: the checked `LOGICAL-RESET`
-(`tools/native-build-core.f`) resets the retained checker, `included`s
-`src/habu/window-rewind.f`, whose top-level text clears the check and
-top-level hooks and runs `CORE-PREFIX:FIRST-RECORD seed-ndict!`, as a build
-includes `prefix-rewind.f`, then discards the host's address rows.
-`CORE-PREFIX:FIRST-RECORD` selects the earliest global `IMK-NDICT0`
-dictionary row, matching recovery; the marker cell is not a saved record index.
-`seed-ndict!` requires `0 <= n < ndict@` before deriving its target address.
-Public `ndict!` still refuses a count below the floor, from a
-payload as from any other program (`test/build-rewind-test.f` pins both halves;
-`test/seal.f` pins the public refusal).
-
-The temporary files are not build products. The final installed `bin/hb` is the
-native checked stdin/TTY engine rebuilt from current source. It is the recovery
-engine: the host for a product build ([Refresh `bin/hb`](#refresh-binhb)), not a
-gate candidate ([gate.md](gate.md)).
-
-An engine primitive that the boot prefix uses must also be registered in the
-stage0 generator `bootstrap/cg/forth.fs`, with the semantics that is honest for a
-transient seed rather than the native body — a seed that never snapshots
-registers nothing for `ptr-cell-mark`, and a static seed image with no loader
-slot cannot reach libc for `realpath`. Nothing in the native gate notices the
-omission, because the native gate never builds a stage0; the periodic check
-below is what catches it, as the stage0 build dying on the bare token name.
-`src/core/checker.f`, which a seed-built image compiles at boot, calls the
-eight rows package `CHECKER-OVERLAY` owns: `namespace-record`,
-`package-scope!` and the six replay writers (`replay-open`, `replay-close`,
-`replay-widn!`, `replay-record`, `record-wid!`, `replay-private`). Stage0
-registers them owned (`EMIT-OVERLAY-PRIMS`) with one body that prints
-`hb: stage0 has no checker overlay` and exits 76, as `src/habu/kernel-x64.f`
-`REFUSE-BODY` does for its absent rows: a seed-built image never opens the
-overlay, and the recovery check passes with those bodies. Without the rows its
-first gate, `test/bootstrap-engine-stack.fs`, dies 70 naming
-`namespace-record`. `src/core/include.f` likewise calls `unit-compile-run`
-from `SOURCE-UNIT:GUARDED`; stage0 registers it owned with a body that prints
-`hb: stage0 has no unit guard` and exits 76, since stage0 only compiles stage2
-and every unit build runs on a native engine. Without it the same gate dies 70
-naming `unit-compile-run`.
-The stage0 `J-QUOT` keeps one quotation open at a time, where the engine's
-tier 0 nests to `JIT-QUOT:LEVELS`: a boot-prefix source keeps `[:` one level
-deep until the seed mirrors those frames, or the stage0 build exits 75.
-
-The stage0 generator mirrors `DNAME-OWNED` (`src/habu/layout.f`): `EMIT-DICT`
-stamps a `PRIM-OWNED-WID` primitive `DNAME-INT|DNAME-OWNED` and a
-`PRIM-INT-WID` primitive `DNAME-INT` alone, and the `EMIT-COMPILE-CALL` guard
-admits a checked call to an owned record, as the engine's guards
-(`src/habu/habu2.f` `C-COMPILE-CALL-GUARD`, `src/compiler/native/dict.f`
-`NDICT:INT-CALL?`, which `CALL-BINDING` and `src/compiler/native/hir-word.f`
-`RESOLVE-SITE` ask) do; any other `DNAME-INT` call outside a `TRUSTED:` body
-still goes to `EMIT-UNDEF` (undefined word, rc 70). The seed registers
-`source-unit-run`, owned on the engine (`src/habu/prims.f` `EPPRIM:`), as
-`PRIM-INT-WID`: every caller of it is a `test/` file that runs on a product
-engine.
-
-A DATA cell or band the stage0 generator places gets a row in
-`bootstrap/cg/data-claims.fs`. So does a cell that src/ code reads at a fixed
-offset on any engine and the generator does not name, such as checker.f's
-refusal cell at `$27F8`. Loading the generator refuses an
-overlapping pair and names both, so every Gforth harness and the stage0 build
-stop before an engine exists. Without the table, BEGIN frames laid over the
-compile cells showed only when a definition nested 23 deep.
+A seed primitive used by the cold prefix must also exist in
+bootstrap/cg/forth.fs. The normal native gate does not build that seed,
+which is why the separate no-binary check below exists.
 
 ## Periodic No-Binary Check
 
@@ -352,335 +96,28 @@ exactly `hb: compile preflight hook missing` plus one LF on stderr.
 
 ## Generation Chain Check
 
-`tools/two-generation-build.f` builds five engine generations from one host —
-the host builds B1, B1 builds B2, and so on to B5 — each through the production
-entry point `tools/native-build.f`, and prints one line per generation. It is
-the check that the chain converges instead of accreting image DATA: an engine
-that carries more baked DATA than its host boots that DATA into its DP heap and
-then persists a copy of it, so the cost lands twice and a later generation dies
-in `LOAD-TARGET` with `hb: data space out of range`, rc 76, at `DP-CHECK`
-(`src/habu/habu1.f`). It is also the check that the chain reaches its byte
-fixpoint: the last pair is compared byte for byte.
+tools/two-generation-build.f builds five generations privately through
+tools/native-build.f and checks image shape and the final byte fixpoint.
+Run it for changes to code generation, self-hosting or capture that can
+affect successive output:
 
-```sh
-HB_TMP=$PWD/build/tmp bin/hb --load tools/two-generation-build.f -- <seed-engine>
-```
+    HB_TMP=$PWD/build/tmp bin/hb --load tools/two-generation-build.f -- <seed-engine>
 
-With no argument the checkout's own `bin/hb` supplies generation 0. The tool
-copies that seed into a fresh private directory under the configured temporary
-root (`HB_TMP`) and prints the directory path. Every generation stays there for
-inspection; the installed engine is never moved or replaced. It exits nonzero,
-naming the generation, when a
-generation does not build, when generation 3's image size and shape differ from
-generation 2's, or when generation 5 is not byte-identical to generation 4.
-`tools/two-generation-probe.f` is the child fixture that reads one engine's
-shape.
+With no argument the checkout's bin/hb supplies generation zero. The tool
+prints its private output directory and leaves the installed engine alone.
+Its same-host mode builds twice with one host to check repeatability:
 
-A change to the checker's transfer (`TRANSFER-CHECKED` in `src/core/checker.f`)
-or to the capture of the window's prefix also runs
-`bin/hb --load test/host-checker-row-e2e.f`. It builds this tree through a
-host whose `PRIM:` table names another word and requires the engine and
-`.names` sidecar the engine under test builds (three builds, kept out of the
-registry as a build chain).
+    HB_TMP=$PWD/build/tmp bin/hb --load tools/two-generation-build.f -- --same-host <seed-engine>
 
-The same tool checks build identity independently of convergence:
-
-```sh
-HB_TMP=$PWD/build/tmp bin/hb --load tools/two-generation-build.f -- --same-host <seed-engine>
-```
-
-This copies the seed privately, then invokes `tools/native-build.f` twice with
-that same copy and distinct output paths. Both builds are uncached. A difference
-anywhere in the complete files fails the command, reporting a zero-based first
-differing offset. For an offset in captured code, the matching `.names` sidecar
-identifies its owner, including words whose names were stripped from the image;
-offsets without a matching name are reported as unavailable. The verdict prints
-before the owners, so an owner lookup that throws is reported with its throw
-code and the command still fails. The image reader
-supplies the code blob's file coordinates, and the sidecar's column names select
-the fields. No installed engine is replaced.
-
-For an existing pair, `--compare file-a file-b` performs the byte check without
-building or interpreting image metadata. It reports the differing-byte count
-for equal lengths, or a length mismatch, and the first differing offset in
-either case. The focused `two-generation-fixtures` gate row covers the byte
-boundaries and sidecar parser without launching a build chain on every gate.
-
-In every mode a verdict prints its lines on stdout and exits 1. A step that
-throws instead, such as a directory that cannot be made or a file that cannot
-be opened, is rethrown uncaught: the engine prints `hb: uncaught throw code C`
-on stderr and exits 67.
-
-Three facts decide how a change reaches the fixpoint:
-
-- **A codegen change takes two generations, and nothing else does.** gen1 is
-  compiled by the HOST's compiler, so a change to what the compiler emits first
-  reaches the code *gen1* compiles — which is gen2, making gen2 == gen3 the
-  fixpoint and `cmp gen1 gen2` the wrong test for it. A change anywhere else —
-  a capture rule, the image emitter, a library word, any source the window
-  compiles — is already in gen1, so **gen1 == gen2 is the expected result** and
-  a difference there says the change reached codegen after all. Building the
-  *unmodified* tree with the new engine must return the shipped engine byte for
-  byte either way. A gate proves the engine it spawns: `test/gate-stdlib-lib.f`
-  runs `bin/hb` from the checkout by name (`HABU_UNDER_TEST` reaches the child
-  as an environment variable only), so run the full gate from a tree whose own
-  `bin/hb` is the new engine.
-  - *The image does not inherit its host's layout constants.* Every
-    address-bearing fixed slot the capture holds is translated from the host's
-    slot offset to the tree's (`tools/native-emit.f` `TRANSLATE-FIXED`, which
-    refuses anything that is not a known slot of the same kind). Measured: an
-    engine whose fixed-band offsets are 12 bytes off this tree's — 20 `MOVZ`
-    instructions and 822,565 differing bytes against the shipped engine — built
-    this tree's engine byte for byte.
-  - *A wordlist id is a window offset, so a declaration that mints one moves
-    nothing.* A record's wid field and a package row's public and private wid
-    hold `wid - W0 + 1`, the offset from the window's first wordlist
-    (`src/habu/aot-decl.f` `WID-REL-BASE`); the payload's base cell is that
-    constant, the seed adds the booting engine's own `WIDN`
-    (`src/habu/habu2.f` `AOT-WINDOW:REBASE-WID,`), and the protected-wordlist
-    rows travel as offsets too, zero-based. Measured on the change that made it
-    so: an engine built from a tree with one extra `package` — two wordlists
-    more in its window than the shipped engine has — then built the unmodified
-    tree into a byte-identical engine with a byte-identical `.names` sidecar,
-    where before that change the same experiment moved 3308 bytes (3305 of wid
-    fields, the base cell, and two DATA cells that held a wid). A wordlist
-    count still differs per tree — `require lib/prelude.f  wordlist . cr` under
-    each engine: a `package` costs 2, a `STRUCTURE` 1, a `TYPED-VARIABLE` 0 and
-    a `require` of already baked source 0 — it just no longer reaches a
-    product.
-  - *The checker's records do not follow the host's symbol numbering.* The
-    host certifies the window's prefix (`src/core/util.f` through
-    `src/core/layout-valid.f`), and the window's `TRANSFER-CHECKED`
-    (`src/core/checker.f`) copies each certified effect into its own checker:
-    a record and a no-return row per copy, a defer row for a deferred word, and
-    the name interned when the window lacks it, so the order of the copies is
-    their order in the image. A host numbers every name it holds a `PRIM:` row
-    for ahead of all others, so `TRANSFER-ROWS` copies in the order of the
-    host's records — `EW.NEXT`, the store offset just past each, follows the
-    prefix's source order on every host — not of its symbol ids. Measured on
-    the change that made it so: an engine built from a tree with one `PRIM:`
-    row fewer (`CHECKER-STORAGE-INFO`) built the unmodified tree into an engine
-    12,297 bytes off the tree's own, that word's record 2542nd in the store
-    instead of 888th, and one with one row more (`CHECKER-CAPTURE-PREPARE`)
-    into one 427,238 bytes off, every symbol interned after that name
-    renumbered; one more `variable` or `STRUCTURE` moved nothing. After it each
-    of the four builds a byte-identical engine with a byte-identical `.names`
-    sidecar, and `test/host-checker-row-e2e.f` builds through a host whose row
-    names the second word instead of the first.
-  - *A record number is the host's, so no window cell may keep one.* The
-    window's records follow the HOST's primitives, and the image puts them
-    after its own, while the capture copies DATA as bytes: a cell that holds a
-    record index carries the host's primitive count into the product. A
-    prefix word that needs the boundary asks `CORE-PREFIX:FIRST-RECORD` when
-    it runs, and the prefix seal (`src/core/internal-mark.f`) keeps its
-    cursors off DATA and empties the `REG-PROTECT` table it consumes. Measured
-    while it kept them: a tree with one primitive more built a gen1 and a gen2
-    76 bytes apart — the 73 table cells and three cursors, each one higher —
-    and the unmodified tree built under that gen1 missed the shipped engine by
-    the same 76. With the seal clean, the unmodified tree built under the
-    shipped engine and under that larger host is the same file.
-  - *A name a pre-window build file calls comes from the HOST.*
-    `tools/native-build.f` loads its own prefix from the tree
-    (`src/habu/aot-decl.f`, `aot-capture.f`, `aot-file.f` and the rest), but
-    every engine name those files resolve is the host's: the window that
-    compiles the tree's `src/` has not opened yet. A constant added to
-    `src/habu/layout.f` and called from `aot-file.f` therefore dies in the host,
-    `E-UNDEFINED` … `ncomp: cannot compile <word>`, rc 70, one stage before the
-    engine that would carry it. Declare such a name in the build-host source
-    the build does load — `aot-decl.f` is where the payload's own constants
-    live — and the landing stays one stage.
-- **A new engine primitive that boot-prefix source calls lands in two
-  stages.** The host compiles the prefix and resolves the name in its own
-  dictionary, so stage 1 emits and registers the primitive with its
-  `PRIM:`/`TRUST` row and builds; stage 2 adds the prefix code that calls it
-  and builds again. A one-stage landing dies `E-UNDEFINED` (rc 70) in the host
-  before any build; a body the window compiles before its own hook dies in the
-  host's native compiler instead, naming the caller and not the primitive:
-  `ncomp: cannot compile LIVE-BIND`, `uncaught throw code -8579`
-  (`E-NCOMP-ARITY`), rc 67 (measured: the `scope-find` landing's second stage
-  built straight from the stage-1 host, which lacks the primitive). A
-  `TRUSTED:` bridge turned into a checked call is the same shape: the callee's
-  `PRIM:`/`PPRIM:` row must exist in the host first, or an old host dies at
-  `--load` of the build tool with `ncomp: cannot compile <word>`. The stage-2
-  refresh refuses such a tree before any build, at its certify step:
-  `VERIFY:SOURCE-BUF` types the boot prefix with the host's rows, as the window
-  compile does, so the certify reports the caller's refusal
-  (`certify: prefix-src rejected rc 70 (blocking)`) and the refresh exits 74
-  (`E-BUILD-CERTIFY`). Measured on the tree whose `NS-ENSURE` calls
-  `namespace-record` through `CHECKER-OVERLAY`'s owner row: an engine built
-  before that row refuses `E-CAP-TRUSTED habu: in ns-ensure` in the native
-  build (`ncomp: cannot compile NS-ENSURE`, rc 74) and in the refresh (rc 74),
-  and the tree's own engine passes both.
-- **Build-prefix source must satisfy the host's checker and the tree's.**
-  `tools/native-build.f` compiles `src/habu/aot-file.f` and its siblings under
-  the host's checker, and the window compiles them again under the tree's, so
-  a checker change that refuses what the old one required needs a form both
-  accept. Measured when a package `DIE` ending in `die` became no-return:
-  `… DIE 0 ;` in a `( -- n )` word is `E-DEAD-CODE` under the new checker and
-  `… DIE ;` a stack mismatch under the old one, while
-  `cond 0= if … DIE then  value ;` certifies under both.
-- **A native build refuses a rejected core-prefix definition before
-  publication.** The window loads `src/core/util.f` through
-  `src/core/check-hook.f` before its own hook is installed, so the build borrows
-  the retained compiler's required-scan entry for that span, including the
-  checker handover. A non-certified, non-`TRUSTED:` body makes
-  `CHECK-HOOKLESS` report its reason and throw 70; the driver restores its prior
-  compiler dispatch on success or throw before loading `src/core/roles.f`.
-  The build's catch returns rc 74 and promotes no product. Measured by
-  `test/compiler/native-hookless-reject.f`: a mismatched
-  `: PROBE-NZ ( n -- n ) 0= ;` in `src/core/util.f` refuses, while the same
-  explicit `TRUSTED:` definition builds. Ordinary `0 set-check` compilation
-  still records the declaration and can run a body whose scan it did not
-  certify. A host built before `NCOMP:COMPILE-CHECKED` cannot load the new build
-  driver: first build the compiler with the old driver, then use that product
-  to build with the updated driver.
-- **A new `lib/errors.f` code or `src/habu/layout.f` band that `lib/fs.f`
-  reads lands through a stage host.** `tools/native-build-core.f` requires
-  `lib/fs.f` from the tree, and the host resolves its names against its own
-  baked `lib/errors.f` and layout, so a code the tree just minted dies in the
-  host, `E-UNDEFINED … undefined word '<code>'`, `ncomp: cannot compile
-  <word>`, rc 70, before any target work (measured: `E-FS-WALK-ACTIVE` in
-  `WALK-FILES`). Build a stage engine from the host's own tree plus the new
-  declarations alone, then build the tree with that engine. A library the
-  engine bakes is compiled by the target build after the tree's declarations,
-  so a word it adds needs no stage until a file the host loads calls it: the
-  tree's `lib/float.f` calling a new `lib/string.f` word dies the same way,
-  `E-UNDEFINED habu: in str>float: undefined word 'STR-CHECK-LEN'`, rc 70,
-  and the stage then carries that word's declarations too. When nothing else
-  the image bakes changed, the stage and the tree's engine are
-  byte-identical.
-- **The recovery prologue and `prefix-rewind.f` rewind to different points.**
-  `tools/bootstrap.sh`'s boot-hide text reloads the whole core prefix, so it
-  rewinds the dictionary to the prefix's *first* record and the signature
-  store to zero; `CHECKER-BOUND:REWIND` returns to the prefix's *end*, where
-  `prefix-rewind.f`'s payload reloads from. Calling the boundary in the
-  prologue builds a stage-1 engine that dies at boot with a silent rc 78, one
-  stage after the edit.
-
-`tools/native-build.f` and the private `tools/native-bootstrap.f` require one
-explicit output path after `--`; there is no implicit `bin/hb` replacement.
-Their output passes a basic startup smoke check, which does not establish full
-compiler or application acceptance. Keep candidates at private paths until the
-required verification passes and select any installed replacement explicitly.
-
-Concurrent native builds need distinct output paths: each writes
-`<output>.native-build.tmp` before promotion. They may share `HB_TMP`; the
-target is captured in memory, and each build creates and removes its own smoke
-directory under `TMPDIR` (or `/tmp` when unset).
-
-Measured 2026-09-12 on linux-aarch64 from a seed `hb-stdin`, 173 s wall:
-
-```
-two-gen: gen 1 built img 5439680 sym-n 12534 usigs 2295704 cap 2359296 norets 135608 cap 196608 rows 25295 heap 10293799 dp-cap 33030080
-two-gen: gen 2 built img 5439680 sym-n 12534 usigs 2295704 cap 2359296 norets 135608 cap 196608 rows 25295 heap 10293799 dp-cap 33030080
-two-gen: gen 3 built img 5439680 sym-n 12534 usigs 2295704 cap 2359296 norets 135608 cap 196608 rows 25295 heap 10293799 dp-cap 33030080
-two-gen: ok gen 3 matches gen 2
-two-gen: gen 4 built img 5439680 sym-n 12534 usigs 2295704 cap 2359296 norets 135608 cap 196608 rows 25295 heap 10293799 dp-cap 33030080
-two-gen: gen 5 built img 5439680 sym-n 12534 usigs 2295704 cap 2359296 norets 135608 cap 196608 rows 25295 heap 10293799 dp-cap 33030080
-two-gen: bytes gen 2 vs 3 1032266
-two-gen: bytes gen 3 vs 4 0
-two-gen: bytes gen 4 vs 5 0
-two-gen: ok gen 5 matches gen 4 byte for byte
-```
-
-Generation 1 is the deficient seed-lineage engine — the seed's checker records
-nothing across the build window, so B1 bakes a smaller registry — and
-generations 2 and 3 agree field for field, which is what "the chain has stopped
-growing" means. The whole B1-to-B2 boot-heap step, 262,144 bytes, is the two
-persisted checker caps growing (`+196,608` signatures, `+65,536` no-returns);
-nothing else moves, and at generation 3 the caps do not move either. The
-B2-hosted build peaks at `here - data-base` 30,675,584 against the DP cap the
-lines above report (`DATA-SIZE - PROF-CNT-BYTES`), a margin over 2.3 MB.
-
-Before the checker stores were baked at the grain (`USIGS-ROUND-CAP`), those
-caps were rounded to a power of two: generation 2 booted at 12,187,580 instead
-of 10,221,500, the same build needed about 34.6 MB, and generation 3 stopped
-with `two-gen: gen 3 stopped rc 76 hb: data space out of range`. Generation 1
-cannot show that difference — its two pool contents round to the same cap under
-either policy — so the check has to reach generation 2 to mean anything.
-
-**Two builds by the same host are byte-identical.** They were not until dot
-habu-make-the-engine-9db99082: one DATA cell held a process-local address.
-`REG-PERSIST-DELTA` (`src/core/checker.f`) kept the distance between a
-registry's freshly allotted DATA copy and the grown store's mmap address after
-the checker's snapshot persist, and the AOT capture baked the cell, so two
-builds from one host differed in the 3-4 bytes of that one cell — 4 bytes at
-DATA offset 5354888 in the pair measured. The delta is a transient of that pass
-with no reader in a restored image, so it now travels on the stack
-(`REG-PERSIST-MOVE`) and occupies no cell. Two seed-hosted builds then agreed
-in all 5,701,824 bytes, and `two-gen: bytes gen 4 vs 5` went from 4 to 0.
-
-The same rule holds for a `--repl` application image, which the snapshot writer
-stores rather than the AOT capture. Two builds of one program differed in
-`LASTC-CELL`, `AOT-CELLS:SPAN-TABLE-CELL` and `AOT-CELLS:SPAN-BASE-CELL`,
-`SIGNAL-ABI:STUB-CELL`, `EVALREC-CELL`, `UNCGH-CELL`, the native compiler's
-cached prior call target and the writer's own output path, and the code
-signature's identifier was the output file's name. Each cell is now declared
-and relocated, kept from the booting process across the restore, zeroed in the
-image, or gone, and the image signs as `hb-prog`.
-`tools/hb-build-repl-twin-test.f` builds one program twice with separate
-`HB_TMP` and cache roots, and once more by the maker directly to another name,
-and requires the same bytes.
-
-**Transient storage is released before DATA is copied.** A `DYNAMIC-BUFFER`
-control record holds its mapping pointer, byte capacity and private registry
-handle. `RESERVE` registers its first live allocation; `RELEASE` removes that
-membership and zeroes all three cells. Reserving through an existing compiled
-word after capture or restore registers it again. Registry capacity is reserved
-before publishing an allocation, and removal updates the moved member's handle.
-A small registry lock protects membership changes by independent native tasks;
-buffer allocation and copying remain outside it. Capture requires stopped tasks.
-
-`AOT-CAPTURE:CAPTURE` releases the replacement runtime's registry immediately
-before `ACAP-BAKE-DATA`. With a retained runtime, it releases only control records
-inside the captured DATA span; host and writer buffers outside that value stay
-live. A range cutting through a live control record refuses before cleanup.
-The snapshot path also walks the registry, immediately before `SND-COPY` in
-`SNAP:PERSIST`, after lifecycle callbacks have released dependent resources.
-Compiler preparation still resets pass counters and logical state; individual
-buffer release lists are no longer needed.
-
-`test/dynamic-buffer-registry.f` covers allocation failure, membership updates,
-range boundaries and repeated cleanup. `test/dynamic-buffer-capture.f` captures
-one window twice while keeping outside writer buffers live. `test/app-image.f`
-dirties a subject-owned buffer, saves and restores twice, reserves through its
-original compiled words, and checks that the restored compiler remains usable.
-`test/dynamic-buffer-tasks.f` exercises concurrent independent buffer allocation,
-growth and release through the shared registry.
-
-**The chain reaches its fixpoint at generation 3; the (4,5) pair stays the
-asserted one as margin.** The product is a function of its host as well as of
-the source: the capture bakes the window's DATA as its present cells
-(a presence bitmap plus one varint each, `AOT-WINDOW:EMIT-BM` / `EMIT-VALS`), so
-build-time residue in that DATA changes which cells are present and displaces
-every later section of the image. Until 2026-09-12 that residue made the chain
-four generations long: measured between B3 and B4, 21 residue cells, one
-non-zero byte each, in the unused tail of a baked boot buffer (`SYM-STR-BOOT`
-+983,624, with `SYM-STR-U` at 182,754), worth 21 run rows and 21 run bytes and
-the whole of the 1,018,047 differing bytes, while `tools/imgdump.f` reported
-identical dicts for B2 and B3. Re-measured 2026-09-12 on engine c684ef54 (tip
-a6417a47): `bytes gen 2 vs 3 1032266`, `bytes gen 3 vs 4 0`, `bytes gen 4 vs 5
-0`, so B3 already equals B4 in all 5,439,680 bytes and the residue is gone. The
-(4,5) assertion therefore holds with one generation of margin; if it ever fails
-while (3,4) still passes, a new build-time residue has appeared and the
-`cmp -l` offsets name the cell.
-
-Re-measured 2026-09-13 on a seed-hosted chain after `LOC-HW-P` stopped baking
-the build window's own DATA address (`src/core/checker.f`): all five generations
-report `usigs 2295800 cap 2359296 heap 10293807`, and `bytes gen 2 vs 3` is now
-**0** where it was 1,032,266. The remaining 1 MB of displacement was that
-residue: the stale base sat above the restored heap top, so `LOC-ADD` wrote bind
-widths into DATA that `allot` later handed out, and the capture baked those cells
-as extra non-zero runs. The chain now reaches its byte fixpoint at generation 2,
-so the (4,5) assertion carries two generations of margin. A boot-time signature
-pool grow does not disturb it: two builds hosted by one restored engine forced to
-double its pool at boot are byte-identical.
-
-The check is deliberately **not** registered in `test/gate-stdlib-cases.f`: the
-five cold builds cost 3-4 minutes, and for the whole of that time the tool owns
-the `bin/hb` slot, while `test/run.f` spawns `./bin/hb` children by relative
-path out of a bounded process pool. Run it by hand after any change to the
-checker's persisted stores, the snapshot writer, or the image layout.
+A codegen change can first appear in generation two because generation one
+was compiled by the old host. Other source changes usually reach generation
+one. Compare successive products, not an arbitrary seed and product. A
+pre-window build file resolves names against its host, so a newly called
+engine primitive or fixed layout declaration may require a staged host.
+The window's captured records and cells must not retain the host's record
+numbers or process addresses; test/host-checker-row-e2e.f checks a changed
+host primitive table. For a reserved-layout transition, use the cold source
+writer described below.
 
 ## Landing a Reserved-Layout Change
 
@@ -726,118 +163,27 @@ codegen, self-hosting or capture changes require it.
 
 ## DDC Audit (Diverse Double-Compiling)
 
-## Chain orchestration
+tools/ddc-verify.f is an explicit trust audit. It builds through the
+Gforth recovery route and the native route, then compares their refreshed
+products byte for byte. It is separate from the ordinary gate and requires
+HABU_ALLOW_BOOTSTRAP=1 and a working Gforth. Run the driver from the
+repository root only when auditing recovery or a changed seed:
 
-The generation decision is checked Habu code, not policy hidden in a shell
-loop. `tools/chain-plan-build.f` asks jj for one revision's changed paths and
-passes the captured list to `tools/chain-plan.f`; the shell launcher supplies
-only the revision and repository root. It classifies the result from the native
-builder's discovered source closure. Changes to
-the compiler, checker, prefix, or a closure member report `engine`; tests,
-documentation, and libraries outside that closure report `focused`. Unknown
-source prefixes are engine inputs and therefore fail closed. `focused` is a
-classification for a reviewed scheduler policy, not proof that an engine can
-be reused; the chain runner remains the authority until that policy has its
-own gate evidence.
+    HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth bin/hb --load \
+      lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
+      lib/process.f lib/process-argv.f lib/process-env.f \
+      tools/ddc-verify.f tools/ddc-drive.f
 
-`tools/chain-run.f` owns the product chain. It builds the first generation from
-the selected host, the second from that product, and the third only when the
-first pair differs. A failed build or a non-fixpoint is an error, so a queue
-cannot infer success from a log line. A shell launcher may still snapshot a jj
-revision and pass its paths, but it does not decide what to build or whether a
-chain succeeded.
-
-`tools/ddc-verify.f` is the explicit (never per-commit) trust audit: it builds
-`bin/hb` two independent ways and requires byte-identical output. A seed backdoor
-would have to be mirrored in both the Gforth host and the native seed to survive
-the sha256 compare, reducing seed trust to "no coordinated cross-host backdoor".
-It is gated on `HABU_ALLOW_BOOTSTRAP=1`, like the launcher it drives.
+A past match does not establish that the current source or engine matches.
+Inspect a DIVERGENT result before claiming the routes converge.
 
 ## What the engine carries
 
-`src/habu/native-runtime.f` is the manifest: the ordered list of files a built
-engine bakes. It carries the closure of the compiler, the JIT and the REPL and
-nothing else, so no package and no type signature reaches the image unless one
-of those three requires it. `tools/manifest-lint.f` enforces that — it reads
-the manifest's rows, walks the require graph out of the entry points it
-declares (the files the engine loads for their own sake, each with its reason
-on the row), and refuses a row that nothing in the closure requires. Run it as
-`bin/hb --load tools/manifest-lint.f`; `tools/manifest-lint-test.f` drives its
-line reader against the near misses and then checks the live tree.
-
-A library the engine does not bake is still one `require` away, and that is the
-intended cost: `require lib/vector.f` is about 19 ms at tier 0.
-`bootstrap/cg/forth.fs` mirrors the manifest's prefix rows, so a row that moves
-here moves there too.
-
-The other side of that cost: a file the manifest bakes is answered from the
-baked copy, so editing it and re-running `bin/hb --load` changes nothing — a
-deliberate syntax error in `src/compiler/ir/context.f` loads clean. That covers
-what those entry points require: the ARM64 compiler chain under
-`src/compiler/`, the checker and its declarers under `src/core/`, `src/habu/`,
-and the libraries the manifest names (`lib/errors.f`, `lib/string.f`,
-`lib/memory.f` among them); an edit there is proved only by the generation
-chain, never by loading the file.
-
-A file under those same directories that the closure does NOT reach is not
-baked, and an edit to it takes effect through `require` with no rebuild at all.
-The x86-64 backend is one: `A64SEL:BOUND?` answers at the prompt where
-`X64SEL:BOUND?` is `E-UNDEFINED`, and an engine built over an edit to
-`src/compiler/native/select-x64.f` is byte-identical to one built without it.
-
-The stdin build's captured compiler closure records tree paths relative to the
-build root. Those paths also become the product's provided-file registrations;
-absolute capture paths would only match at the original build directory and
-would cause duplicate definitions after relocation.
-
-The two chains and their comparison point:
-
-- **Native chain** — the current `bin/hb`, which reproduces itself through
-  `tools/native-build.f` at the native fixpoint. This is the release reference.
-- **Gforth chain** — `tools/bootstrap.sh HABU_BOOTSTRAP_CHECK_ONLY=1` emits a raw
-  seed engine `hb-stdin` via Gforth; the audit then runs the native fixpoint
-  refresh on that seed (the exact `install --force` step the full recovery runs
-  after `mv hb-stdin bin/hb`), re-targeted to a scratch engine path via
-  `HABU_FIXPOINT_ENGINE` so the checkout's `bin/hb` is never replaced. The
-  fixpoint install verb is a recovery/development route; it is not a
-  release-equivalence proof and must not replace the native product without its
-  copied-tree preflight and the native gate.
-
-The DDC driver compares the Gforth chain's refreshed engine with the current
-native `bin/hb`; byte identity is the audit's requirement, not an established
-property of the recovery route. The source-only recovery product still lacks
-the active signature for `CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?`: compiling a
-tier-1 trusted caller throws `E-HIR-UNMODELED` (-8286), while the native product
-compiles and executes it. The copied-tree install smoke checks quotation-storage
-registration and a tier-1 arithmetic call; it does not qualify that missing
-signature or establish release equivalence.
-
-The audit does not compare the raw `hb-stdin` seed directly. Its captured REPL
-can retain the Gforth host's address immediates. The recovery refresh captures
-the REPL again in the small engine, removing that source of byte differences.
-The final comparison must still pass before claiming convergence.
-
-Keep `bin/hb` as the qualified native product described above when running the
-audit. The Gforth chain needs `gforth` on `PATH` or `GFORTH` set, per Requirements
-above:
-
-```sh
-HABU_ALLOW_BOOTSTRAP=1 GFORTH="${GFORTH:-$HOME/.local/bin/gforth}" bin/hb --load \
-  lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
-  lib/process.f lib/process-argv.f lib/process-env.f \
-  tools/ddc-verify.f tools/ddc-drive.f
-```
-
-where `tools/ddc-drive.f` is a one-line `DDC-MAIN`. The tool prints
-`ddc: byte-identical <sha>` and exits 0 on match, or `ddc: DIVERGENT` with both
-digests, both lengths, and the first differing byte offset, and exits 1. It runs
-for a few minutes (the Gforth chain dominates).
-
-VERIFIED (2026-07-16): the two chains are byte-identical at the fixpoint. A
-`DIVERGENT` verdict is a real finding — a genuine cross-host toolchain divergence
-(a candidate coordinated seed backdoor, a non-deterministic emit, or a stale
-`bin/hb` that was not refreshed to the fixpoint first). Investigate the first
-differing offset before trusting either binary; do not paper over it in the tool.
+src/habu/native-runtime.f is the ordered manifest of source baked into a
+native product. Loading a baked file by name does not reread edits from disk;
+a native rebuild is needed to test those changes. Files outside that closure
+load normally from disk. Run bin/hb --load tools/manifest-lint.f when changing
+the manifest, and use the generation check for changes baked into the engine.
 
 ## Refresh `bin/hb`
 
@@ -980,18 +326,10 @@ as launchers. Build the exact tree first with `tools/native-build.f` and follow
 [gate.md](gate.md). Generated snapshot images are local artifacts and must not
 be committed.
 
-## Future Port Checklist
+## Future ports
 
-1. Add one target source seam under `src/os/<target>/` for syscalls, executable
-   layout, signing policy, terminal constants, and target metadata. Startup
-   argv/envp access stays shared in `src/os/env-base.f`; do not add target
-   `env.f` fallbacks.
-2. Wire the target into `tools/bootstrap.sh`, `tools/build-fixpoint.f`, and the
-   native source-list builders (`src/habu/habu2.f`, `bootstrap/cg/forth.fs`,
-   `src/habu/stdin.f`, and `tools/hb-build-lib.f`) so bootstrap, refresh,
-   `--load`, baked REPL, and AOT all select the same target prefix automatically
-   from the running `bin/hb`.
-3. Recover `bin/hb` only if needed with `HABU_ALLOW_BOOTSTRAP=1
-   tools/bootstrap.sh`; after that, use only native `bin/hb`.
-4. Run the refresh command above and require a byte-for-byte fixpoint.
-5. Run the native port gate above on the target machine.
+The Gforth seed currently emits ARM64 only. Bring up another host by
+cross-building with an existing Habu compiler and executing the product
+on the new host. Keep target-specific requirements and qualification in
+[portability.md](portability.md) and the target's own document. Extend
+the no-binary seed only when native recovery on that host is needed.

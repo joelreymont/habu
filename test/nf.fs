@@ -7,9 +7,8 @@ require ../bootstrap/cg/forth.fs
 \ Scratch paths. These were four fixed /tmp names, so two lanes running the
 \ gforth-hosted checks at the same time overwrote each other's binary and each
 \ other's captured stdout — the harness would then compare one lane's output
-\ against the other lane's build (docs/archive/lessons-2026h1.md records the
-\ same hazard). The directory is HB_TMP when the caller set one, which
-\ tools/bootstrap.sh always does, so the periodic check keeps its artifacts in
+\ against the other lane's build. The directory is HB_TMP when the
+\ caller sets it, as tools/bootstrap.sh does, so the periodic check keeps its artifacts in
 \ the scratch dir it already owns; otherwise /tmp with this process's pid
 \ appended, which is what a bare `gforth test/bootstrap-wide-memory.fs` gets.
 128 constant NF-PATH-CAP

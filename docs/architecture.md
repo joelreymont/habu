@@ -243,9 +243,10 @@ compiles a target body for the product ([portability.md](portability.md) §7).
 Building for a platform never runs on it: `hb` on a macOS ARM64 machine
 cross-compiles the x86-64 `hb`, and only running the product needs a machine of
 its kind ([portability.md](portability.md) §2.3).
-**Now:** only the x86-64 cross-build compiles definitions a second time for the
-target and links them (`src/compiler/native/shadow.f`, `src/habu/link-x64.f`);
-every other build captures the running engine.
+**Now:** the x86-64 native cross-build and the Wasm module build compile
+definitions for a second target through `src/compiler/native/shadow.f` and
+their target linkers. The ordinary ARM64 product build captures the running
+engine.
 
 **Every codegen emits unplaced code.** A compiled definition is its bytes plus
 a row for each call, outgoing branch, code address and data address in them,

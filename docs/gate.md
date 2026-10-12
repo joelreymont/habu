@@ -457,8 +457,8 @@ at its deadline.
   under its `HB_TMP`, whose length leaves no room in `sun_path`.
 - A red that appears only when the box is loaded is the box: reproduce it on
   the unmodified base under the same load, then rerun the suite alone. Every
-  gate run gets its own `HB_TMP` root, and nothing edits the tree while a gate
-  or a census is running.
+  gate run gets its own `HB_TMP` root. Run against a matching private
+  source and engine tree when the result must qualify that exact pair.
 
 ## Separate Gforth recovery checks
 

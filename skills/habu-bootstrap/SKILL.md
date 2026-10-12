@@ -1,6 +1,6 @@
 ---
 name: habu-bootstrap
-description: Use when recovering or refreshing Habu bin/hb, selecting Gforth, validating no-binary bootstrap, or porting bootstrap work to zed/Linux.
+description: Use when recovering or refreshing Habu bin/hb, or validating the no-binary bootstrap.
 ---
 
 # Habu Bootstrap
@@ -9,19 +9,14 @@ Use this skill for `bin/hb` recovery and self-refresh.
 
 ## Requirements
 
-- Run from the repo root.
-- On a fresh machine, FIRST prefer a `bin/hb` seed copied from a trusted
-  checkout of the same OS/arch (docs/seed.md) over any gforth bootstrap.
-- Gforth is only the no-binary recovery host.
-- The recovery host must be Gforth 0.7.9 or newer with `{:` locals support.
-- Known-good host: `gforth 0.7.9_20260610`.
-- **Gforth 0.7.3 is BANNED for Habu work — never install or build it, not
-  even as a stepping-stone build host.** With no gforth present at all, use
-  the complang *dist* tarball of the pinned snapshot (ships pregenerated
-  kernel images, builds with no pre-existing gforth):
-  `https://www.complang.tuwien.ac.at/forth/gforth/Snapshots/0.7.9_20260610/gforth-0.7.9_20260610.tar.xz`
-  — the GitHub tag archive does NOT self-build (PREFORTH needs a gforth).
-- Prefer `~/.local/bin/gforth` when present.
+- Run from the repository root.
+- Prefer a trusted native seed from the same OS and architecture when
+  available; see docs/seed.md.
+- The no-binary ARM64 route uses Gforth 0.7.9 or newer with locals
+  support. Gforth 0.7.3 is too old. A known-good release is
+  0.7.9_20260610.
+- With no Gforth installed, use the complang dist tarball named in
+  docs/bootstrap.md. Its prebuilt kernel images allow a cold build.
 
 Verify locals support:
 
@@ -53,9 +48,3 @@ converged product with its matching source tree before replacing `bin/hb`;
 see `docs/gate.md`. `tools/build-fixpoint-refresh.f -- install` produces the
 source-only recovery engine, not the gated native product.
 
-If the package manager lacks Gforth 0.7.9+, build a current snapshot and install
-or wrap it under `~/.local/bin/gforth`; keep the exact snapshot command in
-`docs/bootstrap.md`.
-
-On zed, validate local macOS bootstrap first, then port the same committed tree
-and use zed only for Linux/aarch64 proof.

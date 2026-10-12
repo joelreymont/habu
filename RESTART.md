@@ -29,8 +29,7 @@ new workspaces under `.jj-ws/` from the current accepted head, as AGENTS.md says
   disassembly and profiling.
 - [The language reference](docs/forth.md) and [the card](docs/forth-card.md)
   describe the current language surface, including wide and parametric locals.
-- [The roadmap](docs/roadmap.md), [compiler plan](PLAN.md) and open dots own the
-  remaining work. A green integration gate does not complete every campaign
+- [The compiler plan](PLAN.md) and open dots track remaining work. A green integration gate does not complete every campaign
   or establish every downstream application's acceptance.
 
 Engine hashes, sizes, timings, lane assignments and pending commit ids belong

@@ -1,11 +1,11 @@
 # Trusted Native Seed
 
-`docs/bootstrap.md` is the canonical no-binary recovery procedure for macOS
-ARM64 and Linux AArch64: Gforth creates only private `HB_TMP` artifacts, then
-the new `bin/hb` refreshes itself from current source.
+Use a trusted native hb from the same OS and architecture when one is
+available. For ARM64 macOS and Linux with no native binary, the Gforth
+recovery route is in [bootstrap.md](bootstrap.md).
 
-A trusted native `hb` seed is still a valid alternate trust root when one is
-available. The checked recovery command is run by the seed binary itself:
+A trusted native hb is a recovery seed, not a qualified product. The seed
+binary runs the checked recovery command:
 
 ```sh
 /path/to/hb-seed --load tools/seed-main.f -- /path/to/hb-seed

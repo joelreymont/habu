@@ -1,20 +1,15 @@
 # Portability architecture
 
-Adopted 2026-10-03; reviewed against master 67a66d28.
+This is a proposed target and cross-compilation architecture, not a claim that
+every compiler product or target below works today. It describes separate build
+host, compiler product and output target roles, reusable ISA backends, ABI and
+image policies, and qualification on the machine that runs a produced binary.
+The concrete incremental-build direction is in
+[package-build.md](package-build.md): read editable files from disk and compile
+PACKAGES as units. The Wasm design is in [wasm-backend.md](wasm-backend.md).
 
-How Habu builds programs, and Habu itself, for more than one target: five
-qualified native compiler-host products, reusable ISA backends, separately
-selected ABI, runtime, image and toolchain profiles, package contributions
-installed in source order, and a Wasm path. The
-compiler's execution environment never silently defines the program it builds.
-
-This page specifies contracts and a migration plan. It claims no compiler
-implementation, browser qualification, TI board test or native self-build.
-Wasm code generation (section 17) lives in
-[wasm-backend.md](wasm-backend.md); the package contribution design this page
-builds on is [package-build.md](package-build.md). The adoption review checked
-every claim about master against 67a66d28; the commits and file:line references
-below are master's.
+Some source observations below reflect the proposal's original baseline.
+Check current code before treating a listed gap or path as current.
 
 ## 0. Failures the design closes
 
@@ -29,7 +24,7 @@ contract that closes it.
 | F04 — ambient compiler state | An ARM compilation, nested x86 compilation, or failed Wasm compilation could overwrite another's scratch state | Session-owned contexts and artifact ownership; §5 |
 | F05 — target objects described only as IDs | Existing `create`, `here`, `,`, `!`, `does>` and immediate behavior had no realizable cross-compile path | Typed target references, mapped build-time views, owner adapters and explicit refusal cases; §7 |
 | F06 — host code versus target code | A target-only import could be called during compilation | Separate callable implementations and execution grants; §§7–8 |
-| F07 — package-order semantics | Generic dependency sorting could expose future declarations or rerun effects on cache hits | Original-position contribution installation from the existing package design; §8 |
+| F07 — package-order semantics | Generic dependency sorting could expose future declarations or rerun effects on cache hits | Package order and visibility preserved while compiling from disk; §8 |
 | F08 — producer identity | Different host binaries or source-installed checker owners could reuse incompatible cache results | Effective producer vector and conservative reuse policy; §23 |
 | F09 — 64-bit cells / 32-bit pointers | Packed foreign pointers, guest pointers and Habu pointer slots could be confused | Explicit storage domains and checked conversion; §9 |
 | F10 — arithmetic equivalence | Wasm traps, C helper behavior, NaN differences or FMA could change Habu semantics | Operation-level legalization and numeric-policy gates; §10 |
@@ -45,10 +40,9 @@ contract that closes it.
 | F20 — Wasm linking | Native byte patching could corrupt function/type indices and variable-length encodings | Symbolic Wasm contribution plans and final index assignment; §17 |
 | F24 — publication “rollback” | Candidate initialization could mutate shared memory or trigger irreversible browser work | No start/active shared segments; declarative initialization; single root commit; §21 |
 | F25 — code lifetime | Redefinition could invalidate callbacks, suspended jobs or old execution tokens | Definition generations and code-generation leases; §§14, 21 |
-| F27 — build-cache invalidation | Negative lookups, compile-time transitive calls and undeclared effects could be missed | Observation classes, closure dependencies and source-only fallback; §23 |
-| F28 — self-build circularity | Producer hashes embedded in outputs could prevent convergence | Content/provenance separation and explicit B0/B1/B2 receipts; §22 |
-| F29 — capability/qualification claims | “Backend available” could imply linking, deployment or execution support | Independent stage capability and evidence records; §§3, 24 |
-| F30 — migration ordering | New portability work could block or overwrite the Intel lane's work | Additive interfaces, per-lane ownership and concrete exit gates; §§26–27 |
+| F27 — build-cache invalidation | Negative lookups, compile-time transitive calls and undeclared effects could be missed | Changed inputs and compiler/target compatibility invalidate reuse; §23 |
+| F28 — self-build circularity | Producer hashes embedded in outputs could prevent convergence | Content/provenance separation and self-build comparison; §22 |
+| F29 — capability/qualification claims | “Backend available” could imply linking, deployment or execution support | Report each working stage and tested environment accurately; §§3, 24 |
 
 ### 0.1 Precedence
 
@@ -69,16 +63,14 @@ target, Wasm included:
 The precedence for this work is:
 
 1. Existing language and primitive contracts, for language behavior.
-2. The package incremental-build design ([package-build.md](package-build.md)),
-   for contribution boundaries, source-order installation and the AOT
-   package-profile family.
-3. This page, for portability composition, context ownership, cross-target
-   data, backend results and integration.
-4. [wasm-backend.md](wasm-backend.md), for Wasm-specific details this page does
-   not refine.
+2. [package-build.md](package-build.md), for the disk-file and PACKAGES build
+   model.
+3. This page, for target composition, context ownership, cross-target data
+   and backend results.
+4. [wasm-backend.md](wasm-backend.md), for Wasm-specific details.
 
 A genuine conflict is an explicit integration change with new versioning and
-tests, not an implementer's local choice. [B1; P1 §§1, 4, 10]
+tests, not an implementer's local choice. [B1]
 
 The Windows/COM design [WN] this design cites does not exist yet and is open
 future work. Until it lands, the section that defers to it (§15.4) states
@@ -93,7 +85,7 @@ handles where that avoids relying on unqualified multi-cell linear storage. This
 design authorizes no new `TRUSTED:` escape hatch.
 
 A cited source establishes an existing fact or external ABI rule. New records,
-algorithms and paths are design decisions. §29 lists the sources.
+algorithms and paths are design decisions. The references below list its sources.
 
 ## 1. Required scope and support claims
 
@@ -109,7 +101,7 @@ The five required native Habu compiler hosts are:
 | `aarch64-pc-windows-msvc` | Windows | ARM64 |
 | `x86_64-pc-windows-msvc` | Windows | x86-64 |
 
-These are **required configurations**, not assertions that all five currently work. The two Windows hosts stay "required, unqualified" until a Windows lane exists (P9 is parked). Linux libc policy must be explicit: the table uses GNU profiles as defaults, while musl and syscall-only runtimes are separately resolved variants. A target label is a front-door alias, never the whole semantic target definition.
+These are **required configurations**, not assertions that all five currently work. The two Windows hosts remain required, but their compiler products are not yet demonstrated. Linux libc policy must be explicit: the table uses GNU profiles as defaults, while musl and syscall-only runtimes are separately resolved variants. A target label is a front-door alias, never the whole semantic target definition.
 
 There is no required macOS/x86-64 host in this scope. TI C66x and Cortex-R4F/R5F are target-only, not compiler hosts. Browser-hosted Habu is an additional independently gated compiler profile, not a prerequisite of ordinary Wasm application compilation.
 
@@ -117,7 +109,7 @@ There is no required macOS/x86-64 host in this scope. TI C66x and Cortex-R4F/R5F
 
 Every native host should be able to **generate** every implemented output profile without executing that output. Initial profile families are native hosted ARM64/x86-64; ARM32 and C66x freestanding; and core Wasm memory32. Native objects, executables, static/shared libraries, firmware and browser releases are separate output kinds.
 
-Support is reported as `Declared`, `CodegenTested`, `ObjectTested`, `Linked`, `Executed`, and `Qualified(profile, environment, evidence)`, with independent fields rather than an assumed linear progression. A code-generation-only backend may be useful. It must not be advertised as a working compiler host, bootable board image, or COM server.
+Describe support by the stages actually exercised: code generation, object writing, linking and execution in the named environment. A code-generation-only backend may be useful, but it does not establish a working compiler host, bootable board image or COM server.
 
 ### 1.3 Non-goals that do not block the architecture
 
@@ -125,7 +117,7 @@ No binary backend-plugin ABI, LLVM/Emscripten dependency, TI self-hosting, trans
 
 ## 2. Build platform, compiler product and output target
 
-P1b resolves named profiles into fixed `RTARGET:resolved-target` values and captures the executing process profile before a native target window opens. `BUILD-TARGET:WITH` scopes a `build-action` around the common native build entry and restores pending selection on return or throw. Compiler product composition records enabled emitter families separately from the executable target; it does not assert backend availability. The action graph below describes later expansion beyond this bounded native build adapter.
+The current resolver maps named profiles into fixed `RTARGET:resolved-target` values and captures the executing process profile before a native target window opens. `BUILD-TARGET:WITH` scopes a `build-action` around the common native build entry and restores pending selection on return or throw. Compiler product composition records enabled emitter families separately from the executable target; it does not assert backend availability. The action graph below describes later expansion beyond this bounded native build adapter.
 
 ```text
 ExecutionPlatform { os, arch, process_abi, environment_id }
@@ -259,13 +251,13 @@ A diagnostic includes the stage, unsatisfied requirement, responsible provider a
 
 `SameBuildIdentity` asks whether an action has identical declared inputs and code-generation policy. `LinkCompatible` asks whether two objects can coexist. `RuntimeAdmissible` asks whether an image fits a runtime/embedding's actual requirements and grants. `ExecutableHere` asks whether a runner can execute it.
 
-P1b exposes `RTARGET:SAME-BUILD-IDENTITY?` over a resolved target and the existing action-input digest, `LINK-COMPATIBLE?` over declared profile ABI/layout/runtime facts, `RUNTIME-ADMISSIBLE?` over selected semantic features, and `EXECUTABLE-HERE?` over the captured process ABI/image/runtime. Contribution, relocation and runner checks remain at their later owners.
+The current resolver exposes `RTARGET:SAME-BUILD-IDENTITY?` over a resolved target and the existing action-input digest, `LINK-COMPATIBLE?` over declared profile ABI/layout/runtime facts, `RUNTIME-ADMISSIBLE?` over selected semantic features, and `EXECUTABLE-HERE?` over the captured process ABI/image/runtime. Contribution, relocation and runner checks remain at their later owners.
 
 These must not be one digest equality test. Objects built with different optimization levels can link when their call/data contracts agree. Objects for the same ISA can still be incompatible because of foreign ABI, float ABI, pointer layout, TLS or internal Habu ABI. A CPU with more features can execute an object requiring fewer features; that does not authorize changing code-generation features during a supposedly reproducible build.
 
 ### 4.2 Canonical identity rules
 
-Use the existing domain-separated SHA-256 facilities and package encoding conventions. New administrative encodings use explicitly ordered tagged fields, length-prefixed bytes and checked LE u64 counts, not native struct dumps or delimiter-free concatenation. Sets sort by stable wire ID; sequences preserve semantic order. Include schema versions. Never hash host pointers, randomized interner IDs, hash-table iteration order, transient registry slot numbers or final code placement into unplaced content identity. [R1; P1 §§6, 10]
+Use the existing domain-separated SHA-256 facilities and package encoding conventions. New administrative encodings use explicitly ordered tagged fields, length-prefixed bytes and checked LE u64 counts, not native struct dumps or delimiter-free concatenation. Sets sort by stable wire ID; sequences preserve semantic order. Include schema versions. Never hash host pointers, randomized interner IDs, hash-table iteration order, transient registry slot numbers or final code placement into unplaced content identity. [R1]
 
 Keep existing CTARGET wire meanings and native digests readable under their existing schema. Add a composite target descriptor around the old core contract during migration; bump the composite schema when adding new semantic fields. Do not make an old digest mean a newly widened ABI. Cache namespaces move with the relevant schema.
 
@@ -397,7 +389,7 @@ Memory operations carry width, alignment, address space, signed extension and vo
 
 The frontend remains the owner of Forth loop and stack semantics. Backend code must not recreate `+LOOP`, `LEAVE`, wide locals or linear duplication rules from mnemonic intuition. [B1 §§5–8]
 
-On master, `NBACK:FREEZE` folds the definition's loops (`NLOOP`) before any selector runs, and every selector of the definition binds that one folded module (`src/compiler/native/backend.f:27-35`, `:159-185`). A new selector, Wasm's included, reads folded HIR. The `?do` entry rule is the frontend's (§0.1, `docs/forth.md:939-955`); P6 pins its three rows (`-1 0 ?do`, `MIN-N 0 ?do` and a counting-down `+loop`, §25.5).
+On master, `NBACK:FREEZE` folds the definition's loops (`NLOOP`) before any selector runs, and every selector of the definition binds that one folded module (`src/compiler/native/backend.f:27-35`, `:159-185`). A new selector, Wasm's included, reads folded HIR. The `?do` entry rule is the frontend's (§0.1, `docs/forth.md:939-955`); the Wasm checks include `-1 0 ?do`, `MIN-N 0 ?do` and a counting-down `+loop` (§25.5).
 
 ## 7. Compile-time execution and logical target data
 
@@ -419,7 +411,7 @@ CallableBinding {
 
 Use the existing dictionary/checker owners to issue identities and generations. Do not add a second name resolver. A host-callable body can execute during compilation; a target-only body cannot. A declaration may have both bodies, but their raw code addresses are never their shared identity.
 
-A build-time call records the actual implementation closure it executes, including deferred/indirect targets and source-installed helper owners. A plain runtime call usually needs only the callee's stable contract for checking/linking; once executed at compile time, implementation changes become dependencies. [P1 §7.6]
+A build-time call records the actual implementation closure it executes, including deferred/indirect targets and source-installed helper owners. A plain runtime call usually needs only the callee's stable contract for checking/linking; once executed at compile time, implementation changes become dependencies.
 
 ### 7.2 Target reference algebra
 
@@ -460,7 +452,7 @@ There are two implementation paths, with explicit admission:
 
 **Audited legacy owner adapter.** Existing declarers may operate on host-accessible staging storage. The adapter maps a bounded object into a host view, records every typed reference store and target-endian scalar access, then seals that object. It may not expose an arbitrary raw pointer to an unaudited helper and still claim complete tracking. Copying a pointer-bearing region requires copying its reference metadata, not just its bytes.
 
-Master already has this adapter for native cross-builds. `NSHADOW` compiles each definition a second time for the target from the HIR module the engine's selector bound, and keeps the result as a sealed unplaced emission whose every call, branch and address is a row (`src/compiler/native/shadow.f:1-30`). The capture reads that map (`src/habu/aot-shadow.f`): it resolves every host address through the xt -> record index and refuses an unresolved one by name. The x86-64 linker then lays the records out at fixed addresses (`src/habu/link-x64.f`). P6 rides this adapter; §7.2's `TargetRef` replaces it later.
+Master already has this adapter for native cross-builds. `NSHADOW` compiles each definition a second time for the target from the HIR module the engine's selector bound, and keeps the result as a sealed unplaced emission whose every call, branch and address is a row (`src/compiler/native/shadow.f:1-30`). The capture reads that map (`src/habu/aot-shadow.f`): it resolves every host address through the xt -> record index and refuses an unresolved one by name. The x86-64 linker then lays the records out at fixed addresses (`src/habu/link-x64.f`). The current Wasm build also uses this adapter; §7.2's `TargetRef` is a proposed later replacement.
 
 A read/write view is a temporary host implementation detail associated with an object ID. It is invalid after unmap, growth or seal and cannot be stored in target data. General raw native stores that bypass tracking make a cross-target contribution unsupported or opaque under the declared mode. Native legacy builds can retain their existing behavior; the cross compiler reports the exact unsupported operation instead of silently changing its meaning.
 
@@ -474,45 +466,46 @@ A mutable `defer` binding is owner-managed state with a prior-generation precond
 
 Portable compile-time execution admits deterministic declared input reads and owner-managed state construction. File generation and external tools are separate declared actions. Arbitrary network/process/FFI activity while loading source is either forbidden under reproducible/cross-required mode or explicitly source-only and uncacheable. A type signature is not proof of purity.
 
-Transactions can undo unpublished declarations and private target allocations. They cannot undo an already issued external operation. The driver must not automatically retry an effectful build after discovering an undeclared input. It reports an effect boundary and preserves a receipt of any observed external work. [P1 §8]
+Transactions can undo unpublished declarations and private target allocations. They cannot undo an already issued external operation. The driver must not automatically retry an effectful build after discovering an undeclared input. It reports an effect boundary and preserves a receipt of any observed external work.
 
 ### 7.7 Cross-width example
 
 A helper constructs a record containing a language integer and a pointer to a static string. It allocates object A, string object B, writes the integer in target byte order, and records `Object(B,0)` at A's pointer field with its schema width. The final linker places B and writes the checked target address. On macOS, Linux and Windows the result is independent of B's temporary host allocation address. Changing target field alignment or foreign pointer width changes the layout identity and forces the necessary elaboration/rebuild.
 
-## 8. Packages, source order, contributions and retention
+## 8. Packages, source order and retention
 
-This section is conditional on P1, the package incremental-build design. P1 is in [package-build.md](package-build.md), reviewed so far only at its interface with this page; its own review (dot habu-review-and-schedule-dbdba551) gates P4.
+PACKAGES are the proposed compilation units. Build source is read from disk in
+the loader's ordinary order. If a file changes while a build runs, a package
+already compiled keeps what that build read and changes on the next build; a
+package not yet compiled reads the changed file in due course. There is no
+required immutable source-tree view or edit-triggered rejection. See
+[package-build.md](package-build.md).
 
-This design extends the package incremental-build design instead of inventing another object cache. Its unit is a **reusable, unstripped package contribution installed at its original source-load position**. A contribution can cover several source regions; it is neither an arbitrary file nor a complete process snapshot. [P1 §§1, 4]
+### 8.1 Dependencies
 
-### 8.1 Dependency edge classes
+The build records dependencies needed to decide which packages to recompile.
+A generator runs on the build host; its output is compiled for the selected
+target. Normal package visibility and require/include behavior still govern
+which declarations a later package can see. A dependency scheduler cannot
+introduce forward visibility by reordering source.
 
-The build graph records `BuildExec`, `TargetRuntime`, `LinkOnly`, `SchemaGeneration`, `Asset`, `InitOrder`, and `Observation` edges. A compiler used to build an application is a BuildExec dependency, not a runtime root. A schema generator executes for the build platform; its generated binding library is compiled for the output target.
+### 8.2 Compiled package results
 
-A generic topological sort may schedule independent upstream generators, but cannot reorder source-load contributions or expose declarations before the ordinary loader would. Runtime call cycles are legal where normal checking admits them. Compile-time cycles require the smallest legal **contiguous** contribution bundle preserving interleaved source effects; unsupported source is not fixed by invented forward visibility. [P1 §4.5]
+A reusable compiled package result may contain code, data, checked
+declarations and logical references needed by a later link. Validate its
+compiler, target, ABI and layout compatibility before reuse. The exact object
+format and cache policy are implementation choices, and this proposal does
+not claim an importer exists today. A cache hit must preserve the same visible
+language behavior as compiling that package in normal order.
 
-### 8.2 Contribution installation
+### 8.3 Retention
 
-On a cache hit: decode and validate the contribution privately; resolve logical references; check source-position binding witnesses and prior owner-state conditions; reserve dictionary/checker/type/registry storage; install owned data and metadata privately; then publish the contribution's complete semantic result. Do not rerun its original immediate or static initializer.
-
-Maintain separate host-helper and target-runtime contributions where their execution ABIs differ. Runtime initialization is a later declared phase, not compile-time replay. A file becomes `required` only when all of its contributions and required top-level work have completed. Reopening a package preserves its logical owner identity; a failed public/private declaration leaves no recordless shadow symbol behind. [P1 §§4.4, 8–10; R8]
-
-Installation reproduces master's loader, which these contracts must pin rather than restate: source that ends inside a definition is refused (136425ef), and a `require` expands in its loader's scope (dba92d50).
-
-### 8.3 Persistence format
-
-Use the package-contribution profile of the existing AOT family, with `.hbp` as its descriptive extension, as specified by P1. Do not invent a competing `CodeArtifact` disk container. `CodeArtifact` below is an in-memory sum type; its persisted payload resides in the coordinated AOT profile or a standard external object format.
-
-Reserve actual format/version codes at integration against the current writer/reader registry. Old readers reject new required descriptors. The descriptor identifies image capture versus package contribution, target compatibility, checker/IR/relocation schemas and required sections. Preserve bounded framing and integrity validation. [P1 §10]
-
-### 8.4 Reachability and initialization roots
-
-Final linking starts from explicit exports/entry points, target initialization, registered callbacks, interrupt vectors, dynamic dispatch tables and selected reflection/runtime/compiler services. Edges from address-taking, stored xts and registered handlers retain their code and metadata.
-
-A normal AOT application excludes compiler/checker/REPL packages unless its profile actually requires them. A compiler product retains the checker and enabled backends even when ordinary program reachability would miss dynamically selected services. A `does>` companion, callback thunk or future dynamic binding is not dead merely because no direct CALL references it.
-
-Persist unstripped contributions; perform profile-specific stripping only when assembling the final image. Report bytes by code, static data, zero-fill extent, relocations, checker/definition metadata, embedded assets and runtime initialization. Fixed native image assumptions remain a separate compatibility profile.
+Final linking starts from explicit exports and entry points, target
+initialization, registered callbacks, interrupt vectors, dynamic dispatch
+tables and selected reflection/runtime/compiler services. Stored execution
+tokens and registered handlers retain their targets. An application need not
+carry compiler, checker or REPL packages unless its profile uses them; a
+compiler product retains the checker and its enabled backends.
 
 ## 9. Language values, target layout and foreign storage
 
@@ -594,7 +587,7 @@ A single-worker browser profile does not promise threads. Native thread support 
 
 An immutable `BackendDescriptor` identifies implementation code, accepted machine families/states, supported representations and stage factories. A `BackendSession` contains its mutable state. Registration publishes a complete validated descriptor once; it must not expose a row before its mandatory function tables are installed.
 
-The P2 registry (`src/compiler/native/backend.f`) uses checked storage sized to the loaded descriptors. Keep stable `BackendId` separate from runtime row index. Sort manifest entries deterministically. Duplicate provider identity or ambiguous providers for the same resolution is an error; an explicit backend selection can disambiguate experimental providers.
+The backend registry (`src/compiler/native/backend.f`) uses checked storage sized to the loaded descriptors. Keep stable `BackendId` separate from runtime row index. Sort manifest entries deterministically. Duplicate provider identity or ambiguous providers for the same resolution is an error; an explicit backend selection can disambiguate experimental providers.
 
 The old A32 and Thumb2 target variants may map to one ARM32 provider with different instruction-state configurations. Do not renumber old target wire codes to achieve that. A new backend may require extending the centrally owned target vocabulary and validators; the goal is one owner for that extension, not a false promise of adding arbitrary architectures without any schema change.
 
@@ -624,7 +617,7 @@ A practical baseline is semantic legalization; ABI call/return lowering; machine
 
 Machine descriptions include register classes and alias units, reserved registers by runtime/platform, fixed/tied/early-clobber operands, call clobbers, condition-code effects, stack alignment, legal addressing modes, instruction lengths and branch ranges. Runtime register reservations are target-ABI facts, not “all registers except SP” or a host-derived pool.
 
-On x86, two-address operations, subregister aliasing, shift/divide fixed registers and flags dependencies need explicit constraints. On ARM64, platform reservations, immediate/addressing legality, literal reach and frame conventions are explicit. Preserve the Intel lane's actual accepted register contract; an older design's preferred register assignment is not authority to change it.
+On x86, two-address operations, subregister aliasing, shift/divide fixed registers and flags dependencies need explicit constraints. On ARM64, platform reservations, immediate/addressing legality, literal reach and frame conventions are explicit. Preserve the x86 backend's accepted register contract; an older design's preferred register assignment is not authority to change it.
 
 ### 11.4 C66x scheduling
 
@@ -796,7 +789,7 @@ Distinguish three products:
 - **Package contribution:** portable logical declarations/data plus target-specific code under the AOT package profile.
 - **Application state snapshot:** versioned application data without process addresses, OS handles or executable-memory assumptions.
 
-Keep retained-host capture readers bound to the host's actual layout. Target emission uses the target layout. Source-installed definitions changing fixed engine bands do not authorize interpreting a live old heap with new offsets. Retain the existing source/engine compatibility checks until the new object model replaces each use with a tested equivalent. [R9; P1 §§9–12]
+Keep retained-host capture readers bound to the host's actual layout. Target emission uses the target layout. Source-installed definitions changing fixed engine bands do not authorize interpreting a live old heap with new offsets. Retain the existing source/engine compatibility checks until the new object model replaces each use with a tested equivalent. [R9]
 
 A source-free compiler product must retain exactly the code, checker facts and source-independent metadata necessary for its declared capabilities. It must not accidentally capture build-host FFI addresses, source buffers, open files, pending transactions or unselected backend scratch.
 
@@ -855,7 +848,7 @@ Native threads use per-context data/return stacks and declared TLS contracts. Co
 
 Freestanding applies to ARM64 and x86-64 as well as ARM32/C66x. It is not simply the hosted runtime with filesystem calls removed.
 
-This section is specified only; no package implements it yet. Its package, P10, overlaps the [roadmap](roadmap.md)'s C6 microcontroller dot (habu-design-the-first-61f718f0), which owns the TI and ARM32 work and takes this section as design input.
+This section specifies target requirements. Check the current target code and device evidence before claiming a TI or ARM32 implementation.
 
 ### 16.1 Board and boot contract
 
@@ -910,10 +903,10 @@ detail they refine:
 | Section | Subject | In wasm-backend.md |
 |---|---|---|
 | 17 | Wasm code generation, module linking and admission: profiles, lowering, calls with the pinned 16/16 arity rule, memory, symbolic linking (padded LEB immediates in the first slice) and the binary validator | §3, §7.3, §10, §17 |
-| 21 | Optional browser compilation and transactional module installation | none; deferred with P12 |
+| 21 | Optional browser compilation and transactional module installation | deferred |
 
-Section 21 is P12, deferred until a caller exists; Maki, the first browser
-caller, does not need it.
+Section 21 is deferred until a caller needs browser compilation; Maki, the
+first browser caller, does not need it.
 
 ## 22. Compiler products, bootstrap, self-build and persistent state
 
@@ -936,15 +929,15 @@ Build B, executed by the resulting Windows/ARM64 hb:
 
 This requires dependency roles, not a single global target switch. A package may have build-executed helpers, compiler-product runtime code, and ordinary target application code. Their artifacts have distinct execution/target identities even when their source bytes coincide.
 
-Target SDK import metadata must be parseable on any build host without loading that target's libraries. A macOS compiler constructing a Windows compiler does not call Windows DLL entry points during the build. Code generators that execute as tools are separate host actions; their generated declarations/data enter the frozen target input world.
+Target SDK import metadata must be parseable on any build host without loading that target's libraries. A macOS compiler constructing a Windows compiler does not call Windows DLL entry points during the build. Code generators that execute as tools are separate host actions; their generated declarations/data become build inputs when produced.
 
-### 22.2 Bootstrap graph and recovery
+### 22.2 Bootstrap and recovery
 
-Keep accepted seed/compiler pins and the existing recovery path. Do not turn this refactor into a requirement to implement independent cold bootstraps for every platform. The initial x86 recovery route can remain a cross-build from an identified working ARM64 compiler, as the Intel lane specifies. [R12]
+Keep accepted seed/compiler pins and the existing recovery path. Do not turn this refactor into a requirement to implement independent cold bootstraps for every platform. The initial x86 recovery route can remain a cross-build from an identified working ARM64 compiler, as described in [x86-64.md](x86-64.md). [R12]
 
-Record a directed bootstrap graph whose nodes are executable compiler artifacts and whose edges are identified build actions. Each edge states source/input identities, execution platform, produced compiler platform, enabled emitters, runtime/toolchain profile and qualification receipt. A foreign produced compiler is not executable evidence until a matching runner actually executes it.
+Identify the compiler executable and inputs used for each self-build comparison. A foreign produced compiler is not executable evidence until a matching runner actually executes it.
 
-For each of the five native hosts, require an obtainable qualified seed path. For TI, require a path to a working cross-compiler and deployable target artifacts—not a compiler executing on TI. Browser self-hosting is a separate graph branch and must not become a dependency of native-to-browser AOT application builds.
+For each of the five native hosts, require an obtainable qualified seed path. For TI, require a path to a working cross-compiler and deployable target artifacts—not a compiler executing on TI. Browser self-hosting is separate and must not become a dependency of native-to-browser AOT application builds.
 
 ### 22.3 Self-build qualification
 
@@ -952,9 +945,9 @@ For a host H:
 
 ```text
 B0 = identified seed capable of producing H
-B1 = build compiler from frozen source/input set S, target H
+B1 = build compiler from identified source/input set S, target H
 run B1 on H
-B2 = build the same compiler from the same S, target H
+B2 = build the same compiler from the same identified S, target H
 run B2 on H
 compare canonical B1/B2 products and run independent behavior gates
 ```
@@ -967,7 +960,7 @@ For browser self-build, B0 is generated by a native compiler; B1/B2 are generate
 
 A self-build can never reach a literal byte fixed point if its executable embeds the complete hash of its immediate producer executable and that producer changes each generation. Separate canonical executable content from the detached build receipt.
 
-The canonical product contains semantic versions and identities needed at runtime: language/runtime ABI, emitted backend contracts, source/application identity where semantically intended, image policy and required feature metadata. The detached receipt contains actual producer binary hashes, source-installed owner revisions, tool binaries, execution environment, logs and timing. Any producer identity that **changes semantics or generated bytes** remains a build-cache input; it need not be recursively embedded in executable bytes.
+The canonical product contains semantic versions and identities needed at runtime: language/runtime ABI, emitted backend contracts, source/application identity where semantically intended, image policy and required feature metadata. Producer hashes and build environment details can be recorded outside the executable. Any producer identity that **changes semantics or generated bytes** remains a build-cache input; it need not be recursively embedded in executable bytes.
 
 Compare unsigned canonical content, or another precisely documented signing-independent representation, and compare behavior. List any excluded nonsemantic section by schema and reason. Do not strip arbitrary mismatches until the hashes agree. Digital signatures, timestamping and vendor packaging have their own reproducibility constraints and receipts. A fixed point is useful evidence, not proof of correct language compilation.
 
@@ -978,7 +971,7 @@ Keep these artifacts non-interchangeable:
 | Domain | Contains | Restore/install rule |
 |---|---|---|
 | Native image capture/snapshot | Native code and layout-bound runtime/checker state | Exact admitted architecture, OS/runtime ABI and layout/relocation profile |
-| Portable package contribution | Unplaced code or module plans, declarations, typed symbolic data and owner deltas | Validate producer/input/target compatibility; install at its source occurrence |
+| Optional compiled package artifact | Code/data and logical references needed for later linking | Validate compiler/input/target compatibility before reuse |
 | Portable application state | Versioned application records, document IDs and semantic data | Reconstruct through application/runtime migration APIs |
 
 Open files, OS handles, thread IDs, live host pointers, browser object handles and arbitrary FFI callback addresses do not become portable application state. Persist a capability-specific reconstruction description only when the owning service defines one; reauthorization may be necessary.
@@ -989,108 +982,52 @@ Native image captures still need host-bound readers that understand the actual l
 
 Compiler images retain the checker, compiler, selected backends, necessary reflection/type data and interactive facilities according to their declared profile. Ordinary application images root only runtime-reachable code/data, exported entries, registered callbacks, initializers and explicitly retained reflection metadata. Compile-time-only helpers do not become application roots merely because they ran during construction.
 
-Stripping follows whole-program roots after contribution assembly. A package cache stores unstripped contributions so future consumers can use private helper dependencies, checker facts or newly selected exports. Test hidden quotation/defer references, callback tables and dynamically selected registered operations; name-based lookup requires a declared retained namespace rather than keeping everything accidentally.
+Stripping follows whole-program roots after compilation and linking. A future package cache may keep unstripped results for later consumers. Test hidden quotation/defer references, callback tables and dynamically selected registered operations; name-based lookup requires a declared retained namespace rather than keeping everything accidentally.
 
-## 23. Incremental builds, observations and cache soundness
+## 23. Incremental build inputs and reuse
 
-This section extends the package incremental-build design ([package-build.md](package-build.md)) rather than replacing its contribution format or source-order importer. In particular, a cache hit installs an already checked contribution and owner-managed state; it does not rerun the source initializer. [P1 §§1, 4, 8–10]
+The build reads files from disk as it reaches each package. It finishes a
+running build after an edit: already compiled packages retain the bytes they
+read for that run, and packages still ahead read their inputs in due course.
+The next build recompiles packages affected by changed inputs. This is the
+ordinary compiler/make behavior specified in
+[package-build.md](package-build.md), not an immutable input-world
+requirement.
 
-### 23.1 Host identity reaches target objects
+### 23.1 Effective compiler and target
 
-Build-host identity does not enter only host-executable artifacts. A target object can depend on the actual host-executed compiler, checker, definer, foreign generator or platform-observable compile-time result. Those facts must participate in its cache admission.
+A reusable result depends on the compiler implementation that produced it,
+including source-loaded checker or backend changes, and on the selected
+target's relevant ABI, layout and code-generation policy. A source tree that
+contains a new compiler is not proof that the running compiler already uses
+it. Reuse must be conservative when these facts cannot be established.
 
-Separate:
+### 23.2 Source and build dependencies
 
-- **Target compatibility:** whether the object is legal to link/load for a resolved target.
-- **Build-result identity:** whether this producer and its observed inputs are entitled to reuse that object as the result of this action.
-- **Cross-host equivalence evidence:** whether independently produced canonical objects match under equivalent inputs.
+Record the files and generated inputs actually used by a package, including
+required files and build-time computations whose results affect emitted code
+or data. A runtime-only call and a call executed while compiling can have
+different rebuild needs. A missing file that later appears can change source
+resolution and should trigger the affected rebuild. Do not require a global
+source snapshot to observe those inputs.
 
-Initial cache mode pins the actual effective producer and execution-policy identity conservatively. Cross-host byte comparison is a test, not automatic permission to omit producer facts. A later qualified producer-equivalence class may permit wider reuse, but must identify exact producer binaries and semantic conditions. It is not inferred from a common Git commit, compiler version string or similar executable name.
+### 23.3 Reusable artifact integrity
 
-### 23.2 Effective producer vector
+If compiled package results are stored, their bytes should be completed before
+publication and validated before reuse. This describes cache artifact
+integrity, not source-file immutability. A corrupt or incompatible result is a
+cache miss or a clear error. Cache eviction cannot remove an artifact while a
+live build is using it.
 
-```text
-EffectiveProducer {
-    executing_engine_content_id,
-    active_checker_owner_revision,
-    active_definer_and_primitive_adapter_revisions,
-    active_backend_implementation_revision,
-    pass_graph_and_validator_versions,
-    runtime_abi_and_helper_versions,
-    trusted_execution_policy_id,
-    observed_host_environment_projection
-}
-```
+### 23.4 Acceptance
 
-A deliberate source-installed checker/backend/definer owner transfer changes this vector before subsequent work is keyed. The source tree claiming to contain a new compiler is not evidence that the currently executing compiler has changed. Conversely, hashing only the seed ignores a source-loaded owner replacement. [P1 §6.3]
+Compare incremental and full builds on changes to a package body, declaration,
+required file, generated input, compiler owner, target profile and compile-time
+dependency. Include an edit during a running build: it completes, and the
+following build incorporates any packages compiled before the edit. These are
+future implementation checks, not existing gate results.
 
-Part of this vector exists outside master: the Intel lane's unmerged 8b05f5d9 keys the `hb-build` producer by its load closures.
-
-For link/finalization actions, include actual linker/finalizer implementation, target libraries and relevant SDK data. Numeric policy, bounds/fuel instrumentation and internal call-ABI thresholds are code-generation inputs.
-
-### 23.3 Observation classes
-
-Record observations at the existing authoritative owner operations, not in a second approximate resolver. On master those owners are the `lib/policy.f` seal on source lookup (880a6e43, adf9bee0; [policy.md](policy.md)) and the source roots (2c073d3c, adc041b8; `docs/forth.md:264-282`):
-
-| Observation | Required identity/witness |
-|---|---|
-| Name lookup | Source-position search environment, selected definition generation, absence/ambiguity witnesses |
-| Type/effect query | Exact admitted contract/type-layout projection |
-| Runtime direct call | Selected provider binding and call contract; body revision when inlined/optimized across boundary |
-| Compile-time call | Executed implementation closure and state/input observations, including indirect/deferred targets |
-| Constant or target-layout evaluation | Value, producing implementation and target facts consumed |
-| Source acquisition | Owned bytes, resolution policy, selected path/root and absent preferred candidates |
-| Generator | Executable/tool identity, argv, environment, declared input bundle and output bytes |
-| Owner state | Owner identity, prior-state precondition and declared projection/delta |
-| Capability query | Whether observed during compilation, exact answer or target service declaration |
-
-Calling Q only at runtime may allow a caller to reuse code after Q's body changes. If a compile-time computation later executes through that caller into Q, the computation depends on Q's implementation. Promote the executed dependency closure; do not infer this from static runtime link edges alone. Cycles use a canonical strongly connected component descriptor, not endlessly recursive hashes. [P1 §7.6]
-
-Conservative mode records full provider contribution revisions for observed dependencies. Precise contract-only reuse is enabled per independently tested observation class. Neither mode may ignore raw/native operations capable of bypassing the observation system. Such execution is opaque/source-only or rejected under required-incremental/cross-target restrictions.
-
-### 23.4 Immutable input world and dynamic discovery
-
-Own source bytes before hashing/compiling them. Record the source-root interpretation, include/require resolution and missing higher-priority candidates. Freeze the world used by discovery, diagnostics, checking, emission and cache keys.
-
-A filesystem watcher, timestamp, file size or VCS change list may accelerate discovery; none proves content equality. A same-size/same-timestamp edit must invalidate. A touched but byte-identical source can hit.
-
-An unforeseen input discovered before any externally visible action permits aborting the local action, extending the input world and retrying under a bounded policy. After uncontrolled effects, do not rerun the action silently: compile source-only without publishing a reusable result, or refuse the required-hermetic profile. The execution receipt reports the reason.
-
-Source-root remapping is an explicit reproducibility feature. Do not erase path-sensitive semantics while normalizing debug paths. Case-sensitive file identity and Unicode spelling remain distinct unless the source resolver itself specifies equivalence.
-
-### 23.5 Cache keys and invalidation
-
-A conceptual key is:
-
-```text
-ActionKey = H(domain, action_schema,
-              product_role, EffectiveProducer,
-              owned_input_manifest, source_occurrence_contract,
-              consumed_target_projections, compile_options,
-              observed_dependency_descriptors, owner_preconditions)
-```
-
-The descriptor must use canonical framed encoding from §4. Keying is not the only defense: import validates the stored artifact, target/schema identities, owner preconditions and observation witnesses again against the current load position.
-
-A runtime-only provider edit need not rebuild every source predecessor. A build-time owner transfer can invalidate a much larger dependency cone. A browser application edit need not regenerate unchanged generic host modules; a registry-layout change must rebuild the affected Habu codec, host validator, wrappers and release manifest together.
-
-Do not include final virtual placement in an unplaced contribution's semantic revision. Include it only when source truly observes placement and the admitted profile preserves that dependency. Final layout can then change without falsely recompiling unrelated contributions.
-
-### 23.6 Storage, integrity and concurrent access
-
-Treat cache files/indexes as untrusted inputs. Validate framing, bounds, section uniqueness, schemas, digests, target facts, references and resource ceilings before allocation or publication. A digest detects corruption relative to expected content; it is not an authorization signature.
-
-Write an immutable candidate to a temporary path, flush under the selected durability policy, atomically publish the completed artifact, then update the disposable index. Master's staged writes (§14, `RESERVE-SIBLING` in `lib/fs-mutate.f`) are the base. Concurrent writers of identical content may converge; a reader never sees a half-written mutable artifact. Locking protects index publication or use an equivalent checked compare-and-publish protocol. Filesystem behavior differs across hosts, so the host-service implementation owns the actual primitives.
-
-Eviction removes only unleased cache objects and rebuildable indexes. Live contribution/install handles retain their backing owned storage or an immutable mapped file lease. Corruption is a miss with a diagnostic or a hard error under strict verification, never permission to skip validation. Quotas cover compressed and declared uncompressed sizes before decompression.
-
-### 23.7 Acceptance examples
-
-Changing Q's implementation while R computes a compile-time constant by executing P→Q invalidates R, even if P's public signature stays unchanged. Adding a previously absent preferred include file invalidates the affected lookup. Replacing the active checker owner invalidates later actions using that checker. Reordering unrelated physical cache rows changes no semantic key. A failed contribution leaves no live symbol or `required` completion mark. Building one target after another must not reuse the first target's layout-dependent constant.
-
-These are required cache-on versus cache-off equivalence fixtures, not optional optimization benchmarks.
-
-## 24. Toolchains, runners, command surface and qualification records
+## 24. Toolchains, runners and command surface
 
 ### 24.1 Explicit toolchain actions
 
@@ -1134,61 +1071,44 @@ hb test-artifact app.wasm --runner <qualified-browser-runner>
 hb explain-cache <action-receipt>
 ```
 
-Master's `tools/native-build.f` takes `--target linux-aarch64`, `macos-aarch64` or `linux-x86-64` (`tools/native-build-args.f:58-70` and `tools/native-build-args.f:92`). These labels and the existing entry scripts remain aliases until P13 retires target selection on the building engine. The resolver rejects ambiguous aliases and prints the resolved semantic profile. `--target native`, if admitted, means an explicitly requested host-derived default; generic backend code never performs that detection itself.
+Master's `tools/native-build.f` takes `--target linux-aarch64`, `macos-aarch64` or `linux-x86-64` (`tools/native-build-args.f:58-70` and `tools/native-build-args.f:92`). These labels are the current command surface. The proposed resolver would
+make target choice explicit, reject ambiguous aliases and print the
+resolved semantic profile. `--target native`, if admitted, means an explicitly requested host-derived default; generic backend code never performs that detection itself.
 
 `--emit object` must not load a final-image signer or demand a board runner. `--build-only`/absence of a runner never implies foreign execution.
 
 ### 24.4 Diagnostics
 
-Diagnostics use master's one namespace: each new code is an `E-` throw code registered in `tools/diag-code.f`, and a rejection is emitted in the checker diagnostic JSON shape of [repair-diagnostics.md](repair-diagnostics.md), which the language server already publishes (e965e75b, b1d62b4b, adc041b8). There is no second, string-coded namespace. The record below lists the fields a portability rejection carries; its `code` is such an `E-` name.
+Use the existing `E-` throw-code namespace and checker diagnostic JSON shape
+([repair-diagnostics.md](repair-diagnostics.md)). A portability rejection should
+identify the failed stage, target, unmet requirement and responsible provider or
+dependency path where known. For example, distinguish an unsupported Win64 call
+ABI from an unavailable external linker. A strict build fails rather than
+silently changing ABI, weakening atomics, truncating addresses or running
+foreign output through an implicit fallback.
 
-Every rejection has a stable code, action/stage, source span where applicable, logical package/contribution occurrence, execution platform, output target identity, requirement, observed capability/identity and dependency path.
+### 24.5 Support claims
 
-```text
-Diagnostic {
-    code: E-TARGET-ABI-UNSUPPORTED,
-    stage: "foreign-call-classification",
-    action_id, source_span, definition_id,
-    output_target, required_abi_variant,
-    available_provider, dependency_path,
-    explanation, evidence_kind
-}
-```
+The five native compiler products must each run on their named host. Every
+implemented output profile must be generated from each of those hosts, without
+implicitly running foreign output. Execution needs a compatible runner on the
+target environment; the compiler host need not contain every device.
 
-Distinguish invalid configuration, coherent-but-unimplemented feature, missing backend module, missing runtime service, missing target library, unavailable tool host, no runner, malformed artifact, stale generation and capability denial. A message saying only “unknown target” is insufficient once resolution succeeded.
+Name the stage and environment actually tested when describing support.
+A generated object does not establish a linked image or working target program.
+A required configuration remains a requirement until its behavior has been
+demonstrated there.
 
-A strict profile fails rather than silently selecting another ABI, lowering unsupported atomics to non-atomic operations, truncating addresses, invoking JIT fallback in a promised AOT build, or switching browser profiles without authorization.
+### 24.6 Performance
 
-### 24.5 Machine-readable qualification matrix
+Measure build time, output size or memory use when a change or product
+requirement makes them relevant. Do not weaken checker behavior or tests to
+improve a metric. This architecture alone promises no universal speed or
+size improvement.
 
-For each `(compiler execution platform, output profile, artifact kind)` record separate capabilities and evidence:
+## 25. Verification and acceptance
 
-```text
-SupportRecord {
-    configuration_identity,
-    declarable, sources_resolvable, backend_loaded,
-    lowering_coverage, encoding_coverage,
-    object_writer_coverage, linker_coverage,
-    runtime_and_toolchain_available,
-    generation_receipts, execution_receipts,
-    qualified_environment_constraints,
-    unsupported_operations_and_reason
-}
-```
-
-The required matrix includes every implemented output profile generated from all five native hosts. It does not require every host to physically contain every target device. Generation and independent target execution can be separate receipts linked by artifact hash. All five native compiler products additionally require their own executable/self-build gates.
-
-The repository does not gain qualification simply because this design lists a configuration. Exact browser versions, OS builds, CPU features, GPU/device drivers, SDKs, boards and tool versions are recorded only after tests. Profile tables must visibly distinguish “required” from “passed.”
-
-### 24.6 Metrics without unsupported performance claims
-
-Measure externally visible elapsed build time and per-stage time: input freeze, source resolution, checking, compile-time execution, legalization, selection, scheduling, allocation, encoding, contribution import, linking, signing/finalization and browser module preparation. Also record cache hits/misses with reasons, code/data/debug bytes, retained compiler roots, peak temporary memory, branch relaxations/thunks, Wasm locals/types/table slots, helper calls and target runtime footprint.
-
-Performance regressions must not be hidden by stripping required checker facts or weakening tests. Set release budgets from measured baseline and product needs. No universal compilation-time or binary-size improvement is asserted by these structural changes alone.
-
-## 25. Verification, fault injection and acceptance
-
-Tests are organized around invariants and independently observable behavior. A backend accepting its own output, a schema generator validating its own table, or a simulator sharing the encoder's mistaken facts is insufficient alone. Combine source/IR validation, independent decoders or foreign callers, cross-host artifact comparisons, actual execution and deliberate mutations.
+Tests are organized around invariants and independently observable behavior. A backend accepting its own output, a schema generator validating its own table, or a simulator sharing the encoder's mistaken facts is insufficient alone. Use an independent decoder or foreign caller where it checks a concrete compatibility boundary, and execute produced artifacts on the claimed target.
 
 ### 25.1 Target, session and staging tests
 
@@ -1214,28 +1134,14 @@ T14 pins master's refusal of recordless checker symbols (16a4d57b). The test mus
 
 ### 25.2 Packages and caches
 
-| Test ID | Fixture | Required result |
-|---|---|---|
-| C01 | Cache-on versus cache-off build of frozen inputs | Equivalent current semantic state and canonical artifacts |
-| C02 | Repeated `include`, repeated `require`, multi-package file | Original occurrence/load-once semantics preserved |
-| C03 | Failure in a file after its first contribution hits | File not prematurely marked fully required |
-| C04 | New preferred include path appears | Next action invalidates negative lookup witness |
-| C05 | Byte edit with unchanged size/timestamp | Miss; metadata cannot authorize hit |
-| C06 | Byte-identical touch | Hit when all other inputs match |
-| C07 | Q changes; R computes constant through P→Q | R invalidates even if P's call signature stays fixed |
-| C08 | Active checker/definer/backend owner changes | Subsequent action producer identity changes |
-| C09 | Runtime-only call provider body changes | Conservative mode misses affected dependency; precise mode hits only with tested contract classification |
-| C10 | Source-owned initialized data imported from cache | State installed once; original initializer not re-executed |
-| C11 | Owner-managed delta prior state changed | Import refused before live mutation |
-| C12 | Unknown raw/native observation | Source-only/strict refusal, no supposedly hermetic hit |
-| C13 | Corrupt/truncated/overlapping contribution sections | Rejected before allocation/publication of live state |
-| C14 | Two writers publish one content-addressed artifact | Readers observe only complete validated artifact |
-| C15 | Evict artifact during a live install lease | Backing bytes remain available until release |
-| C16 | Raw absolute placement changes | Unplaced artifact unchanged unless source actually observed placement |
-| C17 | Cross-host producers with no equivalence admission | No automatic reuse based only on source/version label |
-| C18 | Cache package then strip final application | Cached unstripped contribution remains reusable for another root set |
-
-Include state hashes, owned-data values and executed behavior—not only final file hashes—where layout or permitted metadata makes raw byte comparison inappropriate.
+When incremental builds exist, verify their behavior through the real build
+path. A full build and a cached build should produce equivalent behavior for
+unchanged inputs. A body edit, declaration edit, newly appearing required
+file, compiler-owner change or target-profile change must rebuild affected
+PACKAGES. An edit during a build must let that build finish; the following
+build picks up packages compiled before the edit. If compiled package
+artifacts are stored, truncated or incompatible bytes must never be reused.
+These are proposed checks, not current gate results.
 
 ### 25.3 Numeric and layout tests
 
@@ -1307,186 +1213,37 @@ Use independent disassembly, ABI callers and target execution. Existing C66x ass
 
 Browser tests must include the actual supported Safari/WebKit, Firefox and Chromium products/profiles when those are claimed; one engine's validator is not universal-browser evidence.
 
-### 25.6 Failure injection discipline
+### 25.6 Failure behavior
 
-For every preparing operation, enumerate allocation, buffer-growth, symbol-resolution, reference-validation, external compilation, instantiation, permission-change, import-installation and finalization failure points. Inject a failure at each point and verify: no illegal publication, no source-order change, no leaked ownership, no duplicate external action, no cache success receipt, and a reusable old state or an explicitly poisoned/discarded runtime.
+Check failures at the boundaries that can publish declarations, code or target
+objects. A failed preparation must leave the previous visible state usable,
+release or account for candidate-owned resources, and avoid repeating an
+external effect automatically. After publication, a fatal failure follows the
+runtime's recovery policy; it cannot be represented as a rollback of effects
+already observed. Capacity retained after a failed browser preparation is
+accounted for separately from live objects.
 
-After the declared commit point, verify that the commit path contains no operation classified as fallible. Faults outside that assumption are fatal recovery cases, not an invitation to roll back half a root update. Record retained capacities separately from leaked live objects.
+The worked examples in this proposal do not establish an implementation or
+target execution. Report those claims only for behavior actually tested.
 
-Mutation testing should deliberately alter ABI identity, type indices, relocation widths, source witnesses, schema hashes, generation fields, C66x delay constraints and ownership transfer points. A test suite that remains green after such changes does not adequately defend the contract.
+## References
 
-### 25.7 Evidence levels and review checks
+Repository references identify the proposal's original source observations.
+Verify them against current code before implementation. New algorithms,
+types and paths here are proposed contracts.
 
-Keep `Specified`, `ReferenceModelChecked`, `GeneratedByHabu`, `ExecutedOnTarget`, and `QualifiedConfiguration` distinct. Store evidence receipts with source/compiler/artifact hashes and tool/environment identities.
-
-The worked-example checks done while writing this design do not establish a Habu implementation or real browser execution.
-
-## 26. File-by-file integration map
-
-Paths in the “destination/contract” column are proposed ownership destinations, not claims that those files already exist. The contracts are adopted now; the physical moves are deferred to P13. Introduce interfaces at current locations first, and keep a directory move and a semantic change in separate commits. A row whose current file is in an engine package (§5.3) changes only through an engine rebuild.
-
-| Current file/area | Problem or retained value | Destination/contract | First acceptance gate |
-|---|---|---|---|
-| `src/compiler/target.f` | Good immutable identity; incomplete resolved profile | Keep legacy schema; add composed target/layout/ABI/compatibility modules; registry lives in `src/compiler/native/backend.f` | T01–T06; legacy digest goldens |
-| `src/compiler/binding.f` | Existing target/numeric-policy binding | Retain; explicitly compose layout/internal ABI and consumed policies | N01–N06; no duplicated numeric policy |
-| `tools/build-target.f` | Ambient three-way selection | Resolve aliases once into action-owned target context; temporary read-only compatibility view | T07/T15 |
-| `src/os/*/target.f` | Host/target predicate ambiguity: `HB-TARGET-*` appears on 415 lines in 104 files; 74 uses select target semantics on the building engine, the rest select host services | Host identity from executing image; source selection from resolved manifest. P13 retires the 74 target-selecting uses, with a lint; the host-service uses stay | T01/T11 |
-| `src/compiler/native/compiler.f` | Shared orchestration but native dependencies and module globals | Frontend orchestration + session-owned state + artifact/publication provider | T07–T09/W20–W24 |
-| `src/compiler/native/backend.f` | Useful dispatch; global lifecycle/pass rows | Typed provider registry and session-owned provider contexts/pass graph | T08/T09/L15 |
-| `src/compiler/native/emission.f` | Good byte-based facts; borrowed ambient result | Owned `NativeFragment` adapter and explicit lifetime; no instruction-count regression | L01/L10/C13 |
-| `src/compiler/native/shadow.f` | Real cross-generation bridge | Adapt to per-target contexts and owned contributions; authenticate host refs during capture | T10–T13/C16 |
-| `src/compiler/native/abi.f` | Host identity mixed with AArch64 routine construction | Split execution-host descriptor from ARM64 Habu routine/foreign ABI construction | T04/L07/L12 |
-| `native/a64ir.f`, ARM64 selector/emitter files | Architecture-specific implementation in shared area | `src/arch/arm64/` ownership after interfaces stabilize | Existing ARM64 gate and byte parity |
-| `native/x64ir.f`, `select-x64.f`, `emit-x64.f` | Existing Intel implementation | The Intel lane retains ownership; move by agreement after shared adapters land | Existing Intel gate; L07/L08 later Windows lane |
-| `src/compiler/ir/{attr,context,schema,type}.f` | Decoders that mirror every CTARGET architecture, ABI and feature code | Each new target code is mirrored in the decoders in the same commit (P1a) | T01; HIR schema version bumped |
-| `src/arch/arm32/` | ISA construction available; complete target pipeline needed | Shared ARM32 provider with CPU/state/FP/ABI profiles | L12/L13/N09 |
-| `src/arch/tic6x/` | Existing assembler, ABI/facts/simulator assets | Context-owned target provider; constraint scheduling and independent validators | L14–L18 |
-| `src/core/cell.f` | Existing 64-bit Habu cell semantics | Keep language cell invariant; target pointer/foreign layout moves to explicit layout owner | N07–N11 |
-| `src/habu/prims.f`, primitive registry | One language-effect authority | Preserve; separate body providers and runtime-capability catalog | Primitive parity + T11/N12 |
-| `src/compiler/native/publish.f` | Native placement/record publication | Native publisher behind generic candidate interface | L10/L11 |
-| `src/habu/aot-*`, native layout/capture tools | Existing owned capture and persistence machinery | Keep AOT family; add package profile per P1 and format-specific target adapters | C13/C18; self-build/capture gates |
-| `src/habu/aot-shadow.f`, `src/habu/link-x64.f` | The audited legacy owner adapter (§7.4): capture of a shadow target's routines and the fixed-address x86-64 layout | P6 rides it for Wasm; §7.2's `TargetRef` replaces it in P3 | W01–W07; existing x86-64 cross-build gate |
-| `tools/diag-code.f` | The one diagnostic code registry, with the repair-diagnostics JSON shape | Portability rejections register `E-` codes here (§24.4) | Rejection rows emit the registered shape |
-| `lib/ffi-callback.f` | C callbacks into checked Habu, catch -> `FALLBACK` | Base for the foreign entry rule (§10.2) and Windows callbacks | L09/N12 |
-| `lib/policy.f` | Sealed source lookup, the owner of source admission | Records source-acquisition observations (§23.3) | C04/C12 |
-| `tools/native-build-core.f` | Host live readers and target source/window logic intertwined | Explicit build action, retained host reader, target builder and manifest composition | T02/T10; changed-layout generation-1 gate |
-| `tools/hb-build-lib.f`, `tools/object-image.f` | Host-derived target naming/selection | Consume resolved target/producer/input identities and link plan | C07/C08/C17 |
-| `tools/build-fixpoint.f`, `native-emit.f`, bootstrap/runtime source lists | Several selection owners | One source-manifest authority with generated bootstrap representation | C02/C03; native self-build |
-| Existing object/cache/build libraries | Existing package design should be reused | Contribution storage/import and observation hooks from P1, not parallel format | C01–C18 |
-| New `src/arch/wasm/` provider | Must not inherit native code-address assumptions | WCFG/WSTRUCT, module contribution plans and binary encoder | W01–W07 |
-| Tool and test entry points | Must remain portable and inspectable | Thin Habu commands; external tools as adapters, independent tests as oracles | Same commands on all qualified hosts |
-
-### 26.1 Minimal practical source layout
-
-Use existing `src/arch` rather than a competing `src/targets` hierarchy. Target *profiles* live separately from backend source. The destination can be introduced gradually:
-
-```text
-src/compiler/target/     resolved contracts, layouts, compatibility
-src/compiler/session/    contexts, ownership, diagnostics, observations
-src/compiler/backend/    provider interfaces and pass planning
-src/compiler/artifact/   owned contributions and publication plans
-src/arch/{arm64,x86-64,arm32,tic6x,wasm}/
-src/abi/                 external call classifiers and Habu ABI descriptors
-src/host/                executing-compiler OS services
-src/object/              standard object codecs
-src/link/                symbols, layout, relocations, image policies
-src/runtime/             portable primitives plus environment providers
-src/build/               actions, input worlds, manifests, caches, tools, runners
-profiles/                targets, runtimes, boards, toolchains, qualification
-```
-
-### 26.2 Dependency lint rules
-
-Compiler HIR and generic artifact modules may depend on target contracts but not import a particular OS seam or machine emitter. ISA construction cannot import a browser/COM/UI package. Host services cannot select target image policy. The link format codec cannot discover libraries through the host's default loader. A runtime profile cannot cause application roots to retain every compiler backend.
-
-Lint generated source manifests as well as textual `require` edges: dynamic source selection is exactly where the old architecture could conceal coupling. Bootstrap's generated static list is checked against the same manifest authority. Fail closed when an unclassified dependency is introduced into a cross-build closure.
-
-## 27. Work packages, dependencies and landing gates
-
-The order below is an implementation dependency graph, not a demand to stop Intel work until a repository-wide redesign finishes. Shared changes land with compatibility adapters and native regression gates. New Windows, TI and Wasm work can proceed behind those interfaces.
-
-P0 and P1 are split in two. P0n pins the native contracts and P0w the Wasm numeric goldens. P1a adds the Wasm target row (§5.3); P1b is the rest of the action and target model. The Wasm path is P1a -> P6, with P0w alongside; it never waits on P2-P5. Each package names its dot. A bracketed [P1] elsewhere on this page cites the package-build design, not the P1 work package.
-
-| Work package | Concrete deliverable | Depends on | Exit gate |
-|---|---|---|---|
-| P0n — pin native contracts | Literal CTARGET digests, primitive and layout goldens (habu-pin-native-target-12e4fbb7) | None | Old behavior reproducible on currently qualified hosts; unknown results labelled untested |
-| P0w — pin Wasm numerics | Wasm numeric goldens (habu-pin-hbr2-wire-0b340032) | This page | N01–N06 with the NaN print rows and the three `?do` rows, run natively |
-| P1a — Wasm target row | Wasm architecture and ABI codes, the scalar-FP capability split (§4.4) and the decoders, in one commit (habu-add-the-wasm-4c32353e) | P0n | T01; legacy digests unchanged |
-| P1b — action/target model | ExecutionPlatform, CompilerProduct, ResolvedTarget, alias resolver, separate compatibility predicates (habu-resolve-build-targets-ae8e65c1) | P1a | T01–T06, T15; no changed legacy digest meanings |
-| P2 — provider/session adapter | Backend manifest capacity, context-owned artifact adapter, exclusive legacy-provider guard (habu-give-each-backend-b6f7ea4f) | P1b | T07–T09; ARM64/Intel failures leave parent state valid |
-| P3 — target data/staging | Symbolic target refs, object builder, host/helper binding split, adapter admission (habu-make-cross-target-934166cc) | P2 | T10–T14/N07–N11; no foreign artifact host pointers |
-| P4 — contribution integration | Existing P1 package profile, source-position importer, observation/producer hooks; scheduled by the package-build review (habu-review-and-schedule-dbdba551) | P3; that review | C01–C18 including transitive compile-time closure |
-| P5 — link/publication | Native fragments, relocation providers, layout fixpoint, native prepare/commit/retire (habu-link-native-fragments-5949ec30) | P2, P3 | L01–L06/L10/L11; existing image/capture qualification retained |
-| P6 — Wasm vertical slice | Genuine Habu-generated scalar/control/memory module through the shadow route (habu-emit-a-wasm-05443776; [wasm-backend.md](wasm-backend.md)) | P1a, P0w | W01–W07 and numeric parity; proves non-native result model early |
-| P8 — host/toolchain services | Structured paths/processes/files/memory/tool/runner APIs for native hosts (habu-own-host-svcs-b1368bbe) | P1b; grows with P5 | Cross-generation on each brought-up host; no host library contamination |
-| P9 — Windows native profiles | x64/ARM64 foreign ABI, PE/DLL/unwind/TLS/callback and host runtime (habu-specify-windows-x64-3cd4cef3, parked until [WN] and a Windows lane exist) | P5/P8; [WN]; existing ISA lane output | L07–L11/N12, native compiler self-build per Windows host |
-| P10 — TI/freestanding profiles | ARM32/C66x complete lowered subset, startup/BSP, object/finalizer adapters (design input to C6's habu-design-the-first-61f718f0) | P3/P5/P8 | L12–L20 and device/independent execution evidence |
-| P11 — compiler product qualification | Native cross-bootstrap graph, source-free/self-build, cache equivalence and size gates (habu-qualify-the-five-a49d428e) | Relevant P4/P5/P8/P9 | All five required native compiler-host profiles qualified |
-| P12 — optional browser compiler | Installer provider, restricted transaction, leases, explicit compiler pump; deferred until a caller exists | P11 where reused | W20–W24/W26 and real compiler B0/B1/B2 closure |
-| P13 — cleanup/optimization | Retire compatibility predicates, move files, optimize measured bottlenecks (habu-retire-target-selecting-affc4d65) | Affected profiles have replacement gates | No hidden fallback; ownership lint and performance receipts |
-
-P4 gates incremental browser builds only.
-
-P11 does not require P10 or P12 to prove that a host compiler executes correctly. A release claiming TI emission additionally needs P10. A release claiming browser self-hosting needs P12. Keep capability/evidence records granular.
-
-### 27.1 Preserve the Intel lane
-
-The Intel lane retains the Linux x86-64 backend and native self-build work. Its pin 7554c01d is unmerged: it carries 14 commits master lacks, among them 5c8459cb "Compile definer bodies through NCOMP", 9751ac70 "Publish definer bodies without checker facts" and 8b05f5d9 "Key the hb-build producer by its load closures", which touch the sealed compiler and the build producer that P1a, P2 and P4 also edit. Shared-interface owners provide small adapters and reviewed receipts; they do not replace the lane's selected register convention with an older design's alternative. Windows ABI work is a separate classifier/runtime effort over the same x86 backend.
-
-For a change that affects files loaded by macOS, obtain the existing macOS integration gate rather than calling a Linux-only run universal qualification. Track exactly which host/source/compiler pair ran. No new CI infrastructure is presumed to exist; native local/remote runners can provide receipts under the same test contract.
-
-Avoid simultaneous mechanical moves and behavior changes across active worktrees. Land new context types and adapters first, move architecture files separately, then remove deprecated globals after the last supported caller is migrated.
-
-### 27.2 Required handoff receipt
-
-Each work package records public stack interfaces, imported contracts, owned resources, state machine, target/profile coverage, failure paths, quotas, test IDs, baseline/source commit, effective producer identities and exact outcomes. A source-only design patch says “specified”; generated Habu output says “generated”; actual target execution is attached separately.
-
-Schema changes include all readers/writers, validators, fixtures and version-policy updates. No worker independently assigns a conflicting AOT profile version. A task requiring a board-specific register map or external ABI table cannot close based on a guessed value.
-
-### 27.3 Definition of done
-
-Completion for a claimed profile means the ordinary build command uses the new model; no hidden host predicate selects target semantics; no fallback native interpreter/JIT rescues an advertised AOT output; package hits and misses preserve source semantics; required target runtime/ABI/image behaviors execute correctly; and artifacts carry reproducible inputs plus honest qualification receipts.
-
-Moving files, registering a backend row, producing a valid ELF/Wasm header, or achieving a self-build hash match is individually insufficient.
-
-## 28. Decisions fixed here and integration inputs still required
-
-This section separates fixed architectural decisions from deployment facts that cannot safely be invented.
-
-### 28.1 Decisions fixed by this design
-
-The action model separates executing platform, compiler-product host and emission target. Habu cells remain 64-bit in the initial target family. The generic result is an owned emission/contribution, not a native code address. Shared HIR reuse is dependency-sensitive. Cross-target persistent references are symbolic. Native and Wasm publishers have different preparation mechanisms but explicit commit/retirement contracts. Package contributions preserve source order and reuse the existing AOT-family package design.
-
-The Wasm fast-call/frame threshold, 16 input and 16 output lanes ([wasm-backend.md](wasm-backend.md)), is a **pinned internal ABI parameter**, not an inherited browser wire value. It must enter the internal ABI descriptor and implementation fixtures. Changing it later requires compatible adapters or an ABI revision; it is not an untracked optimization heuristic.
-
-### 28.2 Facts to pin during implementation—not opportunities to guess
-
-| Required integration input | Authority and treatment |
-|---|---|
-| Current exact shift/conversion/cleanup precedence semantics | Read current primitive/source contracts and freeze execution fixtures before changing lowering |
-| AOT family/profile version number | Allocate through the existing artifact owner at integration; old readers reject unknown profiles |
-| Backend/ABI wire codes | Append through the authoritative registry; preserve legacy meanings |
-| ARM32 CPU/FPU/PCS and C66x device variant | Selected target profile backed by official ABI/device documentation |
-| Board memory map, reset/boot state, interrupt/cache/DMA policy | Explicit BSP/board manifest; refuse firmware qualification without it |
-| SDK libraries, import metadata and vendor finalizer support | Pinned content/tool profiles and actual host execution evidence |
-| Optional compiler-service transport schema | Separate reviewed extension of the existing compiler embedding |
-| Browser support set, CSP, graphics fallback and budgets | Deployment manifest backed by actual browser/device tests |
-| Producer equivalence across different hosts | Explicit qualified equivalence policy; conservative exact-producer cache mode until then |
-| Runtime state migrations and offline authority | Existing application owners; never inferred from pointer or schema similarity |
-
-This is not permission to leave ordinary implementation behavior undefined. Each missing fact has a designated owner, a consuming descriptor and a fail-closed gate. Application/library code generation can proceed for narrower admitted profiles without overstating full platform qualification.
-
-### 28.3 Principal residual engineering risks
-
-The largest risk is hidden compile-time access to live dictionary memory or untracked native operations. Address it through owner adapters and enforced call/effect admission, not retrospective pointer scanning. The next is cross-owner publication and cleanup: dictionary, checker, registry and code-generation state must share a real commit boundary.
-
-C66x scheduling/ABI correctness, native unwinding and Windows callbacks, and complete Habu browser self-hosting are substantial implementation efforts even with clean interfaces. They must retain independent validators and staged execution gates. The architecture reduces duplication; it does not eliminate target-specific engineering.
-
-Reproducibility can also fail through unordered tables, floating compile-time evaluation, path-sensitive source, generated timestamps, nondeterministic IDs or toolchain metadata. Record and test each observed dependency. Do not weaken numeric/source semantics or discard mismatches to make an equality test pass.
-
-### 28.4 Review boundary
-
-This design checks its integration contracts against [wasm-backend.md](wasm-backend.md) and [package-build.md](package-build.md). It does not claim that every repository branch is audited. The Windows/COM design [WN] does not exist, so the Windows rows state requirements only.
-
-## 29. Sources and provenance
-
-A cited source establishes an existing fact. Every algorithm, new type or path,
-proposed command and work package not attributed to one is a decision of this
-design.
-
-### 29.1 Design documents
+### Design documents
 
 | Label | Document | Status |
 |---|---|---|
 | [B1] | [wasm-backend.md](wasm-backend.md), the Wasm backend design, first written against aed8416b | In Habu, reconciled with this page |
-| [P1] | [package-build.md](package-build.md), the package incremental-build design, baseline 37b2c1b7 | In Habu, reviewed only at its interface with this page; its full review is habu-review-and-schedule-dbdba551 |
 | [WN] | A Windows/COM design | Does not exist; open future work |
 
-### 29.2 Repository references
+### Repository references
 
 | Label | Source | Observation |
 |---|---|---|
-| [R1] | `src/compiler/target.f` | Immutable five-field contract, stable identity, backend registry of four rows (`:428`) |
+| [R1] | `src/compiler/target.f` | Target identity and wire codes; verify current registered backends |
 | [R2] | `src/compiler/native/compiler.f` | Per-definition orchestration, source-selected passes, native imports, mutable session scratch |
 | [R3] | `src/compiler/native/emission.f` | Byte-oriented sealed emission facts and architecture identity (`:1-24`) |
 | [R4] | `src/compiler/native/shadow.f` | Second-target emission, copied rows, host-address target mapping (`:1-30`) |
@@ -1497,9 +1254,9 @@ design.
 | [R9] | `tools/native-build-core.f`, `src/compiler/native/abi.f` | Retained host layout reader; machine-specific ABI and source selection |
 | [R10] | `tools/build-target.f`, `tools/hb-build-lib.f` | The build-target cell and alias selection; artifact naming |
 | [R11] | [porting.md](porting.md) | Source-list owners, OS/image seams, primitive and native-port gates |
-| [R12] | [INTEL.md](../INTEL.md) and the unmerged Intel pin 7554c01d | Linux x86-64 lane ownership, cross-build, self-build and recovery direction |
+| [R12] | [x86-64.md](x86-64.md) | Linux x86-64 cross-build and execution details |
 
-### 29.3 External references
+### External references
 
 | Label | Primary source | Used for |
 |---|---|---|
@@ -1520,40 +1277,29 @@ exact versions and subsets and verify them in their qualification environment.
 No external source is cited as proof that a proposed Habu algorithm is
 implemented.
 
-### 29.4 Provenance
-
-This page is PA-r2, the portability architecture revision of 2 October 2026,
-written against master 16a4d57b and adopted on 2026-10-03 after a review against
-67a66d28 that corrected its claims about master. PA-r2 says it replaced an
-outline of 16,928 bytes; that outline is not the predecessor design imported
-for the review (139,590 bytes), so §0's failure list was written against the
-short outline. The worked-example checks made with PA-r2 (field layouts,
-checked bounds, integer boundaries, relocation range, canonical encoding and
-publication ownership) ran as reference models outside Habu: they execute no
-Habu, compile no proposed API and test no emitted code. Qualification is the
-gates of §§25–27.
-
 ## Appendix A. Worked end-to-end build traces
 
 ### A.1 Windows ARM64 compiler built on macOS, then used for TI
 
-The current macOS compiler resolves a `CompilerProduct` whose executable target is Windows ARM64. Compiler packages—including C66x instruction selection/encoding source—are built as Windows ARM64 program code. Native compile-time helpers remain macOS code or execute as separately admitted host tools. Windows target foreign metadata is read, not loaded as host DLLs. Contributions assemble into PE, with Windows host services and compiler roots retained.
+A proposed macOS compiler resolves a `CompilerProduct` whose executable target is Windows ARM64. Compiler packages—including C66x instruction selection/encoding source—are built as Windows ARM64 program code. Native compile-time helpers remain macOS code or execute as separately admitted host tools. Windows target foreign metadata is read, not loaded as host DLLs. Contributions assemble into PE, with Windows host services and compiler roots retained.
 
 A Windows runner executes that exact PE and records startup/self-build results. That executable then resolves a C66x application target, board profile and target library/finalizer plan. Its C66x backend executes as Windows ARM64 code and emits C66x objects. Missing local vendor finalization does not invalidate object generation, but it prevents claiming a fully local final firmware workflow until a qualified finalizer exists.
 
-No step requires a compiler executing on C66x. No x86/Linux register or syscall convention is selected because Intel was the first completed non-ARM64 lane.
+No step requires a compiler executing on C66x. Target selection determines register and syscall conventions explicitly.
 
 ### A.3 Interrupted incremental browser compilation
 
 A compiler job records a new definition against root D7 and epoch E3. The host compiles its sealed bytes asynchronously. Before preparation resumes, an AOT reload creates epoch E4. The old ticket is rejected/drained under E3; it cannot publish into E4 even if the numeric table slot is free.
 
-In a separate run without epoch change, allocation grows capacity but a later validation fails. The candidate never becomes dictionary-visible, its reservations are cleared/tombstoned, and D7 remains the semantic root. Increased capacity stays charged. The receipt does not claim that browser memory/engine caches shrank back to their original physical state.
+In a separate run without epoch change, allocation grows capacity but a later validation fails. The candidate never becomes dictionary-visible, its reservations are cleared/tombstoned, and D7 remains the semantic root. Increased capacity stays charged. The browser memory and engine caches need not return to their original physical size.
 
-### A.4 Package cache and compile-time transitive execution
+### A.4 Package rebuild after a dependency changes
 
-P contains a runtime call to Q. R executes P while constructing target data. The first build records Q's implementation in R's compile-time dependency closure. A later body edit in Q may leave P's call contract unchanged, but it invalidates R's cached data. R recompiles at its original source occurrence; unaffected later contributions may still hit if their own observations remain valid.
-
-Adding a new higher-priority include candidate similarly invalidates only the relevant resolution witnesses and dependent units. No cache importer exposes a future private declaration early just because it is convenient to topologically sort all packages.
+If package R computes target data by executing P, and P calls Q during that
+computation, a change in Q can require R to rebuild even if P's public
+signature stays the same. A runtime-only caller may have a different
+dependency. The incremental builder must validate the chosen reuse rule
+against full builds.
 
 ## Appendix B. Adding one more platform without duplicating everything
 
