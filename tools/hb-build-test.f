@@ -425,6 +425,7 @@ variable HBT-INST-FILES
    SB$ ;
 
 : HBT-ARTIFACT-KEY ( ptr u8 -- ) {: dst:ptr :}
+   HBB-SRC-CLOSURE-HEX!
    HBB-ARTIFACT-KEY!
    HBB-ARTIFACT-KEY-HEX dst 64 BYTE-COPY ;
 

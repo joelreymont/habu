@@ -300,6 +300,37 @@ variable HBT-PUB-FILES
    HBT-PUB-ALONE
    HBT-REMOVE-ARTIFACT ;
 
+\ A real maker has read A when the source becomes B. Its result keeps A's
+\ source key, so the next ordinary build compiles and runs B.
+: HBT-SOURCE-CHANGED-DURING-MAKER ( -- )
+   HBT-AOT-SRC s" : MAIN ( -- ) 111 . cr ;" WRITE-ALL
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   HBB-BUILD-BEGIN
+   HBB-PREPARE-ARTIFACT-CACHE
+   HBB-RUN-MAKER
+   HBT-AOT-SRC s" : MAIN ( -- ) 222 . cr ;" WRITE-ALL
+   HBB-STORE-OBJECT
+   HBB-INSTALL-OUT
+   HBB-INSTALL-ARTIFACT
+   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN
+   HBT-RUN-ERR HBT-CAPTURE-CAP >LEN HBT-TIMEOUT-MS >MS
+   RUN-CAPTURE HBT-CAPTURE>N {: first-out:n first-err:n first-rc:n :}
+   first-rc 0 T= first-err 0 T=
+   HBT-RUN-OUT first-out s" 111" CONTAINS? TTRUE
+   HBB-BUILD
+   HBB-ARTIFACT-HIT @ 0= TTRUE
+   HBB-OBJECT-HIT @ 0= TTRUE
+   HBB-MAKER-RUN @ 0<> TTRUE
+   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN
+   HBT-RUN-ERR HBT-CAPTURE-CAP >LEN HBT-TIMEOUT-MS >MS
+   RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 T= errn 0 T=
+   HBT-RUN-OUT outn s" 222" CONTAINS? TTRUE
+   HBT-RUN-OUT outn s" 111" CONTAINS? TFALSE
+   HBT-REMOVE-ARTIFACT
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
+   HBT-AOT-OUT HBT-REMOVE-FILE? ;
+
 \ Public so the driver below runs it with the package CLOSED: the subtests
 \ drive real builds, which resolve names in whatever package scope is open.
 public
@@ -316,6 +347,7 @@ public
    HBT-PRODUCER-KEY-MISS
    HBT-BUILD-AOT-WRONG-OBJECT-FAILS
    HBT-PUBLISH-FAILS-CLEAN
+   HBT-SOURCE-CHANGED-DURING-MAKER
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
    T-REPORT

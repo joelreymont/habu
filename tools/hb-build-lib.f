@@ -642,10 +642,6 @@ variable HBB-FILLING
    HBB-SEED-HEX$ CONTENT-KEY:TEXT+
    SB-RESET s" mode:" SB-APPEND HBB-PRESEED-MODE @ FS-MUT-SB-U SB$ CONTENT-KEY:TEXT+ ;
 
-: HBB-SRC-CLOSURE+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   s" user-source-closure-v1" CONTENT-KEY:TEXT+
-   HBB-SRC$ HBB-KEY-CLOSURE+ ;
-
 : HBB-CLOSURE-HEX! ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
    CONTENT-KEY:OPEN
    s" user-source-closure-v1" CONTENT-KEY:TEXT+
@@ -683,11 +679,10 @@ variable HBB-FILLING
 : HBB-ARTIFACT-KEY! ( -- )
    HBB-MAKER-KEY!
    CONTENT-KEY:OPEN
-   s" hb-build-artifact-cache-v2" CONTENT-KEY:TEXT+
+   s" hb-build-artifact-cache-v3" CONTENT-KEY:TEXT+
    HBB-MAKER-KEY-HEX 64 CONTENT-KEY:TEXT+
    s" json" HBB-JSON @ 0 <> HBB-OPTION-TEXT+
-   HBB-SRC-CLOSURE+
-   HBB-PRESEED-CK+
+   HBB-SRC-CLOSURE-HEX 64 CONTENT-KEY:TEXT+
    HBB-ARTIFACT-KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
 : HBB-ARTIFACT-NAME! ( -- )
@@ -704,6 +699,9 @@ variable HBB-FILLING
 
 : HBB-PREPARE-ARTIFACT-CACHE ( -- )
    HBB-PREPARE-CACHE
+   \ Keep the source identity selected before lookup through the maker store.
+   \ An edit after the maker reads A belongs to the next build, not A's key.
+   HBB-SRC-CLOSURE-HEX!
    HBB-ARTIFACT-PATHS
    -1 HBB-ARTIFACT-CACHE ! ;
 
@@ -734,7 +732,6 @@ variable HBB-FILLING
 
 : HBB-OBJECT-LOAD? ( -- bool )
    BUILD-CACHE:ROOT$ OBJRES:ROOT!
-   HBB-SRC-CLOSURE-HEX!
    HBB-SRC-CLOSURE-HEX 64 HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$ OBJRES:LOAD ;
 
 : HBB-OBJ$ ( -- ptr u8 n )
@@ -764,7 +761,6 @@ variable HBB-FILLING
 
 : HBB-STORE-OBJECT ( -- )
    BUILD-CACHE:ROOT$ OBJRES:ROOT!
-   HBB-SRC-CLOSURE-HEX!
    HBB-READ-OBJECT-TEXT HBB-BUILD-OBJECT-RECORD
    HBB-VALIDATE-OBJECT
    OBJRES:STORE 2drop
