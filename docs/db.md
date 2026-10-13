@@ -195,6 +195,11 @@ NULL `paramLengths` (ignored for text) and a NULL `paramFormats` (a NULL array
 means every parameter is text). Only `paramValues` is built here, as a cell
 array of NUL-terminated C strings in the connection's call arena; a NULL
 parameter is a NULL entry in that array, which is exactly how libpq spells it.
+An embedded NUL in a text parameter is `PG:E-STATEMENT`, since libpq would
+otherwise see only the prefix. The same refusal applies to connection info,
+statement text and prepared-statement names. Empty parameter text is valid.
+After a refusal, staged parameters and an open connection remain usable; a
+refused connection-info span releases its claimed connection slot.
 
 **Statement and parameter text have no fixed ceiling — they are bounded by
 memory only.** Each connection builds one call in an arena it allocates from
@@ -257,7 +262,7 @@ example below does it.
 | `PG:E-HANDLE` | a handle another task owns, or one an image restore invalidated |
 | `PG:E-CAPACITY` | more live connections, results or parameters than the module stores |
 | `PG:E-PLATFORM` | this module is qualified on Linux only, and refuses a foreign target before it binds |
-| `PG:E-STATEMENT` | an empty statement/name, script parameters, or an operation invalid for the connection's current phase |
+| `PG:E-STATEMENT` | an empty statement/name, embedded NUL in libpq C-string text, script parameters, or an operation invalid for the connection's current phase |
 
 The block is `-9250..-9259`, minted in `src/lib/pg.f`, which owns package PG.
 

@@ -101,6 +101,16 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
    dup PG:CLOSE ;
 
 
+: CONNECT-NUL ( -- )
+   S\" host=127.0.0.1 port=1\x00 dbname=none" CONNECT-START PG:CLOSE ;
+
+
+: CONNECT-TEXT-CASES ( -- )
+   s" rejected connection text releases its claimed slot" T-LABEL
+   CONNECTIONS 1+ 0 ?do [: CONNECT-NUL ;] E-STATEMENT TTHROWSQ loop
+   OPEN PG:CLOSE ;
+
+
 : CONNECT-CASES ( -- )
    REFUSED-LENGTH 0 > TTRUE
    s" host=127.0.0.1 port=1 dbname=none user=none connect_timeout=2"
@@ -285,6 +295,39 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
    c SELECT-CASES ;
 
 
+: NUL-LEADING ( PG:connection -- PG:connection )
+   dup S\" \x00A" TEXT+ ;
+
+: NUL-EMBEDDED ( PG:connection -- PG:connection )
+   dup S\" A\x00B" TEXT+ ;
+
+: NUL-TRAILING ( PG:connection -- PG:connection )
+   dup S\" A\x00" TEXT+ ;
+
+: TEXT-BOUNDARY-CASES ( PG:connection -- PG:connection ) {: c :}
+   s" text parameters reject NUL without losing staged parameters" T-LABEL
+   c PARAMS
+   c s" kept" TEXT+
+   c [: NUL-LEADING ;] catch {: stale-lead lead-code:n :}
+   lead-code E-STATEMENT T=
+   c [: NUL-EMBEDDED ;] catch {: stale-mid mid-code:n :}
+   mid-code E-STATEMENT T=
+   c [: NUL-TRAILING ;] catch {: stale-tail tail-code:n :}
+   tail-code E-STATEMENT T=
+   c s" select $1::text" EXEC {: kept :}
+   kept 0 >ROW 0 >COL TEXT$ s" kept" T$=
+   kept CLEAR
+   s" empty and UTF-8 text parameters round trip exactly" T-LABEL
+   c PARAMS
+   c s" " TEXT+
+   c S\" \xc3\xa9A" TEXT+
+   c s" select $1::text, $2::text" EXEC {: exact :}
+   exact 0 >ROW 0 >COL TEXT$ s" " T$=
+   exact 0 >ROW 1 >COL TEXT$ S\" \xc3\xa9A" T$=
+   exact CLEAR
+   c ;
+
+
 \ ---- prepared statements --------------------------------------------------
 : PREPARED-INSERT ( PG:connection n ptr u8 n -- ) {: c id:n la:ptr lu:n :}
    c PARAMS
@@ -397,6 +440,32 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
 
 : PREPARE-UNNAMED ( PG:connection -- PG:connection )
    dup s" " EXEC-PREPARED CLEAR ;
+
+
+: EXEC-NUL ( PG:connection -- PG:connection )
+   dup S\" select $1::text\x00; select 2" EXEC CLEAR ;
+
+: PREPARE-NUL-NAME ( PG:connection -- PG:connection )
+   dup S\" p\x00q" s" select 1" PREPARE CLEAR ;
+
+: EXEC-NUL-NAME ( PG:connection -- PG:connection )
+   dup S\" p\x00q" EXEC-PREPARED CLEAR ;
+
+
+: STATEMENT-BOUNDARY-CASES ( PG:connection -- PG:connection ) {: c :}
+   s" statements and prepared names reject NUL before libpq" T-LABEL
+   c PARAMS
+   c s" kept" TEXT+
+   c [: EXEC-NUL ;] catch {: stale-sql sql-code:n :}
+   sql-code E-STATEMENT T=
+   c [: PREPARE-NUL-NAME ;] catch {: stale-prepare prepare-code:n :}
+   prepare-code E-STATEMENT T=
+   c [: EXEC-NUL-NAME ;] catch {: stale-name name-code:n :}
+   name-code E-STATEMENT T=
+   c s" select $1::text" EXEC {: r :}
+   r 0 >ROW 0 >COL TEXT$ s" kept" T$=
+   r CLEAR
+   c ;
 
 
 \ An empty statement would reach the server as PGRES_EMPTY_QUERY, whose result
@@ -829,12 +898,14 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    OPEN
    DDL-CASES
    PARAM-CASES
+   TEXT-BOUNDARY-CASES
    PREPARED-CASES
    ROLLBACK-CASES
    COMMIT-CASES
    UNIQUE-CASES
    BAD-COLUMN-CASES
    EMPTY-STATEMENT-CASES
+   STATEMENT-BOUNDARY-CASES
    BIG-TEXT-CASES
    BIG-STATEMENT-CASES
    PARAM-COUNT-CASES
@@ -864,7 +935,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    PROGRESS-CASES
    RESULT-CAPACITY-CASES
    AIO:START
-   [: CONNECT-CASES CAPACITY-CASES AIO-FAIL-CASES SERVER-CASES ;]
+   [: CONNECT-CASES CONNECT-TEXT-CASES CAPACITY-CASES AIO-FAIL-CASES SERVER-CASES ;]
    [: AIO:STOP ;]
    finally ;
 

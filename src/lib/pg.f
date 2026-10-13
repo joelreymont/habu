@@ -52,7 +52,7 @@ public
 -9256 constant E-HANDLE       \ a handle another task owns, or one an image restore invalidated
 -9257 constant E-CAPACITY     \ more live connections, results or parameters than this module stores
 -9258 constant E-PLATFORM     \ this module is qualified on Linux only, and refuses a foreign target before it binds
--9259 constant E-STATEMENT    \ an empty statement text or prepared-statement name
+-9259 constant E-STATEMENT    \ an empty statement/name or embedded NUL in C-string text
 
 NEWTYPE connection 0
 NEWTYPE result 0
@@ -385,10 +385,13 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot ARENA-U@ 1 + slot ARENA-U! ;
 
 
-\ Copy the bytes plus a terminator and answer the C string's arena offset.
+\ Copy text plus a terminator and answer the C string's arena offset. libpq
+\ ignores text span lengths, so an embedded NUL would silently truncate it.
+\ Reserve first: an impossible length must fail without reading source bytes.
 : ARENA-CSTR ( ptr u8 n n -- n ) {: a u:n slot:n :}
    u 0 < if E-CAPACITY throw then
    slot u 1 + ARENA-ENSURE
+   u 0 ?do a i + c@ 0= if E-STATEMENT throw then loop
    slot ARENA-U@ {: off:n :}
    a u slot ARENA-BASE off + FFI:CSTR
    off u + 1 + slot ARENA-U!
@@ -1043,6 +1046,13 @@ REGISTER-CHILD-RESET
    slot SQLSTATE$ slot MESSAGE$ PG-OUTCOME:failed ;
 
 
+\ A caught staging refusal still owns the claimed slot. The new arena starts
+\ at offset zero, so the staging helper can preserve its catch input row.
+: STAGE-CONNINFO ( ptr u8 n n -- ptr u8 n n ) {: a u:n slot:n :}
+   a u slot ARENA-CSTR drop
+   a u slot ;
+
+
 public
 
 \ CONFIGURE is the one registry sizing decision. Applications call it before
@@ -1061,8 +1071,10 @@ public
    REGISTER-CLEANUP
    CLAIM-CONN-SLOT {: slot:n :}
    slot OPEN-CONN-SLOT
-   a u slot ARENA-CSTR {: off:n :}
-   slot ARENA-BASE off + LIB-CONNECT-START {: pg :}
+   a u slot ['] STAGE-CONNINFO catch {: code:n :}
+   2drop drop
+   code 0<> if slot RETIRE-CONN-SLOT code throw then
+   slot ARENA-BASE LIB-CONNECT-START {: pg :}
    slot ARENA-RELEASE
    pg NULL-ADDR? if slot RETIRE-CONN-SLOT E-CONNECT throw then
    pg slot CONN-PG!
