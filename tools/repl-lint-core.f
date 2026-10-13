@@ -2,6 +2,7 @@
 
 require tools/lint/text.f
 require src/lib/source.f
+require src/lib/string.f
 require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
@@ -23,7 +24,6 @@ variable REPL-OUT-FD
 variable REPL-I
 variable REPL-J
 variable REPL-TMP
-variable REPL-CMP
 variable REPL-NUM-L
 create REPL-NUM 32 allot
 TYPED-VARIABLE REPL-SRC-A ptr u8
@@ -141,16 +141,6 @@ variable REPL-ROOT-U
    s" src/habu/debug-watch.f" ADD-REPL-PATH
    s" src/habu/stepper.f" ADD-REPL-PATH
    s" src/habu/debug.f" ADD-REPL-PATH ;
-
-: STR<  ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
-   0 REPL-CMP !
-   begin REPL-CMP @ u <  REPL-CMP @ v < and while
-      a REPL-CMP @ + c@  b REPL-CMP @ + c@
-      2dup < if 2drop LINT-TRUE exit then
-      > if LINT-FALSE exit then
-      REPL-CMP @ 1+ REPL-CMP !
-   repeat
-   u v < ;
 
 : PATH-ID<  ( n n -- bool ) {: left:n right:n :}
    left INTERN$  right INTERN$  STR< ;
