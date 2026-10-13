@@ -601,12 +601,17 @@ private
    from at <= at to < and ;
 
 \ The first decl of the check of the document in this slot, of group G, whose
-\ token holds this byte, if one does.
+\ token holds this byte; otherwise the first whose token ends exactly here.
 : DECL-HOLDING ( n n n -- option<n> )
    {: slot:n g:n at:n :}
    slot DEFS-DECL-RANGE ?do
       i DECL-GROUP g = if
          i DECL-BYTES at HOLDS? if i OPTION:SOME unloop exit then
+      then
+   loop
+   slot DEFS-DECL-RANGE ?do
+      i DECL-GROUP g = if
+         i DECL-BYTES at = swap at < and if i OPTION:SOME unloop exit then
       then
    loop
    OPTION:NONE ;

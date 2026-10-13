@@ -39,10 +39,10 @@
 \ file the declaration is in, and the bytes its declaring token starts and
 \ ends at there. A binding to a word without a source declaration has group
 \ -1, target bytes zero and visit -1. DEFS-USE-AT finds a located use that
-\ holds a byte of a document's text and USE-GROUP its declaration's group,
-\ which holds its declaration as the check read it: no other check's group for
-\ the file, whose text may
-\ differ, answers for a use. USE-WORD$ gives the word as a use writes it.
+\ holds a byte of a document's text or ends at the caret. USE-GROUP gives its
+\ declaration's group, which holds the declaration as the check read it: no
+\ other check's group for the file, whose text may differ, answers for a use.
+\ USE-WORD$ gives the word as a use writes it.
 \ DEFS-USE-RANGE gives all bindings of a document's last completed check, or of
 \ the probe's, in the order the check published them.
 \ DEFS-KEEP also takes whether the check's verdict was verified, which
@@ -826,8 +826,19 @@ private
    loop
    OPTION:NONE ;
 
-\ The first use of block K whose bytes, from its start to before its end, hold
-\ this byte, if one does.
+\ The first use of block K whose bytes end at this byte, after they start,
+\ if one does.
+: USE-ENDING ( n n -- option<n> )
+   {: k:n at:n :}
+   k B-USE USE-N @ BLOCK-END k B-USE BLOCK@ ?do
+      i U-GROUP USE@ 0 >=
+      i U-START USE@ at < and  i U-END USE@ at = and
+      if i OPTION:SOME unloop exit then
+   loop
+   OPTION:NONE ;
+
+\ The first use of block K whose bytes hold this byte, or whose token ends
+\ exactly here when none holds it.
 : USE-HOLDING ( n n -- option<n> )
    {: k:n at:n :}
    k B-USE USE-N @ BLOCK-END k B-USE BLOCK@ ?do
@@ -835,7 +846,7 @@ private
       i U-START USE@ at <= and  i U-END USE@ at > and
       if i OPTION:SOME unloop exit then
    loop
-   OPTION:NONE ;
+   k at USE-ENDING ;
 
 \ A new block, the newest, for the completed check of the document in this
 \ slot, whose verdict was verified or not.
@@ -958,8 +969,8 @@ public
    r R-START REC@ r R-END REC@ ;
 
 \ The first use of the last completed check of the document in this slot whose
-\ bytes hold this byte; none if the store keeps no check of it or no use
-\ holds the byte.
+\ bytes hold this byte, or end exactly here when none holds it; none if the
+\ store keeps no check of it or no use meets either position.
 : DEFS-USE-AT ( n n -- option<n> )
    {: slot:n at:n :}
    slot BLOCK-OF MATCH option

@@ -2785,7 +2785,7 @@ variable LENGTH-N                        \ the length of its directory's name
 \ DEF-ONE, its use in DEF-TWO, and its use in DEF-THREE after a character of
 \ one UTF-16 unit and two bytes.
 : TEXT-DEF-A ( -- ptr u8 n )
-   s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) DEF-ONE 1 + ;\n: DEF-THREE ( -- n ) s\" é\" 2drop DEF-ONE ;\n" ;
+   s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) DEF-ONE  1 + ;\n: DEF-THREE ( -- n ) s\" é\" 2drop DEF-ONE ;\n" ;
 
 \ def-dep.f, on disk only: DEF-PUB, public in package DD, and the global
 \ DEF-DEP.
@@ -2808,8 +2808,8 @@ variable LENGTH-N                        \ the length of its directory's name
 \ DEF-ONE's uses, at the first and last character of the one in DEF-TWO and
 \ the first of the one in DEF-THREE, its byte one past its character, each
 \ answered with DEF-ONE's declaring token at the URI the document was opened
-\ by; the character after the use and DEF-TWO's declaring token with none; a
-\ negative character -32602.
+\ by; the caret at the use's exact end still selects it, while the next space
+\ and DEF-TWO's declaring token select none; a negative character -32602.
 : DEF-TURNS ( -- )
    INITIALIZE
    DEF-A-PATH TEXT-DEF-A 1 OPENS
@@ -2820,15 +2820,17 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 4" DEF-A-PATH 1 25 DEFINITION-ASK
    s" 5" DEF-A-PATH 2 33 DEFINITION-ASK
    s" 6" DEF-A-PATH 1 26 DEFINITION-ASK
-   s" 7" DEF-A-PATH 1 2 DEFINITION-ASK
-   s" 8" DEF-A-PATH 1 -1 DEFINITION-ASK
+   s" 7" DEF-A-PATH 1 27 DEFINITION-ASK
+   s" 8" DEF-A-PATH 1 2 DEFINITION-ASK
+   s" 9" DEF-A-PATH 1 -1 DEFINITION-ASK
    SAY
    s" 3" DEF-A-PATH URI-OF 0 2 9 LOCATED
    s" 4" DEF-A-PATH URI-OF 0 2 9 LOCATED
    s" 5" DEF-A-PATH URI-OF 0 2 9 LOCATED
-   s" 6" NOWHERE
+   s" 6" DEF-A-PATH URI-OF 0 2 9 LOCATED
    s" 7" NOWHERE
-   HEAR s" 8" -32602 REFUSED ;
+   s" 8" NOWHERE
+   HEAR s" 9" -32602 REFUSED ;
 
 \ The uses of def-dep.f's global and, qualified, of its public word, each
 \ answered with its declaring token in the text on disk at the file's
@@ -3306,7 +3308,8 @@ variable LENGTH-N                        \ the length of its directory's name
 \ DEF-ONE's use in DEF-TWO, at its first character and its last, and DEF-ONE's
 \ declaring token, each answered with that token and both uses of DEF-ONE;
 \ DEF-TWO's token, which no use names, with itself alone; the character after
-\ the use with none; a negative character -32602.
+\ the use still selects it, the next space selects none; a negative character
+\ -32602.
 : HIGHLIGHT-TURNS ( -- )
    INITIALIZE
    DEF-A-PATH TEXT-DEF-A 1 OPENS
@@ -3318,14 +3321,16 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 5" DEF-A-PATH 0 3 HIGHLIGHT-ASK
    s" 6" DEF-A-PATH 1 2 HIGHLIGHT-ASK
    s" 7" DEF-A-PATH 1 26 HIGHLIGHT-ASK
-   s" 8" DEF-A-PATH 1 -1 HIGHLIGHT-ASK
+   s" 8" DEF-A-PATH 1 27 HIGHLIGHT-ASK
+   s" 9" DEF-A-PATH 1 -1 HIGHLIGHT-ASK
    SAY
    s" 3" 0 DEF-ONE-LIT
    s" 4" 0 DEF-ONE-LIT
    s" 5" 0 DEF-ONE-LIT
    s" 6" SYMBOLS-START 1 2 9 HIGHLIGHT+ SYMBOLS-END
-   s" 7" SYMBOLS-START SYMBOLS-END
-   HEAR s" 8" -32602 REFUSED ;
+   s" 7" 0 DEF-ONE-LIT
+   s" 8" SYMBOLS-START SYMBOLS-END
+   HEAR s" 9" -32602 REFUSED ;
 
 \ A use of >CVT-T and a qualified use of CVT-T>N, each answered with CVT-T's
 \ token and the uses of its own converter, in either case and qualified, and
@@ -4565,7 +4570,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 : REFS-DIR ( ptr u8 n -- )  FIXTURE MAKE-DIR ;
 
 : REF-A-PATH ( -- ptr u8 n )  s" ref-a.f" FIXTURE ;
-: TEXT-REF-A ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\n: TWO ( -- n ) ROOK ROOK + ;\n" ;
+: TEXT-REF-A ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\n: TWO ( -- n ) ROOK  ROOK + ;\n" ;
 : TEXT-RF ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\n" ;
 : TEXT-RF-MOVED ( -- ptr u8 n )  s\" \\ moved\n: ROOK ( -- n ) 1 ;\n" ;
 : TEXT-RF-TAIL ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\n\\ tail\n" ;
@@ -4705,11 +4710,12 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 : ROOK-DECL+ ( -- )  REF-A-PATH URI-OF 0 2 6 REF+ ;
 : ROOK-USES+ ( -- )
    REF-A-PATH URI-OF 1 15 19 REF+
-   REF-A-PATH URI-OF 1 20 24 REF+ ;
+   REF-A-PATH URI-OF 1 21 25 REF+ ;
 
 \ ROOK's use at its first character and at its last, and its declaring
-\ token, each answered with both uses, the declaration first when asked for;
-\ the engine's +, whose check states no use, with none.
+\ token, including each exact trailing edge, each answered with both uses,
+\ the declaration first when asked for; a further space and the engine's +,
+\ whose check states no use, with none.
 : REFS-TURNS ( -- )
    INITIALIZE
    REF-A-PATH TEXT-REF-A 1 OPENS
@@ -4719,12 +4725,20 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" 3" REF-A-PATH 1 15 DECL-TOO REFS-ASK
    s" 4" REF-A-PATH 1 23 DECL-NOT REFS-ASK
    s" 5" REF-A-PATH 0 2 DECL-TOO REFS-ASK
-   s" 6" REF-A-PATH 1 25 DECL-TOO REFS-ASK
+   s" 6" REF-A-PATH 1 19 DECL-TOO REFS-ASK
+   s" 7" REF-A-PATH 1 20 DECL-TOO REFS-ASK
+   s" 8" REF-A-PATH 0 6 DECL-TOO REFS-ASK
+   s" 9" REF-A-PATH 0 7 DECL-TOO REFS-ASK
+   s" 10" REF-A-PATH 1 26 DECL-TOO REFS-ASK
    SAY
    s" 3" SYMBOLS-START ROOK-DECL+ ROOK-USES+ SYMBOLS-END
    s" 4" SYMBOLS-START ROOK-USES+ SYMBOLS-END
    s" 5" SYMBOLS-START ROOK-DECL+ ROOK-USES+ SYMBOLS-END
-   s" 6" SYMBOLS-START SYMBOLS-END ;
+   s" 6" SYMBOLS-START ROOK-DECL+ ROOK-USES+ SYMBOLS-END
+   s" 7" SYMBOLS-START SYMBOLS-END
+   s" 8" SYMBOLS-START ROOK-DECL+ ROOK-USES+ SYMBOLS-END
+   s" 9" SYMBOLS-START SYMBOLS-END
+   s" 10" SYMBOLS-START SYMBOLS-END ;
 
 : REFS-NOT-OPEN-TURNS ( -- )
    INITIALIZE
@@ -5402,13 +5416,15 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ Q:Y, which defines Y into the wordlist Q, used in RU.
 : RN-PREP-PATH ( -- ptr u8 n )  s" rn-prep.f" FIXTURE ;
 : TEXT-RN-PREP ( -- ptr u8 n )
-   s\" package RNP\npublic\n: ROOK ( -- n ) 1 ;\n: TWO ( -- n ) ROOK ROOK + ;\n;package\n: Q:Y ( -- n ) RNP:ROOK ;\n: RU ( -- n ) Q:Y 1 + ;\n" ;
+   s\" package RNP\npublic\n: ROOK ( -- n ) 1 ;\n: TWO ( -- n ) ROOK ROOK  + ;\n;package\n: Q:Y ( -- n ) RNP:ROOK ;\n: RU ( -- n ) Q:Y 1 + ;\n" ;
 
 \ ROOK's use at its first character and at its last, Q:Y's declaring token
 \ and RNP:ROOK asked on its qualifier, each answered with the range of the
-\ tail a rename edits; the space before the use null. A use of the converter
-\ >CVT-T, whose declaring token CVT-T does not spell it, -32803 naming
-\ hover-cvt.f; a use in hu.f, whose check was refused, -32803 naming it;
+\ tail a rename edits, including at the exact trailing edge of a use or its
+\ declaration; a space beyond that edge and the space before a use null. A
+\ use of the converter >CVT-T, whose declaring token CVT-T does not spell it,
+\ -32803 naming hover-cvt.f; a use in hu.f, whose check was refused, -32803
+\ naming it;
 \ ref-a.f, never opened, -32602.
 : RENAME-PREPARE-TURNS ( -- )
    INITIALIZE
@@ -5430,6 +5446,11 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" 8" HOVER-CVT-PATH 4 20 PREPARE-ASK
    s" 9" HU-PATH 1 16 PREPARE-ASK
    s" 10" REF-A-PATH 1 15 PREPARE-ASK
+   s" 11" RN-PREP-PATH 3 19 PREPARE-ASK
+   s" 12" RN-PREP-PATH 3 24 PREPARE-ASK
+   s" 13" RN-PREP-PATH 3 25 PREPARE-ASK
+   s" 14" RN-PREP-PATH 2 6 PREPARE-ASK
+   s" 15" RN-PREP-PATH 2 7 PREPARE-ASK
    SAY
    s" 3" 3 15 19 RANGED
    s" 4" 3 15 19 RANGED
@@ -5438,7 +5459,12 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    HEAR s" 7" NULL-RESULT
    s" 8" HOVER-CVT-PATH FAILED
    s" 9" s" hu.f" CANON FAILED
-   HEAR s" 10" -32602 REFUSED ;
+   HEAR s" 10" -32602 REFUSED
+   s" 11" 3 15 19 RANGED
+   s" 12" 3 20 24 RANGED
+   HEAR s" 13" NULL-RESULT
+   s" 14" 2 2 6 RANGED
+   HEAR s" 15" NULL-RESULT ;
 
 \ textDocument/rename, by its id's JSON text, at character C of line L of
 \ the document opened from this path, with these params members after the
@@ -5492,7 +5518,8 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ ROOK asked at a use's first character, at its last and on RNP:ROOK's
 \ qualifier, each answered with the edits of the declaring token's tail and
 \ each use's; Q:Y's declaring token with those of its tail and its use's;
-\ the space before a use null.
+\ the exact trailing edges of a use and its declaration also select those
+\ edits; the space after the last use and the space before a use null.
 : RENAME-TURNS ( -- )
    INITIALIZE
    RN-PREP-PATH TEXT-RN-PREP 1 OPENS
@@ -5504,12 +5531,18 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" 5" RN-PREP-PATH 5 15 CROW RENAME-ASK
    s" 6" RN-PREP-PATH 5 2 CROW RENAME-ASK
    s" 7" RN-PREP-PATH 3 14 CROW RENAME-ASK
+   s" 8" RN-PREP-PATH 3 19 CROW RENAME-ASK
+   s" 9" RN-PREP-PATH 2 6 CROW RENAME-ASK
+   s" 10" RN-PREP-PATH 3 25 CROW RENAME-ASK
    SAY
    s" 3" ROOK-EDITS
    s" 4" ROOK-EDITS
    s" 5" ROOK-EDITS
    s" 6" EDITS-START RN-PREP-PATH URI-OF EDITS-IN 5 4 5 EDIT+  6 16 17 EDIT+ EDITS-END
-   HEAR s" 7" NULL-RESULT ;
+   HEAR s" 7" NULL-RESULT
+   s" 8" ROOK-EDITS
+   s" 9" ROOK-EDITS
+   HEAR s" 10" NULL-RESULT ;
 
 \ newName missing or a number, each -32602; empty, or holding a space, a
 \ tab, a colon that qualifies it, a quote or a backslash, each -32803. All are answered before
