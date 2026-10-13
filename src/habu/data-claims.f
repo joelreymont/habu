@@ -243,6 +243,7 @@ variable NAMES-U
    s" RPKG:WIDS" NAME,
    s" POLICY-NDICT-CELL" NAME,
    s" POLICY-BITS" NAME,
+   s" POLICY-REQUIRE-CELL" NAME,
    s" PROF-BAND" NAME,
 
 create TAB
@@ -404,6 +405,7 @@ create TAB
    RPKG:WIDS                      ,  USE-MAX cells ,
    POLICY-NDICT-CELL              ,  1 cells ,
    POLICY-BITS-OFF                ,  PROT-BITS-BYTES ,
+   POLICY-REQUIRE-CELL            ,  1 cells ,
    \ The profiler band stays the last row, where BAND-ASSERT places it again.
    0 DATA-SIZE PROF-ABI:PROF-BAND-AT ,  PROF-CNT-BYTES ,
    0 ,  0 ,

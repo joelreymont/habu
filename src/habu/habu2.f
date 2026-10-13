@@ -162,7 +162,7 @@ variable LTRUSTTICK   variable LTRUSTTICKMSG
 \ span [LKWIF, LKWDESIGNEND) and an undefined token all end there. They are
 \ declared with the diagnostics because LKWCMP, emitted long before the MAIN
 \ label block, branches to LPOLICY.
-variable LPOLICY   variable LPOLICYMSG   variable LPOLICYREC   variable LKWDESIGNEND
+variable LPOLICY   variable LPOLICYMSG   variable LPOLICYREC   variable LPOLICYTOPREC   variable LKWDESIGNEND
 : POLICY-MSG$ ( -- ptr u8 n )   s" hb: not in vocabulary: " ;   \ LPOLICY appends the token; the LCOMPILEDIE tail appends the location and the newline
 : POLICY-MSG-LEN ( -- n )       POLICY-MSG$ nip ;
 variable LMININ   variable LMINMSG   \ interpret-mode certified-word underdepth reject (DNAME-MIN-IN) + its message
@@ -8890,6 +8890,7 @@ ardone LBL,
    \ The restored process owns a new source policy. The writer clears its
    \ captured copy too; this also normalizes images written before that fix.
    9 0 MOVZ,  9 DATA POLICY-NDICT-CELL STR,
+   9 DATA POLICY-REQUIRE-CELL STR,
    10 POLICY-BITS-OFF MOVZ,  10 DATA 10 ADD,
    11 PROT-BITS-BYTES MOVZ,
    polclr LBL,  11 poldone CBZ,
@@ -10204,7 +10205,7 @@ private
    LBL LBL LBL {: depthok:label usedtry:label found:label :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 usedtry CBZ,                                     \ open-scope + global miss -> try used publics
-   LPOLICYREC LABEL@ BL,                               \ the design seal, ahead of every other gate: a record outside the vocabulary is refused as one (x5 = the record LFIND resolved)
+   LPOLICYTOPREC LABEL@ BL,                            \ static require is admitted only at the sealed interpret loop
    LFINDSHADOW LABEL@ BL,                              \ a global a used public also exports refuses (105)
    found LBL,
    SP SP 16 SUBI,  5 SP 0 STR,                         \ retain LFIND's exact record across the guards
@@ -10224,7 +10225,7 @@ private
    usedtry LBL,
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED LABEL@ BL,   \ used-publics resolution (ambiguity dies)
       13 LUNDEF LABEL@ CBZ,                            \ still nothing -> undefined
-      LPOLICYREC LABEL@ BL,                            \ the design seal (x5 = the record LFINDUSED resolved)
+      LPOLICYTOPREC LABEL@ BL,
       found B, ;                                       \ resolved via a used package: rejoin the normal dispatch
 
 : EM-INTERPRET-WORDS ( -- )
@@ -12213,7 +12214,23 @@ public
 \ LPOLICYREC's callers, LKWCMP's match exit, LUNDEF's head and the capture's
 \ miss tail (NCOMP-EMIT:CAPTURE-IMMEDIATE).
 : EM-POLICY ( -- )
-   LBL LBL {: admitted:label callable:label :}
+   LBL LBL LBL {: admitted:label callable:label ordinary:label :}
+   \ The only extra record in confined mode is the global ordinary `require`.
+   \ This entry is called only from the top-level interpret lookup. Compile
+   \ lookup and tier-1 capture still enter LPOLICYREC and refuse it.
+   LPOLICYTOPREC LABEL@ LBL,
+   14 DATA POLICY-REQUIRE-CELL LDR,  14 ordinary CBZ,
+   16 5 0 LDR,  16 14 CMP,  C-NE ordinary BCOND,
+   14 5 40 LDR,  14 ordinary CBNZ,
+   14 DATA TKL-CELL LDR,  14 7 CMPI,  C-NE ordinary BCOND,
+   15 DATA TKA-CELL LDR,
+   s" require" {: name:ptr u:n :}
+   u 0 ?do
+      16 15 i LDRB,  16 16 $20 ORRI,
+      16 name i + c@ CMPI,  C-NE ordinary BCOND,
+   loop
+   RET,
+   ordinary LBL,  LPOLICYREC LABEL@ B,
    LPOLICYREC LABEL@ LBL,
    14 DATA POLICY-NDICT-CELL LDR,  14 admitted CBZ,               \ unsealed
    15 DREC MOVZ,  14 14 15 MUL,  14 DBASE 14 ADD,                 \ x14 = the first record defined after the seal
@@ -13035,7 +13052,7 @@ package LABELS
    LBL LUNCAUGHT !  LBL LUNCMSG !
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
    LBL LINTERNAL !  LBL LINTMSG !  LBL LTRUSTTICK !  LBL LTRUSTTICKMSG !
-   LBL LPOLICY !  LBL LPOLICYMSG !  LBL LPOLICYREC !
+   LBL LPOLICY !  LBL LPOLICYMSG !  LBL LPOLICYREC !  LBL LPOLICYTOPREC !
    LBL LMININ !  LBL LMINMSG !  LBL LFLOORREC !
    LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
    LBL LORPHAN !  LBL LORPHANMSG !

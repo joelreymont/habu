@@ -250,6 +250,7 @@ PTR-VARIABLE SND-A
 \ with a fresh vocabulary even when its writer was sealed during capture.
 : SND-ZERO-POLICY ( -- )
    POLICY-NDICT-CELL SND-ZERO-CELL
+   POLICY-REQUIRE-CELL SND-ZERO-CELL
    PROT-BITS-BYTES 0 ?do POLICY-BITS-OFF i + SND-ZERO-CELL CELL +loop ;
 
 : SND-COPY ( -- )

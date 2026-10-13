@@ -1586,9 +1586,10 @@ DICT-CAP 1+ cells constant STATE-BYTES
 \ that index is the design's own. POLICY-BITS-OFF is a WID-indexed bitmap shaped
 \ like PROT-BITS-OFF's, PROT-WID-MAX bits in PROT-BITS-BYTES bytes: bit w admits
 \ wordlist w, and every reader tests w against PROT-WID-MAX before it addresses
-\ the band. Only habu1.f BPOLICYADMIT and BPOLICYSEAL write the live policy,
-\ and both refuse once the seal is set. The snapshot writer zeros its DATA
-\ copy and the warm loader zeros the restored policy for the new process.
+\ the band. habu1.f BPOLICYADMIT and BPOLICYSEAL write the vocabulary;
+\ SOURCE-ROOT:POLICY-ROOT writes the ordinary require xt before the seal. All
+\ three refuse mutation once sealed. The snapshot writer zeros its DATA copy
+\ and the warm loader zeros the restored policy for the new process.
 \ The readers are the places a source token is
 \ read: habu2.f LPOLICYREC for a found record, LKWCMP for a matched keyword,
 \ LUNDEF for a miss, NCOMP-EMIT:CAPTURE-IMMEDIATE for every tier-1 body token,
@@ -1596,13 +1597,14 @@ DICT-CAP 1+ cells constant STATE-BYTES
 \ dispatch row (LROWWALK). The native compiler never reads them. The loader
 \ reads the watermark through its own copy of the offset, src/core/include.f
 \ INCLUDE-POLICY-NDICT-CELL, so that a sealed file is read by the engine's loop.
-\ Both fields take the run after RPKG:WIDS below TXN-STATE-OFF ($5000), swept for
+\ The fields take the run after RPKG:WIDS below TXN-STATE-OFF ($5000), swept for
 \ a claimant across src lib tools test maki bootstrap, below $7FF8 so the engine
 \ names the cell with a `DATA <off> LDR`, and below DATA-START; data-claims.f
 \ proves neither overlaps a neighbour. A fresh process is unsealed: cold DATA
 \ starts zero, and a restored image has both the watermark and bitmap cleared.
 $4898 constant POLICY-NDICT-CELL
 $48A0 constant POLICY-BITS-OFF
+$4CA0 constant POLICY-REQUIRE-CELL  \ ordinary require xt; zero unless opted in
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.

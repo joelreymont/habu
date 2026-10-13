@@ -266,6 +266,44 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" ok" 0 s" " OK-OUT$ RUNS
    s" bypass" s" hb: not in vocabulary: require at test/policy/bypass.f:2" REFUSES ;
 
+\ Confined static require uses the original source paths through nested loads.
+\ A registry hit or a symlink still has to pass the resolved path boundary.
+: CONFINED ( -- )
+   s" allow-root" HARNESS!
+   s" confined/scene" 0 s" " S\" 42\n" RUNS
+   s" allow-root-tier1" HARNESS!
+   s" confined/scene" 0 s" " S\" 42\n" RUNS
+   s" allow-root" HARNESS!
+   s" confined/parent" s" hb: policy: source outside root: " REFUSES
+   s" confined/known" s" hb: policy: source outside root: " REFUSES
+   s" confined/library" s" hb: policy: source outside root: " REFUSES
+   s" confined/absolute" s" hb: policy: source outside root: " REFUSES
+   s" confined/symlink" s" hb: policy: source outside root: " REFUSES
+   s" confined/forbidden" s" hb: not in vocabulary: included at test/policy/confined/forbidden.f:1" REFUSES
+   s" confined/body" s" hb: not in vocabulary: require at test/policy/confined/body.f:1" REFUSES
+   s" confined/string-required" s" hb: not in vocabulary: required at test/policy/confined/string-required.f:1" REFUSES
+   s" confined/root-call" s" hb: not in vocabulary: POLICY:ROOT at test/policy/confined/root-call.f:1" REFUSES
+   s" allow-root-tier1" HARNESS!
+   s" confined/parent" s" hb: policy: source outside root: " REFUSES
+   s" confined/known" s" hb: policy: source outside root: " REFUSES
+   s" confined/library" s" hb: policy: source outside root: " REFUSES
+   s" confined/absolute" s" hb: policy: source outside root: " REFUSES
+   s" confined/symlink" s" hb: policy: source outside root: " REFUSES
+   s" confined/forbidden" s" hb: not in vocabulary: included at test/policy/confined/forbidden.f:1" REFUSES
+   s" confined/body" s" hb: not in vocabulary: require at test/policy/confined/body.f:1" REFUSES
+   s" confined/string-required" s" hb: not in vocabulary: required at test/policy/confined/string-required.f:1" REFUSES
+   s" confined/root-call" s" hb: not in vocabulary: POLICY:ROOT at test/policy/confined/root-call.f:1" REFUSES
+   s" allow-root-direct" HARNESS!
+   s" " 107 s" hb: policy: source outside root: " s" " RUNS
+   s" allow-root-preflight" HARNESS!
+   s" " 0 s" hb: policy: source outside root: " S\" 0\n107\n0\n\n" RUNS
+   s" allow-root-scope-throw" HARNESS!
+   s" " 0 s" " S\" -30001\n0\n\n" RUNS
+   s" allow-root-scope-nested" HARNESS!
+   s" " 0 s" hb: policy: source outside root: " S\" 107\n0\n0\n\n" RUNS
+   s" allow-root-scope-seal" HARNESS!
+   s" " 0 s" hb: policy: sealed" S\" 107\n107\n107\n107\n\n" RUNS ;
+
 public
 
 : RUN ( -- )
@@ -276,7 +314,7 @@ public
    LOADERS KEYWORDS SCOPES WIDENING
    BODIES MODELED
    NAMES
-   HARNESSES BOUND SEAM
+   HARNESSES BOUND SEAM CONFINED
    T-REPORT ;
 
 ;package

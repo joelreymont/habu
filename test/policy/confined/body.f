@@ -1,0 +1,1 @@
+: BAD ( -- ) require value.f ;

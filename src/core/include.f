@@ -18,6 +18,7 @@ $2808 constant INCLUDE-SRCLOC-PATHLEN-CELL
 \ The design seal's watermark (lib/policy.f), spelled here the same way and
 \ reserved in src/habu/layout.f as POLICY-NDICT-CELL: 0 while nothing is sealed.
 $4898 constant INCLUDE-POLICY-NDICT-CELL
+$4CA0 constant INCLUDE-POLICY-REQUIRE-CELL
 create INCLUDE-PATH INCLUDE-PATH-CAP 1 + allot
 
 package REQUIRE-REG
@@ -144,6 +145,9 @@ create WORK-BUF WORK-BYTES allot
 create ZBUF WORK-BYTES allot
 create OWNER-BUF PATH-BYTES allot
 create OWNER-SAVE PATH-BYTES allot
+create POLICY-ROOT-BUF PATH-BYTES allot
+variable POLICY-ROOT-U
+create POLICY-LF 10 c,
 create REQUEST-BUF WORK-BYTES allot
 variable REQUEST-U
 variable CWD-U
@@ -426,6 +430,20 @@ private
    ABSOLUTE!
    JOIN-BUF JOIN-U @ TRY-CANON 0= if ROOT-DIE then
    CANON-U @ ENGINE-DIR? 0= if ROOT-DIE then ;
+
+public
+
+: CONFINE ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   data-base INCLUDE-POLICY-REQUIRE-CELL + @ 0= if a u exit then
+   a u CANONICAL drop {: path:ptr pathu:n :}
+   path pathu POLICY-ROOT-BUF POLICY-ROOT-U @ BELOW? if path pathu exit then
+   2 s" hb: policy: source outside root: " write drop
+   2 path pathu write drop
+   2 POLICY-LF 1 write drop
+   107 throw ;
+
+private
 
 \ A fresh mapping holding n path bytes and the NUL after them.
 : MAP-COPY ( ptr u8 n -- ptr u8 )
@@ -1065,7 +1083,8 @@ private
 public
 
 : RESOLVE ( ptr u8 n -- ptr u8 n bool )
-   REQUEST! REQUIRE-BASE @ SELECT ;
+   REQUEST! REQUIRE-BASE @ SELECT
+   >r CONFINE r> ;
 
 \ Command-line entries are relative to the invocation directory only;
 \ dependencies beneath them inherit the entry directory as their primary root.
@@ -1083,7 +1102,7 @@ public
       \ invocation root so INCLUDE-OPEN can report the path it could not open.
       CWD$ OWNER!
    then
-   path pathu known ;
+   path pathu CONFINE known ;
 
 \ Every boot row is portable now: each prefix that records one opens the
 \ registry first, with REQUIRE-BOOT-OPEN as a source token (src/habu/habu2.f
@@ -1606,6 +1625,7 @@ public
    TOP@ FR-NAMED + c@ 0= 0= ;
 
 : LOAD ( ptr u8 n -- )
+   CONFINE
    INCLUDE-PATH0 drop
    RESOLVED-ROOT$ [: LOAD-CURRENT ;] WITH ;
 
@@ -1613,7 +1633,7 @@ public
 \ opens a source frame and makes its root current until the callback returns.
 : WITH-BYTES ( ptr u8 n [ ptr u8 n ptr u8 n -- ] -- )
    {: path:ptr pathu:n q :}
-   path pathu INCLUDE-PATH0 drop
+   path pathu CONFINE INCLUDE-PATH0 drop
    RESOLVED-ROOT$ ROOT-ENTER {: fresh:ptr u:n old:ptr oldu:n :}
    q [: WITH-BYTES-CURRENT ;] catch {: rc:n :}
    drop
@@ -1623,7 +1643,7 @@ public
 \ reading a different disk copy. This is used for an included buffer subject.
 : WITH-SUPPLIED ( ptr u8 n ptr u8 n [ ptr u8 n ptr u8 n -- ] -- )
    {: path:ptr pathu:n src:ptr srcu:n q :}
-   path pathu INCLUDE-PATH0 drop
+   path pathu CONFINE INCLUDE-PATH0 drop
    RESOLVED-ROOT$ ROOT-ENTER {: fresh:ptr u:n old:ptr oldu:n :}
    src srcu q [: WITH-SUPPLIED-CURRENT ;] catch {: rc:n :}
    2drop drop
@@ -1685,6 +1705,59 @@ immediate
 : require ( -- )
    parse-name INCLUDE-CHECK-PATH required ;
 immediate
+
+package SOURCE-ROOT
+private
+
+: POLICY-SEALED ( -- )
+   2 s" hb: policy: sealed" write drop
+   2 POLICY-LF 1 write drop
+   107 throw ;
+
+: POLICY-ROOT-SET ( [ -- ] -- )
+   data-base INCLUDE-POLICY-REQUIRE-CELL + xt!
+   CANON-BUF POLICY-ROOT-BUF CANON-U @ BYTE-COPY
+   CANON-U @ POLICY-ROOT-U ! ;
+
+: POLICY-ROOT-RELEASE ( ptr u8 n -- )
+   1+ munmap 0 < if s" policy: cannot release a root copy" INCLUDE-IO-RC die then ;
+
+public
+
+\ Configure confinement before checking or sealing. The policy library passes
+\ the ordinary require xt it captured when loaded.
+: POLICY-ROOT ( ptr u8 n [ -- ] -- )
+   {: path:ptr u:n require-xt :}
+   data-base INCLUDE-POLICY-NDICT-CELL + @ 0 <> if POLICY-SEALED then
+   path u ROOT-CANON
+   require-xt POLICY-ROOT-SET ;
+
+\ Scope a root and require owner for reusable source checks. A callback that
+\ seals leaves the new policy root and refuses the attempted return to the old.
+: POLICY-WITH-ROOT ( ptr u8 n [ -- ] [ -- ] -- )
+   {: path:ptr u:n q require-xt :}
+   data-base INCLUDE-POLICY-NDICT-CELL + @ 0 <> if POLICY-SEALED then
+   path u ROOT-ENTER {: fresh:ptr freshu:n prior:ptr prioru:n :}
+   data-base INCLUDE-POLICY-REQUIRE-CELL + @ 0= 0= {: had:bool :}
+   POLICY-ROOT-U @ {: old-u:n :}
+   POLICY-ROOT-BUF old-u MAP-COPY {: old:ptr :}
+   require-xt POLICY-ROOT-SET
+   q catch {: rc:n :}
+   data-base INCLUDE-POLICY-NDICT-CELL + @ 0 <> if
+      fresh freshu prior prioru 0 ROOT-LEAVE
+      old old-u POLICY-ROOT-RELEASE POLICY-SEALED
+   then
+   had if
+      old POLICY-ROOT-BUF old-u BYTE-COPY
+      old-u POLICY-ROOT-U !
+   else
+      0 POLICY-ROOT-U !
+      0 data-base INCLUDE-POLICY-REQUIRE-CELL + !
+   then
+   old old-u POLICY-ROOT-RELEASE
+   fresh freshu prior prioru rc ROOT-LEAVE ;
+
+;package
 
 \ ---- Fresh discovery registry (TFAM 5, item 5) --------------------------
 \ A restricted discovery pass must see a fresh require/provided registry so a
