@@ -457,13 +457,17 @@ public
    then
    -1 ;
 
-: FS-MUT-ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu src:ptr srcu seed :}
-   srcu 0 < if E-FS-CAPACITY throw then
+: FS-MUT-ATOMIC-START ( ptr u8 n n -- ptr u8 n n ptr u8 n n ) {: path:ptr pathu seed :}
    path pathu FS-MUT-ATOMIC-TARGET {: dst:ptr dstu :}
    dst dstu FS-MUT-ATOMIC-OLD-MODE {: mode:n :}
+   dst dstu mode
    dst dstu seed
    mode 0 >= if FS-MUT-MODE-PRIVATE-FILE else FS-MODE-0644 then
-   FS-MUT-ATOMIC-RESERVE {: temp:ptr tempu fd :}
+   FS-MUT-ATOMIC-RESERVE ;
+
+: FS-MUT-ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu src:ptr srcu seed :}
+   srcu 0 < if E-FS-CAPACITY throw then
+   path pathu seed FS-MUT-ATOMIC-START {: dst:ptr dstu mode temp:ptr tempu fd :}
    fd src srcu temp tempu mode [: FS-MUT-ATOMIC-WRITE-RUN ;] catch {: write-code:n :}
    2drop 2drop 2drop
    \ Close exactly once, before publish. A failed close may already have freed

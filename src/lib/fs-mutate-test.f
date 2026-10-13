@@ -91,6 +91,7 @@ create FMT-UNIQUE-BUF FS-PATH-CAP allot
 424243 constant FMT-ATOMIC-SEED
 424244 constant FMT-ATOMIC-FAIL-SEED
 384 constant FMT-MODE-0600
+416 constant FMT-MODE-0640
 create FMT-STREAM-SRC-DATA FMT-STREAM-LEN allot
 create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
 
@@ -903,61 +904,27 @@ create P-W5DF FS-PATH-CAP allot variable P-W5DF-U
    AW$ REMOVE-FILE
    BW$ REMOVE-FILE ;
 
-\ Sample a real ATOMIC-WRITE-FILE replacement while the large source is still
-\ being written. The sibling must never expose the private target's bytes.
-$4000000 constant STAGE-LEN
+\ Inspect the reserved sibling before any bytes are written, then exercise
+\ the complete replacement with a final mode distinct from the staging mode.
 424245 constant STAGE-SEED
-create STAGE-PATH FS-PATH-CAP allot
-variable STAGE-PATH-U
-PTR-VARIABLE STAGE-SRC
-variable STAGE-DONE
-variable STAGE-SEEN
-variable STAGE-MODE
-
-: STAGE$ ( -- ptr u8 n ) STAGE-PATH STAGE-PATH-U @ ;
-
-: STAGE-WRITER ( -- )
-   AW$ STAGE-SRC @ STAGE-LEN STAGE-SEED FS-MUT-ATOMIC-WRITE-SEED
-   1 STAGE-DONE atomic!
-   0 TASK:RETURN ;
-
-: STAGE-SAMPLE? ( -- bool )
-   STAGE$ FS-TRY-STAT if
-      FS-STAT-SIZE@ STAGE-LEN < if
-         FS-STAT-MODE@ STAGE-MODE !
-         true exit
-      then
-   then
-   false ;
-
-: STAGE-WAIT ( -- )
-   mono-ns WAIT-NS + {: deadline:n :}
-   begin STAGE-SEEN @ 0= while
-      STAGE-SAMPLE? if
-         1 STAGE-SEEN !
-      else
-         STAGE-DONE atomic@ 0<> mono-ns deadline >= or if exit then
-         TASK:PAUSE
-      then
-   repeat ;
 
 : STAGE-RUN ( -- )
    AW$ s" old" WRITE-ALL
-   AW$ FMT-MODE-0600 CHMOD-MODE
-   STAGE-LEN MEM-ALLOC-BYTES drop STAGE-SRC !
-   AW$ STAGE-SEED 0 FS-MUT-BUILD-ATOMIC-TMP
-   STAGE-PATH STAGE-PATH-U FMT-COPY!
-   0 STAGE-DONE !  0 STAGE-SEEN !
-   ['] STAGE-WRITER WORKER-A TASK:ACTIVATE
-   STAGE-WAIT
-   WORKER-A JOIN-OK
-   s" a staged replacement is private while bytes are still being written" T-LABEL
-   STAGE-SEEN @ 1 T=
-   STAGE-SEEN @ if STAGE-MODE @ FS-MUT-MODE-PERM and FMT-MODE-0600 T= then
-   AW$ STAT-MODE FS-MUT-MODE-PERM and FMT-MODE-0600 T=
-   AW$ FILE-SIZE STAGE-LEN T=
-   AW$ REMOVE-FILE
-   STAGE-SRC @ STAGE-LEN munmap 0 T= ;
+   AW$ FMT-MODE-0640 CHMOD-MODE
+   AW$ STAGE-SEED FS-MUT-ATOMIC-START {: dst:ptr dstu mode temp:ptr tempu fd :}
+   s" the reserved replacement is private before writing" T-LABEL
+   temp tempu STAT-MODE FS-MUT-MODE-PERM and FMT-MODE-0600 T=
+   temp tempu FILE-SIZE 0 T=
+   dst dstu s" old" FILE-IS?
+   mode FMT-MODE-0640 T=
+   AW$ STAT-MODE FS-MUT-MODE-PERM and FMT-MODE-0640 T=
+   fd FS-ATOMIC:CLOSE-FD 0 T=
+   temp tempu REMOVE-FILE
+   AW$ s" replacement" ATOMIC-WRITE-FILE
+   s" the published replacement preserves content and mode" T-LABEL
+   AW$ s" replacement" FILE-IS?
+   AW$ STAT-MODE FS-MUT-MODE-PERM and FMT-MODE-0640 T=
+   AW$ REMOVE-FILE ;
 
 : REG-NAME ( n n SPAN:span<u8> -- ptr u8 n ) {: which i dst :}
    SB-RESET
