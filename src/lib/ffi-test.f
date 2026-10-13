@@ -77,7 +77,8 @@ FUNCTION: FFI-T-VOID$ getpid ( -- ) ;FUNCTION
 
 \ Resolution happens inside the call, after the arguments are staged: DLSYM
 \ marshals through its own buffer, so a symbol resolved for the first time here
-\ cannot overwrite the pending argument. This row's first call is that case.
+\ cannot overwrite the pending argument. Call this alias before STRLEN$ so the
+\ shared descriptor has not yet resolved either.
 FUNCTION: FFI-T-STRLEN-LATE strlen ( ptr u8 -- n ) ;FUNCTION
 
 \ The writable form: memcpy's destination is written and its extent is the
@@ -190,10 +191,8 @@ FUNCTION: FFI-T-ABSENT habu-no-such-symbol ( -- n ) ;FUNCTION
 
 \ ---- the declaration table's ceiling ---------------------------------------
 \ The table belongs to the IMAGE, so its ceiling can only be reached by a
-\ process that fills it: this case fills a child engine's. The loop declares and
-\ undefines ONE name, so whichever turn runs out of rows, the refusal carries
-\ that word and that symbol - and the symbol is one no library exports, which a
-\ declaration is entitled to because it never resolves.
+\ process that fills it: this case fills a child engine's. The loop declares
+\ distinct symbols under one Habu name, undefining the word after each turn.
 $400 constant FFI-T-SRC-CAP
 $4000 constant FFI-T-CAP
 30000 constant FFI-T-TIMEOUT-MS
@@ -208,14 +207,30 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-SRC+ ( ptr u8 n -- )
    FFI-T-SRC CODEGEN:APPEND-STRING ;
 
+: FFI-T-FILL-SRC+ ( -- )
+   s\" require src/lib/ffi-abi.f\nrequire src/lib/codegen.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
+   s\" FUNCTION: ZZ-BASE getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
+   s\" 128 CODEGEN:BUFFER ZZ-DECL\n: ZZ-FILL ( -- ) FFI:DECLARATION-MAX 0 ?do\n" FFI-T-SRC+
+   s\"    FFI:ROOM? 0= if unloop exit then\n" FFI-T-SRC+
+   s\"    ZZ-DECL CODEGEN:RESET\n" FFI-T-SRC+
+   s\"    s\" FUNCTION: ZZ-OVER habu-ffi-fill-\" ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+
+   s\"    i ZZ-DECL CODEGEN:APPEND-DECIMAL\n" FFI-T-SRC+
+   s\"    s\"  ( -- n ) ;FUNCTION\" ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+
+   s\"    ZZ-DECL CODEGEN:CONTENTS INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\"    s\" undefine ZZ-OVER\" INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\" loop ;\nZZ-FILL\n" FFI-T-SRC+ ;
+
 : FFI-T-FULL-SRC$ ( -- ptr u8 n )
    FFI-T-SRC CODEGEN:RESET
-   s\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
-   s\" : ZZ-FILL ( -- ) FFI:DECLARATION-MAX 1+ 0 ?do\n" FFI-T-SRC+
-   s\"    s\" FUNCTION: ZZ-OVER habu-ffi-table-probe ( -- n )" FFI-T-SRC+
-   s\"  ;FUNCTION\" INCLUDE-EVALUATE\n" FFI-T-SRC+
-   s\"    s\" undefine ZZ-OVER\" INCLUDE-EVALUATE\n" FFI-T-SRC+
-   s\" loop ;\nZZ-FILL\n" FFI-T-SRC+
+   FFI-T-FILL-SRC+
+   s\" FUNCTION: ZZ-OVER habu-ffi-table-probe ( -- n ) ;FUNCTION\n" FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS ;
+
+: FFI-T-ALIAS-FULL-SRC$ ( -- ptr u8 n )
+   FFI-T-SRC CODEGEN:RESET
+   FFI-T-FILL-SRC+
+   s\" FUNCTION: ZZ-ALIAS getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
+   s\" : ZZ-CALL ( -- ) ZZ-BASE 0 > ZZ-ALIAS 0 > and if s\" full-alias:ok\" type cr else s\" getpid refused\" 1 die then ;\nZZ-CALL\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
 : FFI-T-ERR$ ( len -- ptr u8 n ) {: u:len :}
@@ -248,6 +263,13 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s" the refusal names the symbol and the word being declared" T-LABEL
    erru FFI-T-ERR$ s" habu-ffi-table-probe" CONTAINS? TTRUE
    erru FFI-T-ERR$ s" ZZ-OVER" CONTAINS? TTRUE ;
+
+: FFI-T-ALIAS-AT-FULL ( -- )
+   s" a FUNCTION alias calls after distinct descriptors fill the table" T-LABEL
+   FFI-T-ALIAS-FULL-SRC$ 0 FFI-T-RUN-EXITS
+   {: outu:len erru:len :}
+   FFI-T-OUT outu LEN>N s\" full-alias:ok\n" T$=
+   erru LEN>N 0 T= ;
 
 : FFI-T-LIBRARY-SHARED-SRC$ ( -- ptr u8 n )
    FFI-T-SRC CODEGEN:RESET
@@ -469,10 +491,27 @@ FUNCTION: FFI-T-PRINTF snprintf ( ptr u8 n ptr u8 n r ptr u8 -- i32 )
    3 VARIADIC
    0 1 WRITES-ARG
 ;FUNCTION
+FUNCTION: FFI-T-SNPRINT-SHORT snprintf ( ptr u8 n ptr u8 n -- i32 )
+   3 VARIADIC
+   0 1 WRITES-ARG
+;FUNCTION
+FUNCTION: FFI-T-SNPRINT-LONG snprintf ( ptr u8 n ptr u8 n n n n n n n -- i32 )
+   3 VARIADIC
+   0 1 WRITES-ARG
+;FUNCTION
 64 BUFFER: FFI-T-PRINT-BUF
 : FFI-T-VARARGS ( -- )
    FFI-T-PRINT-BUF 64 s\" %ld %.1f %s\z" drop 42 1.5 s\" ok\z" drop FFI-T-PRINTF
    FFI-T-PRINT-BUF swap s" 42 1.5 ok" T$= ;
+
+: FFI-T-VARARG-KEY ( -- )
+   s" a short variadic binding resolves before a longer one" T-LABEL
+   FFI-T-PRINT-BUF 64 s\" %ld\z" drop 9 FFI-T-SNPRINT-SHORT 1 T=
+   FFI-T-PRINT-BUF 1 s" 9" T$=
+   s" a longer binding preserves its ABI arguments and output" T-LABEL
+   FFI-T-PRINT-BUF 64 s\" %ld %ld %ld %ld %ld %ld %ld\z" drop
+      1 2 3 4 5 6 7 FFI-T-SNPRINT-LONG 13 T=
+   FFI-T-PRINT-BUF 13 s" 1 2 3 4 5 6 7" T$= ;
 
 \ A library selected by base name and soname version: libz.so.1 here and
 \ libz.1.dylib on macOS both exist, so the symbol resolves through the rendered
@@ -573,6 +612,8 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
    FFI-T-STRLEN FFI-T-SYM 0 T<>                   \ dlsym resolved strlen
    FFI-T-SQRT FFI-T-MSYM 0 T<>
+   \ The first declared strlen call resolves after staging its argument.
+   FFI-T-HELLO FFI-T-STRLEN-LATE 5 T=
    FFI-T-HELLO FFI-T-STRLEN$ 5 T=                 \ explicit typed wrapper
 
    FFI-T-HELLO FFI-T-HELP 3 FFI-T-STRNCMP$ 0 T=
@@ -592,10 +633,6 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" FFI-T-ROLE-GOOD ( ffi-ctx -- rc ) FFI-T-CTX-SET" FFI-T-CHECK-PASSES
    s" FFI-T-ROLE-BAD ( ffi-dev -- rc ) FFI-T-CTX-SET" FFI-T-CHECK-REJECTS
 
-   \ INTERLEAVED resolve: this row's symbol is still unresolved, so the call
-   \ stages slot 0 and only then reaches DLSYM, which marshals through its own
-   \ FFI-DLBUF -> the staged argument survives and strlen("hello") is 5.
-   FFI-T-HELLO FFI-T-STRLEN-LATE 5 T=
    FFI-T-STUBS
 
    1.25 2.5 3.0 FFI-T-FMA-CALL 6.125 f= T-ASSERT
@@ -678,8 +715,10 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" a declaration through the versioned form resolves its symbol" T-LABEL
    FFI-T-VERSIONED-CALL
    FFI-T-VARARGS
+   FFI-T-VARARG-KEY
 
    FFI-T-TABLE-FULL
+   FFI-T-ALIAS-AT-FULL
    FFI-T-LIBRARY-SHARED
    FFI-T-PATH-IDENTITY
    FFI-T-LIBRARY-TABLE-FULL

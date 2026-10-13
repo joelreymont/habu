@@ -439,13 +439,16 @@ An `f32` in a variadic position is refused because C promotes it to double;
 declare the promoted argument as `r`. A fixed `f32` argument and an `f32`
 result remain valid on a variadic function.
 
-Every declaration in an image shares one table, sized for a server that binds
-five or six libraries at once: `FFI:DECLARATION-MAX` is 256 rows of $50 bytes
-each, $5000 bytes of image data, and `FFI:ROOM?` answers whether another row is
-left. A declaration that finds the table full is `E-FFI-TABLE-FULL`, and the
-declarer names the Habu word and the C symbol it could not give a row on stderr
-before it throws. `test/five-bindings.f` holds `TCP4`, `CURL`, `PG`, `CRYPTO`
-and `TASK` in one image and declares past their combined bindings.
+Every image shares one table of 256 distinct descriptors, sized for a server
+that binds five or six libraries at once. Each row is $50 bytes, for $5000 bytes
+of image data. Declarations reuse a row only when the library index, complete C
+symbol, integer argument count and spill count match. Generated words keep
+their own argument staging and return conversion. `FFI:ROOM?` answers whether
+another distinct row fits; an exact alias can still be declared when it is
+false. A new descriptor that finds the table full is `E-FFI-TABLE-FULL`, and
+the declarer names the Habu word and C symbol on stderr before it throws.
+`test/five-bindings.f` holds `TCP4`, `CURL`, `PG`, `CRYPTO` and `TASK` in one
+image and declares past their combined bindings.
 
 The loaded-library table has a separate named ceiling: `FFI:LIBRARY-MAX` is
 256 distinct paths, enough for every callable row to name a different library.

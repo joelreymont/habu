@@ -214,8 +214,9 @@ $41C8 constant FFI-SCRATCH-END
    FFI-DLBUF FFI-DLBUF 2 cells + 2 DLSYM-SLOT @ ffi-call-bounded ;
 
 \ ---- declared foreign functions -------------------------------------------
-\ FUNCTION: (the declarer below this package) registers one row here and the
-\ word it generates names that row's INDEX. A checked caller therefore reaches
+\ FUNCTION: (the declarer below this package) names a row here and the word it
+\ generates carries that row's INDEX. Exact declarations share one row. A
+\ checked caller therefore reaches
 \ only a symbol some declaration published: the function address is never a
 \ value on the stack, so the sealed surface above still publishes no universal
 \ binder. A row resolves its symbol on the first call and caches the address;
@@ -226,10 +227,10 @@ $41C8 constant FFI-SCRATCH-END
 \ legitimately binds five or six: the Tender server holds TCP4's 11 rows,
 \ libcurl's 15, libpq's 18, libcrypto's 19 and task's 5 at once, 68 before it
 \ declares anything of its own, and each later milestone adds foreign surface.
-\ A row costs FN-NAME-CAP bytes of symbol plus four cells (address, library,
-\ argc, spill count) = $50 bytes, so the table is FN-MAX * $50 = $5000 bytes of image
-\ data. A declaration past the last row is E-FFI-TABLE-FULL, not a wrap or a
-\ silent drop.
+\ Each distinct descriptor costs FN-NAME-CAP bytes of symbol plus four cells
+\ (address, library, argc, spill count) = $50 bytes, so the table is
+\ FN-MAX * $50 = $5000 bytes of image data. A new descriptor past the last row
+\ is E-FFI-TABLE-FULL, not a wrap or a silent drop.
 
 $100 constant FN-MAX                      \ $100 rows * $50 bytes = $5000 bytes
 $30 constant FN-NAME-CAP                  \ NUL-terminated C symbol
@@ -480,9 +481,8 @@ public
 
 : LIBRARY-ROOM? ( -- bool ) LIB-N @ LIB-MAX < ;
 
-\ The table's size and whether one more row is left. The declarer asks before it
-\ registers, so a refusal can name the declaration package FFI never sees; the
-\ ceiling is documented in docs/stdlib.md and read from here, never retyped.
+\ The table's size and whether a new distinct descriptor can take another row.
+\ The ceiling is documented in docs/stdlib.md and read from here, never retyped.
 : DECLARATION-MAX ( -- n ) FN-MAX ;
 
 : ROOM? ( -- bool ) FN-N @ FN-MAX < ;
@@ -585,21 +585,42 @@ public
 : CALL-ABI-F32 ( n -- r )
    CALL-ABI-R IEEE754:F64>BITS $FFFFFFFF and F32:WIDEN ;
 
-\ The table's own fail-closed guard. The declarer refuses first, with the word
-\ and symbol in its diagnostic; this stands for every other caller and for the
-\ errno row below, and it is what keeps a full table from being overrun.
+\ An exact descriptor includes the library index, C symbol, integer argc and
+\ spill count. The terminating byte distinguishes a symbol from its prefix.
+private
+
+: SAME-FN? ( ptr u8 n n n n n -- bool )
+   {: name:ptr u:n lib:n argc:n spills:n idx:n :}
+   idx FN-LIB@ lib <> if false exit then
+   idx FN-ARGC@ argc <> if false exit then
+   idx FN-SPILL@ spills <> if false exit then
+   idx FN-NAME u + c@ 0<> if false exit then
+   name u idx FN-NAME u STR= ;
+
+public
+
+\ A miss needs a free row; an exact declaration works even at capacity. Check
+\ the inputs before inspecting names so the length never crosses a row boundary.
+\ Only new rows write addresses or descriptor metadata.
 \ Declaring registers too. A process that loads this file declares the errno row
 \ at its load, before any module that calls a library can register a persistent
 \ hook, so FFI's hook is the first and runs last whenever the first foreign call
 \ comes, and a full image keeps the entry and the flag (tools/aot-build-core.f
 \ registers PROC-MAPS:RELOAD, which calls Mach through this table, after it).
 : DECLARE-SPILLED ( ptr u8 n n n n -- n ) {: name:ptr u:n lib:n argc:n spills:n :}
-   ROOM? 0= if E-FFI-TABLE-FULL throw then
    lib LIB-N @ 1 + FFI-CHECK-INDEX
    argc FFI-MAX-ARGS FFI-CHECK-COUNT
    spills FFI-MAX-ARGS FFI-CHECK-COUNT
+   u NAME-ROOM drop
+   FN-N @ 0 ?do
+      name u lib argc spills i SAME-FN? if
+         REGISTER-CLEANUP
+         i unloop exit
+      then
+   loop
+   ROOM? 0= if E-FFI-TABLE-FULL throw then
    spills FN-SPILLS FN-N @ cells + !
-   name u NAME-ROOM FN-N @ FN-NAME CSTR
+   name u FN-N @ FN-NAME CSTR
    lib FN-LIBS FN-N @ cells + !
    argc FN-ARGCS FN-N @ cells + !
    0 FN-N @ FN-ADDR!
@@ -717,7 +738,7 @@ get-current prot-wid-add
 \ declaration, so an absent symbol is E-FFI-DLSYM where the caller stands;
 \ package FFI re-resolves after an image restore.
 \
-\ Every declaration in the image shares FFI's one table. A declaration that
+\ Every distinct descriptor in the image shares FFI's one table. A new one that
 \ finds it full is E-FFI-TABLE-FULL, and the refusal is the declarer's because
 \ only here are the Habu word and the C symbol both in hand: the diagnostic
 \ names them on stderr before the throw, so a full table is one line rather
@@ -808,6 +829,7 @@ variable CALL-KIND
 variable VAR-START
 variable STACK-N
 variable CUR-LIB
+variable SLOT-ROW
 variable OPEN                              \ a declaration is between FUNCTION: and ;FUNCTION
 variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
 variable SCOPE-SET                         \ ... and whether one was stated at all
@@ -1037,11 +1059,8 @@ variable SCOPE-HOOK
    s" FFI:CALL" GEN+ ;
 
 \ ---- the row this declaration takes ----------------------------------------
-\ Package FFI owns the table and refuses a full one itself. The declarer asks
-\ first because the two facts a refusal has to carry - the Habu word being
-\ defined and the C symbol behind it - are held here and nowhere else. The
-\ line goes to stderr exactly as a load-time diagnostic does, and the throw
-\ that follows is what ends the load.
+\ Package FFI owns the table and refuses a new descriptor at capacity. The
+\ declarer catches that one refusal where it holds both names for a diagnostic.
 
 : DIAG-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
    DIAG-FD a u write drop ;
@@ -1111,18 +1130,16 @@ variable SCOPE-HOOK
    LF-C DIAG CODEGEN:APPEND-BYTE
    DIAG CODEGEN:CONTENTS DIAG-LINE ;
 
-: TABLE-ROOM ( -- )
-   FFI:ROOM? if exit then
-   REPORT-FULL
-   E-FFI-TABLE-FULL throw ;
-
 : SLOT ( -- n )
    CUR-LIB @ -1 = if
       REPORT-LIBRARY-FULL
       E-FFI-LIBRARY-FULL throw
    then
-   TABLE-ROOM
-   SYM-BUF SYM-U @ CUR-LIB @ INT-N @ STACK-N @ FFI:DECLARE-SPILLED ;
+   [: SYM-BUF SYM-U @ CUR-LIB @ INT-N @ STACK-N @ FFI:DECLARE-SPILLED
+      SLOT-ROW ! ;] catch {: code:n :}
+   code 0= if SLOT-ROW @ exit then
+   code E-FFI-TABLE-FULL = if REPORT-FULL then
+   code throw ;
 
 \ What the machine return cell becomes: dropped, rebuilt from its low half for a
 \ 32-bit result, or taken whole.
