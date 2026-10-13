@@ -2,9 +2,13 @@
 \ Copies returned by NAME$/READ, and copied replacement inputs, remain owned by
 \ the archive until COMMIT, CLOSE, or image preparation. Failed COMMIT stays live.
 \ Handles are inspectable identities, validated on every operation, not pointers.
+\ STORAGE CLASS. Read scratch is task-local; archive buffers and entries belong
+\ to their handle; the identity registry and serial are process-wide and locked.
 require lib/ffi-abi.f
 require lib/zip-types.f
 require lib/memory.f
+require lib/task.f
+require lib/fork-child.f
 
 package ZIP
 using FFI
@@ -17,8 +21,30 @@ $10 constant READONLY-FLAG
 $4 constant STAT-SIZE-VALID
 \ LP64 zip_stat_t begins with valid, name, index, size (eight bytes each).
 3 constant STAT-SIZE-CELL
-create STAT-DATA STAT-BYTES allot
-create EOF-BYTE 1 allot
+\ libzip writes these scratch bytes; each calling task owns its own row.
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and STAT-BYTES CELL + TASK:+USER ZIP-SCRATCH drop
+: STAT-DATA ( -- ptr n ) ZIP-SCRATCH ;
+: EOF-BYTE ( -- ptr u8 ) ZIP-SCRATCH STAT-BYTES + BYTE-VIEW ;
+
+\ Archive identities span tasks. Only the short registry operations take this
+\ lock; decompression and archive-owned buffers remain independent.
+here data-base - negate 7 and allot
+variable STATE-LOCK
+\ A contended PAUSE must not end a task between native disposal and unlinking.
+: STATE-GET ( -- )
+   TASK:DEFER-ENTER
+   begin 0 1 STATE-LOCK atomic-cas 0= if exit then TASK:PAUSE again ;
+: STATE-RELEASE ( -- )
+   0 STATE-LOCK atomic!
+   TASK:DEFER-LEAVE ;
+
+\ fork copies the lock but not a different task that held it. The list stays
+\ valid before and after each pointer publication, so the child can release it.
+: CHILD-RESET ( -- ) 0 STATE-LOCK atomic! ;
+: REGISTER-RESET ( -- )
+   [: CHILD-RESET ;] FORK-CHILD:REGISTER ;
+REGISTER-RESET
+
 PTR-VARIABLE ARCHIVES
 variable SERIAL
 
@@ -37,9 +63,12 @@ variable SERIAL
 : BYTES-FREE ( ptr u8 n -- ) BYTES-ALLOC-LEN RELEASE-BYTES ;
 : NODE-FREE ( ptr n -- ) BYTE-VIEW NODE-CELLS cells BYTES-FREE ;
 
-: NEXT-ID ( -- n )
+: NEXT-ID-LOCKED ( -- n )
    SERIAL @ MAX-SIZE = if E-SIZE throw then
    1 SERIAL +! SERIAL @ ;
+
+: NEXT-ID ( -- n )
+   STATE-GET [: NEXT-ID-LOCKED ;] [: STATE-RELEASE ;] finally ;
 
 : SIZE-CHECK ( n -- )
    dup 0 < if E-SIZE throw then
@@ -52,7 +81,7 @@ variable SERIAL
    repeat ;
 
 : ARCHIVE-NODE ( archive -- ptr n )
-   ARCHIVE>N ARCHIVES @ FIND-ID
+   ARCHIVE>N STATE-GET ARCHIVES @ FIND-ID STATE-RELEASE
    dup NULL? if E-HANDLE throw then ;
 
 : ENTRY-NODE ( ptr n entry -- ptr n )
@@ -66,13 +95,16 @@ variable SERIAL
 
 : REGISTER ( -- archive )
    NEXT-ID NODE-ALLOC {: ident:n node:ptr :}
-   ident node ID ! node ARCHIVES ADD-NODE
+   ident node ID !
+   STATE-GET node ARCHIVES ADD-NODE STATE-RELEASE
    ident >ARCHIVE ;
 
 : UNREGISTER ( ptr n -- ) {: node:ptr :}
+   STATE-GET
    ARCHIVES begin dup @ node <> while
       @ LINK
-   repeat node LINK @ swap ! ;
+   repeat node LINK @ swap !
+   STATE-RELEASE ;
 
 : FREE-ENTRIES ( ptr n -- )
    begin dup NULL? 0= while

@@ -36,8 +36,7 @@ s" mkstemp" FFI:PROCESS 1 FFI:DECLARE constant MKSTEMP-ROW
 
 
 : RETIRE-ARCHIVES ( -- )
-   begin ARCHIVES @ dup NULL? 0= while DISCARD-NODE repeat drop
-   STAT-BYTES 0 ?do 0 STAT-DATA i + c! loop ;
+   begin ARCHIVES @ dup NULL? 0= while DISCARD-NODE repeat drop ;
 
 
 \ A libzip object is a process-local address: preparing an image discards every
@@ -47,11 +46,14 @@ s" mkstemp" FFI:PROCESS 1 FFI:DECLARE constant MKSTEMP-ROW
    0 REGISTERED ! ;
 
 
-: REGISTER-CLEANUP ( -- )
+: REGISTER-CLEANUP-LOCKED ( -- )
    REGISTERED @ 0= if
       [: CLEANUP-NATIVE ;] IMAGE-LIFECYCLE:REGISTER
       1 REGISTERED !
    then ;
+
+: REGISTER-CLEANUP ( -- )
+   STATE-GET [: REGISTER-CLEANUP-LOCKED ;] [: STATE-RELEASE ;] finally ;
 
 
 : C-OPEN ( ptr u8 n -- ptr u8 ) {: path:ptr flags:n :}

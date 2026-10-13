@@ -520,6 +520,10 @@ only where their relocated offsets require it. Replacements use STORE with a
 fresh CRC and sizes, retaining their names, comments, attributes and non-ZIP64
 extra fields. ZIP64 size and offset fields are rebuilt as needed.
 
+Distinct archive handles can be used concurrently by separate `TASK` workers.
+Each handle and its entries have one task owner; callers coordinate any transfer
+of a live handle between tasks.
+
 `COMMIT` builds a compact archive and atomically renames a temporary file in
 the destination directory, preserving file permissions. It invalidates the
 archive and its entries on success. A commit with no replacements only closes

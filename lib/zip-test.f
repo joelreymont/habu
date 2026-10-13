@@ -6,6 +6,7 @@ require lib/zip-count-fixture.f
 require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/task.f
 
 package ZIP-TEST
 using ZIP
@@ -17,6 +18,14 @@ create BASE FS-PATH-CAP allot
 variable BASE-LEN
 create PATH-BUF FS-PATH-CAP allot
 create PAYLOAD $20 allot
+create TASK-PATH-A FS-PATH-CAP allot
+create TASK-PATH-B FS-PATH-CAP allot
+variable TASK-PATH-A-LEN
+variable TASK-PATH-B-LEN
+TASK:MIN-STACK TASK:TASK ZIP-READER-A
+TASK:MIN-STACK TASK:TASK ZIP-READER-B
+TASK:SEMAPHORE ZIP-START
+1000 constant ZIP-TASK-ROUNDS
 
 : BASE$ ( -- ptr u8 n ) BASE BASE-LEN @ ;
 : PATH$ ( ptr u8 n -- ptr u8 n )
@@ -269,11 +278,58 @@ $10000 constant WIDE-COUNT
    s" WRONG-ENTRY ( ZIP:archive ZIP:archive -- ptr u8 n ) ZIP:READ" CHECK! 0 T=
    s" FORGED-HANDLE ( n -- ZIP:archive )" CHECK! 0 T= ;
 
+\ Different member sizes expose a concurrent zip_stat_index scratch collision.
+: TASK-READ-ONE ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: path:ptr path-len:n idx:n name:ptr name-len:n data:ptr data-len:n :}
+   path path-len ZIP:OPEN {: archive:ZIP:archive :}
+   archive ZIP:COUNT 5 <> if E-READ throw then
+   archive idx ENTRY {: member:ZIP:entry :}
+   archive member NAME$ name name-len STR= 0= if E-READ throw then
+   archive member ZIP:READ data data-len STR= 0= if E-READ throw then
+   archive ZIP:CLOSE ;
+
+: TASK-PATH-A$ ( -- ptr u8 n ) TASK-PATH-A TASK-PATH-A-LEN @ ;
+: TASK-PATH-B$ ( -- ptr u8 n ) TASK-PATH-B TASK-PATH-B-LEN @ ;
+
+: TASK-READ-A ( -- )
+   ZIP-START TASK:WAIT
+   ZIP-TASK-ROUNDS 0 ?do
+      TASK-PATH-A$ 0 s" stored.txt" s" stored value" TASK-READ-ONE
+      TASK:PAUSE
+   loop
+   1 TASK:RETURN ;
+
+: TASK-READ-B ( -- )
+   ZIP-START TASK:WAIT
+   ZIP-TASK-ROUNDS 0 ?do
+      TASK-PATH-B$ 4 s" dup" s" second" TASK-READ-ONE
+      TASK:PAUSE
+   loop
+   1 TASK:RETURN ;
+
+: TASK-JOIN-OK ( result<n,n> -- )
+   MATCH result ok OF 1 T= ENDOF err OF 0 T= ENDOF ;MATCH ;
+
+: TASK-READERS ( -- )
+   INPUT$ ORIGINAL$ WRITE-ALL OTHER$ ORIGINAL$ WRITE-ALL
+   INPUT$ {: path-a:ptr len-a:n :}
+   path-a TASK-PATH-A len-a BYTE-COPY len-a TASK-PATH-A-LEN !
+   OTHER$ {: path-b:ptr len-b:n :}
+   path-b TASK-PATH-B len-b BYTE-COPY len-b TASK-PATH-B-LEN !
+   0 ZIP-START TASK:SEMAPHORE-INIT
+   ['] TASK-READ-A ZIP-READER-A TASK:ACTIVATE
+   ['] TASK-READ-B ZIP-READER-B TASK:ACTIVATE
+   ZIP-START TASK:SIGNAL ZIP-START TASK:SIGNAL
+   ZIP-READER-A TASK:JOIN TASK-JOIN-OK
+   ZIP-READER-B TASK:JOIN TASK-JOIN-OK
+   ZIP-START TASK:SEMAPHORE-DESTROY ;
+
 : RUN ( -- )
    T-RESET CLEANUP-RESET SETUP
    READ-MEMBERS DUP-NAMES REJECT-INDICES REJECT-HANDLES BAD-PATHS
    REPLACE-MEMBERS READ-REPLACED PRESERVED DISCARD-CHANGES
    COMMIT-FAILURE INSTALL-FAILURE READONLY-COMMIT CRC-FAILURE MANY-HANDLES ORIGINAL-SOURCE RAW-FRAMING ZIP64-COUNT TYPE-REJECTIONS
+   TASK-READERS
    CLEANUP-RUN T-REPORT ;
 
 RUN
