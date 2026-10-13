@@ -75,17 +75,24 @@ variable SD-TOK-OFF                      \ the token read last: where it starts
 variable SD-TOK-LEN                      \ and its length
 variable SD-CALL-KIND                    \ the loader SD-CALL-LOADER calls
 variable SD-DEF                          \ 1 from a definition's opener to its ;
+variable SD-DEF-NAME
+variable SD-DEF-STAGE
+variable SD-DEF-OFF
 variable SD-SHADOWED                     \ loader and family words the file defined
 variable SD-RETIRED                      \ and those it retired
 variable SD-PKG-OFF                      \ the package open in this source
 variable SD-PKG-U
 variable SD-HARVESTING                  \ only the harvest records declarations and rows
 variable SD-FILE-ID
+DYNAMIC-BUFFER SD-E-SPEC n
 
 1 constant SD-R-DECL
 2 constant SD-R-RETIRE
 3 constant SD-R-PARSES
 4 constant SD-R-THROUGH
+5 constant SD-R-FAMILY
+6 constant SD-R-PACKAGE
+7 constant SD-R-END-PACKAGE
 
 \ A source occurrence is kept once, even when the same canonical file is
 \ reached under several roots or a harvest retries it after learning a row.
@@ -108,6 +115,7 @@ DYNAMIC-BUFFER SD-R-TERMS n
 DYNAMIC-BUFFER SD-R-TERMS-U n
 DYNAMIC-BUFFER SD-R-ACTIVE n
 DYNAMIC-BUFFER SD-R-DISABLED n
+DYNAMIC-BUFFER SD-R-CANON n
 DYNAMIC-BUFFER SD-R-ROWS n
 DYNAMIC-BUFFER SD-R-FROZEN n
 variable SD-R-N
@@ -120,6 +128,10 @@ variable SD-R-PASS-STABLE
 variable SD-R-OLD-HEAD
 variable SD-R-START-N
 variable SD-R-START-BYTES
+variable SD-C-PKG
+variable SD-C-N
+DYNAMIC-BUFFER SD-C-ROW n
+DYNAMIC-BUFFER SD-C-OWNER n
 
 \ Local spellings are byte-exact and become visible after their group's closer.
 \ Keep source offsets so discovery need not copy names or impose a locals cap.
@@ -200,7 +212,7 @@ variable SD-SCOPES
    dup SD-R-PKG-RESERVE dup SD-R-PKG-U-RESERVE
    dup SD-R-COUNT-RESERVE dup SD-R-TERMS-RESERVE
    dup SD-R-TERMS-U-RESERVE dup SD-R-ACTIVE-RESERVE
-   SD-R-DISABLED-RESERVE
+   dup SD-R-DISABLED-RESERVE SD-R-CANON-RESERVE
    SD-FILE-ID @ SD-F-HEAD @ r SD-R-NEXT !
    r SD-FILE-ID @ SD-F-HEAD !
    off r SD-R-OFF !
@@ -215,6 +227,7 @@ variable SD-SCOPES
    0 r SD-R-TERMS-U !
    1 r SD-R-ACTIVE !
    0 r SD-R-DISABLED !
+   0 r SD-R-CANON !
    r 1+ SD-R-N !
    r ;
 
@@ -249,6 +262,97 @@ variable SD-SCOPES
    a pkgu + c@ $3A <> if false exit then
    a pkgu 1+ + tailu tail tailu STR=CI ;
 
+\ The closure walk visits row occurrences in actual load order. An empty
+\ package on either side may inherit its caller's package at a load edge.
+: SD-C-PKG$ ( n -- ptr u8 n ) {: row:n :}
+   row 0 < if 0 SD-R-BYTES 0 exit then
+   row SD-R-NAME$ ;
+
+: SD-R-FAMILY-MATCH? ( n n -- bool ) {: ctx:n family:n :}
+   ctx SD-C-ROW @ {: row:n :}
+   row SD-R-KIND @ SD-R-RETIRE = row SD-R-NAME-U @ 0= and if true exit then
+   row SD-R-NAME$ {: a:ptr u:n :}
+   a u SD-QCOLON {: col:n :}
+   col 0 >= if
+      a col a col 1+ + u col 1+ -
+   else
+      ctx SD-C-OWNER @ SD-C-PKG$ a u
+   then
+   {: pkg:ptr pkgu:n tail:ptr tailu:n :}
+   family SD-R-NAME$ tail tailu STR=CI 0= if false exit then
+   SD-C-PKG @ SD-C-PKG$ {: owner:ptr owneru:n :}
+   pkgu 0= if true exit then
+   owneru 0= if false exit then
+   pkg pkgu owner owneru STR=CI ;
+
+: SD-C-PACKAGE-OPEN ( n -- ) {: row:n :}
+   row SD-C-PKG ! ;
+
+: SD-C-PACKAGE-CLOSE ( -- )
+   -1 SD-C-PKG ! ;
+
+: SD-R-CONTEXT-FAMILY ( n -- ) {: family:n :}
+   SD-C-N @ 0 ?do
+      i family SD-R-FAMILY-MATCH? if
+         i SD-C-ROW @ SD-R-CANON @ 0=
+         i SD-C-OWNER @ -1 <> or if
+            family SD-R-OFF @ SD-TOK-OFF !
+            family SD-R-NAME-U @ SD-TOK-LEN !
+            i SD-C-ROW @ SD-R-KIND @ SD-R-DECL = if
+               E-DISC-SHADOW throw
+            then
+            E-DISC-RETIRE throw
+         then
+      then
+   loop ;
+
+: SD-R-CONTEXT-BEGIN ( -- )
+   -1 SD-C-PKG !
+   0 SD-C-N ! ;
+
+: SD-C-FAMILY-ROW? ( n -- bool ) {: row:n :}
+   row SD-R-KIND @ SD-R-RETIRE = row SD-R-NAME-U @ 0= and if true exit then
+   row SD-R-NAME$ SD-TAIL$ {: a:ptr u:n :}
+   a u s" structure" STR=CI
+   a u s" enum" STR=CI or
+   a u s" sumtype" STR=CI or ;
+
+: SD-C-ADD ( n -- ) {: row:n :}
+   row SD-C-FAMILY-ROW? 0= if exit then
+   SD-C-N @ 0 ?do
+      i SD-C-ROW @ row =
+      i SD-C-OWNER @ SD-C-PKG @ = and if unloop exit then
+   loop
+   SD-C-N @ 1+ dup SD-C-ROW-RESERVE SD-C-OWNER-RESERVE
+   row SD-C-N @ SD-C-ROW !
+   SD-C-PKG @ SD-C-N @ SD-C-OWNER !
+   SD-C-N @ 1+ SD-C-N ! ;
+
+\ Only rows between two successive loader sites in this file run before the
+\ next child. Replaying an include visits these same rows again in a new place.
+: SD-R-CONTEXT-BETWEEN ( n n ptr u8 n -- )
+   {: start:n stop:n pa:ptr pu:n :}
+   SD-R-N @ 0 ?do
+      i SD-R-ACTIVE @ 0<> i SD-R-OFF @ start >= and
+      i SD-R-OFF @ stop < and if
+         i SD-R-FILE @ SD-F-AT @ SD-R-BYTES
+         i SD-R-FILE @ SD-F-U @ pa pu STR= if
+            i SD-R-KIND @ {: kind:n :}
+            kind SD-R-PACKAGE = if
+               i SD-C-PACKAGE-OPEN
+            else kind SD-R-END-PACKAGE = if
+               SD-C-PACKAGE-CLOSE
+            else
+               kind SD-R-FAMILY = if
+                  i SD-R-CONTEXT-FAMILY
+               else
+                  kind SD-R-DECL = kind SD-R-RETIRE = or if i SD-C-ADD then
+               then
+            then then
+         then
+      then
+   loop ;
+
 : SD-R-BEFORE? ( n n -- bool ) {: row:n next:n :}
    row SD-R-FILE @ next SD-R-FILE @ <> if
       row SD-R-FILE @ next SD-R-FILE @ < exit
@@ -264,7 +368,8 @@ variable SD-SCOPES
 : SD-R-ROWS-REBUILD ( -- )
    0 SD-R-ROWS-N !
    SD-R-N @ 0 ?do
-      i SD-R-ACTIVE @ 0<> i SD-R-KIND @ SD-R-PARSES >= and if
+      i SD-R-ACTIVE @ 0<> i SD-R-KIND @ SD-R-PARSES >= and
+      i SD-R-KIND @ SD-R-FAMILY < and if
          i SD-R-ROWS+
       then
    loop ;
@@ -386,7 +491,8 @@ variable SD-SCOPES
 
 : SD-R-ACTIVE-MATCH? ( n -- bool ) {: old:n :}
    SD-R-N @ 0 ?do
-      i SD-R-ACTIVE @ 0<> i SD-R-KIND @ SD-R-PARSES >= and if
+      i SD-R-ACTIVE @ 0<> i SD-R-KIND @ SD-R-PARSES >= and
+      i SD-R-KIND @ SD-R-FAMILY < and if
          old i SD-R-SAME? if true unloop exit then
       then
    loop
@@ -395,7 +501,8 @@ variable SD-SCOPES
 : SD-R-PASS-END ( -- )
    1 SD-R-PASS-STABLE !
    SD-R-N @ 0 ?do
-      i SD-R-ACTIVE @ 0<> i SD-R-KIND @ SD-R-PARSES >= and if
+      i SD-R-ACTIVE @ 0<> i SD-R-KIND @ SD-R-PARSES >= and
+      i SD-R-KIND @ SD-R-FAMILY < and if
          i SD-R-FROZEN-OF dup 0 < if
             drop 0 SD-R-PASS-STABLE !
          else
@@ -419,7 +526,8 @@ variable SD-SCOPES
    \ pass count. Re-enabling a row could hide evidence exposed by a disable.
    SD-R-PASS-STABLE @ if
       SD-R-N @ 0 ?do
-         i SD-R-ACTIVE @ 0<> i SD-R-KIND @ SD-R-PARSES >= and if
+         i SD-R-ACTIVE @ 0<> i SD-R-KIND @ SD-R-PARSES >= and
+         i SD-R-KIND @ SD-R-FAMILY < and if
             i SD-R-DISABLED @ 0= i SD-R-USABLE? 0= and if
                1 i SD-R-DISABLED !
                0 SD-R-PASS-STABLE !
@@ -646,9 +754,11 @@ $FF constant SD-NAMES                    \ loaders and family openers
 
 \ A definition or retirement of a loader or family name refuses nothing, but
 \ a later use with that spelling is ambiguous (SD-CHECK-USE).
-: SD-SHADOW ( ptr u8 n -- )   SD-NAME-BIT SD-SHADOWED @ or SD-SHADOWED ! ;
+: SD-SHADOW ( ptr u8 n -- )
+   SD-TAIL$ SD-NAME-BIT SD-SHADOWED @ or SD-SHADOWED ! ;
 
-: SD-RETIRE ( ptr u8 n -- )   SD-NAME-BIT SD-RETIRED @ or SD-RETIRED ! ;
+: SD-RETIRE ( ptr u8 n -- )
+   SD-TAIL$ SD-NAME-BIT SD-RETIRED @ or SD-RETIRED ! ;
 
 \ UNDEFINE-IF-DEFINED at top level retires the word the path literal right
 \ before it names, and when no path literal does, a word the walk cannot read,
@@ -682,7 +792,12 @@ $FF constant SD-NAMES                    \ loaders and family openers
    {: off:n len:n kind:n :}
    off len DISC-TOK!
    kind SD-CALL-KIND !
+   EVENT-COUNT {: before:n :}
    [: SD-CALL-ACT ;] catch {: rc:n :}
+   EVENT-COUNT before > if
+      EVENT-COUNT SD-E-SPEC-RESERVE
+      SD-DEF @ before SD-E-SPEC !
+   then
    rc 0= if true exit then
    rc E-PATH-RANGE <> if rc throw then
    false ;
@@ -742,6 +857,8 @@ $FF constant SD-NAMES                    \ loaders and family openers
 \ locals.
 : SD-DEF-OPEN ( -- )
    SD-LOCALS-RESET
+   0 SD-DEF-NAME !
+   0 SD-DEF-STAGE !
    1 SD-DEF ! ;
 
 
@@ -817,48 +934,51 @@ $FF constant SD-NAMES                    \ loaders and family openers
    a u s" sumtype" STR=CI if 3 exit then
    0 ;
 
+\ Habu's three global family words forward directly to their parser runners.
+\ Such a definition retains the grammar of the family opener. A different
+\ body is an ordinary shadow and must still be refused at the later use.
+: SD-FORWARD-WORD? ( n n n -- bool ) {: off:n len:n kind:n :}
+   kind 1 = if off len SD-TOK$ s" STRUCTURE-DECL:SD-RUN" STR=CI exit then
+   kind 2 = if off len SD-TOK$ s" ENUM-DECL:ED-RUN" STR=CI exit then
+   off len SD-TOK$ s" TDECL-SUMTYPE" STR=CI ;
+
+: SD-DEF-TRACK ( n n -- ) {: off:n len:n :}
+   SD-PKG-U @ 0<> if exit then
+   off len SD-FAMILY-KIND dup 0= if drop exit then
+   SD-DEF-NAME !
+   1 SD-DEF-STAGE !
+   off SD-DEF-OFF ! ;
+
+: SD-R-CANON-MARK ( -- )
+   SD-HARVESTING @ 0= if exit then
+   SD-R-N @ 0 ?do
+      i SD-R-FILE @ SD-FILE-ID @ =
+      i SD-R-OFF @ SD-DEF-OFF @ = and if
+         1 i SD-R-CANON !
+      then
+   loop ;
+
+: SD-DEF-FORWARD-STEP ( n n -- ) {: off:n len:n :}
+   SD-DEF-STAGE @ 0= if exit then
+   SD-DEF-STAGE @ 1 = if
+      off len SD-DEF-NAME @ SD-FORWARD-WORD? if
+         2 SD-DEF-STAGE !
+      else
+         0 SD-DEF-STAGE !
+      then
+      exit
+   then
+   off len SD-TOK$ s" ;" STR= if SD-R-CANON-MARK then
+   0 SD-DEF-STAGE ! ;
+
 : SD-FAMILY-END? ( n n n -- bool ) {: off:n len:n kind:n :}
    kind 1 = if off len SD-TOK$ s" ;structure" STR=CI exit then
    kind 2 = if off len SD-TOK$ s" ;enum" STR=CI exit then
    off len SD-TOK$ s" ;sumtype" STR=CI ;
 
-\ Harvested definitions and retirements in the closure can replace a family
-\ opener. Another file cannot affect it before a loading event, and a later
-\ declaration in this file cannot affect it either.
-: SD-PRIOR-LOAD? ( -- bool )
-   EVENT-COUNT 0 ?do
-      i EVENT-KIND@ EV-INCLUDED = if true unloop exit then
-      i EVENT-KIND@ EV-REQUIRED =
-      i EVENT-STATE@ EV-STATE-FRESH = and if true unloop exit then
-   loop
-   false ;
-
-: SD-R-FAMILY-AFFECTS? ( n n n -- bool ) {: off:n len:n row:n :}
-   row SD-R-ACTIVE @ 0= if false exit then
-   row SD-R-KIND @ SD-R-DECL =
-   row SD-R-KIND @ SD-R-RETIRE = or 0= if false exit then
-   row SD-R-FILE @ SD-F-AT @ SD-R-BYTES row SD-R-FILE @ SD-F-U @
-   SD-ENTRY SD-ENTRY-U @ STR= if
-      row SD-R-OFF @ off >= if false exit then
-   else
-      SD-PRIOR-LOAD? 0= if false exit then
-   then
-   row SD-R-KIND @ SD-R-RETIRE = row SD-R-NAME-U @ 0= and if true exit then
-   row SD-R-KEY$ {: pkg:ptr pkgu:n tail:ptr tailu:n :}
-   off len SD-TOK$ tail tailu STR=CI 0= if false exit then
-   pkgu 0= if true exit then
-   SD-PKG-OFF @ SD-PKG-U @ SD-TOK$ pkg pkgu STR=CI ;
-
 : SD-CHECK-FAMILY ( n n -- ) {: off:n len:n :}
    off len SD-CHECK-USE
-   0
-   SD-R-N @ 0 ?do
-      off len i SD-R-FAMILY-AFFECTS? if
-         i SD-R-KIND @ SD-R-DECL = if drop E-DISC-SHADOW throw then
-         drop 1
-      then
-   loop
-   0<> if E-DISC-RETIRE throw then ;
+   off off len SD-R-FAMILY SD-R-RECORD drop ;
 
 : SD-FAMILY-BODY ( n -- ) {: kind:n :}
    SD-RAW 2drop                        \ family name
@@ -886,6 +1006,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
    {: off:n len:n :}
    len 1 = off SD-BYTE SD-BACKSLASH = and if SD-SKIP-LINE exit then
    len 1 = off SD-BYTE SD-LPAREN = and if SD-SKIP-PAREN exit then
+   SD-DEF @ 0<> if off len SD-DEF-FORWARD-STEP then
    SD-PEND @ {: pend:n :}
    0 SD-PEND !
    off len SD-TOK$ s" [:" STR= if
@@ -894,6 +1015,10 @@ $FF constant SD-NAMES                    \ loaders and family openers
    off len SD-TOK$ s" ;]" STR= if SD-SCOPE-CLOSE exit then
    off len SD-LOCAL? if exit then
    off len SD-TOK$ PARSING-KEYWORD? if SD-RAW 2drop exit then
+   \ PRIM: declares an effect for the named word; that name is source data.
+   SD-DEF @ 0= off len SD-TOK$ s" PRIM:" STR=CI and if
+      SD-RAW 2drop exit
+   then
    SD-DEF @ 0= off len SD-TOK$ DEFINER-KEYWORD? and if
       SD-RAW {: noff:n nu:n :}
       noff nu SD-R-DECL-NAME
@@ -901,9 +1026,11 @@ $FF constant SD-NAMES                    \ loaders and family openers
    then
    SD-DEF @ 0= off len SD-TOK$ s" package" STR=CI and if
       SD-RAW {: poff:n pu:n :}
+      off poff pu SD-R-PACKAGE SD-R-RECORD drop
       poff SD-PKG-OFF ! pu SD-PKG-U ! exit
    then
    SD-DEF @ 0= off len SD-TOK$ s" ;package" STR=CI and if
+      off off 0 SD-R-END-PACKAGE SD-R-RECORD drop
       0 SD-PKG-U ! exit
    then
    SD-DEF @ 0= off len SD-TOK$ PACKAGE-KEYWORD? and if
@@ -923,7 +1050,8 @@ $FF constant SD-NAMES                    \ loaders and family openers
    lkind 0= 0= if off len lkind pend SD-DISPATCH-LOADER exit then
    off len SD-TOK$ s" :" STR= if
       SD-DEF-OPEN SD-RAW {: noff:n nu:n :}
-      noff nu SD-R-DECL-NAME noff nu SD-TOK$ SD-SHADOW exit
+      noff nu SD-R-DECL-NAME noff nu SD-DEF-TRACK
+      noff nu SD-TOK$ SD-SHADOW exit
    then
    off len SD-TOK$ s" kernel:" STR=CI if
       SD-DEF-OPEN SD-RAW {: noff:n nu:n :}
@@ -1049,10 +1177,16 @@ public
    SD-R-NAME-RELEASE SD-R-NAME-U-RELEASE
    SD-R-PKG-RELEASE SD-R-PKG-U-RELEASE
    SD-R-COUNT-RELEASE SD-R-TERMS-RELEASE SD-R-TERMS-U-RELEASE
-   SD-R-ACTIVE-RELEASE SD-R-DISABLED-RELEASE
+   SD-R-ACTIVE-RELEASE SD-R-DISABLED-RELEASE SD-R-CANON-RELEASE
+   SD-C-ROW-RELEASE SD-C-OWNER-RELEASE
+   SD-E-SPEC-RELEASE
    SD-R-ROWS-RELEASE SD-R-FROZEN-RELEASE ;
 
 : ROWS-VERSION ( -- n ) SD-R-VERSION @ ;
+: EVENT-SPEC@ ( n -- bool ) SD-E-SPEC @ 0<> ;
+
+: CONTEXT-BEGIN ( -- ) SD-R-CONTEXT-BEGIN ;
+: CONTEXT-BETWEEN ( n n ptr u8 n -- ) SD-R-CONTEXT-BETWEEN ;
 
 \ A pass reads only rows frozen before any file in it was scanned. Its new
 \ evidence cannot make a row valid or invalid halfway through the pass.

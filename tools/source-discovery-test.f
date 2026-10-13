@@ -369,6 +369,8 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    S\" package CVT-RES\nprivate\nvariable REQUIRED\ncreate INCLUDED\n1 constant INCLUDE\ndefer PROVIDED ( -- )\n;package\nrequire sd-raw.f\n"
    s" sd-raw.f" SDT-ONE-EVENT
    S\" package CVT-DEF\npublic\nDEFLINEAR CVT-DEF:tok\nEXPORT required\nprivate\nCAST: include ( n -- ptr u8 )\nLINEAR: provided ( ptr n -- CVT-DEF:tok )\n;package\nrequire sd-raw.f\n"
+   s" sd-raw.f" SDT-ONE-EVENT
+   S\" : SUMTYPE ( -- ) ;\nPRIM: SUMTYPE PRIM;\nrequire sd-raw.f\n"
    s" sd-raw.f" SDT-ONE-EVENT ;
 
 \ Family declarations parse their bodies as data, including member names that
@@ -404,24 +406,17 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
    [: SDT-DISCOVER ;] E-DISC-SHADOW TTHROWSQ
    DISCOVER:LAST-TOKEN {: off:n len:n :}
    off 34 T=
-   len 9 T= ;
-
-: SDT-TEST-FAMILY-DEPENDENCY ( -- )
-   DISCOVER:ROWS-RESET
-   s" dep-shadow.f" s" : structure ( -- ) ;" SDT-WRITE-ENTRY
-   [: SDT-DISCOVER ;] DISCOVER:HARVEST
-   s" dep.f" s" 76 emit 79 emit 65 emit 68 emit 69 emit 68 emit" SDT-WRITE-ENTRY
-   s" family-dependency.f"
-   S\" package DEMO require dep-shadow.f\nstructure require dep.f ;package\n"
+   len 9 T=
+   s" family-qualified-shadow.f"
+   S\" package DEMO : DEMO:structure ( -- ) ; structure require dep.f ;package\n"
    SDT-WRITE-ENTRY
    s" SDT-ENTRY$ ;package included"
    SDT-LOAD-OUT SDT-LOAD-CAP >LEN SDT-LOAD-ERR SDT-LOAD-CAP >LEN
-   20000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   20000 >MS SUBJECT:RUN {: qoutu:len qerru:len qoc :}
    s" SDT-ENTRY$ ;package included"
-   SDT-LOAD-OUT outu LEN>N SDT-LOAD-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
-   SDT-LOAD-OUT outu LEN>N s" LOADED" T$=
-   [: SDT-DISCOVER ;] E-DISC-SHADOW TTHROWSQ
-   DISCOVER:ROWS-RESET ;
+   SDT-LOAD-OUT qoutu LEN>N SDT-LOAD-ERR qerru LEN>N qoc 0 T-OUTCOME-EXITED=
+   SDT-LOAD-OUT qoutu LEN>N s" LOADED" T$=
+   [: SDT-DISCOVER ;] E-DISC-SHADOW TTHROWSQ ;
 
 : SDT-TEST-FAMILY-RETIRE ( -- )
    s" family-retire.f"
@@ -872,7 +867,6 @@ $7F0 constant SDT-OVER
    SDT-TEST-DEFINER-OPERAND
    SDT-TEST-FAMILY-BODIES
    SDT-TEST-FAMILY-SHADOW
-   SDT-TEST-FAMILY-DEPENDENCY
    SDT-TEST-FAMILY-RETIRE
    SDT-TEST-STORAGE-DEFINER
    SDT-TEST-DEFINER-IN-BODY

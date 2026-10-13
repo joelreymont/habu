@@ -37,6 +37,11 @@ create ECT-ALIAS ECT-PC allot
 create ECT-KEY-A 80 allot
 create ECT-KEY-B 80 allot
 create ECT-READ-SRC $1000 allot
+create ECT-RA-ENTRY FS-PATH-CAP allot
+create ECT-RB-ENTRY FS-PATH-CAP allot
+create ECT-SHARED FS-PATH-CAP allot
+create ECT-PATH FS-PATH-CAP allot
+create ECT-RAW FS-PATH-CAP 1+ 2 * allot
 variable ECT-ROOT-U
 variable ECT-ENTRY-U
 variable ECT-DA-U
@@ -45,8 +50,17 @@ variable ECT-DC-U
 variable ECT-UN-U
 variable ECT-ALIAS-U
 variable ECT-I
+variable ECT-RA-ENTRY-U
+variable ECT-RB-ENTRY-U
+variable ECT-SHARED-U
+variable ECT-PATH-U
+variable ECT-RAW-U
 
 : ECT-ROOT$ ( -- ptr u8 n )   ECT-ROOT ECT-ROOT-U @ ;
+: ECT-RA-ENTRY$ ( -- ptr u8 n ) ECT-RA-ENTRY ECT-RA-ENTRY-U @ ;
+: ECT-RB-ENTRY$ ( -- ptr u8 n ) ECT-RB-ENTRY ECT-RB-ENTRY-U @ ;
+: ECT-SHARED$ ( -- ptr u8 n ) ECT-SHARED ECT-SHARED-U @ ;
+: ECT-PATH$ ( -- ptr u8 n ) ECT-PATH ECT-PATH-U @ ;
 : ECT-ENTRY$ ( -- ptr u8 n )  ECT-ENTRY ECT-ENTRY-U @ ;
 : ECT-DA$ ( -- ptr u8 n )     ECT-DA ECT-DA-U @ ;
 : ECT-DB$ ( -- ptr u8 n )     ECT-DB ECT-DB-U @ ;
@@ -75,6 +89,23 @@ variable ECT-I
 
 : ECT-WRITE ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n ca:ptr cu:n :}
    pa pu ca cu WRITE-ALL ;
+
+: ECT-WRITE-REL ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n ca:ptr cu:n :}
+   na nu ECT-PATH ECT-PATH-U ECT-MK
+   ECT-PATH$ ca cu ECT-WRITE ;
+
+: ECT-READ-PATH ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: pa:ptr pu:n root:ptr rootu:n :}
+   root rootu 2drop
+   pa pu ECT-READ-SRC $1000 READ-ALL ECT-READ-SRC swap ;
+
+67 constant ECT-UNCAUGHT-RC
+20000 constant ECT-CHILD-MS
+$100 constant ECT-OUT-CAP
+$1000 constant ECT-ERR-CAP
+ECT-OUT-CAP BUFFER: ECT-OUT
+ECT-ERR-CAP BUFFER: ECT-ERR
 
 : ECT-PREP ( -- )
    CLEANUP-RESET
@@ -131,6 +162,41 @@ variable ECT-I
    1 EC:PATH$ ECT-DA$ T$=
    2 EC:PATH$ ECT-DC$ T$= ;
 
+\ A caller may hand BUILD the engine's transient JOIN result. The closure
+\ must keep that entry across its harvest and replay passes.
+: ECT-TEST-TRANSIENT-ENTRY ( -- )
+   ECT-DA$ s" " ECT-WRITE
+   ECT-ENTRY$ s" require dep-a.f" ECT-WRITE
+   ECT-ROOT$ s" entry.f" SOURCE-ROOT:JOIN EC:BUILD
+   EC:COUNT 2 T=
+   0 EC:PATH$ ECT-ENTRY$ T$=
+   1 EC:PATH$ ECT-DA$ T$=
+   ECT-ROOT$ s" entry.f" SOURCE-ROOT:JOIN
+      [: ECT-READ-PATH ;] EC:BUILD-WITH
+   EC:COUNT 2 T=
+   ECT-ROOT$ s" entry.f" SOURCE-ROOT:JOIN EC:LOAD-ORDER
+   EC:ORDER-COUNT 2 T=
+   1 EC:ORDER-PATH$ ECT-ENTRY$ T$= ;
+
+\ A spelling longer than PATH-CAP can normalize to a valid source path.
+: ECT-TEST-LONG-ENTRY ( -- )
+   ECT-ENTRY$ s" " ECT-WRITE
+   47 ECT-RAW c!
+   500 0 ?do
+      46 ECT-RAW 1 i 2 * + + c!
+      47 ECT-RAW 2 i 2 * + + c!
+   loop
+   ECT-ENTRY$ {: a:ptr u:n :}
+   a 1+ ECT-RAW 1001 + u 1- BYTE-COPY
+   u 1000 + ECT-RAW-U !
+   ECT-RAW ECT-RAW-U @ EC:BUILD
+   EC:COUNT 1 T=
+   0 EC:PATH$ ECT-ENTRY$ T$=
+   ECT-RAW ECT-RAW-U @ EC:LOAD-ORDER
+   EC:ORDER-COUNT 1 T=
+   ECT-RAW ECT-RAW-U @ [: ECT-READ-PATH ;] EC:BUILD-WITH
+   EC:COUNT 1 T= ;
+
 \ A field named like a loader belongs to the parsed declaration. The next
 \ require is a real dependency and must still enter the closure.
 : ECT-TEST-FAMILY-FIELD ( -- )
@@ -144,11 +210,12 @@ variable ECT-I
 
 \ A later dependency cannot change an earlier standard declaration.
 : ECT-TEST-FAMILY-LATE-DEPENDENCY ( -- )
-   ECT-DA$ s" : structure ( -- ) ;" ECT-WRITE
-   ECT-ENTRY$ S\" package DEMO STRUCTURE box 0 FIELD x n ;STRUCTURE require dep-a.f ;package\n"
+   ECT-DA$ s" " ECT-WRITE
+   ECT-DB$ s" : structure ( -- ) ;" ECT-WRITE
+   ECT-ENTRY$ S\" package DEMO require dep-a.f STRUCTURE box 0 FIELD x n ;STRUCTURE require dep-b.f ;package\n"
       ECT-WRITE
    ECT-ENTRY$ EC:BUILD
-   EC:COUNT 2 T= ;
+   EC:COUNT 3 T= ;
 
 \ --- provided registers but does not load -------------------------------------
 : ECT-TEST-PROVIDED ( -- )
@@ -158,17 +225,167 @@ variable ECT-I
    EC:COUNT 1 T=
    0 EC:PATH$ ECT-ENTRY$ T$= ;
 
+\ A provided path skipped by require can still load at a later include. The
+\ closure order follows the loads that ran, not the earlier skipped require.
+: ECT-TEST-PROVIDED-INCLUDE-ORDER ( -- )
+   SB-RESET s" dep-b.f" ECT-PROVIDED-LINE ECT-DA$ SB$ ECT-WRITE
+   ECT-DB$ s" 66 emit" ECT-WRITE
+   ECT-DC$ s" " ECT-WRITE
+   ECT-ENTRY$ S\" require dep-a.f require dep-b.f require dep-c.f include dep-b.f\n" ECT-WRITE
+   ECT-ENTRY$ EC:BUILD
+   EC:COUNT 4 T=
+   0 EC:PATH$ ECT-ENTRY$ T$=
+   1 EC:PATH$ ECT-DA$ T$=
+   2 EC:PATH$ ECT-DC$ T$=
+   3 EC:PATH$ ECT-DB$ T$=
+   ECT-ENTRY$ EC:LOAD-ORDER
+   EC:ORDER-COUNT 4 T=
+   0 EC:ORDER-PATH$ ECT-DA$ T$=
+   1 EC:ORDER-PATH$ ECT-DC$ T$=
+   2 EC:ORDER-PATH$ ECT-DB$ T$=
+   3 EC:ORDER-PATH$ ECT-ENTRY$ T$= ;
+
+\ A provided call inside an uncalled definition is possible, not a definite
+\ registration; it cannot suppress the entry's later required load.
+: ECT-TEST-SPEC-PROVIDED ( -- )
+   ECT-DA$ S\" package ACTIONS : MARK ( -- ) s\" dep-b.f\" provided ; ;package\n" ECT-WRITE
+   ECT-DB$ s" 76 emit 79 emit 65 emit 68 emit 69 emit 68 emit" ECT-WRITE
+   ECT-ENTRY$ s" require dep-a.f require dep-b.f" ECT-WRITE
+   s" ECT-ENTRY$ ;package included"
+   ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   s" ECT-ENTRY$ ;package included"
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N s" LOADED" T$=
+   ECT-ENTRY$ EC:BUILD
+   EC:COUNT 3 T=
+   2 EC:PATH$ ECT-DB$ T$= ;
+
+\ A provided in an uncalled inner definition cannot suppress a top-level
+\ require in the file loaded by an outer possible call.
+: ECT-TEST-NESTED-SPEC-PROVIDED ( -- )
+   ECT-DA$ S\" : MARK ( -- ) s\" dep-b.f\" provided ; require dep-b.f\n" ECT-WRITE
+   ECT-DB$ s" 76 emit 79 emit 65 emit 68 emit 69 emit 68 emit" ECT-WRITE
+   ECT-ENTRY$ S\" : LATER ( -- ) s\" dep-a.f\" required ; LATER\n" ECT-WRITE
+   s" ECT-ENTRY$ included"
+   ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   s" ECT-ENTRY$ included"
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N s" LOADED" T$=
+   ECT-ENTRY$ EC:BUILD
+   EC:COUNT 3 T=
+   2 EC:PATH$ ECT-DB$ T$= ;
+
+\ A possible required load still registers its path while that call executes;
+\ a transitive require back to the active source is a no-op, not a cycle.
+: ECT-TEST-SPEC-REQUIRE-CYCLE ( -- )
+   ECT-DA$ s" require dep-b.f" ECT-WRITE
+   ECT-DB$ s" require dep-a.f" ECT-WRITE
+   ECT-ENTRY$ S\" : LATER ( -- ) s\" dep-a.f\" required ; LATER 67 emit 89 emit 67 emit 76 emit 69 emit\n" ECT-WRITE
+   s" ECT-ENTRY$ included"
+   ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   s" ECT-ENTRY$ included"
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N s" CYCLE" T$=
+   ECT-ENTRY$ EC:BUILD
+   EC:COUNT 3 T=
+   ECT-ENTRY$ EC:LOAD-ORDER
+   EC:ORDER-COUNT 3 T= ;
+
+\ A body load could run before a later family call. Since the source walk
+\ cannot establish whether it runs, it refuses the possible shadow.
+: ECT-TEST-SPEC-FAMILY ( -- )
+   ECT-DA$ s" : ENUM ( -- ) ;" ECT-WRITE
+   ECT-ENTRY$ S\" : MAYBE ( -- ) s\" dep-a.f\" included ; ENUM color red ;ENUM 76 emit 79 emit 65 emit 68 emit 69 emit 68 emit\n" ECT-WRITE
+   s" ECT-ENTRY$ included"
+   ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   s" ECT-ENTRY$ included"
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N s" LOADED" T$=
+   [: ECT-ENTRY$ EC:BUILD ;] E-DISC-SHADOW TTHROWSQ ;
+
+\ The same included source resolves a relative require under each loader root.
+\ BUILD deduplicates its path but must still find both distinct dependencies.
+: ECT-TEST-INCLUDE-ROOTS ( -- )
+   s" root-a/sub" ECT-PATH ECT-PATH-U ECT-MK ECT-PATH$ MAKE-DIRS
+   s" root-b" ECT-PATH ECT-PATH-U ECT-MK ECT-PATH$ MAKE-DIRS
+   s" root-a/entry.f" ECT-RA-ENTRY ECT-RA-ENTRY-U ECT-MK
+   s" root-b/entry.f" ECT-RB-ENTRY ECT-RB-ENTRY-U ECT-MK
+   s" root-a/sub/shared.f" ECT-SHARED ECT-SHARED-U ECT-MK
+   ECT-SHARED$ s" require dep.f" ECT-WRITE
+   s" root-a/dep.f" s" 65 emit" ECT-WRITE-REL
+   s" root-a/sub/dep.f" s" 66 emit" ECT-WRITE-REL
+   SB-RESET s" include " SB-APPEND ECT-SHARED$ SB-APPEND ECT-LF
+   ECT-RB-ENTRY$ SB$ ECT-WRITE
+   SB-RESET s" include sub/shared.f" SB-APPEND ECT-LF
+   s" include " SB-APPEND ECT-RB-ENTRY$ SB-APPEND ECT-LF
+   ECT-RA-ENTRY$ SB$ ECT-WRITE
+   s" ECT-RA-ENTRY$ included"
+   ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   s" ECT-RA-ENTRY$ included"
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N s" AB" T$=
+   ECT-RA-ENTRY$ EC:BUILD
+   EC:COUNT 5 T=
+   s" root-a/sub/dep.f" ECT-PATH ECT-PATH-U ECT-MK
+   4 EC:PATH$ ECT-PATH$ T$=
+   ECT-RA-ENTRY$ [: ECT-READ-PATH ;] EC:BUILD-WITH
+   EC:COUNT 6 T=
+   5 EC:PATH$ ECT-PATH$ T$=
+   ECT-RA-ENTRY$ EC:LOAD-ORDER
+   EC:ORDER-COUNT 5 T=
+   1 EC:ORDER-PATH$ ECT-PATH$ T$=
+   2 EC:ORDER-PATH$ ECT-SHARED$ T$=
+   SB-RESET s" require " SB-APPEND ECT-SHARED$ SB-APPEND ECT-LF
+   ECT-RB-ENTRY$ SB$ ECT-WRITE
+   SB-RESET s" require sub/shared.f" SB-APPEND ECT-LF
+   s" include " SB-APPEND ECT-RB-ENTRY$ SB-APPEND ECT-LF
+   ECT-RA-ENTRY$ SB$ ECT-WRITE
+   s" ECT-RA-ENTRY$ included"
+   ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
+   SUBJECT:RUN {: rout:len rerr:len rcode :}
+   s" ECT-RA-ENTRY$ included"
+   ECT-OUT rout LEN>N ECT-ERR rerr LEN>N rcode 0 T-OUTCOME-EXITED=
+   ECT-OUT rout LEN>N s" A" T$=
+   ECT-RA-ENTRY$ [: ECT-READ-PATH ;] EC:BUILD-WITH
+   EC:COUNT 4 T=
+   SB-RESET s" require dep.f" SB-APPEND ECT-LF
+   s" require " SB-APPEND ECT-RB-ENTRY$ SB-APPEND ECT-LF
+   ECT-SHARED$ SB$ ECT-WRITE
+   SB-RESET s" require " SB-APPEND ECT-SHARED$ SB-APPEND ECT-LF
+   ECT-RB-ENTRY$ SB$ ECT-WRITE
+   ECT-RA-ENTRY$ s" include sub/shared.f" ECT-WRITE
+   s" ECT-RA-ENTRY$ included"
+   ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
+   SUBJECT:RUN {: aout:len aerr:len acode :}
+   s" ECT-RA-ENTRY$ included"
+   ECT-OUT aout LEN>N ECT-ERR aerr LEN>N acode 0 T-OUTCOME-EXITED=
+   ECT-OUT aout LEN>N s" AB" T$=
+   ECT-RA-ENTRY$ EC:BUILD
+   EC:COUNT 5 T=
+   ECT-RA-ENTRY$ EC:LOAD-ORDER
+   EC:ORDER-COUNT 5 T= ;
+
+: ECT-TEST-INCLUDE-REQUIRE-SELF ( -- )
+   ECT-DA$ s" require dep-a.f 88 emit" ECT-WRITE
+   ECT-ENTRY$ s" include dep-a.f" ECT-WRITE
+   s" ECT-ENTRY$ included"
+   ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   s" ECT-ENTRY$ included"
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N s" XX" T$=
+   ECT-ENTRY$ EC:BUILD
+   EC:COUNT 2 T= ;
+
 \ --- a require to a nonexistent path is refused where it is read --------------
 \ A closure without the member would key fewer files than the build reads. A
 \ child runs each walk, so its stderr shows what an uncaught refusal tells the
 \ user: the code alone does not say which member is missing.
-67 constant ECT-UNCAUGHT-RC           \ hb's exit status for an uncaught throw
-20000 constant ECT-CHILD-MS
-$100 constant ECT-OUT-CAP
-$1000 constant ECT-ERR-CAP
-ECT-OUT-CAP BUFFER: ECT-OUT
-ECT-ERR-CAP BUFFER: ECT-ERR
-
 : ECT-CODE$ ( n -- ptr u8 n ) {: code:n :}
    SB-RESET
    s" uncaught throw code " SB-APPEND
@@ -185,6 +402,102 @@ ECT-ERR-CAP BUFFER: ECT-ERR
 
 : ECT-READ ( ptr u8 n ptr u8 n -- ptr u8 n )
    2drop ECT-READ-SRC $1000 READ-ALL ECT-READ-SRC swap ;
+
+\ A sibling load defines the family opener before use.f reaches it. The
+\ child loads dep-c.f, despite use.f having no prior local load event.
+: ECT-TEST-FAMILY-PRIOR-SIBLING ( -- )
+   ECT-DA$ s" package DEMO : structure ( -- ) ; ;package" ECT-WRITE
+   ECT-DB$ S\" package DEMO structure require dep-c.f ;package\n" ECT-WRITE
+   ECT-DC$ s" 76 emit 79 emit 65 emit 68 emit 69 emit 68 emit" ECT-WRITE
+   ECT-ENTRY$ S\" require dep-a.f require dep-b.f\n" ECT-WRITE
+   s" ECT-ENTRY$ ;package included"
+   ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   s" ECT-ENTRY$ ;package included"
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N s" LOADED" T$=
+   [: ECT-ENTRY$ EC:BUILD ;] E-DISC-SHADOW TTHROWSQ
+   [: ECT-ENTRY$ EC:LOAD-ORDER ;] E-DISC-SHADOW TTHROWSQ
+   [: ECT-ENTRY$ [: ECT-READ-PATH ;] EC:BUILD-WITH ;]
+      E-DISC-SHADOW TTHROWSQ ;
+
+\ The engine's global family word retains its grammar when its body is only
+\ the actual parser runner. Native self-build loads these definitions first.
+: ECT-TEST-FAMILY-FORWARDER ( -- )
+   ECT-DA$ s" : ENUM ( -- ) ENUM-DECL:ED-RUN ;" ECT-WRITE
+   ECT-DB$ s" ENUM color red ;ENUM" ECT-WRITE
+   ECT-ENTRY$ s" require dep-a.f require dep-b.f" ECT-WRITE
+   ECT-ENTRY$ EC:BUILD
+   EC:COUNT 3 T= ;
+
+\ A loaded child inherits the caller's package. Its bare family opener can
+\ therefore resolve to a word a prior sibling defined in that package.
+: ECT-TEST-FAMILY-INHERITED-PACKAGE ( -- )
+   ECT-DA$ s" package DEMO : structure ( -- ) ; ;package" ECT-WRITE
+   ECT-DB$ s" structure require dep-c.f" ECT-WRITE
+   ECT-DC$ s" 76 emit 79 emit 65 emit 68 emit 69 emit 68 emit" ECT-WRITE
+   ECT-ENTRY$ S\" require dep-a.f package DEMO require dep-b.f ;package\n" ECT-WRITE
+   s" ECT-ENTRY$ ;package included"
+   ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   s" ECT-ENTRY$ ;package included"
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N s" LOADED" T$=
+   [: ECT-ENTRY$ EC:BUILD ;] E-DISC-SHADOW TTHROWSQ ;
+
+\ A prior provided path is known without being loaded. A later require of it
+\ cannot contribute that file's definitions to the family context.
+: ECT-TEST-FAMILY-PROVIDED-SIBLING ( -- )
+   SB-RESET s" dep-b.f" ECT-PROVIDED-LINE ECT-DA$ SB$ ECT-WRITE
+   ECT-DB$ s" package DEMO : structure ( -- ) ; ;package" ECT-WRITE
+   ECT-DC$ S\" require dep-b.f package DEMO STRUCTURE box 0 FIELD x n ;STRUCTURE ;package require unrelated.f\n" ECT-WRITE
+   ECT-UN$ s" 76 emit 79 emit 65 emit 68 emit 69 emit 68 emit" ECT-WRITE
+   ECT-ENTRY$ S\" require dep-a.f require dep-c.f\n" ECT-WRITE
+   s" ECT-ENTRY$ ;package included"
+   ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   s" ECT-ENTRY$ ;package included"
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N s" LOADED" T$=
+   ECT-ENTRY$ EC:BUILD
+   EC:COUNT 4 T=
+   0 EC:PATH$ ECT-ENTRY$ T$=
+   1 EC:PATH$ ECT-DA$ T$=
+   2 EC:PATH$ ECT-DC$ T$=
+   3 EC:PATH$ ECT-UN$ T$= ;
+
+\ `included` does not register its path as required. The later `require`
+\ replays that file under the intervening definition, so the family opener is
+\ shadowed on its second visit.
+: ECT-TEST-FAMILY-INCLUDE-REQUIRE ( -- )
+   ECT-DA$ S\" package DEMO ENUM choice red ;ENUM ;package\n76 emit 79 emit 65 emit 68 emit 69 emit 68 emit\n" ECT-WRITE
+   ECT-DB$ s" package DEMO : enum ( -- ) ; : choice ( -- ) ; : red ( -- ) ; : ;ENUM ( -- ) ; ;package" ECT-WRITE
+   ECT-DC$ s" 76 emit 79 emit 65 emit 68 emit 69 emit 68 emit" ECT-WRITE
+   ECT-ENTRY$ S\" include dep-a.f require dep-b.f require dep-a.f\n" ECT-WRITE
+   s" ECT-ENTRY$ ;package included"
+   ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   s" ECT-ENTRY$ ;package included"
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N s" LOADEDLOADED" T$=
+   [: ECT-ENTRY$ EC:BUILD ;] E-DISC-SHADOW TTHROWSQ ;
+
+\ One file can be included in two packages. Both definitions remain visible
+\ under their respective packages after the second visit.
+: ECT-TEST-FAMILY-MULTI-OWNER ( -- )
+   ECT-DA$ s" : structure ( -- ) ;" ECT-WRITE
+   ECT-DB$ s" 76 emit 79 emit 65 emit 68 emit 69 emit 68 emit" ECT-WRITE
+   ECT-ENTRY$ S\" package P include dep-a.f ;package package Q include dep-a.f ;package package P structure require dep-b.f ;package\n" ECT-WRITE
+   s" ECT-ENTRY$ ;package included"
+   ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   s" ECT-ENTRY$ ;package included"
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N s" LOADED" T$=
+   [: ECT-ENTRY$ EC:BUILD ;] E-DISC-SHADOW TTHROWSQ
+   [: ECT-ENTRY$ EC:LOAD-ORDER ;] E-DISC-SHADOW TTHROWSQ
+   [: ECT-ENTRY$ [: ECT-READ-PATH ;] EC:BUILD-WITH ;]
+      E-DISC-SHADOW TTHROWSQ ;
 
 \ A transitive dependency can replace the ordinary STRUCTURE opener before the
 \ entry reaches it. The resulting require runs and belongs in the closure.
@@ -280,10 +593,25 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-PREP
    ECT-TEST-ORDER
    ECT-TEST-TRANSITIVE
+   ECT-TEST-TRANSIENT-ENTRY
+   ECT-TEST-LONG-ENTRY
    ECT-TEST-FAMILY-FIELD
    ECT-TEST-FAMILY-LATE-DEPENDENCY
+   ECT-TEST-FAMILY-PRIOR-SIBLING
+   ECT-TEST-FAMILY-FORWARDER
+   ECT-TEST-FAMILY-INHERITED-PACKAGE
+   ECT-TEST-FAMILY-PROVIDED-SIBLING
+   ECT-TEST-FAMILY-INCLUDE-REQUIRE
+   ECT-TEST-FAMILY-MULTI-OWNER
    ECT-TEST-FAMILY-DEPENDENCY
    ECT-TEST-PROVIDED
+   ECT-TEST-PROVIDED-INCLUDE-ORDER
+   ECT-TEST-SPEC-PROVIDED
+   ECT-TEST-NESTED-SPEC-PROVIDED
+   ECT-TEST-SPEC-REQUIRE-CYCLE
+   ECT-TEST-SPEC-FAMILY
+   ECT-TEST-INCLUDE-ROOTS
+   ECT-TEST-INCLUDE-REQUIRE-SELF
    ECT-TEST-MISSING
    ECT-TEST-KEY-CLOSURE-EDIT
    ECT-TEST-KEY-STABLE
