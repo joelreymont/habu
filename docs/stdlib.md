@@ -1206,6 +1206,7 @@ XML:NAME$         ( XML:reader -- XML:reader ptr u8 n )
 XML:LOCAL$        ( XML:reader -- XML:reader ptr u8 n )
 XML:DEPTH         ( XML:reader -- XML:reader n )
 XML:URI           ( XML:reader ptr u8 n -- XML:reader n )
+XML:PREFIX-URI    ( XML:reader ptr u8 n ptr u8 n -- XML:reader n bool )
 XML:CONTENT       ( XML:reader -- XML:reader off len )
 XML:TEXT          ( XML:reader ptr u8 n -- XML:reader n )
 XML:ATTR-RESET    ( XML:reader -- XML:reader )
@@ -1235,6 +1236,20 @@ Name spans preserve prefixes, while `URI` and `ATTR-URI` return the resolved,
 decoded namespace URI. Default namespaces apply to elements, not unprefixed
 attributes. Duplicate expanded attribute names and invalid namespace bindings
 are rejected before the start event is returned.
+
+`PREFIX-URI` resolves a decoded UTF-8 prefix supplied by the caller against the
+current element's namespace scope, including declarations on its start tag.
+The first byte span is the prefix; the second is caller-owned destination
+storage. It returns the decoded, attribute-normalized URI byte count and true
+when bound. An unknown nonempty prefix, including reserved `xmlns`, returns
+zero and false without writing. `xml` always resolves to its implicit URI. An
+empty prefix returns the current default URI and true, with zero bytes when no
+default is declared or it was reset. The scope remains available on an end
+event until the next `NEXT` pops that element, and during text, comments and
+processing instructions inside it. Before the root, after advancing past the
+root's end event, at EOF, or on a failed reader, lookup throws `E-STATE`.
+An output buffer that is too small or aliases source or reader storage throws
+without changing the reader; close it or retry with valid storage.
 
 For UTF-16 input and source-aware editing, open an `XML:source` first. Its
 storage and original byte span are caller-owned and must remain live until

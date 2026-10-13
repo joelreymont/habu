@@ -45,6 +45,20 @@ CAST: TOKEN>N ( XML:kind -- n )
    {: expected size:n :}
    TEXT-BUF TEXT-CAP URI TEXT-BUF swap expected size T$= ;
 
+: PREFIX= ( XML:reader ptr u8 n ptr u8 n -- XML:reader )
+   {: prefix prefix-size:n expected size:n :}
+   prefix prefix-size T-LABEL
+   prefix prefix-size TEXT-BUF TEXT-CAP PREFIX-URI TTRUE
+   TEXT-BUF swap expected size T$= ;
+
+: PREFIX-MISSING ( XML:reader ptr u8 n -- XML:reader )
+   $5A TEXT-BUF c!
+   TEXT-BUF TEXT-CAP PREFIX-URI TFALSE 0 T=
+   TEXT-BUF c@ $5A T= ;
+
+: PREFIX-READ ( XML:reader -- XML:reader )
+   s" p" TEXT-BUF TEXT-CAP PREFIX-URI 2drop ;
+
 : TEXT= ( XML:reader ptr u8 n -- XML:reader )
    {: expected size:n :}
    TEXT-BUF TEXT-CAP TEXT TEXT-BUF swap expected size T$= ;
@@ -114,6 +128,45 @@ CAST: TOKEN>N ( XML:kind -- n )
    ATTR-NEXT TTRUE
    ATTR-NEXT TTRUE s" http://www.w3.org/XML/1998/namespace" ATTR-URI=
    XML:CLOSE ;
+
+: PREFIX-VALUES ( -- )
+   s" <a xmlns='urn:root' xmlns:req='urn:one' xmlns:alias='urn:one' xmlns:mc='urn:mc'><mc:Choice Requires='req alias'><b xmlns:req='urn:two' xmlns=''/></mc:Choice></a>" OPEN
+   XML-KIND:START NEXT=
+   s" req" s" urn:one" PREFIX=
+   s" alias" s" urn:one" PREFIX=
+   s" " s" urn:root" PREFIX=
+   s" xml" s" http://www.w3.org/XML/1998/namespace" PREFIX=
+   s" xmlns" PREFIX-MISSING
+   s" absent" PREFIX-MISSING
+   XML-KIND:START NEXT=
+   ATTR-NEXT TTRUE s" Requires" ATTR-NAME=
+   s" req alias" ATTR-TEXT=
+   s" req" s" urn:one" PREFIX=
+   s" alias" s" urn:one" PREFIX=
+   s" absent" PREFIX-MISSING s" Requires" ATTR-NAME=
+   XML-KIND:START NEXT=
+   s" req" s" urn:two" PREFIX=
+   s" alias" s" urn:one" PREFIX=
+   s" " s" " PREFIX=
+   XML-KIND:END NEXT= s" req" s" urn:two" PREFIX=
+   XML-KIND:END NEXT= s" req" s" urn:one" PREFIX=
+   s" " s" urn:root" PREFIX=
+   XML-KIND:END NEXT= s" req" s" urn:one" PREFIX=
+   XML-KIND:EOF NEXT= XML:CLOSE ;
+
+: PREFIX-ENTITY-AND-SCOPE ( -- )
+   s\" <?go?><a xmlns:p='urn:&#97;\r\nz'><!--inside--><?go in?><b/></a><!--outside-->" OPEN
+   XML-KIND:PI NEXT=
+   ['] PREFIX-READ catch E-STATE T=
+   XML-KIND:START NEXT=
+   s" p" s" urn:a z" PREFIX=
+   XML-KIND:COMMENT NEXT= s" p" s" urn:a z" PREFIX=
+   XML-KIND:PI NEXT= s" p" s" urn:a z" PREFIX=
+   XML-KIND:START NEXT= s" p" s" urn:a z" PREFIX=
+   XML-KIND:END NEXT= s" p" s" urn:a z" PREFIX=
+   XML-KIND:END NEXT= s" p" s" urn:a z" PREFIX=
+   XML-KIND:COMMENT NEXT= ['] PREFIX-READ catch E-STATE T=
+   XML-KIND:EOF NEXT= XML:CLOSE ;
 
 : SCALARS-AND-OFFSETS ( -- )
    s\" \xEF\xBB\xBF<é>😀&amp;&#x1F680;\r\nZ&#13;</é>" OPEN
@@ -242,6 +295,10 @@ CAST: TOKEN>N ( XML:kind -- n )
 : ATTR-URI-ALIASED ( XML:reader -- XML:reader ) STORAGE BYTE-VIEW TEXT-CAP ATTR-URI drop ;
 : ATTR-TEXT-TINY ( XML:reader -- XML:reader ) TEXT-BUF 1 ATTR-TEXT drop ;
 : ATTR-TEXT-ALIASED ( XML:reader -- XML:reader ) STORAGE BYTE-VIEW TEXT-CAP ATTR-TEXT drop ;
+: PREFIX-TINY ( XML:reader -- XML:reader )
+   s" p" TEXT-BUF 2 PREFIX-URI 2drop ;
+: PREFIX-ALIASED ( XML:reader -- XML:reader )
+   s" p" STORAGE BYTE-VIEW TEXT-CAP PREFIX-URI 2drop ;
 
 : CAPACITY-AND-STATE ( -- )
    TINY 1 STORAGE-BYTES s" <a><b/></a>" INIT
@@ -303,6 +360,33 @@ CAST: TOKEN>N ( XML:kind -- n )
    s" urn:a" URI=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
 
+: PREFIX-RECOVERY ( -- )
+   s" <a xmlns:p='urn:&#97;'/>" OPEN
+   ['] PREFIX-READ catch E-STATE T=
+   XML-KIND:START NEXT=
+   s" " s" " PREFIX=
+   $5A TEXT-BUF c!
+   ['] PREFIX-TINY catch E-CAPACITY T=
+   TEXT-BUF c@ $5A T=
+   s" p" s" urn:a" PREFIX=
+   ['] PREFIX-ALIASED catch E-ALIAS T=
+   s" p" s" urn:a" PREFIX=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT=
+   ['] PREFIX-READ catch E-STATE T=
+   XML:CLOSE
+   TINY 1 STORAGE-BYTES s" <a><b/></a>" INIT
+   ['] DRAIN catch E-DEPTH T=
+   ['] PREFIX-READ catch E-STATE T=
+   XML:CLOSE ;
+
+: PREFIX-READERS ( -- )
+   s" <a xmlns:p='urn:first'/>" OPEN
+   LARGE 128 STORAGE-BYTES s" <b xmlns:p='urn:second'/>" INIT
+   XML-KIND:START NEXT= s" p" s" urn:second" PREFIX=
+   swap XML-KIND:START NEXT= s" p" s" urn:first" PREFIX=
+   swap s" p" s" urn:second" PREFIX=
+   XML:CLOSE XML:CLOSE ;
+
 : ATTRIBUTE-CAPACITY-RECOVERY ( -- )
    s" <p:a xmlns:p='urn:&#97;' p:q='long&amp;text'/>" OPEN NEXT drop
    ATTR-NEXT TTRUE ATTR-NEXT TTRUE
@@ -344,6 +428,8 @@ T-RESET
 EMPTY-ELEMENT
 NAMESPACE-SCOPES
 NAMESPACE-ENTITIES
+PREFIX-VALUES
+PREFIX-ENTITY-AND-SCOPE
 SCALARS-AND-OFFSETS
 ATTRIBUTES-AND-SPANS
 MARKUP-TEXT
@@ -356,6 +442,8 @@ CAPACITY-AND-STATE
 CALLER-SIZED-STORAGE
 NO-PARTIAL-DECODE
 URI-CAPACITY-RECOVERY
+PREFIX-RECOVERY
+PREFIX-READERS
 ATTRIBUTE-CAPACITY-RECOVERY
 ESCAPING
 CHECKED-OWNERSHIP

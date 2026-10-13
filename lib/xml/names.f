@@ -176,21 +176,25 @@ create NAME-RANGES
       state attr NS-ATTRIBUTE? if state attr SAVE-NAMESPACE then
    loop ;
 
-: LOOKUP-URI ( ptr n n n -- n n )
-   {: state prefix:n size:n :}
-   state prefix size SPAN$ s" xml" BYTES= if XML-URI 0 exit then
+: BOUND-URI ( ptr n ptr u8 n -- n n bool )
+   {: state prefix size:n :}
+   prefix size s" xml" BYTES= if XML-URI 0 true exit then
+   prefix size s" xmlns" BYTES= if 0 0 false exit then
    state NS-COUNT + @
    begin dup 0 > while
       1-
       state over NAMESPACE {: binding :}
-      state prefix size SPAN$
-      state binding @ binding CELL + @ SPAN$ BYTES= if
-         drop binding 2 cells + @ binding 3 cells + @ exit
+      prefix size state binding @ binding CELL + @ SPAN$ BYTES= if
+         drop binding 2 cells + @ binding 3 cells + @ true exit
       then
    repeat
    drop
-   size 0<> if E-NAMESPACE throw then
-   0 0 ;
+   0 0 size 0= ;
+
+: LOOKUP-URI ( ptr n n n -- n n )
+   {: state prefix:n size:n :}
+   state state prefix size SPAN$ BOUND-URI if exit then
+   E-NAMESPACE throw ;
 
 : RESOLVE-NAME ( ptr n n n bool -- n n )
    {: state name:n size:n attr:bool :}
@@ -240,5 +244,25 @@ create NAME-RANGES
    state state NAME-OFF + @ state NAME-LEN + @ false RESOLVE-NAME
    state URI-LEN + ! state URI-OFF + !
    state RESOLVE-ATTRIBUTES ;
+
+: PREFIX-URI-ARGS ( XML:reader ptr u8 n ptr u8 n -- XML:reader ptr n ptr u8 n ptr u8 n )
+   {: prefix size:n destination cap:n :}
+   STATE prefix size destination cap ;
+
+: PREFIX-URI-STATE ( ptr n ptr u8 n ptr u8 n -- n bool )
+   {: state prefix size:n destination cap:n :}
+   state LIVE
+   state OPEN-DEPTH + @ 0= if E-STATE throw then
+   prefix size SPAN-CHECK
+   state destination cap OUTPUT-CHECK
+   state prefix size BOUND-URI if
+      state -rot URI$ DECODE-ATTR destination cap DECODE-INTO true
+   else
+      2drop 0 false
+   then ;
+
+public
+: PREFIX-URI ( XML:reader ptr u8 n ptr u8 n -- XML:reader n bool )
+   PREFIX-URI-ARGS PREFIX-URI-STATE ;
 
 ;package
