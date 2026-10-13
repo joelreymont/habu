@@ -807,6 +807,13 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ and false.
 : GATHERED-FROM? ( n JSON-RPC:id -- bool )
    {: k:n id :}
+   LSP-REFERENCES:PRIMITIVE? if
+      LSP-REFERENCES:SUBJECT-N k ?do
+         id HALTED? if false unloop exit then
+         i 16 LSP-REFERENCES:GATHER-BATCH
+      16 +loop
+      true exit
+   then
    LSP-REFERENCES:SUBJECT-N k ?do
       id HALTED? if false unloop exit then
       i LSP-REFERENCES:GATHER

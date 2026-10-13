@@ -4043,6 +4043,11 @@ variable QUIET-PATH-U
 
 public
 
+\ A framed verifier child makes each neutral scope stand for an independent
+\ child. The previous scope has retired every declaration before this reset.
+: SOURCE-RESET-ISOLATED-VISITS ( -- )
+   0 VISIT-NEXT ! ;
+
 \ The verifier's child asks for deferred packets (tools/check-verify-child.f).
 \ DEFERRED? reports coverage for the last run whether or not packets were asked
 \ for; RUN-IN-SCOPE clears that fact before each run.

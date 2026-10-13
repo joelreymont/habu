@@ -571,6 +571,8 @@ DYNAMIC-BUFFER VFY-IN u8                \ the child's stdin: the open documents,
 DYNAMIC-BUFFER VFY-OPEN-AT n            \ each open document's path's offset in VFY-IN and length, then its text's
 variable VFY-IN-U
 variable VFY-OPEN-N
+variable VFY-OPEN-START
+variable VFY-OPEN-END
 variable VFY-REC-U
 variable VFY-DEFS-U
 variable VFY-FILES-U
@@ -622,6 +624,8 @@ variable VFY-TARGET-U
    0 VFY-CANDS-U !
    0 VFY-IN-U !
    0 VFY-OPEN-N !
+   0 VFY-OPEN-START !
+   0 VFY-OPEN-END !
    -1 VFY-AT !
    0 VFY-OF-U !
    VFY-NONE VFY-ANSWER !
@@ -712,6 +716,7 @@ variable VFY-TARGET-U
 : VFY-IN! ( [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
    {: open :}
    [: VFY-OPEN+ ;] open execute
+   VFY-OPEN-N @ VFY-OPEN-END !
    s\" \n" VFY-IN+
    CHK-BYTES-A @ CHK-BYTES-U @ VFY-IN+ ;
 
@@ -729,7 +734,7 @@ variable VFY-TARGET-U
 \ false, as the child finds it.
 : VFY-OPEN-TEXT ( ptr u8 n -- ptr u8 n bool )
    {: a:ptr u:n :}
-   VFY-OPEN-N @ 0 ?do
+   VFY-OPEN-END @ VFY-OPEN-START @ ?do
       i VFY-OPEN-PATH$ a u CORE-STR= if i VFY-OPEN-TEXT$ true unloop exit then
    loop
    NULL$ false ;
@@ -1298,6 +1303,167 @@ public
    tail VFY-OF-A !
    tailu VFY-OF-U !
    src srcu path pathu open deadline VFY-BYTES ;
+
+private
+
+\ The framed verifier keeps input offsets, since VFY-IN can move as subjects
+\ are added. Each frame records path, source and its own open-document slice.
+6 constant VFY-BATCH-CELLS
+0 constant B-PATH
+1 constant B-PATH-U
+2 constant B-SRC
+3 constant B-SRC-U
+4 constant B-OPEN-START
+5 constant B-OPEN-END
+DYNAMIC-BUFFER VFY-BATCH-META n
+DYNAMIC-BUFFER VFY-BATCH-OUT u8
+DYNAMIC-BUFFER VFY-BATCH-TAIL u8
+variable VFY-BATCH-N
+variable VFY-BATCH-OUT-U
+variable VFY-BATCH-POS
+variable VFY-BATCH-BROKEN
+variable VFY-BATCH-COMPLETE
+TYPED-VARIABLE VFY-BATCH-OUTCOME outcome
+
+: BATCH@ ( n n -- n )  swap VFY-BATCH-CELLS * + VFY-BATCH-META @ ;
+: BATCH! ( n n n -- )  swap VFY-BATCH-CELLS * + VFY-BATCH-META ! ;
+
+: VFY-BATCH-ADD ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
+   {: src:ptr srcu:n path:ptr pathu:n open :}
+   path pathu VFY-PATH!
+   VFY-BATCH-N @ {: k:n :}
+   k 1+ VFY-BATCH-CELLS * VFY-BATCH-META-RESERVE
+   SB-RESET VFY-PATH-U @ FMT:SB-U s"  " SB-APPEND
+   srcu FMT:SB-U s\" \n" SB-APPEND SB$ VFY-IN+
+   VFY-IN-U @ k B-PATH BATCH!
+   VFY-PATH-U @ k B-PATH-U BATCH!
+   VFY-PATH$ VFY-IN+
+   VFY-IN-U @ k B-SRC BATCH!
+   srcu k B-SRC-U BATCH!
+   src srcu VFY-IN+
+   VFY-OPEN-N @ k B-OPEN-START BATCH!
+   [: VFY-OPEN+ ;] open execute
+   VFY-OPEN-N @ k B-OPEN-END BATCH!
+   s\" \n" VFY-IN+
+   k 1+ VFY-BATCH-N ! ;
+
+: VFY-BATCH-ARGV ( -- )
+   PROC-ARGV-ENV-RESET
+   s" --load" CHK-ARG+
+   VFY-CHILD$ CHK-ARG+
+   s" --" CHK-ARG+
+   s" --batch" CHK-ARG+
+   VFY-OF-A @ VFY-OF-U @ CHK-ARG+
+   PROC-ENV-INHERIT-MISSING ;
+
+: VFY-BATCH-ROOM ( n -- ptr u8 )
+   VFY-BATCH-OUT-RESERVE 0 VFY-BATCH-OUT ;
+
+: VFY-BATCH-CAPTURE ( -- )
+   VFY-BATCH-ARGV
+   VFY-ERR-CAP VFY-BATCH-N @ * {: errcap:n :}
+   errcap VFY-LOG-RESERVE
+   CHK-ENGINE$ >LEN 0 VFY-IN VFY-IN-U @ >LEN
+   [: VFY-BATCH-ROOM ;] 0 VFY-LOG errcap >LEN
+   VFY-DEADLINE @ RUN-ARGV-ENV-STDIN-GROWING-CAPTURE-OUTCOME
+   PROC-OUTCOME>DEADLINE-RC drop 2drop ;
+
+: VFY-BATCH-RESET-RESULT ( -- )
+   0 VFY-OUT-U ! 0 VFY-DEFS-U ! 0 VFY-FILES-U !
+   0 VFY-USES-U ! 0 VFY-LOADS-U ! 0 VFY-CANDS-U !
+   VFY-NONE VFY-ANSWER !
+   0 VFY-STOP-RC ! 0 VFY-FAULT-LEN ! 0 VFY-TARGET-U ! ;
+
+: VFY-BATCH-SUBJECT ( n -- )
+   {: k:n :}
+   k B-PATH BATCH@ VFY-IN k B-PATH-U BATCH@ VFY-PATH!
+   k B-SRC BATCH@ VFY-IN CHK-BYTES-A !
+   k B-SRC-U BATCH@ CHK-BYTES-U !
+   k B-OPEN-START BATCH@ VFY-OPEN-START !
+   k B-OPEN-END BATCH@ VFY-OPEN-END ! ;
+
+: VFY-BATCH-MARK$ ( n -- ptr u8 n )
+   SB-RESET s" check-verify: batch-end " SB-APPEND
+   FMT:SB-U s\" \n" SB-APPEND SB$ ;
+
+\ The first complete marker from the current cursor, or -1 if the child did
+\ not finish that frame. The marker cannot be part of a JSON packet.
+: VFY-BATCH-MARK ( n -- n )
+   {: k:n :}
+   VFY-BATCH-POS @ {: at:n :}
+   at VFY-BATCH-OUT VFY-BATCH-OUT-U @ at - k VFY-BATCH-MARK$ FIND-SUB
+   MATCH option
+      some OF IDX>N at + ENDOF
+      none OF -1 ENDOF
+   ;MATCH ;
+
+: VFY-BATCH-RESULT ( n -- verdict )
+   {: k:n :}
+   k VFY-BATCH-N @ >= if E-TBL-BOUNDS throw then
+   VFY-BATCH-RESET-RESULT
+   k VFY-BATCH-SUBJECT
+   false VFY-BATCH-COMPLETE !
+   VFY-BATCH-BROKEN @ if
+      VFY-PATH$ ENGINE-PROVIDES? if CHECK-VERDICT:engine-provided exit then
+      VFY-BATCH-OUTCOME @ VFY-VERDICT exit
+   then
+   k VFY-BATCH-MARK {: end:n :}
+   end 0 >= if
+      VFY-BATCH-POS @ {: at:n :}
+      end at - {: u:n :}
+      u VFY-OUT-RESERVE
+      at VFY-BATCH-OUT 0 VFY-OUT u BYTE-COPY
+      u VFY-TAKE
+      VFY-ANSWER @ VFY-NONE = if true VFY-BATCH-BROKEN ! then
+      VFY-DUP-RECORDS
+      VFY-BATCH-BROKEN @ 0= VFY-BATCH-OUTCOME @ VFY-CLEAN-EXIT? and if
+         VFY-ANSWER @ VFY-STOPPED = if VFY-STOP-LINE then
+         true VFY-BATCH-COMPLETE !
+      then
+      end k VFY-BATCH-MARK$ nip + VFY-BATCH-POS !
+      k VFY-BATCH-N @ 1- = VFY-BATCH-POS @ VFY-BATCH-OUT-U @ <> and
+      if true VFY-BATCH-BROKEN ! false VFY-BATCH-COMPLETE ! then
+   else true VFY-BATCH-BROKEN ! then
+   VFY-PATH$ ENGINE-PROVIDES? if CHECK-VERDICT:engine-provided exit then
+   VFY-BATCH-BROKEN @ if VFY-NONE VFY-ANSWER ! then
+   VFY-BATCH-OUTCOME @ VFY-VERDICT ;
+
+public
+
+\ Build a bounded set of independent checks for one tail, then consume their
+\ results in add order. Each ADD receives the same open-document callback a
+\ one-shot check would; each result exposes the usual VERIFY-* accessors.
+: VERIFY-BATCH-BEGIN ( ptr u8 n -- )
+   {: tail:ptr tailu:n :}
+   VFY-RESET
+   tailu 1 max VFY-BATCH-TAIL-RESERVE
+   tail 0 VFY-BATCH-TAIL tailu BYTE-COPY
+   0 VFY-BATCH-TAIL VFY-OF-A ! tailu VFY-OF-U !
+   0 VFY-BATCH-N ! ;
+
+: VERIFY-BATCH-ADD ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
+   VFY-BATCH-ADD ;
+
+: VERIFY-BATCH-RUN ( ms -- )
+   VFY-DEADLINE !
+   s" 0 0" VFY-IN+ s\" \n" VFY-IN+
+   [: VFY-BATCH-CAPTURE ;] catch {: rc:n :}
+   rc 0<> rc E-PROC-TRUNCATED <> and if rc throw then
+   PROC-CAPTURE-OUTCOME@ {: outu:len erru:len o :}
+   outu LEN>N VFY-BATCH-OUT-U !
+   erru LEN>N VFY-LOG-U !
+   o VFY-BATCH-OUTCOME !
+   0 VFY-BATCH-POS !
+   false VFY-BATCH-BROKEN !
+   rc 0<> if rc throw then ;
+
+: VERIFY-BATCH-N ( -- n )  VFY-BATCH-N @ ;
+: VERIFY-BATCH-RESULT ( n -- verdict )  VFY-BATCH-RESULT ;
+\ An abnormal child makes every frame subject to independent retry.
+: VERIFY-BATCH-CLEAN? ( -- bool )
+   VFY-BATCH-OUTCOME @ VFY-CLEAN-EXIT? ;
+\ True only when this result had a frame end and the child exited cleanly.
+: VERIFY-BATCH-COMPLETE? ( -- bool )  VFY-BATCH-COMPLETE @ ;
 
 \ check.f's pre-pass of the bytes as the file at PATH, the subject named LABEL
 \ in its packets, the child given DEADLINE. The child's image is the one

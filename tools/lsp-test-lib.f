@@ -5469,6 +5469,53 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-prim/w/e.f" OPEN-URI 0 26 33 REF+
    SYMBOLS-END ;
 
+\ Eighteen independent subjects cross the primitive verifier's chunk edge.
+\ Their numeric prefixes preserve the path order of the answer.
+: PRIM-BATCH-PATH ( n -- ptr u8 n )
+   {: k:n :}
+   SB-RESET s" refs-prim-batch/w/" SB-APPEND
+   k 10 < if s" 0" SB-APPEND then
+   k FMT:SB-U s" .f" SB-APPEND SB$ ;
+
+: PRIM-BATCH-TURNS ( -- )
+   s" refs-prim-batch" REFS-DIR s" refs-prim-batch/w" REFS-DIR
+   18 0 ?do i PRIM-BATCH-PATH TEXT-PR-A REFS-FILE loop
+   s" refs-prim-batch/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   0 PRIM-BATCH-PATH FIXTURE TEXT-PR-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-PR-A 0 PRIM-BATCH-PATH FIXTURE 1 s" verified" LISTED
+   s" 3" 0 PRIM-BATCH-PATH FIXTURE 0 17 DECL-NOT REFS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   18 0 ?do
+      i PRIM-BATCH-PATH
+      i 0= if OPEN-URI else DISK-URI then
+      0 17 18 REF+
+   loop
+   SYMBOLS-END ;
+
+\ An overflowing subject ends its shared child after the first answer. The
+\ later subject still gets its own check, while the first keeps its answer.
+: PRIM-BATCH-FAIL-TURNS ( -- )
+   s" refs-prim-fail" REFS-DIR s" refs-prim-fail/w" REFS-DIR
+   s" refs-prim-fail/w/00.f" TEXT-PR-A REFS-FILE
+   OVER-USING-TEXT
+   s" refs-prim-fail/w/01.f" TXT$ REFS-FILE
+   s" refs-prim-fail/w/02.f" TEXT-PR-A REFS-FILE
+   s" refs-prim-fail/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-prim-fail/w/00.f" FIXTURE TEXT-PR-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-PR-A s" refs-prim-fail/w/00.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-prim-fail/w/00.f" FIXTURE 0 17 DECL-NOT REFS-ASK
+   SAY
+   1 NAMED s" refs-prim-fail/w/01.f" CANON s" incomplete" NAMED+ NAMED-END
+   s" 3" SYMBOLS-START
+   s" refs-prim-fail/w/00.f" OPEN-URI 0 17 18 REF+
+   s" refs-prim-fail/w/02.f" DISK-URI 0 17 18 REF+
+   SYMBOLS-END ;
+
 \ A changed open specification can no longer place the declaration, while
 \ the checker still gives uses their canonical row marker.
 : PRIM-MISSING-TURNS ( -- )
@@ -5629,6 +5676,8 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" references-visits" [: REFS-VIS-TURNS ;] TALK
    s" references-named" [: REFS-NAMED-TURNS ;] TALK
    s" references-primitive" [: PRIM-REF-TURNS ;] TALK
+   s" references-primitive-batch" [: PRIM-BATCH-TURNS ;] TALK
+    s" references-primitive-batch-failure" [: PRIM-BATCH-FAIL-TURNS ;] TALK
    s" references-primitive-declaration" [: PRIM-DECL-TURNS ;] TALK
    s" references-primitive-source-changed" [: PRIM-MISSING-TURNS ;] TALK
    s" references-primitive-coverage" [: PRIM-COVER-TURNS ;] TALK
@@ -6609,9 +6658,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" deferred-definition" [: DEFINITION-TURNS ;] TALK
    s" deferred-unended" [: DEFERRED-UNENDED-TURNS ;] TALK ;
 
-public
-
-: TEST ( -- )
+: TEST-INIT ( -- )
    LABEL-B READY
    IN-B READY
    WANT-B READY
@@ -6628,7 +6675,24 @@ public
    WS-B READY
    LSP-DEFS:DEFS-PREPARE
    s" habu-lsp-test" HB-TMP-MKDIR N>BLEN DIR-B REPLACE
-   T-RESET
+   T-RESET ;
+
+public
+
+: TEST-BATCH ( -- )
+   TEST-INIT
+   s" references-primitive" [: PRIM-REF-TURNS ;] TALK
+   s" references-primitive-batch" [: PRIM-BATCH-TURNS ;] TALK
+    s" references-primitive-batch-failure" [: PRIM-BATCH-FAIL-TURNS ;] TALK
+   s" references-primitive-declaration" [: PRIM-DECL-TURNS ;] TALK
+   s" references-primitive-source-changed" [: PRIM-MISSING-TURNS ;] TALK
+   s" references-primitive-coverage" [: PRIM-COVER-TURNS ;] TALK
+   s" references-primitive-conflict" [: PRIM-CONFLICT-TURNS ;] TALK
+   SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
+   T-REPORT ;
+
+: TEST ( -- )
+   TEST-INIT
    TEST-EXIT-TIMEOUT
    TEST-LIFECYCLE
    TEST-ANSWERS-AT-ONCE

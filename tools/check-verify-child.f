@@ -183,6 +183,11 @@ variable POS                            \ where the next of the open documents' 
 DYNAMIC-BUFFER OPEN-AT n                \ each open document's path's offset in IN and length, then its text's
 variable OPEN-N
 variable SUBJECT-AT                     \ where the subject's bytes start in IN
+variable SUBJECT-U
+variable SUBJECT-PATH-AT
+variable SUBJECT-PATH-U
+variable BATCH?                         \ framed subjects share this isolated child
+variable BATCH-INDEX
 variable RD
 variable FAILED
 variable STOP                           \ the code a throw ended the composition with, 0 for none
@@ -311,13 +316,18 @@ variable OF-U                           \ 0 for the other forms
 
 \ The subject's bytes, after the open documents in IN.
 : SUBJECT$ ( -- ptr u8 n )
-   SUBJECT-AT @ IN IN-U @ SUBJECT-AT @ - ;
+   SUBJECT-AT @ IN SUBJECT-U @ ;
+
+: SUBJECT-PATH$ ( -- ptr u8 n )
+   BATCH? @ if SUBJECT-PATH-AT @ IN SUBJECT-PATH-U @ exit then
+   0 SCRIPT-ARGV$ ;
 
 
 \ stdin read, and a load of an open document's file given its text.
 : READ-STDIN ( -- )
    READ-IN
    READ-OPEN
+   IN-U @ SUBJECT-AT @ - SUBJECT-U !
    ['] OPEN-TEXT is VERIFY:SUPPLIED ;
 
 
@@ -347,10 +357,10 @@ variable OF-U                           \ 0 for the other forms
 
 
 : VERIFY-CUR-ACT ( -- )
-   SUBJECT$ 0 SCRIPT-ARGV$ VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
+   SUBJECT$ SUBJECT-PATH$ VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 
 : VERIFY-CUR ( -- )
-   0 SCRIPT-ARGV$ SOURCE-ROOT:DIRNAME
+   SUBJECT-PATH$ SOURCE-ROOT:DIRNAME
    [: VERIFY-CUR-ACT ;] SOURCE-ROOT:WITH ;
 
 
@@ -638,7 +648,7 @@ variable OF-U                           \ 0 for the other forms
 \ stops it with its loader line, from which the parent writes its packet and
 \ its status line.
 : VERIFY-ALL ( -- )
-   0 SCRIPT-ARGV$ DIAG-FILE!
+   SUBJECT-PATH$ DIAG-FILE!
    1 1 0 DIAG-ORIGIN!
    ['] DUPLICATE-LINE is VERIFY:ON-DUPLICATE
    ['] FILE-LINE is VERIFY:ON-FILE
@@ -741,7 +751,47 @@ public
    2 SCRIPT-ARGV$ OF-U ! OF-A !
    true ;
 
+\ Each frame owns its subject and its open-document snapshot. The zero path
+\ length ends the stream. A new scope and fresh output deduplication follow.
+: BATCH-NEXT ( -- bool )
+   STR-SPACE COUNT-TO {: pu:n :}
+   LF COUNT-TO {: su:n :}
+   pu 0= if su 0<> POS @ IN-U @ <> or if TABLE-FAULT then false exit then
+   POS @ pu + su + IN-U @ > if TABLE-FAULT then
+   POS @ SUBJECT-PATH-AT !
+   pu SUBJECT-PATH-U !
+   POS @ pu + SUBJECT-AT !
+   su SUBJECT-U !
+   POS @ pu + su + POS !
+   0 OPEN-N !
+   begin
+      POS @ IN-U @ >= if TABLE-FAULT then
+      POS @ IN c@ LF <>
+   while OPEN-ENTRY repeat
+   POS @ 1+ POS !
+   true ;
+
 : MAIN ( -- )
+   SCRIPT-ARGC 2 = if
+      0 SCRIPT-ARGV$ s" --batch" CORE-STR= if
+         true BATCH? !
+         1 SCRIPT-ARGV$ OF-U ! OF-A !
+         READ-IN
+         ['] OPEN-TEXT is VERIFY:SUPPLIED
+         0 POS !
+         0 BATCH-INDEX !
+         begin BATCH-NEXT while
+            0 SEEN-N ! 0 SEEN-U !
+            VERIFY:SOURCE-RESET-ISOLATED-VISITS
+            SUBJECT-PATH$ HELD? if s" held" RESULT else VERIFY-CLOSURE then
+            OUT-FD s" check-verify: batch-end " WRITE
+            OUT-FD BATCH-INDEX @ FD-N
+            OUT-FD NEWLINE
+            1 BATCH-INDEX +!
+         repeat
+         exit
+      then
+   then
    SCRIPT-ARGC 2 = if READ-STDIN PREVERIFY exit then
    CURSOR-ARG {: at:n :}
    at 0 >= if at VERIFY:CURSOR! then

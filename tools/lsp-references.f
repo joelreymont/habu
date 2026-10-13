@@ -251,6 +251,9 @@ variable H-U
 variable D-AT                            \ D's path in POOL,
 variable D-U
 variable CUR                             \ the subject being gathered, by its index,
+DYNAMIC-BUFFER BATCH-IDS n               \ subjects actually submitted in a primitive chunk
+variable BATCH-N
+variable BATCH-FALLBACK
 variable SUB-VISIT                       \ the visit its check declares the word in,
 variable TEXT-IN                         \ the probe's group whose file positions count in,
 TYPED-VARIABLE TEXT-OK bool              \ and whether its text has the digest read
@@ -1030,6 +1033,28 @@ private
 : READ-SRC ( ptr u8 n -- ptr u8 n )
    2dup [: SRC-ROOM ;] SOURCE:READ-WHOLE-FILE SRC-U ! ;
 
+: BATCH-TEXT ( ptr u8 n -- )
+   CUR$ LSP-CHECK:USES-BATCH-ADD
+   BATCH-N @ 1+ BATCH-IDS-RESERVE
+   CUR @ BATCH-N @ BATCH-IDS !
+   1 BATCH-N +! ;
+
+: BATCH-DISK ( -- )
+   CUR$ [: READ-SRC ;] catch {: code:n :} 2drop
+   code 0<> if
+      code LSP-TEXT:FS-RC? 0= if code throw then
+      CUR @ s" cannot be read" SUBJECT-MISS+ exit
+   then
+   0 SRC SRC-U @ BATCH-TEXT ;
+
+: BATCH-SUBJECT ( n -- )
+   CUR !
+   CUR$ NAMED? if exit then
+   CUR$ DOC-HOLDING MATCH option
+      some OF DOC-TEXT$ BATCH-TEXT ENDOF
+      none OF BATCH-DISK ENDOF
+   ;MATCH ;
+
 \ The subject's uses from a check of this text of its file.
 : FROM-TEXT ( ptr u8 n -- )
    CUR$ NAME$ [: CONTRIBUTE ;] LSP-CHECK:USES ;
@@ -1222,6 +1247,30 @@ public
       some OF DOC-TEXT$ FROM-TEXT ENDOF
       none OF FROM-DISK ENDOF
    ;MATCH ;
+
+\ The primitive has no source dependency reachability pass. A chunk shares
+\ one verifier process while each subject still gets its own checker scope,
+\ open-document snapshot, verdict and contribution to the existing store. An
+\ unclean child makes every submitted subject fall back to its own check.
+: GATHER-BATCH ( n n -- )
+   {: from:n count:n :}
+   NAME$ LSP-CHECK:USES-BATCH-BEGIN
+   0 BATCH-N !
+   from count + SUB-N @ min from ?do i BATCH-SUBJECT loop
+   BATCH-N @ 0= if exit then
+   LSP-CHECK:USES-BATCH-RUN
+   LSP-CHECK:USES-BATCH-CLEAN? 0= BATCH-FALLBACK !
+   BATCH-N @ 0 ?do
+      i BATCH-IDS @ CUR !
+      BATCH-FALLBACK @ if
+         CUR @ GATHER
+      else
+         i [: CONTRIBUTE ;] LSP-CHECK:USES-BATCH-RESULT 0= if
+            true BATCH-FALLBACK !
+            CUR @ GATHER
+         then
+      then
+   loop ;
 
 \ Once every subject is gathered: each file a location is in at whose bytes
 \ a use is kept named, then each subject whose check was not verified named

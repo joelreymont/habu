@@ -89,6 +89,8 @@ TYPED-VARIABLE SRC-T ptr u8              \ the tail of the word they are of,
 variable SRC-TU
 40 BUFFER: OUTCOME-B                     \ and what its check came to
 variable OUTCOME-U
+variable BATCH-CODE
+variable BATCH-K
 
 : ERR ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -156,10 +158,7 @@ variable OUTCOME-U
 
 \ The check of the bytes as the file at the path, for the uses of the tail,
 \ its verdict's name in OUTCOME-B.
-: CHECKED ( -- )
-   SRC-A @ SRC-U @ SRC-P @ SRC-PU @ SRC-T @ SRC-TU @
-   [: -1 swap DOC-EACH-BUT ;] CHECK-MS >MS
-   CHECK:VERIFY-BYTES-OF
+: USES-VERDICT ( CHECK:verdict -- )
    MATCH CHECK:verdict
       verified OF true VERIFIED ! s" verified" COMPLETE-OUTCOME ENDOF
       refused OF s" refused" COMPLETE-OUTCOME ENDOF
@@ -175,6 +174,11 @@ variable OUTCOME-U
       ENDOF
       deferred OF s" deferred" COMPLETE-OUTCOME ENDOF
    ;MATCH ;
+
+: CHECKED ( -- )
+   SRC-A @ SRC-U @ SRC-P @ SRC-PU @ SRC-T @ SRC-TU @
+   [: -1 swap DOC-EACH-BUT ;] CHECK-MS >MS
+   CHECK:VERIFY-BYTES-OF USES-VERDICT ;
 
 \ A completed check's lines as the probe, then GATHER.
 : PROBED ( [ -- ] -- [ -- ] )
@@ -237,6 +241,40 @@ public
    gather [: PROBED ;] catch {: rc:n :} drop
    LSP-DEFS:DEFS-UNPROBE
    rc 0<> if rc throw then ;
+
+\ Primitive references can check a bounded group in one isolated child.
+\ Each result is exposed as the usual single probe while GATHER runs.
+: USES-BATCH-BEGIN ( ptr u8 n -- )
+   0 BATCH-CODE ! CHECK:VERIFY-BATCH-BEGIN ;
+
+: USES-BATCH-ADD ( ptr u8 n ptr u8 n -- )
+   [: -1 swap DOC-EACH-BUT ;] CHECK:VERIFY-BATCH-ADD ;
+
+: USES-BATCH-RUN ( -- )
+   [: CHECK-MS >MS CHECK:VERIFY-BATCH-RUN ;] catch BATCH-CODE ! ;
+
+: USES-BATCH-N ( -- n )  CHECK:VERIFY-BATCH-N ;
+
+: USES-BATCH-CLEAN? ( -- bool )
+   BATCH-CODE @ 0<> if false exit then
+   CHECK:VERIFY-BATCH-CLEAN? ;
+
+: USES-BATCH-CHECKED ( -- )
+   BATCH-K @ CHECK:VERIFY-BATCH-RESULT USES-VERDICT ;
+
+\ False leaves the subject untouched so the caller can retry it one-shot.
+: USES-BATCH-RESULT ( n [ -- ] -- bool )
+   {: k:n gather :}
+   false PUBLISHABLE !
+   false VERIFIED !
+   BATCH-CODE @ 0<> if false exit then
+   k BATCH-K !
+   [: USES-BATCH-CHECKED ;] catch 0<> if false exit then
+   CHECK:VERIFY-BATCH-COMPLETE? 0= if false exit then
+   gather [: PROBED ;] catch {: rc:n :} drop
+   LSP-DEFS:DEFS-UNPROBE
+   rc 0<> if rc throw then
+   true ;
 
 \ What the last check USES ran came to.
 : OUTCOME$ ( -- ptr u8 n )  OUTCOME-B OUTCOME-U @ ;
