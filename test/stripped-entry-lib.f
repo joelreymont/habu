@@ -6,7 +6,7 @@
 \ nothing; each row reopens package STRIPPED-ENTRY-TEST and runs the cases it
 \ owns in a tree of its own.
 require test/gate-common.f
-require lib/engine-candidate.f
+require src/lib/engine-candidate.f
 
 package STRIPPED-ENTRY-TEST
 

@@ -100,8 +100,8 @@
 \ topological orders of the reference graph, so "any two build orders" means
 \ "any two topological orders" for this table.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f

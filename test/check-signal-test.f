@@ -52,19 +52,19 @@
 \ bounds. The scratch is under this process's runner root, which its registered
 \ cleanup removes.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/test.f
-require lib/fs.f
-require lib/fs-list.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/signal.f
-require lib/engine-candidate.f
-require lib/test/runner.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-list.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/signal.f
+require src/lib/engine-candidate.f
+require src/lib/test/runner.f
 require src/core/include.f               \ SOURCE-ROOT:CANON-OS, the name --json-errors gives a file
 
 package CHECK-SIGNAL-TEST
@@ -317,7 +317,7 @@ NO-FD FEED-WR !
    LOG-TEXT LOG$ LOG-TEXT LOG-CAP READ-ALL type cr ;
 
 \ check.f names each step of its answer that threw (tools/check-core.f
-\ CHK-SAY-THROW), and lib/process.f a walk of the child's tree it could not
+\ CHK-SAY-THROW), and src/lib/process.f a walk of the child's tree it could not
 \ finish (PROC-WALK-REPORT).
 : LOG-THREW? ( -- bool )
    LOG-TEXT LOG$ LOG-TEXT LOG-CAP READ-ALL {: a:ptr u:n :}

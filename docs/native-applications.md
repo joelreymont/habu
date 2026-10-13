@@ -56,7 +56,7 @@ before its own `exit(0)` — returning from `MAIN` fires the hook. The engine's
 fail-closed exits (`ENGINE-ERROR:*`, rc 70/74/75/76) do not call it; a broken
 engine runs no program code. The exit code is preserved across the call, and a
 hook that dies or throws cannot recurse, because the cell is already empty when
-it runs. `lib/fs-mutate.f` is the one library that arms it: registering a
+it runs. `src/lib/fs-mutate.f` is the one library that arms it: registering a
 cleanup path installs `CLEANUP-AT-EXIT`, and a vector another component holds is
 chained rather than replaced.
 
@@ -90,7 +90,7 @@ checked `getpagesize` binding. It is a runtime fact for mapping descriptions;
 it does not replace Habu's fixed `STACK-ABI:PAGE-BYTES` guard-window contract or
 change allocation growth. The binding resolves on its first call, image
 preparation forgets that address and the next call resolves it again, so an
-image never carries a process-owned function address. `lib/os-memory-test.f`
+image never carries a process-owned function address. `src/lib/os-memory-test.f`
 compares the answer with `getconf PAGESIZE` on the host that runs it, before
 and after `IMAGE-LIFECYCLE:PREPARE`.
 
@@ -149,7 +149,7 @@ The maker child opens the capture window **before anything the application can
 `require` is loaded**, so the application's own require closure is the only
 library content inside the restored span. The maker's two halves enforce that:
 `tools/aot-build-open.f` loads a lib-free prefix (`src/habu/aot-window-latch.f`,
-`src/os/script-argv.f`; `lib/executable-build.f`, which it also requires, is
+`src/os/script-argv.f`; `src/lib/executable-build.f`, which it also requires, is
 baked into the engine), opens the window, loads the application and latches the
 span; `tools/aot-build-core.f` then brings in the
 linker, `src/habu/app-image.f` and the eight `lib` modules it pulls in, which all
@@ -206,7 +206,7 @@ in. Each entry declares how the entry initialises it:
 | `APP-ENTRY:XT-CELL` | `src/habu/layout.f` | entry xt | the entry stores the address of the word this image starts, the token an entry record would have written with `APP-IMAGE:START!` |
 | `ENV-Z`, `ENV-A`, `ENV-U`, `ENV-QA`, `ENV-QU` | `src/os/env-base.f` | fresh | nothing: they are `GETENV`/`ENV=?` cursors, written from the caller's arguments before they are read, and the fresh mapping's zero is their correct start |
 | the registry head, count and lock | `src/core/dynamic-storage.f` | fresh | nothing: a runtime instance with no mapping, no members and an open lock is correct, and that is the zero a fresh anonymous mapping holds |
-| the `WITH-BYTES` scope stack | `lib/memory.f` | fresh | nothing: depth zero with no cached mapping is the same fresh state |
+| the `WITH-BYTES` scope stack | `src/lib/memory.f` | fresh | nothing: depth zero with no cached mapping is the same fresh state |
 | `RBASE-CELL` | `src/habu/layout.f` | text base | the entry stores this image's own text content base — the address of its first instruction — which `rbase` answers and the engine's own entry writes at boot |
 | `PZB` | `src/core/util.f` | fresh bytes, `PATH-CAP` + 1 | nothing: it is the one path scratch, and `PATHZ` writes the caller's path and its NUL into it before `PATH0` hands it to `open` inside that one call |
 
@@ -255,7 +255,7 @@ a deliberate act that has to state, cell by cell, why the entry may own it.
 
 **Baked data an application needs is carried by name.** Printing an integer,
 parsing one or hashing reaches a table the engine baked below every window —
-`lib/string.f`'s `STR-MAX-I64$` and `STR-MIN-I64$`, SHA-256's `KK` and `HH0` —
+`src/lib/string.f`'s `STR-MAX-I64$` and `STR-MIN-I64$`, SHA-256's `KK` and `HH0` —
 whose bytes no entry store can recompute and no fresh mapping can supply. An
 engine that bakes TASK also bakes FFI; application declarations then extend the
 engine's FFI table. Its names, paths, row metadata and counters travel by the
@@ -288,7 +288,7 @@ the buffer itself. Until it was claimed, *every* path a stripped image opened
 was refused at `caller=PATH0 target=PZB`, which is where Tender's three entry
 points stopped; `HBT-STRIPPED-OPEN-PATH` is that reproducer, and it now opens
 `/dev/null` and prints. The site every entry point stopped at next is
-`lib/image-lifecycle.f`'s hook registry, reached by any library that registers
+`src/lib/image-lifecycle.f`'s hook registry, reached by any library that registers
 its cleanup on first use: its lock and its two hook counters are claimed
 **fresh**, because a new process has registered nothing, and
 `HBT-STRIPPED-LIFECYCLE-REGISTRY` reads the count out of a stripped image, and
@@ -347,8 +347,8 @@ process's areas. macOS reservations with both current and maximum protection
 `PROT_NONE` allocation retains nonzero maximum permissions and is still checked;
 `test/proc-maps.f` creates both kinds and verifies the distinction. macOS images
 use ASLR, so their segments have no fixed-executable exemption, and macOS has no
-Linux `[heap]` exemption. `mmap` is reached from `lib/memory.f`, `lib/vector.f`,
-`lib/aio.f` and more, and a foreign allocator calls the primitive without
+Linux `[heap]` exemption. `mmap` is reached from `src/lib/memory.f`, `src/lib/vector.f`,
+`src/lib/aio.f` and more, and a foreign allocator calls the primitive without
 passing any of them — and `aot-closure.f CELL-MAPPED?` asks it, less the four
 areas a process already holds before its program runs. Three are where the image
 holds them too: the `MAP_FIXED` `DATA` mapping, the dictionary/code region
@@ -357,7 +357,7 @@ links are both `EXEC`-type ELFs at the same fixed base and a cell holding a
 string's last three bytes lands in that band whenever the third byte is a letter
 (four cells of `HBT-STRIPPED-LIFECYCLE-HOOK`'s window do). The fourth is the brk
 area the kernel names `[heap]`, excluded because nothing can point into it: no
-Habu word allocates from the break, every allocation `lib/memory.f` makes being
+Habu word allocates from the break, every allocation `src/lib/memory.f` makes being
 an `mmap`. It is also where ordinary data lands — arm64 randomizes the break
 over a gigabyte above the executable's end, so the band sits somewhere in
 `[0x7a4000,0x407a4000)`, moves with every build, and swallows 32-bit-shaped

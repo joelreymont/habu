@@ -2,13 +2,13 @@
 \ private source root, which also links the checkout's compiler sources.
 
 1 set-tier
-require lib/executable-build.f
-require lib/string.f
-require lib/fmt.f
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/image-lifecycle.f
+require src/lib/executable-build.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/image-lifecycle.f
 require tools/native-build-core.f
 require tools/native-source-view.f
 
@@ -49,7 +49,7 @@ public
    SOURCE-VIEW:OPEN
    s" tools/native-build.f" SOURCE-VIEW:COLLECT
    s" nest/entry.f" SOURCE-VIEW:COLLECT
-   s" lib/c2-owner.f" SOURCE-VIEW:COLLECT
+   s" src/lib/c2-owner.f" SOURCE-VIEW:COLLECT
    SOURCE-VIEW:KEY {: key:ptr size:n :}
    size 64 T=
    key KEY-BUF size BYTE-COPY

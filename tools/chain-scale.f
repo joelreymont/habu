@@ -76,13 +76,13 @@
 \ against the milli-slopes this tool PRINTS, so a run that passes the ratchet
 \ and a run that reports slopes below the bound are the same run.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/float.f
-require lib/fmath.f
-require lib/argv.f
-require lib/tier.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/float.f
+require src/lib/fmath.f
+require src/lib/argv.f
+require src/lib/tier.f
 
 -7703 constant E-SCALE-UNCOMPILED
 -7704 constant E-SCALE-EXCEEDED

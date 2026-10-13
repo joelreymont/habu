@@ -1,7 +1,7 @@
 \ The supplied binders may only resolve to the authenticated input identities
 \ with the parent and second bounds carried by those identities.
-require lib/test.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/test/subject.f
 require test/c2-forall-input.f
 
 package C2-FORALL-INPUT-REFUSALS

@@ -1,12 +1,12 @@
 \ native-trap.f - checked tests for the terminator that does not return.
 
-require lib/test.f
-require lib/string.f
-require lib/le.f
-require lib/fmt.f
-require lib/process.f
-require lib/process-argv.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/le.f
+require src/lib/fmt.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/engine-candidate.f
 require test/compiler/native-chain-fixture.f
 require src/compiler/native/publish.f
 require src/arch/arm64/machine.f

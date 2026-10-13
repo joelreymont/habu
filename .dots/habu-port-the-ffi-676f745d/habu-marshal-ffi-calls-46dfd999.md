@@ -9,11 +9,11 @@ blocks:
   - habu-run-bin-hb-6378f297
 ---
 
-Problem: `lib/ffi-abi.f:3-5,563-566` are AAPCS64 (8 register slots each kind).
-Acceptance: on `HB-TARGET-LINUX-X86-64?` the planner uses 6 integer and 8 float register slots and stack placement for the rest; `VARIADIC` keeps only its stack-placement meaning because K11a/K11b set `al` on every call, so the `lib/aio.f:281,285` `syscall` rows (no `VARIADIC`; `aio.f:275-278` names the seam) need no re-declaration and the seam opens (the `lib/aio.f` comment and `docs/aio.md` say so); cases: more than 6 integer arguments, a dirty `al` before a variadic call (the case habu-port-the-ffi-676f745d names), VM registers after a call.
-Files: `lib/ffi-abi.f`, `lib/ffi-test.f`, `lib/aio.f` (comment), `docs/aio.md`.
-Verify: ThinkPad `hb-x64 --load lib/ffi-test.f`; spark `bin/hb --load lib/ffi-test.f` unchanged.
+Problem: `src/lib/ffi-abi.f:3-5,563-566` are AAPCS64 (8 register slots each kind).
+Acceptance: on `HB-TARGET-LINUX-X86-64?` the planner uses 6 integer and 8 float register slots and stack placement for the rest; `VARIADIC` keeps only its stack-placement meaning because K11a/K11b set `al` on every call, so the `src/lib/aio.f:281,285` `syscall` rows (no `VARIADIC`; `aio.f:275-278` names the seam) need no re-declaration and the seam opens (the `src/lib/aio.f` comment and `docs/aio.md` say so); cases: more than 6 integer arguments, a dirty `al` before a variadic call (the case habu-port-the-ffi-676f745d names), VM registers after a call.
+Files: `src/lib/ffi-abi.f`, `src/lib/ffi-test.f`, `src/lib/aio.f` (comment), `docs/aio.md`.
+Verify: ThinkPad `hb-x64 --load src/lib/ffi-test.f`; spark `bin/hb --load src/lib/ffi-test.f` unchanged.
 Depends: habu-add-sysv-abi-75f86980 (K11b), habu-run-bin-hb-6378f297 (X6), habu-sign-extend-c-c7f55f0e (R1).
-Route: Alder (shared: lib/ffi-abi.f, lib/ffi-test.f, lib/aio.f, docs/aio.md).
+Route: Alder (shared: src/lib/ffi-abi.f, src/lib/ffi-test.f, src/lib/aio.f, docs/aio.md).
 Ownership: krait (Intel lane).
 Claim: unassigned.

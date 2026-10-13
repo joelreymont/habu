@@ -14,8 +14,8 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 SETUP = '''
-require lib/aio.f
-require lib/serial.f
+require src/lib/aio.f
+require src/lib/serial.f
 package SERIAL-TEST
 CAST: BLEN>N ( NUM:byte-len -- n )
 create BODY 1048578 allot

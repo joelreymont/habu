@@ -1,16 +1,16 @@
 \ object-image-test.f - focused tests for tools/object-image.f.
 \ Run: bin/hb --load tools/object-image-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/content-key.f
-require lib/object.f
-require lib/object-link.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/content-key.f
+require src/lib/object.f
+require src/lib/object-link.f
 require tools/object-image.f
 
 package OBJIMG-TEST

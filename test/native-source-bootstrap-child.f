@@ -2,8 +2,8 @@
 \ caller activates the owned source input. The parent supplies a private copy.
 
 1 set-tier
-require lib/executable-build.f
-require lib/fs.f
+require src/lib/executable-build.f
+require src/lib/fs.f
 require tools/native-build-core.f
 require tools/native-source-view.f
 

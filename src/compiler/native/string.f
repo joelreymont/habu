@@ -19,9 +19,9 @@
 \ raises the engine's DATA floor (src/habu/layout.f DATA-FLOOR-CELL) past
 \ itself, and every rewind of DATA stops at the floor.
 
-require lib/prelude.f
-require lib/errors.f
-require lib/string.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/string.f
 require src/habu/layout.f
 
 package NSTR

@@ -1,8 +1,8 @@
 \ outer.f - the outer interpreter written in Habu: numbers, the dictionary
 \ search, then the readers src/habu/interpret.f's loop reads a buffer with.
 
-require lib/prelude.f
-require lib/ieee754.f
+require src/lib/prelude.f
+require src/lib/ieee754.f
 require src/core/bytes.f
 require src/habu/layout.f
 require src/habu/xref.f

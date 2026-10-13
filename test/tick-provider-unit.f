@@ -1,6 +1,6 @@
 \ The original require entry still reaches a replaceable source-unit callback.
 require src/habu/verify-source.f
-require lib/tier.f
+require src/lib/tier.f
 
 : TICK-CHANGE-UNIT ( ptr u8 n ptr u8 n ptr u8 [ -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr q :}

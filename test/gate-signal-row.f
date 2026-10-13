@@ -20,13 +20,13 @@
 \ the test left open across every spawn. Nothing here closes it, and the test
 \ reads its end of file as "no process under the row is left".
 
-require lib/errors.f
-require lib/string.f
-require lib/adt/option.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/adt/option.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
 
 package GATE-SIGNAL-ROW
 

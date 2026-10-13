@@ -1,19 +1,19 @@
 \ check-all-errors-core.f - reusable all-errors checker core.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/vector.f
-require lib/fs.f
-require lib/source.f
-require lib/process.f
-require lib/process-argv.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/vector.f
+require src/lib/fs.f
+require src/lib/source.f
+require src/lib/process.f
+require src/lib/process-argv.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/json-writer.f
-require lib/source-lex.f
-require lib/verify-diagnostics.f
+require src/lib/source-lex.f
+require src/lib/verify-diagnostics.f
 
 \ The checked source verifier is a load-time dependency: every checker scope
 \ opened below replays source through VERIFY. It is required here, at top

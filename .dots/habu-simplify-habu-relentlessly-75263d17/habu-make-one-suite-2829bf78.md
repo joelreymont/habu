@@ -8,4 +8,4 @@ closed-at: "2026-08-24T01:27:17.333010+02:00"
 close-reason: landed and verified on master
 ---
 
-Use one executable suite registry, explicitly run or delete orphan lib/tools tests, then delete schedule-lint and duplicated phase/slice/inline coverage authorities.
+Use one executable suite registry, explicitly run or delete orphan src/lib/tools tests, then delete schedule-lint and duplicated phase/slice/inline coverage authorities.

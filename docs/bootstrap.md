@@ -170,8 +170,8 @@ HABU_ALLOW_BOOTSTRAP=1 and a working Gforth. Run the driver from the
 repository root only when auditing recovery or a changed seed:
 
     HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth bin/hb --load \
-      lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
-      lib/process.f lib/process-argv.f lib/process-env.f \
+      src/lib/errors.f src/lib/string.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f \
+      src/lib/process.f src/lib/process-argv.f src/lib/process-env.f \
       tools/ddc-verify.f tools/ddc-drive.f
 
 A past match does not establish that the current source or engine matches.
@@ -240,7 +240,7 @@ Setting it therefore isolates both the build host and installation from the
 checkout's engine.
 
 Before installation replaces the engine, the staged candidate boots from a fresh
-copy of `src/` and `lib/`, requires its compiler and compiles and executes a
+copy of `src/`, requires its compiler and compiles and executes a
 tier-1 probe. A timeout, failed process or wrong answer refuses promotion and
 removes the temporary copy; the existing engine and stamp remain intact. Running
 from the copied tree also checks that provided modules survive relocation.
@@ -286,7 +286,7 @@ A working directory that is itself a Habu tree (it holds `src/core/util.f`) is
 the root instead, so inside a checkout the checkout's sources load
 (`test/source-root-exe-test.f`). The working directory is searched before the
 root, so while the root is the executable's tree, one that is not a tree must
-not hold copies of engine files: its `lib/errors.f` loads as an application
+not hold copies of engine files: its `src/lib/errors.f` loads as an application
 file beside the engine's, a duplicate definition, exit 78. With no tree at
 either place the working directory is the root, and its copy is the engine's
 row, never loaded.

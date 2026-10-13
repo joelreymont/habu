@@ -1,6 +1,6 @@
 \ A live build action must refuse nested public entries before setup changes
 \ the outer build's output, source callbacks, or unit selection.
-require lib/test.f
+require src/lib/test.f
 require tools/native-unit-build-core.f
 
 package NATIVE-BUILD

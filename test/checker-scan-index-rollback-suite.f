@@ -19,10 +19,10 @@
 \ the record arena it indexes (TFX-RESIZE), so the other row's section 5 proves
 \ the grown case answers instead.
 
-require lib/string.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/string.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require test/checker-scan-index-lib.f
 
 \ Reopened, not imported: the cases run inside the fixture's package, where

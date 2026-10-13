@@ -2053,7 +2053,7 @@ public
 \ ---- FFI: AAPCS64 trampolines ----
 \ `ffi-call` keeps the old fast path: load 8 cells from argbuf into x0-x7,
 \ BLR fn, push x0. `ffi-call-abi`/`ffi-call-abi-r` add x8, d0-d7, caller-packed
-\ stack spill, and integer/float return variants for the checked lib/ffi-abi.f API.
+\ stack spill, and integer/float return variants for the checked src/lib/ffi-abi.f API.
 \ argbuf must be a >=8-cell (64-byte) buffer; trailing cells are ignored by a
 \ callee that takes fewer args. XDS (x19) is AAPCS64 callee-saved so the C call
 \ preserves the data stack; x30 is framed by FPRIM (these prims have a BLR).
@@ -2101,7 +2101,7 @@ public
 \ the same, as libsyscall's os/tsd.h _os_tsd_get_base does for the kernels
 \ that kept the CPU number there: the result is the thread's TSD base on
 \ both, and an address inside one thread's pthread structure is no other
-\ thread's. lib/ffi-callback-test.f OWNER-IDENTITY checks the running host:
+\ thread's. src/lib/ffi-callback-test.f OWNER-IDENTITY checks the running host:
 \ the owner each thread claims with sits at one offset from its pthread_self.
 : CB-SELF, ( n -- ) {: r:n :}
    HB-TARGET-LINUX? IF
@@ -2322,7 +2322,7 @@ public
 \ body runs and disabled and given back after it (crash.f C-SIGNAL-STACK).
 \ It writes two cells of the task's own: the TCB address into the task's data
 \ region, and DONE into the status once the body returns. RUNNING is not among
-\ them - ACTIVATE stores it before pthread_create (lib/task.f), which orders it
+\ them - ACTIVATE stores it before pthread_create (src/lib/task.f), which orders it
 \ before this code runs, so a store here could only land after a TASK:HALT that
 \ took the cell RUNNING -> HALT-REQ in the create window and put RUNNING back.
 \
@@ -2331,7 +2331,7 @@ public
 \ everything the body wrote precedes it. STLR carries no offset, so the status
 \ address is formed first - x11 is free here, the body has returned and x9 was
 \ just reloaded.
-\ An owner that only polls TASK:DONE? - lib/task.f TASK-STATE@, an acquire load
+\ An owner that only polls TASK:DONE? - src/lib/task.f TASK-STATE@, an acquire load
 \ - therefore sees the body's writes without joining; pthread_join is no longer
 \ the only edge.
 : BTASK-ENTRY ( -- )
@@ -2384,13 +2384,13 @@ $150 constant CBT-BYTES
 \ Entered from a stub with the slot in x9. The row is claimed before the region
 \ it names is read: LDAR the row owner; this thread already is nested through
 \ this slot and claims nothing; 0 is CASAL'd 0 -> self; another thread dies.
-\ CB-ROW-BUSY, read or answered by a lost CAS, is a lib/task.f mover, which
+\ CB-ROW-BUSY, read or answered by a lost CAS, is a src/lib/task.f mover, which
 \ holds the row for a few steps that call nothing and wait on nothing, so the
 \ holder is never this thread and never waits on it: the thunk spins on LDAR
 \ with the YIELD hint, on C's thread and under C's frame, until the row is
 \ handed back, and claims it as the mover left it - a row dropped meanwhile
 \ reads unbound below and dies, unless a bind took it first. A region stays
-\ mapped while a row names it (lib/task.f UNEXPOSE and TASK-END drop the rows
+\ mapped while a row names it (src/lib/task.f UNEXPOSE and TASK-END drop the rows
 \ first), so only then the region, its CB-OWNER claimed the way BCB-ENTER claims
 \ it, a live frame (CB-XDS <> 0) and the slot's xt. The VM is the frame the
 \ region's outbound call published; the xt is a ( -- ) dispatch that reads its
@@ -3412,7 +3412,7 @@ public
 \ full-ascending). The supplied extent becomes active allocation authority,
 \ saved alongside XDS so normal return and nonlocal unwind restore the caller.
 \ It must be a guarded mapping: an unguarded extent is a CALLER error the
-\ program can fix and recover from, so it throws STACK-ABI:E-STACK-UNGUARDED (lib/errors.f owns the code; inlined
+\ program can fix and recover from, so it throws STACK-ABI:E-STACK-UNGUARDED (src/lib/errors.f owns the code; inlined
 \ the way BFINALLY inlines BTHROW, which is why this word sits below it) rather
 \ than exiting the process. A malformed DESCRIPTOR is still the fail-closed
 \ STACK-BOUNDS exit: that one can arrive from a saved frame or a task, where
@@ -3466,7 +3466,7 @@ public
 \ it opened is refused that way from its end, rc 74, as every buffer is
 \ (habu2.f C-DEF-SOURCE-END). The clean return gives the stack back here, and
 \ the text must have left nothing: residue is dropped and refused by name with
-\ STACK-ABI:E-EVAL-RESIDUE (lib/errors.f owns the code), BTHROW inlined as in
+\ STACK-ABI:E-EVAL-RESIDUE (src/lib/errors.f owns the code), BTHROW inlined as in
 \ BRUNSTACK above.
 : B-EVAL-CLOSED ( -- )
    LBL LBL LBL LBL {: have:label take:label back:label done:label :}
@@ -3994,7 +3994,7 @@ private
    16 15 STLR,                                       \ release-publish the set bit
    done LBL, ;
 
-\ The design seal's two writers (lib/policy.f, docs/policy.md). The harness
+\ The design seal's two writers (src/lib/policy.f, docs/policy.md). The harness
 \ admits packages and seals before it loads the design; once POLICY-NDICT-CELL
 \ is set either prim writes `hb: policy: sealed` and exits ENGINE-ERROR:POLICY,
 \ so nothing the design can reach widens its own vocabulary. Each refusal is one

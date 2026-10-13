@@ -3,7 +3,7 @@
 \ supplies its exact code, execution contract and direct implementation edges.
 \ Rows retired by code reclamation never become live again when bytes are reused.
 
-require lib/prelude.f
+require src/lib/prelude.f
 require src/compiler/target/model.f
 require src/compiler/native/fetch-check.f
 require src/habu/xref.f

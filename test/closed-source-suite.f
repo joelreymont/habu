@@ -1,7 +1,7 @@
 \ closed-source-suite.f - generated source and loaded files run as closed
 \ programs.
 \
-\ A source-generating definer renders its declaration into a lib/codegen.f
+\ A source-generating definer renders its declaration into a src/lib/codegen.f
 \ buffer and hands the text to the loader's boundary, INCLUDE-EVALUATE
 \ (src/core/include.f), the word TYPE-DECL:TDECL-EVAL-XT is bound to for every
 \ generated core declaration. That boundary is evaluate-closed: the text runs
@@ -12,12 +12,12 @@
 \ cell it never pushed throws 70 with the caller's cells intact. A file loaded
 \ by require, include or --load crosses the same boundary, so
 \ test/closed-source-residue-bad.f, which ends `1 2`, is refused E-EVAL-RESIDUE
-\ through `required`. lib/type/deftype.f calls evaluate-closed itself and the
-\ FFI declarer in lib/ffi-abi.f crosses INCLUDE-EVALUATE; test/deftype-suite.f
-\ and lib/ffi-test.f certify their products.
-require lib/codegen.f
-require lib/errors.f
-require lib/test.f
+\ through `required`. src/lib/type/deftype.f calls evaluate-closed itself and the
+\ FFI declarer in src/lib/ffi-abi.f crosses INCLUDE-EVALUATE; test/deftype-suite.f
+\ and src/lib/ffi-test.f certify their products.
+require src/lib/codegen.f
+require src/lib/errors.f
+require src/lib/test.f
 
 package CLOSED-SOURCE-TEST
 

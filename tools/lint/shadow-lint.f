@@ -5,25 +5,25 @@
 \ Two classes of false alarm are avoided so the report only names real clobbers.
 \ First, a definer keyword written inside a string literal — for example
 \ `s" declare it with variable or create"` — is prose, not a definition, so
-\ per-file scanning runs through the string-aware lexer in lib/source-lex.f,
+\ per-file scanning runs through the string-aware lexer in src/lib/source-lex.f,
 \ which consumes s" / s\" / ." / c" bodies as opaque spans exactly like the real
 \ parser. Second, a definition inside a `package ... ;package` block is a scoped
 \ tail (docs/forth.md § Packages: unqualified global lookup never finds it), so it
 \ cannot clobber a global prim and is not flagged; only true global-scope shadows
 \ are reported.
-\ Run: bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f lib/source-lex.f tools/lint/shadow-lint.f
+\ Run: bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f src/lib/source-lex.f tools/lint/shadow-lint.f
 \ Prim-name extraction still tokenizes habu1.f: SCAN-PRIMS reads prim names out of
 \ its `s" NAME"` literals, so that pass keeps the plain whitespace tokenizer.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/vector.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/vector.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require lib/source-lex.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/source-lex.f
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package SHADOW-LINT-TOOL
 
@@ -92,8 +92,8 @@ variable SI
 \ mistaken for a definition. ----
 \ Negative so error-code-lint keeps it globally unique — a positive code is a
 \ shared sysexits status, and 83 collided with the engine's SEAL-VIOLATION.
-\ -4800 sits in the unclaimed gap between lib/codegen's E-CG codes (-4700/-4701)
-\ and the -5000 cluster; lib/errors.f owns -2000..-4499 and the verdict policy
+\ -4800 sits in the unclaimed gap between src/lib/codegen's E-CG codes (-4700/-4701)
+\ and the -5000 cluster; src/lib/errors.f owns -2000..-4499 and the verdict policy
 \ blocks E-PV / E-TRV own -4500..-4699. It claims no reserved range.
 -4800 constant E-SHADOW-UNTERM
 \ The second lexer defect: a primitive-axiom row with no header or no

@@ -15,9 +15,9 @@
 \ so test/prim-owner-scope.f measures them in its unsealed window.
 \
 \ Run: bin/hb --load test/owner-access.f
-require lib/string.f
-require lib/test.f
-require lib/test/subject.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/subject.f
 
 package OWNER-ACCESS-TEST
 

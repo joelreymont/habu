@@ -23,13 +23,13 @@
 \
 \ The sources and modules stay in the printed directory.
 
-require lib/string.f
-require lib/fmt.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/test.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/test.f
 require src/arch/wasm/leb.f
 require test/wasm/harness.f
 

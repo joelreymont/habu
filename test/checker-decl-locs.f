@@ -31,7 +31,7 @@
 \ lifetime case a verifier child cannot show: the only frame that rewinds a
 \ located row there is the child's own, at the end of its composition.
 
-require lib/test.f
+require src/lib/test.f
 require src/habu/verify-source.f
 require test/checker-decl-locs-lib.f
 

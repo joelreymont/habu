@@ -1,9 +1,9 @@
 \ A task operation at load time caches the MAKER's resolved addresses in package
-\ FFI's symbol table for lib/task.f's FUNCTION: rows. That cache is process
+\ FFI's symbol table for src/lib/task.f's FUNCTION: rows. That cache is process
 \ state, so the stripped link must run IMAGE-LIFECYCLE:PREPARE - which is what
 \ runs FFI's FORGET-SYMBOLS - before it captures, and the restored image must
 \ resolve the symbols afresh on its own first task operation.
-require lib/task.f
+require src/lib/task.f
 
 package STRIPPED-LIFECYCLE-PREPARE-SUBJECT
 private
@@ -22,9 +22,9 @@ variable RAN
    WORKER TASK:KILL ;
 
 \ A WHOLE TASK CYCLE AT LOAD, which is both halves of this subject: it caches
-\ FFI's resolved symbols for lib/task.f's FUNCTION: rows, and it leaves behind
+\ FFI's resolved symbols for src/lib/task.f's FUNCTION: rows, and it leaves behind
 \ the TCB a killed task leaves - mappings returned and the five process-local
-\ cells cleared (lib/task.f TASK-RELEASE-MEM). Before that clear the stripped
+\ cells cleared (src/lib/task.f TASK-RELEASE-MEM). Before that clear the stripped
 \ link refused this file at the TCB cell holding the pthread_t, which no
 \ lifecycle hook owned and which a `create … does>` body gives the refusal no
 \ name for.

@@ -2,8 +2,8 @@
 \ Backend encoding, coalescing and spill plans are tested in native-select,
 \ native-regalloc, native-emit and native-address-spill.
 
-require lib/test.f
-require lib/prelude.f
+require src/lib/test.f
+require src/lib/prelude.f
 require src/compiler/native/abi.f
 require src/arch/arm64/machine.f
 

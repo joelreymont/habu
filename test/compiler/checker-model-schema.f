@@ -1,8 +1,8 @@
 \ checker-model-schema.f - Accepted and rejected checker programs.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
 
 package CHECKER-MODEL-PROOF
 private
@@ -270,10 +270,10 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
 \     certification into a refusal, and it is the only row that moves;
 \   - walking EVERY bundle as two never reaches this gate at all: the fixpoint
 \     self-check refuses the build, because `FIND-EXECUTABLE-IN-PATH`
-\     (lib/process-env.f) matches an `option` whose payload is itself a
+\     (src/lib/process-env.f) matches an `option` whose payload is itself a
 \     multi-cell layout and stops certifying. The shipped library depends on
 \     this walk, which is why the second mutation above has to name a width
-\     nothing in `lib/` uses.
+\     nothing in `src/lib/` uses.
 : BUILD-SCRUTINEE-VECTORS ( -- )
    s" a_multi_cell_bundle_is_popped_whole"
       s" CMV27 ( cmtwin cmwide -- cmtwin n ) MATCH cmwide cmwa OF CHECKER-MODEL-CASES:DROP-N ENDOF cmwb OF CHECKER-MODEL-CASES:DROP-N ENDOF ;MATCH"

@@ -60,8 +60,8 @@
 \ instruction. Nothing here can drift from what the description says, because
 \ nothing here is stated twice.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/native/regfile.f
 require src/compiler/native/machine.f
 

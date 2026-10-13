@@ -1,9 +1,9 @@
 \ native-catch.f - production `catch` compilation.
-require lib/test.f
-require lib/prelude.f
-require lib/string.f
-require lib/errors.f
-require lib/adt/option.f
+require src/lib/test.f
+require src/lib/prelude.f
+require src/lib/string.f
+require src/lib/errors.f
+require src/lib/adt/option.f
 require test/checker-assert.f
 require src/compiler/native/compiler.f
 

@@ -14,7 +14,7 @@ create DIAGS IO-CAP allot
 : EQ! ( n n -- ) <> if 79 throw then ;
 : YES! ( bool -- ) 0= if 79 throw then ;
 
-\ Whether the bytes at A start with B. lib/ is absent in the window, and
+\ Whether the bytes at A start with B. src/lib/ is absent in the window, and
 \ src/core/util.f CORE-STR= declares no effect, so it has no row to name.
 : STARTS? ( ptr u8 n ptr u8 n -- bool )
    {: a:ptr u:n b:ptr v:n :}

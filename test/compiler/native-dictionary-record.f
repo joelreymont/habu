@@ -1,7 +1,7 @@
 \ The compiler record boundary shares the engine's wordlist lookup.
 \ Tier-neutral by design: the indexed record and the live wordlist lookup are
 \ the engine's, and both tiers publish into the one dictionary.
-require lib/test.f
+require src/lib/test.f
 
 package NDICT-RECORD-FIXTURE
 

@@ -32,7 +32,7 @@
 \    the description is that it can be stated before a backend exists. The
 \    allocator's own suite takes it from here and allocates under it.
 
-require lib/test.f
+require src/lib/test.f
 require src/compiler/native/regfile.f
 require src/arch/arm64/machine.f
 require src/compiler/native/a64ir.f

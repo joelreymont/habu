@@ -29,13 +29,13 @@
 \
 \ Run: bin/hb --load test/replay-binding.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/test/eval.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/eval.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require src/habu/verify-source.f
 require test/reopen-binding-lib.f
 require test/reopen-binding-late.f
@@ -619,7 +619,7 @@ variable ERR-U
       SESSION
    RC @ 0 T=
    s" inside evaluate the refusal is a throw, and the pair still closes" T-LABEL
-   S\" require lib/test/eval.f\nCHECKER-SCOPE-START-NEUTRAL\ns\" : RB-E ( -- n ) 5 ;\" TEST-EVAL:RC\nCHECKER-SCOPE-DONE\ns\" closed\" type\ns\" \" rot die\n"
+   S\" require src/lib/test/eval.f\nCHECKER-SCOPE-START-NEUTRAL\ns\" : RB-E ( -- n ) 5 ;\" TEST-EVAL:RC\nCHECKER-SCOPE-DONE\ns\" closed\" type\ns\" \" rot die\n"
       SESSION
    RC @ ENGINE-ERROR:OVERLAY-OPEN T=
    OUT$ s" closed" CONTAINS? TTRUE
@@ -627,7 +627,7 @@ variable ERR-U
    s" a live undefine is refused by name before it retires the word" T-LABEL
    S\" : RB-UK ( -- n ) 7007 ;\nCHECKER-SCOPE-START-NEUTRAL\nundefine RB-UK\nCHECKER-SCOPE-DONE\n"
       s" RB-UK" REFUSED
-   S\" require lib/test/eval.f\n: RB-UK ( -- n ) 7007 ;\nCHECKER-SCOPE-START-NEUTRAL\ns\" undefine RB-UK\" TEST-EVAL:RC\nCHECKER-SCOPE-DONE\nRB-UK .\ns\" \" rot die\n"
+   S\" require src/lib/test/eval.f\n: RB-UK ( -- n ) 7007 ;\nCHECKER-SCOPE-START-NEUTRAL\ns\" undefine RB-UK\" TEST-EVAL:RC\nCHECKER-SCOPE-DONE\nRB-UK .\ns\" \" rot die\n"
       SESSION
    RC @ ENGINE-ERROR:OVERLAY-OPEN T=
    OUT$ s" 7007" CONTAINS? TTRUE
@@ -709,7 +709,7 @@ S\" undefine RB-DOES:RB-MK s\" RB-DOES:RB-MK;does\" s\" -- n\" trust" TEST-EVAL:
 E-TRUST-UNRESOLVED T=
 
 \ From top level a candidate replay lands in the global wordlist. A primitive's
-\ name is refused there, as the live load below refuses it. lib/prelude.f's
+\ name is refused there, as the live load below refuses it. src/lib/prelude.f's
 \ `true`, a word the engine baked from source, is the loaded twin of its
 \ definition, so a replay of that definition certifies, as check-verify
 \ replays the engine's own files.

@@ -1,4 +1,4 @@
-require lib/policy.f
+require src/lib/policy.f
 require src/habu/verify-source.f
 
 : CHECK-OK ( -- )

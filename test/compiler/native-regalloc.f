@@ -92,7 +92,7 @@
 \ file builds, so the assignment asserted is theirs and not this file's own
 \ compilation.
 
-require lib/test.f
+require src/lib/test.f
 require src/compiler/native/select.f
 require src/compiler/native/regalloc-verify.f
 require src/arch/arm64/machine.f

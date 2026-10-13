@@ -15,11 +15,11 @@
 \
 \ `u.` was already right (it divided unsigned all along) and is here because the
 \ two printers share one itoa shape: a future edit to either must keep both.
-\ The checked renderer in lib/fmt.f has its own regression in lib/fmt-test.f.
+\ The checked renderer in src/lib/fmt.f has its own regression in src/lib/fmt-test.f.
 
-require lib/test.f
-require lib/string.f
-require lib/genio.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/genio.f
 
 package PRINT-MIN-INT
 private
@@ -36,7 +36,7 @@ variable SINK-OVER                      \ a write past the buffer, latched
 variable SINK-DEV
 
 \ ---- the sink device ---------------------------------------------------------
-\ A write operation may not throw (lib/genio.f), so an overrun is latched and
+\ A write operation may not throw (src/lib/genio.f), so an overrun is latched and
 \ checked once at the end instead.
 : SINK-RESET ( -- )
    0 SINK-N !  0 SINK-OVER ! ;

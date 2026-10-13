@@ -1,12 +1,12 @@
 \ seed.f - checked native seed installation helpers.
 
-require lib/errors.f
-require lib/span.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/codesign.f
+require src/lib/errors.f
+require src/lib/span.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/codesign.f
 require src/core/sha256.f
 
 64 constant SEED-SHA256-HEX-U
@@ -163,15 +163,15 @@ variable SEED-LAST
 : SEED-PREPARE-BUILD-ARGV ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
-   s" lib/process.f"  >LEN PROC-ARGV+
-   s" lib/process-argv.f"  >LEN PROC-ARGV+
-   s" lib/process-env.f"  >LEN PROC-ARGV+
-   s" lib/codesign.f"  >LEN PROC-ARGV+
+   s" src/lib/errors.f"  >LEN PROC-ARGV+
+   s" src/lib/string.f"  >LEN PROC-ARGV+
+   s" src/lib/memory.f"  >LEN PROC-ARGV+
+   s" src/lib/fs.f"  >LEN PROC-ARGV+
+   s" src/lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" src/lib/process.f"  >LEN PROC-ARGV+
+   s" src/lib/process-argv.f"  >LEN PROC-ARGV+
+   s" src/lib/process-env.f"  >LEN PROC-ARGV+
+   s" src/lib/codesign.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint-main.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+

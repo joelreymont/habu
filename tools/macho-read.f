@@ -1,7 +1,7 @@
 \ Read the container extents of Habu's ARM64 Mach-O executables. Offsets come
 \ from load commands and section records, never from the inspecting host.
-require lib/le.f
-require lib/string.f
+require src/lib/le.f
+require src/lib/string.f
 
 package MACHO-READ
 

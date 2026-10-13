@@ -52,7 +52,7 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
    S\" package HBT-DIVZ\n: LOADING ( -- ) tier@ 1 <> if -9050 throw then ;\nLOADING\nvariable A\nvariable B\nvariable R\n: DZ ( n n -- n ) / ;\n: TRY ( -- n ) [: A @ B @ DZ R ! ;] catch ;\npublic\n: RUN ( -- ) 7 A ! 0 B ! TRY dup . cr -6400 <> if -9051 throw then 7 A ! 2 B ! TRY 0 <> if -9052 throw then R @ 3 <> if -9053 throw then ;\n;package\n: MAIN ( -- ) HBT-DIVZ:RUN ;\n" ;
 
 : HBT-SPAN-SRC$ ( -- ptr u8 n )
-   S\" require lib/span.f\nrequire lib/memory.f\npackage HBT-SPAN\n: LOADING ( -- ) tier@ 1 <> if -9060 throw then ;\nLOADING\n64 SPAN-BUFFER: SB\npublic\n: RUN ( -- )\n   SB SPAN:LEN . cr\n   128 MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: s :}\n   s\" span\" s SPAN:COPY\n   s 0 4 SPAN:SUB SPAN:$ type cr\n   s 8 SPAN:SKIP 16 SPAN:TAKE SPAN:LEN . cr\n   s MEM:FREE-SPAN ;\n;package\n: MAIN ( -- ) HBT-SPAN:RUN ;\n" ;
+   S\" require src/lib/span.f\nrequire src/lib/memory.f\npackage HBT-SPAN\n: LOADING ( -- ) tier@ 1 <> if -9060 throw then ;\nLOADING\n64 SPAN-BUFFER: SB\npublic\n: RUN ( -- )\n   SB SPAN:LEN . cr\n   128 MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: s :}\n   s\" span\" s SPAN:COPY\n   s 0 4 SPAN:SUB SPAN:$ type cr\n   s 8 SPAN:SKIP 16 SPAN:TAKE SPAN:LEN . cr\n   s MEM:FREE-SPAN ;\n;package\n: MAIN ( -- ) HBT-SPAN:RUN ;\n" ;
 
 : HBT-SPAN-EXPECTED$ ( -- ptr u8 n )
    S\" 64\n\nspan\n16\n\n" ;
@@ -71,16 +71,16 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
 \ image it writes; and the engine's text-base cell, which src/os/linux/layout.f
 \ locates those slots from and src/habu/aot-owned-cells.f claims TEXT-BASE.
 \ Left at the fresh mapping's zero that cell made this program build without a
-\ word of complaint and take SIGSEGV inside DLSYM-SLOT's `@`. lib/ffi-abi.f is
+\ word of complaint and take SIGSEGV inside DLSYM-SLOT's `@`. src/lib/ffi-abi.f is
 \ baked into the engine (src/habu/layout.f puts its buffer block at a fixed
-\ engine offset; `require lib/ffi-abi.f` compiles nothing), so on the engine's
+\ engine offset; `require src/lib/ffi-abi.f` compiles nothing), so on the engine's
 \ maker and on the linker image alike the table lies below the window and
 \ src/habu/aot-owned-cells.f ENGINE-CARRY claims it; this program reaches no
 \ word of the linker's load, so it links on the image (test/preloaded-engine.f
 \ rule 3). test/stripped-preloaded-runtime.f drives the maker directly for the
 \ same claim; this row takes the hb-build path.
 : HBT-AOT-FFI-SRC$ ( -- ptr u8 n )
-   S\" require lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: GETPID-CALL getpid ( -- i32 ) ;FUNCTION\n: MAIN ( -- ) GETPID-CALL 0 > if 1 else 0 then . cr ;\n" ;
+   S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: GETPID-CALL getpid ( -- i32 ) ;FUNCTION\n: MAIN ( -- ) GETPID-CALL 0 > if 1 else 0 then . cr ;\n" ;
 
 \ Run an image at a path of its own and hold it to its whole output, for a case
 \ that builds somewhere other than HBT-AOT-OUT or HBT-REPL-OUT.
@@ -164,7 +164,7 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
 
 \ A `create ... does>` definer whose clause yields a multi-cell value, built and
 \ RUN as an image: the clause is compiled at tier 1 (LOADING asserts the tier),
-\ the created word yields lib/span.f's two-cell span, and the span set it belongs
+\ the created word yields src/lib/span.f's two-cell span, and the span set it belongs
 \ to - allocate, copy, skip, take, sub, release - is exercised through that
 \ value. Nothing short of running the image shows the created word's row
 \ surviving the build (dot habu-give-a-does-97cd0db2).
@@ -229,7 +229,7 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
 \ A program requiring a module of the linker's lib closure that the engine does
 \ not bake, and calling a word of it.
 : HBT-REQUIRED-SRC$ ( -- ptr u8 n )
-   S\" require lib/fmt.f\n: MAIN ( -- ) 42 FMT:.INT cr ;\n" ;
+   S\" require src/lib/fmt.f\n: MAIN ( -- ) 42 FMT:.INT cr ;\n" ;
 
 \ The same program without its require: it names a word of the linker's
 \ closure that it never required.
@@ -237,14 +237,14 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
    S\" : MAIN ( -- ) 42 FMT:.INT cr ;\n" ;
 
 \ A build driver's shape: tools/app-build.f and tools/build-profile.f run their
-\ work through lib/executable-build.f's WITH. The engine bakes that module, so
+\ work through src/lib/executable-build.f's WITH. The engine bakes that module, so
 \ this program's require is a no-op on every engine and WITH lies below the
 \ seal watermark.
 : HBT-EXBUILD-SRC$ ( -- ptr u8 n )
-   S\" require lib/executable-build.f\n: MAIN ( -- ) 1 [: 1+ . cr ;] EXECUTABLE-BUILD:WITH ;\n" ;
+   S\" require src/lib/executable-build.f\n: MAIN ( -- ) 1 [: 1+ . cr ;] EXECUTABLE-BUILD:WITH ;\n" ;
 
 \ THE KEYED LINKER IMAGE REFUSES BOTH PROGRAMS BY NAME
-\ (test/preloaded-engine.f rule 3). The image loaded lib/fmt.f with the linker,
+\ (test/preloaded-engine.f rule 3). The image loaded src/lib/fmt.f with the linker,
 \ before its maker latched the band, so the first program's require resolves to
 \ that copy and the second program's FMT:.INT names one without a require. Each
 \ closure reaches a word compiled outside the window, and the maker refuses the
@@ -253,7 +253,7 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
 \ name. The first program's module is one the engine does not bake: a baked
 \ module's words lie below the engine's seal watermark, where the band starts
 \ (src/habu/aot-closure.f PRE-WINDOW?), so every maker carries them and the
-\ image links a program that requires one. lib/executable-build.f is such a
+\ image links a program that requires one. src/lib/executable-build.f is such a
 \ module (BUILD-AOT-EXBUILD).
 : KEYED-PRE-WINDOW-REFUSED ( ptr u8 n -- ) {: src:ptr srcu:n :}
    HBT-SPAN-SRC src srcu WRITE-ALL
@@ -288,7 +288,7 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
    KEYED-PRE-WINDOW-JSON ;
 
 \ THE ENGINE LINKS THE BUILD DRIVER, and runs it, because it bakes
-\ lib/executable-build.f: WITH lies below the seal watermark and every maker
+\ src/lib/executable-build.f: WITH lies below the seal watermark and every maker
 \ carries it. Both makers link it: the keyed linker image, then the
 \ source-loaded maker, each running its own maker rather than taking the
 \ other's object from the store.

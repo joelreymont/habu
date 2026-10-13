@@ -570,7 +570,7 @@ the target contracts, while the device tests establish implemented behavior.
 
 [R11] Current source-language guide: `docs/forth.md`
 
-[R12] Catch behavior evidence: `lib/unicode.f` and `.dots/habu-checker-linear-scope-6218899c/habu-prove-catch-restores-2f368434.md`
+[R12] Catch behavior evidence: `src/lib/unicode.f` and `.dots/habu-checker-linear-scope-6218899c/habu-prove-catch-restores-2f368434.md`
 
 [R13] Native fatal trap semantics: `src/compiler/native/trap.f`
 

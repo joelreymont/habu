@@ -28,7 +28,7 @@ lives here; build, test and environment rules live in
   checked callers compile at both tiers and an outside checked caller is
   refused by name. A checked `[']` of it, by its own name or an `EXPORT`
   alias's, is admitted and refused exactly where that call is. The seed
-  primitive `set-tier` is such a row alone: package `TIER` (`lib/tier.f`) owns
+  primitive `set-tier` is such a row alone: package `TIER` (`src/lib/tier.f`) owns
   it and `TIER:SELECT` is how any other scope selects a tier. Top-level source
   is not checked: there `'` yields the xt and a call runs the primitive. An
   engine primitive (`src/habu/prims.f`) that a `TRUSTED:` body outside the
@@ -315,9 +315,9 @@ public
   is the root. No variable or word sets it. The working directory is searched
   before the engine root, so while the root is the executable's tree, a
   working directory that is not a tree must not hold copies of engine files:
-  its `lib/errors.f` is an application file, and loading it beside the
+  its `src/lib/errors.f` is an application file, and loading it beside the
   engine's is a duplicate definition, exit 78. With no tree at either place
-  the working directory is the root, so its `lib/errors.f` is the engine's
+  the working directory is the root, so its `src/lib/errors.f` is the engine's
   row and is never loaded. A relative `--load` entry is relative to the
   working directory alone; a dependency keeps the root that resolved it for
   its own loads; absolute paths bypass the search; the process working
@@ -368,7 +368,7 @@ public
   `does>` and a later `MK;does` is refused, rc 78 either way
   (test/does-clause-record-child.f).
 - A **public** definition whose tail a **private** word of the same package owns
-  is the forwarder pattern (`lib/task.f` publishes `: PREPARE ( ptr n -- )
+  is the forwarder pattern (`src/lib/task.f` publishes `: PREPARE ( ptr n -- )
   PREPARE ;` over its private `PREPARE`): legal, but both effects must move the
   same number of CELLS, because the bare tail binds the private word and a
   definition's contract is read from that binding
@@ -406,7 +406,7 @@ public
   lookup and fail-closed misuse (`public`/`private`/`;package` outside a
   package, nesting, missing names, qualified package names).
 - **A process can be sealed to the packages a harness admits.** After
-  `POLICY:SEAL` (`lib/policy.f`) the source the engine reads may name only its
+  `POLICY:SEAL` (`src/lib/policy.f`) the source the engine reads may name only its
   own definitions, the public words of the packages given to `POLICY:ALLOW`,
   and twelve keywords; any other token is `hb: not in vocabulary: <token> at
   <path>:<line>`, exit code 107. [policy.md](policy.md) has the vocabulary and
@@ -600,7 +600,7 @@ family argument and a bare tail of a family of arity > 0 are all refused. See
 rules](type-system.md#5-families-records-alternatives-and-generics).
 
 - `NEWTYPE name arity` registers a nominal cell family (`TK-CELL`), no closer:
-  arity `0` is an opaque scalar newtype (`lib/num-types.f`), arity `N` binds
+  arity `0` is an opaque scalar newtype (`src/lib/num-types.f`), arity `N` binds
   positional params.
 - Family identity is the exact `(package, tail)` pair: a package family may
   share a tail with a global family or another package's, even at different
@@ -660,7 +660,7 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   `create … does>` clause's rows follow the same rule, with a definition's own
   value boundaries (`DOES-IN-SLOT` / `DOES-OUT-SLOT` on the owner ABI): a clause
   yielding a multi-cell value compiles at tier 1 and the created word runs (`n
-  SPAN-BUFFER: NAME`, lib/span.f); only a clause row carrying an instance whose
+  SPAN-BUFFER: NAME`, src/lib/span.f); only a clause row carrying an instance whose
   width reads an open argument is `E-NELAB-BUNDLE`, at the definer.
 - `CAST: NAME ( source -- destination )` declares a checked retype: a reader
   keyword with no body and no `;`, publishing `NAME` as an identity whose call
@@ -875,8 +875,8 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   documented missing.
 - **An entry locals group goes on its own line.** A `{: … :}` group that binds
   at entry goes on the line after the one holding the name and stack effect,
-  indented as the body: three spaces, the indentation every body line in `lib/`
-  and `tools/` uses (`lib/fs.f:640-642`). The body starts on the next line. The
+  indented as the body: three spaces, the indentation every body line in `src/lib/`
+  and `tools/` uses (`src/lib/fs.f:640-642`). The body starts on the next line. The
   rule governs new and changed definitions; existing files are not reformatted
   for it.
 
@@ -922,7 +922,7 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
 - **One concern per file**: parser, renderer, DB, data table and driver are
   separate files, split at responsibility boundaries.
 - **Reusable helpers live in libraries**; shared behaviour lives in one owned
-  file. Run multi-file tools as `hb --load lib/a.f lib/b.f tool.f -- args…`:
+  file. Run multi-file tools as `hb --load src/lib/a.f src/lib/b.f tool.f -- args…`:
   sources before `--`, `SCRIPT-ARGV$` after it, fd 0 still tool data when stdin
   is not a tty. Use `--load` only with more than one source file.
 - **A leading `#!` line is a comment** in a program `hb` runs from a file or
@@ -975,7 +975,7 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   is reserved or already taken" (`VARIANT x`). Pick names that collide with
   nothing visible (`horizontal`, `vertical`).
 - **Declare application nominals with `DEFTYPE`** (`require
-  lib/type/deftype.f`): top-level `DEFTYPE NAME` mints a package-scoped type
+  src/lib/type/deftype.f`): top-level `DEFTYPE NAME` mints a package-scoped type
   with converters `>NAME ( n -- name )` and `NAME>N ( name -- n )`, the only
   crossing; the type tail is the lowercase fold (`SERIAL` → `serial`, so `(
   serial -- n )`); `DEFTYPE SERIAL` in `CAMERA` and in `FRAME` are distinct;
@@ -1028,7 +1028,7 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   linear operand, behind a pointer or in a quotation row too (7137
   `E-CAST-LINEAR`). Without a lifetime to prove, a public `STRUCTURE` plus a
   `TYPED-VARIABLE` or `TYPED-BUFFER` in the caller trades it for a runtime
-  refusal off the definer's zero image (`lib/json-write.f`).
+  refusal off the definer's zero image (`src/lib/json-write.f`).
 - **Concrete integers widen, roles do not.** `u8 -> u16 -> u32 -> cell/i64`
   widens implicitly when lossless; concrete narrowing and same-width sign
   changes need an explicit conversion. Generic `n` accepts structural integer
@@ -1127,11 +1127,11 @@ is the one partial operation; its two boundary cases are contracts every
 backend answers alike.
 
 - **A zero divisor throws `E-DIV-ZERO`.** `/`, `mod` and `/mod`, the only
-  dividing primitives, test the divisor and throw (`lib/errors.f`;
+  dividing primitives, test the divisor and throw (`src/lib/errors.f`;
   `src/habu/prims.f` re-registers the code for the emitters, which compile
-  before `lib/`). It is a catchable throw, not an exit: `[: a b / drop ;] catch
+  before `src/lib/`). It is a catchable throw, not an exit: `[: a b / drop ;] catch
   E-DIV-ZERO = if … then`. A structurally positive divisor says so in the type:
-  `lib/num-arithmetic.f`'s `positive-divisor` role makes the refusal
+  `src/lib/num-arithmetic.f`'s `positive-divisor` role makes the refusal
   unreachable. **The contract holds at every tier**: the interpreted primitive,
   a word compiled with `1 set-tier` and an AOT-built executable all throw the
   same code.
@@ -1298,7 +1298,7 @@ by name with the count it saw and the ceiling, and none truncates.
   assertion each. A regression distinguishes the defect it prevents.
 - Tests live in the native gate: `test/engine-suite.f`, focused `tools/*-test.f`
   fixtures, and source-specific checks wired through `test/run.f`.
-- Orchestration uses `lib/test.f`: suites, groups and tests (gate/row wording is
+- Orchestration uses `src/lib/test.f`: suites, groups and tests (gate/row wording is
   legacy). Adapters provide setup/teardown, argv/env policy, filters and process
   execution; test files require their own dependencies; groups are named,
   parallel or sequential; reports print group/test name, state and timing.
@@ -1310,7 +1310,7 @@ by name with the count it saw and the ceiling, and none truncates.
   once, assert counters, close the package.
 
 ```forth
-require lib/test.f
+require src/lib/test.f
 
 package FEATURE-TEST
 
@@ -1340,7 +1340,7 @@ T-REPORT
 ;package
 ```
 
-  `lib/test.f` is the interface: `T*` assertions; `TEST:SETUP!`,
+  `src/lib/test.f` is the interface: `T*` assertions; `TEST:SETUP!`,
   `TEST:TEARDOWN!`, `TEST:DRAIN!`, `TEST:ARGS-BEGIN!`, `TEST:ARG+!`,
   `TEST:RUNNER!`, `TEST:STDIN-RUNNER!` install typed hooks; `TEST:GROUP SEQ|PARA
   name` opens a group (the mode token is mandatory, before the name);
@@ -1353,7 +1353,7 @@ T-REPORT
 - Run focused fixtures with their owning `tools/*-test.f`, and the full native
   suite when the impact warrants it (below), always through the owning gate
   script so assertion failures set the exit code.
-- Property generators use `lib/property.f`: `PROP:SEED!` makes a run
+- Property generators use `src/lib/property.f`: `PROP:SEED!` makes a run
   reproducible, and `PROP:RND%` mixes the generator's high bits before bounding
   a draw. Small bounds do not inherit the raw generator's short low-bit cycles:
   bound 2 produces repeats as well as alternations. The fixed-seed regression
@@ -1476,7 +1476,7 @@ passing suite.
   is the request rounded up to a cell.
 - **Large tool bundles are supported.** Never split tools to dodge DATA
   pressure. `create … allot` is dictionary-sized static storage; runtime-sized
-  buffers use `lib/memory.f` (`MEM-ALLOC-BYTES`, `MEM-ALLOC-64K-BUFFERS`),
+  buffers use `src/lib/memory.f` (`MEM-ALLOC-BYTES`, `MEM-ALLOC-64K-BUFFERS`),
   scaling with OS mappings rather than `DATA-SIZE`. Tools keep as many 64K
   buffers and spans as needed, one contiguous `MEM-ALLOC-64K-BUFFERS` span or
   many; the only limits are cell-size overflow checks and explicit OS allocation
@@ -1486,8 +1486,8 @@ passing suite.
   cell-rounded address.** `create`, hence `variable`, rounds the data pointer to
   a cell before publishing, and `align` does on request. So a `create … allot`
   block and `MEM-ALLOC-BYTES` memory are both cell-aligned for a cell-typed
-  reader such as `lib/json-read.f` `INIT`, and a row a foreign call reads as an
-  aligned C object needs no alignment word of its own (lib/net/curl.f's fd_sets
+  reader such as `src/lib/json-read.f` `INIT`, and a row a foreign call reads as an
+  aligned C object needs no alignment word of its own (src/lib/net/curl.f's fd_sets
   and out-parameter cells). `allot`, `c,` and `,` never realign: storage carved
   after byte-sized data is misaligned unless `align` precedes it, and such a
   reader refuses it (`E-STORAGE`).
@@ -1496,8 +1496,8 @@ passing suite.
   `E-UNDEFINED` in a checked body (`: W ( -- ) bl ;`). Use cells, explicit
   increments and comparisons, and the checked byte and string helpers. `0<>`,
   `true`, `false`, `fdup`, `fover`, `fdrop`, `f<=` and `f>=` come from
-  `lib/prelude.f`, which the engine already provides: writing `require
-  lib/prelude.f` documents the dependency but is not load-bearing. Never
+  `src/lib/prelude.f`, which the engine already provides: writing `require
+  src/lib/prelude.f` documents the dependency but is not load-bearing. Never
   re-derive `0 0=` / `0 0= 0=` by hand.
 - **Tool libraries keep checking enabled** for themselves and their callers;
   when removing a legacy unchecked span, keep hook restoration until it is gone.
@@ -1518,7 +1518,7 @@ passing suite.
   `\xNN`, `\z`, …) for direct JSON/source expected strings. `S\"` needs its
   delimiter space (`s\"\n"` is one undefined token) and reads `\u` as its own
   escape, so a fixture holding JSON writes `\\uXXXX`. Generated syntax from
-  fields uses checked byte/field helpers or `lib/json-write.f`.
+  fields uses checked byte/field helpers or `src/lib/json-write.f`.
 - **`ESC-DECODE ( ptr u8 n ptr u8 -- n bool )` decodes an escaped payload** by
   the engine's escape table: it reads the n source bytes, writes at most n bytes
   at the destination, which the caller provides, and answers the count written
@@ -1565,7 +1565,7 @@ passing suite.
 - **`IMAGE-LIFECYCLE:PREPARE` keeps a hook registered when it throws**: the
   entry goes only after the callback returns normally, so a release that refuses
   must not clear its own registered flag before rethrowing, or the next
-  `REGISTER`/`PREPARE` adds a second entry. Follow `lib/net/udp4.f`
+  `REGISTER`/`PREPARE` adds a second entry. Follow `src/lib/net/udp4.f`
   `REGISTER-CLEANUP`: set a private flag only after `IMAGE-LIFECYCLE:REGISTER`
   completes.
 
@@ -1710,7 +1710,7 @@ the rule.
 - **A `TYPED-BUFFER` element is a storage type, never bare `u8`.**
   `2 TYPED-BUFFER TB u8` is refused at the declaration,
   `habu: in TB: type this definer cannot store 'u8'` (exit 70); a byte row is
-  `n BUFFER: B` (lib/string.f), `( -- ptr u8 )`. A fixed element is a whole
+  `n BUFFER: B` (src/lib/string.f), `( -- ptr u8 )`. A fixed element is a whole
   allotted cell, and a stored `u8` would mint a `ptr u8` that cell `@` cannot
   read. **`DYNAMIC-BUFFER` is the one definer that does take `u8`**, because it
   allots no element storage and scales the index by the element's own width:
@@ -1722,7 +1722,7 @@ the rule.
   zeroed space on a cell-rounded address (measured: after `create A 1 allot
   create B`, `B FFI:>CELL 7 and` is 0 and the bytes read back zero), so a row
   a foreign call reads as an aligned C object needs no alignment word of its
-  own (lib/net/curl.f's fd_sets and out-parameter cells).
+  own (src/lib/net/curl.f's fd_sets and out-parameter cells).
 - **A `TYPED-BUFFER` or `LAYOUT-BUFFER` count is an integer literal, a word of
   effect `( -- n )`, or an expression.** The source pre-verifier reads the
   token before the definer as TEXT and never runs it (`verify-source.f`
@@ -1739,7 +1739,7 @@ the rule.
   n`), an engine constant such as `HIR:OPCODES` and a colon `( -- n )` pass. A
   word that takes input ends an expression whose value only the load computes,
   so `N 2 * TYPED-BUFFER B n`, `Q-MAX Q-SEM-N * TYPED-BUFFER Q-SEMS TASK:sem`
-  (lib/queue.f:42) and `4 CAP TYPED-BUFFER` for `CAP ( n -- n )` pass, as
+  (src/lib/queue.f:42) and `4 CAP TYPED-BUFFER` for `CAP ( n -- n )` pass, as
   they load. The load bounds every value (`src/core/layout-buffer.f`
   `LBUF-EXTENT?`): `0 constant Z  Z TYPED-BUFFER R n` passes pre-verification,
   and its run is refused with the definer's 7121, exit 67. The pre-verifier
@@ -1755,7 +1755,7 @@ the rule.
   outside its own state. The source pre-verifier (`verify-source.f`
   `TOP-PARSER?` with `'` and `char`, `BODY-PARSER?` with `char`, `[']` and
   `[char]`, `OPERAND`) skips it. The rest share `SOURCE:PARSING-KEYWORD?`
-  (`lib/source.f`): `lib/source-lex.f` reads the operand raw where it
+  (`src/lib/source.f`): `src/lib/source-lex.f` reads the operand raw where it
   makes the token and marks it (`LINT-LEX:OPERAND?`), as `LINT-LEX:OPERAND`
   marks a definer's name, and the reserved-name lint and the nominal pass skip
   a marked token; source discovery reads it with `SD-RAW` (`SD-STEP`); the
@@ -1808,7 +1808,7 @@ the rule.
   and `DEFLINEAR \` the type `\`, which it then refuses. The
   source pre-verifier reads every definer's name with `NAME-TOKEN`
   (`verify-source.f`). The nominal pass and the reserved-name lint work on
-  `lib/source-lex.f` tokens and ask `LINT-LEX:OPERAND` to read the token
+  `src/lib/source-lex.f` tokens and ask `LINT-LEX:OPERAND` to read the token
   after a definer again, because only they know the definer is at top level:
   inside a body `DEFLINEAR` is a call and a `(` after it opens a comment.
   `create \`, `variable \` and `1 constant \` name `\` the same way. A name the
@@ -1836,14 +1836,14 @@ the rule.
   the checker latches the created-word effect when it certifies the clause at
   the definer's `;` and stores it against the definer's symbol (`checker.f`
   `DOES-EFF-LATCH!`, the NORETS entry's CREATES cell); `NG-BUFFER`
-  (lib/type/deftype.f:61) certifies through it. A straight-line wrapper read
+  (src/lib/type/deftype.f:61) certifies through it. A straight-line wrapper read
   from source inherits the same row from the text. A wrapper of a RESIDENT
   definer is learned by the checker's own body walk (`checker.f`
   `WRAPN`/`WRAPC`/ `WRAPBENT`, taken by the same publish tail): a body that
   calls exactly one definer and never bends — no control frame, quotation,
   `exit`, `leave` or `recurse` — creates what that definer creates, so
   `CODEGEN:BUFFER` around `BUFFER-E` is a definer too, and `tools/check.f
-  lib/process-env-test.f` certifies `PROC-ENV-DIAG` (lib/process-env.f:93).
+  src/lib/process-env-test.f` certifies `PROC-ENV-DIAG` (src/lib/process-env.f:93).
   `TRUSTED:` changes neither answer: a trusted body is asserted, not checked,
   but its `does>` clause is still the declaration both paths record — the
   scanner reads the clause out of the trusted body (`verify-source.f`
@@ -1871,17 +1871,17 @@ the rule.
   resolves, so the pre-pass checks its uses itself: `FUNCTION:`'s word against
   its declaration group and the word a `generates:` row declares against the
   row (the next rule).
-  Measured: `require lib/ffi-abi.f  PROCESS-SYMBOLS  FUNCTION: G getpid ( --
+  Measured: `require src/lib/ffi-abi.f  PROCESS-SYMBOLS  FUNCTION: G getpid ( --
   i32 ) ;FUNCTION  : H ( -- n ) G ;` loads 0 and checked 70 (`E-UNDEFINED`
-  `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:48, used at :87), `CTX0`
-  (lib/process-command.f:441), `EVP-STORAGE` (lib/crypto/evp.f:134) and
-  `MY-SLOT` (lib/net/http-arena.f:120) were refused and pass. A misuse of a
+  `G`) before, 0 after; `SELF-PATH` (src/lib/engine-id.f:48, used at :87), `CTX0`
+  (src/lib/process-command.f:441), `EVP-STORAGE` (src/lib/crypto/evp.f:134) and
+  `MY-SLOT` (src/lib/net/http-arena.f:120) were refused and pass. A misuse of a
   product the mark covers is the run's `E-MISMATCH` (exit 70) and a typo in the
   same scope the run's `E-UNDEFINED`; `--verify-only`, which does not run,
   passes both. The mark covers only what follows the statement and only
   its own section: a use before it, from another package, or of a private
   product from outside its package is still refused by the pre-pass. It also
-  covers any other unresolved name there: in lib/aio-macos.f, private `AIO`
+  covers any other unresolved name there: in src/lib/aio-macos.f, private `AIO`
   after its `FUNCTION:` rows, the require-order miss of `REC-STATE@` (:64) is
   now the run's to judge. A `trust` row naming a word nothing defines where
   its record lands is the run's only under a mark in that same wordlist: the
@@ -1916,7 +1916,7 @@ the rule.
   every row a seeded engine has taken. A product `BYTE-COPY` or `BYTE-CHECK-N`
   used in `package P private` loads 0 and checks 70 (`E-INPUT-UNDERFLOW`).
 - **A definer that writes its word as text states what it makes with
-  `generates:`.** `+USER` (lib/task.f) and `COMMAND` (lib/process-command.f)
+  `generates:`.** `+USER` (src/lib/task.f) and `COMMAND` (src/lib/process-command.f)
   build a colon definition and run it through `INCLUDE-EVALUATE`, so no `does>`
   clause declares their words, and without a row the mark above leaves every
   use of them to the run. `generates: D ( effect )` at top level, after D's
@@ -1924,7 +1924,7 @@ the rule.
   cell (`checker.f` `CHECKER-GENERATES`) and the source pre-verifier records it
   from the text (`verify-source.f` `RECORD-GENERATES`), so every word D makes
   has that effect, as a `does>` definer's words have their clause's, and the
-  pre-pass checks its uses. `FUNCTION:` (lib/ffi-abi.f) needs no row: the
+  pre-pass checks its uses. `FUNCTION:` (src/lib/ffi-abi.f) needs no row: the
   pre-verifier reads its declaration group as the word's effect, an `i32`
   result as `n`. A statement naming D still marks its wordlist, so what the row
   does not declare stays the run's: `COMMAND`'s row declares `NAME`, not
@@ -1938,7 +1938,7 @@ the rule.
   later token uses it, and a `;FUNCTION` with no group read before it is a gap.
   A reached renderer no row or group declares is `W-CHECK-DEFERRED` at its
   token, so a `deferred` verdict always locates its gap.
-  Measured after `require lib/process-command.f
+  Measured after `require src/lib/process-command.f
   CMD:COMMAND C`: `: U ( -- ptr ptr u8 ) C ;`, the same with `C#VEC`, and
   `: U ( -- ) C#BUF drop ;` check 0 plain, under `--verify-only` and under
   `--all-errors`; `: U ( -- n ) C ;` checks 70 under all three, where without
@@ -1963,8 +1963,8 @@ the rule.
   head spelled so is. An effect holds at most 256 bytes (`GENR-SIG-CAP`): a
   longer one dies 76 in the load and 74 in the pre-pass. `undefine D` retires
   D's row with D's other facts, so a D defined again states what it makes
-  afresh. `tools/check.f` certifies `lib/process-command.f` and
-  `lib/process-task-test.f`.
+  afresh. `tools/check.f` certifies `src/lib/process-command.f` and
+  `src/lib/process-task-test.f`.
 - **A top-level token is checked as the load would run it, and nothing runs.**
   Under composition, in `tools/check.f`'s pre-pass, `--all-errors` and
   `--verify-only`, a top-level token the source pre-pass does not read as part
@@ -2020,8 +2020,8 @@ the rule.
   names the one word `create` makes. A word a top-level `create` or
   `variable` makes only pushes its cell: it opens none, and a body that calls
   it takes none of these flags from it (`checker.f` `TRUST-RAW`). Measured:
-  `require lib/test.f  1 1 T= NOSUCHX`, whose `T=` reaches lib/string.f's
-  `STR-MIN-I64$` through `FMT:.INT` (lib/fmt.f:104 `INT>NUM`), is
+  `require src/lib/test.f  1 1 T= NOSUCHX`, whose `T=` reaches src/lib/string.f's
+  `STR-MIN-I64$` through `FMT:.INT` (src/lib/fmt.f:104 `INT>NUM`), is
   `E-UNDEFINED-TOP-LEVEL` at `NOSUCHX` under `--verify-only`, as its load
   refuses it (rc 70), and after `: D ( n -- ) create , does> ( -- n ) @ ;
   5 D X`, `: G ( -- n ) NOSUCH ;` is `E-UNDEFINED` at `NOSUCH` there, as its
@@ -2244,7 +2244,7 @@ the rule.
   variable unifies with a structural type but not with a nominal ENUM or
   TYPEFAMILY. Declare `SUMTYPE foo-result 1` whose ok variant carries the
   payload and whose errors are nullary variants (the `numeric-result` idiom in
-  `lib/num-arithmetic.f`).
+  `src/lib/num-arithmetic.f`).
 - **An arity-1 SUMTYPE is spelled with its argument in a signature and bare in a
   `MATCH` selector.** `family<PKG:t>` in the effect (`wrong arity for type
   family` otherwise), `MATCH family` at the arm; never both together.
@@ -2275,7 +2275,7 @@ the rule.
   MY-CAP`); `test/cold-naming-test.f` checks the refusal and the accepted
   forms. A pre-hook word run at top level needs an external row too: without
   one the seal marks it `DNAME-INT` there, and a use dies `hb: internal engine
-  word: NAME`, rc 70, as `generates:` did in `lib/task.f` on
+  word: NAME`, rc 70, as `generates:` did in `src/lib/task.f` on
   `tools/build-fixpoint.f`'s `hb-host` and `hb-stdin` before its row
   (`src/core/checker.f`).
 - **With the hook cell empty a definition's declaration is its row, without
@@ -2377,7 +2377,7 @@ the rule.
   ```
 
   So a combinator that must catch its callback needs no cell to park it in
-  (lib/fs.f's walk), and `drop` on the quotation-typed value afterwards is
+  (src/lib/fs.f's walk), and `drop` on the quotation-typed value afterwards is
   admitted.
 - **`catch` restores the DEPTH of both stacks and never their contents.** On a
   throw `nv ' WORD catch` leaves `( x code )` where `x` is whatever the callee
@@ -2438,10 +2438,10 @@ the rule.
   not be dropped, with or without a catch. `TYPED-VARIABLE V XML:reader` and `1
   TYPED-BUFFER V XML:reader` are both refused at the declaration, so the
   one-slot `TYPED-BUFFER` route does not apply to a linear nominal. The three
-  shapes that work: open the handle INSIDE the caught body (`lib/xml-test.f
+  shapes that work: open the handle INSIDE the caught body (`src/lib/xml-test.f
   BAD`); where the handle must SURVIVE the caught failure, name the body and
-  call `['] WORD catch` (`lib/byte-edit-test.f`, `lib/xml-test.f`
-  `CAPACITY-AND-STATE`, `lib/json-read-test.f JRT-CATCH-BAD`), which survives
+  call `['] WORD catch` (`src/lib/byte-edit-test.f`, `src/lib/xml-test.f`
+  `CAPACITY-AND-STATE`, `src/lib/json-read-test.f JRT-CATCH-BAD`), which survives
   exactly while WORD's own throw paths leave the handle where they found it, the
   evidence the tick carries; or, where the failure is to propagate, catch
   nothing and dispose of the handle in the word that ends in `throw`
@@ -2486,13 +2486,13 @@ the rule.
   exits `$4F` before reading the text and prints nothing, as `evaluate` does.
   The open cases are under **Checked code and primitive boundaries**.
 - **A test takes a value out of a text with `TEST-EVAL`, never an `evaluate`
-  wrapper.** `lib/test.f` loads it: `TEST-EVAL:N ( ptr u8 n -- n )` evaluates a
+  wrapper.** `src/lib/test.f` loads it: `TEST-EVAL:N ( ptr u8 n -- n )` evaluates a
   text that must leave exactly one cell, `TEST-EVAL:FLAG ( ptr u8 n -- bool )`
   reads that cell with `0<>`, and `TEST-EVAL:RC ( ptr u8 n -- n )` is the
   text's `evaluate-closed` throw code, 0 when it loaded. N runs the text with
   plain `evaluate` at the top level of a constant closed text, so the closed
   floor sits under the text and N's store takes its one cell. Measured
-  (`lib/test/eval-test.f`): an empty text throws 70
+  (`src/lib/test/eval-test.f`): an empty text throws 70
   (`hb: interpret stack underdepth: TEST-EVAL:N!`), `1 2` throws
   `E-EVAL-RESIDUE`, `drop 1` throws 70 with the caller's cells intact, N runs
   inside the text of N, `: W ( -- bool ) s" 1" TEST-EVAL:N ;` is refused
@@ -2520,12 +2520,12 @@ the rule.
 ## Spans: a pointer that carries its reach
 
 When a word writes into a buffer or indexes one, pass a `SPAN:span<u8>` rather
-than a `ptr u8` and a separate length: `lib/span.f` bounds-checks every access
+than a `ptr u8` and a separate length: `src/lib/span.f` bounds-checks every access
 against the reach the span carries. Take the span from a producer — `n
 SPAN-BUFFER: NAME`, `n SPAN-CELLS: NAME`, `MEM:ALLOC-SPAN` — or narrow one you
 were handed with `SPAN:SKIP` / `SPAN:TAKE` / `SPAN:SUB`, which can never widen
 it. `SPAN:MAKE`, the one place an address and a number become a reach, is
-admitted in `lib/` and `src/` only; `tools/lint/bare-copy-lint.f` reports it
+admitted in `src/` except `src/examples/`; `tools/lint/bare-copy-lint.f` reports it
 (and bare `BYTE-COPY`) anywhere else. A read-only source stays the `( ptr u8 n
 )` string idiom. The reach is counted in bytes whatever the element type;
 `docs/type-system.md` § 11 has the measurement.

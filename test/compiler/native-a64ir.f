@@ -27,7 +27,7 @@
 \ own API, so the tier this file loads under decides how its own definitions
 \ compile and nothing it asserts.
 
-require lib/test.f
+require src/lib/test.f
 require src/compiler/native-effect.f
 require src/arch/arm64/machine.f
 require src/compiler/ir/symbol.f

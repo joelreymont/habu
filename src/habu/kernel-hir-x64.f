@@ -18,7 +18,7 @@
 \
 \ A stager that leaves a result count other than `out`, or reads an argument
 \ the function does not take, ends the build with REFUSE-RC.
-require lib/prelude.f
+require src/lib/prelude.f
 require src/compiler/ir/id.f
 require src/compiler/ir/symbol.f
 require src/compiler/ir/context.f

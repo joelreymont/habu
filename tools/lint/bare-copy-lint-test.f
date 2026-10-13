@@ -2,13 +2,13 @@
 \
 \ Every case is a hostile one: prose that reads like a call, a longer name that
 \ starts the same way, the mint under its imported spelling, and a path that
-\ contains `lib/` without being owned by it. The scan under test is the same
+\ contains `src/lib/` without being owned by it. The scan under test is the same
 \ LINT-SCAN the tree census runs, so a fixture that passes here is a fact about
 \ the census and not about a copy of its rule.
 
-require lib/test.f
-require lib/fs-mutate.f
-require lib/process-argv.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
+require src/lib/process-argv.f
 require tools/lint/bare-copy-lint.f
 
 package BARE-COPY-LINT
@@ -54,19 +54,20 @@ package BARE-COPY-LINT
 
 \ ---- ownership is an anchored path prefix -------------------------------------
 : BCT-PATHS ( -- )
-   s" lib/x.f" OWNED? TTRUE
+   s" src/lib/x.f" OWNED? TTRUE
    s" src/core/x.f" OWNED? TTRUE
-   s" lib/adt/x.f" OWNED? TTRUE
+   s" src/lib/adt/x.f" OWNED? TTRUE
    s" test/lib/x.f" OWNED? TFALSE
    s" tools/src/x.f" OWNED? TFALSE
+   s" src/examples/x.f" OWNED? TFALSE
    s" libx/y.f" OWNED? TFALSE
    s" srcs/y.f" OWNED? TFALSE
-   s" ./lib/x.f" OWNED? TFALSE
-   s" ./lib/x.f" REL$ OWNED? TTRUE
+   s" ./src/lib/x.f" OWNED? TFALSE
+   s" ./src/lib/x.f" REL$ OWNED? TTRUE
    s" ./test/x.f" REL$ OWNED? TFALSE ;
 
 : BCT-OWNED-EXEMPT ( -- )
-   s" lib/span.f" s" : F ( ptr u8 ptr u8 n -- ) BYTE-COPY ;" BCT-SCAN 0 T=
+   s" src/lib/span.f" s" : F ( ptr u8 ptr u8 n -- ) BYTE-COPY ;" BCT-SCAN 0 T=
    s" src/core/bytes.f" s" : F ( ptr u8 n -- ) SPAN:MAKE drop ;" BCT-SCAN 0 T=
    s" test/lib/x.f" s" : F ( ptr u8 ptr u8 n -- ) BYTE-COPY ;" BCT-SCAN 1 T= ;
 

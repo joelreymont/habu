@@ -70,8 +70,8 @@
 \ current single-task compilation discipline, exactly like the IR-CTX registry
 \ it is built on.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/digest.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
@@ -452,7 +452,7 @@ public
 \ with no free, so restoring the cell count after a failed grow would still
 \ leave the doubled span spent - a row that "did not happen" would consume the
 \ region anyway, and a retry loop would exhaust it. The tree already deleted an
-\ arena rollback for want of a consumer (lib/errors.f, -6654, 2026-08-05).
+\ arena rollback for want of a consumer (src/lib/errors.f, -6654, 2026-08-05).
 \
 \ Append one cell and mint its nominal index. The ctx is the allocator for
 \ growth and must be the arena's owner; a foreign context is a named reject.

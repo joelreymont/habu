@@ -2,7 +2,7 @@
 \ rows from NATIVE-LAYOUT, the owner the build uses to translate fixed slots.
 \ These values pin the retained source layout before target data separates.
 
-require lib/test.f
+require src/lib/test.f
 require tools/native-layout.f
 
 package CTARGET-LAYOUT-TEST

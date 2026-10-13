@@ -1,12 +1,12 @@
 \ Supported graph metadata survives source-effect destruction and a fresh boot.
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/fmt.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/fmt.f
+require src/lib/engine-candidate.f
 require test/whitebox-child.f
 
 package PAYLOAD-GRAPH-SUITE
@@ -70,7 +70,7 @@ variable SUBJECT-U
    s" src/os/env-base.f" ARG
    s" src/core/include.f" ARG
    s" src/core/sha256.f" ARG
-   s" lib/prelude.f" ARG
+   s" src/lib/prelude.f" ARG
    PROC-ENV-RESET
    s" HABU_PAYLOAD_TEST_ARTIFACT" >LEN ART$ >LEN PROC-ENV+
    s" HABU_PAYLOAD_TEST_ENGINE" >LEN WHITEBOX-CHILD:ENGINE$ >LEN PROC-ENV+

@@ -8,7 +8,7 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 SETUP = '''
-require lib/fs.f
+require src/lib/fs.f
 using XMODEM
 using BUF
 create INPUT HDR-BYTES allot
@@ -38,7 +38,7 @@ class Checks:
     def run(self, source, *, refused=False):
         path = self.out / 'case.f'
         path.write_text(source)
-        result = subprocess.run([str(ROOT / 'bin/hb'), '--load', 'lib/xmodem.f', str(path)],
+        result = subprocess.run([str(ROOT / 'bin/hb'), '--load', 'src/lib/xmodem.f', str(path)],
                                 cwd=ROOT, input='', text=True, capture_output=True, timeout=20)
         assert result.returncode == (70 if refused else 0), (result.stdout, result.stderr)
         if refused:

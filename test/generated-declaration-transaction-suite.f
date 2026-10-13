@@ -1,7 +1,7 @@
 \ generated-declaration-transaction-suite.f - atomic declaration publication.
 \ Run: bin/hb --load test/generated-declaration-transaction-suite.f
 
-require lib/test.f
+require src/lib/test.f
 require tools/prot-wid-probe.f
 require test/checker-assert.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture

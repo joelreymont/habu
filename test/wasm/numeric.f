@@ -10,10 +10,10 @@
 \ runs this file again after test/compiler/aot-mode.f, so the rows' words are
 \ compiled by the optimizing compiler as well as the default tier.
 
-require lib/test.f
-require lib/string.f
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 
 package WASM-NUMERIC-TEST
 private

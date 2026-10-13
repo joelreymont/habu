@@ -32,9 +32,9 @@
 \ harness's scratch cells in DATA; a flag column's 1 is the all-ones cell.
 \ The host checks each image's ELF header; running them is the peer's.
 require test/x86-64-boot-harness.f
-require lib/errors.f                    \ E-DIV-ZERO, the dividing rows' refusal
-require lib/fmt.f
-require lib/string.f
+require src/lib/errors.f                    \ E-DIV-ZERO, the dividing rows' refusal
+require src/lib/fmt.f
+require src/lib/string.f
 
 package X64K-PURE
 using X64ASM

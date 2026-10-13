@@ -1,5 +1,5 @@
 \ Fresh engine in a checkout whose lib, src and test directories are symlinks.
-require lib/test.f
+require src/lib/test.f
 
 using SOURCE-ROOT
 package SOURCE-ROOT-ALIAS-CHILD
@@ -36,33 +36,33 @@ private
 
 : PORTABLE ( -- )
    REQUIRE-N @ {: before:n :}
-   s" lib/errors.f" KNOWN
-   s" ./lib/errors.f" KNOWN
-   s" lib/../lib/errors.f" KNOWN
-   CWD$ s" lib/errors.f" JOIN KNOWN
-   CWD$ s" ./lib/../lib/errors.f" JOIN KNOWN
+   s" src/lib/errors.f" KNOWN
+   s" ./src/lib/errors.f" KNOWN
+   s" src/lib/../lib/errors.f" KNOWN
+   CWD$ s" src/lib/errors.f" JOIN KNOWN
+   CWD$ s" ./src/lib/../lib/errors.f" JOIN KNOWN
    \ src is a link too, so this checkout is a tree and the engine root.
    s" src/core/util.f" KNOWN
    REQUIRE-N @ before T=
    REQUIRE-SNAPSHOT
-   s" lib/errors.f" ENGINE-PROVIDES? TTRUE
-   s" lib/errors.f" RESOLVE TFALSE 2drop
+   s" src/lib/errors.f" ENGINE-PROVIDES? TTRUE
+   s" src/lib/errors.f" RESOLVE TFALSE 2drop
    REQUIRE-RESTORE ;
 
 : OWNED ( ptr u8 n -- )
-   [: s" lib/errors.f" required ;] WITH ;
+   [: s" src/lib/errors.f" required ;] WITH ;
 
 : DISTINCT ( -- )
-   ROOT$ s" a/lib/errors.f" JOIN UNKNOWN
+   ROOT$ s" a/src/lib/errors.f" JOIN UNKNOWN
    ROOT$ s" a" JOIN OWNED
-   ROOT$ s" b/lib/errors.f" JOIN UNKNOWN
+   ROOT$ s" b/src/lib/errors.f" JOIN UNKNOWN
    ROOT$ s" b" JOIN OWNED
    LOADED @ 11 T=
    \ Lexical branch/.. is CWD, but physical branch/.. is ROOT/other.
-   s" branch/../lib/errors.f" UNKNOWN
-   CWD$ s" branch/../lib/errors.f" JOIN UNKNOWN
-   s" branch/../lib/errors.f" required
-   CWD$ s" branch/../lib/errors.f" JOIN required
+   s" branch/../src/lib/errors.f" UNKNOWN
+   CWD$ s" branch/../src/lib/errors.f" JOIN UNKNOWN
+   s" branch/../src/lib/errors.f" required
+   CWD$ s" branch/../src/lib/errors.f" JOIN required
    LOADED @ 111 T= ;
 
 : RUN ( -- )

@@ -23,11 +23,11 @@
 \    inside an image ENGINE-ID:PATH$ names the image, so outside a gate its
 \    children would run the image too.
 
-require lib/errors.f
-require lib/fs.f
-require lib/process-argv.f
-require lib/content-key.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/fs.f
+require src/lib/process-argv.f
+require src/lib/content-key.f
+require src/lib/engine-candidate.f
 require test/keyed-image.f
 
 package APP-IMAGE-ENGINE

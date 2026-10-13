@@ -38,7 +38,7 @@ PAGE-BYTES constant BOOT-BYTES
 \ when they gained guard pages -- a $8000 header has no room for an inaccessible
 \ page -- so each is its own mapping whose base lives in a header cell. The cells
 \ are PER TASK, because DATA is per task (habu1.f task entry loads x20 from the
-\ TCB), and so are the mappings: lib/task.f PREPARE maps a task's own pair.
+\ TCB), and so are the mappings: src/lib/task.f PREPARE maps a task's own pair.
 $4800 constant RETURN-BASE-CELL
 $4808 constant LOOP-BASE-CELL
 
@@ -48,16 +48,16 @@ RETURN-BYTES 8 / constant RETURN-CELLS
 PAGE-BYTES constant LOOP-BYTES
 LOOP-BYTES LOOP-FRAME-BYTES / constant LOOP-FRAMES
 
-\ run-in-stack's refusal code. lib/errors.f owns it as E-STACK-UNGUARDED; the
+\ run-in-stack's refusal code. src/lib/errors.f owns it as E-STACK-UNGUARDED; the
 \ engine emitters (src/habu/habu1.f BRUNSTACK) and the Gforth recovery mirror
-\ compile before any lib/ file exists, so the same (code, name) pair is
+\ compile before any src/lib/ file exists, so the same (code, name) pair is
 \ re-registered here -- the one form tools/error-code-lint.f admits -- and
 \ test/stack-guard.f keeps the two spellings equal.
 -3802 constant E-STACK-UNGUARDED
 
 \ evaluate-closed's refusal of a text that left cells above its floor
 \ (src/habu/habu1.f B-EVAL-CLOSED), re-registered for the same reason:
-\ lib/errors.f owns it as E-EVAL-RESIDUE and test/compiler/native-eval.f keeps
+\ src/lib/errors.f owns it as E-EVAL-RESIDUE and test/compiler/native-eval.f keeps
 \ the two spellings equal.
 -3804 constant E-EVAL-RESIDUE
 

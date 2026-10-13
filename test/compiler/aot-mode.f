@@ -9,7 +9,7 @@
 \ variable and not a property of the subject.
 \
 \ Only code compiled after this file belongs to the tier, so a twin row lists
-\ the subject's harness (lib/test.f) BEFORE it: the subject's own require is
+\ the subject's harness (src/lib/test.f) BEFORE it: the subject's own require is
 \ then a no-op and the harness stays on the default compiler. This file loads
 \ nothing itself because some callers pass it inside a native build window
 \ (test/primitive-trust.f, test/loop-obligations.f,

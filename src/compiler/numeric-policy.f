@@ -32,8 +32,8 @@
 \ that carry identity - ENCODE, DIGEST, SAME? - revalidate their input rather
 \ than trust that it came from the checked constructor.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/digest.f
 
 package CNUM

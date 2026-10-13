@@ -1,12 +1,12 @@
 \ dot-dep-lint-test.f - checked fixtures for dot dependency lint.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/vector.f
-require lib/fs.f
-require lib/fs-mutate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/vector.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require tools/lint/text.f
 require tools/lint/intern.f
 require tools/dot-dep-lint-core.f

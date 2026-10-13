@@ -1,8 +1,8 @@
 \ Exercise the tty line boundary, not INCLUDE-EVALUATE's separate recovery.
-require lib/test.f
-require lib/pty-harness.f
-require lib/engine-candidate.f
-require lib/test/outcome.f
+require src/lib/test.f
+require src/lib/pty-harness.f
+require src/lib/engine-candidate.f
+require src/lib/test/outcome.f
 
 package REPL-ROW-TEST
 using PTY-HARNESS
@@ -10,7 +10,7 @@ using PTY-HARNESS
 \ The first prompt of a fresh child is the only one a plain wait may take: after
 \ a line the editor has already echoed "habu> " ahead of the answer, so the
 \ prompt that proves the child holds the terminal raw again is the one AFTER
-\ the answer (lib/pty-harness.f WAIT-AFTER). ^D sent on the echoed prompt lands
+\ the answer (src/lib/pty-harness.f WAIT-AFTER). ^D sent on the echoed prompt lands
 \ in the cooked window and is read as a NUL, never as the end of file STOP means.
 : PROMPT ( -- ) s" habu> " WAIT-FOR TTRUE ;
 : PROMPT-AFTER ( ptr u8 n -- ) s" habu> " WAIT-AFTER TTRUE ;

@@ -55,8 +55,8 @@
 \ designed capability (dot habu-bind-ctx-src-df121c31), not a side effect of
 \ this file.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/digest.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f

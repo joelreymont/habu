@@ -9,12 +9,12 @@
 \ descriptor is a pipe write end the test left open across every spawn:
 \ nothing here closes it.
 
-require lib/errors.f
-require lib/string.f
-require lib/adt/option.f
-require lib/fs.f
-require lib/aio.f
-require lib/pg.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/adt/option.f
+require src/lib/fs.f
+require src/lib/aio.f
+require src/lib/pg.f
 
 package PG-HOLD
 

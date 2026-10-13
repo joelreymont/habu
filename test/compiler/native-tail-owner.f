@@ -1,5 +1,5 @@
 \ Tail-call liveness must read the function currently being selected.
-require lib/test.f
+require src/lib/test.f
 
 \ Tier 1 below: the tail-call liveness scan that must read the function being
 \ selected runs in the optimizing compiler only.

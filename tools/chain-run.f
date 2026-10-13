@@ -11,12 +11,12 @@
 \ and cannot be mistaken for a completed queue item; tools/chain-run-build.f
 \ states the statuses.
 
-require lib/errors.f
-require lib/string.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-command.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-command.f
 
 package CHAIN-RUN
 

@@ -1,6 +1,6 @@
 # Browser host for Wasm modules
 
-`lib/browser/` runs a module built by `tools/wasm-build.f` in a browser: the
+`src/lib/browser/` runs a module built by `tools/wasm-build.f` in a browser: the
 host moves bytes, draws triangles and shows text, and the module decides what
 to ask for and what to draw. Its first caller is Maki's viewer. The page, the
 module and the module's data are served by Habu's HTTP server
@@ -99,17 +99,17 @@ y = (1 - ndc.y) * height / 2, origin top-left, pixel centres at +0.5.
 
 | file | holds |
 | --- | --- |
-| `lib/browser/turn.js` | the protocol alone: instantiate, write events, run, read records, take requests, grow memory and copy answers; `start()` runs the first turn, and `pointer(x, y)`, `moved(x, y)`, `released(x, y)` and `typed(text)` an input's; shared by both hosts |
-| `lib/browser/host.js` | the browser host, on the main thread: WebGPU draws each draw record with a depth test and no culling, lit flat by the triangle's normal from the screen derivatives of its position; text sets the text element. A `pointerdown` on the canvas captures the pointer and sends a pointer, and while the canvas holds the capture each `pointermove` sends moved and the `pointerup` or `pointercancel` released: `pointerup`'s `buttons` is 0, so the capture, not the buttons, marks a drag. Each sends its position in the canvas's displayed rectangle scaled to the drawing buffer, whose size is the canvas's CSS size times `devicePixelRatio`. Enter in the field submits its form, which sends the field's text as typed and clears the field at once |
-| `lib/browser/index.html` | the page: a canvas, a text field in a form, a text element and `host.js`; it loads the module from `/module.wasm`, and the field is disabled until the host listens to it |
-| `lib/browser/host-cli.mjs` | the bun runner for tests, below; it proves no rendering |
-| `lib/browser/host.f` | package `BROWSER-HOST`, which serves the page |
+| `src/lib/browser/turn.js` | the protocol alone: instantiate, write events, run, read records, take requests, grow memory and copy answers; `start()` runs the first turn, and `pointer(x, y)`, `moved(x, y)`, `released(x, y)` and `typed(text)` an input's; shared by both hosts |
+| `src/lib/browser/host.js` | the browser host, on the main thread: WebGPU draws each draw record with a depth test and no culling, lit flat by the triangle's normal from the screen derivatives of its position; text sets the text element. A `pointerdown` on the canvas captures the pointer and sends a pointer, and while the canvas holds the capture each `pointermove` sends moved and the `pointerup` or `pointercancel` released: `pointerup`'s `buttons` is 0, so the capture, not the buttons, marks a drag. Each sends its position in the canvas's displayed rectangle scaled to the drawing buffer, whose size is the canvas's CSS size times `devicePixelRatio`. Enter in the field submits its form, which sends the field's text as typed and clears the field at once |
+| `src/lib/browser/index.html` | the page: a canvas, a text field in a form, a text element and `host.js`; it loads the module from `/module.wasm`, and the field is disabled until the host listens to it |
+| `src/lib/browser/host-cli.mjs` | the bun runner for tests, below; it proves no rendering |
+| `src/lib/browser/host.f` | package `BROWSER-HOST`, which serves the page |
 
 `host-cli.mjs` runs start and then each step in order, each once every run the
 steps before it allowed has run:
 
 ```sh
-bun lib/browser/host-cli.mjs <module.wasm> [--size W H] [step]...
+bun src/lib/browser/host-cli.mjs <module.wasm> [--size W H] [step]...
 ```
 
 | step | does |
@@ -129,7 +129,7 @@ happened, else 0.
 
 ## Serving the page
 
-`lib/browser/host.f` reads the page's three files as it loads, from the tree
+`src/lib/browser/host.f` reads the page's three files as it loads, from the tree
 that resolved it, into dictionary buffers. An application image built from a
 program that requires it therefore carries the page: such an image cannot find
 Habu's tree at run time ([forth.md](forth.md) **Files**). `BROWSER-HOST:ROUTES
@@ -192,7 +192,7 @@ bytes as it grew and gets its first pages back cleared; its text is the
 checksum of the host's bytes, so a host page the module wrote changes it. It
 runs in the wasm device check too.
 
-`lib/browser/host-test.f` (gate row `browser-host`) starts Habu's HTTP server
+`src/lib/browser/host-test.f` (gate row `browser-host`) starts Habu's HTTP server
 with `BROWSER-HOST:ROUTES` on a loopback port, and CURL checks that `/`,
 `/host.js` and `/turn.js` answer 200 with their content types and the bytes of
 their files.

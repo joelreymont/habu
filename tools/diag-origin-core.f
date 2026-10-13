@@ -1,10 +1,10 @@
 \ diag-origin-core.f - inject checker diagnostic origin markers before definitions.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/source.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/source.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
@@ -355,7 +355,7 @@ variable DO-OUT-BUF?
    drop 2dup [: DO-FILE-ROOM ;] SOURCE:READ-WHOLE-FILE ;
 
 \ A source the CLI cannot read ends the run naming it: a path the file system
-\ refuses, or a failed open or read (lib/source.f READ-WHOLE-FILE). Any other
+\ refuses, or a failed open or read (src/lib/source.f READ-WHOLE-FILE). Any other
 \ code, such as the buffer's own allocation, is not about the file.
 : DO-READ-FAIL? ( n -- bool )
    {: rc:n :}
@@ -366,7 +366,7 @@ variable DO-OUT-BUF?
 
 \ The engine's own rewrite comments a leading `#!` line, so the scan and the
 \ marked copy read it as the engine does (src/core/include.f SHEBANG-COMMENT).
-\ The source is read whole however it grows while it is read (lib/source.f
+\ The source is read whole however it grows while it is read (src/lib/source.f
 \ READ-WHOLE-FILE), and its bytes are taken after the read, which may move the
 \ buffer.
 : DIAG-ORIGIN ( ptr u8 n -- )

@@ -1,6 +1,6 @@
 \ Replacement mappings must be released, while smaller loads reuse storage.
-require lib/test.f
-require lib/test/mapped.f
+require src/lib/test.f
+require src/lib/test/mapped.f
 require tools/lint/text.f
 
 package LINT-SLAB-TEST

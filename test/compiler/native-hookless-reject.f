@@ -18,21 +18,21 @@
 \ The native build requires the same scan's verdict for its hookless prefix.
 \ Tier-neutral by design: each session subject sets the tier it compiles at, and
 \ the window is built by the engine under test. The window cases build a private
-\ copy of src/, lib/ and tools/ whose src/core/util.f ends in one probe
+\ copy of src/, src/lib/ and tools/ whose src/core/util.f ends in one probe
 \ definition; the printed directory keeps the copy and the last build's
 \ temporary directory.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 require src/habu/verify-source.f
-require lib/tree-copy.f
+require src/lib/tree-copy.f
 
 package HOOKLESS-REJECT-TEST
 private
@@ -368,7 +368,7 @@ create TEXT CAP allot                  variable TEXT-U
    s" native-build: uncaught throw code 70" PRINTS
    IMAGE$ FILE? 0= TTRUE ;
 
-\ `0<>` is lib/prelude.f's, which the window has not loaded at util.f.
+\ `0<>` is src/lib/prelude.f's, which the window has not loaded at util.f.
 : WINDOW-PRELUDE ( -- )
    s" a caught pre-hook refusal restores the prior compiler dispatch" T-LABEL
    S\" : PROBE-NZ ( n -- bool ) 0<> ;\n"

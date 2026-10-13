@@ -1,14 +1,14 @@
 \ set-test.f — focused tests for tools/lint/intern.f helpers and the
 \ LINT-MAIN attributed-failure seam they throw into.
 
-require lib/errors.f
-require lib/memory.f
-require lib/vector.f
+require src/lib/errors.f
+require src/lib/memory.f
+require src/lib/vector.f
 require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package LINT-INTERN
 private

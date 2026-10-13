@@ -43,7 +43,7 @@
 \ FLOATS REUSE THE INTEGER SHAPES. Source has no float literals, so a float case
 \ is integers and the arm converts with `s>f`/`f>s`. That pins the primitive's
 \ presence and its integral behaviour; fractional semantics belong to
-\ lib/float-test.f and to f64 text, not here. The two bit shapes, RR-R and R-R,
+\ src/lib/float-test.f and to f64 text, not here. The two bit shapes, RR-R and R-R,
 \ cast a double's bits instead, which is how a case reaches an infinity and the
 \ NaN an operation makes.
 \
@@ -68,12 +68,12 @@
 \   are TRUSTED-only or owner-private and a checked gate cannot even name them.
 \   They are listed as uncovered.
 
-require lib/test.f
-require lib/string.f
-require lib/fmt.f
-require lib/errors.f                    \ E-DIV-ZERO, the dividing rows' refusal
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/errors.f                    \ E-DIV-ZERO, the dividing rows' refusal
 require src/habu/prim-ref.f
-require lib/ieee754.f                  \ the bit shapes' casts
+require src/lib/ieee754.f                  \ the bit shapes' casts
 
 package PARITY
 private

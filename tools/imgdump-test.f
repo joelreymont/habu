@@ -1,15 +1,15 @@
 \ imgdump-test.f - checked fixture coverage for tools/imgdump.f compare mode.
 \ Run: bin/hb --load tools/imgdump-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/fmt.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/fmt.f
 require tools/imgdump.f
 
 package IMAGE-DUMP-TEST
@@ -264,7 +264,7 @@ variable IDT-DECOY-U
 \ once; a scan that keeps going reads the guard page and the child dies on the
 \ fault. Nothing here is timed - the pin is which bytes the scan may touch.
 : IDT-PRN-GUARD-SRC$ ( -- ptr u8 n )
-   S\" require tools/imgdump.f\nrequire lib/memory.f\n: PRN-GUARD ( -- )\n   STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED {: base:ptr cap:n :}\n   1 base cap 1 - BYTE+ c!\n   base cap 1 - BYTE+ cap IMAGE-DUMP:PRN? if s\q imgdump-test: PRN? read past the first non-printable byte\q 70 die then\n   s\q prn-guard ok\q type cr ;\nPRN-GUARD\n" ;
+   S\" require tools/imgdump.f\nrequire src/lib/memory.f\n: PRN-GUARD ( -- )\n   STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED {: base:ptr cap:n :}\n   1 base cap 1 - BYTE+ c!\n   base cap 1 - BYTE+ cap IMAGE-DUMP:PRN? if s\q imgdump-test: PRN? read past the first non-printable byte\q 70 die then\n   s\q prn-guard ok\q type cr ;\nPRN-GUARD\n" ;
 
 \ hb evaluates stdin only when no --load names a file, so this child compiles
 \ imgdump from the source it is fed rather than through IDT-ARGV-BASE.

@@ -1,5 +1,5 @@
 \ Evaluation rollback retires declarations by address, not registration order.
-require lib/test.f
+require src/lib/test.f
 require src/habu/address-cells.f
 
 package ADDRESS-CELL-ROLLBACK

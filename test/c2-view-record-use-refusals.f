@@ -1,6 +1,6 @@
 \ A phantom element type must stay separate from a value or fetched cell.
-require lib/test.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/test/subject.f
 
 package C2-VIEW-RECORD-USE-REFUSALS
 private

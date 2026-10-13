@@ -1,22 +1,22 @@
 \ hb-build-direct-lints-test.f - production-path direct lint hook fixtures.
 \ Run: bin/hb --load tools/hb-build-direct-lints-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/vector.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/test/outcome.f
-require lib/source.f
-require lib/build.f
-require lib/codesign.f
-require lib/content-key.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/vector.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/test/outcome.f
+require src/lib/source.f
+require src/lib/build.f
+require src/lib/codesign.f
+require src/lib/content-key.f
+require src/lib/engine-candidate.f
 require tools/build-fixpoint.f
 require tools/cli-run.f
 require tools/object-image.f
@@ -25,7 +25,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/json-writer.f
-require lib/source-lex.f
+require src/lib/source-lex.f
 require tools/aot-lint-core.f
 
 package HB-BUILD-DIRECT-LINTS-TEST

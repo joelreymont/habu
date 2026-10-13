@@ -3,9 +3,9 @@
 \ Paths admit printable non-DEL bytes and canonical nonempty segments; raw
 \ controls, embedded line breaks, `.` segments, and `..` segments fail closed.
 
-require lib/prelude.f
-require lib/string.f
-require lib/adt/option.f
+require src/lib/prelude.f
+require src/lib/string.f
+require src/lib/adt/option.f
 require tools/lint/diff-error.f
 
 package DIFF

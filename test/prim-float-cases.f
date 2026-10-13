@@ -8,7 +8,7 @@
 \ except that `s>f` itself takes its input as it stands and `f>s` answers as
 \ it stands. A flag column is 0 or 1, as in prim-cases.f. That pins each row's
 \ presence and its integral behaviour; fractional semantics belong to
-\ lib/float-test.f and to f64 text.
+\ src/lib/float-test.f and to f64 text.
 \
 \ RR-R and R-R cases are a double's bits as they stand, in and out, so they
 \ reach the NaN an operation makes: from numbers it is $7FF8000000000000 on

@@ -1,15 +1,15 @@
 \ hb-baseline-contracts-test.f - checked baseline contracts for public bin/hb.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/hb-baseline-contracts-test.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\ src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f tools/hb-baseline-contracts-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
 
 $8000 constant HBT-CAP
 10000 constant HBT-TIMEOUT-MS

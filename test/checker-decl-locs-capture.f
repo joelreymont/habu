@@ -10,9 +10,9 @@
 \ (test/checker-decl-locs-capture-subject.f). The subject reads checker
 \ internals, so both halves run the unsealed engine (test/whitebox-child.f)
 \ and this file is a plain SUITE.
-require lib/test.f
-require lib/fs-mutate.f
-require lib/process-cwd.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
+require src/lib/process-cwd.f
 require test/whitebox-child.f
 
 package NAVL-CAPTURE

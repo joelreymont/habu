@@ -1,7 +1,7 @@
 \ The native-build handoff loads the current checker. Replaying the reset
 \ declaration supplies the same user effect a native owner transfer publishes;
 \ a JIT-hosted window need not have recorded that pre-hook declaration itself.
-\ The window loads lib/tier.f ahead of this file (test/primitive-trust.f ARGS).
+\ The window loads src/lib/tier.f ahead of this file (test/primitive-trust.f ARGS).
 package PRIMITIVE-TRUST-TEST
 
 : ASSERT ( bool -- )

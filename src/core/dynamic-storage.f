@@ -10,7 +10,7 @@
 \ the head hold numbers, so they are reached through an explicit cell view of
 \ the head (CTL) rather than through its pointer type.
 \ This runtime belongs below the core-prefix mark: generated declarations in
-\ a rewound build source already call it, before lib/errors.f is available.
+\ a rewound build source already call it, before src/lib/errors.f is available.
 package DYNAMIC-STORAGE
 public
 

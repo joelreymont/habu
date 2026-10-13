@@ -1,7 +1,7 @@
 # XMODEM packets and serial transfers
 
-[lib/xmodem.f](../lib/xmodem.f) implements the XMODEM packet codec.
-[lib/serial-xmodem.f](../lib/serial-xmodem.f) transfers bytes over an already-open
+[src/lib/xmodem.f](../src/lib/xmodem.f) implements the XMODEM packet codec.
+[src/lib/serial-xmodem.f](../src/lib/serial-xmodem.f) transfers bytes over an already-open
 [raw serial stream](serial.md). Both are checked Habu. The codec has no I/O;
 the transfer library adds no foreign boundary beyond `SERIAL`.
 
@@ -42,7 +42,7 @@ recheck their operands.
 `SERIAL-XMODEM` uses one caller-owned session header:
 
 ```forth
-require lib/serial-xmodem.f
+require src/lib/serial-xmodem.f
 create TRANSFER SERIAL-XMODEM:SESSION-BYTES allot
 ```
 

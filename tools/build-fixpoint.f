@@ -2,15 +2,15 @@
 \
 \ Load after this list, by design: the caller composes it as one --load line
 \ (tools/bootstrap.sh, tools/hb-build-lib.f), so this file requires none of it.
-\ lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/fs-mutate.f,
-\ lib/process.f, lib/process-argv.f, lib/process-env.f, and lib/codesign.f.
+\ src/lib/errors.f, src/lib/string.f, src/lib/memory.f, src/lib/fs.f, src/lib/fs-mutate.f,
+\ src/lib/process.f, src/lib/process-argv.f, src/lib/process-env.f, and src/lib/codesign.f.
 \ The stamp key hashes the engine and the emitted stage sources with the baked
-\ SHA256 words; only the native-chain fold below reaches for lib/content-key.f
+\ SHA256 words; only the native-chain fold below reaches for src/lib/content-key.f
 \ and the shared closure walk, because that input is a file LIST rather than one
 \ file (see the stamp key section below).
 
-require lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer
-require lib/string-roles.f               \ package STR: the typed string surface
+require src/lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer
+require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/habu/verify-source.f
 require tools/build-target.f              \ the target the emitted sources are for
 require tools/build-certify.f            \ the certify report and census lines
@@ -38,10 +38,10 @@ $10000 constant BF-CERT-DIAG-CAP
 \ Load-discipline guard. build-fixpoint.f is the caller-composed depth-0 --load
 \ entry (BF-CLI-SELF-DISPATCH below); the lib preamble is --load-ed by the caller,
 \ never require-d here, so an old native seed can supply the minimal set its
-\ primitives support (see lib/process-env.f). Without the preamble the FS-PATH-CAP
+\ primitives support (see src/lib/process-env.f). Without the preamble the FS-PATH-CAP
 \ buffer create just below otherwise dies mid-load with a bare
 \ `E-UNDEFINED: FS-PATH-CAP`; name the required load list instead. FS-PATH-CAP
-\ (lib/fs.f) is the preamble sentinel - it is the first preamble word this file
+\ (src/lib/fs.f) is the preamble sentinel - it is the first preamble word this file
 \ references, so its absence is exactly the missing-preamble case.
 \
 \ CHECKER-RESOLVES? asks which word this token would BIND to here, so the guard
@@ -52,7 +52,7 @@ $10000 constant BF-CERT-DIAG-CAP
 \ word now.
 : BF-NEED-PREAMBLE ( -- )
    s" FS-PATH-CAP" CHECKER-RESOLVES? if exit then
-   s" build-fixpoint: missing required load; --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f before the build verb" BF-USAGE-RC die ;
+   s" build-fixpoint: missing required load; --load src/lib/errors.f src/lib/string.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f src/lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f before the build verb" BF-USAGE-RC die ;
 BF-NEED-PREAMBLE
 
 \ THE HOST CAPABILITY THE EMITTED REWIND NEEDS. The stage source rewinds to the
@@ -134,13 +134,13 @@ BF-REQUIRE-WATERMARK
 \ preamble libraries in through their own requires, so requiring them earlier
 \ would satisfy FS-PATH-CAP by side effect and the missing-preamble case would
 \ stop being reported at all.
-require lib/process-cwd.f
-require lib/engine-id.f                  \ PATH$: the engine a certify child runs
-require lib/span.f                       \ SPAN-BUFFER: destinations for FS-MUT-SUFFIX-PATH
-require lib/source.f                     \ whole descriptor reads of build sources
-require lib/content-key.f                \ the chain fold
+require src/lib/process-cwd.f
+require src/lib/engine-id.f                  \ PATH$: the engine a certify child runs
+require src/lib/span.f                       \ SPAN-BUFFER: destinations for FS-MUT-SUFFIX-PATH
+require src/lib/source.f                     \ whole descriptor reads of build sources
+require src/lib/content-key.f                \ the chain fold
 require tools/event-closure-lib.f        \ the chain fold
-require lib/tree-copy.f                  \ the candidate's copied boot tree
+require src/lib/tree-copy.f                  \ the candidate's copied boot tree
 
 package BUILD-FIXPOINT
 
@@ -323,7 +323,7 @@ variable BF-CERT-PATH-U
 \ The root is copied, as BF-ENGINE! copies the engine: every later BF-A$ joins
 \ under it, and a caller's span need not outlive the call - MAKE-TEMP-DIR's is
 \ replaced by the task's next MAKE-TEMP-DIR, such as a build cache prune's claim
-\ directory (lib/build-cache.f).
+\ directory (src/lib/build-cache.f).
 : BF-TMP! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-BUILD-PATH throw then
    u FS-PATH-CAP > if E-BUILD-PATH throw then
@@ -368,7 +368,7 @@ variable BF-CERT-PATH-U
    BF-ART$ BF-EXPECT-PATH ;
 
 \ A child's completion code. PROC-TIMEOUT-RC is a deadline that expired in the
-\ child (native-build's smoke check, lib/process.f), so it throws E-PROC-TIMEOUT
+\ child (native-build's smoke check, src/lib/process.f), so it throws E-PROC-TIMEOUT
 \ again here instead of becoming one more failed child.
 : BF-RC0 ( n -- ) {: rc:n :}
    rc 0= if exit then
@@ -1098,12 +1098,12 @@ package BUILD-FIXPOINT
 \ (src/core/type-family.f REG-AOT-BASE-BAD). Prelude/errors are already
 \ restored here. Each provided fact makes the remaining require a no-op.
 : BF-APPEND-FMT ( ptr u8 n -- ) {: out:ptr outu:n :}
-   out outu s" lib/adt/option.f" BF-APPEND-MODULE
-   out outu s" lib/num-types.f" BF-APPEND-MODULE
-   out outu s" lib/num-arithmetic.f" BF-APPEND-MODULE
-   out outu s" lib/string.f" BF-APPEND-MODULE
-   out outu s" lib/float.f" BF-APPEND-MODULE
-   out outu s" lib/fmt.f" BF-APPEND-MODULE ;
+   out outu s" src/lib/adt/option.f" BF-APPEND-MODULE
+   out outu s" src/lib/num-types.f" BF-APPEND-MODULE
+   out outu s" src/lib/num-arithmetic.f" BF-APPEND-MODULE
+   out outu s" src/lib/string.f" BF-APPEND-MODULE
+   out outu s" src/lib/float.f" BF-APPEND-MODULE
+   out outu s" src/lib/fmt.f" BF-APPEND-MODULE ;
 
 \ WHAT IS NOT HERE. Every core-prefix file the compiling host already carries
 \ from its own boot is absent: the payload rewinds to the mark at the end of
@@ -1115,7 +1115,7 @@ package BUILD-FIXPOINT
 : BF-APPEND-COMMON ( ptr u8 n -- ) {: out:ptr outu :}
    \ The rewind removed the prelude. Restore it before build-side dependencies
    \ such as habu1.f's code-origin emitter use its checked flag words.
-   out outu s" lib/prelude.f" BF-APPEND-MODULE
+   out outu s" src/lib/prelude.f" BF-APPEND-MODULE
    out outu s" src/arch/arm64/asm.f" BF-APPEND-MODULE   \ icode.f requires it
    out outu s" src/arch/arm64/icode.f" BF-APPEND-MODULE   \ aot-decl.f requires it
    out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
@@ -1134,10 +1134,10 @@ package BUILD-FIXPOINT
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu BF-APPEND-FDIO
-   out outu s" lib/errors.f" BF-APPEND-MODULE
+   out outu s" src/lib/errors.f" BF-APPEND-MODULE
    \ The span type family, in the engine prefix's position right after errors.f
    \ (src/habu/habu2.f PFX-LOAD-STDLIB-FILES says why the registry needs it).
-   out outu s" lib/span.f" BF-APPEND-MODULE
+   out outu s" src/lib/span.f" BF-APPEND-MODULE
    out outu s" src/habu/snapshot-format.f" BF-APPEND-MODULE
    out outu s" src/habu/address-carrier.f" BF-APPEND-MODULE
    out outu s" src/habu/cell-grid.f" BF-APPEND-MODULE
@@ -1186,7 +1186,7 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-DRIVER-IO
    out outu s" src/habu/aot-arm.f" BF-APPEND-MODULE   \ aot-capture.f requires it
    out outu s" src/habu/terminal-call.f" BF-APPEND-MODULE
-   out outu s" lib/le.f" BF-APPEND-MODULE
+   out outu s" src/lib/le.f" BF-APPEND-MODULE
    out outu s" src/habu/sites.f" BF-APPEND-MODULE
    out outu s" src/habu/aot-capture.f" BF-APPEND-SOURCE
    out outu s" src/habu/aot-file.f" BF-APPEND-SOURCE
@@ -1730,8 +1730,7 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
 \ the candidate can replace the working engine. Symlinks back to the original
 \ sources would conceal that mismatch through canonical path resolution.
 : BF-BOOT-TREE ( -- )
-   s" src" BF-BOOT-ROOT$ TREE-COPY:TREE
-   s" lib" BF-BOOT-ROOT$ TREE-COPY:TREE ;
+   s" src" BF-BOOT-ROOT$ TREE-COPY:TREE ;
 
 : BF-BOOT-PROGRAM$ ( -- ptr u8 n )
    \ Exercise provided quotation storage in the copied tree before the
@@ -1772,7 +1771,7 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
    cand candu [: BF-BOOT-RUN ;] [: BF-BOOT-CLEAN ;] finally ;
 
 \ The candidate is copied into the engine's sibling, booted there and renamed
-\ over the engine only once it passed (lib/fs-mutate.f REPLACE-STAGED), so a
+\ over the engine only once it passed (src/lib/fs-mutate.f REPLACE-STAGED), so a
 \ failed install leaves the engine as it was and no sibling.
 : BF-INSTALL-HB-FILL ( ptr u8 n -- )
    {: tmp:ptr tmpu:n :}
@@ -2080,7 +2079,7 @@ variable CHAIN-I
 \ Fail-closed CLI boundary. BF-CLI catches every throw that escapes BF-MAIN,
 \ names it on stderr, and dies with a fixed status, so a failure anywhere in the
 \ refresh chain is loud and nonzero under every seed. The status is the tool's
-\ exit contract: PROC-TIMEOUT-RC (lib/process.f) when a deadline expired, in
+\ exit contract: PROC-TIMEOUT-RC (src/lib/process.f) when a deadline expired, in
 \ this process or in a child that exited with it (BF-RC0), and BF-BUILD-RC for
 \ every other throw. A refused command line exits BF-USAGE-RC.
 $80 constant BF-FAIL-CAP

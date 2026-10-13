@@ -1,6 +1,6 @@
 \ A resident replacement loader changes the tier before consuming its path.
 require src/habu/verify-source.f
-require lib/tier.f
+require src/lib/tier.f
 
 undefine require
 : require ( -- ) 1 TIER:SELECT parse-name required ;

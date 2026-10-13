@@ -22,10 +22,10 @@
 \ in literal materialisation, including two per compact DATA address and three
 \ per full absolute address.
 
-require lib/errors.f
-require lib/string.f
-require lib/fs.f
-require lib/argv.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/argv.f
 
 -7730 constant E-JOIN-CAPACITY
 -7731 constant E-JOIN-SHAPE

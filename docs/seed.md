@@ -28,7 +28,7 @@ refreshed from current source and must pass the normal self-rebuild fixpoint.
 After `bin/hb` exists, daily rebuilds do not need the seed:
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f \
-  lib/process-argv.f lib/process-env.f lib/memory.f lib/codesign.f \
+bin/hb --load src/lib/errors.f src/lib/string.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f \
+  src/lib/process-argv.f src/lib/process-env.f src/lib/memory.f src/lib/codesign.f \
   tools/build-fixpoint.f tools/build-fixpoint-main.f -- install --force
 ```

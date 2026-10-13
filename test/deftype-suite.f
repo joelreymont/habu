@@ -1,5 +1,5 @@
 \ deftype-suite.f - behavior contract for the DEFTYPE declaration surface
-\ (lib/type/deftype.f: package-scoped arity-0 type-family nominals + generated
+\ (src/lib/type/deftype.f: package-scoped arity-0 type-family nominals + generated
 \ converters). Run BY THE ENGINE over stdin, like test/type-family-suite.f:
 \     bin/hb < test/deftype-suite.f
 \ Registered directly in the native suite.
@@ -23,9 +23,9 @@
 \       reserved name in every scope; shadowing another package's family is not
 \ A failure prints F<index> + detail; REPORT exits 1 on any fail.
 
-require lib/type/deftype.f
+require src/lib/type/deftype.f
 require test/checker-assert.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
 variable #CASE

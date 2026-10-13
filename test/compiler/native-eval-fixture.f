@@ -1,5 +1,5 @@
 \ Evaluate definition-only fixture source with one result on either path.
-require lib/prelude.f
+require src/lib/prelude.f
 
 package NATIVE-EVAL
 private

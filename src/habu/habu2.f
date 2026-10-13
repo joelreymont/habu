@@ -3,7 +3,7 @@
 \ main loop, and ENGINE-EMIT:FORTH. Needs habu1.f (part 1). EMIT-MAIN is split into
 \ phase words sharing label VARIABLES (a giant single word would need dozens of
 \ locals); emission order is stable so the self-rebuild reaches a fixpoint.
-require lib/fmt.f
+require src/lib/fmt.f
 require src/habu/address-cells.f
 require src/habu/address-carrier.f
 require src/habu/snapshot-format.f
@@ -196,7 +196,7 @@ variable LDEFKWGUARD  variable LDEFKWFAIL  variable LDEFKWMSG   \ definition-nam
 \ Capacity refusals that have a COUNT to state. A ceiling reached with nothing
 \ but an exit code costs the caller the whole measurement (LESSONS 2026-09-17):
 \ one line naming what filled up, the ceiling and the count is the fix, and
-\ lib/ffi-abi.f REPORT-FULL has the shape. LDIAGU writes a number on fd 2 and
+\ src/lib/ffi-abi.f REPORT-FULL has the shape. LDIAGU writes a number on fd 2 and
 \ LDIAGDEF writes the definition being compiled, so a tail below composes a
 \ line from message spans and those two.
 variable LDIAGU     \ ( x9 = value ) unsigned decimal on fd 2, no newline (dot habu-name-silent-engine-9b28ac13)
@@ -1193,20 +1193,20 @@ here BPL-KW - constant BPL-LEN
       PFX-COMMON LPTOPROW s" src/core/top-row.f" row execute
    then
    parts PFX-BASELIB and 0 <> if
-      PFX-COMMON LPPRELUDE s" lib/prelude.f" row execute
-      PFX-COMMON LPERRORS s" lib/errors.f" row execute
+      PFX-COMMON LPPRELUDE s" src/lib/prelude.f" row execute
+      PFX-COMMON LPERRORS s" src/lib/errors.f" row execute
       PFX-COMMON LPADDRCELLS s" src/habu/address-cells.f" row execute
       PFX-COMMON LPLAYOUTADDRESS s" src/core/layout-buffer-address.f" row execute
    then
    parts PFX-RESTLIB and 0 <> if
-      PFX-COMMON LPSPAN s" lib/span.f" row execute
-      PFX-COMMON LPOPTION s" lib/adt/option.f" row execute
-      PFX-COMMON LPNUMTYPES s" lib/num-types.f" row execute
-      PFX-COMMON LPNUMARITH s" lib/num-arithmetic.f" row execute
-      PFX-COMMON LPSTRING s" lib/string.f" row execute
-      PFX-COMMON LPMEMORY s" lib/memory.f" row execute
+      PFX-COMMON LPSPAN s" src/lib/span.f" row execute
+      PFX-COMMON LPOPTION s" src/lib/adt/option.f" row execute
+      PFX-COMMON LPNUMTYPES s" src/lib/num-types.f" row execute
+      PFX-COMMON LPNUMARITH s" src/lib/num-arithmetic.f" row execute
+      PFX-COMMON LPSTRING s" src/lib/string.f" row execute
+      PFX-COMMON LPMEMORY s" src/lib/memory.f" row execute
       PFX-COMMON LPQUOTSTORE s" src/core/quotation-storage.f" row execute
-      PFX-COMMON LPIMAGELIFE s" lib/image-lifecycle.f" row execute
+      PFX-COMMON LPIMAGELIFE s" src/lib/image-lifecycle.f" row execute
    then ;
 
 : PFX-LOAD-CHECKER-FILES ( -- )
@@ -1216,8 +1216,8 @@ here BPL-KW - constant BPL-LEN
    PFX-DECL ['] PFX-LOAD-ROW PFX-FILES ;
 
 \ The boot stdlib (dot habu-seed-the-stdlib-d8e3a757). These files are the
-\ checked surface the tree already requires everywhere - lib/string.f alone has
-\ 548 requiring files, lib/errors.f 472 - so every program used to pay for its
+\ checked surface the tree already requires everywhere - src/lib/string.f alone has
+\ 548 requiring files, src/lib/errors.f 472 - so every program used to pay for its
 \ own copy. Loading them once here makes each of those requires a registry
 \ no-op and gives every program the same pre-seal copy.
 \
@@ -1761,8 +1761,8 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
 \ The nine boot-stdlib provide rows. They are NOT part of PFX-PROVIDE-FILES:
 \ that word runs on snapshot boots too (it is outside the SNAP-CELL guard), and
 \ the dev snapshot's keep surface (tools/build-fixpoint.f BF-APPEND-SNAP-KEEP)
-\ does not carry lib/, so a row there would tell a snapshot engine that
-\ lib/string.f is already loaded when it is not - a silent no-op require and a
+\ does not carry src/lib/, so a row there would tell a snapshot engine that
+\ src/lib/string.f is already loaded when it is not - a silent no-op require and a
 \ missing STR:. On a cold boot these run inside PFX-LOAD-STDLIB-COLD, ahead of
 \ the file texts, which is exactly where the nine need them.
 : PFX-PROVIDE-STDLIB-FILES ( -- )
@@ -1937,8 +1937,8 @@ public
 \ and lets src/core/include.f decide: a path the registry already holds is
 \ skipped, anything else is read and recorded. The old row wrote the `provided`
 \ marker and then inlined the text ANYWAY - it maintained a registry it never
-\ read, so `--load lib/errors.f` against an engine that already carries
-\ lib/errors.f died on a duplicate definition while `require lib/errors.f` from
+\ read, so `--load src/lib/errors.f` against an engine that already carries
+\ src/lib/errors.f died on a duplicate definition while `require src/lib/errors.f` from
 \ inside a file no-opped cleanly. Same request, two answers; the loader now
 \ consults the registry it writes.
 \
@@ -3910,7 +3910,7 @@ public
 \ `create` left it doing. Patching it anyway costs every reader of every word the
 \ definer makes a call, a branch and a frame, and clears the DKIND:ADDR stamp
 \ both compilers fold a mention through - which is what made the pointer definers
-\ of src/core and lib/ the hottest rows of a tier-0 profile. So the opener's
+\ of src/core and src/lib/ the hottest rows of a tier-0 profile. So the opener's
 \ `adr x10, D` becomes W-DOESDECL here, and LDOESPATCH publishes the declared
 \ effect without touching either body or stamp.
 \
@@ -6372,7 +6372,7 @@ variable CFSK2
 
 \ The boot task's return stack and DO/LOOP frame stack. They come after the DATA
 \ region because their bases are published in header cells; a task maps its own
-\ pair and publishes them into its own region copy (lib/task.f PREPARE).
+\ pair and publishes them into its own region copy (src/lib/task.f PREPARE).
 : EM-FRAME-STACKS ( -- )
    STACK-ABI:RETURN-BYTES 10 STACK-GUARD:EMIT-MAP
    10 DATA STACK-ABI:RETURN-BASE-CELL STR,
@@ -10083,7 +10083,7 @@ public
 \   A does> definer's export publishes its clause in the slot above, under
 \   the clause's name (C-EXPORT-CLAUSE-ROOM, C-EXPORT-CLAUSE-RECORD).
 \ - TOP LEVEL: the pre-existing hb-build --repl export directive surface
-\   (`EXPORT word…` keeps extra words callable; lib/prelude.f rides it).
+\   (`EXPORT word…` keeps extra words callable; src/lib/prelude.f rides it).
 \   COMMENT-EXPORTS strips these lines before hb-build compiles, and a plain
 \   load consumes the name as a no-op so directive-carrying programs stay
 \   directly loadable.
@@ -11854,7 +11854,7 @@ public
    \ LEVLR (eval-frame path) and LUNCAUGHT (BTHROW THROW-NOREC path, reached via
    \ UNCGH-CELL - stored at boot since a leaf prim cannot name this label) share one
    \ address. A code in [1,255] is kernel-representable and is an established
-   \ deliberate exit contract (lib/argv.f usage 64, check hook 70, lint findings 1),
+   \ deliberate exit contract (src/lib/argv.f usage 64, check hook 70, lint findings 1),
    \ so it exits byte-identically to before: exit_group(code), no extra output. Any
    \ other code would be kernel-masked to `code & 0xFF` - the fail-open class this
    \ closes (-2816 exited 0 SILENTLY, -2802 exited an aliased 14) - so it is instead

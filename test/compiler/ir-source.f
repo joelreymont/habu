@@ -13,7 +13,7 @@
 \ releases everything; and checker fixtures prove the identity families and
 \ the registry API stay sealed.
 
-require lib/test.f
+require src/lib/test.f
 require test/checker-assert.f
 require src/compiler/ir/source.f
 

@@ -1,14 +1,14 @@
 \ sha256-file-test.f - checked fixture coverage for streaming SHA-256 helpers.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f tools/sha256-file-test.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
+\ src/lib/fs-mutate.f tools/sha256-file-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/task.f                \ the two-task row: a context per thread
-require lib/adt/result.f          \ TASK:JOIN's answer is MATCHed here
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/task.f                \ the two-task row: a context per thread
+require src/lib/adt/result.f          \ TASK:JOIN's answer is MATCHed here
 
 5000 constant SFT-BIG-LEN
 20 constant SFT-TASK-ROUNDS       \ a race need not lose the first round
@@ -333,7 +333,7 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    loop ;
 
 \ A file whose path is longer than the 256 bytes the core's path buffer once
-\ held: the digest words take every path lib/fs.f takes (dot
+\ held: the digest words take every path src/lib/fs.f takes (dot
 \ habu-digest-files-through-308dc561). One 230-byte component keeps the name
 \ under NAME_MAX while the whole path passes 256.
 : SFT-DEEP$ ( -- ptr u8 n )

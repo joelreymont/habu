@@ -1,7 +1,7 @@
 \ The C2 writer admits only the public runtime entries.
-require lib/test.f
-require lib/test/subject.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/test/subject.f
+require src/lib/c2-memory.f
 require src/habu/xref.f
 
 package C2-MEMORY-SHADOW

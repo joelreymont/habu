@@ -1,5 +1,5 @@
 \ Exact spans must not acquire the adjacent RET or an address chain's first word.
-require lib/test.f
+require src/lib/test.f
 require src/arch/arm64/icode.f
 require src/habu/app-image.f
 require src/habu/aot-decl.f

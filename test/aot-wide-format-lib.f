@@ -21,16 +21,16 @@
 \ is; only the REPL they install waits for a terminal, and test/proc-pty.f drives
 \ the shipped engine's captured REPL at one.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 
 package AOT-WIDE-FORMAT
 

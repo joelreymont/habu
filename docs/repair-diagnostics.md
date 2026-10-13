@@ -600,7 +600,7 @@ process.
   positions in the bytes; a dependency's name the dependency, with positions
   in its file.
 - The child runs, in the caller's working directory, on the engine
-  `lib/engine-candidate.f` names (`HABU_UNDER_TEST` if set, else the running
+  `src/lib/engine-candidate.f` names (`HABU_UNDER_TEST` if set, else the running
   engine), as `check.f`'s run stage does, and loads
   `ROOT/tools/check-verify-child.f` by its absolute path, ROOT being the tree
   `tools/check-verify-core.f` was loaded from.
@@ -651,7 +651,7 @@ run stage writes no packet on stderr, what it writes there, whether the run
 passed or failed. The engine reports a top-level
 refusal of the run, such as `hb: interpret stack underdepth: <word>` (70) or
 `hb: uncaught throw code <n>` (67), as that prose, with no packet. An engine
-selection `lib/engine-candidate.f` refuses (`HABU_UNDER_TEST`, else the running
+selection `src/lib/engine-candidate.f` refuses (`HABU_UNDER_TEST`, else the running
 engine) exits 67 in every mode, whether its path names no executable or is one
 the file system refuses, such as one over 1024 bytes. Under `--json-errors`
 stdout says `check.f: the selected engine (HABU_UNDER_TEST, else the running
@@ -709,7 +709,7 @@ caller's active `SOURCE-ROOT` owner, so a caller selecting a root with
 `SOURCE-ROOT:WITH` uses that same scope for verification and the later load.
 Catch the throw code. For a loader fault (`VERIFY:LOADER-FAULT?`),
 `VERIFY-DIAGNOSTICS:COMPOSE-FAULT-RECORD$ ( rc -- ptr u8 n )` from
-`lib/verify-diagnostics.f` renders the same
+`src/lib/verify-diagnostics.f` renders the same
 schema-1 loader packet from the stopped file's scanned bytes and recorded
 loader span; the caller keeps the original code. The stopped source remains
 valid until the next composition, and the packet uses the diagnostics writer's
@@ -771,8 +771,8 @@ read from the result line after a clean exit, never from the exit status.
 
 Because check.f's default pre-pass runs in this child, it resolves the
 engine's words and those the subject loads, the words its run has. A word only
-the checking process loaded, such as `lib/fs.f`'s `FILE-SIZE` under check.f or
-`lib/test.f`'s `T=` in a harness that checks in its own process, is
+the checking process loaded, such as `src/lib/fs.f`'s `FILE-SIZE` under check.f or
+`src/lib/test.f`'s `T=` in a harness that checks in its own process, is
 `E-UNDEFINED` to it, `E-UNDEFINED-TOP-LEVEL` at top level, and check.f reports
 it there in every mode. The pre-pass
 child has the run stage's deadline, `--deadline-ms` included; one that ends

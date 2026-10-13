@@ -2,10 +2,10 @@
 \ once by test/stripped-image.f. Each required subject is a package whose RUN
 \ prints its line or dies naming itself; its header says what the line guards.
 \ The row writes MAIN, which calls RUN here and ends in UNMAP.
-require lib/num-types.f
-require lib/memory.f
-require lib/aio.f
-require lib/engine-id.f
+require src/lib/num-types.f
+require src/lib/memory.f
+require src/lib/aio.f
+require src/lib/engine-id.f
 require test/stripped-quotation-subject.f
 require test/stripped-sparse-data-subject.f
 require test/aot-image-class-subject.f

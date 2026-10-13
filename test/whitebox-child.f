@@ -12,7 +12,7 @@
 \ own SUITE-ENGINE-ENV (test/gate-stdlib-lib.f) did for a WHITEBOX row through
 \ the environment alone, and which nothing did for a standalone run.
 \
-\ BOTH ENVIRONMENT ROWS. lib/engine-candidate.f is the one resolver a child's
+\ BOTH ENVIRONMENT ROWS. src/lib/engine-candidate.f is the one resolver a child's
 \ own tools ask which engine to run, and it reads HABU_UNDER_TEST first;
 \ a child that rebuilds an engine reads HABU_FIXPOINT_ENGINE
 \ (tools/build-fixpoint.f BF-ENGINE$) and must land on the same private copy,
@@ -25,9 +25,9 @@
 \ caller whose own cases CLEANUP-RESET the shared list, where PROVIDE's
 \ registration does not survive to be run.
 
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process-env.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-env.f
 require test/whitebox-engine.f
 
 package WHITEBOX-CHILD

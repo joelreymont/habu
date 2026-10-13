@@ -20,16 +20,16 @@
 \   - every namespace row below the seal floor has a protected public wordlist
 \     and a private wordlist that is protected or absent (0, the global
 \     wordlist, which the capture refuses to mark).
-\ Each program runs in a disposable fork of this engine (lib/test/subject.f),
+\ Each program runs in a disposable fork of this engine (src/lib/test/subject.f),
 \ so a refusal ends the fork and not the suite. The whitebox engine keeps every
 \ package open (test/whitebox-engine-suite.f), so the image class is asserted
 \ first.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/process.f
-require lib/test/subject.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/process.f
+require src/lib/test/subject.f
 
 package PACKAGE-SEAL
 

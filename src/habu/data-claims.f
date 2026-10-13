@@ -7,7 +7,7 @@ require src/habu/native-observer-cells.f
 require src/habu/native-host-cells.f
 
 \ --- DATA claim map and the layout-time overlap assertion ----------------------
-\ WHY IT EXISTS. lib/task.f handed out TASK:+USER rows from $41C8 bounded by
+\ WHY IT EXISTS. src/lib/task.f handed out TASK:+USER rows from $41C8 bounded by
 \ TXN-STATE-OFF, because the comments in this file said that run was free. It was
 \ not: APP-ENTRY:XT-CELL, the AOT capture window, the evaluator-pointer band,
 \ PROT, AOT-SIG, BOOT-LAYOUT and src/habu/stack-abi.f all sit inside it. Five

@@ -1,6 +1,6 @@
 \ Loaded by the retained window driver before it opens its literal pool.
 \ Match the cold engine's prefix, then open the portable source window.
-s" lib/prelude.f" provided
+s" src/lib/prelude.f" provided
 include src/core/enums.f
 include src/core/type-family-sha.f
 include src/core/combinators.f
@@ -10,14 +10,14 @@ include src/core/generated-declaration-dictionary.f
 include src/core/generated-declaration-protection.f
 include src/core/layout-buffer-seal.f
 include src/core/lower-cert-seal.f
-require lib/errors.f
-require lib/span.f
-require lib/adt/option.f
-require lib/num-types.f
-require lib/num-arithmetic.f
-require lib/string.f
-require lib/memory.f
-require lib/vector.f
+require src/lib/errors.f
+require src/lib/span.f
+require src/lib/adt/option.f
+require src/lib/num-types.f
+require src/lib/num-arithmetic.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/vector.f
 
 package PAYLOAD-NATIVE-PRODUCER
 ndict@ here variable PRE-R variable PRE-D PRE-D ! PRE-R !

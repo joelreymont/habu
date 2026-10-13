@@ -24,8 +24,8 @@
 \   printf 'require tools/data-residue-census.f\nDATA-RESIDUE:CENSUS\n' | <merged-engine>
 \ Each row is three lines: the name, the wordlist, the address modulo eight.
 
-require lib/errors.f
-require lib/string.f
+require src/lib/errors.f
+require src/lib/string.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/native/dict.f

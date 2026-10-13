@@ -2,7 +2,7 @@
 \
 \     bin/hb --load test/capture-tree-test.f
 \
-\ THE SUBJECT is test/check-signal-subject.f, run as the child of a lib/process.f
+\ THE SUBJECT is test/check-signal-subject.f, run as the child of a src/lib/process.f
 \ capture. It writes a line, starts a sleeper that leads a process group of its
 \ own, as every spawn does, reports its pid and waits for the sleeper. Both
 \ hold the write end of a pipe this test leaves open across the spawn, so the
@@ -21,7 +21,7 @@
 \     (PROC-REAP-CAPTURE-BOUNDED) until the deadline.
 \  4. AN OVERFLOW: the line is longer than the capture holds, E-PROC-TRUNCATED.
 \  5. A REFUSED REAPER ARM: PROC-REAP-ARM throws after the spawn, as
-\     lib/process-fork.f SPAWN-REAPER does when its fork is refused.
+\     src/lib/process-fork.f SPAWN-REAPER does when its fork is refused.
 \
 \ Asserted in each: the capture's own answer, the subject reaped after a
 \ SIGKILL, and end of file on the pipe within GONE-MS.
@@ -37,15 +37,15 @@
 \ or threw, and waits for the processes the capture left, which the sleeper's
 \ 20 s bounds.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
 
 package CAPTURE-TREE-TEST
 

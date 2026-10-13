@@ -1,11 +1,11 @@
 \ Actual captured cells, then byte-exact file/owned/merge and malformed rows.
 \ The harness loads before the tier selection: only the subject below it is
 \ compiled at the requested tier (docs/gate.md).
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
-require lib/fs-mutate.f
-require lib/engine-id.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
+require src/lib/fs-mutate.f
+require src/lib/engine-id.f
 package NAMED-CELLS-TIER
 : REQUESTED ( -- n )
    SCRIPT-ARGC 0= if tier@ exit then

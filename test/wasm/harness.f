@@ -1,18 +1,18 @@
 \ harness.f - WASM-HARNESS: a module file checked by two engines independent of
 \ Habu, wasm-tools validating it and bun running it through test/wasm/run.mjs
 \ (docs/wasm-backend.md 17.6). Both are found on PATH and run from the tree's
-\ root; a missing tool or a passed deadline throws lib/process.f's code.
+\ root; a missing tool or a passed deadline throws src/lib/process.f's code.
 \
 \ VALID? answers wasm-tools validate's verdict under core Wasm and WPROF's
 \ features. RUN answers run.mjs's exit status: 0 or 1, the entry's status, 2 for
 \ a trap and 3 for a compile or link error. OUT$ answers the OUT bytes the run
 \ wrote and THROW-CODE its full throw code, 0 unless it exited 1.
 
-require lib/string.f
-require lib/fs.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require src/arch/wasm/profile.f
 
 package WASM-HARNESS

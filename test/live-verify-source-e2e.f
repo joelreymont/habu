@@ -1,15 +1,15 @@
 \ A direct quiet composition and the ordinary load must see the same source.
 \ Run: bin/hb --load test/live-verify-source-e2e.f
 
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/string.f
-require lib/test/eval.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/string.f
+require src/lib/test/eval.f
 require src/habu/verify-source.f
-require lib/verify-diagnostics.f
-require lib/task.f
-require lib/ffi-abi.f
+require src/lib/verify-diagnostics.f
+require src/lib/task.f
+require src/lib/ffi-abi.f
 
 package LIVE-VERIFY-SOURCE-TEST
 
@@ -49,10 +49,10 @@ private
    S\" require shared.f\nLV-ROOT:VALUE LIVE-VERIFY-SOURCE-TEST:ACTUAL !\n" ;
 
 : MISSING-SRC$ ( -- ptr u8 n )
-   S\" require examples/no-such.f\n" ;
+   S\" require src/examples/no-such.f\n" ;
 
 : NESTED-SRC$ ( -- ptr u8 n )
-   S\" \\ nested\nrequire examples/no-such.f\n" ;
+   S\" \\ nested\nrequire src/examples/no-such.f\n" ;
 
 : PREP ( -- )
    CLEANUP-RESET
@@ -65,7 +65,7 @@ private
    ENTRY$ s" missing.f" SOURCE-ROOT:JOIN MISSING MISSING-U COPY!
    ENTRY$ s" nested-design.f" SOURCE-ROOT:JOIN
       NESTED-DESIGN NESTED-DESIGN-U COPY!
-   ROOT$ s" examples/no-such.f" SOURCE-ROOT:JOIN TARGET TARGET-U COPY!
+   ROOT$ s" src/examples/no-such.f" SOURCE-ROOT:JOIN TARGET TARGET-U COPY!
    ROOT$ s" nested.f" SOURCE-ROOT:JOIN NESTED NESTED-U COPY!
    ROOT$ s" shared.f" SOURCE-ROOT:JOIN
       S\" package LV-ROOT\npublic\n: VALUE ( -- n ) 41 ;\n;package\n" WRITE-ALL

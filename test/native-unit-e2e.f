@@ -10,9 +10,9 @@
 \ record of NBR's fails here. test/native-unit-lib.f has the fixture and the
 \ other row; run alone: bin/hb --load test/native-unit-e2e.f
 
-require lib/test.f
-require lib/string.f
-require lib/process-argv.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/process-argv.f
 require tools/chain-run.f
 require test/whitebox-engine.f
 require test/native-unit-lib.f

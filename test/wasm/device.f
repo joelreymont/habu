@@ -20,20 +20,20 @@
 \ freed twice traps. test/wasm/differential.f runs after it and reports on its
 \ own: each row's program run natively and as a module, both held to the row.
 \ test/browser/echo-test.f runs after it and reports on its own: the browser
-\ host's turns, lib/browser/host-cli.mjs on its echo fixture.
+\ host's turns, src/lib/browser/host-cli.mjs on its echo fixture.
 \ test/browser/storage-test.f runs after it and reports on its own: a dynamic
 \ buffer beside the pages the host adds. The modules stay in the printed
 \ directories.
 
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/link.f
 require src/arch/wasm/encode.f
 require src/arch/wasm/kernel.f
-require lib/le.f
+require src/lib/le.f
 require test/wasm/harness.f
 require test/wasm/w03.f
 

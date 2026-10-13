@@ -3,10 +3,10 @@
 \ (test/gate-aot-positive-bundle.f, test/gate-aot-positive-preseed.f), so the
 \ pool runs them beside each other and beside every other row.
 
-require lib/source.f
-require lib/build.f
-require lib/codesign.f
-require lib/process-env.f
+require src/lib/source.f
+require src/lib/build.f
+require src/lib/codesign.f
+require src/lib/process-env.f
 require tools/build-fixpoint.f
 require tools/cli-run.f
 require tools/hb-build-lib.f
@@ -14,7 +14,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/json-writer.f
-require lib/source-lex.f
+require src/lib/source-lex.f
 require tools/aot-lint-core.f
 require tools/hb-build-direct-lints.f    \ the builds lint in process, not in a child
 require tools/json.f

@@ -8,8 +8,8 @@
 \ strings use, so each message is built for its site and nothing here outlives
 \ it or bounds the count or length of the names a program traps on.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/core/bytes.f
 require src/core/engine-error.f
 

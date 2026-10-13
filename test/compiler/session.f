@@ -1,14 +1,14 @@
 \ session.f - legacy compiler admission and cleanup through real tasks.
 
-require lib/test.f
-require lib/task.f
+require src/lib/test.f
+require src/lib/task.f
 require src/compiler/session/lease.f
 require src/compiler/native/backend.f
 require src/compiler/session/emission.f
 require test/compiler/native-source-fixture.f
 require test/compiler/native-chain-fixture.f
 require src/arch/x86-64/passes.f
-require lib/fs.f
+require src/lib/fs.f
 
 : COMPILER-SESSION-EDGE ( n -- n ) abs ;
 : COMPILER-SESSION-PROOF ( n -- n [ -- n ] )

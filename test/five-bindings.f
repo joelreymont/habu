@@ -10,12 +10,12 @@
 \ is whole - every package is resident, one more declaration still calls, and
 \ the fifth library's own binding seals and opens beside the other four.
 
-require lib/test.f
-require lib/net/tcp4.f
-require lib/net/curl.f
-require lib/pg.f
-require lib/crypto/evp.f
-require lib/task.f
+require src/lib/test.f
+require src/lib/net/tcp4.f
+require src/lib/net/curl.f
+require src/lib/pg.f
+require src/lib/crypto/evp.f
+require src/lib/task.f
 
 package FIVE-BINDINGS
 
@@ -45,7 +45,7 @@ variable SEALED-N
    BACK-BUF JAR-LEN ;
 
 \ A fresh key and nonce per run: this is the cookie-jar shape from the server's
-\ docs, not a published vector, and lib/crypto/evp-test.f owns the vectors.
+\ docs, not a published vector, and src/lib/crypto/evp-test.f owns the vectors.
 : SEAL-JAR ( -- )
    KEY$ CRYPTO:RANDOM-BYTES
    NONCE$ CRYPTO:RANDOM-BYTES

@@ -1,15 +1,15 @@
 # C callbacks into checked Habu
 
-`lib/ffi-callback.f`, package `FFI-CB`, lets C call a checked Habu word: a
+`src/lib/ffi-callback.f`, package `FFI-CB`, lets C call a checked Habu word: a
 libc `qsort` comparator, a `pthread_create` start routine, a C library's hook.
 The engine carries a fixed pool of 16 C entry stubs (`CB-POOL`,
 `src/habu/layout.f`). A declaration takes one for the life of the image, and a
 binding points it at a *context*: the region whose data stack and dictionary
-the body runs on. `lib/task.f` owns contexts and bindings. Only macOS on arm64
+the body runs on. `src/lib/task.f` owns contexts and bindings. Only macOS on arm64
 has run any of this; see "Untested" below.
 
 ```forth
-require lib/ffi-callback.f
+require src/lib/ffi-callback.f
 
 CALLBACK: CMP ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
@@ -266,7 +266,7 @@ are one set for the image: they are process-wide in
   owner `CB-ROW-BUSY` 1 while a bind, unbind or drop moves the row, and a bind
   names only a row it found free and holds BUSY. A call that meets BUSY waits
   for the hand-back, so a mover holds BUSY only for steps that call nothing,
-  wait on nothing and throw nothing. The rows are `lib/task.f`'s
+  wait on nothing and throw nothing. The rows are `src/lib/task.f`'s
   `ROWS`, in main DATA, which is never unmapped; beside them `MOVES` counts
   each row's region stores, which only the movers write and the thunk never
   reads. The thunk
@@ -282,7 +282,7 @@ macOS 27.0.1 (26A434, arm64): libsystem_pthread's `pthread_self` opens with
 `mrs x0, TPIDRRO_EL0 ; ldr x8, [x0, #-0xe0]!`. Seven threads each read the
 register four million times, across `sched_yield` and `usleep`. Each thread saw
 one value, with its low three bits clear and always `pthread_self + $E0`, so the
-values differed between threads. `lib/ffi-callback-test.f` checks this on the
+values differed between threads. `src/lib/ffi-callback-test.f` checks this on the
 host it runs on: each thread's owner sits at one offset from its own
 `pthread_self`.
 
@@ -306,7 +306,7 @@ no frame ([x86-64.md](x86-64.md#task-entry)).
 
 ## Tests
 
-`bin/hb --load lib/ffi-callback-test.f` (gate row `ffi-callback`) runs every
+`bin/hb --load src/lib/ffi-callback-test.f` (gate row `ffi-callback`) runs every
 case through libc's `qsort` and `pthread_create`. It writes
 `build/ffi-callback-transcript.txt` and compares it whole:
 
@@ -328,7 +328,7 @@ case through libc's `qsort` and `pthread_create`. It writes
   `TASK:WAKE` releases;
 - a stripped image.
 
-`lib/task-test.f` covers the EXPOSE, UNEXPOSE, CONTEXT and CONTEXT-BIND
+`src/lib/task-test.f` covers the EXPOSE, UNEXPOSE, CONTEXT and CONTEXT-BIND
 refusals, an exposed task at capture, a worker activating a worker, which
 counts on the main region, 20000 rounds of a bind racing an UNEXPOSE that must
 leave no slot naming the unexposed region, and a hint posted while a task is

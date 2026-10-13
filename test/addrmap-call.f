@@ -1,6 +1,6 @@
 \ Direct JIT calls preserve the callee's address records without copying chains.
-require lib/errors.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/test.f
 
 0 set-tier
 package ADDRMAP-CALL-TEST

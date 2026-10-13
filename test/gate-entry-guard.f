@@ -7,9 +7,9 @@
 \ another row's entry. A file may name itself, and rows may share an entry: a
 \ tier twin runs one file at both tiers.
 
-require lib/errors.f
-require lib/fmt.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/fmt.f
+require src/lib/test.f
 require test/gate-images.f
 
 package ENTRY-GUARD

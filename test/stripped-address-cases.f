@@ -2,8 +2,8 @@
 \ linker image by test/stripped-address.f (see test/preloaded-engine.f). Forked
 \ children test die paths; the executable regression is
 \ test/stripped-quotation-subject.f, linked and run by test/stripped-image.f.
-require lib/test.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/string.f
 require test/gate-common.f
 require tools/aot-build.f
 

@@ -62,7 +62,7 @@ replaced by the bounded sequence below.
 
 ## Public owner recipe
 
-Load `lib/c2-owner.f` and `lib/c2-bytes.f`. `C2-MEM:OWNER-SIZE` supplies the
+Load `src/lib/c2-owner.f` and `src/lib/c2-bytes.f`. `C2-MEM:OWNER-SIZE` supplies the
 byte length for an owner header. `C2-MEM:WITH-MUT` owns those bytes for one
 callback. Inside it, pass `C2-MEM:SEED-OWNER` to `C2-MEM:WITH-INIT`; the
 initialized callback receives a unique `owner-state` view. `C2-MEM:BIND`
@@ -70,9 +70,9 @@ turns that view into the linear owner handle, and `C2-MEM:UNBIND` returns it
 before the callback ends. For example:
 
 ```forth
-require lib/c2-owner.f
-require lib/c2-bytes.f
-require lib/memory.f
+require src/lib/c2-owner.f
+require src/lib/c2-bytes.f
+require src/lib/memory.f
 
 package C2-EXAMPLE
 private
@@ -98,7 +98,7 @@ an error. The owner invokes it once at close; a failed allocation invokes no
 disposer. `test/c2-owner-dispose.f` exercises normal return, throw, nested
 owners, task halt and disposal errors. `C2-BYTES` provides bounded copy, slice
 and length operations on live byte views. `XML-C2:WITH-READER` in
-`lib/xml/c2.f` accepts a shared source view and unique cursor storage;
+`src/lib/xml/c2.f` accepts a shared source view and unique cursor storage;
 `XML-C2:NAME$` retains the source lifetime after the cursor callback ends.
 
 At most 32 C2 owner or initialization frames are live in one task. The 33rd
@@ -113,11 +113,11 @@ Tender's `src/opc.f` exposes two distinct operations. `PART-SOURCE` returns
 cached immutable bytes valid until package `CLOSE`. For the read-only archives
 opened by OPC, `READ` allocates a fresh mutable copy for writers. Adding another
 cached part does not relocate or invalidate published part bytes. This is not
-a claim about every `ZIP:READ`: `lib/zip.f` returns the replacement buffer itself
+a claim about every `ZIP:READ`: `src/lib/zip.f` returns the replacement buffer itself
 for a replaced member of an editable archive. The first safe package surface
 accepts read-only archives only; an editable archive cannot acquire that type.
 
-`lib/xml/state.f` stores the source pointer in a reader's context. Tender's
+`src/lib/xml/state.f` stores the source pointer in a reader's context. Tender's
 `test/opc.f` keeps two readers over the same package alive simultaneously.
 `src/docx/tree.f` retains source slices in typed tree nodes, closes the XML
 cursor, then returns the tree while the package remains open. The resulting

@@ -1,6 +1,6 @@
 \ source-discovery-test.f - checked fixtures for the whole-file discovery pass.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\ lib/fs-mutate.f lib/source.f tools/source-discovery.f tools/source-discovery-test.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\ src/lib/fs-mutate.f src/lib/source.f tools/source-discovery.f tools/source-discovery-test.f
 \
 \ Proves the ordered event artifact for include/require/provided mixes (include
 \ replay-every-occurrence vs require dedup), canonical registry (equivalent spelling
@@ -15,13 +15,13 @@
 \ retired name refusing nothing, and the loader's own definition site read with
 \ no refusal.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/source.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/source.f
 require tools/source-discovery.f
 
 package SD-TEST
@@ -189,7 +189,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ --- only the definition openers open a definition ---------------------------
 
 \ A USER DEFINER'S NAME ENDS IN `:` AND IS STILL AN ORDINARY CALL. `64
-\ SPAN-BUFFER: SB` (lib/span.f) names a buffer through a `create ... does>`
+\ SPAN-BUFFER: SB` (src/lib/span.f) names a buffer through a `create ... does>`
 \ word, and the walk reads the whole line as calls: it consumes no name of its
 \ own, so the require after it is the event it always was. Only `:`, `kernel:`,
 \ `TRUSTED:` and, outside a definition, the engine's definers, the package
@@ -357,7 +357,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    s" sd-raw.f" SDT-ONE-EVENT ;
 
 \ An engine definer takes the next token as the name it gives, whatever it
-\ spells, as a package keyword takes one (lib/source.f DEFINER-KEYWORD? and
+\ spells, as a package keyword takes one (src/lib/source.f DEFINER-KEYWORD? and
 \ PACKAGE-KEYWORD?): a loader word's name there names a package, a using, an
 \ export, a cast, a linear row, storage or a deferred word, and the require
 \ after them is the one event. Each source loads.

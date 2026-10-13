@@ -126,7 +126,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-PROFILER-FOREIGN ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" require lib/ffi-abi.f" GE-SRC-LINE
+   s" require src/lib/ffi-abi.f" GE-SRC-LINE
    s" create GDB-SYM 16 allot" GE-SRC-LINE
    s" : GDB-SYM-FOR ( n -- ) 1000000 * mono-ns + {: stop:n :} begin 0 GDB-SYM FFI:DLSYM drop mono-ns stop >= until ;" GE-SRC-LINE
    S\" s\" strlen\" GDB-SYM FFI:CSTR" GE-SRC-LINE
@@ -307,7 +307,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 
 \ A negative interval is the caller's error: prof-rate throws E-PROF-RATE
 \ before it stores anything. Uncaught, the engine reports the code and exits
-\ UNCAUGHT-RC before the next line runs. Caught, the code is lib/errors.f's
+\ UNCAUGHT-RC before the next line runs. Caught, the code is src/lib/errors.f's
 \ E-PROF-RATE, printed negated since GDB-FIELD reads a digit run, and the next
 \ prof-on arms the 250 us set before it, which the report states.
 : GDB-PROFILER-RATE-REFUSED ( -- )
@@ -348,7 +348,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ complete JSON, and prof-row are the three ways to read one.
 : GDB-PROF-PHASE-SRC ( -- )
    GE-SRC-RESET
-   s" require lib/string.f" GE-SRC-LINE
+   s" require src/lib/string.f" GE-SRC-LINE
    s" package GDBPH" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" variable GDBPH-ACC" GE-SRC-LINE

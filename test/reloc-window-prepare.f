@@ -9,7 +9,7 @@
 \ row, typed by that row. The sealed product refuses such a reopen, so a child
 \ that loads this file runs on the unsealed engine test/whitebox-child.f names.
 \
-\ A child loads lib/test.f and lib/memory.f after the seal, so before it the
+\ A child loads src/lib/test.f and src/lib/memory.f after the seal, so before it the
 \ window loads what the product loads before its own seal
 \ (src/habu/native-runtime.f) and they need: the two declaration participants,
 \ the last of which seals registration (an ENUM is refused with
@@ -30,5 +30,5 @@ require src/core/prefix-boundary.f
 require src/core/generated-declaration-dictionary.f
 require src/core/generated-declaration-protection.f
 require src/core/dynamic-storage.f
-require lib/prelude.f
+require src/lib/prelude.f
 include src/core/internal-mark.f

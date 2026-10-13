@@ -2,10 +2,10 @@
 \ under test.
 1 set-tier
 
-require lib/test.f
-require lib/task.f
-require lib/image-lifecycle.f
-require lib/ffi-abi.f
+require src/lib/test.f
+require src/lib/task.f
+require src/lib/image-lifecycle.f
+require src/lib/ffi-abi.f
 require src/habu/task-abi.f
 
 package IMAGE-LIFECYCLE-TASK-TEST
@@ -91,7 +91,7 @@ CAST: >ACTION-CELL ( ptr n -- ptr [ -- ] )
 \ of the five cleared cells have a TASK-ABI row because the engine's task entry
 \ loads them; TCB.THREAD and TCB.RET have none - nothing in the engine reads a
 \ pthread_t or a join's answer - so they are counted from the rows on either
-\ side, which lib/task.f's own layout check pins against TASK-ABI.
+\ side, which src/lib/task.f's own layout check pins against TASK-ABI.
 TASK-ABI:XT-OFF CELL + constant THREAD-OFF
 TASK-ABI:STATUS-OFF CELL 2 * + constant RET-OFF
 
@@ -102,7 +102,7 @@ TASK-ABI:STATUS-OFF CELL 2 * + constant RET-OFF
    TASK-ABI:STATUS-OFF TCB@ ;
 
 \ The cell one past the TCB: this task's chain link, holding the address of the
-\ TCB declared before it (lib/task.f, TASK-CHAIN).
+\ TCB declared before it (src/lib/task.f, TASK-CHAIN).
 : LINK@ ( ptr n -- n )
    TASK-ABI:TCB-BYTES TCB@ ;
 
@@ -110,7 +110,7 @@ TASK-ABI:STATUS-OFF CELL 2 * + constant RET-OFF
    FFI:>CELL ;
 
 \ THE CHAIN IS EVERY TCB A PROGRAM DECLARED AND NOTHING BEFORE THEM: newest
-\ first, and the first worker this file declared ends it. lib/task.f is loaded by
+\ first, and the first worker this file declared ends it. src/lib/task.f is loaded by
 \ every one of its users and declares no task of its own, so nothing but the
 \ program's own workers is ever on the chain the capture sweep walks.
 : CHAIN-ROWS ( -- )
@@ -133,10 +133,10 @@ TASK-ABI:STATUS-OFF CELL 2 * + constant RET-OFF
    WORKER-B STATE@ TASK-ABI:EMPTY T= ;
 
 \ AFTER THE KILL THE TCB HOLDS NOTHING THIS PROCESS TOOK BUT ITS PARK, which the
-\ capture sweep destroys (lib/task.f PARK-CREATE): the thread handle, the join's
+\ capture sweep destroys (src/lib/task.f PARK-CREATE): the thread handle, the join's
 \ answer, and the data base, record count and code end PREPARE recorded are all
 \ zero, which is what lets a task that ran at load time be captured at all
-\ (lib/task.f TASK-RELEASE-MEM). The activated TCB is read first: the
+\ (src/lib/task.f TASK-RELEASE-MEM). The activated TCB is read first: the
 \ handle pthread_create stored and the data base PREPARE recorded are set, so
 \ the offsets reach the cells the kill clears, not a cell that was zero all
 \ along. Both are the main thread's own stores; the worker never writes them.

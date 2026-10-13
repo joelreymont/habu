@@ -5,9 +5,9 @@
 \ Tier-neutral by design: the descriptor check is called directly on hand-built
 \ descriptors, and the cases that need a compiler run in a child of their own.
 require src/compiler/native/fetch-check.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 
 package NATIVE-FETCH-CHECK-TEST
 private

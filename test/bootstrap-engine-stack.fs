@@ -21,7 +21,7 @@ require nf.fs
 \ boot, return and loop stacks come from -- so every mapping these programs
 \ run on is its output rather than a library's. Not because the seed cannot
 \ reach the library: it can, and test/bootstrap-wide-memory-src.f bakes
-\ `require lib/memory.f` and MEM:ALLOC-GUARDED into a stage0 program that
+\ `require src/lib/memory.f` and MEM:ALLOC-GUARDED into a stage0 program that
 \ builds and runs. Leaves the mapped base on the data stack.
 : BES-MKSTACK ( -- )
    STACK-ABI:PAGE-BYTES 10 STACK-GUARD:EMIT-MAP
@@ -80,8 +80,8 @@ require nf.fs
 
 \ The leaf comparison covers exactly the constants src/habu/stack-abi.f
 \ publishes as STACK-ABI: words, because those are the ones the built engine
-\ can evaluate. E-STACK-UNGUARDED is not one of them: lib/errors.f owns that
-\ code and this Gforth stage, which has no lib/errors.f, spells its own mirror
+\ can evaluate. E-STACK-UNGUARDED is not one of them: src/lib/errors.f owns that
+\ code and this Gforth stage, which has no src/lib/errors.f, spells its own mirror
 \ under the same name in bootstrap/cg/forth.fs. The stage value is pinned where
 \ it is observable instead -- BES-DATA's run-in-stack refusals print -3802.
 : BES-ABI ( -- )

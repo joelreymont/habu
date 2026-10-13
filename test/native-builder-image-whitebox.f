@@ -7,9 +7,9 @@
 \ test/native-builder-image-lib.f has the fixture and the other rows; run
 \ alone: bin/hb --load test/native-builder-image-whitebox.f
 
-require lib/test.f
-require lib/fs.f
-require lib/time.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/time.f
 require tools/chain-run.f
 require test/whitebox-engine.f
 require test/native-builder-image-lib.f

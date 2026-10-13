@@ -1,18 +1,18 @@
-\ examples-test.f - checked fixture for examples/*.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
-\ lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
+\ examples-test.f - checked fixture for src/examples/*.f.
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
+\ src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f
 \ tools/examples-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/test/outcome.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/test/outcome.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 
 package EXAMPLES-TEST
 
@@ -59,7 +59,7 @@ variable EXT-ERR-A
    FS-PATH-CAP EXT-PATH-A EXT-ALLOC-BUF ;
 
 \ The copy buffer holds one bundled source at a time, and the stdlib sources
-\ these bundles are built from grow with the system - lib/errors.f alone is past
+\ these bundles are built from grow with the system - src/lib/errors.f alone is past
 \ 80 KB. So it is sized from the file about to be copied instead of from a
 \ constant, which would have to be raised every time a library outgrew it and
 \ would fail the whole fixture mid-run when nobody did.
@@ -144,7 +144,7 @@ variable EXT-ERR-A
    bundle bundleu src srcu EXT-PROVIDED$ APPEND-FILE ;
 
 \ The engine carries part of the stdlib itself (dot
-\ habu-seed-the-stdlib-d8e3a757), so a bundle that copied lib/errors.f in
+\ habu-seed-the-stdlib-d8e3a757), so a bundle that copied src/lib/errors.f in
 \ redefined every word in it the moment it ran. A module the engine provides is
 \ STATED here and checked by src/core/include.f ?ENGINE-PROVIDES when the bundle
 \ loads; everything else is carried as before. This is the same rule
@@ -212,37 +212,37 @@ variable EXT-ERR-A
 : EXT-BUNDLE-FILE-MAP ( -- ptr u8 n )
    EXT-TEMP s" file-map.f" EXT-JOIN$ {: b:ptr u :}
    b u EXT-CLEAR-BUNDLE
-   b u s" lib/errors.f" EXT-ADD-SOURCE-LF
-   b u s" lib/string.f" EXT-ADD-SOURCE-LF
-   b u s" lib/test.f" EXT-ADD-SOURCE-LF
-   b u s" lib/fs.f" EXT-ADD-SOURCE-LF
-   b u s" lib/map.f" EXT-ADD-SOURCE-LF
-   b u s" examples/file-map.f" EXT-ADD-SOURCE
+   b u s" src/lib/errors.f" EXT-ADD-SOURCE-LF
+   b u s" src/lib/string.f" EXT-ADD-SOURCE-LF
+   b u s" src/lib/test.f" EXT-ADD-SOURCE-LF
+   b u s" src/lib/fs.f" EXT-ADD-SOURCE-LF
+   b u s" src/lib/map.f" EXT-ADD-SOURCE-LF
+   b u s" src/examples/file-map.f" EXT-ADD-SOURCE
    b u ;
 
 : EXT-BUNDLE-PURE ( -- ptr u8 n )
    EXT-PURE {: b:ptr u:n :}
    b u EXT-CLEAR-BUNDLE
-   b u s" lib/errors.f" EXT-ADD-SOURCE-LF
-   b u s" lib/string.f" EXT-ADD-SOURCE-LF
-   b u s" lib/string-roles.f" EXT-ADD-SOURCE-LF   \ examples/string.f uses STR:
-   b u s" lib/test.f" EXT-ADD-SOURCE-LF
-   b u s" lib/array.f" EXT-ADD-SOURCE-LF
-   b u s" lib/property.f" EXT-ADD-SOURCE-LF
-   b u s" examples/array.f" EXT-ADD-SOURCE-LF
-   b u s" examples/string.f" EXT-ADD-SOURCE-LF
-   b u s" examples/property-test.f" EXT-ADD-SOURCE
+   b u s" src/lib/errors.f" EXT-ADD-SOURCE-LF
+   b u s" src/lib/string.f" EXT-ADD-SOURCE-LF
+   b u s" src/lib/string-roles.f" EXT-ADD-SOURCE-LF   \ src/examples/string.f uses STR:
+   b u s" src/lib/test.f" EXT-ADD-SOURCE-LF
+   b u s" src/lib/array.f" EXT-ADD-SOURCE-LF
+   b u s" src/lib/property.f" EXT-ADD-SOURCE-LF
+   b u s" src/examples/array.f" EXT-ADD-SOURCE-LF
+   b u s" src/examples/string.f" EXT-ADD-SOURCE-LF
+   b u s" src/examples/property-test.f" EXT-ADD-SOURCE
    b u ;
 
 : EXT-BUNDLE-BUILD-SCRIPT ( -- ptr u8 n )
    EXT-BUILD-SCRIPT {: b:ptr u :}
    b u EXT-CLEAR-BUNDLE
-   b u s" lib/errors.f" EXT-ADD-SOURCE-LF
-   b u s" lib/string.f" EXT-ADD-SOURCE-LF
-   b u s" lib/test.f" EXT-ADD-SOURCE-LF
-   b u s" lib/fs.f" EXT-ADD-SOURCE-LF
-   b u s" lib/argv.f" EXT-ADD-SOURCE-LF
-   b u s" examples/build-script.f" EXT-ADD-SOURCE
+   b u s" src/lib/errors.f" EXT-ADD-SOURCE-LF
+   b u s" src/lib/string.f" EXT-ADD-SOURCE-LF
+   b u s" src/lib/test.f" EXT-ADD-SOURCE-LF
+   b u s" src/lib/fs.f" EXT-ADD-SOURCE-LF
+   b u s" src/lib/argv.f" EXT-ADD-SOURCE-LF
+   b u s" src/examples/build-script.f" EXT-ADD-SOURCE
    b u ;
 
 : EXT-RUN-HB ( -- len len outcome )
@@ -291,7 +291,7 @@ variable EXT-ERR-A
    s" --json" EXT-ARG+
    s" -o" EXT-ARG+
    EXT-TEMP s" app.hb" EXT-JOIN$ EXT-ARG+
-   s" examples/array.f" EXT-ARG+
+   s" src/examples/array.f" EXT-ARG+
    EXT-RUN-HB EXT-BUILD-SCRIPT EXT-ASSERT-OK ;
 
 : EXT-TEST-FILE-MAP ( -- )

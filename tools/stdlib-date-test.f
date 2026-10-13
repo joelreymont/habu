@@ -1,15 +1,15 @@
-\ stdlib-date-test.f - focused tests for lib/date.f.
+\ stdlib-date-test.f - focused tests for src/lib/date.f.
 \
-\ Uses the shared lib/test.f assert vocabulary (T= / TTRUE / T$= / T-RESET /
-\ T-REPORT), like the sibling lib/property-test.f. The test shares one dictionary
+\ Uses the shared src/lib/test.f assert vocabulary (T= / TTRUE / T$= / T-RESET /
+\ T-REPORT), like the sibling src/lib/property-test.f. The test shares one dictionary
 \ with the already-loaded test framework, so defining a private T= /
 \ TTRUE / T$= here collides (duplicate definition: T=). Reusing the framework
 \ words composes cleanly standalone, spawned, and in-process.
 
-require lib/errors.f
-require lib/date.f
-require lib/test.f
-require lib/task.f
+require src/lib/errors.f
+require src/lib/date.f
+require src/lib/test.f
+require src/lib/task.f
 
 32 constant DATE-TEST-BUF-LEN
 

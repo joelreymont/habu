@@ -3,7 +3,7 @@
 \
 \ The compiler's first error block, -6600..-6699, is full: ten owners spent all
 \ 100 codes and the subsystem still has ten substrate stages, eight dialects,
-\ and two back ends to build. lib/errors.f therefore reserves a second, larger
+\ and two back ends to build. src/lib/errors.f therefore reserves a second, larger
 \ region, E-COMP-FIRST..E-COMP-LAST, and tools/error-code-lint.f is what keeps
 \ it exclusive. These fixtures prove three things about that region: the owning
 \ file can mint anywhere inside it, every other file is refused inside it, and
@@ -16,17 +16,17 @@
 \ Composing the text also means the fixtures follow the bounds if they ever
 \ move, instead of silently testing a range nobody uses any more.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/test.f
-require lib/memory.f
-require lib/vector.f
-require lib/fs.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/vector.f
+require src/lib/fs.f
 require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
-require lib/source-lex.f
+require src/lib/source-lex.f
 require tools/error-code-lint-core.f
 
 package ECL-REGION-TEST

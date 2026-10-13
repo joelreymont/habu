@@ -1,7 +1,7 @@
 \ diag-origin.f - CLI wrapper for diagnostic origin markers.
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f

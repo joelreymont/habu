@@ -8,7 +8,7 @@
 \ instruction is one to fifteen bytes. Everything this file reads back is
 \ therefore counted in BYTES where the ARM64 emitter counts instructions.
 \
-\ THE SINK IS THIS PASS'S OWN. Two lib/byte-buffer.f BUFs: the emission, which is
+\ THE SINK IS THIS PASS'S OWN. Two src/lib/byte-buffer.f BUFs: the emission, which is
 \ what BYTES and SIZE answer, and a scratch one nothing outside a measurement
 \ ever sees. EVERY LENGTH HERE IS MEASURED AND NONE IS WRITTEN DOWN: an
 \ operation's size is what encoding it into the scratch sink leaves there, which
@@ -59,10 +59,10 @@
 \ states the sealed emission as NEMIT's rows from the readers below, and
 \ src/compiler/native/publish.f reads nothing else.
 
-require lib/prelude.f
-require lib/errors.f
-require lib/num-types.f
-require lib/byte-buffer.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/num-types.f
+require src/lib/byte-buffer.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/build.f
@@ -85,7 +85,7 @@ private
 \ ---- the byte sinks ----------------------------------------------------------
 \ The lengths BUF answers are a role; the layout arithmetic, the block starts and
 \ the site offsets are raw cells, so the projection is taken once here the way
-\ lib/byte-buffer.f takes its own.
+\ src/lib/byte-buffer.f takes its own.
 CAST: BLEN>N ( NUM:byte-len -- n )
 
 : N>BLEN ( n -- NUM:byte-len )

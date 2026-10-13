@@ -31,7 +31,7 @@ package HB-BUILD-CLI
    HBT-OPENP-OUT-BUF HBT-OPENP-OUT-U @ ;
 
 \ THE THREE BAKED CONSTANTS AN ORDINARY PROGRAM READS, in one program: printing
-\ an integer reaches lib/fmt.f INT>NUM and its copy of STR-MIN-I64$, parsing one
+\ an integer reaches src/lib/fmt.f INT>NUM and its copy of STR-MIN-I64$, parsing one
 \ reaches STR-PARSE-POS and STR-MAX-I64$, hashing reaches SHA-256's KK and HH0
 \ in src/core/sha256.f, whose digest context is this program's own. Those tables
 \ live in baked files, below every capture window, and each one of them refused
@@ -44,7 +44,7 @@ package HB-BUILD-CLI
 \ nothing.
 : HBT-PPH-SRC$ ( -- ptr u8 n )
    SB-RESET
-   S\" require lib/fmt.f\ncreate PPH-DIG $20 allot\ncreate PPH-HEX $40 allot\n" SB-APPEND
+   S\" require src/lib/fmt.f\ncreate PPH-DIG $20 allot\ncreate PPH-HEX $40 allot\n" SB-APPEND
    S\" create PPH-CTX SHA256-CTX-BYTES allot\n" SB-APPEND
    S\" : MAIN ( -- )\n   42 FMT:.INT cr\n   s\" 123\" STR-PARSE-POS MATCH option\n" SB-APPEND
    S\"      none OF s\" none\" type cr ENDOF\n     some OF FMT:.INT cr ENDOF\n   ;MATCH\n" SB-APPEND
@@ -115,7 +115,7 @@ package HB-BUILD-CLI
 
 \ ... a program that PRINTS an integer, PARSES one and HASHES a string builds
 \ stripped, because every baked constant those three reach is carried by name,
-\ and the image's stdout is the proof that the bytes travelled. lib/fmt.f is a
+\ and the image's stdout is the proof that the bytes travelled. src/lib/fmt.f is a
 \ module of the linker's lib closure the engine does not bake, and the linker
 \ image refuses this program at .INT (E-AOT-PRE-WINDOW), so it builds on the
 \ engine.

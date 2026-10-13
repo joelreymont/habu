@@ -27,7 +27,7 @@ K-lane corrections (design 2026-09-30; these override the lines above where they
 - ARM64 twins: `habu1.f:1885-1937, 2187-2404, 2709-2716, 1286-1394`.
 
 Preflight corrections (Fable, 2026-09-30; these override the lines above where they differ):
-- `stat64`/`lstat64`: the x86-64 fix reads `st_mode` at 24 (aarch64: 16; x86-64 `struct stat` has three u64 `st_dev st_ino st_nlink` before it, `/usr/include/asm/stat.h`) and the other five fields at the offsets `LINUX-STAT-FIX` (`habu1.f:2257-2263`) reads; it writes the layout `lib/fs.f:47-52` reads (mode 4, mtime 48/56, ctime 64/72, size 96). A case checks that mode at 4 of a stat of `/` has `S_IFDIR`.
+- `stat64`/`lstat64`: the x86-64 fix reads `st_mode` at 24 (aarch64: 16; x86-64 `struct stat` has three u64 `st_dev st_ino st_nlink` before it, `/usr/include/asm/stat.h`) and the other five fields at the offsets `LINUX-STAT-FIX` (`habu1.f:2257-2263`) reads; it writes the layout `src/lib/fs.f:47-52` reads (mode 4, mtime 48/56, ctime 64/72, size 96). A case checks that mode at 4 of a stat of `/` has `S_IFDIR`.
 - `C-CALL,` is `mov rcx, rsp; push rcx; push rcx; and rsp, -16; call rax; mov rsp, [rsp+8]` (`X64ASM` has no memory `push`, `asm.f:719-727`; both copies are the saved rsp, so `[rsp+8]` holds it whether the alignment removed 0 or 8 bytes).
 - Tests follow master's convention (`505b7f52`): single positive images, no per-image negative twin.
 - Verify: install `strace` first (`pkexec pacman -S --needed --noconfirm strace`); the ThinkPad has none. Host engine: master's product `5f4d3321…`.

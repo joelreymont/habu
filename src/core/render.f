@@ -22,7 +22,7 @@ variable RDIAG-U
 variable RDIAG-I
 
 \ A record that does not fit its buffer, the renderer's own or the caller's, is
-\ refused by this code. lib/errors.f owns it; this file compiles before any lib/
+\ refused by this code. src/lib/errors.f owns it; this file compiles before any src/lib/
 \ file exists, so the same (code, name) pair is re-registered here -- the one
 \ form tools/error-code-lint.f admits -- and test/diag-buffer-capacity.f keeps
 \ the two spellings equal.

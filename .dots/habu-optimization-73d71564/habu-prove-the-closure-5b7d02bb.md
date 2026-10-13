@@ -6,12 +6,12 @@ issue-type: task
 created-at: "2026-09-22T11:30:53.090387+03:00"
 ---
 
-Problem: Joel (2026-09-22): 'dead code should be eliminated during tree shaking. this is not being done correctly' - unproved either way. Probe: a stripped program whose MAIN calls one word of lib/string.f, sized against the 65,728 B stripped hello (~/.cache/tender/habu-gaps/stripped-determinism/hello-a): growth by about one word means word granularity, growth by the file or the package means the walker keeps more than MAIN reaches; then tools/hb-build-report.f's per-package split of Tender's bin/tenderd 1,783,176 code bytes, naming the packages that own them. Acceptance: both measurements recorded with the engine sha, the walker's granularity stated, the per-package table for bin/tenderd; a walker defect gets its fix and bin/tenderd is re-measured. Verification: the probe images and the report output under ~/.cache/tender/habu-gaps/closure-grain/, then Tender's python3 scripts/habu.py build --server. Ownership: alder. Claim: agent=alder workspace=.jj-ws/alder-size-probes.
+Problem: Joel (2026-09-22): 'dead code should be eliminated during tree shaking. this is not being done correctly' - unproved either way. Probe: a stripped program whose MAIN calls one word of src/lib/string.f, sized against the 65,728 B stripped hello (~/.cache/tender/habu-gaps/stripped-determinism/hello-a): growth by about one word means word granularity, growth by the file or the package means the walker keeps more than MAIN reaches; then tools/hb-build-report.f's per-package split of Tender's bin/tenderd 1,783,176 code bytes, naming the packages that own them. Acceptance: both measurements recorded with the engine sha, the walker's granularity stated, the per-package table for bin/tenderd; a walker defect gets its fix and bin/tenderd is re-measured. Verification: the probe images and the report output under ~/.cache/tender/habu-gaps/closure-grain/, then Tender's python3 scripts/habu.py build --server. Ownership: alder. Claim: agent=alder workspace=.jj-ws/alder-size-probes.
 
 
 Initial code-closure measurement on the same engine: stripped hello is 2,760
 code bytes; adding two unreachable arithmetic words and an unreachable word
-with a literal leaves code at 2,760 bytes; calling `STR=` from `lib/string.f`
+with a literal leaves code at 2,760 bytes; calling `STR=` from `src/lib/string.f`
 raises code to 2,976 bytes. The code result is consistent with word-grain
 reachability. The unreachable literal still adds DATA bytes (464 to 480), so
 data reachability is not yet proven word-granular. `--size-report` also shows that the current stripped report has image-wide code/data classes, not a per-package code table; the requested Tender package split therefore needs a report change or a separate attribution probe.
@@ -180,7 +180,7 @@ incomplete graph. It removes at most 124 members / 17,124 body bytes (0.92% of
 this image's code): SCRAPE 16,776, SECRETS 320, global words 28. Much of that
 bound is necessary runtime behavior: `server/scrape/ingest.f:1544` reads the
 nine RUN-QT slots for TASK:ACTIVATE, `server/secrets.f:48/55/62` calls MEMORY-*
-defers, and `lib/process.f:309` calls PROC-REAP-ARM. Thus this gap cannot explain
+defers, and `src/lib/process.f:309` calls PROC-REAP-ARM. Thus this gap cannot explain
 the server's roughly 1.86 MB of code; broader code-generation work remains the
 size priority. Probe, root list and removed-member table are `root-bound*` in
 the current-pair evidence directory. The reduced unused-cell defect remains

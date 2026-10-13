@@ -1,5 +1,5 @@
 \ ffi-stub-child.f - the FFI staging shapes no C function witnesses on both
-\ ABIs, called against fixed AArch64 stubs. lib/ffi-test.f runs it as a window
+\ ABIs, called against fixed AArch64 stubs. src/lib/ffi-test.f runs it as a window
 \ child: test/native-window-owner-child.f loads it after
 \ test/mcode-window-prepare.f, whose owner words publish the stubs and call
 \ them. It prints `test: ok`, then the window `window: 0`.
@@ -12,9 +12,9 @@
 \ the bytes stay put for the call that follows. A minter runs inside a
 \ definition: a top-level one would write over the line being interpreted.
 
-require lib/test.f
-require lib/le.f
-require lib/ffi-abi.f
+require src/lib/test.f
+require src/lib/le.f
+require src/lib/ffi-abi.f
 
 package FFI-STUB
 

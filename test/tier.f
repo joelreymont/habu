@@ -45,18 +45,18 @@
 \ leak case deliberately damages it, so a suite that ran these in-process would
 \ be testing whichever order its cases happened to run in.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 
 package TIER-TEST
 
@@ -128,7 +128,7 @@ variable RC     variable EXITED
    RC @ want T= ;
 
 \ The line the child prints for an uncaught code, rendered from the name so the
-\ needle follows lib/errors.f instead of repeating its number.
+\ needle follows src/lib/errors.f instead of repeating its number.
 : UNCAUGHT$ ( n -- ptr u8 n )
    {: code:n :}
    SB-RESET
@@ -227,7 +227,7 @@ variable RC     variable EXITED
 \ checker effect row the word is E-UNDEFINED inside every checked body, so
 \ `: R ( -- n ) tier@ ;` rejected and no checked build driver could select a
 \ tier at all. tier@ is an ordinary reader like check@. set-tier's one row is
-\ package TIER's (lib/tier.f), so a checked body selects a tier by calling
+\ package TIER's (src/lib/tier.f), so a checked body selects a tier by calling
 \ TIER:SELECT, and a plain checked body that names set-tier itself does not find
 \ it: the selection stays one deliberate, named call.
 : TEST-CHECKER-ROWS ( -- )
@@ -238,10 +238,10 @@ variable RC     variable EXITED
    s" 1 set-tier : R ( -- n ) tier@ ; R . cr" RUN  s" 1" ASSERT-OK
 
    s" TIER:SELECT selects from a checked body on tier 0" T-LABEL
-   s" require lib/tier.f : ST ( n -- ) TIER:SELECT ; 1 ST tier@ . cr" RUN  s" 1" ASSERT-OK
+   s" require src/lib/tier.f : ST ( n -- ) TIER:SELECT ; 1 ST tier@ . cr" RUN  s" 1" ASSERT-OK
 
    s" TIER:SELECT selects from a checked body on tier 1" T-LABEL
-   s" 1 set-tier require lib/tier.f : ST ( n -- ) TIER:SELECT ; 0 ST tier@ . cr" RUN  s" 0" ASSERT-OK
+   s" 1 set-tier require src/lib/tier.f : ST ( n -- ) TIER:SELECT ; 0 ST tier@ . cr" RUN  s" 0" ASSERT-OK
 
    s" set-tier is undefined in a plain checked body" T-LABEL
    s" : S ( -- ) 1 set-tier ;" RUN  REJECT-RC ASSERT-RC
@@ -657,7 +657,7 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" 0 set-tier : OR-M ( -- ) create does> ( -- n ) drop 46 ; OR-M OR-C ' OR-C dup 4 + code-origin .  ' OR-M dup 4 + code-origin .  OR-C . " EXEC
    0 ASSERT-RC OUT$ S\" 1\n0\n46\n" STR= TTRUE
    s" a tier change inside an immediate affects only the next definition" T-LABEL
-   S\" 0 set-tier require lib/tier.f : OR-SW ( -- ) 1 TIER:SELECT ; immediate s\q OR-SW\q 0 parse-imm : OR-L ( -- n ) OR-SW 47 ; ' OR-L dup 4 + code-origin .  tier@ .  OR-L . " EXEC
+   S\" 0 set-tier require src/lib/tier.f : OR-SW ( -- ) 1 TIER:SELECT ; immediate s\q OR-SW\q 0 parse-imm : OR-L ( -- n ) OR-SW 47 ; ' OR-L dup 4 + code-origin .  tier@ .  OR-L . " EXEC
    0 ASSERT-RC OUT$ S\" 0\n1\n47\n" STR= TTRUE
    s" a code cursor rewind hides bytes without reclassifying them" T-LABEL
    S\" 0 set-tier variable OR-LO variable OR-HI cp@ OR-LO ! : OR-HIDDEN ( -- n ) 48 ; cp@ OR-HI ! OR-LO @ cp! OR-HI @ cp! ' OR-HIDDEN dup 4 + code-origin .  OR-HIDDEN . \n" EXEC
@@ -724,25 +724,25 @@ variable OR-U
 
 : TEST-BUILD-SCOPE ( -- )
    s" build scope selects native and restores default JIT through nested scopes" T-LABEL
-   S\" require lib/executable-build.f\n: BS-IN ( -- n ) [: tier@ ;] EXECUTABLE-BUILD:WITH ;\n: BS-RUN ( -- n n ) [: tier@ BS-IN ;] EXECUTABLE-BUILD:WITH ; BS-RUN . . tier@ . \n" EXEC
+   S\" require src/lib/executable-build.f\n: BS-IN ( -- n ) [: tier@ ;] EXECUTABLE-BUILD:WITH ;\n: BS-RUN ( -- n n ) [: tier@ BS-IN ;] EXECUTABLE-BUILD:WITH ; BS-RUN . . tier@ . \n" EXEC
    0 ASSERT-RC OUT$ S\" 1\n1\n0\n" STR= TTRUE
    s" build scope preserves higher-order inputs and outputs" T-LABEL
-   S\" require lib/executable-build.f\n: BS-RUN ( n -- n n ) [: 1+ dup ;] EXECUTABLE-BUILD:WITH ; 48 BS-RUN . . tier@ . \n" EXEC
+   S\" require src/lib/executable-build.f\n: BS-RUN ( n -- n n ) [: 1+ dup ;] EXECUTABLE-BUILD:WITH ; 48 BS-RUN . . tier@ . \n" EXEC
    0 ASSERT-RC OUT$ S\" 49\n49\n0\n" STR= TTRUE
    s" tier0 requests are refused before compilation and cleanup restores JIT" T-LABEL
-   S\" require lib/executable-build.f\nrequire lib/tier.f\n: BS-BAD ( -- ) 0 TIER:SELECT ;\n: BS-RUN ( -- ) [: BS-BAD ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ .  : BS-AFTER ( -- n ) 50 ; BS-AFTER . \n" EXEC
+   S\" require src/lib/executable-build.f\nrequire src/lib/tier.f\n: BS-BAD ( -- ) 0 TIER:SELECT ;\n: BS-RUN ( -- ) [: BS-BAD ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ .  : BS-AFTER ( -- n ) 50 ; BS-AFTER . \n" EXEC
    0 ASSERT-RC OUT$ S\" 70\n0\n50\n" STR= TTRUE
    ERR$ S\" hb: executable build requires native tier 1\n" CONTAINS? TTRUE
    s" arbitrary throws preserve their code and the outer tier" T-LABEL
-   S\" 1 set-tier require lib/executable-build.f\n: BS-RUN ( -- ) [: 79 throw ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ . \n" EXEC
+   S\" 1 set-tier require src/lib/executable-build.f\n: BS-RUN ( -- ) [: 79 throw ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ . \n" EXEC
    0 ASSERT-RC OUT$ S\" 79\n1\n" STR= TTRUE
    s" evaluated source publishes native code inside the scope" T-LABEL
-   S\" require lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q : BS-NATIVE ( -- n ) 61 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; BS-RUN ' BS-NATIVE dup 4 + code-origin . BS-NATIVE . tier@ .\n" EXEC
+   S\" require src/lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q : BS-NATIVE ( -- n ) 61 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; BS-RUN ' BS-NATIVE dup 4 + code-origin . BS-NATIVE . tier@ .\n" EXEC
    0 ASSERT-RC OUT$ S\" 1\n61\n0\n" STR= TTRUE
    s" evaluated tier0 refusal leaves its following definition unpublished" T-LABEL
    \ The same wordlist finds BS-RUN and reports BS-FORBIDDEN absent. Rethrow
    \ the saved guard error after the lookups, preserving its rejection code.
-   S\" require lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q 0 set-tier : BS-FORBIDDEN ( -- n ) 62 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch dup . tier@ . s\q BS-RUN\q get-current search-wl 0= 0= . s\q BS-FORBIDDEN\q get-current search-wl . throw\n" EXEC
+   S\" require src/lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q 0 set-tier : BS-FORBIDDEN ( -- n ) 62 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch dup . tier@ . s\q BS-RUN\q get-current search-wl 0= 0= . s\q BS-FORBIDDEN\q get-current search-wl . throw\n" EXEC
    REJECT-RC ASSERT-RC OUT$ S\" 70\n0\n-1\n0\n" STR= TTRUE
    ERR$ S\" hb: executable build requires native tier 1\n" CONTAINS? TTRUE
    s" raw stores cannot erase retained provenance" T-LABEL

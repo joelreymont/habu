@@ -1,6 +1,6 @@
 \ A stripped image classifies its own executable after restoring its DATA.
-require lib/engine-id.f
-require lib/fs.f
+require src/lib/engine-id.f
+require src/lib/fs.f
 require tools/image-size-lib.f
 
 package AOT-IMAGE-CLASS-SUBJECT

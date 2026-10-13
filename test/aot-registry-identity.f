@@ -1,9 +1,9 @@
 \ Exercise current registry source through the real replacement-owner load.
-require lib/test.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require test/whitebox-child.f
 
 package REGISTRY-IDENTITY-SUITE
@@ -49,7 +49,7 @@ create ERR IO-CAP allot
    s" src/core/include.f" ARG
    s" src/core/sha256.f" ARG
    s" src/habu/code-span.f" ARG
-   s" lib/prelude.f" ARG
+   s" src/lib/prelude.f" ARG
    WHITEBOX-CHILD:ENV! ;
 
 : CHECK ( -- )

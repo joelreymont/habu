@@ -1,12 +1,12 @@
 \ gate-pool.f - checked bounded process pool for native tests.
 
-require lib/fmt.f
-require lib/process-fork.f
-require lib/process-env.f
-require lib/process-tree.f               \ a slot ends with everything descended from its child
-require lib/signal.f                     \ a signalled run is answered at a pool step
-require lib/test/runner.f
-require lib/test/suite.f                 \ TEST:ITEM-MAX sizes the red table
+require src/lib/fmt.f
+require src/lib/process-fork.f
+require src/lib/process-env.f
+require src/lib/process-tree.f               \ a slot ends with everything descended from its child
+require src/lib/signal.f                     \ a signalled run is answered at a pool step
+require src/lib/test/runner.f
+require src/lib/test/suite.f                 \ TEST:ITEM-MAX sizes the red table
 require tools/why-threw.f
 
 using WHY-THREW                          \ the fork-throw self-identifying report
@@ -24,7 +24,7 @@ $1000 constant GT-POOL-CHUNK-CAP
 \ one build row per keyed image family, and refuses more families than this.
 8 constant GT-POOL-SIDE-MAX
 10000 constant GT-POOL-GRACE-MS         \ a root that catches SIGTERM ends itself inside this (GT-POOL-ASK-END)
-\ Red rows: one per registered suite (lib/test/suite.f ITEM-MAX) plus the side
+\ Red rows: one per registered suite (src/lib/test/suite.f ITEM-MAX) plus the side
 \ rows, so a complete run reports every red with its exit code and capture
 \ paths, and a row the table has no record of passed.
 TEST:ITEM-MAX GT-POOL-SIDE-MAX + constant GT-POOL-RED-MAX
@@ -422,7 +422,7 @@ GT-POOL-ABORT-BARE!
 \ A SLOT ENDS WITH EVERYTHING DESCENDED FROM ITS CHILD. The group kill below
 \ reaches the child and what it forked. What it spawned leads groups of its own
 \ (docs/process-pty.md) - for a gate row, the engines it builds and runs - and
-\ used to outlive the row, reparented to init. lib/process-tree.f stops and
+\ used to outlive the row, reparented to init. src/lib/process-tree.f stops and
 \ lists those first, so they end here with it. A walk that throws is named and
 \ the slot is ended the old way all the same: the kill has to go on to the
 \ wait and the descriptor closes whatever the process table answered.
@@ -474,7 +474,7 @@ GT-POOL-ABORT-BARE!
 
 \ THE SOCKET ROOT. Every spawned child's socket directory (GT-POOL-CHILD-SOCK!)
 \ is made inside one directory under TMPDIR per pool session, which goes in
-\ the cleanup registry once (lib/fs-mutate.f CLEANUP-TREE+). One entry a row
+\ the cleanup registry once (src/lib/fs-mutate.f CLEANUP-TREE+). One entry a row
 \ would not fit: the registry holds 64 (FS-MUT-CLEANUP-MAX), keeps each entry
 \ until a CLEANUP-RUN, and a gate starts hundreds of rows. So a process that
 \ ends without retiring or killing its slots - an uncaught throw, a die -
@@ -589,12 +589,12 @@ GT-POOL-ABORT-KILL!
 \ A RUN THAT IS SIGNALLED ENDS ITS OWN CHILDREN AND REMOVES ITS OWN TREE. Under
 \ the default action SIGTERM, SIGINT and SIGHUP end the pool where it stands.
 \ Its reapers then kill each row's group, the rows' own children live on
-\ (lib/process-tree.f), and nothing removes the root: the engine calls the exit
+\ (src/lib/process-tree.f), and nothing removes the root: the engine calls the exit
 \ hook only on its own way out (src/habu/layout.f EXIT-HOOK-CELL).
 \
 \ A program that is a pool from its first row to its exit - the gate - calls
 \ GT-POOL-CATCH-SIGNALS before it makes its root. No Forth word runs in a
-\ handler (lib/signal.f), so a signal is answered at the next GT-POOL-STEP,
+\ handler (src/lib/signal.f), so a signal is answered at the next GT-POOL-STEP,
 \ which is never far: the signal itself interrupts a step's poll, and between
 \ two steps the pool only starts a row. The answer is GT-POOL-SIGNAL-DIE,
 \ below GT-POOL-FALLBACK-REMOVE.
@@ -603,7 +603,7 @@ GT-POOL-ABORT-KILL!
 \ the process and only a step answers it, so a program that ran a pool and
 \ went on to other work would never answer SIGTERM again.
 \
-\ The catch is lib/signal.f CATCH-STOPS, which leaves a signal the process was
+\ The catch is src/lib/signal.f CATCH-STOPS, which leaves a signal the process was
 \ started with ignored as it was.
 TYPED-VARIABLE GT-POOL-CATCHING bool
 false GT-POOL-CATCHING !
@@ -1378,7 +1378,7 @@ false GT-POOL-CATCHING !
 \ time is other processes' turns (docs/gate.md has the measurement). A row given
 \ a CPU budget (GT-POOL-CPU-BUDGET!) is ended once its process tree has run
 \ that much CPU time, user and system, with what its members reaped
-\ (lib/process-tree.f CPU-NS), and its wall deadline is then only a hang guard:
+\ (src/lib/process-tree.f CPU-NS), and its wall deadline is then only a hang guard:
 \ a row that stopped running gains no CPU time, and only that deadline ends it.
 \ The tree is read at most once a GT-POOL-CPU-POLL-MS. A slot ended for its
 \ budget reads kind=CPU-BUDGET: it did more work than it was allowed, at any
@@ -1414,7 +1414,7 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
 
 \ ---- a deadline the child itself owned ---------------------------------------
 \
-\ lib/process throws E-PROC-TIMEOUT when a child a suite spawned outlives the
+\ src/lib/process throws E-PROC-TIMEOUT when a child a suite spawned outlives the
 \ deadline that suite gave it. Uncaught, it leaves the suite through the
 \ engine's top-level reporter (src/habu/habu2.f, labels LUNCAUGHT and LUNCMSG):
 \ for a throw code outside [1,255] that reporter writes "hb: uncaught throw
@@ -1577,7 +1577,7 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
 \ THE ANSWER TO A CAUGHT SIGNAL (see GT-POOL-CATCH-SIGNALS). Every live slot
 \ is killed with its whole tree, the cleanup registry removes what this
 \ process registered - the runner's root, and with it every slot's scratch -
-\ and the process then dies OF THE SIGNAL (lib/signal.f DIE-OF). A removal
+\ and the process then dies OF THE SIGNAL (src/lib/signal.f DIE-OF). A removal
 \ that throws is named and the process still ends as signalled.
 : GT-POOL-SIGNAL@ ( -- n )
    GT-POOL-CATCHING @ 0= if 0 exit then

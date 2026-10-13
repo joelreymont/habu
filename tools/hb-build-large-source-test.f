@@ -71,7 +71,7 @@ create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
 \ THE CONTROL FIRST, then the body: the refusal is what proves the pattern lands
 \ in the emitted code span of a build on this image, and the link that follows
 \ is then a statement about the declaration and not about the value. The
-\ subject requires lib/codegen.f, which the engine bakes, so every maker carries
+\ subject requires src/lib/codegen.f, which the engine bakes, so every maker carries
 \ its words below the band, and neither program reaches anything of the
 \ linker's load, so both builds link on the image (test/preloaded-engine.f
 \ rule 3).

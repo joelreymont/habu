@@ -3,8 +3,8 @@
 \ interpreter is its oracle: with a word of the spelling's name defined,
 \ evaluating a range-refused spelling still exits 70 (undefined), and any
 \ other spelling reads as its number or runs the word.
-require lib/test.f
-require lib/fmt.f
+require src/lib/test.f
+require src/lib/fmt.f
 require test/gate-common.f
 require src/habu/outer.f
 

@@ -39,13 +39,13 @@
 \ unsealed engine test/whitebox-engine.f builds keeps them. Put a copy at
 \ bin/hb-whitebox with WHITEBOX-ENGINE:PROVIDE, then census a load:
 \   echo 'require test/whitebox-engine.f s" bin/hb-whitebox" WHITEBOX-ENGINE:PROVIDE' | bin/hb
-\   bin/hb-whitebox --load tools/effect-store-census-run.f -- lib/json-read.f
+\   bin/hb-whitebox --load tools/effect-store-census-run.f -- src/lib/json-read.f
 \ (tools/effect-store-census-run.f says which loads have a window to measure),
 \ or drive it in-process: MARK, load, RUN, then read the counters.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
 
 package EFF-CENSUS
 

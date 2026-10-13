@@ -18,10 +18,10 @@
 \ them are the boot prefix the engine already carries when the manifest runs; they
 \ are the engine's own source, not a choice this lint can second-guess.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
 require tools/lint/text.f
 require tools/lint/lib.f
 
@@ -102,7 +102,7 @@ variable ML-NI
 
 \ ---- one require edge, in whichever mode the scan is running -------------------
 \ Manifest mode records a row; closure mode records reachability and queues the
-\ file. A path can be both, which is the ordinary case for lib/string.f.
+\ file. A path can be both, which is the ordinary case for src/lib/string.f.
 
 : ML-NOTE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u ML-INTERN {: i:n :}
@@ -190,8 +190,8 @@ variable ML-NI
    s" src/habu/repl.f" ML-ENTRY+                               \ the REPL
    s" src/habu/debug.f" ML-ENTRY+                              \ the breakpoint debugger and token stepper the REPL offers
    s" src/core/top-row.f" ML-ENTRY+                          \ the top-level row tracker the REPL warns from
-   s" lib/c2-owner.f" ML-ENTRY+                              \ checked owner and allocation surface in every product
-   s" lib/executable-build.f" ML-ENTRY+ ;                    \ the build scope every build driver enters
+   s" src/lib/c2-owner.f" ML-ENTRY+                              \ checked owner and allocation surface in every product
+   s" src/lib/executable-build.f" ML-ENTRY+ ;                    \ the build scope every build driver enters
 
 \ ---- the closure walk ----------------------------------------------------------
 

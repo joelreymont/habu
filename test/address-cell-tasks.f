@@ -1,10 +1,10 @@
 \ The public first-store path survives contention and a fresh snapshot process.
 \ The image is saved from the keyed host with the saver already loaded
 \ (test/app-image-engine.f).
-require lib/test.f
-require lib/fs-mutate.f
-require lib/engine-candidate.f
-require lib/codesign.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
+require src/lib/engine-candidate.f
+require src/lib/codesign.f
 require test/app-image-engine.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f

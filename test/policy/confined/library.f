@@ -1,1 +1,1 @@
-require lib/string.f
+require src/lib/string.f

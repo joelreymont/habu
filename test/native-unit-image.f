@@ -19,16 +19,16 @@
 \ granted (test/image-grant.f): the gate's native-unit build row settles it
 \ (test/gate-images.f), and a row that loads this module starts after it.
 
-require lib/errors.f
-require lib/string.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/build-cache.f
-require lib/content-key.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/build-cache.f
+require src/lib/content-key.f
+require src/lib/engine-candidate.f
 require test/image-grant.f
 require test/keyed-image.f
 require test/suite-budget.f              \ CHILD-MS, the build's hang guard

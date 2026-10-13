@@ -41,9 +41,9 @@
 \    still gives right answers; only the mark and the live entry set tell the
 \    repaired case from the rebuilt one (LESSONS.md, the index-rebuild lesson).
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 \ Every definition here is a fixture helper, so they live in this file's own
 \ package; the cases run as top-level interpret lines inside it, and the words

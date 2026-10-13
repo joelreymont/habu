@@ -1,8 +1,8 @@
 \ golden-test.f - focused tests for the byte-exact golden-file mechanism.
-\ Run: bin/hb --load test/golden.f lib/test.f test/golden-test.f
+\ Run: bin/hb --load test/golden.f src/lib/test.f test/golden-test.f
 
 require test/golden.f
-require lib/test.f
+require src/lib/test.f
 
 package GT-TEST
 

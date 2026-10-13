@@ -5,8 +5,8 @@
 \ The check must print GE-FAIL's capture and leave by an uncaught
 \ E-PROC-TIMEOUT; a check that returns exits 1.
 
-require lib/errors.f
-require lib/string.f
+require src/lib/errors.f
+require src/lib/string.f
 require test/gate-common.f
 
 package GE-DEADLINE

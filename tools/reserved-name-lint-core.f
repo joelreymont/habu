@@ -5,18 +5,18 @@
 \ so a definition named like a literal - all digits (42), float (.0, 1.5, -.5),
 \ or $hex ($FF) - is unreachable. Names with a dot-digit tail (U.0) are also
 \ rejected: one inserted space turns the tail into a float literal, and
-\ generators misread them as float spellings (the lib/fmt.f .0/U.0 incident).
+\ generators misread them as float spellings (the src/lib/fmt.f .0/U.0 incident).
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/source.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/source.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/json-writer.f
-require lib/source-lex.f
+require src/lib/source-lex.f
 
 package RESERVED-NAME-LINT
 private
@@ -391,7 +391,7 @@ private
 \ Each read takes a region of its own, so the bytes an earlier read left stay
 \ where they are. The file is read to its end however it grows while it is
 \ read: its size, whose refusal (E-FS-STAT) stays a missing or irregular
-\ file's, is only the first room (lib/source.f READ-WHOLE-SAMPLED).
+\ file's, is only the first room (src/lib/source.f READ-WHOLE-SAMPLED).
 : RNL-LOAD-SOURCE ( ptr u8 n -- ) {: path:ptr pathu :}
    0 RNL-SRC-CAP !
    path pathu  path pathu FILE-SIZE  [: RNL-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED RNL-SRC-U ! ;

@@ -3,7 +3,7 @@
 \ the same multi-cell effect through the same compiler path.
 1 set-tier
 
-require lib/test.f
+require src/lib/test.f
 require src/compiler/native/compiler.f
 
 package NCOMP-QTRUST-LEFT ;package

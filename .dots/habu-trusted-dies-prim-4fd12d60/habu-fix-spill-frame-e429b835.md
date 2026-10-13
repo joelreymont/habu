@@ -10,7 +10,7 @@ close-reason: "done: The verifier's global return condition was replaced by reac
 
 Owner: /root/compiler_xhigh_review; coordinate with check_api, which owns elaborate.f/native-rstack.f. Separate workspace based on the frozen KEEP prototype. Own spill.f/regalloc-verify.f or the proven responsible scheduler layer; do not weaken validator checks.
 
-New KEEP SSA-preservation prototype exposes E-A64RAV-ORDER -8522 compiling lib/test/suite.f MODE-OF. Minimal /tmp/cedar-keep-order-reduce.f fails in0.30s: a local survives C, nested IF branches call C, final ELSE throws. Suspected cause, not yet proved: spill.f creates frame-token lanes and the last frame-order token finishes in a predecessor of a trap; verifier currently permits unused final frame tokens only directly in trap blocks when function also returns.
+New KEEP SSA-preservation prototype exposes E-A64RAV-ORDER -8522 compiling src/lib/test/suite.f MODE-OF. Minimal /tmp/cedar-keep-order-reduce.f fails in0.30s: a local survives C, nested IF branches call C, final ELSE throws. Suspected cause, not yet proved: spill.f creates frame-token lanes and the last frame-order token finishes in a predecessor of a trap; verifier currently permits unused final frame tokens only directly in trap blocks when function also returns.
 
 Acceptance: reduced program compiles and runs on all returning/throwing branches, existing orphan/stale/multiple-consumer token rejections remain, focused spill/allocator/branch tests pass. Fix responsible ordering semantics; no A64RAV bypass. Review actual candidate before integration.
 

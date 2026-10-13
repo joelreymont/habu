@@ -12,7 +12,7 @@
 \ two quotations to two defers. That subject is linked end to end by the
 \ aot-xt-cells suite, which says the image runs; this says which bytes the image
 \ carries and what the cell's row resolves to, which an image that runs cannot.
-require lib/test.f
+require src/lib/test.f
 require src/arch/arm64/icode.f
 require src/habu/app-image.f
 require src/habu/aot-decl.f

@@ -1,5 +1,5 @@
 \ Registry persistence preserves complete DATA allocations and copies growth.
-require lib/test.f
+require src/lib/test.f
 
 package REGISTRY-PERSIST-TEST
 

@@ -1,9 +1,9 @@
 \ A checked owner releases a foreign acquisition through its supplied disposer.
-require lib/test.f
-require lib/c2-owner.f
-require lib/memory.f
-require lib/task.f
-require lib/fmt.f
+require src/lib/test.f
+require src/lib/c2-owner.f
+require src/lib/memory.f
+require src/lib/task.f
+require src/lib/fmt.f
 
 package C2-OWNER-DISPOSE
 private

@@ -24,8 +24,8 @@
 \
 \ One section per group of rows. KERNEL, emits the helpers and every section;
 \ a group's rows land in its section word, which KERNEL, calls.
-require lib/byte-buffer.f
-require lib/string.f
+require src/lib/byte-buffer.f
+require src/lib/string.f
 require src/core/does-clause.f
 require src/core/util.f
 require src/core/engine-error.f
@@ -796,7 +796,7 @@ $5402 constant TCSETS
 
 \ newfstatat writes the x86-64 struct stat, whose st_mode sits at 24 behind
 \ three u64s where aarch64's sits at 16; the size and the two times sit where
-\ aarch64's do. The fix rewrites the layout lib/fs.f reads, as habu1.f
+\ aarch64's do. The fix rewrites the layout src/lib/fs.f reads, as habu1.f
 \ LINUX-STAT-FIX does: the mode at 4, the modification time at 48 and 56, the
 \ change time at 64 and 72 and the size at 96. Every field is loaded before
 \ one is stored, since the size and the modification time trade places.
@@ -990,7 +990,7 @@ $80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
 2 constant F-SETFD
 3 constant SPAWN-MIN-FD             \ the lowest the pipe's write end may sit
 127 constant SPAWN-FAIL-RC
-73 constant FCNTL-NOSIGPIPE         \ lib/process.f F-SETNOSIGPIPE
+73 constant FCNTL-NOSIGPIPE         \ src/lib/process.f F-SETNOSIGPIPE
 13 constant SIGPIPE
 1 constant SIG-IGN
 8 constant SIGSET-BYTES
@@ -3049,7 +3049,7 @@ public
 \ registers, so the other two, and every cell past eight that ffi-call-n and
 \ ffi-call-bounded pass, go on the stack.
 \
-\ And of BFFI-CALL-ABI(-R) and BFFI-CALL-ABI(-R)-BOUNDED, the rows lib/ffi-abi.f
+\ And of BFFI-CALL-ABI(-R) and BFFI-CALL-ABI(-R)-BOUNDED, the rows src/lib/ffi-abi.f
 \ plans a call for: the integer arguments in argbuf, the doubles in fpbuf and
 \ the stack arguments prepacked in stackbuf. rdi..r9 take argbuf[0..6),
 \ xmm0..7 always take fpbuf[0..8), and the stack takes max(nstack, 0)
@@ -3199,7 +3199,7 @@ public
 \ below the pushes before the body and disabled and given back after it
 \ (X64BOOT:SIGNAL-STACK,). It writes two cells of the task's own: the TCB
 \ address into the task's region, and DONE into the status once the body
-\ returns. It never writes RUNNING: lib/task.f ACTIVATE stores that before
+\ returns. It never writes RUNNING: src/lib/task.f ACTIVATE stores that before
 \ pthread_create, and a store here could put RUNNING back over the HALT-REQ a
 \ TASK:HALT in the create window leaves. DONE is the last write the task makes
 \ to anything another thread reads, so it is published with atomic!'s xchg,

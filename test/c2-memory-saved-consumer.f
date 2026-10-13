@@ -1,7 +1,7 @@
 \ Fresh source consumer of the saved unique C2 effect; wrapper source is absent.
-require lib/test.f
-require lib/memory.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/test/subject.f
 
 package C2-MEMORY-SAVED-CONSUMER
 private

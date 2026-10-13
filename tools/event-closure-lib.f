@@ -22,11 +22,11 @@
 \ This file only produces the ordered list (BUILD / COUNT / PATH$). Content
 \ hashing and package-scope replay live in the consumers.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/source.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/source.f
 require tools/source-discovery.f
 
 package EC
@@ -137,8 +137,8 @@ variable EC-ORD-N
 \ itself, so a dep's scope tokens replay exactly where its content would load.
 \ Inside a require cycle this stays plain post-order, where tools/check-core.f
 \ CHK-EXPAND-ID puts the cycle's first-entered file first; only package scope
-\ replays here, and both files of the tree's one cycle (lib/aio.f and
-\ lib/aio-macos.f) close their packages, so the order inside it changes nothing.
+\ replays here, and both files of the tree's one cycle (src/lib/aio.f and
+\ src/lib/aio-macos.f) close their packages, so the order inside it changes nothing.
 \ Only loading events (EC-LOADS?) contribute, so the ordered list is a
 \ permutation of BUILD's set.
 

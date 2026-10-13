@@ -5,8 +5,8 @@
 \ name's length: `exact` fills PATH-CAP with the root and its slash, `over` is
 \ one byte more, `negative` is -1 and `huge` is the maximum cell.
 
-require lib/string.f
-require lib/memory.f
+require src/lib/string.f
+require src/lib/memory.f
 
 package TMP-PATH-CHILD
 

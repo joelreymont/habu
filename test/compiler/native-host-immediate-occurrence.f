@@ -1,7 +1,7 @@
 \ A preflight may retire and re-expose the selected record. Native immediate
 \ dispatch must refuse that occurrence before the body's write executes.
 1 set-tier
-require lib/test.f
+require src/lib/test.f
 require src/habu/xref.f
 
 package NATIVE-HOST-IMMEDIATE

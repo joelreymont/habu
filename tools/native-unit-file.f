@@ -6,11 +6,11 @@
 \ 8, architecture at 16, package-name length at 24, package name at 32 (64
 \ bytes), source key at 96 (64 bytes), and six section lengths at 160.
 
-require lib/errors.f
-require lib/string.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/le.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/le.f
 
 package NUNIT-FILE
 

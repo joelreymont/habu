@@ -6,8 +6,8 @@
 \ Its caller is src/habu/aot-closure.f CELL-MAPPED?, which asks whether a
 \ persistent cell holds an address the linking process mapped.
 \
-\ WHY THE KERNEL AND NOT A REGISTRY. `mmap` is reached from lib/memory.f
-\ (MEM-MMAP-RC, MEM:ALLOC-GUARDED), lib/vector.f, lib/aio.f,
+\ WHY THE KERNEL AND NOT A REGISTRY. `mmap` is reached from src/lib/memory.f
+\ (MEM-MMAP-RC, MEM:ALLOC-GUARDED), src/lib/vector.f, src/lib/aio.f,
 \ src/compiler/native/string.f, src/os/image-bytes.f, src/arch/arm64/icode.f and
 \ more, and a foreign allocator linked into the process calls the primitive
 \ without passing any of them. A registry kept by one library would answer for
@@ -33,7 +33,7 @@
 \ over a gigabyte above the executable's end, so the band lands anywhere in
 \ [0x7a4000,0x407a4000) and an ordinary 32-bit-shaped integer - a hash, a packed
 \ pair of fields, four bytes of a string - lands inside whatever part of it the
-\ process has taken. No Habu word allocates from the break (lib/memory.f maps),
+\ process has taken. No Habu word allocates from the break (src/lib/memory.f maps),
 \ so the tag is how a caller tells that band apart from an allocation.
 \
 \ WHAT IT CANNOT SEE is an area that was mapped and then unmapped: a pointer
@@ -73,8 +73,8 @@
 \ broke that order would silently break the search, so the reader refuses it
 \ rather than sorting bytes whose shape it has already stopped trusting.
 
-require lib/ffi-abi.f
-require lib/le.f
+require src/lib/ffi-abi.f
+require src/lib/le.f
 
 package PROC-MAPS
 
@@ -341,7 +341,7 @@ public
    at EXT-SELF @ 0<> ;
 
 \ ... or the brk area, which the kernel names [heap] and no Habu word allocates
-\ from: every allocation lib/memory.f makes is an mmap. The caller's reason for
+\ from: every allocation src/lib/memory.f makes is an mmap. The caller's reason for
 \ asking is src/habu/aot-closure.f CELL-MAPPED?.
 : HEAP? ( n -- bool ) {: v:n :}
    v AREAS ROW-AT {: at:n :}

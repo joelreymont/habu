@@ -13,9 +13,9 @@ variable ES-CERT-STALE0
 LOWER-CERT:ARENAS-STALE ES-CERT-STALE0 !
 
 require test/checker-assert.f
-require lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
-require lib/fs-mutate.f            \ HB-TMP-MKDIR - the filesystem block's private root
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
+require src/lib/fs-mutate.f            \ HB-TMP-MKDIR - the filesystem block's private root
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
 variable #CASE

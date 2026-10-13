@@ -49,13 +49,13 @@
 \ on (src/compiler/digest.f header); concurrent compilation needs per-task
 \ registries first.
 
-require lib/prelude.f
-require lib/errors.f
-require lib/memory.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/memory.f
 require src/compiler/digest.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f
-require lib/image-lifecycle.f
+require src/lib/image-lifecycle.f
 
 package IR-CTX
 public

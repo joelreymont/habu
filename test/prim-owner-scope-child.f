@@ -31,7 +31,7 @@
 \    gets the named E-CAP-TRUSTED reject, and a TRUSTED: caller keeps the call
 \    window tier 1 builds from that row.
 \ 5. A SEED primitive whose only row is owner-private: set-tier, owned by
-\    package TIER (lib/tier.f). Its owner's checked callers compile at both
+\    package TIER (src/lib/tier.f). Its owner's checked callers compile at both
 \    tiers, every other scope misses the name, and the owner's public
 \    TIER:SELECT, which this file selects its tiers with, compiles everywhere.
 \ 6. An internal engine primitive a package row types: package-scope! and
@@ -44,8 +44,8 @@
 \ Nothing here is EXECUTED: every compile case defines a word and throws the body
 \ away, and the shadowed global's token is refused before it runs.
 
-require lib/errors.f
-require lib/tier.f
+require src/lib/errors.f
+require src/lib/tier.f
 
 \ Compiling a candidate is the subject, through evaluate-closed: a text that
 \ opens or closes a package moves the live package the next case is measured
@@ -255,7 +255,7 @@ $0A constant LF-C
    0 TIER:SELECT ;
 
 \ ---- a seed primitive with its owner's row alone: set-tier in TIER ------------
-\ lib/tier.f, required above, already compiled TIER's own checked caller. A
+\ src/lib/tier.f, required above, already compiled TIER's own checked caller. A
 \ reopened TIER compiles another at both tiers; outside it set-tier is
 \ undefined, and TIER:SELECT is how any scope reaches it.
 : TIER-OPEN ( -- ) s" package TIER" evaluate-closed ;

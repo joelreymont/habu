@@ -1,6 +1,6 @@
 # ELF32 program-segment reader
 
-`lib/elf32.f` provides the checked `ELF32` package for reading little-endian
+`src/lib/elf32.f` provides the checked `ELF32` package for reading little-endian
 ELF32 headers and bounded program segments. It does not allocate memory, load
 code, interpret sections or relocations, or choose a processor ABI. A firmware
 image builder can apply its machine and loading policy to these records.
@@ -45,12 +45,12 @@ execution, section metadata, machine-specific flags, or relocation semantics.
 The name refers to the header and segment checks described above.
 
 Errors are `E-FORMAT`, `E-BOUNDS`, and `E-UNSUPPORTED`, backed by canonical
-`E-ELF32-*` declarations in `lib/errors.f`. No error changes the input.
+`E-ELF32-*` declarations in `src/lib/errors.f`. No error changes the input.
 
 Run the native fixture through the supported loader:
 
 ```sh
-bin/hb --load lib/elf32-test.f
+bin/hb --load src/lib/elf32-test.f
 ```
 
 It checks decoded fields and payload bytes, every truncated header length,

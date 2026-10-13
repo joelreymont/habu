@@ -6,7 +6,7 @@
 \ reads checker internals, so only the unsealed engine
 \ (test/whitebox-engine.f) loads it.
 
-require lib/test.f
+require src/lib/test.f
 require src/habu/verify-source.f
 
 package NAVL

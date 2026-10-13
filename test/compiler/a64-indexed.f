@@ -27,7 +27,7 @@
 \ screen rather than adding one, so the ends are asserted here and the refusals
 \ stay where they are pinned.
 
-require lib/test.f
+require src/lib/test.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f

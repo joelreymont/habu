@@ -2,7 +2,7 @@
 \ Tier-neutral by design: the checker's own capture is driven over explicit
 \ source text, so the certificates asserted belong to no compiled body here.
 require src/compiler/native/fetch.f
-require lib/test.f
+require src/lib/test.f
 
 package NATIVE-FETCH-SNAPSHOT-TEST
 using NFETCH

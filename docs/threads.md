@@ -1,13 +1,13 @@
 # Habu Tasking
 
-`lib/task.f` implements native CPU tasks over `pthread` on macOS/aarch64 and
+`src/lib/task.f` implements native CPU tasks over `pthread` on macOS/aarch64 and
 Linux/aarch64 in package `TASK`. Load it with:
 
 ```forth
-require lib/task.f
+require src/lib/task.f
 ```
 
-The module owns its dependencies (`lib/errors.f`, `lib/memory.f`, `lib/ffi-abi.f`);
+The module owns its dependencies (`src/lib/errors.f`, `src/lib/memory.f`, `src/lib/ffi-abi.f`);
 callers and test suites must not encode that include order.
 
 ## Model
@@ -31,9 +31,9 @@ flush, and the flip is aligned outward to the `PROT-PAGE-MAX` unit (`$10000`,
 `src/habu/layout.f`), so every word already compiled in the 64K unit that holds
 the code pointer loses execute permission while the definition is open, and a
 task running one of them faults. Measured with the live count reset by hand:
-`lib/aio.f` loaded last, its loop task and one client task ticking 1 ms
+`src/lib/aio.f` loaded last, its loop task and one client task ticking 1 ms
 timeouts, then 2000 empty definitions - SIGSEGV at a pc 14.7K below the code
-pointer, inside `lib/aio.f`; with 32K of definitions between `lib/aio.f` and the
+pointer, inside `src/lib/aio.f`; with 32K of definitions between `src/lib/aio.f` and the
 loop start the code pointer sat in the next unit and the same run survived 21
 client rounds. No task is exempt, the AIO loop task included: an exemption would
 have to keep every live task's code out of the unit the code pointer is in,
@@ -204,7 +204,7 @@ io_uring record, and the loop that drains the ring wakes each waiter by TCB.
 A worker answers with `TASK:RETURN` and the task that started it collects that
 answer with `TASK:JOIN`, taking VFX's task exit code and `AtTaskExit` cleanup
 ([tasking-models.md](tasking-models.md) sections 3 and 5) and returning
-`result<ok,err>` from `lib/adt/result.f` rather than a bare code, so no caller can
+`result<ok,err>` from `src/lib/adt/result.f` rather than a bare code, so no caller can
 read an outcome without deciding what to do about the failing arm.
 
 ```forth
@@ -289,31 +289,31 @@ read the source to find out. There are three:
 
 | library | class | what the class is about |
 | --- | --- | --- |
-| `lib/string.f` | task-local (SB) / caller-owned (`BUF-*`) | `SB-BUF` and `SB-LEN` are the STRING-ABI band of the per-task region; `BUF-RESET`/`BUF-APPEND`/`BUF-APPEND-C`/`BUF-LEN@` take the caller's buffer, capacity and length cell, for when two tasks must share one |
-| `lib/fmt.f` | task-local | the integer render buffer and the `POW10I`/`SB-FRAC` scratch cells are the FMT-ABI band of the per-task region; they append into string's SB, which is task-local too, so two tasks formatting at once share nothing |
-| `lib/fs.f` | task-local (the per-call slots) / caller-owned (the walk) | the descriptor, length, offset, path and stat buffer are the FS-ABI band of the per-task region, so any number of tasks may be in `READ-ALL`, `FILE-SIZE` or an `FS-*` predicate at once; the walk is fifteen times that band and cannot be per-task, so it is the CALLER's: `WALK-FILES-IN` takes a context of `FS-WALK-BYTES` holding the whole per-depth state, and any number of tasks walk at once by holding one each. `WALK-FILES` is the one-context form over the static `FS-WALK-CTX0` and is single-task; `E-FS-WALK-ACTIVE` is per context, so a callback walks a second tree through a SECOND context. Two walks in flight must cover disjoint trees: `getdirentries64` on the descriptor of a directory removed meanwhile answers -1, which the walk reports as `E-FS-DIR`. The data spans `READ-ALL`/`READ-LINK`/`WRITE-ALL` take are caller-owned |
-| `lib/fs-mutate.f` | task-local (the staged paths) / caller-owned (the tree removal) / process-wide (the copy buffer, the cleanup registry) | the second NUL-padded path, `ATOMIC-WRITE-FILE`'s `.tmp` sibling and the name `MAKE-TEMP-DIR` builds and RETURNS a span into are the FS-MUT-ABI band of the per-task region, so two tasks renaming, symlinking, writing atomically or making a temporary directory at once share nothing and neither can replace the other's returned path; `COPY-FILE-STREAM`'s descriptors, counts and write cursor are locals of the call. The 8 KiB copy buffer is one set for the image, so `COPY-FILE` and `COPY-FILE-STREAM` are single-task. The cleanup registry is the PROCESS's: registering is safe from any task, because the slot is claimed with one `atomic-add` and the claimer writes only that slot; so is `CLEANUP-FORGET`, which empties only the slot naming its path and gives the top back with one `atomic-cas`; and `CLEANUP-RUN` belongs to the process. `REMOVE-TREE-IN` walks the caller's context exactly as `WALK-FILES-IN` does, so two tasks remove two trees at once by holding one each, and `REMOVE-TREE` is the single-task form over the same `FS-WALK-CTX0`; the removal claims no `E-FS-WALK-ACTIVE` flag, because `CLEANUP-RUN` removes trees at process exit whatever a task was doing |
-| `lib/fs-list.f` | caller-owned | no module state: a listing is one mapping the `EACH` or `NAMES` call makes and gives back, descriptor closed, however it ends, so any number of tasks list at once and a quotation may list again inside `EACH`; `NAMES` writes only into the caller's buffer |
-| `lib/zip.f` | task-local (read scratch) / handle-owned (archives) / process-wide (identity registry) | The libzip stat record and EOF byte occupy one `TASK:+USER` row per task. Entry and returned byte buffers belong to their archive. Short registry and serial operations take one atomic lock; distinct archives may be read concurrently. A single archive handle has one task owner. Registry waits defer `TASK:HALT` until the operation ends, and a forked child resets the lock before use. |
-| `lib/tree-copy.f` | process-wide | the root and destination path cells are one set for the image, and a `TREE` walk runs on the `lib/fs.f` walk stack and every copy on the `lib/fs-mutate.f` copy buffer, so a copy is single-task |
-| `lib/json-write.f` | caller-owned | the caller declares the writer (`TYPED-VARIABLE W JSON-WRITE:writer`) and the bytes `JSON-WRITE:OPEN` binds it to; no module state |
-| `lib/json-read.f` | caller-owned | no module state; the caller allots `JR:STORAGE-BYTES` and owns the source span |
-| `lib/crypto/sha1.f` | caller-owned | no module state; a digest in progress is the caller's context span of `SHA1:CTX-BYTES` |
-| `lib/memory.f` | caller-owned | every mapping belongs to its caller; `WITH-BYTES`'s scope stack is the one process-wide part |
-| `lib/task.f` | task-local / process-wide (the callback bindings) | `$20` row: the sleep request and remainder timespecs. The 16 callback binding rows belong to the process; each move of a row is one compare-and-swap ([ffi-callback.md](ffi-callback.md)) |
-| `lib/ffi-callback.f` | process-wide | the 16 callback slots, their dispatch table, fallbacks and fault codes are one set for the image. Declare every callback before a task starts; a slot admits one thread at a time |
-| `lib/process.f` | task-local | `PROC-STORAGE-BYTES` row: the NUL-path staging buffer, the four-slot pollfd array (stdout, stderr, stdin and stop) and the per-call capture slots (pids, descriptors, lengths, deadline, wait status). `PROC-BOUNDED-STATUS` is `PROC-WAIT-BOUNDED`'s one task-local cell, its waitpid status, apart from that row. `PROC-REAP-ARM` and `PROC-STOP` with its `PROC-STOP-FD` are the process-wide part: installed policies, not per-call state |
-| `lib/process-command.f` | caller-owned (`CMD`) / process-wide (`PROC-CMD`) | `CMD:COMMAND NAME` declares one command context — a `PTR-U8-TABLE` holding the argv and envp vectors plus the address of its own byte region (path, cwd, argument and environment bytes, 128K stdin, 32K/32K captures) — and every `CMD` word takes that handle, so any number of tasks may each build and run their own command. `PROC-CMD`'s words are the same surface over one static context, so its callers share one command and are single-task. Neither writes the argv/env staging below |
-| `lib/process-argv.f`, `lib/process-env.f` | process-wide | the argv table and its byte buffer, the envp-sized environment table and buffer, and the inherited-default table are one set for the image: a task that prepares a spawn through them holds them until the spawn resets them. An owned `CMD` run passes its own vectors to the reset-free spawn cores and touches none of this |
-| `lib/process-cwd.f` | process-wide | the working-directory copy buffer is one buffer for the image, used by the process-wide `RUN-ARGV-ENV-CWD-*` path; an owned `CMD` run copies into its own context and calls `SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE` |
-| `lib/process-tree.f` | process-wide | the member table, the libproc list and record buffers and the `/proc` stat buffers are one set for the image, so one `KILL-TREE`, `CATCHES?` or `CPU-NS` runs at a time: each takes the `WALKING` cell with one `atomic-cas`, and a task that finds it held sleeps a millisecond a turn. `lib/process.f` `PROC-KILL-TREE` walks from whichever task kills a child: a capture's ended early, a pty child, a supervised session's pids. A child forked through `PROC-FORK:RAW` starts with `WALKING` free (`PROC-TREE:CHILD-RESET`): the task that held it was not copied |
-| `lib/net/tcp4.f` | task-local | `$18` row: sockaddr and socklen |
-| `lib/net/udp4.f` | task-local | `$18` row: the endpoint, sockaddr and length |
-| `lib/net/curl.f` | task-local (`PERFORM`, `HEADERS` and the option setters) / handle-owned (request list and retained response headers) / process-wide (the multiplexed loop) | `$28` row: per-call body/header staging. `CURL:LOOP-START`'s table of 32 transfer records includes each transfer's body and header streams and out-parameter cells; its fd and ticket tables, wake pipe and multi handle are one set for the image, driven by one package-owned task. A record is claimed atomically and every other record access runs under one `TASK:FACILITY`, so any number of tasks may `START` and `AWAIT` at once. `HEADERS` refuses a handle whose record has not been collected by `AWAIT` |
-| `lib/serial.f` | task-local | 144-byte row: termios and saved termios |
-| `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) | the input and output indices are per-task DATA cells `TASK-REGION-INIT` copies; the rows and their eight operations are shared |
-| `lib/content-length.f` | task-local (`SEND`) / caller-owned (the reader) | 39-byte row: `SEND`'s header, so a body the caller built in its own SB goes out as it was; the reader record and its buffer are the caller's |
-| `lib/source-lex.f` | process-wide | the token table, the locals state and the scan cursors are one set for the image, and `SOURCE` replaces the last scan's tokens, so one task scans and reads them at a time |
+| `src/lib/string.f` | task-local (SB) / caller-owned (`BUF-*`) | `SB-BUF` and `SB-LEN` are the STRING-ABI band of the per-task region; `BUF-RESET`/`BUF-APPEND`/`BUF-APPEND-C`/`BUF-LEN@` take the caller's buffer, capacity and length cell, for when two tasks must share one |
+| `src/lib/fmt.f` | task-local | the integer render buffer and the `POW10I`/`SB-FRAC` scratch cells are the FMT-ABI band of the per-task region; they append into string's SB, which is task-local too, so two tasks formatting at once share nothing |
+| `src/lib/fs.f` | task-local (the per-call slots) / caller-owned (the walk) | the descriptor, length, offset, path and stat buffer are the FS-ABI band of the per-task region, so any number of tasks may be in `READ-ALL`, `FILE-SIZE` or an `FS-*` predicate at once; the walk is fifteen times that band and cannot be per-task, so it is the CALLER's: `WALK-FILES-IN` takes a context of `FS-WALK-BYTES` holding the whole per-depth state, and any number of tasks walk at once by holding one each. `WALK-FILES` is the one-context form over the static `FS-WALK-CTX0` and is single-task; `E-FS-WALK-ACTIVE` is per context, so a callback walks a second tree through a SECOND context. Two walks in flight must cover disjoint trees: `getdirentries64` on the descriptor of a directory removed meanwhile answers -1, which the walk reports as `E-FS-DIR`. The data spans `READ-ALL`/`READ-LINK`/`WRITE-ALL` take are caller-owned |
+| `src/lib/fs-mutate.f` | task-local (the staged paths) / caller-owned (the tree removal) / process-wide (the copy buffer, the cleanup registry) | the second NUL-padded path, `ATOMIC-WRITE-FILE`'s `.tmp` sibling and the name `MAKE-TEMP-DIR` builds and RETURNS a span into are the FS-MUT-ABI band of the per-task region, so two tasks renaming, symlinking, writing atomically or making a temporary directory at once share nothing and neither can replace the other's returned path; `COPY-FILE-STREAM`'s descriptors, counts and write cursor are locals of the call. The 8 KiB copy buffer is one set for the image, so `COPY-FILE` and `COPY-FILE-STREAM` are single-task. The cleanup registry is the PROCESS's: registering is safe from any task, because the slot is claimed with one `atomic-add` and the claimer writes only that slot; so is `CLEANUP-FORGET`, which empties only the slot naming its path and gives the top back with one `atomic-cas`; and `CLEANUP-RUN` belongs to the process. `REMOVE-TREE-IN` walks the caller's context exactly as `WALK-FILES-IN` does, so two tasks remove two trees at once by holding one each, and `REMOVE-TREE` is the single-task form over the same `FS-WALK-CTX0`; the removal claims no `E-FS-WALK-ACTIVE` flag, because `CLEANUP-RUN` removes trees at process exit whatever a task was doing |
+| `src/lib/fs-list.f` | caller-owned | no module state: a listing is one mapping the `EACH` or `NAMES` call makes and gives back, descriptor closed, however it ends, so any number of tasks list at once and a quotation may list again inside `EACH`; `NAMES` writes only into the caller's buffer |
+| `src/lib/zip.f` | task-local (read scratch) / handle-owned (archives) / process-wide (identity registry) | The libzip stat record and EOF byte occupy one `TASK:+USER` row per task. Entry and returned byte buffers belong to their archive. Short registry and serial operations take one atomic lock; distinct archives may be read concurrently. A single archive handle has one task owner. Registry waits defer `TASK:HALT` until the operation ends, and a forked child resets the lock before use. |
+| `src/lib/tree-copy.f` | process-wide | the root and destination path cells are one set for the image, and a `TREE` walk runs on the `src/lib/fs.f` walk stack and every copy on the `src/lib/fs-mutate.f` copy buffer, so a copy is single-task |
+| `src/lib/json-write.f` | caller-owned | the caller declares the writer (`TYPED-VARIABLE W JSON-WRITE:writer`) and the bytes `JSON-WRITE:OPEN` binds it to; no module state |
+| `src/lib/json-read.f` | caller-owned | no module state; the caller allots `JR:STORAGE-BYTES` and owns the source span |
+| `src/lib/crypto/sha1.f` | caller-owned | no module state; a digest in progress is the caller's context span of `SHA1:CTX-BYTES` |
+| `src/lib/memory.f` | caller-owned | every mapping belongs to its caller; `WITH-BYTES`'s scope stack is the one process-wide part |
+| `src/lib/task.f` | task-local / process-wide (the callback bindings) | `$20` row: the sleep request and remainder timespecs. The 16 callback binding rows belong to the process; each move of a row is one compare-and-swap ([ffi-callback.md](ffi-callback.md)) |
+| `src/lib/ffi-callback.f` | process-wide | the 16 callback slots, their dispatch table, fallbacks and fault codes are one set for the image. Declare every callback before a task starts; a slot admits one thread at a time |
+| `src/lib/process.f` | task-local | `PROC-STORAGE-BYTES` row: the NUL-path staging buffer, the four-slot pollfd array (stdout, stderr, stdin and stop) and the per-call capture slots (pids, descriptors, lengths, deadline, wait status). `PROC-BOUNDED-STATUS` is `PROC-WAIT-BOUNDED`'s one task-local cell, its waitpid status, apart from that row. `PROC-REAP-ARM` and `PROC-STOP` with its `PROC-STOP-FD` are the process-wide part: installed policies, not per-call state |
+| `src/lib/process-command.f` | caller-owned (`CMD`) / process-wide (`PROC-CMD`) | `CMD:COMMAND NAME` declares one command context — a `PTR-U8-TABLE` holding the argv and envp vectors plus the address of its own byte region (path, cwd, argument and environment bytes, 128K stdin, 32K/32K captures) — and every `CMD` word takes that handle, so any number of tasks may each build and run their own command. `PROC-CMD`'s words are the same surface over one static context, so its callers share one command and are single-task. Neither writes the argv/env staging below |
+| `src/lib/process-argv.f`, `src/lib/process-env.f` | process-wide | the argv table and its byte buffer, the envp-sized environment table and buffer, and the inherited-default table are one set for the image: a task that prepares a spawn through them holds them until the spawn resets them. An owned `CMD` run passes its own vectors to the reset-free spawn cores and touches none of this |
+| `src/lib/process-cwd.f` | process-wide | the working-directory copy buffer is one buffer for the image, used by the process-wide `RUN-ARGV-ENV-CWD-*` path; an owned `CMD` run copies into its own context and calls `SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE` |
+| `src/lib/process-tree.f` | process-wide | the member table, the libproc list and record buffers and the `/proc` stat buffers are one set for the image, so one `KILL-TREE`, `CATCHES?` or `CPU-NS` runs at a time: each takes the `WALKING` cell with one `atomic-cas`, and a task that finds it held sleeps a millisecond a turn. `src/lib/process.f` `PROC-KILL-TREE` walks from whichever task kills a child: a capture's ended early, a pty child, a supervised session's pids. A child forked through `PROC-FORK:RAW` starts with `WALKING` free (`PROC-TREE:CHILD-RESET`): the task that held it was not copied |
+| `src/lib/net/tcp4.f` | task-local | `$18` row: sockaddr and socklen |
+| `src/lib/net/udp4.f` | task-local | `$18` row: the endpoint, sockaddr and length |
+| `src/lib/net/curl.f` | task-local (`PERFORM`, `HEADERS` and the option setters) / handle-owned (request list and retained response headers) / process-wide (the multiplexed loop) | `$28` row: per-call body/header staging. `CURL:LOOP-START`'s table of 32 transfer records includes each transfer's body and header streams and out-parameter cells; its fd and ticket tables, wake pipe and multi handle are one set for the image, driven by one package-owned task. A record is claimed atomically and every other record access runs under one `TASK:FACILITY`, so any number of tasks may `START` and `AWAIT` at once. `HEADERS` refuses a handle whose record has not been collected by `AWAIT` |
+| `src/lib/serial.f` | task-local | 144-byte row: termios and saved termios |
+| `src/lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) | the input and output indices are per-task DATA cells `TASK-REGION-INIT` copies; the rows and their eight operations are shared |
+| `src/lib/content-length.f` | task-local (`SEND`) / caller-owned (the reader) | 39-byte row: `SEND`'s header, so a body the caller built in its own SB goes out as it was; the reader record and its buffer are the caller's |
+| `src/lib/source-lex.f` | process-wide | the token table, the locals state and the scan cursors are one set for the image, and `SOURCE` replaces the last scan's tokens, so one task scans and reads them at a time |
 
 ### Which mechanism a task-local library uses
 
@@ -321,29 +321,29 @@ Which of the two a library reaches for is forced, not preferred:
 
 - A module the ENGINE BAKES, or one the engine's own BUILD loads, takes a
   **declared band** in `src/habu/layout.f` and addresses it as
-  `data-base <off> +`, the way `lib/ffi-abi.f` addresses `FFI-BUF` and package
-  `GENIO-ABI` its device cells. `lib/string.f` has no choice: it sits below
-  `lib/ffi-abi.f`, which requires it back, so `require lib/task.f` there fails
+  `data-base <off> +`, the way `src/lib/ffi-abi.f` addresses `FFI-BUF` and package
+  `GENIO-ABI` its device cells. `src/lib/string.f` has no choice: it sits below
+  `src/lib/ffi-abi.f`, which requires it back, so `require src/lib/task.f` there fails
   the engine build with an undefined `STR=` inside ffi-abi's `TOK-IS?`.
-  `lib/fmt.f` could have taken rows - it has no cycle, and an engine built that
+  `src/lib/fmt.f` could have taken rows - it has no cycle, and an engine built that
   way compiles - but `src/habu/habu2.f` requires it for number text, so a
   require would have pulled pthread, mmap and the FFI staging tables into the
-  base image for 52 bytes of scratch. `lib/fs.f` and `lib/fs-mutate.f` are not
+  base image for 52 bytes of scratch. `src/lib/fs.f` and `src/lib/fs-mutate.f` are not
   baked at all, but `tools/native-build-core.f` requires both to BUILD the
   engine, so a require there loads the task runtime into the build tool ahead
   of the target.
 - A module LOADED LATER takes **`TASK:+USER` rows** out of USER-BAND, the way
-  `lib/net/tcp4.f`, `udp4`, `curl`, `serial` and `genio` do.
+  `src/lib/net/tcp4.f`, `udp4`, `curl`, `serial` and `genio` do.
 
 A band a SOURCE-LOADED module reads costs a bootstrap the baked ones do not.
 The PRODUCT IMAGE `tools/native-build.f` emits - what `bin/hb` is, and what
-builds the next engine - carries this file's constants and `lib/errors.f`'s
+builds the next engine - carries this file's constants and `src/lib/errors.f`'s
 codes from the tree it was BUILT in and does not re-read either; only the small
 checked engine that `tools/build-fixpoint-refresh.f -- install` writes recompiles
 the cold prefix at every launch, and that engine cannot run the native build on
 this base. So an engine that predates a band cannot compile the module reading
-it. `lib/fs.f` is the first such module: its build tool dies `E-UNDEFINED:
-FS-ABI:STAT-BYTES`, rc 70, before any target work. `lib/fs-mutate.f` is the
+it. `src/lib/fs.f` is the first such module: its build tool dies `E-UNDEFINED:
+FS-ABI:STAT-BYTES`, rc 70, before any target work. `src/lib/fs-mutate.f` is the
 second, and dies the same way on `FS-MUT-ABI:PATHZ2-BYTES`. Build one engine
 from the layout and error declarations alone, build the tree with that engine,
 and the third generation is byte-identical.
@@ -378,7 +378,7 @@ uses: a `TASK:PAUSE` loop against `mono-ns` burns a core for the whole wait and
 this burns none.
 
 ```forth
-require lib/task.f
+require src/lib/task.f
 
 50 >MS TASK:SLEEP                     \ from the main task or from any worker
 ```
@@ -393,7 +393,7 @@ require lib/task.f
   did not serve, in its second timespec. The retry asks for exactly that
   remainder, so no signal can shorten the sleep; the remainder is capped by what
   is left of an absolute `mono-ns` deadline taken before the first call - the
-  shape `lib/process.f` states as `PROC-DEADLINE-AT` and `PROC-LEFT-MS`, in
+  shape `src/lib/process.f` states as `PROC-DEADLINE-AT` and `PROC-LEFT-MS`, in
   nanoseconds - so no storm of signals stretches the total either. Any other
   errno is `E-TASK-THREAD`.
 - Storage class: task-local. The request and the remainder are one 32-byte
@@ -521,13 +521,13 @@ the task and destroyed when it ends.
 
 ## Queues
 
-`lib/queue.f` is the other channel: a bounded ring of cells in package `QUEUE`,
+`src/lib/queue.f` is the other channel: a bounded ring of cells in package `QUEUE`,
 for any number of producers and consumers, taking the blocking put and get of
 VFX's `CQueues` ([tasking-models.md](tasking-models.md) section 3) over the
 semaphores above instead of its `PAUSE` loop, and cells instead of bytes.
 
 ```forth
-require lib/queue.f
+require src/lib/queue.f
 
 $10 QUEUE:QUEUE JOBS                  \ JOBS ( -- QUEUE:queue ), 16 cells
 JOBS QUEUE:INIT
@@ -580,7 +580,7 @@ JOBS QUEUE:DESTROY
   `QUEUE:TRY-POP` to act on fullness or emptiness.
 - The same POSIX rule as the semaphores: end a queue's waiters before
   `QUEUE:DESTROY`.
-- `lib/queue-test.f` covers the ring shapes, the wrap, the refusals, a push that
+- `src/lib/queue-test.f` covers the ring shapes, the wrap, the refusals, a push that
   blocks until a pop and a pop that blocks until a push, an arming the pool
   refuses part way, and a soak in which four producers and two consumers move 256
   elements through an 8-cell ring and every element arrives exactly once. The two
@@ -620,7 +620,7 @@ JOBS QUEUE:DESTROY
   That is what lets a program that ran a task while it loaded be captured -
   `hb-build`'s stripped link refuses a captured cell holding an address only the
   building process ever held.
-- A capture runs `IMAGE-LIFECYCLE:PREPARE`, where `lib/task.f` sweeps every TCB
+- A capture runs `IMAGE-LIFECYCLE:PREPARE`, where `src/lib/task.f` sweeps every TCB
   the program declared: a prepared task is released and left EMPTY, and its next
   `TASK:ACTIVATE` prepares again, while a task still activated ends the capture
   with `task: activated task at capture` - no image carries a thread. Kill your
@@ -636,13 +636,13 @@ JOBS QUEUE:DESTROY
   A fork made on a task holds the task-local address-cell lock, not the
   registrar's, until dot bb84a527: `ADDRESS-CELLS` finds its lock through
   `data-base`, which on a task is the task's own context. Every other owner's
-  reset is registered with `lib/fork-child.f`, and `RAW` runs every one in the
-  child before returning to it. `lib/pg.f` and `lib/serial.f` register their
+  reset is registered with `src/lib/fork-child.f`, and `RAW` runs every one in the
+  child before returning to it. `src/lib/pg.f` and `src/lib/serial.f` register their
   own as they load. A module the engine provides or the AOT linker loads above
-  an application's window never requires `lib/fork-child.f`, since its
-  registration would land in that application's registry: `lib/task.f`,
-  `lib/fs-mutate.f` and `lib/process-tree.f` publish `TASK:CHILD-RESET`,
-  `CLEANUP-RESET` and `PROC-TREE:CHILD-RESET`, and `lib/process-fork.f`
+  an application's window never requires `src/lib/fork-child.f`, since its
+  registration would land in that application's registry: `src/lib/task.f`,
+  `src/lib/fs-mutate.f` and `src/lib/process-tree.f` publish `TASK:CHILD-RESET`,
+  `CLEANUP-RESET` and `PROC-TREE:CHILD-RESET`, and `src/lib/process-fork.f`
   registers them. Tasks themselves do not cross a fork: the child has no thread
   for them, a facility one held stays held, and on Darwin every semaphore is a
   Mach port the child does not hold.
@@ -652,19 +652,19 @@ JOBS QUEUE:DESTROY
 Run:
 
 ```sh
-bin/hb --load lib/task-test.f
-bin/hb --load lib/queue-test.f
+bin/hb --load src/lib/task-test.f
+bin/hb --load src/lib/queue-test.f
 bin/hb --load test/engine-stack-jit.f
-bin/hb --load lib/process-task-test.f
+bin/hb --load src/lib/process-task-test.f
 ```
 
-`lib/process-task-test.f` is the storage-class test for a library rather than
+`src/lib/process-task-test.f` is the storage-class test for a library rather than
 for the tasking primitives: one task runs 40 children through
 `PROC-CMD:RUN-OUTCOME` while the main thread polls its own ready pipe through
 `POLL-IN`, and every child and every poll must answer correctly inside a 20 s
 budget. The full test suite runs it as `process-tasks`.
 
-`lib/task-test.f` covers two pthread workers, facility-protected shared updates,
+`src/lib/task-test.f` covers two pthread workers, facility-protected shared updates,
 task-local `TASK:+USER` isolation via `TASK:HIS`, `TASK:SELF`, `TASK:HALT` /
 `TASK:KILL`, facility owner semantics, a five-task application-shaped repeated
 start/join soak, FFI from worker tasks, task-local FFI scratch isolation, the
@@ -689,6 +689,6 @@ the callback-context refusals (`TASK:EXPOSE`, `TASK:UNEXPOSE`, `TASK:CONTEXT`,
 worker, which counts on the main region, a bind racing an UNEXPOSE, and a hint
 posted while a task is exposed that must not reach its next run. Callbacks
 themselves are
-`lib/ffi-callback-test.f` ([ffi-callback.md](ffi-callback.md#tests)).
+`src/lib/ffi-callback-test.f` ([ffi-callback.md](ffi-callback.md#tests)).
 The full test suite includes these as `tasking-primitive-smoke` and
 `tasking-threads`.

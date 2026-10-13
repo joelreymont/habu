@@ -1,9 +1,9 @@
 \ Capture must see an active initialized frame, including its clear-only owner.
 require src/habu/app-image.f
-require lib/test.f
-require lib/memory.f
-require lib/errors.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/errors.f
+require src/lib/c2-memory.f
 
 package C2-INIT-LIVE-SAVE
 public

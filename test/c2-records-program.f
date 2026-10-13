@@ -1,8 +1,8 @@
 \ A table initializes many committed records under one C2 scope.
-require lib/test.f
-require lib/memory.f
-require lib/c2-memory.f
-require lib/c2-owner.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/c2-memory.f
+require src/lib/c2-owner.f
 require test/c2-records-types.f
 require src/habu/xref.f
 

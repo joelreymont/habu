@@ -34,9 +34,9 @@
 \ The walk runs at top level, under three usings, under an EXPORT twin's two
 \ usings, and inside a package.
 
-require lib/test.f
-require lib/string.f
-require lib/fmt.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fmt.f
 require src/core/bytes.f
 require src/habu/layout.f
 require src/habu/xref.f

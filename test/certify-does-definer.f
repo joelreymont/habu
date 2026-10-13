@@ -1,5 +1,5 @@
 \ certify-does-definer.f - certification knows what a `does>` definer publishes.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f \
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f \
 \   src/habu/verify-source.f test/certify-does-definer.f
 \
 \ A `create ... does>` definition is a DEFINER: every word it creates carries
@@ -9,7 +9,7 @@
 \ `trust-raw`). The source pre-verifier never executes a definer, so it has to
 \ learn the same row from the text, and until it did, a created word was
 \ E-UNDEFINED at its first typed use - measured: `bin/hb tools/check.f
-\ lib/queue.f` refused NG-BUFFER (lib/type/deftype.f:60).
+\ src/lib/queue.f` refused NG-BUFFER (src/lib/type/deftype.f:60).
 \
 \ Sections 1-3 measure the learned row through the pre-pass; section 4 runs the
 \ same definer for real, so the row the engine publishes and the row the scanner
@@ -18,8 +18,8 @@
 \ still the declaration both paths record.
 \
 \ Sections 9-12 are the definers no clause describes: one that writes its word
-\ as text and loads it through INCLUDE-EVALUATE (lib/process-command.f COMMAND,
-\ lib/task.f +USER), and lib/ffi-abi.f FUNCTION:, whose word comes from its
+\ as text and loads it through INCLUDE-EVALUATE (src/lib/process-command.f COMMAND,
+\ src/lib/task.f +USER), and src/lib/ffi-abi.f FUNCTION:, whose word comes from its
 \ declaration group. A `generates: D ( effect )` row states what D makes.
 \ Section 9 reads a row from source and from a resident package and pins it
 \ against the word the engine really generates; section 10 reads FUNCTION:'s
@@ -39,11 +39,11 @@
 \ run at the end takes the latch and TRUSTED sections, which pin names no
 \ definer created as UNRESOLVED, before section 3 marks this file's wordlist.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/codegen.f
-require lib/ffi-abi.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/codegen.f
+require src/lib/ffi-abi.f
 require src/habu/verify-source.f
 
 \ The resident package definer of section 5, compiled by the ENGINE: its two
@@ -62,7 +62,7 @@ public
 EXPORT CDD-RESP:CDD-RP-D
 ;package
 
-\ The text-writing definer of sections 9-12, the shape of lib/process-command.f
+\ The text-writing definer of sections 9-12, the shape of src/lib/process-command.f
 \ COMMAND: MAKE builds `: NAME ( -- ptr n ) data-base OFF + ;` for the next name
 \ and evaluates it, so its word has no `does>` clause for a checker to read.
 package CDD-GEN
@@ -114,7 +114,7 @@ package CERTIFY-DOES-DEFINER
 \ Section 8's resident fixtures: a TRUSTED definer, its straight-line wrapper and
 \ the plain definition right after it. A trusted definition's body is asserted,
 \ so it has no body check of its own between the clause and the publication that
-\ records what it creates - lib/task.f TASK and its public wrapper `: TASK TASK ;`
+\ records what it creates - src/lib/task.f TASK and its public wrapper `: TASK TASK ;`
 \ are the production shape.
 TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
 : CDD-TRES-W ( -- ) 3 CDD-TRES-D ;
@@ -158,7 +158,7 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" C1U ( -- ptr n ) CDD-ONE-U" CDD-VERDICT ACCEPTED T= ;
 
 \ ---- 2. a package definer, its straight-line wrapper, and both spellings ----
-\ `: BUFFER ( n -- ) E-CG-CAP E-CG-VALUE BUFFER-E ;` (lib/codegen.f) is the
+\ `: BUFFER ( n -- ) E-CG-CAP E-CG-VALUE BUFFER-E ;` (src/lib/codegen.f) is the
 \ production shape of the wrapper: a body whose tokens hold exactly one definer
 \ call and no control flow creates whatever that definer creates.
 : CDD-SECTION-WRAPPER ( -- )
@@ -218,7 +218,7 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
 \ process: no text of theirs ever reached the scanner, and before the checker
 \ kept what a certified clause creates, a source using one of them left its
 \ created word E-UNDEFINED at the first typed use - measured, `bin/hb
-\ tools/check.f lib/queue.f` refused NG-BUFFER, created at lib/type/deftype.f:61
+\ tools/check.f src/lib/queue.f` refused NG-BUFFER, created at src/lib/type/deftype.f:61
 \ by the resident CODEGEN:BUFFER-E.
 \
 \ THE LAST ROWS ARE THE LATCH'S LIFETIME, and they are here because the store is
@@ -400,7 +400,7 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" C52 ( -- n ) CDD-GD4-LIVE" CDD-VERDICT REFUSED T= ;
 
 \ ---- 10. FUNCTION: ------------------------------------------------------------
-\ lib/ffi-abi.f FUNCTION: makes its word from the declaration group, so the
+\ src/lib/ffi-abi.f FUNCTION: makes its word from the declaration group, so the
 \ pre-pass reads the group as the word's effect, with the one rewrite the
 \ declarer applies: an `i32` result is a cell. The live declaration is the pin.
 PROCESS-SYMBOLS

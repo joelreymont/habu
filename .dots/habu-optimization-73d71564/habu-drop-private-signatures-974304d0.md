@@ -19,7 +19,7 @@ Acceptance:
 - **Symbols:** dropped symbols are retired in place (`SYM-RETIRED`), so symbol ids stay stable. `HIDX-BUILD` skips retired rows, and the string pool is rebuilt from the kept rows.
 - **Other rows:** `NORET-COMPACT` drops the rows of retired symbols, and `DFERS` and `UNSAFE-SYMS` are filtered.
 - **Stale copy:** the stale PES boot copy (2,999 B) is zeroed.
-- **Symbol-id readers:** those outside `checker.f` are enumerated (`sumtype.f:1273`, `structure-make.f`, `type-family.f`, `compiler/ir/build.f:1545` FSYM-ROWS, `compiler/native/frozen.f:65`, `lib/object-link.f:325`, `internal-mark.f`), and each is shown to name only kept symbols or to tolerate a retired one.
+- **Symbol-id readers:** those outside `checker.f` are enumerated (`sumtype.f:1273`, `structure-make.f`, `type-family.f`, `compiler/ir/build.f:1545` FSYM-ROWS, `compiler/native/frozen.f:65`, `src/lib/object-link.f:325`, `internal-mark.f`), and each is shown to name only kept symbols or to tolerate a retired one.
 Files: `src/core/checker.f`, new `src/core/checker-surface.f`, `src/habu/native-runtime.f` (manifest row with its lint reason), new `test/checker-surface.f`.
 Verify:
 - A private of a sealed package and a private whose name the image strips lose their effect; a DNAME-INT global and a named private of an unsealed package keep theirs (`test/checker-surface.f`).

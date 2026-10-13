@@ -16,7 +16,7 @@
 
 s" src/core/checker-owner-abi.f" provided
 s" src/core/engine-error.f" provided
-require lib/test.f
+require src/lib/test.f
 require test/compiler/native-emit-shapes.f
 require test/compiler/native-run-fixture.f
 

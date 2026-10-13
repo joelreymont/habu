@@ -38,9 +38,9 @@
 \
 \ SONE is the same nine instructions plus the one word its byte sits in: 40.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
 
 package LIT-EMIT-SIZE-TEST
 

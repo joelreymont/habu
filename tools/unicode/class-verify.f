@@ -1,10 +1,10 @@
 \ class-verify.f - independent exhaustive verifier for Unicode class tables.
 
-require lib/prelude.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/unicode/class.f
+require src/lib/prelude.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/unicode/class.f
 require tools/unicode/class-generate.f
 
 package UNICODE-CLASS-VERIFY
@@ -46,7 +46,7 @@ create OUTPUT-LOCK 65 allot
    s" data/unicode/16.0.0/PropList.txt" ;
 
 : DATA-PATH$ ( -- ptr u8 n )
-   s" lib/unicode/class-data.f" ;
+   s" src/lib/unicode/class-data.f" ;
 
 : OUTPUT-LOCK-PATH$ ( -- ptr u8 n )
    s" data/unicode/16.0.0/class-data.sha256" ;

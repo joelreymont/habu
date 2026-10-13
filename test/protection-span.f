@@ -1,9 +1,9 @@
 \ protection-span.f - span-aware compiler-state protection regressions.
 
-require lib/errors.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/errors.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 
 package PROTECTION-TEST
 
@@ -61,10 +61,10 @@ create ERR CAP allot
    s" : PST-IN ( -- n ) HB-TARGET-MACOS? if $80487414 else $5402 then ; 0 PST-IN -1 ioctl drop" ACCEPTS ;
 
 : TEST-FFI ( -- )
-   s" require lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-WRITE ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:WRITABLE! 16 1 FFI:VALUE! FFI:ARGS FFI:REG-LENS 2 PST-RET ffi-call-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-WRITE drop" REJECTS
-   s" require lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-X8 ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 FFI:X8-WRITABLE! FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS 0 PST-RET ffi-call-abi-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-X8 drop" REJECTS
-   s" require lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-STACK ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:STACK-WRITABLE! FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS 1 PST-RET ffi-call-abi-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-STACK drop" REJECTS
-   s" require lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-VALUE ( n -- n ) {: v:n :} FFI:RESET v 0 FFI:VALUE! FFI:ARGS FFI:REG-LENS 1 PST-RET ffi-call-bounded ; -1 PST-VALUE drop" ACCEPTS ;
+   s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-WRITE ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:WRITABLE! 16 1 FFI:VALUE! FFI:ARGS FFI:REG-LENS 2 PST-RET ffi-call-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-WRITE drop" REJECTS
+   s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-X8 ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 FFI:X8-WRITABLE! FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS 0 PST-RET ffi-call-abi-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-X8 drop" REJECTS
+   s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-STACK ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:STACK-WRITABLE! FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS 1 PST-RET ffi-call-abi-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-STACK drop" REJECTS
+   s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-VALUE ( n -- n ) {: v:n :} FFI:RESET v 0 FFI:VALUE! FFI:ARGS FFI:REG-LENS 1 PST-RET ffi-call-bounded ; -1 PST-VALUE drop" ACCEPTS ;
 
 \ The task-user arena is USER-BAND, one declared run of the per-task header.
 \ The transaction band below it still rejects a store - $5000 is its first
@@ -76,9 +76,9 @@ create ERR CAP allot
    s" 0 data-base TXN-STATE-OFF TXN-STATE-LEN + 1 cells - + !" REJECTS
    s" 0 data-base USER-BAND:START + !" ACCEPTS
    s" 0 data-base USER-BAND:END 1 cells - + !" ACCEPTS
-   s" require lib/task.f : PST-EXACT ( n -- ) USER-BAND:END <> if 1 throw then ; TASK:#USER USER-BAND:END over - TASK:+USER PST-EDGE PST-EXACT" ACCEPTS
-   s" require lib/task.f TASK:#USER USER-BAND:END over - 1+ TASK:+USER PST-OVER drop" UNCAUGHT-RC EXPECT
-   s" require lib/task.f TASK:#USER -1 TASK:+USER PST-WRAP drop" UNCAUGHT-RC EXPECT ;
+   s" require src/lib/task.f : PST-EXACT ( n -- ) USER-BAND:END <> if 1 throw then ; TASK:#USER USER-BAND:END over - TASK:+USER PST-EDGE PST-EXACT" ACCEPTS
+   s" require src/lib/task.f TASK:#USER USER-BAND:END over - 1+ TASK:+USER PST-OVER drop" UNCAUGHT-RC EXPECT
+   s" require src/lib/task.f TASK:#USER -1 TASK:+USER PST-WRAP drop" UNCAUGHT-RC EXPECT ;
 
 \ The replay scope band ends the protected bands, right after the unit
 \ dispatch cell. Pending pre-trust defer scratch and then the cold boot's

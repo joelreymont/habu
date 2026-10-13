@@ -149,7 +149,7 @@ The two top-level probing idioms the dot names:
 - **Eval harness** (`maki/eval/fixture.f` and friends): top-level lines of
   the shape `s" K ( span<…> … ) …" EVAL:CHECK-PASSES? TTRUE` and
   `EVAL:TOTAL @ 8 T=`. Every word is certified (`TRUSTED:
-  CHECK-PASSES? ( ptr u8 n -- bool )`, typed `lib/test` comparators), every
+  CHECK-PASSES? ( ptr u8 n -- bool )`, typed `src/lib/test` comparators), every
   line is literal → certified-consumer. Under the row these check
   end-to-end; nothing resets. Same for the `CHECK!` probe idiom
   (`s" : X … ;" CHECK! . cr`, TRUST row `ptr u8 n -- n`).

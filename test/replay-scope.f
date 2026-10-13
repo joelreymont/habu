@@ -11,7 +11,7 @@
 \ then the window the declaration owner's start opens in it - and CLOSE undoes
 \ both, and with them every record the scope published.
 
-require lib/errors.f
+require src/lib/errors.f
 require src/habu/layout.f
 require src/core/checker-owner-guard.f
 

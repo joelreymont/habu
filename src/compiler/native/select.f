@@ -12,8 +12,8 @@
 \ The two modules number their symbols, types and blocks separately, so every
 \ identity is carried across by translation and never by ordinal.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/digest.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f

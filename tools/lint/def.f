@@ -5,14 +5,14 @@
 \ cover every executable `create` and definition-generating `evaluate` owner.
 \ Registry grammars that publish rows rather than dictionary words are absent.
 
-require lib/adt/option.f
-require lib/errors.f
-require lib/memory.f
-require lib/vector.f
+require src/lib/adt/option.f
+require src/lib/errors.f
+require src/lib/memory.f
+require src/lib/vector.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require lib/source-lex.f
+require src/lib/source-lex.f
 
 package LINT-DEF
 public

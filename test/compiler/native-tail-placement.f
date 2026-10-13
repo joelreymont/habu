@@ -1,5 +1,5 @@
 \ Tail transfers keep the callee's stack position even when another is cheaper.
-require lib/test.f
+require src/lib/test.f
 require tools/codegen-tail-probe.f
 
 \ Tier 1 below: a tail transfer is lowered only by the optimizing compiler, so

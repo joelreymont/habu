@@ -3,8 +3,8 @@
 \ tools/public-signatures-core.f` works without the resident DAG ordering.
 
 require tools/lint/text.f
-require lib/source.f
-require lib/string-roles.f               \ package STR: the typed string surface
+require src/lib/source.f
+require src/lib/string-roles.f               \ package STR: the typed string surface
 require tools/lint/intern.f
 require tools/event-closure-lib.f
 
@@ -40,7 +40,7 @@ package PS
 
 \ Two live sources at once: the entry file, whose bytes have to survive the
 \ closure prescan that renders before them, and the dependency being prescanned.
-\ Both grow with the stdlib - lib/errors.f alone is past 80 KB - so each gets a
+\ Both grow with the stdlib - src/lib/errors.f alone is past 80 KB - so each gets a
 \ slab sized from the file rather than a fixed arena that the next error block
 \ overruns.
 create SRC-SLAB LINT-SLAB:CELLS cells allot
@@ -327,7 +327,7 @@ private
 \ definition named like a literal - all digits (42), float (.0, 1.5, -.5), or
 \ $hex ($FF), optionally minus-signed - is unreachable, yet it is a real
 \ definition and must remain visible in emitted public signatures.
-\ PS-PROJECT-WORD? alone skipped these (no alpha byte): exactly how lib/fmt.f's
+\ PS-PROJECT-WORD? alone skipped these (no alpha byte): exactly how src/lib/fmt.f's
 \ old `.0` escaped the output. E-NUMERIC-DEFINITION rejects new ones; the
 \ scanner must still SEE historical ones instead of silently dropping them.
 : PS-DIGIT? ( n -- bool )

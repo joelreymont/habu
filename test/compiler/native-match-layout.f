@@ -1,7 +1,7 @@
 \ Recorded layout facts and their shared scratch lifetime.
 
-require lib/test.f
-require lib/test/mapped.f
+require src/lib/test.f
+require src/lib/test/mapped.f
 require src/compiler/native/checker-owner.f
 
 package NMX-LAYOUT

@@ -2,19 +2,19 @@
 \ Run: bin/hb --load tools/error-code-lint.f
 \ Enforcing: prints the collision ledger and THROWS on any finding. A throw code
 \ (negative, or positive above the exit-status range) claimed by two different
-\ E- names anywhere under the Habu source roots src/ lib/ tools/ test/ fails the
+\ E- names anywhere under the Habu source roots src/ src/lib/ tools/ test/ fails the
 \ gate.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/vector.f
-require lib/fs.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/vector.f
+require src/lib/fs.f
 require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require lib/source-lex.f
+require src/lib/source-lex.f
 require tools/error-code-lint-core.f
 
 package ERROR-CODE-LINT-CLI

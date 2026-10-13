@@ -74,7 +74,7 @@ Landed with these deviations from the 2026-07-06 spec, each proven:
 
 1. RC MAPPING (the spec offered clamp-when-`code&0xFF`-is-0 or always-fixed;
    neither was taken verbatim). Existing callers depend on small positive codes
-   passing through to the exit status: lib/argv.f ARGV-FAIL-DONE (`ARGV-E-USAGE
+   passing through to the exit status: src/lib/argv.f ARGV-FAIL-DONE (`ARGV-E-USAGE
    throw` = 64, the shared usage convention), the standard check hook (`70
    throw`; docs/bootstrap.md documents "a bad definition exits 70"), lint
    finding exits (`1 throw`, tools/trust-lint.f TL-ARGV-BAD-TODAY), and gate
@@ -99,7 +99,7 @@ Landed with these deviations from the 2026-07-06 spec, each proven:
    the identical raw-exit bug.
 4. UNCGH-CELL is $3D00, not a "next free slot" low hole: $36B0 looked free in
    layout.f but is FRFREE-CELL (src/habu/regalloc.f, JIT float-pool bitmask) -
-   proven by a PC=0xff jump under lldb. lib/task.f TASK-USER-BASE moved
+   proven by a PC=0xff jump under lldb. src/lib/task.f TASK-USER-BASE moved
    $3D00->$3D08 (task suite green). layout.f is NOT the only owner of fixed
    DATA cells; regalloc.f/debug.f define more.
 5. SECOND MASKED LAYER: closed at the `die` primitive itself (habu1.f BDIE maps

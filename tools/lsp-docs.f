@@ -2,7 +2,7 @@
 \ file path the URI names, its text and its version, as the client last sent
 \ them, and what the server's checks keep of each.
 \
-\ A document is a slot of a growable table: byte buffers (lib/byte-buffer.f)
+\ A document is a slot of a growable table: byte buffers (src/lib/byte-buffer.f)
 \ for the URI, the path, the text, the path's canonical spelling, which the
 \ checker names it by, the files besides it whose diagnostics its last check
 \ published and the loads its last check reported once that check completed,
@@ -18,10 +18,10 @@
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: one table, for the server's one task.
 
-require lib/errors.f
-require lib/string.f
-require lib/byte-buffer.f
-require lib/adt/option.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/byte-buffer.f
+require src/lib/adt/option.f
 
 package LSP-DOCS
 using BUF

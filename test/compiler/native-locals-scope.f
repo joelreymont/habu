@@ -1,10 +1,10 @@
 \ native-locals-scope.f - locals that open and close inside control structures.
 
 require test/compiler/native-eval-fixture.f
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/prelude.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/prelude.f
 require src/compiler/native/compiler.f
 
 \ ---- the production programs under test --------------------------------------
@@ -19,7 +19,7 @@ public
 99 constant NLS-W
 
 \ ---- a group inside one arm of an if -----------------------------------------
-\ lib/ptx/kernel-abi.f FIELD-OFF! reduced to its shape: the outer group at the top
+\ src/lib/ptx/kernel-abi.f FIELD-OFF! reduced to its shape: the outer group at the top
 \ of the body, a second group inside the arm, and the outer name read after the
 \ `then`.
 : NLS-ARM ( n n -- n ) {: cls:n src:n :}
@@ -43,7 +43,7 @@ public
    then ;
 
 \ ---- a group inside a loop body ----------------------------------------------
-\ lib/test/suite.f ITEM-ARGS-FEED reduced: a second group inside the loop body,
+\ src/lib/test/suite.f ITEM-ARGS-FEED reduced: a second group inside the loop body,
 \ with the outer name read inside it and again after the loop.
 : NLS-FEED ( n n -- n ) {: base:n lim:n :}
    0 lim 0 ?do

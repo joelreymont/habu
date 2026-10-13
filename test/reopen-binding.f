@@ -12,7 +12,7 @@
 \
 \ Run: bin/hb --load test/reopen-binding.f
 
-require lib/test.f
+require src/lib/test.f
 require test/reopen-binding-lib.f
 require test/reopen-binding-early.f
 require test/reopen-binding-late.f

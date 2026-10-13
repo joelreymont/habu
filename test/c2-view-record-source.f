@@ -1,8 +1,8 @@
 \ A borrowed view moves by value through nested typed records.
-require lib/test.f
-require lib/adt/option.f
-require lib/memory.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/adt/option.f
+require src/lib/memory.f
+require src/lib/c2-memory.f
 require test/c2-view-record-defs.f
 
 package C2-VIEW-RECORD

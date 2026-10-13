@@ -1,13 +1,13 @@
 \ End-to-end C2 unique storage through source, native and saved images.
 \ The printed tree retains both products and every child log for replay.
-require lib/test.f
-require lib/string.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
 package C2-MEMORY-E2E
@@ -38,7 +38,7 @@ variable RC
 : SETUP ( -- )
    s" c2-memory-e2e" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
-   s" src" LINK s" lib" LINK s" tools" LINK
+   s" src" LINK s" tools" LINK
    s" test" AT-A MAKE-DIRS
    s" test/c2-memory-program.f" COPY-TEST
    s" test/c2-memory-refusals.f" COPY-TEST

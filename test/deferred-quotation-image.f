@@ -1,8 +1,8 @@
 \ Save deferred quotation columns, reopen, grow, save and reopen again.
-require lib/test.f
-require lib/fs-mutate.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 
 package DEFER-QUOT-IMAGE-TEST
 

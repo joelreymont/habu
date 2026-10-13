@@ -4,7 +4,7 @@
 \ which hands it the unsealed engine (test/whitebox-engine.f).
 \
 \ Every product bakes C2-MEM (src/habu/native-runtime.f requires
-\ lib/c2-owner.f), and the native build seals every package it bakes
+\ src/lib/c2-owner.f), and the native build seals every package it bakes
 \ (src/core/internal-mark.f SEAL-PACKAGES). So on a product `package C2-MEM`
 \ exits 84 with the package name before the checker sees a body;
 \ test/c2-memory-refusals.f and test/c2-owner-producer-refusals.f pin that on
@@ -12,15 +12,15 @@
 \ its own, and package privacy refuses none of them inside it. The whitebox
 \ image keeps engine packages open, so the rules that still bind C2-MEM's own
 \ code run there, each case in a disposable fork of the whitebox engine
-\ (lib/test/subject.f). The image class is asserted first, because on a sealed
+\ (src/lib/test/subject.f). The image class is asserted first, because on a sealed
 \ engine every case exits 84. The STOW-WITH-LOOP compile below is a probe of
 \ the native loop rewrite, and SECTION-VIEWS runs the view representation casts
 \ that only C2-MEM's private section may declare. SECTION-OWNER calls the
 \ generated private owner constructor from a reopened C2-MEM.
 
-require lib/test.f
-require lib/test/subject.f
-require lib/c2-owner.f
+require src/lib/test.f
+require src/lib/test/subject.f
+require src/lib/c2-owner.f
 require src/compiler/native/compiler.f
 
 \ Rewriting a foldable loop must also copy the later C2 transfer's kind.

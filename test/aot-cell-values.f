@@ -4,8 +4,8 @@
 \ APPLY-CELLS for the baked window, aot-lib.f EMIT-VGET for a stripped image's
 \ own DATA) are the same grammar in ARM64 and are pinned where they are emitted
 \ (test/gate-aot-image.f CHECK-VGET) and exercised by every build.
-require lib/test.f
-require lib/test/guard-page.f
+require src/lib/test.f
+require src/lib/test/guard-page.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f

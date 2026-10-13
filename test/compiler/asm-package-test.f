@@ -24,8 +24,8 @@
 \ certifying as ( n -- n ) reached the assembler, so each pair pins WHICH word a
 \ bare tail found rather than only that something resolved.
 
-require lib/test.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/string.f
 require src/arch/arm64/asm.f
 
 \ The colliding second party: one public tail, ENC-B, with an effect of its own.

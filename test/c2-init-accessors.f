@@ -2,7 +2,7 @@
 \ WITH-INIT is a separate operation; this fixture checks the declaration and
 \ calls through their public effects without constructing a live initialized view.
 
-require lib/test.f
+require src/lib/test.f
 
 package C2IA
 

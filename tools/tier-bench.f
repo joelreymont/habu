@@ -10,12 +10,12 @@
 \
 \ WHY THE TIER IS SELECTED BEFORE THE REQUIRES. Only code compiled after
 \ `set-tier` is the selected tier's; the engine's baked words - the checker, the
-\ compiler, lib/string.f, everything in the cold prefix - were compiled when the
+\ compiler, src/lib/string.f, everything in the cold prefix - were compiled when the
 \ engine was built and do not change. So a benchmark that ran a baked word would
 \ report the same number at both tiers no matter what either compiler does. The
 \ selection is therefore top-level code at the head of this file, ahead of the
 \ targets' requires, and every word under test comes from a file loaded after
-\ it: lib/array.f for the integer loops and tools/lint/text.f for the text work.
+\ it: src/lib/array.f for the integer loops and tools/lint/text.f for the text work.
 \
 \ WHY `harness` IS MEASURED TOO. The timing loop in this file is compiled at the
 \ selected tier along with everything else, so part of every number below is the
@@ -23,7 +23,7 @@
 \ nothing; subtract it before comparing a small benchmark across tiers.
 \
 \ WHY FIFTEEN ROUNDS, AND WHY THEY ARE INTERLEAVED. Every window reads this
-\ thread's CPU time (TIME:THREAD-CPU-NS, lib/time-cpu.f), so a slice the
+\ thread's CPU time (TIME:THREAD-CPU-NS, src/lib/time-cpu.f), so a slice the
 \ scheduler gave a neighbour is not in it, but the core it ran on is: a run on
 \ an efficiency core, or beside a neighbour that evicted its cache, still reads
 \ slow, and only ever slower. A round times every benchmark once and the
@@ -42,11 +42,11 @@
 \ The clock is not under test, so it loads ahead of the selection, at the
 \ engine's tier: loaded after it, its FFI and task runtime cost a tier-1 run
 \ about a second of compiling. The only files it shares with the benchmark
-\ targets are baked into the engine (lib/errors.f, lib/string.f, lib/memory.f,
-\ lib/adt/option.f), so no word under test is compiled before the selection.
-\ lib/tier.f, the selection itself, loads there too and shares nothing with them.
-require lib/time-cpu.f
-require lib/tier.f
+\ targets are baked into the engine (src/lib/errors.f, src/lib/string.f, src/lib/memory.f,
+\ src/lib/adt/option.f), so no word under test is compiled before the selection.
+\ src/lib/tier.f, the selection itself, loads there too and shares nothing with them.
+require src/lib/time-cpu.f
+require src/lib/tier.f
 
 package TIER-SELECT
 private
@@ -73,7 +73,7 @@ public
 
 TIER-SELECT:APPLY
 
-require lib/array.f
+require src/lib/array.f
 require tools/lint/text.f
 
 package TIER-BENCH
@@ -127,7 +127,7 @@ variable SINK                       \ keeps a benchmark's result from being dead
 
 \ ---- output -----------------------------------------------------------------
 \ This file requires nothing beyond its benchmark targets and its clock, for
-\ the reason tools/tier-census.f gives: a tool that loaded lib/string.f for its
+\ the reason tools/tier-census.f gives: a tool that loaded src/lib/string.f for its
 \ own output would have compiled it at the engine's tier before the selection
 \ above, and every word it reaches would then be missing from the comparison.
 

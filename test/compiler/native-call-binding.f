@@ -1,10 +1,10 @@
 \ A recorded call keeps the checker-selected record and effect until the next scan.
-require lib/test.f
-require lib/process-fork.f
+require src/lib/test.f
+require src/lib/process-fork.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/feed.f
 require src/compiler/native/compiler.f
-require lib/ffi-abi.f
+require src/lib/ffi-abi.f
 require test/compiler/native-eval-fixture.f
 require test/checker-owner-reset.f
 

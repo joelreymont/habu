@@ -1,8 +1,8 @@
 \ Observe OS thread identities independently of Habu's task registry.
-require lib/ffi-abi.f
-require lib/fs-list.f
-require lib/le.f
-require lib/string.f
+require src/lib/ffi-abi.f
+require src/lib/fs-list.f
+require src/lib/le.f
+require src/lib/string.f
 
 package TEST-HOST
 512 constant THREAD-CAP

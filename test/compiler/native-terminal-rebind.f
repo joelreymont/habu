@@ -1,7 +1,7 @@
 \ Run only in a child: source replacements are ordinary calls, even at global
 \ scope. The terminal fact requires the primitive's engine-text entry.
 1 set-tier
-require lib/test.f
+require src/lib/test.f
 undefine throw
 : throw ( n -- n ) 1+ ;
 undefine die

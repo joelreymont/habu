@@ -8,15 +8,15 @@
 \ The program is saved from the keyed linker image (test/preloaded-engine.f),
 \ which carries the linker's persistent PROC-MAPS:RELOAD hook
 \ (tools/aot-build-core.f): the same PREPARE runs it after the program's own.
-require lib/test.f
-require lib/test/outcome.f
-require lib/string.f
-require lib/fmt.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require test/preloaded-engine.f
 
 package IMAGE-LIFECYCLE-LATE-TEST
@@ -53,7 +53,7 @@ variable IMAGE-U
    SB$ ;
 
 \ The line the child prints for an uncaught code, rendered from the name so the
-\ needle follows lib/errors.f instead of repeating its number.
+\ needle follows src/lib/errors.f instead of repeating its number.
 : NEEDLE$ ( -- ptr u8 n )
    SB-RESET
    s" uncaught throw code " SB-APPEND

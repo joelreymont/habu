@@ -30,11 +30,11 @@
 \ A failure prints F<index> + detail; REPORT exits 1 on any fail.
 
 require test/checker-assert.f
-require lib/test/subject.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
-require lib/memory.f
-require lib/c2-memory.f
-require lib/c2-bytes.f
+require src/lib/test/subject.f
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/memory.f
+require src/lib/c2-memory.f
+require src/lib/c2-bytes.f
 
 variable #FAIL
 variable #CASE

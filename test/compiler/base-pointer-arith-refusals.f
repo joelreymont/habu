@@ -46,8 +46,8 @@
 \ These run against the live engine's own checker through CHECK-CANDIDATE!, the
 \ public probing verdict word, so no `evaluate` boundary and no trust row stands
 \ between a fixture and the checker that answers it.
-require lib/test.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/string.f
 
 \ The nominal identity the forgeries mint, and a declared pointer cell for the
 \ null store. Both are file-global because the candidates below are checked in
@@ -531,7 +531,7 @@ create DIAG-BUF 8192 allot
 \ permissive arm costs the null COMPARISON on a declared code cell: it certified
 \ before this rule and is refused after it, with the same reason as the cell
 \ shapes above. An empty code cell is read through a NUMBER-typed accessor of
-\ the same address instead -- the two-accessor shape lib/genio.f already uses
+\ the same address instead -- the two-accessor shape src/lib/genio.f already uses
 \ for its device rows, where a cleared row is spelled ZERO.
 : CASE-NULL-XT-COMPARE ( -- )
    s" comparing a code cell against the null is refused, and says why" T-LABEL

@@ -27,7 +27,7 @@
 \   - a symbol whose package has no namespace row names nothing;
 \   - the whitebox image keeps everything, the verdict src/core/internal-mark.f
 \     wrote into the image, because its suites reopen engine packages by design.
-require lib/prelude.f
+require src/lib/prelude.f
 require src/habu/xref.f
 require src/core/internal-mark.f
 

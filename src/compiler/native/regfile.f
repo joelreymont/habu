@@ -46,8 +46,8 @@
 \ calling convention may hold state in, which is this description's ALLOCATABLE
 \ set - and it belongs to the convention, not to the machine.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 
 package NREGFILE
 public

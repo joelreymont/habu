@@ -14,13 +14,13 @@
 \ the check hook so their own definitions certify under the default checker,
 \ not the throw-on-reject prop hook.
 
-require lib/errors.f
-require lib/string.f
-require lib/fs.f
-require lib/process.f
-require lib/process-fork.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
-require lib/test/eval.f                  \ TEST-EVAL:N - one cell out of a closed text
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/process.f
+require src/lib/process-fork.f
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test/eval.f                  \ TEST-EVAL:N - one cell out of a closed text
 
 \ The harness's own words and every candidate compile at tier 0, whatever tier
 \ the caller selected (the libraries above compile at the caller's tier). Tier 1 compiles against a static stack picture and the

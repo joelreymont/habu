@@ -46,7 +46,7 @@
 \                                     address
 \
 \ No libc symbol takes nine integer arguments, so the stub stands in, as
-\ lib/ffi-test.f FFI-T-SUM10 does on ARM64. The host checks each image's ELF
+\ src/lib/ffi-test.f FFI-T-SUM10 does on ARM64. The host checks each image's ELF
 \ header; running them is the peer's.
 require test/x86-64-boot-harness.f
 

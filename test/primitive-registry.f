@@ -1,4 +1,4 @@
-require lib/test.f
+require src/lib/test.f
 require src/habu/primitive-registry.f
 
 package PRIMITIVE-REGISTRY-TEST

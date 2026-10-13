@@ -2,16 +2,16 @@
 \ reader is compiled code that runs between the lines, and the open definition
 \ holds the compile loop's bands RW; its end of input is the pipe's refusal,
 \ rc 74, since no input remains for the REPL to recover into.
-require lib/test.f
-require lib/pty-harness.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/pty-harness.f
+require src/lib/engine-candidate.f
 
 package REPL-OPEN-DEF-TEST
 using PTY-HARNESS
 
 \ Only the prompt after an answer shows the child reading raw again, so a step
 \ waits for that one and ^D goes only after a step that saw it
-\ (lib/pty-harness.f WAIT-AFTER).
+\ (src/lib/pty-harness.f WAIT-AFTER).
 : STEP ( ptr u8 n -- bool )
    BUF-CLEAR SEND-LINE
    s"  ok" WAIT-FOR if s"  ok" s" habu> " WAIT-AFTER else false then ;

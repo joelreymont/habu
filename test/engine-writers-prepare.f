@@ -46,12 +46,12 @@ public
 \ The child's libraries stand on pre-seal sources the participants stop short
 \ of. They load here in src/habu/native-runtime.f's order, before the seal, as
 \ on the product. The last declaration source seals registration: until it
-\ loads, lib/string.f's ENUM is refused with E-REGISTRATION-SEALED.
+\ loads, src/lib/string.f's ENUM is refused with E-REGISTRATION-SEALED.
 require src/habu/xref.f
 require src/core/generated-declaration-dictionary.f
 require src/core/generated-declaration-protection.f
 require src/core/dynamic-storage.f
-require lib/prelude.f
+require src/lib/prelude.f
 
 require src/core/prefix-boundary.f
 include src/core/internal-mark.f

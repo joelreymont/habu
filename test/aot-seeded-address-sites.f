@@ -1,6 +1,6 @@
 \ Seeded DATA field words must retain the address provenance of fresh fields.
 1 set-tier
-require lib/test.f
+require src/lib/test.f
 require src/habu/layout.f
 
 package AOT-SEEDED-ADDRESS-TEST

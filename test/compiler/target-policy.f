@@ -24,8 +24,8 @@
 \ legality rules, not by the modules under test, so a rule that silently widened
 \ would show up as a changed legal-domain size (the counts are asserted).
 
-require lib/test.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/string.f
 require test/checker-assert.f
 require src/compiler/binding.f
 

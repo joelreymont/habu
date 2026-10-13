@@ -12,12 +12,12 @@
 \ booted capture writes and the metabuild host reads, so both compile this source
 \ and neither can hold a private idea of the layout. That is also why it uses
 \ ENGINE PRIMITIVES ONLY (open/read/write/close, PATH0, SHA256*, the AOT-BUF
-\ buffers, FDIO:WALL) - the host carries no lib/, and the capture cannot load
+\ buffers, FDIO:WALL) - the host carries no src/lib/, and the capture cannot load
 \ src/habu/driver-io.f at all.
 \
 \ IDENTITY IS NOT THE FORMAT'S. WRITE takes the producer key and READ takes the
 \ key it will accept; neither asks where the caller got it. A capture running in a
-\ booted engine reads lib/engine-id.f's content key for the binary it is running;
+\ booted engine reads src/lib/engine-id.f's content key for the binary it is running;
 \ the metabuild recomputes SHA-256 over the capture host it just emitted. One
 \ fact, two independent readings, compared for hard equality here.
 \

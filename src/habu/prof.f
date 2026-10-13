@@ -47,8 +47,8 @@ private
 \ attribute samples from a frame that is not there. Signal handlers are target
 \ ABI boundaries (docs/porting.md), so this file refuses a target whose frame it
 \ does not model, at load, rather than emitting the aarch64 one for it. The
-\ refusal is a die and not lib/errors.f's E-PLATFORM because this file loads
-\ inside the engine-build window, which has no lib/ in it.
+\ refusal is a die and not src/lib/errors.f's E-PLATFORM because this file loads
+\ inside the engine-build window, which has no src/lib/ in it.
 : PROF-TARGET-OK ( -- )
    HB-TARGET-LINUX? if exit then
    HB-TARGET-MACOS? if exit then

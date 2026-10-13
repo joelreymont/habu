@@ -5,9 +5,9 @@
 \ package name past the header's 64-byte field refuses as a profile the format
 \ cannot represent.
 
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require tools/native-unit-file.f
 
 package NUNIT-FILE-TEST

@@ -1,8 +1,8 @@
 \ Throw and task halt close one frame for an entire initialized table.
-require lib/test.f
-require lib/memory.f
-require lib/c2-memory.f
-require lib/task.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/c2-memory.f
+require src/lib/task.f
 require test/c2-records-types.f
 
 package C2-RECORDS-LIFECYCLE

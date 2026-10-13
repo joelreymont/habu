@@ -8,10 +8,10 @@
 \ state leaks into the reused slot), and the serial-exhaustion path is driven
 \ through the production ceiling parameter rather than a synthetic hook.
 
-require lib/test.f
-require lib/memory.f
+require src/lib/test.f
+require src/lib/memory.f
 require test/checker-assert.f
-require lib/image-lifecycle.f
+require src/lib/image-lifecycle.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
 

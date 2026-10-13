@@ -1,5 +1,5 @@
 \ Higher-rank table and element loan effects saved in a native image.
-require lib/c2-memory.f
+require src/lib/c2-memory.f
 
 package C2-RECORDS-WRAPPER
 public

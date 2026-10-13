@@ -27,8 +27,8 @@
 \ PROF-DBASE and the record count from ARN-NDICT, never from r13 and r14, which
 \ the handler's walk has reused by the time it dumps. The printers clobber
 \ every scratch register.
-require lib/byte-buffer.f
-require lib/string.f
+require src/lib/byte-buffer.f
+require src/lib/string.f
 require src/habu/layout.f
 require src/habu/code-span.f
 require src/habu/prof-abi.f

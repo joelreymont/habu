@@ -12,7 +12,7 @@
 \ positives, negatives, forged-tag diagnostic, and checked round-trips.
 
 require test/checker-assert.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
 variable #CASE

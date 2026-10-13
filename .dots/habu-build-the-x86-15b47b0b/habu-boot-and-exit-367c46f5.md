@@ -16,7 +16,7 @@ Depends: habu-add-the-x86-aad02c7e (K1), habu-add-the-x86-a8bf9973 (K2). Seriali
 Route: Alder (shared: tools/native-emit.f).
 Ownership: krait (Intel lane).
 Claim: agent=krait workspace=.jj-ws/habu-boot-and-exit-367c46f5.
-Load order (from K1): the x86 arm of `tools/native-emit.f` loads `lib/byte-buffer.f` and `src/arch/x86-64/icode.f` (`X64CODE`) before any x86 seam file (`sys.f` and `proc-watch.f` bind `using X64CODE`), loads `src/os/image-bytes.f` under `using X64CODE` (it sizes `MSIZE` from a bare `CODE-CAP-BYTES`), and does not load `src/arch/arm64/icode.f` (its globals collide with `X64CODE`, `E-USING-SHADOW-GLOBAL`).
+Load order (from K1): the x86 arm of `tools/native-emit.f` loads `src/lib/byte-buffer.f` and `src/arch/x86-64/icode.f` (`X64CODE`) before any x86 seam file (`sys.f` and `proc-watch.f` bind `using X64CODE`), loads `src/os/image-bytes.f` under `using X64CODE` (it sizes `MSIZE` from a bare `CODE-CAP-BYTES`), and does not load `src/arch/arm64/icode.f` (its globals collide with `X64CODE`, `E-USING-SHADOW-GLOBAL`).
 
 Preflight corrections (these override the lines above where they differ):
 - `tools/native-emit.f` is not changed at this leaf; its target-dispatched require set moves to X4d (`habu-resolve-x86-entry-cb671d4d`). `kernel-x64.f` (K5-K9) and `link-x64.f` (X4b) do not exist yet; the window's `target.f` follows the host's baked predicates (`src/os/linux/target.f:3-10`, `tools/native-build-core.f:159-175`), so no x86 arm is reachable before X3; and `NATIVE-EMIT:WRITE` (`native-emit.f:85-91`) writes a capture, not a bare skeleton.

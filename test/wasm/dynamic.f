@@ -35,10 +35,10 @@ public
 ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
 ;package
 
-require lib/test.f
-require lib/le.f
-require lib/fs.f
-require lib/fs-mutate.f
+require src/lib/test.f
+require src/lib/le.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require src/habu/layout.f
 require src/habu/aot-decl.f
 require src/habu/aot-arm.f

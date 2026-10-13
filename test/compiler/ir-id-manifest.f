@@ -1,8 +1,8 @@
 \ Compiler identity boundary vectors and require-replay behavior.
 
-require lib/test.f
-require lib/test/outcome.f
-require lib/process-command.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/process-command.f
 require test/compiler/ir-id-schema.f
 
 package IR-ID-MANIFEST-TEST

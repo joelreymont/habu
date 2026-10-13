@@ -1,5 +1,5 @@
 \ Reject an overflowing header capacity before multiplying or reading a row.
-require lib/errors.f
+require src/lib/errors.f
 require src/habu/address-cells.f
 
 package ADDRESS-CELL-CAP-BAD

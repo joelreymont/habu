@@ -1,10 +1,10 @@
 \ A zero-initialized typed quotation cell is readable, but invocation is fatal.
 \ Exercise the real parser, checker, compiler, and runtime in child processes.
-require lib/string.f
-require lib/test.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 
 package EMPTY-QUOTATION-TEST
 private
@@ -55,12 +55,12 @@ variable ERR-U
    tier s" : GO ( -- n ) Q @ catch ; GO ." FATAL
    tier s" : GO ( -- ) Q @ [: ;] finally ; GO" FATAL
    tier S\" : BODY ( -- ) s\q BODY\q type 7 throw ; : GO ( -- ) [: BODY ;] Q @ finally ; GO" FATAL
-   tier s" require lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop POOL-A ! : POOL ( -- ptr u8 ) POOL-A @ ; : GO ( -- ) Q @ POOL STACK-ABI:PAGE-BYTES run-in-stack ; GO" FATAL
+   tier s" require src/lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop POOL-A ! : POOL ( -- ptr u8 ) POOL-A @ ; : GO ( -- ) Q @ POOL STACK-ABI:PAGE-BYTES run-in-stack ; GO" FATAL
    tier s" : GO ( -- ) Q @ execute ; : OUTER ( -- n ) [: GO ;] catch ; OUTER ." FATAL
    tier S\" : BODY ( -- ) s\q BODY\q type ; : INSTALL ( -- ) [: BODY ;] Q ! ; : GO ( -- ) Q @ execute Q @ catch . Q @ [: ;] finally ; INSTALL GO" SOURCE$ RUN-SOURCE 0 T=
    OUT$ nip 14 T=
    OUT$ s" BODYBODY0" CONTAINS? TTRUE
-   tier S\" require lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop POOL-A ! : POOL ( -- ptr u8 ) POOL-A @ ; : BODY ( -- ) s\q BODY\q type ; : INSTALL ( -- ) [: BODY ;] Q ! ; : GO ( -- ) Q @ POOL STACK-ABI:PAGE-BYTES run-in-stack ; INSTALL GO" SOURCE$ RUN-SOURCE 0 T=
+   tier S\" require src/lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop POOL-A ! : POOL ( -- ptr u8 ) POOL-A @ ; : BODY ( -- ) s\q BODY\q type ; : INSTALL ( -- ) [: BODY ;] Q ! ; : GO ( -- ) Q @ POOL STACK-ABI:PAGE-BYTES run-in-stack ; INSTALL GO" SOURCE$ RUN-SOURCE 0 T=
    OUT$ s" BODY" STR= TTRUE
    tier s" defer D ( -- ) D" SOURCE$ RUN-SOURCE 76 T=
    ERR$ s" defer: unset execution vector" CONTAINS? TTRUE ;

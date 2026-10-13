@@ -12,7 +12,7 @@
 \ A checked `[']` of it is admitted and refused exactly where such a call is. A
 \ primitive that TRUSTED: bodies outside its owner call keeps a global
 \ trusted-only row beside the private one, and the matrix measures that shape
-\ too. set-tier is the private-only seed primitive: package TIER (lib/tier.f)
+\ too. set-tier is the private-only seed primitive: package TIER (src/lib/tier.f)
 \ owns it, and TIER:SELECT is its public word.
 \
 \ TWO ENGINES ANSWER. The owner cases need the owner open, and the product seals
@@ -27,13 +27,13 @@
 \ emitting is as much a failure as a case that answers wrongly, and only an exact
 \ comparison catches the first.
 
-require lib/test.f
-require lib/string.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/test/subject.f
 require test/whitebox-child.f
 
 package PRIM-OWNER-SCOPE-SUITE
@@ -46,7 +46,7 @@ $4000 constant IO-CAP
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 
-\ The expected transcript outgrows lib/string.f's builder, so it has its own.
+\ The expected transcript outgrows src/lib/string.f's builder, so it has its own.
 create EXP IO-CAP allot
 variable EXP-U
 
@@ -411,7 +411,7 @@ variable EXP-U
 \ for its owner's: outside TIER the shipped answer is E-UNDEFINED, and the
 \ owner's public word is how a user's checked definition selects a tier.
 : TIER-SELECT-RUNS ( -- )
-   s" require lib/tier.f : POS-OPEN-TS ( n -- ) TIER:SELECT ; 1 POS-OPEN-TS tier@ ."
+   s" require src/lib/tier.f : POS-OPEN-TS ( n -- ) TIER:SELECT ; 1 POS-OPEN-TS tier@ ."
    OUT IO-CAP >LEN ERR IO-CAP >LEN SUBJECT-MS >MS SUBJECT:RUN
    PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
    s" a checked caller of TIER:SELECT selects tier 1" T-LABEL

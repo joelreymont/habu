@@ -1,9 +1,9 @@
 \ Moving bytes across file boundaries must invalidate an artifact's source key.
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
-require lib/fs-mutate.f
-require lib/engine-id.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
+require src/lib/fs-mutate.f
+require src/lib/engine-id.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/aot-decl.f

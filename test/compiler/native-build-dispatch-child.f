@@ -1,7 +1,7 @@
 \ A refused pre-hook source returns through the build's catch with the retained
 \ compiler dispatch restored. The enclosing test supplies a private source tree.
 1 set-tier
-require lib/executable-build.f
+require src/lib/executable-build.f
 require tools/native-build-core.f
 
 package NATIVE-BUILD-DISPATCH-CHILD

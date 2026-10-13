@@ -20,14 +20,14 @@
 \ Tier-neutral by design: every session under test is a child whose own source
 \ sets its tier, so the tier of this row selects nothing.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/process.f
-require lib/process-argv.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/engine-candidate.f
 
 package NSESSION-TEST
 
@@ -203,7 +203,7 @@ variable RC     variable EXITED
 \ interning counters; a successful retry then stands the flags down.
 : CLOSE-PREFIX ( -- )
    SB-RESET
-   S\" require lib/task.f\n" SB-APPEND
+   S\" require src/lib/task.f\n" SB-APPEND
    S\" require src/compiler/session/lease.f\n" SB-APPEND
    S\" 1 set-tier\n" SB-APPEND
    S\" : ZC1 ( -- n ) 1 ;\n" SB-APPEND

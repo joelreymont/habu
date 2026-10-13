@@ -2,8 +2,8 @@
 \ a variant name. One concern: turning the two operand tokens of a tag-dispatch
 \ form into the numbers the chain has to compile with.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/native/checker-owner.f
 
 package NFAM

@@ -1,7 +1,7 @@
 \ ffi-callback-direct-child.f - C calling a callback entry directly: every
 \ argument register into MARSHAL's body, the fallback of UNSET, whose body was
 \ never stored, and a full-width n result back through START-B.
-\ lib/ffi-callback-test.f runs it and appends it to its transcript as the child
+\ src/lib/ffi-callback-test.f runs it and appends it to its transcript as the child
 \ `direct`.
 \
 \ It is a window child because an entry is a bare code address: a FUNCTION:
@@ -13,7 +13,7 @@
 \ test/whitebox-child.f names. Each fact prints `ok   <label>` or
 \ `FAIL <label>`, then the report `test: ok`, then the window `window: 0`.
 
-require lib/test.f
+require src/lib/test.f
 require test/ffi-callback-fixture.f
 
 package FFI-CB-TEST

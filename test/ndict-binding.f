@@ -1,5 +1,5 @@
 \ Indexed compiler lookup follows live scope and definition changes.
-require lib/test.f
+require src/lib/test.f
 
 17 constant NDB-GLOBAL
 1 constant NDB-MUTABLE

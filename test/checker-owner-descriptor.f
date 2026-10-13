@@ -1,10 +1,10 @@
 \ Descriptor bounds only: no synthetic record supplies or executes callbacks.
-require lib/test.f
-require lib/fs.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
 require src/habu/aot-arm.f
 
 package OWNER-DESCRIPTOR-TEST

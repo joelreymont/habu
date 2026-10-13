@@ -10,7 +10,7 @@
 \ checked probe of it. A failure prints F<index> + detail; REPORT exits 1 on any
 \ fail.
 
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 using SCHEMA-REG
 using TFAM

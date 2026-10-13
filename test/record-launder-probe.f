@@ -19,17 +19,17 @@
 \ The open repros below show both casts. The gate checks direct refusals and
 \ legitimate field reads without requiring the open holes to certify.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/fs.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/fs.f
 require src/habu/verify-source.f
 require test/checker-assert.f
 
 \ ---- the three storage forms a mixed record has today ------------------------
 
 \ 1. raw: the whole record is `create`d dictionary bytes (tools/lint/text.f
-\    LINT-SLAB, lib/vector.f's header, every BEGIN-STRUCTURE layout).
+\    LINT-SLAB, src/lib/vector.f's header, every BEGIN-STRUCTURE layout).
 create RLP-RAW 3 cells allot
 
 \ 2. declared head plus allotted counts: the form the raw-storage rule

@@ -2,7 +2,7 @@
 \ Every case has an explicit turn limit, including a broken/nonterminating loop.
 \ Run directly in the engine's default JIT tier; also baked into stage0.
 
-require lib/fmt.f
+require src/lib/fmt.f
 
 package JIT-PLUSLOOP-TEST
 

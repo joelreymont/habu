@@ -7,11 +7,11 @@
 \ test/native-builder-image-lib.f has the fixture and the other rows; run alone:
 \ bin/hb --load test/native-builder-image-refusals.f
 
-require lib/test.f
-require lib/fs.f
-require lib/string.f
-require lib/process-cwd.f
-require lib/time.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/string.f
+require src/lib/process-cwd.f
+require src/lib/time.f
 require test/native-builder-image-lib.f
 
 package NATIVE-BUILDER-IMAGE-TEST

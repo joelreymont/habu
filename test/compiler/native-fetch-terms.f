@@ -1,6 +1,6 @@
 \ Publishing a checked signature keeps the type terms of its memory facts live.
-require lib/test.f
-require lib/memory.f
+require src/lib/test.f
+require src/lib/memory.f
 
 package FETCH-TERM-TEST
 public

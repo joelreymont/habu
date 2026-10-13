@@ -2,7 +2,7 @@
 \ window. Its live link must claim those declarations with the current window.
 require test/gate-common.f
 require test/preloaded-engine.f
-require lib/codegen.f
+require src/lib/codegen.f
 
 package STRIPPED-PRELOADED-RUNTIME-TEST
 private
@@ -24,7 +24,7 @@ variable IMAGE-U
 
 : WRITE-SUBJECT ( -- )
    SUBJECT-SRC CODEGEN:RESET
-   S\" require lib/task.f\nrequire lib/ffi-abi.f\n" SUBJECT-SRC CODEGEN:APPEND-STRING
+   S\" require src/lib/task.f\nrequire src/lib/ffi-abi.f\n" SUBJECT-SRC CODEGEN:APPEND-STRING
    HB-TARGET-MACOS? if
       S\" LIBRARY /usr/lib/libSystem.B.dylib\n" SUBJECT-SRC CODEGEN:APPEND-STRING
    else

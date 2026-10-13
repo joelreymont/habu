@@ -1,7 +1,7 @@
 \ Plant and verify canaries in the live return stack before APP-IMAGE:SAVE.
 \ The stack is a guarded mapping outside DATA (src/habu/stack-abi.f), so the
 \ parent proves the image carries neither canary and zero base cells.
-require lib/memory.f
+require src/lib/memory.f
 require src/habu/stack-abi.f
 require test/snapshot-writer-poison-canaries.f
 

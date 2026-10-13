@@ -1,7 +1,7 @@
 \ The OS bridge copies only a complete canonical C string into caller storage.
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 
 package REALPATH-TEST
 

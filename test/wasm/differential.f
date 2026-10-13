@@ -17,19 +17,19 @@
 \ from test/wasm/numeric-rows.f; W01's cyclic edge copies and nested label
 \ depths; W03's 144 signatures; W06's 16 and 17 lanes each way, called
 \ directly and through execute; W07's full-width throw and its trap; and W31's
-\ own storage, its booleans, its real orderings and lib/fmath.f's SIN and COS.
+\ own storage, its booleans, its real orderings and src/lib/fmath.f's SIN and COS.
 \ No Habu control word builds the cycle entered at two blocks W02 needs, so its
 \ refusal stays structural (test/wasm/structure.f).
 \
 \ The sources and modules stay in the printed directory.
 
-require lib/string.f
-require lib/fmt.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/test.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/test.f
 require test/wasm/harness.f
 
 package WASM-DIFFERENTIAL
@@ -271,10 +271,10 @@ s" W31-ORDERS"
 s" : W31-ORDERS-NAN ( -- r ) 0 s>f 0 s>f f/ ; : W31-ORDERS-NEG0 ( -- r ) 0 s>f fnegate ; : W31-ORDERS ( -- ) 1 s>f 1 s>f f<= 1 s>f 2 s>f f<= 2 s>f 1 s>f f<= W31-ORDERS-NAN 1 s>f f<= 1 s>f W31-ORDERS-NAN f<= W31-ORDERS-NEG0 0 s>f f<= 0 s>f W31-ORDERS-NEG0 f<= 1 s>f 1 s>f f>= 1 s>f 2 s>f f>= 2 s>f 1 s>f f>= W31-ORDERS-NAN 1 s>f f>= 1 s>f W31-ORDERS-NAN f>= W31-ORDERS-NEG0 0 s>f f>= 0 s>f W31-ORDERS-NEG0 f>= depth . .s 2drop 2drop 2drop 2drop 2drop 2drop 2drop ;"
 s\" 14\n-1\n-1\n0\n0\n0\n-1\n-1\n-1\n0\n-1\n0\n0\n-1\n-1\n" ROW
 
-\ lib/fmath.f, whose words call f<= and f>=: sin and cos of 1 and of 10, past
+\ src/lib/fmath.f, whose words call f<= and f>=: sin and cos of 1 and of 10, past
 \ pi/4, by their bits.
 s" W31-FMATH"
-s" require lib/fmath.f : W31-FMATH ( -- ) 1 s>f FMATH:SIN 1 s>f FMATH:COS 10 s>f FMATH:SIN 10 s>f FMATH:COS depth . .s fdrop fdrop fdrop fdrop ;"
+s" require src/lib/fmath.f : W31-FMATH ( -- ) 1 s>f FMATH:SIN 1 s>f FMATH:COS 10 s>f FMATH:SIN 10 s>f FMATH:COS depth . .s fdrop fdrop fdrop fdrop ;"
 s\" 4\n4605754516372524270\n4603041830072026764\n-4620296710764933294\n-4617639132858127585\n" ROW
 
 ;using

@@ -1,7 +1,7 @@
 \ Only the completed artifact crosses from the exited native producer.
 require tools/native-emit.f
-require lib/fs-mutate.f
-require lib/codesign.f
+require src/lib/fs-mutate.f
+require src/lib/codesign.f
 
 package PREFIX-LITERAL-READER
 using AOT-FILE

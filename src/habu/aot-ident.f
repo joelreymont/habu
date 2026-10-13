@@ -34,14 +34,14 @@
 \ and a mismatch means a stale artifact, which a recapture cures.
 \
 \ WHAT THIS FILE DOES NOT OWN: the producer identity. Both sides read it, but from
-\ different places — a capture running in a booted engine asks lib/engine-id.f for
+\ different places — a capture running in a booted engine asks src/lib/engine-id.f for
 \ the content key of the binary it is running, and the metabuild recomputes
 \ SHA256-FILE-IN over the engine it just emitted. One fact, two independent readings,
 \ compared for equality; neither belongs to the closure.
 \
 \ ENGINE PRIMITIVES ONLY (SHA256*, PATH0, open/read/close, the include registry),
 \ because the two processes that need it are a booted bin/hb and the stdin
-\ metabuild host, and the host carries no lib/.
+\ metabuild host, and the host carries no src/lib/.
 
 package AOT-IDENT
 

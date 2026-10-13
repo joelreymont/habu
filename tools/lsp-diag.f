@@ -37,18 +37,18 @@
 \ STORAGE CLASS. PROCESS-GLOBAL: the buffers and the list being written belong
 \ to the server's one task.
 
-require lib/errors.f
-require lib/string.f
-require lib/span.f
-require lib/byte-buffer.f
-require lib/adt/option.f
-require lib/fd-io.f
-require lib/fs.f
-require lib/uri.f
-require lib/content-length.f
-require lib/json-read.f
-require lib/json-write.f
-require lib/json-rpc.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/span.f
+require src/lib/byte-buffer.f
+require src/lib/adt/option.f
+require src/lib/fd-io.f
+require src/lib/fs.f
+require src/lib/uri.f
+require src/lib/content-length.f
+require src/lib/json-read.f
+require src/lib/json-write.f
+require src/lib/json-rpc.f
 require tools/lsp-docs.f
 require tools/lsp-line.f
 require tools/lsp-text.f

@@ -1,6 +1,6 @@
 \ Fresh consumer of an authenticated field-loan wrapper from a saved image.
-require lib/test.f
-require lib/memory.f
+require src/lib/test.f
+require src/lib/memory.f
 
 package C2-FIELD-LOAN-SAVED
 private

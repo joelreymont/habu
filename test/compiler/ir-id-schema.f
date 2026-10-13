@@ -1,7 +1,7 @@
 \ ir-id-schema.f - Compiler identity boundary vectors.
 
-require lib/errors.f
-require lib/memory.f
+require src/lib/errors.f
+require src/lib/memory.f
 
 require src/compiler/ir/id.f
 

@@ -1,6 +1,6 @@
 \ C66x 32-bit encodings from SPRUGH7; no packet scheduling or memory emission.
-require lib/type/deftype.f
-require lib/errors.f
+require src/lib/type/deftype.f
+require src/lib/errors.f
 
 package C6XASM
 public

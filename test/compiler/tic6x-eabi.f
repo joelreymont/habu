@@ -1,10 +1,10 @@
-require lib/test.f
+require src/lib/test.f
 require test/checker-assert.f
 require src/arch/tic6x/asm.f
 require src/arch/tic6x/sim.f
 require src/arch/tic6x/eabi.f
-require lib/ieee754.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/ieee754.f
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package C6XEABI-TEST
 private

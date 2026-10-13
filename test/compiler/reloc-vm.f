@@ -37,9 +37,9 @@
 \
 \ Consumer: `test/compiler/reloc-cases.f`.
 
-require lib/prelude.f
-require lib/errors.f
-require lib/string.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/string.f
 require test/compiler/ir-id-source.f
 
 package RELOC-VM

@@ -34,13 +34,13 @@
 \ numbers on a green engine. Lower a budget when a floor dot lands and the new
 \ maximum is known.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/test/outcome.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/test/outcome.f
 
 package COMPILE-FLOOR-GATE
 
@@ -122,7 +122,7 @@ variable PARSE-POS
    s" --" ARG+
    tier ZERO-C + TIER-BUF c!
    TIER-BUF 1 ARG+
-   s" lib/string.f" ARG+
+   s" src/lib/string.f" ARG+
    HB$ >LEN OUT OUT-CAP >LEN ERR ERR-CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME BENCH$ STORE! ;
 

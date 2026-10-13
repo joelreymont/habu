@@ -81,9 +81,9 @@ encoder. canon.f's header comment was corrected in place (comment only, no
 interface change) so the false claim does not stay in the authority-split header.
 
 **Error codes.** The reserved sub-block **-8140..-8159** is now claimed in
-`lib/errors.f` as E-IR-ENCODE-STATE, -VERSION, -FRAME, -CAP, -ROOM and -BOUND
+`src/lib/errors.f` as E-IR-ENCODE-STATE, -VERSION, -FRAME, -CAP, -ROOM and -BOUND
 (six of twenty), each with a checked negative fixture. This is the block
-lib/errors.f's own region map already reserved for the canonical wire codec and
+src/lib/errors.f's own region map already reserved for the canonical wire codec and
 digest; the dispatch brief said to take the next free block after
 -8100..-8119, but -8120..-8139 is the map's reservation for the renderer and diff
 stage (the dot this one blocks), so taking it would have forced that lane to

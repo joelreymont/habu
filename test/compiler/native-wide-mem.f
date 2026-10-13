@@ -1,11 +1,11 @@
 \ native-wide-mem.f - production multi-cell typed loads and stores.
 
 require test/compiler/native-eval-fixture.f
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/ieee754.f
-require lib/adt/option.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/ieee754.f
+require src/lib/adt/option.f
 require src/compiler/native/compiler.f
 
 package NWM

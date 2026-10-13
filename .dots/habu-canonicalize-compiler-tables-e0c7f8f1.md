@@ -113,7 +113,7 @@ meaning is fixed here and versioned by the encoder's format version. Because
 every mapping is exhaustive, a new member of any family fails to compile here
 rather than serializing as some other member.
 
-**Error codes.** The reserved block -8100..-8119 is now claimed in `lib/errors.f`
+**Error codes.** The reserved block -8100..-8119 is now claimed in `src/lib/errors.f`
 as E-IR-CANON-STATE, -OWNER, -BOUND, -CAP, -ORDER, -STALE, -RELEASED, -SLOTS and
 -SERIALS (nine of twenty). Six have a checked negative fixture. Three do not, and
 each is recorded rather than hidden: -STATE is the header and module-binding

@@ -1,7 +1,7 @@
 \ Authenticated selection and the child field view cannot be forged or escaped.
-require lib/test.f
-require lib/test/subject.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/test/subject.f
+require src/lib/c2-memory.f
 require test/c2-field-loan-wrapper.f
 
 package C2-FIELD-LOAN-REFUSALS

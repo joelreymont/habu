@@ -1,5 +1,5 @@
 \ An explicit child and projected-region callback scheme survives image saving.
-require lib/c2-memory.f
+require src/lib/c2-memory.f
 
 package C2-FIELD-LOAN-WRAPPER
 public

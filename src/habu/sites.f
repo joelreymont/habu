@@ -28,8 +28,8 @@
 \ read past both maps; and on the row arm a count above SITE-CAP, a row at or
 \ after REGION, a row of no known kind, and a row not above the one before it.
 
-require lib/prelude.f
-require lib/le.f
+require src/lib/prelude.f
+require src/lib/le.f
 require src/habu/layout.f
 
 package SITES

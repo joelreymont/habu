@@ -21,24 +21,24 @@
 \
 \ A ROW IS A MODULE IDENTITY, NOT A PATH. Away from any Habu tree a row still
 \ answers, which is what lets a tool run from any directory at all require
-\ lib/string.f. A module the image does NOT carry has to be refused there by name,
+\ src/lib/string.f. A module the image does NOT carry has to be refused there by name,
 \ naming the path under THIS CWD - never quietly resolved somewhere else.
 \
-\ Every case asks the ENGINE UNDER TEST (lib/engine-candidate.f), the row list
+\ Every case asks the ENGINE UNDER TEST (src/lib/engine-candidate.f), the row list
 \ included: a gate runs this file on one engine while naming another as the
 \ candidate, and it is the candidate's registry that is under test.
 
-require lib/test.f
-require lib/string.f
-require lib/fmt.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
-require lib/test/outcome.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
+require src/lib/test/outcome.f
 
 using SOURCE-ROOT
 

@@ -77,7 +77,7 @@ using TYPE-DECL
 \ NOT CONVERTED, and the reason is an address kind rather than a shape. The size
 \ word is the only one here that reads STORAGE; the field words are pure offset
 \ arithmetic. A generated `data-base <off> + @` reads the CALLING thread's data
-\ region - register 20, which lib/task.f's thread entry points at the task's own
+\ region - register 20, which src/lib/task.f's thread entry points at the task's own
 \ 64 KiB region - so a structure size read inside a task lands at region-base +
 \ dictionary-offset and faults (measured). `create ... does>` publishes the
 \ absolute address instead, and the tree has no checked source expression for one

@@ -13,7 +13,7 @@ Sources, local copies as of 2026-09-16 (outside this repository):
   `~/Downloads/forth-inc/swiftforth/SwiftForth/`. Reference manual
   `doc/SwiftForth-refman.pdf` chapter 7 "Multitasking" (pp. 53-57). Kernel
   source `src/ide/common/tasking.f`, `src/ide/tasking.f`,
-  `src/ide/common/semaphore.f`; sample `lib/samples/echo-server.f`.
+  `src/ide/common/semaphore.f`; sample `src/lib/samples/echo-server.f`.
 - polyFORTH Reference Manual, GreenArrays reprint DB005 revised 2012-08-25:
   `~/Downloads/forth-inc/polyforth-refman.pdf` chapter 4 "Multitasking"
   (pp. 127-139), especially 4.2, 4.5 and 4.7.
@@ -28,7 +28,7 @@ Sources, local copies as of 2026-09-16 (outside this repository):
   chapter 18 "Multitasker" (p. 207). Source `Lib/Lin64/MultiLin64.fth`,
   `Lib/CQueues.fth`, `Examples/taskdemo.fth`.
 - Habu: [threads.md](threads.md), [swiftforth-task-api.md](swiftforth-task-api.md),
-  `lib/task.f`.
+  `src/lib/task.f`.
 
 ## 1. SwiftForth: hosted tasks on pthreads
 
@@ -172,7 +172,7 @@ notes as a CPU hog when no delay is involved.
 
 ## 4. Habu today
 
-`lib/task.f` provides `TASK:TASK`, `PREPARE`, `ACTIVATE` (takes an xt),
+`src/lib/task.f` provides `TASK:TASK`, `PREPARE`, `ACTIVATE` (takes an xt),
 `PAUSE`, `HALT` (cooperative, observed at `PAUSE`), `KILL` (join and free),
 `SELF`, `+USER`, `HIS`, `FACILITY` with `GET` and `RELEASE` (owner-tracked
 pthread mutex) and atomics. The runner catches the worker xt; since commit 9de16800 an uncaught throw
@@ -215,6 +215,6 @@ interrupt handler stores `WAKE`. Hosted code that uses only the shared rows
 compiles for a target unchanged; the hosted-only rows are refused by the
 target's checker rows rather than emulated.
 
-Test strategy: the hosted rows keep `lib/task-test.f`; the target rows run
+Test strategy: the hosted rows keep `src/lib/task-test.f`; the target rows run
 on the QEMU Cortex-M4 peer with the same test words, so one test file
 exercises both kernels where the surface is shared.

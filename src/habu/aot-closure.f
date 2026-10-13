@@ -609,7 +609,7 @@ variable NB-IX
 \ area THIS process holds (src/habu/proc-maps.f, the kernel's own list) that the
 \ image does not hold at the same address. The three readings above are the only
 \ ones the walker had, and each of them names a region an image restores or
-\ relocates; an address a linking process mmapped - lib/memory.f's MEM-ALLOC
+\ relocates; an address a linking process mmapped - src/lib/memory.f's MEM-ALLOC
 \ buffers, a DYNAMIC-BUFFER, a foreign allocator's arena, a thread stack, the
 \ engine binary's own text and data - is none of them, so it passed as an
 \ integer, shipped in the image and faulted at run time under a different ASLR
@@ -637,8 +637,8 @@ variable NB-IX
 \ exemption.
 \ THE FOURTH IS THE BRK AREA, the one the kernel names [heap], and it is excluded
 \ for the opposite reason: NOTHING CAN POINT INTO IT. No Habu word allocates from
-\ the break - every allocation lib/memory.f makes is an mmap, and no file under
-\ src/ or lib/ issues the syscall - so a value that lands there is an integer
+\ the break - every allocation src/lib/memory.f makes is an mmap, and no file under
+\ src/ or src/lib/ issues the syscall - so a value that lands there is an integer
 \ whatever it looks like. It is also the widest band ordinary data falls in:
 \ arm64 randomizes the break over a gigabyte above the executable's end, so the
 \ area sits somewhere in [0x7a4000,0x407a4000) and MOVES WITH EVERY BUILD, and

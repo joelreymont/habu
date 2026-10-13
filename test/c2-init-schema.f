@@ -1,9 +1,9 @@
 \ Reserved initialized storage keeps its scope and element layout through the
 \ real checker load path. Run with a candidate built from this source tree.
 
-require lib/test.f
-require lib/test/subject.f
-require lib/adt/option.f
+require src/lib/test.f
+require src/lib/test/subject.f
+require src/lib/adt/option.f
 
 package C2-INIT-SCHEMA
 

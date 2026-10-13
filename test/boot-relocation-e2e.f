@@ -4,15 +4,15 @@
 \ (src/core/include.f SOURCE-ROOT:ENGINE$). On macOS the same child runs again
 \ under a sandbox that denies process-info-pidinfo, where proc_pidpath refuses
 \ the engine its own path: the tree must still be found, and ENGINE-ID:PATH$
-\ must still throw E-ENGINE-PATH. The engine does not bake lib/engine-id.f, so
+\ must still throw E-ENGINE-PATH. The engine does not bake src/lib/engine-id.f, so
 \ the copy holds it for the child. Keep the children and their logs.
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 
 package BOOT-RELOCATION-E2E
 private
@@ -50,10 +50,10 @@ variable RC
 \ it its path, so the sandboxed case cannot pass on a host that answers.
 : WRITE-ENTRY ( -- )
    s" entry.f" PATH!
-   S\" require lib/c2-memory.f\nrequire lib/engine-id.f\n" ENTRY+
+   S\" require src/lib/c2-memory.f\nrequire src/lib/engine-id.f\n" ENTRY+
    S\" package BOOT-RELOCATION-CHILD\npublic\n: RUN ( -- )\n" ENTRY+
    S\" SCRIPT-ARGC 0 > if [: ENGINE-ID:PATH$ 2drop ;] catch E-ENGINE-PATH <> if 77 throw then then\n" ENTRY+
-   S\" SOURCE-ROOT:CURRENT$ s\q lib/c2-memory.f\q SOURCE-ROOT:JOIN ENGINE-PROVIDES? 0= if 76 throw then\n" ENTRY+
+   S\" SOURCE-ROOT:CURRENT$ s\q src/lib/c2-memory.f\q SOURCE-ROOT:JOIN ENGINE-PROVIDES? 0= if 76 throw then\n" ENTRY+
    S\" s\q boot relocation: ok\q type cr ;\n;package\nBOOT-RELOCATION-CHILD:RUN\n" ENTRY+ ;
 
 : SETUP ( -- )
@@ -61,16 +61,16 @@ variable RC
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ s" tree" TREE JOIN-PATH TREE-U !
    s" bin" PATH! PATH PATH-U @ MAKE-DIRS
-   s" lib/c2-memory" PATH! PATH PATH-U @ MAKE-DIRS
+   s" src/lib/c2-memory" PATH! PATH PATH-U @ MAKE-DIRS
    s" src/core" PATH! PATH PATH-U @ MAKE-DIRS
    TREE$ s" bin/hb" ENGINE JOIN-PATH ENGINE-U !
    ENGINE-CANDIDATE:PATH$ ENGINE$ COPY-FILE-STREAM
    ENGINE$ CHMOD-X
-   s" lib/errors.f" COPY-SOURCE
-   s" lib/c2-memory.f" COPY-SOURCE
-   s" lib/c2-memory/owner-runtime.f" COPY-SOURCE
+   s" src/lib/errors.f" COPY-SOURCE
+   s" src/lib/c2-memory.f" COPY-SOURCE
+   s" src/lib/c2-memory/owner-runtime.f" COPY-SOURCE
    s" src/core/util.f" COPY-SOURCE
-   s" lib/engine-id.f" COPY-SOURCE
+   s" src/lib/engine-id.f" COPY-SOURCE
    WRITE-ENTRY ;
 
 : SAVE ( ptr u8 n ptr u8 n -- ) {: rel:ptr relu:n data:ptr size:n :}

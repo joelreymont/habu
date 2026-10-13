@@ -3,10 +3,10 @@
 \ Run on a build containing the unit owner callbacks:
 \ bin/hb --load test/checker-unit-codec-e2e.f
 
-require lib/test.f
-require lib/string.f
-require lib/fs.f
-require lib/fs-mutate.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require test/checker-owner-reset.f
 
 package CHECKER-UNIT-CODEC-TEST

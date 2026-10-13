@@ -1,6 +1,6 @@
 \ native-div-refusal.f - a zero divisor refuses BY NAME in tier-1 compiled code.
 \
-\ The engine's own `/` throws E-DIV-ZERO (lib/errors.f, src/habu/arith-abi.f), so
+\ The engine's own `/` throws E-DIV-ZERO (src/lib/errors.f, src/habu/arith-abi.f), so
 \ an interpreted program catches a zero divisor and carries on. The native
 \ compiler's lowering used to end its guard in a `brk`: the same program compiled
 \ with `1 set-tier` died with the crash handler's register dump instead, and no
@@ -35,12 +35,12 @@
 \ and a child's own source names its tier. The one word whose bytes are read is
 \ compiled here between `1 set-tier` and `0 set-tier`, so nothing after it moves.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
+require src/lib/engine-candidate.f
 require src/habu/xref.f
 require src/habu/code-bytes.f
 require test/gate-common.f

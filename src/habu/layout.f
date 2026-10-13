@@ -808,7 +808,7 @@ $670 constant SPAN-BASE-CELL
 \
 \ THE STUB NEVER READS THE FD WORD THROUGH x20. A handler runs on whichever
 \ thread the kernel hands the signal to, and that thread's x20 is its own task
-\ region - lib/task.f PREPARE maps a fresh zeroed region per task and
+\ region - src/lib/task.f PREPARE maps a fresh zeroed region per task and
 \ TASK-REGION-INIT copies only the cells it names - so `DATA FD-CELL LDR` would
 \ read a different word on every task and zero on a new one. The stub reaches
 \ the word by its ABSOLUTE address instead, DATA-VA + FD-CELL baked in as a
@@ -876,7 +876,7 @@ $47E0 constant HEAP-START-CELL
 ;package
 
 
-\ GENIO-ABI: where the generic I/O layer (docs/genio.md, lib/genio.f) keeps the
+\ GENIO-ABI: where the generic I/O layer (docs/genio.md, src/lib/genio.f) keeps the
 \ routing the ENGINE itself has to read. Everything else about a device -- its
 \ eight operations, its private state, its handle -- belongs to the library and
 \ lives in ordinary dictionary storage; only these cells cross into engine code.
@@ -884,7 +884,7 @@ $47E0 constant HEAP-START-CELL
 \ A DEVICE INDEX, NEVER AN ADDRESS. OUT-CELL and IN-CELL hold a small integer:
 \ zero is the built-in terminal path and 1..DEVICES names a row of the write
 \ table below. The distinction matters because these two cells are PER TASK -
-\ DATA is swapped for each task, and lib/task.f TASK-REGION-INIT copies them
+\ DATA is swapped for each task, and src/lib/task.f TASK-REGION-INIT copies them
 \ into a new task's region so a task inherits its creator's devices. A task
 \ region is an ordinary anonymous mapping: nothing canonicalises a code address
 \ copied into it, so a per-task cell holding an execution token would survive a
@@ -893,7 +893,7 @@ $47E0 constant HEAP-START-CELL
 \
 \ THE WRITE TABLE is the one place an execution token does appear, and it is
 \ in the engine header, where SNAP-RELOC already canonicalises declared cells:
-\ lib/genio.f publishes a device's write operation into its row through `xt!`,
+\ src/lib/genio.f publishes a device's write operation into its row through `xt!`,
 \ exactly as src/habu/repl.f publishes its line reader into REPLH-CELL, and
 \ clears every row again through IMAGE-LIFECYCLE before a capture is taken. The
 \ engine reads a row only to reach a device write; it never learns what a device
@@ -914,7 +914,7 @@ $47E0 constant HEAP-START-CELL
 \ eight quotations over two different connections, and a quotation cannot
 \ capture the device it belongs to (docs/forth.md refuses a local inside one).
 \ An operation therefore asks this cell for its own row and reads its state
-\ there. The funnel publishes it around the write it calls, and lib/genio.f
+\ there. The funnel publishes it around the write it calls, and src/lib/genio.f
 \ publishes and restores it around every other operation.
 \
 \ WHERE THEY HAD TO GO: the $600..$800 header hole BODYBUF-OFF below names as
@@ -923,7 +923,7 @@ $47E0 constant HEAP-START-CELL
 \ taking it, and read back as zero out of a booted engine. The run above
 \ BOOT-LAYOUT:HEAP-START-CELL that reads free in the source is NOT: src/habu/
 \ stack-abi.f already owns $47E8..$4810, and USER-BAND ($5300..$7BF8) is what
-\ lib/task.f `+USER` hands out. This band ends at $660 and leaves
+\ src/lib/task.f `+USER` hands out. This band ends at $660 and leaves
 \ the word-frame lane's $7D0/$7D8 and the $3800 null cell untouched. Every cell
 \ is below $7FF8 -- the ceiling for a cell a compiled routine names directly as
 \ `DATA <off> LDR`, which the funnel's first instruction is -- and below
@@ -943,7 +943,7 @@ WRITE-OFF DEVICES 8 * + constant END
 \ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry (LEVALREC,
 \ habu2.f), set at startup like LMAINP-CELL so the throw primitive (a leaf prim that
 \ cannot name emit-time labels) can branch to it. It must sit in a DATA slot no
-\ compiled source ever writes: $3A00..$3C88 is the lib/ffi-abi.f FFI buffer block
+\ compiled source ever writes: $3A00..$3C88 is the src/lib/ffi-abi.f FFI buffer block
 \ (FFI-BUF-OFF etc.), $3C88..$3CA0 is the task TCB cells; the protected-WID registry
 \ count/table follow at $3CB8..$40C0 — so these $3CA0..$3CB8 slots are free engine
 \ cells between the FFI block and the registry.
@@ -999,7 +999,7 @@ $3CB0 constant USER-END
 \ prot-wid-add names the bound itself when handed a WID at or above it. Growing the
 \ bound later means widening the band upward, exactly as the 16 -> 256 raise did,
 \ and bumping UNCGH-CELL -- but the cells above $40C8 are NOT free any more:
-\ $40C8..$41C8 is FFI:FFI-REG-LEN-BUF-OFF (lib/ffi-abi.f), and APP-ENTRY:XT-CELL,
+\ $40C8..$41C8 is FFI:FFI-REG-LEN-BUF-OFF (src/lib/ffi-abi.f), and APP-ENTRY:XT-CELL,
 \ the AOT capture window and the evaluator-pointer band follow from $43A0
 \ (measured 2026-09-16, when a null-cell placement at $40C8 broke test/seal.f).
 \ A wider bitmap has to move the FFI length buffers first.
@@ -1455,7 +1455,7 @@ $27F8 constant CODE-CELL
 \ process has no hook, and the library that wants one arms it at runtime.
 \ It is NOT in the ENGINE-HOOK-OFF band above. Those two are the checker's
 \ crown jewels, sealed against a post-seal raw store; this vector is armed by
-\ ordinary library code (lib/fs-mutate.f) long after the seal. $2818 is the next
+\ ordinary library code (src/lib/fs-mutate.f) long after the seal. $2818 is the next
 \ free cell of the $2800..$3000 free header band, after SRCLOC's three above -
 \ swept for a claimant across src lib tools test bootstrap - below $7FF8 so the
 \ engine names it with a `DATA <off> LDR/STR` 12-bit scaled immediate, and below
@@ -1529,7 +1529,7 @@ STK-OFF LEVELS 1- FRAME-BYTES * + constant END
 \ CODE-END-CELL bounds the first: [RBASE-CELL, CODE-END-CELL) is the engine code
 \ up to its baked source (LSRC). Zero means no entry, and the fault keeps the
 \ named bounds exit: a stripped image leaves both cells at its mapping's zero,
-\ and a task region reads zero because lib/task.f copies only the cells it
+\ and a task region reads zero because src/lib/task.f copies only the cells it
 \ names. Both hold this process's addresses, so boot stores them and snapshots
 \ (snap-lib.f SND-ZERO-LIVE) zero them. They sit in the free header band for
 \ the reasons EXIT-HOOK-CELL gives: $2CD0..$2CE8, past the quotation frames
@@ -1580,7 +1580,7 @@ DICT-CAP 1+ cells constant STATE-BYTES
 -7233 constant E-NONCALLABLE
 -7234 constant E-EXHAUSTED
 ;package
-\ The design seal (lib/policy.f, docs/policy.md): a cell and bitmap that confine a
+\ The design seal (src/lib/policy.f, docs/policy.md): a cell and bitmap that confine a
 \ sealed source to the vocabulary its harness admitted. POLICY-NDICT-CELL is 0
 \ while nothing is sealed, else the NDICT the seal stored; a record at or above
 \ that index is the design's own. POLICY-BITS-OFF is a WID-indexed bitmap shaped
@@ -1679,7 +1679,7 @@ TXN-STATE-OFF $100 + constant TXN-LIVE-W-OFF
 
 \ --- Task-local library storage (dot habu-give-the-task-57a9243e) ---------------
 \ The run the transaction reserved and never used, handed to the libraries that
-\ need storage a task owns. It has to be HERE and not where lib/task.f used to
+\ need storage a task owns. It has to be HERE and not where src/lib/task.f used to
 \ hand out rows ($41C8..$43A0, 472 bytes): that run is bounded by
 \ APP-ENTRY:XT-CELL and five shipped libraries already claimed 448 of it, and
 \ every other candidate below TASK-REGION-BYTES ($10000, the whole a task has)
@@ -1689,17 +1689,17 @@ TXN-STATE-OFF $100 + constant TXN-LIVE-W-OFF
 \ USER-REGION-END remains the fixed library arena boundary.
 $8000 constant USER-REGION-END
 
-\ STRING-ABI is lib/string.f's SB builder, declared here because string.f is
-\ baked into the engine and sits BELOW lib/ffi-abi.f, which requires it back:
-\ `require lib/task.f` from string.f fails the engine build with an undefined
+\ STRING-ABI is src/lib/string.f's SB builder, declared here because string.f is
+\ baked into the engine and sits BELOW src/lib/ffi-abi.f, which requires it back:
+\ `require src/lib/task.f` from string.f fails the engine build with an undefined
 \ STR= inside ffi-abi's TOK-IS?, so SB can never take a TASK:+USER row and needs
 \ a declared offset the way FFI-BUF-OFF and GENIO-ABI do. This lane declares and
 \ asserts the band; habu-make-the-shared-0c2bfbc6 moves the builder into it.
 \ Carved from the TOP of the run so USER-BAND keeps the growable end.
 package STRING-ABI
 public
-$400 constant SB-BUF-BYTES                  \ lib/string.f SB-CAP
-8 constant SB-LEN-BYTES                     \ lib/string.f SB-LEN
+$400 constant SB-BUF-BYTES                  \ src/lib/string.f SB-CAP
+8 constant SB-LEN-BYTES                     \ src/lib/string.f SB-LEN
 SB-BUF-BYTES SB-LEN-BYTES + constant BYTES
 USER-REGION-END BYTES - constant START
 START constant SB-BUF-OFF
@@ -1707,12 +1707,12 @@ SB-BUF-OFF SB-BUF-BYTES + constant SB-LEN-OFF
 USER-REGION-END constant END
 ;package
 
-\ FMT-ABI is lib/fmt.f's integer render buffer and the four cells its appenders
+\ FMT-ABI is src/lib/fmt.f's integer render buffer and the four cells its appenders
 \ and its fraction helper thread. Declared here for the same reason STRING-ABI
-\ is, though not from the same cause: src/habu/habu2.f requires lib/fmt.f for
+\ is, though not from the same cause: src/habu/habu2.f requires src/lib/fmt.f for
 \ number text, so fmt is inside the ENGINE'S OWN closure. fmt has no require
-\ cycle the way string.f does, and an engine built with `require lib/task.f` in
-\ fmt.f compiles - but that require pulls lib/task.f, and with it pthread, mmap
+\ cycle the way string.f does, and an engine built with `require src/lib/task.f` in
+\ fmt.f compiles - but that require pulls src/lib/task.f, and with it pthread, mmap
 \ and the FFI staging tables, into the base image for 52 bytes of scratch.
 \ src/habu/native-runtime.f says what belongs in that closure: the compiler,
 \ the JIT and the REPL, and the task runtime is none of the three. So the rule
@@ -1728,7 +1728,7 @@ USER-REGION-END constant END
 package FMT-ABI
 public
 4 constant SCRATCH-CELLS               \ FMT-NUM-U, FMT-IX, FMT-FR, FMT-DV
-20 constant NUM-BUF-BYTES              \ lib/fmt.f FMT-NUM-CAP = STR-I64-DIGITS + 1
+20 constant NUM-BUF-BYTES              \ src/lib/fmt.f FMT-NUM-CAP = STR-I64-DIGITS + 1
 SCRATCH-CELLS cells NUM-BUF-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
 STRING-ABI:START constant END
@@ -1740,20 +1740,20 @@ FR-OFF 8 + constant DV-OFF
 DV-OFF 8 + constant NUM-BUF-OFF
 ;package
 
-\ FS-ABI is lib/fs.f's per-call slots: the five cells one transfer threads, the
-\ stat buffer, the one-byte read probe and the NUL-padded path copy. lib/fs.f
+\ FS-ABI is src/lib/fs.f's per-call slots: the five cells one transfer threads, the
+\ stat buffer, the one-byte read probe and the NUL-padded path copy. src/lib/fs.f
 \ is NOT baked into the engine, so the rule above would send it to TASK:+USER
 \ rows - except tools/native-build-core.f requires it to BUILD the engine, and
-\ a `require lib/task.f` there loads the task runtime into the build tool ahead
+\ a `require src/lib/task.f` there loads the task runtime into the build tool ahead
 \ of the target it is building. A module the engine's own BUILD needs is in the
 \ same position as one the engine bakes, so it takes a declared band too.
 \
 \ IT ALSO COSTS A BOOTSTRAP, which the band above does not. The PRODUCT IMAGE
-\ tools/native-build.f emits carries this file's constants, and lib/errors.f's
+\ tools/native-build.f emits carries this file's constants, and src/lib/errors.f's
 \ codes, from the tree it was BUILT in; adding a band here does not make an
-\ existing one see it. A baked module does not care - `require lib/string.f` or
-\ `lib/fmt.f` is a no-op in a booted engine, so only the target build ever
-\ compiles them, after this file. lib/fs.f is loaded from source by the build
+\ existing one see it. A baked module does not care - `require src/lib/string.f` or
+\ `src/lib/fmt.f` is a no-op in a booted engine, so only the target build ever
+\ compiles them, after this file. src/lib/fs.f is loaded from source by the build
 \ tool, so an engine that predates this band dies `E-UNDEFINED:
 \ FS-ABI:STAT-BYTES`, rc 70, before any target work. Build one engine from this
 \ declaration and E-FS-BAND alone, then build the tree with it.
@@ -1761,7 +1761,7 @@ DV-OFF 8 + constant NUM-BUF-OFF
 \ THE WALK STATE IS NOT HERE: the per-depth path slots and dirent blocks are
 \ FS-MAX-DEPTH deep, $8000 and $20000 bytes, fifteen times this whole band. A
 \ second task that must walk needs its own walker, not a wider per-task region,
-\ and it has one - lib/fs.f makes the whole walk CALLER-OWNED (FS-WALK-BYTES,
+\ and it has one - src/lib/fs.f makes the whole walk CALLER-OWNED (FS-WALK-BYTES,
 \ WALK-FILES-IN, REMOVE-TREE-IN), so a task holds a context of its own and this
 \ band carries none of it. WALK-FILES and REMOVE-TREE stand on one static
 \ context and stay single-task.
@@ -1773,9 +1773,9 @@ DV-OFF 8 + constant NUM-BUF-OFF
 package FS-ABI
 public
 5 constant IO-CELLS                    \ FS-IO-FD, FS-IO-LEN, FS-IO-RD, FS-IO-OFF, FS-IO-WR
-256 constant STAT-BYTES                \ lib/fs.f FS-STAT-CAP
-1 constant PROBE-BYTES                 \ lib/fs.f FS-READ-PROBE-CAP
-PATH-CAP 1 + constant PATHZ-BYTES       \ lib/fs.f FS-PATHZ-CAP
+256 constant STAT-BYTES                \ src/lib/fs.f FS-STAT-CAP
+1 constant PROBE-BYTES                 \ src/lib/fs.f FS-READ-PROBE-CAP
+PATH-CAP 1 + constant PATHZ-BYTES       \ src/lib/fs.f FS-PATHZ-CAP
 IO-CELLS cells STAT-BYTES + PROBE-BYTES + PATHZ-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
 FMT-ABI:START constant END
@@ -1790,12 +1790,12 @@ STAT-OFF STAT-BYTES + constant PROBE-OFF
 PROBE-OFF PROBE-BYTES + constant PATHZ-OFF
 ;package
 
-\ FS-MUT-ABI is lib/fs-mutate.f's per-call path scratch: the second NUL-padded
+\ FS-MUT-ABI is src/lib/fs-mutate.f's per-call path scratch: the second NUL-padded
 \ path every two-path syscall stages (rename, symlink, the stream copy's
 \ destination), the temporary name MAKE-TEMP-DIR builds AND RETURNS a span into,
 \ and ATOMIC-WRITE-FILE's `.tmp` sibling. It is here for FS-ABI's reason, one
-\ file further out: tools/native-build-core.f requires lib/fs-mutate.f to BUILD
-\ the engine, so `require lib/task.f` there would load the task runtime into the
+\ file further out: tools/native-build-core.f requires src/lib/fs-mutate.f to BUILD
+\ the engine, so `require src/lib/task.f` there would load the task runtime into the
 \ build tool ahead of the target. It costs the same bootstrap - an engine that
 \ predates this band dies `E-UNDEFINED: FS-MUT-ABI:PATHZ2-BYTES`, rc 70, at
 \ --load of the build tool - so it lands through a stage engine built from this
@@ -1814,9 +1814,9 @@ PROBE-OFF PROBE-BYTES + constant PATHZ-OFF
 \ alignment; the rounding is the band's only slack.
 package FS-MUT-ABI
 public
-PATH-CAP 1 + constant PATHZ2-BYTES      \ lib/fs.f FS-PATHZ-CAP
-PATH-CAP constant ATOMIC-BYTES          \ lib/fs.f FS-PATH-CAP
-PATH-CAP constant TMP-BYTES             \ lib/fs.f FS-PATH-CAP
+PATH-CAP 1 + constant PATHZ2-BYTES      \ src/lib/fs.f FS-PATHZ-CAP
+PATH-CAP constant ATOMIC-BYTES          \ src/lib/fs.f FS-PATH-CAP
+PATH-CAP constant TMP-BYTES             \ src/lib/fs.f FS-PATH-CAP
 PATHZ2-BYTES ATOMIC-BYTES + TMP-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
 FS-ABI:START constant END
@@ -1826,7 +1826,7 @@ PATHZ2-OFF PATHZ2-BYTES + constant ATOMIC-OFF
 ATOMIC-OFF ATOMIC-BYTES + constant TMP-OFF
 ;package
 
-\ USER-BAND is what lib/task.f `TASK:+USER` hands out, base and bound both.
+\ USER-BAND is what src/lib/task.f `TASK:+USER` hands out, base and bound both.
 package USER-BAND
 public
 TXN-STATE-OFF TXN-STATE-LEN + constant START

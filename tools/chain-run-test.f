@@ -1,12 +1,12 @@
 \ chain-run-test.f - byte comparison, refusal boundary and generation lineage
 \ for chain-run.
 
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-command.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-command.f
+require src/lib/engine-candidate.f
 require tools/chain-run.f
 
 package CHAIN-RUN-TEST

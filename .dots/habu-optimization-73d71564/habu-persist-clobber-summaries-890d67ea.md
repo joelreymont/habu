@@ -11,7 +11,7 @@ blocks:
 
 Campaign: ARM64 code-size fixes, design revision 3 (§3.6). Line references are at master 8c9b75af; re-verify before editing.
 
-Problem: after habu-publish-and-use-db11d4c1 a caller compiled in a later session (an application calling baked lib/ words) sees the whole pool for every baked callee; the 20-byte capture record (src/habu/aot-capture.f:1387-1389) has one spare byte and no summary field.
+Problem: after habu-publish-and-use-db11d4c1 a caller compiled in a later session (an application calling baked src/lib/ words) sees the whole pool for every baked callee; the 20-byte capture record (src/habu/aot-capture.f:1387-1389) has one spare byte and no summary field.
 
 Acceptance: the record carries the GPR and FPR summaries (the format grows; AOT-FILE:VERSION bumps once together with habu-pool-data-addresses-d65bdc94's bump), the seed reader (habu2.f) installs them, XREF exposes them and RESOLVE-CALLABLE reads a baked callee's summary. Fixture: an application source compiled on the product against a baked leaf keeps a value in a register across it; an old payload is refused by version. Artifact: suite output; an Etch --size-report before and after.
 

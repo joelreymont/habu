@@ -1,7 +1,7 @@
 \ The process caches must be fresh in every restored generation.
-require lib/process-command.f
-require lib/signal.f
-require lib/test.f
+require src/lib/process-command.f
+require src/lib/signal.f
+require src/lib/test.f
 
 package PROCESS-IMAGE-SUBJECT
 private

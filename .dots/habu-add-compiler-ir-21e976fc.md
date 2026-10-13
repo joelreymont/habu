@@ -12,7 +12,7 @@ Depends on active prerequisite `habu-cast-v2-family-741e7bae`, which owns all
 shared checker, declaration, verification, and package-provider changes.
 This leaf owns `src/compiler/ir/id.f`,
 `test/compiler/ir-id-concurrency.f`, `test/compiler/ir-id.f`,
-`lib/errors.f`, and `docs/compiler-ir-design.md`. `PLAN.md`, `LESSONS.md`, and
+`src/lib/errors.f`, and `docs/compiler-ir-design.md`. `PLAN.md`, `LESSONS.md`, and
 both dot records are shared integration records.
 
 IR-0.1 freezes one `IR-ID` package owner with public nominal identity and

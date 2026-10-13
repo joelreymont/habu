@@ -1,7 +1,7 @@
 \ source-unit-run closes one complete callback at the caller's cursor. The
 \ callback can use its own intermediate cells, but must return with none.
-require lib/errors.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/test.f
 require src/habu/stack-abi.f
 
 package SOURCE-ROOT

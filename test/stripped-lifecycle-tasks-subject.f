@@ -1,10 +1,10 @@
 \ A task PREPAREd at load time and never activated. Its TCB holds the stack,
 \ return, loop and region mappings THIS process took, which no image restores, so
-\ the capture sweep lib/task.f registers has to release them and leave the task
+\ the capture sweep src/lib/task.f registers has to release them and leave the task
 \ EMPTY before the stripped link reads the window. The restored image then
 \ activates the same task, which prepares mappings of its own.
-require lib/task.f
-require lib/adt/result.f
+require src/lib/task.f
+require src/lib/adt/result.f
 
 package STRIPPED-LIFECYCLE-TASKS-SUBJECT
 private

@@ -1,7 +1,7 @@
 \ check-verify-child.f - the verifier child CHECK:VERIFY-BYTES,
 \ CHECK:VERIFY-BYTES-AT and CHECK:PREVERIFY-BYTES run.
 \
-\ tools/check-verify-core.f spawns it on the engine lib/engine-candidate.f
+\ tools/check-verify-core.f spawns it on the engine src/lib/engine-candidate.f
 \ names, by its absolute path in the tree that file was loaded from, in the
 \ caller's working directory; nothing else runs it:
 \

@@ -1,15 +1,15 @@
-\ ffi-callback-fixture.f - what lib/ffi-callback-test.f and the children it
+\ ffi-callback-fixture.f - what src/lib/ffi-callback-test.f and the children it
 \ spawns (test/ffi-callback-child.f, test/ffi-callback-direct-child.f) share:
 \ libc's qsort and pthread entry points, the callbacks C is handed, and the
 \ cells their bodies report through. Each file reopens package FFI-CB-TEST.
 \ Every row sorted here is ROW-N cells, which is the extent QSORT declares
 \ written.
-require lib/errors.f
-require lib/string.f
-require lib/ffi-abi.f
-require lib/ffi-callback.f
-require lib/task.f
-require lib/adt/result.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/ffi-abi.f
+require src/lib/ffi-callback.f
+require src/lib/task.f
+require src/lib/adt/result.f
 
 package FFI-CB-TEST
 using FFI-CB

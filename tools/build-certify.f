@@ -4,7 +4,7 @@
 \ (tools/build-fixpoint-certify.f) for a source certified against the core
 \ prefix, so each text has this one definition.
 
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 require src/habu/verify-source.f         \ VERIFY:CENSUS
 require tools/build-target.f             \ the target the census names
 

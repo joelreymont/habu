@@ -114,18 +114,18 @@
 \ keeps the complete focused sequence.
 \ Run standalone: bin/hb --load test/aot-wid-suite.f [-- CASE]
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-cwd.f
-require lib/test/outcome.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-cwd.f
+require src/lib/test/outcome.f
 
 package AOT-WID-SUITE
 
@@ -426,7 +426,7 @@ create PRB PRB-CAP allot   variable PRB-U
 \ because these engines carry a boot-run entry that prints first.
 : ALIAS-PROBE$ ( -- ptr u8 n )
    PRB-RESET
-   s" require lib/fmt.f" PRB+ PRB-NL
+   s" require src/lib/fmt.f" PRB+ PRB-NL
    s" require tools/pkg-wid-probe.f" PRB+ PRB-NL
    s" require tools/prot-wid-probe.f" PRB+ PRB-NL
    S\" : PRB-ALIAS ( -- ) wordlist {: next:n :} s\" AWBGATE\" PKG-WID-PROBE:WID-OF {: w:n :}" PRB+ PRB-NL
@@ -627,8 +627,9 @@ create PRB PRB-CAP allot   variable PRB-U
 : COLD-SETUP ( ptr u8 n n bool -- ) {: dir:ptr diru:n wid:n sealed:bool :}
    GATE-ROOT$ dir diru COLD-ROOT-BUF JOIN-PATH COLD-ROOT-U !
    COLD-ROOT$ MAKE-DIR
-   s" lib" COLD-LINK s" tools" COLD-LINK
+   s" tools" COLD-LINK
    s" src/core" COLD-PATH MAKE-DIRS
+   s" src/lib" COLD-LINK
    s" src/habu" COLD-LINK s" src/os" COLD-LINK
    s" src/arch" COLD-LINK s" src/compiler" COLD-LINK
    s" src/core" [: COLD-CORE-LINK ;] WALK-FILES

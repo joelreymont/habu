@@ -2,9 +2,9 @@
 \ linear authority while its element parameter only describes the pointee.
 \ Run through the source load path: bin/hb --load test/c2-mut-view.f
 
-require lib/test.f
-require lib/adt/option.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/adt/option.f
+require src/lib/test/subject.f
 
 package C2-MUT-VIEW
 private

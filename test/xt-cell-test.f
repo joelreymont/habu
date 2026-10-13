@@ -1,5 +1,5 @@
 \ xt-cell-test.f - xt<effect> storage cells (dot habu-typed-xt-storage-ddad4af8).
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \   test/checker-assert.f test/xt-cell-test.f
 \
 \ Pins the xt<effect> storage-cell capability: `TYPED-VARIABLE NAME [ in -- out ]`
@@ -11,10 +11,10 @@
 \ bakes a CONCRETE T-QUOT into its usig scheme, freshened alpha-equivalently per
 \ occurrence — never the erased raw address var the parent RCA describes.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/fs.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/fs.f
 require test/checker-assert.f
 
 package XT-CELL-TEST

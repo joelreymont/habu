@@ -1,6 +1,6 @@
 # Standard Library
 
-The standard library lives under `lib/`. Checked source and its real consumers
+The standard library lives under `src/lib/`. Checked source and its real consumers
 define the operational surface. This file is the authoritative LLM-facing stdlib
 guide: prompts, examples, benchmark tasks, and future module implementations must
 use the effects and boundary contracts here.
@@ -9,67 +9,67 @@ use the effects and boundary contracts here.
 
 Planned module files:
 
-- `lib/errors.f`
-- `lib/array.f`
-- `lib/vector.f`
-- `lib/string.f`
-- `lib/base64.f`
-- `lib/utf16.f`
-- `lib/uri.f`
-- `lib/json-write.f`
-- `lib/json-rpc.f`
-- `lib/map.f`
-- `lib/memory.f`
-- `lib/span.f`
-- `lib/ffi-abi.f`
-- `lib/ffi-callback.f`
-- `lib/zip.f`
-- `lib/net/udp4.f`
-- `lib/net/ws-frame.f`
-- `lib/net/ws.f`
-- `lib/pg.f`
-- `lib/net/curl.f`
-- `lib/browser/host.f` ([browser-host.md](browser-host.md))
-- `lib/crypto/evp.f`
-- `lib/crypto/sha1.f`
-- `lib/serial.f`
-- `lib/pty.f`
-- `lib/xmodem.f`
-- `lib/serial-xmodem.f`
-- `lib/fs.f`
-- `lib/fs-lock.f`
-- `lib/fs-list.f`
-- `lib/fs-root.f`
-- `lib/tree-copy.f`
-- `lib/build-cache.f`
-- `lib/source.f`
-- `lib/source-lex.f`
-- `lib/object.f`
-- `lib/object-cache.f`
-- `lib/object-index.f`
-- `lib/object-resolve.f`
-- `lib/object-link.f`
-- `lib/fd-io.f`
-- `lib/content-length.f`
-- `lib/process.f`
-- `lib/process-fork.f`
-- `lib/process-argv.f`
-- `lib/process-env.f`
-- `lib/process-command.f`
-- `lib/process-cwd.f`
-- `lib/process-tree.f`
-- `lib/policy.f`
-- `lib/argv.f`
-- `lib/test.f`
-- `lib/test/assert.f`
-- `lib/test/suite.f`
-- `lib/test/runner.f`
-- `lib/test/subject.f`
-- `lib/test/eval.f`
-- `lib/property.f`
-- `lib/build.f`
-- `lib/time.f`
-- `lib/date.f`
+- `src/lib/errors.f`
+- `src/lib/array.f`
+- `src/lib/vector.f`
+- `src/lib/string.f`
+- `src/lib/base64.f`
+- `src/lib/utf16.f`
+- `src/lib/uri.f`
+- `src/lib/json-write.f`
+- `src/lib/json-rpc.f`
+- `src/lib/map.f`
+- `src/lib/memory.f`
+- `src/lib/span.f`
+- `src/lib/ffi-abi.f`
+- `src/lib/ffi-callback.f`
+- `src/lib/zip.f`
+- `src/lib/net/udp4.f`
+- `src/lib/net/ws-frame.f`
+- `src/lib/net/ws.f`
+- `src/lib/pg.f`
+- `src/lib/net/curl.f`
+- `src/lib/browser/host.f` ([browser-host.md](browser-host.md))
+- `src/lib/crypto/evp.f`
+- `src/lib/crypto/sha1.f`
+- `src/lib/serial.f`
+- `src/lib/pty.f`
+- `src/lib/xmodem.f`
+- `src/lib/serial-xmodem.f`
+- `src/lib/fs.f`
+- `src/lib/fs-lock.f`
+- `src/lib/fs-list.f`
+- `src/lib/fs-root.f`
+- `src/lib/tree-copy.f`
+- `src/lib/build-cache.f`
+- `src/lib/source.f`
+- `src/lib/source-lex.f`
+- `src/lib/object.f`
+- `src/lib/object-cache.f`
+- `src/lib/object-index.f`
+- `src/lib/object-resolve.f`
+- `src/lib/object-link.f`
+- `src/lib/fd-io.f`
+- `src/lib/content-length.f`
+- `src/lib/process.f`
+- `src/lib/process-fork.f`
+- `src/lib/process-argv.f`
+- `src/lib/process-env.f`
+- `src/lib/process-command.f`
+- `src/lib/process-cwd.f`
+- `src/lib/process-tree.f`
+- `src/lib/policy.f`
+- `src/lib/argv.f`
+- `src/lib/test.f`
+- `src/lib/test/assert.f`
+- `src/lib/test/suite.f`
+- `src/lib/test/runner.f`
+- `src/lib/test/subject.f`
+- `src/lib/test/eval.f`
+- `src/lib/property.f`
+- `src/lib/build.f`
+- `src/lib/time.f`
+- `src/lib/date.f`
 
 Each module owns focused tests and documentation in this file. Source files stay
 one concern per file, and new public/library words default to checked typed
@@ -89,34 +89,34 @@ theirs.
 
 | module | class |
 | --- | --- |
-| `lib/string.f` | task-local (the SB builder, STRING-ABI band) / caller-owned (the `BUF-*` family) |
-| `lib/fmt.f` | task-local (the render buffer and its scratch cells, FMT-ABI band) |
-| `lib/fs.f` | task-local (the per-call slots, FS-ABI band) / process-wide (the walk stack) |
-| `lib/fs-lock.f` | caller-owned (the held descriptor) |
-| `lib/fs-mutate.f` | task-local (the staged paths, FS-MUT-ABI band; the stream copy's descriptors and cursors) / process-wide (the copy buffer, so the two copy words are single-task; the cleanup registry, which any task may register into) |
-| `lib/json-write.f` | caller-owned |
-| `lib/json-read.f` | caller-owned |
-| `lib/utf16.f` | caller-owned |
-| `lib/uri.f` | caller-owned |
-| `lib/fd-io.f` | caller-owned (the descriptor and the span) |
-| `lib/content-length.f` | caller-owned (the reader record and its buffer) / task-local (`SEND`'s header row) |
-| `lib/json-rpc.f` | caller-owned (the JR storage, the body and the writer) |
-| `lib/crypto/sha1.f` | caller-owned (the digest context) |
-| `lib/memory.f` | caller-owned (`WITH-BYTES`'s scope stack is process-wide) |
-| `lib/process.f` | task-local (the path staging buffer, the pollfd array and the per-call capture slots) / process-wide (the `PROC-REAP-ARM` and `PROC-STOP` vectors) |
-| `lib/process-command.f` | caller-owned (`CMD` contexts) / process-wide (the `PROC-CMD` surface over one static context) |
-| `lib/process-cwd.f` | process-wide |
-| `lib/process-tree.f` | process-wide |
-| `lib/policy.f` | task-local (two cells of the sealing task's DATA header, the seal watermark and the admission bitmap, written once by the harness: the seal they hold governs the source that task reads) |
-| `lib/net/tcp4.f` | task-local |
-| `lib/net/udp4.f` | task-local |
-| `lib/net/curl.f` | task-local |
-| `lib/net/http.f` | process-wide (one server per image; each worker's request state is a row of its own slot, found through a `TASK:+USER` row; see [http.md](http.md)) |
-| `lib/net/ws.f` | process-wide (one socket to an HTTP worker's slot, its buffers a mapping of its own; sends from any task are serialised by the slot's `TASK:FACILITY`, made ready at load; see [websocket.md](websocket.md)) |
-| `lib/browser/host.f` | process-wide (the page's buffers, filled as the file loads and only read after it; see [browser-host.md](browser-host.md)) |
-| `lib/serial.f` | task-local |
-| `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) |
-| `lib/source-lex.f` | process-wide (one scan's tokens; `SOURCE` replaces them) |
+| `src/lib/string.f` | task-local (the SB builder, STRING-ABI band) / caller-owned (the `BUF-*` family) |
+| `src/lib/fmt.f` | task-local (the render buffer and its scratch cells, FMT-ABI band) |
+| `src/lib/fs.f` | task-local (the per-call slots, FS-ABI band) / process-wide (the walk stack) |
+| `src/lib/fs-lock.f` | caller-owned (the held descriptor) |
+| `src/lib/fs-mutate.f` | task-local (the staged paths, FS-MUT-ABI band; the stream copy's descriptors and cursors) / process-wide (the copy buffer, so the two copy words are single-task; the cleanup registry, which any task may register into) |
+| `src/lib/json-write.f` | caller-owned |
+| `src/lib/json-read.f` | caller-owned |
+| `src/lib/utf16.f` | caller-owned |
+| `src/lib/uri.f` | caller-owned |
+| `src/lib/fd-io.f` | caller-owned (the descriptor and the span) |
+| `src/lib/content-length.f` | caller-owned (the reader record and its buffer) / task-local (`SEND`'s header row) |
+| `src/lib/json-rpc.f` | caller-owned (the JR storage, the body and the writer) |
+| `src/lib/crypto/sha1.f` | caller-owned (the digest context) |
+| `src/lib/memory.f` | caller-owned (`WITH-BYTES`'s scope stack is process-wide) |
+| `src/lib/process.f` | task-local (the path staging buffer, the pollfd array and the per-call capture slots) / process-wide (the `PROC-REAP-ARM` and `PROC-STOP` vectors) |
+| `src/lib/process-command.f` | caller-owned (`CMD` contexts) / process-wide (the `PROC-CMD` surface over one static context) |
+| `src/lib/process-cwd.f` | process-wide |
+| `src/lib/process-tree.f` | process-wide |
+| `src/lib/policy.f` | task-local (two cells of the sealing task's DATA header, the seal watermark and the admission bitmap, written once by the harness: the seal they hold governs the source that task reads) |
+| `src/lib/net/tcp4.f` | task-local |
+| `src/lib/net/udp4.f` | task-local |
+| `src/lib/net/curl.f` | task-local |
+| `src/lib/net/http.f` | process-wide (one server per image; each worker's request state is a row of its own slot, found through a `TASK:+USER` row; see [http.md](http.md)) |
+| `src/lib/net/ws.f` | process-wide (one socket to an HTTP worker's slot, its buffers a mapping of its own; sends from any task are serialised by the slot's `TASK:FACILITY`, made ready at load; see [websocket.md](websocket.md)) |
+| `src/lib/browser/host.f` | process-wide (the page's buffers, filled as the file loads and only read after it; see [browser-host.md](browser-host.md)) |
+| `src/lib/serial.f` | task-local |
+| `src/lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) |
+| `src/lib/source-lex.f` | process-wide (one scan's tokens; `SOURCE` replaces them) |
 
 A task-local module reaches its storage one of two ways, and which one is
 forced rather than chosen: a module the engine bakes, or one the engine's own
@@ -168,7 +168,7 @@ as `ptr a n` for storage and `ptr u8 n` for keys.
 
 ## Array
 
-`lib/array.f` provides checked helpers for cell arrays in `package ARRAY`. Call
+`src/lib/array.f` provides checked helpers for cell arrays in `package ARRAY`. Call
 them across package boundaries with the qualifier, for example `ARRAY:A-SUM` and
 `ARRAY:A@`; the tail names used in the descriptions below are the in-package
 names. Public array helpers use nominal role types: array lengths are `len`, valid indexes are `idx`, and range
@@ -251,7 +251,7 @@ raw relative dictionary links.
 
 ## Vector
 
-`lib/vector.f` provides growable cell-vector storage backed by `lib/memory.f`.
+`src/lib/vector.f` provides growable cell-vector storage backed by `src/lib/memory.f`.
 A vector handle is caller-owned header storage: allocate
 `VEC-HEADER-CELLS cells` in DATA or another cell area, then initialize it with
 `VEC-INIT ( ptr a count -- )`. Capacity arguments are `count`, active lengths
@@ -316,7 +316,7 @@ VEC-EACH            ( R ptr a [ R idx a -- R ] -- R )
 
 ## FFI ABI
 
-`lib/ffi-abi.f` is the target-independent AAPCS64 foreign-call surface. It owns
+`src/lib/ffi-abi.f` is the target-independent AAPCS64 foreign-call surface. It owns
 the typed scratch buffers for integer/pointer registers, floating-point
 registers, stack spill slots, out-parameter readback, and CUDA-style
 `void** kernelParams` packing. These helpers do not require a dynamic loader and
@@ -349,7 +349,7 @@ stack slots. x8 is the AAPCS64 indirect-result register: sret writers must use
 `FFI:X8-WRITABLE!` with the complete result extent. Stack writers use the
 corresponding stack slot and extent; neither table aliases the other.
 
-`lib/ffi-abi.f` owns the sealed `FFI` package. On Linux/aarch64 the package
+`src/lib/ffi-abi.f` owns the sealed `FFI` package. On Linux/aarch64 the package
 calls `dlopen` and `dlsym` through loader-resolved dynamic ELF slots
 (`DLOPEN-SLOT`, `DLSYM-SLOT`). On macOS/aarch64 the Mach-O writer emits a
 `__DATA_CONST,__got` page and `LC_DYLD_CHAINED_FIXUPS` imports for libSystem
@@ -380,7 +380,7 @@ caller passes the flag: `LIBRARY` and `VERSIONED-LIBRARY` rows open with
 `RTLD_GLOBAL` nor `RTLD_LOCAL` is global. See
 [dlopen(3) on Linux](https://man7.org/linux/man-pages/man3/dlopen.3.html) and
 Apple's [dlopen(3)](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/dlopen.3.html),
-which is `man 3 dlopen` on macOS. `lib/ffi-test.f` checks both targets
+which is `man 3 dlopen` on macOS. `src/lib/ffi-test.f` checks both targets
 against libz, which the engine does not link.
 
 A binding is a declaration:
@@ -430,7 +430,7 @@ pointer results remain refused when a stack argument is required. A checked call
 cannot reclassify an argument or
 change its extent; an absent symbol is `E-FFI-DLSYM` at the first call, never at
 the declaration; and `FFI:ERRNO ( -- n )` is the one errno binding every
-consumer shares. `lib/ffi-test.f` covers the declarer, including the refusals and
+consumer shares. `src/lib/ffi-test.f` covers the declarer, including the refusals and
 the invariant that a declaration leaves the stack as it found it.
 
 Every declaration in an image shares one table, sized for a server that binds
@@ -489,7 +489,7 @@ FFI:ROOM?         ( -- bool )
 
 ## ZIP Archives
 
-`require lib/zip.f` loads indexed ZIP reading and replacement.
+`require src/lib/zip.f` loads indexed ZIP reading and replacement.
 It uses `libzip.so.5` for decompression on Linux, so libzip must be installed. The public `ZIP`
 package uses distinct opaque `archive` and `entry` identities; each operation
 checks that the archive is live and the entry belongs to it. Entries are selected
@@ -539,11 +539,11 @@ records grow with the workload and have no fixed entry count limit.
 
 The package uses checked Habu for storage, validation and lifetime management.
 Its only asserted boundaries are exact private libzip and libc calls. Focused verification:
-`bin/hb --load lib/zip-test.f`.
+`bin/hb --load src/lib/zip-test.f`.
 
 ## IEEE-754 Scalar Conversion
 
-`lib/ieee754.f` publishes scalar bit reinterpretation and integer rounding
+`src/lib/ieee754.f` publishes scalar bit reinterpretation and integer rounding
 shared by reduced-precision floating-point encoders. `IEEE754:F64>BITS ( r -- n )`
 reinterprets a Habu `f64` as its exact 64-bit IEEE-754 pattern, and
 `IEEE754:BITS>F64 ( n -- r )` performs the inverse reinterpretation. These are
@@ -559,7 +559,7 @@ returns the input, and a shift greater than 63 returns zero. A negative
 significand or shift throws `IEEE754:E-ROUND-DOMAIN`; valid inputs have no
 other error result.
 
-`lib/float32.f` publishes scalar IEEE-754 binary32 conversion. `F32:NARROW
+`src/lib/float32.f` publishes scalar IEEE-754 binary32 conversion. `F32:NARROW
 ( r -- n )` accepts every Habu `f64` value and returns its binary32 bit pattern,
 rounded to nearest with ties to even. It preserves signed zero, gradually
 underflows representable binary32 subnormals, rounds smaller values to signed
@@ -571,7 +571,7 @@ payload, and quiet/signaling state. Higher input bits do not participate in the
 binary32 pattern. Neither conversion throws for an IEEE-754 input.
 
 Both packages are deliberately scalar-only. They expose no pointer, byte-load,
-byte-store, packing, or unpacking surface. `lib/float32-buffer.f` owns the raw
+byte-store, packing, or unpacking surface. `src/lib/float32-buffer.f` owns the raw
 little-endian bridge as `F32-BUF:STORE`, `F32-BUF:LOAD`, `F32-BUF:PACK`, and
 `F32-BUF:UNPACK`; callers own the buffer capacity required by each operation.
 Bounded marshalling belongs to the `MEM` span and subspan APIs, where capacity
@@ -579,7 +579,7 @@ and access width can be checked before memory is touched.
 
 ## Finite Binary64 Text
 
-`lib/f64-text.f` (package `F64-TEXT`) converts between finite binary64 values
+`src/lib/f64-text.f` (package `F64-TEXT`) converts between finite binary64 values
 and decimal text through glibc's `libm.so.6` on Linux and `libSystem` on Darwin.
 
 ```forth
@@ -622,15 +622,15 @@ reaches libc loads the library and creates the locale; a failure there or in
 any later native call answers `runtime`. An `IMAGE-LIFECYCLE` hook frees the
 locale and closes the library when the process image is prepared, and the
 restored image acquires them again on its next call. Focused verification:
-`bin/hb --load lib/f64-text-test.f` and
-`bin/hb --load lib/f64-text-lifecycle-test.f`.
+`bin/hb --load src/lib/f64-text-test.f` and
+`bin/hb --load src/lib/f64-text-lifecycle-test.f`.
 
 ## Core Bytes
 
 `src/core/bytes.f` provides small checked byte-buffer helpers that are part of
 the native prelude. They are available before stdlib and tool modules so low
 level code does not depend on broad library ordering such as loading
-`lib/string.f` before `lib/ffi-abi.f`.
+`src/lib/string.f` before `src/lib/ffi-abi.f`.
 
 ```forth
 BYTE-VIEW       ( ptr a -- ptr u8 )
@@ -646,7 +646,7 @@ cell-sized `@` and `!` through that view.
 
 ## Byte buffer
 
-`lib/byte-buffer.f` (package `BUF`) owns a growable byte buffer whose lengths
+`src/lib/byte-buffer.f` (package `BUF`) owns a growable byte buffer whose lengths
 and capacities are `NUM:byte-len`. Its shared scalar conversions are:
 
 ```forth
@@ -675,14 +675,14 @@ a substring: growth copies that input before releasing the former mapping.
 
 ## Bounded pointers (spans)
 
-`lib/span.f` (package `SPAN`) pairs a base pointer with the reach behind it, so a
+`src/lib/span.f` (package `SPAN`) pairs a base pointer with the reach behind it, so a
 copy or an indexed read is bounds-checked by the type instead of by a
 hand-written capacity test. The reach is always a BYTE count, whatever the
 element type; `docs/type-system.md` § 11 says why, and what the checker does and
 does not refuse around it.
 
 ```forth
-SPAN:MAKE     ( ptr t n -- SPAN:span<t> )     \ lib/ and src/ only, the audited mint
+SPAN:MAKE     ( ptr t n -- SPAN:span<t> )     \ src/ except src/examples/, the audited mint
 SPAN:LEN      ( SPAN:span<t> -- n )           \ the reach in bytes
 SPAN:CELL-LEN ( SPAN:span<cell> -- n )        \ the reach in whole cells
 SPAN:$        ( SPAN:span<u8> -- ptr u8 n )
@@ -710,14 +710,14 @@ than the destination throws `E-SPAN-CAPACITY` and moves nothing, and a negative
 reach or source length throws `E-SPAN-LENGTH`. The read-only `( ptr u8 n )` pair
 stays the string idiom — it already carries its length — and `SPAN:COPY` takes
 exactly that pair as its source. `MEM:ALLOC-SPAN` and `MEM:FREE-SPAN` reopen
-package `MEM` from `lib/span.f`, because `lib/memory.f` is a boot-prefix file and
+package `MEM` from `src/lib/span.f`, because `src/lib/memory.f` is a boot-prefix file and
 must not depend on this one.
 `MEM:ALLOCATION>SPAN` preserves the base and reach handed to a `MEM:WITH-BYTES`
 body; the scope retains ownership and releases the allocation after the body.
 
 ## String
 
-`lib/string.f` provides checked byte-string helpers. Inputs are byte pointers
+`src/lib/string.f` provides checked byte-string helpers. Inputs are byte pointers
 plus lengths; no word assumes NUL termination unless its name says `PATHZ` or a
 module boundary explicitly says it owns path conversion. `SB-*` words operate on
 the shared bounded string-builder buffer and throw `E-STR-CAPACITY` or
@@ -793,7 +793,7 @@ flag.
 
 ## Number formatting
 
-`lib/fmt.f` provides `FMT:SB-HEX ( n -- )`. It appends a nonnegative integer
+`src/lib/fmt.f` provides `FMT:SB-HEX ( n -- )`. It appends a nonnegative integer
 to the shared string builder as uppercase hexadecimal, without a prefix or
 minimum width; zero renders as `0`. A negative input throws `E-FMT-DOMAIN`
 without changing the builder.
@@ -808,7 +808,7 @@ signed 64-bit range is supported.
 
 ## UTF-8 Scalar
 
-`lib/utf8-scalar.f` provides one reentrant decoder in `package UTF8`, and a
+`src/lib/utf8-scalar.f` provides one reentrant decoder in `package UTF8`, and a
 whole-span check built on it.
 `UTF8:NEXT` takes a counted byte span and an explicit absolute cursor. Its
 `UTF8:scalar-step` result has two exhaustive arms: `scalar` carries the valid
@@ -832,7 +832,7 @@ UTF8:VALID? ( ptr u8 n -- bool )
 
 ## UTF-16 Units
 
-`lib/utf16.f` owns package `UTF16`. `UTF16:UNITS` answers how many UTF-16 code
+`src/lib/utf16.f` owns package `UTF16`. `UTF16:UNITS` answers how many UTF-16 code
 units a UTF-8 byte span encodes to, the measure LSP positions take by default:
 the column of a byte offset on a line is the units of the bytes before it.
 
@@ -864,7 +864,7 @@ span too.
 
 ## Base64
 
-`lib/base64.f` owns package `BASE64`: standard padded base64 and unpadded
+`src/lib/base64.f` owns package `BASE64`: standard padded base64 and unpadded
 base64url. All four words write into a caller's span and answer the byte count.
 
 ```forth
@@ -889,7 +889,7 @@ A span too small for the result throws `E-SPAN-CAPACITY` and a negative input
 length `E-SPAN-LENGTH`. Both decoders check the whole input before writing, so
 a refusal leaves the span as it was. The RFC 6455 handshake is the first caller:
 a `Sec-WebSocket-Key` decodes to sixteen bytes, and `Sec-WebSocket-Accept` is
-the encoding of a `SHA1:digest`. `lib/base64-test.f` runs RFC 4648's section 10
+the encoding of a `SHA1:digest`. `src/lib/base64-test.f` runs RFC 4648's section 10
 vectors, decodes the whole alphabet against `base64 -d`, round-trips every byte
 value, asserts each refusal, and derives RFC 6455's
 `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`. Its URL cases include the PKCE S256 challenge
@@ -900,7 +900,7 @@ and its canonical spare-bit rule is in
 
 ## File URIs
 
-`lib/uri.f` owns package `URI`. `URI:FILE>PATH` decodes a `file:` URI that
+`src/lib/uri.f` owns package `URI`. `URI:FILE>PATH` decodes a `file:` URI that
 names a file on this machine into the caller's span and answers the path's
 length.
 
@@ -920,12 +920,12 @@ or fragment, and a generic parser would split the path there. The whole URI is
 checked and the path measured before a byte is written: a span too small for
 the path throws `E-SPAN-CAPACITY` and a negative URI length `E-SPAN-LENGTH`, so
 a refusal leaves the span as it was. The path is bytes, as the file system takes
-them: a decoded NUL or `/` is kept, and `lib/fs.f` refuses a path holding a NUL
+them: a decoded NUL or `/` is kept, and `src/lib/fs.f` refuses a path holding a NUL
 (`E-FS-PATH-UNSAFE`) where it opens one.
 
 ## JSON Write
 
-`lib/json-write.f` is a checked emit-only JSON vocabulary for fixtures, benchmark
+`src/lib/json-write.f` is a checked emit-only JSON vocabulary for fixtures, benchmark
 rows, and native tools that do not need the full parser DOM from `tools/json.f`.
 It emits compact JSON, escapes string control bytes/quotes/backslashes, and
 throws instead of truncating or emitting invalid bytes. Commas remain explicit so
@@ -1027,7 +1027,7 @@ Size fixed output for the worst case: one byte can escape to six (`\u00XX`).
 
 ## JSON Read
 
-`lib/json-read.f` is a checked, zero-allocation pull reader. Each parse has an
+`src/lib/json-read.f` is a checked, zero-allocation pull reader. Each parse has an
 explicit linear `JR:reader`; there is no current-reader global, so independent
 readers may be interleaved or nested under `catch` without sharing cursor,
 nesting, token, number, or string-decode state.
@@ -1082,10 +1082,10 @@ length is `E-JR-STATE`.
 
 ## JSON-RPC
 
-`lib/json-rpc.f` owns package `JSON-RPC`: the JSON-RPC 2.0 envelope.
+`src/lib/json-rpc.f` owns package `JSON-RPC`: the JSON-RPC 2.0 envelope.
 `>MESSAGE` sorts one message body into a `JSON-RPC:message`, and the writers
 build replies and notifications on a caller's `JSON-WRITE` writer. Framing a
-body on a stream is `lib/content-length.f`'s (Content-Length framing, below).
+body on a stream is `src/lib/content-length.f`'s (Content-Length framing, below).
 
 ```forth
 JSON-RPC:PARSE-ERROR      ( -- n )                  \ -32700
@@ -1142,7 +1142,7 @@ writer's own refusals are `JSON-WRITE`'s.
 
 ## Unicode comparison
 
-`require lib/unicode.f` provides Unicode whitespace and case folding:
+`require src/lib/unicode.f` provides Unicode whitespace and case folding:
 
 ```forth
 UNICODE:WHITE-SPACE? ( n -- bool )
@@ -1180,7 +1180,7 @@ binding uses per-task FFI scratch and exposes only the comparison operation. The
 
 ## XML and byte edits
 
-`lib/xml.f` reads UTF-8 XML 1.0 without changing the source bytes. Each cursor
+`src/lib/xml.f` reads UTF-8 XML 1.0 without changing the source bytes. Each cursor
 is an explicit linear `XML:reader`; separate cursors have independent state.
 Allocate cell-aligned storage with `capacity XML:STORAGE-BYTES`, then call
 `XML:INIT ( ptr n n ptr u8 n -- XML:reader )` with storage, storage byte size,
@@ -1323,7 +1323,7 @@ This is not a validating DTD processor.
 then bytes written. They validate XML scalars and preserve literal carriage
 returns with references; attribute escaping also preserves tabs and newlines.
 
-`lib/byte-edit.f` applies ordered replacement spans to arbitrary bytes:
+`src/lib/byte-edit.f` applies ordered replacement spans to arbitrary bytes:
 
 ```forth
 EDIT:STORAGE-BYTES ( n -- n )
@@ -1348,7 +1348,7 @@ parse/escape/edit/readback round trips.
 
 ## Map
 
-`lib/map.f` (package `MAP`) provides a fixed-capacity open-addressed string-key
+`src/lib/map.f` (package `MAP`) provides a fixed-capacity open-addressed string-key
 map over caller-owned `ptr a` cell storage. Capacities and stored counts are
 `count` and key lengths are `len`; key strings use `ptr u8 len`.
 `MAP:CELL-COUNT` returns the cell count to allocate for a capacity, and
@@ -1378,7 +1378,7 @@ the capacity passed to a lookup or update must be the one the storage was
 initialized with.
 
 The header and slot layout, the hash, the probe sequence and the locate step
-are package-private; `lib/map-test.f` reopens `package MAP` to test them. Two
+are package-private; `src/lib/map-test.f` reopens `package MAP` to test them. Two
 families are public because only a public family has generated constructors,
 and the private words are their only producers and consumers:
 
@@ -1395,7 +1395,7 @@ and the private words are their only producers and consumers:
 
 ## Memory
 
-`lib/memory.f` provides checked OS-backed byte buffers for large composed tools.
+`src/lib/memory.f` provides checked OS-backed byte buffers for large composed tools.
 Use this module when a tool needs source bundles, JSONL streams, report tables,
 or many 64K scratch buffers. Do not split tools merely to avoid DATA pressure:
 `create ... allot` is for dictionary-sized static storage, while `MEM-*`
@@ -1455,7 +1455,7 @@ it for source/report buffers whose exact required size is known only at runtime.
 
 ## IPv4 UDP
 
-`lib/net/udp4.f` owns the generic `UDP4` package on Linux AArch64/glibc.
+`src/lib/net/udp4.f` owns the generic `UDP4` package on Linux AArch64/glibc.
 `ADDRESS`, `PORT`, and `PAYLOAD-BYTES` validate its inputs; `BIND`, `LOCAL`,
 `SEND`, `RECEIVE`, and `CLOSE` return typed outcomes. Received packets retain
 their source endpoint, with distinct complete, truncated, timeout, and OS-error
@@ -1465,7 +1465,7 @@ Application protocol framing and retry/ordering policy belong above this module.
 
 ## WebSocket frames
 
-`lib/net/ws-frame.f` owns package `WS`: the RFC 6455 frame header, written
+`src/lib/net/ws-frame.f` owns package `WS`: the RFC 6455 frame header, written
 (`ENCODE-HEADER`) and read from the bytes held so far (`DECODE-HEADER`, which
 answers `need` or `frame`), payload masking (`MASK`) and close status codes
 (`CLOSE-CODE!`). The words read and write the caller's bytes and touch no
@@ -1474,7 +1474,7 @@ the bytes held show it. See [WebSocket](websocket.md).
 
 ## WebSocket connections
 
-`lib/net/ws.f` reopens package `WS` for the connection: `ACCEPT`, inside an
+`src/lib/net/ws.f` reopens package `WS` for the connection: `ACCEPT`, inside an
 HTTP route handler, answers the RFC 6455 opening handshake with `open` and a
 socket, taking the connection over from its worker, or `refused` with the
 status it rendered into the response; `RECEIVE` answers a whole `text` or `binary`
@@ -1486,7 +1486,7 @@ task. The handshake's SHA-1 and base64 are Habu's own. See
 
 ## PostgreSQL
 
-`lib/pg.f` owns package `PG`: PostgreSQL over libpq, declared through the
+`src/lib/pg.f` owns package `PG`: PostgreSQL over libpq, declared through the
 `FUNCTION:` declarer. `PG:connection` and `PG:result` are nominal handles over
 a slot registry, never a raw cell; the registry holds the owning task and a
 generation, so a closed connection, a cleared result and a handle from another
@@ -1498,7 +1498,7 @@ vocabulary, the buffer lifetimes, the concurrency rule and a worked example.
 
 ## HTTP and HTTPS
 
-`lib/net/curl.f` owns the `CURL` package, libcurl's easy interface through the
+`src/lib/net/curl.f` owns the `CURL` package, libcurl's easy interface through the
 `FUNCTION:` declarer on macOS ARM64 and Linux AArch64. `INIT` answers a typed handle;
 `URL!`, `METHOD!`, `HEADER+`, `BODY!`, `COOKIE-FILE!`, `COOKIE-JAR!`, `TIMEOUT!`
 and `FOLLOW!` configure the request; `PERFORM` fills a caller-owned span and
@@ -1515,7 +1515,7 @@ payload formats belong above this module.
 
 ## Authenticated encryption, HMAC and RS256
 
-`lib/crypto/evp.f` owns the `CRYPTO` package, OpenSSL 3's libcrypto through the
+`src/lib/crypto/evp.f` owns the `CRYPTO` package, OpenSSL 3's libcrypto through the
 `FUNCTION:` declarer on macOS ARM64 and Linux AArch64. `RANDOM-BYTES` fills a span from the
 system generator; `SEAL` and `UNSEAL` are AES-256-GCM with the 16-byte tag
 appended to the ciphertext and the associated data authenticated in place;
@@ -1551,7 +1551,7 @@ and OpenSSL's [PEM_read_bio_ex](https://docs.openssl.org/3.0/man3/PEM_read_bio_e
 
 ## SHA-1
 
-`lib/crypto/sha1.f` owns package `SHA1`: SHA-1 in Habu, streamed through a
+`src/lib/crypto/sha1.f` owns package `SHA1`: SHA-1 in Habu, streamed through a
 caller-owned context span of `SHA1:CTX-BYTES` bytes (`START`, `FEED`, `FINISH`)
 or taken in one call (`HASH`), answering a `SHA1:digest` that `DIGEST!` writes
 as 20 bytes. It is here for the RFC 6455 handshake and is not for security. See
@@ -1559,7 +1559,7 @@ as 20 bytes. It is here for the RFC 6455 handshake and is not for security. See
 
 ## Files
 
-`lib/fs.f` is the canonical filesystem helper surface. Public path words accept
+`src/lib/fs.f` is the canonical filesystem helper surface. Public path words accept
 counted byte strings and own any private NUL-terminated copy needed for syscalls.
 
 The current source-backed surface covers path predicates, stat mode and size,
@@ -1677,7 +1677,7 @@ is refused by the span itself (`E-SPAN-RANGE`). `JOIN-PATH-INTO` is `JOIN-PATH`
 with a span destination: it carries its own reach, so it needs no capacity
 argument and no `FS-CHECK-JOIN-CAP` on the caller's word.
 
-`lib/fs-mutate.f` is layered after the native engine contains mutation
+`src/lib/fs-mutate.f` is layered after the native engine contains mutation
 primitives such as `unlink`, `rename`, `chmod`, `mkdir`, and `rmdir`. It owns
 counted-path wrappers for files and directories. Public wrappers avoid the exact
 primitive names because the dictionary is case-insensitive: use `MAKE-DIR`,
@@ -1701,7 +1701,7 @@ whose last name is longer than `SIBLING-NAME-MAX` gives a sibling name the
 host refuses, `E-FS-OPEN`.
 `REMOVE-TREE` recursively removes one counted path, using the same per-depth walk
 buffers, directory-entry helpers, child-path enter/leave helpers, and close
-handling as `WALK-FILES`, while keeping mutation policy in `lib/fs-mutate.f`.
+handling as `WALK-FILES`, while keeping mutation policy in `src/lib/fs-mutate.f`.
 It throws named filesystem errors rather than ignoring partial deletion failures.
 If a tree contains a symlink to a directory, `REMOVE-TREE` unlinks the symlink
 itself and never descends into the target.
@@ -1718,7 +1718,7 @@ nested directory cleanups can register parent before child and still remove chil
 `CLEANUP-TREE+` registers a recursive tree cleanup for temporary workspaces.
 `CLEANUP-FORGET` drops the newest registration of a path its owner has already
 removed, so a process that makes and removes a tree per job keeps the table
-from filling; a path nothing registered is a no-op. Keeping these words outside core `lib/fs.f` keeps path inspection/read helpers
+from filling; a path nothing registered is a no-op. Keeping these words outside core `src/lib/fs.f` keeps path inspection/read helpers
 separate from mutation and cleanup policy.
 
 The registry also runs at process exit, so a `die`, an uncaught top-level throw
@@ -1735,7 +1735,7 @@ removal that fails is reported, not swallowed: `CLEANUP-AT-EXIT` writes one
 registered with `CLEANUP-DIR+` gives `E-FS-IO` (-2105)) and leaves the exit code the
 process is carrying untouched.
 
-`lib/fs-list.f` (package `FS-LIST`) lists one directory's entry names for test
+`src/lib/fs-list.f` (package `FS-LIST`) lists one directory's entry names for test
 harnesses that assert what an output directory holds. `EACH` hands every name
 except `.` and `..` to a quotation in directory order; `NAMES` writes the names
 newline-separated and in byte order into a caller buffer of a stated capacity,
@@ -1746,17 +1746,17 @@ call's own: each call maps its descriptor, cursor and dirent block and gives
 them back, the descriptor closed, however it ends, so tasks list at once and a
 quotation may list again inside `EACH`.
 
-`lib/tree-copy.f` (package `TREE-COPY`) makes private copies of checkout files
+`src/lib/tree-copy.f` (package `TREE-COPY`) makes private copies of checkout files
 for tools and tests that build or boot a tree without touching the checkout.
 `FILE` copies one checkout file and `TREE` every file under a checkout
 directory; each copy lands at its checkout-relative path under the given root,
 whether the file is named relative to the working directory or, as a source
 closure lists it, by its absolute path under it. A name that resolves outside
 the checkout is refused with `E-FS-PATH` before anything is written.
-`BUILD-SOURCES` copies `src/`, `lib/` and `tools/`, the sources
+`BUILD-SOURCES` copies `src/` and `tools/`, the sources
 `tools/native-build.f` builds from.
 
-`lib/pty.f` (package `PTY`) is the tree's one pseudoterminal-pair opener:
+`src/lib/pty.f` (package `PTY`) is the tree's one pseudoterminal-pair opener:
 `OPEN` unlocks `/dev/ptmx` — with `TIOCSPTLCK`/`TIOCGPTN` and `/dev/pts/<n>` on
 Linux, with `TIOCPTYGRANT`/`TIOCPTYUNLK`/`TIOCPTYGNAME` on macOS, and
 `E-PROC-HOST` on any other host — writes the slave path NUL-terminated into a
@@ -1764,13 +1764,13 @@ caller buffer of at least `SLAVE-PATH-CAP` bytes and returns the master as a
 `PTY:master` nominal. The request numbers are private to the module; a caller
 that needs a pair calls `OPEN` and opens the slave itself with
 `PTY-OPEN-FLAGS` (`O_RDWR | O_NOCTTY`), so neither end becomes anyone's
-controlling terminal by accident. `lib/pty-harness.f`, `lib/process-pty-io.f`
+controlling terminal by accident. `src/lib/pty-harness.f`, `src/lib/process-pty-io.f`
 and the suites that need a terminal all open their pairs here. A device driver
 under test opens the slave like any
 serial device while the test drives the master with `WRITE`, `READ` (one chunk
 within a bound in milliseconds, zero when nothing arrived) and `CLOSE`. The
 pair keeps the terminal's defaults, so a line written at the master is echoed
-back to it with its newline as CR LF; `lib/pty-test.f` pins both directions.
+back to it with its newline as CR LF; `src/lib/pty-test.f` pins both directions.
 
 `WALK-FILES` must be implemented either as a checked quotation combinator or as
 one audited `TRUST` boundary with focused tests proving callback invocation,
@@ -1793,7 +1793,7 @@ layout. Content-key caching uses this metadata to skip rehashing unchanged files
 
 ## Content Keys
 
-`lib/content-key.f` builds stable manifest hashes for gate and builder caches.
+`src/lib/content-key.f` builds stable manifest hashes for gate and builder caches.
 Callers append version strings and source files, then hash the accumulated
 manifest into a binary or hex digest:
 
@@ -1818,7 +1818,7 @@ not read environment variables.
 
 ## Object Records
 
-`lib/object.f` owns the `OBJ` package: a deterministic object-record codec for
+`src/lib/object.f` owns the `OBJ` package: a deterministic object-record codec for
 the linkable Habu build path. `hb-build` can already consume a cache hit by
 source digest plus target/checker/compiler ABI, link the object text, and write a
 native executable. Source-to-object emission is still the remaining compiler
@@ -1871,9 +1871,9 @@ source, target, checker, and compiler ABI fields. Row accessors expose the
 validated record body without the magic header: indexes are zero-based, fields
 exclude the tag, and bad row or field indexes throw `E-OBJ-FIELD`. `OBJ:LOAD`
 validates and restores a serialized record; `OBJ:KEY-HEX` hashes the canonical
-bytes through `lib/content-key.f`.
+bytes through `src/lib/content-key.f`.
 
-`lib/object-cache.f` owns the `OBJSTORE` package: a content-addressed file
+`src/lib/object-cache.f` owns the `OBJSTORE` package: a content-addressed file
 store for validated object records. It is intentionally separate from the
 object codec and from build/link integration.
 
@@ -1893,7 +1893,7 @@ OBJSTORE:LOAD    ( ptr u8 n -- )
 filesystem errors; malformed or wrong-key object bytes throw object schema
 errors.
 
-`lib/object-index.f` owns the `OBJIDX` package: a source+ABI index from a
+`src/lib/object-index.f` owns the `OBJIDX` package: a source+ABI index from a
 deterministic source key to the content-addressed `OBJ` key. This is the lookup
 layer that lets a later compiler integration ask whether a source object exists
 before recompiling it.
@@ -1914,7 +1914,7 @@ and atomically writes `<root>/<source-key>.idx`; `OBJIDX:LOAD` returns the objec
 key and true for a hit, or an empty slice and false for a miss. Malformed keys or
 index files throw `E-OBJ-FIELD`.
 
-`lib/object-resolve.f` owns the `OBJRES` package: the checked resolver that
+`src/lib/object-resolve.f` owns the `OBJRES` package: the checked resolver that
 combines `OBJIDX` and `OBJSTORE` for source+ABI object-cache lookups.
 
 ```forth
@@ -1933,7 +1933,7 @@ either is gone: the two age apart, so the build that follows stores both again.
 An index pointing at a malformed, wrong-key, or wrong-ABI object fails closed
 through filesystem errors or `E-OBJ-SCHEMA`.
 
-`lib/object-link.f` owns the `OBJLINK` package: the checked symbol validation
+`src/lib/object-link.f` owns the `OBJLINK` package: the checked symbol validation
 pass for a future object linker. It copies export/import names out of the
 current `OBJ` record, rejects duplicate exports, and checks imports after all
 objects have been added.
@@ -2003,9 +2003,9 @@ relocation kinds or patch ranges past the text buffer throw `E-OBJ-SCHEMA`.
 
 ## Source Materialization
 
-`lib/source.f` provides checked helpers for bounded source assembly and small
-source-list transforms. It is layered after `lib/errors.f`, `lib/string.f`, and
-`lib/fs.f`. Callers supply output buffers and capacities; overflow throws
+`src/lib/source.f` provides checked helpers for bounded source assembly and small
+source-list transforms. It is layered after `src/lib/errors.f`, `src/lib/string.f`, and
+`src/lib/fs.f`. Callers supply output buffers and capacities; overflow throws
 `E-FS-CAPACITY`, and file/stdin I/O failures throw named filesystem errors.
 `READ-WHOLE-FILE`, `READ-WHOLE-SAMPLED` and `READ-WHOLE-FD` take no capacity:
 they read a path or a descriptor to its end into the caller's growing storage,
@@ -2071,7 +2071,7 @@ directive (the line tracker counts line-leading openers/closers).
 `READ-STDIN-ALL` reads fd 0 into a caller buffer and probes one extra byte when
 the buffer fills so overflow fails closed instead of truncating. Use explicit
 source-list mode for tools that need stdin data:
-`bin/hb --load lib/source.f tool.f -- args... < data`. In that form the loader
+`bin/hb --load src/lib/source.f tool.f -- args... < data`. In that form the loader
 reads source files from argv and leaves fd 0 for `READ-STDIN-ALL`.
 
 `SOURCE-FILE-LINES` streams a counted file path through a caller-owned line
@@ -2084,7 +2084,7 @@ streaming API.
 
 ## Source Lexer
 
-`lib/source-lex.f` owns package `LINT-LEX`, the one lexer for Habu source. The
+`src/lib/source-lex.f` owns package `LINT-LEX`, the one lexer for Habu source. The
 lint, checker and codegen tools read source through it, and so can an
 application that finds a call by its tokens and rewrites its bytes. It reads
 tokens as the engine does: `\` line comments and `( ... )` and `.( ... )`
@@ -2111,14 +2111,14 @@ LINT-LEX:ERROR-KIND@ ERROR-BYTE@ ERROR-LINE@ ERROR-COL@ ( -- n )
 An unterminated string literal or a malformed row ends the scan at its site:
 `ERROR?` answers true, `ERROR-KIND@` is `UNTERMINATED-QUOTE` or
 `MALFORMED-REGISTRY`, and no token after the site is exposed. The token
-classes the lexer shares with other scanners are `lib/source.f`'s:
+classes the lexer shares with other scanners are `src/lib/source.f`'s:
 `SOURCE:PARSING-KEYWORD?`, `BLOCK-OPENER?` and `BLOCK-CLOSER?`, and
 `NORMAL-STRING-OPENER?` and `ESC-STRING-OPENER?` for `s"`, `c"`, `."` and
-their `\"` forms. Tests: `lib/source-lex-test.f`.
+their `\"` forms. Tests: `src/lib/source-lex-test.f`.
 
 ## Advisory file locks
 
-`lib/fs-lock.f` owns package `FS-LOCK`. A caller opens and keeps a descriptor
+`src/lib/fs-lock.f` owns package `FS-LOCK`. A caller opens and keeps a descriptor
 for the full interval in which it owns a file or directory. `TRY` requests an
 exclusive nonblocking `flock` on that descriptor. It answers false only when
 another holder blocks it; other failures throw `E-FS-IO`. Closing the
@@ -2137,7 +2137,7 @@ FS-LOCK:TRY      ( fd -- bool )
 
 ## Descriptor IO
 
-`lib/fd-io.f` owns package `FD-IO`: exact reads and full writes on a blocking
+`src/lib/fd-io.f` owns package `FD-IO`: exact reads and full writes on a blocking
 descriptor the caller owns, such as a pipe or a server's stdin and stdout.
 
 ```forth
@@ -2177,11 +2177,11 @@ must arm `FD-NOSIGPIPE!` to receive `E-FS-IO` instead of `SIGPIPE`.
 
 ## Content-Length framing
 
-`lib/content-length.f` owns package `CONTENT-LENGTH`: the framing LSP and DAP
+`src/lib/content-length.f` owns package `CONTENT-LENGTH`: the framing LSP and DAP
 put around every message, over a blocking descriptor. A header block of
 `name: value` lines, each ended by CR LF and the block by an empty line, comes
 before exactly as many body bytes as its Content-Length header names. The module
-knows nothing of what a body holds; `lib/json-rpc.f` reads a JSON-RPC body.
+knows nothing of what a body holds; `src/lib/json-rpc.f` reads a JSON-RPC body.
 
 ```forth
 CONTENT-LENGTH:reader                               \ the caller's reader record
@@ -2231,7 +2231,7 @@ nothing.
 
 ## Processes
 
-`lib/process.f` wraps native process primitives in checked contracts. Public
+`src/lib/process.f` wraps native process primitives in checked contracts. Public
 wrappers accept counted paths/commands, own conversion to private `pathz`
 buffers, and never require LLM code to build C strings by hand.
 
@@ -2316,7 +2316,7 @@ through exhaustive `MATCH outcome`.
 `PROC-OUTCOME>RC` flattens an outcome to the historical rc: the exit code for
 normal exits and `128 + signal` for signal deaths, so a deliberate kill still
 reads 137. A capture's own expired deadline has no rc: it throws
-`E-PROC-TIMEOUT`, as the `lib/test/outcome.f` asserts that want an exit or a
+`E-PROC-TIMEOUT`, as the `src/lib/test/outcome.f` asserts that want an exit or a
 signal do, so a test that reads it reports a timeout instead of failing an
 assertion on the 137 of the SIGKILL that reaped the child. A caller that
 MATCHes the outcome into a verdict of its own throws `E-PROC-TIMEOUT` from its
@@ -2325,7 +2325,7 @@ data. `PROC-STATUS>RC` and `PROC-WAIT-RC` use it. The whole `-OUTCOME` capture
 API returns the sum:
 `PROC-CAPTURE-OUTCOME@` and the `RUN-*-OUTCOME` runners yield
 `( -- len len outcome )` and every consumer dispatches by `MATCH outcome` (or
-the `lib/test/outcome.f` assert helpers). The capture machine stores no pair
+the `src/lib/test/outcome.f` assert helpers). The capture machine stores no pair
 state: it keeps only the raw wait status plus a timed-out flag, and
 `PROC-CAPTURE-OUTCOME ( -- outcome )` derives the sum on demand.
 
@@ -2395,7 +2395,7 @@ deliberately no raw `wait-rc` wrapper: the primitive reports WEXITSTATUS only,
 so a signal-killed child would read as rc 0 (a swallowed crash). Wait through
 `PROC-WAIT-RC` / `PROC-WAIT-OUTCOME`, which decode signal deaths as 128+sig.
 
-`lib/process-fork.f` layers fork support after native refresh because older
+`src/lib/process-fork.f` layers fork support after native refresh because older
 engines do not have the `fork` primitive during the build prelude.
 
 ```forth
@@ -2419,14 +2419,14 @@ next - and both processes then free them, so no table is copied half
 replaced. A fork made on a task holds the task-local address-cell lock, not
 the registrar's, until dot bb84a527: `ADDRESS-CELLS` finds its lock through
 `data-base`, which on a task is the task's own context. Before `RAW` returns
-in the child, it runs every reset registered with `lib/fork-child.f`
-(`FORK-CHILD:REGISTER`): `lib/process-fork.f` registers those of the task
+in the child, it runs every reset registered with `src/lib/fork-child.f`
+(`FORK-CHILD:REGISTER`): `src/lib/process-fork.f` registers those of the task
 runtime, the fs cleanup table and the process-tree walk lock, whose modules
 the engine provides or the AOT linker loads and so never require
-`lib/fork-child.f`, and `lib/pg.f` and `lib/serial.f` register their own as
+`src/lib/fork-child.f`, and `src/lib/pg.f` and `src/lib/serial.f` register their own as
 they load. The fs cleanup table empties, since the paths in the parent's are
-still the parent's; the walk lock of `lib/process-tree.f`, the task runtime's
-exit-chain lock and `lib/pg.f`'s configuration lock are freed, since a task
+still the parent's; the walk lock of `src/lib/process-tree.f`, the task runtime's
+exit-chain lock and `src/lib/pg.f`'s configuration lock are freed, since a task
 that held one was not copied; a serial setup another task had begun starts
 over; and the main thread's park is forgotten, since on Darwin it is a Mach
 port the child does not have. Tasks themselves do not cross: a
@@ -2434,7 +2434,7 @@ port the child does not have. Tasks themselves do not cross: a
 
 Capture spawns can carry a death reaper. `PROC-REAP-ARM ( pid -- pid )` is a
 typed execution vector consulted by every `PROC-RUN-*` capture spawn (via
-`PROC-CAPTURE-PID!`): the default vector arms nothing; `lib/process-fork.f`
+`PROC-CAPTURE-PID!`): the default vector arms nothing; `src/lib/process-fork.f`
 installs the live vector, which arms a co-located `PROC-FORK:SPAWN-REAPER` in
 the child's process group watching the fd published in
 `PROC-FORK:REAP-WATCH-FD` (-1 = no context). A pool worker publishes its
@@ -2447,7 +2447,7 @@ terminator calls `PROC-REAP-DISARM`, which kills and waits the reaper by its
 specific pid, so no reaper outlives its capture and `wait(-1)` callers never
 see a stray child.
 
-`lib/process-argv.f` layers argument-vector support on top of `lib/process.f`.
+`src/lib/process-argv.f` layers argument-vector support on top of `src/lib/process.f`.
 It is loaded after the native engine rebuild because older seeds do not know
 the raw `spawn-argv-io` primitive. It owns bounded argv table and string buffers,
 so callers append counted extra args and never hand-build C argv storage.
@@ -2511,7 +2511,7 @@ an early child close of stdin closes the parent write fd while capture continues
 to the child's final rc/outcome. Its outcome variant keeps the same stdin
 behavior and returns the outcome sum.
 
-`lib/process-env.f` is a post-rebuild layer on top of `lib/process-argv.f` for
+`src/lib/process-env.f` is a post-rebuild layer on top of `src/lib/process-argv.f` for
 explicit child environments and PATH lookup. Keeping it separate preserves the
 native seed path: old seeds can still load `process-argv` for the `bin/hb`
 fixpoint refresh
@@ -2580,14 +2580,14 @@ fresh storage and register cleanup again when used after restore. Ordinary
 `PROC-ARGV-RESET` and `PROC-ENV-RESET` still retain capacity for reuse within the
 current process; capture does not preserve a prepared argv or environment.
 
-`lib/process-command.f` adds a checked command runner above argv/env. A command
+`src/lib/process-command.f` adds a checked command runner above argv/env. A command
 is a CALLER-OWNED context: `CMD:COMMAND NAME` declares one and publishes `NAME`
 as its handle, a `CMD:VEC-CELLS`-cell `PTR-U8-TABLE` whose cell 0 holds the
 `CMD:BYTES`-byte region the declaration allots and whose other cells are the
 child's argv and envp vectors. Arguments and environment rows are copied into
 that region and their addresses installed straight into those vectors, so a run
-spawns from the context's own storage and writes no `lib/process-argv.f` or
-`lib/process-env.f` staging. `CMD:BIND` pairs a caller's own storage
+spawns from the context's own storage and writes no `src/lib/process-argv.f` or
+`src/lib/process-env.f` staging. `CMD:BIND` pairs a caller's own storage
 (`CMD:BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES` and
 `CMD:VEC-CELLS >COUNT MEM-ALLOC-CELLS`) with the same surface.
 
@@ -2642,7 +2642,7 @@ a refused run. `RESET` only resets lengths and state; no run wipes implicitly.
 Wiping leaves the command's arguments, environment, working directory and
 recorded outcome intact.
 
-`lib/process-cwd.f` is a post-env layer for running prepared argv/envp children
+`src/lib/process-cwd.f` is a post-env layer for running prepared argv/envp children
 with a child-only working directory. It uses the native
 `spawn-argv-env-cwd-io` boundary so the parent process cwd never changes. The cwd
 is copied into a separate NUL buffer from the executable path to avoid
@@ -2681,7 +2681,7 @@ that the process can still be watched. An owned-child caller receiving
 their failure meaning. See Apple's [process filter](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_event.c)
 and [exit and wait paths](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_exit.c).
 
-`lib/process-tree.f` ends a process and every process descended from it, which
+`src/lib/process-tree.f` ends a process and every process descended from it, which
 a group kill cannot do: every spawned child leads a process group of its own.
 
 ```forth
@@ -2704,9 +2704,9 @@ own, is refused with `E-PROC-OUTPUT`, and so is a libproc call the kernel
 refuses rather than answers empty; a tree of more than 1024 processes throws
 `E-PROC-TRUNCATED`. A walk that throws still kills every member it found; a
 SIGKILL of the caller leaves them stopped. The gate pool ends every slot it
-kills this way. `lib/process.f` `PROC-KILL-TREE` does it for a capture's child
-the capture ends early, a pty child `lib/pty-harness.f` kills on expiry and
-each pid of a supervised session `lib/process-pty-io.f` tears down. One walk
+kills this way. `src/lib/process.f` `PROC-KILL-TREE` does it for a capture's child
+the capture ends early, a pty child `src/lib/pty-harness.f` kills on expiry and
+each pid of a supervised session `src/lib/process-pty-io.f` tears down. One walk
 or reading runs at a time in a process: a task that calls `KILL-TREE`,
 `CATCHES?` or `CPU-NS` while another task's call holds the file's tables sleeps
 until it is done. fork copies only the calling thread, so `PROC-FORK:RAW` frees
@@ -2715,7 +2715,7 @@ runs there.
 
 ## Process signals
 
-`lib/signal.f` owns signal delivery in `SIGNAL`: the engine's baked
+`src/lib/signal.f` owns signal delivery in `SIGNAL`: the engine's baked
 async-signal-safe stub writes a raised signal's number to a self-pipe, and
 checked code answers it through `SIGNAL:WAIT` or through the descriptor
 `SIGNAL:FD` hands out. `INIT` runs in the main task and owns the facility;
@@ -2727,8 +2727,8 @@ delivery each get, and the per-target signal numbers, flag and record layout.
 
 ## Tasking
 
-`lib/task.f` provides pthread-backed CPU tasks on macOS/aarch64 and
-Linux/aarch64 in package `TASK`. Load it with `require lib/task.f`; the module
+`src/lib/task.f` provides pthread-backed CPU tasks on macOS/aarch64 and
+Linux/aarch64 in package `TASK`. Load it with `require src/lib/task.f`; the module
 owns its `errors`/`memory`/`ffi` dependencies.
 
 ```forth
@@ -2767,7 +2767,7 @@ of SwiftForth's source-body parsing form.
 
 ## Date And Time
 
-`lib/time.f` exposes checked public wrappers around the native clock primitives
+`src/lib/time.f` exposes checked public wrappers around the native clock primitives
 through `package TIME`:
 
 ```forth
@@ -2779,7 +2779,7 @@ TIME:MONO-NS        ( -- n )
 `TIME:MONO-NS` returns monotonic nanoseconds from `mono-ns`; callers should only
 compare ordering or elapsed time, never exact values.
 
-`lib/date.f` exposes checked Gregorian UTC helpers through `package DATE`:
+`src/lib/date.f` exposes checked Gregorian UTC helpers through `package DATE`:
 
 ```forth
 DATE:DIGIT?            ( n -- bool )
@@ -2800,12 +2800,12 @@ DATE:FORMAT-EPOCH-UTC  ( n ptr u8 n -- ptr u8 n )
 day, or `NONE` on malformed input. `DATE:FORMAT-YMD` writes `YYYY-MM-DD`; `DATE:FORMAT-EPOCH-UTC` writes
 `YYYY-MM-DDTHH:MM:SSZ`. Formatters use caller-provided buffers and throw
 `E-TIME-CAPACITY` when the buffer is too small. `DATE:FORMAT-EPOCH-UTC` also throws
-`E-TIME-RANGE` for negative epoch seconds. Load `lib/errors.f` before
-`lib/date.f` when using formatter error codes.
+`E-TIME-RANGE` for negative epoch seconds. Load `src/lib/errors.f` before
+`src/lib/date.f` when using formatter error codes.
 
 ## Argv
 
-`lib/argv.f` provides checked command-line parsing for `hb script.f args...`
+`src/lib/argv.f` provides checked command-line parsing for `hb script.f args...`
 scripts and multi-source tools. The tool CLIs and the stdlib share this one
 packaged module and call it through the qualified `ARGV:` API. The parser reads
 `SCRIPT-ARGC` and `SCRIPT-ARGV$` by
@@ -2871,7 +2871,7 @@ writes while still throwing exact error codes, so tests can assert
 
 ## Sealed vocabulary
 
-`lib/policy.f` is package `POLICY`, for a harness that loads source it did not
+`src/lib/policy.f` is package `POLICY`, for a harness that loads source it did not
 write. `POLICY:ALLOW ( ptr u8 n -- )` admits the public wordlist of the package
 it names, and `POLICY:SEAL ( -- )` seals the process: from then on the source
 the engine reads may name only its own definitions, the admitted public words,
@@ -2880,7 +2880,7 @@ one compiled word, because the seal governs the harness's own file from the seal
 on:
 
 ```forth
-require lib/policy.f
+require src/lib/policy.f
 require my/vocabulary.f
 
 : RUN ( -- ) s" MY-VOCAB" POLICY:ALLOW POLICY:SEAL 0 SCRIPT-ARGV$ included ;
@@ -2903,7 +2903,7 @@ and why a sealed load terminates.
 
 ## Test Property And Build Helpers
 
-`lib/test.f`, `lib/property.f`, and `lib/build.f` provide reusable checked
+`src/lib/test.f`, `src/lib/property.f`, and `src/lib/build.f` provide reusable checked
 helpers for scripts and fixtures. The public surface is checked; unchecked
 metaprogramming, `evaluate`, source-string generation, raw argv/envp cells, and
 process exits stay in small named boundary words with `TRUST` audit entries
@@ -2989,8 +2989,8 @@ BUILD:STEP-VALIDATE  ( ptr BUILD:step -- )
 BUILD:STEP-RUN       ( ptr BUILD:step -- n )
 ```
 
-`lib/test.f` is the public checked test framework interface. It loads assertion
-words from `lib/test/assert.f` and publishes suite orchestration through package
+`src/lib/test.f` is the public checked test framework interface. It loads assertion
+words from `src/lib/test/assert.f` and publishes suite orchestration through package
 `TEST`. Assertion words throw named test errors and keep one final report path;
 they never mask assertion failures. `T-LABEL` attaches a bounded case label to
 the next assertion, and successful or failed assertions clear the label after
@@ -3022,12 +3022,12 @@ keyword (`SUITE`, `WHITEBOX-SUITE`, `SUITE-STDIN`, `GROUP`, `;GROUP`, bare or
 has no ;SUITE`, `E-SUITE-ROW` — so a missing terminator can no longer hand one
 row's arguments to the row after it. Fixture helper words should live in a
 private package, not global stemmed names.
-`lib/property.f` owns deterministic PRNG state, seed/count bounds, bounded
+`src/lib/property.f` owns deterministic PRNG state, seed/count bounds, bounded
 source buffers, and token-tail shrinking utilities.
 Property execution may call an audited `evaluate` boundary for generated checked
 source, but pure generators and shrink predicates remain checked helpers.
-`lib/test/runner.f` layers reusable process-fixture helpers on top of `lib/fs.f`,
-`lib/fs-mutate.f`, `lib/process.f`, and `lib/process-argv.f`. It creates a
+`src/lib/test/runner.f` layers reusable process-fixture helpers on top of `src/lib/fs.f`,
+`src/lib/fs-mutate.f`, `src/lib/process.f`, and `src/lib/process-argv.f`. It creates a
 cleanup-tracked temporary root, runs prepared argv captures with bounded stdout
 and stderr buffers, classifies exit/signal/timeout outcomes, and accumulates
 named failures so test scripts can report all local expectation failures before
@@ -3060,7 +3060,7 @@ exit. This keeps parent progress records serialized at line boundaries: a child
 line written in several chunks cannot be split by a parent heartbeat, while a
 final unterminated child fragment is still emitted before PASS/FAIL.
 
-`lib/test/subject.f` publishes `SUBJECT:RUN`, which evaluates one counted source
+`src/lib/test/subject.f` publishes `SUBJECT:RUN`, which evaluates one counted source
 inside a disposable fork child, captures bounded stdout and stderr, enforces a
 deadline, and returns a typed process outcome. Copy-on-write isolation prevents
 dictionary and engine-state mutations from escaping the child. The child
@@ -3070,18 +3070,18 @@ stack/handler initialization remains an audited boundary owned by
 `habu-type-isolated-dynamic-244c0e2c`; that capability dot replaces it with a
 digest-bound typed source artifact and explicit isolated execution context.
 
-`lib/test/eval.f`, loaded by `lib/test.f`, publishes package `TEST-EVAL`:
+`src/lib/test/eval.f`, loaded by `src/lib/test.f`, publishes package `TEST-EVAL`:
 `N`, `FLAG` and `RC` take one cell, a flag or the throw code out of a source
 text under `evaluate-closed`, with no `evaluate` wrapper in the test. Its
 contract is measured in [forth.md](forth.md) **Rules learned by refusal**.
 `SRC$` and `N!` are public only because N's closed text, running in the
 caller's scope, reaches them qualified.
 
-`lib/fs-root.f` publishes `FS:WRITABLE-ROOT? ( ptr u8 n -- bool )`. It returns
+`src/lib/fs-root.f` publishes `FS:WRITABLE-ROOT? ( ptr u8 n -- bool )`. It returns
 true only for an existing directory to which the process has both write and
 search access. Write-only directories are unusable as cache roots.
 
-`lib/build-cache.f` owns the one canonical persistent build-cache root. Resolve
+`src/lib/build-cache.f` owns the one canonical persistent build-cache root. Resolve
 it with this package surface:
 
 ```forth
@@ -3188,7 +3188,7 @@ the user cannot write or one removed during the build. The in-process build
 throws `E-BUILD-INSTALL`; the CLI cleans up and exits with the build failure
 status and `hb-build: cannot replace output` on stderr, nothing on stdout.
 
-`lib/build.f` lives in `package BUILD` and owns build step modeling, checked
+`src/lib/build.f` lives in `package BUILD` and owns build step modeling, checked
 source certification, artifact path construction, and fail-closed status
 reporting. `BUILD:CHECK` requires a counted source path that names a file, scans
 colon definitions in bounded module storage, and certifies each definition with
@@ -3222,7 +3222,7 @@ These transition rules belong to the `STEP-*` operations; direct generated
 field stores enforce field types but do not invalidate the result.
 Argv and temp path remain metadata; `STEP-RUN` runs the command path as supplied.
 
-`lib/codesign.f` owns checked executable promotion and target signing policy for
+`src/lib/codesign.f` owns checked executable promotion and target signing policy for
 build drivers that already produced an artifact. On macOS it runs
 `/usr/bin/codesign` through the checked argv process layer and throws
 `E-BUILD-COMMAND` when the tool is absent. On Linux there is no fake signing
@@ -3270,7 +3270,7 @@ to Habu; Habu decides what work happens inside that space.
 
 ## Raw serial streams
 
-`lib/serial.f` owns generic Linux AArch64 serial I/O in `SERIAL`: numeric-baud
+`src/lib/serial.f` owns generic Linux AArch64 serial I/O in `SERIAL`: numeric-baud
 raw 8N1 setup, partial reads/writes with finite waits, and explicit close.
 Applications own their protocols and handle lifetimes. See [serial streams](serial.md)
 for effects, configuration and timeout semantics, foreign boundaries, and the
@@ -3278,8 +3278,8 @@ kernel pseudoterminal checks.
 
 ## XMODEM
 
-`lib/xmodem.f` owns transport-independent checked packet framing in `XMODEM`.
-`lib/serial-xmodem.f` owns bounded transfers on borrowed serial handles in
+`src/lib/xmodem.f` owns transport-independent checked packet framing in `XMODEM`.
+`src/lib/serial-xmodem.f` owns bounded transfers on borrowed serial handles in
 `SERIAL-XMODEM`. Applications own binary lengths, file handling, command
 responses, and device policy. See [XMODEM](xmodem.md) for typed interfaces,
 session ownership, retransmission and deadline behavior, and validation.

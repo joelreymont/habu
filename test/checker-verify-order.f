@@ -6,11 +6,11 @@
 \ prefix: every definition already exists, and so does everything after it.
 \ A replay would have seen only what existed when each word was compiled; the
 \ verifier must reconstruct that order, and it must not hide anything older.
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/tier.f
-require lib/test/eval.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/tier.f
+require src/lib/test/eval.f
 require src/habu/verify-source.f
 
 \ A resident parsing immediate executes during compilation despite its neutral

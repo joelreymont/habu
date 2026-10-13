@@ -26,16 +26,16 @@
 \ products with their name maps; `tools/two-generation-build.f -- --compare`
 \ names the first differing offset of a failing pair.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 require tools/chain-run.f
-require lib/tree-copy.f
+require src/lib/tree-copy.f
 
 package HOST-ROW-TEST
 

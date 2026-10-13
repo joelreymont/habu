@@ -544,27 +544,27 @@
 \ can make one. Nor can one make a check outlast LSP-CHECK's deadline or
 \ overflow the verifier's capture.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
-require lib/span.f
-require lib/memory.f
-require lib/byte-buffer.f
-require lib/fd-io.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/engine-candidate.f
-require lib/uri.f
-require lib/content-length.f
-require lib/json-read.f
-require lib/json-rpc.f
-require lib/json-write.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
+require src/lib/span.f
+require src/lib/memory.f
+require src/lib/byte-buffer.f
+require src/lib/fd-io.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
+require src/lib/uri.f
+require src/lib/content-length.f
+require src/lib/json-read.f
+require src/lib/json-rpc.f
+require src/lib/json-write.f
 require tools/check-verify-core.f
 require tools/lsp-docs.f
 require tools/lsp-text.f
@@ -1804,8 +1804,8 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    A-PATH s" refused" COMPLETED
    A-PATH 2 EXPECT 0 16 0 20 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
 
-: REQUIRES-FMT ( -- ptr u8 n )  s\" require lib/fmt.f\n: G ( n -- ) FMT:SB-U ;\n" ;
-: UNDERFLOWS-FMT ( -- ptr u8 n )  s\" require lib/fmt.f\n: G ( -- ) FMT:SB-U ;\n" ;
+: REQUIRES-FMT ( -- ptr u8 n )  s\" require src/lib/fmt.f\n: G ( n -- ) FMT:SB-U ;\n" ;
+: UNDERFLOWS-FMT ( -- ptr u8 n )  s\" require src/lib/fmt.f\n: G ( -- ) FMT:SB-U ;\n" ;
 
 \ A requires a file of the tree: checked in A's load context, it verifies, and
 \ changed to call that file's word without its input, it is refused.
@@ -1835,13 +1835,13 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    SAY
    A-PATH -1 EXPECT PUBLISHES ;
 
-\ The engine provides lib/string.f, so nothing is checked whatever its text.
+\ The engine provides src/lib/string.f, so nothing is checked whatever its text.
 : ENGINE-TURNS ( -- )
    INITIALIZE
-   s" lib/string.f" IN-TREE TEXT-F 1 OPENS
+   s" src/lib/string.f" IN-TREE TEXT-F 1 OPENS
    SAY
    HEAR CAPABILITIES
-   s" lib/string.f" IN-TREE 1 EXPECT PUBLISHES ;
+   s" src/lib/string.f" IN-TREE 1 EXPECT PUBLISHES ;
 
 \ The emoji before H's drop is four bytes and two UTF-16 units.
 : TEXT-H ( -- ptr u8 n )  s" ( 😀 ) : H ( n -- n ) drop ;" ;
@@ -3189,7 +3189,7 @@ variable LENGTH-N                        \ the length of its directory's name
 \ a use of each in upper case and in lower case, and qualified ones outside HV-P.
 : HOVER-CVT-PATH ( -- ptr u8 n )  s" hover-cvt.f" IN-TREE ;
 : TEXT-HOVER-CVT ( -- ptr u8 n )
-   s\" require lib/type/deftype.f\npackage HV-P\npublic\nDEFTYPE CVT-T\n: HV-CVT ( -- n ) 5 >CVT-T CVT-T>N >cvt-t cvt-t>n ;\n;package\n: HV-Q ( -- n ) 5 HV-P:>CVT-T HV-P:CVT-T>N ;\n" ;
+   s\" require src/lib/type/deftype.f\npackage HV-P\npublic\nDEFTYPE CVT-T\n: HV-CVT ( -- n ) 5 >CVT-T CVT-T>N >cvt-t cvt-t>n ;\n;package\n: HV-Q ( -- n ) 5 HV-P:>CVT-T HV-P:CVT-T>N ;\n" ;
 
 \ The lines of CVT-T's converter W, of effect E, as Markdown.
 : CVT-MD ( ptr u8 n ptr u8 n -- )
@@ -3756,7 +3756,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 : TEXT-ID-TWICE ( -- ptr u8 n )
    s\" package P\npublic\ninclude id-inc.f\n;package\npackage Q\npublic\ninclude id-inc.f\n;package\n: ID-BOTH ( -- n ) P:K Q:K + ;\n" ;
 : TEXT-ID-DT ( -- ptr u8 n )
-   s\" require lib/type/deftype.f\npackage ID-DT\npublic\nDEFTYPE ID-CVT\n: ID-USE ( -- n ) 5 >ID-CVT ID-CVT>N ;\n;package\n" ;
+   s\" require src/lib/type/deftype.f\npackage ID-DT\npublic\nDEFTYPE ID-CVT\n: ID-USE ( -- n ) 5 >ID-CVT ID-CVT>N ;\n;package\n" ;
 : TEXT-ID-PROBE ( -- ptr u8 n )
    s\" package R\npublic\ninclude id-inc.f\n;package\n: ID-R ( -- n ) R:K ;\n" ;
 
@@ -4049,11 +4049,11 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 \ then DEFTYPE CMPQ-T, public in package CMPQ, and a qualified use of each of
 \ its converters outside CMPQ.
 : TEXT-CMP-A ( -- ptr u8 n )
-   s\" require cmpl-dep.f\npackage CMPA\n: CMPL-ONE ( -- n ) 1 ;\n: CMPL-TWO ( -- n ) CMPL-ONE CMPL-DEP 1 2 swap 2drop ;\n;package\nrequire lib/type/deftype.f\nDEFTYPE CMPL-T\n: CMPL-CVT ( -- n ) 5 >CMPL-T CMPL-T>N ;\npackage CMPQ\npublic\nDEFTYPE CMPQ-T\n;package\n: CMPQ-USE ( -- n ) 5 CMPQ:>CMPQ-T CMPQ:CMPQ-T>N ;\n" ;
+   s\" require cmpl-dep.f\npackage CMPA\n: CMPL-ONE ( -- n ) 1 ;\n: CMPL-TWO ( -- n ) CMPL-ONE CMPL-DEP 1 2 swap 2drop ;\n;package\nrequire src/lib/type/deftype.f\nDEFTYPE CMPL-T\n: CMPL-CVT ( -- n ) 5 >CMPL-T CMPL-T>N ;\npackage CMPQ\npublic\nDEFTYPE CMPQ-T\n;package\n: CMPQ-USE ( -- n ) 5 CMPQ:>CMPQ-T CMPQ:CMPQ-T>N ;\n" ;
 
 \ TEXT-CMP-A with CMPL-ONE renamed CMPL-NEW, the body's bytes unmoved.
 : TEXT-CMP-A-NEW ( -- ptr u8 n )
-   s\" require cmpl-dep.f\npackage CMPA\n: CMPL-NEW ( -- n ) 5 ;\n: CMPL-TWO ( -- n ) CMPL-NEW CMPL-DEP 1 2 swap 2drop ;\n;package\nrequire lib/type/deftype.f\nDEFTYPE CMPL-T\n: CMPL-CVT ( -- n ) 5 >CMPL-T CMPL-T>N ;\npackage CMPQ\npublic\nDEFTYPE CMPQ-T\n;package\n: CMPQ-USE ( -- n ) 5 CMPQ:>CMPQ-T CMPQ:CMPQ-T>N ;\n" ;
+   s\" require cmpl-dep.f\npackage CMPA\n: CMPL-NEW ( -- n ) 5 ;\n: CMPL-TWO ( -- n ) CMPL-NEW CMPL-DEP 1 2 swap 2drop ;\n;package\nrequire src/lib/type/deftype.f\nDEFTYPE CMPL-T\n: CMPL-CVT ( -- n ) 5 >CMPL-T CMPL-T>N ;\npackage CMPQ\npublic\nDEFTYPE CMPQ-T\n;package\n: CMPQ-USE ( -- n ) 5 CMPQ:>CMPQ-T CMPQ:CMPQ-T>N ;\n" ;
 
 \ textDocument/completion, by its id's JSON text, at character C of line L of
 \ the document opened from this path.
@@ -4212,11 +4212,11 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 : TEXT-LK-MOVED ( -- ptr u8 n )  s\" \\ moved\nrequire lk-dep.f\n" ;
 
 \ After a comment holding a character UTF-16 counts as one unit and UTF-8 as
-\ two bytes, lk-dep.f required; lib/string.f required, which the engine
+\ two bytes, lk-dep.f required; src/lib/string.f required, which the engine
 \ provides; lk-dep.f required again by a string; lk-inc.f included; and
 \ lk-gone.f, which is not there, required, where the check stops.
 : TEXT-LK ( -- ptr u8 n )
-   s\" ( é ) require lk-dep.f\nrequire lib/string.f\ns\" lk-dep.f\" required\ninclude lk-inc.f\nrequire lk-gone.f\n" ;
+   s\" ( é ) require lk-dep.f\nrequire src/lib/string.f\ns\" lk-dep.f\" required\ninclude lk-inc.f\nrequire lk-gone.f\n" ;
 
 \ TEXT-LK-ONE, then one `using` more than the checker holds open, at which the
 \ verifier dies, its load reported, and exits without a verdict.
@@ -4276,8 +4276,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 \ Each loader of TEXT-LK the check reached and whose file it selected is a
 \ link over its operand, in the order of the text: lk-dep.f's first require
 \ and lk-inc.f's include read their files, linked with no tooltip; the
-\ engine's lib/string.f and lk-dep.f's second require are held, each with
-\ its tooltip, lib/string.f named relative to the working directory, which
+\ engine's src/lib/string.f and lk-dep.f's second require are held, each with
+\ its tooltip, src/lib/string.f named relative to the working directory, which
 \ the server shares, and lk-dep.f, outside it, by its path. lk-gone.f, which
 \ the check could not read, has its E-MISSING-SOURCE and no link.
 : LINK-TURNS ( -- )
@@ -4294,7 +4294,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
    SAY
    s" 3" LINKS-START
    0 14 22 LK-DEP-PATH LK-CANON READ-LINK+
-   1 8 20 s" lib/string.f" IN-TREE LK-CANON HELD-LINK+
+   1 8 24 s" src/lib/string.f" IN-TREE LK-CANON HELD-LINK+
    2 3 11 LK-DEP-PATH LK-CANON HELD-LINK+
    3 8 16 LK-INC-PATH LK-CANON READ-LINK+
    LINKS-END ;
@@ -6050,16 +6050,16 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ the request, asked by a string id, reads before its answer: the room of the
 \ messages held grows past the request's own bytes, and the answer still
 \ carries its id; e.f's list and then the new document's follow it. The
-\ document is lib/string.f, which the engine provides, so nothing checks its
+\ document is src/lib/string.f, which the engine provides, so nothing checks its
 \ text.
 : REFS-GROWTH-TURNS ( -- )
    s\" \"refs-grow\"" PAIR-START
    BIG-QUIET
-   s" lib/string.f" IN-TREE TXT$ 1 OPENS
+   s" src/lib/string.f" IN-TREE TXT$ 1 OPENS
    STREAM
    s\" \"refs-grow\"" PAIR-ANSWER
    s" refs-halt/e.f" FIXTURE 1 CLEAN
-   s" lib/string.f" IN-TREE 1 CLEAN ;
+   s" src/lib/string.f" IN-TREE 1 CLEAN ;
 
 \ The input that comes while a request checks the files it gathers from.
 \ Those checks publish nothing, as intended: a document's list comes only from
@@ -6156,7 +6156,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 
 \ A FUNCTION: whose group is empty stores a signature that does not parse: the
 \ packet is at its name F, line 1, characters 10-11.
-: EMPTY-FFI ( -- ptr u8 n )  s\" require lib/ffi-abi.f\nFUNCTION: F getpid ( )\n" ;
+: EMPTY-FFI ( -- ptr u8 n )  s\" require src/lib/ffi-abi.f\nFUNCTION: F getpid ( )\n" ;
 
 : STORED-SIGNATURE-TURNS ( -- )
    INITIALIZE

@@ -1,6 +1,6 @@
 \ Fixed storage binds the accessor that owns its allocation, and capture walks
 \ only cells whose stored type can contain a quotation.
-require lib/test.f
+require src/lib/test.f
 require src/habu/address-cells.f
 
 package STORAGE-BIND-TEST

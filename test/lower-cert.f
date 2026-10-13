@@ -2,7 +2,7 @@
 
 require test/checker-assert.f
 require test/layout-valid-guard-base.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package LOWER-CERT-TEST
 

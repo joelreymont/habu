@@ -58,22 +58,22 @@
 \ cleanup removes. A passing case costs none of it: the pipe is already at end
 \ of file.
 
-require lib/errors.f
-require lib/string.f
-require lib/le.f
-require lib/ffi-abi.f
-require lib/fmt.f
-require lib/test.f
-require lib/fs.f
-require lib/fs-list.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-fork.f
-require lib/signal.f
-require lib/engine-candidate.f
-require lib/test/runner.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/le.f
+require src/lib/ffi-abi.f
+require src/lib/fmt.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-list.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-fork.f
+require src/lib/signal.f
+require src/lib/engine-candidate.f
+require src/lib/test/runner.f
 require test/gate-pool.f
 
 package GATE-SIGNAL-TEST

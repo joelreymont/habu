@@ -12,9 +12,9 @@ The generator reads only the two authoritative property files below. The
 | `PropList.txt` | `https://www.unicode.org/Public/16.0.0/ucd/PropList.txt` | `53d614508e2a0b2305a8aa21cd60d993de9326cdf65993660dfcce4503548583` |
 | `LICENSE.txt` | `https://www.unicode.org/license.txt` | `e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96` |
 
-The generated runtime artifact `lib/unicode/class-data.f` has SHA-256
-`d40a9c36cca56d5b0757e552e0aa0a4920eea1593f8e8967a7abb89d3a8289d8`.
-It is 16,615 bytes and contains 677 canonical letter ranges, 144 number
+The generated runtime artifact `src/lib/unicode/class-data.f` has SHA-256
+`c6516070ed8b749d6d6da07a907cc2935cfbcebf53b805fc5f1b49f637bff101`.
+It is 33,675 bytes and contains 677 canonical letter ranges, 144 number
 ranges, and 10 whitespace ranges.
 The same value is stored alone in `class-data.sha256`, outside the generated
 source so the lock is not self-referential. The generator verifies both input

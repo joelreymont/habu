@@ -1,11 +1,11 @@
 \ Save generated initialized-field effects, then compile fresh consumers from
 \ the image at both tiers. Logs and the image remain in the printed directory.
-require lib/test.f
-require lib/fs-mutate.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 
 package C2-INIT-ACCESSOR-E2E
 private

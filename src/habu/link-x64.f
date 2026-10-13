@@ -62,7 +62,7 @@
 \ LOAD ORDER. The x86-64 writer sizes image-bytes.f under `using X64CODE`,
 \ then src/habu/aot-decl.f reads ARM64's AOT-SECTION-CAP for the shared
 \ capture format. This file reads X64CODE qualified.
-require lib/le.f
+require src/lib/le.f
 require src/arch/x86-64/icode.f
 require src/os/linux-x86-64/elf.f
 require src/os/linux-x86-64/target-layout.f

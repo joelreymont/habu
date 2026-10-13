@@ -1,6 +1,6 @@
 # IPv4 TCP sockets
 
-[`lib/net/tcp4.f`](../lib/net/tcp4.f) provides generic IPv4 stream socket I/O.
+[`src/lib/net/tcp4.f`](../src/lib/net/tcp4.f) provides generic IPv4 stream socket I/O.
 The current implementation supports Habu on Linux and macOS AArch64. It
 contains no application protocol, framing, name resolution, or connection
 policy. Other operating systems are rejected before opening a socket. The
@@ -199,7 +199,7 @@ retired with this module's own resolution. Ordinary OS operation failures are
 result variants, not those exceptions.
 
 Package FFI registers cache cleanup with
-[`IMAGE-LIFECYCLE`](../lib/image-lifecycle.f) when the first declaration is
+[`IMAGE-LIFECYCLE`](../src/lib/image-lifecycle.f) when the first declaration is
 made, before any symbol is resolved, and a failed resolution retains that
 registration for a later retry. Quiescent image preparation clears every cached
 function address, so the next call resolves again. The module acquires no
@@ -210,7 +210,7 @@ are process resources, not serializable handles.
 ## Checks
 
 ```sh
-bin/hb --load lib/net/tcp4-test.f
+bin/hb --load src/lib/net/tcp4-test.f
 ```
 
 The suite holds both peers in one process: the main task binds an ephemeral

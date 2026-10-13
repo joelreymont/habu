@@ -1,6 +1,6 @@
 \ check-all-errors.f - CLI wrapper for all-errors checker diagnostics.
 
-require lib/argv.f
+require src/lib/argv.f
 require tools/check-all-errors-core.f
 
 package CHECK-ALL-ERRORS-CLI

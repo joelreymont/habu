@@ -28,8 +28,8 @@
 \ through -- over a table this file owns, and watch the same engine table.
 
 require src/habu/address-cells.f
-require lib/errors.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/test.f
 
 package XT-CELL-DECL
 private

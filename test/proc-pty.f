@@ -1,16 +1,16 @@
 \ proc-pty.f — focused native process/PTY harness. Run with:
-\   bin/hb --load lib/errors.f lib/process.f test/proc-pty.f
+\   bin/hb --load src/lib/errors.f src/lib/process.f test/proc-pty.f
 \ The engine bakes neither POLL-IN nor the process primitives below them, so the
 \ two library files are part of the invocation; test/runtime-regression-test.f
 \ (GE-PROCESS-PTY) drives exactly this line, and the engine to test can follow
 \ as `-- <path>` or in HABU_UNDER_TEST.
 \
 \ The terminal itself — the pair, the spawn, the reads, the waits and both
-\ barrier shapes — is lib/pty-harness.f; this file types at the child and says
+\ barrier shapes — is src/lib/pty-harness.f; this file types at the child and says
 \ what the answers must be.
 
-require lib/pty-harness.f
-require lib/test/subject.f
+require src/lib/pty-harness.f
+require src/lib/test/subject.f
 
 package PROC-PTY
 
@@ -99,7 +99,7 @@ variable PID
 
 \ A redraw while echoing the input already contains a prompt. Completion
 \ requires a prompt after the answer, the same ordered pair in the wait
-\ (lib/pty-harness.f WAIT-AFTER) and the live echo regression below.
+\ (src/lib/pty-harness.f WAIT-AFTER) and the live echo regression below.
 : PROMPT-READY? ( ptr u8 n -- bool )
    s" habu> " AFTER? ;
 
@@ -921,9 +921,9 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
    #FAIL @ . s" proc-pty: failures" 1 die ;
 
 \ A deadline is no failed case: a reap that ran out of clock, or a wait whose
-\ clock ended with the child still at the terminal (lib/pty-harness.f
+\ clock ended with the child still at the terminal (src/lib/pty-harness.f
 \ WAIT-AFTER-WITHIN), throws E-PROC-TIMEOUT. This run then exits
-\ PROC-TIMEOUT-RC (lib/process.f), and the gate entry that runs it reports a
+\ PROC-TIMEOUT-RC (src/lib/process.f), and the gate entry that runs it reports a
 \ timeout instead of counting a failure. Every other throw is the run's own.
 : RUN ( -- )
    [: CAPTURE-HB PTY-HB ;] catch {: code:n :}

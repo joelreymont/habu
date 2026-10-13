@@ -4,7 +4,7 @@
 \ a return-row read or pop below the frame this definition may see, and a
 \ signature with tokens after its output side.
 
-require lib/test.f
+require src/lib/test.f
 require test/checker-assert.f
 
 package CHECKER-SOUNDNESS

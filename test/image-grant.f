@@ -13,8 +13,8 @@
 \ a row that reaches an image the gate did not settle for it dies here, naming
 \ the image, instead of building it beside the gate's build row.
 
-require lib/errors.f
-require lib/string.f
+require src/lib/errors.f
+require src/lib/string.f
 
 package IMAGE-GRANT
 

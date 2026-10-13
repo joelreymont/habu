@@ -8,4 +8,4 @@ closed-at: "2026-09-30T17:45:00.000000+02:00"
 close-reason: "Complete: every child is closed."
 ---
 
-Problem: the lib/ review found an fd leak, 59 forwarding shims around a private package, mapping leaks on growth, Darwin contracts the engine patches over on Linux, and large duplicated surfaces. Acceptance: every child closed or refuted. Files: lib/. Verify: per child. Depends: none. Ownership: stdlib. Claim: unassigned.
+Problem: the src/lib/ review found an fd leak, 59 forwarding shims around a private package, mapping leaks on growth, Darwin contracts the engine patches over on Linux, and large duplicated surfaces. Acceptance: every child closed or refuted. Files: src/lib/. Verify: per child. Depends: none. Ownership: stdlib. Claim: unassigned.

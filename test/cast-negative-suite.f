@@ -36,8 +36,8 @@
 
 require test/checker-assert.f
 require src/habu/verify-source.f
-require lib/test/subject.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test/subject.f
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
 variable #CASE
@@ -275,7 +275,7 @@ s" cast: CNW17 ( n -- ptr CN-FQ:fqlist )" CN-RUN:DECL 0 T=
 \ mint one. This is the shape the live regression had: maki/extent.f declared
 \ `CAST: >RED ( ix<e> -- redx<e> )` inside `package MAKI`, minting the engine's
 \ `redx`, and every load of the file died with this reject. The repair moved the
-\ declaration to global scope (lib/type/extent-role.f) and moved `ix` into the
+\ declaration to global scope (src/lib/type/extent-role.f) and moved `ix` into the
 \ same engine registration as its `extprod` and `redx` siblings.
 \ `redx` is a parametric engine family; `attn-stage-q` is an arity-0 one.
 s" cast: CNE0 ( n -- redx<n> )"                  CN-RUN:DECL 0 T=

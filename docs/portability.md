@@ -575,7 +575,7 @@ Constant evaluation must use target numeric semantics, independent of the build 
 
 ### 10.2 Throws, traps and foreign errors
 
-Catchable Habu exceptions retain the full 64-bit code. Wasm uses explicit status edges and context storage. Native implementations may use their qualified internal mechanism, but no Habu unwind/nonlocal jump may escape through arbitrary C/COM/browser frames. Foreign entry wrappers catch expected Habu failures and translate them according to the actual foreign function's return contract. Native foreign entry exists on master as C callbacks: `FFI-CB` catches a throw in the callback body and answers C the declared `FALLBACK` value (`lib/ffi-callback.f`, `docs/ffi-callback.md:1-9`). [B1 §8; WN]
+Catchable Habu exceptions retain the full 64-bit code. Wasm uses explicit status edges and context storage. Native implementations may use their qualified internal mechanism, but no Habu unwind/nonlocal jump may escape through arbitrary C/COM/browser frames. Foreign entry wrappers catch expected Habu failures and translate them according to the actual foreign function's return contract. Native foreign entry exists on master as C callbacks: `FFI-CB` catches a throw in the callback body and answers C the declared `FALLBACK` value (`src/lib/ffi-callback.f`, `docs/ffi-callback.md:1-9`). [B1 §8; WN]
 
 A fatal invariant failure poisons/discards the affected runtime or process. It is not converted into a recoverable domain error. Restoring a stack depth on catch does not restore overwritten linear resources, heap data, browser requests, file writes or remote changes. Cleanup precedence follows the existing Habu contract; tests cover body throw, cleanup throw, nested catch and fatal termination.
 
@@ -757,7 +757,7 @@ Deterministic code/object comparison must not silently exclude arbitrary differe
 
 Native in-process code publication is allowed only into a runtime with a compatible **execution** ISA/ABI and enabled CPU features. Cross-generated target code goes to an artifact, never into the current host's executable region merely because a numeric address was supplied.
 
-Staged file publication has landed on master: every `-o` and engine publication is staged (b394e3d3), a failed snapshot write leaves no partial image (3ad91bad, `src/habu/snap-lib.f`), and `hb-build` install stages through `RESERVE-SIBLING` (318155ae, `lib/fs-mutate.f`).
+Staged file publication has landed on master: every `-o` and engine publication is staged (b394e3d3), a failed snapshot write leaves no partial image (3ad91bad, `src/habu/snap-lib.f`), and `hb-build` install stages through `RESERVE-SIBLING` (318155ae, `src/lib/fs-mutate.f`).
 
 ### 14.1 Publisher contract
 
@@ -826,7 +826,7 @@ ForeignCallPlan {
 
 Create the plan from exact foreign types before emission. Validate hidden aggregate-return pointers, varargs, sign/zero extension, floating/integer positions and by-reference parameters. An unsupported signature is refused at declaration. Use independent C/SDK caller and callee fixtures, not two Habu stubs generated from the same potentially wrong classifier.
 
-C callbacks, the reverse direction, exist on master: `lib/ffi-callback.f` (01bc2a66, 1e9951ab) gives C 16 entry stubs into checked Habu words, and only macOS on arm64 has run them ([ffi-callback.md](ffi-callback.md)).
+C callbacks, the reverse direction, exist on master: `src/lib/ffi-callback.f` (01bc2a66, 1e9951ab) gives C 16 entry stubs into checked Habu words, and only macOS on arm64 has run them ([ffi-callback.md](ffi-callback.md)).
 
 Windows x64 uses positional argument registers and caller-provided home space; Windows ARM64 has its own platform variations, including reserved-register constraints. Internal Habu register pools cannot be exported as those ABIs. ARM64EC is a distinct ABI and is not included merely by implementing normal Windows ARM64. [MS-X64; MS-ARM64; MS-ARM64EC]
 

@@ -1,8 +1,8 @@
-require lib/test.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require test/whitebox-child.f
 
 package PRIMITIVE-TRUST-SUITE
@@ -25,7 +25,7 @@ create ERR IO-CAP allot
    s" --" >LEN PROC-ARGV+
    fixture u >LEN PROC-ARGV+
    \ The window has no `require`: it loads a fixture's dependencies from here.
-   s" lib/tier.f" >LEN PROC-ARGV+
+   s" src/lib/tier.f" >LEN PROC-ARGV+
    native if s" test/compiler/aot-mode.f" >LEN PROC-ARGV+ then
    WHITEBOX-CHILD:ENV! ;
 

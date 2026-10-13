@@ -1,5 +1,5 @@
 \ Large local frames and empty groups through the native load path.
-require lib/test.f
+require src/lib/test.f
 
 package MANY-LOCALS-TEST
 

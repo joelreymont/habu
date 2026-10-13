@@ -19,7 +19,7 @@
 \     caller pushed (UREAD, UPOP);
 \   - a bar on one side only, which pairs the written row with a fresh one, is
 \     admitted, and so are its callers (ONE);
-\   - the neutral spellings lib/c2-memory.f uses, `| U -- S | U` and
+\   - the neutral spellings src/lib/c2-memory.f uses, `| U -- S | U` and
 \     `[ R ... -- S ... | U -- U ]`, stop certifying (APPLY, and that library's
 \     own suites);
 \   - a primitive's return row (`>r`, `r>`) is refused with the signatures, so
@@ -33,13 +33,13 @@
 \ `generates:` row is a throw rather than a refusal to certify: it exits 67, the
 \ uncaught-throw code, with the row's diagnostic and the throw's code.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/process.f
-require lib/process-argv.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/engine-candidate.f
 
 package NRS-INPUT-TEST
 private

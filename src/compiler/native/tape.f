@@ -7,8 +7,8 @@
 \ An origin ordinal is strictly below its child's, which is what makes the
 \ expansion relation acyclic; every walk re-verifies that decrease.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/digest.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f

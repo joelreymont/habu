@@ -812,7 +812,7 @@ Their top owners:
 | IR-SCHEMA | `src/compiler/ir/schema.f` | 46 | 5,236 |
 | TFAM | `src/core/type-family.f` | 89 | 4,232 |
 | IR-TYPE | `src/compiler/ir/type.f` | 23 | 4,152 |
-| NUM | `lib/num-types.f` | 47 | 3,832 |
+| NUM | `src/lib/num-types.f` | 47 | 3,832 |
 | A64IR | `src/compiler/native/a64ir.f` | 13 | 3,668 |
 | NEFF | `src/compiler/native-effect.f` | 30 | 3,876 |
 | IR-BUILD | `src/compiler/ir/build.f` | 40 | 2,500 |

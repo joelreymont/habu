@@ -1,9 +1,9 @@
 \ bootstrap-codegen-test.f - earliest-marker recovery cases absent from real builds.
 \ Run: bin/hb --load tools/bootstrap-codegen-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
 
 include src/habu/hide.f
 

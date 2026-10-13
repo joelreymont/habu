@@ -1,9 +1,9 @@
 \ C2 refusals retain the operation and the logical owner or loan in both
 \ diagnostic formats. Every candidate runs through the real evaluator.
-require lib/test.f
-require lib/test/subject.f
-require lib/c2-memory.f
-require lib/c2-owner.f
+require src/lib/test.f
+require src/lib/test/subject.f
+require src/lib/c2-memory.f
+require src/lib/c2-owner.f
 require test/c2-records-types.f
 require test/c2-forall-input.f
 

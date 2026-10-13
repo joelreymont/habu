@@ -22,7 +22,7 @@
 \
 \ Run: bin/hb --load test/undefine-binding.f
 
-require lib/test.f
+require src/lib/test.f
 
 T-RESET
 

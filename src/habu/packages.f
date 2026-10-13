@@ -12,7 +12,7 @@
 \ exits without a word, so every refusal the engine reports is made here
 \ first, in the engine's order and with its text.
 
-require lib/prelude.f
+require src/lib/prelude.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/native/dict.f

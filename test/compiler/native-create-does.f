@@ -1,6 +1,6 @@
 \ native-create-does.f - ordinary colon compiles defining words natively.
 
-require lib/test.f
+require src/lib/test.f
 require src/compiler/native/compiler.f
 require src/habu/verify-source.f
 

@@ -27,7 +27,7 @@
 \ not retired its dictionary yet. It reads the dictionary through
 \ src/habu/xref.f, which the native engine provides, and the pure carrier module.
 
-require lib/fmt.f
+require src/lib/fmt.f
 require src/habu/address-carrier.f
 
 package SNAP-HEAP-OWNER

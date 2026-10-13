@@ -1,6 +1,6 @@
 \ standalone-load-test.f - prove tool and build-side entries load in isolation.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\   lib/fs-mutate.f lib/process.f lib/process-argv.f tools/standalone-load-test.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f tools/standalone-load-test.f
 \
 \ Regression guard for habu-standalone-support-load-7c3d9f16: a support/tool entry
 \ must `require` the exact deps its own top-level path uses, so `bin/hb --load
@@ -18,15 +18,15 @@
 \ E-UNDEFINED: XDS (mnem.f unrequired; its loaders brought it in through
 \ src/habu/app-image.f).
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/test/outcome.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/test/outcome.f
 
 2048 constant SL-CAP
 20000 constant SL-TIMEOUT-MS

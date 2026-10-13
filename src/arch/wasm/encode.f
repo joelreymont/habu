@@ -58,11 +58,11 @@
 \ STORAGE CLASS. MODULE-OWNED: the emission and its rows live in this
 \ package's buffers until the next ENCODE or RETIRE.
 
-require lib/prelude.f
-require lib/errors.f
-require lib/string.f
-require lib/span.f
-require lib/adt/option.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/span.f
+require src/lib/adt/option.f
 require src/compiler/ir/id.f
 require src/compiler/ir/type.f
 require src/compiler/ir/symbol.f

@@ -11,9 +11,9 @@
 \ may be interpreted as serialized offsets. Counts, names and effect graphs
 \ must describe the surviving words, with no rows for rolled-back candidates.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
 
 package RBSIG-TEST
 private

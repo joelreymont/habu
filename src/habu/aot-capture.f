@@ -919,7 +919,7 @@ variable ACAP-BP
 \ `defer SETUP ( -- )` fails before it publishes the word.
 \
 \ IT USED TO BE FOUR. MEM:WB-DEPTH, MEM:WB-BUFFERS and MEM:WB-LENGTHS were here
-\ for lib/memory-test.f's WITH-BYTES frame audit, which reopens package MEM and
+\ for src/lib/memory-test.f's WITH-BYTES frame audit, which reopens package MEM and
 \ reads them to prove a completed WITH-BYTES left no frame behind. That was a
 \ whitebox suite asking the SHIPPED image for something the shipped image should
 \ not have to answer, and it is a WHITEBOX-SUITE now: it runs on the unsealed,

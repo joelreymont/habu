@@ -7,8 +7,8 @@
 \ Bytes are written in hex, two lowercase digits a byte. A refused write or
 \ patch is checked to leave the whole buffer under it as it was.
 
-require lib/test.f
-require lib/span.f
+require src/lib/test.f
+require src/lib/span.f
 require src/arch/wasm/leb.f
 
 package WLEB-TEST

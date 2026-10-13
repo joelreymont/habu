@@ -1,6 +1,6 @@
 \ Independent buffers share the allocation registry across native tasks.
-require lib/test.f
-require lib/task.f
+require src/lib/test.f
+require src/lib/task.f
 
 package DYNAMIC-BUFFER-TASK-TEST
 private

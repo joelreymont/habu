@@ -1,8 +1,8 @@
 \ native-rename-rows.f - whole-value stack renames through production code.
 
 require test/compiler/native-eval-fixture.f
-require lib/test.f
-require lib/adt/option.f
+require src/lib/test.f
+require src/lib/adt/option.f
 require src/compiler/native/compiler.f
 
 \ Tier 1 below: the whole-value moves and the width refusals that name them
@@ -146,7 +146,7 @@ create SP-BYTES 100 allot
 \ A `does>` clause's rows are rows: the created word yields a two-cell value and
 \ the clause is placed from that row's own per-cell boundaries, so the definer
 \ compiles and the word it creates runs (dot habu-give-a-does-97cd0db2). The
-\ body is lib/span.f's SPAN-BUFFER: shape - a reach cell and the bytes after it.
+\ body is src/lib/span.f's SPAN-BUFFER: shape - a reach cell and the bytes after it.
 : SP-BUFFER: ( n -- )
    create dup , allot
    does> ( -- sp<u8> ) dup @ >r cell+ byte-view r> NRR-SP:MAKE ;

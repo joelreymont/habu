@@ -1,7 +1,7 @@
 \ A leaving branch is re-encoded when a package object is installed elsewhere.
 \ Exercise the public encoder through the real NBR package load.
 
-require lib/test.f
+require src/lib/test.f
 require src/compiler/native/branch.f
 
 package NBR-RELOC-TEST

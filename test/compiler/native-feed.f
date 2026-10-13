@@ -3,7 +3,7 @@
 \ the ordinary compiled fixtures below also exercise source reconstruction.
 \ Tier-neutral by design: the reader is driven directly over explicit text, so
 \ the rows asserted are the same at either tier.
-require lib/test.f
+require src/lib/test.f
 require src/compiler/native/feed.f
 
 package NFEED-FIXTURE

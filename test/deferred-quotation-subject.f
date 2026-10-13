@@ -1,5 +1,5 @@
 \ Deferred DATA columns hold quotation fields across growth and two images.
-require lib/test.f
+require src/lib/test.f
 
 package DEFER-QUOT-TEST
 

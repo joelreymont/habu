@@ -65,7 +65,7 @@
 \
 \ Run: bin/hb --load test/create-axiom-test.f
 
-require lib/test.f
+require src/lib/test.f
 require src/habu/verify-source.f
 require test/checker-assert.f
 require src/compiler/native/compiler.f
@@ -191,7 +191,7 @@ private
 : COMPILER-ENUM-HALF ( -- )
    s" : CAX-D2 ( n -- n ) dup create , 1 + ;" evaluate-closed ;
 
-\ `create allot` was lib/string.f BUFFER:'s definer half until that definer was
+\ `create allot` was src/lib/string.f BUFFER:'s definer half until that definer was
 \ converted to a generated colon accessor (dot habu-the-reader-re-a65e56e5). The
 \ shape is kept here because the row it measures is about `create` moving no stack
 \ cell, and a body that allots after it is the sharpest form of that question - not

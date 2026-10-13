@@ -21,8 +21,8 @@
 \ A row stores the stable code of a HIR:opcode, so binding a word to an
 \ operation this dialect does not have is unwritable rather than a check.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f

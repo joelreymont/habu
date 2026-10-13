@@ -1,5 +1,5 @@
 \ prefix-mark-test.f - the recorded core-prefix boundary is where it claims.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f test/prefix-mark-test.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f test/prefix-mark-test.f
 \
 \ The end of src/core/lower-cert-seal.f identifies its final dictionary record,
 \ captures the include registry's row count and asks the checker to record every
@@ -21,11 +21,11 @@
 \ "truncate everything". Nothing complained. LOWER-BOUND below is the case that
 \ catches it, which is why it is not a decorative sanity check.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 
 package PREFIX-MARK-TEST
 

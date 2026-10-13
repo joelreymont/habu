@@ -34,10 +34,10 @@
 \ the code pointer, which no routine occupies - so the suite never marks a word
 \ of a live routine, and it clears every bit it set before it returns.
 
-require lib/errors.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/errors.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 
 package ADDRMAP-TEST
 

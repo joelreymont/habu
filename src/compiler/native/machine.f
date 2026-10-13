@@ -79,8 +79,8 @@
 \ declares that and the backend reports it. A machine description answers
 \ questions whose answer is the same for every routine of the machine.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/native/regfile.f
 
 package NMACH

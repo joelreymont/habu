@@ -226,7 +226,7 @@ variable LIE   variable LIONES
 
 : LIMM-BAD ( -- )  s" asm: bad logical immediate" ASM-EXIT-RC die ;
 
-\ This file is loaded as bare source by the encoder gate, without lib/prelude.f,
+\ This file is loaded as bare source by the encoder gate, without src/lib/prelude.f,
 \ so `true` and `false` are spelled here as the comparisons the prelude uses.
 : LIMM-YES ( -- bool ) 0 0= ;
 : LIMM-NO  ( -- bool ) 0 0= 0= ;

@@ -21,12 +21,12 @@
 \ `WHY-THREW ( [ -- ] -- )` runs a quotation under catch, dumps, and re-throws
 \ for standalone use.
 \
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f
-\   lib/content-key.f tools/why-threw.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/memory.f src/lib/fs.f
+\   src/lib/content-key.f tools/why-threw.f
 
-require lib/errors.f
-require lib/string.f
-require lib/content-key.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/content-key.f
 
 package WHY-THREW
 

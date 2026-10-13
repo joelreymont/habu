@@ -24,8 +24,8 @@
 \ it. A file that loads the seam into a private wordlist first (the peer
 \ harness, test/x86-64-peer-harness.f) must come after this one: the require
 \ below would then load nothing and the names here would be undefined.
-require lib/byte-buffer.f
-require lib/string.f
+require src/lib/byte-buffer.f
+require src/lib/string.f
 require src/core/cell.f
 require src/core/engine-error.f
 require src/habu/layout.f
@@ -180,7 +180,7 @@ variable OCC-BAD
 \ interrupted thread's own DATA; a word of zero absorbs the signal. It costs
 \ rax rcx rdx rsi r11, the flags and a cell below its own rsp, all of which
 \ rt_sigreturn restores, and touches no Forth state. Its `ret` enters the
-\ restorer the installer named: lib/signal.f installs through libc sigaction,
+\ restorer the installer named: src/lib/signal.f installs through libc sigaction,
 \ which supplies one.
 : SIGNAL-STUB, ( label -- )
    LBL,

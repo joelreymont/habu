@@ -202,8 +202,8 @@ shasum -a 256 build/gen2/hb
 
 E=$PWD/build/gen2/hb
 export HB_TMP=$PWD/build/tmp
-C="lib/byte-edit.f lib/array.f lib/fmt.f lib/float.f lib/json-read.f \
-lib/json-write.f lib/unicode.f lib/argv.f lib/fs.f lib/task.f lib/build.f \
+C="src/lib/byte-edit.f src/lib/array.f src/lib/fmt.f src/lib/float.f src/lib/json-read.f \
+src/lib/json-write.f src/lib/unicode.f src/lib/argv.f src/lib/fs.f src/lib/task.f src/lib/build.f \
 tools/lint/text.f tools/public-signatures-core.f"
 $E --load tools/engine-size.f -- $E       # row aot/code-blob
 $E --load tools/tier-census.f -- 0 build/t0.txt $C
@@ -246,7 +246,7 @@ word's baked span out of the running dictionary with `XREF-START` /
 `XREF-CODE-BYTES`.
 
 Only code compiled after `set-tier` belongs to the selected tier. The engine's
-baked words — the checker, the compiler itself, `lib/string.f`, the whole cold
+baked words — the checker, the compiler itself, `src/lib/string.f`, the whole cold
 prefix — were compiled when the engine was built and do not change, so nothing
 already in the engine can appear in either column. That is why the corpus below
 is library and tool source rather than `src/core`, and why every benchmark word
@@ -254,9 +254,9 @@ comes from a file loaded after the selection.
 
 Corpus (13 entries; after their own `require` closure they loaded 1,772
 words for the original baseline and load 2,336 on the current tree):
-`lib/byte-edit.f`, `lib/array.f`, `lib/fmt.f`, `lib/float.f`,
-`lib/json-read.f`, `lib/json-write.f`, `lib/unicode.f`, `lib/argv.f`,
-`lib/fs.f`, `lib/task.f`, `lib/build.f`, `tools/lint/text.f`,
+`src/lib/byte-edit.f`, `src/lib/array.f`, `src/lib/fmt.f`, `src/lib/float.f`,
+`src/lib/json-read.f`, `src/lib/json-write.f`, `src/lib/unicode.f`, `src/lib/argv.f`,
+`src/lib/fs.f`, `src/lib/task.f`, `src/lib/build.f`, `tools/lint/text.f`,
 `tools/public-signatures-core.f`.
 
 Timings are wall clock on a machine that had other lanes building throughout;
@@ -479,7 +479,7 @@ file, arming the clock, and loading real source through the engine's own
 `included` / `required`:
 
 ```forth
-require lib/tier.f
+require src/lib/tier.f
 1 TIER:SELECT
 250 prof-rate
 0 prof-on
@@ -1371,9 +1371,9 @@ the load quoted:
 ```sh
 E=/tmp/hz/engine
 taskset -c 8 perf stat -e instructions:u,task-clock $E --load tools/compile-floor.f
-taskset -c 8 $E --load tools/tier-census.f -- 1 /tmp/c.txt lib/byte-edit.f \
-  lib/array.f lib/fmt.f lib/float.f lib/json-read.f lib/json-write.f \
-  lib/unicode.f lib/argv.f lib/fs.f lib/task.f lib/build.f tools/lint/text.f \
+taskset -c 8 $E --load tools/tier-census.f -- 1 /tmp/c.txt src/lib/byte-edit.f \
+  src/lib/array.f src/lib/fmt.f src/lib/float.f src/lib/json-read.f src/lib/json-write.f \
+  src/lib/unicode.f src/lib/argv.f src/lib/fs.f src/lib/task.f src/lib/build.f tools/lint/text.f \
   tools/public-signatures-core.f
 ```
 
@@ -1624,10 +1624,10 @@ and it is what generation 2 removes.
 | tier 1, `movk` | 6,184 | 6,247 (+63) |
 
 **The tier-1 census grows, and this is the growth it should have.** Ten words
-change — eight in `lib/ffi-abi.f`, one in `lib/genio.f`, one in `lib/task.f` —
+change — eight in `src/lib/ffi-abi.f`, one in `src/lib/genio.f`, one in `src/lib/task.f` —
 and every one of them trades `bl` for `movk` at exactly three `movk` per call
-removed. They are readers of buffers minted by `lib/codegen.f BUFFER` and of
-`lib/task.f`'s `TASK`, definers that already wrote an empty clause and needed no
+removed. They are readers of buffers minted by `src/lib/codegen.f BUFFER` and of
+`src/lib/task.f`'s `TASK`, definers that already wrote an empty clause and needed no
 source change: 21 such reads stopped being calls and became inline address
 literals, at +8 bytes each. That is the four-instruction address stencil ranked
 second in this document's own fix list, not a new cause, and it is the price of
@@ -1658,8 +1658,8 @@ about this change.
 ### What is left
 
 The elision is keyed on a clause compiling nothing, so the four definers in the
-tree that already wrote an empty clause — `lib/string.f BUFFER:`,
-`lib/codegen.f BUFFER-E`, and `lib/task.f`'s `TASK` and `FACILITY` — get it
+tree that already wrote an empty clause — `src/lib/string.f BUFFER:`,
+`src/lib/codegen.f BUFFER-E`, and `src/lib/task.f`'s `TASK` and `FACILITY` — get it
 without a source change, which is where the census movement comes from. A clause
 with a body still pays the dispatch, including one whose body
 is the identity, which is what `test/does-empty-clause.f` pins. The empty
@@ -1714,16 +1714,16 @@ gives the reason. Adjacent opposite stack adjustments are already combined by
 
 ```sh
 E=/tmp/hazel-release/hb
-C="lib/byte-edit.f lib/array.f lib/fmt.f lib/float.f lib/json-read.f \
-lib/json-write.f lib/unicode.f lib/argv.f lib/fs.f lib/task.f lib/build.f \
+C="src/lib/byte-edit.f src/lib/array.f src/lib/fmt.f src/lib/float.f src/lib/json-read.f \
+src/lib/json-write.f src/lib/unicode.f src/lib/argv.f src/lib/fs.f src/lib/task.f src/lib/build.f \
 tools/lint/text.f tools/public-signatures-core.f"
 
 taskset -c 8 $E --load tools/tier-census.f -- 0 /tmp/t0.txt $C
 taskset -c 8 $E --load tools/tier-census.f -- 1 /tmp/t1.txt $C
 $E --load tools/tier-census-join.f -- /tmp/t0.txt /tmp/t1.txt
 
-$E --load tools/tier-dump.f -- 0 ARRAY:A-LEN /tmp/a0.bin lib/array.f
-$E --load tools/tier-dump.f -- 1 ARRAY:A-LEN /tmp/a1.bin lib/array.f
+$E --load tools/tier-dump.f -- 0 ARRAY:A-LEN /tmp/a0.bin src/lib/array.f
+$E --load tools/tier-dump.f -- 1 ARRAY:A-LEN /tmp/a1.bin src/lib/array.f
 objdump -b binary -m aarch64 -D /tmp/a1.bin
 
 taskset -c 8 $E --load tools/tier-bench.f -- 0 src/core/checker.f

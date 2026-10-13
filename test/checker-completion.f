@@ -51,7 +51,7 @@
 \ no declaration of its own (a suffix registration) keeps the store's folded
 \ spelling, so no case here pins one.
 
-require lib/test.f
+require src/lib/test.f
 require src/habu/verify-source.f
 require test/checker-decl-locs-lib.f
 

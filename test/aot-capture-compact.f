@@ -1,6 +1,6 @@
 \ Capture graph and relocation checks with independently chosen coordinates.
-require lib/test.f
-require lib/process-argv.f
+require src/lib/test.f
+require src/lib/process-argv.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f

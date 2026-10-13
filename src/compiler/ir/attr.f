@@ -141,8 +141,8 @@
 \ this store. Insertion-ordered ordinals are stable but not canonical; the
 \ section 6.6 encoder orders structurally, exactly as for symbols and types.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/digest.f
 require src/compiler/target.f
 require src/compiler/numeric-policy.f

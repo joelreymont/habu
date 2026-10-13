@@ -27,8 +27,8 @@
 \ double that reaches the caller's stack takes them: `str d0,[x19],#8` and
 \ `ldr d0,[x19,#-8]!` differ from their general twins in one opcode bit.
 
-require lib/test.f
-require lib/float.f
+require src/lib/test.f
+require src/lib/float.f
 require src/habu/xref.f
 require src/habu/code-bytes.f
 

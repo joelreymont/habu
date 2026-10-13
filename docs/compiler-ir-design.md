@@ -100,7 +100,7 @@ The width-aware second pass is especially strong evidence that a typed IR is mis
 
 The PTX generator has a similar direct-emission architecture.
 
-In `lib/ptx/cg.f`, the runtime representation of a `span`, `gridctx`, `tile`, or `uniform` is a PTX register number. Each operation allocates another monotonically increasing register number, renders a line through a string builder, and appends it to the PTX sink. The checked kernel body therefore doubles as an imperative text emitter.
+In `src/lib/ptx/cg.f`, the runtime representation of a `span`, `gridctx`, `tile`, or `uniform` is a PTX register number. Each operation allocates another monotonically increasing register number, renders a line through a string builder, and appends it to the PTX sink. The checked kernel body therefore doubles as an imperative text emitter.
 
 This was a productive bootstrap mechanism. It is no longer an adequate backend architecture.
 
@@ -115,7 +115,7 @@ Consequences include:
 - the real schedule is encoded in emitter control flow and mutable configuration variables;
 - large GEMM and MMA emitters manually manage register-number ranges, shared-memory layouts, pipelines, fragment mappings, and special-case paths.
 
-`lib/ptx/ir.f` is not the missing backend IR. It is a small expression DAG with a handful of operations and a 64-node cap. It can supply implementation patterns for interning and liveness, but it cannot represent real PTX control flow, memory effects, address spaces, barriers, asynchronous copies, reductions, MMA fragments, or complete kernels.
+`src/lib/ptx/ir.f` is not the missing backend IR. It is a small expression DAG with a handful of operations and a 64-node cap. It can supply implementation patterns for interning and liveness, but it cannot represent real PTX control flow, memory effects, address spaces, barriers, asynchronous copies, reductions, MMA fragments, or complete kernels.
 
 **Judgment:** kernel DSL words should build a logical kernel IR value, not emit PTX. Scheduling should transform that logical kernel into an explicit GPU schedule IR. PTX selection should produce structured instructions. Rendering should be the last step. The line-oriented PTX parser may remain as an external import and round-trip test tool, but it must leave the optimization-critical path.
 
@@ -1971,13 +1971,13 @@ src/habu/jit.f
 src/habu/regalloc.f
 the direct user-definition compiler portions of src/habu/habu2.f
 src/habu/aot-capture.f machine-code scanning
-the string-emitting operation bodies in lib/ptx/cg*.f
-lib/ptx/ir.f as the claimed optimizer/backend IR
+the string-emitting operation bodies in src/lib/ptx/cg*.f
+src/lib/ptx/ir.f as the claimed optimizer/backend IR
 ```
 
 Do not delete a file merely to satisfy this list. Retire each responsibility only after the new owner and production tests are live.
 
-The line-oriented PTX text optimizer left this list a different way. `lib/ptx/opt-ir.f` and `lib/ptx/opt.f` had no production responsibility to retire — no emitter and no `ptxas` path ever called them — so on 2026-08-20 they were deleted outright, with their two suites and their two error codes. The rules they implemented are specified in section 8.8 and are PTXIR's to implement; the deleted source and its measured before/after census are in history at that commit.
+The line-oriented PTX text optimizer left this list a different way. `src/lib/ptx/opt-ir.f` and `src/lib/ptx/opt.f` had no production responsibility to retire — no emitter and no `ptxas` path ever called them — so on 2026-08-20 they were deleted outright, with their two suites and their two error codes. The rules they implemented are specified in section 8.8 and are PTXIR's to implement; the deleted source and its measured before/after census are in history at that commit.
 
 ---
 
@@ -2090,15 +2090,15 @@ maki/lower/model-region.f
 maki/lower/region-kernel.f
 maki/lower/kernel-gpu.f
 
-lib/ptx/ir2/op.f
-lib/ptx/ir2/builder.f
-lib/ptx/ir2/verify.f
-lib/ptx/ir2/from-gpu.f
-lib/ptx/ir2/opt.f
-lib/ptx/ir2/liveness.f
-lib/ptx/ir2/name.f
-lib/ptx/ir2/render.f
-lib/ptx/ir2/parse-external.f
+src/lib/ptx/ir2/op.f
+src/lib/ptx/ir2/builder.f
+src/lib/ptx/ir2/verify.f
+src/lib/ptx/ir2/from-gpu.f
+src/lib/ptx/ir2/opt.f
+src/lib/ptx/ir2/liveness.f
+src/lib/ptx/ir2/name.f
+src/lib/ptx/ir2/render.f
+src/lib/ptx/ir2/parse-external.f
 ```
 
 Use a new `PTXIR2` package during migration to avoid ambiguous calls into the old `PTXIR` code. Rename only after the old path is retired.
@@ -2121,9 +2121,9 @@ test/compiler/native-selfhost.f
 maki/ir/region-verify-test.f
 maki/ir/kernel-verify-test.f
 maki/ir/schedule-verify-test.f
-lib/ptx/ir2/verify-test.f
-lib/ptx/ir2/opt-test.f
-lib/ptx/ir2/render-test.f
+src/lib/ptx/ir2/verify-test.f
+src/lib/ptx/ir2/opt-test.f
+src/lib/ptx/ir2/render-test.f
 tools/ptx/ir2-device-test.f
 ```
 

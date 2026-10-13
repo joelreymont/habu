@@ -1,9 +1,9 @@
 \ Refusal cases run in fresh evaluators of the admitted native C2 image.
-require lib/test.f
-require lib/test/subject.f
-require lib/adt/option.f
-require lib/task.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/test/subject.f
+require src/lib/adt/option.f
+require src/lib/task.f
+require src/lib/c2-memory.f
 
 package C2-MEMORY-REFUSALS
 private

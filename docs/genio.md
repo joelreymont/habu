@@ -1,6 +1,6 @@
 # Generic text I/O devices
 
-[`lib/genio.f`](../lib/genio.f) puts a vector table between Habu's text words
+[`src/lib/genio.f`](../src/lib/genio.f) puts a vector table between Habu's text words
 and the process terminal, so `EMIT`, `TYPE`, `KEY`, `ACCEPT` and the REPL that
 is built from them work over a socket, a serial link or a buffer without
 changing a line of the code that calls them. The model is VFX Forth's generic
@@ -83,7 +83,7 @@ they named has been closed.
 The current input and output devices are two cells of the engine's `DATA`
 header ([`src/habu/layout.f`](../src/habu/layout.f) `GENIO-ABI`). The engine
 swaps `DATA` for each task, so those cells are per task with no lookup, and
-[`lib/task.f`](../lib/task.f) `TASK-REGION-INIT` copies them and the write table
+[`src/lib/task.f`](../src/lib/task.f) `TASK-REGION-INIT` copies them and the write table
 into a new task's region: **a task starts on its creator's devices**. Copying is
 sound precisely because the cells hold an index — a freshly mapped task region
 has nothing that relocates a code address.
@@ -107,7 +107,7 @@ however a program has routed its output.
 `src/habu/repl.f`'s line editor echoes through `emit` and `type`, so a line
 edited over a connection is echoed back over it. `KEY1` and `RD-LINE` stay on
 descriptor 0 because together they *are* the terminal device's key and accept.
-Requiring `lib/genio.f` installs `GENIO:READ-LINE` as `REPL-READ`, the vector
+Requiring `src/lib/genio.f` installs `GENIO:READ-LINE` as `REPL-READ`, the vector
 the engine's own REPL loop reads a line through, so the REPL follows the current
 input device with no change to `repl.f`.
 
@@ -185,13 +185,13 @@ exits `$4F` naming the rejected token. `evaluate` exits `$4F` too, with no
 output (see [threads.md](threads.md)). A remote REPL on a server that is running
 worker tasks can therefore neither evaluate nor define. That is a restriction
 of Habu's tasking model, not of this layer - the W^X unit a definition flips,
-measured in threads.md - and it is why [`lib/genio-test.f`](../lib/genio-test.f)
+measured in threads.md - and it is why [`src/lib/genio-test.f`](../src/lib/genio-test.f)
 holds both ends of its connection in the main task.
 
 ## Images
 
-A device is a process resource, not a serialisable handle. `lib/genio.f`
-registers a reset with [`IMAGE-LIFECYCLE`](../lib/image-lifecycle.f): quiescent
+A device is a process resource, not a serialisable handle. `src/lib/genio.f`
+registers a reset with [`IMAGE-LIFECYCLE`](../src/lib/image-lifecycle.f): quiescent
 image preparation puts routing back on the terminal, clears the engine's write
 table, frees every row and moves every generation on, so no snapshot or
 ahead-of-time capture carries a socket, a descriptor or a device's code
@@ -204,7 +204,7 @@ descriptors are process resources.
 ## Checks
 
 ```sh
-bin/hb --load lib/genio-test.f
+bin/hb --load src/lib/genio-test.f
 ```
 
 A memory device of eight byte-buffer operations proves that each operation

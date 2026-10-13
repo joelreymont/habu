@@ -19,11 +19,11 @@
 \ row takes the path before staging a child's argv or env: a build stages its
 \ own in the same process-wide tables.
 
-require lib/errors.f
-require lib/fs.f
-require lib/process-argv.f
-require lib/content-key.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/fs.f
+require src/lib/process-argv.f
+require src/lib/content-key.f
+require src/lib/engine-candidate.f
 require test/keyed-image.f
 
 package SAVED-BUILDER

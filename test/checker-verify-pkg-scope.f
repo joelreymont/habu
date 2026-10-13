@@ -18,12 +18,12 @@
 \ an open package saw a scrambled name and threw 7136 - which is how
 \ test/xt-cell-test.f failed, on its second in-scope registration.
 \
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f
 \   src/habu/verify-source.f test/checker-verify-pkg-scope.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
 require src/habu/verify-source.f
 
 package CVPS
@@ -137,7 +137,7 @@ s" : CVPS-T2 ( n -- n ) ;" CVPS:REPLAY 0 T=
 \ for a word that is global - and that the first question still gives the
 \ narrow answer, or the duplicate guards would start refusing legal shadowing.
 
-\ The sentinel is an EXISTING global - lib/errors.f's error codes are the
+\ The sentinel is an EXISTING global - src/lib/errors.f's error codes are the
 \ repository's documented global vocabulary - so this pins the real case
 \ without adding an unpackaged global of its own.
 

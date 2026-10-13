@@ -1,5 +1,5 @@
 \ Shared HIR keeps the target binding; the native backend owns its limits.
-require lib/test.f
+require src/lib/test.f
 require src/compiler/native/hir.f
 require src/compiler/native/hir-word.f
 require src/compiler/native/abi.f

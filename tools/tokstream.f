@@ -25,24 +25,24 @@
 \ allowed to remove. A `\` line comment is dropped by the lexer itself and never
 \ reaches a record, so `--` or `s" ..."` written inside one is not code here.
 \
-\ AT MOST 64 PATHS PER INVOCATION, the ARGV-MAX of lib/argv.f. A larger sweep is
+\ AT MOST 64 PATHS PER INVOCATION, the ARGV-MAX of src/lib/argv.f. A larger sweep is
 \ several invocations over the same ordered list, concatenated; the F records keep
 \ the result honest. THE CALLER MUST CHECK THE EXIT CODE. Over the cap the tool
 \ refuses with `too many positional arguments` on stderr and exit 64, writing an
 \ EMPTY stream - and two empty streams compare equal, so a sweep that ignores the
 \ status reads a refusal as "comment-only".
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/vector.f
-require lib/fs.f
-require lib/fmt.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/vector.f
+require src/lib/fs.f
+require src/lib/fmt.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require lib/source-lex.f
-require lib/argv.f
+require src/lib/source-lex.f
+require src/lib/argv.f
 
 package TOKSTREAM
 private

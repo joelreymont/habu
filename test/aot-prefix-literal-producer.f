@@ -1,7 +1,7 @@
 \ Load after native-window-owner-child's checker handover. Finish the same cold
 \ prefix as the fresh graph fixture, so the serialized registry base belongs to
 \ the target engine rather than to the retained compiler's larger host registry.
-s" lib/prelude.f" provided
+s" src/lib/prelude.f" provided
 include src/core/enums.f
 include src/core/type-family-sha.f
 include src/core/combinators.f
@@ -13,14 +13,14 @@ include src/core/layout-buffer-seal.f
 s" src/core/checker-owner-abi.f" provided
 require src/core/checker-owner-guard.f
 include src/core/lower-cert-seal.f
-require lib/errors.f
-require lib/span.f                        \ the prefix's place for it: right after errors.f
-require lib/adt/option.f
-require lib/num-types.f
-require lib/num-arithmetic.f
-require lib/string.f
-require lib/memory.f
-require lib/vector.f
+require src/lib/errors.f
+require src/lib/span.f                        \ the prefix's place for it: right after errors.f
+require src/lib/adt/option.f
+require src/lib/num-types.f
+require src/lib/num-arithmetic.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/vector.f
 s" src/habu/layout.f" provided
 
 \ The native reader receives only the completed artifact after this process exits.

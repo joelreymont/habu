@@ -20,9 +20,9 @@
 \
 \ Verdicts from CHECK-QUIET-CANDIDATE!: -1 certified, 0 refused, 1 unresolvable.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
 require src/core/pointer-storage.f
 require test/checker-assert.f
 

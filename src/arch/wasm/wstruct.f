@@ -43,8 +43,8 @@
 \ does> clause's), because the encoder writes an address as a padded field the
 \ linker rewrites and a number as itself.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/target.f
 require src/compiler/native/backend.f
 require src/compiler/binding.f

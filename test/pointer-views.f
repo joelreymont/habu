@@ -1,5 +1,5 @@
 \ Pointer representation views retain bytes and reject nominal fabrication.
-require lib/test.f
+require src/lib/test.f
 package POINTER-VIEWS-TEST
 create CELL 1 cells allot
 : READ-BYTE ( ptr n -- u8 ) BYTE-VIEW c@ ;

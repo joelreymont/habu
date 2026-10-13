@@ -168,7 +168,7 @@ generated code before falling back to external tools.
 
 ```
 bin/hb --load src/arch/arm64/disasm.f tools/jitdump.f -- ': S dup * ;' S
-bin/hb --load lib/errors.f lib/string.f src/arch/arm64/disasm.f tools/imagedisasm.f -- bin/hb $1000 16
+bin/hb --load src/lib/errors.f src/lib/string.f src/arch/arm64/disasm.f tools/imagedisasm.f -- bin/hb $1000 16
 bin/hb --load tools/imgdump.f -- bin/hb
 bin/hb --load tools/imgdump.f -- old-hb new-hb
 ```
@@ -507,7 +507,7 @@ when it fails (`expected 73 got 70`), which is what makes this class look
 environmental: the child printed the reason and the fixture threw it away. Get
 the reason before theorising about the launcher.
 
-- `lib/test/spawn-report.f` is the reporter. `SPAWN-REPORT:CHILD
+- `src/lib/test/spawn-report.f` is the reporter. `SPAWN-REPORT:CHILD
   ( ptr u8 n n n ptr u8 n ptr u8 n -- )` takes a label, the wanted and the got
   rc, and the captured stdout/stderr, and prints all of it plus the launch
   context. Wire every child-rc assertion in a fixture through a helper that
@@ -613,14 +613,14 @@ this die", and they are not interchangeable:
   (`test/engine-stack-machine.f`). A frame wider than `MACHINE-REACH` that
   faults farther from sp keeps the register dump. A refused registration
   writes `hb: cannot install the signal stack` and exits 78.
-- `E-STACK-UNGUARDED` (-3802, `lib/errors.f`; `STACK-ABI:E-STACK-UNGUARDED` spells
+- `E-STACK-UNGUARDED` (-3802, `src/lib/errors.f`; `STACK-ABI:E-STACK-UNGUARDED` spells
   the same number for the engine emitters, and `test/stack-guard.f` proves
   the two agree) is run-in-stack's own admission check
   (`src/habu/habu1.f` BRUNSTACK `GUARDED-EXTENT?`), thrown *before* the
   callback ever runs and before any stack switch happens — catchable, not a
   crash. It is a STRUCTURAL test of the extent, not a provenance test: it
   knows nothing about where the extent came from and never asks whether
-  `lib/memory.f` `MEM:ALLOC-GUARDED` made it. It tests six things in a fixed
+  `src/lib/memory.f` `MEM:ALLOC-GUARDED` made it. It tests six things in a fixed
   order, and the first that fails is the one that decides — base non-zero,
   capacity non-zero, base a whole `STACK-ABI:PAGE-BYTES` multiple, capacity a
   whole `STACK-ABI:PAGE-BYTES` multiple, base + capacity not wrapping, base
@@ -913,7 +913,7 @@ a shared library, resolve to nothing and stay hex.
 - A profiled program that spawns and captures a child used to die, and no longer
   does. `poll(2)` is never restarted by `SA_RESTART`, so every tick that lands in
   it returns EINTR; the `poll` primitive used to collapse that to -1, so
-  `lib/process.f` could not tell it from a real failure and raised
+  `src/lib/process.f` could not tell it from a real failure and raised
   `E-PROC-OUTPUT` — which stopped a `tools/native-build.f` run under `prof-on` at
   its final child-spawn phase. The primitive now returns `-errno` and the capture
   loop restarts on `-EINTR` against its existing deadline, so a profiled

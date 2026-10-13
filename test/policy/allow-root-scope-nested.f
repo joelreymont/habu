@@ -1,4 +1,4 @@
-require lib/policy.f
+require src/lib/policy.f
 
 : VALUE-PATH ( -- ) s" test/policy/confined/value.f" SOURCE-ROOT:RESOLVE drop 2drop ;
 : INNER ( -- )

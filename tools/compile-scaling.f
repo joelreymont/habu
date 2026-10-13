@@ -110,13 +110,13 @@
 \ average it was taken at. The bar is a 1-minute load average under 4 with no
 \ other `hb` over 50% CPU.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/float.f
-require lib/fmath.f
-require lib/argv.f
-require lib/tier.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/float.f
+require src/lib/fmath.f
+require src/lib/argv.f
+require src/lib/tier.f
 
 -7710 constant E-SCALING-UNCOMPILED
 -7711 constant E-SCALING-EXCEEDED

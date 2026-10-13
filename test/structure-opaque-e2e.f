@@ -3,14 +3,14 @@
 \ fixture and certifies OP's own calls, and refuses a consumer that reaches the
 \ pair through OP's public wordlist. The printed tree keeps every source the
 \ children ran and every child log for replay.
-require lib/test.f
-require lib/string.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
 package STRUCTURE-OPAQUE-E2E
@@ -45,7 +45,7 @@ variable RC
 : SETUP ( -- )
    s" structure-opaque-e2e" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
-   s" src" LINK s" lib" LINK s" tools" LINK
+   s" src" LINK s" tools" LINK
    s" test" AT-A MAKE-DIRS
    s" test/structure-opaque-fixture.f" COPY-TEST
    s" test/structure-opaque-program.f" COPY-TEST

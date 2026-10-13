@@ -5,16 +5,16 @@
 \ native build seals every package a captured engine bakes
 \ (src/core/internal-mark.f SEAL-PACKAGES). So every source a product engine
 \ loads has to put its words in a package it owns: an error block in the file
-\ that owns the package it mints into, MEM:ALLOC-SPAN in lib/memory.f, the
+\ that owns the package it mints into, MEM:ALLOC-SPAN in src/lib/memory.f, the
 \ capture format and the meta-compiler's labels in packages of their own rather
 \ than in the DATA-layout packages src/habu/layout.f declares.
 \
 \ Each case runs a child of the product engine, which loads one source through
 \ the real load path, and asserts that the whole source loaded. Two load paths:
 \   - `required`, through test/baked-owner-child.f, for the library and tool
-\     entries that used to reopen one: lib/json-read.f (JR), lib/fmath.f
-\     (FMATH), lib/pg.f (PG) and lib/db/rows.f (DB-ROWS) minted into packages
-\     lib/errors.f created; the native build's driver
+\     entries that used to reopen one: src/lib/json-read.f (JR), src/lib/fmath.f
+\     (FMATH), src/lib/pg.f (PG) and src/lib/db/rows.f (DB-ROWS) minted into packages
+\     src/lib/errors.f created; the native build's driver
 \     (tools/native-build-core.f) and the image walk (tools/image-size-lib.f)
 \     load src/habu/aot-decl.f and src/habu/address-carrier.f, which reopened
 \     AOT-WINDOW, AOT-SIG, AOT-SPAN and SNAP-RELOC; its kernel emitter
@@ -25,22 +25,22 @@
 \     (tools/build-fixpoint.f): its run prelude rewinds to the core prefix and
 \     its common body recompiles the meta-compiler on top of what is left. The
 \     source here is the refresh's own, emitted by its appenders.
-\ A baked library is never reloaded on a product engine, so lib/span.f has no
+\ A baked library is never reloaded on a product engine, so src/lib/span.f has no
 \ case. Each path has a control, a source that does reopen a baked package,
 \ refused by the package's name, so a green case is not green because nothing
 \ was sealed - the rewind in particular must leave the seal standing.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/codesign.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/codesign.f
+require src/lib/engine-candidate.f
 require tools/build-fixpoint.f
 
 package BAKED-OWNER
@@ -140,10 +140,10 @@ variable ROOT-U
 : CASES ( -- )
    s" test/baked-owner-reopen.f" LOAD
    s" control: a reopen of MEM is refused" s" MEM" REFUSED
-   s" lib/json-read.f" OWNS
-   s" lib/fmath.f" OWNS
-   s" lib/pg.f" OWNS
-   s" lib/db/rows.f" OWNS
+   s" src/lib/json-read.f" OWNS
+   s" src/lib/fmath.f" OWNS
+   s" src/lib/pg.f" OWNS
+   s" src/lib/db/rows.f" OWNS
    s" tools/native-build-core.f" OWNS
    s" tools/image-size-lib.f" OWNS
    s" tools/native-emit.f" OWNS

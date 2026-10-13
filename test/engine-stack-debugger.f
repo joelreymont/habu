@@ -1,6 +1,6 @@
 \ A breakpoint may interrupt a valid guarded allocation.
 require test/engine-stack-lifecycle-lib.f
-require lib/string.f
+require src/lib/string.f
 
 package STACK-LIFECYCLE-TEST
 
@@ -19,14 +19,14 @@ package STACK-LIFECYCLE-TEST
 \ shows.
 : DEBUGGER-BOUNDARIES ( -- )
    s" breakpoint on a valid allocation has no top cell" T-LABEL
-   s" 0 set-tier require src/habu/debug.f package SBP require lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : EMPTY ( -- ) ; ' EMPTY DEBUG:BP+ : GO ( -- ) ['] EMPTY BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package"
+   s" 0 set-tier require src/habu/debug.f package SBP require src/lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : EMPTY ( -- ) ; ' EMPTY DEBUG:BP+ : GO ( -- ) ['] EMPTY BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package"
    CHILD-RC 0 T=
    OUTLEN @ 0 T=
    ERR ERRLEN @ s" habu-bp:" CONTAINS? TTRUE
    ERR ERRLEN @ S\" habu-bp-stack:\n" ENDS-WITH? TTRUE
    DEBUGGER-LINES 5 T=
    s" breakpoint on a valid allocation preserves its value" T-LABEL
-   s" 0 set-tier require src/habu/debug.f package SBP require lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : KEEP ( n -- n ) ; ' KEEP DEBUG:BP+ : ONE ( -- ) 17 KEEP drop ; : GO ( -- ) ['] ONE BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package"
+   s" 0 set-tier require src/habu/debug.f package SBP require src/lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : KEEP ( n -- n ) ; ' KEEP DEBUG:BP+ : ONE ( -- ) 17 KEEP drop ; : GO ( -- ) ['] ONE BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package"
    CHILD-RC 0 T=
    OUTLEN @ 0 T=
    ERR ERRLEN @ s" 0000000000000011" CONTAINS? TTRUE

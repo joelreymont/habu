@@ -3,11 +3,11 @@
 \ run first, after the tier-0 declarations they call; RUN then seals the checker
 \ and runs the cases a sealed image answers. Native builds and graph fixtures
 \ cover handover.
-require lib/test.f
-require lib/errors.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
 require test/replay-scope.f
-require lib/tier.f
+require src/lib/tier.f
 require src/compiler/native/publish.f
 require src/compiler/native/checker-owner.f
 require src/habu/verify-source.f

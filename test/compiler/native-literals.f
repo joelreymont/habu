@@ -1,5 +1,5 @@
 \ Parsing literals and data-stack calls use the production native compiler.
-require lib/test.f
+require src/lib/test.f
 
 package NATIVE-LITERALS-TEST
 

@@ -44,12 +44,12 @@
 \ API, so the bytes asserted come from those calls and not from the compiler
 \ that compiled this file.
 
-require lib/test.f
-require lib/string.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f          \ the run child takes the unsealed engine
-require lib/fs-mutate.f            \ CLEANUP-RUN - that engine's private copy
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f          \ the run child takes the unsealed engine
+require src/lib/fs-mutate.f            \ CLEANUP-RUN - that engine's private copy
 require test/whitebox-child.f
 require test/suite-budget.f        \ CHILD-MS, the run child's hang guard
 require test/compiler/native-emit-shapes.f
@@ -347,7 +347,7 @@ private
 \ so the executing cases live in test/compiler/native-emit-run-child.f and call
 \ through the public words test/mcode-window-prepare.f opens before the seal.
 \ That makes the child a window child of test/native-window-owner-child.f, with
-\ the dependency list lib/ffi-test.f FFI-T-STUB-ARGS gives its stub child.
+\ the dependency list src/lib/ffi-test.f FFI-T-STUB-ARGS gives its stub child.
 \ Reopening the window is refused on the sealed product (`hb: internal engine
 \ word`, exit 70), so the child runs on the engine test/whitebox-child.f names.
 $4000 constant CHILD-CAP

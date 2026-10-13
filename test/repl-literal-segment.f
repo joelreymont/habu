@@ -1,10 +1,10 @@
 \ A literal segment opened on a REPL line that fails outlives the line's rewind.
 \ Exercise the tty line boundary (habu2.f EM-REPL-RECOVER), not INCLUDE-EVALUATE's
 \ separate recovery, which test/compiler/native-string.f covers.
-require lib/test.f
-require lib/pty-harness.f
-require lib/engine-candidate.f
-require lib/test/outcome.f
+require src/lib/test.f
+require src/lib/pty-harness.f
+require src/lib/engine-candidate.f
+require src/lib/test/outcome.f
 
 package REPL-SEGMENT-TEST
 using PTY-HARNESS

@@ -34,14 +34,14 @@ package HB-BUILD-CLI
    HBT-PMK-SRC-BUF HBT-PMK-SRC-U @ ;
 
 \ An application that touches a PERSISTENT CELL of each library it requires:
-\ lib/string.f's builder, lib/fs-mutate.f's copy buffer (FS-MUT-COPY-BUF) and
-\ lib/fs.f's static walk context (FS-WALK-CTX0). Those cells are what the maker
+\ src/lib/string.f's builder, src/lib/fs-mutate.f's copy buffer (FS-MUT-COPY-BUF) and
+\ src/lib/fs.f's static walk context (FS-WALK-CTX0). Those cells are what the maker
 \ used to own before the application was read - it required app-image.f, and so
-\ lib/fs.f and lib/fs-mutate.f, before opening the capture window - which put them
+\ src/lib/fs.f and src/lib/fs-mutate.f, before opening the capture window - which put them
 \ below the span and refused the image. The walked directory is spliced in as a
 \ literal because a stripped image reads no argv here.
 : HBT-LIB-SRC-HEAD$ ( -- ptr u8 n )
-   S\" require lib/string.f\nrequire lib/fs.f\nrequire lib/fs-mutate.f\n\npackage HBT-SLIB\nprivate\nvariable HITS\ncreate P1 FS-PATH-CAP allot  variable P1U\ncreate P2 FS-PATH-CAP allot  variable P2U\n: DIR$ ( -- ptr u8 n ) s\" " ;
+   S\" require src/lib/string.f\nrequire src/lib/fs.f\nrequire src/lib/fs-mutate.f\n\npackage HBT-SLIB\nprivate\nvariable HITS\ncreate P1 FS-PATH-CAP allot  variable P1U\ncreate P2 FS-PATH-CAP allot  variable P2U\n: DIR$ ( -- ptr u8 n ) s\" " ;
 
 : HBT-LIB-SRC-TAIL$ ( -- ptr u8 n )
    S\" \" ;\n: JOIN! ( ptr u8 n ptr u8 ptr n -- ) {: name:ptr nameu dst:ptr lenp:ptr :}\n   SB-RESET DIR$ SB-APPEND s\" /\" SB-APPEND name nameu SB-APPEND\n   SB$ {: a:ptr u:n :} a dst u BYTE-COPY u lenp ! ;\n: P1$ ( -- ptr u8 n ) P1 P1U @ ;\n: P2$ ( -- ptr u8 n ) P2 P2U @ ;\npublic\n: RUN ( -- )\n   SB-RESET s\" sb=\" SB-APPEND s\" ok\" SB-APPEND SB$ type cr\n   s\" a.txt\" P1 P1U JOIN!\n   s\" b.txt\" P2 P2U JOIN!\n   P1$ P2$ COPY-FILE-STREAM\n   P2$ FILE? if s\" copy=ok\" type cr then\n   0 HITS !\n   DIR$ [: 2drop HITS @ 1 + HITS ! ;] WALK-FILES\n   HITS @ 3 = if s\" files=3\" type cr then ;\n;package\n: MAIN ( -- ) HBT-SLIB:RUN ;\n" ;
@@ -59,7 +59,7 @@ package HB-BUILD-CLI
 \ THE ENGINE RUNTIME CELLS A STRIPPED IMAGE OWNS, all in one program: the
 \ environment (an explicitly set variable and an inherited one, both through
 \ GETENV, whose ENV-QA/ENV-QU/ENV-DATA-PTR are baked engine cells below every
-\ window), the kernel's argv, and lib/memory.f's WITH-BYTES scope over the baked
+\ window), the kernel's argv, and src/lib/memory.f's WITH-BYTES scope over the baked
 \ DYNAMIC-STORAGE registry. Each cell it reaches is named in
 \ src/habu/aot-owned-cells.f, so the entry publishes or zeroes it by declaration
 \ and the closure walker admits it; nothing here is admitted for being scratch.
@@ -71,7 +71,7 @@ package HB-BUILD-CLI
 \ different word.
 : HBT-CELLS-SRC$ ( -- ptr u8 n )
    SB-RESET
-   S\" require lib/memory.f\n: SHOW ( ptr u8 NUM:alloc-byte-len -- ) drop {: a:ptr :}\n" SB-APPEND
+   S\" require src/lib/memory.f\n: SHOW ( ptr u8 NUM:alloc-byte-len -- ) drop {: a:ptr :}\n" SB-APPEND
    S\"    $6F a c!  $6B a 1 + c!  a 2 type cr ;\n: MAIN ( -- )\n" SB-APPEND
    S\"    s\" HBT_EXPLICIT\" GETENV type cr\n   s\" HOME\" GETENV type cr\n" SB-APPEND
    S\"    SCRIPT-ARGC 0 ?do s\" arg\" type 48 i + emit s\" =\" type i SCRIPT-ARGV$ type cr loop\n" SB-APPEND
@@ -107,8 +107,8 @@ package HB-BUILD-CLI
 \ `caller=WALK-FILES target=FS-DEPTH` and `caller=COPY-FILE-STREAM
 \ target=FS-MUT-COPY-IN` refused this very program - the copy descriptors are
 \ locals of the call now, and the copy BUFFER is the cell that stands there.
-\ That order is the claim, so this program builds on the engine: lib/fs.f and
-\ lib/fs-mutate.f are modules of the linker's lib closure the engine does not
+\ That order is the claim, so this program builds on the engine: src/lib/fs.f and
+\ src/lib/fs-mutate.f are modules of the linker's lib closure the engine does not
 \ bake, and the linker image refuses it at COPY-FILE-STREAM (E-AOT-PRE-WINDOW).
 : HBT-STRIPPED-LIB-STATE ( -- )
    HBT-LIB-DIR MAKE-DIR
@@ -125,24 +125,24 @@ package HB-BUILD-CLI
    errn 0 T=
    HBT-RUN-OUT outn HBT-LIB-EXPECTED$ T$= ;
 
-\ A program that holds lib/fork-child.f's registry and nothing else the engine
+\ A program that holds src/lib/fork-child.f's registry and nothing else the engine
 \ does not provide, so every other module of the AOT linker's lib closure
 \ (src/habu/app-image-core.f) loads above its window when it is linked - as
-\ lib/fs-mutate.f and lib/process-tree.f do above a lib/pg.f or lib/serial.f
+\ src/lib/fs-mutate.f and src/lib/process-tree.f do above a src/lib/pg.f or src/lib/serial.f
 \ program's.
 : HBT-REGISTRY-SRC$ ( -- ptr u8 n )
-   S\" require lib/fork-child.f\n: MAIN ( -- ) ;\n" ;
+   S\" require src/lib/fork-child.f\n: MAIN ( -- ) ;\n" ;
 
-\ A STRIPPED IMAGE FORKS, and its child runs the resets lib/fork-child.f holds:
+\ A STRIPPED IMAGE FORKS, and its child runs the resets src/lib/fork-child.f holds:
 \ test/stripped-fork-subject.f's child has a park of its own only after
 \ TASK:CHILD-RESET, on Darwin, where the parent's is a Mach port the child
 \ does not hold. The registry sits in the application's window and the
 \ linker's lib closure loads above it, so a module of that closure that
 \ registered a reset as it loaded would put code and cells the image does not
 \ carry into the application's registry; HBT-REGISTRY-SRC$'s link refuses
-\ any such registration. Measured while lib/fs-mutate.f and lib/process-tree.f
+\ any such registration. Measured while src/lib/fs-mutate.f and src/lib/process-tree.f
 \ registered their own: `aot: address refers to data outside the restored span
-\ caller=CLEANUP-RESET target=FS-MUT-CLEANUP-N`. lib/process.f is a module of
+\ caller=CLEANUP-RESET target=FS-MUT-CLEANUP-N`. src/lib/process.f is a module of
 \ that closure the engine does not bake, so the forking program builds on the
 \ engine.
 : HBT-STRIPPED-FORK ( -- )
@@ -183,7 +183,7 @@ package HB-BUILD-CLI
    SB$ ;
 
 \ One variable set for the child and the rest of this process's environment
-\ inherited - lib/process-env.f's inherited path, which is how every application
+\ inherited - src/lib/process-env.f's inherited path, which is how every application
 \ image is actually started.
 : HBT-CELLS-CHILD-ENV ( -- )
    PROC-ARGV-RESET

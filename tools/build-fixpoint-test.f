@@ -9,10 +9,10 @@
 \ Run: bin/hb --load tools/build-fixpoint-test.f
 
 require tools/build-fixpoint-test-lib.f
-require lib/string-roles.f               \ package STR: the typed string surface
-require lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer
-require lib/test/mapped.f
-require lib/test/outcome.f
+require src/lib/string-roles.f               \ package STR: the typed string surface
+require src/lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer
+require src/lib/test/mapped.f
+require src/lib/test/outcome.f
 
 \ The shared fixture's words are private words of the tool's package, so this
 \ row reopens it the way tools/build-fixpoint-test-lib.f does.

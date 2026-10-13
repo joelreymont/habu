@@ -1,7 +1,7 @@
 \ repair-packet-core.f - normalize checker JSONL into an LLM repair packet.
 
-require lib/memory.f
-require lib/argv.f
+require src/lib/memory.f
+require src/lib/argv.f
 require tools/json.f
 require tools/diag-code.f
 

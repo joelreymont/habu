@@ -28,11 +28,11 @@
 \ native build window: it marks the relocation maps through NPUB's checked words,
 \ which test/reloc-window-prepare.f defines there.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 require src/habu/layout.f
 
 package DOESREC-TEST
@@ -158,7 +158,7 @@ variable REJ0  variable REJ1
 \ The hook refuses DR-BAD at its parent, before the clause is scanned, and the
 \ native compiler's line that follows the hook's must name the definer as it
 \ names a plain one. Stderr is the evidence, so the definer is compiled again in
-\ a forked child of this tier-1 image (lib/test/subject.f).
+\ a forked child of this tier-1 image (src/lib/test/subject.f).
 $800 constant IO-CAP
 10000 constant CHILD-MS
 70 constant HOOK-RC  \ src/core/check-hook.f CHECK-RC

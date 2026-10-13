@@ -111,11 +111,11 @@ require src/habu/aot-capture.f
 
 \ The capture's IDENTITY, loaded with the same "after the window" rule. aot-ident.f
 \ turns the require-registry span above into the closure list and its digest;
-\ lib/engine-id.f answers the other half, the content key of the binary this
+\ src/lib/engine-id.f answers the other half, the content key of the binary this
 \ capture is running in, which the metabuild recomputes over the engine it emitted
 \ and compares. Both are above the window, so neither is captured.
 require src/habu/aot-ident.f
-require lib/engine-id.f
+require src/lib/engine-id.f
 
 \ The artifact, and the whole-span descriptor write it needs. src/habu/fdio.f is
 \ the tree's one write-all loop and the only part of the build drivers' I/O a
@@ -124,7 +124,7 @@ require lib/engine-id.f
 \ same reason everything else here does.
 require src/habu/fdio.f
 require src/habu/aot-file.f
-require lib/sort.f
+require src/lib/sort.f
 
 package AOT-CHAIN
 using AOT-BUF
@@ -424,7 +424,7 @@ variable NAME-COUNT
 \ ---- the artifact, and the proof that writing it is a round trip -------------
 \
 \ THE PRODUCER KEY is the SHA-256 of the binary this process is running, taken
-\ over the path lib/engine-id.f resolved for itself, and the census prints the
+\ over the path src/lib/engine-id.f resolved for itself, and the census prints the
 \ same fact in hex through ENGINE-ID:KEY$. test/aot-chain-capture-suite.f hashes
 \ bin/hb from the outside and compares it against the key in an artifact's
 \ header, so that field is a reading of a file the suite has pinned rather than a

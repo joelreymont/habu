@@ -10,8 +10,8 @@ close-reason: "Landed: every baked package has one owning file, error constants 
 
 Problem: sealing every captured package (habu-seal-every-captured-c550102f) refuses the sources on the product path that reopen a package the engine bakes. They are:
 - `src/habu/aot-decl.f` (AOT-SIG, AOT-SPAN, AOT-WINDOW), `src/habu/address-carrier.f` (SNAP-RELOC) and `src/habu/code-origin.f` (TIER-PROV);
-- `lib/span.f:156` (MEM);
-- the JR, FMATH, PG and DB-ROWS packages, which `lib/errors.f:217,244,1370,1423` create inside the engine, so that `lib/json-read.f`, `lib/fmath.f`, `lib/pg.f` and `lib/db/rows.f` reopen engine packages;
+- `src/lib/span.f:156` (MEM);
+- the JR, FMATH, PG and DB-ROWS packages, which `src/lib/errors.f:217,244,1370,1423` create inside the engine, so that `src/lib/json-read.f`, `src/lib/fmath.f`, `src/lib/pg.f` and `src/lib/db/rows.f` reopen engine packages;
 - five product-suite tests, reopening TFAM (3) and CHECKER-TAPE (2);
 - Etch `test/hook-count.f:15` (IMAGE-LIFECYCLE);
 - the stage sources' reopens of packages `src/habu/layout.f` defines (PROT :631, HIDX :564/:946, AOT-SIG :657, AOT-SPAN :680, AOT-WINDOW :1773, SNAP-RELOC :1553), to add public label cells: `src/habu/habu1.f:137,150,178,189,342,2351` and `src/habu/habu2.f:196,5550,6002,6377,6430,6627,11430`. The product-hosted refresh compiles them in a `bin/hb --build stage2-src` child (`tools/build-fixpoint.f:516-530`) after PREFIX-REWIND:TO-CORE re-arms the seal floor (`prefix-rewind.f:88-92`), so each dies rc 84 in C-PACKAGE-PROT-GUARD (`habu2.f:8426-8445`) once sealed, as `package PKG-AUTH ;package` does on master today.

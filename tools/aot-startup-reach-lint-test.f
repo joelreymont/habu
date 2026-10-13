@@ -8,7 +8,7 @@
 \ for `ADR,` would report on most of them.
 \ Run: bin/hb --load tools/aot-startup-reach-lint-test.f
 
-require lib/test.f
+require src/lib/test.f
 require tools/aot-startup-reach-lint.f
 
 package AOT-STARTUP-REACH-LINT-TEST

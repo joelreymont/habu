@@ -7,7 +7,7 @@
 \ each run must leave the directory it registered removed.
 require test/gate-common.f
 require test/gate-aot-image.f
-require lib/engine-candidate.f
+require src/lib/engine-candidate.f
 
 package STRIPPED-IMAGE-TEST
 private
@@ -46,7 +46,7 @@ variable RETURN-TREE-U
    s" return-tree" RETURN-TREE GT-PATH RETURN-TREE-U ! ;
 
 \ MAIN is written per host: the macOS image also starts and stops AIO, the
-\ run-time use of lib/aio.f's definers; the Linux image links lib/aio.f without
+\ run-time use of src/lib/aio.f's definers; the Linux image links src/lib/aio.f without
 \ starting it. The exit-hook subject registers its directory first, and its
 \ return run leaves before the other subjects. UNMAP comes last because it ends
 \ the process.

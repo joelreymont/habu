@@ -1,5 +1,5 @@
 \ certify-dynamic-buffer.f - certification knows what DYNAMIC-BUFFER publishes.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f \
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f \
 \   src/habu/verify-source.f test/checker-assert.f test/certify-dynamic-buffer.f
 \
 \ One DYNAMIC-BUFFER line publishes three checked words through the generated
@@ -21,9 +21,9 @@
 \ stand-in. The last section runs the same declaration for real, so the
 \ certified effects are pinned against what the definer actually does.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
 require src/habu/verify-source.f
 require test/checker-assert.f
 

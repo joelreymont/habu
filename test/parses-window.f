@@ -1,11 +1,11 @@
 \ The operand declarers keep their intrinsic ids and CTL-PARSES on a freshly
 \ transferred checker: the build's replacement-checker handover, which
 \ test/parses-window-child.f meets after the window's own cell-effects.f.
-require lib/test.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require test/whitebox-child.f
 
 package PARSES-WINDOW-SUITE

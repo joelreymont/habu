@@ -1,10 +1,10 @@
 \ Build once, then run and recapture outside the source checkout.
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/memory.f
-require lib/process-cwd.f
-require lib/pty.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/memory.f
+require src/lib/process-cwd.f
+require src/lib/pty.f
 require test/whitebox-child.f
 require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
@@ -146,7 +146,7 @@ variable PROBE-SOURCE-U
 
 : CHECK-BUILD-SCOPE ( -- )
    REFUSE$
-   S\" require lib/tier.f\n: REQUEST-JIT ( -- ) 0 TIER:SELECT ; immediate\ns\q REQUEST-JIT\q 0 parse-imm\n: NEVER-PUBLISHED ( -- ) REQUEST-JIT ;\n: MAIN ( -- ) ;\n"
+   S\" require src/lib/tier.f\n: REQUEST-JIT ( -- ) 0 TIER:SELECT ; immediate\ns\q REQUEST-JIT\q 0 parse-imm\n: NEVER-PUBLISHED ( -- ) REQUEST-JIT ;\n: MAIN ( -- ) ;\n"
    ATOMIC-WRITE-FILE
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
@@ -295,7 +295,7 @@ variable PROBE-SOURCE-U
 \ remains byte-exact on Linux and macOS.
 create PTY-NAME PTY:SLAVE-PATH-CAP allot
 
-\ The pair is lib/pty.f's on both targets; the slave is opened here, O_NOCTTY,
+\ The pair is src/lib/pty.f's on both targets; the slave is opened here, O_NOCTTY,
 \ because this process must not adopt the terminal it hands the child.
 : OPEN-PTY ( -- n n )
    PTY-NAME PTY:SLAVE-PATH-CAP PTY:OPEN drop PTY:MASTER>N {: master:n :}

@@ -10,8 +10,8 @@
 \ arguments above. After MAIN returns the image runs its stdin as a program in
 \ the same process, which is how test/aot-wid-build.f forges the emitted code.
 require tools/native-emit.f
-require lib/fs-mutate.f
-require lib/codesign.f
+require src/lib/fs-mutate.f
+require src/lib/codesign.f
 
 package NATIVE-FIXTURE-WRITE
 

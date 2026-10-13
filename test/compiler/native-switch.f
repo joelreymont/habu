@@ -1,7 +1,7 @@
 \ A long branch chain with string results exercises residency at every join.
 
-require lib/test.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/string.f
 require src/compiler/native/compiler.f
 
 package NSWITCH-TEST

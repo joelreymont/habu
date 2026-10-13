@@ -1,13 +1,13 @@
 \ icode-fixup-test.f - ARM64 pending-fixup chain and free-list regression.
 \ Run: bin/hb --load test/icode-fixup-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/memory.f
-require lib/process.f
-require lib/test/subject.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/memory.f
+require src/lib/process.f
+require src/lib/test/subject.f
 
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
@@ -479,7 +479,7 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    s" EMIT-LOFF-OVER-BACK" S\" icode: label offset out of reach\n" TEST-DIAG ;
 
 \ Those numbers go through icode.f's own signed-decimal writer, which exists
-\ because the file loads before lib/. The reach fixtures only ever hand it
+\ because the file loads before src/lib/. The reach fixtures only ever hand it
 \ window-sized numbers, so its one hard case is held here instead: MIN-N has no
 \ positive magnitude, so it renders from -(v+1) with a carry, and a carry that
 \ failed to clear or propagate would show on -1, -10 and the two bounds.

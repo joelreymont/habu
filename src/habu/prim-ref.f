@@ -31,9 +31,9 @@
 \ parity gate requires it. Reference loops keep their cursors in package
 \ variables because a local cannot be reassigned (src/habu/prims.f does the
 \ same for its own walkers), so no word here is reentrant. The one dependency is
-\ lib/errors.f, for the refusal code DIVREM shares with the primitive it mirrors.
+\ src/lib/errors.f, for the refusal code DIVREM shares with the primitive it mirrors.
 
-require lib/errors.f                    \ E-DIV-ZERO
+require src/lib/errors.f                    \ E-DIV-ZERO
 
 package PRIM-REF
 private

@@ -10,8 +10,8 @@
 \ end. LINREF below states it by scanning every record in dictionary order;
 \ CHECK-PC compares the two answers. Records with no code of their own - a
 \ package row, a retired row, an empty body - are in neither answer.
-require lib/errors.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/test.f
 
 1 set-tier
 

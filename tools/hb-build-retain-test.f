@@ -1,9 +1,9 @@
 \ hb-build-retain-test.f - what hb-build leaves in the build cache goes once
-\ nothing has used it for a day (lib/build-cache.f), through real builds.
+\ nothing has used it for a day (src/lib/build-cache.f), through real builds.
 \
 \ hb-build publishes two kinds of entry into its cache root: the artifact
 \ hb-build-out-<key>, and the object <key>.hbo with its index <key>.idx
-\ (lib/object-resolve.f). A publish prunes its own families; a hit dates what
+\ (src/lib/object-resolve.f). A publish prunes its own families; a hit dates what
 \ it found. So this builds two programs into a private root, dates their six
 \ entries to 2020, past the window, and then
 \ - builds the second program again, which restores its artifact;
@@ -25,7 +25,7 @@
 \   holds a name that is none of the entries;
 \ - a prune that fails its build: the build throws.
 \ The builds run in this process, as tools/hb-build-test-lib.f says a row builds
-\ where the CLI is not the subject; lib/build-cache-retain-test.f holds what a
+\ where the CLI is not the subject; src/lib/build-cache-retain-test.f holds what a
 \ prune reports.
 \ Run: bin/hb --load tools/hb-build-retain-test.f
 

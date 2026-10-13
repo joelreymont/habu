@@ -2,13 +2,13 @@
 \ bytes used by discovery, keying and both compiler loaders. The file mappings
 \ do not move while discovery scans; only path metadata uses a growable pool.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/source.f
-require lib/image-lifecycle.f
-require lib/engine-id.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/source.f
+require src/lib/image-lifecycle.f
+require src/lib/engine-id.f
 require tools/source-discovery.f
 require tools/event-closure-lib.f
 
@@ -156,7 +156,7 @@ create HASH-CELL 1 cells allot
 \ A quotation sees no locals, so the path rides the stack through the read and
 \ comes back unchanged, keeping the catch around it stack-preserving; the byte
 \ count goes to SCRATCH-N, and a refusal still has the path to name. The file
-\ is read whole however it grows while it is read (lib/source.f
+\ is read whole however it grows while it is read (src/lib/source.f
 \ READ-WHOLE-FILE); the scratch may move as it grows, so its bytes are taken
 \ after the read.
 : SCRATCH-ROOM ( n -- ptr u8 )

@@ -20,12 +20,12 @@
 \ the string and formatting libraries are corpus a tier comparison wants to
 \ weigh, and a tool that loaded them for its own use could not. The two requires
 \ are src/habu/code-bytes.f, the boundary that turns a record's code address
-\ into bytes, and lib/tier.f, the word that selects the tier. Neither requires
+\ into bytes, and src/lib/tier.f, the word that selects the tier. Neither requires
 \ anything, and the only comparison they disturb is one whose corpus names one
 \ of them, which is already loaded by then.
 
 require src/habu/code-bytes.f
-require lib/tier.f
+require src/lib/tier.f
 
 package TIER-DUMP
 private

@@ -1,7 +1,7 @@
 \ Initialization admits only a complete, non-owning record and a live byte view.
-require lib/test.f
-require lib/test/subject.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/test/subject.f
+require src/lib/c2-memory.f
 
 STRUCTURE c2irec 0 FIELD x n FIELD y n ;STRUCTURE
 STRUCTURE c2iopen 1 FIELD value a ;STRUCTURE

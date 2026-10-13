@@ -85,7 +85,7 @@ require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/habu/prof-abi.f
 require src/os/linux-x86-64/target-layout.f
-require lib/string.f
+require src/lib/string.f
 require src/core/bytes.f
 require src/habu/xref.f
 require test/x86-64-boot-harness.f

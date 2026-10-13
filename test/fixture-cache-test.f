@@ -2,9 +2,9 @@
 \ through a real publish.
 \
 \ The gate's keyed images share the build cache with every other writer, and
-\ lib/build-cache.f bounds them: a published image prunes its family, and an
+\ src/lib/build-cache.f bounds them: a published image prunes its family, and an
 \ image found on disk is dated as used (test/keyed-image.f, test/cold-engine.f,
-\ test/whitebox-engine.f). lib/build-cache-retain-test.f holds the rules; this
+\ test/whitebox-engine.f). src/lib/build-cache-retain-test.f holds the rules; this
 \ holds their wiring. A child engine runs COLD-ENGINE:ENSURE against a private
 \ cache root: it finds the fixture writer image there, dated to 2020 by
 \ touch(1), and publishes a cold host beside a stale host and a stale work
@@ -19,18 +19,18 @@
 \   holds more entries than it should;
 \ - a publish or a prune that fails: the child exits nonzero.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/fs.f
-require lib/fs-list.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/engine-candidate.f
-require lib/time.f
-require lib/build-cache.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-list.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
+require src/lib/time.f
+require src/lib/build-cache.f
 require test/fixture-writer.f
 require test/cold-engine.f
 

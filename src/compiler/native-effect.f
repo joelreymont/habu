@@ -126,8 +126,8 @@
 \ indexed record of the A64IR dialect; this file owns the frame region those slots
 \ must lie inside and the rule that decides whether a slot is addressable at all.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/digest.f
 require src/compiler/native/machine.f
 
@@ -221,7 +221,7 @@ ENUM conv DERIVE eq
 \ `delivered` and not `result`: a variant name becomes a constructor word, so the
 \ declaration gate (src/core/generated-declaration.f, throw 7110) refuses a
 \ variant that collides with a visible type family, and `result` is the family
-\ lib/adt/result.f declares. The old spelling made this whole file - and every
+\ src/lib/adt/result.f declares. The old spelling made this whole file - and every
 \ codegen suite downstream of it - fail to load the moment anything on the same
 \ command line required result<T,E>.
 ENUM nzcv DERIVE eq

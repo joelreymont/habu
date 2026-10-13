@@ -1,10 +1,10 @@
 \ Publication must make each completed native record immediately searchable.
-require lib/test.f
-require lib/test/outcome.f
-require lib/process.f
-require lib/process-argv.f
-require lib/engine-candidate.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/engine-candidate.f
+require src/lib/string.f
 require src/habu/layout.f
 
 \ Tier 1 first: a native record is what the optimizing compiler publishes, so

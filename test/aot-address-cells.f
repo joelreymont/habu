@@ -1,6 +1,6 @@
 \ Actual row append/WRITE/READ/IMPORT/MERGE beyond the former fixed limit.
 \ The synthetic rows are valid fixed-location null pointers; no code executes.
-require lib/test.f
+require src/lib/test.f
 require src/os/script-argv.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
@@ -11,7 +11,7 @@ require src/habu/aot-capture.f
 require src/habu/aot-ident.f
 require src/habu/fdio.f
 require src/habu/aot-owned.f
-require lib/fs.f
+require src/lib/fs.f
 
 package AOT-CAPTURE
 public

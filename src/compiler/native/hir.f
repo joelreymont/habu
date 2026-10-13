@@ -27,8 +27,8 @@
 \ the context's bound policy rather than fixed here. The target is aarch64 with
 \ the baseline features, so registering against another binding is refused.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/target.f
 require src/compiler/numeric-policy.f
 require src/compiler/binding.f

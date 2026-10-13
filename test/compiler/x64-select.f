@@ -46,7 +46,7 @@
 \ abandoned context gives its registry slots back only when a live enclosing
 \ context leaves normally (src/compiler/ir/context.f, the note on stale handles).
 
-require lib/test.f
+require src/lib/test.f
 require src/compiler/native/select-x64.f
 require src/arch/x86-64/abi.f
 require src/arch/arm64/machine.f

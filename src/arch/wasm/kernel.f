@@ -32,14 +32,14 @@
 \
 \ THE MAP. PROVIDER answers a row by its function or a word by its qualified
 \ spelling. Any other name is refused with E-WLINK-UNRESOLVED, since a call
-\ site naming it names no function the link can hold. lib/prelude.f loads
+\ site naming it names no function the link can hold. src/lib/prelude.f loads
 \ before the capture window and cannot ship in it, so a prelude word links only
 \ through a word here: `true`, `false`, `f<=` and `f>=` do, while `fover` has
 \ none and is refused.
 
-require lib/prelude.f
-require lib/string.f
-require lib/fmt.f
+require src/lib/prelude.f
+require src/lib/string.f
+require src/lib/fmt.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/type.f

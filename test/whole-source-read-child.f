@@ -1,6 +1,6 @@
 \ Fresh-process side of whole-source-read-test.f. FILE-SIZE answers a path's
 \ size and then, for the file the case grows, appends blank lines past every
-\ reader's first room: past lib/source.f's SOURCE-ROOM-MIN and past the 64 KiB
+\ reader's first room: past src/lib/source.f's SOURCE-ROOM-MIN and past the 64 KiB
 \ a region of MEM-ALLOC-64K-SPAN rounds to. It does so on every stat, so each
 \ reader that samples the file meets bytes past its sample and grows its room to
 \ hold them. The subject's first stat also appends a require of grown.f. Each
@@ -10,7 +10,7 @@
 \ GROW, MODE one of check, json, all, dep, view, origin, origin-refused and
 \ lsp, GROW the file to grow.
 
-require lib/fs.f
+require src/lib/fs.f
 
 package WHOLE-SOURCE-READ-CHILD
 private

@@ -1,7 +1,7 @@
 \ A capture attempted inside an ownerless loan must be refused and retryable.
-require lib/test.f
-require lib/image-lifecycle.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/image-lifecycle.f
+require src/lib/c2-memory.f
 
 package C2-MEM-CAPTURE
 private

@@ -15,8 +15,8 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 SUBJECT = r'''
-require lib/net/udp4.f
-require lib/serial.f
+require src/lib/net/udp4.f
+require src/lib/serial.f
 
 package HOST-IO-IMAGE-TEST
 private

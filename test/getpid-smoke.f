@@ -1,13 +1,13 @@
 \ getpid-smoke.f - focused proof of the getpid process-identity primitive.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f \
-\      lib/process.f lib/process-fork.f test/getpid-smoke.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f \
+\      src/lib/process.f src/lib/process-fork.f test/getpid-smoke.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/process.f
-require lib/process-fork.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/process.f
+require src/lib/process-fork.f
 
 package GETPID-SMOKE
 

@@ -5,12 +5,12 @@ priority: 1
 issue-type: task
 created-at: "2026-09-14T00:45:10.526415+03:00"
 closed-at: "2026-09-16T14:34:51.504438+03:00"
-close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Residue: frozen-engine include facts must survive symlinked lib/tools/src roots so a missing engine reports its own diagnostic, not duplicate-first"
+close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Residue: frozen-engine include facts must survive symlinked src/lib/tools/src roots so a missing engine reports its own diagnostic, not duplicate-first"
 ---
 
-Owner: Cedar indexed-dictionary lane. G2 in a checkout with symlinked lib/tools/src
+Owner: Cedar indexed-dictionary lane. G2 in a checkout with symlinked src/lib/tools/src
 exits 78 at duplicate E-A-FIRST instead of reaching check.f's missing-engine
-diagnostic (69). RESOLVE and ENGINE-PROVIDES? both lose lib/errors.f when its
+diagnostic (69). RESOLVE and ENGINE-PROVIDES? both lose src/lib/errors.f when its
 canonical path leaves CWD. Relative, dot-normalized and absolute invocation-root
 spellings all reproduce the miss; /tmp/cedar-alias-resolve-before.out and
 /tmp/cedar-alias-cli-before.err retain the reduction.
@@ -40,7 +40,7 @@ composed product build, followed by these real fresh-process acceptance tests.
 
 Product H exposed a fixture lifetime error: KNOWN reused JOIN's transient span
 after ENGINE-PROVIDES? canonicalization rewrote it. The reduced fifth spelling
-changed from `..././lib/../lib/errors.f` to `.../lib/errors.f/errors.f`; independent
+changed from `..././src/lib/../lib/errors.f` to `.../src/lib/errors.f/errors.f`; independent
 fresh spellings all returned true (/tmp/cedar-H-alias-scratch.{out,err}). The child
 now retains the original path for every query and real require. Actual H source-
 root loads pass with parent definitions at both tiers, rc 0 and empty stderr:

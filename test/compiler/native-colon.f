@@ -4,7 +4,7 @@
 \ engine's own token reader captures them; no test entry evaluates source or
 \ calls the compiler directly. Execution and the live dictionary record show
 \ that the ordinary path publishes a runnable native routine.
-require lib/test.f
+require src/lib/test.f
 require src/compiler/native/compiler.f
 
 \ Tier 1 below: the ordinary `:` handler dispatches to the optimizing compiler

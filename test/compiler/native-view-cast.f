@@ -14,10 +14,10 @@
 \ same answers at both tiers. A cast whose sides differ in cells never reaches
 \ the compiler: the checker refuses the declaration, at either tier.
 
-require lib/test.f
-require lib/errors.f
-require lib/memory.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/errors.f
+require src/lib/memory.f
+require src/lib/c2-memory.f
 
 package VIEW-CAST-TEST
 private

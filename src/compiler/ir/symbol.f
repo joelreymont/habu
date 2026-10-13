@@ -75,8 +75,8 @@
 \ nothing a caller can hold outlives the context but the sealed identities,
 \ which fail closed once the stores are gone.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f

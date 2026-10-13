@@ -42,7 +42,7 @@ package HB-BUILD-CLI
 \ top level, which is where a pointer may enter raw storage at all.
 : HBT-MAPC-SRC$ ( -- ptr u8 n )
    SB-RESET
-   S\" require lib/memory.f\nvariable BUF\nMEM-ALLOC-64K drop BUF !\n" SB-APPEND
+   S\" require src/lib/memory.f\nvariable BUF\nMEM-ALLOC-64K drop BUF !\n" SB-APPEND
    S\" : MAIN ( -- ) s\" mapped\" type cr ;\n" SB-APPEND
    SB$ ;
 
@@ -53,7 +53,7 @@ package HB-BUILD-CLI
 \ program is still refused and HBT-MAPC-SRC$'s links.
 : HBT-MAPD-SRC$ ( -- ptr u8 n )
    SB-RESET
-   S\" require lib/memory.f\nPERSISTED-PTR-VARIABLE PBUF\n" SB-APPEND
+   S\" require src/lib/memory.f\nPERSISTED-PTR-VARIABLE PBUF\n" SB-APPEND
    S\" MEM-ALLOC-64K drop PBUF !\n: MAIN ( -- ) s\" declared\" type cr ;\n" SB-APPEND
    SB$ ;
 

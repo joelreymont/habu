@@ -1,5 +1,5 @@
 \ Inferred PRODUCT locals retain all cells through reads, calls and scopes.
-require lib/test.f
+require src/lib/test.f
 
 package NPL
 public

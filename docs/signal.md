@@ -1,6 +1,6 @@
 # Process signals
 
-[`lib/signal.f`](../lib/signal.f) delivers a chosen set of process signals to a
+[`src/lib/signal.f`](../src/lib/signal.f) delivers a chosen set of process signals to a
 Habu program in ordinary checked code. A program that wants SIGTERM stops
 polling a stop file and waits on a descriptor instead.
 
@@ -66,7 +66,7 @@ the facility and sends the signal to its own process, so its caller reads a
 death by that signal. The gate root (`test/gate-pool.f`), the pg cluster
 (`test/db/pg-cluster.f`) and `tools/check.f` answer so. A capture hears one
 while it waits on its child when the program installs the read end and its
-answer as `lib/process.f` `PROC-STOP-FD` and `PROC-STOP`;
+answer as `src/lib/process.f` `PROC-STOP-FD` and `PROC-STOP`;
 `test/check-signal-test.f` measures that path.
 
 Both ends are non-blocking for the same reason from two directions. The write
@@ -107,7 +107,7 @@ failing with `EINTR`.
 `poll(2)` restarts for nobody. It reports `-EINTR`, which is not a failure:
 nothing was consumed and no descriptor was touched. `SIGNAL:WAIT` therefore owns
 a deadline — it sets one from the `ms` it was given and restarts its own poll
-against what is left of it, exactly as `lib/process.f` `POLL-IN-OR-TIMEOUT`
+against what is left of it, exactly as `src/lib/process.f` `POLL-IN-OR-TIMEOUT`
 does through `PROC-POLL-RESTART` — so a signal storm cannot push one `WAIT` past
 the window it was given, and a window that has already closed answers `timeout`.
 A read another task won re-polls against that same deadline, so the two ways one
@@ -150,7 +150,7 @@ on a non-blocking descriptor the facility owns, reading four bytes into its own
 span with a write end held open for the facility's life, `EAGAIN` is the only
 refusal the kernel has left. With a BLOCKING read end the loser would park in
 `read` until the next signal arrived, turning a race into a `WAIT` that never
-returns; `lib/signal-test.f` runs two tasks against one raised signal and
+returns; `src/lib/signal-test.f` runs two tasks against one raised signal and
 asserts that both finish, that exactly one carries the number and that the other
 times out inside its window.
 
@@ -169,16 +169,16 @@ Linux and macOS, on aarch64, and the values differ on all three counts that
 matter. `SIGHUP` 1, `SIGINT` 2 and `SIGTERM` 15 are the same, but `SIGUSR1` and
 `SIGUSR2` are 10 and 12 on Linux and 30 and 31 on macOS; `SA_RESTART` is
 `$10000000` and 2; `struct sigaction` is `$98` bytes with `sa_flags` at `$88` on
-glibc/aarch64 and `$10` bytes with `sa_flags` at `$0C` on macOS. `lib/signal.f`
+glibc/aarch64 and `$10` bytes with `sa_flags` at `$0C` on macOS. `src/lib/signal.f`
 selects each behind `HB-TARGET-LINUX?` / `HB-TARGET-MACOS?`, the way
-`lib/process.f` `O-NONBLOCK`, `lib/fs.f` and `lib/process-pty-io.f` select
+`src/lib/process.f` `O-NONBLOCK`, `src/lib/fs.f` and `src/lib/process-pty-io.f` select
 theirs, and `INIT` refuses any third target with `E-PROC-HOST` before it opens
 anything. A file that spelled the Linux numbers everywhere would install the
 stub for `SIGBUS` with no flags on macOS and say nothing about it.
 
 **Both arms run.** The `process-signals` suite passes on Linux and macOS, and
 on macOS the `check-signal`, `gate-signal` and `pg` suites catch and answer real
-stops through this file. `lib/signal-test.f` selects its expectations by target
+stops through this file. `src/lib/signal-test.f` selects its expectations by target
 too, spelling the platform facts a second time so a wrong arm in the library
 still fails against an independent copy — and so the `process-signals` gate is
 not red by construction on either target. `SIG-MAX` is 64, the range
@@ -207,7 +207,7 @@ delivers a signal.
 | `E-SIGNAL-CLOSE` | Closing an end of the self-pipe failed |
 | `E-PROC-HOST` | `INIT` on a target that is neither Linux nor macOS |
 
-`lib/signal-test.f` covers each of them except `E-PROC-HOST`, which no host here
+`src/lib/signal-test.f` covers each of them except `E-PROC-HOST`, which no host here
 can reach, along with the delivery cases above, the two-task race, the owner
 rule and the absolute-address property observed from a spawned task.
 `test/signal-stub.f` covers the engine half: that the two cells are published,

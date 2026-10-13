@@ -3,7 +3,7 @@
 \ engine bakes into its seed window zeroed. The warm image must read the hole
 \ and the zeroed seed cells back as zero, because the grid does not store a
 \ zero cell and the seed has put the table's digits there before the restore.
-require lib/string.f
+require src/lib/string.f
 require src/habu/cell-grid.f
 
 package SNAP-WRITER-HOLE
@@ -22,7 +22,7 @@ create HOLE HOLE-BYTES 16 + allot
 : HOLE-OR ( -- n )
    0  HOLE-BYTES 8 / 0 ?do  HOLE 8 + i 8 * + @ or  loop ;
 
-\ The first two cells of lib/string.f's STR-MAX-I64$, whose digits the seed
+\ The first two cells of src/lib/string.f's STR-MAX-I64$, whose digits the seed
 \ restores before the snapshot heap is laid over them, and the digit after
 \ them, which the fixture leaves alone.
 : SEED-CELLS ( -- n ) STR-MAX-I64$ @ STR-MAX-I64$ 8 + @ or ;

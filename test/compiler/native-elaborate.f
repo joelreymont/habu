@@ -35,8 +35,8 @@
 \ the operations asserted are the ones it wrote, not the ones this file was
 \ compiled to.
 
-require lib/errors.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/test.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/feed.f
 require test/compiler/native-source-fixture.f

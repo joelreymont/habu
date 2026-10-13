@@ -30,8 +30,8 @@
 \ the only thing that can decide, and an address outside this dictionary's code
 \ range - every shared library on this machine sits far above it - resolves to
 \ nothing and is left alone.
-require lib/errors.f
-require lib/string.f
+require src/lib/errors.f
+require src/lib/string.f
 
 package PERF-MAP
 private
@@ -61,9 +61,9 @@ variable OK
 variable MAPPED    \ has this line's address column been rewritten already
 
 \ ---- the rewritten line ------------------------------------------------------
-\ lib/string.f's caller-owned builder over a buffer sized for a whole line. The
+\ src/lib/string.f's caller-owned builder over a buffer sized for a whole line. The
 \ shared SB builder is 1 KiB, and a fixture may hand LINE$ a line that lives in
-\ it, which is also why the offset is not rendered through lib/fmt.f: FMT
+\ it, which is also why the offset is not rendered through src/lib/fmt.f: FMT
 \ appends numbers to SB and nowhere else. A full buffer throws E-STR-CAPACITY
 \ rather than truncate.
 : OUT+ ( ptr u8 n -- )

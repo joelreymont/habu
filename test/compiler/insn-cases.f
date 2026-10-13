@@ -1,13 +1,13 @@
 \ insn-cases.f - Exercise ARM64 encoding vectors and refusals.
 \ HABU-SIDE runs in-process; REFUSAL-SIDE checks die outcomes in child engines.
 
-require lib/prelude.f
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 require test/compiler/insn-schema.f
 
 package COMPILER-INSN-CASES

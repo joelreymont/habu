@@ -1,5 +1,5 @@
 \ The saved effect carries both the byte ceiling and the value dependency.
-require lib/c2-memory.f
+require src/lib/c2-memory.f
 
 package C2-INIT-WRAPPER
 public

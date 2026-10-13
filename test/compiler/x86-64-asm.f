@@ -16,15 +16,15 @@
 \ register and a shift case uses a count other than one; the encoder and
 \ llvm-mc then agree on the general form.
 
-require lib/test.f
-require lib/byte-buffer.f
+require src/lib/test.f
+require src/lib/byte-buffer.f
 require test/checker-assert.f
 require src/arch/x86-64/asm.f
-require lib/fmath.f                       \ FMATH:E-DOMAIN, borrowed for a malformed expected string
+require src/lib/fmath.f                       \ FMATH:E-DOMAIN, borrowed for a malformed expected string
 
 \ The span reader answers a role; a byte-count assertion takes a raw cell.
 \ Projection out of a cell family needs no ownership, so no reopen of NUM
-\ (lib/byte-buffer-test.f takes the same step for the same reason).
+\ (src/lib/byte-buffer-test.f takes the same step for the same reason).
 CAST: X64T-BL>RAW ( NUM:byte-len -- n )
 
 package X64ASM-TEST

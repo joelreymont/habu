@@ -57,8 +57,8 @@ package DATA-CENSUS
 here data-base - constant DP0
 ;package
 
-require lib/fmt.f
-require lib/sort.f
+require src/lib/fmt.f
+require src/lib/sort.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f

@@ -35,7 +35,7 @@ align variable BWM-ATOMIC
 : BWM-FAIL ( -- )
    BWM-FAILS @ 1 + BWM-FAILS ! ;
 
-\ The stage0 seed has no inline number printer and cannot load lib/fmt.f, so
+\ The stage0 seed has no inline number printer and cannot load src/lib/fmt.f, so
 \ each number closes its own line with `.`'s newline.
 : BWM= ( n n -- ) {: got:n want:n :}
    BWM-CASES @ 1 + BWM-CASES !
@@ -273,9 +273,9 @@ variable BWM-GXT
 \ has unwound -- so the transfer is proved by the values it moved rather than
 \ by an exit code, and BWM-FETCH2 is executed here the way BWM-TEST-EXACT
 \ used to execute it. Both engines reach this: the native one through
-\ lib/memory.f directly, the Gforth stage0 seed through the same `require`
+\ src/lib/memory.f directly, the Gforth stage0 seed through the same `require`
 \ in the source it bakes.
-require lib/memory.f
+require src/lib/memory.f
 PTR-VARIABLE BWM-POOL-A
 STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BWM-POOL-A !
 : BWM-POOL ( -- ptr u8 ) BWM-POOL-A @ ;

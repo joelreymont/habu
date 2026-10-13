@@ -9,7 +9,7 @@ close-reason: "Landed on origin/master at 6df493c76fcd: global F32 conversions a
 ---
 
 The bit-exact IEEE-754 implementation and exhaustive class tests now live in
-the sole numeric owner, `lib/float32.f` package `F32`, but `lib/ptx/cg.f` still
+the sole numeric owner, `src/lib/float32.f` package `F32`, but `src/lib/ptx/cg.f` still
 publishes global forwarding aliases `F64>F32` and `F32>F64`. Hard-cut those two
 aliases: migrate every live executable caller and current documentation to
 `F32:NARROW` and `F32:WIDEN`, then delete the forwarding definitions. Preserve
@@ -23,9 +23,9 @@ refactor. Claim: agent=f32_hard_cut workspace=.jj-ws/habu-delete-f32-aliases
 
 Checkpoint-discovered ownership migration: move the byte-identical `SF-ST`,
 `SF-LD`, `F32-PACK`, and `F32-UNPACK` implementation out of the legacy-global
-PTX module into `lib/float32-buffer.f`, package `F32-BUF`, with the exact public
+PTX module into `src/lib/float32-buffer.f`, package `F32-BUF`, with the exact public
 surface `STORE`, `LOAD`, `PACK`, and `UNPACK`; migrate its live callers and
-delete all four globals. Package `lib/ptx/cg-activation.f` under its real owner
+delete all four globals. Package `src/lib/ptx/cg-activation.f` under its real owner
 `PTX-ACT`, publish only the emitters proven by its live external-caller census,
 and qualify those callers. These are the complete owner migrations exposed by
 the exact package gate; no generic compatibility owner or wider CG packaging is

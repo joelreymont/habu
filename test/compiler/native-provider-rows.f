@@ -1,13 +1,13 @@
 \ Published named rows stay reusable after quotation inference.
 \ Tier-neutral by design: each subject is compiled in a child this file runs at
 \ both tiers, so the tier of this row selects nothing.
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require test/whitebox-child.f
 
 package PROVIDER-ROW-TEST

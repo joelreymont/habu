@@ -1,10 +1,10 @@
 \ Both compiler tiers use a checker loaded from the current source tree.
-require lib/test.f
-require lib/string.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require test/whitebox-child.f
 
 package LOOP-WINDOW-TEST

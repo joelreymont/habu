@@ -38,12 +38,12 @@
 \ window and on the whole store, because a census that does not balance cannot
 \ be read at all.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
 require src/habu/verify-source.f
 require tools/effect-store-census.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package EFFCENSUS-TEST
 

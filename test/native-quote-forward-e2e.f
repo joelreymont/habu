@@ -1,7 +1,7 @@
 \ A typed callback can receive and execute another typed quotation.
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 
 1 set-tier
 

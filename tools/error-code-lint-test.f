@@ -10,17 +10,17 @@
 \ line 57 of this file was itself the shape that fed the live ledger phantom
 \ claims: a `\` written inside a string body.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/fmt.f
-require lib/memory.f
-require lib/vector.f
-require lib/fs.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/fmt.f
+require src/lib/memory.f
+require src/lib/vector.f
+require src/lib/fs.f
 require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
-require lib/source-lex.f
+require src/lib/source-lex.f
 require tools/error-code-lint-core.f
 
 package ERROR-CODE-LINT-TEST

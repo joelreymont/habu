@@ -112,7 +112,7 @@ the MMU enforces its bounds and compiled code carries no bounds check
 
 ### Mapped buffers
 
-`lib/memory.f` hands out OS-backed mappings that the caller owns and releases.
+`src/lib/memory.f` hands out OS-backed mappings that the caller owns and releases.
 The library keeps nothing about them except the process-wide scope stack of
 `WITH-BYTES`.
 
@@ -312,7 +312,7 @@ A definition's location is the tool's fact: the tool keeps it, and the record
 does not.
 **Now:** tools read source with readers of their own.
 `src/habu/verify-source.f` (3,905 lines) rebuilds each definition and checks it
-before it is compiled. `lib/source-lex.f` (838 lines) tokenizes for the check
+before it is compiled. `src/lib/source-lex.f` (838 lines) tokenizes for the check
 tool and nine lints. `tools/check-core.f` marks origins into a copy of the file
 so that the engine's diagnostics get positions.
 
@@ -348,7 +348,7 @@ editor keeps a child per load context with the closure loaded. Each check
 forks that child, loads only the edited text, reports and exits, so nothing
 the check ran survives it. A new edit ends a check still running. A changed
 `require` line or a changed required file rebuilds the child. Running the
-definers is cheap: a cold load of `lib/process-command.f` with its closure takes
+definers is cheap: a cold load of `src/lib/process-command.f` with its closure takes
 0.10 s, and of `tools/lsp-core.f` 0.66 s.
 **Now:** the editor and the check tool's pre-pass read a file without running
 it. `src/habu/verify-source.f` models each definer by name (`ENUM-END?`,
@@ -357,7 +357,7 @@ text needs a `generates:` row, which is a claim the pre-pass cannot prove. The
 two readers disagree: after `CMD:COMMAND C`, `: U ( -- n ) C#VEC ;` checks 0
 under `--verify-only` and 70 when the file loads ([forth.md](forth.md), the
 `generates:` rule). The pre-pass is also slower than the load it avoids:
-`--verify-only` takes 1.0 s on `lib/process-command.f` and 1.71 s on
+`--verify-only` takes 1.0 s on `src/lib/process-command.f` and 1.71 s on
 `tools/lsp-core.f`, about 0.6 s of it loading the verifier.
 
 **A check reports every independent error.** When the check sets the

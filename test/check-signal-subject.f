@@ -2,7 +2,7 @@
 \ and test/capture-tree-test.f captures.
 \
 \ tools/check.f runs this in its run stage's child; test/capture-tree-test.f
-\ runs it as the child of a lib/process.f capture. It writes LINE$ to stdout,
+\ runs it as the child of a src/lib/process.f capture. It writes LINE$ to stdout,
 \ starts a SLEEPER, a /bin/sh that becomes `sleep 20` in a process group of its
 \ own, as every spawn is, then reports its own pid and waits for the sleeper.
 \ Both hold the write end of the pipe CHECK_SIGNAL_FD names, which the test
@@ -13,15 +13,15 @@
 \ With CHECK_SIGNAL_CLOSED set, the subject first closes its stdout and stderr,
 \ writes nothing, and the sleeper starts without them, so the capture reads
 \ end of file on both while the subject still runs: it then waits in the reap
-\ after the pipes close (lib/process.f PROC-REAP-CAPTURE-BOUNDED), not in the
+\ after the pipes close (src/lib/process.f PROC-REAP-CAPTURE-BOUNDED), not in the
 \ capture's poll.
 
-require lib/errors.f
-require lib/string.f
-require lib/adt/option.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/adt/option.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 
 package CHECK-SIGNAL-SUBJECT
 

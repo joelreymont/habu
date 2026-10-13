@@ -1,10 +1,10 @@
 \ code-reclaim.f - the live-XREF floor used when FORGET gives code back, and
 \ the created record a later does> patches.
 
-require lib/string.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 require src/habu/layout.f
 
 package CRECL-TEST

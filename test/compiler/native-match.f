@@ -1,20 +1,20 @@
 \ native-match.f - production MATCH, case, and construct compilation.
 
 require test/compiler/native-eval-fixture.f
-require lib/errors.f
-require lib/string.f
-require lib/le.f
-require lib/test.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/adt/option.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/le.f
+require src/lib/test.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/adt/option.f
 require src/compiler/native/compiler.f
 require src/compiler/native/branch.f
 require src/compiler/native/dict.f
 require src/compiler/native/trap.f
 require test/compiler/native-match-layout.f
-require lib/tier.f
+require src/lib/tier.f
 
 package NMX
 private
@@ -108,7 +108,7 @@ SUMTYPE grow 1
 ;SUMTYPE
 
 \ AND A FAMILY OF TWO PARAMETERS WHOSE ARMS ARE INSTANTIATED TO DIFFERENT WIDTHS,
-\ which is the shape production met first. lib/process.f PROC-CAPTURE>RESULT
+\ which is the shape production met first. src/lib/process.f PROC-CAPTURE>RESULT
 \ returns `result<pcap:captured,pcap:failed>` - a two-cell ok and a three-cell
 \ err - so its `ok` arm needs a cell added and its `err` arm needs none, and the
 \ chain refused it (-8503, measured, and the census row is gone). `pair<pt,pt3>`
@@ -391,7 +391,7 @@ private
       s2 OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF
    ;MATCH ;
 
-\ lib/object.f NEXT-LINE'S SHAPE, REDUCED TO WHAT BROKE. That word dispatches over
+\ src/lib/object.f NEXT-LINE'S SHAPE, REDUCED TO WHAT BROKE. That word dispatches over
 \ one `option` and builds ANOTHER at a wider instantiation in both arms, and its
 \ `none` arm is the row this case exists for: it constructed `option<obj:line>`
 \ one cell short and the chain refused the join between the two arms (-8503,

@@ -2,12 +2,12 @@
 \ source tree and its verdict are repeatable with:
 \ bin/hb --load test/native-unit-compile-e2e.f
 
-require lib/test.f
-require lib/test/outcome.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/string.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/string.f
+require src/lib/test/subject.f
 require src/compiler/native/compiler.f
 require tools/native-unit-compile.f
 
@@ -43,7 +43,7 @@ variable SIDE-EFFECT
 
 : SOURCES ( -- )
    s" good.f"
-      S\" require lib/string.f\npackage UCX\nprivate\n41 constant SEED\nget-current prot-wid-add\npublic\n: VALUE ( -- n ) SEED 1 + ;\n;package\n" PUT
+      S\" require src/lib/string.f\npackage UCX\nprivate\n41 constant SEED\nget-current prot-wid-add\npublic\n: VALUE ( -- n ) SEED 1 + ;\n;package\n" PUT
    s" skip.f"
       S\" package UCX\npublic\n: SKIPPED ( -- n ) 99 ;\n;package\n" PUT
    s" wrong.f"
@@ -59,9 +59,9 @@ variable SIDE-EFFECT
    s" immediate.f"
       S\" package UCX\npublic\n: IMMEDIATE-VALUE ( -- n ) NATIVE-UNIT-COMPILE-TEST:SIDE 42 ;\n;package\n" PUT
    s" shadow-require.f"
-      S\" require lib/string.f\npackage USR\n;package\n" PUT
+      S\" require src/lib/string.f\npackage USR\n;package\n" PUT
    s" fresh-require.f"
-      S\" require lib/string.f\npackage UFR\npublic\n: VALUE ( -- n ) 23 ;\n;package\n" PUT
+      S\" require src/lib/string.f\npackage UFR\npublic\n: VALUE ( -- n ) 23 ;\n;package\n" PUT
    s" shadow-current.f"
       S\" package UCG\n: get-current ( -- n ) 1 NATIVE-UNIT-COMPILE-TEST:SIDE-EFFECT ! wordlist ;\nget-current prot-wid-add\n;package\n" PUT
    s" qualified-colon.f"

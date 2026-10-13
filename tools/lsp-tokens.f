@@ -41,9 +41,9 @@
 \ the module's buffers, which belong to the server's one task; the writer is
 \ the caller's, and the uses and definitions are those tools/lsp-defs.f keeps.
 
-require lib/json-write.f
-require lib/sort.f
-require lib/adt/option.f
+require src/lib/json-write.f
+require src/lib/sort.f
+require src/lib/adt/option.f
 require tools/lsp-docs.f
 require tools/lsp-defs.f
 require tools/lsp-text.f

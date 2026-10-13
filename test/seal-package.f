@@ -20,20 +20,20 @@
 \ outcome/stdout/stderr parity against direct `--load` and stdin executions is
 \ pinned below; those direct representatives retain both cold-prefix entry paths.
 \
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f test/seal-package.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f test/seal-package.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/test/subject.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/test/subject.f
 require test/tail-parity.f
 
 package SEAL-TEST
@@ -132,27 +132,27 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 
 : SPK-FFI-REOPEN$ ( -- ptr u8 n )
    SB-RESET
-   s" require lib/ffi-abi.f" SPK-LINE
+   s" require src/lib/ffi-abi.f" SPK-LINE
    s" package FFI" SPK-LINE
    s" ;package" SPK-LINE
    SB$ ;
 
 : SPK-FFI-REDIRECT$ ( -- ptr u8 n )
    SB-RESET
-   s" require lib/ffi-abi.f" SPK-LINE
+   s" require src/lib/ffi-abi.f" SPK-LINE
    s" : FFI:EVIL ( -- n ) 0 ;" SPK-LINE
    SB$ ;
 
 : SPK-TASK-REOPEN$ ( -- ptr u8 n )
    SB-RESET
-   s" require lib/task.f" SPK-LINE
+   s" require src/lib/task.f" SPK-LINE
    s" package TASK" SPK-LINE
    s" ;package" SPK-LINE
    SB$ ;
 
 : SPK-TASK-REDIRECT$ ( -- ptr u8 n )
    SB-RESET
-   s" require lib/task.f" SPK-LINE
+   s" require src/lib/task.f" SPK-LINE
    s" : TASK:EVIL ( -- n ) 0 ;" SPK-LINE
    SB$ ;
 

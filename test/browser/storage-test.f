@@ -1,5 +1,5 @@
 \ storage-test.f - test/browser/storage.f's module under bun: its dynamic buffer
-\ beside the pages lib/browser/host-cli.mjs adds (docs/browser-host.md). The
+\ beside the pages src/lib/browser/host-cli.mjs adds (docs/browser-host.md). The
 \ module is built by tools/wasm-build.f's command line and validated by
 \ wasm-tools. bun and wasm-tools must be on PATH, so this is no row of the
 \ ordinary gate: test/wasm/device.f runs it, as does
@@ -13,14 +13,14 @@
 \ module, the file, the expected and the actual output stay in the printed
 \ directory.
 
-require lib/string.f
-require lib/fmt.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/test.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/test.f
 require src/arch/wasm/profile.f
 require test/wasm/harness.f
 
@@ -85,7 +85,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 
 : HOST ( -- n )
    PROC-ARGV-RESET
-   s" lib/browser/host-cli.mjs" ARG+ MOD MOD-U @ ARG+ FILE FILE-U @ ARG+
+   s" src/lib/browser/host-cli.mjs" ARG+ MOD MOD-U @ ARG+ FILE FILE-U @ ARG+
    s" --pointer" ARG+ s" 3" ARG+ s" 4" ARG+
    s" bun" >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u SPAWN ;

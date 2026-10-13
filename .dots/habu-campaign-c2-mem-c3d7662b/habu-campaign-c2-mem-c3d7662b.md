@@ -32,7 +32,7 @@ The old first-throw-only diagnosis in 56884608 and stack-cell restoration recipe
 marks uncertain cells stale. Reproduce any remaining failure before scheduling a
 fix. Pointer/record debts enter only if the actual view path reaches them.
 
-Files: src/core/checker.f, scoped memory and XML libraries, lib/task.f, capture
+Files: src/core/checker.f, scoped memory and XML libraries, src/lib/task.f, capture
 paths, and the ownership/type/roadmap docs. Implementation remains open.
 Verify: design acceptance cases through the real load path; focused development
 checks, native suite for shared semantics, and affected image/convergence checks.

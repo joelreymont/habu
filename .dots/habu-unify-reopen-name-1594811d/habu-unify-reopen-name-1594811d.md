@@ -45,9 +45,9 @@ Production trigger: package VEC publishes @ and ! tails, so any future file
 that reopens VEC and writes a bare @ silently compiles wrong certified code.
 
 CLAIM RETRACTED, MEASURED 2026-07-27. The original text said "the call-site
-comment in lib/vector-test.f names this dot's subject" and that its white-box
+comment in src/lib/vector-test.f names this dot's subject" and that its white-box
 readers route around the trap. Neither is true, in either tree. On master
-lib/vector-test.f reopens package CAD-NUM and nothing else, at lines 207-214,
+src/lib/vector-test.f reopens package CAD-NUM and nothing else, at lines 207-214,
 and its two reopened bodies call CAD-NUM tails that shadow no core primitive,
 so that file holds no instance of this trap and carries no comment about it. In
 the vecmem lane the file goes further: the reopen of package VEC was deleted
@@ -60,7 +60,7 @@ from a comment that does not exist.
 REPRODUCER, two files, verbatim from the lane, preserved here because all three
 leaves refer to it.
 
-FILE pkglib.f: require lib/errors.f / package PKGF / private / BEGIN-STRUCTURE
+FILE pkglib.f: require src/lib/errors.f / package PKGF / private / BEGIN-STRUCTURE
 REC-BYTES / PTR-FIELD: REC.P / CELL +FIELD REC.A / CELL +FIELD REC.B /
 END-STRUCTURE / create REC REC-BYTES allot / public / : DECLARE ( -- ) create
 REC-BYTES CELL / 0 ?do 0 , loop does> ( -- ptr a ) ; / : SET ( -- ) 7 REC REC.B

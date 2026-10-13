@@ -5,7 +5,7 @@
 \ definition is not what its own name binds to, and the native compiler reads a
 \ definition's contract from that binding (compiler.f KEEP-ARITY asks
 \ NDICT:SPELL-ARITY with the bare name). The pair itself is the deliberate
-\ forwarder pattern - lib/task.f publishes `: PREPARE ( ptr n -- ) PREPARE ;`
+\ forwarder pattern - src/lib/task.f publishes `: PREPARE ( ptr n -- ) PREPARE ;`
 \ over its private PREPARE - and stays legal; what ncomp cannot survive is the
 \ two effects moving DIFFERENT numbers of cells. Before this rule that pair
 \ passed the source run and failed the native build minutes later with -8303
@@ -17,8 +17,8 @@
 \ build. One source string per case makes that observable - the code comes back
 \ from the string that carried the second definition.
 
-require lib/prelude.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/prelude.f
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 \ The harness owns a package because this suite shares an in-process slice with
 \ others carrying the same test vocabulary; a global `T=` here is a duplicate
@@ -50,7 +50,7 @@ public
 : SAE-CATCH ( ptr u8 n -- n )  SAE-U ! SAE-A !  [: SAE-GO ;] catch ;
 
 \ The codes the refused cases expect. They live in the package because a global
-\ `E-*` constant is lib/errors.f's surface alone.
+\ `E-*` constant is src/lib/errors.f's surface alone.
 E-SHADOWED-ARITY constant E-SHADOW-ARITY   \ src/core/checker.f SHADOW-ARITY-CK
 70 constant E-REJECT           \ E-UNDEFINED: the checker's compile reject (habu2.f RC-REJECT)
 

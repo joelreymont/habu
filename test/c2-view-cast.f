@@ -15,9 +15,9 @@
 \ read-view, nothing between). The first two run: the view each returns still
 \ reads the byte stored through it, at the last index its bound admits.
 
-require lib/test.f
-require lib/memory.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/c2-memory.f
 
 1 set-tier
 package C2-MEM

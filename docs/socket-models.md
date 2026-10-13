@@ -7,14 +7,14 @@ for the sources and their licences.
 
 Sources, local copies as of 2026-09-16:
 
-- SwiftForth 4.1.10: `lib/options/tcp.f` (78 lines) over the socket words the
-  kernel imports; `lib/samples/echo-server.f`.
+- SwiftForth 4.1.10: `src/lib/options/tcp.f` (78 lines) over the socket words the
+  kernel imports; `src/lib/samples/echo-server.f`.
 - VFX Forth 64 for Linux: `Lib/Lin64/Genio/SocketIo.fth` (942 lines); manual
   `Doc/VfxLin64.pdf` chapter 7 "Generic IO" (p. 79) and chapter 24 "Supported
   shared libraries" (p. 269); `Lib/SharedLibs/libcurl`.
 - SwiftX ARM evaluation: `src/vio.f`, the vectored terminal I/O of the embedded
   target (see [tasking-models.md](tasking-models.md) section 2.1).
-- Habu: [udp4.md](udp4.md), `lib/net/udp4.f`.
+- Habu: [udp4.md](udp4.md), `src/lib/net/udp4.f`.
 
 ## 1. SwiftForth: a current socket and six verbs
 
@@ -74,7 +74,7 @@ For HTTP and TLS VFX binds `libcurl` rather than writing a client; `zlib` and
 
 ## 3. Habu today
 
-`lib/net/udp4.f` only: typed address, port and socket handles, result ADTs
+`src/lib/net/udp4.f` only: typed address, port and socket handles, result ADTs
 carrying `errno`, Linux aarch64 with glibc. No TCP, no device abstraction:
 `EMIT`, `TYPE` and `KEY` are bound to the process terminal.
 

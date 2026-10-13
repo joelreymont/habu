@@ -1,9 +1,9 @@
 \ reloc-schema.f - Native relocation vectors for emitted instruction sequences.
 \ The mnemonic interpreter checks selected cases, not every address producer.
 
-require lib/prelude.f
-require lib/errors.f
-require lib/string.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/string.f
 
 package RELOC-PROOF
 public

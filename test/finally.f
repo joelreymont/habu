@@ -1,5 +1,5 @@
 \ Generic cleanup through the native engine, including both exception paths.
-require lib/test.f
+require src/lib/test.f
 require test/checker-assert.f
 
 package FINALLY-TEST

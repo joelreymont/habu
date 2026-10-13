@@ -1,6 +1,6 @@
 \ shadow-lint-test.f - focused definer-classification fixtures.
 
-require lib/test.f
+require src/lib/test.f
 require tools/lint/shadow-lint.f
 
 package SHADOW-LINT-TOOL

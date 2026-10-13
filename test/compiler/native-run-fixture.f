@@ -9,8 +9,8 @@
 \ the next publication lands after it.
 \ Store at source-map offsets so execution also checks the emitted layout.
 
-require lib/le.f
-require lib/ffi-abi.f
+require src/lib/le.f
+require src/lib/ffi-abi.f
 require src/compiler/native/emit.f
 
 package NRUN

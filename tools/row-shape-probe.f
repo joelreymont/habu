@@ -32,13 +32,13 @@
 \ parametric shapes quoted in src/compiler/native/dict.f were measured.
 \
 \ Run: bin/hb --load tools/row-shape-probe.f
-\      bin/hb --load lib/adt/option.f tools/row-shape-probe.f -- OPTION:SOME OPTION:NONE
+\      bin/hb --load src/lib/adt/option.f tools/row-shape-probe.f -- OPTION:SOME OPTION:NONE
 
-require lib/prelude.f
-require lib/errors.f
-require lib/argv.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/argv.f
 require src/compiler/native/dict.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package ROW-SHAPE-PROBE
 

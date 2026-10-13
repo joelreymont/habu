@@ -4,8 +4,8 @@
 \ and leave its earlier neighbour unchanged. Calls are identified by the actual
 \ callee: the narrow `dup` is a call, while the wide `dup` expands at its site.
 
-require lib/errors.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/test.f
 
 package P2-MAP-REWIND-TEST
 

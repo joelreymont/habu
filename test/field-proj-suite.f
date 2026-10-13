@@ -24,7 +24,7 @@
 \ test/field-proj-boundary-child.f's (FPX-FORGE).
 \ REPORT prints "ok" and exits 0, or F<index> + detail and exits 1.
 
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
 variable #CASE

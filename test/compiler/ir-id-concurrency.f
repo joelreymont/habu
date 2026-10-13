@@ -1,6 +1,6 @@
 \ ir-id-concurrency.f - isolated process-wide allocator concurrency fixture.
 
-require lib/task.f
+require src/lib/task.f
 require src/compiler/ir/id.f
 
 package IR-ID-CONCURRENCY

@@ -20,11 +20,11 @@
 \ - a file read twice is reported once, or at other positions;
 \ - an export the engine bakes lost its link in the native capture.
 
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/string.f
-require lib/fmt.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/string.f
+require src/lib/fmt.f
 require src/habu/verify-source.f
 
 package VBT-VOCAB

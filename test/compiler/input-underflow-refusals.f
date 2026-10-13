@@ -19,8 +19,8 @@
 \ the interpreter `bin/hb --load` puts every definition through; a refusal is a
 \ throw out of the compile, not a value.
 
-require lib/test.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/string.f
 
 \ The consumers the evaluated programs call. They are file-global because the
 \ programs below are compiled at run time, in the scope a real program writes

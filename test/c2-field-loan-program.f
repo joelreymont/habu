@@ -1,7 +1,7 @@
 \ A nested initialized record lends its embedded Pair for an in-place edit.
-require lib/test.f
-require lib/memory.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/c2-memory.f
 
 package C2-FIELD-LOAN-PROGRAM
 public

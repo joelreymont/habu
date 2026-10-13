@@ -207,18 +207,18 @@
 \ `measure` prints the time of one check of a one-definition subject and of
 \ tools/check-core.f, whose closure is over thirty files.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 require test/cold-engine.f
 require tools/json.f
 require tools/check-verify-core.f
@@ -412,7 +412,7 @@ variable CLI-OUT-U
 \ The marker each file's top-level code writes when it runs.
 : MARK$ ( ptr u8 n -- ptr u8 n ) {: name:ptr nameu:n :}
    SB-RESET
-   s" require lib/fs.f" SB-APPEND $0a SB-APPEND-C
+   s" require src/lib/fs.f" SB-APPEND $0a SB-APPEND-C
    s" s" SB-APPEND $22 SB-APPEND-C $20 SB-APPEND-C
    name nameu AT$ SB-APPEND
    $22 SB-APPEND-C s"  s" SB-APPEND $22 SB-APPEND-C s"  ran" SB-APPEND
@@ -588,9 +588,9 @@ CK-USE-MAX 1 + constant OVER-USINGS
    CHECK:VERIFY-OUT$ s" file" SUBJ$ PACKET 0 < TTRUE ;
 
 
-\ Bytes no loader would accept, as the engine's own lib/string.f.
+\ Bytes no loader would accept, as the engine's own src/lib/string.f.
 : ENGINE-PROVIDED ( -- )
-   s\" : STR= ( -- ) drop ;\ns\" never closed\n" s" lib/string.f" TREE$
+   s\" : STR= ( -- ) drop ;\ns\" never closed\n" s" src/lib/string.f" TREE$
    [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES
    2 s" engine-provided: whatever the bytes hold" EXPECT-KIND
    s" engine-provided: no packet" T-LABEL CHECK:VERIFY-OUT$ nip 0 T= ;
@@ -1355,9 +1355,9 @@ $180000 constant LARGE-STDIN-LEN
 \ subject's operands. The native load and both closure-walking modes agree.
 : LOAD-PARSING ( -- )
    s" row-lib.f"
-   s\" require lib/string.f\npackage CVT-ROWS public\n: W ( -- ) parse-name 2drop begin parse-name dup 0= if 2drop exit then s\" CVT-ROWS:;W\" STR= until ;\nparses-through: W 1 ( CVT-ROWS:;W )\n;package\n" FIXTURE
+   s\" require src/lib/string.f\npackage CVT-ROWS public\n: W ( -- ) parse-name 2drop begin parse-name dup 0= if 2drop exit then s\" CVT-ROWS:;W\" STR= until ;\nparses-through: W 1 ( CVT-ROWS:;W )\n;package\n" FIXTURE
    s" row-lib2.f"
-   s\" require lib/string.f\npackage CVT-ROWS2 public\n: V ( -- ) parse-name 2drop begin parse-name dup 0= if 2drop exit then s\" CVT-ROWS2:;V\" STR= until ;\nparses-through: V 1 ( CVT-ROWS2:;V )\n;package\n" FIXTURE
+   s\" require src/lib/string.f\npackage CVT-ROWS2 public\n: V ( -- ) parse-name 2drop begin parse-name dup 0= if 2drop exit then s\" CVT-ROWS2:;V\" STR= until ;\nparses-through: V 1 ( CVT-ROWS2:;V )\n;package\n" FIXTURE
    s" row-use.f"
    s\" require row-lib.f\nCVT-ROWS:W required nosuch.f CVT-ROWS:;W\nrequire row-lib2.f\nCVT-ROWS2:V required nosuch2.f CVT-ROWS2:;V\n: CVT-ROW-AFTER ( -- n ) 1 ;\n" FIXTURE
    s" row-use.f" AT$ {: path:ptr pathu:n :}
@@ -1472,7 +1472,7 @@ $180000 constant LARGE-STDIN-LEN
 : UNCLEAN-FIXTURE ( -- )
    0 GEN-U !
    s" #!" GEN+ ENGINE-CANDIDATE:PATH$ GEN+ s\"  --load\n" GEN+
-   S\" require lib/process.f\nrequire lib/process-argv.f\nrequire lib/process-env.f\nrequire lib/engine-id.f\nrequire lib/string.f\npackage CVT-UNCLEAN\nDYNAMIC-BUFFER SRC u8\nDYNAMIC-BUFFER OUT u8\nDYNAMIC-BUFFER ERR u8\nvariable SRC-U\n" GEN+
+   S\" require src/lib/process.f\nrequire src/lib/process-argv.f\nrequire src/lib/process-env.f\nrequire src/lib/engine-id.f\nrequire src/lib/string.f\npackage CVT-UNCLEAN\nDYNAMIC-BUFFER SRC u8\nDYNAMIC-BUFFER OUT u8\nDYNAMIC-BUFFER ERR u8\nvariable SRC-U\n" GEN+
    S\" : ARGS ( -- )\n   PROC-ARGV-ENV-RESET\n   s\" --load\" >LEN PROC-ARGV+\n   s\" tools/check-verify-child.f\" >LEN PROC-ARGV+\n   s\" --\" >LEN PROC-ARGV+\n   SCRIPT-ARGC 0 ?do i SCRIPT-ARGV$ >LEN PROC-ARGV+ loop\n   PROC-ENV-INHERIT-MISSING ;\n" GEN+
    S\" : INPUT ( -- )\n   0 SRC-U !\n   begin SRC-U @ 4096 < while\n      0 SRC-U @ SRC 4096 SRC-U @ - read\n      dup 0< if s\" read failed\" 74 die then\n      dup 0= if drop exit then\n      SRC-U +!\n   repeat ;\n" GEN+
    S\" : LINE-END ( n n -- n )\n   {: at:n u:n :}\n   u at ?do i OUT c@ 10 = if i 1+ unloop exit then loop u ;\n" GEN+
@@ -2077,13 +2077,13 @@ $180000 constant LARGE-STDIN-LEN
 \ is discovered. SU reads one name, then through the first exact end: a name
 \ spelled like an end is the prefix, and either listed end closes it.
 : TOP-PARSES-THROUGH ( -- )
-   s\" require lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nparses-through: BLK 0 ( ;BLK )\nBLK deftype\n   foo\n;BLK\n: OKW ( n -- n ) 1 + ;\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s\" require src/lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nparses-through: BLK 0 ( ;BLK )\nBLK deftype\n   foo\n;BLK\n: OKW ( n -- n ) 1 + ;\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
    s" top-parses-through: definer" s" BLK" s" 5" s" g" s" E-MISMATCH" BOUND-REFUSED
-   s\" require lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nBLK deftype\n   foo\n;BLK\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s\" require src/lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nBLK deftype\n   foo\n;BLK\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
    s" top-parses-through: undeclared" s" BLK" s" 4" s" 1" DEFERRED-ONLY
-   s\" require lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nparses-through: BLK 0 ( ;BLK )\nBLK ( \\ s\" .(\n  : X ;BLK\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s\" require src/lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nparses-through: BLK 0 ( ;BLK )\nBLK ( \\ s\" .(\n  : X ;BLK\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
    s" top-parses-through: openers" s" BLK" s" 5" s" g" s" E-MISMATCH" BOUND-REFUSED
-   s\" require lib/string.f\n: SU? ( ptr u8 n -- bool )\n   {: a:ptr u:n :}\n   a u s\" ;SU\" STR=  a u s\" P:;SU\" STR=  or ;\n: SU ( -- ) parse-name 2drop begin parse-name dup 0= if 2drop exit then SU? until ;\nparses-through: SU 1 ( ;SU P:;SU )\nSU ;SU a b ;SU\nSU name c P:;SU\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
+   s\" require src/lib/string.f\n: SU? ( ptr u8 n -- bool )\n   {: a:ptr u:n :}\n   a u s\" ;SU\" STR=  a u s\" P:;SU\" STR=  or ;\n: SU ( -- ) parse-name 2drop begin parse-name dup 0= if 2drop exit then SU? until ;\nparses-through: SU 1 ( ;SU P:;SU )\nSU ;SU a b ;SU\nSU name c P:;SU\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
    1 s" top-parses-through: suite" EXPECT-KIND
    s" top-parses-through: suite, three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" top-parses-through: suite, first end" T-LABEL
@@ -2136,7 +2136,7 @@ $180000 constant LARGE-STDIN-LEN
    s" top-parses-loader: include" s" PN" s" 3" s" 1" DEFERRED-ONLY
    s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN ;package\n: OKW ( n -- n ) 1 + ;\n" TOP-CHECK
    s" top-parses-loader: ;package" s" PN" s" 3" s" 1" DEFERRED-ONLY
-   s\" require lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nparses-through: BLK 0 ( ;BLK )\nBLK require nosuch.f s\" x.f\" included\n   variable package ;package using : X ;BLK\ns\" nosuch.f\" required\n" TOP-CHECK
+   s\" require src/lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nparses-through: BLK 0 ( ;BLK )\nBLK require nosuch.f s\" x.f\" included\n   variable package ;package using : X ;BLK\ns\" nosuch.f\" required\n" TOP-CHECK
    1 s" top-parses-loader: through" EXPECT-KIND
    s" top-parses-loader: through, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-parses-loader: through, the call" s" BLK" s" W-CHECK-DEFERRED" s" 5" s" 1" TOP-PACKET drop
@@ -2494,7 +2494,7 @@ $180000 constant LARGE-STDIN-LEN
    s" top-renders: qualified, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-renders: qualified, the renderer first" 0 s" evaluate" s" 1" s" 58" DEFERRED-NTH
    s" top-renders: at the qualified product" 1 s" CVT-RP:CVT-RW" s" 2" s" 1" DEFERRED-NTH
-   s\" require lib/prelude.f\nTYPED-VARIABLE CVT-UA ptr u8   variable CVT-UU\n: CVT-UGO ( -- ) CVT-UA @ CVT-UU @ INCLUDE-EVALUATE ;\n: CVT-UCATCH ( ptr u8 n -- n ) CVT-UU ! CVT-UA ! [: CVT-UGO ;] catch ;\ns\" package CVT-UQ public : CVT-UR ( -- n ) 42 ; ;package\" CVT-UCATCH drop\nCVT-UQ:CVT-UR drop\n"
+   s\" require src/lib/prelude.f\nTYPED-VARIABLE CVT-UA ptr u8   variable CVT-UU\n: CVT-UGO ( -- ) CVT-UA @ CVT-UU @ INCLUDE-EVALUATE ;\n: CVT-UCATCH ( ptr u8 n -- n ) CVT-UU ! CVT-UA ! [: CVT-UGO ;] catch ;\ns\" package CVT-UQ public : CVT-UR ( -- n ) 42 ; ;package\" CVT-UCATCH drop\nCVT-UQ:CVT-UR drop\n"
    TOP-CHECK
    5 s" top-renders: under catch, deferred" EXPECT-KIND
    s" top-renders: under catch, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
@@ -2758,7 +2758,7 @@ $180000 constant LARGE-STDIN-LEN
 \ publish an unresolved row or use the old effect to certify the next body.
 \ The complete sources below load-refuse at that next body, exit 70.
 : TYPE-DEFERRED-ROWS ( -- )
-   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\n: CVT-AFTER ( -- n ) CVT-K ;\n"
+   s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\n: CVT-AFTER ( -- n ) CVT-K ;\n"
    {: src:ptr srcu:n :}
    s" type-trust-rendered.f" src srcu FIXTURE
    s" type-deferred: asserted effect changes at load" T-LABEL
@@ -2770,7 +2770,7 @@ $180000 constant LARGE-STDIN-LEN
    s" type-deferred: old effect is unavailable" T-LABEL
    CHECK:VERIFY-OUT$ s" token" s" CVT-K" PACKET s" code" STRING$ s" W-CHECK-DEFERRED" T$=
 
-   s\" require lib/type/deftype.f\npackage CVT-VIEW\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\nCAST: CVT-UNPACK ( read-view<p,q,cvt-nom> -- ptr u8 n )\n: CVT-AFTER ( read-view<p,q,n> -- ptr u8 n ) CVT-UNPACK ;\n;package\n"
+   s\" require src/lib/type/deftype.f\npackage CVT-VIEW\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\nCAST: CVT-UNPACK ( read-view<p,q,cvt-nom> -- ptr u8 n )\n: CVT-AFTER ( read-view<p,q,n> -- ptr u8 n ) CVT-UNPACK ;\n;package\n"
    {: vsrc:ptr vsrcu:n :}
    s" type-view-rendered.f" vsrc vsrcu FIXTURE
    s" type-deferred: view element differs at load" T-LABEL
@@ -2781,46 +2781,46 @@ $180000 constant LARGE-STDIN-LEN
    s" type-deferred: unresolved view cast is absent" T-LABEL
    CHECK:VERIFY-DEFS$ s" word" s" CVT-UNPACK" PACKET 0 < TTRUE
 
-   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom ptr\" TRUST\n" TOP-CHECK
+   s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom ptr\" TRUST\n" TOP-CHECK
    1 s" type-deferred: invalid assertion grammar refuses" EXPECT-KIND
    s" type-deferred: invalid assertion adds no deferral to the renderer's" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: invalid assertion code" T-LABEL
    CHECK:VERIFY-OUT$ 1 NTH-PACKET s" code" STRING$ s" E-BAD-STORED-SIGNATURE" T$=
 
-   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\ns\" CVT-K\" s\" -- n\" TRUST\n: CVT-RESTORED ( -- n ) CVT-K ;\n"
+   s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\ns\" CVT-K\" s\" -- n\" TRUST\n: CVT-RESTORED ( -- n ) CVT-K ;\n"
    TOP-CHECK
    5 s" type-deferred: known assertion restores checking" EXPECT-KIND
    s" type-deferred: restored assertion has only the renderer's and original warnings" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: restored caller is recorded" T-LABEL
    CHECK:VERIFY-DEFS$ s" word" s" CVT-RESTORED" PACKET 0 >= TTRUE
 
-   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\ns\" CVT-K\" s\" -- n\" TRUST\n: CVT-BAD ( -- bool ) CVT-K ;\n"
+   s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\ns\" CVT-K\" s\" -- n\" TRUST\n: CVT-BAD ( -- bool ) CVT-K ;\n"
    TOP-CHECK
    1 s" type-deferred: restored assertion rejects mismatch" EXPECT-KIND
    s" type-deferred: restored caller mismatch" T-LABEL
    CHECK:VERIFY-OUT$ s" word" s" cvt-bad" PACKET s" code" STRING$ s" E-MISMATCH" T$=
 
-   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\npackage CVT-OTHER\n: CVT-K ( -- n ) 2 ;\n: CVT-KEPT ( -- n ) CVT-K ;\n;package\n"
+   s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\npackage CVT-OTHER\n: CVT-K ( -- n ) 2 ;\n: CVT-KEPT ( -- n ) CVT-K ;\n;package\n"
    TOP-CHECK
    5 s" type-deferred: another binding stays checkable" EXPECT-KIND
    s" type-deferred: another binding has only the renderer's and original warnings" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
 
-   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\n: CVT-TICK ( -- [ -- n ] ) ['] CVT-K ;\n' CVT-K drop\n"
+   s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\n: CVT-TICK ( -- [ -- n ] ) ['] CVT-K ;\n' CVT-K drop\n"
    TOP-CHECK
    5 s" type-deferred: ticks keep no old effect" EXPECT-KIND
    s" type-deferred: renderer, assertion and both ticks" T-LABEL CHECK:VERIFY-OUT$ PACKETS 4 T=
 
-   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\ndefer CVT-K ( -- n )\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\n: CVT-SET ( [ -- n ] -- ) is CVT-K ;\n"
+   s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\ndefer CVT-K ( -- n )\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\n: CVT-SET ( [ -- n ] -- ) is CVT-K ;\n"
    TOP-CHECK
    5 s" type-deferred: deferred setter keeps no old effect" EXPECT-KIND
    s" type-deferred: renderer, assertion and deferred setter" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
 
-   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-PN ( -- ) parse-name 2drop ;\ns\" CVT-PN\" s\" -- cvt-nom\" TRUST\nCVT-PN : CVT-PAYLOAD ( -- n ) 1 ;\n" TOP-CHECK
+   s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-PN ( -- ) parse-name 2drop ;\ns\" CVT-PN\" s\" -- cvt-nom\" TRUST\nCVT-PN : CVT-PAYLOAD ( -- n ) 1 ;\n" TOP-CHECK
    5 s" type-deferred: parser still owns its operands" EXPECT-KIND
    s" type-deferred: parser payload is not a declaration" T-LABEL
    CHECK:VERIFY-DEFS$ s" word" s" CVT-PAYLOAD" PACKET 0 < TTRUE
 
-   s\" require lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\ns\" patch32\" s\" n n -- cvt-nom\" TRUST\n: CVT-BAD ( n n -- ) patch32 ;\n" TOP-CHECK
+   s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\ns\" patch32\" s\" n n -- cvt-nom\" TRUST\n: CVT-BAD ( n n -- ) patch32 ;\n" TOP-CHECK
    1 s" type-deferred: trusted-only call still refuses" EXPECT-KIND
    s" type-deferred: trusted-only call code" T-LABEL
    CHECK:VERIFY-OUT$ s" word" s" cvt-bad" PACKET s" code" STRING$ s" E-CAP-TRUSTED" T$= ;
@@ -3001,13 +3001,13 @@ $180000 constant LARGE-STDIN-LEN
 
 \ A word a top-level `create` makes pushes its address when it runs: it reads
 \ and defines nothing, though `create` does both, and neither does a word whose
-\ calls reach only such words (lib/test.f T= reaches lib/string.f's
+\ calls reach only such words (src/lib/test.f T= reaches src/lib/string.f's
 \ STR-MIN-I64$ through FMT:.INT). Both come from the engine. Loaded, NOSUCH is
 \ E-UNDEFINED, exit 70.
 : TOP-DATA-WORD ( -- )
-   s\" require lib/string.f\nSTR-MAX-I64$ drop NOSUCH\n" TOP-CHECK
+   s\" require src/lib/string.f\nSTR-MAX-I64$ drop NOSUCH\n" TOP-CHECK
    s" top-data-word: the word" s" NOSUCH" s" E-UNDEFINED-TOP-LEVEL" s" 2" s" 19" REFUSED-AT
-   s\" require lib/test.f\n1 1 T= NOSUCH\n" TOP-CHECK
+   s\" require src/lib/test.f\n1 1 T= NOSUCH\n" TOP-CHECK
    s" top-data-word: a word that calls it" s" NOSUCH" s" E-UNDEFINED-TOP-LEVEL" s" 2" s" 8" REFUSED-AT ;
 
 
@@ -3120,8 +3120,8 @@ $180000 constant LARGE-STDIN-LEN
    s\" variable CVT-V\n5 CVT-V !\n7 constant CVT-K\nCVT-K drop\ncreate CVT-B 16 allot\nCVT-B drop\n: CVT-DEF ( n -- ) create , does> ( -- n ) @ ;\n3 CVT-DEF CVT-W\nCVT-W drop\n"
    s" top-accepted: created names" LOADS-CLEAN
    s\" TYPED-VARIABLE CVT-TV n\nCVT-TV drop\n" s" top-accepted: a typed variable" LOADS-CLEAN
-   s\" require lib/string.f\n16 BUFFER: CVT-BF\nCVT-BF drop\n" s" top-accepted: a buffer" LOADS-CLEAN
-   s\" require lib/type/deftype.f\nDEFTYPE CVT-COLOR\n5 >CVT-COLOR drop\n"
+   s\" require src/lib/string.f\n16 BUFFER: CVT-BF\nCVT-BF drop\n" s" top-accepted: a buffer" LOADS-CLEAN
+   s\" require src/lib/type/deftype.f\nDEFTYPE CVT-COLOR\n5 >CVT-COLOR drop\n"
    s" top-accepted: a DEFTYPE conversion" LOADS-CLEAN
    s\" require dep.f\nCVT-SEVEN drop\n" s" top-accepted: a required file's word" LOADS-CLEAN
    s\" package CVT-PB\n: CVT-HIDDEN ( -- n ) 1 ;\nCVT-HIDDEN drop\n;package\n"
@@ -3553,7 +3553,7 @@ create DIGEST-HEX HEX-U allot
    s\" s\" ld-str-inc.f\" included\ns\" ld-str-req.f\" required\n" GEN+
    s" ld-script.f" SCRIPT-REQUIRED+
    s\" .\" x\" s\\\" ld-esc\\x2ef\" required\n" GEN+
-   s\" require ./ld-dep.f\nrequire lib/string.f\n" GEN+
+   s\" require ./ld-dep.f\nrequire src/lib/string.f\n" GEN+
    s" ./ld-script.f" SCRIPT-REQUIRED+
    s\" s\" ld-prov.f\" provided\nrequire ld-prov.f\n\\ require ld-inc.f\n" GEN+
    s" loads.f" DEFS-CHECK 0 s" loads: verified" EXPECT-KIND
@@ -3570,7 +3570,7 @@ create DIGEST-HEX HEX-U allot
    s" ld-script.f" AT$ s" read" LOAD-NEXT
    s" loads: escaped" s\" ld-esc\\x2ef" 11 s" ld-esc.f" AT$ s" read" LOAD-NEXT
    s" loads: required again" s" require ./ld-dep.f" 10 s" ld-dep.f" AT$ s" held" LOAD-NEXT
-   s" loads: the engine's" s" lib/string.f" 12 s" lib/string.f" TREE$ s" held" LOAD-NEXT
+   s" loads: the engine's" s" src/lib/string.f" 16 s" src/lib/string.f" TREE$ s" held" LOAD-NEXT
    s" loads: script-required again" s" /./ld-script.f" ROOT-U @ 14 +
    s" ld-script.f" AT$ s" held" LOAD-NEXT
    s" loads: provided" s" require ld-prov.f" 9 s" ld-prov.f" AT$ s" held" LOAD-NEXT ;
@@ -3960,7 +3960,7 @@ variable USE-NODE                       \ the use line USE-FROM found
 : USES-VISIT ( -- )
    s" visit-common.f" VISIT-COMMON$SRC FIXTURE
    0 GEN-U !
-   s\" require lib/type/deftype.f\n" GEN+
+   s\" require src/lib/type/deftype.f\n" GEN+
    s\" package P\npublic\ninclude visit-common.f\n;package\npackage Q\npublic\ninclude visit-common.f\n;package\n" GEN+
    s\" : BOTH ( -- n ) P:K Q:K + ;\nusing P\n: P-BARE ( -- n ) K ;\n;using\nusing Q\n: Q-BARE ( -- n ) K ;\n;using\n" GEN+
    s\" DEFTYPE CVT-ID-T\n: CVT-ROUND ( -- n ) 1 >CVT-ID-T CVT-ID-T>N ;\n" GEN+

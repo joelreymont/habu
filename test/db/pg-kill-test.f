@@ -21,7 +21,7 @@
 \  1. THE POSTMASTER LEAVES THE TREE. pg_ctl forks, calls setsid, and execs a
 \     shell that execs postgres; then pg_ctl exits. The postmaster is left in
 \     a session of its own with init for a parent, where the pool's walk
-\     (lib/process-tree.f) cannot reach it, and it runs on until its lock-file
+\     (src/lib/process-tree.f) cannot reach it, and it runs on until its lock-file
 \     recheck notices the removed data directory, about a minute later. Any
 \     start path with such a step - pg_ctl, a shell's `&`, a setsid - does the
 \     same.
@@ -71,7 +71,7 @@
 \     has ended its own tree does the same.
 \     Asserted for the harness, which catches it: the pipe check, which the
 \     case engine - spawned, leading its own group - holds as well. A root
-\     that does not catch SIGTERM is not sent it (lib/process-tree.f
+\     that does not catch SIGTERM is not sent it (src/lib/process-tree.f
 \     CATCHES?), and test/gate-pool-test.f and test/gate-signal-test.f kill
 \     such trees.
 \ 11. A ROOT THAT NEVER ANSWERS. One that catches SIGTERM and has not ended
@@ -90,16 +90,16 @@
 \ SIGKILLed is named with the command that removes it; nothing here removes
 \ one.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
 require test/gate-pool.f
 
 package PG-KILL-TEST

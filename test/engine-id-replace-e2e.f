@@ -1,11 +1,11 @@
 \ End-to-end engine image identity across executable pathname replacement.
 \ The temporary tree, executable copies and child output are retained as evidence.
 \ Run: bin/hb --load test/engine-id-replace-e2e.f
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process-argv.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-argv.f
+require src/lib/engine-candidate.f
 
 package ENGINE-ID-REPLACE-E2E
 

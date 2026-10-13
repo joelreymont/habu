@@ -11,7 +11,7 @@ docs/census-switchover.md sections 2+5 wave C. PROC-STATUS>OUTCOME (process.f:78
 ## SLICE 5 — LANDED (json parse status -> result<root,code>, NOT a block ENUM)
 
 ENCODING AUDIT: JSON-PARSE-OK/THROW (tools/json.f:104-105; the census's
-"tools/json.f" — lib/json-read.f has NO status tags, it is already honest pure
+"tools/json.f" — src/lib/json-read.f has NO status tags, it is already honest pure
 E-JR-* throws) were NOT a bare in-process tag pair. The status rode with
 payloads and placeholders: JSON-PARSE-TRY returned `root JSON-PARSE-OK 0` on
 success and `-1 JSON-PARSE-THROW code` on a caught throw — a success-value vs
@@ -36,11 +36,11 @@ Conversions (one commit):
   bad-row JSON-TYPE-ERROR guard for the SEPARATE row cluster stays).
 - json-test.f: PARSE-CODE (code extractor) + TEST-PARSE-TRY rewritten to MATCH
   both arms (ok: nested object parses + kind asserted; err: E-JSON-SYNTAX).
-- require lib/adt/result.f added; tools/json.f is a TR-GATE-COMMON-FILES member
+- require src/lib/adt/result.f added; tools/json.f is a TR-GATE-COMMON-FILES member
   but result.f is already in the closure union via TR-GATE-HARNESS-FILES (wave-B
-  slice 1) — no run-files.f edit. tools/ manifest-exempt. lib/json-read.f:418's
+  slice 1) — no run-files.f edit. tools/ manifest-exempt. src/lib/json-read.f:418's
   boundary-blocked STR>NUMBER? call NOT touched (untouched file).
 
 CENSUS CORRECTION recorded: the "json status → block ENUM" wave-C line is
-superseded — the honest shape was the payload sum (result), and lib/json-read.f
+superseded — the honest shape was the payload sum (result), and src/lib/json-read.f
 never had tags to convert.

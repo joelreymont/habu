@@ -1,8 +1,8 @@
 \ A real C2 owner initializes and clears fixed records before returning bytes.
-require lib/test.f
-require lib/memory.f
-require lib/c2-memory.f
-require lib/task.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/c2-memory.f
+require src/lib/task.f
 
 package C2-INIT-PROGRAM
 public

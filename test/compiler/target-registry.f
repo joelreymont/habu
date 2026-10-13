@@ -1,6 +1,6 @@
 \ target-registry.f - complete backend registration through the real load path.
-require lib/test.f
-require lib/task.f
+require src/lib/test.f
+require src/lib/task.f
 require test/checker-assert.f
 require src/compiler/target.f
 require src/compiler/numeric-policy.f

@@ -1,8 +1,8 @@
 \ native-dstack-alias.f - production data-stack residency under aliasing.
-require lib/prelude.f
-require lib/errors.f
-require lib/memory.f
-require lib/test.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/memory.f
+require src/lib/test.f
 require src/compiler/native/compiler.f
 require tools/codegen-tail-probe.f
 

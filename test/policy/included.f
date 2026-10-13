@@ -1,2 +1,2 @@
 \ included.f - source from another file.
-s" lib/task.f" included
+s" src/lib/task.f" included

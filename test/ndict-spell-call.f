@@ -22,7 +22,7 @@
 \ already saw ARITY-NONE never looks at. Pinning the sentinel row here is what
 \ keeps that difference deliberate instead of latent.
 
-require lib/test.f
+require src/lib/test.f
 
 : SPCALL-PLAIN ( n -- n )
    1 + ;

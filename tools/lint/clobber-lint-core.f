@@ -2,12 +2,12 @@
 \ Self-hosted clobber lint. Run:
 \   bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/clobber-lint.f
 
-require lib/errors.f
-require lib/string.f
+require src/lib/errors.f
+require src/lib/string.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package CLOBBER-CENSUS
 

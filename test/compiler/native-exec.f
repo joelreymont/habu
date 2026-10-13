@@ -1,15 +1,15 @@
 \ native-exec.f - production compilation of `execute`.
-require lib/test.f
+require src/lib/test.f
 require src/compiler/native/compiler.f
 require src/compiler/native/codewalk.f
 
 \ Tier 1 below: the emitted shape of `execute` asserted below is the optimizing
-\ compiler's (2 rows fail at the default tier). lib/array.f is code under test:
+\ compiler's (2 rows fail at the default tier). src/lib/array.f is code under test:
 \ ARRAY-CASE's caller names the public ARRAY:A-MAPI!, the library's own
 \ definition, not the private copy re-compiled below.
 1 set-tier
 
-require lib/array.f
+require src/lib/array.f
 
 \ The array the case maps over. It is global because the caller that maps it is
 \ compiled by `evaluate-closed` at run time, in the scope a program would write
@@ -157,7 +157,7 @@ create DIAG-BUF 8192 allot
    OPAQUE-CASE ;
 
 \ ---- the real multishot site --------------------------------------------------
-\ `A-MAPI!` from lib/array.f executes its
+\ `A-MAPI!` from src/lib/array.f executes its
 \ quotation once per element, inside a counted loop, with three locals live
 \ across every turn - which is what "multishot" costs: the value has to survive
 \ the call it is the argument of, every time round.

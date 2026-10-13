@@ -84,7 +84,7 @@ defer REPL-READ ( -- ptr u8 n )
 \ descriptor 1, so it follows the task's current output device (docs/genio.md):
 \ a line edited over a connection is echoed back over that connection. KEY1 and
 \ RD-LINE below stay on descriptor 0 because together they ARE the terminal
-\ device's key and accept; another device supplies its own pair, and lib/genio.f
+\ device's key and accept; another device supplies its own pair, and src/lib/genio.f
 \ picks between them at REPL-READ.
 \ A one-byte read answers 1, or 0 once the terminal has hung up — a pty slave
 \ whose master closed reads 0 — and -1 when the read failed. Neither left a byte

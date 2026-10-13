@@ -18,7 +18,7 @@
 \   whose image is the engine's boot prefix plus the verifier: neither this
 \   process's words nor an earlier check's can stand in for, or collide with, a
 \   word of the subject. As check.f's run stage does, the child runs on the
-\   engine lib/engine-candidate.f names, a gate's HABU_UNDER_TEST or else the
+\   engine src/lib/engine-candidate.f names, a gate's HABU_UNDER_TEST or else the
 \   engine running this process, never a bin/hb of the working directory. The
 \   child is the tools/check-verify-child.f of the tree this file was loaded
 \   from, named absolutely, and runs in this process's working directory,
@@ -56,20 +56,20 @@
 \ command line's named files and for bytes, is kept here, so a caller of the
 \ operation loads none of check.f's lints.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/memory.f
-require lib/adt/result.f
-require lib/fs.f
-require lib/source.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/memory.f
+require src/lib/adt/result.f
+require src/lib/fs.f
+require src/lib/source.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
 require tools/source-discovery.f
 require tools/check-all-errors-core.f
-require lib/verify-diagnostics.f
+require src/lib/verify-diagnostics.f
 require src/habu/verify-source.f
 
 package CHECK
@@ -356,7 +356,7 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
 
 \ The bytes of the file at PATH, read to its end however it grows while it is
 \ read. Its size, whose refusal (E-FS-STAT) stays a missing or irregular file's,
-\ is only the first room (lib/source.f READ-WHOLE-SAMPLED), and the bytes are
+\ is only the first room (src/lib/source.f READ-WHOLE-SAMPLED), and the bytes are
 \ taken after the read, which may move the storage.
 : CHK-FILE-READ ( ptr u8 n -- ptr u8 n )
    {: path:ptr pathu:n :}
@@ -1269,7 +1269,7 @@ public
 \ walk refuses, a string or a locals group a file never closes, or a file a
 \ loader word names that is not there or cannot be read, and VERIFY-LOG$ ends
 \ with its status line, the one the walk writes. An empty PATH is
-\ E-FS-PATH; an engine lib/engine-candidate.f refuses (E-FS-OPEN) or a failed
+\ E-FS-PATH; an engine src/lib/engine-candidate.f refuses (E-FS-OPEN) or a failed
 \ spawn throws as well. stdout is kept whole; more than 256 KiB of the child's
 \ stderr is E-PROC-TRUNCATED, VERIFY-OUT$ then holding every complete packet
 \ received before it. A file of the closure that a stop or a duplicate

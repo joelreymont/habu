@@ -1,14 +1,14 @@
 \ gate-stdlib-lib.f - adapter from the native suite registry to bin/hb.
 
-require lib/test.f
-require lib/test/runner.f
-require lib/process-argv.f
+require src/lib/test.f
+require src/lib/test/runner.f
+require src/lib/process-argv.f
 require test/gate-pool.f
 require test/gate-images.f
 require test/image-grant.f
 require test/gate-entry-guard.f
 require test/suite-budget.f              \ a row's CPU budget and hang guard
-require lib/engine-id.f                  \ ENGINE-ID:PATH$ - this gate's own binary
+require src/lib/engine-id.f                  \ ENGINE-ID:PATH$ - this gate's own binary
 
 package STDLIB-GATE
 
@@ -31,7 +31,7 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    SCRIPT-ARGC 0 <> if SUITE-USAGE then ;
 
 \ EVERY ITEM NAMES ITS OWN ENGINE TO ITS CHILDREN. A suite forks tools of its
-\ own, and lib/engine-candidate.f is the one resolver they all ask which engine
+\ own, and src/lib/engine-candidate.f is the one resolver they all ask which engine
 \ to run: it reads HABU_UNDER_TEST first and falls back to the running engine
 \ only when nothing names one. The gate used to pass its environment through
 \ untouched, so a CI that exports HABU_UNDER_TEST=<tree>/bin/hb - which is the

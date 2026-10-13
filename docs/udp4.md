@@ -1,6 +1,6 @@
 # IPv4 UDP sockets
 
-[`lib/net/udp4.f`](../lib/net/udp4.f) provides generic IPv4 UDP socket I/O.
+[`src/lib/net/udp4.f`](../src/lib/net/udp4.f) provides generic IPv4 UDP socket I/O.
 The current implementation supports Habu on Linux and macOS AArch64. It
 contains no application protocol, packet sequencing, device addresses, or
 capture policy. Other operating systems are rejected before opening a socket.
@@ -99,7 +99,7 @@ retired with this module's own resolution. Ordinary OS operation failures are
 result variants, not those exceptions.
 
 Package FFI registers cache cleanup with
-[`IMAGE-LIFECYCLE`](../lib/image-lifecycle.f) when the first declaration is
+[`IMAGE-LIFECYCLE`](../src/lib/image-lifecycle.f) when the first declaration is
 made, before any symbol is resolved, and a failed resolution retains that
 registration for a later retry. Quiescent image preparation clears every cached
 function address, so the next call resolves again. The module acquires no
@@ -114,7 +114,7 @@ not image capture.
 ## Checks
 
 ```sh
-bin/hb --load lib/net/udp4-test.f
+bin/hb --load src/lib/net/udp4-test.f
 python3 test/net/udp4.py
 ```
 

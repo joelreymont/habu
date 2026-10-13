@@ -12,9 +12,9 @@
 \
 \ Run: bin/hb --load test/gate-env-stdin-tty-test.f
 
-require lib/test.f
+require src/lib/test.f
 require test/gate-common.f
-require lib/pty.f
+require src/lib/pty.f
 
 package GATE-ENV-STDIN-TTY-TEST
 
@@ -33,7 +33,7 @@ variable SESSION-RC
 variable OUTPUT-U
 variable OUTPUT-RD
 
-\ The pair is lib/pty.f's; the slave is opened here, O_NOCTTY, because this
+\ The pair is src/lib/pty.f's; the slave is opened here, O_NOCTTY, because this
 \ worker must not adopt the terminal - only the setsid session below may, and
 \ it takes it with TIOCSCTTY rather than through an open.
 : OPEN-PTY ( -- )

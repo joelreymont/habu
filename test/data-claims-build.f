@@ -1,8 +1,8 @@
 \ Build checks remain live; their map and helper words do not ship in the runtime.
-require lib/string.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 
 package DATA-CLAIMS-TEST
 

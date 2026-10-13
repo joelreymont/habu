@@ -1,7 +1,7 @@
 \ This process never loads the producer's source or its live definitions.
 require tools/native-emit.f
-require lib/fs-mutate.f
-require lib/codesign.f
+require src/lib/fs-mutate.f
+require src/lib/codesign.f
 
 package PAYLOAD-NATIVE-READER
 create KEY 32 allot

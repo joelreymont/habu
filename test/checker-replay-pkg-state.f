@@ -25,12 +25,12 @@
 \ replay runs. A case driven from top level would pass with the bug present, so
 \ the top-level block at the end is a control, not the test.
 \
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f
 \   src/habu/verify-source.f test/checker-replay-pkg-state.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
 require src/habu/verify-source.f
 
 \ Two packages the caller imports, so its context is genuinely non-empty while

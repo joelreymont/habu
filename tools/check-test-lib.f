@@ -1,43 +1,43 @@
 \ check-test-lib.f - checked engine CLI/core smoke coverage library.
-\ Run: bin/hb --load lib/date.f lib/errors.f lib/string.f lib/test.f lib/memory.f
-\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
-\ lib/process-env.f lib/process-cwd.f lib/fmt.f lib/source.f
+\ Run: bin/hb --load src/lib/date.f src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
+\ src/lib/vector.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
+\ src/lib/process-env.f src/lib/process-cwd.f src/lib/fmt.f src/lib/source.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
-\ tools/lint/json-writer.f lib/source-lex.f
+\ tools/lint/json-writer.f src/lib/source-lex.f
 \ tools/diag-origin-core.f tools/json.f tools/json-only-core.f
 \ tools/checked-boundary-lint-core.f
-\ tools/check-all-errors-core.f lib/argv.f
+\ tools/check-all-errors-core.f src/lib/argv.f
 \ tools/check-core.f tools/check-test.f
 
-require lib/date.f
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/test/runner.f
-require lib/memory.f
-require lib/span.f
-require lib/vector.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-cwd.f
-require lib/fmt.f
-require lib/source.f
+require src/lib/date.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/runner.f
+require src/lib/memory.f
+require src/lib/span.f
+require src/lib/vector.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-cwd.f
+require src/lib/fmt.f
+require src/lib/source.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/json-writer.f
-require lib/source-lex.f
+require src/lib/source-lex.f
 require tools/diag-origin-core.f
 require tools/json.f
 require tools/json-only-core.f
 require tools/checked-boundary-lint-core.f
 require tools/check-all-errors-core.f
-require lib/argv.f
+require src/lib/argv.f
 require tools/check-core.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package CHECK-TEST
 
@@ -196,7 +196,7 @@ variable START-NS
 \ its diagnostics with plain `write` calls on the process stdout and stderr, so
 \ the only faithful way to read them back without a test-only hook inside the
 \ tool is to move those two descriptors for the duration of one run
-\ (lib/test/runner.f GT-CAPTURE-ACTION). The production code stays untouched
+\ (src/lib/test/runner.f GT-CAPTURE-ACTION). The production code stays untouched
 \ and the assertions see exactly the bytes a command-line user would see.
 : IN-PROC ( [ -- ] -- n n n )   \ outn errn code, the same triple the CLI drivers return
    {: q :}
@@ -781,7 +781,7 @@ variable LONG-J
 \ declaration and converter effects before the child executes it.
 : NOM-PREVERIFY$ ( -- ptr u8 n )
    SB-RESET
-   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" require src/lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
    s" DEFTYPE CKT-WIDGET" SB-APPEND $0a SB-APPEND-C
    s" : CKT-WIDGET-RT ( ckt-widget -- ckt-widget ) ;" SB-APPEND $0a SB-APPEND-C
    s" : CKT-WIDGET-MK ( n -- ckt-widget ) >CKT-WIDGET ;" SB-APPEND $0a SB-APPEND-C
@@ -793,7 +793,7 @@ variable LONG-J
 \ below. Only a second declaration of a tail the same package owns is refused.
 : NOM-SHADOW$ ( -- ptr u8 n )
    SB-RESET
-   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" require src/lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
    s" DEFTYPE CKD-GLOBAL" SB-APPEND $0a SB-APPEND-C
    s" package CKDA" SB-APPEND $0a SB-APPEND-C
    s" public" SB-APPEND $0a SB-APPEND-C
@@ -808,7 +808,7 @@ variable LONG-J
 
 : NOM-DUP$ ( -- ptr u8 n )
    SB-RESET
-   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" require src/lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
    s" package CKDC" SB-APPEND $0a SB-APPEND-C
    s" DEFTYPE CKD-TWICE" SB-APPEND $0a SB-APPEND-C
    s" DEFTYPE CKD-TWICE" SB-APPEND $0a SB-APPEND-C
@@ -823,7 +823,7 @@ variable LONG-J
 \ only certify if it names the package's own type.
 : NOM-PKG-DEF$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
-   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" require src/lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
    s" package CKDP" SB-APPEND $0a SB-APPEND-C
    s" DEFTYPE " SB-APPEND a u SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND
@@ -831,13 +831,13 @@ variable LONG-J
 
 : NOM-TOP-DEF$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
-   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" require src/lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
    s" DEFTYPE " SB-APPEND a u SB-APPEND
    SB$ ;
 
 : NOM-SIDE$ ( -- ptr u8 n )
    SB-RESET
-   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" require src/lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
    s" package CKDS" SB-APPEND $0a SB-APPEND-C
    s" DEFTYPE SIDE" SB-APPEND $0a SB-APPEND-C
    s" : CKDS-MK ( n -- side ) >SIDE ;" SB-APPEND $0a SB-APPEND-C
@@ -918,14 +918,14 @@ variable LONG-J
 \ loses a linear value that must move exactly once.
 : FAM-PRIV-HEAD ( -- )
    SB-RESET
-   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" require src/lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
    s" package CKFP" SB-APPEND $0a SB-APPEND-C
    s" DEFTYPE CKF-TAIL" SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND $0a SB-APPEND-C ;
 
 : FAM-SHARED-HEAD ( -- )
    SB-RESET
-   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" require src/lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
    s" package CKFP" SB-APPEND $0a SB-APPEND-C
    s" public" SB-APPEND $0a SB-APPEND-C
    s" DEFTYPE CKF-TAIL" SB-APPEND $0a SB-APPEND-C
@@ -952,7 +952,7 @@ variable LONG-J
 \ feed the real child-engine path and are checked end to end, so they use
 \ DEFLINEAR: its interpret word is baked into the engine, so it runs in the
 \ child with no require, while a DEFTYPE source would need
-\ `require lib/type/deftype.f` for the child to define the declarer. The
+\ `require src/lib/type/deftype.f` for the child to define the declarer. The
 \ check tool's static scanner and preverify path understand both DEFLINEAR and
 \ (since stage B) the DEFTYPE family surface. A DEFLINEAR type is one linear
 \ cell whose value moves exactly once, so bodies pass it through by identity
@@ -1137,7 +1137,7 @@ variable LONG-J
 \ A buffer count is whatever the line leaves on the interpret stack, so a
 \ constant's name or an expression sizes a buffer as a literal does, and the
 \ accessor it declares is held to the same effect. `4 constant N  N
-\ TYPED-BUFFER B n` is the line lib/content-key.f sizes its fold table with.
+\ TYPED-BUFFER B n` is the line src/lib/content-key.f sizes its fold table with.
 \ A count that cannot size a buffer is refused either way: a literal by the
 \ source pre-pass, which can read its value, and a computed one by the definer
 \ when the run reaches it.
@@ -1227,10 +1227,10 @@ variable LONG-J
 \ certifies it, but only after the rendering statement and only in the wordlist
 \ that statement ran in; anything else unknown is still refused by the
 \ pre-pass. The text may define a package, so a qualified name there is left to
-\ the run as a bare one is. The fixtures require lib/ffi-abi.f for `FUNCTION:` and lib/task.f
-\ for TASK:+USER, the renderer lib/crypto/evp.f uses. The pre-pass checks
+\ the run as a bare one is. The fixtures require src/lib/ffi-abi.f for `FUNCTION:` and src/lib/task.f
+\ for TASK:+USER, the renderer src/lib/crypto/evp.f uses. The pre-pass checks
 \ FUNCTION:'s word against its declaration group and a TASK:+USER slot
-\ against the `generates:` row lib/task.f states; CMD:COMMAND's row declares
+\ against the `generates:` row src/lib/task.f states; CMD:COMMAND's row declares
 \ only NAME, so NAME#VEC and NAME#BUF are left to the run.
 : CKR-DEF+ ( -- )
    s" : CKR-MAKE ( -- ) s" SB-APPEND $22 SB-APPEND-C
@@ -1247,16 +1247,16 @@ variable LONG-J
    s" : CKR-USE ( -- n ) CKR-SEVEN ;" CKR-AFTER$ ;
 
 : RENDER-FFI$ ( -- ptr u8 n )
-   s" require lib/ffi-abi.f PROCESS-SYMBOLS FUNCTION: CKR-PID getpid ( -- i32 ) ;FUNCTION : CKR-PID-N ( -- n ) CKR-PID ;" ;
+   s" require src/lib/ffi-abi.f PROCESS-SYMBOLS FUNCTION: CKR-PID getpid ( -- i32 ) ;FUNCTION : CKR-PID-N ( -- n ) CKR-PID ;" ;
 
 : RENDER-TASK$ ( -- ptr u8 n )
-   s" require lib/task.f TASK:#USER 8 TASK:+USER CKR-SLOT drop : CKR-SLOT-P ( -- ptr n ) CKR-SLOT ;" ;
+   s" require src/lib/task.f TASK:#USER 8 TASK:+USER CKR-SLOT drop : CKR-SLOT-P ( -- ptr n ) CKR-SLOT ;" ;
 
 \ A slot made inside a package lands in the section the statement ran in, like
-\ lib/crypto/evp.f EVP-STORAGE (private) and lib/net/http-arena.f MY-SLOT.
+\ src/lib/crypto/evp.f EVP-STORAGE (private) and src/lib/net/http-arena.f MY-SLOT.
 : CKR-TASK-PKG$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: sec:ptr secu:n use:ptr useu:n :}
    SB-RESET
-   s" require lib/task.f package CKR-T " SB-APPEND sec secu SB-APPEND
+   s" require src/lib/task.f package CKR-T " SB-APPEND sec secu SB-APPEND
    s"  TASK:#USER 8 TASK:+USER CKR-SLOT drop " SB-APPEND
    use useu SB-APPEND SB$ ;
 
@@ -1302,7 +1302,7 @@ variable LONG-J
 
 : RENDER-CMD$ ( ptr u8 n -- ptr u8 n )
    {: use:ptr useu:n :}
-   SB-RESET s" require lib/process-command.f CMD:COMMAND CKR-CMD " SB-APPEND
+   SB-RESET s" require src/lib/process-command.f CMD:COMMAND CKR-CMD " SB-APPEND
    use useu SB-APPEND SB$ ;
 
 : RENDER-CMD-VEC$ ( -- ptr u8 n )
@@ -1866,11 +1866,11 @@ variable LONG-J
    CAP-ERR erru RESERVED-LIST-AT$ CONTAINS? TTRUE ;
 
 : AUDITED-LIB-TEST ( -- )
-   \ check.f in a process of its own, which never loaded lib/test.f, checks
+   \ check.f in a process of its own, which never loaded src/lib/test.f, checks
    \ the source list as this harness does in process.
    CHECK-ARGV-START
    s" --source-list" CHECK-ARG+
-   s" lib/test.f" CHECK-ARG+
+   s" src/lib/test.f" CHECK-ARG+
    CHECK-CAPTURE 0 T=
    {: outu:n erru:n :}
    outu 0 T=
@@ -1884,7 +1884,7 @@ variable LONG-J
    outu 0 T=
    erru 0 T= ;
 
-\ test/gate-images.f requires lib/aio.f, which ends by loading its macOS host
+\ test/gate-images.f requires src/lib/aio.f, which ends by loading its macOS host
 \ module (a require cycle) and calls SUMTYPE constructors it declares itself.
 \ tools/object-image.f loads its target's image writers in target arms, and
 \ src/habu/driver-io.f, which it loads after them, calls their ASM-CODE.
@@ -1950,10 +1950,10 @@ variable LONG-J
    outu 0 T=
    erru 0 T= ;
 
-\ This harness loaded lib/test.f; the engine does not carry it.
+\ This harness loaded src/lib/test.f; the engine does not carry it.
 : TEST-HARNESS-LIB ( -- )
-   s" lib/test.f" PATH-RUN EXPECT-CHECKED
-   s" lib/test.f" LIST-RUN EXPECT-CHECKED ;
+   s" src/lib/test.f" PATH-RUN EXPECT-CHECKED
+   s" src/lib/test.f" LIST-RUN EXPECT-CHECKED ;
 
 \ Each input is refused at its own spelling.
 : EXPECT-PROVIDED-PAIR ( n n n -- )
@@ -2100,7 +2100,7 @@ variable LONG-J
 
 : NOM-ALL-CLEAN$ ( -- ptr u8 n )   \ require lets the child define DEFTYPE; zero errors
    SB-RESET
-   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" require src/lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
    s" DEFTYPE CKT-AEOK" SB-APPEND $0a SB-APPEND-C
    s" : CKT-AEOK-RT ( ckt-aeok -- ckt-aeok ) ;" SB-APPEND
    SB$ ;
@@ -2862,7 +2862,7 @@ create BIG $2000 allot   variable BIG-U
 \ This fixture deliberately defines a word called DEFTYPE at top level, so it
 \ only type-checks in an engine whose dictionary does not already hold the real
 \ DEFTYPE declarer. This test library runs inside the gate runner, which does
-\ load lib/type/deftype.f, so checking the fixture here would be a true
+\ load src/lib/type/deftype.f, so checking the fixture here would be a true
 \ duplicate definition. The standalone tools/check.f process has the smaller
 \ dictionary the fixture needs, which is why this case keeps the child process.
 : NOM-SCAN-TEST ( -- )
@@ -3112,8 +3112,8 @@ create BIG $2000 allot   variable BIG-U
    s" VALUE-RECORD \ x n END-VALUE-RECORD"
    s\" \"token\":\"\\\\\",\"token_index\":1,\"file\":\"<stdin>\",\"line\":1,\"column\":14,"
    NOM-OPERAND-REFUSED
-   s" require lib/type/deftype.f DEFTYPE (" s" '('" OPERAND-REFUSED
-   s" require lib/type/deftype.f DEFTYPE \" s" '\'" OPERAND-REFUSED
+   s" require src/lib/type/deftype.f DEFTYPE (" s" '('" OPERAND-REFUSED
+   s" require src/lib/type/deftype.f DEFTYPE \" s" '\'" OPERAND-REFUSED
    s" NEWTYPE ( 0" s" '('" OPERAND-REFUSED
    s" NEWTYPE \ 0" s" '\'" OPERAND-REFUSED
    s" SUMTYPE ( 0 VARIANT ckn-a ;VARIANT ;SUMTYPE" s" '('" OPERAND-REFUSED
@@ -3177,7 +3177,7 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru4 10 COUNT-CHAR 1 T= ;
 
 : TEST-OPERAND-MISSING ( -- )
-   s" require lib/type/deftype.f" s" DEFTYPE" NONAME-REFUSED
+   s" require src/lib/type/deftype.f" s" DEFTYPE" NONAME-REFUSED
    s" \ lead" s" DEFLINEAR" NONAME-REFUSED
    s" \ lead" s" VALUE-RECORD" NONAME-REFUSED
    s" \ lead" s" NEWTYPE" NONAME-REFUSED
@@ -3212,7 +3212,7 @@ create BIG $2000 allot   variable BIG-U
    s" BEGIN-STRUCTURE CKB" s" PTR-FIELD:" NONAME-REFUSED
    s" : CKM ( n -- ) create , does> ( -- ptr n ) ;" s" CKM" NONAME-REFUSED
    s" \ lead" s" generates:" NONAME-REFUSED
-   s" require lib/ffi-abi.f" s" FUNCTION:" NONAME-REFUSED ;
+   s" require src/lib/ffi-abi.f" s" FUNCTION:" NONAME-REFUSED ;
 
 \ A parsing keyword takes the next whitespace-delimited token raw, whatever it
 \ spells, in every scanner of the check as in the loader, and a definer takes
@@ -3579,7 +3579,7 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru s" ckfp:ckfpfam" CONTAINS? TTRUE ;
 
 : TEST-REQUIRE-FACADE ( -- )
-   s" require lib/test/suite.f" DIRECT-STDIN 0 T=
+   s" require src/lib/test/suite.f" DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
    erru 0 T=
    outu 0 T= ;
@@ -3606,7 +3606,7 @@ create BIG $2000 allot   variable BIG-U
 
 \ A require cycle: the root declares a deferred word and loads its host module
 \ last; the host requires the root back and installs into that word, as
-\ lib/aio.f and lib/aio-macos.f do. The host loads inside the root, after the
+\ src/lib/aio.f and src/lib/aio-macos.f do. The host loads inside the root, after the
 \ root's declarations, so preverify verifies the root before the host. The
 \ entry stands outside the cycle, as test/gate-images.f stands outside aio's.
 \ A host word of the wrong effect for the deferred word is still refused.
@@ -3650,7 +3650,7 @@ create BIG $2000 allot   variable BIG-U
 
 \ SUMTYPE and PRODUCT define their constructors when they load. The pre-pass
 \ replays the constructors' checked effects, so a definition in the same source
-\ that constructs one preverifies, as lib/aio.f's OUTCOME-OF builds
+\ that constructs one preverifies, as src/lib/aio.f's OUTCOME-OF builds
 \ AIO-OUTCOME:ready. A constructor left without its payload is still refused,
 \ and by its effect, not as an undefined word.
 : CTOR-SRC$ ( ptr u8 n -- ptr u8 n ) {: use:ptr useu:n :}
@@ -3828,7 +3828,7 @@ create BIG $2000 allot   variable BIG-U
 \ that can fail, and what holds each way:
 \   - the loaded file checked ahead of the whole source, so a word the source
 \     defines before its require is undefined in it (REQ-ORDER, the reduced
-\     case behind every library that requires lib/aio.f);
+\     case behind every library that requires src/lib/aio.f);
 \   - the loaded file's words visible to the source before the require
 \     (REQ-EARLY), or the source's later words visible to the loaded file
 \     (REQ-LATE): the load path refuses both E-UNDEFINED, and so must this;
@@ -3839,7 +3839,7 @@ create BIG $2000 allot   variable BIG-U
 \   - a loader in a colon body, which runs when the word does: its file waits
 \     until that definition and any package around it close, at the first
 \     neutral top-level point (PEND-RELEASE), and after a top-level loader in
-\     that package, which runs first (REQ-BODY, the shape of lib/aio.f's
+\     that package, which runs first (REQ-BODY, the shape of src/lib/aio.f's
 \     AIO-LOAD:HOST); a loader inside a control word is left to the run;
 \   - a top-level loader inside a package or under a `using`, composed where it
 \     sits, inside that scope: the loader runs the file in that scope, so its
@@ -4909,7 +4909,7 @@ variable SS-NEST-U
 \ The pre-verifier's tables grow with what a source holds, so each source below,
 \ one past a bound a table once had, verifies under --verify-only, read as a
 \ file whose loads find their file beside it. Only the verdict is asserted: the
-\ run is the program's own, and lib/type/deftype.f refuses CAP-NAME's name
+\ run is the program's own, and src/lib/type/deftype.f refuses CAP-NAME's name
 \ there (E-VNOM-CAP: it mangles at most 32 bytes).
 : SS-BIG-VERIFIES ( -- )
    s" ckt-x.f" s" \ ckt-x.f - the file CAP-LOADS' definitions load" NEST-FILE
@@ -4919,7 +4919,7 @@ variable SS-NEST-U
 \ A DEFTYPE name longer than the pre-verifier once folded.
 : CAP-NAME ( -- )
    0 BIG-U !
-   s" require lib/type/deftype.f" BIG-APP $0a BIG-C,
+   s" require src/lib/type/deftype.f" BIG-APP $0a BIG-C,
    s" DEFTYPE " BIG-APP
    65 0 ?do $4e BIG-C, loop $0a BIG-C, ;
 
@@ -4984,10 +4984,10 @@ variable SS-NEST-U
    s" STRUCTURE ckpoint 0 FIELD x n" 7107 2 3 s" STRUCTURE" SS-STOP! SS-DECL-NESTED SS-VERIFY
    s" PRODUCT ckpair 0 FIELD x n" 7107 2 3 s" PRODUCT" SS-STOP! SS-DECL-NESTED SS-VERIFY
    s" VALUE-RECORD ckvr x n" 7107 2 3 s" VALUE-RECORD" SS-STOP! SS-DECL-NESTED SS-VERIFY
-   s\" require lib/ffi-abi.f\nFUNCTION: CKF" 7155 3 1 s" FUNCTION:" SS-STOP! SS-EVERY
-   s\" require lib/ffi-abi.f\nFUNCTION: CKF getpid" 7157 3 1 s" FUNCTION:" SS-STOP! SS-EVERY
-   s\" require lib/ffi-abi.f\nFUNCTION: CKF getpid foo" 7157 3 1 s" FUNCTION:" SS-STOP! SS-STDIN-JSON
-   s\" require lib/ffi-abi.f\nFUNCTION: CKF getpid ( n -- n" 7157 3 1 s" FUNCTION:" SS-STOP! SS-STDIN-JSON
+   s\" require src/lib/ffi-abi.f\nFUNCTION: CKF" 7155 3 1 s" FUNCTION:" SS-STOP! SS-EVERY
+   s\" require src/lib/ffi-abi.f\nFUNCTION: CKF getpid" 7157 3 1 s" FUNCTION:" SS-STOP! SS-EVERY
+   s\" require src/lib/ffi-abi.f\nFUNCTION: CKF getpid foo" 7157 3 1 s" FUNCTION:" SS-STOP! SS-STDIN-JSON
+   s\" require src/lib/ffi-abi.f\nFUNCTION: CKF getpid ( n -- n" 7157 3 1 s" FUNCTION:" SS-STOP! SS-STDIN-JSON
    s" DEFLINEAR n" 7200 2 13 s" n" SS-STOP! SS-VERIFY
    s" VALUE-RECORD n x n END-VALUE-RECORD" 7200 2 16 s" n" SS-STOP! SS-VERIFY
    s" VALUE-RECORD ckvr x bogus END-VALUE-RECORD" 7198 2 21 s" x" SS-STOP! SS-VERIFY
@@ -5242,7 +5242,7 @@ variable SS-NEST-U
    s" capn-struct-tail.f" s\" \"decl\":\"structure\""
    s\" \"token\":\"ssssssssssssssss" CAPN-DECL-REFUSED
    0 LONG-U !
-   s\" require lib/c2-memory.f\npackage CAPN-FLD\npublic\nSTRUCTURE capn-rec 0 DERIVE init FIELD "
+   s\" require src/lib/c2-memory.f\npackage CAPN-FLD\npublic\nSTRUCTURE capn-rec 0 DERIVE init FIELD "
    $65 1100 s\"  n FIELD right n ;STRUCTURE\n;package" CAPN-DECL+
    s" capn-struct-field.f" s\" \"decl\":\"structure\""
    s\" \"token\":\"eeeeeeeeeeeeeeee" CAPN-DECL-REFUSED
@@ -5845,10 +5845,10 @@ variable AGREE-ERR-U
    s" agree.f" s" CKT-AG-NOPE" AGREE-UNDEFINED ;
 
 \ The pre-pass sees the program the run loads: the engine and what the subject
-\ loads. A word only the checking process loaded - lib/test.f's T= in this
-\ harness, lib/fs.f's FILE-SIZE here and in check.f alike - is undefined to it
-\ in both, a subject that requires lib/fs.f itself has FILE-SIZE, and one that
-\ includes lib/process.f declares its `outcome` family afresh, as the load
+\ loads. A word only the checking process loaded - src/lib/test.f's T= in this
+\ harness, src/lib/fs.f's FILE-SIZE here and in check.f alike - is undefined to it
+\ in both, a subject that requires src/lib/fs.f itself has FILE-SIZE, and one that
+\ includes src/lib/process.f declares its `outcome` family afresh, as the load
 \ does, though this process declared it when it loaded the file.
 : TEST-PREPASS-VIEW ( -- )
    SB-RESET s" : CKT-PV-ASSERT ( n n -- ) T= ;" REQ-LINE+
@@ -5857,12 +5857,12 @@ variable AGREE-ERR-U
    SB-RESET s" : CKT-PV-SIZE ( ptr u8 n -- n ) FILE-SIZE ;" REQ-LINE+
    s" view-tool.f" REQ-WRITE
    s" view-tool.f" s" FILE-SIZE" AGREE-UNDEFINED
-   SB-RESET s" require lib/fs.f" REQ-LINE+
+   SB-RESET s" require src/lib/fs.f" REQ-LINE+
    s" : CKT-PV-SIZE ( ptr u8 n -- n ) FILE-SIZE ;" REQ-LINE+
    s" view-own.f" REQ-WRITE
    s" view-own.f" REQ-RUN EXPECT-ACCEPTED
    s" view-own.f" REQ$ CLI-PATH EXPECT-ACCEPTED
-   SB-RESET s" include lib/process.f" REQ-LINE+
+   SB-RESET s" include src/lib/process.f" REQ-LINE+
    s" view-family.f" REQ-WRITE
    s" view-family.f" REQ-RUN EXPECT-ACCEPTED ;
 
@@ -6166,13 +6166,12 @@ variable LC-OTHER-U
    CLI-TARGET CLI-TARGET-U @ LC-PATH$ MAKE-SYMLINK ;
 
 \ No file in this root requires an engine-provided file, and none may: through
-\ the links, a subject that requires one (`lib/string.f`) is refused with an
+\ the links, a subject that requires one (`src/lib/string.f`) is refused with an
 \ E-BAD-DECLARATION "duplicate family" whose file is `<input>`, a fault of
 \ checking in a linked root that predates the load-context replay.
 : LC-ROOT-SETUP ( -- )
    ROOT$ s" lc-root" LC-ROOT JOIN-PATH LC-ROOT-U !
    LC-ROOT$ MAKE-DIR
-   s" lib" LC-ROOT$ LC-LINK
    s" tools" LC-ROOT$ LC-LINK
    s" src" LC-ROOT$ LC-LINK
    s" bin" LC-IN-ROOT MAKE-DIR
@@ -6186,7 +6185,6 @@ variable LC-OTHER-U
 : LC-OTHER-SETUP ( -- )
    ROOT$ s" lc-other" LC-OTHER JOIN-PATH LC-OTHER-U !
    LC-OTHER$ MAKE-DIR
-   s" lib" LC-OTHER$ LC-LINK
    s" src" LC-OTHER$ LC-LINK
    s" bin" LC-IN-OTHER MAKE-DIR
    CLI-HB$ s" bin/hb" LC-IN-OTHER MAKE-SYMLINK
@@ -6297,7 +6295,7 @@ variable LC-CANON-U
    s" sub/lc-use.f" CHECK-ARG+
    LC-ROOT$ LC-CAPTURE s" load-context: --all-errors's listed entry below the working directory" LC-EXPECT-CLEAN ;
 
-\ The checker spawns the engine lib/engine-candidate.f names, here the one
+\ The checker spawns the engine src/lib/engine-candidate.f names, here the one
 \ running this test, never the working directory's bin/hb: in LC-ROOT that
 \ would end the run stage, and --verify-only's verifier child, with 97.
 : LC-ENGINE-CASE ( -- )
@@ -6552,19 +6550,19 @@ $140 constant LC-MODE-0500   \ a directory its owner may list and enter, not wri
 \ Nothing checks a file the engine provides, so it is refused at its own
 \ spelling, by an E-ENGINE-PROVIDED record, with the usage status.
 : LC-PROVIDED-CASE ( -- )
-   s" lib/string.f" LC-ALL
-   s" load-context: engine-provided lib/string.f" T-LABEL 64 T=
+   s" src/lib/string.f" LC-ALL
+   s" load-context: engine-provided src/lib/string.f" T-LABEL 64 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru s" code" s" E-ENGINE-PROVIDED" LC-PACKET s" file" LC-STRING$
-   s" load-context: engine-provided, file as given" T-LABEL s" lib/string.f" T$= ;
+   s" load-context: engine-provided, file as given" T-LABEL s" src/lib/string.f" T$= ;
 
 \ A file of check.f's own closure, which the engine does not provide, is
 \ checked as any other: the pre-pass verifies it in the verifier child, whose
 \ image does not hold it, and the run stage loads it in an engine of its own,
 \ as `bin/hb --load` does.
 : LC-TOOL-CLOSURE-CASE ( -- )
-   s" lib/process.f" LC-ALL
+   s" src/lib/process.f" LC-ALL
    s" load-context: a file of check.f's own closure" LC-EXPECT-CLEAN ;
 
 \ A source list is refused only when the engine provides every input; a list
@@ -6572,8 +6570,8 @@ $140 constant LC-MODE-0500   \ a directory its owner may list and enter, not wri
 : LC-TOOL-LIST-CASE ( -- )
    CHECK-ARGV-START
    s" --source-list" CHECK-ARG+
-   s" lib/string.f" CHECK-ARG+
-   s" lib/process.f" CHECK-ARG+
+   s" src/lib/string.f" CHECK-ARG+
+   s" src/lib/process.f" CHECK-ARG+
    CHECK-CAPTURE
    s" load-context: a source list with a file check.f's own image holds" LC-EXPECT-CLEAN ;
 
@@ -7250,12 +7248,12 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 
 \ --- a definer that writes its word as text: the generates: row --------------
 \ CKT-GMAKE builds `: NAME ( -- n ) OFF ;` and evaluates it, the shape of
-\ lib/process-command.f COMMAND, so only its `generates:` row tells the
+\ src/lib/process-command.f COMMAND, so only its `generates:` row tells the
 \ preverify what it makes. The row is a claim: the preverify believes it, and
 \ the run stage, which compiles the generated text, holds it to the real word.
 : GENR-PRELUDE ( -- )
    SB-RESET
-   s\" require lib/codegen.f\n$60 CODEGEN:BUFFER CKT-GTEXT\n" SB-APPEND
+   s\" require src/lib/codegen.f\n$60 CODEGEN:BUFFER CKT-GTEXT\n" SB-APPEND
    s\" : CKT-GMAKE ( n -- )\n   {: off:n :}\n   parse-name\n   {: a:ptr u:n :}\n" SB-APPEND
    s\"    CKT-GTEXT CODEGEN:RESET  s\q : \q CKT-GTEXT CODEGEN:APPEND-STRING\n" SB-APPEND
    s\"    a u CKT-GTEXT CODEGEN:APPEND-STRING  s\q  ( -- n ) \q CKT-GTEXT CODEGEN:APPEND-STRING\n" SB-APPEND

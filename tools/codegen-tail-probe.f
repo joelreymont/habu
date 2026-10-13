@@ -22,14 +22,14 @@
 \ corpus lane names its own rows and nothing here has a list to keep in step with
 \ a case file.
 
-require lib/prelude.f
-require lib/errors.f
-require lib/string.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/string.f
 require src/habu/code-span.f
 require src/arch/arm64/disasm.f
 require src/compiler/native/branch.f
 require src/habu/code-bytes.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package NTAILPROBE
 

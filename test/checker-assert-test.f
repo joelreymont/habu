@@ -19,8 +19,8 @@
 \ Full ENUM and STRUCTURE fixtures exercise named payload layouts through the
 \ unified declaration path.
 
-require lib/prelude.f
-require lib/test.f
+require src/lib/prelude.f
+require src/lib/test.f
 require test/checker-assert.f
 
 \ ---- fixtures ------------------------------------------------------------------------

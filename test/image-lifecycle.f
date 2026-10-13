@@ -1,5 +1,5 @@
-require lib/test.f
-require lib/image-lifecycle.f
+require src/lib/test.f
+require src/lib/image-lifecycle.f
 
 package IMAGE-LIFECYCLE-TEST
 private

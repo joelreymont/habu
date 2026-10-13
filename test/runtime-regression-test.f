@@ -182,7 +182,7 @@ variable GE-SCRIPT-U
 \ the wide tail, so `64 SPAN-BUFFER: PBUF` then a bare `PBUF` landed the span's
 \ two cells on the untyped interpret stack, rc 0 (dot habu-mark-a-wide-851cab15).
 \ No library type is used here - the definer is local to the case, so the guard
-\ is pinned by the engine's own publication, not by lib/span.f.
+\ is pinned by the engine's own publication, not by src/lib/span.f.
 : GE-DOES-WIDE-BARE ( -- )
    s" : GE-WPAIR: ( -- ) create 0 , 0 , does> ( -- gewide<n,n> ) drop GE-WMK ; GE-WPAIR: GE-WP  GE-WP drop ."
       s" interp layout does> word fails closed" GE-ILAYOUT-CASE ;
@@ -581,8 +581,8 @@ variable GE-NEST-J
 : GE-PROCESS-PTY ( -- )
    GE-HB-RESET
    s" --load" GE-ARG+
-   s" lib/errors.f" GE-ARG+
-   s" lib/process.f" GE-ARG+
+   s" src/lib/errors.f" GE-ARG+
+   s" src/lib/process.f" GE-ARG+
    s" test/proc-pty.f" GE-ARG+
    s" --" GE-ARG+
    GE-HB$ GE-ARG+
@@ -2267,7 +2267,7 @@ variable GE-KIND-N
 : GE-P2-RUN ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: imm:ptr immu:n body:ptr bodyu:n run:ptr runu:n tier:n :}
    GE-SRC-RESET
-   s" require lib/adt/option.f" GE-SRC-LINE
+   s" require src/lib/adt/option.f" GE-SRC-LINE
    imm immu GE-SRC-LINE
    tier GE-END-TIER
    s" : GEP2W ( option<n> n -- n ) {: o:option<n> k:n :} k " GE-SRC+

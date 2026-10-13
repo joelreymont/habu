@@ -101,9 +101,9 @@
 \   the empty block as well), so that branch of the emitter's shape check stands
 \   behind an invariant the builder already holds.
 
-require lib/test.f
-require lib/byte-buffer.f
-require lib/fmath.f                       \ FMATH:E-DOMAIN, borrowed for a malformed expected string
+require src/lib/test.f
+require src/lib/byte-buffer.f
+require src/lib/fmath.f                       \ FMATH:E-DOMAIN, borrowed for a malformed expected string
 require src/compiler/native/select-x64.f
 require src/compiler/native/regalloc.f
 require src/compiler/native/regalloc-verify.f

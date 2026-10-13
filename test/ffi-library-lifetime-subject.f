@@ -17,16 +17,16 @@
 \ under RTLD_NOLOAD dyld finds a loaded image by absolute path, and answers
 \ NULL for the rendered libzip.5.dylib while that image is loaded.
 
-require lib/test.f
-require lib/codegen.f
-require lib/image-lifecycle.f
-require lib/ffi-abi.f
+require src/lib/test.f
+require src/lib/codegen.f
+require src/lib/image-lifecycle.f
+require src/lib/ffi-abi.f
 
 package FFI-LIBRARY-LIFETIME
 
 $4A constant FAILURE-RC
 
-\ libzip, by the name lib/zip-ffi.f renders for it.
+\ libzip, by the name src/lib/zip-ffi.f renders for it.
 VERSIONED-LIBRARY zip 5
 FUNCTION: ZIP-VERSION zip_libzip_version ( -- n ) ;FUNCTION
 
@@ -85,7 +85,7 @@ create DL-INFO $20 allot
 
 public
 
-\ The assertions, counted by lib/test.f; the caller resets and reports.
+\ The assertions, counted by src/lib/test.f; the caller resets and reports.
 : CHECK ( -- )
    s" the loader names the image libzip.5 opens" T-LABEL
    FIND-ZIP-PATH dup TTRUE

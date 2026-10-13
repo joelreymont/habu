@@ -18,7 +18,7 @@
 \ address; its row names the record being filed (WC-CALL), as a call to
 \ another shipped definition names that one's.
 
-require lib/span.f
+require src/lib/span.f
 require src/core/bytes.f
 require src/compiler/native/shadow.f
 require src/habu/aot-decl.f

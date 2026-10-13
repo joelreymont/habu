@@ -41,7 +41,7 @@
 \ Tier-neutral by design: the selector runs over modules this file builds, so
 \ what it produces does not depend on how this file was compiled.
 
-require lib/test.f
+require src/lib/test.f
 require src/compiler/native/select.f
 require src/arch/arm64/machine.f
 

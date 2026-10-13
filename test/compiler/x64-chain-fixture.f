@@ -33,8 +33,8 @@
 \ gives its registry slots back only when a live enclosing one leaves normally
 \ (src/compiler/ir/context.f, the note on stale handles).
 
-require lib/test.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/string.f
 require src/compiler/ir/id.f
 require src/compiler/ir/symbol.f
 require src/compiler/ir/build.f

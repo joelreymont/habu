@@ -1,6 +1,6 @@
 \ native-order-exit.f - a spilled memory loop reaches a no-return exit.
 require src/compiler/native/compiler.f
-require lib/test.f
+require src/lib/test.f
 
 \ Tier 1 below: the unbounded bodies below are never run; they exist to be
 \ accepted by the optimizing compiler's allocator, whose spilled reload stands

@@ -1,8 +1,8 @@
 \ insn-schema.f - Native ARM64 encoding vectors and operand/refusal cases.
 \ The schema records expected encodings and each target's reserved-register rule.
 
-require lib/errors.f
-require lib/string.f
+require src/lib/errors.f
+require src/lib/string.f
 
 \ The shipped assembler is standalone Forth with no stack effects of its own -
 \ it has to be checkable by the Gforth recovery compiler before the native

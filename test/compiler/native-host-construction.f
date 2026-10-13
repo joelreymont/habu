@@ -4,9 +4,9 @@
 \ cross-OS launch refusal returns from native-build.
 
 1 set-tier
-require lib/test.f
-require lib/le.f
-require lib/engine-id.f
+require src/lib/test.f
+require src/lib/le.f
+require src/lib/engine-id.f
 require tools/native-build-core.f
 require src/habu/aot-file.f
 require src/compiler/native/host.f

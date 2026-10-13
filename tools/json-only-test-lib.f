@@ -1,14 +1,14 @@
 \ json-only-test.f - checked fixtures for tools/json-only.f.
 \ Run: bin/hb --load tools/json-only-test.f
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/test/outcome.f
-require lib/process-argv.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/test/outcome.f
+require src/lib/process-argv.f
 require tools/cli-run.f
 require tools/json-only-core.f
 
@@ -137,9 +137,9 @@ variable JOT-ERR-A
    PROC-ARGV-RESET
    s" tools/json-only.f" CLI-TOOLS-LOAD if exit then
    s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/argv.f"  >LEN PROC-ARGV+
+   s" src/lib/errors.f"  >LEN PROC-ARGV+
+   s" src/lib/memory.f"  >LEN PROC-ARGV+
+   s" src/lib/argv.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/json-only-core.f"  >LEN PROC-ARGV+
    s" tools/json-only.f"  >LEN PROC-ARGV+ ;

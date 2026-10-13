@@ -1,4 +1,4 @@
-\ pg-cluster.f - lib/pg-test.f and lib/db/rows-test.f against a private
+\ pg-cluster.f - src/lib/pg-test.f and src/lib/db/rows-test.f against a private
 \ PostgreSQL cluster.
 \
 \     bin/hb --load test/db/pg-cluster.f [-- case.f ...]
@@ -6,20 +6,20 @@
 \ initdb makes a trust-authentication cluster under HB_TMP and this process
 \ starts postgres on it, listening on a Unix-domain socket only
 \ (listen_addresses=''), so rows running beside each other have no TCP port to
-\ collide on. The case files - the script arguments, or else lib/pg-test.f and
-\ then lib/db/rows-test.f - each run in a child engine that takes the conninfo
+\ collide on. The case files - the script arguments, or else src/lib/pg-test.f and
+\ then src/lib/db/rows-test.f - each run in a child engine that takes the conninfo
 \ as its one script argument and writes its report straight to this process's
 \ stdout and stderr; the first that fails ends the run, and the row's last line
 \ names it. This process stops the server however the children end - exit,
 \ failed assertion, die, crash or a deadline - and the cleanup registry
-\ (lib/fs-mutate.f CLEANUP-TREE+) removes the directories it made when this
+\ (src/lib/fs-mutate.f CLEANUP-TREE+) removes the directories it made when this
 \ process exits, including by die. A run that a step's deadline ended exits
 \ as a timeout, which a gate pool tells apart from a failure (FAIL-ROW).
 \
 \ THE SERVER IS THIS PROCESS'S CHILD FOR ITS WHOLE LIFE. pg_ctl starts a
 \ postmaster that forks, calls setsid and execs a shell, and then pg_ctl exits:
 \ the postmaster is left with init for a parent, in a session of its own, where
-\ a pool's tree walk (lib/process-tree.f) cannot reach it, and a killed row's
+\ a pool's tree walk (src/lib/process-tree.f) cannot reach it, and a killed row's
 \ server ran on until its lock-file recheck noticed the removed data directory,
 \ about a minute later. Spawned here, with no shell and no setsid, the
 \ postmaster keeps this process as its parent until this process reaps it, and
@@ -57,22 +57,22 @@
 \ long (maximum 103 bytes)`. Under the gate pool the socket is in HB_SOCK_TMP,
 \ the short directory the pool made for this row and removes with it
 \ (test/gate-pool.f). Run on its own, this process makes one under TMPDIR, as
-\ lib/fs-mutate-test.f FMT-ROOT! does for its socket.
+\ src/lib/fs-mutate-test.f FMT-ROOT! does for its socket.
 \
 \ initdb and postgres on PATH are a gate requirement on every host
 \ (docs/bootstrap.md "Requirements"). A missing one ends the row naming it,
 \ never a skip.
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-tree.f
-require lib/signal.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-tree.f
+require src/lib/signal.f
+require src/lib/engine-candidate.f
 
 package PG-CLUSTER
 
@@ -85,7 +85,7 @@ $10000 constant CAPTURE-CAP     \ initdb's chatter, or the server's log
 \ A signalled stop. An immediate shutdown SIGKILLs the children still alive
 \ 5 s into it (PostgreSQL's SIGKILL_CHILDREN_AFTER_SECS) and then exits, so
 \ 6 s is the server's whole stop. With the case engine's walk (2 s at most,
-\ lib/process-tree.f SETTLE-MS) it stays inside the pool's grace
+\ src/lib/process-tree.f SETTLE-MS) it stays inside the pool's grace
 \ (test/gate-pool.f GT-POOL-GRACE-MS, 10 s). initdb, which runs alone, is
 \ given the same for its step, and with the walk of its tree that stays inside
 \ the grace too.
@@ -297,7 +297,7 @@ false LATE !
    OUT at + got at - s" ready" STARTS-WITH? ;
 
 \ The server is sent its SIGQUIT and given ms to end. One that outlives that is
-\ killed with every process under it (lib/process-tree.f), so none outlives
+\ killed with every process under it (src/lib/process-tree.f), so none outlives
 \ this process either way - but a server killed so leaves its segment.
 : STOP ( n -- ) {: ms:n :}
    SERVER @ NO-PID = if exit then
@@ -386,7 +386,7 @@ false LATE !
 
 
 \ ---- a caught signal ----------------------------------------------------------
-\ SIGTERM, SIGINT and SIGHUP, caught as the gate root catches them (lib/signal.f
+\ SIGTERM, SIGINT and SIGHUP, caught as the gate root catches them (src/lib/signal.f
 \ CATCH-STOPS). No Forth word runs in a handler: the signal is a number on a
 \ pipe that every wait below polls beside its process.
 
@@ -397,7 +397,7 @@ false LATE !
 \ THE ANSWER. initdb, when it is running, is stopped; nothing else has started.
 \ The server is sent its SIGQUIT first and shuts down while the case
 \ engine's tree is ended; then it is given QUIT-MS. The directories go, and
-\ the process dies of the signal (lib/signal.f DIE-OF). A step that throws is
+\ the process dies of the signal (src/lib/signal.f DIE-OF). A step that throws is
 \ named and the answer goes on.
 \ It never returns: it may run from inside SERVE, and the die ends that too.
 : ANSWER ( n -- ) {: sig:n :}
@@ -482,16 +482,16 @@ false LATE !
    then
    file fileu EXITED-0? ;
 
-\ The case files are the script arguments, or lib/pg-test.f and then
-\ lib/db/rows-test.f when there are none.
+\ The case files are the script arguments, or src/lib/pg-test.f and then
+\ src/lib/db/rows-test.f when there are none.
 : CASE-N ( -- n )
    SCRIPT-ARGC 0= if 2 exit then
    SCRIPT-ARGC ;
 
 : CASE$ ( n -- ptr u8 n ) {: i:n :}
    SCRIPT-ARGC 0 > if i SCRIPT-ARGV$ exit then
-   i 0= if s" lib/pg-test.f" exit then
-   s" lib/db/rows-test.f" ;
+   i 0= if s" src/lib/pg-test.f" exit then
+   s" src/lib/db/rows-test.f" ;
 
 \ The files run against the one cluster in order, and the first that fails
 \ ends the run: the answer is the last file run and whether it passed.

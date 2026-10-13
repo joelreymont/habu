@@ -36,13 +36,13 @@
 \ On the whitebox engine the sweep keeps everything, so the first group would
 \ not hold there; the image class is asserted first so that reads as what it is.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/process.f
-require lib/fs-mutate.f
-require lib/test/subject.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/process.f
+require src/lib/fs-mutate.f
+require src/lib/test/subject.f
 require test/app-image-engine.f
 
 \ ---- a program's own definitions, compiled after boot --------------------------

@@ -1,5 +1,5 @@
 \ allow-sealed-admit.f - admission after the seal is refused.
-require lib/policy.f
+require src/lib/policy.f
 require test/policy/dep.f
 require test/policy/foreign.f
 

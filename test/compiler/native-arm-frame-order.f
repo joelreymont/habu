@@ -4,13 +4,13 @@
 \ block that dispatches to it. Spill rewriting used to hand that dispatch block a
 \ synthesized frame-order argument nothing ever reads, and the verifier refused
 \ the module with E-A64RAV-ORDER; src/core/type-family.f PF-LAYOUT-REQUIRE and
-\ lib/xml/scalar.f SCALAR-AT are the two shapes the tree carried. Each
+\ src/lib/xml/scalar.f SCALAR-AT are the two shapes the tree carried. Each
 \ definition below failed to compile at tier 1 or is a neighbour that did not.
 \
 \ THE NEIGHBOURS ARE THE POINT. An arm order, a missing default, a selector that
 \ is not a call, and a throwing arm that READS the spilled local each still need
 \ the lane, so a rewrite that withheld lanes too eagerly fails them instead.
-require lib/test.f
+require src/lib/test.f
 
 \ Tier 1 below: the synthesized frame-order argument and the E-A64RAV-ORDER
 \ refusal these definitions reproduce are the optimizing compiler's spill

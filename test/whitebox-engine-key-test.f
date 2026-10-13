@@ -12,11 +12,11 @@
 \ root and keyed there through WHITEBOX-KEY:ENTRY-PATH!, the same derivation
 \ test/whitebox-engine.f resolves with.
 
-require lib/test.f
-require lib/string.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/engine-candidate.f
 require tools/event-closure-lib.f
 require test/whitebox-key.f
 

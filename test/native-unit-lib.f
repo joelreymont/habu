@@ -11,13 +11,13 @@
 \ pool's row deadline under load. Each row prints its private directory, which
 \ keeps what its import wrote.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 require test/native-unit-image.f
 
 package NATIVE-UNIT-TEST

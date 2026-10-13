@@ -45,11 +45,11 @@
 \ hundreds. Only the last body on the page survives intact, which is why the
 \ behaviour assertions use fresh definitions compiled after CW-RESTORE.
 
-require lib/errors.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
-require lib/process.f
+require src/lib/errors.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
+require src/lib/process.f
 
 package CODE-WINDOW-TEST
 

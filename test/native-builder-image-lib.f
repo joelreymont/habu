@@ -23,15 +23,15 @@
 \ the builder's path and its private directory, which keeps the products and
 \ their name maps.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process-cwd.f
-require lib/time.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-cwd.f
+require src/lib/time.f
 require test/saved-builder.f
-require lib/tree-copy.f
+require src/lib/tree-copy.f
 
 package NATIVE-BUILDER-IMAGE-TEST
 

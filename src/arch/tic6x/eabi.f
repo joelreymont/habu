@@ -5,7 +5,7 @@
 \ a sequential program; the builder packs it into parallel execute packets and
 \ supplies the load and branch delays itself. Radar's docs/c6x-eabi-helpers.md
 \ records the contracts and decisions.
-require lib/errors.f
+require src/lib/errors.f
 require src/arch/tic6x/asm.f
 require src/arch/tic6x/facts.f
 

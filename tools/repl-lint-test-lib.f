@@ -1,6 +1,6 @@
 \ repl-lint-test.f - checked fixtures for tools/repl-lint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f tools/lint/text.f tools/lint/intern.f tools/lint/token.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
+\ src/lib/fs-mutate.f tools/lint/text.f tools/lint/intern.f tools/lint/token.f
 \ tools/lint/lib.f tools/repl-lint-core.f tools/repl-lint-test.f
 
 4096 constant RLT-CAP

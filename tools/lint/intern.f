@@ -1,8 +1,8 @@
 \ intern.f - checked growable string interner for native lint tools.
 
-require lib/errors.f
-require lib/memory.f
-require lib/vector.f
+require src/lib/errors.f
+require src/lib/memory.f
+require src/lib/vector.f
 require tools/lint/text.f
 
 package LINT-INTERN

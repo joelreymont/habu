@@ -3175,8 +3175,8 @@ loop or a match still rejects, and a uniform branch nested inside a
 lane-varying branch rejects (the outer frame can diverge lanes). This is
 sound and no longer over-rejects the legitimate block-uniform-branch case.
 
-Regression fixtures: Loom's lib/ptx/uniform-barrier-test.f (uniform-branch
+Regression fixtures: Loom's src/lib/ptx/uniform-barrier-test.f (uniform-branch
 positives UB-UNIF-IF / UB-UNIF-NESTED, BLOCK-MAX-SELECT positives
 UB-BMS-STRAIGHT / UB-BMS-UNIF-IF, and the divergent negatives UB-MIXED-IF
 / UB-BMS-IF alongside the lane-varying UB-BMAX-IF / -BEGIN / -DO) and
-Loom's lib/ptx/cpp-slot-neg-test.f (BAD-DIVBAR).
+Loom's src/lib/ptx/cpp-slot-neg-test.f (BAD-DIVBAR).

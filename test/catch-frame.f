@@ -12,14 +12,14 @@
 \ ENGINE-ERROR:CATCH-STACK (87) BEFORE any restore store touches caller memory,
 \ for a throw at top level (habu1.f BTHROW) and inside evaluate (habu2.f LEVALREC).
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 
 package CATCH-FRAME-TEST
 private

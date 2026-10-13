@@ -40,7 +40,7 @@
 \ `TEST:SUITE aot-wide-format` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-wide-format-suite.f
 
-require lib/test.f
+require src/lib/test.f
 require test/aot-wide-format-lib.f
 
 package AOT-WIDE-FORMAT

@@ -2,7 +2,7 @@
 \ Tier 1 after the harness: the rows read here are what a quotation store
 \ registers under the optimizing backend, which also compiles the registrar
 \ required below.
-require lib/test.f
+require src/lib/test.f
 
 1 set-tier
 require src/habu/address-cells.f

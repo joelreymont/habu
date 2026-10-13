@@ -16,22 +16,22 @@
 \
 \ Run: bin/hb --load test/tokstream-suite.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/test/outcome.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/test/outcome.f
 
 package TOKSTREAM-TEST
 
 10000 constant TIMEOUT-MS
 64 constant USAGE-RC                  \ ARGV:E-USAGE, the over-cap refusal
-65 constant OVER-CAP                  \ one past lib/argv.f ARGV-MAX
+65 constant OVER-CAP                  \ one past src/lib/argv.f ARGV-MAX
 \ The at-cap case captures one fixture stream per argument: the fixture path, up
 \ to FS-PATH-CAP bytes, and under $200 bytes of tokens.
 OVER-CAP 1- FS-PATH-CAP $200 + * constant CAP

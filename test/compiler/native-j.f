@@ -1,9 +1,9 @@
 \ native-j.f - production compilation of the outer counted-loop index `j`.
 require test/compiler/native-eval-fixture.f
-require lib/test.f
-require lib/prelude.f
-require lib/string.f
-require lib/errors.f
+require src/lib/test.f
+require src/lib/prelude.f
+require src/lib/string.f
+require src/lib/errors.f
 require src/compiler/native/compiler.f
 require tools/codegen-loop-inventory.f
 
@@ -61,7 +61,7 @@ public
 : NJ-JLOCAL ( n n n -- n ) {: j:n a:n b:n :}
    0 a 0 ?do b 0 ?do j 3 * i 5 * + + loop loop ;
 
-\ lib/ptx/cg-matmul-emit.f MM-KSTEP-FMA reduced to its indices: two plain `do`
+\ src/lib/ptx/cg-matmul-emit.f MM-KSTEP-FMA reduced to its indices: two plain `do`
 \ loops whose body computes a register number out of both of them. That body is
 \ the definition this leaf was opened by - it moved to E-HIR-UNMODELED naming `j`
 \ when the plain `do` landed - and this row is its arithmetic with the string

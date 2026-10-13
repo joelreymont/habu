@@ -8,7 +8,7 @@
 \ Tier-neutral by design: the dialect and its source-word model are read back
 \ through their own API, so the tier this file loads under changes no row.
 
-require lib/test.f
+require src/lib/test.f
 require test/checker-assert.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/hir-word.f

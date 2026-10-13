@@ -47,7 +47,7 @@ tracking; it is not a copy of the manual.
 
 ## Implemented Coverage
 
-`lib/task.f` implements the full captured surface above. `lib/task-test.f`
+`src/lib/task.f` implements the full captured surface above. `src/lib/task-test.f`
 proves task creation, start/join/kill, cooperative halt, task-local user
 storage, `HIS`, facility owner semantics, worker FFI calls, atomics, an
 application-shaped five-task repeated soak, live-task compile guards, and fail-closed

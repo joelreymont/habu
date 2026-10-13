@@ -1,7 +1,7 @@
 \ CASE defaults may consume values below their selector before the join.
-require lib/prelude.f
-require lib/string.f
-require lib/test.f
+require src/lib/prelude.f
+require src/lib/string.f
+require src/lib/test.f
 
 package CASE-LOWERING
 using option

@@ -7,13 +7,13 @@
 \ <seen>" - is only "600 600" when a 600-variable environment both arrived and
 \ was passed on intact.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 
 $20000 constant BIG-CAP
 $1388 constant BIG-TIMEOUT-MS

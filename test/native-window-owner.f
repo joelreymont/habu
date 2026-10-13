@@ -37,12 +37,12 @@
 \
 \ Run: bin/hb --load test/native-window-owner.f
 
-require lib/test.f
-require lib/string.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require test/whitebox-child.f
 require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
@@ -149,7 +149,7 @@ create ERR IO-CAP allot
 \     pointer-pool clear (test/compiler/native-checker-storage.f);
 \   - the source loader and layout the later require closures need;
 \   - the qualified-name gate (test/compiler/native-qualified-name.f), once
-\     src/habu/xref.f and lib/errors.f are in: it reopens XREF, patch32's
+\     src/habu/xref.f and src/lib/errors.f are in: it reopens XREF, patch32's
 \     owner, to move a pending record to another namespace, which the
 \     optimizing compiler's name-identity gate must refuse;
 \   - the declared row of a prefix word compiled with the hook cell empty
@@ -182,7 +182,7 @@ create ERR IO-CAP allot
    s" src/core/combinators.f" ARG+
    s" src/habu/code-span.f" ARG+
    s" src/habu/xref.f" ARG+
-   s" lib/errors.f" ARG+
+   s" src/lib/errors.f" ARG+
    s" test/compiler/native-qualified-name.f" ARG+
    s" src/core/generated-declaration-dictionary.f" ARG+
    s" src/core/generated-declaration-protection.f" ARG+

@@ -7,7 +7,7 @@
 \ largest reuse; a bind past the sanity ceiling dies NAMED before any mutation
 \ (transactional), leaving the prior bind intact.
 
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
 variable #CASE

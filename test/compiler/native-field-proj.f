@@ -1,5 +1,5 @@
 \ A generated address accessor must compile and run through the native tier.
-require lib/test.f
+require src/lib/test.f
 
 1 set-tier
 package NFP

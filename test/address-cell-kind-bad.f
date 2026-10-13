@@ -1,6 +1,6 @@
 \ address-cell-kind-bad.f - one persisted cell cannot have two address kinds.
 
-require lib/errors.f
+require src/lib/errors.f
 
 package ADDRESS-CELL-KIND-BAD
 

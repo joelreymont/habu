@@ -1,8 +1,8 @@
 \ Real kernel mappings distinguish an inaccessible reservation from memory
 \ temporarily protected against access. Neither classification uses addresses.
-require lib/test.f
-require lib/memory.f
-require lib/os-memory.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/os-memory.f
 require src/habu/proc-maps.f
 
 \ Extending a region after the first Mach query makes the second reply start

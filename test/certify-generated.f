@@ -1,15 +1,15 @@
 \ Generated-source certification checks every body despite provided markers.
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/build.f
-require lib/codesign.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/build.f
+require src/lib/codesign.f
+require src/lib/test.f
 require tools/build-fixpoint.f
 
 package CERTIFY-GENERATED-TEST
@@ -28,11 +28,11 @@ public
    root u CLEANUP-TREE+
    root u BUILD-FIXPOINT:BF-TMP!
    root u s" stage2-src" SOURCE JOIN-PATH SOURCE-U !
-   S\" s\" lib/string.f\" provided\n: BAD ( -- ) drop ;\ns\" lib/string.f\" provided\n"
+   S\" s\" src/lib/string.f\" provided\n: BAD ( -- ) drop ;\ns\" src/lib/string.f\" provided\n"
       E-BUILD-CERTIFY CHECK
-   S\" s\" lib/string.f\" provided\n: BAD ( -- ) drop ;\n"
+   S\" s\" src/lib/string.f\" provided\n: BAD ( -- ) drop ;\n"
       E-BUILD-CERTIFY CHECK
-   S\" s\" lib/string.f\" provided\n: BAD ( -- ) drop ;\ns\" lib/adt/option.f\" provided\n"
+   S\" s\" src/lib/string.f\" provided\n: BAD ( -- ) drop ;\ns\" src/lib/adt/option.f\" provided\n"
       E-BUILD-CERTIFY CHECK
    \ The actual stdlib constructor shape must certify against the core prefix.
    s" package GENERATED-CHECK public ENUM result 1 VARIANT ok FIELD value a ;VARIANT VARIANT no ;VARIANT ;ENUM : WRAP ( a -- result<a> ) GENERATED--CHECK-RESULT:OK ; ;package"

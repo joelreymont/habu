@@ -17,10 +17,10 @@
 \ Registered as `TEST:SUITE aot-chain-capture`. Run standalone:
 \   bin/hb --load test/aot-chain-capture-suite.f
 
-require lib/errors.f
-require lib/test.f
-require lib/fs.f
-require lib/process-argv.f
+require src/lib/errors.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/process-argv.f
 require test/aot-chain-capture-lib.f
 
 package AOT-CHAIN-SUITE

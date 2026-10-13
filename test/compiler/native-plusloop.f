@@ -7,9 +7,9 @@
 \ wraps at the boundary opposite the limit, which must keep looping. Expected
 \ counts below are the standard's own published tables (gd2, gd7, gd8) plus
 \ explicit cases for that opposite boundary; the JIT is not consulted.
-require lib/test.f
-require lib/prelude.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/prelude.f
+require src/lib/string.f
 require src/compiler/native/compiler.f
 require tools/codegen-loop-inventory.f
 

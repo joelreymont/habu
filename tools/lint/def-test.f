@@ -1,6 +1,6 @@
 \ def-test.f - focused structural defining-role classifier fixtures.
 
-require lib/test.f
+require src/lib/test.f
 require tools/lint/def.f
 
 package LINT-DEF-TEST

@@ -1,16 +1,16 @@
 \ imagedisasm-test.f - fixture coverage for native raw image disassembly.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/imagedisasm-test.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
+\ src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f tools/imagedisasm-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/test/outcome.f
-require lib/process-argv.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/test/outcome.f
+require src/lib/process-argv.f
 require src/arch/arm64/disasm.f
 require tools/imagedisasm.f
 
@@ -71,8 +71,8 @@ variable IMDT-LDRB-U
 : IMDT-ARGV-BASE ( -- )
    PROC-ARGV-RESET
    s" --load" IMDT-ARG+
-   s" lib/errors.f" IMDT-ARG+
-   s" lib/string.f" IMDT-ARG+
+   s" src/lib/errors.f" IMDT-ARG+
+   s" src/lib/string.f" IMDT-ARG+
    s" src/arch/arm64/disasm.f" IMDT-ARG+
    s" tools/imagedisasm.f" IMDT-ARG+
    s" --" IMDT-ARG+ ;

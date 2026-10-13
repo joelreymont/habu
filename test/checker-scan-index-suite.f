@@ -42,7 +42,7 @@
 \ (TFX-RESIZE), and forcing the symbol table past its capacity re-lays-out the
 \ symbol mapping, after which the differential runs again.
 
-require lib/string.f
+require src/lib/string.f
 require test/checker-scan-index-lib.f
 
 \ Reopened, not imported: the cases run inside the fixture's package, where

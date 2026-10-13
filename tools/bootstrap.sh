@@ -79,7 +79,7 @@ fi
 # the prefix does. In particular the declaration participants
 # (generated-declaration-dictionary.f and -protection.f, which seals their
 # registration) precede every generated declaration, the first of which is
-# lib/adt/option.f's ENUM. The boot-stdlib rows the prefix loads
+# src/lib/adt/option.f's ENUM. The boot-stdlib rows the prefix loads
 # (PFX-LOAD-STDLIB-FILES) follow the seals as in the prefix: every
 # `DYNAMIC-BUFFER NAME n` declaration generates an accessor that calls
 # DYNAMIC-STORAGE:RESERVE, and the first one is in
@@ -98,7 +98,7 @@ fi
 # the prefix's order (src/habu/habu2.f PFX-LOAD-STDLIB-FILES): span.f right
 # after errors.f, then option.f and num-types.f ahead of habu2.f, as
 # tools/build-fixpoint.f BF-APPEND-FMT places them in the native stage source.
-# habu2.f's `require lib/fmt.f` reaches option.f, but nothing in this text
+# habu2.f's `require src/lib/fmt.f` reaches option.f, but nothing in this text
 # requires num-types.f: without it hb-stdin died at boot, `tfam: a seeded type
 # registry does not start where its capture did`, 44 families against 55.
 SRC_COMMON=(
@@ -121,9 +121,9 @@ SRC_COMMON=(
   src/core/generated-declaration-protection.f
   src/core/layout-buffer-seal.f
   src/core/lower-cert-seal.f
-  lib/prelude.f
-  lib/errors.f
-  lib/span.f
+  src/lib/prelude.f
+  src/lib/errors.f
+  src/lib/span.f
   src/core/dynamic-storage.f
   src/arch/arm64/asm.f
   src/arch/arm64/icode.f
@@ -145,8 +145,8 @@ SRC_COMMON=(
   src/habu/address-carrier.f
   src/habu/aot-decl.f
   src/habu/aot-ident.f
-  lib/adt/option.f
-  lib/num-types.f
+  src/lib/adt/option.f
+  src/lib/num-types.f
   src/habu/habu2.f
 )
 
@@ -602,8 +602,8 @@ restore_hb_on_failure() {
 trap restore_hb_on_failure EXIT
 mv "$T/hb-stdin" bin/hb
 env HB_TMP="$T/native" bin/hb --load \
-  lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
-  lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f \
+  src/lib/errors.f src/lib/string.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f \
+  src/lib/process.f src/lib/process-argv.f src/lib/process-env.f src/lib/codesign.f \
   tools/build-fixpoint.f tools/build-fixpoint-main.f -- install --force
 trap - EXIT
 rm -f "$OLD_HB"

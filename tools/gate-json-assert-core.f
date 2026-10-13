@@ -1,8 +1,8 @@
 \ gate-json-assert-core.f - native JSON assertion library for gate tests.
 
-require lib/errors.f
-require lib/memory.f
-require lib/adt/option.f                 \ option<n> for GJA-U? (switchover wave A)
+require src/lib/errors.f
+require src/lib/memory.f
+require src/lib/adt/option.f                 \ option<n> for GJA-U? (switchover wave A)
 require tools/json.f
 require tools/diag-code.f
 

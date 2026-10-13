@@ -4930,7 +4930,7 @@ s" tile"       3 TFAM-REG-CELL
 s" vtile"      3 TFAM-REG-CELL   \ M10: vec4 lane tile, DISTINCT from scalar tile<> (tile-v4a.f)
 s" acc"        3 TFAM-REG-CELL
 s" mmctx"      3 TFAM-REG-CELL
-\ Pipelined register-blocked GEMM tile vocabulary (lib/ptx/tile-pipe.f):
+\ Pipelined register-blocked GEMM tile vocabulary (src/lib/ptx/tile-pipe.f):
 \ <t elem, b block, l layout-atom, w mask, p parity var> on the staged families;
 \ <t, b, g micro-geometry atom, w> on the micro-tile accumulator.
 s" mmstage"    5 TFAM-REG-CELL   \ READY current-parity staged As+Bs tile-pair
@@ -4939,7 +4939,7 @@ s" mmbslice"   5 TFAM-REG-CELL   \ contiguous 16B-proven B slice (v4 loads legal
 s" mmafrag"    5 TFAM-REG-CELL   \ A operand fragment (4 regs, one k column)
 s" mmbfrag"    5 TFAM-REG-CELL   \ B operand fragment (4 regs, one vec4 row)
 s" mmracc"     4 TFAM-REG-CELL   \ register-blocked micro-tile accumulator
-\ cp.async pipeline-slot typestate (lib/ptx/cpp-slot.f, dot
+\ cp.async pipeline-slot typestate (src/lib/ptx/cpp-slot.f, dot
 \ habu-checker-cp-async-6ba788a5): a staged-buffer slot threads
 \ pending<p> -> committed<p> -> ready<p> across the double-buffer protocol
 \ (p = symbolic buffer parity). The distinct state families make read-before-wait,
@@ -4968,7 +4968,7 @@ s" rowidx"     1 TFAM-REG-CELL
 \ `ix` is the arity-1 index family the other two are written in terms of: a value
 \ of ix<e> is one cell whose phantom argument names the extent it indexes. All
 \ three belong to the SAME core-owned substrate and are registered together here.
-\ They have to be: the checked retype ix<e> -> redx<e> (lib/type/extent-role.f
+\ They have to be: the checked retype ix<e> -> redx<e> (src/lib/type/extent-role.f
 \ `>RED`) is an
 \ INTRODUCTION into redx, and the checker only authorizes an introduction from
 \ the destination family's declaring package (checker.f CAST-OWNER?). While `ix`

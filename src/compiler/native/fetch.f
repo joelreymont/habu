@@ -1,5 +1,5 @@
 \ Copy source-bound frozen fetch descriptors before another checker scan runs.
-require lib/prelude.f
+require src/lib/prelude.f
 require src/compiler/digest.f
 require src/compiler/native/fetch-owner.f
 require src/compiler/native/string.f

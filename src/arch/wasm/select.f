@@ -109,10 +109,10 @@
 \ bands; a module holds none of them, so each such call is selected as the
 \ checked store itself, with no call.
 
-require lib/prelude.f
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
 require src/core/engine-error.f
 require src/compiler/target.f
 require src/compiler/binding.f

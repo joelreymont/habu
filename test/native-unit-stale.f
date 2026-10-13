@@ -10,10 +10,10 @@
 \ test/native-unit-lib.f has the fixture and the other row; run alone:
 \ bin/hb --load test/native-unit-stale.f
 
-require lib/test.f
-require lib/string.f
-require lib/fs.f
-require lib/fs-mutate.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require test/native-unit-lib.f
 
 package NATIVE-UNIT-TEST
@@ -35,7 +35,6 @@ create TARGET FS-PATH-CAP allot
    s" tree" AT {: a:ptr u:n :}
    a TREE u BYTE-COPY u TREE-U !
    TREE$ MAKE-DIRS
-   s" lib" LINK-BACK
    s" tools" LINK-BACK
    s" src" LINK-BACK ;
 
@@ -44,7 +43,7 @@ create TARGET FS-PATH-CAP allot
    OTHER-ROOT
    s" hb-stale" TREE$ IMPORT
    RC @ 0<> TTRUE
-   \ -8599 is E-NUNIT-FILE (lib/errors.f): the unit refused at NBR, not any
+   \ -8599 is E-NUNIT-FILE (src/lib/errors.f): the unit refused at NBR, not any
    \ other failure of the build.
    OUT$ s" native-build: uncaught throw code -8599" CONTAINS? TTRUE
    s" hb-stale" AT EXISTS? TFALSE ;

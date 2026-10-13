@@ -3,15 +3,15 @@
 \ The decision belongs in checked code.  A caller supplies the newline-separated
 \ paths changed by one revision; this file answers `engine` when a changed path
 \ can reach the native product and `focused` otherwise.  Unknown source inputs
-\ fail closed: `src/` and the bootstrap prefix are engine inputs, and the
+\ fail closed: compiler source and the bootstrap prefix are engine inputs, and the
 \ transitive closure of tools/native-build.f covers the remaining libraries.
 \ Tests and documentation are therefore allowed to reuse the previous engine.
 
-require lib/errors.f
-require lib/string.f
-require lib/fs.f
-require lib/source.f
-require lib/process-command.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/source.f
+require src/lib/process-command.f
 require tools/event-closure-lib.f
 
 package CHAIN-PLAN
@@ -55,6 +55,8 @@ create CP-FILE CP-FILE-CAP allot
    repeat drop CP-FALSE ;
 
 : CP-PREFIX? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" src/lib/" STARTS-WITH? if CP-FALSE exit then
+   a u s" src/examples/" STARTS-WITH? if CP-FALSE exit then
    a u s" src/" STARTS-WITH? if CP-TRUE exit then
    a u s" bootstrap/" STARTS-WITH? if CP-TRUE exit then
    CP-FALSE ;

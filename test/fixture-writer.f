@@ -20,11 +20,11 @@
 \ copies of its host: the writer is only ever executed, and it writes nothing
 \ but the paths its caller names, so no caller can clobber the shared bytes.
 
-require lib/errors.f
-require lib/fs.f
-require lib/process-argv.f
-require lib/content-key.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/fs.f
+require src/lib/process-argv.f
+require src/lib/content-key.f
+require src/lib/engine-candidate.f
 require test/keyed-image.f
 
 package FIXTURE-WRITER

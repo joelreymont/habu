@@ -1,7 +1,7 @@
 \ Native resources are used before capture and reacquired by the restored image.
-require lib/f64-text.f
-require lib/zip.f
-require lib/test.f
+require src/lib/f64-text.f
+require src/lib/zip.f
+require src/lib/test.f
 
 package NATIVE-RESOURCE-SUBJECT
 

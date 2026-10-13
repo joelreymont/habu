@@ -6,9 +6,9 @@
 \ are read out of live dictionary records, and the refused ones are built from
 \ the same live `rbase`, `dbase@` and `cp@` the boundary reads.
 
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 require src/habu/code-bytes.f
 
 package CODE-BYTES-TEST

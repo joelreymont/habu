@@ -1,22 +1,22 @@
 \ hb-build-lib.f - native AOT/REPL build CLI library.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/source.f
-require lib/build.f
-require lib/codesign.f
-require lib/content-key.f
-require lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer
-require lib/string-roles.f               \ package STR: the typed string surface
-require lib/object-resolve.f
-require lib/build-cache.f
-require lib/json-write.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/source.f
+require src/lib/build.f
+require src/lib/codesign.f
+require src/lib/content-key.f
+require src/lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer
+require src/lib/string-roles.f               \ package STR: the typed string surface
+require src/lib/object-resolve.f
+require src/lib/build-cache.f
+require src/lib/json-write.f
 \ tools/build-fixpoint.f is the caller-composed depth-0 --load entry: it
 \ requires none of the lib preamble its header names, so the lib requires
 \ above are also its load list and must precede this line.
@@ -163,7 +163,7 @@ variable HBB-MAKER-TIMEOUT-MS
    a u HBB-SRC! ;
 
 \ -o is replaced by renaming over it a sibling made in its directory, named
-\ its last name plus a suffix (lib/fs-mutate.f REPLACE-STAGED). Before it
+\ its last name plus a suffix (src/lib/fs-mutate.f REPLACE-STAGED). Before it
 \ builds anything the CLI refuses by name an -o with no room for that sibling,
 \ longer than SIBLING-PATH-MAX bytes or with a last name empty or longer than
 \ SIBLING-NAME-MAX, one in a directory that is not there, and one that is a
@@ -414,14 +414,14 @@ variable HBB-MAKER-TIMEOUT-MS
 
 : HBB-ADD-LINT-LOADS ( -- )
    s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/vector.f"  >LEN PROC-ARGV+
+   s" src/lib/errors.f"  >LEN PROC-ARGV+
+   s" src/lib/string.f"  >LEN PROC-ARGV+
+   s" src/lib/memory.f"  >LEN PROC-ARGV+
+   s" src/lib/vector.f"  >LEN PROC-ARGV+
    s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
-   s" lib/source-lex.f"  >LEN PROC-ARGV+
-   s" lib/argv.f"  >LEN PROC-ARGV+ ;
+   s" src/lib/source-lex.f"  >LEN PROC-ARGV+
+   s" src/lib/argv.f"  >LEN PROC-ARGV+ ;
 
 : HBB-ADD-AOT-LINT-ENTRY ( -- )
    s" tools/aot-lint.f" CLI-TOOLS-LOAD if exit then
@@ -568,7 +568,7 @@ HBB-INSTALL-CHILD-LINT
    ;MATCH ;
 
 \ Every file hb-build writes at -o is written to its sibling and renamed over
-\ -o only once it is whole and executable (lib/fs-mutate.f REPLACE-STAGED), so
+\ -o only once it is whole and executable (src/lib/fs-mutate.f REPLACE-STAGED), so
 \ a failed install, restore or object write leaves -o as it was and no sibling.
 \ HBB-FILLING is set only while the fill runs, so HBB-REPLACE-OUT tells the
 \ fill's own failure (its source, the bytes it writes) from the replace's: a
@@ -713,7 +713,7 @@ variable HBB-FILLING
 : HBB-RESTORE-OUT ( -- )
    [: HBB-RESTORE-FILL ;] HBB-REPLACE-OUT ;
 
-\ An artifact found in the cache is dated as used (lib/build-cache.f), and one a
+\ An artifact found in the cache is dated as used (src/lib/build-cache.f), and one a
 \ prune took after the check is built again. So is one a prune takes after USED
 \ dated it: a copy that fails while the artifact is gone is a miss, and -o is
 \ as it was. The copy opens the artifact before it writes a byte, and once open

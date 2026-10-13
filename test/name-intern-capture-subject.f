@@ -1,7 +1,7 @@
 \ One spelling belongs to four distinct declarations. The saved images keep
 \ their effects and source order while later scopes rewind symbol text.
-require lib/tier.f
-require lib/test/eval.f
+require src/lib/tier.f
+require src/lib/test/eval.f
 
 package NI-ALPHA
 private

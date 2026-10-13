@@ -4,9 +4,9 @@
 \ definitions with CHECK! and records top-level defining words that the checker
 \ needs before those definitions are compiled by the native compiler.
 
-require lib/errors.f
+require src/lib/errors.f
 require src/core/checker-owner-guard.f
-require lib/string.f
+require src/lib/string.f
 require src/habu/layout.f
 require src/habu/xref.f
 
@@ -444,7 +444,7 @@ variable STR-DEC-TURN
 \ as the engine's control-flow stack restores the count (LCFPUSH, LCFPOP), and
 \ `else` drops the true arm's. An enclosing local is still that local inside a
 \ quotation, where the engine and the checker refuse it at that token.
-\ lib/source.f BLOCK-OPENER? and BLOCK-CLOSER? hold the same block words for the
+\ src/lib/source.f BLOCK-OPENER? and BLOCK-CLOSER? hold the same block words for the
 \ tools' scanners. Blocks are counted only while a local lives: one opened with
 \ none live drops none, and a local only needs the count to change from its own
 \ group on.
@@ -1374,13 +1374,13 @@ CTL-RENDERS CTL-NOMINAL or constant MARK-NOMINAL
 \ here is the row the load path records, not a permissive default.
 \
 \ WHY LEARNED AND NOT LISTED. RECORD-DEFINER?'s table names the CORE definers.
-\ lib owns nine `does>` definers of its own (lib/codegen.f BUFFER-E, lib/queue.f,
-\ lib/span.f twice, lib/aio.f, lib/string.f, lib/task.f three times); adding rows
+\ lib owns nine `does>` definers of its own (src/lib/codegen.f BUFFER-E, src/lib/queue.f,
+\ src/lib/span.f twice, src/lib/aio.f, src/lib/string.f, src/lib/task.f three times); adding rows
 \ for them would put library names in the engine and miss the next one. Measured
-\ before this table existed: `tools/check.f lib/process-env-test.f` refused with
-\ E-UNDEFINED for PROC-ENV-DIAG, created at lib/process-env.f:93 by
+\ before this table existed: `tools/check.f src/lib/process-env-test.f` refused with
+\ E-UNDEFINED for PROC-ENV-DIAG, created at src/lib/process-env.f:93 by
 \ `PROC-ENV-DIAG-CAP CODEGEN:BUFFER PROC-ENV-DIAG`, and `tools/check.f
-\ lib/queue.f` refused NG-BUFFER, created at lib/type/deftype.f:60.
+\ src/lib/queue.f` refused NG-BUFFER, created at src/lib/type/deftype.f:60.
 \ A third class is a definer whose product text the scan never reads because
 \ it is rendered and evaluated at load (FUNCTION:, COMMAND, +USER). The checker
 \ learns that it renders from its body (CTL-RENDERS), and RECORD-DEFINER?, or
@@ -1673,7 +1673,7 @@ variable WRAP-ROW                             \ the definer row the last call na
 \ Observe one body token for the straight-line-wrapper rule. A body whose tokens
 \ hold EXACTLY ONE definer call and no control flow, quotation or bracket creates
 \ whatever that definer creates - `: BUFFER ( n -- ) E-CG-CAP E-CG-VALUE
-\ BUFFER-E ;` (lib/codegen.f) is the shape. Two definer calls, a conditional
+\ BUFFER-E ;` (src/lib/codegen.f) is the shape. Two definer calls, a conditional
 \ definer or a definer inside a quotation record nothing, and the created word
 \ then stays unknown exactly as it is today.
 \
@@ -2389,7 +2389,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
 : RECORD-END-USING ( -- )
    CHECKER-USING-POP ;
 
-\ DEFTYPE NAME declares a value nominal (lib/type/deftype.f): a
+\ DEFTYPE NAME declares a value nominal (src/lib/type/deftype.f): a
 \ package-scoped arity-0 type family whose lowercase tail is the surface name
 \ folded (SERIAL -> serial) and whose converter pair >NAME ( n -- tail ) /
 \ NAME>N ( tail -- n ) keeps a plain n from standing in for the nominal. The
@@ -2452,7 +2452,7 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
 
 \ A SUMTYPE defines its constructors when it loads, so after the registration
 \ the scan replays their checked effects: a later definition that calls one, as
-\ lib/aio.f's OUTCOME-OF calls AIO-OUTCOME:ready, resolves here as in the load.
+\ src/lib/aio.f's OUTCOME-OF calls AIO-OUTCOME:ready, resolves here as in the load.
 : RECORD-SUMTYPE ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    BODY-RESET
@@ -3383,7 +3383,7 @@ variable FILE-USE
    name nameu sig sigu sym DEFINER-FIND 0<> GENERATES-SIGNATURE nip 0= IF EXIT THEN
    sig sigu true sym DEFINER-ADD ;
 
-\ `FUNCTION: NAME symbol ( effect ) ... ;FUNCTION` (lib/ffi-abi.f) makes NAME
+\ `FUNCTION: NAME symbol ( effect ) ... ;FUNCTION` (src/lib/ffi-abi.f) makes NAME
 \ from its declaration group, so the group is NAME's effect with the one rewrite
 \ the declarer applies (ffi-abi.f OUT-TOKEN): an `i32` result is a cell. Inputs
 \ stay verbatim. The group is read raw, because NEXT-SCAN skips it as a comment.

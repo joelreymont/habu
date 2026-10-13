@@ -1,10 +1,10 @@
 \ reloc-cases.f - Execute relocation vectors against emitted instruction sequences.
 \ Selected examples do not establish complete relocation coverage.
 
-require lib/prelude.f
-require lib/errors.f
-require lib/string.f
-require lib/test.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
 require src/habu/layout.f
 require src/habu/address-cells.f
 require src/habu/address-carrier.f

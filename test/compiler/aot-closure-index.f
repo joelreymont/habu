@@ -14,7 +14,7 @@
 \ questions, which is why the count is the index's validity test.
 \ THE ENTRY IS THE MEMBER'S IDENTITY: both records name one span, and one span
 \ is one member however many names reach it.
-require lib/test.f
+require src/lib/test.f
 require src/habu/aot-closure.f
 
 package CIX-FIXTURE

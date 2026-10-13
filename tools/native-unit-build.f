@@ -1,6 +1,6 @@
 \ Explicit checked-package native build: tier 1 precedes every dependency.
 1 set-tier
-require lib/executable-build.f
+require src/lib/executable-build.f
 
 package NATIVE-UNIT-BUILD-ENTRY
 public

@@ -1,6 +1,6 @@
 \ Pure ARMv7-R A32 and ARMv7E-M Thumb instruction construction.
-require lib/type/deftype.f
-require lib/errors.f
+require src/lib/type/deftype.f
+require src/lib/errors.f
 
 package A32ASM
 public

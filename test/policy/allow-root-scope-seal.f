@@ -1,4 +1,4 @@
-require lib/policy.f
+require src/lib/policy.f
 
 : SEAL-IN ( -- )
    s" test/policy/confined" [: POLICY:SEAL ;] POLICY:WITH-ROOT ;

@@ -18,9 +18,9 @@
 \ three that are false on unordered. That is why every float comparison this
 \ engine has answers false for a NaN.
 
-require lib/prelude.f
-require lib/errors.f
-require lib/string.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/string.f
 require src/compiler/native-effect.f
 require src/compiler/native/machine.f
 require src/compiler/target.f

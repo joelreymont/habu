@@ -1,0 +1,142 @@
+\ assert.f - checked stdlib test assertions.
+
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test/record.f
+require src/lib/fmt.f                          \ FMT:.INT - one-line number text, shared builder untouched
+
+1 constant T-EX-FAIL
+
+variable T-CASE#
+variable T-FAIL#
+
+256 constant T-LABEL-CAP
+create T-LABEL-BUF T-LABEL-CAP allot
+variable T-LABEL-U
+
+: T-RESET ( -- )
+   0 T-CASE# !
+   0 T-FAIL# !
+   0 T-LABEL-U ! ;
+
+: T-CASES ( -- n )
+   T-CASE# @ ;
+
+: T-FAILURES ( -- n )
+   T-FAIL# @ ;
+
+: T-NEXT ( -- )
+   T-CASE# @ 1+ T-CASE# ! ;
+
+: T-LABEL-CLEAR ( -- )
+   0 T-LABEL-U ! ;
+
+: T-LABEL$ ( -- ptr u8 n )
+   T-LABEL-BUF T-LABEL-U @ ;
+
+: T-LABEL ( ptr u8 n -- ) {: a:ptr u:n :}
+   u T-LABEL-CAP > if s" test: label too long" T-EX-FAIL die then
+   0 begin dup u < while
+      dup a + c@  over T-LABEL-BUF + c!
+      1+
+   repeat drop
+   u T-LABEL-U ! ;
+
+: T-LABEL. ( -- )
+   T-LABEL-U @ 0 > if s" case: " type T-LABEL$ type cr then ;
+
+: T-FAIL+ ( -- )
+   T-FAIL# @ 1+ T-FAIL# ! ;
+
+: T-FAIL-AS ( ptr u8 n -- ) {: la:ptr lu:n :}
+   [char] F emit T-CASE# @ .
+   T-LABEL.
+   la lu T-CASE# @ T-LABEL$ TREC-FAIL
+   T-FAIL+ ;
+
+: T-FAIL ( -- )
+   s" assert" T-FAIL-AS ;
+
+: T-ASSERT-DETAIL ( ptr u8 n -- ) {: msg:ptr msgu:n :}
+   T-FAIL
+   s" assert: " type msg msgu type cr ;
+
+: T-ASSERT ( bool -- )
+   T-NEXT
+   0= if s" expected true got false" T-ASSERT-DETAIL then
+   T-LABEL-CLEAR ;
+
+: T= ( n n -- ) {: got:n want:n :}
+   T-NEXT
+   got want <> if
+      T-FAIL
+      s" assert: expected " type want FMT:.INT
+      s"  got " type got FMT:.INT
+      cr
+   then
+   T-LABEL-CLEAR ;
+
+: T<> ( n n -- ) {: got:n want:n :}
+   T-NEXT
+   got want = if
+      T-FAIL
+      s" assert: expected not " type want FMT:.INT
+      s"  got " type got FMT:.INT
+      cr
+   then
+   T-LABEL-CLEAR ;
+
+: TTRUE ( bool -- )
+   T-ASSERT ;
+
+: TFALSE ( bool -- )
+   T-NEXT
+   if s" expected false got true" T-ASSERT-DETAIL then
+   T-LABEL-CLEAR ;
+
+: T-STR= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+   u v <> if 0 0= 0= exit then
+   0 begin dup u < while
+      dup a + c@ over b + c@ <> if drop 0 0= 0= exit then
+      1+
+   repeat drop 0 0= ;
+
+: T$= ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n b:ptr v:n :}
+   T-NEXT
+   a u b v T-STR= 0= if
+      T-FAIL
+      s" assert: expected string:" type cr
+      b v type cr
+      s" got string:" type cr
+      a u type cr
+   then
+   T-LABEL-CLEAR ;
+
+: T$<> ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n b:ptr v:n :}
+   T-NEXT
+   a u b v T-STR= if
+      T-FAIL
+      s" assert: expected different string:" type cr
+      a u type cr
+   then
+   T-LABEL-CLEAR ;
+
+: T-REPORT ( -- )
+   T-FAIL# @ 0= if s" test: ok" type cr exit then
+   s" test: " type T-FAIL# @ FMT:.INT s"  failure(s)" type cr
+   s" test: failures" T-EX-FAIL die ;
+
+\ A deadline is no verdict on the code under test (src/lib/test/outcome.f): a
+\ check that wants another code lets E-PROC-TIMEOUT go uncaught, so the gate
+\ pool reports the row as a timeout instead of a wrong throw code. The expected
+\ code is a local, so a throw check inside the xt keeps its own.
+: TTHROWSQ ( [ -- ] n -- ) {: want:n :}
+   catch {: code:n :}
+   code E-PROC-TIMEOUT = want E-PROC-TIMEOUT <> and if code throw then
+   code want = T-ASSERT ;
+
+\ Named execution tokens and literal quotations share the same checked effect.
+: TTHROWS ( [ -- ] n -- )
+   TTHROWSQ ;

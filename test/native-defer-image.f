@@ -3,10 +3,10 @@
 \ Public image capture then carries an application's installer across two boots.
 \ Each restored process also compiles fresh JIT and native words: live compiler
 \ literals can be allocated before the first source-prefix dictionary record.
-require lib/test.f
-require lib/fs-mutate.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 
 package DEFER-IMAGE-TEST
 

@@ -1,6 +1,6 @@
 # Asynchronous I/O
 
-`lib/aio.f` (package `AIO`) lets a task wait for a descriptor, a duration or a
+`src/lib/aio.f` (package `AIO`) lets a task wait for a descriptor, a duration or a
 cancellation, and read, write, accept or connect, without parking its thread
 inside the host call. Linux uses io_uring; macOS uses a single poll loop.
 
@@ -33,18 +33,18 @@ AIO:START                                        \ once, after compilation
 ```
 
 Sixty-four waits from eight tasks cost eight threads and the loop's one -
-measured in `lib/aio-test.f` through the host thread count during the run.
+measured in `src/lib/aio-test.f` through the host thread count during the run.
 
 The loop is started explicitly because a live task forbids compilation
 ([threads.md](threads.md)): the program decides when it has finished defining
-words. The loop task is no exception: it runs `lib/aio.f`'s code, which sits in
-the 64K unit a later definition flips non-executable whenever `lib/aio.f` was
+words. The loop task is no exception: it runs `src/lib/aio.f`'s code, which sits in
+the 64K unit a later definition flips non-executable whenever `src/lib/aio.f` was
 the last thing compiled (measured in threads.md), so a program defines
 everything first and starts the loop last. A submission with no loop running is
 `E-AIO-STATE`.
 
-`lib/net/tcp4.f`, `lib/net/udp4.f`, `lib/serial.f`, `lib/pty.f`,
-`lib/process-pty-io.f` and `lib/signal.f` are the loop's library callers: every
+`src/lib/net/tcp4.f`, `src/lib/net/udp4.f`, `src/lib/serial.f`, `src/lib/pty.f`,
+`src/lib/process-pty-io.f` and `src/lib/signal.f` are the loop's library callers: every
 `TCP4` readiness question, every `UDP4:RECEIVE` that has to wait, every
 `SERIAL:READ` and `SERIAL:WRITE`, every `PTY:READ`, `PROCESS-PTY:AWAIT` and
 `AWAIT-BYTES`, and `SIGNAL:WAIT` and `SIGNAL:PENDING?` is one `POLL` and one
@@ -119,13 +119,13 @@ regular file has no readiness at all, which is what `AIO:READ` and `AIO:WRITE`
 are for.
 
 **The allocation belongs to the transfer.** `AIO:READ` and `AIO:WRITE` take a
-`lib/memory.f` allocation - the pointer and the extent exactly as
+`src/lib/memory.f` allocation - the pointer and the extent exactly as
 `MEM:ALLOC-BYTES` answered them - and answer an `AIO:xfer`. From that moment
 until `AIO:AWAIT-XFER` answers the pair again, nothing in the module produces
 it, so no checked code can read, write or release the bytes the kernel is
 moving. The type is the rule: `AIO:AWAIT`, `AIO:GROUP+` and `AIO:GROUP-` take an
 `AIO:ticket` and refuse an `AIO:xfer` at compile time, and `AIO:AWAIT-XFER`
-refuses a ticket. `lib/aio-test.f` pins both refusals as rejected programs.
+refuses a ticket. `src/lib/aio-test.f` pins both refusals as rejected programs.
 
 A raw pointer the caller kept a copy of before submitting is outside this
 design: the checker has nothing to say about it. The unique bounded borrow of
@@ -159,7 +159,7 @@ lands, hand `AIO:READ` an allocation and forget the pointer.
   transfer would otherwise clear `REC.HOLD` without releasing the bytes, and a
   stale `AIO:xfer` over a record that now holds a poll or a timer would answer a
   null pointer with an extent row of its own. Both are `E-AIO-STATE` and both
-  directions are pinned in `lib/aio-test.f`.
+  directions are pinned in `src/lib/aio-test.f`.
 - `AIO:CANCEL-XFER` is `AIO:CANCEL` for a transfer, and just as much a request:
   a cancel of a `READ` on a regular file may lose the race and the outcome is
   then `ready`, because such a read can be served before it is ever cancellable.
@@ -172,7 +172,7 @@ closes, and which is close-on-exec like `TCP4:ACCEPT`'s. `AIO:CONNECT`'s `ready`
 arm carries zero. **The sockaddr bytes `AIO:CONNECT` names are the caller's and
 must stay mapped and unchanged until the ticket's outcome is taken.** This
 module does not copy them and states no claim about when the kernel does.
-`lib/net/tcp4.f` answers the descriptors: `TCP4:LISTENER-FD`,
+`src/lib/net/tcp4.f` answers the descriptors: `TCP4:LISTENER-FD`,
 `TCP4:CONNECTION-FD` and `TCP4:SOCKET`, which is a stream socket connected to
 nothing yet.
 
@@ -224,7 +224,7 @@ Two, both small and both in this module.
    ends the process by name instead of throwing.
 
 Everything else - the SQE and CQE fields, the ring indexes, the record table,
-the group rows - is ordinary checked Habu over `lib/le.f`'s little-endian byte
+the group rows - is ordinary checked Habu over `src/lib/le.f`'s little-endian byte
 accessors. The submission tail store and the completion head store follow a
 `fence`, and the completion tail read is followed by one.
 
@@ -247,13 +247,13 @@ facility held.
 ## Errors
 
 `E-AIO-SETUP`, `E-AIO-ENTER`, `E-AIO-STATE`, `E-AIO-FULL`, `E-AIO-BUSY`,
-`E-AIO-GROUP`, `E-AIO-BOUNDS`, the `-9290..-9299` block of `lib/errors.f`.
+`E-AIO-GROUP`, `E-AIO-BOUNDS`, the `-9290..-9299` block of `src/lib/errors.f`.
 `E-AIO-BOUNDS` is a transfer count past its allocation or below zero, a file
 offset below `-1`, or a socket address length that is not positive.
 
 ## macOS backend
 
-`lib/aio-macos.f` shares the ticket table, generations, ownership checks,
+`src/lib/aio-macos.f` shares the ticket table, generations, ownership checks,
 groups and task cleanup with the Linux backend. One poll thread watches all
 operations and a nonblocking wake pipe. A snapshot carries each record's
 generation, so cancellation and reuse cannot deliver an old readiness event
@@ -285,12 +285,12 @@ nonblocking. Accepted sockets are blocking and close-on-exec.
   An older kernel refuses `io_uring_setup` with `ENOSYS` and the error names it.
   An offset of `-1` on a `READ` or a `WRITE` - use and advance the descriptor's
   own position - is io_uring's own rule for those two operations; it is measured
-  in `lib/aio-test.f` on the kernel the suite runs on and not against the floor.
+  in `src/lib/aio-test.f` on the kernel the suite runs on and not against the floor.
   A `POLL` with a deadline of zero links a zero-length timeout, and it still
   answers `ready` for a descriptor that is already ready because the kernel
   serves the poll inline before the linked timer is armed: measured 200 of 200
   each way on the running kernel and pinned by the zero-timeout questions of
-  `lib/net/tcp4-test.f` and `lib/net/udp4-test.f`, not guaranteed by the floor.
+  `src/lib/net/tcp4-test.f` and `src/lib/net/udp4-test.f`, not guaranteed by the floor.
 - aarch64 only so far. `syscall` is a variadic C function, and on aarch64 a
   variadic call passes integer arguments in the ordinary registers, so the two
   declarations above are exact. **On x86-64 the caller of a variadic function

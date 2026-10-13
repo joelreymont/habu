@@ -1,5 +1,5 @@
 \ process-pty-io-smoke.f - focused proof of the checked PTY process supervisor
-\ (lib/process-pty-io.f) built on the landed linear handle registry.
+\ (src/lib/process-pty-io.f) built on the landed linear handle registry.
 \
 \ Proves, through the supervisor's public PROCESS-PTY:* lifecycle:
 \   - a spawned short-lived child is watched to exit and the watch fires;
@@ -20,10 +20,10 @@
 \
 \ Run: bin/hb --load test/process-pty-io-smoke.f
 
-require lib/process-pty-io.f
-require lib/prelude.f
-require lib/aio.f
-require lib/test.f
+require src/lib/process-pty-io.f
+require src/lib/prelude.f
+require src/lib/aio.f
+require src/lib/test.f
 require test/checker-assert.f
 
 package PTY-IO-SMOKE
@@ -151,7 +151,7 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
 \ the handle is linear and does not cross the throw a refusal assertion catches,
 \ and the supervised set it strands keeps the gate runner's capture pipe open
 \ through its still-gated target child (measured: the runner waits on that pipe
-\ forever). lib/serial-test.f, lib/pty-test.f and lib/signal-test.f pin the
+\ forever). src/lib/serial-test.f, src/lib/pty-test.f and src/lib/signal-test.f pin the
 \ refusal on the three packages whose waits carry no linear token.
 \
 \ The loop is started after the last definition (a live task forbids

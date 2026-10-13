@@ -8,8 +8,8 @@
 \ too, and every loop leaves at an explicit turn cap, so a broken entry test
 \ fails a row instead of running round the integer range.
 \ test/compiler/native-do.f and native-plusloop.f hold the tier-1 twins.
-require lib/test.f
-require lib/prelude.f
+require src/lib/test.f
+require src/lib/prelude.f
 
 package JDO-FIXTURE
 public

@@ -5,8 +5,8 @@
 \ AArch64 encodes `bl` as $94000000 plus a signed 26-bit count of INSTRUCTIONS
 \ from the site, so both addresses must be aligned and the count has a limit.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 
 package NBR
 

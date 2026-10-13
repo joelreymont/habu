@@ -1,14 +1,14 @@
 \ Mutated signed final images exercise the native packed-metadata boot reader.
 \ The ordinary candidate boots first; every mutation must exit through the AOT
 \ integrity boundary before the user program can print its marker.
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/codesign.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/codesign.f
+require src/lib/engine-candidate.f
 require tools/image-size-lib.f
 
 package IMAGE-SIZE

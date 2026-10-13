@@ -1,18 +1,18 @@
 \ public-signatures-test.f - checked fixtures for tools/public-signatures.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
-\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f tools/lint/text.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
+\ src/lib/vector.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f tools/lint/text.f
 \ tools/lint/intern.f tools/lint/token.f tools/lint/lib.f
 \ tools/public-signatures-core.f tools/public-signatures-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/vector.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/vector.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
 require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
@@ -204,7 +204,7 @@ variable PST-NUM-U
    outu erru ;
 
 : PST-TEST-GOOD ( -- )
-   s" examples/llm/good.f" PST-RUN 0 PST-EXPECT-EXIT {: outu erru :}
+   s" src/examples/llm/good.f" PST-RUN 0 PST-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    PST-OUT outu PST-SCHEMA$ CONTAINS? TTRUE
    PST-OUT outu s" SQUARE" PST-WORD$ CONTAINS? TTRUE
@@ -450,7 +450,7 @@ variable PST-NUM-U
 
 \ Number-parser-claimable definition names (all digits, float shape, $hex,
 \ optional minus) have no alpha byte, so PS-PROJECT-WORD? alone skipped them
-\ silently - how lib/fmt.f's old `.0` escaped the output. The scanner must SEE
+\ silently - how src/lib/fmt.f's old `.0` escaped the output. The scanner must SEE
 \ them (defensive for historical trees; E-NUMERIC-DEFINITION rejects new ones).
 \ Punctuation-only names the number parser does NOT claim (`...`) stay
 \ invisible - no over-correction.

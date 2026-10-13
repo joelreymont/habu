@@ -1,4 +1,4 @@
-\ process-stdin-zero-child.f - child program for lib/process-test.f
+\ process-stdin-zero-child.f - child program for src/lib/process-test.f
 \ TEST-SPAWN-SAME-NUMBER, run as `bin/hb test/process-stdin-zero-child.f`.
 \ It closes its own fd 0, so the capture's stdin pipe opens with its
 \ close-on-exec read end on fd 0, the number the child's stdin needs. It
@@ -6,7 +6,7 @@
 \ the payload reaches stdout only if the spawn kept fd 0 open across exec.
 \ A pipe that did not land on fd 0 exits 3, so a red is the spawn's alone.
 
-require lib/process.f
+require src/lib/process.f
 
 package PROC-STDIN-ZERO-CHILD
 

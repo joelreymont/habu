@@ -5,7 +5,7 @@
 \ The assertions are test/ffi-library-lifetime-subject.f's; test/stripped-image.f
 \ runs the same ones in a stripped executable.
 
-require lib/test.f
+require src/lib/test.f
 require test/ffi-library-lifetime-subject.f
 
 package FFI-LIBRARY-LIFETIME-TEST

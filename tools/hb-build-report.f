@@ -4,9 +4,9 @@
 \ bytes: REPORT-W writes into REPORT-BUF, and a span answered by one report word
 \ stays valid until the next one runs.
 
-require lib/build-cache.f
-require lib/memory.f
-require lib/json-write.f
+require src/lib/build-cache.f
+require src/lib/memory.f
+require src/lib/json-write.f
 
 package HB-BUILD
 

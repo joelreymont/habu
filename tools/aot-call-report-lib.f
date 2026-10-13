@@ -3,7 +3,7 @@
 \ The gates load it in process, so it refuses misuse by a named throw its
 \ caller reports; only REPORT-MAIN, the CLI boundary, ends the process.
 
-require lib/errors.f
+require src/lib/errors.f
 
 package AOT-CALL-REPORT
 
@@ -88,7 +88,7 @@ variable JSON-NUM-N
    repeat drop ;
 
 \ A negative length, or one the path buffer cannot hold with its NUL, is a bad
-\ path, refused as lib/fs.f refuses one, by E-FS-PATH. The length is compared
+\ path, refused as src/lib/fs.f refuses one, by E-FS-PATH. The length is compared
 \ with the capacity, never added to, so no length wraps into range.
 : REPORT-FILE! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-FS-PATH throw then

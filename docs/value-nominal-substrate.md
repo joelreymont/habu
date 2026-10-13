@@ -1,7 +1,7 @@
 # Value-nominal substrate — decision record
 
 Decision for dot `habu-value-nominal-declaration-9947031d`. What does the
-`NOMINAL:` declaration surface (`lib/type/value-nominal.f`) mint a value-nominal
+`NOMINAL:` declaration surface (`src/lib/type/value-nominal.f`) mint a value-nominal
 integer type on — a package-scoped **arity-0 type family** (TFAM), or an extended
 **CT-role** (the `DEFTYPE` table in `src/core/roles.f`, given package scoping)?
 

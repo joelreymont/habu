@@ -1,16 +1,16 @@
 \ A copied engine's physical pathname and content key must not travel into an
-\ application image. A child loads app-image and lib/engine-id.f through the
+\ application image. A child loads app-image and src/lib/engine-id.f through the
 \ normal source loader, prints PATH$ and KEY$, and saves; on macOS KEY$ also
 \ leaves the pathname in the digest context's path field and in the
 \ mapped-region answer. The saved process writes its restored DATA to a file,
 \ asking nothing first. The parent counts, in the DATA file, the path and key
 \ the child printed: every count must be 0. The saved process then resolves
 \ its own pathname. Keep the saved image, DATA file and logs as evidence.
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 
 package ENGINE-ID-CAPTURE-E2E
 private
@@ -136,7 +136,7 @@ variable AT
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    s" --" >LEN PROC-ARGV+ DUMP$ >LEN PROC-ARGV+
    SAVED$ >LEN SOURCE-ROOT:CWD$ >LEN
-   S\" require lib/fs.f\n0 SCRIPT-ARGV$ data-base BYTE-VIEW here data-base - WRITE-ALL\n" >LEN
+   S\" require src/lib/fs.f\n0 SCRIPT-ARGV$ data-base BYTE-VIEW here data-base - WRITE-ALL\n" >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT
    s" dump.out" s" dump.err" LOG-RESULT
@@ -156,7 +156,7 @@ variable AT
    DUMP-DATA DUMP$ SCAN RUN-SAVED ;
 
 : KEY-SOURCE$ ( -- ptr u8 n )
-   S\" require src/habu/app-image.f\nrequire lib/engine-id.f\nENGINE-ID:PATH$ type cr\nENGINE-ID:KEY$ type cr\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
+   S\" require src/habu/app-image.f\nrequire src/lib/engine-id.f\nENGINE-ID:PATH$ type cr\nENGINE-ID:KEY$ type cr\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
 
 public
 

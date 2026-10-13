@@ -1,18 +1,18 @@
 \ gate-common.f - checked helpers for native tests.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/span.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-fork.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/content-key.f
-require lib/test/runner.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/span.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-fork.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/content-key.f
+require src/lib/test/runner.f
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 $40000 constant GE-SRC-CAP
 \ Generous deadlock deadline for one engine-gate child.
@@ -214,7 +214,7 @@ variable GE-EVAL-SRC-U
    \ A child whose deadline expired failed no check of its own: report the
    \ deadline, so the pool reads a timeout instead of this check's failure. That
    \ is this capture's deadline, or one inside the child, which then exits
-   \ PROC-TIMEOUT-RC (lib/process.f).
+   \ PROC-TIMEOUT-RC (src/lib/process.f).
    GT-TIMED-OUT @ if E-PROC-TIMEOUT throw then
    GT-RC@ PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
    s" native test failed" 1 die ;
@@ -222,7 +222,7 @@ variable GE-EVAL-SRC-U
 \ Run a row's checks in a process its parent reads by exit status, as on the
 \ linker image (test/preloaded-engine.f LINKER-LOAD). A throw code does not
 \ cross that boundary, so a deadline that escapes the checks ends this process
-\ with PROC-TIMEOUT-RC (lib/process.f), which the parent throws again as
+\ with PROC-TIMEOUT-RC (src/lib/process.f), which the parent throws again as
 \ E-PROC-TIMEOUT; any other throw reaches the top level with its own code.
 : GE-CHILD-RUN ( [ -- ] -- )
    catch {: code:n :}
@@ -437,7 +437,7 @@ variable GE-EVAL-SRC-U
 : GE-EVAL-SOURCE ( -- )
    GE-EVAL-SOURCE-RUNSTACK ;
 
-\ An in-process action's capture (lib/test/runner.f GT-CAPTURE-ACTION), stored
+\ An in-process action's capture (src/lib/test/runner.f GT-CAPTURE-ACTION), stored
 \ as an exit whose code is the action's throw code.
 : GE-CAPTURE-ACTION ( [ -- ] -- )
    {: q :}

@@ -12,11 +12,11 @@
 \ `bin/hb --load test/compiler/native-tail.f` measures the same code.
 \ Only what is compiled after `1 set-tier` belongs to the tier, so it follows
 \ the harness and probe requires and precedes the fixture.
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/prelude.f
-require lib/adt/option.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/prelude.f
+require src/lib/adt/option.f
 require src/compiler/native/dict.f
 require src/compiler/native/compiler.f
 require tools/codegen-tail-probe.f
@@ -86,13 +86,13 @@ public
    dup [: NTL-ROLE ;] swap NTL-TAKE drop NTL-ROLE ;
 
 \ ---- the bodies --------------------------------------------------------------
-\ lib/byte-buffer.f LEN@ reduced to its shape: a local, a guard the local
+\ src/lib/byte-buffer.f LEN@ reduced to its shape: a local, a guard the local
 \ crosses, and a tail call whose argument is what the middle word answered. The
 \ local is dead at the tail call and the dialect hands it over anyway.
 : NTL-LEN ( n -- n ) {: v:n :}
    v NTL-GUARD  v NTL-RAW NTL-ROLE ;
 
-\ lib/map.f MAP:CELL-COUNT reduced: the local is the tail call's own argument,
+\ src/lib/map.f MAP:CELL-COUNT reduced: the local is the tail call's own argument,
 \ so the value handed over and the value published are the same value.
 : NTL-SELF ( n -- n ) {: v:n :}
    v NTL-GUARD  v NTL-ROLE ;

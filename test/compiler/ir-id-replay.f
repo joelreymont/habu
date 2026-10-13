@@ -29,7 +29,7 @@
 \ an open load rather than zeroing its way through one, so this file names the
 \ half it means.
 
-require lib/errors.f
+require src/lib/errors.f
 require src/compiler/ir/id.f
 
 package IR-ID-REPLAY

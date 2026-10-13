@@ -15,7 +15,7 @@ $37D8 constant INCLUDE-EVALERR-CELL
 \ reserved in src/habu/layout.f as SRCLOC:PATH-CELL / SRCLOC:PATHLEN-CELL.
 $2800 constant INCLUDE-SRCLOC-PATH-CELL
 $2808 constant INCLUDE-SRCLOC-PATHLEN-CELL
-\ The design seal's watermark (lib/policy.f), spelled here the same way and
+\ The design seal's watermark (src/lib/policy.f), spelled here the same way and
 \ reserved in src/habu/layout.f as POLICY-NDICT-CELL: 0 while nothing is sealed.
 $4898 constant INCLUDE-POLICY-NDICT-CELL
 $4CA0 constant INCLUDE-POLICY-REQUIRE-CELL
@@ -921,7 +921,7 @@ private
 \ The running engine's path: on macOS the one execve received, in the
 \ executable_path= apple string past envp's terminator; on Linux
 \ /proc/self/exe. Both name the engine, not the script, for a `#!` program
-\ file. lib/engine-id.f asks proc_pidpath through FUNCTION:, which this layer
+\ file. src/lib/engine-id.f asks proc_pidpath through FUNCTION:, which this layer
 \ cannot use.
 : ENVP-END ( -- n )
    0 begin dup ENVP 0= 0= while 1+ repeat 1+ ;
@@ -1479,7 +1479,7 @@ PTR-VARIABLE TOP
 
 : SOURCE ( -- ptr u8 ) CHECK-ACTIVE TOP@ HEADER-BYTES + ;
 
-\ The open frame learns its file's size by filling, so it grows as lib/pg.f's
+\ The open frame learns its file's size by filling, so it grows as src/lib/pg.f's
 \ call arena does: it doubles its room, or takes WANT bytes if that is more. The
 \ header and the first KEEP source bytes move to a fresh mapping; once the old
 \ one is released, the fresh one becomes TOP and the published location, the
@@ -1541,7 +1541,7 @@ private
 \ The design seal is read where the engine's loop reads a token, and the loop
 \ written in Habu reads it nowhere, so a file loaded once the seal is set is read
 \ by the engine's loop whatever INCLUDE-INTERPRET holds. `0 <>`, not `0<>`: the
-\ prefix loads lib/prelude.f, which defines `0<>`, after this file.
+\ prefix loads src/lib/prelude.f, which defines `0<>`, after this file.
 : POLICY-SEALED? ( -- bool )
    data-base INCLUDE-POLICY-NDICT-CELL + @ 0 <> ;
 

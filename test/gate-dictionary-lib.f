@@ -1,6 +1,6 @@
 \ gate-dictionary.f - checked runner for dictionary and checker contracts.
 
-require lib/fs.f
+require src/lib/fs.f
 require tools/check-all-errors-core.f
 require test/gate-common.f
 
@@ -680,7 +680,7 @@ variable CANDIDATE-VERDICT
 \ ..5 are words. The engine number parser claims shaped decimals before lookup
 \ (LITERAL-FIRST), so the checker must claim exactly the same token set or a
 \ number-shaped word certifies with an effect the runtime never executes (the
-\ lib/fmt.f .0 incident). Number-shaped definitions appear only inside child
+\ src/lib/fmt.f .0 incident). Number-shaped definitions appear only inside child
 \ source strings here; reserved-name-lint forbids them in committed code.
 : LITERAL-FLOAT-SRC ( -- )
    GE-SRC-RESET
@@ -1404,7 +1404,7 @@ variable CANDIDATE-VERDICT
 : XREF ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" lib/test.f" GE-SRC-FILE+
+   s" src/lib/test.f" GE-SRC-FILE+
    s" tools/xref-test-fixture.f" GE-SRC-FILE+
    s" XRT-MAIN" GE-SRC-LINE
    s" hb native xref words" GE-EVAL-RUN-STDIN

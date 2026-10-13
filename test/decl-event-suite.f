@@ -18,7 +18,7 @@
 \ Each field-publishing case uses its OWN family so committed field rows never
 \ collide on slot/byte layout across cases; header-only cases reuse one family.
 
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 using SCHEMA-REG
 using TFAM

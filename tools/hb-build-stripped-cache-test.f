@@ -36,7 +36,7 @@ package HB-BUILD-CLI
 \ and which the map therefore leaves alone.
 : HBT-PTRC-SRC$ ( -- ptr u8 n )
    SB-RESET
-   S\" require lib/string.f\ncreate PTRC-OWN 111 c, 107 c,\n" SB-APPEND
+   S\" require src/lib/string.f\ncreate PTRC-OWN 111 c, 107 c,\n" SB-APPEND
    S\" PERSISTED-PTR-VARIABLE PTRC-CACHED\nPERSISTED-PTR-VARIABLE PTRC-MINE\n" SB-APPEND
    S\" STR-MAX-I64$ PTRC-CACHED !\nPTRC-OWN PTRC-MINE !\n" SB-APPEND
    S\" : MAIN ( -- )\n   PTRC-CACHED @ STR-I64-DIGITS type cr\n" SB-APPEND

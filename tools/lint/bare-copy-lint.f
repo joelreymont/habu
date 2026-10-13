@@ -1,9 +1,9 @@
-\ bare-copy-lint.f -- a raw byte copy and the span mint belong to lib/ and src/.
+\ bare-copy-lint.f -- a raw byte copy and the span mint belong to compiler and library source.
 \
 \ Two words cross from "a pointer" to "a pointer and how far it reaches", and
 \ both of them take the reach on the caller's word: BYTE-COPY writes `n` bytes
 \ into a destination nothing checked, and SPAN:MAKE turns an address and a number
-\ into a span whose reach every later bounds check trusts. Inside lib/ and src/
+\ into a span whose reach every later bounds check trusts. Inside src/, except src/examples/,
 \ that crossing is the library's own business - a producer there publishes spans
 \ and BYTE-COPY is how SPAN:COPY moves the bytes once the reach has been checked.
 \ Everywhere else it is a consumer re-doing by hand what the span type already
@@ -16,22 +16,22 @@
 \ convert their files and the band that finishes them turns REPORT into a die.
 \
 \ Three false alarms are ruled out by construction. Prose is not code: the scan
-\ runs on lib/source-lex.f, which consumes `s" ... "`, `."`, `c"` bodies
+\ runs on src/lib/source-lex.f, which consumes `s" ... "`, `."`, `c"` bodies
 \ and `( ... )` / `\ ...` comments the way the real parser does, so the words
 \ named in this very comment are not findings. A longer name that merely starts
 \ the same way is not the word: BYTE-COPY-LEN is counted separately and never
 \ reported, because the match is whole-token. And ownership is decided by an
-\ ANCHORED path prefix, so test/lib/x.f is a consumer while lib/adt/x.f is not.
+\ ANCHORED path prefix, so test/lib/x.f is a consumer while src/lib/adt/x.f is not.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/vector.f
-require lib/fs.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/vector.f
+require src/lib/fs.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require lib/source-lex.f
+require src/lib/source-lex.f
 
 package BARE-COPY-LINT
 
@@ -78,7 +78,7 @@ variable ROOT-U
    a ROOT-BUF u BYTE-COPY u ROOT-U ! ;
 
 \ ---- ownership: an anchored path prefix, never a substring --------------------
-\ The walk hands back `<root>/lib/x.f`; the root's spelling and its slash are
+\ The walk hands back `<root>/src/lib/x.f`; the root's spelling and its slash are
 \ dropped once, here, so the anchored prefix below answers about the repository
 \ path and not about the walk root's spelling.
 : REL$ ( ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n :}
@@ -92,15 +92,15 @@ variable ROOT-U
    pa pu ;
 
 : OWNED? ( ptr u8 n -- bool ) {: pa:ptr pu:n :}
-   pa pu s" lib/" LINT-PREFIX? if LINT-TRUE exit then
+   pa pu s" src/examples/" LINT-PREFIX? if LINT-FALSE exit then
    pa pu s" src/" LINT-PREFIX? ;
 
 : COUNT-DIR ( ptr u8 n -- ) {: pa:ptr pu:n :}
-   pa pu s" lib/" LINT-PREFIX? if N-LIB BUMP exit then
+   pa pu s" src/lib/" LINT-PREFIX? if N-LIB BUMP exit then
+   pa pu s" src/examples/" LINT-PREFIX? if N-EX BUMP exit then
    pa pu s" src/" LINT-PREFIX? if N-SRC BUMP exit then
    pa pu s" tools/" LINT-PREFIX? if N-TOOLS BUMP exit then
    pa pu s" test/" LINT-PREFIX? if N-TEST BUMP exit then
-   pa pu s" examples/" LINT-PREFIX? if N-EX BUMP exit then
    N-OTHER BUMP ;
 
 \ ---- the report line ----------------------------------------------------------
@@ -178,7 +178,7 @@ variable ROOT-U
    pa pu REL$ a u LINT-SCAN ;
 
 \ ---- the tree -----------------------------------------------------------------
-\ lib/fs.f's walk already skips .git, .jj, .jj-ws and .dots, so a sibling
+\ src/lib/fs.f's walk already skips .git, .jj, .jj-ws and .dots, so a sibling
 \ workspace is never read. The repository's build directory is skipped before
 \ stat or descent; its generated trees can disappear while the lint runs.
 : WALK-PATH? ( ptr u8 n -- bool ) {: pa:ptr pu:n :}
@@ -197,11 +197,11 @@ variable ROOT-U
    s" bare-copy: files=" type FILES @ .
    s" bare-copy: findings=" type BAD @ .
    s" bare-copy: byte-copy-len sightings=" type NEAR @ .
-   s" lib" N-LIB DIR.
+   s" src/lib" N-LIB DIR.
    s" src" N-SRC DIR.
    s" tools" N-TOOLS DIR.
    s" test" N-TEST DIR.
-   s" examples" N-EX DIR.
+   s" src/examples" N-EX DIR.
    s" other" N-OTHER DIR. ;
 
 : CENSUS ( -- )

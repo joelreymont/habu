@@ -1,5 +1,5 @@
 \ Fixed build target and action values. CTARGET remains the wire and digest owner.
-require lib/string.f
+require src/lib/string.f
 require src/compiler/target.f
 require src/compiler/digest.f
 

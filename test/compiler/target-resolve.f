@@ -1,6 +1,6 @@
 \ Registered target-action acceptance. Each printed label and refusal is
 \ repeatable with `bin/hb --load test/compiler/target-resolve.f`.
-require lib/test.f
+require src/lib/test.f
 require src/compiler/target/model.f
 require src/compiler/native/backend.f
 require tools/build-target.f

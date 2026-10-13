@@ -1,6 +1,6 @@
 \ Only an absent committed field is a projection miss. A fault while computing
 \ its instantiated width must reach the caller, even if it also uses E-PF-ID.
-require lib/test.f
+require src/lib/test.f
 
 package FIELD-PROJ-ERRORS
 public

@@ -1,6 +1,6 @@
 \ xref-test.f - focused tests for live dictionary xref words.
 
-require lib/test.f
+require src/lib/test.f
 
 : XRT-SAMPLE ( -- n )
    42 ;

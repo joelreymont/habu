@@ -1,9 +1,9 @@
 \ The package key stops at the actual nested source cursor. Run with
 \ bin/hb --load test/native-unit-key-e2e.f; the private tree remains printed.
 
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require tools/native-source-view.f
 
 package NATIVE-UNIT-KEY-TEST

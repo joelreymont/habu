@@ -16,7 +16,7 @@
 \ exactly.
 \ It is registered twice in test/gate-stdlib-cases.f, once per tier.
 
-require lib/test.f
+require src/lib/test.f
 
 package WLP
 public

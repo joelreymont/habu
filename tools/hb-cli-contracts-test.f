@@ -1,15 +1,15 @@
 \ hb-cli-contracts-test.f - checked coverage for hb startup/data-stdin contracts.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/hb-cli-contracts-test.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f tools/hb-cli-contracts-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/test/outcome.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/test/outcome.f
 
 package CLI-CONTRACTS
 
@@ -132,11 +132,11 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
 : HCT-EXPECT-LOAD-STDIN ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" lib/source.f"  >LEN PROC-ARGV+
+   s" src/lib/errors.f"  >LEN PROC-ARGV+
+   s" src/lib/string.f"  >LEN PROC-ARGV+
+   s" src/lib/memory.f"  >LEN PROC-ARGV+
+   s" src/lib/fs.f"  >LEN PROC-ARGV+
+   s" src/lib/source.f"  >LEN PROC-ARGV+
    HCT-CHILD  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    s" bin/hb" >LEN s" DATA" >LEN HCT-OUT HCT-CAP >LEN

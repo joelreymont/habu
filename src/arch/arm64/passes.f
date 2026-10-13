@@ -21,8 +21,8 @@
 \ definition compiles to selects from the same module; SELECT binds and reads
 \ it, and the driver retires it.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/target.f
 require src/compiler/ir/id.f
 require src/compiler/ir/arena.f

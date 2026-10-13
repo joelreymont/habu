@@ -7,9 +7,9 @@
 \ gate's pool.
 \ Run: bin/hb --load tools/build-fixpoint-source-test.f
 
-require lib/string.f
-require lib/fs.f
-require lib/fs-mutate.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 
 \ The tool binds this ordinary FILE-SIZE replacement when it loads. For one
 \ armed path, the sample precedes a 68 KiB append, so its owning reader must
@@ -56,7 +56,7 @@ undefine FILE-SIZE
 : FILE-SIZE ( ptr u8 n -- n ) BFT-SIZE:SIZE ;
 
 require tools/build-fixpoint-test-lib.f
-require lib/fmt.f
+require src/lib/fmt.f
 
 \ The shared fixture's words are private words of the tool's package, so this
 \ row reopens it the way tools/build-fixpoint-test-lib.f does.

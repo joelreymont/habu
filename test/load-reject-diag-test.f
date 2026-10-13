@@ -8,25 +8,25 @@
 \ engine on generated rejecting fixtures and asserting stderr names the error.
 \ The child engine is HABU_UNDER_TEST when the gate sets it, else bin/hb.
 \
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
-\   tools/json.f tools/gate-json-assert-core.f lib/argv.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f
+\   tools/json.f tools/gate-json-assert-core.f src/lib/argv.f
 \   tools/repair-packet-core.f test/load-reject-diag-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require tools/json.f
 require tools/gate-json-assert-core.f
-require lib/argv.f
+require src/lib/argv.f
 require tools/repair-packet-core.f
-require lib/test/outcome.f
+require src/lib/test/outcome.f
 
 package LOAD-REJECT-TEST
 

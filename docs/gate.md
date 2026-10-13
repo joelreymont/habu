@@ -56,7 +56,7 @@ is the focused check of the naming rule itself
 
 The registry runs only on a `tools/native-build.f` product. Its keyed images
 (below) include the fixture writer (`test/fixture-writer.f`), an application
-image saved with the engine `lib/engine-candidate.f` resolves (an exported
+image saved with the engine `src/lib/engine-candidate.f` resolves (an exported
 `HABU_UNDER_TEST`, else the running engine), and `APP-IMAGE:SAVE` needs
 `NATIVE-RUNTIME`, which only that build bakes. The engine `tools/bootstrap.sh`
 installs is the recovery engine: it answers `using NATIVE-RUNTIME` with
@@ -118,7 +118,7 @@ those maxima it adds 348 bytes, and 1023 less 348 is 675. Measured on a host
 with a 14-digit `<ns>` and a 5-digit `<pid>`, where it adds at most 333: a
 685-byte root fit every row, and at 700 bytes that row was refused past
 `PATH_MAX`. The runner checks only its own paths: `GT-START`
-(`lib/test/runner.f`) refuses, once and by name before it makes anything, an
+(`src/lib/test/runner.f`) refuses, once and by name before it makes anything, an
 `HB_TMP` that leaves its root no room for a `GT-NAME-MAX` name within
 `FS-PATH-CAP`, but a row's own deeper paths, like that one, only this bound
 keeps.
@@ -164,7 +164,7 @@ runs none of its own exit path, and a server it ran loses what only that path
 releases: PostgreSQL's System V shared-memory segment is removed there and
 nowhere else, and `kern.sysv.shmmni` allows 32 on the macOS hosts here
 ([db.md](db.md#tests)). So the pool reads the
-child's caught signals (`PROC-TREE:CATCHES?`, lib/process-tree.f) and, when
+child's caught signals (`PROC-TREE:CATCHES?`, src/lib/process-tree.f) and, when
 SIGTERM is among them, sends it and waits until the child has exited or
 `GT-POOL-GRACE-MS` (10 s) has passed. Every child asked at the end of a run
 gets that grace at once, while the others are killed. In that time the child
@@ -182,7 +182,7 @@ busy, or once `initdb`'s current step has ended.
 The kill itself then reaches every process descended from the slot's child,
 not only the child's process group. Every spawned child leads a group of its own
 ([process-pty.md](process-pty.md)), so a row's engine builds used to outlive the
-row, reparented to init. `lib/process-tree.f` stops the tree before it lists it
+row, reparented to init. `src/lib/process-tree.f` stops the tree before it lists it
 and kills it once it has settled, or as it stands after two seconds. It follows
 each member's children and the group each member leads, a zombie's too: a child
 that forked and exited unreaped leaves what it forked in the group its pid still
@@ -280,7 +280,7 @@ at its deadline.
   processes, a gate run of one whitebox row ran 77 s of CPU in all while its
   build row took 449 s. The pool reads the CPU time, user and system, of the
   row's process and every live process descended from it, with what each
-  reaped (`lib/process-tree.f` `CPU-NS`), at most once a second, and ends the
+  reaped (`src/lib/process-tree.f` `CPU-NS`), at most once a second, and ends the
   row as `kind=CPU-BUDGET` once it has run the budget every gate row has
   (`test/suite-budget.f` `CPU-MS`, 360 s; `test/gate-pool.f`
   `GT-POOL-CPU-BUDGET!`). Its wall deadline is only a hang guard, sized for a
@@ -322,7 +322,7 @@ at its deadline.
   10 s) and build-fixpoint's boot check of a candidate (`BF-BOOT-TIMEOUT-MS`,
   30 s) each run about 20 ms of CPU, and on a freshly signed copy of the
   engine each ended within 0.1 s beside those 64 processes, its signing
-  (`lib/codesign.f`, 10 s) within 0.25 s, so load does not reach those
+  (`src/lib/codesign.f`, 10 s) within 0.25 s, so load does not reach those
   deadlines. Nor does it reach compile-floor-gate's 180 s, whose tools run
   about a second of CPU each, check.f's run stage (`tools/check-core.f`
   `CHK-DEADLINE-MS`, 120 s), where no check.f a gate row starts runs a second,
@@ -334,10 +334,10 @@ at its deadline.
   9 s and a check.f in 7 s.
 - A suite whose assertions depend on the compiler tier selects it itself.
   Only code compiled after `1 set-tier` belongs to the tier, so the line goes
-  after the harness and tool requires (`lib/test.f`, the code-reading tools,
+  after the harness and tool requires (`src/lib/test.f`, the code-reading tools,
   test fixtures that drive the chain) and before the code under test; a
   library whose own words a case runs as the subject is required after it
-  (`test/compiler/native-exec.f` and `lib/array.f`). `' W dup 4 + code-origin .`
+  (`test/compiler/native-exec.f` and `src/lib/array.f`). `' W dup 4 + code-origin .`
   prints the tier that compiled `W`. No assertion depends on the harness's
   tier, and compiling it at tier 1 dominated these rows
   (`test/compiler/native-do.f`: 1.17 s with the line above its requires,
@@ -398,29 +398,29 @@ at its deadline.
 - A deadline in a build child reaches the pool as a timeout through exit
   statuses, because a throw code cannot cross a process boundary.
   `tools/native-build.f` and `tools/build-fixpoint.f` exit 124
-  (`PROC-TIMEOUT-RC`, `lib/process.f`) when a deadline expired and 74 for any
+  (`PROC-TIMEOUT-RC`, `src/lib/process.f`) when a deadline expired and 74 for any
   other failure they catch, after naming its throw code. build-fixpoint's
   `BF-RC0`, the build-fixpoint rows (`tools/build-fixpoint-test-lib.f`
   `BFT-FIXPOINT-RC`) and `test/whitebox-engine.f` throw `E-PROC-TIMEOUT` again
   on 124, and the rows rethrow it once the step is named.
 - A test's own capture deadline is no assertion result. `PROC-OUTCOME>RC`
-  (`lib/process.f`), `GT-RC@` (`lib/test/runner.f`) and `GE-FAIL`
+  (`src/lib/process.f`), `GT-RC@` (`src/lib/test/runner.f`) and `GE-FAIL`
   (`test/gate-common-lib.f`) throw `E-PROC-TIMEOUT` for an expired deadline.
-  The `lib/test/outcome.f` asserts that want an exit or a signal take the
+  The `src/lib/test/outcome.f` asserts that want an exit or a signal take the
   program and its captured stdout and stderr, and throw it through
   `T-TIMED-OUT`, which prints the case label, the program and the capture
   first. A test that MATCHes the outcome itself throws it from its `timeout`
   arm through `T-TIMED-OUT`, or through `SUBJECT:TIMED-OUT`
-  (`lib/test/subject.f`) when it keeps its own counters (`test/proc-pty.f`);
+  (`src/lib/test/subject.f`) when it keeps its own counters (`test/proc-pty.f`);
   both first print the program and the capture drained before the deadline,
   as `GE-FAIL` does for a gate entry. A capture inside a worker task only
   throws it, because a task asserts nothing, and the join throws it again
-  (`lib/process-task-test.f`). So the row reaches the pool as
+  (`src/lib/process-task-test.f`). So the row reaches the pool as
   `TIMEOUT-UNDER-LOAD` instead of failing an assertion on 137 or on a false
   exited flag. A deliberate kill is a `signaled` outcome and
   still reads 128 + signal; a test that expects the deadline asserts it with
   `T-OUTCOME-TIMEOUT` or MATCHes it. A pty wait whose clock ends with the
-  child still at the terminal throws it too (`lib/pty-harness.f`
+  child still at the terminal throws it too (`src/lib/pty-harness.f`
   `WAIT-AFTER-WITHIN`), where a hang-up answers false; `test/proc-pty.f`, a
   child of the `engine-runtime-regressions` row, exits `PROC-TIMEOUT-RC` for it;
   `test/process-pty-tty-smoke.f` `DEADLINE` tears the supervised target down

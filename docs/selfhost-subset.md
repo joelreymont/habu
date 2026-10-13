@@ -99,6 +99,6 @@ fixpoint fails during that refresh.
 
 The engine exposes `epoch-seconds ( -- n )` for UTC Unix time and `mono-ns
 ( -- n )` for monotonic timing. Shared checked date helpers live in
-`lib/date.f`: `DATE:PARSE-YMD`, `DATE:FORMAT-YMD`, and `DATE:FORMAT-EPOCH-UTC`.
-Tool bundles that need date validation load `lib/date.f` before unchecked
+`src/lib/date.f`: `DATE:PARSE-YMD`, `DATE:FORMAT-YMD`, and `DATE:FORMAT-EPOCH-UTC`.
+Tool bundles that need date validation load `src/lib/date.f` before unchecked
 lint/JSON driver scaffolding so the date code remains checked.

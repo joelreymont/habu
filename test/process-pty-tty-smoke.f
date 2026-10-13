@@ -16,20 +16,20 @@
 \ Run: bin/hb --load test/process-pty-tty-smoke.f   (HABU_UNDER_TEST names the child)
 \
 \ The buffer, its compaction, the span search, the wait clock and the
-\ never-seen facts are lib/pty-harness.f's. The reading step, the waits and
+\ never-seen facts are src/lib/pty-harness.f's. The reading step, the waits and
 \ their deadline are this file's own: the bytes come through the supervisor's
 \ linear handle, which cannot be handed to the module's own descriptor reader,
 \ and a deadline must tear that handle's target down before it throws
 \ (DEADLINE), which the harness's WAIT-AFTER-WITHIN does not.
 
-require lib/errors.f
-require lib/fmt.f
-require lib/process-pty-io.f
-require lib/pty-harness.f
-require lib/prelude.f
-require lib/aio.f
-require lib/test.f
-require lib/task.f                 \ TASK:SLEEP between probes of a sleeper's pid
+require src/lib/errors.f
+require src/lib/fmt.f
+require src/lib/process-pty-io.f
+require src/lib/pty-harness.f
+require src/lib/prelude.f
+require src/lib/aio.f
+require src/lib/test.f
+require src/lib/task.f                 \ TASK:SLEEP between probes of a sleeper's pid
 
 package PTY-TTY-SMOKE
 
@@ -205,7 +205,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 
 \ An uncaught throw from inside run-in-stack reaches the tty REPL while the
 \ callback's guarded allocation is active -- run-in-stack now refuses anything
-\ that is not a real guarded mapping (lib/memory.f MEM:ALLOC-GUARDED), so
+\ that is not a real guarded mapping (src/lib/memory.f MEM:ALLOC-GUARDED), so
 \ TTY-POOL is one, and TTY-RAISE's throw still escapes uncaught from inside it.
 \ Recovery must reinstate the REPL's own allocation, not merely the prompt,
 \ and `depth` is the value that says so: src/habu/habu1.f BDEPTH subtracts the
@@ -224,7 +224,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 \ line one byte over that loses its tail silently -- the definitions after the
 \ cut are simply never made and the case fails on E-UNDEFINED much later.
 : STACK-DEFS$ ( -- ptr u8 n )
-   s" require lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED constant TTY-POOL-CAP POOL-A ! : TTY-POOL ( -- ptr u8 ) POOL-A @ ; : TTY-RAISE ( -- ) 7 throw ; : TTY-CROSS ( -- ) ['] TTY-RAISE TTY-POOL TTY-POOL-CAP run-in-stack ;" ;
+   s" require src/lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED constant TTY-POOL-CAP POOL-A ! : TTY-POOL ( -- ptr u8 ) POOL-A @ ; : TTY-RAISE ( -- ) 7 throw ; : TTY-CROSS ( -- ) ['] TTY-RAISE TTY-POOL TTY-POOL-CAP run-in-stack ;" ;
 
 : TTY-STACK-RECOVERS ( -- )
    BUF-CLEAR
@@ -286,7 +286,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    HB$ PROCESS-PTY:SPAWN-TTY
    PROCESS-PTY:LAUNCH
    ANYWHERE$ SETTLE
-   s" require lib/process-argv.f" TELL
+   s" require src/lib/process-argv.f" TELL
    s"  ok" SETTLE
    SLEEPER$ TELL
    s" 48879" PROMPT-AFTER!

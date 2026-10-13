@@ -4,12 +4,12 @@
 \ moment two different E- names claim it. Three live collisions motivated this
 \ lint (E-CUDA/E-FUSE at -5002, E-PTX-READBACK/E-MK-EVAL at -5003,
 \ E-LMV-NOOUT+E-LMV-REG/E-ABL-NOSUB+E-ABL-CAP at -5210/-5211). The scan walks
-\ tracked .f/.fs sources under src/, lib/, tools/, and test/ for
+\ tracked .f/.fs sources under src/, tools/, and test/ for
 \ `-NNNN constant E-*` and `NNNN constant E-*` claims and flags any numeric code
 \ owned by two different E- names.
 \
 \ Which bytes are code is decided by the one shared source lexer, package
-\ LINT-LEX in lib/source-lex.f. It consumes `\` line comments, `( ... )`
+\ LINT-LEX in src/lib/source-lex.f. It consumes `\` line comments, `( ... )`
 \ and `.( ... )` comment bodies, and every string literal body - the plain
 \ `s" c" ."` openers and the escaped `s\" c\" .\"` openers alike - so none of
 \ that text ever reaches this scan as a token. This lint used to decide string
@@ -30,7 +30,7 @@
 \   means the same thing in every tool, shared by design. A positive value above
 \   EXIT-MAX can never be an exit status; it is a throw identity held to the same
 \   uniqueness and reserved ranges as a negative one.
-\ - `E-*-FIRST` / `E-*-LAST` names are range sentinels (lib/errors.f blocks):
+\ - `E-*-FIRST` / `E-*-LAST` names are range sentinels (src/lib/errors.f blocks):
 \   they alias their block's boundary member codes, not new throw identities.
 \   Each FIRST/LAST pair (matched by shared stem, e.g. E-FS-FIRST/E-FS-LAST) also
 \   reserves the inclusive [FIRST,LAST] code range for the file that declares it.
@@ -40,7 +40,7 @@
 \   same constant reachable through two entry files), inside another file's
 \   reserved range too: the owner holds the identity and the copy adds no
 \   second name (src/habu/stack-abi.f E-STACK-UNGUARDED for the engine
-\   emitters that compile before lib/ exists; src/core/type-family.f TYPE-NAME,
+\   emitters that compile before src/lib/ exists; src/core/type-family.f TYPE-NAME,
 \   which loads before sumtype.f's TYPE-DECL).
 \ - `E-OWNER constant E-LOCAL` is an alias, not a claim: the value is read from
 \   the owning constant, so the owner's literal stays the code's one claim. A
@@ -54,16 +54,16 @@
 \ the gate entrypoint. SCAN, RESERVATIONS and CLAIMS-IN expose the live ledger to
 \ tools/error-code-region-test.f without letting a caller reach the tables.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/vector.f
-require lib/adt/option.f
-require lib/fs.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/vector.f
+require src/lib/adt/option.f
+require src/lib/fs.f
 require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
-require lib/source-lex.f
+require src/lib/source-lex.f
 
 package ERROR-CODE-LINT
 using LINT-INTERN
@@ -255,7 +255,7 @@ variable JX
 
 \ ---- reservation table (E-*-FIRST/E-*-LAST range blocks) --------------------
 \ A FIRST/LAST pair reserves the inclusive numeric range between its two member
-\ codes for the file that declares it (lib/errors.f owns every stdlib block).
+\ codes for the file that declares it (src/lib/errors.f owns every stdlib block).
 \ Pairs are keyed by shared stem (E-FS-FIRST/E-FS-LAST -> E-FS) and declaring
 \ file, so two files can each own a same-named block.
 : RES-STEM@  ( n -- stem-id ) RES-ROWS RESERVATION-STEM @ ;
@@ -520,7 +520,6 @@ variable JX
 : WALK ( -- )
    RESET-LEDGER  0 FILE# !
    s" src/" ROOT
-   s" lib/" ROOT
    s" tools/" ROOT
    s" test/" ROOT
    FINDINGS RES-FINDINGS ;

@@ -1,5 +1,5 @@
 \ Intrinsic spellings keep the dictionary binding chosen by their package.
-require lib/test.f
+require src/lib/test.f
 
 package NATIVE-BOUND-PUBLIC
 public

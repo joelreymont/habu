@@ -190,7 +190,7 @@ private
 \ ENV=?'s own cursors, each written from the caller's arguments before it is read.
 \
 \ The dynamic-storage registry (src/core/dynamic-storage.f), which every
-\ DYNAMIC-BUFFER declaration - and so lib/memory.f MEM:WITH-BYTES - reaches, is
+\ DYNAMIC-BUFFER declaration - and so src/lib/memory.f MEM:WITH-BYTES - reaches, is
 \ named through its own package. Its three cells are private and stay private: a
 \ private word of a baked package is reachable from outside it neither by
 \ qualified name nor by reopening the package (measured 2026-09-18: E-UNDEFINED
@@ -198,7 +198,7 @@ private
 \ claim below in turn, which keeps the rule intact - a cell is on this list
 \ because a name put it there.
 \
-\ lib/memory.f's WITH-BYTES scope stack (MEM:OWNED-CELLS) is on the list for the
+\ src/lib/memory.f's WITH-BYTES scope stack (MEM:OWNED-CELLS) is on the list for the
 \ same two reasons: the file is baked into the engine, so its cells sit below
 \ every window, and its three cells - the two DYNAMIC-BUFFER control heads and the
 \ scope depth - are correct at zero in a runtime that has allocated nothing yet.
@@ -219,7 +219,7 @@ private
 \ EXIT-HOOK-CELL (src/habu/layout.f) is the process-exit vector the stripped
 \ entry calls before its own exit(0). ZERO IS ITS CORRECT START - a new process
 \ has registered no hook - and the library that wants one arms it inside the
-\ running image: lib/fs-mutate.f stores its exit hook from the same CLEANUP+
+\ running image: src/lib/fs-mutate.f stores its exit hook from the same CLEANUP+
 \ call that registers a path, so an application that registers nothing leaves
 \ the vector at the mapping's zero and exits exactly as it did before. The claim
 \ is what lets a stripped image NAME the cell: without it the arm word's
@@ -229,10 +229,10 @@ private
 \
 \ THE CALLBACK BAND (src/habu/layout.f CB-XDS, CB-BAND-BYTES) is eight cells
 \ every region carries, each correct at zero: no published frame, a free owner,
-\ no marshal frame, and no slot table until lib/ffi-callback.f ENTRY and
-\ lib/task.f CONTEXT-BIND publish theirs in the running image. The FFI cores and
+\ no marshal frame, and no slot table until src/lib/ffi-callback.f ENTRY and
+\ src/lib/task.f CONTEXT-BIND publish theirs in the running image. The FFI cores and
 \ the callback thunk reach the band x20-relative; the claim is for the source
-\ that spells it, lib/ffi-callback.f's `data-base CB-FRAME +`.
+\ that spells it, src/lib/ffi-callback.f's `data-base CB-FRAME +`.
 \
 \ RBASE-CELL (src/habu/layout.f) is the live text CONTENT base - the address of
 \ the image's first instruction, which the engine's own entry stores at boot
@@ -252,10 +252,10 @@ private
 \ SIGSEGV inside DLSYM-SLOT's `@`; with the cell published the same image
 \ resolves the symbol and runs.
 \
-\ THE i64 BOUND DIGITS (lib/string.f) are the first carried cells: STR-PARSE-POS
+\ THE i64 BOUND DIGITS (src/lib/string.f) are the first carried cells: STR-PARSE-POS
 \ compares its input against STR-MAX-I64$ and STR-PARSE-NEG against
-\ STR-MIN-I64$, both STR-I64-DIGITS bytes, and lib/fmt.f INT>NUM COPIES
-\ STR-MIN-I64$ for the one integer with no positive magnitude. lib/string.f is
+\ STR-MIN-I64$, both STR-I64-DIGITS bytes, and src/lib/fmt.f INT>NUM COPIES
+\ STR-MIN-I64$ for the one integer with no positive magnitude. src/lib/string.f is
 \ baked, so both tables sit below every window and any program that formats or
 \ parses an integer reaches one.
 \
@@ -278,7 +278,7 @@ private
 \                length into it before SHA-BLOCK reads it.
 \   SHA-DIGEST   TF-SHA16 fills it through SHA256-IN before reading the first
 \                eight bytes back.
-\ THE IMAGE-LIFECYCLE REGISTRY (lib/image-lifecycle.f) is the second site a
+\ THE IMAGE-LIFECYCLE REGISTRY (src/lib/image-lifecycle.f) is the second site a
 \ stripped image is refused at, once the path scratch below lets it open a file:
 \ its private lock, its two counters and the bases of its two hook tables,
 \ claimed fresh for the reason the DYNAMIC-STORAGE registry's three cells are - a

@@ -3,8 +3,8 @@
 \ Every address-bearing field written to disk is a unit offset or a prefix
 \ dictionary ordinal. The exact source key fixes that prefix for this format.
 
-require lib/errors.f
-require lib/le.f
+require src/lib/errors.f
+require src/lib/le.f
 require src/habu/xref.f
 require src/habu/address-carrier.f
 require src/compiler/native/a64ir.f

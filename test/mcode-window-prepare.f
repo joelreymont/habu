@@ -9,14 +9,14 @@
 \ row. The sealed product refuses such a reopen, so a child that loads this
 \ file runs on the unsealed engine test/whitebox-child.f names.
 
-\ The last declaration participant seals registration. lib/ffi-abi.f requires
-\ lib/adt/option.f, whose ENUM is refused with E-REGISTRATION-SEALED until it
+\ The last declaration participant seals registration. src/lib/ffi-abi.f requires
+\ src/lib/adt/option.f, whose ENUM is refused with E-REGISTRATION-SEALED until it
 \ is, so both participants load before any library.
 require src/core/prefix-boundary.f
 include src/core/generated-declaration-dictionary.f
 include src/core/generated-declaration-protection.f
 
-require lib/ffi-abi.f
+require src/lib/ffi-abi.f
 
 package FFI
 public

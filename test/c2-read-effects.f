@@ -4,9 +4,9 @@
 \ Checked words may transport views supplied by their callers, including through
 \ a by-value sum, but may not invent scopes or erase their dependencies.
 
-require lib/test.f
-require lib/adt/option.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/adt/option.f
+require src/lib/test/subject.f
 require src/core/quotation-storage.f
 
 package C2-READ-EFFECTS

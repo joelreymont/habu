@@ -10,7 +10,7 @@
 \ The whole floating file is scratch: every engine float primitive moves its
 \ arguments into d0/d1 and its answer back out, so nothing lives across a call.
 
-require lib/prelude.f
+require src/lib/prelude.f
 require src/compiler/target/native-binding.f
 require src/compiler/native-effect.f
 require src/compiler/native/machine.f

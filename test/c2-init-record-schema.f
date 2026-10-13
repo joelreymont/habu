@@ -1,7 +1,7 @@
 \ Initialized record queries use committed field metadata from real declarations.
 \ Run on the unsealed candidate through the WHITEBOX-SUITE load path.
 
-require lib/test.f
+require src/lib/test.f
 
 package C2-INIT-RECORD-SCHEMA
 

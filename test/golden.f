@@ -6,10 +6,10 @@
 \ SCRIPT-ARGV by GOLD:INIT) rewrites the golden instead of comparing, and a
 \ mismatch prints the first differing byte plus a window of both sides.
 
-require lib/errors.f
-require lib/string.f
-require lib/fs.f
-require lib/fs-mutate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 
 package GOLD
 
@@ -145,7 +145,7 @@ public
 \ Normalize captured, then in update mode rewrite the golden and pass; in
 \ compare mode return byte-exact equality (printing the delta on mismatch, and
 \ failing when the golden is absent). Callers integrate the result into their
-\ own failure path (GE-FAIL/die or lib/test assertions).
+\ own failure path (GE-FAIL/die or src/lib/test assertions).
 : CHECK ( ptr u8 n ptr u8 n -- bool ) {: src:ptr srcu:n name:ptr nameu:n :}
    src srcu NORMALIZE
    name nameu PATH!

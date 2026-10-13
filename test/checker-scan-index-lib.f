@@ -13,7 +13,7 @@
 \ open package is where the definitions those cases make land — which is why
 \ symbols are resolved with CHECKER-FIND-ACTIVE-SYM (the current scope) rather
 \ than as globals.
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 using TFAM
 

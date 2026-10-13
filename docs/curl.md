@@ -1,6 +1,6 @@
 # HTTPS client over libcurl
 
-[`lib/net/curl.f`](../lib/net/curl.f) binds libcurl's easy interface through the
+[`src/lib/net/curl.f`](../src/lib/net/curl.f) binds libcurl's easy interface through the
 `FUNCTION:` declarer so Habu can speak HTTP and HTTPS on macOS ARM64 and Linux
 AArch64. VFX Forth takes the same route — bind libcurl rather than write a
 client and a TLS stack ([socket-models.md](socket-models.md)) — and TLS,
@@ -248,7 +248,7 @@ call stands.
 
 ## Declarations
 
-Every foreign function is declared with `FUNCTION:` (see `lib/ffi-abi.f`).
+Every foreign function is declared with `FUNCTION:` (see `src/lib/ffi-abi.f`).
 `CURL*`, `curl_slist*` and `FILE*` are opaque — nothing in the package
 dereferences one — so they are declared `n`: AAPCS64 passes a pointer and an
 integer in the same register, and a cell is what the nominal handle types wrap.
@@ -270,7 +270,7 @@ floor; the string form is the replacement once the libcurl floor is 7.85.
 
 ## Tests
 
-`lib/net/curl-test.f` holds both peers in one process: a server task binds a
+`src/lib/net/curl-test.f` holds both peers in one process: a server task binds a
 [TCP4](tcp4.md) listener on a free loopback port, publishes the port in a shared
 cell and accepts one connection at a time, speaking enough HTTP/1.0 to answer
 the cases, while the main task drives package CURL against it. A second

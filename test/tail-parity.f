@@ -1,6 +1,6 @@
 \ tail-parity.f - direct/subject result parity shared by the tail gates.
 
-require lib/test.f
+require src/lib/test.f
 
 package TAIL-PARITY
 

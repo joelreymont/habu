@@ -19,8 +19,8 @@
 \
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
-require lib/errors.f
-require lib/span.f
+require src/lib/errors.f
+require src/lib/span.f
 
 package WLEB
 public

@@ -41,8 +41,8 @@
 \ its counter, limit and exit test are ordinary operations and branches, so the
 \ meaning of DO, ?DO, +LOOP and LEAVE arrives already decided.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/ir/id.f
 require src/compiler/ir/source.f
 require src/compiler/ir/type.f

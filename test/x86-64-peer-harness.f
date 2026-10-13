@@ -25,8 +25,8 @@
 \
 \ An image with an entry of its own (test/x86-64-skel-image.f) skips the
 \ checking entry: it stages its stream after ASM-RESET and ends with WRITE.
-require lib/test.f
-require lib/byte-buffer.f
+require src/lib/test.f
+require src/lib/byte-buffer.f
 require src/habu/fdio.f
 require src/habu/sign-id.f
 require src/arch/x86-64/icode.f

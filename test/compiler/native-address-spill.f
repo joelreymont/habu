@@ -1,5 +1,5 @@
 \ Spilled DATA addresses must stay intact through their four move-wide lanes.
-require lib/test.f
+require src/lib/test.f
 
 \ Tier 1 below: an address class spills only in the optimizing compiler, so
 \ the four move-wide lanes this loop forces exist at tier 1 alone.

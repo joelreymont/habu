@@ -5,7 +5,7 @@ public
 ndict@ here variable PRE-R variable PRE-D PRE-D ! PRE-R !
 ;package
 
-require lib/test.f
+require src/lib/test.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f

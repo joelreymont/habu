@@ -433,7 +433,7 @@ PLAN.md item 10. Keyword data/labels/EMIT-KWDATA + lowering for MATCH/OF/ENDOF/E
      already fails on; it adds wall-clock cost, no new coverage. Revisit only
      if a dedicated recovery CI lane lands.
 5. **AOT/object persistence of matched defs + bad-tag object entry.** PLAN item
-   10 paths: lib/object*.f, aot-*.f, tools/object-image.f, driver-io.f. Add the
+   10 paths: src/lib/object*.f, aot-*.f, tools/object-image.f, driver-io.f. Add the
    test-only checked object/AOT entry that seeds raw payload+invalid-tag cells
    and calls a generated MATCH helper (NOT MAIN); thread entry identity
    (package/WID/record id + helper-root id + seeded cells + layout/test mode +
@@ -466,12 +466,12 @@ PLAN.md item 10. Keyword data/labels/EMIT-KWDATA + lowering for MATCH/OF/ENDOF/E
      with bidirectional no-cross-restore (re-request normal → rc 0, re-request
      preseed → rc 85), and an object-cache relink (artifact key flipped via
      `--json`, source-index/object key identical) still serves the seeded die.
-   - OBJECT SCHEMA (`lib/object.f`): new `entry` row `entry\t<name>\t<mode>\t<seedhex>`
+   - OBJECT SCHEMA (`src/lib/object.f`): new `entry` row `entry\t<name>\t<mode>\t<seedhex>`
      (PARSE-LINE arm reusing the def/reloc 3-tab + PARSE-RELOC-OFF shape; `OBJ:ENTRY+`
      emit word beside EXPORT+/DEF+, reusing LINE3N). object-link ADD-ROW/APPEND-ROW
      ignore it (unknown-tag fall-through). `HBB-BUILD-OBJECT-RECORD` now emits the
      entry-name export/def (`HBB-ENTRY-NAME$`, default "MAIN") + the entry row when
-     preseeded. std.manifest + lib/object-test.f ENTRY-ROW + docs coverage added.
+     preseeded. std.manifest + src/lib/object-test.f ENTRY-ROW + docs coverage added.
    - SEEDED ENTRY (`src/habu/aot-lib.f` `EMIT-SEED`/`SEED+`): after EMIT-DATA-COPY,
      pushes each seed cell onto the value stack (`movz/movk x9; str x9,[x19]; add
      x19,x19,#8`) before `bl <root>`. NOT the slice-3 emitter crash class: this
@@ -504,7 +504,7 @@ PLAN.md item 10. Keyword data/labels/EMIT-KWDATA + lowering for MATCH/OF/ENDOF/E
      + trivial MAIN; normal build → rc 0; preseed (entry HLP, seed 0 0 5) → run
      dies rc 85 + "hb: bad gemt tag"; re-request restore → rc 85; object-cache
      relink (`--json`, asserts `HBB-OBJECT-HIT`) → rc 85; normal re-request → rc 0
-     (no clobber). lib/object-test.f ENTRY-ROW proves the entry row emits + reparses
+     (no clobber). src/lib/object-test.f ENTRY-ROW proves the entry row emits + reparses
      with a stable content key.
    - Proofs: byte-identical fixpoint ×2 (install --force, 70b6790feb6787f0…,
      148855 both); FULL gate rc=0 "PASS: native test suite ... (17674ms <= 40000ms

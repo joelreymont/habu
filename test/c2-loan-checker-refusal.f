@@ -1,6 +1,6 @@
 \ Syntax and authority refusals through the real evaluator load path.
-require lib/test.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/test/subject.f
 
 package C2-LOAN-CHECKER-REFUSAL
 private

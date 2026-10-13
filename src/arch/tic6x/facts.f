@@ -7,7 +7,7 @@
 \ both read these (SPRUGH7 section 3.8), so a word outside the subset is
 \ refused here rather than misjudged. The p bit is packet structure, not an
 \ instruction fact, and is ignored.
-require lib/errors.f
+require src/lib/errors.f
 
 package C6XFACTS
 public

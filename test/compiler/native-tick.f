@@ -1,5 +1,5 @@
 \ A named quotation retains its effect and native calling convention.
-require lib/test.f
+require src/lib/test.f
 
 package NATIVE-TICK-TEST
 

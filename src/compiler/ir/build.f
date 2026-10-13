@@ -83,8 +83,8 @@
 \ BUILDERS and frozen modules it can name at once, and a context's teardown is
 \ what reclaims those.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/digest.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f

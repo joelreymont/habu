@@ -1,7 +1,7 @@
 \ Namespace WIDs are never decoded as code lengths during a real capture.
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f

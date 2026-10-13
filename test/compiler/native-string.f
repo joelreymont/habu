@@ -1,8 +1,8 @@
 \ native-string.f - a string literal, compiled by the native chain and run.
 
-require lib/test.f
-require lib/string.f
-require lib/fmt.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fmt.f
 require src/core/generated-declaration.f
 require src/compiler/native/compiler.f
 require src/compiler/native/string.f

@@ -2,14 +2,14 @@
 \ and the tools/lint/token.f token table.
 \ Run: bin/hb --load tools/lint/text-foundation-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/string-roles.f               \ package STR: the typed string surface
-require lib/memory.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/string-roles.f               \ package STR: the typed string surface
+require src/lib/memory.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package LINT-TEXT-TEST
 using LINT-SPLIT

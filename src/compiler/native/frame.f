@@ -1,7 +1,7 @@
 \ frame.f - who owns which slot of a routine's own frame.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/native-effect.f
 require src/compiler/native/a64ir.f
 

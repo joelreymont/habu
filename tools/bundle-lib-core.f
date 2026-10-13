@@ -235,7 +235,7 @@ variable BL-RD-N
 
 : BL-MODULE-PATH ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    BL-PATH-RESET
-   s" lib/" BL-PATH+
+   s" src/lib/" BL-PATH+
    a u BL-PATH+
    s" .f" BL-PATH+
    BL-PATH$ ;
@@ -302,7 +302,7 @@ variable BL-RD-N
    a u BL-COPY-FILE
    a u BL-EMIT-END ;
 
-\ Mark a CARRIED module's path as already provided, so a `require lib/<mod>.f`
+\ Mark a CARRIED module's path as already provided, so a `require src/lib/<mod>.f`
 \ line inside another bundled module short-circuits instead of re-reading the
 \ file from disk (which would redefine its words - duplicate definition). This
 \ mirrors how the native engine marks its baked prefix files provided.

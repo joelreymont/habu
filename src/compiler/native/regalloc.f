@@ -10,8 +10,8 @@
 \
 \ Functions share the frame-size contract, with a separate frame per invocation.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/native-effect.f

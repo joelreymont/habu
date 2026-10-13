@@ -14,16 +14,16 @@
 \   T observes W's death through an alive-pipe EOF (immediate, no zombie wait),
 \   all within a hard deadline so a broken mechanism FAILS instead of hanging.
 \
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
-\ lib/process.f lib/process-fork.f test/gate-pool-orphan-test.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
+\ src/lib/process.f src/lib/process-fork.f test/gate-pool-orphan-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-fork.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-fork.f
 
 300 constant GPO-SETTLE-MS
 100 constant GPO-POLL-MS

@@ -1,21 +1,21 @@
 \ Shared native-build driver. Entries select and own the compilation tier.
 
-require lib/errors.f
+require src/lib/errors.f
 require src/core/prefix-boundary.f
-require lib/string.f
-require lib/memory.f
+require src/lib/string.f
+require src/lib/memory.f
 require src/habu/address-cells.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-cwd.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-cwd.f
 require src/os/script-argv.f
 require tools/native-build-args.f
 require tools/build-target.f
-require lib/codesign.f
-require lib/executable-build.f
+require src/lib/codesign.f
+require src/lib/executable-build.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
@@ -717,7 +717,7 @@ public
 
 \ The exit status of a finished build, for every driver that ends the process
 \ with one (RUN, RUN-IMAGE, RUN-UNIT and tools/build-profile.f): 0,
-\ PROC-TIMEOUT-RC when a deadline expired (lib/process.f), and BUILD-RC for any
+\ PROC-TIMEOUT-RC when a deadline expired (src/lib/process.f), and BUILD-RC for any
 \ other failure. RUN-READY-RC has already printed the throw code itself.
 : EXIT-RC ( n -- n )
    BUILD-RC PROC-EXIT-RC ;

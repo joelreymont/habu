@@ -22,8 +22,8 @@
 \ the session to refill them.
 \
 \ Run: bin/hb --load test/compiler/native-tape-owner.f
-require lib/test.f
-require lib/errors.f
+require src/lib/test.f
+require src/lib/errors.f
 require src/compiler/native/feed.f
 require test/replay-scope.f
 

@@ -31,8 +31,8 @@
 \ `new`. The rows are therefore the engine's own baked compiler, checker and
 \ runtime, which is exactly the path under measurement.
 \
-\ WHY THIS FILE REQUIRES ONLY lib/tier.f, the one word that selects the tier.
-\ lib/string.f and lib/fmt.f are corpus entries; a tool that loaded them for its
+\ WHY THIS FILE REQUIRES ONLY src/lib/tier.f, the one word that selects the tier.
+\ src/lib/string.f and src/lib/fmt.f are corpus entries; a tool that loaded them for its
 \ own output would have them in the dictionary before the corpus asked, and the
 \ profile would lose every word their compile reaches. The decimal writer below
 \ is the price of that.
@@ -49,7 +49,7 @@
 \ clock, and the sample counts are only comparable between runs taken at a
 \ similar load average.
 
-require lib/tier.f
+require src/lib/tier.f
 
 package TIER0-PROF
 private

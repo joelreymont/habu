@@ -10,16 +10,16 @@ package STACK-LIFECYCLE-TEST
 \ stack, and the first write past the capacity is the transfer's own -- the
 \ ratchet still fits at that depth and the transfer's whole width does not.
 \ Spelled out here rather than shared: this fixture builds its child sources
-\ as literals and does not carry lib/string.f.
+\ as literals and does not carry src/lib/string.f.
 : JIT-SPILLS ( -- )
    s" a complete virtual-stack flush fits on a guarded stack" T-LABEL
-   s" require lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : TWO ( -- ) 11 22 2drop ; : GO ( -- ) ['] TWO BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
+   s" require src/lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : TWO ( -- ) 11 22 2drop ; : GO ( -- ) ['] TWO BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
    CHILD-RC 0 T=
    s" a two-cell flush past the capacity faults the data guard page" T-LABEL
-   s" require lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : TWO ( -- ) 11 22 2drop ; : RATCHET ( n -- ) begin dup TWO recurse again ; : RATCHET0 ( -- ) 1 RATCHET ; : GO ( -- ) ['] RATCHET0 BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
+   s" require src/lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : TWO ( -- ) 11 22 2drop ; : RATCHET ( n -- ) begin dup TWO recurse again ; : RATCHET0 ( -- ) 1 RATCHET ; : GO ( -- ) ['] RATCHET0 BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
    REFUSED-DATA
    s" a compiled address push past the capacity faults the data guard page" T-LABEL
-   s" require lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : ADDR ( -- ) BUF drop ; : RATCHET ( n -- ) begin dup ADDR recurse again ; : RATCHET0 ( -- ) 1 RATCHET ; : GO ( -- ) ['] RATCHET0 BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
+   s" require src/lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : ADDR ( -- ) BUF drop ; : RATCHET ( n -- ) begin dup ADDR recurse again ; : RATCHET0 ( -- ) 1 RATCHET ; : GO ( -- ) ['] RATCHET0 BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
    REFUSED-DATA ;
 
 : JIT-RETURNS ( -- )

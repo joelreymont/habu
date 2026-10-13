@@ -1,7 +1,7 @@
 \ diag-to-sarif-core.f - convert Habu diagnostic JSONL to SARIF 2.1.0.
 
-require lib/errors.f
-require lib/memory.f
+require src/lib/errors.f
+require src/lib/memory.f
 require tools/json.f
 
 65 constant SARIF-E-DATA

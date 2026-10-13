@@ -1,6 +1,6 @@
 \ codegen-tail-probe.f - reading calls and exits from production emission.
-require lib/prelude.f
-require lib/test.f
+require src/lib/prelude.f
+require src/lib/test.f
 require src/compiler/native/dict.f
 require src/compiler/native/compiler.f
 require tools/codegen-tail-probe.f

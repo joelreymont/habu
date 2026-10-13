@@ -38,8 +38,8 @@
 \ ambiguity is counted, a wrong constructor package resolves nothing, and every reader
 \ answers the sentinel instead of a neighbouring row.
 
-require lib/prelude.f
-require lib/string.f
+require src/lib/prelude.f
+require src/lib/string.f
 
 using TFAM
 

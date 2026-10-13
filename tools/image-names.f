@@ -1,9 +1,9 @@
 \ Read native-build's optional <image>.names map. Columns are addressed by
 \ name; unknown versions or malformed rows supply no name. Matching a full
 \ span also checks its length, so a stale sidecar cannot label a resized body.
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
 require src/habu/code-span.f
 
 package IMAGE-NAMES

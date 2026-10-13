@@ -3,7 +3,7 @@
 \ GUARDED-EXTENT? clause behind run-in-stack's structural refusal, and a
 \ task's own guarded stack.
 require test/engine-stack-lifecycle-lib.f
-require lib/memory.f
+require src/lib/memory.f
 
 package STACK-LIFECYCLE-TEST
 
@@ -128,7 +128,7 @@ create GBUF 32 allot   \ an ordinary create/allot buffer: never a guarded mappin
    s" a create/allot buffer is refused" T-LABEL
    ['] PLAIN-BUFFER-REFUSAL catch E-STACK-UNGUARDED T= ;
 
-\ lib/task.f PREPARE gives every task its own guarded data/return/loop stacks
+\ src/lib/task.f PREPARE gives every task its own guarded data/return/loop stacks
 \ (TASK-STACK-BYTES rounds the requested size up to whole guard pages); a task
 \ overflowing its own data stack faults the same way the main thread's does,
 \ and the crash handler's exit_group kills the whole process, so the overflow
@@ -139,7 +139,7 @@ create GBUF 32 allot   \ an ordinary create/allot buffer: never a guarded mappin
 \ wrapped in a zero-arg starter that seeds it.
 : TASK-OVERFLOW ( -- )
    s" a task that overflows its own data stack exits 102 (data)" T-LABEL
-   s" require lib/task.f : X ( n -- ) begin dup recurse again ; : X0 ( -- ) 0 X ; TASK:MIN-STACK TASK:TASK WORKER : GO ( -- ) ['] X0 WORKER TASK:ACTIVATE begin WORKER TASK:DONE? 0= while TASK:PAUSE repeat ; GO"
+   s" require src/lib/task.f : X ( n -- ) begin dup recurse again ; : X0 ( -- ) 0 X ; TASK:MIN-STACK TASK:TASK WORKER : GO ( -- ) ['] X0 WORKER TASK:ACTIVATE begin WORKER TASK:DONE? 0= while TASK:PAUSE repeat ; GO"
    REFUSED-DATA ;
 
 public

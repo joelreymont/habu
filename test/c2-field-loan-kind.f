@@ -1,6 +1,6 @@
 \ The complete C2 image authenticates the exact field-loan code entry.
-require lib/test.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/c2-memory.f
 require src/habu/xref.f
 
 package C2-FIELD-LOAN-KIND

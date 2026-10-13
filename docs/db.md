@@ -1,6 +1,6 @@
 # Database access
 
-`lib/pg.f` owns package `PG`: PostgreSQL over libpq, bound through the FFI
+`src/lib/pg.f` owns package `PG`: PostgreSQL over libpq, bound through the FFI
 `FUNCTION:` declarer. It is the first half of the decision in
 [database-models.md](database-models.md) — SQL through the FFI for hosted
 programs, the polyFORTH record kit later for targets.
@@ -198,7 +198,7 @@ parameter is a NULL entry in that array, which is exactly how libpq spells it.
 
 **Statement and parameter text have no fixed ceiling — they are bounded by
 memory only.** Each connection builds one call in an arena it allocates from
-`lib/memory.f`, sized to that call: the statement bytes, every parameter with
+`src/lib/memory.f`, sized to that call: the statement bytes, every parameter with
 its NUL terminator, and the `paramValues` pointer array. Parameters are
 recorded as offsets, so growing the arena may move it without invalidating
 anything already staged. The arena is released the instant libpq returns — it
@@ -259,12 +259,12 @@ example below does it.
 | `PG:E-PLATFORM` | this module is qualified on Linux only, and refuses a foreign target before it binds |
 | `PG:E-STATEMENT` | an empty statement/name, script parameters, or an operation invalid for the connection's current phase |
 
-The block is `-9250..-9259`, minted in `lib/pg.f`, which owns package PG.
+The block is `-9250..-9259`, minted in `src/lib/pg.f`, which owns package PG.
 
 ## Worked example
 
 ```forth
-require lib/pg.f
+require src/lib/pg.f
 
 package REPORT
 using PG
@@ -304,11 +304,11 @@ the list into `EXEC`.
 
 ## Tests
 
-`lib/pg-test.f` runs against a live server, and the native gate runs it as the
+`src/lib/pg-test.f` runs against a live server, and the native gate runs it as the
 `pg` row through `test/db/pg-cluster.f`. The harness makes a private
 trust-authentication cluster with `initdb`, starts `postgres` on it as its own
 child, listening on a Unix-domain socket only (`listen_addresses=''`), and runs
-these cases and then [`lib/db/rows-test.f`](#its-test), each in a child engine
+these cases and then [`src/lib/db/rows-test.f`](#its-test), each in a child engine
 with the cluster's conninfo (`host=<socket directory> dbname=postgres
 user=habu`) as its one script argument. It then stops the server whatever the
 cases' outcome, and the directories it made are removed when it exits:
@@ -406,13 +406,13 @@ declared result registry, checking that cancellation did not leak a slot.
 The server binaries are a gate requirement on every host
 ([bootstrap.md](bootstrap.md#requirements)): without `initdb` or `postgres` on
 `PATH` the row fails with `pg-cluster: required executable missing on PATH:`
-and the name. Loaded without its argument, `lib/pg-test.f` dies naming the
+and the name. Loaded without its argument, `src/lib/pg-test.f` dies naming the
 harness. Neither skips. `test/five-bindings.f` also loads and binds package
 `PG` beside the other foreign libraries.
 
 ## Row readers (package DB-ROWS)
 
-`lib/db/rows.f` opens connections and reads rows. A span a `COL-` reader
+`src/lib/db/rows.f` opens connections and reads rows. A span a `COL-` reader
 answers is copied into the reading task's own arena, so it stays valid after
 `PG:CLEAR` and until that task's next read (`READ-RESET`, which `BY-ID` runs).
 The arena is per task because static storage is one copy for the whole image
@@ -466,12 +466,12 @@ and answer libpq's bytes, valid until `PG:CLEAR`. A decoder run through
 `WITH-ROW` returns a record whose spans outlive the result.
 
 DB-ROWS holds `-9320..-9324` of the block `-9320..-9329`, minted in
-`lib/db/rows.f`, which owns package DB-ROWS.
+`src/lib/db/rows.f`, which owns package DB-ROWS.
 
 ### Its test
 
-`lib/db/rows-test.f` runs in the `pg` row: `test/db/pg-cluster.f` runs it after
-`lib/pg-test.f`, against the same cluster and with the same conninfo as its one
+`src/lib/db/rows-test.f` runs in the `pg` row: `test/db/pg-cluster.f` runs it after
+`src/lib/pg-test.f`, against the same cluster and with the same conninfo as its one
 script argument. The first file that fails ends the run, and the row's last
 line is `pg-cluster: <file> failed`. Loaded without the argument, the file dies
 naming the harness; there is no skip.

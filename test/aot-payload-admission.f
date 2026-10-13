@@ -1,10 +1,10 @@
 \ The admission controls run in private children; no image build is needed.
-require lib/test.f
-require lib/string.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
 
 package PAYLOAD-ADMISSION-SUITE
 

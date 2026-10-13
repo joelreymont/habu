@@ -6,7 +6,7 @@
 Load it before the tool that uses it:
 
 ```sh
-bin/hb --load lib/errors.f lib/memory.f tools/json.f my-tool.f -- args...
+bin/hb --load src/lib/errors.f src/lib/memory.f tools/json.f my-tool.f -- args...
 ```
 
 ## Parser
@@ -75,10 +75,10 @@ string arena.
 ## JSONL Files
 
 `tools/json-file.f` adds a dynamic file-backed JSONL cursor. Load it after
-`lib/errors.f`, `lib/memory.f`, `lib/fs.f`, and `tools/json.f`:
+`src/lib/errors.f`, `src/lib/memory.f`, `src/lib/fs.f`, and `tools/json.f`:
 
 ```sh
-bin/hb --load lib/errors.f lib/memory.f lib/fs.f tools/json.f tools/json-file.f my-tool.f -- rows.jsonl
+bin/hb --load src/lib/errors.f src/lib/memory.f src/lib/fs.f tools/json.f tools/json-file.f my-tool.f -- rows.jsonl
 ```
 
 Core words:
@@ -91,7 +91,7 @@ Core words:
 - `JSONLF-CLOSE ( -- )`
 
 The cursor reads fixed-size chunks and grows the current line through
-`lib/memory.f`, so JSONL rows are limited by OS allocation and parser table
+`src/lib/memory.f`, so JSONL rows are limited by OS allocation and parser table
 capacity, not by a fixed line buffer. Empty physical lines are reported as
 `JSONL-ROW-BLANK`, final partial lines are returned once, EOF is idempotent, and
 early `JSONLF-CLOSE` is allowed.

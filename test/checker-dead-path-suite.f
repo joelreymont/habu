@@ -38,8 +38,8 @@
 \ axiom, ordinary code on that path must be refused, which is how the case knows
 \ the flag fired rather than the arm passing for some other reason.
 
-require lib/prelude.f
-require lib/test.f
+require src/lib/prelude.f
+require src/lib/test.f
 require test/checker-assert.f
 
 \ ---- fixtures ----------------------------------------------------------------

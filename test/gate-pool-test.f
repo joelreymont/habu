@@ -1,21 +1,21 @@
 \ gate-pool-test.f - focused coverage for fork-backed test pool workers.
 \ Run: bin/hb --load test/gate-pool-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/string-roles.f               \ package STR: the typed string surface
-require lib/fmt.f
-require lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer (switchover wave A)
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-fork.f
-require lib/time-cpu.f                   \ a worker runs a measured amount of CPU time
-require lib/test/runner.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/string-roles.f               \ package STR: the typed string surface
+require src/lib/fmt.f
+require src/lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer (switchover wave A)
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-fork.f
+require src/lib/time-cpu.f                   \ a worker runs a measured amount of CPU time
+require src/lib/test/runner.f
 require test/gate-pool.f
 
 package GATE-POOL-TEST
@@ -120,17 +120,17 @@ variable GPT-ROOT-SAVE-U
    1 GT-POOL-SEQ @ GT-POOL-CPU-BUDGET!
    GT-POOL-DRAIN-SOFT ;
 
-\ A suite's own inner deadline: lib/process throws E-PROC-TIMEOUT when a child
+\ A suite's own inner deadline: src/lib/process throws E-PROC-TIMEOUT when a child
 \ it spawned outlives the deadline it was given, and an uncaught one leaves the
 \ suite through the engine's top-level reporter. The pool has to name that as
 \ the load outcome it is (tools/imgdump-test.f reds this way under a saturated
 \ pool), never as an anonymous exit.
 : GPT-INNER-TIMEOUT-SRC$ ( -- ptr u8 n )
-   S\" require lib/errors.f\nE-PROC-TIMEOUT throw\n" ;
+   S\" require src/lib/errors.f\nE-PROC-TIMEOUT throw\n" ;
 
 \ The same shape with any other throw code stays a plain exit.
 : GPT-OTHER-THROW-SRC$ ( -- ptr u8 n )
-   S\" require lib/errors.f\nE-PROC-SPAWN throw\n" ;
+   S\" require src/lib/errors.f\nE-PROC-SPAWN throw\n" ;
 
 : GPT-BATTERY-INNER-TIMEOUT ( -- )
    GPT-HB$ s" inner deadline worker" GPT-INNER-TIMEOUT-SRC$ GPT-TIMEOUT-MS GT-POOL-START-STDIN
@@ -386,7 +386,7 @@ variable GPT-GK-SENTINEL-U
 \ by GT-POOL-FORK-CHILD must be reparented away from the worker (double-fork),
 \ so a worker body that calls wait(-1) expecting no children of its own still
 \ gets ECHILD instead of blocking forever on the reaper. This is exactly the
-\ case that stalled stdlib/tail-process (lib/process-test.f TEST-WAIT-BAD) when
+\ case that stalled stdlib/tail-process (src/lib/process-test.f TEST-WAIT-BAD) when
 \ the reaper was a direct child. If the reaper regresses to a worker child, the
 \ worker blocks, the pool times it out, and GT-POOL-DRAIN dies here.
 : GPT-WAIT-ANY ( -- )
@@ -430,7 +430,7 @@ variable GPT-GK-SENTINEL-U
    0 GT-POOL-RED-CODE-PTR @ SIGKILL T=
    GT-CLEANUP ;
 
-\ Fork-inherited cleanup registrations. lib/fs-mutate.f's cleanup table records
+\ Fork-inherited cleanup registrations. src/lib/fs-mutate.f's cleanup table records
 \ the paths THIS process owns and CLEANUP-RUN deletes every entry in it, so a
 \ fork child that inherits the parent's entries and runs its own cleanups
 \ deletes paths the live parent still owns. In the gate that was the driver's
@@ -684,7 +684,7 @@ variable GPT-RF-VIC-PID
 
 \ THE POOL OWNS ITS SPAWNED CHILDREN'S SCRATCH (gate-pool.f GT-POOL-CHILD-TMP!).
 \ Each spawned child is given a directory of its own as HB_TMP, so the tree it
-\ makes the ordinary way - lib/fs-mutate.f HB-TMP-MKDIR - lands inside it, and
+\ makes the ordinary way - src/lib/fs-mutate.f HB-TMP-MKDIR - lands inside it, and
 \ the pool removes that directory when the slot retires. The killed child is
 \ the case nothing else covers: it never reaches a cleanup of its own, so
 \ before this the tree it made outlived every run.
@@ -696,10 +696,10 @@ variable GPT-RF-VIC-PID
 1000 constant GPT-CT-HANG-MS
 
 : GPT-CT-GREEN-SRC$ ( -- ptr u8 n )
-   S\" require lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" HB-TMP-MKDIR type cr ;\nW\n" ;
+   S\" require src/lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" HB-TMP-MKDIR type cr ;\nW\n" ;
 
 : GPT-CT-HANG-SRC$ ( -- ptr u8 n )
-   S\" require lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" HB-TMP-MKDIR type cr begin 0 0= 0= until ;\nW\n" ;
+   S\" require src/lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" HB-TMP-MKDIR type cr begin 0 0= 0= until ;\nW\n" ;
 
 : GPT-CT-PRINTED$ ( -- ptr u8 n )        \ slot 0's captured line, without its newline
    0 >IDX GT-POOL-OUT-BUF 0 >IDX GT-POOL-OUT-U-PTR @ {: a:ptr u:n :}

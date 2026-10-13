@@ -5,7 +5,7 @@
 \ finished image is published by a rename, and only the build's own exit
 \ removes that directory: a build killed by a pool deadline, a signalled gate,
 \ SIGKILL or a reboot leaves it. The next build reaps what such builds left
-\ (lib/build-cache.f, A WORK DIRECTORY IS HELD WHILE ITS BUILD LIVES). How a
+\ (src/lib/build-cache.f, A WORK DIRECTORY IS HELD WHILE ITS BUILD LIVES). How a
 \ reap could go wrong, and what stands against each:
 \ - a live build's directory taken for dead. Through pid reuse: no pid is read;
 \   a build holds its directory by a lock the kernel drops when the last
@@ -56,19 +56,19 @@
 \ - makes a directory for no family: WORK-OPEN returns rather than throw
 \   E-FS-PATH.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/fs.f
-require lib/fs-list.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/engine-candidate.f
-require lib/build-cache.f
-require lib/task.f
-require lib/time.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-list.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
+require src/lib/build-cache.f
+require src/lib/task.f
+require src/lib/time.f
 require test/image-grant.f
 
 package KEYED-IMAGE-REAP-TEST

@@ -27,7 +27,7 @@ require test/checker-assert.f      \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 reje
 require src/habu/verify-source.f   \ VERIFY:CANDIDATE-IN-SCOPE: the certify path's verdict
 require test/replay-scope.f         \ REPLAY-SCOPE: the check tool's replay scope
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 using SCHEMA-REG
 using TFAM

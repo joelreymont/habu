@@ -6,13 +6,13 @@
 \ test/native-builder-image-lib.f has the fixture and the other rows; run alone:
 \ bin/hb --load test/native-builder-image-e2e.f
 
-require lib/string.f
-require lib/test.f
-require lib/fs.f
-require lib/process-cwd.f
-require lib/time.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/process-cwd.f
+require src/lib/time.f
 require test/native-builder-image-lib.f
-require lib/tree-copy.f
+require src/lib/tree-copy.f
 
 package NATIVE-BUILDER-IMAGE-TEST
 
@@ -61,13 +61,13 @@ create SAVED FS-PATH-CAP allot         variable SAVED-U
    s" the normal product loads typed C2 initialization, owners and XML" T-LABEL
    s" test/c2-init-program.f" RUN-C2
    OUT OUT-U @ s" c2-init-program: ok" CONTAINS? TTRUE
-   s" lib/xml/c2.f" RUN-C2
+   s" src/lib/xml/c2.f" RUN-C2
    s" test/c2-owner-producer-program.f" RUN-C2
    OUT OUT-U @ s" c2-owner-producer-program: ok" CONTAINS? TTRUE
    s" test/c2-owner-producer-refusals.f" RUN-C2
    S\" 1 set-tier\nrequire test/c2-init-program.f\n" RUN-C2-TIER1
    OUT OUT-U @ s" c2-init-program: ok" CONTAINS? TTRUE
-   S\" 1 set-tier\nrequire lib/xml/c2.f\n" RUN-C2-TIER1
+   S\" 1 set-tier\nrequire src/lib/xml/c2.f\n" RUN-C2-TIER1
    S\" 1 set-tier\nrequire test/c2-owner-producer-program.f\n" RUN-C2-TIER1
    OUT OUT-U @ s" c2-owner-producer-program: ok" CONTAINS? TTRUE ;
 

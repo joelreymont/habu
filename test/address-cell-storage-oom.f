@@ -1,7 +1,7 @@
 \ A real OS allocation refusal, after successful growth to the inline boundary.
 \ Python supplies only Linux prlimit; the allocation under test is the engine's.
-require lib/test.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/engine-candidate.f
 package ADDRESS-CELL-STORAGE-OOM
 create OUT 1024 allot
 create ERR 4096 allot

@@ -1,5 +1,5 @@
 \ The engine calls that have no continuation, shared by lowering and capture.
-require lib/prelude.f
+require src/lib/prelude.f
 require src/habu/layout.f
 
 package TERMINAL-CALL

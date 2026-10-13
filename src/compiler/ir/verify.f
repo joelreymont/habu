@@ -96,8 +96,8 @@
 \ itself and throws its own: a verifier that reported E-IR-FUN-BOUND would be
 \ telling the caller about the table it consulted instead of about the module.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f

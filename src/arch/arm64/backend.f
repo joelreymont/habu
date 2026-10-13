@@ -4,7 +4,7 @@
 \ partially loaded provider. passes.f publishes the complete provider after
 \ all of its callbacks exist.
 
-require lib/prelude.f
+require src/lib/prelude.f
 require src/compiler/target.f
 
 package A64BACK

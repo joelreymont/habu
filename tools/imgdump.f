@@ -7,7 +7,7 @@
 \ Loads the target executable layout on demand; common dictionary layout is
 \ already present in the native cold prefix.
 
-require lib/adt/option.f                 \ option<n> for the number parsers (switchover wave A)
+require src/lib/adt/option.f                 \ option<n> for the number parsers (switchover wave A)
 require src/habu/code-span.f
 require src/habu/snapshot-format.f
 require tools/macho-read.f

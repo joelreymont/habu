@@ -1,8 +1,8 @@
 # HTTP/1.1 server
 
-[`lib/net/http.f`](../lib/net/http.f) is package `HTTP`, an HTTP/1.1 server on
-[`lib/net/tcp4.f`](tcp4.md), [`lib/aio.f`](aio.md), `lib/task.f` and
-`lib/queue.f`. One listener task accepts on an IPv4 address; a fixed pool of
+[`src/lib/net/http.f`](../src/lib/net/http.f) is package `HTTP`, an HTTP/1.1 server on
+[`src/lib/net/tcp4.f`](tcp4.md), [`src/lib/aio.f`](aio.md), `src/lib/task.f` and
+`src/lib/queue.f`. One listener task accepts on an IPv4 address; a fixed pool of
 request workers takes connections from a bounded queue; each request runs one
 handler inside a catch boundary, so a handler that throws is answered 500 and
 its worker takes the next connection. It runs wherever TCP4 and AIO do (Linux
@@ -10,13 +10,13 @@ and macOS AArch64). The package is five more files, each required by the next:
 
 | file | holds |
 | --- | --- |
-| `lib/net/http-arena.f` | the per-worker slots, the `request` and `response` handles, the limits, the error names |
-| `lib/net/http-request.f` | the request parser and the request accessors |
-| `lib/net/http-response.f` | the response words, `JSON!` and `ERROR!` |
-| `lib/net/http-router.f` | routes, bound segments, 404 and 405 |
-| `lib/net/http-static.f` | one directory tree served from memory |
+| `src/lib/net/http-arena.f` | the per-worker slots, the `request` and `response` handles, the limits, the error names |
+| `src/lib/net/http-request.f` | the request parser and the request accessors |
+| `src/lib/net/http-response.f` | the response words, `JSON!` and `ERROR!` |
+| `src/lib/net/http-router.f` | routes, bound segments, 404 and 405 |
+| `src/lib/net/http-static.f` | one directory tree served from memory |
 
-Requiring `lib/net/http.f` loads all of them.
+Requiring `src/lib/net/http.f` loads all of them.
 
 ## Lifecycle
 
@@ -73,7 +73,7 @@ started worker has run its exit hooks and been joined. The listener is closed,
 the server's resources are released, and `RUNNING?` is false; the same address
 and port can be started again. No request is accepted during worker startup.
 
-`STOP` waits the bound `STOP-BOUND-MS` in `lib/net/http.f` derives: at least
+`STOP` waits the bound `STOP-BOUND-MS` in `src/lib/net/http.f` derives: at least
 1000 ms, more with longer head or body deadlines. A worker parked inside a
 handler past that bound is killed with the rest of its body unrun; `KILLED-TASKS` counts
 it, and its exit closes the connection it was serving. A worker killed inside
@@ -177,8 +177,8 @@ A taker that keeps the connection sees a stop coming through `STOPPING? ( --
 bool )`. It parks at most `STOP-WAIT-MS` (200) before reading it again. Its
 writes, the goodbye in its release among them, go in send slices and give up
 `RELEASE-MS` (200) after the first look that finds the stop, each look taken
-before a slice begins (`lib/net/ws.f` `GIVE-UP?`, `PUT`). A slice ends within
-`SEND-SLICE-MS` (100) and two sends that never wait (`lib/net/tcp4.f`
+before a slice begins (`src/lib/net/ws.f` `GIVE-UP?`, `PUT`). A slice ends within
+`SEND-SLICE-MS` (100) and two sends that never wait (`src/lib/net/tcp4.f`
 `SEND-SLICE`). `STOP`'s bound allows for all of it, so a taker that keeps to
 them ends on its own rather than being killed.
 
@@ -211,7 +211,7 @@ not_found: no route answers this path (request r0-9)
 
 with `Content-Type: text/plain; charset=utf-8`. A hook sets the status and the
 body through the response words and quotes `REQUEST-ID$`; the JSON renderer in
-`lib/net/http-test.f` is the worked example. For a refusal or a fault the hook
+`src/lib/net/http-test.f` is the worked example. For a refusal or a fault the hook
 runs outside the handler's boundary, under the worker's own catch: a hook that
 throws there has its throw code reported on stderr with the request id, and the
 client gets the plain-text default with code `error_hook` and the status it
@@ -277,7 +277,7 @@ answers its client routes with its one page:
 
 ## Errors
 
-The block is `-9340..-9349` in `lib/errors.f` (`E-HTTP-FIRST`..`E-HTTP-LAST`),
+The block is `-9340..-9349` in `src/lib/errors.f` (`E-HTTP-FIRST`..`E-HTTP-LAST`),
 published in the package under short names:
 
 | name | code | meaning |
@@ -293,7 +293,7 @@ published in the package under short names:
 
 ## Test
 
-`bin/hb --load lib/net/http-test.f` (gate row `http`) serves a fixture tree and
+`bin/hb --load src/lib/net/http-test.f` (gate row `http`) serves a fixture tree and
 a route table on a loopback port. CURL fetches JSON routes, posts bodies, and
 revalidates a static file with its ETag; raw TCP4 sends what CURL cannot: a bad
 request line, a missing, repeated or invalid Host and the Host forms that must
@@ -309,4 +309,4 @@ whole response head, its status line and headers are written to
 `build/http-transcript.txt`, read back and compared whole; the server that
 answers them runs one worker, so the request ids and every length are the same
 on every run. `TAKE-OVER` is exercised by its caller's suite,
-`lib/net/ws-test.f` ([websocket.md](websocket.md#tests)).
+`src/lib/net/ws-test.f` ([websocket.md](websocket.md#tests)).

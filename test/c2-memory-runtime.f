@@ -1,7 +1,7 @@
 \ Real allocation and loan runtime through the native source load path.
-require lib/test.f
-require lib/memory.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/c2-memory.f
 
 package C2-MEM-RUNTIME
 private

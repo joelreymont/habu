@@ -38,7 +38,7 @@
 \ generation deferred type-DSL work; it is that work (dot
 \ habu-generate-a-private-80272413, docs/type-system.md §10.4), and without it
 \ the declared memory record serves almost nothing, because nearly every memory
-\ record under lib/ is package-private.
+\ record under src/lib/ is package-private.
 \ The OPAQUE header clause moves a PUBLIC family's generated words to that
 \ private placement while the type stays nameable everywhere (docs/type-system.md
 \ §10.4): the only construction surface another package gets is what the
@@ -453,7 +453,7 @@ SD-QUOT-INSTALL
 \ private family's into the declaring package's private wordlist as
 \ FAMILY-MEMBER (src/core/type-family.f TF-CTOR-PRIV$, rendered by
 \ src/core/sumtype.f TDGEN-DRV-REF). The gate that stood here refused a private
-\ family outright; nearly every memory record under lib/ is package-private, so
+\ family outright; nearly every memory record under src/lib/ is package-private, so
 \ it refused the facility to almost everything that needs it.
 : DERIVE-CONCRETE ( -- )                \ eq/hash compare whole values: arity 0 only
    FAM @ TFAM-ARITY@ 0 <> IF

@@ -2,8 +2,8 @@
 \ concern: the walk over a record's instructions, and over every record that
 \ holds any.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/native/branch.f
 require src/habu/code-bytes.f
 

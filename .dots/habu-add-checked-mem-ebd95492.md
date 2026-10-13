@@ -30,7 +30,7 @@ cell-divisible. Release remains the existing `MEM:RELEASE-BYTES` after the
 caller weakens the base with `BYTE-VIEW`. BPE and MODEL-ASSET are the first
 consumers and must delete their local pointer-view bridges.
 
-Owner: package MEM in `lib/memory.f`; focused proof in `lib/memory-test.f`.
+Owner: package MEM in `src/lib/memory.f`; focused proof in `src/lib/memory-test.f`.
 Acceptance: a real mapping supports first/last header-cell access, a
 non-cell-divisible mapping preserves its exact extent and byte tail, byte APIs
 still return `ptr u8`, and both forms release the exact mapping. Static negatives

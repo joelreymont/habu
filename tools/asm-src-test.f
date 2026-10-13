@@ -1,9 +1,9 @@
 \ asm-src-test.f - unchecked source ARM64 encoder regression.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f tools/asm-src-test.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f tools/asm-src-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
 
 \ Probed per file and loaded with `included`, which never records the load, so a
 \ later `require src/arch/arm64/asm.f` in the same process read the file again

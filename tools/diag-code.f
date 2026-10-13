@@ -5,7 +5,7 @@
 \ checks a record and tools/repair-packet.f builds its packet by the row read
 \ here, so a code enters both through one row.
 
-require lib/string.f
+require src/lib/string.f
 
 package DIAG-CODE
 public

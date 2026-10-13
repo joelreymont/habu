@@ -27,8 +27,8 @@
 \ would be rejecting live rows and the whole boot prefix with them.
 
 require test/checker-assert.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
-require lib/type/deftype.f               \ DEFTYPE - a nominal a raw type variable refuses
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/type/deftype.f               \ DEFTYPE - a nominal a raw type variable refuses
 
 \ The harness owns a package because this suite shares an in-process slice with
 \ others that carry the same test vocabulary; a global `T=` here is a duplicate
@@ -61,7 +61,7 @@ public
 : TCE-CATCH ( ptr u8 n -- n )  TCE-U ! TCE-A !  [: TCE-GO ;] catch ;
 
 \ The codes the cases below expect. They live in the package because a
-\ global `E-*` constant is lib/errors.f's surface alone.
+\ global `E-*` constant is src/lib/errors.f's surface alone.
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
 E-TRUST-UNRESOLVED constant E-STALE   \ the row names no word here
 E-BAD-STORED-SIGNATURE constant E-BAD-SIG   \ the row's signature does not parse

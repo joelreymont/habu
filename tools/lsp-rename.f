@@ -29,10 +29,10 @@
 \ caller's, the selection and locations LSP-REFERENCES's and the uses those
 \ tools/lsp-defs.f keeps.
 
-require lib/string.f
-require lib/json-write.f
-require lib/adt/option.f
-require lib/source-lex.f
+require src/lib/string.f
+require src/lib/json-write.f
+require src/lib/adt/option.f
+require src/lib/source-lex.f
 require tools/lsp-docs.f
 require tools/lsp-text.f
 require tools/lsp-defs.f

@@ -1,7 +1,7 @@
 \ Read stripped code, excluding restored DATA and executable-segment padding.
 
-require lib/errors.f
-require lib/fs.f
+require src/lib/errors.f
+require src/lib/fs.f
 require tools/aot-startup-shape.f        \ the startup's instruction shapes, named once
 require tools/aot-call-report-lib.f      \ REPORT-JSON-BUFFER for CODE-REPORT
 require test/gate-build-common.f

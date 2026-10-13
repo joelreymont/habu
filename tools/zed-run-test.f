@@ -3,9 +3,9 @@
 \ Availability policy, command construction, and outcome classification need no
 \ device. Remote-device operation remains an explicitly invoked tool concern.
 \
-\ Run: bin/hb --load lib/test.f tools/zed-run-lib.f tools/zed-run-test.f
+\ Run: bin/hb --load src/lib/test.f tools/zed-run-lib.f tools/zed-run-test.f
 
-require lib/test.f
+require src/lib/test.f
 require tools/zed-run-lib.f
 
 package ZED

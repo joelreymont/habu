@@ -1,8 +1,8 @@
 \ Stored source and decoded views keep their independent owner dependencies.
 \ A nested cursor scope closes before an element getter reads both fields.
-require lib/test.f
-require lib/memory.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/c2-memory.f
 require test/c2-records-types.f
 
 package C2-RECORDS-SCOPES

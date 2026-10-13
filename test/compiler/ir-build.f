@@ -17,8 +17,8 @@
 \ torn down - has its own name. Checker fixtures prove the handle families are
 \ sealed and that no mutation can be spelled against a frozen module.
 
-require lib/test.f
-require lib/image-lifecycle.f
+require src/lib/test.f
+require src/lib/image-lifecycle.f
 require test/checker-assert.f
 require src/compiler/ir/build.f
 require src/compiler/native/frozen.f

@@ -55,10 +55,10 @@
 \ STORAGE CLASS. MODULE-OWNED: the rows, bodies and image live in this package's
 \ buffers until RESET, and the module LINK answers until the next LINK.
 
-require lib/prelude.f
-require lib/errors.f
-require lib/string.f
-require lib/span.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/span.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/wstruct.f
 require src/arch/wasm/profile.f

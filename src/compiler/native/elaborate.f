@@ -12,8 +12,8 @@
 \ A quotation body is a second FUNCTION of the emission, so the tokens between
 \ `[:` and `;]` are taken out of the enclosing body's hands.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/core/does-clause.f
 require src/core/quotation-storage.f
 require src/compiler/ir/id.f

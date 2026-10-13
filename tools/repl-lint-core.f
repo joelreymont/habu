@@ -1,7 +1,7 @@
 \ repl-lint-core.f -- REPL-baked code must never exit the interactive session.
 
 require tools/lint/text.f
-require lib/source.f
+require src/lib/source.f
 require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f

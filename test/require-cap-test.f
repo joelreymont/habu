@@ -10,10 +10,10 @@
 \
 \ Registered beside the sister capacity regression test/seal.f.
 
-require lib/test.f
-require lib/test/outcome.f       \ T-TIMED-OUT - the report of a child past its deadline
-require lib/process.f            \ outcome sumtype for the child completion
-require lib/test/subject.f       \ SUBJECT:RUN - isolated evaluation of the subject
+require src/lib/test.f
+require src/lib/test/outcome.f       \ T-TIMED-OUT - the report of a child past its deadline
+require src/lib/process.f            \ outcome sumtype for the child completion
+require src/lib/test/subject.f       \ SUBJECT:RUN - isolated evaluation of the subject
 
 package REQUIRE-CAP
 

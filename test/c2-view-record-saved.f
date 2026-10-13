@@ -1,8 +1,8 @@
 \ Fresh consumer of the captured record schema and constructor effects.
-require lib/test.f
-require lib/adt/option.f
-require lib/memory.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/adt/option.f
+require src/lib/memory.f
+require src/lib/c2-memory.f
 require test/c2-view-record-use-refusals.f
 
 package C2-VIEW-RECORD-SAVED

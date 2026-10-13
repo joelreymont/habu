@@ -107,7 +107,7 @@ runtime and its own distinct thing to the checker.
 **`NEWTYPE name 0`** is the form to reach for. It registers a nominal cell
 type owned by the package it is declared in (a zero-parameter *family* — § 5
 defines that word), so two packages may each have a type called `index`
-without any confusion between them. `lib/num-types.f`
+without any confusion between them. `src/lib/num-types.f`
 is the reference example: package `NUM` declares ten of them —
 `byte-len`, `item-count`, `cell-count`, `index`, `byte-off`, `cell-off`,
 `alignment`, `positive-divisor`, `alloc-byte-len`, `alloc-cell-count` — and
@@ -122,11 +122,11 @@ declared, and watch it fail: `expected: num:byte-len actual: n`, exit 70.
 constructors validate, and there is **no public inverse** anywhere — no word
 that turns a `byte-len` back into a bare `n`. Each consumer that genuinely
 needs the raw cell owns its own private, audited projection and says so.
-`lib/memory.f` has exactly three (`ALLOC-BYTES>N`, `ALLOC-CELLS>N`,
+`src/lib/memory.f` has exactly three (`ALLOC-BYTES>N`, `ALLOC-CELLS>N`,
 `BYTE-LEN>N`), each with a note saying which primitive has to start accepting
 the role directly before it can be deleted.
 
-**`DEFTYPE NAME`** (`lib/type/deftype.f`) is the same generation on the same
+**`DEFTYPE NAME`** (`src/lib/type/deftype.f`) is the same generation on the same
 substrate — a package-scoped nominal exactly like a `NEWTYPE`, probed: two
 packages may each declare `DEFTYPE SERIAL` and both load. The difference is
 what it derives: `DEFTYPE` generates the converter pair (`>NAME` and `NAME>N`)
@@ -178,7 +178,7 @@ several declaring words.
   mapping, or `empty` carrying nothing.
 - **`SUMTYPE`** and **`PRODUCT`** are the older spellings of the same two
   ideas, with positional rather than named payloads on the sum side. Plenty of
-  live code uses them (`lib/process.f`, `lib/adt/result.f`), but new code
+  live code uses them (`src/lib/process.f`, `src/lib/adt/result.f`), but new code
   should use `STRUCTURE` and `ENUM`.
 - **`DERIVE eq`** on a public family generates its typed identity comparison,
   so consumers compare values instead of raw tags. `MAKI-DATATYPE:EQ` is one.
@@ -214,9 +214,9 @@ rules follow from that:
   bundle without knowing it, so such words are marked at definition time and
   the attempt fails closed: `hb: interpret-mode layout value: P11:MK`, exit 70.
 
-**Generic containers.** `lib/adt/option.f` declares `option<a>` — a value is
+**Generic containers.** `src/lib/adt/option.f` declares `option<a>` — a value is
 either `some` carrying one thing or `none` carrying nothing — and
-`lib/adt/result.f` declares `result<a,b>` — either `ok` carrying a success
+`src/lib/adt/result.f` declares `result<a,b>` — either `ok` carrying a success
 value or `err` carrying a reason. These replace the old habits of returning
 `-1` for "not found" or a value-plus-flag pair for "it worked, or here is why
 it did not". The gain is that `MATCH` forces every caller to handle the absent
@@ -265,9 +265,9 @@ same resource be named twice: `E-LINEAR-LOCAL habu: in bad: linear value cannot
 be bound to a local; keep it on the stack`, exit 70.
 
 **Disposal that cannot half-fail.** `MEM:RELEASE-BYTES` and `MEM:UNMAP` in
-`lib/memory.f` return nothing at all. If the underlying `munmap` fails, the
+`src/lib/memory.f` return nothing at all. If the underlying `munmap` fails, the
 process dies immediately with the message `memory: unmap failed` and exit code
-71 (`lib/memory.f:168-173`). That is deliberate: a disposal word with no result
+71 (`src/lib/memory.f:168-173`). That is deliberate: a disposal word with no result
 cannot be ignored, cannot be half-handled, and cannot leave a caller believing
 memory was returned when it was not. The promise "this owner is consumed, so
 its memory is released" is either true or the process is not running.
@@ -356,7 +356,7 @@ arithmetic, so a forged index cannot reach a wrong row.
 is one declared in variants (`ENUM`, or the older `SUMTYPE`): its values carry
 a tag saying which arm they are. An untagged one (`STRUCTURE`, `NEWTYPE`) has
 exactly one shape and needs no tag. The gap: `option<NUM:index>` works and is used in
-production (`lib/float.f`); so does `option<T>` over a `STRUCTURE`, complete
+production (`src/lib/float.f`); so does `option<T>` over a `STRUCTURE`, complete
 with a `MATCH` that unmakes the record inside the `some` arm. But
 `option<MAKI:datatype>` — an `option` over a plain tag `ENUM` — is rejected at the
 constructor: `expected: a actual: maki:datatype`, exit 70. The same rejection
@@ -511,15 +511,15 @@ record may use:
   `PFX-LOAD-CORE-FILES`, before `include.f`).
 - **T2** — the post-arm prefix, `src/core/enums.f` through
   `src/core/layout-buffer-seal.f`, then the boot stdlib.
-- **T3** — everything else: `src/compiler/`, `src/habu/*`, `src/arch/`, `lib/`,
+- **T3** — everything else: `src/compiler/`, `src/habu/*`, `src/arch/`, `src/lib/`,
   `tools/`, `test/`.
 
-Totals: **31 distinct mixed records** (14 under `src/`, 16 under `lib/`, 1 under
+Totals: **31 distinct mixed records** (14 under `src/`, 16 under `src/lib/`, 1 under
 `tools/`), plus 13 `tools/` pointer-slot families over ~60 call sites, plus the
 reserved engine-layout cells read through the same cast — 17 sites in `src/`,
 1 in `tools/`, 10 in `test/`. Cast-A call sites whose base is a declared
 `( ptr a … )` / `( ptr n … )` parameter: **~75**. Cast-B sites over a
-pointer-bearing base: ~70 in `src/`, ~40 in `lib/`, ~25 in `tools/` and `test/`.
+pointer-bearing base: ~70 in `src/`, ~40 in `src/lib/`, ~25 in `tools/` and `test/`.
 
 #### src/
 
@@ -541,7 +541,7 @@ pointer-bearing base: ~70 in `src/`, ~40 in `lib/`, ~25 in `tools/` and `test/`.
 | address-cell vector header, `address-cells.f:159-195` | magic/mode/cap n, base as a DATA offset | B | T3 | the relocation machinery itself |
 | engine-layout pointer/count pairs | `CK-AOT-SIG-POOL`+`-LEN`; `TCSIG-A`/`TSIG-A`+`TSIG-U`; `AOT-SPAN:TABLE`+`N`; `AOT-SPAN:BASE` (read **both** ways, `aot-closure.f:242` vs `:243`); stepper INP/INE; `SIGNAL-ABI` FD-PTR/STUB; `NULL-PTR-CELL` itself | A — 17 `data-base <const> + … ptr-field` sites in `src/`, 1 in `tools/`, 10 in `test/` | T1 and T3 | several `ptr-cell-mark`ed |
 
-#### lib/ — all T3
+#### src/lib/ — all T3
 
 | record | pointer fields | scalar fields | cast | storage | persisted |
 |---|---|---|:--:|---|---|
@@ -752,7 +752,7 @@ the allocator returns `ptr a`, and there is no sound cast from `ptr a` to
 whole section is about). Such a record either becomes an element of a
 `DYNAMIC-BUFFER` — an indexed arena instead of a linked list of separate
 mappings — or acquires a typed allocation crossing of its own, one audited word
-per family. The ZIP node (`lib/zip-state.f`) is the live case, and its migration
+per family. The ZIP node (`src/lib/zip-state.f`) is the live case, and its migration
 entry below is where that choice is made.
 
 #### The engine prefix
@@ -879,10 +879,10 @@ between them: a narrowing refuses every unmigrated site at once.
 |---|---|---|
 | **P** | T1 record-free: SYM to five columns; CWIN and `cell-effects.f` `STATE` to a head plus two variables; transaction state, include frame and registry to columns; the DYNAMIC-BUFFER control record to three declared cells; the reserved-cell declarator plus its two effect rows for the 17 engine-layout sites; the zero pass and the growers to typed loops | the largest wave — SYM touches ~20 call sites, the declarator 17, the rest are single-file |
 | **1** | `tools/`: `LINT-SLAB` (one declaration, 7 `create … allot` sites become `TYPED-VARIABLE`, 6 accessor words are generated away) and the 13 pointer-slot families (one two-field record each, ~60 call sites rewritten from `X-A X-FIELD @` to `X SLOT:A @`); delete the dead helper at `check-core.f:137-144` | mechanical, no ABI |
-| **2** | `lib/` readers and headers: `BUF`, `VEC`, `EDIT`, `JR`, `XML`, `MAP`, `BUILD` — each publishes a size constant its callers `create … allot` against, so each becomes a family plus a caller-side `TYPED-VARIABLE`/`TYPED-BUFFER` change | 10–20 field words per record, generated away; caller edits are one line each |
-| **3** | `lib/` with storage questions: the xmodem session (nested `BUF` field — supported, a family field may name another family), the ZIP node and member (mmap — becomes a `DYNAMIC-BUFFER` arena or gains a typed allocation crossing), `pq` (struct-of-arrays plus the parameter arena) | design per record, not mechanical |
+| **2** | `src/lib/` readers and headers: `BUF`, `VEC`, `EDIT`, `JR`, `XML`, `MAP`, `BUILD` — each publishes a size constant its callers `create … allot` against, so each becomes a family plus a caller-side `TYPED-VARIABLE`/`TYPED-BUFFER` change | 10–20 field words per record, generated away; caller edits are one line each |
+| **3** | `src/lib/` with storage questions: the xmodem session (nested `BUF` field — supported, a family field may name another family), the ZIP node and member (mmap — becomes a `DYNAMIC-BUFFER` arena or gains a typed allocation crossing), `pq` (struct-of-arrays plus the parameter arena) | design per record, not mechanical |
 | **4** | `src/` T3: NSTR pool owner, IR arena descriptor, IR symbol index, AOT dict record, address-cell header | each is persisted or captured; see the marking dot |
-| **after byte fields** | **TCB** (`lib/task.f`, inline semaphore byte blobs), `SA-ACT` (`lib/signal.f`, a foreign `struct sigaction` whose offset 0 holds a code address), the `CFIELD:` users in `src/arch/tic6x/` | blocked, see below |
+| **after byte fields** | **TCB** (`src/lib/task.f`, inline semaphore byte blobs), `SA-ACT` (`src/lib/signal.f`, a foreign `struct sigaction` whose offset 0 holds a code address), the `CFIELD:` users in `src/arch/tic6x/` | blocked, see below |
 
 #### Known gaps in this design
 
@@ -909,13 +909,13 @@ Each entry is one dot, with what it must prove. The order is a dependency
 order, and the one constraint worth stating plainly is that **the two rule
 narrowings land last**: they refuse ~75 cast-A sites and ~135 cast-B sites, so
 every one of those has to be gone first — including the byte-field holdouts,
-because `lib/task.f`'s TCB reaches its five pointer fields through the very row
+because `src/lib/task.f`'s TCB reaches its five pointer fields through the very row
 `ptr-field` is narrowing.
 
 1. **Private family generation** — *landed*, dot
    `habu-generate-a-private-80272413`. Package-scoped generation for a private
    family, into its own private wordlist, inside the declaration transaction.
-   Nothing in `lib/` could use the facility without it. *Acceptance:* a private
+   Nothing in `src/lib/` could use the facility without it. *Acceptance:* a private
    `STRUCTURE` in a package publishes its generated words privately; a second
    package cannot resolve them; a reject rolls the whole declaration back
    byte-identically. Pinned as cases 13-14 of
@@ -984,7 +984,7 @@ because `lib/task.f`'s TCB reaches its five pointer fields through the very row
    migrated. *Acceptance per site:* the record is declared, every accessor is
    generated, no cast remains, and the lint and check suites assert exactly what
    they asserted before.
-7. **The `lib/` migrations, one dot per record** (`BUF`, `VEC`, `EDIT`, `JR`,
+7. **The `src/lib/` migrations, one dot per record** (`BUF`, `VEC`, `EDIT`, `JR`,
    `XML`, `MAP`, `BUILD`, then the xmodem session, the ZIP node and
    member — whose dot also decides arena-or-crossing — and `pq`), then **`src/`
    T3** (NSTR pool owner, IR arena descriptor, IR symbol index, AOT dict record,
@@ -1007,7 +1007,7 @@ because `lib/task.f`'s TCB reaches its five pointer fields through the very row
 
 A `ptr t` says what it points at and nothing about how far it reaches, so every
 copy into a buffer and every indexed read is bounded by a hand-written
-`u cap > if throw` or by nothing at all. `lib/span.f` (package `SPAN`) gives the
+`u cap > if throw` or by nothing at all. `src/lib/span.f` (package `SPAN`) gives the
 reach a type. A span is one two-cell value — a base `ptr t` and a reach — and it
 travels on the stack like any other family value, so nothing in the engine
 changed to carry it:
@@ -1022,7 +1022,7 @@ STRUCTURE span 1
 **The reach is counted in bytes, and that is a soundness decision.** A family
 argument unifies with the ordinary integer widening lattice rather than
 strictly, so `span<u8>` IS accepted where `span<cell>` is declared — measured,
-and pinned in `lib/span-test.f`. If the reach counted elements, a 64-byte
+and pinned in `src/lib/span-test.f`. If the reach counted elements, a 64-byte
 `span<u8>` handed to a word declared over `span<cell>` would pass `i < len` at
 i=7 and cell-read bytes 56..63, eight times past its end: the exact overrun the
 type exists to refuse. Counting bytes removes it — `SPAN:CELL-AT` checks
@@ -1034,13 +1034,12 @@ checker (the campaign's band 3), not to a declaration.
 
 The mint follows the same widening: `( ptr u8 n -- span<cell> ) SPAN:MAKE`
 certifies, while `( ptr cell n -- span<u8> )` is refused. The `STW-MINT` and
-`STW-MINT2` cases in `lib/span-test.f` pin both directions. Use `SPAN:BYTES`
+`STW-MINT2` cases in `src/lib/span-test.f` pin both directions. Use `SPAN:BYTES`
 for an explicit byte view of a cell span.
 
 **One audited crossing.** `SPAN:MAKE ( ptr t n -- span<t> )` is where an address
 and a number become a reach, and it takes that reach on the caller's word: the
-checker knows the pointee, never the extent behind it. It is admitted in `lib/`
-and `src/` only, where the producers live — `n SPAN-BUFFER: NAME`,
+checker knows the pointee, never the extent behind it. It is admitted in `src/` except `src/examples/`, where the producers live — `n SPAN-BUFFER: NAME`,
 `n SPAN-CELLS: NAME`, `MEM:ALLOC-SPAN` — and `tools/lint/bare-copy-lint.f`
 reports it, and a bare `BYTE-COPY`, anywhere else, naming the site and the
 replacement. It needs no `TRUST`: the body is the generated constructor plus a
@@ -1062,14 +1061,14 @@ accessor is an index function `( n -- ptr t )`, not a base-and-reach pair, and
 adding one means changing the generated accessor set at the sealed generative
 storage boundary (`src/core/layout-buffer.f`). A span over a nominal element is
 already reachable — hand a `TYPED-BUFFER` accessor result to `SPAN:MAKE`, which
-is how `lib/span-test.f` builds its `span<NUM:index>`.
+is how `src/lib/span-test.f` builds its `span<NUM:index>`.
 
 An open instantiation (`span<a>`) can be bound to a local and duplicated: its
 argument occurs only as a pointee, so every instance occupies the same two
-cells and carries no linear owner. `lib/span-test.f`'s `T-OPEN-TRANSPORT` pins
+cells and carries no linear owner. `src/lib/span-test.f`'s `T-OPEN-TRANSPORT` pins
 both operations. A family whose width depends on an unresolved argument still
 has a conservative one-cell representation. The generic narrowings use the
-return stack deliberately to avoid a local frame, as `lib/span.f` explains.
+return stack deliberately to avoid a local frame, as `src/lib/span.f` explains.
 
 **Cost.** Summing 4096 bytes, 200 passes, aarch64, engine `7c8b9db7`: `SPAN:U8@`
 24 ns/byte, the same loop with a hand-written bounds check 17 ns/byte, a bare
@@ -1093,7 +1092,7 @@ in range is a later optimisation; release quality comes first.
 - `docs/effects.md` — the effect language itself.
 - `docs/typed-top-level.md` — what may and may not run at the interpreter.
 The best worked examples in the tree, if you would rather read code:
-`lib/num-types.f` for nominals, `lib/adt/option.f` and `lib/adt/result.f`
+`src/lib/num-types.f` for nominals, `src/lib/adt/option.f` and `src/lib/adt/result.f`
 for generics, and in Loom (`../loom/maki/`) `infer/safetensors.f` for linear owners
 and transition chains, `infer/gpt2-config.f` for a validating constructor and a
 proof token, and `infer/gpt2-pin.f` for the smallest possible authority — a

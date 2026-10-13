@@ -37,7 +37,7 @@
 \
 \ Without the handler each child dies of its signal and every image exits 21.
 \ The host checks each image's ELF header; running them is the peer's.
-require lib/string.f
+require src/lib/string.f
 require src/core/engine-error.f
 require src/habu/stack-abi.f
 require test/x86-64-boot-harness.f

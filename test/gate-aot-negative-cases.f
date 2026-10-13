@@ -1,7 +1,7 @@
 \ gate-aot-negative-cases.f - the AOT closure rejection checks, run on the keyed
 \ linker image by test/gate-aot-negative.f (see test/preloaded-engine.f).
 
-require lib/source.f
+require src/lib/source.f
 require tools/json.f
 require tools/gate-json-assert-core.f
 require test/gate-common.f
@@ -65,7 +65,7 @@ package AOT-NEGATIVE
 \ pointer (measured: the hb-build fixture, tools/hb-build-test.f and the
 \ stripped rows beside it, an undeclared cell holding 0x34B12C35, refused in
 \ one build and linked in the next).
-\ No Habu word allocates from the break - lib/memory.f maps - so nothing in the
+\ No Habu word allocates from the break - src/lib/memory.f maps - so nothing in the
 \ band is ever a pointer and the linker excludes it. An mmap address is the
 \ control: it is the class the refusal exists for, and it must still answer yes.
 \ Both addresses are taken inside the fork, where the linker's own copy of

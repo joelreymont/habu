@@ -1,8 +1,8 @@
 \ Fresh consumer compiled against the saved XML-C2 image.
-require lib/test.f
-require lib/memory.f
-require lib/xml/c2.f
-require lib/c2-bytes.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/xml/c2.f
+require src/lib/c2-bytes.f
 require test/c2-xml-consumer-program.f
 
 package C2-XML-CONSUMER-SAVED

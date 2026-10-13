@@ -19,9 +19,9 @@
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer being written belongs to the
 \ server's one task.
 
-require lib/byte-buffer.f
-require lib/json-read.f
-require lib/json-write.f
+require src/lib/byte-buffer.f
+require src/lib/json-read.f
+require src/lib/json-write.f
 require tools/lsp-docs.f
 require tools/lsp-defs.f
 require tools/lsp-text.f

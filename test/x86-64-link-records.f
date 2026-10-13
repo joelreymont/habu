@@ -67,7 +67,7 @@ variable PUB-WID                     \ the window package's public wordlist, hos
 variable PRIVATE-WID
 ;package
 
-require lib/string.f
+require src/lib/string.f
 
 package X64LT
 public
@@ -93,7 +93,7 @@ SHIFT$ evaluate
 ;package
 
 require test/x86-64-boot-harness.f
-require lib/le.f
+require src/lib/le.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
@@ -108,8 +108,8 @@ require src/arch/x86-64/abi.f
 require src/arch/x86-64/passes.f
 require src/habu/link-x64.f
 require src/core/sha256.f
-require lib/process.f
-require lib/process-argv.f
+require src/lib/process.f
+require src/lib/process-argv.f
 
 \ A binding is a multi-cell value, which only a compiled body may hold.
 package X64LT

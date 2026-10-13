@@ -1,4 +1,4 @@
-\ dep.f - the package the policy harnesses admit (lib/policy-test.f).
+\ dep.f - the package the policy harnesses admit (src/lib/policy-test.f).
 \ STEP is public and marked internal, the shape of an engine-owned word an
 \ admitted package happens to hold: checked source may not call it.
 

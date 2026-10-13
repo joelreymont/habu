@@ -1,7 +1,7 @@
 \ class-parse.f - checked parser for pinned Unicode character-class inputs.
 
-require lib/prelude.f
-require lib/string.f
+require src/lib/prelude.f
+require src/lib/string.f
 
 package UNICODE-CLASS-TOOL
 

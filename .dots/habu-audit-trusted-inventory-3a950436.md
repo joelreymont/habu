@@ -95,15 +95,15 @@ remain.
 
 ## Increment 2026-07-11c (PTX + engine-id stdlib-boundary owners)
 
-All 69 lib/ptx placeholder rows reassigned to
+All 69 src/lib/ptx placeholder rows reassigned to
 `habu-ptx-phantom-preserving-3df9db92` — the dot that defines this exact
 surface's split and end-state. Per-site signature evidence:
-- MINT CORE (11, permanent typed-DSL entry casts): lib/ptx/cg.f:77-85 the nine
+- MINT CORE (11, permanent typed-DSL entry casts): src/lib/ptx/cg.f:77-85 the nine
   `*-REG` words (`n -> span/uniform/ptr/matrix<...>` register mints) plus
   cg.f:93 `R>BITS`/cg.f:134 `BITS>R` (`r <-> n` bit-casts).
 - WRAPPERS (58, retire when phantom-preserving lands): every TRUSTED row in
-  lib/ptx/tile.f (31, tile.f:22-112), lib/ptx/collective.f (18,
-  collective.f:28-94), lib/ptx/tile-v4.f (9, tile-v4.f:11-35) is typed->typed
+  src/lib/ptx/tile.f (31, tile.f:22-112), src/lib/ptx/collective.f (18,
+  collective.f:28-94), src/lib/ptx/tile-v4.f (9, tile-v4.f:11-35) is typed->typed
   (span/tile/matrix/uniform/ctx in AND out; the sole nullary, collective.f:28
   ROW `-- rowidx<e>`, is a thread-state intrinsic read) — trusted only because
   kernel newtype phantoms cannot thread through the checked EMIT-* words, the
@@ -111,7 +111,7 @@ surface's split and end-state. Per-site signature evidence:
 The mint/wrapper distinction stays recorded here and in that dot (classes do
 not encode it; both halves are stdlib-boundary).
 
-lib/engine-id.f's two rows (ENGINE-SELF-MACOS engine-id.f:44, apple[] startup
+src/lib/engine-id.f's two rows (ENGINE-SELF-MACOS engine-id.f:44, apple[] startup
 vector walk; ENGINE-SELF-LINUX engine-id.f:59, /proc/self/exe readlink) go to
 the newly minted `habu-raw-self-path-4514ffd3` — no existing capability dot
 covered raw startup-image/self-path reads (the block prose said exactly this);
@@ -154,7 +154,7 @@ residuals) — increment 4.
 
 ## Increment 2026-07-11e (test-metaprog cluster resolved — DONE-CRITERION MET)
 
-Wave E-1 verdicts (commit A): TASK-NULL DISCHARGED (lib/task.f:107, body
+Wave E-1 verdicts (commit A): TASK-NULL DISCHARGED (src/lib/task.f:107, body
 `NULL$ drop` — the out-var pointee binds; probed `( ptr u8 n -- ptr a ) drop`
 certifies; trust surface 493 -> 492). NOT dischargeable, with probes: BP-NULL
 and NULL$ (a null-literal mint `( -- ptr u8 ) 0` still rejects, rc=70);
@@ -179,7 +179,7 @@ test-metaprog reassignments (commit B, 113 rows, per-site evidence):
   `set-check` hook row -> police-set-check 850bc543 (hook installs and
   set-check machinery, the dot's own audited-hook mandate).
 - prop-test CLEAR-MEAS/ERR@/RUN-MEAS/REND-SIG$/CONFIRM-FR? and
-  lib/test/assert.f:TTHROWS-RAW -> typed-depth-introspection 18f0efda ("prop-
+  src/lib/test/assert.f:TTHROWS-RAW -> typed-depth-introspection 18f0efda ("prop-
   test depth checks and assert-layer helpers" is its mandate verbatim).
 - engine-suite: ES-PATCH32 -> capability-gate 14022ba9 (documented
   owner-of-record); T-PTX-*/T-MK-SPAN*/T-PTX-SAME-EXTENT (8) ->

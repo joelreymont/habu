@@ -8,7 +8,7 @@ public
 3 constant DONE
 4 constant HALT-REQ
 \ A prepared task whose region C may enter through a callback binding
-\ (lib/task.f EXPOSE); it runs no body of its own and is never activated.
+\ (src/lib/task.f EXPOSE); it runs no body of its own and is never activated.
 5 constant EXPOSED
 
 0 constant SIZE-OFF
@@ -37,7 +37,7 @@ $88 constant LSTACK-U-OFF
 $90 constant THROW-OFF
 \ The task's one-cell mailbox: the unread message, the TCB of whoever sent it,
 \ the pending flag MSG? reads, and the two semaphores that make a send block
-\ while the cell is full and a get block while it is empty (lib/task.f). Each
+\ while the cell is full and a get block while it is empty (src/lib/task.f). Each
 \ semaphore record is a guard cell followed by one sem_t.
 $98 constant MSG-OFF
 $A0 constant MSG-SENDER-OFF

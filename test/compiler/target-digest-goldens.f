@@ -3,7 +3,7 @@
 \ The PTX row is the sample contract in target-policy.f. These are wire pins,
 \ independent of which native backend this engine can execute.
 
-require lib/test.f
+require src/lib/test.f
 require src/compiler/target.f
 
 package CTARGET-GOLDEN-TEST

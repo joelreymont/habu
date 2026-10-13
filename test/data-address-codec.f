@@ -1,8 +1,8 @@
 \ The exact carrier grammar shared by capture, artifact merge and stripped link.
-require lib/test.f
+require src/lib/test.f
 require src/habu/layout.f
 require src/habu/address-carrier.f
-require lib/task.f
+require src/lib/task.f
 
 package DATA-ADDRESS-CODEC-TEST
 using ADDRESS-CARRIER

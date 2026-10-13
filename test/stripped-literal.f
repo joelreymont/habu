@@ -3,7 +3,7 @@
 \ pool is. The retained-literal image is tested by test/stripped-image.f;
 \ mutable pre-window DATA is tested by test/compiler/aot-data-cell-refusals.f.
 require test/gate-common.f
-require lib/engine-candidate.f
+require src/lib/engine-candidate.f
 
 package STRIPPED-LITERAL-TEST
 
@@ -45,10 +45,10 @@ variable IMAGE-U
 
 \ The application's own bodies fill its pool's segment to the last of its 512 KB
 \ ($80000), so the link's copy of the engine literal RELEASE-RANGE dies with
-\ (lib/memory.f) takes room the window has to have kept for it.
+\ (src/lib/memory.f) takes room the window has to have kept for it.
 : WRITE-FULL-SUBJECT ( -- )
    SB-RESET
-   S\" require lib/memory.f\npackage SLT-FULL\nprivate\n$2000 BUFFER: SRC\nvariable SRC-U\n" SB-APPEND
+   S\" require src/lib/memory.f\npackage SLT-FULL\nprivate\n$2000 BUFFER: SRC\nvariable SRC-U\n" SB-APPEND
    S\" TRUSTED: BAD-SPAN ( -- ptr u8 NUM:byte-len ) 4097 4096 ;\nTRUSTED: EV ( ptr u8 n -- ) evaluate ;\n" SB-APPEND
    S\" : C+ ( n -- ) SRC SRC-U @ + c!  1 SRC-U +! ;\n" SB-APPEND
    S\" : S+ ( ptr u8 n -- ) {: a:ptr u:n :} u 0 ?do a i + c@ C+ loop ;\n" SB-APPEND

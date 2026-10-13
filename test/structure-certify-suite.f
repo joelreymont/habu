@@ -46,7 +46,7 @@
 \ A failure prints F<index> + detail; REPORT exits 1 on any fail.
 
 require test/checker-assert.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
 variable #CASE

@@ -22,10 +22,10 @@
 \ calls NATIVE-BUILD:RUN-PATH-RC, the same driver without the argv convention
 \ and the exit, and prints the report itself.
 1 set-tier
-require lib/errors.f
-require lib/string.f
-require lib/fs.f
-require lib/executable-build.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/executable-build.f
 require tools/native-build-core.f
 
 package BUILD-PROFILE

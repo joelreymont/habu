@@ -41,8 +41,8 @@
 \ its input instead of trusting that it came from the checked constructor. The
 \ plain field readers do not: they only project a value the caller already holds.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/digest.f
 
 package CTARGET

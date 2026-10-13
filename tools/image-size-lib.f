@@ -68,9 +68,9 @@
 \
 \ Run: <engine> --load tools/engine-size.f -- <image>
 
-require lib/fmt.f
-require lib/fs.f
-require lib/sort.f
+require src/lib/fmt.f
+require src/lib/fs.f
+require src/lib/sort.f
 require src/habu/code-span.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
@@ -102,7 +102,7 @@ package IMAGE-SIZE
 
 \ The walk's own refusal. Thrown, never died: the payload search probes many
 \ offsets and every wrong one must come back as a failed walk, not as an exit.
-\ This tool's own throw range: -9240..-9249 (the -9180 decade is lib/errors.f TCP4).
+\ This tool's own throw range: -9240..-9249 (the -9180 decade is src/lib/errors.f TCP4).
 -9240 constant E-ES-FIRST
 -9249 constant E-ES-LAST
 -9240 constant E-ES-WALK

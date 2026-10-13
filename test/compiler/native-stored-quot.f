@@ -1,4 +1,4 @@
-require lib/test.f
+require src/lib/test.f
 
 package STORED-QUOT-TEST
 private

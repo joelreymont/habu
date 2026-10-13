@@ -1,10 +1,10 @@
 \ ir-id.f - checked shared compiler IR identity and authority tests.
 
-require lib/test.f
-require lib/string.f
-require lib/process-argv.f
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/process-argv.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 require test/checker-assert.f
 
 require src/compiler/ir/id.f
@@ -29,7 +29,7 @@ $4C constant OVERLAP-RC
 \ Measured 2026-07-30 on a 12-core machine. The spawned concurrency child costs
 \ 0.62 to 1.10 s with the machine idle and 2.34 to 3.00 s while eight gate pool
 \ slots are busy, and it is the most expensive child here: it starts a fresh
-\ engine and loads lib/task.f and the identity module from scratch. The subject
+\ engine and loads src/lib/task.f and the identity module from scratch. The subject
 \ children start from a fork of this process instead, so even the cases that
 \ reload the identity module inside the fork cost a fraction of that: the whole
 \ file, every child included, runs in 2.8 s idle and 9 to 14 s under those same

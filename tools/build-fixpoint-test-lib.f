@@ -5,19 +5,19 @@
 \ the step and finish words every driver runs. It defines no MAIN; each row file
 \ runs the cases it owns.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-cwd.f
-require lib/build.f
-require lib/codesign.f
-require lib/tree-copy.f                \ the stale-seed sandbox's private tree
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-cwd.f
+require src/lib/build.f
+require src/lib/codesign.f
+require src/lib/tree-copy.f                \ the stale-seed sandbox's private tree
 require tools/build-fixpoint.f
 require tools/event-closure-lib.f      \ EC:BUILD, used by the sandbox and the chain-key fixtures
 require test/suite-budget.f            \ CHILD-MS, every step's hang guard
@@ -194,16 +194,16 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 
 : BFT-ARGV-LOAD-LIBS ( -- )   \ the --load prefix through build-fixpoint.f, WITHOUT the CLI entry companion
    s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f" BFT-ARG+
-   s" lib/string.f" BFT-ARG+
-   s" lib/memory.f" BFT-ARG+
-   s" lib/fs.f" BFT-ARG+
-   s" lib/fs-mutate.f" BFT-ARG+
-   s" lib/process.f" BFT-ARG+
-   s" lib/process-argv.f" BFT-ARG+
-   s" lib/process-env.f" BFT-ARG+
-   s" lib/build.f" BFT-ARG+
-   s" lib/codesign.f" BFT-ARG+
+   s" src/lib/errors.f" BFT-ARG+
+   s" src/lib/string.f" BFT-ARG+
+   s" src/lib/memory.f" BFT-ARG+
+   s" src/lib/fs.f" BFT-ARG+
+   s" src/lib/fs-mutate.f" BFT-ARG+
+   s" src/lib/process.f" BFT-ARG+
+   s" src/lib/process-argv.f" BFT-ARG+
+   s" src/lib/process-env.f" BFT-ARG+
+   s" src/lib/build.f" BFT-ARG+
+   s" src/lib/codesign.f" BFT-ARG+
    s" tools/build-fixpoint.f" BFT-ARG+ ;
 
 : BFT-ARGV-LOAD-FILES ( -- )
@@ -217,7 +217,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    ;MATCH ;
 
 \ build-fixpoint exits PROC-TIMEOUT-RC when a deadline expired under it (BF-CLI,
-\ lib/process.f). Replay the child's stderr, which names the throw, and throw
+\ src/lib/process.f). Replay the child's stderr, which names the throw, and throw
 \ E-PROC-TIMEOUT again, so BFT-STEP hands the row to the gate pool's timeout
 \ label instead of failing it as one more unexpected exit code.
 : BFT-FIXPOINT-RC ( n n n ptr u8 -- n n n ) {: outn:n errn:n code:n err:ptr :}
@@ -228,7 +228,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    pa pu FILE-SIZE BFT-ALLOC-READ
    pa pu BFT-READ-BUF BFT-READ-CAP @ READ-ALL ;
 
-\ The stale-seed sandbox: a private copy of src/, lib/, the refresh's tools/
+\ The stale-seed sandbox: a private copy of src/, src/lib/, the refresh's tools/
 \ closure and bin/hb, with its own tmp and stamp, so a case can break a source
 \ file and run the refresh there - the real workspace bin/hb is never touched.
 \ The sandbox cases (tools/build-fixpoint-sandbox-test.f) plant a crash or a
@@ -248,7 +248,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 \ written out by hand and went stale the moment build-fixpoint.f grew a require:
 \ the sandboxed refresh then died on a missing file instead of on the fault the
 \ test was about. Ask the source instead - the same ordered closure walk the
-\ stamp key uses - so the sandbox tracks the tool's own requires. src/ and lib/
+\ stamp key uses - so the sandbox tracks the tool's own requires. src/ and src/lib/
 \ still come over whole, because the stage build reads far more of them than
 \ build-fixpoint.f's own requires name.
 \ TWO CLOSURES, and the second is the same lesson a second time. The stamp key
@@ -276,7 +276,6 @@ variable IX
    BFT-ALLOC-BIG
    BFT-STALE-TMP MAKE-DIRS
    s" src" BFT-STALE TREE-COPY:TREE
-   s" lib" BFT-STALE TREE-COPY:TREE
    s" tools/build-fixpoint.f" COPY-CLOSURE
    ENTRY$ COPY-CLOSURE
    BF-CERTIFY-DRIVER$ COPY-CLOSURE
@@ -302,7 +301,7 @@ variable IX
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    BFT-CAPTURE>N BFT-BIG-ERR BFT-FIXPOINT-RC ;
 
-\ A child that outlives BFT-TIMEOUT-MS (E-PROC-TIMEOUT from lib/process) leaves
+\ A child that outlives BFT-TIMEOUT-MS (E-PROC-TIMEOUT from src/lib/process) leaves
 \ the row uncaught once its step is named: the engine's report is then the row's
 \ last stderr line, which the gate pool labels TIMEOUT-UNDER-LOAD (test/gate-pool.f
 \ GT-POOL-INNER-TIMEOUT?). Every other throw ends the row here as a failed step.

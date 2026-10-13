@@ -1,8 +1,8 @@
 \ Real C2 XML source and cursor scopes on the rooted native image.
-require lib/test.f
-require lib/memory.f
-require lib/xml/c2.f
-require lib/c2-bytes.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/xml/c2.f
+require src/lib/c2-bytes.f
 
 package C2-XML-CONSUMER-PROGRAM
 private

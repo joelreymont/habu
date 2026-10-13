@@ -1,8 +1,8 @@
 \ A new consumer is checked against a wrapper captured in another image.
-require lib/test.f
-require lib/memory.f
-require lib/c2-memory.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/c2-memory.f
+require src/lib/test/subject.f
 
 package C2-INIT-SAVED-CONSUMER
 private

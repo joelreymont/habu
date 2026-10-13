@@ -17,12 +17,12 @@
 \ test/whitebox-engine-key-test.f keys a copied tree with ENTRY-PATH! and never
 \ runs the engine.
 
-require lib/errors.f
-require lib/string.f
-require lib/fs.f
-require lib/build-cache.f
-require lib/content-key.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/build-cache.f
+require src/lib/content-key.f
+require src/lib/engine-candidate.f
 require tools/event-closure-lib.f
 
 package WHITEBOX-KEY

@@ -2,16 +2,16 @@
 \ watch primitive: the returned descriptor becomes readable when the watched
 \ child exits, a second watch observes the surviving zombie correctly, and a
 \ non-existent pid fails closed.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f \
-\      lib/process.f lib/process-fork.f test/proc-watch-smoke.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f \
+\      src/lib/process.f src/lib/process-fork.f test/proc-watch-smoke.f
 
-require lib/errors.f
-require lib/prelude.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/process.f
-require lib/process-fork.f
+require src/lib/errors.f
+require src/lib/prelude.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/process.f
+require src/lib/process-fork.f
 
 package PROC-WATCH-SMOKE
 

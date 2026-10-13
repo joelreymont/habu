@@ -2,7 +2,7 @@
 \ compiler produces it. The observer copies the owned emission rows before
 \ retires them; final code and records are read only after publication ends.
 
-require lib/errors.f
+require src/lib/errors.f
 require src/compiler/native/publish.f
 require src/compiler/session/emission.f
 require src/compiler/native/string.f

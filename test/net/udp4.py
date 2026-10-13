@@ -10,8 +10,8 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
 SETUP = '''
-require lib/aio.f
-require lib/net/udp4.f
+require src/lib/aio.f
+require src/lib/net/udp4.f
 package UDP4-TEST
 using UDP4
 CAST: BLEN>N ( NUM:byte-len -- n )

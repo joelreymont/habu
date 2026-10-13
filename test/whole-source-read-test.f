@@ -2,7 +2,7 @@
 \
 \ check.f's readers (discovery, the lints, --all-errors, the verifier's stopped
 \ file), the native source view, diag-origin and the language server's read of
-\ a file its packets name each read a source whole through lib/source.f
+\ a file its packets name each read a source whole through src/lib/source.f
 \ READ-WHOLE-FILE or READ-WHOLE-SAMPLED: the file's size is only the first
 \ room, and the read goes on to the end of the file. Each case is a child
 \ engine (test/whole-source-read-child.f) whose FILE-SIZE appends blank lines
@@ -15,14 +15,14 @@
 \
 \ Run: bin/hb --load test/whole-source-read-test.f
 
-require lib/string.f
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/engine-candidate.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
 
 package WHOLE-SOURCE-READ-TEST
 private

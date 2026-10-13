@@ -31,9 +31,9 @@
 \ in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-data-window-suite.f
 
-require lib/test.f
-require lib/fmt.f
-require lib/test/outcome.f
+require src/lib/test.f
+require src/lib/fmt.f
+require src/lib/test/outcome.f
 require test/aot-wide-format-lib.f
 
 package AOT-WIDE-FORMAT

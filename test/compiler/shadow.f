@@ -23,8 +23,8 @@
 \ A taken emission no publication claims files nothing, and the shadow's own
 \ refusals are each asserted by code.
 
-require lib/test.f
-require lib/errors.f
+require src/lib/test.f
+require src/lib/errors.f
 require src/habu/xref.f
 require src/compiler/target.f
 require src/compiler/native/abi.f

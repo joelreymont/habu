@@ -1,5 +1,5 @@
 \ A task still ACTIVATED when a capture begins. No image carries a thread, so
-\ lib/task.f's capture sweep refuses this program by name at
+\ src/lib/task.f's capture sweep refuses this program by name at
 \ IMAGE-LIFECYCLE:PREPARE - the one word both capture paths run
 \ (tools/aot-build-core.f NATIVE-BUILD, src/habu/native-runtime.f
 \ CAPTURE-PREPARE), and the reason this file calls it rather than being built:
@@ -9,8 +9,8 @@
 \ THE WORKER PARKS AND IS NEVER WOKEN, so its state at capture is RUNNING
 \ whatever the scheduler does: TASK:ACTIVATE publishes RUNNING before
 \ pthread_create, and nothing here halts or joins it.
-require lib/task.f
-require lib/image-lifecycle.f
+require src/lib/task.f
+require src/lib/image-lifecycle.f
 
 package STRIPPED-LIFECYCLE-RUNNING-SUBJECT
 private

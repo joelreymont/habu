@@ -12,14 +12,14 @@
 \ STORAGE CLASS. PROCESS-GLOBAL: the text, the file read and the cursor belong
 \ to the server's one task.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/fd-io.f
-require lib/fs.f
-require lib/source.f
-require lib/utf16.f
-require lib/json-write.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/fd-io.f
+require src/lib/fs.f
+require src/lib/source.f
+require src/lib/utf16.f
+require src/lib/json-write.f
 require tools/lsp-line.f
 
 package LSP-TEXT
@@ -58,7 +58,7 @@ variable DISK-U                          \ and its length
 
 \ The file at this path read into DISK, its length in DISK-U, to its end
 \ however it grows while it is read: its size, whose refusal (E-FS-STAT) stays
-\ a missing file's, is only the first room (lib/source.f READ-WHOLE-SAMPLED).
+\ a missing file's, is only the first room (src/lib/source.f READ-WHOLE-SAMPLED).
 : SLURP ( ptr u8 n -- ptr u8 n )
    {: f:ptr fu:n :}
    f fu  f fu FILE-SIZE  [: DISK-ROOM ;] SOURCE:READ-WHOLE-SAMPLED DISK-U !
@@ -80,7 +80,7 @@ public
 \ The text positions count in.
 : TEXT$ ( -- ptr u8 n )  TEXT-A @ TEXT-U @ ;
 
-\ Whether a throw of this code is a file system call's (lib/errors.f E-FS-*).
+\ Whether a throw of this code is a file system call's (src/lib/errors.f E-FS-*).
 : FS-RC? ( n -- bool )
    {: rc:n :}
    rc E-FS-FIRST <= rc E-FS-LAST >= and ;

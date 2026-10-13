@@ -2,11 +2,11 @@
 \ run by test/structure-opaque-e2e.f on the engine under test. OP's `box` is
 \ OPAQUE: its type crosses packages and its generated pair does not. OPC
 \ declares the same family without the clause, the control every refusal is
-\ measured against. Each refused text runs in a forked child (lib/test/subject.f)
+\ measured against. Each refused text runs in a forked child (src/lib/test/subject.f)
 \ and must exit with its status and name its reason on stderr.
-require lib/test.f
-require lib/string.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/test/subject.f
 require test/structure-opaque-fixture.f
 
 package OPC

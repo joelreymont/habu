@@ -57,7 +57,7 @@ into an encoder, so a value forged through the generated `>MEM` cast is refused
 with `E-OPERAND` rather than reaching a ModRM field.
 
 Every encoder takes the byte sink as its LAST operand and appends through
-`lib/byte-buffer.f` (`BUF`); there is no instruction type, because the
+`src/lib/byte-buffer.f` (`BUF`); there is no instruction type, because the
 instruction is the bytes. Operand order otherwise matches the ARM32 and C66x
 sets: destination first, then sources, and a memory form takes the data
 register first and the memory operand second, stores included.

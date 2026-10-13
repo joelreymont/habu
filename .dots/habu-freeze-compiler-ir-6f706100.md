@@ -55,7 +55,7 @@ attempt, and the authority's orphaned record is abandoned with it; without
 that, one construction abandoned by a throw would keep every later builder out
 of that stage.
 
-Error codes: the reserved block -8060..-8079 is now claimed in `lib/errors.f`
+Error codes: the reserved block -8060..-8079 is now claimed in `src/lib/errors.f`
 as E-IR-BUILD-STALE, -FROZEN, -ABORTED, -OWNER, -OPEN, -STAGE, -PLAN,
 -CEILING, -SLOTS, -SERIALS and -STATE (eleven of twenty). A twelfth code for
 "module handle where a builder belongs" was written and then removed: a module
@@ -83,7 +83,7 @@ Measured gate results, all on this workspace over parent 215052d1:
   six plus `hb-build-fixtures kind=TIMEOUT-UNDER-LOAD code=0 ... ran=120128ms`.
   That seventh red is machine contention, not this change: all four members of
   that suite pass individually (`tools/hb-build-test.f`,
-  `lib/build-cache-test.f`, `lib/codesign-test.f`,
+  `src/lib/build-cache-test.f`, `src/lib/codesign-test.f`,
   `tools/hb-build-direct-lints-test.f`, each exit 0), and
   `tools/hb-build-test.f` alone takes 159 seconds of wall time against a
   120-second budget at load average 23 on this machine. The suite loads

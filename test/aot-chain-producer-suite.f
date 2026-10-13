@@ -16,16 +16,16 @@
 \   bin/hb --load test/aot-chain-producer-suite.f
 
 \ tools/build-fixpoint.f requires none of the libraries its header lists.
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/codesign.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/codesign.f
+require src/lib/test.f
 require tools/build-fixpoint.f
 require test/aot-chain-capture-lib.f
 

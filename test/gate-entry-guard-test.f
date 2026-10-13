@@ -1,7 +1,7 @@
 \ Focused registry/load-path acceptance for the stdlib gate entry guard.
 \ Run: bin/hb --load test/gate-entry-guard-test.f
 
-require lib/test.f
+require src/lib/test.f
 require test/gate-images.f
 require test/gate-entry-guard.f
 require test/gate-stdlib-lib.f
@@ -98,8 +98,8 @@ TEST:SUITE target test/gate-entry-guard-target.f TEST:;SUITE
 
 \ Shared preloads are loaded by each row but are not suite entries.
 TEST:RESET
-TEST:SUITE first lib/test.f ENTRIES test/gate-entry-guard-wrapper.f TEST:;SUITE
-TEST:SUITE second lib/test.f ENTRIES test/gate-entry-guard-read-only.f TEST:;SUITE
+TEST:SUITE first src/lib/test.f ENTRIES test/gate-entry-guard-wrapper.f TEST:;SUITE
+TEST:SUITE second src/lib/test.f ENTRIES test/gate-entry-guard-read-only.f TEST:;SUITE
 GUARD
 
 \ An import in a preload can still launch another row's entry.

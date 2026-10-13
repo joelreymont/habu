@@ -1,14 +1,14 @@
 \ ir-id-source.f - read production emitter definitions for relocation replay.
 \ The shared lexer keeps comments and strings out of the interpreted token stream.
 
-require lib/prelude.f
-require lib/errors.f
-require lib/string.f
-require lib/adt/option.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/adt/option.f
 require tools/lint/text.f
-require lib/source.f
+require src/lib/source.f
 require tools/lint/token.f
-require lib/source-lex.f
+require src/lib/source-lex.f
 require tools/lint/def.f
 
 package COMPILER-ID-SRC

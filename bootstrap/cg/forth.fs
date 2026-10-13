@@ -172,7 +172,7 @@ STACK-ABI:PAGE-BYTES constant STACK-ABI:BOOT-BYTES
 
 \ User return stack and DO/LOOP frame stack: each is its own guarded mapping
 \ (moved out of the DATA header, which has no room for an inaccessible page),
-\ base published in a header cell, mapped per task by lib/task.f PREPARE.
+\ base published in a header cell, mapped per task by src/lib/task.f PREPARE.
 $4800 constant STACK-ABI:RETURN-BASE-CELL
 $4808 constant STACK-ABI:LOOP-BASE-CELL
 
@@ -183,18 +183,18 @@ STACK-ABI:PAGE-BYTES constant STACK-ABI:LOOP-BYTES
 STACK-ABI:LOOP-BYTES STACK-ABI:LOOP-FRAME-BYTES / constant STACK-ABI:LOOP-FRAMES
 
 \ run-in-stack's refusal code for an extent that is not a guarded mapping.
-\ lib/errors.f E-STACK-UNGUARDED owns this code; src/habu/stack-abi.f re-registers
+\ src/lib/errors.f E-STACK-UNGUARDED owns this code; src/habu/stack-abi.f re-registers
 \ the same (code, name) pair for the engine emitters, which compile before any
-\ lib/ file exists, and this Gforth stage has no lib/errors.f either -- so the
+\ src/lib/ file exists, and this Gforth stage has no src/lib/errors.f either -- so the
 \ mirror carries stack-abi.f's spelling exactly, never a second name for it.
 -3802 constant STACK-ABI:E-STACK-UNGUARDED
 
 \ evaluate-closed's refusal of a text that left cells above its floor, carried
-\ the same way: lib/errors.f E-EVAL-RESIDUE owns it.
+\ the same way: src/lib/errors.f E-EVAL-RESIDUE owns it.
 -3804 constant STACK-ABI:E-EVAL-RESIDUE
 
 \ The dividing primitives' refusal code, carried here for the same reason and in
-\ src/habu/arith-abi.f's spelling: lib/errors.f E-DIV-ZERO owns it.
+\ src/habu/arith-abi.f's spelling: src/lib/errors.f E-DIV-ZERO owns it.
 -6400 constant ARITH-ABI:E-DIV-ZERO
 
 $40 constant STACK-ABI:CATCH-BASE
@@ -308,7 +308,7 @@ $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors s
 \ seed calls once, with the cell cleared first, before the exit_group of each
 \ deliberate exit (BDIE, the uncaught top-level throw, the normal top-level
 \ exit). A fresh DATA mapping reads zero, which is "no hook". Unlike TOP-HOOK-CELL
-\ this one IS mirrored: lib/fs-mutate.f arms it from ordinary library code, so a
+\ this one IS mirrored: src/lib/fs-mutate.f arms it from ordinary library code, so a
 \ program the seed runs would otherwise leave its registered temp trees behind
 \ where the native engine removes them. The seed has no address-cell table
 \ (BADDRESSCELLSVERSION below), so nothing declares the cell here; the seed's own
@@ -484,13 +484,13 @@ $4398 constant DECLARED-LOG-ADDR-CELL
 32 constant DECLARED-LOG-SLOT
 8  constant DECLARED-LOG-SLOTS-REL
 \ USER-REGION-END ends native's library arena (src/habu/layout.f): $5300..$6A88
-\ is USER-BAND (lib/task.f TASK:+USER), $6A88..$7690 FS-MUT-ABI, $7690..$7BC0
+\ is USER-BAND (src/lib/task.f TASK:+USER), $6A88..$7690 FS-MUT-ABI, $7690..$7BC0
 \ FS-ABI, $7BC0..$7BF8 FMT-ABI and $7BF8..$8000 STRING-ABI. None of their
 \ libraries is in this seed's emitted prefix (PFX-LOAD-STDLIB-FILES loads only
-\ lib/prelude.f and lib/errors.f from lib/). The stage2 build loads lib/fmt.f
-\ and, through it, lib/float.f and lib/string.f, by require: src/habu/habu2.f
-\ `require lib/fmt.f`, lib/fmt.f `require lib/float.f`, lib/float.f `require
-\ lib/string.f`. No code this seed runs calls an SB or FMT: word, so it reads
+\ src/lib/prelude.f and src/lib/errors.f from src/lib/). The stage2 build loads src/lib/fmt.f
+\ and, through it, src/lib/float.f and src/lib/string.f, by require: src/habu/habu2.f
+\ `require src/lib/fmt.f`, src/lib/fmt.f `require src/lib/float.f`, src/lib/float.f `require
+\ src/lib/string.f`. No code this seed runs calls an SB or FMT: word, so it reads
 \ none of these bands. STRING-ABI is named here only so that the
 \ USER-REGION-END this file carries bounds a registered claim, its
 \ data-claims.fs row. The recovery chain agrees about the GUARD, not about the
@@ -3454,16 +3454,16 @@ create ZBYTE 0 c,
       PFX-COMMON LPTOPROW s" src/core/top-row.f" row execute
    then
    parts PFX-BASELIB and 0 <> if
-      PFX-COMMON LPPRELUDE s" lib/prelude.f" row execute
-      PFX-COMMON LPERRORS s" lib/errors.f" row execute
+      PFX-COMMON LPPRELUDE s" src/lib/prelude.f" row execute
+      PFX-COMMON LPERRORS s" src/lib/errors.f" row execute
    then
    parts PFX-RESTLIB and 0 <> if
-      PFX-COMMON LPSPAN s" lib/span.f" row execute
-      PFX-COMMON LPOPTION s" lib/adt/option.f" row execute
-      PFX-COMMON LPNUMTYPES s" lib/num-types.f" row execute
-      PFX-COMMON LPNUMARITH s" lib/num-arithmetic.f" row execute
-      PFX-COMMON LPSTRING s" lib/string.f" row execute
-      PFX-COMMON LPMEMORY s" lib/memory.f" row execute
+      PFX-COMMON LPSPAN s" src/lib/span.f" row execute
+      PFX-COMMON LPOPTION s" src/lib/adt/option.f" row execute
+      PFX-COMMON LPNUMTYPES s" src/lib/num-types.f" row execute
+      PFX-COMMON LPNUMARITH s" src/lib/num-arithmetic.f" row execute
+      PFX-COMMON LPSTRING s" src/lib/string.f" row execute
+      PFX-COMMON LPMEMORY s" src/lib/memory.f" row execute
    then ;
 
 : PFX-LOAD-CHECKER-FILES ( -- )
@@ -3477,15 +3477,15 @@ create ZBYTE 0 c,
 \ calls to DYNAMIC-STORAGE:RESERVE/:RELEASE, and stage2-src declares one
 \ (src/habu/aot-decl.f `DYNAMIC-BUFFER AOT-NAMES-STORAGE n`), so without it the
 \ seed compiled a call to a word it had never loaded. dynamic-storage.f needs
-\ lib/errors.f ahead of it for E-MEM-MAP / E-MEM-UNMAP and lib/errors.f needs
-\ lib/prelude.f, so the three are a dependency closure, not a choice. Their order
+\ src/lib/errors.f ahead of it for E-MEM-MAP / E-MEM-UNMAP and src/lib/errors.f needs
+\ src/lib/prelude.f, so the three are a dependency closure, not a choice. Their order
 \ is native's. PFX-PROVIDE-STDLIB-FILES states the first two to include.f, so a
-\ later `require lib/errors.f` (lib/fmt.f through lib/string.f) is a fact, not
+\ later `require src/lib/errors.f` (src/lib/fmt.f through src/lib/string.f) is a fact, not
 \ a second read; dynamic-storage.f has its row in PFX-PROVIDE-CORE-FILES.
 \
 \ Remaining LOAD drift, recorded rather than left as an unexplained short list:
-\ native's group continues with lib/span.f, lib/adt/option.f, lib/num-types.f,
-\ lib/num-arithmetic.f, lib/string.f and lib/memory.f. A
+\ native's group continues with src/lib/span.f, src/lib/adt/option.f, src/lib/num-types.f,
+\ src/lib/num-arithmetic.f, src/lib/string.f and src/lib/memory.f. A
 \ `require` of one of them from the seed's program reads it then, through
 \ src/core/include.f and the seed's own realpath (BREALPATH).
 : PFX-LOAD-STDLIB-FILES ( -- )
@@ -3802,7 +3802,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-SFAIL @ EMIT-SEAL-FRIEND-TOKEN ;
 
 \ The two stdlib rows the seed loads and a later `require` may name again:
-\ lib/fmt.f (habu2.f) requires lib/string.f, which requires lib/errors.f.
+\ src/lib/fmt.f (habu2.f) requires src/lib/string.f, which requires src/lib/errors.f.
 \ Native's group goes on to the five files this seed does not load, and a row
 \ for a file the seed never read would turn that file's words undefined.
 : PFX-PROVIDE-STDLIB-FILES ( -- )
@@ -5279,7 +5279,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 \ A local named `i` is admitted, as natively (habu2.f C-LBRACE-STORE-ONE): the
 \ compile step looks a token up among the locals before the keywords
-\ (EMIT-COMPILE), so the local is what the body reads. lib/span.f, a prefix
+\ (EMIT-COMPILE), so the local is what the body reads. src/lib/span.f, a prefix
 \ row, declares one.
 : C-LBRACE-STORE-ONE ( -- )
    LBL LBL LBL LBL LBL {: nlok ncp ncd tsl tsd :}
@@ -5442,7 +5442,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ context: inside an open package it republishes an existing word under its tail
 \ into the current section, and at TOP LEVEL it is the hb-build --repl export
 \ directive, where "a plain load consumes the name as a no-op so directive-carrying
-\ programs stay directly loadable". lib/prelude.f rides the top-level role and is
+\ programs stay directly loadable". src/lib/prelude.f rides the top-level role and is
 \ the only file in this seed's prefix that says `export` at all, so the top-level
 \ half is mirrored here exactly -- consume the name, publish nothing -- and the
 \ in-package half refuses loudly with native's own $4A rather than consuming a name
@@ -6196,7 +6196,7 @@ variable CFSK2
 
 \ The boot task's return stack and DO/LOOP frame stack. They come after the
 \ DATA region because their bases are published in header cells; a task maps
-\ its own pair and publishes them into its own region copy (lib/task.f
+\ its own pair and publishes them into its own region copy (src/lib/task.f
 \ PREPARE). Mirrors src/habu/habu2.f EM-FRAME-STACKS.
 : EMIT-FRAME-STACKS ( -- )
    STACK-ABI:RETURN-BYTES 10 STACK-GUARD:EMIT-MAP

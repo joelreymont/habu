@@ -1,5 +1,5 @@
 \ wasm-target.f - sealed product acceptance for the declarable Wasm target.
-require lib/test.f
+require src/lib/test.f
 require src/compiler/native/hir.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/abi.f

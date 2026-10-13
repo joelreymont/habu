@@ -33,9 +33,9 @@ ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
 variable PRIVATE-WID
 ;package
 
-require lib/string.f
-require lib/le.f
-require lib/test.f
+require src/lib/string.f
+require src/lib/le.f
+require src/lib/test.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/xref.f

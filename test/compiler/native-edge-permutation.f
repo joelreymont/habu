@@ -1,6 +1,6 @@
 \ Loop edges transfer their values in parallel, including permuted/shared inputs.
-require lib/test.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/string.f
 
 \ Tier 1 below: values transfer in parallel across a block argument, which is
 \ the optimizing compiler's loop edge; the sha256 body below is included to be

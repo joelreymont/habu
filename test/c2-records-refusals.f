@@ -1,7 +1,7 @@
 \ Checker refusals for the opaque table control and its element loans.
-require lib/test.f
-require lib/test/subject.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/test/subject.f
+require src/lib/c2-memory.f
 require test/c2-records-types.f
 
 package C2-RECORDS-REFUSALS

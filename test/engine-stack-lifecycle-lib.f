@@ -1,15 +1,15 @@
 \ The active allocation follows stack switches and nonlocal frame restoration.
 require src/habu/stack-abi.f
-require lib/errors.f
-require lib/memory.f
-require lib/test.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/errors.f
+require src/lib/memory.f
+require src/lib/test.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 
 package STACK-LIFECYCLE-TEST
 
-\ Every VM stack the engine will run on is a guarded mapping (lib/memory.f
+\ Every VM stack the engine will run on is a guarded mapping (src/lib/memory.f
 \ MEM:ALLOC-GUARDED): an inaccessible page on each side of the capacity, sized
 \ in whole STACK-ABI:PAGE-BYTES multiples. POOL is that mapping, made once and
 \ reused by every in-process case below; POOL-BYTES is its exact capacity.

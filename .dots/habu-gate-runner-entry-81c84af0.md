@@ -37,7 +37,7 @@ resource exhaustion in the engine, and the fix is engine-lane. Dig chain:
   top-level throws, not these raw capacity exits.
 - Measurements: DICT-CAP = 8192, DREC = 48 (src/habu/layout.f:13,18;
   DICT-SIZE $61000 = 8192 x 48 + slack, so the cap is layout-sized). Fresh
-  bin/hb after lib/errors.f: ndict = 3070 (baked engine+prefix). At the brink
+  bin/hb after src/lib/errors.f: ndict = 3070 (baked engine+prefix). At the brink
   (41 requires + check-core lines 1-948): ndict = 8191. The remaining
   gate-runner-support closure (check-core tail + requires 42-53 incl.
   gate-*-lib) needs roughly 1.2-1.5k more entries, so the full closure wants

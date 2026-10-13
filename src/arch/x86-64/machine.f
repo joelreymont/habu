@@ -33,7 +33,7 @@
 \ requires the machine dialect and nothing under src/os/, so an engine that
 \ carries no x86-64 backend carries no description of one either.
 
-require lib/prelude.f
+require src/lib/prelude.f
 require src/habu/layout.f
 require src/compiler/native/machine.f
 require src/compiler/native/x64ir.f

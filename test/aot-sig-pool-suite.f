@@ -22,7 +22,7 @@
 \ and only the words carrying a PRIM: axiom can be named. Adding six axioms so a
 \ test could read six literals would grow the checker's public surface for a
 \ test's convenience. So the checker's side is read where it is DEFINED: the
-\ source, through lib/source-lex.f, and only a `<number> constant <NAME>` whose
+\ source, through src/lib/source-lex.f, and only a `<number> constant <NAME>` whose
 \ three tokens are all real code tokens counts. The layout side is read from the
 \ LIVE ENGINE, by naming the constants, which is the authority a compiled
 \ reference would use.
@@ -34,7 +34,7 @@
 \ below, and nothing else runs this reader, so a reader that took any of them
 \ would pass the live mirrors whatever the checker said. That the lexer keeps
 \ `\` comments, `( ... )` bodies and string payloads out of the code tokens is
-\ lib/source-lex-test.f's to prove, and a reader that misreads a
+\ src/lib/source-lex-test.f's to prove, and a reader that misreads a
 \ real definition fails the live mirrors themselves.
 \
 \ THE SECOND HALF IS THE BAND. Two cells were taken out of the unclaimed run
@@ -44,17 +44,17 @@
 \ one of those is a statement about src/habu/layout.f that an ordinary edit
 \ falsifies, and every name is live in a booted engine.
 \
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f test/aot-sig-pool-suite.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f test/aot-sig-pool-suite.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
 require src/habu/layout.f
 require src/habu/xref.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require lib/source-lex.f
+require src/lib/source-lex.f
 
 package AOT-SIG-POOL-TEST
 private

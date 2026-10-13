@@ -1,8 +1,8 @@
 \ Real unique C2 storage exercised through the dedicated native image.
-require lib/test.f
-require lib/memory.f
-require lib/c2-memory.f
-require lib/c2-bytes.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/c2-memory.f
+require src/lib/c2-bytes.f
 
 package C2-MEMORY-PROGRAM
 private

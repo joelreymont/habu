@@ -37,13 +37,13 @@
 \ readers below, so the guard and the grants never disagree about what a row
 \ loads.
 
-require lib/errors.f
-require lib/string.f
-require lib/fs.f
-require lib/test/suite.f
-require lib/test/runner.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/test/suite.f
+require src/lib/test/runner.f
 require tools/lint/text.f
-require lib/source-lex.f
+require src/lib/source-lex.f
 require test/load-refs.f
 require test/gate-pool.f
 require test/image-grant.f

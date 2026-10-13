@@ -1,8 +1,8 @@
 \ class-tool-test.f - parser transaction and generator tests.
 \ Run: bin/hb --load tools/unicode/class-tool-test.f
 
-require lib/test.f
-require lib/codegen.f
+require src/lib/test.f
+require src/lib/codegen.f
 require tools/unicode/class-generate.f
 
 package UNICODE-CLASS-TOOL-TEST

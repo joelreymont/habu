@@ -1,4 +1,4 @@
-require lib/policy.f
+require src/lib/policy.f
 
 : BOOM ( -- )
    s" test/policy/confined" [: -30001 throw ;] POLICY:WITH-ROOT ;

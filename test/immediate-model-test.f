@@ -8,7 +8,7 @@
 \ compile-time expansion is explicitly modeled as stack-neutral with parse-imm.
 \ Run: bin/hb --load test/immediate-model-test.f
 
-require lib/test.f
+require src/lib/test.f
 require test/checker-assert.f
 
 T-RESET

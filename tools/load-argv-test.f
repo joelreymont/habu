@@ -1,13 +1,13 @@
 \ load-argv-test.f - the `bin/hb --load` argv loader contract.
 \
-\ Run: bin/hb --load lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f \
-\   lib/process-argv.f tools/load-argv-test.f
+\ Run: bin/hb --load src/lib/test.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f \
+\   src/lib/process-argv.f tools/load-argv-test.f
 \
 \ `--load` means "make these files loaded". The row used to write the path into
 \ the require registry as `provided` and then inline the file text anyway - it
 \ maintained a registry it never read - so the same request got two answers:
-\ `--load lib/errors.f` against an engine that already carries lib/errors.f died
-\ on a duplicate definition, while `require lib/errors.f` from inside a file
+\ `--load src/lib/errors.f` against an engine that already carries src/lib/errors.f died
+\ on a duplicate definition, while `require src/lib/errors.f` from inside a file
 \ no-opped cleanly. Since dot habu-make-load-consult-85c88fb3 the row emits
 \ `s" <path>" required` and src/core/include.f decides.
 \
@@ -15,14 +15,14 @@
 \ exists at the process entry point, so an in-process stand-in would prove
 \ nothing about it.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
 
 package LOAD-ARGV-TEST
 
@@ -32,7 +32,7 @@ $4000 constant LA-CAP
 \ A path the boot prefix already carries, and one it does not. Both are read
 \ from the engine's own behaviour by the first two cases below rather than
 \ asserted here, so this file does not have to track the prefix table.
-: LA-SEEDED$ ( -- ptr u8 n )   s" lib/errors.f" ;
+: LA-SEEDED$ ( -- ptr u8 n )   s" src/lib/errors.f" ;
 
 create LA-ROOT   FS-PATH-CAP allot
 create LA-PROBE  FS-PATH-CAP allot
@@ -72,7 +72,7 @@ variable LA-DANGLING-LINK-U
 \ and in a string, and defines a word of its own. A loader that matched on text
 \ rather than on the registry key would skip it; it must load.
 : LA-DECOY-SRC$ ( -- ptr u8 n )
-   s\" \\ mentions lib/errors.f in a comment\n: LA-D ( -- ptr u8 n ) s\" lib/errors.f\" ;\ns\" load-argv: decoy loaded\" type cr\n" ;
+   s\" \\ mentions src/lib/errors.f in a comment\n: LA-D ( -- ptr u8 n ) s\" src/lib/errors.f\" ;\ns\" load-argv: decoy loaded\" type cr\n" ;
 
 : LA-SETUP ( -- )
    CLEANUP-RESET
@@ -84,8 +84,10 @@ variable LA-DANGLING-LINK-U
    LA-ROOT$ s" thrower.f" LA-THROW JOIN-PATH LA-THROW-U !
    LA-ROOT$ s" decoy.f"   LA-DECOY JOIN-PATH LA-DECOY-U !
    LA-ROOT$ s" missing.f" LA-MISS  JOIN-PATH LA-MISS-U !
-   LA-ROOT$ s" lib/test.f" LA-DANGLING JOIN-PATH LA-DANGLING-U !
-   LA-ROOT$ s" lib" LA-DANGLING-LINK JOIN-PATH LA-DANGLING-LINK-U !
+   LA-ROOT$ s" src/lib/test.f" LA-DANGLING JOIN-PATH LA-DANGLING-U !
+   LA-ROOT$ s" src" LA-DANGLING-LINK JOIN-PATH LA-DANGLING-LINK-U !
+   LA-DANGLING-LINK$ MAKE-DIR
+   LA-ROOT$ s" src/lib" LA-DANGLING-LINK JOIN-PATH LA-DANGLING-LINK-U !
    s" missing-lib" LA-DANGLING-LINK$ MAKE-SYMLINK
    LA-PROBE$ LA-PROBE-SRC$ WRITE-ALL
    LA-THROW$ LA-THROW-SRC$ WRITE-ALL

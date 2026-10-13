@@ -35,8 +35,8 @@
 \ dropped by ABANDON, which the driver runs as every definition ends, so a copy
 \ never outlives the definition it was compiled from.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/core/bytes.f
 require src/compiler/target.f
 require src/compiler/binding.f

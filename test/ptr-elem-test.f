@@ -26,9 +26,9 @@
 \ underneath it still fired inside a pointee: `n` met `u8` and `ptr n` silently
 \ satisfied `ptr u8`. `PASS8-DIRECT` below certified with exit 0.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
 require test/checker-assert.f
 
 package PTR-ELEM-TEST

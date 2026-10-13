@@ -1,8 +1,8 @@
 \ aot-lint-test.f - checked fixtures for tools/aot-lint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
-\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f tools/lint/text.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
+\ src/lib/vector.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f tools/lint/text.f
 \ tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
-\ lib/source-lex.f tools/aot-lint-core.f tools/aot-lint-test.f
+\ src/lib/source-lex.f tools/aot-lint-core.f tools/aot-lint-test.f
 
 package AOT-LINT-TEST
 private

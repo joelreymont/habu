@@ -15,19 +15,19 @@
 \
 \ Run: bin/hb --load test/signal-stub.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/process.f
-require lib/ffi-abi.f
-require lib/signal.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/process.f
+require src/lib/ffi-abi.f
+require src/lib/signal.f
 require src/habu/layout.f
 
 package SIGNAL-STUB-TEST
 private
 
 \ Both supported aarch64 hosts put sa_handler at offset zero. Reserve the
-\ larger record, as lib/signal.f does; the rest is an empty mask and no flags.
+\ larger record, as src/lib/signal.f does; the rest is an empty mask and no flags.
 $98 constant SA-LINUX-BYTES
 $10 constant SA-MACOS-BYTES
 SA-LINUX-BYTES SA-MACOS-BYTES max constant SA-BYTES

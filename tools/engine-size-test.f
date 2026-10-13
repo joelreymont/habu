@@ -1,7 +1,7 @@
 \ The sidecar's count belongs to framing; only its padded runs belong to the
 \ sidecar row. Exercise both payload shapes on a private copy of bin/hb.
-require lib/test.f
-require lib/fs-mutate.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
 require tools/image-size-lib.f
 
 package IMAGE-SIZE

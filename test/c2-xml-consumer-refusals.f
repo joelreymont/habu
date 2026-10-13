@@ -1,8 +1,8 @@
 \ Checked source cannot reinterpret a cursor or its source projection.
-require lib/test.f
-require lib/test/subject.f
-require lib/xml/c2.f
-require lib/c2-bytes.f
+require src/lib/test.f
+require src/lib/test/subject.f
+require src/lib/xml/c2.f
+require src/lib/c2-bytes.f
 
 package C2-XML-CONSUMER-REFUSALS
 private

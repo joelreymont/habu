@@ -1,5 +1,5 @@
-require lib/policy.f
-require lib/string.f
+require src/lib/policy.f
+require src/lib/string.f
 
 : RUN ( -- )
    s" test/policy/confined" POLICY:ROOT

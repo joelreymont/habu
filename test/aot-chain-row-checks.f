@@ -6,9 +6,9 @@
 \ code and output with the words the suite asserts its host with. The row table
 \ is private anonymous memory and the dictionary is copied on write, so every
 \ fork starts from the captured rows and no change reaches the next case.
-require lib/process.f
-require lib/test.f
-require lib/test/subject.f
+require src/lib/process.f
+require src/lib/test.f
+require src/lib/test/subject.f
 require test/aot-chain-capture-lib.f
 
 package AOT-CHAIN-SUITE

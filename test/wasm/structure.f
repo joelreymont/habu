@@ -24,8 +24,8 @@
 \ arena registry holds sixty-four, so every module below is built in its own
 \ context.
 
-require lib/test.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/string.f
 require src/compiler/numeric-policy.f
 require src/compiler/target.f
 require src/compiler/binding.f

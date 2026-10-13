@@ -8,12 +8,12 @@
 \ program can fix and recover from: the divisor came from the program's own
 \ arithmetic, so there is always a caller to hand the throw to.
 \
-\ lib/errors.f owns the code as E-DIV-ZERO; the engine emitters
+\ src/lib/errors.f owns the code as E-DIV-ZERO; the engine emitters
 \ (src/habu/habu1.f BDIV0?) and the Gforth recovery mirror compile before any
-\ lib/ file exists, so the same (code, name) pair is re-registered here -- the
+\ src/lib/ file exists, so the same (code, name) pair is re-registered here -- the
 \ one form tools/error-code-lint.f admits -- and test/prim-parity.f keeps the
 \ two spellings equal by catching the primitive's throw and comparing it with
-\ lib/errors.f's constant.
+\ src/lib/errors.f's constant.
 \
 \ IT IS ITS OWN FILE for the reason src/habu/stack-abi.f is: the builder payload
 \ tools/build-fixpoint.f assembles carries the emitters WITHOUT the checker boot

@@ -1,6 +1,6 @@
 \ checker-model-manifest.f - Run checker behavior cases in their declaring package.
 
-require lib/test.f
+require src/lib/test.f
 require test/compiler/checker-model-cases.f
 
 package CHECKER-MODEL-MANIFEST-TEST

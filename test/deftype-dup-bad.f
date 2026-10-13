@@ -7,7 +7,7 @@
 \ duplicate refusal fired. (The SAME name in a DIFFERENT package is NOT a
 \ duplicate - that distinctness is the positive suite.)
 
-require lib/type/deftype.f
+require src/lib/type/deftype.f
 
 package CAMERA
 DEFTYPE SERIAL

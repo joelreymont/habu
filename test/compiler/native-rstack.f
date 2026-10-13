@@ -1,10 +1,10 @@
 \ native-rstack.f - production return-stack operations across control-flow seams.
 require test/compiler/native-eval-fixture.f
-require lib/errors.f
-require lib/string.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
 require test/checker-assert.f
-require lib/prelude.f
+require src/lib/prelude.f
 require src/compiler/native/compiler.f
 
 \ Tier 1 below: those seams are the optimizing compiler's, so the results below

@@ -1,6 +1,6 @@
 \ Compile the same hostile-tag dispatch without loading the parent test suite
 \ inside the child's timeout window.
-require lib/prelude.f
+require src/lib/prelude.f
 
 package NMX-FORGE
 private

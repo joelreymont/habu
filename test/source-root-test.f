@@ -1,10 +1,10 @@
 \ Named entries own root-relative dependencies; canonical identity deduplicates.
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/fmt.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/fmt.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 require tools/source-discovery.f
 require tools/event-closure-lib.f
 
@@ -140,15 +140,15 @@ private
 
 : PREP-ENGINE-ALIASES ( -- )
    INVOCATION$ MAKE-DIR
-   s" lib" ENGINE-LINK s" src" ENGINE-LINK s" test" ENGINE-LINK
+   s" src" ENGINE-LINK s" test" ENGINE-LINK
    ROOT$ s" other/nested" JOIN MAKE-DIRS
-   ROOT$ s" other/lib" JOIN MAKE-DIRS
-   ROOT$ s" other/lib/errors.f" JOIN s" 100 SOURCE-ROOT-ALIAS-CHILD:BUMP" WRITE-ALL
+   ROOT$ s" other/src/lib" JOIN MAKE-DIRS
+   ROOT$ s" other/src/lib/errors.f" JOIN s" 100 SOURCE-ROOT-ALIAS-CHILD:BUMP" WRITE-ALL
    ROOT$ s" other/nested" JOIN TARGET TARGET-U COPY!
    TARGET TARGET-U @ INVOCATION$ s" branch" JOIN MAKE-SYMLINK
-   s" lib" A-PATH MAKE-DIR s" lib" B-PATH MAKE-DIR
-   s" lib/errors.f" A-PATH s" 1 SOURCE-ROOT-ALIAS-CHILD:BUMP" WRITE-ALL
-   s" lib/errors.f" B-PATH s" 10 SOURCE-ROOT-ALIAS-CHILD:BUMP" WRITE-ALL ;
+   s" src/lib" A-PATH MAKE-DIRS s" src/lib" B-PATH MAKE-DIRS
+   s" src/lib/errors.f" A-PATH s" 1 SOURCE-ROOT-ALIAS-CHILD:BUMP" WRITE-ALL
+   s" src/lib/errors.f" B-PATH s" 10 SOURCE-ROOT-ALIAS-CHILD:BUMP" WRITE-ALL ;
 
 \ A fresh process must carry its frozen engine facts into a symlinked checkout.
 \ The child also keeps owner-local modules and symlink/.. targets distinct.

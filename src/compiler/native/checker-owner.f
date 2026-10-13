@@ -7,8 +7,8 @@
 \ Missing fields refuse with E-NCOMP-OWNER; they never fall back by name.
 \ CHECKER-TAPE token-kind constants remain part of the shared observer ABI.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/core/checker-owner-guard.f
 require src/habu/layout.f
 

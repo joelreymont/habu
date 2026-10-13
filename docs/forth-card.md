@@ -97,7 +97,7 @@ signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
   definition, block-scoped, bindable after a closed early-exit guard.
 - A `{: … :}` group that binds at entry goes on its own line after the line
   holding the name and stack effect, indented as the body: three spaces, as in
-  `lib/` and `tools/`. New and changed definitions follow this; existing files
+  `src/lib/` and `tools/`. New and changed definitions follow this; existing files
   are not reformatted for it.
 - Bind multi-cell values whole: `{: p :}` or `{: r:res<n,n> :}` (arity checked).
   Destructure only to compute; pass the whole local between words.
@@ -205,9 +205,9 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 | `within` | `{: v lo hi :} v lo >= v hi < and` |
 | `move` | `BYTE-COPY`, `src/core/bytes.f` |
 | `fill`, `erase` | none; write it: `u 0 ?do 0 a i + c! loop` |
-| `bl` | `STR-SPACE`, `lib/string.f` |
+| `bl` | `STR-SPACE`, `src/lib/string.f` |
 | `*/` | none; `*` then `/` |
-| `s>number?` | `STR>NUMBER?`, `lib/string.f` |
+| `s>number?` | `STR>NUMBER?`, `src/lib/string.f` |
 | `'` in a compiled body | `[: WORD ;]`; `'` is top level only |
 
 A top-level word that parses or is a `defer` is `W-CHECK-DEFERRED` at the word
@@ -320,7 +320,7 @@ that word's uses before the run; what no row states, such as `COMMAND`'s
 
 `PERSISTED-PTR-VARIABLE` and `PERSISTED-PTR-U8-TABLE-VARIABLE` are the
 snapshot-marked siblings, the table one `ptr` deeper. Runtime-sized buffers come
-from `lib/memory.f` (`MEM:ALLOC-BYTES`). `ptr-field` takes a **cell** index, not
+from `src/lib/memory.f` (`MEM:ALLOC-BYTES`). `ptr-field` takes a **cell** index, not
 a byte offset.
 
 forth.md: **Structures And Enums**, **Habu Native Tooling Gotchas**.
@@ -365,7 +365,7 @@ never holds an address".
 
 ## 6 Errors
 
-- Library codes are named constants in `lib/errors.f`; checker throws also use
+- Library codes are named constants in `src/lib/errors.f`; checker throws also use
   positive codes above 255 in their owning source. Codes 0..255 serve as
   process exit statuses and may be shared. Every other code, negative or above
   255, has one `E-` name across the tree; a file that needs it under its own
@@ -375,8 +375,8 @@ never holds an address".
   reserves that whole range whether or not every code is minted;
   `tools/error-code-lint.f` reports a file minting inside another's.
 - A block with codes in a package (`JR:E-SOURCE`) is minted, bounds and all,
-  in the file that owns the package (`lib/json-read.f`), and `lib/errors.f`
-  says where. The engine bakes `lib/errors.f`, and a package the engine bakes
+  in the file that owns the package (`src/lib/json-read.f`), and `src/lib/errors.f`
+  says where. The engine bakes `src/lib/errors.f`, and a package the engine bakes
   has one owning file: no source a product engine loads reopens it
   (`test/baked-owner.f`).
 - A fallible word `throw`s a named code, never an out-of-band flag.
@@ -398,12 +398,12 @@ forth.md: **Errors**, **Integer arithmetic**.
 
 ## 7 require and load order
 
-- `require lib/string.f` loads once per image, keyed by canonical path;
+- `require src/lib/string.f` loads once per image, keyed by canonical path;
   `include` replays. `s" path" required` / `included` are the string forms. A
   path resolves against the root that resolved the requiring file (the
   `--load` entry's directory for the entry), then the working directory, then
   the engine's source root (the working directory when it is a Habu tree, else
-  the tree above the running `bin/hb`), so `require lib/…` names the tree
+  the tree above the running `bin/hb`), so `require src/lib/…` names the tree
   root. A file found through the working directory keeps that root for its own
   requires: an overlay copy of one tree file, required by a tree file, loads
   beside the tree's copy and dies on the duplicate (exit 78;
@@ -419,7 +419,7 @@ forth.md: **Errors**, **Integer arithmetic**.
   `CD` prints it), `PUSHPATH` / `POPPATH` save and restore it, all public in
   `SOURCE-ROOT`; inside a loaded file (`--load`, `require`) they are refused
   (exit 74): scope a root with `SOURCE-ROOT:WITH`.
-- The engine provides `lib/prelude.f`, `errors.f`, `string.f`, `span.f`,
+- The engine provides `src/lib/prelude.f`, `errors.f`, `string.f`, `span.f`,
   `memory.f`, `num-types.f`, `num-arithmetic.f`, `image-lifecycle.f` and the
   `src/` files its boot prefix loads (`ENGINE-PROVIDES?`; `tools/check.f`
   refuses one with `E-ENGINE-PROVIDED`):
@@ -427,7 +427,7 @@ forth.md: **Errors**, **Integer arithmetic**.
   anyway: a file states its dependencies.
 - Multi-file packages reopen `package NAME` per file; reopening shares scope and
   loads nothing. An engine package is sealed: reopening one exits 84. Run tools
-  as `bin/hb --load lib/a.f tool.f -- args`; `SCRIPT-ARGV$` starts after `--`.
+  as `bin/hb --load src/lib/a.f tool.f -- args`; `SCRIPT-ARGV$` starts after `--`.
 
 forth.md: **Files**, **Packages**.
 
@@ -436,7 +436,7 @@ forth.md: **Files**, **Packages**.
 Follow the testing policy in [AGENTS.md](../AGENTS.md). Exercise a complete
 feature through its real load/build path and retain a repeatable artifact.
 See `test/aot-chain-capture-suite.f` for a producer, saved image, and consumer
-flow. Use `require lib/test.f` for assertions and keep fixtures package-scoped.
+flow. Use `require src/lib/test.f` for assertions and keep fixtures package-scoped.
 
 `T=` / `T<>` scalars, `T$=` strings, `TTRUE` / `TFALSE` flags, `TTHROWSQ` /
 `TTHROWS` throw codes. `TEST-EVAL:N` / `FLAG` / `RC` take one cell, a flag or

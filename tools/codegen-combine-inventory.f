@@ -48,9 +48,9 @@
 \ where that collision does not exist. So a count here is evidence that a shape
 \ occurs, and an undercount of what fusing it earlier is worth.
 
-require lib/prelude.f
-require lib/errors.f
-require lib/string.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/string.f
 require src/arch/arm64/asm.f
 require tools/codegen-tail-probe.f
 

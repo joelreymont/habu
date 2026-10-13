@@ -36,7 +36,7 @@
 \ entry the in-process tools use when the registrations must persist, and it is
 \ the one whose result this file can actually read.
 
-require lib/errors.f
+require src/lib/errors.f
 require test/checker-assert.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 require src/habu/verify-source.f

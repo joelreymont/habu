@@ -6,8 +6,8 @@
 \ Definition stages resolve the context's binding. Lifecycle stages visit
 \ every published provider; FREEZE folds shared HIR before any selector runs.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f

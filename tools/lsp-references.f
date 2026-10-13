@@ -106,15 +106,15 @@
 \ STORAGE CLASS. PROCESS-GLOBAL: the request being answered belongs to the
 \ server's one task, and SELECT starts each one afresh.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/fs.f
-require lib/source.f
-require lib/adt/option.f
-require lib/sort.f
-require lib/json-write.f
-require lib/json-rpc.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/fs.f
+require src/lib/source.f
+require src/lib/adt/option.f
+require src/lib/sort.f
+require src/lib/json-write.f
+require src/lib/json-rpc.f
 require src/core/sha256.f
 require tools/lsp-docs.f
 require tools/lsp-text.f

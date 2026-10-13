@@ -26,8 +26,8 @@
 \ count beside their dynamic buffers, which reserve again on use after an
 \ image capture releases them.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/target.f
 require src/compiler/ir/id.f
 require src/compiler/ir/arena.f

@@ -27,17 +27,17 @@
 \ and copies it for the WHITEBOX-SUITE rows (test/gate-images.f), and a row
 \ that fetches its own copy starts only after that row passed.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-root.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/build-cache.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-root.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/build-cache.f
+require src/lib/engine-candidate.f
 require test/image-grant.f
 require test/suite-budget.f              \ CHILD-MS, the build's hang guard
 require test/whitebox-key.f

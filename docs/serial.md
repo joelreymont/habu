@@ -1,6 +1,6 @@
 # Raw serial streams
 
-[`lib/serial.f`](../lib/serial.f) provides the generic `SERIAL` package for
+[`src/lib/serial.f`](../src/lib/serial.f) provides the generic `SERIAL` package for
 Linux and macOS AArch64. It opens raw 8N1 terminal streams with numeric baud
 rates and exposes partial byte transfers with finite waits. Application command
 framing, retries, boot sequences, and flash policy belong to callers.
@@ -75,7 +75,7 @@ real-time bound. Calls that assemble several chunks should use one overall
 deadline if they require a bounded transaction.
 
 First use registers cache cleanup with
-[`IMAGE-LIFECYCLE`](../lib/image-lifecycle.f) before resolving any libc symbol.
+[`IMAGE-LIFECYCLE`](../src/lib/image-lifecycle.f) before resolving any libc symbol.
 A failed resolution retains that registration for cleanup or a later retry.
 Quiescent image preparation clears all cached function addresses and the
 initialization/registration flags, so the next call resolves and registers them

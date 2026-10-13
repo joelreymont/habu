@@ -1,6 +1,6 @@
 \ Pause before the first row-backing mmap. The Linux resource-limit test
 \ constrains this child's address space after every source dependency has loaded.
-require lib/errors.f
+require src/lib/errors.f
 require src/habu/address-cells.f
 package ADDRESS-CELL-OOM-CHILD
 using ADDRESS-CELLS

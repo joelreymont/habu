@@ -1,7 +1,7 @@
 \ A pool semaphore acquired while loading is released by the ordinary
 \ one-shot capture cleanup. The restored process can claim the same pool.
-require lib/task.f
-require lib/image-lifecycle.f
+require src/lib/task.f
+require src/lib/image-lifecycle.f
 
 package STRIPPED-LIFECYCLE-SEMAPHORE-SUBJECT
 private

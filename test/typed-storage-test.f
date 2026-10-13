@@ -1,6 +1,6 @@
 \ typed-storage-test.f - TYPED-VARIABLE / TYPED-BUFFER convenience definers
 \ (dot habu-nominal-storage-typed-c5f44d66).
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \   src/habu/verify-source.f test/checker-assert.f test/typed-storage-test.f
 \
 \ Pins the convenience typed-storage surface: single typed cell (TYPED-VARIABLE)
@@ -17,10 +17,10 @@
 \ together with the reason a bare `u8` stays out. This file keeps the nominal,
 \ layout, typed-pointer and quotation halves.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/fs.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/fs.f
 require src/habu/verify-source.f
 require test/checker-assert.f
 require src/habu/layout.f

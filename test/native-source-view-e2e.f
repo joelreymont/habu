@@ -2,13 +2,13 @@
 \ bin/hb --load test/native-source-view-e2e.f
 \ The private tree and child output remain under the printed directory.
 
-require lib/test.f
-require lib/string.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/fs-list.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/fs-list.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 
 package NATIVE-SOURCE-VIEW-TEST
 
@@ -41,7 +41,7 @@ variable RC
    s" native-source-view-e2e" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" nest" ROOT-PATH! PATH PATH-U @ MAKE-DIRS
-   s" src" LINK s" lib" LINK s" tools" LINK s" test" LINK
+   s" src" LINK s" tools" LINK s" test" LINK
    s" nest/entry.f"
       S\" s\" nested.f\" included\ns\" nested.f\" included\npackage SVTEST\npublic\n: VALUE ( -- n ) SVDEP:VALUE 1 + ;\n;package\n"
       PUT
@@ -97,7 +97,7 @@ variable RC
    s" bootstrap" ROOT-PATH!
    PATH ROOT PATH-U @ BYTE-COPY PATH-U @ ROOT-U !
    ROOT$ MAKE-DIRS
-   s" lib" LINK s" tools" LINK s" test" LINK
+   s" tools" LINK s" test" LINK
    s" src/core" ROOT-PATH! PATH PATH-U @ MAKE-DIRS
    s" src" [: LINK-SRC ;] FS-LIST:EACH
    s" src/core" [: LINK-CORE ;] FS-LIST:EACH

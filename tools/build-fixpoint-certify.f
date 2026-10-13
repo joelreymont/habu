@@ -15,7 +15,7 @@
 \ source, and 70 after printing the rejection and the diagnostic the scan
 \ rendered.
 
-require lib/source.f                     \ SOURCE:READ-WHOLE-FILE
+require src/lib/source.f                     \ SOURCE:READ-WHOLE-FILE
 require src/habu/verify-source.f         \ VERIFY:SOURCE-BUF
 require tools/build-certify.f            \ the report and census lines
 

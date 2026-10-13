@@ -16,8 +16,8 @@
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer being written belongs to the
 \ server's one task.
 
-require lib/json-write.f
-require lib/adt/option.f
+require src/lib/json-write.f
+require src/lib/adt/option.f
 require tools/lsp-defs.f
 require tools/lsp-text.f
 

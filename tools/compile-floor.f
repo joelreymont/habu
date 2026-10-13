@@ -23,7 +23,7 @@
 \ WHAT IS TIMED. 100 definitions `: Tn ( n -- n ) 1 + ;` and 100 definitions
 \ `: Un ( n n -- n ) swap drop ;`, each handed to the engine's
 \ `evaluate-closed` inside its own window of this thread's CPU time
-\ (TIME:THREAD-CPU-NS, lib/time-cpu.f). Every source string is built BEFORE
+\ (TIME:THREAD-CPU-NS, src/lib/time-cpu.f). Every source string is built BEFORE
 \ the first window opens, so what a window holds is compile time and not string
 \ building. The tier-0 line compiles the trivial body a third time under its
 \ own names (`Vn`), so the contrast never redefines the set it contrasts with.
@@ -79,13 +79,13 @@
 \ run that passes the ratchet and a run that reports a number below the floor
 \ are the same run. Without the argument it only reports.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/float.f
-require lib/argv.f
-require lib/time-cpu.f
-require lib/tier.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/float.f
+require src/lib/argv.f
+require src/lib/time-cpu.f
+require src/lib/tier.f
 
 -7700 constant E-FLOOR-UNCOMPILED
 -7701 constant E-FLOOR-EXCEEDED

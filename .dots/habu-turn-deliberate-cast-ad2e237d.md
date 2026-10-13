@@ -6,7 +6,7 @@ issue-type: task
 created-at: "2026-09-16T16:57:00.773557+03:00"
 ---
 
-Problem: 99 TRUSTED: sites under test/ state an effect their body does not have on purpose (a body `;` declared ( n -- ptr u8 ), a body `0` declared ( -- fresh-region-a-a ), a body `n` declared ( -- [ n -- n ] )): they are unchecked casts, not helpers, and a sweep cannot convert them (sweep lane, 2026-09-16). The tree has a declared cast form (CAST: in lib/string.f, docs/forth.md), audited by name. Acceptance: every cast site becomes a CAST: declaration (or the CAST: form is extended to the shapes the tests need, with the checker rule stated), each with a one-line reason; sites that turn out to be lies about a working word become checked definitions; per-suite case counts unchanged; the count of unchecked casts is reported per file. Files: the test files the sweep lane listed, src/core/checker.f if CAST: needs a shape, docs/forth.md. Verify: the affected suites; test/run.f. Depends: none. Ownership: test tree. Claim: unassigned. Parent: habu-trusted-dies-prim-4fd12d60.
+Problem: 99 TRUSTED: sites under test/ state an effect their body does not have on purpose (a body `;` declared ( n -- ptr u8 ), a body `0` declared ( -- fresh-region-a-a ), a body `n` declared ( -- [ n -- n ] )): they are unchecked casts, not helpers, and a sweep cannot convert them (sweep lane, 2026-09-16). The tree has a declared cast form (CAST: in src/lib/string.f, docs/forth.md), audited by name. Acceptance: every cast site becomes a CAST: declaration (or the CAST: form is extended to the shapes the tests need, with the checker rule stated), each with a one-line reason; sites that turn out to be lies about a working word become checked definitions; per-suite case counts unchanged; the count of unchecked casts is reported per file. Files: the test files the sweep lane listed, src/core/checker.f if CAST: needs a shape, docs/forth.md. Verify: the affected suites; test/run.f. Depends: none. Ownership: test tree. Claim: unassigned. Parent: habu-trusted-dies-prim-4fd12d60.
 
 ## Design facts and leaves (2026-10-01 plan)
 
@@ -27,14 +27,14 @@ Refused: multi-arity (E-CAST-ARITY); `ptr a` / `[ -- a ]` → E-CAST-LINEAR (tes
 ### Populations
 Disappear (typed source exists, measured):
 - `ptr u8|n -- n` projections → `NULL-PTR BYTE-VIEW -` (prims.f:354, effects.md:532): byte-edit.f:28, xml/scalar.f:33, native-source-view.f:199, native-build-core.f:102, checker-owner-guard.f:10, native/string.f:71 PTR>N, aot-capture.f:2466, test proc-maps.f:14, does-clause-record.f:41, native-string.f:135. Not for `ptr fam` (test/layout-defer.f:75 DTK-ADDR stays a projection cast).
-- `ptr n -- ptr u8` → BYTE-VIEW (hide.f:31, aot-capture.f:40); `ptr u8 -- ptr n` → CELL-VIEW; `ptr n -- ptr ptr n` → `0 ptr-field` (lib/task.f:177).
+- `ptr n -- ptr u8` → BYTE-VIEW (hide.f:31, aot-capture.f:40); `ptr u8 -- ptr n` → CELL-VIEW; `ptr n -- ptr ptr n` → `0 ptr-field` (src/lib/task.f:177).
 - `( -- ptr u8 ) 0` (engine-suite.f:933), `NULL$` (env-base.f:69) → NULL-PTR.
 - Role fixtures engine-suite.f:926-932 → `>IMG`, `>ASM`, `ASM>N`, `>SNAP` (src/core/roles.f:91-133); T->NODE (1672) → DEFTYPE `>NODE`; T-GROW-PAIR (875) → `2drop`; T-PHASE-ID/T-CODESIG2 identity bodies.
 - XT>N/XT0>N (lit-emit-size-test.f:64-65) → `0 search-wl` (prims.f:688); bootstrap-wide-memory-src.f:79 BWM-XT likewise.
 - Unmake projections (typed-storage-test.f:54-55, layout-buffer.f:34, bootstrap-wide-memory-src.f:77-78, type-layout-lower-pending.f:59,62) → MATCH-based checked definitions (inferred, not measured).
 Become `defer` declarations (abstract fixture rows, never executed): rigid-region-suite.f:61-89 (14), engine-suite.f:722 T-V14, :941-947 T-PTX-*, T-MK-SPAN, T-MK-SPAN=, :1626-1627 T-BIG6-MK/T-SCQ-MK, checker-model-cases.f:92-94. Measured verdicts match today's suites. Keep above the `0 set-check` window (rigid-region-suite.f:44-55). Not measured: defer over TR-TFAM-REG-registered families.
 Become private CAST: rows:
-- `n -- ptr u8|n`: lib/memory.f:85, aio.f:310, aio-macos.f:72, checker.f:173/2871/5261/5748 (ARENA becomes `ptr u8`), image-bytes.f:27, debug.f:55, hide.f:30,32, xref.f:25,27, address-cells.f:64, aot-capture.f:41, icode.f:115 (`ptr n`), os/*/layout.f (3), tools native-source-view.f:200, native-unit-capture.f:37, lib/task.f:175, tests addrmap-call.f:12, p2-map-rewind.f:27, does-clause-record.f:40, native-string.f:136, x86-64-kernel-prof.f:470, engine-suite.f:2763, xt-cell-band-bad.f:34, stripped-image-subject.f:33.
+- `n -- ptr u8|n`: src/lib/memory.f:85, aio.f:310, aio-macos.f:72, checker.f:173/2871/5261/5748 (ARENA becomes `ptr u8`), image-bytes.f:27, debug.f:55, hide.f:30,32, xref.f:25,27, address-cells.f:64, aot-capture.f:41, icode.f:115 (`ptr n`), os/*/layout.f (3), tools native-source-view.f:200, native-unit-capture.f:37, src/lib/task.f:175, tests addrmap-call.f:12, p2-map-rewind.f:27, does-clause-record.f:40, native-string.f:136, x86-64-kernel-prof.f:470, engine-suite.f:2763, xt-cell-band-bad.f:34, stripped-image-subject.f:33.
 - `n -- [ … ]`: checker-owner.f:71-89 (19), aot-arm.f:78-81, packages.f:93-94, verify-source.f:305-308,1159, snapshot-format.f:29, address-cells.f:34, compiler.f:259, dict.f:116, aot-capture.f:2450 (move to private), check-core.f:1129, native-build-core.f:90-91,171,294-295,358, native-unit-build-core.f:45-46,118-119, tests native-run-fixture.f:87-92, native-source-view-child.f:55-57, native-window-owner-*.f, address-cell-owner.f:4, native-string.f:267, aot-named-cells-init.f:5. (A FIELD of quotation type is E-TDECL-SYNTAX, forth-card.md:65-67, so per-field casts are the minimum.)
 - `ptr n -- ptr [ -- ]`: task.f:182, address-cell-index.f:27, address-cell-tasks-subject.f:31.
 - `ptr fam -- ptr n`: layout-valid-*-bad.f (3).
@@ -50,7 +50,7 @@ Out of scope: linear mint/state/consume leaves; aot-payload-native-producer.f:52
 - CAST-MAY-LINEAR? (:16589): T-PTR recurse; T-QUOT walk din/dout/rin/rout; T-VAR true.
 - CAST-OWNER? (:16579) → CAST-INTRO-OWNED?: T-PARAM existing test; T-PTR recurse; T-QUOT recurse dout/rout; con/var true.
 - CAST-CERTIFY (:16607): FAM, ARITY, CLASS, LINEAR (both, TWALK-RESET each), OWNER (output), then mint outside CHECKER-PACKAGE-PRIVATE → E-CAST-SCOPE (mode :1113, constants :855-857).
-- Comments: checker.f:2262, :8287-8300, lib/ffi-abi.f:77-78, lib/task.f:389.
+- Comments: checker.f:2262, :8287-8300, src/lib/ffi-abi.f:77-78, src/lib/task.f:389.
 - Docs: forth.md:516-523 rule + codes 7130/7137/7135/7140; :709-712 extend; :757-759 drop "refuses a pointer operand"; Rules learned by refusal bullet (~:1250); card §5 line: "An integer becomes an address or an xt only through a private CAST:; NULL-PTR BYTE-VIEW - is the address-to-integer distance."
 
 ### Fixtures

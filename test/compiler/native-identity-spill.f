@@ -21,7 +21,7 @@
 \ frame-cell counts keep it from passing vacuously: a T4 that stopped using
 \ the frame at all would hold no pairs either.
 
-require lib/test.f
+require src/lib/test.f
 require src/habu/xref.f
 
 1 set-tier

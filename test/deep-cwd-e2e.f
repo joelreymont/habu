@@ -7,14 +7,14 @@
 \ children's logs, except the tail: no FS-PATH-CAP-bounded walk (the gate
 \ pool's REMOVE-TREE of a slot's HB_TMP) can remove it, so an rm child removes
 \ it before the verdict.
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-cwd.f
-require lib/process-command.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-cwd.f
+require src/lib/process-command.f
+require src/lib/engine-candidate.f
 
 package DEEP-CWD-E2E
 private

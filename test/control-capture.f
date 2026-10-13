@@ -1,8 +1,8 @@
 \ Capture the live checker through its owner, save an application image, then
 \ test the saved boundary and current control states in two fresh boots.
-require lib/test.f
-require lib/fs-mutate.f
-require lib/process-cwd.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
+require src/lib/process-cwd.f
 require test/whitebox-child.f
 
 package CONTROL-CAPTURE-TEST

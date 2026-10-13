@@ -7,7 +7,7 @@
 \ sys.f, proc-watch.f) and the image writer (elf.f) bind to it with
 \ `using X64CODE`.
 \
-\ THE STREAM. ASM-SINK is a lib/byte-buffer.f header. The driver owns its
+\ THE STREAM. ASM-SINK is a src/lib/byte-buffer.f header. The driver owns its
 \ lifetime: `ASM-SINK n BUF:N>BLEN BUF:INIT` before the first byte and
 \ `ASM-SINK BUF:DISPOSE` when the build is done. Beginning another stream
 \ belongs to this layer: ASM-RESET empties the sink and forgets the stream's
@@ -38,8 +38,8 @@
 \ bytes they describe, and only the ones past the new end can be caught.
 \ test/x86-64-emit.f runs each one.
 
-require lib/errors.f
-require lib/byte-buffer.f
+require src/lib/errors.f
+require src/lib/byte-buffer.f
 require src/core/roles.f
 require src/arch/x86-64/asm.f
 

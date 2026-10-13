@@ -1,6 +1,6 @@
 \ event-closure-test.f - checked fixtures for tools/event-closure-lib.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\ lib/fs-mutate.f lib/source.f lib/content-key.f tools/source-discovery.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\ src/lib/fs-mutate.f src/lib/source.f src/lib/content-key.f tools/source-discovery.f
 \ tools/event-closure-lib.f tools/event-closure-test.f
 \
 \ Proves the ordered transitive closure list (require/included followed, provided
@@ -9,17 +9,17 @@
 \ any closure file changes the closure key, while an untouched closure or an edit
 \ to a non-closure file leaves it stable.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/source.f
-require lib/content-key.f
-require lib/fmt.f                  \ the code a child prints is rendered from its name
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/source.f
+require src/lib/content-key.f
+require src/lib/fmt.f                  \ the code a child prints is rendered from its name
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 require tools/source-discovery.f
 require tools/event-closure-lib.f
 

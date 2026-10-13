@@ -22,35 +22,35 @@
 \   tools/hb-build-repl-twin-test.f           two REPL builds, restored LASTC
 \ test/gate-stdlib-cases.f registers each file as a row of its own and says why.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-root.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/source.f
-require lib/build.f
-require lib/codesign.f
-require lib/content-key.f
-require lib/build-cache.f
-require lib/json-write.f
-require lib/float.f
-require lib/json-read.f
-require lib/object.f
-require lib/object-cache.f
-require lib/object-index.f
-require lib/object-resolve.f
-require lib/object-link.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-root.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/source.f
+require src/lib/build.f
+require src/lib/codesign.f
+require src/lib/content-key.f
+require src/lib/build-cache.f
+require src/lib/json-write.f
+require src/lib/float.f
+require src/lib/json-read.f
+require src/lib/object.f
+require src/lib/object-cache.f
+require src/lib/object-index.f
+require src/lib/object-resolve.f
+require src/lib/object-link.f
 require tools/build-fixpoint.f
 require tools/cli-run.f
 require tools/object-image.f
 require tools/hb-build-report.f
 require tools/hb-build-lib.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 using BUILD-FIXPOINT                     \ the build tmp root
 
@@ -266,7 +266,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 \ link against that line and links it a second time for byte equality.
 : HBT-MAPL-SRC$ ( -- ptr u8 n )
    SB-RESET
-   S\" require lib/memory.f\nPTR-VARIABLE BUF\n: MAIN ( -- )\n" SB-APPEND
+   S\" require src/lib/memory.f\nPTR-VARIABLE BUF\n: MAIN ( -- )\n" SB-APPEND
    S\"    MEM-ALLOC-64K drop BUF !\n   BUF @ {: p:ptr :}\n" SB-APPEND
    S\"    65 p c!  p 1 type cr ;\n" SB-APPEND
    SB$ ;

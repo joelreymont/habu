@@ -2,8 +2,8 @@
 \ ffi-call-bounded keeps a global trusted-only row (src/habu/prims.f) beside its
 \ FFI-private one; a primitive whose only row is owner-private is
 \ test/prim-owner-scope.f's subject.
-require lib/test.f
-require lib/test/subject.f
+require src/lib/test.f
+require src/lib/test/subject.f
 
 package C2-UNIQUE-POLICY
 private

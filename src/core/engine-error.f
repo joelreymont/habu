@@ -26,6 +26,6 @@ public
 104 constant USING-OUTER       \ `;using` in a package would close a using opened before it
 105 constant USING-SHADOW-GLOBAL \ an interpreted or ticked bare global a used public also exports
 106 constant CALLBACK           \ a C callback or FFI call found its region or slot unusable (docs/ffi-callback.md)
-107 constant POLICY             \ a sealed design named a word outside its admitted vocabulary (lib/policy.f)
+107 constant POLICY             \ a sealed design named a word outside its admitted vocabulary (src/lib/policy.f)
 108 constant OVERLAY-OPEN       \ a definition, package row, wordlist or undefine while a checker overlay is open (src/core/checker.f CHECKER-OVERLAY)
 ;package

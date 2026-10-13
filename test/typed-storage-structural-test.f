@@ -1,6 +1,6 @@
 \ typed-storage-structural-test.f - closed STRUCTURAL storage cells
 \ (dot habu-typed-storage-sweep-b2cd1a61).
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \   src/habu/verify-source.f test/checker-assert.f
 \   test/typed-storage-structural-test.f
 \
@@ -29,10 +29,10 @@
 \ cannot weaken the nominal fence, and section 1's nominal rejects hold it from
 \ this side too.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/fs.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/fs.f
 require src/habu/verify-source.f
 require test/checker-assert.f
 

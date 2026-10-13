@@ -23,8 +23,8 @@
 \ can read, and OPEN over rows CLEAR has not retired is refused, so no row can
 \ outlive the definition it describes.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/target.f
 
 package NEMIT

@@ -1,7 +1,7 @@
 \ frozen.f - the reader plumbing every native pass over a frozen module shares:
 \ one cursor onto the module being read, and the row accessors that read it.
 
-require lib/prelude.f
+require src/lib/prelude.f
 require src/compiler/ir/id.f
 require src/compiler/ir/arena.f
 require src/compiler/ir/attr.f

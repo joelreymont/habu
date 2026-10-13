@@ -6,10 +6,10 @@
 \ at the checker boundary. The inner JSONL-* machinery in tools/json.f is the
 \ trusted wrapped layer and is unchanged; JSONF is the checked wrapper.
 
-require lib/errors.f
-require lib/memory.f
-require lib/fs.f
-require lib/adt/option.f
+require src/lib/errors.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/adt/option.f
 require tools/json.f
 
 package JSONF

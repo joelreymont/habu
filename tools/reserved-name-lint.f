@@ -2,18 +2,18 @@
 \ This is a standalone entry point: it loads its own dependencies, so
 \ `bin/hb --load tools/reserved-name-lint.f` works on its own.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/vector.f
-require lib/fs.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/vector.f
+require src/lib/fs.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/json-writer.f
-require lib/source-lex.f
+require src/lib/source-lex.f
 require tools/reserved-name-lint-core.f
-require lib/argv.f
+require src/lib/argv.f
 
 package RESERVED-NAME-LINT-CLI
 private

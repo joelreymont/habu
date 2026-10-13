@@ -1,9 +1,9 @@
 \ diff-side-content.f - deterministic side-content artifact encoder.
 
-require lib/errors.f
-require lib/prelude.f
-require lib/string.f
-require lib/fs.f
+require src/lib/errors.f
+require src/lib/prelude.f
+require src/lib/string.f
+require src/lib/fs.f
 require src/core/sha256.f
 
 -7500 constant E-SIDE-SYNTAX

@@ -9,8 +9,8 @@
 \ its body is forbidden, so the only honest answer is to ENTER the word - and
 \ only a record whose flags still carry its definer's stamp is ever entered.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/habu/layout.f
 require src/habu/terminal-call.f
 require src/compiler/native/checker-owner.f

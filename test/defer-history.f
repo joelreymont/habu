@@ -1,9 +1,9 @@
 \ Exercise current checker source after the same ownership transfer as a build.
-require lib/test.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require test/whitebox-child.f
 
 package DEFER-HISTORY-SUITE

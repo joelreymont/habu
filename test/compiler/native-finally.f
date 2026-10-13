@@ -1,7 +1,7 @@
 \ Finally preserves grouped results and runs cleanup on both return paths.
-require lib/test.f
+require src/lib/test.f
 require test/checker-assert.f
-require lib/executable-build.f
+require src/lib/executable-build.f
 
 package NFIN
 public

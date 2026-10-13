@@ -1,5 +1,5 @@
 \ Whole-record stores into both fixed storage definers survive image restore.
-require lib/test.f
+require src/lib/test.f
 require test/checker-assert.f
 
 package QUOT-PERSIST-TEST

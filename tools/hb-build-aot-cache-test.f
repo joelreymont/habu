@@ -223,7 +223,7 @@ create HBT-EXP-HEX2 64 allot
    HBT-AOT-OUT EXISTS? TFALSE ;
 
 \ A PUBLICATION THAT FAILS LEAVES -o AS IT WAS. A cache hit replaces -o through
-\ a sibling (lib/fs-mutate.f REPLACE-STAGED), whether it restores the artifact
+\ a sibling (src/lib/fs-mutate.f REPLACE-STAGED), whether it restores the artifact
 \ or writes the cached object's image, so -o names its previous file until the
 \ whole new one is in place, and a failure on the way takes the sibling with
 \ it. An artifact its owner cannot read fails the restore's copy; an object

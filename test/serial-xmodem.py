@@ -13,8 +13,8 @@ from xmodem import packet
 
 ROOT = Path(__file__).resolve().parents[1]
 SETUP = '''
-require lib/aio.f
-require lib/fs.f
+require src/lib/aio.f
+require src/lib/fs.f
 package SXMODEM-TEST
 using XMODEM
 using BUF
@@ -134,7 +134,7 @@ RUN
 '''
         path = self.out / 'case.f'
         path.write_text(code)
-        process = subprocess.Popen([str(ROOT / 'bin/hb'), '--load', 'lib/serial-xmodem.f', str(path)],
+        process = subprocess.Popen([str(ROOT / 'bin/hb'), '--load', 'src/lib/serial-xmodem.f', str(path)],
                                    cwd=ROOT, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
@@ -420,7 +420,7 @@ INPUT SPAN$ 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND
     def native(self, body, *, refused=False):
         path = self.out / 'validation.f'
         path.write_text(SETUP + body + '\n;package\n')
-        result = subprocess.run([str(ROOT / 'bin/hb'), '--load', 'lib/serial-xmodem.f', str(path)],
+        result = subprocess.run([str(ROOT / 'bin/hb'), '--load', 'src/lib/serial-xmodem.f', str(path)],
                                 cwd=ROOT, input='', text=True, capture_output=True, timeout=15)
         assert result.returncode == (70 if refused else 0), (result.stdout, result.stderr)
         if refused:
@@ -518,7 +518,7 @@ RUN
 '''
         path = self.out / 'concurrent.f'
         path.write_text(code)
-        process = subprocess.Popen([str(ROOT / 'bin/hb'), '--load', 'lib/serial-xmodem.f', str(path)],
+        process = subprocess.Popen([str(ROOT / 'bin/hb'), '--load', 'src/lib/serial-xmodem.f', str(path)],
                                    cwd=ROOT, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:

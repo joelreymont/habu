@@ -1,7 +1,7 @@
 \ layout-buffer.f - generative typed ADT storage and provenance regressions.
 
 require test/checker-assert.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
 variable #CASE

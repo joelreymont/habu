@@ -6,11 +6,11 @@ issue-type: task
 created-at: "2026-09-19T18:23:03.521709+03:00"
 ---
 
-Problem: Joel (2026-09-19): the wide/multi-cell and parametric typed-local features exist to improve the codebase, so every site that destructures a layout value only because a typed local could not hold it must be found and converted. Today src/, lib/, tools/ and test/ carry the workaround shapes the handoff names: unpack-then-repack around a use (X:UNMAKE ... X:MAKE), locals exploded into scalar cells ({: a b c d :} over a two-field value), adapter words that exist only to name pieces, swap/rot juggling around MATCH payloads. Acceptance (alder, after each feature dot lands and its engine is integrated): (1) an audit listing every candidate site by file:line with the shape it exhibits, measured by reading, over src/ lib/ tools/ test/ and, read-only, the consumer trees (loom, maki, kiba, radar, Tender - reported to their owners, never edited here); (2) migrations in commit-sized groups per subsystem, each keeping behaviour (its suites unchanged in what they assert), each reviewed on the line before it chains, converted sites named in the commit body; sites in a live hazel lane (span band 1 files, the native compiler, checker.f) are handed to that lane's owner instead of edited; (3) the card (docs/forth-card.md) and docs/forth.md state the idiom: a domain value stays a named local, destructure only to compute. Depends: habu-bind-a-wide-bc67d207, habu-parse-local-annotations-50be4d43. Ownership: alder (audit and migrations), hazel (review, the lane-owned files). Claim: agent=alder workspace=.jj-ws/alder-review-fixes. Measure, do not count lines: the planner port that motivated these features (~/Downloads/habu-full-session-history.md sections 9-13) reported the effect as representation plumbing - reconstruction sites 23 -> 0, DISCARD-* calls 14 -> 0, destructuring sites 17 -> 13 (the rest compute on raw fields) - while substantive lines moved 159 -> 153; every migration commit states those three counts for its group before and after, and a site whose destructuring is the computation stays.
+Problem: Joel (2026-09-19): the wide/multi-cell and parametric typed-local features exist to improve the codebase, so every site that destructures a layout value only because a typed local could not hold it must be found and converted. Today src/, src/lib/, tools/ and test/ carry the workaround shapes the handoff names: unpack-then-repack around a use (X:UNMAKE ... X:MAKE), locals exploded into scalar cells ({: a b c d :} over a two-field value), adapter words that exist only to name pieces, swap/rot juggling around MATCH payloads. Acceptance (alder, after each feature dot lands and its engine is integrated): (1) an audit listing every candidate site by file:line with the shape it exhibits, measured by reading, over src/ src/lib/ tools/ test/ and, read-only, the consumer trees (loom, maki, kiba, radar, Tender - reported to their owners, never edited here); (2) migrations in commit-sized groups per subsystem, each keeping behaviour (its suites unchanged in what they assert), each reviewed on the line before it chains, converted sites named in the commit body; sites in a live hazel lane (span band 1 files, the native compiler, checker.f) are handed to that lane's owner instead of edited; (3) the card (docs/forth-card.md) and docs/forth.md state the idiom: a domain value stays a named local, destructure only to compute. Depends: habu-bind-a-wide-bc67d207, habu-parse-local-annotations-50be4d43. Ownership: alder (audit and migrations), hazel (review, the lane-owned files). Claim: agent=alder workspace=.jj-ws/alder-review-fixes. Measure, do not count lines: the planner port that motivated these features (~/Downloads/habu-full-session-history.md sections 9-13) reported the effect as representation plumbing - reconstruction sites 23 -> 0, DISCARD-* calls 14 -> 0, destructuring sites 17 -> 13 (the rest compute on raw fields) - while substantive lines moved 159 -> 153; every migration commit states those three counts for its group before and after, and a site whose destructuring is the computation stays.
 
 ## Read audit, base 39d9a399
 
-The first pass searched src/, lib/, tools/ and test/ for UNMAKE, long scalar
+The first pass searched src/, src/lib/, tools/ and test/ for UNMAKE, long scalar
 local groups, reconstruction and comments naming local restrictions, then read
 the candidate bodies. These are migration candidates, not claims that a
 replacement has compiled. Feature integration and behavior-preserving suites
@@ -56,7 +56,7 @@ lane will extend the schema later. One reviewed commit per file group.
 
 ### Parametric locals: span lane
 
-lib/span.f:95 SKIP, :100 TAKE, :108 SUB are review candidates for clearer named
+src/lib/span.f:95 SKIP, :100 TAKE, :108 SUB are review candidates for clearer named
 span/count transport instead of return-stack juggling; their existing comment
 deliberately chooses the stack form, so measure generated code before replacing
 it. :112 AT, :120 U8!, :126 CELL-AT, :134 CELL!, :138 COPY and :144 FILL already
@@ -66,21 +66,21 @@ Span band 1 owns these edits. Parametric annotations alone need not reduce LOC.
 
 ### Shapes examined and retained
 
-- lib/json-write.f:72 JW-LIVE and its writers inspect capacity/length and write
+- src/lib/json-write.f:72 JW-LIVE and its writers inspect capacity/length and write
   a changed record; wide locals alone remove neither the checks nor the update.
-- lib/object.f:330 NEXT-LINE converts STR:split to OBJ:line while advancing a
+- src/lib/object.f:330 NEXT-LINE converts STR:split to OBJ:line while advancing a
   cursor; it is a domain conversion, not unchanged-value transport.
-- lib/elf32-test.f, target/policy/NEFF encoders and field readers destructure to
+- src/lib/elf32-test.f, target/policy/NEFF encoders and field readers destructure to
   inspect fields or emit canonical bytes. Do not change wire layouts or add a
   new family of accessors just to shorten them.
-- tools/* process-result MATCH arms and lib/process*-test.f unpack captured
+- tools/* process-result MATCH arms and src/lib/process*-test.f unpack captured
   lengths/exit codes to report or assert them. The fields are the computation.
 - src/compiler/native/regalloc.f:2053 SLOTS-CK changes the routine's frame size;
   simple unchanged-value substitution would silently lose that update.
 - Native wide-memory/MATCH/rename tests and type/structure declaration suites
   intentionally exercise construction, field order, transport or refusal.
   Preserve their subject, rather than mass-converting their fixtures.
-- lib/vector.f:331 EACH, native/codewalk.f and tools/codegen-*-inventory.f need
+- src/lib/vector.f:331 EACH, native/codewalk.f and tools/codegen-*-inventory.f need
   quotation-effect annotation support; closures and mutable locals are separate
   features. Do not promise those changes from wide/parametric family annotations.
 - regfile/machine/backend comments cite old local limitations, but changing a
@@ -115,7 +115,7 @@ retain whole typed values. The original audit remains above as a source map.
 
 Still present in Hazel's owned files: native/regalloc-verify.f SLOT-CK (1029)
 and ACCEPT (2344), and native/regalloc.f ALLOCATE (2180), all reconstructing
-the unchanged routine from fourteen scalar locals. lib/span.f's AT, U8!,
+the unchanged routine from fourteen scalar locals. src/lib/span.f's AT, U8!,
 CELL-AT, CELL!, COPY and FILL still use inferred whole-span locals; explicit
 parametric annotations remain with the span lane. SKIP/TAKE/SUB retain their
 deliberate frame-free stack implementation. Consumer follow-through stays with

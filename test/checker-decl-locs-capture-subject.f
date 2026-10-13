@@ -2,7 +2,7 @@
 \ test/checker-decl-locs-capture.f: KEEP runs in the unsealed engine that then
 \ saves an image, RESTORED in that image.
 
-require lib/test.f
+require src/lib/test.f
 require src/habu/verify-source.f
 require test/checker-decl-locs-lib.f
 

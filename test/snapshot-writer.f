@@ -3,20 +3,20 @@
 \ fail closed, an output that cannot be opened is refused by name and creates
 \ nothing, a failed final close is reported and leaves the output path as it
 \ was, and a capture with a definition or quotation open is refused.
-require lib/test.f
+require src/lib/test.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
 require src/habu/cell-grid.f
-require lib/fmt.f
-require lib/memory.f
+require src/lib/fmt.f
+require src/lib/memory.f
 require src/habu/stack-abi.f
 require test/snapshot-writer-poison-canaries.f
-require lib/fs-mutate.f
-require lib/process-env.f
-require lib/engine-candidate.f
-require lib/codesign.f
+require src/lib/fs-mutate.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
+require src/lib/codesign.f
 require test/app-image-engine.f
-require lib/test/outcome.f
+require src/lib/test/outcome.f
 
 package SNAP-WRITER-TEST
 
@@ -816,7 +816,7 @@ variable STRAYS
 
 \ The application loads nothing new: the writer refuses before it writes a byte.
 : OPEN-FAIL-CASE ( -- )
-   IN-MISSING$ s" lib/string.f" BUILD-WITH-TO
+   IN-MISSING$ s" src/lib/string.f" BUILD-WITH-TO
    s" an output in a missing directory is refused by name" T-LABEL
    RC @ OUTPUT-FAIL-RC T=
    ERR$ s" snap: cannot open output" CONTAINS? TTRUE
@@ -830,7 +830,7 @@ variable STRAYS
 \ refuses the rename.
 : REPLACE-FAIL-CASE ( -- )
    DIR-OUT$ MAKE-DIR
-   DIR-OUT$ s" lib/string.f" BUILD-WITH-TO
+   DIR-OUT$ s" src/lib/string.f" BUILD-WITH-TO
    s" an output the rename cannot replace is refused by name" T-LABEL
    RC @ OUTPUT-FAIL-RC T=
    ERR$ s" snap: cannot replace output" CONTAINS? TTRUE

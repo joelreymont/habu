@@ -113,7 +113,7 @@ CAST: UNIT-IMPORT-UNIT-XT ( n -- [ ptr u8 n ptr u8 n ptr n n ptr n n -- ] )
    exists 0= if E-BUILD-SOURCE throw then
    a UNIT-PATH size BYTE-COPY size UNIT-PATH-U !
    s" tools/native-unit-build.f" SOURCE-VIEW:COLLECT
-   s" lib/c2-owner.f" SOURCE-VIEW:COLLECT
+   s" src/lib/c2-owner.f" SOURCE-VIEW:COLLECT
    SOURCE-VIEW:USE ;
 
 : UNIT-PREFLIGHT ( -- )

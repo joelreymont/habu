@@ -1,9 +1,9 @@
 \ Run with 65 positional arguments. Mock input itself is bounded at 64, so only
 \ real script argv reaches this case. Both positional appends, before and after
-\ a `--` (lib/argv.f ARGV-PARSE-OPT, ARGV-COLLECT-REST), go through ARGV-POS+,
-\ which holds the capacity check; lib/argv-test.f TEST-DASHDASH covers `--`.
-require lib/test.f
-require lib/argv.f
+\ a `--` (src/lib/argv.f ARGV-PARSE-OPT, ARGV-COLLECT-REST), go through ARGV-POS+,
+\ which holds the capacity check; src/lib/argv-test.f TEST-DASHDASH covers `--`.
+require src/lib/test.f
+require src/lib/argv.f
 
 package ARGV-CAPACITY
 

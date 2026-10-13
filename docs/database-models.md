@@ -12,8 +12,8 @@ Sources, local copies as of 2026-09-16:
   8.9 has four worked designs.
 - VFX Forth 64 for Linux: `Lib/SharedLibs/SQLite3/sqlite3h.fth` (6664 lines),
   manual chapter 24 "Supported shared libraries".
-- Habu: `lib/fs.f`, `lib/json-read.f`, `lib/json-write.f`, `lib/xml.f`,
-  `lib/zip.f`, `lib/hashmap.f`, `lib/ffi-abi.f`.
+- Habu: `src/lib/fs.f`, `src/lib/json-read.f`, `src/lib/json-write.f`, `src/lib/xml.f`,
+  `src/lib/zip.f`, `src/lib/hashmap.f`, `src/lib/ffi-abi.f`.
 
 ## 1. polyFORTH Data Base Support: the kit
 

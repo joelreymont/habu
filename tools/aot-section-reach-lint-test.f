@@ -8,7 +8,7 @@
 \ or for `ADR,` would report on most of them.
 \ Run: bin/hb --load tools/aot-section-reach-lint-test.f
 
-require lib/test.f
+require src/lib/test.f
 require tools/aot-section-reach-lint.f
 
 package AOT-REACH-LINT-TEST

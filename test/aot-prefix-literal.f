@@ -1,10 +1,10 @@
 \ Checked source capture, file read, and fresh native boot of prefix CODE literals.
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require test/whitebox-child.f
 
 package PREFIX-LITERAL-SUITE
@@ -69,7 +69,7 @@ variable COMMAND-N
    s" src/os/env-base.f" ARG
    s" src/core/include.f" ARG
    s" src/core/sha256.f" ARG
-   s" lib/prelude.f" ARG
+   s" src/lib/prelude.f" ARG
    PROC-ENV-RESET
    s" HABU_LITERAL_MODE" >LEN MODE$ >LEN PROC-ENV+
    s" HABU_LITERAL_ARTIFACT" >LEN ART$ >LEN PROC-ENV+

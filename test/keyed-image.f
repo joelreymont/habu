@@ -35,10 +35,10 @@
 \ removes the work directory it was registered with. A build killed before
 \ either leaves the directory, and the next build in that root removes it
 \ once nothing holds it - the build, or the builder child that inherited its
-\ hold (lib/build-cache.f, A WORK DIRECTORY IS HELD WHILE ITS BUILD LIVES).
+\ hold (src/lib/build-cache.f, A WORK DIRECTORY IS HELD WHILE ITS BUILD LIVES).
 \
 \ RETAINED WHILE USED. A published image prunes its family and an image found on
-\ disk is dated as in use (lib/build-cache.f), so the cache holds what some
+\ disk is dated as in use (src/lib/build-cache.f), so the cache holds what some
 \ tree still runs and nothing older.
 \
 \ SETTLED BY THE GATE. Under a gate a row settles only the images the gate
@@ -54,15 +54,15 @@
 \ An image is handed out in place: its callers only execute it, and it writes
 \ nothing but the paths they name, so no caller can clobber the shared bytes.
 
-require lib/errors.f
-require lib/string.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/build-cache.f
-require lib/content-key.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/build-cache.f
+require src/lib/content-key.f
 require tools/event-closure-lib.f
 require test/image-grant.f
 require test/suite-budget.f              \ CHILD-MS, the builder's hang guard

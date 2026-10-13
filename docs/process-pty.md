@@ -9,17 +9,17 @@ Use the direct test through `bin/hb --load`; do not concatenate files with
 host shell logic:
 
 ```sh
-bin/hb --load lib/errors.f lib/process.f test/proc-pty.f
+bin/hb --load src/lib/errors.f src/lib/process.f test/proc-pty.f
 ```
 
-The suite requires `lib/pty-harness.f` (below) itself; the two files named on
+The suite requires `src/lib/pty-harness.f` (below) itself; the two files named on
 the line are the ones the engine bakes neither of.
 
 The canonical native registry loads this test through `test/run.f`.
 
 ## Process Capture
 
-`lib/process.f` exposes checked helpers over the raw runtime primitives.
+`src/lib/process.f` exposes checked helpers over the raw runtime primitives.
 Checked code should use `PROC-SPAWN-IO`, `PROC-WAIT-RC`, `PROC-RUN-RC`, and capture helpers;
 they accept counted paths and throw named process errors for primitive failures.
 
@@ -62,7 +62,7 @@ The PTY flow is target-specific but the parent contract is shared:
 4. spawn with the slave duplicated to fd 0, 1, and 2;
 5. parent drives the close-on-exec master with `POLL-IN` and `read`/`write`.
 
-Steps 1 and 2 are `PTY:OPEN`'s (`lib/pty.f`), the one opener in the tree: macOS
+Steps 1 and 2 are `PTY:OPEN`'s (`src/lib/pty.f`), the one opener in the tree: macOS
 uses `/dev/ptmx` with `TIOCPTYGRANT`, `TIOCPTYUNLK`, and `TIOCPTYGNAME`, Linux
 uses `/dev/ptmx`, `TIOCSPTLCK`, `TIOCGPTN`, and `/dev/pts/<n>`, and any other
 host is `E-PROC-HOST`. Step 3 stays with the caller, which opens the slave
@@ -73,7 +73,7 @@ The PTY gate is the native compatibility baseline for process capture, PTY
 startup, line editing, history, breakpoints, stepper recovery, Ctrl-C, Ctrl-D,
 and async exit.
 
-## Test harness (`lib/pty-harness.f`)
+## Test harness (`src/lib/pty-harness.f`)
 
 One module owns that flow for the suites that drive a child engine at a
 terminal: `test/proc-pty.f` and the reading half
@@ -130,14 +130,14 @@ publishes:
   below and hands the bytes back through them.
 
 The state is process-wide: one child and one wait at a time, and `SPAWN-ON-PTY`
-refuses a second pair while one is open. `lib/pty-harness-test.f` drives the
+refuses a second pair while one is open. `src/lib/pty-harness-test.f` drives the
 buffer, the search, the watches and the spawn's abort path directly, ends a wait
 both ways -- on a live child's clock and on its hang-up -- and forces the wedge
 the bounded reap exists for: a child that writes into the terminal forever and
 never exits is killed on the clock, not waited on. A child that started a
 sleeper on its terminal is killed with it, so the master hangs up.
 
-## Supervised sessions (`lib/process-pty-io.f`)
+## Supervised sessions (`src/lib/process-pty-io.f`)
 
 `PROCESS-PTY:SPAWN` runs a target over pipes; `PROCESS-PTY:SPAWN-TTY` runs it
 with the slave side of a fresh pseudo-terminal on fds 0, 1 and 2, so a child

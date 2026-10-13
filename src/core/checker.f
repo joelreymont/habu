@@ -2873,7 +2873,7 @@ variable XT-DECL
 \ deliberate: a DECLARED code cell may no longer be compared with or subtracted
 \ from the null (`HK NULL-PTR =`, `<>`, `-` certify before this rule and are
 \ refused after it). An empty code cell is read through a NUMBER-typed accessor
-\ of the same address instead -- the two-accessor shape lib/genio.f already uses
+\ of the same address instead -- the two-accessor shape src/lib/genio.f already uses
 \ for its device rows, where a cleared row is spelled ZERO.
 \ It is latched as the RAW rule's own refusal (RAW-EXEC-HIT), not as a
 \ base-address one, because the answer is the same at every base and at an
@@ -9111,7 +9111,7 @@ variable DOESPEND  0 DOESPEND !
 
 \ WRAPN/WRAPC/WRAPBENT: the same fact about a WRAPPER of a definer, learned
 \ where every certified body is walked. `: BUFFER ( n -- ) E-CG-CAP E-CG-VALUE
-\ BUFFER-E ;` (lib/codegen.f) creates whatever BUFFER-E creates, because calling
+\ BUFFER-E ;` (src/lib/codegen.f) creates whatever BUFFER-E creates, because calling
 \ it reaches that one definer call on every path: the walk counts the definer
 \ calls a body makes (WRAPN, with WRAPC the created effect of the last one) and
 \ notes whether the line ever bent away from a straight one (WRAPBENT — any
@@ -10155,7 +10155,7 @@ variable PE-EFF-ID
 \ defined inside package CHECKER-DECL-FRAME, which made the declaration frame's
 \ four rows the only private primitive rows the tree could spell: a second owner
 \ had to reopen that package to reach the closer. The token itself was already
-\ the toolchain's - src/habu/verify-source.f scans for it, lib/source-lex.f
+\ the toolchain's - src/habu/verify-source.f scans for it, src/lib/source-lex.f
 \ classifies it, tools/check-all-errors-core.f names it in the unterminated-row
 \ repair hint - so only the definition's scope was wrong.
 \
@@ -10278,7 +10278,7 @@ variable PE-QDOUT
 \ cell. `( n -- ptr u8 )` is the class mint a CAST: declares only in a
 \ package's private section; the axiom below gives package FFI that same
 \ private row. That is why package FFI carried a TRUSTED: PTR>CELL body and why
-\ lib/net/udp4.f had to wrap its errno pointer in another one.
+\ src/lib/net/udp4.f had to wrap its errno pointer in another one.
 \
 \ These two are identity words: the retype IS the declaration, and their effects
 \ are the axiom rows near the end of this table, where only package FFI's private
@@ -10611,7 +10611,7 @@ PRIM: GENR-SIG-CAP PE-N PE-OUT PRIM;
 \ beside the registrar. An engine that boots its prefix from source compiles
 \ this file before src/core/check-hook.f installs a checker, so that header
 \ publishes no effect there, and without this axiom the seal marks the word
-\ DNAME-INT: every row, lib/task.f's among them, dies `hb: internal engine
+\ DNAME-INT: every row, src/lib/task.f's among them, dies `hb: internal engine
 \ word: generates:`, rc 70, on tools/build-fixpoint.f's hb-host and hb-stdin.
 \ UNSAFE-TOK? rejects `generates:` inside checked bodies, so the axiom adds no
 \ checked-code capability.
@@ -12849,7 +12849,7 @@ package CHECKER-REG
 \ ---- words a rendering statement may have defined ----------------------------
 \ A top-level statement that calls a CTL-RENDERS word defines words from text the
 \ source pre-pass never reads, and the loader compiles that text into the
-\ wordlist current at that moment (lib/ffi-abi.f CHECK-SCOPE asserts it for
+\ wordlist current at that moment (src/lib/ffi-abi.f CHECK-SCOPE asserts it for
 \ FUNCTION:). So the pre-pass has the checker mark that wordlist
 \ (CHECKER-VERIFY-RENDERS), and a body token that resolves nowhere defers its
 \ definition to the run (verdict 2) only when a bare token's lookup walks a
@@ -14238,7 +14238,7 @@ package CHECKER-REG
 \ both. That is where the Tender backend's -8303 E-NELAB-ARITY came from: a
 \ public `F ( n -- n )` beside a private `F ( n n -- n )`.
 \
-\ THE PAIR ITSELF IS DELIBERATE AND STAYS LEGAL. lib/task.f publishes
+\ THE PAIR ITSELF IS DELIBERATE AND STAYS LEGAL. src/lib/task.f publishes
 \ `: PREPARE ( ptr n -- ) PREPARE ;` over its private PREPARE, and thirteen such
 \ forwarders besides; the bare call in the body is the private word, which is the
 \ point of the pattern. What ncomp cannot survive is the two effects moving
@@ -14401,7 +14401,7 @@ variable LBUF-INFO-W
 \ the top-row tracker resolves it (CHECKER-RESOLVE:REFUSES?, then EFFECT-QUERY),
 \ so a name the scope refuses there, or one nothing defines, refuses here. A
 \ word that takes input ends an expression the line computes before the
-\ definer (`Q-MAX Q-SEM-N *`, lib/queue.f), whose value only the load has, so
+\ definer (`Q-MAX Q-SEM-N *`, src/lib/queue.f), whose value only the load has, so
 \ its count is the definer's to bound, as the load bounds it. A word that takes
 \ none is the count itself, so its effect has to be one a body could hand
 \ straight to a `( n -- )` consumer: the return stack untouched, and an output
@@ -24647,7 +24647,7 @@ variable CK-RETRY-TOKS
    CAND-VERDICT @ ;
 
 \ The quiet probe. A caller that wants a verdict and not a rejection diagnostic
-\ - every certify/refuse fixture in test/ and lib/ - asks here, so the render
+\ - every certify/refuse fixture in test/ and src/lib/ - asks here, so the render
 \ counter stays inside this file.
 \
 \ Throw-safe, and restoring BEFORE the rethrow: CHECK-CANDIDATE! re-throws what
@@ -25197,8 +25197,8 @@ variable TOP-ASK-ANSWER
    RBF-FINALIZE ;
 
 \ ---- generates: rows ----------------------------------------------------------
-\ A DEFINER THAT WRITES ITS WORD AS TEXT HAS NO CLAUSE. lib/process-command.f
-\ COMMAND and lib/task.f +USER build a colon definition and evaluate it, so what
+\ A DEFINER THAT WRITES ITS WORD AS TEXT HAS NO CLAUSE. src/lib/process-command.f
+\ COMMAND and src/lib/task.f +USER build a colon definition and evaluate it, so what
 \ they make exists only once that text runs, which the source pre-verifier never
 \ does. `generates: D ( effect )` states it instead: the row's record lands on
 \ D's CREATES cell exactly as a certified clause's does, so every reader of a

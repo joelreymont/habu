@@ -15,9 +15,9 @@
 \ several other files already define a `GO`, and the name says nothing about
 \ what the word does. src/habu/app-image-core.f APP-IMAGE:SAVE calls the entry.
 
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/codesign.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/codesign.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
 require src/habu/cell-grid.f
@@ -478,7 +478,7 @@ CLOSE-DEFAULT
 \ The image is written to a sibling of the output path and renamed over it only
 \ after the write, the close and the signature succeed, so a failure never
 \ leaves a partial or unsigned executable where a later run finds it. The
-\ sibling is created exclusively under a per-process name (lib/fs-mutate.f
+\ sibling is created exclusively under a per-process name (src/lib/fs-mutate.f
 \ RESERVE-SIBLING), so a concurrent writer of the same output stages its own.
 \ It is chosen after CANON-DATA copies DATA, so the image never holds its name.
 create STAGED FS-PATH-CAP allot
@@ -488,7 +488,7 @@ variable STAGED-U
 
 \ Registered for removal at exit before a byte is written, so every `die` and
 \ uncaught throw from here to the rename takes the sibling with it
-\ (lib/fs-mutate.f CLEANUP-AT-EXIT); after the rename the path names nothing and
+\ (src/lib/fs-mutate.f CLEANUP-AT-EXIT); after the rename the path names nothing and
 \ the removal skips it. A full registry refuses the claim, and the empty sibling
 \ goes then.
 : CLAIM ( ptr u8 n -- ptr u8 n )

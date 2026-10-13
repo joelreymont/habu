@@ -11,8 +11,8 @@
 \ Value ids are the MODULE's and slots are a FUNCTION's, so the value tables are
 \ cleared once per module and the slot table once per function.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/target.f
 require src/compiler/native-effect.f
 require src/compiler/native/machine.f

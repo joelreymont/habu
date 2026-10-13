@@ -45,12 +45,12 @@
 \ fixture here renders the same `x64.trap`, and the divide routines the same
 \ `x64.idiv`, to a callee the image carries. BUILD-DIV's bytes are pinned by
 \ test/compiler/x64-emit.f.
-require lib/test.f
-require lib/string.f
-require lib/fmt.f
-require lib/byte-buffer.f
-require lib/fs.f
-require lib/fs-mutate.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/byte-buffer.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require src/compiler/native/backend.f
 require src/compiler/session/emission.f
 require src/arch/x86-64/passes.f
@@ -59,7 +59,7 @@ require test/compiler/x64-chain-fixture.f
 require src/habu/boot-x64.f
 require test/x86-64-peer-harness.f
 require src/habu/arith-abi.f
-require lib/ieee754.f
+require src/lib/ieee754.f
 
 \ The fixtures stay in the package that stages them; this adds each one's trip
 \ through the rows to the harness's next address.

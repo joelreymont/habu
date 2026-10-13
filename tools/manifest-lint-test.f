@@ -17,11 +17,11 @@
 \ fixture line can be mistaken for a real require row by a reader scanning this
 \ file.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
 require tools/lint/text.f
 require tools/lint/lib.f
 require tools/manifest-lint-core.f
@@ -68,17 +68,17 @@ variable MLT-U
 
 : PLAIN-REQUIRE ( -- )
    MLT-RESET
-   s" require lib/one.f" MLT+
+   s" require src/lib/one.f" MLT+
    MLT-EDGES 1 T= ;
 
 : INDENTED-REQUIRE ( -- )
    MLT-RESET
-   s"    require lib/one.f" MLT+
+   s"    require src/lib/one.f" MLT+
    MLT-EDGES 1 T= ;
 
-: QUOTED-REQUIRED ( -- )                       \ s" lib/two.f" required
+: QUOTED-REQUIRED ( -- )                       \ s" src/lib/two.f" required
    MLT-RESET
-   s" lib/two.f" MLT-QUOTED+  s"  required" MLT+
+   s" src/lib/two.f" MLT-QUOTED+  s"  required" MLT+
    MLT-EDGES 1 T= ;
 
 : INDENTED-QUOTED-REQUIRED ( -- )              \ the shape inside LOAD-REPL-TERM
@@ -88,21 +88,21 @@ variable MLT-U
 
 : BOTH-SPELLINGS ( -- )
    MLT-RESET
-   s" require lib/one.f" MLT+ MLT-NL
-   s" lib/two.f" MLT-QUOTED+  s"  required" MLT+
+   s" require src/lib/one.f" MLT+ MLT-NL
+   s" src/lib/two.f" MLT-QUOTED+  s"  required" MLT+
    MLT-EDGES 2 T= ;
 
 : DUPLICATE-IS-ONE-PATH ( -- )                 \ the table interns, it does not count lines
    MLT-RESET
-   s" require lib/one.f" MLT+ MLT-NL
-   s" require lib/one.f" MLT+ MLT-NL
-   s" require lib/one.f" MLT+
+   s" require src/lib/one.f" MLT+ MLT-NL
+   s" require src/lib/one.f" MLT+ MLT-NL
+   s" require src/lib/one.f" MLT+
    MLT-EDGES 1 T= ;
 
 : LAST-LINE-WITHOUT-LF ( -- )                  \ a file that does not end in a newline
    MLT-RESET
-   s" require lib/one.f" MLT+ MLT-NL
-   s" require lib/two.f" MLT+
+   s" require src/lib/one.f" MLT+ MLT-NL
+   s" require src/lib/two.f" MLT+
    MLT-EDGES 2 T= ;
 
 \ ---- the near misses -----------------------------------------------------------
@@ -111,32 +111,32 @@ variable MLT-U
 
 : COMMENTED-REQUIRE ( -- )
    MLT-RESET
-   s" \ require lib/one.f" MLT+
+   s" \ require src/lib/one.f" MLT+
    MLT-EDGES 0 T= ;
 
 : COMMENTED-QUOTED ( -- )
    MLT-RESET
-   s" \ " MLT+  s" lib/two.f" MLT-QUOTED+  s"  required" MLT+
+   s" \ " MLT+  s" src/lib/two.f" MLT-QUOTED+  s"  required" MLT+
    MLT-EDGES 0 T= ;
 
-: REQUIRE-INSIDE-A-SOURCE-STRING ( -- )        \ s" 0 set-tier require lib/x.f" GE-SRC-LINE
+: REQUIRE-INSIDE-A-SOURCE-STRING ( -- )        \ s" 0 set-tier require src/lib/x.f" GE-SRC-LINE
    MLT-RESET
-   s" 0 set-tier require lib/one.f" MLT-QUOTED+  s"  GE-SRC-LINE" MLT+
+   s" 0 set-tier require src/lib/one.f" MLT-QUOTED+  s"  GE-SRC-LINE" MLT+
    MLT-EDGES 0 T= ;
 
-: QUOTED-WITHOUT-REQUIRED ( -- )               \ s" lib/two.f" provided
+: QUOTED-WITHOUT-REQUIRED ( -- )               \ s" src/lib/two.f" provided
    MLT-RESET
-   s" lib/two.f" MLT-QUOTED+  s"  provided" MLT+
+   s" src/lib/two.f" MLT-QUOTED+  s"  provided" MLT+
    MLT-EDGES 0 T= ;
 
 : LONGER-WORD-IS-NOT-REQUIRE ( -- )
    MLT-RESET
-   s" requires lib/one.f" MLT+
+   s" requires src/lib/one.f" MLT+
    MLT-EDGES 0 T= ;
 
 : REQUIRE-NOT-LEADING ( -- )
    MLT-RESET
-   s" lib/one.f require" MLT+
+   s" src/lib/one.f require" MLT+
    MLT-EDGES 0 T= ;
 
 : BARE-REQUIRE-HAS-NO-PATH ( -- )

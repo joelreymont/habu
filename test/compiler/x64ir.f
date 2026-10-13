@@ -27,7 +27,7 @@
 \ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
 \ arena registry holds sixty-four, so each group below runs in its own context.
 
-require lib/test.f
+require src/lib/test.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/backend.f
 require src/compiler/native/x64ir.f

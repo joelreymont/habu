@@ -101,7 +101,7 @@ SUITE stripped-entry-qualified
 
 SUITE hb-build-fixtures
    tools/hb-build-test.f
-   lib/build-cache-test.f
+   src/lib/build-cache-test.f
 ;SUITE
 
 SUITE hb-build-stripped-chain
@@ -147,7 +147,7 @@ SUITE hb-build-aot
 SUITE hb-build-aot-cache
    tools/hb-build-aot-cache-test.f
    tools/hb-build-producer-cache-test.f
-   lib/codesign-test.f
+   src/lib/codesign-test.f
    tools/hb-build-direct-lints-test.f
 ;SUITE
 
@@ -241,7 +241,7 @@ SUITE build-fixpoint-sandbox
 ;SUITE
 
 SUITE os-memory
-   lib/os-memory-test.f
+   src/lib/os-memory-test.f
 ;SUITE
 
 SUITE shadow-lint
@@ -373,11 +373,11 @@ SUITE streaming-sha256
 ;SUITE
 
 SUITE content-key
-   lib/content-key-test.f
+   src/lib/content-key-test.f
 ;SUITE
 
 SUITE engine-identity
-   lib/engine-id-test.f
+   src/lib/engine-id-test.f
 ;SUITE
 
 SUITE engine-id-capture
@@ -550,11 +550,11 @@ SUITE wasm-numeric
 ;SUITE
 
 SUITE wasm-numeric-aot
-   lib/test.f
-   lib/string.f
-   lib/test/outcome.f
-   lib/test/subject.f
-   lib/ieee754.f
+   src/lib/test.f
+   src/lib/string.f
+   src/lib/test/outcome.f
+   src/lib/test/subject.f
+   src/lib/ieee754.f
    test/compiler/aot-mode.f
    ENTRIES
    test/wasm/numeric.f
@@ -772,7 +772,7 @@ SUITE compiler-native-finally
 ;SUITE
 
 SUITE compiler-native-finally-aot
-   lib/test.f
+   src/lib/test.f
    test/checker-assert.f
    test/compiler/aot-mode.f
    ENTRIES
@@ -909,7 +909,7 @@ SUITE compiler-native-generic-calls
 ;SUITE
 
 SUITE compiler-native-generic-calls-aot
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-generic-calls.f
@@ -932,7 +932,7 @@ SUITE compiler-native-stored-quot
 ;SUITE
 
 SUITE compiler-native-stored-quot-aot
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-stored-quot.f
@@ -971,7 +971,7 @@ SUITE compiler-native-many-locals
 ;SUITE
 
 SUITE compiler-native-many-locals-aot
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-many-locals.f
@@ -1018,7 +1018,7 @@ SUITE compiler-native-switch
 ;SUITE
 
 SUITE compiler-native-switch-aot
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-switch.f
@@ -1074,7 +1074,7 @@ SUITE compiler-native-locals-scope
 
 SUITE compiler-native-locals-scope-aot
    test/compiler/native-eval-fixture.f
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-locals-scope.f
@@ -1093,7 +1093,7 @@ SUITE compiler-native-product-locals
 ;SUITE
 
 SUITE compiler-native-product-locals-aot
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-product-locals.f
@@ -1108,7 +1108,7 @@ SUITE compiler-native-call-binding
 ;SUITE
 
 SUITE compiler-native-word-binding-aot
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-word-binding.f
@@ -1119,7 +1119,7 @@ SUITE reopen-binding
 ;SUITE
 
 SUITE reopen-binding-aot
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/reopen-binding.f
@@ -1134,7 +1134,7 @@ SUITE undefine-binding
 ;SUITE
 
 SUITE undefine-binding-aot
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/undefine-binding.f
@@ -1185,7 +1185,7 @@ SUITE compiler-native-quot-scope
 ;SUITE
 
 SUITE compiler-native-quot-scope-aot
-   lib/test.f
+   src/lib/test.f
    test/checker-assert.f
    test/compiler/aot-mode.f
    ENTRIES
@@ -1197,7 +1197,7 @@ SUITE compiler-native-chain
 ;SUITE
 
 SUITE compiler-native-chain-aot
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-chain.f
@@ -1226,7 +1226,7 @@ SUITE compiler-native-exit
 ;SUITE
 
 SUITE compiler-native-exit-aot
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-exit.f
@@ -1237,7 +1237,7 @@ SUITE compiler-native-tick
 ;SUITE
 
 SUITE compiler-native-tick-aot
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-tick.f
@@ -1248,7 +1248,7 @@ SUITE compiler-native-literals
 ;SUITE
 
 SUITE compiler-native-literals-aot
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-literals.f
@@ -1284,10 +1284,10 @@ WHITEBOX-SUITE compiler-native-match
 
 WHITEBOX-SUITE compiler-native-match-aot
    test/compiler/native-eval-fixture.f
-   lib/test.f
-   lib/process.f
-   lib/process-argv.f
-   lib/process-env.f
+   src/lib/test.f
+   src/lib/process.f
+   src/lib/process-argv.f
+   src/lib/process-env.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-match.f
@@ -1308,9 +1308,9 @@ SUITE compiler-native-view-cast
 ;SUITE
 
 SUITE compiler-native-view-cast-aot
-   lib/test.f
-   lib/memory.f
-   lib/c2-memory.f
+   src/lib/test.f
+   src/lib/memory.f
+   src/lib/c2-memory.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-view-cast.f
@@ -1322,8 +1322,8 @@ SUITE compiler-native-wide-mem
 
 SUITE compiler-native-wide-mem-aot
    test/compiler/native-eval-fixture.f
-   lib/test.f
-   lib/ieee754.f
+   src/lib/test.f
+   src/lib/ieee754.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-wide-mem.f
@@ -1334,7 +1334,7 @@ SUITE compiler-native-fetch-terms
 ;SUITE
 
 SUITE compiler-native-fetch-terms-aot
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-fetch-terms.f
@@ -1361,23 +1361,23 @@ SUITE base-pointer-arith-refusals
 ;SUITE
 
 SUITE object-record-codec
-   lib/object-test.f
+   src/lib/object-test.f
 ;SUITE
 
 SUITE object-cache-store
-   lib/object-cache-test.f
+   src/lib/object-cache-test.f
 ;SUITE
 
 SUITE object-source-index
-   lib/object-index-test.f
+   src/lib/object-index-test.f
 ;SUITE
 
 SUITE object-source-resolver
-   lib/object-resolve-test.f
+   src/lib/object-resolve-test.f
 ;SUITE
 
 SUITE object-link-symbols
-   lib/object-link-test.f
+   src/lib/object-link-test.f
 ;SUITE
 
 SUITE object-image-writer
@@ -1401,8 +1401,8 @@ SUITE proc-capture-under-signals
 ;SUITE
 
 SUITE process-fork-wrappers
-   lib/process-fork-test.f
-   lib/fork-child-test.f
+   src/lib/process-fork-test.f
+   src/lib/fork-child-test.f
 ;SUITE
 
 SUITE proc-pty-io-supervisor-smoke
@@ -1419,22 +1419,22 @@ SUITE engine-candidate-resolver
 
 \ CPU tasking over pthread, including shared storage and task-local FFI staging.
 SUITE tasking-threads
-   lib/task-test.f
+   src/lib/task-test.f
 ;SUITE
 
 \ Readiness, timers and cancellation on io_uring, over pipes only.
 SUITE aio-uring
-   lib/aio-test.f
+   src/lib/aio-test.f
 ;SUITE
 
 \ Process signals on the engine's baked stub and a self-pipe.
 SUITE process-signals
-   lib/signal-test.f
+   src/lib/signal-test.f
 ;SUITE
 
 \ The bounded queue: many producers and many consumers over one ring.
 SUITE bounded-queue
-   lib/queue-test.f
+   src/lib/queue-test.f
 ;SUITE
 
 SUITE task-entry
@@ -1447,57 +1447,57 @@ SUITE c2-owner-dispose
 ;SUITE
 
 SUITE string-helpers
-   lib/string-test.f
+   src/lib/string-test.f
 ;SUITE
 
 SUITE utf8-scalar
-   lib/utf8-scalar-test.f
+   src/lib/utf8-scalar-test.f
 ;SUITE
 
 SUITE base64
-   lib/base64-test.f
+   src/lib/base64-test.f
 ;SUITE
 
 SUITE utf16-units
-   lib/utf16-test.f
+   src/lib/utf16-test.f
 ;SUITE
 
 SUITE file-uri
-   lib/uri-test.f
+   src/lib/uri-test.f
 ;SUITE
 
 \ Exact reads and full writes over pipes; the write cases run under the
 \ profiler's SIGALRM storm to force short writes.
 SUITE fd-io
-   lib/fd-io-test.f
+   src/lib/fd-io-test.f
 ;SUITE
 
 SUITE content-length
-   lib/content-length-test.f
+   src/lib/content-length-test.f
 ;SUITE
 
 SUITE json-rpc
-   lib/json-rpc-test.f
+   src/lib/json-rpc-test.f
 ;SUITE
 
 SUITE ffi-abi
-   lib/ffi-abi-test.f
+   src/lib/ffi-abi-test.f
 ;SUITE
 
 SUITE zip
-   lib/zip-test.f
-   lib/zip-lifecycle-test.f
+   src/lib/zip-test.f
+   src/lib/zip-lifecycle-test.f
 ;SUITE
 
 SUITE ffi-cabi
-   lib/ffi-test.f
+   src/lib/ffi-test.f
 ;SUITE
 
 \ C calling back into checked code through libc's qsort and pthread_create, on
 \ the calling task and on foreign threads; writes
 \ build/ffi-callback-transcript.txt and compares it whole.
 SUITE ffi-callback
-   lib/ffi-callback-test.f
+   src/lib/ffi-callback-test.f
 ;SUITE
 
 \ IMAGE-LIFECYCLE:PREPARE closes the library a FUNCTION: row opened, and the
@@ -1513,7 +1513,7 @@ SUITE five-bindings
 ;SUITE
 
 \ Packages PG and DB-ROWS against a private PostgreSQL cluster the harness
-\ starts on a Unix-domain socket, runs lib/pg-test.f and then lib/db/rows-test.f
+\ starts on a Unix-domain socket, runs src/lib/pg-test.f and then src/lib/db/rows-test.f
 \ against, and stops however they end; then the same harness killed by a pool,
 \ which must leave no server process and no socket directory. initdb and
 \ postgres on PATH are a gate requirement (docs/bootstrap.md). The harness's
@@ -1525,99 +1525,99 @@ SUITE pg
 ;SUITE
 
 \ PG's configuration lock in a child forked while another task holds it
-\ (lib/fork-child.f). Loading lib/pg.f opens libpq; no server is needed.
+\ (src/lib/fork-child.f). Loading src/lib/pg.f opens libpq; no server is needed.
 SUITE pg-fork
-   lib/pg-fork-test.f
+   src/lib/pg-fork-test.f
 ;SUITE
 
 \ Loopback HTTP in one process; the one HTTPS request is opt-in behind
 \ HABU_NET_TESTS.
 SUITE curl-http
-   lib/net/curl-test.f
+   src/lib/net/curl-test.f
 ;SUITE
 
 \ The HTTP/1.1 server on a loopback port, answered by CURL and by raw TCP4;
 \ writes build/http-transcript.txt and compares it whole.
 SUITE http
-   lib/net/http-test.f
+   src/lib/net/http-test.f
 ;SUITE
 
 \ BROWSER-HOST:ROUTES on a loopback port: CURL fetches the browser host's page,
 \ each file's content type and bytes.
 SUITE browser-host
-   lib/browser/host-test.f
+   src/lib/browser/host-test.f
 ;SUITE
 
 SUITE crypto-evp
-   lib/crypto/evp-test.f
+   src/lib/crypto/evp-test.f
 ;SUITE
 
 SUITE crypto-sha1
-   lib/crypto/sha1-test.f
+   src/lib/crypto/sha1-test.f
 ;SUITE
 
 SUITE float-parse
-   lib/float-test.f
-   lib/fmath-test.f
+   src/lib/float-test.f
+   src/lib/fmath-test.f
 ;SUITE
 
 SUITE finite-float-text
-   lib/f64-text-test.f
-   lib/f64-text-lifecycle-test.f
+   src/lib/f64-text-test.f
+   src/lib/f64-text-lifecycle-test.f
 ;SUITE
 
 SUITE ieee-float32
-   lib/ieee754-test.f
-   lib/float32-test.f
-   lib/float32-buffer-test.f
+   src/lib/ieee754-test.f
+   src/lib/float32-test.f
+   src/lib/float32-buffer-test.f
 ;SUITE
 
 SUITE fmt-numbers
-   lib/fmt-test.f
+   src/lib/fmt-test.f
 ;SUITE
 
 SUITE float-sort
-   lib/sort-test.f
+   src/lib/sort-test.f
 ;SUITE
 
 SUITE hashmap
-   lib/hashmap-test.f
+   src/lib/hashmap-test.f
 ;SUITE
 
 SUITE prelude
-   lib/prelude-test.f
+   src/lib/prelude-test.f
 ;SUITE
 
 SUITE array-helpers
-   lib/array-test.f
+   src/lib/array-test.f
 ;SUITE
 
 SUITE adt-option
-   lib/adt/option-test.f
+   src/lib/adt/option-test.f
 ;SUITE
 
 SUITE adt-result
-   lib/adt/result-test.f
+   src/lib/adt/result-test.f
 ;SUITE
 
 SUITE num-arithmetic
-   lib/num-arithmetic-test.f
+   src/lib/num-arithmetic-test.f
 ;SUITE
 
 SUITE map-stdlib
-   lib/map-test.f
+   src/lib/map-test.f
 ;SUITE
 
 SUITE codegen-stdlib
-   lib/codegen-test.f
+   src/lib/codegen-test.f
 ;SUITE
 
 SUITE unicode-class-runtime
-   lib/unicode/class-test.f
+   src/lib/unicode/class-test.f
 ;SUITE
 
 SUITE unicode-casefold
-   lib/unicode-test.f
+   src/lib/unicode-test.f
 ;SUITE
 
 SUITE unicode-class-tools
@@ -1629,15 +1629,15 @@ SUITE unicode-class-exhaustive
 ;SUITE
 
 SUITE-STDIN source-stdlib-stdin DATA
-   lib/source-test.f -- stdin
+   src/lib/source-test.f -- stdin
 ;SUITE
 
 SUITE argv-stdlib-mocks
-   lib/argv-test.f
+   src/lib/argv-test.f
 ;SUITE
 
 SUITE argv-stdlib-script-args
-   lib/argv-test.f -- --json --label NAME --all-errors
+   src/lib/argv-test.f -- --json --label NAME --all-errors
    --strict-boundary -o OUT -- file.f --literal
 ;SUITE
 
@@ -1652,14 +1652,14 @@ SUITE argv-stdlib-capacity
 ;SUITE
 
 SUITE test-stdlib
-   lib/test/assert-test.f
-   lib/test/suite-test.f
-   lib/test/record-test.f
-   lib/test/mapped-test.f
+   src/lib/test/assert-test.f
+   src/lib/test/suite-test.f
+   src/lib/test/record-test.f
+   src/lib/test/mapped-test.f
 ;SUITE
 
 SUITE property-stdlib
-   lib/property-test.f
+   src/lib/property-test.f
 ;SUITE
 
 SUITE date-helpers
@@ -1694,19 +1694,19 @@ SUITE aot-startup-reach
    tools/aot-startup-reach-lint-test.f
 ;SUITE
 
-\ lib/memory-test.f is not here: its WITH-BYTES frame audit reopens package MEM
+\ src/lib/memory-test.f is not here: its WITH-BYTES frame audit reopens package MEM
 \ and reads the frame cells directly, which no shipped image has a name for.
 WHITEBOX-SUITE memory
-   lib/memory-test.f
+   src/lib/memory-test.f
 ;SUITE
 
 SUITE tail-pure-fixtures
-   lib/json-write-test.f
-   lib/json-read-test.f
-   lib/vector-test.f
-   lib/byte-buffer-test.f
-   lib/elf32-test.f
-   lib/fs-test.f
+   src/lib/json-write-test.f
+   src/lib/json-read-test.f
+   src/lib/vector-test.f
+   src/lib/byte-buffer-test.f
+   src/lib/elf32-test.f
+   src/lib/fs-test.f
    tools/bootstrap-codegen-test.f
    tools/asm-src-test.f
    tools/image-bytes-test.f
@@ -1814,10 +1814,10 @@ SUITE x86-64-kernel-definition
 ;SUITE
 
 SUITE xml-byte-edits
-   lib/xml-test.f
-   lib/byte-edit-test.f
-   lib/xml-roundtrip-test.f
-   lib/xml-source-test.f
+   src/lib/xml-test.f
+   src/lib/byte-edit-test.f
+   src/lib/xml-roundtrip-test.f
+   src/lib/xml-source-test.f
 ;SUITE
 
 SUITE xml-c2-consumer
@@ -1825,20 +1825,20 @@ SUITE xml-c2-consumer
 ;SUITE
 
 SUITE stdlib-source-default
-   lib/source-test.f
+   src/lib/source-test.f
 ;SUITE
 
 SUITE source-lex
-   lib/source-lex-test.f
+   src/lib/source-lex-test.f
 ;SUITE
 
 SUITE stdlib-process-fixtures
    tools/hb-cli-contracts-test.f
    tools/standalone-load-test.f
    test/lint-cli-standalone-load.f
-   lib/process-test.f
-   lib/process-command-test.f
-   lib/process-pty-handle-test.f
+   src/lib/process-test.f
+   src/lib/process-command-test.f
+   src/lib/process-pty-handle-test.f
 ;SUITE
 
 SUITE friend-arena-seal
@@ -2208,7 +2208,7 @@ SUITE address-cell-rollback
 ;SUITE
 
 SUITE address-cell-rollback-aot
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/address-cell-rollback.f
@@ -2281,7 +2281,7 @@ SUITE using-import
 \ The design seal: each test/policy case loaded sealed at both tiers, one child
 \ per row; writes build/policy-run.txt.
 SUITE policy
-   lib/policy-test.f
+   src/lib/policy-test.f
 ;SUITE
 
 SUITE trust-row-refusal
@@ -2305,11 +2305,11 @@ SUITE core-prefix-mark
 ;SUITE
 
 SUITE stdlib-runner-fixtures
-   lib/test/runner-test.f
+   src/lib/test/runner-test.f
 ;SUITE
 
 SUITE stdlib-build-fixtures
-   lib/build-test.f
+   src/lib/build-test.f
 ;SUITE
 
 SUITE load-argv-contract
@@ -2345,16 +2345,16 @@ SUITE gate-common
 ;SUITE
 
 SUITE num-types
-   lib/num-types-test.f
+   src/lib/num-types-test.f
 ;SUITE
 
 SUITE span
-   lib/span-test.f
+   src/lib/span-test.f
 ;SUITE
 
 SUITE fs-mutate
-   lib/fs-mutate-test.f
-   lib/fs-rename-noreplace-test.f
+   src/lib/fs-mutate-test.f
+   src/lib/fs-rename-noreplace-test.f
 ;SUITE
 
 SUITE exit-hook
@@ -2362,95 +2362,95 @@ SUITE exit-hook
 ;SUITE
 
 SUITE fs-copy-alias
-   lib/fs-copy-alias-test.f
-   lib/fs-identity-test.f
+   src/lib/fs-copy-alias-test.f
+   src/lib/fs-identity-test.f
 ;SUITE
 
 SUITE fs-lock
-   lib/fs-lock-test.f
+   src/lib/fs-lock-test.f
 ;SUITE
 
 SUITE fs-list
-   lib/fs-list-test.f
+   src/lib/fs-list-test.f
 ;SUITE
 
 SUITE tree-copy
-   lib/tree-copy-test.f
+   src/lib/tree-copy-test.f
 ;SUITE
 
 SUITE pty
-   lib/pty-test.f
+   src/lib/pty-test.f
 ;SUITE
 
 \ Raw serial streams over a pty pair: the loop supplies every wait.
 SUITE serial
-   lib/serial-test.f
+   src/lib/serial-test.f
 ;SUITE
 
 \ The pty test harness's buffer: the compaction, the span search and the
 \ never-seen facts, driven without a child; plus the two cases that need one,
 \ the spawn's abort path and the bounded reap of a wedged child.
 SUITE pty-harness
-   lib/pty-harness-test.f
+   src/lib/pty-harness-test.f
 ;SUITE
 
 \ IPv4 stream sockets: a listener task and a client in one process.
 SUITE tcp4
-   lib/net/tcp4-test.f
+   src/lib/net/tcp4-test.f
 ;SUITE
 
 \ IPv4 datagrams: two loopback sockets in one process, every wait bounded.
 SUITE udp4
-   lib/net/udp4-test.f
+   src/lib/net/udp4-test.f
 ;SUITE
 
 \ The RFC 6455 frame codec: bytes in and bytes out, no socket.
 SUITE websocket-frame
-   lib/net/ws-frame-test.f
+   src/lib/net/ws-frame-test.f
 ;SUITE
 
 \ RFC 6455 connections on the HTTP server, spoken to by a Habu client over
 \ TCP4; writes build/ws-transcript.txt and compares it whole.
 SUITE websocket
-   lib/net/ws-test.f
+   src/lib/net/ws-test.f
 ;SUITE
 
 \ The process row is per task: a capturing task and a polling task at once.
 SUITE process-tasks
-   lib/process-task-test.f
+   src/lib/process-task-test.f
 ;SUITE
 
 \ Generic text I/O devices: the engine's own text through a memory device, and
 \ a REPL over a loopback connection.
 SUITE genio
-   lib/genio-test.f
+   src/lib/genio-test.f
 ;SUITE
 
 SUITE process-argv
-   lib/process-argv-test.f
+   src/lib/process-argv-test.f
 ;SUITE
 
 SUITE process-cwd
-   lib/process-cwd-test.f
+   src/lib/process-cwd-test.f
 ;SUITE
 
 SUITE process-env
-   lib/process-env-test.f
+   src/lib/process-env-test.f
 ;SUITE
 
 \ A tree walk the kernel refuses throws rather than reading the refusal as
 \ nobody there, and one at a capture's early end leaves the capture its own
 \ answer and names the walk's code.
 SUITE process-tree
-   lib/process-tree-test.f
+   src/lib/process-tree-test.f
 ;SUITE
 
 SUITE test-subject
-   lib/test/subject-test.f
+   src/lib/test/subject-test.f
 ;SUITE
 
 SUITE test-eval
-   lib/test/eval-test.f
+   src/lib/test/eval-test.f
 ;SUITE
 
 SUITE check-repair-hints
@@ -2486,7 +2486,7 @@ SUITE keyed-image-reap
 ;SUITE
 
 SUITE build-cache-retain
-   lib/build-cache-retain-test.f
+   src/lib/build-cache-retain-test.f
 ;SUITE
 
 SUITE hb-baseline-contracts
@@ -2666,7 +2666,7 @@ SUITE wide-typed-local-probe
 ;SUITE
 
 SUITE wide-typed-local-probe-aot
-   lib/test.f
+   src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/wide-typed-local-probe.f
@@ -2924,7 +2924,7 @@ SUITE type-match
 ;SUITE
 
 \ The sequential group comes last. Entering it drains the pool (GROUP-HEADER in
-\ lib/test/suite.f), so anywhere earlier every slot idles until the rows before
+\ src/lib/test/suite.f), so anywhere earlier every slot idles until the rows before
 \ it finish, and the rows after it start only when it ends.
 GROUP SEQ native-serial-gates
 

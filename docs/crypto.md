@@ -1,6 +1,6 @@
 # Authenticated encryption, HMAC and RS256
 
-[`lib/crypto/evp.f`](../lib/crypto/evp.f) binds OpenSSL 3's libcrypto through
+[`src/lib/crypto/evp.f`](../src/lib/crypto/evp.f) binds OpenSSL 3's libcrypto through
 the `FUNCTION:` declarer so Habu can seal bytes at rest, compute a keyed MAC,
 and sign or verify RS256 messages. It loads `libcrypto.3.dylib` on macOS and
 `libcrypto.so.3` on Linux. Qualify each OS and architecture with a matching
@@ -148,7 +148,7 @@ record moved to another row — a cookie jar re-filed under a second account —
 fails to open even though its bytes are untouched.
 
 ```forth
-require lib/crypto/evp.f
+require src/lib/crypto/evp.f
 
 package JAR
 
@@ -207,7 +207,7 @@ named failure rather than a silent leak.
 
 ## Declarations
 
-Every foreign function is declared with `FUNCTION:` (see `lib/ffi-abi.f`).
+Every foreign function is declared with `FUNCTION:` (see `src/lib/ffi-abi.f`).
 `EVP_CIPHER_CTX*`, `EVP_CIPHER*` and `EVP_MD*` are opaque — nothing in the
 package dereferences one — so they are declared `n`: AAPCS64 passes a pointer and
 an integer in the same register. Only a span Habu or the callee really reads or
@@ -234,7 +234,7 @@ a count that must always be zero.
 
 ## Tests
 
-`lib/crypto/evp-test.f` runs published vectors through the public words. The
+`src/lib/crypto/evp-test.f` runs published vectors through the public words. The
 AES-256-GCM cases are Test Case 13 (empty message, no associated data) and Test
 Case 16 (60-byte message with 20 bytes of associated data) of McGrew and Viega's
 GCM specification, the submission NIST SP 800-38D adopted; the HMAC-SHA-256 cases
@@ -251,7 +251,7 @@ round would do by megabytes.
 
 ## SHA-1 for the WebSocket handshake
 
-[`lib/crypto/sha1.f`](../lib/crypto/sha1.f), package `SHA1`, is SHA-1 written
+[`src/lib/crypto/sha1.f`](../src/lib/crypto/sha1.f), package `SHA1`, is SHA-1 written
 in Habu with no foreign library, so a WebSocket server answers RFC 6455's
 opening handshake without libcrypto in its path. **It is not for security.**
 RFC 6455 derives `Sec-WebSocket-Accept` from SHA-1 only to show that the server
@@ -287,7 +287,7 @@ A context span shorter than `CTX-BYTES` and a digest span shorter than
 negative `FEED` length throws `E-SPAN-LENGTH`; the package mints no codes of
 its own.
 
-`lib/crypto/sha1-test.f` runs the FIPS 180 vectors: the empty message, `abc`,
+`src/lib/crypto/sha1-test.f` runs the FIPS 180 vectors: the empty message, `abc`,
 the 448-bit message, and one million `a` fed in chunks of 1 to 999 bytes. It
 hashes the lengths where the padding changes shape, 55, 56, 63, 64 and 65 bytes,
 both whole and a byte at a time; feeds two contexts in turn; calls `FINISH`

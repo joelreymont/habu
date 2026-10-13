@@ -1,28 +1,28 @@
 \ stdlib-standalone-load.f - prove every flat production lib module bare-loads.
 \
-\ Regression guard for habu-pkg-stdlib-modules-3197dbbc: a flat lib/<module>.f
-\ must `require` its own dependency closure, so `bin/hb --load lib/<module>.f`
+\ Regression guard for habu-pkg-stdlib-modules-3197dbbc: a flat src/lib/<module>.f
+\ must `require` its own dependency closure, so `bin/hb --load src/lib/<module>.f`
 \ works in a fresh engine with no caller-supplied prelude. Hidden load-order
 \ coupling (a module using another module's words with no require line) is masked
 \ by the resident gate DAG order and surfaces only here. Each module is spawned
 \ in a fresh child engine with empty stdin; a clean exit 0 proves the module
 \ pulled its whole dependency closure itself.
 \
-\ The module list is DERIVED each run by walking lib/ and keeping the flat
-\ lib/<name>.f modules. Nested lib/<sub>/ research sub-libraries and *-test.f
+\ The module list is DERIVED each run by walking src/lib/ and keeping the flat
+\ src/lib/<name>.f modules. Nested src/lib/<sub>/ research sub-libraries and *-test.f
 \ files are out of scope by structure alone (their suites cover them). There is
 \ no exclusion table: every flat module is covered automatically, so no path
 \ prefix or reserved future name can suppress a production module, and coverage
 \ fails closed on any load-order regression.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/process.f
-require lib/process-argv.f
-require lib/test.f
-require lib/test/outcome.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/test.f
+require src/lib/test/outcome.f
 
 package STDLIB-STANDALONE-LOAD
 
@@ -60,12 +60,12 @@ variable PATHS-USED
    u su < if FALSE exit then
    a u su - +  su  sa su  STR= ;
 
-\ A flat production module is lib/<name>.f: a `.f` file, not a `-test.f`, with a
-\ single '/' (nested lib/<sub>/<name>.f has two and is out of scope).
+\ A flat production module is src/lib/<name>.f: a `.f` file, not a `-test.f`, with
+\ two '/' bytes (nested src/lib/<sub>/<name>.f has three and is out of scope).
 : FLAT-MODULE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" .f" SUFFIX? 0= if FALSE exit then
    a u s" -test.f" SUFFIX? if FALSE exit then
-   a u SLASHES 1 = ;
+   a u SLASHES 2 = ;
 
 \ ---- collect flat modules during the walk ----------------------------------
 : PATH$ ( n -- ptr u8 n ) {: k:n :}
@@ -107,11 +107,11 @@ variable PATHS-USED
 
 \ ---- fixture: scheduling is structural, no exclusion table -----------------
 \ Inject synthetic paths straight into COLLECT and assert each verdict without
-\ spawning a load. This proves discovery keeps exactly the flat lib/<name>.f
+\ spawning a load. This proves discovery keeps exactly the flat src/lib/<name>.f
 \ modules: the two spellings the deleted speculative table reserved
-\ (lib/engine-candidate.f and the lib/process-pty family) are now scheduled like
+\ (src/lib/engine-candidate.f and the src/lib/process-pty family) are now scheduled like
 \ any other flat module, a brand-new flat name is scheduled the moment it is
-\ discovered, and nested lib/<sub>/<name>.f and *-test.f drop out by FLAT-MODULE?
+\ discovered, and nested src/lib/<sub>/<name>.f and *-test.f drop out by FLAT-MODULE?
 \ structure alone. No path prefix or reserved future name can suppress a
 \ production module.
 : SCHEDULES? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ inject one path; collected?
@@ -120,18 +120,18 @@ variable PATHS-USED
    a u COLLECTED? ;
 
 : FIXTURE ( -- )
-   s" lib/engine-candidate.f scheduled" T-LABEL
-      s" lib/engine-candidate.f" SCHEDULES? TTRUE
-   s" lib/process-pty-handle.f scheduled" T-LABEL
-      s" lib/process-pty-handle.f" SCHEDULES? TTRUE
-   s" lib/process-pty-io.f scheduled" T-LABEL
-      s" lib/process-pty-io.f" SCHEDULES? TTRUE
+   s" src/lib/engine-candidate.f scheduled" T-LABEL
+      s" src/lib/engine-candidate.f" SCHEDULES? TTRUE
+   s" src/lib/process-pty-handle.f scheduled" T-LABEL
+      s" src/lib/process-pty-handle.f" SCHEDULES? TTRUE
+   s" src/lib/process-pty-io.f scheduled" T-LABEL
+      s" src/lib/process-pty-io.f" SCHEDULES? TTRUE
    s" newly discovered flat module scheduled" T-LABEL
-      s" lib/newly-discovered.f" SCHEDULES? TTRUE
+      s" src/lib/newly-discovered.f" SCHEDULES? TTRUE
    s" nested sub-library excluded by scope" T-LABEL
-      s" lib/sub/nested.f" SCHEDULES? TFALSE
+      s" src/lib/sub/nested.f" SCHEDULES? TFALSE
    s" -test.f excluded by scope" T-LABEL
-      s" lib/newly-discovered-test.f" SCHEDULES? TFALSE ;
+      s" src/lib/newly-discovered-test.f" SCHEDULES? TFALSE ;
 
 public
 
@@ -139,9 +139,9 @@ public
    T-RESET
    FIXTURE
    0 PATHS-N !  0 PATHS-USED !
-   s" lib" [: COLLECT ;] WALK-FILES
+   s" src/lib" [: COLLECT ;] WALK-FILES
    s" flat lib modules discovered" T-LABEL  PATHS-N @ MODULE-FLOOR >= TTRUE
-   s" lib/json-read.f discovered" T-LABEL   s" lib/json-read.f" COLLECTED? TTRUE
+   s" src/lib/json-read.f discovered" T-LABEL   s" src/lib/json-read.f" COLLECTED? TTRUE
    LOAD-ALL
    T-REPORT
    s" stdlib-standalone-load-test: ok" type cr ;

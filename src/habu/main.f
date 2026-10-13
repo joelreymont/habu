@@ -25,7 +25,7 @@
 \ vector as an argument instead, so a test can hand it one it built; the boot
 \ and its routing of stdin and the REPL stay in the assembly for now.
 
-require lib/string.f
+require src/lib/string.f
 require src/core/bytes.f
 require src/habu/layout.f
 require src/core/include.f

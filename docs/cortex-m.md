@@ -78,7 +78,7 @@ image. Spilling reuses the parameterised `spill.f` from the x86_64 work.
 1. Primitive specification table shared with x86_64 (one dot, C6, shared).
 2. Thumb-2 machine IR, selection and emission through the registry.
 3. Image layout, vector table and reset for `mps2-an386`.
-4. The monitor and its host client in `lib/`.
+4. The monitor and its host client in `src/lib/`.
 5. Cooperative kernel implementation on the target (C5 decision dot's child).
 6. UART driver with ring queue and vectored terminal I/O.
 7. QEMU device peer and the gate suites above.

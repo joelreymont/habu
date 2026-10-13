@@ -1,5 +1,5 @@
 \ Exits share the function return from branches and straight-line code.
-require lib/test.f
+require src/lib/test.f
 
 package NATIVE-EXIT-TEST
 

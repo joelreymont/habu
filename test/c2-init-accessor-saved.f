@@ -1,6 +1,6 @@
 \ A fresh saved-image consumer: the declaration source is already in the image.
 \ These checked calls resolve the captured public field effects at either tier.
-require lib/test.f
+require src/lib/test.f
 
 package C2-INIT-ACCESSOR-SAVED
 

@@ -24,8 +24,8 @@
 \ file loads globally, as src/habu/boot-x64.f does: a file that loads the seam
 \ into a private wordlist (test/x86-64-peer-harness.f) comes after this one.
 
-require lib/byte-buffer.f
-require lib/string.f
+require src/lib/byte-buffer.f
+require src/lib/string.f
 require src/core/cell.f
 require src/core/engine-error.f
 require src/habu/layout.f

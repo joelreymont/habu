@@ -1,12 +1,12 @@
 \ object-image.f - build-internal native image writer for linked OBJ text.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/content-key.f
-require lib/object.f
-require lib/object-link.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/content-key.f
+require src/lib/object.f
+require src/lib/object-link.f
 
 \ The three ARM64 encoder sources are `require`d, not probed-and-included.
 \ A probe on ASM-INIT decided whether to load asm.f, but ASM-INIT is defined in

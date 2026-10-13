@@ -1,12 +1,12 @@
 \ The child selects host construction under a foreign output target and leaves
 \ a readable AOT artifact after the ordinary process-ABI launch refusal.
-require lib/test.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/engine-candidate.f
-require lib/fs.f
-require lib/fs-mutate.f
+require src/lib/test.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require test/suite-budget.f
 
 package NATIVE-HOST-TEST

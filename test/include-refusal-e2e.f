@@ -3,7 +3,7 @@
 \ An uncaught throw of a code below 256 is the process's exit status and prints
 \ nothing, so a loader refusal thrown as INCLUDE-IO-RC ended a run with exit 74
 \ and not one byte on either stream. Each case runs the engine under test
-\ (lib/engine-candidate.f) as a child from this process's working directory,
+\ (src/lib/engine-candidate.f) as a child from this process's working directory,
 \ through the words a program uses, and pins exit 74, an empty stdout and the
 \ whole of stderr: one line, ending in one LF, that names the refusal:
 \ - SOURCE-ROOT:WITH on a directory that does not exist, or on a file;
@@ -17,15 +17,15 @@
 \ Each child's program, stdout and stderr stay in the case tree's cases/, whose
 \ path is printed: a program there has cases/ as its root, and no missing path
 \ lies below it or below the working directory.
-require lib/test.f
-require lib/errors.f
-require lib/string.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 
 using SOURCE-ROOT
 package INCLUDE-REFUSAL-E2E
@@ -168,11 +168,11 @@ variable RC
 \ The statement a bundle (tools/bundle-lib.f) makes for each file it assumes.
 : BUNDLE-ABSENT ( -- )
    0 PROG-U !
-   S\" s\q lib/absent.f\q ?ENGINE-PROVIDES" PLINE
+   S\" s\q src/lib/absent.f\q ?ENGINE-PROVIDES" PLINE
    s" bundle-absent" LOAD-CASE
    s" a bundle assuming a file the engine lacks exits 74 by name" T-LABEL
    EXITS-74
-   ERR$ S\" bundle: this engine does not provide lib/absent.f\n" T$= ;
+   ERR$ S\" bundle: this engine does not provide src/lib/absent.f\n" T$= ;
 
 \ The program on stdin, at the top level a save runs at, with the image path as
 \ its argument.

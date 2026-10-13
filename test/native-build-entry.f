@@ -8,14 +8,14 @@
 \ stops before it loads a writer. The entry's accepted path, the closure
 \ compiling under the native build guard, is every gate's whitebox engine build
 \ (test/whitebox-engine.f runs this entry with `whitebox`).
-require lib/test.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/engine-candidate.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/string.f
 require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
 package NATIVE-BUILD-ENTRY-TEST

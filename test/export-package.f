@@ -9,7 +9,7 @@
 \   interpret gate);
 \ - at top level it is the hb-build --repl export directive surface and
 \   consumes the name as a no-op, keeping directive-carrying programs (for
-\   example lib/prelude.f) directly loadable.
+\   example src/lib/prelude.f) directly loadable.
 \ Rejects pinned by child exit status: undefined source (rc 70, token named),
 \ sealed-system source prefix (rc 84, ENGINE-ERROR:SEAL-PACKAGE), missing name (rc 74),
 \ duplicate tail / self-export (rc 78, labeled "duplicate definition:"),
@@ -24,20 +24,20 @@
 \ internal cases also run --load for entry-path parity, exactly like
 \ test/seal-package.f.
 \
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f
 \   test/export-package.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/test/outcome.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/test/outcome.f
 
 2048 constant XPK-CAP
 10000 constant XPK-TIMEOUT-MS

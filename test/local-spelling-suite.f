@@ -37,12 +37,12 @@
 \ front-end resolution, and a tier that resolved names for itself would answer
 \ tier 0's old answer here.
 
-require lib/errors.f
-require lib/prelude.f
-require lib/string.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/errors.f
+require src/lib/prelude.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 require src/compiler/native/compiler.f
 
 \ ---- section 1: the three incidents, compiled by tier 0 (the cold JIT) -------
@@ -65,7 +65,7 @@ variable OUT-N
 
 public
 
-\ lib/json-write.f FIELD-S, with the local the incident had to rename to `kp`:
+\ src/lib/json-write.f FIELD-S, with the local the incident had to rename to `kp`:
 \ `key keyu KEY` is the local, the local, and then the WORD.
 : FIELD-S ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu:n v:ptr vu:n :}
    0 OUT-N !

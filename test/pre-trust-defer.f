@@ -35,23 +35,23 @@
 \               real pending TFAM-RESOLVE-XT. Neither probe continues with an
 \               artificially early seal floor.
 \ Every child exit code is asserted through CHILD-RC, which prints the child's own
-\ stdout/stderr and this process's launch context (lib/test/spawn-report.f) when
+\ stdout/stderr and this process's launch context (src/lib/test/spawn-report.f) when
 \ the code is not the expected one -- an unexpected exit arrives with the child's
 \ diagnostic attached instead of as a bare number.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-cwd.f
-require lib/test/spawn-report.f
-require lib/codesign.f
-require lib/tree-copy.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-cwd.f
+require src/lib/test/spawn-report.f
+require src/lib/codesign.f
+require src/lib/tree-copy.f
 require tools/build-fixpoint.f
 
 package PRE-TRUST-DEFER-TEST
@@ -88,12 +88,11 @@ variable LAST-ERR-U
 \ The sandbox has to hold everything the engine reads at boot, or the child dies
 \ naming a missing prefix file instead of reaching the refusal a case is about.
 \ Since dot habu-seed-the-stdlib-d8e3a757 that is no longer only src/: the cold
-\ prefix also loads the checked stdlib out of lib/. Both trees are walked whole
+\ prefix also loads the checked stdlib out of src/lib/. Both trees are walked whole
 \ rather than listing the prefix files, so a later prefix row inside either tree
 \ cannot silently leave this sandbox short.
 : COPY-SRC-TREE ( -- )
-   s" src" ROOT$ TREE-COPY:TREE
-   s" lib" ROOT$ TREE-COPY:TREE ;
+   s" src" ROOT$ TREE-COPY:TREE ;
 
 : SUB$ ( ptr u8 n -- ptr u8 n )                       \ ROOT/<rel> absolute path
    ROOT$ 2swap SUB-BUF JOIN-PATH SUB-U ! SUB-BUF SUB-U @ ;
@@ -262,7 +261,7 @@ variable LAST-ERR-U
    s" src/core/exec-vector.f" ROOT$ TREE-COPY:FILE
    s" src/core/check-hook.f" ROOT$ TREE-COPY:FILE
    s" src/core/checker.f" ROOT$ TREE-COPY:FILE
-   s" lib/string.f" ROOT$ TREE-COPY:FILE ;
+   s" src/lib/string.f" ROOT$ TREE-COPY:FILE ;
 
 : POSITIVE-CASE ( -- )
    APPEND-POS-DEFER
@@ -335,9 +334,9 @@ variable LAST-ERR-U
 \ Normal prefix continuation without its check hook still refuses generated
 \ constructor declarations. This is separate from the isolated seal probes.
 \ The refusal needs a GENERATED CONSTRUCTOR declaration in the cold prefix after
-\ the blanked hook, and the case used to get one by accident: lib/string.f, a
+\ the blanked hook, and the case used to get one by accident: src/lib/string.f, a
 \ prefix row, carried package STR and its str:split STRUCTURE. When that surface
-\ moved to lib/string-roles.f - which is not a prefix row - the cold prefix had
+\ moved to src/lib/string-roles.f - which is not a prefix row - the cold prefix had
 \ no such declaration left, the child ran past every case this was meant to
 \ catch, and died at the first compiled reference to an uncertified word instead
 \ (`E-UNDEFINED: GETENV` while compiling src/core/top-row.f, rc 70). Nothing was
@@ -345,7 +344,7 @@ variable LAST-ERR-U
 \ own declaration in a prefix row and restores the file afterwards, and what it
 \ asserts no longer depends on which library happens to declare a structure.
 : APPEND-CTOR-PROBE ( -- )
-   s" lib/string.f" SUB$
+   s" src/lib/string.f" SUB$
    S\" \npackage PTD-CTOR\npublic\nSTRUCTURE probe 0\n  FIELD one n\n;STRUCTURE\n;package\n"
    APPEND-FILE ;
 

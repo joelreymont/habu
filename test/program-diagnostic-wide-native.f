@@ -1,5 +1,5 @@
 \ A tier-1 replacement whose declared input row exceeds stored-signature width.
-require lib/string.f
+require src/lib/string.f
 
 package PROGRAM-DIAG-WIDE
 public

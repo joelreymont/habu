@@ -1,6 +1,6 @@
 \ gate-build-hbb.f - checked in-process hb-build helpers for positive AOT gates.
 
-require lib/fs.f
+require src/lib/fs.f
 require tools/hb-build-lib.f
 \ tools/build-fixpoint.f requires none of its lib preamble by design - its
 \ --load list is caller-composed - and hb-build-lib.f above composes it, so

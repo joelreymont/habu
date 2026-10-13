@@ -60,7 +60,7 @@ ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
 variable PRIVATE-WID
 ;package
 
-require lib/string.f
+require src/lib/string.f
 
 package AOTSH
 public
@@ -92,7 +92,7 @@ public
    s" " ;
 ;package
 
-require lib/le.f
+require src/lib/le.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
@@ -148,11 +148,11 @@ ARM-HOOK
 
 AOT-ARM:WINDOW-CLOSE
 
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
 require src/habu/aot-ident.f
 require src/habu/fdio.f
 require src/habu/address-carrier.f

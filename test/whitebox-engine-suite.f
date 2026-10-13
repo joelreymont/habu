@@ -24,13 +24,13 @@
 \ binary. Both engines are asked here, because a class that answered `whitebox`
 \ everywhere would satisfy the first half and mean nothing.
 
-require lib/test.f
-require lib/string.f
-require lib/engine-id.f
-require lib/engine-candidate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/engine-id.f
+require src/lib/engine-candidate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 
 package WHITEBOX-ENGINE-SUITE
 
@@ -99,7 +99,7 @@ CAST: XT>N ( [ -- ptr u8 ] -- n )
    S\" package TOP-ROW ;package 7 . cr\n" ENGINE-ID:PATH$ OUTPUT-OF$ ;
 
 \ THE CHILD FOLLOWS THIS ENGINE, AND AN OUTER VARIABLE CANNOT MOVE IT. Every
-\ tool a suite forks asks lib/engine-candidate.f which engine to run, and that
+\ tool a suite forks asks src/lib/engine-candidate.f which engine to run, and that
 \ resolver reads HABU_UNDER_TEST before it falls back to the running engine. A
 \ CI that exports HABU_UNDER_TEST=<tree>/bin/hb - the ordinary way to point a
 \ gate at a candidate - therefore used to send the children of a whitebox suite

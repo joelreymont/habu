@@ -1,10 +1,10 @@
 \ json-test.f - focused tests for tools/json.f.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
 require tools/json.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable TEST-N
 : ASSERT ( bool -- )

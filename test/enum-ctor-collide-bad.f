@@ -1,5 +1,5 @@
 \ A generated constructor collision reports a catchable declaration error.
-require lib/test.f
+require src/lib/test.f
 
 package ENUM-CTOR-COLLIDE-BAD
 

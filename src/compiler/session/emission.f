@@ -1,6 +1,6 @@
 \ A context owns this copy after the backend retires its transient emission.
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/core/bytes.f
 require src/compiler/binding.f
 require src/compiler/digest.f

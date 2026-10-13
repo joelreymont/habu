@@ -326,8 +326,8 @@ variable I-RDELTA                   \ signed byte distance it would need
 variable I-RLIMIT                   \ the field's exclusive bound, in bytes
 
 \ THE NUMBER WRITER IS THIS FILE'S OWN. Both build texts load icode.f ahead of
-\ lib/fmt.f (tools/bootstrap.sh SRC_COMMON, tools/build-fixpoint.f
-\ BF-APPEND-COMMON), so lib/fmt.f's renderers do not exist yet and a
+\ src/lib/fmt.f (tools/bootstrap.sh SRC_COMMON, tools/build-fixpoint.f
+\ BF-APPEND-COMMON), so src/lib/fmt.f's renderers do not exist yet and a
 \ refusal may not wait for them: the conversion is here, private, and built from
 \ nothing but arithmetic and this file's own byte cursor.
 $14 constant IDEC-CAP               \ -9223372036854775808: nineteen digits and a sign

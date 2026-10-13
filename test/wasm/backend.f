@@ -14,8 +14,8 @@
 \ of the engine's own machine comes out byte for byte as it did before the
 \ backend loaded.
 
-require lib/test.f
-require lib/errors.f
+require src/lib/test.f
+require src/lib/errors.f
 require src/habu/xref.f
 require src/compiler/target.f
 require src/compiler/binding.f

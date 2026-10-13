@@ -54,11 +54,11 @@
 \ STORAGE CLASS. PROCESS-GLOBAL: the check in progress belongs to the server's
 \ one task.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/fd-io.f
-require lib/process.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/fd-io.f
+require src/lib/process.f
 require tools/check-verify-core.f
 require tools/lsp-docs.f
 require tools/lsp-defs.f

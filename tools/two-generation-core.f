@@ -33,15 +33,15 @@
 \
 \ Invocation and today's lines: docs/bootstrap.md, "Generation Chain Check".
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require tools/image-size-lib.f
 require src/habu/code-span.f
 

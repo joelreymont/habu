@@ -1,6 +1,6 @@
 \ Live registry membership follows allocation, including precompiled reserve
 \ calls after cleanup. Range cleanup keeps writer buffers outside the value.
-require lib/test.f
+require src/lib/test.f
 
 package DYNAMIC-BUFFER-REGISTRY-TEST
 private

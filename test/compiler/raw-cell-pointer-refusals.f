@@ -22,9 +22,9 @@
 \ These run against the live engine's own checker through `evaluate-closed`,
 \ the interpreter `bin/hb --load` puts every definition through; a refusal is a
 \ throw out of the compile, not a value.
-require lib/test.f
-require lib/string.f
-require lib/task.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/task.f
 
 \ The cells the evaluated programs name. They are file-global because the
 \ programs below are compiled at run time, in the scope a real program writes

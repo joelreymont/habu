@@ -13,9 +13,9 @@
 \ The unit keeps the text because the checker read it out of the engine's scratch,
 \ which the next definition refills; every later presentation is digest-checked.
 
-require lib/prelude.f
-require lib/errors.f
-require lib/string.f
+require src/lib/prelude.f
+require src/lib/errors.f
+require src/lib/string.f
 require src/compiler/digest.f
 require src/compiler/native/checker-owner.f
 require src/compiler/ir/id.f

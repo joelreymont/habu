@@ -2,7 +2,7 @@
 \
 \ poll(2) is the one blocking syscall SA_RESTART never restarts, so every timer
 \ tick delivered while the capture loop waits returns EINTR. A primitive that
-\ collapses every poll error to -1 makes lib/process.f read that EINTR as a real
+\ collapses every poll error to -1 makes src/lib/process.f read that EINTR as a real
 \ failure and raise E-PROC-OUTPUT; with the 1 kHz sampling profiler armed the
 \ capture died after one millisecond instead of returning the child's output.
 \ This arms that exact 1 kHz SIGALRM interval (prof-on drives ITIMER_REAL at the
@@ -23,14 +23,14 @@
 \ early nor stretched, and the child released afterwards is still ours to reap.
 \ Run: bin/hb --load test/proc-capture-signal.f
 
-require lib/errors.f
-require lib/prelude.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/process.f
-require lib/process-argv.f
-require lib/test/outcome.f
+require src/lib/errors.f
+require src/lib/prelude.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/test/outcome.f
 
 package PROC-CAPTURE-SIGNAL
 

@@ -52,22 +52,22 @@
 \ `SUITE aot-seed-batch` in test/gate-stdlib-cases.f (tail-engine tier, since it
 \ spawns child engines).
 \ Standalone:
-\   bin/hb --load lib/errors.f lib/string.f lib/fmt.f lib/test.f lib/memory.f \
-\     lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f \
-\     lib/process-env.f lib/engine-candidate.f test/aot-seed-batch-suite.f
+\   bin/hb --load src/lib/errors.f src/lib/string.f src/lib/fmt.f src/lib/test.f src/lib/memory.f \
+\     src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f \
+\     src/lib/process-env.f src/lib/engine-candidate.f test/aot-seed-batch-suite.f
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/engine-candidate.f
-require lib/test/outcome.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
+require src/lib/test/outcome.f
 
 package AOT-SEED-BATCH
 
@@ -95,7 +95,7 @@ create PROG-BUF FS-PATH-CAP allot   variable PROG-U
 : SURFACE$ ( -- ptr u8 n ) s" test/aot-seed-surface.f" ;
 
 \ The engine under test: the gate's freshly built candidate when it exported one,
-\ else the running engine itself (lib/engine-candidate.f is the tree's one
+\ else the running engine itself (src/lib/engine-candidate.f is the tree's one
 \ resolver of that question).
 : HB$ ( -- ptr u8 n )     ENGINE-CANDIDATE:PATH$ ;
 

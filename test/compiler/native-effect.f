@@ -47,8 +47,8 @@
 \ is asserted against the assembler's own constant, so the tier this file loads
 \ under changes no answer below.
 
-require lib/test.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/string.f
 require test/checker-assert.f
 require src/compiler/native-effect.f
 require src/arch/arm64/machine.f

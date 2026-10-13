@@ -1,7 +1,7 @@
 \ A checked owner appends and publishes bytes through the real MEM load path.
-require lib/test.f
-require lib/c2-owner.f
-require lib/memory.f
+require src/lib/test.f
+require src/lib/c2-owner.f
+require src/lib/memory.f
 
 package C2-OWNER-PRODUCER-PROGRAM
 private

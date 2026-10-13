@@ -11,7 +11,7 @@
 \ the kernel's other helpers do (src/habu/kernel-x64.f), and OPEN, keeps every
 \ register. A span is two absolute addresses: the first byte in rdi and the
 \ end, exclusive, in rsi.
-require lib/byte-buffer.f
+require src/lib/byte-buffer.f
 require src/core/engine-error.f
 require src/habu/layout.f
 require src/habu/primitive-registry.f

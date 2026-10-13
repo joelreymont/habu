@@ -1,6 +1,6 @@
 # Habu Tool Argv
 
-`lib/argv.f` is the checked parser for native `bin/hb tool.f args...` scripts.
+`src/lib/argv.f` is the checked parser for native `bin/hb tool.f args...` scripts.
 Load it before the tool body, then call `ARGV:PARSE`.
 
 For multi-file tools, pass every source after `--load` and before `--`;
@@ -9,8 +9,8 @@ mode, so non-tty stdin is not consumed by startup and remains available to the
 loaded tool:
 
 ```sh
-bin/hb --load lib/argv.f my-tool.f -- --json --label NAME -o out file.f
-printf DATA | bin/hb --load lib/source.f my-tool.f -- arg
+bin/hb --load src/lib/argv.f my-tool.f -- --json --label NAME -o out file.f
+printf DATA | bin/hb --load src/lib/source.f my-tool.f -- arg
 ```
 
 `--build` is reserved for verified compiler payloads emitted by

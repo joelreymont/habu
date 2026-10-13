@@ -163,7 +163,7 @@ $378 constant WITH-TICK-ORDER-OFF
 $380 constant VERIFY-DECL-OFF
 \ $388 is the borrowed C2 transfer fact.
 $388 constant C2-STOW-OFF
-\ lib/errors.f names this code E-NCOMP-BINDING; a retained build host loads
+\ src/lib/errors.f names this code E-NCOMP-BINDING; a retained build host loads
 \ this constants-only ABI before it can load the new error word.
 -8575 constant BINDING-RC
 0 constant BOUND-ORD

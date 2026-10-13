@@ -20,7 +20,7 @@
 \ store went through; its absence in the expected stdout is the proof that the
 \ refusal precedes the mutation.
 
-require lib/errors.f
+require src/lib/errors.f
 
 package XT-CELL-BAND
 

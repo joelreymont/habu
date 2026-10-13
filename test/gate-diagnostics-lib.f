@@ -1,8 +1,8 @@
 \ gate-diagnostics.f - checked runner for checker diagnostic contracts.
 
-require lib/string.f
-require lib/fs.f
-require lib/process.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/process.f
 require tools/lint/text.f
 require tools/gate-json-assert-core.f
 require tools/public-signatures-core.f
@@ -1356,7 +1356,7 @@ TYPED-VARIABLE SPLICE-LEN len
 : ENGINE-PROVIDED ( -- )
    CHECK-START
    s" json-errors" CHECK-OPT
-   s" lib/string.f" CHECK-FILE
+   s" src/lib/string.f" CHECK-FILE
    CHECK-PATH
    64 s" tools/check.f checked a source the engine provides" GE-EXPECT-RC
    s" habu-engine.err" WRITE-ERR
@@ -1372,7 +1372,7 @@ TYPED-VARIABLE SPLICE-LEN len
    GT-ERR-BUF GT-ERR-CAP PS-ERR-BUFFER!
    0 PS-TRUST !
    PS-JSON-DOC-START
-   s" examples/llm/good.f" PS-SCAN-FILE
+   s" src/examples/llm/good.f" PS-SCAN-FILE
    PS-JSON-DOC-END
    PS-ERR$ nip 0 <> if s" public-signatures stderr" GE-FAIL then
    s" public-signatures.json" PATH!

@@ -1,7 +1,7 @@
 \ native-do.f - production plain `do` compilation.
-require lib/test.f
-require lib/prelude.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/prelude.f
+require src/lib/string.f
 require src/compiler/native/compiler.f
 require tools/codegen-loop-inventory.f
 

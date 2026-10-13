@@ -6,7 +6,7 @@
 \ (src/habu/treeshake.f) scan a caller's text. Their guards tested the bound and
 \ the byte with `and`, which evaluates both, so each scan read the byte past the
 \ text. Every case copies its text to end on the last byte before an
-\ inaccessible page (lib/test/guard-page.f): a read past the end faults, rc 134,
+\ inaccessible page (src/lib/test/guard-page.f): a read past the end faults, rc 134,
 \ where a bounded scan answers what the same text answers anywhere else.
 \   - a body whose last token ends at the edge: CHECK-SCAN's token loop;
 \   - a signature left open to the edge: CHECK-SCAN's comment loop, then
@@ -14,8 +14,8 @@
 \   - a DOES> clause signature ending at the edge: NEXT-SIG-TOK alone;
 \   - a program whose one-byte last token ends at the edge: the shaker's OPN2?.
 
-require lib/test.f
-require lib/test/guard-page.f
+require src/lib/test.f
+require src/lib/test/guard-page.f
 require src/habu/treeshake.f
 
 package ENGINE-SPAN-END-TEST

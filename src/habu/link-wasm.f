@@ -37,10 +37,10 @@
 \ cells, since run calls it with ctx alone. So is an output path that cannot be
 \ written. A refusal dies.
 
-require lib/prelude.f
-require lib/string.f
-require lib/le.f
-require lib/fs.f
+require src/lib/prelude.f
+require src/lib/string.f
+require src/lib/le.f
+require src/lib/fs.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/habu/aot-decl.f

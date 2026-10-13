@@ -42,7 +42,7 @@
 \ saved from inside a measurement is deterministic too rather than merely
 \ unlikely.
 
-require lib/prelude.f
+require src/lib/prelude.f
 
 package NPROF
 public

@@ -10,7 +10,7 @@
 \ (src/arch/arm64/mnem.f over icode.f EMITW) emits it. An x86_64 instruction is
 \ one to fifteen bytes and has no value representation, so the encode and the
 \ emit collapse into one layer here: every ENC-* word takes the byte sink as its
-\ LAST operand and appends through lib/byte-buffer.f (BUF:APPEND-BYTE). There is
+\ LAST operand and appends through src/lib/byte-buffer.f (BUF:APPEND-BYTE). There is
 \ therefore no instruction nominal type in this package — the nominal typing is
 \ entirely on the operands, which is where an ill-formed instruction is caught.
 \
@@ -39,9 +39,9 @@
 \ r64/r32/r16/r8 name the four register FILES. `R8` the word is the ninth 64-bit
 \ register; `r8` the type is the byte-register file.
 
-require lib/type/deftype.f
-require lib/errors.f
-require lib/byte-buffer.f
+require src/lib/type/deftype.f
+require src/lib/errors.f
+require src/lib/byte-buffer.f
 
 package X64ASM
 public
@@ -95,7 +95,7 @@ private
 : ?UIMM32 ( n -- n )  0 $FFFFFFFF RANGE ;
 
 \ ---- the byte sink -----------------------------------------------------------
-\ lib/byte-buffer.f is the tree's checked growable byte buffer; these four are
+\ src/lib/byte-buffer.f is the tree's checked growable byte buffer; these four are
 \ the little-endian appends this encoder needs and are private to it, so the
 \ library's public surface is unchanged.
 : EMIT-B ( n ptr a -- ) {: v:n s:ptr :}

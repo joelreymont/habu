@@ -7,7 +7,7 @@
 \ goes on to the other subjects and ends in MEM:UNMAP's `die`: the engine's BDIE
 \ reaches the leaf by a direct BL that the linker relocates through the
 \ (LEXITHOOK) engine-helper record, which is the exit a daemon takes.
-require lib/fs-mutate.f
+require src/lib/fs-mutate.f
 
 package EXIT-HOOK-SUBJECT
 public

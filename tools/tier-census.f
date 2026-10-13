@@ -18,7 +18,7 @@
 \ path every other program uses, so the numbers are the engine's own.
 \
 \ WHY `require` AND NOT `include`. The registry is what keeps a shared
-\ dependency single: two corpus files that both want lib/fs.f must compile it
+\ dependency single: two corpus files that both want src/lib/fs.f must compile it
 \ once, or the second load dies of a duplicate definition and the census stops
 \ half written. It also means a file the engine already carries baked - the
 \ cold prefix, src/core, src/compiler - is skipped rather than recompiled, so
@@ -31,14 +31,14 @@
 \ nothing behind. Two processes each get a pristine engine, and the tier is
 \ selected before the first corpus token is read.
 \
-\ WHY THIS FILE REQUIRES ALMOST NOTHING. lib/string.f and lib/fmt.f are the
+\ WHY THIS FILE REQUIRES ALMOST NOTHING. src/lib/string.f and src/lib/fmt.f are the
 \ string and formatting corpus this census most wants to weigh, and a tool that
 \ loaded them for its own output could not: they would already be in the
 \ dictionary when the corpus asked for them. The decimal writer and the line
 \ buffer below are the price of being able to measure them.
 \
 \ The two requires are src/habu/code-bytes.f, the boundary that turns a
-\ record's code address into bytes, and lib/tier.f, the word that selects the
+\ record's code address into bytes, and src/lib/tier.f, the word that selects the
 \ tier. Neither requires anything, and both load before MAIN takes the `ndict@`
 \ the report range starts from, so they add no rows to any report. They pay the
 \ same price every other pre-loaded file pays, and the price is exactly one
@@ -60,7 +60,7 @@
 \ therefore instruction traffic, not a count of address sites.
 
 require src/habu/code-bytes.f
-require lib/tier.f
+require src/lib/tier.f
 
 package TIER-CENSUS
 private

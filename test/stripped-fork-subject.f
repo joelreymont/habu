@@ -3,11 +3,11 @@
 \ hb-build and runs it. The parent makes the main thread's park and forks; the
 \ child parks and wakes on its own and exits 0. On Darwin the park is a Mach
 \ port, which fork does not copy, so the child has a park of its own only once
-\ TASK:CHILD-RESET has run in it: lib/process-fork.f registers that reset with
-\ lib/fork-child.f as it loads, and the image carries the registration.
-require lib/task.f
-require lib/process.f
-require lib/process-fork.f
+\ TASK:CHILD-RESET has run in it: src/lib/process-fork.f registers that reset with
+\ src/lib/fork-child.f as it loads, and the image carries the registration.
+require src/lib/task.f
+require src/lib/process.f
+require src/lib/process-fork.f
 
 package STRIPPED-FORK
 

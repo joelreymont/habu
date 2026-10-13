@@ -9,8 +9,8 @@
 \ with the record (src/compiler/native/shadow.f), past the window, because the
 \ shadow refused whatever it could before publication began.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/core/does-clause.f
 require src/compiler/target.f
 require src/compiler/binding.f

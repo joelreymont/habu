@@ -22,7 +22,7 @@ and not on the order its tables were interned in. `src/compiler/ir/diff.f`
 (package `IR-DIFF`) decides what two frozen modules differ by, and asks the
 renderer to spell the rows it names, so text has one owner and comparison has
 another. Error block `-8120..-8139` is split `-8120..-8129` renderer,
-`-8130..-8139` diff, and the region map in `lib/errors.f` now names both owners.
+`-8130..-8139` diff, and the region map in `src/lib/errors.f` now names both owners.
 
 The diff pairs the interned tables **by content** and the program tables **by
 position**. That is the whole reason it is not a text diff: adding one symbol
@@ -99,7 +99,7 @@ discipline, the same arrangement `IR-TYPE`'s function-type stage and `IR-CTX`'s
 staging window already use. One text is written at a time; there is no test for
 concurrent use because there is no concurrency to test.
 
-The project provides no ohsnap-style text snapshot for Forth output - `lib/test/snap.f`
+The project provides no ohsnap-style text snapshot for Forth output - `src/lib/test/snap.f`
 snapshots cell arrays - so the golden is a checked expected-text builder in
 `test/compiler/ir-render.f`, one `LINE` call per rendered line, compared with `T$=`.
 That is the same shape a snapshot would have and it reads as the format's

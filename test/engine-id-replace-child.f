@@ -1,8 +1,8 @@
 \ The child observes its own cached path before that pathname is replaced.
 \ Run through test/engine-id-replace-e2e.f so the executable can be copied safely.
-require lib/test.f
-require lib/fs-mutate.f
-require lib/engine-id.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
+require src/lib/engine-id.f
 
 package ENGINE-ID-REPLACE-CHILD
 

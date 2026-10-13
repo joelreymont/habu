@@ -10,12 +10,12 @@
 \ pass. An empty file list keeps the engine's status and names the cause;
 \ a full source arena must produce the same exact diagnostic on both routes.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/fmt.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/fmt.f
 require test/gate-common.f
 require src/habu/layout.f
 

@@ -30,20 +30,20 @@
 \ binds the global (or the live public), rc 0 and no scope refusal named at
 \ tier 1, p3 rejected by its own diagnostic at tier 2.
 \
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f
 \   test/top-row-warn-test.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/test/outcome.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/test/outcome.f
 
 package TOP-ROW-WARN-TEST
 
@@ -178,8 +178,8 @@ variable TW-CNT
 
 : TW-REQUIRE$ ( -- ptr u8 n )            \ row persists across require: p1 still caught after two requires
    SB-RESET
-   s" require lib/errors.f" TW-LINE
-   s" require lib/string.f" TW-LINE
+   s" require src/lib/errors.f" TW-LINE
+   s" require src/lib/string.f" TW-LINE
    s" : FOO2 ( n -- n n ) dup ;" TW-LINE
    s" ' FOO2 execute" TW-LINE
    SB$ ;

@@ -1,7 +1,7 @@
 \ Explicit representation views preserve addresses and define access width.
-require lib/test.f
-require lib/memory.f
-require lib/array.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/array.f
 require test/checker-assert.f
 
 package POINTER-VIEW-TEST

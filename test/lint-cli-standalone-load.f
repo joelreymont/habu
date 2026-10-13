@@ -31,15 +31,15 @@
 \ entry is covered the moment it is added, so no reserved name can suppress one, and
 \ coverage fails closed on any load-order regression.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/memory.f
-require lib/fs.f
-require lib/process.f
-require lib/process-argv.f
-require lib/argv.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/argv.f
+require src/lib/test.f
 
 package LINT-CLI-STANDALONE-LOAD
 
@@ -177,7 +177,7 @@ variable PATHS-USED
 \ it produces is checked: kind `timeout`, and a label naming that entry and the
 \ budget it burned, then the E-PROC-TIMEOUT it throws so the pool reports the row
 \ as a timeout. It records one deliberate failure and clears it, which is the
-\ lib/test/assert-test.f convention for testing a failure path; it runs before
+\ src/lib/test/assert-test.f convention for testing a failure path; it runs before
 \ anything else so the reset cannot erase a real one.
 1 constant UNMEETABLE-MS
 256 constant GOT-CAP

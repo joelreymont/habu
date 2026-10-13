@@ -15,7 +15,7 @@
 \ the sum of its locals. Its frame is read back, so the case still reaches the
 \ range it names, and so is its code: the frame it takes and gives back must be
 \ the frame the allocator measured.
-require lib/test.f
+require src/lib/test.f
 require src/habu/code-bytes.f
 
 1 set-tier

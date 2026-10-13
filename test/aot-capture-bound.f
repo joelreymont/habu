@@ -40,16 +40,16 @@
 \ in test/gate-stdlib-cases.f.
 \ Standalone: bin/hb --load test/aot-capture-bound.f
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/engine-candidate.f
-require lib/test/outcome.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/engine-candidate.f
+require src/lib/test/outcome.f
 
 package AOT-CAPTURE-BOUND
 
@@ -87,7 +87,7 @@ variable EXITED
 : DECL$ ( -- ptr u8 n )     DECL DECL-U @ ;
 
 \ The engine under test: the gate's freshly built candidate when it exported
-\ one, else the running engine itself (lib/engine-candidate.f).
+\ one, else the running engine itself (src/lib/engine-candidate.f).
 : HB$ ( -- ptr u8 n )       ENGINE-CANDIDATE:PATH$ ;
 
 : DECL-SRC$ ( -- ptr u8 n ) s" src/habu/aot-decl.f" ;

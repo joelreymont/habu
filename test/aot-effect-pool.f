@@ -4,16 +4,16 @@ package EFFECT-POOL-TEST
 ndict@ here variable PRE-R variable PRE-D PRE-D ! PRE-R !
 ;package
 
-require lib/test.f
+require src/lib/test.f
 require src/arch/arm64/icode.f
-require lib/test/outcome.f
-require lib/test/subject.f
-require lib/fs-mutate.f
-require lib/engine-id.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
+require src/lib/fs-mutate.f
+require src/lib/engine-id.f
 require tools/native-emit.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package AOT-FILE
 public

@@ -7,18 +7,18 @@
 \ differential runs in children; a row or string the source never closes stops
 \ the scan with a named throw, caught in process.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-fork.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/codesign.f
-require lib/test/outcome.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-fork.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/codesign.f
+require src/lib/test/outcome.f
 require test/whitebox-child.f
 require src/habu/verify-source.f
 
@@ -473,9 +473,9 @@ variable ROOT-U
 : BUILD-VERIFY-DRIVER ( ptr u8 len -- )
    {: path:ptr pathu:len :}
    BUF-CLEAR
-   s" require lib/errors.f" ADD ADD-LF
-   s" require lib/string.f" ADD ADD-LF
-   s" require lib/fs.f" ADD ADD-LF
+   s" require src/lib/errors.f" ADD ADD-LF
+   s" require src/lib/string.f" ADD ADD-LF
+   s" require src/lib/fs.f" ADD ADD-LF
    s" require src/habu/verify-source.f" ADD ADD-LF
    s" $1000 constant VP-CAP" ADD ADD-LF
    s" create VP-SRC VP-CAP allot" ADD ADD-LF

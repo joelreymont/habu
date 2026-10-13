@@ -12,15 +12,15 @@
 \ file, which is all the publish checks. A builder never released gives up after
 \ RELEASE-SECONDS, so a test that stops early leaves nothing running.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process-argv.f
-require lib/task.f
-require lib/time.f
-require lib/engine-candidate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-argv.f
+require src/lib/task.f
+require src/lib/time.f
+require src/lib/engine-candidate.f
 require test/keyed-image.f
 
 package KEYED-IMAGE-REAP-CHILD

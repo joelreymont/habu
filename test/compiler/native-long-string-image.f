@@ -4,7 +4,7 @@
 \ require nothing, so each build's maker runs on the keyed linker image
 \ (test/preloaded-engine.f) and compiles the literals as it loads the subject.
 require test/gate-common.f
-require lib/engine-candidate.f
+require src/lib/engine-candidate.f
 require test/preloaded-engine.f
 
 package NATIVE-LONG-STRING-IMAGE-TEST

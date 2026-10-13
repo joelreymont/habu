@@ -10,7 +10,7 @@
 \ the driver take this row as they take any other, and a definition reaches it
 \ by opening a shadow on BINDING (src/compiler/native/shadow.f).
 
-require lib/prelude.f
+require src/lib/prelude.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/native/backend.f

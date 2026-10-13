@@ -1,6 +1,6 @@
 \ The private publication owner can replace a live record while its alias keeps
 \ the old implementation. Run on the unsealed whitebox engine.
-require lib/test.f
+require src/lib/test.f
 require src/habu/xref.f
 
 package NDICT-RETARGET-TEST

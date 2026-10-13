@@ -11,19 +11,19 @@
 \ a copy at bin/hb-whitebox - PROVIDE builds it into the build cache first unless
 \ the cache already holds the one keyed to this tree - then census a load:
 \   echo 'require test/whitebox-engine.f s" bin/hb-whitebox" WHITEBOX-ENGINE:PROVIDE' | bin/hb
-\   bin/hb-whitebox --load tools/effect-store-census-run.f -- lib/json-read.f
+\   bin/hb-whitebox --load tools/effect-store-census-run.f -- src/lib/json-read.f
 \
 \ Name files the engine does not already carry. The whitebox engine is the
 \ product image with its seal stood down, so every file baked into it -
-\ lib/string.f, the compiler chain - is already provided, its require is a
+\ src/lib/string.f, the compiler chain - is already provided, its require is a
 \ registry no-op and the window comes out empty: the trap
 \ tools/aot-chain-capture.f documents for its own fixtures.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
 require tools/effect-store-census.f
-require lib/argv.f
+require src/lib/argv.f
 
 package EFF-CENSUS-CLI
 private

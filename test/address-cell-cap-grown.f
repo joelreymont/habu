@@ -1,5 +1,5 @@
 \ Grow past the former fixed band without losing either old or new declarations.
-require lib/test.f
+require src/lib/test.f
 require src/habu/address-cells.f
 
 package ADDRESS-CELL-CAP-GROWN

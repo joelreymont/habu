@@ -1,11 +1,11 @@
 \ zed-run-lib.f - checked remote device-run harness over ssh/scp/rsync.
 \
 \ Runs commands and ships artifacts to a remote host (default alias `zed`) using
-\ argv-spawned ssh/scp/rsync via lib/process-command.f - never a shell script and
+\ argv-spawned ssh/scp/rsync via src/lib/process-command.f - never a shell script and
 \ never a shell-interpolated remote command built from untrusted input. Remote
 \ command strings are assembled here from controlled path tokens only; test data
 \ travels as files, not as command arguments. Failures map to named E-ZED-*
-\ throw codes (lib/errors.f); a run whose deadline expired throws E-PROC-TIMEOUT
+\ throw codes (src/lib/errors.f); a run whose deadline expired throws E-PROC-TIMEOUT
 \ like every other process deadline. Device availability is policy: when
 \ HABU_ZED is unset or `0`, manual callers can report that the device is
 \ unavailable; when set, every failure is fail-closed.
@@ -13,15 +13,15 @@
 \ Config via env (each has a default): HABU_ZED (availability), ZED_HOST (ssh
 \ target, default `zed`), ZED_SSH/ZED_SCP/ZED_RSYNC (tool paths).
 
-require lib/errors.f
-require lib/string.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/memory.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-command.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/memory.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-command.f
 
 package ZED
 

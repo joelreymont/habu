@@ -2,8 +2,8 @@
 \ The engine calls GUARD at each real token dispatch and before an immediate
 \ executes. SOURCE-UNIT owns the nested source frame and require registry.
 
-require lib/prelude.f
-require lib/string.f
+require src/lib/prelude.f
+require src/lib/string.f
 require src/core/include.f
 require src/habu/layout.f
 

@@ -1,9 +1,9 @@
 \ dot-dep-lint-core.f - validate dot blocker references.
 
-require lib/errors.f
-require lib/fs.f
-require lib/vector.f                   \ VEC-HEADER-CELLS; the engine no longer bakes it
-require lib/sort.f
+require src/lib/errors.f
+require src/lib/fs.f
+require src/lib/vector.f                   \ VEC-HEADER-CELLS; the engine no longer bakes it
+require src/lib/sort.f
 require tools/lint/text.f
 require tools/lint/intern.f
 

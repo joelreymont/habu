@@ -1,5 +1,5 @@
-\ echo-test.f - the browser host's turns under bun: lib/browser/host-cli.mjs
-\ runs test/browser/echo.f's module through lib/browser/turn.js
+\ echo-test.f - the browser host's turns under bun: src/lib/browser/host-cli.mjs
+\ runs test/browser/echo.f's module through src/lib/browser/turn.js
 \ (docs/browser-host.md). The module is built by tools/wasm-build.f's command
 \ line and validated by wasm-tools. bun and wasm-tools must be on PATH, so this
 \ is no row of the ordinary gate: test/wasm/device.f runs it, as does
@@ -37,14 +37,14 @@
 \
 \ The module and the files stay in the printed directory.
 
-require lib/string.f
-require lib/fmt.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/test.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/test.f
 require src/arch/wasm/profile.f
 require test/wasm/harness.f
 
@@ -119,7 +119,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 \ host-cli.mjs on the module, its steps staged after it.
 : HOST-OPEN ( -- )
    PROC-ARGV-RESET
-   s" lib/browser/host-cli.mjs" ARG+  MOD MOD-U @ ARG+ ;
+   s" src/lib/browser/host-cli.mjs" ARG+  MOD MOD-U @ ARG+ ;
 
 \ A step at x and y: --pointer, --move or --release.
 : AT+ ( ptr u8 n n n -- )

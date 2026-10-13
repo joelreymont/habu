@@ -1,6 +1,6 @@
-require lib/test.f
-require lib/engine-candidate.f
-require lib/fmt.f
+require src/lib/test.f
+require src/lib/engine-candidate.f
+require src/lib/fmt.f
 require tools/two-generation-core.f
 
 package TWO-GEN
@@ -103,7 +103,7 @@ variable TGT-M-U
    then ;
 
 \ The line the engine prints for an uncaught code, rendered from the name so the
-\ needle follows lib/errors.f instead of repeating its number.
+\ needle follows src/lib/errors.f instead of repeating its number.
 : TGT-FAILED$ ( -- ptr u8 n )
    SB-RESET
    s" hb: uncaught throw code " SB-APPEND

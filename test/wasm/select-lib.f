@@ -10,9 +10,9 @@
 \ one operation written once with its count. The rows are structural; executing
 \ them is the rows dot's.
 
-require lib/test.f
-require lib/string.f
-require lib/fmt.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fmt.f
 require src/compiler/ir/type.f
 require src/compiler/ir/op.f
 require src/compiler/ir/attr.f

@@ -12,7 +12,7 @@
 \ Tier-neutral by design: the tape is minted, sealed and read through its own
 \ package, so no compiled body's lowering is asserted here.
 
-require lib/test.f
+require src/lib/test.f
 require test/checker-assert.f
 require src/compiler/native/tape.f
 

@@ -28,7 +28,7 @@
 \ written by this file back through the other view, which is a little-endian
 \ fact and the only target this compiler emits for.
 
-require lib/test.f
+require src/lib/test.f
 require src/habu/xref.f
 require src/habu/code-bytes.f
 

@@ -4,26 +4,26 @@
 \ (tools/hb-build-lib.f HBB-RUN-MAKER-CMD and HBB-RUN-APP-CMD) whose own entry
 \ holds native compilation over the application it loads, and an object hit
 \ links the cached maker output.
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-root.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/source.f
-require lib/build.f
-require lib/codesign.f
-require lib/content-key.f
-require lib/build-cache.f
-require lib/json-write.f
-require lib/object.f
-require lib/object-cache.f
-require lib/object-index.f
-require lib/object-resolve.f
-require lib/object-link.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-root.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/source.f
+require src/lib/build.f
+require src/lib/codesign.f
+require src/lib/content-key.f
+require src/lib/build-cache.f
+require src/lib/json-write.f
+require src/lib/object.f
+require src/lib/object-cache.f
+require src/lib/object-index.f
+require src/lib/object-resolve.f
+require src/lib/object-link.f
 require tools/build-fixpoint.f
 require tools/cli-run.f
 require tools/object-image.f

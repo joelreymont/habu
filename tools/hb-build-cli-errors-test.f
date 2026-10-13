@@ -113,7 +113,7 @@ FS-PATH-CAP 1+ BUFFER: HBT-LONG-OUT-BUF
    ou 0 T=
    HBT-ERR erru want wantu T$= ;
 
-\ -o is replaced through a sibling with a longer name (lib/fs-mutate.f
+\ -o is replaced through a sibling with a longer name (src/lib/fs-mutate.f
 \ SIBLING-PATH-MAX), so the CLI refuses an -o with no room for one by name.
 \ One byte past FS-PATH-CAP is the same refusal.
 : HBT-OUT-TOO-LONG ( n -- )
@@ -149,7 +149,7 @@ FS-PATH-CAP 1+ BUFFER: HBT-LONG-OUT-BUF
 \ The sibling's name is -o's last name plus a suffix that depends on the seed
 \ it draws, and the host refuses a name past FS-MUT-NAME-MAX bytes, so the CLI
 \ refuses by name a last name with no room for the longest suffix
-\ (lib/fs-mutate.f SIBLING-NAME-MAX).
+\ (src/lib/fs-mutate.f SIBLING-NAME-MAX).
 : HBT-NAME-TOO-LONG ( n -- )
    {: u:n :}
    HBT-AOT-SRC u HBT-LONG-NAME$

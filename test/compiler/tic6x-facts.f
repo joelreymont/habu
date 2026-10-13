@@ -1,4 +1,4 @@
-require lib/test.f
+require src/lib/test.f
 require test/checker-assert.f
 require src/arch/tic6x/asm.f
 require src/arch/tic6x/facts.f

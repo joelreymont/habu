@@ -1,9 +1,9 @@
 \ Save, boot, mutate, recapture and boot the checker with homonymous names.
 \ Behavior is asserted in both restored boots. The last phase prints the
 \ symbol offsets and pool growth for separate representation measurement.
-require lib/test.f
-require lib/fs-mutate.f
-require lib/process-cwd.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
+require src/lib/process-cwd.f
 require test/whitebox-child.f
 
 package NAME-INTERN-CAPTURE

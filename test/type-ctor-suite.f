@@ -16,8 +16,8 @@
 
 require test/checker-assert.f
 require tools/prot-wid-probe.f
-require lib/adt/result.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/adt/result.f
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 using SCHEMA-REG
 using TFAM

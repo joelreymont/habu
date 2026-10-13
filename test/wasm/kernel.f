@@ -16,11 +16,11 @@
 \ Registered as `SUITE wasm-kernel-words`. Run standalone from the repository
 \ root: bin/hb --load test/wasm/kernel.f
 
-require lib/test.f
-require lib/test/subject.f
-require lib/string.f
-require lib/process.f
-require lib/ieee754.f
+require src/lib/test.f
+require src/lib/test/subject.f
+require src/lib/string.f
+require src/lib/process.f
+require src/lib/ieee754.f
 require src/arch/wasm/link.f
 require src/arch/wasm/kernel-words.f
 require src/arch/wasm/kernel.f

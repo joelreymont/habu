@@ -9,7 +9,7 @@
 \ DATA resumed above the body, and whether the body kept its bytes and its row
 \ while new DATA was written after it.
 
-require lib/string.f
+require src/lib/string.f
 require src/compiler/native/string.f
 
 package LITERAL-SEGMENT

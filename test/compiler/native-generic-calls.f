@@ -1,6 +1,6 @@
 \ Per-site row instantiation through the production native compiler.
-require lib/test.f
-require lib/memory.f
+require src/lib/test.f
+require src/lib/memory.f
 
 package GENERIC-CALL-TEST
 

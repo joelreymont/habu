@@ -4,9 +4,9 @@
 \ what these cases read is the whole production chain's answer for an ordinary
 \ definition: the instructions a body compiles to, and the body's own value when
 \ it runs.
-require lib/test.f
-require lib/prelude.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/prelude.f
+require src/lib/string.f
 require src/compiler/native/compiler.f
 require tools/codegen-combine-inventory.f
 

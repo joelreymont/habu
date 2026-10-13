@@ -21,7 +21,7 @@
 \ views while the retired builders reject; context teardown releases everything;
 \ and checker fixtures prove no mutation can be spelled against a frozen store.
 
-require lib/test.f
+require src/lib/test.f
 require test/checker-assert.f
 require src/compiler/ir/fun.f
 

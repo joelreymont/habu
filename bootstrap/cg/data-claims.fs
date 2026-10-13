@@ -18,11 +18,11 @@
 \ DEF-TKA/DEF-TKL sit in VVAL, live only while the definition name is the
 \ token and the virtual stack is empty (native makes the same trade).
 \
-\ SRC ROWS. Code under src/ and lib/ that this engine runs - its boot prefix
+\ SRC ROWS. Code under src/ and src/lib/ that this engine runs - its boot prefix
 \ and the stage2 build - reaches some DATA cells at native's fixed offsets on
 \ whatever engine loads it. Where this stage names the same cell (the PKG
 \ cells, WIDN, SEAL-NDICT, TKA/TKL, DP, EVALERR, the USE depth), that row
-\ covers it; lib/string.f's STRING-ABI is named in forth.fs for its row. The
+\ covers it; src/lib/string.f's STRING-ABI is named in forth.fs for its row. The
 \ cells it does not name get a row each, labeled src:, so no cell of this stage
 \ can be laid over one.
 

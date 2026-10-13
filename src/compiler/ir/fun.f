@@ -155,8 +155,8 @@
 \ word with E-IR-ARENA-FROZEN. There is no publication, retirement, or lifecycle
 \ word in this file: the module freeze belongs to the builder stage.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f

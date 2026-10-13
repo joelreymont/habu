@@ -23,11 +23,11 @@
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer being written belongs to the
 \ server's one task.
 
-require lib/string.f
-require lib/byte-buffer.f
-require lib/adt/option.f
-require lib/json-read.f
-require lib/json-write.f
+require src/lib/string.f
+require src/lib/byte-buffer.f
+require src/lib/adt/option.f
+require src/lib/json-read.f
+require src/lib/json-write.f
 require tools/check-verify-core.f
 require tools/lsp-defs.f
 require tools/lsp-line.f

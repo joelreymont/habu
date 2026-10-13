@@ -1,5 +1,5 @@
 \ Derive pointer-shaped text from this builder's own code, on every host.
-require lib/codegen.f
+require src/lib/codegen.f
 
 package STRIPPED-LITERAL
 

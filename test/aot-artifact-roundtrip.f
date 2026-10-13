@@ -116,7 +116,7 @@ variable SAVED-XTOFF-N
    REFUSE-RC die ;
 
 \ The engine running this, by the relative path the suite spawns it with;
-\ lib/engine-id.f answers the same question with a resolved path and cannot be
+\ src/lib/engine-id.f answers the same question with a resolved path and cannot be
 \ loaded here. SHA256-FILE-IN's status is checked, so a run from the wrong directory
 \ refuses by name instead of writing a key of zeroes into the header.
 : ENGINE$ ( -- ptr u8 n ) s" bin/hb" ;

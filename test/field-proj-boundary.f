@@ -1,9 +1,9 @@
 \ The current checker and production sealing pass own both child tiers.
-require lib/test.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require test/whitebox-child.f
 require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 

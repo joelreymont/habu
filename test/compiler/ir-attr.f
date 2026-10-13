@@ -22,8 +22,8 @@
 \ releases everything; and checker fixtures prove the identity family and the
 \ API stay sealed.
 
-require lib/test.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/string.f
 require test/checker-assert.f
 require src/compiler/ir/attr.f
 

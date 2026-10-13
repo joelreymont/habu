@@ -1,7 +1,7 @@
 # MISSING — Habu ergonomics: what porting a real application surfaced, and how to fix it properly
 
 Status: design proposal with partial implementation. Foundation C, Foundation
-A2, the floating-point cleanup and A1 (`DEFTYPE`, `lib/type/deftype.f`) are
+A2, the floating-point cleanup and A1 (`DEFTYPE`, `src/lib/type/deftype.f`) are
 landed; B remains open checker work. Author: FFI/port agent. Audience: the agent working on Habu core
 (checker/compiler/stdlib).
 
@@ -208,8 +208,8 @@ Two moves:
 
 ## Cleanup — floating-point prelude words the extractor rejects
 
-Done: `f<=`, `f>=`, `fdup`, and `fover` are back in `lib/prelude.f`, public
-signature extraction emits `F<=`/`F>=`, and `lib/prelude-test.f` covers all four
+Done: `f<=`, `f>=`, `fdup`, and `fover` are back in `src/lib/prelude.f`, public
+signature extraction emits `F<=`/`F>=`, and `src/lib/prelude-test.f` covers all four
 words.
 
 ---

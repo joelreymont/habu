@@ -1,6 +1,6 @@
 \ ddc-verify-test.f - focused tests for the DDC comparison core.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\ src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f
 \ tools/ddc-verify.f tools/ddc-verify-test.f
 \
 \ Covers DDC-LOAD/DDC-SAME?/DDC-FIRST-DIFF/DDC-REPORT on synthetic artifact
@@ -8,15 +8,15 @@
 \ orchestration (runs the gforth+refresh chain) is an explicit manual audit, not
 \ exercised here.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require tools/ddc-verify.f
 
 package DDCT

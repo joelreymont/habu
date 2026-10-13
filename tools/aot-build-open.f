@@ -19,13 +19,13 @@ require src/habu/aot-window-latch.f
 package AOT-LINK
 ndict@ OPENER-NDICT !
 ;package
-require lib/executable-build.f
+require src/lib/executable-build.f
 require src/os/script-argv.f
 
 package AOT-LINK
 private
 
-\ There is no lib/string.f here, so no STR=: the JSON flag is one character and
+\ There is no src/lib/string.f here, so no STR=: the JSON flag is one character and
 \ this is the whole of it. The flag cannot wait for phase two - an application
 \ that fails to compile fails inside the `script-required` below, and
 \ tools/hb-build.f has already promised its caller which diagnostic shape that

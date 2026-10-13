@@ -11,13 +11,13 @@
 \ against this file - every row is either a declared entry point, with its reason
 \ on the row there, or a file some file in the closure requires - so a row added
 \ here for convenience fails the lint rather than growing the binary quietly.
-\ lib/vector.f, a row here by choice rather than by closure, has left: nothing in
+\ src/lib/vector.f, a row here by choice rather than by closure, has left: nothing in
 \ the closure requires it. The debugger trio (debug-watch.f, stepper.f, debug.f,
 \ over code-bytes.f) is baked as the debugger the REPL offers; a session reaches
-\ it with `using DEBUG` or `DEBUG:` names. lib/num-*.f stay, because lib/memory.f
+\ it with `using DEBUG` or `DEBUG:` names. src/lib/num-*.f stay, because src/lib/memory.f
 \ states the allocator's own contract in NUM roles and the compiler allocates;
-\ lib/adt/option.f stays, because lib/string.f returns option<n>; lib/float.f and
-\ lib/fmt.f stay, because src/habu/habu2.f requires fmt for number text.
+\ src/lib/adt/option.f stays, because src/lib/string.f returns option<n>; src/lib/float.f and
+\ src/lib/fmt.f stay, because src/habu/habu2.f requires fmt for number text.
 \
 \ The manifest IS the engine's boot registry, so it opens that registry here and
 \ CAPTURE-PREPARE below freezes it. Between the two, src/core/include.f keeps
@@ -97,15 +97,15 @@ s" src/core/layout-buffer-seal.f" required
 s" src/core/dynamic-storage.f" required
 s" src/core/checker-owner-guard.f" required
 s" src/core/lower-cert-seal.f" required
-s" lib/prelude.f" required
-s" lib/errors.f" required
-s" lib/span.f" required
-s" lib/image-lifecycle.f" required
-s" lib/adt/option.f" required
-s" lib/num-types.f" required
-s" lib/num-arithmetic.f" required
-s" lib/string.f" required
-s" lib/memory.f" required
+s" src/lib/prelude.f" required
+s" src/lib/errors.f" required
+s" src/lib/span.f" required
+s" src/lib/image-lifecycle.f" required
+s" src/lib/adt/option.f" required
+s" src/lib/num-types.f" required
+s" src/lib/num-arithmetic.f" required
+s" src/lib/string.f" required
+s" src/lib/memory.f" required
 s" src/core/layout-buffer-address.f" required
 s" src/os/script-argv.f" required
 \ Seal the pre-checker definitions before compiling the checked toolchain.
@@ -140,8 +140,8 @@ s" src/habu/debug-watch.f" required
 s" src/habu/stepper.f" required
 s" src/habu/debug.f" required
 s" src/core/top-row.f" required
-s" lib/c2-owner.f" required
-s" lib/executable-build.f" required
+s" src/lib/c2-owner.f" required
+s" src/lib/executable-build.f" required
 
 package NATIVE-RUNTIME
 

@@ -1,15 +1,15 @@
 \ repl-lint.f -- CLI wrapper for REPL exit lint.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/vector.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/vector.f
 require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/repl-lint-core.f
-require lib/argv.f
+require src/lib/argv.f
 
 : REPL-CONFIG ( -- )
    s" tools/repl-lint.f [ROOT]" ARGV:USAGE!

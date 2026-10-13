@@ -668,7 +668,7 @@ EPRIM: tier@          PE-N PE-OUT EPRIM;
 EPRIM: tick-order@    PE-N PE-OUT PE-PTR-U8 PE-OUT EPRIM;
 EPRIM: code-origin    PE-N PE-IN PE-N PE-IN PE-N PE-OUT EPRIM;
 \ Choosing the build scope belongs to package EXECUTABLE-BUILD
-\ (lib/executable-build.f), and these rows are that owner's alone: its WITH is
+\ (src/lib/executable-build.f), and these rows are that owner's alone: its WITH is
 \ the checked caller every other scope calls, and a checked body outside
 \ EXECUTABLE-BUILD does not find the names. No TRUSTED: body outside it calls
 \ either, so no global row is kept for one.
@@ -686,7 +686,7 @@ ETRUSTED-ONLY!
 \ above takes any cell.
 EPPRIM: TOP-ROW set-top-check
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN ECLOSE-PRIVATE
-\ Choosing the compiler belongs to package TIER (lib/tier.f), and this row is
+\ Choosing the compiler belongs to package TIER (src/lib/tier.f), and this row is
 \ that owner's alone: TIER:SELECT is the checked caller every other scope calls,
 \ a checked body outside TIER does not find the name, and a build driver's
 \ top-level `1 set-tier` runs unchecked. No TRUSTED: body outside TIER calls it,
@@ -884,7 +884,7 @@ EPRIM: DRAIN-PRETRUST EPRIM;   \ dot habu-engine-pre-trust-77410827: drains the 
 EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
 EPRIM: prot-wid-add   PE-N PE-IN EPRIM;
 EPRIM: prot-wid-room  PE-N PE-OUT EPRIM;
-\ The design seal's two writers (lib/policy.f, docs/policy.md): admit a
+\ The design seal's two writers (src/lib/policy.f, docs/policy.md): admit a
 \ package's public wordlist by name, then seal the dictionary as it stands. Both
 \ refuse once sealed, so a sealed design cannot widen its own vocabulary.
 EPRIM: policy-admit   PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
@@ -927,12 +927,12 @@ EPRIM: ffi-call-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-N PE-IN PE-N PE-IN  PE-
 ETRUSTED-ONLY!
 EPRIM: task-entry PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
-EPPRIM: TASK task-entry PE-N PE-OUT ECLOSE-PRIVATE    \ lib/task.f PTHREAD-ENTRY
+EPPRIM: TASK task-entry PE-N PE-OUT ECLOSE-PRIVATE    \ src/lib/task.f PTHREAD-ENTRY
 \ callback-entry ( n -- n ): the C entry address of callback slot n, one of
 \ CB-POOL fixed stubs into habu1.f BCALLBACK-THUNK (docs/ffi-callback.md).
 EPRIM: callback-entry PE-N PE-IN PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
-EPPRIM: FFI callback-entry PE-N PE-IN PE-N PE-OUT ECLOSE-PRIVATE    \ lib/ffi-abi.f FFI:CALLBACK-ENTRY
+EPPRIM: FFI callback-entry PE-N PE-IN PE-N PE-OUT ECLOSE-PRIVATE    \ src/lib/ffi-abi.f FFI:CALLBACK-ENTRY
 EPRIM: ffi-call-abi-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
                            PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
                            PE-N PE-OUT EPRIM;
@@ -951,10 +951,10 @@ ETRUSTED-ONLY!
 \ ---- package FFI's owner-private capability rows ----------------------------
 \ Each primitive here keeps the global ETRUSTED-ONLY! row above — the outside
 \ boundary (E-CAP-TRUSTED), and the call window the optimizing compiler reads for
-\ the TRUSTED: bodies outside FFI that still call it (lib/fs-identity.f,
-\ lib/f64-text.f) — and gains an owner-private row, so a CHECKED body compiled
+\ the TRUSTED: bodies outside FFI that still call it (src/lib/fs-identity.f,
+\ src/lib/f64-text.f) — and gains an owner-private row, so a CHECKED body compiled
 \ inside package FFI resolves it. This is what retires the TRUSTED:
-\ bodies in lib/ffi-abi.f and lib/net/udp4.f: FFI's own words become ordinary
+\ bodies in src/lib/ffi-abi.f and src/lib/net/udp4.f: FFI's own words become ordinary
 \ checked Habu, and no consumer can reach a raw foreign call at all.
 EPPRIM: FFI ffi-call-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: FFI ffi-call-abi-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN

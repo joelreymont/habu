@@ -17,11 +17,11 @@
 \ kept its authority: a caller verified in scope certifies with nothing to say,
 \ and a caller compiled by this load certifies and runs.
 \
-\ Run: bin/hb --load lib/errors.f lib/test.f src/habu/verify-source.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/test.f src/habu/verify-source.f
 \   test/checker-dup-record.f
 
-require lib/errors.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/test.f
 require src/habu/verify-source.f
 
 package CDR

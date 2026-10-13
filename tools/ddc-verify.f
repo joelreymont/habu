@@ -27,14 +27,14 @@
 \ helpers are covered by tools/ddc-verify-test.f; the full DDC-VERIFY
 \ orchestration is manual/audit because it runs the whole gforth+refresh chain.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 
 79 constant DDC-E-USAGE
 75 constant DDC-E-CHAIN
@@ -167,11 +167,11 @@ variable DDC-FXP-U
 \ scratch engine path via HABU_FIXPOINT_ENGINE.
 : DDC-REFRESH-ARGV+ ( -- )
    s" --load" DDC-ARG
-   s" lib/errors.f" DDC-ARG        s" lib/string.f" DDC-ARG
-   s" lib/memory.f" DDC-ARG        s" lib/fs.f" DDC-ARG
-   s" lib/fs-mutate.f" DDC-ARG
-   s" lib/process.f" DDC-ARG       s" lib/process-argv.f" DDC-ARG
-   s" lib/process-env.f" DDC-ARG   s" lib/codesign.f" DDC-ARG
+   s" src/lib/errors.f" DDC-ARG        s" src/lib/string.f" DDC-ARG
+   s" src/lib/memory.f" DDC-ARG        s" src/lib/fs.f" DDC-ARG
+   s" src/lib/fs-mutate.f" DDC-ARG
+   s" src/lib/process.f" DDC-ARG       s" src/lib/process-argv.f" DDC-ARG
+   s" src/lib/process-env.f" DDC-ARG   s" src/lib/codesign.f" DDC-ARG
    s" tools/build-fixpoint.f" DDC-ARG
    s" tools/build-fixpoint-main.f" DDC-ARG
    s" --" DDC-ARG  s" install" DDC-ARG  s" --force" DDC-ARG ;

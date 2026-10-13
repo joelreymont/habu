@@ -24,11 +24,11 @@
 \ of this process instead, the seam: a fork binds it to a counting spy, and a
 \ loaded file must arrive there.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/fs.f
-require lib/fs-mutate.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require test/gate-common.f
 require src/habu/interpret.f
 
@@ -163,7 +163,7 @@ variable SPIN-U
 \ case starts its own.
 : SPIN-PRELUDE ( -- )
    GE-SRC-RESET
-   s" require lib/task.f" GE-SRC-LINE
+   s" require src/lib/task.f" GE-SRC-LINE
    s" : OI-SPIN-BODY ( -- ) begin TASK:PAUSE false until ;" GE-SRC-LINE
    s" TASK:MIN-STACK TASK:TASK OI-SPINNER" GE-SRC-LINE
    s" : OI-SPIN ( -- ) ['] OI-SPIN-BODY OI-SPINNER TASK:ACTIVATE ;" GE-SRC-LINE

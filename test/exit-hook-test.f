@@ -7,17 +7,17 @@
 \ (test/exit-hook-subject.f). The children take the directory as argument 0
 \ rather than making their own under HB_TMP, so a case that fails leaves its
 \ evidence inside the root this fixture removes.
-\ A child script resolves `require lib/fs-mutate.f` against the working
+\ A child script resolves `require src/lib/fs-mutate.f` against the working
 \ directory, which is the checkout (test/app-image.f spawns the same way).
-require lib/test.f
-require lib/errors.f
-require lib/string.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
 
 package EXIT-HOOK-TEST
 
@@ -62,7 +62,7 @@ variable TREE-U
    ROOT$ script scriptu SCRIPT-BUF JOIN-PATH SCRIPT-U !
    tree treeu TREE-PATH
    0 TEXT-U !
-   S\" require lib/fs-mutate.f\n" TEXT+
+   S\" require src/lib/fs-mutate.f\n" TEXT+
    S\" : CHILD-TREE ( -- ptr u8 n ) 0 SCRIPT-ARGV$ ;\n" TEXT+ ;
 
 : SHOW-FAILURE ( n n n -- ) {: outu:n erru:n rc:n :}

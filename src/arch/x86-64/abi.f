@@ -25,7 +25,7 @@
 \ engine float primitive moves its arguments into the machine's own float
 \ registers and its answer back out, so nothing lives across a call.
 
-require lib/prelude.f
+require src/lib/prelude.f
 require src/compiler/target.f
 require src/compiler/numeric-policy.f
 require src/compiler/binding.f

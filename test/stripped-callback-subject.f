@@ -1,11 +1,11 @@
 \ A stripped application that hands qsort a callback. A binding is process
-\ state, which no image carries (lib/task.f drops every row at capture), so the
+\ state, which no image carries (src/lib/task.f drops every row at capture), so the
 \ entry word binds its two slots, sorts and unbinds. The outer comparator sorts
 \ a second row through the inner one, so the image nests a foreign call inside
 \ a callback at the tier an application is linked at.
-require lib/ffi-abi.f
-require lib/ffi-callback.f
-require lib/task.f
+require src/lib/ffi-abi.f
+require src/lib/ffi-callback.f
+require src/lib/task.f
 
 package STRIPPED-CALLBACK-SUBJECT
 private

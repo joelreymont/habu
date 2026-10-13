@@ -24,8 +24,8 @@
 \ Block zero is written first and the block control leaves through last.
 \ Publication explicitly distinguishes a trailing RET slot from a full span.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/native-effect.f
 require src/compiler/target.f
 require src/compiler/binding.f

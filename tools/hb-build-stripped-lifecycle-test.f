@@ -42,7 +42,7 @@ package HB-BUILD-CLI
 \ to be free for the image to print at all.
 : HBT-LIFE-SRC$ ( -- ptr u8 n )
    SB-RESET
-   S\" require lib/image-lifecycle.f\n: MAIN ( -- )\n" SB-APPEND
+   S\" require src/lib/image-lifecycle.f\n: MAIN ( -- )\n" SB-APPEND
    S\"    IMAGE-LIFECYCLE:COUNT 0 = if s\" hooks=0\" type cr then ;\n" SB-APPEND
    SB$ ;
 
@@ -59,7 +59,7 @@ package HB-BUILD-CLI
 \ claimed at `aot: PC-relative target removed or outside closure site=xt!`. A
 \ stripped image has no reader for the address-cell table, so the linker drops
 \ the declaration and keeps the store (src/habu/aot-closure.f AOT-DECLARATION?).
-\ PROC-ARGV-BUF is a REAL first-use registrant - lib/process-argv.f registers its
+\ PROC-ARGV-BUF is a REAL first-use registrant - src/lib/process-argv.f registers its
 \ RELEASE hook the first time the argv buffer is taken - so the program reaches
 \ the store the way Tender's server and scraper do, and not only through its own
 \ two calls.
@@ -72,8 +72,8 @@ package HB-BUILD-CLI
 \ the entry is `bl MAIN; exit(0)` - so MAIN calls it, after printing `exit`.
 : HBT-HOOK-SRC$ ( -- ptr u8 n )
    SB-RESET
-   S\" require lib/image-lifecycle.f\nrequire lib/process-argv.f\n" SB-APPEND
-   S\" require lib/fmt.f\n: HOOK-A ( -- ) s\" hook=a\" type cr ;\n" SB-APPEND
+   S\" require src/lib/image-lifecycle.f\nrequire src/lib/process-argv.f\n" SB-APPEND
+   S\" require src/lib/fmt.f\n: HOOK-A ( -- ) s\" hook=a\" type cr ;\n" SB-APPEND
    S\" : HOOK-B ( -- ) s\" hook=b\" type cr ;\n" SB-APPEND
    S\" : HOOK-P ( -- ) s\" hook=p\" type cr ;\n: MAIN ( -- )\n" SB-APPEND
    S\"    [: HOOK-A ;] IMAGE-LIFECYCLE:REGISTER\n" SB-APPEND
@@ -109,7 +109,7 @@ package HB-BUILD-CLI
 \ is why the last line is `0` and not `12`.
 : HBT-NUMP-SRC$ ( -- ptr u8 n )
    SB-RESET
-   S\" require lib/fmt.f\n: MAIN ( -- )\n" SB-APPEND
+   S\" require src/lib/fmt.f\n: MAIN ( -- )\n" SB-APPEND
    S\"    s\" 42\" num-parse {: v:n flt:bool ok:bool :}\n" SB-APPEND
    S\"    ok if v FMT:.INT cr then\n" SB-APPEND
    S\"    flt if s\" float\" type cr else s\" int\" type cr then\n" SB-APPEND
@@ -140,7 +140,7 @@ package HB-BUILD-CLI
 \ ... and REGISTERS a hook, runs it at exit and prints from it. The refusals this
 \ replaced, the reason the declaration half of `xt!` is dropped and the reason
 \ the printed order is the one pinned are all with HBT-HOOK-SRC$ above.
-\ lib/process-argv.f and lib/fmt.f are modules of the linker's lib closure the
+\ src/lib/process-argv.f and src/lib/fmt.f are modules of the linker's lib closure the
 \ engine does not bake, and the linker image refuses this program at
 \ PROC-ARGV-BUF (E-AOT-PRE-WINDOW, test/preloaded-engine.f rule 3), so it builds
 \ on the engine.
@@ -159,7 +159,7 @@ package HB-BUILD-CLI
 
 \ ... and PARSES A NUMBER, carrying the engine's number reader. The refusal
 \ this replaced and the three pinned answers are with HBT-NUMP-SRC$ above.
-\ The linker image refuses this program at lib/fmt.f's .INT (E-AOT-PRE-WINDOW),
+\ The linker image refuses this program at src/lib/fmt.f's .INT (E-AOT-PRE-WINDOW),
 \ so it builds on the engine too.
 : HBT-STRIPPED-NUM-PARSE ( -- )
    HBT-NUMP-SRC HBT-NUMP-SRC$ WRITE-ALL

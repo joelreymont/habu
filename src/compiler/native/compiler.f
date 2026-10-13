@@ -32,8 +32,8 @@
 \ the shadow's side refuses the definition: a cross-build has no use for a word
 \ the target cannot have.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/host.f

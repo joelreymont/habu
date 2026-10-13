@@ -17,7 +17,7 @@
 \   WS     $200 at $90     the sixty-four word message schedule, a cell each
 \   PBLK    $80 at $290    the padding block SHA256-END compresses
 \ THE HASH STATE IS CELLS, reached through CELL-VIEW (the declared view, as in
-\ src/core/checker.f SYM.PKG-U and lib/codegen.f CB-DATA): a word is one `@` or
+\ src/core/checker.f SYM.PKG-U and src/lib/codegen.f CB-DATA): a word is one `@` or
 \ one `!` at a cell index, and a word that touches several takes the view once
 \ into a local. TAIL and PBLK stay byte regions reached with ZPTR+, BE32@ reads
 \ the caller's block words and BE32! writes the digest out, because the input

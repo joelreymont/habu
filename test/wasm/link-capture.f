@@ -21,12 +21,12 @@ public
 ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
 ;package
 
-require lib/string.f
-require lib/test.f
-require lib/test/subject.f
-require lib/process.f
-require lib/fs.f
-require lib/fs-mutate.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/subject.f
+require src/lib/process.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require src/habu/layout.f
 require src/habu/aot-decl.f
 require src/habu/aot-arm.f

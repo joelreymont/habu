@@ -1,9 +1,9 @@
 \ Compile the private route record at tier 1, save it, and dispatch again in a
 \ fresh process. The restored process also compiles one new native caller.
-require lib/test.f
-require lib/fs-mutate.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/fs-mutate.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 
 package QUOT-FIELD-IMAGE-TEST
 

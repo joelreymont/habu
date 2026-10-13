@@ -20,7 +20,7 @@
 \ arena registry holds sixty-four, so every module below is built in its own
 \ context.
 
-require lib/test.f
+require src/lib/test.f
 require src/compiler/native/abi.f
 require src/compiler/native/hir.f
 require src/arch/wasm/wstruct.f

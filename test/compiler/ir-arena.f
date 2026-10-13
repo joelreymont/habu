@@ -10,9 +10,9 @@
 \ ever held, and by two same-size full fills back to back), and checker
 \ fixtures proving the private cast window is sealed.
 
-require lib/test.f
-require lib/image-lifecycle.f
-require lib/memory.f
+require src/lib/test.f
+require src/lib/image-lifecycle.f
+require src/lib/memory.f
 require test/checker-assert.f
 require src/compiler/ir/arena.f
 

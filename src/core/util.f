@@ -97,14 +97,14 @@ variable REG-PROT-N   0 REG-PROT-N !
 \ an uncaught throw at their top level.
 \ The tree's one path capacity, in path bytes without the NUL. A buffer that
 \ holds a whole path, core, library or tool, is sized from this constant
-\ (lib/fs.f's FS-PATH-CAP is its library name) and holds a path of this many
+\ (src/lib/fs.f's FS-PATH-CAP is its library name) and holds a path of this many
 \ bytes, plus a NUL where the OS reads it, so a path one layer accepts is a
 \ path every layer accepts. src/core/cell-effects.f gives this constant and
 \ E-PATH-RANGE a PRIM: row: this file loads before the checker, and without
 \ the row a checked body that names either is E-UNDEFINED on an engine that
 \ boots its prefix from source (test/cold-naming-test.f).
 \ The buffers of another size are the ones something else fixes:
-\   - an OS limit: a pty slave name (lib/pty.f SLAVE-PATH-CAP, Darwin's
+\   - an OS limit: a pty slave name (src/lib/pty.f SLAVE-PATH-CAP, Darwin's
 \     TIOCPTYGNAME answer) and a /proc/self/maps pathname
 \     (src/habu/proc-maps.f MAPS-PATH-MAX, PATH_MAX);
 \   - a foreign ABI field: the chdir path inside a posix_spawn file action

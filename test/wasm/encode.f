@@ -27,9 +27,9 @@
 \ arena registry holds sixty-four, so every module below is built in its own
 \ context.
 
-require lib/test.f
-require lib/errors.f
-require lib/string.f
+require src/lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
 require src/core/sha256.f
 require src/compiler/numeric-policy.f
 require src/compiler/target.f

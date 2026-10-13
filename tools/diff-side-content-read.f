@@ -1,7 +1,7 @@
 \ diff-side-content-read.f - strict side-content artifact reader.
 
 require tools/diff-side-content.f
-require lib/memory.f
+require src/lib/memory.f
 
 package DIFF-CONTENT
 private

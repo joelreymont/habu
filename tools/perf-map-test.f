@@ -17,9 +17,9 @@
 \ different one - so the line is assembled from a word defined right here, whose
 \ code address this dictionary does know. That exercises the same LINE$ path the
 \ captured lines take.
-require lib/errors.f
-require lib/string.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
 require tools/perf-map-core.f
 
 package PERF-MAP-TEST

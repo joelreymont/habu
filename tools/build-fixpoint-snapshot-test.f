@@ -8,7 +8,7 @@
 
 require tools/build-fixpoint-test-lib.f
 require src/habu/snapshot-format.f
-require lib/test/outcome.f
+require src/lib/test/outcome.f
 
 \ The shared fixture's words are private words of the tool's package, so this
 \ row reopens it the way tools/build-fixpoint-test-lib.f does.
@@ -111,7 +111,7 @@ variable BFT-DOC-CODE
    BFT-SNAP0-BUILD
    BFT-EMPTY-STDIN!
    s" hb-snap0" BFT-SNAP-RUN 0 T=
-   s" hb-snap0" BF-A$ s" lib/prelude.f" BF-RUN-LOAD-STAGE 0 T=
+   s" hb-snap0" BF-A$ s" src/lib/prelude.f" BF-RUN-LOAD-STAGE 0 T=
    BFT-BYTES-READ
    TRAILER-OFF {: tr:n :}
    tr SNAP-TRL-VERSION + BFT-BYTE@ SNAPSHOT-FORMAT:VERSION T=

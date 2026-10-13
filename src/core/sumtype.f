@@ -2787,7 +2787,7 @@ using TYPE-DECL
 
 \ The checker's own declaration entry points, reached by the preverify and
 \ all-errors replay paths (src/habu/verify-source.f, tools/check-core.f) and by
-\ the checked declarers that build on them (lib/type/deftype.f DEFTYPE,
+\ the checked declarers that build on them (src/lib/type/deftype.f DEFTYPE,
 \ maki/extent.f EXTENT:). Their PRIM: rows live in src/core/checker.f and stay
 \ PRIM: because the names they describe stay global.
 : CHECKER-DEFFAMILY ( ptr u8 n ptr u8 n -- ) TDECL-DEFFAMILY ;

@@ -18,7 +18,7 @@ backend, the checked GPU-kernel vocabulary and the CUDA driver bindings. Loom
 depends on Habu. Habu's language, compiler, runtime, standard libraries, numeric
 types and FFI remain here, including the substrate the moved code still needs:
 the GPU type families and barrier hooks in the checker, the PTX target row in
-the compiler, and the PTX error codes in `lib/errors.f`.
+the compiler, and the PTX error codes in `src/lib/errors.f`.
 
 ## Quick start
 
@@ -65,7 +65,8 @@ src/compiler/     compiler policy and shared compiler support
 src/arch/arm64/   ARM64 assembler and native code generation
 src/habu/         native engine, JIT, AOT, debugger, profiler, image tools
 src/os/           Linux and macOS target seams
-lib/              checked standard, numeric, FFI, and runtime libraries
+src/lib/          checked standard, numeric, FFI, and runtime libraries
+src/examples/     example programs
 tools/            build, lint, inspection, and backend smoke tools
 test/             native Habu suite and focused compiler/runtime tests
 bench/            benchmarks

@@ -33,8 +33,8 @@
 \ Each body is Wasm written here through WENC's opcode bytes, as WLINK writes
 \ its wrappers: none is selected from HIR, and WENC refuses call_indirect.
 
-require lib/prelude.f
-require lib/span.f
+require src/lib/prelude.f
+require src/lib/span.f
 require src/core/engine-error.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/wstruct.f

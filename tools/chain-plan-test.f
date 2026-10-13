@@ -1,10 +1,10 @@
 \ chain-plan-test.f - the engine-impact boundary used by chain runners.
 
-require lib/test.f
-require lib/fs.f
-require lib/process.f
-require lib/process-command.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/process.f
+require src/lib/process-command.f
+require src/lib/engine-candidate.f
 require tools/chain-plan.f
 
 package CHAIN-PLAN-TEST
@@ -35,9 +35,10 @@ package CHAIN-PLAN-TEST
    s" src/compiler/native/compiler.f" T-ENGINE
    s" bootstrap/cg/forth.fs" T-ENGINE
    s" tools/native-build-core.f" T-ENGINE
-   s" lib/string.f" T-ENGINE
-   s" lib/json-read.f" T-FOCUSED
-   s" lib/net/curl.f" T-FOCUSED
+   s" src/lib/string.f" T-ENGINE
+   s" src/lib/json-read.f" T-FOCUSED
+   s" src/lib/net/curl.f" T-FOCUSED
+   s" src/examples/array.f" T-FOCUSED
    s" test/gate-stdlib-cases.f" T-FOCUSED
    s" docs/bootstrap.md" T-FOCUSED
    s" tools/chain-plan.f" T-FOCUSED

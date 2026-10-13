@@ -1,10 +1,10 @@
 \ checked-boundary-lint-core.f - forbid broad unchecked definitions.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/source.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/source.f
 require tools/lint/json-writer.f
 require tools/hook-sites.f                     \ single registry of audited hook identities
 
@@ -526,7 +526,7 @@ private
 
 \ The file is read to its end however it grows while it is read: its size,
 \ whose refusal (E-FS-STAT) stays a missing or irregular file's, is only the
-\ first room (lib/source.f READ-WHOLE-SAMPLED). The scan takes the bytes after
+\ first room (src/lib/source.f READ-WHOLE-SAMPLED). The scan takes the bytes after
 \ the read, which may move the storage.
 : UB-READ-SCAN ( -- )
    UB-FILE$  UB-FILE$ FILE-SIZE  [: UB-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED UB-SRC-U !

@@ -4,7 +4,7 @@
 \ compiler to reach the driver's own check.
 require tools/native-build-args.f
 NATIVE-BUILD:BUILD-ARGS!
-require lib/executable-build.f
+require src/lib/executable-build.f
 
 package NATIVE-BUILD-ENTRY
 public

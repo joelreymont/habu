@@ -1,7 +1,7 @@
 \ source-discovery.f - whole-file ordered source-composition discovery pass.
 \
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f
-\ lib/source.f tools/source-discovery.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/memory.f src/lib/fs.f
+\ src/lib/source.f tools/source-discovery.f
 \
 \ DISCOVER:RUN lexes an entry file's ENTIRE token stream - colon bodies
 \ included - and replays every literal source-composition form against a fresh
@@ -26,12 +26,12 @@
 \ check rejects and reads past, the walk reads past it and follows no loader
 \ taking it. Recorded loader-token spans are entry-file byte offsets.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/span.f
-require lib/fs.f
-require lib/source.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/span.f
+require src/lib/fs.f
+require src/lib/source.f
 
 package DISCOVER
 using SOURCE                             \ the shared source-string emitters
@@ -135,7 +135,7 @@ variable SD-SCOPES
    SD-A @ ;
 
 \ Room for n bytes of the source being read, reusing the largest allocation.
-\ The read fills it as it grows (lib/source.f READ-WHOLE-SAMPLED), so a larger
+\ The read fills it as it grows (src/lib/source.f READ-WHOLE-SAMPLED), so a larger
 \ span takes the bytes the old one holds and is installed before the old one is
 \ released. No scanner pointer survives a read.
 : SD-ROOM ( n -- ptr u8 ) {: need:n :}

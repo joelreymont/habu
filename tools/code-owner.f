@@ -27,7 +27,7 @@
 \   <engine> --load tools/code-owner-main.f -- <hex-or-decimal region offset>
 \ or require it and call CODE-OWNER:AT. / CODE-OWNER:REGION-OWNER. directly.
 
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package CODE-OWNER
 

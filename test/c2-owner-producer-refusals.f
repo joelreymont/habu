@@ -1,7 +1,7 @@
 \ Checker and package boundaries of the append-only producer.
-require lib/test.f
-require lib/test/subject.f
-require lib/c2-owner.f
+require src/lib/test.f
+require src/lib/test/subject.f
+require src/lib/c2-owner.f
 
 package C2-OWNER-PRODUCER-REFUSALS
 private

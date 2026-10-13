@@ -25,9 +25,9 @@
 \ - a row not above the one before it, or of no known kind: refused;
 \ - a refusal found after rows inside the span: nothing is yielded.
 
-require lib/test.f
-require lib/le.f
-require lib/memory.f
+require src/lib/test.f
+require src/lib/le.f
+require src/lib/memory.f
 require src/habu/layout.f
 require src/habu/sites.f
 

@@ -14,22 +14,22 @@
 \ Run:  bin/hb --load tools/aot-chain-bake.f -- <artifact> <producer-engine>
 \ Leaves <HB_TMP>/hb-chain and prints `aot-chain-bake: hb-chain ready`.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/vector.f
-require lib/fmt.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-fork.f
-require lib/source.f
-require lib/build.f
-require lib/codesign.f
-require lib/content-key.f
-require lib/date.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/vector.f
+require src/lib/fmt.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process-fork.f
+require src/lib/source.f
+require src/lib/build.f
+require src/lib/codesign.f
+require src/lib/content-key.f
+require src/lib/date.f
 require tools/build-fixpoint.f
 
 package CHAIN-BAKE

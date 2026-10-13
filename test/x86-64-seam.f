@@ -31,9 +31,9 @@
 \ (src/compiler/native/abi.f, src/habu/prof.f): those are inspection-only until
 \ an x86_64 engine exists.
 
-require lib/test.f
-require lib/errors.f
-require lib/byte-buffer.f
+require src/lib/test.f
+require src/lib/errors.f
+require src/lib/byte-buffer.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 

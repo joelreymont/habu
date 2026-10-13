@@ -2,12 +2,12 @@
 \ getting it wrong ends or wedges that process. Most are refusals the engine
 \ ends the process on; one that is not refused dies 70 by name. The halted,
 \ killed, woken and fresh cases stop a task or thread inside its callback and
-\ exit 0 once it has left. lib/ffi-callback-test.f spawns this file once per
+\ exit 0 once it has left. src/lib/ffi-callback-test.f spawns this file once per
 \ case and reads the exit status and both streams.
 \ Run: bin/hb --load test/ffi-callback-child.f -- <case>
 require test/ffi-callback-fixture.f
-require lib/image-lifecycle.f
-require lib/task.f
+require src/lib/image-lifecycle.f
+require src/lib/task.f
 
 package FFI-CB-TEST
 using FFI-CB
@@ -215,7 +215,7 @@ variable PAST-STOP                    \ 1 once STOPS's body has left its STOP
    CTX-TASK TASK:KILL ;
 
 \ An exposure opens its park at zero, whatever earlier runs and exposures of the
-\ same task posted to it. On lib/task.f before EXPOSE drained the park, the
+\ same task posted to it. On src/lib/task.f before EXPOSE drained the park, the
 \ second exposure's thread took the hint posted to the first and left its STOP
 \ with no WAKE of its own, and the second line was missing.
 50 constant FRESH-MS                  \ the thread's time to take a stale hint

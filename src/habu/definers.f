@@ -20,7 +20,7 @@
 \ refusal the engine reports is made here first. Unlike the engine's head,
 \ this one leaves no PROT window open: def-open closes its own.
 
-require lib/prelude.f
+require src/lib/prelude.f
 require src/core/checker.f
 require src/habu/layout.f
 require src/habu/xref.f

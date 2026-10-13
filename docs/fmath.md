@@ -1,6 +1,6 @@
 # Float mathematics and integer roots
 
-`require lib/fmath.f` exposes the checked `FMATH` vocabulary without libm.
+`require src/lib/fmath.f` exposes the checked `FMATH` vocabulary without libm.
 
 | Word | Contract |
 | --- | --- |
@@ -75,7 +75,7 @@ returns signed zero, and a nonfinite value throws `E-DOMAIN`.
 Run the focused native tests from the Habu root:
 
 ```sh
-bin/hb --load lib/fmath-test.f
+bin/hb --load src/lib/fmath-test.f
 ```
 
 These test the signed-cell boundaries and root inequalities over 65536

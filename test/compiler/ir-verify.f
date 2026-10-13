@@ -18,7 +18,7 @@
 \ checked caller really can break, which is exactly the set the operation and
 \ function lanes handed to this verifier.
 
-require lib/test.f
+require src/lib/test.f
 require src/compiler/ir/build.f
 require src/compiler/ir/verify.f
 

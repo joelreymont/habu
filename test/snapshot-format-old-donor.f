@@ -2,7 +2,7 @@
 \ an image. Run on the retained version 12 product while changing the format:
 \   old-hb --load test/snapshot-format-old-donor.f
 require test/gate-common.f
-require lib/engine-id.f
+require src/lib/engine-id.f
 
 package SNAPSHOT-FORMAT-OLD-DONOR-TEST
 private

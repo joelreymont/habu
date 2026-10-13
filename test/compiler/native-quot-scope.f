@@ -1,10 +1,10 @@
 \ native-quot-scope.f - quotation bodies, locals, and control-flow scope.
 
-require lib/test.f
+require src/lib/test.f
 require test/checker-assert.f
-require lib/prelude.f
-require lib/string.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/string.f
+require src/lib/errors.f
 require src/compiler/native/compiler.f
 
 \ ---- the programs under test --------------------------------------------------

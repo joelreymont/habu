@@ -1,6 +1,6 @@
 \ Higher-rank unique effects compiled into the saved C2 image.
-require lib/memory.f
-require lib/c2-memory.f
+require src/lib/memory.f
+require src/lib/c2-memory.f
 
 package C2-MEMORY-WRAPPER
 public

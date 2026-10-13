@@ -1,12 +1,12 @@
 \ Emit one cold engine and one partial image through the production source
 \ writer. The restored code must execute its stored prefix and window targets.
-require lib/test.f
-require lib/test/outcome.f
-require lib/fs-mutate.f
-require lib/process-argv.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/fs-mutate.f
+require src/lib/process-argv.f
 require test/cold-engine.f
 require test/fixture-writer.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package NAMED-CELLS-SUITE
 

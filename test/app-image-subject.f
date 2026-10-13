@@ -1,5 +1,5 @@
 \ Persistent application state exercises DATA and compiled-code relocation.
-require lib/unicode.f
+require src/lib/unicode.f
 
 package APP-IMAGE-SUBJECT
 

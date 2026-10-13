@@ -12,20 +12,20 @@
 \ Exact outcome/stdout/stderr parity against direct `--load` and stdin runs is
 \ pinned below. Clean-start registry-capacity fixtures remain direct executions.
 \
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f test/seal.f
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f test/seal.f
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/test/subject.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/memory.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/test/subject.f
 require test/tail-parity.f
 
 package SEAL-SUITE
@@ -325,7 +325,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ signals/crashes, a distinct outcome from EXIT 83). One forge per protected band.
 : SLV-FFI-B1-FORGE$ ( -- ptr u8 n )         \ 16-byte write crosses band-1 lower edge
    SB-RESET
-   s" require lib/ffi-abi.f" SB-APPEND SLV-LF
+   s" require src/lib/ffi-abi.f" SB-APPEND SLV-LF
    s" TRUSTED: SLF-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ;" SB-APPEND SLV-LF
    s" TRUSTED: SLF-WRITE ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:WRITABLE! FFI:ARGS FFI:REG-LENS 1 SLF-RET ffi-call-bounded ;" SB-APPEND SLV-LF
    s" data-base $18 + SLF-WRITE drop" SB-APPEND SLV-LF
@@ -333,7 +333,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 : SLV-FFI-B2-FORGE$ ( -- ptr u8 n )         \ 16-byte write crosses band-2 lower edge
    SB-RESET
-   s" require lib/ffi-abi.f" SB-APPEND SLV-LF
+   s" require src/lib/ffi-abi.f" SB-APPEND SLV-LF
    s" TRUSTED: SLF-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ;" SB-APPEND SLV-LF
    s" TRUSTED: SLF-WRITE ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:WRITABLE! FFI:ARGS FFI:REG-LENS 1 SLF-RET ffi-call-bounded ;" SB-APPEND SLV-LF
    s" data-base $3CB8 + SLF-WRITE drop" SB-APPEND SLV-LF
@@ -345,7 +345,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ has-sret=1, int-nargs=0 -> only x8 is checked.
 : SLV-FFI-SRET-FORGE$ ( -- ptr u8 n )       \ sealed-band pointer as the x8 sret out-param
    SB-RESET
-   s" require lib/ffi-abi.f" SB-APPEND SLV-LF
+   s" require src/lib/ffi-abi.f" SB-APPEND SLV-LF
    s" TRUSTED: SLF-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ;" SB-APPEND SLV-LF
    s" TRUSTED: SLF-SRET ( ptr a -- n ) {: p:ptr :} FFI:RESET p FFI:X8-READABLE! FFI:ARGS FFI:FLOATS FFI:STACK 0 0 1 SLF-RET ffi-call-abi ;" SB-APPEND SLV-LF
    s" data-base $28 + SLF-SRET drop" SB-APPEND SLV-LF
@@ -357,7 +357,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ scalars so the trap is precisely attributable to arg[6].
 : SLV-FFI-A6-FORGE$ ( -- ptr u8 n )         \ sealed-band pointer as the arg[6] register arg
    SB-RESET
-   s" require lib/ffi-abi.f" SB-APPEND SLV-LF
+   s" require src/lib/ffi-abi.f" SB-APPEND SLV-LF
    s" TRUSTED: SLF-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ;" SB-APPEND SLV-LF
    s" TRUSTED: SLF-A6 ( ptr a -- n ) {: p:ptr :} FFI:RESET 6 0 ?do 1 i FFI:VALUE! loop p FFI:>CELL 6 FFI:VALUE! FFI:ARGS FFI:FLOATS FFI:STACK 0 7 0 SLF-RET ffi-call-abi ;" SB-APPEND SLV-LF
    s" data-base $28 + SLF-A6 drop" SB-APPEND SLV-LF

@@ -37,12 +37,12 @@
 \
 \ Run: bin/hb --load test/name-length-test.f
 
-require lib/errors.f
-require lib/memory.f
-require lib/string.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/errors.f
+require src/lib/memory.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 require src/habu/layout.f
 
 package NAME-LENGTH-TEST

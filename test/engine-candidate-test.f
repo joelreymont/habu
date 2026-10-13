@@ -1,5 +1,5 @@
 \ engine-candidate-test.f - focused coverage for the shared validated-engine
-\ resolver (lib/engine-candidate.f).
+\ resolver (src/lib/engine-candidate.f).
 \
 \ Proves:
 \   - a child-env default-table override resolves to that executable (branch 1);
@@ -14,16 +14,16 @@
 \
 \ Run: bin/hb --load test/engine-candidate-test.f
 
-require lib/test.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/engine-id.f
-require lib/engine-candidate.f
-require lib/aio.f
-require lib/process-pty-io.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-id.f
+require src/lib/engine-candidate.f
+require src/lib/aio.f
+require src/lib/process-pty-io.f
 
 package ENGINE-CANDIDATE-TEST
 
@@ -45,7 +45,7 @@ create ERR   IO-CAP  allot
 \ The fallback driver: a child engine with HABU_UNDER_TEST="" must resolve the
 \ candidate to its own identity; a mismatch throws so the child exits nonzero.
 : FALLBACK-SRC$ ( -- ptr u8 n )
-   s" require lib/engine-candidate.f : EC-CHK ( -- ) ENGINE-CANDIDATE:PATH$ ENGINE-ID:PATH$ STR= 0= if E-PROC-OUTPUT throw then ; EC-CHK" ;
+   s" require src/lib/engine-candidate.f : EC-CHK ( -- ) ENGINE-CANDIDATE:PATH$ ENGINE-ID:PATH$ STR= 0= if E-PROC-OUTPUT throw then ; EC-CHK" ;
 
 \ ---- fixtures ---------------------------------------------------------------
 : SETUP ( -- )

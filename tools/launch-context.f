@@ -18,12 +18,12 @@
 \
 \ See docs/debugging.md § A child-process fixture disagrees with itself.
 
-require lib/errors.f
-require lib/string.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/test/spawn-report.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/test/spawn-report.f
 
 package LAUNCH-CONTEXT
 private

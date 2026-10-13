@@ -5,9 +5,9 @@
 \ STORAGE CLASS. PROCESS-GLOBAL: the JR storage belongs to the server's one
 \ task.
 
-require lib/string.f
-require lib/adt/option.f
-require lib/json-read.f
+require src/lib/string.f
+require src/lib/adt/option.f
+require src/lib/json-read.f
 
 package LSP-LINE
 

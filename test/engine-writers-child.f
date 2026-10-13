@@ -26,9 +26,9 @@
 \
 \ Run: bin/hb --load test/engine-writers.f, the parent that loads this file in
 \ the build window.
-require lib/string.f
-require lib/test.f
-require lib/test/subject.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/subject.f
 require src/habu/xref.f
 
 package ENGINE-WRITERS-TEST

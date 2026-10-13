@@ -1,7 +1,7 @@
 \ imagedisasm.f - disassemble a raw executable slice with Habu's ARM64 decoder.
-\ Run: bin/hb --load lib/errors.f lib/string.f src/arch/arm64/disasm.f tools/imagedisasm.f -- image offset count
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/arch/arm64/disasm.f tools/imagedisasm.f -- image offset count
 
-require lib/adt/option.f                 \ option<n> for the number parsers (switchover wave A)
+require src/lib/adt/option.f                 \ option<n> for the number parsers (switchover wave A)
 
 package IMAGE-DISASM
 private

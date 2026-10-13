@@ -6,9 +6,9 @@
 \ definitions can collide with an older bare binding.
 
 require src/compiler/native/compiler.f
-require lib/json-write.f
-require lib/test.f
-require lib/errors.f
+require src/lib/json-write.f
+require src/lib/test.f
+require src/lib/errors.f
 require test/compiler/native-eval-fixture.f
 require tools/codegen-tail-probe.f
 

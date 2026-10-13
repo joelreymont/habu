@@ -1,6 +1,6 @@
 # Sealing a load to an admitted vocabulary
 
-`lib/policy.f` confines the source a process reads to a vocabulary its harness
+`src/lib/policy.f` confines the source a process reads to a vocabulary its harness
 chose. It is for a program that loads source it did not write: the harness loads
 the packages that source may call, admits them by name, seals, and then loads
 the source. From the seal on the engine refuses every token outside the
@@ -12,7 +12,7 @@ because its token loops do not read the seal.
 ## Use
 
 ```forth
-require lib/policy.f
+require src/lib/policy.f
 require my/vocabulary.f
 
 : RUN ( -- ) s" MY-VOCAB" POLICY:ALLOW POLICY:SEAL 0 SCRIPT-ARGV$ included ;
@@ -27,7 +27,7 @@ For a design split across source files, configure a canonical directory before
 checking and sealing it:
 
 ```forth
-require lib/policy.f
+require src/lib/policy.f
 require my/vocabulary.f
 
 : RUN ( -- )
@@ -130,7 +130,7 @@ harness catches.
 
 | the source names | refused token |
 |---|---|
-| `require lib/ffi-abi.f` with the default seal; `s" f" included`, `s" 1" evaluate` | `require`, `included`, `evaluate` |
+| `require src/lib/ffi-abi.f` with the default seal; `s" f" included`, `s" 1" evaluate` | `require`, `included`, `evaluate` |
 | `trusted: X ( -- ) ;` | `trusted:` |
 | `' WORD`, `c" x"`, `." x"` | `'`, `c"`, `."` |
 | `1 +`, `!`, `execute` in a body | `+`, `!`, `execute` |
@@ -210,5 +210,5 @@ keyword row generated from the rows' own registrars, so a new row is covered
 when it is added. The native compiler never reads the seal: it binds only names
 the capture already admitted.
 
-`lib/policy-test.f` loads each case under `test/policy/` sealed at both tiers
+`src/lib/policy-test.f` loads each case under `test/policy/` sealed at both tiers
 and writes `build/policy-run.txt`, one line per child.

@@ -1,13 +1,13 @@
 \ checked-boundary-lint.f - CLI wrapper for unchecked-boundary lint.
 
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/fs.f
 require tools/lint/text.f
 require tools/lint/json-writer.f
 require tools/checked-boundary-lint-core.f
-require lib/argv.f
+require src/lib/argv.f
 
 package BOUNDARY-LINT-CLI
 

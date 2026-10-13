@@ -1,7 +1,7 @@
 \ lease.f - one scoped admission to the legacy native compiler's shared state.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 
 package NLEASE
 public

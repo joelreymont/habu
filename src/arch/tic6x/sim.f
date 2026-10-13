@@ -8,7 +8,7 @@
 \ accesses moving data on one register file, two multicycle NOPs in a packet,
 \ two taken branches in a cycle, and two writes landing on one register in one
 \ cycle. It models no other hazard and no instruction outside the subset.
-require lib/errors.f
+require src/lib/errors.f
 require src/arch/tic6x/asm.f
 require src/arch/tic6x/facts.f
 

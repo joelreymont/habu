@@ -1,6 +1,6 @@
 \ Production vocabulary behavior and the instructions published for it.
-require lib/test.f
-require lib/ieee754.f
+require src/lib/test.f
+require src/lib/ieee754.f
 require src/arch/arm64/asm.f
 require tools/codegen-tail-probe.f
 

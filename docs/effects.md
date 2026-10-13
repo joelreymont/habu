@@ -206,8 +206,8 @@ different diagnostics. Read both before choosing.
 
 ### `DEFTYPE NAME` — a package-scoped value nominal
 
-`DEFTYPE` lives in `lib/type/deftype.f` (package `VNOM`); a file that uses it
-must `require lib/type/deftype.f` first. The substrate is a **package-scoped
+`DEFTYPE` lives in `src/lib/type/deftype.f` (package `VNOM`); a file that uses it
+must `require src/lib/type/deftype.f` first. The substrate is a **package-scoped
 arity-0 type family** — the same machinery as `NEWTYPE` and `maki/extent.f`, not
 the built-in type table.
 
@@ -442,7 +442,7 @@ judged by the rule again.
 An accessor that must hand out a code cell at a fixed **image-ABI** offset
 cannot be a checked `data-base <off> +` body for the same reason, so its
 owner declares the retype once as a package-private `CAST:` and checks the
-accessor over it: `lib/genio.f`'s `>ENGINE-ROW` under `ENGINE-ROW`, which
+accessor over it: `src/lib/genio.f`'s `>ENGINE-ROW` under `ENGINE-ROW`, which
 `QUOTATION-STORAGE:STORE` consumes. No accessor is needed where nothing reads
 the cell back as code: the owner `src/habu/repl.f` installs its reader with
 `[: REPL-READ ;] data-base REPLH-CELL + xt!`, and a borrower stores through the
@@ -455,7 +455,7 @@ a code cell declared over the null lands, so the executable value is fenced
 ahead of that arm and a **declared** code cell may no longer be compared with or
 subtracted from the null (`HK NULL-PTR =`, `<>`, `-` certified before this rule
 and are refused after it). An empty code cell is read through a number-typed
-accessor of the same address instead — the two-accessor shape `lib/genio.f`
+accessor of the same address instead — the two-accessor shape `src/lib/genio.f`
 already uses for its device rows, where a cleared row is spelled `ZERO`.
 
 ### A base address addresses no declared element
@@ -505,7 +505,7 @@ address is still reached with `ptr-field` (the declared door — the checker's o
 `SOURCE-CELL`/`TARGET-CELL` and the AOT span table), and the linker's
 `DATA-PTR`/`DATA-CELL@` still take `data-base BYTE-VIEW` before any arithmetic,
 which erases the kind into a concrete `u8`. A DATA cell declared to hold a
-*quotation* — `lib/genio.f` `ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )`, the
+*quotation* — `src/lib/genio.f` `ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )`, the
 write-handler row the output funnel dispatches through — is **not** one of them:
 it is refused by the executable-token rule above, and the three engine
 accessors of that shape are named `TRUSTED:` boundaries.
@@ -865,7 +865,7 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   primitive-body emitter (`FP-EMIT` in `src/habu/habu1.f`), a data-driven xt
   running raw machine-code emission that is not typed Habu; and the task
   scheduler's run of a per-task `( -- )` body under catch (`TASK-RUN-USER` in
-  `lib/task.f`), stored in a task control-block field so its effect is unknown at
+  `src/lib/task.f`), stored in a task control-block field so its effect is unknown at
   the catch site.
 - **Declared polymorphic effects stay parametric.** A quantifier in a declared
   effect (`a`, `ptr a`, …) is a promise that the word works for *every* type at
@@ -1002,7 +1002,7 @@ Use ordinary assertions inside a checked test word. For several results, consume
 and compare the top result first; the word's effect ensures every result is used.
 
 ```forth
-require lib/test.f
+require src/lib/test.f
 
 package PAIR-TEST
 : PAIR ( -- n n ) 3 4 ;

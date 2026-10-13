@@ -1,25 +1,25 @@
 \ check-core.f - reusable Habu-native checked engine core.
 
-require lib/date.f
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/vector.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f                \ the run stage spawns with an environment
-require lib/engine-candidate.f           \ and on the engine this names
-require lib/signal.f                     \ check.f answers SIGTERM, SIGINT and SIGHUP
-require lib/fmt.f                        \ the answer names a step that throws
-require lib/source.f
-require lib/argv.f
+require src/lib/date.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/memory.f
+require src/lib/vector.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f                \ the run stage spawns with an environment
+require src/lib/engine-candidate.f           \ and on the engine this names
+require src/lib/signal.f                     \ check.f answers SIGTERM, SIGINT and SIGHUP
+require src/lib/fmt.f                        \ the answer names a step that throws
+require src/lib/source.f
+require src/lib/argv.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/json-writer.f
-require lib/source-lex.f
+require src/lib/source-lex.f
 require tools/json.f
 require tools/json-only-core.f
 require tools/diag-origin-core.f
@@ -169,7 +169,7 @@ variable CHK-TFAM-NAME-I
    1 CHK-SRC-ROOM drop ;
 
 \ Reads the file at a path into CHK-SRC whole, however it grows while it is
-\ read (lib/source.f READ-WHOLE-FILE). The buffer may move as it grows, so a
+\ read (src/lib/source.f READ-WHOLE-FILE). The buffer may move as it grows, so a
 \ caller takes CHK-SRC-BUF after the read.
 : CHK-SRC-READ ( ptr u8 n -- n )
    [: CHK-SRC-ROOM drop ;] READ-WHOLE-FILE ;
@@ -681,7 +681,7 @@ private
    SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE CHK-APPEND-ENTRY ;
 
 \ Standard input holds a source of any size, read to its end into CHK-SRC
-\ (lib/source.f READ-WHOLE-FD), with no size to start from.
+\ (src/lib/source.f READ-WHOLE-FD), with no size to start from.
 : CHK-READ-STDIN ( -- n )
    0 0 [: CHK-SRC-ROOM drop ;] READ-WHOLE-FD ;
 
@@ -950,7 +950,7 @@ private
 
 \ DEFTYPE NAME folds the UPPER-CASE surface name to the lowercase family tail
 \ (SERIAL -> serial) and mints the tail with CHECKER-DEFFAMILY, as
-\ lib/type/deftype.f does. The bad-name diagnostic still reports the surface
+\ src/lib/type/deftype.f does. The bad-name diagnostic still reports the surface
 \ token the user wrote.
 128 constant CHK-NOM-TAIL-CAP
 create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
@@ -1514,7 +1514,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
 \ one-NULL envp, and a program that resolves an executable through $PATH then
 \ fails in the run stage while `--load` of the same file passes.
 \
-\ It runs on the engine lib/engine-candidate.f names: a gate's HABU_UNDER_TEST,
+\ It runs on the engine src/lib/engine-candidate.f names: a gate's HABU_UNDER_TEST,
 \ else the engine running check.f, never a bin/hb of the working directory.
 \ An engine the resolver refuses is its throw, the check's status (CHK-ENGINE$).
 : CHK-RUN-CAPTURE ( -- )
@@ -1548,7 +1548,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
    SB$ CHK-E-CHECK CHK-FAIL ;
 
 \ A run still going at its deadline is ended by the capture with every process
-\ it started (lib/process.f PROC-KILL-CAPTURE), and refused: what it wrote is
+\ it started (src/lib/process.f PROC-KILL-CAPTURE), and refused: what it wrote is
 \ not replayed, and one line names the subject and the deadline. A subject that
 \ needs longer is checked with a longer --deadline-ms.
 : CHK-RUN-LATE ( -- )
@@ -1730,7 +1730,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
 \ The pre-pass runs in the verifier child, on the engine's image
 \ (CHECK:PREVERIFY-BYTES), so the words it resolves are the engine's and the
 \ ones the subject loads, the words the run will have, never a word only this
-\ process loaded: lib/fs.f's FILE-SIZE for check.f, lib/test.f's T= for a
+\ process loaded: src/lib/fs.f's FILE-SIZE for check.f, src/lib/test.f's T= for a
 \ harness that checks in process. Its packets and the child's prose come
 \ first, then what its stop leaves.
 : CHK-PREVERIFY-REPORT ( result<n,outcome> -- )
@@ -1952,18 +1952,18 @@ private
 
 \ ---- a signal that stops check.f -----------------------------------------------
 \
-\ check.f ANSWERS SIGTERM, SIGINT AND SIGHUP AS THE GATE ROOT DOES (lib/signal.f
+\ check.f ANSWERS SIGTERM, SIGINT AND SIGHUP AS THE GATE ROOT DOES (src/lib/signal.f
 \ CATCH-STOPS). Under the default action it ends where it stands, and its run
 \ stage's child, a process group of its own, runs on under init beside the
 \ temporary directory: a `timeout` that kills check.f's group does not reach
 \ it. MAIN catches the three before it makes that directory, the capture that
-\ waits on the child hears them (lib/process.f PROC-STOP), and MAIN asks once
+\ waits on the child hears them (src/lib/process.f PROC-STOP), and MAIN asks once
 \ more when the run's own cleanup is done, for one that arrived while no
 \ capture waited. RUN catches nothing: a program that runs a check in process
 \ keeps its own answer.
 \
 \ The answer kills the child with every process under it and reaps it
-\ (lib/process.f PROC-KILL-CAPTURE), removes the temporary directory, and dies
+\ (src/lib/process.f PROC-KILL-CAPTURE), removes the temporary directory, and dies
 \ of the signal. A step that throws is named and the answer goes on. A run that
 \ ended before its child started - a refused program, a usage error, resident
 \ inputs - leaves the row's pid at 0 or PROC-NO-PID, and PROC-KILL-CAPTURE
@@ -2000,7 +2000,7 @@ private
 \ writing nothing, and reports any other as `hb: uncaught throw code N` on
 \ stderr, exiting UNCAUGHT-RC. Under --json-errors stderr holds packets only,
 \ so the command line says such a throw on stdout, with the same status: an
-\ engine selection the resolver refused (lib/engine-candidate.f: a path that
+\ engine selection the resolver refused (src/lib/engine-candidate.f: a path that
 \ names no executable, E-FS-OPEN, or one the file system refuses, E-FS-PATH),
 \ which CHK-ENGINE$ records where a child starts, as that, and any other, such
 \ as a scratch directory HB_TMP will not hold, by its code. The option is read

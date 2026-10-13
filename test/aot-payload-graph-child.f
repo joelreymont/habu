@@ -3,7 +3,7 @@
 \ Runtime bodies remain in this process. The companion native producer,
 \ reader and consumer test execution across process exits in the same suite.
 \ Exceptional quotes are refused explicitly.
-s" lib/prelude.f" provided
+s" src/lib/prelude.f" provided
 s" src/habu/layout.f" provided
 s" src/core/checker-owner-abi.f" provided
 require src/habu/aot-arm.f
@@ -18,7 +18,7 @@ require src/habu/fdio.f
 require src/habu/aot-file.f
 require src/core/generated-declaration-dictionary.f
 require src/core/generated-declaration-protection.f
-require lib/tier.f
+require src/lib/tier.f
 
 package GRAPH-PUBLICATION
 $800000 constant CAP

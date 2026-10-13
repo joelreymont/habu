@@ -7,12 +7,12 @@ words is pure byte work that needs no socket:
 
 | file | package | what it does |
 | --- | --- | --- |
-| `lib/net/ws.f` | `WS` | accepts the handshake inside an HTTP handler, receives whole messages, sends and closes |
-| `lib/net/ws-frame.f` | `WS` | encodes and decodes frame headers, masks payloads, writes close codes |
-| `lib/crypto/sha1.f` | `SHA1` | the digest behind `Sec-WebSocket-Accept` ([crypto](crypto.md#sha-1-for-the-websocket-handshake)) |
-| `lib/base64.f` | `BASE64` | the encoding of the key and of the accept value ([stdlib](stdlib.md#base64)) |
+| `src/lib/net/ws.f` | `WS` | accepts the handshake inside an HTTP handler, receives whole messages, sends and closes |
+| `src/lib/net/ws-frame.f` | `WS` | encodes and decodes frame headers, masks payloads, writes close codes |
+| `src/lib/crypto/sha1.f` | `SHA1` | the digest behind `Sec-WebSocket-Accept` ([crypto](crypto.md#sha-1-for-the-websocket-handshake)) |
+| `src/lib/base64.f` | `BASE64` | the encoding of the key and of the accept value ([stdlib](stdlib.md#base64)) |
 
-Requiring `lib/net/ws.f` loads all of them and the HTTP server. No libcrypto is
+Requiring `src/lib/net/ws.f` loads all of them and the HTTP server. No libcrypto is
 involved.
 
 ## Connections
@@ -177,7 +177,7 @@ peer's or one failing the connection, and `HTTP:RELEASE-MS` for the goodbye,
 the stop's 1001 close and the retirement. Once the server stops, every write on
 the slot gives up `HTTP:RELEASE-MS` after the first look that finds it
 stopping. Either way it gives up however many bytes the peer takes
-(`lib/net/ws.f` `GIVE-UP?`); a write looks before each send slice. A write that
+(`src/lib/net/ws.f` `GIVE-UP?`); a write looks before each send slice. A write that
 gives up loses the socket under 1006, whether it is another task's push, the
 worker's own answer to a control frame or its goodbye. Only a send reports that
 as `E-WS-CLOSED`: the worker's own writes throw nothing, and a `RECEIVE` whose
@@ -200,7 +200,7 @@ take of it would block and the stop would never return.
 The tables are process-wide and indexed by the HTTP worker's slot. A socket's
 message buffer and scratch are one mapping, made by `ACCEPT` and given back
 when the worker lets the socket go or its exit retires the socket. A slot's
-send lock is a `TASK:FACILITY` made ready while `lib/net/ws.f` loads, before
+send lock is a `TASK:FACILITY` made ready while `src/lib/net/ws.f` loads, before
 any task is live, and never destroyed. A slot's due time is set while its
 worker claims that lock, to answer its peer, close, let the socket go or retire
 it, and cleared before the worker gives the lock back; every write on the slot
@@ -297,11 +297,11 @@ CTX SHA1:FINISH DG SHA1:DIGEST!
 DG SPAN:$ OUT BASE64:ENCODE
 ```
 
-`lib/base64-test.f` derives the RFC's `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=` this way.
+`src/lib/base64-test.f` derives the RFC's `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=` this way.
 
 ## Errors
 
-Each file has its own block in `lib/errors.f`. The codec's is -9330..-9339
+Each file has its own block in `src/lib/errors.f`. The codec's is -9330..-9339
 (`E-WS-FIRST`, `E-WS-LAST`): it uses -9330..-9335 (above) and keeps the rest in
 reserve. The connection words' is -9410..-9419 (`E-WS-CONN-FIRST`,
 `E-WS-CONN-LAST`):
@@ -319,7 +319,7 @@ first, and the codec's `E-WS-LENGTH` for `SEND-BINARY`.
 
 ## Tests
 
-`bin/hb --load lib/net/ws-test.f`, SUITE `websocket`, runs a Habu client over
+`bin/hb --load src/lib/net/ws-test.f`, SUITE `websocket`, runs a Habu client over
 TCP4 against a server on a loopback port. The client builds and reads its
 frames with the codec and sends the malformed ones as raw bytes. It shakes
 hands with section 1.3's key and reads back `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`;
@@ -362,7 +362,7 @@ stream. The frames the client sends and reads one at a time are lines of
 `build/ws-transcript.txt`, the push's frames a line of counts and the burst's
 none; the file is read back and compared whole.
 
-`bin/hb --load lib/net/ws-frame-test.f`, SUITE `websocket-frame`, writes and
+`bin/hb --load src/lib/net/ws-frame-test.f`, SUITE `websocket-frame`, writes and
 reads section 5.7's example frames byte for byte and unmasks its masked
 "Hello". It takes each length form to its edges (125, 126, 65535, 65536 and
 2^63 - 1), round-trips headers of every opcode from both senders, answers

@@ -4,7 +4,7 @@
 \ so the engine finds its own source root from where its executable lives
 \ (src/core/include.f SOURCE-ROOT:ENGINE$), with no environment variable. Each
 \ case runs a fresh child of a copy of the engine under test
-\ (lib/engine-candidate.f), placed in the layout the case needs, with an empty
+\ (src/lib/engine-candidate.f), placed in the layout the case needs, with an empty
 \ environment, and checks what the child prints:
 \ - the root is the working directory when it is a Habu tree (it holds the
 \   engine's first boot row), else the tree two levels above the executable
@@ -31,14 +31,14 @@
 \ - a native build from a directory that is not a tree dies at its first row
 \   and writes nothing.
 
-require lib/test.f
-require lib/string.f
-require lib/fmt.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process-argv.f
-require lib/process-cwd.f
-require lib/engine-candidate.f
+require src/lib/test.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-argv.f
+require src/lib/process-cwd.f
+require src/lib/engine-candidate.f
 
 using SOURCE-ROOT
 package SOURCE-ROOT-EXE-TEST
@@ -167,8 +167,7 @@ variable RC
 
 : B-TREE ( -- )
    s" b" A$ B-ROOT B-ROOT-U COPY!
-   s" src" [: B-COPY ;] WALK-FILES
-   s" lib" [: B-COPY ;] WALK-FILES ;
+   s" src" [: B-COPY ;] WALK-FILES ;
 
 \ A package whose one word answers n, standing in for a file the engine bakes.
 : MARKER ( ptr u8 n n -- )
@@ -181,12 +180,12 @@ variable RC
 
 : WD-APP ( -- )
    SB-RESET
-   s" require lib/memory.f" LINE
+   s" require src/lib/memory.f" LINE
    s" package SOURCE-ROOT-EXE-WD" LINE
    S\" : YN ( bool -- ) if s\q yes\q else s\q no\q then type cr ;" LINE
    s" : RUN ( -- )" LINE
    s"    SOURCE-ROOT-EXE-SHADOW:MARK 2 = YN" LINE
-   S\"    s\q lib/memory.f\q ENGINE-PROVIDES? YN ;" LINE
+   S\"    s\q src/lib/memory.f\q ENGINE-PROVIDES? YN ;" LINE
    s" RUN" LINE
    s" ;package" LINE ;
 
@@ -214,7 +213,6 @@ variable RC
    \ The executable's tree, its files the gate tree's, and a link to its engine.
    s" tree/bin" A$ MAKE-DIRS
    s" tree/bin/hb" PLACE-ENGINE
-   s" lib" s" tree/lib" GATE-LINK
    s" src" s" tree/src" GATE-LINK
    s" bin" A$ MAKE-DIR
    s" tree/bin/hb" B$ s" bin/hb" A$ MAKE-SYMLINK
@@ -223,29 +221,31 @@ variable RC
    s" x/hb" PLACE-ENGINE
    s" p/bin" A$ MAKE-DIRS
    s" p/bin/hb" PLACE-ENGINE
-   s" src" s" p/src" GATE-LINK
+   s" p/src" A$ MAKE-DIR
+   s" src/core" s" p/src/core" GATE-LINK
    \ An engine whose directory is not a tree, beside an engine file's name.
    s" q/bin" A$ MAKE-DIRS
    s" q/bin/hb" PLACE-ENGINE
-   s" q/lib" A$ MAKE-DIRS
-   s" SOURCE-ROOT-EXE-NOT-TREE" 4 MARKER s" q/lib/errors.f" SB$ TEXT
+   s" q/src/lib" A$ MAKE-DIRS
+   s" SOURCE-ROOT-EXE-NOT-TREE" 4 MARKER s" q/src/lib/errors.f" SB$ TEXT
    \ A real copy of the tree, with an engine of its own.
    B-TREE
    s" b/bin" A$ MAKE-DIRS
    s" b/bin/hb" PLACE-ENGINE
-   s" app/lib" A$ MAKE-DIRS
+   s" app/src/lib" A$ MAKE-DIRS
    s" test/source-root-exe-app.f" s" app/app.f" A$ FS-MUT-COPY-CAP COPY-FILE
-   s" SOURCE-ROOT-EXE-APP-ERRORS" 1 MARKER s" app/lib/errors.f" SB$ TEXT
+   s" SOURCE-ROOT-EXE-APP-ERRORS" 1 MARKER s" app/src/lib/errors.f" SB$ TEXT
    s" wd-app" A$ MAKE-DIR
    WD-APP s" wd-app/wd.f" SB$ TEXT
-   s" shadow/lib" A$ MAKE-DIRS
-   s" SOURCE-ROOT-EXE-SHADOW" 2 MARKER s" shadow/lib/memory.f" SB$ TEXT
+   s" shadow/src/lib" A$ MAKE-DIRS
+   s" SOURCE-ROOT-EXE-SHADOW" 2 MARKER s" shadow/src/lib/memory.f" SB$ TEXT
    s" other/nested" A$ MAKE-DIRS
-   s" other/lib" A$ MAKE-DIRS
-   s" SOURCE-ROOT-EXE-OTHER" 3 MARKER s" other/lib/errors.f" SB$ TEXT
+   s" other/src/lib" A$ MAKE-DIRS
+   s" SOURCE-ROOT-EXE-OTHER" 3 MARKER s" other/src/lib/errors.f" SB$ TEXT
    s" other/nested" B$ s" tree/branch" A$ MAKE-SYMLINK
    s" wd" A$ MAKE-DIR
-   s" lib" s" wd/lib" GATE-LINK
+   s" wd/src" A$ MAKE-DIRS
+   s" src/lib" s" wd/src/lib" GATE-LINK
    s" cd/sub" A$ MAKE-DIRS
    CD-FILE s" cd/x.f" SB$ TEXT
    SB-RESET s" SOURCE-ROOT:CD " SB-APPEND TOP$ LINE s" cd-load.f" SB$ TEXT
@@ -256,7 +256,6 @@ variable RC
    LONG-NAME 0 ?do 97 LONG i + c! loop
    DEEP-DIRS
    s" moved/bin" A$ MAKE-DIRS
-   s" lib" s" moved/lib" GATE-LINK
    s" src" s" moved/src" GATE-LINK
    s" cwd" A$ MAKE-DIR
    s" tools" s" cwd/tools" GATE-LINK ;
@@ -333,10 +332,10 @@ variable RC
    YN-LINE
    s" : RUN ( -- )" PLINE
    s"    SOURCE-ROOT:ENGINE$ type cr" PLINE
-   S\"    s\q lib/string.f\q ENGINE-PROVIDES? YN ;" PLINE
+   S\"    s\q src/lib/string.f\q ENGINE-PROVIDES? YN ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
-   s" require lib/fs.f" PLINE ;
+   s" require src/lib/fs.f" PLINE ;
 
 : FROM-FOREIGN ( ptr u8 n -- )
    {: exe:ptr exeu:n :}
@@ -360,8 +359,8 @@ variable RC
    s" a working directory that is a Habu tree is the root" T-LABEL
    PROG-RESET
    s" SOURCE-ROOT:ENGINE$ type cr" PLINE
-   s" require lib/string.f" PLINE
-   s" require lib/fs.f" PLINE
+   s" require src/lib/string.f" PLINE
+   s" require src/lib/fs.f" PLINE
    PROC-ARGV-RESET
    s" tree/bin/hb" HB-AT$ s" b" A$ PROG$ TIMEOUT-MS RUN-EXE
    SB-RESET s" b" A$ LINE
@@ -374,10 +373,10 @@ variable RC
    SB-RESET GATE$ LINE SB$ 0 EXPECT
    s" elsewhere it takes the working directory, and finds no library there" T-LABEL
    PROC-ARGV-RESET
-   s" x/hb" HB-AT$ FOREIGN$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire lib/fs.f\n"
+   s" x/hb" HB-AT$ FOREIGN$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire src/lib/fs.f\n"
    TIMEOUT-MS RUN-EXE
    SB-RESET FOREIGN$ LINE SB$ STDOUT
-   FOREIGN$ s" /lib/fs.f" CANNOT-OPEN ;
+   FOREIGN$ s" /src/lib/fs.f" CANNOT-OPEN ;
 
 \ The tree's lib is missing, so its frozen rows answer by name, also under a
 \ discovery base, and a library is refused naming the owner's path.
@@ -388,17 +387,17 @@ variable RC
    YN-LINE
    s" : RUN ( -- )" PLINE
    s"    SOURCE-ROOT:ENGINE$ type cr" PLINE
-   S\"    s\q lib/string.f\q ENGINE-PROVIDES? YN" PLINE
+   S\"    s\q src/lib/string.f\q ENGINE-PROVIDES? YN" PLINE
    s"    REQUIRE-SNAPSHOT" PLINE
-   S\"    s\q lib/string.f\q ENGINE-PROVIDES? YN" PLINE
+   S\"    s\q src/lib/string.f\q ENGINE-PROVIDES? YN" PLINE
    s"    REQUIRE-RESTORE ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
-   s" require lib/fs.f" PLINE
+   s" require src/lib/fs.f" PLINE
    PROC-ARGV-RESET
    s" p/bin/hb" HB-AT$ FOREIGN$ PROG$ TIMEOUT-MS RUN-EXE
    SB-RESET s" p" A$ LINE s" yes" LINE s" yes" LINE SB$ STDOUT
-   FOREIGN$ s" /lib/fs.f" CANNOT-OPEN ;
+   FOREIGN$ s" /src/lib/fs.f" CANNOT-OPEN ;
 
 \ After the program's load lines: the root, and whether q's file loaded.
 : NOT-TREE-RUN ( -- )
@@ -414,18 +413,18 @@ variable RC
    SB-RESET FOREIGN$ LINE s" yes" LINE SB$ 0 EXPECT ;
 
 \ q holds no first row, so the working directory is the root and q's
-\ lib/errors.f is an application file, by its absolute path and under CD.
+\ src/lib/errors.f is an application file, by its absolute path and under CD.
 : NOT-TREE ( -- )
    s" a file beside an engine whose directory is not a tree is the application's"
    T-LABEL
    PROG-RESET
-   SB-RESET S\" s\q " SB-APPEND s" q/lib/errors.f" A$ SB-APPEND
+   SB-RESET S\" s\q " SB-APPEND s" q/src/lib/errors.f" A$ SB-APPEND
    S\" \q required" SB-APPEND SB$ PLINE
    NOT-TREE-RUN
    s" so is one a relative require reaches under CD" T-LABEL
    PROG-RESET
    s" SOURCE-ROOT:CD" s" q" PATH-LINE
-   s" require lib/errors.f" PLINE
+   s" require src/lib/errors.f" PLINE
    NOT-TREE-RUN ;
 
 \ ---- resolution and identity -----------------------------------------------------
@@ -453,25 +452,25 @@ variable RC
    s" a relative --load entry is relative to the working directory only" T-LABEL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" lib/fs.f" >LEN PROC-ARGV+
+   s" src/lib/fs.f" >LEN PROC-ARGV+
    s" tree/bin/hb" HB-AT$ FOREIGN$ TIMEOUT-MS RUN-ARGS
    NULL$ STDOUT
-   FOREIGN$ s" /lib/fs.f" CANNOT-OPEN ;
+   FOREIGN$ s" /src/lib/fs.f" CANNOT-OPEN ;
 
-\ The root's lib and src are symlinks into the gate tree; branch is a symlink
-\ elsewhere, so branch/../lib/errors.f only reads like the root's file.
+\ The root's src is a symlink into the gate tree; branch is a symlink
+\ elsewhere, so branch/../src/lib/errors.f only reads like the root's file.
 : ALIAS ( -- )
    s" the root's files keep the engine's identity through its symlinks" T-LABEL
    PROG-RESET
-   s" require lib/errors.f" PLINE
+   s" require src/lib/errors.f" PLINE
    s" require src/core/util.f" PLINE
-   s" require branch/../lib/errors.f" PLINE
+   s" require branch/../src/lib/errors.f" PLINE
    s" package SOURCE-ROOT-EXE-ALIAS" PLINE
    YN-LINE
    s" : RUN ( -- )" PLINE
-   S\"    s\q lib/errors.f\q ENGINE-PROVIDES? YN" PLINE
+   S\"    s\q src/lib/errors.f\q ENGINE-PROVIDES? YN" PLINE
    S\"    s\q src/core/util.f\q ENGINE-PROVIDES? YN" PLINE
-   S\"    s\q branch/../lib/errors.f\q ENGINE-PROVIDES? YN" PLINE
+   S\"    s\q branch/../src/lib/errors.f\q ENGINE-PROVIDES? YN" PLINE
    s"    SOURCE-ROOT-EXE-OTHER:MARK 3 = YN ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
@@ -483,27 +482,27 @@ variable RC
 : FIX-1 ( -- )
    s" the root's file required through its parent directory is the engine's" T-LABEL
    PROC-ARGV-RESET
-   s" b/bin/hb" HB-AT$ TOP$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire b/lib/errors.f\n"
+   s" b/bin/hb" HB-AT$ TOP$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire b/src/lib/errors.f\n"
    TIMEOUT-MS RUN-EXE
    SB-RESET s" b" A$ LINE SB$ 0 EXPECT
    s" the root's files reached through a symlinked working directory are the engine's"
    T-LABEL
    PROC-ARGV-RESET
-   s" tree/bin/hb" HB-AT$ s" wd" A$ S\" require lib/string.f\nrequire lib/fs.f\n"
+   s" tree/bin/hb" HB-AT$ s" wd" A$ S\" require src/lib/string.f\nrequire src/lib/fs.f\n"
    TIMEOUT-MS RUN-EXE
    NULL$ 0 EXPECT ;
 
-\ The working directory's lib/errors.f is provided by its absolute path, so a
-\ require of lib/errors.f stops there, at the application's fact.
+\ The working directory's src/lib/errors.f is provided by its absolute path, so a
+\ require of src/lib/errors.f stops there, at the application's fact.
 : FIX-2 ( -- )
    s" an application fact steers ENGINE-PROVIDES? and leaves the resolved root" T-LABEL
    PROG-RESET
    s" package SOURCE-ROOT-EXE-FACT" PLINE
    YN-LINE
    s" : RUN ( -- )" PLINE
-   S\"    SOURCE-ROOT:CWD$ s\q lib/errors.f\q SOURCE-ROOT:JOIN provided" PLINE
-   S\"    s\q lib/fs.f\q SOURCE-ROOT:RESOLVE drop 2drop" PLINE
-   S\"    s\q lib/errors.f\q ENGINE-PROVIDES? YN" PLINE
+   S\"    SOURCE-ROOT:CWD$ s\q src/lib/errors.f\q SOURCE-ROOT:JOIN provided" PLINE
+   S\"    s\q src/lib/fs.f\q SOURCE-ROOT:RESOLVE drop 2drop" PLINE
+   S\"    s\q src/lib/errors.f\q ENGINE-PROVIDES? YN" PLINE
    s"    SOURCE-ROOT:RESOLVED-ROOT$ type cr ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
@@ -627,7 +626,7 @@ variable RC
    s" pushed" A$ EXISTS? TFALSE ;
 
 \ The image is saved by an engine whose tree no loaded file's canonical path
-\ contains (its lib and src are links), so the tree's bytes can only come from
+\ contains (its src is a link), so the tree's bytes can only come from
 \ the loader's own state. The restored image reads its whole DATA for them,
 \ with the canonical path of a file the save loaded as the proof that the read
 \ sees what was captured.
@@ -650,7 +649,7 @@ variable RC
    \ the library compiles at the optimizing tier, as src/habu/app-image.f does.
    s" 1 set-tier" PLINE
    s" EVENT-ON" PLINE
-   s" require lib/fs.f" PLINE
+   s" require src/lib/fs.f" PLINE
    s" require src/habu/app-image.f" PLINE
    s" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE" PLINE
    s" tree/bin/hb" HB-AT$ FOREIGN$ PROG$ SAVE-TIMEOUT-MS RUN-EXE

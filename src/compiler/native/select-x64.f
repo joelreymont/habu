@@ -94,8 +94,8 @@
 \ native/dialect.f), and regalloc-verify.f VDPLACE-CK checks a module against
 \ the stated policy rather than re-deriving the ARM64 survey.
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/symbol.f

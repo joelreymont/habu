@@ -8,11 +8,11 @@
 \ after the remaining range guard.  Together they prove the protected cell is
 \ unchanged, including on loop iterations after the first.
 
-require lib/errors.f
-require lib/string.f
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 
 $800 constant WSS-CAP
 10000 constant WSS-TIMEOUT-MS

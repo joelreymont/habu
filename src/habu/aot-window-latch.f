@@ -8,7 +8,7 @@
 \ image with "address refers to data outside the restored span". That is what any
 \ program reading the environment used to get: the linker's src/habu/app-image.f
 \ pulls in app-image-core.f, and that requires eight lib modules including
-\ lib/process-env.f, so GETENV's table was already below the window before the
+\ src/lib/process-env.f, so GETENV's table was already below the window before the
 \ application was even read. The latch words therefore cannot live in aot-lib.f
 \ with the rest of the linker. tools/aot-build-open.f loads THIS file, opens the
 \ window, loads the application, latches the span, and only then loads the linker

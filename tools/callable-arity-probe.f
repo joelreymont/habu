@@ -22,8 +22,8 @@
 \
 \ Run: bin/hb --load tools/callable-arity-probe.f
 
-require lib/prelude.f
-require lib/errors.f
+require src/lib/prelude.f
+require src/lib/errors.f
 require src/compiler/native/dict.f
 
 package CALLABLE-ARITY-PROBE

@@ -13,12 +13,12 @@
 \ GT-CAP-NEST-MAX deep and no deeper; and a capture nested in another's action
 \ reads its own bytes while the outer one keeps all of its own.
 
-require lib/errors.f
-require lib/string.f
-require lib/span.f
-require lib/process.f
-require lib/process-fork.f
-require lib/test.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/span.f
+require src/lib/process.f
+require src/lib/process-fork.f
+require src/lib/test.f
 require test/gate-common.f
 require test/gate-pool.f
 

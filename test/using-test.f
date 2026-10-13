@@ -12,9 +12,9 @@
 \ front of it. The checked-body cases prove the checker resolves used publics
 \ identically to the runtime: an unresolved bare tail would fail certification.
 
-require lib/prelude.f
+require src/lib/prelude.f
 require src/habu/verify-source.f
-require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
 variable #CASE

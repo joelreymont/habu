@@ -1,7 +1,7 @@
 \ Refusals through fresh evaluators in the native C2 image.
-require lib/test.f
-require lib/test/subject.f
-require lib/c2-memory.f
+require src/lib/test.f
+require src/lib/test/subject.f
+require src/lib/c2-memory.f
 require test/c2-view-record-defs.f
 require test/c2-view-record-use-refusals.f
 

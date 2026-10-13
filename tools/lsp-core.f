@@ -1,8 +1,8 @@
 \ lsp-core.f - the Habu language server: the Language Server Protocol on stdin
 \ and stdout, for any client.
 \
-\ MAIN reads framed messages (lib/content-length.f) and holds each one until its
-\ turn, then sorts it (lib/json-rpc.f) and acts on it, until the client's exit
+\ MAIN reads framed messages (src/lib/content-length.f) and holds each one until its
+\ turn, then sorts it (src/lib/json-rpc.f) and acts on it, until the client's exit
 \ or the end of input.
 \ The server is starting, running or shut down. Starting, it answers initialize
 \ with its capabilities and any other request with -32002. Running, it answers
@@ -117,20 +117,20 @@
 \ STORAGE CLASS. PROCESS-GLOBAL: the reader, the buffers and the documents
 \ belong to the server's one task.
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
-require lib/span.f
-require lib/memory.f
-require lib/byte-buffer.f
-require lib/fd-io.f
-require lib/process.f
-require lib/adt/option.f
-require lib/uri.f
-require lib/content-length.f
-require lib/json-read.f
-require lib/json-write.f
-require lib/json-rpc.f
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/span.f
+require src/lib/memory.f
+require src/lib/byte-buffer.f
+require src/lib/fd-io.f
+require src/lib/process.f
+require src/lib/adt/option.f
+require src/lib/uri.f
+require src/lib/content-length.f
+require src/lib/json-read.f
+require src/lib/json-write.f
+require src/lib/json-rpc.f
 require tools/lsp-docs.f
 require tools/lsp-text.f
 require tools/lsp-defs.f
