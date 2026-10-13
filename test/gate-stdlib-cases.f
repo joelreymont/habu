@@ -1820,6 +1820,10 @@ SUITE xml-byte-edits
    src/lib/xml-source-test.f
 ;SUITE
 
+SUITE xml-owner-consumer
+   test/xml-owner-e2e.f
+;SUITE
+
 SUITE xml-c2-consumer
    test/c2-xml-consumer-e2e.f
 ;SUITE

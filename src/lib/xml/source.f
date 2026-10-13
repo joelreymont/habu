@@ -4,6 +4,7 @@ require src/lib/xml/scalar.f
 package XML
 public
 DEFLINEAR XML:source
+STRUCTURE source-owner 0 OPAQUE FIELD state ptr n ;STRUCTURE
 ENUM encoding utf8 utf16-le utf16-be ;ENUM
 -9216 constant E-UTF16
 -9217 constant E-BOUNDARY
@@ -27,6 +28,11 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
 
 : SRC-STATE ( XML:source -- XML:source ptr n )
    SRC-ERASE dup SRC-MINT swap ;
+
+: OWNER-STATE ( source-owner -- ptr n )
+   SOURCE-OWNER-UNMAKE
+   dup 0= if E-STATE throw then
+   dup SRC-STORAGE-LEN + @ 0= if E-STATE throw then ;
 
 : SRC-ORIGINAL$ ( ptr n -- ptr u8 n )
    {: state :}
@@ -187,6 +193,24 @@ public
 : SOURCE-CLOSE ( XML:source -- )
    SRC-ERASE drop ;
 
+: SOURCE-OWN ( XML:source -- source-owner )
+   SRC-ERASE SOURCE-OWNER-MAKE ;
+
+: OWNER-CLOSE ( source-owner -- )
+   OWNER-STATE SRC-STORAGE-LEN + 0 swap ! ;
+
+: OWNER-ORIGINAL$ ( source-owner -- ptr u8 n )
+   OWNER-STATE SRC-ORIGINAL$ ;
+
+: OWNER-LEXICAL$ ( source-owner -- ptr u8 n )
+   OWNER-STATE SRC-LEXICAL$ ;
+
+: OWNER-ENCODING ( source-owner -- encoding )
+   OWNER-STATE SRC-ENCODING-N >ENCODING ;
+
+: OWNER-BOM$ ( source-owner -- ptr u8 n )
+   OWNER-STATE SRC-BOM$ ;
+
 : SOURCE-ORIGINAL$ ( XML:source -- XML:source ptr u8 n )
    SRC-STATE SRC-ORIGINAL$ ;
 
@@ -236,6 +260,11 @@ public
 : SOURCE-RANGE ( XML:source off len -- XML:source off len )
    SRC-RANGE-ARGS SRC-RANGE >LEN swap >OFF swap ;
 
+: OWNER-RANGE ( source-owner off len -- off len )
+   {: owner start:off count:len :}
+   owner OWNER-STATE start OFF>N count LEN>N SRC-RANGE
+   >LEN swap >OFF swap ;
+
 private
 : SRC-ENCODE-SIZE ( ptr n ptr u8 n -- n )
    {: state input size:n :}
@@ -264,6 +293,10 @@ private
 public
 : ENCODE-SIZE ( XML:source ptr u8 n -- XML:source n )
    SRC-ENCODE-ARGS SRC-ENCODE-SIZE ;
+
+: OWNER-ENCODE-SIZE ( source-owner ptr u8 n -- n )
+   {: owner input size:n :}
+   owner OWNER-STATE input size SRC-ENCODE-SIZE ;
 
 private
 : SRC-PUT-UNIT ( n n ptr u8 -- ptr u8 )
@@ -325,5 +358,9 @@ private
 public
 : ENCODE ( XML:source ptr u8 n ptr u8 n -- XML:source n )
    SRC-INTO-ARGS SRC-ENCODE-INTO ;
+
+: OWNER-ENCODE ( source-owner ptr u8 n ptr u8 n -- n )
+   {: owner input size:n output cap:n :}
+   owner OWNER-STATE input size output cap SRC-ENCODE-INTO ;
 
 ;package

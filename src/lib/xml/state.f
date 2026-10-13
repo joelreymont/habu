@@ -227,6 +227,10 @@ public
 : INIT-SOURCE ( XML:source ptr n n -- XML:source XML:reader )
    SOURCE-READER-ARGS SOURCE-READER ;
 
+: OWNER-READER ( source-owner ptr n n -- XML:reader )
+   {: owner storage cap:n :}
+   owner OWNER-STATE storage cap SOURCE-READER ;
+
 : CLOSE ( XML:reader -- )
    ERASE drop ;
 

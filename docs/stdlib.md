@@ -1282,6 +1282,39 @@ XML:ENCODE-SIZE      ( XML:source ptr u8 n -- XML:source n )
 XML:ENCODE           ( XML:source ptr u8 n ptr u8 n -- XML:source n )
 ```
 
+When a document must retain several sources after parsing, consume each source
+with `SOURCE-OWN`. The resulting opaque, one-cell `XML:source-owner` can be kept
+in a movable record or dynamic table. It refers to the same caller-owned source
+header; the header itself, its storage and the immutable original bytes must
+stay at stable addresses until `OWNER-CLOSE`. The owner has no inverse to
+`XML:source`.
+
+```forth
+XML:SOURCE-OWN        ( XML:source -- XML:source-owner )
+XML:OWNER-CLOSE       ( XML:source-owner -- )
+XML:OWNER-ORIGINAL$   ( XML:source-owner -- ptr u8 n )
+XML:OWNER-LEXICAL$    ( XML:source-owner -- ptr u8 n )
+XML:OWNER-BOM$        ( XML:source-owner -- ptr u8 n )
+XML:OWNER-ENCODING    ( XML:source-owner -- XML:encoding )
+XML:OWNER-RANGE       ( XML:source-owner off len -- off len )
+XML:OWNER-ENCODE-SIZE ( XML:source-owner ptr u8 n -- n )
+XML:OWNER-ENCODE      ( XML:source-owner ptr u8 n ptr u8 n -- n )
+XML:OWNER-READER      ( XML:source-owner ptr n n -- XML:reader )
+```
+
+The owner views, range mapping and encoding have the same byte semantics and
+error conditions as their `XML:source` counterparts. `OWNER-READER` uses
+separate parser storage and retains the source's lexical mode. Finish all
+readers and editors borrowing the source before closing its owner, then release
+the caller-owned source storage and original bytes. `OWNER-CLOSE` invalidates
+all copies of that owner: its operations and another close throw `E-STATE` while
+the source header is still allocated. An uninitialized owner does the same.
+The caller coordinates close and use; the library does not count borrowers or
+support access after storage is freed or reused. An initialization failure
+publishes no owner. If a reader fails during a multi-part load, close that
+reader, then every acquired owner before releasing their allocations, and
+preserve the reader's original error.
+
 `SOURCE-ORIGINAL$` includes the exact original BOM; `SOURCE-BOM$` returns that
 prefix (zero, two or three bytes). `SOURCE-LEXICAL$` excludes only the leading
 BOM. It preserves declaration spelling, entities, whitespace, CRLF, namespaces,
