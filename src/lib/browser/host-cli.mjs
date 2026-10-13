@@ -22,9 +22,11 @@
 //
 // The drawing buffer is 640 by 480 unless --size says otherwise. Prints one
 // line per record, a request's when the host makes it: hello, fetch <path>,
-// post <path> <length> <body in hex>, tree <selected> <JSON>,
-// highlight <count> <mask in hex>, draw <count> <mask in hex>, text <string>; and at the
-// end, outstanding <fetch|post> <path> for each request still waiting. It
+// post <path> <length> <body in hex>, request <method> <path> <id> <length>
+// <hex>, tree <selected> <JSON>, highlight <count> <mask in hex>, draw <count>
+// <mask in hex>, text <string>. At the end, outstanding <fetch|post> <path>
+// or outstanding request <method> <path> <id>.
+// It
 // draws nothing. Each failure is printed on stderr as it happens, such as
 // `throw <code>` for a run that answered a nonzero status, and the steps go
 // on; it exits 1 if any happened, else 0.
@@ -47,8 +49,8 @@ function report(e) {
 // The requests the host made that no step has answered, oldest first.
 const waiting = [];
 
-function request(kind, path) {
-  return new Promise((resolve, reject) => waiting.push({ kind, path, resolve, reject }));
+function request(kind, path, method, id) {
+  return new Promise((resolve, reject) => waiting.push({ kind, path, method, id, resolve, reject }));
 }
 
 function oldest(flag) {
@@ -159,6 +161,10 @@ try {
       console.log(`post ${path} ${body.length} ${Buffer.from(body).toString("hex")}`);
       return request("post", path);
     },
+    request: (method, path, body, id) => {
+      console.log(`request ${method} ${path} ${id} ${body.length} ${Buffer.from(body).toString("hex")}`);
+      return request("request", path, method, id);
+    },
     draw: (corners, count, matrix, mask) =>
       console.log(`draw ${count}${count ? ` ${Buffer.from(mask).toString("hex")}` : ""}`),
     tree: (rows, selected) => console.log(`tree ${selected} ${JSON.stringify(rows)}`),
@@ -177,7 +183,8 @@ try {
     }
     await settled();
   }
-  for (const { kind, path } of waiting) console.log(`outstanding ${kind} ${path}`);
+  for (const { kind, path, method, id } of waiting)
+    console.log(kind === "request" ? `outstanding request ${method} ${path} ${id}` : `outstanding ${kind} ${path}`);
 } catch (e) {
   report(e);
 }

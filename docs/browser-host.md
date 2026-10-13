@@ -29,8 +29,8 @@ The event is 56 bytes at the address the module names in `hello`:
 | --- | --- |
 | +0 | kind: 0 start, 1 bytes, 2 pointer, 3 answered, 4 typed, 5 moved, 6 released, 7 wheel, 8 key, 9 resize, 10 control |
 | +8, +16, +24, +32 | a, b, c, d |
-| +40 | buttons: the pointer's `buttons` bitset; 0 for other events and for pointer release |
-| +48 | modifier bitset: Shift 1, Control 2, Alt 4, Meta 8; 0 when irrelevant |
+| +40 | buttons: the pointer's `buttons` bitset; for a tagged answered event, the drawing-buffer width; 0 otherwise and for pointer release |
+| +48 | modifier bitset: Shift 1, Control 2, Alt 4, Meta 8; for a tagged answered event, the drawing-buffer height; 0 when irrelevant |
 
 - bytes: a is where the bytes of the resource the module fetched start and b
   their length; c and d are the canvas drawing buffer's width and height in
@@ -42,8 +42,10 @@ The event is 56 bytes at the address the module names in `hello`:
   and d as for pointer. The canvas captures the pointer it was pressed with, so
   they come even while it is outside the canvas, where x or y is negative or
   past the drawing buffer's size.
-- answered: a is where the bytes the server answered a post with start, b
-  their length and c the answer's HTTP status; d is 0.
+- answered: a is where the response bytes start, b their length and c the HTTP
+  status. For a kind 7 request, d is its exact positive signed 64-bit request
+  ID and the last two fields are the drawing-buffer width and height at answer
+  time. For a legacy post, d and the last two fields are 0.
 - typed: a is where the UTF-8 bytes of the text entered in the page's field
   start and b their length; c and d as for bytes.
 - wheel: a and b are signed horizontal and vertical deltas in integer device
@@ -71,6 +73,18 @@ A record is 32 bytes, `kind a b c`:
 | 4 | post | a and b are a span's address and length, and the span's first c bytes are a path: post the rest, the body, to the path relative to the page and answer with an answered event |
 | 5 | tree | a and b name strict UTF-8 JSON rows, and c is the selected row key or 0 |
 | 6 | highlight | a names one u8 mask value per triangle, b is the count, and c is 0; 0 means unselected and 1 selected |
+| 7 | request | a and b name a span beginning with little-endian u64 method and path byte lengths, followed by the method's ASCII bytes, the path's strict UTF-8 bytes, and the arbitrary binary body; c is a positive signed 64-bit request ID |
+
+The request span has at least 16 bytes. Its method and path are nonempty, the
+method is an HTTP token, and both lengths must fit the span without wrapping;
+the remaining bytes are the body. The host copies and decodes all three before
+it starts asynchronous work. GET, POST and PUT serve current callers, and the
+host uses `fetch` for other valid method tokens. A GET or HEAD body is refused
+by the browser host. Body bytes are sent only when present, with the same
+binary content-type behavior as legacy posts. Every HTTP status, including a
+GET 404, reaches an answered event. A network failure ends that turn as it
+does for fetch and post. The request ID stays a BigInt in the host, so IDs above
+JavaScript's safe integer range arrive unchanged.
 
 Tree JSON is an array of `{ "key": number, "parent": number, "label": string }`
 rows. A key is a unique positive JavaScript safe integer. A parent is 0 for a
@@ -93,10 +107,11 @@ The rules:
 - The first `run()` comes before any event address is known, so the host writes
   no event for it. The module's event block is zero, which reads as start, and
   that run answers `hello`. The host writes events only after `hello`.
-- Fetch and post records are the run's requests. As the run's records are
-  read, the host decodes every request's path and copies every post's body,
+- Fetch, post and request records are the run's requests. As the run's records are
+  read, the host decodes every request's path and copies every body's bytes,
   since a later run may rewrite the storage they name and growth detaches it.
-  A post whose c is negative or past its span is refused.
+  A post whose c is negative or past its span is refused. A request with an
+  invalid ID, header, length, method token or UTF-8 path is refused.
 - Once the run's other records are handled, the turn makes its requests one at
   a time, in order. For each it waits for the answer, grows memory by the
   pages the answer needs, copies it past the old end and runs the module with
@@ -108,10 +123,9 @@ The rules:
   waits minutes for a review, pointer, wheel, key, resize, control or typed text
   runs its own turn, with its own requests. So other turns may run between a
   request and the run of its answer. Answers to different turns' requests run
-  in the order they arrive and name no request (answered's d is 0), so a
-  module with requests from two turns outstanding tells their answers apart
-  by their bodies.
-- A post is answered for every HTTP status. A fetch whose status is not 2xx
+  in the order they arrive. Tagged requests carry their ID in answered's d;
+  legacy post answers keep d at 0 and must be distinguished by their bodies.
+- A post or request is answered for every HTTP status. A fetch whose status is not 2xx
   fails, as does a request whose connection fails.
 - A failure ends its turn: the turn makes no more requests, and the failure is
   shown. Other turns go on.
@@ -120,7 +134,7 @@ The rules:
 - A nonzero status from `run()` is shown as `throw <code>`, its throw code. A
   trap ends the instance and is shown too: every later run is refused, and so
   is placing an answer or typed text, so an answer that comes after the trap
-  neither runs the module nor grows its memory. A failure to fetch or post, to
+  neither runs the module nor grows its memory. A failure to fetch, post or request, to
   grow memory or to run is shown.
 - Growth detaches the old `ArrayBuffer`, so the host takes every view from
   `memory.buffer` where it uses it (WebAssembly JavaScript Interface,
@@ -154,16 +168,18 @@ bun src/lib/browser/host-cli.mjs <module.wasm> [--size W H] [step]...
 | `--resize W H` | changes the runner's drawing-buffer size and sends resize |
 | `--control KEY` | selects a transient tree row key |
 | `--typed TEXT` | TEXT entered in the field |
-| `--answer STATUS FILE` | answers the oldest waiting request with STATUS and FILE's bytes; a fetch answered outside 200-299 fails |
+| `--answer STATUS FILE` | answers the oldest waiting request with STATUS and FILE's bytes; a legacy fetch answered outside 200-299 fails |
 | `--fail` | fails the oldest waiting request, as a lost connection does |
 
 The drawing buffer is 640 by 480 unless `--size` says otherwise. The runner
 prints one line per record, a request's when the host makes it: `hello`,
 `fetch <path>`, `post <path> <length> <body in hex>`,
+`request <method> <path> <ID> <length> <body in hex>`,
 `tree <selected> <JSON>`, `highlight <count> <mask in hex>`,
 `draw <count> <mask in hex>` and `text <string>`; the mask is omitted for a
-zero-triangle draw or highlight. At the end, `outstanding fetch <path>` or
-`outstanding post <path>` for each request no step answered. Each failure is
+zero-triangle draw or highlight. At the end, `outstanding fetch <path>`,
+`outstanding post <path>` or `outstanding request <method> <path> <ID>` appears
+for each request no step answered. Each failure is
 printed on stderr as it happens and the steps go on; the runner exits 1 if any
 happened, else 0.
 
@@ -238,6 +254,13 @@ signed wheel deltas, UTF-8 key text, resize and control events; a nested tree
 with changed selection; default, selected, repeated and zero-triangle draws;
 and rejection of malformed tree and highlight records. The fixture also draws
 two triangles for browser inspection, one highlighted and one unselected.
+
+`test/browser/request-test.f` builds and validates the checked Wasm fixture
+`test/browser/request.f` and runs `test/browser/request-peer.mjs`. The peer
+drives two live turns whose tagged replies
+arrive in reverse order, checks exact IDs above 2^53, binary bodies and copied
+request data after memory growth, then exercises rejected records and the CLI's
+FIFO replies. It also checks the old zero fields for fetch and post replies.
 
 `src/lib/browser/host-test.f` (gate row `browser-host`) starts Habu's HTTP server
 with `BROWSER-HOST:ROUTES` on a loopback port, and CURL checks that `/`,

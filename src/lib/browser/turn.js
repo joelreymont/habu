@@ -5,10 +5,10 @@
 // The module imports nothing. A turn writes one event at the address the
 // module named in hello, calls run() and handles the records the run left in
 // [out-base, out-base + out-len), in order. The first run has no event: the
-// module's event block is zero, which reads as start. Fetch and post records
-// are requests: as the records are read, each path is decoded and each post
-// body copied, since later runs rewrite the storage they name and growth
-// detaches it. Once the run's other records are handled, the turn makes its
+// module's event block is zero, which reads as start. Fetch, post and request
+// records are requests: as the records are read, each path is decoded and each
+// body copied, since later runs rewrite the storage they name and growth detaches
+// it. Once the run's other records are handled, the turn makes its
 // requests one at a time; memory grows by the pages each answer needs, the
 // answer is copied past the old end, and the module runs again with an event
 // naming it, whose own requests go before the next. A run is synchronous, so
@@ -46,13 +46,17 @@ const TEXT = 3n;
 const POST = 4n;
 const TREE = 5n;
 const HIGHLIGHT = 6n;
+const REQUEST = 7n;
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
+// A request's leading BOM bytes are content, including at the start of a path.
+const requestUtf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const encoder = new TextEncoder();
 
 export class Module {
   // host: hello(), fetch(path) -> Promise<Uint8Array>, post(path, body) ->
-  // Promise<{ status, bytes }> for every HTTP status, draw(corners, count,
+  // Promise<{ status, bytes }>, request(method, path, body, id) -> the same;
+  // id is an optional diagnostic argument for the CLI. Also draw(corners, count,
   // matrix, mask), text(string), tree(rows, selected), highlight(mask), and
   // size() -> [width, height] of the drawing buffer.
   static async load(bytes, host) {
@@ -117,10 +121,13 @@ export class Module {
     for (const request of this.run(event)) await this.answer(request);
   }
 
-  async answer({ kind, path, body }) {
+  async answer({ kind, path, body, method, id }) {
     if (kind === FETCH) {
       const bytes = await this.host.fetch(path);
       await this.turn([BYTES, this.place(bytes), bytes.length, ...this.host.size(), 0, 0]);
+    } else if (kind === REQUEST) {
+      const { status, bytes } = await this.host.request(method, path, body, id);
+      await this.turn([ANSWERED, this.place(bytes), bytes.length, status, id, ...this.host.size()]);
     } else {
       const { status, bytes } = await this.host.post(path, body);
       await this.turn([ANSWERED, this.place(bytes), bytes.length, status, 0, 0, 0]);
@@ -149,6 +156,7 @@ export class Module {
     for (const [kind, a, b, c] of this.records()) {
       if (kind === FETCH) requests.push({ kind, path: utf8.decode(this.span(a, b)) });
       else if (kind === POST) requests.push(this.post(a, b, c));
+      else if (kind === REQUEST) requests.push(this.request(a, b, c));
       else this.record(kind, a, b, c);
     }
     return requests;
@@ -168,6 +176,27 @@ export class Module {
     if (c < 0n || c > b) throw new RangeError(`a post's path of ${c} bytes in its span of ${b}`);
     const s = this.span(a, b);
     return { kind: POST, path: utf8.decode(s.subarray(0, Number(c))), body: s.slice(Number(c)) };
+  }
+
+  // A tagged HTTP request. The 16-byte header gives unsigned byte lengths;
+  // compare them as BigInts before narrowing to offsets in the checked span.
+  request(a, b, id) {
+    if (id <= 0n) throw new RangeError(`a request needs a positive request ID, got ${id}`);
+    const s = this.span(a, b);
+    if (b < 16n) throw new RangeError(`request header needs 16 bytes, got ${b}`);
+    const v = new DataView(s.buffer, s.byteOffset, s.byteLength);
+    const methodLen = v.getBigUint64(0, true);
+    const pathLen = v.getBigUint64(8, true);
+    if (methodLen === 0n || methodLen > b - 16n || pathLen > b - 16n - methodLen)
+      throw new RangeError(`request lengths ${methodLen} and ${pathLen} exceed span ${b}`);
+    if (pathLen === 0n) throw new RangeError("request needs a nonempty path");
+    const methodEnd = 16 + Number(methodLen);
+    const pathEnd = methodEnd + Number(pathLen);
+    const method = requestUtf8.decode(s.subarray(16, methodEnd));
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(method))
+      throw new Error("request method is not an HTTP method token");
+    const path = requestUtf8.decode(s.subarray(methodEnd, pathEnd));
+    return { kind: REQUEST, method, path, body: s.slice(pathEnd), id };
   }
 
   write(event) {

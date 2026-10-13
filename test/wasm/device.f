@@ -45,6 +45,7 @@ require test/wasm/differential.f
 require test/browser/echo-test.f
 require test/browser/storage-test.f
 require test/browser/navigation-test.f
+require test/browser/request-test.f
 
 package WASM-DEVICE
 private

@@ -1,7 +1,7 @@
 // host.js - the browser host (docs/browser-host.md): runs /module.wasm's turns
 // through turn.js on the main thread, draws its triangles with WebGPU, shows
 // its text and tree, and sends canvas input and the text entered in the field.
-// A failure to start WebGPU, fetch, post, grow memory or run is shown in text.
+// A failure to start WebGPU, request, grow memory or run is shown in text.
 import { Module } from "./turn.js";
 
 const canvas = document.querySelector("canvas");
@@ -230,6 +230,14 @@ async function main() {
     // Answers every status: the module reads it.
     post: async (path, body) => {
       const r = await fetch(path, { method: "POST", body });
+      return { status: r.status, bytes: new Uint8Array(await r.arrayBuffer()) };
+    },
+    request: async (method, path, body) => {
+      if ((method.toUpperCase() === "GET" || method.toUpperCase() === "HEAD") && body.length)
+        throw new TypeError(`${method} ${path}: a request body is not allowed`);
+      const init = { method };
+      if (body.length) init.body = body;
+      const r = await fetch(path, init);
       return { status: r.status, bytes: new Uint8Array(await r.arrayBuffer()) };
     },
     draw: renderer.draw,
