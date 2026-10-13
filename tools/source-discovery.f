@@ -805,6 +805,35 @@ $1F constant SD-LOADERS                  \ every loader word's bit
    off len SD-TOK$ BLOCK-CLOSER? if SD-SCOPE-CLOSE then ;
 
 
+\ These type definers consume a declaration through its matching closer. Its
+\ family name, field names and variant names are raw operands, not calls or
+\ definitions. A member name can itself spell a closer or a loader word.
+: SD-FAMILY-KIND ( n n -- n )
+   SD-TOK$ {: a:ptr u:n :}
+   a u s" structure" STR=CI if 1 exit then
+   a u s" enum" STR=CI if 2 exit then
+   a u s" sumtype" STR=CI if 3 exit then
+   0 ;
+
+: SD-FAMILY-END? ( n n n -- bool ) {: off:n len:n kind:n :}
+   kind 1 = if off len SD-TOK$ s" ;structure" STR=CI exit then
+   kind 2 = if off len SD-TOK$ s" ;enum" STR=CI exit then
+   off len SD-TOK$ s" ;sumtype" STR=CI ;
+
+: SD-FAMILY-BODY ( n -- ) {: kind:n :}
+   SD-RAW 2drop                        \ family name
+   begin
+      SD-RAW {: off:n len:n :}
+      len 0= if exit then
+      off len SD-TOK$ s" field" STR=CI
+      off len SD-TOK$ s" variant" STR=CI or if
+         SD-RAW 2drop                   \ member name
+      else
+         off len kind SD-FAMILY-END? if exit then
+      then
+   again ;
+
+
 \ A comment is skipped first, as the loader skips it, and like blanks it keeps a
 \ pending literal path: `s" x.f" ( why ) required` loads x.f. Every other token
 \ ends it. A local is looked up before the parsing keywords: in a body a local
@@ -841,6 +870,9 @@ $1F constant SD-LOADERS                  \ every loader word's bit
       SD-RAW {: noff:n nu:n :}
       off len SD-TOK$ s" export" STR=CI if noff nu SD-R-DECL-NAME then
       exit
+   then
+   SD-DEF @ 0= SD-SCOPES @ 0= and if
+      off len SD-FAMILY-KIND dup 0<> if SD-FAMILY-BODY exit then drop
    then
    off len SD-TOK$ s" {:" STR= if off SD-OPENER ! SD-LOCAL-GROUP exit then
    off len SD-OPENER-KIND {: opener:n :}

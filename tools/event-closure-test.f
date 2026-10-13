@@ -130,6 +130,17 @@ variable ECT-I
    1 EC:PATH$ ECT-DA$ T$=
    2 EC:PATH$ ECT-DC$ T$= ;
 
+\ A field named like a loader belongs to the parsed declaration. The next
+\ require is a real dependency and must still enter the closure.
+: ECT-TEST-FAMILY-FIELD ( -- )
+   ECT-DA$ s\" \\ dependency\n" ECT-WRITE
+   ECT-ENTRY$ S\" STRUCTURE box 0 FIELD include n ;STRUCTURE\nrequire dep-a.f\n"
+      ECT-WRITE
+   ECT-ENTRY$ EC:BUILD
+   EC:COUNT 2 T=
+   0 EC:PATH$ ECT-ENTRY$ T$=
+   1 EC:PATH$ ECT-DA$ T$= ;
+
 \ --- provided registers but does not load -------------------------------------
 : ECT-TEST-PROVIDED ( -- )
    ECT-DA$ s\" \\ a\n" ECT-WRITE
@@ -236,6 +247,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-PREP
    ECT-TEST-ORDER
    ECT-TEST-TRANSITIVE
+   ECT-TEST-FAMILY-FIELD
    ECT-TEST-PROVIDED
    ECT-TEST-MISSING
    ECT-TEST-KEY-CLOSURE-EDIT

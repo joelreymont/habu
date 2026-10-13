@@ -369,6 +369,19 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    S\" package CVT-DEF\npublic\nDEFLINEAR CVT-DEF:tok\nEXPORT required\nprivate\nCAST: include ( n -- ptr u8 )\nLINEAR: provided ( ptr n -- CVT-DEF:tok )\n;package\nrequire sd-raw.f\n"
    s" sd-raw.f" SDT-ONE-EVENT ;
 
+\ Family declarations parse their bodies as data, including member names that
+\ spell loaders. Only the require after the declaration is a dependency.
+: SDT-TEST-FAMILY-BODIES ( -- )
+   s" family-bodies.f"
+   S\" STRUCTURE box 0 FIELD include n FIELD required n ;STRUCTURE\nENUM choice 0 VARIANT require FIELD included n ;VARIANT ;ENUM\nSUMTYPE outcome 0 VARIANT provided n ;VARIANT ;SUMTYPE\nENUM colors include require ;ENUM\ninclude sd-a.f\nrequire sd-raw.f\n"
+   SDT-WRITE-ENTRY
+   SDT-DISCOVER
+   EVENT-COUNT 2 T=
+   0 EVENT-KIND@ EV-INCLUDED T=
+   0 EVENT-PATH@ s" sd-a.f" SDT-PATH T$=
+   1 EVENT-KIND@ EV-REQUIRED T=
+   1 EVENT-PATH@ s" sd-raw.f" SDT-PATH T$= ;
+
 \ A library storage definer (src/core/layout-buffer.f, pointer-storage.f) is a
 \ word, not a keyword, so the walk reads its operand as code: storage named with
 \ a loader word's spelling is refused at it, E-DISC-DYNAMIC at PROVIDED, though
@@ -810,6 +823,7 @@ $7F0 constant SDT-OVER
    SDT-TEST-LOADER-NAME
    SDT-TEST-LOADER-USE
    SDT-TEST-DEFINER-OPERAND
+   SDT-TEST-FAMILY-BODIES
    SDT-TEST-STORAGE-DEFINER
    SDT-TEST-DEFINER-IN-BODY
    SDT-TEST-BIG-STRING-DATA
