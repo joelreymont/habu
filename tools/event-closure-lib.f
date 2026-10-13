@@ -12,7 +12,7 @@
 \ bare `provided` registers a path without loading it, so neither adds content.
 \ Distinct entries are deduplicated by canonical absolute pathname. Discovery
 \ itself rejects fail-closed (a top-level dynamic path or unsupported opener,
-\ or a loader word the file defined or retired before using it); this file
+\ or a loader or family opener made ambiguous before use); this file
 \ propagates that so a broken closure cannot be keyed. A loading event whose
 \ path is not a file joins the list like any other, and the walk refuses it
 \ where it reads the file (DISCOVER:RUN-IN names it on fd 2 and rethrows
@@ -54,6 +54,9 @@ variable EC-HEAD
 variable EC-I
 variable EC-DIR-N
 variable EC-ORD-N
+variable EC-HARVEST-N
+TYPED-VARIABLE EC-HARVEST-RUN [ -- ]
+TYPED-VARIABLE EC-HARVEST-READER [ ptr u8 n ptr u8 n -- ptr u8 n ]
 
 : EC-TRUE ( -- bool )   0 0= ;
 : EC-FALSE ( -- bool )  EC-TRUE 0= ;
@@ -201,6 +204,50 @@ variable EC-ORD-N
    0 EC-DIR-N !
    0 EC-ORD-N ! ;
 
+\ Harvest the same closure traversal before the final walk. A dependency can
+\ define or retire a family opener that the entry later calls, and rows learned
+\ in one pass can change which operands the next pass reads as source.
+: EC-HARVEST-ACT ( -- )
+   EC-HEAD @ EC-PATH$ EC-HEAD @ EC-ROOT$ DISCOVER:RUN-IN ;
+
+: EC-HARVEST-WITH-ACT ( -- )
+   EC-HEAD @ EC-PATH$ EC-HEAD @ EC-ROOT$
+   EC-HARVEST-READER @ execute {: bytes:ptr size:n :}
+   EC-HEAD @ EC-PATH$ EC-HEAD @ EC-ROOT$ bytes size DISCOVER:RUN-BYTES ;
+
+: EC-HARVEST-PASS ( ptr u8 n -- ) {: a:ptr u:n :}
+   EC-CLEAR
+   a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-ADD
+   DISCOVER:ROWS-PASS-BEGIN
+   begin EC-HEAD @ EC-N @ < while
+      EC-HARVEST-RUN @ DISCOVER:HARVEST
+      EC-SCAN-EVENTS
+      EC-HEAD @ 1+ EC-HEAD !
+   repeat
+   DISCOVER:ROWS-PASS-END ;
+
+: EC-HARVEST-LOOP ( ptr u8 n -- ) {: a:ptr u:n :}
+   DISCOVER:ROWS-RESET
+   -1 EC-HARVEST-N !
+   begin
+      DISCOVER:ROWS-VERSION {: ver:n :}
+      a u EC-HARVEST-PASS
+      EC-N @ EC-HARVEST-N @ =
+      DISCOVER:ROWS-VERSION ver = and
+      DISCOVER:ROWS-PASS-STABLE? and
+      EC-N @ EC-HARVEST-N !
+   until ;
+
+: EC-HARVEST ( ptr u8 n -- )
+   [: EC-HARVEST-ACT ;] EC-HARVEST-RUN !
+   EC-HARVEST-LOOP ;
+
+: EC-HARVEST-WITH ( ptr u8 n [ ptr u8 n ptr u8 n -- ptr u8 n ] -- )
+   {: a:ptr u:n reader :}
+   reader EC-HARVEST-READER !
+   [: EC-HARVEST-WITH-ACT ;] EC-HARVEST-RUN !
+   a u EC-HARVEST-LOOP ;
+
 public
 
 : RESET ( -- )
@@ -216,18 +263,21 @@ public
    i EC-PATH$ i EC-ROOT$ RELATIVE ;
 
 : BUILD ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u EC-HARVEST
    RESET
    a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-ADD
    begin EC-HEAD @ EC-N @ < while
       EC-HEAD @ EC-PATH$ EC-HEAD @ EC-ROOT$ DISCOVER:RUN-IN
       EC-SCAN-EVENTS
       EC-HEAD @ 1+ EC-HEAD !
-   repeat ;
+   repeat
+   DISCOVER:ROWS-RESET ;
 
 \ A source owner reads every loading event from its own byte table. A missing
 \ dependency is a refusal at that read, never an omitted closure member.
 : BUILD-WITH ( ptr u8 n [ ptr u8 n ptr u8 n -- ptr u8 n ] -- )
    {: a:ptr u:n reader :}
+   a u reader EC-HARVEST-WITH
    RESET
    a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-ADD-WITH
    begin EC-HEAD @ EC-N @ < while
@@ -236,15 +286,18 @@ public
       EC-HEAD @ EC-PATH$ EC-HEAD @ EC-ROOT$ bytes size DISCOVER:RUN-BYTES
       EC-SCAN-EVENTS-WITH
       EC-HEAD @ 1+ EC-HEAD !
-   repeat ;
+   repeat
+   DISCOVER:ROWS-RESET ;
 
 \ Depth-first, post-order closure: each file is preceded by its own transitive
 \ require/include closure, so the last entry is always the entry file itself.
 \ Consumers that replay residual package scope walk indices 0..ORDER-COUNT-2
 \ (the deps in load order) and scan the entry file separately.
 : LOAD-ORDER ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u EC-HARVEST
    EC-ORD-RESET
-   a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-INTERN EC-EXPAND ;
+   a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-INTERN EC-EXPAND
+   DISCOVER:ROWS-RESET ;
 
 : ORDER-COUNT ( -- n )   EC-ORD-N @ ;
 

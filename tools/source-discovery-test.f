@@ -22,6 +22,8 @@ require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/source.f
+require src/lib/test/outcome.f
+require src/lib/test/subject.f
 require tools/source-discovery.f
 
 package SD-TEST
@@ -381,6 +383,51 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    0 EVENT-PATH@ s" sd-a.f" SDT-PATH T$=
    1 EVENT-KIND@ EV-REQUIRED T=
    1 EVENT-PATH@ s" sd-raw.f" SDT-PATH T$= ;
+
+\ A package word may replace a family opener. The file really loads dep.f;
+\ discovery must include it or refuse at the ambiguous opener.
+$100 constant SDT-LOAD-CAP
+create SDT-LOAD-OUT SDT-LOAD-CAP allot
+create SDT-LOAD-ERR SDT-LOAD-CAP allot
+
+: SDT-TEST-FAMILY-SHADOW ( -- )
+   s" dep.f" s" 76 emit 79 emit 65 emit 68 emit 69 emit 68 emit" SDT-WRITE-ENTRY
+   s" family-shadow.f"
+   S\" package DEMO : structure ( -- ) ; structure require dep.f ;package\n"
+   SDT-WRITE-ENTRY
+   s" SDT-ENTRY$ ;package included"
+   SDT-LOAD-OUT SDT-LOAD-CAP >LEN SDT-LOAD-ERR SDT-LOAD-CAP >LEN
+   20000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   s" SDT-ENTRY$ ;package included"
+   SDT-LOAD-OUT outu LEN>N SDT-LOAD-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   SDT-LOAD-OUT outu LEN>N s" LOADED" T$=
+   [: SDT-DISCOVER ;] E-DISC-SHADOW TTHROWSQ
+   DISCOVER:LAST-TOKEN {: off:n len:n :}
+   off 34 T=
+   len 9 T= ;
+
+: SDT-TEST-FAMILY-DEPENDENCY ( -- )
+   DISCOVER:ROWS-RESET
+   s" dep-shadow.f" s" : structure ( -- ) ;" SDT-WRITE-ENTRY
+   [: SDT-DISCOVER ;] DISCOVER:HARVEST
+   s" dep.f" s" 76 emit 79 emit 65 emit 68 emit 69 emit 68 emit" SDT-WRITE-ENTRY
+   s" family-dependency.f"
+   S\" package DEMO require dep-shadow.f\nstructure require dep.f ;package\n"
+   SDT-WRITE-ENTRY
+   s" SDT-ENTRY$ ;package included"
+   SDT-LOAD-OUT SDT-LOAD-CAP >LEN SDT-LOAD-ERR SDT-LOAD-CAP >LEN
+   20000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   s" SDT-ENTRY$ ;package included"
+   SDT-LOAD-OUT outu LEN>N SDT-LOAD-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   SDT-LOAD-OUT outu LEN>N s" LOADED" T$=
+   [: SDT-DISCOVER ;] E-DISC-SHADOW TTHROWSQ
+   DISCOVER:ROWS-RESET ;
+
+: SDT-TEST-FAMILY-RETIRE ( -- )
+   s" family-retire.f"
+   S\" package DEMO undefine enum\nenum require dep.f ;package\n"
+   SDT-WRITE-ENTRY
+   [: SDT-DISCOVER ;] E-DISC-RETIRE TTHROWSQ ;
 
 \ A library storage definer (src/core/layout-buffer.f, pointer-storage.f) is a
 \ word, not a keyword, so the walk reads its operand as code: storage named with
@@ -824,6 +871,9 @@ $7F0 constant SDT-OVER
    SDT-TEST-LOADER-USE
    SDT-TEST-DEFINER-OPERAND
    SDT-TEST-FAMILY-BODIES
+   SDT-TEST-FAMILY-SHADOW
+   SDT-TEST-FAMILY-DEPENDENCY
+   SDT-TEST-FAMILY-RETIRE
    SDT-TEST-STORAGE-DEFINER
    SDT-TEST-DEFINER-IN-BODY
    SDT-TEST-BIG-STRING-DATA

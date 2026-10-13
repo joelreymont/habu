@@ -17,8 +17,8 @@
 \ makes when it runs, which no check runs, and the walk reads past it. The name
 \ a definer takes is data, a loader word's too: defining, undefining or
 \ retiring one refuses nothing. The walk holds no wordlists to tell which word
-\ that spelling names after it, so a later loader form with it that the walk
-\ would follow, at top level or in a body, rejects fail-closed at the word, as
+\ that spelling names after it, so a later loader form or family declaration
+\ opener with that spelling rejects fail-closed at the word, as
 \ a dynamic (non-literal) loader path and an unsupported string opener (C\" /
 \ .\") before a loader word at top level do. An escaped literal (S\")
 \ names the path its escapes decode to. A bad escape refuses nothing: at top
@@ -75,7 +75,7 @@ variable SD-TOK-OFF                      \ the token read last: where it starts
 variable SD-TOK-LEN                      \ and its length
 variable SD-CALL-KIND                    \ the loader SD-CALL-LOADER calls
 variable SD-DEF                          \ 1 from a definition's opener to its ;
-variable SD-SHADOWED                     \ the loader words (SD-LOADER-BIT) the file defined
+variable SD-SHADOWED                     \ loader and family words the file defined
 variable SD-RETIRED                      \ and those it retired
 variable SD-PKG-OFF                      \ the package open in this source
 variable SD-PKG-U
@@ -630,23 +630,25 @@ DYNAMIC-BUFFER SD-DEC u8
    a u s" provided" STR=CI if SD-K-PROVIDED exit then
    0 ;
 
-\ A loader word's bit in SD-SHADOWED and SD-RETIRED, 0 for any other token.
-: SD-LOADER-BIT ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ A loader or family opener's bit in SD-SHADOWED and SD-RETIRED.
+: SD-NAME-BIT ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" include" STR=CI if $01 exit then
    a u s" included" STR=CI if $02 exit then
    a u s" require" STR=CI if $04 exit then
    a u s" required" STR=CI if $08 exit then
    a u s" provided" STR=CI if $10 exit then
+   a u s" structure" STR=CI if $20 exit then
+   a u s" enum" STR=CI if $40 exit then
+   a u s" sumtype" STR=CI if $80 exit then
    0 ;
 
-$1F constant SD-LOADERS                  \ every loader word's bit
+$FF constant SD-NAMES                    \ loaders and family openers
 
-\ A definition of a loader word's name, or a retirement of it, refuses nothing,
-\ but past it the walk cannot tell which word the spelling names, so a later
-\ loader form with it is refused (SD-CHECK-USE).
-: SD-SHADOW ( ptr u8 n -- )   SD-LOADER-BIT SD-SHADOWED @ or SD-SHADOWED ! ;
+\ A definition or retirement of a loader or family name refuses nothing, but
+\ a later use with that spelling is ambiguous (SD-CHECK-USE).
+: SD-SHADOW ( ptr u8 n -- )   SD-NAME-BIT SD-SHADOWED @ or SD-SHADOWED ! ;
 
-: SD-RETIRE ( ptr u8 n -- )   SD-LOADER-BIT SD-RETIRED @ or SD-RETIRED ! ;
+: SD-RETIRE ( ptr u8 n -- )   SD-NAME-BIT SD-RETIRED @ or SD-RETIRED ! ;
 
 \ UNDEFINE-IF-DEFINED at top level retires the word the path literal right
 \ before it names, and when no path literal does, a word the walk cannot read,
@@ -654,13 +656,13 @@ $1F constant SD-LOADERS                  \ every loader word's bit
 \ which no check runs.
 : SD-RETIRE-NAMED ( n -- ) {: pend:n :}
    pend SD-PEND-PATH = if SD-PATH$ SD-RETIRE exit then
-   SD-RETIRED @ SD-LOADERS or SD-RETIRED ! ;
+   SD-RETIRED @ SD-NAMES or SD-RETIRED ! ;
 
 \ A loader form the walk reads, whose loader word stands at OFF LEN, is refused
 \ at the word when the file has defined that word's name (E-DISC-SHADOW), and
 \ else when it has retired it (E-DISC-RETIRE).
 : SD-CHECK-USE ( n n -- ) {: off:n len:n :}
-   off len SD-TOK$ SD-LOADER-BIT {: bit:n :}
+   off len SD-TOK$ SD-NAME-BIT {: bit:n :}
    bit SD-SHADOWED @ and 0<> if E-DISC-SHADOW throw then
    bit SD-RETIRED @ and 0<> if E-DISC-RETIRE throw then ;
 
@@ -820,6 +822,44 @@ $1F constant SD-LOADERS                  \ every loader word's bit
    kind 2 = if off len SD-TOK$ s" ;enum" STR=CI exit then
    off len SD-TOK$ s" ;sumtype" STR=CI ;
 
+\ Harvested definitions and retirements in the closure can replace a family
+\ opener. Another file cannot affect it before a loading event, and a later
+\ declaration in this file cannot affect it either.
+: SD-PRIOR-LOAD? ( -- bool )
+   EVENT-COUNT 0 ?do
+      i EVENT-KIND@ EV-INCLUDED = if true unloop exit then
+      i EVENT-KIND@ EV-REQUIRED =
+      i EVENT-STATE@ EV-STATE-FRESH = and if true unloop exit then
+   loop
+   false ;
+
+: SD-R-FAMILY-AFFECTS? ( n n n -- bool ) {: off:n len:n row:n :}
+   row SD-R-ACTIVE @ 0= if false exit then
+   row SD-R-KIND @ SD-R-DECL =
+   row SD-R-KIND @ SD-R-RETIRE = or 0= if false exit then
+   row SD-R-FILE @ SD-F-AT @ SD-R-BYTES row SD-R-FILE @ SD-F-U @
+   SD-ENTRY SD-ENTRY-U @ STR= if
+      row SD-R-OFF @ off >= if false exit then
+   else
+      SD-PRIOR-LOAD? 0= if false exit then
+   then
+   row SD-R-KIND @ SD-R-RETIRE = row SD-R-NAME-U @ 0= and if true exit then
+   row SD-R-KEY$ {: pkg:ptr pkgu:n tail:ptr tailu:n :}
+   off len SD-TOK$ tail tailu STR=CI 0= if false exit then
+   pkgu 0= if true exit then
+   SD-PKG-OFF @ SD-PKG-U @ SD-TOK$ pkg pkgu STR=CI ;
+
+: SD-CHECK-FAMILY ( n n -- ) {: off:n len:n :}
+   off len SD-CHECK-USE
+   0
+   SD-R-N @ 0 ?do
+      off len i SD-R-FAMILY-AFFECTS? if
+         i SD-R-KIND @ SD-R-DECL = if drop E-DISC-SHADOW throw then
+         drop 1
+      then
+   loop
+   0<> if E-DISC-RETIRE throw then ;
+
 : SD-FAMILY-BODY ( n -- ) {: kind:n :}
    SD-RAW 2drop                        \ family name
    begin
@@ -872,7 +912,9 @@ $1F constant SD-LOADERS                  \ every loader word's bit
       exit
    then
    SD-DEF @ 0= SD-SCOPES @ 0= and if
-      off len SD-FAMILY-KIND dup 0<> if SD-FAMILY-BODY exit then drop
+      off len SD-FAMILY-KIND dup 0<> if
+         off len SD-CHECK-FAMILY SD-FAMILY-BODY exit
+      then drop
    then
    off len SD-TOK$ s" {:" STR= if off SD-OPENER ! SD-LOCAL-GROUP exit then
    off len SD-OPENER-KIND {: opener:n :}

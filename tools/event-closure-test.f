@@ -36,6 +36,7 @@ create ECT-UN ECT-PC allot
 create ECT-ALIAS ECT-PC allot
 create ECT-KEY-A 80 allot
 create ECT-KEY-B 80 allot
+create ECT-READ-SRC $1000 allot
 variable ECT-ROOT-U
 variable ECT-ENTRY-U
 variable ECT-DA-U
@@ -134,12 +135,20 @@ variable ECT-I
 \ require is a real dependency and must still enter the closure.
 : ECT-TEST-FAMILY-FIELD ( -- )
    ECT-DA$ s\" \\ dependency\n" ECT-WRITE
-   ECT-ENTRY$ S\" STRUCTURE box 0 FIELD include n ;STRUCTURE\nrequire dep-a.f\n"
+   ECT-ENTRY$ S\" require dep-a.f\nSTRUCTURE box 0 FIELD include n ;STRUCTURE\n: structure ( -- ) ;\n"
       ECT-WRITE
    ECT-ENTRY$ EC:BUILD
    EC:COUNT 2 T=
    0 EC:PATH$ ECT-ENTRY$ T$=
    1 EC:PATH$ ECT-DA$ T$= ;
+
+\ A later dependency cannot change an earlier standard declaration.
+: ECT-TEST-FAMILY-LATE-DEPENDENCY ( -- )
+   ECT-DA$ s" : structure ( -- ) ;" ECT-WRITE
+   ECT-ENTRY$ S\" package DEMO STRUCTURE box 0 FIELD x n ;STRUCTURE require dep-a.f ;package\n"
+      ECT-WRITE
+   ECT-ENTRY$ EC:BUILD
+   EC:COUNT 2 T= ;
 
 \ --- provided registers but does not load -------------------------------------
 : ECT-TEST-PROVIDED ( -- )
@@ -173,6 +182,30 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    T-OUTCOME-EXITED=
    ECT-ERR erru LEN>N E-FS-STAT ECT-CODE$ CONTAINS? TTRUE
    ECT-ERR erru LEN>N ECT-DC$ CONTAINS? TTRUE ;
+
+: ECT-READ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   2drop ECT-READ-SRC $1000 READ-ALL ECT-READ-SRC swap ;
+
+\ A transitive dependency can replace the ordinary STRUCTURE opener before the
+\ entry reaches it. The resulting require runs and belongs in the closure.
+: ECT-TEST-FAMILY-DEPENDENCY ( -- )
+   ECT-DA$ s" require dep-c.f" ECT-WRITE
+   ECT-DC$ s" : structure ( -- ) ;" ECT-WRITE
+   ECT-DB$ s" 76 emit 79 emit 65 emit 68 emit 69 emit 68 emit" ECT-WRITE
+   ECT-ENTRY$ S\" package DEMO require dep-a.f\nstructure require dep-b.f ;package\n" ECT-WRITE
+   s" ECT-ENTRY$ ;package included"
+   ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   s" ECT-ENTRY$ ;package included"
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N s" LOADED" T$=
+   [: ECT-ENTRY$ EC:BUILD ;] E-DISC-SHADOW TTHROWSQ
+   DISCOVER:LAST-TOKEN {: off:n len:n :}
+   off 29 T=
+   len 9 T=
+   [: ECT-ENTRY$ EC:LOAD-ORDER ;] E-DISC-SHADOW TTHROWSQ
+   [: ECT-ENTRY$ [: ECT-READ ;] EC:BUILD-WITH ;]
+   E-DISC-SHADOW TTHROWSQ ;
 
 : ECT-TEST-MISSING ( -- )
    ECT-DC$ FILE? if ECT-DC$ REMOVE-FILE then
@@ -248,6 +281,8 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-TEST-ORDER
    ECT-TEST-TRANSITIVE
    ECT-TEST-FAMILY-FIELD
+   ECT-TEST-FAMILY-LATE-DEPENDENCY
+   ECT-TEST-FAMILY-DEPENDENCY
    ECT-TEST-PROVIDED
    ECT-TEST-MISSING
    ECT-TEST-KEY-CLOSURE-EDIT
