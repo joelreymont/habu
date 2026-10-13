@@ -132,9 +132,10 @@ $7FFFFFFF constant MAX-TIMEOUT     \ the widest deadline this module accepts, in
 : EAGAIN ( -- n ) HB-TARGET-MACOS? if 35 else 11 then ;               \ EWOULDBLOCK on both.
 6 constant IPPROTO-TCP
 1 constant TCP-NODELAY
+: SOL-SOCKET ( -- n ) HB-TARGET-MACOS? if $FFFF else 1 then ;
+: SO-REUSEADDR ( -- n ) HB-TARGET-MACOS? if 4 else 2 then ;
 : FIONREAD ( -- n ) HB-TARGET-MACOS? if $4004667F else $541B then ;     \ bytes received and not yet read, on both.
 $5411 constant SIOCOUTQ            \ Linux: bytes written and not yet acknowledged.
-$FFFF constant DARWIN-SOL-SOCKET
 $1024 constant SO-NWRITE           \ Darwin's count of SIOCOUTQ, a socket option rather than an ioctl.
 0 constant SHUT-RD
 1 constant SHUT-WR
@@ -317,6 +318,11 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    fd SOCKADDR SOCKADDR-BYTES BIND-CALL ;
 
 
+: REUSEADDR-RAW ( n -- n ) {: fd:n :}
+   1 OPTION LE:U32!
+   fd SOL-SOCKET SO-REUSEADDR OPTION 4 OPTION-CALL ;
+
+
 : LISTEN-RAW ( n n -- n )                 \ fd backlog
    LISTEN-CALL ;
 
@@ -351,6 +357,10 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
 
 : CLOSE-RAW ( n -- n )
    CLOSE-CALL ;
+
+
+: BIND-FAILED ( n -- bind-result ) {: fd:n :}
+   LAST-ERROR fd CLOSE-RAW drop TCP4-BIND--RESULT:failed ;
 
 
 : RC>STATUS ( n -- status )
@@ -540,13 +550,14 @@ public
 
 
 \ BIND returns an owned listener; the caller closes it exactly once. Port zero
-\ asks the OS for an ephemeral port, which LOCAL then reports.
+\ asks the OS for an ephemeral port, which LOCAL then reports. SO_REUSEADDR
+\ permits an immediate restart while the prior server peer remains in TIME_WAIT.
 : BIND ( address port -- bind-result )
    ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-BIND--RESULT:failed exit then
    {: fd:n :}
-   fd BIND-RAW 0 < if
-      LAST-ERROR fd CLOSE-RAW drop TCP4-BIND--RESULT:failed
-   else fd >LISTENER TCP4-BIND--RESULT:bound then ;
+   fd REUSEADDR-RAW 0 < if fd BIND-FAILED exit then
+   fd BIND-RAW 0 < if fd BIND-FAILED exit then
+   fd >LISTENER TCP4-BIND--RESULT:bound ;
 
 
 \ The backlog is the queue of connections completed but not yet accepted; Linux
@@ -672,7 +683,7 @@ public
    CONNECTION-FD {: fd:n :}
    HB-TARGET-MACOS? if
       4 ADDRLEN LE:U32!
-      fd DARWIN-SOL-SOCKET SO-NWRITE OPTION ADDRLEN OPTION-GET-CALL QUEUED exit
+      fd SOL-SOCKET SO-NWRITE OPTION ADDRLEN OPTION-GET-CALL QUEUED exit
    then
    fd SIOCOUTQ OPTION QUEUE-CALL QUEUED ;
 
