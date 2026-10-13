@@ -43,9 +43,10 @@ The event is 56 bytes at the address the module names in `hello`:
   they come even while it is outside the canvas, where x or y is negative or
   past the drawing buffer's size.
 - answered: a is where the response bytes start, b their length and c the HTTP
-  status. For a kind 7 request, d is its exact positive signed 64-bit request
-  ID and the last two fields are the drawing-buffer width and height at answer
-  time. For a legacy post, d and the last two fields are 0.
+  status, or 0 for a kind 7 request's transport failure. For a kind 7 request,
+  d is its exact positive signed 64-bit request ID and the last two fields are
+  the drawing-buffer width and height at answer time. For a legacy post, d and
+  the last two fields are 0.
 - typed: a is where the UTF-8 bytes of the text entered in the page's field
   start and b their length; c and d as for bytes.
 - wheel: a and b are signed horizontal and vertical deltas in integer device
@@ -80,11 +81,13 @@ method is an HTTP token, and both lengths must fit the span without wrapping;
 the remaining bytes are the body. The host copies and decodes all three before
 it starts asynchronous work. GET, POST and PUT serve current callers, and the
 host uses `fetch` for other valid method tokens. A GET or HEAD body is refused
-by the browser host. Body bytes are sent only when present, with the same
-binary content-type behavior as legacy posts. Every HTTP status, including a
-GET 404, reaches an answered event. A network failure ends that turn as it
-does for fetch and post. The request ID stays a BigInt in the host, so IDs above
-JavaScript's safe integer range arrive unchanged.
+by the turn protocol before dispatch. Body bytes are sent only when present,
+with the same binary content-type behavior as legacy posts. Every HTTP status,
+including a GET 404, reaches an answered event. A tagged request's transport
+rejection reaches an answered event with status 0 and UTF-8 bytes of
+`String(error)` as its body. Status 0 is reserved for transport failure. The
+request ID stays a BigInt in the host, so IDs above JavaScript's safe integer
+range arrive unchanged.
 
 Tree JSON is an array of `{ "key": number, "parent": number, "label": string }`
 rows. A key is a unique positive JavaScript safe integer. A parent is 0 for a
@@ -111,12 +114,15 @@ The rules:
   read, the host decodes every request's path and copies every body's bytes,
   since a later run may rewrite the storage they name and growth detaches it.
   A post whose c is negative or past its span is refused. A request with an
-  invalid ID, header, length, method token or UTF-8 path is refused.
-- Once the run's other records are handled, the turn makes its requests one at
-  a time, in order. For each it waits for the answer, grows memory by the
-  pages the answer needs, copies it past the old end and runs the module with
-  a bytes or answered event naming it. The requests that run makes come before
-  the turn's next one.
+  invalid ID, header, length, method token, UTF-8 path or GET/HEAD body is
+  refused.
+- Once the run's other records are handled, all its tagged requests start
+  independently, even when legacy records lie between them. Their answers run
+  in arrival order, each with its own ID and the drawing-buffer size sampled
+  when its answer arrives. Legacy fetch and post records wait for one another
+  in order; a reply's own requests complete before the next legacy record.
+  For each answer, the host grows memory by the pages it needs, copies it past
+  the old end and runs the module with an event naming it.
 - Every input is taken at once: the host writes its event, runs the module and
   reads the records without yielding to anything else, so runs never overlap
   and none is dropped. While a turn waits for an answer, such as a post that
@@ -125,16 +131,31 @@ The rules:
   request and the run of its answer. Answers to different turns' requests run
   in the order they arrive. Tagged requests carry their ID in answered's d;
   legacy post answers keep d at 0 and must be distinguished by their bodies.
-- A post or request is answered for every HTTP status. A fetch whose status is not 2xx
-  fails, as does a request whose connection fails.
-- A failure ends its turn: the turn makes no more requests, and the failure is
-  shown. Other turns go on.
+- A post or request is answered for every HTTP status. A fetch whose status is
+  not 2xx fails. A tagged request's transport failure is answered with status
+  0, so its module can clear its pending operation and continue.
+- Tagged requests from one run settle independently, as does that run's legacy
+  sequence. A failed tagged reply does not cancel sibling requests or the
+  separate legacy sequence. A host using request records must provide a
+  synchronous `error(error)` callback; the browser displays and logs it, and
+  the CLI reports it. The callback receives the original first reply error as
+  soon as it occurs, even while siblings remain pending. Each further reply
+  error from that turn calls it again with an `AggregateError` holding the
+  original errors in arrival order and a message containing every error's
+  string. Transport rejection alone is an answered status 0, not a callback
+  error. A missing callback is refused before dispatching that run's requests.
+- Within the legacy sequence, a failed fetch or post stops later legacy records
+  and rejects the turn's Promise. Input-run and record-validation failures also
+  reject that Promise. Asynchronous tagged reply failures use `error(error)`;
+  their visibility does not wait for other requests or depend on a caller
+  awaiting the turn's Promise. Other input turns can still run unless the
+  instance trapped; a trap prevents later answers from being placed or run.
 - Records are read whole, and every address and length is checked against
   memory where it is used.
 - A nonzero status from `run()` is shown as `throw <code>`, its throw code. A
   trap ends the instance and is shown too: every later run is refused, and so
   is placing an answer or typed text, so an answer that comes after the trap
-  neither runs the module nor grows its memory. A failure to fetch, post or request, to
+  neither runs the module nor grows its memory. A failure to fetch or post, to
   grow memory or to run is shown.
 - Growth detaches the old `ArrayBuffer`, so the host takes every view from
   `memory.buffer` where it uses it (WebAssembly JavaScript Interface,
@@ -169,7 +190,7 @@ bun src/lib/browser/host-cli.mjs <module.wasm> [--size W H] [step]...
 | `--control KEY` | selects a transient tree row key |
 | `--typed TEXT` | TEXT entered in the field |
 | `--answer STATUS FILE` | answers the oldest waiting request with STATUS and FILE's bytes; a legacy fetch answered outside 200-299 fails |
-| `--fail` | fails the oldest waiting request, as a lost connection does |
+| `--fail` | fails the oldest waiting request, as a lost connection does; a tagged request delivers status 0 |
 
 The drawing buffer is 640 by 480 unless `--size` says otherwise. The runner
 prints one line per record, a request's when the host makes it: `hello`,
@@ -260,7 +281,10 @@ two triangles for browser inspection, one highlighted and one unselected.
 drives two live turns whose tagged replies
 arrive in reverse order, checks exact IDs above 2^53, binary bodies and copied
 request data after memory growth, then exercises rejected records and the CLI's
-FIFO replies. It also checks the old zero fields for fetch and post replies.
+FIFO replies. It verifies immediate tagged reply reporting while a sibling
+waits, original error identity, aggregate error text, and the CLI's failure
+exit. A failed legacy sequence stops only its own later records. It also
+checks the old zero fields for fetch and post replies.
 
 `src/lib/browser/host-test.f` (gate row `browser-host`) starts Habu's HTTP server
 with `BROWSER-HOST:ROUTES` on a loopback port, and CURL checks that `/`,

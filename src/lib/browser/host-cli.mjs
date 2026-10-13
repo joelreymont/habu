@@ -165,6 +165,7 @@ try {
       console.log(`request ${method} ${path} ${id} ${body.length} ${Buffer.from(body).toString("hex")}`);
       return request("request", path, method, id);
     },
+    error: report,
     draw: (corners, count, matrix, mask) =>
       console.log(`draw ${count}${count ? ` ${Buffer.from(mask).toString("hex")}` : ""}`),
     tree: (rows, selected) => console.log(`tree ${selected} ${JSON.stringify(rows)}`),

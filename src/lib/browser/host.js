@@ -16,6 +16,7 @@ function show(s, error) {
 
 function fail(e) {
   show(String(e), true);
+  console.error(e);
 }
 
 // Clip space from the matrix; each fragment lit by its triangle's normal, from
@@ -233,13 +234,12 @@ async function main() {
       return { status: r.status, bytes: new Uint8Array(await r.arrayBuffer()) };
     },
     request: async (method, path, body) => {
-      if ((method.toUpperCase() === "GET" || method.toUpperCase() === "HEAD") && body.length)
-        throw new TypeError(`${method} ${path}: a request body is not allowed`);
       const init = { method };
       if (body.length) init.body = body;
       const r = await fetch(path, init);
       return { status: r.status, bytes: new Uint8Array(await r.arrayBuffer()) };
     },
+    error: fail,
     draw: renderer.draw,
     text: (s) => show(s, false),
     tree: updateTree,

@@ -8,11 +8,12 @@
 // module's event block is zero, which reads as start. Fetch, post and request
 // records are requests: as the records are read, each path is decoded and each
 // body copied, since later runs rewrite the storage they name and growth detaches
-// it. Once the run's other records are handled, the turn makes its
-// requests one at a time; memory grows by the pages each answer needs, the
-// answer is copied past the old end, and the module runs again with an event
-// naming it, whose own requests go before the next. A run is synchronous, so
-// runs never overlap, but other turns run while a request waits. A run that
+// it. Once the run's other records are handled, tagged requests from that run
+// start independently; legacy fetches and posts still wait in order, including
+// the requests made by their replies. Memory grows by the pages each answer
+// needs, the answer is copied past the old end, and the module runs again with
+// an event naming it. Runs are synchronous and never overlap, but other turns
+// run while a request waits. A run that
 // traps ends the instance: nothing runs, and memory does not grow, after it.
 //
 // Every field is an i64, little-endian, and a BigInt here. Growth detaches the
@@ -56,9 +57,10 @@ const encoder = new TextEncoder();
 export class Module {
   // host: hello(), fetch(path) -> Promise<Uint8Array>, post(path, body) ->
   // Promise<{ status, bytes }>, request(method, path, body, id) -> the same;
-  // id is an optional diagnostic argument for the CLI. Also draw(corners, count,
-  // matrix, mask), text(string), tree(rows, selected), highlight(mask), and
-  // size() -> [width, height] of the drawing buffer.
+  // id is an optional diagnostic argument for the CLI. A host that handles
+  // REQUEST also provides error(error) for asynchronous reply failures.
+  // Also draw(corners, count, matrix, mask), text(string), tree(rows, selected),
+  // highlight(mask), and size() -> [width, height] of the drawing buffer.
   static async load(bytes, host) {
     const { instance } = await WebAssembly.instantiate(bytes);
     return new Module(instance.exports, host);
@@ -116,9 +118,24 @@ export class Module {
     await this.turn([TYPED, this.place(bytes), bytes.length, ...this.host.size(), 0, 0]);
   }
 
-  // The event's run, then each request it made, in order.
+  // The event's run, then its requests. All tagged requests start independently;
+  // legacy requests keep their order and wait for their own recursive replies.
   async turn(event) {
-    for (const request of this.run(event)) await this.answer(request);
+    const requests = this.run(event);
+    if (requests.some((request) => request.kind === REQUEST) && typeof this.host.error !== "function")
+      throw new TypeError("host.error(error) is required for REQUEST replies");
+    const errors = [];
+    const tagged = requests.filter((request) => request.kind === REQUEST)
+      .map((request) => this.answer(request).catch((error) => {
+        errors.push(error);
+        this.host.error(errors.length === 1 ? error :
+          new AggregateError([...errors], errors.map(String).join("; ")));
+      }));
+    const legacy = (async () => {
+      for (const request of requests)
+        if (request.kind !== REQUEST) await this.answer(request);
+    })();
+    await Promise.all([...tagged, legacy]);
   }
 
   async answer({ kind, path, body, method, id }) {
@@ -126,7 +143,13 @@ export class Module {
       const bytes = await this.host.fetch(path);
       await this.turn([BYTES, this.place(bytes), bytes.length, ...this.host.size(), 0, 0]);
     } else if (kind === REQUEST) {
-      const { status, bytes } = await this.host.request(method, path, body, id);
+      let response;
+      try {
+        response = await this.host.request(method, path, body, id);
+      } catch (error) {
+        response = { status: 0, bytes: encoder.encode(String(error)) };
+      }
+      const { status, bytes } = response;
       await this.turn([ANSWERED, this.place(bytes), bytes.length, status, id, ...this.host.size()]);
     } else {
       const { status, bytes } = await this.host.post(path, body);
@@ -196,7 +219,10 @@ export class Module {
     if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(method))
       throw new Error("request method is not an HTTP method token");
     const path = requestUtf8.decode(s.subarray(methodEnd, pathEnd));
-    return { kind: REQUEST, method, path, body: s.slice(pathEnd), id };
+    const body = s.slice(pathEnd);
+    if ((method.toUpperCase() === "GET" || method.toUpperCase() === "HEAD") && body.length)
+      throw new TypeError(`${method} ${path}: a request body is not allowed`);
+    return { kind: REQUEST, method, path, body, id };
   }
 
   write(event) {

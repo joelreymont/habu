@@ -12,8 +12,9 @@ CAST: >CELLS ( ptr u8 -- ptr n )
 
 56 BUFFER: EVENT-BUF
 128 BUFFER: REQ
+128 BUFFER: REQ2
 variable REQ-U
-64 BUFFER: TEXT
+512 BUFFER: TEXT
 variable TEXT-U
 
 : FIELD, ( n -- )
@@ -70,6 +71,7 @@ variable TEXT-U
 : TYPED ( -- )
    1 EVENT@ 2 EVENT@ {: at:n u:n :}
    MAKE
+   at u s" trap" IS? if -1 >BYTES c@ drop exit then
    at u s" short header" IS? if 7 REQ BYTES>N 15 $20000000000001 RECORD exit then
    at u s" outside" IS? if 7 -1 REQ-U @ $20000000000001 RECORD exit then
    at u s" huge length" IS? if
@@ -83,6 +85,11 @@ variable TEXT-U
    at u s" bad newline" IS? if  10 REQ 19 + c! then
    at u s" bad utf8" IS? if  $FF REQ 20 + c! then
    at u s" empty path" IS? if  0 REQ 8 + c! then
+   at u s" get body" IS? if
+      0 REQ-U ! 3 REQ-CELL 6 REQ-CELL
+      s" GET" REQ+ s" /state" REQ+ 1 REQ-C
+      $20000000000001 REQUEST exit
+   then
    at u s" bom method" IS? if
       0 REQ-U ! 7 REQ-CELL 6 REQ-CELL
       BOM s" POST" REQ+ s" /state" REQ+
@@ -106,8 +113,30 @@ variable TEXT-U
       s" /state" {: path:ptr len:n :}
       1 path BYTES>N len 0 RECORD exit
    then
+   at u s" legacy two" IS? if
+      0 REQ-U ! s" /state" REQ+ 0 REQ-C $FF REQ-C
+      4 REQ BYTES>N REQ-U @ 6 RECORD
+      s" /state" {: path:ptr len:n :}
+      1 path BYTES>N len 0 RECORD exit
+   then
    at u s" two" IS? if
       $20000000000001 REQUEST $20000000000002 REQUEST exit
+   then
+   at u s" parallel" IS? if
+      REQ-U @ 0 ?do REQ i + c@ REQ2 i + c! loop
+      7 REQ2 BYTES>N REQ-U @ $20000000000001 RECORD
+      0 REQ-U ! 3 REQ-CELL 9 REQ-CELL
+      s" GET" REQ+ s" /projects" REQ+
+      $20000000000002 REQUEST exit
+   then
+   at u s" interleaved" IS? if
+      REQ-U @ 0 ?do REQ i + c@ REQ2 i + c! loop
+      7 REQ2 BYTES>N REQ-U @ $20000000000001 RECORD
+      s" /legacy*" {: span:ptr len:n :}
+      4 span BYTES>N len 7 RECORD
+      0 REQ-U ! 3 REQ-CELL 9 REQ-CELL
+      s" GET" REQ+ s" /projects" REQ+
+      $20000000000002 REQUEST exit
    then
    at u s" get" IS? if
       0 REQ-U ! 3 REQ-CELL 9 REQ-CELL
@@ -123,12 +152,18 @@ variable TEXT-U
    REQUEST ;
 
 : ANSWERED ( -- )
+   3 EVENT@ 470 = if 99 0 0 0 RECORD exit then
+   3 EVENT@ 471 = if -1 >BYTES c@ drop exit then
    0 TEXT-U !
    4 EVENT@ DIGITS 32 SAY-C 3 EVENT@ DIGITS 32 SAY-C
    5 EVENT@ DIGITS 44 SAY-C 6 EVENT@ DIGITS 32 SAY-C
    1 EVENT@ 2 EVENT@ {: at:n u:n :}
    u 0 ?do at i + >BYTES c@ DIGITS 44 SAY-C loop
-   TEXT-RECORD ;
+   TEXT-RECORD
+   3 EVENT@ 202 = if
+      0 REQ-U ! s" /followup" REQ+ 42 REQ-C
+      4 REQ BYTES>N REQ-U @ 9 RECORD
+   then ;
 
 : BYTES ( -- )
    0 TEXT-U !
