@@ -271,6 +271,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
          OBJECT-END COMMA
          s" completionProvider" KEY OBJECT-START OBJECT-END COMMA
          s" definitionProvider" true FIELD-BOOL COMMA
+         s" declarationProvider" true FIELD-BOOL COMMA
          s" referencesProvider" true FIELD-BOOL COMMA
          s" renameProvider" KEY OBJECT-START
             s" prepareProvider" true FIELD-BOOL
@@ -1049,6 +1050,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    m mu s" workspace/symbol" NAMED? if i p pu SYMBOLS exit then
    m mu s" textDocument/documentSymbol" NAMED? if i p pu DOCUMENT-SYMBOLS exit then
    m mu s" textDocument/definition" NAMED? if i p pu DEFINITION exit then
+   m mu s" textDocument/declaration" NAMED? if i p pu DEFINITION exit then
    m mu s" textDocument/references" NAMED? if i p pu REFERENCES exit then
    m mu s" textDocument/prepareRename" NAMED? if i p pu PREPARE-RENAME exit then
    m mu s" textDocument/rename" NAMED? if i p pu RENAME exit then

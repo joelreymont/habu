@@ -1023,7 +1023,7 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\"," MSG+
    s\" \"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}," MSG+
-   s\" \"completionProvider\":{},\"definitionProvider\":true," MSG+
+   s\" \"completionProvider\":{},\"definitionProvider\":true,\"declarationProvider\":true," MSG+
    s\" \"referencesProvider\":true," MSG+
    s\" \"renameProvider\":{\"prepareProvider\":true}," MSG+
    s\" \"hoverProvider\":true,\"documentHighlightProvider\":true," MSG+
@@ -2422,6 +2422,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
    {: i:ptr iu:n p:ptr pu:n l:n c:n :}
    s" textDocument/definition" i iu p pu l c AT-ASK ;
 
+: DECLARATION-ASK ( ptr u8 n ptr u8 n n n -- )
+   {: i:ptr iu:n p:ptr pu:n l:n c:n :}
+   s" textDocument/declaration" i iu p pu l c AT-ASK ;
+
 \ The next frame answers the request with this id's JSON text with one
 \ Location: this URI, from character C1 to C2 of line L.
 : LOCATED ( ptr u8 n ptr u8 n n n n -- )
@@ -2847,6 +2851,23 @@ variable LENGTH-N                        \ the length of its directory's name
    SAY
    s" 3" DEF-DEP-CANON URI-OF 4 2 9 LOCATED
    s" 4" DEF-DEP-CANON URI-OF 2 2 9 LOCATED ;
+
+\ Habu's source definition is also its declaration, including when it is in
+\ a dependency. An unrelated token has no declaration location.
+: DECL-TURNS ( -- )
+   DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
+   INITIALIZE
+   DEF-B-PATH TEXT-DEF-B 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
+   s" 3" DEF-B-PATH 1 19 DECLARATION-ASK
+   s" 4" DEF-B-PATH 1 27 DECLARATION-ASK
+   s" 5" DEF-B-PATH 1 2 DECLARATION-ASK
+   SAY
+   s" 3" DEF-DEP-CANON URI-OF 4 2 9 LOCATED
+   s" 4" DEF-DEP-CANON URI-OF 2 2 9 LOCATED
+   s" 5" NOWHERE ;
 
 \ def-od-dep.f on disk, and the text its open document holds: three lines
 \ inserted atop and its two lines swapped, so that DEF-DEPB's and DEF-DEPA's
@@ -6240,6 +6261,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 
 : TEST-DEFINITIONS ( -- )
    s" definition" [: DEF-TURNS ;] TALK
+   s" declaration" [: DECL-TURNS ;] TALK
    s" definition-dependency" [: DEF-DEP-TURNS ;] TALK
    s" definition-dependency-open" [: DEF-OPEN-DEP-TURNS ;] TALK
    s" definition-not-open" [: DEF-NOT-OPEN-TURNS ;] TALK
