@@ -6,8 +6,13 @@
 // Runs the start turn, then each step in order, once every run the steps
 // before it let happen has run:
 //
-//    --pointer X Y, --move X Y, --release X Y
+//    --pointer X Y BUTTONS MODS, --move X Y BUTTONS MODS,
+//    --release X Y BUTTONS MODS
 //                          a pointer pressed, moved or released at X, Y
+//    --wheel DX DY MODS    signed device-pixel wheel deltas
+//    --key TEXT MODS       KeyboardEvent.key on the focused canvas
+//    --resize W H          change the drawing buffer and send a resize event
+//    --control KEY         select a transient tree row
 //    --typed TEXT          TEXT typed
 //    --answer STATUS FILE  answers the oldest waiting request with STATUS and
 //                          FILE's bytes; a fetch answered outside 200-299
@@ -17,7 +22,8 @@
 //
 // The drawing buffer is 640 by 480 unless --size says otherwise. Prints one
 // line per record, a request's when the host makes it: hello, fetch <path>,
-// post <path> <length> <body in hex>, draw <count>, text <string>; and at the
+// post <path> <length> <body in hex>, tree <selected> <JSON>,
+// highlight <count> <mask in hex>, draw <count> <mask in hex>, text <string>; and at the
 // end, outstanding <fetch|post> <path> for each request still waiting. It
 // draws nothing. Each failure is printed on stderr as it happens, such as
 // `throw <code>` for a run that answered a nonzero status, and the steps go
@@ -27,7 +33,9 @@ import { Module } from "./turn.js";
 
 const USAGE =
   "usage: bun host-cli.mjs <module.wasm> [--size W H] " +
-  "[--pointer X Y | --move X Y | --release X Y | --typed TEXT | --answer STATUS FILE | --fail]...";
+  "[--pointer X Y BUTTONS MODS | --move X Y BUTTONS MODS | --release X Y BUTTONS MODS | " +
+  "--wheel DX DY MODS | --key TEXT MODS | --resize W H | --control KEY | " +
+  "--typed TEXT | --answer STATUS FILE | --fail]...";
 
 let failed = false;
 
@@ -57,7 +65,7 @@ function settled() {
 // of the module.
 function parse(args) {
   if (args.length < 1) throw new Error(USAGE);
-  let size = [640n, 480n];
+  const state = { size: [640n, 480n] };
   const steps = [];
   let i = 1;
   const take = (n) => {
@@ -69,21 +77,44 @@ function parse(args) {
     const flag = args[i++];
     switch (flag) {
       case "--size":
-        size = take(2).map(BigInt);
+        state.size = take(2).map(BigInt);
         break;
       case "--pointer": {
-        const [x, y] = take(2).map(BigInt);
-        steps.push((m) => m.pointer(x, y).catch(report));
+        const [x, y, buttons, mods] = take(4).map(BigInt);
+        steps.push((m) => m.pointer(x, y, buttons, mods).catch(report));
         break;
       }
       case "--move": {
-        const [x, y] = take(2).map(BigInt);
-        steps.push((m) => m.moved(x, y).catch(report));
+        const [x, y, buttons, mods] = take(4).map(BigInt);
+        steps.push((m) => m.moved(x, y, buttons, mods).catch(report));
         break;
       }
       case "--release": {
-        const [x, y] = take(2).map(BigInt);
-        steps.push((m) => m.released(x, y).catch(report));
+        const [x, y, buttons, mods] = take(4).map(BigInt);
+        steps.push((m) => m.released(x, y, buttons, mods).catch(report));
+        break;
+      }
+      case "--wheel": {
+        const [dx, dy, mods] = take(3).map(BigInt);
+        steps.push((m) => m.wheel(dx, dy, mods).catch(report));
+        break;
+      }
+      case "--key": {
+        const [key, mods] = take(2);
+        steps.push((m) => m.key(key, BigInt(mods)).catch(report));
+        break;
+      }
+      case "--resize": {
+        const next = take(2).map(BigInt);
+        steps.push((m) => {
+          state.size = next;
+          m.resize().catch(report);
+        });
+        break;
+      }
+      case "--control": {
+        const [key] = take(1).map(BigInt);
+        steps.push((m) => m.control(key).catch(report));
         break;
       }
       case "--typed": {
@@ -110,11 +141,11 @@ function parse(args) {
         throw new Error(USAGE);
     }
   }
-  return { wasm: args[0], size, steps };
+  return { wasm: args[0], state, steps };
 }
 
 try {
-  const { wasm, size, steps } = parse(process.argv.slice(2));
+  const { wasm, state, steps } = parse(process.argv.slice(2));
   const module = await Module.load(readFileSync(wasm), {
     hello: () => console.log("hello"),
     fetch: (path) => {
@@ -128,9 +159,13 @@ try {
       console.log(`post ${path} ${body.length} ${Buffer.from(body).toString("hex")}`);
       return request("post", path);
     },
-    draw: (corners, count) => console.log(`draw ${count}`),
+    draw: (corners, count, matrix, mask) =>
+      console.log(`draw ${count}${count ? ` ${Buffer.from(mask).toString("hex")}` : ""}`),
+    tree: (rows, selected) => console.log(`tree ${selected} ${JSON.stringify(rows)}`),
+    highlight: (mask) =>
+      console.log(`highlight ${mask.length}${mask.length ? ` ${Buffer.from(mask).toString("hex")}` : ""}`),
     text: (s) => console.log(`text ${s}`),
-    size: () => size,
+    size: () => state.size,
   });
   module.start().catch(report);
   await settled();

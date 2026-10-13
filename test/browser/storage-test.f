@@ -85,8 +85,9 @@ DYNAMIC-BUFFER PAYLOAD u8
 
 : HOST ( -- n )
    PROC-ARGV-RESET
-   s" src/lib/browser/host-cli.mjs" ARG+ MOD MOD-U @ ARG+ FILE FILE-U @ ARG+
-   s" --pointer" ARG+ s" 3" ARG+ s" 4" ARG+
+   s" src/lib/browser/host-cli.mjs" ARG+ MOD MOD-U @ ARG+
+   s" --answer" ARG+ s" 200" ARG+ FILE FILE-U @ ARG+
+   s" --pointer" ARG+ s" 3" ARG+ s" 4" ARG+ s" 1" ARG+ s" 0" ARG+
    s" bun" >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u SPAWN ;
 

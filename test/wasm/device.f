@@ -22,8 +22,9 @@
 \ test/browser/echo-test.f runs after it and reports on its own: the browser
 \ host's turns, src/lib/browser/host-cli.mjs on its echo fixture.
 \ test/browser/storage-test.f runs after it and reports on its own: a dynamic
-\ buffer beside the pages the host adds. The modules stay in the printed
-\ directories.
+\ buffer beside the pages the host adds. test/browser/navigation-test.f checks
+\ input, tree and highlight records through the same host. The modules stay in
+\ the printed directories.
 
 require src/lib/test.f
 require src/lib/fs.f
@@ -43,6 +44,7 @@ require test/wasm/storage-test.f
 require test/wasm/differential.f
 require test/browser/echo-test.f
 require test/browser/storage-test.f
+require test/browser/navigation-test.f
 
 package WASM-DEVICE
 private

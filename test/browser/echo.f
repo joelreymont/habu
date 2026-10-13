@@ -31,9 +31,9 @@ CAST: >BYTES ( n -- ptr u8 )
 CAST: >CELLS ( ptr u8 -- ptr n )
 CAST: BYTES>N ( ptr u8 -- n )
 
-\ The event: its kind and four fields, zero, which is start, until the host
+\ The event: its kind and six fields, zero, which is start, until the host
 \ writes one.
-40 BUFFER: EVENT-BUF
+56 BUFFER: EVENT-BUF
 \ The text a record names: "released ", two signed cells' digits and a comma.
 64 BUFFER: TEXT
 variable TEXT-U

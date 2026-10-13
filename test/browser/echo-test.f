@@ -122,9 +122,9 @@ DYNAMIC-BUFFER PAYLOAD u8
    s" src/lib/browser/host-cli.mjs" ARG+  MOD MOD-U @ ARG+ ;
 
 \ A step at x and y: --pointer, --move or --release.
-: AT+ ( ptr u8 n n n -- )
-   {: flag:ptr fu:n x:n y:n :}
-   flag fu ARG+  x N-ARG+  y N-ARG+ ;
+: AT+ ( ptr u8 n n n n -- )
+   {: flag:ptr fu:n x:n y:n buttons:n :}
+   flag fu ARG+  x N-ARG+  y N-ARG+  buttons N-ARG+  0 N-ARG+ ;
 
 : TYPED+ ( ptr u8 n -- )
    s" --typed" ARG+  ARG+ ;
@@ -177,7 +177,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 
 \ ---- the cases --------------------------------------------------------------
 : SMALL-CASE ( -- )
-   HOST-OPEN  200 s" small.bin" ANSWER+  s" --pointer" 3 4 AT+
+   HOST-OPEN  200 s" small.bin" ANSWER+  s" --pointer" 3 4 1 AT+
    HOST SUCCEEDED
    STARTED  SMALL$ SUM-LINE  s" 3,4" TEXT-LINE
    s" a small file: hello, loading, fetch fixture, the copy's checksum, then 3,4" T-LABEL
@@ -190,7 +190,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    u PAYLOAD-RESERVE
    u 0 ?do  i  i 509 / +  $FF and  i PAYLOAD c!  loop
    0 PAYLOAD u s" large.bin" FILE!
-   HOST-OPEN  200 s" large.bin" ANSWER+  s" --pointer" 0 0 AT+  s" --pointer" 1279 719 AT+
+   HOST-OPEN  200 s" large.bin" ANSWER+  s" --pointer" 0 0 1 AT+  s" --pointer" 1279 719 1 AT+
    HOST SUCCEEDED
    STARTED  0 PAYLOAD u SUM-LINE  s" 0,0" TEXT-LINE  s" 1279,719" TEXT-LINE
    s" a file larger than the module's memory: the host grows it and the module reads the copy" T-LABEL
@@ -198,7 +198,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 
 : HELD-CASE ( -- )
    HOST-OPEN  200 s" small.bin" ANSWER+  s" 12" TYPED+
-   s" --pointer" 3 4 AT+  s" --move" -5 6 AT+  s" --release" 7 8 AT+  s" ab" TYPED+
+   s" --pointer" 3 4 1 AT+  s" --move" -5 6 1 AT+  s" --release" 7 8 0 AT+  s" ab" TYPED+
    200 s" landed.txt" ANSWER+
    HOST SUCCEEDED
    STARTED  SMALL$ SUM-LINE
@@ -246,7 +246,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    s" the module trapped and has ended: RuntimeError: " SB-APPEND  LINE ;
 
 : TRAPPED-CASE ( -- )
-   HOST-OPEN  s" trap" TYPED+  200 s" small.bin" ANSWER+  s" --pointer" 1 2 AT+
+   HOST-OPEN  s" trap" TYPED+  200 s" small.bin" ANSWER+  s" --pointer" 1 2 1 AT+
    s" x" TYPED+
    HOST 1 T=
    STARTED
@@ -260,7 +260,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 : FAILED-CASE ( -- )
    HOST-OPEN  404 s" small.bin" ANSWER+  s" x" TYPED+  s" --fail" ARG+
    s" long path" TYPED+  s" neg path" TYPED+
-   s" --pointer" 1 2 AT+  s" --fail" ARG+
+   s" --pointer" 1 2 1 AT+  s" --fail" ARG+
    HOST 1 T=
    STARTED  s" x" TEXT-LINE  s" x" POST-LINE  s" 1,2" TEXT-LINE
    s" failed: a 404 fetch, a failed post and a post's long or negative path end their turns" T-LABEL

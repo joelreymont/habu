@@ -20,10 +20,11 @@
 // https://www.w3.org/TR/wasm-js-api-2/#memories
 
 const PAGE_BYTES = 65536;
-const EVENT_BYTES = 40n;
+const EVENT_BYTES = 56n;
 const RECORD_BYTES = 32;
 const CORNER_BYTES = 36n; // a triangle's three corners of f32 x y z
 const MATRIX_BYTES = 64n; // 16 f32, column-major
+const MAX_KEY = BigInt(Number.MAX_SAFE_INTEGER);
 
 // Events; start, kind 0, is the zero event block the first run reads.
 const BYTES = 1n;
@@ -32,6 +33,10 @@ const ANSWERED = 3n;
 const TYPED = 4n;
 const MOVED = 5n;
 const RELEASED = 6n;
+const WHEEL = 7n;
+const KEY = 8n;
+const RESIZE = 9n;
+const CONTROL = 10n;
 
 // Records.
 const HELLO = 0n;
@@ -39,6 +44,8 @@ const FETCH = 1n;
 const DRAW = 2n;
 const TEXT = 3n;
 const POST = 4n;
+const TREE = 5n;
+const HIGHLIGHT = 6n;
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
@@ -46,7 +53,8 @@ const encoder = new TextEncoder();
 export class Module {
   // host: hello(), fetch(path) -> Promise<Uint8Array>, post(path, body) ->
   // Promise<{ status, bytes }> for every HTTP status, draw(corners, count,
-  // matrix), text(string) and size() -> [width, height] of the drawing buffer.
+  // matrix, mask), text(string), tree(rows, selected), highlight(mask), and
+  // size() -> [width, height] of the drawing buffer.
   static async load(bytes, host) {
     const { instance } = await WebAssembly.instantiate(bytes);
     return new Module(instance.exports, host);
@@ -57,6 +65,7 @@ export class Module {
     this.host = host;
     this.event = null; // the address hello named
     this.ended = null; // the trap that ended the instance
+    this.mask = null; // no highlight record yet: draw with an unselected mask
   }
 
   // The first turn.
@@ -66,22 +75,41 @@ export class Module {
 
   // Turns for a pointer pressed, moved and released at x, y in the drawing
   // buffer's pixels.
-  pointer(x, y) {
-    return this.turn([POINTER, x, y, ...this.host.size()]);
+  pointer(x, y, buttons, mods) {
+    return this.turn([POINTER, x, y, ...this.host.size(), buttons, mods]);
   }
 
-  moved(x, y) {
-    return this.turn([MOVED, x, y, ...this.host.size()]);
+  moved(x, y, buttons, mods) {
+    return this.turn([MOVED, x, y, ...this.host.size(), buttons, mods]);
   }
 
-  released(x, y) {
-    return this.turn([RELEASED, x, y, ...this.host.size()]);
+  released(x, y, buttons, mods) {
+    return this.turn([RELEASED, x, y, ...this.host.size(), buttons, mods]);
+  }
+
+  wheel(dx, dy, mods) {
+    return this.turn([WHEEL, dx, dy, ...this.host.size(), 0, mods]);
+  }
+
+  async key(text, mods) {
+    const bytes = encoder.encode(text);
+    await this.turn([KEY, this.place(bytes), bytes.length, ...this.host.size(), 0, mods]);
+  }
+
+  resize() {
+    return this.turn([RESIZE, 0, 0, ...this.host.size(), 0, 0]);
+  }
+
+  control(key) {
+    const id = BigInt(key);
+    if (id <= 0n || id > MAX_KEY) throw new RangeError(`control key ${id} is not a positive safe integer`);
+    return this.turn([CONTROL, id, 0, ...this.host.size(), 0, 0]);
   }
 
   // A turn for typed text, its UTF-8 bytes placed as an answer's are.
   async typed(text) {
     const bytes = encoder.encode(text);
-    await this.turn([TYPED, this.place(bytes), bytes.length, ...this.host.size()]);
+    await this.turn([TYPED, this.place(bytes), bytes.length, ...this.host.size(), 0, 0]);
   }
 
   // The event's run, then each request it made, in order.
@@ -92,10 +120,10 @@ export class Module {
   async answer({ kind, path, body }) {
     if (kind === FETCH) {
       const bytes = await this.host.fetch(path);
-      await this.turn([BYTES, this.place(bytes), bytes.length, ...this.host.size()]);
+      await this.turn([BYTES, this.place(bytes), bytes.length, ...this.host.size(), 0, 0]);
     } else {
       const { status, bytes } = await this.host.post(path, body);
-      await this.turn([ANSWERED, this.place(bytes), bytes.length, status, 0]);
+      await this.turn([ANSWERED, this.place(bytes), bytes.length, status, 0, 0, 0]);
     }
   }
 
@@ -144,6 +172,7 @@ export class Module {
 
   write(event) {
     if (this.event === null) throw new Error("an event before the module's hello");
+    if (event.length !== 7) throw new Error(`an event has ${event.length} fields, expected 7`);
     const s = this.span(this.event, EVENT_BYTES);
     const v = new DataView(s.buffer, s.byteOffset, s.byteLength);
     event.forEach((f, i) => v.setBigInt64(8 * i, BigInt(f), true));
@@ -170,14 +199,71 @@ export class Module {
         this.host.hello();
         return;
       case DRAW:
-        this.host.draw(this.span(a, b * CORNER_BYTES), Number(b), this.span(c, MATRIX_BYTES));
+        this.draw(a, b, c);
         return;
       case TEXT:
         this.host.text(utf8.decode(this.span(a, b)));
         return;
+      case TREE:
+        this.tree(a, b, c);
+        return;
+      case HIGHLIGHT:
+        this.highlight(a, b, c);
+        return;
       default:
         throw new Error(`a record of kind ${kind}, which names no record`);
     }
+  }
+
+  tree(a, b, c) {
+    const bytes = this.span(a, b);
+    let source;
+    try {
+      source = utf8.decode(bytes);
+    } catch (e) {
+      throw new Error("tree UTF-8 is invalid", { cause: e });
+    }
+    let rows;
+    try {
+      rows = JSON.parse(source);
+    } catch (e) {
+      throw new Error("tree JSON is invalid", { cause: e });
+    }
+    if (!Array.isArray(rows)) throw new Error("tree JSON must be an array");
+    const keys = new Set();
+    for (const row of rows) {
+      if (row === null || typeof row !== "object" || Array.isArray(row) ||
+          Object.keys(row).sort().join(",") !== "key,label,parent" ||
+          !Number.isSafeInteger(row.key) || row.key <= 0 ||
+          !Number.isSafeInteger(row.parent) || row.parent < 0 ||
+          typeof row.label !== "string")
+        throw new Error("tree row must have a positive safe key, earlier parent, and string label");
+      if (keys.has(row.key)) throw new Error(`duplicate tree key ${row.key}`);
+      if (row.parent !== 0 && !keys.has(row.parent))
+        throw new Error(`tree parent ${row.parent} must be an earlier row key`);
+      keys.add(row.key);
+    }
+    if (c < 0n || c > MAX_KEY || (c !== 0n && !keys.has(Number(c))))
+      throw new Error(`selected tree key ${c} is missing`);
+    this.host.tree(rows, Number(c));
+  }
+
+  highlight(a, b, c) {
+    if (c !== 0n) throw new Error("highlight c must be zero");
+    const mask = this.span(a, b);
+    if (mask.some((value) => value > 1)) throw new Error("highlight mask contains a value other than 0 or 1");
+    this.mask = mask.slice();
+    this.host.highlight(this.mask);
+  }
+
+  draw(a, b, c) {
+    const corners = this.span(a, b * CORNER_BYTES);
+    const matrix = this.span(c, MATRIX_BYTES);
+    const count = Number(b);
+    const mask = this.mask ?? new Uint8Array(count);
+    if (mask.length !== count)
+      throw new Error(`highlight count ${mask.length} does not match draw count ${count}`);
+    this.host.draw(corners, count, matrix, mask);
   }
 
   // The bytes copied past memory's old end, which grows by the pages they

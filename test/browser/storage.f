@@ -19,7 +19,7 @@ CAST: >BYTES ( n -- ptr u8 )
 CAST: >CELLS ( ptr u8 -- ptr n )
 CAST: BYTES>N ( ptr u8 -- n )
 
-40 BUFFER: EVENT-BUF
+56 BUFFER: EVENT-BUF
 40 BUFFER: TEXT
 variable TEXT-U
 DYNAMIC-BUFFER HELD u8

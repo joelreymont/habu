@@ -6,14 +6,28 @@
 <title>Habu</title>
 <style>
 body { margin: 0; font: 14px system-ui, sans-serif; }
-canvas { display: block; width: 100vw; height: 80vh; touch-action: none; }
+main { display: flex; height: 80vh; }
+canvas { display: block; min-width: 0; flex: 1; touch-action: none; }
+canvas:focus-visible { outline: 2px solid #1168b6; outline-offset: -2px; }
+#scene { width: 240px; overflow: auto; border-right: 1px solid #ddd; }
+#scene h2 { margin: 8px; font-size: 14px; }
+#tree ul { list-style: none; margin: 0; padding-left: 16px; }
+#tree > ul { padding-left: 4px; }
+.tree-row { display: flex; align-items: center; min-width: max-content; }
+.tree-row button { font: inherit; border: 0; background: none; padding: 3px 5px; text-align: left; cursor: pointer; }
+.tree-row button[aria-pressed="true"] { background: #d9eaff; font-weight: 600; }
+.tree-row button:focus-visible { outline: 2px solid #1168b6; }
+.tree-spacer { width: 22px; }
 form, #text { margin: 8px; }
 #text { white-space: pre-wrap; }
 #text.error { color: #b00020; }
 </style>
 </head>
 <body>
-<canvas></canvas>
+<main>
+<section id="scene" aria-label="Scene tree"><h2>Scene</h2><div id="tree"></div></section>
+<canvas tabindex="0" aria-label="Drawing canvas"></canvas>
+</main>
 <form><input aria-label="text" autocomplete="off" disabled></form>
 <div id="text">loading /module.wasm</div>
 <script type="module" src="host.js"></script>
