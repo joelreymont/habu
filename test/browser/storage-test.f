@@ -69,7 +69,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    0 u 0 ?do 31 * a i + c@ + $FFFFFFFF and loop ;
 
 : PAYLOAD! ( -- n )
-   WPROF:DATA-BASE MOD MOD-U @ FILE-SIZE + WPROF:PAGE-BYTES + 13 + {: u:n :}
+   WPROF:IMAGE-BASE MOD MOD-U @ FILE-SIZE + WPROF:PAGE-BYTES + 13 + {: u:n :}
    u PAYLOAD-RESERVE
    u 0 ?do i i 509 / + $FF and i PAYLOAD c! loop
    FILE FILE-U @ 0 PAYLOAD u WRITE-ALL

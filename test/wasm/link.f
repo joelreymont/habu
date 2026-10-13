@@ -6,7 +6,7 @@
 \ in the order added, then the wrappers; types are deduplicated in the order
 \ that numbering first uses them, so a function in the aligned frame shares the
 \ type of one of no lanes, and only the latter can be the entry. Each call field
-\ holds its callee's index. An address field and a data cell hold WPROF's data
+\ holds its callee's index. An address field and a data cell hold WPROF's image
 \ base plus a target in the image, its length included, or a table slot; the
 \ table and its element segment list the slots' functions from slot 1, and
 \ slot 0 holds none. Memory's minimum is the pages the image ends in and its
@@ -20,11 +20,10 @@
 \ entry that takes or answers a lane; and an image of a negative length or one
 \ ending past memory32's 4 GiB, MAX-N bytes included.
 \
-\ THE BYTES ARE WASM-TOOLS'. The first three linked modules are what wasm-tools
-\ 1.243.0 assembles for the same modules written as text, each of which
-\ validates with WPROF's features; the table, element and data sections of the
-\ fourth are too. A call or address field is checked as the padded LEB WLINK
-\ writes, where the text assembler writes the shortest.
+\ The byte fixtures pin the module shape and ABI, including the run wrapper's
+\ task DATA header stores. The device gate validates and runs linked modules
+\ independently. A call or address field is checked as the padded LEB WLINK
+\ writes, where a text assembler writes the shortest.
 
 require src/lib/test.f
 require src/lib/errors.f
@@ -165,12 +164,12 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    0 KERNEL drop
    BODY-BUF 0 WLINK:DATA!
    0 LINKED
-   s" one function, no image: memory and four wrappers exported, as wasm-tools writes it" T-LABEL
+   s" one function, no image: memory and four wrappers with task header stores" T-LABEL
    WANT-RESET
-   s" 0061736d01000000010e0360017f017f6000017f6000017e03060500010201010506010104808004073205066d656d6f72790200" W+
-   s" 0372756e00010a7468726f772d636f64650002086f75742d626173650003076f75742d6c656e00040a4905040041000b2700" W+
-   s" 418080044180a008360200418080044180a0083602084180800441003602104180800410000b0900418080042903180b0600" W+
-   s" 4180a0040b0900418080042802100b0b0801004180a00c0b00" W+
+   s" 0061736d01000000010e0360017f017f6000017f6000017e03060500010201010506010132808004073205066d656d6f72790200" W+
+   s" 0372756e00010a7468726f772d636f64650002086f75742d626173650003076f75742d6c656e00040a5f05040041000b3d00" W+
+   s" 41d0a30c4280a00837030041e8af0d42808004370300418080044180a008360200418080044180a008360208418080044100" W+
+   s" 3602104180800410000b0900418080042903180b06004180a0040b0900418080042802100b0b0901004180a0c4010b00" W+
    0 MOD-U @ HEX$ WANT$ T$= ;
 
 \ Handles 0..4 are an adapter, a kernel, a captured, a kernel and a captured
@@ -186,10 +185,10 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    s" kernel, captured, adapter, each as added, then the wrappers; types as first used" T-LABEL
    WANT-RESET
    s" 0061736d01000000012c0760027f7e017f60037f7e7e017f60047f7e7e7e017f60057f7e7e7e7e017f60017f017f6000017f" W+
-   s" 6000017e030a090001020304050605050506010104808004073205066d656d6f727902000372756e00050a7468726f772d636f64" W+
-   s" 650006086f75742d626173650007076f75742d6c656e00080a5d090400410b0b0400410d0b0400410c0b0400410e0b040041" W+
-   s" 0a0b2700418080044180a008360200418080044180a0083602084180800441003602104180800410040b0900418080042903" W+
-   s" 180b06004180a0040b0900418080042802100b0b0801004180a00c0b00" W+
+   s" 6000017e030a090001020304050605050506010132808004073205066d656d6f727902000372756e00050a7468726f772d636f64" W+
+   s" 650006086f75742d626173650007076f75742d6c656e00080a73090400410b0b0400410d0b0400410c0b0400410e0b040041" W+
+   s" 0a0b3d0041d0a30c4280a00837030041e8af0d42808004370300418080044180a008360200418080044180a00836020841" W+
+   s" 80800441003602104180800410040b0900418080042903180b06004180a0040b0900418080042802100b0b0901004180a0c4010b00" W+
    0 MOD-U @ HEX$ WANT$ T$= ;
 
 \ Kernels 0..4: no lanes; 17 in, in the aligned frame; one in, twice; one out.
@@ -204,10 +203,10 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    s" types deduplicated by structure: the aligned frame shares the type of no lanes" T-LABEL
    WANT-RESET
    s" 0061736d01000000011a0560017f017f60027f7e017f60017f027f7e6000017f6000017e030a090000010102030403030506" W+
-   s" 010104808004073205066d656d6f727902000372756e00050a7468726f772d636f64650006086f75742d626173650007076f7574" W+
-   s" 2d6c656e00080a5f09040041010b040041020b040041030b040041040b0600410542000b2700418080044180a00836020041" W+
-   s" 8080044180a0083602084180800441003602104180800410000b0900418080042903180b06004180a0040b09004180800428" W+
-   s" 02100b0b0801004180a00c0b00" W+
+   s" 010132808004073205066d656d6f727902000372756e00050a7468726f772d636f64650006086f75742d626173650007076f7574" W+
+   s" 2d6c656e00080a7509040041010b040041020b040041030b040041040b0600410542000b3d0041d0a30c4280a00837030041" W+
+   s" e8af0d42808004370300418080044180a008360200418080044180a0083602084180800441003602104180800410000b090041" W+
+   s" 8080042903180b06004180a0040b0900418080042802100b0b0901004180a0c4010b00" W+
    0 MOD-U @ HEX$ WANT$ T$=
    s" an entry in the aligned frame is refused though its type is the entry's" T-LABEL
    [: 1 WLINK:LINK 2drop ;] E-WENC-ARITY TTHROWSQ
@@ -267,27 +266,27 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
    s" the table holds three slots and the element segment, from slot 1, functions 3 and 2" T-LABEL
    S-TABLE SECTION$ s" 0170010303" T$=
    S-ELEMENT SECTION$ s" 010041010b020302" T$=
-   s" a data address is the data base plus its target, the image's length included" T-LABEL
-   MBUF MOD-U @  0 BODY@ drop 2 +  WLEB:S64-PAD@  $31018 T=
+   s" a data address is the image base plus its target, the image's length included" T-LABEL
+   MBUF MOD-U @  0 BODY@ drop 2 +  WLEB:S64-PAD@  WPROF:IMAGE-BASE IMAGE-LEN + T=
    s" a code address is its slot" T-LABEL
    MBUF MOD-U @  1 BODY@ drop 2 +  WLEB:S64-PAD@  2 T=
-   s" data cells hold the same, low byte first, in one active segment at the data base" T-LABEL
-   S-DATA SECTION$ s" 01004180a00c0b18081003000000000008090a0b0c0d0e0f0100000000000000" T$= ;
+   s" data cells hold the same, low byte first, in one active segment at the image base" T-LABEL
+   S-DATA SECTION$ s" 01004180a0c4010b18081031000000000008090a0b0c0d0e0f0100000000000000" T$= ;
 
-61441 BUFFER: BIG                      \ zeros, an image one byte past four pages
+61441 BUFFER: BIG                      \ zeros, an image one byte past a page boundary
 
-\ From $31000, 61440 bytes end at 4 pages and one more needs a fifth.
+\ From $310000, 61440 bytes end at 50 pages and one more needs a 51st.
 : PAGES-ROW ( -- )
    WLINK:RESET
    0 KERNEL drop
    BIG 61440 WLINK:DATA!
    0 LINKED
-   s" an image ending at a page's end: memory's minimum 4 pages, its maximum 65536" T-LABEL
-   S-MEMORY SECTION$ s" 010104808004" T$=
+   s" an image ending at a page's end: memory's minimum 50 pages, its maximum 65536" T-LABEL
+   S-MEMORY SECTION$ s" 010132808004" T$=
    BIG 61441 WLINK:DATA!
    0 LINKED
-   s" one byte more: a minimum of 5 pages" T-LABEL
-   S-MEMORY SECTION$ s" 010105808004" T$= ;
+   s" one byte more: a minimum of 51 pages" T-LABEL
+   S-MEMORY SECTION$ s" 010133808004" T$= ;
 
 \ ---- W03 --------------------------------------------------------------------------
 \ WASM-W03:BUILD's module, test/wasm/w03.f.
@@ -302,7 +301,7 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
 \ Run's body, calling the entry at index 135.
 : RUN-135 ( -- )
    WANT-RESET
-   s" 00418080044180a008360200418080044180a0083602084180800441003602104180800410" W+
+   s" 0041d0a30c4280a00837030041e8af0d42808004370300418080044180a008360200418080044180a0083602084180800441003602104180800410" W+
    s" 87010b" W+ ;
 
 : W03-ROW ( -- )
@@ -409,7 +408,7 @@ $100000000 constant MEMORY32-BYTES     \ 65536 pages of 64 KiB
 \ need not hold the bytes these lengths name.
 : MEMORY-ROW ( -- )
    s" an image ending one byte past memory32's 4 GiB is refused" T-LABEL
-   [: BIG  MEMORY32-BYTES WPROF:DATA-BASE - 1+  WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ
+   [: BIG  MEMORY32-BYTES WPROF:IMAGE-BASE - 1+  WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ
    s" an image of MAX-N bytes, whose end would wrap, is refused" T-LABEL
    [: BIG MAX-N WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ ;
 

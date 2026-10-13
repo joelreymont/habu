@@ -3,6 +3,8 @@
 \ contract carries BASE and SCALAR-FP for wasm and nothing else
 \ (src/compiler/target.f MASK-WASM), so these numbers live here.
 
+require src/habu/layout.f
+
 package WPROF
 public
 
@@ -24,13 +26,18 @@ $10000 constant PAGE-BYTES
 $10000 constant PAGES-MAX
 
 \ Section 17.5's layout: null [0,$10000), ctx [$10000,$11000), output
-\ [$11000,$21000), data stack [$21000,$31000) - the native boot stack's 8192
-\ cells - and static data from $31000. Dynamic mappings lie past the image's
-\ last page, in the pages map-anon grows (src/arch/wasm/kernel.f).
+\ [$11000,$21000), data stack [$21000,$31000), the single-task DATA ABI
+\ region after it, then the captured static image. The DATA region covers the
+\ shared layout's complete reserved band through DATA-START. Dynamic mappings
+\ lie past the image's last page, in pages map-anon grows.
 $10000 constant CTX-BASE
 $11000 constant OUT-BASE
 $21000 constant STACK-BASE
 $31000 constant DATA-BASE
+DATA-BASE STACK-BASE - constant STACK-BYTES
+DATA-BASE constant STACK-END
+DATA-START PAGE-BYTES 1- + PAGE-BYTES / PAGE-BYTES * constant DATA-BYTES
+DATA-BASE DATA-BYTES + constant IMAGE-BASE
 
 \ Each context field's byte offset inside the context. Each has its own
 \ eight-byte slot, so the i64 throw code and fault address and the i32 fields

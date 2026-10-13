@@ -186,7 +186,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 \ Byte i is the low byte of i + i/509; 509 is prime, so the pages differ and a
 \ page copied to the wrong place changes the checksum.
 : LARGE-CASE ( -- )
-   WPROF:DATA-BASE  MOD MOD-U @ FILE-SIZE +  PAGE-BYTES +  13 + {: u:n :}
+   WPROF:IMAGE-BASE  MOD MOD-U @ FILE-SIZE +  PAGE-BYTES +  13 + {: u:n :}
    u PAYLOAD-RESERVE
    u 0 ?do  i  i 509 / +  $FF and  i PAYLOAD c!  loop
    0 PAYLOAD u s" large.bin" FILE!

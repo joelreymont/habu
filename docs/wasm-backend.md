@@ -522,7 +522,19 @@ The current memory32 profile uses this layout:
 - ctx [$10000,$11000);
 - output region [$11000,$21000);
 - data stack [$21000,$31000);
-- static DATA from $31000.
+- single-task DATA ABI from $31000 through the next page boundary after
+  `DATA-START` (from `src/habu/layout.f`);
+- captured static image from that boundary onward.
+
+`data-base` points to the task DATA region, so portable checked words such as
+`FMT` and `STRING` use their declared task-local offsets without touching the
+captured image. The region starts zeroed. On every `run`, the wrapper writes
+the actual Wasm stack base and its $10000-byte capacity into
+`STACK-ABI:BASE-CELL` and `STACK-ABI:CAP-CELL` there. Captured DATA pointers
+relocate against the later static image base; no native stack pointer or
+capacity is copied into the Wasm header. Stack and aligned-frame room checks
+end at $31000. The image may extend to a partial page; `map-anon` allocates
+after its last page.
 
 The memory minimum is the pages holding the image and its maximum is memory32's
 65536 pages. `map-anon` and `munmap` are kernel rows over whole pages

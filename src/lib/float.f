@@ -16,6 +16,7 @@ require src/lib/adt/option.f                      \ option<idx> for INDEX-OF
 69 constant FL-E-UPPER
 400 constant FL-EXP-MAX                     \ enough for any bounded significand
 18 constant FL-SIG-DIGITS                   \ decimal prefix fits a signed cell
+18 constant FL-ENGINE-FRAC-DIGITS           \ 10^18 fits signed cell; 10^19 does not
 22 constant FL-SCALE-CHUNK                  \ 10^0 through 10^22 are exact binary64
 $7FFFFFFFFFFFFFFF constant FL-MAX-I64
 $8000000000000000 constant FL-MIN-I64
@@ -124,9 +125,33 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
      some OF IDX>N u 1- <> ENDOF
    ;MATCH ;
 
-: FL-ENGINE-DECIMAL-ADMITTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u FL-ENGINE-DECIMAL? 0= if 0 0= exit then
-   a u num-parse and nip ;
+\ EMIT-NUM's decimal literal limits: the integer magnitude and fractional
+\ numerator must fit signed i64, and the 10^fraction scale must fit too. The
+\ scale admits at most 18 fractional digits. A native literal's overflow is
+\ rejected even when STR>FLOAT's more general exponent parser could scale it.
+: FL-ADMIT-INT? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   0
+   u 0 ?do
+      a i + c@ {: c:n :}
+      c [char] 0 < c [char] 9 > or if drop false unloop exit then
+      c [char] 0 - {: digit:n :}
+      dup FL-MAX-I64 digit - 10 / > if drop false unloop exit then
+      10 * digit +
+   loop drop true ;
+
+: FL-ENGINE-DECIMAL-ADMITTED? ( ptr u8 n -- bool )
+   {: a0:ptr u0:n :}
+   a0 u0 FL-ENGINE-DECIMAL? 0= if true exit then
+   a0 u0 FL-STRIP-SIGN drop {: a:ptr u:n :}
+   a u FL-DOT INDEX-OF MATCH option
+      none OF false exit ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH {: dot:n :}
+   a dot FL-ADMIT-INT? 0= if false exit then
+   u dot 1+ - {: frac:n :}
+   frac 0= frac FL-ENGINE-FRAC-DIGITS > or if false exit then
+   a dot 1+ + frac FL-ADMIT-INT? ;
 
 \ ---- significand (no sign, no exponent) -----------------------------------
 \ Validate both halves before keeping their significant prefix and net scale.

@@ -112,6 +112,7 @@ CAP BUFFER: ERR-K
    s" 7 -2" s" /mod" s" . ." SAME
    s" -7 -2" s" /mod" s" . ." SAME
    s" $8000000000000000 -1" s" /mod" s" . ." SAME
+   s" variable V 5 V" s" +!" s" V @ ." SAME
    s" 5 0" s" /mod" s" . ." SAME ;
 
 : TESTS ( -- )

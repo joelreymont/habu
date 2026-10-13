@@ -290,5 +290,11 @@ s" WBYTES:STEP"
 S\" package WBYTES\nprivate\n16 BUFFER: B\npublic\n: STEP ( -- )\n   s\" 0123456789\" drop B 10 BYTE-COPY\n   B B 2 + 8 BYTE-COPY\n   B 10 type cr ;\n;package\n"
 S\" 0101010101\n" ROW
 
+\ Camera numeric text reaches FMT's DATA scratch, STR>FLOAT's decimal gate
+\ and JR:FLOAT through the same checked entry on native and Wasm.
+s" WNUM:STEP"
+s" require test/wasm/number-text.f"
+S\" 1.2500000000000000e0\n-0.0000000000000000e0\n1.2500e-1\n-2.5000e-3\n-1\n-1\n0\n0\n0\n0\n-1\n-1\n-1\n-1\n-1\n" ROW
+
 ;using
 T-REPORT

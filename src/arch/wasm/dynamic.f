@@ -152,7 +152,7 @@ variable BODY-U
 \ The outputs must end inside the stack region.
 : ROOM, ( n -- )
    {: out:n :}
-   out CELL-BYTES * AT+,  WPROF:DATA-BASE I32,  OP-I32-GT-U B,
+   out CELL-BYTES * AT+,  WPROF:STACK-END I32,  OP-I32-GT-U B,
    IF,  out CELL-BYTES * FAULT,  OP-END B, ;
 
 \ A call of the function, answering where its padded index starts.

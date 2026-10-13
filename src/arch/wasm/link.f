@@ -24,7 +24,7 @@
 \ field in its caller's body, and the field gets its callee's index. An address
 \ site, a padded ten-byte field, and a data cell, eight bytes of the image low
 \ byte first, name a kind and a target. A DATA target is an offset into the
-\ image, from zero to its length, and is written as WPROF's data base plus it; a
+\ image, from zero to its length, and is written as WPROF's image base plus it; a
 \ CODE target is a table slot, and is written as the slot. An indirect site,
 \ the padded five-byte field after a `call_indirect`, is written as the index of
 \ the type (i32) -> (i32), every table slot's (src/arch/wasm/dynamic.f). Only
@@ -33,13 +33,14 @@
 \
 \ THE MODULE. Sections come in the specification's order: type, function, table
 \ when a slot was added, memory, export, element with the table from slot 1,
-\ code, and data, one active segment at WPROF's data base. The memory's
+\ code, and data, one active segment at WPROF's image base. The memory's
 \ minimum is the pages holding the image's end and its maximum memory32's
 \ 65536, so a host may grow it and place bytes past the image
 \ (docs/browser-host.md). The exports are memory and the four wrappers, whose
 \ bodies are written here through WENC's opcode bytes because their signatures
-\ lie outside WSTRUCT's call row: run stores WPROF's stack base in ctx's stack
-\ base and top and 0 in its out-len, calls the entry with WPROF's ctx base and
+\ lie outside WSTRUCT's call row: run initializes the task DATA stack header,
+\ stores WPROF's stack base in ctx's stack base and top and 0 in its out-len,
+\ calls the entry with WPROF's ctx base and
 \ answers its status; throw-code answers ctx's throw code, out-base WPROF's out
 \ base, and out-len ctx's out-len.
 \
@@ -68,7 +69,7 @@ require src/arch/wasm/encode.f
 -9830 constant E-WLINK-FIRST
 -9834 constant E-WLINK-LAST
 -9830 constant E-WLINK-UNRESOLVED  \ an entry, site, cell or slot naming no function, image byte or table slot of the link
--9831 constant E-WLINK-MEMORY      \ an image whose end, from WPROF's data base, passes memory32's 65536 pages
+-9831 constant E-WLINK-MEMORY      \ an image whose end, from WPROF's image base, passes memory32's 65536 pages
 
 package WLINK
 public
@@ -107,8 +108,8 @@ $0B constant OP-END
 3 constant ALIGN-64
 WPROF:PAGE-BYTES constant PAGE-BYTES
 WPROF:PAGES-MAX constant PAGES-MAX
-\ The most image bytes those pages hold above the data base.
-PAGES-MAX PAGE-BYTES * WPROF:DATA-BASE - constant IMAGE-MAX
+\ The most image bytes those pages hold above the image base.
+PAGES-MAX PAGE-BYTES * WPROF:IMAGE-BASE - constant IMAGE-MAX
 10 constant LEB-MOST                 \ the widest LEB, a 64-bit one
 8 constant CELL-BYTES                \ a data cell
 
@@ -183,6 +184,7 @@ LEB-MOST SPAN-BUFFER: LEB            \ one LEB, before it is put
 
 : PUT-U32 ( n -- )  LEB WLEB:U32! PUT-LEB ;
 : PUT-S32 ( n -- )  LEB WLEB:S32! PUT-LEB ;
+: PUT-S64 ( n -- )  LEB WLEB:S64! PUT-LEB ;
 
 \ Four bytes, low first.
 : PUT-LE32 ( n -- )
@@ -195,6 +197,9 @@ LEB-MOST SPAN-BUFFER: LEB            \ one LEB, before it is put
 \ i32.const of a number below 2^31, as every address of WPROF's layout is.
 : I32-CONST ( n -- )
    WSTRUCT-OPCODE:I32-CONST PUT-OP  PUT-S32 ;
+
+: I64-CONST ( n -- )
+   WSTRUCT-OPCODE:I64-CONST PUT-OP  PUT-S64 ;
 
 \ What body writes, after its size.
 : SIZED ( [ -- ] -- )
@@ -303,6 +308,13 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    WPROF:CTX-BASE I32-CONST  v I32-CONST
    WSTRUCT-OPCODE:I32-STORE PUT-OP  ALIGN-32 PUT-U32  off PUT-U32 ;
 
+\ A full cell in the task-local DATA header; the copied native image holds no
+\ Wasm stack address or capacity.
+: DATA-CELL! ( n n -- )
+   {: v:n off:n :}
+   WPROF:DATA-BASE off + I32-CONST  v I64-CONST
+   WSTRUCT-OPCODE:I64-STORE PUT-OP  ALIGN-64 PUT-U32  0 PUT-U32 ;
+
 \ ctx's field at off, read by a load of the alignment al.
 : CTX@ ( WSTRUCT:opcode n n -- )
    {: op:WSTRUCT:opcode al:n off:n :}
@@ -312,6 +324,8 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 \ Each body declares no local.
 : RUN-BODY ( -- )
    0 PUT-U32
+   WPROF:STACK-BASE STACK-ABI:BASE-CELL DATA-CELL!
+   WPROF:STACK-BYTES STACK-ABI:CAP-CELL DATA-CELL!
    WPROF:STACK-BASE WPROF:CTX-STACK-BASE CTX!
    WPROF:STACK-BASE WPROF:CTX-STACK-TOP CTX!
    0 WPROF:CTX-OUT-LEN CTX!
@@ -341,7 +355,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 
 \ The pages holding every region and the image.
 : PAGES ( -- n )
-   WPROF:DATA-BASE IMAGE-U @ +  PAGE-BYTES 1- +  PAGE-BYTES / ;
+   WPROF:IMAGE-BASE IMAGE-U @ +  PAGE-BYTES 1- +  PAGE-BYTES / ;
 
 : TYPE-SEC ( -- )
    NTYPES @ PUT-U32
@@ -399,7 +413,7 @@ variable IMAGE-POS                   \ where LINK wrote the image in the module
 
 : DATA-SEC ( -- )
    1 PUT-U32
-   ACTIVE PUT-U32  WPROF:DATA-BASE I32-CONST  OP-END PUT-BYTE
+   ACTIVE PUT-U32  WPROF:IMAGE-BASE I32-CONST  OP-END PUT-BYTE
    IMAGE-U @ PUT-U32
    DRY @ 0= if  AT @ IMAGE-POS !  then
    IMAGE-U @ 0 > if  0 IMAGE IMAGE-U @ PUT-BYTES  then ;
@@ -427,7 +441,7 @@ variable IMAGE-POS                   \ where LINK wrote the image in the module
    {: kind:n t:n :}
    kind WSTRUCT:ADDR-DATA = if
       t 0 <  t IMAGE-U @ > or if E-WLINK-UNRESOLVED throw then
-      WPROF:DATA-BASE t +  exit
+      WPROF:IMAGE-BASE t +  exit
    then
    kind WSTRUCT:ADDR-CODE = if
       t FIRST-SLOT <  t NSLOTS @ FIRST-SLOT + >= or if E-WLINK-UNRESOLVED throw then

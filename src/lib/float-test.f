@@ -60,6 +60,28 @@ require src/core/bytes.f
 
 package DECIMAL-FLOAT-TEST
 
+\ The checked decimal admission used by STR>FLOAT must agree with the
+\ engine's literal reader at its accumulator boundaries.
+: ADMISSION ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u FL-ENGINE-DECIMAL-ADMITTED? {: checked:bool :}
+   a u num-parse and nip {: native:bool :}
+   checked native and checked 0= native 0= and or TTRUE ;
+
+: ADMISSION-CASES ( -- )
+   s" .5" ADMISSION
+   s" -.5" ADMISSION
+   s" 9223372036854775807.0" ADMISSION
+   s" 9223372036854775808.0" ADMISSION
+   s" -9223372036854775808.0" ADMISSION
+   s" 0009223372036854775807.0" ADMISSION
+   s" 0009223372036854775808.0" ADMISSION
+   s" 00000000000000000000000000000000000000000000000001.0" ADMISSION
+   s" 0.000000000000000000" ADMISSION
+   s" 0.0000000000000000000" ADMISSION
+   s" 1.2.3" ADMISSION
+   s" 1.a" ADMISSION ;
+
 \ Expected encodings are independently rounded IEEE binary64 decimal values.
 \ Normal results allow 16 ULPs for the bounded sequence of rounded operations;
 \ this tolerance may never admit zero, infinity, NaN, or the wrong sign.
@@ -161,6 +183,7 @@ create LONG-TOKEN 512 allot
 public
 
 : RUN ( -- )
+   ADMISSION-CASES
    ZERO-AND-RANGE
    EXPONENT-LIMITS
    LONG-INTEGER

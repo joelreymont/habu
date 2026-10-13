@@ -17,6 +17,8 @@
 \ truncated by f>s, which saturates and answers 0 for a NaN as BFDOT's FCVTZS
 \ does, behind a `-` exactly when the real's bit 63 is set.
 
+require src/arch/wasm/profile.f
+
 package WKWORDS
 private
 
@@ -57,6 +59,7 @@ DYNAMIC-STORAGE:E-UNMAP constant E-UNMAP
 \ IEEE754:F64>BITS would be a call the map does not answer.
 CAST: F>BITS ( r -- n )
 CAST: ZERO>PTR ( n -- ptr n )
+CAST: >DATA ( n -- ptr n )
 
 \ The digits of n read as unsigned: (n >> 1) / 5 is the unsigned n / 10, which
 \ a signed division cannot give past MAX-N.
@@ -75,6 +78,13 @@ CAST: ZERO>PTR ( n -- ptr n )
    repeat drop ;
 
 public
+
+: DATA-START ( -- ptr n )
+   WPROF:DATA-BASE >DATA ;
+
+: ADD-STORE ( n ptr n -- )
+   {: amount:n cell:ptr :}
+   cell @ amount + cell ! ;
 
 : NIL ( -- ptr n ) 0 ZERO>PTR ;
 

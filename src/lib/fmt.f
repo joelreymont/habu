@@ -11,7 +11,8 @@
 \ append unsigned decimal, unsigned hexadecimal, signed decimal, or an exact
 \ scaled integer to the shared
 \ src/lib/string.f builder (open it with SB-RESET, read it
-\ back with SB$), FMT:SB-FIX appends a fixed-decimal float rounded half-up, and
+\ back with SB$), FMT:SB-FIX appends a fixed-decimal float rounded half-up,
+\ FMT:SB-SCI appends a finite scientific decimal, and
 \ the direct printers FMT:.U / FMT:.INT / FMT:F.N type the formatted text. The
 \ word tails stay recognizable (SB-U, SB-INT, F.N, ...) because they read
 \ across hundreds of call sites; only the FMT: package qualifier is added.
@@ -38,6 +39,7 @@
 
 require src/lib/float.f                        \ POW10 (SB-FIX float scaling)
 require src/lib/string.f                       \ SB-RESET / SB-APPEND-C / SB$ / STR-MINUS
+require src/lib/ieee754.f
 
 package FMT
 
@@ -204,6 +206,125 @@ public
    k POW10I {: ps :}
    scaled ps / SB-U
    k 0 > if FMT-DOT SB-APPEND-C  scaled ps mod k SB-FRAC then ;
+
+\ Convert the exact finite binary64 value m*2^e to a decimal coefficient.
+\ For e>=0 the coefficient is m*2^e; for e<0 it is m*5^-e with -e decimal
+\ places. Base 10^9 limbs stay below 5*10^9 during multiplication, so signed
+\ cell arithmetic is exact. The greatest coefficient is (2^53-1)*5^1074:
+\ 767 digits, fitting FMT-ABI's 86 task-local limbs. Only the leading k+2
+\ digits are needed to round to k+1 significant digits, with k at most 17.
+private
+$FFFFFFFFFFFFF constant SCI-FRAC-MASK
+$10000000000000 constant SCI-HIDDEN-BIT
+$7FF0000000000000 constant SCI-EXP-MASK
+$7FFFFFFFFFFFFFFF constant SCI-MAG-MASK
+1000000000 constant SCI-BASE
+
+: SCI-LIMB ( n -- ptr n )
+   data-base FMT-ABI:SCI-LIMBS-OFF + swap cells + ;
+
+: SCI-PARTS ( n -- n n )
+   {: bits:n :}
+   bits 52 rshift 2047 and {: field:n :}
+   bits SCI-FRAC-MASK and {: fraction:n :}
+   field 0= if fraction -1074 exit then
+   fraction SCI-HIDDEN-BIT or  field 1075 - ;
+
+: SCI-INIT ( n -- )
+   {: mantissa:n :}
+   mantissa SCI-BASE mod 0 SCI-LIMB !
+   mantissa SCI-BASE / 1 SCI-LIMB !
+   1 SCI-LIMB @ 0= if 1 else 2 then FMT-IX ! ;
+
+: SCI-MUL ( n -- )
+   {: factor:n :}
+   0 FMT-FR !
+   FMT-IX @ 0 ?do
+      i SCI-LIMB @ factor * FMT-FR @ + {: product:n :}
+      product SCI-BASE mod i SCI-LIMB !
+      product SCI-BASE / FMT-FR !
+   loop
+   FMT-FR @ 0 > if
+      FMT-FR @ FMT-IX @ SCI-LIMB !
+      FMT-IX @ 1+ FMT-IX !
+   then ;
+
+: SCI-DIGITS ( n -- n )
+   0 swap
+   begin dup 0 > while
+      10 / swap 1+ swap
+   repeat drop ;
+
+\ Extend the render buffer with the next limb's nine digits, including zeros.
+: SCI-ADD-LIMB ( n n -- )
+   {: limb:n target:n :}
+   100000000 FMT-DV !
+   9 0 ?do
+      FMT-NUM-U @ target < if
+         limb FMT-DV @ / 10 mod FMT-ZERO + NUM-C+
+      then
+      FMT-DV @ 10 / FMT-DV !
+   loop ;
+
+: SCI-LEADING ( n -- )
+   {: target:n :}
+   FMT-IX @ 1- SCI-LIMB @ U>NUM
+   FMT-NUM-U @ target >= if target FMT-NUM-U ! exit then
+   FMT-IX @ 1- 0 ?do
+      FMT-IX @ 2 - i - SCI-LIMB @ target SCI-ADD-LIMB
+   loop
+   begin FMT-NUM-U @ target < while FMT-ZERO NUM-C+ repeat ;
+
+\ One guard digit rounds half-up. The coefficient is at most 10^18, fitting
+\ signed i64 even when all nines carry. A carry advances the decimal exponent.
+: SCI-COEFF ( n -- n bool )
+   {: places:n :}
+   0 places 1+ 0 ?do
+      10 * FMT-NUM-BUF i + c@ FMT-ZERO - +
+   loop
+   FMT-NUM-BUF places 1+ + c@ [char] 5 >= if 1+ then
+   dup places 1+ POW10I = if 10 / true else false then ;
+
+: SCI-DECIMAL ( n n -- n n )
+   {: bits:n places:n :}
+   bits SCI-PARTS {: mantissa:n exponent:n :}
+   mantissa SCI-INIT
+   exponent 0 >= if
+      exponent 0 ?do 2 SCI-MUL loop
+      0
+   else
+      exponent negate 0 ?do 5 SCI-MUL loop
+      exponent negate
+   then {: shift:n :}
+   FMT-IX @ 1- SCI-LIMB @ SCI-DIGITS
+   FMT-IX @ 1- 9 * + shift - 1- {: decimal-exponent:n :}
+   places 2 + SCI-LEADING
+   places SCI-COEFF {: coefficient:n carry:bool :}
+   coefficient
+   carry if decimal-exponent 1+ else decimal-exponent then ;
+
+public
+: SB-SCI ( r n -- )
+   {: k:n :}
+   k 0 < k 17 > or if E-FMT-DOMAIN throw then
+   dup IEEE754:F64>BITS {: bits:n :}
+   bits SCI-EXP-MASK and SCI-EXP-MASK = if
+      E-FMT-DOMAIN throw
+   then
+   drop
+   bits SCI-MAG-MASK and 0= if
+      bits 0 < if STR-MINUS SB-APPEND-C then
+      0.0 k SB-FIX
+      s" e0" SB-APPEND exit
+   then
+   bits SCI-MAG-MASK and k SCI-DECIMAL
+      {: coefficient:n exponent:n :}
+   bits 0 < if STR-MINUS SB-APPEND-C then
+   k POW10I {: scale:n :}
+   coefficient scale / SB-U
+   k 0 > if FMT-DOT SB-APPEND-C  coefficient scale mod k SB-FRAC then
+   [char] e SB-APPEND-C
+   exponent SB-INT ;
 
 \ ---- direct printers ------------------------------------------------------
 : .U ( n -- )     U>NUM   NUM$ type ;          \ unsigned, no trailing space, SB untouched

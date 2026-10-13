@@ -1707,13 +1707,13 @@ SB-BUF-OFF SB-BUF-BYTES + constant SB-LEN-OFF
 USER-REGION-END constant END
 ;package
 
-\ FMT-ABI is src/lib/fmt.f's integer render buffer and the four cells its appenders
-\ and its fraction helper thread. Declared here for the same reason STRING-ABI
+\ FMT-ABI is src/lib/fmt.f's integer render buffer, its four scratch cells, and
+\ the base-10^9 limbs for exact binary64 scientific text. Declared here for the same reason STRING-ABI
 \ is, though not from the same cause: src/habu/habu2.f requires src/lib/fmt.f for
 \ number text, so fmt is inside the ENGINE'S OWN closure. fmt has no require
 \ cycle the way string.f does, and an engine built with `require src/lib/task.f` in
 \ fmt.f compiles - but that require pulls src/lib/task.f, and with it pthread, mmap
-\ and the FFI staging tables, into the base image for 52 bytes of scratch.
+\ and the FFI staging tables, into the base image for this task-local scratch.
 \ src/habu/native-runtime.f says what belongs in that closure: the compiler,
 \ the JIT and the REPL, and the task runtime is none of the three. So the rule
 \ is one rule - a module the engine bakes takes a declared band.
@@ -1722,14 +1722,15 @@ USER-REGION-END constant END
 \ the growable end. EVERY MEMBER IS ITS MEASURED WIDTH; nothing here is rounded
 \ up to leave room. The four cells sit at the band base, which is a cell
 \ boundary, so they are cell-aligned whatever the render buffer's width is, and
-\ the buffer follows them. BYTES is the member sum rounded up to the cell the
-\ base needs, and that rounding is the band's only slack: 52 bytes of members
-\ in a 56-byte extent, the four above the buffer claimed by nobody.
+\ the limb array and render buffer follow them. The greatest exact coefficient
+\ is (2^53-1)*5^1074, with 767 decimal digits, so 86 nine-digit limbs suffice.
+\ BYTES is the member sum rounded up to the cell the base needs.
 package FMT-ABI
 public
 4 constant SCRATCH-CELLS               \ FMT-NUM-U, FMT-IX, FMT-FR, FMT-DV
+86 constant SCI-LIMBS                   \ ceil(767/9), base 10^9
 20 constant NUM-BUF-BYTES              \ src/lib/fmt.f FMT-NUM-CAP = STR-I64-DIGITS + 1
-SCRATCH-CELLS cells NUM-BUF-BYTES + constant MEMBER-BYTES
+SCRATCH-CELLS SCI-LIMBS + cells NUM-BUF-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
 STRING-ABI:START constant END
 END BYTES - constant START
@@ -1737,7 +1738,8 @@ START constant NUM-U-OFF
 NUM-U-OFF 8 + constant IX-OFF
 IX-OFF 8 + constant FR-OFF
 FR-OFF 8 + constant DV-OFF
-DV-OFF 8 + constant NUM-BUF-OFF
+DV-OFF 8 + constant SCI-LIMBS-OFF
+SCI-LIMBS-OFF SCI-LIMBS cells + constant NUM-BUF-OFF
 ;package
 
 \ FS-ABI is src/lib/fs.f's per-call slots: the five cells one transfer threads, the

@@ -15,7 +15,9 @@
 \ it links a captured window with WASMLINK and runs execute and catch through
 \ table slots and .s through kernel-words.f's `.`. test/wasm/build.f runs next
 \ and reports on its own: it builds modules by tools/wasm-build.f's command
-\ line and runs the checked-memory rows. test/wasm/storage-test.f runs next and
+\ line and runs the checked-memory rows. test/wasm/data-test.f then builds a
+\ checked program and probes its task DATA, static owner and dynamic pages in a
+\ foreign peer. test/wasm/storage-test.f runs next and
 \ reports on its own: dynamic buffers grow, release and reuse pages, and a page
 \ freed twice traps. test/wasm/differential.f runs after it and reports on its
 \ own: each row's program run natively and as a module, both held to the row.
@@ -40,6 +42,7 @@ require test/wasm/w03.f
 
 require test/wasm/dynamic.f                    \ installs the backend WKERNEL builds under
 require test/wasm/build.f
+require test/wasm/data-test.f
 require test/wasm/storage-test.f
 require test/wasm/differential.f
 require test/browser/echo-test.f

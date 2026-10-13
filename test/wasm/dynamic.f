@@ -27,7 +27,7 @@
 \ The window's address cells, which no linked word reaches (a created word has
 \ no routine), are in the module's data image: a code cell holds the slot its
 \ word's code literal answers, a window word's or an engine word's, and a DATA
-\ cell WPROF's data base plus the offset of the text it points at, which the
+\ cell WPROF's image base plus the offset of the text it points at, which the
 \ image holds there.
 
 package WASM-DYNAMIC
@@ -229,9 +229,9 @@ DYNAMIC-BUFFER MODULE u8
    s" WASM-DYNAMIC-WINDOW:CODE-SLOT" s" code-slot.wasm" CODE-AT @ HOLDS
    s" a code cell holds the slot its engine word's code literal answers" T-LABEL
    s" WASM-DYNAMIC-WINDOW:NAMED-SLOT" s" named-slot.wasm" NAMED-AT @ HOLDS
-   s" a DATA cell holds WPROF's data base plus its text's offset in the image" T-LABEL
+   s" a DATA cell holds WPROF's image base plus its text's offset in the image" T-LABEL
    IMAGE {: m:ptr :}
-   m DATA-AT @ + LE:U64@ WPROF:DATA-BASE - {: t:n :}
+   m DATA-AT @ + LE:U64@ WPROF:IMAGE-BASE - {: t:n :}
    m t + 14 s" data cell text" T$= ;
 
 public
