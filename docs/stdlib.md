@@ -2090,6 +2090,7 @@ descriptor the caller owns, such as a pipe or a server's stdin and stdout.
 FD-IO:fill                                          \ full | eof bytes
 FD-IO:READ-EXACT ( fd SPAN:span<u8> -- FD-IO:fill )
 FD-IO:WRITE-FULL ( fd ptr u8 n -- )
+FD-IO:WRITE-FULL-UNTIL ( fd ptr u8 n n -- )    \ final n is an absolute mono-ns deadline
 ```
 
 `READ-EXACT` reads until the span is full and answers `full`; a read that
@@ -2105,6 +2106,20 @@ was asked throw `E-FS-IO`; a negative length is `E-SPAN-LENGTH`. A write to a
 pipe with no reader raises `SIGPIPE`, which ends the process unless the caller
 armed `FD-NOSIGPIPE!` (below); then it throws `E-FS-IO`. The engine reports
 `EAGAIN` as a failed call, so a nonblocking descriptor is not for these words.
+
+`WRITE-FULL-UNTIL` bounds the whole write to one absolute monotonic deadline,
+which the caller may also use for the reply. It temporarily sets `O_NONBLOCK`,
+writes all bytes through libc's `write` so it can retry `EINTR` and `EAGAIN`,
+and waits for `POLLOUT` only for the time left. It restores the descriptor's
+original status flags before returning or throwing. A deadline reached before
+all bytes are accepted throws `E-FS-TIMEOUT`; other write and poll failures
+throw `E-FS-IO`, and a negative length throws `E-SPAN-LENGTH`. An empty write
+succeeds without touching the descriptor. The caller must exclusively own the
+open-file description during this operation: `O_NONBLOCK` is shared with
+descriptors created by `dup` or inherited across `fork`. The caller retains
+the descriptor and must decide how to discard a partially delivered message
+after failure. As with `WRITE-FULL`, a caller writing to a pipe with no reader
+must arm `FD-NOSIGPIPE!` to receive `E-FS-IO` instead of `SIGPIPE`.
 
 ## Content-Length framing
 

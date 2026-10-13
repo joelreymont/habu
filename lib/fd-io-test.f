@@ -39,6 +39,7 @@ TYPED-VARIABLE DST SPAN:span<u8>  \ PAYLOAD bytes a reader fills
 variable CHILD-FD                 \ the pipe end a forked child works on
 variable CHILD-CODE               \ the exit code a child's part chose
 variable ERR-FD                   \ the descriptor a refusal case uses
+variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 
 : OUTCOME ( FD-IO:fill -- n )     \ FULL-MARK, or the bytes before end of file
    MATCH FD-IO:fill
@@ -88,6 +89,90 @@ variable ERR-FD                   \ the descriptor a refusal case uses
 : SLOW-READER ( -- )
    HOLD-BACK
    DELIVERED? if 0 else CHILD-MISMATCH then CHILD-CODE ! ;
+
+: FD-FLAGS ( fd -- n )
+   FD>N 3 0 fcntl dup 0 < if E-FS-IO throw then ;
+
+: UNTIL-WRITE ( -- )
+   ERR-FD @ >FD SRC @ $ UNTIL-AT @ WRITE-FULL-UNTIL ;
+
+: UNTIL-BROKEN ( -- )
+   ERR-FD @ >FD s" broken" UNTIL-AT @ WRITE-FULL-UNTIL ;
+
+: UNTIL-NEGATIVE ( -- )
+   ERR-FD @ >FD s" x" drop -1 UNTIL-AT @ WRITE-FULL-UNTIL ;
+
+: UNTIL-EXPIRED ( -- )
+   ERR-FD @ >FD s" x" UNTIL-AT @ WRITE-FULL-UNTIL ;
+
+\ A descriptor already nonblocking remains nonblocking. An expired request
+\ writes nothing; an empty request has no transfer to time out.
+: BOUNDED-EDGES ( -- )
+   PIPE-PAIR {: r:fd w:fd :}
+   w FD-FLAGS {: flags:n :}
+   w FD>N 4 flags O-NONBLOCK or fcntl 0 T=
+   w s" abc" mono-ns 1000 1000000 * + WRITE-FULL-UNTIL
+   w FD-FLAGS O-NONBLOCK and O-NONBLOCK T=
+   r SMALL 3 TAKE READ-EXACT OUTCOME FULL-MARK T=
+   SMALL $ drop 3 s" abc" T$=
+   w FD>N ERR-FD !
+   mono-ns 1- UNTIL-AT !
+   [: UNTIL-EXPIRED ;] E-FS-TIMEOUT TTHROWSQ
+   [: UNTIL-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ
+   w s" " UNTIL-AT @ WRITE-FULL-UNTIL
+   r 0 >MS POLL-IN COUNT>N 0 T=
+   w FD>N 4 flags fcntl 0 T=
+   r FD>N close
+   w FD>N close ;
+
+\ A bounded write empties its whole payload into a slow reader in order. The
+\ pipe is made nonblocking inside WRITE-FULL-UNTIL and returns to its original
+\ status flags afterwards, including after the short writes in this case.
+: BOUNDED-SUCCESS ( -- )
+   0 DST @ FILL
+   PIPE-PAIR {: r:fd w:fd :}
+   r FD>N CHILD-FD !
+   w FD-FLAGS {: flags:n :}
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if w FD>N close [: SLOW-READER ;] IN-CHILD then
+   r FD>N close
+   w SRC @ $ mono-ns 3000 1000000 * + WRITE-FULL-UNTIL
+   w FD-FLAGS O-NONBLOCK and flags O-NONBLOCK and T=
+   w FD>N close
+   s" bounded reader" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+
+\ The child keeps the read end open and never reads. The deadline must stop a
+\ large write after filling the pipe, with the original descriptor flags put
+\ back even as the operation throws.
+: NEVER-READ ( -- )
+   300 >MS TASK:SLEEP
+   0 CHILD-CODE ! ;
+
+: BOUNDED-TIMEOUT ( -- )
+   PIPE-PAIR {: r:fd w:fd :}
+   r FD>N CHILD-FD !
+   w FD-FLAGS {: flags:n :}
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if w FD>N close [: NEVER-READ ;] IN-CHILD then
+   r FD>N close
+   w FD>N ERR-FD !
+   mono-ns 30 1000000 * + UNTIL-AT !
+   [: UNTIL-WRITE ;] E-FS-TIMEOUT TTHROWSQ
+   w FD-FLAGS O-NONBLOCK and flags O-NONBLOCK and T=
+   w FD>N close
+   s" nonreading child" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+
+: BOUNDED-BROKEN ( -- )
+   PIPE-PAIR {: r:fd w:fd :}
+   w FD-NOSIGPIPE!
+   w FD-FLAGS {: flags:n :}
+   r FD>N close
+   w FD>N ERR-FD !
+   mono-ns 1000 1000000 * + UNTIL-AT !
+   [: UNTIL-BROKEN ;] E-FS-IO TTHROWSQ
+   w FD-FLAGS O-NONBLOCK and flags O-NONBLOCK and T=
+   w FD>N close ;
+
 
 \ An empty span is full before any read, so it cannot mistake read's zero for
 \ end of file or block on a pipe with nothing in it; an empty write writes
@@ -197,6 +282,10 @@ variable ERR-FD                   \ the descriptor a refusal case uses
    EXACT-OVER-SHORT-READS
    SHORT-WRITE-PREMISE
    FULL-WRITE-UNDER-STORM
+   BOUNDED-EDGES
+   BOUNDED-SUCCESS
+   BOUNDED-TIMEOUT
+   BOUNDED-BROKEN
    ERRORS
    SRC @ FREE-SPAN
    DST @ FREE-SPAN
