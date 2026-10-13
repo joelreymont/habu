@@ -40,8 +40,9 @@
 \ files the verifier read, the subject and its dependencies, each with the
 \ digest of the bytes it read there, VERIFY-DEFS$ the
 \ definitions it retained in them, VERIFY-USES$ the uses in the subject the
-\ checker bound to located source targets, and for CHECK:VERIFY-BYTES-OF those
-\ of its tail in the files the subject loads, VERIFY-LOADS$ the subject's
+\ checker bound to source targets or identified as engine primitives, and for
+\ CHECK:VERIFY-BYTES-OF those of its tail in the files the subject loads,
+\ VERIFY-LOADS$ the subject's
 \ top-level loaders that reached a file, and VERIFY-CANDIDATES$ the spellings
 \ CHECK:VERIFY-BYTES-AT's cursor offered, each one JSON object per line, never
 \ among the packets. VERIFY-LOG$ is the child's stderr, then after a loader's
@@ -1238,8 +1239,9 @@ public
    VFY-FILES-U @ 0= if NULL$ exit then
    0 VFY-FILES VFY-FILES-U @ ;
 
-\ The uses the last VERIFY-BYTES's subject bound to located source targets, and
-\ for VERIFY-BYTES-OF those of its tail in the files the subject loads, one
+\ The uses the last VERIFY-BYTES's subject bound to source targets or identified
+\ as engine primitives, and for VERIFY-BYTES-OF those of its tail in the files
+\ the subject loads, one
 \ JSON object per line as tools/check-verify-child.f's use line states it, in
 \ the order the checker published them.
 : VERIFY-USES$ ( -- ptr u8 n )

@@ -559,6 +559,7 @@ require src/lib/memory.f
 require src/lib/byte-buffer.f
 require src/lib/fd-io.f
 require src/lib/fs.f
+require src/lib/source.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
@@ -2874,7 +2875,7 @@ variable LENGTH-N                        \ the length of its directory's name
 : PRIM-PATH ( -- ptr u8 n )  s" prim-nav.f" FIXTURE ;
 : PRIM-SOURCE-PATH ( -- ptr u8 n )  s" src/habu/prims.f" IN-TREE ;
 : TEXT-PRIM-NAV ( -- ptr u8 n )
-   s\" : PRIM-MUL ( -- n ) 2 3 * ;\n2 3 * drop\n' * drop\nundefine *\n: * ( n n -- n ) + ;\n: PRIM-SHADOW ( -- n ) 2 3 * ;\nscript-argc drop\n: PRIM-EXEC ( -- n ) [: 1 ;] execute ;\n: PRIM-CATCH ( -- n ) [: ;] catch ;\n" ;
+   s\" : PRIM-MUL ( -- n ) 2 3 * ;\n2 3 * drop\n' * drop\nundefine *\n: * ( n n -- n ) + ;\n: PRIM-SHADOW ( -- n ) 2 3 * ;\nscript-argc drop\n" ;
 
 : PRIM-DEF-TURNS ( -- )
    INITIALIZE
@@ -2888,17 +2889,13 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 6" PRIM-PATH 5 27 DEFINITION-ASK
    s" 7" PRIM-PATH 0 24 DECLARATION-ASK
    s" 8" PRIM-PATH 6 2 DEFINITION-ASK
-   s" 9" PRIM-PATH 7 33 DEFINITION-ASK
-   s" 10" PRIM-PATH 8 29 DEFINITION-ASK
    SAY
    s" 3" PRIM-SOURCE-PATH URI-OF 408 7 8 LOCATED
    s" 4" PRIM-SOURCE-PATH URI-OF 408 7 8 LOCATED
    s" 5" PRIM-SOURCE-PATH URI-OF 408 7 8 LOCATED
    s" 6" PRIM-PATH URI-OF 4 2 3 LOCATED
    s" 7" PRIM-SOURCE-PATH URI-OF 408 7 8 LOCATED
-   s" 8" NOWHERE
-   s" 9" PRIM-SOURCE-PATH URI-OF 1010 6 13 LOCATED
-   s" 10" PRIM-SOURCE-PATH URI-OF 1012 6 11 LOCATED ;
+   s" 8" NOWHERE ;
 
 \ The source used for the target came from the engine tree. An open unsaved
 \ copy of prims.f with a mismatched row sequence has no trusted target.
@@ -2914,14 +2911,7 @@ variable LENGTH-N                        \ the length of its directory's name
    PRIM-PATH 1 EXPECT PUBLISHES
    s" 3" PRIM-PATH 0 24 DEFINITION-ASK
    SAY
-   s" 3" NOWHERE
-   PRIM-SOURCE-PATH CLOSES
-   SAY
-   PRIM-SOURCE-PATH -1 EXPECT PUBLISHES
-   TEXT-PRIM-NAV PRIM-PATH 1 s" verified" LISTED
-   s" 4" PRIM-PATH 0 24 DEFINITION-ASK
-   SAY
-   s" 4" PRIM-SOURCE-PATH URI-OF 408 7 8 LOCATED ;
+   s" 3" NOWHERE ;
 
 \ def-od-dep.f on disk, and the text its open document holds: three lines
 \ inserted atop and its two lines swapped, so that DEF-DEPB's and DEF-DEPA's
@@ -3959,8 +3949,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 : ID-INCLUDED ( n -- )
    {: slot:n :}
    slot LSP-DEFS:DEFS-USE-RANGE {: lim:n first:n :}
-   s" identities-included: uses" T-LABEL lim first - 2 T=
-   lim first - 2 <> if exit then
+   s" identities-included: uses" T-LABEL lim first - 3 T=
+   lim first - 3 <> if exit then
    first LSP-DEFS:USE-GROUP {: g:n :}
    first LSP-DEFS:USE-TARGET {: s:n e:n :}
    slot first s" k" s" p" s" identities-included: P:K" USE-NAMES
@@ -4789,8 +4779,8 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 
 \ ROOK's use at its first character and at its last, and its declaring
 \ token, including each exact trailing edge, each answered with both uses,
-\ the declaration first when asked for; a further space and the engine's +,
-\ whose check states no use, with none.
+\ the declaration first when asked for; a further space has no binding, and
+\ the engine's + selects the primitive.
 : REFS-TURNS ( -- )
    INITIALIZE
    REF-A-PATH TEXT-REF-A 1 OPENS
@@ -4813,7 +4803,10 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" 7" SYMBOLS-START SYMBOLS-END
    s" 8" SYMBOLS-START ROOK-DECL+ ROOK-USES+ SYMBOLS-END
    s" 9" SYMBOLS-START SYMBOLS-END
-   s" 10" SYMBOLS-START SYMBOLS-END ;
+   s" 10" SYMBOLS-START
+   PRIM-SOURCE-PATH URI-OF 394 7 8 REF+
+   REF-A-PATH URI-OF 1 26 27 REF+
+   SYMBOLS-END ;
 
 : REFS-NOT-OPEN-TURNS ( -- )
    INITIALIZE
@@ -5416,6 +5409,177 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" 4" SYMBOLS-START 0 2 6 RN-REF+ RN-USES+ SYMBOLS-END
    s" 5" SYMBOLS-START RN-USES+ SYMBOLS-END ;
 
+\ Independent files and an open unsaved document each bind the same engine
+\ primitive. A later source definition of * is a different binding.
+: TEXT-PR-A ( -- ptr u8 n )  s\" : A ( -- n ) 2 3 * ;\n" ;
+: TEXT-PR-B ( -- ptr u8 n )  s\" : B ( -- n ) 4 5 * ;\n" ;
+: TEXT-PR-C ( -- ptr u8 n )  s\" : C ( -- n ) 6 7 * ;\n" ;
+: TEXT-PR-ELAB ( -- ptr u8 n )
+   s\" : E ( n [ n -- n ] -- n ) execute ;\n" ;
+: TEXT-PR-SHADOW ( -- ptr u8 n )
+   s\" undefine *\n: * ( n n -- n ) + ;\n: S ( -- n ) 2 3 * ;\n" ;
+: PR-A-PATH ( -- ptr u8 n )  s" refs-prim/w/a.f" FIXTURE ;
+: PR-C-PATH ( -- ptr u8 n )  s" refs-prim/w/c.f" FIXTURE ;
+
+: PRIM-REF-TREE ( -- )
+   s" refs-prim" REFS-DIR s" refs-prim/w" REFS-DIR
+   s" refs-prim/w/a.f" TEXT-PR-A REFS-FILE
+   s" refs-prim/w/b.f" TEXT-PR-B REFS-FILE
+   s" refs-prim/w/e.f" TEXT-PR-ELAB REFS-FILE
+   s" refs-prim/w/s.f" TEXT-PR-SHADOW REFS-FILE ;
+
+: PRIM-DECL-TREE ( -- )
+   s" refs-prim-decl" REFS-DIR s" refs-prim-decl/w" REFS-DIR
+   s" refs-prim-decl/w/a.f" TEXT-PR-A REFS-FILE
+   s" refs-prim-decl/w/b.f" TEXT-PR-B REFS-FILE
+   s" refs-prim-decl/w/s.f" TEXT-PR-SHADOW REFS-FILE ;
+: PR-DECL-A-PATH ( -- ptr u8 n )  s" refs-prim-decl/w/a.f" FIXTURE ;
+
+: PRIM-REF-USES ( -- )
+   s" refs-prim/w/a.f" OPEN-URI 0 17 18 REF+
+   s" refs-prim/w/b.f" DISK-URI 0 17 18 REF+
+   s" refs-prim/w/c.f" OPEN-URI 0 17 18 REF+ ;
+
+: PRIM-REF-TURNS ( -- )
+   PRIM-REF-TREE
+   s" refs-prim/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   PR-A-PATH TEXT-PR-A 1 OPENS
+   PR-C-PATH TEXT-PR-C 1 OPENS
+   s" refs-prim/w/e.f" FIXTURE TEXT-PR-ELAB 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-PR-A PR-A-PATH 1 s" verified" LISTED
+   TEXT-PR-C PR-C-PATH 1 s" verified" LISTED
+   TEXT-PR-ELAB s" refs-prim/w/e.f" FIXTURE 1 s" verified" LISTED
+   s" 3" PR-A-PATH 0 17 DECL-TOO REFS-ASK
+   s" 4" PR-C-PATH 0 17 DECL-NOT REFS-ASK
+   s" textDocument/prepareRename" s" 5" PR-A-PATH 0 17 AT-ASK
+   s" textDocument/rename" s" 6" PR-A-PATH 0 17
+   s\" ,\"newName\":\"CROW\"" AT-ASK-WITH
+   s" 7" s" refs-prim/w/e.f" FIXTURE 0 26 DECL-TOO REFS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   PRIM-SOURCE-PATH URI-OF 408 7 8 REF+
+   PRIM-REF-USES SYMBOLS-END
+   s" 4" SYMBOLS-START PRIM-REF-USES SYMBOLS-END
+   HEAR s" 5" -32803 REFUSED
+   HEAR s" 6" -32803 REFUSED
+   s" 7" SYMBOLS-START
+   PRIM-SOURCE-PATH URI-OF 1010 6 13 REF+
+   s" refs-prim/w/e.f" OPEN-URI 0 26 33 REF+
+   SYMBOLS-END ;
+
+\ A changed open specification can no longer place the declaration, while
+\ the checker still gives uses their canonical row marker.
+: PRIM-MISSING-TURNS ( -- )
+   s" refs-prim-missing" REFS-DIR s" refs-prim-missing/w" REFS-DIR
+   s" refs-prim-missing/w/a.f" TEXT-PR-A REFS-FILE
+   s" refs-prim-missing/w/b.f" TEXT-PR-B REFS-FILE
+   s" refs-prim-missing/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-prim-missing/w/a.f" FIXTURE TEXT-PR-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-PR-A s" refs-prim-missing/w/a.f" FIXTURE 1 s" verified" LISTED
+   PRIM-SOURCE-PATH s\" \\ changed\n" 1 OPENS
+   SAY
+   PRIM-SOURCE-PATH 1 EXPECT PUBLISHES
+   s" refs-prim-missing/w/a.f" FIXTURE 1 EXPECT PUBLISHES
+   s" 3" s" refs-prim-missing/w/a.f" FIXTURE 0 17 DECL-NOT REFS-ASK
+   s" 4" s" refs-prim-missing/w/a.f" FIXTURE 0 17 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
+   s" 3" SYMBOLS-START
+   s" refs-prim-missing/w/a.f" OPEN-URI 0 17 18 REF+
+   s" refs-prim-missing/w/b.f" DISK-URI 0 17 18 REF+
+   SYMBOLS-END
+   1 NAMED PRIM-SOURCE-PATH s" primitive source cannot be located" NAMED+ NAMED-END
+   s" 4" SYMBOLS-START
+   s" refs-prim-missing/w/a.f" OPEN-URI 0 17 18 REF+
+   s" refs-prim-missing/w/b.f" DISK-URI 0 17 18 REF+
+   SYMBOLS-END ;
+
+DYNAMIC-BUFFER PRIM-REF-TEXT u8
+: PRIM-REF-ROOM ( n -- ptr u8 )  1+ PRIM-REF-TEXT-RESERVE 0 PRIM-REF-TEXT ;
+: PRIM-REF-SOURCE ( -- ptr u8 n )
+   PRIM-SOURCE-PATH [: PRIM-REF-ROOM ;] SOURCE:READ-WHOLE-FILE
+   0 PRIM-REF-TEXT swap ;
+
+\ Asking from the declaration's exact name token selects its canonical row.
+\ The second + overload maps to the first + row, as uses do.
+: PRIM-DECL-TURNS ( -- )
+   PRIM-DECL-TREE
+   s" refs-prim-decl/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   SAY
+   HEAR CAPABILITIES
+   PR-DECL-A-PATH TEXT-PR-A 1 OPENS
+   PRIM-REF-SOURCE PRIM-SOURCE-PATH 2swap 1 OPENS
+   STREAM
+   TEXT-PR-A PR-DECL-A-PATH 1 s" verified" LISTED
+   PRIM-SOURCE-PATH 1 EXPECT PUBLISHES
+   s" 3" PRIM-SOURCE-PATH 408 7 DECL-TOO REFS-ASK
+   s" 4" PRIM-SOURCE-PATH 408 6 DECL-TOO REFS-ASK
+   s" 5" PRIM-SOURCE-PATH 403 7 DECL-TOO REFS-ASK
+   s" 6" PRIM-SOURCE-PATH 408 7 DECL-NOT REFS-ASK
+   SAY
+   1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
+   s" 3" SYMBOLS-START
+   PRIM-SOURCE-PATH URI-OF 408 7 8 REF+
+   s" refs-prim-decl/w/a.f" OPEN-URI 0 17 18 REF+
+   s" refs-prim-decl/w/b.f" DISK-URI 0 17 18 REF+
+   SYMBOLS-END
+   s" 4" SYMBOLS-START SYMBOLS-END
+   1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
+   s" 5" SYMBOLS-START
+   PRIM-SOURCE-PATH URI-OF 394 7 8 REF+
+   s" refs-prim-decl/w/s.f" DISK-URI 1 17 18 REF+
+   SYMBOLS-END
+   1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
+   s" 6" SYMBOLS-START
+   s" refs-prim-decl/w/a.f" OPEN-URI 0 17 18 REF+
+   s" refs-prim-decl/w/b.f" DISK-URI 0 17 18 REF+
+   SYMBOLS-END ;
+
+\ A partial check contributes its known primitive use and names the file it
+\ could not verify. The source declaration remains separate from coverage.
+: TEXT-PR-BAD ( -- ptr u8 n )  s\" : BAD ( -- n ) 2 3 * NOPE ;\n" ;
+: PRIM-COVER-TURNS ( -- )
+   s" refs-prim-cover" REFS-DIR s" refs-prim-cover/w" REFS-DIR
+   s" refs-prim-cover/w/a.f" TEXT-PR-A REFS-FILE
+   s" refs-prim-cover/w/bad.f" TEXT-PR-BAD REFS-FILE
+   s" refs-prim-cover/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-prim-cover/w/a.f" FIXTURE TEXT-PR-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-PR-A s" refs-prim-cover/w/a.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-prim-cover/w/a.f" FIXTURE 0 17 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED s" refs-prim-cover/w/bad.f" CANON s" refused" NAMED+ NAMED-END
+   s" 3" SYMBOLS-START
+   PRIM-SOURCE-PATH URI-OF 408 7 8 REF+
+   s" refs-prim-cover/w/a.f" OPEN-URI 0 17 18 REF+
+   s" refs-prim-cover/w/bad.f" DISK-URI 0 19 20 REF+
+   SYMBOLS-END ;
+
+\ An included token can bind to a package word under one subject and to the
+\ engine primitive when its own file is checked independently.
+: PRIM-CONFLICT-TURNS ( -- )
+   s" refs-prim-conflict" REFS-DIR s" refs-prim-conflict/w" REFS-DIR
+   s" refs-prim-conflict/w/d.f" TEXT-ENG-D REFS-FILE
+   s" refs-prim-conflict/w/z.f" TEXT-ENG-Z REFS-FILE
+   s" refs-prim-conflict/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-prim-conflict/w/z.f" FIXTURE TEXT-ENG-Z 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-ENG-Z s" refs-prim-conflict/w/z.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-prim-conflict/w/z.f" FIXTURE 0 18 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED s" refs-prim-conflict/w/z.f"
+   1 s" refs-prim-conflict/w/d.f" ELSEWHERE+ NAMED-END
+   s" 3" SYMBOLS-START
+   PRIM-SOURCE-PATH URI-OF 373 7 10 REF+
+   s" refs-prim-conflict/w/z.f" OPEN-URI 0 18 21 REF+
+   SYMBOLS-END ;
+
 variable PROBE-DECLS                     \ the decls a gather saw in the probe
 
 : PROBE-SEEN ( -- )  LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE - PROBE-DECLS ! ;
@@ -5464,6 +5628,11 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" references-package" [: REFS-PKG-TURNS ;] TALK
    s" references-visits" [: REFS-VIS-TURNS ;] TALK
    s" references-named" [: REFS-NAMED-TURNS ;] TALK
+   s" references-primitive" [: PRIM-REF-TURNS ;] TALK
+   s" references-primitive-declaration" [: PRIM-DECL-TURNS ;] TALK
+   s" references-primitive-source-changed" [: PRIM-MISSING-TURNS ;] TALK
+   s" references-primitive-coverage" [: PRIM-COVER-TURNS ;] TALK
+   s" references-primitive-conflict" [: PRIM-CONFLICT-TURNS ;] TALK
    REFS-PROBE ;
 
 \ ---- rename ------------------------------------------------------------------

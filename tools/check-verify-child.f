@@ -39,8 +39,9 @@
 \ diagnostic line among the packets, for each file it reads a file line for
 \ the bytes it reads there, once however often it reads the same bytes and
 \ before anything in them, for each definition it retains a definition line,
-\ for each use in the subject that the checker binds to a located source target
-\ a use line, and for each top-level loader of the subject whose load reached
+\ a use line for each use in the subject that the checker binds to a source
+\ target or identifies as an engine primitive, and for each top-level loader
+\ of the subject whose load reached
 \ a file a load line, one JSON object each. It answers
 \
 \    check-verify: verified | refused | deferred | held
@@ -90,9 +91,9 @@
 \ declaration's file was resolved to, TS and TN where the token that declared
 \ it starts and ends there, and D, T, P and V the selected binding's local
 \ visit, canonical tail, package and visibility. For an engine primitive in
-\ PRIM-SPEC, F names src/habu/prims.f, TS and TN span its name, and D is
-\ -2 minus its selected row. If that source is missing or differs from the
-\ running table, F is empty and TS and TN are zero while D stays distinct.
+\ PRIM-SPEC, D is -2 minus its selected row. F names src/habu/prims.f when
+\ its path is known. TS and TN span its name only when that source matches
+\ the running table; otherwise they are zero while D stays distinct.
 \ A word without a source target or primitive row has D of -1.
 \
 \ A load line names what src/habu/verify-source.f ON-LOADER reports, a
@@ -550,8 +551,8 @@ variable OF-U                           \ 0 for the other forms
    OUT-FD NEWLINE ;
 
 
-\ Located uses in the subject have a line in every form. Other uses have a
-\ line only in the fourth form, for the requested tail; this includes an
+\ Uses with a source path in the subject have a line in every form. Other
+\ uses have a line only in the fourth form, for the requested tail; this includes an
 \ unlocated binding in the subject, needed to compare shared source tokens.
 : USE-WRITTEN? ( n bool -- bool )
    {: sym:n located:bool :}

@@ -1,7 +1,18 @@
-\ lsp-references.f - the language server's references: the declaration a
-\ position selects in an open document whose check completed, and every known
-\ use of it that completed checks of files whose loads reach its file bound, in
-\ those files and in every file they read.
+\ lsp-references.f - the language server's references for source declarations
+\ and built-in primitives. A primitive use carries its canonical PRIM-SPEC row
+\ as a negative visit; a name token in the validated prims.f selects the same
+\ row. Its subjects are all workspace .f files and open documents, since an
+\ implicit primitive needs no load. Each checked use with that row contributes
+\ a location, subject to the same text digest, deduplication and coverage
+\ warnings as source uses. Its declaration is included only while prims.f's
+\ text validates against the running specification. Primitive rename refuses.
+\ This inventory describes workspace references, not every use in engine
+\ source outside the workspace.
+\
+\ The following source-declaration path takes the declaration a position
+\ selects in an open document whose check completed, and every known use of it
+\ that completed checks of files whose loads reach its file bound, in those
+\ files and in every file they read.
 \
 \ SELECT takes the open document D, a byte of its text and whether the request
 \ includes the declaration. D's last completed check must be of D's current
@@ -120,6 +131,7 @@ require src/lib/sort.f
 require src/lib/json-write.f
 require src/lib/json-rpc.f
 require src/core/sha256.f
+require src/habu/primitive-source.f
 require tools/lsp-docs.f
 require tools/lsp-text.f
 require tools/lsp-defs.f
@@ -232,6 +244,8 @@ variable PKG-AT                          \ package
 variable PKG-U
 variable KEY-VIS                         \ and visibility,
 variable VISIT                           \ the visit D's check gave it,
+variable PRIM-ROW                        \ a selected built-in's canonical row, else -1,
+TYPED-VARIABLE PRIM-LOCATED bool          \ whether its source token can be placed,
 variable H-AT                            \ and the digest of the bytes of P it read
 variable H-U
 variable D-AT                            \ D's path in POOL,
@@ -335,6 +349,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
    false FOUND !
    false REFUSED !
    false DECLARED !
+   -1 PRIM-ROW !
+   false PRIM-LOCATED !
    true SPELT ! ;
 
 \ The request refused for this fact about the file at this path.
@@ -551,14 +567,17 @@ private
    {: u:n g:n :}
    u USE-GROUP g = if u USE-TARGET TOKEN? else false then ;
 
+: P-PATH! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 1+ P-B-RESERVE
+   a 0 P-B u BYTE-COPY
+   u P-U ! ;
+
 \ The declaration's file, by D's check's group G for it.
 : P! ( n -- )
    {: g:n :}
    g G !
-   g GROUP-PATH$ {: a:ptr u:n :}
-   u 1+ P-B-RESERVE
-   a 0 P-B u BYTE-COPY
-   u P-U ! ;
+   g GROUP-PATH$ P-PATH! ;
 
 : NAME! ( ptr u8 n ptr u8 n -- )
    {: w:ptr wu:n k:ptr ku:n :}
@@ -566,6 +585,37 @@ private
    wu NAME-U !
    k ku POOL+ PKG-AT !
    ku PKG-U ! ;
+
+\ Positions count in the text of the file at this path: its open document's
+\ text when there is one, else its disk text.
+: TEXT-OF! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u DOC-HOLDING MATCH option
+      some OF DOC-TEXT$ LSP-TEXT:TEXT! ENDOF
+      none OF a u LSP-TEXT:FILE-TEXT! ENDOF
+   ;MATCH ;
+
+\ Keep the primitive's binding even when its specification is unavailable.
+\ Only a validated table gives the declaration a source location.
+: FROM-PRIMITIVE ( n -- )
+   {: row:n :}
+   row PRIM-ROW !
+   PRIM-SOURCE:ENGINE-PATH$ {: path:ptr pathu:n ready:bool :}
+   ready 0= if exit then
+   path pathu P-PATH!
+   row PRIM-SPEC:NAME$ row PRIM-SPEC:PKG$ NAME!
+   true FOUND !
+   false PRIM-LOCATED !
+   0 TS ! 0 TE !
+   [: P$ TEXT-OF! ;] catch {: rc:n :}
+   rc 0<> if rc LSP-TEXT:FS-RC? 0= if rc throw then exit then
+   LSP-TEXT:TEXT$ row PRIM-SOURCE:TARGET-IN
+   {: start:n end:n located:bool :}
+   located 0= if exit then
+   start TS ! end TE !
+   LSP-TEXT:TEXT$ DIGEST$ {: sha:ptr shau:n :}
+   sha shau POOL+ H-AT ! shau H-U !
+   true PRIM-LOCATED ! ;
 
 \ The declaration use U is bound to, as its line states it.
 : FROM-USE ( n -- )
@@ -592,6 +642,12 @@ private
 \ the declaration's tail in D's text clears SPELT.
 : AT-USE ( n n -- )
    {: slot:n u:n :}
+   u USE-PRIMITIVE-ROW {: row:n :}
+   row 0 >= if
+      row FROM-PRIMITIVE
+      u USE-BYTES TAIL-FROM 0 < if false SPELT ! then
+      exit
+   then
    u USE-VISIT 0 < if slot DOC-CANON$ s" the use has no declaration identity" REFUSE exit then
    u FROM-USE
    u USE-BYTES TAIL-FROM 0 < if false SPELT ! then ;
@@ -655,6 +711,17 @@ private
       none OF ENDOF
    ;MATCH ;
 
+\ A prims.f name token selects the same canonical row as a use of that word.
+: AT-PRIMITIVE-TOKEN ( n n -- )
+   {: slot:n at:n :}
+   PRIM-SOURCE:ENGINE-PATH$ {: path:ptr pathu:n ready:bool :}
+   ready 0= if exit then
+   slot DOC-CANON$ path pathu STR= 0= if exit then
+   path pathu TEXT-OF!
+   LSP-TEXT:TEXT$ at PRIM-SOURCE:MARKER-IN
+   {: marker:n start:n end:n located:bool :}
+   located if -2 marker - FROM-PRIMITIVE then ;
+
 \ How many decls of the check of the document in this slot are the selected
 \ declaration: of its group, at its token, with its identity and visit.
 : HELD ( n -- n )
@@ -680,23 +747,22 @@ private
 : LOCATE ( n n -- )
    {: slot:n at:n :}
    slot at DEFS-USE-AT MATCH option
-      some OF slot swap AT-USE ENDOF
-      none OF slot at AT-TOKEN ENDOF
+      some OF
+         {: u:n :}
+         u USE-PRIMITIVE-ROW 0 >= if slot at AT-TOKEN then
+         FOUND @ 0= if slot u AT-USE then
+      ENDOF
+      none OF slot at AT-TOKEN FOUND @ 0= if slot at AT-PRIMITIVE-TOKEN then ENDOF
    ;MATCH
-   FOUND @ if slot ANCHORED then ;
-
-\ Positions count in the text of the file at this path: the open document's
-\ that holds it, else the file's.
-: TEXT-OF! ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u DOC-HOLDING MATCH option
-      some OF DOC-TEXT$ LSP-TEXT:TEXT! ENDOF
-      none OF a u LSP-TEXT:FILE-TEXT! ENDOF
-   ;MATCH ;
+   FOUND @ PRIM-ROW @ 0< and if slot ANCHORED then ;
 
 \ The declaration's location, first, and its token's text, while P's text has
 \ the digest D's check read.
 : DECLARATION ( -- )
+   PRIM-ROW @ 0 >= PRIM-LOCATED @ 0= and if
+      P$ s" primitive source cannot be located" MISS+
+      exit
+   then
    P$ TEXT-OF!
    LSP-TEXT:TEXT$ DIGEST$ H$ STR= 0= if P$ s" changed since it was checked" REFUSE exit then
    TS @ TE @ SPAN-IN drop {: a:ptr u:n :}
@@ -722,6 +788,15 @@ private
    slot DOC-CANON$ {: a:ptr u:n :}
    a u POOL+ D-AT !
    u D-U !
+   PRIM-ROW @ 0 >= if
+      [: -1 swap DOC-EACH-BUT ;] LSP-WORKSPACE:ALL-SUBJECTS
+      LSP-WORKSPACE:REFUSED? if
+         LSP-WORKSPACE:BLOCKED$ s" the workspace folder cannot be walked" REFUSE exit
+      then
+      LSP-WORKSPACE:SUBJECTS 0 ?do i LSP-WORKSPACE:SUBJECT$ SUBJECT+ loop
+      SUB-N @ WALKED !
+      exit
+   then
    P$ D$ [: -1 swap DOC-EACH-BUT ;] LSP-WORKSPACE:REACHING
    LSP-WORKSPACE:REFUSED? if
       LSP-WORKSPACE:BLOCKED$ s" the workspace folder cannot be walked" REFUSE exit
@@ -935,6 +1010,14 @@ private
 \ read no P has no matching bindings, but may report uses of the tail.
 : CONTRIBUTE ( -- )
    PROBE DEFS-VERIFIED? 0= if LSP-CHECK:OUTCOME$ PENDING+ then
+   PRIM-ROW @ 0 >= if
+      BY-PLACING VERIFIED-READS
+      -1 TEXT-IN !
+      PROBE DEFS-USE-RANGE ?do
+         i USE-PRIMITIVE-ROW PRIM-ROW @ = if i PLACE-USE else i OTHER+ then
+      loop
+      exit
+   then
    PROBE P$ DEFS-GROUP-OF MATCH option
       some OF CONTRIBUTED ENDOF
       none OF WITHOUT-P ENDOF
@@ -1062,6 +1145,9 @@ public
    slot DOC-CANON$ s" its check is not verified" REFUSE
    false ;
 
+: PRIMITIVE? ( -- bool )  PRIM-ROW @ 0 >= ;
+: PRIMITIVE-RENAME$ ( -- ptr u8 n )  s" Built-in primitives cannot be renamed" ;
+
 \ Selects the declaration at this byte of the text of the open document in
 \ this slot, which positions count in, and places it; or refuses the request.
 : PLACE ( n n -- )  true LOCATED ;
@@ -1120,6 +1206,7 @@ public
 \ from the files the locations placed since it last ran are in, and whether
 \ it gave any.
 : MORE? ( -- bool )
+   PRIM-ROW @ 0 >= if false exit then
    SUB-N @ {: was:n :}
    LOC-N @ FOLLOWED @ ?do i FOLLOW loop
    LOC-N @ FOLLOWED !

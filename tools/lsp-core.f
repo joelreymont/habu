@@ -863,6 +863,10 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       false exit
    then
    LSP-REFERENCES:FOUND? 0= if i REPLY-NULL false exit then
+   LSP-REFERENCES:PRIMITIVE? if
+      i REQUEST-FAILED LSP-REFERENCES:PRIMITIVE-RENAME$ REPLY-ERROR
+      false exit
+   then
    LSP-REFERENCES:SPELT? 0= if
       i REQUEST-FAILED LSP-REFERENCES:UNSPELT$ REPLY-ERROR
       false exit

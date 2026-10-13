@@ -418,6 +418,9 @@ variable CUR-ROOT                        \ and the root being walked
 : GIVE ( -- )
    NODE-N @ 0 ?do i GIVEN? if i HIT+ then loop ;
 
+: GIVE-SUBJECTS ( -- )
+   NODE-N @ 0 ?do i N-SUBJECT NODE@ 0<> if i HIT+ then loop ;
+
 public
 
 \ Whether path A comes before path B in byte order.
@@ -497,6 +500,18 @@ public
    GIVE
    ORDER
    ORDER-BAD ;
+
+\ Inventory every workspace .f file and open document. Primitive bindings
+\ need no load graph: the engine supplies them in each independent check.
+: ALL-SUBJECTS ( [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
+   {: each :}
+   RESET
+   0 F-AT ! 0 F-U !
+   [: OPEN+ ;] each execute
+   WALK-ROOTS
+   BLOCKED @ if exit then
+   GIVE-SUBJECTS
+   ORDER ;
 
 \ Finds, over the graph the last REACHING found, the subjects whose closures
 \ hold the file at canonical path F, and gives that REACHING's document among
