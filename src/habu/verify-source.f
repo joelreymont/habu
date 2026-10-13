@@ -3384,13 +3384,14 @@ variable FILE-USE
    sig sigu true sym DEFINER-ADD ;
 
 \ `FUNCTION: NAME symbol ( effect ) ... ;FUNCTION` (src/lib/ffi-abi.f) makes NAME
-\ from its declaration group, so the group is NAME's effect with the one rewrite
-\ the declarer applies (ffi-abi.f OUT-TOKEN): an `i32` result is a cell. Inputs
-\ stay verbatim. The group is read raw, because NEXT-SCAN skips it as a comment.
+\ from its declaration group, so the group is NAME's effect with the rewrites
+\ the declarer applies (ffi-abi.f IN-TOKEN/OUT-TOKEN): `f32` is Habu `r` on
+\ either side, and an `i32` result is a cell. The group is read raw, because
+\ NEXT-SCAN skips it as a comment.
 \ The live declaration pins this reading: test/certify-does-definer.f section 10.
 \ The effect is rebuilt in a byte row of its own, which grows with the group:
 \ BODY-BUF holds only runs read out of the source (BODY-APPEND), and the
-\ rewritten `n` is not one. Whether the scan accounts for the word the group
+\ rewritten `n` or `r` is not one. Whether the scan accounts for the word the group
 \ declares is held until a `;FUNCTION` closes it, since that closer renders the
 \ word (FFI-CLOSER?): it does when it kept the declaration, and when it refused
 \ it as a duplicate, where the load stops; a refused effect leaves the word the
@@ -3412,6 +3413,7 @@ TYPED-VARIABLE FFI-GROUP bool
 : FFI-TOKEN ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u s" --" CORE-STR= IF -1 FFI-OUT ! THEN
+   a u s" f32" CORE-STR= IF s" r" FFI-APPEND EXIT THEN
    FFI-OUT @ 0<> a u s" i32" CORE-STR= and IF s" n" FFI-APPEND EXIT THEN
    a u FFI-APPEND ;
 

@@ -392,9 +392,11 @@ FUNCTION: WRITE-ONE write_one ( ptr u8 n -- n )
 ;FUNCTION
 ```
 
-The declared effect is the generated word's effect, except that an `i32` result
-reads `n`, and decides the staging: `n` is a `FFI:VALUE!`, `r` a `FFI:FLOAT!`,
-and `ptr u8` a read-only `FFI:READABLE!` unless a clause names it written -
+The declared effect is the generated word's effect, except that `f32` on either
+side reads `r` to checked Habu and an `i32` result reads `n`. `n` stages with
+`FFI:VALUE!`, `r` with `FFI:FLOAT!` as a C double, `f32` with
+`FFI:FLOAT32!` as a C float, and `ptr u8` with read-only `FFI:READABLE!`
+unless a clause names it written -
 `idx len WRITES-BYTES` for a fixed width, `idx arg WRITES-ARG` when another
 argument carries the length. The clauses are words the interpreter runs between
 the two keywords, so their numbers are ordinary literals.
@@ -405,8 +407,9 @@ fills only the low 32 bits and neither AAPCS64 nor SysV defines the bits above
 them, so an `int` declared `n` can read -1 as `$FFFFFFFF`. Declare an `int` (an
 enum, `pid_t`, `kern_return_t`) `i32`, which sign-extends the low half and reads
 `n` to the checker, and an `unsigned int` (`mach_port_t`) `u32`, which masks it.
-`r` is a double, `ptr u8` a foreign-owned address, and no result drops the
-register.
+`r` is a C double; `f32` is a C float widened to Habu `r` from the low
+32 return bits. `F32:NARROW` rounds an `f32` argument to binary32 at the call
+boundary. `ptr u8` is a foreign-owned address, and no result drops the register.
 
 `VERSIONED-LIBRARY`, `LIBRARY` and `PROCESS-SYMBOLS` select for the
 declarations that follow and the selection belongs to the scope that states it -
@@ -432,6 +435,9 @@ change its extent; an absent symbol is `E-FFI-DLSYM` at the first call, never at
 the declaration; and `FFI:ERRNO ( -- n )` is the one errno binding every
 consumer shares. `src/lib/ffi-test.f` covers the declarer, including the refusals and
 the invariant that a declaration leaves the stack as it found it.
+An `f32` in a variadic position is refused because C promotes it to double;
+declare the promoted argument as `r`. A fixed `f32` argument and an `f32`
+result remain valid on a variadic function.
 
 Every declaration in an image shares one table, sized for a server that binds
 five or six libraries at once: `FFI:DECLARATION-MAX` is 256 rows of $50 bytes
@@ -458,6 +464,7 @@ FFI:VALUE!        ( n n -- )
 FFI:READABLE!     ( ptr a n -- )
 FFI:WRITABLE!     ( ptr a n n -- )
 FFI:FLOAT!        ( r n -- )
+FFI:FLOAT32!      ( r n -- )
 FFI:STACK-VALUE!  ( n n -- )
 FFI:STACK-FLOAT!  ( r n -- )
 FFI:STACK-READABLE! ( ptr a n -- )

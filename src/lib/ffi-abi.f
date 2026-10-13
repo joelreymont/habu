@@ -15,6 +15,7 @@ s" src/lib/errors.f" required
 s" src/lib/string.f" required
 s" src/lib/image-lifecycle.f" required
 s" src/lib/le.f" required                     \ the four-byte C int this package reads back
+s" src/lib/float32.f" required                \ binary32 conversion at the C ABI boundary
 s" src/lib/adt/option.f" required             \ option<n> - the version token VERSIONED-LIBRARY parses
 s" src/lib/codegen.f" required                \ the rendered library name and the declarer's buffers
 
@@ -40,6 +41,10 @@ $41C8 constant FFI-SCRATCH-END
    data-base FFI-BUF-OFF + ;
 
 : FFI-FBUF ( -- ptr r )
+   data-base FFI-FBUF-OFF + ;
+
+\ A C float occupies the low half of the same FP-register slot as a double.
+: FFI-F32BUF ( -- ptr n )
    data-base FFI-FBUF-OFF + ;
 
 \ The spill area is prepacked: slot `idx` carries an integer for an integer
@@ -99,6 +104,9 @@ $41C8 constant FFI-SCRATCH-END
 : FFI-FSLOT ( n -- ptr r ) {: idx:n :}
    idx FFI-REG-ARGS FFI-CHECK-INDEX
    FFI-FBUF idx cells + ;
+: FFI-F32SLOT ( n -- ptr n ) {: idx:n :}
+   idx FFI-REG-ARGS FFI-CHECK-INDEX
+   FFI-F32BUF idx cells + ;
 : FFI-STACK-SLOT ( n -- ptr n ) {: idx:n :}
    idx FFI-MAX-ARGS FFI-CHECK-INDEX
    FFI-STACK-BUF idx cells + ;
@@ -111,6 +119,8 @@ $41C8 constant FFI-SCRATCH-END
    p PTR>CELL idx FFI-ARG! ;
 : FFI-FARG! ( r n -- ) {: v:r idx:n :}
    v idx FFI-FSLOT ! ;
+: FFI-F32ARG! ( n n -- ) {: bits:n idx:n :}
+   bits idx FFI-F32SLOT ! ;
 : FFI-STACK! ( n n -- ) {: v:n idx:n :}
    v idx FFI-STACK-SLOT ! ;
 : FFI-FSTACK! ( r n -- ) {: v:r idx:n :}
@@ -385,6 +395,8 @@ public
    len WRITABLE-LEN idx REG-LEN! ;
 
 : FLOAT! ( r n -- ) FFI-FARG! ;
+: FLOAT32! ( r n -- ) {: value:r idx:n :}
+   value F32:NARROW idx FFI-F32ARG! ;
 
 : STACK-VALUE! ( n n -- ) {: value:n idx:n :}
    value idx FFI-STACK!
@@ -570,6 +582,9 @@ public
    FFI-BUF FFI-FBUF FFI-STACK-BUF FFI-REG-LEN-BUF FFI-STACK-LEN-BUF
    idx FN-SPILL@ fn ffi-call-abi-r-bounded ;
 
+: CALL-ABI-F32 ( n -- r )
+   CALL-ABI-R IEEE754:F64>BITS $FFFFFFFF and F32:WIDEN ;
+
 \ The table's own fail-closed guard. The declarer refuses first, with the word
 \ and symbol in its diagnostic; this stands for every other caller and for the
 \ errno row below, and it is what keeps a full table from being overrun.
@@ -654,9 +669,10 @@ get-current prot-wid-add
 \ a legal Habu name (__errno_location), and a package's own verb is usually not
 \ the C one: UDP4:BIND is the module's API, bind is libc's.
 \
-\ The declared effect becomes the generated word's effect - verbatim, except that
-\ an `i32` result reads `n` - and decides every argument's staging: `n` (and any
-\ token that widens to it) is a VALUE!, `r` is a FLOAT!, and `ptr u8` is a
+\ The declared effect becomes the generated word's effect, with `f32` mapped
+\ to Habu `r` on either side and an `i32` result mapped to `n`. It decides
+\ every argument's staging: `n` (and any token that widens to it) is a VALUE!,
+\ `r` is a C double FLOAT!, `f32` is a C float FLOAT32!, and `ptr u8` is a
 \ READABLE! - read-only, extent 0 - unless a clause names it written:
 \ `idx len WRITES-BYTES` for a fixed width, or `idx arg WRITES-ARG` when another
 \ argument carries the length. A written pointer must state its extent because
@@ -681,14 +697,18 @@ get-current prot-wid-add
 \ The result is the call's, at the width of the C prototype: `n` (or a widening
 \ token) for a cell-wide integer - `long`, `size_t`, `ssize_t`, `off_t` or an
 \ address kept as a number - `i32` for a C `int` (an enum, `pid_t`,
-\ `kern_return_t`), `u32` for an `unsigned int` (`mach_port_t`), `r`, `ptr u8`
+\ `kern_return_t`), `u32` for an `unsigned int` (`mach_port_t`), `r` for C double,
+\ `f32` for C float, `ptr u8`
 \ for a foreign-owned address, or nothing, which drops the machine return cell.
 \ A 32-bit result fills only the low half of the return register and neither
 \ AAPCS64 nor SysV defines the high half, so a C `int` declared `n` can read -1
 \ as $FFFFFFFF. `i32` sign-extends the low half and reads `n` to the checker,
 \ which has no signed 32-bit type; `u32` masks it and keeps its own type.
 \
-\ Integer arguments take x0.. and floats d0.. in declaration order (AAPCS64). A
+\ Integer arguments take x0.. and floats d0.. in declaration order (AAPCS64).
+\ A C float occupies the low 32 bits of an FP slot; a float result reads only
+\ those bits and widens to Habu `r`. Variadic positions use C default promotions,
+\ so declare a promoted float as `r`, never `f32`. A
 \ declaration carrying a float rides the ABI call, which packs no spill here, so
 \ it is refused past eight of either kind (E-FFI-ARITY); an integer-only
 \ declaration rides ffi-call-bounded, which spills past x7 itself.
@@ -744,6 +764,7 @@ s" )" nip +
 0 constant K-VALUE
 1 constant K-POINTER
 2 constant K-FLOAT
+3 constant K-FLOAT32
 
 0 constant R-NONE
 1 constant R-VALUE
@@ -751,6 +772,7 @@ s" )" nip +
 3 constant R-POINTER
 4 constant R-I32                          \ a C int: sign-extend the low half
 5 constant R-U32                          \ a C unsigned int: mask the low half
+6 constant R-FLOAT32                      \ a C float: widen the low half
 
 0 constant C-BOUNDED
 1 constant C-POINTER
@@ -854,7 +876,7 @@ variable SCOPE-HOOK
    kind ARG-KIND ARG-N @ cells + !
    NO-EXT ARG-N @ ARG-EXT!
    NO-EXT ARG-N @ ARG-EXT-ARG!
-   kind K-FLOAT = if
+   kind K-FLOAT = kind K-FLOAT32 = or if
       FLT-N @ ARG-REG ARG-N @ cells + !
       FLT-N @ 1 + FLT-N !
    else
@@ -873,6 +895,7 @@ variable SCOPE-HOOK
 : IN-TOKEN ( -- )
    s" ptr" TOK-IS? if TOK-KEEP PTR-TAIL K-POINTER REG+ exit then
    s" r" TOK-IS? if TOK-KEEP K-FLOAT REG+ exit then
+   s" f32" TOK-IS? if s" r" EFF+ K-FLOAT32 REG+ exit then
    TOK-KEEP K-VALUE REG+ ;
 
 \ `i32` is not a checker type: the word the declaration generates returns the
@@ -881,6 +904,7 @@ variable SCOPE-HOOK
    RES-KIND @ R-NONE <> if E-FFI-SYNTAX throw then
    s" ptr" TOK-IS? if TOK-KEEP PTR-TAIL R-POINTER RES-KIND ! exit then
    s" r" TOK-IS? if TOK-KEEP R-FLOAT RES-KIND ! exit then
+   s" f32" TOK-IS? if s" r" EFF+ R-FLOAT32 RES-KIND ! exit then
    s" i32" TOK-IS? if s" n" EFF+ R-I32 RES-KIND ! exit then
    s" u32" TOK-IS? if TOK-KEEP R-U32 RES-KIND ! exit then
    TOK-KEEP R-VALUE RES-KIND ! ;
@@ -920,7 +944,8 @@ variable SCOPE-HOOK
    ARG-N @ VAR-START @ - STACK-N !
    0 INT-N ! 0 FLT-N !
    VAR-START @ 0 ?do
-      i ARG-KIND@ K-FLOAT = if 1 FLT-N +! else 1 INT-N +! then
+      i ARG-KIND@ K-FLOAT = i ARG-KIND@ K-FLOAT32 = or
+         if 1 FLT-N +! else 1 INT-N +! then
    loop
    REG-ROOM ;
 
@@ -928,9 +953,11 @@ variable SCOPE-HOOK
    PLAN-SPILLS
    STACK-N @ 0 > if
       RES-KIND @ R-POINTER = if E-FFI-ARITY throw then
-      RES-KIND @ R-FLOAT = if C-ABI-R else C-ABI then CALL-KIND ! exit
+      RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or
+         if C-ABI-R else C-ABI then CALL-KIND ! exit
    then
-   RES-KIND @ R-FLOAT = if REG-ROOM C-ABI-R CALL-KIND ! exit then
+   RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or
+      if REG-ROOM C-ABI-R CALL-KIND ! exit then
    FLT-N @ 0 > if
       RES-KIND @ R-POINTER = if E-FFI-ARITY throw then
       REG-ROOM C-ABI CALL-KIND ! exit
@@ -952,6 +979,7 @@ variable SCOPE-HOOK
       i GEN-ARG
       i ARG-KIND@ K-VALUE = if s" :n" GEN+ then
       i ARG-KIND@ K-FLOAT = if s" :r" GEN+ then
+      i ARG-KIND@ K-FLOAT32 = if s" :r" GEN+ then
       GEN-SP
    loop
    s" :} " GEN+ ;
@@ -961,6 +989,9 @@ variable SCOPE-HOOK
 
 : STAGE-FLOAT ( n -- ) {: i:n :}
    i GEN-ARG GEN-SP i ARG-REG@ GEN-N s"  FFI:FLOAT! " GEN+ ;
+
+: STAGE-FLOAT32 ( n -- ) {: i:n :}
+   i GEN-ARG GEN-SP i ARG-REG@ GEN-N s"  FFI:FLOAT32! " GEN+ ;
 
 : STAGE-READABLE ( n -- ) {: i:n :}
    i GEN-ARG GEN-SP i ARG-REG@ GEN-N s"  FFI:READABLE! " GEN+ ;
@@ -991,6 +1022,7 @@ variable SCOPE-HOOK
 : STAGE-ONE ( n -- ) {: i:n :}
    STACK-N @ 0 > i VAR-START @ >= and if i STAGE-SPILL exit then
    i ARG-KIND@ K-FLOAT = if i STAGE-FLOAT exit then
+   i ARG-KIND@ K-FLOAT32 = if i STAGE-FLOAT32 exit then
    i ARG-KIND@ K-VALUE = if i STAGE-VALUE exit then
    i STAGE-POINTER ;
 
@@ -998,6 +1030,7 @@ variable SCOPE-HOOK
    ARG-N @ 0 ?do i STAGE-ONE loop ;
 
 : CALL-WORD ( -- )
+   RES-KIND @ R-FLOAT32 = if s" FFI:CALL-ABI-F32" GEN+ exit then
    CALL-KIND @ C-ABI-R = if s" FFI:CALL-ABI-R" GEN+ exit then
    CALL-KIND @ C-ABI = if s" FFI:CALL-ABI" GEN+ exit then
    CALL-KIND @ C-POINTER = if s" FFI:CALL-PTR" GEN+ exit then
@@ -1185,6 +1218,9 @@ public
    OPEN @ 0= if REFUSE then
    VAR-START @ -1 <> if REFUSE then
    fixed 1 < fixed ARG-N @ > or if REFUSE then
+   ARG-N @ fixed ?do
+      i ARG-KIND@ K-FLOAT32 = if REFUSE then
+   loop
    fixed VAR-START ! ;
 
 \ Argument idx is written by the callee: the bounded call guards exactly the
