@@ -56,6 +56,7 @@ DYNAMIC-STORAGE:E-UNMAP constant E-UNMAP
 \ A real's bits: a rename HIR models (hir-word.f DECLARE-BOUND-CAST), where
 \ IEEE754:F64>BITS would be a call the map does not answer.
 CAST: F>BITS ( r -- n )
+CAST: ZERO>PTR ( n -- ptr n )
 
 \ The digits of n read as unsigned: (n >> 1) / 5 is the unsigned n / 10, which
 \ a signed division cannot give past MAX-N.
@@ -74,6 +75,33 @@ CAST: F>BITS ( r -- n )
    repeat drop ;
 
 public
+
+: NIL ( -- ptr n ) 0 ZERO>PTR ;
+
+\ src/core/bytes.f is below the rewind mark. Keep its forward-copy behavior,
+\ including a narrow overlap where written bytes become later source bytes.
+: COPY-LEN ( ptr u8 ptr u8 len -- ) {: src:ptr dst:ptr u:len :}
+   u LEN>N {: count:n :}
+   count 0 <= if exit then
+   0
+   dst src > dst src CELL + < and 0= if
+      count CELL / CELL * {: bulk:n :}
+      begin dup bulk < while
+         dup src + CELL-VIEW @ over dst + CELL-VIEW ! CELL +
+      repeat
+   then
+   begin dup count < while
+      dup src + c@ over dst + c! 1+
+   repeat drop ;
+
+: COPY-BYTES ( ptr u8 ptr u8 n -- )
+   dup 0 < if s" byte: negative length" E-BYTE-RANGE die then
+   >LEN COPY-LEN ;
+
+: DYN-BOUNDS ( n n -- n ) {: idx:n count:n :}
+   idx 0 < if E-BOUNDS throw then
+   idx count >= if E-BOUNDS throw then
+   idx ;
 
 : DYN-OFFSET ( n ptr ptr a n -- n )
    {: idx:n cb:ptr width:n :}

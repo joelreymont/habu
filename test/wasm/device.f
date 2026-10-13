@@ -139,10 +139,11 @@ $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN
    WASM-HARNESS:OUT$ nip 0 T= ;
 
 \ ---- WKERNEL's rows -------------------------------------------------------------
-\ Each module links the four rows as kernel functions 0..3, in the order WENC
-\ emits them, and an entry of no lanes that calls each row by the function the
-\ map answers for its name. No entry here calls .s, whose call to `.` stays
-\ unlinked.
+\ Each module links the original six rows as kernel functions 0..5, in the
+\ order WENC emits them, and an entry of no lanes that calls a tested row by
+\ the function the map answers for its name. The die row needs a captured
+\ type provider, outside these hand-built kernel-only modules. No entry here
+\ calls .s, whose call to `.` stays unlinked.
 WPROF:STACK-BASE WPROF:OUT-BASE - constant OUT-CAP
 : EMITTED ( -- ptr u8 n )  S\" emit row\n" ;
 
@@ -175,7 +176,7 @@ variable SITES
 
 : ROWS+ ( -- )
    WKERNEL:ENCODE
-   WENC:FUNS 0 ?do
+   6 0 ?do
       WENC:BYTES i WENC:FUNCTION-OFFSET@ +  i 4 HEADER LE:U32@
       i 8 HEADER c@  i 9 HEADER c@  i 10 HEADER c@
       WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ drop

@@ -95,6 +95,35 @@ DYNAMIC-BUFFER MODULE u8
    s" it prints 5 and a newline" T-LABEL
    WASM-HARNESS:OUT$ S\" 5\n" T$= ;
 
+: UNUSED-CASE ( -- )
+   s" : DEAD ( -- ) here drop ; : MAIN ( -- ) 7 . ;" s" unused.f" SOURCE!
+   s" an unreachable definition with an unsupported call is omitted" T-LABEL
+   s" MAIN" s" unused.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ S\" 7\n" T$= ;
+
+: FATAL-CASE ( -- )
+   S\" : FATAL ( -- ) s\" fatal\" 77 die ; : MAIN ( -- ) ['] FATAL catch . ;"
+   s" fatal.f" SOURCE!
+   s" die prints its message and traps through catch, with no continuation" T-LABEL
+   s" MAIN" s" fatal.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:OUT$ s" fatal" T$= ;
+
+: NEGATIVE-BYTE-CASE ( -- )
+   S\" 8 BUFFER: B : BAD ( -- ) B B -1 BYTE-COPY ; : MAIN ( -- ) ['] BAD catch . ; MAIN"
+   s" negative-native.f" SOURCE!
+   s" native BYTE-COPY dies through catch on a negative length" T-LABEL
+   PROC-ARGV-RESET  s" --load" ARG+  SRC SRC-U @ ARG+
+   DRIVER 76 T=
+   ERR ERR-U @ RTRIM s" byte: negative length" T$=
+   S\" 8 BUFFER: B : BAD ( -- ) B B -1 BYTE-COPY ; : MAIN ( -- ) ['] BAD catch . ;"
+   s" negative-wasm.f" SOURCE!
+   s" Wasm BYTE-COPY prints the same diagnostic and traps through catch" T-LABEL
+   s" MAIN" s" negative.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:OUT$ s" byte: negative length" T$= ;
+
 : USAGE-CASE ( -- )
    s" a command line without the output path is refused with 64 and the usage line" T-LABEL
    COMMAND  SRC SRC-U @ ARG+  s" MAIN" ARG+
@@ -103,6 +132,46 @@ DYNAMIC-BUFFER MODULE u8
    s" usage: bin/hb --load tools/wasm-build.f -- <source.f> <entry> <out.wasm>" T$= ;
 
 : REFUSAL-CASES ( -- )
+   s" : MAIN ( -- ) 1 ;" s" unchecked.f" SOURCE!
+   s" authored source is still checked after the prefix rewind" T-LABEL
+   s" MAIN" s" unchecked.wasm" BUILD 70 T=
+   ERR ERR-U @ s" hook: non-certified definition: main" CONTAINS? TTRUE
+   s" require src/lib/span.f 8 SPAN-BUFFER: B : MAIN ( -- ) B SPAN:LEN . ;"
+   s" span-buffer.f" SOURCE!
+   s" a reached static byte-span producer is refused without a Wasm routine" T-LABEL
+   s" MAIN" s" span-buffer.wasm" BUILD 74 T=
+   ERR ERR-U @ RTRIM
+   s" wasmlink: a code record the capture's shadow carries no routine for" T$=
+   s" require src/lib/span.f : MAIN ( -- ) 8 SPAN-BUFFER: ;"
+   s" reached-definer.f" SOURCE!
+   s" a runtime-reached does> definer is refused before writing a module" T-LABEL
+   s" MAIN" s" reached-definer.wasm" BUILD 74 T=
+   ERR ERR-U @ RTRIM
+   s" wasmlink: a name WKERNEL's map does not answer" T$=
+   MOD MOD-U @ EXISTS? TFALSE
+   s" package ADV public : MAKER ( -- ) create 0 , does> ( -- ) drop ; ;package"
+   s" companion-entry.f" SOURCE!
+   s" a direct does> companion entry is refused before writing a module" T-LABEL
+   s" ADV:MAKER;does" s" companion-entry.wasm" BUILD 74 T=
+   ERR ERR-U @ RTRIM
+   s" wasmlink: runtime-reached does> companion has no Wasm routine" T$=
+   MOD MOD-U @ EXISTS? TFALSE
+   S\" package ADV\nprivate\n: CODE-CELL: ( -- ) create 0 , does> ( -- ptr [ [ -- ] -- ] ) ;\nCODE-CELL: ACTION\npublic\n: MAKER ( -- ) create 0 , does> ( -- ) drop ;\n: MAIN ( -- ) ;\n' MAKER;does ACTION xt!\n;package\n"
+   s" companion-cell.f" SOURCE!
+   s" a code cell reaching a does> companion is refused before output" T-LABEL
+   s" ADV:MAIN" s" companion-cell.wasm" BUILD 74 T=
+   ERR ERR-U @ RTRIM
+   s" wasmlink: runtime-reached does> companion has no Wasm routine" T$=
+   MOD MOD-U @ EXISTS? TFALSE
+   s" require src/lib/span.f 2 SPAN-CELLS: C : MAIN ( -- ) C SPAN:CELL-LEN . ;"
+   s" span-cells.f" SOURCE!
+   s" a reached static cell-span producer is refused without a Wasm routine" T-LABEL
+   s" MAIN" s" span-cells.wasm" BUILD 74 T=
+   ERR ERR-U @ RTRIM
+   s" wasmlink: a code record the capture's shadow carries no routine for" T$=
+   s" package NUM ;package : MAIN ( -- ) ;" s" sealed.f" SOURCE!
+   s" authored source cannot reopen the numeric package" T-LABEL
+   s" MAIN" s" sealed.wasm" BUILD ENGINE-ERROR:SEAL-PACKAGE T=
    s" : W ( n -- ) drop ;" s" cells.f" SOURCE!
    s" an entry that takes a cell is refused with 74 and WASMLINK's sentence" T-LABEL
    s" W" s" cells.wasm" BUILD 74 T=
@@ -203,6 +272,9 @@ public
    T-RESET
    SETUP
    MAIN-CASE
+   UNUSED-CASE
+   FATAL-CASE
+   NEGATIVE-BYTE-CASE
    USAGE-CASE
    REFUSAL-CASES
    CELL-CASES

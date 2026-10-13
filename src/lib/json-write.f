@@ -290,16 +290,17 @@ public
    u JW-DIGIT-COUNT JW-ROOM
    u JW-DIGITS ;
 
-\ The minimum cell negates to itself, so its digits come from src/lib/string.f's
-\ canonical STR-MIN-I64$, as src/lib/fmt.f's INT>NUM takes them. The whole width is
-\ reserved first, so a number is written whole or not at all.
+\ The minimum cell negates to itself. Its quotient by ten has a positive
+\ magnitude that fits in a cell, and its final digit comes from the remainder.
+\ Reserve the whole width first, so a number is written whole or not at all.
 : INT ( ptr writer n -- ptr writer )
    {: v:n :}
    v 0 >= if v U exit then
    v STR-MIN-I64 = if
       STR-I64-DIGITS 1+ JW-ROOM
       STR-MINUS JW-C
-      STR-MIN-I64$ STR-I64-DIGITS RAW exit
+      v JW-RADIX / negate JW-DIGITS
+      v JW-RADIX mod negate JW-ZERO + JW-C exit
    then
    v negate {: m:n :}
    m JW-DIGIT-COUNT 1+ JW-ROOM

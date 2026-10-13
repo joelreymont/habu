@@ -277,5 +277,18 @@ s" W31-FMATH"
 s" require src/lib/fmath.f : W31-FMATH ( -- ) 1 s>f FMATH:SIN 1 s>f FMATH:COS 10 s>f FMATH:SIN 10 s>f FMATH:COS depth . .s fdrop fdrop fdrop fdrop ;"
 s\" 4\n4605754516372524270\n4603041830072026764\n-4620296710764933294\n-4617639132858127585\n" ROW
 
+\ A prebuilt library's signed minimum is written without carrying its native
+\ digit table address into a Wasm capture. The row also exercises JSON fields,
+\ UTF-8 bytes and the same writer through the native load path.
+s" WJSON:STEP"
+S\" require src/lib/json-write.f\npackage WJSON\nprivate\nTYPED-VARIABLE W JSON-WRITE:writer\n128 BUFFER: B\npublic\n: STEP ( -- )\n   W B 128 JSON-WRITE:OPEN JSON-WRITE:OBJECT-START\n   s\" name\" s\" é\" JSON-WRITE:FIELD-S\n   JSON-WRITE:COMMA\n   s\" min\" STR-MIN-I64 JSON-WRITE:FIELD-INT\n   JSON-WRITE:OBJECT-END JSON-WRITE:$ type cr ;\n;package\n"
+S\" {\"name\":\"é\",\"min\":-9223372036854775808}\n" ROW
+
+\ Core byte copying is forward, including when the destination overlaps the
+\ source by less than a cell. A memmove-style provider prints different bytes.
+s" WBYTES:STEP"
+S\" package WBYTES\nprivate\n16 BUFFER: B\npublic\n: STEP ( -- )\n   s\" 0123456789\" drop B 10 BYTE-COPY\n   B B 2 + 8 BYTE-COPY\n   B 10 type cr ;\n;package\n"
+S\" 0101010101\n" ROW
+
 ;using
 T-REPORT

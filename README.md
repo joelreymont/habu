@@ -38,7 +38,10 @@ bin/hb --load test/run.f
 Build a source file into a WebAssembly module whose `run` export calls its
 word `MAIN` (`PKG:NAME` names a package's public word);
 `bun test/wasm/run.mjs program.wasm` runs it, with bun installed as
-[docs/bootstrap.md](docs/bootstrap.md) describes:
+[docs/bootstrap.md](docs/bootstrap.md) describes. The build replays the
+portable standard libraries under the Wasm backend, so the source can use
+captured runtime words such as the JSON writer. Current limits are in
+[docs/wasm-backend.md](docs/wasm-backend.md):
 
 ```sh
 bin/hb --load tools/wasm-build.f -- path/to/program.f MAIN program.wasm

@@ -8,8 +8,9 @@
 \   a header, then each function's body, which its header row places and gives
 \   its lanes and frame variant. Each function joins the link with an adapter in
 \   the table, the slot that is its xt (src/arch/wasm/dynamic.f). A record
-\   enters its routine's first function. A `does>` definer never links: its
-\   body calls `create`, which no kernel row answers.
+\   enters its routine's first function. A `does>` definer cannot link: its
+\   body calls `create`, which no kernel row answers. A reached companion is
+\   refused before linking because it enters a later function of that emission.
 \ - THE KERNEL. WKERNEL's rows (src/arch/wasm/kernel.f), and execute's and
 \   catch's runtime functions, join every link. A row's call names a host entry,
 \   which becomes the name of the engine word it enters before the map is asked.
@@ -32,10 +33,10 @@
 \ Refused by name, each before the module is written: a call, a code literal or
 \ cell, or the entry naming a code record with no routine (a variable, a
 \ created word, a constant, a defer, a tier-0 word), whose data the image holds
-\ all the same; a name no kernel row answers; a name WKERNEL's map or the entry
-\ gives that no shipped record carries; and an entry that takes or leaves
-\ cells, since run calls it with ctx alone. So is an output path that cannot be
-\ written. A refusal dies.
+\ all the same; a runtime-reached does> companion; a name no kernel row answers;
+\ a name WKERNEL's map or the entry gives that no shipped record carries; and
+\ an entry that takes or leaves cells, since run calls it with ctx alone. So
+\ is an output path that cannot be written. A refusal dies.
 
 require src/lib/prelude.f
 require src/lib/string.f
@@ -64,7 +65,13 @@ $FFFFFFFF constant PKG-MARK          \ a compact row's wid word on a package row
 12 constant ROW-BYTES
 
 DYNAMIC-BUFFER ROUTINE n             \ a shipped row -> the shadow row filing its routine
-DYNAMIC-BUFFER FIRST n               \ a shadow row -> its emission's first function
+DYNAMIC-BUFFER LIVE n                \ a shipped row reachable at runtime
+DYNAMIC-BUFFER WORK n                \ newly reached shipped rows
+variable WORK-N
+variable WORK-AT
+DYNAMIC-BUFFER SITE-HEAD n           \ a shipped row -> its first code site
+DYNAMIC-BUFFER NEXT n                \ a code site -> the next site of its row
+DYNAMIC-BUFFER FIRST n               \ a live shadow row -> its emission's first function
 DYNAMIC-BUFFER SLOTS n               \ a function -> its adapter's table slot
 DYNAMIC-BUFFER IMG u8                \ the data image
 variable K0                          \ WKERNEL's first row
@@ -100,6 +107,7 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 
 : SH-REC ( n -- n ) 0 SH@ ;
 : SH-AT ( n -- n ) 4 SH@ ;
+: SH-ENTRY ( n -- n ) 12 SH@ ;
 
 : EMISSION ( n -- ptr u8 )
    {: r:n :}
@@ -166,13 +174,18 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 \ none, a package row among them.
 : ROUTINES ( -- )
    AOT-REC-N @ ROUTINE-RESERVE
-   AOT-REC-N @ 0 ?do  -1 i ROUTINE !  loop
+   AOT-REC-N @ LIVE-RESERVE
+   AOT-REC-N @ 0 ?do  -1 i ROUTINE !  0 i LIVE !  loop
+   0 WORK-N !  0 WORK-AT !
    AOT-SHADOW:REC-N @ 0 ?do  i  i SH-REC ROUTINE !  loop ;
 
 : ROUTINES+ ( -- )
    AOT-SHADOW:REC-N @ FIRST-RESERVE
+   AOT-SHADOW:REC-N @ 0 ?do -1 i FIRST ! loop
    AOT-SHADOW:REC-N @ 0 ?do
-      i EMISSION WLINK-ORIGIN:CAPTURED EMISSION+ i FIRST !
+      i SH-REC LIVE @ 0<> if
+         i EMISSION WLINK-ORIGIN:CAPTURED EMISSION+ i FIRST !
+      then
    loop ;
 
 \ The shadow row filing shipped record k's routine, which something names.
@@ -181,6 +194,17 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    k ROUTINE @ {: r:n :}
    r 0 < if k NO-ROUTINE then
    r ;
+
+: MARK-REC ( n -- )
+   {: k:n :}
+   k ROUTINE-OF SH-ENTRY 0<> if
+      s" wasmlink: runtime-reached does> companion has no Wasm routine" REFUSE
+   then
+   k LIVE @ 0<> if exit then
+   -1 k LIVE !
+   WORK-N @ 1+ WORK-RESERVE
+   k WORK-N @ WORK !
+   1 WORK-N +! ;
 
 \ The function shipped record k enters.
 : ENTERS ( n -- n ) ROUTINE-OF FIRST @ ;
@@ -248,6 +272,24 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    code E-WLINK-UNRESOLVED = if a u UNANSWERED then
    code throw ;
 
+\ Resolve an engine-prefix name before functions have link handles. A mapped
+\ kernel word is a captured root; a kernel row or execute/catch is not.
+: MARK-ASK ( ptr u8 n -- ptr u8 n )
+   2dup s" execute" STR=CI if exit then
+   2dup s" catch" STR=CI if exit then
+   2dup WKERNEL:PROVIDER MATCH WKERNEL:provider
+      row OF drop ENDOF
+      word OF SHIPPED MARK-REC ENDOF
+   ;MATCH ;
+
+: MARK-NAME ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u [: MARK-ASK ;] catch {: code:n :}
+   2drop
+   code 0= if exit then
+   code E-WLINK-UNRESOLVED = if a u UNANSWERED then
+   code throw ;
+
 \ The name of the dictionary's first record entering host address v.
 : ENGINE-NAME ( n -- ptr u8 n )
    {: v:n :}
@@ -272,18 +314,66 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    p off HOLDER {: k:n :}
    K0 @ k +  off p k BODY-AT -  c WENC:CALL-TARGET@ ENGINE-NAME NAMED  WLINK:CALL+ ;
 
+: MARK-KERNEL ( -- )
+   WENC:CALL-SITES 0 ?do
+      i WENC:CALL-TARGET@ ENGINE-NAME MARK-NAME
+   loop ;
+
 : KERNEL+ ( -- )
    WDYN:EXECUTE+ RUNTIME+ EXEC-H !
    WDYN:CATCH+ RUNTIME+ CATCH-H !
-   WKERNEL:ENCODE
    WENC:BYTES WLINK-ORIGIN:KERNEL EMISSION+ K0 !
    WENC:CALL-SITES 0 ?do  i KERNEL-CALL+  loop ;
 
 \ ---- the sites ------------------------------------------------------------------
-\ The shadow row whose emission holds shadow code byte v, the rows ascending.
+\ The row owning byte v. A does> definer and its clause share an emission,
+\ so a site before the clause entry belongs to the definer's row.
 : ROW-AT ( n -- n )
    {: v:n :}
-   -1  AOT-SHADOW:REC-N @ 0 ?do  i SH-AT v <= if 1+ then  loop ;
+   -1  AOT-SHADOW:REC-N @ 0 ?do
+      i SH-AT v <= if
+         dup 0< if drop i else
+            i SH-AT over SH-AT > if drop i else
+               v i SH-AT - i SH-ENTRY >= if drop i then
+            then
+         then
+      then
+   loop ;
+
+\ Index sites by their owning record. The worklist visits only records reached
+\ from runtime roots, omitting compile-time definers and their calls.
+: SITE-HEADS ( -- )
+   AOT-REC-N @ SITE-HEAD-RESERVE
+   AOT-REC-N @ 0 ?do -1 i SITE-HEAD ! loop
+   AOT-SHADOW:SITE-N @ NEXT-RESERVE
+   AOT-SHADOW:SITE-N @ 0 ?do
+      i 0 SITE@ ROW-AT SH-REC {: k:n :}
+      k SITE-HEAD @ i NEXT !
+      i k SITE-HEAD !
+   loop ;
+
+: MARK-TARGET ( n -- )
+   8 SITE@ {: t:n :}
+   t SITE-TARGET-MASK and {: v:n :}
+   t SITE-NAME-TAG and 0<> if v POOL$ MARK-NAME exit then
+   v MARK-REC ;
+
+: MARK-SITE ( n -- )
+   {: s:n :}
+   s 4 SITE@ {: kind:n :}
+   kind AOT-SHADOW:CALL = kind AOT-SHADOW:CODE = or if
+      s MARK-TARGET
+   then ;
+
+: MARK-WORK ( -- )
+   begin WORK-AT @ WORK-N @ < while
+      WORK-AT @ WORK @ SITE-HEAD @
+      begin dup -1 <> while
+         dup MARK-SITE
+         NEXT @
+      repeat drop
+      1 WORK-AT +!
+   repeat ;
 
 \ The function holding site s's field, and the field's offset in its body.
 : PLACE ( n -- n n )
@@ -323,6 +413,9 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    kind AOT-SHADOW:FUN = if s FUN-OF else s TARGET then {: t:n :}
    f at WSTRUCT:ADDR-CODE t SLOTS @ WLINK:ADDRESS+ ;
 
+: SITE-LIVE? ( n -- bool )
+   0 SITE@ ROW-AT SH-REC LIVE @ 0<> ;
+
 \ ---- the data ---------------------------------------------------------------------
 : PRESENT? ( n -- bool )
    {: c:n :}
@@ -348,6 +441,32 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    {: c:n :}
    AOT-SHADOW:XT-N @ 0 ?do  i 0 XT@ c = if i 4 XT@ unloop exit then  loop
    -1 ;
+
+\ A code address in the image can execute without a lexical call site. Every
+\ declared code cell is a root; DATA cells are only image addresses.
+: MARK-CELLS ( -- )
+   AOT-WINDOW:XTOFF-N @ 0 ?do
+      i 0 XTOFF@ {: loc:n :}
+      i 4 XTOFF@ {: meta:n :}
+      meta AOT-WINDOW:XTOFF-VALUE-MASK and {: v:n :}
+      loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0<> v 0<> and if
+         meta AOT-WINDOW:XTOFF-KIND-MASK and {: kind:n :}
+         kind AOT-WINDOW:XTOFF-DATA-TAG <> if
+            kind AOT-WINDOW:XTOFF-NAME-TAG = if
+               v 1- POOL$ MARK-NAME
+            else
+               i XT-REC MARK-REC
+            then
+         then
+      then
+   loop ;
+
+: MARK-ROOTS ( n -- )
+   MARK-REC
+   MARK-KERNEL
+   MARK-CELLS
+   SITE-HEADS
+   MARK-WORK ;
 
 : CELL+ ( n -- )
    {: c:n :}
@@ -395,10 +514,12 @@ public
    {: e:ptr eu:n path:ptr pu:n :}
    ROUTINES
    WLINK:RESET
+   WKERNEL:ENCODE
+   e eu SHIPPED MARK-ROOTS
    ROUTINES+
    e eu ENTRY {: f:n :}
    KERNEL+
-   AOT-SHADOW:SITE-N @ 0 ?do  i SITE+  loop
+   AOT-SHADOW:SITE-N @ 0 ?do  i SITE-LIVE? if i SITE+ then  loop
    IMAGE
    AOT-WINDOW:XTOFF-N @ 0 ?do  i CELL+  loop
    path pu  f WLINK:LINK  [: PUT ;] catch {: code:n :}

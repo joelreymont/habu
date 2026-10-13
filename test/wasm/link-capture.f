@@ -8,8 +8,9 @@
 \ test/wasm/dynamic.f runs linked modules under wasm-tools and bun.
 \
 \ Each refused window is compiled, captured and linked in a child of its own,
-\ forked before this process opens a window: a call to a defer names a record
-\ with no Wasm routine, a call to `here` names a word no kernel row answers, and
+\ forked before this process opens a window: a call to an unbound defer reaches
+\ DEFER-UNSET without a Wasm provider, a call to `here` names a word no kernel
+\ row answers, and
 \ a window without kernel-words.f ships no WKWORDS:DOT for `.`. Each exits 74
 \ and says what it refuses.
 \
@@ -90,10 +91,10 @@ DYNAMIC-BUFFER MODULE u8
    ERR eu RTRIM why yu T$= ;
 
 : REFUSALS ( -- )
-   s" a call to a defer names a code record with no Wasm routine" T-LABEL
+   s" an unbound defer reaches an unsupported engine word" T-LABEL
    s" require src/arch/wasm/kernel-words.f defer LCD ( -- ) : W ( -- ) LCD ;"
-   s" wasmlink: window record LCD has no Wasm routine"
-   s" wasmlink: a code record the capture's shadow carries no routine for" REFUSED
+   s" wasmlink: DEFER-UNSET is a name no kernel row answers"
+   s" wasmlink: a name WKERNEL's map does not answer" REFUSED
    s" a call to `here` names a word no kernel row answers" T-LABEL
    s" require src/arch/wasm/kernel-words.f : W ( -- ) here drop ;"
    s" wasmlink: here is a name no kernel row answers"

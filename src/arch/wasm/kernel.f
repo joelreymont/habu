@@ -69,12 +69,13 @@ private
 3 constant THROW-FUN
 4 constant MAP-FUN
 5 constant UNMAP-FUN
+6 constant DIE-FUN
 
 WPROF:STACK-BASE WPROF:OUT-BASE - constant OUT-CAP
 
 \ Each function's span is its name in this text.
 : ROWS$ ( -- ptr u8 n )
-   s" emit depth .s throw map-anon munmap" ;
+   s" emit depth .s throw map-anon munmap die" ;
 
 \ ---- staging one WSTRUCT operation --------------------------------------------
 1 TYPED-BUFFER K-CTX IR-CTX:ctx
@@ -379,6 +380,38 @@ variable MADE                              \ blocks built, the next one's ordina
    1 K32 RET
    FUN-SHUT ;
 
+\ die's terminal call is framed. Print its message through the shipped type
+\ word, retain its code for hosts that inspect it, then trap without returning
+\ a status that catch could consume.
+: TYPE-CALLEE ( -- IR-ID:ir-symbol-id )
+   SB-RESET
+   s" host " SB-APPEND
+   s" type" NDICT:CALL-TARGET FMT:SB-U
+   CTX BLD SB$ IR-BUILD:INTERN-SYMBOL ;
+
+: TYPE-CALL ( IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- )
+   {: cx:IR-ID:ir-value-id a:IR-ID:ir-value-id u:IR-ID:ir-value-id :}
+   TYPE-CALLEE {: callee:IR-ID:ir-symbol-id :}
+   WSTRUCT-OPCODE:CALL OPEN
+   cx USE  TOK USE  a USE  u USE
+   CTX BLD  CTX BLD WSTRUCT:KEY-CALLEE  CTX BLD callee IR-BUILD:INTERN-SYMBOL-ATTR
+   IR-BUILD:ADD-ATTR
+   I32 RES  MEM RES
+   CLOSE {: id:IR-ID:ir-op-id :}
+   id 1 RESULT TOK! ;
+
+: DIE-ROW ( -- )
+   s" die" 36 0 0 FUN-OPEN
+   ENTRY {: cx:IR-ID:ir-value-id :}
+   cx WPROF:CTX-STACK-TOP LD32 {: top:IR-ID:ir-value-id :}
+   top 24 K32 WSTRUCT-OPCODE:I32-SUB I32 OP2 0 LD64 {: a:IR-ID:ir-value-id :}
+   top 16 K32 WSTRUCT-OPCODE:I32-SUB I32 OP2 0 LD64 {: u:IR-ID:ir-value-id :}
+   top 8 K32 WSTRUCT-OPCODE:I32-SUB I32 OP2 0 LD64 {: code:IR-ID:ir-value-id :}
+   cx code WPROF:CTX-THROW-CODE ST64
+   cx a u TYPE-CALL
+   TRAP
+   FUN-SHUT ;
+
 \ First-fit from the address-sorted free list. A link is the address of the
 \ cell naming the current node: either ctx.free-head or the prior node's next.
 \ A miss grows the memory, whose current end lies past any pages a host added.
@@ -544,7 +577,7 @@ variable MADE                              \ blocks built, the next one's ordina
    c WSTRUCT:NEW-BUILDER 0 K-BLD !
    CTX BLD ROWS$ IR-BUILD:ADD-SOURCE 0 K-SRC !
    0 MADE !
-   EMIT-ROW  DEPTH-ROW  DOT-S-ROW  THROW-ROW  MAP-ROW  UNMAP-ROW
+   EMIT-ROW  DEPTH-ROW  DOT-S-ROW  THROW-ROW  MAP-ROW  UNMAP-ROW  DIE-ROW
    CTX BLD WSTRUCT:FREEZE [: LANES ;] WENC:ENCODE ;
 
 \ The kernel-words word answering an engine name, or an empty spelling.
@@ -568,6 +601,10 @@ variable MADE                              \ blocks built, the next one's ordina
    a u s" false" STR=CI if s" WKWORDS:NO" exit then
    a u s" f<=" STR=CI if s" WKWORDS:F-AT-MOST?" exit then
    a u s" f>=" STR=CI if s" WKWORDS:F-AT-LEAST?" exit then
+   a u s" NULL-PTR" STR=CI if s" WKWORDS:NIL" exit then
+   a u s" BYTE-COPY-LEN" STR=CI if s" WKWORDS:COPY-LEN" exit then
+   a u s" BYTE-COPY" STR=CI if s" WKWORDS:COPY-BYTES" exit then
+   a u s" DYNAMIC-STORAGE:BOUNDS" STR=CI if s" WKWORDS:DYN-BOUNDS" exit then
    a u s" DYNAMIC-STORAGE:OFFSET" STR=CI if s" WKWORDS:DYN-OFFSET" exit then
    a u s" DYNAMIC-STORAGE:RESERVE" STR=CI if s" WKWORDS:DYN-RESERVE" exit then
    a u s" DYNAMIC-STORAGE:RELEASE" STR=CI if s" WKWORDS:DYN-RELEASE" exit then
@@ -582,6 +619,7 @@ variable MADE                              \ blocks built, the next one's ordina
    a u s" throw" STR=CI if THROW-FUN exit then
    a u s" map-anon" STR=CI if MAP-FUN exit then
    a u s" munmap" STR=CI if UNMAP-FUN exit then
+   a u s" die" STR=CI if DIE-FUN exit then
    -1 ;
 
 public

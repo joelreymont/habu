@@ -311,7 +311,10 @@ pointers with a dependency path to the export that required them. A target data
 builder produces static bytes from layouts; do not copy a native dictionary, AOT
 code buffer or snapshot containing native addresses into Wasm.
 
-The first slice links the whole set of routines from the capture (§17.1); no package cache is needed for that. When package contributions exist, persist Wasm function plans/symbolic operands inside the package contribution, not native-style machine addresses. Final assembly:
+The current linker follows runtime-reachable routines in the capture (§17.1);
+no package cache is needed for that. When package contributions exist, persist
+Wasm function plans/symbolic operands inside the package contribution, not
+native-style machine addresses. Final assembly:
 
 1. Resolve reachable functions, imports, data objects and dynamic adapters.
 2. Deduplicate identical function types deterministically by structural signature, retaining Habu effect identities separately.
@@ -383,9 +386,12 @@ Place maximums on source bytes, graph nodes, nesting, function arity/locals, typ
 ## 14. Implementation pointers
 
 tools/wasm-build.f loads the Wasm backend, compiles a source file at tier 1,
-captures its shadow emissions and links a module. src/arch/wasm holds the
-backend and test/wasm holds the fixtures and device check. Rebuild the
-native engine when a changed engine package is baked into it.
+captures its shadow emissions and links a module. It rewinds the baked native
+library records, then reloads the canonical portable sources inside the Wasm
+capture window. The linker ships the runtime-reachable routines, including
+code-address roots, while leaving compile-time definers out of the module.
+src/arch/wasm holds the backend and test/wasm holds the fixtures and device
+check. Rebuild the native engine when a changed engine package is baked into it.
 
 ## 15. Scope
 
@@ -422,17 +428,31 @@ Generate well-typed Habu programs for differential execution against the pinned 
 
 The current path emits a Habu-generated module through the existing legacy owner
 adapter ([portability.md](portability.md) §7.4). The symbolic target-data
-builder in that design is a possible later replacement. A Wasm shadow binding
-is opened, and `NCOMP`
+builder in that design is a possible later replacement. The build driver keeps
+its entry xt across `prefix-rewind.f`, opens a Wasm shadow binding, and reloads
+the canonical portable library sources inside that capture window before the
+application. It reseals their packages before loading application source.
+`NCOMP`
 compiles each definition for it from the module `NBACK:FREEZE` froze for the
 engine's own selector (§2). The Wasm backend's `EMIT-UNPLACED` row writes a
 sealed `NEMIT` emission measured from no slot. Every call and address immediate
 in it is a fixed-width padded LEB (5 bytes for a u32, 10 for an s64), so each is
 a row whose field the linker writes in place (§10.1). The capture
-(`src/habu/aot-shadow.f`) collects the routines, resolving every host address
-through the xt -> record index and refusing an unresolved one by name, and the
-Wasm linker assigns final indices and writes the module. The `TargetRef` of
+(`src/habu/aot-shadow.f`) collects the routines and classifies host addresses
+through the xt -> record index. The Wasm linker resolves reachable targets by
+name, assigns final indices and writes the module. The `TargetRef` of
 [portability.md](portability.md) §7.2 replaces this route later.
+
+The linker starts with the requested entry, kernel-required captured words,
+and declared code-address cells. It follows captured call and code-address
+sites to build the runtime closure, emits only those routines, and resolves
+only their sites. A reachable host address without a Wasm provider is a build
+error; an unused compile-time helper does not enter the module. A created word
+with a nonempty `does>` clause has no Wasm routine yet and is refused when
+reached, including words made by `SPAN-BUFFER:` and `SPAN-CELLS:`. The latter
+definers can still appear in an unused compile-time library body. A directly
+reached `does>` companion is also refused before output, including when its xt
+is in a code cell.
 
 A Wasm emission's bytes begin with a function table the encoder writes and
 `src/habu/link-wasm.f` reads: the count, then per function its body offset,
