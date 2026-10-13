@@ -1,5 +1,5 @@
 \ fmt-test.f - checked number formatting coverage.
-\ Run: cat lib/errors.f lib/string.f lib/test.f lib/float.f lib/fmt.f lib/fmt-test.f | bin/hb
+\ Run: bin/hb --load lib/fmt-test.f
 
 require lib/errors.f
 require lib/string.f
@@ -8,11 +8,13 @@ require lib/float.f
 require lib/fmt.f
 
 \ White-box test: reopen the module's package so the fixtures call FMT's public
-\ builders (SB-U / SB-INT / SB-FIX) by their bare package-local names.
+\ builders (SB-U / SB-HEX / SB-INT / SB-FIX) by their bare package-local names.
 package FMT
 
 : T-U ( n ptr u8 n -- ) {: a:ptr u :}            \ SB-U n == a/u
    SB-RESET SB-U  SB$ a u T$= ;
+: T-HEX ( n ptr u8 n -- ) {: a:ptr u :}
+   SB-RESET s" pre:" SB-APPEND SB-HEX  SB$ a u T$= ;
 : T-INT ( n ptr u8 n -- ) {: a:ptr u :}
    SB-RESET SB-INT  SB$ a u T$= ;
 : T-FIX ( r n ptr u8 n -- ) {: a:ptr u :}        \ ( value places expect )
@@ -45,6 +47,13 @@ package FMT
    12345 s" 12345"  T-U
    99    s" 99"     T-U
    STR-MAX-I64 s" 9223372036854775807" T-U    \ largest unsigned i64 renders exactly
+   0     s" pre:0" T-HEX
+   9     s" pre:9" T-HEX
+   10    s" pre:A" T-HEX
+   15    s" pre:F" T-HEX
+   16    s" pre:10" T-HEX
+   $7FFF s" pre:7FFF" T-HEX
+   STR-MAX-I64 s" pre:7FFFFFFFFFFFFFFF" T-HEX
    -7    s" -7"     T-INT
    42    s" 42"     T-INT
    -123  s" -123"   T-INT
@@ -68,6 +77,9 @@ package FMT
    2.5     1 s" 2.5"    T-PFN
    \ fail-closed domain guards
    [: NEG-U-CASE ;]        E-FMT-DOMAIN   TTHROWSQ  \ negative into unsigned -> E-FMT-DOMAIN
+   SB-RESET s" carry" SB-APPEND
+   [: -1 SB-HEX ;] E-FMT-DOMAIN TTHROWSQ
+   SB$ s" carry" T$=
    [: OVERFLOW-FIX-CASE ;]  E-FMT-OVERFLOW TTHROWSQ \ scaled overflow -> E-FMT-OVERFLOW
    [: OVERFLOW-2P63-CASE ;] E-FMT-OVERFLOW TTHROWSQ \ exactly 2^63 does not fit i64
    ;

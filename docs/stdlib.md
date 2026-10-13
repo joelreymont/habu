@@ -788,6 +788,13 @@ buffer appends use the same rule and keep the current length in a `ptr len`
 cell. `SPLIT-NEXT` returns the next field, the next scan index, and a success
 flag.
 
+## Number formatting
+
+`lib/fmt.f` provides `FMT:SB-HEX ( n -- )`. It appends a nonnegative integer
+to the shared string builder as uppercase hexadecimal, without a prefix or
+minimum width; zero renders as `0`. A negative input throws `E-FMT-DOMAIN`
+without changing the builder.
+
 ## UTF-8 Scalar
 
 `lib/utf8-scalar.f` provides one reentrant decoder in `package UTF8`, and a

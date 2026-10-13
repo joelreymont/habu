@@ -7,8 +7,9 @@
 \ share nothing. See docs/threads.md.
 \
 \ The module lives in `package FMT`. External callers reach it through the
-\ qualified public API: FMT:SB-U and FMT:SB-INT append an unsigned or signed
-\ integer to the shared lib/string.f builder (open it with SB-RESET, read it
+\ qualified public API: FMT:SB-U, FMT:SB-HEX, and FMT:SB-INT append unsigned
+\ decimal, unsigned hexadecimal, or signed decimal integers to the shared
+\ lib/string.f builder (open it with SB-RESET, read it
 \ back with SB$), FMT:SB-FIX appends a fixed-decimal float rounded half-up, and
 \ the direct printers FMT:.U / FMT:.INT / FMT:F.N type the formatted text. The
 \ word tails stay recognizable (SB-U, SB-INT, F.N, ...) because they read
@@ -23,6 +24,7 @@
 \
 \ Every appender is fail-closed on its domain. SB-U / .U are unsigned only: a
 \ negative value throws E-FMT-DOMAIN rather than rendering a byte below '0'.
+\ SB-HEX has the same domain and emits uppercase digits without a prefix.
 \ SB-INT covers the whole signed i64 range, including STR-MIN-I64
 \ ($8000000000000000), whose magnitude has no positive i64 form and so is
 \ emitted from the canonical STR-MIN-I64$ digit table instead of a negate that
@@ -39,6 +41,7 @@ require lib/string.f                       \ SB-RESET / SB-APPEND-C / SB$ / STR-
 package FMT
 
 48 constant FMT-ZERO
+65 constant FMT-A
 46 constant FMT-DOT
 
 \ Every byte and cell fmt keeps is TASK-LOCAL, in the FMT-ABI band of the
@@ -97,6 +100,17 @@ BAND-AGREE
    dup 0 < if E-FMT-DOMAIN throw then
    0 FMT-NUM-U !  DIGITS>NUM ;
 
+: HEX-C+ ( n -- )
+   dup 10 < if FMT-ZERO + else 10 - FMT-A + then NUM-C+ ;
+
+: HEX-DIGITS>NUM ( n -- )
+   dup 16 < if HEX-C+ exit then
+   dup 16 / RECURSE  16 mod HEX-C+ ;
+
+: HEX>NUM ( n -- )
+   dup 0 < if E-FMT-DOMAIN throw then
+   0 FMT-NUM-U !  HEX-DIGITS>NUM ;
+
 : INT>NUM ( n -- )                         \ signed (STR-MIN-I64 has no positive magnitude)
    0 FMT-NUM-U !
    dup STR-MIN-I64 = if
@@ -111,6 +125,8 @@ public
 
 : SB-U ( n -- )                            \ unsigned int, no separators; negative -> E-FMT-DOMAIN
    U>NUM NUM$ SB-APPEND ;
+: SB-HEX ( n -- )                          \ uppercase, no prefix; negative -> E-FMT-DOMAIN
+   HEX>NUM NUM$ SB-APPEND ;
 : SB-INT ( n -- )                          \ signed int (STR-MIN-I64 has no positive magnitude)
    INT>NUM NUM$ SB-APPEND ;
 
