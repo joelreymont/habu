@@ -28,6 +28,10 @@ create STR-TEST-RIGHT-WS
    97 c, 98 c, 99 c, STR-TAB c, STR-LF c,
 create STR-TEST-BYTEPLUS
    65 c, 66 c, 67 c,
+create STR-TEST-ORDER-LOW
+   0 c, 127 c,
+create STR-TEST-ORDER-HIGH
+   0 c, 128 c,
 16 BUFFER: STR-TEST-BUF2
 variable STR-TEST-BUF2-LEN
 
@@ -262,6 +266,30 @@ variable STR-TEST-BUF2-LEN
 \ refused faults here instead of answering.
 : STR-TEST-EDGE ( -- ptr u8 )
    0 0 GUARD-PAGE:TAIL ;
+
+: STR-TEST-ORDER-LEFT-NEG ( n -- ) {: u:n :}
+   STR-TEST-EDGE u s" a" STR< drop ;
+
+: STR-TEST-ORDER-RIGHT-NEG ( n -- ) {: v:n :}
+   s" a" STR-TEST-EDGE v STR< drop ;
+
+\ Ordering compares unsigned bytes at the first difference and uses length
+\ only after an equal prefix. Invalid lengths must throw before any byte read.
+: STR-TEST-ORDER ( -- )
+   s" " s" " STR< 0= STR-ASSERT
+   s" " s" a" STR< STR-ASSERT
+   s" a" s" " STR< 0= STR-ASSERT
+   s" ab" s" ab" STR< 0= STR-ASSERT
+   s" ab" s" abc" STR< STR-ASSERT
+   s" abc" s" ab" STR< 0= STR-ASSERT
+   s" azzz" s" ba" STR< STR-ASSERT
+   s" ba" s" azzz" STR< 0= STR-ASSERT
+   STR-TEST-ORDER-LOW 2 STR-TEST-ORDER-HIGH 2 STR< STR-ASSERT
+   STR-TEST-ORDER-HIGH 2 STR-TEST-ORDER-LOW 2 STR< 0= STR-ASSERT
+   [: -1 STR-TEST-ORDER-LEFT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-ORDER-LEFT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 STR-TEST-ORDER-RIGHT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-ORDER-RIGHT-NEG ;] catch E-STR-BOUNDS STR-ASSERT= ;
 
 \ A sign and one digit ending at the edge, so a length that wraps past the sign
 \ scans on into the inaccessible page.
@@ -552,6 +580,7 @@ STR-TEST-INDEX-OF-OPTION
 STR-TEST-FIND-SUB-OPTION
 STR-TEST-FIND-SUB-NEGATIVE
 STR-TEST-COMPARE-NEGATIVE
+STR-TEST-ORDER
 STR-TEST-SCAN-NEGATIVE
 STR-TEST-NUMBER-NEGATIVE
 STR-TEST-TYPED

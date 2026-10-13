@@ -733,6 +733,8 @@ takes a length calls one of them before it reads a byte. Typed variants such as
 defines caller-owned byte buffers; `BUF-*` helpers reset, read,
 and append into a caller-owned `(buffer, capacity, length-cell)` triple and throw
 instead of truncating or overflowing.
+`STR<` orders spans lexicographically by unsigned byte value, with a shorter
+equal prefix first. It does not interpret text, case, locale, or UTF-8.
 
 ```forth
 STR-LEN         ( n -- len )
@@ -746,6 +748,7 @@ BUFFER:         ( n -- )
 ASCII-LOWER     ( n -- n )
 ASCII-UPPER     ( n -- n )
 STR=            ( ptr u8 n ptr u8 n -- bool )
+STR<            ( ptr u8 n ptr u8 n -- bool )
 STR=CI          ( ptr u8 n ptr u8 n -- bool )
 STARTS-WITH?    ( ptr u8 n ptr u8 n -- bool )
 ENDS-WITH?      ( ptr u8 n ptr u8 n -- bool )

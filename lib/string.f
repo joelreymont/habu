@@ -94,6 +94,15 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       1+
    repeat drop 0 0= ;
 
+: STR< ( ptr u8 n ptr u8 n -- bool )
+   {: a:ptr u:n b:ptr v:n :}
+   u v STR-CHECK-LENS
+   0 begin dup u v min < while
+      dup a + c@ over b + c@
+      2dup <> if < swap drop exit then
+      2drop 1+
+   repeat drop u v < ;
+
 : STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
    u v STR-CHECK-LENS
    u v <> if 0 0= 0= exit then
