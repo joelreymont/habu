@@ -7,8 +7,9 @@
 \ share nothing. See docs/threads.md.
 \
 \ The module lives in `package FMT`. External callers reach it through the
-\ qualified public API: FMT:SB-U, FMT:SB-HEX, and FMT:SB-INT append unsigned
-\ decimal, unsigned hexadecimal, or signed decimal integers to the shared
+\ qualified public API: FMT:SB-U, FMT:SB-HEX, FMT:SB-INT, and FMT:SB-SCALED
+\ append unsigned decimal, unsigned hexadecimal, signed decimal, or an exact
+\ scaled integer to the shared
 \ lib/string.f builder (open it with SB-RESET, read it
 \ back with SB$), FMT:SB-FIX appends a fixed-decimal float rounded half-up, and
 \ the direct printers FMT:.U / FMT:.INT / FMT:F.N type the formatted text. The
@@ -129,6 +130,44 @@ public
    HEX>NUM NUM$ SB-APPEND ;
 : SB-INT ( n -- )                          \ signed int (STR-MIN-I64 has no positive magnitude)
    INT>NUM NUM$ SB-APPEND ;
+
+\ Interpret value as value / 10^places. The integer renderer supplies all
+\ digits, including STR-MIN-I64, without taking a magnitude that could overflow.
+\ Append the point and fraction separately so FMT-NUM-CAP stays unchanged.
+: SB-SCALED ( n n -- )
+   {: value:n places:n :}
+   places 0 < places 18 > or if E-FMT-DOMAIN throw then
+   value INT>NUM
+   places 0= if NUM$ SB-APPEND exit then
+   value 0= if FMT-ZERO SB-APPEND-C exit then
+
+   NUM$ {: num-p:ptr width:n :}
+   value 0 < if 1 else 0 then {: sign:n :}
+   num-p sign + {: p:ptr :}
+   width sign - {: digits:n :}
+   0 FMT-IX !
+   begin
+      FMT-IX @ places < FMT-IX @ digits < and
+      if p digits 1- + FMT-IX @ - c@ FMT-ZERO = else false then
+   while
+      1 FMT-IX +!
+   repeat
+
+   sign 0<> if STR-MINUS SB-APPEND-C then
+   digits places > if
+      p digits places - SB-APPEND
+   else
+      FMT-ZERO SB-APPEND-C
+   then
+   places FMT-IX @ - {: frac:n :}
+   frac 0= if exit then
+   FMT-DOT SB-APPEND-C
+   digits places < if
+      places digits - 0 ?do FMT-ZERO SB-APPEND-C loop
+      p digits FMT-IX @ - SB-APPEND
+   else
+      p digits places - + frac SB-APPEND
+   then ;
 
 private
 

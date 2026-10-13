@@ -795,6 +795,14 @@ to the shared string builder as uppercase hexadecimal, without a prefix or
 minimum width; zero renders as `0`. A negative input throws `E-FMT-DOMAIN`
 without changing the builder.
 
+`FMT:SB-SCALED ( n n -- )` appends a signed integer divided by 10 to the power
+of the second argument, using exact decimal digits. Places must be 0 through
+18; an invalid count throws `E-FMT-DOMAIN` before changing the builder. It
+trims trailing fractional zeros and the point when the fraction is zero, while
+retaining the zero before a fraction smaller than one. For example, `5500 3`
+appends `5.5`, `-1 3` appends `-0.001`, and `5000 3` appends `5`. The full
+signed 64-bit range is supported.
+
 ## UTF-8 Scalar
 
 `lib/utf8-scalar.f` provides one reentrant decoder in `package UTF8`, and a

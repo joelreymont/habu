@@ -17,6 +17,8 @@ package FMT
    SB-RESET s" pre:" SB-APPEND SB-HEX  SB$ a u T$= ;
 : T-INT ( n ptr u8 n -- ) {: a:ptr u :}
    SB-RESET SB-INT  SB$ a u T$= ;
+: T-SCALED ( n n ptr u8 n -- ) {: a:ptr u :}
+   SB-RESET s" pre:" SB-APPEND SB-SCALED  SB$ a u T$= ;
 : T-FIX ( r n ptr u8 n -- ) {: a:ptr u :}        \ ( value places expect )
    SB-RESET SB-FIX  SB$ a u T$= ;
 
@@ -39,6 +41,8 @@ package FMT
 : NEG-U-CASE ( -- )        SB-RESET -1 SB-U ;                            \ unsigned rejects negative
 : OVERFLOW-FIX-CASE ( -- ) SB-RESET 1000000000000000000.0 2 SB-FIX ;     \ 1e18 * 10^2 overflows i64
 : OVERFLOW-2P63-CASE ( -- ) SB-RESET 4611686018427387904.0 2.0 f* 0 SB-FIX ;  \ boundary is exclusive at 2^63
+: SCALED-LOW-CASE ( -- ) 1 -1 SB-SCALED ;
+: SCALED-HIGH-CASE ( -- ) 1 19 SB-SCALED ;
 
 : FMT-RUN ( -- )
    T-RESET
@@ -61,6 +65,19 @@ package FMT
    STR-MAX-I64 s" 9223372036854775807" T-INT  \ i64 max
    STR-MIN-I64 s" -9223372036854775808" T-INT \ i64 min: no positive magnitude, table-emitted
    STR-MIN-I64 1+ s" -9223372036854775807" T-INT \ its neighbour, which negates without overflowing
+   5500 3 s" pre:5.5" T-SCALED
+   5001 3 s" pre:5.001" T-SCALED
+   -1 3 s" pre:-0.001" T-SCALED
+   5000 3 s" pre:5" T-SCALED
+   -5000 3 s" pre:-5" T-SCALED
+   0 18 s" pre:0" T-SCALED
+   1 18 s" pre:0.000000000000000001" T-SCALED
+   -1 18 s" pre:-0.000000000000000001" T-SCALED
+   10 18 s" pre:0.00000000000000001" T-SCALED
+   STR-MAX-I64 18 s" pre:9.223372036854775807" T-SCALED
+   STR-MIN-I64 18 s" pre:-9.223372036854775808" T-SCALED
+   STR-MIN-I64 0 s" pre:-9223372036854775808" T-SCALED
+   1000000000000000000 18 s" pre:1" T-SCALED
    3.14    2 s" 3.14"   T-FIX
    0.5     3 s" 0.500"  T-FIX
    -2.5    1 s" -2.5"   T-FIX
@@ -82,6 +99,11 @@ package FMT
    SB$ s" carry" T$=
    [: OVERFLOW-FIX-CASE ;]  E-FMT-OVERFLOW TTHROWSQ \ scaled overflow -> E-FMT-OVERFLOW
    [: OVERFLOW-2P63-CASE ;] E-FMT-OVERFLOW TTHROWSQ \ exactly 2^63 does not fit i64
+   SB-RESET s" carry" SB-APPEND
+   [: SCALED-LOW-CASE ;] E-FMT-DOMAIN TTHROWSQ
+   SB$ s" carry" T$=
+   [: SCALED-HIGH-CASE ;] E-FMT-DOMAIN TTHROWSQ
+   SB$ s" carry" T$=
    ;
 
 FMT-RUN
