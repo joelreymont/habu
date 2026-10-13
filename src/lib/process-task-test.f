@@ -341,6 +341,73 @@ variable PTT-HELD-W                      \ that stdin's write end
    PTT-HELD @ >PID PTT-RUN-MS >MS PROC-WAIT-BOUNDED {: done :}
    PTT-HOLD-SCRIPT s" " s" " done 21 T-OUTCOME-EXITED= ;
 
+\ ---- two caller-owned growing captures ------------------------------------
+\ Each child receives a different argv, environment and 70 KiB stdin. Their
+\ stdout exceeds CMD's fixed 32 KiB OUT$ region and stays in its caller's sink.
+70000 constant PTT-GROW-U
+create PTT-GROW-IN-A PTT-GROW-U allot
+create PTT-GROW-IN-B PTT-GROW-U allot
+create PTT-GROW-ERR-A 1024 allot
+create PTT-GROW-ERR-B 1024 allot
+DYNAMIC-BUFFER PTT-GROW-OUT-A u8
+DYNAMIC-BUFFER PTT-GROW-OUT-B u8
+variable PTT-GROW-OUT-A-U
+variable PTT-GROW-OUT-B-U
+variable PTT-GROW-ERR-A-U
+variable PTT-GROW-ERR-B-U
+TASK:MIN-STACK TASK:TASK PTT-GROW-TA
+TASK:MIN-STACK TASK:TASK PTT-GROW-TB
+
+: PTT-GROW-A-WORK ( -- )
+   PTT-CMD-A CMD:RESET
+   PTT-CMD-A CMD:ENV-HERMETIC
+   PTT-CMD-A s" PTT_MARK" >LEN s" alpha" >LEN CMD:ENV+
+   PTT-CMD-A s" -c" >LEN CMD:ARG+
+   PTT-CMD-A s" echo A:$PTT_MARK; /bin/cat" >LEN CMD:ARG+
+   1 PTT-A-READY atomic!
+   PTT-B-DONE 1 PTT-WAIT
+   PTT-CMD-A s" /bin/sh" >LEN PTT-GROW-IN-A PTT-GROW-U >LEN
+   [: PTT-GROW-OUT-A-RESERVE 0 PTT-GROW-OUT-A ;]
+   PTT-GROW-ERR-A 1024 >LEN PTT-RUN-MS >MS CMD:RUN-STDIN-GROWING-OUTCOME
+   {: outu:len erru:len o :}
+   outu LEN>N PTT-GROW-OUT-A-U !
+   erru LEN>N PTT-GROW-ERR-A-U !
+   o PROC-OUTCOME>RC RC>N TASK:RETURN ;
+
+: PTT-GROW-B-WORK ( -- )
+   PTT-CMD-B CMD:RESET
+   PTT-CMD-B CMD:ENV-HERMETIC
+   PTT-CMD-B s" PTT_MARK" >LEN s" beta" >LEN CMD:ENV+
+   PTT-CMD-B s" -c" >LEN CMD:ARG+
+   PTT-CMD-B s" echo B:$PTT_MARK; /bin/cat" >LEN CMD:ARG+
+   1 PTT-B-DONE atomic!
+   PTT-A-READY 1 PTT-WAIT
+   PTT-CMD-B s" /bin/sh" >LEN PTT-GROW-IN-B PTT-GROW-U >LEN
+   [: PTT-GROW-OUT-B-RESERVE 0 PTT-GROW-OUT-B ;]
+   PTT-GROW-ERR-B 1024 >LEN PTT-RUN-MS >MS CMD:RUN-STDIN-GROWING-OUTCOME
+   {: outu:len erru:len o :}
+   outu LEN>N PTT-GROW-OUT-B-U !
+   erru LEN>N PTT-GROW-ERR-B-U !
+   o PROC-OUTCOME>RC RC>N TASK:RETURN ;
+
+: PTT-GROW-CAPTURES ( -- )
+   PTT-GROW-U 0 ?do
+      97 PTT-GROW-IN-A i + c!
+      98 PTT-GROW-IN-B i + c!
+   loop
+   0 PTT-A-READY ! 0 PTT-B-DONE !
+   ['] PTT-GROW-A-WORK PTT-GROW-TA TASK:ACTIVATE
+   ['] PTT-GROW-B-WORK PTT-GROW-TB TASK:ACTIVATE
+   PTT-GROW-TA 0 PTT-JOIN=
+   PTT-GROW-TB 0 PTT-JOIN=
+   PTT-GROW-OUT-A-U @ PTT-GROW-U 8 + T=
+   PTT-GROW-OUT-B-U @ PTT-GROW-U 7 + T=
+   PTT-GROW-ERR-A-U @ 0 T= PTT-GROW-ERR-B-U @ 0 T=
+   0 PTT-GROW-OUT-A 8 S\" A:alpha\n" T$=
+   0 PTT-GROW-OUT-B 7 S\" B:beta\n" T$=
+   0 PTT-GROW-OUT-A 8 + PTT-GROW-U PTT-GROW-IN-A PTT-GROW-U T$=
+   0 PTT-GROW-OUT-B 7 + PTT-GROW-U PTT-GROW-IN-B PTT-GROW-U T$= ;
+
 : PROCESS-TASK-TEST-MAIN ( -- )
    T-RESET
    PTT-CONCURRENT-CAPTURE-AND-POLL
@@ -350,6 +417,8 @@ variable PTT-HELD-W                      \ that stdin's write end
    PTT-FOUR-COMMANDS
    s" bounded waits answer for their own pids beside a capture" T-LABEL
    PTT-WAITS-BESIDE-CAPTURE
+   s" owned growing captures keep argv, env and large stdout apart" T-LABEL
+   PTT-GROW-CAPTURES
    T-REPORT
    s" process-task-test: ok" type cr ;
 

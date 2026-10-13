@@ -251,9 +251,14 @@ variable H-U
 variable D-AT                            \ D's path in POOL,
 variable D-U
 variable CUR                             \ the subject being gathered, by its index,
-DYNAMIC-BUFFER BATCH-IDS n               \ subjects actually submitted in a primitive chunk
 variable BATCH-N
 variable BATCH-FALLBACK
+12 constant REF-LANES
+64 constant REF-CHUNK
+REF-LANES TYPED-BUFFER WAVE-N n
+REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-SUB n
+REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-RESULT n
+variable WAVE-LANE
 variable SUB-VISIT                       \ the visit its check declares the word in,
 variable TEXT-IN                         \ the probe's group whose file positions count in,
 TYPED-VARIABLE TEXT-OK bool              \ and whether its text has the digest read
@@ -1035,25 +1040,7 @@ private
 
 : BATCH-TEXT ( ptr u8 n -- )
    CUR$ LSP-CHECK:USES-BATCH-ADD
-   BATCH-N @ 1+ BATCH-IDS-RESERVE
-   CUR @ BATCH-N @ BATCH-IDS !
    1 BATCH-N +! ;
-
-: BATCH-DISK ( -- )
-   CUR$ [: READ-SRC ;] catch {: code:n :} 2drop
-   code 0<> if
-      code LSP-TEXT:FS-RC? 0= if code throw then
-      CUR @ s" cannot be read" SUBJECT-MISS+ exit
-   then
-   0 SRC SRC-U @ BATCH-TEXT ;
-
-: BATCH-SUBJECT ( n -- )
-   CUR !
-   CUR$ NAMED? if exit then
-   CUR$ DOC-HOLDING MATCH option
-      some OF DOC-TEXT$ BATCH-TEXT ENDOF
-      none OF BATCH-DISK ENDOF
-   ;MATCH ;
 
 \ The subject's uses from a check of this text of its file.
 : FROM-TEXT ( ptr u8 n -- )
@@ -1227,6 +1214,9 @@ public
 \ declaration is selected and walked.
 : SUBJECT-N ( -- n )  SUB-N @ ;
 
+: WAVE-SIZE ( -- n ) REF-LANES REF-CHUNK * ;
+: WAVE-COUNT ( n -- n ) WAVE-SIZE min REF-CHUNK 1- + REF-CHUNK / ;
+
 \ Pass 2, once the subjects before it are gathered: the subjects it gives
 \ from the files the locations placed since it last ran are in, and whether
 \ it gave any.
@@ -1248,28 +1238,88 @@ public
       none OF FROM-DISK ENDOF
    ;MATCH ;
 
-\ The primitive has no source dependency reachability pass. A chunk shares
-\ one verifier process while each subject still gets its own checker scope,
-\ open-document snapshot, verdict and contribution to the existing store. An
-\ unclean child makes every submitted subject fall back to its own check.
-: GATHER-BATCH ( n n -- )
-   {: from:n count:n :}
-   NAME$ LSP-CHECK:USES-BATCH-BEGIN
-   0 BATCH-N !
-   from count + SUB-N @ min from ?do i BATCH-SUBJECT loop
-   BATCH-N @ 0= if exit then
-   LSP-CHECK:USES-BATCH-RUN
-   LSP-CHECK:USES-BATCH-CLEAN? 0= BATCH-FALLBACK !
-   BATCH-N @ 0 ?do
-      i BATCH-IDS @ CUR !
-      BATCH-FALLBACK @ if
-         CUR @ GATHER
-      else
-         i [: CONTRIBUTE ;] LSP-CHECK:USES-BATCH-RESULT 0= if
-            true BATCH-FALLBACK !
-            CUR @ GATHER
-         then
-      then
+\ The primitive has no source dependency reachability pass. A wave is
+\ prepared before any child runs. Unreadable files and subjects
+\ made redundant by an earlier lane are resolved when results are applied,
+\ preserving the serial gather's warning and eligibility order.
+: WAVE-ENTRY ( n -- )
+   {: result:n :}
+   WAVE-LANE @ {: lane:n :}
+   lane WAVE-N @ {: at:n :}
+   CUR @ lane REF-CHUNK * at + WAVE-SUB !
+   result lane REF-CHUNK * at + WAVE-RESULT !
+   at 1+ lane WAVE-N ! ;
+
+: WAVE-TEXT ( ptr u8 n -- )
+   BATCH-TEXT
+   BATCH-N @ 1- WAVE-ENTRY ;
+
+: WAVE-DISK ( -- )
+   CUR$ [: READ-SRC ;] catch {: code:n :} 2drop
+   code 0<> if
+      code LSP-TEXT:FS-RC? 0= if code throw then
+      -1 WAVE-ENTRY exit
+   then
+   0 SRC SRC-U @ WAVE-TEXT ;
+
+: WAVE-SUBJECT ( n -- )
+   CUR !
+   CUR$ NAMED? if exit then
+   CUR$ DOC-HOLDING MATCH option
+      some OF DOC-TEXT$ WAVE-TEXT ENDOF
+      none OF WAVE-DISK ENDOF
+   ;MATCH ;
+
+: PREPARE-WAVE ( n n -- n )
+   {: from:n lanes:n :}
+   LSP-CHECK:USES-BATCH-WAVE-BEGIN
+   lanes 0 ?do
+      i WAVE-LANE !
+      0 i WAVE-N !
+      NAME$ LSP-CHECK:USES-BATCH-BEGIN
+      0 BATCH-N !
+      from i REF-CHUNK * + dup REF-CHUNK + SUB-N @ min
+      swap ?do i WAVE-SUBJECT loop
+      i LSP-CHECK:USES-BATCH-WAVE-ADD
+   loop
+   lanes ;
+
+: RUN-WAVE ( n -- ) LSP-CHECK:USES-BATCH-WAVE-RUN ;
+
+\ Every submitted frame advances the batch cursor, even when an earlier
+\ contribution has already named its subject. A failed frame invalidates the
+\ lane's remaining parser state; those subjects are checked individually.
+: APPLY-ENTRY ( n -- )
+   {: result:n :}
+   CUR$ NAMED? {: named:bool :}
+   result 0< if
+      named 0= if CUR @ s" cannot be read" SUBJECT-MISS+ then
+      exit
+   then
+   BATCH-FALLBACK @ if
+      named 0= if CUR @ GATHER then
+      exit
+   then
+   named if
+      result [: ;] LSP-CHECK:USES-BATCH-RESULT
+   else
+      result [: CONTRIBUTE ;] LSP-CHECK:USES-BATCH-RESULT
+   then
+   0= if
+      true BATCH-FALLBACK !
+      named 0= if CUR @ GATHER then
+   then ;
+
+: APPLY-WAVE ( n -- )
+   {: lanes:n :}
+   lanes 0 ?do
+      i LSP-CHECK:USES-BATCH-WAVE-LOAD
+      false BATCH-FALLBACK !
+      i WAVE-N @ 0 ?do
+         j REF-CHUNK * i + {: at:n :}
+         at WAVE-SUB @ CUR !
+         at WAVE-RESULT @ APPLY-ENTRY
+      loop
    loop ;
 
 \ Once every subject is gathered: each file a location is in at whose bytes

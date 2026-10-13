@@ -245,13 +245,18 @@ public
 \ Primitive references can check a bounded group in one isolated child.
 \ Each result is exposed as the usual single probe while GATHER runs.
 : USES-BATCH-BEGIN ( ptr u8 n -- )
-   0 BATCH-CODE ! CHECK:VERIFY-BATCH-BEGIN ;
+   0 BATCH-CODE ! CHECK:VERIFY-REF-BATCH-BEGIN ;
 
 : USES-BATCH-ADD ( ptr u8 n ptr u8 n -- )
    [: -1 swap DOC-EACH-BUT ;] CHECK:VERIFY-BATCH-ADD ;
 
 : USES-BATCH-RUN ( -- )
    [: CHECK-MS >MS CHECK:VERIFY-BATCH-RUN ;] catch BATCH-CODE ! ;
+
+: USES-BATCH-WAVE-BEGIN ( -- ) CHECK:VERIFY-BATCH-WAVE-BEGIN ;
+: USES-BATCH-WAVE-ADD ( n -- ) CHECK:VERIFY-BATCH-WAVE-ADD ;
+: USES-BATCH-WAVE-RUN ( n -- ) CHECK-MS >MS CHECK:VERIFY-BATCH-WAVE-RUN ;
+: USES-BATCH-WAVE-LOAD ( n -- ) CHECK:VERIFY-BATCH-WAVE-LOAD BATCH-CODE ! ;
 
 : USES-BATCH-N ( -- n )  CHECK:VERIFY-BATCH-N ;
 

@@ -342,6 +342,21 @@ public
    PROC-CAPTURE-FINISH-OUTCOME h STORE-RUN
    h OUTCOME@ ;
 
+\ Capture into caller-owned spans. The command owns only argv/env staging; the
+\ input and growing stdout stay with the caller, so separate tasks may run
+\ prepared commands without the context's fixed input and output limits.
+: RUN-STDIN-GROWING-OUTCOME
+  ( ptr ptr u8 ptr u8 len ptr u8 len [ n -- ptr u8 ] ptr u8 len ms -- len len outcome )
+   {: h:ptr path:ptr pathu:len in:ptr inu:len sink err:ptr errcap:len timeout:ms :}
+   path pathu timeout CHECK-RUN
+   inu PROC-CAPTURE-CHECK-STDIN
+   errcap PROC-CAPTURE-CHECK-CAP
+   h path pathu PREPARE
+   timeout PROC-STDIN-CAPTURE-BEGIN
+   h SPAWN
+   in inu sink err errcap PROC-RUN-STDIN-GROWING-CAPTURE-OUTCOME-LOOP
+   PROC-CAPTURE-FINISH-OUTCOME ;
+
 \ Wrap the stored outcome's completion rc into a result<n,n>: ok = clean exit
 \ (0), err = the nonzero completion code (a nonzero exit code, or 128+signal).
 \ A run its deadline killed has no completion code: RC@ and RUN-RC throw

@@ -5469,6 +5469,27 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-prim/w/e.f" OPEN-URI 0 26 33 REF+
    SYMBOLS-END ;
 
+\ A primitive whose specification spells its name in capitals is still
+\ matched to the checker's canonical lower-case binding in each batch child.
+: TEXT-PR-UPPER ( -- ptr u8 n )
+   s\" : A ( -- ) SEAL-CAPTURE ;\n" ;
+
+: PRIM-UPPER-TURNS ( -- )
+   s" refs-prim-upper" REFS-DIR s" refs-prim-upper/w" REFS-DIR
+   s" refs-prim-upper/w/a.f" TEXT-PR-UPPER REFS-FILE
+   s" refs-prim-upper/w/b.f" TEXT-PR-UPPER REFS-FILE
+   s" refs-prim-upper/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-prim-upper/w/a.f" FIXTURE TEXT-PR-UPPER 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-PR-UPPER s" refs-prim-upper/w/a.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-prim-upper/w/a.f" FIXTURE 0 12 DECL-NOT REFS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" refs-prim-upper/w/a.f" OPEN-URI 0 11 23 REF+
+   s" refs-prim-upper/w/b.f" DISK-URI 0 11 23 REF+
+   SYMBOLS-END ;
+
 \ Eighteen independent subjects cross the primitive verifier's chunk edge.
 \ Their numeric prefixes preserve the path order of the answer.
 : PRIM-BATCH-PATH ( n -- ptr u8 n )
@@ -5495,14 +5516,68 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    loop
    SYMBOLS-END ;
 
-\ An overflowing subject ends its shared child after the first answer. The
-\ later subject still gets its own check, while the first keeps its answer.
+\ The second wave starts after four captures have run together. A shadowed
+\ primitive, a refused subject with no matching token, and an unsaved loaded
+\ dependency must leave the same ordered locations and coverage warning.
+: PRIM-WAVE-PATH ( n -- ptr u8 n )
+   {: k:n :}
+   SB-RESET s" refs-prim-wave/w/" SB-APPEND
+   k 10 < if s" 0" SB-APPEND then
+   k FMT:SB-U s" .f" SB-APPEND SB$ ;
+
+: TEXT-PR-WAVE-DEP ( -- ptr u8 n )
+   s\" require dep.f\n: A ( -- n ) 2 3 * DEP + ;\n" ;
+: TEXT-PR-WAVE-BAD ( -- ptr u8 n )
+   s\" : B ( -- n ) NOPE ;\n" ;
+: TEXT-PR-DEP-DISK ( -- ptr u8 n )
+   s\" : DEP ( -- n ) NOPE ;\n" ;
+: TEXT-PR-DEP-OPEN ( -- ptr u8 n )
+   s\" : DEP ( -- n ) 3 ;\n" ;
+
+: PRIM-WAVE-TURNS ( -- )
+   s" refs-prim-wave" REFS-DIR s" refs-prim-wave/w" REFS-DIR
+   66 0 ?do
+      i PRIM-WAVE-PATH
+      i 17 = if TEXT-PR-SHADOW else
+      i 31 = if TEXT-PR-WAVE-DEP else
+      i 33 = if TEXT-PR-WAVE-BAD else TEXT-PR-A then then then
+      REFS-FILE
+   loop
+   s" refs-prim-wave/w/dep.f" TEXT-PR-DEP-DISK REFS-FILE
+   s" refs-prim-wave/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   0 PRIM-WAVE-PATH FIXTURE TEXT-PR-A 1 OPENS
+   s" refs-prim-wave/w/dep.f" FIXTURE TEXT-PR-DEP-OPEN 2 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-PR-A 0 PRIM-WAVE-PATH FIXTURE 1 s" verified" LISTED
+   TEXT-PR-DEP-OPEN s" refs-prim-wave/w/dep.f" FIXTURE 2 s" verified" LISTED
+   s" 3" 0 PRIM-WAVE-PATH FIXTURE 0 17 DECL-NOT REFS-ASK
+   SAY
+   1 NAMED 33 PRIM-WAVE-PATH CANON s" refused" NAMED+ NAMED-END
+   s" 3" SYMBOLS-START
+   66 0 ?do
+      i 17 <> i 33 <> and if
+         i PRIM-WAVE-PATH
+         i 0= if OPEN-URI else DISK-URI then
+         i 31 = if 1 else 0 then 17 18 REF+
+      then
+   loop
+   SYMBOLS-END ;
+
+\ An overflowing subject in the second lane makes that lane retry individually,
+\ including a later subject. The first lane's captured answer stays in order.
+: PRIM-FAIL-PATH ( n -- ptr u8 n )
+   {: k:n :}
+   SB-RESET s" refs-prim-fail/w/" SB-APPEND
+   k 10 < if s" 0" SB-APPEND then
+   k FMT:SB-U s" .f" SB-APPEND SB$ ;
+
 : PRIM-BATCH-FAIL-TURNS ( -- )
    s" refs-prim-fail" REFS-DIR s" refs-prim-fail/w" REFS-DIR
-   s" refs-prim-fail/w/00.f" TEXT-PR-A REFS-FILE
+   65 0 ?do i PRIM-FAIL-PATH TEXT-PR-A REFS-FILE loop
    OVER-USING-TEXT
-   s" refs-prim-fail/w/01.f" TXT$ REFS-FILE
-   s" refs-prim-fail/w/02.f" TEXT-PR-A REFS-FILE
+   65 PRIM-FAIL-PATH TXT$ REFS-FILE
+   66 PRIM-FAIL-PATH TEXT-PR-A REFS-FILE
    s" refs-prim-fail/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-prim-fail/w/00.f" FIXTURE TEXT-PR-A 1 OPENS
    SAY
@@ -5510,10 +5585,15 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    TEXT-PR-A s" refs-prim-fail/w/00.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-prim-fail/w/00.f" FIXTURE 0 17 DECL-NOT REFS-ASK
    SAY
-   1 NAMED s" refs-prim-fail/w/01.f" CANON s" incomplete" NAMED+ NAMED-END
+   1 NAMED 65 PRIM-FAIL-PATH CANON s" incomplete" NAMED+ NAMED-END
    s" 3" SYMBOLS-START
-   s" refs-prim-fail/w/00.f" OPEN-URI 0 17 18 REF+
-   s" refs-prim-fail/w/02.f" DISK-URI 0 17 18 REF+
+   67 0 ?do
+      i 65 <> if
+         i PRIM-FAIL-PATH
+         i 0= if OPEN-URI else DISK-URI then
+         0 17 18 REF+
+      then
+   loop
    SYMBOLS-END ;
 
 \ A changed open specification can no longer place the declaration, while
@@ -5676,7 +5756,9 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" references-visits" [: REFS-VIS-TURNS ;] TALK
    s" references-named" [: REFS-NAMED-TURNS ;] TALK
    s" references-primitive" [: PRIM-REF-TURNS ;] TALK
+   s" references-primitive-uppercase" [: PRIM-UPPER-TURNS ;] TALK
    s" references-primitive-batch" [: PRIM-BATCH-TURNS ;] TALK
+   s" references-primitive-wave" [: PRIM-WAVE-TURNS ;] TALK
     s" references-primitive-batch-failure" [: PRIM-BATCH-FAIL-TURNS ;] TALK
    s" references-primitive-declaration" [: PRIM-DECL-TURNS ;] TALK
    s" references-primitive-source-changed" [: PRIM-MISSING-TURNS ;] TALK
@@ -6682,7 +6764,9 @@ public
 : TEST-BATCH ( -- )
    TEST-INIT
    s" references-primitive" [: PRIM-REF-TURNS ;] TALK
+   s" references-primitive-uppercase" [: PRIM-UPPER-TURNS ;] TALK
    s" references-primitive-batch" [: PRIM-BATCH-TURNS ;] TALK
+   s" references-primitive-wave" [: PRIM-WAVE-TURNS ;] TALK
     s" references-primitive-batch-failure" [: PRIM-BATCH-FAIL-TURNS ;] TALK
    s" references-primitive-declaration" [: PRIM-DECL-TURNS ;] TALK
    s" references-primitive-source-changed" [: PRIM-MISSING-TURNS ;] TALK

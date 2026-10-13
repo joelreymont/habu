@@ -67,6 +67,8 @@ require src/lib/source.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require src/lib/process-command.f
+require src/lib/task.f
 require src/lib/engine-candidate.f
 require tools/source-discovery.f
 require tools/check-all-errors-core.f
@@ -1319,6 +1321,7 @@ DYNAMIC-BUFFER VFY-BATCH-META n
 DYNAMIC-BUFFER VFY-BATCH-OUT u8
 DYNAMIC-BUFFER VFY-BATCH-TAIL u8
 variable VFY-BATCH-N
+TYPED-VARIABLE VFY-REF-BATCH bool
 variable VFY-BATCH-OUT-U
 variable VFY-BATCH-POS
 variable VFY-BATCH-BROKEN
@@ -1352,7 +1355,7 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME outcome
    s" --load" CHK-ARG+
    VFY-CHILD$ CHK-ARG+
    s" --" CHK-ARG+
-   s" --batch" CHK-ARG+
+   VFY-REF-BATCH @ if s" --batch-ref" else s" --batch" then CHK-ARG+
    VFY-OF-A @ VFY-OF-U @ CHK-ARG+
    PROC-ENV-INHERIT-MISSING ;
 
@@ -1428,7 +1431,319 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME outcome
    VFY-BATCH-BROKEN @ if VFY-NONE VFY-ANSWER ! then
    VFY-BATCH-OUTCOME @ VFY-VERDICT ;
 
+\ Twelve immutable input snapshots are assembled on the calling task before a
+\ wave starts. Only each lane's output buffers and command context are
+\ touched by capture tasks. The ordinary batch parser is restored and run on
+\ the calling task, in subject order, after every capture has joined.
+12 constant VFY-LANES
+DYNAMIC-BUFFER VFY-LANE-IN u8
+DYNAMIC-BUFFER VFY-LANE-META n
+DYNAMIC-BUFFER VFY-LANE-OPEN n
+DYNAMIC-BUFFER VFY-LANE-OUT0 u8
+DYNAMIC-BUFFER VFY-LANE-OUT1 u8
+DYNAMIC-BUFFER VFY-LANE-OUT2 u8
+DYNAMIC-BUFFER VFY-LANE-OUT3 u8
+DYNAMIC-BUFFER VFY-LANE-OUT4 u8
+DYNAMIC-BUFFER VFY-LANE-OUT5 u8
+DYNAMIC-BUFFER VFY-LANE-OUT6 u8
+DYNAMIC-BUFFER VFY-LANE-OUT7 u8
+DYNAMIC-BUFFER VFY-LANE-OUT8 u8
+DYNAMIC-BUFFER VFY-LANE-OUT9 u8
+DYNAMIC-BUFFER VFY-LANE-OUT10 u8
+DYNAMIC-BUFFER VFY-LANE-OUT11 u8
+DYNAMIC-BUFFER VFY-LANE-ERR0 u8
+DYNAMIC-BUFFER VFY-LANE-ERR1 u8
+DYNAMIC-BUFFER VFY-LANE-ERR2 u8
+DYNAMIC-BUFFER VFY-LANE-ERR3 u8
+DYNAMIC-BUFFER VFY-LANE-ERR4 u8
+DYNAMIC-BUFFER VFY-LANE-ERR5 u8
+DYNAMIC-BUFFER VFY-LANE-ERR6 u8
+DYNAMIC-BUFFER VFY-LANE-ERR7 u8
+DYNAMIC-BUFFER VFY-LANE-ERR8 u8
+DYNAMIC-BUFFER VFY-LANE-ERR9 u8
+DYNAMIC-BUFFER VFY-LANE-ERR10 u8
+DYNAMIC-BUFFER VFY-LANE-ERR11 u8
+VFY-LANES TYPED-BUFFER VFY-LANE-IN-AT n
+VFY-LANES TYPED-BUFFER VFY-LANE-IN-U n
+VFY-LANES TYPED-BUFFER VFY-LANE-META-AT n
+VFY-LANES TYPED-BUFFER VFY-LANE-OPEN-AT n
+VFY-LANES TYPED-BUFFER VFY-LANE-OPEN-N n
+VFY-LANES TYPED-BUFFER VFY-LANE-N n
+VFY-LANES TYPED-BUFFER VFY-LANE-OUT-U n
+VFY-LANES TYPED-BUFFER VFY-LANE-ERR-U n
+VFY-LANES TYPED-BUFFER VFY-LANE-ERR-CAP n
+VFY-LANES TYPED-BUFFER VFY-LANE-CODE n
+VFY-LANES TYPED-BUFFER VFY-LANE-STARTED n
+VFY-LANES TYPED-BUFFER VFY-LANE-END outcome
+variable VFY-LANE-IN-TOP
+variable VFY-LANE-META-TOP
+variable VFY-LANE-OPEN-TOP
+create VFY-LANE-ENGINE FS-PATH-CAP allot
+variable VFY-LANE-ENGINE-U
+
+CMD:COMMAND VFY-CMD0
+CMD:COMMAND VFY-CMD1
+CMD:COMMAND VFY-CMD2
+CMD:COMMAND VFY-CMD3
+CMD:COMMAND VFY-CMD4
+CMD:COMMAND VFY-CMD5
+CMD:COMMAND VFY-CMD6
+CMD:COMMAND VFY-CMD7
+CMD:COMMAND VFY-CMD8
+CMD:COMMAND VFY-CMD9
+CMD:COMMAND VFY-CMD10
+CMD:COMMAND VFY-CMD11
+TASK:MIN-STACK TASK:TASK VFY-TASK0
+TASK:MIN-STACK TASK:TASK VFY-TASK1
+TASK:MIN-STACK TASK:TASK VFY-TASK2
+TASK:MIN-STACK TASK:TASK VFY-TASK3
+TASK:MIN-STACK TASK:TASK VFY-TASK4
+TASK:MIN-STACK TASK:TASK VFY-TASK5
+TASK:MIN-STACK TASK:TASK VFY-TASK6
+TASK:MIN-STACK TASK:TASK VFY-TASK7
+TASK:MIN-STACK TASK:TASK VFY-TASK8
+TASK:MIN-STACK TASK:TASK VFY-TASK9
+TASK:MIN-STACK TASK:TASK VFY-TASK10
+TASK:MIN-STACK TASK:TASK VFY-TASK11
+
+: VFY-LANE-CMD ( n -- ptr ptr u8 )
+   dup 0= if drop VFY-CMD0 exit then
+   dup 1 = if drop VFY-CMD1 exit then
+   dup 2 = if drop VFY-CMD2 exit then
+   dup 3 = if drop VFY-CMD3 exit then
+   dup 4 = if drop VFY-CMD4 exit then
+   dup 5 = if drop VFY-CMD5 exit then
+   dup 6 = if drop VFY-CMD6 exit then
+   dup 7 = if drop VFY-CMD7 exit then
+   dup 8 = if drop VFY-CMD8 exit then
+   dup 9 = if drop VFY-CMD9 exit then
+   dup 10 = if drop VFY-CMD10 exit then
+   dup 11 = if drop VFY-CMD11 exit then
+   E-TBL-BOUNDS throw ;
+
+: VFY-LANE-TASK ( n -- ptr n )
+   dup 0= if drop VFY-TASK0 exit then
+   dup 1 = if drop VFY-TASK1 exit then
+   dup 2 = if drop VFY-TASK2 exit then
+   dup 3 = if drop VFY-TASK3 exit then
+   dup 4 = if drop VFY-TASK4 exit then
+   dup 5 = if drop VFY-TASK5 exit then
+   dup 6 = if drop VFY-TASK6 exit then
+   dup 7 = if drop VFY-TASK7 exit then
+   dup 8 = if drop VFY-TASK8 exit then
+   dup 9 = if drop VFY-TASK9 exit then
+   dup 10 = if drop VFY-TASK10 exit then
+   dup 11 = if drop VFY-TASK11 exit then
+   E-TBL-BOUNDS throw ;
+
+: VFY-LANE-OUT-ROOM ( n n -- ptr u8 )
+   {: k:n need:n :}
+   k 0= if need VFY-LANE-OUT0-RESERVE 0 VFY-LANE-OUT0 exit then
+   k 1 = if need VFY-LANE-OUT1-RESERVE 0 VFY-LANE-OUT1 exit then
+   k 2 = if need VFY-LANE-OUT2-RESERVE 0 VFY-LANE-OUT2 exit then
+   k 3 = if need VFY-LANE-OUT3-RESERVE 0 VFY-LANE-OUT3 exit then
+   k 4 = if need VFY-LANE-OUT4-RESERVE 0 VFY-LANE-OUT4 exit then
+   k 5 = if need VFY-LANE-OUT5-RESERVE 0 VFY-LANE-OUT5 exit then
+   k 6 = if need VFY-LANE-OUT6-RESERVE 0 VFY-LANE-OUT6 exit then
+   k 7 = if need VFY-LANE-OUT7-RESERVE 0 VFY-LANE-OUT7 exit then
+   k 8 = if need VFY-LANE-OUT8-RESERVE 0 VFY-LANE-OUT8 exit then
+   k 9 = if need VFY-LANE-OUT9-RESERVE 0 VFY-LANE-OUT9 exit then
+   k 10 = if need VFY-LANE-OUT10-RESERVE 0 VFY-LANE-OUT10 exit then
+   k 11 = if need VFY-LANE-OUT11-RESERVE 0 VFY-LANE-OUT11 exit then
+   E-TBL-BOUNDS throw ;
+
+: VFY-LANE-ERR-ROOM ( n n -- ptr u8 )
+   {: k:n need:n :}
+   k 0= if need VFY-LANE-ERR0-RESERVE 0 VFY-LANE-ERR0 exit then
+   k 1 = if need VFY-LANE-ERR1-RESERVE 0 VFY-LANE-ERR1 exit then
+   k 2 = if need VFY-LANE-ERR2-RESERVE 0 VFY-LANE-ERR2 exit then
+   k 3 = if need VFY-LANE-ERR3-RESERVE 0 VFY-LANE-ERR3 exit then
+   k 4 = if need VFY-LANE-ERR4-RESERVE 0 VFY-LANE-ERR4 exit then
+   k 5 = if need VFY-LANE-ERR5-RESERVE 0 VFY-LANE-ERR5 exit then
+   k 6 = if need VFY-LANE-ERR6-RESERVE 0 VFY-LANE-ERR6 exit then
+   k 7 = if need VFY-LANE-ERR7-RESERVE 0 VFY-LANE-ERR7 exit then
+   k 8 = if need VFY-LANE-ERR8-RESERVE 0 VFY-LANE-ERR8 exit then
+   k 9 = if need VFY-LANE-ERR9-RESERVE 0 VFY-LANE-ERR9 exit then
+   k 10 = if need VFY-LANE-ERR10-RESERVE 0 VFY-LANE-ERR10 exit then
+   k 11 = if need VFY-LANE-ERR11-RESERVE 0 VFY-LANE-ERR11 exit then
+   E-TBL-BOUNDS throw ;
+
+: VFY-LANE-OUT$ ( n -- ptr u8 n )
+   {: k:n :}
+   k VFY-LANE-OUT-U @ 0= if NULL$ exit then
+   k k VFY-LANE-OUT-U @ VFY-LANE-OUT-ROOM k VFY-LANE-OUT-U @ ;
+
+: VFY-LANE-ERR$ ( n -- ptr u8 n )
+   {: k:n :}
+   k k VFY-LANE-ERR-CAP @ VFY-LANE-ERR-ROOM k VFY-LANE-ERR-U @ ;
+
+: VFY-LANE-ARG+ ( ptr ptr u8 ptr u8 n -- ) >LEN CMD:ARG+ ;
+
+: VFY-LANE-COMMAND ( n -- )
+   VFY-LANE-CMD {: cmd:ptr :}
+   cmd CMD:RESET
+   cmd s" --load" VFY-LANE-ARG+
+   cmd VFY-CHILD$ VFY-LANE-ARG+
+   cmd s" --" VFY-LANE-ARG+
+   cmd VFY-REF-BATCH @ if s" --batch-ref" else s" --batch" then VFY-LANE-ARG+
+   cmd VFY-OF-A @ VFY-OF-U @ VFY-LANE-ARG+ ;
+
+: VFY-LANE-SAVE ( n -- )
+   {: k:n :}
+   s" 0 0" VFY-IN+ s\" \n" VFY-IN+
+   VFY-BATCH-N @ k VFY-LANE-N !
+   VFY-IN-U @ k VFY-LANE-IN-U !
+   VFY-LANE-IN-TOP @ k VFY-LANE-IN-AT !
+   VFY-LANE-IN-TOP @ VFY-IN-U @ + VFY-LANE-IN-RESERVE
+   0 VFY-IN VFY-LANE-IN-TOP @ VFY-LANE-IN VFY-IN-U @ BYTE-COPY
+   VFY-LANE-IN-TOP @ VFY-IN-U @ + VFY-LANE-IN-TOP !
+   VFY-LANE-META-TOP @ k VFY-LANE-META-AT !
+   VFY-LANE-META-TOP @ VFY-BATCH-N @ VFY-BATCH-CELLS * + VFY-LANE-META-RESERVE
+   VFY-BATCH-N @ VFY-BATCH-CELLS * 0 ?do i VFY-BATCH-META @ VFY-LANE-META-TOP @ i + VFY-LANE-META ! loop
+   VFY-LANE-META-TOP @ VFY-BATCH-N @ VFY-BATCH-CELLS * + VFY-LANE-META-TOP !
+   VFY-LANE-OPEN-TOP @ k VFY-LANE-OPEN-AT !
+   VFY-OPEN-N @ k VFY-LANE-OPEN-N !
+   VFY-LANE-OPEN-TOP @ VFY-OPEN-N @ 4 * + VFY-LANE-OPEN-RESERVE
+   VFY-OPEN-N @ 4 * 0 ?do i VFY-OPEN-AT @ VFY-LANE-OPEN-TOP @ i + VFY-LANE-OPEN ! loop
+   VFY-LANE-OPEN-TOP @ VFY-OPEN-N @ 4 * + VFY-LANE-OPEN-TOP !
+   VFY-ERR-CAP VFY-BATCH-N @ * dup k VFY-LANE-ERR-CAP !
+   k swap VFY-LANE-ERR-ROOM drop
+   0 k VFY-LANE-OUT-U ! 0 k VFY-LANE-ERR-U ! 0 k VFY-LANE-CODE !
+   k VFY-LANE-COMMAND ;
+
+: VFY-LANE-CAPTURE ( n -- )
+   {: k:n :}
+   k VFY-LANE-CMD {: cmd:ptr :}
+   cmd VFY-LANE-ENGINE VFY-LANE-ENGINE-U @ >LEN
+   k VFY-LANE-IN-AT @ VFY-LANE-IN k VFY-LANE-IN-U @ >LEN
+   k 0= if [: 0 swap VFY-LANE-OUT-ROOM ;] else
+   k 1 = if [: 1 swap VFY-LANE-OUT-ROOM ;] else
+   k 2 = if [: 2 swap VFY-LANE-OUT-ROOM ;] else
+   k 3 = if [: 3 swap VFY-LANE-OUT-ROOM ;] else
+   k 4 = if [: 4 swap VFY-LANE-OUT-ROOM ;] else
+   k 5 = if [: 5 swap VFY-LANE-OUT-ROOM ;] else
+   k 6 = if [: 6 swap VFY-LANE-OUT-ROOM ;] else
+   k 7 = if [: 7 swap VFY-LANE-OUT-ROOM ;] else
+   k 8 = if [: 8 swap VFY-LANE-OUT-ROOM ;] else
+   k 9 = if [: 9 swap VFY-LANE-OUT-ROOM ;] else
+   k 10 = if [: 10 swap VFY-LANE-OUT-ROOM ;] else
+      [: 11 swap VFY-LANE-OUT-ROOM ;] then then then then then then then then then then then
+   k k VFY-LANE-ERR-CAP @ VFY-LANE-ERR-ROOM
+   k VFY-LANE-ERR-CAP @ >LEN
+   VFY-DEADLINE @ CMD:RUN-STDIN-GROWING-OUTCOME
+   {: outu:len erru:len o :}
+   outu LEN>N k VFY-LANE-OUT-U !
+   erru LEN>N k VFY-LANE-ERR-U !
+   o k VFY-LANE-END ! ;
+
+: VFY-LANE-CAPTURE-KEEP ( n -- n ) dup VFY-LANE-CAPTURE ;
+
+: VFY-LANE-WORK ( n -- )
+   {: k:n :}
+   k [: VFY-LANE-CAPTURE-KEEP ;] catch {: code:n :} drop
+   code 0<> if
+      code k VFY-LANE-CODE !
+      code E-PROC-TRUNCATED = if
+         PROC-CAPTURE-OUTCOME@ {: outu:len erru:len o :}
+         outu LEN>N k VFY-LANE-OUT-U !
+         erru LEN>N k VFY-LANE-ERR-U !
+         o k VFY-LANE-END !
+      then
+   then
+   0 TASK:RETURN ;
+
+: VFY-WORK0 ( -- ) 0 VFY-LANE-WORK ;
+: VFY-WORK1 ( -- ) 1 VFY-LANE-WORK ;
+: VFY-WORK2 ( -- ) 2 VFY-LANE-WORK ;
+: VFY-WORK3 ( -- ) 3 VFY-LANE-WORK ;
+: VFY-WORK4 ( -- ) 4 VFY-LANE-WORK ;
+: VFY-WORK5 ( -- ) 5 VFY-LANE-WORK ;
+: VFY-WORK6 ( -- ) 6 VFY-LANE-WORK ;
+: VFY-WORK7 ( -- ) 7 VFY-LANE-WORK ;
+: VFY-WORK8 ( -- ) 8 VFY-LANE-WORK ;
+: VFY-WORK9 ( -- ) 9 VFY-LANE-WORK ;
+: VFY-WORK10 ( -- ) 10 VFY-LANE-WORK ;
+: VFY-WORK11 ( -- ) 11 VFY-LANE-WORK ;
+
+: VFY-LANE-WORD ( n -- [ -- ] )
+   dup 0= if drop ['] VFY-WORK0 exit then
+   dup 1 = if drop ['] VFY-WORK1 exit then
+   dup 2 = if drop ['] VFY-WORK2 exit then
+   dup 3 = if drop ['] VFY-WORK3 exit then
+   dup 4 = if drop ['] VFY-WORK4 exit then
+   dup 5 = if drop ['] VFY-WORK5 exit then
+   dup 6 = if drop ['] VFY-WORK6 exit then
+   dup 7 = if drop ['] VFY-WORK7 exit then
+   dup 8 = if drop ['] VFY-WORK8 exit then
+   dup 9 = if drop ['] VFY-WORK9 exit then
+   dup 10 = if drop ['] VFY-WORK10 exit then
+   dup 11 = if drop ['] VFY-WORK11 exit then
+   E-TBL-BOUNDS throw ;
+
+: VFY-LANE-START ( n -- )
+   {: k:n :}
+   k VFY-LANE-N @ 0= if exit then
+   k VFY-LANE-WORD k VFY-LANE-TASK TASK:ACTIVATE
+   1 k VFY-LANE-STARTED ! ;
+
+: VFY-LANE-START-KEEP ( n -- n ) dup VFY-LANE-START ;
+
+: VFY-LANE-JOIN ( -- )
+   VFY-LANES 0 ?do
+      i VFY-LANE-STARTED @ 0<> if
+         i VFY-LANE-TASK TASK:JOIN MATCH result
+            ok OF drop ENDOF
+            err OF i VFY-LANE-CODE ! ENDOF
+         ;MATCH
+         0 i VFY-LANE-STARTED !
+      then
+   loop ;
+
+: VFY-LANE-RESTORE ( n -- )
+   {: k:n :}
+   VFY-RESET
+   k VFY-LANE-N @ VFY-BATCH-N !
+   k VFY-LANE-IN-U @ dup VFY-IN-U ! VFY-IN-RESERVE
+   k VFY-LANE-IN-AT @ VFY-LANE-IN 0 VFY-IN VFY-IN-U @ BYTE-COPY
+   VFY-BATCH-N @ VFY-BATCH-CELLS * VFY-BATCH-META-RESERVE
+   VFY-BATCH-N @ VFY-BATCH-CELLS * 0 ?do k VFY-LANE-META-AT @ i + VFY-LANE-META @ i VFY-BATCH-META ! loop
+   k VFY-LANE-OPEN-N @ VFY-OPEN-N !
+   VFY-OPEN-N @ 4 * VFY-OPEN-AT-RESERVE
+   VFY-OPEN-N @ 4 * 0 ?do k VFY-LANE-OPEN-AT @ i + VFY-LANE-OPEN @ i VFY-OPEN-AT ! loop
+   k VFY-LANE-OUT-U @ dup VFY-BATCH-OUT-U ! VFY-BATCH-OUT-RESERVE
+   VFY-BATCH-OUT-U @ 0 > if k VFY-LANE-OUT$ drop 0 VFY-BATCH-OUT VFY-BATCH-OUT-U @ BYTE-COPY then
+   k VFY-LANE-ERR-U @ dup VFY-LOG-U ! VFY-LOG-RESERVE
+   VFY-LOG-U @ 0 > if k VFY-LANE-ERR$ drop 0 VFY-LOG VFY-LOG-U @ BYTE-COPY then
+   k VFY-LANE-END @ VFY-BATCH-OUTCOME !
+   0 VFY-BATCH-POS ! false VFY-BATCH-BROKEN ! ;
+
 public
+
+: VERIFY-BATCH-WAVE-BEGIN ( -- )
+   0 VFY-LANE-IN-TOP !
+   0 VFY-LANE-META-TOP !
+   0 VFY-LANE-OPEN-TOP !
+   VFY-LANES 0 ?do 0 i VFY-LANE-STARTED ! loop
+   CHK-ENGINE$ {: a:ptr u:n :}
+   u FS-PATH-CAP > if E-PROC-PATH throw then
+   a VFY-LANE-ENGINE u BYTE-COPY
+   u VFY-LANE-ENGINE-U ! ;
+
+: VERIFY-BATCH-WAVE-ADD ( n -- ) VFY-LANE-SAVE ;
+
+: VERIFY-BATCH-WAVE-RUN ( n ms -- )
+   {: count:n deadline:ms :}
+   count 0 < count VFY-LANES > or if E-TBL-BOUNDS throw then
+   deadline VFY-DEADLINE !
+   count 0 ?do i [: VFY-LANE-START-KEEP ;] catch {: code:n :} drop code 0<> if
+      VFY-LANE-JOIN code throw
+   then loop
+   VFY-LANE-JOIN ;
+
+: VERIFY-BATCH-WAVE-LOAD ( n -- n )
+   {: k:n :}
+   k VFY-LANE-RESTORE
+   k VFY-LANE-CODE @ ;
 
 \ Build a bounded set of independent checks for one tail, then consume their
 \ results in add order. Each ADD receives the same open-document callback a
@@ -1436,10 +1751,15 @@ public
 : VERIFY-BATCH-BEGIN ( ptr u8 n -- )
    {: tail:ptr tailu:n :}
    VFY-RESET
+   false VFY-REF-BATCH !
    tailu 1 max VFY-BATCH-TAIL-RESERVE
    tail 0 VFY-BATCH-TAIL tailu BYTE-COPY
    0 VFY-BATCH-TAIL VFY-OF-A ! tailu VFY-OF-U !
    0 VFY-BATCH-N ! ;
+
+: VERIFY-REF-BATCH-BEGIN ( ptr u8 n -- )
+   VERIFY-BATCH-BEGIN
+   true VFY-REF-BATCH ! ;
 
 : VERIFY-BATCH-ADD ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
    VFY-BATCH-ADD ;

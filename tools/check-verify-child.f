@@ -9,6 +9,8 @@
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --of TAIL < STDIN
+\    ENGINE --load ROOT/tools/check-verify-child.f -- --batch TAIL < STDIN
+\    ENGINE --load ROOT/tools/check-verify-child.f -- --batch-ref TAIL < STDIN
 \
 \ STDIN is the open documents, each a line `PU U` then PU bytes of PATH and U
 \ bytes of TEXT, the counts in decimal; then an empty line; then BYTES, to the
@@ -118,6 +120,9 @@
 \ it is read, when the declaration's canonical tail T is TAIL, byte for byte:
 \ every use outside the subject (VERIFY:SUBJECT?) of a word whose tail is TAIL.
 \ The other forms write the subject's uses alone.
+\ The batch-ref form is for primitive references: it writes uses of TAIL in
+\ the subject and loaded files, including unlocated bindings, and omits
+\ definition lines. File digests and result packets still describe each check.
 \
 \ deferred: nothing is refused, but a stretch of top-level source or a
 \ definition was deferred to the run, and a W-CHECK-DEFERRED packet locates each
@@ -187,6 +192,7 @@ variable SUBJECT-U
 variable SUBJECT-PATH-AT
 variable SUBJECT-PATH-U
 variable BATCH?                         \ framed subjects share this isolated child
+variable REF-BATCH?                     \ only the selected-tail packets are needed
 variable BATCH-INDEX
 variable RD
 variable FAILED
@@ -474,6 +480,7 @@ variable OF-U                           \ 0 for the other forms
 \ under. The tail it recorded is its lookup key, not a name to show.
 : DEFINITION-LINE ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
    {: kind:ptr kindu:n name:ptr nameu:n sym:n eff:ptr effu:n at:n end:n class:n visit:n :}
+   REF-BATCH? @ if exit then
    sym VERIFY:SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
    pkg pkgu DEF-PKG!
    OUT-FD s\" check-verify: definition {\"kind\":" WRITE
@@ -566,10 +573,16 @@ variable OF-U                           \ 0 for the other forms
 \ unlocated binding in the subject, needed to compare shared source tokens.
 : USE-WRITTEN? ( n bool -- bool )
    {: sym:n located:bool :}
-   located VERIFY:SUBJECT? and if true exit then
+   REF-BATCH? @ 0= if
+      located VERIFY:SUBJECT? and if true exit then
+   then
    OF-U @ 0= if false exit then
    sym VERIFY:SYM-IDENTITY drop {: tail:ptr tailu:n :} 2drop
-   tail tailu OF-A @ OF-U @ CORE-STR= ;
+   REF-BATCH? @ if
+      tail tailu OF-A @ OF-U @ STR=CI
+   else
+      tail tailu OF-A @ OF-U @ CORE-STR=
+   then ;
 
 
 \ A checked binding, as its use line when it has one.
@@ -773,7 +786,8 @@ public
 
 : MAIN ( -- )
    SCRIPT-ARGC 2 = if
-      0 SCRIPT-ARGV$ s" --batch" CORE-STR= if
+      0 SCRIPT-ARGV$ s" --batch-ref" CORE-STR= dup REF-BATCH? !
+      0 SCRIPT-ARGV$ s" --batch" CORE-STR= or if
          true BATCH? !
          1 SCRIPT-ARGV$ OF-U ! OF-A !
          READ-IN

@@ -810,8 +810,12 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    LSP-REFERENCES:PRIMITIVE? if
       LSP-REFERENCES:SUBJECT-N k ?do
          id HALTED? if false unloop exit then
-         i 16 LSP-REFERENCES:GATHER-BATCH
-      16 +loop
+         LSP-REFERENCES:SUBJECT-N i - LSP-REFERENCES:WAVE-COUNT
+         i swap LSP-REFERENCES:PREPARE-WAVE
+         dup LSP-REFERENCES:RUN-WAVE
+         id HALTED? if drop false unloop exit then
+         LSP-REFERENCES:APPLY-WAVE
+      LSP-REFERENCES:WAVE-SIZE +loop
       true exit
    then
    LSP-REFERENCES:SUBJECT-N k ?do
