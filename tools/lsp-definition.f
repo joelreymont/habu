@@ -6,12 +6,14 @@
 \ document's text: the first use of the document's last check, when it
 \ completed, whose bytes, from its start to before its end, hold the byte
 \ (tools/lsp-defs.f), and the declaration it binds to as a list of one
-\ Location. The Location is the first record of the use's group, its check's
-\ group for the declaration's file (LSP-DEFS:USE-GROUP), whose token starts and
-\ ends at the bytes the declaration's does: at the group's URI, over the
-\ token's range in the text the check read.
+\ Location. For a source declaration, the Location is the first record of the
+\ use's group, its check's group for the declaration's file
+\ (LSP-DEFS:USE-GROUP), whose token starts and ends at the declaration's bytes.
+\ For an engine primitive, it is the matching name in src/habu/prims.f.
+\ Both ranges count in the text the check read, at that group's URI.
 \ A byte no use holds, a document whose last check did not complete or that has
-\ none, and a declaration no such record holds answer an empty list.
+\ none, and a declaration no such record holds answer an empty list. A primitive
+\ whose source is missing or differs from the running table has no Location.
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer being written belongs to the
 \ server's one task.
@@ -29,20 +31,29 @@ private
 
 TYPED-VARIABLE OUT ptr JSON-WRITE:writer \ the answer's writer
 
-\ The Location of record R of group G.
-: LOCATION ( n n -- )
-   {: g:n r:n :}
+\ A Location at these positions in group G.
+: LOCATION-AT ( n n n n n -- )
+   {: g:n line:n col:n end-line:n end-col:n :}
    OUT @
    OBJECT-START
    s" uri" g GROUP-URI$ FIELD-RAW COMMA
-   r REC-RANGE LSP-TEXT:RANGE-AT
+   line col end-line end-col LSP-TEXT:RANGE-AT
    OBJECT-END drop ;
+
+: LOCATION ( n n -- )
+   {: g:n r:n :}
+   g r REC-RANGE LOCATION-AT ;
 
 \ The Location of the declaration use U binds to: the first record of the
 \ use's group whose token is its declaring one, if one is.
 : TARGET ( n -- )
    {: u:n :}
    u USE-GROUP {: g:n :}
+   u USE-PRIMITIVE-ROW 0 >= if
+      u USE-TARGET {: start:n end:n :}
+      end start > if g u USE-TARGET-RANGE LOCATION-AT then
+      exit
+   then
    g u USE-TARGET GROUP-REC-AT MATCH option
       some OF g swap LOCATION ENDOF
       none OF ENDOF

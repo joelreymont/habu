@@ -8784,6 +8784,24 @@ ON-USE-DEFAULT
 : NAV-NO-USE ( -- n n n n n n n bool )
    0 0 0 0 0 0 0 RES-FALSE ;
 
+\ The first specification row naming this primitive's symbol. Overloads share
+\ one symbol and source spelling, so navigation selects their first name token.
+\ A source record or tombstone always wins before this is asked.
+: NAV-PRIM-ROW ( n -- n )
+   {: sym:n :}
+   sym SYM-PRIM-END @ >= if -1 exit then
+   sym SYM-PKG$ {: pkg:ptr pkgu:n :}
+   sym SYM-NAME$ {: name:ptr nameu:n :}
+   PRIM-SPEC:COUNT 0 ?do
+      i PRIM-SPEC:KIND@ {: kind:n :}
+      kind PRIM-SPEC:K-PRIM = kind PRIM-SPEC:K-PKG-PRIVATE = or
+      kind PRIM-SPEC:K-ELAB = or if
+         i PRIM-SPEC:PKG$ pkg pkgu SYM-STR=CI
+         i PRIM-SPEC:NAME$ name nameu SYM-STR=CI and if i unloop exit then
+      then
+   loop
+   -1 ;
+
 \ SYM spelled at A U: the use's range, the bound record's offset+1 (0 for a
 \ primitive), symbol and location (0 0 0 when absent), true; false when there
 \ is nothing to report.
@@ -8795,7 +8813,9 @@ ON-USE-DEFAULT
    rec1 0 <> IF
       rec1 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF NAV-NO-USE EXIT THEN
       rec1 CHECKER-REC-DECL-AT drop
-   ELSE 0 0 0 THEN {: v:n ds:n de:n :}
+   ELSE
+      sym NAV-PRIM-ROW dup 0 >= IF -2 swap - 0 0 ELSE drop 0 0 0 THEN
+   THEN {: v:n ds:n de:n :}
    a NAV-SRC-XT {: s:n mapped:bool :}
    mapped 0= IF NAV-NO-USE EXIT THEN
    s s u + rec1 sym v ds de RES-TRUE ;
@@ -10354,7 +10374,11 @@ variable PE-SPEC-I   variable PE-SPEC-J
 
 : PE-SPEC-ROW ( n -- ) {: row:n :}
    row PRIM-SPEC:KIND@ {: kind:n :}
-   kind PRIM-SPEC:K-ELAB = kind PRIM-SPEC:K-UNROWED = or IF EXIT THEN
+   kind PRIM-SPEC:K-ELAB = IF
+      row PRIM-SPEC:NAME$ PE-SYM-OF drop
+      EXIT
+   THEN
+   kind PRIM-SPEC:K-UNROWED = IF EXIT THEN
    kind PRIM-SPEC:K-PKG-PRIVATE = IF
       row PRIM-SPEC:PKG$ PE-PKG-U ! PE-PKG-A !
    THEN

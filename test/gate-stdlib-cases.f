@@ -368,6 +368,10 @@ SUITE lsp-boundary
    tools/lsp-test.f
 ;SUITE
 
+SUITE primitive-source
+   test/primitive-source.f
+;SUITE
+
 SUITE streaming-sha256
    tools/sha256-file-test.f
 ;SUITE

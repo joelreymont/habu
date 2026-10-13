@@ -40,9 +40,10 @@ $10000 constant BF-CERT-DIAG-CAP
 \ never require-d here, so an old native seed can supply the minimal set its
 \ primitives support (see src/lib/process-env.f). Without the preamble the FS-PATH-CAP
 \ buffer create just below otherwise dies mid-load with a bare
-\ `E-UNDEFINED: FS-PATH-CAP`; name the required load list instead. FS-PATH-CAP
-\ (src/lib/fs.f) is the preamble sentinel - it is the first preamble word this file
-\ references, so its absence is exactly the missing-preamble case.
+\ `E-UNDEFINED: FS-PATH-CAP`; name the required load list instead. The
+\ checker now loads fs.f through source-lex.f, so FS-PATH-CAP alone no longer
+\ proves the caller loaded the preamble. codesign.f requires the other library
+\ modules except process-env.f; check one public word from each branch.
 \
 \ CHECKER-RESOLVES? asks which word this token would BIND to here, so the guard
 \ answers the same inside this package as outside it. It used to have to be a
@@ -51,7 +52,8 @@ $10000 constant BF-CERT-DIAG-CAP
 \ package (dot habu-checker-defined-answers-1504bbde). It is an ordinary private
 \ word now.
 : BF-NEED-PREAMBLE ( -- )
-   s" FS-PATH-CAP" CHECKER-RESOLVES? if exit then
+   s" CODESIGN:TOOL" CHECKER-RESOLVES?
+   s" PROC-ENV-INHERIT-MISSING" CHECKER-RESOLVES? and if exit then
    s" build-fixpoint: missing required load; --load src/lib/errors.f src/lib/string.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f src/lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f before the build verb" BF-USAGE-RC die ;
 BF-NEED-PREAMBLE
 
@@ -130,10 +132,8 @@ BF-REQUIRE-WATERMARK
 
 \ The package closes for these requires, and not for the guard above: the
 \ files open packages of their own, and `package` inside an open package is
-\ rejected as nesting. They also come AFTER the guard on purpose - both pull the
-\ preamble libraries in through their own requires, so requiring them earlier
-\ would satisfy FS-PATH-CAP by side effect and the missing-preamble case would
-\ stop being reported at all.
+\ rejected as nesting. They also come after the guard: process-cwd.f requires
+\ process-env.f, which must be loaded by the caller for the guard to pass.
 require src/lib/process-cwd.f
 require src/lib/engine-id.f                  \ PATH$: the engine a certify child runs
 require src/lib/span.f                       \ SPAN-BUFFER: destinations for FS-MUT-SUFFIX-PATH

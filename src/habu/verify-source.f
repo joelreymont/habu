@@ -9,6 +9,7 @@ require src/core/checker-owner-guard.f
 require src/lib/string.f
 require src/habu/layout.f
 require src/habu/xref.f
+require src/habu/primitive-source.f
 
 package VERIFY
 
@@ -2047,9 +2048,45 @@ LOADER-INIT
 
 \ A use the checker published, at the base of the file being read: always a
 \ binding, with a declaration location only when this composition visited it.
+variable PRIM-OPEN-READY
+
+: PRIM-TARGET ( n -- ptr u8 n n n bool )
+   {: row:n :}
+   PRIM-SOURCE:ENGINE-PATH$ {: path:ptr pathu:n ready:bool :}
+   ready 0= if NULL$ 0 0 false exit then
+   path pathu SUPPLIED {: a:ptr u:n open:bool :}
+   open if
+      PRIM-OPEN-READY @ 0= if
+         1 PRIM-OPEN-READY !
+         a u row PRIM-SOURCE:TARGET-IN
+      else
+         row PRIM-SOURCE:TARGET-ROW
+      then
+      {: at:n end:n found:bool :}
+      path pathu at end found exit
+   then
+   row PRIM-SOURCE:TARGET ;
+
+\ The checker replays a colon's header while checking its body. Its name can
+\ still bind an older word there, but that token declares the new word; it is
+\ not a use of the older one.
+: COLON-NAME-USE? ( n n -- bool )
+   {: s:n e:n :}
+   TOP-CUR-A @ TOP-CUR-U @ s" :" STR=CI
+   TOP-CUR-A @ TOP-CUR-U @ s" kernel:" STR=CI or
+   s BASE-BYTE @ + DEF-NAME-BYTE @ = and
+   e BASE-BYTE @ + DEF-NAME-BYTE @ DEF-NAME-U @ + = and ;
+
 : USE-SEEN ( n n n n n n -- )
    {: s:n e:n sym:n v:n ds:n de:n :}
+   s e COLON-NAME-USE? IF EXIT THEN
    s BASE-BYTE @ +  e BASE-BYTE @ +  sym ON-BINDING
+   v -2 <= IF
+      -2 v - PRIM-TARGET drop {: path:ptr pathu:n at:n end:n :}
+      s BASE-BYTE @ + e BASE-BYTE @ +
+      path pathu at end sym v ON-USE
+      EXIT
+   THEN
    v VISIT-IN? IF
       s BASE-BYTE @ +  e BASE-BYTE @ +  v VISIT-PATH  ds de sym v ON-USE
    ELSE
@@ -4057,6 +4094,7 @@ public
    NULL-PTR COMPOSE-CUR-PATH-A !  0 COMPOSE-CUR-PATH-U !
    0 COMPOSE-STOP-U !
    0 COMPOSE-STOP-SRC-U !
+   0 PRIM-OPEN-READY !
    0 PEND-N !
    REQUIRE-REG:COUNT COMPOSE-REQ0 !
    COMPOSE-SUBJ-PATH pathu REQUIRE-KNOWN? 0= IF

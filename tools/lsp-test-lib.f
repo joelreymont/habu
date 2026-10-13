@@ -2869,6 +2869,60 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 4" DEF-DEP-CANON URI-OF 2 2 9 LOCATED
    s" 5" NOWHERE ;
 
+\ The built-in multiplication word binds at a body call, an interpreted call,
+\ and a tick. A later user definition of the same spelling takes its own use.
+: PRIM-PATH ( -- ptr u8 n )  s" prim-nav.f" FIXTURE ;
+: PRIM-SOURCE-PATH ( -- ptr u8 n )  s" src/habu/prims.f" IN-TREE ;
+: TEXT-PRIM-NAV ( -- ptr u8 n )
+   s\" : PRIM-MUL ( -- n ) 2 3 * ;\n2 3 * drop\n' * drop\nundefine *\n: * ( n n -- n ) + ;\n: PRIM-SHADOW ( -- n ) 2 3 * ;\nscript-argc drop\n: PRIM-EXEC ( -- n ) [: 1 ;] execute ;\n: PRIM-CATCH ( -- n ) [: ;] catch ;\n" ;
+
+: PRIM-DEF-TURNS ( -- )
+   INITIALIZE
+   PRIM-PATH TEXT-PRIM-NAV 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-PRIM-NAV PRIM-PATH 1 s" verified" LISTED
+   s" 3" PRIM-PATH 0 24 DEFINITION-ASK
+   s" 4" PRIM-PATH 1 4 DEFINITION-ASK
+   s" 5" PRIM-PATH 2 2 DEFINITION-ASK
+   s" 6" PRIM-PATH 5 27 DEFINITION-ASK
+   s" 7" PRIM-PATH 0 24 DECLARATION-ASK
+   s" 8" PRIM-PATH 6 2 DEFINITION-ASK
+   s" 9" PRIM-PATH 7 33 DEFINITION-ASK
+   s" 10" PRIM-PATH 8 29 DEFINITION-ASK
+   SAY
+   s" 3" PRIM-SOURCE-PATH URI-OF 408 7 8 LOCATED
+   s" 4" PRIM-SOURCE-PATH URI-OF 408 7 8 LOCATED
+   s" 5" PRIM-SOURCE-PATH URI-OF 408 7 8 LOCATED
+   s" 6" PRIM-PATH URI-OF 4 2 3 LOCATED
+   s" 7" PRIM-SOURCE-PATH URI-OF 408 7 8 LOCATED
+   s" 8" NOWHERE
+   s" 9" PRIM-SOURCE-PATH URI-OF 1010 6 13 LOCATED
+   s" 10" PRIM-SOURCE-PATH URI-OF 1012 6 11 LOCATED ;
+
+\ The source used for the target came from the engine tree. An open unsaved
+\ copy of prims.f with a mismatched row sequence has no trusted target.
+: PRIM-OPEN-TURNS ( -- )
+   INITIALIZE
+   PRIM-PATH TEXT-PRIM-NAV 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-PRIM-NAV PRIM-PATH 1 s" verified" LISTED
+   PRIM-SOURCE-PATH s\" \\ changed\n" 1 OPENS
+   SAY
+   PRIM-SOURCE-PATH 1 EXPECT PUBLISHES
+   PRIM-PATH 1 EXPECT PUBLISHES
+   s" 3" PRIM-PATH 0 24 DEFINITION-ASK
+   SAY
+   s" 3" NOWHERE
+   PRIM-SOURCE-PATH CLOSES
+   SAY
+   PRIM-SOURCE-PATH -1 EXPECT PUBLISHES
+   TEXT-PRIM-NAV PRIM-PATH 1 s" verified" LISTED
+   s" 4" PRIM-PATH 0 24 DEFINITION-ASK
+   SAY
+   s" 4" PRIM-SOURCE-PATH URI-OF 408 7 8 LOCATED ;
+
 \ def-od-dep.f on disk, and the text its open document holds: three lines
 \ inserted atop and its two lines swapped, so that DEF-DEPB's and DEF-DEPA's
 \ tokens lie on lines the text on disk does not have.
@@ -6262,6 +6316,8 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 : TEST-DEFINITIONS ( -- )
    s" definition" [: DEF-TURNS ;] TALK
    s" declaration" [: DECL-TURNS ;] TALK
+   s" definition-primitive" [: PRIM-DEF-TURNS ;] TALK
+   s" definition-primitive-open" [: PRIM-OPEN-TURNS ;] TALK
    s" definition-dependency" [: DEF-DEP-TURNS ;] TALK
    s" definition-dependency-open" [: DEF-OPEN-DEP-TURNS ;] TALK
    s" definition-not-open" [: DEF-NOT-OPEN-TURNS ;] TALK

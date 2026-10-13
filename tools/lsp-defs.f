@@ -517,6 +517,10 @@ private
    VISIT-V @ 0 > NAME-U @ 0 > and PKG-OK @ 0<> and VIS-V @ 0 >= and
    if VISIT-V @ else -1 then ;
 
+: LINE-USE-VISIT ( -- n )
+   VISIT-V @ -2 <= NAME-U @ 0 > and PKG-OK @ 0<> and VIS-V @ 0 >= and
+   if VISIT-V @ else LINE-VISIT then ;
+
 \ The line's decl, last of this check's, in group G.
 : DECL+ ( n -- )
    {: g:n :}
@@ -668,7 +672,7 @@ private
    g u U-GROUP USE!
    TARGET-V @ u U-TARGET USE!
    TARGET-END-V @ u U-TARGET-END USE!
-   LINE-VISIT u U-VISIT USE!
+   LINE-USE-VISIT u U-VISIT USE!
    NAME-AT @ u U-NAME USE!
    NAME-U @ u U-NAME-U USE!
    PKG-AT @ u U-PKG USE!
@@ -988,6 +992,18 @@ public
 : USE-TARGET ( n -- n n )
    {: u:n :}
    u U-TARGET USE@ u U-TARGET-END USE@ ;
+
+\ A primitive use carries the selected PRIM-SPEC row as -2-row in its visit.
+\ Other unlocated words keep -1; source declarations have nonnegative visits.
+: USE-PRIMITIVE-ROW ( n -- n )
+   U-VISIT USE@ dup -2 <= if -2 swap - else drop -1 then ;
+
+\ The target bytes in the text of the use's group, as LSP positions.
+: USE-TARGET-RANGE ( n -- n n n n )
+   {: u:n :}
+   u USE-GROUP COUNT-IN
+   u U-TARGET USE@ LINE-CHARACTER
+   u U-TARGET-END USE@ LINE-CHARACTER ;
 
 \ The bytes of the document's text the use starts and ends at.
 : USE-BYTES ( n -- n n )

@@ -5846,19 +5846,19 @@ variable AGREE-ERR-U
 
 \ The pre-pass sees the program the run loads: the engine and what the subject
 \ loads. A word only the checking process loaded - src/lib/test.f's T= in this
-\ harness, src/lib/fs.f's FILE-SIZE here and in check.f alike - is undefined to it
-\ in both, a subject that requires src/lib/fs.f itself has FILE-SIZE, and one that
-\ includes src/lib/process.f declares its `outcome` family afresh, as the load
-\ does, though this process declared it when it loaded the file.
+\ harness, src/lib/process-env.f's PROC-ENV-INHERIT-MISSING in check.f - is
+\ undefined to it in both. A subject that requires process-env.f has that word.
+\ One that includes src/lib/process.f declares its `outcome` family afresh,
+\ as the load does, though this process declared it when it loaded the file.
 : TEST-PREPASS-VIEW ( -- )
    SB-RESET s" : CKT-PV-ASSERT ( n n -- ) T= ;" REQ-LINE+
    s" view-harness.f" REQ-WRITE
    s" view-harness.f" s" T=" AGREE-UNDEFINED
-   SB-RESET s" : CKT-PV-SIZE ( ptr u8 n -- n ) FILE-SIZE ;" REQ-LINE+
+   SB-RESET s" : CKT-PV-ENV ( -- ) PROC-ENV-INHERIT-MISSING ;" REQ-LINE+
    s" view-tool.f" REQ-WRITE
-   s" view-tool.f" s" FILE-SIZE" AGREE-UNDEFINED
-   SB-RESET s" require src/lib/fs.f" REQ-LINE+
-   s" : CKT-PV-SIZE ( ptr u8 n -- n ) FILE-SIZE ;" REQ-LINE+
+   s" view-tool.f" s" PROC-ENV-INHERIT-MISSING" AGREE-UNDEFINED
+   SB-RESET s" require src/lib/process-env.f" REQ-LINE+
+   s" : CKT-PV-ENV ( -- ) PROC-ENV-INHERIT-MISSING ;" REQ-LINE+
    s" view-own.f" REQ-WRITE
    s" view-own.f" REQ-RUN EXPECT-ACCEPTED
    s" view-own.f" REQ$ CLI-PATH EXPECT-ACCEPTED

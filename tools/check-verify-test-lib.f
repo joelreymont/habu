@@ -104,7 +104,7 @@
 \   a use binds other than the declaration its scope selects: private
 \   over global, a used public, a qualified name, an export's alias       uses
 \   a use of a dependency's or its dependency's declaration names another
-\   file; a use inside a dependency, or of a word the engine provides,
+\   file; a use inside a dependency, or of an unlocated engine word,
 \   has a line; a use line reaches --verify-only's output                 uses
 \   a use in a file the subject loads, a required dependency or an
 \   included fragment, has a line unless asked for its tail, then none or
@@ -3701,6 +3701,18 @@ variable USE-NODE                       \ the use line USE-FROM found
    label labelu s" target_end" end USE-NUM ;
 
 
+: USE-PRIM-TARGET ( ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n name:ptr nameu:n :}
+   name nameu PRIM-SPEC:FIND {: row:n :}
+   row PRIM-SOURCE:TARGET
+   {: path:ptr pathu:n start:n end:n found:bool :}
+   label labelu T-LABEL found TTRUE
+   label labelu T-LABEL USE-NODE @ s" file" STRING$ path pathu T$=
+   label labelu s" target_start" start USE-NUM
+   label labelu s" target_end" end USE-NUM
+   label labelu s" decl_visit" -2 row - USE-NUM ;
+
+
 : USE-COUNT ( ptr u8 n n -- )
    {: label:ptr labelu:n want:n :}
    label labelu T-LABEL CHECK:VERIFY-USES$ OBJECTS want T= ;
@@ -3784,8 +3796,11 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses: nested dependency" s" CVT-UGLOBAL CVT-UNEST" 9 USE
    s" uses: nested dependency" USES-NEST$SRC s" : CVT-UNEST" 9 s" uses-nested.f" USE-TARGET
    s" uses: engine-provided" s" STR-SPACE" 9 NO-USE
-   s" uses: primitive" s" : CVT-MAKER ( n -- ) drop" 4 NO-USE
-   s" uses: one line each" 16 USE-COUNT
+   s" uses: primitive" s" : CVT-MAKER ( n -- ) drop" 4 USE
+   s" uses: primitive" s" drop" USE-PRIM-TARGET
+   s" uses: elaborator" s" ['] CVT-A execute" 7 USE
+   s" uses: elaborator" s" execute" USE-PRIM-TARGET
+   s" uses: one line each" 25 USE-COUNT
    s" uses.f" DEFS-SRC$ FIXTURE
    CLI-START s" --verify-only" ARG+ s" uses.f" AT$ ARG+
    s" " CLI {: erru:n rc:n :}
@@ -3865,7 +3880,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-loaded: the subject's" LD-OWN
    s" uses-loaded: none in the dependency" LD-DEP$SRC s" CVT-LDUSE ( -- n ) CVT-LDROOT" 10 s" uses-ld-dep.f" AT$ NO-USE-IN
    s" uses-loaded: none in the fragment" LD-FRAG$SRC s" CVT-LDROOT" 10 s" uses-ld-frag.f" AT$ NO-USE-IN
-   s" uses-loaded: the subject's alone" 3 USE-COUNT
+   s" uses-loaded: the subject's alone" 5 USE-COUNT
    DEFS-SRC$ SUBJ$ s" cvt-ldroot" [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES-OF
    0 s" uses-loaded: of a tail, verified" EXPECT-KIND
    s" uses-loaded: of a tail, the subject's" LD-OWN
@@ -3876,7 +3891,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-loaded: of a tail, the fragment's" DEFS-SRC$ s" : CVT-LDROOT" 10 s" uses-loaded.f" USE-TARGET
    s" uses-loaded: of a tail, not the dependency's own word" LD-DEP$SRC s" CVT-LDROOT CVT-LDOWN" 9 s" uses-ld-dep.f" AT$ NO-USE-IN
    s" uses-loaded: of a tail, not another of the subject's" LD-DEP$SRC s" + CVT-LDOTHER" 11 s" uses-ld-dep.f" AT$ NO-USE-IN
-   s" uses-loaded: of a tail, five lines" 5 USE-COUNT ;
+   s" uses-loaded: of a tail, seven lines" 7 USE-COUNT ;
 
 
 \ A string literal just before a call of a word a names: row declares binds
@@ -3933,7 +3948,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" names: a definer wrapper's call" DEFS-SRC$ s" : CVT-PUB" 7 s" named-uses.f" USE-TARGET
    s" names: a resident definer's wrapper" s\" \ns\" CVT-LOOK" 8 USE
    s" names: a resident definer's wrapper" DEFS-SRC$ s" : CVT-LOOK" 8 s" named-uses.f" USE-TARGET
-   s" names: one line each" 27 USE-COUNT ;
+   s" names: one line each" 41 USE-COUNT ;
 
 
 \ Two real includes of one file declare K at the same byte span in distinct
@@ -4021,7 +4036,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-visit: converter out name" T-LABEL USE-NODE @ s" decl_name" STRING$ s" cvt-id-t>n" T$=
    s" uses-visit: converter out package" T-LABEL USE-NODE @ s" package" STRING$ s" " T$=
    s" uses-visit: converter out visibility" T-LABEL USE-NODE @ s" visibility" STRING$ s" global" T$=
-   s" uses-visit: six calls" 6 USE-COUNT ;
+   s" uses-visit: seven calls" 7 USE-COUNT ;
 
 
 \ Exporting a private K creates a public K in the same package. The operand
@@ -4114,7 +4129,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-refused: the global after" DEFS-SRC$ s\" ;package\n: CVT-SHADOW" 10 s" uses-refused.f" USE-TARGET
    s" uses-refused: is after" s" CVT-IS-AFTER ( [ -- n ] -- ) is CVT-SLOT" 8 USE
    s" uses-refused: is after" DEFS-SRC$ s" defer CVT-SLOT" 8 s" uses-refused.f" USE-TARGET
-   s" uses-refused: two lines" 2 USE-COUNT ;
+   s" uses-refused: three lines" 3 USE-COUNT ;
 
 
 \ A use binds the declaration visible where it stands: the first before
@@ -4131,7 +4146,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-order: after" DEFS-SRC$ s\" undefine CVT-W\n: CVT-W" 5 s" uses-order.f" USE-TARGET
    s" uses-order: top level after" s\" \nCVT-W" 5 USE
    s" uses-order: top level after" DEFS-SRC$ s\" undefine CVT-W\n: CVT-W" 5 s" uses-order.f" USE-TARGET
-   s" uses-order: three lines" 3 USE-COUNT ;
+   s" uses-order: four lines" 4 USE-COUNT ;
 
 
 \ A refused body keeps its declared signature, and its uses bind it. A refused
@@ -4148,7 +4163,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-recovery: after a refusal" s" CVT-USE-KEPT ( -- n ) CVT-KEPT" 8 USE
    s" uses-recovery: after a refusal" DEFS-SRC$ s" : CVT-KEPT" 8 s" uses-recovery.f" USE-TARGET
    s" uses-recovery: a refused type retains nothing" s" CVT-KEPT CVT-GONE" 8 NO-USE
-   s" uses-recovery: two lines" 2 USE-COUNT ;
+   s" uses-recovery: four lines" 4 USE-COUNT ;
 
 
 \ A body the checker defers to the run (src/core/checker.f CHECK-VERDICT 2: it
@@ -4178,7 +4193,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-duplicate: body" DEFS-SRC$ s" : CVT-D" 5 s" uses-duplicate.f" USE-TARGET
    s" uses-duplicate: top level" s\" \nCVT-D" 5 USE
    s" uses-duplicate: top level" DEFS-SRC$ s" : CVT-D" 5 s" uses-duplicate.f" USE-TARGET
-   s" uses-duplicate: two lines" 2 USE-COUNT ;
+   s" uses-duplicate: three lines" 3 USE-COUNT ;
 
 
 \ The checker's record store and its location table both start with room for
@@ -4203,7 +4218,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-growth: the first declaration" DEFS-SRC$ s" : CVT-GFIRST" 10 s" uses-growth.f" USE-TARGET
    s" uses-growth: the last declaration" s" CVT-GFIRST CVT-GLAST" 9 USE
    s" uses-growth: the last declaration" DEFS-SRC$ s" : CVT-GLAST" 9 s" uses-growth.f" USE-TARGET
-   s" uses-growth: two lines" 2 USE-COUNT ;
+   s" uses-growth: three lines" 3 USE-COUNT ;
 
 
 : SWAP-A$SRC ( -- ptr u8 n )

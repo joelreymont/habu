@@ -39,7 +39,7 @@
 \ diagnostic line among the packets, for each file it reads a file line for
 \ the bytes it reads there, once however often it reads the same bytes and
 \ before anything in them, for each definition it retains a definition line,
-\ for each use in the subject that the checker binds to a located declaration
+\ for each use in the subject that the checker binds to a located source target
 \ a use line, and for each top-level loader of the subject whose load reached
 \ a file a load line, one JSON object each. It answers
 \
@@ -88,9 +88,12 @@
 \ between the quotes of a string literal naming a word before a call of a word
 \ a `names:` row marks (src/core/checker.f CHECKER-NAMES-ROW), F the path the
 \ declaration's file was resolved to, TS and TN where the token that declared
-\ it starts and ends there, and D, T, P and V the selected declaration's local
-\ visit, canonical tail, package and visibility. In the fourth form, a word
-\ without a source declaration has an empty F, zero TS and TN, and D of -1.
+\ it starts and ends there, and D, T, P and V the selected binding's local
+\ visit, canonical tail, package and visibility. For an engine primitive in
+\ PRIM-SPEC, F names src/habu/prims.f, TS and TN span its name, and D is
+\ -2 minus its selected row. If that source is missing or differs from the
+\ running table, F is empty and TS and TN are zero while D stays distinct.
+\ A word without a source target or primitive row has D of -1.
 \
 \ A load line names what src/habu/verify-source.f ON-LOADER reports, a
 \ top-level loader of the subject whose load reached a file, in the subject's
