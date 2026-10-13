@@ -11,7 +11,7 @@
 \ recompiles the captured body, so the evaluated `1 +` has to be in it. Both
 \ definitions then run and add the 1: 42 and 42.
 
-SUMTYPE bie 1
+SUMTYPE bie<a>
   VARIANT some a ;VARIANT
 ;SUMTYPE
 

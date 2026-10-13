@@ -148,7 +148,7 @@ public
 \ control flow no tail caller has yet. `( n n n -- n n n )` holding a construction
 \ is refused by the checker before the chain sees it (`expected: a actual: pt`,
 \ measured), which is the honest reason this file has two rows here and not three.
-PRODUCT pt 0
+PRODUCT pt
    FIELD x n
    FIELD y n
 ;PRODUCT

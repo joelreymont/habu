@@ -6,8 +6,8 @@ require src/lib/task.f
 
 package C2-INIT-PROGRAM
 public
-STRUCTURE c2ipair 0 DERIVE init FIELD first n FIELD second n ;STRUCTURE
-STRUCTURE c2inest 0 DERIVE init FIELD marker n FIELD pair c2ipair ;STRUCTURE
+STRUCTURE c2ipair DERIVE init FIELD first n FIELD second n ;STRUCTURE
+STRUCTURE c2inest DERIVE init FIELD marker n FIELD pair c2ipair ;STRUCTURE
 
 private
 

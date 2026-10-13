@@ -92,7 +92,7 @@ ENUM compare DERIVE eq
 \ The policy. Fields in declaration order, deepest stack field first. It does not
 \ DERIVE eq: SAME? below is the hand-written field-by-field identity, matching
 \ the target contract, and it is the equality the digest is proved to agree with.
-STRUCTURE numeric-policy 0
+STRUCTURE numeric-policy
    FIELD overflow overflow
    FIELD float float-model
    FIELD contraction contraction

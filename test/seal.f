@@ -460,7 +460,7 @@ variable PWG-U
    s" SUMTYPE f" PWG-APPEND
    $61 i 26 / +   PWG-C
    $61 i 26 mod + PWG-C
-   s"  1 VARIANT foo a ;VARIANT ;SUMTYPE" PWG-APPEND
+   s" <a> VARIANT foo a ;VARIANT ;SUMTYPE" PWG-APPEND
    10 PWG-C ;
 : PWG-GEN ( n -- ptr u8 n ) {: k:n :}        \ K public families as one batch program
    PWG-RESET
@@ -525,7 +525,7 @@ variable PWG-U
 \ fires only on a crafted AOT/snapshot image, so its forced-reject fixture is dotted.)
 : SLV-PUBLISH-FORGE$ ( -- ptr u8 n )         \ define a word into a public family's protected WID
    SB-RESET
-   s" SUMTYPE foo 1 VARIANT bar a ;VARIANT ;SUMTYPE" SB-APPEND SLV-LF
+   s" SUMTYPE foo<a> VARIANT bar a ;VARIANT ;SUMTYPE" SB-APPEND SLV-LF
    s" : foo:BOGUS ( -- ) ;" SB-APPEND SLV-LF
    SB$ ;
 

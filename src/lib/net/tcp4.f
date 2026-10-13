@@ -39,40 +39,40 @@ DEFTYPE ERRNO
 
 ENUM direction receiving sending both ;ENUM
 
-SUMTYPE bind-result 0
+SUMTYPE bind-result
    VARIANT bound listener ;VARIANT
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
-SUMTYPE connect-result 0
+SUMTYPE connect-result
    VARIANT connected connection ;VARIANT
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
-SUMTYPE accept-result 0
+SUMTYPE accept-result
    VARIANT accepted connection address port ;VARIANT
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
-SUMTYPE endpoint-result 0
+SUMTYPE endpoint-result
    VARIANT endpoint address port ;VARIANT
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
-SUMTYPE status 0
+SUMTYPE status
    VARIANT ok ;VARIANT
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
 \ One transfer's outcome. `closed` carries the bytes delivered into the caller's
 \ buffer before the peer's end of stream, which READ-EXACT reports as a partial.
-SUMTYPE read-result 0
+SUMTYPE read-result
    VARIANT data NUM:byte-len ;VARIANT
    VARIANT closed NUM:byte-len ;VARIANT
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
-SUMTYPE ready-result 0
+SUMTYPE ready-result
    VARIANT ready ;VARIANT
    VARIANT idle ;VARIANT
    VARIANT failed errno ;VARIANT
@@ -81,7 +81,7 @@ SUMTYPE ready-result 0
 \ One send slice's outcome. `moved` carries the bytes the OS accepted, at least
 \ one and no more than the span; `empty` says there was no room, even once a
 \ wait of SEND-SLICE-MS for some had ended; `failed` carries the errno.
-ENUM slice-result 0
+ENUM slice-result
    VARIANT moved FIELD sent NUM:byte-len ;VARIANT
    VARIANT empty ;VARIANT
    VARIANT failed FIELD cause errno ;VARIANT
@@ -90,13 +90,13 @@ ENUM slice-result 0
 \ A socket that exists but is connected to nothing yet. It is a `connection`
 \ because that is what it becomes and what closes it; until something connects
 \ it, reading or writing it is the OS's ENOTCONN.
-SUMTYPE socket-result 0
+SUMTYPE socket-result
    VARIANT opened connection ;VARIANT
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
 \ How many bytes one of a connection's two queues holds, as the OS counts them.
-SUMTYPE queue-result 0
+SUMTYPE queue-result
    VARIANT queued NUM:byte-len ;VARIANT
    VARIANT failed errno ;VARIANT
 ;SUMTYPE

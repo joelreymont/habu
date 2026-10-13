@@ -121,7 +121,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 
 : SPK-CTOR-WID-FORGE$ ( -- ptr u8 n )       \ generated ctor WID closes to later tails
    SB-RESET
-   s" SUMTYPE spkw 0" SPK-LINE
+   s" SUMTYPE spkw" SPK-LINE
    s"   VARIANT ok n ;VARIANT" SPK-LINE
    s"   VARIANT err n ;VARIANT" SPK-LINE
    s" ;SUMTYPE" SPK-LINE

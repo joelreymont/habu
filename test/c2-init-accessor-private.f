@@ -5,8 +5,8 @@
 package C2-INIT-ACCESSOR-PRIVATE
 private
 
-STRUCTURE pair 0 FIELD left n FIELD right n ;STRUCTURE
-STRUCTURE shelf 2 DERIVE init
+STRUCTURE pair FIELD left n FIELD right n ;STRUCTURE
+STRUCTURE shelf<a,b> DERIVE init
    FIELD source read-view<a,b,u8>
    FIELD nested pair
 ;STRUCTURE

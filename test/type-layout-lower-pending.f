@@ -25,11 +25,11 @@ variable #CASE
 \ layout families under test: width 2 (1 payload slot + tag), width 4
 \ (3 payload slots + tag).
 \ ---------------------------------------------------------------------------
-SUMTYPE tlp-res 2
+SUMTYPE tlp-res<a,b>
   VARIANT ok  a ;VARIANT
   VARIANT err b ;VARIANT
 ;SUMTYPE
-SUMTYPE tlp-mix 2
+SUMTYPE tlp-mix<a,b>
   VARIANT small a ;VARIANT
   VARIANT big a b n ;VARIANT
 ;SUMTYPE

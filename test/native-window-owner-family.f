@@ -6,7 +6,7 @@ require src/compiler/native/family.f
 
 package OWNER-FAMILY-CHECK
 public
-s" payload" s" 0 VARIANT vacant ;VARIANT VARIANT pair n n ;VARIANT" CHECKER-DEFSUM
+s" payload" s" VARIANT vacant ;VARIANT VARIANT pair n n ;VARIANT" CHECKER-DEFSUM
 private
 
 : TRUE! ( bool -- ) 0= if 79 throw then ;

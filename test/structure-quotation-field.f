@@ -5,30 +5,30 @@ require test/checker-assert.f
 
 package QUOT-FIELD-TEST
 
-STRUCTURE request 0
+STRUCTURE request
    FIELD id n
 ;STRUCTURE
 
-STRUCTURE response 0
+STRUCTURE response
    FIELD id n
 ;STRUCTURE
 
-STRUCTURE route-text 0
+STRUCTURE route-text
    FIELD base ptr u8
    FIELD len n
 ;STRUCTURE
 
-STRUCTURE route 0 DERIVE addr
+STRUCTURE route DERIVE addr
    FIELD method route-text
    FIELD pattern route-text
    FIELD handler [ request response -- ]
 ;STRUCTURE
 
-STRUCTURE route-box 0
+STRUCTURE route-box
    FIELD item route
 ;STRUCTURE
 
-STRUCTURE route-mixed 0
+STRUCTURE route-mixed
    FIELD before [ request response -- ]
    FIELD text route-text
    FIELD after [ request response -- ]

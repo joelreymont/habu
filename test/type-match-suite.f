@@ -30,23 +30,23 @@ variable #CASE
 \ families under test: scalar sum, multi-cell + padding, enum-shaped,
 \ ptr payloads, parametric, and linear-arg parametric.
 \ ---------------------------------------------------------------------------
-SUMTYPE mres 0
+SUMTYPE mres
   VARIANT ok  n ;VARIANT
   VARIANT err n ;VARIANT
 ;SUMTYPE
-SUMTYPE mmix 0
+SUMTYPE mmix
   VARIANT small n ;VARIANT
   VARIANT big ptr u8 n n ;VARIANT
 ;SUMTYPE
-SUMTYPE men 0
+SUMTYPE men
   VARIANT lit  ;VARIANT
   VARIANT dark ;VARIANT
 ;SUMTYPE
-SUMTYPE mptr 0
+SUMTYPE mptr
   VARIANT ok  ptr u8 ;VARIANT
   VARIANT err ptr u8 ;VARIANT
 ;SUMTYPE
-SUMTYPE mpoly 2
+SUMTYPE mpoly<a,b>
   VARIANT ok  a ;VARIANT
   VARIANT err b ;VARIANT
 ;SUMTYPE
@@ -63,11 +63,11 @@ LINEAR: MTOK>N ( TMLIN:mtok -- n )
 public
 : FREE-MTOK ( TMLIN:mtok -- ) MTOK>N drop ;
 ;package
-SUMTYPE mlin 2
+SUMTYPE mlin<a,b>
   VARIANT ok  a ;VARIANT
   VARIANT err b ;VARIANT
 ;SUMTYPE
-ENUM-DECL:ED-RUN mnamedlin 0
+ENUM-DECL:ED-RUN mnamedlin
   VARIANT hold FIELD token TMLIN:mtok ;VARIANT
   VARIANT empty ;VARIANT
 ;ENUM
@@ -76,7 +76,7 @@ ENUM-DECL:ED-RUN mnamedlin 0
 \ a qualified def no longer leaks a bare-global `dup`/`swap` effect row, so the
 \ later fixtures that use bare dup/swap as prims (M9, CS1, CS2, PS*) still certify
 \ even though this family declared those variant names first.
-SUMTYPE mwv 0
+SUMTYPE mwv
   VARIANT dup  n ;VARIANT
   VARIANT swap n ;VARIANT
 ;SUMTYPE
@@ -133,7 +133,7 @@ s" MLN1=" type s" KNL1 ( mnamedlin -- mnamedlin mnamedlin ) dup" CHECK-QUIET-CAN
 s" MLN2=" type s" KNL2 ( mnamedlin -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" ML1=" type s" K1 ( mlin<TMLIN:mtok,n> -- mlin<TMLIN:mtok,n> ) MATCH mlin ok OF construct mlin ok ENDOF err OF construct mlin err ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 \ moving the linear payload out through the join is legitimate consumption.
-SUMTYPE mlin2 2
+SUMTYPE mlin2<a,b>
   VARIANT ok  a ;VARIANT
   VARIANT err a ;VARIANT
 ;SUMTYPE
@@ -196,7 +196,7 @@ s" MB6=" type s" B6 ( mmix -- n ) MATCH mres ok OF ENDOF err OF ENDOF ;MATCH" CH
 s" MB7=" type s" B7 ( mres n -- n ) MATCH mres ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=   \ scrutinee not on top
 s" MB8=" type s" B8 ( span<g,n,n> -- n ) MATCH span ok OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=   \ cell family: kind-gated
 \ branch-output join mismatch (docs §25.4 rejected branch join).
-SUMTYPE mjoin 0
+SUMTYPE mjoin
   VARIANT ok  ptr u8 ;VARIANT
   VARIANT err n ;VARIANT
 ;SUMTYPE
@@ -280,14 +280,14 @@ s" MATCH-DEPTH" type cr
 \ ---------------------------------------------------------------------------
 package mscp
 private
-SUMTYPE msec 0
+SUMTYPE msec
   VARIANT hide n ;VARIANT
 ;SUMTYPE
 s" MS1=" type s" S1 ( msec -- n ) MATCH msec hide OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 ;package
 package mpub
 public
-SUMTYPE mpres 0
+SUMTYPE mpres
   VARIANT yes n ;VARIANT
 ;SUMTYPE
 ;package
@@ -321,7 +321,7 @@ create MDG-BUF 8192 allot
    then ;
 : MDG-END ( -- ) 0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
 
-SUMTYPE mtri 0
+SUMTYPE mtri
   VARIANT aa n ;VARIANT
   VARIANT bb n ;VARIANT
   VARIANT cc n ;VARIANT
@@ -371,7 +371,7 @@ s\" \"code\":\"E-CONSTRUCT-UNTERMINATED\"" MDG?
 \ item 15: products are not eliminable or constructible through the token
 \ forms — the family-kind gate is sum/enum only (docs §14); the product
 \ surface is its generated PKG:MAKE/PKG:UNMAKE words.
-PRODUCT mprod 0
+PRODUCT mprod
   FIELD v n
 ;PRODUCT
 s" GP1 ( mprod -- n ) MATCH mprod make OF ENDOF ;MATCH" MDG<
@@ -397,8 +397,8 @@ s" MATCH-DIAG" type cr
 \ dropping the bundle leaves a branch imbalance and stays red (ML2), so the
 \ payload really is the wide bundle, not one cell.
 \ ---------------------------------------------------------------------------
-PRODUCT mlw2 0 FIELD x n FIELD y n ;PRODUCT
-SUMTYPE mlopt 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
+PRODUCT mlw2 FIELD x n FIELD y n ;PRODUCT
+SUMTYPE mlopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 s" ML1 ( mlopt<mlw2> -- n ) MATCH mlopt none OF 0 ENDOF some OF MLW2:UNMAKE {: x:n y:n :} x y + ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" ML2 ( mlopt<mlw2> -- n ) MATCH mlopt none OF 0 ENDOF some OF drop drop 1 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MATCH-LAYOUT" type cr
@@ -411,8 +411,8 @@ s" MATCH-LAYOUT" type cr
 \ red (MN2). The arm can also re-wrap the inner value into a fresh outer bundle
 \ (MN3), proving the payload really is the inner instantiation, not a scalar.
 \ ---------------------------------------------------------------------------
-SUMTYPE mnres 2 VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
-SUMTYPE mnopt 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
+SUMTYPE mnres<a,b> VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
+SUMTYPE mnopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 s" MN1 ( mnopt<mnres<n,n>> -- n ) MATCH mnopt none OF 999 ENDOF some OF MATCH mnres ok OF ENDOF err OF ENDOF ;MATCH ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" MN2 ( mnopt<mnres<n,n>> -- n ) MATCH mnopt none OF 0 ENDOF some OF drop drop 1 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MN3 ( mnopt<mnres<n,n>> -- mnopt<mnres<n,n>> ) MATCH mnopt none OF MNOPT:NONE ENDOF some OF MNOPT:SOME ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
@@ -425,18 +425,18 @@ s" MATCH-NESTED" type cr
 \ all consume the same declared-payload accessors as linearity.
 \ ---------------------------------------------------------------------------
 ENUM-DECL:ED-RUN nec red green blue ;ENUM
-ENUM-DECL:ED-RUN nep 0
+ENUM-DECL:ED-RUN nep
   VARIANT mk FIELD x n FIELD y n ;VARIANT
 ;ENUM
-ENUM-DECL:ED-RUN nei 0
+ENUM-DECL:ED-RUN nei
   VARIANT quit ;VARIANT
   VARIANT move FIELD dx n FIELD dy n ;VARIANT
 ;ENUM
-ENUM-DECL:ED-RUN neg 1
+ENUM-DECL:ED-RUN neg<a>
   VARIANT some FIELD value a ;VARIANT
   VARIANT none ;VARIANT
 ;ENUM
-ENUM-DECL:ED-RUN nen 0
+ENUM-DECL:ED-RUN nen
   VARIANT wrap FIELD child nec ;VARIANT
 ;ENUM
 

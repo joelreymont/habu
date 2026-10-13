@@ -3,7 +3,7 @@
 \ next door proves nothing without it. E-CAST-FAM.
 package NW-BAD
 public
-NEWTYPE alpha 0
+NEWTYPE alpha
 private
 CAST: MINT-X ( n -- NW-BAD:nosuchfam )
 ;package

@@ -11,7 +11,7 @@ check@ SAVED-CHECK !
 TYPED-VARIABLE UNCHECKED-N n
 SAVED-CHECK @ set-check
 
-STRUCTURE plain-row 0
+STRUCTURE plain-row
    FIELD first n
    FIELD second ptr u8
 ;STRUCTURE

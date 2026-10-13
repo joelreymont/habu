@@ -59,7 +59,7 @@ public
 \ in the FIELD it stores the set in, so there is no position a general set could
 \ arrive in where a floating one was wanted.
 
-STRUCTURE regs 0 DERIVE eq
+STRUCTURE regs DERIVE eq
    FIELD bits n
 ;STRUCTURE
 
@@ -70,7 +70,7 @@ STRUCTURE regs 0 DERIVE eq
 \ the grouping. `reserved` is the virtual machine's claim and `clobbered` what a
 \ call destroys; the allocatable and callee-saved sets are derived below.
 
-STRUCTURE file 0
+STRUCTURE file
    FIELD gpr-size n
    FIELD gpr-reserved regs
    FIELD gpr-clobbered regs

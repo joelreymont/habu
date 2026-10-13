@@ -27,7 +27,7 @@ package SHA1
 public
 
 \ The hash words H0..H4 of FIPS 180-4 section 6.1.2, each below 2^32.
-STRUCTURE digest 0
+STRUCTURE digest
    FIELD h0 n
    FIELD h1 n
    FIELD h2 n

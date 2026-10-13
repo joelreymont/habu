@@ -6,7 +6,7 @@
 \ inferred one, and only a nominal read-back can see the difference.
 
 package BCK
-NEWTYPE kon-id 0
+NEWTYPE kon-id
 7 constant KONST
 s" BOOTSTRAP-CREATED-ARMED" type cr
 public

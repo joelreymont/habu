@@ -6,7 +6,7 @@ require src/lib/errors.f
 package NLEASE
 public
 
-NEWTYPE lease 0
+NEWTYPE lease
 
 -9430 constant E-NLEASE-FIRST
 E-NLEASE-FIRST constant E-BUSY

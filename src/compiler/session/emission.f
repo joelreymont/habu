@@ -13,19 +13,19 @@ require src/compiler/native/emission.f
 package NART
 private
 
-STRUCTURE key 0
+STRUCTURE key
    FIELD rows IR-ARENA:view
 ;STRUCTURE
 
 public
 
-STRUCTURE emission 0
+STRUCTURE emission
    FIELD key key
 ;STRUCTURE
 
 private
 
-STRUCTURE artifact 0 DERIVE addr
+STRUCTURE artifact DERIVE addr
    FIELD binding CBIND:binding
    FIELD code ptr u8
 ;STRUCTURE

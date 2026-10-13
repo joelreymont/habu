@@ -19,7 +19,7 @@ public
 
 \ The semaphore handle callers hold. A nominal cell, so a raw address - a
 \ TASK:FACILITY, say, which is the same machine shape - cannot reach TASK:WAIT.
-NEWTYPE sem 0
+NEWTYPE sem
 
 \ The C entry address pthread_create takes, as an integer.
 : PTHREAD-ENTRY ( -- n ) task-entry ;

@@ -5,8 +5,8 @@ require src/lib/c2-memory.f
 
 package C2-FIELD-LOAN-PROGRAM
 public
-STRUCTURE pair 0 DERIVE init FIELD left n FIELD right n ;STRUCTURE
-STRUCTURE outer 0 DERIVE init
+STRUCTURE pair DERIVE init FIELD left n FIELD right n ;STRUCTURE
+STRUCTURE outer DERIVE init
    FIELD marker n
    FIELD inner pair
    FIELD guard n

@@ -4,7 +4,7 @@ require src/lib/xml/scalar.f
 package XML
 public
 DEFLINEAR XML:source
-STRUCTURE source-owner 0 OPAQUE FIELD state ptr n ;STRUCTURE
+STRUCTURE source-owner OPAQUE FIELD state ptr n ;STRUCTURE
 ENUM encoding utf8 utf16-le utf16-be ;ENUM
 -9216 constant E-UTF16
 -9217 constant E-BOUNDARY

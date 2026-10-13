@@ -17,7 +17,7 @@ E-ELF32-FORMAT constant E-FORMAT
 E-ELF32-BOUNDS constant E-BOUNDS
 E-ELF32-UNSUPPORTED constant E-UNSUPPORTED
 
-STRUCTURE header 0
+STRUCTURE header
    FIELD kind file-kind
    FIELD machine machine-id
    FIELD entry address
@@ -27,7 +27,7 @@ STRUCTURE header 0
    FIELD programs program-count
 ;STRUCTURE
 
-STRUCTURE segment 0
+STRUCTURE segment
    FIELD data ptr u8
    FIELD size NUM:byte-len
    FIELD kind segment-kind

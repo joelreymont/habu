@@ -139,11 +139,11 @@ public
 \ of general registers cannot be passed where a set of floating registers is
 \ wanted and neither can be confused with a bare integer. Bit i names register i.
 
-STRUCTURE gprs 0 DERIVE eq
+STRUCTURE gprs DERIVE eq
    FIELD bits n
 ;STRUCTURE
 
-STRUCTURE fprs 0 DERIVE eq
+STRUCTURE fprs DERIVE eq
    FIELD bits n
 ;STRUCTURE
 
@@ -181,7 +181,7 @@ ENUM pkind DERIVE eq
 \ exactly one cell and NEFF:DIGEST, which stores that cell, agrees with SAME?
 \ rather than approximating it. The cost is two positions: ten instead of the
 \ twelve a five-bit element held.
-STRUCTURE placeseq 0 DERIVE eq
+STRUCTURE placeseq DERIVE eq
    FIELD bits n
 ;STRUCTURE
 
@@ -262,7 +262,7 @@ ENUM control DERIVE eq
 \ ---- what the routine does besides compute -----------------------------------
 \ A set rather than a choice, because a routine can do several. Each bit is named
 \ for the instruction form in the modelled vocabulary that creates it.
-STRUCTURE traits 0 DERIVE eq
+STRUCTURE traits DERIVE eq
    FIELD bits n
 ;STRUCTURE
 
@@ -281,7 +281,7 @@ STRUCTURE traits 0 DERIVE eq
 \ or negative. `mach` is the machine every other field is stated about, and it
 \ is last because that is the order the constructor takes its arguments in and
 \ VALIDATE is exactly UNMAKE into it.
-STRUCTURE routine 0
+STRUCTURE routine
    FIELD conv conv
    FIELD gpr-arg placeseq
    FIELD gpr-out placeseq

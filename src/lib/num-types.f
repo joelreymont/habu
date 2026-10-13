@@ -80,26 +80,25 @@ package NUM
 public
 
 \ ---- scalar nominal role families (one cell each, no widening to/from n) ------
-NEWTYPE byte-len 0               \ nonnegative extent measured in bytes
-NEWTYPE item-count 0            \ nonnegative logical element count
-NEWTYPE cell-count 0            \ nonnegative machine-cell count
-NEWTYPE index 0                 \ nonnegative ordinal, not yet bounded
-NEWTYPE byte-off 0              \ nonnegative byte offset
-NEWTYPE cell-off 0              \ nonnegative cell offset
-NEWTYPE alignment 0             \ positive power-of-two alignment
-NEWTYPE positive-divisor 0      \ positive divisor for unit-preserving extent arithmetic
-NEWTYPE alloc-byte-len 0        \ positive byte extent accepted by an allocator
-NEWTYPE alloc-cell-count 0      \ positive cell count accepted by a cell allocator
+NEWTYPE byte-len               \ nonnegative extent measured in bytes
+NEWTYPE item-count            \ nonnegative logical element count
+NEWTYPE cell-count            \ nonnegative machine-cell count
+NEWTYPE index                 \ nonnegative ordinal, not yet bounded
+NEWTYPE byte-off              \ nonnegative byte offset
+NEWTYPE cell-off              \ nonnegative cell offset
+NEWTYPE alignment             \ positive power-of-two alignment
+NEWTYPE positive-divisor      \ positive divisor for unit-preserving extent arithmetic
+NEWTYPE alloc-byte-len        \ positive byte extent accepted by an allocator
+NEWTYPE alloc-cell-count      \ positive cell count accepted by a cell allocator
 
 \ ---- the on-stack validation result (success carries one cell-kinded a) -------
-\ Declared through the unified ENUM front end in full mode: the arity token after
-\ the family name is what selects that mode, so the success payload is a named
-\ FIELD instead of a positional type token. The field is called `role` because
-\ that is this file's own word for the thing the ok arm carries: the families just
-\ above are "scalar nominal role families", the mints below turn a validated raw
-\ cell into a "nominal role", and the checker's job here is to refuse a
-\ "cross-role" swap. So `role` names the payload after what it is rather than
-\ after the generic slot it sits in.
+\ Declared through the unified ENUM front end with VARIANT blocks, so the success
+\ payload is a named FIELD instead of a positional type token. The field is
+\ called `role` because that is this file's own word for the thing the ok arm
+\ carries: the families just above are "scalar nominal role families", the
+\ mints below turn a validated raw cell into a "nominal role", and the checker's
+\ job here is to refuse a "cross-role" swap. So `role` names the payload after
+\ what it is, rather than after the generic slot it sits in.
 \
 \ Nothing else moves. The generated NUM-NUMERIC--RESULT:OK, :NEGATIVE,
 \ :ZERO, :OVERFLOW, :UNDERFLOW, :BAD-ALIGNMENT and :MISALIGNED constructors keep
@@ -107,7 +106,7 @@ NEWTYPE alloc-cell-count 0      \ positive cell count accepted by a cell allocat
 \ this package and in its consumers is untouched, because the spellings come from
 \ the package name and the family tail and the payload binding order comes from
 \ the declaration order - none of which the declaration mode changes.
-ENUM numeric-result 1
+ENUM numeric-result<a>
    VARIANT ok FIELD role a ;VARIANT
    VARIANT negative ;VARIANT
    VARIANT zero ;VARIANT

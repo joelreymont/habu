@@ -51,12 +51,12 @@ public
 
 \ An id as the JSON text it came in: a number's digits, a string with its
 \ quotes, or `null`.
-STRUCTURE id 0
+STRUCTURE id
    FIELD json ptr u8
    FIELD len n
 ;STRUCTURE
 
-ENUM message 0
+ENUM message
    VARIANT request FIELD id id FIELD method ptr u8 FIELD method-len n FIELD params ptr u8 FIELD params-len n ;VARIANT
    VARIANT notification FIELD method ptr u8 FIELD method-len n FIELD params ptr u8 FIELD params-len n ;VARIANT
    VARIANT success FIELD id id FIELD value ptr u8 FIELD value-len n ;VARIANT
@@ -82,7 +82,7 @@ private
 
 \ One envelope member: its token kind, ABSENT when the root has none, and its
 \ JSON text.
-STRUCTURE member 0
+STRUCTURE member
    FIELD kind n
    FIELD json ptr u8
    FIELD len n
@@ -97,7 +97,7 @@ STRUCTURE member 0
 \ What the walk over a root object met: whether jsonrpc is the string "2.0";
 \ the id, method, params, result and error; whether that error is an error
 \ object.
-STRUCTURE envelope 0
+STRUCTURE envelope
    FIELD v2 bool
    FIELD id member
    FIELD method member

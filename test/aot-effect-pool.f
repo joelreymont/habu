@@ -64,7 +64,7 @@ public
    ROOT$ s" definitions.f" SOURCE JOIN-PATH SOURCE-U !
    ROOT$ s" effects.aot" ART JOIN-PATH ART-U !
    ROOT$ s" bad-header.aot" BAD-ART JOIN-PATH BAD-ART-U !
-   SOURCE$ S\" package EFFECT-POOL-WINDOW public\nNEWTYPE effect-tag 0\n" WRITE-ALL
+   SOURCE$ S\" package EFFECT-POOL-WINDOW public\nNEWTYPE effect-tag\n" WRITE-ALL
    WORDS 0 ?do
       SB-RESET s" : EFFECT-" SB-APPEND i NAME+
       S\"  ( n n n n -- n n n n ) 1+ ;\n" SB-APPEND

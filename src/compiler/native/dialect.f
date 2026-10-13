@@ -71,7 +71,7 @@ public
 \ is what keeps a reader from asking. It holds keys AND opcodes: a dialect with
 \ no floating file declares no float slot form for the same reason one with no
 \ write-back addressing declares no write-back key.
-SUMTYPE optsym 0
+SUMTYPE optsym
    VARIANT absent ;VARIANT
    VARIANT present IR-ID:ir-symbol-id ;VARIANT
 ;SUMTYPE
@@ -92,7 +92,7 @@ SUMTYPE optsym 0
 \ leaves the pointer at and the exit publishes every result's - one adjustment
 \ at each end and none in between. The name says the place, not the moment: the
 \ body stands there for its whole length, not only at the entry.
-SUMTYPE dstand 0
+SUMTYPE dstand
    VARIANT survey ;VARIANT
    VARIANT entry-base ;VARIANT
 ;SUMTYPE
@@ -100,7 +100,7 @@ SUMTYPE dstand 0
 \ ---- one dialect's vocabulary ------------------------------------------------
 \ The order is the order a binding reads it in: who you are, what machine, the
 \ types, the keys, the opcodes, the shape, and the policy the selector states.
-STRUCTURE vocab 0
+STRUCTURE vocab
    FIELD name IR-ID:ir-symbol-id
    FIELD major n
    FIELD minor n
@@ -147,7 +147,7 @@ STRUCTURE vocab 0
 \                      ARM64 holds it in a register and names both; x86-64's
 \                      call pushes it, so both are absent and the frame shape
 \                      counts none.
-STRUCTURE lowering 0
+STRUCTURE lowering
    FIELD name IR-ID:ir-symbol-id
    FIELD major n
    FIELD minor n

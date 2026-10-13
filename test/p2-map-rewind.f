@@ -107,7 +107,7 @@ $2000000 constant IMM26-SGN
 \ length, and signatures that differ only in whether the transported value is one
 \ cell or a two-cell layout bundle. The bundle is what makes the second of each
 \ pair run pass 2.
-SUMTYPE p2m-res 2
+SUMTYPE p2m-res<a,b>
   VARIANT ok  a ;VARIANT
   VARIANT err b ;VARIANT
 ;SUMTYPE

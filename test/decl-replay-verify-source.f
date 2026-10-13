@@ -282,13 +282,13 @@ variable SB-I   variable SB-J
 \ ---------------------------------------------------------------------------
 package sdlive
 public
-STRUCTURE pair 0
+STRUCTURE pair
    FIELD lo n
    FIELD hi n
 ;STRUCTURE
 ;package
 
-s" package sdrep public STRUCTURE pair 0 FIELD lo n FIELD hi n ;STRUCTURE ;package"
+s" package sdrep public STRUCTURE pair FIELD lo n FIELD hi n ;STRUCTURE ;package"
 VSPARITY:VS-OPEN
 s" PAIR ( n n -- sdrep:pair ) SDREP-PAIR:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
 s" UNPAIR ( sdrep:pair -- n n ) SDREP-PAIR:UNMAKE" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
@@ -325,14 +325,14 @@ s" edlive:colour" s" edrep:colour" VSPARITY:COMPARE
 \ here. The replay compiles nothing, so the names it registers are facts of
 \ the certify path, and every candidate asks that path
 \ (VERIFY:CANDIDATE-IN-SCOPE): compiled code holds no record of them.
-s" package vruse public ENUM box 1 VARIANT ok FIELD value a ;VARIANT VARIANT no ;VARIANT ;ENUM : WRAP ( a -- box<a> ) VRUSE-BOX:OK ; ;package"
+s" package vruse public ENUM box<a> VARIANT ok FIELD value a ;VARIANT VARIANT no ;VARIANT ;ENUM : WRAP ( a -- box<a> ) VRUSE-BOX:OK ; ;package"
 VSPARITY:VS-LOAD
 
 \ ---------------------------------------------------------------------------
 \ 3. A STRUCTURE named as a later declaration's payload type. Without a
 \    STRUCTURE arm on this path the payload was unresolvable.
 \ ---------------------------------------------------------------------------
-s" package edpay public STRUCTURE slotrec 0 FIELD v n ;STRUCTURE SUMTYPE box 0 VARIANT full slotrec ;VARIANT VARIANT empty ;VARIANT ;SUMTYPE ;package"
+s" package edpay public STRUCTURE slotrec FIELD v n ;STRUCTURE SUMTYPE box VARIANT full slotrec ;VARIANT VARIANT empty ;VARIANT ;SUMTYPE ;package"
 VSPARITY:VS-LOAD
 s" edpay:box" VSPARITY:VCOUNT 2 VSPARITY:T=
 s" edpay:slotrec" VSPARITY:FCOUNT 1 VSPARITY:T=
@@ -390,7 +390,7 @@ s" habu: bad enum declaration 'cm1': name must be a lowercase tail at '('"
 DECL-DIAG:HAS? -1 VSPARITY:T=
 
 DECL-DIAG:PROSE
-s" package vq public STRUCTURE cm2 0 FIELD a n ( note ) FIELD b n ;STRUCTURE ;package"
+s" package vq public STRUCTURE cm2 FIELD a n ( note ) FIELD b n ;STRUCTURE ;package"
 VSPARITY:VSTRY 7107 VSPARITY:T=
 s" habu: bad structure declaration 'cm2': unexpected token in structure declaration at '('"
 DECL-DIAG:HAS? -1 VSPARITY:T=
@@ -416,7 +416,7 @@ DECL-DIAG:OFF
 \    The effects are the real ones, not placeholders: the wrong-typed uses below
 \    are refused exactly as they are after a live declaration.
 \ ---------------------------------------------------------------------------
-s" package adrep public STRUCTURE rec 0 DERIVE addr FIELD a n FIELD b n ;STRUCTURE : ADR-USE ( ptr rec -- ptr n ) ADREP-REC:A ; : ADR-SPAN ( -- n ) ADREP-REC:BYTES ADREP-REC:CELLS + ; ;package"
+s" package adrep public STRUCTURE rec DERIVE addr FIELD a n FIELD b n ;STRUCTURE : ADR-USE ( ptr rec -- ptr n ) ADREP-REC:A ; : ADR-SPAN ( -- n ) ADREP-REC:BYTES ADREP-REC:CELLS + ; ;package"
 VSPARITY:VS-OPEN
 
 s" ADR-A ( ptr adrep:rec -- ptr n ) ADREP-REC:A" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
@@ -434,7 +434,7 @@ VSPARITY:VS-DONE
 \ The private spelling. A private product publishes FAMILY-MEMBER into its
 \ declaring package's private wordlist, so the only place the names resolve is
 \ inside that package — which is where the source below uses them.
-s" package adprv STRUCTURE prec 0 DERIVE addr FIELD lo n FIELD hi n ;STRUCTURE : PRV-HI ( ptr prec -- ptr n ) PREC-HI ; : PRV-STEP ( ptr prec -- ptr prec ) 1 PREC-AT ; : PRV-BYTES ( -- n ) PREC-BYTES ; ;package"
+s" package adprv STRUCTURE prec DERIVE addr FIELD lo n FIELD hi n ;STRUCTURE : PRV-HI ( ptr prec -- ptr n ) PREC-HI ; : PRV-STEP ( ptr prec -- ptr prec ) 1 PREC-AT ; : PRV-BYTES ( -- n ) PREC-BYTES ; ;package"
 VSPARITY:VS-LOAD
 
 \ and stays private: the same name outside the package does not resolve

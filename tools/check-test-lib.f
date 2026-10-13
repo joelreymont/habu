@@ -546,9 +546,9 @@ variable START-NS
 
 : TFAM-GOOD$ ( -- ptr u8 n )   \ declarations + signature use, multi-line
    SB-RESET
-   s" NEWTYPE tfck 1" SB-APPEND
+   s" NEWTYPE tfck<a>" SB-APPEND
    $0a SB-APPEND-C
-   s" SUMTYPE rsck 2" SB-APPEND
+   s" SUMTYPE rsck<a,b>" SB-APPEND
    $0a SB-APPEND-C
    s"   VARIANT ok  a ;VARIANT" SB-APPEND
    $0a SB-APPEND-C
@@ -563,21 +563,21 @@ variable START-NS
 
 : TFAM-BAD$ ( -- ptr u8 n )    \ duplicate variant rejects fail-closed
    SB-RESET
-   s" SUMTYPE rsbad 1 VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" SB-APPEND
+   s" SUMTYPE rsbad<a> VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-AFTER-BAD ( n -- n ) ;" SB-APPEND
    SB$ ;
 
 \ S2: a declaration PRE-CHECK reject (missing arity / unterminated) must report
 \ the same E-BAD-DECLARATION packet the native path emits, not a raw die.
-: TFAM-NOARITY$ ( -- ptr u8 n )   \ NEWTYPE missing its arity token
+: TFAM-NOARITY$ ( -- ptr u8 n )   \ NEWTYPE with an empty parameter list
    SB-RESET
-   s" NEWTYPE ckfnoar" SB-APPEND
+   s" NEWTYPE ckfnoar<>" SB-APPEND
    SB$ ;
 
 : SUM-NOEND$ ( -- ptr u8 n )      \ SUMTYPE body never reaches ;SUMTYPE
    SB-RESET
-   s" SUMTYPE cksnoend 1 VARIANT ok a ;VARIANT" SB-APPEND
+   s" SUMTYPE cksnoend<a> VARIANT ok a ;VARIANT" SB-APPEND
    SB$ ;
 
 : ENUM-GOOD$ ( -- ptr u8 n )   \ item 14 gap: enum declaration + signature use
@@ -596,7 +596,7 @@ variable START-NS
 
 : PROD-GOOD$ ( -- ptr u8 n )   \ item 15: product declaration + signature use
    SB-RESET
-   s" PRODUCT pck 0" SB-APPEND
+   s" PRODUCT pck" SB-APPEND
    $0a SB-APPEND-C
    s"   FIELD x n" SB-APPEND
    $0a SB-APPEND-C
@@ -609,14 +609,14 @@ variable START-NS
 
 : PROD-BAD$ ( -- ptr u8 n )    \ duplicate product field rejects fail-closed
    SB-RESET
-   s" PRODUCT pbad 1 FIELD x a FIELD x a ;PRODUCT" SB-APPEND
+   s" PRODUCT pbad<a> FIELD x a FIELD x a ;PRODUCT" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-AFTER-PBAD ( n -- n ) ;" SB-APPEND
    SB$ ;
 
 : PROD-ALL$SRC ( -- ptr u8 n ) \ all-errors support replay registers products
    SB-RESET
-   s" PRODUCT pae 0 FIELD v n ;PRODUCT" SB-APPEND
+   s" PRODUCT pae FIELD v n ;PRODUCT" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-PAE-USE ( pae -- pae ) ;" SB-APPEND
    SB$ ;
@@ -648,7 +648,7 @@ variable START-NS
 \ live bug these cover — it made every STRUCTURE-declaring file uncheckable.
 : STRUCT-GOOD$ ( -- ptr u8 n )   \ declaration + signature use of the family
    SB-RESET
-   s" STRUCTURE sck 0 FIELD lo n FIELD hi n ;STRUCTURE" SB-APPEND
+   s" STRUCTURE sck FIELD lo n FIELD hi n ;STRUCTURE" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-SD-PASS ( sck -- sck ) ;" SB-APPEND
    SB$ ;
@@ -657,22 +657,22 @@ variable START-NS
 \ declaration's payload type inside a SUMTYPE.
 : STRUCT-PAYLOAD$ ( -- ptr u8 n )
    SB-RESET
-   s" STRUCTURE spay 0 FIELD v n ;STRUCTURE" SB-APPEND
+   s" STRUCTURE spay FIELD v n ;STRUCTURE" SB-APPEND
    $0a SB-APPEND-C
-   s" SUMTYPE sbox 0 VARIANT full spay ;VARIANT VARIANT empty ;VARIANT ;SUMTYPE" SB-APPEND
+   s" SUMTYPE sbox VARIANT full spay ;VARIANT VARIANT empty ;VARIANT ;SUMTYPE" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-SD-BOX ( sbox -- sbox ) ;" SB-APPEND
    SB$ ;
 
 : STRUCT-BAD$ ( -- ptr u8 n )    \ unresolvable field type rejects fail-closed
    SB-RESET
-   s" STRUCTURE sbad 0 FIELD one nosuchtype ;STRUCTURE" SB-APPEND
+   s" STRUCTURE sbad FIELD one nosuchtype ;STRUCTURE" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-AFTER-SBAD ( n -- n ) ;" SB-APPEND
    SB$ ;
 
 : STRUCT-NOEND$ ( -- ptr u8 n )
-   s" STRUCTURE snoend 0 FIELD x n" ;
+   s" STRUCTURE snoend FIELD x n" ;
 
 \ --- comments inside a declaration body are SYNTAX ERRORS, and the nominal pass
 \ must say so rather than launder them.
@@ -698,13 +698,13 @@ variable START-NS
 
 : STRUCT-LINE-COMMENT$ ( -- ptr u8 n )
    SB-RESET
-   s" STRUCTURE scmt 0 FIELD a n \ trailing note" SB-APPEND
+   s" STRUCTURE scmt FIELD a n \ trailing note" SB-APPEND
    $0a SB-APPEND-C
    s" FIELD b n ;STRUCTURE" SB-APPEND
    SB$ ;
 
 : STRUCT-PAREN-COMMENT$ ( -- ptr u8 n )
-   s" STRUCTURE spcmt 0 FIELD a n ( note ) FIELD b n ;STRUCTURE" ;
+   s" STRUCTURE spcmt FIELD a n ( note ) FIELD b n ;STRUCTURE" ;
 
 \ --- a declaration longer than a capture buffer must REJECT, never truncate.
 \
@@ -763,7 +763,7 @@ variable LONG-J
    LONG-BUF LONG-U @ ;
 
 : PROD-NOEND$ ( -- ptr u8 n )
-   s" PRODUCT pnoend 0 FIELD x n" ;
+   s" PRODUCT pnoend FIELD x n" ;
 
 : VREC-NOEND$ ( -- ptr u8 n )
    s" VALUE-RECORD vnoend x n" ;
@@ -1017,7 +1017,7 @@ variable LONG-J
    SB-RESET
    s" package CKFA" SB-APPEND $0a SB-APPEND-C
    s" public" SB-APPEND $0a SB-APPEND-C
-   s" SUMTYPE ckffam 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" SUMTYPE ckffam VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND $0a SB-APPEND-C
    s" : CKF-PASS ( ckfa:ckffam -- ckfa:ckffam ) ;" SB-APPEND
    SB$ ;
@@ -1026,11 +1026,11 @@ variable LONG-J
    SB-RESET
    s" package CKFT1" SB-APPEND $0a SB-APPEND-C
    s" public" SB-APPEND $0a SB-APPEND-C
-   s" SUMTYPE ckfsame 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" SUMTYPE ckfsame VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND $0a SB-APPEND-C
    s" package CKFT2" SB-APPEND $0a SB-APPEND-C
    s" public" SB-APPEND $0a SB-APPEND-C
-   s" SUMTYPE ckfsame 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" SUMTYPE ckfsame VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND $0a SB-APPEND-C
    s" : CKF-TWO ( ckft1:ckfsame -- ckft1:ckfsame ) ;" SB-APPEND
    SB$ ;
@@ -1042,7 +1042,7 @@ variable LONG-J
    SB-RESET
    s" package CKFJ" SB-APPEND $0a SB-APPEND-C
    s" public" SB-APPEND $0a SB-APPEND-C
-   s" SUMTYPE ckfjfam 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" SUMTYPE ckfjfam VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND $0a SB-APPEND-C
    s" : CKF-JBAD ( n -- ckfj:ckfjfam ) ;" SB-APPEND
    SB$ ;
@@ -1051,7 +1051,7 @@ variable LONG-J
    SB-RESET
    s" package \" SB-APPEND $0a SB-APPEND-C
    s" public" SB-APPEND $0a SB-APPEND-C
-   s" SUMTYPE ckfefam 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" SUMTYPE ckfefam VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND $0a SB-APPEND-C
    s" : CKF-EBAD ( n -- \:ckfefam ) ;" SB-APPEND
    SB$ ;
@@ -1059,7 +1059,7 @@ variable LONG-J
 : FAM-PRIV$ ( -- ptr u8 n )        \ private family: qualified lookup is public-only
    SB-RESET
    s" package CKFP" SB-APPEND $0a SB-APPEND-C
-   s" SUMTYPE ckfpfam 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" SUMTYPE ckfpfam VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND $0a SB-APPEND-C
    s" : CKF-PRIV ( ckfp:ckfpfam -- ckfp:ckfpfam ) ;" SB-APPEND
    SB$ ;
@@ -1125,7 +1125,7 @@ variable LONG-J
    CAP-ERR bad-erru s" at 'dup'" CONTAINS? TTRUE ;
 
 : LBUF-GOOD$ ( -- ptr u8 n )
-   s" SUMTYPE cklb 1 VARIANT value a ;VARIANT ;SUMTYPE 2 LAYOUT-BUFFER CKLB-BUF cklb<n>" ;
+   s" SUMTYPE cklb<a> VARIANT value a ;VARIANT ;SUMTYPE 2 LAYOUT-BUFFER CKLB-BUF cklb<n>" ;
 
 : LBUF-OLD$ ( -- ptr u8 n )
    s" LAYOUT-BUFFER CKLB-OLD cklb<n>" ;
@@ -1148,7 +1148,7 @@ variable LONG-J
    s" 2 constant CKT-CAP CKT-CAP 2 * TYPED-BUFFER CKT-ROWS n : CKT-ROW ( n -- ptr n ) CKT-ROWS ;" ;
 
 : COUNT-LAYOUT$ ( -- ptr u8 n )
-   s" SUMTYPE cklb 1 VARIANT value a ;VARIANT ;SUMTYPE 2 constant CKT-CAP CKT-CAP LAYOUT-BUFFER CKLB-BUF cklb<n> : CKT-ROW ( n -- ptr cklb<n> ) CKLB-BUF ;" ;
+   s" SUMTYPE cklb<a> VARIANT value a ;VARIANT ;SUMTYPE 2 constant CKT-CAP CKT-CAP LAYOUT-BUFFER CKLB-BUF cklb<n> : CKT-ROW ( n -- ptr cklb<n> ) CKLB-BUF ;" ;
 
 : COUNT-NAMED-MISUSE$ ( -- ptr u8 n )
    s" 4 constant CKT-CAP CKT-CAP TYPED-BUFFER CKT-ROWS n : CKT-BAD ( -- ptr n ) CKT-ROWS ;" ;
@@ -1489,7 +1489,7 @@ variable LONG-J
    s" package CKLB-C 6 constant OPS 2 constant KEYS OPS KEYS + constant VOCAB VOCAB TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
    s" package CKLB-H HIR:OPCODES TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
    s" package CKLB-W : CAP ( -- n ) 4 ; CAP TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
-   s" package CKLB-L SUMTYPE cklb 1 VARIANT value a ;VARIANT ;SUMTYPE 2 constant CAP CAP LAYOUT-BUFFER BUF cklb<n> ;package" LBUF-ACCEPT
+   s" package CKLB-L SUMTYPE cklb<a> VARIANT value a ;VARIANT ;SUMTYPE 2 constant CAP CAP LAYOUT-BUFFER BUF cklb<n> ;package" LBUF-ACCEPT
    s" package CKLB-U CKLB-NOPE TYPED-BUFFER ROWS n ;package" LBUF-UNDEFINED
    s" package CKLB-V variable CAP CAP TYPED-BUFFER ROWS n ;package" LBUF-REFUSE
    s" package CKLB-T : CAP ( -- bool ) 0 0= ; CAP TYPED-BUFFER ROWS n ;package" LBUF-REFUSE
@@ -1766,7 +1766,7 @@ variable LONG-J
    s"    dup ;" SB-APPEND
    SB$ ;
 
-: ORIGIN-SUM$ ( -- ptr u8 n )      \ the arity slot holds VARIANT
+: ORIGIN-SUM$ ( -- ptr u8 n )      \ the variant name is uppercase
    SB-RESET
    s" SUMTYPE cktosum" SB-APPEND  $0a SB-APPEND-C
    s"    VARIANT Up" SB-APPEND  $0a SB-APPEND-C
@@ -1830,9 +1830,9 @@ variable LONG-J
 : TEST-ORIGIN-DECL ( -- )
    CAP-ERR BUF-CAP DIAG-BUFFER!
    0 0= DIAG-JSON!
-   ORIGIN-VERIFY-SUM 7108 T=                       \ E-TDECL-ARITY
-   DIAG-BUFFER$ s\" \"token\":\"VARIANT\"" CONTAINS? TTRUE
-   DIAG-BUFFER$ s\" \"line\":8,\"column\":4,\"byte_start\":119,\"byte_end\":126" CONTAINS? TTRUE
+   ORIGIN-VERIFY-SUM 7101 T=                       \ E-TFAM-CASE
+   DIAG-BUFFER$ s\" \"token\":\"Up\"" CONTAINS? TTRUE
+   DIAG-BUFFER$ s\" \"line\":8,\"column\":12,\"byte_start\":127,\"byte_end\":129" CONTAINS? TTRUE
    DIAG-BUFFER-OFF
    0 0= 0= DIAG-JSON! ;
 
@@ -2041,7 +2041,7 @@ variable LONG-J
    CAP-ERR erru code codeu CONTAINS? TTRUE ;
 
 : TEST-RUN-REFUSALS ( -- )
-   s\" s\" SUMTYPE ckrr 0 VARIANT same ;VARIANT VARIANT same ;VARIANT ;SUMTYPE\" evaluate"
+   s\" s\" SUMTYPE ckrr VARIANT same ;VARIANT VARIANT same ;VARIANT ;SUMTYPE\" evaluate"
    s" E-BAD-DECLARATION" RUN-REFUSED
    s\" package CKRR-USG public : CKRR-GW ( -- n ) 1 ; ;package : CKRR-GW ( n n -- n ) + ; s\" using CKRR-USG : CKRR-R1 ( -- n ) CKRR-GW ; ;using\" evaluate"
    s" E-USING-SHADOW-GLOBAL" RUN-REFUSED
@@ -2051,7 +2051,7 @@ variable LONG-J
 
 : TFAM-REDRIVE$ ( -- ptr u8 n )   \ good SUMTYPE + one real mismatch after it
    SB-RESET
-   s" SUMTYPE zrc 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND
+   s" SUMTYPE zrc VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-ZBAD ( n -- zrc ) ;" SB-APPEND
    SB$ ;
@@ -2113,12 +2113,12 @@ variable LONG-J
    outu 0 T=
    erru 0 T= ;
 
-: TEST-TFAM-NOARITY ( -- )   \ S2 parity: missing arity -> declaration packet
+: TEST-TFAM-NOARITY ( -- )   \ S2 parity: malformed header -> declaration packet
    TFAM-NOARITY$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
-   CAP-ERR erru s" missing arity" CONTAINS? TTRUE ;
+   CAP-ERR erru s" invalid type parameter header" CONTAINS? TTRUE ;
 
 : TEST-SUM-NOEND ( -- )      \ S2 parity: unterminated sum -> declaration packet
    SUM-NOEND$ DIRECT-JSON-STDIN 70 T=
@@ -2141,14 +2141,14 @@ variable LONG-J
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
-   CAP-ERR erru s" missing arity" CONTAINS? TTRUE ;
+   CAP-ERR erru s" invalid type parameter header" CONTAINS? TTRUE ;
 
 \ A cast whose signature does not parse, here a bare `ptr` that also hides a
 \ wrong-arity layout, is refused at the cast gate before any walk reads the row:
 \ the all-errors run renders the bad stored signature and exits 70.
 : CAST-BADSIG$ ( -- ptr u8 n )
    SB-RESET
-   s" STRUCTURE ckt-cbox 1 FIELD value a ;STRUCTURE" SB-APPEND
+   s" STRUCTURE ckt-cbox<a> FIELD value a ;STRUCTURE" SB-APPEND
    $0a SB-APPEND-C
    s" cast: CKT-CBAD ( ptr -- ckt-cbox )" SB-APPEND
    SB$ ;
@@ -2555,9 +2555,9 @@ TFAM:TF-NAME-MAX constant EFFECT-N
    0 LONG-U !
    s" NEWTYPE " LONG-PUT
    $62 EFFECT-NAME
-   s\"  0\nNEWTYPE " LONG-PUT
+   s\" \nNEWTYPE " LONG-PUT
    $61 EFFECT-NAME
-   s\"  12\nTRUSTED: MK ( -- " LONG-PUT
+   s\" <a,b,c,d,e,g,h,i,j,k,l,m>\nTRUSTED: MK ( -- " LONG-PUT
    $61 EFFECT-NAME
    s" <" LONG-PUT
    $62 EFFECT-NAME
@@ -2652,7 +2652,7 @@ create BIG $2000 allot   variable BIG-U
 : BIG-APP ( ptr u8 n -- ) {: a:ptr u:n :}  u 0 ?do a i + c@ BIG-C, loop ;
 : OVERSIZE$ ( -- ptr u8 n )
    0 BIG-U !
-   s" SUMTYPE ckbig 1 " BIG-APP
+   s" SUMTYPE ckbig<a> " BIG-APP
    200 0 ?do s" VARIANT vvvvvvvvvvvvvvvvvvvv n ;VARIANT " BIG-APP loop
    s" ;SUMTYPE" BIG-APP
    BIG BIG-U @ ;
@@ -2974,8 +2974,8 @@ create BIG $2000 allot   variable BIG-U
 : TEST-DECL-CTOR-TAIL ( -- )
    [: s" ENUM ptr red green ;ENUM" DECL-PKG$ ;] PTR-REFUSAL$ RESERVED-DECL-REFUSED
    [: s" ENUM ptr red green ;ENUM" ;] PTR-REFUSAL$ RESERVED-DECL-REFUSED
-   [: s" STRUCTURE ptr 0 FIELD x n ;STRUCTURE" DECL-PKG$ ;] PTR-REFUSAL$ RESERVED-DECL-REFUSED
-   [: s" STRUCTURE ptr 0 FIELD x n ;STRUCTURE" ;] PTR-REFUSAL$ RESERVED-DECL-REFUSED ;
+   [: s" STRUCTURE ptr FIELD x n ;STRUCTURE" DECL-PKG$ ;] PTR-REFUSAL$ RESERVED-DECL-REFUSED
+   [: s" STRUCTURE ptr FIELD x n ;STRUCTURE" ;] PTR-REFUSAL$ RESERVED-DECL-REFUSED ;
 
 : VREC-REFUSAL$ ( -- ptr u8 n )
    s" declaration 'ckvr': reserved name" ;
@@ -2983,8 +2983,8 @@ create BIG $2000 allot   variable BIG-U
 : TEST-DECL-VREC-TAIL ( -- )
    [: s" ENUM ckvr red green ;ENUM" VREC-PKG$ ;] VREC-REFUSAL$ RESERVED-DECL-REFUSED
    [: s" ENUM ckvr red green ;ENUM" VREC-TOP$ ;] VREC-REFUSAL$ RESERVED-DECL-REFUSED
-   [: s" STRUCTURE ckvr 0 FIELD x n ;STRUCTURE" VREC-PKG$ ;] VREC-REFUSAL$ RESERVED-DECL-REFUSED
-   [: s" STRUCTURE ckvr 0 FIELD x n ;STRUCTURE" VREC-TOP$ ;] VREC-REFUSAL$ RESERVED-DECL-REFUSED ;
+   [: s" STRUCTURE ckvr FIELD x n ;STRUCTURE" VREC-PKG$ ;] VREC-REFUSAL$ RESERVED-DECL-REFUSED
+   [: s" STRUCTURE ckvr FIELD x n ;STRUCTURE" VREC-TOP$ ;] VREC-REFUSAL$ RESERVED-DECL-REFUSED ;
 
 \ An atom-shaped tail (checker.f ATOM-TOK?) reads as an atom wherever the family
 \ does not resolve, outside the package that owns it for one, so ENUM and
@@ -2994,7 +2994,7 @@ create BIG $2000 allot   variable BIG-U
 
 : TEST-DECL-ATOM-TAIL ( -- )
    [: s" ENUM space-ck red green ;ENUM" DECL-PKG$ ;] ATOM-REFUSAL$ RESERVED-DECL-REFUSED
-   [: s" STRUCTURE space-ck 0 FIELD x n ;STRUCTURE" DECL-PKG$ ;] ATOM-REFUSAL$ RESERVED-DECL-REFUSED ;
+   [: s" STRUCTURE space-ck FIELD x n ;STRUCTURE" DECL-PKG$ ;] ATOM-REFUSAL$ RESERVED-DECL-REFUSED ;
 
 : LIN-REFUSED ( ptr u8 n -- ) {: a:ptr u:n :}
    a u NOM-LIN$ HB-LOAD-SRC NOM-LOAD-REFUSED
@@ -3655,9 +3655,9 @@ create BIG $2000 allot   variable BIG-U
 \ and by its effect, not as an undefined word.
 : CTOR-SRC$ ( ptr u8 n -- ptr u8 n ) {: use:ptr useu:n :}
    SB-RESET
-   s\" package CKTCT\npublic\nSUMTYPE ctout 0\n" SB-APPEND
+   s\" package CKTCT\npublic\nSUMTYPE ctout\n" SB-APPEND
    s\"    VARIANT ready n ;VARIANT\n   VARIANT gone ;VARIANT\n;SUMTYPE\n" SB-APPEND
-   s\" PRODUCT ctpt 0\n   FIELD x n\n   FIELD y n\n;PRODUCT\nprivate\n" SB-APPEND
+   s\" PRODUCT ctpt\n   FIELD x n\n   FIELD y n\n;PRODUCT\nprivate\n" SB-APPEND
    use useu SB-APPEND
    s\" \n;package\n" SB-APPEND
    SB$ ;
@@ -3684,7 +3684,7 @@ create BIG $2000 allot   variable BIG-U
 \ undefined word.
 : INIT-ACC-SRC$ ( ptr u8 n -- ptr u8 n ) {: use:ptr useu:n :}
    SB-RESET
-   s\" package CKTIA\npublic\nPRODUCT ckcell 0 DERIVE init FIELD v n ;PRODUCT\nprivate\n" SB-APPEND
+   s\" package CKTIA\npublic\nPRODUCT ckcell DERIVE init FIELD v n ;PRODUCT\nprivate\n" SB-APPEND
    use useu SB-APPEND
    s\" \n;package\n" SB-APPEND
    SB$ ;
@@ -3698,7 +3698,7 @@ create BIG $2000 allot   variable BIG-U
    INIT-ACC-SRC$ ;
 
 : INIT-ACC-STRUCT$ ( -- ptr u8 n )
-   s\" package CKTIS\npublic\nSTRUCTURE ckpair 0 DERIVE init FIELD first n FIELD second n ;STRUCTURE\nprivate\n: CKS-GET ( mut-view<a,b,c,init<d,ckpair>> -- mut-view<a,b,c,init<d,ckpair>> n ) CKTIS-CKPAIR:SECOND@ ;\n;package\n" ;
+   s\" package CKTIS\npublic\nSTRUCTURE ckpair DERIVE init FIELD first n FIELD second n ;STRUCTURE\nprivate\n: CKS-GET ( mut-view<a,b,c,init<d,ckpair>> -- mut-view<a,b,c,init<d,ckpair>> n ) CKTIS-CKPAIR:SECOND@ ;\n;package\n" ;
 
 : TEST-DERIVED-INIT-ACCESSORS ( -- )
    INIT-ACC-GOOD$ DIRECT-STDIN EXPECT-ACCEPTED
@@ -3718,7 +3718,7 @@ create BIG $2000 allot   variable BIG-U
 \ check-hook.f DUP-RC).
 : PREPLAY-DUP$ ( -- ptr u8 n )
    SB-RESET
-   S\" : CKT-PREPLAY ( -- ) s\q ckdrep\q s\q 0 FIELD x n\q CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;"
+   S\" : CKT-PREPLAY ( -- ) s\q ckdrep\q s\q FIELD x n\q CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;"
    SB-APPEND $0a SB-APPEND-C
    s" CKT-PREPLAY" SB-APPEND $0a SB-APPEND-C
    s" : CKDREP:MAKE ( n -- n ) 1 + ;" SB-APPEND $0a SB-APPEND-C
@@ -3736,7 +3736,7 @@ create BIG $2000 allot   variable BIG-U
 \ record used to be a placeholder word at line 1.
 : GDUP-PROD-AS$ ( ptr u8 n -- ptr u8 n ) {: def:ptr defu:n :}
    SB-RESET
-   s" PRODUCT ckdprod 0 FIELD x n ;PRODUCT" SB-APPEND $0a SB-APPEND-C
+   s" PRODUCT ckdprod FIELD x n ;PRODUCT" SB-APPEND $0a SB-APPEND-C
    def defu SB-APPEND $0a SB-APPEND-C
    SB$ ;
 
@@ -3745,7 +3745,7 @@ create BIG $2000 allot   variable BIG-U
 
 : GDUP-SUM$ ( -- ptr u8 n )
    SB-RESET
-   s" SUMTYPE ckdsum 0 VARIANT ckdone n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" SUMTYPE ckdsum VARIANT ckdone n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
    s" : CKDSUM:CKDONE ( n -- n ) 1 + ;" SB-APPEND $0a SB-APPEND-C
    SB$ ;
 
@@ -3782,14 +3782,14 @@ create BIG $2000 allot   variable BIG-U
 
 : TEST-GDUP-PRODUCT ( -- )
    [: GDUP-PROD$ ;] GDUP-PROD-LINE$ GDUP-PROD-WORD$
-   S\" \qfile\q:\q<stdin>\q,\qline\q:2,\qcolumn\q:3,\qbyte_start\q:39,\qbyte_end\q:51,"
+   S\" \qfile\q:\q<stdin>\q,\qline\q:2,\qcolumn\q:3,\qbyte_start\q:37,\qbyte_end\q:49,"
    EXPECT-GDUP-FORMS ;
 
 : TEST-GDUP-SUMTYPE ( -- )
    [: GDUP-SUM$ ;]
    S\" duplicate definition: CKDSUM:CKDONE at <stdin>:2\n"
    S\" \qword\q:\qCKDSUM:CKDONE\q,\qtoken\q:\qCKDSUM:CKDONE\q,\qtoken_index\q:0,"
-   S\" \qfile\q:\q<stdin>\q,\qline\q:2,\qcolumn\q:3,\qbyte_start\q:54,\qbyte_end\q:67,"
+   S\" \qfile\q:\q<stdin>\q,\qline\q:2,\qcolumn\q:3,\qbyte_start\q:52,\qbyte_end\q:65,"
    EXPECT-GDUP-FORMS ;
 
 \ The same name taken by the other rows the scan refuses it at: a typed storage
@@ -3803,22 +3803,22 @@ create BIG $2000 allot   variable BIG-U
    s" ;package" SB-APPEND $0a SB-APPEND-C
    s" package CKDXQ" SB-APPEND $0a SB-APPEND-C
    s" private" SB-APPEND $0a SB-APPEND-C
-   s" PRODUCT ckdpriv 0 FIELD x n ;PRODUCT" SB-APPEND $0a SB-APPEND-C
+   s" PRODUCT ckdpriv FIELD x n ;PRODUCT" SB-APPEND $0a SB-APPEND-C
    s" EXPORT CKDXP:CKDPRIV-MAKE" SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND $0a SB-APPEND-C
    SB$ ;
 
 : TEST-GDUP-DEFINERS ( -- )
    [: s" TYPED-VARIABLE CKDPROD:MAKE n" GDUP-PROD-AS$ ;] GDUP-PROD-LINE$ GDUP-PROD-WORD$
-   S\" \qfile\q:\q<stdin>\q,\qline\q:2,\qcolumn\q:16,\qbyte_start\q:52,\qbyte_end\q:64,"
+   S\" \qfile\q:\q<stdin>\q,\qline\q:2,\qcolumn\q:16,\qbyte_start\q:50,\qbyte_end\q:62,"
    EXPECT-GDUP-FORMS
    [: s" CAST: CKDPROD:MAKE ( n -- u8 )" GDUP-PROD-AS$ ;] GDUP-PROD-LINE$ GDUP-PROD-WORD$
-   S\" \qfile\q:\q<stdin>\q,\qline\q:2,\qcolumn\q:7,\qbyte_start\q:43,\qbyte_end\q:55,"
+   S\" \qfile\q:\q<stdin>\q,\qline\q:2,\qcolumn\q:7,\qbyte_start\q:41,\qbyte_end\q:53,"
    EXPECT-GDUP-FORMS
    [: GDUP-EXPORT$ ;]
    S\" duplicate definition: CKDXP:CKDPRIV-MAKE at <stdin>:8\n"
    S\" \qword\q:\qCKDXP:CKDPRIV-MAKE\q,\qtoken\q:\qCKDXP:CKDPRIV-MAKE\q,\qtoken_index\q:0,"
-   S\" \qfile\q:\q<stdin>\q,\qline\q:8,\qcolumn\q:8,\qbyte_start\q:120,\qbyte_end\q:138,"
+   S\" \qfile\q:\q<stdin>\q,\qline\q:8,\qcolumn\q:8,\qbyte_start\q:118,\qbyte_end\q:136,"
    EXPECT-GDUP-FORMS ;
 
 \ ---- a loaded file is composed where its loader sits ------------------------
@@ -4981,8 +4981,8 @@ variable SS-NEST-U
    \ under --verify-only, and standard input reports in the other modes what
    \ the same bytes as a named file do (SS-DECL-NESTED).
    s" ENUM ckcolor red" 7107 2 3 s" ENUM" SS-STOP! SS-DECL-NESTED SS-VERIFY
-   s" STRUCTURE ckpoint 0 FIELD x n" 7107 2 3 s" STRUCTURE" SS-STOP! SS-DECL-NESTED SS-VERIFY
-   s" PRODUCT ckpair 0 FIELD x n" 7107 2 3 s" PRODUCT" SS-STOP! SS-DECL-NESTED SS-VERIFY
+   s" STRUCTURE ckpoint FIELD x n" 7107 2 3 s" STRUCTURE" SS-STOP! SS-DECL-NESTED SS-VERIFY
+   s" PRODUCT ckpair FIELD x n" 7107 2 3 s" PRODUCT" SS-STOP! SS-DECL-NESTED SS-VERIFY
    s" VALUE-RECORD ckvr x n" 7107 2 3 s" VALUE-RECORD" SS-STOP! SS-DECL-NESTED SS-VERIFY
    s\" require src/lib/ffi-abi.f\nFUNCTION: CKF" 7155 3 1 s" FUNCTION:" SS-STOP! SS-EVERY
    s\" require src/lib/ffi-abi.f\nFUNCTION: CKF getpid" 7157 3 1 s" FUNCTION:" SS-STOP! SS-EVERY
@@ -5226,32 +5226,32 @@ variable SS-NEST-U
 \ fixtures; a 255-byte tail is still declared.
 : TEST-DECLARED-NAME-CAP ( -- )
    0 LONG-U !
-   s" SUMTYPE " $61 1100 s"  1 VARIANT value a ;VARIANT ;SUMTYPE" CAPN-DECL+
+   s" SUMTYPE " $61 1100 s" <a> VARIANT value a ;VARIANT ;SUMTYPE" CAPN-DECL+
    s" capn-sum-tail.f" s\" \"decl\":\"sumtype\""
    s\" \"token\":\"aaaaaaaaaaaaaaaa" CAPN-DECL-REFUSED
    0 LONG-U !
-   s\" SUMTYPE capn-sv 0\nVARIANT " $76 256 s\"  ;VARIANT ;SUMTYPE" CAPN-DECL+
+   s\" SUMTYPE capn-sv\nVARIANT " $76 256 s\"  ;VARIANT ;SUMTYPE" CAPN-DECL+
    s" capn-sum-variant.f" s\" \"decl\":\"sumtype\""
    s\" \"token\":\"vvvvvvvvvvvvvvvv" CAPN-DECL-REFUSED
    0 LONG-U !
-   s" PRODUCT capn-pr 0 FIELD " $66 256 s"  n ;PRODUCT" CAPN-DECL+
+   s" PRODUCT capn-pr FIELD " $66 256 s"  n ;PRODUCT" CAPN-DECL+
    s" capn-product-field.f" s\" \"decl\":\"product\""
    s\" \"token\":\"ffffffffffffffff" CAPN-DECL-REFUSED
    0 LONG-U !
-   s" STRUCTURE " $73 256 s"  0 FIELD x n ;STRUCTURE" CAPN-DECL+
+   s" STRUCTURE " $73 256 s"  FIELD x n ;STRUCTURE" CAPN-DECL+
    s" capn-struct-tail.f" s\" \"decl\":\"structure\""
    s\" \"token\":\"ssssssssssssssss" CAPN-DECL-REFUSED
    0 LONG-U !
-   s\" require src/lib/c2-memory.f\npackage CAPN-FLD\npublic\nSTRUCTURE capn-rec 0 DERIVE init FIELD "
+   s\" require src/lib/c2-memory.f\npackage CAPN-FLD\npublic\nSTRUCTURE capn-rec DERIVE init FIELD "
    $65 1100 s\"  n FIELD right n ;STRUCTURE\n;package" CAPN-DECL+
    s" capn-struct-field.f" s\" \"decl\":\"structure\""
    s\" \"token\":\"eeeeeeeeeeeeeeee" CAPN-DECL-REFUSED
    0 LONG-U !
-   s" ENUM " $6d 256 s"  0 VARIANT red ;VARIANT ;ENUM" CAPN-DECL+
+   s" ENUM " $6d 256 s"  VARIANT red ;VARIANT ;ENUM" CAPN-DECL+
    s" capn-enum-tail.f" s\" \"decl\":\"enum\""
    s\" \"token\":\"mmmmmmmmmmmmmmmm" CAPN-DECL-REFUSED
    0 LONG-U !
-   s" ENUM capn-col 0 VARIANT " $76 256 s"  ;VARIANT ;ENUM" CAPN-DECL+
+   s" ENUM capn-col VARIANT " $76 256 s"  ;VARIANT ;ENUM" CAPN-DECL+
    s" capn-enum-variant.f" s\" \"decl\":\"enum\""
    s\" \"token\":\"vvvvvvvvvvvvvvvv" CAPN-DECL-REFUSED
    0 LONG-U !
@@ -5259,12 +5259,12 @@ variable SS-NEST-U
    s" capn-enum-compact.f" s\" \"decl\":\"enum\""
    s\" \"token\":\"tttttttttttttttt" CAPN-DECL-REFUSED
    0 LONG-U !
-   s" ENUM capn-shape 0 VARIANT dot FIELD " $64 256 s"  n ;VARIANT ;ENUM" CAPN-DECL+
+   s" ENUM capn-shape VARIANT dot FIELD " $64 256 s"  n ;VARIANT ;ENUM" CAPN-DECL+
    s" capn-enum-field.f" s\" \"decl\":\"enum\""
    s\" \"token\":\"dddddddddddddddd" CAPN-DECL-REFUSED
    0 LONG-U !
-   s" SUMTYPE " $62 255 s\"  0 VARIANT capn-one ;VARIANT ;SUMTYPE\n" CAPN-DECL+
-   s" SUMTYPE " $63 256 s"  0 VARIANT capn-two ;VARIANT ;SUMTYPE" CAPN-DECL+
+   s" SUMTYPE " $62 255 s\"  VARIANT capn-one ;VARIANT ;SUMTYPE\n" CAPN-DECL+
+   s" SUMTYPE " $63 256 s"  VARIANT capn-two ;VARIANT ;SUMTYPE" CAPN-DECL+
    s" capn-sum-edge.f" CAPN-RUN {: outu:n erru:n rc:n :}
    s" capn-sum-edge.f" T-LABEL rc 70 T=
    outu 0 T=
@@ -5293,7 +5293,7 @@ variable SS-NEST-U
 
 : TEST-PACKAGE-NAME-CAP ( -- )
    0 LONG-U !
-   s" package " $61 1100 s\" \nNEWTYPE tt 0\n;package\n" CAPN-DECL+
+   s" package " $61 1100 s\" \nNEWTYPE tt\n;package\n" CAPN-DECL+
    s" capn-pkg.f" s\" capn-pkg.f\",\"line\":1,\"column\":9," CAPN-PKG-REFUSED
    0 LONG-U !
    $61 8001 CAPN-PKG+
@@ -5776,7 +5776,7 @@ variable SS-NEST-U
 \ The pre-pass registers what DEFER-LAYOUT-BUFFER publishes, so a definition
 \ calling the accessor or either binder certifies, where each was E-UNDEFINED.
 : STG-DEFER-GOOD$ ( -- ptr u8 n )
-   s" NEWTYPE ckt-dk 0 DEFER-LAYOUT-BUFFER CKT-DK ckt-dk : CKT-DK-AT ( n -- ptr ckt-dk ) CKT-DK ; : CKT-DK-SIZE ( n -- ) CKT-DK-BIND ; : CKT-DK-MORE ( n -- ) CKT-DK-GROW ;" ;
+   s" NEWTYPE ckt-dk DEFER-LAYOUT-BUFFER CKT-DK ckt-dk : CKT-DK-AT ( n -- ptr ckt-dk ) CKT-DK ; : CKT-DK-SIZE ( n -- ) CKT-DK-BIND ; : CKT-DK-MORE ( n -- ) CKT-DK-GROW ;" ;
 
 : TEST-STORAGE-DEFER ( -- )
    STG-DEFER-GOOD$ DIRECT-STDIN EXPECT-ACCEPTED ;
@@ -5901,7 +5901,7 @@ variable AGREE-ERR-U
 \ one is shaped to fail at a different scope if that scope inherits:
 \
 \   NEU-FAMILY-SRC$  a top-level family declaration whose tail this package
-\                    already owns (the `NEWTYPE ckneub 0` line below). The
+\                    already owns (the `NEWTYPE ckneub` line below). The
 \                    nominal pass is the first pass that registers
 \                    declarations, so an inherited CHK-RUN-NOMINAL-LINTS scope
 \                    files the subject's family under CHECK-TEST and collides
@@ -5925,13 +5925,13 @@ variable AGREE-ERR-U
 \ what these runs recorded.
 
 \ The tail the subject source below also declares, owned here by CHECK-TEST.
-NEWTYPE ckneub 0
+NEWTYPE ckneub
 
 using CHECK
 
 : NEU-FAMILY-SRC$ ( -- ptr u8 n )
    SB-RESET
-   s" NEWTYPE ckneub 0" SB-APPEND $0a SB-APPEND-C
+   s" NEWTYPE ckneub" SB-APPEND $0a SB-APPEND-C
    s" : CKT-NEU-B ( ckneub -- ckneub ) ;" SB-APPEND
    SB$ ;
 
@@ -5986,12 +5986,12 @@ variable NEU-THROW-PKG-RC
 \ two runs share, which is where the state survived from one to the other.
 : POISON-BAD-SRC$ ( -- ptr u8 n )
    SB-RESET
-   s" SUMTYPE cktpois 1 VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" SB-APPEND
+   s" SUMTYPE cktpois<a> VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" SB-APPEND
    SB$ ;
 
 : POISON-GOOD-SRC$ ( -- ptr u8 n )
    SB-RESET
-   s" SUMTYPE cktpois 1 VARIANT one a ;VARIANT VARIANT two a ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" SUMTYPE cktpois<a> VARIANT one a ;VARIANT VARIANT two a ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
    s" : CKT-POIS-USE ( cktpois<i64> -- cktpois<i64> ) ;" SB-APPEND
    SB$ ;
 
@@ -6106,9 +6106,9 @@ variable LC-OTHER-U
 : LC-USE-BAD$SRC ( -- ptr u8 n )
    s\" require lc-bad-dep.f\n: CKT-LC-USE8 ( -- n ) CKT-LC-EIGHT ;\n" ;
 
-\ A family declaration missing its arity, which the nominal pass refuses.
+\ A malformed family header, which the nominal pass refuses.
 : LC-DECL$SRC ( -- ptr u8 n )
-   s\" NEWTYPE cklcnoar\n" ;
+   s\" NEWTYPE cklcnoar<>\n" ;
 
 \ An unterminated string, which discovery refuses before any later stage reads
 \ the file.
@@ -6118,14 +6118,14 @@ variable LC-OTHER-U
 \ A structure whose field has the type a required file declares, the require
 \ absolute so that it resolves wherever the bytes are checked.
 : LC-TYPE-DEP$SRC ( -- ptr u8 n )
-   s\" NEWTYPE cklctyval 0\n" ;
+   s\" NEWTYPE cklctyval\n" ;
 
 : LC-TYPE-USE$SRC ( -- ptr u8 n )
    SB-RESET
    s" require " SB-APPEND
    s" lc-type-dep.f" LC-AT SB-APPEND
    $0a SB-APPEND-C
-   s\" STRUCTURE cklctypair 0 FIELD value cklctyval ;STRUCTURE\n" SB-APPEND
+   s\" STRUCTURE cklctypair FIELD value cklctyval ;STRUCTURE\n" SB-APPEND
    SB$ ;
 
 : LC-QUOTE$ ( -- ptr u8 n )

@@ -345,7 +345,7 @@ variable LAST-ERR-U
 \ asserts no longer depends on which library happens to declare a structure.
 : APPEND-CTOR-PROBE ( -- )
    s" src/lib/string.f" SUB$
-   S\" \npackage PTD-CTOR\npublic\nSTRUCTURE probe 0\n  FIELD one n\n;STRUCTURE\n;package\n"
+   S\" \npackage PTD-CTOR\npublic\nSTRUCTURE probe\n  FIELD one n\n;STRUCTURE\n;package\n"
    APPEND-FILE ;
 
 : HOOK-BLANK-CONTROL-CASE ( -- )

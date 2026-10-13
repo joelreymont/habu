@@ -45,7 +45,7 @@ DEFLINEAR LIN-OWN:aux
 package LIN-OTHER
 public
 DEFLINEAR LIN-OTHER:tok
-NEWTYPE ofam 0
+NEWTYPE ofam
 ;package
 DEFLINEAR lin-free
 

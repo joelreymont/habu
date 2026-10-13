@@ -336,7 +336,7 @@ create EMPTY 1 allot            \ zero-length stdin
 
 : SUMTYPE-FORGE$ ( -- ptr u8 n )     \ type-family DSL still works at top level
    SB-RESET
-   s" SUMTYPE iwgfoo 1 VARIANT iwgbar a ;VARIANT ;SUMTYPE" SB-APPEND LF
+   s" SUMTYPE iwgfoo<a> VARIANT iwgbar a ;VARIANT ;SUMTYPE" SB-APPEND LF
    SB$ ;
 
 : XREF-FORGE$ ( -- ptr u8 n )        \ an owner-rooted internal word retains its record
@@ -362,8 +362,8 @@ create EMPTY 1 allot            \ zero-length stdin
 
 : TDSL-TOP-FORGE$ ( -- ptr u8 n )    \ NEWTYPE/PRODUCT still work at top level
    SB-RESET
-   s" NEWTYPE iwgtf 0" SB-APPEND LF
-   s" PRODUCT iwgpr 0 FIELD x n ;PRODUCT" SB-APPEND LF
+   s" NEWTYPE iwgtf" SB-APPEND LF
+   s" PRODUCT iwgpr FIELD x n ;PRODUCT" SB-APPEND LF
    SB$ ;
 
 \ --- the retired NEWTYPE spelling. Until 2026-07-26 this definer was called
@@ -387,12 +387,12 @@ create EMPTY 1 allot            \ zero-length stdin
    SB-RESET
    s" \ TYPEFAMILY iwgtombc 0" SB-APPEND LF
    S\" : IWG-TOMB-TEXT ( -- ptr u8 n ) s\" TYPEFAMILY iwgtombs 0\" ;" SB-APPEND LF
-   s" NEWTYPE iwgtombok 0" SB-APPEND LF
+   s" NEWTYPE iwgtombok" SB-APPEND LF
    SB$ ;
 
 : PF-REFLECT-FORGE$ ( -- ptr u8 n )  \ packaged committed reflection is checked/public
    SB-RESET
-   s" PRODUCT iwgpf 0 FIELD x n ;PRODUCT" SB-APPEND LF
+   s" PRODUCT iwgpf FIELD x n ;PRODUCT" SB-APPEND LF
    s" : IWG-PF-READ ( -- n )" SB-APPEND LF
    s"    TYPE-FIELD:COUNT drop" SB-APPEND LF
    s"    TFAM:TFAM-N@ 1 - TYPE-FIELD:NO-VARIANT 0 TYPE-FIELD:EACH if drop else drop then" SB-APPEND LF
@@ -882,7 +882,7 @@ create QNAME QNAME-CAP allot
 : SEAL-BARE-FORGE$ ( -- ptr u8 n )   \ the pre-seal crash program, verbatim
    SB-RESET
    s" 0 SCH-RBF-P !" SB-APPEND LF
-   s" SUMTYPE iwgseal 0" SB-APPEND LF
+   s" SUMTYPE iwgseal" SB-APPEND LF
    s" VARIANT iwgsa n ;VARIANT" SB-APPEND LF
    s" VARIANT iwgsb n ;VARIANT" SB-APPEND LF
    s" ;SUMTYPE" SB-APPEND LF
@@ -981,7 +981,7 @@ create QNAME QNAME-CAP allot
 : TSEAL-RBF-FORGE$ ( -- ptr u8 n )    \ the pre-seal SIGSEGV program, verbatim
    SB-RESET
    s" 0 TF-RBF-P !" SB-APPEND LF
-   s" SUMTYPE iwgtseal 0" SB-APPEND LF
+   s" SUMTYPE iwgtseal" SB-APPEND LF
    s" VARIANT iwgta n ;VARIANT" SB-APPEND LF
    s" VARIANT iwgtb n ;VARIANT" SB-APPEND LF
    s" ;SUMTYPE" SB-APPEND LF
@@ -989,11 +989,11 @@ create QNAME QNAME-CAP allot
 
 : TSEAL-SVX-FORGE$ ( -- ptr u8 n )    \ the pre-seal `die` program, verbatim
    SB-RESET
-   s" SUMTYPE iwgsvx 0" SB-APPEND LF
+   s" SUMTYPE iwgsvx" SB-APPEND LF
    s" VARIANT iwgsv1 n ;VARIANT" SB-APPEND LF
    s" ;SUMTYPE" SB-APPEND LF
    s" 99999 SVX-HI !" SB-APPEND LF
-   s" SUMTYPE iwgsvx 0" SB-APPEND LF
+   s" SUMTYPE iwgsvx" SB-APPEND LF
    s" VARIANT iwgsv2 n ;VARIANT" SB-APPEND LF
    s" ;SUMTYPE" SB-APPEND LF
    SB$ ;
@@ -1216,7 +1216,7 @@ create QNAME QNAME-CAP allot
 : DSEAL-PLAN-FORGE$ ( -- ptr u8 n )   \ the pre-seal SIGSEGV program, verbatim
    SB-RESET
    s" 0 TDPLAN-P !" SB-APPEND LF
-   s" SUMTYPE iwgdseal 0" SB-APPEND LF
+   s" SUMTYPE iwgdseal" SB-APPEND LF
    s" VARIANT iwgda n ;VARIANT" SB-APPEND LF
    s" VARIANT iwgdb n ;VARIANT" SB-APPEND LF
    s" ;SUMTYPE" SB-APPEND LF
@@ -1247,7 +1247,7 @@ create QNAME QNAME-CAP allot
 : DSEAL-ARMED-QUAL-FORGE$ ( -- ptr u8 n )
    SB-RESET
    s" 0 TYPE-DECL:TDECL-EVAL-ARMED !" SB-APPEND LF
-   s" SUMTYPE iwgdarm 0" SB-APPEND LF
+   s" SUMTYPE iwgdarm" SB-APPEND LF
    s" VARIANT iwgdc n ;VARIANT" SB-APPEND LF
    s" ;SUMTYPE" SB-APPEND LF
    SB$ ;
@@ -1258,9 +1258,9 @@ create QNAME QNAME-CAP allot
 \ package open -- which is exactly the standing the seven names exist to keep.
 : DSEAL-GRAMMAR-FORGE$ ( -- ptr u8 n )
    SB-RESET
-   s" NEWTYPE iwgdnt 0" SB-APPEND LF
-   s" PRODUCT iwgdpr 0 FIELD iwgdf n ;PRODUCT" SB-APPEND LF
-   s" SUMTYPE iwgdsm 0" SB-APPEND LF
+   s" NEWTYPE iwgdnt" SB-APPEND LF
+   s" PRODUCT iwgdpr FIELD iwgdf n ;PRODUCT" SB-APPEND LF
+   s" SUMTYPE iwgdsm" SB-APPEND LF
    s" VARIANT iwgdv n ;VARIANT" SB-APPEND LF
    s" ;SUMTYPE" SB-APPEND LF
    SB$ ;

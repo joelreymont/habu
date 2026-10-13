@@ -79,10 +79,10 @@ require src/compiler/ir/context.f
 package IR-ARENA
 public
 
-NEWTYPE arena 0
-NEWTYPE view 0
-NEWTYPE cell-id 0
-NEWTYPE reader 0
+NEWTYPE arena
+NEWTYPE view
+NEWTYPE cell-id
+NEWTYPE reader
 
 private
 

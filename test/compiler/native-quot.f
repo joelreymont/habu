@@ -302,7 +302,7 @@ variable LITERAL-RESULT
 \ Its mismatch stops checker site recording, but CONSUME declares the literal
 \ callback's real ABI and the deferred call preserves the nominal contract.
 public
-NEWTYPE phantom 0
+NEWTYPE phantom
 variable MINT-CALLS
 variable OPAQUE-CALLBACK
 : CONSUME ( [ -- ] -- ) execute ;

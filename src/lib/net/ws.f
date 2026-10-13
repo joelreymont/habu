@@ -83,12 +83,12 @@ public
 \ One accepted connection: its worker's slot and the count of retirements that
 \ slot had seen when it opened, so a handle kept past its socket names no later
 \ one.
-NEWTYPE socket 0
+NEWTYPE socket
 
 \ What RECEIVE answers: a whole text or binary message, its bytes and their
 \ count; that the socket has closed, with the status it closed under; or that
 \ the wait ran out first.
-ENUM message 0
+ENUM message
    VARIANT text FIELD chars ptr u8 FIELD count n ;VARIANT
    VARIANT binary FIELD bytes ptr u8 FIELD len n ;VARIANT
    VARIANT closed FIELD status n ;VARIANT
@@ -97,7 +97,7 @@ ENUM message 0
 
 \ What ACCEPT answers: the socket of a handshake that passed, or the HTTP
 \ status, 400 or 426, a refused one is answered with once the handler returns.
-ENUM accepted 0
+ENUM accepted
    VARIANT open FIELD sock socket ;VARIANT
    VARIANT refused FIELD status n ;VARIANT
 ;ENUM

@@ -42,11 +42,11 @@ ENUM opcode continuation text binary close ping pong ;ENUM
 ENUM sender client server ;ENUM
 
 \ A close frame's status code (section 7.4.1).
-NEWTYPE close-code 0
+NEWTYPE close-code
 
 \ A frame header: fin is set on a message's last frame, len is the payload's
 \ length in bytes, and key is the masking key, 0 on an unmasked frame.
-STRUCTURE header 0
+STRUCTURE header
    FIELD fin bool
    FIELD op opcode
    FIELD len n
@@ -56,7 +56,7 @@ STRUCTURE header 0
 \ What DECODE-HEADER makes of the bytes held: either `need`, the count of bytes
 \ the header takes, to hold before decoding again, or the `frame` header and
 \ the count of bytes it took, where the payload starts.
-ENUM decoded 0
+ENUM decoded
    VARIANT need FIELD bytes n ;VARIANT
    VARIANT frame FIELD head header FIELD size n ;VARIANT
 ;ENUM

@@ -3,7 +3,7 @@
 \ declaration; nothing else can.
 package NW-OK
 public
-NEWTYPE alpha 0
+NEWTYPE alpha
 private
 CAST: MINT-A ( n -- NW-OK:alpha )
 ;package

@@ -9,11 +9,11 @@ require src/lib/test.f
 
 package NSP
 public
-ENUM verdict 0 DERIVE eq
+ENUM verdict DERIVE eq
    VARIANT clear ;VARIANT
    VARIANT collision ;VARIANT
 ;ENUM
-SUMTYPE shape 0
+SUMTYPE shape
    VARIANT core n n n n n ;VARIANT
 ;SUMTYPE
 

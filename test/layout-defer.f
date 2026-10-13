@@ -23,7 +23,7 @@ variable #CASE
    then ;
 
 \ ---- deferred column over an arity-0 nominal scalar family (width 1) ---------
-NEWTYPE dtk 0
+NEWTYPE dtk
 
 \ The declaration itself is the decisive assertion: if the checker rejected the
 \ deferred accessor body, this line throws and the load fails.
@@ -124,7 +124,7 @@ $200000 DTK-GROW-RC E-LAYOUT-CEIL T=
 
 \ ---- definer rejects the same illegal types LAYOUT-BUFFER does --------------
 DEFLINEAR dfl-lin
-SUMTYPE dfl-owned 0
+SUMTYPE dfl-owned
    VARIANT hold dfl-lin ;VARIANT
 ;SUMTYPE
 

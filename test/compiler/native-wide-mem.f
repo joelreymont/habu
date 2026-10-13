@@ -18,16 +18,16 @@ public
 \ minimal pair the diagnosis reduced to: a one-field record's `@` compiled before
 \ this leaf and must go on compiling, and it is the row that says the width is
 \ being READ rather than a wide lowering being taken unconditionally.
-STRUCTURE w1 0
+STRUCTURE w1
   FIELD a n
 ;STRUCTURE
 
-STRUCTURE w2 0
+STRUCTURE w2
   FIELD a n
   FIELD b n
 ;STRUCTURE
 
-STRUCTURE w3 0
+STRUCTURE w3
   FIELD a n
   FIELD b n
   FIELD c n
@@ -36,7 +36,7 @@ STRUCTURE w3 0
 \ A table-column record, field for field: a header span, its length, and an
 \ alignment code. Its first field being a POINTER is what makes an exchanged
 \ slot a wrong string.
-STRUCTURE col 0
+STRUCTURE col
   FIELD ha ptr u8
   FIELD hn n
   FIELD al n
@@ -45,7 +45,7 @@ STRUCTURE col 0
 \ A TAGGED family, whose value carries a tag on top: reading one out of memory
 \ has to leave a bundle a dispatch will accept, which is the composition with the
 \ landed MATCH work.
-SUMTYPE bx 0
+SUMTYPE bx
   VARIANT b0 ;VARIANT
   VARIANT b2 n n ;VARIANT
 ;SUMTYPE
@@ -55,12 +55,12 @@ SUMTYPE bx 0
 \ so its width is one the registry cannot answer and only the checker knows. It
 \ is the composition with the landed construction work - a value built with pads
 \ added at the site, stored whole, and read back whole.
-PRODUCT pt 0
+PRODUCT pt
   FIELD x n
   FIELD y n
 ;PRODUCT
 
-ENUM opt2 1
+ENUM opt2<a>
    VARIANT n2 ;VARIANT
    VARIANT s2 FIELD value a ;VARIANT
 ;ENUM

@@ -27,7 +27,7 @@ private
 \ How one request ended: complete, refused with a status (400, 431, 413, 501),
 \ or over before a request arrived (the peer left, the idle deadline passed,
 \ the connection failed).
-SUMTYPE parse-result 0
+SUMTYPE parse-result
    VARIANT complete ;VARIANT
    VARIANT malformed ;VARIANT
    VARIANT head-too-large ;VARIANT

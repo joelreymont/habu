@@ -2456,7 +2456,7 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: at:n :}
    name nameu MANGLE {: tail:ptr tailu:n :}
-   tail tailu s" 0" CHECKER-DEFFAMILY
+   tail tailu CHECKER-DEFFAMILY
    name nameu tail tailu DTC-BUILD-IN
    DTC-NAME$ at nameu ARM              \ the converter's own name, the TYPE's span
    CAST-TRUST
@@ -2480,12 +2480,10 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
 : SUMTYPE-END? ( ptr u8 n -- bool )
    s" ;SUMTYPE" STR=CI ;
 
-\ Missing name/arity are reported by CHECKER-DEFFAMILY through the declaration
+\ Missing names and malformed headers are reported by CHECKER-DEFFAMILY through the declaration
 \ packet (E-BAD-DECLARATION), matching the native path -- no raw pre-check die (§24).
 : RECORD-NEWTYPE ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
-   NEXT-SCAN {: ar:ptr aru:n :}
-   name nameu ar aru CHECKER-DEFFAMILY ;
+   NAME-TOKEN CHECKER-DEFFAMILY ;
 
 \ A SUMTYPE defines its constructors when it loads, so after the registration
 \ the scan replays their checked effects: a later definition that calls one, as
@@ -2561,7 +2559,7 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
 : STRUCTURE-DECL-END? ( ptr u8 n -- bool )
    s" ;STRUCTURE" STR=CI ;
 
-\ Registration-only replay of the unified `STRUCTURE name arity FIELD f t ..
+\ Registration-only replay of the unified `STRUCTURE name[<params>] FIELD f t ..
 \ ;STRUCTURE` (mirrors RECORD-ENUM). Distinct from RECORD-STRUCTURE above, which
 \ handles the Forth-standard `BEGIN-STRUCTURE .. END-STRUCTURE` layout facility;
 \ these are different declarations that happen to share a word stem.
@@ -2589,8 +2587,8 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
 : PRODUCT-END? ( ptr u8 n -- bool )
    s" ;PRODUCT" STR=CI ;
 
-\ Registration-only replay of `PRODUCT name arity FIELD f t .. ;PRODUCT` (mirrors
-\ RECORD-SUMTYPE): buffer the `arity FIELD ..` body through ;PRODUCT, register
+\ Registration-only replay of `PRODUCT name[<params>] FIELD f t .. ;PRODUCT` (mirrors
+\ RECORD-SUMTYPE): buffer the `FIELD ..` body through ;PRODUCT, register
 \ the TK-PRODUCT family + its generated-word metadata rows so later signatures
 \ in this source resolve the family, and replay the MAKE/UNMAKE effects. No
 \ dictionary words are generated on this path (engine-definer-only, sum parity).

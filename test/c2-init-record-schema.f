@@ -6,17 +6,17 @@ require src/lib/test.f
 package C2-INIT-RECORD-SCHEMA
 
 public
-PRODUCT pair 0 FIELD left n FIELD right n ;PRODUCT
-PRODUCT other 0 FIELD item n ;PRODUCT
-STRUCTURE nested 0 FIELD marker n FIELD body pair ;STRUCTURE
-STRUCTURE scoped 2 FIELD source read-view<a,b,u8> FIELD mark n ;STRUCTURE
-STRUCTURE phantom 3 FIELD source read-view<a,b,c> FIELD mark n ;STRUCTURE
-STRUCTURE flexible 1 FIELD first a FIELD mark n ;STRUCTURE
-STRUCTURE inner-flex 1 FIELD value a ;STRUCTURE
-STRUCTURE outer-flex 1 FIELD nested inner-flex<a> ;STRUCTURE
-STRUCTURE exchanged 2 FIELD first a FIELD second b ;STRUCTURE
-STRUCTURE packed 0 POLICY packed-tag FIELD item n ;STRUCTURE
-STRUCTURE empty 0 ;STRUCTURE
+PRODUCT pair FIELD left n FIELD right n ;PRODUCT
+PRODUCT other FIELD item n ;PRODUCT
+STRUCTURE nested FIELD marker n FIELD body pair ;STRUCTURE
+STRUCTURE scoped<a,b> FIELD source read-view<a,b,u8> FIELD mark n ;STRUCTURE
+STRUCTURE phantom<a,b,c> FIELD source read-view<a,b,c> FIELD mark n ;STRUCTURE
+STRUCTURE flexible<a> FIELD first a FIELD mark n ;STRUCTURE
+STRUCTURE inner-flex<a> FIELD value a ;STRUCTURE
+STRUCTURE outer-flex<a> FIELD nested inner-flex<a> ;STRUCTURE
+STRUCTURE exchanged<a,b> FIELD first a FIELD second b ;STRUCTURE
+STRUCTURE packed POLICY packed-tag FIELD item n ;STRUCTURE
+STRUCTURE empty ;STRUCTURE
 ENUM choice red blue ;ENUM
 
 private

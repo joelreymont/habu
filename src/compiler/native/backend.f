@@ -27,7 +27,7 @@ public
 \ answer, not this file's. It is a one-field nominal over a bit set, so a bare
 \ integer cannot be passed where a linkage is wanted and the value stays one
 \ cell, which keeps the dispatch linkage small.
-STRUCTURE linkage 0
+STRUCTURE linkage
    FIELD bits n
 ;STRUCTURE
 
@@ -57,7 +57,7 @@ public
    probe BITS {: want:n :}
    set BITS want and want = ;
 
-STRUCTURE pass 0 DERIVE addr
+STRUCTURE pass DERIVE addr
    FIELD declare [ n n NBACK:linkage -- ]
    FIELD select [ IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module ]
    FIELD prune [ IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module ]
@@ -73,7 +73,7 @@ STRUCTURE pass 0 DERIVE addr
 
 private
 
-STRUCTURE row 0 DERIVE addr
+STRUCTURE row DERIVE addr
    FIELD descriptor CTARGET:backend
    FIELD implementation pass
 ;STRUCTURE
@@ -194,7 +194,7 @@ public
 package NSESSION
 public
 
-STRUCTURE session 0
+STRUCTURE session
    FIELD ctx IR-CTX:ctx
    FIELD provider CTARGET:backend-id
    FIELD lease NLEASE:lease

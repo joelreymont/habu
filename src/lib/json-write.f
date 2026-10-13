@@ -39,7 +39,7 @@ public
 
 \ Fixed output uses out/cap/len. Growable output uses the caller's BUF header
 \ through buf. A closed writer keeps CLOSED-CAP.
-STRUCTURE writer 0
+STRUCTURE writer
   FIELD out ptr u8
   FIELD cap n
   FIELD len n

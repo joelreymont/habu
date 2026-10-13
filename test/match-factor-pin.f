@@ -64,7 +64,7 @@ variable ERR-U
 
 : RT-CASES ( -- )
    s" rt/roundtrip"
-      s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: RT ( n -- n ) construct mfp ok MATCH mfp ok OF 1 + ENDOF err OF negate ENDOF ;MATCH ;\n: RTE ( n -- n ) construct mfp err MATCH mfp ok OF 1 + ENDOF err OF negate ENDOF ;MATCH ;\nSUMTYPE mfpw 0\n  VARIANT small n ;VARIANT\n  VARIANT big ptr u8 n n ;VARIANT\n;SUMTYPE\n: RW ( ptr u8 n n -- n ) construct mfpw big MATCH mfpw small OF 100 * ENDOF big OF nip nip ENDOF ;MATCH ;\n41 RT . 7 RTE . s\" zz\" 9 RW . cr\ns\" ok\" type cr\n"
+      s\" SUMTYPE mfp\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: RT ( n -- n ) construct mfp ok MATCH mfp ok OF 1 + ENDOF err OF negate ENDOF ;MATCH ;\n: RTE ( n -- n ) construct mfp err MATCH mfp ok OF 1 + ENDOF err OF negate ENDOF ;MATCH ;\nSUMTYPE mfpw\n  VARIANT small n ;VARIANT\n  VARIANT big ptr u8 n n ;VARIANT\n;SUMTYPE\n: RW ( ptr u8 n n -- n ) construct mfpw big MATCH mfpw small OF 100 * ENDOF big OF nip nip ENDOF ;MATCH ;\n41 RT . 7 RTE . s\" zz\" 9 RW . cr\ns\" ok\" type cr\n"
       s\" 42\n-7\n9\n\nok\n" POS ;
 
 \ --- PKG: package wordlist restoration -------------------------------------
@@ -76,7 +76,7 @@ variable ERR-U
 
 : PKG-CASE ( -- )
    s" pkg/restore"
-      s\" package MFPK\nSUMTYPE pk 0\n  VARIANT ok n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: PRIV ( -- n ) 41 ;\n: RP ( n -- n ) construct pk ok MATCH pk ok OF PRIV + ENDOF err OF PRIV - ENDOF ;MATCH ;\npublic\n: RUN ( -- n ) 4 RP ;\n;package\nMFPK:RUN . cr\ns\" armed\" type cr\nPRIV . cr\n"
+      s\" package MFPK\nSUMTYPE pk\n  VARIANT ok n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: PRIV ( -- n ) 41 ;\n: RP ( n -- n ) construct pk ok MATCH pk ok OF PRIV + ENDOF err OF PRIV - ENDOF ;MATCH ;\npublic\n: RUN ( -- n ) 4 RP ;\n;package\nMFPK:RUN . cr\ns\" armed\" type cr\nPRIV . cr\n"
       70 s\" 45\n\narmed\n" s" E-UNDEFINED: PRIV" NEG ;
 
 \ --- DIAG: every factored failure branch dies at its own token -------------
@@ -88,25 +88,25 @@ variable ERR-U
 
 : DIAG-CASES ( -- )
    s" diag/con-fam"
-      s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: X ( n -- n ) construct nofam ok ;\n"
+      s\" SUMTYPE mfp\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: X ( n -- n ) construct nofam ok ;\n"
       70 s" " s" hb: construct: unknown family: nofam" NEG
    s" diag/con-var"
-      s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: X ( n -- mfp ) construct mfp novar ;\n"
+      s\" SUMTYPE mfp\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: X ( n -- mfp ) construct mfp novar ;\n"
       70 s" " s" hb: construct: unknown variant: novar" NEG
    s" diag/match-fam"
-      s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: X ( mfp -- n ) MATCH nofam ok OF ENDOF ;MATCH ;\n"
+      s\" SUMTYPE mfp\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: X ( mfp -- n ) MATCH nofam ok OF ENDOF ;MATCH ;\n"
       70 s" " s" hb: match: unknown family: nofam" NEG
    s" diag/match-var"
-      s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: X ( mfp -- n ) MATCH mfp novar OF ENDOF ;MATCH ;\n"
+      s\" SUMTYPE mfp\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: X ( mfp -- n ) MATCH mfp novar OF ENDOF ;MATCH ;\n"
       70 s" " s" hb: match: unknown variant: novar" NEG
    s" diag/match-of"
-      s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: X ( mfp -- n ) MATCH mfp ok NOTOF ENDOF ;MATCH ;\n"
+      s\" SUMTYPE mfp\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: X ( mfp -- n ) MATCH mfp ok NOTOF ENDOF ;MATCH ;\n"
       70 s" " s" hb: match: expected of: NOTOF" NEG
    s" diag/bad-tag"
-      s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: PW ( mfp -- n ) MATCH mfp ok OF ENDOF err OF ENDOF ;MATCH ;\nTRUSTED: FORGE ( n -- mfp ) 99 ;\n: BAD ( -- n ) 7 FORGE PW ;\ns\" armed\" type cr\nBAD . cr\n"
+      s\" SUMTYPE mfp\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: PW ( mfp -- n ) MATCH mfp ok OF ENDOF err OF ENDOF ;MATCH ;\nTRUSTED: FORGE ( n -- mfp ) 99 ;\n: BAD ( -- n ) 7 FORGE PW ;\ns\" armed\" type cr\nBAD . cr\n"
       85 s\" armed\n" s" hb: bad mfp tag" NEG
    s" diag/underdepth"
-      s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: PW ( mfp -- n ) MATCH mfp ok OF ENDOF err OF ENDOF ;MATCH ;\n: PWN ( n -- n ) construct mfp ok PW ;\ns\" armed\" type cr\nPWN . cr\n"
+      s\" SUMTYPE mfp\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: PW ( mfp -- n ) MATCH mfp ok OF ENDOF err OF ENDOF ;MATCH ;\n: PWN ( n -- n ) construct mfp ok PW ;\ns\" armed\" type cr\nPWN . cr\n"
       70 s\" armed\n" s" hb: interpret stack underdepth: PWN" NEG ;
 
 public

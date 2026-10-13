@@ -192,7 +192,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    HB$ PROCESS-PTY:SPAWN-TTY
    PROCESS-PTY:LAUNCH
    ANYWHERE$ SETTLE
-   s" package PTYP public STRUCTURE point 0 FIELD x n FIELD y n ;STRUCTURE : AT ( n n -- point ) PTYP-POINT:MAKE ; : FIRST ( point -- n ) PTYP-POINT:UNMAKE drop ; : FIRST-X ( -- n ) 2 3 AT FIRST ; ;package" TELL
+   s" package PTYP public STRUCTURE point FIELD x n FIELD y n ;STRUCTURE : AT ( n n -- point ) PTYP-POINT:MAKE ; : FIRST ( point -- n ) PTYP-POINT:UNMAKE drop ; : FIRST-X ( -- n ) 2 3 AT FIRST ; ;package" TELL
    s"  ok" SETTLE
    s" 2 3 PTYP:AT PTYP:FIRST" TELL
    s" hb: interpret-mode layout value: PTYP:AT" SETTLE

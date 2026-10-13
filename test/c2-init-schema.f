@@ -8,9 +8,9 @@ require src/lib/adt/option.f
 package C2-INIT-SCHEMA
 
 public
-PRODUCT pair 0 FIELD left n FIELD right n ;PRODUCT
+PRODUCT pair FIELD left n FIELD right n ;PRODUCT
 ENUM tiny POLICY packed-tag red green ;ENUM
-STRUCTURE scg 1 FIELD u a FIELD z n ;STRUCTURE
+STRUCTURE scg<a> FIELD u a FIELD z n ;STRUCTURE
 private
 
 : KEEP ( init<p,pair> -- init<p,pair> ) ;

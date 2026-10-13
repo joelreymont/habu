@@ -54,13 +54,13 @@ public
 -9258 constant E-PLATFORM     \ this module is qualified on Linux only, and refuses a foreign target before it binds
 -9259 constant E-STATEMENT    \ an empty statement/name or embedded NUL in C-string text
 
-NEWTYPE connection 0
-NEWTYPE result 0
+NEWTYPE connection
+NEWTYPE result
 
 DEFTYPE ROW
 DEFTYPE COL
 
-SUMTYPE connect-result 0
+SUMTYPE connect-result
    VARIANT connected connection ;VARIANT
    VARIANT refused ptr u8 n ;VARIANT
 ;SUMTYPE
@@ -68,7 +68,7 @@ SUMTYPE connect-result 0
 \ The failure spans are the server's SQLSTATE and its primary message, copied
 \ into the owning connection's storage, so they outlive CLEAR and are replaced
 \ by the next OUTCOME on that connection.
-SUMTYPE outcome 0
+SUMTYPE outcome
    VARIANT ok ;VARIANT
    VARIANT rows ;VARIANT
    VARIANT failed ptr u8 n ptr u8 n ;VARIANT
@@ -76,7 +76,7 @@ SUMTYPE outcome 0
 
 \ A dispatcher registers the waiting descriptor and event mask with its own
 \ loop, then calls POLL again. No progress step waits for socket readiness.
-SUMTYPE progress 0
+SUMTYPE progress
    VARIANT waiting fd n ;VARIANT
    VARIANT connected connection ;VARIANT
    VARIANT completed result ;VARIANT

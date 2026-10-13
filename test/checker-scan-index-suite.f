@@ -158,7 +158,7 @@ TC @ E-TFAM-AMBIG T=
 \ 1d. constructor symbols: a generated constructor resolves to its variant, and
 \     an ordinary word symbol resolves to nothing.
 : SCX-SUMDECL ( -- )
-   s" SUMTYPE scxsum 0 VARIANT scxva n ;VARIANT VARIANT scxvb ;VARIANT ;SUMTYPE" evaluate-closed ;
+   s" SUMTYPE scxsum VARIANT scxva n ;VARIANT VARIANT scxvb ;VARIANT ;SUMTYPE" evaluate-closed ;
 ' SCX-SUMDECL catch TC !  TC @ 0 T=
 s" SCXA" CHECKER-FIND-ACTIVE-SYM SUMV-FROM-CTOR-SYM TFALSE drop
 

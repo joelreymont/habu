@@ -316,7 +316,7 @@ private
 \ coordinator's.  A post-hook checked body cannot name the pre-hook constants
 \ on a from-source build, but a top-level read can.
 s" malformed declaration" E-TDECL-SYNTAX EXPLAIN
-s" arity must be a decimal, at most 23 parameters" E-TDECL-ARITY EXPLAIN
+s" invalid type parameter header" E-TDECL-ARITY EXPLAIN
 s" unknown payload type" E-TDECL-PAYLOAD EXPLAIN
 s" unknown layout policy" E-TDECL-POLICY EXPLAIN
 s" invalid layout policy for recursive sum" E-TDECL-RECURSIVE EXPLAIN

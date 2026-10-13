@@ -12,8 +12,8 @@ require src/lib/f64-text.f
 
 package FONT
 public
-NEWTYPE font 0
-NEWTYPE image 0
+NEWTYPE font
+NEWTYPE image
 
 $7B00 constant E-OPEN
 $7B01 constant E-HANDLE

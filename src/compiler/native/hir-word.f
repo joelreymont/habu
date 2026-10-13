@@ -41,7 +41,7 @@ public
 \ Owning the right module is not the same as existing: an identity is arithmetic
 \ away from any other, so a row could name an ordinal the interner never minted.
 \ A symbol this module's interner has answered for. Owning the right module is
-STRUCTURE interned 0
+STRUCTURE interned
    FIELD sym IR-ID:ir-symbol-id
 ;STRUCTURE
 

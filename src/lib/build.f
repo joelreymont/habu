@@ -21,12 +21,12 @@ package BUILD
 
 public
 
-STRUCTURE text 0 FIELD base ptr u8 FIELD size len ;STRUCTURE
-ENUM state 0
+STRUCTURE text FIELD base ptr u8 FIELD size len ;STRUCTURE
+ENUM state
    VARIANT pending ;VARIANT
    VARIANT completed FIELD code rc ;VARIANT
 ;ENUM
-STRUCTURE step 0 DERIVE addr
+STRUCTURE step DERIVE addr
    FIELD name text
    FIELD command text
    FIELD argv text

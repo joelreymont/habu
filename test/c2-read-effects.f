@@ -29,7 +29,7 @@ private
       some OF ENDOF
    ;MATCH ;
 : NEST ( option<option<read-view<p,q,u8>>> -- option<option<read-view<p,q,u8>>> ) ;
-STRUCTURE box 1 FIELD value a ;STRUCTURE
+STRUCTURE box<a> FIELD value a ;STRUCTURE
 : RECORD ( box<read-view<p,q,u8>> -- box<read-view<p,q,u8>> ) ;
 
 TYPED-VARIABLE N-SLOT n
@@ -97,16 +97,16 @@ public
    s" a second generic helper preserves the storage restriction" T-LABEL
    s" variable C2-HXT-SLOT : C2-HXT-STORE ( [ R -- R ] -- ) C2-HXT-SLOT xt! ; : C2-HXT-NEXT ( [ R -- R ] -- ) C2-HXT-STORE ; : C2-HXT-BAD ( [ read-view<p,q,u8> -- read-view<p,q,u8> ] -- ) C2-HXT-NEXT ;" 70 REJECT TTRUE
    s" typed quotation state cannot acquire a nested scope by unification" T-LABEL
-   s" NEWTYPE c2-holder 1 TYPED-VARIABLE C2-Q-SLOT [ a -- a ] : C2-Q-STORE ( [ c2-holder<read-view<p,q,u8>> -- c2-holder<read-view<p,q,u8>> ] -- ) C2-Q-SLOT ! ;" 70 REJECT TTRUE
+   s" NEWTYPE c2-holder<a> TYPED-VARIABLE C2-Q-SLOT [ a -- a ] : C2-Q-STORE ( [ c2-holder<read-view<p,q,u8>> -- c2-holder<read-view<p,q,u8>> ] -- ) C2-Q-SLOT ! ;" 70 REJECT TTRUE
    s" defer state cannot acquire a scoped quotation" T-LABEL
-   s" defer C2-DEFER ( a -- a ) NEWTYPE c2-dholder 1 : C2-DEFER-STORE ( [ c2-dholder<read-view<p,q,u8>> -- c2-dholder<read-view<p,q,u8>> ] -- ) is C2-DEFER ;" 70 REJECT TTRUE
+   s" defer C2-DEFER ( a -- a ) NEWTYPE c2-dholder<a> : C2-DEFER-STORE ( [ c2-dholder<read-view<p,q,u8>> -- c2-dholder<read-view<p,q,u8>> ] -- ) is C2-DEFER ;" 70 REJECT TTRUE
    s" a phantom wrapper cannot erase a scoped dependency" T-LABEL
-   s" NEWTYPE c2-phantom 1 CAST: C2-ERASE ( c2-phantom<read-view<p,q,u8>> -- n )" 67 REJECT TTRUE
+   s" NEWTYPE c2-phantom<a> CAST: C2-ERASE ( c2-phantom<read-view<p,q,u8>> -- n )" 67 REJECT TTRUE
    s" exclusive views remain inadmissible until loan accounting" T-LABEL
    s" : C2-MUT ( mut-view<p,q,u8> -- ) drop ;" 70 REJECT TTRUE
    s" direct borrowed schemas wait for scoped storage" T-LABEL
    \ A rendered declaration refusal exits 70; the CAST: refusal above renders none.
-   s" SUMTYPE c2-schema 2 VARIANT some read-view<a,b,u8> ;VARIANT ;SUMTYPE" 70 REJECT TTRUE
+   s" SUMTYPE c2-schema<a,b> VARIANT some read-view<a,b,u8> ;VARIANT ;SUMTYPE" 70 REJECT TTRUE
    s" legacy value records cannot declare a scoped field" T-LABEL
    s" VALUE-RECORD c2-vrec value read-view<p,q,u8> END-VALUE-RECORD" 70 REJECT TTRUE
    s" legacy value records cannot hide a scoped field in a sum" T-LABEL

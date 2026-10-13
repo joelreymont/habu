@@ -4,8 +4,8 @@ require src/lib/c2-memory.f
 package C2-INIT-WRAPPER
 public
 
-STRUCTURE c2isaved 0 DERIVE init FIELD left n FIELD right n ;STRUCTURE
-STRUCTURE c2isource 2 DERIVE init
+STRUCTURE c2isaved DERIVE init FIELD left n FIELD right n ;STRUCTURE
+STRUCTURE c2isource<a,b> DERIVE init
    FIELD source read-view<a,b,u8>
    FIELD mark n
 ;STRUCTURE

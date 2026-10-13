@@ -2871,6 +2871,10 @@ WHITEBOX-SUITE type-decl
    test/type-decl-suite.f
 ;SUITE
 
+SUITE declaration-headers
+   test/declaration-headers-e2e.f
+;SUITE
+
 WHITEBOX-SUITE type-export
    test/type-export-suite.f
 ;SUITE

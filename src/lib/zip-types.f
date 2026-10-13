@@ -1,8 +1,8 @@
 \ zip-types.f - inspectable identities; live ownership is checked by ZIP.
 package ZIP
 public
-NEWTYPE archive 0
-NEWTYPE entry 0
+NEWTYPE archive
+NEWTYPE entry
 \ $7A00 was E-LIBRARY: the FUNCTION: declarer resolves libzip and names its
 \ own failure, E-FFI-DLSYM. The number stays unused.
 $7A01 constant E-OPEN

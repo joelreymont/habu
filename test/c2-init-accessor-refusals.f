@@ -28,12 +28,12 @@ public
    \ The STRUCTURE refusal is rendered before its code is thrown, so it exits 70;
    \ the PRODUCT one below throws its code with nothing rendered and exits 67.
    s" an open-width field cannot derive initialized accessors" T-LABEL
-   s" package C2IA STRUCTURE badwidth 1 DERIVE init FIELD value a FIELD tail n ;STRUCTURE ;package"
+   s" package C2IA STRUCTURE badwidth<a> DERIVE init FIELD value a FIELD tail n ;STRUCTURE ;package"
       70 REFUSED? TTRUE
    s" invalid width reports the fixed-cell requirement" T-LABEL
    ERR ERR-U @ s" canonical fixed-cell record" CONTAINS? TTRUE
    s" a product with an open-width field cannot derive init" T-LABEL
-   s" package C2IA PRODUCT badproduct 1 DERIVE init FIELD value a ;PRODUCT ;package"
+   s" package C2IA PRODUCT badproduct<a> DERIVE init FIELD value a ;PRODUCT ;package"
       67 REFUSED? TTRUE
    s" a getter requires its own initialized record" T-LABEL
    s" package C2IA : BAD ( mut-view<a,b,c,init<d,pair>> -- mut-view<a,b,c,init<d,pair>> n ) C2IA-SHELF:COUNT@ ; ;package"

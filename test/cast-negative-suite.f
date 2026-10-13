@@ -61,15 +61,15 @@ BUF 65536 DIAG-BUFFER!
 
 package CN
 public
-NEWTYPE cnfam 0
-NEWTYPE cncell 1
+NEWTYPE cnfam
+NEWTYPE cncell<a>
 ;package
-s" STRUCTURE cnpbox 1 FIELD value a ;STRUCTURE" INCLUDE-EVALUATE
+s" STRUCTURE cnpbox<a> FIELD value a ;STRUCTURE" INCLUDE-EVALUATE
 package CAST-NEG
 public
 DEFLINEAR CAST-NEG:lease
-STRUCTURE nested 0 FIELD owner CAST-NEG:lease ;STRUCTURE
-STRUCTURE wide 0 FIELD lo n FIELD hi n ;STRUCTURE
+STRUCTURE nested FIELD owner CAST-NEG:lease ;STRUCTURE
+STRUCTURE wide FIELD lo n FIELD hi n ;STRUCTURE
 ;package
 
 \ Run one declaration through the PRODUCTION path: the text is evaluated, so the
@@ -142,8 +142,8 @@ s" cast: CNL12 ( [ -- CAST-NEG:nested ] -- n )"     CN-RUN:DECL E-CAST-LINEAR T=
 \ value behind a pointer or in a quotation row carries it through the cast as
 \ well, on either side, and a private section does not change that. STRUCTURE
 \ refuses the pointer field itself; PRODUCT admits it.
-PRODUCT lpfbox 0 FIELD p ptr CAST-NEG:lease ;PRODUCT
-STRUCTURE lqfbox 0 FIELD q [ -- CAST-NEG:lease ] ;STRUCTURE
+PRODUCT lpfbox FIELD p ptr CAST-NEG:lease ;PRODUCT
+STRUCTURE lqfbox FIELD q [ -- CAST-NEG:lease ] ;STRUCTURE
 package CN-LIN
 s" cast: CNL13 ( n -- lpfbox )"      CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL14 ( n -- lqfbox )"      CN-RUN:DECL E-CAST-LINEAR T=
@@ -233,19 +233,19 @@ s" cast: CNG12 ( n -- [ cnpbox<CN:cnfam> -- ] )" CN-RUN:DECL 0 T=
 \ casts into the same layouts.
 package CN-FO
 public
-NEWTYPE fofam 0
+NEWTYPE fofam
 ;package
 package CN-FQ
 public
-STRUCTURE fqbox 0 FIELD v CN-FO:fofam ;STRUCTURE
-STRUCTURE fqnest 0 FIELD inner fqbox ;STRUCTURE
-STRUCTURE fqapp 0 FIELD b cnpbox<CN-FO:fofam> ;STRUCTURE
-STRUCTURE fqptr 0 FIELD p ptr fqbox ;STRUCTURE
-ENUM fqsum 0 VARIANT has FIELD v CN-FO:fofam ;VARIANT VARIANT none ;VARIANT ;ENUM
-SUMTYPE fqleg 0 VARIANT has CN-FO:fofam ;VARIANT VARIANT none ;VARIANT ;SUMTYPE
-ENUM fqlist 0 VARIANT more FIELD v CN-FO:fofam FIELD next ptr fqlist ;VARIANT VARIANT last ;VARIANT ;ENUM
-STRUCTURE fqprod 0 FIELD q [ -- CN-FO:fofam ] ;STRUCTURE
-STRUCTURE fqcons 0 FIELD q [ CN-FO:fofam -- ] ;STRUCTURE
+STRUCTURE fqbox FIELD v CN-FO:fofam ;STRUCTURE
+STRUCTURE fqnest FIELD inner fqbox ;STRUCTURE
+STRUCTURE fqapp FIELD b cnpbox<CN-FO:fofam> ;STRUCTURE
+STRUCTURE fqptr FIELD p ptr fqbox ;STRUCTURE
+ENUM fqsum VARIANT has FIELD v CN-FO:fofam ;VARIANT VARIANT none ;VARIANT ;ENUM
+SUMTYPE fqleg VARIANT has CN-FO:fofam ;VARIANT VARIANT none ;VARIANT ;SUMTYPE
+ENUM fqlist VARIANT more FIELD v CN-FO:fofam FIELD next ptr fqlist ;VARIANT VARIANT last ;VARIANT ;ENUM
+STRUCTURE fqprod FIELD q [ -- CN-FO:fofam ] ;STRUCTURE
+STRUCTURE fqcons FIELD q [ CN-FO:fofam -- ] ;STRUCTURE
 s" cast: CNW1 ( n -- fqbox )"            CN-RUN:DECL E-CAST-OWNER T=
 private
 s" cast: CNW2 ( n -- fqnest )"           CN-RUN:DECL E-CAST-OWNER T=
@@ -320,9 +320,9 @@ s" cast: CNM12 ( n -- cnpbox<[ n -- n ]> )"       CN-RUN:DECL E-CAST-MINT T=
 s" cast: CNM13 ( n -- cnpbox<cnpbox<ptr u8>> )"   CN-RUN:DECL E-CAST-MINT T=
 \ A layout's own field is projected the same way, so a field of pointer or
 \ quotation type, at any depth of nesting, is the same mint.
-STRUCTURE pfbox 0 FIELD p ptr u8 ;STRUCTURE
-STRUCTURE qfbox 0 FIELD q [ n -- n ] ;STRUCTURE
-STRUCTURE pfnest 0 FIELD inner pfbox ;STRUCTURE
+STRUCTURE pfbox FIELD p ptr u8 ;STRUCTURE
+STRUCTURE qfbox FIELD q [ n -- n ] ;STRUCTURE
+STRUCTURE pfnest FIELD inner pfbox ;STRUCTURE
 s" cast: CNM17 ( n -- pfbox )"                   CN-RUN:DECL E-CAST-MINT T=
 s" cast: CNM18 ( n -- qfbox )"                   CN-RUN:DECL E-CAST-MINT T=
 s" cast: CNM19 ( n -- pfnest )"                  CN-RUN:DECL E-CAST-MINT T=
@@ -406,7 +406,7 @@ package CN-SPOOF-A
 s" CN-SPOOF-B" CHECKER-PACKAGE
 CHECKER-PUBLIC
 public
-NEWTYPE spoof 0
+NEWTYPE spoof
 s" cast: CNSA0 ( n -- CN-SPOOF-A:spoof )" CN-RUN:DECL 0 T=
 CHECKER-END-PACKAGE
 ;package
@@ -419,7 +419,7 @@ s" cast: CNSB1 ( n -- CN-SPOOF-B:spoof )" CN-RUN:DECL E-CAST-FAM T=
 \ private engine section stays private; only its owner resolves it.
 package CN-VIS-PRI
 CHECKER-PUBLIC
-NEWTYPE hidden 0
+NEWTYPE hidden
 s" CN-VIS-FAKE" CHECKER-PACKAGE
 s" cast: CNVP0 ( n -- hidden )" CN-RUN:DECL 0 T=
 CHECKER-END-PACKAGE
@@ -434,7 +434,7 @@ s" cast: CNVP2 ( n -- hidden )" CN-RUN:DECL E-CAST-FAM T=
 package CN-VIS-PUB
 public
 CHECKER-PRIVATE
-NEWTYPE shown 0
+NEWTYPE shown
 CHECKER-END-PACKAGE
 ;package
 package CN-VIS-FOREIGN
@@ -463,11 +463,11 @@ s" CNEX1 ( n -- n ) CN-EXP-B:CN-EXP-SRC" CHECK-QUIET-CANDIDATE! 1 T=
 package CN-CAST-TEST
 public
 : CN-VRF-VERIFY ( -- )
-   s" package CN-VRF public NEWTYPE vfam 0 ;package : CN-VRF-USE ( CN-VRF:vfam -- CN-VRF:vfam ) ;"
+   s" package CN-VRF public NEWTYPE vfam ;package : CN-VRF-USE ( CN-VRF:vfam -- CN-VRF:vfam ) ;"
    VERIFY:SOURCE-BUF ;
 
 : CN-VRF-FAIL ( -- )
-   s" package CN-VRF-ERR public NEWTYPE efam 0 NEWTYPE efam 0 ;package"
+   s" package CN-VRF-ERR public NEWTYPE efam NEWTYPE efam ;package"
    VERIFY:SOURCE-BUF ;
 
 \ The pre-pass reads public and private as it replays, so a mint certifies in a
@@ -488,7 +488,7 @@ s" cast: CNVR0 ( n -- CN-VRF:vfam )" CN-RUN:DECL E-CAST-FAM T=
 
 ' CN-CAST-TEST:CN-VRF-FAIL catch 7102 T=
 package CN-VRF-LIVE
-NEWTYPE live 0
+NEWTYPE live
 s" CN-VRF-POISON" CHECKER-PACKAGE
 s" cast: CNVR1 ( n -- CN-VRF-LIVE:live )" CN-RUN:DECL 0 T=
 CHECKER-END-PACKAGE
@@ -531,7 +531,7 @@ variable ERR-U
 \ empty interpret stack is refused BY NAME instead of reading the cell below the
 \ base. The bits are poked by the cast's own publish tail; drop that step from
 \ the engine and this case is the one that notices (measured).
-s" NEWTYPE cnmrole 0  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CN-CHILD:UNDEF-RC T=
+s" NEWTYPE cnmrole  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CN-CHILD:UNDEF-RC T=
 CN-CHILD:ERR$ s" hb: interpret stack underdepth: >CNMROLE" CONTAINS? -1 T=
 
 \ The OLD spelling is dead, and that is a fact worth failing on: the trailing

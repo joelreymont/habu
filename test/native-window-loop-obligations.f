@@ -2,7 +2,7 @@
 package LOOP-OBLIGATION-TEST
 
 \ This reduced prefix has the family registry, before the declaration driver.
-s" choice" s" 0 VARIANT first ;VARIANT VARIANT second ;VARIANT" CHECKER-DEFSUM
+s" choice" s" VARIANT first ;VARIANT VARIANT second ;VARIANT" CHECKER-DEFSUM
 
 : FIRST ( -- choice ) CONSTRUCT choice first ;
 : SECOND ( -- choice ) CONSTRUCT choice second ;

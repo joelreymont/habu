@@ -6,9 +6,9 @@ require src/lib/executable-build.f
 package NFIN
 public
 
-PRODUCT point 0 FIELD x n FIELD y n ;PRODUCT
-NEWTYPE angle 0
-NEWTYPE side 0
+PRODUCT point FIELD x n FIELD y n ;PRODUCT
+NEWTYPE angle
+NEWTYPE side
 CAST: >ANGLE ( n -- angle )
 CAST: ANGLE>N ( angle -- n )
 CAST: >SIDE ( n -- side )

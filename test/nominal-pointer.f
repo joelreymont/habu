@@ -4,8 +4,8 @@ require test/checker-assert.f
 
 package NOMINAL-POINTER-TEST
 
-NEWTYPE identity 0
-NEWTYPE other 0
+NEWTYPE identity
+NEWTYPE other
 CAST: >IDENTITY ( n -- identity )
 CAST: IDENTITY>N ( identity -- n )
 4 LAYOUT-BUFFER SLOT identity

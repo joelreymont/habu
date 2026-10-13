@@ -106,9 +106,9 @@ create SRC-SLAB LINT-SLAB:CELLS cells allot
 create PATH PATH-CAP allot
 create DIGITS 32 allot
 
-NEWTYPE intern-id 0
-NEWTYPE file-id 0
-NEWTYPE stem-id 0
+NEWTYPE intern-id
+NEWTYPE file-id
+NEWTYPE stem-id
 
 CAST: N>NAME ( n -- intern-id )
 CAST: NAME>N ( intern-id -- n )
@@ -121,16 +121,16 @@ CAST: STEM>N ( stem-id -- n )
 : FILE= ( file-id file-id -- bool ) FILE>N swap FILE>N = ;
 : STEM= ( stem-id stem-id -- bool ) STEM>N swap STEM>N = ;
 
-STRUCTURE claim 0 DERIVE addr
+STRUCTURE claim DERIVE addr
    FIELD code n FIELD name intern-id FIELD owner file-id
 ;STRUCTURE
-ENUM reservation-state 0
+ENUM reservation-state
    VARIANT none ;VARIANT
    VARIANT first-only FIELD code n ;VARIANT
    VARIANT last-only FIELD code n ;VARIANT
    VARIANT complete FIELD first n FIELD last n ;VARIANT
 ;ENUM
-STRUCTURE reservation 0 DERIVE addr
+STRUCTURE reservation DERIVE addr
    FIELD stem stem-id FIELD owner file-id FIELD state reservation-state
 ;STRUCTURE
 

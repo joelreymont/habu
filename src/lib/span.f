@@ -47,7 +47,7 @@ public
 
 \ base is `ptr a` so the pointee survives (c@ on a byte span, @ on a cell span,
 \ and nothing else); len is the reach in bytes.
-STRUCTURE span 1
+STRUCTURE span<a>
    FIELD base ptr a
    FIELD len n
 ;STRUCTURE

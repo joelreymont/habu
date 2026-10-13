@@ -3,10 +3,10 @@ require src/lib/test.f
 require src/lib/test/subject.f
 require src/lib/c2-memory.f
 
-STRUCTURE c2irec 0 FIELD x n FIELD y n ;STRUCTURE
-STRUCTURE c2iopen 1 FIELD value a ;STRUCTURE
-STRUCTURE c2iempty 0 ;STRUCTURE
-STRUCTURE c2iexchanged 2 FIELD first a FIELD second b ;STRUCTURE
+STRUCTURE c2irec FIELD x n FIELD y n ;STRUCTURE
+STRUCTURE c2iopen<a> FIELD value a ;STRUCTURE
+STRUCTURE c2iempty ;STRUCTURE
+STRUCTURE c2iexchanged<a,b> FIELD first a FIELD second b ;STRUCTURE
 
 package C2-INIT-REFUSALS
 private

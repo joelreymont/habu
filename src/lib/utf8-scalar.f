@@ -16,7 +16,7 @@ package UTF8
 
 public
 
-SUMTYPE scalar-step 0
+SUMTYPE scalar-step
    VARIANT scalar n n ;VARIANT
    VARIANT raw-byte n n ;VARIANT
 ;SUMTYPE

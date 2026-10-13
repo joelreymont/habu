@@ -19,12 +19,12 @@ DEFLINEAR process-pty-teardown
 \ it), and the public lifecycle surface converts each role back to `pid` or `fd`
 \ at the boundary, so no caller outside ever names one.
 
-NEWTYPE sup-pid 0
-NEWTYPE pgrp 0
-NEWTYPE target-pid 0
-NEWTYPE group-watch 0
-NEWTYPE target-watch 0
-NEWTYPE sup-watch 0
+NEWTYPE sup-pid
+NEWTYPE pgrp
+NEWTYPE target-pid
+NEWTYPE group-watch
+NEWTYPE target-watch
+NEWTYPE sup-watch
 
 $10 constant SLOT-CAP
 $FF constant SLOT-MASK

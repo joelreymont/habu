@@ -97,7 +97,7 @@ Proof (temp engine + installed byte-fixpoint):
 - Bare `99 PF-COMMIT-N !` → `hb: internal engine word: PF-COMMIT-N`, rc **70**,
   on both `--load` and stdin. All ten cells reject bare (`PF-N`, `PF-A-P`,
   `PF-TX-DEPTH`, …).
-- A post-seal `PRODUCT p 0 FIELD x n FIELD y n ;PRODUCT` still advances
+- A post-seal `PRODUCT p FIELD x n FIELD y n ;PRODUCT` still advances
   `TYPE-FIELD:COUNT` 0 → 2; the reflection API is intact (declarations admitted).
 - Checked-body reference still `E-UNDEFINED` (unchanged).
 - `install --force` twice produced a byte-identical shasum, and the canonical

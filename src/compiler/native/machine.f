@@ -102,7 +102,7 @@ ENUM offscale DERIVE eq
 \ description cannot be confused with a count, a register number or a bare
 \ integer, and so a pass can bind one to a typed local.
 
-STRUCTURE mach 0 DERIVE eq
+STRUCTURE mach DERIVE eq
    FIELD id n
 ;STRUCTURE
 

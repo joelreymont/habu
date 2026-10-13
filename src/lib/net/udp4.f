@@ -25,22 +25,22 @@ DEFTYPE PORT
 DEFTYPE SOCKET
 DEFTYPE ERRNO
 
-SUMTYPE open-result 0
+SUMTYPE open-result
    VARIANT opened socket ;VARIANT
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
-SUMTYPE endpoint-result 0
+SUMTYPE endpoint-result
    VARIANT endpoint address port ;VARIANT
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
-SUMTYPE status 0
+SUMTYPE status
    VARIANT ok ;VARIANT
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
-SUMTYPE receive-result 0
+SUMTYPE receive-result
    VARIANT packet NUM:byte-len address port ;VARIANT
    VARIANT truncated NUM:byte-len address port ;VARIANT
    VARIANT timeout ;VARIANT

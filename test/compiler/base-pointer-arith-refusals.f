@@ -6,7 +6,7 @@
 \ that are not the address OF a declared element, and both published `-- ptr a`
 \ with an ordinary polymorphic pointee. Pointer arithmetic is
 \ pointee-polymorphic (`ptr a n + -- ptr a`), so the CALLER chose what the cell
-\ under the derived address contained: `NEWTYPE thing 0  : F ( n -- thing )
+\ under the derived address contained: `NEWTYPE thing  : F ( n -- thing )
 \ NULL-PTR + @ ;` certified and forged a nominal identity out of an integer, the
 \ same program with `( n -- ptr n )` forged an address, and `data-base + @` did
 \ both from the engine's own DATA. `data-base @` and `NULL-PTR @` did it at
@@ -52,7 +52,7 @@ require src/lib/string.f
 \ The nominal identity the forgeries mint, and a declared pointer cell for the
 \ null store. Both are file-global because the candidates below are checked in
 \ the scope a real program writes them in.
-NEWTYPE bpathing 0
+NEWTYPE bpathing
 PTR-VARIABLE BPA-SLOT
 TYPED-VARIABLE BPA-PP ptr ptr n     \ a declared cell that really holds an address
 TYPED-VARIABLE BPA-HK [ -- n ]      \ a declared CODE cell, for the executable-value controls

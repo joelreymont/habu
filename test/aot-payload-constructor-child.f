@@ -12,7 +12,7 @@ package TFAM
 create PCS-BUF $10000 allot
 public
 : PCS-SAVE ( -- )
-   s" pcs-holder" s" 0 FIELD value pcs-linear ;STRUCTURE" STRUCTURE-DECL:SD-REPLAY
+   s" pcs-holder" s" FIELD value pcs-linear ;STRUCTURE" STRUCTURE-DECL:SD-REPLAY
    0
    SCH-N @ 6 REG-AOT-MARK@ ?do
       i SCHEMA-CON? IF i SCHEMA-A@ CC-MAX >= IF 1+ THEN THEN

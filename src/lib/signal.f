@@ -37,7 +37,7 @@ public
 
 \ What one WAIT window answered: the number of a signal the stub delivered, or
 \ that the window closed with nothing on the descriptor.
-SUMTYPE signal-result 0
+SUMTYPE signal-result
    VARIANT signal n ;VARIANT
    VARIANT timeout ;VARIANT
 ;SUMTYPE

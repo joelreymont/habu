@@ -35,11 +35,11 @@ variable #CASE
    then ;
 
 deflinear ltok
-SUMTYPE lq2 2
+SUMTYPE lq2<a,b>
   VARIANT ok  a ;VARIANT
   VARIANT err b ;VARIANT
 ;SUMTYPE
-SUMTYPE lqmix 2
+SUMTYPE lqmix<a,b>
   VARIANT small a ;VARIANT
   VARIANT big a b n ;VARIANT
 ;SUMTYPE
@@ -137,7 +137,7 @@ cr
 \ consume it — re-mint (NL6) or free — and any copy (NL2), loss (NL3/NL4), or
 \ match-then-drop (NL7) rejects. Identity/transport still flows (NL5).
 \ ---------------------------------------------------------------------------
-SUMTYPE lopt 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
+SUMTYPE lopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 s" NL1=" type s" NC1 ( lq2<ltok,n> -- lopt<lq2<ltok,n>> ) LOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
 s" NL2=" type s" NC2 ( lq2<ltok,n> -- lopt<lq2<ltok,n>> lopt<lq2<ltok,n>> ) LOPT:SOME dup" CHECK-QUIET-CANDIDATE! 0 T=
 s" NL3=" type s" NC3 ( lopt<lq2<ltok,n>> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
@@ -182,17 +182,17 @@ package TLIN
 public
 
 DEFLINEAR TLIN:tok                                             \ the linear owner everything below nests
-STRUCTURE box 0 FIELD t TLIN:tok FIELD k n ;STRUCTURE          \ depth 1: names the con
-STRUCTURE model 0 FIELD inner box FIELD z n ;STRUCTURE         \ depth 2: names that family
-STRUCTURE deep 0 FIELD d model ;STRUCTURE                      \ depth 3: and again
-STRUCTURE lone 0 FIELD t TLIN:tok ;STRUCTURE                   \ one cell, linear
-STRUCTURE plain 0 FIELD v n ;STRUCTURE                         \ one cell, its non-linear twin
-STRUCTURE plainer 0 FIELD inner plain ;STRUCTURE               \ control: nothing linear anywhere
-ENUM load-result 0
+STRUCTURE box FIELD t TLIN:tok FIELD k n ;STRUCTURE          \ depth 1: names the con
+STRUCTURE model FIELD inner box FIELD z n ;STRUCTURE         \ depth 2: names that family
+STRUCTURE deep FIELD d model ;STRUCTURE                      \ depth 3: and again
+STRUCTURE lone FIELD t TLIN:tok ;STRUCTURE                   \ one cell, linear
+STRUCTURE plain FIELD v n ;STRUCTURE                         \ one cell, its non-linear twin
+STRUCTURE plainer FIELD inner plain ;STRUCTURE               \ control: nothing linear anywhere
+ENUM load-result
   VARIANT loaded   FIELD model model ;VARIANT
   VARIANT rejected FIELD code n ;VARIANT
 ;ENUM
-STRUCTURE via-load 0 FIELD result load-result ;STRUCTURE       \ a structure reaching a linear ENUM
+STRUCTURE via-load FIELD result load-result ;STRUCTURE       \ a structure reaching a linear ENUM
 private
 \ The token's mint and erase, rows only the declaring package may hold.
 LINEAR: N>TOK ( n -- TLIN:tok )
@@ -253,7 +253,7 @@ cr
 \ the store direction is pinned beside the load because `!` reaches the same guard
 \ from the other side.
 \ ---------------------------------------------------------------------------
-ENUM opt 1
+ENUM opt<a>
   VARIANT none ;VARIANT
   VARIANT some FIELD v a ;VARIANT
 ;ENUM

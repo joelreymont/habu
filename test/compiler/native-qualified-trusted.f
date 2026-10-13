@@ -13,7 +13,7 @@ package NCOMP-QTRUST
 
 public
 
-STRUCTURE shelf 2
+STRUCTURE shelf<a,b>
    FIELD source read-view<a,b,u8>
    FIELD count n
 ;STRUCTURE

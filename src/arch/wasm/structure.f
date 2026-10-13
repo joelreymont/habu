@@ -68,7 +68,7 @@ public
 \ temporary. branch leaves for the enclosing label of its block, depth labels
 \ out. Neither a close nor the function's end is reached by falling through:
 \ every path ends in a branch or a final.
-ENUM step 0
+ENUM step
    VARIANT open-block FIELD label IR-ID:ir-block-id ;VARIANT
    VARIANT open-loop FIELD label IR-ID:ir-block-id ;VARIANT
    VARIANT open-if FIELD cond IR-ID:ir-value-id ;VARIANT

@@ -28,18 +28,18 @@ DEFTYPE HANDLE
 DEFTYPE BAUD
 DEFTYPE ERRNO
 
-SUMTYPE open-result 0
+SUMTYPE open-result
    VARIANT opened handle ;VARIANT
    VARIANT failed errno ;VARIANT
    VARIANT unsupported ;VARIANT
 ;SUMTYPE
 
-SUMTYPE status 0
+SUMTYPE status
    VARIANT ok ;VARIANT
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
-SUMTYPE io-result 0
+SUMTYPE io-result
    VARIANT transferred NUM:byte-len ;VARIANT
    VARIANT timeout ;VARIANT
    VARIANT closed ;VARIANT

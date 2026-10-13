@@ -6,7 +6,7 @@
 \ sealed nominal with no converter in between must therefore be refused.
 
 package BCR
-NEWTYPE nom-id 0
+NEWTYPE nom-id
 variable CELL
 s" BOOTSTRAP-CREATED-ARMED" type cr
 public

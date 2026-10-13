@@ -8,17 +8,15 @@
 \
 \ Grammar (docs/type-families.md §2.1, §2.3):
 \   enum-decl    = ENUM type-name (full-enum | compact-enum) ;ENUM
-\   full-enum    = arity header-clause* variant-block+
+\   full-enum    = header-clause* variant-block+
 \   compact-enum = header-clause* compact-variant+
 \   header-clause = POLICY policy-name | DERIVE derive-name+
 \   variant-block = VARIANT variant-name (FIELD field-name type-expr)* ;VARIANT
 \   compact-variant = variant-name
-\ The FIRST body token after the family name selects the mode irrevocably: a
-\ decimal is the arity header of a full block declaration; any other token starts
-\ an implicitly-arity-zero compact declaration. Compact header clauses precede
-\ its first bare variant. The modes never mix — a VARIANT/FIELD/;VARIANT token
-\ in a compact body, a compact header after its first variant, or a bare token
-\ where a full body expects a VARIANT rejects at the exact token.
+\ The first variant after optional header clauses chooses the form: VARIANT
+\ starts a full block declaration; a bare name starts a compact declaration.
+\ A parameter list requires full mode. The modes never mix, and header clauses
+\ must precede the first variant.
 \ Every malformed/duplicate/reserved/unresolved reject rolls the whole provisional
 \ declaration back to a byte-identical registry.
 \
@@ -78,7 +76,7 @@ package ENUM-DECL
 \ E-TFAM-CASE / E-PF-SCHEMA name+schema gate codes are raised by TFAM-DECL,
 \ SUMV-ADD, and the field-event path and pass through unchanged.
 E-TDECL-SYNTAX constant E-SYNTAX    \ malformed: missing name/terminator, mixed mode, header/variant/field out of place
-E-TDECL-ARITY constant E-ARITY      \ arity token is not a small decimal in [0, cap]
+E-TDECL-ARITY constant E-ARITY      \ malformed type parameter header
 E-TDECL-PAYLOAD constant E-PAYLOAD  \ unresolved / unknown field type
 E-TDECL-NAME constant E-NAME        \ reserved or colliding family name
 E-TDECL-POLICY constant E-POLICY    \ unknown or not-yet-supported layout policy
@@ -115,6 +113,10 @@ CC-R constant CON-R          \ single-letter r : real/float
 variable PEND-U   PTR-VARIABLE PEND-A
 : PEND! ( ptr u8 n -- ) PEND-U ! PEND-A ! ;
 : PEND@ ( -- ptr u8 n ) PEND-A @ PEND-U @ ;
+PTR-VARIABLE ED-HEAD-A
+variable ED-HEAD-U
+variable ED-HEAD-I
+: ED-HEAD-CLEAR ( -- ) NULL-PTR ED-HEAD-A ! 0 ED-HEAD-U ! 0 ED-HEAD-I ! ;
 
 \ ---------------------------------------------------------------------------
 \ transient parse state (parse-loop bookkeeping, not declaration state). One
@@ -122,7 +124,6 @@ variable PEND-U   PTR-VARIABLE PEND-A
 \ ---------------------------------------------------------------------------
 variable FAM        \ family id being declared
 variable TOK        \ live declaration-event token (0 = no open transaction)
-variable ED-ARITY      \ parsed family arity (0 for compact)
 variable VBASE      \ variant high-water at open (variant range start)
 variable NVAR       \ variant count in this declaration
 variable FLDBASE    \ committed field high-water at open (field range start)
@@ -131,7 +132,6 @@ variable VCELLS     \ running payload cell width WITHIN the open variant
 variable MAXSLOTS   \ widest variant payload cell width (the sum's payload slots)
 variable SEEN-VARIANT \ a VARIANT has appeared (header clauses must precede variants)
 variable SEEN-END     \ this declaration's ;ENUM has been consumed
-variable ED-SI         \ private digit-scan index
 variable ED-FIELD-MISS
 PTR-VARIABLE ED-MISS-A
 variable ED-MISS-U
@@ -143,6 +143,7 @@ variable ED-OUTCOME-NAMES
 
 : ED-RESET ( -- )                      \ base state; re-seeded at load (process-local)
    NULL-PTR 0 PEND!   0 TOK !   0 SEEN-VARIANT !   0 SEEN-END !
+   ED-HEAD-CLEAR
    0 ED-FIELD-MISS !  0 ED-SEEN-U ! ;
 ED-RESET
 
@@ -156,10 +157,27 @@ ED-MISS-CLEAR
 \ declaration it has already lexed (ED-REPLAY below) — from that tool's token
 \ stream. The pushback is checked first either way, so the compact body's
 \ lookahead behaves identically on both sources.
-: ED-RAW ( -- ptr u8 n )               \ next body token (honours one pushback)
-   PEND-U @ 0 > IF PEND@ 0 PEND-U ! EXIT THEN
+: ED-SOURCE ( -- ptr u8 n )
    DECL-REPLAY:RP-ACTIVE? IF DECL-REPLAY:RP-NEXT EXIT THEN
    parse-name ;
+: ED-HEAD-NEXT ( -- ptr u8 n )
+   ED-HEAD-A @ {: a:ptr :}
+   BEGIN ED-HEAD-I @ ED-HEAD-U @ < IF
+      a ED-HEAD-I @ + c@ 32 <= ELSE NO THEN WHILE
+      ED-HEAD-I @ 1+ ED-HEAD-I !
+   REPEAT
+   ED-HEAD-I @ {: start:n :}
+   BEGIN ED-HEAD-I @ ED-HEAD-U @ < IF
+      a ED-HEAD-I @ + c@ 32 > ELSE NO THEN WHILE
+      ED-HEAD-I @ 1+ ED-HEAD-I !
+   REPEAT
+   ED-HEAD-I @ start - {: size:n :}
+   ED-HEAD-I @ ED-HEAD-U @ = IF ED-HEAD-CLEAR THEN
+   a start + size ;
+: ED-RAW ( -- ptr u8 n )               \ next body token (honours one pushback)
+   PEND-U @ 0 > IF PEND@ 0 PEND-U ! EXIT THEN
+   ED-HEAD-U @ 0 <> IF ED-HEAD-NEXT EXIT THEN
+   ED-SOURCE ;
 \ Every body token is recorded as the packet's offending token as it is read, so
 \ a reject raised inside the family registry, the variant registry, the field
 \ record, or a transaction participant still names the token that provoked it
@@ -184,34 +202,6 @@ ED-MISS-CLEAR
    2dup TF-CANON? 0= IF
       2drop s" name must be a lowercase family tail" E-CASE DECL-REJECT:REJECT throw THEN
    TYPE-NAME:FAMILY-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
-
-\ --- mode-selection / arity token: a decimal within the shared alphabet.
-: ED-DIGIT? ( n -- bool ) dup 47 > swap 58 < and ;
-: ED-ALLDIG? ( ptr u8 n -- bool )    \ true when every byte is a digit (mode selector)
-   dup 0= IF 2drop NO EXIT THEN
-   {: u:n :}                        \ ( a )
-   0 ED-SI !
-   BEGIN ED-SI @ u < WHILE
-      dup ED-SI @ + c@ ED-DIGIT? 0= IF drop NO EXIT THEN
-      ED-SI @ 1 + ED-SI !
-   REPEAT
-   drop YES ;
-: DEC ( ptr u8 n -- n )             \ decode an all-digit token
-   {: u:n :}                        \ ( a )
-   0                                \ ( a acc )
-   0 ED-SI !
-   BEGIN ED-SI @ u < WHILE
-      10 * over ED-SI @ + c@ 48 - +    \ acc = acc*10 + digit
-      ED-SI @ 1 + ED-SI !
-   REPEAT
-   nip ;                            \ drop a, keep acc
-\ Same wording the legacy definer prints for a bad arity token.
-: ARITY-WHY$ ( -- ptr u8 n ) s" arity must be a decimal, at most 23 parameters" ;
-: PARSE-ARITY ( ptr u8 n -- n )
-   dup 0= IF 2drop s" missing arity" E-ARITY DECL-REJECT:REJECT throw THEN
-   2dup ED-ALLDIG? 0= IF 2drop ARITY-WHY$ E-ARITY DECL-REJECT:REJECT throw THEN
-   DEC dup TFAM-DECL-PARAM-COUNT > IF
-      drop ARITY-WHY$ E-ARITY DECL-REJECT:REJECT throw THEN ;
 
 \ ---------------------------------------------------------------------------
 \ field type resolution -> a schema node (docs §8): concrete cell types (n/f/r +
@@ -247,11 +237,9 @@ ED-MISS-CLEAR
    dup ASCII-N = IF drop CON-N SCHEMA-CON EXIT THEN
    dup ASCII-F = IF drop CON-BOOL SCHEMA-CON EXIT THEN
    dup ASCII-R = IF drop CON-R SCHEMA-CON EXIT THEN
-   TFAM-DECL-CHAR>PARAM 0= IF
+   TYPE-DECL:DECL-PARAM 0= IF
       drop s" unknown payload type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-   dup ED-ARITY @ < IF SCHEMA-PARAM EXIT THEN
-   drop
-   s" type parameter is outside the declared arity" E-PAYLOAD DECL-REJECT:REJECT throw ;
+   SCHEMA-PARAM ;
 
 \ A pointer is a NON-OWNING boundary: TFCL-NODE? stops at a pointer node, so a
 \ payload spelled `ptr <linear>` reads non-linear and the containing family would
@@ -302,6 +290,40 @@ ED-MISS-CLEAR
    2dup s" eq" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
    s" order" CORE-STR=CI ;
+
+\ Select the mode at the first variant, after optional header clauses. The
+\ engine and replay reader both return spans in one buffered source. Retain
+\ that prefix as a span and read it again through ED-RAW, so registration still
+\ fixes the kind before any clause is applied and diagnostics keep their bytes.
+: ED-LOOK-END? ( ptr u8 n -- bool )
+   dup 0= IF 2drop YES EXIT THEN
+   s" ;enum" CORE-STR=CI ;
+: ED-FIRST-VARIANT ( ptr u8 n -- ptr u8 n )
+   BEGIN
+      2dup s" policy" CORE-STR=CI IF
+         2drop ED-SOURCE
+         2dup ED-LOOK-END? IF EXIT THEN
+         2drop ED-SOURCE
+      ELSE
+         2dup s" derive" CORE-STR=CI IF
+            2drop ED-SOURCE
+            BEGIN 2dup DERIVE-FEATURE? WHILE 2drop ED-SOURCE REPEAT
+         ELSE
+            \ OPAQUE may be a compact variant or a forbidden header before
+            \ VARIANT blocks. Keep it in ED-HEAD and inspect the next token.
+            2dup s" opaque" CORE-STR=CI IF 2drop ED-SOURCE ELSE EXIT THEN
+         THEN
+      THEN
+   AGAIN ;
+: ED-FULL? ( -- bool )
+   ED-SOURCE {: first:ptr size:n :}
+   first size ED-FIRST-VARIANT {: last:ptr lastu:n :}
+   size 0 <> IF
+      first ED-HEAD-A !
+      last lastu + first - ED-HEAD-U !
+      0 ED-HEAD-I !
+   THEN
+   last lastu s" variant" CORE-STR=CI ;
 : DERIVE-GUARD ( -- )                   \ derive needs a public, concrete (arity 0) family
    FAM @ TFAM-PUBLIC? 0= IF
       s" derive requires a public family" E-DERIVE DECL-REJECT:REJECT throw THEN
@@ -444,7 +466,6 @@ ED-MISS-CLEAR
    TOK @ FAM @ DECL-EVENT:DECL TOK ! ;
 : REGISTER-FULL ( ptr u8 n n -- )          \ ( na nu arity -- ) TK-SUM family, arity header event
    {: na:ptr nu:n ar:n :}
-   ar ED-ARITY !
    na nu DECL-REJECT:TOKEN!             \ the family name owns the registry's rejects
    s" duplicate family" E-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ VIS na nu
@@ -453,7 +474,6 @@ ED-MISS-CLEAR
    TOK @ FAM @ ar DECL-EVENT:ARITY TOK ! ;
 : REGISTER-COMPACT ( ptr u8 n -- )         \ ( na nu -- ) TK-ENUM family, arity 0, no header event
    {: na:ptr nu:n :}
-   0 ED-ARITY !
    na nu DECL-REJECT:TOKEN!             \ the family name owns the registry's rejects
    s" duplicate family" E-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ VIS na nu
@@ -526,16 +546,20 @@ ED-MISS-CLEAR
 
 : DRIVE ( -- )                          \ name + mode select + register + body
    ED-NEXT 2dup DECL-REJECT:FAMILY!     \ ( na nu )  keep the span
-   2dup REQUIRE-NAME                    \ named before validation, so a bad name is reported
+   dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   DECL-HEADER 0= IF
+      drop 2drop s" invalid type parameter header" E-ARITY DECL-REJECT:REJECT throw
+   THEN
+   {: ar:n :}
+   2dup DECL-REJECT:FAMILY!
+   2dup REQUIRE-NAME
    {: na:ptr nu:n :}
-   ED-NEXT {: ta:ptr tu:n :}            \ first body token selects the mode
-   ta tu ED-ALLDIG? IF
-      ta tu PARSE-ARITY {: ar:n :}
+   ED-FULL? ar 0 <> or IF
       na nu ar REGISTER-FULL
       FULL-BODY
    ELSE
       na nu REGISTER-COMPACT
-      ta tu COMPACT-BODY
+      ED-NEXT COMPACT-BODY
    THEN
    ED-CLOSE ;
 
@@ -554,7 +578,7 @@ ED-MISS-CLEAR
 \ terminator. This front end reads as it parses and stops at the fault, so the
 \ tokens between the fault and `;ENUM` are still ahead of the interpreter, which
 \ would try to execute them. Measured on the commit before this one:
-\ `ENUM m7bad red red blue ;ENUM NEWTYPE m7cont 1` reported the duplicate
+\ `ENUM m7bad red red blue ;ENUM NEWTYPE m7cont<a>` reported the duplicate
 \ variant, counted it, and then died on `E-UNDEFINED: blue` — the load aborted
 \ where the legacy definer continued and declared `m7cont`.
 \
@@ -647,11 +671,11 @@ public
 \ it parses its own body up to ;ENUM at interpret time, so its checked effect is
 \ ( -- ). This is the sole global entry — there is no alias and no second parser.
 \ A compact body registers the TK-ENUM family sumtype.f's definer used to
-\ register; a body whose first token is an arity registers the full TK-SUM form
+\ register; a body whose first variant starts with VARIANT registers the full TK-SUM form
 \ with named variants and named FIELD payloads, which the compact grammar could
 \ not express at all.
 \ ENUM type-name (variant)+ ;ENUM
-\ ENUM type-name arity [POLICY p] [DERIVE f+] (VARIANT name (FIELD n t)* ;VARIANT)+ ;ENUM
+\ ENUM type-name[<params>] [POLICY p] [DERIVE f+] (VARIANT name (FIELD n t)* ;VARIANT)+ ;ENUM
 : ENUM ( -- ) ENUM-DECL:ED-RUN ;
 
 ;using

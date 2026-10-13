@@ -4,8 +4,8 @@ require src/lib/c2-memory.f
 package C2-MEM
 public
 
-STRUCTURE owner-state 0 OPAQUE FIELD node ptr n ;STRUCTURE
-STRUCTURE owner 3 OPAQUE FIELD state mut-view<a,b,c,init<b,owner-state>> ;STRUCTURE
+STRUCTURE owner-state OPAQUE FIELD node ptr n ;STRUCTURE
+STRUCTURE owner<a,b,c> OPAQUE FIELD state mut-view<a,b,c,init<b,owner-state>> ;STRUCTURE
 
 private
 

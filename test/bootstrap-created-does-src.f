@@ -6,7 +6,7 @@
 \ `( -- a )` carries a TVK-RAW variable and cannot be read back as a nominal.
 
 package BCD
-NEWTYPE dow-id 0
+NEWTYPE dow-id
 : MAKE ( n -- ) create , does> ( -- a ) @ ;
 7 MAKE CELL
 s" BOOTSTRAP-CREATED-ARMED" type cr

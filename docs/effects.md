@@ -466,7 +466,7 @@ anything. `data-base` is the start of the running task's DATA region and
 `NULL-PTR` is the null, and both published `-- ptr a` with an ordinary
 polymorphic pointee. Pointer arithmetic is pointee-polymorphic, so the caller
 chose what the cell under the derived address contained:
-`NEWTYPE thing 0  : F ( n -- thing ) NULL-PTR + @ ;` certified and forged a
+`NEWTYPE thing  : F ( n -- thing ) NULL-PTR + @ ;` certified and forged a
 nominal identity out of an integer, `( n -- ptr n )` forged an address, and
 `data-base + @` did both out of the engine's own DATA — at offset zero, with no
 arithmetic at all, through a plain `data-base @`.

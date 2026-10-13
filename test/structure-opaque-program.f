@@ -11,7 +11,7 @@ require test/structure-opaque-fixture.f
 
 package OPC
 public
-STRUCTURE box 0 FIELD x n ;STRUCTURE
+STRUCTURE box FIELD x n ;STRUCTURE
 ;package
 
 package OPQ
@@ -75,32 +75,32 @@ private
 
 : DEFINER ( -- )
    s" OPAQUE is a header clause" T-LABEL
-   s" package OPQA public STRUCTURE olate 0 FIELD x n OPAQUE ;STRUCTURE ;package"
+   s" package OPQA public STRUCTURE olate FIELD x n OPAQUE ;STRUCTURE ;package"
    s" header clause after the first field" REFUSED? TTRUE
    s" OPAQUE appears at most once" T-LABEL
-   s" package OPQA public STRUCTURE otwice 0 OPAQUE OPAQUE FIELD x n ;STRUCTURE ;package"
+   s" package OPQA public STRUCTURE otwice OPAQUE OPAQUE FIELD x n ;STRUCTURE ;package"
    s" a second OPAQUE clause in one declaration" REFUSED? TTRUE
    s" a fieldless structure generates nothing to hide" T-LABEL
-   s" package OPQA public STRUCTURE obare 0 OPAQUE ;STRUCTURE ;package"
+   s" package OPQA public STRUCTURE obare OPAQUE ;STRUCTURE ;package"
    s" opaque requires a family with fields" REFUSED? TTRUE
    s" ENUM has no OPAQUE clause" T-LABEL
-   s" package OPQA public ENUM oshade 0 OPAQUE VARIANT dark ;VARIANT ;ENUM ;package"
+   s" package OPQA public ENUM oshade OPAQUE VARIANT dark ;VARIANT ;ENUM ;package"
    s" unexpected token in enum declaration" REFUSED? TTRUE ;
 
 : REDECLARE ( -- )
    s" OP cannot redeclare box without the clause" T-LABEL
-   s" package OP public STRUCTURE box 0 FIELD x n ;STRUCTURE ;package"
+   s" package OP public STRUCTURE box FIELD x n ;STRUCTURE ;package"
    s" duplicate family" REFUSED? TTRUE
    s" another package's box constructs only its own family" T-LABEL
-   s" package OPQB public STRUCTURE box 0 FIELD x n ;STRUCTURE : FORGE ( n -- OP:box ) OPQB-BOX:MAKE ; ;package"
+   s" package OPQB public STRUCTURE box FIELD x n ;STRUCTURE : FORGE ( n -- OP:box ) OPQB-BOX:MAKE ; ;package"
    s" expected: op:box" REFUSED? TTRUE ;
 
 \ Outside any package the clause has no private wordlist to place the pair in;
 \ the reject is a declaration reject the loader survives, and the name stays free.
 : LOOSE ( -- )
    s" OPAQUE outside a package is refused, and loading goes on" T-LABEL
-   s" STRUCTURE oloose 0 OPAQUE FIELD x n ;STRUCTURE" TEST-EVAL:RC 7207 T=
-   s" STRUCTURE oloose 0 FIELD x n ;STRUCTURE" TEST-EVAL:RC 0 T= ;
+   s" STRUCTURE oloose OPAQUE FIELD x n ;STRUCTURE" TEST-EVAL:RC 7207 T=
+   s" STRUCTURE oloose FIELD x n ;STRUCTURE" TEST-EVAL:RC 0 T= ;
 
 public
 

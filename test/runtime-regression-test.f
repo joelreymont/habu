@@ -94,7 +94,7 @@ variable GE-SCRIPT-U
 \ a compiled call of the SAME marked word still compiles and runs at top
 \ level, and the scalar leg proves a one-cell TRUSTED word stays unmarked.
 : GE-ILAYOUT-PRELUDE ( -- )
-   s" SUMTYPE gewide 2" GE-SRC-LINE
+   s" SUMTYPE gewide<a,b>" GE-SRC-LINE
    s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
    s"   VARIANT err b ;VARIANT" GE-SRC-LINE
    s" ;SUMTYPE" GE-SRC-LINE
@@ -154,15 +154,15 @@ variable GE-SCRIPT-U
 : GE-P2-FRAME-WIDE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" PRODUCT gep8 0" GE-SRC-LINE
+   s" PRODUCT gep8" GE-SRC-LINE
    s"    FIELD f0 n FIELD f1 n FIELD f2 n FIELD f3 n" GE-SRC-LINE
    s"    FIELD f4 n FIELD f5 n FIELD f6 n FIELD f7 n" GE-SRC-LINE
    s" ;PRODUCT" GE-SRC-LINE
-   s" PRODUCT gep64 0" GE-SRC-LINE
+   s" PRODUCT gep64" GE-SRC-LINE
    s"    FIELD g0 gep8 FIELD g1 gep8 FIELD g2 gep8 FIELD g3 gep8" GE-SRC-LINE
    s"    FIELD g4 gep8 FIELD g5 gep8 FIELD g6 gep8 FIELD g7 gep8" GE-SRC-LINE
    s" ;PRODUCT" GE-SRC-LINE
-   s" PRODUCT gep192 0 FIELD h0 gep64 FIELD h1 gep64 FIELD h2 gep64 ;PRODUCT" GE-SRC-LINE
+   s" PRODUCT gep192 FIELD h0 gep64 FIELD h1 gep64 FIELD h2 gep64 ;PRODUCT" GE-SRC-LINE
    s" TRUSTED: GE-MK8 ( -- gep8 ) 0 0 0 0 0 0 0 0 ;" GE-SRC-LINE
    s" TRUSTED: GE-MK64 ( -- gep64 ) GE-MK8 GE-MK8 GE-MK8 GE-MK8 GE-MK8 GE-MK8 GE-MK8 GE-MK8 ;" GE-SRC-LINE
    s" TRUSTED: GE-MK192 ( -- gep192 ) GE-MK64 GE-MK64 GE-MK64 ;" GE-SRC-LINE
@@ -263,9 +263,9 @@ package WIDE-FETCH
 private
 
 : SRC ( -- )                            \ wide instantiation + narrow control, with forges for both
-   s" PRODUCT gwfp 0 FIELD x n FIELD y n ;PRODUCT" GE-SRC-LINE
-   s" ENUM gwfo 1 VARIANT gwn ;VARIANT VARIANT gws FIELD value a ;VARIANT ;ENUM" GE-SRC-LINE
-   s" ENUM gwfn 0 VARIANT gnn ;VARIANT VARIANT gns FIELD value n ;VARIANT ;ENUM" GE-SRC-LINE
+   s" PRODUCT gwfp FIELD x n FIELD y n ;PRODUCT" GE-SRC-LINE
+   s" ENUM gwfo<a> VARIANT gwn ;VARIANT VARIANT gws FIELD value a ;VARIANT ;ENUM" GE-SRC-LINE
+   s" ENUM gwfn VARIANT gnn ;VARIANT VARIANT gns FIELD value n ;VARIANT ;ENUM" GE-SRC-LINE
    s" 4 TYPED-BUFFER GWF-AT gwfo<gwfp>" GE-SRC-LINE
    s" 4 TYPED-BUFFER GWN-AT gwfn" GE-SRC-LINE
    s" TRUSTED: GWF-FORGE ( -- gwfo<gwfp> ) 0 0 5 ;" GE-SRC-LINE
@@ -1571,22 +1571,22 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
 : GE-LOC-REPLAY-DUPS ( -- )
    \ The second definition's name is on line 4 and its `;` on line 5.
    s" hb-loc-dupprod.f"
-      S\" \\ replay\n: GELOCRP ( -- ) s\q gelocprod\q s\q 0 FIELD x n\q CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nGELOCRP\n: GELOCPROD:MAKE ( n -- n )\n   1 + ;\n"
+      S\" \\ replay\n: GELOCRP ( -- ) s\q gelocprod\q s\q FIELD x n\q CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nGELOCRP\n: GELOCPROD:MAKE ( n -- n )\n   1 + ;\n"
       s" duplicate definition: GELOCPROD:MAKE at " s" hb-loc-dupprod.f:4" GE-LOC-REPLAY-DUP
    \ The same at tier 1, where ncomp compiles the definition through the hook.
    s" hb-loc-dupprod1.f"
-      S\" 1 set-tier\n: GELOCRP1 ( -- ) s\q gelocprod1\q s\q 0 FIELD x n\q CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nGELOCRP1\n: GELOCPROD1:MAKE ( n -- n )\n   1 + ;\n"
+      S\" 1 set-tier\n: GELOCRP1 ( -- ) s\q gelocprod1\q s\q FIELD x n\q CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nGELOCRP1\n: GELOCPROD1:MAKE ( n -- n )\n   1 + ;\n"
       s" duplicate definition: GELOCPROD1:MAKE at " s" hb-loc-dupprod1.f:4" GE-LOC-REPLAY-DUP
    \ A body that would also fail checking (`drop` leaves no n) is refused as the
    \ duplicate first, the order the engine's wall uses.
    s" hb-loc-dupbad.f"
-      S\" \\ replay\n: GELOCRB ( -- ) s\q gelocpbad\q s\q 0 FIELD x n\q CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nGELOCRB\n: GELOCPBAD:MAKE ( n -- n )\n   drop ;\n"
+      S\" \\ replay\n: GELOCRB ( -- ) s\q gelocpbad\q s\q FIELD x n\q CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nGELOCRB\n: GELOCPBAD:MAKE ( n -- n )\n   drop ;\n"
       s" duplicate definition: GELOCPBAD:MAKE at " s" hb-loc-dupbad.f:4" GE-LOC-REPLAY-DUP
    \ A `variable` runs the hook with nothing pending, the colon definition's
    \ opener still at GELOCRV's name on line 2: its name on line 5 is placed at
    \ the cursor, just past it.
    s" hb-loc-dupvar.f"
-      S\" \\ replay\n: GELOCRV ( -- ) s\q gelocpvar\q s\q 0 FIELD x n\q CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nGELOCRV\n\\ a variable, not a colon definition\nvariable GELOCPVAR:MAKE\n"
+      S\" \\ replay\n: GELOCRV ( -- ) s\q gelocpvar\q s\q FIELD x n\q CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nGELOCRV\n\\ a variable, not a colon definition\nvariable GELOCPVAR:MAKE\n"
       s" duplicate definition: GELOCPVAR:MAKE at " s" hb-loc-dupvar.f:5" GE-LOC-REPLAY-DUP ;
 
 : GE-REFUSAL-LOCATION ( -- )

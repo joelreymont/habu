@@ -32,7 +32,7 @@ variable CERT-N
 
 ENUM color red green ;ENUM
 
-ENUM-DECL:ED-RUN lcnamed 0
+ENUM-DECL:ED-RUN lcnamed
    VARIANT empty ;VARIANT
    VARIANT shade FIELD value color ;VARIANT
 ;ENUM
@@ -43,7 +43,7 @@ ENUM-DECL:ED-RUN lcnamed 0
 \ scalar — but declared through the unified ENUM front end, so the payload lives
 \ in TYPE-FIELD rows with SV.SCH-COUNT=0 instead of positional SUMV slots. A fetch
 \ of it must lower to the SAME certificate descriptor as the legacy twin.
-ENUM-DECL:ED-RUN fe-outer 0
+ENUM-DECL:ED-RUN fe-outer
    VARIANT left FIELD v LAYOUT-VALID-GUARD:lvg-inner ;VARIANT
    VARIANT right FIELD w n ;VARIANT
 ;ENUM

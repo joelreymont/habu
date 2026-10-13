@@ -3,7 +3,7 @@
 \ MATCH both arms at check time — dropping the error no longer type-checks.
 \ Consumers must `require src/lib/adt/result.f` before returning or matching one.
 
-ENUM result 2
+ENUM result<a,b>
   VARIANT ok  FIELD value a ;VARIANT
   VARIANT err FIELD error b ;VARIANT
 ;ENUM

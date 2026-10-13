@@ -30,7 +30,7 @@ s" src/lib/process-tree.f" required          \ PROC-TREE:KILL-TREE ends a captur
 \ for it (PROC-OUTCOME>RC here, the asserts in src/lib/test/outcome.f), so a
 \ deadline that expires under a gate row reaches the pool as a timeout. Only a
 \ caller that acts on the deadline itself MATCHes it as data.
-SUMTYPE outcome 0
+SUMTYPE outcome
   VARIANT exited n ;VARIANT
   VARIANT signaled n ;VARIANT
   VARIANT timeout ;VARIANT
@@ -49,11 +49,11 @@ SUMTYPE outcome 0
 \ completion code, never an errno.)
 package PCAP
 public
-STRUCTURE captured 0
+STRUCTURE captured
   FIELD out len
   FIELD err len
 ;STRUCTURE
-STRUCTURE failed 0
+STRUCTURE failed
   FIELD out len
   FIELD err len
   FIELD code rc

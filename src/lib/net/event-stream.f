@@ -16,7 +16,7 @@ public
 -9452 constant E-SOURCE
 -9453 constant E-UTF8
 
-NEWTYPE decoder 0
+NEWTYPE decoder
 
 private
 

@@ -833,7 +833,7 @@ TYPED-VARIABLE SPLICE-LEN len
 : RENDER-CAP-CLOSED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" SUMTYPE zrc 0" GE-SRC-LINE
+   s" SUMTYPE zrc" GE-SRC-LINE
    s"   VARIANT keep n ;VARIANT" GE-SRC-LINE
    s" ;SUMTYPE" GE-SRC-LINE
    s" : ZRCK ( n -- zrc ) ZRC:KEEP ;" GE-SRC-LINE
@@ -855,7 +855,7 @@ TYPED-VARIABLE SPLICE-LEN len
 : ADT-FAMILY ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" SUMTYPE zrc 0 VARIANT keep n ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" SUMTYPE zrc VARIANT keep n ;VARIANT ;SUMTYPE" GE-SRC-LINE
    s" : ZBAD ( n -- zrc ) ;" GE-SRC-LINE
    s" tools/check.f accepted ADT layout mismatch" CHECK-JSON
    s" habu-adt-family.err" WRITE-ERR
@@ -866,15 +866,15 @@ TYPED-VARIABLE SPLICE-LEN len
    s" json-one-schema" s" habu-adt-family.err" s" ADT family schema" GJA1
    GE-HB-RESET
    GE-SRC-RESET
-   s" SUMTYPE famaa 0 VARIANT lefta ;VARIANT ;SUMTYPE" GE-SRC-LINE
-   s" SUMTYPE fambb 0 VARIANT sameb ;VARIANT ;SUMTYPE" GE-SRC-LINE
-   s" SUMTYPE famcc 0 VARIANT rightc ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" SUMTYPE famaa VARIANT lefta ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" SUMTYPE fambb VARIANT sameb ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" SUMTYPE famcc VARIANT rightc ;VARIANT ;SUMTYPE" GE-SRC-LINE
    s" : FAM-MIS ( -- famaa fambb ) construct famcc rightc construct fambb sameb ;" GE-SRC-LINE
    s" tools/check.f accepted adjacent ADT mismatch" CHECK-JSON
    s" family" s" famaa" s" family names the exact expected mismatch" ERR-JSTR
    GE-HB-RESET
    GE-SRC-RESET
-   s" SUMTYPE fambb 0 VARIANT sameb ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" SUMTYPE fambb VARIANT sameb ;VARIANT ;SUMTYPE" GE-SRC-LINE
    s" : SBAD ( -- i64 fambb ) 0 >COUNT construct fambb sameb ;" GE-SRC-LINE
    s" tools/check.f accepted scalar mismatch" CHECK-JSON
    s" habu-scalar-nofam.err" WRITE-ERR
@@ -890,7 +890,7 @@ TYPED-VARIABLE SPLICE-LEN len
 : ADT-VARIANT ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" SUMTYPE zrc 0 VARIANT keep n ;VARIANT VARIANT toss n ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" SUMTYPE zrc VARIANT keep n ;VARIANT VARIANT toss n ;VARIANT ;SUMTYPE" GE-SRC-LINE
    s" : CVBAD ( ptr u8 -- zrc ) construct zrc toss ;" GE-SRC-LINE
    s" tools/check.f accepted ADT variant payload mismatch" CHECK-JSON
    s" habu-adt-variant.err" WRITE-ERR
@@ -918,7 +918,7 @@ TYPED-VARIABLE SPLICE-LEN len
 : ADT-PAYLOAD-POS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" SUMTYPE zpp 0 VARIANT mix n n ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" SUMTYPE zpp VARIANT mix n n ;VARIANT ;SUMTYPE" GE-SRC-LINE
    s" : PBAD1 ( n ptr u8 -- zpp ) construct zpp mix ;" GE-SRC-LINE
    s" tools/check.f accepted slot-1 payload mismatch" CHECK-JSON
    s" habu-adt-pos1.err" WRITE-ERR
@@ -929,7 +929,7 @@ TYPED-VARIABLE SPLICE-LEN len
    s" json-one-schema" s" habu-adt-pos1.err" s" payload_pos slot-1 schema" GJA1
    GE-HB-RESET
    GE-SRC-RESET
-   s" SUMTYPE zpp 0 VARIANT mix n n ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" SUMTYPE zpp VARIANT mix n n ;VARIANT ;SUMTYPE" GE-SRC-LINE
    s" : PBAD0 ( ptr u8 n -- zpp ) construct zpp mix ;" GE-SRC-LINE
    s" tools/check.f accepted slot-0 payload mismatch" CHECK-JSON
    s" habu-adt-pos0.err" WRITE-ERR
@@ -937,7 +937,7 @@ TYPED-VARIABLE SPLICE-LEN len
    s" json-one-schema" s" habu-adt-pos0.err" s" payload_pos slot-0 schema" GJA1
    GE-HB-RESET
    GE-SRC-RESET
-   s" SUMTYPE zpf 0 VARIANT keep n ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" SUMTYPE zpf VARIANT keep n ;VARIANT ;SUMTYPE" GE-SRC-LINE
    s" : ZPBAD ( n -- zpf ) ;" GE-SRC-LINE
    s" tools/check.f accepted family-only mismatch (pos slice)" CHECK-JSON
    s" habu-adt-nopos.err" WRITE-ERR
@@ -953,7 +953,7 @@ TYPED-VARIABLE SPLICE-LEN len
 : SIG-ARITY ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" SUMTYPE zar 0 VARIANT one ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" SUMTYPE zar VARIANT one ;VARIANT ;SUMTYPE" GE-SRC-LINE
    s" : ABAD ( zar<n> -- ) drop ;" GE-SRC-LINE
    s" tools/check.f accepted over-applied family signature" CHECK-JSON
    s" habu-sig-arity.err" WRITE-ERR
@@ -965,7 +965,7 @@ TYPED-VARIABLE SPLICE-LEN len
    s" json-one-schema" s" habu-sig-arity.err" s" wrong-arity schema" GJA1
    GE-HB-RESET
    GE-SRC-RESET
-   s" SUMTYPE zar2 2 VARIANT two a ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" SUMTYPE zar2<a,b> VARIANT two a ;VARIANT ;SUMTYPE" GE-SRC-LINE
    s" : A2BAD ( zar2<n> -- ) drop ;" GE-SRC-LINE
    s" tools/check.f accepted under-applied family signature" CHECK-JSON
    s" habu-sig-arity2.err" WRITE-ERR
@@ -986,16 +986,16 @@ TYPED-VARIABLE SPLICE-LEN len
 : TFAM-DECL ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" SUMTYPE badsum 0 VARIANT samev n ;VARIANT VARIANT samev n ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" SUMTYPE badsum VARIANT samev n ;VARIANT VARIANT samev n ;VARIANT ;SUMTYPE" GE-SRC-LINE
    s" tools/check.f accepted duplicate type-family variant" CHECK-JSON
    s" habu-tfam-decl.err" WRITE-ERR
    s" code" s" E-BAD-DECLARATION" s" declaration diagnostic code" ERR-JSTR
    s" repair_class" s" fix_family_declaration" s" declaration repair class" ERR-JSTR
    s" token" s" samev" s" declaration token" ERR-JSTR
    s" line" s" 1" s" declaration line" ERR-JRAW
-   s" column" s" 51" s" declaration column" ERR-JRAW
-   s" byte_start" s" 50" s" declaration byte_start" ERR-JRAW
-   s" byte_end" s" 55" s" declaration byte_end" ERR-JRAW
+   s" column" s" 49" s" declaration column" ERR-JRAW
+   s" byte_start" s" 48" s" declaration byte_start" ERR-JRAW
+   s" byte_end" s" 53" s" declaration byte_end" ERR-JRAW
    s" habu-tfam-decl.err" s" declaration diagnostic contract" DIAG-CONTRACT
    s" json-one-schema" s" habu-tfam-decl.err" s" declaration diagnostic schema" GJA1
    GT-ERR$ REC!
@@ -1050,7 +1050,7 @@ TYPED-VARIABLE SPLICE-LEN len
    s" 4 TYPED-BUFFER JSTG:A:B n" GE-SRC-LINE
    s" 0 TYPED-BUFFER JSTG-C n" GE-SRC-LINE
    s" TYPED-VARIABLE JSTG-S forall<p,[ n -- n ]>" GE-SRC-LINE
-   s" NEWTYPE jstg-pair 2" GE-SRC-LINE
+   s" NEWTYPE jstg-pair<a,b>" GE-SRC-LINE
    s" TYPED-VARIABLE JSTG-L jstg-pair<n,n" GE-SRC-LINE
    s" : JSTG-L-NEXT ( -- n ) 7 >r r> ;" GE-SRC-LINE
    s" TYPED-VARIABLE JSTG-Q [ n -- n" GE-SRC-LINE
@@ -1060,7 +1060,7 @@ TYPED-VARIABLE SPLICE-LEN len
    s" DEFER-LAYOUT-BUFFER JSTG-DS forall<p,[ n -- n ]>" GE-SRC-LINE
    s" 4 LAYOUT-BUFFER JSTG-LP ptr n" GE-SRC-LINE
    s" DEFER-LAYOUT-BUFFER JSTG-DP ptr n" GE-SRC-LINE
-   s" STRUCTURE jstg-hook 1 DERIVE addr FIELD fn a ;STRUCTURE" GE-SRC-LINE
+   s" STRUCTURE jstg-hook<a> DERIVE addr FIELD fn a ;STRUCTURE" GE-SRC-LINE
    s" 2 LAYOUT-BUFFER JSTG-LQ jstg-hook<[ n -- n ]>" GE-SRC-LINE
    s" DEFER-LAYOUT-BUFFER JSTG-DQ jstg-hook<[ n -- n ]>" GE-SRC-LINE
    s" : JSTG-HOOK-USE ( -- ) 2 JSTG-DQ-BIND 0 JSTG-LQ drop 0 JSTG-DQ drop ;" GE-SRC-LINE

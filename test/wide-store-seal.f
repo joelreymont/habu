@@ -25,7 +25,7 @@ create WSS-ERR WSS-CAP allot
    $A SB-APPEND-C ;
 
 : WSS-FAMILY ( -- )
-   s" SUMTYPE wss-res 2" WSS-LINE
+   s" SUMTYPE wss-res<a,b>" WSS-LINE
    s"   VARIANT ok a ;VARIANT" WSS-LINE
    s"   VARIANT err b ;VARIANT" WSS-LINE
    s" ;SUMTYPE" WSS-LINE ;

@@ -26,7 +26,7 @@ require src/lib/task.f
 package FFI-CB
 public
 
-NEWTYPE callback 0
+NEWTYPE callback
 
 private
 

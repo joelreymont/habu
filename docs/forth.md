@@ -523,8 +523,9 @@ and always available, for a one-off call or to escape a collision.
 New declarations use `NEWTYPE` for an opaque nominal cell, `STRUCTURE` for a
 record with named fields and `ENUM` for alternatives with or without payloads.
 Each registers a whole family at top level and cannot be called inside a checked
-definition. `STRUCTURE` and full `ENUM` require an arity; compact `ENUM` omits
-it and has no payload fields. Legacy `SUMTYPE`, `PRODUCT`, `VALUE-RECORD`,
+definition. Family headers name their type parameters, such as `box<a>` or
+`result<a,b>`; a bare name has no parameters. Compact `ENUM` has no payload
+fields or parameters. Legacy `SUMTYPE`, `PRODUCT`, `VALUE-RECORD`,
 low-level `BEGIN-STRUCTURE`/`END-STRUCTURE` definers and counter enums (`ENUM+`,
 `ENUM4+`) still have executable sites; they are migration debt, forbidden in new
 code.
@@ -532,14 +533,14 @@ code.
 ```forth
 package EXAMPLE
 public
-NEWTYPE index 0
+NEWTYPE index
 
-STRUCTURE point 0
+STRUCTURE point
    FIELD x n
    FIELD y n
 ;STRUCTURE
 
-ENUM message 0
+ENUM message
    VARIANT quit ;VARIANT
    VARIANT move FIELD x n FIELD y n ;VARIANT
 ;ENUM
@@ -559,7 +560,7 @@ single-cell; `2 3 DEMO:AT DEMO:FIRST` at the prompt is refused at `DEMO:AT`:
 ```forth
 package DEMO
 public
-STRUCTURE point 0 FIELD x n FIELD y n ;STRUCTURE
+STRUCTURE point FIELD x n FIELD y n ;STRUCTURE
 : AT ( n n -- point ) DEMO-POINT:MAKE ;
 : FIRST ( point -- n ) DEMO-POINT:UNMAKE drop ;
 : FIRST-X ( -- n ) 2 3 AT FIRST ;
@@ -599,9 +600,13 @@ family argument and a bare tail of a family of arity > 0 are all refused. See
 [the multi-cell type
 rules](type-system.md#5-families-records-alternatives-and-generics).
 
-- `NEWTYPE name arity` registers a nominal cell family (`TK-CELL`), no closer:
-  arity `0` is an opaque scalar newtype (`src/lib/num-types.f`), arity `N` binds
-  positional params.
+- `NEWTYPE name` registers an opaque nominal cell family (`TK-CELL`), with no
+  closer. `NEWTYPE name<a,b>` declares two type parameters. `SUMTYPE`,
+  `PRODUCT`, `STRUCTURE`, and full `ENUM` use the same header syntax. The count
+  stays internal; payload types bind the listed names by declaration order.
+  Names are distinct letters from `a b c d e g h i j k l m o p q s t u v w x y z`;
+  `f`, `n`, and `r` always name concrete scalar types. Parameters may be unused.
+  An empty list (`<>`), duplicate name, or malformed list rejects.
 - Family identity is the exact `(package, tail)` pair: a package family may
   share a tail with a global family or another package's, even at different
   arities. A qualified token resolves only its package row; a bare token
@@ -610,26 +615,26 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   package-public rows are an error. So adding `MEM:span` cannot change what a
   top-level `span` means. Same-package duplicates, reserved grammar names and
   foreign private rows reject.
-- `STRUCTURE name arity [ header… ] FIELD f type … ;STRUCTURE` declares a
+- `STRUCTURE name[<params>] [ header… ] FIELD f type … ;STRUCTURE` declares a
   single-shape record with named fields in declaration order, deepest field
   first on the stack. A structure with fields generates sealed `MAKE`/`UNMAKE`:
   `PKG-FAMILY:MAKE` in the constructor namespace for a public package family,
   `FAMILY-MAKE` in the declaring package's private wordlist for a private one.
   The header `OPAQUE` keeps a public family's type nameable from every package
   and gives its generated words — the pair and every `DERIVE` member — the
-  private placement: `STRUCTURE box 0 OPAQUE FIELD x n ;STRUCTURE` in `package
+  private placement: `STRUCTURE box OPAQUE FIELD x n ;STRUCTURE` in `package
   OP` defines `BOX-MAKE` / `BOX-UNMAKE` as OP's private words, reserves no
   `OP-BOX:` namespace, and another package constructs a `box` only through the
   words OP defines over them. A fieldless structure is an opaque cell family
   with no generated constructor or destructor.
-- Full `ENUM name arity [ header… ] VARIANT v FIELD f type … ;VARIANT … ;ENUM`
+- Full `ENUM name[<params>] [ header… ] VARIANT v FIELD f type … ;VARIANT … ;ENUM`
   declares named alternatives with named payload fields; a variant may have
   none. Its tag is its declaration order; generated constructors feed an
   exhaustive `MATCH … ;MATCH`.
 - Compact `ENUM name [ header… ] v0 v1 … ;ENUM` declares payloadless variants
   from bare names, with implicit arity zero; never mix it with `VARIANT` blocks.
 - `POLICY`, `DERIVE` and `OPAQUE` headers precede the first field or variant: after the
-  name on compact `ENUM`, after the arity on `STRUCTURE` or full `ENUM`;
+  family header;
   repeating a feature rejects; `OPAQUE` is `STRUCTURE`-only, once, and needs a
   package and a field. `DERIVE addr` on a structure with fields
   generates typed field-address accessors plus `AT`, `BYTES` and `CELLS`: a
@@ -648,7 +653,7 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   `MATCH TCP4:read-result`); a body inside the owning package writes the bare
   family name in `MATCH`.
 - **An OPEN family instance is placeable when the width cannot read the open
-  argument.** `STRUCTURE span 1 FIELD base ptr a FIELD len n ;STRUCTURE` is two
+  argument.** `STRUCTURE span<a> FIELD base ptr a FIELD len n ;STRUCTURE` is two
   cells for every argument, so `: SKIP ( span<t> n -- span<t> ) …` compiles at
   tier 1 exactly like the `span<u8>` row. A family whose parameter IS a payload
   cell (`FIELD it a`) has a width its argument decides: a row carrying an open
@@ -716,7 +721,7 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   its members (every field and variant payload, instantiated over those
   arguments: a field projection or a `MATCH` arm) and a quotation's produced
   rows (a call), recursively. A layout's fields carry its rules down: after
-  `STRUCTURE pfbox 0 FIELD p ptr u8 ;STRUCTURE`, `CAST: >PFBOX ( n -- pfbox )`
+  `STRUCTURE pfbox FIELD p ptr u8 ;STRUCTURE`, `CAST: >PFBOX ( n -- pfbox )`
   is `E-CAST-MINT` outside a private section, and a layout whose field holds
   another package's family is `E-CAST-OWNER` outside that family's package,
   the layout's own package included. A layout that points at its own family
@@ -1619,12 +1624,15 @@ passing suite.
 Each of these was measured on the engine; the fact that proved it is beside
 the rule.
 
-- **`OPAQUE` is refused where it would hide nothing.** `STRUCTURE b 0 FIELD x n
-  OPAQUE ;STRUCTURE` is `header clause after the first field` (7107), `0 OPAQUE
-  OPAQUE` is `a second OPAQUE clause in one declaration` (7206), `STRUCTURE b 0
-  OPAQUE ;STRUCTURE` is `opaque requires a family with fields` (7107), `ENUM e
-  0 OPAQUE …` is `unexpected token in enum declaration` (7107), and a top-level
-  `STRUCTURE b 0 OPAQUE FIELD x n ;STRUCTURE` is `OPAQUE requires a family
+- **`OPAQUE` is refused where it would hide nothing.** `STRUCTURE olate FIELD x n
+  OPAQUE ;STRUCTURE` is `header clause after the first field` (7107),
+  `STRUCTURE otwice OPAQUE OPAQUE FIELD x n ;STRUCTURE` is
+  `a second OPAQUE clause in one declaration` (7206),
+  `STRUCTURE obare OPAQUE ;STRUCTURE` is
+  `opaque requires a family with fields` (7107),
+  `ENUM oshade OPAQUE VARIANT dark ;VARIANT ;ENUM` is
+  `unexpected token in enum declaration` (7107), and a top-level
+  `STRUCTURE oloose OPAQUE FIELD x n ;STRUCTURE` is `OPAQUE requires a family
   declared in a package` (7207): there is no private wordlist for the pair.
   Each rolls the declaration back and the loader goes on
   (test/structure-decl-suite.f section 16, test/structure-opaque-e2e.f).
@@ -2174,7 +2182,7 @@ the rule.
   `s" C ( -- n ) SPANX" CHECK!` does, and through `VERIFY:CANDIDATE-IN-SCOPE`;
   with the row recorded inside a neutral pair, `VERIFY:CANDIDATE-IN-SCOPE`
   answers -1 until the pair closes (test/pointer-storage-test.f);
-  `STRUCTURE der 0 DERIVE eq hash FIELD x n ;STRUCTURE` declares and its
+  `STRUCTURE der DERIVE eq hash FIELD x n ;STRUCTURE` declares and its
   `DER:HASH` runs (test/structure-certify-suite.f).
 - **Native width depends on how the cells are used.** A 63-cell identity
   compiles and runs in native AOT; the same 64-cell definition currently
@@ -2205,7 +2213,7 @@ the rule.
   the last file seals.
 - **An integer becomes an address or an execution token only through a private
   `CAST:`.** `CAST: >BYTES ( n -- ptr u8 )`, `CAST: >OP ( n -- [ n -- n ] )`
-  and, for `STRUCTURE box 1 FIELD value a ;STRUCTURE`, `( n -- box<ptr u8> )`
+  and, for `STRUCTURE box<a> FIELD value a ;STRUCTURE`, `( n -- box<ptr u8> )`
   certify in a package's private section and are `E-CAST-MINT` (7147) at top
   level or under `public`, in the source pre-pass as well: the cast asserts
   what no check can see, so only code inside its package reaches it. Take the
@@ -2214,7 +2222,7 @@ the rule.
   type-variable pointee is `E-CAST-LINEAR` (7137): `( n -- ptr a )` would
   forge a pointer to any nominal. The rule reads a layout's own `FIELD` and
   variant payload types as it reads its arguments, through nested layouts: after
-  `STRUCTURE pfbox 0 FIELD p ptr u8 ;STRUCTURE`, `CAST: >PFBOX ( n -- pfbox )`
+  `STRUCTURE pfbox FIELD p ptr u8 ;STRUCTURE`, `CAST: >PFBOX ( n -- pfbox )`
   is `E-CAST-MINT` at top level, since `PFBOX:UNMAKE` would hand out a
   `ptr u8`, and certifies in a private section. A layout whose field holds
   another package's family is `E-CAST-OWNER` outside that family's package.
@@ -2242,7 +2250,7 @@ the rule.
 - **A nominal error needs its own result family.** Constructing `RESULT:OK` in
   the ok-only path leaves the err variable of `result<a,b>` free, and a free
   variable unifies with a structural type but not with a nominal ENUM or
-  TYPEFAMILY. Declare `SUMTYPE foo-result 1` whose ok variant carries the
+  TYPEFAMILY. Declare `SUMTYPE foo-result<a>` whose ok variant carries the
   payload and whose errors are nullary variants (the `numeric-result` idiom in
   `src/lib/num-arithmetic.f`).
 - **An arity-1 SUMTYPE is spelled with its argument in a signature and bare in a

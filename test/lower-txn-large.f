@@ -31,15 +31,15 @@ variable SRC-U
    s" public" LINE
    s" $10000 constant OLD-CERT-CAP" LINE
    s" 76 constant CERT-FAIL-RC" LINE
-   s" SUMTYPE level-zero 0 VARIANT value n ;VARIANT ;SUMTYPE" LINE
-   s" SUMTYPE level-one 0 VARIANT value LTXN-LARGE:level-zero ;VARIANT ;SUMTYPE" LINE
-   s" SUMTYPE level-two 0 VARIANT value LTXN-LARGE:level-one ;VARIANT ;SUMTYPE" LINE
-   s" SUMTYPE level-three 0 VARIANT value LTXN-LARGE:level-two ;VARIANT ;SUMTYPE" LINE
-   s" SUMTYPE level-four 0 VARIANT value LTXN-LARGE:level-three ;VARIANT ;SUMTYPE" LINE
-   s" SUMTYPE level-five 0 VARIANT value LTXN-LARGE:level-four ;VARIANT ;SUMTYPE" LINE
-   s" SUMTYPE level-six 0 VARIANT value LTXN-LARGE:level-five ;VARIANT ;SUMTYPE" LINE
-   s" SUMTYPE level-seven 0 VARIANT value LTXN-LARGE:level-six ;VARIANT ;SUMTYPE" LINE
-   s" SUMTYPE level-eight 0 VARIANT value LTXN-LARGE:level-seven ;VARIANT ;SUMTYPE" LINE
+   s" SUMTYPE level-zero VARIANT value n ;VARIANT ;SUMTYPE" LINE
+   s" SUMTYPE level-one VARIANT value LTXN-LARGE:level-zero ;VARIANT ;SUMTYPE" LINE
+   s" SUMTYPE level-two VARIANT value LTXN-LARGE:level-one ;VARIANT ;SUMTYPE" LINE
+   s" SUMTYPE level-three VARIANT value LTXN-LARGE:level-two ;VARIANT ;SUMTYPE" LINE
+   s" SUMTYPE level-four VARIANT value LTXN-LARGE:level-three ;VARIANT ;SUMTYPE" LINE
+   s" SUMTYPE level-five VARIANT value LTXN-LARGE:level-four ;VARIANT ;SUMTYPE" LINE
+   s" SUMTYPE level-six VARIANT value LTXN-LARGE:level-five ;VARIANT ;SUMTYPE" LINE
+   s" SUMTYPE level-seven VARIANT value LTXN-LARGE:level-six ;VARIANT ;SUMTYPE" LINE
+   s" SUMTYPE level-eight VARIANT value LTXN-LARGE:level-seven ;VARIANT ;SUMTYPE" LINE
    s" 1 LAYOUT-BUFFER MEM level-eight" LINE
    s" private" LINE ;
 

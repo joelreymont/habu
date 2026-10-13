@@ -377,7 +377,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ spell loaders. Only the require after the declaration is a dependency.
 : SDT-TEST-FAMILY-BODIES ( -- )
    s" family-bodies.f"
-   S\" STRUCTURE box 0 FIELD include n FIELD required n ;STRUCTURE\nENUM choice 0 VARIANT require FIELD included n ;VARIANT ;ENUM\nSUMTYPE outcome 0 VARIANT provided n ;VARIANT ;SUMTYPE\nENUM colors include require ;ENUM\ninclude sd-a.f\nrequire sd-raw.f\n"
+   S\" STRUCTURE box FIELD include n FIELD required n ;STRUCTURE\nENUM choice VARIANT require FIELD included n ;VARIANT ;ENUM\nSUMTYPE outcome VARIANT provided n ;VARIANT ;SUMTYPE\nENUM colors include require ;ENUM\ninclude sd-a.f\nrequire sd-raw.f\n"
    SDT-WRITE-ENTRY
    SDT-DISCOVER
    EVENT-COUNT 2 T=

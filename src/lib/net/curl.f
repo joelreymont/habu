@@ -24,29 +24,29 @@ DEFTYPE HANDLE
 DEFTYPE CODE
 DEFTYPE HTTP-STATUS
 
-SUMTYPE init-result 0
+SUMTYPE init-result
    VARIANT ready handle ;VARIANT
    VARIANT failed code ;VARIANT
 ;SUMTYPE
 
-SUMTYPE status 0
+SUMTYPE status
    VARIANT ok ;VARIANT
    VARIANT failed code ;VARIANT
 ;SUMTYPE
 
-SUMTYPE fetch-result 0
+SUMTYPE fetch-result
    VARIANT response http-status len ;VARIANT
    VARIANT truncated http-status len ;VARIANT
    VARIANT failed code ;VARIANT
 ;SUMTYPE
 
-SUMTYPE chunk-result 0
+SUMTYPE chunk-result
    VARIANT chunk http-status len ;VARIANT
    VARIANT response http-status ;VARIANT
    VARIANT failed code ;VARIANT
 ;SUMTYPE
 
-SUMTYPE header-result 0
+SUMTYPE header-result
    VARIANT complete len ;VARIANT
    VARIANT truncated len ;VARIANT
 ;SUMTYPE

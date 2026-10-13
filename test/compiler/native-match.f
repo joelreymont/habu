@@ -35,7 +35,7 @@ ENUM hue
 \ A sum with payloads of three different widths in one family: the widest
 \ variant fixes how many cells every value of it occupies, so the narrower two
 \ are padded up to it and each arm drops a different number of pads.
-SUMTYPE box 0
+SUMTYPE box
    VARIANT nil ;VARIANT
    VARIANT one n ;VARIANT
    VARIANT two n n ;VARIANT
@@ -45,12 +45,12 @@ SUMTYPE box 0
 \ payload is TWO CELLS AND ONE VALUE, where `box`'s widest variant is two cells
 \ and two values - which is the whole of what the arm's own glue rule decides,
 \ and the pair of cases below is what binds it.
-PRODUCT pt 0
+PRODUCT pt
    FIELD x n
    FIELD y n
 ;PRODUCT
 
-SUMTYPE holder 0
+SUMTYPE holder
    VARIANT empty ;VARIANT
    VARIANT full pt ;VARIANT
 ;SUMTYPE
@@ -62,19 +62,19 @@ SUMTYPE holder 0
 \ numbers a fixture can tell apart. `trio` carries three INDEPENDENT cells and
 \ `hold3` carries three cells that are ONE value, which is the same pair `box`
 \ and `holder` draw one cell narrower.
-PRODUCT pt3 0
+PRODUCT pt3
    FIELD x n
    FIELD y n
    FIELD z n
 ;PRODUCT
 
-SUMTYPE trio 0
+SUMTYPE trio
    VARIANT t0 ;VARIANT
    VARIANT t1 n ;VARIANT
    VARIANT t3 n n n ;VARIANT
 ;SUMTYPE
 
-SUMTYPE hold3 0
+SUMTYPE hold3
    VARIANT empty3 ;VARIANT
    VARIANT full3 pt3 ;VARIANT
 ;SUMTYPE
@@ -88,7 +88,7 @@ SUMTYPE hold3 0
 \ each other: `OPTION:NONE` is a CALL to a routine that pushes what the family
 \ declares, and `construct opt2 n2` is this chain pushing the same cells itself,
 \ and a wide instantiation has to reach both.
-ENUM opt2 1
+ENUM opt2<a>
    VARIANT n2 ;VARIANT
    VARIANT s2 FIELD value a ;VARIANT
 ;ENUM
@@ -102,7 +102,7 @@ ENUM opt2 1
 \ declaration reserved two: `g1` arrives with a two-cell payload on the stack AND
 \ needs a cell added between that payload and its declared pad. It is the shape
 \ that says WHERE the added cells go.
-SUMTYPE grow 1
+SUMTYPE grow<a>
    VARIANT g1 a ;VARIANT
    VARIANT g2 a a ;VARIANT
 ;SUMTYPE
@@ -113,7 +113,7 @@ SUMTYPE grow 1
 \ err - so its `ok` arm needs a cell added and its `err` arm needs none, and the
 \ chain refused it (-8503, measured, and the census row is gone). `pair<pt,pt3>`
 \ is that shape with this file's own types.
-SUMTYPE pair 2
+SUMTYPE pair<a,b>
    VARIANT lo a ;VARIANT
    VARIANT hi b ;VARIANT
 ;SUMTYPE
@@ -126,7 +126,7 @@ SUMTYPE pair 2
 \ refuses the construction outright rather than certifying a width no emitter can
 \ build (src/core/type-family.f TFC-XPAD-NARROW-REJECT). It is the negative of
 \ every case below: the same shape, the other sign.
-SUMTYPE narrow 1
+SUMTYPE narrow<a>
    VARIANT w2 n n ;VARIANT
    VARIANT p1 a ;VARIANT
 ;SUMTYPE

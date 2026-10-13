@@ -33,23 +33,23 @@ public
 \ handle was minted, never an address. Both converters are private, so no
 \ caller can mint a ticket over a record it did not submit, and a handle kept
 \ past its record's reuse names a generation no record has: E-AIO-STATE.
-NEWTYPE ticket 0
+NEWTYPE ticket
 
 \ A set of tickets one AWAIT-ANY waits on, as the index of a row this package
 \ allotted for a GROUP definition.
-NEWTYPE group 0
+NEWTYPE group
 
 \ The handle a READ or a WRITE answers with. It is a second type and not a
 \ ticket because it is also the ownership rule: the MEM allocation goes in with
 \ the submission and comes back out of AWAIT-XFER and nowhere else, so AWAIT,
 \ GROUP+ and GROUP- cannot name one and no checked code can read, write or
 \ release the bytes while the kernel is still moving them.
-NEWTYPE xfer 0
+NEWTYPE xfer
 
 \ What an operation ended as. `ready` carries the poll revents the kernel
 \ reported (or zero for an operation with no mask); `refused` carries the errno
 \ as a positive number.
-SUMTYPE outcome 0
+SUMTYPE outcome
    VARIANT ready n ;VARIANT
    VARIANT timed-out ;VARIANT
    VARIANT cancelled ;VARIANT

@@ -66,7 +66,7 @@ public
    s" a shared view cannot become exclusive by identity" T-LABEL
    s" : C2-MUT-UPGRADE ( read-view<p,q,u8> -- mut-view<p,q,a,u8> ) ;" 70 REJECT TTRUE
    s" cast cannot erase exclusive authority" T-LABEL
-   s" NEWTYPE c2-mut-erase 1 CAST: C2-MUT-CAST ( c2-mut-erase<mut-view<p,q,a,u8>> -- n )" 67 REJECT TTRUE ;
+   s" NEWTYPE c2-mut-erase<a> CAST: C2-MUT-CAST ( c2-mut-erase<mut-view<p,q,a,u8>> -- n )" 67 REJECT TTRUE ;
 
 ;package
 

@@ -60,7 +60,7 @@ require src/lib/image-lifecycle.f
 package IR-CTX
 public
 
-NEWTYPE ctx 0
+NEWTYPE ctx
 
 private
 

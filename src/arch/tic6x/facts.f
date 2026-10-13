@@ -26,7 +26,7 @@ E-C6XFACTS-DECODE constant E-DECODE
 \ landing at the end of the cycle and loads after four delay slots; memory is
 \ 0, 1 for a load or 2 for a store, and side the register file its data moves
 \ on, or -1; idle is a NOP's count, else 0.
-STRUCTURE facts 0
+STRUCTURE facts
    FIELD unit n
    FIELD cross n
    FIELD reads n

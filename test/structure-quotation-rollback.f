@@ -11,17 +11,17 @@ package QUOT-ROLLBACK-TEST
 : RUN ( -- )
    T-RESET
    64 0 ?do
-      s" STRUCTURE qfail 0 FIELD handler [ n n n n nope -- ] ;STRUCTURE"
+      s" STRUCTURE qfail FIELD handler [ n n n n nope -- ] ;STRUCTURE"
          TRY 7109 T=
    loop
-   s" STRUCTURE qgood 0 FIELD handler [ n -- n ] ;STRUCTURE" TRY 0 T=
-   s" STRUCTURE qnest 0 FIELD handler [ [ n -- n ] nope -- ] ;STRUCTURE"
+   s" STRUCTURE qgood FIELD handler [ n -- n ] ;STRUCTURE" TRY 0 T=
+   s" STRUCTURE qnest FIELD handler [ [ n -- n ] nope -- ] ;STRUCTURE"
       TRY 7109 T=
-   s" STRUCTURE qnest 0 FIELD handler [ [ n -- n ] -- ] ;STRUCTURE"
+   s" STRUCTURE qnest FIELD handler [ [ n -- n ] -- ] ;STRUCTURE"
       TRY 0 T=
-   s" SUMTYPE qbad 0 VARIANT call [ n nope -- n ] ;VARIANT ;SUMTYPE"
+   s" SUMTYPE qbad VARIANT call [ n nope -- n ] ;VARIANT ;SUMTYPE"
       TRY 7109 T=
-   s" SUMTYPE qsum 0 VARIANT call [ n -- n ] ;VARIANT ;SUMTYPE"
+   s" SUMTYPE qsum VARIANT call [ n -- n ] ;VARIANT ;SUMTYPE"
       TRY 0 T=
    T-REPORT ;
 

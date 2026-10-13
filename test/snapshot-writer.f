@@ -330,7 +330,7 @@ variable BAND-WID
 
 \ ---- warm probe sources ----------------------------------------------------
 : PROBE-DECLARE$ ( -- ptr u8 n )
-   s\" ENUM sw-warm 0 VARIANT sw-warm-a ;VARIANT ;ENUM\n: VIEW-SIZE ( IR-ARENA:view -- n ) NTAPE:TOKENS ;\n: INCREMENT ( n -- n ) 1+ ;\n41 INCREMENT .\n" ;
+   s\" ENUM sw-warm VARIANT sw-warm-a ;VARIANT ;ENUM\n: VIEW-SIZE ( IR-ARENA:view -- n ) NTAPE:TOKENS ;\n: INCREMENT ( n -- n ) 1+ ;\n41 INCREMENT .\n" ;
 
 : FORGE$ ( n -- ptr u8 n ) {: wid:n :}
    SB-RESET

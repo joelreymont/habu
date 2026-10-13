@@ -5,19 +5,19 @@ require src/lib/errors.f
 package IR-ID
 public
 
-NEWTYPE ir-module-key 0
-NEWTYPE ir-module-id 0
-NEWTYPE ir-source-id 0
-NEWTYPE ir-fun-id 0
-NEWTYPE ir-block-id 0
-NEWTYPE ir-op-id 0
-NEWTYPE ir-value-id 0
-NEWTYPE ir-type-id 0
-NEWTYPE ir-attr-id 0
-NEWTYPE ir-symbol-id 0
-NEWTYPE ir-span-id 0
-NEWTYPE ir-pool-offset 0
-NEWTYPE ir-count 0
+NEWTYPE ir-module-key
+NEWTYPE ir-module-id
+NEWTYPE ir-source-id
+NEWTYPE ir-fun-id
+NEWTYPE ir-block-id
+NEWTYPE ir-op-id
+NEWTYPE ir-value-id
+NEWTYPE ir-type-id
+NEWTYPE ir-attr-id
+NEWTYPE ir-symbol-id
+NEWTYPE ir-span-id
+NEWTYPE ir-pool-offset
+NEWTYPE ir-count
 
 private
 

@@ -818,8 +818,8 @@ $100000 constant CAE-CHILD-ERR-CAP
 
 : CAE-TFAM-SOURCE$ ( -- ptr u8 n )
    SB-RESET
-   s" NEWTYPE cae-tf 1" SB-APPEND CAE-LF
-   s" SUMTYPE cae-rs 2" SB-APPEND CAE-LF
+   s" NEWTYPE cae-tf<a>" SB-APPEND CAE-LF
+   s" SUMTYPE cae-rs<a,b>" SB-APPEND CAE-LF
    s"   VARIANT ok  a ;VARIANT" SB-APPEND CAE-LF
    s"   VARIANT err b ;VARIANT" SB-APPEND CAE-LF
    s" ;SUMTYPE" SB-APPEND CAE-LF

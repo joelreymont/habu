@@ -4,22 +4,22 @@ require src/lib/test.f
 package NPL
 public
 
-PRODUCT rules 0
+PRODUCT rules
    FIELD a n FIELD b n FIELD c n FIELD d n FIELD e n FIELD f n
 ;PRODUCT
 
-PRODUCT wide 0
+PRODUCT wide
    FIELD f01 n FIELD f02 n FIELD f03 n FIELD f04 n FIELD f05 n FIELD f06 n
    FIELD f07 n FIELD f08 n FIELD f09 n FIELD f10 n FIELD f11 n FIELD f12 n
    FIELD f13 n FIELD f14 n FIELD f15 n FIELD f16 n FIELD f17 n FIELD f18 n
    FIELD f19 n FIELD f20 n FIELD f21 n FIELD f22 n FIELD f23 n FIELD f24 n
 ;PRODUCT
 
-NEWTYPE item-id 0
-NEWTYPE length 0
-NEWTYPE angle 0
-PRODUCT point 0 FIELD x length FIELD y length ;PRODUCT
-SUMTYPE shape 0
+NEWTYPE item-id
+NEWTYPE length
+NEWTYPE angle
+PRODUCT point FIELD x length FIELD y length ;PRODUCT
+SUMTYPE shape
    VARIANT core n n n n n n ;VARIANT
    VARIANT polygon item-id point angle ;VARIANT
 ;SUMTYPE

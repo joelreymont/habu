@@ -538,7 +538,7 @@ public
 \ deferred: nothing is refused, but a stretch of top-level source or a definition
 \ was deferred to the run, so the tokens a W-CHECK-DEFERRED packet locates are
 \ not verified.
-ENUM verdict 0
+ENUM verdict
    VARIANT verified ;VARIANT
    VARIANT refused ;VARIANT
    VARIANT engine-provided ;VARIANT

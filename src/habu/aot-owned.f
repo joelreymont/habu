@@ -8,7 +8,7 @@ require src/habu/aot-file.f
 
 package AOT-OWNED
 public
-STRUCTURE capture 0
+STRUCTURE capture
    FIELD bytes ptr u8
    FIELD size n
    FIELD origin n

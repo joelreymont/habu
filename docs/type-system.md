@@ -104,7 +104,7 @@ When you want a byte offset to be a different type from a serial number even
 though both are integers, you declare a **nominal** — a type that is a cell at
 runtime and its own distinct thing to the checker.
 
-**`NEWTYPE name 0`** is the form to reach for. It registers a nominal cell
+**`NEWTYPE name`** is the form to reach for. It registers a nominal cell
 type owned by the package it is declared in (a zero-parameter *family* — § 5
 defines that word), so two packages may each have a type called `index`
 without any confusion between them. `src/lib/num-types.f`
@@ -166,14 +166,15 @@ So: records and tagged alternatives are families, the generic containers are
 families, and the nominal wrappers of § 4 are families too — one substrate,
 several declaring words.
 
-- **`STRUCTURE name arity … FIELD f type … ;STRUCTURE`** declares a record:
+- **`STRUCTURE name[<params>] … FIELD f type … ;STRUCTURE`** declares a record:
   several named fields travelling together as one value. `GPT2:config` carries
-  eleven semantic fields plus its temporary construction proof.
+  eleven semantic fields plus its temporary construction proof. A bare name
+  has no type parameters; `name<a,b>` binds `a` and `b` in that order.
 - **`ENUM name … ;ENUM`** declares a set of alternatives. In its short form the
   body is bare variant names and nothing else, which gives you a plain tag set:
   `MAKI:datatype` (Loom's `maki/tensor.f`) is five names, `df32` through `di32`, and
   is the single authority on element datatypes for the whole tensor layer. In
-  its full form, with an arity token and `VARIANT … ;VARIANT` clauses, each
+  its full form, with `VARIANT … ;VARIANT` clauses, each
   alternative may carry named fields — `SAFET:map-take` is `moved` carrying a
   mapping, or `empty` carrying nothing.
 - **`SUMTYPE`** and **`PRODUCT`** are the older spellings of the same two
@@ -453,7 +454,7 @@ pointer field and scalar fields loads, in a public or a private package, and the
 storage definers accept it:
 
 ```forth
-STRUCTURE rec 0  FIELD data ptr u8  FIELD len n  FIELD cap n  ;STRUCTURE
+STRUCTURE rec  FIELD data ptr u8  FIELD len n  FIELD cap n  ;STRUCTURE
 TYPED-VARIABLE ZRV ZZ:rec        \ ( -- ptr ZZ:rec )
 1 TYPED-BUFFER ZRB ZZ:rec        \ ( n -- ptr ZZ:rec )
 TYPED-VARIABLE ZRP ptr ZZ:rec    \ a cell holding a record pointer
@@ -586,7 +587,7 @@ A memory record is an ordinary layout family that opts into an address surface:
 
 ```forth
 package BUF
-STRUCTURE header 0
+STRUCTURE header
    DERIVE addr
    FIELD data ptr u8
    FIELD len  n
@@ -1013,7 +1014,7 @@ travels on the stack like any other family value, so nothing in the engine
 changed to carry it:
 
 ```forth
-STRUCTURE span 1
+STRUCTURE span<a>
    FIELD base ptr a
    FIELD len n
 ;STRUCTURE

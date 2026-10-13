@@ -12,25 +12,25 @@ require src/lib/errors.f
 require test/compiler/native-eval-fixture.f
 require tools/codegen-tail-probe.f
 
-s" ENUM nctorresult 0 VARIANT ok FIELD value n ;VARIANT VARIANT err FIELD error n ;VARIANT ;ENUM"
+s" ENUM nctorresult VARIANT ok FIELD value n ;VARIANT VARIANT err FIELD error n ;VARIANT ;ENUM"
 INCLUDE-EVALUATE
 
 package NCTOR-WIDE-TEST
 public
 
-STRUCTURE nctorstructure 0
+STRUCTURE nctorstructure
    FIELD x n
    FIELD y n
 ;STRUCTURE
 
-PRODUCT nctorproduct 0
+PRODUCT nctorproduct
    FIELD x n
    FIELD y n
 ;PRODUCT
 
 \ The two writer fields each occupy four cells. The inner constructor takes
 \ 33 cells; nesting it with one more field gives the outer constructor 34.
-STRUCTURE nctorinner 0
+STRUCTURE nctorinner
    FIELD first JSON-WRITE:writer
    FIELD second JSON-WRITE:writer
    FIELD n01 n FIELD n02 n FIELD n03 n FIELD n04 n FIELD n05 n
@@ -40,7 +40,7 @@ STRUCTURE nctorinner 0
    FIELD n21 n FIELD n22 n FIELD n23 n FIELD n24 n FIELD n25 n
 ;STRUCTURE
 
-STRUCTURE nctorouter 0
+STRUCTURE nctorouter
    FIELD inner nctorinner
    FIELD tail n
 ;STRUCTURE

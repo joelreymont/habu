@@ -7,7 +7,7 @@ public
 
 \ XML/state.f's 26-cell header. The two wire pointers are null for INIT's
 \ caller-owned UTF-8 source; INIT-SOURCE's converted storage is excluded here.
-STRUCTURE reader-state 2
+STRUCTURE reader-state<a,b>
    FIELD source read-view<a,b,u8>
    FIELD position n
    FIELD capacity n

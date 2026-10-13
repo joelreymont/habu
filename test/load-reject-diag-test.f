@@ -337,7 +337,7 @@ LOWER-CERT-HOOK:INSTALL
    s" quotation output cannot specialize a declared variable" T-LABEL
    s" : LRD-QUOT ( [ -- a ] -- n ) execute ;" PARAMETRIC-REJECT
    s" family argument cannot specialize a declared variable" T-LABEL
-   s" NEWTYPE lrd-box 1 CAST: LRD-CONCRETE ( n -- lrd-box<n> ) : LRD-PARAM ( n -- lrd-box<a> ) LRD-CONCRETE ;" PARAMETRIC-REJECT
+   s" NEWTYPE lrd-box<a> CAST: LRD-CONCRETE ( n -- lrd-box<n> ) : LRD-PARAM ( n -- lrd-box<a> ) LRD-CONCRETE ;" PARAMETRIC-REJECT
    s" raw storage cannot restrict a declared generic input" T-LABEL
    s" create LRD-RAW 1 cells allot : LRD-RAW-PUT ( a -- ) LRD-RAW ! ;" PARAMETRIC-REJECT
    ERR$ s" restricted by raw storage" CONTAINS? TTRUE
@@ -347,7 +347,7 @@ LOWER-CERT-HOOK:INSTALL
    BODY$ s" create LRD-RAW 1 cells allot : LRD-RAW-N ( n -- ) LRD-RAW ! ; : LRD-ID ( a -- a ) ; : LRD-ROUNDTRIP ( n -- n ) LRD-ID dup LRD-RAW-N ; 41 LRD-ROUNDTRIP . cr" WRITE-ALL
    BODY$ RUN s" 41" ASSERT-OK-OUT
    s" family arguments keep distinct declared variables" T-LABEL
-   s" NEWTYPE lrd-pair 2 : LRD-ID ( lrd-pair<a,a> -- lrd-pair<a,a> ) ; : LRD-ALIAS ( lrd-pair<a,b> -- lrd-pair<a,b> ) LRD-ID ;" PARAMETRIC-REJECT ;
+   s" NEWTYPE lrd-pair<a,b> : LRD-ID ( lrd-pair<a,a> -- lrd-pair<a,a> ) ; : LRD-ALIAS ( lrd-pair<a,b> -- lrd-pair<a,b> ) LRD-ID ;" PARAMETRIC-REJECT ;
 
 \ A storage declaration whose definer cannot size its type is the checker's
 \ refusal, named for the declared word and the type, where it used to die on an

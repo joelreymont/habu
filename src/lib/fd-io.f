@@ -38,7 +38,7 @@ public
 
 \ How READ-EXACT ended: the span is full, or end of file came first, after the
 \ bytes the span now starts with.
-ENUM fill 0
+ENUM fill
    VARIANT full ;VARIANT
    VARIANT eof FIELD bytes n ;VARIANT
 ;ENUM

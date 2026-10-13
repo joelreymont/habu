@@ -5,7 +5,7 @@ require src/lib/serial.f
 package SERIAL-XMODEM
 public
 
-SUMTYPE transfer-result 0
+SUMTYPE transfer-result
    VARIANT completed NUM:byte-len ;VARIANT
    VARIANT timeout ;VARIANT
    VARIANT closed ;VARIANT

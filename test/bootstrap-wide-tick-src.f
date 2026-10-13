@@ -15,7 +15,7 @@ INSTALL
 -1 TDECL-PROT-WID-ARMED !
 ;using
 
-SUMTYPE bwt 1
+SUMTYPE bwt<a>
   VARIANT value a ;VARIANT
 ;SUMTYPE
 

@@ -1,10 +1,10 @@
 \ sumtype.f — NEWTYPE/SUMTYPE/ENUM/PRODUCT declaration grammar
 \ (docs/type-families.md §9, PLAN items 6 + 14 + 15). The public ADT authoring
-\ surface: `NEWTYPE name
-\ arity` registers a TK-CELL family; `ENUM name v0 v1 .. ;ENUM` registers a
-\ TK-ENUM family (a zero-payload sum, docs §9.3); `PRODUCT name arity FIELD f t ..
+\ surface: `NEWTYPE name[<params>]` registers a TK-CELL family;
+\ `ENUM name v0 v1 .. ;ENUM` registers a
+\ TK-ENUM family (a zero-payload sum, docs §9.3); `PRODUCT name[<params>] FIELD f t ..
 \ ;PRODUCT` registers a TK-PRODUCT family (single-shape record, PF-* field rows,
-\ no tag, docs §9.4); `SUMTYPE name arity VARIANT v
+\ no tag, docs §9.4); `SUMTYPE name[<params>] VARIANT v
 \ pay... ;VARIANT ... ;SUMTYPE` registers a TK-SUM family, one SUMV row per variant (tag =
 \ declaration order), payload schema nodes, the family's variant range, and its
 \ max payload width. Declarations are package-aware: rows carry the active
@@ -47,7 +47,7 @@ package TYPE-DECL
 public
 
 7107 constant E-TDECL-SYNTAX    \ malformed declaration (name/arity/terminator/token)
-7108 constant E-TDECL-ARITY     \ arity token is not a small decimal
+7108 constant E-TDECL-ARITY     \ malformed type parameter header
 7109 constant E-TDECL-PAYLOAD   \ unknown variant payload type
 7110 constant E-TDECL-NAME      \ reserved or colliding family/variant name
 7116 constant E-TDECL-POLICY    \ unknown or not-yet-supported layout policy (item 16; 7111-7115 = checker.f E-CTOR/E-EXPORT)
@@ -62,6 +62,50 @@ private
                                 \ (7120-7132 already belong to the checker, layout-buffer, field, and cast blocks)
 
 $1000 constant TDECL-CAP        \ buffered declaration body bytes
+
+create DECL-PARAM-NAMES TFAM-DECL-PARAM-COUNT allot
+variable DECL-PARAM-N
+: DECL-PARAM-CLEAR ( -- )
+   0 DECL-PARAM-N !
+   TFAM-DECL-PARAM-COUNT 0 ?DO 0 DECL-PARAM-NAMES i + c! LOOP ;
+DECL-PARAM-CLEAR
+
+public
+
+\ Declaration-local names bind by list position. The registry and generated
+\ effects still use positional schema indices and the canonical alphabet.
+: DECL-PARAM ( n -- n bool )
+   {: char:n :}
+   0 BEGIN dup DECL-PARAM-N @ < WHILE
+      DECL-PARAM-NAMES over + c@ char = IF RES-TRUE EXIT THEN
+      1+
+   REPEAT drop 0 RES-FALSE ;
+
+: DECL-HEADER ( ptr u8 n -- ptr u8 n n bool )
+   {: a:ptr u:n :}
+   DECL-PARAM-CLEAR
+   a u CK-NAME-SPAN? 0= IF a 0 0 RES-FALSE EXIT THEN
+   0 BEGIN dup u < IF a over + c@ 60 <> ELSE RES-FALSE THEN WHILE 1+ REPEAT
+   {: tail:n :}
+   tail u = IF a u 0 RES-TRUE EXIT THEN
+   u tail - 2 - {: chars:n :}
+   chars 1 < chars 1 and 0= or IF a u 0 RES-FALSE EXIT THEN
+   a u 1- + c@ 62 <> IF a u 0 RES-FALSE EXIT THEN
+   chars 1+ 2 / {: count:n :}
+   count TFAM-DECL-PARAM-COUNT > IF a u 0 RES-FALSE EXIT THEN
+   count 0 ?DO
+      a tail 1+ + i 2 * + c@ {: char:n :}
+      char TFAM-DECL-CHAR>PARAM nip 0= IF a u 0 RES-FALSE unloop EXIT THEN
+      char DECL-PARAM nip IF a u 0 RES-FALSE unloop EXIT THEN
+      char DECL-PARAM-NAMES i + c!
+      i 1+ DECL-PARAM-N !
+      i count 1- < IF
+         a tail 2 + + i 2 * + c@ 44 <> IF a u 0 RES-FALSE unloop EXIT THEN
+      THEN
+   LOOP
+   a tail count RES-TRUE ;
+
+private
 
 \ The body cap bounds its field/variant names. Keep names already parsed so a
 \ later duplicate still rejects when an earlier missing type prevented a row.
@@ -286,36 +330,6 @@ variable TDECL-NI
    a u TYPE-NAME:FAMILY-TAKEN? 0= IF EXIT THEN
    a u s" collides with a type family" E-TDECL-NAME TDECL-THROW ;
 
-\ --- arity token: small decimal, capped by the positional letter params.
-variable TDA-I
-: TDECL-DEC? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 0= IF RES-FALSE EXIT THEN
-   0 TDA-I !
-   BEGIN TDA-I @ u < WHILE
-      a TDA-I @ + c@ dup 48 < swap 57 > or IF RES-FALSE EXIT THEN
-      TDA-I @ 1 + TDA-I !
-   REPEAT RES-TRUE ;
-: TDECL-DEC ( ptr u8 n -- n ) {: a:ptr u:n :}
-   0  0 TDA-I !
-   BEGIN TDA-I @ u < WHILE
-      10 * a TDA-I @ + c@ 48 - +
-      TDA-I @ 1 + TDA-I !
-   REPEAT ;
-\ CHECKER-DEFFAMILY hands its arity token straight from the caller, so a length
-\ past the two digits is refused before a byte is read, and the report echoes
-\ the token only when its length is one a name can have (CK-NAME-SPAN?).
-2 constant TDECL-ARITY-DIGITS   \ the digits of TFAM-DECL-PARAM-COUNT, 23
-: TDECL-ARITY-REFUSE ( ptr u8 n -- )
-   2dup CK-NAME-SPAN? 0= IF drop 0 THEN
-   s" arity must be a decimal, at most 23 parameters" E-TDECL-ARITY TDECL-THROW ;
-: TDECL-ARITY ( ptr u8 n -- n ) {: a:ptr u:n :}
-   \ A missing arity has no token; use the family name's source position.
-   u 0= IF TDN-A @ TDN-U @ s" missing arity" E-TDECL-ARITY TDECL-THROW THEN
-   u 0 < u TDECL-ARITY-DIGITS > or IF a u TDECL-ARITY-REFUSE THEN
-   a u TDECL-DEC? 0= IF a u TDECL-ARITY-REFUSE THEN
-   a u TDECL-DEC
-   dup TFAM-DECL-PARAM-COUNT > IF drop a u TDECL-ARITY-REFUSE THEN ;
-
 \ --- package scope: a declaration registers in the active checker package with
 \ the active visibility (TFAM-ACTIVE-PKG$, type-family.f); top level is the
 \ global scope, public.
@@ -341,17 +355,26 @@ variable TDA-I
 \ params within arity, n/f/r + concrete CT cell types, and `ptr T`.
 variable TDECL-FAM-ARITY
 
+: TDECL-HEADER! ( -- n )
+   TDN-U @ 0= IF TDN-A @ 0 TDECL-REQUIRE-NAME THEN
+   TDN-A @ TDN-U @ DECL-HEADER 0= IF
+      drop 2drop
+      TDN-A @ TDN-U @ s" invalid type parameter header" E-TDECL-ARITY TDECL-THROW
+   THEN
+   {: ar:n :}
+   TDN-U ! TDN-A !
+   ar TDECL-FAM-ARITY !
+   ar ;
+
 : TDECL-LETTER ( ptr u8 n -- n ) {: a:ptr u:n :}
    a c@ {: c:n :}
    c 110 = IF CC-N SCHEMA-CON EXIT THEN
    c 102 = IF CC-BOOL SCHEMA-CON EXIT THEN
    c 114 = IF CC-R SCHEMA-CON EXIT THEN
-   c TFAM-DECL-CHAR>PARAM 0= IF
+   c DECL-PARAM 0= IF
       drop a u s" unknown payload type" E-TDECL-PAYLOAD TDECL-THROW
    THEN
-   dup TDECL-FAM-ARITY @ < IF SCHEMA-PARAM EXIT THEN
-   drop
-   a u s" unknown payload type" E-TDECL-PAYLOAD TDECL-THROW ;
+   SCHEMA-PARAM ;
 
 \ item 16 boxed sub-slice 1: a DIRECT self-family reference is a payload token
 \ whose tail is the family being declared (TDN-A/TDN-U). An inline or ptr-wrapped
@@ -888,10 +911,9 @@ private
 
 : CHECKER-DEFSUM-BODY ( -- )
    TDECL-REQUIRE-FIT
+   TDECL-HEADER! {: ar:n :}
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-CURSOR!
-   TDECL-NEXT TDECL-ARITY {: ar:n :}
-   ar TDECL-FAM-ARITY !
    ar TK-SUM TDECL-FAMILY {: fam:n :}
    fam TDECL-CUR-FAM !                    \ payload self-references reject by id
    fam TDECL-POLICY                       \ optional POLICY clause before the variants
@@ -926,7 +948,7 @@ public
 \ through ENUM-DECL:ED-REPLAY instead. SUMTYPE and PRODUCT below are unchanged and
 \ still own their own bodies until their own migrations.
 
-\ --- product families (item 15, docs §9.4): a `PRODUCT name arity FIELD f t ..
+\ --- product families (item 15, docs §9.4): a `PRODUCT name[<params>] FIELD f t ..
 \ ;PRODUCT` block is a single-shape record registered as TK-PRODUCT (no tag, no
 \ variants). Each `FIELD name type` becomes one PF-* row (fam, field tail, field
 \ schema root, physical slot) plus one cell of width; TFAM-SLOTS = field count, so
@@ -1092,10 +1114,9 @@ private
 
 : CHECKER-DEFPRODUCT-BODY ( -- )
    TDECL-REQUIRE-FIT
+   TDECL-HEADER! {: ar:n :}
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-CURSOR!
-   TDECL-NEXT TDECL-ARITY {: ar:n :}
-   ar TDECL-FAM-ARITY !
    ar TK-PRODUCT TDECL-FAMILY {: fam:n :}
    fam TDECL-CUR-FAM !                    \ field self-references reject by id
    fam TDECL-POLICY                       \ optional POLICY clause before the fields
@@ -1115,16 +1136,16 @@ public
 private
 
 : CHECKER-DEFFAMILY-BODY ( -- )
+   TDECL-HEADER! {: ar:n :}
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
-   TDB-A @ TDB-U @ TDECL-ARITY
-   TK-CELL TDECL-FAMILY drop ;
+   ar TK-CELL TDECL-FAMILY drop ;
 
 
 public
 
-: TDECL-DEFFAMILY ( ptr u8 n ptr u8 n -- )   \ name, arity token
-   {: na:ptr nu:n aa:ptr au:n :}
-   s" newtype" na nu aa au TDECL-CTX!
+: TDECL-DEFFAMILY ( ptr u8 n -- )   \ family header
+   {: na:ptr nu:n :}
+   s" newtype" na nu s" " TDECL-CTX!
    [: CHECKER-DEFFAMILY-BODY ;] TDECL-RUN ;
 
 \ --- runtime constructor generation (item 8, docs §12). Only the engine's
@@ -2673,13 +2694,11 @@ public
    fam TDECL-CTOR-REPLAY
    fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-REPLAY THEN ;
 
-\ --- public defining words. NEWTYPE consumes name + arity; SUMTYPE buffers
+\ --- public defining words. NEWTYPE consumes family header; SUMTYPE buffers
 \ the block up to ;SUMTYPE (VALUE-RECORD's shape), then registers it whole.
 
 : TDECL-NEWTYPE ( -- )
-   parse-name {: na:ptr nu:n :}
-   parse-name {: aa:ptr au:n :}
-   na nu aa au TDECL-DEFFAMILY ;
+   parse-name TDECL-DEFFAMILY ;
 
 
 private
@@ -2779,7 +2798,7 @@ using TYPE-DECL
 \ neither a bare nor a qualified name reaches them.
 \ test/internal-word-gate.f SEAL-CASES pins that the surface stops there.
 
-\ NEWTYPE consumes name + arity. SUMTYPE and PRODUCT buffer their block up to
+\ NEWTYPE consumes family header. SUMTYPE and PRODUCT buffer their block up to
 \ the ;NAME closer (VALUE-RECORD's shape), then register it whole.
 : NEWTYPE ( -- ) TDECL-NEWTYPE ;
 : SUMTYPE ( -- ) TDECL-SUMTYPE ;
@@ -2790,7 +2809,7 @@ using TYPE-DECL
 \ the checked declarers that build on them (src/lib/type/deftype.f DEFTYPE,
 \ maki/extent.f EXTENT:). Their PRIM: rows live in src/core/checker.f and stay
 \ PRIM: because the names they describe stay global.
-: CHECKER-DEFFAMILY ( ptr u8 n ptr u8 n -- ) TDECL-DEFFAMILY ;
+: CHECKER-DEFFAMILY ( ptr u8 n -- ) TDECL-DEFFAMILY ;
 NOMINAL-PROVIDER
 : CHECKER-DEFSUM ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM ;
 NOMINAL-PROVIDER

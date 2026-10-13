@@ -41,7 +41,7 @@ public
 \ A 256-bit digest held as the four 64-bit little-endian words of the SHA-256
 \ output, deepest word first. Multi-cell, so no single-cell scalar can launder
 \ into it. DERIVE eq gives the typed identity compare CDIGEST-DIGEST:EQ.
-STRUCTURE digest 0 DERIVE eq
+STRUCTURE digest DERIVE eq
    FIELD w0 n
    FIELD w1 n
    FIELD w2 n

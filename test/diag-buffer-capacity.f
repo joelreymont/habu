@@ -110,9 +110,9 @@ public
    0 TEXT-U !
    s" NEWTYPE " TEXT+
    EFFECT-N 98 TEXT-RUN
-   s\"  0\nNEWTYPE " TEXT+
+   s\" \nNEWTYPE " TEXT+
    EFFECT-N 97 TEXT-RUN
-   s\"  12\nTRUSTED: MK ( -- " TEXT+
+   s\" <a,b,c,d,e,g,h,i,j,k,l,m>\nTRUSTED: MK ( -- " TEXT+
    EFFECT-N 97 TEXT-RUN
    s" <" TEXT+
    EFFECT-N 98 TEXT-RUN

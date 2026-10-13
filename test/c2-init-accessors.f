@@ -7,22 +7,22 @@ require src/lib/test.f
 package C2IA
 
 public
-STRUCTURE shelf 2 DERIVE init
+STRUCTURE shelf<a,b> DERIVE init
    FIELD source read-view<a,b,u8>
    FIELD count n
 ;STRUCTURE
 
-STRUCTURE pair 0 DERIVE addr init
+STRUCTURE pair DERIVE addr init
    FIELD first n
    FIELD second n
 ;STRUCTURE
 
-STRUCTURE nested 0 DERIVE init
+STRUCTURE nested DERIVE init
    FIELD pair pair
    FIELD count n
 ;STRUCTURE
 
-PRODUCT scalar 0 DERIVE init FIELD value n ;PRODUCT
+PRODUCT scalar DERIVE init FIELD value n ;PRODUCT
 
 : GET-SOURCE ( mut-view<c,d,e,init<g,shelf<a,b>>> -- mut-view<c,d,e,init<g,shelf<a,b>>> read-view<a,b,u8> ) C2IA-SHELF:SOURCE@ ;
 

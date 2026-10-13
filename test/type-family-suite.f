@@ -907,7 +907,7 @@ MSPAN @ TFAM-ARITY@ 6 T=
 \ match), no diagnostic latch, no checker-row effect.
 \ ---------------------------------------------------------------------------
 variable LID   variable LVID
-SUMTYPE lres 0
+SUMTYPE lres
   VARIANT lok  n   ;VARIANT
   VARIANT lerr n n ;VARIANT
   VARIANT lnil     ;VARIANT
@@ -962,8 +962,8 @@ s" TFL-SURFACE" type cr
 variable PSZ  variable PAL  variable PTW  variable PKI
 package pkpk
 ENUM pkpke red green blue ;ENUM
-SUMTYPE pkpks 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
-PRODUCT pkpkp 0 FIELD x n FIELD y n ;PRODUCT
+SUMTYPE pkpks<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
+PRODUCT pkpkp FIELD x n FIELD y n ;PRODUCT
 ;package
 \ enum (3 variants, no payload): tag-only u8 -> size 1 align 1 tagw 1
 s" pkpk" s" pkpke" TFAM-FIND-IN drop PKI !
@@ -989,16 +989,16 @@ PSZ @ 16 T=  PAL @ 8 T=   PTW @ 0 T=
 \ ---------------------------------------------------------------------------
 variable PQA  variable PQB  variable PQL  variable PQF
 package pkac
-SUMTYPE pkacp 0 POLICY packed-tag
+SUMTYPE pkacp POLICY packed-tag
   VARIANT lo n ;VARIANT
   VARIANT hi n ;VARIANT
 ;SUMTYPE
-SUMTYPE pkacs 0 POLICY stack-cell-tag
+SUMTYPE pkacs POLICY stack-cell-tag
   VARIANT lo n ;VARIANT
   VARIANT hi n ;VARIANT
 ;SUMTYPE
 ENUM pkace POLICY packed-tag red green blue ;ENUM
-PRODUCT pkacr 0 POLICY packed-tag FIELD x n FIELD y n ;PRODUCT
+PRODUCT pkacr POLICY packed-tag FIELD x n FIELD y n ;PRODUCT
 
 \ policy readback + stack-width identity with the stack-cell-tag twin
 s" pkac" s" pkacp" TFAM-FIND-IN drop PQA !
@@ -1073,8 +1073,8 @@ WBX @ TL-STACK-CELL-TAG TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 3 T=      \ restored
 variable IWP1  variable IWP3  variable IWOPT  variable IWT
 package pkiw
 ENUM pkiw1 red green ;ENUM                                         \ layout, width 1 (tag only)
-PRODUCT pkiw3 0 FIELD a n FIELD b n FIELD c n ;PRODUCT             \ layout, width 3 (three cells)
-SUMTYPE pkiwo 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE  \ option-like, arity 1
+PRODUCT pkiw3 FIELD a n FIELD b n FIELD c n ;PRODUCT             \ layout, width 3 (three cells)
+SUMTYPE pkiwo<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE  \ option-like, arity 1
 ;package
 s" pkiw" s" pkiw1" TFAM-FIND-IN drop IWP1 !
 s" pkiw" s" pkiw3" TFAM-FIND-IN drop IWP3 !

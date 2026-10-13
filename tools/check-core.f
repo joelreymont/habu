@@ -1082,9 +1082,8 @@ variable CHK-EXP-ROWS
    repeat
    s" check.f: missing END-VALUE-RECORD" CHK-E-CHECK CHK-FAIL ;
 
-: CHK-TFAM-DO-DEF ( -- )         \ arity token, or empty when absent (missing-arity packet)
+: CHK-TFAM-DO-DEF ( -- )         \ one family header
    CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
-   CHK-TFAM-NAME-I @ 1+ dup LINT-LEX:COUNT < IF LINT-LEX:TOKEN ELSE drop s" " THEN
    CHECKER-DEFFAMILY ;
 
 : CHK-SUM-DO-DEF ( -- )
@@ -1115,7 +1114,7 @@ variable CHK-EXP-ROWS
    dup 0= IF drop EXIT THEN
    drop CHK-E-CHECK CHK-THROW ;
 
-\ Missing arity is reported by CHECKER-DEFFAMILY through the declaration packet
+\ A malformed header is reported by CHECKER-DEFFAMILY through the declaration packet
 \ (§24), matching native/verify-source -- not a raw pre-check throw.
 : CHK-TFAM-REGISTER ( n -- n ) {: k:n :}   \ k at 'newtype'; next scan index
    k 1+ CHK-TFAM-NAME-I !
@@ -1123,10 +1122,10 @@ variable CHK-EXP-ROWS
    [: CHK-TFAM-DO-DEF ;] catch
    CHK-DECL-FLUSH
    CHK-DECL-FAIL
-   k 3 + ;
+   k 2 + ;
 
 : CHK-NOM-DO-DEF ( -- )
-   CHK-TFAM-NAME-I @ CHK-NOM-TAIL$ s" 0" CHECKER-DEFFAMILY ;
+   CHK-TFAM-NAME-I @ CHK-NOM-TAIL$ CHECKER-DEFFAMILY ;
 
 \ A DEFTYPE name is refused exactly when CHECKER-DEFFAMILY refuses its tail,
 \ which is the loader's rule. TYPE-RESERVED? is not that rule: it refuses any

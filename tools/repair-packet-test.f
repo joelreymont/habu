@@ -380,7 +380,7 @@ create PACKET-BUF FS-PATH-CAP allot
    s" storage-unplaced" s" fix_storage_type"
    s\" s\" 4 TYPED-BUFFER DIAG-STG no-such-type\" evaluate" 70 CHILD-CASE
    s" declaration-unplaced" s" fix_family_declaration"
-   s\" s\" SUMTYPE badsum 0 VARIANT samev ;VARIANT VARIANT samev ;VARIANT ;SUMTYPE\" evaluate" 70 CHILD-CASE ;
+   s\" s\" SUMTYPE badsum VARIANT samev ;VARIANT VARIANT samev ;VARIANT ;SUMTYPE\" evaluate" 70 CHILD-CASE ;
 
 \ A refused record names its token and any known position. A trust row naming
 \ no word is refused by the pre-pass, as the load refuses it, at its name. A

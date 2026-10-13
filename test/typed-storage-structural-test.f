@@ -38,7 +38,7 @@ require test/checker-assert.f
 
 package TYPED-STORAGE-STRUCTURAL-TEST
 
-NEWTYPE tssk 0
+NEWTYPE tssk
 
 \ a LINEAR con (CHECKER-DEFLINEAR registers class CT-LINEAR): noncopyable, so it
 \ is not storable in either position however closed it is.

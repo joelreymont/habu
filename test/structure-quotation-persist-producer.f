@@ -4,23 +4,23 @@ require test/checker-assert.f
 
 package QUOT-PERSIST-TEST
 
-STRUCTURE entry 0 DERIVE addr
+STRUCTURE entry DERIVE addr
    FIELD handler [ n -- n ]
 ;STRUCTURE
 
-STRUCTURE generic-entry 1 DERIVE addr
+STRUCTURE generic-entry<a> DERIVE addr
    FIELD value a
    FIELD handler [ a -- a ]
 ;STRUCTURE
 
-STRUCTURE hook 0 FIELD handler [ n -- n ] ;STRUCTURE
-SUMTYPE choice 0
+STRUCTURE hook FIELD handler [ n -- n ] ;STRUCTURE
+SUMTYPE choice
    VARIANT empty ;VARIANT
    VARIANT scalar n ;VARIANT
    VARIANT present hook ;VARIANT
 ;SUMTYPE
-STRUCTURE holder 0 FIELD choice choice ;STRUCTURE
-STRUCTURE envelope 0 FIELD item holder ;STRUCTURE
+STRUCTURE holder FIELD choice choice ;STRUCTURE
+STRUCTURE envelope FIELD item holder ;STRUCTURE
 
 TYPED-VARIABLE ROW entry
 1 LAYOUT-BUFFER LB entry

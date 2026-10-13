@@ -2101,7 +2101,7 @@ TFG -1 T=
 \ previous wide definition's facts live when it accepts a scalar definition.
 package CERT-ALT-TEST
 
-SUMTYPE wide 0
+SUMTYPE wide
    VARIANT value n ;VARIANT
 ;SUMTYPE
 1 LAYOUT-BUFFER BUF wide
@@ -2258,7 +2258,7 @@ s" check@ round-trip: hook still fires" T-LABEL 5 ES-CHK-RT 10 T=
 \ Verdict 0 = rejected, -1 = certified. `esnp` is an arity-0 nominal-scalar family;
 \ ESNP-AT is its generated LAYOUT-BUFFER pointee accessor (the only checked source
 \ of `ptr esnp`). All scaffolding is checked Habu — no trust surface is added.
-NEWTYPE esnp 0
+NEWTYPE esnp
 4 LAYOUT-BUFFER ESNP-AT esnp                  \ ESNP-AT ( n -- ptr esnp ) accessor
 : ESNP-ID ( esnp -- esnp ) ;                  \ concrete nominal identity wrapper
 : ESNP-MERGE ( g g -- g ) nip ;               \ collapses its two inputs to one type
@@ -3008,7 +3008,7 @@ ES-ALIGN-V CELL 1- and 0 T=
 \ does not align, so at least two of the three cases fail there.
 package ES-ALIGN-TEST
 public
-SUMTYPE esal 0
+SUMTYPE esal
    VARIANT value n ;VARIANT
 ;SUMTYPE
 create PAD-LB 1 allot

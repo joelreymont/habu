@@ -91,7 +91,7 @@ public
 \ top-level public arity-0 sum: constructors exist, certify, enforce payloads.
 \ ---------------------------------------------------------------------------
 PROT-WID-RETURN-TEST:START
-SUMTYPE zres 0
+SUMTYPE zres
   VARIANT ok  n ;VARIANT
   VARIANT err n ;VARIANT
 ;SUMTYPE
@@ -100,7 +100,7 @@ PROT-WID-RETURN-TEST:FINISH
 \ defs. Declared EARLY (dot habu-qualified-defs-leak-aadeb5c9 fixed): a qualified
 \ def no longer leaks a bare-global `dup`/`swap` effect row, so every later
 \ checked body that uses bare dup/swap as PRIMS still certifies (proven below).
-SUMTYPE zwv 0
+SUMTYPE zwv
   VARIANT dup n ;VARIANT
   VARIANT swap  ;VARIANT
 ;SUMTYPE
@@ -119,7 +119,7 @@ s" ZB4 ( n n -- zres )" CHECK-QUIET-CANDIDATE! 0 T=
 \ ---------------------------------------------------------------------------
 \ multi-cell payloads: M > 1, zero padding for narrow variants, ptr payloads.
 \ ---------------------------------------------------------------------------
-SUMTYPE zmix 0
+SUMTYPE zmix
   VARIANT small n ;VARIANT
   VARIANT big ptr u8 n n ;VARIANT
 ;SUMTYPE
@@ -131,7 +131,7 @@ s" ZB5 ( n n -- zmix ) ZMIX:BIG" CHECK-QUIET-CANDIDATE! 0 T=
 \ ---------------------------------------------------------------------------
 \ zero-payload variants: enum-shaped sums and padded empty variants.
 \ ---------------------------------------------------------------------------
-SUMTYPE zen 0
+SUMTYPE zen
   VARIANT lit  ;VARIANT
   VARIANT dark ;VARIANT
 ;SUMTYPE
@@ -139,7 +139,7 @@ SUMTYPE zen 0
 : ZMK-DARK ( -- zen ) ZEN:DARK ;
 s" GEN-ENUM" type cr
 
-SUMTYPE zopt 0
+SUMTYPE zopt
   VARIANT none   ;VARIANT
   VARIANT some n ;VARIANT
 ;SUMTYPE
@@ -153,11 +153,11 @@ s" GEN-OPT" type cr
 \ ---------------------------------------------------------------------------
 package zpub
 public
-SUMTYPE tres 0
+SUMTYPE tres
   VARIANT yes n ;VARIANT
 ;SUMTYPE
 private
-NEWTYPE zonly 1
+NEWTYPE zonly<a>
 ;package
 \ package mode continued private after generation ran inside the block.
 s" zpub" s" zonly" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
@@ -166,7 +166,7 @@ TCF @ TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
 : ZMK-YES ( n -- zpub:tres ) ZPUB-TRES:YES ;
 s" GEN-PKG" type cr
 \ global scope is back: a fresh top-level sum still generates.
-SUMTYPE zafter 0
+SUMTYPE zafter
   VARIANT one n ;VARIANT
 ;SUMTYPE
 : ZMK-ONE ( n -- zafter ) ZAFTER:ONE ;
@@ -182,7 +182,7 @@ s" GEN-AFTER" type cr
 \ ---------------------------------------------------------------------------
 package evx
 public
-SUMTYPE certify-slot 0
+SUMTYPE certify-slot
   VARIANT certify-got n ;VARIANT
   VARIANT certify-none ;VARIANT
 ;SUMTYPE
@@ -206,14 +206,14 @@ s" GEN-LONG-CTOR" type cr
 \ fields where instantiation proves the args non-linear (LOGHID coercion),
 \ and genuinely-linear instantiations stay fail-closed.
 \ ---------------------------------------------------------------------------
-SUMTYPE zpar 1
+SUMTYPE zpar<a>
   VARIANT psome a ;VARIANT
 ;SUMTYPE
 s" " s" zpar" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" ZPAR" T$=
 s" ZB6 ( n -- zpar<n> ) ZPAR:PSOME" CHECK-QUIET-CANDIDATE! -1 T=   \ publishes + certifies
 
-SUMTYPE zpoly 2
+SUMTYPE zpoly<a,b>
   VARIANT ok  a ;VARIANT
   VARIANT err b ;VARIANT
 ;SUMTYPE
@@ -228,7 +228,7 @@ SUMTYPE zpoly 2
 : ZPMK-USE ( n -- zpoly<n,n> ) ZPMK-G ;
 s" GEN-POLY" type cr
 \ multi-cell payloads + zero padding through a parametric family.
-SUMTYPE zpmix 2
+SUMTYPE zpmix<a,b>
   VARIANT small a ;VARIANT
   VARIANT big a b n ;VARIANT
 ;SUMTYPE
@@ -255,7 +255,7 @@ s" ZP8 ( n -- zpoly<n,n> zpoly<n,n> ) ZPOLY:OK dup" CHECK-QUIET-CANDIDATE! 0 T=
 \ ---------------------------------------------------------------------------
 package zp8
 private
-SUMTYPE zsec 0
+SUMTYPE zsec
   VARIANT hide n ;VARIANT
 ;SUMTYPE
 ;package
@@ -268,7 +268,7 @@ s" ZB7 ( n -- n ) ZP8-ZSEC:HIDE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word 
 \ nor duplicates the existing constructor words (load survives = proof).
 \ ---------------------------------------------------------------------------
 TWX-MULTI-ERR-BEGIN
-s" SUMTYPE zres 0 VARIANT no n ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
+s" SUMTYPE zres VARIANT no n ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
 TWX-MULTI-ERR-END 1 T=
 : ZMK-OK2 ( n -- zres ) ZRES:OK ;
 s" DUP-DECL-SAFE" type cr
@@ -278,7 +278,7 @@ s" DUP-DECL-SAFE" type cr
 \ ---------------------------------------------------------------------------
 \ concrete linear payload rejects at declaration (v1 payload grammar).
 TWX-MULTI-ERR-BEGIN
-s" SUMTYPE zlin 0 VARIANT keep own ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
+s" SUMTYPE zlin VARIANT keep own ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
 TWX-MULTI-ERR-END 1 T=
 s" " s" zlin" TFAM-FIND-IN TCOK ! drop   TCOK @ 0 T=
 
@@ -378,12 +378,12 @@ s" LEAK-FIX" type cr
 \ cross-package path is the generated constructor word only.
 package cnpub
 public
-SUMTYPE cnres 0
+SUMTYPE cnres
   VARIANT yes n ;VARIANT
 ;SUMTYPE
 s" CP1 ( n -- cnres ) construct cnres yes" CHECK-QUIET-CANDIDATE! -1 T=
 private
-SUMTYPE cnsec 0
+SUMTYPE cnsec
   VARIANT hide n ;VARIANT
 ;SUMTYPE
 s" CP2 ( n -- cnsec ) construct cnsec hide" CHECK-QUIET-CANDIDATE! -1 T=
@@ -401,7 +401,7 @@ s" CONSTRUCT-OWN" type cr
 \ construction/destructure are physical no-ops and runtime round-trips are
 \ identity. Same publish/protection stack as sum constructors (SUMV rows).
 \ ---------------------------------------------------------------------------
-PRODUCT zpt 0
+PRODUCT zpt
   FIELD x n
   FIELD y n
 ;PRODUCT
@@ -440,7 +440,7 @@ s" PB5 ( zpt -- zpt zpt ) dup" CHECK-QUIET-CANDIDATE! -1 T=
 \ construct is kind-gated to sum/enum: no token form for products.
 s" PB6 ( n n -- zpt ) construct zpt make" CHECK-QUIET-CANDIDATE! 0 T=
 \ ptr-payload product round-trips the mixed field row.
-PRODUCT zbuf 0
+PRODUCT zbuf
   FIELD cap n
   FIELD raw ptr u8
 ;PRODUCT
@@ -450,7 +450,7 @@ s" GEN-PRODUCT-PTR" type cr
 \ parametric products publish both words: MAKE's open result expands at
 \ concrete boundaries (LOGHID out), UNMAKE's open input absorbs the caller's
 \ hidden run (LOGHID in), and generic wrappers stay one logical cell inside.
-PRODUCT zpr 2
+PRODUCT zpr<a,b>
   FIELD fst a
   FIELD snd b
 ;PRODUCT
@@ -473,7 +473,7 @@ s" PL3 ( zpr<own,n> -- own n ) ZPR:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 \ package state survives generation.
 package zppk
 public
-PRODUCT prow 0
+PRODUCT prow
   FIELD v n
 ;PRODUCT
 ;package
@@ -483,7 +483,7 @@ s" GEN-PRODUCT-PKG" type cr
 \ private products export nothing: no package, no words, no construct form.
 package zpsec
 private
-PRODUCT phid 0
+PRODUCT phid
   FIELD v n
 ;PRODUCT
 ;package
@@ -508,8 +508,8 @@ s" PRODUCT-PROTECTED" type cr
 \ and CLFC2 (raw `construct`) now compile AND round-trip; CLFC3 (cell) unchanged.
 \ Nested named ADTs land below. The adversarials' compile-hook stderr is expected.
 \ ---------------------------------------------------------------------------
-PRODUCT clw2 0 FIELD x n FIELD y n ;PRODUCT
-SUMTYPE clopt 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
+PRODUCT clw2 FIELD x n FIELD y n ;PRODUCT
+SUMTYPE clopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 s" : CLFC1 ( -- clopt<clw2> ) CLOPT:NONE ;" TCE-CATCH 0 T=
 s" : CLFC2 ( -- clopt<clw2> ) construct clopt none ;" TCE-CATCH 0 T=
 s" : CLFC3 ( n -- clopt<n> ) CLOPT:SOME ;" TCE-CATCH 0 T=
@@ -529,8 +529,8 @@ CLFC-RT-NONER 999 T=
 \ wave-B probe shapes as named payload products: result<clw2,n> (W=2 ok payload
 \ + cell err) and option<clfs3> (W=3 payload) — the shipping form of the P1/P2/P3
 \ raw runs (option<off len>, option<ptr u8 n>, result<n n,n>).
-PRODUCT clfs3 0 FIELD a n FIELD b n FIELD c n ;PRODUCT
-SUMTYPE clfres 2 VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
+PRODUCT clfs3 FIELD a n FIELD b n FIELD c n ;PRODUCT
+SUMTYPE clfres<a,b> VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
 : CLFC-ROK ( n n -- clfres<clw2,n> ) CLW2:MAKE CLFRES:OK ;
 : CLFC-RERR ( n -- clfres<clw2,n> ) CLFRES:ERR ;
 : CLFC-RGET ( clfres<clw2,n> -- n ) MATCH clfres ok OF CLW2:UNMAKE + ENDOF err OF ENDOF ;MATCH ;
@@ -610,8 +610,8 @@ s" LOWER-WIDTH-AWARE-ROUNDTRIP" type cr
 \ ---------------------------------------------------------------------------
 package XPAD-ASYM
 public
-PRODUCT clx2 0 FIELD x n FIELD y n ;PRODUCT
-SUMTYPE clxg 1
+PRODUCT clx2 FIELD x n FIELD y n ;PRODUCT
+SUMTYPE clxg<a>
   VARIANT wtwo a a ;VARIANT
   VARIANT wthree n n n ;VARIANT
 ;SUMTYPE
@@ -674,8 +674,8 @@ s" LOWER-WIDTH-ASYM-FAILCLOSED" type cr
 \ mismatched shape, or a quoted UNMAKE with no live input, still fails closed. XPGW-RT runs the
 \ checked MAKE->UNMAKE round trip: the field values read top-down (z=3, b=2, a=1) and the 5551
 \ canary below the bundle prove content, order and width.
-s" STRUCTURE xpginr 0 FIELD a n FIELD b n ;STRUCTURE" TCE-CATCH 0 T=          \ width-2 structure leaf
-s" STRUCTURE xpg 1 FIELD u a FIELD z n ;STRUCTURE" TCE-CATCH 0 T=             \ parametric structure: payload widens with a
+s" STRUCTURE xpginr FIELD a n FIELD b n ;STRUCTURE" TCE-CATCH 0 T=          \ width-2 structure leaf
+s" STRUCTURE xpg<a> FIELD u a FIELD z n ;STRUCTURE" TCE-CATCH 0 T=             \ parametric structure: payload widens with a
 s" XPGWIDE ( xpginr n -- xpg<xpginr> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! -1 T= \ wide instantiation certifies (was rejected before the tagless-arithmetic fix)
 s" XPGFLAT ( n n n -- xpg<xpginr> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! 0 T=      \ flattened (a b z) is not (xpginr z): still fail-closed
 s" XPGCONC ( n n -- xpg<n> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! -1 T=            \ concrete non-widening instantiation certifies
@@ -709,17 +709,17 @@ XPGW-DROP-RT
 \ concrete rc 0 shows the wide rc 70 is a genuine negative-extra reject, not an undefined-word
 \ miss. Signed pass-2 (dot habu-construct-asymmetric-growth-0f4df0fa) will flip these to
 \ exact-width forms.
-s" PRODUCT xw2 0 FIELD x n FIELD y n ;PRODUCT" TCE-CATCH 0 T=
+s" PRODUCT xw2 FIELD x n FIELD y n ;PRODUCT" TCE-CATCH 0 T=
 \ xst<xw2>: stable(n n n, declared 3) is sole argmax both ways; grow(a, declared 1) instantiates
 \ to 2 -> extra(grow) = (3-2) - (3-1) = -1 (a non-widest variant that grows).
-s" SUMTYPE xst 1 VARIANT stable n n n ;VARIANT VARIANT grow a ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
+s" SUMTYPE xst<a> VARIANT stable n n n ;VARIANT VARIANT grow a ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
 s" XSTC ( xw2 -- xst<xw2> ) construct xst grow" CHECK-QUIET-CANDIDATE! 0 T=    \ reserved-construct candidate fails closed
 s" : XSTG-CONC ( n -- xst<n> ) XST:GROW ;" TCE-CATCH 0 T=                      \ generated ctor XST:GROW resolves: concrete instantiation certifies
 s" : XSTG-WIDE ( xw2 -- xst<xw2> ) XST:GROW ;" TCE-CATCH 70 T=                 \ compiled generated ctor at the wide instantiation fails closed
 s" : XSTM ( xst<xw2> -- n ) MATCH xst grow OF 2drop 0 ENDOF stable OF + + ENDOF ;MATCH ;" TCE-CATCH 70 T=   \ MATCH grow arm fails closed at 'OF'
 \ tie: tbig wbig(n n n n, declared 4) / wsm(a a, declared 2) at xw2 -> both instantiate to 4
 \ (INSTANTIATED TIE); extra(wsm) = (4-4) - (4-2) = -2.
-s" SUMTYPE tbig 1 VARIANT wbig n n n n ;VARIANT VARIANT wsm a a ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
+s" SUMTYPE tbig<a> VARIANT wbig n n n n ;VARIANT VARIANT wsm a a ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
 s" TBC ( xw2 xw2 -- tbig<xw2> ) construct tbig wsm" CHECK-QUIET-CANDIDATE! 0 T= \ reserved-construct candidate fails closed
 s" : TBWG-CONC ( n n -- tbig<n> ) TBIG:WSM ;" TCE-CATCH 0 T=                   \ generated ctor TBIG:WSM resolves: concrete instantiation certifies
 s" : TBWG-WIDE ( xw2 xw2 -- tbig<xw2> ) TBIG:WSM ;" TCE-CATCH 70 T=            \ compiled generated ctor at the instantiated tie fails closed
@@ -727,7 +727,7 @@ s" : TBM ( tbig<xw2> -- n ) MATCH tbig wsm OF 2drop 2drop 0 ENDOF wbig OF + + + 
 \ order-independence pin: the SAME tie family with variants declared in the opposite order fails
 \ closed identically through BOTH the generated constructor and MATCH (a widest-variant
 \ discriminator flipped on declaration order).
-s" SUMTYPE tbig2 1 VARIANT wsm2 a a ;VARIANT VARIANT wbig2 n n n n ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
+s" SUMTYPE tbig2<a> VARIANT wsm2 a a ;VARIANT VARIANT wbig2 n n n n ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
 s" TB2C ( xw2 xw2 -- tbig2<xw2> ) construct tbig2 wsm2" CHECK-QUIET-CANDIDATE! 0 T=   \ order-swapped reserved-construct candidate fails closed
 s" : TB2G-WIDE ( xw2 xw2 -- tbig2<xw2> ) TBIG2:WSM2 ;" TCE-CATCH 70 T=          \ order-swapped generated ctor: identical reject
 s" : TB2M ( tbig2<xw2> -- n ) MATCH tbig2 wsm2 OF 2drop 2drop 0 ENDOF wbig2 OF + + + ENDOF ;MATCH ;" TCE-CATCH 70 T=   \ order-swapped MATCH arm: identical reject
@@ -739,13 +739,13 @@ s" TAGLESS-ARITH-KEEPS-FAILCLOSED" type cr
 \ parameter one cell at declaration and the term's argument width under a term.
 \ wnst's payload wopt<wres<n,n>> is 3 cells, so wnst is 4 wide and its store
 \ takes all 4 cells NESTED pushes; wapplied<wleaf> carries wholder<wleaf>'s 3.
-s" STRUCTURE wleaf 0 FIELD left n FIELD right n ;STRUCTURE" TCE-CATCH 0 T=
-s" STRUCTURE wholder 1 FIELD item a FIELD stamp n ;STRUCTURE" TCE-CATCH 0 T=
-s" STRUCTURE wapplied 1 FIELD nest wholder<a> FIELD stamp n ;STRUCTURE" TCE-CATCH 0 T=
-s" SUMTYPE wopt 1 VARIANT some a ;VARIANT VARIANT none ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
-s" SUMTYPE wres 2 VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
-s" SUMTYPE wnst 0 VARIANT nested wopt<wres<n,n>> ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
-s" STRUCTURE wsx 1 FIELD f init<a,wleaf> ;STRUCTURE" TCE-CATCH 0 T=
+s" STRUCTURE wleaf FIELD left n FIELD right n ;STRUCTURE" TCE-CATCH 0 T=
+s" STRUCTURE wholder<a> FIELD item a FIELD stamp n ;STRUCTURE" TCE-CATCH 0 T=
+s" STRUCTURE wapplied<a> FIELD nest wholder<a> FIELD stamp n ;STRUCTURE" TCE-CATCH 0 T=
+s" SUMTYPE wopt<a> VARIANT some a ;VARIANT VARIANT none ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
+s" SUMTYPE wres<a,b> VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
+s" SUMTYPE wnst VARIANT nested wopt<wres<n,n>> ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
+s" STRUCTURE wsx<a> FIELD f init<a,wleaf> ;STRUCTURE" TCE-CATCH 0 T=
 
 s" WAPMK ( wholder<wleaf> n -- wapplied<wleaf> ) WAPPLIED:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" WAPFLAT ( wleaf n n -- wapplied<wleaf> ) WAPPLIED:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
@@ -809,13 +809,13 @@ s" NESTED-APP-WIDTH" type cr
 \ nested application rides the landed width-aware construct/MATCH lowering; the
 \ quotation payload is one xt cell recovered as its T-QUOT effect in the arm.
 \ ---------------------------------------------------------------------------
-SUMTYPE pqinn 1 VARIANT yes a ;VARIANT VARIANT no ;VARIANT ;SUMTYPE
-SUMTYPE pqhold 0 VARIANT hh pqinn<n> ;VARIANT ;SUMTYPE
+SUMTYPE pqinn<a> VARIANT yes a ;VARIANT VARIANT no ;VARIANT ;SUMTYPE
+SUMTYPE pqhold VARIANT hh pqinn<n> ;VARIANT ;SUMTYPE
 : PQ-MK ( n -- pqhold ) PQINN:YES PQHOLD:HH ;
 : PQ-GET ( pqhold -- n ) MATCH pqhold hh OF MATCH pqinn yes OF ENDOF no OF 0 ENDOF ;MATCH ENDOF ;MATCH ;
 : PQ-RT ( -- n ) 7 PQ-MK PQ-GET ;
 PQ-RT 7 T=
-SUMTYPE pqact 0 VARIANT run [ n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+SUMTYPE pqact VARIANT run [ n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 : PQ-APP ( pqact -- n ) MATCH pqact run OF 5 swap execute ENDOF nop OF 0 ENDOF ;MATCH ;
 : PQ-RUN ( -- n ) [: 1 + ;] PQACT:RUN PQ-APP ;
 PQ-RUN 6 T=
@@ -826,27 +826,27 @@ s" : PQ-BADQ ( -- pqact ) [: 0 0= ;] PQACT:RUN ;" TCE-CATCH 70 T=
 \ input side, an empty input side, an empty output side, and a multi-type input (with
 \ a ptr element) plus an explicit return clause each construct, MATCH, and execute.
 \ [ n n -- n ]: the arm feeds two inputs and executes the recovered xt.
-SUMTYPE pq2 0 VARIANT run [ n n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+SUMTYPE pq2 VARIANT run [ n n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 : PQ2-APP ( pq2 -- n ) MATCH pq2 run OF 3 4 rot execute ENDOF nop OF 0 ENDOF ;MATCH ;
 : PQ2-RUN ( -- n ) [: + ;] PQ2:RUN PQ2-APP ;
 PQ2-RUN 7 T=
 \ wrong effect ([ n -- n ], not [ n n -- n ]) cannot be stored at the construct site.
 s" : PQ2-BADQ ( -- pq2 ) [: 1 + ;] PQ2:RUN ;" TCE-CATCH 70 T=
 \ [ -- n ]: empty input side; the arm executes the xt with no inputs.
-SUMTYPE pq0 0 VARIANT run [ -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+SUMTYPE pq0 VARIANT run [ -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 : PQ0-APP ( pq0 -- n ) MATCH pq0 run OF execute ENDOF nop OF 0 ENDOF ;MATCH ;
 : PQ0-RUN ( -- n ) [: 9 ;] PQ0:RUN PQ0-APP ;
 PQ0-RUN 9 T=
 \ [ n -- ]: empty output side; the xt consumes its input into a sink for observation.
 variable PQD-SINK
-SUMTYPE pqd 0 VARIANT run [ n -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+SUMTYPE pqd VARIANT run [ n -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 : PQD-APP ( pqd -- n ) MATCH pqd run OF 5 swap execute PQD-SINK @ ENDOF nop OF 0 ENDOF ;MATCH ;
 : PQD-RUN ( -- n ) 0 PQD-SINK ! [: PQD-SINK ! ;] PQD:RUN PQD-APP ;
 PQD-RUN 5 T=
 \ [ n ptr u8 -- n ]: multi-type input with a ptr element; the arm parks a cell
 \ around the call and recovers it.
 create PQM-BUF 4 allot  3 PQM-BUF c!
-SUMTYPE pqm 0 VARIANT run [ n ptr u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+SUMTYPE pqm VARIANT run [ n ptr u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 : PQM-APP ( pqm -- n ) MATCH pqm run OF 5 PQM-BUF 100 >r rot execute r> + ENDOF nop OF 0 ENDOF ;MATCH ;
 : PQM-RUN ( -- n ) [: drop ;] PQM:RUN PQM-APP ;
 PQM-RUN 105 T=
@@ -881,8 +881,8 @@ variable FAM-B    \ the family registered last, the one the register still names
 variable ASKED    \ family id handed to the generator
 variable GOT      \ family id the generator handed back
 
-: REGISTER-A ( -- ) s" zxa" s" 0 VARIANT one n ;VARIANT" DEFSUM ;
-: REGISTER-B ( -- ) s" zxb" s" 0 VARIANT two n ;VARIANT" DEFSUM ;
+: REGISTER-A ( -- ) s" zxa" s" VARIANT one n ;VARIANT" DEFSUM ;
+: REGISTER-B ( -- ) s" zxb" s" VARIANT two n ;VARIANT" DEFSUM ;
 : DECLARE-A ( -- ) [: REGISTER-A ;] GENERATED-DECL:RUN  FAM-REG FAM-A ! ;
 : DECLARE-B ( -- ) [: REGISTER-B ;] GENERATED-DECL:RUN  FAM-REG FAM-B ! ;
 : GENERATE-BODY ( -- ) ASKED @ CTOR-BODY GOT ! ;
@@ -1119,29 +1119,29 @@ public
 \ register zps and zph without generating either, and note the payload rows the
 \ hostile providers borrow.
 : DECLARE ( -- )
-   [: s" zps" s" 0 VARIANT sone n n ;VARIANT VARIANT stwo n ;VARIANT" SUM-DECL ;]
+   [: s" zps" s" VARIANT sone n n ;VARIANT VARIANT stwo n ;VARIANT" SUM-DECL ;]
       GENERATED-DECL:RUN
    LAST-FAM SWAP-FAM !
    SWAP-FAM @ VAR-START {: base:n :}
    base SWAP-A !   base 1 + SWAP-B !
-   [: s" zph" s" 0 VARIANT hone n ;VARIANT" SUM-DECL ;] GENERATED-DECL:RUN
+   [: s" zph" s" VARIANT hone n ;VARIANT" SUM-DECL ;] GENERATED-DECL:RUN
    LAST-FAM HOSTILE-FAM !
    \ a PRODUCT never reads a payload cell width, so only the count capability's
    \ own check stands between a negative count and malformed derived text.
-   [: s" zpp" s" 0 DERIVE eq FIELD ppx n FIELD ppy n" PROD-DECL ;]
+   [: s" zpp" s" DERIVE eq FIELD ppx n FIELD ppy n" PROD-DECL ;]
       GENERATED-DECL:RUN
    LAST-FAM PROD-FAM !
    \ a one-element, two-cell payload: its single root is a family application
    \ whose family is itself a tag plus one slot. WIDE-PROV lends it to the
    \ one-slot family, so the count bound passes and only the width bound stands.
-   [: s" zpu" s" 0 VARIANT uone n ;VARIANT" SUM-DECL ;] GENERATED-DECL:RUN
-   [: s" zpw" s" 0 VARIANT wone zpu ;VARIANT" SUM-DECL ;] GENERATED-DECL:RUN
+   [: s" zpu" s" VARIANT uone n ;VARIANT" SUM-DECL ;] GENERATED-DECL:RUN
+   [: s" zpw" s" VARIANT wone zpu ;VARIANT" SUM-DECL ;] GENERATED-DECL:RUN
    LAST-FAM VAR-START DONOR !
    \ two more ungenerated families for the call-count flip probes.
-   [: s" zpfs" s" 0 DERIVE eq VARIANT fsone n n ;VARIANT VARIANT fstwo n ;VARIANT" SUM-DECL ;]
+   [: s" zpfs" s" DERIVE eq VARIANT fsone n n ;VARIANT VARIANT fstwo n ;VARIANT" SUM-DECL ;]
       GENERATED-DECL:RUN
    LAST-FAM FSHORT-FAM !
-   [: s" zpfl" s" 0 DERIVE eq VARIANT flone n n ;VARIANT VARIANT fltwo n ;VARIANT" SUM-DECL ;]
+   [: s" zpfl" s" DERIVE eq VARIANT flone n n ;VARIANT VARIANT fltwo n ;VARIANT" SUM-DECL ;]
       GENERATED-DECL:RUN
    LAST-FAM FLONG-FAM ! ;
 : SWAP-FAMILY ( -- n ) SWAP-FAM @ ;
@@ -1303,10 +1303,10 @@ public
 
 ENUM rfbtag red blue ;ENUM
 ENUM rfberr bad worse ;ENUM
-PRODUCT rfbprod 0 FIELD value n ;PRODUCT
-NEWTYPE rfbcell 1
-NEWTYPE rfbpair 2
-PRODUCT rfbwone 1 FIELD value a ;PRODUCT
+PRODUCT rfbprod FIELD value n ;PRODUCT
+NEWTYPE rfbcell<a>
+NEWTYPE rfbpair<a,b>
+PRODUCT rfbwone<a> FIELD value a ;PRODUCT
 
 \ Each constructor arm grounds its own parameter. The conditional forces the
 \ independently checked arms through one joined result, then MATCH proves the

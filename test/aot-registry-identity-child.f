@@ -25,31 +25,31 @@ variable RI-CURSOR variable RI-COMPARE variable RI-USED
 
 : RI-BUILD-A ( -- )
    CHECKER-SCOPE-START REG-AOT-MARK
-   s" ri-same" s" 0 FIELD value n ;STRUCTURE" SD-REPLAY
+   s" ri-same" s" FIELD value n ;STRUCTURE" SD-REPLAY
    s" ri-colour" s" red green ;ENUM" ED-REPLAY
-   s" ri-nested" s" 0 FIELD value ri-same ;STRUCTURE" SD-REPLAY
-   s" ri-param" s" 1 FIELD value a ;STRUCTURE" SD-REPLAY
-   s" ri-pointer" s" 0 FIELD value ptr n ;STRUCTURE" SD-REPLAY
-   s" ri-choice" s" 0 VARIANT value FIELD item n ;VARIANT VARIANT empty ;VARIANT ;ENUM" ED-REPLAY
-   s" ri-wide" s" 0 FIELD left n FIELD right r ;STRUCTURE" SD-REPLAY
-   s" ri-wide-holder" s" 0 FIELD value ri-wide ;STRUCTURE" SD-REPLAY
+   s" ri-nested" s" FIELD value ri-same ;STRUCTURE" SD-REPLAY
+   s" ri-param<a>" s" FIELD value a ;STRUCTURE" SD-REPLAY
+   s" ri-pointer" s" FIELD value ptr n ;STRUCTURE" SD-REPLAY
+   s" ri-choice" s" VARIANT value FIELD item n ;VARIANT VARIANT empty ;VARIANT ;ENUM" ED-REPLAY
+   s" ri-wide" s" FIELD left n FIELD right r ;STRUCTURE" SD-REPLAY
+   s" ri-wide-holder" s" FIELD value ri-wide ;STRUCTURE" SD-REPLAY
    s" ri-packed" s" POLICY packed-tag red green ;ENUM" ED-REPLAY
-   s" ri-quoted" s" 1 VARIANT call [ a -- a | n -- n ] ;VARIANT VARIANT plain n ;VARIANT" CHECKER-DEFSUM
+   s" ri-quoted<a>" s" VARIANT call [ a -- a | n -- n ] ;VARIANT VARIANT plain n ;VARIANT" CHECKER-DEFSUM
    REG-AOT-CLOSE RI-A RI-CAP REG-AOT-SAVE RI-A-U !
    CHECKER-SCOPE-DONE ;
 
 : RI-BUILD-B ( -- )
    CHECKER-SCOPE-START REG-AOT-MARK
-   s" ri-same" s" 0 FIELD value r ;STRUCTURE" SD-REPLAY
+   s" ri-same" s" FIELD value r ;STRUCTURE" SD-REPLAY
    s" ri-colour" s" red green ;ENUM" ED-REPLAY
-   s" ri-nested" s" 0 FIELD value ri-same ;STRUCTURE" SD-REPLAY
-   s" ri-param" s" 1 FIELD value a ;STRUCTURE" SD-REPLAY
-   s" ri-pointer" s" 0 FIELD value ptr n ;STRUCTURE" SD-REPLAY
-   s" ri-choice" s" 0 VARIANT value FIELD item n ;VARIANT VARIANT empty ;VARIANT ;ENUM" ED-REPLAY
-   s" ri-wide" s" 0 FIELD left n FIELD right r ;STRUCTURE" SD-REPLAY
-   s" ri-wide-holder" s" 0 FIELD value ri-wide ;STRUCTURE" SD-REPLAY
+   s" ri-nested" s" FIELD value ri-same ;STRUCTURE" SD-REPLAY
+   s" ri-param<a>" s" FIELD value a ;STRUCTURE" SD-REPLAY
+   s" ri-pointer" s" FIELD value ptr n ;STRUCTURE" SD-REPLAY
+   s" ri-choice" s" VARIANT value FIELD item n ;VARIANT VARIANT empty ;VARIANT ;ENUM" ED-REPLAY
+   s" ri-wide" s" FIELD left n FIELD right r ;STRUCTURE" SD-REPLAY
+   s" ri-wide-holder" s" FIELD value ri-wide ;STRUCTURE" SD-REPLAY
    s" ri-packed" s" POLICY packed-tag red green ;ENUM" ED-REPLAY
-   s" ri-quoted" s" 1 VARIANT call [ a -- a | n -- n ] ;VARIANT VARIANT plain n ;VARIANT" CHECKER-DEFSUM
+   s" ri-quoted<a>" s" VARIANT call [ a -- a | n -- n ] ;VARIANT VARIANT plain n ;VARIANT" CHECKER-DEFSUM
    REG-AOT-CLOSE RI-B RI-CAP REG-AOT-SAVE RI-B-U !
    CHECKER-SCOPE-DONE ;
 
@@ -215,16 +215,16 @@ variable RI-CURSOR variable RI-COMPARE variable RI-USED
 \ A fresh delta must bind the prefix contents, not only its eight counts.
 : RI-PREFIX-IDENTITY ( -- )
    CHECKER-SCOPE-START
-   s" ri-prefix" s" 0 FIELD value n ;STRUCTURE" SD-REPLAY
+   s" ri-prefix" s" FIELD value n ;STRUCTURE" SD-REPLAY
    REG-AOT-MARK REG-AOT-CLOSE
    RI-B RI-CAP REG-AOT-SAVE RI-B-U !
    RI-B-U @ 0 > 0= IF 79 throw THEN
    REG-AOT-N 0 ?do RI-B i REG-AOT-ROW@ drop nip 0 RI-EQ loop
-   s" ri-suffix" s" 0 FIELD value ri-prefix ;STRUCTURE" SD-REPLAY
+   s" ri-suffix" s" FIELD value ri-prefix ;STRUCTURE" SD-REPLAY
    REG-AOT-CLOSE RI-A RI-CAP REG-AOT-SAVE RI-A-U !
    CHECKER-SCOPE-DONE
    CHECKER-SCOPE-START
-   s" ri-prefix" s" 0 FIELD value r ;STRUCTURE" SD-REPLAY
+   s" ri-prefix" s" FIELD value r ;STRUCTURE" SD-REPLAY
    REG-AOT-N 0 ?do RI-A i REG-AOT-ROW@ drop drop i REG-AOT-COUNT RI-EQ loop
    RI-SAVE-STATE RI-A RI-A-U @ RI-REFUSED
    RI-B RI-B-U @ RI-REFUSED
@@ -232,7 +232,7 @@ variable RI-CURSOR variable RI-COMPARE variable RI-USED
    s" tfam: a seeded type registry differs from its captured prefix" CORE-STR= 0= IF 79 throw THEN
    CHECKER-SCOPE-DONE
    CHECKER-SCOPE-START
-   s" ri-prefix" s" 0 FIELD value n ;STRUCTURE" SD-REPLAY
+   s" ri-prefix" s" FIELD value n ;STRUCTURE" SD-REPLAY
    RI-SAVE-STATE RI-B RI-B-U @ REG-AOT-LOAD RI-SAME-STATE
    RI-A RI-A-U @ REG-AOT-LOAD
    CHECKER-SCOPE-DONE ;

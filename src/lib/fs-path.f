@@ -2,7 +2,7 @@ package FS
 
 public
 
-STRUCTURE path 0
+STRUCTURE path
   FIELD data ptr u8
   FIELD len n
 ;STRUCTURE

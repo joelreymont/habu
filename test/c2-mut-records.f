@@ -11,21 +11,21 @@ public
 
 DEFLINEAR MREC:tok
 
-STRUCTURE one 4
+STRUCTURE one<a,b,c,d>
    FIELD view mut-view<a,b,c,d>
 ;STRUCTURE
 
-STRUCTURE mixed 5
+STRUCTURE mixed<a,b,c,d,e>
    FIELD view mut-view<a,b,c,d>
    FIELD owned e
 ;STRUCTURE
 
-STRUCTURE two 6
+STRUCTURE two<a,b,c,d,e,g>
    FIELD left mut-view<a,b,c,d>
    FIELD right mut-view<a,b,e,g>
 ;STRUCTURE
 
-STRUCTURE borrowed 4
+STRUCTURE borrowed<a,b,c,d>
    FIELD view read-view<a,b,d>
 ;STRUCTURE
 

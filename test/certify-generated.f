@@ -35,7 +35,7 @@ public
    S\" s\" src/lib/string.f\" provided\n: BAD ( -- ) drop ;\ns\" src/lib/adt/option.f\" provided\n"
       E-BUILD-CERTIFY CHECK
    \ The actual stdlib constructor shape must certify against the core prefix.
-   s" package GENERATED-CHECK public ENUM result 1 VARIANT ok FIELD value a ;VARIANT VARIANT no ;VARIANT ;ENUM : WRAP ( a -- result<a> ) GENERATED--CHECK-RESULT:OK ; ;package"
+   s" package GENERATED-CHECK public ENUM result<a> VARIANT ok FIELD value a ;VARIANT VARIANT no ;VARIANT ;ENUM : WRAP ( a -- result<a> ) GENERATED--CHECK-RESULT:OK ; ;package"
       0 CHECK
    \ A second child starts from the same prefix; the first did not alter parent.
    s" package GENERATED-CHECK public ENUM result yes no ;ENUM ;package"

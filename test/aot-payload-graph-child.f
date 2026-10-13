@@ -202,9 +202,9 @@ public
 
 : ARM ( -- ) CHECKER-SCOPE-START UEND @ MARK ! WINDOW-OPEN ;
 : DECLARE-WIDE ( -- )
-   s" payload-wide" s" 0 FIELD left n FIELD right r ;STRUCTURE" SD-REPLAY
-   s" payload-empty" s" 0 ;STRUCTURE" SD-REPLAY
-   s" payload-option" s" 1 VARIANT full FIELD value a ;VARIANT VARIANT empty ;VARIANT ;ENUM" ED-REPLAY ;
+   s" payload-wide" s" FIELD left n FIELD right r ;STRUCTURE" SD-REPLAY
+   s" payload-empty" s" ;STRUCTURE" SD-REPLAY
+   s" payload-option<a>" s" VARIANT full FIELD value a ;VARIANT VARIANT empty ;VARIANT ;ENUM" ED-REPLAY ;
 : CORRUPT-SOURCE ( -- )
    s" producer-scalar-zero" MODE? IF
       s" PAYLOAD-FIXED" FIND-SIG 0= IF s" graph corruption: no PAYLOAD-FIXED row" type cr 79 throw THEN
@@ -257,7 +257,7 @@ ARM
 : ROW-ADD ( R -- R ) 1+ ;
 : PAYLOAD-FIXED ( n -- n ) 1+ ;
 : PAYLOAD-QUANT ( R [ R -- S ] -- S ) execute ;
-NEWTYPE payload-tag 0
+NEWTYPE payload-tag
 : PAYLOAD-TAG ( payload-tag -- payload-tag ) ;
 : ANON-PROVIDER [: 1+ ;] ;
 : RETURN-PROVIDER ( n | R -- n | R ) ;

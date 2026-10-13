@@ -87,7 +87,7 @@ ENUM ptr-width DERIVE eq
 \ The feature set: which optional capabilities the target is known to have. A
 \ one-field nominal record over a bit mask, so it cannot be confused with any
 \ other integer, and so the vocabulary check has a single owner (FEATURE-SET).
-STRUCTURE features 0 DERIVE eq
+STRUCTURE features DERIVE eq
    FIELD bits n
 ;STRUCTURE
 
@@ -96,7 +96,7 @@ STRUCTURE features 0 DERIVE eq
 \ eq - a structure field is not a derivable role - so SAME? below is the
 \ hand-written field-by-field identity, and it is the equality the digest is
 \ proved to agree with.
-STRUCTURE contract 0
+STRUCTURE contract
    FIELD arch arch
    FIELD abi abi
    FIELD endian endian
@@ -404,11 +404,11 @@ public
 
 public
 
-STRUCTURE backend-id 0 DERIVE eq
+STRUCTURE backend-id DERIVE eq
    FIELD code n
 ;STRUCTURE
 
-STRUCTURE backend 0 DERIVE addr
+STRUCTURE backend DERIVE addr
    FIELD id backend-id
    FIELD arch arch
    FIELD lower [ CTARGET:contract -- bool ]

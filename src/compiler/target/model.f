@@ -47,36 +47,36 @@ ENUM habu-abi DERIVE eq
    cell64-v1
 ;ENUM
 
-STRUCTURE resolved-target 0
+STRUCTURE resolved-target
    FIELD profile profile-id
    FIELD features CTARGET:features
 ;STRUCTURE
 
-STRUCTURE execution-platform 0
+STRUCTURE execution-platform
    FIELD native native-profile-id
 ;STRUCTURE
 
-STRUCTURE emitter-set 0 DERIVE eq
+STRUCTURE emitter-set DERIVE eq
    FIELD bits n
 ;STRUCTURE
 
-STRUCTURE compiler-product 0
+STRUCTURE compiler-product
    FIELD executable-target resolved-target
    FIELD enabled-emitters emitter-set
    FIELD default-output-profile profile-id
 ;STRUCTURE
 
-STRUCTURE build-action 0
+STRUCTURE build-action
    FIELD execution-platform execution-platform
    FIELD body-target resolved-target
 ;STRUCTURE
 
-STRUCTURE build-identity 0
+STRUCTURE build-identity
    FIELD target resolved-target
    FIELD action-inputs CDIGEST:digest
 ;STRUCTURE
 
-ENUM core-result 0
+ENUM core-result
    VARIANT supported FIELD contract CTARGET:contract ;VARIANT
    VARIANT unsupported ;VARIANT
 ;ENUM

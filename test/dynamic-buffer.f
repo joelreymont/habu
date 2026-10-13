@@ -4,7 +4,7 @@ require src/lib/adt/option.f
 
 package DYNAMIC-BUFFER-TEST
 
-NEWTYPE token 0
+NEWTYPE token
 CAST: TOKEN ( n -- token )
 CAST: TOKEN-N ( token -- n )
 

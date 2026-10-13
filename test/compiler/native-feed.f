@@ -17,7 +17,7 @@ defer HOOK ( n -- n )
    * 3 + ;
 \ Each variant's tag differs from the pads its family declares for it, so a
 \ match arm's event cannot pass with its two arguments swapped.
-ENUM shape 0
+ENUM shape
    VARIANT dot ;VARIANT
    VARIANT bar FIELD size n ;VARIANT
    VARIANT box FIELD wide n FIELD high n FIELD deep n ;VARIANT

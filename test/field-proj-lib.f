@@ -10,14 +10,14 @@
 
 require test/field-proj-arm.f
 
-PRODUCT fprec 0
+PRODUCT fprec
   FIELD a n
   FIELD b n
 ;PRODUCT
 
 \ generic-substituted field: `fpg<a>` field v:a projects as `ptr a`, and at a
 \ concrete instantiation reads the stored value back.
-PRODUCT fpg 1
+PRODUCT fpg<a>
   FIELD v a
 ;PRODUCT
 

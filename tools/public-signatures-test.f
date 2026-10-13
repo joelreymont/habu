@@ -30,19 +30,19 @@ ENUM pstcolor red green blue ;ENUM
 ENUM pstsig DERIVE eq low high ;ENUM
 \ derive S2: payload sums and products publish derived rows too; products
 \ derive EQ only (no discriminant row).
-SUMTYPE pstsum 0 DERIVE eq VARIANT nada ;VARIANT VARIANT some n ;VARIANT ;SUMTYPE
-PRODUCT pstprod 0 DERIVE eq FIELD aa n ;PRODUCT
+SUMTYPE pstsum DERIVE eq VARIANT nada ;VARIANT VARIANT some n ;VARIANT ;SUMTYPE
+PRODUCT pstprod DERIVE eq FIELD aa n ;PRODUCT
 \ derive S3: a hash-only sum publishes HASH (+TAG) but no EQ row.
-SUMTYPE psthash 0 DERIVE hash VARIANT hh n ;VARIANT ;SUMTYPE
+SUMTYPE psthash DERIVE hash VARIANT hh n ;VARIANT ;SUMTYPE
 \ An OPAQUE family's derived words are its package's private words, so the
 \ manifest names none; the same family without the clause is the control.
 package PSTCTL
 public
-STRUCTURE pstctl 0 DERIVE eq FIELD aa n ;STRUCTURE
+STRUCTURE pstctl DERIVE eq FIELD aa n ;STRUCTURE
 ;package
 package PSTOPQ
 public
-STRUCTURE pstopq 0 OPAQUE DERIVE eq FIELD aa n ;STRUCTURE
+STRUCTURE pstopq OPAQUE DERIVE eq FIELD aa n ;STRUCTURE
 ;package
 
 \ The largest report names the fixture path seventeen times, each beside
@@ -427,7 +427,7 @@ variable PST-NUM-U
 \ exposure; this locks that item 7 keeps the surface logical-only.
 : PST-SUM-SRC$ ( -- ptr u8 n )
    SB-RESET
-   s" SUMTYPE ps-res 2 VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE" SB-APPEND PST-LF
+   s" SUMTYPE ps-res<a,b> VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE" SB-APPEND PST-LF
    s" : PS-SUM-ID ( ps-res<n,n> -- ps-res<n,n> ) ;" SB-APPEND PST-LF
    SB$ ;
 
@@ -531,10 +531,10 @@ package PST-CAST
 : SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" package PSCAST" SB-APPEND PST-LF
-   s" NEWTYPE inner-role 0" SB-APPEND PST-LF
+   s" NEWTYPE inner-role" SB-APPEND PST-LF
    s" : FORECAST: ( -- ) parse-name 2drop ;" SB-APPEND PST-LF
    s" public" SB-APPEND PST-LF
-   s" NEWTYPE src-role 0 NEWTYPE dst-role 0" SB-APPEND PST-LF
+   s" NEWTYPE src-role NEWTYPE dst-role" SB-APPEND PST-LF
    s" CAST: TO-DEST ( src-role -- dst-role )" SB-APPEND PST-LF
    s\" \\ CAST: FROM-LINE ( src-role -- dst-role )" SB-APPEND PST-LF
    s" ( CAST: FROM-COMMENT ) ( src-role -- dst-role )" SB-APPEND PST-LF

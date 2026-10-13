@@ -3,7 +3,7 @@
 package LAYOUT-VALID-PRODUCT
 
 ENUM lvp-color red green ;ENUM
-PRODUCT lvp-pixel 0
+PRODUCT lvp-pixel
    FIELD color lvp-color
    FIELD count n
 ;PRODUCT

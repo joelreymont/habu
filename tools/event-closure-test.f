@@ -201,7 +201,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
 \ require is a real dependency and must still enter the closure.
 : ECT-TEST-FAMILY-FIELD ( -- )
    ECT-DA$ s\" \\ dependency\n" ECT-WRITE
-   ECT-ENTRY$ S\" require dep-a.f\nSTRUCTURE box 0 FIELD include n ;STRUCTURE\n: structure ( -- ) ;\n"
+   ECT-ENTRY$ S\" require dep-a.f\nSTRUCTURE box FIELD include n ;STRUCTURE\n: structure ( -- ) ;\n"
       ECT-WRITE
    ECT-ENTRY$ EC:BUILD
    EC:COUNT 2 T=
@@ -212,7 +212,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
 : ECT-TEST-FAMILY-LATE-DEPENDENCY ( -- )
    ECT-DA$ s" " ECT-WRITE
    ECT-DB$ s" : structure ( -- ) ;" ECT-WRITE
-   ECT-ENTRY$ S\" package DEMO require dep-a.f STRUCTURE box 0 FIELD x n ;STRUCTURE require dep-b.f ;package\n"
+   ECT-ENTRY$ S\" package DEMO require dep-a.f STRUCTURE box FIELD x n ;STRUCTURE require dep-b.f ;package\n"
       ECT-WRITE
    ECT-ENTRY$ EC:BUILD
    EC:COUNT 3 T= ;
@@ -450,7 +450,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
 : ECT-TEST-FAMILY-PROVIDED-SIBLING ( -- )
    SB-RESET s" dep-b.f" ECT-PROVIDED-LINE ECT-DA$ SB$ ECT-WRITE
    ECT-DB$ s" package DEMO : structure ( -- ) ; ;package" ECT-WRITE
-   ECT-DC$ S\" require dep-b.f package DEMO STRUCTURE box 0 FIELD x n ;STRUCTURE ;package require unrelated.f\n" ECT-WRITE
+   ECT-DC$ S\" require dep-b.f package DEMO STRUCTURE box FIELD x n ;STRUCTURE ;package require unrelated.f\n" ECT-WRITE
    ECT-UN$ s" 76 emit 79 emit 65 emit 68 emit 69 emit 68 emit" ECT-WRITE
    ECT-ENTRY$ S\" require dep-a.f require dep-c.f\n" ECT-WRITE
    s" ECT-ENTRY$ ;package included"

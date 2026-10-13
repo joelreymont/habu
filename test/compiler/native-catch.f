@@ -284,7 +284,7 @@ public
 
 \ The caught window contains a family with a multicell payload. A different
 \ multicell value stays below it, outside the window.
-PRODUCT point 0
+PRODUCT point
    FIELD x n
    FIELD y n
 ;PRODUCT
@@ -355,7 +355,7 @@ PRODUCT point 0
 
 \ OPEN keeps an archive beside option<document>, catches a reader that can
 \ genuinely throw after consuming the option, cleans up, then matches it.
-NEWTYPE document 0
+NEWTYPE document
 CAST: >DOCUMENT ( n -- document )
 CAST: DOCUMENT>N ( document -- n )
 

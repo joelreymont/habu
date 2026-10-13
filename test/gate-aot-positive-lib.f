@@ -498,7 +498,7 @@ variable SELF-SRC-U
 : LAYOUT-FETCH-SOURCE ( -- )
    GE-SRC-RESET
    s" package AOT-LAYOUT-FETCH" GE-SRC-LINE
-   s" SUMTYPE res 2" GE-SRC-LINE
+   s" SUMTYPE res<a,b>" GE-SRC-LINE
    s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
    s"   VARIANT err b ;VARIANT" GE-SRC-LINE
    s" ;SUMTYPE" GE-SRC-LINE
@@ -532,7 +532,7 @@ variable SELF-SRC-U
 \ object-cache relink.
 : PRESEED-SRC ( -- )                        \ matched family + helper + trivial MAIN
    GE-SRC-RESET
-   s" SUMTYPE gemt 0" GE-SRC-LINE
+   s" SUMTYPE gemt" GE-SRC-LINE
    s"   VARIANT one n ;VARIANT" GE-SRC-LINE
    s"   VARIANT two n n ;VARIANT" GE-SRC-LINE
    s"   VARIANT nil ;VARIANT" GE-SRC-LINE
@@ -601,7 +601,7 @@ variable SELF-SRC-U
 : PRESEED-FETCH-SRC ( -- )                 \ matched family + fetch helper + trivial MAIN
    GE-SRC-RESET
    s" package AOT-LAYOUT-FETCH-BAD" GE-SRC-LINE
-   s" SUMTYPE res 2" GE-SRC-LINE
+   s" SUMTYPE res<a,b>" GE-SRC-LINE
    s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
    s"   VARIANT err b ;VARIANT" GE-SRC-LINE
    s" ;SUMTYPE" GE-SRC-LINE
@@ -666,7 +666,7 @@ variable SELF-SRC-U
 \ the fetch with NFETCH-CHECK's diagnostic, not at the trusted return.
 : TRUSTED-MAKE-SRC ( -- )
    GE-SRC-RESET
-   s" ENUM gwfn 0 VARIANT gnn ;VARIANT VARIANT gns FIELD value n ;VARIANT ;ENUM" GE-SRC-LINE
+   s" ENUM gwfn VARIANT gnn ;VARIANT VARIANT gns FIELD value n ;VARIANT ;ENUM" GE-SRC-LINE
    s" package AOT-TRUSTED-MAKE" GE-SRC-LINE
    s" TRUSTED: GWN-MAKE ( -- gwfn ) 7 1 ;" GE-SRC-LINE
    s" public" GE-SRC-LINE
@@ -681,7 +681,7 @@ variable SELF-SRC-U
 
 : TRUSTED-FORGE-SRC ( -- )
    GE-SRC-RESET
-   s" ENUM gwfn 0 VARIANT gnn ;VARIANT VARIANT gns FIELD value n ;VARIANT ;ENUM" GE-SRC-LINE
+   s" ENUM gwfn VARIANT gnn ;VARIANT VARIANT gns FIELD value n ;VARIANT ;ENUM" GE-SRC-LINE
    s" 1 LAYOUT-BUFFER MEM gwfn" GE-SRC-LINE
    s" package AOT-TRUSTED-FORGE" GE-SRC-LINE
    s" TRUSTED: GWN-FORGE ( -- gwfn ) 0 5 ;" GE-SRC-LINE

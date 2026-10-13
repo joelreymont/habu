@@ -8,10 +8,10 @@ require src/lib/test.f
 package TAIL-OWNER-TEST
 public
 
-NEWTYPE length 0
+NEWTYPE length
 CAST: >LENGTH ( n -- length )
 CAST: LENGTH>N ( length -- n )
-PRODUCT point 0
+PRODUCT point
    FIELD x length
    FIELD y length
 ;PRODUCT

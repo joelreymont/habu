@@ -290,13 +290,13 @@ variable RUNTIME-U
    S\" ;FUNCTION\n"
    RUNTIME-COMPOSE swap 0 T= TTRUE
    s" an unresolved storage type loses coverage without packets" T-LABEL
-   S\" s\" chz\" s\" 0 VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM\nTYPED-VARIABLE LV-V chz\n"
+   S\" s\" chz\" s\" VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM\nTYPED-VARIABLE LV-V chz\n"
    RUNTIME-COMPOSE swap 0 T= TTRUE
    s" an unresolved structure field loses coverage without packets" T-LABEL
-   S\" s\" chz\" s\" 0 VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM\nSTRUCTURE lv-box 0 FIELD v chz ;STRUCTURE\n"
+   S\" s\" chz\" s\" VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM\nSTRUCTURE lv-box FIELD v chz ;STRUCTURE\n"
    RUNTIME-COMPOSE swap 0 T= TTRUE
    s" an unresolved enum field loses coverage without packets" T-LABEL
-   S\" s\" chz\" s\" 0 VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM\nENUM lv-enum 0 VARIANT first FIELD v chz ;VARIANT ;ENUM\n"
+   S\" s\" chz\" s\" VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM\nENUM lv-enum VARIANT first FIELD v chz ;VARIANT ;ENUM\n"
    RUNTIME-COMPOSE swap 0 T= TTRUE
    s" runtime evaluate executes earlier statements before it refuses" T-LABEL
    0 ACTUAL !

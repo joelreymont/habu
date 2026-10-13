@@ -46,7 +46,7 @@ create ERR CAP allot
    s" 2 TYPED-BUFFER C2-SCOPE-SLOTS ptr forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
    70 s" in C2-SCOPE-SLOTS: scheme in a stored type 'ptr forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>'" s" " REPORTED? TTRUE
    s" a stored type ends at the end of its line" T-LABEL
-   s\" NEWTYPE c2-line-pair 2\n' TYPED-VARIABLE catch C2-LINE-SLOT c2-line-pair<n,n\n: C2-LINE-NEXT ( -- n ) 4242 >r r> ;\nC2-LINE-NEXT . throw"
+   s\" NEWTYPE c2-line-pair<a,b>\n' TYPED-VARIABLE catch C2-LINE-SLOT c2-line-pair<n,n\n: C2-LINE-NEXT ( -- n ) 4242 >r r> ;\nC2-LINE-NEXT . throw"
    70 s" in C2-LINE-SLOT: malformed type 'c2-line-pair<n,n'" s" 4242" REPORTED? TTRUE
    s" a stored quotation ends at the end of its line" T-LABEL
    s\" ' TYPED-VARIABLE catch C2-LINE-XT [ n -- n\n: C2-LINE-XT-NEXT ( -- n ) 4343 ;\nC2-LINE-XT-NEXT . throw"
@@ -67,9 +67,9 @@ create ERR CAP allot
    s" 4 ' LAYOUT-BUFFER catch C2-REST-ROWS forall<p,[ n -- n ]> nip 4444 . throw"
    70 s" in C2-REST-ROWS: scheme in a stored type 'forall<p,[ n -- n ]>'" s" 4444" REPORTED? TTRUE
    s" layout storage holds a family closed over a quotation" T-LABEL
-   s\" STRUCTURE c2hook 1 DERIVE addr FIELD fn a ;STRUCTURE\n2 LAYOUT-BUFFER C2-HOOKS c2hook<[ n -- n ]>\n: C2-H ( -- n ) [: 1 + ;] C2HOOK:MAKE 1 C2-HOOKS ! 41 1 C2-HOOKS C2HOOK:FN @ execute ;\nC2-H ."
+   s\" STRUCTURE c2hook<a> DERIVE addr FIELD fn a ;STRUCTURE\n2 LAYOUT-BUFFER C2-HOOKS c2hook<[ n -- n ]>\n: C2-H ( -- n ) [: 1 + ;] C2HOOK:MAKE 1 C2-HOOKS ! 41 1 C2-HOOKS C2HOOK:FN @ execute ;\nC2-H ."
    0 s" " s" 42" REPORTED? TTRUE
-   s\" STRUCTURE c2hook 1 DERIVE addr FIELD fn a ;STRUCTURE\nDEFER-LAYOUT-BUFFER C2-HOOKC c2hook<[ n -- n ]>\n: C2-H ( -- n ) 2 C2-HOOKC-BIND [: 2 + ;] C2HOOK:MAKE 1 C2-HOOKC ! 41 1 C2-HOOKC C2HOOK:FN @ execute ;\nC2-H ."
+   s\" STRUCTURE c2hook<a> DERIVE addr FIELD fn a ;STRUCTURE\nDEFER-LAYOUT-BUFFER C2-HOOKC c2hook<[ n -- n ]>\n: C2-H ( -- n ) 2 C2-HOOKC-BIND [: 2 + ;] C2HOOK:MAKE 1 C2-HOOKC ! 41 1 C2-HOOKC C2HOOK:FN @ execute ;\nC2-H ."
    0 s" " s" 43" REPORTED? TTRUE
    s" a layout pointer type is refused whole" T-LABEL
    s" 4 LAYOUT-BUFFER C2-PTR-ROWS ptr n"
@@ -159,9 +159,9 @@ public
    s" a scheme cannot be placed behind a pointer" T-LABEL
    s" : C2-SCOPE-POINTER ( ptr forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> -- ) drop ;" 70 STATUS? TTRUE
    s" an ordinary quotation may be a family argument" T-LABEL
-   s" NEWTYPE c2-quote-holder 1 : C2-QUOTE-FAMILY ( c2-quote-holder<[ n -- n ]> -- ) drop ;" 0 STATUS? TTRUE
+   s" NEWTYPE c2-quote-holder<a> : C2-QUOTE-FAMILY ( c2-quote-holder<[ n -- n ]> -- ) drop ;" 0 STATUS? TTRUE
    s" a family argument cannot contain a scheme" T-LABEL
-   s" NEWTYPE c2-scope-holder 1 : C2-SCOPE-FAMILY ( c2-scope-holder<forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>> -- ) drop ;" 70 STATUS? TTRUE
+   s" NEWTYPE c2-scope-holder<a> : C2-SCOPE-FAMILY ( c2-scope-holder<forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>> -- ) drop ;" 70 STATUS? TTRUE
    STORED
    LAYOUT-STORED
    LINE-STORED

@@ -8,7 +8,7 @@
 \ §2.2-2.5; dot habu-structure-parse-typed-c5a01e1f).
 \
 \ Grammar (docs §2.1):
-\   STRUCTURE type-name arity header-clause* field* ;STRUCTURE
+\   STRUCTURE type-name[<params>] header-clause* field* ;STRUCTURE
 \   header-clause = POLICY policy-name | DERIVE derive-name+ | OPAQUE
 \   field         = FIELD field-name type-expr
 \ A malformed, duplicate, reserved, unresolved, or mixed-legacy token rejects at
@@ -63,7 +63,7 @@ package STRUCTURE-DECL
 \ E-TFAM-DUP / E-TFAM-CASE name-gate codes are raised by TFAM-DECL / the
 \ field-event path and pass through unchanged.
 TYPE-DECL:E-TDECL-SYNTAX constant E-SYNTAX    \ malformed: missing name/arity/terminator, unexpected/legacy token
-TYPE-DECL:E-TDECL-ARITY constant E-ARITY      \ arity token is not a small decimal in [0, cap]
+TYPE-DECL:E-TDECL-ARITY constant E-ARITY      \ malformed type parameter header
 TYPE-DECL:E-TDECL-PAYLOAD constant E-PAYLOAD  \ unresolved / unknown field type
 TYPE-DECL:E-TDECL-NAME constant E-NAME        \ reserved or colliding family name
 TYPE-DECL:E-TDECL-POLICY constant E-POLICY    \ unknown or not-yet-supported layout policy
@@ -107,13 +107,11 @@ variable PEND-U   PTR-VARIABLE PEND-A
 \ ---------------------------------------------------------------------------
 variable FAM        \ family id being declared
 variable TOK        \ live declaration-event token (0 = no open transaction)
-variable SD-ARITY      \ parsed family arity
 variable FLDBASE    \ committed field high-water at open (field range start)
 variable NFLD       \ field count in this declaration
 variable SD-CELLS      \ running field cell width (next field's slot / byte offset)
 variable SEEN-FIELD \ a FIELD has appeared (header clauses must precede fields)
 variable SEEN-END   \ this declaration's ;STRUCTURE has been consumed
-variable SD-SI         \ private digit-scan index
 variable SD-TI         \ byte index within one field type token
 variable SD-FIELD-MISS
 PTR-VARIABLE SD-MISS-A
@@ -179,34 +177,6 @@ SD-MISS-CLEAR
       2drop s" name must be a lowercase family tail" E-CASE DECL-REJECT:REJECT throw THEN
    NAME-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
 
-\ --- arity token: a small decimal within the shared declaration alphabet.
-: SD-DIGIT? ( n -- bool ) dup 47 > swap 58 < and ;
-: SD-ALLDIG? ( ptr u8 n -- bool )
-   dup 0= IF 2drop NO EXIT THEN
-   {: u:n :}                        \ ( a )
-   0 SD-SI !
-   BEGIN SD-SI @ u < WHILE
-      dup SD-SI @ + c@ SD-DIGIT? 0= IF drop NO EXIT THEN
-      SD-SI @ 1 + SD-SI !
-   REPEAT
-   drop YES ;
-: DEC ( ptr u8 n -- n )             \ decode an all-digit token
-   {: u:n :}                        \ ( a )
-   0                                \ ( a acc )
-   0 SD-SI !
-   BEGIN SD-SI @ u < WHILE
-      10 * over SD-SI @ + c@ 48 - +    \ acc = acc*10 + digit
-      SD-SI @ 1 + SD-SI !
-   REPEAT
-   nip ;                            \ drop a, keep acc
-\ Same wording the legacy definer prints for a bad arity token.
-: ARITY-WHY$ ( -- ptr u8 n ) s" arity must be a decimal, at most 23 parameters" ;
-: PARSE-ARITY ( ptr u8 n -- n )
-   dup 0= IF 2drop s" missing arity" E-ARITY DECL-REJECT:REJECT throw THEN
-   2dup SD-ALLDIG? 0= IF 2drop ARITY-WHY$ E-ARITY DECL-REJECT:REJECT throw THEN
-   DEC dup TFAM-DECL-PARAM-COUNT > IF
-      drop ARITY-WHY$ E-ARITY DECL-REJECT:REJECT throw THEN ;
-
 \ ---------------------------------------------------------------------------
 \ field type resolution -> a schema node. A type application records its child
 \ roots contiguously after nested applications have finished building theirs.
@@ -242,17 +212,13 @@ SD-MISS-CLEAR
    dup ASCII-N = IF drop CON-N SCHEMA-CON EXIT THEN
    dup ASCII-F = IF drop CON-BOOL SCHEMA-CON EXIT THEN
    dup ASCII-R = IF drop CON-R SCHEMA-CON EXIT THEN
-   TFAM-DECL-CHAR>PARAM 0= IF
+   TYPE-DECL:DECL-PARAM 0= IF
       drop s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-   dup SD-ARITY @ < IF
-      dup {: idx:n :}
-      want PK-SCOPE = want PK-REGION = or
-      want PK-TYPE = or IF
-         FAM @ idx want TFAM-PK! THEN
-      SCHEMA-PARAM EXIT
-   THEN
-   drop
-   s" type parameter is outside the declared arity" E-PAYLOAD DECL-REJECT:REJECT throw ;
+   dup {: idx:n :}
+   want PK-SCOPE = want PK-REGION = or
+   want PK-TYPE = or IF
+      FAM @ idx want TFAM-PK! THEN
+   SCHEMA-PARAM ;
 
 \ A pointer is a NON-OWNING boundary: TFCL-NODE? stops at a pointer node, so a
 \ field spelled `ptr <linear>` reads non-linear and the containing family would
@@ -334,7 +300,8 @@ defer SD-LOOSE-NODE ( ptr u8 n -- )
       a c@ dup ASCII-N = over ASCII-F = or over ASCII-R = or
       IF drop EXIT THEN
       TFAM-DECL-CHAR>PARAM IF
-         SD-ARITY @ < IF EXIT THEN
+         drop a c@ TYPE-DECL:DECL-PARAM IF drop EXIT THEN
+         drop
          s" type parameter is outside the declared arity" E-PAYLOAD DECL-REJECT:REJECT throw
       ELSE drop THEN
    THEN
@@ -550,7 +517,6 @@ SD-QUOT-INSTALL
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF CHECKER-VIS-PUBLIC EXIT THEN CHECKER-AUTH-PACKAGE-MODE@ ;
 : SD-REGISTER ( ptr u8 n n -- )            \ ( na nu arity -- ) register the family, open the tx
    {: na:ptr nu:n ar:n :}
-   ar SD-ARITY !
    na nu DECL-REJECT:TOKEN!             \ the family name owns the registry's rejects
    s" duplicate family" E-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ VIS na nu
@@ -607,10 +573,16 @@ SD-QUOT-INSTALL
    DECL-REJECT:REJECT throw ;           \ unexpected / mixed-legacy token at the exact token
 : CLAUSES ( -- ) BEGIN CLAUSE UNTIL ;
 
-: DRIVE ( -- )                          \ name + arity + register + body
+: DRIVE ( -- )                          \ family header + register + body
    SD-NEXT 2dup DECL-REJECT:FAMILY!     \ ( na nu )  keep the span
-   2dup REQUIRE-NAME                    \ named before validation, so a bad name is reported
-   SD-NEXT PARSE-ARITY                  \ ( na nu arity )
+   dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   TYPE-DECL:DECL-HEADER 0= IF
+      drop 2drop s" invalid type parameter header" E-ARITY DECL-REJECT:REJECT throw
+   THEN
+   {: ar:n :}
+   2dup DECL-REJECT:FAMILY!
+   2dup REQUIRE-NAME
+   ar
    SD-REGISTER
    CLAUSES ;
 
@@ -626,7 +598,7 @@ SD-QUOT-INSTALL
 \ declaration to the interpreter, the terminator is this declaration's own
 \ boundary, and there is nothing to skip once `;STRUCTURE` has been consumed or
 \ the input has ended. Measured before this existed:
-\ `STRUCTURE m7sbad 0 FIELD x n FIELD x n ;STRUCTURE NEWTYPE m7scont 1`
+\ `STRUCTURE m7sbad FIELD x n FIELD x n ;STRUCTURE NEWTYPE m7scont<a>`
 \ reported the duplicate field, counted it, then died on
 \ `E-UNDEFINED: ;STRUCTURE`.
 : SD-SKIP-BODY ( -- )
@@ -710,7 +682,7 @@ public
 \ documented global language surface (package-first exception, like the shipped
 \ SUMTYPE/PRODUCT openers): it parses its own body up to ;STRUCTURE at interpret
 \ time, so its checked effect is ( -- ).
-\ STRUCTURE type-name arity [POLICY p] [DERIVE f+] [OPAQUE] (FIELD name type)* ;STRUCTURE
+\ STRUCTURE type-name[<params>] [POLICY p] [DERIVE f+] [OPAQUE] (FIELD name type)* ;STRUCTURE
 : STRUCTURE ( -- ) STRUCTURE-DECL:SD-RUN ;
 
 ;using

@@ -33,7 +33,7 @@ ENUM slot-state
 \ of 0/1/2 constants plus a -1 idx placeholder: free/found carry the slot index,
 \ full carries nothing, and the checker forces every consumer through
 \ exhaustive MATCH.
-SUMTYPE loc 0
+SUMTYPE loc
   VARIANT full ;VARIANT
   VARIANT free idx ;VARIANT
   VARIANT found idx ;VARIANT

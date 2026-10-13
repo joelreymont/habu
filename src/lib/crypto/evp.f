@@ -13,7 +13,7 @@ DEFTYPE CODE
 
 \ A wrong tag is a decision the caller branches on, not an exception: UNSEAL
 \ answers it as data, and `ok` carries the plaintext length it wrote.
-SUMTYPE unseal-result 0
+SUMTYPE unseal-result
    VARIANT ok len ;VARIANT
    VARIANT failed code ;VARIANT
 ;SUMTYPE

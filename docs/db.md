@@ -122,7 +122,7 @@ PG:>COL  ( n -- PG:col )   PG:COL>N ( PG:col -- n )
 ### Dispatcher progress
 
 ```forth
-SUMTYPE progress 0
+SUMTYPE progress
    VARIANT waiting fd n ;VARIANT           \ descriptor, AIO readiness mask
    VARIANT connected connection ;VARIANT
    VARIANT completed result ;VARIANT
@@ -155,12 +155,12 @@ These are libpq's [connection polling requirements](https://www.postgresql.org/d
 ### Outcomes
 
 ```forth
-SUMTYPE connect-result 0
+SUMTYPE connect-result
    VARIANT connected connection ;VARIANT
    VARIANT refused ptr u8 n ;VARIANT        \ libpq's own message
 ;SUMTYPE
 
-SUMTYPE outcome 0
+SUMTYPE outcome
    VARIANT ok ;VARIANT                      \ a command with no rows
    VARIANT rows ;VARIANT                    \ a result set to read
    VARIANT failed ptr u8 n ptr u8 n ;VARIANT \ SQLSTATE, primary server message

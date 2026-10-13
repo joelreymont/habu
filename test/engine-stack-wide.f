@@ -6,7 +6,7 @@ package STACK-LIFECYCLE-TEST
 
 : PAIR-TYPE-SOURCE ( -- )
    SB-RESET
-   s" 0 set-tier package SW public PRODUCT pair 0 FIELD a n FIELD b n ;PRODUCT " SB-APPEND ;
+   s" 0 set-tier package SW public PRODUCT pair FIELD a n FIELD b n ;PRODUCT " SB-APPEND ;
 
 \ BUF is a real guarded mapping (whole STACK-ABI:PAGE-BYTES multiples only):
 \ run-in-stack refuses anything else, so every case below runs on the full
@@ -140,7 +140,7 @@ package STACK-LIFECYCLE-TEST
 \ source fixture.
 : LARGE-TYPE-SOURCE ( -- )
    SB-RESET
-   s" 0 set-tier PRODUCT sw-double 1 FIELD a a FIELD b a ;PRODUCT PRODUCT sw-plus 1 FIELD a a FIELD b n ;PRODUCT " SB-APPEND
+   s" 0 set-tier PRODUCT sw-double<a> FIELD a a FIELD b a ;PRODUCT PRODUCT sw-plus<a> FIELD a a FIELD b n ;PRODUCT " SB-APPEND
    s" 1 TYPED-BUFFER ITEM sw-plus<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<n>>>>>>>>>> " SB-APPEND ;
 
 : LARGE-SOURCE ( -- )

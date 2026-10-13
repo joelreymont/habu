@@ -12,7 +12,7 @@ public
 \ the tag walk may read the descriptor's cells without bounding them again. The
 \ checker has no term for the integer a pointer is, so the witness carries the
 \ sanctioned pointer-minus-pointer distance from the null address.
-NEWTYPE frozen 0
+NEWTYPE frozen
 
 private
 

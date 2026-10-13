@@ -206,7 +206,7 @@ create XPK-EMPTY 1 allot
 \ exactly like the source, proving the wide bit copied).
 : XPK-CTOR-FORGE$ ( -- ptr u8 n )
    SB-RESET
-   s" SUMTYPE xpw 0" XPK-LINE
+   s" SUMTYPE xpw" XPK-LINE
    s"   VARIANT ok n ;VARIANT" XPK-LINE
    s" ;SUMTYPE" XPK-LINE
    s" package XC" XPK-LINE
@@ -219,7 +219,7 @@ create XPK-EMPTY 1 allot
 
 : XPK-CTOR-WIDE-SRC-FORGE$ ( -- ptr u8 n )    \ interpret gate on the SOURCE ctor
    SB-RESET
-   s" SUMTYPE xpw 0" XPK-LINE
+   s" SUMTYPE xpw" XPK-LINE
    s"   VARIANT ok n ;VARIANT" XPK-LINE
    s" ;SUMTYPE" XPK-LINE
    S\" s\" pre-wide\" type cr" XPK-LINE
@@ -228,7 +228,7 @@ create XPK-EMPTY 1 allot
 
 : XPK-CTOR-WIDE-ALIAS-FORGE$ ( -- ptr u8 n )  \ interpret gate on the ALIAS
    SB-RESET
-   s" SUMTYPE xpw 0" XPK-LINE
+   s" SUMTYPE xpw" XPK-LINE
    s"   VARIANT ok n ;VARIANT" XPK-LINE
    s" ;SUMTYPE" XPK-LINE
    s" package XC" XPK-LINE

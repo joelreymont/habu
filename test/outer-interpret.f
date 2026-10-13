@@ -106,7 +106,7 @@ variable SPIN-U
    s" : OI-TWO ( n n -- ) 2drop ;" GE-SRC-LINE
    s" TRUSTED: OI-UF ( -- ) drop ;" GE-SRC-LINE
    s" : OI-IMM ( -- ) ; immediate" GE-SRC-LINE
-   s" SUMTYPE oiwide 2" GE-SRC-LINE
+   s" SUMTYPE oiwide<a,b>" GE-SRC-LINE
    s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
    s"   VARIANT err b ;VARIANT" GE-SRC-LINE
    s" ;SUMTYPE" GE-SRC-LINE

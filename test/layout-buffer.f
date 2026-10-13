@@ -16,17 +16,17 @@ variable #CASE
       T-FAIL s" expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 
-SUMTYPE lb-res 2
+SUMTYPE lb-res<a,b>
    VARIANT ok a ;VARIANT
    VARIANT err b ;VARIANT
 ;SUMTYPE
 
-SUMTYPE lb-other 1
+SUMTYPE lb-other<a>
    VARIANT some a ;VARIANT
 ;SUMTYPE
 
 DEFLINEAR lb-linear
-SUMTYPE lb-owned 0
+SUMTYPE lb-owned
    VARIANT hold lb-linear ;VARIANT
 ;SUMTYPE
 
@@ -115,8 +115,8 @@ here LB-DP 0 ptr-field !
 s" 1 LAYOUT-BUFFER TFAM:BAD lb-res<n,n>" LB-EVAL CHECKER-REJECT-RC T=
 
 \ ---- nominal scalars (arity-0 TK-CELL): LAYOUT-BUFFER is the introduction ----
-NEWTYPE lbtk 0
-NEWTYPE lbtk2 0
+NEWTYPE lbtk
+NEWTYPE lbtk2
 
 4 LAYOUT-BUFFER LBTK-AT lbtk
 
@@ -187,7 +187,7 @@ here LB-DP 0 ptr-field @ = -1 T=
 \ coverage above is reject-only, this pins the accepting memory path.)
 ENUM lbhue red green blue ;ENUM
 
-PRODUCT lbrec 0
+PRODUCT lbrec
   FIELD hue lbhue
   FIELD cnt n
 ;PRODUCT

@@ -45,7 +45,7 @@ TYPED-VARIABLE RCP-HK [ -- n ]
 \ The nominal identity the field door used to forge. test/snapshot-xt-cell-decl.f
 \ keeps its own subject through a declared handle; the checked twin of its FORGE
 \ is CASE-FIELD-FORGE-NOMINAL below.
-NEWTYPE rcpthing 0
+NEWTYPE rcpthing
 
 package RAW-CELL-PTR-TEST
 

@@ -6,7 +6,7 @@ require test/c2-field-loan-wrapper.f
 
 package C2-FIELD-LOAN-REFUSALS
 public
-STRUCTURE other 0 DERIVE init FIELD left n FIELD right n ;STRUCTURE
+STRUCTURE other DERIVE init FIELD left n FIELD right n ;STRUCTURE
 private
 
 $4000 constant CAP

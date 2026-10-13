@@ -101,8 +101,8 @@ require src/compiler/ir/verify.f
 package IR-BUILD
 public
 
-NEWTYPE builder 0
-NEWTYPE module 0
+NEWTYPE builder
+NEWTYPE module
 
 private
 

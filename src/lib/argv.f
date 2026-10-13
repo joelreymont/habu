@@ -30,8 +30,8 @@ PATH-CAP 1 + constant ARGV-PATH-CAP
 $0A constant ARGV-CHAR-LF
 $2D constant ARGV-CHAR-DASH
 
-STRUCTURE span 0 FIELD base ptr u8 FIELD size len ;STRUCTURE
-ENUM configured-value 0
+STRUCTURE span FIELD base ptr u8 FIELD size len ;STRUCTURE
+ENUM configured-value
    VARIANT defaulted FIELD value span ;VARIANT
    VARIANT explicit FIELD value span ;VARIANT
 ;ENUM

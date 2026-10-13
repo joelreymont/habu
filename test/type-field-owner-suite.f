@@ -291,7 +291,7 @@ DECL-EVENT:COUNT BASE-EVENT !
 
 public
 
-PRODUCT row 0
+PRODUCT row
    FIELD seed n
 ;PRODUCT
 

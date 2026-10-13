@@ -37,7 +37,7 @@ public
 
 \ The bound pair. Fields in declaration order, deepest stack field first: the
 \ target contract, then the numerical policy.
-STRUCTURE binding 0
+STRUCTURE binding
    FIELD target CTARGET:contract
    FIELD numeric CNUM:numeric-policy
 ;STRUCTURE

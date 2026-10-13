@@ -99,17 +99,17 @@ ENUM lamp DERIVE eq
    bright
 ;ENUM
 
-PRODUCT pt 0
+PRODUCT pt
    FIELD x n
    FIELD y n
 ;PRODUCT
 
-SUMTYPE mixhi 0
+SUMTYPE mixhi
    VARIANT nohi ;VARIANT
    VARIANT hi pt n ;VARIANT
 ;SUMTYPE
 
-SUMTYPE mixlo 0
+SUMTYPE mixlo
    VARIANT nolo ;VARIANT
    VARIANT lo n pt ;VARIANT
 ;SUMTYPE
@@ -119,12 +119,12 @@ SUMTYPE mixlo 0
 \ two cells and an OPEN instance is placeable; `box` keeps its parameter as a
 \ payload cell, so no width exists before the argument binds and an open
 \ instance of it stays refused (dot habu-place-an-open-d7bcba49).
-PRODUCT sp 1
+PRODUCT sp<a>
    FIELD base ptr a
    FIELD len n
 ;PRODUCT
 
-PRODUCT box 1
+PRODUCT box<a>
    FIELD it a
    FIELD mark n
 ;PRODUCT

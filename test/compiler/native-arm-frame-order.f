@@ -20,7 +20,7 @@ require src/lib/test.f
 package NARM
 public
 
-SUMTYPE step 0
+SUMTYPE step
    VARIANT ok n n ;VARIANT
    VARIANT raw n n ;VARIANT
 ;SUMTYPE

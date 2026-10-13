@@ -395,7 +395,7 @@ path the resolver refuses. The composition loads what the engine loads:
   definition, storage or a deferred word does, re-exports one, or names a
   package, a using, a `DEFTYPE` type family, an `ENUM` variant or a structure
   field: a bare `required` there, as in `package REQUIRED`,
-  `0 FIELD required n` or a package's `variable REQUIRED`, verifies.
+  `FIELD required n` or a package's `variable REQUIRED`, verifies.
   `undefine required` and `s" required" UNDEFINE-IF-DEFINED` retire a word and
   refuse nothing. A later loader form with a word the file so defined or
   retired is `E-LOADER-FORM`; a call in a definition that discovery reads
@@ -1016,7 +1016,8 @@ Current checker classes:
   `reason` carries the registration's refusal and the packet is located at the
   field (at `END-VALUE-RECORD` for a record with no field).
 - `fix_family_declaration`: a `NEWTYPE` or `SUMTYPE` declaration used a
-  reserved, non-lowercase, or duplicate family/variant name, a bad arity token,
+  reserved, non-lowercase, or duplicate family/variant name, a malformed
+  parameter list in the family name,
   an unknown payload type, or a malformed/unterminated `VARIANT` block.
 - `fix_storage_type`: a storage declaration (`LAYOUT-BUFFER`,
   `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)

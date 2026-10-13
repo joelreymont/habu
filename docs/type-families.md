@@ -13,7 +13,7 @@
 > `src/core/structure-decl.f` and `ENUM` in `src/core/enum-decl.f`; the tree
 > holds roughly 71 `STRUCTURE` and 207 `ENUM` declaration sites, and a
 > declaration such as
-> `ENUM zcolor DERIVE eq red green ;ENUM` / `STRUCTURE zpoint 0 FIELD x n ;STRUCTURE`
+> `ENUM zcolor DERIVE eq red green ;ENUM` / `STRUCTURE zpoint FIELD x n ;STRUCTURE`
 > loads clean (exit 0). An earlier version of this banner said loading a
 > `STRUCTURE` declaration fails `E-UNDEFINED: STRUCTURE`; that is no longer true.
 >
@@ -61,7 +61,7 @@ registered parametric family tail** — `span`, `matrix`, and the other cell
 families seeded in
 `src/core/type-family.f` — passes the name gate and collides at registration
 (`TFAM-DECL`), rejecting `E-TFAM-DUP` (7102, "duplicate family"). So
-`NEWTYPE n 0` and `NEWTYPE ptr 0` report reserved-name while `NEWTYPE span 3`
+`NEWTYPE n` and `NEWTYPE ptr` report reserved-name while `NEWTYPE span<a,b,c>`
 reports duplicate-family. (`test/type-decl-suite.f` pins both codes.) A package family may share a tail
 with a global or foreign package family. A bare tail resolves the active package's
 exact family first, the global exact family second, then public families in
@@ -84,8 +84,8 @@ Use the generic term internally and the specific terms externally:
 The sole public composite/type-family declaration blocks are:
 
 ```forth
-STRUCTURE pair 2 ... ;STRUCTURE
-ENUM result 2 ... ;ENUM
+STRUCTURE pair<a,b> ... ;STRUCTURE
+ENUM result<a,b> ... ;ENUM
 ```
 
 `STRUCTURE` covers ordinary cell families, pointer-layout records, and by-value
@@ -141,9 +141,9 @@ So: **call the document “Type Families and Algebraic Data Types.”**
 ### 2.1 Lexical grammar
 
 ```text
-structure-decl = STRUCTURE type-name arity header-clause* field* ;STRUCTURE
-enum-decl      = ENUM type-name (full-enum | compact-enum) ;ENUM
-full-enum      = arity header-clause* variant-block+
+structure-decl = STRUCTURE type-header header-clause* field* ;STRUCTURE
+enum-decl      = ENUM type-header (full-enum | compact-enum) ;ENUM
+full-enum      = header-clause* variant-block+
 compact-enum   = header-clause* compact-variant+
 
 header-clause  = POLICY policy-name
@@ -158,42 +158,42 @@ compact-variant = variant-name
 
 `type-name`, `field-name`, `variant-name`, and every family tail inside a
 `type-expr` are lowercase. Package qualifiers remain uppercase project package
-names. `arity` is mandatory for `STRUCTURE` and full `ENUM`; arity parameters
-use this zero-based ordered alphabet:
+names. A `type-header` is a bare family name for a family without parameters,
+or a name with a nonempty comma-separated parameter list, such as `box<a>` or
+`result<a,b>`. Each parameter is a distinct letter from this alphabet:
 
 ```text
 a b c d e g h i j k l m o p q s t u v w x y z
 ```
 
-The alphabet has 23 entries, so 23 is the declaration-language arity cap. The
-letters `f`, `n`, and `r` are excluded because they always name the concrete
-boolean, integer, and real scalar types, regardless of declared arity. Parsers,
-schema parameter indices, generated signatures, and arity diagnostics all use
-the same reversible mapping; internal type-family storage is not limited by this
-source spelling cap. Compact `ENUM` omits the arity and is implicitly arity
-zero. Its optional header clauses occur before the first variant; full
-declarations place them after the arity. `POLICY` may occur at most once.
+The list determines the internal arity. Parameters bind by declaration order:
+`pair<i,a>` binds `i` to slot 0 and `a` to slot 1. Generated effects use canonical
+letters for those slots. The concrete scalar names `f`, `n`, and `r` cannot be
+parameters. Unused parameters are valid. Empty, duplicate, reserved, unclosed,
+or malformed lists reject. `NEWTYPE`, `SUMTYPE`, and `PRODUCT` use the same
+header syntax. Compact `ENUM` has no parameters. Optional header clauses occur
+after the family header and before the first field or variant. `POLICY` may occur at most once.
 `DERIVE` features are order-independent, may be split across clauses, and
 duplicates reject.
 
 The compact `ENUM name v0 v1 ... ;ENUM` form is legal only when every variant
-is payloadless. The first token after the enum name selects the form: a decimal
-arity selects full block mode; a header clause or bare variant selects compact
-mode. Compact headers become invalid after the first variant. Bare variant tails
+is payloadless. The first variant after optional header clauses selects the form: `VARIANT`
+selects full block mode; a bare variant selects compact mode. A parameter list
+requires full mode. Compact headers become invalid after the first variant. Bare variant tails
 and `VARIANT` blocks cannot mix. A block variant accepts only zero or more named
 `FIELD` clauses before `;VARIANT`; anonymous payload tokens are invalid.
 
 Examples:
 
 ```forth
-STRUCTURE point 0
+STRUCTURE point
   FIELD x n
   FIELD y n
 ;STRUCTURE
 
 ENUM color red green blue ;ENUM
 
-ENUM message 0
+ENUM message
   VARIANT quit ;VARIANT
   VARIANT move
     FIELD x n
@@ -458,7 +458,7 @@ cannot define, replay, lower, or mutate metadata. Explicitly allowlisted
 negative fixtures may contain removed spellings only as non-executable test
 data. Inside new blocks, legacy
 closers/field words, anonymous variant payloads, mixed compact/block variants,
-and a missing arity on `STRUCTURE` or full `ENUM` reject at the exact token.
+and malformed type headers reject at the exact token.
 The final source lint requires zero occurrences in live executable or generated
 source outside the tombstone table and explicitly allowlisted negative fixtures.
 
@@ -624,7 +624,7 @@ where `M` is the maximum payload width, in stack cells, across all variants.
 Examples:
 
 ```forth
-ENUM result 2
+ENUM result<a,b>
   VARIANT ok  FIELD value a ;VARIANT
   VARIANT err FIELD error b ;VARIANT
 ;ENUM
@@ -637,7 +637,7 @@ slot0 tag
 ```
 
 ```forth
-ENUM option 1
+ENUM option<a>
   VARIANT none ;VARIANT
   VARIANT some FIELD value a ;VARIANT
 ;ENUM
@@ -800,7 +800,7 @@ SUMV record:
 For:
 
 ```forth
-ENUM result 2
+ENUM result<a,b>
   VARIANT ok  FIELD value a ;VARIANT
   VARIANT err FIELD error b ;VARIANT
 ;ENUM
@@ -887,7 +887,7 @@ err payload schema:
 For:
 
 ```forth
-ENUM parse-result 1
+ENUM parse-result<a>
   VARIANT ok FIELD value a ;VARIANT
   VARIANT err
     FIELD message ptr u8
@@ -936,11 +936,11 @@ about to disappear.
 Ordinary one-cell parametric types use:
 
 ```forth
-NEWTYPE span 3
-NEWTYPE matrix 4
-NEWTYPE gridctx 3
-NEWTYPE tile 3
-NEWTYPE uniform 1
+NEWTYPE span<a,b,c>
+NEWTYPE matrix<a,b,c,d>
+NEWTYPE gridctx<a,b,c>
+NEWTYPE tile<a,b,c>
+NEWTYPE uniform<a>
 ```
 
 This replaces hard-coded parser knowledge.
@@ -950,8 +950,8 @@ An arity-zero `NEWTYPE` is a package-scoped nominal cell kind:
 ```forth
 package CAD-KIND
 public
-NEWTYPE node-id 0
-NEWTYPE target-id 0
+NEWTYPE node-id
+NEWTYPE target-id
 ;package
 ```
 
@@ -971,7 +971,7 @@ contract.
 Pre-cutover syntax:
 
 ```forth
-SUMTYPE result 2
+SUMTYPE result<a,b>
   VARIANT ok  a ;VARIANT
   VARIANT err b ;VARIANT
 ;SUMTYPE
@@ -1007,7 +1007,7 @@ ENUM color
 Equivalent to a zero-payload sum:
 
 ```forth
-SUMTYPE color 0
+SUMTYPE color
   VARIANT red   ;VARIANT
   VARIANT green ;VARIANT
   VARIANT blue  ;VARIANT
@@ -1021,16 +1021,16 @@ with a `DERIVE eq` header clause (after the optional `POLICY`, before the
 variants/fields):
 
 ```forth
-ENUM color 0 DERIVE eq
+ENUM color DERIVE eq
   VARIANT red   ;VARIANT
   VARIANT green ;VARIANT
   VARIANT blue  ;VARIANT
 ;ENUM
-SUMTYPE shape 0 DERIVE eq
+SUMTYPE shape DERIVE eq
   VARIANT dot ;VARIANT
   VARIANT seg n n ;VARIANT
 ;SUMTYPE
-PRODUCT probe 0 DERIVE eq
+PRODUCT probe DERIVE eq
   FIELD col color        \ enum-typed field: color must also derive eq
   FIELD amt n
 ;PRODUCT
@@ -1120,7 +1120,7 @@ stable renders (SK-KEY$ stays the on-disk contract).
 Pre-cutover syntax:
 
 ```forth
-PRODUCT pair 2
+PRODUCT pair<a,b>
   FIELD fst a
   FIELD snd b
 ;PRODUCT
@@ -2191,7 +2191,7 @@ of a `stack-cell-tag` or `packed-tag` family (packed keeps the cell width, §22.
 
 Declared parameter kinds stay cell (`PK-CELL`) in the registry, but the
 SIGNATURE layer already admits a NAMED layout-family application as a parameter
-arg — `option<pt2>` / `result<pt2,n>` with `PRODUCT pt2 0 FIELD x n FIELD y n
+arg — `option<pt2>` / `result<pt2,n>` with `PRODUCT pt2 FIELD x n FIELD y n
 ;PRODUCT` — because the arg is ONE resolved term whose instantiated width
 propagates through `T-WIDTH` above (a nested parametric application such as
 `option<result<n,n>>` resolves the same way). Identity and transport of such an
@@ -2424,7 +2424,7 @@ clause after the mandatory arity, or after the type name for a compact enum, and
 before the first `VARIANT`, compact variant, or `FIELD`:
 
 ```forth
-ENUM option 1 POLICY stack-cell-tag
+ENUM option<a> POLICY stack-cell-tag
   VARIANT none ;VARIANT
   VARIANT some FIELD value a ;VARIANT
 ;ENUM
@@ -2528,7 +2528,7 @@ marshalling that CONSUMES the descriptor is the separate maki capability
 Later:
 
 ```forth
-ENUM option 1 POLICY niche-null
+ENUM option<a> POLICY niche-null
   VARIANT none ;VARIANT
   VARIANT some FIELD value nonnull-ptr<a> ;VARIANT
 ;ENUM
@@ -2574,7 +2574,7 @@ PLAN item 16 requires before any physical-layout policy is public.
 Later:
 
 ```forth
-ENUM tree 1 POLICY boxed
+ENUM tree<a> POLICY boxed
   VARIANT leaf FIELD value a ;VARIANT
   VARIANT node
     FIELD left ptr tree<a>
@@ -2609,7 +2609,7 @@ exposure.
 ### Result
 
 ```forth
-ENUM result 2
+ENUM result<a,b>
   VARIANT ok  FIELD value a ;VARIANT
   VARIANT err FIELD error b ;VARIANT
 ;ENUM
@@ -2634,7 +2634,7 @@ ENUM result 2
 ### Option
 
 ```forth
-ENUM option 1
+ENUM option<a>
   VARIANT none ;VARIANT
   VARIANT some FIELD value a ;VARIANT
 ;ENUM
@@ -2793,7 +2793,7 @@ habu: in RESULT>CODE: at ;MATCH
 
 ### 25.1 Type-family registry tests
 
-- `NEWTYPE foo 2` registers `foo`.
+- `NEWTYPE foo<a,b>` registers `foo`.
 - `foo<n,n>` parses.
 - `foo<n>` is rejected for wrong arity.
 - unknown `bar<n>` is rejected.
@@ -2801,7 +2801,7 @@ habu: in RESULT>CODE: at ;MATCH
 
 ### 25.2 Sum declaration tests
 
-- `SUMTYPE result 2 ...` registers family and variants.
+- `SUMTYPE result<a,b> ...` registers family and variants.
 - an arbitrary third sum such as `packet<a,b>` registers, constructs, and
   matches so the implementation is not result/option-specialized.
 - duplicate variant is rejected.

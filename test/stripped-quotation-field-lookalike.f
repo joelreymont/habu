@@ -2,12 +2,12 @@
 \ DATA scan, even after an earlier quotation mark is cleared for this slot.
 package STRIPPED-QUOT-LOOKALIKE
 
-STRUCTURE hook 0 FIELD handler [ n -- n ] ;STRUCTURE
-SUMTYPE choice 0
+STRUCTURE hook FIELD handler [ n -- n ] ;STRUCTURE
+SUMTYPE choice
    VARIANT scalar n ;VARIANT
    VARIANT present hook ;VARIANT
 ;SUMTYPE
-STRUCTURE envelope 0 FIELD item choice ;STRUCTURE
+STRUCTURE envelope FIELD item choice ;STRUCTURE
 TYPED-VARIABLE SCALAR-ROW envelope
 
 : INIT ( -- )

@@ -62,7 +62,7 @@ public
 \ byte not yet taken and end the first not yet read; want is the body length
 \ NEXT-LENGTH answered and BODY has not read, -1 when none; max is the longest
 \ body taken. A cap of zero is a reader never bound, or one a refusal spent.
-STRUCTURE reader 0 DERIVE addr
+STRUCTURE reader DERIVE addr
    FIELD fd fd
    FIELD buf ptr u8
    FIELD cap n

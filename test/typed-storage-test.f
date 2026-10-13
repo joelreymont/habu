@@ -35,14 +35,14 @@ E-LAYOUT-BOUNDS constant E-STORAGE-BOUNDS
 \ ---- families under test ----------------------------------------------------
 \ tsk / tsk2 are arity-0 nominal scalars; tsres a closed non-linear layout
 \ family; tsowned a linear layout (inadmissible for storage).
-NEWTYPE tsk 0
-NEWTYPE tsk2 0
-SUMTYPE tsres 2
+NEWTYPE tsk
+NEWTYPE tsk2
+SUMTYPE tsres<a,b>
    VARIANT ok a ;VARIANT
    VARIANT err b ;VARIANT
 ;SUMTYPE
 DEFLINEAR tslin
-SUMTYPE tsowned 0
+SUMTYPE tsowned
    VARIANT hold tslin ;VARIANT
 ;SUMTYPE
 
@@ -218,7 +218,7 @@ PTR-VARIABLE TS-DP
 \    on the certify path (VERIFY:CANDIDATE-IN-SCOPE).
 \ =============================================================================
 : TS-REG-RAW ( -- )
-   s\" NEWTYPE rawk 0\nvariable RAWV\ncreate RAWC 8 allot\n7 constant RAWK"
+   s\" NEWTYPE rawk\nvariable RAWV\ncreate RAWC 8 allot\n7 constant RAWK"
    VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : TS-SECTION-PIN-RAW-REJECT ( -- )

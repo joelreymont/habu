@@ -5,16 +5,16 @@ require src/lib/memory.f
 package FETCH-TERM-TEST
 public
 
-NEWTYPE identity 0
+NEWTYPE identity
 CAST: >IDENTITY ( n -- identity )
 CAST: IDENTITY>N ( identity -- n )
 
-SUMTYPE value 0
+SUMTYPE value
    VARIANT empty ;VARIANT
    VARIANT number identity ;VARIANT
 ;SUMTYPE
 
-SUMTYPE mapping 0
+SUMTYPE mapping
    VARIANT empty ;VARIANT
    VARIANT owned ptr u8 NUM:alloc-byte-len ;VARIANT
 ;SUMTYPE

@@ -403,7 +403,7 @@ variable CS-CHILD-ERR-U
 \ `MATCH` - is E-STALE-READ. Read as three lone cells instead, two `drop`s left
 \ one behind and the third was E-NELAB-UNDER in the native elaborator, which
 \ holds the bundle as one value.
-PRODUCT cspt 0
+PRODUCT cspt
    FIELD x n
    FIELD y n
 ;PRODUCT

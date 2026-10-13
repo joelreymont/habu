@@ -28,7 +28,7 @@ deflinear cmltok
 \ is registered in one global type registry, like a linear type, so the name is
 \ reachable unqualified from a candidate signature however the declaration is
 \ scoped; it is spelled distinctly for that reason.
-SUMTYPE cmres 0
+SUMTYPE cmres
   VARIANT cmok  n ;VARIANT
   VARIANT cmerr n ;VARIANT
 ;SUMTYPE
@@ -38,7 +38,7 @@ SUMTYPE cmres 0
 \ single-payload family cannot ask: whether the payload a construct consumes
 \ comes from the variant or merely from the family. A step that read the family
 \ would answer the same for both variants; these two answer differently.
-SUMTYPE cmbres 0
+SUMTYPE cmbres
   VARIANT cmbf bool ;VARIANT
   VARIANT cmbn n ;VARIANT
 ;SUMTYPE
@@ -49,12 +49,12 @@ SUMTYPE cmbres 0
 \ name - same variant count, same payloads, same width - so nothing but the
 \ family identity distinguishes the two, which is what those vectors are about.
 \ They are the model's `fmwide` and `fmtwin`.
-SUMTYPE cmwide 0
+SUMTYPE cmwide
   VARIANT cmwa n n ;VARIANT
   VARIANT cmwb n n ;VARIANT
 ;SUMTYPE
 
-SUMTYPE cmtwin 0
+SUMTYPE cmtwin
   VARIANT cmta n n ;VARIANT
   VARIANT cmtb n n ;VARIANT
 ;SUMTYPE

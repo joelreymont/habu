@@ -4,7 +4,7 @@
 package PAYLOAD-NATIVE
 public
 
-STRUCTURE pair 0
+STRUCTURE pair
    FIELD left n
    FIELD right n
 ;STRUCTURE

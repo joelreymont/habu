@@ -21,25 +21,25 @@ require src/lib/test.f
 package WLP
 public
 
-STRUCTURE pair 0
+STRUCTURE pair
    FIELD left n
    FIELD right n
 ;STRUCTURE
 
 \ the same physical shape as `pair` under another name: identity is NOMINAL
-STRUCTURE pair2 0
+STRUCTURE pair2
    FIELD left n
    FIELD right n
 ;STRUCTURE
 
-STRUCTURE trip 0
+STRUCTURE trip
    FIELD a n
    FIELD b n
    FIELD c n
 ;STRUCTURE
 
 \ twenty-six cells: with a pair, more than the registers a routine may destroy
-STRUCTURE wide 0
+STRUCTURE wide
    FIELD c0 n
    FIELD c1 n
    FIELD c2 n
@@ -69,14 +69,14 @@ STRUCTURE wide 0
 ;STRUCTURE
 
 \ a W=2 SUM that is still arity 0, so a local may name it
-SUMTYPE res 0
+SUMTYPE res
    VARIANT ok  n ;VARIANT
    VARIANT err n ;VARIANT
 ;SUMTYPE
 
 \ parametric, and nameable in a local: an annotation is read by the SIGNATURE
 \ type grammar (dot habu-parse-local-annotations)
-SUMTYPE opt 1
+SUMTYPE opt<a>
    VARIANT some a ;VARIANT
    VARIANT none  ;VARIANT
 ;SUMTYPE

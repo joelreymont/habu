@@ -55,9 +55,9 @@ CSDIAG-BUF 8192 DIAG-BUFFER!
 9001 constant E-CS-RANGE
 
 \ two arity-0 family scalars and one parametric cell family.
-NEWTYPE csrole 0
-NEWTYPE csbnd 0
-NEWTYPE csix 1
+NEWTYPE csrole
+NEWTYPE csbnd
+NEWTYPE csix<a>
 
 \ 1. empty-body cast: n <-> arity-0 family scalar, both directions.
 CAST: >CSROLE ( n -- csrole )
@@ -114,12 +114,12 @@ s" CC-PROJ-N ( csix<n> -- n ) CSIX>N"        CHECK-QUIET-CANDIDATE! -1 T=
 \ layout instance needs the argument family's owner, as a cast into the family
 \ does. A package's own family certifies inside a global layout, a con argument
 \ certifies anywhere, and the field reads the integer back.
-STRUCTURE csbox 1 FIELD value a ;STRUCTURE
+STRUCTURE csbox<a> FIELD value a ;STRUCTURE
 CAST: >N-BOX ( n -- csbox<n> )
 : N-ROUND ( n -- n ) >N-BOX CSBOX:UNMAKE ;
 package CS-BOX
 public
-NEWTYPE own 0
+NEWTYPE own
 CAST: >OWN-BOX ( n -- csbox<own> )
 CAST: OWN>N ( own -- n )
 : OWN-ROUND ( n -- n ) >OWN-BOX CSBOX:UNMAKE OWN>N ;
@@ -134,10 +134,10 @@ CAST: OWN>N ( own -- n )
 \ UNMAKE.
 package CSFIELD
 public
-NEWTYPE ffam 0
-STRUCTURE fbox 0 FIELD v ffam ;STRUCTURE
-STRUCTURE fnest 0 FIELD inner fbox ;STRUCTURE
-STRUCTURE nbox 0 FIELD v n ;STRUCTURE
+NEWTYPE ffam
+STRUCTURE fbox FIELD v ffam ;STRUCTURE
+STRUCTURE fnest FIELD inner fbox ;STRUCTURE
+STRUCTURE nbox FIELD v n ;STRUCTURE
 CAST: >FBOX ( n -- fbox )
 CAST: >FNEST ( n -- fnest )
 CAST: >NBOX ( n -- nbox )
@@ -251,8 +251,8 @@ using CS-PRIOR-BASE
 \ private section. The integer comes from a typed source: an address is the
 \ distance `NULL-PTR BYTE-VIEW -`, an execution token is `search-wl`'s answer.
 : CS-TWICE ( n -- n ) 2 * ;            \ global, so wordlist 0 finds it
-STRUCTURE pfbox 0 FIELD p ptr u8 ;STRUCTURE
-STRUCTURE qfbox 0 FIELD q [ n -- n ] ;STRUCTURE
+STRUCTURE pfbox FIELD p ptr u8 ;STRUCTURE
+STRUCTURE qfbox FIELD q [ n -- n ] ;STRUCTURE
 
 \ A projection out of a quotation mints nothing, so it is declared at top level.
 CAST: NN>N ( [ n -- n ] -- n )
@@ -318,7 +318,7 @@ CS-MINT:SLOT-RUN 7 T=
 \ child of this image, where the words below are defined.
 package CS-LAYOUT
 ENUM cs-color red green ;ENUM
-PRODUCT cs-pixel 0
+PRODUCT cs-pixel
    FIELD color cs-color
    FIELD count n
 ;PRODUCT

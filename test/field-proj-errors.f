@@ -4,8 +4,8 @@ require src/lib/test.f
 
 package FIELD-PROJ-ERRORS
 public
-STRUCTURE inner 0 FIELD value n ;STRUCTURE
-STRUCTURE outer 1 FIELD value a ;STRUCTURE
+STRUCTURE inner FIELD value n ;STRUCTURE
+STRUCTURE outer<a> FIELD value a ;STRUCTURE
 private
 
 variable INNER-FAM

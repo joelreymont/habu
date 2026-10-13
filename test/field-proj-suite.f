@@ -57,7 +57,7 @@ using FIELD-PROJ-LIB
 0 FP-GETA 10 T=
 
 \ pointer-role field: projecting a `ptr u8` field yields `ptr ptr u8`
-PRODUCT fpptr 0
+PRODUCT fpptr
   FIELD p ptr u8
   FIELD k n
 ;PRODUCT
@@ -94,7 +94,7 @@ s" FPX-NL" FID-A @ 0 TYPE-DECL:FP-ARM
 s" FPX-NL ( ptr n -- ptr n ) 0 field-project" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ foreign family: field id from fprec applied to a pointer of another family.
-PRODUCT fprec2 0
+PRODUCT fprec2
   FIELD a n
 ;PRODUCT
 s" FPX-FF" FID-A @ 0 TYPE-DECL:FP-ARM

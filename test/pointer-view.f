@@ -7,7 +7,7 @@ require test/checker-assert.f
 package POINTER-VIEW-TEST
 private
 
-NEWTYPE item 0
+NEWTYPE item
 CAST: >ITEM ( n -- item )
 CAST: ITEM>N ( item -- n )
 1 LAYOUT-BUFFER ITEMS item

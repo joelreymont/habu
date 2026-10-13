@@ -269,7 +269,7 @@ public
 
 \ A local read at the end of the body shares C's spelling. The calls between
 \ binding and return use the same value, so C cannot be the tail call.
-STRUCTURE pg-work 0 DERIVE addr
+STRUCTURE pg-work DERIVE addr
    FIELD conn n
    FIELD value n
 ;STRUCTURE

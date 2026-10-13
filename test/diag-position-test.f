@@ -19,8 +19,8 @@
 \ unplaced where the name decoded is not in the text, a string loader's
 \ path written as one, at top level or in a body, followed decoded and
 \ refused at a bad escape, and declaration packets: SUMTYPE, NEWTYPE with
-\ no arity (at its family name), ENUM (a body token, and a close-stage
-\ fault at the family name) and STRUCTURE. The check composes the subject
+\ malformed parameter header (at its family name), ENUM (a body token and a
+\ close-stage fault at the family name) and STRUCTURE. The check composes the subject
 \ with the files it requires, so a packet in a required file names that
 \ file and locates there, after a file it requires in turn has returned,
 \ and a packet in the subject after a required file returns locates in
@@ -563,17 +563,17 @@ variable RC
    s" ;SUMTYPE" SB-APPEND LF+
    s" declaration.f" FIXTURE!
    s" " CHECK
-   0 s" VARIANT" 2 4 19 26 AT ;
+   0 s" Up" 2 12 27 29 AT ;
 
-\ A missing arity has no token, so the family name stands for it.
+\ A malformed parameter list is reported at its complete header.
 : TEST-NEWTYPE ( -- )
    s" a NEWTYPE packet at its family name" T-LABEL
    SB-RESET
    s" : N1 ( -- ) ;" SB-APPEND LF+
-   s" NEWTYPE plain" SB-APPEND LF+
+   s" NEWTYPE plain<>" SB-APPEND LF+
    s" newtype.f" FIXTURE!
    s" " CHECK
-   0 s" plain" 2 9 22 27 AT ;
+   0 s" plain<>" 2 9 22 29 AT ;
 
 : TEST-ENUM ( -- )
    s" an ENUM declaration packet" T-LABEL
@@ -598,13 +598,13 @@ variable RC
 : TEST-STRUCTURE ( -- )
    s" a STRUCTURE declaration packet" T-LABEL
    SB-RESET
-   s" STRUCTURE pair 0" SB-APPEND LF+
+   s" STRUCTURE pair" SB-APPEND LF+
    s"    FIELD size n" SB-APPEND LF+
    s"    FIELD size n" SB-APPEND LF+
    s" ;STRUCTURE" SB-APPEND LF+
    s" structure.f" FIXTURE!
    s" " CHECK
-   0 s" size" 3 10 42 46 AT ;
+   0 s" size" 3 10 40 44 AT ;
 
 \ The one-line fixture NAME holding TEXT.
 : LINE-FIXTURE ( ptr u8 n ptr u8 n -- )
@@ -855,9 +855,9 @@ variable RC
    s" : X ( n -- n ) evaluate 1 c2-invoke ;" s" unsafe-cap.f" LINE-FIXTURE
    s" E-UNSAFE" s" evaluate" 1 16 15 23 REFUSED-AT
    s" an unknown construct variant after a trust-boundary word" T-LABEL
-   s" SUMTYPE rf 0 VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- rf ) evaluate construct rf nope ;"
+   s" SUMTYPE rf VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- rf ) evaluate construct rf nope ;"
       s" unsafe-variant.f" LINE-FIXTURE
-   s" E-CONSTRUCT-UNKNOWN-VARIANT" s" nope" 1 83 82 86 REFUSED-AT
+   s" E-CONSTRUCT-UNKNOWN-VARIANT" s" nope" 1 81 80 84 REFUSED-AT
    s" a mismatch before a token of unknown effect" T-LABEL
    s" : X ( n -- n ) dup c@ {: a -- b :} a ;" s" mismatch-unck.f" LINE-FIXTURE
    s" E-MISMATCH" s" c@" 1 20 19 21 REFUSED-AT
@@ -888,21 +888,21 @@ variable RC
 \ load compiles: the first undefined one refuses the definition.
 : TEST-LIVE-BRANCHES ( -- )
    s" an undefined word in a match whose scrutinee does not fit" T-LABEL
-   s" SUMTYPE mres 0 VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- n ) MATCH mres ok OF FIRST ENDOF ;MATCH SECOND ;"
+   s" SUMTYPE mres VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- n ) MATCH mres ok OF FIRST ENDOF ;MATCH SECOND ;"
       s" scrutinee-first.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" FIRST" 1 79 78 83 REFUSED-AT
+   s" E-UNDEFINED" s" FIRST" 1 77 76 81 REFUSED-AT
    s" that word alone in the branch" T-LABEL
-   s" SUMTYPE mres 0 VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- n ) MATCH mres ok OF NOPE ENDOF ;MATCH ;"
+   s" SUMTYPE mres VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- n ) MATCH mres ok OF NOPE ENDOF ;MATCH ;"
       s" scrutinee-branch.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" NOPE" 1 79 78 82 REFUSED-AT
+   s" E-UNDEFINED" s" NOPE" 1 77 76 80 REFUSED-AT
    s" an undefined word after that match" T-LABEL
-   s" SUMTYPE mres 0 VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- n ) MATCH mres ok OF 1 ENDOF ;MATCH SECOND ;"
+   s" SUMTYPE mres VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- n ) MATCH mres ok OF 1 ENDOF ;MATCH SECOND ;"
       s" scrutinee-after.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" SECOND" 1 94 93 99 REFUSED-AT
+   s" E-UNDEFINED" s" SECOND" 1 92 91 97 REFUSED-AT
    s" an undefined word after a match branch that fails" T-LABEL
-   s" SUMTYPE mres 0 VARIANT ok n ;VARIANT ;SUMTYPE : X ( mres -- n ) MATCH mres ok OF 1 c@ ENDOF ;MATCH NOPE ;"
+   s" SUMTYPE mres VARIANT ok n ;VARIANT ;SUMTYPE : X ( mres -- n ) MATCH mres ok OF 1 c@ ENDOF ;MATCH NOPE ;"
       s" match-branch-after.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" NOPE" 1 100 99 103 REFUSED-AT
+   s" E-UNDEFINED" s" NOPE" 1 98 97 101 REFUSED-AT
    s" an undefined word after a case branch that fails" T-LABEL
    s" : X ( n -- n ) CASE 1 OF 1 c@ ENDOF ENDCASE NOPE ;" s" case-branch-after.f" LINE-FIXTURE
    s" E-UNDEFINED" s" NOPE" 1 45 44 48 REFUSED-AT ;
@@ -1394,10 +1394,10 @@ variable RC
    s" E-REJECTED" s" ;" 1 54 53 54 REFUSED-AT
    s" a match open at ;" T-LABEL
    SB-RESET
-   s" SUMTYPE mres 0 VARIANT ok n ;VARIANT ;SUMTYPE" SB-APPEND LF+
+   s" SUMTYPE mres VARIANT ok n ;VARIANT ;SUMTYPE" SB-APPEND LF+
    s" : X ( mres -- n ) MATCH mres ok OF 1 ;" SB-APPEND LF+
    s" match-open.f" FIXTURE!
-   s" E-MATCH-UNTERMINATED" s" ;" 2 38 83 84 REFUSED-AT ;
+   s" E-MATCH-UNTERMINATED" s" ;" 2 38 81 82 REFUSED-AT ;
 
 \ A match beyond the control-frame limit leaves its body to the load. The
 \ checker's abandoned-match walk must still spend literal payloads before

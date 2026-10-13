@@ -3,15 +3,15 @@ require src/lib/test.f
 
 package DEFER-QUOT-TEST
 
-STRUCTURE direct 0 DERIVE addr FIELD handler [ n -- n ] ;STRUCTURE
-STRUCTURE nested 0 DERIVE addr FIELD item direct ;STRUCTURE
-STRUCTURE hook 0 FIELD handler [ n -- n ] ;STRUCTURE
-SUMTYPE choice 0
+STRUCTURE direct DERIVE addr FIELD handler [ n -- n ] ;STRUCTURE
+STRUCTURE nested DERIVE addr FIELD item direct ;STRUCTURE
+STRUCTURE hook FIELD handler [ n -- n ] ;STRUCTURE
+SUMTYPE choice
    VARIANT empty ;VARIANT
    VARIANT scalar n ;VARIANT
    VARIANT present hook ;VARIANT
 ;SUMTYPE
-STRUCTURE envelope 0 FIELD item choice ;STRUCTURE
+STRUCTURE envelope FIELD item choice ;STRUCTURE
 
 DEFER-LAYOUT-BUFFER DIRECTS direct
 DEFER-LAYOUT-BUFFER NESTEDS nested

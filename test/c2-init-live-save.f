@@ -7,7 +7,7 @@ require src/lib/c2-memory.f
 
 package C2-INIT-LIVE-SAVE
 public
-STRUCTURE c2ilive 0 FIELD x n FIELD y n ;STRUCTURE
+STRUCTURE c2ilive FIELD x n FIELD y n ;STRUCTURE
 
 private
 

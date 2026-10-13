@@ -57,7 +57,7 @@ private
    fam fam TFAM-FLD-START@ TFAM-INIT-HELPER$ UNLOCATED ;
 
 : CASE-RECORD ( -- )
-   s" rec" s" STRUCTURE rec 0 DERIVE addr init FIELD x n ;STRUCTURE"
+   s" rec" s" STRUCTURE rec DERIVE addr init FIELD x n ;STRUCTURE"
    [: RECORD-ROWS ;] ARMED-REPLAY ;
 
 \ ---- 2. a storage definer: its own row, then its suffix words --------------

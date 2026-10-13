@@ -5,7 +5,7 @@ require src/lib/test.f
 package NFP
 public
 
-STRUCTURE rec 0 DERIVE addr
+STRUCTURE rec DERIVE addr
    FIELD a n
    FIELD b n
 ;STRUCTURE

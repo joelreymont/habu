@@ -546,8 +546,8 @@ TYPED-VARIABLE GENERATES-XT [ -- ]
 \ are internal appenders this whitebox engine leaves callable and a product
 \ seals.
 public
-NEWTYPE eauth-reg-ext 0
-PRODUCT eauth-reg-pr 0 FIELD x n ;PRODUCT
+NEWTYPE eauth-reg-ext
+PRODUCT eauth-reg-pr FIELD x n ;PRODUCT
 private
 TFAM:TFAM-N@ 1 - constant REG-FAM
 TYPED-VARIABLE REG-XT [ -- ]
@@ -580,7 +580,7 @@ variable REG-SCH
    s" EAUTH-REG-P ( EAUTH-REG-REC -- EAUTH-REG-REC )" CHECK-QUIET-CANDIDATE! 0 T=
    s" a callback's family is refused" T-LABEL
    TFAM:TFAM-N@ {: fams:n :}
-   [: s" eauth-reg-fam" s" 0" CHECKER-DEFFAMILY ;] REG-RUN
+   [: s" eauth-reg-fam" CHECKER-DEFFAMILY ;] REG-RUN
    TFAM:TFAM-N@ fams T=
    s" EAUTH-REG-P ( eauth-reg-fam -- eauth-reg-fam )" CHECK-QUIET-CANDIDATE! 0 T=
    s" a callback cannot mark an extent family free" T-LABEL

@@ -76,7 +76,7 @@ execute
 package NCOMP
 
 public
-NEWTYPE code-entry 0
+NEWTYPE code-entry
 
 private
 

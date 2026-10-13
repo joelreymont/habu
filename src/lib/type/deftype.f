@@ -98,7 +98,7 @@ public
 : MINT ( ptr u8 n -- ) {: sa:ptr su:n :}
    su 0= if E-VNOM-NAME throw then
    sa su MANGLE {: ta:ptr tu:n :}
-   ta tu s" 0" CHECKER-DEFFAMILY
+   ta tu CHECKER-DEFFAMILY
    sa su ta tu EMIT-IN
    sa su ta tu EMIT-OUT ;
 

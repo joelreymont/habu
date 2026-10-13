@@ -30,7 +30,7 @@ using TFAM
 
 package REFLTEST-A
 public
-ENUM probe 0
+ENUM probe
    VARIANT alpha FIELD first n ;VARIANT
    VARIANT beta ;VARIANT
 ;ENUM
@@ -38,7 +38,7 @@ ENUM probe 0
 
 package REFLTEST-B
 public
-ENUM probe 1
+ENUM probe<a>
    VARIANT gamma FIELD only a ;VARIANT
    VARIANT delta ;VARIANT
    VARIANT epsilon ;VARIANT
@@ -49,7 +49,7 @@ ENUM probe 1
 \ so neither can be told from the other by identity - the case FAMS exists to expose.
 package REFLTEST-P
 private
-ENUM shadow 0
+ENUM shadow
    VARIANT one FIELD a n ;VARIANT
    VARIANT two ;VARIANT
 ;ENUM
@@ -57,7 +57,7 @@ ENUM shadow 0
 
 package REFLTEST-Q
 private
-ENUM shadow 0
+ENUM shadow
    VARIANT one FIELD a n ;VARIANT
    VARIANT two ;VARIANT
 ;ENUM
@@ -66,7 +66,7 @@ ENUM shadow 0
 \ A record fixture: its fields hang off NO-VARIANT, which is the other reader path.
 package REFLTEST-R
 public
-STRUCTURE row 0
+STRUCTURE row
    FIELD height n
    FIELD width n
 ;STRUCTURE

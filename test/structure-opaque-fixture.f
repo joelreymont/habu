@@ -4,7 +4,7 @@
 \ construction surface another package gets.
 package OP
 public
-STRUCTURE box 0 OPAQUE FIELD x n ;STRUCTURE
+STRUCTURE box OPAQUE FIELD x n ;STRUCTURE
 : WRAP ( n -- box ) BOX-MAKE ;
 : PEEK ( box -- n ) BOX-UNMAKE ;
 ;package

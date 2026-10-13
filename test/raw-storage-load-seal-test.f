@@ -29,7 +29,7 @@ require test/checker-assert.f
 package RAW-LOAD-SEAL
 
 \ ---- the nominal family a forged value would have to manufacture -------------
-NEWTYPE rlsk 0
+NEWTYPE rlsk
 
 \ ---- one cell per raw storage definer, all created by the native engine ------
 variable VAR-CELL

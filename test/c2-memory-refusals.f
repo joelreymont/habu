@@ -8,7 +8,7 @@ require src/lib/c2-memory.f
 package C2-MEMORY-REFUSALS
 private
 
-STRUCTURE holder 1 FIELD value a ;STRUCTURE
+STRUCTURE holder<a> FIELD value a ;STRUCTURE
 
 $4000 constant CAP
 create OUT CAP allot

@@ -10,7 +10,7 @@ require test/checker-assert.f
 package CHECKER-SOUNDNESS
 public
 
-PRODUCT point 0 FIELD x n FIELD y n ;PRODUCT
+PRODUCT point FIELD x n FIELD y n ;PRODUCT
 
 : TAKE-U8 ( u8 -- ) drop ;
 : TAKE-I64 ( i64 -- ) drop ;

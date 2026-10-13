@@ -6,8 +6,8 @@ require src/lib/memory.f
 package C2-FORALL-INPUT
 public
 
-STRUCTURE state 1 DERIVE init FIELD source read-view<a,a,u8> ;STRUCTURE
-STRUCTURE control 5
+STRUCTURE state<a> DERIVE init FIELD source read-view<a,a,u8> ;STRUCTURE
+STRUCTURE control<a,b,c,d,e>
    FIELD owner C2-MEM:owner<a,b,c>
    FIELD cache mut-view<a,d,e,init<d,state<a>>>
 ;STRUCTURE

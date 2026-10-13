@@ -274,9 +274,9 @@ OPKC:OPKC-R 41 T=
 
 \ Type imports use the same explicit package scope. A compiler-owned public
 \ cell-id must not prevent an application from importing its own cell-id.
-package UTA public NEWTYPE cell-id 0 NEWTYPE import-id 0 ;package
-package UTB public NEWTYPE import-id 0 ;package
-package UTP NEWTYPE secret-id 0 public : VISIBLE ( -- ) ; ;package
+package UTA public NEWTYPE cell-id NEWTYPE import-id ;package
+package UTB public NEWTYPE import-id ;package
+package UTP NEWTYPE secret-id public : VISIBLE ( -- ) ; ;package
 s" package UTC using UTA public : CELL ( cell-id -- cell-id ) ; : KEEP ( import-id -- import-id ) ; ;package" UCE-CATCH 0 T=
 \ Compiled effects retain the imported family after its scope closes.
 s" : UT-SAME ( UTA:cell-id -- UTA:cell-id ) UTC:CELL ;" UCE-CATCH 0 T=

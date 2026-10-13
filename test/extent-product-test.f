@@ -36,11 +36,11 @@ variable #CASE
       T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 
-NEWTYPE xidx 1
-NEWTYPE xpb 0
-NEWTYPE xpt 0
-NEWTYPE xpk 0
-NEWTYPE xpflat 0
+NEWTYPE xidx<a>
+NEWTYPE xpb
+NEWTYPE xpt
+NEWTYPE xpk
+NEWTYPE xpflat
 
 \ mark the free (outer / batch) factor, exactly as EXTPROD: does at declaration.
 s" xpb" EXT-MARK-FREE-TAIL

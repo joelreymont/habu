@@ -8,7 +8,7 @@ require src/compiler/native/fetch-check.f
 package NFETCH
 public
 
-STRUCTURE fact 0
+STRUCTURE fact
    FIELD offset n
    FIELD address n
    FIELD bytes n

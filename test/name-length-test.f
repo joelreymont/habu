@@ -29,8 +29,7 @@
 \ of the accessor it generates, which the engine captures into BODYBUF-CAP
 \ bytes. Each storage gate is driven with -1, BODYBUF-CAP plus one and the
 \ maximum cell, a text of exactly BODYBUF-CAP is still taken, and the past-cap
-\ text is one the gate would otherwise take. CHECKER-DEFFAMILY's arity token is
-\ bounded by the two digits of the largest arity.
+\ text is one the gate would otherwise take.
 \
 \ A name with a second inner ':' has a length a name has and still keys no
 \ record; every word that records a symbol refuses it too (TEST-MALFORMED).
@@ -53,7 +52,6 @@ $8000 constant ERR-CAP             \ a diagnostic that names a whole name
 -1 1 rshift constant MAX-CELL
 BODYBUF-CAP 1 - constant CEIL      \ the longest name `:` defines
 BODYBUF-CAP constant TEXT-CAP      \ the longest stored-type text
-2 constant ARITY-CAP               \ digits of the largest arity, 23
 create OUT OUT-CAP allot
 create ERR ERR-CAP allot
 
@@ -176,11 +174,10 @@ create BEFORE MARK-N cells allot
 : USING-IT ( -- ) BAD$ CHECKER-USING ;
 : USING-PUSH-IT ( -- ) BAD$ CHECKER-USING-PUSH ;
 : EXPORT-IT ( -- ) BAD$ CHECKER-EXPORT ;
-: FAMILY-IT ( -- ) BAD$ s" 0" CHECKER-DEFFAMILY ;
-: SUM-IT ( -- ) BAD$ s" 0 VARIANT vacant ;VARIANT" CHECKER-DEFSUM ;
+: FAMILY-IT ( -- ) BAD$ CHECKER-DEFFAMILY ;
+: SUM-IT ( -- ) BAD$ s" VARIANT vacant ;VARIANT" CHECKER-DEFSUM ;
 : SUM-NOEND-IT ( -- ) BAD$ s" 0" CHECKER-DEFSUM-NOEND ;
-: PRODUCT-IT ( -- ) BAD$ s" 0 FIELD a n" CHECKER-DEFPRODUCT ;
-: ARITY-IT ( -- ) s" nltfam" BAD$ CHECKER-DEFFAMILY ;
+: PRODUCT-IT ( -- ) BAD$ s" FIELD a n" CHECKER-DEFPRODUCT ;
 : CHECK-IT ( -- ) BODY$ CHECK drop ;
 : CHECK!-IT ( -- ) BODY$ CHECK! drop ;
 : CANDIDATE-IT ( -- ) BODY$ CHECK-CANDIDATE! drop ;
@@ -188,7 +185,7 @@ create BEFORE MARK-N cells allot
 
 \ A product of this file's own, so a field transaction has a family to add to:
 \ the family of the field row it just committed.
-PRODUCT nlt-pair 0
+PRODUCT nlt-pair
    FIELD a n
 ;PRODUCT
 TYPE-FIELD:COUNT 1 - TYPE-FIELD:FAMILY@ constant PAIR
@@ -373,12 +370,9 @@ variable WANT-U
 \ met. A signature is refused as one that does not parse: a does> clause is
 \ rejected, a cast throws E-CAST-ARITY. CHECK-DOES! is trusted-only and
 \ CHECKER-DEFCAST has no effect a checked body may call, so the child names them
-\ at its top level. An arity token past two digits is refused as a bad arity,
-\ and its text is echoed only when its length is one a name can have; that
-\ refusal is rendered, so the child exits 70, and the cast's is not (67).
+\ at its top level. Declaration refusals are rendered, so that child exits 70;
+\ the cast's unrendered refusal exits 67.
 : TOO-LARGE$ ( -- ptr u8 n ) S\" checker: token buffer too large\n" ;
-: ARITY$ ( -- ptr u8 n )
-   S\" habu: bad newtype declaration 'nltfam': arity must be a decimal, at most 23 parameters\nhb: uncaught throw code 7108\n" ;
 : TEST-TEXTS ( -- )
    TEXT-CAP s" LAYOUT-TEXT" RETURNS-PAST
    TEXT-CAP s" STORAGE-TEXT" RETURNS-PAST
@@ -389,12 +383,7 @@ variable WANT-U
    s" HOOK-IT" 76 TOO-LARGE$ DIES-NO-SPAN
    s" MARKS! CLAUSE$ BAD$ CHECK-DOES! 0= VERDICT" RETURNS-NO-SPAN
    s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 67 S\" hb: uncaught throw code 7129\n"
-   DIES-NO-SPAN
-   -1 s" -1" s" ARITY-IT" 70 ARITY$ DIES-AT
-   ARITY-CAP 1 + s" cap+1" s" ARITY-IT" 70
-   S\" habu: bad newtype declaration 'nltfam': arity must be a decimal, at most 23 parameters at 'qqq'\nhb: uncaught throw code 7108\n"
-   DIES-AT
-   MAX-CELL s" max" s" ARITY-IT" 70 ARITY$ DIES-AT ;
+   DIES-NO-SPAN ;
 
 \ ---- a name of exactly the ceiling ------------------------------------------
 \ `: <u bytes of c> ;`, in a fresh mapping.

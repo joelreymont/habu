@@ -55,7 +55,7 @@ require src/arch/wasm/backend.f
 package WKERNEL
 public
 
-ENUM provider 0
+ENUM provider
    VARIANT row FIELD fun n ;VARIANT
    VARIANT word FIELD name ptr u8 FIELD name-len n ;VARIANT
 ;ENUM

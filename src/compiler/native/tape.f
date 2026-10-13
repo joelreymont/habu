@@ -44,7 +44,7 @@ ENUM mode DERIVE eq
 \ A multi-cell value binds whole to a typed local, so a word that only carries a
 \ token or a span names it; the append fronts still unmake one, because there
 \ every field becomes its own arena cell.
-STRUCTURE token 0
+STRUCTURE token
    FIELD kind kind
    FIELD mode mode
    FIELD spell IR-ID:ir-symbol-id

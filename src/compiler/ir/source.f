@@ -70,7 +70,7 @@ public
 \ FSPAN-CK, so a span assembled by the generated constructor gains nothing.
 \ Its source-id field still needs a genuine identity - the checker rejects a
 \ raw cell there - and no public word re-mints ids or handles from raw cells.
-STRUCTURE span 0
+STRUCTURE span
    FIELD src IR-ID:ir-source-id
    FIELD start n
    FIELD len n

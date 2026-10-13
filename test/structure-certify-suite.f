@@ -97,22 +97,22 @@ create SCG-BUF 8192 allot
 \    MAKE/UNMAKE pair certifies
 \    as declaration-order inverses; a flattened/rolewrong call rejects.
 \ ---------------------------------------------------------------------------
-s" STRUCTURE scinr 0 FIELD a n FIELD b n ;STRUCTURE" evaluate-closed           \ width-2 product leaf
-s" STRUCTURE scoutr 0 FIELD w scinr FIELD t n ;STRUCTURE" evaluate-closed      \ wide nested field + a cell
+s" STRUCTURE scinr FIELD a n FIELD b n ;STRUCTURE" evaluate-closed           \ width-2 product leaf
+s" STRUCTURE scoutr FIELD w scinr FIELD t n ;STRUCTURE" evaluate-closed      \ wide nested field + a cell
 s" M1 ( scinr n -- scoutr ) SCOUTR:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" U1 ( scoutr -- scinr n ) SCOUTR:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
-s" STRUCTURE scpf 0 FIELD p ptr n FIELD k n ;STRUCTURE" evaluate-closed
+s" STRUCTURE scpf FIELD p ptr n FIELD k n ;STRUCTURE" evaluate-closed
 s" M2 ( ptr n n -- scpf ) SCPF:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" U2 ( scpf -- ptr n n ) SCPF:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
-s" SUMTYPE scnr 0 VARIANT ok n ;VARIANT VARIANT err n ;VARIANT ;SUMTYPE" evaluate-closed
-s" STRUCTURE schold 0 FIELD r scnr FIELD t n ;STRUCTURE" evaluate-closed       \ sum-with-payload field
+s" SUMTYPE scnr VARIANT ok n ;VARIANT VARIANT err n ;VARIANT ;SUMTYPE" evaluate-closed
+s" STRUCTURE schold FIELD r scnr FIELD t n ;STRUCTURE" evaluate-closed       \ sum-with-payload field
 s" M3 ( scnr n -- schold ) SCHOLD:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" U3 ( schold -- scnr n ) SCHOLD:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
-s" ENUM scne 0 VARIANT red ;VARIANT VARIANT blue ;VARIANT ;ENUM" evaluate-closed   \ payload-free enum
-s" STRUCTURE scef 0 FIELD e scne FIELD t n ;STRUCTURE" evaluate-closed        \ width-1 nested-family field
+s" ENUM scne VARIANT red ;VARIANT VARIANT blue ;VARIANT ;ENUM" evaluate-closed   \ payload-free enum
+s" STRUCTURE scef FIELD e scne FIELD t n ;STRUCTURE" evaluate-closed        \ width-1 nested-family field
 s" M4 ( scne n -- scef ) SCEF:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" U4 ( scef -- scne n ) SCEF:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" M4N ( n n -- scef ) SCEF:MAKE" CHECK-QUIET-CANDIDATE! 0 T=     \ a plain cell is not the enum
@@ -137,7 +137,7 @@ SCRT 9 T= 2 T= 1 T=                                  \ t=9 (top), b=2, a=1 round
 \    a concrete multi-cell instantiation lowers through the layout-cap lane's
 \    hidden-field expansion, certified there; only the WIDE MAKE is pinned here.)
 \ ---------------------------------------------------------------------------
-s" STRUCTURE scg 1 FIELD u a FIELD z n ;STRUCTURE" evaluate-closed
+s" STRUCTURE scg<a> FIELD u a FIELD z n ;STRUCTURE" evaluate-closed
 s" G1 ( n n -- scg<n> ) SCG:MAKE" CHECK-QUIET-CANDIDATE! -1 T=            \ concrete a=n
 s" G2 ( ptr u8 n -- scg<n> ) SCG:MAKE" CHECK-QUIET-CANDIDATE! 0 T=        \ wrong role: u=n not ptr u8
 s" G3 ( scinr n -- scg<scinr> ) SCG:MAKE" CHECK-QUIET-CANDIDATE! -1 T=    \ WIDE instantiation a=scinr
@@ -154,7 +154,7 @@ s" GL3 ( scg<own> -- own n ) SCG:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 \ 4. Pointer / value roles. A ptr field certifies against ptr T; a plain cell
 \    where ptr T is required, and ptr T where a cell is required, both reject.
 \ ---------------------------------------------------------------------------
-s" STRUCTURE scrole 0 FIELD p ptr n FIELD v n ;STRUCTURE" evaluate-closed
+s" STRUCTURE scrole FIELD p ptr n FIELD v n ;STRUCTURE" evaluate-closed
 s" R1 ( ptr n n -- scrole ) SCROLE:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" R2 ( n n -- scrole ) SCROLE:MAKE" CHECK-QUIET-CANDIDATE! 0 T=          \ value where ptr n required
 s" R3 ( ptr n ptr n -- scrole ) SCROLE:MAKE" CHECK-QUIET-CANDIDATE! 0 T=  \ ptr where value required
@@ -165,8 +165,8 @@ s" R3 ( ptr n ptr n -- scrole ) SCROLE:MAKE" CHECK-QUIET-CANDIDATE! 0 T=  \ ptr 
 \    foreign-family bundle cannot alias, and a bundle cannot split without
 \    UNMAKE; the whole-bundle transport of a structure value IS allowed.
 \ ---------------------------------------------------------------------------
-s" STRUCTURE scpt 0 FIELD x n FIELD y n ;STRUCTURE" evaluate-closed
-s" STRUCTURE scqt 0 FIELD x n FIELD y n ;STRUCTURE" evaluate-closed                    \ same shape, different identity
+s" STRUCTURE scpt FIELD x n FIELD y n ;STRUCTURE" evaluate-closed
+s" STRUCTURE scqt FIELD x n FIELD y n ;STRUCTURE" evaluate-closed                    \ same shape, different identity
 s" F1 ( n n -- scpt )" CHECK-QUIET-CANDIDATE! 0 T=                        \ empty body cannot forge
 s" F2 ( n -- scpt ) 0" CHECK-QUIET-CANDIDATE! 0 T=                        \ a raw literal cannot forge
 s" F3 ( n -- scpt ) SCPT:MAKE" CHECK-QUIET-CANDIDATE! 0 T=                \ one arg, needs two
@@ -183,7 +183,7 @@ s" F9 ( scpt -- scpt scpt ) dup" CHECK-QUIET-CANDIDATE! -1 T=            \ whole
 \    field-derived expected types (proof the reject is field-shape-specific, not
 \    a bare arity count).
 \ ---------------------------------------------------------------------------
-s" STRUCTURE scdg 0 FIELD x n FIELD y ptr n ;STRUCTURE" evaluate-closed
+s" STRUCTURE scdg FIELD x n FIELD y ptr n ;STRUCTURE" evaluate-closed
 s" D1 ( n -- scdg ) SCDG:MAKE" SCG<
 s\" \"code\":\"E-MISMATCH\"" SCG?
 s\" \"token\":\"SCDG:MAKE\"" SCG?
@@ -196,7 +196,7 @@ SCG-END
 \    reject with E-CTOR-PROTECTED, and the words stay callable afterwards —
 \    matching the shipped sum/product ctor protection.
 \ ---------------------------------------------------------------------------
-s" STRUCTURE scprot 0 FIELD x n FIELD y n ;STRUCTURE" evaluate-closed
+s" STRUCTURE scprot FIELD x n FIELD y n ;STRUCTURE" evaluate-closed
 s" package scprot" TRY E-CTOR-PROTECTED T=
 s" package SCPROT" TRY E-CTOR-PROTECTED T=                        \ case-insensitive
 s" undefine SCPROT:MAKE" TRY E-CTOR-PROTECTED T=
@@ -212,7 +212,7 @@ SCPRT 4 T= 3 T=
 \ ---------------------------------------------------------------------------
 package scpkg
 public
-STRUCTURE prow 0 FIELD v n FIELD w n ;STRUCTURE
+STRUCTURE prow FIELD v n FIELD w n ;STRUCTURE
 private
 ;package
 s" IPK ( n n -- scpkg:prow ) SCPKG-PROW:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
@@ -226,7 +226,7 @@ s" IPU ( scpkg:prow -- n n ) SCPKG-PROW:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 \    CK-PENDING-SYM). A scope whose rows did not bind refuses the declaration
 \    (`bad structure declaration`, 70). The derived words then run.
 \ ---------------------------------------------------------------------------
-s" STRUCTURE scder 0 DERIVE eq hash FIELD x n ;STRUCTURE" TRY 0 T=
+s" STRUCTURE scder DERIVE eq hash FIELD x n ;STRUCTURE" TRY 0 T=
 : SCDEQ ( n n -- bool ) {: a:n b:n :} a SCDER:MAKE b SCDER:MAKE SCDER:EQ ;
 : SCDHS ( n n -- bool ) {: a:n b:n :} a SCDER:MAKE SCDER:HASH b SCDER:MAKE SCDER:HASH = ;
 5 5 SCDEQ T-TRUE

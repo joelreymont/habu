@@ -2,15 +2,15 @@
 package NATIVE-FETCH-SUBJECT
 public
 ENUM shade dark light ;ENUM
-SUMTYPE inner 0
+SUMTYPE inner
    VARIANT color shade ;VARIANT
    VARIANT number n ;VARIANT
 ;SUMTYPE
-SUMTYPE outer 0
+SUMTYPE outer
    VARIANT tree inner ;VARIANT
    VARIANT number n ;VARIANT
 ;SUMTYPE
-SUMTYPE empty 0
+SUMTYPE empty
    VARIANT first ;VARIANT
    VARIANT second ;VARIANT
 ;SUMTYPE

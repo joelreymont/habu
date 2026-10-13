@@ -36,7 +36,7 @@ private
 
 ;package
 
-STRUCTURE ubrec 0 FIELD v n ;STRUCTURE
+STRUCTURE ubrec FIELD v n ;STRUCTURE
 1 TYPED-BUFFER UB-RECS ubrec
 
 \ Redefined while `dup` and `+` are still the engine's words.
