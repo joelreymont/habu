@@ -1091,6 +1091,21 @@ public
    ;MATCH ;
 
 
+\ A task retaining a CONNECT-START handle may need to clean it up after AWAIT
+\ or POLL retired it internally. Check the registry before reading a slot: image
+\ preparation releases those buffers. A reused slot has a different generation.
+: LIVE? ( connection -- bool ) {: handle:connection :}
+   CONFIGURED @ 0= if false exit then
+   handle CONNECTION>N {: raw:n :}
+   raw 0 < if false exit then
+   raw HANDLE-SLOT {: slot:n :}
+   slot CONN-CAP >= if false exit then
+   slot CONN-LIVE@ 0= if false exit then
+   slot CONN-GEN@ raw HANDLE-GEN <> if false exit then
+   slot CONN-OWNER@ TASK:SELF-N <> if E-HANDLE throw then
+   true ;
+
+
 \ CLOSE clears whatever results the connection still owns, so libpq keeps no
 \ orphan PGresult, then releases the call arena and retires the handle.
 : CLOSE ( connection -- ) {: handle:connection :}

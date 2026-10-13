@@ -97,9 +97,23 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
       refused OF nip ENDOF
    ;MATCH ;
 
+: CLOSE-KEEP ( PG:connection -- PG:connection )
+   dup PG:CLOSE ;
+
 
 : CONNECT-CASES ( -- )
-   REFUSED-LENGTH 0 > TTRUE ;
+   REFUSED-LENGTH 0 > TTRUE
+   s" host=127.0.0.1 port=1 dbname=none user=none connect_timeout=2"
+   CONNECT-START {: refused :}
+   refused PG:AWAIT MATCH PG:progress
+      refused OF 2drop ENDOF
+      connected OF PG:CLOSE E-CONNECT throw ENDOF
+      waiting OF 2drop E-CONNECT throw ENDOF
+      completed OF CLEAR E-CONNECT throw ENDOF
+   ;MATCH
+   refused PG:LIVE? TFALSE
+   refused [: CLOSE-KEEP ;] catch {: stale code:n :}
+   code E-HANDLE T= ;
 
 
 \ The application can hold all twenty connections at once, and reaching its
@@ -109,8 +123,12 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
    CONNECTIONS 0 ?do OPEN i HELD-CONNS ! loop
    [: OPEN PG:CLOSE ;] E-CAPACITY TTHROWSQ
    [: CONNECTIONS 1+ RESULTS PARAMETERS CONFIGURE ;] E-CAPACITY TTHROWSQ
-   0 HELD-CONNS @ PG:CLOSE
+   0 HELD-CONNS @ {: stale :}
+   stale PG:CLOSE
+   stale PG:LIVE? TFALSE
    OPEN 0 HELD-CONNS !
+   stale PG:LIVE? TFALSE
+   0 HELD-CONNS @ PG:LIVE? TTRUE
    CONNECTIONS 0 ?do
       i HELD-CONNS @ {: c :}
       c s" select 42" EXEC {: r :}
@@ -199,6 +217,29 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
    code E-CAPACITY T=
    RESULTS 0 ?do i HELD-RESULTS @ CLEAR loop
    c PG:CLOSE ;
+
+
+\ An AIO wait failure retires the connection while AWAIT throws. The caller
+\ still has the CONNECT-START handle for its owner cleanup.
+: AWAIT-DROP ( PG:connection -- PG:connection ) {: c :}
+   c PG:AWAIT MATCH PG:progress
+      waiting OF 2drop ENDOF
+      connected OF drop ENDOF
+      completed OF CLEAR ENDOF
+      refused OF 2drop ENDOF
+   ;MATCH
+   c ;
+
+: STOPPED-AWAIT ( PG:connection -- PG:connection )
+   AIO:STOP
+   [: AWAIT-DROP ;] [: AIO:START ;] finally ;
+
+: AIO-FAIL-CASES ( -- )
+   OPEN {: c :}
+   c s" select pg_sleep(10)" SEND
+   c [: STOPPED-AWAIT ;] catch {: stale code:n :}
+   code E-AIO-STATE T=
+   c PG:LIVE? TFALSE ;
 
 
 \ ---- schema ---------------------------------------------------------------
@@ -622,6 +663,26 @@ variable STMT-U
    code E-CLEARED T= ;
 
 
+\ A backend terminating its own session may fail the terminating query or the
+\ next query. Either path leaves no connection for owner cleanup to close.
+: END-SESSION ( PG:connection -- PG:connection )
+   dup s" select pg_terminate_backend(pg_backend_pid())" EXEC CLEAR ;
+
+: PROBE-SESSION ( PG:connection -- PG:connection )
+   dup s" select 1" EXEC CLEAR ;
+
+: LOST-CONNECTION-CASES ( -- )
+   OPEN {: c :}
+   c [: END-SESSION ;] catch {: held code:n :}
+   code 0= if
+      c [: PROBE-SESSION ;] catch {: again probe-code:n :}
+      probe-code E-EXEC T=
+   else
+      code E-EXEC T=
+   then
+   c PG:LIVE? TFALSE ;
+
+
 \ ---- task ownership -------------------------------------------------------
 \ A handle laundered into shared typed storage still belongs to the task that
 \ made it. The worker presents the main task's connection and is refused
@@ -633,7 +694,7 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
 
 
 : FOREIGN-USE ( -- )
-   0 SHARED-CONN @ PARAMS ;
+   0 SHARED-CONN @ PG:LIVE? drop ;
 
 
 : FOREIGN-WORK ( -- )
@@ -650,6 +711,79 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
    FOREIGN-WORKER TASK:KILL
    FOREIGN-CODE @ E-HANDLE T=
    c ;
+
+
+\ The task owns the returned CONNECT-START handle. Its AT-EXIT callback must
+\ close a live attempt and leave an auto-retired refusal alone.
+1 TYPED-BUFFER EXIT-CONN PG:connection
+TYPED-VARIABLE EXIT-LIVE bool
+variable EXIT-STARTED
+TASK:MIN-STACK TASK:TASK EXIT-WORKER
+
+: EXIT-CLEAN ( -- )
+   0 EXIT-CONN @ PG:LIVE? dup EXIT-LIVE !
+   if 0 EXIT-CONN @ PG:CLOSE then ;
+
+: EXIT-OPEN ( -- )
+   CONNINFO$ CONNECT-START 0 EXIT-CONN !
+   0 TASK:RETURN ;
+
+: EXIT-REFUSED ( -- )
+   s" host=127.0.0.1 port=1 dbname=none user=none connect_timeout=2"
+   CONNECT-START 0 EXIT-CONN !
+   0 EXIT-CONN @ PG:AWAIT MATCH PG:progress
+      refused OF 2drop ENDOF
+      connected OF PG:CLOSE E-CONNECT throw ENDOF
+      waiting OF 2drop E-CONNECT throw ENDOF
+      completed OF CLEAR E-CONNECT throw ENDOF
+   ;MATCH
+   0 TASK:RETURN ;
+
+: EXIT-HALT ( -- )
+   CONNINFO$ CONNECT-START 0 EXIT-CONN !
+   0 EXIT-CONN @ PG:AWAIT MATCH PG:progress
+      connected OF drop ENDOF
+      refused OF 2drop E-CONNECT throw ENDOF
+      waiting OF 2drop E-CONNECT throw ENDOF
+      completed OF CLEAR E-CONNECT throw ENDOF
+   ;MATCH
+   0 EXIT-CONN @ s" select pg_sleep(10)" SEND
+   1 EXIT-STARTED atomic!
+   0 EXIT-CONN @ PG:AWAIT MATCH PG:progress
+      completed OF CLEAR ENDOF
+      connected OF drop E-EXEC throw ENDOF
+      waiting OF 2drop E-EXEC throw ENDOF
+      refused OF 2drop E-EXEC throw ENDOF
+   ;MATCH
+   0 TASK:RETURN ;
+
+: EXIT-JOIN ( -- )
+   EXIT-WORKER TASK:JOIN MATCH result
+      ok OF 0 T= ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: EXIT-CASES ( -- )
+   ['] EXIT-CLEAN EXIT-WORKER TASK:AT-EXIT
+   ['] EXIT-OPEN EXIT-WORKER TASK:ACTIVATE
+   EXIT-JOIN
+   EXIT-LIVE @ TTRUE
+   0 EXIT-CONN @ PG:LIVE? TFALSE
+   ['] EXIT-REFUSED EXIT-WORKER TASK:ACTIVATE
+   EXIT-JOIN
+   EXIT-LIVE @ TFALSE
+   0 EXIT-CONN @ PG:LIVE? TFALSE
+   0 EXIT-STARTED !
+   ['] EXIT-HALT EXIT-WORKER TASK:ACTIVATE
+   mono-ns PROGRESS-NS + {: deadline:n :}
+   begin EXIT-STARTED atomic@ 0= while deadline CHECK-PROGRESS repeat
+   EXIT-WORKER TASK:HALT
+   EXIT-WORKER TASK:JOIN MATCH result
+      ok OF drop E-EXEC throw ENDOF
+      err OF E-TASK-NO-RESULT T= ENDOF
+   ;MATCH
+   EXIT-LIVE @ TTRUE
+   0 EXIT-CONN @ PG:LIVE? TFALSE ;
 
 
 \ ---- image capture --------------------------------------------------------
@@ -674,11 +808,14 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
    c PARAMS
    c s" select 1" EXEC {: r :}
    CAPTURE
+   c PG:LIVE? TFALSE
    c [: USE-CONN ;] catch {: stale-conn code:n :}
    code E-HANDLE T=
    r [: READ-ROWS ;] catch {: stale-res res-code:n :}
    res-code E-CLEARED T=
    OPEN {: fresh :}
+   fresh PG:LIVE? TTRUE
+   c PG:LIVE? TFALSE
    fresh s" select 2" EXEC {: current :}
    c [: USE-CONN ;] catch {: again-conn again-code:n :}
    again-code E-HANDLE T=
@@ -709,6 +846,8 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
    SCRIPT-REFUSAL-CASES
    CLEARED-CASES
    OWNER-CASES
+   EXIT-CASES
+   LOST-CONNECTION-CASES
    RECYCLE-CASES
    PG:CLOSE
    CLOSE-CLEARS-CASES
@@ -725,7 +864,7 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
    PROGRESS-CASES
    RESULT-CAPACITY-CASES
    AIO:START
-   [: CONNECT-CASES CAPACITY-CASES SERVER-CASES ;]
+   [: CONNECT-CASES CAPACITY-CASES AIO-FAIL-CASES SERVER-CASES ;]
    [: AIO:STOP ;]
    finally ;
 

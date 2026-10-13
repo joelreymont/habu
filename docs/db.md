@@ -30,6 +30,13 @@ the single consumption point, and a second `PG:CLEAR` — or any read — throug
 the same handle is `PG:E-CLEARED` rather than a use of a freed `PGresult`.
 `PG:CLOSE` is the same contract for a connection, and it clears whatever
 results that connection still owns first, so libpq is left holding nothing.
+`PG:LIVE?` lets the owning task check a retained connection handle before
+cleanup: it answers false after `CLOSE`, an internally retired connect or
+transport failure, or image preparation, including when a new connection has
+reused the slot. It answers true only for the current live generation owned by
+the calling task; a live handle owned by another task throws `PG:E-HANDLE`.
+Call `PG:CLOSE` when it answers true. `PG:CLOSE` itself remains strict and
+throws `PG:E-HANDLE` on a retired handle.
 
 ## Concurrency
 
@@ -73,6 +80,7 @@ loop running ends the process with `task: activated task at capture`
 ```forth
 PG:CONFIGURE        ( n n n -- )  \ connection, result and parameter capacities
 PG:CONNECT          ( ptr u8 n -- PG:connect-result )
+PG:LIVE?            ( PG:connection -- bool )
 PG:CLOSE            ( PG:connection -- )
 
 PG:CONNECT-START    ( ptr u8 n -- PG:connection )
