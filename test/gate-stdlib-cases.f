@@ -2366,6 +2366,10 @@ SUITE fs-copy-alias
    lib/fs-identity-test.f
 ;SUITE
 
+SUITE fs-lock
+   lib/fs-lock-test.f
+;SUITE
+
 SUITE fs-list
    lib/fs-list-test.f
 ;SUITE

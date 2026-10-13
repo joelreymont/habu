@@ -37,6 +37,7 @@ Planned module files:
 - `lib/xmodem.f`
 - `lib/serial-xmodem.f`
 - `lib/fs.f`
+- `lib/fs-lock.f`
 - `lib/fs-list.f`
 - `lib/fs-root.f`
 - `lib/tree-copy.f`
@@ -91,6 +92,7 @@ theirs.
 | `lib/string.f` | task-local (the SB builder, STRING-ABI band) / caller-owned (the `BUF-*` family) |
 | `lib/fmt.f` | task-local (the render buffer and its scratch cells, FMT-ABI band) |
 | `lib/fs.f` | task-local (the per-call slots, FS-ABI band) / process-wide (the walk stack) |
+| `lib/fs-lock.f` | caller-owned (the held descriptor) |
 | `lib/fs-mutate.f` | task-local (the staged paths, FS-MUT-ABI band; the stream copy's descriptors and cursors) / process-wide (the copy buffer, so the two copy words are single-task; the cleanup registry, which any task may register into) |
 | `lib/json-write.f` | caller-owned |
 | `lib/json-read.f` | caller-owned |
@@ -2080,6 +2082,25 @@ classes the lexer shares with other scanners are `lib/source.f`'s:
 `SOURCE:PARSING-KEYWORD?`, `BLOCK-OPENER?` and `BLOCK-CLOSER?`, and
 `NORMAL-STRING-OPENER?` and `ESC-STRING-OPENER?` for `s"`, `c"`, `."` and
 their `\"` forms. Tests: `lib/source-lex-test.f`.
+
+## Advisory file locks
+
+`lib/fs-lock.f` owns package `FS-LOCK`. A caller opens and keeps a descriptor
+for the full interval in which it owns a file or directory. `TRY` requests an
+exclusive nonblocking `flock` on that descriptor. It answers false only when
+another holder blocks it; other failures throw `E-FS-IO`. Closing the
+last descriptor for that open file description releases the hold, as does
+process death when no forked process keeps a copy. `OPEN-DIR` opens an
+existing directory read-only with `O_DIRECTORY` and `O_CLOEXEC` in one syscall,
+so a spawned program does not keep its parent's hold alive. It throws
+`E-FS-OPEN` if the path cannot be opened as a directory. Locks apply only
+between processes using the same kernel and cooperating with this advisory
+protocol.
+
+```forth
+FS-LOCK:OPEN-DIR ( ptr u8 n -- fd )
+FS-LOCK:TRY      ( fd -- bool )
+```
 
 ## Descriptor IO
 

@@ -99,7 +99,7 @@ require lib/fs-list.f
 require lib/fs-root.f
 require lib/fs-mutate.f
 require lib/fs-identity.f
-require lib/ffi-abi.f
+require lib/fs-lock.f
 require lib/time.f
 
 package BUILD-CACHE
@@ -608,10 +608,6 @@ public
 
 private
 
-2 constant LOCK-EX
-4 constant LOCK-NB
-35 constant WOULD-BLOCK-MACOS
-11 constant WOULD-BLOCK-LINUX
 16 constant WORK-TRIES
 
 create STEM-BUF FS-PATH-CAP allot
@@ -622,9 +618,6 @@ variable STEM-U
 variable HELD-U
 variable GONE-U
 variable SETTLED
-
-PROCESS-SYMBOLS
-FUNCTION: FLOCK-CALL flock ( n n -- i32 ) ;FUNCTION
 
 \ The descriptor HOLD opened, -1 when none: whoever called HOLD closes it
 \ through RELEASE or keeps it as its hold.
@@ -672,9 +665,6 @@ variable HOLD-FD
    HOLD-FD @ 0 >= if HOLD-FD @ close then
    -1 HOLD-FD ! ;
 
-: WOULD-BLOCK ( -- n )
-   HB-TARGET-MACOS? if WOULD-BLOCK-MACOS else WOULD-BLOCK-LINUX then ;
-
 \ The path still names the directory HOLD-FD locked.
 : STILL-NAMED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u FS-PATHZ open-rd {: again:n :}
@@ -697,10 +687,7 @@ variable HOLD-FD
       a u EXISTS? if E-FS-OPEN throw then
       FALSE exit
    then
-   HOLD-FD @ LOCK-EX LOCK-NB or FLOCK-CALL 0<> if
-      FFI:ERRNO WOULD-BLOCK = if FALSE exit then
-      E-FS-IO throw
-   then
+   HOLD-FD @ >FD FS-LOCK:TRY 0= if FALSE exit then
    a u STILL-NAMED? ;
 
 \ build-cache-work-<family>, the stem MAKE-TEMP-DIR closes with
