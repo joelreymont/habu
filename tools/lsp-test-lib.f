@@ -405,9 +405,13 @@
 \ - a file whose check declares the word in two visits (include, undefine,
 \   include) not named, or its uses listed ............... references-lifetimes
 \ - a file of the folder whose check was refused or deferred not named with
-\   its verdict, its uses listed or the answer withheld; a request in a
-\   document whose check is not verified answered other than -32803 naming it
-\   ..................................................... references-unverified
+\   its verdict, its known uses omitted or the answer withheld; a request in
+\   that document at a known use not answered with it and the warning, or at
+\   an unresolved token given a guessed declaration ........ references-unverified
+\ - a known use in a dependency outside the folder read by a partial check
+\   omitted from the answer ........................ references-partial-dependency
+\ - a resolved use in an open refused document refused without its known
+\   locations and warning ....................... references-refused-selection
 \ - a file whose loads discovery cannot find not named with its reason
 \   ................................................ references-undiscoverable
 \ - a file on disk whose loads reach the declaring document, open a line
@@ -4571,6 +4575,10 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 : TEXT-RS-BAD ( -- ptr u8 n )  s\" require f.f\n: SU ( -- ) ROOK ;\n" ;
 : TEXT-RS-PN ( -- ptr u8 n )
    s\" require f.f\n: SU ( -- n ) ROOK ;\n: PN ( -- ) parse-name 2drop ;\nPN anything\n" ;
+: TEXT-RS-DEP ( -- ptr u8 n )
+   s\" require ../out/u.f\n: PN ( -- ) parse-name 2drop ;\nPN anything\n" ;
+: TEXT-RU-DEP ( -- ptr u8 n )
+   s\" require ../w/f.f\n: OU ( -- n ) ROOK ;\n" ;
 : TEXT-RT ( -- ptr u8 n )  s\" require s.f\n: TU ( -- n ) ROOK SU + ;\n" ;
 : TEXT-RO ( -- ptr u8 n )  s\" require ../out/m.f\n: OU ( -- n ) ROOK ;\n" ;
 : TEXT-RM ( -- ptr u8 n )  s\" require f.f\n" ;
@@ -4868,14 +4876,18 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    1 NAMED s" refs-life/life.f" CANON s" several declaration visits" NAMED+ NAMED-END
    s" 3" SYMBOLS-START s" refs-life/g.f" DISK-URI 0 2 5 REF+ SYMBOLS-END ;
 
-: UNV-ANSWER ( ptr u8 n -- )
-   SYMBOLS-START
+: UNV-ANSWER ( ptr u8 n bool n -- )
+   {: i:ptr iu:n opened:bool at:n :}
+   i iu SYMBOLS-START
    s" refs-unv/w/f.f" DISK-URI 0 2 6 REF+
    s" refs-unv/w/d.f" OPEN-URI 1 14 18 REF+
+   opened if s" refs-unv/w/s.f" OPEN-URI else s" refs-unv/w/s.f" DISK-URI then
+   1 at at 4 + REF+
    SYMBOLS-END ;
 
 \ s.f on disk, refused, then deferred: named with its verdict each time, and
-\ the answer comes without its use. Opened deferred, a request in it -32803.
+\ the answer includes the known use. Opened deferred, a request at its use
+\ returns those known locations, while its unresolved operand selects none.
 : REFS-UNV-TURNS ( -- )
    s" refs-unv" REFS-DIR s" refs-unv/w" REFS-DIR
    s" refs-unv/w/f.f" TEXT-RF REFS-FILE
@@ -4889,19 +4901,64 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" 3" s" refs-unv/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
    1 NAMED s" refs-unv/w/s.f" CANON s" refused" NAMED+ NAMED-END
-   s" 3" UNV-ANSWER
+   s" 3" false 12 UNV-ANSWER
    s" refs-unv/w/s.f" TEXT-RS-PN REFS-FILE
    s" 4" s" refs-unv/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
    1 NAMED s" refs-unv/w/s.f" CANON s" deferred" NAMED+ NAMED-END
-   s" 4" UNV-ANSWER
+   s" 4" false 14 UNV-ANSWER
    s" refs-unv/w/s.f" FIXTURE TEXT-RS-PN 1 OPENS
    s" 5" s" refs-unv/w/s.f" FIXTURE 1 14 DECL-TOO REFS-ASK
+   s" 6" s" refs-unv/w/s.f" FIXTURE 3 4 DECL-TOO REFS-ASK
    SAY
    TEXT-RS-PN s" refs-unv/w/s.f" FIXTURE CHECKS
    s" refs-unv/w/s.f" FIXTURE s" deferred" COMPLETED
    s" refs-unv/w/s.f" FIXTURE 1 EXPECT 3 0 3 2 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
-   s" 5" s" refs-unv/w/s.f" CANON FAILED ;
+   1 NAMED s" refs-unv/w/s.f" CANON s" deferred" NAMED+ NAMED-END
+   s" 5" true 14 UNV-ANSWER
+   s" 6" SYMBOLS-START SYMBOLS-END ;
+
+\ A refused open document still selects a binding checked before the refusal.
+: REFS-REFUSED-TURNS ( -- )
+   s" refs-refused" REFS-DIR s" refs-refused/w" REFS-DIR
+   s" refs-refused/w/f.f" TEXT-RF REFS-FILE
+   s" refs-refused/w/s.f" TEXT-RS-BAD REFS-FILE
+   s" refs-refused/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-refused/w/s.f" FIXTURE TEXT-RS-BAD 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RS-BAD s" refs-refused/w/s.f" FIXTURE CHECKS
+   s" refs-refused/w/s.f" FIXTURE s" refused" COMPLETED
+   s" refs-refused/w/s.f" FIXTURE 1 EXPECT 1 12 1 16 1 s" E-MISMATCH" DIAG+ PUBLISHES
+   s" 3" s" refs-refused/w/s.f" FIXTURE 1 12 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED s" refs-refused/w/s.f" CANON s" refused" NAMED+ NAMED-END
+   s" 3" SYMBOLS-START
+   s" refs-refused/w/f.f" DISK-URI 0 2 6 REF+
+   s" refs-refused/w/s.f" OPEN-URI 1 12 16 REF+
+   SYMBOLS-END ;
+
+\ The deferred subject s.f reached u.f outside the workspace folder before
+\ stopping at PN, so its known binding in u.f is part of the answer.
+: REFS-DEP-TURNS ( -- )
+   s" refs-dep" REFS-DIR s" refs-dep/w" REFS-DIR s" refs-dep/out" REFS-DIR
+   s" refs-dep/w/f.f" TEXT-RF REFS-FILE
+   s" refs-dep/w/d.f" TEXT-RD REFS-FILE
+   s" refs-dep/w/s.f" TEXT-RS-DEP REFS-FILE
+   s" refs-dep/out/u.f" TEXT-RU-DEP REFS-FILE
+   s" refs-dep/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-dep/w/d.f" FIXTURE TEXT-RD 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RD s" refs-dep/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" s" refs-dep/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED s" refs-dep/w/s.f" CANON s" deferred" NAMED+ NAMED-END
+   s" 3" SYMBOLS-START
+   s" refs-dep/w/f.f" DISK-URI 0 2 6 REF+
+   s" refs-dep/out/u.f" DISK-URI 1 14 18 REF+
+   s" refs-dep/w/d.f" OPEN-URI 1 14 18 REF+
+   SYMBOLS-END ;
 
 \ ld.f loads at top level a path its command line names, which no walk can
 \ read: named with discovery's reason, the answer coming without it.
@@ -5302,6 +5359,8 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" references-deftype" [: REFS-DEFTYPE-TURNS ;] TALK
    s" references-lifetimes" [: REFS-LIFE-TURNS ;] TALK
    s" references-unverified" [: REFS-UNV-TURNS ;] TALK
+   s" references-partial-dependency" [: REFS-DEP-TURNS ;] TALK
+   s" references-refused-selection" [: REFS-REFUSED-TURNS ;] TALK
    s" references-undiscoverable" [: REFS-LD-TURNS ;] TALK
    s" references-unsaved" [: REFS-UNSAVED-TURNS ;] TALK
    s" references-digest" [: REFS-DIGEST-TURNS ;] TALK
@@ -5516,6 +5575,25 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    SAY
    s" 3" 1 NOT-APPLIED s" rn-ld/w/ld.f" CANON s" E-DISC-DYNAMIC" NAMED+ NAMED-END ;
 
+\ The same deferred source used by references-unverified still refuses both
+\ rename operations, since its check did not cover the whole file.
+: RENAME-UNV-TURNS ( -- )
+   s" rn-unv" REFS-DIR s" rn-unv/w" REFS-DIR
+   s" rn-unv/w/f.f" TEXT-RF REFS-FILE
+   s" rn-unv/w/s.f" TEXT-RS-PN REFS-FILE
+   s" rn-unv/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" rn-unv/w/s.f" FIXTURE TEXT-RS-PN 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-RS-PN s" rn-unv/w/s.f" FIXTURE CHECKS
+   s" rn-unv/w/s.f" FIXTURE s" deferred" COMPLETED
+   s" rn-unv/w/s.f" FIXTURE 1 EXPECT 3 0 3 2 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
+   s" 3" s" rn-unv/w/s.f" FIXTURE 1 14 PREPARE-ASK
+   s" 4" s" rn-unv/w/s.f" FIXTURE 1 14 CROW RENAME-ASK
+   SAY
+   s" 3" s" rn-unv/w/s.f" CANON FAILED
+   s" 4" s" rn-unv/w/s.f" CANON FAILED ;
+
 \ rn-out/f.f, above the folder rn-out/w, declares ROOK and uses it; d.f in
 \ the folder requires it and uses ROOK. The rename asked in d.f edits f.f's
 \ declaration and use, then d.f's. rn-out/h.f loads lib/g.f from e.f's root,
@@ -5613,10 +5691,9 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    EDITS-END ;
 
 \ The tree of references-conflict in rn-cnf: ROOK's declaring token in d.f
-\ is refused -32803 naming z.f. Once e.f on disk is refused, no check binds
-\ z.f's token to another word, and no verified check read e.f: -32803 naming
-\ e.f as refused, but not z.f, whose own check is refused too, since d.f's
-\ verified check read it.
+\ is refused -32803 naming z.f. Once e.f on disk is refused after binding
+\ z.f's token to its own ROOK, the refusal names both that conflict and e.f's
+\ incomplete check, and applies no edits.
 : RENAME-CNF-TURNS ( -- )
    s" rn-cnf" REFS-DIR s" rn-cnf/w" REFS-DIR
    s" rn-cnf/w/d.f" TEXT-RCD REFS-FILE
@@ -5633,7 +5710,9 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-cnf/w/e.f" TEXT-RCE-BAD REFS-FILE
    s" 4" s" rn-cnf/w/d.f" FIXTURE 0 2 CROW RENAME-ASK
    SAY
-   s" 4" 1 NOT-APPLIED s" rn-cnf/w/e.f" CANON s" refused" NAMED+ NAMED-END ;
+   s" 4" 2 NOT-APPLIED
+   s" rn-cnf/w/z.f" 1 s" rn-cnf/w/e.f" ELSEWHERE+
+   s" rn-cnf/w/e.f" CANON s" refused" NAMED+ NAMED-END ;
 
 : RENAME-ENG-TURNS ( -- )
    s" rn-eng" REFS-DIR s" rn-eng/w" REFS-DIR
@@ -5816,6 +5895,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rename-params" [: RENAME-PARAMS-TURNS ;] TALK
    s" rename-workspace" [: RENAME-WS-TURNS ;] TALK
    s" rename-uncovered" [: RENAME-LD-TURNS ;] TALK
+   s" rename-unverified" [: RENAME-UNV-TURNS ;] TALK
    s" rename-outside" [: RENAME-OUT-TURNS ;] TALK
    s" rename-reaching" [: RENAME-RCH-TURNS ;] TALK
    s" rename-fragment" [: RENAME-FRG-TURNS ;] TALK

@@ -1,11 +1,11 @@
 \ lsp-references.f - the language server's references: the declaration a
-\ position selects in an open document whose check was verified, and every use
-\ of it that the checks of the files whose loads reach its file bound, in
+\ position selects in an open document whose check completed, and every known
+\ use of it that completed checks of files whose loads reach its file bound, in
 \ those files and in every file they read.
 \
 \ SELECT takes the open document D, a byte of its text and whether the request
-\ includes the declaration. D's last completed check must have been verified
-\ and be of D's text (LSP-DEFS:DEFS-VERIFIED?). The byte selects a declaration
+\ includes the declaration. D's last completed check must be of D's current
+\ text, whether verified, refused or deferred. The byte selects a declaration
 \ as that check stated it: at a use (LSP-DEFS:DEFS-USE-AT), the declaration the
 \ use is bound to; else at a definition token of D's own file, the one that
 \ token declares, when it declares one word in one visit; else none, which
@@ -40,7 +40,9 @@
 \ beside any other, as a DEFTYPE's converters are declared beside each
 \ other: a check with a visit that declares another word there and not the
 \ word conflicts, since a rename of the token would change that word too.
-\ Its file is named, and its uses of the word are placed still.
+\ Its file is named, and its uses of the word are placed still. A refused or
+\ deferred check contributes the bindings it reached, without certifying
+\ coverage of any file it read.
 \
 \ A file a use is placed in may also be read by a composition that does not
 \ reach P, which only a fragment or a file that depends on its loader's
@@ -49,7 +51,7 @@
 \ file a location is in but P, once, and gives the subjects whose loads
 \ reach it (LSP-WORKSPACE:REACHING-AGAIN) that are no subject yet, gathered
 \ as the rest are; it runs again while they place locations in other files.
-\ Every use of the tail bound to another word by a verified check that read
+\ Every use of the tail bound to another word by a completed check that read
 \ no P, or whose uses were placed, is kept with the subject whose check bound
 \ it. Once every subject is gathered, SETTLE
 \ names files as below and orders the locations: the declaration, when
@@ -57,14 +59,14 @@
 \ byte order of their paths, then by the bytes they start and end at.
 \
 \ The request is refused, REFUSED? true and BLOCKED$ naming the file relative
-\ to the working directory and why, when D's check is not verified; the
-\ position selects a use or a token without a whole identity, a token that
-\ declares several words or one word in several visits, or a declaration D's
+\ to the working directory and why, when the position selects a use or a token
+\ without a whole identity, a token that declares several words or one
+\ word in several visits, or a declaration D's
 \ check does not hold once or holds no digest of P for; the declaration is
 \ included and P's text no longer has the digest; or a workspace folder's walk
-\ fails. Otherwise the answer comes. A file is covered only when a check whose
-\ uses were placed read it, a verified check that read P and passed the tests
-\ above: only that check's bindings are to this declaration, so a check that
+\ fails. Otherwise the answer comes. A file is covered only when a
+\ verified check whose uses were placed read it, or a verified check that read
+\ P and passed the tests above: only that check's bindings are to this declaration, so a check that
 \ read no P, or failed those tests, says nothing of the file's uses of it.
 \ Each file the answer could not cover is named with why (WARNING): first a
 \ workspace file whose loads discovery cannot find, but P and D, whose
@@ -78,13 +80,15 @@
 \ file a use is placed in at whose bytes a kept use is, since its token
 \ means another word in that use's check, whose composition a rename would
 \ change; last a subject whose check was not verified, by its check's
-\ verdict (LSP-CHECK:OUTCOME$), unless another check covers its file. A subject
-\ pass 2 gave, whose loads do not reach P, is covered once any verified check
-\ read its file: it is then a fragment of that check's composition, whose
+\ verdict (LSP-CHECK:OUTCOME$), unless another verified check covers its
+\ file. A subject pass 2 gave, whose loads do not reach P, is covered
+\ once any verified check read its file: it is then a fragment of that check's composition, whose
 \ uses of the tail that check gave.
 \
 \ PLACE selects as SELECT does and places the declaration, finding no
-\ subjects: textDocument/prepareRename answers from it. TAIL-FROM gives where
+\ subjects: textDocument/prepareRename answers from it, after
+\ RENAME-VERIFIED? retains the whole-file requirement for rename. TAIL-FROM
+\ gives where
 \ the declaration's tail starts in a token: at the token's start when the
 \ token spells the tail, letters compared without case as Habu compares
 \ names; else, when the token is qualified as the checker reads a name, by
@@ -502,6 +506,10 @@ private
       i GROUP-SHA$ nip 0<> if i GROUP-PATH$ by READ! then
    loop ;
 
+\ A partial check contributes known bindings without certifying full coverage.
+: VERIFIED-READS ( n -- )
+   PROBE DEFS-VERIFIED? if READS else drop then ;
+
 \ The file at this canonical path, which does not lie in POOL, the last
 \ subject, unless it is one.
 : SUBJECT+ ( ptr u8 n -- )
@@ -666,7 +674,6 @@ private
 \ The declaration this byte of the text of D, in this slot, selects.
 : LOCATE ( n n -- )
    {: slot:n at:n :}
-   slot DEFS-VERIFIED? 0= if slot DOC-CANON$ s" its check is not verified" REFUSE exit then
    slot at DEFS-USE-AT MATCH option
       some OF slot swap AT-USE ENDOF
       none OF slot at AT-TOKEN ENDOF
@@ -890,21 +897,20 @@ private
    CUR @ s" declares another word at the declaration's token" SUBJECT-MISS+ ;
 
 \ The uses the probe, whose group for P is G, binds to the declaration
-\ placed, its other uses of the tail kept, the files it read marked, and the
-\ subject named when it conflicts; or the subject named, those files marked
-\ read by a verified check.
+\ placed, its other uses of the tail kept, and the subject named when it
+\ conflicts. Only a verified probe marks files covered by its check.
 : CONTRIBUTED ( n -- )
    {: g:n :}
    PROBE g WHY {: w:ptr wu:n :}
-   wu 0<> if BY-VERIFIED READS CUR @ w wu SUBJECT-MISS+ exit then
-   BY-PLACING READS
+   wu 0<> if BY-VERIFIED VERIFIED-READS CUR @ w wu SUBJECT-MISS+ exit then
+   BY-PLACING VERIFIED-READS
    g PLACED
    PROBE g OTHER-VISIT? if DECL-CONFLICT then ;
 
-\ The uses of the tail the probe, a verified check that read no P and so
-\ binds none to the declaration, states kept, and the files it read marked.
+\ The uses of the tail from a probe that read no P, and its files marked
+\ covered only when its check was verified.
 : WITHOUT-P ( -- )
-   BY-VERIFIED READS
+   BY-VERIFIED VERIFIED-READS
    PROBE DEFS-USE-RANGE ?do i OTHER+ loop ;
 
 \ The subject being gathered held for SETTLE with its check's verdict, which
@@ -919,11 +925,11 @@ private
    wu k X-WHY-U PENDING!
    k 1+ PENDING-N ! ;
 
-\ The subject's uses from the probe, the check of its text, or the subject
-\ held for SETTLE, with its check's verdict, when that check was not
-\ verified. A check that read no P has none, but its uses of the tail.
+\ The subject's known uses from a completed probe; when its check was not
+\ verified, also hold the subject for SETTLE with its verdict. A check that
+\ read no P has no matching bindings, but may report uses of the tail.
 : CONTRIBUTE ( -- )
-   PROBE DEFS-VERIFIED? 0= if LSP-CHECK:OUTCOME$ PENDING+ exit then
+   PROBE DEFS-VERIFIED? 0= if LSP-CHECK:OUTCOME$ PENDING+ then
    PROBE P$ DEFS-GROUP-OF MATCH option
       some OF CONTRIBUTED ENDOF
       none OF WITHOUT-P ENDOF
@@ -955,6 +961,7 @@ private
    {: k:n :}
    k X-SUB PENDING@ {: s:n :}
    s SUBS @ {: f:n :}
+   f KNOWN$ NAMED? if exit then
    s WALKED @ < if BY-PLACING else BY-VERIFIED then {: need:n :}
    f K-READ KNOWN@ need >= if exit then
    f K-PATH KNOWN@ f K-PATH-U KNOWN@ k X-WHY PENDING@ k X-WHY-U PENDING@ NAMED! ;
@@ -1042,6 +1049,13 @@ private
    NAME$ MSG+ ;
 
 public
+
+\ Rename still requires the selected document's whole check to be verified.
+: RENAME-VERIFIED? ( n -- bool )
+   {: slot:n :}
+   slot DEFS-VERIFIED? if true exit then
+   slot DOC-CANON$ s" its check is not verified" REFUSE
+   false ;
 
 \ Selects the declaration at this byte of the text of the open document in
 \ this slot, which positions count in, and places it; or refuses the request.

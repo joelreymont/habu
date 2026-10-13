@@ -46,10 +46,11 @@
 \ stderr. Its uses are every use the check binds to a located declaration in
 \ the file and, in every other file the check reads, each one bound to a
 \ declaration of the canonical tail given (CHECK:VERIFY-BYTES-OF). A check
-\ whose verdict was verified is the store's probe (LSP-DEFS:DEFS-PROBE) while
-\ the gather given runs, and the store keeps no probe once the gather returns
-\ or throws, the throw going on. OUTCOME$ names what the check came to: its
-\ verdict's name, or `throw N` when it threw.
+\ that completed is the store's probe (LSP-DEFS:DEFS-PROBE) while the gather
+\ given runs, with its actual verified flag; the store keeps no probe once
+\ the gather returns or throws, the throw going on. An unfinished check
+\ contributes no probe. OUTCOME$ names what the check came to: its verdict's
+\ name, or `throw N` when it threw.
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: the check in progress belongs to the server's
 \ one task.
@@ -150,6 +151,9 @@ variable OUTCOME-U
    a OUTCOME-B u BYTE-COPY
    u OUTCOME-U ! ;
 
+: COMPLETE-OUTCOME ( ptr u8 n -- )
+   true PUBLISHABLE ! OUTCOME! ;
+
 \ The check of the bytes as the file at the path, for the uses of the tail,
 \ its verdict's name in OUTCOME-B.
 : CHECKED ( -- )
@@ -157,9 +161,9 @@ variable OUTCOME-U
    [: -1 swap DOC-EACH-BUT ;] CHECK-MS >MS
    CHECK:VERIFY-BYTES-OF
    MATCH CHECK:verdict
-      verified OF true VERIFIED ! s" verified" OUTCOME! ENDOF
-      refused OF s" refused" OUTCOME! ENDOF
-      engine-provided OF s" engine-provided" OUTCOME! ENDOF
+      verified OF true VERIFIED ! s" verified" COMPLETE-OUTCOME ENDOF
+      refused OF s" refused" COMPLETE-OUTCOME ENDOF
+      engine-provided OF s" engine-provided" COMPLETE-OUTCOME ENDOF
       held OF s" held" OUTCOME! ENDOF
       incomplete OF
          MATCH outcome
@@ -169,13 +173,13 @@ variable OUTCOME-U
          ;MATCH
          s" incomplete" OUTCOME!
       ENDOF
-      deferred OF s" deferred" OUTCOME! ENDOF
+      deferred OF s" deferred" COMPLETE-OUTCOME ENDOF
    ;MATCH ;
 
-\ The check's lines as the probe when its verdict was verified, then GATHER.
+\ A completed check's lines as the probe, then GATHER.
 : PROBED ( [ -- ] -- [ -- ] )
-   VERIFIED @ if
-      CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ true
+   PUBLISHABLE @ if
+      CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ VERIFIED @
       LSP-DEFS:DEFS-PROBE
    then
    dup execute ;
@@ -214,7 +218,7 @@ public
 
 \ Checks these bytes as the file at this path for the uses of the word with
 \ this canonical tail, and runs GATHER with the check as the store's probe
-\ when its verdict was verified, removing the probe once GATHER returns or
+\ when it completed, removing the probe once GATHER returns or
 \ throws.
 : USES ( ptr u8 n ptr u8 n ptr u8 n [ -- ] -- )
    {: a:ptr u:n p:ptr pu:n t:ptr tu:n gather :}
@@ -224,6 +228,7 @@ public
    pu SRC-PU !
    t SRC-T !
    tu SRC-TU !
+   false PUBLISHABLE !
    false VERIFIED !
    [: CHECKED ;] catch {: code:n :}
    code 0<> if

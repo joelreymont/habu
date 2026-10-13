@@ -853,6 +853,10 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ its tail, or the declaration is an EXPORT of another word.
 : RENAMEABLE? ( JSON-RPC:id -- bool )
    {: i :}
+   AT-SLOT @ LSP-REFERENCES:RENAME-VERIFIED? 0= if
+      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
+      false exit
+   then
    LSP-REFERENCES:REFUSED? if
       i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
       false exit
