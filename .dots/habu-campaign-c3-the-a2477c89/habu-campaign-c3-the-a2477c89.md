@@ -10,7 +10,7 @@ Problem: MISSING.md and Tender's LESSONS list rules a model must memorise becaus
 
 Acceptance: the positive and negative fixtures MISSING.md names for Foundation B pass; a local shadowing a control word is a located error; every child below is closed.
 
-Children (open): habu-give-locals-a-3396aeb1 habu-accept-comments-inside-145f82eb habu-nest-generated-family-70b2f31a habu-convert-the-type-d5aad352. Reopened-package binding uses the engine's scope lookup and is covered by test/reopen-binding.f (2d1e8965, a6877f72, bf7daf62).
+Children (open): habu-accept-comments-inside-145f82eb habu-nest-generated-family-70b2f31a habu-convert-the-type-d5aad352. Lexical locals use the documented local-first policy, including control-word shadowing; the older incompatible refusal proposal is retired. Reopened-package binding uses the engine's scope lookup and is covered by test/reopen-binding.f (2d1e8965, a6877f72, bf7daf62).
 
 Absorbed on 2026-09-16: 190 dots closed with the reason 'superseded by habu-campaign-c3-the-a2477c89'; find their text with dot find.
 

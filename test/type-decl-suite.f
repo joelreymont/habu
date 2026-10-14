@@ -2037,8 +2037,8 @@ s" ENUM-DECL:ED-RUN tdnu-bad DERIVE eq VARIANT hold FIELD raw ptr u8 ;VARIANT ;E
 \ against it, reads restore the exact bound term (family id intact, MATCH
 \ works), and wrong families reject through the standard mismatch packet.
 \ Arity-0 CELL families assert their nominal scalar like a signature.
-\ Parametric spellings, arity>0 tails, and W>1 layouts stay fail-closed as
-\ named unknown annotations; linear layouts never expand into locals.
+\ Parametric and wider non-linear locals are covered below; owning linear
+\ values remain excluded from named locals.
 \ ---------------------------------------------------------------------------
 ENUM tdlv DERIVE eq lva lvb ;ENUM
 : TDLV-ID ( tdlv -- tdlv ) {: x:tdlv :} x ;

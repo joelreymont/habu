@@ -1,9 +1,24 @@
 ---
-title: Spell the run-row width once and name the unowned tail
+title: Attribute unowned DATA honestly
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-16T16:51:15.419689+03:00"
 ---
 
-Problem: four sites still spell the captured run-row width as a literal 8 rather than AOT-WINDOW:RUN-ROW (src/habu/aot-decl.f:477, aot-file.f:284 and :672, habu2.f:9568), semantically identical today and a drift hazard after ec569af9 made RUN-ROW the format authority; and tools/data-table-census.f attributes the DP heap above the last create-d word to TR-LASTZERO while tools/engine-size.f names it USIGS-USER, so the two instruments disagree on the largest owner. Acceptance: the four sites read RUN-ROW; the census names an unowned tail by the pointer cell that targets it (the address-cell table, as engine-size does) and both tools print the same owner for that region. Files: src/habu/aot-decl.f, aot-file.f, habu2.f, tools/data-table-census.f. Verify: both tools on the release engine; tools/native-build.f fixpoint. Depends: none. Ownership: capture format. Claim: unassigned.
+The old RUN-ROW width demand is obsolete: capture now has distinct named
+XTSITE, PWIN and packed BOOTRUN formats. Do not restore an old shared width.
+
+The remaining reporting issue is tools/data-table-census.f's attribution of
+anonymous storage after the last declared object to that preceding object.
+docs/engine-size.md documents the limitation; the current size tool is a
+wrapper over image-size-lib, so the old TR-LASTZERO/USIGS-USER comparison is
+not a current measurement.
+
+After build/test work, compare the tools on one matching engine/map before
+changing them. Where declaration/allocation metadata establishes ownership,
+report that owner; where it does not, report anonymous storage rather than
+guessing from its predecessor. Do not add an ownership registry or infer an
+owner merely from pointer-like values. Preserve totals and verify the actual
+mislabelled extent with the smallest existing sizing artifact. This task
+claims reporting accuracy, not a code-size or runtime improvement.
