@@ -11,32 +11,32 @@ require src/habu/code-span.f
 \ driver loads on its own and much earlier - before the application's require.
 require src/habu/aot-window-latch.f
 require src/habu/aot-owned-cells.f
-\ The process's own memory map, which CELL-MAPPED? below reads a cell's value
-\ against. Linux reads /proc; macOS enumerates Mach VM regions.
-require src/habu/proc-maps.f
+\ The live-cell classifier and diagnostic are shared with FILE admission.
+require src/habu/aot-data-cell.f
 
 \ This file compiles checked, with raw-pointer boundaries as explicit TRUST rows.
-
-\ The checker registry does not publish its diagnostic-mode cell to later
-\ checked loads, so the AOT diagnostic reader types that boundary here.
-\ Retirement: habu-campaign-c2-mem-c3d7662b.
-s" JSON-DIAGS" s" -- ptr a" TRUST
-
 package AOT-LINK
 using SNAP-RELOC
 using ADDRESS-CARRIER
+
+\ The linker keeps its diagnostic words. Strict FILE export uses the same
+\ refusal; automatic FILE caching declines unsafe storage and continues source.
+: AE1 ( n -- ) AOT-CELL:AE1 ;
+: AETXT ( ptr u8 n -- ) AOT-CELL:AETXT ;
+: AEREC-TXT ( ptr n -- ) AOT-CELL:AEREC-TXT ;
+: AEJSTR ( ptr u8 n -- ) AOT-CELL:AEJSTR ;
+: AEJKEY ( ptr u8 n -- ) AOT-CELL:AEJKEY ;
+: AEJREC ( ptr n -- ) AOT-CELL:AEJREC ;
+: AEJNUM ( n -- ) AOT-CELL:AEJNUM ;
 
 \ These views expose mixed dictionary fields and the live code/dictionary extent
 \ used to classify stripped-image cells.
 \ Retirement: habu-campaign-c2-mem-c3d7662b.
 : AOT-DBASE@ dbase@ ;
 s" AOT-DBASE@" s" -- ptr a" TRUST
-\ Live-extent bounds as integers, for value-domain range tests (CELL-TEXTPTR?):
-\ the dict-record region base and the emitted-code high-water.
+\ The dictionary base also names code offsets in diagnostics.
 : AOT-DBASE-N dbase@ ;
 s" AOT-DBASE-N" s" -- n" TRUST
-: AOT-CP-N cp@ ;
-s" AOT-CP-N" s" -- n" TRUST
 \ ... and the DATA cursor as one, which src/habu/aot-window-latch.f HERE-N
 \ computes, because the window is latched with it before this file exists.
 : AOT-PTR@ {: a:ptr :} ( ptr a -- ptr a )
@@ -65,9 +65,7 @@ s" AOT-PTR@" s" ptr a -- ptr a" TRUST
    size 0= if s" aot: malformed recorded address chain" 74 die then
    p size CHAIN-VALUE ;
 
-: DATA-ADDRESS? ( n -- bool ) {: v:n :}
-   \ The outer mapping has the same stable one-past address as a captured span.
-   v DATA-VA VA>N >= v DATA-VA VA>N DATA-SIZE + <= and ;
+: DATA-ADDRESS? ( n -- bool ) AOT-CELL:DATA-ADDRESS? ;
 
 \ Only the user DATA span is copied by stripped startup. A fixed address into
 \ the compiler's earlier heap would otherwise silently read a zeroed replacement.
@@ -163,7 +161,7 @@ s" MAIN" ENTRY-NAME!
    r s" addrmap-set" REC-NAME= IF 0 0= EXIT THEN
    r s" xref-retarget" REC-NAME= IF 0 0= EXIT THEN
    0 0= 0= ;
-\ THE ONE RECORD A CALL IS DROPPED TO RATHER THAN FOLLOWED. (MARK) is the
+\ DECLARATIONS WHOSE REGISTRIES A STRIPPED IMAGE NEVER READS. (MARK) is the
 \ address-cell registrar (habu2.f EMIT-MARK): `xt!` stores the token into the
 \ cell and BLs it to DECLARE that cell as holding a code address, for readers a
 \ stripped image does not have - the snapshot writer, the loader's relocation
@@ -175,37 +173,18 @@ s" MAIN" ENTRY-NAME!
 \ is dropped at link (aot-lib.f RELOC-W32 writes a NOP), while the store half -
 \ BSTORE's store, protection guard and all - is carried unchanged. A
 \ declaration-only record is never a closure member, so the walk below does not
-\ follow the branch. The rule is keyed on the TARGET being the registrar, never
-\ on the name of the member that calls it.
+\ follow the branch. ptr-cell-mark also registers a DATA pointer cell
+\ for snapshot relocation, but its primitive first pops the address; the linker
+\ keeps that pop when it drops the registry call. Both rules
+\ are keyed on the target, never on the member that calls it.
 : AOT-DECLARATION? {: r:ptr :} ( ptr a -- bool )
-   r s" (MARK)" REC-NAME= ;
-create AECH 1 allot
-: AE1 {: c:n :}  c AECH c!  2 AECH 1 write drop ;
-: AETXT {: a:ptr u:n :} ( ptr u8 n -- )
-   2 a u write drop ;
-: AEREC-TXT {: r:ptr :} ( ptr a -- )
-   r 0= IF s" <unknown>" AETXT ELSE r REC-NAME@ AETXT THEN ;
-: AEJCHAR {: c:n :}
-   c 10 = IF 92 AE1 110 AE1 EXIT THEN
-   c 13 = IF 92 AE1 114 AE1 EXIT THEN
-   c 9 = IF 92 AE1 116 AE1 EXIT THEN
-   c 34 =  c 92 = or IF 92 AE1 THEN  c AE1 ;
-: AEJSTR {: a:ptr u:n :} ( ptr u8 n -- )
-   34 AE1  0 BEGIN dup u < WHILE dup a + c@ AEJCHAR 1 + REPEAT drop 34 AE1 ;
-: AEJKEY {: a:ptr u:n :} ( ptr u8 n -- )
-   a u AEJSTR 58 AE1 ;
-: AEJREC {: r:ptr :} ( ptr a -- )
-   r 0= IF s" <unknown>" AEJSTR ELSE r REC-NAME@ AEJSTR THEN ;
-create AENB 20 allot  variable AENV  variable AENN
-: AEJNUM
-   AENV !  0 AENN !
-   AENV @ 0= IF 48 AE1 EXIT THEN
-   BEGIN AENV @ 0 > WHILE
-      AENV @ 10 mod 48 +  AENB AENN @ + c!
-      AENN @ 1 + AENN !
-      AENV @ 10 / AENV !
-   REPEAT
-   AENN @ BEGIN dup 0 > WHILE 1 - dup AENB + c@ AE1 REPEAT drop ;
+   r s" (MARK)" REC-NAME= IF 0 0= EXIT THEN
+   r s" ptr-cell-mark" REC-NAME= ;
+
+\ DP-CHECK branches to a compiler diagnostic/recovery tail in the engine.
+\ A stripped image replaces that exact helper with its own bounded refusal.
+: AOT-DP-REFUSAL? {: r:ptr :} ( ptr a -- bool )
+   r s" (LDPBAD)" REC-NAME= ;
 : AOT-UNSAFE-JSON {: caller:ptr callee:ptr :} ( ptr a ptr a -- )
    123 AE1
    s" schema_version" AEJKEY 1 AEJNUM 44 AE1
@@ -597,67 +576,10 @@ variable NB-IX
 \ for them differently: a code address a declared cell holds is relocated against
 \ this image's own code base, and a dictionary-record address is refused however
 \ it was declared - the image carries no records for one to point at.
-: CELL-DICTPTR? ( n -- bool ) {: v:n :}                                      \ in live dict records
-   v AOT-DBASE-N >=  v AOT-DBASE-N ndict@ DREC * + < and ;
-: CELL-CODEPTR? ( n -- bool ) {: v:n :}                                      \ in emitted code
-   v AOT-DBASE-N DICT-SIZE + >=  v AOT-CP-N < and ;
-: CELL-TEXTPTR? ( n -- bool ) {: v:n :}     \ code/dict pointer, by live extents (not magnitude)
-   v CELL-DICTPTR? IF true EXIT THEN
-   v CELL-CODEPTR? ;
+: CELL-DICTPTR? ( n -- bool ) AOT-CELL:DICT-PTR? ;
+: CELL-TEXTPTR? ( n -- bool ) AOT-CELL:TEXT-PTR? ;
 
-\ A cell holds A POINTER INTO MEMORY THE BUILD MAPPED when its value lands in an
-\ area THIS process holds (src/habu/proc-maps.f, the kernel's own list) that the
-\ image does not hold at the same address. The three readings above are the only
-\ ones the walker had, and each of them names a region an image restores or
-\ relocates; an address a linking process mmapped - src/lib/memory.f's MEM-ALLOC
-\ buffers, a DYNAMIC-BUFFER, a foreign allocator's arena, a thread stack, the
-\ engine binary's own text and data - is none of them, so it passed as an
-\ integer, shipped in the image and faulted at run time under a different ASLR
-\ layout (dot habu-refuse-a-stripped-92290c75: eight such cells in Tender's
-\ stripped server, SEGV_MAPERR at one of them).
-\ THE FOUR EXCLUSIONS ARE THE AREAS EVERY PROCESS HOLDS BEFORE A PROGRAM RUNS,
-\ three of them where the image holds them too and the fourth where no pointer
-\ can point.
-\ The DATA mapping is MAP_FIXED at DATA-VA in the engine and in the image alike
-\ (src/os/<target>/layout.f) and the claim machinery above answers for its
-\ addresses. The dictionary/code region [dbase, dbase+REGION) is where
-\ CELL-TEXTPTR? classifies by live extent with refusals of its own; it is
-\ excluded WHOLE and not by those extents, because free space inside it - above
-\ the code high-water, or an unused dict slot - is a value the walker has always
-\ read as a datum, and this predicate is not the place to change that. The
-\ third is the Linux executable's own segments: bin/hb and the image it links are both
-\ EXEC-type ELFs at the same fixed load base, so an address in that band means
-\ the same in both - and it is the one band ordinary data lands in, because a
-\ cell holding a string's last three bytes has value s0 + s1<<8 + s2<<16 and any
-\ letter in the third byte puts it inside [0x400000,0x7a4000). Measured: the
-\ four cells of tools/hb-build-stripped-lifecycle-test.f
-\ HBT-STRIPPED-LIFECYCLE-HOOK's window that this predicate answers for are
-\ 0x796DB2, 0x746961, 0x746965 and 0x646965 - text, not pointers. Mach-O
-\ images are position-independent, so their segments carry no self-image
-\ exemption.
-\ THE FOURTH IS THE BRK AREA, the one the kernel names [heap], and it is excluded
-\ for the opposite reason: NOTHING CAN POINT INTO IT. No Habu word allocates from
-\ the break - every allocation src/lib/memory.f makes is an mmap, and no file under
-\ src/ or src/lib/ issues the syscall - so a value that lands there is an integer
-\ whatever it looks like. It is also the widest band ordinary data falls in:
-\ arm64 randomizes the break over a gigabyte above the executable's end, so the
-\ area sits somewhere in [0x7a4000,0x407a4000) and MOVES WITH EVERY BUILD, and
-\ 32-bit-shaped values - a hash, a packed pair of fields, four bytes of a string
-\ - are exactly that size. Measured: tools/hb-build-test.f was refused at an
-\ undeclared cell holding 0x34B12C35 in one build and linked in the next, with
-\ no change to the tree between them.
-: REGION-ADDRESS? ( n -- bool ) {: v:n :}
-   v AOT-DBASE-N >=  v AOT-DBASE-N REGION + < and ;
-
-\ The map is asked FIRST because it answers no for nearly every cell in a
-\ window - one binary search over the areas the kernel listed - and the three
-\ tests beside it only matter for a value that landed in one of them.
-: CELL-MAPPED? ( n -- bool ) {: v:n :}
-   v PROC-MAPS:MAPPED? 0= IF false EXIT THEN
-   v DATA-ADDRESS? IF false EXIT THEN
-   v REGION-ADDRESS? IF false EXIT THEN
-   v PROC-MAPS:SELF-IMAGE? IF false EXIT THEN
-   v PROC-MAPS:HEAP? 0= ;
+: CELL-MAPPED? ( n -- bool ) AOT-CELL:MAPPED? ;
 
 \ THE EIGHT BYTES AT THIS ADDRESS ARE A STRING LITERAL'S BODY, by the compiler's
 \ own row table - the registry MAPPED-DATA below already re-interns a literal
@@ -672,16 +594,14 @@ variable NB-IX
 \ 0x017D6D707B, and a body whose window offset makes four printable bytes and a
 \ 01 an aligned cell lands inside the emitted code span on any build whose region
 \ sits there (dot habu-link-int-cells-45328a4d: Tender's AUTH ROLE-LITERAL$).
-\ EVERY BYTE OF THE CELL IS ASKED ABOUT, not only its first: the scan's cells are
-\ aligned to the window and a body starts wherever the pool placed it, so a cell
+\ EVERY BYTE OF THE CELL IS ASKED ABOUT, not only its first: the scan starts a
+\ cell at every byte and a body starts wherever the pool placed it, so a cell
 \ can begin in the bytes before a body and still cover its characters.
 : LITERAL-BYTE? ( n -- bool ) {: at:n :}
    at NSTR:OWNER-ROW {: body:ptr size:n owned:bool :}
    owned ;
 : CELL-LITERAL? ( n -- bool ) {: at:n :}
-   8 0 ?do
-      at i + LITERAL-BYTE? IF true unloop exit THEN
-   loop false ;
+   at [: LITERAL-BYTE? ;] AOT-CELL:LITERAL-OVERLAP? ;
 
 \ A DATA address as a pointer. An address arrives here as a plain integer (the
 \ value a recorded chain spells out, a scan cursor, a span bound), and DATA is
@@ -713,31 +633,10 @@ variable NB-IX
 : DATA-CELL? ( n -- bool ) {: v:n :}
    v DATA-VA VA>N >= v 8 + DATA-VA VA>N DATA-SIZE + <= and ;
 
-\ Does this record's code spell out that DATA address? `variable`, `create` and
-\ `defer` each compile a recorded address chain for their own body, so the site is
-\ the structural link from a persistent cell back to the word that owns it. A cell
-\ reached by arithmetic from some other body has no site of its own and stays
-\ unnamed rather than being attributed to the nearest word below it.
-: REC-CELL-SITE? ( ptr n n -- bool ) {: r:ptr v:n :}
-   r REC-CODE-PTR@ {: p:ptr :}
-   r REC-BYTES DATA-CHAIN-BYTES - 4 / 1+ 0 max 0 ?do
-      p i 4 * + ADDRESS-SITE? if
-         p i 4 * +  p r REC-BYTES + ADDRESS-CHAIN? if
-            p i 4 * + p r REC-BYTES + ADDRESS-VALUE v = if true unloop exit then
-         then
-      then
-   loop false ;
-
-\ Namespace records hold wordlist IDs where a word record holds its code span.
-: DATA-CELL-OWNER ( n -- ptr n ) {: v:n :}
-   ndict@ 0 ?do
-      i REC REC-WID@ -1 <> if
-         i REC v REC-CELL-SITE? if i REC unloop exit then
-      then
-   loop XREF-NULL ;
+: DATA-CELL-OWNER ( n -- ptr n ) AOT-CELL:OWNER ;
 
 \ THE GREATEST DATA ADDRESS THIS RECORD'S CODE SPELLS AT OR BELOW A VALUE, or -1
-\ for a record that spells none. The same chain walk REC-CELL-SITE? makes, asked
+\ for a record that spells none. AOT-CELL:OWNER asks for an exact match; this asks
 \ the other question: not "is this the cell" but "how close from below does this
 \ record get", which is the only name an address NO record spells exactly can be
 \ given. A chain that spells a code address is not an answer here - the question
@@ -777,62 +676,16 @@ variable DN-IX  variable DN-AT
    DN-IX @ 0 < if XREF-NULL -1 exit then
    DN-IX @ REC DN-AT @ ;
 
-\ A PERSISTENT CELL THE STRIPPED IMAGE CANNOT CARRY, named the way dot
-\ habu-name-the-cell-740feb52 settled it: the word whose data the cell is, the
-\ cell's DATA offset and the value it holds. Only the reason and the suggestion
-\ differ between the cases below, so those travel as arguments and every case
-\ renders through this one pair of writers - a program is edited by the three
-\ facts, and they must not depend on which check met the cell.
-: DATA-CELL-JSON ( n n ptr u8 n ptr u8 n -- ) {: cell:n v:n ra:ptr ru:n sa:ptr su:n :}
-   123 AE1
-   s" schema_version" AEJKEY 1 AEJNUM 44 AE1
-   s" code" AEJKEY s" E-AOT-UNSUPPORTED" AEJSTR 44 AE1
-   s" verdict" AEJKEY s" rejected" AEJSTR 44 AE1
-   s" word" AEJKEY cell DATA-CELL-OWNER AEJREC 44 AE1
-   s" data_off" AEJKEY cell DATA-VA VA>N - AEJNUM 44 AE1
-   s" value" AEJKEY v AEJNUM 44 AE1
-   s" reason" AEJKEY ra ru AEJSTR 44 AE1
-   s" suggestion" AEJKEY sa su AEJSTR
-   125 AE1 10 AE1 ;
-
-\ The suggestion travels in the prose rendering too, the way CLO-OVERFLOW-PROSE
-\ carries its own: the person reading stderr is the one who has to edit the
-\ program, and which form to reach for is the whole answer for a declared cell.
-: DATA-CELL-PROSE ( n n ptr u8 n ptr u8 n -- ) {: cell:n v:n ra:ptr ru:n sa:ptr su:n :}
-   s" hb-build: " AETXT  ra ru AETXT
-   s"  word=" AETXT cell DATA-CELL-OWNER AEREC-TXT
-   s"  data-off=" AETXT cell DATA-VA VA>N - AEJNUM
-   s"  value=" AETXT v AEJNUM
-   s"  suggestion='" AETXT sa su AETXT 39 AE1
-   10 AE1 ;
-
-: REFUSE-DATA-CELL ( n n ptr u8 n ptr u8 n -- ) {: cell:n v:n ra:ptr ru:n sa:ptr su:n :}
-   JSON-DIAGS @ IF cell v ra ru sa su DATA-CELL-JSON ELSE cell v ra ru sa su DATA-CELL-PROSE THEN
-   s" hb-build: AOT unsupported persistent data" 70 die ;
+: REFUSE-DATA-CELL ( n n ptr u8 n ptr u8 n -- ) AOT-CELL:REFUSE ;
 
 \ A code pointer in a cell NOTHING DECLARED. The image relocates a declared xt
 \ cell (the table below), and a declaration is the only authority for reading a
 \ cell as a code address: an ordinary integer can hold any value at all, so a
 \ value-range guess would rewrite a datum that merely looks like an address.
 \ `defer`, `is` and `xt!` declare; `' word ,` stores an untyped cell and does not.
-: REFUSE-UNDECLARED-CELL ( n n -- ) {: cell:n v:n :}
-   cell v
-   s" stripped AOT persistent data holds an undeclared code/dict pointer"
-   s" a stripped image relocates only DECLARED xt cells (defer/is/xt!); ' word , declares nothing - bind the cell with a defer or xt!, or use --repl"
-   REFUSE-DATA-CELL ;
+: REFUSE-UNDECLARED-CELL ( n n -- ) AOT-CELL:REFUSE-UNDECLARED ;
 
-\ A POINTER INTO MEMORY THE BUILD MAPPED, by CELL-MAPPED? above. The build's
-\ mappings are the linking process's own: the image starts a new process, which
-\ maps its DATA and its code and nothing else the build had, so the value names
-\ whatever that address happens to hold in the new layout - under ASLR a
-\ different address each build, and no address at all at run time. The fix is
-\ the time the pointer is taken and not the way the cell is declared, so the
-\ suggestion names run time rather than a definer.
-: REFUSE-MAPPED-CELL ( n n -- ) {: cell:n v:n :}
-   cell v
-   s" stripped AOT persistent data holds a pointer into memory the build mapped"
-   s" the image restores no mapping the build made; allocate at run time (in MAIN or an IMAGE-LIFECYCLE hook) and store the pointer then, or use --repl"
-   REFUSE-DATA-CELL ;
+: REFUSE-MAPPED-CELL ( n n -- ) AOT-CELL:REFUSE-MAPPED ;
 
 \ A dictionary-record pointer, declared or not. The image ships code, never
 \ records, so there is nothing for this value to be rebased onto.
@@ -1100,8 +953,8 @@ variable XTC-N  variable XTC-CX  variable XTC-I  variable XTC-J
    XTC-SORT ;
 
 \ Does a declared cell overlap the eight bytes at this address? The span scan asks
-\ once per cell in ascending order, so the cursor only moves forward. Containment
-\ is the declaration's whole rule (layout.f XTCELL-OFF-MAX: a cell reached through
+\ every readable window in ascending order, so the cursor only moves forward.
+\ Overlap is the declaration's whole rule (layout.f XTCELL-OFF-MAX: a cell reached through
 \ `allot` after byte data keeps its residue), so this is an overlap test and not
 \ an equality one.
 : XTC-REWIND ( -- ) 0 XTC-CX ! ;
@@ -1159,7 +1012,7 @@ variable XTC-N  variable XTC-CX  variable XTC-I  variable XTC-J
    t mstart >= t mend < and if exit then
    t FINDADDR-PTR {: callee:ptr :}
    callee XREF-FOUND? if
-      callee AOT-DECLARATION? if exit then
+      callee AOT-DECLARATION? callee AOT-DP-REFUSAL? or if exit then
       caller callee SCAN-CALLEE exit
    then
    t SPAN-AT-ENTRY {: k:n :}

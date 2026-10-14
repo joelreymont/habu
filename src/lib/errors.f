@@ -163,17 +163,9 @@
 \ FUNCTION: with no library selected in the declaring scope: state LIBRARY or
 \ PROCESS-SYMBOLS beside the declarations rather than inherit another file's.
 -3503 constant E-FFI-LIBRARY
-\ Every declaration this image holds shares one table, sized by src/lib/ffi-abi.f's
-\ FN-MAX: a full one is refused here, naming the Habu word and the C symbol that
-\ found no row. Arity keeps E-FFI-ARITY; this is capacity.
--3504 constant E-FFI-TABLE-FULL
-\ The library-path table has its own ceiling. The declarer reports the path,
-\ Habu word, and C symbol before throwing this code.
--3505 constant E-FFI-LIBRARY-FULL
-\ src/lib/ffi-callback.f: a CALLBACK: declaration past the engine's CB-POOL stubs;
-\ a callback frame accessor used outside a live callback, a descriptor no
-\ declaration made, or a dispatch whose body cell was never stored.
--3506 constant E-FFI-CALLBACK-FULL
+\ src/lib/ffi-callback.f: a callback frame accessor used outside a live callback,
+\ a descriptor no declaration made, or a dispatch whose body was never stored.
+-3506 constant E-FFI-CALLBACK-FULL  \ retired; retained for numeric compatibility
 -3507 constant E-FFI-CALLBACK-STATE
 \ dlclose refused an owned library reference while preparing an image; the
 \ handle stays and the next PREPARE retries it.

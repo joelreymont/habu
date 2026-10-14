@@ -3,6 +3,8 @@
 require src/lib/test.f
 require src/lib/test/runner.f
 require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/fs.f
 require test/gate-pool.f
 require test/gate-images.f
 require test/image-grant.f
@@ -60,6 +62,7 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    PROC-ENV-RESET
    eng engu SUITE-ENGINE-ENV
    IMAGE-GRANT:NAME$ >LEN grant grantu >LEN PROC-ENV+
+   s" HABU_GATE_COMPILER_IMAGES" >LEN GT-ROOT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 \ The product engine, spelled twice for two different readers. The SPAWN is
@@ -157,8 +160,8 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
 
 \ The entry guard walks the load graph DERIVE read and refuses the registry
 \ before anything starts: this hook runs outside the catch around the rows. The
-\ keyed images the registry's rows load - the fixture writer, the cold host,
-\ the saver and linker images, the unsealed engine - are settled in the pool,
+\ keyed images the registry's rows load - the compiler bundle, fixture writer,
+\ cold host, saver and linker images, unsealed engine - settle in the pool,
 \ one build row per image beside the rows, and each row starts once its own
 \ images are (test/gate-images.f): a broken image closure fails its build row
 \ and the rows that load it, and every other row runs.
@@ -177,6 +180,37 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    GATE-IMAGES:SETTLE-ALL
    GT-POOL-DRAIN-SOFT ;
 
+4096 constant COMPILER-CHUNK-CAP
+create COMPILER-CHUNK COMPILER-CHUNK-CAP allot
+variable COMPILER-OFF
+
+: FORWARD-COMPILER-FILE ( ptr u8 n n -- )
+   {: path:ptr pathu:n dest:n :}
+   path pathu FS-PATHZ open-rd {: fd:n :}
+   fd 0 < if E-FS-OPEN throw then
+   begin
+      fd COMPILER-CHUNK COMPILER-CHUNK-CAP read {: u:n :}
+      u 0 < if fd close E-FS-IO throw then
+      u 0= if fd close exit then
+      0 COMPILER-OFF !
+      begin COMPILER-OFF @ u < while
+         dest COMPILER-CHUNK COMPILER-OFF @ + u COMPILER-OFF @ - write
+            {: wrote:n :}
+         wrote 0 <= if fd close E-FS-IO throw then
+         COMPILER-OFF @ wrote + COMPILER-OFF !
+      repeat
+   again ;
+
+\ Pool captures contain the full streams, while their printed tails hold 32
+\ KiB. Forward both complete streams before normal pool cleanup removes them.
+: FORWARD-COMPILER-LOGS ( -- )
+   GATE-IMAGES:COMPILER-RED {: red:n :}
+   red 0 < if exit then
+   s" compiler-images stdout (full):" type cr
+   red GT-POOL-RED-OUT$ 1 FORWARD-COMPILER-FILE
+   2 S\" compiler-images stderr (full):\n" write drop
+   red GT-POOL-RED-ERR$ 2 FORWARD-COMPILER-FILE ;
+
 \ The pool drains softly between groups, so every registered suite runs
 \ whatever went red before it; the complete red set is reported here, once,
 \ with each suite's exit code, and decides the exit status.
@@ -191,6 +225,7 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    s" suites: ran " type TEST:ITEMS-RUN GT-U-TYPE
    s"  of " type TEST:ITEMS-REGISTERED GT-U-TYPE cr
    GT-POOL-RED-REPORT
+   FORWARD-COMPILER-LOGS
    GT-POOL-CLEANUP
    GT-POOL-SIGNAL-CHECK
    rc 0 <> if exit then                 \ the body threw: the framework rethrows that code

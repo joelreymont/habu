@@ -32,10 +32,10 @@ using NFROZEN
 private
 
 \ Each pass retains its own dimensions while later passes read its results.
-variable SCRATCH-VALUES
-variable SCRATCH-BLOCKS
-variable SCRATCH-FUNS
-variable SCRATCH-OPS
+0 CWORK-VARIABLE SCRATCH-VALUES n
+0 CWORK-VARIABLE SCRATCH-BLOCKS n
+0 CWORK-VARIABLE SCRATCH-FUNS n
+0 CWORK-VARIABLE SCRATCH-OPS n
 : VMAX ( -- n ) SCRATCH-VALUES @ ;
 : BMAX ( -- n ) SCRATCH-BLOCKS @ ;
 : FMAX ( -- n ) SCRATCH-FUNS @ ;
@@ -112,57 +112,48 @@ NEFF:SEQ-LIMIT constant FIXED-MAX
 1 constant ST-SEALED
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable BND-MODE
+0 CWORK-VARIABLE BND-MODE n
 BOUND-NO BND-MODE !
-variable ST
+0 CWORK-VARIABLE ST n
 ST-EMPTY ST !
-variable GEN-N
-0 GEN-N !
-variable N-VALS
-0 N-VALS !
-variable N-PLAN
-0 N-PLAN !
-variable N-SLOTS
-0 N-SLOTS !
-variable BASE-N                      \ the first frame byte this walk may use
-0 BASE-N !
-variable SEEN-FRAME                  \ the one frame size the module already owns
-NOATTR SEEN-FRAME !
-variable ARGS-N
-0 ARGS-N !
-variable OUTS-N
-0 OUTS-N !
+0 CWORK-VARIABLE GEN-N n
+0 CWORK-VARIABLE N-VALS n
+0 CWORK-VARIABLE N-PLAN n
+0 CWORK-VARIABLE N-SLOTS n
+0 CWORK-VARIABLE BASE-N n                      \ the first frame byte this walk may use
+NOATTR CWORK-VARIABLE SEEN-FRAME n                  \ the one frame size the module already owns
+0 CWORK-VARIABLE ARGS-N n
+0 CWORK-VARIABLE OUTS-N n
 
 \ The two shape facts the dialect states rather than the allocator assuming
 \ them: how many instructions one address literal is, and whether this dialect
 \ names a transfer that moves the data-stack pointer in the access itself.
-variable BND-LANES                   \ address-carrier instructions, 1 or more
-1 BND-LANES !
+1 CWORK-VARIABLE BND-LANES n                   \ address-carrier instructions, 1 or more
 
 \ The machine the bound dialect lowers for, which is what a module's own
 \ compilation contract has to agree with before a register is placed.
-1 TYPED-BUFFER BND-ARCH CTARGET:arch
+1 CWORK-BUFFER BND-ARCH CTARGET:arch
 
-1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
-1 TYPED-BUFFER BND-TYP IR-ID:ir-type-id
-1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
-1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
-1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-COPY IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-REMAT IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-ADDR IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-SHIFT IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
-DKEYS-N TYPED-BUFFER BND-DKEY IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-MOD IR-ID:ir-module-id
+1 CWORK-BUFFER BND-TYP IR-ID:ir-type-id
+1 CWORK-BUFFER BND-MEM IR-ID:ir-type-id
+1 CWORK-BUFFER BND-FPR IR-ID:ir-type-id
+1 CWORK-BUFFER BND-FRAME IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-COPY IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-REMAT IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-ADDR IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-SHIFT IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-ENTRY IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-TRAP IR-ID:ir-symbol-id
+DKEYS-N CWORK-BUFFER BND-DKEY IR-ID:ir-symbol-id
 \ The write-back key as the dialect stated it, absent and all: a binding that
 \ declares none stores `absent` over whatever the last one named, so no other
 \ dialect's ordinal can be left sitting where a symbol would be read.
-1 TYPED-BUFFER BND-DWB NDIALECT:optsym
+1 CWORK-BUFFER BND-DWB NDIALECT:optsym
 
-1 TYPED-BUFFER S-MOD IR-ID:ir-module-id
-1 TYPED-BUFFER S-POOL NEFF:gprs
-1 TYPED-BUFFER S-FPOOL NEFF:fprs
+1 CWORK-BUFFER S-MOD IR-ID:ir-module-id
+1 CWORK-BUFFER S-POOL NEFF:gprs
+1 CWORK-BUFFER S-FPOOL NEFF:fprs
 
 DYNAMIC-BUFFER V-DEF-BUF n
 : V-DEF ( -- ptr n ) 0 V-DEF-BUF ;
@@ -180,14 +171,14 @@ DYNAMIC-BUFFER V-REMAT-BUF n
 : V-REMAT ( -- ptr n ) 0 V-REMAT-BUF ;
 DYNAMIC-BUFFER V-DECL-BUF n
 : V-DECL ( -- ptr n ) 0 V-DECL-BUF ;
-create A-REG FIXED-MAX cells allot
-create O-REG FIXED-MAX cells allot
-create R-HOLD FILES-N REGS-MAX * cells allot
+FIXED-MAX CWORK-SPAN A-REG n
+FIXED-MAX CWORK-SPAN O-REG n
+FILES-N REGS-MAX * CWORK-SPAN R-HOLD n
 \ How many registers each file's pool holds, and how many of those are free.
 \ Maintained where a holder changes, because the pressure questions are asked at
 \ every instruction and the answer moves only when a register changes hands.
-create R-POOL-N FILES-N cells allot
-create R-FREE-N FILES-N cells allot
+FILES-N CWORK-SPAN R-POOL-N n
+FILES-N CWORK-SPAN R-FREE-N n
 \ Every holder change the scan makes, oldest first: the register changed and who
 \ held it before, so a later turn of the fit can take steps back off the end
 \ instead of scanning from the start again (MB-FIT). TRAIL-AT-BUF holds the
@@ -195,8 +186,7 @@ create R-FREE-N FILES-N cells allot
 DYNAMIC-BUFFER TRAIL-IX-BUF n
 DYNAMIC-BUFFER TRAIL-OLD-BUF n
 DYNAMIC-BUFFER TRAIL-AT-BUF n
-variable TRAIL-N
-0 TRAIL-N !
+0 CWORK-VARIABLE TRAIL-N n
 
 \ ---- the machine, as the backend described it --------------------------------
 \ Linear scan is not an ARM64 pass. What it needs to know about the machine is
@@ -210,12 +200,11 @@ variable TRAIL-N
 \ value cannot be bound to a local. The allocatable mask is the description's
 \ own answer read once at the install rather than a fact restated here: this
 \ pass has no opinion about which registers the virtual machine took.
-create RF-SIZE-T FILES-N cells allot
-create RF-RES-T FILES-N cells allot
-create RF-CLB-T FILES-N cells allot
-create RF-ALC-T FILES-N cells allot
-variable RF-SLOT-N
-0 RF-SLOT-N !
+FILES-N CWORK-SPAN RF-SIZE-T n
+FILES-N CWORK-SPAN RF-RES-T n
+FILES-N CWORK-SPAN RF-CLB-T n
+FILES-N CWORK-SPAN RF-ALC-T n
+0 CWORK-VARIABLE RF-SLOT-N n
 
 : FL-CK ( n -- n )
    dup 0 < over FILES-N >= or if E-A64RA-CLASS throw then ;
@@ -268,8 +257,7 @@ variable RF-SLOT-N
 \ The machine the install was handed, kept as the ordinal NMACH hands out because
 \ a cell holds a number. Before an install there is none, and -1 is no machine:
 \ reading it refuses rather than answering about whatever was described first.
-variable RF-MACH-N
--1 RF-MACH-N !
+-1 CWORK-VARIABLE RF-MACH-N n
 
 : RF-MACH ( -- NMACH:mach )
    RF-MACH-N @ NMACH:BY-ID ;
@@ -313,10 +301,8 @@ DYNAMIC-BUFFER PL-VAL-BUF n
 \ tools/compile-scaling.f opens one. Outside a session ALLOCATE neither reads the
 \ clock nor writes the accumulator, every public entry is a no-op, and both cells
 \ still hold the zero they were declared with for the capture to copy.
-variable ALLOC-NS-ACC                \ nanoseconds inside ALLOCATE this session
-0 ALLOC-NS-ACC !
-variable ALLOC-NS-ON                 \ a measurement session is open
-0 ALLOC-NS-ON !
+0 CWORK-VARIABLE ALLOC-NS-ACC n                \ nanoseconds inside ALLOCATE this session
+0 CWORK-VARIABLE ALLOC-NS-ON n                 \ a measurement session is open
 
 : NS-ARMED? ( -- bool )              ALLOC-NS-ON @ 0<> ;
 
@@ -335,9 +321,9 @@ DYNAMIC-BUFFER F-BASE-BUF n
 : F-BASE ( -- ptr n ) 0 F-BASE-BUF ;
 DYNAMIC-BUFFER F-RET-BUF n
 : F-RET ( -- ptr n ) 0 F-RET-BUF ;
-variable F-LO                                \ the base of the function laid out now
-variable N-FUNS                              \ how many functions the module holds
-variable SHORT-FUN                           \ the function whose scan ran short
+0 CWORK-VARIABLE F-LO n                                \ the base of the function laid out now
+0 CWORK-VARIABLE N-FUNS n                              \ how many functions the module holds
+0 CWORK-VARIABLE SHORT-FUN n                           \ the function whose scan ran short
 
 \ ---- the slots, read back ----------------------------------------------------
 : POOL-BITS ( n -- n )
@@ -774,26 +760,16 @@ variable SHORT-FUN                           \ the function whose scan ran short
 $3FFFFFFF constant POS-INF
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable N-BLKS
-0 N-BLKS !
-variable B-BASE                      \ where this function's blocks start in the module
-0 B-BASE !
-variable MB-AT
-0 MB-AT !
-variable CHANGED
-0 CHANGED !
-variable SHORT-AT                    \ the position the scan ran short at, or -1
--1 SHORT-AT !
-variable SHORT-FILE                  \ and which register file it ran short of
-0 SHORT-FILE !
-variable SHORT-ROOT                  \ the unplaced class, or NOBODY for pressure
-NOBODY SHORT-ROOT !
-variable REFIT-AT                    \ the first position an eviction changed
-0 REFIT-AT !
-variable RET-B                       \ the block control leaves the routine through
-0 RET-B !
-variable LAID                        \ the function the block tables hold, or -1
--1 LAID !
+0 CWORK-VARIABLE N-BLKS n
+0 CWORK-VARIABLE B-BASE n                      \ where this function's blocks start in the module
+0 CWORK-VARIABLE MB-AT n
+0 CWORK-VARIABLE CHANGED n
+-1 CWORK-VARIABLE SHORT-AT n                    \ the position the scan ran short at, or -1
+0 CWORK-VARIABLE SHORT-FILE n                  \ and which register file it ran short of
+NOBODY CWORK-VARIABLE SHORT-ROOT n                  \ the unplaced class, or NOBODY for pressure
+0 CWORK-VARIABLE REFIT-AT n                    \ the first position an eviction changed
+0 CWORK-VARIABLE RET-B n                       \ the block control leaves the routine through
+-1 CWORK-VARIABLE LAID n                        \ the function the block tables hold, or -1
 
 DYNAMIC-BUFFER B-ST-BUF n
 : B-ST ( -- ptr n ) 0 B-ST-BUF ;
@@ -857,8 +833,7 @@ DYNAMIC-BUFFER DUE-NEXT-BUF n
 \ visits functions, blocks and operations in the order they lie on the line.
 DYNAMIC-BUFFER CALL-POS-BUF n
 : CALL-POS ( -- ptr n ) 0 CALL-POS-BUF ;
-variable N-CALLS
-0 N-CALLS !
+0 CWORK-VARIABLE N-CALLS n
 \ Every operation whose form fixes a register, in position order, with the
 \ registers it fixes there, for a result or an operand. A fixed result destroys
 \ its register at that position exactly as a call destroys the ones it may, and
@@ -868,8 +843,7 @@ DYNAMIC-BUFFER FIXP-POS-BUF n
 : FIXP-POS ( -- ptr n ) 0 FIXP-POS-BUF ;
 DYNAMIC-BUFFER FIXP-MASK-BUF n
 : FIXP-MASK ( -- ptr n ) 0 FIXP-MASK-BUF ;
-variable N-FIXP
-0 N-FIXP !
+0 CWORK-VARIABLE N-FIXP n
 \ Every PINNED class - one the contract or a form declares into a register - in
 \ the order its hull opens, with that opening. The pin is placed where the class
 \ opens, which is the definition of its earliest member and not the operation
@@ -878,8 +852,7 @@ DYNAMIC-BUFFER PIN-POS-BUF n
 : PIN-POS ( -- ptr n ) 0 PIN-POS-BUF ;
 DYNAMIC-BUFFER PIN-ROOT-BUF n
 : PIN-ROOT ( -- ptr n ) 0 PIN-ROOT-BUF ;
-variable N-PINS
-0 N-PINS !
+0 CWORK-VARIABLE N-PINS n
 
 : RESERVE-SCRATCH ( -- )
    SCRATCH-SIZES!
@@ -2725,20 +2698,6 @@ public
    N-PLAN @ 0 ?do
       i cells PL-KIND + @ P-REMAT = if 1+ then
    loop ;
-
-public
-: RESET-SCRATCH ( -- )
-   \ Image preparation releases the assignment's mapped tables. Its seal and
-   \ generation cannot survive into the product image as an answer, nor can the
-   \ function the block tables were last laid out for.
-   ST-EMPTY ST !
-   0 GEN-N !
-   0 N-VALS !
-   -1 LAID !
-   0 N-CALLS !
-   0 N-FIXP !
-   0 N-PINS !
-   0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
 get-current prot-wid-add

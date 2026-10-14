@@ -8,6 +8,7 @@ PATH-CAP constant INCLUDE-PATH-CAP
 \ uncaught throw of a code below 256 ends the process with no word at all.
 $4A constant INCLUDE-IO-RC
 $46 constant INCLUDE-EVAL-RC
+-2110 constant INCLUDE-RANGE-RC
 $37D8 constant INCLUDE-EVALERR-CELL
 \ Where this file publishes the innermost open source file's path for the engine's
 \ own refusal tail (src/habu/habu2.f LCOMPILEDIE, dot habu-name-the-file-70acbf10).
@@ -31,6 +32,8 @@ PERSISTED-PTR-U8-TABLE-VARIABLE ROWS
 variable ROW-CAP
 PERSISTED-PTR-U8-TABLE-VARIABLE CHUNK
 variable PREFIX-N
+variable PREFIX-EPOCH
+variable PREFIX-CUT
 
 ;package
 
@@ -88,18 +91,40 @@ private
 
 defer CANON-XT ( ptr u8 n -- ptr u8 n bool )
 defer READ-XT ( ptr u8 n ptr u8 n -- ptr u8 n )
+defer OBSERVE-XT ( ptr u8 n ptr u8 n ptr u8 n -- )
+defer CLEAR-XT ( -- )
+
+: NO-OBSERVE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   2drop 2drop 2drop ;
+: NO-CLEAR ( -- ) ;
 
 public
 
 : CANON ( ptr u8 n -- ptr u8 n bool ) CANON-XT ;
-: READ ( ptr u8 n ptr u8 n -- ptr u8 n ) READ-XT ;
+: READ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: path:ptr pathu:n root:ptr rootu:n :}
+   path pathu root rootu READ-XT {: bytes:ptr size:n :}
+   path pathu root rootu bytes size OBSERVE-XT
+   bytes size ;
 
 : USE ( [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] -- )
    {: canon read :}
    canon is CANON-XT
    read is READ-XT ;
 
+: USE-OBSERVER ( [ ptr u8 n ptr u8 n ptr u8 n -- ] [ -- ] -- )
+   {: observe clear :}
+   observe is OBSERVE-XT
+   clear is CLEAR-XT ;
+
+: CLEAR-OBSERVED ( -- ) CLEAR-XT ;
+
+: OBSERVER-DEFAULT ( -- )
+   [: NO-OBSERVE ;] [: NO-CLEAR ;] USE-OBSERVER ;
+
 ;package
+
+SOURCE-INPUT:OBSERVER-DEFAULT
 
 \ A source load is also the publication boundary for an explicitly selected
 \ package unit. The continuation keeps the ordinary frame and scope behavior;
@@ -107,16 +132,16 @@ public
 package SOURCE-UNIT
 private
 
-defer LOAD-XT ( ptr u8 n ptr u8 n ptr u8 [ -- ] -- )
+defer LOAD-XT ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
 
-: ORDINARY ( ptr u8 n ptr u8 n ptr u8 [ -- ] -- )
-   {: path:ptr pathu:n root:ptr rootu:n source:ptr q :}
-   q execute ;
+: ORDINARY ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
+   0 sourceu q execute ;
 
 public
 
-: LOAD ( ptr u8 n ptr u8 n ptr u8 [ -- ] -- ) LOAD-XT ;
-: USE ( [ ptr u8 n ptr u8 n ptr u8 [ -- ] -- ] -- ) is LOAD-XT ;
+: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ) LOAD-XT ;
+: USE ( [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] -- ) is LOAD-XT ;
 : RESET ( -- ) [: ORDINARY ;] is LOAD-XT ;
 
 \ Run one source quotation with the engine's unit hook armed: the guard sees
@@ -845,6 +870,68 @@ public
    keep REQUIRE-N !
    CLAMP ;
 
+\ Evaluation rollback removes its own rows, including nested requires. The
+\ core-prefix rewind uses this same seam before capture. Four other cells are
+\ cursors into rows; a bare REQUIRE-N ! would leave them past the new end.
+: TRUNCATE ( n -- )
+   {: keep:n :}
+   keep 0 < keep REQUIRE-N @ > or if
+      s" require: truncate outside the registry" INCLUDE-DIE
+   then
+   keep REWIND
+   REQUIRE-BOOT-N @ keep > if keep REQUIRE-BOOT-N ! then
+   REQUIRE-BASE @ keep > if keep REQUIRE-BASE ! then
+   REQUIRE-SAVE-N @ keep > if keep REQUIRE-SAVE-N ! then
+   REQUIRE-SAVE-BASE @ keep > if keep REQUIRE-SAVE-BASE ! then ;
+
+\ A core-prefix rewind can retire the registry beneath an evaluation mark.
+\ Its epoch distinguishes that deliberate cut from a malformed rollback mark;
+\ the cut is the surviving prefix to which the interrupted evaluation returns.
+: MARK ( -- n n ) REQUIRE-N @ PREFIX-EPOCH @ ;
+
+: ROLLBACK ( n n -- )
+   {: mark:n epoch:n :}
+   epoch PREFIX-EPOCH @ <> if
+      mark PREFIX-CUT @ min
+   else
+      mark
+   then
+   TRUNCATE ;
+
+: PREFIX-REWIND ( n -- )
+   TRUNCATE
+   REQUIRE-N @ PREFIX-CUT !
+   1 PREFIX-EPOCH +! ;
+
+\ A failed require may have loaded a child in a reader or unit callback before
+\ entering evaluation. Those child definitions survive that failure; remove
+\ only the parent's provisional row and keep later rows in order.
+: REMOVE ( n -- )
+   {: idx:n :}
+   idx PREFIX-N @ < idx REQUIRE-N @ >= or if
+      s" require: remove outside live rows" INCLUDE-DIE
+   then
+   idx REQUIRE-N @ 1- = if
+      idx REWIND
+   else
+      REQUIRE-N @ idx 1+ ?do
+         i ROW-PTR@ i 1- ROW-PTR !
+         i ROW-LEN@ i 1- ROW-LEN-ADDR !
+      loop
+      -1 REQUIRE-N +!
+   then
+   REQUIRE-BOOT-N @ idx > if -1 REQUIRE-BOOT-N +! then
+   REQUIRE-BASE @ idx > if -1 REQUIRE-BASE +! then
+   REQUIRE-SAVE-N @ idx > if -1 REQUIRE-SAVE-N +! then
+   REQUIRE-SAVE-BASE @ idx > if -1 REQUIRE-SAVE-BASE +! then ;
+
+\ The caller's provisional row may already have died in a core-prefix rewind.
+\ A later row at the same index belongs to the new prefix epoch.
+: REMOVE-PROVISIONAL ( n n -- )
+   {: row:n epoch:n :}
+   epoch PREFIX-EPOCH @ <> row PREFIX-CUT @ >= and if exit then
+   row REMOVE ;
+
 \ Capture packs the live rows once; no process pointer enters the DATA block.
 \ An unchanged or discarded suffix keeps the prior block and DATA extent.
 : PERSIST ( -- )
@@ -940,8 +1027,7 @@ private
 \ parent. 0 when there is no path, it does not fit or realpath refuses it;
 \ never a throw: the length is checked before CANON-N, and neither path
 \ holds a NUL.
-: EXE$ ( -- n )
-   HB-TARGET-MACOS? if APPLE-EXE else s" /proc/self/exe" then {: a:ptr u:n :}
+: EXE-ROOT ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0= u INCLUDE-PATH-CAP > or if 0 exit then
    a u CANON-N {: n:n :}
    n 0 <= if 0 exit then
@@ -952,14 +1038,19 @@ private
    0 REQUIRE-SLOT 0 REQUIRE-LEN@ JOIN ZBUF COPY-Z
    ZBUF 0 access 0= ;
 
-\ The root's length in CANON-BUF, 0 for the working directory.
-: ENGINE-FIND ( -- n )
-   REQUIRE-BOOT-LIMIT 0= if 0 exit then
-   CWD$ TREE? if 0 exit then
-   EXE$ {: n:n :}
+\ The root's length in CANON-BUF, 0 for the working directory. The same
+\ CWD-first rule applies when a tool selects another executable as its child.
+: ENGINE-FIND-FOR ( ptr u8 n -- n )
+   REQUIRE-BOOT-LIMIT 0= if 2drop 0 exit then
+   CWD$ TREE? if 2drop 0 exit then
+   EXE-ROOT {: n:n :}
    n 0= if 0 exit then
    CANON-BUF n TREE? 0= if 0 exit then
    n ;
+
+: ENGINE-FIND ( -- n )
+   HB-TARGET-MACOS? if APPLE-EXE else s" /proc/self/exe" then
+   ENGINE-FIND-FOR ;
 
 : ENGINE-INIT ( -- )
    ENGINE-READ @ 0= 0= if exit then
@@ -975,6 +1066,20 @@ public
    ENGINE-INIT
    ENGINE-U @ 0= if CWD$ exit then
    ENGINE-BUF ENGINE-U @ ;
+
+\ A selected child executable uses this same fallback rule after it starts.
+\ CANON-BUF is scratch; callers copy the answer before resolving another path.
+: ENGINE-FOR$ ( ptr u8 n -- ptr u8 n )
+   ENGINE-FIND-FOR dup 0= if drop CWD$ exit then
+   CANON-BUF swap ;
+
+\ A saved builder restores its original fallback root before loading source.
+\ RESET clears this override when the completed application image is saved.
+: ENGINE! ( ptr u8 n -- )
+   ROOT-CANON
+   CANON-BUF ENGINE-BUF CANON-U @ BYTE-COPY
+   CANON-U @ ENGINE-U !
+   1 ENGINE-READ ! ;
 
 private
 
@@ -1235,7 +1340,10 @@ variable SCRIPT-NAMED-PEND
 \ is the loader's depth and whatever it leaves is refused E-EVAL-RESIDUE. A file
 \ that leaves cells is fixed at the file, never here.
 : INCLUDE-EVALUATE ( ptr u8 n -- )
-   evaluate-closed ;
+   REQUIRE-REG:MARK {: mark:n epoch:n :}
+   [: 2dup evaluate-closed ;] catch {: rc:n :}
+   2drop
+   rc 0 <> if mark epoch REQUIRE-REG:ROLLBACK rc throw then ;
 
 \ ---- Ordered source-composition event log (TFAM 5, item 5) --------------
 \ The loader words append one event per source-composition act so a restricted
@@ -1421,15 +1529,32 @@ private
 \ path is copied into it and the header grows by one length cell plus the path.
 \ The file's bytes follow the header in the same mapping, which is sized to the
 \ file (GROW): FR-ROOM counts the source bytes it can hold, FR-SIZE the file's.
-0 constant FR-PREV                          \ parent frame (a declared pointer field)
-CELL constant FR-NAMED                       \ SCRIPT-NAMED-PEND byte
-2 cells constant FR-PATHLEN                  \ this load's path length
-3 cells constant FR-ROOM                     \ source bytes the mapping holds
-4 cells constant FR-SIZE                     \ this load's source length
-5 cells constant FR-PATH                     \ this load's path bytes
-FR-PATH INCLUDE-PATH-CAP + 1 cells + constant HEADER-BYTES   \ cell-rounded, so SOURCE stays aligned
-$1000 constant ROOM-MIN                      \ a new frame's room, before its file is read
+0 constant FR-PREV
+CELL constant FR-NAMED
+2 cells constant FR-PATHLEN
+3 cells constant FR-ROOM
+4 cells constant FR-SIZE
+5 cells constant FR-ROOTLEN
+6 cells constant FR-ACTMODE
+7 cells constant FR-ACTLEN
+8 cells constant FR-OWNER
+9 cells constant FR-EXEC-COPY
+10 cells constant FR-EVAL-OK
+11 cells constant FR-EVAL-PTR
+12 cells constant FR-EVAL-SIZE
+13 cells constant FR-EVAL-FIRST
+14 cells constant FR-EVAL-END
+15 cells constant FR-PATH
+FR-PATH INCLUDE-PATH-CAP + 1 cells + constant FR-ROOT
+FR-ROOT INCLUDE-PATH-CAP + 1 cells + constant FR-ACTPATH
+\ The action retains the raw request, before normalization limits the resolved
+\ path. Its room matches CHECK and REQUEST-BUF, so a long spelling is neither
+\ truncated nor refused before RESOLVE can normalize it.
+FR-ACTPATH WORK-BYTES + constant HEADER-BYTES
+$1000 constant ROOM-MIN
 PTR-VARIABLE TOP
+PTR-VARIABLE RANGE-OWNER
+variable LAST-LOAD-EVAL-OK
 
 : TOP@ ( -- ptr u8 ) TOP @ ;
 : TOP! ( ptr u8 -- ) TOP ! ;
@@ -1460,10 +1585,19 @@ PTR-VARIABLE TOP
    HEADER-BYTES ROOM-MIN + map-anon 0= 0= if drop s" include: cannot map a source frame" INCLUDE-DIE then
    {: frame:ptr :}
    TOP@ frame FR-PREV ptr-field !
+   RANGE-OWNER @ frame FR-OWNER CELL / ptr-field !
    SCRIPT-NAMED-PEND @ frame FR-NAMED + c!
    INCLUDE-PATH-U @ frame FR-PATHLEN + CELL-VIEW !
    ROOM-MIN frame FR-ROOM + CELL-VIEW !
+   -1 frame FR-SIZE + CELL-VIEW !
+   -1 frame FR-ACTMODE + CELL-VIEW !
+   0 frame FR-ACTLEN + CELL-VIEW !
+   NULL-PTR frame FR-EXEC-COPY CELL / ptr-field !
+   0 frame FR-EVAL-OK + CELL-VIEW !
    INCLUDE-PATH frame FR-PATH + INCLUDE-PATH-U @ BYTE-COPY
+   CURRENT$ {: root:ptr rootu:n :}
+   rootu frame FR-ROOTLEN + CELL-VIEW !
+   root frame FR-ROOT + rootu BYTE-COPY
    frame TOP!
    INCLUDE-FALSE SCRIPT-NAMED-PEND!
    1 INCLUDE-DEPTH +!
@@ -1472,10 +1606,15 @@ PTR-VARIABLE TOP
 : POP ( -- )
    CHECK-ACTIVE
    TOP@ {: frame:ptr :}
+   frame FR-OWNER CELL / ptr-field @ RANGE-OWNER !
+   frame FR-EXEC-COPY CELL / ptr-field @ {: copy:ptr :}
+   frame FR-SIZE + CELL-VIEW @ 1 max {: copyu:n :}
    frame FR-PREV ptr-field @ TOP!
    -1 INCLUDE-DEPTH +!
    PUBLISH-LOCATION
-   frame dup MAPPED munmap 0 < if s" include: cannot release a source frame" INCLUDE-DIE then ;
+   copy 0= if 0 else copy copyu munmap then {: copyrc:n :}
+   frame dup MAPPED munmap 0 < copyrc 0 < or if
+      s" include: cannot release a source frame" INCLUDE-DIE then ;
 
 : SOURCE ( -- ptr u8 ) CHECK-ACTIVE TOP@ HEADER-BYTES + ;
 
@@ -1515,6 +1654,35 @@ PTR-VARIABLE TOP
 
 public
 
+TRUSTED: ACTION! ( n ptr u8 n -- )
+   {: mode:n path:ptr size:n :}
+   INCLUDE-DEPTH @ 0= if exit then
+   path size CHECK
+   TOP@ {: frame:ptr :}
+   path frame FR-ACTPATH + size BYTE-COPY
+   size frame FR-ACTLEN + CELL-VIEW !
+   mode frame FR-ACTMODE + CELL-VIEW ! ;
+
+TRUSTED: ACTION$ ( -- n ptr u8 n )
+   CHECK-ACTIVE
+   TOP@ {: frame:ptr :}
+   frame FR-ACTMODE + CELL-VIEW @
+   frame FR-ACTPATH + frame FR-ACTLEN + CELL-VIEW @ ;
+
+TRUSTED: PARENT-ACTION$ ( -- n ptr u8 n )
+   CHECK-ACTIVE
+   TOP@ FR-PREV ptr-field @ {: frame:ptr :}
+   frame 0= if INCLUDE-RANGE-RC throw then
+   frame FR-ACTMODE + CELL-VIEW @
+   frame FR-ACTPATH + frame FR-ACTLEN + CELL-VIEW @ ;
+
+: ACTIVE-SOURCE ( -- ptr u8 n ptr u8 n ptr u8 n )
+   CHECK-ACTIVE
+   TOP@ {: frame:ptr :}
+   frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
+   frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
+   SOURCE frame FR-SIZE + CELL-VIEW @ ;
+
 : READ-OS ( ptr u8 n ptr u8 n -- ptr u8 n )
    2drop INCLUDE-READ-ALL ;
 
@@ -1530,13 +1698,13 @@ public
    $20 a 1 + c! ;
 
 \ The loop a loaded file's bytes go through, inside the closed boundary:
-\ INCLUDE-EVAL-BIND below binds INCLUDE-EVALUATE, and test/outer-loop-on.f binds
+\ the owner binds its native evaluator, and test/outer-loop-on.f binds
 \ the loop written in Habu, src/habu/interpret.f OUTER:INTERPRET, under
 \ evaluate-closed for the files loaded after it. A file loaded under the design
 \ seal does not go through it (LOAD-BYTES).
-defer INCLUDE-INTERPRET ( ptr u8 n -- )
-
 private
+
+defer INCLUDE-INTERPRET ( ptr u8 n n n -- )
 
 \ The design seal is read where the engine's loop reads a token, and the loop
 \ written in Habu reads it nowhere, so a file loaded once the seal is set is read
@@ -1561,22 +1729,120 @@ private
 : READ-SOURCE ( -- ptr u8 n )
    INCLUDE-PATH INCLUDE-PATH-U @ RESOLVED-ROOT$ SOURCE-INPUT:READ HOLD ;
 
-: LOAD-BYTES ( -- )
-   SOURCE TOP@ FR-SIZE + CELL-VIEW @
-   POLICY-SEALED? if INCLUDE-EVALUATE else INCLUDE-INTERPRET then ;
+\ The original bytes remain in the frame while a shebang is rewritten in a
+\ private execution copy. Range positions continue to name the full source.
+: EXEC-SOURCE ( -- ptr u8 )
+   TOP@ FR-EXEC-COPY CELL / ptr-field @ dup 0= if drop SOURCE then ;
 
-\ The file is read before the unit importer runs: a frame moves while it grows,
-\ and the source address the importer is given must be the one the interpreter
-\ reads (tools/native-source-view.f LOAD-START keeps it).
-: LOAD-UNIT ( -- )
-   READ-SOURCE SHEBANG-COMMENT
+\ A loaded program starts on an empty data stack. Keep the range in its source
+\ frame across catch; copied arguments beneath evaluate-range would let an
+\ underflow consume loader cells and turn it into E-EVAL-RESIDUE instead.
+TRUSTED: EVALUATE-RANGE-RAW ( ptr u8 n n n -- ) evaluate-range ;
+
+: EVALUATE-SAVED-RANGE ( -- )
+   TOP@ {: frame:ptr :}
+   frame FR-EVAL-PTR CELL / ptr-field @
+   frame FR-EVAL-SIZE + CELL-VIEW @
+   frame FR-EVAL-FIRST + CELL-VIEW @
+   frame FR-EVAL-END + CELL-VIEW @
+   EVALUATE-RANGE-RAW ;
+
+: CLOSED-RANGE ( ptr u8 n n n -- )
+   {: source:ptr size:n first:n end:n :}
+   TOP@ {: frame:ptr :}
+   source frame FR-EVAL-PTR CELL / ptr-field !
+   size frame FR-EVAL-SIZE + CELL-VIEW !
+   first frame FR-EVAL-FIRST + CELL-VIEW !
+   end frame FR-EVAL-END + CELL-VIEW !
+   REQUIRE-REG:MARK {: mark:n epoch:n :}
+   [: EVALUATE-SAVED-RANGE ;] catch {: rc:n :}
+   rc 0 <> if mark epoch REQUIRE-REG:ROLLBACK rc throw then ;
+
+: EVAL-OPEN ( ptr u8 n n n -- )
+   INCLUDE-DEPTH @ 0 > if CLOSED-RANGE else EVALUATE-RANGE-RAW then ;
+
+: CHECK-RANGE ( n n n -- ) {: size:n first:n end:n :}
+   first 0 < first end > or end size > or if INCLUDE-RANGE-RC throw then ;
+
+PTR-VARIABLE EVAL-A
+variable EVAL-U
+variable EVAL-FIRST
+variable EVAL-END
+
+: EVAL-STAGED ( -- )
+   EVAL-A @ EVAL-U @ EVAL-FIRST @ EVAL-END @ EVALUATE-RANGE-RAW ;
+: INTERPRET-STAGED ( -- )
+   EVAL-A @ EVAL-U @ EVAL-FIRST @ EVAL-END @ INCLUDE-INTERPRET ;
+: INTERPRET-INSTALL ( -- ) [: EVAL-OPEN ;] is INCLUDE-INTERPRET ;
+INTERPRET-INSTALL
+
+public
+
+: USE-INTERPRETER ( [ ptr u8 n n n -- ] -- ) is INCLUDE-INTERPRET ;
+: RUN-CLOSED ( [ -- ] -- ) source-unit-run ;
+
+private
+
+: KEEP-CLOSED ( [ -- ] -- [ -- ] ) {: q :} q RUN-CLOSED q ;
+
+: CLOSE-RANGE ( ptr u8 n n n [ -- ] -- )
+   {: source:ptr size:n first:n end:n q :}
+   size first end CHECK-RANGE
+   EVAL-A @ EVAL-U @ EVAL-FIRST @ EVAL-END @
+      {: old:ptr oldu:n oldfirst:n oldend:n :}
+   source EVAL-A ! size EVAL-U ! first EVAL-FIRST ! end EVAL-END !
+   REQUIRE-REG:MARK {: mark:n epoch:n :}
+   q [: KEEP-CLOSED ;] catch {: rc:n :} drop
+   old EVAL-A ! oldu EVAL-U ! oldfirst EVAL-FIRST ! oldend EVAL-END !
+   rc 0 <> if mark epoch REQUIRE-REG:ROLLBACK rc throw then ;
+
+public
+
+\ Direct renderers own a closed program. Loader fragments use EVAL-OPEN
+\ inside LOAD-UNIT's whole-program boundary, so values can cross fragments.
+: RUN-EVAL-RANGE ( ptr u8 n n n -- ) [: EVAL-STAGED ;] CLOSE-RANGE ;
+: RUN-INTERPRET-RANGE ( ptr u8 n n n -- ) [: INTERPRET-STAGED ;] CLOSE-RANGE ;
+
+private
+
+: LOAD-BYTES ( -- )
+   READ-SOURCE {: a:ptr u:n :}
+   u 2 >= if
+      a c@ $23 = a 1 + c@ $21 = and if
+         u 1 max map-anon 0= 0= if drop INCLUDE-IO-RC throw then
+         {: copy:ptr :}
+         a copy u BYTE-COPY
+         copy u SHEBANG-COMMENT
+         copy TOP@ FR-EXEC-COPY CELL / ptr-field !
+      then
+   then ;
+
+: RUN-RANGE ( n n -- ) {: first:n end:n :}
+   RANGE-OWNER @ 0= if INCLUDE-RANGE-RC throw then
+   CHECK-ACTIVE
+   TOP@ RANGE-OWNER @ <> if INCLUDE-RANGE-RC throw then
+   TOP@ FR-SIZE + CELL-VIEW @ {: size:n :}
+   size first end CHECK-RANGE
+   EXEC-SOURCE size first end
+      POLICY-SEALED? if EVAL-OPEN else INCLUDE-INTERPRET then
+   -1 TOP@ FR-EVAL-OK + CELL-VIEW ! ;
+
+: CALL-UNIT ( -- )
    TOP@ {: frame:ptr :}
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
-   CURRENT$ SOURCE [: LOAD-BYTES ;] SOURCE-UNIT:LOAD ;
+   frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
+   EXEC-SOURCE frame FR-SIZE + CELL-VIEW @ [: RUN-RANGE ;]
+      SOURCE-UNIT:LOAD ;
+
+: LOAD-UNIT ( -- )
+   LOAD-BYTES
+   TOP@ RANGE-OWNER !
+   [: CALL-UNIT ;] source-unit-run ;
 
 : LOAD-CURRENT ( -- )
    PUSH
    [: LOAD-UNIT ;] catch {: rc:n :}
+   rc 0 <> if TOP@ FR-EVAL-OK + CELL-VIEW @ LAST-LOAD-EVAL-OK ! then
    INCLUDE-CLOSE
    POP
    rc 0= 0= if rc throw then
@@ -1618,16 +1884,32 @@ private
    rc 0= 0= if rc throw then
    a u q ;
 
+\ The row decision belongs to the whole load, including path resolution and
+\ reader callbacks before PUSH. Its result is consumed before returning.
+: LOAD-RAW ( ptr u8 n -- )
+   CONFINE
+   INCLUDE-PATH0 drop
+   RESOLVED-ROOT$ [: LOAD-CURRENT ;] WITH ;
+
 public
+
+\ A completed source range leaves definitions live even if a unit callback
+\ later throws. A require keeps its row in that case.
+: LOAD-RESULT ( ptr u8 n -- bool n )
+   0 LAST-LOAD-EVAL-OK !
+   [: 2dup LOAD-RAW ;] catch {: rc:n :}
+   2drop
+   LAST-LOAD-EVAL-OK @ 0 <> {: committed:bool :}
+   0 LAST-LOAD-EVAL-OK !
+   committed rc ;
 
 : NAMED? ( -- bool )
    INCLUDE-DEPTH @ 0= if INCLUDE-FALSE exit then
    TOP@ FR-NAMED + c@ 0= 0= ;
 
 : LOAD ( ptr u8 n -- )
-   CONFINE
-   INCLUDE-PATH0 drop
-   RESOLVED-ROOT$ [: LOAD-CURRENT ;] WITH ;
+   LOAD-RESULT {: committed:bool rc:n :}
+   rc 0 <> if rc throw then ;
 
 \ PATH has already been resolved by the loader's resolver. Like LOAD, this
 \ opens a source frame and makes its root current until the callback returns.
@@ -1651,6 +1933,9 @@ public
 
 ;package
 
+: INCLUDE-EVALUATE-RANGE ( ptr u8 n n n -- )
+   SOURCE-ROOT:RUN-EVAL-RANGE ;
+
 package SOURCE-INPUT
 public
 
@@ -1660,13 +1945,18 @@ public
 
 ;package
 
-: INCLUDE-LOAD ( ptr u8 n -- ) LOAD ;
+: INCLUDE-LOAD ( ptr u8 n -- bool n ) LOAD-RESULT ;
 
 : included ( ptr u8 n -- )
+   2dup 0 -rot SOURCE-ROOT:ACTION!
    RESOLVE drop
    2dup EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
    DISCOVERY? if 2drop exit then
-   INCLUDE-LOAD ;
+   INCLUDE-LOAD {: committed:bool rc:n :}
+   rc 0 <> if rc throw then ;
+
+create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
+' included SOURCE-ORIGINAL-INCLUDED-ENTRY xt!
 
 \ One body for both spellings. A path the registry already holds is skipped, so
 \ the pending flag has to be cleared on every exit or it would leak into the
@@ -1674,13 +1964,22 @@ public
 : REQUIRE-BODY ( ptr u8 n bool -- ) {: known:bool :}
    2dup EV-REQUIRED known REQUIRE-STATE EVENT-RECORD
    known if 2drop INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
+   REQUIRE-REG:MARK {: row:n epoch:n :}
    REQUIRE-STORE
    DISCOVERY? if 2drop INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
-   INCLUDE-LOAD ;
+   INCLUDE-LOAD {: committed:bool rc:n :}
+   rc 0 <> if
+      committed 0= if row epoch REQUIRE-REG:REMOVE-PROVISIONAL then
+      rc throw
+   then ;
 
 : required ( ptr u8 n -- )
+   2dup 1 -rot SOURCE-ROOT:ACTION!
    INCLUDE-FALSE SCRIPT-NAMED-PEND!
    RESOLVE REQUIRE-BODY ;
+
+create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
+' required SOURCE-ORIGINAL-REQUIRED-ENTRY xt!
 
 \ The `--load` argv row. Same load, and it records that the command line is
 \ what asked for it.
@@ -1702,9 +2001,49 @@ public
    parse-name INCLUDE-CHECK-PATH included ;
 immediate
 
+create SOURCE-ORIGINAL-INCLUDE-ENTRY 0 ,
+' include SOURCE-ORIGINAL-INCLUDE-ENTRY xt!
+
 : require ( -- )
    parse-name INCLUDE-CHECK-PATH required ;
 immediate
+
+create SOURCE-ORIGINAL-REQUIRE-ENTRY 0 ,
+' require SOURCE-ORIGINAL-REQUIRE-ENTRY xt!
+
+package SOURCE-UNIT
+public
+0 constant LOAD-INCLUDE
+1 constant LOAD-REQUIRE
+0 constant NONE
+1 constant PARSED-PATH
+2 constant STACK-PATH
+
+: LOADER-KIND ( n n n -- n ) {: op:n rec:n entry:n :}
+   op 5 <> if NONE exit then
+   entry SOURCE-ORIGINAL-INCLUDE-ENTRY @ =
+   entry SOURCE-ORIGINAL-REQUIRE-ENTRY @ = or if PARSED-PATH exit then
+   entry SOURCE-ORIGINAL-INCLUDED-ENTRY @ =
+   entry SOURCE-ORIGINAL-REQUIRED-ENTRY @ = or if STACK-PATH exit then
+   NONE ;
+
+TRUSTED: ACTION$ ( -- n ptr u8 n ) SOURCE-ROOT:ACTION$ ;
+
+\ A child callback runs while the child's source frame is on top. Its parent
+\ retains the original request even from inside a compiled word.
+TRUSTED: PARENT-ACTION$ ( -- n ptr u8 n ) SOURCE-ROOT:PARENT-ACTION$ ;
+
+TRUSTED: LOAD-PATH ( n ptr u8 n -- ) {: mode:n path:ptr size:n :}
+   SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop 2drop
+   mode LOAD-INCLUDE = if path size included exit then
+   mode LOAD-REQUIRE = if path size required exit then
+   INCLUDE-EVAL-RC throw ;
+
+\ FILE objects carry registry paths already resolved by the original loader.
+: PROVIDED-RESOLVED ( ptr u8 n -- )
+   2dup REQUIRE-KNOWN? if 2drop exit then
+   REQUIRE-REG:APPEND ;
+;package
 
 package SOURCE-ROOT
 private
@@ -1776,46 +2115,13 @@ public
    REQUIRE-SAVE-BASE @ REQUIRE-BASE !
    REQUIRE-SAVE-N @ REQUIRE-REG:REWIND ;
 
-\ ---- the registry's own truncation seam -------------------------------------
-\ THE ONE WAY TO MAKE THIS REGISTRY SMALLER, and it exists because storing the
-\ count is not a truncation. Four other cells are cursors INTO the rows, and a
-\ bare `REQUIRE-N !` leaves every one of them naming rows that are gone:
-\ REQUIRE-BOOT-N would go on answering ENGINE-PROVIDES? for a file the caller
-\ just dropped, REQUIRE-BASE would hide surviving rows from REQUIRE-KNOWN?
-\ (dedup silently off), and the two SAVE cells would restore a discovery pass
-\ back to the vanished rows. So each is brought down with the count, and none of
-\ them can end up above it. REQUIRE-BOOT-V is deliberately absent from that list:
-\ it says whether the boot registry is still open, not where a row is, and while
-\ it is set REQUIRE-BOOT-LIMIT reads REQUIRE-N, which this word already moves.
-\
-\ ITS CALLER IS THE BUILD'S CORE-PREFIX REWIND (src/habu/prefix-rewind.f's
-\ top-level text), which returns a compiling host to the end of its own boot
-\ prefix: the rows the boot recorded after that point describe files whose
-\ definitions the rewind removes, and a snapshot taken afterwards would
-\ otherwise persist an image that claims to provide what it no longer carries
-\ (measured: the stdlib).
-\
-\ The two words are a package block because the rest of this file is legacy
-\ global surface and the ownership gate refuses a new global here (measured:
-\ "`REQUIRE-TRUNCATE` defines a changed module word outside a package"). The
-\ tails are NOT spelled like the cells they move - a tail that folded onto
-\ `REQUIRE-N` inside this block would be that cell.
+\ COUNT remains the stable public registry cursor after the load path above.
 package REQUIRE-REG
 
 public
 
 : COUNT ( -- n )
    REQUIRE-N @ ;
-
-: TRUNCATE ( n -- ) {: keep:n :}
-   keep 0 < keep REQUIRE-N @ > or if
-      s" require: truncate outside the registry" INCLUDE-DIE
-   then
-   keep REWIND
-   REQUIRE-BOOT-N @ keep > if keep REQUIRE-BOOT-N ! then
-   REQUIRE-BASE @ keep > if keep REQUIRE-BASE ! then
-   REQUIRE-SAVE-N @ keep > if keep REQUIRE-SAVE-N ! then
-   REQUIRE-SAVE-BASE @ keep > if keep REQUIRE-SAVE-BASE ! then ;
 
 ;package
 
@@ -1848,6 +2154,7 @@ public
       s" include: snapshot prepare under an open load" INCLUDE-DIE
    then
    INCLUDE-RESET-SCRATCH
+   SOURCE-INPUT:CLEAR-OBSERVED
    RESET
    REQUIRE-REG:PERSIST ;
 
@@ -1884,7 +2191,6 @@ public
 \ evaluate only through the closed INCLUDE-EVALUATE boundary; engines without
 \ include.f (stage builders) leave TYPE-DECL's armed flag 0 and generation stays
 \ fail-closed. Bind the defer (wrapped so the quotation compiles), then arm.
-\ The loaded-bytes seam SOURCE-ROOT:INCLUDE-INTERPRET gets the same boundary.
 \ Each binder is a package private rather than an 85th global in this file: it is
 \ a one-shot installer with no caller, and the `is` target has to be written
 \ qualified because `is` is a parsing word and parsing words resolve outside
@@ -1896,8 +2202,6 @@ package INCLUDE-EVAL-BIND
 private
 : INSTALL ( -- ) [: INCLUDE-EVALUATE ;] is TYPE-DECL:TDECL-EVAL-XT ;
 INSTALL
-: INTERPRET-INSTALL ( -- ) [: INCLUDE-EVALUATE ;] is SOURCE-ROOT:INCLUDE-INTERPRET ;
-INTERPRET-INSTALL
 ;package
 
 -1 TDECL-EVAL-ARMED !

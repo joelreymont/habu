@@ -39,10 +39,10 @@ defer DKEEP-HOOK ( -- )
 private
 
 \ Each pass retains its own dimensions while later passes read its results.
-variable SCRATCH-VALUES
-variable SCRATCH-BLOCKS
-variable SCRATCH-FUNS
-variable SCRATCH-OPS
+0 CWORK-VARIABLE SCRATCH-VALUES n
+0 CWORK-VARIABLE SCRATCH-BLOCKS n
+0 CWORK-VARIABLE SCRATCH-FUNS n
+0 CWORK-VARIABLE SCRATCH-OPS n
 : VMAX ( -- n ) SCRATCH-VALUES @ ;
 : BMAX ( -- n ) SCRATCH-BLOCKS @ ;
 : FMAX ( -- n ) SCRATCH-FUNS @ ;
@@ -109,22 +109,17 @@ variable SCRATCH-OPS
 : SLOTS-MAX ( -- n ) VMAX ;
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable ST
+0 CWORK-VARIABLE ST n
 ST-NONE ST !
-variable BND-MODE
+0 CWORK-VARIABLE BND-MODE n
 BOUND-NO BND-MODE !
-variable A-GEN
-0 A-GEN !
-variable N-VALS
-0 N-VALS !
-variable NB-N                        \ blocks in the function being checked
-0 NB-N !
-variable VB-BASE                     \ where that function's blocks start in the module
-0 VB-BASE !
-variable V-DSTACK                    \ whether the contract declares the data-stack convention
-0 V-DSTACK !
+0 CWORK-VARIABLE A-GEN n
+0 CWORK-VARIABLE N-VALS n
+0 CWORK-VARIABLE NB-N n                        \ blocks in the function being checked
+0 CWORK-VARIABLE VB-BASE n                     \ where that function's blocks start in the module
+0 CWORK-VARIABLE V-DSTACK n                    \ whether the contract declares the data-stack convention
 
-1 TYPED-BUFFER S-FUN IR-ID:ir-fun-id
+1 CWORK-BUFFER S-FUN IR-ID:ir-fun-id
 
 : FUN ( -- IR-ID:ir-fun-id )         0 S-FUN @ ;
 
@@ -135,24 +130,23 @@ variable V-DSTACK                    \ whether the contract declares the data-st
 \ dialect stated, absent and all: a binding that declares none stores `absent`
 \ over whatever the last one named, so no other dialect's ordinal can be left
 \ sitting where a symbol would be read.
-variable BND-SLOTW                   \ bytes per frame slot, from the vocabulary
-0 BND-SLOTW !
-1 TYPED-BUFFER BND-DWB NDIALECT:optsym
-1 TYPED-BUFFER BND-STAND NDIALECT:dstand
+0 CWORK-VARIABLE BND-SLOTW n                   \ bytes per frame slot, from the vocabulary
+1 CWORK-BUFFER BND-DWB NDIALECT:optsym
+1 CWORK-BUFFER BND-STAND NDIALECT:dstand
 
-1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
-1 TYPED-BUFFER BND-GPR IR-ID:ir-type-id
-1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
-1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
-1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-DSLOT IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-DBYTES IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
-1 TYPED-BUFFER V-POOL NEFF:gprs
-1 TYPED-BUFFER V-FPOOL NEFF:fprs
+1 CWORK-BUFFER BND-MOD IR-ID:ir-module-id
+1 CWORK-BUFFER BND-GPR IR-ID:ir-type-id
+1 CWORK-BUFFER BND-FPR IR-ID:ir-type-id
+1 CWORK-BUFFER BND-MEM IR-ID:ir-type-id
+1 CWORK-BUFFER BND-SLOT IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-FRAME IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-DSLOT IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-DBYTES IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-DBACK IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-ENTRY IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-TRAP IR-ID:ir-symbol-id
+1 CWORK-BUFFER V-POOL NEFF:gprs
+1 CWORK-BUFFER V-FPOOL NEFF:fprs
 
 DYNAMIC-BUFFER D-AT-BUF n
 : D-AT ( -- ptr n ) 0 D-AT-BUF ;
@@ -209,14 +203,14 @@ DYNAMIC-BUFFER FPO-BUF n             \ end of each block's predecessor run
 : FPOV ( -- ptr n ) 0 FPO-BUF ;
 DYNAMIC-BUFFER FPE-BUF n             \ the predecessor runs themselves
 : FPEV ( -- ptr n ) 0 FPE-BUF ;
-variable FLOW-CHANGED
-variable FLOW-W                      \ words one block's slot vector takes
-variable FLOW-NB                     \ blocks in the function being checked
-variable FLOW-AT                     \ the operation one of the walks stands on
-variable FLOW-HI                     \ slots the function's operations name
-variable FM-T                        \ the running meet, TOP bits
-variable FM-D                        \ the running meet, DEF bits
-variable FPO-RUN                     \ where the next predecessor run starts
+0 CWORK-VARIABLE FLOW-CHANGED n
+0 CWORK-VARIABLE FLOW-W n                      \ words one block's slot vector takes
+0 CWORK-VARIABLE FLOW-NB n                     \ blocks in the function being checked
+0 CWORK-VARIABLE FLOW-AT n                     \ the operation one of the walks stands on
+0 CWORK-VARIABLE FLOW-HI n                     \ slots the function's operations name
+0 CWORK-VARIABLE FM-T n                        \ the running meet, TOP bits
+0 CWORK-VARIABLE FM-D n                        \ the running meet, DEF bits
+0 CWORK-VARIABLE FPO-RUN n                     \ where the next predecessor run starts
 
 : DEF-AT ( n -- n )                  cells D-AT + @ ;
 : LAST-AT ( n -- n )                 cells L-AT + @ ;
@@ -1131,24 +1125,15 @@ variable FPO-RUN                     \ where the next predecessor run starts
 4 constant PLANES
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable V-BLKS
-0 V-BLKS !
-variable V-AT
-0 V-AT !
-variable V-CHANGED
-0 V-CHANGED !
-variable V-LSAVE                     \ whether the contract's prologue keeps the caller's return address
-0 V-LSAVE !
-variable V-TAIL                      \ whether the contract says control leaves through a callee
-0 V-TAIL !
-variable V-NORET                     \ whether the contract says control never comes back
-0 V-NORET !
-variable V-FRAME                     \ whether the module reaches a frame at all
-0 V-FRAME !
-variable V-BASE                      \ the first frame byte the allocator's slots may use
-0 V-BASE !
-variable VD-AT                       \ the position the data-stack scan stands on
-0 VD-AT !
+0 CWORK-VARIABLE V-BLKS n
+0 CWORK-VARIABLE V-AT n
+0 CWORK-VARIABLE V-CHANGED n
+0 CWORK-VARIABLE V-LSAVE n                     \ whether the contract's prologue keeps the caller's return address
+0 CWORK-VARIABLE V-TAIL n                      \ whether the contract says control leaves through a callee
+0 CWORK-VARIABLE V-NORET n                     \ whether the contract says control never comes back
+0 CWORK-VARIABLE V-FRAME n                     \ whether the module reaches a frame at all
+0 CWORK-VARIABLE V-BASE n                      \ the first frame byte the allocator's slots may use
+0 CWORK-VARIABLE VD-AT n                       \ the position the data-stack scan stands on
 
 DYNAMIC-BUFFER VB-ST-BUF n
 : VB-ST ( -- ptr n ) 0 VB-ST-BUF ;
@@ -1570,43 +1555,39 @@ DYNAMIC-BUFFER VD-DOUT-BUF n
    BMAX VDSLOTS * VD-DIN-BUF-RESERVE
    BMAX VDSLOTS * VD-DOUT-BUF-RESERVE
    ;
-create VD-VCUR VDSLOTS cells allot
-create VD-DCUR VDSLOTS cells allot
-create VD-VMEET VDSLOTS cells allot
-create VD-DMEET VDSLOTS cells allot
-variable VD-EL                       \ positions from the take to the entry's last load
-variable VD-ES                       \ result stores the exit sequence really built
-variable VD-P                        \ the position one of the scans below stands at
-variable VD-J                        \ the declared place one of them stands at
-variable VD-S
-variable VD-PREV
-variable VD-MOVED
+VDSLOTS CWORK-SPAN VD-VCUR n
+VDSLOTS CWORK-SPAN VD-DCUR n
+VDSLOTS CWORK-SPAN VD-VMEET n
+VDSLOTS CWORK-SPAN VD-DMEET n
+0 CWORK-VARIABLE VD-EL n                       \ positions from the take to the entry's last load
+0 CWORK-VARIABLE VD-ES n                       \ result stores the exit sequence really built
+0 CWORK-VARIABLE VD-P n                        \ the position one of the scans below stands at
+0 CWORK-VARIABLE VD-J n                        \ the declared place one of them stands at
+0 CWORK-VARIABLE VD-S n
+0 CWORK-VARIABLE VD-PREV n
+0 CWORK-VARIABLE VD-MOVED n
 
 \ ---- where the pointer stands, re-derived ------------------------------------
 \ Every number the four data-stack forms carry is re-derived, including where
 \ the body's pointer stands, because a place that is merely read proves nothing.
-variable VD-STAND                    \ where the body's data-stack pointer stands
-0 VD-STAND !
-variable VD-ENTRY                    \ where the caller leaves it: 8*in
-0 VD-ENTRY !
-variable VD-LEAVE                    \ where the caller expects it back: 8*out
-0 VD-LEAVE !
+0 CWORK-VARIABLE VD-STAND n                    \ where the body's data-stack pointer stands
+0 CWORK-VARIABLE VD-ENTRY n                    \ where the caller leaves it: 8*in
+0 CWORK-VARIABLE VD-LEAVE n                    \ where the caller expects it back: 8*out
 
 \ A self-call is RECURSE, which names the DEFINITION - function zero - wherever
 \ the token stands, so what one does to the pointer is the DEFINITION's net
 \ movement and not the movement of the body the site is in. The two are the same
 \ number inside function zero and are not inside a quotation's function.
-variable VD-SELF                     \ what a self-call does to the pointer: 8*(out-in) of the definition
-0 VD-SELF !
+0 CWORK-VARIABLE VD-SELF n                     \ what a self-call does to the pointer: 8*(out-in) of the definition
 
 256 constant VDREQ-MAX               \ places one routine's collection holds
 
 here CELL 1- and CELL swap - CELL 1- and allot
-create VD-REQ VDREQ-MAX cells allot
-variable VD-REQ-N
-variable VD-REQ-OVER
-variable VD-BEST
-variable VD-BCOST
+VDREQ-MAX CWORK-SPAN VD-REQ n
+0 CWORK-VARIABLE VD-REQ-N n
+0 CWORK-VARIABLE VD-REQ-OVER n
+0 CWORK-VARIABLE VD-BEST n
+0 CWORK-VARIABLE VD-BCOST n
 
 : VD-WINDOW? ( n -- bool )
    dup 0 < if drop false exit then
@@ -1736,10 +1717,10 @@ variable VD-BCOST
 2 constant DKEEP-DEAD        \ a load whose result nothing reads
 3 constant DKEEP-SAME        \ a store of the value the slot already holds
 
-1 TYPED-BUFFER LAST-FUN IR-ID:ir-fun-id
-1 TYPED-BUFFER LAST-OP IR-ID:ir-op-id
-variable LAST-CLAUSE
-variable LAST-HELD           \ has a residency run ever filled the three above
+1 CWORK-BUFFER LAST-FUN IR-ID:ir-fun-id
+1 CWORK-BUFFER LAST-OP IR-ID:ir-op-id
+0 CWORK-VARIABLE LAST-CLAUSE n
+0 CWORK-VARIABLE LAST-HELD n           \ has a residency run ever filled the three above
 
 : DKEEP-HOOK-NONE ( -- ) ;
 
@@ -2608,14 +2589,6 @@ public
    c DKEEP-DEAD = if s" load whose result nothing reads" exit then
    c DKEEP-SAME = if s" store of the value the slot already holds" exit then
    s" none" ;
-
-public
-: RESET-SCRATCH ( -- )
-   \ Image preparation releases the checked assignment's mapped tables.
-   ST-NONE ST !
-   0 A-GEN !
-   0 N-VALS !
-   0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
 get-current prot-wid-add

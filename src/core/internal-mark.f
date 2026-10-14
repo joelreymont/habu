@@ -38,6 +38,21 @@ package ENGINE-INTERNAL
 TRUSTED: MARK-INTERNAL ( n -- ) int-mark ;
 TRUSTED: MARK-MIN-IN ( n n -- ) min-in-mark ;
 
+\ A suite bundle decides the seal while the freshly loaded checker's rows still
+\ exist. The driver copies this transient plan before either capture releases
+\ dynamic storage.
+DYNAMIC-BUFFER IMK-PLAN-REC n
+DYNAMIC-BUFFER IMK-PLAN-MIN n
+variable IMK-PLAN-N
+variable IMK-BUNDLE-MODE
+
+: IMK-RECORD ( n n -- ) {: i:n m:n :}
+   IMK-PLAN-N @ 1+ IMK-PLAN-REC-RESERVE
+   IMK-PLAN-N @ 1+ IMK-PLAN-MIN-RESERVE
+   i IMK-PLAN-N @ IMK-PLAN-REC !
+   m IMK-PLAN-N @ IMK-PLAN-MIN !
+   1 IMK-PLAN-N +! ;
+
 : IMK-MIN-IN ( n -- n )
    dup IMK-NAME-A swap IMK-NAME-U EFFECT-EXTERNAL-MIN-IN ;
 
@@ -50,6 +65,7 @@ TRUSTED: MARK-MIN-IN ( n n -- ) min-in-mark ;
    dup IMK-NAME-A swap IMK-NAME-U EFFECT-OWNED-MIN-IN ;
 
 : IMK-MARK ( n n -- ) {: i:n m:n :}   \ unknown -> DNAME-INT; known din>0 -> DNAME-MIN-IN
+   IMK-BUNDLE-MODE @ IF i m IMK-RECORD EXIT THEN
    m 0 < IF i MARK-INTERNAL EXIT THEN
    m 0 > IF i m MARK-MIN-IN THEN ;
 
@@ -142,7 +158,7 @@ variable IMK-QI
    s" min-in-mark" IMK-NAMED? ;
 
 : IMK-SEAL-PRIM ( n -- )      \ close the loop: the marking prims are themselves internal
-   0 ?do i IMK-PRIM? IF i MARK-INTERNAL THEN loop ;
+   0 ?do i IMK-PRIM? IF i -1 IMK-MARK THEN loop ;
 
 \ Registry write-protection (dot habu-protect-type-field-04d91409). A din=0
 \ registry control cell (variable/create) is a data record, so IMK-WALK exempts
@@ -152,7 +168,7 @@ variable IMK-QI
 \ tick fail closed on the bare name exactly like a sig-less colon word, while the
 \ core compiled callers (resolved before this pass) keep working.
 : IMK-SEAL-REGISTRY ( -- )
-   REG-PROT-COUNT 0 ?do i REG-PROT-RECORD MARK-INTERNAL loop ;
+   REG-PROT-COUNT 0 ?do i REG-PROT-RECORD -1 IMK-MARK loop ;
 
 \ ---- the whitebox image ----------------------------------------------------
 \ THE ONE BUILD THAT ASKS FOR NO SEAL. A whitebox suite reaches inside the
@@ -206,10 +222,25 @@ variable IMK-CLASS
    IMK-SEAL-REGISTRY
    first IMK-SEAL-PRIM ;
 
+: IMK-BUNDLE? ( -- bool )
+   s" HABU_GATE_COMPILER_BUNDLE" GETENV s" 1" CORE-STR= ;
+
+: IMK-PLAN-SEAL ( -- )
+   0 IMK-PLAN-N !
+   -1 IMK-BUNDLE-MODE !
+   IMAGE-WHITEBOX IMK-CLASS !
+   CORE-PREFIX:FIRST-RECORD {: first:n :}
+   first IMK-WALK
+   first IMK-WALK-PACKAGES
+   IMK-SEAL-REGISTRY
+   first IMK-SEAL-PRIM ;
+
 \ Either class ends the registrations: the seal has read them, and a whitebox
 \ image has no seal to read them.
 : IMK-PASS ( -- )
-   IMK-WHITEBOX? IF IMAGE-WHITEBOX IMK-CLASS ! ELSE IMK-SEAL THEN
+   IMK-BUNDLE? IF IMK-PLAN-SEAL ELSE
+      IMK-WHITEBOX? IF IMAGE-WHITEBOX IMK-CLASS ! ELSE IMK-SEAL THEN
+   THEN
    REG-PROT-RETIRE ;
 
 public
@@ -247,6 +278,22 @@ EXPORT IMAGE-WHITEBOX
    loop ;
 
 private
+
+: PLAN-N ( -- n ) IMK-PLAN-N @ ;
+
+: PLAN-PAIR ( n -- n n ) {: k:n :}
+   k IMK-PLAN-REC @ k IMK-PLAN-MIN @ ;
+
+\ The retained driver alone resolves this private entry. Its plan lives
+\ outside target DATA while the first capture discards transient buffers.
+: APPLY-PLAN ( ptr n n -- ) {: plan:ptr count:n :}
+   IMK-BUNDLE-MODE @ 0= IF s" internal-mark: no suite seal plan" 76 die THEN
+   0 IMK-BUNDLE-MODE !
+   IMAGE-SEALED IMK-CLASS !
+   CHECKER-EFFECT-AUTHORITY:SEAL
+   count 0 ?do
+      plan i 2 * cells + @ plan i 2 * 1+ cells + @ IMK-MARK
+   loop ;
 
 get-current prot-wid-add
 ' IMK-PASS

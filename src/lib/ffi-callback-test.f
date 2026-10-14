@@ -56,8 +56,7 @@ variable MAIN-SELF                    \ its pthread_self
 variable OLD-CONTEXT                  \ CTX-TASK's context, kept past its UNEXPOSE
 variable HAMMERS
 
-\ The fixture's ten callbacks and these six fill the engine's sixteen stubs, so
-\ the next declaration is the seventeenth.
+\ The fixture's ten callbacks and these six cover the old sixteen-entry edge.
 CALLBACK: PAD-A ( -- ) ;CALLBACK
 CALLBACK: PAD-B ( -- ) ;CALLBACK
 CALLBACK: PAD-C ( -- ) ;CALLBACK
@@ -222,7 +221,7 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
 : SLOT-CELL ( n n -- ptr n ) {: k:n off:n :}
    TASK:MAIN-BASE {: base :}
    base CB-ROWS + atomic@ base FFI:>CELL - {: table:n :}
-   base table + k CB-ROW-BYTES * + off + ;
+   base table + k 4 cells * + off + ;
 
 \ Moves every idle row naming context ctx 0 -> BUSY, as a bind or UNEXPOSE's
 \ claim moves it, and answers them as a mask. A row a thread is inside stays.
@@ -345,8 +344,8 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    [: DECL-STRAY-CLOSE ;] catch E-FFI-SYNTAX = s" ;CALLBACK with nothing open: E-FFI-SYNTAX" FACT
    [: DECL-STRAY-FALLBACK ;] catch E-FFI-SYNTAX = s" FALLBACK with nothing open: E-FFI-SYNTAX" FACT
    [: DECL-NESTED ;] catch E-FFI-SYNTAX = s" CALLBACK: inside an open declaration: E-FFI-SYNTAX" FACT
-   [: DECL-SEVENTEENTH ;] catch E-FFI-CALLBACK-FULL =
-      s" the seventeenth declaration, with nothing left open: E-FFI-CALLBACK-FULL" FACT ;
+   [: DECL-SEVENTEENTH ;] catch 0=
+      s" the seventeenth declaration succeeds" FACT ;
 
 \ ---- children ---------------------------------------------------------------------
 \ The name, the exit status and both streams of one spawned process.
@@ -574,7 +573,7 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" ok   ;CALLBACK with nothing open: E-FFI-SYNTAX" W
    s" ok   FALLBACK with nothing open: E-FFI-SYNTAX" W
    s" ok   CALLBACK: inside an open declaration: E-FFI-SYNTAX" W
-   s" ok   the seventeenth declaration, with nothing left open: E-FFI-CALLBACK-FULL" W ;
+   s" ok   the seventeenth declaration succeeds" W ;
 
 : WANT-CHILDREN ( -- )
    s" == child outside: exit 106" W

@@ -5058,8 +5058,8 @@ variable SS-NEST-U
 
 : TEST-USING-AT-SOURCE ( -- )
    SB-RESET USING-AT-LINES s" using-at.f" REQ-WRITE
-   s" using-at.f" REQ-RUN s" using-at.f" REQ$ EXPECT-USING-AT
-   s" using-at.f" ST-JSON-RUN s" using-at.f" REQ$ EXPECT-USING-AT-JSON
+   s" using-at.f" REQ-RUN s" using-at.f" REQ$ SOURCE-ROOT:CANONICAL drop EXPECT-USING-AT
+   s" using-at.f" ST-JSON-RUN s" using-at.f" REQ$ SOURCE-ROOT:CANONICAL drop EXPECT-USING-AT-JSON
    RESET
    SB-RESET USING-AT-LINES SB$ s" ckt-using-at.f" SOURCE
    [: RUN-ACT ;] IN-PROC s" ckt-using-at.f" EXPECT-USING-AT ;
@@ -5151,10 +5151,10 @@ variable SS-NEST-U
 
 : TEST-SHEBANG-AT-LINE ( -- )
    SHEBANG-FILES
-   s" sb-using.f" REQ-RUN s" sb-using.f" REQ$ EXPECT-USING-AT
-   s" sb-using.f" ST-JSON-RUN s" sb-using.f" REQ$ EXPECT-USING-AT-JSON
+   s" sb-using.f" REQ-RUN s" sb-using.f" REQ$ SOURCE-ROOT:CANONICAL drop EXPECT-USING-AT
+   s" sb-using.f" ST-JSON-RUN s" sb-using.f" REQ$ SOURCE-ROOT:CANONICAL drop EXPECT-USING-AT-JSON
    SB-RESET SHEBANG-USING-LINES SB$ CLI-STDIN STDIN-LABEL$ EXPECT-USING-AT
-   s" sb-one.f" s" sb-using.f" SHEBANG-LIST-RUN s" sb-using.f" REQ$ EXPECT-USING-AT ;
+   s" sb-one.f" s" sb-using.f" SHEBANG-LIST-RUN s" sb-using.f" REQ$ SOURCE-ROOT:CANONICAL drop EXPECT-USING-AT ;
 
 : TEST-SHEBANG-LATER ( -- )
    SHEBANG-FILES
@@ -5588,7 +5588,7 @@ variable SS-NEST-U
 \ defined it again, as the JSON record does and as --load does, in the default
 \ mode and under --all-errors.
 : REQ-DUP-PROSE$ ( -- ptr u8 n )
-   s" req-dup-dep.f" REQ$ {: p:ptr pu:n :}
+   s" req-dup-dep.f" REQ$ SOURCE-ROOT:CANONICAL drop {: p:ptr pu:n :}
    SB-RESET
    s" duplicate definition: CKT-RQ-DU-X at " SB-APPEND
    p pu SB-APPEND

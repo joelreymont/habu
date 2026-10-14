@@ -38,10 +38,10 @@ using NFROZEN
 private
 
 \ Each pass retains its own dimensions while later passes read its results.
-variable SCRATCH-VALUES
-variable SCRATCH-BLOCKS
-variable SCRATCH-FUNS
-variable SCRATCH-OPS
+0 CWORK-VARIABLE SCRATCH-VALUES n
+0 CWORK-VARIABLE SCRATCH-BLOCKS n
+0 CWORK-VARIABLE SCRATCH-FUNS n
+0 CWORK-VARIABLE SCRATCH-OPS n
 : VMAX ( -- n ) SCRATCH-VALUES @ ;
 : BMAX ( -- n ) SCRATCH-BLOCKS @ ;
 : FMAX ( -- n ) SCRATCH-FUNS @ ;
@@ -79,20 +79,20 @@ HIR-OPCODE:BRZ   HIR:ORD constant O-BRZ
 : COV-MAX ( -- n ) OMAX ;
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable BND-MODE
+0 CWORK-VARIABLE BND-MODE n
 BOUND-NO BND-MODE !
-variable N-FOLDED                    \ loops this rewrite really closed, counted as it goes
+0 CWORK-VARIABLE N-FOLDED n                    \ loops this rewrite really closed, counted as it goes
 
-1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
+1 CWORK-BUFFER BND-MOD IR-ID:ir-module-id
 HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
-KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-CELL IR-ID:ir-type-id
-1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
-1 TYPED-BUFFER BND-REAL IR-ID:ir-type-id
+KEYS-N CWORK-BUFFER BND-KEY IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-CELL IR-ID:ir-type-id
+1 CWORK-BUFFER BND-MEM IR-ID:ir-type-id
+1 CWORK-BUFFER BND-REAL IR-ID:ir-type-id
 
-1 TYPED-BUFFER S-CTX IR-CTX:ctx
-1 TYPED-BUFFER S-BLD IR-BUILD:builder
-1 TYPED-BUFFER S-SID IR-ID:ir-source-id
+1 CWORK-BUFFER S-CTX IR-CTX:ctx
+1 CWORK-BUFFER S-BLD IR-BUILD:builder
+1 CWORK-BUFFER S-SID IR-ID:ir-source-id
 DYNAMIC-BUFFER VMAP IR-ID:ir-value-id
 DYNAMIC-BUFFER VSET-BUF n
 : VSET ( -- ptr n ) 0 VSET-BUF ;
@@ -100,23 +100,23 @@ DYNAMIC-BUFFER VSET-BUF n
 \ ---- the plan one recognised loop is ----------------------------------------
 \ Every row is written by the scan and read by the rewrite; by the time one
 \ operation is copied the questions are all answered.
-variable P-OK                        \ whether a loop was recognised at all
-variable P-G                         \ the guard block
-variable P-PR                        \ the pre-header
-variable P-H                         \ the header
-variable P-XT                        \ the exit stub
-variable P-LA                        \ the latch
-variable P-JN                        \ the join both exits meet in
-variable P-A                         \ how many live values the header carries besides the counters
-variable P-IDX                       \ which argument of the header the index is; the limit is the next
-variable P-K                         \ which of them is the accumulator
-variable P-M                         \ how many times a turn the index is added
-variable P-START                     \ the start, as the number its constant carries
-variable P-KCONST                    \ the constant part of what one turn adds
-variable P-INV-N                     \ how many non-constant values one turn adds
-variable P-MOV-N                     \ how many operations the pre-header takes off the body
+0 CWORK-VARIABLE P-OK n                        \ whether a loop was recognised at all
+0 CWORK-VARIABLE P-G n                         \ the guard block
+0 CWORK-VARIABLE P-PR n                        \ the pre-header
+0 CWORK-VARIABLE P-H n                         \ the header
+0 CWORK-VARIABLE P-XT n                        \ the exit stub
+0 CWORK-VARIABLE P-LA n                        \ the latch
+0 CWORK-VARIABLE P-JN n                        \ the join both exits meet in
+0 CWORK-VARIABLE P-A n                         \ how many live values the header carries besides the counters
+0 CWORK-VARIABLE P-IDX n                       \ which argument of the header the index is; the limit is the next
+0 CWORK-VARIABLE P-K n                         \ which of them is the accumulator
+0 CWORK-VARIABLE P-M n                         \ how many times a turn the index is added
+0 CWORK-VARIABLE P-START n                     \ the start, as the number its constant carries
+0 CWORK-VARIABLE P-KCONST n                    \ the constant part of what one turn adds
+0 CWORK-VARIABLE P-INV-N n                     \ how many non-constant values one turn adds
+0 CWORK-VARIABLE P-MOV-N n                     \ how many operations the pre-header takes off the body
 
-INV-MAX TYPED-BUFFER P-INV IR-ID:ir-value-id
+INV-MAX CWORK-BUFFER P-INV IR-ID:ir-value-id
 DYNAMIC-BUFFER P-NEW-BUF n
 : P-NEW ( -- ptr n ) 0 P-NEW-BUF ;
 DYNAMIC-BUFFER P-COV-BUF n
@@ -332,7 +332,7 @@ DYNAMIC-BUFFER P-THRU-BUF n
    loop ;
 
 \ ---- the plan ----------------------------------------------------------------
-1 TYPED-BUFFER CH-V IR-ID:ir-value-id      \ the value the chain walk stands on
+1 CWORK-BUFFER CH-V IR-ID:ir-value-id      \ the value the chain walk stands on
 
 : PLAN-RESET ( -- )
    0 P-OK !
@@ -724,7 +724,7 @@ DYNAMIC-BUFFER P-THRU-BUF n
 0 constant CH-WALK
 1 constant CH-DONE
 -1 constant CH-NO
-variable CH-STATE
+0 CWORK-VARIABLE CH-STATE n
 
 : CHAIN-INV+ ( IR-ID:ir-value-id -- )
    {: v:IR-ID:ir-value-id :}
@@ -1126,9 +1126,9 @@ variable CH-STATE
    CLOSE-BLOCK ;
 
 \ ---- the closed form ---------------------------------------------------------
-1 TYPED-BUFFER W-K IR-ID:ir-value-id     \ what one turn adds that is not the index
+1 CWORK-BUFFER W-K IR-ID:ir-value-id     \ what one turn adds that is not the index
 variable W-K?
-1 TYPED-BUFFER W-ACC IR-ID:ir-value-id   \ the closed form's answer, built up one term at a time
+1 CWORK-BUFFER W-ACC IR-ID:ir-value-id   \ the closed form's answer, built up one term at a time
 
 : K-ADD ( IR-ID:ir-op-id IR-ID:ir-value-id -- )
    {: sp:IR-ID:ir-op-id v:IR-ID:ir-value-id :}
@@ -1163,7 +1163,7 @@ variable W-K?
 
 \ The two multiplications a compile-time zero or one would make pointless are
 \ not staged at all: the start is a constant read and m a count made here.
-1 TYPED-BUFFER W-IX IR-ID:ir-value-id    \ the index term while it is being built
+1 CWORK-BUFFER W-IX IR-ID:ir-value-id    \ the index term while it is being built
 
 : EMIT-INDEX ( IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
    {: sp:IR-ID:ir-op-id t:IR-ID:ir-value-id one:IR-ID:ir-value-id st:IR-ID:ir-value-id :}
@@ -1363,10 +1363,6 @@ public
 \ different number is a refusal rather than a module nobody checked.
 : FOLDED ( -- n )
    N-FOLDED @ ;
-
-public
-: RESET-SCRATCH ( -- )
-   0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
 get-current prot-wid-add

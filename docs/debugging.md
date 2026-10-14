@@ -471,9 +471,11 @@ holds one source stream. `SOURCE-ARENA-CAP` is the read allowance:
   input share it. The argv files include generated path rows and separators;
   each file also has a `SOURCE-ARENA-CAP` bound. The file reader reserves an
   EOF probe.
-  Discover the effective program boundary with bounded `--build` probes against
-  the freshly built candidate so the measurement includes `LCOLDPFXB` and its
-  generated rows. Overflow exits 74 with `hb: source prefix buffer full`.
+  `test/main-argv.f` checks adjacent accepted and refused `--build` sizes
+  through the native and `main.f` entry routes. The `source boundary` case in
+  `tools/build-fixpoint-test.f` checks the distinct cold source-only host with
+  its stripped prefix, generated rows and argv sharing this arena. Overflow
+  exits 74 with `hb: source prefix buffer full`.
   The prefix rows come in through `LSRCRDP`, which drops comment and blank lines
   (`EMIT-SOURCE-READ-PREFIX`), so the resident prefix is about 41 percent
   smaller than the files on disk; `LSRCRD` still reads argv files and the
@@ -485,7 +487,7 @@ holds one source stream. `SOURCE-ARENA-CAP` is the read allowance:
   is not the engine input arena and has no fixed bound; the code window refuses
   a source an image cannot carry. It learns the size by reading because
   `hb-stage0`, the Gforth-built engine that runs it first, has no `stat64`. A
-  candidate-backed regression reads a source one byte past `SOURCE-ARENA-CAP`
+  fixture-writer regression reads a source one byte past `SOURCE-ARENA-CAP`
   whole.
 
 `SOURCE-ARENA-CAP` is the shared read capacity. Native layout and Gforth

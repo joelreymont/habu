@@ -42,25 +42,25 @@ private
 4 constant ST-DONE
 
 here CELL 1- and CELL swap - CELL 1- and allot
-1 TYPED-BUFFER F-CTX IR-CTX:ctx
-1 TYPED-BUFFER F-BLD IR-BUILD:builder
-1 TYPED-BUFFER F-TAPE IR-ARENA:arena
-1 TYPED-BUFFER F-SID IR-ID:ir-source-id
-variable F-STATE     ST-IDLE F-STATE !
-TYPED-VARIABLE F-TXT ptr u8            \ the caller's buffer, holding the text the reader scanned
-variable F-CAP                         \ how many bytes that buffer holds
-variable F-LEN                         \ how many it was handed
-variable F-N                           \ rows appended so far
-variable F-VERDICT
-variable F-DOES                        \ byte split after `does> `, or zero
-variable F-BASE                        \ start of the scan now being recorded
+1 CWORK-BUFFER F-CTX IR-CTX:ctx
+1 CWORK-BUFFER F-BLD IR-BUILD:builder
+1 CWORK-BUFFER F-TAPE IR-ARENA:arena
+1 CWORK-BUFFER F-SID IR-ID:ir-source-id
+0 CWORK-VARIABLE F-STATE n
+0 CWORK-VARIABLE F-TXT ptr u8            \ the caller's buffer, holding the text the reader scanned
+0 CWORK-VARIABLE F-CAP n                         \ how many bytes that buffer holds
+0 CWORK-VARIABLE F-LEN n                         \ how many it was handed
+0 CWORK-VARIABLE F-N n                           \ rows appended so far
+0 CWORK-VARIABLE F-VERDICT n
+0 CWORK-VARIABLE F-DOES n                        \ byte split after `does> `, or zero
+0 CWORK-VARIABLE F-BASE n                        \ start of the scan now being recorded
 variable OBSERVER-ID                   \ address identifies this producer instance
-1 TYPED-BUFFER PRODUCED-VIEW IR-ARENA:view
-variable PRODUCED-VALID
-variable PRODUCED-BOUND
-PTR-VARIABLE PRODUCED-OWNER
-variable PRODUCED-WINDOW
-TYPED-VARIABLE PRODUCED-UNJUDGED bool
+1 CWORK-BUFFER PRODUCED-VIEW IR-ARENA:view
+0 CWORK-VARIABLE PRODUCED-VALID n
+0 CWORK-VARIABLE PRODUCED-BOUND n
+0 CWORK-VARIABLE PRODUCED-OWNER ptr u8
+0 CWORK-VARIABLE PRODUCED-WINDOW n
+0 CWORK-VARIABLE PRODUCED-UNJUDGED bool
 
 : TXT@ ( -- ptr u8 )
    F-TXT @ ;
@@ -367,9 +367,7 @@ public
    CLEAR ;
 
 : CAPTURE-PREPARE ( -- )
-   ST-IDLE STATE-CK
-   0 PRODUCED-VALID !  0 PRODUCED-BOUND !
-   CLEAR ;
+   ST-IDLE STATE-CK ;
 
 private
 get-current prot-wid-add

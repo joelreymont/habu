@@ -27,6 +27,7 @@ private
 
 $4000 constant CODE-RESERVE
 TYPED-VARIABLE UNIT-OBSERVER [ NART:emission n n n -- ]
+TYPED-VARIABLE UNIT-PRIOR-OBSERVER [ NART:emission n n n -- ]
 variable UNIT-ARMED
 
 \ Inside NPUB the publication primitives bind this package's private rows
@@ -66,6 +67,12 @@ variable UNIT-ARMED
 
 : IMPORT-UNIT ( ptr u8 n ptr u8 n ptr n n ptr n n -- )
    {: code:ptr codeu:n recs:ptr recn:n calls:ptr callu:n addrs:ptr addru:n :}
+   \ Without code there are no relocation sites. Namespace rows still publish;
+   \ a file with only DATA effects has no dictionary span either.
+   codeu 0= if
+      callu 0<> addru 0<> or if E-NPUB-RELOC throw then
+      recn 0= if exit then
+   then
    cp@ {: base:n :}
    code codeu recs recn PUBLISH-UNIT
    callu 0 ?do calls i cells + @ base + RELOC-EXTERNAL loop
@@ -247,13 +254,18 @@ get-current prot-wid-add
 
 public
 
+: IMPORT-FILE-UNIT ( ptr u8 n ptr u8 n ptr n n ptr n n -- )
+   IMPORT-UNIT ;
+
 : WITH-UNIT ( [ NART:emission n n n -- ] [ -- ] -- )
    {: observer q :}
    UNIT-ARMED @ if E-NPUB-PENDING throw then
+   UNIT-OBSERVER @ UNIT-PRIOR-OBSERVER !
    observer UNIT-OBSERVER !
    1 UNIT-ARMED !
    q catch {: rc:n :}
    0 UNIT-ARMED !
+   UNIT-PRIOR-OBSERVER @ UNIT-OBSERVER !
    rc 0<> if rc throw then ;
 get-current prot-wid-add
 

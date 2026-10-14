@@ -138,14 +138,24 @@ create HASH-CELL 1 cells allot
    id 1+ FILE-N !
    owned ;
 
-: CANON-COLLECT ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
+: CANON-COLLECT ( ptr u8 n -- ptr u8 n bool )
+   {: a:ptr u:n :}
    a u QUERY-FIND {: id:n :}
    id 0 >= if
       id QUERY-ANSWER$ id LAST-CELL QUERY@ 0<> exit
    then
    a u SOURCE-ROOT:CANON-OS {: answer:ptr answeru:n exists:bool :}
+   QUERY-N @ {: added:n :}
    a u answer answeru exists QUERY-ADD
-   QUERY-N @ 1- QUERY-ANSWER$ exists ;
+   \ A canonical answer is its own physical identity. Discovery may reach it
+   \ through an alias while the compiler later asks from a canonical root.
+   \ Retain that answer too, without consulting a changed filesystem at USE.
+   exists if
+      answer answeru QUERY-FIND 0 < if
+         answer answeru answer answeru exists QUERY-ADD
+      then
+   then
+   added QUERY-ANSWER$ exists ;
 
 : CANON-LOOKUP ( ptr u8 n -- ptr u8 n bool )
    QUERY-FIND {: id:n :}
@@ -274,10 +284,18 @@ variable INPUT-CURSOR
    id LOAD-ACTIVE LOAD@ 0= if E-BUILD-SOURCE throw then
    0 id LOAD-ACTIVE LOAD! ;
 
-: LOAD-OWNED ( ptr u8 n ptr u8 n ptr u8 [ -- ] -- )
-   {: path:ptr pathu:n root:ptr rootu:n source:ptr q :}
+TYPED-VARIABLE LOAD-RANGE-Q [ n n -- ]
+variable LOAD-RANGE-U
+: LOAD-WHOLE ( -- ) 0 LOAD-RANGE-U @ LOAD-RANGE-Q @ execute ;
+
+: LOAD-OWNED ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    path pathu root rootu source LOAD-START {: id:n :}
-   q catch {: rc:n :}
+   LOAD-RANGE-Q @ {: prior :}
+   LOAD-RANGE-U @ {: prior-u:n :}
+   q LOAD-RANGE-Q !  sourceu LOAD-RANGE-U !
+   ['] LOAD-WHOLE catch {: rc:n :}
+   prior LOAD-RANGE-Q !  prior-u LOAD-RANGE-U !
    id LOAD-FINISH
    rc 0<> if rc throw then ;
 
@@ -319,7 +337,7 @@ public
 : CALLBACKS ( -- [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] )
    [: CANON-LOOKUP ;] [: READ-LOOKUP ;] ;
 
-: LOAD-CALLBACK ( -- [ ptr u8 n ptr u8 n ptr u8 [ -- ] -- ] )
+: LOAD-CALLBACK ( -- [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] )
    [: LOAD-OWNED ;] ;
 
 : START-LOAD ( ptr u8 n ptr u8 n ptr u8 -- n ) LOAD-START ;

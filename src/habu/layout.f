@@ -148,8 +148,8 @@ $48425350414E5321 constant SNAP-MAGIC
 \ Everything that reads or writes a trailer derives its size and field offsets
 \ from here: the writer (src/habu/snap-lib.f SNAP:WRITE-BYTES), the loader
 \ (src/habu/habu2.f EM-SNAPSHOT-RESTORE), the image dumper (tools/imgdump.f) and
-\ the two fixtures that doctor a real image (test/snapshot-writer.f,
-\ tools/build-fixpoint-snapshot-test.f). They diverged once - the readers kept
+\ the fixture that doctors a real image (test/snapshot-writer.f).
+\ They diverged once - the readers kept
 \ the legacy 40-byte size after the format grew to 48 - and every reader then
 \ addressed the wrong cells while still finding plausible values, so the size
 \ lives in exactly one place now. The cell at offset 8 is the one exception:
@@ -274,8 +274,9 @@ $FFFFFFFE constant MAX
 \ definer's own.
 \
 \ Claimed band: bits 50-51 of the record flags cell [16], below DNAME-MIN-IN
-\ (52-59) and above DNAME-OWNED (49) and the name-length field (bits 0-48);
-\ native length reads clear the DNAME-FLAG-BITS above the length, and the AOT
+\ (52-59) and above DNAME-OWNED (49), DNAME-CELL (48), DNAME-ALLOC (47)
+\ and the name-length field (bits 0-46). Native length reads clear the
+\ DNAME-FLAG-BITS above the length, and the AOT
 \ seed carries the pair as a byte of its compact record
 \ (src/habu/aot-capture.f) so a stamp survives the round trip exactly as the
 \ min-in byte does.
@@ -289,10 +290,17 @@ $0008000000000000 constant ADDR      \ kind 2: the body pushes its DATA address
 VAL ADDR or constant CAST           \ kind 3: a declared identity retype
 VAL ADDR or constant MASK
 ;package
-\ The flag bits above the name length in [16], bits 49-63. Every native length
+\ DNAME-ALLOC names the aligned DATA allocation start of a created word. It
+\ survives does> because the allocation stays even when the word changes its
+\ behavior. A scan excludes only windows that straddle this boundary.
+$0000800000000000 constant DNAME-ALLOC
+\ DNAME-CELL names the exact one-cell DATA extent made by variable. CREATE
+\ leaves it clear: a created body may allot bytewide storage.
+$0001000000000000 constant DNAME-CELL
+\ The flag bits above the name length in [16], bits 47-63. Every native length
 \ read clears them by this count (LSLI then LSRI), so the next flag carved from
 \ the length is one edit here and none at the readers.
-15 constant DNAME-FLAG-BITS
+17 constant DNAME-FLAG-BITS
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
 \ certification time (checker RECMI latch -> publish tails / seal-time
@@ -303,9 +311,9 @@ VAL ADDR or constant MASK
 \ words without signatures: the documented boundary). Compiled calls inside
 \ checked words are checker-proven and carry no guard. Claimed band: bits
 \ 52-59 of the record flags cell [16], below IMM/EXT/WIDE/INT (bits 60-63)
-\ and above the definer-kind pair (bits 50-51), DNAME-OWNED (49) and the
-\ name-length field (bits 0-48); native length reads clear the
-\ DNAME-FLAG-BITS above the length.
+\ and above the definer-kind pair (bits 50-51), DNAME-OWNED (49),
+\ DNAME-CELL (48), DNAME-ALLOC (47) and the name-length field (bits 0-46);
+\ native length reads clear the DNAME-FLAG-BITS above the length.
 $0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
@@ -1038,12 +1046,11 @@ $40C0 constant UNCGH-CELL
 \   CB-OWNER       the thread pointer (TPIDR_EL0 on Linux, TPIDRRO_EL0 on macOS)
 \                  of the one thread allowed on this region; 0 = free.
 \   CB-FRAME       the live marshal frame of the innermost callback.
-\   CB-XTS/ROWS    the two CB-POOL-slot tables, read only in the main region,
-\                  through the absolute address DATA-VA.
-\ A slot row is CB-ROW-BYTES: the region it names (0 unbound) and its owner (0
-\ idle, the thread pointer of the thread inside through this slot, or
-\ CB-ROW-BUSY while a bind, unbind, claim or drop moves it). A call that meets
-\ BUSY waits for the hand-back (habu1.f BCALLBACK-THUNK).
+\   CB-XTS/ROWS    growable descriptor and binding tables, read through the
+\                  main region at absolute address DATA-VA.
+\ A binding row holds region, owner, move count and claim region. The owner is
+\ 0 idle, a thread pointer inside the slot, or CB-ROW-BUSY while a mover holds
+\ it. A call that meets BUSY waits for the hand-back (habu1.f BCALLBACK-THUNK).
 $41C8 constant CB-XDS
 $41D0 constant CB-DBASE
 $41D8 constant CB-NDICT
@@ -1054,8 +1061,8 @@ $41F8 constant CB-XTS
 $4200 constant CB-ROWS
 $4208 constant CB-END
 CB-END CB-XDS - constant CB-BAND-BYTES
-16 constant CB-POOL
-16 constant CB-ROW-BYTES
+16 constant CB-POOL                \ boot stubs retained for seed compatibility
+32 constant CB-ROW-BYTES
 0 constant CB-ROW-REGION
 8 constant CB-ROW-OWNER
 1 constant CB-ROW-BUSY
@@ -1162,6 +1169,13 @@ $250 constant VVAL-OFF
 package NCOMP-DISPATCH
 public
 $358 constant XT-CELL
+
+\ The callback operations belong to the compiler selected by XT-CELL. A fresh
+\ source compiler may coexist with a retained active compiler in a build window;
+\ both operations must follow the active compiler rather than dictionary names.
+\ These two free header cells sit after ENGINE-MAIN:XT-CELL and before FFI.
+$3810 constant CALLBACK-STUB-CELL
+$3818 constant CALLBACK-ENTRY-CELL
 
 \ TIER-CELL ( 0 | 1 ) -- which compiler the `:` handlers dispatch to.
 \
@@ -2210,6 +2224,34 @@ TABLE-OFF SPANS SPAN-BYTES * + constant END
 \ disarms it on return or throw; snapshots are taken only with no unit active.
 TIER-PROV:END constant UNIT-COMPILE-CELL
 
+\ The active source observer is one native stack frame per owned file.
+$2CA8 constant SOURCE-EXEC-CTX-CELL
+208 constant SOURCE-EXEC-FRAME-BYTES
+0 constant SX-LR
+8 constant SX-PREV
+16 constant SX-UNIT
+24 constant SX-SRC
+32 constant SX-LEN
+40 constant SX-BEFORE
+48 constant SX-AFTER
+56 constant SX-CONT
+72 constant SX-ARMED
+80 constant SX-EVAL
+88 constant SX-FLOOR
+96 constant SX-RFLOOR
+104 constant SX-PENDING
+112 constant SX-TICKET
+120 constant SX-DEPTH
+128 constant SX-RDEPTH
+136 constant SX-OP
+144 constant SX-REC
+152 constant SX-ENTRY
+160 constant SX-SUSPEND
+168 constant SX-WRITES
+176 constant SX-CONSTRUCTION
+184 constant SX-HANDLER
+192 constant SX-POS
+
 \ The checker overlay's replay scope (habu2.f DEFWRITE:REPLAY-OPEN /
 \ REPLAY-CLOSE). replay-open saves the dictionary and scope cells here and sets
 \ LATCH; replay-record raises HW, the highest NDICT a replay record reached;
@@ -2264,6 +2306,7 @@ create TAB
    NCOMP-DISPATCH:DEF-TIER-CELL , 3 cells ,
    TIER-PROV:OPEN-CELL ,          TIER-PROV:END TIER-PROV:OPEN-CELL - ,
    UNIT-COMPILE-CELL ,            1 cells ,
+   SOURCE-EXEC-CTX-CELL ,         1 cells ,
    REPLAY-SCOPE:LATCH ,           REPLAY-SCOPE:END REPLAY-SCOPE:LATCH - ,
    BODYBUF-OFF ,                  BODYBUF-CAP 2 + ,
    TXN-STATE-OFF ,                TXN-STATE-LEN ,

@@ -116,6 +116,20 @@ public
 : NEW-MODULE ( -- IR-ID:ir-module-key IR-ID:ir-module-id )
    TAKE-SERIAL dup MINT-KEY swap MINT-MODULE ;
 
+\ FILE ranges can carry module identities in DATA. Replay the cold high-water
+\ before importing one so a later mint cannot reuse a retired identity. Work
+\ outside the range may already have advanced this counter further.
+: SERIAL-HISTORY ( -- n ) NEXT-SERIAL atomic@ ;
+: SERIAL-CHECK ( n -- n )
+   dup 0 < over MODULE-MAX > or if E-IR-MODULE-EXHAUSTED throw then ;
+: REPLAY-SERIAL ( n -- ) {: want:n :}
+   want SERIAL-CHECK drop
+   begin
+      NEXT-SERIAL atomic@ {: old:n :}
+      old want >= if exit then
+      old want NEXT-SERIAL atomic-cas old =
+   until ;
+
 : MODULE-SAME? ( IR-ID:ir-module-id IR-ID:ir-module-id -- bool )
    MODULE>N swap MODULE>N = ;
 

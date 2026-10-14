@@ -73,7 +73,7 @@ variable SFT-EDGE-U
 
 : SFT-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-sha256-file-test" HB-TMP-MKDIR SFT-ROOT SFT-ROOT-U SFT-COPY!
+   s" habu-sha256-file-test" HB-TMP-MKDIR SOURCE-ROOT:CANONICAL drop SFT-ROOT SFT-ROOT-U SFT-COPY!
    SFT-ROOT$ CLEANUP-TREE+
    SFT-ROOT$ s" big.bin" SFT-FILE JOIN-PATH SFT-FILE-U !
    SFT-ROOT$ s" big1.bin" SFT-FILE1 JOIN-PATH SFT-FILE1-U !
@@ -353,7 +353,8 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
 
 \ The top of the host's range (Darwin PATH_MAX includes its NUL), built from
-\ 100-byte directory components and a final name that lands on the cap. fs.f
+\ the physical root: a longer symlink target also consumes the kernel limit.
+\ Use 100-byte directory components and a final name that lands on the cap. fs.f
 \ creates and writes it, and the digest words take it too; one byte more is
 \ refused by both layers alike.
 : SFT-HOST-PATH-CAP ( -- n )

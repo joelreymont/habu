@@ -3,7 +3,7 @@
 \ pool is. The retained-literal image is tested by test/stripped-image.f;
 \ mutable pre-window DATA is tested by test/compiler/aot-data-cell-refusals.f.
 require test/gate-common.f
-require src/lib/engine-candidate.f
+require test/aot-maker-engine.f
 
 package STRIPPED-LITERAL-TEST
 
@@ -25,12 +25,13 @@ variable IMAGE-U
    SUBJECT$ a u WRITE-ALL ;
 
 : LINK-SUBJECT ( -- )
+   AOT-MAKER-ENGINE:PATH$ {: maker:ptr makeru:n :}
    GE-HB-RESET
-   ENGINE-CANDIDATE:PATH$ GE-ARGV+
+   maker makeru GE-ARGV+
    s" --" GE-ARG+ SUBJECT$ GE-ARG+ s" 0" GE-ARG+
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
-   ENGINE-CANDIDATE:PATH$
-   S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
+   maker makeru
+   AOT-MAKER-ENGINE:STDIN$
    TIMEOUT-MS GE-RUN-STDIN ;
 
 : REFUSE-COMPILER-ROWS ( -- )

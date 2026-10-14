@@ -2202,7 +2202,7 @@ variable GE-KIND-N
    {: chk:bool :}
    SB-RESET
    s" hb: ; with a control structure open: GEKT at " SB-APPEND
-   GE-END-PATH GE-END-U @ SB-APPEND
+   GE-END-PATH GE-END-U @ SOURCE-ROOT:CANONICAL drop SB-APPEND
    s" :" SB-APPEND
    chk if 1 else 2 then FMT:SB-U
    GE-SB-LF

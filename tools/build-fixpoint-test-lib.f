@@ -1,6 +1,6 @@
 \ build-fixpoint-test-lib.f - the fixture the build-fixpoint gate rows share.
-\ Loaded by tools/build-fixpoint-test.f, tools/build-fixpoint-sandbox-test.f,
-\ tools/build-fixpoint-source-test.f and tools/build-fixpoint-snapshot-test.f:
+\ Loaded by tools/build-fixpoint-test.f, tools/build-fixpoint-sandbox-test.f
+\ and tools/build-fixpoint-source-test.f:
 \ the scratch tree, BFT-PREPARE, the capture buffers, the stale-seed sandbox and
 \ the step and finish words every driver runs. It defines no MAIN; each row file
 \ runs the cases it owns.
@@ -36,7 +36,6 @@ $40000 constant BFT-BIG-CAP
 SUITE-BUDGET:CHILD-MS constant BFT-TIMEOUT-MS
 
 variable BFT-ROOT-U
-variable BFT-HB-NEW-U
 variable BFT-HB-U
 variable BFT-PREFIX-U
 variable BFT-STAGE2-U
@@ -60,7 +59,6 @@ TYPED-VARIABLE BFT-READ-A ptr u8
 variable BFT-READ-CAP
 
 create BFT-ROOT-BUF FS-PATH-CAP allot
-create BFT-HB-NEW-BUF FS-PATH-CAP allot
 create BFT-HB-BUF FS-PATH-CAP allot
 create BFT-PREFIX-BUF FS-PATH-CAP allot
 create BFT-STAGE2-BUF FS-PATH-CAP allot
@@ -103,9 +101,6 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 
 : BFT-ROOT ( -- ptr u8 n )
    BFT-ROOT-BUF BFT-ROOT-U @ ;
-
-: BFT-HB-NEW ( -- ptr u8 n )
-   BFT-HB-NEW-BUF BFT-HB-NEW-U @ ;
 
 : BFT-HB ( -- ptr u8 n )
    BFT-HB-BUF BFT-HB-U @ ;
@@ -177,7 +172,6 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    s" habu-build-fixpoint" HB-TMP-MKDIR {: a:ptr u :}
    a u BFT-ROOT-BUF BFT-ROOT-U BFT-COPY!
    BFT-ROOT CLEANUP-TREE+
-   BFT-ROOT s" hb-new" BFT-HB-NEW-BUF BFT-HB-NEW-U BFT-PATH!
    BFT-ROOT s" hb-stdin" BFT-HB-BUF BFT-HB-U BFT-PATH!
    s" bin/hb" BFT-HB COPY-FILE-STREAM
    BFT-HB CHMOD-X

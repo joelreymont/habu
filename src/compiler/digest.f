@@ -34,6 +34,7 @@
 \ multi-threaded compiler needs a reentrant hash context first.
 
 require src/lib/errors.f
+require src/compiler/workspace.f
 
 package CDIGEST
 public
@@ -69,8 +70,8 @@ private
 
 32 constant OUT-BYTES
 
-create DG OUT-BYTES allot
-create SHA-CTX SHA256-CTX-BYTES allot   \ this package's digest context
+OUT-BYTES CWORK-SPAN DG u8
+SHA256-CTX-BYTES CWORK-SPAN SHA-CTX u8   \ this package's digest context
 
 \ The host memory order is independent of the compilation target. An aligned
 \ native cell is a canonical slot only on an eight-byte little-endian host.

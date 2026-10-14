@@ -118,8 +118,8 @@ using NFROZEN
 private
 
 \ ---- the scratch this pass retains -------------------------------------------
-variable SCRATCH-VALUES
-variable SCRATCH-BLOCKS
+0 CWORK-VARIABLE SCRATCH-VALUES n
+0 CWORK-VARIABLE SCRATCH-BLOCKS n
 : VMAX ( -- n ) SCRATCH-VALUES @ ;
 : BMAX ( -- n ) SCRATCH-BLOCKS @ ;
 
@@ -2394,9 +2394,6 @@ public
    CALLED-CK
    TAILED-CK
    c b IR-BUILD:FREEZE ;
-
-: RESET-SCRATCH ( -- )
-   0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! ;
 
 private
 get-current prot-wid-add

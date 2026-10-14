@@ -2,10 +2,7 @@
 
 require src/lib/fs.f
 require tools/hb-build-lib.f
-\ tools/build-fixpoint.f requires none of its lib preamble by design - its
-\ --load list is caller-composed - and hb-build-lib.f above composes it, so
-\ this require of the BF-TMP surface must stay below that line.
-require tools/build-fixpoint.f
+require tools/build-support.f             \ the shared BF-TMP surface
 require test/gate-build-common.f
 
 using BUILD-FIXPOINT                     \ the build tmp root

@@ -256,6 +256,11 @@ $3D8 constant VERIFY-SYM-SOURCE-OFF
 \ the local of bind sequence n holds once its body is checked. The tape's
 \ K-LOCAL-DECL and K-LOCAL-REF events carry that sequence.
 $3E0 constant LOCAL-WIDTH-OFF
+\ Prepared checker sections are selected before any FILE range publishes.
+$3E8 constant UNIT-PREPARE-BEGIN-OFF  \ ( -- )
+$3F0 constant UNIT-PREPARE-OFF        \ ( section size data-floor data-end -- row )
+$3F8 constant UNIT-INSTALL-OFF        \ ( row -- )
+$400 constant UNIT-PREPARE-END-OFF    \ ( -- )
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

@@ -4,8 +4,8 @@
 \ the class the build is being asked for is settled before the target load, so
 \ a typo cannot quietly produce a product. So are a `--target` naming no target
 \ and one whose machine this engine has no backend for. With that backend
-\ loaded, the window for the other machine loads and is captured, and the build
-\ stops before it loads a writer. The entry's accepted path, the closure
+\ loaded, the selected action refuses an unavailable writer before the full
+\ compiler window loads. The entry's accepted path, the closure
 \ compiling under the native build guard, is every gate's whitebox engine build
 \ (test/whitebox-engine.f runs this entry with `whitebox`).
 require src/lib/test.f
@@ -138,13 +138,12 @@ create CONTENT 64 allot
    HB-TARGET-LINUX-X86-64? if s" src/arch/arm64/passes.f" exit then
    s" src/arch/x86-64/passes.f" ;
 
-\ The whole window loads and is captured for the other machine; then the
-\ window's own compiler is the one a source-loaded writer would get
-\ (tools/native-build-core.f WRITER-MACHINE-CK), so the build stops there.
+\ The selected action refuses a foreign-machine writer before opening the
+\ compiler window; a writer loaded after that window would target its machine.
 \ The output path is writable, so an earlier filesystem refusal cannot satisfy
 \ the assertion and the other-machine build must leave it absent.
 : FOREIGN-WINDOW-CASE ( -- )
-   s" a host with the retired observer reaches capture before foreign writer refusal" T-LABEL
+   s" a host with the retired observer reaches foreign writer refusal" T-LABEL
    s" other-machine-hb" FOREIGN-OUT!
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
@@ -184,10 +183,6 @@ create CONTENT 64 allot
    PROC-ENV-INHERIT-MISSING
    s" --load" ARG
    s" test/native-build-action-child.f" ARG
-   s" --" ARG
-   s" --import-unit" ARG
-   s" /tmp/habu-unused-unit" ARG
-   s" /tmp/habu-unused-output" ARG
    DRIVE
    RC @ 0<> if OUT OUT-U @ type ERR$ type then
    RC @ 0 T=

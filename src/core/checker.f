@@ -134,6 +134,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 ,
+   0 , 0 , 0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -151,7 +152,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:LOCAL-WIDTH-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:UNIT-PREPARE-END-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -904,6 +905,7 @@ defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared 
 defer TFAM-LAYOUT?-XT ( n -- bool )                     \ family id occupies an ADT layout
 defer TFAM-CELL?-XT ( n -- bool )                       \ family id is a scalar cell kind (TK-CELL)
 defer TFAM-PKG-XT ( n -- ptr u8 n )                     \ family id -> declaring package
+defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )      \ canonical persisted family spelling
 defer PKG-LIVE-XT ( -- ptr u8 n n bool )                \ authenticated engine package name + mode
 defer TFAM-WIDTH-XT ( n -- n )                           \ declared logical width in stack cells, params-as-cells (docs §18)
 defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical width of a resolved layout term, arg-aware (docs §18)
@@ -1510,6 +1512,7 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    [: drop RES-FALSE ;] is TFAM-LAYOUT?-XT
    [: drop RES-FALSE ;] is TFAM-CELL?-XT
    [: drop s" " ;] is TFAM-PKG-XT
+   [: drop s" " ;] is REG-EXT-AOT-FAMILY-NAME-XT
    [: drop 1 ;] is TFAM-WIDTH-XT
    [: PARAM>FAM TFAM-WIDTH@* ;] is TFAM-INST-WIDTH-XT
    [: 2drop RES-TRUE ;] is TFAM-WIDTH-SLOT-XT
@@ -1738,6 +1741,18 @@ CWIN-BOOT-DEFAULT
    USP @ cells UWL-CALL + @ CUR-CALL !
    USP @ cells UWL-QUOT + @ CUR-QUOT !
    USP @ cells UWL-ARG + @ CUR-ARG ! ;
+
+\ A refused unification can stop with pairs still queued. A source load has
+\ finished before capture, so the queue and its last path belong to that old
+\ check, which a cached FILE replay does not repeat.
+: UWL-SNAP-RESET ( -- )
+   0 USP !
+   UWL 0 MAXUWL ARENA-CELLS-ZERO
+   UWL-STR 0 MAXUWL ARENA-CELLS-ZERO
+   UWL-POS 0 MAXUWL ARENA-CELLS-ZERO
+   UWL-CALL 0 MAXUWL ARENA-CELLS-ZERO
+   UWL-QUOT 0 MAXUWL ARENA-CELLS-ZERO
+   UWL-ARG 0 MAXUWL ARENA-CELLS-ZERO ;
 
 : U-FAIL ( n n -- ) {: act:n exp:n :}
    UF-SET @ 0= IF
@@ -3357,6 +3372,14 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
    SDEC-BOOT SDEC!
    TOKBUF-INIT-CAP TOKBUF-CAP-U !
    0 FAILTU ! ;
+
+\ RESET retires the decoded/diagnostic token spans but leaves their old boot
+\ bytes. At capture no span is live, so retire the four owned boot buffers too.
+: TOKBUF-SNAP-ZERO ( -- )
+   FAILTK-BOOT 0 TOKBUF-INIT-CAP CELL / ARENA-CELLS-ZERO
+   TKF-BOOT 0 TOKBUF-INIT-CAP CELL / ARENA-CELLS-ZERO
+   NMB-BOOT 0 TOKBUF-INIT-CAP CELL / ARENA-CELLS-ZERO
+   SDEC-BOOT 0 TOKBUF-INIT-CAP CELL / ARENA-CELLS-ZERO ;
 variable TOKIX  variable FAILIX  variable DVERD
 variable FAILB  variable FAILE
 PTR-VARIABLE TBASE  variable TBLEN  variable TI  variable TSTART
@@ -6800,6 +6823,10 @@ USIGS-RUNTIME-INIT
       dst USIGS-P !
       cap USIGS-CAP-U !
    THEN
+   \ Interning and rejected definitions rewind UEND without clearing bytes.
+   \ An existing DATA allocation is reused above; its unused tail is not part
+   \ of the effect graph and must not preserve the last compile's scratch.
+   USIGS CELL-VIEW USIGS-SNAPSHOT-SIZE CELL / USIGS-CAP-U @ CELL / ARENA-CELLS-ZERO
    0 USIGS-GROW-CAP !
    NULL-PTR USIGS-GROW-NEXT ! ;
 
@@ -8277,7 +8304,10 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
       endof
       T-PARAM of
          EN-PARAM E-NODE-NEW E-OFF {: noff:n :}      \ node offset (stable across USIGS grow)
-         x E-RES PARAM>NAME-A x E-RES PARAM>NAME-U noff E-PTR E-COPY-STR
+         \ The resolved family owns the stored spelling. Source qualifications
+         \ are aliases of that identity: retaining CBIND:binding here while
+         \ unit export writes binding makes warm replay append duplicate nodes.
+         x E-RES PARAM>FAM REG-EXT-AOT-FAMILY-NAME-XT noff E-PTR E-COPY-STR
          x E-RES PARAM>ARGC {: argc:n :}
          argc noff E-PTR EN.C !
          x E-RES PARAM>FAM noff E-PTR EN.H !         \ resolved family-id (identity)
@@ -9788,10 +9818,10 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
       endof
       EN-BVAR of r@ EN.A @ MK-BVAR r> drop endof
       EN-ATOM of
-         pool USIGS <> if s" checker: unsupported transferred atom" 76 die then
+         pool USIGS <> UNIT-INST-ON @ 0= and if s" checker: unsupported transferred atom" 76 die then
          r@ pool E-I-STR r@ EN.C @ E-I-AK MK-ATOM-K r> drop endof
       EN-PARAM of
-         pool USIGS <> if s" checker: unsupported transferred family" 76 die then
+         pool USIGS <> UNIT-INST-ON @ 0= and if s" checker: unsupported transferred family" 76 die then
          r@ {: np:ptr :}                           \ node ptr (parked value)
          np EN.C @ {: argc:n :}
          np EN.D @ {: run:n :}                      \ arg-run offset in USIGS
@@ -9830,6 +9860,7 @@ CHECKER-STORAGE-WALK-INSTALL
 
 variable CHECKER-STORAGE-CUR
 -1 constant STORAGE-DEFERRED
+3 constant LDEFER-CTRL-CELLS
 : CHECKER-STORAGE-PREPARE ( -- )
    0 CHECKER-STORAGE-CUR !
    begin CHECKER-STORAGE-CUR @ EFF-REC + UEND @ <= while
@@ -9845,6 +9876,29 @@ variable CHECKER-STORAGE-CUR
             rec CHECKER-STORAGE-POINTEE {: term:n :}
             cb cb @ + BYTE-VIEW data-base BYTE-VIEW -
             cap term CHECKER-STORAGE-WALK-XT
+         THEN
+      THEN THEN
+      rec USIG-NEXT E-OFF CHECKER-STORAGE-CUR !
+   repeat ;
+
+\ Each owned fixed accessor names its exact DATA cell extent, including types
+\ with no quotation fields. Deferred accessors also own their control cells.
+: CHECKER-STORAGE-CELLS ( [ ptr u8 n -- ] -- ) {: cells :}
+   0 CHECKER-STORAGE-CUR !
+   begin CHECKER-STORAGE-CUR @ EFF-REC + UEND @ <= while
+      CHECKER-STORAGE-CUR @ E-PTR {: rec:ptr :}
+      rec ER.STORAGE-N @ {: count:n :}
+      count 0 > IF
+         rec CHECKER-STORAGE-POINTEE T-WIDTH {: width:n :}
+         data-base rec ER.STORAGE-OFF @ + BYTE-VIEW
+            count width * CELL * cells execute
+      ELSE count STORAGE-DEFERRED = IF
+         data-base rec ER.STORAGE-OFF @ + CELL-VIEW {: cb:ptr :}
+         cb BYTE-VIEW LDEFER-CTRL-CELLS CELL * cells execute
+         cb CELL + @ {: cap:n :}
+         cap 0 > IF
+            rec CHECKER-STORAGE-POINTEE T-WIDTH {: width:n :}
+            cb cb @ + BYTE-VIEW cap width * CELL * cells execute
          THEN
       THEN THEN
       rec USIG-NEXT E-OFF CHECKER-STORAGE-CUR !
@@ -10540,6 +10594,19 @@ PRIM: CHECKER-DEFTYPED-BUFFER
    PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFTYPED-VARIABLE
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFCWORK-BUFFER
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN
+   PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFCWORK-SPAN
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN
+   PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFCWORK-VARIABLE
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+\ Compiler storage forms load after the source-authority seal. Intern their
+\ syntax identities here so the early unsafe set can also reject aliases.
+PRIM: CWORK-BUFFER PE-N PE-IN PRIM;
+PRIM: CWORK-SPAN PE-N PE-IN PRIM;
+PRIM: CWORK-VARIABLE PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFDYNAMIC-BUFFER
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFDEFER-LAYOUT-BUFFER
@@ -12551,7 +12618,7 @@ variable CK-PEND-IX      0 CK-PEND-IX !
 \ door, so no cast mints it.
 2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
 3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
-$0001FFFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
+$00007FFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
 $2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
 : CK-REC-NAME$ ( ptr n -- ptr u8 n )
    {: rec:ptr :}
@@ -14522,6 +14589,34 @@ public
    drop                                    \ single cell: extent is one slot, width unused here
    type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
+\ Compiler workspace arrays are byte-strided to admit u8 as well as stored
+\ cell types; their generated accessor retains the ordinary typed signature.
+: CHECKER-DEFCWORK-BUFFER
+   ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
+   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   type typeu CHECKER-DYNAMIC-INFO 0= IF
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+   THEN
+   LBUF-INFO-W !
+   name nameu count countu LBUF-INFO-W @ CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
+   type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
+
+
+: CHECKER-DEFCWORK-SPAN
+   ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
+   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   type typeu CHECKER-DYNAMIC-INFO 0= IF
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+   THEN
+   LBUF-INFO-W !
+   name nameu count countu LBUF-INFO-W @ CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
+   type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
+
+: CHECKER-DEFCWORK-VARIABLE ( ptr u8 n ptr u8 n -- )
+   CHECKER-DEFTYPED-VARIABLE ;
+
 \ The allocator binds the actual generated accessor only after its DATA cells
 \ exist. A verifier's projected signature, an alias, or an imported effect has
 \ no allocation to own and keeps the zero count E-REC-INIT gave it.
@@ -15141,7 +15236,6 @@ defer REG-EXT-AOT-REGION-XT ( ptr u8 ptr u8 n n -- bool )
 \ Read a graph family's logical width from already validated argument widths
 \ and the same future registry view. Hidden row fields are charged separately.
 defer REG-EXT-AOT-WIDTH-XT ( ptr u8 ptr u8 ptr u8 ptr u8 n -- n )
-defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )
 
 \ A build with no type registry loaded has no delta to write. Reading one is a
 \ different matter: bytes that no store can take are a seeded engine whose
@@ -15174,8 +15268,7 @@ defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )
    [: REG-EXT-AOT-NO-PARAM ;] is REG-EXT-AOT-PARAM-XT
    [: REG-EXT-AOT-NO-SCOPE ;] is REG-EXT-AOT-SCOPE-XT
    [: REG-EXT-AOT-NO-SCOPE ;] is REG-EXT-AOT-REGION-XT
-   [: REG-EXT-AOT-NO-WIDTH ;] is REG-EXT-AOT-WIDTH-XT
-   [: drop s" " ;] is REG-EXT-AOT-FAMILY-NAME-XT ;
+   [: REG-EXT-AOT-NO-WIDTH ;] is REG-EXT-AOT-WIDTH-XT ;
 REG-EXT-AOT-DEFAULTS
 
 \ What src/habu/aot-arm.f and src/habu/aot-capture.f call. They are checked code
@@ -15188,6 +15281,8 @@ REG-EXT-AOT-DEFAULTS
 : CHECKER-CAPTURE-SCRATCH-PREPARE ( -- )
    SG-ROWS-RESET
    REC-RELEASE
+   UWL-SNAP-RESET
+   TOKBUF-SNAP-ZERO
    NULL-PTR TOK-EFF !  NULL-PTR TOK-REC !  NULL-PTR BIND-REC !
    NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
    CHECKER-ASIG-DISARM
@@ -15312,7 +15407,7 @@ REG-EXT-AOT-DEFAULTS
 \ NORET-ADD-SYM below. None of them says which word the symbol exports, so that
 \ fact is carried forward from its newest entry: only an export, an `undefine`
 \ and a unit's import name one, through NORET-APPEND (EXPORT-META-COPY,
-\ CHECKER-UNDEFINE, UNIT-IMPORT-CONTROLS).
+\ CHECKER-UNDEFINE, UP-INSTALL-CONTROLS).
 : NORET-ADD-CREATES ( n n n n n -- )
    {: sym:n flag:n dmask:n rmask:n creates:n :}
    sym flag dmask rmask creates sym NORET-SOURCE@ NORET-APPEND ;
@@ -15349,10 +15444,11 @@ REG-EXT-AOT-DEFAULTS
 \ word underflowed. One authority for "does this call end the path", and it is
 \ the record of the word the token really names.
 \
-\ The loader's one evaluate boundary is recorded the same way, so the engine
-\ names its own boundary and no library definer: src/core/include.f
-\ INCLUDE-EVALUATE is the word that turns rendered text into definitions, and
-\ `evaluate` and `evaluate-closed` do so for a top-level statement. The words
+\ The loader's evaluate boundary and its public file-loading words are
+\ recorded the same way: src/core/include.f INCLUDE-EVALUATE and
+\ INCLUDE-EVALUATE-RANGE turn source into definitions, as do included,
+\ required and script-required when they read a file; `evaluate`,
+\ `evaluate-closed` and `evaluate-range` do so for a top-level statement. The words
 \ that read the source after a call are recorded alike: parse-name, and
 \ `create`, which also defines the name it reads (CTL-CREATES). A body takes
 \ `create` by its identity (DEFINER-TOK) and inherits its facts all the same
@@ -15368,8 +15464,13 @@ REG-EXT-AOT-DEFAULTS
    s" throw" CTL-DEAD CTL-THROW or NORET-AXIOM
    s" die" CTL-DEAD NORET-AXIOM
    s" INCLUDE-EVALUATE" CTL-RENDERS NORET-AXIOM
+   s" INCLUDE-EVALUATE-RANGE" CTL-RENDERS NORET-AXIOM
+   s" included" CTL-RENDERS NORET-AXIOM
+   s" required" CTL-RENDERS NORET-AXIOM
+   s" script-required" CTL-RENDERS NORET-AXIOM
    s" evaluate" CTL-RENDERS NORET-AXIOM
    s" evaluate-closed" CTL-RENDERS NORET-AXIOM
+   s" evaluate-range" CTL-RENDERS NORET-AXIOM
    s" parse-name" CTL-PARSES NORET-AXIOM
    s" create" CTL-PARSES CTL-CREATES or INTRINSIC-CREATE INTRINSIC>CTL or NORET-AXIOM
    s" 0=" CTL-CORE-OP CTL-ZERO-TRUE or NORET-AXIOM
@@ -15927,6 +16028,9 @@ variable CURSYM
    a u s" typed-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" dynamic-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typed-variable" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" cwork-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" cwork-span" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" cwork-variable" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" newtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -16044,7 +16148,10 @@ variable UNSAFE-SYM-N
    s" defer-layout-buffer" UNSAFE-NAME-ADD
    s" typed-buffer"  UNSAFE-NAME-ADD
    s" dynamic-buffer" UNSAFE-NAME-ADD
-   s" typed-variable" UNSAFE-NAME-ADD ;
+   s" typed-variable" UNSAFE-NAME-ADD
+   s" cwork-buffer"  UNSAFE-NAME-ADD
+   s" cwork-span"    UNSAFE-NAME-ADD
+   s" cwork-variable" UNSAFE-NAME-ADD ;
 
 : CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
    0 BEGIN dup u < WHILE
@@ -16263,6 +16370,12 @@ variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
 variable SV-SGRIN   variable SV-SGROUT
 variable SV-THDMASK  variable SV-THRMASK  variable SV-THSET
 variable SV-TRAIL
+
+\ These adjacent cells are one TRY-EFF save frame. A trial restores or commits
+\ synchronously; its prior frame has no reader once TRIAL-DEPTH returns to 0.
+: TRIAL-SNAP-ZERO ( -- )
+   TRIAL-DEPTH @ 0 <> IF s" checker: active trial at capture" 76 die THEN
+   SV-FV 0 SV-TRAIL SV-FV - CELL / 1+ ARENA-CELLS-ZERO ;
 
 : TRIAL-SAVE
    FV @ SV-FV !  TRAIL-N @ SV-TRAIL !     \ trail height is the per-TRY-EFF mark
@@ -22095,7 +22208,14 @@ variable ASIG-GRAPH-MAP-CAP
    ASIG-GRAPH-BASE @ + ASIG-STR-P @ + ;
 
 : ASIG-GRAPH-ZERO ( ptr u8 n -- ) {: dst:ptr u:n :}
-   u 0 ?do 0 dst i + c! loop ;
+   u CELL / CELL * {: bulk:n :}
+   0
+   begin dup bulk < while
+      0 over dst + CELL-VIEW ! CELL +
+   repeat
+   begin dup u < while
+      0 over dst + c! 1+
+   repeat drop ;
 
 : ASIG-GRAPH-ALIGN ( -- )
    ASIG-STR-U @ 7 + -8 and ASIG-STR-U @ - {: pad:n :}
@@ -22444,6 +22564,13 @@ CK-GRAPH-META-SPANS CK-LEX-MASK 1+ + constant CK-GRAPH-SPANS
    slot @ 0 <> slot @ meta <> and IF ASIG-GRAPH-DIE THEN
    meta slot ! ;
 
+defer CK-UNIT-FAMILY? ( ptr u8 n ptr u8 n -- bool )
+: CK-UNIT-FAMILY-DEFAULT ( ptr u8 n ptr u8 n -- bool )
+   2drop 2drop RES-FALSE ;
+: CK-UNIT-FAMILY-INSTALL ( -- )
+   [: CK-UNIT-FAMILY-DEFAULT ;] is CK-UNIT-FAMILY? ;
+CK-UNIT-FAMILY-INSTALL
+
 : CK-GRAPH-CON? ( ptr u8 -- ) {: node:ptr :}
    node CK-GRAPH-NAME?
    node EN.A @ CK-GRAPH-PTR node EN.B @ CT-FIND {: con:n :}
@@ -22453,6 +22580,8 @@ CK-GRAPH-META-SPANS CK-LEX-MASK 1+ + constant CK-GRAPH-SPANS
       node EN.C @ CT-LINEAR <> node EN.D @ 64 <> or
       node EN.E @ CS-NONE <> or IF ASIG-GRAPH-DIE THEN
       node EN.A @ CK-GRAPH-PTR node EN.B @ TYPE-RESERVED? IF ASIG-GRAPH-DIE THEN
+      node EN.A @ CK-GRAPH-PTR node EN.B @ CK-GRAPH-REG$
+         CK-UNIT-FAMILY? IF ASIG-GRAPH-DIE THEN
    ELSE
       con CT-CLASS@ node EN.C @ <> con CT-WIDTH@ node EN.D @ <> or
       con CT-SIGN@ node EN.E @ <> or IF ASIG-GRAPH-DIE THEN
@@ -22730,6 +22859,8 @@ create CK-LEX-DOMAINS 64 cells allot
       width + swap CK-GRAPH-PTR EN.B @
    REPEAT drop ;
 
+variable CK-GRAPH-EXTRA-FLAGS
+
 : CK-GRAPH-CHECK ( ptr u8 n ptr u8 n -- ) {: graph:ptr bytes:n reg:ptr regu:n :}
    0 CK-GRAPH-WIDTH-BAD !
    bytes EFF-WIRE < IF ASIG-GRAPH-DIE THEN
@@ -22738,7 +22869,9 @@ create CK-LEX-DOMAINS 64 cells allot
    0 CK-GRAPH-PTR {: rec:ptr :}
    rec EW.ACTIVE @ ASIG-GRAPH-MAGIC <> IF ASIG-GRAPH-DIE THEN
    rec EW.NEXT @ bytes <> IF ASIG-GRAPH-DIE THEN
-   rec EW.SYMPREV @ 0 <> rec EW.SYM @ CTL-GRAPH-FLAGS invert and 0 <> or IF ASIG-GRAPH-DIE THEN
+   rec EW.SYMPREV @ 0 <>
+   rec EW.SYM @ CTL-GRAPH-FLAGS CK-GRAPH-EXTRA-FLAGS @ or invert and 0 <> or
+   IF ASIG-GRAPH-DIE THEN
    rec EW.HASR @ CK-GRAPH-BOOL?
    rec EW.HASR @ 0= IF rec EW.RIN @ rec EW.ROUT @ or 0 <> IF ASIG-GRAPH-DIE THEN THEN
    rec EW.TVN @ {: tvn:n :} rec EW.RVN @ {: rvn:n :}
@@ -25756,18 +25889,26 @@ public
 package CHECKER-REG
 
 $4842554E49543031 constant UNIT-MAGIC
-2 constant UNIT-VERSION
-7 cells constant UNIT-HEADER
+8 constant UNIT-VERSION
+10 cells constant UNIT-HEADER
 7159 constant E-UNIT-FORMAT   \ 7161-7164 are decl-event.f's E-DEV block
 7160 constant E-UNIT-STATE
 
 variable UNIT-MARKED
 variable UNIT-MARK-SERIAL
+variable UNIT-DATA-FLOOR
 variable UNIT-SYMN   variable UNIT-UEND   variable UNIT-NEND
 variable UNIT-DFER   variable UNIT-CTN    variable UNIT-TFAM
-variable UNIT-LIN    variable UNIT-VREC
+variable UNIT-LIN    variable UNIT-VREC  variable UNIT-PIMM
 variable UNIT-NSYM   variable UNIT-NEFF   variable UNIT-NCTL
+variable UNIT-NDFER variable UNIT-NCONS variable UNIT-NPIMM variable UNIT-TFAM-U
 variable UNIT-CUR
+variable UNIT-CREATED-CUR
+variable UNIT-CREATED-ORD
+PERSISTED-PTR-VARIABLE UNIT-PREFIX-SYMS
+NULL-PTR UNIT-PREFIX-SYMS !
+variable UNIT-PREFIX-N   variable UNIT-PREFIX-CAP
+variable UNIT-SYMS-FROZEN
 
 PERSISTED-PTR-VARIABLE UNIT-BUF-P   NULL-PTR UNIT-BUF-P !
 variable UNIT-BUF-CAP   0 UNIT-BUF-CAP !
@@ -25778,6 +25919,12 @@ $10000 constant UNIT-BUF-INIT
 : UNIT-FORMAT-BAD ( -- ) E-UNIT-FORMAT throw ;
 public
 defer UNIT-TFAM-N@ ( -- n )
+defer UNIT-TFAM-MARK ( -- )
+defer UNIT-TFAM-SIZE ( -- n )
+defer UNIT-TFAM-SAVE ( ptr u8 n -- n )
+defer UNIT-TFAM-INSTALL ( ptr u8 n -- )
+defer UNIT-TFAM-PREPARE ( ptr u8 n ptr u8 n -- n )
+defer UNIT-TFAM-TAKE ( ptr u8 n n -- )
 private
 
 : UNIT-RBF? ( -- ) RBF-DEPTH @ IF UNIT-BAD THEN ;
@@ -25790,20 +25937,24 @@ private
 
 : CHECKER-UNIT-MARK ( -- )
    UNIT-RBF? UNIT-CAND? UNIT-VERIFY? UNIT-PACKAGE?
+   here BYTE-VIEW data-base BYTE-VIEW - UNIT-DATA-FLOOR !
    SYM-N @ UNIT-SYMN !   UEND @ UNIT-UEND !
    NORET-END @ UNIT-NEND !   DFER-END @ UNIT-DFER !
    CTN @ UNIT-CTN ! UNIT-TFAM-N@ UNIT-TFAM !
    LIN-NDECL @ UNIT-LIN !   VREC-N @ UNIT-VREC !
+   PIMM-N @ UNIT-PIMM ! UNIT-TFAM-MARK
    BWIN-EPOCH @ UNIT-MARK-SERIAL !
+   0 UNIT-PREFIX-N ! 0 UNIT-SYMS-FROZEN !
    -1 UNIT-MARKED ! ;
 
 : UNIT-BASE? ( -- )
    UNIT-MARKED @ 0= IF UNIT-BAD THEN
    UNIT-UEND @ UEND @ > UNIT-SYMN @ SYM-N @ > or
    UNIT-NEND @ NORET-END @ > or IF UNIT-BAD THEN
-   DFER-END @ UNIT-DFER @ <> CTN @ UNIT-CTN @ <> or
-   UNIT-TFAM-N@ UNIT-TFAM @ <> or LIN-NDECL @ UNIT-LIN @ <> or
-   VREC-N @ UNIT-VREC @ <> or IF UNIT-BAD THEN
+   DFER-END @ UNIT-DFER @ < CTN @ UNIT-CTN @ < or
+   UNIT-TFAM-N@ UNIT-TFAM @ < or LIN-NDECL @ UNIT-LIN @ < or
+   VREC-N @ UNIT-VREC @ <> or PIMM-N @ UNIT-PIMM @ < or
+   IF UNIT-BAD THEN
    UNIT-RBF? UNIT-CAND? UNIT-VERIFY?
    UNIT-RECOVERY? UNIT-MULTI? ;
 
@@ -25854,7 +26005,11 @@ private
    tag EN-PTR = IF node EN.A @ RECURSE EXIT THEN
    tag EN-PUSH = IF node EN.A @ RECURSE node EN.B @ RECURSE EXIT THEN
    tag EN-FORALL = IF node EN.A @ RECURSE EXIT THEN
-   tag EN-BVAR = IF EXIT THEN
+   tag EN-BVAR = tag EN-ATOM = or IF EXIT THEN
+   tag EN-PARAM = IF
+      node EN.C @ 0 ?do
+         node EN.D @ i cells + E-PTR CELL-VIEW @ RECURSE
+      loop EXIT THEN
    tag EN-QUOT = IF
       node EN.E @ node EN.G @ or node EN.H @ or 0 <> IF UNIT-BAD THEN
       node EN.A @ RECURSE node EN.B @ RECURSE
@@ -25870,33 +26025,82 @@ private
    THEN
    rec ER.ACTIVE @ EFF-DELETED <> IF UNIT-BAD THEN ;
 
+: UNIT-PREFIX-GROW ( -- )
+   UNIT-PREFIX-CAP @ 0= IF 16 ELSE UNIT-PREFIX-CAP @ 2 * THEN
+      {: cap:n :}
+   cap cells ARENA-ALLOC {: dst:ptr :}
+   UNIT-PREFIX-N @ 0 <> IF
+      UNIT-PREFIX-SYMS @ dst UNIT-PREFIX-N @ cells ARENA-COPY
+   THEN
+   UNIT-PREFIX-SYMS @ UNIT-PREFIX-CAP @ cells ASIG-RELEASE
+   dst UNIT-PREFIX-SYMS ! cap UNIT-PREFIX-CAP ! ;
+
+\ Local ordinals name the whole unit symbol table, including a marked-prefix
+\ symbol whose facts this unit changes. The wire never stores a live symbol id.
 : UNIT-SYM-ORD ( n -- n ) {: sym:n :}
-   sym UNIT-SYMN @ < sym SYM-N @ >= or IF UNIT-BAD THEN
-   sym UNIT-SYMN @ - ;
+   sym 0 <= sym SYM-N @ >= or IF UNIT-BAD THEN
+   sym SYM-RETIRED? IF UNIT-BAD THEN
+   sym UNIT-SYMN @ >= IF sym UNIT-SYMN @ - EXIT THEN
+   UNIT-PREFIX-N @ 0 ?do
+      i cells UNIT-PREFIX-SYMS @ + CELL-VIEW @ sym = IF
+         SYM-N @ UNIT-SYMN @ - i + unloop EXIT
+      THEN
+   loop
+   UNIT-SYMS-FROZEN @ IF UNIT-BAD THEN
+   UNIT-PREFIX-N @ UNIT-PREFIX-CAP @ = IF UNIT-PREFIX-GROW THEN
+   sym UNIT-PREFIX-N @ cells UNIT-PREFIX-SYMS @ + CELL-VIEW !
+   SYM-N @ UNIT-SYMN @ - UNIT-PREFIX-N @ +
+   1 UNIT-PREFIX-N +! ;
 
 : UNIT-SOURCE-SYMS ( -- )
    SYM-N @ UNIT-SYMN @ ?do
-      i SYM-ROW SYM.VIS @ dup SYM-PRIVATE = swap SYM-PUBLIC = or
-      0= IF UNIT-BAD THEN
-      i SYM-PKG$ nip 0= IF UNIT-BAD THEN
-      i UNIT-SYMN @ <> IF
-         i SYM-PKG$ UNIT-SYMN @ SYM-PKG$ SYM-STR=CI
-         0= IF UNIT-BAD THEN
+      i SYM-ROW SYM.VIS @ {: vis:n :}
+      vis SYM-GLOBAL = IF
+         i SYM-PKG$ nip 0 <> IF UNIT-BAD THEN
+      ELSE
+         vis SYM-PRIVATE <> vis SYM-PUBLIC <> and IF UNIT-BAD THEN
+         i SYM-PKG$ nip 0= IF UNIT-BAD THEN
       THEN
    loop ;
 
 : UNIT-CONTROL-SYM? ( n -- ) NORET-CELL NORET.SYM @ UNIT-SYM-ORD drop ;
-: UNIT-CONTROL-CREATES? ( n -- )
-   NORET-CELL NORET.CREATES @ 0 <> IF UNIT-BAD THEN ;
 : UNIT-CONTROL-SOURCE? ( n -- )
-   NORET-CELL NORET.SOURCE @ 0 <> IF UNIT-BAD THEN ;
+   NORET-CELL NORET.SOURCE @ {: source:n :}
+   source 0 < source SYM-N @ >= or IF UNIT-BAD THEN
+   source 0 <> IF source UNIT-SYM-ORD drop THEN ;
+
+: UNIT-SOURCE-REF ( n -- n n ) {: source:n :}
+   source 0= IF 0 0 EXIT THEN
+   2 source UNIT-SYM-ORD ;
+
+\ A created-word effect is an anonymous effect record. Prefix references are
+\ one-based record ordinals; this file's effects use their ordered local row.
+: UNIT-CREATED-REF ( n -- n n ) {: creates:n :}
+   creates 0= IF 0 0 EXIT THEN
+   creates 1- {: off:n :}
+   off UNIT-UEND @ < IF
+      0 UNIT-CREATED-CUR ! 1 UNIT-CREATED-ORD !
+      BEGIN UNIT-CREATED-CUR @ UNIT-UEND @ < WHILE
+         UNIT-CREATED-CUR @ off = IF 1 UNIT-CREATED-ORD @ EXIT THEN
+         UNIT-CREATED-CUR @ E-PTR E-NEXT@ UNIT-CREATED-CUR !
+         1 UNIT-CREATED-ORD +!
+      REPEAT UNIT-BAD THEN
+   UNIT-UEND @ UNIT-CREATED-CUR !
+   0 UNIT-CREATED-ORD !
+   BEGIN UNIT-CREATED-CUR @ UEND @ < WHILE
+      UNIT-CREATED-CUR @ off = IF 2 UNIT-CREATED-ORD @ EXIT THEN
+      UNIT-CREATED-CUR @ E-PTR E-NEXT@ UNIT-CREATED-CUR !
+      1 UNIT-CREATED-ORD +!
+   REPEAT
+   UNIT-BAD ;
 
 : UNIT-SOURCE-CONTROLS ( -- )
    0 UNIT-NCTL !
    UNIT-NEND @ UNIT-CUR !
    BEGIN UNIT-CUR @ NORET-END @ < WHILE
       UNIT-CUR @ UNIT-CONTROL-SYM?
-      UNIT-CUR @ UNIT-CONTROL-CREATES?
+      UNIT-CUR @ NORET-CELL NORET.CREATES @
+         UNIT-CREATED-REF 2drop
       UNIT-CUR @ UNIT-CONTROL-SOURCE?
       1 UNIT-NCTL +!
       UNIT-CUR @ NORET-ENTRY + UNIT-CUR !
@@ -25904,20 +26108,36 @@ private
 
 : UNIT-SOURCE? ( -- )
    UNIT-BASE?
-   SYM-N @ UNIT-SYMN @ - dup 0 <= IF UNIT-BAD THEN UNIT-NSYM !
+   0 UNIT-PREFIX-N ! 0 UNIT-SYMS-FROZEN !
    UNIT-SOURCE-SYMS
    0 UNIT-NEFF !
    UNIT-UEND @ UNIT-CUR !
    BEGIN UNIT-CUR @ EFF-REC + UEND @ <= WHILE
       UNIT-CUR @ E-PTR {: rec:ptr :}
-      rec ER.SYM @ UNIT-SYM-ORD drop
+      rec ER.SYM @ dup 0= IF drop ELSE UNIT-SYM-ORD drop THEN
       rec UNIT-REC?
       rec E-NEXT@ {: next:n :}
       next UNIT-CUR @ <= next UEND @ > or IF UNIT-BAD THEN
       1 UNIT-NEFF +!
       next UNIT-CUR !
    REPEAT
-   UNIT-SOURCE-CONTROLS ;
+   UNIT-SOURCE-CONTROLS
+   DFER-END @ UNIT-DFER @ - DFER-REC / UNIT-NDFER !
+   CTN @ UNIT-CTN @ - UNIT-NCONS !
+   LIN-NDECL @ UNIT-LIN @ - UNIT-NCONS @ <> IF UNIT-BAD THEN
+   PIMM-N @ UNIT-PIMM @ - UNIT-NPIMM !
+   UNIT-NDFER @ 0 ?do
+      DFERS UNIT-DFER @ i DFER-REC * + + DFER.SYM @ UNIT-SYM-ORD drop
+   loop
+   CTN @ UNIT-CTN @ ?do
+      i CT-CLASS@ CT-LINEAR <> i CT-WIDTH@ 64 <> or
+      i CT-SIGN@ CS-NONE <> or IF UNIT-BAD THEN
+   loop
+   PIMM-N @ UNIT-PIMM @ ?do
+      i cells PIMM-SYMS + @ UNIT-SYM-ORD drop
+   loop
+   SYM-N @ UNIT-SYMN @ - UNIT-PREFIX-N @ + UNIT-NSYM !
+   -1 UNIT-SYMS-FROZEN ! ;
 
 PTR-VARIABLE UNIT-ASIG-P
 variable UNIT-ASIG-U   variable UNIT-ASIG-CAP
@@ -25947,19 +26167,82 @@ variable UNIT-ASIG-U   variable UNIT-ASIG-CAP
    graph bytes UNIT-BUF+
    UNIT-ALIGN ;
 
+: UNIT-EXPORT-TFAM ( -- )
+   UNIT-TFAM-SIZE dup UNIT-TFAM-U !
+   dup 0= IF drop EXIT THEN
+   dup UNIT-BUF-ROOM
+   UNIT-BUF-P @ UNIT-BUF-U @ + swap UNIT-TFAM-SAVE
+   UNIT-BUF-U +! ;
+
+: UNIT-EXPORT-CONS ( -- )
+   CTN @ UNIT-CTN @ ?do
+      i CT-NAME$ UNIT-STRING+
+      i CT-PKG$ UNIT-STRING+
+   loop ;
+
+: UNIT-EXPORT-DFERS ( -- )
+   UNIT-NDFER @ 0 ?do
+      DFERS UNIT-DFER @ i DFER-REC * + + {: row:ptr :}
+      row DFER.SYM @ UNIT-SYM-ORD UNIT-CELL+
+      row DFER.FLAG @ UNIT-CELL+
+   loop ;
+
+: UNIT-EXPORT-PIMMS ( -- )
+   PIMM-N @ UNIT-PIMM @ ?do
+      i cells PIMM-SYMS + @ UNIT-SYM-ORD UNIT-CELL+
+      i cells PIMM-NS + @ UNIT-CELL+
+   loop ;
+
 : UNIT-EXPORT-SYMS ( -- )
    SYM-N @ UNIT-SYMN @ ?do
       i SYM-ROW SYM.VIS @ UNIT-CELL+
       i SYM-PKG$ UNIT-STRING+
       i SYM-NAME$ UNIT-STRING+
+   loop
+   UNIT-PREFIX-N @ 0 ?do
+      i cells UNIT-PREFIX-SYMS @ + CELL-VIEW @ {: sym:n :}
+      sym SYM-ROW SYM.VIS @ UNIT-CELL+
+      sym SYM-PKG$ UNIT-STRING+
+      sym SYM-NAME$ UNIT-STRING+
    loop ;
+
+\ A deferred binding stores the three-cell control head; its current payload
+\ is found through that head after replay. Fixed bindings store count*width.
+: UNIT-STORAGE-FITS? ( n n n -- bool )
+   {: count:n width:n bytes:n :}
+   bytes 0 < width 0 <= or IF RES-FALSE EXIT THEN
+   count STORAGE-DEFERRED = IF LDEFER-CTRL-CELLS bytes CELL / <= EXIT THEN
+   count 0 < IF RES-FALSE EXIT THEN
+   count bytes CELL / width / <= ;
+
+\ An exact-prefix file needs only the prefix/local coordinate; the graph
+\ supplies element width.
+: UNIT-STORAGE+ ( ptr u8 -- ) {: rec:ptr :}
+   rec ER.STORAGE-N @ {: count:n :}
+   count 0= IF 0 UNIT-CELL+ 0 UNIT-CELL+ 0 UNIT-CELL+ EXIT THEN
+   rec CHECKER-STORAGE-POINTEE T-WIDTH {: width:n :}
+   width 0 <= IF UNIT-BAD THEN
+   rec ER.STORAGE-OFF @ {: off:n :}
+   here BYTE-VIEW data-base BYTE-VIEW - {: used:n :}
+   off 0 < off used > or IF UNIT-BAD THEN
+   count width used off - UNIT-STORAGE-FITS? 0= IF UNIT-BAD THEN
+   count UNIT-CELL+
+   off UNIT-DATA-FLOOR @ < IF
+      count width UNIT-DATA-FLOOR @ off - UNIT-STORAGE-FITS?
+         0= IF UNIT-BAD THEN
+      0 UNIT-CELL+ off UNIT-CELL+
+   ELSE
+      1 UNIT-CELL+ off UNIT-DATA-FLOOR @ - UNIT-CELL+
+   THEN ;
 
 : UNIT-EXPORT-EFFECTS ( -- )
    UNIT-UEND @ UNIT-CUR !
    UNIT-NEFF @ 0 ?do
       UNIT-CUR @ E-PTR {: rec:ptr :}
-      rec ER.SYM @ UNIT-SYM-ORD UNIT-CELL+
+      rec ER.SYM @ dup 0= IF drop -1 ELSE UNIT-SYM-ORD THEN UNIT-CELL+
       rec ER.ACTIVE @ UNIT-CELL+
+      rec ER.ACTIVE @ EFF-ACTIVE = IF rec UNIT-STORAGE+
+      ELSE 0 UNIT-CELL+ 0 UNIT-CELL+ 0 UNIT-CELL+ THEN
       rec ER.ACTIVE @ EFF-ACTIVE = IF UNIT-CUR @ UNIT-GRAPH+
       ELSE 0 UNIT-CELL+ THEN
       rec E-NEXT@ UNIT-CUR !
@@ -25971,6 +26254,12 @@ variable UNIT-ASIG-U   variable UNIT-ASIG-CAP
       UNIT-CUR @ NORET-CELL {: row:ptr :}
       row NORET.SYM @ UNIT-SYM-ORD UNIT-CELL+
       row NORET.FLAG @ UNIT-CELL+
+      row NORET.CREATES @ UNIT-CREATED-REF
+         {: tag:n ref:n :}
+      tag UNIT-CELL+ ref UNIT-CELL+
+      row NORET.SOURCE @ UNIT-SOURCE-REF
+         {: source-tag:n source-ref:n :}
+      source-tag UNIT-CELL+ source-ref UNIT-CELL+
       UNIT-CUR @ NORET-ENTRY + UNIT-CUR !
    loop ;
 
@@ -25983,9 +26272,18 @@ variable UNIT-ASIG-U   variable UNIT-ASIG-CAP
    UNIT-NEFF @ UNIT-CELL+
    UNIT-NCTL @ UNIT-CELL+
    BWIN-EPOCH @ UNIT-MARK-SERIAL @ - UNIT-CELL+
+   0 UNIT-CELL+
+   UNIT-NCONS @ UNIT-CELL+
+   UNIT-NPIMM @ UNIT-CELL+
+   UNIT-EXPORT-TFAM
+   UNIT-TFAM-U @ 7 cells UNIT-CELL!
+   UNIT-EXPORT-CONS
    UNIT-EXPORT-SYMS
    UNIT-EXPORT-EFFECTS
    UNIT-EXPORT-CONTROLS
+   UNIT-NDFER @ UNIT-CELL+
+   UNIT-EXPORT-DFERS
+   UNIT-EXPORT-PIMMS
    UNIT-BUF-U @ 2 cells UNIT-CELL! ;
 
 : CHECKER-UNIT-EXPORT ( -- ptr u8 n )
@@ -25999,10 +26297,8 @@ variable UNIT-ASIG-U   variable UNIT-ASIG-CAP
 PTR-VARIABLE UNIT-IN-P
 variable UNIT-IN-U   variable UNIT-IN-I
 variable UNIT-READ-SYMS   variable UNIT-READ-EFFS   variable UNIT-READ-CTLS
-variable UNIT-READ-DELTA
-PTR-VARIABLE UNIT-FIRST-PKG
-variable UNIT-FIRST-PKG-U
-variable UNIT-OLD-SYM
+variable UNIT-READ-DELTA variable UNIT-READ-TFAM-U
+variable UNIT-READ-CONS variable UNIT-READ-PIMMS
 
 : UNIT-TAKE ( n -- ptr u8 ) {: bytes:n :}
    bytes 0 < bytes UNIT-IN-U @ UNIT-IN-I @ - > or IF UNIT-FORMAT-BAD THEN
@@ -26026,16 +26322,26 @@ variable UNIT-OLD-SYM
    UNIT-READ-CELL UNIT-MAGIC <> IF UNIT-FORMAT-BAD THEN
    UNIT-READ-CELL UNIT-VERSION <> IF UNIT-FORMAT-BAD THEN
    UNIT-READ-CELL UNIT-IN-U @ <> IF UNIT-FORMAT-BAD THEN
-   UNIT-READ-CELL dup 0 <= over UNIT-IN-U @ CELL / > or IF UNIT-FORMAT-BAD THEN
+   UNIT-READ-CELL dup 0 < over UNIT-IN-U @ CELL / > or IF UNIT-FORMAT-BAD THEN
    UNIT-READ-SYMS !
    UNIT-READ-CELL dup 0 < over UNIT-IN-U @ CELL / > or IF UNIT-FORMAT-BAD THEN
    UNIT-READ-EFFS !
    UNIT-READ-CELL dup 0 < over UNIT-IN-U @ CELL / > or IF UNIT-FORMAT-BAD THEN
    UNIT-READ-CTLS !
-   UNIT-READ-CELL UNIT-READ-DELTA ! ;
+   UNIT-READ-CELL UNIT-READ-DELTA !
+   UNIT-READ-CELL dup 0 < over UNIT-IN-U @ > or
+      IF UNIT-FORMAT-BAD THEN UNIT-READ-TFAM-U !
+   UNIT-READ-CELL dup 0 < over UNIT-IN-U @ CELL / > or
+      IF UNIT-FORMAT-BAD THEN UNIT-READ-CONS !
+   UNIT-READ-CELL dup 0 < over UNIT-IN-U @ CELL / > or
+      IF UNIT-FORMAT-BAD THEN UNIT-READ-PIMMS ! ;
 
 : UNIT-READ-ORD ( -- n )
    UNIT-READ-CELL dup 0 < over UNIT-READ-SYMS @ >= or IF UNIT-FORMAT-BAD THEN ;
+
+: UNIT-READ-EFFECT-ORD ( -- n )
+   UNIT-READ-CELL dup -1 < over UNIT-READ-SYMS @ >= or
+      IF UNIT-FORMAT-BAD THEN ;
 
 : UNIT-CON-RESOLVE ( ptr u8 ptr u8 -- n ) {: node:ptr pool:ptr :}
    node EN.A @ pool + node EN.B @ CT-FIND
@@ -26046,113 +26352,59 @@ UNIT-CON-INSTALL
 : UNIT-GRAPH-LEN? ( n -- )
    EFF-WIRE < IF UNIT-FORMAT-BAD THEN ;
 
-: UNIT-CHECK-GRAPH ( ptr u8 n -- )
-   dup UNIT-GRAPH-LEN?
-   over EW.SYM @ CTL-GRAPH-FLAGS invert ASIG-GRAPH-DEFER or and 0 <>
+variable UNIT-PREP-FLOOR
+variable UNIT-PREP-END
+PTR-VARIABLE UNIT-PREP-REG
+variable UNIT-PREP-REG-U
+
+: UNIT-CHECK-STORAGE ( n n n -- )
+   {: count:n domain:n ref:n :}
+   count 0= IF domain ref or 0= 0= IF UNIT-FORMAT-BAD THEN EXIT THEN
+   ref 0 < IF UNIT-FORMAT-BAD THEN
+   0 CK-GRAPH-PTR EW.DOUT @ CK-GRAPH-PTR {: output:ptr :}
+   output EN.TAG @ EN-PUSH <> IF UNIT-FORMAT-BAD THEN
+   output EN.A @ CK-GRAPH-PTR {: pointer:ptr :}
+   pointer EN.TAG @ EN-PTR <> IF UNIT-FORMAT-BAD THEN
+   pointer EN.A @ CK-GRAPH-WIDTH-SLOT @ {: width:n :}
+   width 0 <= IF UNIT-FORMAT-BAD THEN
+   domain 0= IF UNIT-PREP-FLOOR @
+   ELSE domain 1 = IF
+      UNIT-PREP-END @ UNIT-PREP-FLOOR @ -
+   ELSE UNIT-FORMAT-BAD THEN THEN {: limit:n :}
+   ref limit > IF UNIT-FORMAT-BAD THEN
+   count width limit ref - UNIT-STORAGE-FITS? 0=
+      IF UNIT-FORMAT-BAD THEN ;
+
+: UNIT-CHECK-GRAPH ( ptr u8 n n n n -- )
+   {: graph:ptr bytes:n count:n domain:n ref:n :}
+   bytes UNIT-GRAPH-LEN?
+   graph EW.SYM @ CTL-GRAPH-FLAGS ASIG-GRAPH-DEFER or invert and 0 <>
    IF UNIT-FORMAT-BAD THEN
-   2dup NULL-PTR 0 CK-GRAPH-CHECK
-   {: graph:ptr bytes:n :}
-   EFF-WIRE UNIT-CUR !
-   BEGIN UNIT-CUR @ bytes < WHILE
-      UNIT-CUR @ CK-GRAPH-SLOT @ 0 > IF
-         UNIT-CUR @ graph + {: node:ptr :}
-         node EN.TAG @ EN-ATOM = node EN.TAG @ EN-PARAM = or
-         IF UNIT-FORMAT-BAD THEN
-         node EN.TAG @ EN-CON = IF
-            node graph UNIT-CON-RESOLVE {: con:n :}
-            node EN.C @ con CT-CLASS@ <>
-            node EN.D @ con CT-WIDTH@ <> or
-            node EN.E @ con CT-SIGN@ <> or IF UNIT-FORMAT-BAD THEN
-         THEN
-      THEN
-      UNIT-CUR @ CELL + UNIT-CUR !
-   REPEAT ;
+   graph bytes UNIT-PREP-REG @ UNIT-PREP-REG-U @ CK-GRAPH-CHECK
+   count domain ref UNIT-CHECK-STORAGE ;
 
-: UNIT-CHECK-SYMS ( -- )
-   NULL-PTR UNIT-FIRST-PKG ! 0 UNIT-FIRST-PKG-U !
-   UNIT-READ-SYMS @ 0 ?do
-      UNIT-READ-CELL {: vis:n :}
-      vis SYM-PRIVATE <> vis SYM-PUBLIC <> and IF UNIT-FORMAT-BAD THEN
-      UNIT-READ-STRING {: pkg:ptr pkgu:n :}
-      pkgu 0= IF UNIT-FORMAT-BAD THEN
-      i 0= IF pkg UNIT-FIRST-PKG ! pkgu UNIT-FIRST-PKG-U !
-      ELSE pkg pkgu UNIT-FIRST-PKG @ UNIT-FIRST-PKG-U @ SYM-STR=CI 0= IF UNIT-FORMAT-BAD THEN THEN
-      UNIT-READ-STRING {: name:ptr nameu:n :}
-      nameu 0= IF UNIT-FORMAT-BAD THEN
-      pkg pkgu vis name nameu SYM-FIND IF drop UNIT-FORMAT-BAD THEN drop
-   loop ;
-
-: UNIT-CHECK-EFFECTS ( -- )
-   UNIT-READ-EFFS @ 0 ?do
-      UNIT-READ-ORD drop
-      UNIT-READ-CELL dup EFF-ACTIVE = IF
-         drop UNIT-READ-CELL dup UNIT-TAKE swap UNIT-CHECK-GRAPH
-         UNIT-READ-ALIGN
-      ELSE
-         EFF-DELETED <> IF UNIT-FORMAT-BAD THEN
-         UNIT-READ-CELL 0 <> IF UNIT-FORMAT-BAD THEN
-      THEN
-   loop ;
-
-: UNIT-CHECK-CONTROLS ( -- )
-   UNIT-READ-CTLS @ 0 ?do
-      UNIT-READ-ORD drop
-      UNIT-READ-CELL {: packed:n :}
-      packed XFER-FLAGS ASIG-GRAPH-DEFER and 0 <> IF UNIT-FORMAT-BAD THEN
-      packed XFER-FLAGS packed XFER-DMASK packed XFER-RMASK XFER-PACK
-      packed <> IF UNIT-FORMAT-BAD THEN
-   loop ;
-
-: UNIT-CHECK-BLOB ( -- )
-   0 UNIT-IN-I !
-   UNIT-READ-HEADER
-   UNIT-CHECK-SYMS
-   UNIT-CHECK-EFFECTS
-   UNIT-CHECK-CONTROLS
-   UNIT-IN-I @ UNIT-IN-U @ <> IF UNIT-FORMAT-BAD THEN
-   CK-GRAPH-RELEASE ;
-
-: UNIT-IMPORT-SYMS ( -- )
-   UNIT-READ-SYMS @ 0 ?do
-      UNIT-READ-CELL {: vis:n :}
-      UNIT-READ-STRING {: pkg:ptr pkgu:n :}
-      UNIT-READ-STRING {: name:ptr nameu:n :}
-      pkg pkgu vis name nameu SYM-INTERN
-      UNIT-SYMN @ i + <> IF UNIT-FORMAT-BAD THEN
-   loop ;
-
-: UNIT-IMPORT-ACTIVE ( n -- )
-   UNIT-TAKE {: graph:ptr :}
-   UNIT-READ-ALIGN
+: UNIT-INSTALL-ACTIVE ( ptr u8 -- n ) {: graph:ptr :}
    NEW
    graph EW.TVN @ graph EW.RVN @ E-INST-COUNTS
    graph EW.DIN @ graph E-INST-FROM
    graph EW.DOUT @ graph E-INST-FROM
    graph EW.RIN @ graph E-INST-FROM
    graph EW.ROUT @ graph E-INST-FROM
-   graph EW.HASR @ 0 <> E-BUILD-EFFECT drop
-   s" " CHECKER-ASIG-CAPTURE ;
+   graph EW.HASR @ 0 <> E-BUILD-EFFECT {: handle:n :}
+   s" " CHECKER-ASIG-CAPTURE
+   handle ;
 
-: UNIT-IMPORT-EFFECTS ( -- )
-   UNIT-READ-EFFS @ 0 ?do
-      UNIT-READ-ORD UNIT-SYMN @ + CHECKER-REC-SYM !
-      UNIT-READ-CELL {: state:n :}
-      UNIT-READ-CELL {: bytes:n :}
-      state EFF-DELETED = IF E-ADD-DELETED ELSE bytes UNIT-IMPORT-ACTIVE THEN
-   loop
-   HIDX-EPOCH+ ;
-
-: UNIT-IMPORT-CONTROLS ( -- )
-   UNIT-READ-CTLS @ 0 ?do
-      UNIT-READ-ORD UNIT-SYMN @ + {: sym:n :}
-      UNIT-READ-CELL {: packed:n :}
-      sym packed XFER-FLAGS packed XFER-DMASK packed XFER-RMASK 0 0 NORET-APPEND
-   loop ;
-
-: UNIT-IMPORT-RUN ( -- )
-   0 UNIT-IN-I ! UNIT-READ-HEADER
-   UNIT-IMPORT-SYMS UNIT-IMPORT-EFFECTS UNIT-IMPORT-CONTROLS
-   UNIT-IN-I @ UNIT-IN-U @ <> IF UNIT-FORMAT-BAD THEN ;
+: UNIT-INSTALL-STORAGE ( n n n n n -- )
+   {: handle:n count:n domain:n ref:n floor:n :}
+   count 0= IF EXIT THEN
+   domain 0= IF ref
+   ELSE floor ref + THEN
+   data-base swap + {: base:ptr :}
+   count STORAGE-DEFERRED = IF
+      handle base CELL-VIEW CHECKER-STORAGE-DEFER
+   ELSE
+      handle base count CHECKER-STORAGE-BIND
+   THEN ;
 
 \ A full cell is a valid delta; only modular wrap would reuse an old serial.
 $8000000000000000 constant UNIT-SIGN-BIT
@@ -26160,30 +26412,580 @@ $8000000000000000 constant UNIT-SIGN-BIT
    {: a:n b:n :}
    a UNIT-SIGN-BIT xor b UNIT-SIGN-BIT xor < ;
 
-: UNIT-ENDPOINT ( -- n )
-   BWIN-EPOCH @ {: current:n :}
-   current UNIT-READ-DELTA @ + {: endpoint:n :}
-   endpoint current UNIT-U< IF UNIT-FORMAT-BAD THEN
-   endpoint ;
+defer UNIT-IMPORT-PLAN-XT ( ptr u8 n -- )
+: CHECKER-UNIT-IMPORT ( ptr u8 n -- ) UNIT-IMPORT-PLAN-XT ;
 
-: CHECKER-UNIT-IMPORT ( ptr u8 n -- ) {: a:ptr u:n :}
+\ The plan owns its section bytes and decoded rows until the entire selected
+\ FILE tree has passed preparation. No live checker store changes in this phase.
+22 cells constant UNIT-PLAN-CELLS
+0 constant UP.NEXT       1 constant UP.BLOB
+2 constant UP.SIZE       3 constant UP.FLOOR
+4 constant UP.END        5 constant UP.TFAM
+6 constant UP.TFAM-U     7 constant UP.SYMS
+8 constant UP.NSYMS      9 constant UP.EFFS
+10 constant UP.NEFFS     11 constant UP.CTLS
+12 constant UP.NCTLS     13 constant UP.CONS
+14 constant UP.NCONS     15 constant UP.DFERS
+16 constant UP.NDFERS    17 constant UP.PIMMS
+18 constant UP.NPIMMS    19 constant UP.DELTA
+20 constant UP.SERIAL
+21 constant UP.TFAM-STATE
+
+7 cells constant UPS.CELLS
+0 constant UPS.VIS     1 constant UPS.PKG    2 constant UPS.PKG-U
+3 constant UPS.NAME    4 constant UPS.NAME-U 5 constant UPS.ID
+6 constant UPS.ACTUAL
+9 cells constant UPE.CELLS
+0 constant UPE.SYM     1 constant UPE.STATE  2 constant UPE.COUNT
+3 constant UPE.DOMAIN  4 constant UPE.REF    5 constant UPE.GRAPH
+6 constant UPE.BYTES   7 constant UPE.HANDLE 8 constant UPE.ORD
+5 cells constant UPC.CELLS
+0 constant UPC.SYM     1 constant UPC.PACKED 2 constant UPC.TAG
+3 constant UPC.REF     4 constant UPC.SOURCE
+4 cells constant UPN.CELLS
+0 constant UPN.NAME    1 constant UPN.NAME-U
+2 constant UPN.PKG     3 constant UPN.PKG-U
+2 cells constant UPD.CELLS
+0 constant UPD.SYM     1 constant UPD.FLAG
+2 cells constant UPP.CELLS
+0 constant UPP.SYM     1 constant UPP.N
+
+: UP-AT ( ptr u8 n -- ptr n ) cells + CELL-VIEW ;
+: UP@ ( ptr u8 n -- n ) UP-AT @ ;
+: UP! ( n ptr u8 n -- ) UP-AT ! ;
+: UP-PTR@ ( ptr u8 n -- ptr u8 ) cells + 0 ptr-field @ ;
+: UP-PTR! ( ptr u8 ptr u8 n -- ) cells + 0 ptr-field ! ;
+: UP-SYM ( ptr u8 n -- ptr u8 ) {: plan:ptr idx:n :}
+   plan UP.SYMS UP-PTR@ idx UPS.CELLS * + ;
+: UP-EFF ( ptr u8 n -- ptr u8 ) {: plan:ptr idx:n :}
+   plan UP.EFFS UP-PTR@ idx UPE.CELLS * + ;
+: UP-CTL ( ptr u8 n -- ptr u8 ) {: plan:ptr idx:n :}
+   plan UP.CTLS UP-PTR@ idx UPC.CELLS * + ;
+: UP-CON ( ptr u8 n -- ptr u8 ) {: plan:ptr idx:n :}
+   plan UP.CONS UP-PTR@ idx UPN.CELLS * + ;
+: UP-DFER ( ptr u8 n -- ptr u8 ) {: plan:ptr idx:n :}
+   plan UP.DFERS UP-PTR@ idx UPD.CELLS * + ;
+: UP-PIMM ( ptr u8 n -- ptr u8 ) {: plan:ptr idx:n :}
+   plan UP.PIMMS UP-PTR@ idx UPP.CELLS * + ;
+
+PTR-VARIABLE UNIT-PLAN-FIRST
+PTR-VARIABLE UNIT-PLAN-LAST
+PTR-VARIABLE UNIT-PLAN-CUR
+variable UNIT-PLAN-N
+variable UNIT-PLAN-INSTALL-N
+variable UNIT-PLAN-OPEN
+variable UNIT-PROJ-SYM-N
+variable UNIT-PROJ-EFF-N
+variable UNIT-PREFIX-EFF-N
+variable UNIT-PLAN-EFF-BASE
+variable UNIT-PROJ-PIMM-N
+variable UNIT-PROJ-DEFER
+variable UNIT-PREFIX-SYM-N
+variable UNIT-PROJ-SERIAL
+PTR-VARIABLE UNIT-PROJ-TFAM
+variable UNIT-PROJ-TFAM-U
+variable UNIT-PLAN-OLD-SYM
+
+: UP-ALLOC ( n n -- ptr u8 ) {: count:n bytes:n :}
+   count 0= IF NULL-PTR EXIT THEN
+   count $7FFFFFFFFFFFFFFF bytes / > IF UNIT-FORMAT-BAD THEN
+   count bytes * ARENA-ALLOC BYTE-VIEW ;
+
+: UP-RELEASE ( ptr u8 -- ) {: plan:ptr :}
+   plan UP.BLOB UP-PTR@ plan UP.SIZE UP@ ASIG-RELEASE
+   plan UP.SYMS UP-PTR@ plan UP.NSYMS UP@ UPS.CELLS * ASIG-RELEASE
+   plan UP.EFFS UP-PTR@ plan UP.NEFFS UP@ UPE.CELLS * ASIG-RELEASE
+   plan UP.CTLS UP-PTR@ plan UP.NCTLS UP@ UPC.CELLS * ASIG-RELEASE
+   plan UP.CONS UP-PTR@ plan UP.NCONS UP@ UPN.CELLS * ASIG-RELEASE
+   plan UP.DFERS UP-PTR@ plan UP.NDFERS UP@ UPD.CELLS * ASIG-RELEASE
+   plan UP.PIMMS UP-PTR@ plan UP.NPIMMS UP@ UPP.CELLS * ASIG-RELEASE
+   plan UNIT-PLAN-CELLS ASIG-RELEASE ;
+
+: CHECKER-UNIT-PREPARE-END ( -- )
+   UNIT-PLAN-FIRST @
+   BEGIN dup NULL-PTR <> WHILE
+      dup UP.NEXT UP-PTR@ swap UP-RELEASE
+   REPEAT drop
+   NULL-PTR UNIT-PLAN-FIRST ! NULL-PTR UNIT-PLAN-LAST !
+   NULL-PTR UNIT-PLAN-CUR ! NULL-PTR UNIT-PROJ-TFAM !
+   0 UNIT-PLAN-N ! 0 UNIT-PLAN-INSTALL-N ! 0 UNIT-PLAN-OPEN !
+   0 UNIT-PROJ-TFAM-U !
+   NULL-PTR UNIT-PREP-REG ! 0 UNIT-PREP-REG-U !
+   NULL-PTR UNIT-IN-P ! 0 UNIT-IN-U ! 0 UNIT-IN-I !
+   0 UNIT-PREP-FLOOR ! 0 UNIT-PREP-END !
+   0 UNIT-PROJ-SYM-N ! 0 UNIT-PROJ-EFF-N ! 0 UNIT-PREFIX-EFF-N !
+   0 UNIT-PLAN-EFF-BASE ! 0 UNIT-PROJ-PIMM-N ! 0 UNIT-PROJ-DEFER !
+   0 UNIT-PREFIX-SYM-N ! 0 UNIT-PROJ-SERIAL !
+   0 UNIT-PLAN-OLD-SYM !
+   0 CK-GRAPH-EXTRA-FLAGS ! CK-GRAPH-RELEASE ;
+
+: UP-EFFECT-COUNT ( -- n )
+   0 0
+   BEGIN over UEND @ < WHILE
+      over E-PTR E-NEXT@ rot drop swap 1+
+   REPEAT nip ;
+
+: CHECKER-UNIT-PREPARE-BEGIN ( -- )
+   UNIT-PLAN-OPEN @ IF UNIT-BAD THEN
+   UNIT-RBF? UNIT-CAND? UNIT-VERIFY? UNIT-PACKAGE?
+   UNIT-RECOVERY? UNIT-MULTI?
+   NULL-PTR UNIT-PLAN-FIRST ! NULL-PTR UNIT-PLAN-LAST !
+   NULL-PTR UNIT-PLAN-CUR ! NULL-PTR UNIT-PROJ-TFAM !
+   0 UNIT-PLAN-N ! 0 UNIT-PLAN-INSTALL-N ! 0 UNIT-PROJ-TFAM-U !
+   SYM-N @ UNIT-PROJ-SYM-N !
+   SYM-N @ UNIT-PREFIX-SYM-N !
+   UP-EFFECT-COUNT dup UNIT-PREFIX-EFF-N ! UNIT-PROJ-EFF-N !
+   0 UNIT-PROJ-PIMM-N ! BWIN-EPOCH @ UNIT-PROJ-SERIAL !
+   -1 UNIT-PLAN-OPEN ! ;
+
+: UP-APPEND ( ptr u8 -- ) {: plan:ptr :}
+   UNIT-PLAN-LAST @ NULL-PTR = IF plan UNIT-PLAN-FIRST !
+   ELSE plan UNIT-PLAN-LAST @ UP.NEXT UP-PTR! THEN
+   plan UNIT-PLAN-LAST ! ;
+
+: UP-NEW ( ptr u8 n n n -- ptr u8 )
+   {: src:ptr size:n floor:n end:n :}
+   size UNIT-HEADER < floor 0 < or end floor < or IF UNIT-FORMAT-BAD THEN
+   UNIT-PLAN-CELLS ARENA-ALLOC BYTE-VIEW {: plan:ptr :}
+   plan CELL-VIEW 0 UNIT-PLAN-CELLS CELL / ARENA-CELLS-ZERO
+   plan UP-APPEND
+   size ARENA-ALLOC BYTE-VIEW {: blob:ptr :}
+   blob plan UP.BLOB UP-PTR!
+   size plan UP.SIZE UP!
+   floor plan UP.FLOOR UP! end plan UP.END UP!
+   src blob size ARENA-COPY
+   blob UNIT-IN-P ! size UNIT-IN-U ! 0 UNIT-IN-I !
+   UNIT-READ-HEADER
+   UNIT-READ-SYMS @ UPS.CELLS UP-ALLOC plan UP.SYMS UP-PTR!
+   UNIT-READ-SYMS @ plan UP.NSYMS UP!
+   UNIT-READ-EFFS @ UPE.CELLS UP-ALLOC plan UP.EFFS UP-PTR!
+   UNIT-READ-EFFS @ plan UP.NEFFS UP!
+   UNIT-READ-CTLS @ UPC.CELLS UP-ALLOC plan UP.CTLS UP-PTR!
+   UNIT-READ-CTLS @ plan UP.NCTLS UP!
+   UNIT-READ-CONS @ UPN.CELLS UP-ALLOC plan UP.CONS UP-PTR!
+   UNIT-READ-CONS @ plan UP.NCONS UP!
+   UNIT-READ-PIMMS @ UPP.CELLS UP-ALLOC plan UP.PIMMS UP-PTR!
+   UNIT-READ-PIMMS @ plan UP.NPIMMS UP!
+   UNIT-READ-DELTA @ plan UP.DELTA UP!
+   plan UNIT-PLAN-CUR ! plan ;
+
+: UP-CON-MATCH? ( ptr u8 ptr u8 n -- bool )
+   {: row:ptr name:ptr nameu:n :}
+   row UPN.NAME UP-PTR@ row UPN.NAME-U UP@ name nameu CORE-STR= ;
+
+: UP-CON-PREV? ( ptr u8 n -- bool ) {: name:ptr nameu:n :}
+   UNIT-PLAN-FIRST @
+   BEGIN dup NULL-PTR <> WHILE
+      dup UNIT-PLAN-CUR @ = IF drop RES-FALSE EXIT THEN
+      dup UP.NCONS UP@ 0 ?do
+         dup i UP-CON name nameu UP-CON-MATCH? IF
+            drop RES-TRUE unloop EXIT THEN
+      loop
+      UP.NEXT UP-PTR@
+   REPEAT drop RES-FALSE ;
+
+: UP-READ-CONS ( ptr u8 -- ) {: plan:ptr :}
+   plan UP.NCONS UP@ 0 ?do
+      plan i UP-CON {: row:ptr :}
+      UNIT-READ-STRING {: name:ptr nameu:n :}
+      UNIT-READ-STRING {: pkg:ptr pkgu:n :}
+      nameu 0= IF UNIT-FORMAT-BAD THEN
+      name nameu TYPE-RESERVED? name nameu UP-CON-PREV? or
+      name nameu UNIT-PREP-REG @ UNIT-PREP-REG-U @ CK-UNIT-FAMILY? or IF
+         UNIT-FORMAT-BAD THEN
+      i 0 ?do
+         plan i UP-CON name nameu UP-CON-MATCH? IF
+            UNIT-FORMAT-BAD THEN
+      loop
+      name row UPN.NAME UP-PTR! nameu row UPN.NAME-U UP!
+      pkg row UPN.PKG UP-PTR! pkgu row UPN.PKG-U UP!
+   loop ;
+
+: UP-CON-RESOLVES? ( ptr u8 n -- bool ) {: name:ptr nameu:n :}
+   name nameu CT-FIND 0 <> IF RES-TRUE EXIT THEN
+   name nameu UP-CON-PREV? IF RES-TRUE EXIT THEN
+   UNIT-PLAN-CUR @ {: plan:ptr :}
+   plan UP.NCONS UP@ 0 ?do
+      plan i UP-CON name nameu UP-CON-MATCH? IF RES-TRUE unloop EXIT THEN
+   loop RES-FALSE ;
+
+\ CK-GRAPH-CHECK has already decoded and marked every reachable node. A
+\ prepared unit installs only declared constructor rows, so a graph's new
+\ linear name must resolve before any selected range publishes.
+: UP-CHECK-GRAPH-CONS ( n -- ) {: bytes:n :}
+   EFF-WIRE BEGIN dup bytes < WHILE
+      dup CK-GRAPH-SLOT @ EN-CON 1+ = IF
+         dup CK-GRAPH-PTR {: node:ptr :}
+         node EN.A @ CK-GRAPH-PTR node EN.B @ UP-CON-RESOLVES? 0= IF
+            UNIT-FORMAT-BAD THEN
+      THEN
+      CELL +
+   REPEAT drop ;
+
+: UP-SYM-MATCH? ( ptr u8 ptr u8 n n ptr u8 n -- bool )
+   {: row:ptr pkg:ptr pkgu:n vis:n name:ptr nameu:n :}
+   row UPS.VIS UP@ vis <> IF RES-FALSE EXIT THEN
+   row UPS.PKG UP-PTR@ row UPS.PKG-U UP@ pkg pkgu SYM-STR=CI 0= IF
+      RES-FALSE EXIT THEN
+   row UPS.NAME UP-PTR@ row UPS.NAME-U UP@ name nameu SYM-STR=CI ;
+
+: UP-SYM-PREV ( ptr u8 n n ptr u8 n -- n )
+   {: pkg:ptr pkgu:n vis:n name:ptr nameu:n :}
+   UNIT-PLAN-FIRST @
+   BEGIN dup NULL-PTR <> WHILE
+      dup UNIT-PLAN-CUR @ = IF drop 0 EXIT THEN
+      dup UP.NSYMS UP@ 0 ?do
+         dup i UP-SYM {: row:ptr :}
+         row pkg pkgu vis name nameu UP-SYM-MATCH? IF
+            drop row UPS.ID UP@ unloop EXIT THEN
+      loop
+      UP.NEXT UP-PTR@
+   REPEAT drop 0 ;
+
+: UP-SYM-ID ( ptr u8 n n ptr u8 n -- n )
+   {: pkg:ptr pkgu:n vis:n name:ptr nameu:n :}
+   pkg pkgu vis name nameu SYM-FIND {: id:n found:bool :}
+   found IF id EXIT THEN
+   pkg pkgu vis name nameu UP-SYM-PREV dup 0 <> IF EXIT THEN drop
+   UNIT-PROJ-SYM-N @ 1 UNIT-PROJ-SYM-N +! ;
+
+: UP-READ-SYMS ( ptr u8 -- ) {: plan:ptr :}
+   plan UP.NSYMS UP@ 0 ?do
+      UNIT-READ-CELL {: vis:n :}
+      vis SYM-GLOBAL <> vis SYM-PRIVATE <> and
+      vis SYM-PUBLIC <> and IF UNIT-FORMAT-BAD THEN
+      UNIT-READ-STRING {: pkg:ptr pkgu:n :}
+      vis SYM-GLOBAL = IF pkgu 0 <> IF UNIT-FORMAT-BAD THEN
+      ELSE pkgu 0= IF UNIT-FORMAT-BAD THEN THEN
+      UNIT-READ-STRING {: name:ptr nameu:n :}
+      nameu 0= IF UNIT-FORMAT-BAD THEN
+      i 0 ?do
+         plan i UP-SYM pkg pkgu vis name nameu UP-SYM-MATCH? IF
+            UNIT-FORMAT-BAD THEN
+      loop
+      plan i UP-SYM {: row:ptr :}
+      vis row UPS.VIS UP!
+      pkg row UPS.PKG UP-PTR! pkgu row UPS.PKG-U UP!
+      name row UPS.NAME UP-PTR! nameu row UPS.NAME-U UP!
+      pkg pkgu vis name nameu UP-SYM-ID row UPS.ID UP!
+   loop ;
+
+: UP-SYM-ID@ ( ptr u8 n -- n ) {: plan:ptr ord:n :}
+   plan ord UP-SYM UPS.ID UP@ ;
+
+: UP-READ-EFFECTS ( ptr u8 -- ) {: plan:ptr :}
+   plan UP.NEFFS UP@ 0 ?do
+      UNIT-READ-EFFECT-ORD {: ord:n :}
+      plan i UP-EFF {: row:ptr :}
+      ord -1 = IF 0 ELSE plan ord UP-SYM-ID@ THEN row UPE.SYM UP!
+      UNIT-READ-CELL {: state:n :}
+      UNIT-READ-CELL {: count:n :}
+      UNIT-READ-CELL {: domain:n :}
+      UNIT-READ-CELL {: ref:n :}
+      state row UPE.STATE UP!
+      count row UPE.COUNT UP! domain row UPE.DOMAIN UP!
+      ref row UPE.REF UP!
+      state EFF-ACTIVE = IF
+         UNIT-READ-CELL {: bytes:n :}
+         bytes UNIT-TAKE {: graph:ptr :}
+         graph row UPE.GRAPH UP-PTR! bytes row UPE.BYTES UP!
+         graph bytes count domain ref UNIT-CHECK-GRAPH
+         bytes UP-CHECK-GRAPH-CONS
+         UNIT-READ-ALIGN
+      ELSE
+         state EFF-DELETED <> count domain or ref or 0= 0= or IF
+            UNIT-FORMAT-BAD THEN
+         UNIT-READ-CELL 0 <> IF UNIT-FORMAT-BAD THEN
+      THEN
+      UNIT-PROJ-EFF-N @ 1+ row UPE.ORD UP!
+      1 UNIT-PROJ-EFF-N +!
+   loop ;
+
+: UP-LIVE-EFFECT ( n -- ptr u8 ) {: ordinal:n :}
+   0 1
+   BEGIN dup ordinal < WHILE
+      over UEND @ >= IF UNIT-FORMAT-BAD THEN
+      over E-PTR E-NEXT@ rot drop swap 1+
+   REPEAT drop
+   dup UEND @ >= IF UNIT-FORMAT-BAD THEN E-PTR ;
+
+: UP-EFFECT-ORD ( n -- ptr u8 ) {: ordinal:n :}
+   UNIT-PLAN-FIRST @
+   BEGIN dup NULL-PTR <> WHILE
+      dup UP.NEFFS UP@ 0 ?do
+         dup i UP-EFF {: row:ptr :}
+         row UPE.ORD UP@ ordinal = IF
+            drop row unloop EXIT THEN
+      loop
+      UP.NEXT UP-PTR@
+   REPEAT drop UNIT-FORMAT-BAD ;
+
+: UP-CREATED-ROW? ( ptr u8 -- ) {: row:ptr :}
+   row UPE.STATE UP@ EFF-ACTIVE <>
+   row UPE.SYM UP@ 0 <> or IF UNIT-FORMAT-BAD THEN ;
+
+: UP-CREATED? ( n n -- ) {: tag:n ref:n :}
+   tag 0= IF ref 0 <> IF UNIT-FORMAT-BAD THEN EXIT THEN
+   tag 1 = IF
+      ref 0 <= ref UNIT-PLAN-EFF-BASE @ > or IF UNIT-FORMAT-BAD THEN
+      ref UNIT-PREFIX-EFF-N @ <= IF
+         ref UP-LIVE-EFFECT {: rec:ptr :}
+         rec ER.ACTIVE @ EFF-ACTIVE <>
+         rec ER.SYM @ 0 <> or IF UNIT-FORMAT-BAD THEN EXIT THEN
+      ref UP-EFFECT-ORD UP-CREATED-ROW? EXIT
+   ELSE tag 2 = IF
+      ref 0 < ref UNIT-PLAN-CUR @ UP.NEFFS UP@ >= or IF
+         UNIT-FORMAT-BAD THEN
+      UNIT-PLAN-CUR @ ref UP-EFF UP-CREATED-ROW? EXIT
+   ELSE UNIT-FORMAT-BAD THEN THEN
+   ;
+
+: UP-READ-CONTROLS ( ptr u8 -- ) {: plan:ptr :}
+   plan UP.NCTLS UP@ 0 ?do
+      UNIT-READ-ORD {: ord:n :}
+      plan i UP-CTL {: row:ptr :}
+      plan ord UP-SYM-ID@ row UPC.SYM UP!
+      UNIT-READ-CELL {: packed:n :}
+      packed XFER-FLAGS ASIG-GRAPH-DEFER and 0 <> IF
+         UNIT-FORMAT-BAD THEN
+      packed XFER-FLAGS packed XFER-DMASK packed XFER-RMASK XFER-PACK
+      packed <> IF UNIT-FORMAT-BAD THEN
+      packed row UPC.PACKED UP!
+      UNIT-READ-CELL {: tag:n :}
+      UNIT-READ-CELL {: ref:n :}
+      tag ref UP-CREATED?
+      tag row UPC.TAG UP! ref row UPC.REF UP!
+      UNIT-READ-CELL {: source-tag:n :}
+      UNIT-READ-CELL {: source-ref:n :}
+      source-tag 0= IF
+         source-ref 0 <> IF UNIT-FORMAT-BAD THEN
+         0 row UPC.SOURCE UP!
+      ELSE
+         source-tag 2 <> source-ref 0 < or
+         source-ref plan UP.NSYMS UP@ >= or IF UNIT-FORMAT-BAD THEN
+         plan source-ref UP-SYM-ID@ row UPC.SOURCE UP!
+      THEN
+   loop ;
+
+: UP-READ-DFERS ( ptr u8 -- ) {: plan:ptr :}
+   UNIT-READ-CELL dup 0 < over UNIT-IN-U @ CELL / > or IF
+      UNIT-FORMAT-BAD THEN {: count:n :}
+   count UPD.CELLS UP-ALLOC plan UP.DFERS UP-PTR!
+   count plan UP.NDFERS UP!
+   count 0 ?do
+      UNIT-READ-ORD {: ord:n :}
+      UNIT-READ-CELL {: flag:n :}
+      flag 0 <> flag -1 <> and IF UNIT-FORMAT-BAD THEN
+      plan i UP-DFER {: row:ptr :}
+      plan ord UP-SYM-ID@ row UPD.SYM UP!
+      flag row UPD.FLAG UP!
+   loop ;
+
+: UP-DEFER? ( n -- bool ) {: sym:n :}
+   sym SYM-N @ < IF sym DFER-FIND-SYM ELSE RES-FALSE THEN
+   UNIT-PROJ-DEFER !
+   UNIT-PLAN-FIRST @
+   BEGIN dup NULL-PTR <> WHILE
+      dup UP.NDFERS UP@ 0 ?do
+         dup i UP-DFER {: row:ptr :}
+         row UPD.SYM UP@ sym = IF row UPD.FLAG UP@ 0 <> UNIT-PROJ-DEFER ! THEN
+      loop
+      UP.NEXT UP-PTR@
+   REPEAT drop UNIT-PROJ-DEFER @ 0 <> ;
+
+: UP-CHECK-DEFER-GRAPHS ( ptr u8 -- ) {: plan:ptr :}
+   plan UP.NEFFS UP@ 0 ?do
+      plan i UP-EFF {: row:ptr :}
+      row UPE.STATE UP@ EFF-ACTIVE = IF
+         row UPE.SYM UP@ dup 0= IF drop RES-FALSE ELSE UP-DEFER? THEN
+         row UPE.GRAPH UP-PTR@ EW.SYM @ ASIG-GRAPH-DEFER and 0 <> xor
+         IF UNIT-FORMAT-BAD THEN
+      THEN
+   loop ;
+
+: UP-READ-PIMMS ( ptr u8 -- ) {: plan:ptr :}
+   plan UP.NPIMMS UP@
+   PIMM-CAP PIMM-N @ - UNIT-PROJ-PIMM-N @ - >
+   IF UNIT-FORMAT-BAD THEN
+   plan UP.NPIMMS UP@ 0 ?do
+      UNIT-READ-ORD {: ord:n :}
+      UNIT-READ-CELL {: count:n :}
+      count 0 < IF UNIT-FORMAT-BAD THEN
+      plan i UP-PIMM {: row:ptr :}
+      plan ord UP-SYM-ID@ row UPP.SYM UP!
+      count row UPP.N UP!
+   loop
+   plan UP.NPIMMS UP@ UNIT-PROJ-PIMM-N +! ;
+
+: UP-READ-BLOB ( ptr u8 -- ) {: plan:ptr :}
+   UNIT-READ-TFAM-U @ UNIT-TAKE {: reg:ptr :}
+   reg plan UP.TFAM UP-PTR!
+   UNIT-READ-TFAM-U @ plan UP.TFAM-U UP!
+   UNIT-READ-TFAM-U @ 0 <> IF
+      reg UNIT-READ-TFAM-U @
+      UNIT-PROJ-TFAM @ UNIT-PROJ-TFAM-U @ UNIT-TFAM-PREPARE
+      plan UP.TFAM-STATE UP!
+      reg UNIT-PREP-REG ! UNIT-READ-TFAM-U @ UNIT-PREP-REG-U !
+   ELSE
+      UNIT-PROJ-TFAM @ UNIT-PREP-REG !
+      UNIT-PROJ-TFAM-U @ UNIT-PREP-REG-U !
+   THEN
+   plan UP-READ-CONS
+   plan UP-READ-SYMS
+   UNIT-PROJ-EFF-N @ UNIT-PLAN-EFF-BASE !
+   plan UP-READ-EFFECTS
+   plan UP-READ-CONTROLS
+   plan UP-READ-DFERS
+   plan UP-CHECK-DEFER-GRAPHS
+   plan UP-READ-PIMMS
+   UNIT-IN-I @ UNIT-IN-U @ <> IF UNIT-FORMAT-BAD THEN ;
+
+: CHECKER-UNIT-PREPARE ( ptr u8 n n n -- n )
+   {: src:ptr size:n floor:n end:n :}
+   UNIT-PLAN-OPEN @ 0= IF UNIT-BAD THEN
+   UNIT-PLAN-INSTALL-N @ 0 <> IF UNIT-BAD THEN
+   src size floor end UP-NEW {: plan:ptr :}
+   floor UNIT-PREP-FLOOR ! end UNIT-PREP-END !
+   ASIG-GRAPH-DEFER CK-GRAPH-EXTRA-FLAGS !
+   plan [: dup UP-READ-BLOB ;] catch {: rc:n :}
+   drop
+   0 CK-GRAPH-EXTRA-FLAGS !
+   CK-GRAPH-RELEASE
+   rc 0 <> IF rc throw THEN
+   UNIT-PROJ-SERIAL @ plan UP.DELTA UP@ + {: endpoint:n :}
+   endpoint UNIT-PROJ-SERIAL @ UNIT-U< IF UNIT-FORMAT-BAD THEN
+   endpoint UNIT-PROJ-SERIAL ! endpoint plan UP.SERIAL UP!
+   plan UP.TFAM-U UP@ 0 <> IF
+      plan UP.TFAM UP-PTR@ UNIT-PROJ-TFAM !
+      plan UP.TFAM-U UP@ UNIT-PROJ-TFAM-U !
+   THEN
+   UNIT-PLAN-N @ 1 UNIT-PLAN-N +! ;
+
+: UP-PLAN ( n -- ptr u8 ) {: idx:n :}
+   idx 0 < idx UNIT-PLAN-N @ >= or IF UNIT-BAD THEN
+   UNIT-PLAN-FIRST @ idx 0 ?do UP.NEXT UP-PTR@ loop ;
+
+: UP-ACTUAL-SYM ( n -- n ) {: projected:n :}
+   projected 0= IF 0 EXIT THEN
+   projected UNIT-PREFIX-SYM-N @ < IF projected EXIT THEN
+   UNIT-PLAN-FIRST @
+   BEGIN dup NULL-PTR <> WHILE
+      dup UP.NSYMS UP@ 0 ?do
+         dup i UP-SYM {: row:ptr :}
+         row UPS.ID UP@ projected = IF
+            drop row UPS.ACTUAL UP@ unloop EXIT THEN
+      loop
+      UP.NEXT UP-PTR@
+   REPEAT drop UNIT-BAD ;
+
+: UP-INSTALL-CONS ( ptr u8 -- ) {: plan:ptr :}
+   plan UP.NCONS UP@ 0 ?do
+      plan i UP-CON {: row:ptr :}
+      row UPN.NAME UP-PTR@ row UPN.NAME-U UP@
+      row UPN.PKG UP-PTR@ row UPN.PKG-U UP@ CT-ADD-LINEAR
+   loop ;
+
+: UP-INSTALL-SYMS ( ptr u8 -- ) {: plan:ptr :}
+   plan UP.NSYMS UP@ 0 ?do
+      plan i UP-SYM {: row:ptr :}
+      row UPS.PKG UP-PTR@ row UPS.PKG-U UP@ row UPS.VIS UP@
+      row UPS.NAME UP-PTR@ row UPS.NAME-U UP@
+      SYM-INTERN row UPS.ACTUAL UP!
+   loop ;
+
+: UP-INSTALL-EFFECTS ( ptr u8 -- ) {: plan:ptr :}
+   plan UP.NEFFS UP@ 0 ?do
+      plan i UP-EFF {: row:ptr :}
+      row UPE.SYM UP@ UP-ACTUAL-SYM CHECKER-REC-SYM !
+      row UPE.STATE UP@ EFF-DELETED = IF
+         UEND @ 1+ row UPE.HANDLE UP!
+         E-ADD-DELETED
+      ELSE
+         row UPE.GRAPH UP-PTR@ UNIT-INSTALL-ACTIVE 1+
+         {: handle:n :}
+         handle row UPE.HANDLE UP!
+         handle row UPE.COUNT UP@ row UPE.DOMAIN UP@
+         row UPE.REF UP@ plan UP.FLOOR UP@
+         UNIT-INSTALL-STORAGE
+      THEN
+   loop
+   HIDX-EPOCH+ ;
+
+: UP-LIVE-HANDLE ( n -- n ) {: ordinal:n :}
+   0 1
+   BEGIN dup ordinal < WHILE
+      over E-PTR E-NEXT@ rot drop swap 1+
+   REPEAT drop 1+ ;
+
+: UP-CREATED-HANDLE ( n n -- n ) {: tag:n ref:n :}
+   tag 0= IF 0 EXIT THEN
+   tag 1 = IF
+      ref UNIT-PREFIX-EFF-N @ <= IF ref UP-LIVE-HANDLE EXIT THEN
+      ref UP-EFFECT-ORD UPE.HANDLE UP@ EXIT
+   THEN
+   UNIT-PLAN-CUR @ ref UP-EFF UPE.HANDLE UP@ ;
+
+: UP-INSTALL-CONTROLS ( ptr u8 -- ) {: plan:ptr :}
+   plan UNIT-PLAN-CUR !
+   plan UP.NCTLS UP@ 0 ?do
+      plan i UP-CTL {: row:ptr :}
+      row UPC.SYM UP@ UP-ACTUAL-SYM
+      row UPC.PACKED UP@ {: packed:n :}
+      packed XFER-FLAGS packed XFER-DMASK packed XFER-RMASK
+      row UPC.TAG UP@ row UPC.REF UP@ UP-CREATED-HANDLE
+      row UPC.SOURCE UP@ UP-ACTUAL-SYM
+      NORET-APPEND
+   loop ;
+
+: UP-INSTALL-DFERS ( ptr u8 -- ) {: plan:ptr :}
+   plan UP.NDFERS UP@ 0 ?do
+      plan i UP-DFER {: row:ptr :}
+      row UPD.SYM UP@ UP-ACTUAL-SYM
+      row UPD.FLAG UP@ 0 <> DFER-ADD-SYM
+   loop ;
+
+: UP-INSTALL-PIMMS ( ptr u8 -- ) {: plan:ptr :}
+   plan UP.NPIMMS UP@ 0 ?do
+      plan i UP-PIMM {: row:ptr :}
+      row UPP.SYM UP@ UP-ACTUAL-SYM PIMM-N @ cells PIMM-SYMS + !
+      row UPP.N UP@ PIMM-N @ cells PIMM-NS + !
+      1 PIMM-N +!
+   loop ;
+
+: CHECKER-UNIT-INSTALL ( n -- ) {: idx:n :}
+   UNIT-PLAN-OPEN @ 0= idx UNIT-PLAN-INSTALL-N @ <> or IF UNIT-BAD THEN
+   idx UP-PLAN {: plan:ptr :}
+   CHECKER-REC-SYM @ UNIT-PLAN-OLD-SYM !
+   -1 UNIT-INST-ON !
+   plan UP.TFAM UP-PTR@ plan UP.TFAM-U UP@
+   plan UP.TFAM-STATE UP@ UNIT-TFAM-TAKE
+   plan UP-INSTALL-CONS
+   plan UP-INSTALL-SYMS
+   plan UP-INSTALL-EFFECTS
+   plan UP-INSTALL-CONTROLS
+   plan UP-INSTALL-DFERS
+   plan UP-INSTALL-PIMMS
+   0 UNIT-INST-ON ! UNIT-PLAN-OLD-SYM @ CHECKER-REC-SYM !
+   plan UP.SERIAL UP@ BWIN-EPOCH !
+   plan UP.DELTA UP@ 0 <> IF BWIN-RESET THEN
+   1 UNIT-PLAN-INSTALL-N +! ;
+
+: UNIT-IMPORT-PLAN ( ptr u8 n -- ) {: src:ptr size:n :}
    UNIT-BASE?
    SYM-N @ UNIT-SYMN @ <> UEND @ UNIT-UEND @ <> or
    NORET-END @ UNIT-NEND @ <> or IF UNIT-BAD THEN
-   a UNIT-IN-P ! u UNIT-IN-U !
-   UNIT-CHECK-BLOB
-   UNIT-ENDPOINT {: endpoint:n :}
-   CHECKER-REC-SYM @ UNIT-OLD-SYM !
-   RBF-PUSH
-   -1 UNIT-INST-ON !
-   [: UNIT-IMPORT-RUN ;] catch {: rc:n :}
-   0 UNIT-INST-ON ! UNIT-OLD-SYM @ CHECKER-REC-SYM !
-   NULL-PTR UNIT-IN-P ! 0 UNIT-IN-U !
-   rc 0 <> IF RBF-POP rc throw THEN
-   RBF-FINALIZE
-   endpoint BWIN-EPOCH !
-   UNIT-READ-DELTA @ 0 <> IF BWIN-RESET THEN
+   CHECKER-UNIT-PREPARE-BEGIN
+   src size UNIT-DATA-FLOOR @ here BYTE-VIEW data-base BYTE-VIEW -
+   [: 2over 2over CHECKER-UNIT-PREPARE CHECKER-UNIT-INSTALL ;]
+   catch {: rc:n :}
+   2drop 2drop
+   CHECKER-UNIT-PREPARE-END
+   rc 0 <> IF rc throw THEN
    0 UNIT-MARKED ! ;
+
+: UNIT-IMPORT-HOOK ( -- )
+   [: UNIT-IMPORT-PLAN ;] is UNIT-IMPORT-PLAN-XT ;
+UNIT-IMPORT-HOOK
 
 public
 : UNIT-SCRATCH-RELEASE ( -- )
@@ -26193,14 +26995,21 @@ public
    NULL-PTR UNIT-BUF-P ! 0 UNIT-BUF-CAP ! 0 UNIT-BUF-U !
    0 UNIT-SYMN ! 0 UNIT-UEND ! 0 UNIT-NEND !
    0 UNIT-DFER ! 0 UNIT-CTN ! 0 UNIT-TFAM !
-   0 UNIT-LIN ! 0 UNIT-VREC !
+   0 UNIT-LIN ! 0 UNIT-VREC ! 0 UNIT-PIMM !
+   0 UNIT-NDFER ! 0 UNIT-NCONS ! 0 UNIT-NPIMM ! 0 UNIT-TFAM-U !
    0 UNIT-MARK-SERIAL !
+   0 UNIT-DATA-FLOOR !
+   0 UNIT-CREATED-CUR ! 0 UNIT-CREATED-ORD !
    0 UNIT-NSYM ! 0 UNIT-NEFF ! 0 UNIT-NCTL ! 0 UNIT-CUR !
+   UNIT-PREFIX-SYMS @ UNIT-PREFIX-CAP @ cells ASIG-RELEASE
+   NULL-PTR UNIT-PREFIX-SYMS ! 0 UNIT-PREFIX-N ! 0 UNIT-PREFIX-CAP !
+   0 UNIT-SYMS-FROZEN !
+   0 CK-GRAPH-EXTRA-FLAGS !
    NULL-PTR UNIT-IN-P ! 0 UNIT-IN-U ! 0 UNIT-IN-I !
    0 UNIT-READ-SYMS ! 0 UNIT-READ-EFFS ! 0 UNIT-READ-CTLS !
-   0 UNIT-READ-DELTA !
-   NULL-PTR UNIT-FIRST-PKG ! 0 UNIT-FIRST-PKG-U !
-   0 UNIT-OLD-SYM ! 0 UNIT-INST-ON !
+   0 UNIT-READ-DELTA ! 0 UNIT-READ-TFAM-U !
+   0 UNIT-READ-CONS ! 0 UNIT-READ-PIMMS !
+   0 UNIT-INST-ON !
    NULL-PTR UNIT-ASIG-P ! 0 UNIT-ASIG-U ! 0 UNIT-ASIG-CAP !
    0 UNIT-MARKED ! ;
 private
@@ -26208,6 +27017,10 @@ private
 ' CHECKER-UNIT-MARK DECLARATIONS CHECKER-OWNER-ABI:UNIT-MARK-OFF + xt!
 ' CHECKER-UNIT-EXPORT DECLARATIONS CHECKER-OWNER-ABI:UNIT-EXPORT-OFF + xt!
 ' CHECKER-UNIT-IMPORT DECLARATIONS CHECKER-OWNER-ABI:UNIT-IMPORT-OFF + xt!
+' CHECKER-UNIT-PREPARE-BEGIN DECLARATIONS CHECKER-OWNER-ABI:UNIT-PREPARE-BEGIN-OFF + xt!
+' CHECKER-UNIT-PREPARE DECLARATIONS CHECKER-OWNER-ABI:UNIT-PREPARE-OFF + xt!
+' CHECKER-UNIT-INSTALL DECLARATIONS CHECKER-OWNER-ABI:UNIT-INSTALL-OFF + xt!
+' CHECKER-UNIT-PREPARE-END DECLARATIONS CHECKER-OWNER-ABI:UNIT-PREPARE-END-OFF + xt!
 ;package
 
 
@@ -26224,6 +27037,16 @@ private
    NULL-PTR IS-TA !  0 IS-TU !
    NULL-PTR CAND-A !  0 CAND-U !
    NULL-PTR UNJ-A !  0 UNJ-U !
+   TRIAL-SNAP-ZERO
+   0 EV-HIT !  0 EV-KIND !  0 EV-A0 !  0 EV-A1 !
+   0 TSEEN !  0 TSOK !  0 TFA !
+   0 WF-CURROW !  0 WF-POS-I !
+   RECEFF-ON @ 0= IF
+      0 RECEFF !  0 RECEFF-UEND !  0 RECEFF-SYM !
+   THEN
+   0 SKI !  0 SKF !
+   0 SPAY-B !  0 SPAY-U !
+   EFFECT-XFER-CLEAR
    CHECKER-REG:UNIT-SCRATCH-RELEASE ;
 
 \ A capture keeps the primitive control prefix verbatim and the state at two
@@ -26747,7 +27570,17 @@ public
    REG-SCRATCH-SNAP-XT
    REG-LATE-SCRATCH-SNAP-XT
    REG-CERT-SNAP-XT
-   CHECKER-LATE-CAPTURE-SCRATCH-PREPARE ;
+   CHECKER-LATE-CAPTURE-SCRATCH-PREPARE
+   \ These cursors and stashed probe inputs have no backing check or index after
+   \ the capture resets above. Leave no last-query bytes in a saved image.
+   0 CT-I ! 0 NRX-POS !
+   0 LTC-P ! 0 XM-K ! 0 LBI-T !
+   0 UIX-I ! 0 UIX-J ! 0 UIX-H ! 0 UIX-BP !
+   0 CHX-I ! 0 CHX-J ! 0 CHX-BP ! 0 CHX-C !
+   0 CK-CLOSED-SYM ! 0 CK-CLOSED-IX ! 0 CK-CLOSED-OFF !
+   0 CK-PEND-FLOOR ! 0 CK-PEND-IX !
+   0 QTMP !
+   NULL-PTR QCAND-A ! 0 QCAND-U ! 0 QCAND-VERDICT ! ;
 
 package CHECKER-REG
 ' CHECKER-CAPTURE-PREPARE DECLARATIONS CAPTURE-OFF + xt!

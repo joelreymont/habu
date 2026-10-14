@@ -94,6 +94,7 @@ variable EXP-U
    s" src/core/enum-decl.f" ARG
    s" src/core/structures.f" ARG
    s" src/core/bytes.f" ARG
+   s" src/core/dynamic-storage.f" ARG
    TARGET-ARGS
    s" src/habu/stack-abi.f" ARG
    s" src/habu/layout.f" ARG

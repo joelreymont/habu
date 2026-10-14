@@ -7,7 +7,9 @@
 \ Run: bin/hb --load tools/hb-build-aot-test.f
 
 require tools/hb-build-test-lib.f
+require tools/image-size-lib.f          \ this fixture measures image bytes directly
 require test/preloaded-engine.f
+require src/lib/codegen.f
 
 using BUILD-FIXPOINT                     \ the build tmp root
 
@@ -51,8 +53,18 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
 : HBT-AOT-DIVZ-SRC$ ( -- ptr u8 n )
    S\" package HBT-DIVZ\n: LOADING ( -- ) tier@ 1 <> if -9050 throw then ;\nLOADING\nvariable A\nvariable B\nvariable R\n: DZ ( n n -- n ) / ;\n: TRY ( -- n ) [: A @ B @ DZ R ! ;] catch ;\npublic\n: RUN ( -- ) 7 A ! 0 B ! TRY dup . cr -6400 <> if -9051 throw then 7 A ! 2 B ! TRY 0 <> if -9052 throw then R @ 3 <> if -9053 throw then ;\n;package\n: MAIN ( -- ) HBT-DIVZ:RUN ;\n" ;
 
+4096 CODEGEN:BUFFER HBT-SPAN-PROGRAM
+
 : HBT-SPAN-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/span.f\nrequire src/lib/memory.f\npackage HBT-SPAN\n: LOADING ( -- ) tier@ 1 <> if -9060 throw then ;\nLOADING\n64 SPAN-BUFFER: SB\npublic\n: RUN ( -- )\n   SB SPAN:LEN . cr\n   128 MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: s :}\n   s\" span\" s SPAN:COPY\n   s 0 4 SPAN:SUB SPAN:$ type cr\n   s 8 SPAN:SKIP 16 SPAN:TAKE SPAN:LEN . cr\n   s MEM:FREE-SPAN ;\n;package\n: MAIN ( -- ) HBT-SPAN:RUN ;\n" ;
+   HBT-SPAN-PROGRAM CODEGEN:RESET
+   S\" require src/lib/span.f\nrequire src/lib/memory.f\nrequire src/lib/ffi-abi.f\npackage HBT-SPAN\n: LOADING ( -- ) tier@ 1 <> if -9060 throw then ;\nLOADING\nPROCESS-SYMBOLS\nFUNCTION: PID getpid ( -- i32 ) ;FUNCTION\n" HBT-SPAN-PROGRAM CODEGEN:APPEND-STRING
+   HB-TARGET-MACOS? if
+      S\" LIBRARY /usr/lib/libSystem.B.dylib\n" HBT-SPAN-PROGRAM CODEGEN:APPEND-STRING
+   else
+      S\" LIBRARY libc.so.6\n" HBT-SPAN-PROGRAM CODEGEN:APPEND-STRING
+   then
+   S\" FUNCTION: HOST gethostname ( ptr u8 n -- i32 )\n   0 1 WRITES-ARG ;FUNCTION\ncreate HOST-BUF 256 allot\n64 SPAN-BUFFER: SB\npublic\n: RUN ( -- )\n   PID 0 > 0= if -9061 throw then\n   HOST-BUF BYTE-VIEW 256 HOST 0 <> if -9062 throw then\n   SB SPAN:LEN . cr\n   128 MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: s :}\n   s\" span\" s SPAN:COPY\n   s 0 4 SPAN:SUB SPAN:$ type cr\n   s 8 SPAN:SKIP 16 SPAN:TAKE SPAN:LEN . cr\n   s MEM:FREE-SPAN ;\n;package\n: MAIN ( -- ) HBT-SPAN:RUN ;\n" HBT-SPAN-PROGRAM CODEGEN:APPEND-STRING
+   HBT-SPAN-PROGRAM CODEGEN:CONTENTS ;
 
 : HBT-SPAN-EXPECTED$ ( -- ptr u8 n )
    S\" 64\n\nspan\n16\n\n" ;
@@ -106,6 +118,7 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   -1 HBB-REPORT-JSON !
    HBB-BUILD
    HBB-MAKER-RUN @ 0 <> TTRUE
    HBB-OBJECT-HIT @ 0= TTRUE
@@ -115,6 +128,7 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   -1 HBB-REPORT-JSON !
    HBB-BUILD
    HBB-OBJECT-HIT @ 0 <> TTRUE
    HBB-OBJECT-STORE @ 0= TTRUE
@@ -131,6 +145,7 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
    HBT-AOT-SRC HBT-AOT-SRC2$ WRITE-ALL
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   -1 HBB-REPORT-JSON !
    HBB-BUILD
    HBB-ARTIFACT-HIT @ 0= TTRUE
    HBB-OBJECT-HIT @ 0= TTRUE

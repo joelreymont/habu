@@ -1560,7 +1560,12 @@ variable EXPOSE-GATE
 variable EXPOSE-BUSY-CTX              \ a running task's own context number
 variable EXPOSE-OLD-CTX               \ EXPOSE-CTX's context, kept past its UNEXPOSE
 
-CB-POOL 1 - constant EXPOSE-SLOT      \ the last two of the engine's slots
+\ Declare these bare rows before the suite starts tasks; callback declarations
+\ would make the same rows and native entries in an FFI consumer.
+: TEST-DECLARE-ROWS ( -- ) CB-POOL 0 ?do i TASK:DECLARE-CALLBACK loop ;
+TEST-DECLARE-ROWS
+
+CB-POOL 1 - constant EXPOSE-SLOT      \ the last two declared test rows
 CB-POOL 2 - constant EXPOSE-SLOT-B
 
 : EXPOSE-BUSY-BODY ( -- )

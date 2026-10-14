@@ -26,6 +26,15 @@ create BLANKS BLANK-LEN allot
 : GROW$ ( -- ptr u8 n )
    2 SCRIPT-ARGV$ ;
 
+create SUBJECT-CANON FS-PATH-CAP allot variable SUBJECT-U
+create GROW-CANON FS-PATH-CAP allot variable GROW-U
+
+: CANON-PATHS ( -- )
+   SUBJECT$ SOURCE-ROOT:CANONICAL drop
+   SUBJECT-CANON swap dup SUBJECT-U ! BYTE-COPY
+   GROW$ SOURCE-ROOT:CANONICAL drop
+   GROW-CANON swap dup GROW-U ! BYTE-COPY ;
+
 \ In mode origin-refused no size is answered: the stat refuses as a failed
 \ mapping does (E-MEM-MAP), with a code that is not about the file.
 : REFUSED? ( -- bool )
@@ -37,15 +46,18 @@ public
    {: path:ptr pathu:n :}
    REFUSED? if E-MEM-MAP throw then
    path pathu FILE-SIZE {: size:n :}
-   path pathu GROW$ STR= if
+   path pathu SOURCE-ROOT:CANONICAL drop {: canon:ptr canonu:n :}
+   canon canonu GROW-CANON GROW-U @ STR= if
       BLANK-LEN 0 ?do $0a BLANKS i + c! loop
       path pathu BLANKS BLANK-LEN APPEND-FILE
    then
-   REQUIRED @ 0= path pathu SUBJECT$ STR= and if
+   REQUIRED @ 0= canon canonu SUBJECT-CANON SUBJECT-U @ STR= and if
       1 REQUIRED !
       path pathu S\" s\" grown.f\" required\n" APPEND-FILE
    then
    size ;
+
+CANON-PATHS
 
 ;package
 

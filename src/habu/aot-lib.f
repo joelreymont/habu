@@ -90,6 +90,8 @@ variable MLBL
 \ The label at text offset zero: the image's own code base, which the declared
 \ xt cells are restored against. It costs no bytes and is placed by EMIT-ENTRY.
 variable LTEXT
+variable LDPREFUSE  variable LDPREFUSE-NUM
+variable LDPREFUSE-MSG  variable LDPREFUSE-OF  variable LDPREFUSE-UNIT
 
 \ ADDRESS A LABEL THE STARTUP CANNOT REACH WITH ADR. `adr` carries a signed
 \ 21-bit byte delta (src/arch/arm64/icode.f ?ADR, ±1 MiB), and the startup sits
@@ -189,6 +191,57 @@ variable CARRY-USED
       i AOT-OWNED:CARRIED? IF i CARRY-CELL THEN
    loop ;
 
+\ Keep the application's counts and capacities even if a later linker load
+\ declares maker rows. The two bases are published by the stripped entry.
+variable FFI-MARK-INDEX
+
+: FFI-MARK-VALUE ( -- n )
+   FFI-MARK-INDEX @ {: idx:n :}
+   idx 0= IF FFI-FN-MARK @ exit THEN
+   idx 1 = IF FFI-LIB-MARK @ exit THEN
+   idx 2 = IF FFI-FN-CAP-MARK @ exit THEN
+   FFI-LIB-CAP-MARK @ ;
+
+: CARRY-FFI-MARK-CELL ( ptr u8 -- ) {: source:ptr :}
+   source data-base BYTE-VIEW - DATA-VA VA>N + {: at:n :}
+   at BLOB-SRC @ < IF
+      at CARRIED-TARGET {: dest:n :}
+      dest -1 = IF s" aot: FFI boundary has no carried cell" 74 die THEN
+      FFI-MARK-VALUE dest DATA-PTR CELL-VIEW !
+   THEN
+   1 FFI-MARK-INDEX +! ;
+
+: CARRY-FFI-MARK ( -- )
+   0 FFI-MARK-INDEX !
+   [: CARRY-FFI-MARK-CELL ;] FFI:OWNED-COUNTS
+   [: CARRY-FFI-MARK-CELL ;] FFI:OWNED-CAPS ;
+
+\ A linker loaded after the application can allocate its own TASK user slots.
+\ Keep the application-close watermark in the carried runtime cell.
+: CARRY-TASK-USER-CELL ( ptr u8 -- ) {: source:ptr :}
+   source data-base BYTE-VIEW - DATA-VA VA>N + {: at:n :}
+   at BLOB-SRC @ < IF
+      at CARRIED-TARGET {: dest:n :}
+      dest -1 = IF s" aot: TASK user boundary has no carried cell" 74 die THEN
+      TASK-USER-MARK @ dest DATA-PTR CELL-VIEW !
+   THEN ;
+
+: CARRY-TASK-USER-MARK ( -- )
+   [: CARRY-TASK-USER-CELL ;] TASK:OWNED-USER-NEXT ;
+
+\ TASK's carried base cell still needs its declared DATA relocation. FFI's
+\ table bases are fresh engine cells initialized by EMIT-FFI-BASES instead.
+: CARRY-TASK-BASE ( ptr u8 -- ) {: source:ptr :}
+   source data-base BYTE-VIEW - DATA-VA VA>N + {: at:n :}
+   at BLOB-SRC @ < IF
+      at CARRIED-TARGET {: dest:n :}
+      dest -1 = IF s" aot: TASK table base has no carried cell" 74 die THEN
+      dest DATA-PTR ptr-cell-mark
+   THEN ;
+
+: CARRY-TASK-BASES ( -- )
+   [: CARRY-TASK-BASE ;] TASK:OWNED-ROW-BASE ;
+
 \ TASK's typed exit table may have declaration-time callbacks. Its carried
 \ bytes hold builder code addresses, so mark each active destination as an xt
 \ cell while the builder's address-cell registry is still live. The normal
@@ -234,17 +287,40 @@ CAST: TASK-EXIT-SLOT ( ptr n -- ptr [ -- ] )
 : SCAN-DATA-CELL ( n -- ) {: at:n :}
    at DATA-CELL@ {: v:n :}
    v CELL-TEXTPTR? v CELL-MAPPED? or 0= IF exit THEN
+   at AOT-CELL:NONCELL-WINDOW? IF exit THEN
    at CELL-LITERAL? IF exit THEN
    v CELL-TEXTPTR? IF at v REFUSE-UNDECLARED-CELL THEN
    v CELL-MAPPED? IF at v REFUSE-MAPPED-CELL THEN ;
 
+\ Carried byte fields can resemble a pointer when read across adjacent bytes.
+\ Check only their declared cell fields before the general window scan.
+: AOT-CARRIED-CELLS-CHECK ( -- )
+   XTC-REWIND
+   AOT-OWNED:N 0 ?do
+      i AOT-OWNED:CARRIED-CELLS? IF
+         i AOT-OWNED:LEN CELL / 0 ?do
+            j AOT-OWNED:DEST i CELL * + {: at:n :}
+            at XTC-DECLARED? 0= IF at SCAN-DATA-CELL THEN
+         loop
+      THEN
+   loop ;
+
+: CARRIED-WINDOW? ( n -- bool ) {: at:n :}
+   at CARRY-BASE @ >=
+   at CELL + CARRY-BASE @ CARRY-USED @ + <= and ;
+
 : AOT-DATA-TEXTPTR-CHECK ( -- )
+   0 AOT-CELL:PREPARE
+   AOT-CARRIED-CELLS-CHECK
    XTC-REWIND
    BLOB-SRC @ DSCAN !
    BEGIN DSCAN @ 8 + BLOB-END @ <= WHILE
-      DSCAN @ XTC-DECLARED? 0= IF DSCAN @ SCAN-DATA-CELL THEN
-      DSCAN @ 8 + DSCAN !
-   REPEAT ;
+      DSCAN @ CARRIED-WINDOW? 0= IF
+         DSCAN @ XTC-DECLARED? 0= IF DSCAN @ SCAN-DATA-CELL THEN
+      THEN
+      DSCAN @ 1+ DSCAN !
+   REPEAT
+   AOT-CELL:RESET ;
 
 : EMIT-DATA-REGION-MAP ( -- )
    LBL {: dvok:label :}
@@ -322,6 +398,31 @@ CAST: TASK-EXIT-SLOT ( ptr n -- ptr [ -- ] )
          THEN THEN
       THEN
    loop ;
+
+\ A carried FFI table is at a different absolute DATA address in each maker's
+\ application window. The entry installs that mapped address into the fresh
+\ engine control cell; the DATA blob carries only the identical table bytes.
+variable FFI-BASE-INDEX
+
+: FFI-BASE-MARK@ ( -- ptr u8 )
+   FFI-BASE-INDEX @ 0= if FFI-FN-BASE-MARK @ else FFI-LIB-BASE-MARK @ then ;
+
+: EMIT-FFI-BASE ( ptr u8 -- ) {: source:ptr :}
+   FFI-BASE-MARK@ FFI:>CELL {: table:n :}
+   table 0= if 0 else
+      table MAPPED-DATA {: target:n ok:bool :}
+      ok 0= if s" aot: FFI table base has no restored destination" 74 die then
+      target
+   then {: target:n :}
+   9 source data-base BYTE-VIEW - LIT64,
+   9 DATA 9 ADD,
+   11 target LIT64,
+   11 9 0 STR,
+   1 FFI-BASE-INDEX +! ;
+
+: EMIT-FFI-BASES ( -- )
+   0 FFI-BASE-INDEX !
+   [: EMIT-FFI-BASE ;] FFI:OWNED-BASES ;
 
 \ ONE UNSIGNED LEB128 VARINT, INLINE: seven bits a byte from the cursor `cur`,
 \ low group first, until a byte arrives with its high bit clear. `acc` answers
@@ -640,6 +741,7 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
    \ x12 is dead here, the two mapped stack bases above travel in x10.
    11 12 LCRASHH LABEL@ TEXT-ADR,  G-INSTALL-CRASH-X11
    EMIT-DATA-COPY                                \ restore persistent data + DP
+   EMIT-FFI-BASES                                \ select this image's two FFI table destinations
    EMIT-XT-CELLS                                 \ ... and the tokens its declared cells hold
    EMIT-SIGNAL-PUBLISH                           \ this image's stub address and fd word
    EMIT-SEED                                     \ push preseeded value-stack cells (empty for MAIN)
@@ -651,6 +753,37 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
 \ closure record stays the first word after the startup (test/gate-aot-image.f
 \ pins that). Nothing bounds how far past the startup they land: the entry
 \ addresses them with TEXT-ADR,, whose LOFF, lanes span the whole code buffer.
+\ DP-CHECK still uses its engine diagnostic and evaluate recovery in a native
+\ process. In a stripped image its exact (LDPBAD) branch is redirected here:
+\ the same candidate and ceiling are printed, then the process exits 76.
+\ No compiler/evaluator state is part of this handler.
+: DP-REFUSE-MSG$ ( -- ptr u8 n ) s" hb: data space out of range: DP " ;
+: DP-REFUSE-OF$ ( -- ptr u8 n ) s"  of " ;
+: DP-REFUSE-UNIT$ ( -- ptr u8 n ) S\"  bytes\n" ;
+
+: EMIT-DP-REFUSAL ( -- )
+   LDPREFUSE LABEL@ LBL,
+   0 2 MOVZ,  1 LDPREFUSE-MSG LABEL@ ADR,  2 DP-REFUSE-MSG$ nip MOVZ,  NR-WRITE SYS,
+   9 15 DATA SUB,  LDPREFUSE-NUM LABEL@ BL,
+   0 2 MOVZ,  1 LDPREFUSE-OF LABEL@ ADR,  2 DP-REFUSE-OF$ nip MOVZ,  NR-WRITE SYS,
+   9 DATA-SIZE PROF-CNT-BYTES - LIT64,  LDPREFUSE-NUM LABEL@ BL,
+   0 2 MOVZ,  1 LDPREFUSE-UNIT LABEL@ ADR,  2 DP-REFUSE-UNIT$ nip MOVZ,  NR-WRITE SYS,
+   0 76 MOVZ,  NR-EXIT-GROUP SYS,
+   LDPREFUSE-NUM LABEL@ LBL,
+   LBL {: digit:label :}
+   SP SP 32 SUBI,
+   12 SP 32 ADDI,
+   11 $A MOVZ,
+   digit LBL,
+      13 9 11 UDIV,  10 13 11 MUL,  10 9 10 SUB,
+      10 10 $30 ADDI,  12 12 1 SUBI,  10 12 0 STRB,
+      9 13 0 ADDI,  9 digit CBNZ,
+   0 2 MOVZ,  1 12 0 ADDI,  2 SP 32 ADDI,  2 2 12 SUB,  NR-WRITE SYS,
+   SP SP 32 ADDI,  RET,
+   LDPREFUSE-MSG LABEL@ LBL,  DP-REFUSE-MSG$ BYTES,
+   LDPREFUSE-OF LABEL@ LBL,  DP-REFUSE-OF$ BYTES,
+   LDPREFUSE-UNIT LABEL@ LBL,  DP-REFUSE-UNIT$ BYTES, ;
+
 : EMIT-CRASH-CODE ( -- )
    EMIT-CRASH-HANDLER  EMIT-SIGNAL-HANDLER  EMIT-HEX ;
 PTR-VARIABLE CP2  PTR-VARIABLE CEND   \ the copy walk's cursor and its one-past end
@@ -904,13 +1037,27 @@ variable BDELTA  variable TNEW
 \ stands and the declaration goes away (aot-closure.f AOT-DECLARATION? holds the
 \ rule and the evidence). Every other unmapped target still dies by name in
 \ MAP-TARGET!, and the drop is keyed on the target, never on the calling member.
+\ ptr-cell-mark is the same declaration for a DATA pointer cell, but its
+\ primitive pops the cell address before registering it. Keep that pop when
+\ stripping the registry call, or each such declaration leaks one stack cell.
+: PTR-MARK-TARGET? ( ptr u8 -- bool ) {: t:ptr :}
+   t FINDADDR-PTR {: callee:ptr :}
+   callee XREF-FOUND? 0= IF AOT-FALSE EXIT THEN
+   callee s" ptr-cell-mark" REC-NAME= ;
 : DECLARATION-TARGET? ( ptr u8 -- bool ) {: t:ptr :}
    t FINDADDR-PTR {: callee:ptr :}
    callee XREF-FOUND? 0= IF AOT-FALSE EXIT THEN
    callee AOT-DECLARATION? ;
+: DP-REFUSAL-TARGET? ( ptr u8 -- bool ) {: t:ptr :}
+   t FINDADDR-PTR {: callee:ptr :}
+   callee XREF-FOUND? 0= IF AOT-FALSE EXIT THEN
+   callee AOT-DP-REFUSAL? ;
 : RELOC-DIRECT ( n ptr u8 n -- n ) {: i:n p:ptr w:n :}
    p w TARGET {: t:ptr :}
+   t PTR-MARK-TARGET? IF 9 XDS -8 ENC-LDRPRE EXIT THEN
    t DECLARATION-TARGET? IF ENC-NOP EXIT THEN
+   t DP-REFUSAL-TARGET? IF
+      w $FC000000 and  ASM-LEN NEXT-OFF @ REL26 or EXIT THEN
    i t MAP-TARGET!
    w $FC000000 and  ASM-LEN TNEW @ REL26 or ;
 : RELOC-W32 {: i:n p:ptr w:n :} ( n ptr u8 n -- n )
@@ -1066,12 +1213,17 @@ public
 : LINK ( -- )
    AOT-APP-POOL                                     \ reached literals are copied into the window's pool
    CARRY-CELLS                                      \ the engine constants this image carries
+   CARRY-TASK-USER-MARK                             \ user slots allocated by the application
+   CARRY-FFI-MARK                                   \ declaration boundary before linker-only rows
+   CARRY-TASK-BASES                                 \ relocated TASK table base
    CARRY-TASK-EXIT                                  \ active carried task exit quotations
    COLLECT-XT-CELLS                                 \ the window's DECLARED cells: xt rows out, DATA cells mapped
    AOT-DATA-TEXTPTR-CHECK                           \ ... and no undeclared code pointer beside them
    CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !  LBL LTEXT !
-   LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !   \ the stripped image carries both handlers too
-   EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-CRASH-CODE  EMIT-DATA-BLOB  EMIT-XT-ROWS
+   LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !
+   LBL LDPREFUSE !  LBL LDPREFUSE-NUM !
+   LBL LDPREFUSE-MSG !  LBL LDPREFUSE-OF !  LBL LDPREFUSE-UNIT !
+   EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-DP-REFUSAL  EMIT-CRASH-CODE  EMIT-DATA-BLOB  EMIT-XT-ROWS
    AOT-WRITE-OBJ
    SIGN-ID:PROG$ AOT-OUT DRV-EMIT-IMAGE ;
 

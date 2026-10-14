@@ -17,6 +17,11 @@ as regular files, then run the native registry from that tree. The fixpoint
 fixtures copy `bin/hb` through `TREE-COPY:FILE`, which refuses a symlink whose
 target is outside the tree (`E-FS-PATH`).
 
+Keep `HB_TMP` outside the checkout, under `TMPDIR` or another external scratch
+directory. Absolute-load source-discovery and event-closure fixtures inherit
+the checkout's source root when their scratch files are inside it; the same
+fixtures pass unchanged with external scratch.
+
 ```sh
 bin/hb --load test/run.f
 ```
@@ -247,18 +252,19 @@ at its deadline.
   through `test/whitebox-child.f` (`PROVIDE`, `ENGINE$`, `ENV!`) and stays a
   plain `SUITE`, green on its own; loading that file is what makes the row
   wait for the build row.
-- The gate settles seven keyed images, each once per run in a pool row of its
-  own started beside the first rows (`test/gate-images.f`): the fixture writer
+- The gate settles seven image families, each once per run in a pool row of its
+  own started beside the first rows (`test/gate-images.f`). The compiler bundle
+  (`test/compiler-images.f`; `compiler-images-build`) uses the real
+  `test/compiler-images-build.f` entry and writes its rooted, ordinary and
+  whitebox outputs under the gate root. It starts before the independent early
+  rows, which run while it builds. C2 consumers and the unsealed engine wait for
+  it through their module imports. The other families are the fixture writer
   and the cold host it emits (`test/fixture-writer.f`, `test/cold-engine.f`;
   rows `fixture-writer-build`, `cold-engine-build`), the saver and linker
   images (`test/app-image-engine.f`, `test/preloaded-engine.f`;
-  `app-image-build`, `linker-build`), the unsealed engine
-  (`test/whitebox-engine.f`; `whitebox-engine-build`), the saved native
-  builder (`test/saved-builder.f`; `saved-builder-build`) and the NBR package
-  unit exported from the tree (`test/native-unit-image.f`;
-  `native-unit-build`), a keyed file rather than an engine: a unit imports
-  only into a build of the tree and by the engine that exported it, so an
-  export and its import in one row would be two engine builds. A row needs an
+  `app-image-build`, `linker-build`), and the unsealed engine
+  (`test/whitebox-engine.f`; `whitebox-engine-build`), and the saved AOT maker
+  (`test/aot-maker-engine.f`; `aot-maker-build`). A row needs an
   image when its load closure holds the image's module: the files it loads and
   what those import, or launch as a `.f` source through a path literal a known
   load helper consumes (`test/load-refs.f`, the reader the entry guard uses).
@@ -273,6 +279,9 @@ at its deadline.
   row was not granted — a child reached through a load the reader cannot see —
   dies with exit 69 naming the image instead of building it beside the build
   row. A row run on its own has no such variable and settles its own images.
+  On a compiler bundle failure, the adapter forwards its complete captured
+  stdout and stderr to the gate's corresponding streams before cleanup. The
+  `RED` line's pool paths are removed with the pool root.
 - A build row is bounded by its own work, not by wall time, because the rows
   behind it wait on it and a saturated host stretches wall time. On an Apple
   M2 Max (eight performance and four efficiency cores) the unsealed engine
@@ -284,9 +293,10 @@ at its deadline.
   row as `kind=CPU-BUDGET` once it has run the budget every gate row has
   (`test/suite-budget.f` `CPU-MS`, 360 s; `test/gate-pool.f`
   `GT-POOL-CPU-BUDGET!`). Its wall deadline is only a hang guard, sized for a
-  saturated pool: every builder's capture deadline is five times the budget
-  (`CHILD-MS`) and the row's a minute more (`ROW-MS`), so a build within its
-  budget meets it only on less than a fifth of a core. A build that stopped
+  saturated pool: the image builders' capture deadline is five times the budget
+  (`CHILD-MS`), including the compiler bundle's capture deadline. The
+  pool row's deadline is a minute beyond `CHILD-MS` (`ROW-MS`), so a build
+  within its budget meets it only on less than a fifth of a core. A build that stopped
   running gains no CPU time and still ends there, as
   `kind=TIMEOUT-UNDER-LOAD`; its red line ends with the CPU time the row had
   run of its budget (`cpu=<used>/<budget>ms`). CPU time measures work at the
@@ -312,7 +322,7 @@ at its deadline.
   at load averages up to 240, the gate's driver ran eleven of these rows (the
   C2, build-fixpoint and native-build-entry rows) both ways. Bounded by wall
   time, eight ended as `kind=TIMEOUT-UNDER-LOAD`: five C2 rows and
-  build-fixpoint-snapshot at the row's 360 s, native-build-entry and
+  the then-active build-fixpoint-snapshot row at 360 s, native-build-entry and
   build-fixpoint-fixtures at their children's 180 s and 120 s. Bounded by CPU
   time, all eleven passed, c2-memory last at 1088 s, and they ran 699 s of CPU
   there against 680 s alone. A row's CPU is measured outside the gate, user
@@ -368,6 +378,12 @@ at its deadline.
   engine-baked FFI and TASK modules' claimed cells. A row whose claim is the
   saver's or the linker's own load (`test/app-image.f`) keeps compiling them
   from source.
+  Ordinary maker children in the FILE, callback, stripped-entry and literal
+  rows use `test/aot-maker-engine.f`: it selects the candidate engine before
+  argv and environment staging, and starts the saved maker with the same
+  application args and `1 set-tier`, `AOT-MAKER:OPEN`, `AOT-MAKER:RUN` stdin
+  program as `hb-build`. The positive AOT compatibility row keeps its raw
+  maker child to require its self-test after the linker loads.
   `test/gate-aot-negative.f` and `test/stripped-address.f` run on `LINKER$`:
   their die paths are forks of the image, not `ENGINE-CANDIDATE` children, and
   the mapped-band fixture's first question to the process-map reader reads the

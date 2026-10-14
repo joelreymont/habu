@@ -281,8 +281,9 @@ variable SELF-SRC-U
 : WRITE-SELF-SRC ( -- )
    SELF-SRC$ GE-SRC-BUF GE-SRC-U @ WRITE-ALL ;
 
-\ The production maker script (tools/hb-build-lib.f HBB-RUN-MAKER-CMD) with one
-\ line added: the self-test, required after the linker and before the link.
+\ The raw compatibility maker script with one line added: the self-test is
+\ required after the linker and before the link. A saved maker opens the
+\ application window before the linker load, so cannot inject at this point.
 : SELF-STDIN$ ( -- ptr u8 n )
    SB-RESET
    S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\ns\" " SB-APPEND
@@ -290,10 +291,10 @@ variable SELF-SRC-U
    S\" \" required\nAOT-LINK:BUILD-NATIVE\n" SB-APPEND
    SB$ ;
 
-\ Drive the maker child the way tools/hb-build.f does - the application as the
-\ build's argv[0], the JSON flag as argv[1], HB_TMP as the image's directory -
-\ and hand it the script above on stdin. A build that reaches the end writes its
-\ image to HB_TMP/hb-aot-got, which is the name GB-OUT$ carries in these cases;
+\ Drive the compatibility maker with the application as argv[0], the JSON flag
+\ as argv[1], and HB_TMP as the image's directory. Hand it the script above on
+\ stdin. A build that reaches the end writes its image to HB_TMP/hb-aot-got,
+\ which is the name GB-OUT$ carries in these cases;
 \ the stale one goes first, so "an image exists" and "none was emitted" are both
 \ statements about THIS run. The maker runs seconds of CPU, so its deadline is
 \ the long row's child hang guard.
@@ -559,6 +560,7 @@ variable SELF-SRC-U
    GB-WRITE-SRC
    GB-HBB-PREPARE
    -1 HBB-JSON !
+   -1 HBB-REPORT-JSON !
    PRESEED-ARM
    s" hb-build AOT preseed object-cache relink build" GB-HBB-BUILD-OUT ;
 

@@ -15,7 +15,6 @@ require src/os/script-argv.f
 require tools/native-build-args.f
 require tools/build-target.f
 require src/lib/codesign.f
-require src/lib/executable-build.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
@@ -332,10 +331,16 @@ CAST: PREFIX-COMPILE-XT ( n -- [ ptr u8 n -- ] )
 : TARGET-IMPORTER ( -- n )
    s" NSTR" s" IMPORT-ROWS" PRIVATE-TARGET-XT TARGET-CODE ;
 
+: TARGET-PRIVATE-XT ( ptr u8 n ptr u8 n -- n )
+   PRIVATE-TARGET-XT TARGET-CODE ;
+
 \ TARGET-XT and TARGET-IMPORTER hand target entries over as code address integers.
 CAST: PREPARE-XT ( n -- [ -- ] )
 CAST: SEAL-XT ( n -- [ n -- ] )
 CAST: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] )
+CAST: PLAN-COUNT-XT ( n -- [ -- n ] )
+CAST: PLAN-PAIR-XT ( n -- [ n -- n n ] )
+CAST: PLAN-APPLY-XT ( n -- [ ptr n n -- ] )
 
 \ Every segment's arena is checked before the target imports any of them.
 : TRANSFER-LITERALS ( -- )
@@ -347,11 +352,33 @@ CAST: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] )
 
 \ The package seal comes first: CAPTURE-PREPARE's checker sweep reads the
 \ protected bits it sets (src/core/checker-surface.f KEEP?).
-: PREPARE-TARGET ( -- )
-   AOT-ARM:R0 @ s" ENGINE-INTERNAL:SEAL-PACKAGES" TARGET-XT SEAL-XT execute
+: PREPARE-WINDOW ( -- )
    s" NATIVE-RUNTIME:CAPTURE-PREPARE" TARGET-XT PREPARE-XT execute
    s" CHECKER-STORAGE-UNBIND-ALL" TARGET-XT PREPARE-XT execute
    AOT-ARM:HERE-N AOT-ARM:D1 ! ;
+
+: PREPARE-TARGET ( -- )
+   AOT-ARM:R0 @ s" ENGINE-INTERNAL:SEAL-PACKAGES" TARGET-XT SEAL-XT execute
+   PREPARE-WINDOW ;
+
+\ Keep the source-time classifier's exact answers outside target DATA. The
+\ first capture releases target dynamic buffers before the sealed one runs.
+: COPY-SEAL-PLAN ( -- ptr n n )
+   s" ENGINE-INTERNAL" s" PLAN-N" TARGET-PRIVATE-XT PLAN-COUNT-XT execute
+      {: count:n :}
+   count 2 * >COUNT MEM-ALLOC-CELLS {: plan:ptr :}
+   s" ENGINE-INTERNAL" s" PLAN-PAIR" TARGET-PRIVATE-XT PLAN-PAIR-XT
+      {: pair :}
+   count 0 ?do
+      i pair execute {: rec:n min:n :}
+      rec plan i 2 * cells + !
+      min plan i 2 * 1+ cells + !
+   loop
+   plan count ;
+
+: APPLY-SEAL-PLAN ( ptr n n -- )
+   s" ENGINE-INTERNAL" s" APPLY-PLAN" TARGET-PRIVATE-XT
+      PLAN-APPLY-XT execute ;
 
 \ A retained driver cell is not a fixed engine slot. Registering a target XT
 \ into one after reset would make it look like a load-time engine hook.
@@ -370,6 +397,13 @@ CAST: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] )
    AOT-ARM:R0 @ AOT-ARM:D0 @ AOT-CAPTURE:PRELUDE-MARK
    s" NHOST:INSTALL" AOT-CAPTURE:BOOTRUN+
    AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
+   CHECK-FIXED-ROWS ;
+
+: CAPTURE-NAMED ( bool -- )
+   {: all:bool :}
+   AOT-ARM:R0 @ AOT-ARM:D0 @ AOT-CAPTURE:PRELUDE-MARK
+   s" NHOST:INSTALL" AOT-CAPTURE:BOOTRUN+
+   AOT-ARM:WINDOW$ all AOT-CAPTURE:CAPTURE-WITH-NAMES
    CHECK-FIXED-ROWS ;
 
 FS-PATH-CAP constant OUTPUT-CAP
@@ -636,9 +670,66 @@ variable NAMES-NI
    AOT-CAPTURE:MAP-N 0 ?do i NAMES-ROW loop
    NAMES-PATH$ NAMES-A@ NAMES-U @ WRITE-ALL ;
 
+\ The suite builder's private directory is absolute. Each names map is
+\ written while its capture's map is still current, before another capture.
+create BUNDLE-PATH OUTPUT-CAP allot
+variable BUNDLE-PATH-U
+
+: BUNDLE-OUTPUT ( ptr u8 n ptr u8 n -- )
+   {: dir:ptr diru:n name:ptr nameu:n :}
+   dir diru name nameu BUNDLE-PATH JOIN-PATH BUNDLE-PATH-U !
+   BUNDLE-PATH BUNDLE-PATH-U @ OUTPUT! ;
+
+: OWN-CAPTURE ( -- AOT-OWNED:capture )
+   AOT-CAPTURE:CODE-WINDOW [: code-origin ;] false AOT-FILE:OWN-WINDOW ;
+
+: WRITE-BUNDLE-CAPTURE ( AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
+   {: writer :}
+   NATIVE-LAYOUT:CURRENT OUTPUT$ writer execute
+   OUTPUT$ CHMOD-X ;
+
+: BUNDLE-DRIVE ( ptr u8 n -- ) {: dir:ptr diru:n :}
+   BUILD-TARGET:CURRENT RTARGET:CORE MATCH RTARGET:core-result
+      supported OF drop ENDOF
+      unsupported OF RTARGET:E-UNSUPPORTED throw ENDOF
+   ;MATCH
+   CHECK-HOST-LAYOUT
+   CHECKER-OWNER LOGICAL-RESET
+   OPEN-AND-COMPILE
+   SOURCE-CHECK @ execute
+   RESET-TARGET-SOURCE
+   SOURCE-CLOSE @ execute
+   TRANSFER-LITERALS
+   COPY-SEAL-PLAN {: plan:ptr count:n :}
+   AOT-CAPTURE:PAYLOAD-CAPTURE
+   PREPARE-WINDOW
+   true CAPTURE-NAMED
+   dir diru s" hb-whitebox-source" BUNDLE-OUTPUT WRITE-NAMES
+   OWN-CAPTURE {: white:AOT-OWNED:capture :}
+   plan count APPLY-SEAL-PLAN
+   AOT-ARM:R0 @ s" ENGINE-INTERNAL:SEAL-PACKAGES" TARGET-XT SEAL-XT execute
+   PREPARE-WINDOW
+   false CAPTURE-NAMED
+   dir diru s" hb-root" BUNDLE-OUTPUT WRITE-NAMES
+   dir diru s" hb-ordinary" BUNDLE-OUTPUT WRITE-NAMES
+   OWN-CAPTURE {: sealed:AOT-OWNED:capture :}
+   WRITER-MACHINE-CK
+   s" tools/native-emit.f" required
+   dir diru s" hb-whitebox-source" BUNDLE-OUTPUT
+   white s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED WRITE-BUNDLE-CAPTURE
+   dir diru s" hb-root" BUNDLE-OUTPUT
+   sealed s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED WRITE-BUNDLE-CAPTURE
+   dir diru s" hb-ordinary" BUNDLE-OUTPUT
+   sealed s" NATIVE-EMIT:WRITE" SOURCE-WRITER-NAMED WRITE-BUNDLE-CAPTURE
+   white AOT-OWNED:CLOSE
+   sealed AOT-OWNED:CLOSE
+   plan count 2 * cells munmap 0<> if E-MEM-UNMAP throw then ;
+
 : REMOVE-STALE-TEMP ( -- )
    TEMP$ 2dup SYMLINK? if REMOVE-FILE exit then
    2dup EXISTS? if REMOVE-FILE else 2drop then ;
+
+CAST: WRITER>N ( [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
 
 : DRIVE ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
    {: query bootstrap:bool writer :}
@@ -647,6 +738,14 @@ variable NAMES-NI
       unsupported OF RTARGET:E-UNSUPPORTED throw ENDOF
    ;MATCH
    CHECK-HOST-LAYOUT
+   \ The selected action fixes the target ABI before loading its compiler. A
+   \ refused output must not spend a full source window on a writer or image
+   \ that cannot run here. The default writer also needs this machine's ISA.
+   writer WRITER>N ['] SOURCE-WRITER-DISPATCH WRITER>N = if
+      WRITER-MACHINE-CK
+   else
+      OUTPUT-LAUNCH-CK
+   then
    CHECKER-OWNER LOGICAL-RESET
    OPEN-AND-COMPILE
    SOURCE-CHECK @ execute
@@ -708,6 +807,33 @@ variable READY-RC
 
 public
 
+\ Test-only entry. Its source load is selected by the caller's bundle
+\ environment; standalone RUN-PATH-RC keeps its product/whitebox path.
+private
+TYPED-VARIABLE BUNDLE-DIR ptr u8
+variable BUNDLE-DIR-U
+
+: BUNDLE-ACTION ( RTARGET:build-action -- )
+   drop
+   BUNDLE-DIR @ BUNDLE-DIR-U @ BUNDLE-DRIVE ;
+
+public
+
+\ The suite selects its source policy before the one compiler bundle load.
+\ Ordinary callers keep the default policy through RUN-BUNDLE.
+: RUN-BUNDLE-READY ( ptr u8 n -- )
+   {: dir:ptr diru:n :}
+   BUILD-TARGET:IDLE-CK
+   dir BUNDLE-DIR !
+   diru BUNDLE-DIR-U !
+   RTARGET:HOST BUILD-TARGET:CURRENT RTARGET:FOR-OUTPUT
+      [: BUNDLE-ACTION ;] BUILD-TARGET:WITH ;
+
+: RUN-BUNDLE ( ptr u8 n -- )
+   BUILD-TARGET:IDLE-CK
+   DEFAULT-SOURCE-POLICY
+   RUN-BUNDLE-READY ;
+
 : RUN-PATH-RC ( ptr u8 n [ n n -- n ] bool -- n )
    {: out:ptr outu:n query bootstrap:bool :}
    BUILD-TARGET:IDLE-CK
@@ -716,7 +842,7 @@ public
    query bootstrap ['] SOURCE-WRITER-DISPATCH RUN-READY-RC ;
 
 \ The exit status of a finished build, for every driver that ends the process
-\ with one (RUN, RUN-IMAGE, RUN-UNIT and tools/build-profile.f): 0,
+\ with one (RUN, RUN-UNIT and tools/build-profile.f): 0,
 \ PROC-TIMEOUT-RC when a deadline expired (src/lib/process.f), and BUILD-RC for any
 \ other failure. RUN-READY-RC has already printed the throw code itself.
 : EXIT-RC ( n -- n )
@@ -731,19 +857,6 @@ public
 : RUN ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}
    BUILD-ARGS!
    0 SCRIPT-ARGV$ query bootstrap RUN-PATH-RC {: rc:n :}
-   rc 0= if REPORT-CLASS then
-   s" " rc EXIT-RC die ;
-
-\ APP-ENTRY changes the argv slice. Own both arguments before clearing it and
-\ enter the same protected build scope used by the source-loaded driver.
-: RUN-IMAGE ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
-   {: query bootstrap:bool writer :}
-   BUILD-ARGS!
-   DEFAULT-SOURCE-POLICY
-   0 SCRIPT-ARGV$ OUTPUT!
-   \ The saved image already registered this cell; zero adds no code reference.
-   0 data-base APP-ENTRY:XT-CELL + !
-   query bootstrap writer [: RUN-READY-RC ;] EXECUTABLE-BUILD:WITH {: rc:n :}
    rc 0= if REPORT-CLASS then
    s" " rc EXIT-RC die ;
 

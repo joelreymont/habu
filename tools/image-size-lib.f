@@ -649,7 +649,7 @@ variable PACK-CUR variable PACK-END variable PACK-PREV
    $FFFFFFFF PACK-V@ {: a:n :}
    $FFFFFFFF PACK-V@ {: b:n :}
    $FFFFFFFF PACK-V@ {: name:n :}
-   $3FFF PACK-V@ {: meta:n :}
+   $FFFF PACK-V@ {: meta:n :}
    name PACK-NAME?
    meta 2 and 0= NAMES0 @ name + U8@ DNAME-INL > and if E-ES-WALK throw then
    role 0= if

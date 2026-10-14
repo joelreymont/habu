@@ -1980,6 +1980,9 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    TEXT-S S-PATH CHECKS-BESIDE
    S-PATH s" refused" COMPLETED
    S-PATH 1 EXPECT PUBLISHES
+   \ A document opened by an alias publishes at that URI. Withdraw the prior
+   \ disk list at the canonical URI as well, so it cannot leave stale errors.
+   DEP-CANON DEP-PATH STR= 0= if DEP-CANON -1 EXPECT PUBLISHES then
    DEP-PATH CLOSES
    SAY
    DEP-PATH -1 EXPECT PUBLISHES
@@ -2740,7 +2743,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" 9" s\" {\"query\":\"rev-\"}" SYMBOLS-ASK
    SAY
    s" 9" SYMBOLS-START
-   s" REV-DISK" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
+   s" REV-DISK" 12 OD-DEP-PATH SOURCE-ROOT:CANONICAL drop URI-OF 1 2 10 s" " SYMBOL+
    s" REV-A" 12 OD-PATH URI-OF 1 2 7 s" " SYMBOL+
    SYMBOLS-END ;
 
@@ -2890,11 +2893,11 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 7" PRIM-PATH 0 24 DECLARATION-ASK
    s" 8" PRIM-PATH 6 2 DEFINITION-ASK
    SAY
-   s" 3" PRIM-SOURCE-PATH URI-OF 408 7 8 LOCATED
-   s" 4" PRIM-SOURCE-PATH URI-OF 408 7 8 LOCATED
-   s" 5" PRIM-SOURCE-PATH URI-OF 408 7 8 LOCATED
+   s" 3" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
+   s" 4" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
+   s" 5" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
    s" 6" PRIM-PATH URI-OF 4 2 3 LOCATED
-   s" 7" PRIM-SOURCE-PATH URI-OF 408 7 8 LOCATED
+   s" 7" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
    s" 8" NOWHERE ;
 
 \ The source used for the target came from the engine tree. An open unsaved
@@ -4804,7 +4807,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" 8" SYMBOLS-START ROOK-DECL+ ROOK-USES+ SYMBOLS-END
    s" 9" SYMBOLS-START SYMBOLS-END
    s" 10" SYMBOLS-START
-   PRIM-SOURCE-PATH URI-OF 394 7 8 REF+
+   PRIM-SOURCE-PATH URI-OF 423 7 8 REF+
    REF-A-PATH URI-OF 1 26 27 REF+
    SYMBOLS-END ;
 
@@ -5459,13 +5462,13 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" 7" s" refs-prim/w/e.f" FIXTURE 0 26 DECL-TOO REFS-ASK
    SAY
    s" 3" SYMBOLS-START
-   PRIM-SOURCE-PATH URI-OF 408 7 8 REF+
+   PRIM-SOURCE-PATH URI-OF 437 7 8 REF+
    PRIM-REF-USES SYMBOLS-END
    s" 4" SYMBOLS-START PRIM-REF-USES SYMBOLS-END
    HEAR s" 5" -32803 REFUSED
    HEAR s" 6" -32803 REFUSED
    s" 7" SYMBOLS-START
-   PRIM-SOURCE-PATH URI-OF 1010 6 13 REF+
+   PRIM-SOURCE-PATH URI-OF 1046 6 13 REF+
    s" refs-prim/w/e.f" OPEN-URI 0 26 33 REF+
    SYMBOLS-END ;
 
@@ -5643,21 +5646,21 @@ DYNAMIC-BUFFER PRIM-REF-TEXT u8
    STREAM
    TEXT-PR-A PR-DECL-A-PATH 1 s" verified" LISTED
    PRIM-SOURCE-PATH 1 EXPECT PUBLISHES
-   s" 3" PRIM-SOURCE-PATH 408 7 DECL-TOO REFS-ASK
-   s" 4" PRIM-SOURCE-PATH 408 6 DECL-TOO REFS-ASK
-   s" 5" PRIM-SOURCE-PATH 403 7 DECL-TOO REFS-ASK
-   s" 6" PRIM-SOURCE-PATH 408 7 DECL-NOT REFS-ASK
+   s" 3" PRIM-SOURCE-PATH 437 7 DECL-TOO REFS-ASK
+   s" 4" PRIM-SOURCE-PATH 437 6 DECL-TOO REFS-ASK
+   s" 5" PRIM-SOURCE-PATH 432 7 DECL-TOO REFS-ASK
+   s" 6" PRIM-SOURCE-PATH 437 7 DECL-NOT REFS-ASK
    SAY
    1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
    s" 3" SYMBOLS-START
-   PRIM-SOURCE-PATH URI-OF 408 7 8 REF+
+   PRIM-SOURCE-PATH URI-OF 437 7 8 REF+
    s" refs-prim-decl/w/a.f" OPEN-URI 0 17 18 REF+
    s" refs-prim-decl/w/b.f" DISK-URI 0 17 18 REF+
    SYMBOLS-END
    s" 4" SYMBOLS-START SYMBOLS-END
    1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
    s" 5" SYMBOLS-START
-   PRIM-SOURCE-PATH URI-OF 394 7 8 REF+
+   PRIM-SOURCE-PATH URI-OF 423 7 8 REF+
    s" refs-prim-decl/w/s.f" DISK-URI 1 17 18 REF+
    SYMBOLS-END
    1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
@@ -5682,7 +5685,7 @@ DYNAMIC-BUFFER PRIM-REF-TEXT u8
    SAY
    1 NAMED s" refs-prim-cover/w/bad.f" CANON s" refused" NAMED+ NAMED-END
    s" 3" SYMBOLS-START
-   PRIM-SOURCE-PATH URI-OF 408 7 8 REF+
+   PRIM-SOURCE-PATH URI-OF 437 7 8 REF+
    s" refs-prim-cover/w/a.f" OPEN-URI 0 17 18 REF+
    s" refs-prim-cover/w/bad.f" DISK-URI 0 19 20 REF+
    SYMBOLS-END ;
@@ -5703,7 +5706,7 @@ DYNAMIC-BUFFER PRIM-REF-TEXT u8
    1 NAMED s" refs-prim-conflict/w/z.f"
    1 s" refs-prim-conflict/w/d.f" ELSEWHERE+ NAMED-END
    s" 3" SYMBOLS-START
-   PRIM-SOURCE-PATH URI-OF 373 7 10 REF+
+   PRIM-SOURCE-PATH URI-OF 402 7 10 REF+
    s" refs-prim-conflict/w/z.f" OPEN-URI 0 18 21 REF+
    SYMBOLS-END ;
 

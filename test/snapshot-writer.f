@@ -459,6 +459,10 @@ variable BAND-WID
 
 : WARM-CASE ( -- )
    ADDRESS-HEADER-CASE
+   s" unsupported trailer versions are refused before restore" T-LABEL
+   TRAILER-OFF SNAP-TRL-VERSION + 2 DOCTOR-BYTE ASSERT-VERSION-REFUSED
+   TRAILER-OFF SNAP-TRL-VERSION + 9 DOCTOR-BYTE ASSERT-VERSION-REFUSED
+   TRAILER-OFF SNAP-TRL-VERSION + $FF DOCTOR-BYTE ASSERT-VERSION-REFUSED
    s" an address row outside exact DP is refused before restore" T-LABEL
    DOCTOR-FIRST-ROW
    BAND-WID!
@@ -480,6 +484,9 @@ variable BAND-WID
    DOCTOR-DATA-LENGTH ASSERT-BAND-REFUSED
    s" a negative dictionary count is refused before restore" T-LABEL
    DOCTOR-DICT-COUNT ASSERT-BAND-REFUSED
+   s" oversized positive region and dictionary counts are refused" T-LABEL
+   TRAILER-OFF SNAP-TRL-REGLEN + 4 + $FF DOCTOR-BYTE ASSERT-BAND-REFUSED
+   TRAILER-OFF SNAP-TRL-NDICT + 3 + $FF DOCTOR-BYTE ASSERT-BAND-REFUSED
    s" a partial call site is refused before restore" T-LABEL
    DOCTOR-PARTIAL-CALL ASSERT-BAND-REFUSED
    s" the previous snapshot format is refused by the baked loader" T-LABEL

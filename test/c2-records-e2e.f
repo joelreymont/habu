@@ -7,8 +7,8 @@ require src/lib/fs-mutate.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
-require src/lib/engine-candidate.f
 require test/suite-budget.f              \ CHILD-MS, every child's hang guard
+require test/c2-image-pair.f
 
 package C2-RECORDS-E2E
 private
@@ -78,20 +78,11 @@ variable RC
    RC @ 0 T=
    OUT OUT-U @ marker markeru CONTAINS? TTRUE ;
 
-: BUILD ( -- )
-   s" test/c2-memory-image-build.f" ARGS
-   s" --" >LEN PROC-ARGV+
-   s" hb-root" AT-A >LEN PROC-ARGV+
-   s" hb-ordinary" AT-A >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CWD$ RUN-ON
-   s" build.out" s" build.err" SAVE-LOG
-   s" native C2 record image builds" T-LABEL RC @ 0 T=
-   RC @ 0<> if exit then
-   s" hb-root" AT-A EXECUTABLE? TTRUE
-   s" hb-ordinary" AT-A CHMOD-X
-   s" hb-root.map" AT-A {: names:ptr namesu:n :}
-   names TARGET namesu BYTE-COPY namesu TARGET-U !
-   TARGET TARGET-U @ s" hb-ordinary.map" AT-A COPY-FILE-STREAM ;
+: IMAGES ( -- )
+   ROOT$ C2-IMAGE-PAIR:PROVIDE
+   0 RC !
+   s" native C2 record image is supplied" T-LABEL
+   s" hb-root" AT-A EXECUTABLE? TTRUE ;
 
 : RUN-IMAGE ( ptr u8 n ptr u8 n -- )
    {: image:ptr imageu:n source:ptr sourceu:n :}
@@ -158,7 +149,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   SETUP BUILD
+   SETUP IMAGES
    RC @ 0= if SOURCE-CASES SAVED-CASES then
    s" c2-records-e2e tree: " type ROOT$ type cr
    T-REPORT ;

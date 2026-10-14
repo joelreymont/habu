@@ -216,90 +216,209 @@ $41C8 constant FFI-SCRATCH-END
 \ ---- declared foreign functions -------------------------------------------
 \ FUNCTION: (the declarer below this package) names a row here and the word it
 \ generates carries that row's INDEX. Exact declarations share one row. A
-\ checked caller therefore reaches
-\ only a symbol some declaration published: the function address is never a
+\ checked caller therefore reaches only a symbol some declaration published: the function address is never a
 \ value on the stack, so the sealed surface above still publishes no universal
 \ binder. A row resolves its symbol on the first call and caches the address;
 \ library 0 is the process itself (RTLD_DEFAULT, acquiring no reference), any
 \ other index is a path this package dlopens once.
 \
-\ THE TABLE IS SIZED FOR A SERVER IMAGE, not for a library or two. One process
-\ legitimately binds five or six: the Tender server holds TCP4's 11 rows,
-\ libcurl's 15, libpq's 18, libcrypto's 19 and task's 5 at once, 68 before it
-\ declares anything of its own, and each later milestone adds foreign surface.
-\ Each distinct descriptor costs FN-NAME-CAP bytes of symbol plus four cells
-\ (address, library, argc, spill count) = $50 bytes, so the table is
-\ FN-MAX * $50 = $5000 bytes of image data. A new descriptor past the last row
-\ is E-FFI-TABLE-FULL, not a wrap or a silent drop.
+\ Each distinct descriptor occupies a row in aligned dictionary storage.
+\ Rows may move when a bank grows; declarations and callers keep stable indices.
+\ The ordinary and maker banks reuse descriptors independently.
 
-$100 constant FN-MAX                      \ $100 rows * $50 bytes = $5000 bytes
 $30 constant FN-NAME-CAP                  \ NUL-terminated C symbol
-FN-MAX constant LIB-MAX                 \ each callable row may name a distinct library
 PATH-CAP 1 + constant LIB-PATH-CAP      \ a library path of PATH-CAP bytes and its NUL
 $20 constant LIB-BASE-CAP                 \ the base name LIBRARY-NAME$ renders around
 9999 constant LIB-VERSION-MAX             \ ... and its soname version
 
-create FN-NAMES FN-MAX FN-NAME-CAP * allot
-create FN-ADDRS FN-MAX cells allot
-create FN-LIBS FN-MAX cells allot
-create FN-ARGCS FN-MAX cells allot
-create FN-SPILLS FN-MAX cells allot
-create LIB-PATHS LIB-MAX LIB-PATH-CAP * allot
-create LIB-LENS LIB-MAX cells allot
-create LIB-HANDLES LIB-MAX cells allot
-
+\ Function and library rows have one layout from the first declaration onward.
+0 cells constant FN-ADDR-OFF
+1 cells constant FN-LIB-OFF
+2 cells constant FN-ARGC-OFF
+3 cells constant FN-SPILL-OFF
+4 cells constant FN-NAME-OFF
+FN-NAME-OFF FN-NAME-CAP + constant FN-ROW-BYTES
+0 cells constant LIB-LEN-OFF
+1 cells constant LIB-HANDLE-OFF
+2 cells constant LIB-PATH-OFF
+LIB-PATH-OFF LIB-PATH-CAP + 7 + 8 / 8 * constant LIB-ROW-BYTES
+PERSISTED-PTR-VARIABLE FN-TABLE
+PERSISTED-PTR-VARIABLE LIB-TABLE
+variable FN-CAP
+variable LIB-CAP
 variable FN-N
 variable LIB-N
+\ Builder support has declarations of its own. Their generated call sites keep
+\ a tagged index so a callback into the application can select its own rows
+\ while the builder's foreign call is still on the stack. Ordinary indices and
+\ the application's four controls keep their original numeric meaning.
+PERSISTED-PTR-VARIABLE MAKER-FN-TABLE
+PERSISTED-PTR-VARIABLE MAKER-LIB-TABLE
+variable MAKER-FN-CAP
+variable MAKER-LIB-CAP
+variable MAKER-FN-N
+variable MAKER-LIB-N
+variable MAKER-DEPTH
+$4000000000000000 constant MAKER-TAG
 variable FN-REGISTERED
+PERSISTED-PTR-VARIABLE PIN-FN
+PERSISTED-PTR-VARIABLE PIN-LIB
+variable PIN-FN-CAP
+variable PIN-LIB-CAP
+DYNAMIC-BUFFER RETIRED-BASE ptr u8
+DYNAMIC-BUFFER RETIRED-SIZE n
+variable RETIRED-COUNT
 
-: FN-CHECK ( n -- ) {: idx:n :}
-   idx FN-MAX FFI-CHECK-INDEX ;
+: MAKER-TOKEN? ( n -- bool ) MAKER-TAG and 0<> ;
+: ROW-INDEX ( n -- n ) MAKER-TAG invert and ;
+: DECL-TAG ( -- n ) MAKER-DEPTH @ 0<> if MAKER-TAG else 0 then ;
+: FN-TABLE-CELL ( n -- ptr ptr u8 ) MAKER-TOKEN? if MAKER-FN-TABLE else FN-TABLE then ;
+: LIB-TABLE-CELL ( n -- ptr ptr u8 ) MAKER-TOKEN? if MAKER-LIB-TABLE else LIB-TABLE then ;
+: FN-CAP-CELL ( n -- ptr n ) MAKER-TOKEN? if MAKER-FN-CAP else FN-CAP then ;
+: LIB-CAP-CELL ( n -- ptr n ) MAKER-TOKEN? if MAKER-LIB-CAP else LIB-CAP then ;
+: FN-N-CELL ( n -- ptr n ) MAKER-TOKEN? if MAKER-FN-N else FN-N then ;
+: LIB-N-CELL ( n -- ptr n ) MAKER-TOKEN? if MAKER-LIB-N else LIB-N then ;
 
-: FN-NAME ( n -- ptr u8 ) {: idx:n :}
+\ Only declarations use the ambient scope. Every call and every lookup instead
+\ chooses the bank from its own token; callbacks can therefore reenter FFI.
+public
+: WITH-MAKER-DECLARATIONS ( [ -- ] -- ) {: load :}
+   1 MAKER-DEPTH +!
+   load [: -1 MAKER-DEPTH +! ;] finally ;
+private
+
+: ALIGNED-ROWS ( n -- ptr u8 )
+   {: size:n :}
+   here data-base - negate 7 and allot
+   here BYTE-VIEW {: rows:ptr :}
+   size allot
+   size 0 ?do 0 rows i + c! loop
+   rows ;
+
+\ The loader may still read a row's inline name or path when a callback grows a
+\ table. Keep retired declarations until the next quiescent cleanup.
+: RETIRE-ROOM ( -- )
+   RETIRED-COUNT @ 1+ dup RETIRED-BASE-RESERVE RETIRED-SIZE-RESERVE ;
+
+: RETIRE ( ptr u8 n -- ) {: base:ptr size:n :}
+   base RETIRED-COUNT @ RETIRED-BASE !
+   size RETIRED-COUNT @ RETIRED-SIZE !
+   1 RETIRED-COUNT +! ;
+
+: FN-GROW ( -- )
+   DECL-TAG {: token:n :}
+   token FN-CAP-CELL @ {: oldcap:n :}
+   oldcap 0= if 1 else oldcap 2 * then {: next:n :}
+   oldcap 0 > if RETIRE-ROOM then
+   next FN-ROW-BYTES * ALIGNED-ROWS {: rows:ptr :}
+   oldcap 0 > if
+      token FN-TABLE-CELL @ {: old:ptr :}
+      old rows token FN-N-CELL @ FN-ROW-BYTES * BYTE-COPY
+      old oldcap FN-ROW-BYTES * RETIRE
+      token FN-N-CELL @ 0 ?do 0 old i FN-ROW-BYTES * + FN-ADDR-OFF + CELL-VIEW ! loop
+   then
+   rows token FN-TABLE-CELL !
+   next token FN-CAP-CELL ! ;
+
+: LIB-GROW ( -- )
+   DECL-TAG {: token:n :}
+   token LIB-CAP-CELL @ {: oldcap:n :}
+   oldcap 0= if 1 else oldcap 2 * then {: next:n :}
+   oldcap 0 > if RETIRE-ROOM then
+   next LIB-ROW-BYTES * ALIGNED-ROWS {: rows:ptr :}
+   oldcap 0 > if
+      token LIB-TABLE-CELL @ {: old:ptr :}
+      old rows token LIB-N-CELL @ LIB-ROW-BYTES * BYTE-COPY
+      old oldcap LIB-ROW-BYTES * RETIRE
+      token LIB-N-CELL @ 0 ?do 0 old i LIB-ROW-BYTES * + LIB-HANDLE-OFF + CELL-VIEW ! loop
+   then
+   rows token LIB-TABLE-CELL !
+   next token LIB-CAP-CELL ! ;
+
+: FN-NEW ( -- )
+   DECL-TAG dup FN-N-CELL @ swap FN-CAP-CELL @ >= if FN-GROW then ;
+
+: LIB-NEW ( -- )
+   DECL-TAG dup LIB-N-CELL @ swap LIB-CAP-CELL @ >= if LIB-GROW then ;
+
+: FN-ROW ( n -- ptr u8 )
+   {: idx:n :}
+   idx FN-TABLE-CELL @ idx ROW-INDEX FN-ROW-BYTES * + ;
+
+: LIB-ROW ( n -- ptr u8 )
+   {: idx:n :}
+   idx LIB-TABLE-CELL @ idx ROW-INDEX LIB-ROW-BYTES * + ;
+
+: FN-FIELD ( n n -- ptr n )
+   {: idx:n off:n :}
+   idx FN-ROW off + CELL-VIEW ;
+
+: LIB-FIELD ( n n -- ptr n )
+   {: idx:n off:n :}
+   idx LIB-ROW off + CELL-VIEW ;
+
+: FN-CHECK ( n -- )
+   {: idx:n :}
+   idx ROW-INDEX idx FN-N-CELL @ FFI-CHECK-INDEX ;
+
+: FN-NAME ( n -- ptr u8 )
+   {: idx:n :}
    idx FN-CHECK
-   FN-NAMES idx FN-NAME-CAP * + ;
+   idx FN-ROW FN-NAME-OFF + ;
 
-: FN-ADDR@ ( n -- n ) {: idx:n :}
+: FN-ADDR@ ( n -- n )
+   {: idx:n :}
    idx FN-CHECK
-   FN-ADDRS idx cells + @ ;
+   idx FN-ADDR-OFF FN-FIELD @ ;
 
-: FN-ADDR! ( n n -- ) {: value:n idx:n :}
+: FN-ADDR! ( n n -- )
+   {: value:n idx:n :}
    idx FN-CHECK
-   value FN-ADDRS idx cells + ! ;
+   value idx FN-ADDR-OFF FN-FIELD ! ;
 
-: FN-LIB@ ( n -- n ) {: idx:n :}
+: FN-LIB@ ( n -- n )
+   {: idx:n :}
    idx FN-CHECK
-   FN-LIBS idx cells + @ ;
+   idx FN-LIB-OFF FN-FIELD @ ;
 
-: FN-SPILL@ ( n -- n ) {: idx:n :}
-   idx FN-CHECK FN-SPILLS idx cells + @ ;
-
-: FN-ARGC@ ( n -- n ) {: idx:n :}
+: FN-SPILL@ ( n -- n )
+   {: idx:n :}
    idx FN-CHECK
-   FN-ARGCS idx cells + @ ;
+   idx FN-SPILL-OFF FN-FIELD @ ;
 
-: LIB-CHECK ( n -- ) {: idx:n :}
-   idx LIB-MAX FFI-CHECK-INDEX ;
+: FN-ARGC@ ( n -- n )
+   {: idx:n :}
+   idx FN-CHECK
+   idx FN-ARGC-OFF FN-FIELD @ ;
 
-: LIB-PATH ( n -- ptr u8 ) {: idx:n :}
+: LIB-CHECK ( n -- )
+   {: idx:n :}
+   idx ROW-INDEX idx LIB-N-CELL @ FFI-CHECK-INDEX ;
+
+: LIB-PATH ( n -- ptr u8 )
+   {: idx:n :}
    idx LIB-CHECK
-   LIB-PATHS idx LIB-PATH-CAP * + ;
+   idx LIB-ROW LIB-PATH-OFF + ;
 
-: LIB-LEN@ ( n -- n ) {: idx:n :}
+: LIB-LEN@ ( n -- n )
+   {: idx:n :}
    idx LIB-CHECK
-   LIB-LENS idx cells + @ ;
+   idx LIB-LEN-OFF LIB-FIELD @ ;
 
-: LIB-LEN! ( n n -- ) {: u:n idx:n :}
+: LIB-LEN! ( n n -- )
+   {: u:n idx:n :}
    idx LIB-CHECK
-   u LIB-LENS idx cells + ! ;
+   u idx LIB-LEN-OFF LIB-FIELD ! ;
 
-: LIB-HANDLE@ ( n -- n ) {: idx:n :}
+: LIB-HANDLE@ ( n -- n )
+   {: idx:n :}
    idx LIB-CHECK
-   LIB-HANDLES idx cells + @ ;
+   idx LIB-HANDLE-OFF LIB-FIELD @ ;
 
-: LIB-HANDLE! ( n n -- ) {: value:n idx:n :}
+: LIB-HANDLE! ( n n -- )
+   {: value:n idx:n :}
    idx LIB-CHECK
-   value LIB-HANDLES idx cells + ! ;
+   value idx LIB-HANDLE-OFF LIB-FIELD ! ;
 
 \ Every call stages its own arguments in the register and spill buffers, the
 \ dlopen/dlsym buffer and the two length buffers, so between calls they hold
@@ -457,8 +576,6 @@ public
 \ declaration resolves against.
 : PROCESS ( -- n ) 0 ;
 
-: LIBRARY-MAX ( -- n ) LIB-MAX ;
-
 : LIBRARY-PATH-CAP ( -- n ) LIB-PATH-CAP ;
 
 \ Render into the caller's CODEGEN buffer; the caller owns the returned span.
@@ -479,30 +596,24 @@ public
    then
    buf CODEGEN:CONTENTS ;
 
-: LIBRARY-ROOM? ( -- bool ) LIB-N @ LIB-MAX < ;
-
-\ The table's size and whether a new distinct descriptor can take another row.
-\ The ceiling is documented in docs/stdlib.md and read from here, never retyped.
-: DECLARATION-MAX ( -- n ) FN-MAX ;
-
-: ROOM? ( -- bool ) FN-N @ FN-MAX < ;
 
 \ Path identity is the complete byte span, including its length. Reusing an
-\ occupied row leaves its resolved handle in place, even when the table is full.
-\ Only a new path consumes a row; the declarer catches that refusal so it can
-\ name the pending FUNCTION: word and symbol.
+\ occupied row leaves its resolved handle in place. Only a new path consumes a
+\ row; new paths grow the table only when its current capacity fills.
 : LIBRARY-PATH ( ptr u8 n -- n ) {: path:ptr u:n :}
    u PATH-ROOM drop
-   LIB-N @ 0 ?do
-      i LIB-LEN@ u = if
-         path u i LIB-PATH u STR= if i 1+ unloop exit then
+   DECL-TAG {: tag:n :}
+   tag LIB-N-CELL @ 0 ?do
+      i tag or LIB-LEN@ u = if
+         path u i tag or LIB-PATH u STR= if i 1+ tag or unloop exit then
       then
    loop
-   LIBRARY-ROOM? 0= if E-FFI-LIBRARY-FULL throw then
-   path u LIB-N @ LIB-PATH CSTR
-   u LIB-N @ LIB-LEN!
-   0 LIB-N @ LIB-HANDLE!
-   LIB-N @ 1 + dup LIB-N ! ;
+   LIB-NEW
+   tag LIB-N-CELL @ 1+ tag LIB-N-CELL !
+   path u tag LIB-N-CELL @ 1- tag or LIB-PATH CSTR
+   u tag LIB-N-CELL @ 1- tag or LIB-LEN!
+   0 tag LIB-N-CELL @ 1- tag or LIB-HANDLE!
+   tag LIB-N-CELL @ tag or ;
 
 private
 
@@ -526,16 +637,38 @@ private
 \ every one-shot cleanup (IMAGE-LIFECYCLE:PREPARE runs persistent hooks last, in
 \ reverse order, and FFI registers first), so module cleanup that calls into a
 \ library has finished before the library closes.
-: FORGET-SYMBOLS ( -- )
+: CLOSE-BANK ( n -- bool ) {: tag:n :}
    true
-   LIB-N @ 0 ?do
-      i LIB-HANDLE@ 0 <> if i CLOSE-SLOT and then
-   loop {: closed:bool :}
-   FN-MAX 0 ?do 0 i FN-ADDR! loop
+   tag LIB-N-CELL @ 0 ?do
+      i tag or LIB-HANDLE@ 0 <> if i tag or CLOSE-SLOT and then
+   loop ;
+
+: CLEAR-BANK ( n -- ) {: tag:n :}
+   tag FN-N-CELL @ 0 ?do 0 i tag or FN-ADDR! loop ;
+
+: ZERO-ROWS ( ptr u8 n -- ) {: rows:ptr bytes:n :}
+   bytes 0 ?do 0 rows i + c! loop ;
+
+: DRAIN-RETIRED ( -- )
+   RETIRED-COUNT @ 0 ?do
+      i RETIRED-BASE @ {: base:ptr :}
+      base PIN-FN @ <> base PIN-LIB @ <> and if
+         base i RETIRED-SIZE @ ZERO-ROWS
+      then
+   loop
+   RETIRED-BASE-RELEASE RETIRED-SIZE-RELEASE
+   0 RETIRED-COUNT ! ;
+
+: FORGET-SYMBOLS ( -- )
+   0 CLOSE-BANK MAKER-TAG CLOSE-BANK and {: closed:bool :}
+   \ Closing a maker library can resolve the ordinary dlclose row again.
+   \ Clear both function banks only after all handles have been attempted.
+   0 CLEAR-BANK MAKER-TAG CLEAR-BANK
    FFI-BUF BYTE-VIEW FFI-KPARAM-PBUF-OFF FFI-BUF-OFF - FORGET-STAGED
    FFI-DLBUF BYTE-VIEW FFI-KPARAM#-OFF FFI-DLBUF-OFF - FORGET-STAGED
    FFI-REG-LEN-BUF BYTE-VIEW FFI-SCRATCH-END FFI-REG-LEN-BUF-OFF - FORGET-STAGED
-   closed 0= if E-FFI-DLCLOSE throw then ;
+   closed 0= if E-FFI-DLCLOSE throw then
+   DRAIN-RETIRED ;
 
 \ The registered flag is set only after REGISTER completes, so a throwing
 \ registration leaves flag and registry consistent for a retry (forth.md's
@@ -562,6 +695,30 @@ private
 
 public
 
+\ A source import/export boundary has no foreign call in flight. Release live
+\ library references and borrowed symbol addresses before copying declarations.
+: FORGET-CACHE ( -- ) FORGET-SYMBOLS ;
+
+\ An AOT window retains the application-close allocation even if later linker
+\ declarations grow the live table. Release it only after LINK has serialized
+\ the image, or when a new window abandons the prior one.
+: IMAGE-PIN ( ptr u8 n ptr u8 n -- )
+   {: fn:ptr fncap:n lib:ptr libcap:n :}
+   fn FN-TABLE @ <> fncap FN-CAP @ <> or
+   lib LIB-TABLE @ <> libcap LIB-CAP @ <> or or if E-FFI-SYNTAX throw then
+   fn PIN-FN ! fncap PIN-FN-CAP !
+   lib PIN-LIB ! libcap PIN-LIB-CAP ! ;
+
+: IMAGE-UNPIN ( -- )
+   PIN-FN-CAP @ 0 > PIN-FN @ FN-TABLE @ <> and if
+      PIN-FN @ PIN-FN-CAP @ FN-ROW-BYTES * ZERO-ROWS
+   then
+   PIN-LIB-CAP @ 0 > PIN-LIB @ LIB-TABLE @ <> and if
+      PIN-LIB @ PIN-LIB-CAP @ LIB-ROW-BYTES * ZERO-ROWS
+   then
+   NULL-PTR PIN-FN ! NULL-PTR PIN-LIB !
+   0 PIN-FN-CAP ! 0 PIN-LIB-CAP ! ;
+
 \ The staged call. The row's index is the only thing a caller names, so a
 \ checked body cannot reach an address the declarations did not publish.
 : CALL ( n -- n ) {: idx:n :}
@@ -584,9 +741,9 @@ public
 
 : CALL-ABI-F32 ( n -- r )
    CALL-ABI-R IEEE754:F64>BITS $FFFFFFFF and F32:WIDEN ;
-
-\ An exact descriptor includes the library index, C symbol, integer argc and
-\ spill count. The terminating byte distinguishes a symbol from its prefix.
+\ An exact descriptor includes the library index, complete C symbol, integer
+\ argument count and spill count. The terminating byte distinguishes a symbol
+\ from its prefix.
 private
 
 : SAME-FN? ( ptr u8 n n n n n -- bool )
@@ -599,33 +756,43 @@ private
 
 public
 
-\ A miss needs a free row; an exact declaration works even at capacity. Check
-\ the inputs before inspecting names so the length never crosses a row boundary.
-\ Only new rows write addresses or descriptor metadata.
+\ Validate before reading a row's name. A match retains its cached address;
+\ only a new descriptor appends metadata to the selected bank.
 \ Declaring registers too. A process that loads this file declares the errno row
 \ at its load, before any module that calls a library can register a persistent
 \ hook, so FFI's hook is the first and runs last whenever the first foreign call
 \ comes, and a full image keeps the entry and the flag (tools/aot-build-core.f
 \ registers PROC-MAPS:RELOAD, which calls Mach through this table, after it).
 : DECLARE-SPILLED ( ptr u8 n n n n -- n ) {: name:ptr u:n lib:n argc:n spills:n :}
-   lib LIB-N @ 1 + FFI-CHECK-INDEX
+   DECL-TAG {: tag:n :}
+   lib 0 < if E-FFI-LIBRARY throw then
+   lib 0<> if
+      lib MAKER-TOKEN? if
+         tag 0= if E-FFI-LIBRARY throw then
+      else
+         tag 0<> if E-FFI-LIBRARY throw then
+      then
+      lib ROW-INDEX dup 0= if E-FFI-LIBRARY throw then
+      tag LIB-N-CELL @ > if E-FFI-LIBRARY throw then
+   then
    argc FFI-MAX-ARGS FFI-CHECK-COUNT
    spills FFI-MAX-ARGS FFI-CHECK-COUNT
    u NAME-ROOM drop
-   FN-N @ 0 ?do
-      name u lib argc spills i SAME-FN? if
+   tag FN-N-CELL @ 0 ?do
+      name u lib argc spills i tag or SAME-FN? if
          REGISTER-CLEANUP
-         i unloop exit
+         i tag or unloop exit
       then
    loop
-   ROOM? 0= if E-FFI-TABLE-FULL throw then
-   spills FN-SPILLS FN-N @ cells + !
-   name u FN-N @ FN-NAME CSTR
-   lib FN-LIBS FN-N @ cells + !
-   argc FN-ARGCS FN-N @ cells + !
-   0 FN-N @ FN-ADDR!
    REGISTER-CLEANUP
-   FN-N @ dup 1 + FN-N ! ;
+   FN-NEW
+   tag FN-N-CELL @ 1+ tag FN-N-CELL !
+   spills tag FN-N-CELL @ 1- tag or FN-SPILL-OFF FN-FIELD !
+   name u tag FN-N-CELL @ 1- tag or FN-NAME CSTR
+   lib tag FN-N-CELL @ 1- tag or FN-LIB-OFF FN-FIELD !
+   argc tag FN-N-CELL @ 1- tag or FN-ARGC-OFF FN-FIELD !
+   0 tag FN-N-CELL @ 1- tag or FN-ADDR!
+   tag FN-N-CELL @ 1- tag or ;
 
 : DECLARE ( ptr u8 n n n -- n ) 0 DECLARE-SPILLED ;
 
@@ -645,21 +812,141 @@ s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
 \ made while loading the application; foreign addresses belong to the new
 \ process and must start unresolved. Keep the table private and hand its exact
 \ storage to the linker through the two callbacks.
-: OWNED-CELLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+\ Retired rows drain before capture. Each dynamic buffer's generated #base is
+\ the control head named by its reserve path; a fresh runtime starts it empty.
+: OWNED-CONTROLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
    {: carry fresh :}
-   FN-NAMES FN-MAX FN-NAME-CAP * carry execute
-   FN-LIBS FN-MAX cells carry execute
-   FN-ARGCS FN-MAX cells carry execute
-   FN-SPILLS FN-MAX cells carry execute
-   LIB-PATHS LIB-MAX LIB-PATH-CAP * carry execute
-   LIB-LENS LIB-MAX cells carry execute
    FN-N BYTE-VIEW CELL carry execute
    LIB-N BYTE-VIEW CELL carry execute
+   FN-CAP BYTE-VIEW CELL carry execute
+   LIB-CAP BYTE-VIEW CELL carry execute
    ERRNO-FN-CELL BYTE-VIEW CELL carry execute
    DLCLOSE-FN-CELL BYTE-VIEW CELL carry execute
-   FN-ADDRS FN-MAX cells fresh execute
-   LIB-HANDLES LIB-MAX cells fresh execute
+   FN-TABLE BYTE-VIEW CELL carry execute
+   LIB-TABLE BYTE-VIEW CELL carry execute
+   PIN-FN BYTE-VIEW CELL carry execute
+   PIN-LIB BYTE-VIEW CELL carry execute
+   PIN-FN-CAP BYTE-VIEW CELL carry execute
+   PIN-LIB-CAP BYTE-VIEW CELL carry execute
+   RETIRED-BASE#base BYTE-VIEW CELL fresh execute
+   RETIRED-SIZE#base BYTE-VIEW CELL fresh execute
+   RETIRED-COUNT BYTE-VIEW CELL fresh execute
    FN-REGISTERED BYTE-VIEW CELL fresh execute ;
+
+\ A stripped entry publishes the two table bases after restoring DATA. Their
+\ destination addresses vary with the maker's window, while the descriptor
+\ bytes and counts must remain identical for the same application source.
+: AOT-CONTROLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: carry fresh :}
+   FN-N BYTE-VIEW CELL carry execute
+   LIB-N BYTE-VIEW CELL carry execute
+   FN-CAP BYTE-VIEW CELL carry execute
+   LIB-CAP BYTE-VIEW CELL carry execute
+   ERRNO-FN-CELL BYTE-VIEW CELL carry execute
+   DLCLOSE-FN-CELL BYTE-VIEW CELL carry execute
+   FN-TABLE BYTE-VIEW CELL fresh execute
+   LIB-TABLE BYTE-VIEW CELL fresh execute
+   PIN-FN BYTE-VIEW CELL fresh execute
+   PIN-LIB BYTE-VIEW CELL fresh execute
+   PIN-FN-CAP BYTE-VIEW CELL fresh execute
+   PIN-LIB-CAP BYTE-VIEW CELL fresh execute
+   RETIRED-BASE#base BYTE-VIEW CELL fresh execute
+   RETIRED-SIZE#base BYTE-VIEW CELL fresh execute
+   RETIRED-COUNT BYTE-VIEW CELL fresh execute
+   FN-REGISTERED BYTE-VIEW CELL fresh execute ;
+
+\ FILE and a complete saved image retain compiler-support rows as well. The
+\ declaration scope is execution state, never part of a replayed source unit.
+: MAKER-OWNED-CONTROLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: carry fresh :}
+   MAKER-FN-N BYTE-VIEW CELL carry execute
+   MAKER-LIB-N BYTE-VIEW CELL carry execute
+   MAKER-FN-CAP BYTE-VIEW CELL carry execute
+   MAKER-LIB-CAP BYTE-VIEW CELL carry execute
+   MAKER-FN-TABLE BYTE-VIEW CELL carry execute
+   MAKER-LIB-TABLE BYTE-VIEW CELL carry execute
+   MAKER-DEPTH BYTE-VIEW CELL fresh execute ;
+
+\ Stripped application runtime starts with no maker declarations. The
+\ conditional lookup branch can still name these cells, so claim them fresh.
+: MAKER-FRESH-CONTROLS ( [ ptr u8 n -- ] -- ) {: fresh :}
+   MAKER-FN-N BYTE-VIEW CELL fresh execute
+   MAKER-LIB-N BYTE-VIEW CELL fresh execute
+   MAKER-FN-CAP BYTE-VIEW CELL fresh execute
+   MAKER-LIB-CAP BYTE-VIEW CELL fresh execute
+   MAKER-FN-TABLE BYTE-VIEW CELL fresh execute
+   MAKER-LIB-TABLE BYTE-VIEW CELL fresh execute
+   MAKER-DEPTH BYTE-VIEW CELL fresh execute ;
+
+: OWNED-TABLES-AT ( ptr u8 n ptr u8 n [ ptr u8 n -- ] -- )
+   {: fn:ptr fncap:n lib:ptr libcap:n carry :}
+   fncap 0 > if fn fncap FN-ROW-BYTES * carry execute then
+   libcap 0 > if lib libcap LIB-ROW-BYTES * carry execute then ;
+
+\ The fixed row headers contain cells; symbol names and library paths are
+\ bytes. AOT sizes and copies these same extents before scanning header cells.
+: AOT-TABLES-AT ( ptr u8 n ptr u8 n [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: fn:ptr fncap:n lib:ptr libcap:n cells bytes :}
+   fncap 0 ?do
+      fn i FN-ROW-BYTES * + {: row:ptr :}
+      row FN-NAME-OFF cells execute
+      row FN-NAME-OFF + FN-NAME-CAP bytes execute
+   loop
+   libcap 0 ?do
+      lib i LIB-ROW-BYTES * + {: row:ptr :}
+      row LIB-PATH-OFF cells execute
+      row LIB-PATH-OFF + LIB-ROW-BYTES LIB-PATH-OFF - bytes execute
+   loop ;
+
+public
+
+: SCAN-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: cells bytes :}
+   cells cells OWNED-CONTROLS
+   cells cells MAKER-OWNED-CONTROLS
+   FN-TABLE @ FN-CAP @ LIB-TABLE @ LIB-CAP @
+      cells bytes AOT-TABLES-AT
+   MAKER-FN-TABLE @ MAKER-FN-CAP @
+      MAKER-LIB-TABLE @ MAKER-LIB-CAP @ cells bytes AOT-TABLES-AT
+   PIN-FN @ PIN-FN-CAP @ PIN-LIB @ PIN-LIB-CAP @
+      cells bytes AOT-TABLES-AT ;
+
+: OWNED-CELLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: carry fresh :}
+   carry fresh OWNED-CONTROLS
+   FN-TABLE @ FN-CAP @ LIB-TABLE @ LIB-CAP @ carry OWNED-TABLES-AT
+   carry fresh MAKER-OWNED-CONTROLS
+   MAKER-FN-TABLE @ MAKER-FN-CAP @
+      MAKER-LIB-TABLE @ MAKER-LIB-CAP @ carry OWNED-TABLES-AT
+   PIN-FN @ FN-TABLE @ <> PIN-FN-CAP @ 0 > and if
+      PIN-FN @ PIN-FN-CAP @ FN-ROW-BYTES * carry execute
+   then
+   PIN-LIB @ LIB-TABLE @ <> PIN-LIB-CAP @ 0 > and if
+      PIN-LIB @ PIN-LIB-CAP @ LIB-ROW-BYTES * carry execute
+   then ;
+
+: OWNED-BASES ( [ ptr u8 -- ] -- )
+   {: claim :}
+   FN-TABLE BYTE-VIEW claim execute
+   LIB-TABLE BYTE-VIEW claim execute ;
+
+: OWNED-CAPS ( [ ptr u8 -- ] -- )
+   {: claim :}
+   FN-CAP BYTE-VIEW claim execute
+   LIB-CAP BYTE-VIEW claim execute ;
+
+\ A stripped build loads its linker after the application's DATA span closes.
+\ Remember the application's declaration boundary and current table allocation.
+: IMAGE-MARK ( -- n n ptr u8 ptr u8 )
+   FN-N @ LIB-N @ FN-TABLE @ LIB-TABLE @ ;
+
+: IMAGE-CAPS ( -- n n )
+   FN-CAP @ LIB-CAP @ ;
+
+: OWNED-COUNTS ( [ ptr u8 -- ] -- )
+   {: claim :}
+   FN-N BYTE-VIEW claim execute
+   LIB-N BYTE-VIEW claim execute ;
 
 \ Both wordlists are protected here, after FFI's last definition: an engine
 \ that loads this file after its seal (tools/build-fixpoint.f's capture host)
@@ -738,11 +1025,8 @@ get-current prot-wid-add
 \ declaration, so an absent symbol is E-FFI-DLSYM where the caller stands;
 \ package FFI re-resolves after an image restore.
 \
-\ Every distinct descriptor in the image shares FFI's one table. A new one that
-\ finds it full is E-FFI-TABLE-FULL, and the refusal is the declarer's because
-\ only here are the Habu word and the C symbol both in hand: the diagnostic
-\ names them on stderr before the throw, so a full table is one line rather
-\ than a bisection over the libraries a process happens to load.
+\ Every distinct descriptor has a stable numeric row. Exact declarations
+\ share a row within the selected bank; later rows grow dictionary storage.
 \
 \ THE GENERATED TEXT DEFINES WORDS AND LEAVES NOTHING ON THE STACK. It crosses
 \ the loader's INCLUDE-EVALUATE, which is evaluate-closed: the text runs with its
@@ -767,20 +1051,7 @@ $24 constant HEX-C                        \ '$' - the hex literal prefix
 $0A constant LF-C                         \ the diagnostic's line terminator
 2 constant DIAG-FD                        \ stderr
 
-: DECIMAL-WIDTH ( n -- n )
-   1 swap begin dup 10 >= while 10 / swap 1+ swap repeat drop ;
-
-\ The library-full line is the longest: a PATH-CAP path, two TOK-CAP tokens,
-\ the library row count, its literal wording and the line terminator.
-PATH-CAP
-s" ffi: library table full at " nip +
-FFI:LIBRARY-MAX DECIMAL-WIDTH +
-s"  rows: no library row for " nip +
-s" ; no declaration row for " nip +
-2 TOK-CAP * +
-s"  (symbol " nip +
-s" )" nip +
-1 + constant DIAG-CAP
+PATH-CAP 128 + constant DIAG-CAP
 
 0 constant K-VALUE
 1 constant K-POINTER
@@ -806,7 +1077,6 @@ FFI:LIBRARY-PATH-CAP 1 - CODEGEN:BUFFER LIB-NAME
 GEN-CAP CODEGEN:BUFFER GEN
 EFF-CAP CODEGEN:BUFFER EFF
 DIAG-CAP CODEGEN:BUFFER DIAG
-FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER LIB-OVERFLOW
 
 create NAME-BUF TOK-CAP allot
 create SYM-BUF TOK-CAP allot
@@ -829,7 +1099,6 @@ variable CALL-KIND
 variable VAR-START
 variable STACK-N
 variable CUR-LIB
-variable SLOT-ROW
 variable OPEN                              \ a declaration is between FUNCTION: and ;FUNCTION
 variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
 variable SCOPE-SET                         \ ... and whether one was stated at all
@@ -1059,28 +1328,14 @@ variable SCOPE-HOOK
    s" FFI:CALL" GEN+ ;
 
 \ ---- the row this declaration takes ----------------------------------------
-\ Package FFI owns the table and refuses a new descriptor at capacity. The
-\ declarer catches that one refusal where it holds both names for a diagnostic.
+\ Package FFI reuses an exact descriptor or appends a row. The declarer
+\ passes the complete symbol, library selection and ABI shape.
 
 : DIAG-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
    DIAG-FD a u write drop ;
 
 : DIAG+ ( ptr u8 n -- )
    DIAG CODEGEN:APPEND-STRING ;
-
-: REPORT-LIBRARY-FULL ( -- )
-   DIAG CODEGEN:RESET
-   s" ffi: library table full at " DIAG+
-   FFI:LIBRARY-MAX DIAG CODEGEN:APPEND-DECIMAL
-   s"  rows: no library row for " DIAG+
-   LIB-OVERFLOW CODEGEN:CONTENTS DIAG+
-   s" ; no declaration row for " DIAG+
-   NAME-BUF NAME-U @ DIAG+
-   s"  (symbol " DIAG+
-   SYM-BUF SYM-U @ DIAG+
-   s" )" DIAG+
-   LF-C DIAG CODEGEN:APPEND-BYTE
-   DIAG CODEGEN:CONTENTS DIAG-LINE ;
 
 \ A library name spelled in the OTHER target's convention cannot resolve on this
 \ one, and dlopen would only say so at the first call, in whatever module the
@@ -1118,28 +1373,9 @@ variable SCOPE-HOOK
    path u REPORT-LIBRARY-TARGET
    E-FFI-LIBRARY throw ;
 
-: REPORT-FULL ( -- )
-   DIAG CODEGEN:RESET
-   s" ffi: declaration table full at " DIAG+
-   FFI:DECLARATION-MAX DIAG CODEGEN:APPEND-DECIMAL
-   s"  rows: no row for " DIAG+
-   NAME-BUF NAME-U @ DIAG+
-   s"  (symbol " DIAG+
-   SYM-BUF SYM-U @ DIAG+
-   s" )" DIAG+
-   LF-C DIAG CODEGEN:APPEND-BYTE
-   DIAG CODEGEN:CONTENTS DIAG-LINE ;
 
 : SLOT ( -- n )
-   CUR-LIB @ -1 = if
-      REPORT-LIBRARY-FULL
-      E-FFI-LIBRARY-FULL throw
-   then
-   [: SYM-BUF SYM-U @ CUR-LIB @ INT-N @ STACK-N @ FFI:DECLARE-SPILLED
-      SLOT-ROW ! ;] catch {: code:n :}
-   code 0= if SLOT-ROW @ exit then
-   code E-FFI-TABLE-FULL = if REPORT-FULL then
-   code throw ;
+   SYM-BUF SYM-U @ CUR-LIB @ INT-N @ STACK-N @ FFI:DECLARE-SPILLED ;
 
 \ What the machine return cell becomes: dropped, rebuilt from its low half for a
 \ 32-bit result, or taken whole.
@@ -1177,22 +1413,69 @@ variable SCOPE-HOOK
    0 SCOPE-WID !
    0 SCOPE-SET ! ;
 
-: RECORD-SCOPE ( -- )
+: ENSURE-SCOPE-HOOK ( -- )
    SCOPE-HOOK @ 0= if
       [: CLEAR-SCOPE ;] IMAGE-LIFECYCLE:REGISTER-PERSISTENT
       1 SCOPE-HOOK !
-   then
+   then ;
+
+: RECORD-SCOPE ( -- )
+   ENSURE-SCOPE-HOOK
    get-current SCOPE-WID !
    1 SCOPE-SET ! ;
-
-: TAKE-LIBRARY ( -- )
-   LIB-OVERFLOW CODEGEN:CONTENTS FFI:LIBRARY-PATH CUR-LIB ! ;
 
 : CHECK-SCOPE ( -- )
    SCOPE-SET @ 0= if E-FFI-LIBRARY throw then
    get-current SCOPE-WID @ <> if E-FFI-LIBRARY throw then ;
 
+\ These context cells survive in a baked engine even when their private
+\ variable records do not. FILE replay and admission use the same extents.
+: CONTEXT-CELLS ( [ ptr u8 n -- ] -- ) {: keep :}
+   CUR-LIB BYTE-VIEW CELL keep execute
+   SCOPE-WID BYTE-VIEW CELL keep execute
+   SCOPE-SET BYTE-VIEW CELL keep execute
+   OPEN BYTE-VIEW CELL keep execute
+   NAME-U BYTE-VIEW CELL keep execute
+   SYM-U BYTE-VIEW CELL keep execute
+   ARG-KIND ARG-MAX cells keep execute
+   ARG-REG ARG-MAX cells keep execute
+   ARG-EXT ARG-MAX cells keep execute
+   ARG-EXT-ARG ARG-MAX cells keep execute
+   ARG-N BYTE-VIEW CELL keep execute
+   INT-N BYTE-VIEW CELL keep execute
+   FLT-N BYTE-VIEW CELL keep execute
+   RES-KIND BYTE-VIEW CELL keep execute
+   VAR-START BYTE-VIEW CELL keep execute ;
+
 public
+
+\ A cold FILE import can restore a selection made before a child FILE and then
+\ continue with FUNCTION:. Install the matching cleanup before capture; the
+\ hook flag itself belongs to the live registry, not the serialized bytes.
+: ARM-SCOPE ( -- ) ENSURE-SCOPE-HOOK ;
+
+\ The parser's context, generated-text descriptors and token arrays are one
+\ declared cell grid or byte span apiece.
+: SCAN-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: cells bytes :}
+   cells CONTEXT-CELLS
+   LIB-NAME cells bytes CODEGEN:SCAN-SPANS
+   GEN cells bytes CODEGEN:SCAN-SPANS
+   EFF cells bytes CODEGEN:SCAN-SPANS
+   DIAG cells bytes CODEGEN:SCAN-SPANS
+   NAME-BUF TOK-CAP bytes execute
+   SYM-BUF TOK-CAP bytes execute
+   TOK-BUF TOK-CAP bytes execute
+   BASE-BUF TOK-CAP bytes execute ;
+
+\ Only the FFI declarer's persistent compile context is owned here. The open
+\ declaration fields are included even when OPEN is clear at the start of a
+\ range: that range may open FUNCTION: and leave ;FUNCTION to its caller.
+: OWNED-CELLS ( [ ptr u8 n -- ] -- ) {: keep :}
+   keep CONTEXT-CELLS
+   NAME-BUF TOK-CAP keep execute
+   SYM-BUF TOK-CAP keep execute
+   EFF 3 cells + BYTE-VIEW EFF-CAP CELL + keep execute ;
 
 \ FUNCTION: parses the name, the symbol and the effect and leaves the
 \ declaration open; the interpreter then runs any clauses; ;FUNCTION plans it,
@@ -1255,17 +1538,9 @@ public
    src idx ARG-EXT-ARG! ;
 
 : SELECT-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
-   \ LIB-OVERFLOW holds CAP bytes; the length is bounded before the spelling check
-   \ reads the path.
    u 0 <= u FFI:LIBRARY-PATH-CAP >= or if E-FFI-SYNTAX throw then
    path u CHECK-SPELLING
-   LIB-OVERFLOW CODEGEN:RESET
-   path u LIB-OVERFLOW CODEGEN:APPEND-STRING
-   [: TAKE-LIBRARY ;] catch {: code:n :}
-   code 0 <> if
-      code E-FFI-LIBRARY-FULL <> if code throw then
-      -1 CUR-LIB !
-   then
+   path u FFI:LIBRARY-PATH CUR-LIB !
    RECORD-SCOPE ;
 
 \ The versioned form's own selection: two tokens, rendered for this target and

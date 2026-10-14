@@ -271,15 +271,10 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    A64SPILL:BOUND? if A64SPILL:RELEASE then
    X64EMIT:BOUND? if X64EMIT:RELEASE then ;
 
-\ The registry releases buffers immediately before DATA copy. Reset the pass
-\ reservations here so a restored compiler sizes them again on use.
+\ The emitter releases its sinks before DATA copy; the workspace and
+\ dynamic registry release the remaining pass storage centrally.
 : PREPARE ( -- )
-   X64EMIT:CAPTURE-PREPARE
-   X64EMIT:RESET-SCRATCH
-   A64SPILL:RESET-SCRATCH
-   A64RAV:RESET-SCRATCH
-   A64RA:RESET-SCRATCH
-   X64SEL:RESET-SCRATCH ;
+   X64EMIT:CAPTURE-PREPARE ;
 
 public
 

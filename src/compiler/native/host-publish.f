@@ -8,12 +8,12 @@ require src/compiler/binding.f
 package NHOST
 private
 
-variable TAKEN-BASE
-variable TAKEN-EDGES
-variable TAKEN-TYPES
-variable TAKEN-FUNS
-TYPED-VARIABLE TAKEN-EMISSION NART:emission
-variable TAKEN-AT
+0 CWORK-VARIABLE TAKEN-BASE n
+0 CWORK-VARIABLE TAKEN-EDGES n
+0 CWORK-VARIABLE TAKEN-TYPES n
+0 CWORK-VARIABLE TAKEN-FUNS n
+0 CWORK-VARIABLE TAKEN-EMISSION NART:emission
+0 CWORK-VARIABLE TAKEN-AT n
 
 : FUN-END ( NART:emission n -- n )
    {: e:NART:emission ordinal:n :}

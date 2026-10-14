@@ -1,8 +1,8 @@
 \ The native build's command line: one output path, then an optional
 \ `whitebox`, then an optional `--target <target>`. tools/native-build.f checks
 \ it before the build closure loads, so a refused command line costs an engine
-\ boot and not a native compiler; the driver's own entries (NATIVE-BUILD:RUN,
-\ :RUN-IMAGE) check it again for their other callers.
+\ boot and not a native compiler; the driver entry NATIVE-BUILD:RUN
+\ checks it again for its other callers.
 \
 \ Exit status (NATIVE-BUILD:EXIT-RC): 0 for a promoted build; PROC-TIMEOUT-RC
 \ (124, src/lib/process.f) when a deadline in the build expired; BUILD-RC for a

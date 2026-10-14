@@ -128,6 +128,10 @@ variable RX  variable RACC
    \ Both LMATCH return arms define the hit flag in x12.
    a u s" EM-DEF-OCC:LMATCH" LINT-STR=CI if 0 12 CL-ADD exit then
    a u s" WLFIND:LENTRY" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD exit then
+   \ The callback accessor returns its thunk address in A (x9).
+   a u s" Lcallbackaddr" LINT-STR=CI if 0 9 CL-ADD exit then
+   \ The source observer leaves the original or callback status in x15.
+   a u s" Lsourceexecfinish" LINT-STR=CI if 0 15 CL-ADD exit then
    a u s" Lcfpop" LINT-STR=CI if 0 9 CL-ADD exit then
    a u s" Lkwcmp" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Lrowwalk" LINT-STR=CI if 0 0 CL-ADD exit then

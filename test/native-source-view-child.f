@@ -69,7 +69,7 @@ package NATIVE-BUILD
 \ The target window answers each of these words as a code address integer.
 CAST: TARGET-LOAD-XT ( n -- [ ptr u8 n -- ] )
 CAST: SOURCE-USE-XT ( n -- [ [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] -- ] )
-CAST: SOURCE-UNIT-USE-XT ( n -- [ [ ptr u8 n ptr u8 n ptr u8 [ -- ] -- ] -- ] )
+CAST: SOURCE-UNIT-USE-XT ( n -- [ [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] -- ] )
 
 \ This fixture enters the private compiler directly, so it supplies the same
 \ explicit source policy that a build entry installs before logical reset.

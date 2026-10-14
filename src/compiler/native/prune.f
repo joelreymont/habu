@@ -40,10 +40,10 @@ using NFROZEN
 private
 
 \ Each pass retains its own dimensions while later passes read its results.
-variable SCRATCH-VALUES
-variable SCRATCH-BLOCKS
-variable SCRATCH-FUNS
-variable SCRATCH-OPS
+0 CWORK-VARIABLE SCRATCH-VALUES n
+0 CWORK-VARIABLE SCRATCH-BLOCKS n
+0 CWORK-VARIABLE SCRATCH-FUNS n
+0 CWORK-VARIABLE SCRATCH-OPS n
 : VMAX ( -- n ) SCRATCH-VALUES @ ;
 : BMAX ( -- n ) SCRATCH-BLOCKS @ ;
 : FMAX ( -- n ) SCRATCH-FUNS @ ;
@@ -94,25 +94,25 @@ A64IR-OPCODE:EOR   A64IR:ORD constant O-EOR
 : OPS-MAX ( -- n ) OMAX ;
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable BND-MODE
+0 CWORK-VARIABLE BND-MODE n
 BOUND-NO BND-MODE !
-variable N-REMOVED                   \ unused data-stack reads removed
-variable B-BASE                      \ operations of the module before the current block
-variable PLAN-OPS                    \ operations the sealed plan covers
-variable PLAN-REMOVED                \ unused data-stack reads that plan removes
-variable PLAN-SET                    \ a plan is sealed
+0 CWORK-VARIABLE N-REMOVED n                   \ unused data-stack reads removed
+0 CWORK-VARIABLE B-BASE n                      \ operations of the module before the current block
+0 CWORK-VARIABLE PLAN-OPS n                    \ operations the sealed plan covers
+0 CWORK-VARIABLE PLAN-REMOVED n                \ unused data-stack reads that plan removes
+0 CWORK-VARIABLE PLAN-SET n                    \ a plan is sealed
 
-1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
-1 TYPED-BUFFER PLAN-MOD IR-ID:ir-module-id
+1 CWORK-BUFFER BND-MOD IR-ID:ir-module-id
+1 CWORK-BUFFER PLAN-MOD IR-ID:ir-module-id
 A64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
-KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-GPR IR-ID:ir-type-id
-1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
-1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
+KEYS-N CWORK-BUFFER BND-KEY IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-GPR IR-ID:ir-type-id
+1 CWORK-BUFFER BND-MEM IR-ID:ir-type-id
+1 CWORK-BUFFER BND-FPR IR-ID:ir-type-id
 
-1 TYPED-BUFFER S-CTX IR-CTX:ctx
-1 TYPED-BUFFER S-BLD IR-BUILD:builder
-1 TYPED-BUFFER S-SID IR-ID:ir-source-id
+1 CWORK-BUFFER S-CTX IR-CTX:ctx
+1 CWORK-BUFFER S-BLD IR-BUILD:builder
+1 CWORK-BUFFER S-SID IR-ID:ir-source-id
 DYNAMIC-BUFFER VMAP IR-ID:ir-value-id
 DYNAMIC-BUFFER VSET-BUF n
 : VSET ( -- ptr n ) 0 VSET-BUF ;
@@ -673,11 +673,6 @@ public
 \ different number is a refusal rather than a module nobody checked.
 : REWRITTEN ( -- n )
    N-REMOVED @ ;
-
-public
-: RESET-SCRATCH ( -- )
-   0 PLAN-SET !
-   0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
 get-current prot-wid-add

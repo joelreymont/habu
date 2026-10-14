@@ -10,8 +10,21 @@
 \ runs at the process entry because what loads after it compiles over what it
 \ discarded.
 include src/habu/prefix-rewind.f
+: OD-TRY ( -- ) s" src/compiler/native/checker-owner.f" required ;
+: OD-FAIL ( -- )
+   ['] OD-TRY catch {: rc:n :}
+   rc -8574 <> if
+      s" checker-owner-descriptor-subject: wrong owner refusal" 1 die
+   then
+   PREFIX-MARK:REQ REQUIRE-REG:COUNT <> if
+      s" checker-owner-descriptor-subject: failed load retained require rows" 1 die
+   then
+   s" src/compiler/native/compiler.f" ENGINE-PROVIDES? if
+      s" checker-owner-descriptor-subject: rewind restored a retired row" 1 die
+   then
+   rc throw ;
 \ The extent is the cell before the record (src/core/checker-owner-guard.f VALIDATE).
 CHECKER-OWNER-ABI:DECLARED-ROW-OFF
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CELL - CELL-VIEW !
-require src/compiler/native/checker-owner.f
+OD-FAIL
 s" checker-owner-descriptor-subject: bound past the recorded extent" type cr

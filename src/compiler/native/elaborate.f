@@ -38,11 +38,11 @@ package NELAB
 private
 
 \ ---- what one elaboration is working on --------------------------------------
-1 TYPED-BUFFER S-CTX IR-CTX:ctx
-1 TYPED-BUFFER S-BLD IR-BUILD:builder
-1 TYPED-BUFFER S-VW IR-ARENA:view
-1 TYPED-BUFFER S-KEY IR-ID:ir-module-key
-variable EXACT-SOURCE
+1 CWORK-BUFFER S-CTX IR-CTX:ctx
+1 CWORK-BUFFER S-BLD IR-BUILD:builder
+1 CWORK-BUFFER S-VW IR-ARENA:view
+1 CWORK-BUFFER S-KEY IR-ID:ir-module-key
+0 CWORK-VARIABLE EXACT-SOURCE n
 
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
 : BLD ( -- IR-BUILD:builder )        0 S-BLD @ ;
@@ -74,11 +74,11 @@ variable EXACT-SOURCE
 BODYBUF-CAP constant RF-CAP          \ bytes of one refused spelling the record holds
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable RF-AT                       \ the row of the admit in flight, or -1
-variable RF-ROW                      \ the row the record was taken for, or -1
-variable RF-U                        \ how many of that row's spelling bytes are held
-1 TYPED-BUFFER RF-KIND NTAPE:kind
-create RF-BUF RF-CAP allot
+-1 CWORK-VARIABLE RF-AT n                       \ the row of the admit in flight, or -1
+-1 CWORK-VARIABLE RF-ROW n                      \ the row the record was taken for, or -1
+0 CWORK-VARIABLE RF-U n                        \ how many of that row's spelling bytes are held
+1 CWORK-BUFFER RF-KIND NTAPE:kind
+RF-CAP CWORK-SPAN RF-BUF u8
 
 : RF-RESET ( -- )
    -1 RF-AT !
@@ -122,19 +122,19 @@ create RF-BUF RF-CAP allot
 -1 constant VQ-NONE                  \ this entry names no quotation body
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable VN                          \ how many values the vector holds
-variable VGLUE                       \ bit i set: vector entries i and i-1 are cells of ONE value
-VMAX TYPED-BUFFER VSTK IR-ID:ir-value-id
-VMAX TYPED-BUFFER VWIN IR-ID:ir-value-id
-create VQ    VMAX cells allot        \ the quotation body entry i names, or VQ-NONE
-create VQWIN VMAX cells allot        \ the same for the window a rename consumed
-create VQSAV VMAX cells allot        \ and for the entries a call hands over and takes back
+0 CWORK-VARIABLE VN n                          \ how many values the vector holds
+0 CWORK-VARIABLE VGLUE n                       \ bit i set: vector entries i and i-1 are cells of ONE value
+VMAX CWORK-BUFFER VSTK IR-ID:ir-value-id
+VMAX CWORK-BUFFER VWIN IR-ID:ir-value-id
+   VMAX CWORK-SPAN VQ n        \ the quotation body entry i names, or VQ-NONE
+VMAX CWORK-SPAN VQWIN n        \ the same for the window a rename consumed
+VMAX CWORK-SPAN VQSAV n        \ and for the entries a call hands over and takes back
 
 \ Measured: the tree's deepest return-stack nest is ten.
 16 constant RMAX                     \ measured: the tree's deepest nest is ten
-variable RN                          \ how many values the return vector holds
-RMAX TYPED-BUFFER RSTK IR-ID:ir-value-id
-create RQ RMAX cells allot
+0 CWORK-VARIABLE RN n                          \ how many values the return vector holds
+RMAX CWORK-BUFFER RSTK IR-ID:ir-value-id
+RMAX CWORK-SPAN RQ n
 
 : VRESET ( -- )
    0 VN !
@@ -192,8 +192,8 @@ create RQ RMAX cells allot
    begin dup VRUN-DOWN? while 1- repeat ;
 
 \ ---- what the DEFINITION's own two rows say --------------------------------
-variable IN-GLUE
-variable OUT-GLUE
+0 CWORK-VARIABLE IN-GLUE n
+0 CWORK-VARIABLE OUT-GLUE n
 
 \ Every reader of the vector goes through here, so one bound serves them all.
 : VAT ( n -- IR-ID:ir-value-id )
@@ -269,8 +269,8 @@ variable OUT-GLUE
 
 \ ---- compile-time stack renames ----------------------------------------------
 \ The window's own glue, its bit 0 always clear for the reason the vector's is.
-variable WGLUE                       \ the window's own glue, its bit 0 always clear
-variable WW                          \ how many cells the window holds
+0 CWORK-VARIABLE WGLUE n                       \ the window's own glue, its bit 0 always clear
+0 CWORK-VARIABLE WW n                          \ how many cells the window holds
 
 : W-CONT? ( n -- bool ) {: k:n :}
    k 0 <= if false exit then
@@ -287,8 +287,8 @@ variable WW                          \ how many cells the window holds
 : W-VALUE-CELLS ( n -- n )
    W-VALUE-BASE  dup W-END  swap - ;
 
-variable VRW-P                       \ the cursor, walking one value down at a time
-variable VRW-N                       \ values still to find
+0 CWORK-VARIABLE VRW-P n                       \ the cursor, walking one value down at a time
+0 CWORK-VARIABLE VRW-N n                       \ values still to find
 
 : VROWS-CELLS ( n -- n ) {: values:n :}
    VN @ VRW-P !
@@ -373,16 +373,16 @@ variable VRW-N                       \ values still to find
 
 \ ---- the names a `{: … :}` group binds ---------------------------------------
 \ A local or group occupies a source token. Reserve from that count.
-variable LMAX
-variable LVMAX                       \ physical cells reserved for live locals
+0 CWORK-VARIABLE LMAX n
+0 CWORK-VARIABLE LVMAX n                       \ physical cells reserved for live locals
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable LN                          \ how many locals were declared
-variable LG-N                        \ how many groups the pre-pass found
-variable LG-OPEN                     \ the group the pre-pass is reading, or -1
-variable LG-K0                       \ the first name index of that open group
-variable LGB                         \ how many groups the walk has bound
-variable LBN                         \ physical local cells live where the walk stands
+0 CWORK-VARIABLE LN n                          \ how many locals were declared
+0 CWORK-VARIABLE LG-N n                        \ how many groups the pre-pass found
+0 CWORK-VARIABLE LG-OPEN n                     \ the group the pre-pass is reading, or -1
+0 CWORK-VARIABLE LG-K0 n                       \ the first name index of that open group
+0 CWORK-VARIABLE LGB n                         \ how many groups the walk has bound
+0 CWORK-VARIABLE LBN n                         \ physical local cells live where the walk stands
 DYNAMIC-BUFFER LNAME IR-ID:ir-symbol-id
 DYNAMIC-BUFFER LVAL IR-ID:ir-value-id
 DYNAMIC-BUFFER LQ n
@@ -531,14 +531,14 @@ DYNAMIC-BUFFER LOCAL-TABLES n
    loop ;
 
 \ ---- the definition's memory order -------------------------------------------
-1 TYPED-BUFFER S-TOK IR-ID:ir-value-id
-variable TOK-LIVE                    \ whether an order has been minted yet
-variable TOK-NEED                    \ whether the body has a word that takes one
-variable CALL-NEED                   \ whether the body calls anything at all
-variable TAIL-NEED                   \ whether the last thing the body does is a call it need not come back from
-variable CALL-BACK                   \ whether the body makes a call control comes BACK from
-variable TAIL-ENTRY                  \ where the callee it would leave through starts
-variable OPJ                         \ general operands taken so far by the open staging
+1 CWORK-BUFFER S-TOK IR-ID:ir-value-id
+0 CWORK-VARIABLE TOK-LIVE n                    \ whether an order has been minted yet
+0 CWORK-VARIABLE TOK-NEED n                    \ whether the body has a word that takes one
+0 CWORK-VARIABLE CALL-NEED n                   \ whether the body calls anything at all
+0 CWORK-VARIABLE TAIL-NEED n                   \ whether the last thing the body does is a call it need not come back from
+0 CWORK-VARIABLE CALL-BACK n                   \ whether the body makes a call control comes BACK from
+0 CWORK-VARIABLE TAIL-ENTRY n                  \ where the callee it would leave through starts
+0 CWORK-VARIABLE OPJ n                         \ general operands taken so far by the open staging
 
 : TOK-RESET ( -- )
    0 TOK-LIVE !
@@ -701,10 +701,10 @@ variable OPJ                         \ general operands taken so far by the open
 \ One number materialised twice in one straight line is one value.
 64 constant LITMAX
 
-create LIT-VAL LITMAX cells allot     \ the number
-create LIT-KIND LITMAX cells allot    \ and what the number IS
-LITMAX TYPED-BUFFER LIT-ID IR-ID:ir-value-id
-variable LIT-N
+LITMAX CWORK-SPAN LIT-VAL n     \ the number
+LITMAX CWORK-SPAN LIT-KIND n    \ and what the number IS
+LITMAX CWORK-BUFFER LIT-ID IR-ID:ir-value-id
+0 CWORK-VARIABLE LIT-N n
 
 : LIT-RESET ( -- )
    0 LIT-N ! ;
@@ -934,7 +934,7 @@ DYNAMIC-BUFFER SPELL-BUF u8
 
 
 255 constant COUNTED-MAX
-create COUNTED-BUF COUNTED-MAX 1+ allot
+COUNTED-MAX 1+ CWORK-SPAN COUNTED-BUF u8
 
 : COUNTED-LENGTH-CK ( n -- )
    COUNTED-MAX <= if exit then
@@ -1021,30 +1021,30 @@ using IR-BUILD
 32 constant CMAX
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable CS-N
-variable CS-LOOPS                   \ active index frames, one bit per CS slot
-CMAX TYPED-BUFFER CS-KIND HIR:ctrl
-create CS-DEPTH CMAX cells allot
-create CS-JOIN CMAX cells allot
-create CS-HEAD CMAX cells allot
-create CS-ARM CMAX cells allot
-create CS-NW CMAX cells allot
-create CS-XD CMAX cells allot
-create CS-EXIT CMAX cells allot
-create CS-END CMAX cells allot       \ whether the arm before this frame's `else` ended
-create CS-W CMAX cells allot         \ cells one value of a tag-dispatch frame's subject occupies
-create CS-TRAP CMAX cells allot      \ the family a `MATCH` mismatch traps on
-create CS-OFIX CMAX cells allot      \ the row of the `of` that opened the arm being read, or -1
-create CS-JOINED CMAX cells allot    \ whether any arm of this frame reached its join
-create CS-RD CMAX cells allot        \ parked values the return vector held when this structure opened
-create CS-ARMR CMAX cells allot      \ parked values the first arm of an `if` left, beside CS-ARM
-create CS-XR CMAX cells allot        \ parked values the first `while` of a loop left, beside CS-XD
-create CS-LB CMAX cells allot        \ bound locals the walk held when this structure opened
-create CS-LARM CMAX cells allot      \ and when the arm being read opened, or -1
-create CS-LOOP0 CMAX cells allot     \ loop visibility at the structure's entry
-create CS-LOOP1 CMAX cells allot     \ loop visibility at its live branch join
-CMAX TYPED-BUFFER CS-IDX IR-ID:ir-value-id
-CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
+0 CWORK-VARIABLE CS-N n
+0 CWORK-VARIABLE CS-LOOPS n                   \ active index frames, one bit per CS slot
+CMAX CWORK-BUFFER CS-KIND HIR:ctrl
+CMAX CWORK-SPAN CS-DEPTH n
+CMAX CWORK-SPAN CS-JOIN n
+CMAX CWORK-SPAN CS-HEAD n
+CMAX CWORK-SPAN CS-ARM n
+CMAX CWORK-SPAN CS-NW n
+CMAX CWORK-SPAN CS-XD n
+CMAX CWORK-SPAN CS-EXIT n
+CMAX CWORK-SPAN CS-END n       \ whether the arm before this frame's `else` ended
+CMAX CWORK-SPAN CS-W n         \ cells one value of a tag-dispatch frame's subject occupies
+CMAX CWORK-SPAN CS-TRAP n      \ the family a `MATCH` mismatch traps on
+CMAX CWORK-SPAN CS-OFIX n      \ the row of the `of` that opened the arm being read, or -1
+CMAX CWORK-SPAN CS-JOINED n    \ whether any arm of this frame reached its join
+CMAX CWORK-SPAN CS-RD n        \ parked values the return vector held when this structure opened
+CMAX CWORK-SPAN CS-ARMR n      \ parked values the first arm of an `if` left, beside CS-ARM
+CMAX CWORK-SPAN CS-XR n        \ parked values the first `while` of a loop left, beside CS-XD
+CMAX CWORK-SPAN CS-LB n        \ bound locals the walk held when this structure opened
+CMAX CWORK-SPAN CS-LARM n      \ and when the arm being read opened, or -1
+CMAX CWORK-SPAN CS-LOOP0 n     \ loop visibility at the structure's entry
+CMAX CWORK-SPAN CS-LOOP1 n     \ loop visibility at its live branch join
+CMAX CWORK-BUFFER CS-IDX IR-ID:ir-value-id
+CMAX CWORK-BUFFER CS-LIM IR-ID:ir-value-id
 
 : CS-RESET ( -- )
    0 CS-N !
@@ -1180,7 +1180,7 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
       i DO-FRAME-IS? if 1+ then
    loop ;
 
-variable DOK                         \ counted loops the search below has passed
+0 CWORK-VARIABLE DOK n                         \ counted loops the search below has passed
 
 \ Outermost first, which is the order the header's argument list is built in.
 : DO-NTH ( n -- n )
@@ -1277,24 +1277,24 @@ variable DOK                         \ counted loops the search below has passed
    loop ;
 
 \ ---- the blocks a definition is made of --------------------------------------
-variable NB                          \ blocks closed so far; also the open block's ordinal
+0 CWORK-VARIABLE NB n                          \ blocks closed so far; also the open block's ordinal
 
 \ The module ordinal this function's first block takes; a successor names a
 \ block of the MODULE and this walk numbers from zero.
-variable BBASE                       \ the module ordinal this function's first block takes
+0 CWORK-VARIABLE BBASE n                       \ the module ordinal this function's first block takes
 
 \ ---- leaving from the middle of a definition ---------------------------------
-variable IN-N                        \ values the definition takes
-variable OUT-N                       \ values the definition leaves
-variable FR-GIN                      \ what the caller staged for the definition about to be compiled
-variable FR-GOUT
-variable EXIT-USED                   \ whether the body has an `exit` at all
-variable EXIT-ORD                    \ the block every `exit` and the fall-through reach
+0 CWORK-VARIABLE IN-N n                        \ values the definition takes
+0 CWORK-VARIABLE OUT-N n                       \ values the definition leaves
+0 CWORK-VARIABLE FR-GIN n                      \ what the caller staged for the definition about to be compiled
+0 CWORK-VARIABLE FR-GOUT n
+0 CWORK-VARIABLE EXIT-USED n                   \ whether the body has an `exit` at all
+0 CWORK-VARIABLE EXIT-ORD n                    \ the block every `exit` and the fall-through reach
 
 \ ---- a path that has already ended -------------------------------------------
 0 constant PATH-LIVE                 \ the walk is on a path that goes on
 2 constant PATH-DEAD                 \ a call that does not come back closed it
-variable PATH-END
+0 CWORK-VARIABLE PATH-END n
 
 : PATH-ENDED? ( -- bool )
    PATH-END @ PATH-LIVE <> ;
@@ -1307,7 +1307,7 @@ variable PATH-END
    -1 EXIT-ORD !
    PATH-LIVE PATH-END ! ;
 
-variable BLOCK-LIMIT
+0 CWORK-VARIABLE BLOCK-LIMIT n
 
 \ This walk's own ordinal, raised into the module's.
 : BLOCK-ORD ( n -- IR-ID:ir-block-id )
@@ -1351,9 +1351,9 @@ DYNAMIC-BUFFER QPARENT n
 -1 constant QNONE                    \ no consumer has said what this body takes and leaves
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable QN                          \ quotation metadata rows in this definition
-variable QD                          \ the row of the body the pre-scan has open, or -1
-variable QBASE                       \ the ordinal of the function the definition itself is
+0 CWORK-VARIABLE QN n                          \ quotation metadata rows in this definition
+0 CWORK-VARIABLE QD n                          \ the row of the body the pre-scan has open, or -1
+0 CWORK-VARIABLE QBASE n                       \ the ordinal of the function the definition itself is
 : QAT ( -- ptr n ) 0 QAT-BUF ;
 : QLO ( -- ptr n ) 0 QLO-BUF ;
 : QHI ( -- ptr n ) 0 QHI-BUF ;
@@ -1365,7 +1365,7 @@ variable QBASE                       \ the ordinal of the function the definitio
 
 \ ---- which body each token belongs to, and which body is being walked ---------
 -1 constant QOWNER-DEF               \ the definition's own function, which is no body
-variable QCUR                        \ the body being walked, or QOWNER-DEF
+0 CWORK-VARIABLE QCUR n                        \ the body being walked, or QOWNER-DEF
 
 : QROW-CK ( n -- n )
    dup 0 < over QN @ >= or if E-NELAB-QUOT-CAP throw then ;
@@ -1414,7 +1414,7 @@ DYNAMIC-BUFFER ARG-R-BUF n
 : ARG-R ( -- ptr n ) 0 ARG-R-BUF ;
 DYNAMIC-BUFFER ARG-T IR-ID:ir-type-id
 DYNAMIC-BUFFER ARG-Q n
-VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hands over
+VMAX CWORK-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hands over
 
 \ SKELETON has counted the function before any argument rows are written.
 : BLOCK-ROOM ( n -- )
@@ -1617,9 +1617,9 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    LN @ 1+ LN ! ;
 
 \ ---- the scopes the pre-pass is inside ---------------------------------------
-variable SS-N                        \ open structures the pre-pass is inside
-variable SS-L                        \ names in scope where the pre-pass stands
-create SS-M CMAX cells allot         \ names in scope when each of them opened
+0 CWORK-VARIABLE SS-N n                        \ open structures the pre-pass is inside
+0 CWORK-VARIABLE SS-L n                        \ names in scope where the pre-pass stands
+CMAX CWORK-SPAN SS-M n         \ names in scope when each of them opened
 
 : SS-RESET ( -- )
    0 SS-N !
@@ -1762,14 +1762,14 @@ create SS-M CMAX cells allot         \ names in scope when each of them opened
 
 \ ---- how far a body token may be from the definition's first ------------------
 \ Body tokens one definition may have.
-variable TMAX                       \ token count of the current unit
-PTR-VARIABLE TOK-TABLES
+0 CWORK-VARIABLE TMAX n                       \ token count of the current unit
+0 CWORK-VARIABLE TOK-TABLES ptr n
 11 constant TOK-FIELDS
 
 : TOK-ROOM ( n -- ) {: n:n :}
    n IR-CTX:SCRATCH-LIMIT TOK-FIELDS cells / > if E-IR-CTX-SCRATCH throw then
    n TMAX !
-   CTX n TOK-FIELDS * cells IR-CTX:SCRATCH-TAKE drop TOK-TABLES ! ;
+   CTX n TOK-FIELDS * cells IR-CTX:SCRATCH-TAKE drop CELL-VIEW TOK-TABLES ! ;
 
 : TOK-FIELD ( n -- ptr n )
    TMAX @ * cells TOK-TABLES @ + ;
@@ -2002,16 +2002,16 @@ here CELL 1- and CELL swap - CELL 1- and allot
 : MEND ( -- ptr n ) 8 TOK-FIELD ;
 
 CMAX constant MSMAX                  \ open tag-dispatch forms, as the control stack's own ceiling
-create MS-KIND MSMAX cells allot     \ MK-MATCH or MK-CASE
-create MS-FAM MSMAX cells allot      \ the family a `MATCH` frame is over
-create MS-WID MSMAX cells allot      \ and the cells one value of its instantiation occupies; a `case` frame's subject is the one cell DO-OPEN-CASE gives it
-create MS-ARM MSMAX cells allot      \ whether the pass is inside one of its arms
-create MS-OF MSMAX cells allot       \ the row of the `of` that opened the arm read last
-variable MSN                         \ how many forms are open
-variable MM                          \ which operand token the pass is expecting
-variable CB-ROW                      \ the `MATCH` or `construct` row being read
-variable CB-FAM                      \ and the family its first operand named
-variable MV-ROW                      \ the variant row read last, whose `of` is next
+MSMAX CWORK-SPAN MS-KIND n     \ MK-MATCH or MK-CASE
+MSMAX CWORK-SPAN MS-FAM n      \ the family a `MATCH` frame is over
+MSMAX CWORK-SPAN MS-WID n      \ and the cells one value of its instantiation occupies; a `case` frame's subject is the one cell DO-OPEN-CASE gives it
+MSMAX CWORK-SPAN MS-ARM n      \ whether the pass is inside one of its arms
+MSMAX CWORK-SPAN MS-OF n       \ the row of the `of` that opened the arm read last
+0 CWORK-VARIABLE MSN n                         \ how many forms are open
+0 CWORK-VARIABLE MM n                          \ which operand token the pass is expecting
+0 CWORK-VARIABLE CB-ROW n                      \ the `MATCH` or `construct` row being read
+0 CWORK-VARIABLE CB-FAM n                      \ and the family its first operand named
+0 CWORK-VARIABLE MV-ROW n                      \ the variant row read last, whose `of` is next
 
 : MATCH-RESET ( -- )
    MM-OFF MM !
@@ -2146,7 +2146,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    ok 0= if E-NELAB-MATCH throw then
    ix MR-VARIANT MROLE!
    CB-FAM @ vid NFAM:PADS  ix SITE-PADS +  {: pads:n :}
-   EXACT-SOURCE @ if
+   EXACT-SOURCE @ 0<> if
       ix SITE-CALL drop dup 0< if drop E-NELAB-MATCH throw then
    else vid NFAM:PAY-CELLS then {: pay:n :}
    CB-ROW @  vid NFAM:TAG  pads  pay  MARM!
@@ -2413,8 +2413,8 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    false ;
 
 \ ---- which locals a call can reach -------------------------------------------
-variable LSN                         \ loops the scan is inside
-variable LS-SEQ                      \ identity of the current outer loop
+0 CWORK-VARIABLE LSN n                         \ loops the scan is inside
+0 CWORK-VARIABLE LS-SEQ n                      \ identity of the current outer loop
 
 : OPENS-LOOP? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
@@ -3400,7 +3400,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
 : DO-WORD-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
-   EXACT-SOURCE @ if
+   EXACT-SOURCE @ 0<> if
       ix SITE-CALL {: in:n out:n :}
       in 0< if E-NELAB-BUNDLE throw then
       in out ix SITE-GLUE nip
@@ -3986,7 +3986,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
    then ;
 
 \ ---- the walk ----------------------------------------------------------------
-variable IX                          \ the body token the walk stands on
+0 CWORK-VARIABLE IX n                          \ the body token the walk stands on
 
 : AFTER-END-CK ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
@@ -4084,8 +4084,8 @@ variable IX                          \ the body token the walk stands on
 \ ---- the name a quotation's own function carries ------------------------------
 \ The definition's name and a suffix, in a byte row that grows to hold them.
 DYNAMIC-BUFFER QNAME-BUF u8
-variable QNAME-U
-variable FUN-KIND
+0 CWORK-VARIABLE QNAME-U n
+0 CWORK-VARIABLE FUN-KIND n
 0 constant FUN-COLON
 1 constant FUN-DOES-PARENT
 2 constant FUN-DOES-CLAUSE
@@ -4096,7 +4096,7 @@ variable FUN-KIND
    a  QNAME-U @ QNAME-BUF  u BYTE-COPY
    QNAME-U @ u + QNAME-U ! ;
 
-variable QNAME-P                     \ the place value the digit loop is on
+0 CWORK-VARIABLE QNAME-P n                     \ the place value the digit loop is on
 
 : QNAME-DIGIT ( n -- )
    {: d:n :}
@@ -4334,44 +4334,20 @@ public
 
 private
 
-variable FUN-GIN
-variable FUN-GOUT
-variable DOES-AT
-variable DOES-FUN
-PTR-VARIABLE DOES-SIG
-variable DOES-SIG-U
-variable DOES-PATCH
+0 CWORK-VARIABLE FUN-GIN n
+0 CWORK-VARIABLE FUN-GOUT n
+0 CWORK-VARIABLE DOES-AT n
+0 CWORK-VARIABLE DOES-FUN n
+0 CWORK-VARIABLE DOES-SIG ptr u8
+0 CWORK-VARIABLE DOES-SIG-U n
+0 CWORK-VARIABLE DOES-PATCH n
 \ True when the clause between `does>` and `;` holds no token at all. Such a
 \ clause runs after the created word has pushed its data address and does
 \ nothing to it, so `does-patch` is given a zero entry and publishes the
 \ declared effect without patching the body or clearing its DKIND:ADDR stamp -
 \ the engine's own rule, src/habu/habu2.f DOES-REC:ELIDE-EMPTY, stated here on
 \ the tape because this compiler never reaches that path.
-variable DOES-EMPTY
-
-public
-
-: CAPTURE-PREPARE ( -- )
-   \ LIT-N makes the block memo unreachable, but its fixed rows still carry
-   \ literal addresses from the last host compilation into the saved image.
-   LIT-RESET
-   LITMAX 0 ?do
-      0 i cells LIT-VAL + !
-      0 i cells LIT-KIND + !
-   loop
-   0 QN !
-   0 LMAX !
-   0 LVMAX !
-   0 BLOCK-LIMIT !
-   \ The literal memo can hold a build-process code address even after its
-   \ count is reset. No entry is live in a captured engine.
-   0 LIT-N !
-   LITMAX 0 ?do 0 i cells LIT-VAL + ! loop
-   NULL-PTR TOK-TABLES ! 0 TMAX !
-   NULL-PTR DOES-SIG !  0 DOES-SIG-U !
-   0 TAIL-ENTRY !
-   0 DOES-EMPTY !
-   0 DOES-PATCH ! ;
+0 CWORK-VARIABLE DOES-EMPTY n
 
 private
 

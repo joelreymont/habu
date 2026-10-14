@@ -20,6 +20,7 @@
 \   tools/hb-build-stripped-cache-test.f      link equality, cached table cells
 \   tools/hb-build-large-source-test.f        literal bodies, large source
 \   tools/hb-build-repl-twin-test.f           two REPL builds, restored LASTC
+\   tools/hb-build-repl-fresh-test.f          no-op output, dynamic child edits
 \ test/gate-stdlib-cases.f registers each file as a row of its own and says why.
 
 require src/lib/errors.f

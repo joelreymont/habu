@@ -515,17 +515,13 @@ private
    key l IR-ID:PACK-TYPE ;
 
 \ ---- function-type stage -----------------------------------------------------
-here CELL 1- and CELL swap - CELL 1- and allot
-variable STG-OPEN
-0 STG-OPEN !
-variable STG-PN
-0 STG-PN !
-variable STG-RN
-0 STG-RN !
-create STG-PO ARITY-MAX cells allot
-create STG-PL ARITY-MAX cells allot
-create STG-RO ARITY-MAX cells allot
-create STG-RL ARITY-MAX cells allot
+0 CWORK-VARIABLE STG-OPEN n
+0 CWORK-VARIABLE STG-PN n
+0 CWORK-VARIABLE STG-RN n
+ARITY-MAX CWORK-SPAN STG-PO n
+ARITY-MAX CWORK-SPAN STG-PL n
+ARITY-MAX CWORK-SPAN STG-RO n
+ARITY-MAX CWORK-SPAN STG-RL n
 
 : PO@ ( n -- n )
    cells STG-PO + @ ;

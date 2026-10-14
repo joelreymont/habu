@@ -299,16 +299,9 @@ NBR:INSN-BYTES constant INSN-BYTES
    A64PRUNE:BOUND? if A64PRUNE:RELEASE then
    A64EMIT:BOUND? if A64EMIT:RELEASE then ;
 
-\ The registry releases buffers immediately before DATA copy. Reset the pass
-\ reservations here so a restored compiler sizes them again on use.
+\ Dynamic storage releases pass buffers after the emission has proved idle.
 : PREPARE ( -- )
-   A64EMIT:CAPTURE-PREPARE
-   A64EMIT:RESET-SCRATCH
-   A64SPILL:RESET-SCRATCH
-   A64RAV:RESET-SCRATCH
-   A64RA:RESET-SCRATCH
-   A64PRUNE:RESET-SCRATCH
-   A64SEL:RESET-SCRATCH ;
+   A64EMIT:CAPTURE-PREPARE ;
 
 public
 

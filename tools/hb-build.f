@@ -24,7 +24,6 @@ require src/lib/object-cache.f
 require src/lib/object-index.f
 require src/lib/object-resolve.f
 require src/lib/object-link.f
-require tools/build-fixpoint.f
 require tools/cli-run.f
 require tools/object-image.f
 require tools/hb-build-report.f

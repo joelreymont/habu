@@ -197,6 +197,28 @@ PTR-VARIABLE SND-A
 : SND-ZERO-CELL ( n -- )
    SND-PTR + CELL-VIEW 0 swap ! ;
 
+\ FS-ABI and FS-MUT-ABI hold only per-call filesystem scratch. Their path,
+\ stat and descriptor bytes describe the build process, not the application.
+\ Clear the copied bands, leaving caller-owned buffers and the live task alone.
+: SND-ZERO-FS-BAND ( n n -- ) {: off:n bytes:n :}
+   bytes 0 ?do off i + SND-ZERO-CELL CELL +loop ;
+
+: SND-ZERO-FS-SCRATCH ( -- )
+   FS-MUT-ABI:START FS-MUT-ABI:BYTES SND-ZERO-FS-BAND
+   FS-ABI:START FS-ABI:BYTES SND-ZERO-FS-BAND ;
+
+\ BODYLEN bounds the current definition text. A cached FILE replay can leave
+\ older source after that bound, while a cold compile writes a different tail.
+\ Preserve the live prefix in the copied DATA and retire only its unused room.
+: SND-ZERO-BODY-TAIL ( -- )
+   BODYLEN-CELL SND-PTR + CELL-VIEW @ {: used:n :}
+   used 0 < used BODYBUF-CAP > or if
+      s" snap: body length outside buffer" 74 die
+   then
+   BODYBUF-CAP 2 + used ?do
+      0 SND-PTR BODYBUF-OFF i + + c!
+   loop ;
+
 \ The return-stack window used to live at RSTK-OFF..RSTK-END inside this image
 \ and had to be zeroed: stale slots held dangling arena pointers from the build
 \ (proven: two old-USIGS pointers survived there). It is a guarded mapping
@@ -368,6 +390,8 @@ PTR-VARIABLE SND-A
    \ precedes IMK-NDICT0. Owners retire transient state before this copy.
    SND-COPY
    SND-ZERO-LIVE
+   SND-ZERO-FS-SCRATCH
+   SND-ZERO-BODY-TAIL
    SND-ZERO-POLICY
    SND-ZERO-WRITER
    SND-CANON-ORIGIN

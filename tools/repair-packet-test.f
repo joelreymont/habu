@@ -237,7 +237,7 @@ create PACKET-BUF FS-PATH-CAP allot
 \ Byte-exact golden of the generated packet; the temp root inside the embedded
 \ diagnostic is redacted to <root> so the golden stays stable across runs.
 : EXPECT-GOLDEN ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   ROOT GOLD:REDACT!
+   ROOT SOURCE-ROOT:CANONICAL drop GOLD:REDACT!
    PACKET OUT CAPTURE-CAP READ-ALL {: pu:n :}
    LABEL$ T-LABEL
    OUT pu name nameu GOLDEN-NAME$ GOLD:CHECK TTRUE ;

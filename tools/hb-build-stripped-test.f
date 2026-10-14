@@ -1,7 +1,7 @@
 \ hb-build-stripped-test.f - checked fixture for tools/hb-build-lib.f: what a
-\ stripped image may own and reach - library state, a fork and the claimed
-\ engine cells - and what it is refused: an entry the link cannot find, as the
-\ CLI reports it, an engine cell nothing claims and a run-time pointer-cell mark.
+\ stripped image may own and reach: library state, a fork, claimed engine
+\ cells, and a run-time pointer-cell mark that preserves data and stack.
+\ It also checks refusals for a missing entry and an unclaimed engine cell.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-stripped-test.f
 
@@ -88,13 +88,13 @@ package HB-BUILD-CLI
 \ A PROGRAM THAT REGISTERS A POINTER CELL AT RUN TIME. The definer's own
 \ `ptr-cell-mark` runs at DEFINITION time, on the build host; this program calls
 \ the primitive itself inside MAIN, after storing the address of its own data in
-\ a persisted cell - the one shape in which a stripped image would have to carry
-\ the registrar.
+\ a persisted cell. The linker removes the compiler-only registration call
+\ while preserving its stack effect and the application pointer.
 : HBT-PMK-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" create PMK-OWN 111 c, 107 c,\nPERSISTED-PTR-VARIABLE PMK-CELL\n" SB-APPEND
    S\" : MAIN ( -- )\n   PMK-OWN PMK-CELL !\n   PMK-CELL ptr-cell-mark\n" SB-APPEND
-   S\"    PMK-CELL @ 2 type cr ;\n" SB-APPEND
+   S\"    depth 0 <> if s\" ptrmark: stack\" 74 die then\n   PMK-CELL @ 2 type cr ;\n" SB-APPEND
    SB$ ;
 
 : HBT-LIB-FILE! ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu body:ptr bodyu :}
@@ -265,20 +265,17 @@ package HB-BUILD-CLI
    HBB-ERR-BUF nerr s" caller=TMP-PATH" CONTAINS? TTRUE
    HBB-ERR-BUF nerr s" target=TPU" CONTAINS? TTRUE ;
 
-\ ... and the relocator's own arm refuses by name too. `ptr-cell-mark` has a body
-\ of its own (a deref-form prim, src/habu/habu2.f BPTRCELLMARK) holding a BL to
-\ LPTRMARK, an entry INSIDE the (MARK) body and not that record's code ENTRY - so
-\ FINDADDR-PTR resolves nothing, DECLARATION-TARGET? is false, and MAP-TARGET!
-\ (src/habu/aot-lib.f) dies naming the primitive as the site and, through
-\ ADDRESS-OWNER's recorded span, (MARK) as the body the target lands in. Only a
-\ branch to the (MARK) ENTRY - what `xt!` compiles - is dropped as a declaration.
+\ The linker keeps the pointer store and replaces the stripped registrar call
+\ with a stack pop. The image must read its restored bytes with balanced stack.
 : HBT-STRIPPED-PTR-MARK ( -- )
    HBT-PMK-SRC HBT-PMK-SRC$ WRITE-ALL
-   HBT-PMK-SRC HBT-RUN-MAKER {: mout:n merr:n mrc:n :}
-   mrc 0 <> TTRUE
-   HBB-ERR-BUF merr s" PC-relative target removed or outside closure" CONTAINS? TTRUE
-   HBB-ERR-BUF merr s" site=ptr-cell-mark" CONTAINS? TTRUE
-   HBB-ERR-BUF merr s" target-word=(MARK)" CONTAINS? TTRUE ;
+   HBT-PMK-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
+   HBT-AOT-OUT FILE? TTRUE
+   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn S\" ok\n" T$= ;
 
 \ Public so the driver below runs it with the package CLOSED: the subtests
 \ drive real builds, which resolve names in whatever package scope is open.

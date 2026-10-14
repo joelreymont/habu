@@ -8,7 +8,7 @@ require src/lib/type/deftype.f         \ DEFTYPE - the ffi-dev / ffi-ctx test no
 require src/lib/string.f               \ SB / CONTAINS? - the child's stderr is matched here
 require src/lib/fmt.f                  \ the code the child prints is rendered from its name
 require src/lib/process.f
-require src/lib/process-argv.f         \ the full-table case needs a child engine
+require src/lib/process-argv.f         \ the growth case needs a child engine
 require src/lib/process-env.f          \ the stub child runs on the unsealed engine
 require src/lib/fs-mutate.f            \ CLEANUP-RUN - that engine's private copy
 require test/whitebox-child.f
@@ -189,10 +189,9 @@ variable FFI-T-PAIR-AFTER
 \ the first call, never at the declaration.
 FUNCTION: FFI-T-ABSENT habu-no-such-symbol ( -- n ) ;FUNCTION
 
-\ ---- the declaration table's ceiling ---------------------------------------
-\ The table belongs to the IMAGE, so its ceiling can only be reached by a
-\ process that fills it: this case fills a child engine's. The loop declares
-\ distinct symbols under one Habu name, undefining the word after each turn.
+\ ---- declaration growth and reuse -------------------------------------------
+\ A child declares distinct symbols past the former table limit, then calls
+\ an exact alias through the real source path.
 $400 constant FFI-T-SRC-CAP
 $4000 constant FFI-T-CAP
 30000 constant FFI-T-TIMEOUT-MS
@@ -210,29 +209,25 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-FILL-SRC+ ( -- )
    s\" require src/lib/ffi-abi.f\nrequire src/lib/codegen.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-BASE getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
-   s\" 128 CODEGEN:BUFFER ZZ-DECL\n: ZZ-FILL ( -- ) FFI:DECLARATION-MAX 0 ?do\n" FFI-T-SRC+
-   s\"    FFI:ROOM? 0= if unloop exit then\n" FFI-T-SRC+
+   s\" : ZZ-FN-N ( -- n ) FFI:IMAGE-MARK 2drop drop ;\n" FFI-T-SRC+
+   s\" 128 CODEGEN:BUFFER ZZ-DECL\n: ZZ-FILL ( -- ) 270 0 ?do\n" FFI-T-SRC+
    s\"    ZZ-DECL CODEGEN:RESET\n" FFI-T-SRC+
    s\"    s\" FUNCTION: ZZ-OVER habu-ffi-fill-\" ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    i ZZ-DECL CODEGEN:APPEND-DECIMAL\n" FFI-T-SRC+
    s\"    s\"  ( -- n ) ;FUNCTION\" ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    ZZ-DECL CODEGEN:CONTENTS INCLUDE-EVALUATE\n" FFI-T-SRC+
    s\"    s\" undefine ZZ-OVER\" INCLUDE-EVALUATE\n" FFI-T-SRC+
-   s\" loop ;\nZZ-FILL\n" FFI-T-SRC+ ;
+   s\" loop ;\nZZ-FILL\nZZ-FN-N constant ZZ-BEFORE\n" FFI-T-SRC+ ;
 
-: FFI-T-FULL-SRC$ ( -- ptr u8 n )
-   FFI-T-SRC CODEGEN:RESET
-   FFI-T-FILL-SRC+
-   s\" FUNCTION: ZZ-OVER habu-ffi-table-probe ( -- n ) ;FUNCTION\n" FFI-T-SRC+
-   FFI-T-SRC CODEGEN:CONTENTS ;
-
-: FFI-T-ALIAS-FULL-SRC$ ( -- ptr u8 n )
+: FFI-T-GROW-SRC$ ( -- ptr u8 n )
    FFI-T-SRC CODEGEN:RESET
    FFI-T-FILL-SRC+
    s\" FUNCTION: ZZ-ALIAS getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
-   s\" : ZZ-CALL ( -- ) ZZ-BASE 0 > ZZ-ALIAS 0 > and if s\" full-alias:ok\" type cr else s\" getpid refused\" 1 die then ;\nZZ-CALL\n" FFI-T-SRC+
+   s\" ZZ-FN-N constant ZZ-AFTER\n" FFI-T-SRC+
+   s\" : ZZ-CHECK ( -- ) ZZ-BEFORE ZZ-AFTER <> if s\" alias took row\" 1 die then\n" FFI-T-SRC+
+   s\"    ZZ-BASE 0 <= ZZ-ALIAS 0 <= or if s\" getpid refused\" 1 die then\n" FFI-T-SRC+
+   s\"    s\" growth-alias:ok\" type cr ;\nZZ-CHECK\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
-
 : FFI-T-ERR$ ( len -- ptr u8 n ) {: u:len :}
    FFI-T-ERR u LEN>N ;
 
@@ -254,23 +249,12 @@ create FFI-T-LONG-PATH PATH-CAP allot
    code FMT:SB-INT
    SB$ ;
 
-: FFI-T-TABLE-FULL ( -- )
-   s" a full declaration table is refused with its own code" T-LABEL
-   FFI-T-FULL-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
+: FFI-T-GROW-ALIAS ( -- )
+   s" distinct descriptors grow past 256 and an exact alias keeps its row" T-LABEL
+   FFI-T-GROW-SRC$ 0 FFI-T-RUN-EXITS
    {: outu:len erru:len :}
-   outu LEN>N 0 T=
-   erru FFI-T-ERR$ E-FFI-TABLE-FULL FFI-T-CODE$ CONTAINS? TTRUE
-   s" the refusal names the symbol and the word being declared" T-LABEL
-   erru FFI-T-ERR$ s" habu-ffi-table-probe" CONTAINS? TTRUE
-   erru FFI-T-ERR$ s" ZZ-OVER" CONTAINS? TTRUE ;
-
-: FFI-T-ALIAS-AT-FULL ( -- )
-   s" a FUNCTION alias calls after distinct descriptors fill the table" T-LABEL
-   FFI-T-ALIAS-FULL-SRC$ 0 FFI-T-RUN-EXITS
-   {: outu:len erru:len :}
-   FFI-T-OUT outu LEN>N s\" full-alias:ok\n" T$=
+   FFI-T-OUT outu LEN>N s\" growth-alias:ok\n" T$=
    erru LEN>N 0 T= ;
-
 : FFI-T-LIBRARY-SHARED-SRC$ ( -- ptr u8 n )
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nrequire src/lib/codegen.f\n" FFI-T-SRC+
@@ -309,33 +293,6 @@ create FFI-T-LONG-PATH PATH-CAP allot
 
 \ The overflowing path carries no extension: it stands for a literal LIBRARY row
 \ on either target, which the spelling rule below leaves alone.
-: FFI-T-LIB-FULL-SRC$ ( -- ptr u8 n )
-   FFI-T-SRC CODEGEN:RESET
-   s\" require src/lib/ffi-abi.f\nrequire src/lib/codegen.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
-   s\" FUNCTION: ZZ-EARLY getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
-   s\" 128 CODEGEN:BUFFER ZZ-NAME\n: ZZ-LIB-FILL ( -- ) FFI:LIBRARY-MAX 0 ?do\n" FFI-T-SRC+
-   s\"    ZZ-NAME CODEGEN:RESET s\" /tmp/habu-ffi-library-\" ZZ-NAME CODEGEN:APPEND-STRING\n" FFI-T-SRC+
-   s\"    i ZZ-NAME CODEGEN:APPEND-DECIMAL\n" FFI-T-SRC+
-   s\"    ZZ-NAME CODEGEN:CONTENTS FFI-DECL:SELECT-LIBRARY\n" FFI-T-SRC+
-   s\" loop\n" FFI-T-SRC+
-   s\" s\" LIBRARY /tmp/habu-ffi-library-0\" INCLUDE-EVALUATE\n" FFI-T-SRC+
-   s\" s\" FUNCTION: ZZ-REUSED absent-symbol ( -- n ) ;FUNCTION\" INCLUDE-EVALUATE\n" FFI-T-SRC+
-   s\" ZZ-EARLY 0 <= if s\" prior call failed\" 1 die then\n" FFI-T-SRC+
-   s\" s\" LIBRARY /tmp/habu-ffi-library-overflow\" INCLUDE-EVALUATE\n" FFI-T-SRC+
-   s\"    s\" FUNCTION: ZZ-LIB-OVER habu-ffi-library-probe ( -- n ) ;FUNCTION\" INCLUDE-EVALUATE\n" FFI-T-SRC+
-   s\" ;\nZZ-LIB-FILL\n" FFI-T-SRC+
-   FFI-T-SRC CODEGEN:CONTENTS ;
-
-: FFI-T-LIBRARY-TABLE-FULL ( -- )
-   s" a full library table names the path and pending declaration" T-LABEL
-   FFI-T-LIB-FULL-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
-   {: outu:len erru:len :}
-   outu LEN>N 0 T=
-   erru FFI-T-ERR$ E-FFI-LIBRARY-FULL FFI-T-CODE$ CONTAINS? TTRUE
-   erru FFI-T-ERR$ s" /tmp/habu-ffi-library-overflow" CONTAINS? TTRUE
-   erru FFI-T-ERR$ s" ZZ-LIB-OVER" CONTAINS? TTRUE
-   erru FFI-T-ERR$ s" habu-ffi-library-probe" CONTAINS? TTRUE ;
-
 : FFI-T-LONG-PATH! ( -- )
    PATH-CAP 0 ?do [char] a FFI-T-LONG-PATH i + c! loop ;
 
@@ -358,26 +315,6 @@ create FFI-T-LONG-PATH PATH-CAP allot
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\ncreate ZZ-P PATH-CAP allot\n" FFI-T-SRC+
    s\" : ZZ-LONG ( -- ptr u8 n ) PATH-CAP 0 ?do [char] a ZZ-P i + c! loop ZZ-P PATH-CAP ;\n" FFI-T-SRC+ ;
-
-: FFI-T-LONG-LIB-FULL-SRC$ ( -- ptr u8 n )
-   FFI-T-LONG-SRC!
-   s\" require src/lib/codegen.f\n128 CODEGEN:BUFFER ZZ-NAME\n" FFI-T-SRC+
-   s\" PROCESS-SYMBOLS\n: ZZ-LIB-FILL ( -- ) FFI:LIBRARY-MAX 0 ?do\n" FFI-T-SRC+
-   s\"   ZZ-NAME CODEGEN:RESET s\" /tmp/habu-ffi-library-\" ZZ-NAME CODEGEN:APPEND-STRING\n" FFI-T-SRC+
-   s\"   i ZZ-NAME CODEGEN:APPEND-DECIMAL\n" FFI-T-SRC+
-   s\"   ZZ-NAME CODEGEN:CONTENTS FFI-DECL:SELECT-LIBRARY\n" FFI-T-SRC+
-   s\" loop ZZ-LONG FFI-DECL:SELECT-LIBRARY\n" FFI-T-SRC+
-   s\" s\" FUNCTION: ZZ-LIB-OVER habu-ffi-library-probe ( -- n ) ;FUNCTION\" INCLUDE-EVALUATE ;\nZZ-LIB-FILL\n" FFI-T-SRC+
-   FFI-T-SRC CODEGEN:CONTENTS ;
-
-: FFI-T-LONG-LIBRARY-TABLE-FULL ( -- )
-   s" a PATH-CAP path keeps the library-table refusal and its full name" T-LABEL
-   FFI-T-LONG-LIB-FULL-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
-   {: outu:len erru:len :}
-   outu LEN>N 0 T=
-   erru FFI-T-ERR$ E-FFI-LIBRARY-FULL FFI-T-CODE$ CONTAINS? TTRUE
-   FFI-T-LONG-PATH!
-   erru FFI-T-ERR$ FFI-T-LONG-PATH PATH-CAP CONTAINS? TTRUE ;
 
 \ ---- process-wide symbols: FFI:GLOBAL --------------------------------------
 \ libz, which the VERSIONED-LIBRARY row below opens with FFI:NOW alone.
@@ -547,7 +484,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
 \ A literal spelled in the OTHER target's convention names no file here, so the
 \ declarer refuses it where it is stated. The refusal ends the load, which is
-\ why it is measured in a child the way the table ceilings are.
+\ why it is measured in a child like the growth case.
 : FFI-T-FOREIGN-NAME$ ( -- ptr u8 n )
    HB-TARGET-MACOS? if s" libx.so.5" exit then s" libx.5.dylib" ;
 
@@ -717,12 +654,9 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-VARARGS
    FFI-T-VARARG-KEY
 
-   FFI-T-TABLE-FULL
-   FFI-T-ALIAS-AT-FULL
+   FFI-T-GROW-ALIAS
    FFI-T-LIBRARY-SHARED
    FFI-T-PATH-IDENTITY
-   FFI-T-LIBRARY-TABLE-FULL
-   FFI-T-LONG-LIBRARY-TABLE-FULL
    FFI-T-FOREIGN-LIBRARY
    FFI-T-LONG-FOREIGN-LIBRARY
    FFI-T-GLOBAL

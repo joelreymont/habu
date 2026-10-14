@@ -174,7 +174,9 @@ PTR-VARIABLE STGT-START
 
 : LBUF-CAPTURE-PREPARE ( -- )
    LBUF-EVAL-U @ 0 > LBUF-PEND-U @ 0 > or if E-LAYOUT-BUFFER throw then
-   NULL-PTR STGT-A !  0 STGT-U !  NULL-PTR STGT-START ! ;
+   NULL-PTR STGT-A !  0 STGT-U !  NULL-PTR STGT-START !
+   LBUF-GEN-CAP 0 ?do 0 LBUF-GEN i + c! loop
+   0 LBUF-GEN-U ! 0 LBUF-I ! 0 LBUF-N ! 0 LBUF-W ! 0 LBUF-BYTES ! ;
 
 : LBUF-EVAL-RUN ( -- )
    LBUF-EVAL-A 0 ptr-field @ LBUF-EVAL-U @ TDECL-EVAL-XT ;
@@ -265,6 +267,7 @@ STORAGE-CLEAR-DEFAULT
    term T-WIDTH {: width:n :}
    count width LBUF-EXTENT?
    0= if drop E-LAYOUT-BUFFER throw then {: bytes:n :}
+   term TFAM:TFAM-STORAGE-HAS-QUOT? 0= if exit then
    off bytes STORAGE-CLEAR-XT
    data-base BYTE-VIEW off + CELL-VIEW {: base:ptr :}
    count 0 ?do
@@ -283,8 +286,8 @@ STORAGE-CAPTURE-INSTALL
    base LBUF-ALLOT
    hasquot if
       base type typeu STORAGE-MARK-FIXED
-      handle base count CHECKER-STORAGE-BIND
-   then ;
+   then
+   handle base count CHECKER-STORAGE-BIND ;
 
 \ ---- the stored type --------------------------------------------------------
 \ Every storage definer reads its type here, so a pointer chain, a family
@@ -369,7 +372,7 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
 \ Bind policy is grow-to-largest reuse, mirroring the landed executor arena
 \ (maki/executor.f EX-ARENA-ENSURE, stage 1): NAME-BIND reuses the current
 \ region when count fits the allotted capacity (cap-cell), else allots a fresh
-\ larger region and abandons the predecessor — leak bounded by the largest
+\ larger region and retires the predecessor — allocation bounded by the largest
 \ model, no copy, no mid-build base move (the region only grows before its cells
 \ are written). A bind past LDEFER-CELL-MAX dies NAMED (E-LAYOUT-CEIL) BEFORE
 \ any allot or cell store, so a too-big model leaves the prior tables intact
@@ -396,11 +399,21 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
 \ so it means the same thing wherever the pair ends up. It carries a certified
 \ signature, so the seal-time internal-word pass leaves it executable for the
 \ generated NAME-BIND callers.
+\ A moved column's old cells are no longer reachable through its accessor.
+\ Clear their declarations and bytes after publishing the new region; old raw
+\ accessor pointers were already invalid across a grow.
+: LDEFER-RETIRE ( n n n ptr n -- ) {: oldoff:n oldcap:n wc:n cb:ptr :}
+   oldcap 0= oldoff cb @ = or if exit then
+   cb oldoff + {: oldbase:ptr :}
+   oldbase BYTE-VIEW data-base BYTE-VIEW - oldcap wc * cells STORAGE-CLEAR-XT
+   oldbase oldcap wc * cells LBUF-ZERO ;
+
 : LDEFER-BIND ( n ptr n n -- )   \ count cbase wc
    {: count:n cb:ptr wc:n :}
    count 0 < if E-LAYOUT-BUFFER throw then
    count wc * {: need:n :}
    need LDEFER-CELL-MAX > if E-LAYOUT-CEIL throw then    \ transactional: die before any mutation
+   cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
    count  cb CELL + @  > if                             \ count > capacity: grow-to-largest
       LBUF-ALIGN
       here {: base:ptr :}
@@ -409,7 +422,8 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
       base cb -  cb  !                                  \ off-cell = new region offset from cb
       count  cb CELL +  !                               \ cap-cell = new allotted capacity
    then
-   count  cb 2 CELL * +  ! ;                             \ cnt-cell = live bound
+   count  cb 2 CELL * +  !                             \ cnt-cell = live bound
+   oldoff oldcap wc cb LDEFER-RETIRE ;
 
 \ The generated NAME-BIND words are user-level (minted at model load), so the
 \ shared binder must survive the seal-time internal-word pass. The axiom keeps it
@@ -435,6 +449,7 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
    cb 2 CELL * + @ 0= if E-LAYOUT-UNBOUND throw then        \ grow requires a prior BIND
    count wc * {: need:n :}
    need LDEFER-CELL-MAX > if E-LAYOUT-CEIL throw then       \ transactional: die before any mutation
+   cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
    count  cb CELL + @  > if                                 \ count > capacity: copy-on-grow
       cb 2 CELL * + @ {: live:n :}                          \ live cells to carry to the fresh region
       cb  cb @  + {: obase:ptr :}                           \ current region base
@@ -452,7 +467,8 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
       cb 2 CELL * + @ wc * cells +                           \ + old-live * width cells
       count  cb 2 CELL * + @  -  wc * cells  LBUF-ZERO        \ zero [old-live, count)
    then then
-   count  cb 2 CELL * +  ! ;                                 \ cnt-cell = new live bound
+   count  cb 2 CELL * +  !                                 \ cnt-cell = new live bound
+   oldoff oldcap wc cb LDEFER-RETIRE ;
 
 \ Same seal treatment as LDEFER-BIND: the axiom keeps the shared grow binder
 \ checker-known and top-level executable for the generated NAME-GROW callers; it
@@ -460,36 +476,14 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 \ UNSAFE-TOK?. Effect: ( count cbase wc -- ).
 PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 
-\ A relocated quotation column leaves both its old bytes and their code-cell
-\ declarations behind. Retire the entire former capacity after the binder has
-\ published the new region; a failed bind leaves the old allocation untouched.
-: LDEFER-RETIRE ( n n n ptr n -- ) {: oldoff:n oldcap:n wc:n cb:ptr :}
-   oldcap 0= oldoff cb @ = or if exit then
-   cb oldoff + {: oldbase:ptr :}
-   oldbase BYTE-VIEW data-base BYTE-VIEW - oldcap wc * cells STORAGE-CLEAR-XT
-   oldbase oldcap wc * cells LBUF-ZERO ;
-
-: LDEFER-BIND-QUOT ( n ptr n n -- ) {: count:n cb:ptr wc:n :}
-   cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
-   count cb wc LDEFER-BIND
-   oldoff oldcap wc cb LDEFER-RETIRE ;
-
-: LDEFER-GROW-QUOT ( n ptr n n -- ) {: count:n cb:ptr wc:n :}
-   cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
-   count cb wc LDEFER-GROW
-   oldoff oldcap wc cb LDEFER-RETIRE ;
-
-PRIM: LDEFER-BIND-QUOT PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
-PRIM: LDEFER-GROW-QUOT PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
-
 \ Generate the deferred accessor plus its NAME-BIND and NAME-GROW into one source.
 \ The `create` comes first so the accessor and both binders can name the control
 \ cells; it runs no CHECK, so the accessor is still the first DEFINITION and
 \ LBUF-EVAL's one-shot armed window authorizes it by name. NAME-BIND and
 \ NAME-GROW are ordinary checked words (each pushes the control-cell address and
 \ the width, then calls LDEFER-BIND / LDEFER-GROW).
-: LDEFER-SOURCE ( ptr u8 n ptr u8 n bool -- ptr u8 n ptr u8 n )
-   {: name:ptr nameu:n type:ptr typeu:n hasquot:bool :}
+: LDEFER-SOURCE ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
+   {: name:ptr nameu:n type:ptr typeu:n :}
    LBUF-CLEAR
    s" create " LBUF-APP  name nameu LBUF-BASE,
    s"  : " LBUF-APP
@@ -509,13 +503,11 @@ PRIM: LDEFER-GROW-QUOT PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
    s"  * + ; : " LBUF-APP
    name nameu LBUF-APP  s" -BIND ( n -- ) " LBUF-APP
    name nameu LBUF-BASE,  s"  " LBUF-APP  LBUF-W @ LBUF-DEC,
-   hasquot if s"  LDEFER-BIND-QUOT ; : " else s"  LDEFER-BIND ; : " then LBUF-APP
+   s"  LDEFER-BIND ; : " LBUF-APP
    name nameu LBUF-APP  s" -GROW ( n -- ) " LBUF-APP
    name nameu LBUF-BASE,  s"  " LBUF-APP  LBUF-W @ LBUF-DEC,
-   hasquot if s"  LDEFER-GROW-QUOT ;" else s"  LDEFER-GROW ;" then LBUF-APP
+   s"  LDEFER-GROW ;" LBUF-APP
    LBUF-GEN LBUF-GEN-U @ pna pnu ;
-
-3 constant LDEFER-CTRL-CELLS   \ off-cell, cap-cell, cnt-cell
 
 : DEFER-LAYOUT-BUFFER ( -- )
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
@@ -529,14 +521,13 @@ PRIM: LDEFER-GROW-QUOT PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
       2drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE exit
    then
    LBUF-W !  drop                                          \ width (cells) from the layout family
-   type typeu STORAGE-HAS-QUOT? {: hasquot:bool :}
    LDEFER-CTRL-CELLS cells LBUF-BYTES !                    \ the control cells this definer owns
    LBUF-ALIGN
    here {: cbase:ptr :}
-   name nameu type typeu hasquot LDEFER-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
+   name nameu type typeu LDEFER-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL! {: handle:n :}
    cbase LBUF-ALLOT                                        \ all 0 = unbound
-   hasquot if handle cbase CHECKER-STORAGE-DEFER then ;
+   handle cbase CHECKER-STORAGE-DEFER ;
 
 \ Like LAYOUT-BUFFER: the axiom keeps DEFER-LAYOUT-BUFFER checker-known so the
 \ seal-time internal-word pass leaves it top-level executable; it parses its own

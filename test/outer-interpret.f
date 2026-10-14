@@ -4,8 +4,8 @@
 \ Each case is a file a child engine loads twice:
 \   --load <prelude> test/outer-loop-on.f <case>   the Habu loop reads the case
 \   --load <prelude> <case>                        the engine's evaluate reads it
-\ test/outer-loop-on.f binds the loaded-bytes seam SOURCE-ROOT:INCLUDE-INTERPRET
-\ (src/core/include.f) to OUTER:INTERPRET. The two runs must end with the same
+\ test/outer-loop-on.f installs OUTER's private loader renderer through
+\ SOURCE-ROOT:USE-INTERPRETER. The two runs must end with the same
 \ rc, stdout and stderr, and each case states the rc and output that show what
 \ it exercised, so two runs failing alike do not pass.
 \
@@ -1905,14 +1905,14 @@ variable WANT-RC
 
 variable SPY-N
 
-: SPY ( ptr u8 n -- )
+: SPY ( ptr u8 n n n -- )
    1 SPY-N +!
-   OUTER:INTERPRET ;
+   OUTER:INTERPRET-RANGE ;
 
 public
 
 : SPY-ON ( -- )
-   [: SPY ;] is SOURCE-ROOT:INCLUDE-INTERPRET ;
+   [: SPY ;] SOURCE-ROOT:USE-INTERPRETER ;
 
 : SPY-N. ( -- )
    SPY-N @ . ;

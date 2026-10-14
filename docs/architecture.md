@@ -167,8 +167,10 @@ it ([one reader](compilation.md#defining-a-word)). `evaluate`,
 **Now:** the machine-code reader dispatches through keyword tables, 25 rows
 for interpreting and about 70 for compiling (`src/habu/habu2.f`
 `EM-INTERPRET-*-KEYWORDS` at :10083, `EM-COMPILE-*-KEYWORDS` at :11288), and
-`src/core/include.f` reaches the loop through a defer (`INCLUDE-INTERPRET`,
-:1518).
+`src/core/include.f` reaches the loop through its private `INCLUDE-INTERPRET`
+defer. `SOURCE-ROOT:USE-INTERPRETER` installs a renderer for loader fragments;
+the loader closes the stack around the whole source unit. Public range
+evaluators close their own program stack and reject invalid byte bounds.
 
 **The kernel holds what the typed interpreter needs to load.** That is:
 - lookup over the hashed chains;

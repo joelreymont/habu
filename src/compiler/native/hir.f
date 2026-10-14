@@ -991,9 +991,8 @@ private
 \ The pair is the session's and is only read here. PROTOTYPE-CLEAR gives it up
 \ when the session does, and an interner that outlives its context is stale by
 \ the arena's own seal, so a forgotten clear cannot read freed storage.
-2 TYPED-BUFFER PROTO IR-ARENA:arena
-variable PROTO-ON
-0 PROTO-ON !
+2 CWORK-BUFFER PROTO IR-ARENA:arena
+0 CWORK-VARIABLE PROTO-ON n
 
 : PRE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key ptr u8 n -- IR-ID:ir-symbol-id )
    IR-SYM:INTERN ;
@@ -1027,7 +1026,11 @@ public
 
 : PROTOTYPE-CLEAR ( -- )
    0 PROTO-ON !
-   MEMO-FORGET ;
+   MEMO-FORGET
+   \ Both ordinals and the module handle belonged to the retired session.
+   0 0 PROTO BYTE-VIEW CELL-VIEW !  0 1 PROTO BYTE-VIEW CELL-VIEW !
+   0 0 MEMO-MOD BYTE-VIEW CELL-VIEW !
+   VOCAB 0 ?do 0 i PROTO-ORD !  0 i MEMO-ORD ! loop ;
 
 \ ---- creation and registration -----------------------------------------------
 \ It adds the dialect's own name and schema version, which no caller spells.

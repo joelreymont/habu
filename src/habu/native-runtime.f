@@ -87,6 +87,7 @@ s" src/core/include.f" provided
 
 s" src/core/enums.f" required
 s" src/core/sha256.f" required
+s" src/core/source-producer.f" required
 s" src/core/type-family-sha.f" required
 s" src/core/combinators.f" required
 s" src/habu/code-span.f" required

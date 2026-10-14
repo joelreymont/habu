@@ -1,7 +1,7 @@
 \ build-fixpoint.f - checked self-rebuild orchestration.
 \
 \ Load after this list, by design: the caller composes it as one --load line
-\ (tools/bootstrap.sh, tools/hb-build-lib.f), so this file requires none of it.
+\ (tools/bootstrap.sh), so this file requires none of it.
 \ src/lib/errors.f, src/lib/string.f, src/lib/memory.f, src/lib/fs.f, src/lib/fs-mutate.f,
 \ src/lib/process.f, src/lib/process-argv.f, src/lib/process-env.f, and src/lib/codesign.f.
 \ The stamp key hashes the engine and the emitted stage sources with the baked
@@ -137,7 +137,7 @@ BF-REQUIRE-WATERMARK
 require src/lib/process-cwd.f
 require src/lib/engine-id.f                  \ PATH$: the engine a certify child runs
 require src/lib/span.f                       \ SPAN-BUFFER: destinations for FS-MUT-SUFFIX-PATH
-require src/lib/source.f                     \ whole descriptor reads of build sources
+require tools/build-support.f            \ shared path, child env and source scratch
 require src/lib/content-key.f                \ the chain fold
 require tools/event-closure-lib.f        \ the chain fold
 require src/lib/tree-copy.f                  \ the candidate's copied boot tree
@@ -163,24 +163,11 @@ create BF-FSHA-CTX SHA256-FILE-CTX-BYTES allot  \ ... and its file-digest contex
 create BF-STAMP-PATH-BUF FS-PATH-CAP allot
 create BF-STAMP-DIR-BUF FS-PATH-CAP allot
 create BF-STAMP-DEF-BUF FS-PATH-CAP allot
-create BF-ENGINE-BUF FS-PATH-CAP allot
-create BF-TMP-BUF FS-PATH-CAP allot
 FS-PATH-CAP SPAN-BUFFER: BF-HOST-DST-BUF       \ a FS-MUT-SUFFIX-PATH destination
 BF-LF BF-LF-BUF c!
 
-variable BF-ART-PATH-A
-variable BF-OUT-PATH-A
-variable BF-A-PATH-A
-variable BF-B-PATH-A
-variable BF-SOURCE-BUF-A
-variable BF-SOURCE-CAP-V
-TYPED-VARIABLE BF-SOURCE-PATH-A ptr u8
-variable BF-SOURCE-PATH-U
 variable BF-CMP-A-BUF-A
 variable BF-CMP-B-BUF-A
-variable BF-SOURCE-LEN
-variable BF-A-LEN
-variable BF-B-LEN
 variable BF-FDA
 variable BF-FDB
 variable BF-APP-IN
@@ -193,7 +180,6 @@ variable BF-APP-OFF
 variable BF-GEN
 variable BF-FOUND
 variable BF-PID
-variable BF-TMP-U
 variable BF-STRIP-R
 variable BF-STRIP-W
 variable BF-STRIP-OFF
@@ -204,7 +190,6 @@ variable BF-STAMP-U
 variable BF-REC-PREFIX?
 variable BF-REC-STAGE?
 variable BF-REC-STDIN?
-variable BF-ENGINE-U
 variable BF-HOST-DST-U
 variable BF-FORCE
 variable BF-PIN-N
@@ -228,144 +213,17 @@ variable BF-CERT-PATH-U
 : BF-CERT-PATH-A! ( ptr u8 -- )
    BF-CERT-PATH-A ! ;
 
-: BF-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
-   0 ptr-field ;
-
-: BF-PTR-U8@ ( ptr a -- ptr u8 )
-   BF-PTR-U8-FIELD @ ;
-
-: BF-PTR-U8! ( ptr u8 ptr a -- )
-   BF-PTR-U8-FIELD ! ;
-
-: BF-ALLOC-BUF ( n -- ptr u8 )
-   MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
-
-: BF-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
-   slot @ 0= if cap BF-ALLOC-BUF slot BF-PTR-U8! then
-   slot BF-PTR-U8@ ;
-
-: BF-SOURCE-CAP ( -- n )
-   BF-SOURCE-CAP-V @ ;
-
-\ Process-owned scratch reused by source assembly and certification.
-\ One allocator granule until somebody asks for more. There is no capacity
-\ CONSTANT here any more: this buffer holds user programs and generated stage
-\ text, and no number written in this file can bound either (dot
-\ habu-hb-build-cannot-d09df17e, where 262144 was the third wall).
-: BF-SOURCE-BUF ( -- ptr u8 )
-   BF-SOURCE-BUF-A @ 0= if
-      MEM-64K MEM-ALLOC-64K-SPAN {: buf:ptr got:n :}
-      buf BF-SOURCE-BUF-A BF-PTR-U8!
-      got BF-SOURCE-CAP-V !
-   then
-   BF-SOURCE-BUF-A BF-PTR-U8@ ;
-
-\ Capacity exits name the file, the need and the have (LESSONS 2026-08-22: a die
-\ that prints only the offending token costs a day per break).
-: BF-SOURCE-REFUSED ( ptr u8 n n n -- ) {: path:ptr pathu:n need:n have:n :}
-   s" build-fixpoint: cannot grow the source buffer for " type path pathu type cr
-   s" build-fixpoint: needed " type need .
-   s" build-fixpoint: have " type have .
-   E-FS-CAPACITY throw ;
-
-\ The whole-source reader fills this buffer over several reads. Copy its held
-\ prefix before installing the new mapping, then release the old one. A failed
-\ allocation leaves the prior span and its bytes owned and intact.
-\
-\ INVARIANT, and the reason releasing is safe: no caller holds a pointer into
-\ this buffer across a grow. Every reader fetches BF-SOURCE-BUF at the point of
-\ use, and the three words that grow it - BF-READ-SOURCE and the two
-\ BF-APPEND-SOURCE-* around it - fetch AFTER the read. A future caller that
-\ binds the pointer into a local and then reads another file breaks this.
-: BF-SOURCE-ENSURE ( ptr u8 n n -- ) {: path:ptr pathu:n need:n :}
-   need BF-SOURCE-CAP <= if exit then
-   need MEM-ALLOC-64K-SPAN {: buf:ptr got:n :}
-   got need < if path pathu need got BF-SOURCE-REFUSED then
-   BF-SOURCE-BUF-A BF-PTR-U8@ {: old:ptr :}
-   BF-SOURCE-CAP {: oldcap:n :}
-   old buf oldcap BYTE-COPY
-   buf BF-SOURCE-BUF-A BF-PTR-U8!
-   got BF-SOURCE-CAP-V !
-   oldcap 0 > if old oldcap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES then ;
-
-: BF-SOURCE-ROOM ( n -- ptr u8 )
-   BF-SOURCE-BUF drop
-   BF-SOURCE-PATH-A @ BF-SOURCE-PATH-U @ rot BF-SOURCE-ENSURE
-   BF-SOURCE-BUF ;
-
 : BF-CMP-A ( -- ptr u8 )
    BF-CMP-A-BUF-A BF-CMP-CAP BF-BUF ;
 
 : BF-CMP-B ( -- ptr u8 )
    BF-CMP-B-BUF-A BF-CMP-CAP BF-BUF ;
 
-: BF-PATH-BUF ( ptr a -- ptr u8 )
-   FS-PATH-CAP BF-BUF ;
-
-: BF-ART-PATH ( -- ptr u8 )
-   BF-ART-PATH-A BF-PATH-BUF ;
-
-: BF-OUT-PATH ( -- ptr u8 )
-   BF-OUT-PATH-A BF-PATH-BUF ;
-
-: BF-A-PATH ( -- ptr u8 )
-   BF-A-PATH-A BF-PATH-BUF ;
-
-: BF-B-PATH ( -- ptr u8 )
-   BF-B-PATH-A BF-PATH-BUF ;
-
 : BF-TRUE ( -- bool )
    0 0= ;
 
 : BF-FALSE ( -- bool )
    0 0= 0= ;
-
-\ The root is copied, as BF-ENGINE! copies the engine: every later BF-A$ joins
-\ under it, and a caller's span need not outlive the call - MAKE-TEMP-DIR's is
-\ replaced by the task's next MAKE-TEMP-DIR, such as a build cache prune's claim
-\ directory (src/lib/build-cache.f).
-: BF-TMP! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 < if E-BUILD-PATH throw then
-   u FS-PATH-CAP > if E-BUILD-PATH throw then
-   a BF-TMP-BUF u BYTE-COPY
-   u BF-TMP-U ! ;
-
-: BF-TMP-OVERRIDE$ ( -- ptr u8 n )
-   BF-TMP-BUF BF-TMP-U @ ;
-
-: BF-TMP-RESET ( -- )
-   0 BF-TMP-U ! ;
-
-: BF-TMP$ ( -- ptr u8 n )
-   BF-TMP-U @ 0 > if BF-TMP-OVERRIDE$ exit then
-   s" HB_TMP" GETENV dup 0= if drop drop s" /tmp" then ;
-
-: BF-TMP> ( ptr u8 n ptr u8 -- n ) {: name:ptr nameu dst:ptr :}
-   BF-TMP$ {: root:ptr rootu :}
-   rootu 0 <= if E-BUILD-PATH throw then
-   rootu 1 + nameu + FS-PATH-CAP > if E-BUILD-PATH throw then
-   root rootu name nameu dst JOIN-PATH ;
-
-: BF-ART$ ( ptr u8 n -- ptr u8 n )
-   BF-ART-PATH BF-TMP> BF-ART-PATH swap ;
-
-: BF-OUT$ ( ptr u8 n -- ptr u8 n )
-   BF-OUT-PATH BF-TMP> BF-OUT-PATH swap ;
-
-: BF-A$ ( ptr u8 n -- ptr u8 n )
-   BF-A-PATH BF-TMP> BF-A-LEN !
-   BF-A-PATH BF-A-LEN @ ;
-
-: BF-B$ ( ptr u8 n -- ptr u8 n )
-   BF-B-PATH BF-TMP> BF-B-LEN !
-   BF-B-PATH BF-B-LEN @ ;
-
-: BF-EXPECT-PATH ( ptr u8 n -- ) {: path:ptr pathu :}
-   pathu 0 <= if E-BUILD-PATH throw then
-   path pathu FILE? 0= if E-BUILD-PATH throw then ;
-
-: BF-EXPECT ( ptr u8 n -- )
-   BF-ART$ BF-EXPECT-PATH ;
 
 \ A child's completion code. PROC-TIMEOUT-RC is a deadline that expired in the
 \ child (native-build's smoke check, src/lib/process.f), so it throws E-PROC-TIMEOUT
@@ -375,9 +233,6 @@ variable BF-CERT-PATH-U
    rc PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
    E-BUILD-STATUS throw ;
 
-: BF-REMOVE-TMP ( ptr u8 n -- ) {: a:ptr u :}
-   a u BF-A$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
-
 : BF-RENAME-TMP ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
    src srcu BF-A$ dst dstu BF-B$ RENAME-FILE ;
 
@@ -386,10 +241,6 @@ variable BF-CERT-PATH-U
 
 : BF-OPEN-INPUT ( ptr u8 n -- n )
    FS-PATHZ open-rd dup 0 < if E-BUILD-PATH throw then ;
-
-: BF-PREPARE-ENV ( -- )
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN BF-TMP$ >LEN PROC-ENV+ ;
 
 : BF-FINISH-PID ( pid -- n ) {: pid :}
    PROC-ARGV-ENV-RESET
@@ -449,14 +300,6 @@ variable BF-CERT-PATH-U
    BF-TMP$ >LEN PROC-ARGV+
    >LEN PROC-ARGV-PREPARE ;
 
-: BF-PREPARE-LOAD-STAGE-ARGV ( ptr u8 n ptr u8 n -- ptr u8 ptr ptr u8 ) {: exe:ptr exeu:n src:ptr srcu:n :}
-   PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   src srcu >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   BF-TMP$ >LEN PROC-ARGV+
-   exe exeu >LEN PROC-ARGV-PREPARE ;
-
 : BF-RUN-STAGE-ENV-INFD ( ptr u8 n n -- n ) {: exe:ptr exeu infd :}
    BF-PREPARE-ENV
    exe exeu BF-PREPARE-STAGE-ARGV
@@ -464,12 +307,6 @@ variable BF-CERT-PATH-U
    PROC-SPAWN-ARGV-ENV-RAW {: pid :}
    infd close
    pid BF-FINISH-PID ;
-
-: BF-RUN-LOAD-STAGE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu:n src:ptr srcu:n :}
-   BF-PREPARE-ENV
-   exe exeu src srcu BF-PREPARE-LOAD-STAGE-ARGV
-   PROC-ENV-PREPARE -1 >FD -1 >FD -1 >FD
-   PROC-SPAWN-ARGV-ENV-RAW BF-FINISH-PID ;
 
 : BF-RUN-ENV-EXE ( ptr u8 n -- n )
    -1 -1 -1 BF-RUN-ENV-FDS ;
@@ -492,14 +329,8 @@ variable BF-CERT-PATH-U
 : BF-RUN-STAGE-TMP ( ptr u8 n -- n )
    BF-A$ BF-RUN-STAGE-ENV-EXE ;
 
-: BF-RUN-ENV-TMP-INFILE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu src:ptr srcu :}
-   exe exeu BF-A$ src srcu BF-B$ BF-OPEN-INPUT BF-RUN-ENV-INFD ;
-
 : BF-CODESIGN-VERIFY-TMP ( ptr u8 n -- ) {: a:ptr u :}
    a u BF-A$ CODESIGN:VERIFY ;
-
-: BF-CODESIGN-FORCE-TMP ( ptr u8 n -- ) {: a:ptr u :}
-   a u BF-A$ CODESIGN:FORCE ;
 
 : BF-RESET-OUT ( ptr u8 n -- )
    BF-OUT$ BF-SOURCE-BUF 0 WRITE-ALL ;
@@ -519,12 +350,8 @@ variable BF-CERT-PATH-U
 \ private tails. Everything the rest of the repository calls is promoted in one
 \ block at the end of the file.
 public
-EXPORT BF-A$
 EXPORT BF-APPEND-LINE
-EXPORT BF-B$
 EXPORT BF-FINISH-PID
-EXPORT BF-PREPARE-ENV
-EXPORT BF-TMP$
 private
 
 ;package
@@ -728,13 +555,6 @@ public
 ;package
 
 package BUILD-FIXPOINT
-
-: BF-READ-SOURCE ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
-   path BF-SOURCE-PATH-A !
-   pathu BF-SOURCE-PATH-U !
-   path pathu size [: BF-SOURCE-ROOM ;] SOURCE:READ-WHOLE-SAMPLED
-      BF-SOURCE-LEN ! ;
 
 : BF-SOURCE-HAS? ( ptr u8 n -- bool )
    BF-SOURCE-BUF BF-SOURCE-LEN @ 2swap CONTAINS? ;
@@ -1050,6 +870,7 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-INCLUDE
    out outu BF-APPEND-ENUMS
    out outu s" src/core/sha256.f" BF-APPEND-SOURCE
+   out outu s" src/core/source-producer.f" BF-APPEND-SOURCE
    out outu s" src/core/type-family-sha.f" BF-APPEND-SOURCE
    out outu BF-APPEND-COMBINATORS
    out outu s" src/habu/code-span.f" BF-APPEND-SOURCE
@@ -1082,6 +903,7 @@ package BUILD-FIXPOINT
    out outu s" src/habu/regalloc-abi.f" BF-APPEND-MODULE
    out outu s" src/habu/address-cells.f" BF-APPEND-MODULE
    out outu s" src/habu/prof-abi.f" BF-APPEND-MODULE
+   out outu s" src/habu/native-host-cells.f" BF-APPEND-MODULE
    out outu s" src/habu/data-claims.f" BF-APPEND-MODULE
    out outu s" src/habu/data-bands.f" BF-APPEND-MODULE
    out outu s" src/habu/arith-abi.f" BF-APPEND-MODULE
@@ -1372,20 +1194,6 @@ package BUILD-FIXPOINT
 : BF-RECORD-STDIN ( -- )
    BF-REC-STDIN-DG BF-STAGE2-DIGEST
    -1 BF-REC-STDIN? ! ;
-
-: BF-ENGINE! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 <= if E-BUILD-PATH throw then
-   u FS-PATH-CAP > if E-BUILD-PATH throw then
-   a BF-ENGINE-BUF u BYTE-COPY
-   u BF-ENGINE-U ! ;
-
-: BF-ENGINE-RESET ( -- )
-   0 BF-ENGINE-U ! ;
-
-: BF-ENGINE$ ( -- ptr u8 n )
-   BF-ENGINE-U @ 0 > if BF-ENGINE-BUF BF-ENGINE-U @ exit then
-   s" HABU_FIXPOINT_ENGINE" GETENV dup 0 > if exit then drop drop
-   s" bin/hb" ;
 
 : BF-BOOTSTRAP-STAGE ( -- )
    s" stage2-got" BF-REMOVE-TMP
@@ -2191,10 +1999,10 @@ package BUILD-FIXPOINT
    BF-CLI ;
 
 \ ---------------------------------------------------------------------------
-\ The BUILD-FIXPOINT surface. Everything above is private to the tool; these
-\ are the words other files call, promoted here in one place so the whole
-\ export list is readable at a glance. Consumers `require
-\ tools/build-fixpoint.f` and then `using BUILD-FIXPOINT`; the tool's own test
+\ The bootstrap BUILD-FIXPOINT surface. Shared build helpers are exported by
+\ tools/build-support.f; these words belong to the orchestration above.
+\ Consumers `require tools/build-fixpoint.f` and then `using BUILD-FIXPOINT`;
+\ the tool's own test
 \ reopens `package BUILD-FIXPOINT` instead, because it drives internals no
 \ caller is meant to see.
 
@@ -2214,33 +2022,20 @@ EXPORT BF-CHAIN-DRIVER-FROM
 EXPORT BF-CHMOD-X-TMP
 EXPORT BF-CLI
 EXPORT BF-CLI-SELF-DISPATCH
-EXPORT BF-CODESIGN-FORCE-TMP
 EXPORT BF-CODESIGN-VERIFY-TMP
 EXPORT BF-DRV-SOURCE-KEEP
 EXPORT BF-EMIT-ENGINE
 EXPORT BF-EMIT-STDIN-RUN-SOURCE
-EXPORT BF-ENGINE!
-EXPORT BF-ENGINE$
-EXPORT BF-ENGINE-RESET
-EXPORT BF-EXPECT
-EXPORT BF-OUT$
 EXPORT BF-PREFLIGHT
 EXPORT BF-RC0
-EXPORT BF-READ-SOURCE
-EXPORT BF-REMOVE-TMP
 EXPORT BF-RENAME-TMP
 EXPORT BF-RESET-OUT
 EXPORT BF-RUN-ARGV-ENV-OUTFILE
 EXPORT BF-RUN-ENV-TMP
 EXPORT BF-RUN-STAGE
-EXPORT BF-SOURCE-BUF
-EXPORT BF-SOURCE-CAP
-EXPORT BF-SOURCE-LEN
 EXPORT BF-STAGE-FIXPOINT
 EXPORT BF-STAGE-FIXPOINT-FROM-SOURCE
 EXPORT BF-STAGE2-SOURCE
-EXPORT BF-TMP!
-EXPORT BF-TMP-RESET
 
 ;package
 

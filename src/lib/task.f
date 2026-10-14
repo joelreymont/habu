@@ -791,17 +791,46 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
 \ A call that meets BUSY waits in the thunk until the row is handed back, so a
 \ mover holds BUSY only for a few steps that call nothing, wait on nothing and
 \ throw nothing: every word below hands its rows back before it throws.
-TASK-ALIGN8
-create ROWS CB-POOL CB-ROW-BYTES * TASK-CELL / TASK-ZERO-CELLS,
+\ A declaration grows this table before a task can run. A row carries the
+\ region, its owner, the count of region stores, and the region of a pending
+\ all-row claim. No C entry embeds a row address; the main region publishes the
+\ current base for the thunk to read on every call.
+4 cells constant ROW-BYTES
+2 cells constant ROW-MOVES-OFF
+3 cells constant ROW-CLAIM-OFF
+PERSISTED-PTR-VARIABLE ROW-TABLE
+variable ROW-CAP
+variable ROW-N
 
-\ Each row's count of region stores, kept beside the table: only the movers
-\ below write it and the thunk never reads it, so the row and the thunk stay as
-\ they are. ROW-INSIDE? says what it settles.
-TASK-ALIGN8
-create MOVES CB-POOL TASK-ZERO-CELLS,
+: ROW-ALLOC ( n -- ptr u8 ) {: size:n :}
+   TASK-ALIGN8
+   here BYTE-VIEW {: rows:ptr :}
+   size allot
+   size 0 ?do 0 rows i + c! loop
+   rows ;
+
+: ROW-GROW ( -- )
+   MAIN-BASE TASKS-LIVE-CELL + atomic@ 0<> if E-TASK-STATE throw then
+   MAIN-BASE CB-FRAME + @ 0<> if E-TASK-STATE throw then
+   ROW-TABLE @ {: old:ptr :}
+   ROW-CAP @ {: oldcap:n :}
+   oldcap dup 0= if drop 1 else 2 * then {: cap:n :}
+   cap ROW-BYTES * ROW-ALLOC {: rows:ptr :}
+   ROW-N @ 0 > if old rows ROW-N @ ROW-BYTES * BYTE-COPY then
+   rows ROW-TABLE !
+   cap ROW-CAP !
+   rows FFI:>CELL MAIN-BASE CB-ROWS + atomic!
+   \ No task or callback is running. After publication the former rows are
+   \ unreachable, including their per-process region-store counters.
+   oldcap ROW-BYTES * CELL / 0 ?do 0 old i cells + CELL-VIEW ! loop ;
+
+: ROW-DECLARE ( n -- ) {: k:n :}
+   k ROW-N @ <> if E-TASK-STATE throw then
+   k ROW-CAP @ >= if ROW-GROW then
+   1 ROW-N +! ;
 
 : ROW ( n -- ptr n )
-   CB-ROW-BYTES * ROWS CELL-VIEW + ;
+   ROW-BYTES * ROW-TABLE @ + CELL-VIEW ;
 
 : ROW-REGION ( ptr n -- ptr n )
    CB-ROW-REGION + ;
@@ -810,7 +839,10 @@ create MOVES CB-POOL TASK-ZERO-CELLS,
    CB-ROW-OWNER + ;
 
 : ROW-MOVES ( n -- ptr n )
-   cells MOVES CELL-VIEW + ;
+   ROW ROW-MOVES-OFF + ;
+
+: ROW-CLAIM ( n -- ptr n )
+   ROW ROW-CLAIM-OFF + ;
 
 \ Names region r in row k, then counts the store, each a release store. Every
 \ region store goes through here, by a mover that holds the row BUSY and hands
@@ -822,29 +854,26 @@ create MOVES CB-POOL TASK-ZERO-CELLS,
 : ROW-NAMES? ( n n -- bool ) {: k:n reg:n :}
    k ROW ROW-REGION atomic@ reg = ;
 
-: ROW-SLOT? ( n n -- bool ) {: mask:n k:n :}
-   mask 1 k lshift and 0 <> ;
-
-\ Hands the rows of a mask back, BUSY -> 0.
-: ROWS-RELEASE ( n -- ) {: mask:n :}
-   CB-POOL 0 ?do
-      mask i ROW-SLOT? if 0 i ROW ROW-OWNER atomic! then
+\ Hands every row this region claimed back, BUSY -> 0. The marker is cleared
+\ before the hand-back, so the next mover never inherits a stale claim.
+: ROWS-RELEASE ( n -- ) {: reg:n :}
+   ROW-N @ 0 ?do
+      i ROW-CLAIM @ reg = if
+         0 i ROW-CLAIM !
+         0 i ROW ROW-OWNER atomic!
+      then
    loop ;
 
-\ Moves every row naming the region 0 -> BUSY and answers them as a mask and
-\ true. A row that is not idle - a thread inside, or a bind, unbind or drop
-\ moving it - refuses the whole claim: the rows already moved go back and the
-\ answer is 0 and false. A row that moved to another region between the read
-\ and the claim is handed back: the region is read again under BUSY, where
-\ nothing else can move it, so the claim holds no row that does not name it.
-: ROWS-CLAIM ( n -- n bool ) {: reg:n :}
-   0 CB-POOL 0 ?do
+\ Claim every row naming the region before any is dropped. A moving or active
+\ row refuses the entire claim and releases all rows already held.
+: ROWS-CLAIM ( n -- bool ) {: reg:n :}
+   ROW-N @ 0 ?do
       i reg ROW-NAMES? if
          0 CB-ROW-BUSY i ROW ROW-OWNER atomic-cas 0 <> if
-            ROWS-RELEASE 0 false unloop exit
+            reg ROWS-RELEASE false unloop exit
          then
          i reg ROW-NAMES? if
-            1 i lshift or
+            reg i ROW-CLAIM !
          else
             0 i ROW ROW-OWNER atomic!
          then
@@ -854,10 +883,11 @@ create MOVES CB-POOL TASK-ZERO-CELLS,
 
 \ The region and its count first, then the owner, each a release store: a thunk
 \ that claims the idle row afterward reads 0 and refuses.
-: ROWS-DROP ( n -- ) {: mask:n :}
-   CB-POOL 0 ?do
-      mask i ROW-SLOT? if
+: ROWS-DROP ( n -- ) {: reg:n :}
+   ROW-N @ 0 ?do
+      i ROW-CLAIM @ reg = if
          0 i ROW-NAME!
+         0 i ROW-CLAIM !
          0 i ROW ROW-OWNER atomic!
       then
    loop ;
@@ -915,7 +945,7 @@ create MOVES CB-POOL TASK-ZERO-CELLS,
    repeat ;
 
 : ROWS-END ( n -- ) {: reg:n :}
-   CB-POOL 0 ?do i reg ROW-END loop ;
+   ROW-N @ 0 ?do i reg ROW-END loop ;
 
 \ Every way a task's thread ends passes here: the body returning, the body
 \ throwing, and a halted body leaving at TASK:PAUSE. The stop mark goes first,
@@ -1051,12 +1081,14 @@ variable SWEEP-ARMED
 \ A binding is process state: idle rows are dropped, and a row a thread is
 \ inside names a foreign call in progress, which no image can carry.
 : ROWS-SWEEP ( -- )
-   CB-POOL 0 ?do
+   ROW-N @ 0 ?do
       i ROW ROW-OWNER atomic@ 0 <> if
          s" task: callback slot in flight at capture - return from the foreign call before the build or snapshot captures"
          E-TASK-STATE die
       then
-      0 i ROW-NAME!
+      0 i ROW ROW-REGION atomic!
+      0 i ROW-MOVES atomic!
+      0 i ROW-CLAIM !
    loop ;
 
 : TASK-CAPTURE-SWEEP ( -- )
@@ -1359,9 +1391,9 @@ variable SWEEP-ARMED
    TASK-EXPOSED TASK-CONSTRUCTED tcb TCB.STATUS atomic-cas
    TASK-EXPOSED <> if E-TASK-STATE throw then
    tcb TCB.REGION @ {: reg:ptr :}
-   reg FFI:>CELL ROWS-CLAIM {: mask:n claimed:bool :}
+   reg FFI:>CELL ROWS-CLAIM {: claimed:bool :}
    claimed 0= if tcb UNEXPOSE-REFUSE then
-   mask ROWS-DROP
+   reg FFI:>CELL ROWS-DROP
    0 reg CB-XDS + !
    0 reg CB-DBASE + !
    0 reg CB-NDICT + !
@@ -1400,7 +1432,7 @@ variable SWEEP-ARMED
    ctx EXPOSED-TCB dup 0= if E-TASK-STATE throw then ;
 
 : SLOT-CHECK ( n -- ) {: k:n :}
-   k 0 < k CB-POOL >= or if E-TASK-STATE throw then ;
+   k 0 < k ROW-N @ >= or if E-TASK-STATE throw then ;
 
 \ Binding publishes the row table first and arms the capture sweep. The row
 \ moves 0 -> BUSY before it is read, and the bind decides on what it reads
@@ -1424,7 +1456,7 @@ variable SWEEP-ARMED
 : CONTEXT-BIND ( n n -- ) {: ctx:n k:n :}
    ctx CONTEXT-CHECK {: host:n :}
    k SLOT-CHECK
-   0 ROW FFI:>CELL MAIN-BASE CB-ROWS + atomic!
+   ROW-TABLE @ FFI:>CELL MAIN-BASE CB-ROWS + atomic!
    TASK-ARM-SWEEP
    0 CB-ROW-BUSY k ROW ROW-OWNER atomic-cas 0 <> if E-TASK-STATE throw then
    k ROW ROW-REGION atomic@ {: held:n :}
@@ -1435,7 +1467,11 @@ variable SWEEP-ARMED
    then
    ctx k ROW-NAME!
    host 0 <> if
-      ctx host TASK-N>PTR TCB-EXPOSES? 0= if 1 k lshift ROWS-DROP E-TASK-STATE throw then
+      ctx host TASK-N>PTR TCB-EXPOSES? 0= if
+         0 k ROW-NAME!
+         0 k ROW ROW-OWNER atomic!
+         E-TASK-STATE throw
+      then
    then
    0 k ROW ROW-OWNER atomic! ;
 
@@ -1754,6 +1790,17 @@ TASK-MIN-STACK constant MIN-STACK
 : CONTEXT-UNBIND ( n -- )
    CONTEXT-UNBIND ;
 
+\ Called by a CALLBACK: declaration, before any C pointer to this new row is
+\ exposed. The table may grow while earlier idle bindings already exist.
+: DECLARE-CALLBACK ( n -- )
+   ROW-DECLARE ;
+
+\ FILE replay may restore SWEEP-ARMED from DATA, but not its process-local
+\ one-shot registration. An unbound row can still carry process-local MOVES.
+: ARM-IMPORTED-CALLBACKS ( -- )
+   0 SWEEP-ARMED !
+   ROW-N @ 0 > if TASK-ARM-SWEEP then ;
+
 : PAUSE ( -- )
    PAUSE ;
 
@@ -1968,17 +2015,46 @@ TASK-MIN-STACK constant MIN-STACK
    TASK-SEM-POOL TASK-SEM-POOL-N TASK-SEMAPHORE-BYTES * fresh execute
    MAIN-PARK-REC TASK-SEMAPHORE-BYTES fresh execute
    MAIN-PARK-READY BYTE-VIEW CELL fresh execute
-   ROWS CB-POOL CB-ROW-BYTES * fresh execute
-   MOVES CB-POOL cells fresh execute
+   ROW-TABLE BYTE-VIEW CELL carry execute
+   ROW-CAP BYTE-VIEW CELL carry execute
+   ROW-N BYTE-VIEW CELL carry execute
+   ROW-CAP @ 0 > if
+      ROW-TABLE @ ROW-CAP @ ROW-BYTES * carry execute
+   then
    0 TASK-EXIT-QT BYTE-VIEW TASK-EXIT-MAX cells carry execute
    TASK-EXIT-LINK TASK-EXIT-MAX cells carry execute
    TASK-EXIT-N BYTE-VIEW CELL carry execute
    TASK-EXIT-LOCK BYTE-VIEW CELL fresh execute
    TASK-EXIT-SCRATCH BYTE-VIEW CELL fresh execute ;
 
+\ The FILE range owner needs these fixed callback controls before FFI-CB is
+\ published: a later declaration changes both table bases, even when TASK
+\ itself was loaded by an earlier file.
+: OWNED-CALLBACK-ROWS ( [ ptr u8 n -- ] -- ) {: keep :}
+   ROW-TABLE BYTE-VIEW CELL keep execute
+   ROW-CAP BYTE-VIEW CELL keep execute
+   ROW-N BYTE-VIEW CELL keep execute
+   MAIN-BASE CB-XTS + BYTE-VIEW CELL keep execute
+   MAIN-BASE CB-ROWS + BYTE-VIEW CELL keep execute
+   ROW-CAP @ 0 > if
+      ROW-TABLE @ ROW-CAP @ ROW-BYTES * keep execute
+   then ;
+
 \ The linker relocates only the active declaration rows. Each destination is
 \ inside its carried run, while the typed source keeps the quotation's proof.
 : OWNED-EXIT-N ( -- n ) TASK-EXIT-N @ ;
+
+\ The linker restores the application-close user-slot watermark into the
+\ carried copy when TASK itself was loaded before the capture window.
+: OWNED-USER-NEXT ( [ ptr u8 -- ] -- )
+   {: claim :}
+   TASK-USER-NEXT BYTE-VIEW claim execute ;
+
+\ A copied ROW-TABLE control points into its carried row allocation. The
+\ linker marks the copy so ordinary DATA relocation maps it to that copy.
+: OWNED-ROW-BASE ( [ ptr u8 -- ] -- )
+   {: claim :}
+   ROW-TABLE BYTE-VIEW claim execute ;
 
 : OWNED-EXIT-AT ( n -- ptr u8 [ -- ] ) {: idx:n :}
    0 TASK-EXIT-QT BYTE-VIEW idx cells +

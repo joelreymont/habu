@@ -486,11 +486,11 @@ variable ENTRY-PEND
 \ (C-QUALIFY-CAP, here DEF-RECORD). The engine's `create` writes at CP at the
 \ code ceiling, which def-open refuses, so the code room refuses first, naming
 \ the keyword, as `:`'s does.
-: DEF-ADDR ( -- )
+: DEF-ADDR ( bool -- ) {: cell?:bool :}
    TASK-GUARD
    DEF-CODE-ROOM
    s" create" OPERAND
-   DKIND:ADDR DEF-START
+   DKIND:ADDR cell? if DNAME-CELL or then DEF-START
    def-create
    DEF-ADDR-HOOK
    DEF-ADDR-PUBLISH ;
@@ -566,8 +566,8 @@ variable ENTRY-PEND
    s" :" TOKEN-IS? if false DEF-HEAD true exit then
    s" kernel:" TOKEN-IS? if false DEF-HEAD true exit then
    s" trusted:" TOKEN-IS? if true DEF-HEAD true exit then
-   s" create" TOKEN-IS? if DEF-ADDR true exit then
-   s" variable" TOKEN-IS? if DEF-ADDR 1 cells allot true exit then
+   s" create" TOKEN-IS? if false DEF-ADDR true exit then
+   s" variable" TOKEN-IS? if true DEF-ADDR 1 cells allot true exit then
    s" cast:" TOKEN-IS? if DEF-CAST true exit then
    s" immediate" TOKEN-IS? if imm-mark true exit then
    false ;

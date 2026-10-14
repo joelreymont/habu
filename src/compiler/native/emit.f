@@ -37,6 +37,7 @@ require src/compiler/native/a64ir.f
 require src/compiler/native/frozen.f
 require src/compiler/native/regalloc.f
 require src/compiler/native/regalloc-verify.f
+require src/compiler/native/callback-stub.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/backend.f
 require src/arch/arm64/machine.f
@@ -47,10 +48,10 @@ using NFROZEN
 private
 
 \ Each pass retains its own dimensions while later passes read its results.
-variable SCRATCH-VALUES
-variable SCRATCH-BLOCKS
-variable SCRATCH-FUNS
-variable SCRATCH-OPS
+0 CWORK-VARIABLE SCRATCH-VALUES n
+0 CWORK-VARIABLE SCRATCH-BLOCKS n
+0 CWORK-VARIABLE SCRATCH-FUNS n
+0 CWORK-VARIABLE SCRATCH-OPS n
 : VMAX ( -- n ) SCRATCH-VALUES @ ;
 : BMAX ( -- n ) SCRATCH-BLOCKS @ ;
 : FMAX ( -- n ) SCRATCH-FUNS @ ;
@@ -115,7 +116,10 @@ A64IR-OPCODE:FLOAD     A64IR:ORD constant O-FLOAD
 \ Three per operation is the ceiling: no form is longer. INSN-PER-OP-CK, once
 \ INSNS-OF has sized every form, refuses the load when that stops being true.
 3 constant INSN-PER-OP
-: INSN-CAP ( -- n ) INSN-PER-OP OMAX BMAX 3 * + * ;
+9 constant CALLBACK-INSNS              \ four ID lanes, four address lanes, BR
+: INSN-CAP ( -- n )
+   INSN-PER-OP OMAX BMAX 3 * + *
+   NCBSTUB:ARMED? if CALLBACK-INSNS + then ;
 
 4 constant INSN-BYTES
 
@@ -124,33 +128,24 @@ A64IR-OPCODE:FLOAD     A64IR:ORD constant O-FLOAD
 1 constant ST-SEALED
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable BND-MODE
+0 CWORK-VARIABLE BND-MODE n
 BOUND-NO BND-MODE !
-variable ST
+0 CWORK-VARIABLE ST n
 ST-EMPTY ST !
-variable N-INS
-0 N-INS !
-variable N-BLK
-0 N-BLK !
-variable B-BASE                      \ where this function's blocks start in the module
-0 B-BASE !
-variable LAY-AT
-0 LAY-AT !
+0 CWORK-VARIABLE N-INS n
+0 CWORK-VARIABLE N-BLK n
+0 CWORK-VARIABLE B-BASE n                      \ where this function's blocks start in the module
+0 CWORK-VARIABLE LAY-AT n
 
-variable EM-WGPR
-0 EM-WGPR !
-variable EM-WFPR
-0 EM-WFPR !
+0 CWORK-VARIABLE EM-WGPR n
+0 CWORK-VARIABLE EM-WFPR n
 
 \ The interface total is read off the cursor's own difference, so it is the same
 \ number by construction whatever elisions apply.
-variable EM-IFACE
-0 EM-IFACE !
-variable EM-NCALL
-0 EM-NCALL !
-variable EM-TAIL                     \ branches out of the routine this emission wrote
-0 EM-TAIL !
-variable EM-LAST                     \ the form of the last operation it wrote
+0 CWORK-VARIABLE EM-IFACE n
+0 CWORK-VARIABLE EM-NCALL n
+0 CWORK-VARIABLE EM-TAIL n                     \ branches out of the routine this emission wrote
+-1 CWORK-VARIABLE EM-LAST n                     \ the form of the last operation it wrote
 \ WHETHER THIS FUNCTION'S FRAME IS ONE INSTRUCTION AT EACH END, decided HERE and
 \ not in the selector. AArch64 writes the base register back as part of a load
 \ or a store, and A64FRAME puts the link at the frame's base, so a frame that
@@ -160,43 +155,40 @@ variable EM-LAST                     \ the form of the last operation it wrote
 \ frame that outgrows the nine-bit writeback field has to go back to the pair.
 \ By this pass the module is the one being written, so the size it carries is
 \ the size the instruction will hold.
-variable EM-FUSED                    \ nonzero when this function's frame is fused
-variable EM-FRAME                    \ ...and the bytes both of its ends move
--1 EM-LAST !
+0 CWORK-VARIABLE EM-FUSED n                    \ nonzero when this function's frame is fused
+0 CWORK-VARIABLE EM-FRAME n                    \ ...and the bytes both of its ends move
 
 \ ---- where this routine will be written --------------------------------------
 \ A branch to another WORD is measured from where this routine's bytes go, which
 \ is the publication seam's answer, so this pass is TOLD it and never invents one.
 0 constant PLACE-NO
 1 constant PLACE-YES
-variable PLACE-MODE
+0 CWORK-VARIABLE PLACE-MODE n
 PLACE-NO PLACE-MODE !
-variable PLACE-AT-N
-0 PLACE-AT-N !
-variable EM-PLACED                   \ whether the sealed emission has a placement
-0 EM-PLACED !
-variable EM-PLACE                    \ and what it is
-0 EM-PLACE !
+0 CWORK-VARIABLE PLACE-AT-N n
+0 CWORK-VARIABLE EM-PLACED n                   \ whether the sealed emission has a placement
+0 CWORK-VARIABLE EM-PLACE n                    \ and what it is
+0 CWORK-VARIABLE STUB-START n                  \ first instruction after the accessor
 
-1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
+1 CWORK-BUFFER BND-MOD IR-ID:ir-module-id
 A64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-IMM IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-DATA-OFF IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-ADDR IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-SH IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-DSLOT IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-DBYTES IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-COND IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-DWB IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-COLD IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-FUN IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-OFF IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-MASK IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-IMM IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-DATA-OFF IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-ADDR IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-SH IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-SLOT IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-FRAME IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-DSLOT IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-DBYTES IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-COND IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-DBACK IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-DWB IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-ENTRY IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-TRAP IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-COLD IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-FUN IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-OFF IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-MASK IR-ID:ir-symbol-id
 
 DYNAMIC-BUFFER CODE-BUF n
 : CODE ( -- ptr u8 ) 0 CODE-BUF BYTE-VIEW ;
@@ -230,7 +222,7 @@ DYNAMIC-BUFFER B-GOTO-BUF n
 : B-GOTO ( -- ptr n ) 0 B-GOTO-BUF ;
 DYNAMIC-BUFFER B-KEEP-BUF n
 : B-KEEP ( -- ptr n ) 0 B-KEEP-BUF ;
-variable N-LAID                        \ how many blocks the order actually holds
+0 CWORK-VARIABLE N-LAID n                        \ how many blocks the order actually holds
 
 \ A function's start has to outlive the per-function tables, because an
 \ a64.codeaddr in an EARLIER function names a LATER one's entry. So EMIT lays
@@ -270,7 +262,7 @@ DYNAMIC-BUFFER PAIRS n
    OMAX 2 * D-MOVES-RESERVE
    OMAX PAIRS-RESERVE
    ;
-variable N-FUNS                        \ how many functions the emission holds
+0 CWORK-VARIABLE N-FUNS n                        \ how many functions the emission holds
 
 \ ---- the dialect's operation family ------------------------------------------
 \ A form outside the family has no encoding here and is refused rather than guessed.
@@ -1108,7 +1100,7 @@ INSN-PER-OP-CK
    t SLOT-AT O-BR <> if false exit then
    bk SILENT-BEFORE-TERM? ;
 
-variable CH-AT
+0 CWORK-VARIABLE CH-AT n
 
 : CHASE-STEP ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
@@ -1810,9 +1802,6 @@ variable CH-AT
    PLACE-MODE @ PLACE-NO <> if E-A64EMIT-PLACE throw then
    EM-PLACED @ 0<> if E-A64EMIT-PLACE throw then ;
 
-: CLEAR-CODE ( -- )
-   INSN-CAP INSN-BYTES * 0 ?do 0 i BYTE! loop ;
-
 \ The allocation bounds which registers this run may write. An emission that
 \ wrote a register no value claimed means the two disagree.
 : WRITES-CK ( -- )
@@ -1870,11 +1859,9 @@ public
    PLACE-NO PLACE-MODE !
    0 PLACE-AT-N ! ;
 
-\ The code buffer may retain absolute addresses from the last compiled word.
-\ Scrub it once, after the compiler has proved that no emission is live.
+\ The code buffer is released with the dynamic registry after this idle check.
 : CAPTURE-PREPARE ( -- )
-   IDLE-CK
-   CLEAR-CODE ;
+   IDLE-CK ;
 
 \ ---- declaring where this routine will be written ----------------------------
 \ There is no default: an emission that needs a placement and was given none is
@@ -1948,6 +1935,35 @@ public
       f WALK
    loop ;
 
+\ The C entry is an anonymous function in this definition's ordinary emission.
+\ Use the accessor's last source span for its map; the address kind is overridden
+\ on the four-instruction code carrier that image relocation must rewrite.
+: STUB-SOURCE ( -- IR-ID:ir-op-id )
+   N-FUNS @ 1- FUN-AT {: f:IR-ID:ir-fun-id :}
+   f f BLOCK-COUNT 1- BLOCK-AT TERM-AT ;
+
+: STUB-WORD ( IR-ID:ir-op-id n -- )
+   APPEND ;
+
+: STUB-ADDR-WORD ( IR-ID:ir-op-id n -- )
+   N-INS @ {: at:n :}
+   STUB-WORD
+   A64IR:ADDR-CODE at cells M-ADDR + !
+   16 at cells M-ARD + ! ;
+
+: WRITE-STUB ( -- )
+   NCBSTUB:ARMED? 0= if exit then
+   N-INS @ STUB-START !
+   EM-PLACE @ N-INS @ INSN-BYTES * + NCBSTUB:ENTRY!
+   STUB-SOURCE {: id:IR-ID:ir-op-id :}
+   NCBSTUB:SLOT@ {: k:n :}
+   id 9 k 0 A64IR:HALF-OF 0 MOVZHW STUB-WORD
+   4 1 do id 9 k i A64IR:HALF-OF i MOVKHW STUB-WORD loop
+   NCBSTUB:THUNK@ {: target:n :}
+   id 16 target 0 A64IR:HALF-OF 0 MOVZHW STUB-ADDR-WORD
+   4 1 do id 16 target i A64IR:HALF-OF i MOVKHW STUB-ADDR-WORD loop
+   id 16 ENC-BR STUB-WORD ;
+
 \ ---- where this emission's address chains start ------------------------------
 \ DATA carriers have three instructions; full absolute carriers have four.
 \ Every instruction must retain the address kind and destination. The decoder
@@ -1955,7 +1971,7 @@ public
 : SITE-CEIL ( -- n ) INSN-CAP 3 / ;
 DYNAMIC-BUFFER SITES-BUF n
 : SITES ( -- ptr n ) 0 SITES-BUF ;
-variable N-SITES
+0 CWORK-VARIABLE N-SITES n
 
 : ADDR-LANE? ( n n n -- bool )
    {: k:n kind:n rd:n :}
@@ -1989,7 +2005,7 @@ variable N-SITES
    k N-SITES @ cells SITES + !
    N-SITES @ 1+ N-SITES ! ;
 
-variable SCAN-K
+0 CWORK-VARIABLE SCAN-K n
 
 : SCAN-ADDR-SITES ( -- )
    SITE-CEIL 1 max SITES-BUF-RESERVE
@@ -2032,6 +2048,7 @@ variable SCAN-K
    MEASURE
    WRITE-ALL
    WRITES-CK
+   WRITE-STUB
    SCAN-ADDR-SITES
    ST-SEALED ST ! ;
 
@@ -2047,7 +2064,7 @@ variable SCAN-K
 \ The last OPERATION is asked about rather than the last instruction word,
 \ because a return is exactly one instruction.
 : TRAILING-RETURN? ( -- bool )
-   SEAL-CK EM-LAST @ O-RET = ;
+   SEAL-CK NCBSTUB:ARMED? 0= EM-LAST @ O-RET = and ;
 
 : INSNS ( -- n )
    SEAL-CK N-INS @ ;
@@ -2056,11 +2073,15 @@ variable SCAN-K
 \ through NEMIT as the clause function's real measured start for the companion
 \ `;does` record.
 : FUNCTION-OFFSET@ ( n -- n )
-   SEAL-CK FUN-START INSN-BYTES * ;
+   SEAL-CK
+   NCBSTUB:ARMED? if
+      dup N-FUNS @ = if drop STUB-START @ INSN-BYTES * exit then
+   then
+   FUN-START INSN-BYTES * ;
 
 \ How many functions it holds, each one an ordinal FUNCTION-OFFSET@ answers.
 : FUNS ( -- n )
-   SEAL-CK N-FUNS @ ;
+   SEAL-CK N-FUNS @ NCBSTUB:ARMED? if 1+ then ;
 
 \ An INSTRUCTION INDEX, which src/arch/arm64/passes.f turns into the byte offset
 \ NEMIT holds by the same arithmetic it uses for a call site.
@@ -2135,10 +2156,6 @@ variable SCAN-K
 : MAP-SPAN@ ( n -- IR-SOURCE:span )
    SEAL-CK ORD-CK {: k:n :}
    k M-SRC @  k cells M-ST + @  k cells M-LN + @  IR--SOURCE-SPAN:MAKE ;
-
-public
-: RESET-SCRATCH ( -- )
-   0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
 get-current prot-wid-add

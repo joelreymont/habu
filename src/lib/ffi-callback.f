@@ -1,7 +1,6 @@
 \ ffi-callback.f - C callbacks into checked Habu (docs/ffi-callback.md).
 \
-\ CALLBACK: NAME ( in -- out ) clauses ;CALLBACK declares one of the engine's
-\ CB-POOL fixed callback stubs (src/habu/habu1.f BCALLBACK-ENTRY) and generates
+\ CALLBACK: NAME ( in -- out ) clauses ;CALLBACK declares a C entry and generates
 \   NAME           ( -- FFI-CB:callback )  the descriptor;
 \   NAME-BODY      a TYPED-VARIABLE holding the checked body, typed from the
 \                  declaration (i32/u32 read as n, ptr u8 as ptr u8);
@@ -22,6 +21,7 @@ require src/lib/errors.f
 require src/lib/codegen.f
 require src/lib/ffi-abi.f
 require src/lib/task.f
+require src/habu/address-cells.f
 
 package FFI-CB
 public
@@ -32,6 +32,16 @@ private
 
 CAST: >CALLBACK ( n -- callback )
 CAST: CALLBACK>N ( callback -- n )
+CAST: STUB-XT ( n -- [ n n -- ] )
+CAST: ENTRY-XT ( n -- [ -- n ] )
+
+: ARM-STUB ( n n -- )
+   data-base NCOMP-DISPATCH:CALLBACK-STUB-CELL + @
+   dup 0= if E-NCOMP-STATE throw then STUB-XT execute ;
+
+: STUB-ENTRY ( -- n )
+   data-base NCOMP-DISPATCH:CALLBACK-ENTRY-CELL + @
+   dup 0= if E-NCOMP-STATE throw then ENTRY-XT execute ;
 
 8 constant FLOAT-REGS
 $400 constant GEN-CAP
@@ -52,29 +62,69 @@ CAST: N>CELLS ( n -- ptr n )
 CAST: N>FLOATS ( n -- ptr r )
 CAST: N>BYTES ( n -- ptr u8 )
 
-\ The dispatch table the engine's thunk indexes by slot. Its cells are
-\ quotations, which only typed storage holds and capture relocates, and the
-\ count of a TYPED-BUFFER is a decimal literal (docs/forth.md "Rules learned
-\ by refusal"), so POOL-CHECK refuses the load when the engine's CB-POOL is
-\ another size. The per-slot cells are raw storage sized from the constant.
-16 TYPED-BUFFER XTS [ -- ]
-
-: POOL-CHECK ( -- )
-   CB-POOL 16 <> if
-      s" ffi-callback: XTS holds 16 dispatches and the engine's CB-POOL differs"
-      70 die
-   then ;
-
-POOL-CHECK
-
-create FAULT-CELLS CB-POOL cells allot
-create FALLBACK-CELLS CB-POOL cells allot
-create FFALLBACK-CELLS CB-POOL cells allot
+\ The thunk indexes one contiguous descriptor table by stable slot ID. The
+\ native entry is a code address, opaque to Habu callers. It is registered as
+\ an address cell only for image relocation and is never executed as a Habu xt.
+0 cells constant DISPATCH-OFF
+1 cells constant ENTRY-OFF
+2 cells constant FAULT-OFF
+3 cells constant FALLBACK-OFF
+4 cells constant FFALLBACK-OFF
+5 cells constant ROW-BYTES
+PERSISTED-PTR-VARIABLE TABLE
+variable CAP
 variable SLOTS
 
-: FAULTS ( n -- ptr n ) cells FAULT-CELLS + ;
-: FALLBACKS ( n -- ptr n ) cells FALLBACK-CELLS + ;
-: FFALLBACKS ( n -- ptr r ) cells FFALLBACK-CELLS + ;
+CAST: >DISPATCH-CELL ( ptr n -- ptr [ -- ] )
+CAST: >FLOAT-CELL ( ptr n -- ptr r )
+CAST: >ENTRY-XT ( n -- [ -- ] )
+
+: ROW ( n -- ptr n )
+   ROW-BYTES * TABLE @ + CELL-VIEW ;
+
+: DISPATCH ( n -- ptr [ -- ] )
+   ROW DISPATCH-OFF + >DISPATCH-CELL ;
+
+: ENTRY-CELL ( n -- ptr n ) ROW ENTRY-OFF + ;
+: FAULTS ( n -- ptr n ) ROW FAULT-OFF + ;
+: FALLBACKS ( n -- ptr n ) ROW FALLBACK-OFF + ;
+: FFALLBACKS ( n -- ptr r ) ROW FFALLBACK-OFF + >FLOAT-CELL ;
+
+: ALIGNED-ROWS ( n -- ptr u8 ) {: size:n :}
+   here data-base - negate 7 and allot
+   here BYTE-VIEW {: rows:ptr :}
+   size allot
+   size 0 ?do 0 rows i + c! loop
+   rows ;
+
+\ Declarations precede task execution. Once the new table is published, old
+\ rows are unreachable; clear their registered code cells and stored values so
+\ the image scanner does not read former numeric fallback fields bytewise.
+: RETIRE-TABLE ( ptr u8 n -- ) {: old:ptr cap:n :}
+   cap 0= if exit then
+   old BYTE-VIEW data-base BYTE-VIEW - cap ROW-BYTES *
+      ADDRESS-CELLS:REMOVE-XT-SPAN
+   cap ROW-BYTES * CELL / 0 ?do 0 old i cells + CELL-VIEW ! loop ;
+
+: GROW ( -- )
+   TABLE @ {: old:ptr :}
+   CAP @ {: oldcap:n :}
+   oldcap dup 0= if drop 1 else 2 * then {: next:n :}
+   next ROW-BYTES * ALIGNED-ROWS {: rows:ptr :}
+   SLOTS @ 0 > if
+      old rows SLOTS @ ROW-BYTES * BYTE-COPY
+      SLOTS @ 0 ?do
+         i DISPATCH @ rows i ROW-BYTES * + CELL-VIEW >DISPATCH-CELL xt!
+         i ENTRY-CELL @ dup 0<> if
+            >ENTRY-XT rows i ROW-BYTES * + ENTRY-OFF + CELL-VIEW
+            >DISPATCH-CELL xt!
+         else drop then
+      loop
+   then
+   rows TABLE !
+   next CAP !
+   rows FFI:>CELL TASK:MAIN-BASE CB-XTS + atomic!
+   old oldcap RETIRE-TABLE ;
 
 \ The live marshal frame of the innermost callback on this region.
 : FRAME ( -- n )
@@ -141,7 +191,15 @@ public
 
 : INSTALL ( [ -- ] n -- ) {: q k:n :}
    k DECLARED-CHECK
-   q k XTS ! ;
+   q k DISPATCH xt! ;
+
+: ENTRY-ADDRESS ( n -- n ) {: k:n :}
+   k DECLARED-CHECK
+   k ENTRY-CELL @ ;
+
+: INSTALL-ENTRY ( n n -- ) {: addr:n k:n :}
+   k DECLARED-CHECK
+   addr >ENTRY-XT k ENTRY-CELL >DISPATCH-CELL xt! ;
 
 : DESCRIPTOR ( n -- callback ) {: k:n :}
    k DECLARED-CHECK
@@ -152,9 +210,9 @@ public
 \ context and only then answers the stub's address.
 : ENTRY ( callback n -- n ) {: cb ctx:n :}
    cb CALLBACK>N {: k:n :}
-   0 XTS FFI:>CELL TASK:MAIN-BASE CB-XTS + atomic!
+   TABLE @ FFI:>CELL TASK:MAIN-BASE CB-XTS + atomic!
    ctx k TASK:CONTEXT-BIND
-   k FFI:CALLBACK-ENTRY ;
+   k ENTRY-CELL @ ;
 
 : UNBIND ( callback -- )
    CALLBACK>N TASK:CONTEXT-UNBIND ;
@@ -164,6 +222,16 @@ public
 
 : CLEAR ( callback -- )
    CALLBACK>N 0 swap FAULTS ! ;
+
+\ FILE replay visits only explicitly owned controls below its current DATA
+\ range. Declarations can grow this baked table while a parent file loads, so
+\ the controls and the former allocation belong to that range's update set.
+\ Newly allocated rows are already inside its ordinary DATA span.
+: OWNED-CELLS ( [ ptr u8 n -- ] -- ) {: keep :}
+   TABLE BYTE-VIEW CELL keep execute
+   CAP BYTE-VIEW CELL keep execute
+   SLOTS BYTE-VIEW CELL keep execute
+   CAP @ 0 > if TABLE @ CAP @ ROW-BYTES * keep execute then ;
 
 private
 
@@ -264,18 +332,29 @@ variable OPEN
 : GEN-N ( n -- ) GEN CODEGEN:APPEND-DECIMAL ;
 : GEN-RUN ( -- ) GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
 
+\ The C entry belongs to a native emission even when the caller selected the
+\ interpreter's legacy compiler for its other definitions. Restore its tier on
+\ both success and refusal so a declaration does not change later source.
+: GEN-NATIVE ( -- )
+   tier@ 1 = if GEN-RUN exit then
+   s" 1 set-tier" INCLUDE-EVALUATE
+   [: GEN-RUN ;] [: s" 0 set-tier" INCLUDE-EVALUATE ;] finally ;
+
 : STORE$ ( -- ptr u8 n )
    RES-KIND @ R-VALUE = if s" FFI-CB:RESULT! " exit then
    RES-KIND @ R-FLOAT = if s" FFI-CB:FRESULT! " exit then
    s" " ;
 
 : NEXT-SLOT ( -- n )
-   SLOTS @ CB-POOL >= if E-FFI-CALLBACK-FULL throw then
-   SLOTS @ 1 SLOTS +! ;
+   SLOTS @ {: k:n :}
+   k TASK:DECLARE-CALLBACK
+   k CAP @ >= if GROW then
+   1 SLOTS +!
+   k ;
 
-\ Four evaluated pieces, each one line: the body cell, the dispatch, which hands
-\ RUN its slot and result kind as literals, the dispatch stored into its slot,
-\ and the descriptor.
+\ The accessor's ordinary native emission carries an anonymous C entry after
+\ its Habu return. NCOMP publishes both as one owned record; only the entry is
+\ handed to C, while the accessor can read its relocated descriptor address.
 : EMIT ( n -- ) {: k:n :}
    GEN CODEGEN:RESET
    s" TYPED-VARIABLE " GEN+ NAME$ GEN+ s" -BODY [ " GEN+
@@ -291,6 +370,12 @@ variable OPEN
    GEN CODEGEN:RESET
    s" ' " GEN+ NAME$ GEN+ s" -DISPATCH " GEN+ k GEN-N s"  FFI-CB:INSTALL" GEN+
    GEN-RUN
+   k -1 FFI:CALLBACK-ENTRY ARM-STUB
+   GEN CODEGEN:RESET
+   s" : " GEN+ NAME$ GEN+ s" -ENTRY ( -- n ) " GEN+
+   k GEN-N s"  FFI-CB:ENTRY-ADDRESS ;" GEN+
+   GEN-NATIVE
+   STUB-ENTRY k INSTALL-ENTRY
    GEN CODEGEN:RESET
    s" : " GEN+ NAME$ GEN+ s"  ( -- FFI-CB:callback ) " GEN+ k GEN-N
    s"  FFI-CB:DESCRIPTOR ;" GEN+
@@ -333,6 +418,17 @@ public
    FFB-VALUE @ k FFALLBACKS !
    0 k FAULTS !
    k EMIT ;
+
+\ The callback descriptor table holds whole cells, including numeric fallback
+\ values. OWNED-CELLS identifies the same live allocation for FILE replay.
+: SCAN-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: cells bytes :}
+   CAP @ 0 > if TABLE @ BYTE-VIEW CAP @ ROW-BYTES * cells execute then
+   GEN cells bytes CODEGEN:SCAN-SPANS
+   QTYPE cells bytes CODEGEN:SCAN-SPANS
+   READS cells bytes CODEGEN:SCAN-SPANS
+   NAME-BUF TOK-CAP bytes execute
+   TOK-BUF TOK-CAP bytes execute ;
 
 ;package
 

@@ -26,11 +26,13 @@
 
 require src/lib/test.f
 require src/lib/string.f
+require src/lib/fs.f
 require src/lib/engine-id.f
 require src/lib/engine-candidate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require test/whitebox-engine.f
 
 package WHITEBOX-ENGINE-SUITE
 
@@ -134,6 +136,15 @@ CAST: XT>N ( [ -- ptr u8 ] -- n )
 
    s" this image says it is the whitebox one" T-LABEL
    ENGINE-INTERNAL:IMAGE-CLASS ENGINE-INTERNAL:IMAGE-WHITEBOX T=
+
+   \ The build row has already copied the bundle into this process's path.
+   \ A later suite may promote that copy, so its supplier must still exist.
+   s" HABU_GATE_COMPILER_IMAGES" GETENV nip 0 > if
+      s" the gate keeps its whitebox supplier after provision" T-LABEL
+      WHITEBOX-ENGINE:PATH$ EXECUTABLE? TTRUE
+      s" the gate runs a copy separate from its supplier" T-LABEL
+      WHITEBOX-ENGINE:PATH$ ENGINE-ID:PATH$ T$<>
+   then
 
    s" an engine package reopens on this image" T-LABEL
    REOPEN-OF$ S\" 7\n\n" T$=

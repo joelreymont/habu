@@ -184,16 +184,16 @@ IR-FUN:POOL-CAP-MAX constant D-FPOOL
 here CELL 1- and CELL swap - CELL 1- and allot
 variable BGEN-CELL
 0 BGEN-CELL !
-create BGENS SLOT-MAX cells allot
-create BOWNERS SLOT-MAX cells allot
-create BSTATES SLOT-MAX cells allot
-create BCEILS SLOT-MAX PLAN# * cells allot
-create BPROTOS SLOT-MAX cells allot  \ the prototype rows this module's interner
+SLOT-MAX CWORK-SPAN BGENS n
+SLOT-MAX CWORK-SPAN BOWNERS n
+SLOT-MAX CWORK-SPAN BSTATES n
+SLOT-MAX PLAN# * CWORK-SPAN BCEILS n
+SLOT-MAX CWORK-SPAN BPROTOS n  \ the prototype rows this module's interner
                                      \ was copied from, zero if it interned its own
-SLOT-MAX TABLES# * TYPED-BUFFER BTAB IR-ARENA:arena
-SLOT-MAX TABLES# * TYPED-BUFFER BVIEW IR-ARENA:view
-SLOT-MAX TYPED-BUFFER BKEY IR-ID:ir-module-key
-SLOT-MAX TYPED-BUFFER BMID IR-ID:ir-module-id
+SLOT-MAX TABLES# * CWORK-BUFFER BTAB IR-ARENA:arena
+SLOT-MAX TABLES# * CWORK-BUFFER BVIEW IR-ARENA:view
+SLOT-MAX CWORK-BUFFER BKEY IR-ID:ir-module-key
+SLOT-MAX CWORK-BUFFER BMID IR-ID:ir-module-id
 
 : BGEN@ ( n -- n )
    cells BGENS + @ ;
@@ -259,15 +259,14 @@ CAST: ARENA>N ( IR-ARENA:arena -- n )
 \ stack-neutral quotation.
 -1 constant TX-NONE                  \ no builder is being built
 
-variable TX-SLOT
-variable TX-N                        \ tables of TX-SLOT that exist
-variable TX-U
-variable TX-MAJOR
-variable TX-MINOR
-PTR-VARIABLE TX-DIA
-1 TYPED-BUFFER TX-CTX IR-CTX:ctx
+TX-NONE CWORK-VARIABLE TX-SLOT n
+0 CWORK-VARIABLE TX-N n                        \ tables of TX-SLOT that exist
+0 CWORK-VARIABLE TX-U n
+0 CWORK-VARIABLE TX-MAJOR n
+0 CWORK-VARIABLE TX-MINOR n
+0 CWORK-VARIABLE TX-DIA ptr u8
+1 CWORK-BUFFER TX-CTX IR-CTX:ctx
 
-TX-NONE TX-SLOT !
 
 : TX-SLOT@ ( -- n )
    TX-SLOT @ dup TX-NONE = if E-IR-BUILD-STATE throw then ;
@@ -296,7 +295,6 @@ public
 
 : CAPTURE-PREPARE ( -- )
    TX-SLOT @ TX-NONE <> if E-IR-BUILD-STATE throw then
-   TX-CLOSE
    IR-ARENA:CAPTURE-PREPARE
    IR-CTX:CAPTURE-PREPARE ;
 
@@ -342,12 +340,6 @@ private
 : KEY! ( IR-ID:ir-module-key n -- )
    BKEY ! ;
 
-: SLOTS-CLEAR ( -- )
-   SLOT-MAX 0 ?do
-      0 i BGEN!
-   loop ;
-SLOTS-CLEAR
-
 \ ---- generation serials ------------------------------------------------------
 : BGEN-NEXT-N ( n -- n )
    dup 0 < over BGEN-MAX >= or if E-IR-BUILD-SERIALS throw then
@@ -366,6 +358,22 @@ SLOTS-CLEAR
       2drop
    repeat
    drop ;
+
+\ FILE objects may contain retired builder handles. Replaying their allocation
+\ history prevents a later builder from receiving one of those identities.
+public
+: HISTORY ( -- n ) BGEN-CELL atomic@ ;
+: CHECK-HISTORY ( n -- )
+   dup 0 < swap BGEN-MAX > or if E-IR-BUILD-SERIALS throw then ;
+: REPLAY-HISTORY ( n -- )
+   {: want:n :}
+   want CHECK-HISTORY
+   begin
+      BGEN-CELL atomic@ {: old:n :}
+      old want >= if exit then
+      old want BGEN-CELL atomic-cas old =
+   until ;
+private
 
 \ ---- handle resolution -------------------------------------------------------
 : FIND-B ( n -- n )
@@ -425,12 +433,9 @@ SLOTS-CLEAR
 \ the promise that the authority behind it really has that record open: the
 \ claim is recorded only after the authority's own begin returned, and it is
 \ given back before or with the end that consumes it.
-variable FN-STG
-STG-FREE FN-STG !
-variable BK-STG
-STG-FREE BK-STG !
-variable OP-STG
-STG-FREE OP-STG !
+0 CWORK-VARIABLE FN-STG n
+0 CWORK-VARIABLE BK-STG n
+0 CWORK-VARIABLE OP-STG n
 
 \ A builder that can still finish the record it claimed.
 : HOLDER-LIVE? ( n -- bool )
@@ -520,9 +525,8 @@ STG-FREE OP-STG !
    FN-STG @ g = if IR-FUN:ABANDON-FUN STG-FREE FN-STG ! then ;
 
 \ ---- the ceiling plan --------------------------------------------------------
-create PSTG PLAN# cells allot
-variable PSTG-OPEN
-0 PSTG-OPEN !
+PLAN# CWORK-SPAN PSTG n
+0 CWORK-VARIABLE PSTG-OPEN n
 
 : PSTG@ ( n -- n )
    cells PSTG + @ ;
@@ -642,9 +646,8 @@ private
 \ The prototype is staged like the plan is: set for one creation and cleared
 \ when that creation is over, whether it succeeded or threw, so an ordinary
 \ NEW-BUILDER can never pick one up by accident.
-2 TYPED-BUFFER PROTO-SYM IR-ARENA:arena
-variable PROTO-ON
-0 PROTO-ON !
+2 CWORK-BUFFER PROTO-SYM IR-ARENA:arena
+0 CWORK-VARIABLE PROTO-ON n
 
 : PROTO-CLEAR ( -- )
    0 PROTO-ON ! ;

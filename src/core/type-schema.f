@@ -400,6 +400,7 @@ public
    SCH-RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
    SCH-RBF-BOOT SCH-RBF-P !
    SCH-RBF-CAP-INIT SCH-RBF-CAP-V !
+   SCH-RBF-BOOT 0 SCH-RBF-CAP-INIT SCH-RBF-REC * CELL / ARENA-CELLS-ZERO
    0 SCH-RBF-DEPTH ! ;
 
 \ --- snapshot persist: bake any grown store into fresh image DATA. Fields hold no

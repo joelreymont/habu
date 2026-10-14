@@ -155,7 +155,7 @@ private
 6 constant SLOT-COMPARE
 
 SLOTS CDIGEST:SLOT-BYTES * constant PRE-BYTES
-create PRE PRE-BYTES allot
+PRE-BYTES CWORK-SPAN PRE u8
 
 public
 

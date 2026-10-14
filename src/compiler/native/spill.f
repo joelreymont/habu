@@ -49,10 +49,10 @@ using NFROZEN
 private
 
 \ Each pass retains its own dimensions while later passes read its results.
-variable SCRATCH-VALUES
-variable SCRATCH-BLOCKS
-variable SCRATCH-FUNS
-variable SCRATCH-OPS
+0 CWORK-VARIABLE SCRATCH-VALUES n
+0 CWORK-VARIABLE SCRATCH-BLOCKS n
+0 CWORK-VARIABLE SCRATCH-FUNS n
+0 CWORK-VARIABLE SCRATCH-OPS n
 : VMAX ( -- n ) SCRATCH-VALUES @ ;
 : BMAX ( -- n ) SCRATCH-BLOCKS @ ;
 : FMAX ( -- n ) SCRATCH-FUNS @ ;
@@ -83,57 +83,57 @@ variable SCRATCH-OPS
 128 constant NAME-CAP
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable BND-MODE
+0 CWORK-VARIABLE BND-MODE n
 BOUND-NO BND-MODE !
-variable N-CUR                       \ how far through the plan the walk has read
-variable FRAME-N
-variable G-AT                        \ operations of the whole function copied so far
-variable PRO-N                       \ nonzero when this function has a prologue
-variable N-RES                       \ frame reserves, releases, link saves and
-variable N-REL                       \ link restores the old module already holds
-variable N-SAV
-variable N-LDL
-variable OLD-BBASE
-variable CUR-B
+0 CWORK-VARIABLE N-CUR n                       \ how far through the plan the walk has read
+0 CWORK-VARIABLE FRAME-N n
+0 CWORK-VARIABLE G-AT n                        \ operations of the whole function copied so far
+0 CWORK-VARIABLE PRO-N bool                       \ nonzero when this function has a prologue
+0 CWORK-VARIABLE N-RES n                       \ frame reserves, releases, link saves and
+0 CWORK-VARIABLE N-REL n                       \ link restores the old module already holds
+0 CWORK-VARIABLE N-SAV n
+0 CWORK-VARIABLE N-LDL n
+0 CWORK-VARIABLE OLD-BBASE n
+0 CWORK-VARIABLE CUR-B n
 
-1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
+1 CWORK-BUFFER BND-MOD IR-ID:ir-module-id
 \ The two keys this pass reads an operation's reach into the frame off, and the
 \ forms it tells apart or writes. All of them are the READ module's symbols.
-1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-RESERVE IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-RELEASE IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-STORE IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-LOAD IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-FSTORE NDIALECT:optsym
-1 TYPED-BUFFER BND-FLOAD NDIALECT:optsym
-1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-LINKSAVE NDIALECT:optsym
-1 TYPED-BUFFER BND-LINKLOAD NDIALECT:optsym
-1 TYPED-BUFFER BND-COPY IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-REMAT IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-GPR IR-ID:ir-type-id
-1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
-1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
+1 CWORK-BUFFER BND-SLOT IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-FRAME IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-RESERVE IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-RELEASE IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-STORE IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-LOAD IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-FSTORE NDIALECT:optsym
+1 CWORK-BUFFER BND-FLOAD NDIALECT:optsym
+1 CWORK-BUFFER BND-TRAP IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-LINKSAVE NDIALECT:optsym
+1 CWORK-BUFFER BND-LINKLOAD NDIALECT:optsym
+1 CWORK-BUFFER BND-COPY IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-REMAT IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-GPR IR-ID:ir-type-id
+1 CWORK-BUFFER BND-MEM IR-ID:ir-type-id
+1 CWORK-BUFFER BND-FPR IR-ID:ir-type-id
 
 \ How the dialect materialises one of its forms in the module being written,
 \ asked for by the name the module being read spells it with. Bound once with
 \ the vocabulary and held across the rebinding REWRITE takes at its end, because
 \ it is the DIALECT's and not one module's.
-TYPED-VARIABLE BND-ENSURE [ IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id ]
+0 CWORK-VARIABLE BND-ENSURE [ IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id ]
 
 \ The three types this pass mints values of, out of the written module's own
 \ vocabulary. Taken by REWRITE, because the module they belong to does not exist
 \ when the binding over the read module is taken.
-1 TYPED-BUFFER OUT-LOW NDIALECT:lowering
-1 TYPED-BUFFER OUT-GPR IR-ID:ir-type-id
-1 TYPED-BUFFER OUT-MEM IR-ID:ir-type-id
-1 TYPED-BUFFER OUT-FPR IR-ID:ir-type-id
+1 CWORK-BUFFER OUT-LOW NDIALECT:lowering
+1 CWORK-BUFFER OUT-GPR IR-ID:ir-type-id
+1 CWORK-BUFFER OUT-MEM IR-ID:ir-type-id
+1 CWORK-BUFFER OUT-FPR IR-ID:ir-type-id
 
-1 TYPED-BUFFER S-CTX IR-CTX:ctx
-1 TYPED-BUFFER S-BLD IR-BUILD:builder
-1 TYPED-BUFFER S-SID IR-ID:ir-source-id
-1 TYPED-BUFFER S-TOK IR-ID:ir-value-id
+1 CWORK-BUFFER S-CTX IR-CTX:ctx
+1 CWORK-BUFFER S-BLD IR-BUILD:builder
+1 CWORK-BUFFER S-SID IR-ID:ir-source-id
+1 CWORK-BUFFER S-TOK IR-ID:ir-value-id
 DYNAMIC-BUFFER F-ORDER IR-ID:ir-value-id
 DYNAMIC-BUFFER F-ORDER-SET-BUF n
 : F-ORDER-SET ( -- ptr n ) 0 F-ORDER-SET-BUF ;
@@ -163,8 +163,8 @@ DYNAMIC-BUFFER PRED-ONE-BUF n
 \ than once per ask.
 DYNAMIC-BUFFER F-LANE-BUF n
 : F-LANE ( -- ptr n ) 0 F-LANE-BUF ;
-variable PRED-FUN                    \ the function the four per-function maps hold
-variable PRED-SET                    \ those maps are built
+0 CWORK-VARIABLE PRED-FUN n                    \ the function the four per-function maps hold
+0 CWORK-VARIABLE PRED-SET n                    \ those maps are built
 DYNAMIC-BUFFER VMAP IR-ID:ir-value-id
 DYNAMIC-BUFFER RMAP IR-ID:ir-value-id
 DYNAMIC-BUFFER VSET-BUF n
@@ -194,7 +194,7 @@ DYNAMIC-BUFFER RBLK-BUF n
    BMAX PRED-ONE-BUF-RESERVE
    BMAX F-LANE-BUF-RESERVE
    ;
-create NAMEBUF NAME-CAP allot
+NAME-CAP CWORK-SPAN NAMEBUF u8
 
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
@@ -1143,11 +1143,6 @@ public
    N-CUR @ A64RA:PLAN-N <> if E-A64SPILL-PLAN throw then
    c b  0 OUT-LOW @  BIND!
    c b IR-BUILD:FREEZE ;
-
-public
-: RESET-SCRATCH ( -- )
-   0 PRED-SET !
-   0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
 get-current prot-wid-add

@@ -22,6 +22,7 @@
 require src/lib/prelude.f
 require src/lib/errors.f
 require src/lib/string.f
+require src/lib/memory.f
 require src/habu/layout.f
 
 package NSTR
@@ -344,6 +345,7 @@ private
 \ which test/compiler/native-string.f exists to forbid, and an engine cell for
 \ the token costs a fixed slot and a layout row. So the capture ships this name
 \ on purpose: it is a keep-set entry in src/habu/aot-capture.f ACAP-KEEP?.
+\ ATTACH-SEGMENTS has the same private build-driver boundary.
 : IMPORT-ROWS ( ptr u8 n ptr n ptr n -- )
    {: arena:ptr rows:n source-off:ptr source-len:ptr :}
    rows source-off source-len IMPORT-CHECK
@@ -354,6 +356,156 @@ private
    source-len BYTE-VIEW owner LENGTHS BYTE-VIEW rows cells BYTE-COPY
    rows owner ROWS-FIELD !
    owner PUBLISH ;
+
+\ The file-object importer copies complete new segments into its DATA extent.
+\ Check their owner metadata and links before joining them to the existing
+\ pool. The caller has already checked each owner's extent against that DATA
+\ section. Old tail links are supplied from before its prefix DATA updates:
+\ those updates contain the source image's relative link bytes.
+: ATTACH-OWNER ( ptr u8 n -- ptr u8 ) {: list:ptr row:n :}
+   list row cells + CELL-VIEW @ NULL-PTR BYTE-VIEW + ;
+
+: ATTACH-CHECK ( ptr u8 -- ) {: owner:ptr :}
+   owner ROLE-FIELD @ ROLE-MORE <> if E-NSTR-BODY throw then
+   owner CAP-FIELD @ ROWS-MAX <> if E-NSTR-BODY throw then
+   owner ARENA@ owner ROWS-MAX OWNER-SIZE + <> if E-NSTR-BODY throw then
+   owner ROWS-FIELD @ owner OFFSETS owner LENGTHS IMPORT-CHECK
+   owner USED-FIELD @ {: used:n :}
+   used 0 < used ARENA-CAP > or if E-NSTR-BODY throw then
+   owner ROWS-FIELD @ 0 ?do
+      owner OFFSETS i cells + @ {: off:n :}
+      owner LENGTHS i cells + @ {: size:n :}
+      size 0<> if off size + used > if E-NSTR-BODY throw then then
+   loop ;
+
+: ATTACH-SEGMENTS ( ptr u8 n n n -- )
+   {: owners:ptr count:n old-last:n old-write:n :}
+   owners 0 ATTACH-OWNER {: first:ptr :}
+   owners count 1- ATTACH-OWNER {: last:ptr :}
+   first old-last NULL-PTR BYTE-VIEW + NEXT-FIELD LINK!
+   first old-write NULL-PTR BYTE-VIEW + MORE-FIELD LINK!
+   last WRITE-P !
+   SLOT-CLEAR
+   ROWS @ 0 ?do
+      i 1+ i ROW$ FREE-SLOT cells SLOT + !
+   loop
+   last ARENA@ ARENA-CAP CELL + + PTR>N data-base PTR>N -
+      data-base DATA-FLOOR-CELL + {: floor:ptr :}
+   dup floor @ > if floor ! else drop then ;
+
+\ FILE selection predicts literal placements across its entire chosen tree.
+\ The planned rows borrow bodies from owned prepared ranges; no pool or DATA
+\ byte changes until the corresponding range is installed.
+DYNAMIC-BUFFER PLAN-P ptr u8
+DYNAMIC-BUFFER PLAN-U n
+DYNAMIC-BUFFER PLAN-ADDR n
+variable PLAN-N
+variable PLAN-FIRST
+variable PLAN-ROWS
+variable PLAN-USED
+variable PLAN-BASE
+variable PLAN-DATA-END
+variable PLAN-LIVE
+PTR-VARIABLE PLAN-STAGED
+variable PLAN-ON
+variable PLAN-LAST
+variable PLAN-WRITE
+
+: PLAN-SEARCH ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   PLAN-N @ PLAN-FIRST @ ?do
+      i PLAN-P @ i PLAN-U @ a u STR= if
+         i PLAN-ADDR @ true unloop exit
+      then
+   loop
+   PLAN-LIVE @ if
+      a u FIND {: row:n :}
+      row 0 >= if PLAN-BASE @ row ROW-OFF + true exit then
+   else
+      PLAN-STAGED @ NULL-PTR <> if
+         PLAN-STAGED @ {: owner:ptr :}
+         owner ROWS-FIELD @ 0 ?do
+            owner i OWNER-ROW$ a u STR= if
+               PLAN-BASE @ owner OFFSETS i cells + @ +
+                  true unloop exit
+            then
+         loop
+      then
+   then
+   0 false ;
+
+: PLAN-GROW ( -- )
+   ACTIVE-P @ ROLE-FIELD @ ROLE-CLOSED = if E-NSTR-CAP throw then
+   PLAN-DATA-END @ CELL 1- + CELL negate and {: aligned:n :}
+   aligned PLAN-LAST ! aligned PLAN-WRITE !
+   aligned ROWS-MAX OWNER-SIZE + PLAN-BASE !
+   aligned ROWS-MAX OWNER-SIZE + ARENA-CAP CELL + + PLAN-DATA-END !
+   0 PLAN-ROWS ! 0 PLAN-USED ! 0 PLAN-LIVE !
+   NULL-PTR PLAN-STAGED !
+   PLAN-N @ PLAN-FIRST ! ;
+
+public
+
+: PREPARE-BEGIN ( n -- ) {: data-end:n :}
+   data-end PLAN-DATA-END !
+   ARENA PTR>N PLAN-BASE !
+   ROWS @ PLAN-ROWS ! USED @ PLAN-USED !
+   -1 PLAN-LIVE ! NULL-PTR PLAN-STAGED !
+   LAST-OWNER PTR>N PLAN-LAST ! WRITE-P @ PTR>N PLAN-WRITE !
+   0 PLAN-N ! 0 PLAN-FIRST ! -1 PLAN-ON ! ;
+
+: PREPARE-TAILS ( -- n n ) PLAN-LAST @ PLAN-WRITE @ ;
+
+: PREPARE-INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   PLAN-ON @ 0= if E-NSTR-BODY throw then
+   u 0 < if E-NSTR-BODY throw then
+   a u PLAN-SEARCH if exit then drop
+   u ARENA-CAP > if E-NSTR-CAP throw then
+   PLAN-ROWS @ ROWS-MAX >=
+   u ARENA-CAP PLAN-USED @ - > or if PLAN-GROW then
+   u 0= if ARENA-CAP else PLAN-USED @ then {: off:n :}
+   PLAN-BASE @ off + {: address:n :}
+   PLAN-N @ 1+ PLAN-P-RESERVE
+   PLAN-N @ 1+ PLAN-U-RESERVE
+   PLAN-N @ 1+ PLAN-ADDR-RESERVE
+   a PLAN-N @ PLAN-P ! u PLAN-N @ PLAN-U !
+   address PLAN-N @ PLAN-ADDR !
+   1 PLAN-N +! 1 PLAN-ROWS +! u PLAN-USED +!
+   address ;
+
+: PREPARE-DATA-END ( -- n ) PLAN-DATA-END @ ;
+: PREPARE-ADVANCE ( n -- ) {: size:n :}
+   size 0 < size MEM-MAX-N PLAN-DATA-END @ - > or
+      if E-NSTR-BODY throw then
+   size PLAN-DATA-END +! ;
+
+: PREPARE-SEGMENTS ( ptr u8 n n n n -- )
+   {: owners:ptr count:n old-last:n old-write:n projected-last:n :}
+   PLAN-ON @ 0= if E-NSTR-BODY throw then
+   count 0 <= old-last 0= or old-write 0= or
+   old-last PLAN-LAST @ <> or old-write PLAN-WRITE @ <> or
+      if E-NSTR-BODY throw then
+   count 0 ?do
+      owners i ATTACH-OWNER {: owner:ptr :}
+      owner ATTACH-CHECK
+      i 1+ count < if owners i 1+ ATTACH-OWNER else NULL-PTR then
+         {: next:ptr :}
+      owner NEXT@ next <> owner MORE@ next <> or
+         if E-NSTR-BODY throw then
+   loop
+   owners count 1- ATTACH-OWNER {: owner:ptr :}
+   projected-last owner ARENA@ PTR>N owner PTR>N - + PLAN-BASE !
+   owner ROWS-FIELD @ PLAN-ROWS !
+   owner USED-FIELD @ PLAN-USED !
+   projected-last PLAN-LAST ! projected-last PLAN-WRITE !
+   0 PLAN-LIVE ! owner PLAN-STAGED !
+   PLAN-N @ PLAN-FIRST ! ;
+
+: PREPARE-CLOSE ( -- )
+   PLAN-P-RELEASE PLAN-U-RELEASE PLAN-ADDR-RELEASE
+   0 PLAN-N ! 0 PLAN-FIRST ! 0 PLAN-ROWS ! 0 PLAN-USED !
+   0 PLAN-BASE ! 0 PLAN-DATA-END ! 0 PLAN-LIVE ! 0 PLAN-ON !
+   0 PLAN-LAST ! 0 PLAN-WRITE !
+   NULL-PTR PLAN-STAGED ! ;
 
 public
 
@@ -375,6 +527,26 @@ public
 : SOURCE-ROWS ( n -- ptr u8 n ptr n ptr n ) {: k:n :}
    k SEGMENT {: seg:ptr :}
    seg ARENA@ seg ROWS-FIELD @ seg OFFSETS seg LENGTHS ;
+
+: SEGMENT-BYTES ( -- n ) ROWS-MAX OWNER-SIZE ARENA-CAP CELL + + ;
+
+: SOURCE-SEGMENT-SPAN ( n -- ptr u8 n )
+   SEGMENT {: seg:ptr :}
+   seg SEGMENT-BYTES ;
+
+\ Every owner header and row table is cell storage. The separate arena holds
+\ literal bodies, whose byte extents are reported by OWNER-ROW.
+: CELL-SPANS ( [ ptr u8 n -- ] -- ) {: keep :}
+   FIRST-P @
+   begin dup 0= 0= while
+      {: owner:ptr :}
+      owner owner CAP-FIELD @ OWNER-SIZE keep execute
+      owner NEXT@
+   repeat drop
+   SLOT SLOTS cells keep execute ;
+
+\ The importer records these before applying source prefix-byte updates.
+: SOURCE-TAILS ( -- n n ) LAST-OWNER PTR>N WRITE-P @ PTR>N ;
 
 \ Query only registered row metadata, never memory at the candidate address.
 : OWNER-ROW ( n -- ptr u8 n bool ) {: address:n :}

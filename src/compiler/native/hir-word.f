@@ -309,7 +309,7 @@ $20 constant KEY-BIT                 \ the bit it sets
 \ written and asked under that same symbol.
 64 constant KEY-CAP
 
-create KEY-BUF KEY-CAP allot
+KEY-CAP CWORK-SPAN KEY-BUF u8
 
 : FOLD-C ( n -- n )
    {: b:n :}
@@ -377,18 +377,18 @@ private
 512 constant ORD-CAP                 \ prototype ordinals the map can cover
 128 constant SROW-CAP                \ session rows the gate can remember
 
-create ORD-ROW ORD-CAP cells allot   \ prototype ordinal -> session row plus one
-create ROW-ORD SROW-CAP cells allot  \ session row -> its prototype ordinal
-create CHK-GEN SROW-CAP cells allot  \ session row -> the definition that asked
-create CHK-BND SROW-CAP cells allot  \ session row -> what that definition got
+ORD-CAP CWORK-SPAN ORD-ROW n     \ prototype ordinal -> session row plus one
+SROW-CAP CWORK-SPAN ROW-ORD n    \ session row -> its prototype ordinal
+SROW-CAP CWORK-SPAN CHK-GEN n    \ session row -> the definition that asked
+SROW-CAP CWORK-SPAN CHK-BND n    \ session row -> what that definition got
 
-1 TYPED-BUFFER SESS-POOL IR-ARENA:arena   \ the prototype interner's byte pool
-1 TYPED-BUFFER SESS-ROWS IR-ARENA:arena   \ and its rows
-1 TYPED-BUFFER SESS-KEY IR-ID:ir-module-key
-1 TYPED-BUFFER SESS-P IR-ARENA:arena      \ the session table's pick pool
-1 TYPED-BUFFER SESS-R IR-ARENA:arena      \ and its rows
-variable SESS-ON
-variable ORD-N                       \ how many prototype ordinals the map covers
+1 CWORK-BUFFER SESS-POOL IR-ARENA:arena   \ the prototype interner's byte pool
+1 CWORK-BUFFER SESS-ROWS IR-ARENA:arena   \ and its rows
+1 CWORK-BUFFER SESS-KEY IR-ID:ir-module-key
+1 CWORK-BUFFER SESS-P IR-ARENA:arena      \ the session table's pick pool
+1 CWORK-BUFFER SESS-R IR-ARENA:arena      \ and its rows
+0 CWORK-VARIABLE SESS-ON n
+0 CWORK-VARIABLE ORD-N n            \ how many prototype ordinals the map covers
 
 : ORD-ROW@ ( n -- n ) cells ORD-ROW + @ ;
 : ORD-ROW! ( n n -- ) cells ORD-ROW + ! ;
@@ -784,17 +784,16 @@ private
 1 constant MODE-OPEN
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable STG-MODE
-MODE-NONE STG-MODE !
-variable STG-IN
-variable STG-N
-variable STG-HOST
+0 CWORK-VARIABLE STG-MODE n
+0 CWORK-VARIABLE STG-IN n
+0 CWORK-VARIABLE STG-N n
+0 CWORK-VARIABLE STG-HOST n
 public
 0 constant HOST-SCALAR
 1 constant HOST-VIEW
 2 constant HOST-CAST
 private
-create STG-PICK PICK-MAX cells allot
+PICK-MAX CWORK-SPAN STG-PICK n
 
 : STG-OPEN-CK ( -- )
    STG-MODE @ MODE-OPEN <> if E-HIR-STAGE throw then ;
@@ -1012,7 +1011,7 @@ private
 \ never be read as a current one and nothing has to be cleared between them.
 64 constant GATE-CAP                 \ the longest vocabulary spelling the gate reads
 
-create GATE-BUF GATE-CAP allot
+GATE-CAP CWORK-SPAN GATE-BUF u8
 
 : CHK-GEN@ ( n -- n ) cells CHK-GEN + @ ;
 : CHK-GEN! ( n n -- ) cells CHK-GEN + ! ;

@@ -12,7 +12,7 @@
 \ Past argv[1] only `--` is special: `--load a.f --x` loads a file named `--x`.
 \
 \ Every route builds one stream of source, as the assembly does, and it is
-\ interpreted once through the loaded-bytes seam SOURCE-ROOT:INCLUDE-INTERPRET.
+\ interpreted once through the closed SOURCE-ROOT:RUN-INTERPRET-RANGE seam.
 \ `--load` writes a `s" <path>" script-required` row per file, so the registry
 \ loads each in its own include frame and skips a file the engine already
 \ holds. The program file, and the first file of `--build`, are read raw into
@@ -190,6 +190,7 @@ public
       build OF true ENDOF
       plain OF true ENDOF
    ;MATCH {: raw:bool :}
-   argv first end raw STREAM SOURCE-ROOT:INCLUDE-INTERPRET ;
+   argv first end raw STREAM {: a:ptr u:n :}
+   a u 0 u SOURCE-ROOT:RUN-INTERPRET-RANGE ;
 
 ;package

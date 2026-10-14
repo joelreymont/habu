@@ -43,6 +43,8 @@ package TOP-ROW
    TR-MININ-SHIFT rshift TR-MININ-MASK and ;
 
 \ ---- persistent row state (var-free; survives the checker's per-check NEW) ----
+\ Cells outside TR-N have no value. Retire them when shrinking the row so an
+\ image never retains families/xt arities from already-consumed stack values.
 256 constant TR-CAP
 create TR-CLS TR-CAP cells allot        \ family per stack cell, index 0 = bottom
 create TR-XIN TR-CAP cells allot        \ ticked-xt declared input arity (TR-XT cells)
@@ -71,8 +73,10 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
    1 - TR-XIN@ ;
 
 : TR-RESEED ( n -- )                    \ row := n gray cells (honest resync to live depth)
-   TR-CLAMP TR-N !
-   0 begin dup TR-N @ < while
+   TR-CLAMP {: n:n :}
+   TR-N @ n max {: upto:n :}
+   n TR-N !
+   0 begin dup upto < while
       TR-GRAY over TR-CLS!  0 over TR-XIN!
       1 +
    repeat drop
@@ -89,7 +93,10 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
    else 2drop then ;
 
 : TR-POP ( -- )                         \ drop the top cell (never below base)
-   TR-N @ dup 0 > if 1 - TR-N ! else drop then ;
+   TR-N @ dup 0 > if
+      1 - dup TR-N !
+      0 over TR-CLS! 0 swap TR-XIN!
+   else drop then ;
 
 \ ---- tier selection: warn (tier 1) vs reject (tier 2) ------------------------
 \ dot habu-typed-top-tier-589c550f (sub-dot 7). By default warnings leave the
@@ -263,7 +270,7 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
 \ window is the set-top-check install itself: only TR-HOOK may be installed
 \ (checked-boundary lint UB-TOP-HOOK-ALLOWED? audit row).
 : TR-INSTALL ( -- )
-   0 TR-N !  0 TR-DIRTY !  0 TR-SUSP !  0 TR-LASTZERO !
+   0 TR-RESEED  0 TR-SUSP !  0 TR-LASTZERO !
    ['] TR-HOOK set-top-check ;
 
 TR-INSTALL

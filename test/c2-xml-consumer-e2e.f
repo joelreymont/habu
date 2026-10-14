@@ -1,4 +1,4 @@
-\ Build the rooted C2 engine, then save XML-C2 and compile a fresh consumer.
+\ Use the initial rooted C2 engine, save XML-C2 and compile a fresh consumer.
 \ The printed tree keeps the native images and child logs for replay.
 require src/lib/test.f
 require src/lib/string.f
@@ -7,8 +7,8 @@ require src/lib/fs-mutate.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
-require src/lib/engine-candidate.f
 require test/suite-budget.f              \ CHILD-MS, every child's hang guard
+require test/c2-image-pair.f
 
 package C2-XML-CONSUMER-E2E
 private
@@ -76,15 +76,10 @@ variable RC
    NEED-OK
    OUT OUT-U @ marker markeru CONTAINS? TTRUE ;
 
-: BUILD ( -- )
-   s" test/c2-memory-image-build.f" ARGS
-   s" --" >LEN PROC-ARGV+
-   s" hb-root" AT-A >LEN PROC-ARGV+
-   s" hb-ordinary" AT-A >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CWD$ RUN-ON
-   s" build.out" s" build.err" SAVE-LOG
-   s" a rooted C2 image builds from the current source" T-LABEL NEED-OK
-   RC @ 0<> if exit then
+: IMAGES ( -- )
+   ROOT$ C2-IMAGE-PAIR:PROVIDE
+   0 RC !
+   s" a rooted C2 image is supplied from the initial compiler build" T-LABEL
    s" hb-root" AT-A EXECUTABLE? TTRUE
    s" hb-root.map" AT-A {: names:ptr namesu:n :}
    names TARGET namesu BYTE-COPY namesu TARGET-U !
@@ -143,7 +138,7 @@ variable RC
 public
 : RUN ( -- )
    T-RESET
-   SETUP BUILD
+   SETUP IMAGES
    RC @ 0= if SOURCE-CASES SAVE-XML then
    RC @ 0= if SAVED-CASES then
    s" c2-xml-consumer-e2e tree: " type ROOT$ type cr

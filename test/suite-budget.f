@@ -7,7 +7,7 @@
 \ ROW-BUDGET!). The row's wall deadline in the pool, ROW-MS, is then only a
 \ hang guard: a row that stopped running gains no CPU time, so wall time alone
 \ ends it. A builder (test/keyed-image.f BUILD-RUN, and
-\ test/whitebox-engine.f's, test/cold-engine.f's and test/native-unit-image.f's)
+\ test/whitebox-engine.f's and test/cold-engine.f's)
 \ and every process a long suite row starts take CHILD-MS, five times the
 \ budget, so a child within the budget reaches its deadline only on less than a
 \ fifth of a core. The row's guard is a minute more, for a build row's key

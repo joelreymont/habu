@@ -1,7 +1,6 @@
-\ Run in a matching ARM64 whitebox engine with two paths after --: the intended
-\ foreign output and a retained AOT artifact. The source policy runs before
-\ native-runtime.f; the supplied writer saves the capture before the normal
-\ cross-OS launch refusal returns from native-build.
+\ Run in the suite's whitebox engine. The source window is small, while the
+\ selected output target is the other ARM64 process ABI. The artifact retains
+\ the actual source definitions and ONE42 initializer occurrence.
 
 1 set-tier
 require src/lib/test.f
@@ -22,12 +21,13 @@ variable TEST-NAME-U
 variable OBSERVED
 variable OLD-SLOT
 variable OLD-OCC
+variable REQUIRE-START
+variable PRE-R
+PTR-VARIABLE PRE-D
+: PTR>N ( ptr a -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 
 \ A target record's code address takes the effect its source declares.
 CAST: RUN-N ( n -- [ -- n ] )
-CAST: PATH-XT ( n -- [ ptr u8 n -- ] )
-CAST: SLOT-XT ( n -- [ n -- ptr u8 ] )
-CAST: LEN-XT ( n -- [ n -- n ] )
 CAST: CODE-BYTES ( n -- ptr u8 )
 
 TRUSTED: REWRITE-FIRST ( n -- )
@@ -35,7 +35,7 @@ TRUSTED: REWRITE-FIRST ( n -- )
    entry CODE-BYTES LE:U32@ entry patch32 ;
 
 : LOAD-SOURCE ( ptr u8 n -- )
-   s" script-required" OPEN-TARGET-XT PATH-XT execute ;
+   script-required ;
 
 : HANDLE ( ptr u8 n -- n n )
    XREF-FIND DEF-OCC:SELECT ;
@@ -88,7 +88,7 @@ TRUSTED: REWRITE-FIRST ( n -- )
    s" NATIVE-HOST-RECLAIM:EARLY" REFUSES
    \ The mark belongs to the fresh target checker, like the loaded source.
    s" NATIVE-HOST-RECLAIM:MARK"
-      s" FORGET-DEFS-FROM" OPEN-TARGET-XT PATH-XT execute
+      FORGET-DEFS-FROM
    [: STALE-SELECT ;] DEF-OCC:E-STALE TTHROWSQ
    s" NATIVE-HOST-RECLAIM:EARLY" REFUSES
    s" package NATIVE-HOST-RECLAIM public : NEW ( -- n ) 12 ; ;package"
@@ -112,7 +112,7 @@ TRUSTED: REWRITE-FIRST ( n -- )
 
 : FOREIGN-HOST ( -- )
    s" NATIVE-HOST-SOURCE:TARGET99" HANDLE
-   s" NATIVE-HOST-FOREIGN:TARGET" HANDLE NHOST:ASSOCIATE ;
+   s" NATIVE-HOST-FOREIGN:COLD-TARGET" HANDLE NHOST:ASSOCIATE ;
 
 : SOURCE-CHECKS ( -- )
    s" ordinary native execution retains target 99" T-LABEL
@@ -154,9 +154,9 @@ TRUSTED: REWRITE-FIRST ( n -- )
    s" NATIVE-HOST-SOURCE:TARGET99" SELECTED-N 42 T= ;
 
 : BIND-CONSTRUCTION ( -- )
-   DEFAULT-SOURCE-BIND
    T-RESET
    0 OBSERVED !
+   REQUIRE-REG:COUNT REQUIRE-START !
    s" test/compiler/native-host-source.f" LOAD-SOURCE
    ['] OBSERVE ['] CUSTOM-SOURCE NPUB:WITH-UNIT
    s" NATIVE-HOST-SOURCE:TARGET99" HANDLE
@@ -186,29 +186,7 @@ TRUSTED: REWRITE-FIRST ( n -- )
    s" foreign body lacks a retained host implementation" T-LABEL
    [: FOREIGN-HOST ;] NHOST:E-UNSAFE TTHROWSQ
    s" NATIVE-HOST-RESULT:ONE42" VALUE-N 42 T=
-   T-REPORT
-   \ The artifact carries the fresh target loader's real recorded closure.
-   AOT-IDENT:RESET
-   s" REQUIRE-REG:COUNT" OPEN-TARGET-XT RUN-N execute 0 ?do
-      i s" REQUIRE-SLOT" OPEN-TARGET-XT SLOT-XT execute
-      i s" REQUIRE-LEN@" OPEN-TARGET-XT LEN-XT execute
-      AOT-IDENT:PATH+
-   loop ;
-
-: CAPTURE-WRITER ( AOT-OWNED:capture ptr n n ptr u8 n -- )
-   {: owned:AOT-OWNED:capture host:ptr count:n path:ptr size:n :}
-   owned dup AOT-FILE:IMPORT
-   FILE-HASH ENGINE-ID:PATH$ PRODUCT-KEY SHA256-FILE-IN
-      0<> if BUILD-RC throw then
-   PRODUCT-KEY 1 SCRIPT-ARGV$ AOT-FILE:WRITE
-   \ Generic instruction writes remove native capture evidence. Test them
-   \ after retaining the artifact, while the construction action is still live.
-   s" instruction writes retire only affected implementation facts" T-LABEL
-   PATCH-CASE
-   T-REPORT
-   host count path size SOURCE-WRITER-DISPATCH ;
-
-: ORIGIN ( n n -- n ) code-origin ;
+   T-REPORT ;
 
 : ARTIFACT-NAME? ( n ptr u8 n -- bool )
    {: row:n name:ptr size:n :}
@@ -232,16 +210,42 @@ TRUSTED: REWRITE-FIRST ( n -- )
    then
    false ;
 
+: SOURCE-IDENT! ( -- )
+   AOT-IDENT:RESET
+   REQUIRE-REG:COUNT REQUIRE-START @ ?do
+      i REQUIRE-SLOT i REQUIRE-LEN@ AOT-IDENT:PATH+
+   loop ;
+
+: DIRECT ( RTARGET:build-action -- )
+   drop
+   ndict@ PRE-R ! here PRE-D !
+   AOT-ARM:WINDOW-OPEN NSTR:WINDOW-OPEN
+   BIND-CONSTRUCTION FOREIGN-SOURCE
+   s" 0 set-tier package NATIVE-HOST-FOREIGN public : COLD-TARGET ( -- n ) 98 ; ;package 1 set-tier" evaluate-closed
+   CHECK-CONSTRUCTION
+   AOT-ARM:WINDOW-CLOSE
+   PRE-R @ PRE-D @ PTR>N AOT-CAPTURE:PRELUDE-MARK
+   AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
+   SOURCE-IDENT!
+   FILE-HASH ENGINE-ID:PATH$ PRODUCT-KEY SHA256-FILE-IN 0 T=
+   PRODUCT-KEY 1 SCRIPT-ARGV$ AOT-FILE:WRITE
+   PRODUCT-KEY 1 SCRIPT-ARGV$ AOT-FILE:READ
+   ONE42-COUNT 1 T=
+   s" instruction writes retire only affected implementation facts" T-LABEL
+   PATCH-CASE
+   s" foreign process ABI refuses the output after source construction" T-LABEL
+   ['] OUTPUT-LAUNCH-CK BUILD-RC TTHROWS
+   T-REPORT ;
+
 public
 
 : RUN-HOST-CONSTRUCTION ( -- )
    FOREIGN-TARGET? 0= if 76 throw then
-   ['] BIND-CONSTRUCTION ['] CHECK-CONSTRUCTION ['] SOURCE-NOOP SOURCE-POLICY!
-   ['] FOREIGN-SOURCE SOURCE-TAIL!
    0 SCRIPT-ARGV$ OUTPUT!
-   ['] ORIGIN false ['] CAPTURE-WRITER RUN-READY-RC BUILD-RC T=
-   PRODUCT-KEY 1 SCRIPT-ARGV$ AOT-FILE:READ
-   ONE42-COUNT 1 T=
+   RTARGET:HOST BUILD-TARGET:CURRENT RTARGET:FOR-OUTPUT
+      ['] DIRECT
+      BUILD-TARGET:WITH
+   0 SCRIPT-ARGV$ FILE? 0= TTRUE
    T-REPORT
    s" native host construction: artifact " type
    1 SCRIPT-ARGV$ type cr ;

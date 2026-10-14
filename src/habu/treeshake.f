@@ -48,8 +48,27 @@ PTR-VARIABLE KEEP-A  variable KEEP-U
       1 +
    REPEAT drop SHK-TRUE ;
 
+\ These interpreter operations are used by the loader installed by the
+\ file-object build tool, independently of tokens in an application MAIN.
+\ A reduced maker must carry them so it can compile and execute that loader.
+: KEEP-LOADER-NAME? ( ptr u8 n ptr u8 n -- bool )
+   {: a:ptr u:n b:ptr v:n :}
+   u v <> if SHK-FALSE exit then
+   a b u SHK-TOK= ;
+
+: KEEP-LOADER-PRIM? ( ptr u8 n -- bool )
+   2dup s" evaluate-range" KEEP-LOADER-NAME? if 2drop SHK-TRUE exit then
+   2dup s" source-unit-run" KEEP-LOADER-NAME? if 2drop SHK-TRUE exit then
+   2dup s" source-exec-run" KEEP-LOADER-NAME? if 2drop SHK-TRUE exit then
+   2dup s" source-exec-live?" KEEP-LOADER-NAME? if 2drop SHK-TRUE exit then
+   2dup s" source-exec-boundary?" KEEP-LOADER-NAME? if 2drop SHK-TRUE exit then
+   2dup s" source-exec-loader-cut?" KEEP-LOADER-NAME? if 2drop SHK-TRUE exit then
+   2dup s" source-exec-position" KEEP-LOADER-NAME? if 2drop SHK-TRUE exit then
+   s" source-exec-handler" KEEP-LOADER-NAME? ;
+
 : KEEP? ( ptr u8 n -- bool )
    KEEP-U ! KEEP-A !
+   KEEP-A@ KEEP-U @ KEEP-LOADER-PRIM? if SHK-TRUE exit then
    SHAKE? @ 0 = IF 0 0= EXIT THEN
    0 SKP !
    BEGIN SKP @ SHK-U @ < WHILE

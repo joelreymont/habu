@@ -1,16 +1,18 @@
-\ The NBR object file owns only portable bytes. Its caller supplies six semantic
+\ This object file owns only portable bytes. Its caller supplies thirteen semantic
 \ sections in order: code, dictionary records, calls, address sites, protected
-\ wordlists and checker state. No running pointer is written into this header.
+\ wordlists, checker state, DATA, preceding DATA updates, require/provided
+\ paths, typed address cells, literal rows, file inputs and retired prefix rows.
 \
-\ Version 1 header (all integers are little-endian u64): magic at 0, version at
+\ Version 6 header (all integers are little-endian u64): magic at 0, version at
 \ 8, architecture at 16, package-name length at 24, package name at 32 (64
-\ bytes), source key at 96 (64 bytes), and six section lengths at 160.
+\ bytes), source key at 96 (64 bytes), and thirteen section lengths at 160.
 
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/le.f
+require src/lib/memory.f
 
 package NUNIT-FILE
 
@@ -20,12 +22,11 @@ private
 8 constant FIELD-BYTES
 64 constant NAME-CAP
 64 constant KEY-BYTES
-6 constant SECTION-COUNT
+13 constant SECTION-COUNT
 160 constant LENGTHS-OFF
-208 constant HEADER-BYTES
-$4000000 constant FILE-CAP
+264 constant HEADER-BYTES
 48 constant RECORD-BYTES
-1 constant FORMAT-VERSION
+6 constant FORMAT-VERSION
 1 constant ARCH-ARM64
 
 DYNAMIC-BUFFER FILE-BUF u8
@@ -72,11 +73,11 @@ variable SECTION-OFF
    SECTION-COUNT SECTION-U-RESERVE ;
 
 : SIZE+ ( n n -- n ) {: total:n size:n :}
-   size 0 < size FILE-CAP total - > or if BAD then
+   size 0 < size MEM-MAX-N total - > or if BAD then
    total size + ;
 
 : WRITE-SIZE ( -- n )
-   SECTION-MASK @ 63 <> if BAD then
+   SECTION-MASK @ 8191 <> if BAD then
    HEADER-BYTES
    SECTION-COUNT 0 ?do
       i SECTION-LEN SIZE+
@@ -88,7 +89,7 @@ variable SECTION-OFF
 : WRITE-HEADER ( n ptr u8 n ptr u8 n -- )
    {: arch:n name:ptr nameu:n key:ptr keyu:n :}
    HEADER-BYTES 0 ?do 0 i FILE-BUF c! loop
-   s" HBNUNIT1" drop 0 FILE-BUF MAGIC-BYTES BYTE-COPY
+   s" HBNUNIT2" drop 0 FILE-BUF MAGIC-BYTES BYTE-COPY
    FORMAT-VERSION 8 FIELD!
    arch 16 FIELD!
    nameu 24 FIELD!
@@ -109,7 +110,7 @@ variable SECTION-OFF
 : READ-HEADER ( n ptr u8 n ptr u8 n n -- )
    {: arch:n name:ptr nameu:n key:ptr keyu:n size:n :}
    size HEADER-BYTES < if BAD then
-   0 FILE-BUF MAGIC-BYTES s" HBNUNIT1" STR= 0= if BAD then
+   0 FILE-BUF MAGIC-BYTES s" HBNUNIT2" STR= 0= if BAD then
    8 FIELD@ FORMAT-VERSION <> if BAD then
    16 FIELD@ arch <> if BAD then
    24 FIELD@ nameu <> if BAD then
@@ -142,28 +143,44 @@ ARCH-ARM64 constant ARCH-AARCH64
 
 : SECTION! ( n ptr u8 n -- ) {: slot:n bytes:ptr size:n :}
    slot SLOT-CK drop
-   size 0 < size FILE-CAP > or if BAD then
+   size 0 < if BAD then
    bytes slot SECTION-PTR!
    size slot SECTION-LEN!
    SECTION-MASK @ 1 slot lshift or SECTION-MASK ! ;
 
-: WRITE ( ptr u8 n n ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu:n arch:n name:ptr nameu:n key:ptr keyu:n :}
+: PACK ( n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: arch:n name:ptr nameu:n key:ptr keyu:n :}
    arch name nameu key keyu META-CK
    WRITE-SIZE {: size:n :}
    CHECK-RECORD-SIZE
    size FILE-BUF-RESERVE
    arch name nameu key keyu WRITE-HEADER
    WRITE-SECTIONS
-   path pathu 0 FILE-BUF size ATOMIC-WRITE-FILE
+   0 FILE-BUF size ;
+
+: WRITE ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n arch:n name:ptr nameu:n key:ptr keyu:n :}
+   arch name nameu key keyu PACK {: bytes:ptr size:n :}
+   path pathu bytes size ATOMIC-WRITE-FILE
    FILE-BUF-RELEASE ;
+
+: READ-BYTES ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: bytes:ptr size:n arch:n name:ptr nameu:n key:ptr keyu:n :}
+   arch name nameu key keyu META-CK
+   RESET
+   size HEADER-BYTES < if BAD then
+   size FILE-BUF-RESERVE
+   bytes 0 FILE-BUF size BYTE-COPY
+   arch name nameu key keyu size READ-HEADER
+   size READ-SECTIONS
+   1 READY ! ;
 
 : READ ( ptr u8 n n ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n arch:n name:ptr nameu:n key:ptr keyu:n :}
    arch name nameu key keyu META-CK
    RESET
    path pathu FILE-SIZE {: size:n :}
-   size HEADER-BYTES < size FILE-CAP > or if BAD then
+   size HEADER-BYTES < if BAD then
    size FILE-BUF-RESERVE
    path pathu 0 FILE-BUF size READ-ALL size <> if BAD then
    arch name nameu key keyu size READ-HEADER

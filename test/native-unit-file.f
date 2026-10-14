@@ -8,13 +8,18 @@
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/memory.f
 require tools/native-unit-file.f
+require tools/native-file-object.f
 
 package NUNIT-FILE-TEST
 
 create ROOT FS-PATH-CAP allot variable ROOT-U
 create PATH FS-PATH-CAP allot variable PATH-U
+create OUTER FS-PATH-CAP allot variable OUTER-U
+create LONG-SOURCE FS-PATH-CAP allot variable LONG-SOURCE-U
 create ROW 48 allot
+create SCOPE 22 cells allot
 create GOOD 512 allot
 create RAW 512 allot variable RAW-U
 
@@ -22,11 +27,16 @@ create RAW 512 allot variable RAW-U
    s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" ;
 
 : ART$ ( -- ptr u8 n ) PATH PATH-U @ ;
+: OUTER$ ( -- ptr u8 n ) OUTER OUTER-U @ ;
+: LONG-SOURCE$ ( -- ptr u8 n ) LONG-SOURCE LONG-SOURCE-U @ ;
 
 : SETUP ( -- )
    s" native-unit-file" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT ROOT-U @ s" nbr.unit" PATH JOIN-PATH PATH-U !
+   ROOT ROOT-U @ s" enclosing.file" OUTER JOIN-PATH OUTER-U !
+   ROOT ROOT-U @ s" abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnop.f"
+      LONG-SOURCE JOIN-PATH LONG-SOURCE-U !
    48 0 ?do i ROW i + c! loop ;
 
 : SECTIONS ( -- )
@@ -36,7 +46,14 @@ create RAW 512 allot variable RAW-U
    2 s" calls" NUNIT-FILE:SECTION!
    3 s" addr" NUNIT-FILE:SECTION!
    4 s" protection" NUNIT-FILE:SECTION!
-   5 s" checker" NUNIT-FILE:SECTION! ;
+   5 s" checker" NUNIT-FILE:SECTION!
+   6 s" data" NUNIT-FILE:SECTION!
+   7 s" updates" NUNIT-FILE:SECTION!
+   8 s" provides" NUNIT-FILE:SECTION!
+   9 s" slots" NUNIT-FILE:SECTION!
+   10 s" literals" NUNIT-FILE:SECTION!
+   11 s" inputs" NUNIT-FILE:SECTION!
+   12 s" retired" NUNIT-FILE:SECTION! ;
 
 : WRITE-GOOD ( -- )
    SECTIONS
@@ -54,6 +71,13 @@ create RAW 512 allot variable RAW-U
    3 NUNIT-FILE:SECTION$ s" addr" T$=
    4 NUNIT-FILE:SECTION$ s" protection" T$=
    5 NUNIT-FILE:SECTION$ s" checker" T$=
+   6 NUNIT-FILE:SECTION$ s" data" T$=
+   7 NUNIT-FILE:SECTION$ s" updates" T$=
+   8 NUNIT-FILE:SECTION$ s" provides" T$=
+   9 NUNIT-FILE:SECTION$ s" slots" T$=
+   10 NUNIT-FILE:SECTION$ s" literals" T$=
+   11 NUNIT-FILE:SECTION$ s" inputs" T$=
+   12 NUNIT-FILE:SECTION$ s" retired" T$=
    NUNIT-FILE:CLOSE
    ART$ RAW 512 READ-ALL RAW-U !
    RAW GOOD RAW-U @ BYTE-COPY ;
@@ -86,18 +110,74 @@ create RAW 512 allot variable RAW-U
    NUNIT-FILE:RESET
    0 s" code1234" NUNIT-FILE:SECTION!
    1 ROW 48 NUNIT-FILE:SECTION!
-   2 s" " NUNIT-FILE:SECTION!
-   3 s" " NUNIT-FILE:SECTION!
-   4 s" " NUNIT-FILE:SECTION!
-   5 s" " NUNIT-FILE:SECTION!
+   13 2 ?do i s" " NUNIT-FILE:SECTION! loop
    ART$ NUNIT-FILE:ARCH-AARCH64 s" NBR" KEY$ NUNIT-FILE:WRITE
    READ-GOOD
    0 NUNIT-FILE:SECTION$ s" code1234" T$=
-   2 NUNIT-FILE:SECTION$ nip 0 T=
-   3 NUNIT-FILE:SECTION$ nip 0 T=
-   4 NUNIT-FILE:SECTION$ nip 0 T=
-   5 NUNIT-FILE:SECTION$ nip 0 T=
+   13 2 ?do i NUNIT-FILE:SECTION$ nip 0 T= loop
    NUNIT-FILE:CLOSE ;
+
+: CHECK-LONG-INPUT ( -- )
+   s" a real source file and canonical query beyond 64 path bytes survive input replay" T-LABEL
+   LONG-SOURCE$ nip 64 > TTRUE
+   LONG-SOURCE$ s" : LONG-SOURCE ( -- n ) 42 ;" WRITE-ALL
+   NFILE-INPUTS:RESET
+   LONG-SOURCE$ s" " NFILE-INPUTS:ADD
+   LONG-SOURCE$ LONG-SOURCE$ SOURCE-ROOT:CANON-OS NFILE-INPUTS:ADD-CANON
+   NFILE-INPUTS:BYTES$ NFILE-INPUTS:CHECK
+   NFILE-INPUTS:CLOSE ;
+
+: CHECK-LARGE ( -- )
+   s" unit and enclosing FILE objects beyond 64 MiB survive roundtrip" T-LABEL
+   $4000001 MEM-ALLOC-BYTES {: body:ptr size:n :}
+   17 body c! 29 body size 1- + c!
+   SECTIONS
+   6 body size NUNIT-FILE:SECTION!
+   NUNIT-FILE:ARCH-AARCH64 s" FILE" KEY$ NUNIT-FILE:PACK
+      {: unit:ptr unitu:n :}
+   s" unit.f" s" root" KEY$ 1 NFILE-OBJECT:START {: h:n :}
+   h 1 0 unit unitu KEY$ drop SCOPE 0 5 7 6 0 9 0 0 0 0 0 4 5 6 12 10 0 0
+      NFILE-OBJECT:ADD-RANGE
+   NFILE-INPUTS:RESET
+   s" test/native-unit-file.f" s" " NFILE-INPUTS:ADD
+   h OUTER$ NFILE-INPUTS:BYTES$ NFILE-OBJECT:WRITE
+   NFILE-INPUTS:CLOSE
+   NFILE-OBJECT:CLOSE
+   ART$ NUNIT-FILE:ARCH-AARCH64 s" NBR" KEY$ NUNIT-FILE:WRITE
+   READ-GOOD
+   6 NUNIT-FILE:SECTION$ {: got:ptr gotu:n :}
+   gotu size T=
+   got c@ 17 T=
+   got size 1- + c@ 29 T=
+   NUNIT-FILE:CLOSE
+   OUTER$ FILE-SIZE $4000000 > TTRUE
+   OUTER$ s" unit.f" s" root" KEY$ 1 NFILE-OBJECT:TRY-OPEN
+      {: opened:n fresh:bool :}
+   fresh TTRUE
+   opened NFILE-OBJECT:NEXT {: kind:n end:n mode:n bytes:ptr u:n more:bool :}
+   more TTRUE
+   kind NFILE-OBJECT:RANGE-KIND T=
+   end 1 T= mode 0 T=
+   bytes u NFILE-OBJECT:SPLIT-RANGE
+      {: saved:ptr savedu:n signature:ptr scope:ptr
+         session:n module:n gen:n epoch:n before:n lease:n openlease:n
+         openepoch:n beforemodule:n openmodulebefore:n openmoduleafter:n
+         beforegen:n beforeepoch:n beforelease:n
+         build:n beforebuild:n openbuildbefore:n openbuildafter:n :}
+   savedu unitu T=
+   signature 32 KEY$ drop 32 T$=
+   scope CELL-VIEW @ 0 T=
+   session 0 T= module 5 T= gen 7 T= epoch 6 T=
+   before 0 T= lease 9 T= openlease 0 T=
+   openepoch 0 T= beforemodule 0 T=
+   openmodulebefore 0 T= openmoduleafter 0 T=
+   beforegen 4 T= beforeepoch 5 T= beforelease 6 T=
+   build 12 T= beforebuild 10 T= openbuildbefore 0 T= openbuildafter 0 T=
+   u unitu > TTRUE
+   saved 8 s" HBNUNIT2" T$=
+   opened NFILE-OBJECT:NEXT 2drop 2drop 2drop
+   NFILE-OBJECT:CLOSE
+   body size munmap 0 T= ;
 
 \ A name of u bytes, all `L`.
 create LONG 65 allot
@@ -126,11 +206,13 @@ public
 : RUN ( -- )
    T-RESET
    SETUP
-   s" NBR artifact returns six owned section slices" T-LABEL
+   s" Native object returns thirteen owned section slices" T-LABEL
    CHECK-ROUNDTRIP
    CHECK-CORRUPT
    CHECK-NAME-FIELD
    CHECK-EMPTY-TAIL
+   CHECK-LONG-INPUT
+   CHECK-LARGE
    T-REPORT
    s" native unit artifact: " type ART$ type cr ;
 

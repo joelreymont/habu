@@ -153,6 +153,20 @@ public
    row 0 < row count >= or if REFUSE then
    base row cells + @ ;
 
+\ Match the registrar's declaration rule without adding a live row. Prepared
+\ FILE slots also compare their own earlier declarations before publication.
+: COMPATIBLE? ( n -- bool ) {: raw:n :}
+   raw SNAP-RELOC:XTCELL-OFF-MASK and {: off:n :}
+   off SNAP-RELOC:XTCELL-OFF-MAX > if false exit then
+   LIVE-SPAN {: rows:ptr count:n :}
+   count 0 ?do
+      rows i cells + @ {: prior:n :}
+      prior SNAP-RELOC:XTCELL-OFF-MASK and off = if
+         prior raw = unloop exit
+      then
+   loop
+   true ;
+
 private
 
 : KEEP-ROWS ( n -- ) {: floor:n :}

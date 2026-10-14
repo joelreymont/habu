@@ -48,10 +48,10 @@ ENUM cmpkind DERIVE eq
 private
 
 \ Each pass retains its own dimensions while later passes read its results.
-variable SCRATCH-VALUES
-variable SCRATCH-BLOCKS
-variable SCRATCH-FUNS
-variable SCRATCH-OPS
+0 CWORK-VARIABLE SCRATCH-VALUES n
+0 CWORK-VARIABLE SCRATCH-BLOCKS n
+0 CWORK-VARIABLE SCRATCH-FUNS n
+0 CWORK-VARIABLE SCRATCH-OPS n
 : VMAX ( -- n ) SCRATCH-VALUES @ ;
 : BMAX ( -- n ) SCRATCH-BLOCKS @ ;
 : FMAX ( -- n ) SCRATCH-FUNS @ ;
@@ -97,45 +97,45 @@ HIR-OPCODE:XOR      HIR:ORD constant O-XOR
 1 constant BOUND-YES
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable BND-MODE
+0 CWORK-VARIABLE BND-MODE n
 BOUND-NO BND-MODE !
 
-1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
+1 CWORK-BUFFER BND-MOD IR-ID:ir-module-id
 HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-VAL IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-ADDR IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-FUN IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-IN IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-OUT IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-KIND IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
-1 TYPED-BUFFER BND-REAL IR-ID:ir-type-id
+1 CWORK-BUFFER BND-VAL IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-ADDR IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-FUN IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-ENTRY IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-IN IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-OUT IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-KIND IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-MEM IR-ID:ir-type-id
+1 CWORK-BUFFER BND-REAL IR-ID:ir-type-id
 
-1 TYPED-BUFFER S-CTX IR-CTX:ctx
-1 TYPED-BUFFER S-BLD IR-BUILD:builder
-1 TYPED-BUFFER S-SID IR-ID:ir-source-id
-1 TYPED-BUFFER S-ACC IR-ID:ir-value-id
-1 TYPED-BUFFER S-TOK IR-ID:ir-value-id
-1 TYPED-BUFFER S-ARGS NEFF:placeseq
-1 TYPED-BUFFER S-OUTS NEFF:placeseq
-1 TYPED-BUFFER S-TRT NEFF:traits
-1 TYPED-BUFFER S-POOL NEFF:gprs
-1 TYPED-BUFFER S-FPOOL NEFF:fprs
-1 TYPED-BUFFER S-FTOK IR-ID:ir-value-id
-1 TYPED-BUFFER S-FUN IR-ID:ir-fun-id
-1 TYPED-BUFFER S-BLK IR-ID:ir-block-id
-variable S-FRAME                     \ the frame the contract declares, in bytes
-variable S-DECL-IN                   \ how many values the contract declares the emission takes
-variable S-DECL-OUT                  \ and how many it declares it leaves
-variable N-CALLS                     \ calls this selection built
-variable N-TAILS                     \ tail branches this selection built
-variable TAIL-SITE                   \ the operation this function leaves through, or -1
-variable N-TRAPS                     \ trap branches this selection built
-variable S-TAIL                      \ whether the contract says control leaves through a callee
-variable S-DSTACK                    \ whether the contract declares the data-stack convention
-variable S-LSAVE                     \ whether the contract's prologue keeps the caller's return address
-variable FUSE-AT                     \ where in this block the fused comparison is, or -1
+1 CWORK-BUFFER S-CTX IR-CTX:ctx
+1 CWORK-BUFFER S-BLD IR-BUILD:builder
+1 CWORK-BUFFER S-SID IR-ID:ir-source-id
+1 CWORK-BUFFER S-ACC IR-ID:ir-value-id
+1 CWORK-BUFFER S-TOK IR-ID:ir-value-id
+1 CWORK-BUFFER S-ARGS NEFF:placeseq
+1 CWORK-BUFFER S-OUTS NEFF:placeseq
+1 CWORK-BUFFER S-TRT NEFF:traits
+1 CWORK-BUFFER S-POOL NEFF:gprs
+1 CWORK-BUFFER S-FPOOL NEFF:fprs
+1 CWORK-BUFFER S-FTOK IR-ID:ir-value-id
+1 CWORK-BUFFER S-FUN IR-ID:ir-fun-id
+1 CWORK-BUFFER S-BLK IR-ID:ir-block-id
+0 CWORK-VARIABLE S-FRAME n                     \ the frame the contract declares, in bytes
+0 CWORK-VARIABLE S-DECL-IN n                   \ how many values the contract declares the emission takes
+0 CWORK-VARIABLE S-DECL-OUT n                  \ and how many it declares it leaves
+0 CWORK-VARIABLE N-CALLS n                     \ calls this selection built
+0 CWORK-VARIABLE N-TAILS n                     \ tail branches this selection built
+0 CWORK-VARIABLE TAIL-SITE n                   \ the operation this function leaves through, or -1
+0 CWORK-VARIABLE N-TRAPS n                     \ trap branches this selection built
+0 CWORK-VARIABLE S-TAIL n                      \ whether the contract says control leaves through a callee
+0 CWORK-VARIABLE S-DSTACK n                    \ whether the contract declares the data-stack convention
+0 CWORK-VARIABLE S-LSAVE n                     \ whether the contract's prologue keeps the caller's return address
+0 CWORK-VARIABLE FUSE-AT n                     \ where in this block the fused comparison is, or -1
 
 \ One cell per operation of the block being selected: which operation of it, if
 \ any, this one folds in, and whether this one is folded into a later one and so
@@ -186,28 +186,28 @@ DYNAMIC-BUFFER R-QP-BUF n
 : R-QP ( -- ptr n ) 0 R-QP-BUF ;
 DYNAMIC-BUFFER R-LIST-BUF n
 : R-LIST ( -- ptr n ) 0 R-LIST-BUF ;
-variable R-QN
-variable R-QI
-variable R-LIST-N
-variable R-CARRY                     \ values the try's arms still hold where its selects are made
-variable R-CARRY-D                   \ how many of them are doubles
-variable R-LOCAL                     \ and the widest arm's own locals, one arm's worth at a time
-variable R-LOCAL-D                   \ how many of those are doubles
-variable R-BLOCAL                    \ the same pair for the one arm being counted
-variable R-BLOCAL-D
-variable R-JOIN                      \ the exit the current try has found, or -1
-variable R-WIDTH                     \ how many values the region hands its exit
-variable R-WIDTH-D                   \ how many of those values are doubles
-variable R-EXIT-BK                   \ the exit of the region being emitted
-variable R-NEXT                      \ the next machine block ordinal to hand out
-variable R-S0                        \ the successors of the branch being selected
-variable R-S1
-variable R-BASE                      \ where this function's blocks start in the module
-variable R-NEWBASE                   \ and where they start in the module being built
-variable V-BASE                      \ first value owned by the function being selected
-variable V-LIMIT                     \ one past its last value
+0 CWORK-VARIABLE R-QN n
+0 CWORK-VARIABLE R-QI n
+0 CWORK-VARIABLE R-LIST-N n
+0 CWORK-VARIABLE R-CARRY n                     \ values the try's arms still hold where its selects are made
+0 CWORK-VARIABLE R-CARRY-D n                   \ how many of them are doubles
+0 CWORK-VARIABLE R-LOCAL n                     \ and the widest arm's own locals, one arm's worth at a time
+0 CWORK-VARIABLE R-LOCAL-D n                   \ how many of those are doubles
+0 CWORK-VARIABLE R-BLOCAL n                    \ the same pair for the one arm being counted
+0 CWORK-VARIABLE R-BLOCAL-D n
+0 CWORK-VARIABLE R-JOIN n                      \ the exit the current try has found, or -1
+0 CWORK-VARIABLE R-WIDTH n                     \ how many values the region hands its exit
+0 CWORK-VARIABLE R-WIDTH-D n                   \ how many of those values are doubles
+0 CWORK-VARIABLE R-EXIT-BK n                   \ the exit of the region being emitted
+0 CWORK-VARIABLE R-NEXT n                      \ the next machine block ordinal to hand out
+0 CWORK-VARIABLE R-S0 n                        \ the successors of the branch being selected
+0 CWORK-VARIABLE R-S1 n
+0 CWORK-VARIABLE R-BASE n                      \ where this function's blocks start in the module
+0 CWORK-VARIABLE R-NEWBASE n                   \ and where they start in the module being built
+0 CWORK-VARIABLE V-BASE n                      \ first value owned by the function being selected
+0 CWORK-VARIABLE V-LIMIT n                     \ one past its last value
 DYNAMIC-BUFFER RSEL IR-ID:ir-value-id
-1 TYPED-BUFFER R-JB IR-ID:ir-block-id
+1 CWORK-BUFFER R-JB IR-ID:ir-block-id
 
 \ ---- what the data-stack residency pass answers ------------------------------
 \ A slot of the caller's data stack holds a value of the source module, and this
@@ -222,12 +222,12 @@ DYNAMIC-BUFFER D-IN-BUF n
 : D-IN ( -- ptr n ) 0 D-IN-BUF ;
 DYNAMIC-BUFFER D-OUT-BUF n
 : D-OUT ( -- ptr n ) 0 D-OUT-BUF ;
-create D-CUR DSLOT-MAX cells allot                 \ the running answer inside one block
+DSLOT-MAX CWORK-SPAN D-CUR n                 \ the running answer inside one block
 DYNAMIC-BUFFER D-NEED-BUF n
 : D-NEED ( -- ptr n ) 0 D-NEED-BUF ;
 DYNAMIC-BUFFER D-ORDER-SET-BUF n
 : D-ORDER-SET ( -- ptr n ) 0 D-ORDER-SET-BUF ;
-variable D-MOVED                                   \ a fixpoint round changed something
+0 CWORK-VARIABLE D-MOVED n                                   \ a fixpoint round changed something
 DYNAMIC-BUFFER D-ORDER IR-ID:ir-value-id
 
 : RESERVE-SCRATCH ( -- )
@@ -270,12 +270,12 @@ DYNAMIC-BUFFER D-ORDER IR-ID:ir-value-id
 256 constant DREQ-MAX                \ places one routine's survey holds
 
 here CELL 1- and CELL swap - CELL 1- and allot
-create D-REQ DREQ-MAX cells allot                  \ the places, with repeats
-variable D-REQ-N
-variable D-REQ-OVER                                \ the survey ran past its size
-variable D-POS                                     \ where the body's pointer stands
-variable D-COST                                    \ what standing there costs
-variable D-RETS                                    \ returns seen while surveying
+DREQ-MAX CWORK-SPAN D-REQ n                  \ the places, with repeats
+0 CWORK-VARIABLE D-REQ-N n
+0 CWORK-VARIABLE D-REQ-OVER n                                \ the survey ran past its size
+0 CWORK-VARIABLE D-POS n                                     \ where the body's pointer stands
+0 CWORK-VARIABLE D-COST n                                    \ what standing there costs
+0 CWORK-VARIABLE D-RETS n                                    \ returns seen while surveying
 
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
@@ -998,13 +998,12 @@ variable D-RETS                                    \ returns seen while surveyin
 -1 constant RLIT-SHUT                \ the count when no region is being emitted
 
 here CELL 1- and CELL swap - CELL 1- and allot
-create RLIT-SLOT RLIT-MAX cells allot   \ which member of the source family
-create RLIT-VAL RLIT-MAX cells allot    \ the number it carried
-create RLIT-KIND RLIT-MAX cells allot   \ and what that number IS
-RLIT-MAX TYPED-BUFFER RLIT-ID IR-ID:ir-value-id
-variable RLIT-N
+RLIT-MAX CWORK-SPAN RLIT-SLOT n   \ which member of the source family
+RLIT-MAX CWORK-SPAN RLIT-VAL n    \ the number it carried
+RLIT-MAX CWORK-SPAN RLIT-KIND n   \ and what that number IS
+RLIT-MAX CWORK-BUFFER RLIT-ID IR-ID:ir-value-id
+RLIT-SHUT CWORK-VARIABLE RLIT-N n
 
-RLIT-SHUT RLIT-N !
 
 : RLIT-OPEN ( -- )
    0 RLIT-N ! ;
@@ -1598,7 +1597,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 \ all sources before those destination copies: a backedge can permute live
 \ header values, and writing one destination must not destroy a later source.
 64 constant EDGE-MAX
-EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
+EDGE-MAX CWORK-BUFFER EDGE-V IR-ID:ir-value-id
 
 \ The copy is made in the FILE the value lives in.
 : EMIT-COPY ( IR-ID:ir-op-id IR-ID:ir-value-id bool -- IR-ID:ir-value-id )
@@ -2828,7 +2827,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 
 \ ---- the meet, and the translation that makes it exact -----------------------
 here CELL 1- and CELL swap - CELL 1- and allot
-create D-MEET DSLOT-MAX cells allot
+DSLOT-MAX CWORK-SPAN D-MEET n
 
 : DMEET1 ( n n -- n )
    {: a:n b:n :}
@@ -3572,10 +3571,6 @@ public
    CALLED-CK
    TAILED-CK
    c b IR-BUILD:FREEZE ;
-
-public
-: RESET-SCRATCH ( -- )
-   0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
 get-current prot-wid-add

@@ -1,0 +1,309 @@
+\ hb-build-repl-fresh-test.f - real CLI and library builds reuse a fresh REPL
+\ image and rebuild after an actually loaded, dynamic child changes.
+\ Run: bin/hb --load tools/hb-build-repl-fresh-test.f
+
+require tools/hb-build-test-lib.f
+require test/app-image-engine.f
+require src/lib/process-cwd.f
+
+package HB-BUILD-CLI
+
+variable HBT-FRESH-DEP-U
+variable HBT-FRESH-ALT-U
+variable HBT-FRESH-OTHER-U
+variable HBT-FRESH-SHADOW-DIR-U
+variable HBT-FRESH-SHADOW-FILE-U
+create HBT-FRESH-DEP-BUF FS-PATH-CAP allot
+create HBT-FRESH-ALT-BUF FS-PATH-CAP allot
+create HBT-FRESH-OTHER-BUF FS-PATH-CAP allot
+create HBT-FRESH-SHADOW-DIR-BUF FS-PATH-CAP allot
+create HBT-FRESH-SHADOW-FILE-BUF FS-PATH-CAP allot
+create HBT-FRESH-SUPPORT-HEADER HBB-REPL-SUPPORT-HEADER-U allot
+variable HBT-FRESH-SIZE
+variable HBT-FRESH-SEC
+variable HBT-FRESH-NS
+variable HBT-FRESH-CUT
+variable HBT-FRESH-HB-U
+variable HBT-FRESH-TOOL-U
+variable HBT-FRESH-PROD-U
+create HBT-FRESH-HB-BUF FS-PATH-CAP allot
+create HBT-FRESH-TOOL-BUF FS-PATH-CAP allot
+create HBT-FRESH-PROD-BUF FS-PATH-CAP allot
+
+: HBT-FRESH-DEP ( -- ptr u8 n )
+   HBT-FRESH-DEP-BUF HBT-FRESH-DEP-U @ ;
+
+: HBT-FRESH-ALT ( -- ptr u8 n )
+   HBT-FRESH-ALT-BUF HBT-FRESH-ALT-U @ ;
+
+: HBT-FRESH-OTHER ( -- ptr u8 n )
+   HBT-FRESH-OTHER-BUF HBT-FRESH-OTHER-U @ ;
+
+: HBT-FRESH-SHADOW-DIR ( -- ptr u8 n )
+   HBT-FRESH-SHADOW-DIR-BUF HBT-FRESH-SHADOW-DIR-U @ ;
+
+: HBT-FRESH-SHADOW-FILE ( -- ptr u8 n )
+   HBT-FRESH-SHADOW-FILE-BUF HBT-FRESH-SHADOW-FILE-U @ ;
+
+: HBT-FRESH-HB ( -- ptr u8 n ) HBT-FRESH-HB-BUF HBT-FRESH-HB-U @ ;
+: HBT-FRESH-TOOL ( -- ptr u8 n ) HBT-FRESH-TOOL-BUF HBT-FRESH-TOOL-U @ ;
+: HBT-FRESH-PROD ( -- ptr u8 n ) HBT-FRESH-PROD-BUF HBT-FRESH-PROD-U @ ;
+
+: HBT-FRESH-SHADOW-SOURCE$ ( -- ptr u8 n )
+   S\" : CHECK-ARGS ( -- ) SCRIPT-ARGC 2 <> if -9001 throw then ; CHECK-ARGS\n: LOAD-SHADOW ( -- ) s\" tools/hb-build-fresh-shadow.f\" required ;\nLOAD-SHADOW\n: MAIN ( -- ) HBT-FRESH:VALUE . cr ;\n" ;
+
+: HBT-FRESH-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CHECK-ARGS ( -- ) SCRIPT-ARGC 2 <> if -9001 throw then ; CHECK-ARGS"
+      SB-APPEND HBB-LF SB-APPEND-C
+   S\" : LOAD-CHILD ( -- ) s\" " SB-APPEND
+   HBT-FRESH-DEP SB-APPEND
+   S\" \" required ;" SB-APPEND
+   HBB-LF SB-APPEND-C
+   s" LOAD-CHILD" SB-APPEND HBB-LF SB-APPEND-C
+   s" : MAIN ( -- ) HBT-FRESH:VALUE . cr ;" SB-APPEND HBB-LF SB-APPEND-C
+   SB$ ;
+
+: HBT-FRESH-DEP! ( n -- )
+   {: value:n :}
+   SB-RESET
+   s" package HBT-FRESH public : VALUE ( -- n ) " SB-APPEND
+   value FS-MUT-SB-U
+   s"  ; ;package" SB-APPEND HBB-LF SB-APPEND-C
+   HBT-FRESH-DEP SB$ WRITE-ALL ;
+
+: HBT-FRESH-MARK ( -- )
+   HBT-REPL-OUT FILE-META
+   {: size:n sec:n ns:n csec:n cns:n :}
+   csec drop cns drop
+   size HBT-FRESH-SIZE ! sec HBT-FRESH-SEC ! ns HBT-FRESH-NS ! ;
+
+: HBT-FRESH-SAME? ( -- bool )
+   HBT-REPL-OUT FILE-META
+   {: size:n sec:n ns:n csec:n cns:n :}
+   csec drop cns drop
+   size HBT-FRESH-SIZE @ = sec HBT-FRESH-SEC @ = and
+   ns HBT-FRESH-NS @ = and ;
+
+: HBT-FRESH-CLI-SOURCE ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n out:ptr outu:n :}
+   HBT-ARGV-BASE-REPL
+   s" --repl" >LEN PROC-ARGV+
+   src srcu >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   out outu >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: outn:n errn:n rc:n :}
+   rc 0 <> if HBT-OUT outn type HBT-ERR errn type then
+   rc 0 T= errn 0 T=
+   HBT-OUT outn s" hb-build size:" CONTAINS? TFALSE ;
+
+: HBT-FRESH-CLI ( ptr u8 n -- )
+   {: out:ptr outu:n :}
+   HBT-REPL-SRC out outu HBT-FRESH-CLI-SOURCE ;
+
+: HBT-FRESH-SIZE-REPORT ( -- )
+   HBT-ARGV-BASE-REPL
+   s" --repl" >LEN PROC-ARGV+
+   s" --size-report" >LEN PROC-ARGV+
+   HBT-REPL-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-REPL-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: outn:n errn:n rc:n :}
+   rc 0 <> if HBT-OUT outn type HBT-ERR errn type then
+   rc 0 T= errn 0 T=
+   HBT-OUT outn s" hb-build size:" CONTAINS? TTRUE ;
+
+: HBT-FRESH-RUN ( ptr u8 n n -- )
+   {: out:ptr outu:n expected:n :}
+   PROC-ARGV-RESET
+   out outu >LEN
+   HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N
+   {: outn:n errn:n rc:n :}
+   rc 0 T= errn 0 T=
+   SB-RESET expected FS-MUT-SB-U SB$ {: want:ptr wantu:n :}
+   HBT-RUN-OUT outn want wantu CONTAINS? TTRUE ;
+
+: HBT-FRESH-TRUNCATE-SUPPORT ( -- )
+   HBB-REPL-SUPPORT-PATH$ HBB-REPL-INPUTS-READ {: rec:ptr size:n :}
+   rec HBB-REPL-SUPPORT-HEADER-U + {: row:ptr :}
+   HBB-REPL-SUPPORT-HEADER-U 64 +
+      row 8 + LE:U64@ + row 16 + LE:U64@ + {: cut:n :}
+   cut size < TTRUE
+   cut HBT-FRESH-CUT !
+   HBB-REPL-SUPPORT-PATH$ rec cut ATOMIC-WRITE-FILE
+   HBB-REPL-INPUTS-RELEASE ;
+
+: HBT-FRESH-ROOTED-CLI ( -- )
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
+   s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
+   s" HABU_FIXPOINT_ENGINE" >LEN HBT-FRESH-HB >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" --load" >LEN PROC-ARGV+
+   HBT-FRESH-TOOL >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" --repl" >LEN PROC-ARGV+
+   HBT-REPL-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-REPL-OUT >LEN PROC-ARGV+
+   HBT-FRESH-HB >LEN SOURCE-ROOT:CWD$ >LEN
+   HBT-OUT HBT-CAPTURE-CAP >LEN HBT-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE HBT-CAPTURE>N
+      {: outn:n errn:n rc:n :}
+   rc 0<> if HBT-OUT outn type HBT-ERR errn type then
+   rc 0 T= errn 0 T= ;
+
+: HBT-FRESH-PRODUCER-SHADOW ( -- )
+   T-RESET
+   s" " s" " HBT-KEYED!
+   HBT-PREPARE
+   SOURCE-ROOT:ENGINE$ s" bin/hb"
+      HBT-FRESH-HB-BUF JOIN-PATH HBT-FRESH-HB-U !
+   SOURCE-ROOT:ENGINE$ s" tools/hb-build.f"
+      HBT-FRESH-TOOL-BUF JOIN-PATH HBT-FRESH-TOOL-U !
+   SOURCE-ROOT:CWD$ s" tools/app-build.f"
+      HBT-FRESH-PROD-BUF JOIN-PATH HBT-FRESH-PROD-U !
+   HBT-REPL-SRC s" : MAIN ( -- ) 791 . cr ;" WRITE-ALL
+   HBT-FRESH-ROOTED-CLI
+   HBT-REPL-OUT 791 HBT-FRESH-RUN
+   HBT-FRESH-MARK
+   HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
+   HBT-FRESH-HB HBT-ENGINE!
+   HBT-TMP BUILD-CACHE:ROOT!
+   HBB-REPL-ROOT!
+   HBB-REPL-SUPPORT-SELECT
+   HBT-FRESH-TRUNCATE-SUPPORT
+   SOURCE-ROOT:ENGINE$ s" tools/app-build.f"
+      HBT-FRESH-SHADOW-FILE-BUF JOIN-PATH HBT-FRESH-SHADOW-FILE-U !
+   HBT-FRESH-SHADOW-FILE HBT-FRESH-PROD COPY-FILE-STREAM
+   HBT-FRESH-ROOTED-CLI
+   HBT-REPL-OUT 791 HBT-FRESH-RUN
+   HBT-FRESH-SAME? TFALSE
+   HBB-REPL-SUPPORT-PATH$ FILE-SIZE HBT-FRESH-CUT @ > TTRUE
+   CLEANUP-RUN
+   T-REPORT
+   s" hb-build-repl-fresh-shadow: ok" type cr ;
+
+: HBT-FRESH-SHADOW-CHILD ( -- )
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" --load" >LEN PROC-ARGV+
+   SOURCE-ROOT:ENGINE$ s" tools/hb-build-repl-fresh-test.f"
+      HBT-FRESH-TOOL-BUF JOIN-PATH HBT-FRESH-TOOL-U !
+   HBT-FRESH-TOOL >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" producer-shadow" >LEN PROC-ARGV+
+   SOURCE-ROOT:ENGINE$ s" bin/hb"
+      HBT-FRESH-HB-BUF JOIN-PATH HBT-FRESH-HB-U !
+   HBT-FRESH-HB >LEN HBT-ROOT >LEN
+   HBT-OUT HBT-CAPTURE-CAP >LEN HBT-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE HBT-CAPTURE>N
+      {: outn:n errn:n rc:n :}
+   rc 0<> if HBT-OUT outn type HBT-ERR errn type then
+   rc 0 T=
+   HBT-OUT outn s" hb-build-repl-fresh-shadow: ok" CONTAINS? TTRUE ;
+
+\ A source edit must run the real CLI through the selected support image.
+\ Damaged support selection and a missing selected image rebuild normally.
+: HBT-FRESH-SUPPORT ( -- )
+   s" edited MAIN reuses support" T-LABEL
+   HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
+   HBT-TMP BUILD-CACHE:ROOT!
+   HBB-REPL-ROOT!
+   HBB-REPL-SUPPORT-SELECT
+   HBB-REPL-SUPPORT-PATH$ FILE? TTRUE
+   HBT-FRESH-OTHER s" : MAIN ( -- ) 777 . cr ;" WRITE-ALL
+   HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
+   HBT-REPL-OUT 777 HBT-FRESH-RUN
+   s" malformed selection rebuilds support" T-LABEL
+   HBB-REPL-SUPPORT-PATH$ s" bad" ATOMIC-WRITE-FILE
+   HBT-FRESH-OTHER s" : MAIN ( -- ) 778 . cr ;" WRITE-ALL
+   HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
+   HBT-REPL-OUT 778 HBT-FRESH-RUN
+   s" missing selected image rebuilds support" T-LABEL
+   HBB-REPL-SUPPORT-PATH$ FILE-SIZE HBB-REPL-SUPPORT-HEADER-U > TTRUE
+   HBB-REPL-SUPPORT-PATH$ FS-PATHZ open-rd {: fd:n :}
+   fd 0 >= TTRUE
+   fd HBT-FRESH-SUPPORT-HEADER HBB-REPL-SUPPORT-HEADER-U read
+      HBB-REPL-SUPPORT-HEADER-U T=
+   fd close
+   HBT-FRESH-SUPPORT-HEADER 8 + 64 APP-BUILD-IMAGE:CACHED-PATH$
+      {: image:ptr imageu:n found:bool :}
+   found TTRUE
+   image imageu REMOVE-FILE
+   HBT-FRESH-OTHER s" : MAIN ( -- ) 779 . cr ;" WRITE-ALL
+   HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
+   HBT-REPL-OUT 779 HBT-FRESH-RUN
+   s" complete row prefix rebuilds support" T-LABEL
+   HBT-FRESH-TRUNCATE-SUPPORT
+   HBT-FRESH-OTHER s" : MAIN ( -- ) 780 . cr ;" WRITE-ALL
+   HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
+   HBT-REPL-OUT 780 HBT-FRESH-RUN
+   HBB-REPL-SUPPORT-PATH$ FILE-SIZE HBT-FRESH-CUT @ > TTRUE ;
+
+public
+
+: HBT-FRESH-MAIN ( -- )
+   SCRIPT-ARGC 0 > if
+      0 SCRIPT-ARGV$ s" producer-shadow" STR= if
+         HBT-FRESH-PRODUCER-SHADOW exit
+      then
+   then
+   T-RESET
+   s" " APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
+   HBT-PREPARE
+   HBT-ROOT s" child.f" HBT-FRESH-DEP-BUF HBT-FRESH-DEP-U HBT-PATH!
+   HBT-ROOT s" repl-alt" HBT-FRESH-ALT-BUF HBT-FRESH-ALT-U HBT-PATH!
+   HBT-ROOT s" other.f" HBT-FRESH-OTHER-BUF HBT-FRESH-OTHER-U HBT-PATH!
+   HBT-ROOT s" tools" HBT-FRESH-SHADOW-DIR-BUF HBT-FRESH-SHADOW-DIR-U HBT-PATH!
+   HBT-ROOT s" tools/hb-build-fresh-shadow.f"
+      HBT-FRESH-SHADOW-FILE-BUF HBT-FRESH-SHADOW-FILE-U HBT-PATH!
+   111 HBT-FRESH-DEP!
+   HBT-REPL-SRC HBT-FRESH-SOURCE$ WRITE-ALL
+   HBT-REPL-OUT HBT-FRESH-CLI
+   HBT-REPL-OUT 111 HBT-FRESH-RUN
+   HBT-FRESH-MARK
+   \ Another process can date the shared keyed engine while this output is fresh.
+   APP-IMAGE-ENGINE:PATH$ 2drop
+   HBT-REPL-OUT HBT-FRESH-CLI
+   HBT-FRESH-SAME? TTRUE
+   HBT-FRESH-SIZE-REPORT
+   HBT-FRESH-SAME? TTRUE
+   HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
+   HBB-BUILD
+   HBT-FRESH-SAME? TTRUE
+   222 HBT-FRESH-DEP!
+   HBT-REPL-OUT HBT-FRESH-CLI
+   HBT-REPL-OUT 222 HBT-FRESH-RUN
+   HBT-FRESH-ALT HBT-FRESH-CLI
+   HBT-FRESH-ALT 222 HBT-FRESH-RUN
+   HBT-FRESH-OTHER s" : MAIN ( -- ) 333 . cr ;" WRITE-ALL
+   HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
+   HBT-REPL-OUT 333 HBT-FRESH-RUN
+   HBT-REPL-SRC HBT-FRESH-SHADOW-SOURCE$ WRITE-ALL
+   HBT-REPL-OUT HBT-FRESH-CLI
+   HBT-REPL-OUT 444 HBT-FRESH-RUN
+   HBT-FRESH-MARK
+   HBT-REPL-OUT HBT-FRESH-CLI
+   HBT-FRESH-SAME? TTRUE
+   HBT-FRESH-SHADOW-DIR MAKE-DIR
+   HBT-FRESH-SHADOW-FILE
+      s" package HBT-FRESH public : VALUE ( -- n ) 555 ; ;package" WRITE-ALL
+   HBT-REPL-OUT HBT-FRESH-CLI
+   HBT-REPL-OUT 555 HBT-FRESH-RUN
+   HBT-REPL-OUT REMOVE-FILE
+   HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
+   HBT-REPL-OUT 333 HBT-FRESH-RUN
+   HBT-FRESH-SUPPORT
+   HBT-FRESH-SHADOW-CHILD
+   CLEANUP-RUN
+   HBT-ROOT EXISTS? TFALSE
+   T-REPORT
+   s" hb-build-repl-fresh-test: ok" type cr ;
+
+;package
+
+HB-BUILD-CLI:HBT-FRESH-MAIN

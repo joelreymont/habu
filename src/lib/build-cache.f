@@ -10,8 +10,7 @@
 \ digits covering what the entry was made from: hb-build its artifacts,
 \ hb-build-out-<key> (tools/hb-build-lib.f), and its object cache, <key>.hbo and
 \ <key>.idx (src/lib/object-resolve.f); the gate its keyed images (test/keyed-image.f,
-\ test/cold-engine.f, test/whitebox-engine.f) and its NBR package unit
-\ (test/native-unit-image.f). A key moves with every edit to what it covers, so
+\ test/cold-engine.f, test/whitebox-engine.f). A key moves with every edit to what it covers, so
 \ each publish lands beside the entries it replaces, and nothing but PRUNE
 \ removes one.
 \

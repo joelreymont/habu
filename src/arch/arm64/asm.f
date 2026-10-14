@@ -124,7 +124,6 @@ variable ARM-BASE
 variable ARM-RD
 variable ARM-RN
 variable ARM-RM
-variable ARM-RA
 variable ARM-IMM
 variable ARM-SH
 variable ARM-X
@@ -147,9 +146,9 @@ variable ARM-Z
 
 \ rd rn rm ra; the addend's own five-bit field sits at bit ten.
 : RRRA ( n n n n n -- n )
-   ARM-BASE ! ARM-RA ! ARM-R3!
-   ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or
-   ARM-RM @ 16 lshift or  ARM-RA @ 10 lshift or MSK ;
+   {: rd:n rn:n rm:n ra:n op:n :}
+   op rd or  rn 5 lshift or
+   rm 16 lshift or  ra 10 lshift or MSK ;
 
 : RRI ( n n n n -- n )
    {: rd:n rn:n imm:n op:n :}

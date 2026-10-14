@@ -222,6 +222,11 @@ require nf.fs
    s\" hb: source ended inside definition\n74\nhb: source ended inside definition\n74\n2\n2\n1\n" NF= 0=
       abort" recovery source kept its unfinished definition" ;
 
+: BES-RANGE ( -- )
+   \ The loader gives the full source and offsets; only the selected span runs.
+   s\" s\" 1 . 2 . 3 .\" 4 7 INCLUDE-EVALUATE-RANGE" BES-OK
+   s\" 2\n" NF= 0= abort" recovery evaluated outside the selected source span" ;
+
 : BES-CAT ( a u b v -- c w ) {: a u b v :}
    u v + allocate throw {: c :}
    a c u move b c u + v move c u v + ;
@@ -252,6 +257,6 @@ require nf.fs
    NFOUT 2@ 26 /string s\" 0000000000000011\n" compare 0<>
       abort" recovery breakpoint lost its actual top cell" ;
 
-BES-ABI BES-MARKS BES-DATA BES-RETURN BES-LOOP BES-LIFECYCLE BES-CLOSED BES-DEBUGGER
+BES-ABI BES-MARKS BES-DATA BES-RETURN BES-LOOP BES-LIFECYCLE BES-CLOSED BES-RANGE BES-DEBUGGER
 .( bootstrap-engine-stack: ok ) cr
 bye

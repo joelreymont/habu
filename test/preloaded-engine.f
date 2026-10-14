@@ -15,6 +15,8 @@
 \ them. Production hb-build keeps compiling the linker per build
 \ (tools/hb-build-lib.f): a prebuilt linker links only the subjects rule 3
 \ admits, and its maker refuses the rest by name.
+\ Ordinary raw maker children use test/aot-maker-engine.f instead: its saved
+\ support opens the application window before loading this linker.
 \
 \ RULES FOR A ROW THAT RUNS IT, beside test/app-image-engine.f's.
 \ 1. Take the path before staging the child's argv or env: a build stages its

@@ -33,7 +33,7 @@ private
       $FFFFFFFF PACK-V@ drop
       $FFFFFFFF PACK-V@ {: name:n :}
       PACK-CUR @ {: at:n :}
-      $3FFF PACK-V@ {: meta:n :}
+      $FFFF PACK-V@ {: meta:n :}
       NAMES0 @ name + U8@ DNAME-INL > meta 2 and 0<> and if
          at unloop exit
       then
@@ -50,7 +50,7 @@ private
       $FFFFFFFF PACK-V@ drop
       PACK-CUR @ {: at:n :}
       $FFFFFFFF PACK-V@ {: name:n :}
-      $3FFF PACK-V@ drop
+      $FFFF PACK-V@ drop
       NAMES0 @ name + U8@ 0 > name 127 and 127 < and if
          at unloop exit
       then

@@ -101,13 +101,15 @@ tools/native-build.f and checks image shape and the final byte fixpoint.
 Run it for changes to code generation, self-hosting or capture that can
 affect successive output:
 
-    HB_TMP=$PWD/build/tmp bin/hb --load tools/two-generation-build.f -- <seed-engine>
+    HB_TMP=$TMP bin/hb --load tools/two-generation-build.f -- <seed-engine>
 
-With no argument the checkout's bin/hb supplies generation zero. The tool
-prints its private output directory and leaves the installed engine alone.
+Use an external scratch directory for `$TMP`, as described in
+[gate.md](gate.md). With no argument the checkout's bin/hb supplies generation
+zero. The tool prints its private output directory and leaves the installed
+engine alone.
 Its same-host mode builds twice with one host to check repeatability:
 
-    HB_TMP=$PWD/build/tmp bin/hb --load tools/two-generation-build.f -- --same-host <seed-engine>
+    HB_TMP=$TMP bin/hb --load tools/two-generation-build.f -- --same-host <seed-engine>
 
 A codegen change can first appear in generation two because generation one
 was compiled by the old host. Other source changes usually reach generation
@@ -123,9 +125,9 @@ writer described below.
 
 A cold source build binds the writer to the fresh target layout before it
 captures pre-trust declarations. A 64-entry donor can therefore build a target
-with 128 pending slots and pass `test/pre-trust-defer.f`. A saved builder or
-direct donor writer retains the donor's layout and cannot stage that transition;
-use the cold source writer for a reserved-layout change.
+with 128 pending slots and pass `test/pre-trust-defer.f`. A direct donor
+writer retains the donor's layout and cannot stage that transition; use the
+cold source writer for a reserved-layout change.
 
 A **reserved-layout change** is anything that moves a band below `DATA-START`:
 raising `SNAP-RELOC:XTCELL-CAP`, appending a band, widening the protected-WID
@@ -217,8 +219,13 @@ root is refused by name, exit 74:
 The separate stage-2 recovery/development refresh is:
 
 ```sh
-bin/hb --load tools/build-fixpoint-refresh.f -- install
+bin/hb --load tools/build-fixpoint-refresh.f -- install --force
 ```
+
+This recovery/development refresh is the positive stage-2 fixpoint check:
+`BF-STAGE-FIXPOINT-FROM-SOURCE` compares successive native stages before the
+candidate is promoted. The native suite's `build-fixpoint-fixtures` row uses
+its already built compiler images for install, rollback, CLI and stamp checks.
 
 A retained AOT host resolves named calls against its cold prefix before reading
 tool input. Removing a prefix provider can make that host exit 82 with

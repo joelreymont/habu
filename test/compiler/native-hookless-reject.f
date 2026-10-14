@@ -380,12 +380,13 @@ create TEXT CAP allot                  variable TEXT-U
    IMAGE$ FILE? 0= TTRUE ;
 
 : WINDOW-TRUSTED ( -- )
-   s" an explicit trusted pre-hook definition remains buildable" T-LABEL
-   S\" TRUSTED: PROBE-NZ ( n -- n ) 0= ;\n"
+   s" a trusted pre-hook definition compiles and supplies a caller's row" T-LABEL
+   S\" TRUSTED: PROBE-NZ ( n -- n ) 0= ;\n: PROBE-USE ( n -- n ) PROBE-NZ ;\n: PROBE-STOP ( n -- n ) 0= ;\n"
       s" tools/native-build.f" BUILD-PROBE
-   RC @ 0 T=
-   s" native-build OK" PRINTS
-   IMAGE$ FILE? TTRUE ;
+   RC @ RC-BUILD T=
+   s" habu: in probe-stop: at '0='" SAYS
+   s" native-build: uncaught throw code 70" PRINTS
+   IMAGE$ FILE? 0= TTRUE ;
 
 : RUN ( -- )
    T-RESET

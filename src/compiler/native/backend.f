@@ -342,7 +342,6 @@ public
 
 : PREPARE ( -- )
    NLEASE:IDLE-CK
-   NLOOP:RESET-SCRATCH
    COUNT 0 ?do i PASS-PTR NBACK-PASS:PREPARE @ execute loop ;
 
 ;package

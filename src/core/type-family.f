@@ -3829,7 +3829,8 @@ private
    TFX-SLOTS-INIT TFX-SLOTS-V !
    0 TFX-CAP !
    0 TFX-READY !
-   0 TFX-HI ! ;
+   0 TFX-HI !
+   0 TFX-H ! 0 TFX-I ! 0 TFX-CUR ! ;
 
 \ ---------------------------------------------------------------------------
 \ AOT capture: the registry delta a captured window declared, and putting it
@@ -4133,6 +4134,28 @@ private
          RES-FALSE unloop EXIT THEN
    loop RES-TRUE ;
 
+PTR-VARIABLE REG-AOT-PROJECTED
+variable REG-AOT-PROJECTED-U
+
+: REG-AOT-BLOB-STORE ( ptr u8 n -- ptr u8 ) {: src:ptr k:n :}
+   REG-AOT-HDR
+   k 0 ?do src i REG-AOT-ROW@ nip nip + loop
+   src + ;
+
+: REG-AOT-PREFIX= ( ptr u8 n n n -- bool )
+   {: src:ptr k:n base:n bytes:n :}
+   REG-AOT-PROJECTED-U @ 0= IF src k base bytes REG-AOT-SAME? EXIT THEN
+   REG-AOT-PROJECTED @ k REG-AOT-BLOB-STORE
+   base k REG-AOT-WIDTH * + {: prior:ptr :}
+   bytes 0 ?do
+      src i k REG-AOT-CANON-C@ prior i k REG-AOT-CANON-C@ <> IF
+         RES-FALSE unloop EXIT THEN
+   loop RES-TRUE ;
+
+: REG-AOT-PROJECTED-COUNT ( n -- n ) {: k:n :}
+   REG-AOT-PROJECTED-U @ 0= IF k REG-AOT-COUNT EXIT THEN
+   REG-AOT-PROJECTED @ k REG-AOT-ROW@ drop + ;
+
 \ Validate every base and byte span before reserving or publishing any store.
 \ Subtraction bounds the product and endpoint before either is computed.
 : REG-AOT-TABLE-CHECK ( ptr u8 n -- ) {: src:ptr u:n :}
@@ -4156,10 +4179,10 @@ private
          s" tfam: a seeded type registry section is not a whole number of records" REG-AOT-REFUSE THEN
       base $7FFFFFFFFFFFFFFF i REG-AOT-WIDTH / cnt - > IF
          s" tfam: a seeded type registry endpoint overflows" REG-AOT-REFUSE THEN
-      i REG-AOT-COUNT {: live:n :}
+      i REG-AOT-PROJECTED-COUNT {: live:n :}
       live base <> live base cnt + <> and IF
          i base live REG-AOT-BASE-BAD THEN
-      src REG-AOT-CUR @ + i 0 base i REG-AOT-WIDTH * REG-AOT-SAME? 0= IF
+      src REG-AOT-CUR @ + i 0 base i REG-AOT-WIDTH * REG-AOT-PREFIX= 0= IF
          s" tfam: a seeded type registry differs from its captured prefix" REG-AOT-REFUSE THEN
       cnt 0 > IF
          live base = IF 1 ELSE 2 THEN {: next:n :}
@@ -4168,7 +4191,7 @@ private
          next REG-AOT-STATE !
          next 2 = IF
             src REG-AOT-CUR @ + base i REG-AOT-WIDTH * +
-            i base cnt i REG-AOT-WIDTH * REG-AOT-SAME? 0= IF
+            i base cnt i REG-AOT-WIDTH * REG-AOT-PREFIX= 0= IF
                s" tfam: a seeded type registry differs from the installed records" REG-AOT-REFUSE THEN
          THEN
       THEN
@@ -4191,19 +4214,11 @@ private
       k REG-AOT-BASE-PTR first k REG-AOT-WIDTH * + EXIT
    THEN
    src k REG-AOT-ROW@ drop {: base:n cnt:n :}
-   first base < IF
-      count base first - > IF
-         s" tfam: a seeded registry span crosses its capture boundary" REG-AOT-REFUSE THEN
-      k REG-AOT-BASE-PTR first k REG-AOT-WIDTH * + EXIT
-   THEN
-   first base - {: rel:n :}
-   rel cnt > IF
+   first base cnt + > IF
       s" tfam: a seeded registry reference exceeds its section" REG-AOT-REFUSE THEN
-   count cnt rel - > IF
+   count base cnt + first - > IF
       s" tfam: a seeded registry span exceeds its section" REG-AOT-REFUSE THEN
-   REG-AOT-HDR
-   k 0 ?do src i REG-AOT-ROW@ nip nip + loop
-   src + first k REG-AOT-WIDTH * + ;
+   src k REG-AOT-BLOB-STORE first k REG-AOT-WIDTH * + ;
 
 : REG-AOT-NAME= ( ptr u8 n n n ptr u8 n -- bool )
    {: src:ptr u:n off:n bytes:n name:ptr nameu:n :}
@@ -4844,10 +4859,22 @@ REG-AOT-FAM-W-INSTALL
       drop 2drop REG-AOT-ERROR-A @ REG-AOT-ERROR-U @ 76 die
    THEN drop 2drop ;
 
-: REG-AOT-INSTALL ( ptr u8 n -- ) {: src:ptr u:n :}
+: REG-AOT-PREPARE ( ptr u8 n ptr u8 n -- n )
+   {: src:ptr u:n prior:ptr prioru:n :}
+   prior REG-AOT-PROJECTED ! prioru REG-AOT-PROJECTED-U !
+   src u [: 2dup REG-AOT-CHECK ;] catch {: rc:n :}
+   2drop
+   NULL-PTR REG-AOT-PROJECTED ! 0 REG-AOT-PROJECTED-U !
+   rc 0 <> IF rc throw THEN
+   REG-AOT-STATE @ ;
+
+: REG-AOT-APPEND ( ptr u8 n -- ) {: src:ptr u:n :}
    u 0= IF EXIT THEN
-   src u REG-AOT-CHECK
-   REG-AOT-STATE @ 1 <> IF EXIT THEN
+   0
+   REG-AOT-N 0 ?do
+      src i REG-AOT-ROW@ drop nip or
+   loop
+   0= IF EXIT THEN
    \ A failed allocation may leave capacity, but no visible registry member.
    REG-AOT-N 0 ?do
       src i REG-AOT-ROW@ drop {: base:n cnt:n :}
@@ -4873,6 +4900,14 @@ REG-AOT-FAM-W-INSTALL
    FVX-SNAP-RESET
    TFM-EPOCH+
    0 SVX-GEN ! ;
+
+: REG-AOT-TAKE ( ptr u8 n n -- ) {: src:ptr u:n state:n :}
+   state 1 = IF src u REG-AOT-APPEND THEN ;
+
+: REG-AOT-INSTALL ( ptr u8 n -- ) {: src:ptr u:n :}
+   u 0= IF EXIT THEN
+   src u REG-AOT-CHECK
+   src u REG-AOT-STATE @ REG-AOT-TAKE ;
 
 \ The loader's private operation throws before publication on invalid input.
 \ Keep the established named process refusal at the artifact-load boundary.
@@ -5232,6 +5267,9 @@ private
 \ Install the checker registry's persist hook only after this module's final
 \ signature-resolution scratch has been declared, so the same owner clears the
 \ raw token spans before DATA is baked.
+create UNIT-FAM-MARKS REG-AOT-N cells allot
+variable UNIT-FAM-AT
+
 : REG-EXT-PERSIST ( -- )
    TFAM-SNAPSHOT-PERSIST
    SCHEMA-SNAPSHOT-PERSIST
@@ -5244,9 +5282,12 @@ private
    RBF-SNAP-RESET               \ core rollback frames are process-local
    TFAM-RBF-SNAP-RESET          \ TFAM registry rollback frames
    SCHEMA-RBF-SNAP-RESET       \ SCHEMA registry rollback frames
-   NULL-PTR TFQ-TA !  0 TFQ-TU !
+   TFQ-CAP 0 ?do 0 TFQ-BUF i + c! loop
+   0 TFQ-U !  NULL-PTR TFQ-TA !  0 TFQ-TU !  0 TFQ-COLON !
    NULL-PTR TFSR-PA !  0 TFSR-PU !
-   NULL-PTR TFSR-NA !  0 TFSR-NU ! ;
+   NULL-PTR TFSR-NA !  0 TFSR-NU !
+   UNIT-FAM-MARKS 0 REG-AOT-N ARENA-CELLS-ZERO
+   0 UNIT-FAM-AT ! ;
 
 : REG-EXT-PERSIST-INSTALL ( -- ) [: REG-EXT-PERSIST ;] is REG-EXT-PERSIST-XT ;
 REG-EXT-PERSIST-INSTALL
@@ -5952,8 +5993,64 @@ public
 
 private
 
+: UNIT-FAM-MARK ( -- )
+   REG-AOT-N 0 ?do i REG-AOT-COUNT UNIT-FAM-MARKS i cells + ! loop ;
+
+: UNIT-FAM-BASE@ ( n -- n ) cells UNIT-FAM-MARKS + @ ;
+
+: UNIT-FAM-SIZE ( -- n )
+   0 REG-AOT-N 0 ?do
+      i REG-AOT-COUNT i UNIT-FAM-BASE@ <> IF drop -1 LEAVE THEN
+   loop
+   0= IF 0 EXIT THEN
+   REG-AOT-HDR
+   REG-AOT-N 0 ?do
+      i REG-AOT-COUNT i REG-AOT-WIDTH * +
+   loop ;
+
+: UNIT-FAM-SAVE ( ptr u8 n -- n ) {: dst:ptr cap:n :}
+   UNIT-FAM-SIZE {: size:n :}
+   size cap > IF REG-AOT-OVERFLOW THEN
+   size 0= IF 0 EXIT THEN
+   6 REG-AOT-COUNT 1 ?do
+      i SCHEMA-CON? IF
+         i SCHEMA-A@ dup CC-N < swap CC-MAX >= or IF
+            s" tfam: unit schema constructor is process-local" 76 die THEN
+      THEN
+   loop
+   REG-AOT-N dst REG-AOT-U64!
+   REG-AOT-HDR UNIT-FAM-AT !
+   REG-AOT-N 0 ?do
+      i UNIT-FAM-BASE@ {: base:n :}
+      i REG-AOT-COUNT {: end:n :}
+      end base - {: count:n :}
+      end i REG-AOT-WIDTH * {: bytes:n :}
+      base dst i REG-AOT-ROW * 8 + + REG-AOT-U64!
+      count dst i REG-AOT-ROW * 8 + 8 + + REG-AOT-U64!
+      bytes dst i REG-AOT-ROW * 8 + 16 + + REG-AOT-U64!
+      i REG-AOT-BASE-PTR dst UNIT-FAM-AT @ + bytes ARENA-COPY
+      UNIT-FAM-AT @ bytes + UNIT-FAM-AT !
+   loop
+   size ;
+
+: UNIT-FAMILY-NAME? ( ptr u8 n ptr u8 n -- bool )
+   {: name:ptr nameu:n src:ptr u:n :}
+   u 0= IF RES-FALSE EXIT THEN
+   src 0 REG-AOT-ROW@ drop + 0 ?do
+      src u 0 i REG-AOT-ITEM {: row:ptr :}
+      src u 5 row TF.NAME-OFF @ row TF.NAME-U @ REG-AOT-VIEW
+      row TF.NAME-U @ name nameu CORE-STR= IF RES-TRUE unloop EXIT THEN
+   loop RES-FALSE ;
+
 : TFAM-HOOK-INSTALL ( -- )
    [: TFAM-N@ ;] is CHECKER-REG:UNIT-TFAM-N@
+   [: UNIT-FAM-MARK ;] is CHECKER-REG:UNIT-TFAM-MARK
+   [: UNIT-FAM-SIZE ;] is CHECKER-REG:UNIT-TFAM-SIZE
+   [: UNIT-FAM-SAVE ;] is CHECKER-REG:UNIT-TFAM-SAVE
+   [: REG-AOT-INSTALL ;] is CHECKER-REG:UNIT-TFAM-INSTALL
+   [: REG-AOT-PREPARE ;] is CHECKER-REG:UNIT-TFAM-PREPARE
+   [: REG-AOT-TAKE ;] is CHECKER-REG:UNIT-TFAM-TAKE
+   [: UNIT-FAMILY-NAME? ;] is CK-UNIT-FAMILY?
    [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT
    [: TFAM-CLAIMED? ;] is TFAM-CLAIMED?-XT
    [: TFAM-CTOR-PKG? ;]    is CTOR-PKG?-XT     \ item 8: constructor-package reopen reject

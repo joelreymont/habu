@@ -58,5 +58,5 @@
 \ settle, and because it re-arms the floor that seed-ndict! cleared.
 CHECKER-BOUND:REWIND
 PREFIX-MARK:DICT seed-ndict!
-PREFIX-MARK:REQ REQUIRE-REG:TRUNCATE
+PREFIX-MARK:REQ REQUIRE-REG:PREFIX-REWIND
 SEAL-CAPTURE

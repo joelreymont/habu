@@ -48,9 +48,9 @@ package HB-BUILD-CLI
 
 \ ... and the same store into a DECLARED cell, which the span scan skips BY its
 \ declaration: PERSISTED-PTR-VARIABLE registers a DATA row in the engine's
-\ address-cell table, so src/habu/aot-closure.f XTD-ROW is the site that has to
-\ ask. Measured by disabling the span scan on this tree: with it off this
-\ program is still refused and HBT-MAPC-SRC$'s links.
+\ address-cell table. The FILE slot encoder meets that row before the AOT link
+\ and must name the cell when its value is a builder-only mapping. XTD-ROW keeps
+\ the same check for cells the FILE encoder did not handle.
 : HBT-MAPD-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" require src/lib/memory.f\nPERSISTED-PTR-VARIABLE PBUF\n" SB-APPEND

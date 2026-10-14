@@ -1,11 +1,11 @@
 \ hb-build-retain-test.f - what hb-build leaves in the build cache goes once
 \ nothing has used it for a day (src/lib/build-cache.f), through real builds.
 \
-\ hb-build publishes two kinds of entry into its cache root: the artifact
-\ hb-build-out-<key>, and the object <key>.hbo with its index <key>.idx
-\ (src/lib/object-resolve.f). A publish prunes its own families; a hit dates what
-\ it found. So this builds two programs into a private root, dates their six
-\ entries to 2020, past the window, and then
+\ hb-build publishes an artifact hb-build-out-<key>, an object <key>.hbo with
+\ its index <key>.idx (src/lib/object-resolve.f), and a keyed AOT maker image
+\ hb-aot-maker-<key> (tools/aot-maker-image.f). A publish prunes its own family;
+\ a hit dates what it found. So this builds two programs into a private root,
+\ dates their six program entries to 2020, past the window, and then
 \ - builds the second program again, which restores its artifact;
 \ - builds it with --json-errors, which misses the artifact (the flag is in the
 \   artifact's key) and loads the object (it is not in the object's key), and
@@ -51,10 +51,12 @@ package HB-BUILD-CLI
 7 constant HBR-C-ART
 8 constant HBR-C-OBJ
 9 constant HBR-C-IDX
-10 constant HBR-SLOTS
+10 constant HBR-MAKER
+11 constant HBR-SLOTS
 -1 constant HBR-NONE
 
-\ hb-build-out-<key> and <key>.hbo, <key>.idx: the key is 64 hex digits.
+\ hb-build-out-<key>, hb-aot-maker-<key>, <key>.hbo and <key>.idx use
+\ 64-digit keys; the two named prefixes have the same length.
 77 constant HBR-ART-LEN
 68 constant HBR-OBJ-LEN
 
@@ -125,6 +127,9 @@ variable HBR-STRAY
 : HBR-IDX? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" .idx" ENDS-WITH? u HBR-OBJ-LEN = and ;
 
+: HBR-MAKER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" hb-aot-maker-" STARTS-WITH? u HBR-ART-LEN = and ;
+
 \ A new entry of a kind the build publishes fills that kind's slot, once.
 : HBR-TAKE ( ptr u8 n n -- ) {: a:ptr u:n s:n :}
    s HBR-NONE = if 1 HBR-STRAY +! exit then
@@ -137,10 +142,12 @@ variable HBR-STRAY
    a u HBR-ART? if a u HBR-ART-SLOT @ HBR-TAKE exit then
    a u HBR-OBJ? if a u HBR-OBJ-SLOT @ HBR-TAKE exit then
    a u HBR-IDX? if a u HBR-IDX-SLOT @ HBR-TAKE exit then
+   a u HBR-MAKER? if a u HBR-MAKER HBR-TAKE exit then
    1 HBR-STRAY +! ;
 
 \ Name what a build added to the root: the slots for its artifact, object and
 \ index, HBR-NONE for a kind it must not publish, and how many it publishes.
+\ The first build also records one maker image; another maker name is a stray.
 \ Any other name is a stray.
 : HBR-RECORD ( n n n n -- ) {: art:n obj:n idx:n want:n :}
    art HBR-ART-SLOT !
@@ -181,7 +188,7 @@ variable HBR-STRAY
 : HBR-FIRST-BUILDS ( -- )
    s" ra.f" S\" : MAIN ( -- ) 1 . cr ;\n" HBR-SOURCE!
    s" ra" false HBR-BUILD
-   HBR-A-ART HBR-A-OBJ HBR-A-IDX 3 HBR-RECORD
+   HBR-A-ART HBR-A-OBJ HBR-A-IDX 4 HBR-RECORD
    s" rb.f" S\" : MAIN ( -- ) 2 . cr ;\n" HBR-SOURCE!
    s" rb" false HBR-BUILD
    HBR-B-ART HBR-B-OBJ HBR-B-IDX 3 HBR-RECORD

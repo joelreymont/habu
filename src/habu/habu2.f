@@ -458,7 +458,7 @@ variable LPSCRIPTARGV   variable LPINTMARK
 variable LPROLES
 variable LPDECLTXN      variable LPGENDECL      variable LPDECLEVENT    variable LPSTRUCTMAKE
 variable LPSTRUCTDECL   variable LPENUMDECL
-variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
+variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPSOURCEPRODUCER variable LPTFAMSHA
 variable LPCOMBINATORS  variable LPCODESPAN  variable LPXREF  variable LPGENDECLDICT  variable LPGENDECLPROT
 variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
 variable LPTOPROW
@@ -1169,6 +1169,7 @@ here BPL-KW - constant BPL-LEN
       PFX-COMMON LPINCLUDE s" src/core/include.f" row execute
       PFX-COMMON LPENUMS s" src/core/enums.f" row execute
       PFX-COMMON LPSHA256 s" src/core/sha256.f" row execute
+      PFX-COMMON LPSOURCEPRODUCER s" src/core/source-producer.f" row execute
       PFX-COMMON LPTFAMSHA s" src/core/type-family-sha.f" row execute
       PFX-COMMON LPCOMBINATORS s" src/core/combinators.f" row execute
       PFX-COMMON LPCODESPAN s" src/habu/code-span.f" row execute
@@ -3532,7 +3533,7 @@ public
    write LBL,
    14 12 0 STRW,
    10 flush CBZ,
-   13 11 16 LDR,  5 DKIND:MASK -1 xor LIT64,  13 13 5 AND,  13 11 16 STR,   \ the body is a clause now, not a push
+   13 11 16 LDR,  5 DKIND:MASK DNAME-CELL or -1 xor LIT64,  13 13 5 AND,  13 11 16 STR,   \ the body is a clause now, not a push or cell definer
    flush LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,                           \ region -> RX
    12 SP 16 LDR,
@@ -4406,7 +4407,7 @@ variable LREPLAYTRAP
    B-TASK-LIVE-GUARD
    OVERLAY-EMIT:GUARD,
    4 G-POP  2 G-POP  1 G-POP  0 G-POP                 \ x4 = the kind, x2 = the wid, x1/x0 = the name
-   14 DKIND:MASK invert LIT64,  14 4 14 AND,  14 bad CBNZ,
+   14 DKIND:MASK DNAME-CELL or invert LIT64,  14 4 14 AND,  14 bad CBNZ,
    bad REAL-WID,
    prot OPEN-WID,
    bad NOT-PENDING,
@@ -4500,7 +4501,8 @@ variable LREPLAYTRAP
    9 W-RET LIT64,  LCEMIT LABEL@ BL,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
-   10 9 16 LDR,  10 10 DKIND:ADDR ORRI,  10 9 16 STR,     \ this record's body pushes its DATA address
+   10 9 16 LDR,  10 10 DKIND:ADDR ORRI,
+   10 10 DNAME-ALLOC ORRI,  10 9 16 STR,  \ the DATA allocation starts at its leading carrier
    9 DATA LASTC-CELL STR,
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    9 CP CODE-ORIGIN:NATIVE-RANGE,
@@ -4860,6 +4862,9 @@ package INTERP-EMIT
    LASTC-TRUST:PUBLISH-PTR-A ;
 
 : C-VARIABLE ( -- )  C-CREATE
+   9 DATA LASTC-CELL LDR,  2 3 MOVZ,  LPROTREC LABEL@ BL,
+   10 9 16 LDR,  10 10 DNAME-CELL ORRI,  10 9 16 STR,
+   2 5 MOVZ,  LPROTREC LABEL@ BL,
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DP-CHECK  7 DATA 0 STR, ;
 
 \ `constant` pops ONE physical cell and records the one-cell `-- a` trust
@@ -6631,7 +6636,7 @@ public
       decoded LBL,
       3 9 8 2 4 7 bad AOT-META:VGET, 3 SP 8 STRW,
       3 9 8 2 4 7 bad AOT-META:VGET,
-      4 3 14 LSRI, 4 bad CBNZ,
+      4 3 16 LSRI, 4 bad CBNZ,
       4 3 $F ANDI, 5 3 4 LSRI, 5 5 $FF ANDI, 5 5 8 LSLI, 4 4 5 ORR,
       5 3 12 LSRI, 5 5 16 LSLI, 4 4 5 ORR, 4 SP 12 STRW,
       loaded LBL,
@@ -6658,8 +6663,11 @@ public
       7 7 60 LSLI,  7 7 5 ORR,                      \ flags<<60 | len
       3 6 8 LSRI,  3 3 $FF ANDI,  3 3 52 LSLI,      \ min-in byte = word3>>8 -> DNAME-MIN-IN bits 52-59
       7 7 3 ORR,
-      3 6 16 LSRI,  3 3 3 ANDI,  3 3 50 LSLI,       \ definer-kind byte = word3>>16 -> DKIND bits 50-51
-      7 7 3 ORR,  7 10 16 STR,                      \ [16] = flags<<60 | min-in<<52 | dkind<<50 | len
+      3 6 16 LSRI,  2 3 3 ANDI,  2 2 50 LSLI,       \ word3 bits 16-17 -> DKIND bits 50-51
+      7 7 2 ORR,
+      2 3 4 ANDI,  2 2 46 LSLI,  7 7 2 ORR,          \ word3 bit 18 -> DNAME-CELL bit 48
+      3 3 8 ANDI,  3 3 44 LSLI,  7 7 3 ORR,          \ word3 bit 19 -> DNAME-ALLOC bit 47
+      7 10 16 STR,
       2 0 MOVZ,  2 10 24 STR,  2 10 32 STR,         \ zero [24..40)
       4 4 1 ADDI,                                   \ x4 = name src (entry+1)
       \ A name past DNAME-INL does not fit the record, and the engine's own
@@ -8904,6 +8912,8 @@ ardone LBL,
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
    9 DATA TOP-HOOK-CELL STR,  9 DATA NCOMP-DISPATCH:XT-CELL STR,
+   9 DATA NCOMP-DISPATCH:CALLBACK-STUB-CELL STR,
+   9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL STR,
    9 DATA EXIT-HOOK-CELL STR,            \ no process-exit hook until something arms it
    9 DATA NATIVE-OBS-CELLS:PUBLISHED STR,
    9 DATA NATIVE-OBS-CELLS:INVALIDATE STR,
@@ -8938,6 +8948,8 @@ ardone LBL,
    NATIVE-OBS-CELLS:HOST-INVALIDATE RELOC-EMIT:MARK-CELL
    NATIVE-HOST-CELLS:SELECT RELOC-EMIT:MARK-CELL
    NCOMP-DISPATCH:XT-CELL RELOC-EMIT:MARK-CELL
+   NCOMP-DISPATCH:CALLBACK-STUB-CELL RELOC-EMIT:MARK-CELL
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL RELOC-EMIT:MARK-CELL
    APP-ENTRY:XT-CELL RELOC-EMIT:MARK-CELL
    \ LASTC holds the record the last `create`, `variable` or `constant` wrote,
    \ which is a region address too: a `does>` a restored session runs before
@@ -9310,6 +9322,110 @@ public
    70 C-DIE-TOKEN
    absent LBL, ;
 
+: C-SOURCE-EXEC-BEFORE ( -- )
+   LBL LBL LBL {: absent:label no-close:label no-open:label :}
+   10 DATA SOURCE-EXEC-CTX-CELL LDR,  10 absent CBZ,
+   9 10 SX-ARMED LDR,  9 absent CBZ,
+   11 10 SX-EVAL LDR,  12 DATA EVAL-TOP-CELL LDR,
+   11 12 CMP,  C-NE absent BCOND,
+   9 10 SX-SUSPEND LDR,  9 absent CBNZ,
+   9 10 SX-PENDING LDR,  9 absent CBNZ,
+   SP SP 96 SUBI,  30 SP 0 STR,
+   10 SP 8 STR,  15 SP 16 STR,  16 SP 24 STR,  17 SP 32 STR,
+   9 DATA TKA-CELL LDR,  9 SP 40 STR,
+   9 DATA TKL-CELL LDR,  9 SP 48 STR,
+   9 DATA INP-CELL LDR,  9 SP 56 STR,
+   9 DATA INE-CELL LDR,  9 SP 64 STR,
+   9 DATA SRCLOC:INB-CELL LDR,  9 SP 72 STR,
+   9 DATA PEND-CELL LDR,  9 SP 80 STR,
+   9 no-close CBZ,
+      PROT-EMIT:LCLOSE LABEL@ BL,
+   no-close LBL,
+   10 SP 8 LDR,  15 SP 16 LDR,  16 SP 24 LDR,  17 SP 32 LDR,
+   9 DATA S0-CELL LDR,  9 XDS 9 SUB,  9 9 3 LSRI,  9 10 SX-DEPTH STR,
+   9 DATA RSP-CELL LDR,  9 10 SX-RDEPTH STR,
+   15 10 SX-OP STR,  16 10 SX-REC STR,  17 10 SX-ENTRY STR,
+   9 1 MOVZ,  9 10 SX-SUSPEND STR,
+   9 10 SX-UNIT LDR,  9 G-PUSH
+   9 SP 16 LDR,  9 G-PUSH
+   9 SP 24 LDR,  9 G-PUSH
+   9 SP 32 LDR,  9 G-PUSH
+   10 SP 8 LDR,  9 10 SX-BEFORE LDR,  9 BLR,
+   9 G-POP  11 SP 8 LDR,  9 11 SX-WRITES STR,
+   9 G-POP  9 11 SX-TICKET STR,
+   9 SP 40 LDR,  9 DATA TKA-CELL STR,
+   9 SP 48 LDR,  9 DATA TKL-CELL STR,
+   9 SP 56 LDR,  9 DATA INP-CELL STR,
+   9 SP 64 LDR,  9 DATA INE-CELL STR,
+   9 SP 72 LDR,  9 DATA SRCLOC:INB-CELL STR,
+   9 SP 80 LDR,  9 no-open CBZ,
+      1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,
+   no-open LBL,
+   11 SP 8 LDR,
+   9 0 MOVZ,  9 11 SX-SUSPEND STR,
+   9 1 MOVZ,  9 11 SX-PENDING STR,
+   30 SP 0 LDR,  SP SP 96 ADDI,
+   absent LBL, ;
+
+: EMIT-SOURCE-EXEC-FINISH ( -- )
+   LBL LBL LBL LBL LBL LBL LBL
+   {: absent:label callback-ok:label keep-original:label done:label current:label no-close:label no-open:label :}
+   LSOURCEEXECFINISH LABEL@ LBL,
+   10 DATA SOURCE-EXEC-CTX-CELL LDR,  10 absent CBZ,
+   9 10 SX-PENDING LDR,  9 absent CBZ,
+   15 current CBNZ,                    \ a thrown continuation has already left its EVAL frame
+   11 10 SX-EVAL LDR,  12 DATA EVAL-TOP-CELL LDR,
+   11 12 CMP,  C-NE absent BCOND,
+   current LBL,
+   SP SP 96 SUBI,  30 SP 0 STR,  15 SP 8 STR,  10 SP 16 STR,
+   9 DATA TKA-CELL LDR,  9 SP 24 STR,
+   9 DATA TKL-CELL LDR,  9 SP 32 STR,
+   9 DATA INP-CELL LDR,  9 SP 40 STR,
+   9 DATA INE-CELL LDR,  9 SP 48 STR,
+   9 DATA SRCLOC:INB-CELL LDR,  9 SP 56 STR,
+   9 DATA PEND-CELL LDR,  9 SP 64 STR,
+   9 no-close CBZ,
+      PROT-EMIT:LCLOSE LABEL@ BL,
+   no-close LBL,
+   10 SP 16 LDR,
+   9 0 MOVZ,  9 10 SX-PENDING STR,
+   9 DATA S0-CELL LDR,  9 XDS 9 SUB,  9 9 3 LSRI,  9 10 SX-DEPTH STR,
+   9 DATA RSP-CELL LDR,  9 10 SX-RDEPTH STR,
+   9 DATA INP-CELL LDR,  11 10 SX-SRC LDR,  9 9 11 SUB,
+   9 10 SX-POS STR,
+   9 1 MOVZ,  9 10 SX-SUSPEND STR,
+   9 10 SX-UNIT LDR,  9 G-PUSH
+   9 10 SX-TICKET LDR,  9 G-PUSH
+   9 SP 8 LDR,  9 G-PUSH
+   10 SP 16 LDR,  9 10 SX-AFTER LDR,  9 G-PUSH
+   BCATCH
+   9 G-POP  9 callback-ok CBZ,
+      XDS XDS 24 SUBI,                     \ catch restored the callback's three args
+   callback-ok LBL,
+   9 SP 72 STR,
+   9 SP 24 LDR,  9 DATA TKA-CELL STR,
+   9 SP 32 LDR,  9 DATA TKL-CELL STR,
+   9 SP 40 LDR,  9 DATA INP-CELL STR,
+   9 SP 48 LDR,  9 DATA INE-CELL STR,
+   9 SP 56 LDR,  9 DATA SRCLOC:INB-CELL STR,
+   9 SP 64 LDR,  9 no-open CBZ,
+   9 SP 72 LDR,  9 no-open CBNZ,
+      1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,
+   no-open LBL,
+   10 SP 16 LDR,  11 0 MOVZ,  11 10 SX-SUSPEND STR,
+   15 SP 8 LDR,  15 keep-original CBNZ,
+      15 SP 72 LDR,
+   keep-original LBL,
+   16 SP 8 LDR,
+   30 SP 0 LDR,  SP SP 96 ADDI,
+   15 done CBZ,
+      16 done CBNZ,                        \ source-run returns its caught action status
+      9 DATA EVALD-CELL LDR,  9 done CBZ,   \ an after observer threw inside evaluate
+      10 DATA EVALREC-CELL LDR,  10 BR,
+   done LBL,
+   absent LBL,
+   RET, ;
+
 : EM-COMMENT ( -- )
    LBL LBL LBL LBL {: notcom skln skpar notcompile :}
    LMAIN LABEL@ LBL,
@@ -9319,6 +9435,7 @@ public
       \ the interpreter's only bounds check; compiled code has none, and a
       \ push past the capacity faults on the stack's guard page.
       9 DATA S0-CELL LDR,  XDS 9 CMP,  C-CC LUNDERFLOW LABEL@ BCOND,
+      15 0 MOVZ,  LSOURCEEXECFINISH LABEL@ BL,
       \ The token-start mark (layout.f TOKBODY-CELL): a throw that leaves an
       \ outer buffer's definition compiling puts it back (EM-EVAL-THROW-RECOVER).
       \ Stored before LTOK, so the pass that meets a buffer's end marks
@@ -10219,8 +10336,15 @@ private
    depthok LBL,
    5 SP 0 LDR,  C-HOST-SELECT
    SP SP 16 ADDI,
+   \ Save the original dictionary record before either hook can clobber x5.
+   SP SP 32 SUBI,  11 SP 0 STR,  5 SP 8 STR,
    15 11 0 ADDI,  16 4 MOVZ,  C-UNIT-HOOK
    C-TOPHOOK-CALL             \ every native gate passed: emit the pre-BLR word event (x13 = LFIND flags)
+   16 SP 8 LDR,  16 16 DBASE SUB,
+   17 DREC MOVZ,  16 16 17 UDIV,
+   15 5 MOVZ,  17 SP 0 LDR,
+   C-SOURCE-EXEC-BEFORE
+   11 SP 0 LDR,  SP SP 32 ADDI,
    11 BLR,  LMAIN LABEL@ B,
    usedtry LBL,
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED LABEL@ BL,   \ used-publics resolution (ambiguity dies)
@@ -12090,6 +12214,7 @@ public
 : EM-COMPILE-DIE ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: ldie:label rdie:label noloc:label located:label nlloop:label nldone:label digloop:label :}
    LBL S" hb: definition while a checker replay is open: " {: omsg:label oma:ptr omu:n :}
+   LBL {: dpbad-end:label :}
    LCOMPILEDIE LABEL@ LBL,                                  \ entry: x0 = sysexits exit/throw code (die site just wrote its diagnostic, newline NOT written)
    15 0 0 ADDI,                                             \ x15 = code (survives LPROT; LEVALREC delivers it as the throw code)
    9 DATA SRCLOC:PATHLEN-CELL LDR,  9 noloc CBZ,            \ no open source file -> newline only
@@ -12167,6 +12292,8 @@ public
    9 DATA-SIZE PROF-CNT-BYTES - LIT64,  LDIAGU LABEL@ BL,   \ the ceiling DP-CHECK enforces
    0 2 MOVZ,  1 LDPBADUNIT LABEL@ ADR,  2 DPBAD-UNIT-LEN MOVZ,  NR-WRITE SYS,
    0 76 MOVZ,  LCOMPILEDIE LABEL@ B,
+   dpbad-end LBL,
+   s" (LDPBAD)" LDPBAD LABEL@ LABEL>N dpbad-end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    \ A writer of a record or a wid ran while a checker overlay was open
    \ (habu1.f OVERLAY-EMIT:GUARD,), before it wrote anything. TKA/TKL hold the
    \ token it was given: the definition's name, the package's, the EXPORT
@@ -12956,6 +13083,7 @@ package ENGINE-EMIT
    EM-SOURCE-END-DIE
    EM-COMPILE-EXIT
    EM-EVAL-THROW-RECOVER
+   EMIT-SOURCE-EXEC-FINISH
    EM-COMMENT
    INTERP-EMIT:EM-INTERPRET
    EM-INTERPRET-UNDERFLOW ;
@@ -12978,6 +13106,7 @@ package LABELS
 
 : CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !  LBL LIMGEND !
+   LBL LSOURCEEXECFINISH !
    LBL LCEMIT !  LBL LCEMITBL !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LHOSTROW !
    LBL LDIVZERO !
@@ -12998,7 +13127,8 @@ package LABELS
    LBL AOT-WINDOW:LWIDW0 !  LBL AOT-WINDOW:LWIDSPAN !  LBL AOT-WINDOW:LNPWIN !  LBL AOT-WINDOW:LPWIN !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
-   LBL HIDX-EMIT:LREBUILD !  LBL HIDX-EMIT:LFULL !  LBL HIDX-EMIT:LREKEY !  LBL WLFIND:LENTRY !
+   LBL HIDX-EMIT:LREBUILD !  LBL HIDX-EMIT:LFULL !  LBL HIDX-EMIT:LREKEY !
+   LBL WLFIND:LENTRY !  LBL WLFIND:LNEWEST !
    LBL EM-DEF-OCC:LCOUNT !  LBL EM-DEF-OCC:LAPPEND !  LBL EM-DEF-OCC:LRESET !
    LBL EM-DEF-OCC:LROOM !  LBL EM-DEF-OCC:LISSUE !  LBL EM-DEF-OCC:LINIT !
    LBL EM-DEF-OCC:LBEFORE !  LBL EM-DEF-OCC:LAFTER !  LBL EM-DEF-OCC:LMATCH !
@@ -13095,7 +13225,7 @@ package LABELS
    LBL LPSTACKABI !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPINTMARK !  LBL LPROLES !
    LBL LPDECLEVENT !  LBL LPSTRUCTMAKE !  LBL LPSTRUCTDECL !  LBL LPENUMDECL !
-   LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
+   LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPSOURCEPRODUCER !  LBL LPTFAMSHA !
    LBL LPCOMBINATORS !  LBL LPCODESPAN !  LBL LPXREF !  LBL LPGENDECLDICT !  LBL LPGENDECLPROT !
    LBL LPLAYOUTSEAL !  LBL LPOWNERGUARD !  LBL LPLOWERCERTSEAL !
    LBL LPTOPROW !

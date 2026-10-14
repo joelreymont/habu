@@ -1,5 +1,6 @@
-\ The child selects host construction under a foreign output target and leaves
-\ a readable AOT artifact after the ordinary process-ABI launch refusal.
+\ The child selects a foreign ARM64 output target, exercises host construction
+\ in a small source window, and leaves a readable AOT artifact. It also checks
+\ that the rejected foreign output path stayed absent.
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/process-argv.f

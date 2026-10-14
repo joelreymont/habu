@@ -1,22 +1,39 @@
-\ Explicit checked-package native build: tier 1 precedes every dependency.
-1 set-tier
-require src/lib/executable-build.f
+\ Load the launcher at the caller's tier. The saved driver's child selects
+\ tier 1 for explicit FILE compilation; no launcher code enters that image.
+require src/lib/string.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-id.f
+require src/os/script-argv.f
+require tools/native-file-driver-image.f
 
 package NATIVE-UNIT-BUILD-ENTRY
-public
-
-\ The dynamically loaded driver receives this code reference. BUILD's text
-\ runs after this package closes, so it names the word qualified.
-: ORIGIN ( n n -- n ) code-origin ;
-
 private
+$10000 constant IO-CAP
+create OUT IO-CAP allot
+create ERR IO-CAP allot
 
-\ The required driver is loaded inside the protected executable-build scope.
-\ The entry is named in a text because it resolves only after require returns.
-: BUILD ( -- )
-   s" tools/native-unit-build-core.f" required
-   s" ' NATIVE-UNIT-BUILD-ENTRY:ORIGIN false NATIVE-BUILD:RUN-UNIT" evaluate-closed ;
+public
+: FILE-CHILD ( -- )
+   SCRIPT-ARGC 0= if s" native-build: missing mode" 74 die then
+   0 SCRIPT-ARGV$ s" --export-file" STR=
+   0 SCRIPT-ARGV$ s" --import-file" STR= or 0= if
+      s" native-build: unsupported mode" 74 die
+   then
+   NATIVE-FILE-DRIVER-IMAGE:PATH$ {: engine:ptr engineu:n :}
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" --" >LEN PROC-ARGV+
+   SCRIPT-ARGC 0 ?do i SCRIPT-ARGV$ >LEN PROC-ARGV+ loop
+   engine engineu >LEN
+   S\" 1 set-tier\nNATIVE-FILE-EXPLICIT:RUN\n" >LEN
+   OUT IO-CAP >LEN ERR IO-CAP >LEN 600000 >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
+      {: outu:len erru:len rc:n :}
+   OUT outu LEN>N type
+   2 ERR erru LEN>N write drop
+   s" " rc die ;
 
-' BUILD
 ;package
-EXECUTABLE-BUILD:WITH
+NATIVE-UNIT-BUILD-ENTRY:FILE-CHILD

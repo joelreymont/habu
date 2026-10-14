@@ -39,6 +39,7 @@ require src/lib/process-env.f
 require src/lib/build-cache.f
 require src/lib/engine-candidate.f
 require test/image-grant.f
+require test/compiler-images.f
 require test/suite-budget.f              \ CHILD-MS, the build's hang guard
 require test/whitebox-key.f
 
@@ -49,6 +50,7 @@ $10000 constant IO-CAP
 create PATH-BUF FS-PATH-CAP allot
 create WORK-BUF FS-PATH-CAP allot
 create TMP-BUF FS-PATH-CAP allot
+create BUNDLE-BUF FS-PATH-CAP allot
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 
@@ -56,6 +58,7 @@ variable PATH-U
 variable WORK-U
 variable WORK-FD
 variable TMP-U
+variable BUNDLE-U
 variable EMIT-RC
 variable RESOLVED?
 
@@ -78,6 +81,16 @@ variable RESOLVED?
 
 : TMP-BYTES ( -- ptr u8 n )
    TMP-BUF TMP-U @ ;
+
+: BUNDLE-ROOT$ ( -- ptr u8 n )
+   COMPILER-IMAGES:ROOT$ ;
+
+: BUNDLE? ( -- bool )
+   BUNDLE-ROOT$ nip 0 > ;
+
+: BUNDLE-PATH$ ( -- ptr u8 n )
+   BUNDLE-ROOT$ s" hb-whitebox-source" BUNDLE-BUF JOIN-PATH BUNDLE-U !
+   BUNDLE-BUF BUNDLE-U @ ;
 
 \ The family name: the prefix of the build's work directory, and the name a gate
 \ grants the engine under (test/image-grant.f).
@@ -176,6 +189,12 @@ public
 \ prefix). An engine found there is marked in use (BUILD-CACHE:USED), and one
 \ a pruner took meanwhile is built again.
 : ENSURE ( -- )
+   BUNDLE? if
+      BUNDLE-PATH$ EXECUTABLE? 0= if
+         s" whitebox-engine: suite bundle has no whitebox image" WB-RC die
+      then
+      exit
+   then
    WORK-PREFIX$ IMAGE-GRANT:CHECK
    RESOLVE
    PATH-BYTES EXECUTABLE? if PATH-BYTES BUILD-CACHE:USED if exit then then
@@ -184,13 +203,15 @@ public
 \ The keyed artifact, for a caller that only wants to name it.
 : PATH$ ( -- ptr u8 n )
    ENSURE
+   BUNDLE? if BUNDLE-PATH$ exit then
    PATH-BYTES ;
 
 \ Put a private copy of the shared unsealed engine at the caller's own path.
 : PROVIDE ( ptr u8 n -- ) {: dst:ptr dstu:n :}
    ENSURE
    dst dstu EXISTS? if dst dstu REMOVE-FILE then
-   PATH-BYTES dst dstu COPY-FILE-STREAM
+   BUNDLE? if BUNDLE-PATH$ else PATH-BYTES then
+   dst dstu COPY-FILE-STREAM
    dst dstu CHMOD-X ;
 
 ;package

@@ -67,9 +67,37 @@ initialization acquires a process resource, register its cleanup with
 `IMAGE-LIFECYCLE:REGISTER ( [ -- ] -- )`. Capture runs those callbacks before
 saving state; a failed callback prevents the image from being written.
 
-The native REPL build compiles the current source into a fresh running image.
-It does not use the AOT maker or artifact caches. The existing build report
-therefore records no cache source and no cache hits for `--repl`.
+The native REPL build compiles the source on its first run and when a recorded
+input changes. A plain repeat build checks the application and builder inputs
+and keeps the existing image if they are current. The builder records loaded
+files and path resolution queries, so a new nearer copy of a previously loaded
+file also triggers a rebuild. It does not use the AOT maker or artifact caches.
+The existing build report therefore records no cache source and no cache hits
+for `--repl`.
+
+When the application changes, the build rechecks a support selection record in
+`HABU_BUILD_CACHE`. The record is selected by the engine's path and contents,
+the invocation directory, and the engine's fallback source root. It carries the
+builder image key and the original producer file and path-query rows. A current
+record with an available builder image skips support discovery; a changed
+producer, a new nearer file, or a missing image selects support again. The
+application's own input sidecar is still checked before this lookup.
+
+REPL and stripped builds load application source through the native FILE cache
+in `HABU_BUILD_CACHE`. An unchanged file imports its compiled definitions,
+checker declarations and stored state without executing its source again.
+Editing a file recompiles it and the files that depend on its changed inputs.
+
+For stripped builds, `hb-build` selects a saved maker image by engine, source
+root and maker support closure, so repeated builds reuse its compiled opener.
+Its producer support is retired before the application opens its DATA window,
+so the application loads its own library copies. A warm
+build imports unchanged file units; editing one source recompiles that unit
+while retaining its unchanged dependencies. `test/native-file-stripped-path-e2e.f`
+checks the cold and warm counts and runs the resulting stripped image. The
+internal AOT maker takes source and JSON diagnostic flag, with optional entry
+and seed arguments. It keeps FILE counts quiet for those normal calls. Direct
+diagnostic runs may pass `1` as a third argument to print the FILE counts.
 
 A `--repl` image stores no cell that only the building process can read. The
 cells a process fills at startup are stored as zero, region addresses such as
@@ -94,12 +122,13 @@ image never carries a process-owned function address. `src/lib/os-memory-test.f`
 compares the answer with `getconf PAGESIZE` on the host that runs it, before
 and after `IMAGE-LIFECYCLE:PREPARE`.
 
-Every build prints one line saying where the bytes of the image it just wrote
-went, `--size-report` prints the whole table and `--report-json` carries the
-same numbers in the report object's `size` field. A `--repl` image stores live
-dictionary rows and code at their original virtual offsets. Its DATA stream
-stores the raw low prefix, the used code-map slices, the address-vector header
-and any live inline rows, and the complete user heap through the captured DP.
+The default build prints its output path, or says the image is up to date.
+`--size-report` measures the image and prints the size table; `--report-json`
+carries the same numbers in the report object's `size` field. A `--repl` image
+stores live dictionary rows and code at their original virtual offsets. Its
+DATA stream stores the raw low prefix, the used code-map slices, the
+address-vector header and any live inline rows, and the complete user heap
+through the captured DP.
 The fixed unused dictionary, map, address-row, compiler-scratch and provenance
 capacities are reconstructed by the loader. The heap is stored in the cell grid
 of `src/habu/cell-grid.f` when that is smaller than its bytes, and as its bytes
@@ -145,13 +174,15 @@ emitter may only `ADR,` a label its own definition binds.
 
 ### What the window contains
 
-The maker child opens the capture window **before anything the application can
-`require` is loaded**, so the application's own require closure is the only
-library content inside the restored span. The maker's two halves enforce that:
-`tools/aot-build-open.f` loads a lib-free prefix (`src/habu/aot-window-latch.f`,
-`src/os/script-argv.f`; `src/lib/executable-build.f`, which it also requires, is
-baked into the engine), opens the window, loads the application and latches the
-span; `tools/aot-build-core.f` then brings in the
+The maker child opens the capture window with **only the application's own
+library copies visible to `require`**, so its require closure supplies the
+library content inside the restored span. `tools/aot-maker.f` loads the
+lib-free latch, then loads FILE producer and image-save support in a checker
+scope. It captures that support in a keyed maker image, retiring its
+dictionary, checker and require history before the application window opens.
+Each build loads the application through the retained FILE continuation and
+latches the span. `tools/aot-build-open.f` is the compatibility entry for
+two-stage maker callers. `tools/aot-build-core.f` then brings in the
 linker, `src/habu/app-image.f` and the eight `lib` modules it pulls in, which all
 land above the span. A module the application has already loaded is shared in the
 harmless direction: the linker uses the application's copy, at build time only.
@@ -349,7 +380,7 @@ process's areas. macOS reservations with both current and maximum protection
 use ASLR, so their segments have no fixed-executable exemption, and macOS has no
 Linux `[heap]` exemption. `mmap` is reached from `src/lib/memory.f`, `src/lib/vector.f`,
 `src/lib/aio.f` and more, and a foreign allocator calls the primitive without
-passing any of them — and `aot-closure.f CELL-MAPPED?` asks it, less the four
+passing any of them — and `aot-data-cell.f MAPPED?` asks it, less the four
 areas a process already holds before its program runs. Three are where the image
 holds them too: the `MAP_FIXED` `DATA` mapping, the dictionary/code region
 whole, and the executable's own segments, because `bin/hb` and the image it
@@ -363,13 +394,15 @@ over a gigabyte above the executable's end, so the band sits somewhere in
 `[0x7a4000,0x407a4000)`, moves with every build, and swallows 32-bit-shaped
 values: one build of the hb-build fixture (`tools/hb-build-test.f` and the
 stripped rows beside it) was refused at an undeclared cell holding
-`0x34B12C35` and the next build of the same tree linked it. Two sites
+`0x34B12C35` and the next build of the same tree linked it. Two linker sites
 ask: `aot-lib.f AOT-DATA-TEXTPTR-CHECK` for an undeclared window
 cell, beside the undeclared code-pointer refusal, and `aot-closure.f XTD-ROW`
 for a declared `DATA` cell — a plain `variable` or `PTR-VARIABLE` meets the
-first, `PERSISTED-PTR-VARIABLE` the second (measured by disabling the span scan:
-the persisted program is still refused and the `variable` one links). The
-refusal reads *stripped AOT persistent data holds a pointer into memory the
+first, `PERSISTED-PTR-VARIABLE` the second. The FILE producer meets a declared
+DATA cell even earlier while encoding the source unit: a mapped pointer has no
+valid FILE address reference, so `tools/native-unit-object.f SLOT-ONE` uses the
+same classifier, exact cell owner and diagnostic before it can publish a unit.
+The refusal reads *stripped AOT persistent data holds a pointer into memory the
 build mapped word=BUF data-off=… value=…*, and its suggestion *the image
 restores no mapping the build made; allocate at run time (in MAIN or an
 IMAGE-LIFECYCLE hook) and store the pointer then, or use --repl*;
@@ -427,6 +460,9 @@ calls `getpid` through the declarer and holds it to its output.
 
 When TASK is baked, its symbol names, user-slot cursor and chain of declared
 TCBs and task exit declarations are carried from the application load. The
+user-slot cursor is latched when the application window closes; the linker
+copies that value into the carried runtime cell even if linker-only modules
+allocate more slots later. The
 TCB's exit slot remains in the application's own window; the carried row links
 and count preserve its chain. Active quotation cells in the carried table are
 declared to the ordinary AOT quotation relocation pass, which includes and

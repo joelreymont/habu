@@ -1,16 +1,17 @@
 \ aot-window-latch.f - the stripped capture window's span cells and the two words
 \ that latch it, in a file that requires no lib module.
 \
-\ WHY IT IS ITS OWN FILE. The window has to open before anything the application
-\ could `require` is loaded. A library already loaded when the window opens is the
-\ copy the application's own `require` resolves to, so every persistent cell that
+\ WHY IT IS ITS OWN FILE. The window has to open with no library visible to
+\ the application's `require` loaded. A library still loaded when the window
+\ opens is the copy the application's own `require` resolves to, so every
+\ persistent cell that
 \ library owns sits BELOW the span and aot-closure.f DATA-ADDRESS! refuses the
 \ image with "address refers to data outside the restored span". That is what any
 \ program reading the environment used to get: the linker's src/habu/app-image.f
 \ pulls in app-image-core.f, and that requires eight lib modules including
 \ src/lib/process-env.f, so GETENV's table was already below the window before the
 \ application was even read. The latch words therefore cannot live in aot-lib.f
-\ with the rest of the linker. tools/aot-build-open.f loads THIS file, opens the
+\ with the rest of the linker. tools/aot-maker.f loads THIS file, opens the
 \ window, loads the application, latches the span, and only then loads the linker
 \ above it. src/habu/aot-decl.f is the other lib-free candidate and is deliberately
 \ not used: it is baked into the engine (tools/bootstrap.sh SRC_COMMON,
@@ -51,23 +52,21 @@ variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN
 \ the same one-liner for package AOT-ARM, which this file's package does not load.
 : HERE-N ( -- n ) here BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + ;
 
-\ The dictionary record count tools/aot-build-open.f takes right after
-\ requiring this file, before it loads anything an application can name. A
-\ record above the engine's own seal watermark and below it was loaded by this
-\ process ahead of the maker - on the engine this file's own private records,
-\ on the keyed linker image the image's whole load (test/preloaded-engine.f
-\ rule 3) - and aot-closure.f ADD-CLO refuses to carry one. Between this latch
-\ and AOT-DATA-START the opener's baked requires add no record; the AOT-LINK
-\ definitions it makes do, above the latch.
+\ The dictionary record count tools/aot-maker.f refreshes immediately before
+\ AOT-DATA-START. A saved maker restores more fixed definitions than the plain
+\ engine, and all must be below this pre-window watermark. A record above the
+\ engine's seal and below it was loaded ahead of the application - on the
+\ engine this file's own private records, on a saved maker its support and on
+\ the keyed linker image its whole load. The closure refuses to carry a
+\ reachable pre-window word that the engine does not bake.
 variable OPENER-NDICT
 
 \ The window owns a literal pool, and the application owns it only while it
 \ loads: a body interned into it lands inside the span and travels in the image.
 \ AOT-DATA-START keeps the maker's active pool and opens the application's;
 \ AOT-DATA-SPAN hands the maker its pool back, so nothing the maker compiles
-\ after the application - tools/aot-build.f, which only the engine's maker
-\ compiles, and the linker - adds a byte to the image (tools/hb-build-aot-test.f
-\ BUILD-AOT-SPAN-ENGINE). AOT-APP-POOL selects the application's pool again for
+\ after the application - tools/aot-build.f and the linker - adds a byte to the
+\ image. AOT-APP-POOL selects the application's pool again for
 \ the link, which copies in the literals it reaches in other pools: AOT-DATA-SPAN
 \ closes the pool first, so it keeps room for them inside the span and opens no
 \ segment past it.
@@ -75,6 +74,7 @@ PTR-VARIABLE MAKER-POOL
 PTR-VARIABLE APP-POOL
 
 : AOT-DATA-START ( -- )
+   FFI:IMAGE-UNPIN
    NSTR:ACTIVE MAKER-POOL !
    NSTR:WINDOW-OPEN
    NSTR:ACTIVE APP-POOL !
@@ -115,6 +115,13 @@ PTR-VARIABLE APP-POOL
 variable CARRY-BYTES
 variable CARRY-BASE
 PTR-VARIABLE CARRY-P
+variable FFI-FN-MARK
+variable FFI-LIB-MARK
+PTR-VARIABLE FFI-FN-BASE-MARK
+PTR-VARIABLE FFI-LIB-BASE-MARK
+variable FFI-FN-CAP-MARK
+variable FFI-LIB-CAP-MARK
+variable TASK-USER-MARK
 
 : CARRY-BASE$ ( -- ptr u8 ) CARRY-P @ ;
 
@@ -129,6 +136,15 @@ PTR-VARIABLE CARRY-P
 
 : AOT-DATA-SPAN ( -- )
    NSTR:WINDOW-CLOSE
+   TASK:#USER TASK-USER-MARK !
+   FFI:IMAGE-MARK
+   FFI-LIB-BASE-MARK ! FFI-FN-BASE-MARK !
+   FFI-LIB-MARK ! FFI-FN-MARK !
+   FFI:IMAGE-CAPS FFI-LIB-CAP-MARK ! FFI-FN-CAP-MARK !
+   FFI-FN-BASE-MARK @ FFI-FN-CAP-MARK @
+   FFI-LIB-BASE-MARK @ FFI-LIB-CAP-MARK @ FFI:IMAGE-PIN
+   FFI-FN-BASE-MARK @ FFI-FN-CAP-MARK @
+   FFI-LIB-BASE-MARK @ FFI-LIB-CAP-MARK @ AOT-OWNED:FFI-TABLES!
    BLOB-SRC @ AOT-OWNED:CARRY-SIZE CARRY-BYTES !
    CARRY-RESERVE
    HERE-N  BLOB-END !
@@ -141,8 +157,8 @@ PTR-VARIABLE CARRY-P
 : AOT-APP-POOL ( -- )
    APP-POOL @ NSTR:SWITCH ;
 
-\ Opening the window is a separate maker script from linking (tools/aot-build-open.f
-\ and tools/aot-build-core.f), so linking without it is a reachable mistake rather
+\ Opening the window is separate from linking (tools/aot-maker.f OPEN and RUN),
+\ so linking without it is a reachable mistake rather
 \ than an impossible one. It would emit an image whose data span is whatever a zero
 \ BLOB-SRC implies, which is why this refuses instead of defaulting: a real span
 \ starts at a DATA address and can never be zero.

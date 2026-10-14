@@ -394,8 +394,9 @@ CELL 4 * constant DIAG-BYTES
 \ The twins of habu1.f EMIT-HIDX and WLFIND:EMIT. The index at HIDXP-CELL is
 \ HIDX-SLOTS u32 slots, each 0 (empty) or a record index plus one, keyed on
 \ C-HIDX-HASH's hash of the folded name XOR the record's wid. It is
-\ insert-once: the definer refuses a second live row for one folded name in
-\ one wordlist, so an empty slot on a key's chain means absent.
+\ insert-once per record: ordinary definers refuse duplicate live names, while
+\ native unit publication can add one. An empty slot on a key's chain means
+\ absent; XREF's newest-row lookup uses the descending scan below.
 
 public
 
@@ -423,11 +424,13 @@ $20 constant FOLD-BIT
 : NDICT-REG ( -- r64 ) ENGINE-GPR:X64-NDICT >R64 ;
 
 variable FIND-CELL
+variable FIND-SCAN-CELL
 variable BUILD-CELL
 variable ADD-CELL
 variable REBUILD-CELL
 variable FULL-CELL
 : FIND-LBL ( -- label ) FIND-CELL @ >LABEL ;
+: FIND-SCAN-LBL ( -- label ) FIND-SCAN-CELL @ >LABEL ;
 : BUILD-LBL ( -- label ) BUILD-CELL @ >LABEL ;
 : ADD-LBL ( -- label ) ADD-CELL @ >LABEL ;
 : REBUILD-LBL ( -- label ) REBUILD-CELL @ >LABEL ;
@@ -520,12 +523,12 @@ variable FULL-CELL
 \ which is the probe's one record wherever a wid holds one row per name.
 : FIND-HELPER, ( -- )
    LBL LBL LBL LBL {: probe:label miss:label next:label absent:label :}
-   LBL LBL LBL {: scan:label row:label skip:label :}
+   LBL LBL {: row:label skip:label :}
    LBL {: done:label :}
    FIND-LBL LBL,
-   RDX DICT-WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E scan JCC,
+   RDX DICT-WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E FIND-SCAN-LBL JCC,
    RAX DATA-REG HIDXP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E scan JCC,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E FIND-SCAN-LBL JCC,
    RDI RSI R8 R9 R10 R11 HASH,
    R8 RDX SLOT,                                        \ r8 = the slot
    R9 HIDX-SLOTS IMM32,                                \ r9 = slots left to walk
@@ -546,13 +549,13 @@ variable FULL-CELL
    miss LBL,
    RAX ASM-SINK ENC-POP
    next LBL,
-   R9 ASM-SINK ENC-DEC  C-E scan JCC,
+   R9 ASM-SINK ENC-DEC  C-E FIND-SCAN-LBL JCC,
    R8 NEXT-SLOT,
    probe JMP,
    absent LBL,
    RAX ZERO-REG,
    ASM-SINK ENC-RET
-   scan LBL,
+   FIND-SCAN-LBL LBL,
    R8 ZERO-REG,                                        \ r8 = the last match
    R9 DBASE-REG ASM-SINK ENC-MOV-RR                    \ r9 = the record
    row LBL,
@@ -668,7 +671,8 @@ variable FULL-CELL
    S\" hb: dictionary index exhausted\n" INDEX-RC STDERR-EXIT, ;
 
 : INDEX-HELPERS, ( -- )
-   LBL FIND-CELL !  LBL BUILD-CELL !  LBL ADD-CELL !  LBL REBUILD-CELL !
+   LBL FIND-CELL !  LBL FIND-SCAN-CELL !
+   LBL BUILD-CELL !  LBL ADD-CELL !  LBL REBUILD-CELL !
    LBL FULL-CELL !
    FIND-HELPER,  BUILD-HELPER,  ADD-HELPER,  REBUILD-HELPER,  FULL-HELPER, ;
 
@@ -1754,6 +1758,8 @@ public
 \ row refuses, and the registration is what ENGINE-PRIMS:COMPLETE needs
 \ meanwhile.
 \ unit-compile-run arms the unit hook that interpreter calls, so it refuses too.
+\ The source-exec observer also attaches to that interpreter's evaluator and
+\ token dispatch. Refuse its whole private family until those paths exist.
 \ The checker overlay binds names through scope-find, so its six replay
 \ writers refuse beside it.
 : CONTROL, ( -- )
@@ -1772,8 +1778,15 @@ public
    s" die" [: DIE, ;] PRIM
    s" unit-compile-run" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" source-unit-run" [: SOURCE-UNIT-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" source-exec-run" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" source-exec-live?" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" source-exec-boundary?" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" source-exec-loader-cut?" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" source-exec-position" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" source-exec-handler" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" evaluate" REFUSE
    s" evaluate-closed" REFUSE
+   s" evaluate-range" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" create" REFUSE
    s" parse-name" REFUSE
    s" num-parse" REFUSE
@@ -2414,12 +2427,21 @@ private
    FIND-LBL CALL,
    RAX R64>N X64RT:G-PUSH ;
 
+\ The existing scan keeps the highest matching dictionary row even when a
+\ native unit publishes duplicate names into one real wordlist.
+: XREF-SEARCH-WL-NEWEST-BODY ( -- )
+   FIND-ARGS,
+   FIND-SCAN-LBL CALL,
+   RAX R64>N X64RT:G-PUSH ;
+
 public
 
 \ The dictionary search, tabled under "Engine-state rows".
 : DICT-SEARCH, ( -- )
    s" search-wl" [: SEARCH-WL-BODY ;] PRIM
-   s" xref-search-wl" [: XREF-SEARCH-WL-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
+   s" xref-search-wl" [: XREF-SEARCH-WL-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" xref-wl-newest" [: XREF-SEARCH-WL-NEWEST-BODY ;]
+      ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
 private
 

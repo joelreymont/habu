@@ -2,9 +2,10 @@ STDLIB-GATE:MAIN
 
 using TEST
 
-\ Registry order is start order: GT-POOL-START takes the rows in the order
-\ below and each waits for a free slot, so a long row registered late starts
-\ late and alone sets the gate's tail. The long rows lead, longest first.
+\ Registry order is start order: the compiler-images build starts in the pool
+\ before these rows, and independent early rows run beside it. Each row waits
+\ for a free slot or the images its load closure needs. Long rows lead so they
+\ do not start late and alone set the gate's tail.
 
 \ A ROW STAYS UNDER HALF ITS CPU BUDGET. The gate ends a row once its process
 \ tree has run SUITE-BUDGET:CPU-MS (360 s) of CPU time, and its wall deadline
@@ -15,6 +16,16 @@ using TEST
 \ c2-memory, the longest, runs 113 s. Move a fixture group into a new row
 \ file - the shared fixture stays in the family's *-lib.f - rather than
 \ letting one row grow past that.
+
+\ Diagnostic modes run many fresh checker processes and need no shared image.
+\ Start them early so their serial checks overlap the other suite rows.
+SUITE diag-position
+   test/diag-position-test.f
+;SUITE
+
+SUITE source-root-exe
+   test/source-root-exe-test.f
+;SUITE
 
 \ native-build-entry loads and captures the x86 window (about 55 s alone) and
 \ needs no image, so it leads.
@@ -33,18 +44,9 @@ SUITE native-gate-aot-positive-preseed
    test/gate-aot-positive-preseed.f
 ;SUITE
 
-\ snap must build a fresh native engine and save that engine's image. Reusing
-\ the fixtures engine would skip the snap verb's build path.
-SUITE build-fixpoint-snapshot
-   tools/build-fixpoint-snapshot-test.f
-;SUITE
-
-\ The next two need no keyed image either, so they run beside the image build
-\ rows through the registry's first two holds: hb-build-stripped below waits
-\ for the saver and linker images, 6.5 s into a measured gate start, and
-\ aot-named-cells-image for the fixture writer and cold host, 19.7 s in.
-\ Registered after those rows they left two slots idle through the first hold
-\ and one or two through the second.
+\ The fixpoint fixtures reuse the suite's whitebox compiler image and the
+\ fixture writer and cold host. This row waits for those images to settle.
+\ The stripped-entry row waits for the saved AOT maker image.
 SUITE build-fixpoint-fixtures
    tools/build-fixpoint-test.f
 ;SUITE
@@ -53,8 +55,24 @@ SUITE stripped-entry
    test/stripped-entry.f
 ;SUITE
 
-\ Each C2 acceptance row builds its own rooted and ordinary native images,
-\ then loads fresh source and saved-image consumers from its owned source tree.
+SUITE ffi-callback-zero-image
+   test/ffi-callback-zero-image.f
+;SUITE
+
+SUITE ffi-callback-full-image
+   test/ffi-callback-full-image.f
+;SUITE
+
+SUITE ffi-callback-primitive-image
+   test/ffi-callback-primitive-image.f
+;SUITE
+
+SUITE ffi-callback-file-cache
+   test/ffi-callback-file-cache.f
+;SUITE
+
+\ Each C2 acceptance row waits for the compiler bundle, copies its rooted and
+\ ordinary images into its owned source tree, then tests both consumers.
 SUITE c2-memory
    test/c2-memory-e2e.f
 ;SUITE
@@ -140,8 +158,20 @@ SUITE hb-build-repl-twin
    tools/hb-build-repl-twin-test.f
 ;SUITE
 
+SUITE hb-build-repl-image
+   tools/hb-build-repl-image-test.f
+;SUITE
+
+SUITE hb-build-repl-fresh
+   tools/hb-build-repl-fresh-test.f
+;SUITE
+
 SUITE hb-build-aot
    tools/hb-build-aot-test.f
+;SUITE
+
+SUITE hb-build-aot-image
+   tools/hb-build-aot-image-test.f
 ;SUITE
 
 SUITE hb-build-aot-cache
@@ -151,57 +181,95 @@ SUITE hb-build-aot-cache
    tools/hb-build-direct-lints-test.f
 ;SUITE
 
-\ app-image is the first row that needs the unsealed engine: it holds the
-\ registry until whitebox-engine-build retires (test/gate-images.f), about 89 s.
-\ Every row above needs no image, the fixture writer and cold host, or the saver
-\ and linker images (4.5 s and 2.9 s to build in a full pool), so they keep the
-\ other slots busy through that build. The long rows that need the engine follow
-\ the hold, longest in the pool first, so none of them starts behind the short
-\ rows and sets the drain tail; the checker-scan-index rows take under a second.
+\ app-image uses the unsealed engine. whitebox-engine-build supplies its
+\ private copy from the initial compiler bundle; later consumers use that copy.
 SUITE app-image
    test/app-image.f
 ;SUITE
 
-\ The saved native builder rows (test/native-builder-image-lib.f lists them)
-\ run the keyed builder test/saved-builder.f, so each holds the registry until
-\ saved-builder-build retires. They follow the whitebox hold: that build row
-\ starts beside whitebox-engine-build, and its save took 21 s CPU where the
-\ unsealed engine's build took 74 s, measured on one loaded host. The whitebox
-\ and e2e rows run one engine build each; the refusals row's build stops at the
-\ first post-hook prefix file. The whitebox row compares the saved builder's
-\ unsealed engine with whitebox-engine-build's.
-SUITE native-builder-image-whitebox
-   test/native-builder-image-whitebox.f
+SUITE native-file-state
+   test/native-file-object-prepared-e2e.f
+   test/native-file-prepared-boundary-e2e.f
+   test/native-file-state-e2e.f
+   test/native-file-retired-e2e.f
 ;SUITE
 
-SUITE native-builder-image
-   test/native-builder-image-e2e.f
+SUITE native-file-types
+   test/native-file-types-e2e.f
 ;SUITE
 
-SUITE native-builder-image-refusals
-   test/native-builder-image-refusals.f
+SUITE native-file-stack
+   test/native-file-stack-e2e.f
 ;SUITE
 
-\ The NBR package unit rows wait for native-unit-build, which exports the unit
-\ from this tree once (test/native-unit-image.f) beside whitebox-engine-build
-\ and takes about as long. Each row runs one engine build
-\ (test/native-unit-lib.f): the import, compared with whitebox-engine-build's
-\ engine, and an import refused at NBR. The unit's layers after the stale
-\ entry - key, artifact file, bounded package compile - take under a second.
-SUITE native-unit
-   test/native-unit-e2e.f
+SUITE native-file-auto
+   test/native-file-auto-e2e.f
+   test/native-file-cwork-e2e.f
+   test/native-file-admission-e2e.f
+;SUITE
+
+SUITE native-file-replay
+   test/native-file-inputs-format.f
+   test/native-file-inputs-empty.f
+   test/native-file-replay-e2e.f
+   test/native-file-path-shadow-e2e.f
+;SUITE
+
+SUITE native-file-dynamic-load
+   test/native-file-dynamic-load-e2e.f
+;SUITE
+
+SUITE native-file-missing
+   test/native-file-missing-e2e.f
+;SUITE
+
+SUITE source-unit-range
+   test/source-unit-range-gate.f
+;SUITE
+
+SUITE native-file-prefix
+   tools/hb-build-prefix-producer-test.f
+;SUITE
+
+SUITE native-file-alias
+   test/native-file-alias-e2e.f
+;SUITE
+
+SUITE native-file-stripped-path
+   test/native-file-stripped-path-e2e.f
+;SUITE
+
+\ Each FILE pair builds twice; separate rows keep the native gate CPU budget.
+SUITE native-file-forms-zero
+   test/native-file-forms-zero.f
+;SUITE
+
+SUITE native-file-forms-namespace
+   test/native-file-forms-namespace.f
+;SUITE
+
+SUITE native-file-forms-global
+   test/native-file-forms-global.f
+;SUITE
+
+SUITE native-file-forms-repeat
+   test/native-file-forms-repeat.f
 ;SUITE
 
 SUITE native-unit-refusals
-   test/native-unit-stale.f
    test/native-unit-key-e2e.f
    test/native-unit-file.f
+   test/native-file-object-wid-reject.f
    test/native-unit-compile-e2e.f
 ;SUITE
 
 \ A package's checker facts survive an artifact boundary.
 SUITE checker-unit-codec
    test/checker-unit-codec-e2e.f
+;SUITE
+
+SUITE checker-unit-capture
+   test/checker-unit-capture-run.f
 ;SUITE
 
 SUITE native-window-owner
@@ -884,6 +952,10 @@ SUITE native-gate-aot-negative
    test/gate-aot-negative.f
 ;SUITE
 
+SUITE ffi-growth
+   test/ffi-growth.f
+;SUITE
+
 SUITE stripped-preloaded-runtime
    test/stripped-preloaded-runtime.f
 ;SUITE
@@ -1502,6 +1574,16 @@ SUITE ffi-cabi
 \ build/ffi-callback-transcript.txt and compares it whole.
 SUITE ffi-callback
    src/lib/ffi-callback-test.f
+;SUITE
+
+\ More than 129 native C entries, stable pointers through growth, high-row
+\ lifecycle and fallback; the emitter check reaches beyond a 16-bit slot ID.
+SUITE ffi-callback-growth
+   test/ffi-callback-growth.f
+;SUITE
+
+SUITE native-callback-stub-immediate
+   test/native-callback-stub-immediate.f
 ;SUITE
 
 \ IMAGE-LIFECYCLE:PREPARE closes the library a FUNCTION: row opened, and the
@@ -2304,10 +2386,6 @@ SUITE load-reject-diag
    test/load-reject-diag-test.f
 ;SUITE
 
-SUITE diag-position
-   test/diag-position-test.f
-;SUITE
-
 SUITE core-prefix-mark
    test/prefix-mark-test.f
 ;SUITE
@@ -2346,6 +2424,10 @@ SUITE tmp-path
 
 SUITE gate-pool
    test/gate-pool-test.f
+;SUITE
+
+SUITE gate-images-orchestration
+   test/gate-images-test.f
 ;SUITE
 
 SUITE gate-common
@@ -2550,10 +2632,6 @@ SUITE boot-relocation
    test/boot-relocation-e2e.f
 ;SUITE
 
-SUITE source-root-exe
-   test/source-root-exe-test.f
-;SUITE
-
 SUITE json
    tools/json-test.f
 ;SUITE
@@ -2564,6 +2642,7 @@ SUITE source-discovery
 
 SUITE xref
    tools/xref-test.f
+   test/native-unit-xref-newest.f
 ;SUITE
 
 SUITE zed-run

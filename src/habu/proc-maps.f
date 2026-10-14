@@ -3,7 +3,7 @@
 \ Linux reads /proc/self/maps; macOS walks mach_vm_region_recurse, descending
 \ into submaps and omitting permanently inaccessible reservations. Neither
 \ target invents an address range when the query fails.
-\ Its caller is src/habu/aot-closure.f CELL-MAPPED?, which asks whether a
+\ Its caller is src/habu/aot-data-cell.f MAPPED?, which asks whether a
 \ persistent cell holds an address the linking process mapped.
 \
 \ WHY THE KERNEL AND NOT A REGISTRY. `mmap` is reached from src/lib/memory.f
@@ -46,8 +46,10 @@
 \ table heads are mmap addresses and the parser's pending pair holds the last
 \ line's start until that line ends, which is the very thing a stripped build
 \ refuses: a program requiring this file is refused at word=PEND-LO, rc 70
-\ (measured). The linker loads it ABOVE the capture window (tools/aot-build-core.f),
-\ where none of its cells are the image's to carry.
+\ (measured). The FILE producer loads it before the capture window to decline
+\ caching a mapped pointer; strict export names and refuses the cell. The
+\ producer's scope is retired before the window opens. The linker loads its own
+\ copy above the captured span.
 \
 \ A CAPTURE DROPS THE MAP WHOLE. The rows, and the one cell that says a read
 \ completed and how many areas it found, are DYNAMIC-BUFFER storage, which every
@@ -279,6 +281,26 @@ FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr
    FD @ close
    ST @ ST-LO <> IF s" proc-maps: /proc/self/maps ended inside a line" FAIL-RC die THEN ;
 
+: CLEAR-BYTES ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0 ?do 0 a i + c! loop ;
+
+\ The completed map lives in EXT-LO/HI/SELF/HEAP and EXT-READ. None of the
+\ parser or Mach query scratch belongs to it or to an image saved after it.
+: CLEAR-SCAN ( -- )
+   CHUNK-BUF CHUNK CLEAR-BYTES
+   PATH-BUF MAPS-PATH-MAX CLEAR-BYTES
+   EXE-BUF MAPS-PATH-MAX CLEAR-BYTES
+   0 EXT-N !  0 ST !  0 ACC !
+   0 PEND-LO !  0 PEND-HI !  0 FLD !  0 INFLD !
+   0 PATH-U !  0 PATH-OVER !  0 EXE-U !
+   0 FD !  0 GOT !
+   MACH-ADDR 8 CLEAR-BYTES
+   MACH-SIZE 8 CLEAR-BYTES
+   MACH-DEPTH 4 CLEAR-BYTES
+   MACH-COUNT 4 CLEAR-BYTES
+   MACH-INFO MACH-INFO-BYTES CLEAR-BYTES ;
+
 \ The area this value is interior to, or -1, among the map's first count rows.
 \ [start, end): the end is the next area's start, or a hole, and belongs to
 \ neither.
@@ -296,7 +318,10 @@ FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr
          THEN
       THEN
    REPEAT
-   BS-AT @ ;
+   BS-AT @ {: found:n :}
+   \ The completed answer is the index, not this query's search cursor.
+   0 BS-LO !  0 BS-HI !  0 BS-MID !  0 BS-AT !
+   found ;
 
 \ Has this process no map? The count cell holds a mapping only once a read has
 \ completed, and the mapping lives in the head DYNAMIC-STORAGE nulls when the
@@ -312,7 +337,8 @@ public
    EXT-READ-RELEASE  0 EXT-N !
    HB-TARGET-MACOS? IF MACOS-RELOAD ELSE LINUX-RELOAD THEN
    EXT-N @ 0 = IF s" proc-maps: kernel listed no area" FAIL-RC die THEN
-   1 EXT-READ-RESERVE  EXT-N @ 0 EXT-READ ! ;
+   1 EXT-READ-RESERVE  EXT-N @ 0 EXT-READ !
+   CLEAR-SCAN ;
 
 \ Areas the last read found, and none before this process has read its map.
 : EXTENTS ( -- n )
@@ -342,7 +368,7 @@ public
 
 \ ... or the brk area, which the kernel names [heap] and no Habu word allocates
 \ from: every allocation src/lib/memory.f makes is an mmap. The caller's reason for
-\ asking is src/habu/aot-closure.f CELL-MAPPED?.
+\ asking is src/habu/aot-data-cell.f MAPPED?.
 : HEAP? ( n -- bool ) {: v:n :}
    v AREAS ROW-AT {: at:n :}
    at 0 < IF false EXIT THEN

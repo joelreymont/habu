@@ -6,6 +6,7 @@
 \ Run: bin/hb --load tools/hb-build-test.f
 
 require tools/hb-build-test-lib.f
+require tools/image-size-lib.f          \ this fixture measures image bytes directly
 require test/preloaded-engine.f
 require src/lib/test/outcome.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
@@ -88,7 +89,7 @@ variable HBT-INST-FILES
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
 
 \ --report-json through the CLI: a REPL build exits 0 with nothing on stderr
-\ and the report object on stdout, HBB-SUCCESS writing HB-BUILD:REPORT$, its
+\ and the report object on stdout, the report hook writing HB-BUILD:REPORT$, its
 \ cache source none. HBB-BUILD-REPL consults no cache and sets no trace flag,
 \ so the five false fields are the reset trace as the report writes it, not a
 \ cache that was asked and missed. CHECK-REPORT takes the expected cache
@@ -96,15 +97,27 @@ variable HBT-INST-FILES
 \ The output already holds stale bytes, and no other case builds over one: the
 \ CLI renames its copy onto -o (HBB-INSTALL-OUT), and HBT-RUN-REPL's exact
 \ stdout proves the new image replaced them.
-: CLI-REPORT ( -- )
-   HBT-REPL-OUT s" stale" WRITE-ALL
+: HBT-CLI-REPORT ( bool -- )
+   {: size:bool :}
    HBT-ARGV-BASE-REPL
+   size if s" --size-report" >LEN PROC-ARGV+ then
    HBT-ADD-REPORT
    HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
    rc 0 T=
    erru 0 T=
    HBB-RESET-OPTIONS HBB-REPL-ON
    HBT-OUT outu JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
+
+: CLI-REPORT ( -- )
+   HBT-REPL-OUT s" stale" WRITE-ALL
+   0 0= 0= HBT-CLI-REPORT
+   HBT-REPL-OUT FILE-META {: size:n sec:n ns:n csec:n cns:n :}
+   csec drop cns drop
+   \ A fresh output still reports; with both flags JSON remains the only object.
+   0 0= HBT-CLI-REPORT
+   HBT-REPL-OUT FILE-META {: after:n asec:n ans:n acsec:n acns:n :}
+   acsec drop acns drop
+   after size T= asec sec T= ans ns T= ;
 
 \ The install stages the engine in a sibling of -o and renames it over -o
 \ (HBB-INSTALL-OUT). A directory at -o lets the sibling be filled and made
@@ -350,6 +363,7 @@ variable HBT-INST-FILES
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   -1 HBB-REPORT-JSON !
    HBB-BUILD
    HBT-AOT-IMAGE$ {: a:ptr u:n :}
    a u HBT-SCAN-TEXT-ADR9

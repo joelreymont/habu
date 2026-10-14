@@ -13,6 +13,9 @@ bin/
 # engine rebuild scratch and fixpoint stamp (HB_TMP / HABU_FIXPOINT_STAMP)
 build/
 
+# native FILE cache (regenerated from source)
+/.out/
+
 # jj workspace checkouts (never snapshot or track these)
 .jj-ws/
 

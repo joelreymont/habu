@@ -2,10 +2,10 @@
 require src/habu/verify-source.f
 require src/lib/tier.f
 
-: TICK-CHANGE-UNIT ( ptr u8 n ptr u8 n ptr u8 [ -- ] -- )
-   {: path:ptr pathu:n root:ptr rootu:n source:ptr q :}
+: TICK-CHANGE-UNIT ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    1 TIER:SELECT
-   q execute ;
+   0 sourceu q execute ;
 
 : TICK-PROVIDER-UNIT-TEST ( -- )
    [: TICK-CHANGE-UNIT ;] SOURCE-UNIT:USE

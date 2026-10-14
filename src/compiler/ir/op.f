@@ -531,17 +531,16 @@ variable FROW-LOCAL
 4 constant L-AK                      \ attribute key symbol ordinals
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable STG-MODE
-MODE-NONE STG-MODE !
-variable STG-OPC
-variable STG-OPCO
-variable STG-SRC
-variable STG-SRCO
-variable STG-SBEG
-variable STG-SLEN
-create STG-V LIST# ARITY-MAX * cells allot
-create STG-O LIST# ARITY-MAX * cells allot
-create STG-N LIST# cells allot
+0 CWORK-VARIABLE STG-MODE n
+0 CWORK-VARIABLE STG-OPC n
+0 CWORK-VARIABLE STG-OPCO n
+0 CWORK-VARIABLE STG-SRC n
+0 CWORK-VARIABLE STG-SRCO n
+0 CWORK-VARIABLE STG-SBEG n
+0 CWORK-VARIABLE STG-SLEN n
+LIST# ARITY-MAX * CWORK-SPAN STG-V n
+LIST# ARITY-MAX * CWORK-SPAN STG-O n
+LIST# CWORK-SPAN STG-N n
 
 : SV@ ( n -- n )
    cells STG-V + @ ;

@@ -55,6 +55,9 @@ variable ECT-RB-ENTRY-U
 variable ECT-SHARED-U
 variable ECT-PATH-U
 variable ECT-RAW-U
+variable ECT-BEFORE-ENTRY
+variable ECT-BEFORE-DEP
+variable ECT-BEFORE-CALLS
 
 : ECT-ROOT$ ( -- ptr u8 n )   ECT-ROOT ECT-ROOT-U @ ;
 : ECT-RA-ENTRY$ ( -- ptr u8 n ) ECT-RA-ENTRY ECT-RA-ENTRY-U @ ;
@@ -177,6 +180,52 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-ROOT$ s" entry.f" SOURCE-ROOT:JOIN EC:LOAD-ORDER
    EC:ORDER-COUNT 2 T=
    1 EC:ORDER-PATH$ ECT-ENTRY$ T$= ;
+
+\ A selected entry below its owner still finds a sibling at that owner's root.
+\ The observer changes each source before discovery reads it; the resulting
+\ transitive list is the repeatable artifact of the observation boundary.
+: ECT-BEFORE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u ECT-PATH$ STR= ECT-BEFORE-ENTRY @ 0= and if
+      1 ECT-BEFORE-ENTRY !
+      ECT-PATH$ s" require dep-a.f" ECT-WRITE
+   then
+   a u ECT-DA$ STR= ECT-BEFORE-DEP @ 0= and if
+      1 ECT-BEFORE-DEP !
+      ECT-DA$ s" require dep-b.f" ECT-WRITE
+   then ;
+
+: ECT-TEST-SELECTED-ROOT ( -- )
+   ECT-ROOT$ s" sub" SOURCE-ROOT:JOIN MAKE-DIR
+   s" sub/entry.f" ECT-PATH ECT-PATH-U ECT-MK
+   ECT-PATH$ s" " ECT-WRITE
+   ECT-DA$ s" " ECT-WRITE
+   ECT-DB$ s" " ECT-WRITE
+   ECT-PATH$ ECT-ROOT$ EC:BUILD-IN
+   EC:COUNT 1 T=
+   0 EC:NAME$ s" sub/entry.f" T$=
+   0 ECT-BEFORE-ENTRY ! 0 ECT-BEFORE-DEP !
+   ECT-PATH$ ECT-ROOT$ [: ECT-BEFORE ;] EC:BUILD-IN-EACH
+   ECT-BEFORE-ENTRY @ 1 T=
+   ECT-BEFORE-DEP @ 1 T=
+   EC:COUNT 3 T=
+   0 EC:PATH$ ECT-PATH$ T$=
+   1 EC:PATH$ ECT-DA$ T$=
+   2 EC:PATH$ ECT-DB$ T$= ;
+
+\ A caller's observer error must leave the harvest, even when its code is
+\ also one that discovery suppresses for a source scan.
+: ECT-BEFORE-THROWS-ONCE ( ptr u8 n -- )
+   2drop
+   1 ECT-BEFORE-CALLS +!
+   ECT-BEFORE-CALLS @ 1 = if E-FS-PATH throw then ;
+
+: ECT-TEST-BEFORE-ERROR ( -- )
+   ECT-ENTRY$ s" " ECT-WRITE
+   0 ECT-BEFORE-CALLS !
+   [: ECT-ENTRY$ ECT-ROOT$ [: ECT-BEFORE-THROWS-ONCE ;]
+      EC:BUILD-IN-EACH ;] E-FS-PATH TTHROWSQ
+   ECT-BEFORE-CALLS @ 1 T= ;
 
 \ A spelling longer than PATH-CAP can normalize to a valid source path.
 : ECT-TEST-LONG-ENTRY ( -- )
@@ -594,6 +643,8 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-TEST-ORDER
    ECT-TEST-TRANSITIVE
    ECT-TEST-TRANSIENT-ENTRY
+   ECT-TEST-SELECTED-ROOT
+   ECT-TEST-BEFORE-ERROR
    ECT-TEST-LONG-ENTRY
    ECT-TEST-FAMILY-FIELD
    ECT-TEST-FAMILY-LATE-DEPENDENCY

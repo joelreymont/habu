@@ -143,6 +143,10 @@ variable LREPLROUTE
 \ EXIT-HOOK-CELL). Declared here, like LREPLROUTE, because BDIE below calls it
 \ and a label variable habu2.f declares does not exist while this file loads.
 variable LEXITHOOK
+\ A seed stub branches to this disjoint shared C entry. Reserve its label
+\ before callback-entry is emitted, then register its own span afterward.
+variable LCALLBACKTHUNK
+variable LCALLBACKADDR
 \ The region's write bands track dictionary-record, control-flow and code spans.
 \ EMIT-PROT-WINDOW supplies the bodies; definition, publication and patch
 \ brackets in this file and habu2.f are their callers. Their label ids are
@@ -233,6 +237,7 @@ DICT-CAP 1+ cells constant STATE-BYTES
 package WLFIND
 public
 variable LENTRY
+variable LNEWEST
 ;package
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
 variable LROWWALK   \ every dispatch row's spelling test over x0/x1 (habu2.f COMPILE-EMIT:EMIT-ROW-WALK); BPOLICYADMIT calls it
@@ -1614,7 +1619,27 @@ public
 \ continuation of B-EVAL-CLOSED, which inlines it on a stack of its own. The
 \ checker's record end (EVAL-FRAME:ROWS) is read last, when x9, x10, x13, x14
 \ and x30 are spent: the owner's ROWS-END field is checked code.
-: EVAL-ENTER ( -- )
+variable LEVALBODY
+variable LSOURCEEXECFINISH
+
+: B-EVAL ( -- )
+   B-TASK-LIVE-GUARD
+   B G-POP  A G-POP
+   13 0 MOVZ,
+   6 0 MOVZ,  7 10 0 ADDI,
+   LEVALBODY LABEL@ B, ;
+
+: B-EVAL-RANGE ( -- )
+   B-TASK-LIVE-GUARD
+   7 G-POP  6 G-POP  B G-POP  A G-POP
+   13 0 MOVZ,
+   LEVALBODY LABEL@ B, ;
+
+: EMIT-EVAL-BODY ( -- )
+   LBL LBL {: end:label sx-done:label :}
+   s" (EVALUATE)" LEVALBODY LABEL@ LABEL>N
+      end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
+   LEVALBODY LABEL@ LBL,
    SP SP STACK-ABI:EVAL-BYTES SUBI,
    14 SP 0 ADDI,
    11 DATA EVAL-TOP-CELL LDR,  11 14 EVAL-PREV STR,
@@ -1630,6 +1655,15 @@ public
    11 DATA STACK-ABI:BASE-CELL LDR,  11 14 STACK-ABI:EVAL-BASE STR,
    11 DATA STACK-ABI:CAP-CELL LDR,  11 14 STACK-ABI:EVAL-CAP STR,
    13 14 STACK-ABI:EVAL-SEG STR,
+   11 DATA SOURCE-EXEC-CTX-CELL LDR,  11 sx-done CBZ,
+   12 11 SX-ARMED LDR,  12 sx-done CBNZ,
+   12 11 SX-SRC LDR,  15 9 6 ADD,  12 15 CMP,  C-NE sx-done BCOND,
+   12 11 SX-LEN LDR,  15 7 6 SUB,  12 15 CMP,  C-NE sx-done BCOND,
+   14 11 SX-EVAL STR,
+   12 DATA S0-CELL LDR,  12 XDS 12 SUB,  12 12 3 LSRI,  12 11 SX-FLOOR STR,
+   12 DATA RSP-CELL LDR,  12 11 SX-RFLOOR STR,
+   12 1 MOVZ,  12 11 SX-ARMED STR,
+   sx-done LBL,
    \ Snapshot package/search state alongside the input and caller frame.
    12 14 EVAL-PKG ADDI,
    11 DATA CUR-CELL LDR,        11 12 PKGSNAP-CUR STR,
@@ -1643,22 +1677,18 @@ public
    11 USE-DEPTH-CELL LIT64,  11 DATA 11 ADD,  11 11 0 LDR,  11 12 PKGSNAP-USE STR,
    \ and starts the buffer's using floor there: it closes only the usings it opens
    11 14 EVAL-FRAME:USE-FLOOR STR,
+   12 14 EVAL-PKG ADDI,
    \ and the open package's using floor, which a throw restores with the package
    11 USE-PKG-SAVE-CELL LIT64,  11 DATA 11 ADD,  11 11 0 LDR,  11 12 PKGSNAP:FLOOR STR,
    \ and the includer's used publics, which a throw puts back with the depth
    14 EVAL-FRAME:USE-WIDS 11 12 ENGINE-EMIT:USE-WIDS-SAVE,
    11 DATA EVALD-CELL LDR,  11 11 1 ADDI,  11 DATA EVALD-CELL STR,
-   9 DATA INP-CELL STR,                              \ INP = a
-   9 DATA SRCLOC:INB-CELL STR,                       \ INB = a (this buffer's first byte)
-   11 9 10 ADD,  11 DATA INE-CELL STR,               \ INE = a + u
-   10 SP EVAL-FRAME:ROWS DECL-OWNER:MARK-END        \ the frame is SP's, whole before the call
-   9 DATA LMAINP-CELL LDR,  9 BR, ;
-
-: B-EVAL ( -- )
-   B-TASK-LIVE-GUARD
-   B G-POP  A G-POP                                  \ x10 = u, x9 = a
-   13 0 MOVZ,                                        \ no stack of its own
-   EVAL-ENTER ;
+   11 9 6 ADD,  11 DATA INP-CELL STR,               \ INP = full base + first
+   9 DATA SRCLOC:INB-CELL STR,                       \ INB = full source base
+   11 9 7 ADD,  11 DATA INE-CELL STR,               \ INE = full base + end
+   10 SP EVAL-FRAME:ROWS DECL-OWNER:MARK-END
+   9 DATA LMAINP-CELL LDR,  9 BR,
+   end LBL, ;
 
 : BCREATE ( -- )
    15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
@@ -2426,7 +2456,7 @@ $150 constant CBT-BYTES
    10 DATA-VA VA>N LIT64,                              \ x10 = the main region
    11 CB-ROWS MOVZ,  11 10 11 ADD,  11 11 LDAR,
    11 no-table CBZ,
-   12 9 4 LSLI,  11 11 12 ADD,                         \ x11 = the row (CB-ROW-BYTES 16)
+   12 9 5 LSLI,  11 11 12 ADD,                         \ x11 = the row (four cells)
    11 SP CBT-ROW STR,
    12 CB-SELF,
    13 11 CB-ROW-OWNER ADDI,
@@ -2459,7 +2489,8 @@ $150 constant CBT-BYTES
    15 no-frame CBZ,
    13 CB-XTS MOVZ,  13 10 13 ADD,  13 13 LDAR,
    13 no-xt CBZ,
-   12 9 3 LSLI,  13 13 12 ADD,  13 13 0 LDR,
+   12 9 2 LSLI,  12 12 9 ADD,  12 12 3 LSLI,          \ five cells per descriptor
+   13 13 12 ADD,  13 13 0 LDR,
    13 no-xt CBZ,
    12 14 CB-FRAME LDR,  12 SP CBT-OUTER STR,
    12 SP CBT-MARSHAL ADDI,  12 14 CB-FRAME STR,
@@ -2509,20 +2540,38 @@ $150 constant CBT-BYTES
    S\" hb: callback: slot has no dispatch\n" no-xt CB-DIE,
    S\" hb: callback: the body defined\n" defined CB-DIE, ;
 
-\ callback-entry ( n -- n ): the address of stub n, an immutable C entry and not
-\ a Habu execution token. Each stub is two instructions - its slot into x9, a
-\ branch to the one thunk - so stub n is 8n bytes past the first.
+\ -1 answers the shared C thunk for the native compiler's marked address
+\ carrier. Other indices retain the old seed stubs for boot compatibility.
+\ This primitive ends before the separately owned thunk begins.
 : BCALLBACK-ENTRY ( -- )
-   LBL LBL LBL LBL {: stubs:label thunk:label done:label bad:label :}
+   LBL LBL LBL LBL {: stubs:label done:label bad:label direct:label :}
    A G-POP
+   9 -1 LIT64,  A 9 CMP,  C-EQ direct BCOND,
    A CB-POOL CMPI,  C-CS bad BCOND,
    B stubs ADR,
    A A 3 LSLI,  A B A ADD,  A G-PUSH
    done B,
+   direct LBL,
+   LCALLBACKADDR LABEL@ BL,  A G-PUSH  done B,
    S\" hb: callback: slot out of range\n" bad CB-DIE,
    stubs LBL,
-   CB-POOL 0 do  9 i MOVZ,  thunk B,  loop
-   thunk LBL,
+   CB-POOL 0 do  9 i MOVZ,  LCALLBACKTHUNK LABEL@ B,  loop
+   done LBL, ;
+
+\ A native callback stub carries this address across FILE and image builds.
+\ The thunk follows callback-entry's completed primitive record, so its sealed
+\ helper record is disjoint even when an image also uses the public primitive.
+: EMIT-CALLBACK-THUNK ( -- )
+   LBL LBL {: body:label done:label :}
+   s" (CALLBACK-THUNK)" LCALLBACKTHUNK LABEL@ LABEL>N
+      done LABEL>N ENGINE-PRIMS:HELPER-REGISTER
+   LCALLBACKTHUNK LABEL@ LBL,
+   body B,
+   \ The public primitive calls this tiny accessor. Its ADR points to the
+   \ same member's C entry, so the image relocates it within this record.
+   LCALLBACKADDR LABEL@ LBL,
+   A LCALLBACKTHUNK LABEL@ ADR,  RET,
+   body LBL,
    BCALLBACK-THUNK
    done LBL, ;
 
@@ -2971,12 +3020,15 @@ public
 \ and complete dictionary rows before this engine-owned publication boundary.
 \ The code and record bands open together and close together; no dictionary
 \ name becomes live until both copies and the instruction-cache flush finish.
+\ A namespace-only unit has records but no code; it opens only the record band
+\ and leaves CP, relocation maps and code provenance unchanged.
 : BNATIVEUNITPUBLISH ( -- ) B-TASK-LIVE-GUARD
    OVERLAY-EMIT:GUARD,
    9 G-POP  10 G-POP  11 G-POP  12 G-POP  \ records-n, records-a, code-u, code-a
    LBL LBL LBL LBL LBL LBL
    {: bad:label widloop:label widdone:label cloop:label cdone:label rloop:label :}
-   LBL LBL LBL LBL {: rdone:label iloop:label idone:label done:label :}
+   LBL LBL LBL LBL LBL LBL
+   {: rdone:label iloop:label idone:label done:label records:label indexed:label :}
    SP SP 64 SUBI,
    9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
    CP SP 32 STR,
@@ -2994,8 +3046,10 @@ public
       13 bad CBNZ,
       15 15 DREC ADDI,  16 16 1 SUBI,  widloop B,
    widdone LBL,
-   9 SP 16 LDR,  10 CP 0 ADDI,  GUARD-CODE-SPAN
+   9 SP 16 LDR,  9 records CBZ,
+   10 CP 0 ADDI,  GUARD-CODE-SPAN
    9 SP 16 LDR,  1 CP 9 ADD,  PROT-EMIT:LOPEN LABEL@ BL,
+   records LBL,
    1 SP 40 LDR,  2 SP 48 LDR,  PROT-EMIT:LSPAN LABEL@ BL,
    9 SP 32 LDR,  10 SP 24 LDR,  11 SP 16 LDR,  12 0 MOVZ,
    cloop LBL,
@@ -3012,12 +3066,14 @@ public
       12 12 8 ADDI,  rloop B,
    rdone LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,
-   9 SP 16 LDR,  10 SP 32 LDR,
+   9 SP 16 LDR,  9 indexed CBZ,
+   10 SP 32 LDR,
    SNAP-RELOC:CALLMAP-OFF RELOC-EMIT:CLEAR-SPAN,
    SNAP-RELOC:ADDRMAP-OFF RELOC-EMIT:CLEAR-SPAN,
    9 SP 16 LDR,  CP CP 9 ADD,
    9 SP 32 LDR,  LFLUSH LABEL@ BL,
    9 SP 32 LDR,  10 CP 0 ADDI,  9 10 CODE-ORIGIN:NATIVE-RANGE,
+   indexed LBL,
    15 SP 0 LDR,
    iloop LBL,
       15 idone CBZ,
@@ -3488,8 +3544,9 @@ public
    13 DATA STACK-ABI:BASE-CELL STR,
    12 STACK-ABI:PAGE-BYTES LIT64,  12 DATA STACK-ABI:CAP-CELL STR,
    XDS 13 0 ADDI,
+   6 0 MOVZ,  7 10 0 ADDI,
    30 back ADR,
-   EVAL-ENTER
+   LEVALBODY LABEL@ B,
    back LBL,
    11 SP 24 LDR,                                     \ the text's stack, back to the pool
    12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
@@ -3507,29 +3564,184 @@ public
 \ a clean callback must return to the saved cursor. Compare before any data
 \ stack push so a callback that fills the physical extent reports residue.
 : B-SOURCE-UNIT-RUN ( -- )
-   LBL LBL {: restore:label done:label :}
+   LBL LBL LBL LBL LBL LBL
+      {: have:label take:label caught:label restore:label done:label no-snap:label :}
    B-TASK-LIVE-GUARD
    A G-POP  BCALLABLE
+   \ The child uses a fresh guarded stack; retain the parent action's stack
+   \ interval after the loader consumed its arguments and before that swap.
+   10 DATA SOURCE-EXEC-CTX-CELL LDR,  10 no-snap CBZ,
+   11 10 SX-ARMED LDR,  11 1 CMPI,  C-NE no-snap BCOND,
+   11 10 SX-PENDING LDR,  11 no-snap CBZ,
+   11 10 SX-SUSPEND LDR,  11 no-snap CBNZ,
+   11 10 SX-EVAL LDR,  12 DATA EVAL-TOP-CELL LDR,
+   11 12 CMP,  C-NE no-snap BCOND,
+   11 DATA S0-CELL LDR,  11 XDS 11 SUB,  11 11 3 LSRI,
+   11 10 SX-DEPTH STR,
+   11 DATA RSP-CELL LDR,  11 10 SX-RDEPTH STR,
+   no-snap LBL,
    SP SP 32 SUBI,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
    12 DATA STACK-ABI:CAP-CELL LDR,   12 SP 8 STR,
    XDS SP 16 STR,
-   13 XDS 11 SUB,  12 12 13 SUB,
-   XDS DATA STACK-ABI:BASE-CELL STR,  12 DATA STACK-ABI:CAP-CELL STR,
+   9 SP 24 STR,
+   13 DATA CLOSED-FREE-CELL LDR,  13 have CBNZ,
+   STACK-ABI:PAGE-BYTES 13 STACK-GUARD:EMIT-MAP
+   take B,
+   have LBL,
+   12 13 0 LDR,  12 DATA CLOSED-FREE-CELL STR,
+   take LBL,
+   9 SP 24 LDR,  13 SP 24 STR,
+   13 DATA STACK-ABI:BASE-CELL STR,
+   12 STACK-ABI:PAGE-BYTES LIT64,  12 DATA STACK-ABI:CAP-CELL STR,
+   XDS 13 0 ADDI,
+   \ Same handler shape as BCATCH, but do not push its status on the callback's
+   \ stack: the clean callback may have filled that stack exactly.
+   SP SP STACK-ABI:CATCH-BYTES SUBI,
+   30 SP 32 STR,
+   11 DATA 8 LDR,  11 SP 0 STR,
+   19 SP 8 STR,
+   13 SP STACK-ABI:CATCH-BYTES ADDI,  13 SP 16 STR,
+   12 caught ADR,  12 SP 24 STR,
+   11 DATA RSP-CELL LDR,     11 SP 40 STR,
+   11 DATA LOOPSP-CELL LDR,  11 SP 48 STR,
+   11 STACK-ABI:CATCH-MAGIC LIT64,  11 SP 56 STR,
+   11 DATA STACK-ABI:BASE-CELL LDR,  11 SP STACK-ABI:CATCH-BASE STR,
+   11 DATA STACK-ABI:CAP-CELL LDR,  11 SP STACK-ABI:CATCH-CAP STR,
+   14 SP 0 ADDI,  14 DATA 8 STR,
    9 BLR,
-   11 SP 16 LDR,
+   11 SP 0 LDR,  11 DATA 8 STR,
+   30 SP 32 LDR,  SP SP STACK-ABI:CATCH-BYTES ADDI,
    9 0 MOVZ,
+   caught LBL,
+   9 restore CBNZ,
+   11 SP 24 LDR,
    XDS 11 CMP,  C-EQ restore BCOND,
    9 STACK-ABI:E-EVAL-RESIDUE LIT64,
    C-CS restore BCOND,
    9 70 MOVZ,
    restore LBL,
+   11 SP 24 LDR,
+   12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
    12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
    12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
-   XDS 11 0 ADDI,  SP SP 32 ADDI,
+   XDS SP 16 LDR,  SP SP 32 ADDI,
    9 done CBZ,
    9 G-PUSH  BTHROW
    done LBL, ;
+
+: BSOURCEEXECRUN ( -- )
+   LBL LBL LBL LBL {: bad:label checked:label done:label no-parent:label :}
+   SP SP SOURCE-EXEC-FRAME-BYTES SUBI,  30 SP SX-LR STR,
+   9 G-POP  9 SP SX-CONT STR,
+   9 G-POP  9 SP SX-AFTER STR,
+   9 G-POP  9 SP SX-BEFORE STR,
+   9 G-POP  9 SP SX-LEN STR,
+   9 G-POP  9 SP SX-SRC STR,
+   9 G-POP  9 SP SX-UNIT STR,
+   9 SP SX-LEN LDR,  9 0 CMPI,  C-LT bad BCOND,
+   9 SP SX-BEFORE LDR,  9 DBASE CMP,  C-CC bad BCOND,
+   9 CP CMP,  C-CS bad BCOND,
+   9 SP SX-AFTER LDR,  9 DBASE CMP,  C-CC bad BCOND,
+   9 CP CMP,  C-CS bad BCOND,
+   9 SP SX-CONT LDR,  9 DBASE CMP,  C-CC bad BCOND,
+   9 CP CMP,  C-CS bad BCOND,
+   9 DATA SOURCE-EXEC-CTX-CELL LDR,  9 SP SX-PREV STR,
+   9 no-parent CBZ,
+      10 0 MOVN,  10 9 SX-CONSTRUCTION STR,
+   no-parent LBL,
+   9 0 MOVZ,
+   9 SP SX-ARMED STR,  9 SP SX-PENDING STR,  9 SP SX-SUSPEND STR,
+   9 0 MOVN,  9 SP SX-CONSTRUCTION STR,  9 SP SX-POS STR,
+   9 SP 0 ADDI,  9 DATA SOURCE-EXEC-CTX-CELL STR,
+   9 SP SX-CONT LDR,  9 G-PUSH
+   BCATCH
+   9 G-POP  9 SP SX-LEN STR,                \ status; source extent is no longer needed
+   15 9 0 ADDI,  LSOURCEEXECFINISH LABEL@ BL,
+   9 SP SX-PREV LDR,  9 DATA SOURCE-EXEC-CTX-CELL STR,
+   9 15 0 ADDI,
+   checked B,
+   bad LBL,
+   9 70 MOVZ,
+   checked LBL,
+   30 SP SX-LR LDR,  SP SP SOURCE-EXEC-FRAME-BYTES ADDI,
+   9 G-PUSH
+   done LBL, ;
+
+
+: BSOURCEEXECLIVE ( -- )
+   LBL LBL {: absent:label done:label :}
+   9 DATA SOURCE-EXEC-CTX-CELL LDR,  9 absent CBZ,
+   9 0 MOVN,  done B,
+   absent LBL,  9 0 MOVZ,
+   done LBL,  9 G-PUSH ;
+
+\ A loader cut may carry parent data cells across the child's guarded stack.
+\ All compiler state and the return stack must still be closed at that cut.
+: BSOURCEEXECCLEAN ( -- )
+   LBL LBL {: bad:label done:label :}
+   9 DATA PEND-CELL LDR,  9 bad CBNZ,
+   9 DATA TXN-ACTIVE-CELL LDR,  9 bad CBNZ,
+   9 DATA P2-CELL LDR,  9 bad CBNZ,
+   9 DATA JIT-SNAP:SP-CELL LDR,  9 bad CBNZ,
+   12 CFSTK-OFF LIT64,  12 DBASE 12 ADD,  9 12 0 LDR,  9 bad CBNZ,
+   9 DATA DOESB-CELL LDR,  9 bad CBNZ,
+   9 10 SX-RDEPTH LDR,  12 10 SX-RFLOOR LDR,
+   9 12 CMP,  C-NE bad BCOND,
+   9 0 MOVN,  done B,
+   bad LBL,  9 0 MOVZ,
+   done LBL,  9 G-PUSH ;
+
+: BSOURCEEXECBALANCED ( -- )
+   LBL LBL {: bad:label done:label :}
+   BSOURCEEXECCLEAN
+   9 G-POP  9 bad CBZ,
+   9 10 SX-DEPTH LDR,  12 10 SX-FLOOR LDR,
+   9 12 CMP,  C-NE bad BCOND,
+   9 0 MOVN,  done B,
+   bad LBL,  9 0 MOVZ,
+   done LBL,  9 G-PUSH ;
+
+: BSOURCEEXECBOUNDARY ( -- )
+   LBL LBL {: bad:label done:label :}
+   10 DATA SOURCE-EXEC-CTX-CELL LDR,  10 bad CBZ,
+   11 10 SX-ARMED LDR,  11 bad CBZ,
+   11 10 SX-SUSPEND LDR,  11 1 CMPI,  C-NE bad BCOND,
+   11 10 SX-EVAL LDR,  12 DATA EVAL-TOP-CELL LDR,
+   11 12 CMP,  C-NE bad BCOND,
+   BSOURCEEXECBALANCED  done B,
+   bad LBL,  9 0 MOVZ,  9 G-PUSH
+   done LBL, ;
+
+: BSOURCEEXECLOADERCUT ( -- )
+   LBL LBL {: bad:label done:label :}
+   10 DATA SOURCE-EXEC-CTX-CELL LDR,  10 bad CBZ,
+   11 10 SX-ARMED LDR,  11 bad CBZ,
+   11 10 SX-SUSPEND LDR,  11 1 CMPI,  C-NE bad BCOND,
+   11 10 SX-EVAL LDR,  12 DATA EVAL-TOP-CELL LDR,
+   11 12 CMP,  C-NE bad BCOND,
+   BSOURCEEXECCLEAN  done B,
+   bad LBL,  9 0 MOVZ,  9 G-PUSH
+   done LBL, ;
+
+: BSOURCEEXECPOSITION ( -- )
+   LBL LBL {: absent:label done:label :}
+   10 DATA SOURCE-EXEC-CTX-CELL LDR,  10 absent CBZ,
+   11 10 SX-ARMED LDR,  11 absent CBZ,
+   11 10 SX-SUSPEND LDR,  11 1 CMPI,  C-NE absent BCOND,
+   11 10 SX-POS LDR,  11 0 CMPI,  C-LT absent BCOND,
+   12 10 SX-EVAL LDR,  13 DATA EVAL-TOP-CELL LDR,
+   12 13 CMP,  C-NE absent BCOND,
+   11 G-PUSH
+   BSOURCEEXECBALANCED done B,
+   absent LBL,  9 0 MOVZ,  9 G-PUSH  9 G-PUSH
+   done LBL, ;
+
+: BSOURCEEXECHANDLER ( -- )
+   9 0 MOVZ,  9 G-PUSH ;
+
+\ finally ( body cleanup -- ): preserve the body's result row on success;
+\ cleanup runs outside the body's handler so its throw supersedes that body's.
 
 \ finally ( body cleanup -- ): preserve the body's result row on success;
 \ cleanup runs outside the body's handler so its throw supersedes that body's.
@@ -4140,12 +4352,11 @@ private
 \ one live row per folded name, and that is a property of the wid, not of this
 \ word:
 \   - a real wordlist (0, a package's private or public wid, and the
-\     DICT-WL:NAMESPACE that package rows carry) is guarded by the definer's
-\     duplicate walls (habu2.f C-REJECT-DUP-DEF, and DOES-REC:REJECT-DUP for
-\     the record a `does>` clause adds), which refuse a second definition of
-\     a tail already live in the wordlist being defined into. At
-\     most one row, so first and last are the same row and the probe reproduces
-\     the scan exactly;
+\     DICT-WL:NAMESPACE that package rows carry) is guarded at its ordinary
+\     definers by duplicate walls (habu2.f C-REJECT-DUP-DEF and
+\     DOES-REC:REJECT-DUP). The native-unit-publish boundary can still append
+\     duplicate rows; XREF's separate indexed probe below scans the whole
+\     chain to retain its newest-record rule without changing WLFIND's answer;
 \   - DICT-WL:RETIRED is not a wordlist. xref.f XREF:RETIRE stamps it onto rows
 \     that are ALREADY in the table under the wid they were published in, so
 \     such a row sits on another chain until a rebuild re-keys it onto this one -
@@ -4226,7 +4437,52 @@ public
          7 7 1 ADDI,  SWL-CMP LABEL@ B,
       SWL-MATCH LABEL@ LBL,  11 5 0 LDR,  12 5 0 ADDI,  SWL-NEXT LABEL@ B,
       SWL-NEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  SWL-LOOP LABEL@ B,
-   SWL-END LABEL@ LBL,  RET, ;
+   SWL-END LABEL@ LBL,  RET,
+
+   \ XREF's indexed probe must keep its descending scan's newest-row rule.
+   \ Native unit publication may append two rows with the same name and wid,
+   \ bypassing the ordinary definer's duplicate wall. Inspect the whole hash
+   \ chain and keep the highest live record address; ordinary WLFIND retains
+   \ its first-match contract for its other consumers.
+   WLFIND:LNEWEST LABEL@ LBL,
+   LBL LBL LBL LBL LBL LBL
+   {: nloop:label nnext:label ninl:label ncmp:label nmatch:label nlinear:label :}
+   12 0 MOVZ,
+   4 DICT-WL:RETIRED LIT64,  2 4 CMP,  C-EQ nlinear BCOND,
+   14 DATA HIDXP-CELL LDR,  14 nlinear CBZ,
+   0 1 15 4 16 7 C-HIDX-HASH
+   6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
+   8 HIDX-SLOTS LIT64,
+   nloop LBL,
+      17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,
+      3 SWL-END LABEL@ CBZ,
+      4 3 1 SUBI,  4 NDICT CMP,  C-GE nnext BCOND,
+      5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,
+      16 5 40 LDR,  16 2 CMP,  C-NE nnext BCOND,
+      16 5 16 LDR,  16 16 DNAME-FLAG-BITS LSLI,  16 16 DNAME-FLAG-BITS LSRI,
+      16 1 CMP,  C-NE nnext BCOND,
+      16 5 24 ADDI,
+      3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 ninl CBZ,
+         16 5 24 LDR,
+      ninl LBL,
+      7 0 MOVZ,
+      ncmp LBL,
+         7 1 CMP,  C-GE nmatch BCOND,
+         15 16 7 ADD,  15 15 0 LDRB,
+         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
+         4 0 7 ADD,     4 4 0 LDRB,
+         3 4 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
+         15 4 CMP,  C-NE nnext BCOND,
+         7 7 1 ADDI,  ncmp B,
+      nmatch LBL,
+         12 5 CMP,  C-CS nnext BCOND,
+         12 5 0 ADDI,
+      nnext LBL,
+         8 8 1 SUBI,  8 nlinear CBZ,
+         6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  nloop B,
+   nlinear LBL,
+      3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
+      SWL-LOOP LABEL@ B, ;
 ;package
 
 \ `search-wl ( ptr u8 n n -- n )`: the routine above, minus one wordlist.
@@ -4251,6 +4507,11 @@ public
 : BCOMPILERSWL ( -- )
    2 G-POP  1 G-POP  0 G-POP
    WLFIND:LENTRY LABEL@ BL,
+   12 G-PUSH ;
+
+: BXREFNEWEST ( -- )
+   2 G-POP  1 G-POP  0 G-POP
+   WLFIND:LNEWEST LABEL@ BL,
    12 G-PUSH ;
 
 : BPARSE-NAME ( -- )
@@ -4343,9 +4604,18 @@ public
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" num-parse" ['] ENGINE-EMIT:BNUMPARSE FPRIM
+   LBL LEVALBODY !
    s" evaluate" ['] B-EVAL FPRIM-L
+   s" evaluate-range" ['] B-EVAL-RANGE FPRIM-L
    s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM
-   s" source-unit-run" ['] B-SOURCE-UNIT-RUN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID ;
+   s" source-unit-run" ['] B-SOURCE-UNIT-RUN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" source-exec-run" ['] BSOURCEEXECRUN FPRIM
+   s" source-exec-live?" ['] BSOURCEEXECLIVE FPRIM
+   s" source-exec-boundary?" ['] BSOURCEEXECBOUNDARY FPRIM
+   s" source-exec-loader-cut?" ['] BSOURCEEXECLOADERCUT FPRIM
+   s" source-exec-position" ['] BSOURCEEXECPOSITION FPRIM
+   s" source-exec-handler" ['] BSOURCEEXECHANDLER FPRIM
+   EMIT-EVAL-BODY ;
 
 : EMIT-PROCESS-PRIMS ( -- )
    s" run-rc" ['] BRUNRC FPRIM-L
@@ -4400,7 +4670,10 @@ package ENGINE-EMIT
    s" ffi-call-n" ['] BFFI-CALL-N FPRIM
    s" ffi-call-bounded" ['] BFFI-CALL-BOUNDED FPRIM
    s" task-entry" ['] BTASK-ENTRY FPRIM
+   LBL LCALLBACKTHUNK !
+   LBL LCALLBACKADDR !
    s" callback-entry" ['] BCALLBACK-ENTRY FPRIM
+   FP-KEEP? if EMIT-CALLBACK-THUNK then
    s" ffi-call-abi-bounded" ['] BFFI-CALL-ABI-BOUNDED FPRIM
    s" ffi-call-abi-r-bounded" ['] BFFI-CALL-ABI-R-BOUNDED FPRIM
    s" ffi-call-abi" ['] BFFI-CALL-ABI FPRIM
@@ -4434,6 +4707,7 @@ package ENGINE-EMIT
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM
    s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" xref-wl-newest" ['] BXREFNEWEST ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
    s" set-tier" ['] BSETTIER FPRIM     s" tier@" ['] BTIERFETCH FPRIM-L
    s" tick-order@" ['] BTICKORDER FPRIM-L
@@ -5060,8 +5334,8 @@ variable LHIDXBUILD
 \ C-HIDX-DUP?: x14 = live table ptr (caller ensures != 0). Sets x13 = 1 when a
 \ live record with this definition's wordlist (DEF-WL-CELL) and folded name
 \ (TKA/TKL) is already in the hash table, else 0, then falls through. The
-\ dictionary is insert-once so at most one live match exists per chain; retired
-\ records carry wid -2 and are skipped by the wid check. Same fold/compare as the
+\ ordinary definition refuses any live match in the chain; retired records
+\ carry wid -2 and are skipped by the wid check. Same fold/compare as the
 \ linear C-REJECT-DUP-DEF, so the two agree on every candidate.
 : C-HIDX-DUP? ( -- )
    LBL LBL LBL LBL LBL LBL {: dloop:label dnext:label dinl:label dcmp:label dfound:label dret:label :}

@@ -1,8 +1,9 @@
 \ The application and linker run in one native executable-build scope, and this
 \ file is the LINKER half of it. tools/aot-build-open.f is the other half and runs
-\ first: it opens the capture window, loads the application and latches the span,
-\ because nothing the application can `require` may be loaded when the window
-\ opens. Everything below therefore lands ABOVE the span - the linker,
+\ first: it retires FILE support, opens the capture window, loads the
+\ application and latches the span. No library visible to the application's
+\ `require` is loaded when that window opens. Everything below therefore lands
+\ ABOVE the span - the linker,
 \ src/habu/app-image.f, and the eight lib modules app-image-core.f requires. A
 \ module the application already loaded is shared in the harmless direction: the
 \ linker uses the application's copy, at build time only.
@@ -76,7 +77,7 @@ private
    IMAGE-LIFECYCLE:PREPARE
    BLOB-SRC @ AOT-OWNED:COLLECT
    CHECKER-STORAGE-PREPARE
-   LINK ;
+   [: LINK ;] [: FFI:IMAGE-UNPIN ;] finally ;
 
 public
 

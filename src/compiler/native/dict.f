@@ -15,6 +15,7 @@ require src/habu/layout.f
 require src/habu/terminal-call.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/host.f
+require src/compiler/workspace.f
 
 package NDICT
 
@@ -92,7 +93,7 @@ CAST: AS-FIXED ( n -- [ -- n ] )
 
 \ A cell and not a local: a local bound AFTER the entered word ran would itself
 \ read what that word left, which is the failure this check exists to refuse.
-variable FX-BASE
+0 CWORK-VARIABLE FX-BASE n
 
 public
 
@@ -206,7 +207,10 @@ private
 \ The width of the value a term belongs to is readable from the top of each run:
 \ the cells of one value carry slots W, W-1 ... 1 downwards. A run of one is not
 \ a bundle, and a run reaching past the row's end answers not-known.
-variable RG-MASK   variable RG-I   variable RG-S   variable RG-BAD
+0 CWORK-VARIABLE RG-MASK n
+0 CWORK-VARIABLE RG-I n
+0 CWORK-VARIABLE RG-S n
+0 CWORK-VARIABLE RG-BAD n
 
 : RG-BIT ( n -- ) {: bit:n :}
    RG-MASK @  1 bit lshift or  RG-MASK ! ;

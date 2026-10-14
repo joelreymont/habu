@@ -75,6 +75,7 @@ variable EC-REG-N
 TYPED-VARIABLE EC-HARVEST-RUN [ -- ]
 TYPED-VARIABLE EC-HARVEST-READER [ ptr u8 n ptr u8 n -- ptr u8 n ]
 TYPED-VARIABLE EC-CONTEXT-RUN [ n -- ]
+TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
 
 : EC-TRUE ( -- bool )   0 0= ;
 : EC-FALSE ( -- bool )  EC-TRUE 0= ;
@@ -254,43 +255,49 @@ TYPED-VARIABLE EC-CONTEXT-RUN [ n -- ]
    EC-HARVEST-READER @ execute {: bytes:ptr size:n :}
    EC-HEAD @ EC-PATH$ EC-HEAD @ EC-ROOT$ bytes size DISCOVER:RUN-BYTES ;
 
-: EC-HARVEST-PASS ( ptr u8 n -- ) {: a:ptr u:n :}
+: EC-HARVEST-PASS ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n root:ptr rootu:n :}
    EC-CLEAR
-   a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-ADD-WITH
+   a u root rootu EC-ADD-WITH
    DISCOVER:ROWS-PASS-BEGIN
    begin EC-HEAD @ EC-N @ < while
+      EC-WITH @ 0= if EC-HEAD @ EC-PATH$ EC-BEFORE @ execute then
       EC-HARVEST-RUN @ DISCOVER:HARVEST
       EC-SCAN-EVENTS
       EC-HEAD @ 1+ EC-HEAD !
    repeat
    DISCOVER:ROWS-PASS-END ;
 
-: EC-HARVEST-LOOP ( ptr u8 n -- ) {: a:ptr u:n :}
+: EC-HARVEST-LOOP ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n root:ptr rootu:n :}
    DISCOVER:ROWS-RESET
    -1 EC-HARVEST-N !
    begin
       DISCOVER:ROWS-VERSION {: ver:n :}
-      a u EC-HARVEST-PASS
+      a u root rootu EC-HARVEST-PASS
       EC-N @ EC-HARVEST-N @ =
       DISCOVER:ROWS-VERSION ver = and
       DISCOVER:ROWS-PASS-STABLE? and
       EC-N @ EC-HARVEST-N !
    until ;
 
-: EC-HARVEST ( ptr u8 n -- )
+: EC-HARVEST ( ptr u8 n ptr u8 n -- )
+   0 EC-WITH !
    [: EC-HARVEST-ACT ;] EC-HARVEST-RUN !
    EC-HARVEST-LOOP ;
 
-: EC-HARVEST-WITH ( ptr u8 n [ ptr u8 n ptr u8 n -- ptr u8 n ] -- )
-   {: a:ptr u:n reader :}
+: EC-HARVEST-WITH ( ptr u8 n ptr u8 n [ ptr u8 n ptr u8 n -- ptr u8 n ] -- )
+   {: a:ptr u:n root:ptr rootu:n reader :}
+   1 EC-WITH !
    reader EC-HARVEST-READER !
    [: EC-HARVEST-WITH-ACT ;] EC-HARVEST-RUN !
-   a u EC-HARVEST-LOOP ;
+   a u root rootu EC-HARVEST-LOOP ;
 
 \ Replay harvested rows at their actual load sites. A later sibling must not
 \ shadow an earlier family, while a prior sibling can change the opener before
 \ this file reaches it. The file scan itself records the ordered load sites.
 : EC-CONTEXT-ACT ( n -- ) {: id:n :}
+   id EC-PATH$ EC-BEFORE @ execute
    id EC-PATH$ id EC-ROOT$ DISCOVER:RUN-IN ;
 
 : EC-CONTEXT-WITH-ACT ( n -- ) {: id:n :}
@@ -339,10 +346,11 @@ TYPED-VARIABLE EC-CONTEXT-RUN [ n -- ]
    -1 id cells EC-ACTIVE + +!
    speculative if reg-mark EC-REG-N ! then ;
 
-: EC-CONTEXT-CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
+: EC-CONTEXT-CHECK ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n root:ptr rootu:n :}
    EC-ORD-RESET
    DISCOVER:CONTEXT-BEGIN
-   a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-INTERN
+   a u root rootu EC-INTERN
    false true EC-CONTEXT-EXPAND ;
 
 : EC-OUT-HAS-PATH? ( n -- bool ) {: id:n :}
@@ -389,31 +397,46 @@ public
    i cells EC-OUT + @ {: id:n :}
    id EC-PATH$ id EC-ROOT$ RELATIVE ;
 
-\ ENTRY-RESOLVE and later dependency scans reuse the engine's JOIN buffer.
-\ Keep a caller-owned entry there before either of the two closure passes.
-: EC-STABLE-ENTRY ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   u 0 <= u EC-ENTRY-CAP >= or if E-PATH-RANGE throw then
+\ ENTRY-RESOLVE, callbacks and dependency scans can reuse engine path buffers.
+\ Keep both the selected entry and its owner stable across the two passes.
+private
+: EC-STABLE-IN ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
+   {: a:ptr u:n root:ptr rootu:n :}
+   u 0 <= u PATH-CAP > or rootu 0 <= or rootu PATH-CAP > or
+      if E-PATH-RANGE throw then
    a EC-ENTRY u BYTE-COPY
-   EC-ENTRY u ;
+   root EC-ENTRY PATH-CAP 1+ + rootu BYTE-COPY
+   EC-ENTRY u EC-ENTRY PATH-CAP 1+ + rootu ;
 
-: BUILD ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u EC-STABLE-ENTRY {: entry:ptr entryu:n :}
-   entry entryu EC-HARVEST
+public
+\ A selected entry keeps the root that chose it. The observer runs at each
+\ source read, including harvest reads that learn new family grammar.
+: BUILD-IN-EACH ( ptr u8 n ptr u8 n [ ptr u8 n -- ] -- )
+   {: a:ptr u:n root:ptr rootu:n before :}
+   a u root rootu EC-STABLE-IN
+   {: entry:ptr entryu:n owner:ptr owneru:n :}
+   before EC-BEFORE !
+   entry entryu owner owneru EC-HARVEST
    [: EC-CONTEXT-ACT ;] EC-CONTEXT-RUN !
-   0 EC-WITH !
-   entry entryu EC-CONTEXT-CHECK
+   entry entryu owner owneru EC-CONTEXT-CHECK
    EC-PUBLISH
    DISCOVER:ROWS-RESET ;
+
+: BUILD-IN ( ptr u8 n ptr u8 n -- )
+   [: 2drop ;] BUILD-IN-EACH ;
+
+: BUILD ( ptr u8 n -- )
+   ENTRY-RESOLVE drop RESOLVED-ROOT$ BUILD-IN ;
 
 \ A source owner reads every loading event from its own byte table. A missing
 \ dependency is a refusal at that read, never an omitted closure member.
 : BUILD-WITH ( ptr u8 n [ ptr u8 n ptr u8 n -- ptr u8 n ] -- )
    {: a:ptr u:n reader :}
-   a u EC-STABLE-ENTRY {: entry:ptr entryu:n :}
-   entry entryu reader EC-HARVEST-WITH
+   a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-STABLE-IN
+   {: entry:ptr entryu:n owner:ptr owneru:n :}
+   entry entryu owner owneru reader EC-HARVEST-WITH
    [: EC-CONTEXT-WITH-ACT ;] EC-CONTEXT-RUN !
-   1 EC-WITH !
-   entry entryu EC-CONTEXT-CHECK
+   entry entryu owner owneru EC-CONTEXT-CHECK
    EC-PUBLISH
    DISCOVER:ROWS-RESET ;
 

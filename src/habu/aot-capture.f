@@ -903,12 +903,12 @@ variable ACAP-BP
    v  v ACAP-REC-EXT?  ACAP-REC-NAME  v 16 + ACAP-W32@ ;
 
 \ ---- the keep-set -------------------------------------------------------------
-\ TWO NAMES THE DERIVED RULE CANNOT SEE, because a consumer resolves each by
-\ name. The list is explicit and reviewed as policy, the way
+\ DYNAMIC NAME USES THE DERIVED RULE CANNOT SEE: consumers resolve these names
+\ after this engine is captured. The list is explicit and reviewed as policy, the way
 \ tools/manifest-lint.f states the engine's entry points: a rule that cannot see
 \ a use is better than a rule quietly widened until it can.
 \
-\ NSTR:IMPORT-ROWS - tools/native-build-core.f TARGET-IMPORTER reaches it by name
+\ NSTR:IMPORT-ROWS and NSTR:ATTACH-SEGMENTS are private build-driver seams.
 \ through the shipped dictionary, because the alternatives are a public wrapper,
 \ which test/compiler/native-string.f forbids outright, or a fixed engine cell.
 \ The drift guard is the build's own refusal, "native-build: literal importer
@@ -917,6 +917,9 @@ variable ACAP-BP
 \ source declares a new defer. The compiler embeds the lookup string in its own
 \ code, outside the capture's named-site tables; without this record even
 \ `defer SETUP ( -- )` fails before it publishes the word.
+\ CHECKER-STORAGE-CELLS - FILE and stripped AOT load aot-data-cell.f after the
+\ engine is captured. Its scan resolves this checker export by name, so no
+\ source call or named site in the engine can keep the row.
 \
 \ IT USED TO BE FOUR. MEM:WB-DEPTH, MEM:WB-BUFFERS and MEM:WB-LENGTHS were here
 \ for src/lib/memory-test.f's WITH-BYTES frame audit, which reopens package MEM and
@@ -934,7 +937,11 @@ variable ACAP-BP
    k ACAP-REC-NAME$ {: a:ptr u:n :}
    a u s" DEFER-UNSET" CORE-STR=CI  k ACAP-REC-DST 40 + ACAP-W32@ 0= and
    if true exit then
-   a u s" IMPORT-ROWS" CORE-STR=CI  k s" NSTR" ACAP-KEEP-PKG? and ;
+   a u s" CHECKER-STORAGE-CELLS" CORE-STR=CI
+   k ACAP-REC-DST 40 + ACAP-W32@ 0= and if true exit then
+   a u s" IMPORT-ROWS" CORE-STR=CI
+   a u s" ATTACH-SEGMENTS" CORE-STR=CI or
+   k s" NSTR" ACAP-KEEP-PKG? and ;
 
 \ THE WHITEBOX IMAGE KEEPS EVERY NAME, and it is the same switch the seal pass
 \ takes (src/core/internal-mark.f IMK-WHITEBOX?): test/whitebox-engine.f sets
@@ -947,11 +954,13 @@ variable ACAP-BP
 : ACAP-WHITEBOX? ( -- bool )
    s" HABU_WHITEBOX_IMAGE" GETENV s" 1" CORE-STR= ;
 
+variable ACAP-ALL-NAMES
+
 : ACAP-INTERNAL? ( ptr u8 -- bool )
    20 + ACAP-W32@ $80000000 and 0<> ;
 
 : ACAP-NAMED? ( n -- bool ) {: k:n :}
-   ACAP-WHITEBOX? if true exit then
+   ACAP-ALL-NAMES @ if true exit then
    k ACAP-REC-DST {: v:ptr :}
    v CELL-VIEW AOT-RWID -1 = if true exit then
    v 40 + ACAP-W32@ ACAP-PRIVATE? 0= v ACAP-INTERNAL? 0= and if true exit then
@@ -1435,10 +1444,12 @@ $14000000 constant ACAP-GBR-TERM
    then
    v 20 + ACAP-W32@ 28 rshift $F and {: flags:n :}         \ flag nibble ([16] bits 60-63)
    v 20 + ACAP-W32@ 20 rshift $FF and {: minin:n :}        \ DNAME-MIN-IN byte ([16] bits 52-59)
-   v 20 + ACAP-W32@ 18 rshift 3 and {: dkind:n :}          \ DKIND pair ([16] bits 50-51)
-   \ [16] bits 32-49 hold the length's high bits and DNAME-OWNED (bit 49); the
-   \ compact record carries neither, so the mask is wider than the length's.
-   v 20 + ACAP-W32@ $0003FFFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
+   v 20 + ACAP-W32@ 18 rshift 3 and
+   v 20 + ACAP-W32@ 16 rshift 1 and 2 lshift or
+   v 20 + ACAP-W32@ 15 rshift 1 and 3 lshift or {: dkind:n :} \ DKIND, CELL, ALLOC
+   \ [16] bits 32-46 hold the length's high bits, and bit 49 is DNAME-OWNED.
+   \ The compact record carries neither; bits 47-48 are allocation geometry.
+   v 20 + ACAP-W32@ $00027FFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
    v ACAP-REC-EXT? {: ext:bool :}                          \ name out of line (DNAME-EXT)
    v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)
    ext 0= len 16 > and if s" aot-capture: rec name too long for inline" 74 die then
@@ -1497,7 +1508,10 @@ $14000000 constant ACAP-GBR-TERM
    c 12 + c@ {: flags:n :}
    c 13 + c@ {: minin:n :}
    c 14 + c@ {: dkind:n :}
-   flags 60 lshift  minin 52 lshift or  dkind 50 lshift or  len or  s 16 + AOT-N-C!   \ [16] = flags<<60 | min-in<<52 | dkind<<50 | len
+   flags 60 lshift  minin 52 lshift or
+   dkind 3 and 50 lshift or  dkind 4 and 46 lshift or
+   dkind 8 and 44 lshift or
+   len or  s 16 + AOT-N-C!   \ [16] = flags | min-in | DKIND | CELL | ALLOC | len
    0 s 24 + AOT-N-C!  0 s 32 + AOT-N-C!                       \ zero [24..40)
    flags 2 and 0= if                                          \ inline name: the bytes live in the record
       len 0 ?do  AOT-NAMES-BUF@ noff 1+ + i + c@  s 24 + i + c!  loop
@@ -2816,9 +2830,14 @@ public
    ACAP-PWIN-CAPTURE                            \ only the window's own seals travel
    AOT-ARM:PAYLOAD-MODE @ 1 = SITE-ROW AOT-SECTION:BYTES drop ;
 
-: CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
+: CAPTURE-WITH-NAMES ( n n n n n n bool -- )
+   {: bstart:n bend:n rstart:n rend:n d0:n d1:n all:bool :}
+   all ACAP-ALL-NAMES !
    bstart bend rstart rend d0 d1 CAPTURE-PREPARE
    bstart bend d0 CAPTURE-COMPLETE ;
+
+: CAPTURE ( n n n n n n -- )
+   ACAP-WHITEBOX? CAPTURE-WITH-NAMES ;
 
 private
 

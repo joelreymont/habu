@@ -52,17 +52,21 @@ require src/habu/layout.f
 package AOT-OWNED
 private
 
-\ Generous headroom over a list that names single cells; a list that outgrows it
-\ dies by name rather than running past the table.
-64 constant MAX-CELLS
-create OFFS MAX-CELLS cells allot
-create KINDS MAX-CELLS cells allot
-create LENS MAX-CELLS cells allot
-create DESTS MAX-CELLS cells allot
+\ FFI controls and the table allocations latched at the application boundary
+\ are visited together. Linker-only declarations may grow the live tables.
+DYNAMIC-BUFFER OFFS n
+DYNAMIC-BUFFER KINDS n
+DYNAMIC-BUFFER LENS n
+DYNAMIC-BUFFER DESTS n
 variable COUNT
 variable ENGINE-WINDOW
+PTR-VARIABLE FFI-FN-TABLE
+PTR-VARIABLE FFI-LIB-TABLE
+variable FFI-FN-CAP
+variable FFI-LIB-CAP
 
-\ FRESH is 0, IMAGE-BASE is 1, ENTRY-XT is 2, TEXT-BASE is 3 and CARRIED is 4.
+\ FRESH is 0, IMAGE-BASE is 1, ENTRY-XT is 2, TEXT-BASE is 3,
+\ CARRIED-CELLS is 4 and CARRIED-BYTES is 5.
 \ The kind is stored because it is what the entry emitter switches on; deriving
 \ it back from the cell would be a second answer.
 \
@@ -80,11 +84,13 @@ variable ENGINE-WINDOW
 \ an interior offset as often as at its head - and for CARRIED it is also the
 \ bytes to copy and the range a spelled address is mapped through.
 : CLAIM ( ptr a n n -- ) {: c:ptr k:n len:n :}
-   COUNT @ MAX-CELLS >= if s" aot: owned-cell list exceeds its table" 74 die then
-   c BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N +  COUNT @ cells OFFS + !
-   k COUNT @ cells KINDS + !
-   len COUNT @ cells LENS + !
-   0 COUNT @ cells DESTS + !
+   COUNT @ 1+ {: rows:n :}
+   rows OFFS-RESERVE  rows KINDS-RESERVE
+   rows LENS-RESERVE  rows DESTS-RESERVE
+   c BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N +  COUNT @ OFFS !
+   k COUNT @ KINDS !
+   len COUNT @ LENS !
+   0 COUNT @ DESTS !
    COUNT @ 1+ COUNT ! ;
 
 public
@@ -122,9 +128,14 @@ public
 \ that range to the copy. The entry publishes nothing - the bytes arrive in the
 \ image's data blob like the application's own. The length is the declaration:
 \ nothing here measures a `create` body from the dictionary.
-: CARRIED ( ptr a n -- ) {: c:ptr len:n :}
-   len 0 <= if s" aot: a carried claim needs a positive byte length" 74 die then
+: CARRIED-CELLS ( ptr a n -- ) {: c:ptr len:n :}
+   len 0 <= len CELL mod 0<> or if
+      s" aot: a carried cell claim needs whole cells" 74 die then
    c 4 len CLAIM ;
+
+: CARRIED-BYTES ( ptr a n -- ) {: c:ptr len:n :}
+   len 0 <= if s" aot: a carried claim needs a positive byte length" 74 die then
+   c 5 len CLAIM ;
 
 \ FFI and TASK are baked into the C2 engine. An application's own require may
 \ instead load either one inside its window. Claim a field only when its source
@@ -133,37 +144,44 @@ public
    c BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + len +
    ENGINE-WINDOW @ <= ;
 
-: ENGINE-CARRY ( ptr u8 n -- )
-   2dup ENGINE-DATA? if CARRIED else 2drop then ;
+: ENGINE-CELLS ( ptr u8 n -- )
+   2dup ENGINE-DATA? if CARRIED-CELLS else 2drop then ;
+
+: ENGINE-BYTES ( ptr u8 n -- )
+   2dup ENGINE-DATA? if CARRIED-BYTES else 2drop then ;
 
 : ENGINE-FRESH ( ptr u8 n -- )
    2dup ENGINE-DATA? if FRESH-BYTES else 2drop then ;
 
 : N ( -- n ) COUNT @ ;
-: AT ( n -- n ) cells OFFS + @ ;
-: LEN ( n -- n ) cells LENS + @ ;
-: IMAGE-BASE? ( n -- bool ) cells KINDS + @ 1 = ;
-: ENTRY-XT? ( n -- bool ) cells KINDS + @ 2 = ;
-: TEXT-BASE? ( n -- bool ) cells KINDS + @ 3 = ;
-: CARRIED? ( n -- bool ) cells KINDS + @ 4 = ;
+: AT ( n -- n ) OFFS @ ;
+: LEN ( n -- n ) LENS @ ;
+: IMAGE-BASE? ( n -- bool ) KINDS @ 1 = ;
+: ENTRY-XT? ( n -- bool ) KINDS @ 2 = ;
+: TEXT-BASE? ( n -- bool ) KINDS @ 3 = ;
+: CARRIED? ( n -- bool ) {: i:n :} i KINDS @ 4 = i KINDS @ 5 = or ;
+: CARRIED-CELLS? ( n -- bool ) KINDS @ 4 = ;
 
 \ Where the linker put a carried claim's copy, in the same integer domain: zero
 \ until CARRY-CELLS runs, which is before anything maps an address into it.
-: DEST ( n -- n ) cells DESTS + @ ;
-: DEST! ( n n -- ) {: at:n i:n :} at i cells DESTS + ! ;
+: DEST ( n -- n ) DESTS @ ;
+: DEST! ( n n -- ) {: at:n i:n :} at i DESTS ! ;
 
 private
 
 \ Visit the same extents when reserving the carried run and collecting claims.
 \ Only collection inspects live process resources or publishes claim rows.
-: TABLES ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
-   {: carry fresh :}
-   STR-MAX-I64$ STR-I64-DIGITS carry execute
-   STR-MIN-I64$ STR-I64-DIGITS carry execute
-   KK BYTE-VIEW 64 cells carry execute
-   HH0 BYTE-VIEW 8 cells carry execute
-   carry fresh FFI:OWNED-CELLS
-   carry fresh TASK:OWNED-CELLS ;
+: TABLES ( [ ptr u8 n -- ] [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: cell-keep byte-keep fresh :}
+   STR-MAX-I64$ STR-I64-DIGITS byte-keep execute
+   STR-MIN-I64$ STR-I64-DIGITS byte-keep execute
+   KK BYTE-VIEW 64 cells cell-keep execute
+   HH0 BYTE-VIEW 8 cells cell-keep execute
+   cell-keep fresh FFI:AOT-CONTROLS
+   fresh FFI:MAKER-FRESH-CONTROLS
+   FFI-FN-TABLE @ FFI-FN-CAP @ FFI-LIB-TABLE @ FFI-LIB-CAP @
+   cell-keep byte-keep FFI:AOT-TABLES-AT
+   cell-keep fresh TASK:OWNED-CELLS ;
 
 variable CARRY-TOTAL
 
@@ -175,10 +193,17 @@ variable CARRY-TOTAL
 
 public
 
+: FFI-TABLES! ( ptr u8 n ptr u8 n -- )
+   {: fn:ptr fncap:n lib:ptr libcap:n :}
+   fn FFI-FN-TABLE !
+   fncap FFI-FN-CAP !
+   lib FFI-LIB-TABLE !
+   libcap FFI-LIB-CAP ! ;
+
 : CARRY-SIZE ( n -- n )
    ENGINE-WINDOW !
    0 CARRY-TOTAL !
-   [: CARRY-LEN ;] [: 2drop ;] TABLES
+   [: CARRY-LEN ;] [: CARRY-LEN ;] [: 2drop ;] TABLES
    CARRY-TOTAL @ ;
 
 private
@@ -330,7 +355,7 @@ public
    data-base RBASE-CELL + TEXT-BASE
    TF-SHA-CTX FRESH  SHA-DIGEST FRESH
    window TASK:CHECK-OWNED
-   [: ENGINE-CARRY ;] [: ENGINE-FRESH ;] TABLES
+   [: ENGINE-CELLS ;] [: ENGINE-BYTES ;] [: ENGINE-FRESH ;] TABLES
    PZB PATH-CAP 1 + FRESH-BYTES ;
 
 ;package

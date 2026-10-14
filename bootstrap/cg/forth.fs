@@ -44,9 +44,13 @@ $7FFFFFFF constant CODE-SPAN:MASK
 2 constant OWNER-API-PRI-WID
 3 constant FIRST-DYNAMIC-WID
 $FFFFFFFE constant WID:MAX
-15 constant DNAME-FLAG-BITS      \ bits 49-63 above the name length; name reads clear them
+17 constant DNAME-FLAG-BITS      \ bits 47-63 above the name length; name reads clear them
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
+$0000800000000000 constant DNAME-ALLOC
+$0001000000000000 constant DNAME-CELL
+$0008000000000000 constant DKIND:ADDR
 $000C000000000000 constant DKIND:CAST
+$000C000000000000 constant DKIND:MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity band, poked by the
 \ native checker/seal pass (src/habu/layout.f, dot
 \ habu-habu-certified-words-84e84eaf). The seed's min-in-mark writes the same
@@ -649,6 +653,10 @@ PRIM-NAME-PAD DNAME-INL erase
    na nu xt FPRIM
    wid #PL @ 1- PRIM-ROW 4 cells + ! ;
 
+: FPRIM-L-WID ( ptr u8 xt n -- ) {: na nu xt wid -- :}
+   na nu xt FPRIM-L
+   wid #PL @ 1- PRIM-ROW 4 cells + ! ;
+
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN  variable SRCA
 variable LCEMIT   variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LPROTWIDQ  variable LFLUSH variable LNCOUNT
@@ -1087,6 +1095,15 @@ variable BAND-IX
 : B-EVAL ( -- )
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
    13 0 MOVZ,                                        \ no stack of its own
+   EVAL-ENTER ;
+
+\ evaluate-range ( ptr u8 n n n -- ): the loader supplies a full source buffer
+\ and a checked [first,end) span. The seed evaluator takes only a string, so
+\ enter it on that span. Mirrors habu1.f B-EVAL-RANGE's input order.
+: B-EVAL-RANGE ( -- )
+   7 G-POP  6 G-POP  B G-POP  A G-POP                \ end, first, size, base
+   9 9 6 ADD,  10 7 6 SUB,
+   13 0 MOVZ,
    EVAL-ENTER ;
 
 : BCREATE ( -- )  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
@@ -2216,8 +2233,8 @@ HB-TARGET-LINUX? [IF]
    pos LBL,
    9 G-PUSH ;
 
-\ The transient recovery engine has no hash index. Both search results use its
-\ existing newest-match scan; native habu1.f uses the shared indexed WLFIND.
+\ The transient recovery engine has no hash index. Its shared scan already
+\ keeps the newest matching record for XREF's lookup.
 : C-SWL-RESULTS ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: wl wend wnext wcmp wmatch wf1 wf2 winl :}
    2 G-POP  1 G-POP  0 G-POP                      \ wid=x2, u=x1, a=x0
@@ -2376,8 +2393,9 @@ HB-TARGET-LINUX? [IF]
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" num-parse" ['] BNUMPARSE FPRIM
    s" evaluate" ['] B-EVAL FPRIM-L
+   s" evaluate-range" ['] B-EVAL-RANGE PRIM-OWNED-WID FPRIM-L-WID
    s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM
-   s" source-unit-run" ['] B-SOURCE-UNIT-RUN PRIM-INT-WID FPRIM-WID
+   s" source-unit-run" ['] B-SOURCE-UNIT-RUN PRIM-OWNED-WID FPRIM-WID
    s" unit-compile-run" ['] B-NO-UNIT PRIM-OWNED-WID FPRIM-WID ;
 
 : EMIT-ENGINE-PRIMS ( -- )
@@ -2398,7 +2416,7 @@ HB-TARGET-LINUX? [IF]
    s" seal-captured?" ['] BSEALCAPQ FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
-   \ min-in-mark and xref-search-wl are owned as in src/habu/prims.f: their owners' rows type them.
+   \ These raw dictionary readers are owned as in src/habu/prims.f.
    s" int-mark" ['] BINTMARK PRIM-INT-WID FPRIM-WID
    s" min-in-mark" ['] BMININMARK PRIM-OWNED-WID FPRIM-WID
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
@@ -2423,6 +2441,7 @@ HB-TARGET-LINUX? [IF]
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
    s" xref-search-wl" ['] BCOMPILERSWL PRIM-OWNED-WID FPRIM-WID
+   s" xref-wl-newest" ['] BCOMPILERSWL PRIM-OWNED-WID FPRIM-WID
    s" scope-find" ['] BSCOPEFIND FPRIM
    s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
    s" tick-order@" ['] BTICKORDER FPRIM-L
@@ -3100,7 +3119,7 @@ variable LPSTACKABI     variable LPHABULAYOUT   variable LPENVBASE      variable
 variable LPSCRIPTARGV   variable LPROLES
 variable LPDECLTXN     variable LPGENDECL     variable LPDECLEVENT    variable LPSTRUCTMAKE
 variable LPSTRUCTDECL  variable LPENUMDECL
-variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
+variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPSOURCEPRODUCER variable LPTFAMSHA
 variable LPCOMBINATORS  variable LPCODESPAN  variable LPXREF  variable LPGENDECLDICT
 variable LPGENDECLPROT  variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
 variable LPDYNAMIC      variable LPINTMARK      variable LPTOPROW
@@ -3433,6 +3452,7 @@ create ZBYTE 0 c,
       PFX-COMMON LPINCLUDE s" src/core/include.f" row execute
       PFX-COMMON LPENUMS s" src/core/enums.f" row execute
       PFX-COMMON LPSHA256 s" src/core/sha256.f" row execute
+      PFX-COMMON LPSOURCEPRODUCER s" src/core/source-producer.f" row execute
       PFX-COMMON LPTFAMSHA s" src/core/type-family-sha.f" row execute
       PFX-COMMON LPCOMBINATORS s" src/core/combinators.f" row execute
       PFX-COMMON LPCODESPAN s" src/habu/code-span.f" row execute
@@ -4974,6 +4994,9 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    5 $14000000 LIT64,  14 14 5 ORR,                      \ b D
    write LBL,
    14 12 0 STRW,
+   11 DATA LASTC-CELL LDR,
+   13 11 16 LDR,  5 DKIND:MASK DNAME-CELL or invert LIT64,
+   13 13 5 AND,  13 11 16 STR,
    2 5 MOVZ,  LPROT @ BL,                                \ region -> RX
    12 SP 16 LDR,
    12 DCCVAU,  DSB-ISH,  12 ICIVAU,  DSB-ISH,  ISB,      \ flush the patched line
@@ -5164,6 +5187,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 W-RET LIT64,  LCEMIT @ BL,                          \ emit RET
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ slot again
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,        \ clen = CP-addr-4
+   10 9 16 LDR,  10 10 DKIND:ADDR ORRI,
+   10 10 DNAME-ALLOC ORRI,  10 9 16 STR,
    9 DATA LASTC-CELL STR,                               \ DOES> patches this slot
    LOCC-APPEND @ BL,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,                 \ region -> RX + flush
@@ -5176,6 +5201,9 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    C-PUBLISH-PTR-A ;
 
 : C-VARIABLE ( -- )  C-CREATE
+   9 DATA LASTC-CELL LDR,  2 3 MOVZ,  LPROTREC @ BL,
+   10 9 16 LDR,  10 10 DNAME-CELL ORRI,  10 9 16 STR,
+   2 5 MOVZ,  LPROTREC @ BL,
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DP-CHECK  7 DATA 0 STR, ;          \ reserve 1 cell
 
 \ CONSTANT ( n -- ) "name": define a word that pushes n. Pop n first (x15
@@ -8589,7 +8617,7 @@ variable P2SK
    LBL LPSTACKABI !  LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
    LBL LPDECLEVENT !  LBL LPSTRUCTMAKE !  LBL LPSTRUCTDECL !  LBL LPENUMDECL !
-   LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
+   LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPSOURCEPRODUCER !  LBL LPTFAMSHA !
    LBL LPCOMBINATORS !  LBL LPCODESPAN !  LBL LPXREF !  LBL LPGENDECLDICT !
    LBL LPGENDECLPROT !  LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL !
    LBL LPDYNAMIC !  LBL LPINTMARK !  LBL LPTOPROW !

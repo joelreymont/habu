@@ -96,4 +96,11 @@ public
 \ The buffer's current contents as a counted byte string.
 : CONTENTS ( ptr n -- ptr u8 n ) {: d:ptr :}  d CB-DATA d CB-LEN@ ;
 
+\ A descriptor's four header cells and capacity bytes have different scan
+\ geometry even though BUFFER stores them in one CREATE allocation.
+: SCAN-SPANS ( ptr n [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: d:ptr cells bytes :}
+   d BYTE-VIEW 4 CELL * cells execute
+   d CB-DATA d CB-CAP@ bytes execute ;
+
 ;package

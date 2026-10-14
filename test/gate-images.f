@@ -1,10 +1,10 @@
 \ gate-images.f - the keyed images a gate settles in its pool, and which rows
 \ wait for each.
 \
-\ ONE MODULE PER IMAGE. A keyed image is what one family module builds:
-\ test/fixture-writer.f, test/cold-engine.f, test/app-image-engine.f,
-\ test/preloaded-engine.f, test/whitebox-engine.f and test/saved-builder.f;
-\ test/native-unit-image.f settles a keyed NBR package unit the same way.
+\ ONE MODULE PER IMAGE. An image family is what one module builds:
+\ test/compiler-images.f, test/fixture-writer.f, test/cold-engine.f,
+\ test/app-image-engine.f, test/preloaded-engine.f, test/whitebox-engine.f
+\ and test/aot-maker-engine.f.
 \ Loading the module is how a file reaches the image, so a row NEEDS a family
 \ when its load closure holds the family's module: the files the row loads, and
 \ the files those import or launch (test/load-refs.f). A WHITEBOX-SUITE row
@@ -53,48 +53,48 @@ package GATE-IMAGES
 
 \ ---- the families ------------------------------------------------------------
 
-0 constant WRITER
-1 constant COLD
-2 constant APP
-3 constant LINKER
-4 constant WHITEBOX
-5 constant BUILDER
-6 constant NBR-UNIT
+0 constant COMPILER
+1 constant WRITER
+2 constant COLD
+3 constant APP
+4 constant LINKER
+5 constant WHITEBOX
+6 constant AOT-MAKER
 7 constant FAMILY-N
 
 \ The family name each module checks its grant under (test/image-grant.f).
 : LABEL$ ( n -- ptr u8 n ) {: f:n :}
+   f COMPILER = if s" compiler-images" exit then
    f WRITER = if s" fixture-writer" exit then
    f COLD = if s" cold-engine" exit then
    f APP = if s" app-image" exit then
    f LINKER = if s" linker" exit then
    f WHITEBOX = if s" whitebox-engine" exit then
-   f BUILDER = if s" saved-builder" exit then
-   f NBR-UNIT = if s" native-unit" exit then
+   f AOT-MAKER = if s" aot-maker" exit then
    E-TBL-BOUNDS throw ;
 
 \ A family's prerequisites come before it here: DERIVE refuses a table that
 \ lists one after.
 : MODULE$ ( n -- ptr u8 n ) {: f:n :}
+   f COMPILER = if s" test/compiler-images.f" exit then
    f WRITER = if s" test/fixture-writer.f" exit then
    f COLD = if s" test/cold-engine.f" exit then
    f APP = if s" test/app-image-engine.f" exit then
    f LINKER = if s" test/preloaded-engine.f" exit then
    f WHITEBOX = if s" test/whitebox-engine.f" exit then
-   f BUILDER = if s" test/saved-builder.f" exit then
-   f NBR-UNIT = if s" test/native-unit-image.f" exit then
+   f AOT-MAKER = if s" test/aot-maker-engine.f" exit then
    E-TBL-BOUNDS throw ;
 
 \ What the build row runs once the module is loaded. The whitebox row also puts
 \ the gate's private copy in place for the WHITEBOX-SUITE rows (WB$).
 : SETTLE$ ( n -- ptr u8 n ) {: f:n :}
+   f COMPILER = if s" COMPILER-IMAGES:BUILD" exit then
    f WRITER = if s" FIXTURE-WRITER:ENSURE" exit then
    f COLD = if s" COLD-ENGINE:ENSURE" exit then
    f APP = if s" APP-IMAGE-ENGINE:ENSURE" exit then
    f LINKER = if s" PRELOADED-ENGINE:ENSURE" exit then
    f WHITEBOX = if s" WHITEBOX-ENGINE:PROVIDE" exit then
-   f BUILDER = if s" SAVED-BUILDER:ENSURE" exit then
-   f NBR-UNIT = if s" NATIVE-UNIT-IMAGE:ENSURE" exit then
+   f AOT-MAKER = if s" AOT-MAKER-ENGINE:ENSURE" exit then
    E-TBL-BOUNDS throw ;
 
 : BIT ( n -- n )
@@ -346,10 +346,9 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n n -- ]
 
 \ A build row is granted its family and the prerequisites its module settles on
 \ the way. It is held to a row's CPU budget, whatever the load, and its wall
-\ deadline is only a hang guard a minute beyond the builder's own, for the key
-\ hashing and the copy (test/suite-budget.f): the builder's deadline governs,
-\ its BUILD-RUN names the step and throws E-PROC-TIMEOUT, and its EMIT removes
-\ the work directory before the throw goes on.
+\ deadline is a hang guard beyond the builder's own capture. The compiler
+\ bundle and the other builders use SUITE-BUDGET:CHILD-MS; the other builders
+\ clean their work directory before a timeout throw.
 : BUILD ( n -- ) {: f:n :}
    f PROGRAM!
    f BUILD-LABEL!
@@ -503,6 +502,12 @@ public
 \ beside a sequential group.
 : SETTLE-ALL ( -- )
    NEEDED @ AWAIT ;
+
+\ The adapter retains the full compiler build capture before pool cleanup.
+\ The pool's printed failure tail is shorter than the supplier's capture.
+: COMPILER-RED ( -- n )
+   COMPILER STATE@ FAILED <> if -1 exit then
+   COMPILER SEQ@ GT-POOL-RED-FIND-SEQ ;
 
 \ ---- the load graph DERIVE read ----------------------------------------------
 \

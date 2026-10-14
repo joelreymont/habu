@@ -2492,12 +2492,6 @@ using A64RA
    BUILD-PLAIN
    M-FREEZE dup A64PRUNE:REWRITES 0 T= ;
 
-: PRUNE-RESET-BODY ( IR-CTX:ctx -- )
-   PLANNED-PRUNE {: m0:IR-BUILD:module :}
-   A64PRUNE:RESET-SCRATCH
-   A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC m0 nb A64PRUNE:REWRITE drop ;
-
 \ A module carrying two registered sources: the rewrite cannot know which one it
 \ is continuing, so it refuses before it reads an operation and still consumes
 \ the binding it took.
@@ -2777,7 +2771,6 @@ using A64RA
 : TWICE-LOWER ( -- bool n n n )
    WBND [: TWICE-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : PRUNE-NO-PLAN ( -- )  WBND [: PRUNE-NO-PLAN-BODY ;] IR-CTX:WITH-CONTEXT ;
-: PRUNE-RESET ( -- )    WBND [: PRUNE-RESET-BODY ;] IR-CTX:WITH-CONTEXT ;
 : PRUNE-SOURCE ( -- )   WBND [: PRUNE-SOURCE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : PRUNE-TWICE ( -- )    WBND [: PRUNE-TWICE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NO-SPILL-LOWER ( -- )   WBND [: NO-SPILL-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2932,10 +2925,6 @@ using A64RA
    A64RA:BOUND? if A64RA:RELEASE then ;
 
 : PRUNE-PLAN-CASES ( -- )
-   s" resetting scratch discards a pending prune plan" T-LABEL
-   [: PRUNE-RESET ;] E-A64PRUNE-PLAN TTHROWSQ
-   A64PRUNE:BOUND? TFALSE
-   A64RA:BOUND? if A64RA:RELEASE then
    s" a refused source consumes the prune binding" T-LABEL
    [: PRUNE-SOURCE ;] E-A64PRUNE-SHAPE TTHROWSQ
    A64PRUNE:BOUND? TFALSE

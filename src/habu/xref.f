@@ -60,6 +60,7 @@ public
 : REC ( n -- ptr n ) XREF-REC-ADDR N>REC ;
 \ The bytes a record's cell n points at (a name).
 : PTR@ ( ptr n n -- ptr u8 ) XREF-CELL@ N>U8 ;
+: INDEXED-WL ( ptr u8 n n -- ptr n ) xref-wl-newest ;
 ;package
 
 : XREF-REC ( n -- ptr n ) XREF:REC ;
@@ -170,13 +171,14 @@ PTR-VARIABLE XREF-SN
 variable XREF-SU
 PTR-VARIABLE XREF-FN
 variable XREF-FU
+variable XREF-IDX
+variable XREF-NV
 
 : XREF-SNAPSHOT-PREPARE ( -- )
    NULL-PTR XREF-A !  NULL-PTR XREF-B !  0 XREF-U !  0 XREF-V !
    NULL-PTR XREF-SN !  0 XREF-SU !
-   NULL-PTR XREF-FN !  0 XREF-FU ! ;
-variable XREF-IDX
-variable XREF-NV
+   NULL-PTR XREF-FN !  0 XREF-FU !
+   0 XREF-IDX !  0 XREF-NV ! ;
 
 : XREF-A@ ( -- ptr u8 )
    XREF-A @ ;
@@ -303,6 +305,12 @@ INSTALL
 ;package
 
 : XREF-FIND-WL ( ptr u8 n n -- ptr n ) {: a:ptr u:n wid:n :}
+   \ Native unit publication may add duplicate real-WID rows, so the indexed
+   \ probe must take the newest match. RETIRED rows may still be indexed under
+   \ the wordlist they left; that WID retains the descending scan.
+   wid 0 >= wid XREF-NAMESPACE-WL = or if
+      a u wid XREF:INDEXED-WL exit
+   then
    u XREF-FU !  a XREF-FN!
    ndict@ 1-
    begin dup 0 >= while

@@ -20,6 +20,7 @@ variable ART-U
 variable ART-I
 variable MARK-SERIAL
 variable BASE-SERIAL
+variable LINEAR-HITS
 PTR-VARIABLE SAVED-OWNER
 variable SAVED-SERIAL
 variable SAVED-REGIME
@@ -34,6 +35,10 @@ create PATH FS-PATH-CAP allot
 CAST: MARK-XT ( n -- [ -- ] )
 CAST: EXPORT-XT ( n -- [ -- ptr u8 n ] )
 CAST: IMPORT-XT ( n -- [ ptr u8 n -- ] )
+CAST: PREPARE-BEGIN-XT ( n -- [ -- ] )
+CAST: PREPARE-XT ( n -- [ ptr u8 n n n -- n ] )
+CAST: INSTALL-XT ( n -- [ n -- ] )
+CAST: PREPARE-END-XT ( n -- [ -- ] )
 
 : MARK ( -- )
    OWNER CHECKER-OWNER-ABI:UNIT-MARK-OFF + CELL-VIEW @ MARK-XT execute ;
@@ -43,6 +48,15 @@ CAST: IMPORT-XT ( n -- [ ptr u8 n -- ] )
 
 : IMPORT ( ptr u8 n -- )
    OWNER CHECKER-OWNER-ABI:UNIT-IMPORT-OFF + CELL-VIEW @ IMPORT-XT execute ;
+
+: PREPARE-BEGIN ( -- )
+   OWNER CHECKER-OWNER-ABI:UNIT-PREPARE-BEGIN-OFF + CELL-VIEW @ PREPARE-BEGIN-XT execute ;
+: PREPARE ( ptr u8 n n n -- n )
+   OWNER CHECKER-OWNER-ABI:UNIT-PREPARE-OFF + CELL-VIEW @ PREPARE-XT execute ;
+: INSTALL ( n -- )
+   OWNER CHECKER-OWNER-ABI:UNIT-INSTALL-OFF + CELL-VIEW @ INSTALL-XT execute ;
+: PREPARE-END ( -- )
+   OWNER CHECKER-OWNER-ABI:UNIT-PREPARE-END-OFF + CELL-VIEW @ PREPARE-END-XT execute ;
 
 : LOAD-UNIT ( -- )
    s" package UNIT-NBR public : BL-ALPHA ( -- n ) 1 ; : BL-OMEGA ( -- n ) 2 ; : BL-WORD ( n n -- n ) + ; : BL-TARGET ( n n -- n ) + ; : BL? ( n -- bool ) 0= ; : BL-SCHEME ( forall<p,[ R n -- R n | U -- U ]> -- ) drop ; : BL-INFER BL-SCHEME ; ;package" evaluate-closed ;
@@ -86,12 +100,18 @@ CAST: IMPORT-XT ( n -- [ ptr u8 n -- ] )
    s" UNIT-SCHEME ( forall<q,[ R n -- R n | U -- U ]> -- ) UNIT-NBR:BL-SCHEME" CHECK-CANDIDATE! -1 T=
    s" UNIT-INFER ( forall<s,[ R n -- R n | U -- U ]> -- ) UNIT-NBR:BL-INFER" CHECK-CANDIDATE! -1 T= ;
 
-\ The wire header has seven cells. Each symbol has a visibility cell and two
-\ length-prefixed, cell-aligned strings; an effect begins with three cells.
+\ The wire header has ten cells. Family and constructor payloads precede symbols.
+\ Each symbol has a visibility cell and two
+\ length-prefixed, cell-aligned strings; an effect begins with six cells.
 : STRING-END ( n -- n ) dup ART + CELL-VIEW @ 7 + -8 and + CELL + ;
+: ROWS-START ( -- n )
+   10 cells ART 7 cells + CELL-VIEW @ +
+   ART 8 cells + CELL-VIEW @ 0 ?do
+      STRING-END STRING-END
+   loop ;
 : NAME-OFF ( n -- n )
    {: idx:n :}
-   7 cells ART-I !
+   ROWS-START ART-I !
    idx 0 ?do
       CELL ART-I +!
       ART-I @ STRING-END ART-I !
@@ -101,19 +121,19 @@ CAST: IMPORT-XT ( n -- [ ptr u8 n -- ] )
    ART-I @ STRING-END ART-I !
    ART-I @ CELL + ;
 : FIRST-GRAPH-OFF ( -- n )
-   7 cells ART-I !
+   ROWS-START ART-I !
    ART 3 cells + CELL-VIEW @ 0 ?do
       CELL ART-I +!
       ART-I @ STRING-END ART-I !
       ART-I @ STRING-END ART-I !
    loop
-   ART-I @ 3 cells + ;
+   ART-I @ 6 cells + ;
 
 : FIRST-CONTROL-OFF ( -- n )
-   FIRST-GRAPH-OFF 3 cells - ART-I !
+   FIRST-GRAPH-OFF 6 cells - ART-I !
    ART 4 cells + CELL-VIEW @ 0 ?do
-      ART-I @ 2 cells + ART + CELL-VIEW @ 7 + -8 and
-      3 cells + ART-I +!
+      ART-I @ 5 cells + ART + CELL-VIEW @ 7 + -8 and
+      6 cells + ART-I +!
    loop
    ART-I @ ;
 
@@ -161,6 +181,11 @@ CAST: IMPORT-XT ( n -- [ ptr u8 n -- ] )
       ART second CELL - + CELL-VIEW @ T=
    ART first + BAD second + ART first CELL - + CELL-VIEW @ BYTE-COPY
    [: BAD ART-U @ IMPORT ;] E-UNIT-FORMAT TTHROWSQ
+   SERIAL BASE-SERIAL @ T=
+   ART BAD ART-U @ BYTE-COPY
+   ART 3 cells + CELL-VIEW @
+      BAD FIRST-GRAPH-OFF 6 cells - + CELL-VIEW !
+   [: BAD ART-U @ IMPORT ;] E-UNIT-FORMAT TTHROWSQ
    SERIAL BASE-SERIAL @ T= ;
 
 : CHECK-BOUNDARIES ( -- )
@@ -176,6 +201,66 @@ CAST: IMPORT-XT ( n -- [ ptr u8 n -- ] )
    $8000000000000000 BAD 6 cells + CELL-VIEW !
    BAD ART-U @ IMPORT
    SERIAL BASE-SERIAL @ $8000000000000000 + T= ;
+
+\ Prepared trees must validate every section before the first section publishes.
+\ A later malformed range here changes neither the live binding window nor the
+\ checker's symbol facts; a valid range consumes the retained plan once.
+: CHECK-PREPARED ( -- )
+   OWNER-RESET:SOURCE MARK
+   SERIAL BASE-SERIAL !
+   PREPARE-BEGIN
+   ART ART-U @ 0 0 PREPARE drop
+   ART BAD ART-U @ BYTE-COPY
+   1 BAD CELL + CELL-VIEW !
+   [: BAD ART-U @ 0 0 PREPARE drop ;] E-UNIT-FORMAT TTHROWSQ
+   SERIAL BASE-SERIAL @ T=
+   PREPARE-END
+   SERIAL BASE-SERIAL @ T=
+   UNIT-EXPORT drop {: delta:ptr :}
+   delta 3 cells + CELL-VIEW @ 0 T=
+   delta 4 cells + CELL-VIEW @ 0 T=
+   delta 5 cells + CELL-VIEW @ 0 T=
+   PREPARE-BEGIN
+   ART ART-U @ 0 0 PREPARE INSTALL
+   PREPARE-END
+   SERIAL BASE-SERIAL @ ART 6 cells + CELL-VIEW @ + T= ;
+
+: PATCH-LINEAR ( -- )
+   s" CODEC-LIN:tok" {: name:ptr len:n :}
+   0 LINEAR-HITS !
+   ART-U @ len - 1+ FIRST-GRAPH-OFF 6 cells - ?do
+      BAD i + len name len STR= IF
+         [char] x BAD i + len 1- + c!
+         1 LINEAR-HITS +!
+      THEN
+   loop
+   LINEAR-HITS @ 1 T= ;
+
+: CHECK-LINEAR-PREP ( -- )
+   OWNER-RESET:SOURCE
+   s" package CODEC-LIN public DEFLINEAR CODEC-LIN:tok ;package" evaluate-closed
+   MARK
+   s" package CODEC-LIN public : CL-ALPHA ( -- n ) 1 ; : CL-ID ( CODEC-LIN:tok -- CODEC-LIN:tok ) ; ;package" evaluate-closed
+   UNIT-EXPORT {: src:ptr size:n :}
+   size ART-CAP <= TTRUE
+   src ART size BYTE-COPY size ART-U !
+   ART 8 cells + CELL-VIEW @ 0 T=
+   ART BAD ART-U @ BYTE-COPY PATCH-LINEAR
+   OWNER-RESET:SOURCE MARK
+   SERIAL BASE-SERIAL !
+   PREPARE-BEGIN
+   [: BAD ART-U @ 0 0 PREPARE drop ;] E-UNIT-FORMAT TTHROWSQ
+   PREPARE-END
+   SERIAL BASE-SERIAL @ T=
+   UNIT-EXPORT drop {: delta:ptr :}
+   delta 3 cells + CELL-VIEW @ 0 T=
+   delta 4 cells + CELL-VIEW @ 0 T=
+   PREPARE-BEGIN
+   ART ART-U @ 0 0 PREPARE INSTALL
+   PREPARE-END
+   SERIAL BASE-SERIAL @ ART 6 cells + CELL-VIEW @ + T=
+   ROOT$ s" unknown-linear.checker-unit" PATH JOIN-PATH
+   PATH swap BAD ART-U @ WRITE-ALL ;
 
 public
 
@@ -205,14 +290,18 @@ public
    [: ART ART-U @ IMPORT ;] E-UNIT-STATE TTHROWSQ
    SERIAL BASE-SERIAL @ ART 6 cells + CELL-VIEW @ + T=
    CHECK-CLIENT
-   s" unit exporter refuses changed defer state" T-LABEL
+   s" unit exporter accepts deferred declaration state" T-LABEL
    MARK DEFER-CHANGE
-   [: UNIT-EXPORT 2drop ;] catch 0<> TTRUE
+   [: UNIT-EXPORT 2drop ;] catch 0 T=
    s" zero and sign-bit deltas retain full cell semantics" T-LABEL
    CHECK-BOUNDARIES
+   s" prepared checker sections reject a late malformed range before publication" T-LABEL
+   CHECK-PREPARED
+   s" prepared graph resolves every linear constructor before publication" T-LABEL
+   CHECK-LINEAR-PREP
    T-REPORT
    s" checker unit artifact: " type ROOT$ type
-   s" /unit-nbr.checker-unit" type cr ;
+   s" /unit-nbr.checker-unit and /unknown-linear.checker-unit" type cr ;
 
 ;package
 

@@ -699,15 +699,12 @@ $8000000000000000 constant INT-MIN
 1 constant MODE-IL
 2 constant MODE-REC
 
-here CELL 1- and CELL swap - CELL 1- and allot
-variable STG-MODE
-0 STG-MODE !
-variable STG-N
-0 STG-N !
-create STG-V STAGE-MAX cells allot
-create STG-VO STAGE-MAX cells allot
-create STG-K STAGE-MAX cells allot
-create STG-KO STAGE-MAX cells allot
+0 CWORK-VARIABLE STG-MODE n
+0 CWORK-VARIABLE STG-N n
+STAGE-MAX CWORK-SPAN STG-V n
+STAGE-MAX CWORK-SPAN STG-VO n
+STAGE-MAX CWORK-SPAN STG-K n
+STAGE-MAX CWORK-SPAN STG-KO n
 
 : SGV@ ( n -- n )
    cells STG-V + @ ;

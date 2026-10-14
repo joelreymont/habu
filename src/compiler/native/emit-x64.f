@@ -130,9 +130,9 @@ variable N-SITES
 variable N-CALLS
 variable CH-AT                          \ the pass-through chase's cursor
 
-variable SCRATCH-BLOCKS
-variable SCRATCH-FUNS
-variable SCRATCH-OPS
+0 CWORK-VARIABLE SCRATCH-BLOCKS n
+0 CWORK-VARIABLE SCRATCH-FUNS n
+0 CWORK-VARIABLE SCRATCH-OPS n
 : BMAX ( -- n ) SCRATCH-BLOCKS @ ;
 : FMAX ( -- n ) SCRATCH-FUNS @ ;
 : OMAX ( -- n ) SCRATCH-OPS @ ;
@@ -1471,9 +1471,6 @@ public
    EM-SINK BUF:DISPOSE
    SC-SINK BUF:DISPOSE
    0 SINK-MODE ! ;
-
-: RESET-SCRATCH ( -- )
-   0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 \ ---- the sealed emission, all of it in BYTES ---------------------------------
 \ Every reader below answers BYTES where the ARM64 emitter answers instruction

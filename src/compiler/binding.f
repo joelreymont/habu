@@ -65,7 +65,7 @@ private
 16 constant SLOT-CAP
 
 SLOT-CAP CDIGEST:SLOT-BYTES * constant PRE-BYTES
-create PRE PRE-BYTES allot
+PRE-BYTES CWORK-SPAN PRE u8
 
 \ Copy a component's whole canonical preimage into the binding preimage and
 \ report the next free slot.

@@ -46,8 +46,6 @@ private
    code 0<> if wid d 1- cells USE-WIDS-OFF + CELL! then
    code ;
 
-public
-
 \ Interpret the buffer as the engine's evaluate reads it, and put the input
 \ cells and the using depth back after, whether the buffer ends or a token
 \ throws: usings are file-local (habu1.f B-EVAL, habu2.f EM-EVAL-CLEAN-EXIT).
@@ -65,8 +63,8 @@ public
 \ buffer opened and left open is refused at its end, while the input cells
 \ still name the buffer, and a throw gives up a definition the buffer opened:
 \ the record pending as it began is pending again (definers.f ENTRY-PEND).
-: INTERPRET ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: INTERPRET-OPEN ( ptr u8 n n n -- )
+   {: a:ptr u:n first:n end:n :}
    INP-CELL CELL@ INE-CELL CELL@ SRCLOC:INB-CELL CELL@ USE-DEPTH-CELL CELL@
    ENTRY-PEND @
    {: p:n e:n b:n d:n o:n :}
@@ -75,7 +73,7 @@ public
    d USE-FLOOR !
    PEND-CELL CELL@ {: entry:n :}
    entry ENTRY-PEND !
-   a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
+   a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
    d RUN-CAUGHT {: code:n :}
    USE-FLOOR @ USE-DEPTH-CELL CELL@ min {: back:n :}
    outer USE-FLOOR !
@@ -85,5 +83,30 @@ public
    back USE-DEPTH-CELL CELL!
    0 EVALERR-CELL CELL!
    USE-PKG-SAVE-CELL CELL@ back > if back USE-PKG-SAVE-CELL CELL! then ;
+
+PTR-VARIABLE RANGE-A
+variable RANGE-U
+variable RANGE-FIRST
+variable RANGE-END
+
+: INTERPRET-STAGED ( -- )
+   RANGE-A @ RANGE-U @ RANGE-FIRST @ RANGE-END @ INTERPRET-OPEN ;
+: INTERPRET-CLOSED ( -- ) [: INTERPRET-STAGED ;] SOURCE-ROOT:RUN-CLOSED ;
+
+public
+
+: INTERPRET-RANGE ( ptr u8 n n n -- )
+   {: a:ptr u:n first:n end:n :}
+   first 0 < first end > or end u > or if INCLUDE-RANGE-RC throw then
+   RANGE-A @ RANGE-U @ RANGE-FIRST @ RANGE-END @
+      {: old:ptr oldu:n oldfirst:n oldend:n :}
+   a RANGE-A ! u RANGE-U ! first RANGE-FIRST ! end RANGE-END !
+   REQUIRE-REG:MARK {: mark:n epoch:n :}
+   [: INTERPRET-CLOSED ;] catch {: rc:n :}
+   old RANGE-A ! oldu RANGE-U ! oldfirst RANGE-FIRST ! oldend RANGE-END !
+   rc 0 <> if mark epoch REQUIRE-REG:ROLLBACK rc throw then ;
+
+: INTERPRET ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u 0 u INTERPRET-RANGE ;
 
 ;package

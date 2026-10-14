@@ -72,7 +72,6 @@ variable SEALED-N
 
 : FIVE-DECLARES ( -- )
    s" the table has room left after the five libraries" T-LABEL
-   FFI:ROOM? TTRUE
    s" a declaration made beside all five calls" T-LABEL
    FIVE-GETPID 0 T<>
    FIVE-GETPID FIVE-GETPID T= ;

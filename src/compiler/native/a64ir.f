@@ -1862,7 +1862,11 @@ public
 
 : PROTOTYPE-CLEAR ( -- )
    0 PROTO-ON !
-   MEMO-FORGET ;
+   MEMO-FORGET
+   \ Both ordinals and the module handle belonged to the retired session.
+   0 0 PROTO BYTE-VIEW CELL-VIEW !  0 1 PROTO BYTE-VIEW CELL-VIEW !
+   0 0 MEMO-MOD BYTE-VIEW CELL-VIEW !
+   VOCAB 0 ?do 0 i PROTO-ORD !  0 i MEMO-ORD ! loop ;
 
 \ ---- creation and registration -----------------------------------------------
 \ While a session prototype stands, the module's interner starts as a copy of

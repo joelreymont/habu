@@ -44,6 +44,7 @@ require src/compiler/native/elaborate.f
 require src/compiler/native/backend.f
 require src/compiler/native/publish.f
 require src/compiler/native/shadow.f
+require src/compiler/native/callback-stub.f
 require src/compiler/native/prof.f
 require src/compiler/session/lease.f
 require src/compiler/session/emission.f
@@ -100,53 +101,56 @@ private
 \ its source.
 BODYBUF-CAP constant TEXT-CAP
 
-create TXT TEXT-CAP allot
+TEXT-CAP CWORK-SPAN TXT u8
 \ The definition's name is its spelling in TXT, whole, which stays put until the
 \ next definition is recorded: no copy that a longer name could run past.
-PTR-VARIABLE NAME-A
-variable NAME-U
+0 CWORK-VARIABLE NAME-A ptr u8
+0 CWORK-VARIABLE NAME-U n
 
 here CELL 1- and CELL swap - CELL 1- and allot
-1 TYPED-BUFFER M-CTX IR-CTX:ctx
-1 TYPED-BUFFER M-BLD IR-BUILD:builder
-1 TYPED-BUFFER M-TAPE IR-ARENA:view
-1 TYPED-BUFFER M-HM IR-BUILD:module   \ the frozen module every selector reads
-1 TYPED-BUFFER M-SH IR-CTX:ctx        \ the shadow's context, nested in CC
-TYPED-VARIABLE M-LEASE NLEASE:lease
-TYPED-VARIABLE M-SESSION NSESSION:session
-TYPED-VARIABLE SH-SESSION NSESSION:session
-TYPED-VARIABLE M-EMISSION NART:emission
+1 CWORK-BUFFER M-CTX IR-CTX:ctx
+1 CWORK-BUFFER M-BLD IR-BUILD:builder
+1 CWORK-BUFFER M-TAPE IR-ARENA:view
+1 CWORK-BUFFER M-HM IR-BUILD:module   \ the frozen module every selector reads
+1 CWORK-BUFFER M-SH IR-CTX:ctx        \ the shadow's context, nested in CC
+0 CWORK-VARIABLE M-LEASE NLEASE:lease
+0 CWORK-VARIABLE M-SESSION NSESSION:session
+0 CWORK-VARIABLE SH-SESSION NSESSION:session
+0 CWORK-VARIABLE M-EMISSION NART:emission
 
 \ Everything the run needs, parked: a quotation cannot read the enclosing word's
 \ locals and the whole run is one quotation.
-PTR-VARIABLE M-SRC
-variable M-SRC-U
-variable M-IN
-variable M-OUT
-variable PRIOR-ENTRY
-variable PRIOR-IN
-variable PRIOR-OUT
-variable PRIOR-GLUE
-variable PRIOR-DEAD
-variable PRIOR-CAST
-variable PRIOR-CALLABLE
-variable M-OPEN                      \ a compilation is running
-variable M-RC                        \ the code the run inside the context reached
-variable M-PUBLISHED-START           \ committed parent's index for notification
-variable M-VERDICT                   \ the verdict the recorded scan reached
-variable M-UNJUDGED                  \ a hook-cell-empty scan's verdict, else -1
-variable M-REQUIRED                  \ this definition's build-required hookless scan
-variable M-ROWS                      \ where the checker store ended at STAGE
-variable M-DOES-FRAME                \ checker-owned transaction spans a split compilation
-variable M-DOES                      \ byte split after `does> `, or zero
-variable M-DOES-ROW                  \ the tape row that carries `does>`
-PTR-VARIABLE M-DOES-SIG
-variable M-DOES-SIG-U
-variable M-DOES-IN
-variable M-DOES-OUT
-variable M-DOES-GIN                  \ where the clause's argument row's values end
-variable M-DOES-GOUT                 \ where the clause's result row's values end
-variable M-DOES-FUN                  \ hidden clause function ordinal
+0 CWORK-VARIABLE M-SRC ptr u8
+0 CWORK-VARIABLE M-SRC-U n
+0 CWORK-VARIABLE M-IN n
+0 CWORK-VARIABLE M-OUT n
+0 CWORK-VARIABLE PRIOR-ENTRY n
+0 CWORK-VARIABLE PRIOR-IN n
+0 CWORK-VARIABLE PRIOR-OUT n
+0 CWORK-VARIABLE PRIOR-GLUE n
+0 CWORK-VARIABLE PRIOR-DEAD bool
+0 CWORK-VARIABLE PRIOR-CAST bool
+0 CWORK-VARIABLE PRIOR-CALLABLE n
+0 CWORK-VARIABLE M-OPEN n                      \ a compilation is running
+-1 CWORK-VARIABLE M-CB-SLOT n                   \ -1 outside a callback accessor definition
+0 CWORK-VARIABLE M-CB-THUNK n
+0 CWORK-VARIABLE M-CB-ENTRY n
+0 CWORK-VARIABLE M-RC n                        \ the code the run inside the context reached
+0 CWORK-VARIABLE M-PUBLISHED-START n           \ committed parent's index for notification
+0 CWORK-VARIABLE M-VERDICT n                   \ the verdict the recorded scan reached
+0 CWORK-VARIABLE M-UNJUDGED n                  \ a hook-cell-empty scan's verdict, else -1
+0 CWORK-VARIABLE M-REQUIRED bool                  \ this definition's build-required hookless scan
+0 CWORK-VARIABLE M-ROWS n                      \ where the checker store ended at STAGE
+0 CWORK-VARIABLE M-DOES-FRAME n                \ checker-owned transaction spans a split compilation
+0 CWORK-VARIABLE M-DOES n                      \ byte split after `does> `, or zero
+0 CWORK-VARIABLE M-DOES-ROW n                  \ the tape row that carries `does>`
+0 CWORK-VARIABLE M-DOES-SIG ptr u8
+0 CWORK-VARIABLE M-DOES-SIG-U n
+0 CWORK-VARIABLE M-DOES-IN n
+0 CWORK-VARIABLE M-DOES-OUT n
+0 CWORK-VARIABLE M-DOES-GIN n                  \ where the clause's argument row's values end
+0 CWORK-VARIABLE M-DOES-GOUT n                 \ where the clause's result row's values end
+0 CWORK-VARIABLE M-DOES-FUN n                  \ hidden clause function ordinal
 
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
@@ -207,7 +211,7 @@ variable M-DOES-FUN                  \ hidden clause function ordinal
 \ An ambiguous bare name is no prior binding.  A qualified body token remains
 \ free to resolve its own unambiguous record after the check.
 : KEEP-PRIOR ( -- )
-   0 PRIOR-ENTRY !  0 PRIOR-CALLABLE !  0 PRIOR-CAST !
+   0 PRIOR-ENTRY !  0 PRIOR-CALLABLE !  false PRIOR-CAST !
    [: READ-PRIOR ;] catch {: rc:n :}
    rc E-USING-AMBIGUOUS = if exit then
    rc 0<> if rc throw then ;
@@ -304,7 +308,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    {: a:ptr u:n :}
    a u CHECKER-OWNER:CHECK-UNJUDGED {: v:n :}
    v -1 <> if CHECKER-OWNER:REPORT then
-   M-REQUIRED @ 0<> v -1 <> and if RC-REJECT throw then
+   M-REQUIRED @ v -1 <> and if RC-REJECT throw then
    v M-UNJUDGED ! ;
 
 : CHECK-PARENT ( ptr u8 n -- n )
@@ -579,10 +583,13 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    hm IR-BUILD:RETIRE
    s m0 NBACK:PRUNE {: m:IR-BUILD:module :}
    s m NBACK:FIXPOINT {: ready:IR-BUILD:module :}
+   M-CB-SLOT @ 0 >= if M-CB-SLOT @ M-CB-THUNK @ NCBSTUB:SET then
    s ready NPUB:NEXT-SLOT NBACK:EMIT
+   M-CB-SLOT @ 0 >= if NCBSTUB:ENTRY@ M-CB-ENTRY ! then
    s NART:COPY ;
 
 : HOST-CLEAN ( -- )
+   NCBSTUB:CLEAR
    SS NBACK:RELEASE
    SS NBACK:RETIRE ;
 
@@ -732,7 +739,13 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 \ stands until the image is captured, which is where it and everything it holds
 \ are given back. Liveness is read off the context itself, so a session that has
 \ gone answers as gone and the next definition opens a fresh one.
-1 TYPED-BUFFER S-CTX IR-CTX:ctx
+1 CWORK-BUFFER S-CTX IR-CTX:ctx
+0 CWORK-VARIABLE SESSION-OPEN-LEASE n
+0 CWORK-VARIABLE SESSION-OPEN-EPOCH n
+0 CWORK-VARIABLE SESSION-OPEN-MODULE-BEFORE n
+0 CWORK-VARIABLE SESSION-OPEN-MODULE-AFTER n
+0 CWORK-VARIABLE SESSION-OPEN-BUILD-BEFORE n
+0 CWORK-VARIABLE SESSION-OPEN-BUILD-AFTER n
 
 : SC ( -- IR-CTX:ctx ) 0 S-CTX @ ;
 
@@ -767,6 +780,12 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 : FORGET-OWNED ( NLEASE:lease -- )
    {: l:NLEASE:lease :}
    l NLEASE:QUIET
+   0 SESSION-OPEN-LEASE !
+   0 SESSION-OPEN-EPOCH !
+   0 SESSION-OPEN-MODULE-BEFORE !
+   0 SESSION-OPEN-MODULE-AFTER !
+   0 SESSION-OPEN-BUILD-BEFORE !
+   0 SESSION-OPEN-BUILD-AFTER !
    HIR-WORD:SESSION-MODEL-CLEAR
    HIR:PROTOTYPE-CLEAR
    l NBACK:FORGET ;
@@ -791,8 +810,14 @@ INSTALL-FORGET
 \ prototype.
 : SESSION-START ( -- )
    NABI:BINDING IR-CTX:SESSION-OPEN 0 S-CTX !
+   NLEASE:HISTORY SESSION-OPEN-LEASE !
+   IR-CTX:EPOCH SESSION-OPEN-EPOCH !
+   IR-ID:SERIAL-HISTORY SESSION-OPEN-MODULE-BEFORE !
+   IR-BUILD:HISTORY SESSION-OPEN-BUILD-BEFORE !
    [: SESSION-VOCABULARY ;] catch {: rc:n :}
-   rc 0<> if IR-CTX:SESSION-CLOSE rc throw then ;
+   rc 0<> if IR-CTX:SESSION-CLOSE rc throw then
+   IR-ID:SERIAL-HISTORY SESSION-OPEN-MODULE-AFTER !
+   IR-BUILD:HISTORY SESSION-OPEN-BUILD-AFTER ! ;
 
 : SESSION-READY ( -- )
    SC IR-CTX:LIVE? if exit then
@@ -857,6 +882,7 @@ INSTALL-FORGET
    0 M-RC !
    [: IN-CONTEXT ;] catch {: entry-rc:n :}
    0 M-OPEN !
+   -1 M-CB-SLOT !
    entry-rc 0<> if
       M-DOES-FRAME @ 0<> if NULL-PTR 0 false CHECKER-OWNER:DOES-FINISH then
       entry-rc throw
@@ -892,7 +918,7 @@ private
 
 : LEASED-MODE ( ptr u8 n bool NLEASE:lease -- )
    M-LEASE !
-   [: STAGE RUN ;] [: 0 M-REQUIRED ! ;] finally ;
+   [: STAGE RUN ;] [: false M-REQUIRED ! ;] finally ;
 
 : LEASED ( ptr u8 n NLEASE:lease -- )
    false swap LEASED-MODE ;
@@ -901,6 +927,38 @@ private
    true swap LEASED-MODE ;
 
 public
+
+\ FILE replay can install definitions without compiling them. Keep the
+\ compiler's lazily opened session alive at the same range boundary as a
+\ source load; later definitions must not open a second session instead.
+: SESSION-LIVE? ( -- bool ) SC IR-CTX:LIVE? ;
+: SESSION-SERIAL ( -- n )
+   SESSION-LIVE? if SC IR-CTX:SERIAL else 0 then ;
+: SESSION-LEASE ( -- n )
+   SESSION-LIVE? if SESSION-OPEN-LEASE @ else 0 then ;
+: SESSION-EPOCH ( -- n )
+   SESSION-LIVE? if SESSION-OPEN-EPOCH @ else 0 then ;
+: SESSION-MODULE-BEFORE ( -- n )
+   SESSION-LIVE? if SESSION-OPEN-MODULE-BEFORE @ else 0 then ;
+: SESSION-MODULE-AFTER ( -- n )
+   SESSION-LIVE? if SESSION-OPEN-MODULE-AFTER @ else 0 then ;
+: SESSION-BUILD-BEFORE ( -- n )
+   SESSION-LIVE? if SESSION-OPEN-BUILD-BEFORE @ else 0 then ;
+: SESSION-BUILD-AFTER ( -- n )
+   SESSION-LIVE? if SESSION-OPEN-BUILD-AFTER @ else 0 then ;
+: SESSION-ENSURE ( -- )
+   SESSION-LIVE? if exit then
+   [: M-LEASE ! SESSION-READY ;] NLEASE:WITH ;
+
+\ The next definition is an accessor that owns one anonymous C entry after
+\ its ordinary return. The entry is published with that definition's emission.
+: CALLBACK-STUB! ( n n -- ) {: k:n thunk:n :}
+   IDLE-CK
+   M-CB-SLOT @ 0 >= if E-NCOMP-STATE throw then
+   k M-CB-SLOT !  thunk M-CB-THUNK !  0 M-CB-ENTRY ! ;
+
+: CALLBACK-ENTRY ( -- n )
+   M-CB-ENTRY @ dup 0= if E-NCOMP-STATE throw then ;
 
 \ The named parent's effect does not determine the publication callback's effect.
 : PUBLISHED! ( [ n IR-CTX:ctx code-entry n n -- ] -- )
@@ -928,6 +986,8 @@ public
 \ The fixed engine header lies outside a partial compiler capture. Reinstall
 \ its dispatch after the captured words have been relocated at fresh boot.
 : INSTALL ( -- )
+   ['] CALLBACK-STUB! data-base NCOMP-DISPATCH:CALLBACK-STUB-CELL + xt!
+   ['] CALLBACK-ENTRY data-base NCOMP-DISPATCH:CALLBACK-ENTRY-CELL + xt!
    ['] COMPILE DISPATCH! ;
 
 \ The session is already gone by the time this runs, and it took what NCOMP held
@@ -939,22 +999,15 @@ public
    NLEASE:IDLE-CK
    IDLE-CK
    NFETCH:RELEASE
-   NULL-PTR NAME-A !  0 NAME-U !
-   NULL-PTR M-SRC !  0 M-SRC-U !
-   NULL-PTR M-DOES-SIG !  0 M-DOES-SIG-U !
-   0 M-REQUIRED !
-   0 PRIOR-ENTRY !  0 PRIOR-IN !  0 PRIOR-OUT !
-   0 PRIOR-GLUE !  0 PRIOR-DEAD !  0 PRIOR-CAST !  0 PRIOR-CALLABLE !
    \ A shadow's map lives in mappings no image carries, so the capture ends it.
    NSHADOW:CLOSE
-   \ The registry releases buffers immediately before DATA copy, so each loaded
-   \ backend gives up its pass reservations here and sizes them again on use.
+   \ Backends prove their passes idle here; the dynamic registry releases
+   \ their mappings with the workspace immediately before DATA copy.
    NBACK:PREPARE
    NHOST:CAPTURE-PREPARE
    CHECKER-OWNER:CAPTURE-PREPARE
    NFEED:CAPTURE-PREPARE
    IR-BUILD:CAPTURE-PREPARE
-   NELAB:CAPTURE-PREPARE
    NPROF:CLOSE ;
 
 private

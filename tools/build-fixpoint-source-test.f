@@ -1,8 +1,8 @@
 \ build-fixpoint-source-test.f - checked fixture for tools/build-fixpoint.f:
 \ the sources the refresh emits and certifies - the runtime capture kind of
 \ the common emitter, the checker and TFAM prefix self-certification, and the
-\ boot-prefix and phase-source certify gates. The build and the cases that read
-\ its output are tools/build-fixpoint-test.f; this is a gate row of its own,
+\ boot-prefix and phase-source certify gates. Install, stamp and CLI cases
+\ are tools/build-fixpoint-test.f; this is a gate row of its own,
 \ because one row running every build-fixpoint case took 293-338 s in the
 \ gate's pool.
 \ Run: bin/hb --load tools/build-fixpoint-source-test.f
@@ -55,7 +55,7 @@ public
 undefine FILE-SIZE
 : FILE-SIZE ( ptr u8 n -- n ) BFT-SIZE:SIZE ;
 
-require tools/build-fixpoint-test-lib.f
+require tools/build-fixpoint-writer-test-lib.f
 require src/lib/fmt.f
 
 \ The shared fixture's words are private words of the tool's package, so this
@@ -164,17 +164,21 @@ package BUILD-FIXPOINT
 
 : BFT-TEST-RUNTIME-KIND ( -- )
    BFT-ROOT BF-TMP!
+   FIXTURE-WRITER:PATH$ 2drop
    8 0 ?do
-      s" runtime-kind-src" {: out:ptr outu:n :}
-      out outu BF-RESET-OUT
-      out outu BF-APPEND-RUN-PRELUDE
-      out outu BF-APPEND-COMMON
-      out outu COMPILER-BUILD:SEAL
-      out outu s" test/aot-runtime-kind-driver.f" BF-APPEND-SOURCE
-      SB-RESET i FMT:SB-U s"  AOT-KIND-TEST:RUN" SB-APPEND
-      out outu SB$ BF-APPEND-LINE
-      s" bin/hb" out outu BF-A$ COMPILER-BUILD:RUN
-      i 3 < if 0 else 74 then T=
+      SB-RESET
+      S\" require test/aot-runtime-kind-driver.f\n" SB-APPEND
+      i FMT:SB-U s"  AOT-KIND-TEST:RUN" SB-APPEND
+      BFT-NL 1 SB-APPEND
+      s" runtime-kind-hb" BF-A$ SB$ BFT-WRITER-RUN
+      {: outu:n erru:n rc:n :}
+      rc i 3 < if 0 else 74 then T=
+      BFT-OUT outu BFT-EMPTY$ T$=
+      i 3 < if
+         BFT-ERR erru BFT-EMPTY$ T$=
+      else
+         BFT-ERR erru S\" hb: incomplete captured runtime\n" T$=
+      then
    loop
    BF-TMP-RESET ;
 

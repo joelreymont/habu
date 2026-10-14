@@ -122,17 +122,13 @@ variable GEN-CELL
 0 GEN-CELL !
 variable DEPTH
 0 DEPTH !
-create HANDLES DEPTH-MAX cells allot
-: HANDLES-CLEAR ( -- )
-   DEPTH-MAX 0 ?do 0 HANDLES i cells + ! loop ;
-HANDLES-CLEAR
+DEPTH-MAX CWORK-SPAN HANDLES n
 \ A slot's base is the address of the header the context lives at, so the table
 \ is a declared table of pointers and each slot is read as one.
-DEPTH-MAX TYPED-BUFFER BASES ptr u8
-create ENTERED DEPTH-MAX cells allot   \ scope depth -> the slot that scope took
-variable ENTERED-N
-0 ENTERED-N !
-create STAGE CODES# CDIGEST:SLOT-BYTES * allot
+DEPTH-MAX CWORK-BUFFER BASES ptr u8
+DEPTH-MAX CWORK-SPAN ENTERED n   \ scope depth -> the slot that scope took
+0 CWORK-VARIABLE ENTERED-N n
+CODES# CDIGEST:SLOT-BYTES * CWORK-SPAN STAGE u8
 
 : HANDLE! ( n n -- )
    cells HANDLES + ! ;
@@ -691,6 +687,35 @@ public
 \ the account at REGION-EPOCH.
 : EPOCH ( -- n ) REGION-EPOCH @ ;
 
+\ A FILE range can carry retired context handles and region offsets in DATA.
+\ Before importing it, preserve the highest identities the cold compilation
+\ reached. Earlier or unrelated work may already have advanced either count.
+: HISTORY ( -- n n ) GEN-CELL atomic@ REGION-EPOCH @ ;
+
+private
+
+: GEN-ENSURE ( n -- ) {: want:n :}
+   begin
+      GEN-CELL atomic@ {: old:n :}
+      old want >= if exit then
+      old want GEN-CELL atomic-cas old =
+   until ;
+
+: EPOCH-ENSURE ( n -- )
+   REGION-EPOCH @ max REGION-EPOCH ! ;
+
+public
+
+: CHECK-HISTORY ( n n -- )
+   {: gen:n epoch:n :}
+   gen 0 < gen GEN-MAX > or epoch 0 < or epoch EPOCH-MAX > or
+      if E-IR-CTX-SERIALS throw then ;
+
+: REPLAY-HISTORY ( n n -- )
+   {: gen:n epoch:n :}
+   gen epoch CHECK-HISTORY
+   gen GEN-ENSURE epoch EPOCH-ENSURE ;
+
 \ ---- not-yet-landed module slots ---------------------------------------------
 private
 
@@ -713,14 +738,11 @@ public
 
 public
 
-\ No compilation context survives into a captured runtime.  The registry depth
-\ is the lifecycle authority; once it is empty, clear the retired mapping
-\ cells so the DATA image carries no host mapping pointers.
+\ No compilation context survives into a captured runtime. Registry payloads
+\ share the transient workspace; only the generation and region epochs persist.
 : CAPTURE-PREPARE ( -- )
    DEPTH @ 0<> if E-IR-CTX-STATE throw then
-   DEPTH-MAX 0 ?do
-      NULL-PTR i BASES !
-   loop
+   ENTERED-N @ 0<> if E-IR-CTX-STATE throw then
    REGION-CLOSE ;
 
 \ ---- the compilation session -------------------------------------------------
@@ -860,6 +882,21 @@ public
 
 : SESSION-LIVE? ( -- bool )
    SESSION-SLOT @ 0 < 0= ;
+
+\ A FILE import cannot alias saved handles against an unrelated live context.
+\ A compiler session is the only permitted live row while importing its child.
+: REGISTRY-IDLE? ( -- bool ) DEPTH @ 0= ;
+: REGISTRY-SESSION-ONLY? ( -- bool )
+   SESSION-LIVE? DEPTH @ 1 = and ;
+
+\ The one open session occupies slot zero. FILE metadata stores this identity
+\ so replay can distinguish a continuing session from a close and a new open.
+: SESSION-SERIAL ( -- n )
+   SESSION-LIVE? if 0 SESSION-CTX @ SERIAL else 0 then ;
+: SESSION-GEN-OF ( n -- n )
+   dup 0= if exit then
+   dup 0 < over SLOT-MASK and 0<> or if E-IR-CTX-SERIALS throw then
+   SLOT-BITS rshift dup 0 <= over GEN-MAX > or if E-IR-CTX-SERIALS throw then ;
 
 \ Give the load's context back: what its owner holds, then the row this session
 \ took - which is what releases the region's cursor back to the bottom mark

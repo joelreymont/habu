@@ -163,27 +163,27 @@ BLOCK-MAX SET-BITS / constant SET-CELLS
 14 constant TAB#
 
 here CELL 1- and CELL swap - CELL 1- and allot
-TAB# TYPED-BUFFER VT IR-ARENA:arena
-1 TYPED-BUFFER VK IR-ID:ir-module-key
+TAB# CWORK-BUFFER VT IR-ARENA:arena
+1 CWORK-BUFFER VK IR-ID:ir-module-key
 
-create PN BLOCK-MAX cells allot      \ predecessors counted per block
-create PS BLOCK-MAX cells allot      \ predecessor window start per block
-create PF BLOCK-MAX cells allot      \ fill cursor while the lists are written
-create SN BLOCK-MAX cells allot      \ successors counted per block
-create PL EDGE-MAX cells allot       \ the predecessor lists themselves
-create DOM BLOCK-MAX SET-CELLS * cells allot
-create TMP SET-CELLS cells allot
+BLOCK-MAX CWORK-SPAN PN n      \ predecessors counted per block
+BLOCK-MAX CWORK-SPAN PS n      \ predecessor window start per block
+BLOCK-MAX CWORK-SPAN PF n      \ fill cursor while the lists are written
+BLOCK-MAX CWORK-SPAN SN n      \ successors counted per block
+EDGE-MAX CWORK-SPAN PL n       \ the predecessor lists themselves
+BLOCK-MAX SET-CELLS * CWORK-SPAN DOM n
+SET-CELLS CWORK-SPAN TMP n
 
 \ Locals are single-assignment, so the three walks that carry a running value -
 \ the window tilings, the dominator rounds, and the block bisection - keep it in
 \ a named cell each. Each one is written and read inside a single word, so they
 \ never overlap: the bisection does not run a tiling walk and the round does not
 \ run the bisection.
-variable AT                          \ running ordinal while a window tiling is walked
-variable LO                          \ block bisection, low bound
-variable HI                          \ block bisection, high bound
-variable SAME                        \ did a dominator set stay the same
-variable MOVED                       \ did any set change this round
+0 CWORK-VARIABLE AT n                          \ running ordinal while a window tiling is walked
+0 CWORK-VARIABLE LO n                          \ block bisection, low bound
+0 CWORK-VARIABLE HI n                          \ block bisection, high bound
+0 CWORK-VARIABLE SAME n                        \ did a dominator set stay the same
+0 CWORK-VARIABLE MOVED n                       \ did any set change this round
 
 : T@ ( n -- IR-ARENA:arena )
    VT @ ;

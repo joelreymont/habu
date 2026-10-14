@@ -366,6 +366,35 @@ ETRUSTED-ONLY!                       \ owns the protected unit hook for one sour
 EPPRIM: SOURCE-UNIT unit-compile-run
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QOUT ;PE-Q PE-IN
    PE-Q ;PE-Q PE-IN PE-N PE-OUT ECLOSE-PRIVATE
+EPRIM: source-exec-run
+   PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN
+   PE-Q PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QOUT PE-F PE-QOUT ;PE-Q PE-IN
+   PE-Q PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN
+   PE-Q ;PE-Q PE-IN
+   PE-N PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPPRIM: SOURCE-EXEC source-exec-run
+   PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN
+   PE-Q PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QOUT PE-F PE-QOUT ;PE-Q PE-IN
+   PE-Q PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN
+   PE-Q ;PE-Q PE-IN
+   PE-N PE-OUT ECLOSE-PRIVATE
+EPRIM: source-exec-live? PE-F PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPPRIM: SOURCE-EXEC source-exec-live? PE-F PE-OUT ECLOSE-PRIVATE
+EPRIM: source-exec-boundary? PE-F PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPPRIM: SOURCE-EXEC source-exec-boundary? PE-F PE-OUT ECLOSE-PRIVATE
+EPRIM: source-exec-loader-cut? PE-F PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPPRIM: SOURCE-EXEC source-exec-loader-cut? PE-F PE-OUT ECLOSE-PRIVATE
+EPRIM: source-exec-position PE-N PE-OUT PE-F PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPPRIM: SOURCE-EXEC source-exec-position PE-N PE-OUT PE-F PE-OUT ECLOSE-PRIVATE
+EPRIM: source-exec-handler PE-N PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPPRIM: SOURCE-EXEC source-exec-handler PE-N PE-OUT ECLOSE-PRIVATE
+
 EPRIM: source-unit-run PE-Q ;PE-Q PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ closes one whole source unit without an evaluator frame
 \ Checked caller: test/closed-unit-suite.f CU-RUN, on the whitebox engine.
@@ -490,6 +519,10 @@ EPRIM: run-in-stack PE-Q ;PE-Q PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 \ its net effect is ( -- ) and the row states the string alone. `evaluate`,
 \ whose effect is the text's, stays elaborated below and unsafe in a body.
 EPRIM: evaluate-closed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+EPRIM: evaluate-range PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!
+EPPRIM: SOURCE-ROOT evaluate-range
+   PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: count      PE-PTR-U8 PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT REF PRIM-REF:COUNTED$ EPRIM;
 
 EPRIM: .            PE-N PE-IN EPRIM;
@@ -907,6 +940,9 @@ EPPRIM: CHECKER-SURFACE xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE
 EPPRIM: OUTER xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: GENERATED-DECL-NAME-PREFLIGHT xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: AOT-CAPTURE xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
+EPRIM: xref-wl-newest PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT EPRIM;
+ETRUSTED-ONLY!                       \ XREF's newest-row indexed-record boundary
+EPPRIM: XREF xref-wl-newest PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPRIM: scope-find     PE-PTR-U8 PE-IN PE-N PE-IN
                       PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-N PE-OUT EPRIM;
 EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM;
@@ -928,8 +964,8 @@ ETRUSTED-ONLY!
 EPRIM: task-entry PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
 EPPRIM: TASK task-entry PE-N PE-OUT ECLOSE-PRIVATE    \ src/lib/task.f PTHREAD-ENTRY
-\ callback-entry ( n -- n ): the C entry address of callback slot n, one of
-\ CB-POOL fixed stubs into habu1.f BCALLBACK-THUNK (docs/ffi-callback.md).
+\ callback-entry -1 answers the shared raw C thunk for a compiler-owned stub.
+\ Nonnegative IDs still answer the boot stubs for old seed compatibility.
 EPRIM: callback-entry PE-N PE-IN PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
 EPPRIM: FFI callback-entry PE-N PE-IN PE-N PE-OUT ECLOSE-PRIVATE    \ src/lib/ffi-abi.f FFI:CALLBACK-ENTRY

@@ -52,11 +52,12 @@ public
 : CHECK ( ptr u8 n -- ) {: fam:ptr famu:n :}
    NAME$ GETENV {: g:ptr gu:n :}
    gu 0 = if exit then
-   SB-RESET
-   s"  " SB-APPEND
-   fam famu SB-APPEND
-   s"  " SB-APPEND
-   g gu SB$ CONTAINS? if exit then
+   0 begin dup gu < while
+      {: at:n :}
+      g gu 32 at SPLIT-NEXT drop {: token:ptr tokenu:n next:n :}
+      at 0 > next gu <= and token tokenu fam famu STR= and if exit then
+      next
+   repeat drop
    SB-RESET
    fam famu SB-APPEND
    s" : keyed image not granted to this gate row (" SB-APPEND

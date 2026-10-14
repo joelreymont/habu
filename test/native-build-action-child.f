@@ -1,7 +1,7 @@
 \ A live build action must refuse nested public entries before setup changes
 \ the outer build's output, source callbacks, or unit selection.
 require src/lib/test.f
-require tools/native-unit-build-core.f
+require tools/native-build-core.f
 
 package NATIVE-BUILD
 private
@@ -14,10 +14,6 @@ CAST: XT>N ( [ -- ] -- n )
    s" /tmp/habu-action-outer" OUTPUT!
    ['] HIT ['] HIT ['] HIT SOURCE-POLICY!
    ['] HIT SOURCE-TAIL!
-   ['] HIT UNIT-SOURCE !
-   UNIT-EXPORT UNIT-MODE !
-   31 UNIT-SEEN !
-   s" /tmp/habu-action-unit" UNIT-ARTIFACT!
    CLASS-WHITEBOX CLASS-WANTED ! ;
 
 : INTACT ( -- )
@@ -27,22 +23,15 @@ CAST: XT>N ( [ -- ] -- n )
    SOURCE-CHECK @ XT>N ['] HIT XT>N T=
    SOURCE-CLOSE @ XT>N ['] HIT XT>N T=
    SOURCE-TAIL @ XT>N ['] HIT XT>N T=
-   UNIT-SOURCE @ XT>N ['] HIT XT>N T=
-   UNIT-MODE @ UNIT-EXPORT T=
-   UNIT-SEEN @ 31 T=
-   UNIT-ARTIFACT$ s" /tmp/habu-action-unit" T$=
    CLASS-WANTED @ CLASS-WHITEBOX T= ;
 
 : NESTED-PATH ( -- )
    s" /tmp/habu-action-nested" ['] QUERY false RUN-PATH-RC drop ;
-: NESTED-UNIT ( -- ) ['] QUERY false RUN-UNIT ;
 : NESTED-DIRECT ( -- ) ['] QUERY false ['] SOURCE-WRITER-DISPATCH RUN-READY-RC drop ;
 
 : ACTIVE-CASE ( RTARGET:build-action -- )
    drop
    [: NESTED-PATH ;] RTARGET:E-ACTIVE TTHROWSQ
-   INTACT
-   [: NESTED-UNIT ;] RTARGET:E-ACTIVE TTHROWSQ
    INTACT
    [: NESTED-DIRECT ;] RTARGET:E-ACTIVE TTHROWSQ
    INTACT ;

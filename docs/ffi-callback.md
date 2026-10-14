@@ -2,11 +2,10 @@
 
 `src/lib/ffi-callback.f`, package `FFI-CB`, lets C call a checked Habu word: a
 libc `qsort` comparator, a `pthread_create` start routine, a C library's hook.
-The engine carries a fixed pool of 16 C entry stubs (`CB-POOL`,
-`src/habu/layout.f`). A declaration takes one for the life of the image, and a
-binding points it at a *context*: the region whose data stack and dictionary
-the body runs on. `src/lib/task.f` owns contexts and bindings. Only macOS on arm64
-has run any of this; see "Untested" below.
+Each declaration emits its own C entry as native code and receives a stable
+slot ID. A binding points that entry at a *context*: the region whose data
+stack and dictionary the body runs on. `src/lib/task.f` owns contexts and
+bindings. Only macOS on arm64 has run any of this; see "Untested" below.
 
 ```forth
 require src/lib/ffi-callback.f
@@ -35,6 +34,7 @@ generates three words:
 | `NAME ( -- FFI-CB:callback )` | the descriptor |
 | `NAME-BODY` | a `TYPED-VARIABLE [ in' -- out' ]` holding the body; `i32` and `u32` read as `n` |
 | `NAME-DISPATCH ( -- )` | what the slot runs: it reads the arguments, runs the body under `catch` and leaves the result for C |
+| `NAME-ENTRY ( -- n )` | the stored native C entry address; it does not bind the slot |
 
 Arguments are register arguments only: `n`; `i32`, sign-extended from the low
 32 bits; `u32`, the low 32 bits; `ptr u8`, the address C passed, unchecked; and
@@ -44,10 +44,11 @@ value result needs `n FALLBACK` (`r FFALLBACK` for `r`), the answer C gets when
 the body throws. A pointer result, two results, a missing or mistyped fallback,
 `FALLBACK` or `;CALLBACK` with nothing open and `CALLBACK:` inside an open
 declaration are all `E-FFI-SYNTAX`, and a refusal abandons the open
-declaration. The seventeenth declaration is `E-FFI-CALLBACK-FULL`. The pool is
-fixed, no stub is emitted at run time and a slot is never given back. A
-declaration defines words, so declare every callback before the first task
-starts.
+declaration. The declaration grows contiguous descriptor and binding tables
+as needed, and its native emission owns a C entry that loads the full slot ID.
+No native code is emitted by `ENTRY`; it only binds and returns the address
+stored at declaration. A slot is never given back. A declaration defines words,
+so declare every callback before the first task starts.
 
 Store the body with `' IMPL NAME-BODY !`. If the body cell was never stored,
 the dispatch faults `E-FFI-CALLBACK-STATE` and answers its fallback; it never
@@ -132,7 +133,7 @@ touches a region it could not claim.
 
 | reason | cause |
 |---|---|
-| `slot out of range` | `callback-entry` was given a slot past `CB-POOL` |
+| `slot out of range` | the seed-only `callback-entry` primitive was given an unsupported slot |
 | `no slot has been bound` | C called a stub before any binding in this process |
 | `slot held by another thread` | another thread is inside through this slot |
 | `slot is not bound` | a call after UNBIND, UNEXPOSE, the end of the task whose region it names, or a capture |
@@ -238,8 +239,12 @@ are one set for the image: they are process-wide in
   publish the live cursors. LEAVE restores the cells and then releases a
   claimed owner last, by STLR. A thread that acquires the owner therefore sees
   a complete frame or `CB-XDS` 0.
-- **The thunk.** `callback-entry ( n -- n )` answers stub n. The 16 stubs are
-  two instructions each (the slot into `x9`, then a branch) into one thunk.
+- **The thunk.** A declaration emits an anonymous C entry in the ordinary
+  native publisher. Its instructions load the full slot ID into `x9`, load a
+  marked address of the shared thunk into `x16`, and branch there. The
+  `callback-entry` primitive still answers the first 16 seed stubs for boot
+  compatibility; `callback-entry -1` gives the native compiler its thunk
+  target. Neither form is executed as a Habu quotation. The thunk:
   The thunk:
   1. saves C's callee-saved set (`x19..x30`, `d8..d15`);
   2. parks `x0..x7` and `d0..d7` as the marshal frame, the floats at
@@ -262,16 +267,15 @@ are one set for the image: they are process-wide in
   branch, and a carve of the thread's alternate signal stack below the frame
   when its thread has none (`src/habu/crash.f` C-SIGNAL-STACK); an entry whose
   thread already holds the owner pays neither.
-- **Slot rows.** `CB-ROW-BYTES` 16 per slot: the region and the owner, the
+- **Slot rows.** `CB-ROW-BYTES` 32 per slot: the region, owner, move count and
+  all-row claim marker. The
   owner `CB-ROW-BUSY` 1 while a bind, unbind or drop moves the row, and a bind
   names only a row it found free and holds BUSY. A call that meets BUSY waits
   for the hand-back, so a mover holds BUSY only for steps that call nothing,
-  wait on nothing and throw nothing. The rows are `src/lib/task.f`'s
-  `ROWS`, in main DATA, which is never unmapped; beside them `MOVES` counts
-  each row's region stores, which only the movers write and the thunk never
-  reads. The thunk
-  finds them, and the dispatch table, through the main region's `CB-ROWS` and
-  `CB-XTS` at the absolute address `DATA-VA`.
+  wait on nothing and throw nothing. `src/lib/task.f` grows one contiguous row
+  table at declaration; the thunk reads its current base from `CB-ROWS` in the
+  main region. The descriptor table also grows contiguously and is read through
+  `CB-XTS`. Stable IDs keep previously returned C pointers valid across growth.
 
 ## The thread pointer
 
@@ -327,6 +331,11 @@ case through libc's `qsort` and `pthread_create`. It writes
   comparator killed mid-sort, and a body stopped on an exposed task that
   `TASK:WAKE` releases;
 - a stripped image.
+
+`test/ffi-callback-growth.f` exercises more than 129 emitted C entries, a
+saved pointer across growth, binding and lifecycle operations above slot 64,
+and a high-slot fallback. `test/native-callback-stub-immediate.f` verifies the
+emitter loads an ID beyond 65535 without truncation.
 
 `src/lib/task-test.f` covers the EXPOSE, UNEXPOSE, CONTEXT and CONTEXT-BIND
 refusals, an exposed task at capture, a worker activating a worker, which

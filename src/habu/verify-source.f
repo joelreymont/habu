@@ -9,6 +9,7 @@ require src/core/checker-owner-guard.f
 require src/lib/string.f
 require src/habu/layout.f
 require src/habu/xref.f
+require src/compiler/workspace.f
 require src/habu/primitive-source.f
 
 package VERIFY
@@ -2720,6 +2721,38 @@ variable STG-TYPE-U
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
+: RECORD-CWORK-BUFFER ( -- )
+   TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   nameu 0= IF EXIT THEN
+   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   count countu COUNT-REFUSED? IF EXIT THEN
+   name nameu at nameu ARM
+   type typeu count countu name nameu CHECKER-DEFCWORK-BUFFER
+   DISARM
+   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+
+
+: RECORD-CWORK-SPAN ( -- )
+   TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   nameu 0= IF EXIT THEN
+   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   count countu COUNT-REFUSED? IF EXIT THEN
+   name nameu at nameu ARM
+   type typeu count countu name nameu CHECKER-DEFCWORK-SPAN
+   DISARM
+   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+
+: RECORD-CWORK-VARIABLE ( -- )
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   nameu 0= IF EXIT THEN
+   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   name nameu at nameu ARM
+   type typeu name nameu CHECKER-DEFCWORK-VARIABLE
+   DISARM
+   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+
 \ DYNAMIC-BUFFER (src/core/layout-buffer.f) publishes THREE words from one line -
 \ the accessor, NAME-RESERVE and NAME-RELEASE - so the whole triple is registered
 \ here. Certification never runs the definer, and without this row a later
@@ -3501,6 +3534,9 @@ s" DEFER-LAYOUT-BUFFER" XREF-FIND-INDEX constant DEFER-LAYOUT-BUFFER-REC
 s" TYPED-BUFFER" XREF-FIND-INDEX constant TYPED-BUFFER-REC
 s" TYPED-VARIABLE" XREF-FIND-INDEX constant TYPED-VARIABLE-REC
 s" DYNAMIC-BUFFER" XREF-FIND-INDEX constant DYNAMIC-BUFFER-REC
+s" CWORK-BUFFER" XREF-FIND-INDEX constant CWORK-BUFFER-REC
+s" CWORK-SPAN" XREF-FIND-INDEX constant CWORK-SPAN-REC
+s" CWORK-VARIABLE" XREF-FIND-INDEX constant CWORK-VARIABLE-REC
 s" PTR-VARIABLE" XREF-FIND-INDEX constant PTR-VARIABLE-REC
 s" PERSISTED-PTR-VARIABLE" XREF-FIND-INDEX constant PERSISTED-PTR-VARIABLE-REC
 s" PTR-U8-TABLE" XREF-FIND-INDEX constant PTR-U8-TABLE-REC
@@ -3543,6 +3579,12 @@ s" RESERVED-PTR-U8-CELL" XREF-FIND-INDEX constant RESERVED-PTR-U8-CELL-REC
       [: RECORD-TYPED-VARIABLE ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u DYNAMIC-BUFFER-REC LIBRARY-DEFINER? IF
       [: RECORD-DYNAMIC-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+   a u CWORK-BUFFER-REC LIBRARY-DEFINER? IF
+      [: RECORD-CWORK-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+   a u CWORK-SPAN-REC LIBRARY-DEFINER? IF
+      [: RECORD-CWORK-SPAN ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+   a u CWORK-VARIABLE-REC LIBRARY-DEFINER? IF
+      [: RECORD-CWORK-VARIABLE ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    \ `constant` bakes one physical cell, so its trust is the one-cell `-- a`
    \ model — identical to native C-CONSTANT, all-errors (which funnels here),
    \ and public-signatures. This is the PERMANENT contract (TFAM 12 verdict

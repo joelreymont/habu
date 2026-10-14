@@ -439,27 +439,21 @@ An `f32` in a variadic position is refused because C promotes it to double;
 declare the promoted argument as `r`. A fixed `f32` argument and an `f32`
 result remain valid on a variadic function.
 
-Every image shares one table of 256 distinct descriptors, sized for a server
-that binds five or six libraries at once. Each row is $50 bytes, for $5000 bytes
-of image data. Declarations reuse a row only when the library index, complete C
-symbol, integer argument count and spill count match. Generated words keep
-their own argument staging and return conversion. `FFI:ROOM?` answers whether
-another distinct row fits; an exact alias can still be declared when it is
-false. A new descriptor that finds the table full is `E-FFI-TABLE-FULL`, and
-the declarer names the Habu word and C symbol on stderr before it throws.
-`test/five-bindings.f` holds `TCP4`, `CURL`, `PG`, `CRYPTO` and `TASK` in one
-image and declares past their combined bindings.
+Function declarations and library paths grow as they are added. A descriptor
+row stores its complete C symbol, selected library index, integer argument
+count, spill count and resolved address. An exact declaration reuses the row
+and its resolved address within the same bank; generated words still retain
+their own argument staging and return conversion. A different key appends a
+row. Numeric row IDs remain stable when storage grows and across image
+restoration. Builder declarations occupy a separate tagged bank.
 
-The loaded-library table has a separate named ceiling: `FFI:LIBRARY-MAX` is
-256 distinct paths, enough for every callable row to name a different library.
-The fixed path, length and handle arrays occupy 266,496 image bytes. A
 `LIBRARY` selection reuses an existing row only when its length and every path
-byte match, including after the table fills; different versions, directories
-and case remain distinct. Missing libraries remain unresolved until a declared
-function is called. A new path beyond the ceiling is retained until the next
-`FUNCTION:` declaration reports `E-FFI-LIBRARY-FULL` with the path, Habu word
-and C symbol on stderr. `PROCESS-SYMBOLS` selects the process library without
-consuming a path row.
+byte match; different versions, directories and case remain distinct. Missing
+libraries remain unresolved until a declared function is called.
+`PROCESS-SYMBOLS` selects the process library without consuming a path row.
+`test/ffi-growth.f` exercises declarations past the former 256-row boundary in
+a stripped executable; `test/five-bindings.f` holds `TCP4`, `CURL`, `PG`,
+`CRYPTO` and `TASK` in one image.
 
 ```forth
 FFI:RESET         ( -- )
@@ -493,8 +487,6 @@ FFI:NOW           ( -- n )
 FFI:GLOBAL        ( -- n )
 FFI:DLOPEN        ( ptr u8 n -- n )
 FFI:DLSYM         ( n ptr u8 -- n )
-FFI:DECLARATION-MAX ( -- n )
-FFI:ROOM?         ( -- bool )
 ```
 
 ## ZIP Archives
