@@ -129,10 +129,13 @@ stores live dictionary rows and code at their original virtual offsets. Its
 DATA stream stores the raw low prefix, the used code-map slices, the
 address-vector header and any live inline rows, and the complete user heap
 through the captured DP.
-The fixed unused dictionary, map, address-row, compiler-scratch and provenance
-capacities are reconstructed by the loader. The heap is stored in the cell grid
-of `src/habu/cell-grid.f` when that is smaller than its bytes, and as its bytes
-otherwise; the trailer's heap field (`SNAPSHOT-FORMAT:HEAP-FIELD`) says which.
+The fixed unused dictionary, map, address-row, compiler-scratch and inline
+provenance capacities are reconstructed by the loader. On macOS ARM, provenance
+can grow into a process-owned mapping; the image stores a canonical native
+interval in the inline table, never that mapping address. The heap is stored in
+the cell grid of `src/habu/cell-grid.f` when that is smaller than its bytes,
+and as its bytes otherwise; the trailer's heap field
+(`SNAPSHOT-FORMAT:HEAP-FIELD`) says which.
 The grid keeps a presence bit per cell, drops every group of 512 cells that
 holds no nonzero one, and stores each nonzero cell as one LEB128 value, so zero
 cells and spare allocation capacity leave the file but not the process: the

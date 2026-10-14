@@ -8767,6 +8767,7 @@ ardone LBL,
       1 LSNAPVER LABEL@ ADR,  0 2 MOVZ,  2 SNAPVER-MSG-LEN MOVZ,  NR-WRITE SYS,
       0 80 MOVZ,  NR-EXIT-GROUP SYS,
    snok LBL,
+   CODE-ORIGIN:RELEASE,
    RELOC-EMIT:LINDEXRELEASE LABEL@ BL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
    \ The return and loop stacks are mappings this process made, so the image's

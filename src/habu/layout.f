@@ -2217,7 +2217,9 @@ public
 JIT-SNAP:END constant OPEN-CELL
 OPEN-CELL 8 + constant N-CELL
 N-CELL 8 + constant TABLE-OFF
-TABLE-OFF SPANS SPAN-BYTES * + constant END
+TABLE-OFF SPANS SPAN-BYTES * + constant MAP-CELL
+MAP-CELL 8 + constant MAP-CAP-CELL
+MAP-CAP-CELL 8 + constant END
 ;package
 
 \ The scoped package evaluator owns one transient dispatch xt. A source load
