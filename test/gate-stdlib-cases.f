@@ -434,6 +434,7 @@ SUITE verify-binding
 
 SUITE lsp-boundary
    tools/lsp-test.f
+   tools/lsp-entry-test.f
 ;SUITE
 
 SUITE primitive-source

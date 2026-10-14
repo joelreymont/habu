@@ -298,6 +298,10 @@ file beside the engine's, a duplicate definition, exit 78. With no tree at
 either place the working directory is the root, and its copy is the engine's
 row, never loaded.
 
+The absolute entries `tools/lsp.f` and `tools/check-verify-child.f` load their
+implementation from the tree containing the entry, even when the caller is in
+another Habu tree. They restore the caller's root before checking its source.
+
 Retain the previous version when promoting a new verified release so switching
 `current` back restores both the binary and its sources.
 

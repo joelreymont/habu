@@ -165,7 +165,33 @@ ENTRY-OWNER !
 ENTRY-ORDER !
 ;package
 
-require src/habu/verify-source.f
+\ The child runs in the client's working directory, which can contain a
+\ different Habu revision. Its baked files and verifier belong to this entry's
+\ tree; the subject keeps the client's root after this load.
+package CHECK-VERIFY-ENTRY
+create ROOT PATH-CAP allot   variable ROOT-U
+create OLD PATH-CAP allot    variable OLD-U
+
+: SAVE ( -- )
+   SOURCE-ROOT:ENGINE$ {: a:ptr u:n :}
+   a OLD u BYTE-COPY  u OLD-U !
+   SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop
+   SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME {: root:ptr rootu:n :}
+   root ROOT rootu BYTE-COPY  rootu ROOT-U ! ;
+
+: LOAD ( -- ) s" src/habu/verify-source.f" required ;
+: LOAD-ROOT ( -- ) ROOT ROOT-U @ [: LOAD ;] SOURCE-ROOT:WITH ;
+
+public
+: START ( -- )
+   SAVE
+   ROOT ROOT-U @ SOURCE-ROOT:ENGINE!
+   [: LOAD-ROOT ;] catch {: rc:n :}
+   OLD OLD-U @ SOURCE-ROOT:ENGINE!
+   rc 0<> if rc throw then ;
+;package
+
+CHECK-VERIFY-ENTRY:START
 
 \ Engine words with no checked effect; tools/check-core.f declares them alike.
 s" CHECKER-SCOPE-START-NEUTRAL" s" --" TRUST
