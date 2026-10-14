@@ -95,19 +95,19 @@ private
    u 0 < if E-JW-SOURCE throw then
    u 0 > a 0= and if E-JW-SOURCE throw then ;
 
-: JW-LEN ( n -- len )   \ refine a byte count JW-SPAN has already accepted
-   dup 0 < if E-JW-SOURCE throw then
-   >LEN ;
-
-: JW-ALIAS ( ptr writer ptr u8 n -- n ) {: w a:ptr u:n :}
-   w JW-BUF@ 0= if -1 exit then
-   w JW-LIVE {: base:ptr cap:n used:n :}
+: JW-ALIAS-AT ( ptr u8 n n ptr u8 n -- n )
+   {: base:ptr cap:n used:n a:ptr u:n :}
    a base < if -1 exit then
    a base - {: off:n :}
    off cap >= if -1 exit then
    off used > if E-JW-SOURCE throw then
    u used off - > if E-JW-SOURCE throw then
    off ;
+
+: JW-ALIAS ( ptr writer ptr u8 n -- n ) {: w a:ptr u:n :}
+   w JW-BUF@ 0= if -1 exit then
+   w JW-LIVE {: base:ptr cap:n used:n :}
+   base cap used a u JW-ALIAS-AT ;
 
 : JW-REBASE ( ptr writer ptr u8 n -- ptr u8 ) {: w a:ptr off:n :}
    off 0 < if a exit then
@@ -144,17 +144,24 @@ private
 \ The source may be a span of this writer's own output. Remember its offset
 \ before reserving, then reacquire the base after a BUF relocation.
 : JW-APPEND-LEN ( ptr writer ptr u8 len -- ptr writer ) {: w a:ptr u:len :}
-   w a u LEN>N JW-ALIAS {: off:n :}
-   w u LEN>N JW-ROOM drop
-   w a off JW-REBASE {: src:ptr :}
-   w JW-BUF@ {: buf:ptr :}
+   w @ JSON--WRITE-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr :}
+   cap 0 < if E-JW-STATE throw then
+   u LEN>N {: count:n :}
    buf 0= if
-      w JW-LIVE {: vp:ptr cap:n used:n :}
-      src vp used + u BYTE-COPY-LEN
-      w vp cap used u LEN>N + JW-USED!
+      vp 0= if E-JW-STATE throw then
+      count MEM-MAX-N used - > if E-JW-CAPACITY throw then
+      count cap used - > if E-JW-CAPACITY throw then
+      a vp used + u BYTE-COPY-LEN
+      w vp cap used count + JW-USED!
       w exit
    then
-   src u LEN>N BUF:N>BLEN buf BUF:APPEND-SPAN
+   buf BUF:SPAN$ BUF:BLEN>N {: base:ptr length:n :}
+   buf BUF:CAP@ BUF:BLEN>N {: capacity:n :}
+   base capacity length a count JW-ALIAS-AT {: off:n :}
+   count MEM-MAX-N length - > if E-JW-CAPACITY throw then
+   buf length count + BUF:N>BLEN BUF:ENSURE
+   off 0 < if a else buf BUF:SPAN$ drop off + then
+   count BUF:N>BLEN buf BUF:APPEND-SPAN
    w ;
 
 public
@@ -191,7 +198,7 @@ public
 
 : RAW ( ptr writer ptr u8 n -- ptr writer ) {: a:ptr u:n :}
    a u JW-SPAN
-   a u JW-LEN JW-APPEND-LEN ;
+   a u >LEN JW-APPEND-LEN ;
 
 private
 
@@ -214,9 +221,17 @@ private
    c JW-SHORT-ESC? if JW-SHORT-ESC-N exit then
    c JW-SP < if JW-U00-N else JW-PLAIN-N then ;
 
+: JW-ESCAPE? ( n -- bool ) {: c:n :}
+   c JW-DQ = c JW-BACKSLASH = or c JW-SP < or ;
+
 : JW-STR-N ( ptr u8 n -- n ) {: a:ptr u:n :}   \ bytes a quoted string will take
-   JW-QUOTE-N 0 begin dup u < while            \ ( total idx )
-      dup a + c@ JW-ESC-N rot swap JW-SIZE+ swap 1+
+   JW-QUOTE-N u JW-SIZE+ 0 begin dup u < while   \ ( total idx )
+      dup a + c@ dup JW-ESCAPE? if
+         JW-ESC-N JW-PLAIN-N - rot swap JW-SIZE+ swap
+      else
+         drop
+      then
+      1+
    repeat drop ;
 
 : JW-ESC-C ( ptr writer n -- ptr writer ) {: c:n :}
@@ -230,6 +245,42 @@ private
    c JW-SP < if c JW-U00 exit then
    c JW-C ;
 
+: JW-RUN-END ( ptr u8 n n -- n ) {: a:ptr u:n start:n :}
+   start begin dup u < while
+      dup a + c@ JW-ESCAPE? if exit then
+      1+
+   repeat ;
+
+: JW-EMIT-RUN ( ptr writer ptr u8 n n -- n )
+   {: w a:ptr start:n finish:n :}
+   finish start - 1 = if
+      w a start + c@ JW-C drop
+   else
+      w a start + finish start - >LEN JW-APPEND-LEN drop
+   then
+   finish ;
+
+: JW-EMIT-STR ( ptr writer ptr u8 n bool -- ptr writer )
+   {: w a:ptr u:n plain:bool :}
+   w JW-DQ JW-C drop
+   u 1 = if
+      w a c@ JW-ESC-C drop
+      w JW-DQ JW-C exit
+   then
+   plain if
+      u 0 > if w a u >LEN JW-APPEND-LEN drop then
+      w JW-DQ JW-C exit
+   then
+   0 begin dup u < while
+      dup a u rot JW-RUN-END
+      2dup = if nip else w a 2swap JW-EMIT-RUN then
+      dup u < if
+         dup a + c@ w swap JW-ESC-C drop
+         1+
+      then
+   repeat drop
+   w JW-DQ JW-C ;
+
 : JW-DIGIT-COUNT ( n -- n ) {: u:n :}
    u JW-RADIX < if 1 exit then
    u JW-RADIX / RECURSE 1+ ;
@@ -238,31 +289,26 @@ private
    u JW-RADIX >= if u JW-RADIX / RECURSE then
    u JW-RADIX mod JW-ZERO + JW-C ;
 
+\ Each source byte needs at least one output byte, so refuse an overlong fixed
+\ span before reading it. Both reservations may relocate caller-owned output;
+\ rebase the source after each before scanning or emitting it.
+: JW-QUOTED ( ptr writer ptr u8 n n -- ptr writer )
+   {: w a:ptr u:n suffix:n :}
+   a u JW-SPAN
+   w a u JW-ALIAS {: off:n :}
+   w u JW-ROOM drop
+   w a off JW-REBASE u JW-STR-N {: width:n :}
+   w width suffix JW-SIZE+ JW-ROOM drop
+   w w a off JW-REBASE u width JW-QUOTE-N - u = JW-EMIT-STR
+   suffix 0 > if JW-COLON-C JW-C then ;
+
 public
 
-\ STRING and KEY check room for one byte per source byte before JW-STR-N reads
-\ the text: each byte takes at least one. A growable output may move on any
-\ JW-ROOM, so every read after one takes the source from JW-REBASE.
-: STRING ( ptr writer ptr u8 n -- ptr writer ) {: a:ptr u:n :}
-   a u JW-SPAN
-   dup a u JW-ALIAS {: off:n :}
-   u JW-ROOM
-   dup a off JW-REBASE u JW-STR-N JW-ROOM
-   dup a off JW-REBASE {: src:ptr :}
-   JW-DQ JW-C
-   0 begin dup u < while                      \ ( w idx )
-      dup src + c@ rot swap JW-ESC-C          \ ( idx w ): escape the byte at idx
-      swap 1+
-   repeat drop
-   JW-DQ JW-C ;
+: STRING ( ptr writer ptr u8 n -- ptr writer )
+   0 JW-QUOTED ;
 
-: KEY ( ptr writer ptr u8 n -- ptr writer ) {: a:ptr u:n :}
-   a u JW-SPAN
-   dup a u JW-ALIAS {: off:n :}
-   u JW-ROOM
-   dup a off JW-REBASE u JW-STR-N 1 JW-SIZE+ JW-ROOM
-   dup a off JW-REBASE u STRING
-   JW-COLON-C JW-C ;
+: KEY ( ptr writer ptr u8 n -- ptr writer )
+   1 JW-QUOTED ;
 
 : OBJECT-START ( ptr writer -- ptr writer )
    JW-LBRACE JW-C ;

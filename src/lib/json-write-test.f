@@ -54,6 +54,15 @@ create JWT-ESC-WANT
 create JWT-NAME
    65 c, JW-DQ c, 66 c,
 
+\ A quoted and backslashed UTF-8 source crosses both grow thresholds when it
+\ aliases the output: once for its plain width, again for its escaped width.
+create JWT-RUN-IN
+   65 c, JW-DQ c, $C3 c, $A9 c, JW-BACKSLASH c, 66 c, 67 c,
+create JWT-RUN-KEY-WANT
+   65 c, JW-DQ c, $C3 c, $A9 c, JW-BACKSLASH c, 66 c, 67 c,
+   JW-DQ c, 65 c, JW-BACKSLASH c, JW-DQ c, $C3 c, $A9 c,
+   JW-BACKSLASH c, JW-BACKSLASH c, 66 c, 67 c, JW-DQ c, JW-COLON-C c,
+
 : JWT-ESC-IN$ ( -- ptr u8 n )
    JWT-ESC-IN 6 ;
 
@@ -220,6 +229,16 @@ create JWT-NAME
    JWT-GROW-W a u KEY $ s\" abcdef\"abcdef\":" T$=
    JWT-GROW-W CLOSE JWT-GROW-BUF BUF:DISPOSE ;
 
+: JWT-TEST-GROW-ESC-ALIAS ( -- )
+   JWT-GROW-OPEN JWT-RUN-IN 7 RAW drop
+   JWT-GROW-W $ {: a:ptr u:n :}
+   JWT-GROW-W a u STRING $ JWT-RUN-KEY-WANT 18 T$=
+   JWT-GROW-W CLOSE JWT-GROW-BUF BUF:DISPOSE
+   JWT-GROW-OPEN JWT-RUN-IN 7 RAW drop
+   JWT-GROW-W $ {: key:ptr keyu:n :}
+   JWT-GROW-W key keyu KEY $ JWT-RUN-KEY-WANT 19 T$=
+   JWT-GROW-W CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+
 : JWT-TEST-GROW-FIELD-RAW-ALIAS ( -- )
    JWT-GROW-OPEN s" abcdef" RAW drop
    JWT-GROW-W $ {: a:ptr u:n :}
@@ -295,13 +314,19 @@ create JWT-NAME
    b JWT-FILL-N 1+ + c@ 97 T=
    b v 1 - + c@ JW-DQ T= ;
 
-\ A value that does not fit is refused by name and appends nothing: each of the
-\ three emitters below is tried against a buffer with three bytes left.
+\ A value that does not fit is refused by name and appends nothing. The escaped
+\ cases leave room for their unescaped width, but not the escaped width.
 : JWT-FULL-RAW ( -- )
    JWT-OPEN-SMALL s" abcde" RAW s" fghij" RAW drop ;
 
 : JWT-FULL-STRING ( -- )
    JWT-OPEN-SMALL s" abcde" RAW s" xy" STRING drop ;
+
+: JWT-FULL-STRING-ESC ( -- )
+   JWT-OPEN-SMALL s" abcd" RAW JWT-RUN-IN 2 STRING drop ;
+
+: JWT-FULL-KEY-ESC ( -- )
+   JWT-OPEN-SMALL s" abc" RAW JWT-RUN-IN 2 KEY drop ;
 
 : JWT-FULL-U ( -- )
    JWT-OPEN-SMALL s" abcde" RAW 1000 U drop ;
@@ -318,17 +343,20 @@ create JWT-NAME
 : JWT-ZERO-CAP ( -- )
    JWT-A JWT-BUF-A 0 OPEN s" x" RAW drop ;
 
-: JWT-REFUSED-KEEPS$ ( [ -- ] -- )   \ the refusal left the document untouched
+: JWT-REFUSED-KEEPS$ ( [ -- ] ptr u8 n -- )   \ refusal left the document untouched
+   {: want:ptr wu:n :}
    E-JW-CAPACITY TTHROWSQ
-   JWT-A $ s" abcde" T$= ;
+   JWT-A $ want wu T$= ;
 
 : JWT-TEST-FULL ( -- )
-   [: JWT-FULL-RAW ;] JWT-REFUSED-KEEPS$
-   [: JWT-FULL-STRING ;] JWT-REFUSED-KEEPS$
-   [: JWT-FULL-U ;] JWT-REFUSED-KEEPS$
-   [: JWT-FULL-KEY ;] JWT-REFUSED-KEEPS$
-   [: JWT-FULL-INT ;] JWT-REFUSED-KEEPS$
-   [: JWT-FULL-INT-MIN ;] JWT-REFUSED-KEEPS$
+   [: JWT-FULL-RAW ;] s" abcde" JWT-REFUSED-KEEPS$
+   [: JWT-FULL-STRING ;] s" abcde" JWT-REFUSED-KEEPS$
+   [: JWT-FULL-STRING-ESC ;] s" abcd" JWT-REFUSED-KEEPS$
+   [: JWT-FULL-KEY-ESC ;] s" abc" JWT-REFUSED-KEEPS$
+   [: JWT-FULL-U ;] s" abcde" JWT-REFUSED-KEEPS$
+   [: JWT-FULL-KEY ;] s" abcde" JWT-REFUSED-KEEPS$
+   [: JWT-FULL-INT ;] s" abcde" JWT-REFUSED-KEEPS$
+   [: JWT-FULL-INT-MIN ;] s" abcde" JWT-REFUSED-KEEPS$
    [: JWT-ZERO-CAP ;] E-JW-CAPACITY TTHROWSQ
    JWT-A $ nip 0 T= ;
 
@@ -553,6 +581,7 @@ create JWT-NAME
    JWT-TEST-GROW-STRING-ALIAS
    JWT-TEST-GROW-FIELD-ALIAS
    JWT-TEST-GROW-KEY-ALIAS
+   JWT-TEST-GROW-ESC-ALIAS
    JWT-TEST-GROW-FIELD-RAW-ALIAS
    JWT-TEST-GROW-LARGE
    JWT-TEST-GROW-ROOM
