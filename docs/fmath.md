@@ -2,6 +2,22 @@
 
 `require src/lib/fmath.f` exposes the checked `FMATH` vocabulary without libm.
 
+`require src/lib/fmath-basis.f` exposes `FBASIS:WORK-CELLS ( -- n )` and
+`FBASIS:SCALE3 ( r r r SPAN:span<cell> r r r SPAN:span<cell> -- r r r )`.
+The first three floats are a point; the first span holds twelve binary64 bit
+patterns in rows `[a00 a01 a02 o0, a10 a11 a12 o1, a20 a21 a22 o2]`.
+The next three floats scale the stored axis columns, and the last span is
+caller-owned scratch of at least `WORK-CELLS` cells. The operation evaluates
+`o + A diag(s) A⁻¹(p−o)` exactly from the supplied binary64 values and rounds
+each output once, to nearest with ties to even. Finite points, origins, axes
+and scales and a nonsingular basis form its domain. A nonfinite input, singular
+basis, short span or overlap between frame and scratch throws
+`FMATH:E-DOMAIN`; a final binary64 overflow throws `FMATH:E-OUTPUT`.
+Subnormal results and zero are rounded by the same rule. The function does
+not alter the frame, and its private fixed-limb arithmetic lives entirely in
+the supplied scratch. It does not impose a geometric tolerance or require a
+rigid frame; callers own those policies.
+
 | Word | Contract |
 | --- | --- |
 | `ADD ( r r -- r )` | IEEE binary64 addition, as `f+`. |

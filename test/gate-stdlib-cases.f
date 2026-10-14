@@ -1654,6 +1654,7 @@ SUITE crypto-sha1
 SUITE float-parse
    src/lib/float-test.f
    src/lib/fmath-test.f
+   src/lib/fmath-basis-test.f
 ;SUITE
 
 SUITE finite-float-text
