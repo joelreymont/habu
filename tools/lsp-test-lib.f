@@ -5771,6 +5771,110 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" references-probe: removed after the throw" T-LABEL
    LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE = TTRUE ;
 
+\ Independent workspace files bind the image's source-backed SCRIPT-ARGC.
+\ A same-spelling source word in a package is a separate binding.
+: TEXT-BI-A ( -- ptr u8 n )
+   s\" : A ( -- n ) SCRIPT-ARGC ;\n: C ( -- n ) SCRIPT-ARG-START ;\n" ;
+: TEXT-BI-B ( -- ptr u8 n )  s\" : B ( -- n ) SCRIPT-ARGC ;\n" ;
+: TEXT-BI-SHADOW ( -- ptr u8 n )
+   s\" package SH\n: SCRIPT-ARGC ( -- n ) 1 ;\n: S ( -- n ) SCRIPT-ARGC ;\n;package\n" ;
+: BI-A-PATH ( -- ptr u8 n )  s" refs-builtin/w/a.f" FIXTURE ;
+: BI-SOURCE-PATH ( -- ptr u8 n )  s" src/os/script-argv.f" IN-TREE ;
+DYNAMIC-BUFFER BI-SOURCE-TEXT u8
+: BI-SOURCE-ROOM ( n -- ptr u8 )  1+ BI-SOURCE-TEXT-RESERVE 0 BI-SOURCE-TEXT ;
+: BI-SOURCE$ ( -- ptr u8 n )
+   BI-SOURCE-PATH [: BI-SOURCE-ROOM ;] SOURCE:READ-WHOLE-FILE
+   0 BI-SOURCE-TEXT swap ;
+
+\ Put the same spelling at the image's saved byte as an ordinary use.
+: BI-SOURCE-FAKE$ ( -- ptr u8 n )
+   TXT-B CLEAR
+   1678 0 ?do s"  " HV+ loop
+   s\" SCRIPT-ARGC drop\n" HV+
+   TXT$ ;
+
+: BI-USES+ ( -- )
+   s" refs-builtin/w/a.f" OPEN-URI 0 13 24 REF+
+   s" refs-builtin/w/b.f" DISK-URI 0 13 24 REF+ ;
+
+: REFS-BUILTIN-TURNS ( -- )
+   s" refs-builtin" REFS-DIR s" refs-builtin/w" REFS-DIR
+   s" refs-builtin/w/a.f" TEXT-BI-A REFS-FILE
+   s" refs-builtin/w/b.f" TEXT-BI-B REFS-FILE
+   s" refs-builtin/w/shadow.f" TEXT-BI-SHADOW REFS-FILE
+   s" refs-builtin/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   BI-A-PATH TEXT-BI-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-BI-A BI-A-PATH 1 s" verified" LISTED
+   s" 3" BI-A-PATH 0 16 DECL-TOO REFS-ASK
+   s" 4" BI-A-PATH 0 16 DECL-NOT REFS-ASK
+   s" 12" BI-A-PATH 1 16 DECL-TOO REFS-ASK
+   s" textDocument/prepareRename" s" 10" BI-A-PATH 0 16 AT-ASK
+   s" textDocument/rename" s" 11" BI-A-PATH 0 16
+   s\" ,\"newName\":\"CROW\"" AT-ASK-WITH
+   SAY
+   s" 3" SYMBOLS-START
+   BI-SOURCE-PATH URI-OF 50 2 13 REF+ BI-USES+ SYMBOLS-END
+   s" 4" SYMBOLS-START BI-USES+ SYMBOLS-END
+   s" 12" SYMBOLS-START
+   BI-SOURCE-PATH URI-OF 38 2 18 REF+
+   s" refs-builtin/w/a.f" OPEN-URI 1 13 29 REF+
+   SYMBOLS-END
+   HEAR s" 10" -32803 REFUSED
+   HEAR s" 11" -32803 REFUSED
+   BI-SOURCE$ BI-SOURCE-PATH 2swap 1 OPENS
+   STREAM
+   BI-SOURCE-PATH 1 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 5" BI-SOURCE-PATH 50 3 DECL-TOO REFS-ASK
+   s" 6" BI-SOURCE-PATH 50 3 DECL-NOT REFS-ASK
+   SAY
+   1 NAMED BI-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
+   s" 5" SYMBOLS-START
+   BI-SOURCE-PATH URI-OF 50 2 13 REF+ BI-USES+ SYMBOLS-END
+   1 NAMED BI-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
+   s" 6" SYMBOLS-START BI-USES+ SYMBOLS-END
+   BI-SOURCE-PATH BI-SOURCE-FAKE$ 2 CHANGES
+   SAY
+   BI-SOURCE-PATH 2 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 7" BI-A-PATH 0 16 DECL-TOO REFS-ASK
+   s" 8" BI-SOURCE-PATH 0 1679 DECL-TOO REFS-ASK
+   s" 9" BI-A-PATH 0 16 DECL-NOT REFS-ASK
+   SAY
+   1 NAMED BI-SOURCE-PATH s" built-in source cannot be located" NAMED+ NAMED-END
+   s" 7" SYMBOLS-START BI-USES+ SYMBOLS-END
+   s" 8" SYMBOLS-START SYMBOLS-END
+   1 NAMED BI-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
+   s" 9" SYMBOLS-START BI-USES+ SYMBOLS-END ;
+
+\ A checked word loaded before origin recording and a public word in an
+\ image package both retain their source identities in a restored engine.
+: TEXT-BI-OTHER ( -- ptr u8 n )
+   s\" : X ( ptr n -- n ) XREF-START ;\n: Y ( n n -- bool ) CODE-BYTES:IN-CODE? ;\n" ;
+: BI-OTHER-PATH ( -- ptr u8 n )  s" refs-builtin-other/w/a.f" FIXTURE ;
+
+: REFS-BUILTIN-OTHER-TURNS ( -- )
+   s" refs-builtin-other" REFS-DIR s" refs-builtin-other/w" REFS-DIR
+   s" refs-builtin-other/w/a.f" TEXT-BI-OTHER REFS-FILE
+   s" refs-builtin-other/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   BI-OTHER-PATH TEXT-BI-OTHER 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-BI-OTHER BI-OTHER-PATH 1 s" verified" LISTED
+   s" 3" BI-OTHER-PATH 0 22 DECL-TOO REFS-ASK
+   s" 4" BI-OTHER-PATH 1 32 DECL-TOO REFS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" src/habu/xref.f" IN-TREE URI-OF 83 2 12 REF+
+   BI-OTHER-PATH URI-OF 0 19 29 REF+
+   SYMBOLS-END
+   s" 4" SYMBOLS-START
+   s" src/habu/code-bytes.f" IN-TREE URI-OF 61 2 10 REF+
+   BI-OTHER-PATH URI-OF 1 20 39 REF+
+   SYMBOLS-END ;
+
 : TEST-REFERENCES ( -- )
    s" references" [: REFS-TURNS ;] TALK
    s" references-not-open" [: REFS-NOT-OPEN-TURNS ;] TALK
@@ -5805,6 +5909,8 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" references-primitive-source-changed" [: PRIM-MISSING-TURNS ;] TALK
    s" references-primitive-coverage" [: PRIM-COVER-TURNS ;] TALK
    s" references-primitive-conflict" [: PRIM-CONFLICT-TURNS ;] TALK
+   s" references-source-backed-builtin" [: REFS-BUILTIN-TURNS ;] TALK
+   s" references-source-backed-other" [: REFS-BUILTIN-OTHER-TURNS ;] TALK
    REFS-PROBE ;
 
 \ ---- rename ------------------------------------------------------------------
@@ -6802,6 +6908,13 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    T-RESET ;
 
 public
+
+: TEST-BUILTIN ( -- )
+   TEST-INIT
+   s" references-source-backed-builtin" [: REFS-BUILTIN-TURNS ;] TALK
+   s" references-source-backed-other" [: REFS-BUILTIN-OTHER-TURNS ;] TALK
+   SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
+   T-REPORT ;
 
 : TEST-BATCH ( -- )
    TEST-INIT
