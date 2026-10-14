@@ -65,24 +65,28 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest conte
    OUT$
    OUTPUT-LINE-FEED OUTPUT CODEGEN:APPEND-BYTE ;
 
-: OUT-RANGE ( n n -- ) {: lo:n hi:n :}
-   s"    " OUT$
-   lo OUT-N
-   s"  , " OUT$
-   hi OUT-N
-   s"  ," OUT-LINE ;
+: OUT-RANGE ( ptr u8 n n n n -- )
+   {: name:ptr nameu:n idx:n lo:n hi:n :}
+   s"    " OUT$ lo OUT-N s"  " OUT$ idx OUT-N s"  " OUT$
+   name nameu OUT$ s" -RANGES !" OUT-LINE
+   s"    " OUT$ hi OUT-N s"  " OUT$ idx 1+ OUT-N s"  " OUT$
+   name nameu OUT$ s" -RANGES !" OUT-LINE ;
 
-: OUT-RANGES ( n [ n -- n n ] -- ) {: count:n getter :}
+: OUT-RANGES ( ptr u8 n n [ n -- n n ] -- )
+   {: name:ptr nameu:n count:n getter :}
    0 begin dup count < while
-      dup getter execute OUT-RANGE
+      dup getter execute {: lo:n hi:n :}
+      dup 2 * {: slot:n :}
+      name nameu slot lo hi OUT-RANGE
       1+
    repeat drop ;
 
 : OUT-TABLE ( ptr u8 n n [ n -- n n ] -- )
    {: name:ptr nameu:n count:n getter :}
-   s" create " OUT$ name nameu OUT$ s" -RANGES" OUT-LINE
-   count getter OUT-RANGES
    count OUT-N s"  constant " OUT$ name nameu OUT$ s" -TABLE-COUNT" OUT-LINE
+   \ Empty logical tables still need a valid private typed buffer.
+   count 2 * 1 max OUT-N s"  TYPED-BUFFER " OUT$ name nameu OUT$ s" -RANGES n" OUT-LINE
+   name nameu count getter OUT-RANGES
    s" " OUT-LINE ;
 
 : OUT-PREAMBLE ( -- )
@@ -110,7 +114,8 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest conte
    s" " OUT-LINE
    s" : " OUT$ name nameu OUT$ s" -RANGE@ ( n -- n n )" OUT-LINE
    s"    dup 0 < over " OUT$ name nameu OUT$ s" -TABLE-COUNT >= or if E-INDEX throw then" OUT-LINE
-   s"    2 * cells " OUT$ name nameu OUT$ s" -RANGES + dup @ swap cell+ @ ;" OUT-LINE
+   s"    2 * dup " OUT$ name nameu OUT$ s" -RANGES @ swap 1+ " OUT$
+   name nameu OUT$ s" -RANGES @ ;" OUT-LINE
    s" " OUT-LINE ;
 
 : OUT-ACCESSORS ( -- )

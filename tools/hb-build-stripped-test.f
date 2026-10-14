@@ -39,12 +39,14 @@ package HB-BUILD-CLI
 \ used to own before the application was read - it required app-image.f, and so
 \ src/lib/fs.f and src/lib/fs-mutate.f, before opening the capture window - which put them
 \ below the span and refused the image. The walked directory is spliced in as a
-\ literal because a stripped image reads no argv here.
+\ literal because a stripped image reads no argv here. The application also
+\ reads all seven generated Unicode range tables: raw comma-built rows once
+\ looked like mapped pointers and made the stripped image fail before it ran.
 : HBT-LIB-SRC-HEAD$ ( -- ptr u8 n )
-   S\" require src/lib/string.f\nrequire src/lib/fs.f\nrequire src/lib/fs-mutate.f\n\npackage HBT-SLIB\nprivate\nvariable HITS\ncreate P1 FS-PATH-CAP allot  variable P1U\ncreate P2 FS-PATH-CAP allot  variable P2U\n: DIR$ ( -- ptr u8 n ) s\" " ;
+   S\" require src/lib/string.f\nrequire src/lib/fs.f\nrequire src/lib/fs-mutate.f\nrequire src/lib/unicode/class.f\n\npackage HBT-SLIB\nprivate\nvariable HITS\ncreate P1 FS-PATH-CAP allot  variable P1U\ncreate P2 FS-PATH-CAP allot  variable P2U\n: DIR$ ( -- ptr u8 n ) s\" " ;
 
 : HBT-LIB-SRC-TAIL$ ( -- ptr u8 n )
-   S\" \" ;\n: JOIN! ( ptr u8 n ptr u8 ptr n -- ) {: name:ptr nameu dst:ptr lenp:ptr :}\n   SB-RESET DIR$ SB-APPEND s\" /\" SB-APPEND name nameu SB-APPEND\n   SB$ {: a:ptr u:n :} a dst u BYTE-COPY u lenp ! ;\n: P1$ ( -- ptr u8 n ) P1 P1U @ ;\n: P2$ ( -- ptr u8 n ) P2 P2U @ ;\npublic\n: RUN ( -- )\n   SB-RESET s\" sb=\" SB-APPEND s\" ok\" SB-APPEND SB$ type cr\n   s\" a.txt\" P1 P1U JOIN!\n   s\" b.txt\" P2 P2U JOIN!\n   P1$ P2$ COPY-FILE-STREAM\n   P2$ FILE? if s\" copy=ok\" type cr then\n   0 HITS !\n   DIR$ [: 2drop HITS @ 1 + HITS ! ;] WALK-FILES\n   HITS @ 3 = if s\" files=3\" type cr then ;\n;package\n: MAIN ( -- ) HBT-SLIB:RUN ;\n" ;
+   S\" \" ;\n: JOIN! ( ptr u8 n ptr u8 ptr n -- ) {: name:ptr nameu dst:ptr lenp:ptr :}\n   SB-RESET DIR$ SB-APPEND s\" /\" SB-APPEND name nameu SB-APPEND\n   SB$ {: a:ptr u:n :} a dst u BYTE-COPY u lenp ! ;\n: P1$ ( -- ptr u8 n ) P1 P1U @ ;\n: P2$ ( -- ptr u8 n ) P2 P2U @ ;\npublic\n: RUN ( -- )\n   SB-RESET s\" sb=\" SB-APPEND s\" ok\" SB-APPEND SB$ type cr\n   s\" a.txt\" P1 P1U JOIN!\n   s\" b.txt\" P2 P2U JOIN!\n   P1$ P2$ COPY-FILE-STREAM\n   P2$ FILE? if s\" copy=ok\" type cr then\n   0 HITS !\n   DIR$ [: 2drop HITS @ 1 + HITS ! ;] WALK-FILES\n   HITS @ 3 = if s\" files=3\" type cr then\n   248 UNICODE-CLASS:LETTER? 705 UNICODE-CLASS:LETTER? and\n   706 UNICODE-CLASS:LETTER? 0= and\n   $1D7CE UNICODE-CLASS:NUMBER? and\n   $3000 UNICODE-CLASS:WHITE-SPACE? and\n   $2160 UNICODE-CLASS:ALPHABETIC? and\n   $5B0 UNICODE-CLASS:ALPHABETIC? and\n   $10400 UNICODE-CLASS:UPPERCASE? and\n   $24B6 UNICODE-CLASS:UPPERCASE? and\n   if s\" unicode=ok\" type cr then ;\n;package\n: MAIN ( -- ) HBT-SLIB:RUN ;\n" ;
 
 \ Written in three pieces: the directory is as long as the scratch root makes
 \ it, so the source goes to the file without passing through a fixed buffer.
@@ -54,7 +56,7 @@ package HB-BUILD-CLI
    HBT-LIB-SRC HBT-LIB-SRC-TAIL$ APPEND-FILE ;
 
 : HBT-LIB-EXPECTED$ ( -- ptr u8 n )
-   S\" sb=ok\ncopy=ok\nfiles=3\n" ;
+   S\" sb=ok\ncopy=ok\nfiles=3\nunicode=ok\n" ;
 
 \ THE ENGINE RUNTIME CELLS A STRIPPED IMAGE OWNS, all in one program: the
 \ environment (an explicitly set variable and an inherited one, both through
