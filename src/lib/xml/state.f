@@ -387,9 +387,10 @@ private
 
 : SPARE-TRIM ( ptr stream -- )
    {: stream :}
-   stream SPARE-BUF BUF-CAP 4 / 16 <= if exit then
+   stream SCOPE-BUF BUF-LEN 16 max {: need:n :}
+   stream SPARE-BUF BUF-CAP 4 / need <= if exit then
    stream SPARE-BUF BUF:DISPOSE
-   stream SPARE-BUF 16 BUF:N>BLEN BUF:INIT ;
+   stream SPARE-BUF need BUF:N>BLEN BUF:INIT ;
 
 : INPUT-REBASE ( ptr n -- )
    {: state :}
