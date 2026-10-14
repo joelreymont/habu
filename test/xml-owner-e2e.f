@@ -18,6 +18,7 @@ $8000 constant IO-CAP
 512 constant FILE-CAP
 create ROOT FS-PATH-CAP allot variable ROOT-U
 create PATH FS-PATH-CAP allot
+create CACHE FS-PATH-CAP allot variable CACHE-U
 create OUT IO-CAP allot variable OUT-U
 create ERR IO-CAP allot variable ERR-U
 create FILE-BYTES FILE-CAP allot
@@ -25,6 +26,7 @@ create EXPECTED FILE-CAP allot
 variable RC
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
+: CACHE$ ( -- ptr u8 n ) CACHE CACHE-U @ ;
 : APP$ ( -- ptr u8 n ) ROOT$ s" xml-owner-app" PATH JOIN-PATH PATH swap ;
 : FILE$ ( ptr u8 n -- ptr u8 n ) {: rel:ptr size:n :}
    ROOT$ rel size PATH JOIN-PATH PATH swap ;
@@ -65,11 +67,16 @@ variable RC
 
 : BUILD ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
+   s" HABU_BUILD_CACHE" >LEN CACHE$ >LEN PROC-ENV+
+   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
+   s" --load" >LEN PROC-ARGV+
+   s" tools/hb-build.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" test/xml-owner-consumer.f" >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
    APP$ >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$
-   S\" require tools/app-build.f\nAPP-BUILD:RUN\n" RUN-INPUT
+   s" " RUN-INPUT
    s" the same public consumer builds as a native application" T-LABEL
    NEED-OK APP$ EXECUTABLE? TTRUE ;
 
@@ -151,9 +158,12 @@ public
    T-RESET
    s" xml-owner-e2e" HB-TMP-MKDIR {: root:ptr size:n :}
    root ROOT size BYTE-COPY size ROOT-U !
+   ROOT$ s" cache" CACHE JOIN-PATH CACHE-U !
+   CACHE$ MAKE-DIR
    SOURCE-RUN REFUSALS BUILD NATIVE-RUN
    UTF8-ARTIFACT true UTF16-ARTIFACT false UTF16-ARTIFACT
    APP$ REMOVE-FILE
+   CACHE$ REMOVE-TREE
    s" xml-owner-e2e tree: " type ROOT$ type cr
    T-REPORT ;
 ;package

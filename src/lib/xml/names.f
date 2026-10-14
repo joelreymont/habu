@@ -3,19 +3,36 @@ require src/lib/xml/state.f
 package XML
 private
 \ XML 1.0 Fifth Edition NameStartChar ranges, excluding ':' for NCNames.
-create NAME-RANGES
-   $41 , $5A , $5F , $5F , $61 , $7A , $C0 , $D6 ,
-   $D8 , $F6 , $F8 , $2FF , $370 , $37D , $37F , $1FFF ,
-   $200C , $200D , $2070 , $218F , $2C00 , $2FEF ,
-   $3001 , $D7FF , $F900 , $FDCF , $FDF0 , $FFFD ,
-   $10000 , $EFFFF ,
 15 constant NAME-RANGE-COUNT
+NAME-RANGE-COUNT 2 * TYPED-BUFFER NAME-RANGES n
+
+: RANGE! ( n n n -- )
+   {: first:n last:n index:n :}
+   first index 2 * NAME-RANGES !
+   last index 2 * 1+ NAME-RANGES ! ;
+
+$41 $5A 0 RANGE!
+$5F $5F 1 RANGE!
+$61 $7A 2 RANGE!
+$C0 $D6 3 RANGE!
+$D8 $F6 4 RANGE!
+$F8 $2FF 5 RANGE!
+$370 $37D 6 RANGE!
+$37F $1FFF 7 RANGE!
+$200C $200D 8 RANGE!
+$2070 $218F 9 RANGE!
+$2C00 $2FEF 10 RANGE!
+$3001 $D7FF 11 RANGE!
+$F900 $FDCF 12 RANGE!
+$FDF0 $FFFD 13 RANGE!
+$10000 $EFFFF 14 RANGE!
 
 : NC-INITIAL? ( n -- bool )
    {: scalar:n :}
    NAME-RANGE-COUNT 0 ?do
-      NAME-RANGES i 2 * cells + {: range :}
-      scalar range @ >= scalar range CELL + @ <= and if
+      i 2 * {: index:n :}
+      scalar index NAME-RANGES @ >=
+      scalar index 1+ NAME-RANGES @ <= and if
          true unloop exit
       then
    loop
