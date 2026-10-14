@@ -4,6 +4,10 @@
 
 | Word | Contract |
 | --- | --- |
+| `ADD ( r r -- r )` | IEEE binary64 addition, as `f+`. |
+| `SUB ( r r -- r )` | IEEE binary64 subtraction, as `f-`. |
+| `MUL ( r r -- r )` | IEEE binary64 multiplication, as `f*`. |
+| `EQUAL? ( r r -- bool )` | IEEE binary64 equality, as `f=`; NaN is unequal. |
 | `ISQRT-FLOOR ( n -- n )` | Exact floor of the root of a nonnegative signed cell. |
 | `ISQRT-CEIL ( n -- n )` | Exact ceiling; no square of the result is needed. |
 | `FLN ( r -- r )` | Natural logarithm of a positive finite binary64 value. |

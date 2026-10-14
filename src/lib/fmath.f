@@ -232,6 +232,13 @@ $413921FB00000000 constant MEDIUM-BITS     \ 2^20 * pi/2: the reduction's exact 
 
 public
 
+\ Binary64 arithmetic for callers whose admitted vocabulary excludes the
+\ global operators. These preserve the operators' IEEE behavior.
+: ADD ( r r -- r ) f+ ;
+: SUB ( r r -- r ) f- ;
+: MUL ( r r -- r ) f* ;
+: EQUAL? ( r r -- bool ) f= ;
+
 \ Compare the fractional part before rounding; adding 0.5 first can round a
 \ binary64 value immediately below the halfway point up to the next integer.
 : FROUND ( r -- n ) {: value:r :}
