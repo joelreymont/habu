@@ -1845,6 +1845,13 @@ an explicit caller capacity and throws `E-FS-CAPACITY` instead of truncating.
 `COPY-FILE-STREAM` copies through the module chunk buffer, so callers can copy
 large files without sizing a whole-file scratch buffer. `ATOMIC-WRITE-FILE`
 writes a sibling `.tmp` file and renames it over the destination.
+`FS-MUT-ATOMIC-TARGET` resolves an existing destination through every parent
+and final symlink. For a new filename it resolves the parent and appends that
+name, returning a normalized absolute path. This binds the destination before
+a caller compares it with a source or stages a replacement; later renames use
+the bound path. The returned bytes are borrowed from the task's second path
+buffer until its next use, so a caller that keeps the destination must copy
+them.
 `RESERVE-SIBLING` creates and opens that unique sibling for a writer that
 streams its file, and `REPLACE-STAGED` runs one: it hands the sibling's path to
 a filler, renames the sibling over the destination once the filler returns, and

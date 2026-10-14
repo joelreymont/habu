@@ -440,15 +440,42 @@ public
 : FS-MUT-ATOMIC-CLEAN-TEMP ( ptr u8 n -- ) {: temp:ptr tempu :}
    temp tempu FS-MUT-PATH-COLLISION? if temp tempu REMOVE-FILE then ;
 
-\ Resolve a final symlink before staging: rename on its spelling would replace
-\ the link itself. realpath follows relative targets and chains. It cannot
-\ resolve a dangling or looping link, so refuse one before reserving a sibling.
-: FS-MUT-ATOMIC-TARGET ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu :}
-   path pathu SYMLINK? 0= if path pathu exit then
-   path pathu FS-PATHZ FS-MUT-PATHZ2-BUF SPAN:$ drop FS-PATHZ-CAP realpath {: u:n :}
+\ Index of the last component, after its preceding slash, or zero when there
+\ is no slash. The source is already a checked, NUL-padded path.
+: FS-MUT-ATOMIC-BASE-OFF ( ptr u8 n -- n )
+   {: path:ptr pathu:n :}
+   pathu begin dup 0 > while
+      dup 1 - path + c@ FS-MUT-SLASH = if exit then
+      1-
+   repeat ;
+
+\ Resolve the complete spelling when it exists, including its final symlink.
+\ For a new basename, resolve its parent and append the basename unchanged.
+\ The answer is absolute and borrowed from this task's PATHZ2 buffer until the
+\ next use of that buffer; callers retaining it copy it.
+\ This buffer survives sibling reservation and is used unchanged at rename.
+: FS-MUT-ATOMIC-TARGET ( ptr u8 n -- ptr u8 n )
+   {: path:ptr pathu:n :}
+   path pathu FS-PATHZ {: input:ptr :}
+   input FS-MUT-PATHZ2-BUF SPAN:$ drop FS-PATHZ-CAP realpath {: u:n :}
    u -2 = if E-FS-PATH throw then
-   u 0 < if E-FS-STAT throw then
-   FS-MUT-PATHZ2-BUF SPAN:$ drop u ;
+   u 0 >= if FS-MUT-PATHZ2-BUF SPAN:$ drop u exit then
+   input pathu SYMLINK? if E-FS-STAT throw then
+   input pathu FS-MUT-ATOMIC-BASE-OFF {: off:n :}
+   pathu off - 0= if E-FS-STAT throw then
+   input off + pathu off - FS-MUT-ATOMIC-PATH SPAN:COPY
+   off 0= if s" ." FS-PATHZ else
+      off 1 = if s" /" FS-PATHZ else
+         input off 1 - FS-PATHZ
+      then
+   then {: parent:ptr :}
+   parent FS-MUT-PATHZ2-BUF SPAN:$ drop FS-PATHZ-CAP realpath {: parentu:n :}
+   parentu -2 = if E-FS-PATH throw then
+   parentu 0 < if E-FS-STAT throw then
+   FS-MUT-PATHZ2-BUF SPAN:$ drop parentu
+   FS-MUT-ATOMIC-PATH SPAN:$ drop pathu off -
+   FS-MUT-PATHZ2-BUF FS-PATH-CAP SPAN:TAKE JOIN-PATH-INTO {: targetu:n :}
+   FS-MUT-PATHZ2-BUF SPAN:$ drop targetu ;
 
 : FS-MUT-ATOMIC-OLD-MODE ( ptr u8 n -- n ) {: path:ptr pathu :}
    path pathu FS-TRY-STAT if
