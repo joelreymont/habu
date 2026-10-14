@@ -15,7 +15,7 @@ using FFI
 using MEM
 
 $7FFFFFFFFFFFFFFF constant MAX-SIZE
-32 constant NODE-CELLS
+37 constant NODE-CELLS
 $40 constant STAT-BYTES
 $10 constant READONLY-FLAG
 $4 constant STAT-SIZE-VALID
@@ -46,6 +46,7 @@ variable STATE-LOCK
 REGISTER-RESET
 
 PTR-VARIABLE ARCHIVES
+PTR-VARIABLE INPUTS
 variable SERIAL
 
 : NULL? ( ptr a -- bool ) >CELL 0= ;
@@ -55,6 +56,17 @@ variable SERIAL
 : ENTRIES ( ptr n -- ptr ptr n ) 3 ptr-field ;
 : BUFFERS ( ptr n -- ptr ptr n ) 4 ptr-field ;
 : MODE ( ptr n -- ptr n ) 5 cells + ;
+: RAW-PTR ( ptr n -- ptr ptr u8 ) 8 ptr-field ;
+: RAW-LEN ( ptr n -- ptr n ) 9 cells + ;
+: FILE-MODE ( ptr n -- ptr n ) 28 cells + ;
+: SOURCE-PTR ( ptr n -- ptr ptr u8 ) 29 ptr-field ;
+: SOURCE-LEN ( ptr n -- ptr n ) 30 cells + ;
+: SOURCE-FD ( ptr n -- ptr n ) 31 cells + ;
+: SNAP-FD ( ptr n -- ptr n ) 32 cells + ;
+: SOURCE-LIVE ( ptr n -- ptr n ) 33 cells + ;
+: COPY-BUF ( ptr n -- ptr ptr u8 ) 34 ptr-field ;
+: DIRECTORY-PTR ( ptr n -- ptr ptr u8 ) 35 ptr-field ;
+: RAW-SCRATCH ( ptr n -- ptr ptr u8 ) 36 ptr-field ;
 : INDEX ( ptr n -- ptr n ) 2 cells + ;
 : DATA-PTR ( ptr n -- ptr ptr u8 ) 1 ptr-field ;
 : CAPACITY ( ptr n -- ptr n ) 2 cells + ;
@@ -92,6 +104,32 @@ variable SERIAL
 
 : ADD-NODE ( ptr n ptr ptr n -- ) {: node:ptr head:ptr :}
    head @ node LINK ! node head ! ;
+
+: INPUT-OBJECT ( ptr n -- ptr ptr u8 ) 2 ptr-field ;
+: INPUT-OWNER ( ptr n -- ptr ptr n ) 3 ptr-field ;
+: INPUT-OFF ( ptr n -- ptr n ) 5 cells + ;
+: INPUT-LEN ( ptr n -- ptr n ) 6 cells + ;
+: INPUT-CRC ( ptr n -- ptr n ) 7 cells + ;
+: INPUT-EXPECT ( ptr n -- ptr n ) 8 cells + ;
+: INPUT-DATA ( ptr n -- ptr ptr u8 ) 9 ptr-field ;
+: INPUT-DONE ( ptr n -- ptr n ) 10 cells + ;
+: INPUT-LAST ( ptr n -- ptr n ) 11 cells + ;
+: INPUT-KIND ( ptr n -- ptr n ) 12 cells + ;
+: INPUT-FD ( ptr n -- ptr n ) 13 cells + ;
+
+: INPUT-NODE ( input -- ptr n )
+   INPUT>N STATE-GET INPUTS @ FIND-ID STATE-RELEASE
+   dup NULL? if E-HANDLE throw then ;
+
+: REGISTER-INPUT ( ptr n -- input ) {: node:ptr :}
+   STATE-GET node INPUTS ADD-NODE STATE-RELEASE
+   node ID @ >INPUT ;
+
+: UNREGISTER-INPUT ( ptr n -- ) {: node:ptr :}
+   STATE-GET
+   INPUTS begin dup @ node <> while @ LINK repeat
+   node LINK @ swap !
+   STATE-RELEASE ;
 
 : REGISTER ( -- archive )
    NEXT-ID NODE-ALLOC {: ident:n node:ptr :}
@@ -131,6 +169,18 @@ variable SERIAL
    node archive BUFFERS ADD-NODE
    len 1 max MEM-ALLOC-BYTES {: buf:ptr cap:n :}
    buf node DATA-PTR ! cap node CAPACITY ! buf ;
+
+: BUFFER-RELEASE ( ptr n ptr u8 -- ) {: archive:ptr buf:ptr :}
+   archive BUFFERS
+   begin dup @ NULL? 0= while
+      dup @ DATA-PTR @ buf = if
+         dup @ {: node:ptr :}
+         node LINK @ swap !
+         node FREE-BUFFER exit
+      then
+      @ LINK
+   repeat
+   drop E-READ throw ;
 
 : COPY-IN ( ptr n ptr u8 n -- ptr u8 n ) {: archive:ptr src:ptr len:n :}
    archive len BUFFER-ALLOC {: dst:ptr :}

@@ -50,6 +50,7 @@ $10000 $EFFFF 14 RANGE!
 : NAME-CONTINUES? ( ptr n -- bool )
    {: state :}
    state EOF? if false exit then
+   state INPUT? if state INPUT-SCALAR-ENSURE then
    state SOURCE$ state POSITION + @ SCALAR-AT drop NAME-CHAR? ;
 
 : SCAN-NAME ( ptr n -- n n )
@@ -89,7 +90,7 @@ $10000 $EFFFF 14 RANGE!
    state POSITION + @ {: start:n :}
    begin state PEEK quote <> while
       state PEEK $3C = if E-MALFORMED throw then
-      state SOURCE$ state POSITION + @ DECODE-ATTR DECODE-AT
+      state DECODE-ATTR SCAN-DECODE
       state POSITION + ! drop
    repeat
    start state POSITION + @ start -

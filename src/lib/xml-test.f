@@ -19,6 +19,17 @@ create TEXT-BUF TEXT-CAP allot
 create OTHER-BUF TEXT-CAP allot
 create NESTED $1000 allot
 variable NESTED-LEN
+16 constant INPUT-CAP
+create INPUT-STORAGE INPUT-CAP STORAGE-BYTES allot
+3 SPAN-BUFFER: INPUT-CHUNK
+PTR-VARIABLE INPUT-SOURCE
+variable INPUT-LEN
+variable INPUT-POS
+variable INPUT-LIMIT
+variable INPUT-FAIL
+variable INPUT-OFF
+variable INPUT-USED
+create INPUT-BIG 8200 allot
 
 CAST: TOKEN>N ( XML:kind -- n )
 
@@ -77,6 +88,44 @@ CAST: TOKEN>N ( XML:kind -- n )
 
 : DRAIN ( XML:reader -- XML:reader )
    begin NEXT TOKEN>N XML-KIND:EOF TOKEN>N <> while repeat ;
+
+: INPUT-SET ( ptr u8 n n n -- )
+   {: source size:n limit:n fail-at:n :}
+   source INPUT-SOURCE ! size INPUT-LEN !
+   limit INPUT-LIMIT ! fail-at INPUT-FAIL !
+   0 INPUT-POS ! ;
+
+: INPUT-FILL ( ptr n SPAN:span<u8> -- n )
+   {: pos:ptr output :}
+   pos @ INPUT-FAIL @ >= if -9299 throw then
+   INPUT-LEN @ pos @ -
+   output SPAN:LEN min INPUT-LIMIT @ min {: count:n :}
+   count 0= if 0 exit then
+   INPUT-SOURCE @ pos @ + count output SPAN:COPY
+   count pos +! count ;
+
+: INPUT-OPEN ( -- XML:reader )
+   INPUT-POS ['] INPUT-FILL INPUT-CHUNK
+   INPUT-STORAGE INPUT-CAP STORAGE-BYTES INIT-INPUT ;
+
+: INPUT-FAILURE ( -- n )
+   INPUT-OPEN ['] DRAIN catch swap XML:CLOSE ;
+
+: INPUT-OVER-COUNT ( ptr n SPAN:span<u8> -- n )
+   2drop 4 ;
+
+: INPUT-OVER-COUNT-RC ( -- n )
+   INPUT-POS ['] INPUT-OVER-COUNT INPUT-CHUNK
+   INPUT-STORAGE INPUT-CAP STORAGE-BYTES INIT-INPUT
+   ['] DRAIN catch swap XML:CLOSE ;
+
+: INPUT-TEXT-ALIASED ( XML:reader -- XML:reader )
+   INPUT-CHUNK SPAN:$ TEXT drop ;
+
+: INPUT-BAD ( ptr u8 n n -- )
+   {: source size:n expected:n :}
+   source size 1 $7FFFFFFFFFFFFFFF INPUT-SET
+   INPUT-FAILURE expected T= ;
 
 \ The reader is opened INSIDE the caught body, the way BAD-INIT below already
 \ does it: `catch` restores the DEPTH of both stacks and never their contents, so
@@ -424,6 +473,141 @@ CAST: TOKEN>N ( XML:kind -- n )
    s" XML-TEST-DROP ( XML:reader -- ) drop" CHECK! 0 T=
    s" XML-TEST-OFFSET ( XML:reader -- XML:reader len off ) XML:RAW" CHECK! 0 T= ;
 
+: INPUT-BOUNDARIES ( -- )
+   s\" \xEF\xBB\xBF<?xml version='1.0'?><a xmlns:p='u'><p:b q='&amp;'>Aé&amp;Z</p:b><c/></a> "
+   1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
+   XML-KIND:PI NEXT= 3 21 RAW=
+   XML-KIND:START NEXT= 24 15 RAW=
+   XML-KIND:START NEXT= 39 15 RAW= s" p:b" NAME= s" b" LOCAL=
+   s" u" URI=
+   ATTR-NEXT TTRUE
+   ATTR-RAW {: attr-off:off attr-len:len :}
+   attr-off OFF>N 44 T= attr-len LEN>N 9 T=
+   ATTR-VALUE {: value-off:off value-len:len :}
+   value-off OFF>N 47 T= value-len LEN>N 5 T=
+   s" &" ATTR-TEXT=
+   54 INPUT-OFF ! 0 INPUT-USED !
+   begin NEXT TOKEN>N XML-KIND:TEXT TOKEN>N = while
+      RAW {: start:off size:len :}
+      start OFF>N INPUT-OFF @ T=
+      TEXT-BUF INPUT-USED @ + TEXT-CAP INPUT-USED @ - TEXT
+         {: count:n :}
+      size LEN>N INPUT-OFF +!
+      count INPUT-USED +!
+   repeat
+   INPUT-OFF @ 63 T=
+   TEXT-BUF INPUT-USED @ s" Aé&Z" T$=
+   RAW {: end-off:off end-len:len :}
+   end-off OFF>N 63 T= end-len LEN>N 6 T=
+   s" p" s" u" PREFIX=
+   XML-KIND:START NEXT= 69 4 RAW=
+   XML-KIND:END NEXT= 73 0 RAW=
+   XML-KIND:END NEXT= 73 4 RAW=
+   XML-KIND:TEXT NEXT= 77 1 RAW= s"  " TEXT=
+   XML-KIND:EOF NEXT= 78 0 RAW=
+   XML-KIND:EOF NEXT= XML:CLOSE ;
+
+: INPUT-MARKUP ( -- )
+   s" <a><!--long--><![CDATA[é&]]><?go q?></a>"
+   1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
+   XML-KIND:START NEXT=
+   XML-KIND:COMMENT NEXT= s" long" TEXT=
+   XML-KIND:CDATA NEXT= s" é&" TEXT=
+   XML-KIND:PI NEXT= s" q" TEXT=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
+
+: INPUT-NEWLINE ( -- )
+   S\" <a>x\r\ny</a>" 1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
+   XML-KIND:START NEXT=
+   0 INPUT-USED !
+   begin NEXT TOKEN>N XML-KIND:TEXT TOKEN>N = while
+      TEXT-BUF INPUT-USED @ + TEXT-CAP INPUT-USED @ - TEXT
+      INPUT-USED +!
+   repeat
+   TEXT-BUF INPUT-USED @ S\" x\ny" T$=
+   KIND TOKEN>N XML-KIND:END TOKEN>N T=
+   XML-KIND:EOF NEXT= XML:CLOSE ;
+
+: INPUT-ALIAS-CHECK ( -- )
+   s" <a>x</a>" 1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
+   XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
+   ['] INPUT-TEXT-ALIASED catch E-ALIAS T=
+   s" x" TEXT=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
+
+: INPUT-LARGE-TEXT ( -- )
+   s" <r>" drop INPUT-BIG 3 BYTE-COPY
+   8192 0 ?do [char] x INPUT-BIG 3 i + + c! loop
+   s" </r>" drop INPUT-BIG 8195 + 4 BYTE-COPY
+   INPUT-BIG 8199 3 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
+   XML-KIND:START NEXT=
+   0 INPUT-USED ! 3 INPUT-OFF !
+   begin NEXT TOKEN>N XML-KIND:TEXT TOKEN>N = while
+      RAW {: start:off size:len :}
+      start OFF>N INPUT-OFF @ T=
+      TEXT-BUF TEXT-CAP TEXT {: count:n :}
+      size LEN>N count T=
+      count INPUT-USED +!
+      size LEN>N INPUT-OFF +!
+   repeat
+   INPUT-USED @ 8192 T= INPUT-OFF @ 8195 T=
+   RAW {: end-off:off end-len:len :}
+   end-off OFF>N 8195 T= end-len LEN>N 4 T=
+   XML-KIND:EOF NEXT= XML:CLOSE ;
+
+: INPUT-LARGE-SCOPE ( -- )
+   s" <a><b xmlns:p='" {: prefix size:n :}
+   prefix INPUT-BIG size BYTE-COPY
+   1000 0 ?do [char] x INPUT-BIG size i + + c! loop
+   s" '><p:c/></b><d/></a>" {: suffix suffix-size:n :}
+   suffix INPUT-BIG size 1000 + + suffix-size BYTE-COPY
+   INPUT-BIG size 1000 + suffix-size +
+      1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
+   XML-KIND:START NEXT=
+   XML-KIND:START NEXT=
+   XML-KIND:START NEXT= s" p:c" NAME=
+   TEXT-BUF TEXT-CAP URI 1000 T=
+   TEXT-BUF c@ [char] x T=
+   TEXT-BUF 999 + c@ [char] x T=
+   XML-KIND:END NEXT= XML-KIND:END NEXT=
+   XML-KIND:START NEXT= s" d" NAME=
+   XML-KIND:END NEXT= XML-KIND:END NEXT=
+   XML-KIND:EOF NEXT= XML:CLOSE ;
+
+: INPUT-FAILURES ( -- )
+   s" <a><b></a>" E-MALFORMED INPUT-BAD
+   s" <a/>x" E-MALFORMED INPUT-BAD
+   s" <a/><b/>" E-MALFORMED INPUT-BAD
+   s" " E-MALFORMED INPUT-BAD
+   s" <a>&amp" E-TRUNCATED INPUT-BAD
+   s" <!DOCTYPE a><a/>" E-DTD INPUT-BAD
+   s\" \xFF\xFE<a/>" E-ENCODING INPUT-BAD
+   s" <?xml version='1.0' encoding='UTF-16'?><a/>" E-ENCODING INPUT-BAD
+   s" <a>&#12<later" 1 8 INPUT-SET
+   INPUT-FAILURE E-ENTITY T=
+   s" <a>&#1114112;tail" 1 12 INPUT-SET
+   INPUT-FAILURE E-ENTITY T=
+   s" <a>&#x110000;tail" 1 12 INPUT-SET
+   INPUT-FAILURE E-ENTITY T=
+   s" <1x/>" 1 2 INPUT-SET
+   INPUT-FAILURE E-MALFORMED T=
+   s\" <\xFFx/>" 1 2 INPUT-SET
+   INPUT-FAILURE E-UTF8 T=
+   s\" <\xE0\x80x/>" 1 3 INPUT-SET
+   INPUT-FAILURE E-UTF8 T=
+   s\" <a\xFFx/>" 1 3 INPUT-SET
+   INPUT-FAILURE E-UTF8 T=
+   s\" <a>\zx</a>" 1 4 INPUT-SET
+   INPUT-FAILURE E-SCALAR T=
+   s\" <a>\r\n</a>" 1 4 INPUT-SET
+   INPUT-FAILURE -9299 T=
+   s" <a>&#00000000000065;</a>" 1 $7FFFFFFFFFFFFFFF INPUT-SET
+   INPUT-OPEN XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
+   s" A" TEXT= XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE
+   INPUT-OVER-COUNT-RC E-RANGE T=
+   s" <a/>" 1 2 INPUT-SET
+   INPUT-FAILURE -9299 T= ;
+
 T-RESET
 EMPTY-ELEMENT
 NAMESPACE-SCOPES
@@ -447,6 +631,13 @@ PREFIX-READERS
 ATTRIBUTE-CAPACITY-RECOVERY
 ESCAPING
 CHECKED-OWNERSHIP
+INPUT-BOUNDARIES
+INPUT-MARKUP
+INPUT-NEWLINE
+INPUT-ALIAS-CHECK
+INPUT-LARGE-TEXT
+INPUT-LARGE-SCOPE
+INPUT-FAILURES
 BEFORE @ CANARY T=
 AFTER @ CANARY T=
 T-REPORT

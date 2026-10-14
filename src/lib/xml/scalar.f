@@ -90,6 +90,12 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    byte $41 >= byte $46 <= and if byte $41 - 10 + exit then
    E-ENTITY throw ;
 
+: NUMERIC-STEP ( n n n -- n )
+   {: value:n digit:n radix:n :}
+   digit radix >= if E-ENTITY throw then
+   value $10FFFF digit - radix / > if E-ENTITY throw then
+   value radix * digit + ;
+
 : NUMERIC-ENTITY ( ptr u8 n n -- n n )
    {: source size:n start:n :}
    source size start BYTE@ $78 = if
@@ -107,9 +113,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
          value cursor 1+ exit
       then
       source size cursor BYTE@ HEX-DIGIT {: digit:n :}
-      digit radix >= if E-ENTITY throw then
-      value $10FFFF digit - radix / > if E-ENTITY throw then
-      value radix * digit + cursor 1+
+      value digit radix NUMERIC-STEP cursor 1+
    again ;
 
 : NAMED-SCALAR ( ptr u8 n -- n )

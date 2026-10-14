@@ -121,6 +121,10 @@ private
 
 : TEXT-CONTINUES? ( ptr n -- bool )
    {: state :}
+   state INPUT? if
+      state POSITION + @ state VALUE-OFF + @ -
+      state STREAM@ STREAM-INPUT-CAP @ >= if false exit then
+   then
    state EOF? if false exit then
    state PEEK $3C <> ;
 
@@ -130,7 +134,7 @@ private
    state OPEN-DEPTH + @ 0= if
       state PEEK XML-SPACE? 0= if E-MALFORMED throw then
    then
-   state SOURCE$ state POSITION + @ DECODE-TEXT DECODE-AT
+   state DECODE-TEXT SCAN-DECODE
    state POSITION + ! drop ;
 
 : READ-TEXT ( ptr n -- )
@@ -177,6 +181,11 @@ private
 
 : DECLARATION-POSITION ( ptr n -- )
    {: state :}
+   state INPUT? if
+      state state RAW-OFF + @ ABS-OFF
+      state STREAM@ STREAM-STARTED @ 1- = if exit then
+      E-MALFORMED throw
+   then
    state SOURCE-MODE + @ LEGACY-UTF8 <> if
       state RAW-OFF + @ 0= if exit then
       E-MALFORMED throw
@@ -313,6 +322,14 @@ private
 : READ-EVENT ( ptr n -- )
    {: state :}
    state PENDING + @ POP-NEXT = if state POP-FRAME then
+   state INPUT? if
+      state STREAM@ {: stream :}
+      stream STREAM-STARTED @ 0= if
+         state BOM
+         state POSITION + @ 1+ stream STREAM-STARTED !
+      then
+      state INPUT-REBASE
+   then
    state EVENT-RESET
    state BOMLESS-DECLARATION
    state PENDING + @ EMPTY-END = if state READ-EMPTY-END exit then
@@ -342,7 +359,7 @@ private
    {: state :}
    state LIVE
    state TEXT-MODE drop
-   state VALUE-OFF + @ >OFF state VALUE-LEN + @ >LEN ;
+   state state VALUE-OFF + @ ABS-OFF >OFF state VALUE-LEN + @ >LEN ;
 
 : TEXT-STATE ( ptr n ptr u8 n -- n )
    {: state destination cap:n :}

@@ -24,15 +24,49 @@ FUNCTION: C-DISCARD zip_discard ( ptr u8 -- ) ;FUNCTION
 
 PROCESS-SYMBOLS
 FUNCTION: C-CLOSE-FD close ( n -- i32 ) ;FUNCTION
+FUNCTION: C-PREAD pread ( n ptr u8 n n -- n )
+   1 2 WRITES-ARG
+;FUNCTION
+FUNCTION: C-PWRITE pwrite ( n ptr u8 n n -- n ) ;FUNCTION
 
 \ mkstemp rewrites its template in place, so the template's length is the
 \ writable extent; no argument of the C call carries it, which FUNCTION: needs.
 s" mkstemp" FFI:PROCESS 1 FFI:DECLARE constant MKSTEMP-ROW
 
+: DETACH-OWNED ( ptr n -- ptr n ) {: owner:ptr :}
+   STATE-GET
+   INPUTS begin dup @ NULL? 0= while
+      dup @ INPUT-OWNER @ owner = if
+         dup @ {: found:ptr :}
+         found LINK @ swap !
+         STATE-RELEASE found exit
+      then
+      @ LINK
+   repeat
+   @ STATE-RELEASE ;
 
-: DISCARD-NODE ( ptr n -- )
-   dup OBJECT @ dup NULL? if drop else C-DISCARD then
-   FORGET-ARCHIVE ;
+: CLOSE-INPUT-OBJECT ( ptr n -- bool ) {: node:ptr :}
+   node INPUT-KIND @ 1 = if node INPUT-FD @ C-CLOSE-FD 0<> exit then
+   node INPUT-OBJECT @ dup NULL? if drop false else C-FCLOSE 0<> then ;
+
+: CLOSE-OWNED ( ptr n -- bool ) {: owner:ptr :}
+   false begin owner DETACH-OWNED dup NULL? 0= while
+      {: input:ptr :}
+      input CLOSE-INPUT-OBJECT or
+      input NODE-FREE
+   repeat drop ;
+
+: DISCARD-NODE ( ptr n -- ) {: node:ptr :}
+   node CLOSE-OWNED
+   node OBJECT @ dup NULL? if drop else C-DISCARD then
+   node FILE-MODE @ 0<> if
+      node SOURCE-FD @ dup 0 >= if C-CLOSE-FD 0<> or else drop then
+      node SNAP-FD @ dup 0 >= if C-CLOSE-FD 0<> or else drop then
+      node RAW-PTR @ dup NULL? if drop else node RAW-LEN @ munmap 0<> or then
+      node SOURCE-LIVE @ 0<> if node SOURCE-PTR @ unlink 0<> or then
+   then
+   node FORGET-ARCHIVE
+   if E-READ throw then ;
 
 
 : RETIRE-ARCHIVES ( -- )
