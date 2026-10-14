@@ -1,9 +1,11 @@
 ---
 title: Locate an undefined-type storage refusal
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-10-01T07:11:23.861697+02:00"
+created-at: "\"2026-10-01T07:11:23.861697+02:00\""
+closed-at: "2026-10-14T19:26:17.918834+03:00"
+close-reason: "Implemented in c6a2ae46: shared storage refusal names undefined types, invalid names and counts through load and check modes; five storage definers covered and image convergence recorded."
 ---
 
 Problem: a TYPED-BUFFER (and any storage definer that sizes a type) naming an undefined type throws E-CHECKER-LAYOUT-BUFFER 7121 from src/core/checker.f with no diagnostic: plain bin/hb --load dies 'hb: uncaught throw code 7121' rc 67, and tools/check.f default mode dies the same way through CHK-PREVERIFY-FAIL (tools/check-core.f:1518). Only --all-errors reports it located, since cfdb2bdd (found by the r4-expand3 lane). Acceptance: the engine's storage-declaration check refuses an undefined or layoutless type as a located checker diagnostic naming the type, with the checker's refusal status, in plain load and every check.f mode; a reduced case for each storage definer that sizes a type, written first and seen to fail through the real load path. Files: src/core/checker.f (baked: rebuild and converge), the definers' tests, docs/forth.md if the refusal is a language rule. Verify: the new cases, tools/check-test.f, test/gate-diagnostics.f, native build g1/g2 cmp, two-generation build. Ownership: storage definer type refusal.

@@ -8,7 +8,7 @@ created-at: "2026-08-19T09:53:28.150430+02:00"
 
 Goal: PRIM is confined to genuine engine, syscall and FFI boundaries, ordinary Forth is checked, and the TRUSTED: definer is gone.
 
-The native-build children in this directory are closed. What remains is the TRUSTED: retirement, carried by these open dots: habu-visibility-discharge-548-fab55650, habu-sweep-trusted-out-41e973ce, habu-sweep-trusted-out-f872acb0, habu-give-tests-a-8d8cdc19, habu-turn-deliberate-cast-ad2e237d, habu-retire-the-audited-85c43acf, habu-honour-owner-private-0a19f45d, habu-delete-the-trusted-42b30edd.
+The native-build children in this directory are closed. What remains is the TRUSTED: retirement, carried by these open dots: habu-visibility-discharge-548-fab55650, habu-sweep-trusted-out-41e973ce, habu-sweep-trusted-out-f872acb0, habu-give-tests-a-8d8cdc19, habu-turn-deliberate-cast-ad2e237d, habu-retire-the-audited-85c43acf, habu-delete-the-trusted-42b30edd. The owner-private seal change habu-honour-owner-private-0a19f45d landed in ee7c5f6a.
 
 Close this parent when habu-delete-the-trusted-42b30edd closes.
 
@@ -20,4 +20,4 @@ Proof instrument: not tools/check.f (40 of 57 src/lib/tools files fail it unconv
 
 Classes: (a) certifies as `:`; (b) a cast; (c) authority gap: the token's effect row exists but is not external, refused E-CAP-TRUSTED (checker.f DO-TOK-BODY ~12121-12135, ENFORCED? ~834); (d) a trusted-only primitive (prims.f ETRUSTED-ONLY! rows, checker.f PRIM-TRUSTED-ONLY! rows, UNSAFE-TOK? spellings), refused E-CAP-TRUSTED; (e) raw data-base cells or an opaque execute.
 
-Order: ready now B1, B2 (habu-sweep-trusted-out-f872acb0), B11 (habu-honour-owner-private-0a19f45d), and the design passes for B8 (habu-visibility-discharge-548-fab55650, with the src post-hook move of B7) and B10a (habu-turn-deliberate-cast-ad2e237d). After 12ffa000: B4 and the evaluate leaves. After B11: B3, B5. After B8 (lands after habu-share-reopen-name-92885254 and the seal c550102f): B9a-d in parallel. After B10a: B6, B10b. B12 (habu-delete-the-trusted-42b30edd) last.
+Order: ready now B1, B2 (habu-sweep-trusted-out-f872acb0), B3, B5, and the design passes for B8 (habu-visibility-discharge-548-fab55650, with the src post-hook move of B7) and B10a (habu-turn-deliberate-cast-ad2e237d). After 12ffa000: B4 and the evaluate leaves. After B8 (lands after habu-share-reopen-name-92885254 and the seal c550102f): B9a-d in parallel. After B10a: B6, B10b. B12 (habu-delete-the-trusted-42b30edd) last.

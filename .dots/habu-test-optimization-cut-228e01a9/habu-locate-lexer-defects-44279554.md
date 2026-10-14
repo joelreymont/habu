@@ -1,9 +1,11 @@
 ---
-title: Locate the pre-verifier's malformed-input refusals
-status: open
+title: "Locate the pre-verifier's malformed-input refusals"
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-10-01T11:36:34.841716+02:00"
+created-at: "\"2026-10-01T11:36:34.841716+02:00\""
+closed-at: "2026-10-14T19:48:36.691923+03:00"
+close-reason: b72c71f4 and 466dc36c replace reachable pre-verifier reader, lexer and statement dies with located throws and records; current verify-source.f has only internal BODY-APPEND die, and check-test-lib.f covers modes and paths.
 ---
 
 Problem: tools/check.f's pre-verifier (src/habu/verify-source.f) refuses malformed input with a prose `die`, rc 74, no location and no record, where the loader refuses the same source with a located error. Measured: in default mode an open PRIM: row and an unterminated string die from verify-source.f:1040 and :253, while --all-errors reports close_primitive_row and close_string records (r4-expand commit 8; $HOME/.cache/tmp/kestrel-r4-expand/c8/pre.txt). A name reader at end of input dies the same way for `defer`, `cast:`, `using`, `export`, `create`, `variable`, `PTR-VARIABLE` and `PRIM:` (verify-source.f:661, 674, 689, 698, 739, 771, 1047, 1065; r4-undefname $HOME/.cache/tmp/kestrel-r4-undefname/measure0.txt), although the card's row says a definer with nothing after it is E-MISSING-NAME from check.f, rc 70; r4-lintcap reports :232, :239, :243, :1033, :1034 as further malformed-input dies. check.f's nominal pass (tools/check-core.f CHK-NOM-STEP) refuses only the definers it lists (eleven, plus `undefine` since r4-undefname), so every reader it does not list falls through to a die.

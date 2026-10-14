@@ -10,4 +10,6 @@ Problem: src/arch/arm32 holds ARMv7E-M Thumb-2 instruction constructors with no 
 
 State: the design document landed as `docs/cortex-m.md` (1f0386990579), with a work breakdown of the dots to open. Opening them is what remains, and it waits on habu-decide-the-cooperative-b463cc1c.
 
+Priority: parked behind the incremental build and test work. Retain this task, the existing Cortex-M design and its dependency on the cooperative kernel decision; resume when freestanding target work is scheduled.
+
 Design input: docs/portability.md section 16 (freestanding, kernel and TI profiles, its package P10) and its test rows L12-L20 (section 25.4).

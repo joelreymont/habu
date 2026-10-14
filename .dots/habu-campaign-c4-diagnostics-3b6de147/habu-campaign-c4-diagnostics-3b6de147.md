@@ -10,7 +10,7 @@ Problem: several checker and engine paths die or crash on input a user can reach
 
 Acceptance: every child below is closed, each with the fixture that reproduces its failure.
 
-Children (open): habu-make-the-arm64-fa89e081 habu-throw-on-generated-38b50740 habu-derive-eq-dies-36f33fa0 habu-escape-control-bytes-bf1bb9c6 habu-reject-direct-defer-c517b62d habu-eof-inside-a-7a539941 habu-the-engine-crashes-fdfe5e28 habu-var-i-shadows-f4435867.
+Children (open): habu-make-the-arm64-fa89e081 habu-throw-on-generated-38b50740 habu-derive-eq-dies-36f33fa0 habu-escape-control-bytes-bf1bb9c6 habu-reject-direct-defer-c517b62d habu-the-engine-crashes-fdfe5e28 habu-var-i-shadows-f4435867. The EOF-inside-definition child closed in 4abaf315.
 
 Removed from the campaign: the JSON contract for runtime failures (habu-extend-the-repair-68f9b2cf), the sweep that moves every code to one owner in src/lib/errors.f, a provoking test per code, and a gate that refuses a new code without span, class and fixture.
 

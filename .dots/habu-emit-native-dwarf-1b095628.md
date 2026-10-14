@@ -1,9 +1,35 @@
 ---
-title: Emit native DWARF symbols
+title: Debug running Habu apps by word
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-14T13:31:31.732175+03:00"
 ---
 
-The native build currently emits a custom text map for image-size and generation-difference diagnostics. LLDB/GDB do not read it, and the native executable has no ordinary symbols. Emit debugger-readable native word names and code address ranges using DWARF, with a matching dSYM bundle on macOS and appropriate ELF debug information on Linux. Reuse captured word names/spans and correct image address coordinates; keep the internal analysis map separate. Relevant code: src/os/macos/macho.f, src/os/linux/elf.f, src/os/linux-x86-64/elf.f, tools/native-build-core.f, src/habu/aot-capture.f; see docs/debugging.md for the current native debugging boundary. Acceptance: validate the emitted DWARF with standard tooling, then use LLDB/GDB on a real native executable to resolve a known Forth word and stop at a breakpoint in its code, including ASLR address handling. Start with native word symbols; richer locals/types, source stepping and dynamic JIT registration are separate requirements when requested.
+Keep after incremental builds and test-suite work. Joel asked to compare native
+symbols with improving the built-in debugger for connecting to running apps,
+and delegated the choice through $best. Choose LLDB/GDB integration: Habu's
+built-in entry traps print the interrupted stack and watches, then resume;
+the token stepper runs REPL tokens. Neither provides an attach endpoint or a
+paused command loop. External debuggers already own process/thread stopping
+and continuation, so Habu should supply its missing language/code facts.
+
+Static symbols for the stored payload alone are insufficient. habu2.f copies
+LAOTCODE to the live region, rebases dictionary entries and relocates that
+mapping independently of the executable. Publish debugger-readable,
+package-qualified word names and spans at their actual live addresses,
+including subsequently compiled words. Publish and retire metadata with the
+owner of executable code; reuse authoritative dictionary/capture facts.
+Use ordinary object symbols where sufficient and minimal name/range debug
+records where required; do not mandate full DWARF or dSYM packaging. Preserve
+hb.map for internal image analysis.
+
+Acceptance: locally attach LLDB on macOS or GDB on Linux to an already-running
+native Habu app; discover a known word, break there by name, remain stopped
+until explicitly continued, inspect the selected thread's Forth data stack,
+resume and detach while the app continues correctly. Cover captured and newly
+compiled code, ASLR and optimized code. Resolve the current LLDB JIT-breakpoint
+boundary recorded in docs/debugging.md rather than assuming names fix it.
+Source stepping, typed locals, complete Forth backtraces and a custom remote
+debugger service are outside this milestone. Relevant owners: debug.f,
+debug-watch.f, stepper.f, habu2.f, capture and native image writers.

@@ -39,3 +39,9 @@ and export suites, package and typed-local gates, native fixpoint, and full
 native gate.
 
 Evidence: Unlanded candidate commit `816dfe4885b6` is preserved for future adaptation.
+
+Current dependency: the E1 namespace-kind rows and `LNSFIND` assumed above were
+superseded by the package hard cut. Native package records now use
+`DICT-WL:NAMESPACE` (src/habu/habu2.f `C-PACKAGE-NEW-RECORD`), and this tree has
+no `LNSFIND`. The full-path goal remains open; redesign against the current
+record representation before dispatch. Do not transplant the E1 candidate.

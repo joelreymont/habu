@@ -1,9 +1,11 @@
 ---
 title: "Cover check.f's statement-throw JSON in the diagnostic contract"
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-10-01T12:03:31.916095+02:00"
+created-at: "\"2026-10-01T12:03:31.916095+02:00\""
+closed-at: "2026-10-14T19:58:39.085001+03:00"
+close-reason: 0a708a1d makes diag-contract reject wrong class, verdict and input rows through real malformed-record fixtures; gate-diagnostics, check and repair-packet tests passed.
 ---
 
 Problem: tools/check-all-errors-core.f CA-JSON-THROW (~:526 at r4-tbuf dc825869) emits a statement-throw diagnostic that tools/gate-json-assert-core.f diag-contract rejects (rc 1, missing JSON field); no test/gate-diagnostics-lib.f fixture produces that shape, and tools/check-test-lib.f check/statement-throw asserts its fields by substring only. Found by the r4-tbuf worker. Acceptance: decide which side is wrong (the emitted shape or the contract) against docs (the diagnostic JSON contract text); fix that side; a gate-diagnostics fixture produces the throw shape and passes diag-contract, seen failing first; malformed throw rows are refused. Files: tools/check-all-errors-core.f or tools/gate-json-assert-core.f, test/gate-diagnostics-lib.f, test/gate-diagnostics-entry-lib.f. Verify: test/gate-diagnostics.f rc 0, tools/check-test.f rc 0.

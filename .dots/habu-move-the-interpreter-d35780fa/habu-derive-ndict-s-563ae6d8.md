@@ -1,9 +1,11 @@
 ---
 title: "Derive NDICT's lookup chain from OUTER"
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-09-29T16:08:44.075068+03:00"
+created-at: "\"2026-09-29T16:08:44.075068+03:00\""
+closed-at: "2026-10-14T19:16:22.402904+03:00"
+close-reason: "Superseded by the one-pass checked-event codegen in docs/architecture.md: the tier-1 NDICT lookup chain this task would refactor is to be deleted. No independent outcome remains."
 blocks:
   - habu-move-evaluate-and-9119f746
 ---

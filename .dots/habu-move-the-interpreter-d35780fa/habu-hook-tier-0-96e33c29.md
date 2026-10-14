@@ -1,9 +1,11 @@
 ---
 title: Hook tier-0 compilation into the Habu loop
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-09-29T12:51:36.663677+03:00"
+created-at: "\"2026-09-29T12:51:36.663677+03:00\""
+closed-at: "2026-10-14T19:14:39.509456+03:00"
+close-reason: Withdrawn by the one-interpreter, one-codegen decision in docs/compilation.md; ARM64 tier-0 JIT is to be retired under habu-retire-the-arm64-20c7d262. No implementation is accepted from this plan.
 ---
 
 Problem: B1 (chosen): the ARM64 product keeps tier 0, so the Habu compile loop needs the JIT, but the `LCOMPILE` dispatch's J-* handlers end in `lmainlbl B,` (`habu2.f:5005-5060`), so Habu cannot call it.

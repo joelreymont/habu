@@ -44,3 +44,9 @@ engine, XREF, property, and JSON diagnostic tests plus package, typed-local,
 fixpoint, and full native gates.
 
 Evidence: Unlanded candidate commit `d0ae5455ec21` is preserved for future adaptation.
+
+Current dependency: the E1 namespace-kind rows assumed above were superseded
+by the package hard cut. The checker and XREF now resolve package records with
+the `DICT-WL:NAMESPACE` sentinel; `NAMESPACE:SPLIT` is absent. The full-path
+goal remains open; redesign its lookup contract against the current records
+before dispatch. Do not transplant the E1 candidate.
