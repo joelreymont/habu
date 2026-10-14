@@ -1,11 +1,8 @@
 # Forth Standards (habu)
 
-Workers: read [docs/forth-card.md](forth-card.md) first; this file is the
-reference.
-
-How we write Forth for the native `bin/hb` engine. Durable language guidance
-lives here; build, test and environment rules live in
-[bootstrap.md](bootstrap.md) and [gate.md](gate.md).
+Start with the [short card](forth-card.md); use this guide for full language
+rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
+[gate.md](gate.md).
 
 ## Checked code and primitive boundaries
 
@@ -141,24 +138,17 @@ lives here; build, test and environment rules live in
   naturalization (`CC-I` becomes `IX`, `CC-J` becomes `JX`); `tools/check.f`
   runs that lint before spawning the checker child and reports
   `E-RESERVED-DEFINITION` with file, line and token instead of a silent rc 70.
-- **Never define a number-shaped word.** hb parses numeric literals BEFORE
-  dictionary lookup (`test/gate-dictionary-lib.f` GD-LITERAL-FIRST), so a word
-  named like a literal (`42`, `.0`, `1.5`, `-.5`, `$FF`) loads but is
-  unreachable: after `: 42 ( -- n ) 7 ;`, `42 .` prints 42. Only
-  `tools/check.f`, through `tools/reserved-name-lint.f`, refuses such names
-  (`E-NUMERIC-DEFINITION`). The lint also refuses dot-digit tails (`U.0`).
-  Dot-letter printers (`.U`, `.INT`, `F.N`) and digit-leading names that cannot
-  parse as a number (`1STNZ`, `0<>`, `2DUP`) are legal. One literal grammar
-  serves interpret, colon-compile, `evaluate` and the checker: int `-?d+ |
-  -?$h+`; float `-?d*.d+`, exactly one dot and at least one digit after it, so
-  `.5`, `-.5` and `.0` are floats while `5.` and `..5` are words. A shaped
-  decimal is admitted only while its integer magnitude, fractional numerator and
-  power-of-ten scale fit their signed-cell accumulators; an over-bound shape
-  stays claimed and is rejected before lookup, never a callable name. The
-  checker's claim (`LITERAL-TOK?`/`ALLDIG?`/`FLODIG?`, `src/core/checker.f`)
-  mirrors the engine parser (`EMIT-NUM`, `src/habu/habu1.f`) token for token;
-  GD-LITERAL-FLOAT-FIRST pins the matrix, including that the checker rejects a
-  call to a number-shaped word.
+- **Never define a number-shaped word.** Numeric parsing precedes dictionary
+  lookup: `: 42 ( -- n ) 7 ; 42 .` prints 42, not 7. `tools/check.f` refuses
+  such definitions as `E-NUMERIC-DEFINITION`, including dot-digit tails such
+  as `U.0`. Dot-letter printers (`.U`, `.INT`, `F.N`) and names such as
+  `1STNZ`, `0<>`, `2DUP` remain legal. Interpretation, compilation,
+  `evaluate` and the checker use one literal grammar: integer `-?d+ | -?$h+`;
+  float `-?d*.d+`, exactly one dot with a digit after it. Thus `.5`, `-.5`
+  and `.0` are floats; `5.` and `..5` are words. A decimal shape whose
+  integer magnitude, fractional numerator or power-of-ten scale exceeds its
+  signed-cell accumulator remains claimed and rejects before dictionary lookup;
+  `99999999999999999999` is `E-UNDEFINED-TOP-LEVEL` at top level.
 - **Engine-provided sources are exempt from the reserved-word rule.** They
   implement the language, and several define the reserved words themselves:
   `TRUST` and `CHECK-DOES!` (`src/core/checker.f`), the loaders
@@ -508,7 +498,7 @@ and always available, for a one-off call or to escape a collision.
   the depth that `;package` restored, not the one the file entered at: a using
   the file opened after it ends with the file.
 - **A package word shadows the same-named global or primitive, and nothing
-  reaches past it.** Inside `package TENDER` a bare `open` is `TENDER:OPEN`; in
+  reaches past it.** Inside `package APP` a bare `open` is `APP:OPEN`; in
   a checked body under `using DOC` a bare `close` is refused against
   `DOC:CLOSE`. There is no qualifier for the global "" wordlist: reach the
   operation through a differently named word (`OPEN-APPEND-FD`, the primitive's
@@ -524,8 +514,19 @@ New declarations use `NEWTYPE` for an opaque nominal cell, `STRUCTURE` for a
 record with named fields and `ENUM` for alternatives with or without payloads.
 Each registers a whole family at top level and cannot be called inside a checked
 definition. Family headers name their type parameters, such as `box<a>` or
-`result<a,b>`; a bare name has no parameters. Compact `ENUM` has no payload
-fields or parameters. Legacy `SUMTYPE`, `PRODUCT`, `VALUE-RECORD`,
+`result<a,b>`; a bare name has no parameters. Parameters bind payload types in
+their written order. Replace the old integer counts with named parameters:
+
+| Old header | Current header |
+|---|---|
+| `NEWTYPE rownum 0` | `NEWTYPE rownum` |
+| `SUMTYPE result 0` | `SUMTYPE result` |
+| `PRODUCT row 0` | `PRODUCT row` |
+| `STRUCTURE box 1` | `STRUCTURE box<a>` |
+| `ENUM result 2` | `ENUM result<a,b>` |
+
+Compact `ENUM` has no payload fields or parameters. Legacy `SUMTYPE`, `PRODUCT`,
+`VALUE-RECORD`,
 low-level `BEGIN-STRUCTURE`/`END-STRUCTURE` definers and counter enums (`ENUM+`,
 `ENUM4+`) still have executable sites; they are migration debt, forbidden in new
 code.
@@ -825,102 +826,66 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
 
 ## Words & factoring
 
-- Separate multiline definitions with two blank lines; related one-liners may
-  stay together; a word's comment sits directly above it, after the blank lines.
-- **Write checked, typed Habu**, the default for new public and library Forth:
-  small typed words with real `( in -- out )` effects (`: SQUARE ( i64 -- i64 )
-  dup * ;`), composed into checked DSLs that read as the domain, not as stack
-  plumbing.
-- **Build checked task vocabulary before fighting syntax.** Structured rows,
-  JSON/TSV, generated source, diagnostics, packets, repeated assertions: factor
-  domain words or a checked DSL first. Giant `s"` literals, fragile escaping and
-  private byte emitters are bugs unless they are that DSL's tested boundary.
-- **Readable DSLs execute the body they name** (`[: ITEM ;] NAME-FILES`,
-  `TEST:SUITE name … TEST:;SUITE`), not generic `execute` wrappers.
-- **Keep helpers and dispatch checked** with typed quotation effects.
-- **Guard dependent operations with control flow.** `and`/`or` combine values
-  already evaluated; establish shape, owner and bounds with `if … exit then`
-  before indexing or reading a dependent field. Combine predicates only when
-  each is safe alone.
-- **Keep control flow and multi-step computation out of argument lists.** The
-  checker accepts `s" k" 1 0 > if 5 else 6 then 2.0 L-OF`; extract the value
-  into a named word (`: DET-MINRATE ( -- r ) … ;`) or a local, one value per
-  concept. Dense lists that splice `if/else`, comparisons and several `@`/`F@`
-  reads hide a wrong cell type (a `bool` from `0 >` where `n` is wanted) that
-  surfaces at a later call as "expected n actual bool".
-- **Predicates and selectors execute real bodies.** A declared effect states no
-  runtime fact and defines no word owned by another file.
-- **Classification tables beat token ladders**: a long `dup`/`over` chain over
-  token classes becomes row data plus named transition helpers; tests describe
-  the table policy.
-- **Small words**, about five lines, readable top to bottom with a few stack
-  items in mind.
-- **Manageable argument lists**: about five or six inputs, a guideline, counting
-  values not tokens (`ptr u8` is one pointer; pointer plus length is two). Split
-  preparation, allocation, traversal and consumption; pass each stage's result
-  instead of every earlier argument; derive metadata from its owner; prefer
-  records that model domain values over context bags, globals or the return
-  stack. Allocation callbacks and low-level helpers get the same judgement.
-- **Split multi-pass words into named passes**: cursor movement, classification,
-  validation, state update and rendering as checked words with their own effects
-  plus a small orchestration word.
-- **No dense one-line control words.** One line is for a trivial straight-line
-  wrapper; anything with `IF`, `BEGIN`, `WHILE`, `REPEAT`, `UNTIL`, `case`,
-  locals, several stack transitions or more than one step spans lines. Line
-  effects only where they clarify; a noisy word is factored.
-- **Raw compiler and emitter code is not exempt**: exact effects and small
-  helpers; if review needs reconstructed stack state, factor first.
-- **Factor when the stack gets unreadable**: `ROT -ROT PICK ROLL` means a helper
-  or locals.
-- **Locals `{: a:type b:type :}`** remove juggling. They bind inputs only, never
-  `-- outputs`; the effect stays in the stack comment. Binding is left to right
-  from the deepest item: `1 2 {: a:n b:n :}` gives `a`=1, `b`=2. Type new locals
-  when the concrete type is known; a bare name only where the entry effect keeps
-  richer role detail the annotation cannot express, or the typed capability is
-  documented missing.
-- **An entry locals group goes on its own line.** A `{: … :}` group that binds
-  at entry goes on the line after the one holding the name and stack effect,
-  indented as the body: three spaces, the indentation every body line in `src/lib/`
-  and `tools/` uses (`src/lib/fs.f:640-642`). The body starts on the next line. The
-  rule governs new and changed definitions; existing files are not reformatted
-  for it.
+Write checked, typed words with current `( in -- out )` effects. Keep related
+one-line definitions together; separate multiline definitions with two blank
+lines and place each word's comment directly above it. A readable word is
+usually about five lines. A trivial straight-line wrapper may fit on one line;
+`if`, loops, `case`, locals and multi-step stack work belong on separate lines.
+Factor raw compiler and emitter code to the same standard.
+
+- Build domain words or a checked DSL for structured rows, JSON/TSV, generated
+  source, diagnostics, packets and repeated assertions. A named DSL construct
+  executes the body it names (`[: ITEM ;] NAME-FILES`, `TEST:SUITE name …
+  TEST:;SUITE`); keep helper and dispatch effects checked with typed
+  quotations. Large `s"` literals and escaping logic belong at a tested
+  boundary, not scattered through consumers.
+- Guard a dependent read, index, owner or bounds operation with control flow
+  before doing it. `and`/`or` combine already evaluated values, so combine
+  predicates only when each is safe alone. Compute one argument per concept:
+  extract `if/else`, comparisons and repeated `@`/`F@` from a dense call
+  into a named word or local. A bool substituted for `n` may otherwise fail
+  only at the later call.
+- Prefer a classification table and named transitions to long `dup`/`over`
+  token ladders. Split multi-pass work into named cursor, classification,
+  validation, update and rendering words, then one orchestration word. `ROT`,
+  `-ROT`, `PICK` and `ROLL` chains call for factoring or locals.
+- About five or six input values is a useful upper bound for a word, counting
+  a typed pointer as one value and its length as another. Pass each stage's
+  result onward; derive metadata from its owner. A record should represent a
+  domain value, not a bag of unrelated context. Apply the same judgment to
+  allocation callbacks and low-level helpers.
+- Locals `{: a:type b:type :}` bind inputs only, left to right from the
+  deepest item: `1 2 {: a:n b:n :}` gives `a`=1 and `b`=2. Keep outputs in
+  the stack effect. Annotate a known concrete type; use a bare local when
+  the entry effect carries richer detail than the annotation can express.
+  An entry group goes on its own line after the name and effect, indented
+  three spaces with the body:
 
   ```forth
   : CLAMP ( n n n -- n )
      {: v:n lo:n hi:n :}
      v lo max hi min ;
   ```
-- **A local name is at most 16 bytes and a definition binds at most 64.** Past
-  either the compiler refuses before storing anything, exit 70, naming the token
-  (`hb: local name over 16 bytes: <token>`, `hb: more than 64 locals in one
-  definition: <token>`); when the checker sees it first (tier 1, the check tool)
-  it reports `E-LOCAL-NAME-TOO-LONG` or `E-TOO-MANY-LOCALS` with width and
-  limit. Shorten or factor.
-- **A local is bound once.** A value that changes per loop turn lives on the
-  stack or in a cell: `begin {: cursor:n :} … cursor' again` binds at the top
-  and pushes the next value before the back edge, so the stack at `again`
-  matches `begin`. `RECURSE` for a cursor only where a limit bounds the depth; a
-  peer-controlled depth, such as bytes arriving on a connection, overflows the
-  task's stack.
-- **A `ptr` annotation does not fit a byte span.** Under `( ptr u8 n -- n )` the
-  group `{: p:ptr :}` is refused at `:}` (expected: ptr n actual: ptr u8 n).
-  Keep the detailed type in the effect and bind a bare local for a body that
-  uses `c@`/`c!`, or factor a helper whose entry carries `( ptr u8 … -- … )`.
-- **Name same-type numeric slots before reordering them.** In `( cap used add --
-  )` a stray `swap` type-checks; bind names at entry or factor role-specific
-  helpers before capacity, offset or decoder arithmetic.
-- **Locals are block-scoped.** A `{:` group may appear on any live path, inside
-  `if`/`else`, `case` arms and loop bodies; the names die when that arm closes
-  and the prior scope and frame depth return. Never reference a branch-local
-  after `then`/`endof`/`endcase`/`loop`/`repeat`; bind before the control word
-  to survive the join.
-- **Dead code cannot bind locals.** A group after a closed early-exit guard
-  (`dup 0 < if exit then {: x:n :}`) is valid, the fall-through is live; a group
-  right after an unconditional `exit`, `leave`, `throw`, `die` or `again` is a
-  checker error.
-- **No deep locals stacks.** Locals are for shallow factoring; nested helper
-  calls from loop or callback bodies use stack leaf helpers or separate scratch
-  cells so inner helpers cannot clobber caller indexes.
+
+  New and changed definitions follow this layout. A local name is at most
+  16 bytes and a definition binds at most 64 locals. The compiler refuses
+  either before storing anything (rc 70); the checker reports
+  `E-LOCAL-NAME-TOO-LONG` or `E-TOO-MANY-LOCALS` with the limit.
+- A local binds once. Keep a loop's changing cursor on the stack or in a cell:
+  `begin {: cursor:n :} … cursor' again` pushes the next value before the
+  back edge. Use `RECURSE` for a cursor only when depth is bounded; a
+  peer-controlled count can overflow the task stack. Keep locals shallow so
+  nested helpers cannot clobber caller indexes.
+- A `ptr` annotation does not fit a byte span. Under `( ptr u8 n -- n )`,
+  `{: p:ptr :}` is refused at `:}` (`expected: ptr n actual: ptr u8 n`).
+  Bind a bare local or factor a helper retaining the detailed effect. Give
+  same-type numeric slots names before reordering them: `( cap used add -- )`
+  can type-check a wrong `swap`.
+- Locals are block-scoped and may bind on a live path inside an `if` arm,
+  `case` arm or loop. They die at its closer; bind before a join if the name
+  must survive it. A group after a closed early-exit guard is live; directly
+  after unconditional `exit`, `leave`, `throw`, `die` or `again` it is dead
+  code and is refused.
 
 ## Files
 
@@ -1176,7 +1141,7 @@ backend answers alike.
   newline, so a message never carries its own `\n`; an empty span writes
   nothing, which is what a site passes after ending its own report with `cr`.
 - **A word that never returns ends its branch.** After a call whose body ends in
-  `die`, the checker refuses an `exit` in the same `if`:
+  `die`, the checker refuses an `exit` in the same `if` as `E-DEAD-CODE`:
 
   ```forth
   ARG s" child" TOK= if CHILD-MAIN exit then
@@ -1301,18 +1266,15 @@ by name with the count it saw and the ceiling, and none truncates.
   helper. `T=`/`T<>` for scalars, `T$=` for strings, `TTRUE`/`TFALSE` for flags
   (not `T=`), `TTHROWS` for codes; several results compared top down, one
   assertion each. A regression distinguishes the defect it prevents.
-- Tests live in the native gate: `test/engine-suite.f`, focused `tools/*-test.f`
-  fixtures, and source-specific checks wired through `test/run.f`.
-- Orchestration uses `src/lib/test.f`: suites, groups and tests (gate/row wording is
-  legacy). Adapters provide setup/teardown, argv/env policy, filters and process
-  execution; test files require their own dependencies; groups are named,
-  parallel or sequential; reports print group/test name, state and timing.
+- Tests live in the native gate (`test/engine-suite.f`, focused `tools/*-test.f`
+  fixtures and source-specific checks in `test/run.f`). `src/lib/test.f`
+  supplies suites, groups, hooks, filters and reports; test files require their
+  dependencies.
 - Runners keep no suite iteration state on the return stack while a test runs:
   tests may `catch`/`throw`, so loops use explicit index/count cells that a
   caught throw cannot truncate.
-- Fixture helpers live in a private package, not global stems: define the
-  package, install helpers into `TEST:*` hooks, define groups and tests, run
-  once, assert counters, close the package.
+- Fixture helpers live in a private package; install them through `TEST:*`
+  hooks rather than global stems.
 
 ```forth
 require src/lib/test.f
@@ -1345,7 +1307,7 @@ T-REPORT
 ;package
 ```
 
-  `src/lib/test.f` is the interface: `T*` assertions; `TEST:SETUP!`,
+  `src/lib/test.f` exposes `T*` assertions; `TEST:SETUP!`,
   `TEST:TEARDOWN!`, `TEST:DRAIN!`, `TEST:ARGS-BEGIN!`, `TEST:ARG+!`,
   `TEST:RUNNER!`, `TEST:STDIN-RUNNER!` install typed hooks; `TEST:GROUP SEQ|PARA
   name` opens a group (the mode token is mandatory, before the name);
@@ -1355,9 +1317,8 @@ T-REPORT
   (it runs a `( -- )` quotation) or another stack-preserving `catch` with the
   exact code; top-level scripts that cannot push quotations use `' WORD
   TTHROWS`; diagnostics are captured and matched by substring.
-- Run focused fixtures with their owning `tools/*-test.f`, and the full native
-  suite when the impact warrants it (below), always through the owning gate
-  script so assertion failures set the exit code.
+- Run focused fixtures through their owning `tools/*-test.f` so assertion
+  failures set the exit code.
 - Property generators use `src/lib/property.f`: `PROP:SEED!` makes a run
   reproducible, and `PROP:RND%` mixes the generator's high bits before bounding
   a draw. Small bounds do not inherit the raw generator's short low-bit cycles:
@@ -1365,13 +1326,9 @@ T-REPORT
   checks that each occupies 40–60% of 4096 transitions; this is a coverage
   guarantee for that sequence, not a claim of independent or cryptographic
   randomness.
-- **False-reject claims need execution proof**: prove the gap with the owning
-  `bin/hb --load` or `tools/check.f --source-list`, then run an unchecked copy
-  and show the measured stack behaviour matches the declared effect before
-  counting a checker limitation. Generator bugs become rejections, not
-  certifications.
-- **Signature-token changes need direct smoke probes** (`ATOM-TOK?`, `TOK-TYPE`,
-  renderer output) before rebuilding around a new token.
+- A claimed false reject needs a reduced checked refusal and a matching
+  unchecked execution of the declared effect. Probe new signature tokens with
+  `ATOM-TOK?`, `TOK-TYPE` and renderer output before rebuilding.
 
 ### Diagnosing a checker miss
 
@@ -1383,24 +1340,18 @@ runtime or analysis layer. No template or task record is required.
 
 ## Verification before committing
 
-- **A timing counts only on a quiet box**: 1-minute load under 4 with no
-  competing engine; a measurement script refuses when the box never quiets
-  rather than degrade the number.
-
-Run focused tests for changed behaviour. For compiler, runtime or broad library
-changes, rebuild the engine and run the full suite:
+The required gates live in [gate.md](gate.md). Timing samples require
+1-minute load below 4 with no competing engine; a measurement script refuses
+if the host never quiets. For compiler, runtime or broad library changes,
+rebuild the engine and run the full native suite:
 
 ```sh
 bin/hb --load tools/build-fixpoint-refresh.f -- install --force
 bin/hb --load test/run.f
 ```
 
-`test/run.f` runs every registered suite, draining the pool between groups
-without stopping at a red, and ends with `suites: ran N of N`, the red set with
-exit codes, and a nonzero exit if any suite is red. Run lints when their inputs
-change. Documentation-only edits and file moves need no rebuild. Loom's model
-tests belong to its repo. Report failed or unrun checks plainly, never as a
-passing suite.
+`test/run.f` reports `suites: ran N of N`, the red set and a nonzero exit if
+any suite fails. Documentation-only edits need no rebuild.
 
 ## Comments & hygiene
 
@@ -1447,20 +1398,16 @@ passing suite.
 
 ## Habu Native Tooling Gotchas
 
-- **Use the native debugger before print probes**: `docs/debugging.md`, `.s`,
-  then, after `using DEBUG` opens the baked debugger, `BPW+` watch cells, REPL
-  `step` and compiled-word breakpoints (`BP+`, `BP*`, `BPN`); `tools/jitdump.f`,
-  `tools/imgdump.f`. Extend them rather than hide a missing surface behind
-  prints.
+- **Native debugging**: [debugging.md](debugging.md) covers `.s`, `BPW+`,
+  `step`, compiled-word breakpoints (`BP+`, `BP*`, `BPN`), `tools/jitdump.f`
+  and `tools/imgdump.f`; `using DEBUG` opens the baked debugger.
 - **Semantic xref is in-image**: ownership, references and call RCA use
   `XREF`/`SEE`/`USES`/`USED-BY` in the live image with CLIs as thin wrappers;
   source search where it answers, native inspection where runtime state matters.
-- **Boundary spawns attribute failures.** A gate, test or tool spawning `hb` or
-  another child uses outcome capture for expected timeouts and failures, never
-  throw-only capture that collapses to a shell rc; the report carries suite/case
-  label, phase, executable and argv/load list, outcome kind/code, named rc when
-  known, capture bytes/capacity and captured stdout/stderr. Throw-on-timeout
-  capture belongs only in a unit test asserting that throw.
+- **Boundary spawns attribute failures.** Outcome capture for expected
+  timeouts and failures reports suite/case, phase, executable and argv/load
+  list, outcome kind/code, named rc when known, capture bytes/capacity and
+  stdout/stderr. Throw-on-timeout capture is for a test of that throw.
 - **`DYNAMIC-BUFFER NAME Type` for growing typed tables**: the stored types of
   `TYPED-BUFFER`, closed non-linear layouts included, **and `u8`** — the
   growable byte row. It is the one definer that takes `u8`, the only sub-cell
@@ -1479,14 +1426,10 @@ passing suite.
   `index`, read and written with `c@`/`c!`, never cell `@`; `count NAME-RESERVE`
   counts bytes, and since every capacity is a whole number of cells, the bound
   is the request rounded up to a cell.
-- **Large tool bundles are supported.** Never split tools to dodge DATA
-  pressure. `create … allot` is dictionary-sized static storage; runtime-sized
-  buffers use `src/lib/memory.f` (`MEM-ALLOC-BYTES`, `MEM-ALLOC-64K-BUFFERS`),
-  scaling with OS mappings rather than `DATA-SIZE`. Tools keep as many 64K
-  buffers and spans as needed, one contiguous `MEM-ALLOC-64K-BUFFERS` span or
-  many; the only limits are cell-size overflow checks and explicit OS allocation
-  failure. If composition still hits capacity, fix the shared memory model and
-  add a regression for the composed load.
+- **Runtime-sized buffers use OS mappings.** `create … allot` consumes
+  dictionary DATA; `MEM-ALLOC-BYTES` and `MEM-ALLOC-64K-BUFFERS` from
+  `src/lib/memory.f` permit contiguous or separate 64K buffers and spans,
+  bounded by cell-size overflow and OS allocation failure.
 - **`create … allot`, `BUFFER:` and `TYPED-BUFFER` allot zeroed space on a
   cell-rounded address.** `create`, hence `variable`, rounds the data pointer to
   a cell before publishing, and `align` does on request. So a `create … allot`
@@ -1504,20 +1447,12 @@ passing suite.
   `src/lib/prelude.f`, which the engine already provides: writing `require
   src/lib/prelude.f` documents the dependency but is not load-bearing. Never
   re-derive `0 0=` / `0 0= 0=` by hand.
-- **Tool libraries keep checking enabled** for themselves and their callers;
-  when removing a legacy unchecked span, keep hook restoration until it is gone.
-- **Pre-checker bootstrap stays minimal**: install checking as soon as the
-  checker exists; never extend the startup exception to generated application
-  code or load ordinary Forth unchecked.
 - **Legacy checker preludes rebind the existing hook**: a prelude that disables
   checking after `src/core/check-hook.f` restores it at once with `' HOOK
   set-check`. A migration constraint, not permission for new spans. No second
   hook name in baked tty/stdin bundles (duplicate enforcement fails closed at
   startup); a snapshot or AOT stage keeps a different hook local and leaks no
   duplicate REPL hook into `bin/hb`.
-- **Bootstrap and fixpoint temp roots are explicit script args** after `--`; no
-  stale seed envp capture; generated paths stay under that root; the build
-  driver owns path construction.
 - **Escaped literals for readable snapshots**: `s"` reads no escapes; `S\"`,
   `C\"`, `.\"` accept C-style escapes (`\\`, `\"`/`\q`, `\n`, `\r`, `\t`,
   `\xNN`, `\z`, …) for direct JSON/source expected strings. `S\"` needs its
@@ -1531,14 +1466,6 @@ passing suite.
   answers 3 and true; `A\yB` stops at the bad escape, `A` written, and answers 1
   and false. Code that reads an escaped literal's bytes, as the dependency walk
   does, decodes through it rather than a table of its own.
-- **Generated fixtures use unique test-owned names** (`CAE-CAP-OK-0`,
-  `GDX-AE-BAD1`); never baked generic names (`OK`, `BAD`, `FOLD`, `RESET`) or a
-  repeated stem unless testing duplicate rejection.
-- **Source-use guards match tokens**, lexing whole tokens and skipping comments
-  and strings; substring matches (`FOO` in `FOO-BAR`) hide policy bugs.
-- **Check native emitters before building an image**: checked algorithms,
-  emitted code validated by focused tests; pre-checker emitters keep their
-  source-shape checks until converted, which justify no new unchecked bodies.
 - **Fixed DATA header cells need a layout audit** against the reserved ranges:
   `VTAG-OFF`, `VVAL-OFF`, `JIT-SNAP:STK-OFF`, `JIT-QUOT:STK-OFF`,
   `BODYBUF-OFF`, `LOCNAMES`, `BPTAB-OFF` and the `SNAP-RELOC` call and address
@@ -1549,15 +1476,13 @@ passing suite.
   cell a row in `src/habu/data-claims.f`, whose `CLAIMS-ASSERT` refuses an
   overlapping pair at build and names both, and add a regression for the exact
   overlap class.
-- **Snapshot builders retire the baked tail** (`undefine NAME` for one word,
-  `HIDE-DEFS-FROM` only for refresh tail truncation) and append the snapshot
-  entry file; they never replay baked core, target or image files to mask
-  duplicates.
-- **Snapshot builders reset process-local pointers**: mmap-backed image and
-  include pointers and cursors (`MBUF-A`, `MP`, `MLEN@`/`MLEN!`,
-  `INCLUDE-BUFS-A`, include depth/read/path cells) are valid only in the
-  creating process; clear them in a named reset word before `BUILD-SNAP-HDR` or
-  fresh image emission, never by source replay or redefinition.
+- **Snapshot builders retire the baked tail and append their entry file.**
+  Use `undefine NAME` for one word; use `HIDE-DEFS-FROM` only to truncate a
+  refresh tail. Never replay baked core, target or image sources to hide
+  duplicates. Mmap-backed image/include pointers and cursors (`MBUF-A`, `MP`,
+  `MLEN@`/`MLEN!`, `INCLUDE-BUFS-A` and include depth/read/path cells) belong
+  to their creating process. Clear them in a named reset before
+  `BUILD-SNAP-HDR` or fresh image emission, not by replay or redefinition.
 - **Emitter punctuation is semantic** (`BL,`, `LBL,`, `ADR,`, `ZBYTES,` differ
   from the bare names); source-shape regressions assert exact tokens; emitter
   stack comments describe the host stack (`( -- )`, `( n -- )`), emitted runtime
@@ -1621,762 +1546,318 @@ passing suite.
 
 ## Rules learned by refusal
 
-Each of these was measured on the engine; the fact that proved it is beside
-the rule.
+These edge cases name the refusal at the boundary. The general rules are in the
+sections above.
 
-- **`OPAQUE` is refused where it would hide nothing.** `STRUCTURE olate FIELD x n
-  OPAQUE ;STRUCTURE` is `header clause after the first field` (7107),
-  `STRUCTURE otwice OPAQUE OPAQUE FIELD x n ;STRUCTURE` is
-  `a second OPAQUE clause in one declaration` (7206),
-  `STRUCTURE obare OPAQUE ;STRUCTURE` is
-  `opaque requires a family with fields` (7107),
-  `ENUM oshade OPAQUE VARIANT dark ;VARIANT ;ENUM` is
-  `unexpected token in enum declaration` (7107), and a top-level
-  `STRUCTURE oloose OPAQUE FIELD x n ;STRUCTURE` is `OPAQUE requires a family
-  declared in a package` (7207): there is no private wordlist for the pair.
-  Each rolls the declaration back and the loader goes on
-  (test/structure-decl-suite.f section 16, test/structure-opaque-e2e.f).
-- **Nothing is defined live while a checker overlay is open.** The overlay's
-  close puts the dictionary count, the code pointer and the wordlist counter
-  back where `CHECKER-SCOPE-START-NEUTRAL` or the verifier window found them.
-  On an engine without the refusal, a `:` compiled inside a neutral pair
-  ended the process at the close (rc 83, fd 2 empty), or, once a replay row
-  had raised the overlay's high-water mark past it, vanished with the close
-  (its next use was `E-UNDEFINED`, rc 70), and a `wordlist` made there was
-  handed out again after it. So every definer head (`:`, `create`, `variable`,
-  `constant`, `defer`, `TRUSTED:`, `CAST:`), `EXPORT`, a new `package` and
-  `wordlist` die where they are made: `hb: definition while a checker replay
-  is open: NAME`, `ENGINE-ERROR:OVERLAY-OPEN` (rc 108), a throw inside
-  `evaluate`, after which the pair still closes. A live `undefine` there
-  retired its word for good, since the close gives back only what the
-  overlay retired (the word's next use after the pair was `E-UNDEFINED`), so
-  it dies before it retires anything: `hb: undefine while a checker replay is
-  open: NAME`, rc 108. Reopening a package the engine holds defines nothing
-  and is allowed (test/replay-binding.f `LIVE-CASE`).
-- **A definition and a `(` comment close in the source that opened them.** A
-  file, an `evaluate` string and stdin each end inside nothing they opened:
-  `hb: source ended inside definition: NAME` covers an open colon body with
-  its stack comment, `{:` locals or `[:` quotation and is located on the line
-  of the definition's name, or of the word that ran `def-open`;
-  `hb: source ended inside a ( comment` is located at the `(`. Stdin names no
-  line. Both are rc 74, catchable inside `evaluate` with the definition rolled
-  back (test/runtime-regression-test.f `GE-SOURCE-END`). So
-  `s" : W ( -- n ) 8" evaluate ;` is refused although the next token would
-  close W. An immediate word's `evaluate` may compile into a definition
-  already open when the string began, but a `;` it reads there, or in a file
-  it includes, is `hb: source closed a definition it did not open: NAME`,
-  rc 74, located at the `;`. A refusal caught around that `evaluate`, however
-  many evaluates down it fired, leaves the outer definition compiling with
-  every token each evaluate completed before the refused one.
-- **Initialized scoped storage has two bounds.** A callback for
-  `C2-MEM:WITH-INIT` may declare `forall<i inside [l,T],[ ... ]>`; its fresh
-  scope `i` is inside the byte view's lifetime `l` and every scope dependency
-  of the initial record `T`. The operation accepts a live unique byte view and
-  a complete, non-unique, non-stale fixed-cell product. It clears the initialized
-  extent before returning the original byte view and its full bound.
-  `test/c2-init-program.f` measures the two-cell and nested record paths,
-  clear-before-return, restored bound, short capacity, callback throw and task
-  halt. `test/c2-init-refusals.f` rejects raw/shared authority, open, unique or
-  stale records, a schema whose field widths disagree despite the same total,
-  an incompatible callback and escape of `i`.
-- **Initialized record tables use one owning scope.**
-  `C2-MEM:WITH-RECORDS` accepts a unique byte view, a nonnegative count, and a
-  committed non-owning `DERIVE init` record seed. Its callback receives an
-  opaque linear `records<p,i,a,T>` under `forall<i inside [l,T],...>`.
-  The count times the committed record size must fit the original byte bound;
-  count zero is valid. `C2-MEM:WITH-RECORD` checks a zero-based index and loans
-  an element as `mut-view<p,j,a,init<i,T>>` under `forall<j inside i,...>`.
-  Its callback cannot return `j`, and the table returns without reconstructing
-  or clearing that element. Closing the table clears the complete initialized
-  extent once and restores the original byte bound. `test/c2-records-e2e.f`
-  exercises source, native tier one, saved-image, cleanup and refusal paths.
-- **An initialized field loan keeps its owner's init lifetime.**
-  `C2-MEM:WITH-FIELD name` takes a live unique
-  `mut-view<p,i,a,init<i,T>>` and a callback. `name` is resolved only against
-  the receiver's committed instantiated schema. The callback's fresh child
-  scope `j` is inside `i`; its view has field type `F`, unchanged init scope
-  `i`, and structural region `field(a,name)`. On normal return the operation
-  restores the exact original parent without copying the field into a new
-  record; the runtime closes the child loan on throw or task halt.
-  `test/c2-field-loan-e2e.f` exercises the nested nonzero-offset Pair, source
-  and native lowering, a saved explicit callback scheme, refusals and cleanup.
-- **A storage declaration its definer refuses is the checker's refusal, named
-  and exit 70.** The five definers that size a type (`LAYOUT-BUFFER`,
-  `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
-  refuse an unknown, malformed, unstorable or missing type, a missing name, a
-  name with more than one `:` or in a sealed package, and a literal count
-  outside the extent (the pre-verifier also refuses a count token that resolves
-  to no `( -- n )` word). The name must stand on the definer's line and the
-  type's first token on the name's; one on the next line is missing, and that
-  line is the next statement ([type-families.md](type-families.md)):
-  `4 TYPED-BUFFER B no-such-type` under `bin/hb --load` prints
-  `habu: in B: unknown type 'no-such-type'` and exits 70, and `tools/check.f`
-  reports it as `E-BAD-STORAGE` at the type's file, line and column in every
-  mode (test/load-reject-diag-test.f, tools/check-test-lib.f
-  `check/storage-type`). Nothing is defined. A count word's value is the run's
-  to refuse, with the definer's catchable `E-LAYOUT-BUFFER` (7121).
-- **A `TYPED-BUFFER` element is a storage type, never bare `u8`.**
-  `2 TYPED-BUFFER TB u8` is refused at the declaration,
-  `habu: in TB: type this definer cannot store 'u8'` (exit 70); a byte row is
-  `n BUFFER: B` (src/lib/string.f), `( -- ptr u8 )`. A fixed element is a whole
-  allotted cell, and a stored `u8` would mint a `ptr u8` that cell `@` cannot
-  read. **`DYNAMIC-BUFFER` is the one definer that does take `u8`**, because it
-  allots no element storage and scales the index by the element's own width:
-  `DYNAMIC-BUFFER BYTES u8` loads and `0 BYTES c@` reads byte 0
-  (test/dynamic-buffer.f), while `DYNAMIC-BUFFER X u16` is refused the same
-  way, `habu: in X: type this definer cannot store 'u16'` — `u8` is the only
-  sub-cell type with accessors of its own.
-  `create … allot`, `BUFFER:` and `TYPED-BUFFER` all allot
-  zeroed space on a cell-rounded address (measured: after `create A 1 allot
-  create B`, `B FFI:>CELL 7 and` is 0 and the bytes read back zero), so a row
-  a foreign call reads as an aligned C object needs no alignment word of its
-  own (src/lib/net/curl.f's fd_sets and out-parameter cells).
-- **A `TYPED-BUFFER` or `LAYOUT-BUFFER` count is an integer literal, a word of
-  effect `( -- n )`, or an expression.** The source pre-verifier reads the
-  token before the definer as TEXT and never runs it (`verify-source.f`
-  `RECORD-TYPED-BUFFER` hands it to the checker's `CHECKER-LBUF:COUNT-OK?`).
-  A token the engine's number reader reads as an integer is the count, held to
-  the definer's extent for the element width: `0 TYPED-BUFFER B n` is refused
-  by `tools/check.f`'s preverify at the `0`, `E-BAD-STORAGE` with reason
-  `count outside the buffer's extent`, exit 70, and `$40 TYPED-BUFFER B n`
-  checks. Any other token certifies by the effect of the word it names, which
-  must resolve as a body would resolve it (bare, package-qualified or
-  engine-held). A word that takes no input is the count itself and must leave
-  one cell `n` accepts: a `constant`, a computed constant (`6 constant OPS
-  2 constant KEYS  OPS KEYS + constant VOCAB` then `VOCAB TYPED-BUFFER ROWS
-  n`), an engine constant such as `HIR:OPCODES` and a colon `( -- n )` pass. A
-  word that takes input ends an expression whose value only the load computes,
-  so `N 2 * TYPED-BUFFER B n`, `Q-MAX Q-SEM-N * TYPED-BUFFER Q-SEMS TASK:sem`
-  (src/lib/queue.f:42) and `4 CAP TYPED-BUFFER` for `CAP ( n -- n )` pass, as
-  they load. The load bounds every value (`src/core/layout-buffer.f`
-  `LBUF-EXTENT?`): `0 constant Z  Z TYPED-BUFFER R n` passes pre-verification,
-  and its run is refused with the definer's 7121, exit 67. The pre-verifier
-  refuses, at the token, `E-BAD-STORAGE` with reason `count resolves to no
-  ( -- n ) word`, exit 70: an unknown name, a name the scope refuses (a `using`
-  public that shadows a global, or one two used packages export), a `variable`
-  (it leaves an address) and a `( -- bool )` word (tools/check-test-lib.f
-  `check/buffer-count`, `check/layout-buffer-count`).
-- **A parsing keyword's operand is data to every stage of `tools/check.f`.**
-  `'` and `char` at top level and `[']` and `[char]` in a body take the next
-  whitespace-delimited token whatever it spells, across line ends, matched
-  case-folded as the engine's keyword compare folds; the engine refuses each
-  outside its own state. The source pre-verifier (`verify-source.f`
-  `TOP-PARSER?` with `'` and `char`, `BODY-PARSER?` with `char`, `[']` and
-  `[char]`, `OPERAND`) skips it. The rest share `SOURCE:PARSING-KEYWORD?`
-  (`src/lib/source.f`): `src/lib/source-lex.f` reads the operand raw where it
-  makes the token and marks it (`LINT-LEX:OPERAND?`), as `LINT-LEX:OPERAND`
-  marks a definer's name, and the reserved-name lint and the nominal pass skip
-  a marked token; source discovery reads it with `SD-RAW` (`SD-STEP`); the
-  origin-marker rewriter skips it (`DO-SKIP-OPERAND`). The keyword stays the
-  token before what follows, so `char 0 TYPED-BUFFER B n` leaves its count,
-  48, to the run. Measured: `char : constant COLON`, `' TYPED-BUFFER constant
-  TB` and `char 0 TYPED-BUFFER B n` load and were refused (a definition named
-  `constant`, a definer, a zero count), and `: F ( -- n ) [char] ( ;` and
-  `[char] :` in a body load and were refused (a comment, a definition start)
-  (tools/check-test-lib.f `check/parsed-operand`). `char \`, `[char] \` and
-  `char (` before a line `: 42 ( -- ) ;` loaded and were admitted (the lint
-  skipped that line's first word), `char s"` and `[char] s"` loaded and were
-  refused (discovery: unterminated string), `' :` was refused (a definition
-  with no name), and `[char] ;` before a local `newtype` was refused (the
-  nominal pass read the local as a declaration); now the first group is
-  refused for its `42`, `' :` as the load refuses it, an undefined tick, rc
-  70 (`E-UNDEFINED-TOP-LEVEL` at the `:` before anything runs), and the rest
-  check as they load, and `create char`,
-  which names a word that takes nothing, leaves the next line's `: 42` refused
-  (`check/raw-operand`). In a body every stage looks a token up among the live
-  locals first, byte for byte, as the loader (`EM-COMPILE-LOCAL` ahead of the
-  keyword rows) and the checker (`LOC-REF?`) do, so a local named after a
-  keyword, a string opener or `.(` is that local and takes nothing. A `{: … :}`
-  group's names are read raw, and a name ends at its first `:`. A local lives
-  to the end of the control block that declared it (`SOURCE:BLOCK-OPENER?` and
-  `BLOCK-CLOSER?`; `else` ends the true arm's), and inside a quotation an
-  enclosing local is still that local, which the load refuses at that token
-  (rc 75) and the check refuses as `E-BAD-LOCAL-SHAPE`. The pre-verifier holds
-  them in `LOCAL?` and `BLOCK-STEP`, the lexer reads them from its own tokens
-  (`STEP`, again on a rescan), and discovery keeps its own (`SD-LOCAL?`), which
-  hides an enclosing local inside a quotation: that differs only on source the
-  load refuses there. Measured before: `{: char :} char ;`, `{: [char] :}
-  [char] ;` and `{: .( :} .( ;` loaded and were refused by the pre-verifier
-  (rc 74, unterminated definition); after any of the `char`, `[char]`, `[']`
-  and `'` forms the lint and the nominal pass read past the `;`, so
-  `: 42 ( -- ) ;` after the `[']` and `'` forms was admitted and
-  `DEFLINEAR N` after any of them was refused with no location; and the
-  pre-verifier's body set lacked `[']`, so `['] \` in a body after a word `\`
-  was refused (rc 74). Now each loads and checks alike, the `42` is refused
-  `E-NUMERIC-DEFINITION` and `DEFLINEAR N` `E-BAD-NOMINAL-TYPE` at its name
-  (`check/local-operand`). A dictionary word that parses, such as `require` or
-  `SEE`, is not one of these: the word a spelling names depends on scope, and
-  the tree defines words that take no operand under both spellings, so the
-  token after one is an ordinary token to these stages. The pre-pass's check
-  of top-level tokens resolves the word first and leaves the tokens after one
-  that parses to the run (the top-level rule below).
-- **A definer's name is read as the loader reads it, by every stage of
-  `tools/check.f`.** The loader takes it with `parse-name`, so
-  `package ( ;package` names the package `(`, `: \ ( -- n ) 1 ;` the word `\`
-  and `DEFLINEAR \` the type `\`, which it then refuses. The
-  source pre-verifier reads every definer's name with `NAME-TOKEN`
-  (`verify-source.f`). The nominal pass and the reserved-name lint work on
-  `src/lib/source-lex.f` tokens and ask `LINT-LEX:OPERAND` to read the token
-  after a definer again, because only they know the definer is at top level:
-  inside a body `DEFLINEAR` is a call and a `(` after it opens a comment.
-  `create \`, `variable \` and `1 constant \` name `\` the same way. A name the
-  loader reads and refuses is refused at that token. A type name holding `(` or
-  `\` is refused ([effects.md](effects.md) "`DEFLINEAR name`"), so
-  `DEFLINEAR (`, `DEFLINEAR \` and `VALUE-RECORD ( x n END-VALUE-RECORD` are
-  `E-BAD-NOMINAL-TYPE` on that token, and `NEWTYPE`, `SUMTYPE`, `ENUM`,
-  `STRUCTURE`, `PRODUCT` and `DEFTYPE` refuse
-  the names `(` and `\` naming them as the loader does (tools/check-test-lib.f
-  `check/operand-name-admitted`, `-refused`). A definer or a parsing word with
-  nothing after it has no name: the loader refuses it, and `tools/check.f`
-  refuses it at that word by one record in every mode, `E-MISSING-NAME`. The
-  nominal pass finds the eleven definers it reads and `undefine` in the subject;
-  the pre-verifier stops with `VERIFY:E-MISSING-NAME` at any other (`defer`,
-  `create`, a learned definer, `char`, `'`, a field word) and at any in a file
-  the subject loads, and check.f writes the nominal pass's record for that token
-  (`check/operand-missing`, `check/nested-stop-located`,
-  `check/verify-only-located`); under `--verify-only` it is the last line of
-  `CHECK:VERIFY-OUT$`, which the language server publishes (lsp-test
-  `missing-name`).
-- **A `create … does>` definer teaches the checker what its words are, whether
-  or not its text was read.** A definer the source pre-verifier READ is learned
-  from the clause text (`verify-source.f` `DEFINER-EFFECT`). A RESIDENT one —
-  compiled in the checking process, its text never scanned — is known because
-  the checker latches the created-word effect when it certifies the clause at
-  the definer's `;` and stores it against the definer's symbol (`checker.f`
-  `DOES-EFF-LATCH!`, the NORETS entry's CREATES cell); `NG-BUFFER`
-  (src/lib/type/deftype.f:61) certifies through it. A straight-line wrapper read
-  from source inherits the same row from the text. A wrapper of a RESIDENT
-  definer is learned by the checker's own body walk (`checker.f`
-  `WRAPN`/`WRAPC`/ `WRAPBENT`, taken by the same publish tail): a body that
-  calls exactly one definer and never bends — no control frame, quotation,
-  `exit`, `leave` or `recurse` — creates what that definer creates, so
-  `CODEGEN:BUFFER` around `BUFFER-E` is a definer too, and `tools/check.f
-  src/lib/process-env-test.f` certifies `PROC-ENV-DIAG` (src/lib/process-env.f:93).
-  `TRUSTED:` changes neither answer: a trusted body is asserted, not checked,
-  but its `does>` clause is still the declaration both paths record — the
-  scanner reads the clause out of the trusted body (`verify-source.f`
-  `SCAN-TRUSTED-BODY`) and the engine takes the latch at the trusted publication
-  (`checker.f` `TRUST-DECL`). With a `TRUSTED: TD ( n -- ) create , does> ( --
-  ptr n ) ;` in a required module, `5 MOD:TD W  : G ( -- n ) W ;` is the
-  `E-MISMATCH` the effect deserves, not `E-UNDEFINED`, and `TASK:MIN-STACK
-  TASK:TASK T1  : F ( -- ptr n ) T1 ;` certifies.
-- **A word whose body reaches `INCLUDE-EVALUATE` defines words the source
-  pre-pass cannot see; the run checks the uses the source does not declare.**
-  `FUNCTION:`/`;FUNCTION`, `CMD:COMMAND` and `TASK:+USER` render a definition
-  and hand it to the loader's evaluate boundary, so no source text spells the
-  product. The checker carries `CTL-RENDERS` on `INCLUDE-EVALUATE`, `evaluate`
-  and `evaluate-closed` by axiom and on every checked body that calls a flagged
-  word (`checker.f` `NORET-AXIOMS`, `INHSET`). When the pre-pass meets a
-  top-level statement naming such a word it marks the wordlist the statement
-  runs in, which is where the loader compiles the product; a later definition
-  naming a word nothing resolves, looked up through a marked wordlist, gets
-  `CHECK` verdict 2: its declared signature recorded for its callers, its body
-  left to the `bin/hb --load` run that check.f performs next (`checker.f`
-  `UNSEEN-MARK$`, `UNSEEN-COVERS?`). `--verify-only`, which runs nothing,
-  reports the definition as `W-CHECK-DEFERRED` at the token where the checker's
-  judgment of the body stops (`CHECKER-VERIFY-DEFERRED-BODY`) and answers
-  `deferred` when nothing is refused. A product the source declares
-  resolves, so the pre-pass checks its uses itself: `FUNCTION:`'s word against
-  its declaration group and the word a `generates:` row declares against the
-  row (the next rule).
-  Measured: `require src/lib/ffi-abi.f  PROCESS-SYMBOLS  FUNCTION: G getpid ( --
-  i32 ) ;FUNCTION  : H ( -- n ) G ;` loads 0 and checked 70 (`E-UNDEFINED`
-  `G`) before, 0 after; `SELF-PATH` (src/lib/engine-id.f:48, used at :87), `CTX0`
-  (src/lib/process-command.f:441), `EVP-STORAGE` (src/lib/crypto/evp.f:134) and
-  `MY-SLOT` (src/lib/net/http-arena.f:120) were refused and pass. A misuse of a
-  product the mark covers is the run's `E-MISMATCH` (exit 70) and a typo in the
-  same scope the run's `E-UNDEFINED`; `--verify-only`, which does not run,
-  passes both. The mark covers only what follows the statement and only
-  its own section: a use before it, from another package, or of a private
-  product from outside its package is still refused by the pre-pass. It also
-  covers any other unresolved name there: in src/lib/aio-macos.f, private `AIO`
-  after its `FUNCTION:` rows, the require-order miss of `REC-STATE@` (:64) is
-  now the run's to judge. A `trust` row naming a word nothing defines where
-  its record lands is the run's only under a mark in that same wordlist: the
-  open section's, or the global one outside a package, for a bare name, PKG's
-  public one for PKG:TAIL. A mark only a use walks to, the global one from
-  inside a package or a used public's, leaves the row refused (`checker.f`
-  `CHECKER-VERIFY-TRUST`). `--verify-only` reports the row as
-  `W-CHECK-DEFERRED` at its name and records no effect, so each use stays the
-  run's, and a misspelt name there is the load's `E-TRUST-UNRESOLVED` (exit
-  70). Measured: `: L ( -- ) s" : DW ( -- n ) 1 ;" evaluate-closed ;  L  s" DW"
-  s" -- n" TRUST  : U ( -- n ) DW ;` loads 0 and checked 70
-  (`E-TRUST-UNRESOLVED` `DW`) before, 0 now; tools/image-bytes-test.f was
-  refused at each of its 22 rows. A definer's created words keep its `does>` clause's
-  declared effect when the clause or the definer's own body is deferred; the
-  run judges the deferred text (verify-source.f `VERIFY-DOES`). A `TRUSTED:`
-  body is not checked, but the pre-pass binds its calls, so a trusted wrapper
-  of `evaluate` renders (the top-level rule below):
-  `TRUSTED: EVW ( -- ) s" : EVQ ( -- n ) 2 ;" evaluate ;  EVW  : V ( -- n )
-  EVQ ;` loads 0 and checked 70 (`E-UNDEFINED` `EVQ` in `V`) before, 0 now. A
-  straight-line wrapper around a definer is learned only from a certified body
-  (verify-source.f `VERIFY-WRAPPER`), but one whose body is deferred keeps the
-  flags of the calls it binds, and a statement no definer takes marks its
-  wordlist when its word reaches `create` (the top-level rule below): with
-  `CKR-SEVEN` a product of package `P`'s public section, `: DEFR ( n -- )
-  create , does> ( -- n ) @ ;  : MK ( n -- ) P:CKR-SEVEN + DEFR ;  5 MK Y  : V
-  ( -- n ) Y ;` loads 0 and checked 70 (`E-UNDEFINED` `Y` in `V`) before, 0
-  now. Two limits remain. An evaluate reached through a `defer` or an executed
-  xt is not seen, so it makes no caller a renderer (the top-level rule's first
-  limit). A word the checker already holds resolves before any mark is asked,
-  so a product shadowing it is judged against that word, a refusal the load
-  does not make: every engine word on bin/hb, which carries no seeded pool, and
-  every row a seeded engine has taken. A product `BYTE-COPY` or `BYTE-CHECK-N`
-  used in `package P private` loads 0 and checks 70 (`E-INPUT-UNDERFLOW`).
-- **A definer that writes its word as text states what it makes with
-  `generates:`.** `+USER` (src/lib/task.f) and `COMMAND` (src/lib/process-command.f)
-  build a colon definition and run it through `INCLUDE-EVALUATE`, so no `does>`
-  clause declares their words, and without a row the mark above leaves every
-  use of them to the run. `generates: D ( effect )` at top level, after D's
-  definition, is that declaration: the engine stores the effect on D's CREATES
-  cell (`checker.f` `CHECKER-GENERATES`) and the source pre-verifier records it
-  from the text (`verify-source.f` `RECORD-GENERATES`), so every word D makes
-  has that effect, as a `does>` definer's words have their clause's, and the
-  pre-pass checks its uses. `FUNCTION:` (src/lib/ffi-abi.f) needs no row: the
-  pre-verifier reads its declaration group as the word's effect, an `i32`
-  result as `n`. A statement naming D still marks its wordlist, so what the row
-  does not declare stays the run's: `COMMAND`'s row declares `NAME`, not
-  `NAME#VEC` or `NAME#BUF`. A call of D is no coverage gap for
-  `--verify-only` or `VERIFY:DEFERRED?`, whether the check reads D's row or the
-  engine provides D, as it does `TASK:+USER`: the checker keeps a row's origin
-  with D's created effect (`CTL-GENERATES`), so an `EXPORT` of an
-  engine-provided D keeps it too, while an `EXPORT` of a D the check reads
-  stays the run's. Nor is a `;FUNCTION` that closes a declaration group the
-  check read a gap. A word no row or group declares stays the run's where a
-  later token uses it, and a `;FUNCTION` with no group read before it is a gap.
-  A reached renderer no row or group declares is `W-CHECK-DEFERRED` at its
-  token, so a `deferred` verdict always locates its gap.
-  Measured after `require src/lib/process-command.f
-  CMD:COMMAND C`: `: U ( -- ptr ptr u8 ) C ;`, the same with `C#VEC`, and
-  `: U ( -- ) C#BUF drop ;` check 0 plain, under `--verify-only` and under
-  `--all-errors`; `: U ( -- n ) C ;` checks 70 under all three, where without
-  the row `--verify-only` passed it, and `: U ( -- n ) C#VEC ;` is still the
-  run's (70 plain, 0 under `--verify-only`). A `+USER` slot and a `FUNCTION:`
-  word measure as `C` does. The row is a claim, not a proof: it never touches
-  the made word's own effect, so a caller that contradicts the row is the
-  pre-verifier's `E-MISMATCH`, a caller that agrees with a lying row is refused
-  when the file loads, against the word the text really defines, and a name D
-  never makes is still `E-UNDEFINED` there. `generates:` refuses with
-  `E-GENERATES-ROW` (7153; `tools/check.f` exits 70 in every mode) when
-  D names no word there, when D already states what it makes (its `does>`
-  clause, an earlier row, or the definer it wraps), or when the effect does
-  not parse (`( -- i32 )`); a D the used scopes refuse is that refusal
-  (`E-USING-SHADOW-GLOBAL`, 7141; `E-USING-AMBIGUOUS`, 7144). The load and
-  every `tools/check.f` mode read a row alike, as a definition head is read
-  (`checker.f` `CHECKER-SIG-SPAN`, the rule of `habu2.f` `C-SIG-START` and
-  `C-SIG-END`): D is the next blank-delimited token, a comment opener too; the
-  effect opens at a `(` past the blanks, glued to a token or not, and closes at
-  the first `)` byte, whatever it is glued to or followed by, and a line feed
-  inside it stays in the token it ends, so `( -- n` LF `)` is refused as a `:`
-  head spelled so is. An effect holds at most 256 bytes (`GENR-SIG-CAP`): a
-  longer one dies 76 in the load and 74 in the pre-pass. `undefine D` retires
-  D's row with D's other facts, so a D defined again states what it makes
-  afresh. `tools/check.f` certifies `src/lib/process-command.f` and
-  `src/lib/process-task-test.f`.
-- **A top-level token is checked as the load would run it, and nothing runs.**
-  Under composition, in `tools/check.f`'s pre-pass, `--all-errors` and
-  `--verify-only`, a top-level token the source pre-pass does not read as part
-  of a statement (a definition, a loader, a declaration its table reads) is
-  one the load runs, and `'` ticks the next. The pre-pass asks the checker
-  about each in source order, over the declarations made before it
-  (`verify-source.f` `TOP-TOKEN`, `checker.f` `CHECKER-VERIFY-TOP`). A number
-  the engine's reader takes is no name: the pre-pass asks `num-parse`, the
-  routine the interpreter's number step runs, so `-3`, `$FF` and `1.5` load
-  and check, and `99999999999999999999`, `1.` and `$GG` are refused at both,
-  `E-UNDEFINED` by the load and `E-UNDEFINED-TOP-LEVEL` by the check. Any
-  other token takes the walk a body's token takes, folding ASCII case as the
-  store does: a qualified name resolves as there, a malformed one is
-  `E-BAD-QUALIFIED-TOP-LEVEL`, and a bare token `using` shadows or makes
-  ambiguous is refused at the token by a body's rule (`DEF-REFUSED`): every
-  `tools/check.f` path exits 70, the plain check stops there, and
-  `--all-errors` and `--verify-only` go on, where `--load` exits 105 for the
-  shadow and 94 for the ambiguity. One qualified name resolves as the
-  engine's top-level find resolves it, not as a body's walk: the open
-  package's own `PKG:tail`, when its public section lacks `tail`, names a
-  global `tail` (`checker.f` `OPEN-TAIL-GLOBAL?`). The word the token names,
-  so found, is also the one whose facts say what the statement may define
-  (the mark below): one selection, `CHECKER-TOP-SYM`, answers both. A word
-  the engine binds with no effect row, such as `evaluate`, is judged by what
-  the checker holds under its global name (`ENGINE-WORD-SYM`). Measured:
-  `package QP  s" : QPW ( -- n ) 7 ;" QP:evaluate  QPW drop  ;package` loads
-  0 and is `deferred` at `QPW` under `--verify-only`. A token `using`
-  refuses names no word, as the load runs none, so it defines nothing:
-  measured, under a `using` whose package exports its own `evaluate`,
-  `s" " evaluate  : QM ( -- ) ;  NOSUCH` loads 105 at `evaluate`, and
-  `--all-errors` and `--verify-only` refuse `evaluate` and then `NOSUCH`
-  (`E-UNDEFINED-TOP-LEVEL`). Compile-only words are no top-level
-  words: `if`, `;`, `does>`, `[char]`, `[']`, `[:`, `is` and `.(` alone load
-  70 `E-UNDEFINED`. Measured before: `1 NOSUCHWORD drop`, and `FOO drop`
-  before `: FOO ( -- n ) 1 ;`, were refused only by the run, and
-  `--verify-only` called them `verified`; now each is
-  `E-UNDEFINED-TOP-LEVEL` at the token, a span (`docs/repair-diagnostics.md`),
-  before anything runs.
-  The source pre-pass ranks a tier-0 trusted-only tick before closing body
-  checks only while the compiler tier and checker owner are established. A
-  resident immediate or loader may change that context. The original
-  `require`/`include` dictionary entry is insufficient evidence: loading goes
-  through replaceable source-unit, interpreter and input providers. An
-  uncertain trusted tick reports `W-CHECK-DEFERRED`; later dependent source is
-  left to the one subject run, without publishing the uncertain definition.
-  A word that may read the source after it takes tokens no scan knows without
-  running it, and operands cross line ends, so a line is no boundary: one
-  whose body reaches `parse-name` or `create` (`CTL-PARSES`, by axiom and
-  inherited as `CTL-RENDERS` is), and a `defer`. A top-level statement no
-  definer arm takes also marks its wordlist, as a renderer does, when its word
-  reaches `create` (`CTL-CREATES`, alike) or is a `defer`, since either may
-  define the name it reads; a learned definer's statement does not, as its row
-  names the one word `create` makes. A word a top-level `create` or
-  `variable` makes only pushes its cell: it opens none, and a body that calls
-  it takes none of these flags from it (`checker.f` `TRUST-RAW`). Measured:
-  `require src/lib/test.f  1 1 T= NOSUCHX`, whose `T=` reaches src/lib/string.f's
-  `STR-MIN-I64$` through `FMT:.INT` (src/lib/fmt.f:104 `INT>NUM`), is
-  `E-UNDEFINED-TOP-LEVEL` at `NOSUCHX` under `--verify-only`, as its load
-  refuses it (rc 70), and after `: D ( n -- ) create , does> ( -- n ) @ ;
-  5 D X`, `: G ( -- n ) NOSUCH ;` is `E-UNDEFINED` at `NOSUCH` there, as its
-  load refuses it (rc 70).
-  A `TRUSTED:` body takes the flags of the calls the pre-pass binds in it, up
-  to its `does>` (`verify-source.f` `TRUSTED-CALL`), and every flag when one
-  is unbound; a body whose check is deferred keeps the flags of the calls it
-  binds. `--verify-only` reports such a word at once, at the word, as
-  `W-CHECK-DEFERRED`, and answers `deferred` when nothing is refused. What
-  the word reads may be any of the text after it, so the pre-pass keeps what
-  it found before the word and discovers nothing after it: no definition,
-  package change, loader or use, in the rest of the file or in the file whose
-  load reached it, as the skipped text may change their scope. A source
-  declaration bounds the word instead, after its definition:
-  `parses: W n` reads n tokens, `parses-through: W n ( E1 E2 )` n tokens and
-  then every token through the first one equal to a listed terminator,
-  inclusive. Tokens are counted raw, blank-delimited, as `parse-name` reads
-  them; terminators compare bytes, with no case folding or qualification;
-  `)` ends the list and cannot be in it. A `:`, definer, comment or string
-  opener, package or loader spelling among the operands is data. A file that
-  ends inside the operands leaves them consumed and the word deferred. The
-  word is still `W-CHECK-DEFERRED`, as the pre-pass never runs it, but the
-  check resumes after its operands. The row is a trusted claim, as
-  `parse-imm`'s is, never compared with the word's body. Its target is the
-  binding the top-level find selects. A target the load refuses, a word that
-  reads no source, a count that is no number of tokens, 0 or more, or a list
-  that is not a standalone `(`, terminators and a standalone `)` refuses the
-  row with `E-PARSES-ROW` (7186; a load exits 67, `--verify-only` 70), and a
-  refused row bounds nothing. A `defer`, and a primitive, which no record
-  tells apart from its replacement, stay undeclared under a row. A later
-  row for the same binding replaces it, `undefine` or a new definition drops
-  it, `EXPORT` copies it to the new name, and a word that calls the declared
-  one does not take it. The binding and effect contract belongs to the
-  source pre-pass, not the language runtime: an ordinary load checks the row
-  and keeps nothing. A word from a resident, precompiled or cached dependency
-  whose row this check did not read is undeclared. A row before the call supplies
-  its boundary only when the binding has a checker symbol and effect record.
-  The separate dependency discovery walk harvests rows over the closure
-  before following loads. Each complete harvest pass reads with a frozen set
-  of candidate rows, then disables any row whose complete evidence is unsafe.
-  The final walk uses a row by spelling only when the harvested files have
-  exactly one declaration of that word and no retirement; a bare
-  key counts declarations in every package, while a qualified key counts
-  declarations in its package. Otherwise the walk reads the token's operands
-  as source. This does not change the pre-pass's binding rule.
-  A cold captured binding may have neither: its row is accepted but not kept,
-  and its call stays opaque. Declare the row again after a checked use has
-  materialized that binding. A refused token leaves the rest of its stretch
-  unresolved and unreported, as the load stops there. A word that
-  renders source opens no stretch, as it reads only the text it renders: it
-  marks the wordlist (the rule above), and a later top-level name only that
-  text may define opens the stretch at the name. Measured:
-  `s" : EVX ( -- n ) 1 ;" evaluate  EVX drop` loads 0, checks 0, and is
-  `deferred` under `--verify-only`, with `W-CHECK-DEFERRED` at `evaluate` and
-  at `EVX`.
-  Three limits remain. A call through an execution token binds no callee, in
-  a checked body and a `TRUSTED:` one alike, so it gives its caller no facts:
-  `execute`, `catch` or `finally` of an xt, and a body's call to a `defer`,
-  such as `TDECL-EVAL-XT` (src/core/sumtype.f), the boundary through which
-  the engine's type, structure and layout definers evaluate. At top level
-  `TRUSTED: EVW ( -- ) s" : EVQ ( -- n ) 2 ;" evaluate ;  ' EVW execute  EVQ
-  drop` loads 0 and checks 70 (`E-UNDEFINED-TOP-LEVEL` `EVQ`). The tree holds 202
-  top-level `execute`, `catch` and `finally` in 42 files, 195 of them right
-  after a `'` that ticks the xt. The product of a plain `create` wrapper, one
-  with no `does>`, named in a body is deferred where the load refuses it:
-  `: MKS ( n -- ) create , ;  5 MKS Q  : USEQ ( -- n ) Q @ ;` loads 70
-  (`E-UNDEFINED` `Q` in `useq`) and is `deferred` at `MKS` under
-  `--verify-only`; the tree holds no such wrapper. The `does>` part of a
-  definer, checked or `TRUSTED:`, gives its products no facts, so the token
-  after a product whose clause parses is checked:
-  `: DEFP ( -- ) create does> ( -- ) drop parse-name 2drop ;  DEFP PP  PP
-  NOSUCH` loads 0 and checks 70 (`E-UNDEFINED-TOP-LEVEL` `NOSUCH`). Of the
-  tree's 56 `create … does>` definers (52 `:`, 4 `TRUSTED:`), one has a
-  `does>` part that reaches a parsing, rendering or defining word:
-  test/certify-does-definer.f:112 `CDD-RES-CD`, whose clause calls the
-  definer `CDD-RES-D`.
-- **A string literal before a call of a `names:` word is a use of the word it
-  names.** `names: W`, after W's definition, states that W looks its top
-  string operand ( ptr u8 n ) up as a name, as `XREF-FIND` (src/habu/xref.f)
-  does, so a string literal just before a call of W, in a body or at top
-  level, is a use of the word its bytes name, at the bytes between its
-  quotes: the verifier reports it among the uses, so the language server's
-  references list it. The engine states `names: XREF-FIND` and
-  `names: XREF-FIND-INDEX`. The name resolves as `XREF-FIND` resolves it:
-  `PKG:TAIL` is PKG's public TAIL, and a bare name the global word, never the
-  open package's private one; the word bound is the record visible where the
-  literal stands, so a word defined after it binds nothing. A computed
-  operand, a literal a caller passes on to W and a literal with an escape in
-  it, whose text is not the name its bytes spell, bind nothing. The row is a
-  trusted claim, as a `parses:` row is, never compared with W's body. It
-  marks W's symbol (`checker.f` `CTL-NAMES`), so an engine word keeps its
-  row, `EXPORT` copies it, a new definition after `undefine` drops it, and a
-  word that calls W declares its own row. A row with no target, or whose
-  target the top-level find binds to no word or to a word whose declared
-  input row does not end in the string pair `ptr u8 n` `XREF-FIND` takes, is
-  `E-NAMES-ROW` (7208; a load exits 67, `--verify-only` 70) and marks
-  nothing, so a row on the wrong word cannot make every string before that
-  word a use. A primitive, which has no record, is read by its first row.
-  Measured: after
-  `: ROOK ( -- n ) 1 ;  : LOOK ( ptr u8 n -- ) 2drop ;  names: LOOK`, the
-  verifier reports `ROOK` in `: SEEK ( -- ) s" ROOK" LOOK ;` and in
-  `: SEEK2 ( -- ) s" ROOK" XREF-FIND drop ;` as uses of ROOK, and
-  `names: NOSUCH`, `names: dup` and `names: ROOK` each load 67 and check 70
-  under `--verify-only`, while `names: type` (`( ptr u8 n -- )`) stands.
-- **A `TRUSTED:` body may answer a family value from loose cells; a checked body
-  groups its own result.** The native elaborator takes the declared row as the
-  grouping of the cells the body leaves (`elaborate.f` `TRUSTED-FRAME-RESHAPE`):
-  `TRUSTED: GWN-MAKE ( -- gwfn ) 7 1 ;` builds stripped and `MATCH`es as `gns`
-  carrying 7 (test/gate-aot-positive-lib.f `TRUSTED-ROW`); the payload sits
-  below and the tag on top. A checked body keeps the strict return check: two
-  loose cells under a row declaring one two-cell value throw `E-NELAB-JOIN`
-  (-8503, test/compiler/native-elaborate.f `RGLUE`). A count that disagrees is
-  `E-NELAB-ARITY` either way, and a forged tag is still refused where the value
-  is consumed (`hb: bad layout tag`, rc 85).
-- **A name binds one word at every tier, and that word's own facts judge it.**
-  The checker, the JIT and tier 1 ask the engine's one lookup (`scope-find`:
-  the open package, the global wordlist, then the used publics), so a word
-  redefined after `undefine`, a package word spelled like an engine word and
-  an `EXPORT` alias are each checked and called as the word they are. The
-  rules that type an engine word by what it does (`@`, `!`, `?dup`,
-  `record-at`, `create`, `variable`, …) follow the identity the engine
-  registered on that word's symbol (its `INTRINSIC` id, or `CTL-CORE-OP` for
-  the stack shuffles and zero tests), which a redefinition does not carry, and
-  the control facts a definition earns are recorded on its own symbol. After
-  `undefine dup  : dup ( n -- n ) 100 + ;`, `: T ( -- n ) 5 dup ;` leaves
-  `105` at both tiers (test/undefine-binding.f), and `package P : DIE ( ptr u8
-  n -- ) 3 die ;  : T ( -- n ) s" x" DIE 0 ;` is `E-DEAD-CODE`
-  (test/checker-dead-path-suite.f). A definition binds its own pending name
-  first, so it may reuse a name two used packages export; references to the
-  bare name stay ambiguous (test/using-test.f).
-- **A name the engine holds no word for binds nowhere in compiled code.** The
-  checker binds a token to the word the lookup finds, to the definition it
-  recorded last and the engine has not yet published, or to a keyword it types
-  by axiom (`>r`, `r@`). A name only the checker knows - a row `CHECK!` alone
-  recorded, a qualified `TRUST` row with no word behind it, a word the source
-  pre-verifier registered, a `CHECKER-EXPORT` alias - is unresolvable, bare or
-  qualified, as the compiler finds it `E-UNDEFINED`. It binds in a replay:
-  while the verifier window or a package-neutral scope
-  (`CHECKER-SCOPE-START-NEUTRAL` … `CHECKER-SCOPE-DONE`) is open, the checker's
-  overlay publishes each row the checker records as a codeless engine record
-  (`src/core/checker.f` `CHECKER-OVERLAY`), so scanned names bind while that
-  scope is open, and `VERIFY:CANDIDATE-IN-SCOPE` (`src/habu/verify-source.f`)
-  answers what the certify path says of a candidate there. Nothing is defined
-  live inside such a scope (**Rules learned by refusal**). A candidate scope
-  checks rows that publish together, so each row binds for the scope's later
-  rows until it closes: a `STRUCTURE` deriving `hash` checks a `HASH` that
-  calls its `UNMAKE` before either is published. Measured on `bin/hb`: after
-  `s" SPANX ( -- n ) 1" CHECK!`, `: C ( -- n ) SPANX ;` is `E-UNDEFINED` and
-  the candidate `C ( -- n ) SPANX` answers 1 live, as
-  `s" C ( -- n ) SPANX" CHECK!` does, and through `VERIFY:CANDIDATE-IN-SCOPE`;
-  with the row recorded inside a neutral pair, `VERIFY:CANDIDATE-IN-SCOPE`
-  answers -1 until the pair closes (test/pointer-storage-test.f);
-  `STRUCTURE der DERIVE eq hash FIELD x n ;STRUCTURE` declares and its
-  `DER:HASH` runs (test/structure-certify-suite.f).
-- **Native width depends on how the cells are used.** A 63-cell identity
-  compiles and runs in native AOT; the same 64-cell definition currently
-  refuses with `E-A64RAV-DKEEP` (-8611). At tier 1 a body may consume more
-  entry cells than the register pool holds: the entry's load run stores each
-  value it puts away right after that value's own load, so a 25-cell sum
-  compiles on Darwin ARM64, whose pool is 24 registers. The IR signature list
-  itself holds at most 64 cells: its sixty-fifth staged input or output rejects
-  with `E-IR-TYPE-ARITY` (-6688, `test/compiler/ir-type.f`). A record uses the
-  same list, with one staged value per cell. A checked 34-cell nested record
-  roundtrip and that 25-cell sum are exercised by
-  `test/compiler/native-generated-constructor.f`.
-- **`s"` reads no escapes; `S\"` does.** `S\"` needs its delimiter space
-  (`s\"\n"` is one undefined token) and reads `\u` as its own escape, so a
-  fixture holding JSON writes `\\uXXXX`.
-- **`.` ends the line.** The native `.` is newline-terminated, not
-  space-terminated: `11 . 22 . cr` emits `11\n22\n\n`, so an assertion for two
-  dotted numbers on one line never matches; digit emitters (`GT-U-TYPE`,
-  `TS-N.`) build inline text.
-- **`private` is a convention until the package seals itself, or until the
-  capture does.** Any file may reopen `package NAME private` and call its
-  internals. The protection idiom at the foot of a substrate file —
-  `get-current prot-wid-add` — seals the wordlists; after it a second file that
-  reopens the package dies at load with the package name as its whole message
-  (exit 84). The native build seals every package the engine bakes the same
-  way when it captures the image (**Packages**). Two files that belong
-  together are two packages with a one-way dependency, or one package that only
-  the last file seals.
-- **An integer becomes an address or an execution token only through a private
-  `CAST:`.** `CAST: >BYTES ( n -- ptr u8 )`, `CAST: >OP ( n -- [ n -- n ] )`
-  and, for `STRUCTURE box<a> FIELD value a ;STRUCTURE`, `( n -- box<ptr u8> )`
-  certify in a package's private section and are `E-CAST-MINT` (7147) at top
-  level or under `public`, in the source pre-pass as well: the cast asserts
-  what no check can see, so only code inside its package reaches it. Take the
-  integer from a typed source, an address from the distance
-  `B NULL-PTR BYTE-VIEW -` and an execution token from `search-wl`. A
-  type-variable pointee is `E-CAST-LINEAR` (7137): `( n -- ptr a )` would
-  forge a pointer to any nominal. The rule reads a layout's own `FIELD` and
-  variant payload types as it reads its arguments, through nested layouts: after
-  `STRUCTURE pfbox FIELD p ptr u8 ;STRUCTURE`, `CAST: >PFBOX ( n -- pfbox )`
-  is `E-CAST-MINT` at top level, since `PFBOX:UNMAKE` would hand out a
-  `ptr u8`, and certifies in a private section. A layout whose field holds
-  another package's family is `E-CAST-OWNER` outside that family's package.
-  test/cast-suite.f runs the round trips; test/cast-negative-suite.f pins the
-  refusals.
-- **Checked code mints and erases a linear token only in its declaring
-  package's private section.** `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR: ERASE ( PKG:tok
-  -- ptr n )` certify there. Under `public` they are `E-LINEAR-SCOPE` (7197);
-  in another package, at top level, or for a `DEFLINEAR` declared at top level
-  they are `E-LINEAR-OWNER` (7196); in the owner's private section, a qualified
-  name is `E-LINEAR-SCOPE` after payload and owner checks; distinct stack tails
-  are `E-CAST-ARITY` (7129); and
-  `( PKG:tok -- PKG:tok )`, `( n -- n )`,
-  `( ptr a -- PKG:tok )` or `( [ -- ] -- PKG:tok )` is `E-LINEAR-PAYLOAD`
-  (7195), in the source pre-pass and tools/check.f as well. `linear:` in a
-  checked body is refused and a private row is `E-UNDEFINED` outside its
-  package, so a checked caller gets a token only from the owner's public
-  words; a `TRUSTED:` effect naming the token is asserted, not checked.
-  test/linear-suite.f pins each refusal.
-- **A `DEFTYPE` a defining word hands out sits in the public section.** A
-  `does>` body is checked code and may publish a nominal handle directly, but
-  the child's stored signature names the type, and a private one does not
-  resolve for a reader: the definition is refused as it is made
-  (`E-BAD-STORED-SIGNATURE`), even when only the package uses the converters.
-- **A nominal error needs its own result family.** Constructing `RESULT:OK` in
-  the ok-only path leaves the err variable of `result<a,b>` free, and a free
-  variable unifies with a structural type but not with a nominal ENUM or
-  TYPEFAMILY. Declare `SUMTYPE foo-result<a>` whose ok variant carries the
-  payload and whose errors are nullary variants (the `numeric-result` idiom in
-  `src/lib/num-arithmetic.f`).
-- **An arity-1 SUMTYPE is spelled with its argument in a signature and bare in a
-  `MATCH` selector.** `family<PKG:t>` in the effect (`wrong arity for type
-  family` otherwise), `MATCH family` at the arm; never both together.
-- **A checker atom prefix reserves the whole lowercase `prefix-*` namespace.** A
-  `layout-` prefix makes an ENUM variant spelled `layout-conflict` throw 7110;
-  sweep with `rg '\bprefix-'` before choosing one. Declaration-grammar keywords
-  are reserved family names too (`ENUM policy` throws 7110), and so is a value
-  record's name (`STRUCTURE vr` after `VALUE-RECORD vr` throws 7110).
-- **`0 set-check` also disarms the compile preflight.** A program that opens
-  with it runs with neither gate. Declare the primitive instead, in the axiom
-  form the engine's own primitives use (`PRIM: name PE-… PRIM;`), and the rest
-  of the program still compiles checked.
-- **A `defer` in `src/core/checker.f` before `: TRUST` takes a pre-trust pending
-  slot.** `src/habu/layout.f PD-CAP` bounds the table; overflow dies at boot
-  with exit 72 (`C-PD-DIE-FULL`). `test/pre-trust-defer.f` checks it. Add a selector to an
-  existing hook instead (`SHADOW-DIAG-XT ( n -- )` carries two diagnostics), or
-  place the defer after `: TRUST`.
-- **A pre-hook word needs an external row in a checked body on a sealed
-  from-source engine.** The seal marks a word defined before the check hook
-  `DNAME-INT` unless a row with authority states it - a `PRIM:` axiom, or a
-  `TRUSTED:` declaration recorded after `src/core/checker.f` claims the source -
-  and a checked body naming it is refused `E-UNDEFINED`, rc 70: the sealed cold
-  host answers `E-UNDEFINED: SCHEMA-REG:SCHEMA-CON` for a colon word, which the
-  engine refuses before the checker runs. A declared row (the next rule) is not
-  one. `src/core/cell-effects.f` supplies rows for `PATH-CAP`,
-  `E-PATH-RANGE` and `SCOPE-FIND-AMBIGUOUS`. A constant without a row can be
-  read at top level into a file-owned constant (`REG-PROT-CAP constant
-  MY-CAP`); `test/cold-naming-test.f` checks the refusal and the accepted
-  forms. A pre-hook word run at top level needs an external row too: without
-  one the seal marks it `DNAME-INT` there, and a use dies `hb: internal engine
-  word: NAME`, rc 70, as `generates:` did in `src/lib/task.f` on
-  `tools/build-fixpoint.f`'s `hb-host` and `hb-stdin` before its row
-  (`src/core/checker.f`).
-- **With the hook cell empty a definition's declaration is its row, without
-  authority.** Nothing judges such a body: a cold boot's prefix up to
-  `src/core/check-hook.f` and every ordinary `0 set-check`
-  definition, at either tier. Where no live row states the symbol its
-  signature becomes an active row (`src/core/checker.f`
-  `CHECKER-DECLARED-ROW!`). Before `src/core/checker.f` claims a cold boot's
-  source no checker owns it, so the engine logs each signed `:` definition
-  (`src/habu/layout.f` `DECLARED-LOG`) and the claim records the logged rows by
-  the same rule (`CK-DECLARED-LOG-DRAIN`); a qualified definition there dies
-  `checker:`, rc 76, and a `TRUSTED:` or data word there has no row. An
-  unsealed checker (the whitebox image, and a prefix before
-  `src/core/internal-mark.f` runs) binds the row and checks callers against it
-  (against `( n -- n )` a `( -- n )` caller is `E-INPUT-UNDERFLOW` and a
-  `( n -- bool )` one `E-MISMATCH`), a sealed one refuses it
-  `E-CAP-TRUSTED`: `src/core/internal-mark.f` calls
-  `CHECKER-EFFECT-AUTHORITY:SEAL` for the product, a cold boot and every image
-  saved from either, and binding grants the row no authority
-  (`test/checker-effect-authority.f`). Where the seal also marked the word
-  internal the engine refuses the name first: `: X1 ( -- n ) FRESH ;`, a
-  pre-hook checker word, is `E-UNDEFINED: FRESH`, rc 70, on `bin/hb` and runs
-  on the whitebox image. A `TRUSTED:` declaration is the assertion and
-  carries authority at both tiers. At tier 1 the scan still runs and its own
-  row wins; ordinary compilation uses the declaration after a refused scan,
-  with the reason on stderr, and retracts the row if the native compiler then
-  refuses it. A native build instead requires the live checker's scan
-  through `src/core/check-hook.f`: a refusal throws 70 before publication and
-  the build exits 74 without a product. A definition with no signature, one the checker
-  cannot parse or one with a scope scheme records nothing; when nothing else
-  answers its arity tier 1 refuses it with the check hook's reject status
-  (rc 70). When a twin in another scope or an owner-private primitive's axiom
-  answers it, the body compiles against that arity, and one that underflows
-  it is refused `E-NELAB-UNDER` (-8304). A `catch` receives either refusal,
-  and the rows recorded before and after it stay, even a row `CHECK!`
-  recorded under its name: the rollback cuts the store back to where it
-  stood when the body reached the native compiler, and the compile window
-  (next rule) admits only the compiler's own writes, so the cut takes
-  exactly the definition's rows and none recorded before.
-  `test/checker-effect-authority.f`,
-  `test/compiler/native-hookless-reject.f`,
-  `test/native-window-declared-row.f`, `test/native-window-owner.f` and
-  `test/cold-naming-test.f` pin it.
-- **A callback cannot scan or write the checker while a definition
-  compiles.** Once the native compiler's scan returns, every row of the
-  definition is recorded, and until publication's last callback
-  (`src/compiler/native/publish.f` `LAST-CALLBACK`) only callbacks run: the
-  elaborator and backend passes, an `NBACK:OBSERVE!` observer and an
-  `NPUB:WITH-UNIT` observer. In that window the checker refuses every scan
-  (`CHECK!`, `CHECK-CANDIDATE!`) and every store write (a `generates:` row
-  among them) with `E-NCOMP-STATE` (-8570), catchable, before anything
-  moves (`src/core/checker.f` `WRITE-WINDOW`), on the certified path and
-  the hook-less one; the compiler opens the window and shuts it on every
-  exit, throws included. Type registration is a store write: a linear type,
-  value record or family (`CHECKER-DEFLINEAR`, `CHECKER-DEFRECORD`,
-  `CHECKER-DEFFAMILY`), an extent's free mark (`EXT-MARK-FREE-TAIL`) and
-  each `TYPE-FIELD-OWNER` phase are refused at the registry's appender, so
-  a type a callback registered cannot outlive the refused definition and
-  turn a later signature naming it from rejected to certified. A refused
-  `TRUSTED:` or certified definition goes
-  back to the same mark as a hook-less one, where the store stood when its
-  body reached the compiler (`src/compiler/native/compiler.f` `RETRACT`).
-  A callback's `generates:` row
-  cut with a refused definition would leave the definer naming the cut
-  record: VERIFY would predict a word it defines from whatever record later
-  took its place, and a fresh `generates:` would be refused
-  `E-GENERATES-ROW`. A callback's `CHECK!` would reset the minimum-input
-  latch the pending definition publishes, so `( n n -- n )` would publish a
-  minimum input of 0. `test/checker-effect-authority.f` pins both paths,
-  the latch and every type registry's appender.
-- **`MATCH` and the other compile keywords name words, not constants**, even
-  inside a package; a `case` default runs with the selector still on the
-  stack. Two flags are not compared with `=` (`bool bool` is refused): a test
-  asserts a flag with `TTRUE`/`TFALSE`, not `T=`. (Measured in Tender.)
-- **A quotation sees no locals and must be stack-preserving under `catch`.**
-  A value a `catch`, `finally` or locked body needs travels through storage it
-  can address; after `catch` the restored cells are not the handles that were
-  pushed, and a nominal handle cannot cross `catch` as a quotation's result —
-  a one-slot `TYPED-BUFFER` holds it. `TTHROWSQ` runs a `( -- )` quotation.
-  (Measured in Tender.)
-- **A quotation-typed LOCAL cannot be caught; the same quotation on the stack
-  can.** This is refused — `hook: non-certified definition: f at 'catch'`, rc 70
-  — because the thing being caught has to be a literal quotation:
-
-  ```forth
-  : F ( ptr u8 n [ ptr u8 n -- ] -- )
-     {: a u q :}
-     a u q catch … ;
-  ```
-
-  What is admitted is a preserving word that takes the callback as an ORDINARY
-  STACK ARGUMENT, with the literal quotation around it: `INV` under `[: INV ;]
-  catch` answers the callback's thrown code.
+- **`OPAQUE` belongs in a package's field-bearing `STRUCTURE` header.** After
+  the first field, it is `header clause after the first field` (7107); twice,
+  `a second OPAQUE clause in one declaration` (7206); without fields,
+  `opaque requires a family with fields` (7107); outside a package,
+  `OPAQUE requires a family declared in a package` (7207). An `ENUM` rejects
+  it as `unexpected token in enum declaration` (7107). A rejected declaration
+  rolls back.
+- **A checker overlay admits rows, never live namespace changes.** Between
+  `CHECKER-SCOPE-START-NEUTRAL` and `CHECKER-SCOPE-DONE`, a definer (`:`,
+  `create`, `variable`, `constant`, `defer`, `TRUSTED:`, `CAST:`), `EXPORT`, a
+  new `package`, or `wordlist` throws `ENGINE-ERROR:OVERLAY-OPEN` (rc 108) at
+  its name, before the dictionary changes (`hb: definition while a checker
+  replay is open: NAME`). `undefine` throws the same code before retiring
+  anything (`hb: undefine while a checker replay is open: NAME`). Reopening
+  an existing package is allowed. The
+  throw is catchable inside `evaluate`; the overlay still closes.
+- **A definition and a `(` comment close in the source that opened them.**
+  Files, stdin and `evaluate` strings refuse an open definition at their end
+  (`hb: source ended inside definition: NAME`) or an open comment (`hb: source
+  ended inside a ( comment`), rc 74. The first includes its stack comment,
+  locals and quotations; the definition rolls back on a caught `evaluate`.
+  An immediate word may evaluate text while a definition is open, but a `;`
+  from that text may not close the outer definition (`hb: source closed a
+  definition it did not open: NAME`, rc 74). Completed tokens in nested
+  evaluations stay compiled in the outer definition after a caught refusal.
+  The open-definition diagnostic locates the name (or `def-open` caller),
+  the open-comment diagnostic its `(`, and the foreign-close diagnostic its
+  `;`; stdin has no line location.
+- **`C2-MEM:WITH-INIT` preserves two bounds.** Its callback can declare
+  `forall<i inside [l,T],[ ... ]>`: fresh `i` is inside the byte view's
+  lifetime `l` and every scope dependency of the initial record `T`. It
+  accepts a live unique byte view and a complete, non-unique, non-stale
+  fixed-cell product. A short capacity, incompatible field schema, open,
+  unique or stale record, raw or shared authority, incompatible callback, or
+  escape of `i` refuses. On return it clears the initialized extent and
+  restores the original byte view and full bound; throw and task halt close
+  the scope.
+- **`C2-MEM:WITH-RECORDS` gives a table one owning scope.** It takes a unique
+  byte view, nonnegative count and committed, non-owning `DERIVE init` seed.
+  The product of count and committed record size must fit the original bound;
+  zero count is valid. Under `forall<i inside [l,T],...>`, its callback gets
+  opaque linear `records<p,i,a,T>`. `C2-MEM:WITH-RECORD` checks a zero-based
+  index and lends `mut-view<p,j,a,init<i,T>>` under `forall<j inside i,...>`;
+  `j` cannot escape. The element is neither reconstructed nor cleared on
+  return. Closing the table clears the complete initialized extent once and
+  restores the original bound.
+- **`C2-MEM:WITH-FIELD name` borrows an initialized field.** The name must
+  belong to the receiver's committed instantiated schema. A live unique
+  `mut-view<p,i,a,init<i,T>>` lends a child with field type `F`, fresh scope
+  `j` inside `i`, unchanged init scope `i`, and region `field(a,name)`. On
+  return it restores the exact parent without copying a record; throw and
+  task halt close the child loan.
+- **A refused storage declaration defines nothing.** `LAYOUT-BUFFER`,
+  `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE` and
+  `DYNAMIC-BUFFER` require a valid storable type and name, plus a valid count
+  where the definer takes one. Unknown,
+  malformed or missing types; missing names; names with more than one `:` or
+  in sealed packages; and an invalid literal count are `E-BAD-STORAGE` at the
+  offending token (rc 70 from `tools/check.f`). The name is on the definer's
+  line, the type starts on the name's line; a following-line token belongs to
+  the next statement. A computed count is bounded by the definer at run time
+  with catchable `E-LAYOUT-BUFFER` (7121). For example,
+  `4 TYPED-BUFFER B no-such-type` prints
+  `habu: in B: unknown type 'no-such-type'` and exits 70.
+- **Fixed `TYPED-BUFFER` elements occupy whole cells.** `2 TYPED-BUFFER TB
+  u8` is refused (`type this definer cannot store 'u8'`, rc 70). Use `n
+  BUFFER: B` for fixed bytes, yielding `( -- ptr u8 )`. `DYNAMIC-BUFFER` alone
+  stores `u8`, with byte indexing and `c@`/`c!`; `u16` is refused. `create …
+  allot`, `BUFFER:` and `TYPED-BUFFER` allocate zeroed, cell-aligned storage;
+  `allot`, `c,` and `,` do not realign following storage (see **Habu Native
+  Tooling Gotchas**).
+- **A fixed buffer's count may be a literal, `( -- n )` word or expression.**
+  The source pre-pass (`CHECKER-LBUF:COUNT-OK?`) reads a literal without
+  executing it: `0 TYPED-BUFFER B n` is `E-BAD-STORAGE` (`count outside the
+  buffer's extent`), while `$40 TYPED-BUFFER B n` checks. A single nonliteral
+  count token must resolve to a
+  no-input word producing one `n`-compatible cell; an unknown, ambiguous or
+  shadowed name, `variable`, or `( -- bool )` word is `E-BAD-STORAGE` (`count
+  resolves to no ( -- n ) word`). Expressions such as `N 2 * TYPED-BUFFER B
+  n` are evaluated by the load; `HIR:OPCODES` is a valid engine count word.
+  A `( -- n )` word whose value is zero passes
+  pre-verification but the definer throws 7121. The same count rule applies
+  to `LAYOUT-BUFFER`.
+- **Parsing operands are data.** Top-level `'` and `char`, and body `[']` and
+  `[char]`, consume the next blank-delimited token, even across lines, without
+  treating its spelling as a comment, quote, definition or reserved name.
+  Thus `char : constant COLON` and `: F ( -- n ) [char] ( ;` are valid. A
+  lexical local takes precedence byte-for-byte over a keyword of the same
+  spelling; `{: char :} char` reads the local and consumes no operand. A local
+  declared in a block dies at its closer; an enclosing local in a quotation
+  still binds and is refused there (`E-BAD-LOCAL-SHAPE`). A dictionary word
+  that parses, such as `require` or `SEE`, is resolved by scope and is not
+  inferred to be a keyword from its spelling. The source stages share
+  `SOURCE:PARSING-KEYWORD?` and `LINT-LEX:OPERAND` for raw operands;
+  `SOURCE:BLOCK-OPENER?` bounds locals.
+- **Definer names are raw `parse-name` operands.** `package (` names `(` and
+  `: \ ( -- n ) 1 ;` names `\`; they do not open a comment or line
+  comment. The type definers refuse `(` or `\` as names (`E-BAD-NOMINAL-TYPE`
+  for `DEFLINEAR` and `VALUE-RECORD`). A definer or parsing word without its
+  operand is `E-MISSING-NAME` at the keyword in every `tools/check.f` mode,
+  including `--verify-only` (`VERIFY:E-MISSING-NAME` in pre-verification).
+  The language server publishes the result through `CHECK:VERIFY-OUT$`.
+- **A `create … does>` clause declares its created words' effects.** The
+  source pre-pass learns a scanned clause; for a resident definer, the checker
+  latches the created-word effect at publication. A straight-line wrapper
+  that calls exactly one definer and has no control frame, quotation, `exit`,
+  `leave` or `recurse` inherits it (`CODEGEN:BUFFER` around `BUFFER-E` is a
+  definer). A `TRUSTED:` body's clause is a declaration even though its body
+  is asserted; `TASK:MIN-STACK TASK:TASK T1` gives T1 its declared effect.
+  The same rule applies to a
+  replacement clause (see **Structures And Enums**).
+- **Renderers can define words absent from source text.** A word whose body
+  reaches `INCLUDE-EVALUATE`, `evaluate` or `evaluate-closed` marks the
+  wordlist of its top-level call. There, a later unresolved name that may be
+  its product is checked by the subsequent `bin/hb --load` run; in
+  `--verify-only` it is `W-CHECK-DEFERRED` at the use and the verdict is
+  `deferred`. The load rejects a misspelled `trust` product as
+  `E-TRUST-UNRESOLVED`. The mark covers only later uses in that section; an earlier use,
+  other package, or inaccessible private product still refuses. A `trust` row
+  for an unknown product defers only in the wordlist where it lands, not a
+  wordlist reached through lookup. A `TRUSTED:` body carries bound calls'
+  renderer facts, and a deferred body retains the facts of calls it binds.
+  Calls through a `defer` or an executed xt expose no callee facts. A name
+  already known to the checker resolves before any renderer mark, even if the
+  generated product shadows it.
+  A reached renderer without a read declaration group or `generates:` row is
+  itself `W-CHECK-DEFERRED`, even without a later product use. A declared
+  primary product closes that gap; other generated names remain deferred at
+  their uses. Closing a read group with `;FUNCTION` is not a gap; closing one
+  whose opener was not read is. `EXPORT` preserves an engine-provided
+  definer's coverage declaration; an export of a source-scanned definer
+  remains deferred.
+- **A text-generating definer can declare its product with `generates:`.** At
+  top level, after the definer, `generates: D ( effect )` assigns every word
+  D makes that effect, as `does>` does. `FUNCTION:` instead supplies its
+  declaration group, treating an `i32` result as `n`. A `generates:` claim
+  does not define the made word; the load judges its actual effect and any
+  other products. An undefined D, duplicate declaration (including a clause
+  or inherited definer effect), or invalid effect is `E-GENERATES-ROW` (7153;
+  check rc 70). A used-scope conflict is `E-USING-SHADOW-GLOBAL` (7141) or
+  `E-USING-AMBIGUOUS` (7144). The name is one blank-delimited token; the
+  signature opens at the first `(` after blanks, attached to a token or not,
+  and closes at the first `)` byte; a line feed inside it stays in its token.
+  It is at most 256 bytes (`GENR-SIG-CAP`: load rc 76, pre-pass rc 74).
+  `CMD:COMMAND` uses this row for its primary generated word. `undefine D`
+  retires the row; `EXPORT` preserves the created-word effect.
+  `--verify-only` reports an undeclared renderer product at its use as
+  deferred; `VERIFY:DEFERRED?` exposes that state. A declared product is
+  checked against its row.
+- **Top-level source checking follows source order without executing it.** A
+  token outside a known declaration is resolved as the loader would resolve
+  it. Numbers use the engine's parser; `-3`, `$FF` and `1.5` are literals,
+  while `1.`, `$GG` and an over-bound decimal are
+  `E-UNDEFINED-TOP-LEVEL` at their tokens. Other missing names and
+  compile-only words (`if`, `;`, `does>`, `[char]`, `[']`, `[:`, `is`, `.(`)
+  get that code before execution. A malformed qualified name is
+  `E-BAD-QUALIFIED-TOP-LEVEL`; ambiguous and global-shadowing `using` names
+  get their body diagnostics, check rc 70 (load rc 94 and 105). Top-level
+  `PKG:tail` while PKG is open may find global `tail` if its public section
+  lacks one; the selected word's own facts govern subsequent parsing and
+  definitions. An uncertain resident immediate or loader may leave dependent
+  source deferred rather than publish an uncertain definition.
+- **Unknown top-level parsers stop discovery unless declared.** A word whose
+  body reaches `parse-name` or `create`, or a `defer`, may consume or define
+  following tokens. In `--verify-only`, it is `W-CHECK-DEFERRED`; later text
+  in the file or included file is not scanned because operands can cross
+  lines. A reached renderer marks its wordlist under the rule above. A source
+  row after a word's definition can bound
+  its operands: `parses: W n` consumes `n` raw tokens;
+  `parses-through: W n ( E1 E2 )` consumes those and through the first exact
+  listed terminator. `n` is nonnegative; parentheses and terminators are
+  standalone tokens, terminators are case-sensitive and `)` cannot be one.
+  The row is a trusted source-prepass claim, never a runtime
+  parser definition. Bad target, no source-reading behavior, bad count or
+  malformed list is `E-PARSES-ROW` (7186; load rc 67, verify rc 70). Later
+  rows replace earlier ones; `undefine`/redefinition drops them; `EXPORT`
+  copies them, but a calling wrapper does not inherit them. Ordinary loading
+  checks a row without retaining it. A declared call is still
+  `W-CHECK-DEFERRED`; scanning resumes after its raw operands. EOF inside
+  those operands leaves the call deferred. A `defer` and a primitive remain
+  undeclared. A resident or
+  cached dependency needs a row read by this check; discovery uses a row by
+  spelling only when its dependency closure has one declaration and no
+  retirement. A bare name counts declarations across all packages; a qualified
+  name counts only its package. Otherwise discovery reads operands as source.
+  A checked use must
+  materialize a cold captured binding before a row can bound it. Calls through
+  xts and defers remain opaque; a plain `create` wrapper without `does>` has
+  no created-word effect in checked bodies; the `does>` clause's own parsing
+  behavior gives its products no parser facts.
+- **`names: W` marks literal references W resolves.** After W's definition,
+  this row states that W looks up its top `ptr u8 n` input as a name. A
+  directly preceding unescaped string literal in a body or at top level is
+  then a use of the word spelled by its bytes. A bare name resolves globally;
+  `PKG:TAIL` selects that package's public word, and only a word already
+  visible at the literal binds. Computed strings, strings passed through a
+  caller and escaped literals bind nothing. `EXPORT` copies the claim and
+  redefinition drops it; a calling wrapper needs its own `names:` row. An
+  absent target or one without a declared trailing
+  string input is `E-NAMES-ROW` (7208; load rc 67, verify rc 70). The claim
+  is not checked against W's body. `names: XREF-FIND` and
+  `names: XREF-FIND-INDEX` are engine declarations.
+- **A `TRUSTED:` body may return loose cells as a declared family value.**
+  Payload cells sit below the tag. Native elaboration groups them by its
+  signature; a checked body must build
+  the family value explicitly (`E-NELAB-JOIN`, -8503 for loose cells). A
+  wrong cell count is `E-NELAB-ARITY` either way, and consumption still checks
+  its tag (`hb: bad layout tag`, rc 85).
+- **Binding follows the engine's selected word and its own metadata.** After
+  `undefine dup  : dup ( n -- n ) 100 + ;`, `5 dup` answers 105 at either
+  tier. Intrinsic typing belongs to the original engine word, not the new
+  spelling; the same applies to package shadows and `EXPORT` aliases. A
+  pending definition binds its own name before competing used publics. A
+  checker-only row with no engine word is `E-UNDEFINED` in compiled code;
+  neutral verifier scopes publish codeless records temporarily so candidates
+  can refer to rows recorded earlier in the scope;
+  `VERIFY:CANDIDATE-IN-SCOPE` reports that scoped result. A generated
+  `DER:HASH` may therefore call `DER:UNMAKE` before either is published
+  (see **Naming**).
+- **Native widths have separate ceilings.** A 63-cell identity compiles in
+  AOT; the same 64-cell definition currently refuses `E-A64RAV-DKEEP`
+  (-8611). The IR signature list holds 64 cells; a 65th staged input or
+  output is `E-IR-TYPE-ARITY` (-6688), with one staged value per record cell.
+  Register pressure is separate: a 25-cell sum compiles on Darwin ARM64 with
+  its 24-register pool by storing each entry value after loading it. A
+  34-cell nested record roundtrip likewise compiles and runs.
+- **Literal and output punctuation matter.** `s"` does not interpret escapes;
+  `S\"` does and needs its delimiter space (see **Habu Native Tooling
+  Gotchas**). Native `.` prints a newline: `11 . 22 . cr` emits
+  `11\n22\n\n`; use digit emitters for inline numbers.
+- **Package `private` is visibility, not sealing.** Another file may reopen
+  the package and call its private words until `get-current prot-wid-add` or
+  the native capture seals it. A sealed reopen exits 84. Multi-file owners
+  seal only after their last file (see **Packages**).
+- **A cast that introduces a pointer or xt requires a private package row.**
+  `CAST: >BYTES ( n -- ptr u8 )` and `CAST: >OP ( n -- [ n -- n ] )`
+  are `E-CAST-MINT` (7147) at top level or under `public`. A type-variable
+  pointee is `E-CAST-LINEAR` (7137), and a layout's fields carry the mint
+  and foreign-owner rules recursively: a `pfbox` whose field is `ptr u8`
+  exposes that pointer through `PFBOX:UNMAKE` (see **Structures And Enums**). A
+  `LINEAR:` token conversion similarly requires the declaring package's
+  private section; bad payload, owner or scope is respectively
+  `E-LINEAR-PAYLOAD` (7195), `E-LINEAR-OWNER` (7196) or `E-LINEAR-SCOPE`
+  (7197). A checked body cannot declare one; outside callers use the owner's
+  public words.
+- **Nominal declaration placement and inference matter.** A `DEFTYPE` handed
+  out by a definer's `does>` body must be public, so a reader can resolve the
+  stored signature; a private one is `E-BAD-STORED-SIGNATURE`. Constructing
+  only `RESULT:OK` leaves the error type variable of `result<a,b>` free;
+  that variable cannot unify with a nominal enum or family. Use a result
+  family whose error alternatives are nullary, such as
+  `SUMTYPE foo-result<a>`. Spell an arity-one family with its argument in
+  an effect (`family<PKG:t>`) and bare in `MATCH family`; the other form
+  gives `wrong arity for type family`.
+- **Atom prefixes and declaration keywords reserve family names.** An atom
+  prefix such as `layout-` claims the whole lowercase `layout-*` namespace;
+  a conflicting enum variant throws 7110. A grammar keyword such as
+  `policy` and a value-record name already registered as `vr` similarly
+  cannot name a family (`STRUCTURE vr` throws 7110).
+- **`0 set-check` also disables compile preflight.** Use a `PRIM: … PRIM;`
+  axiom for a genuine missing primitive model so later definitions remain
+  checked. A `defer` before `: TRUST` in `src/core/checker.f` consumes one
+  pre-trust slot; overflowing `PD-CAP` exits 72 at boot. Place new selectors
+  after `: TRUST` or use an existing hook.
+- **A sealed from-source prefix needs external rows for pre-hook words.** A
+  word defined before the check hook is internal without a `PRIM:` axiom or a
+  `TRUSTED:` declaration after `src/core/checker.f` claiming it. A checked
+  or top-level use is `E-UNDEFINED` or `hb: internal engine word: NAME`
+  (rc 70) before the checker runs. `PATH-CAP`, `E-PATH-RANGE` and
+  `SCOPE-FIND-AMBIGUOUS` have rows; a pre-hook colon word such as
+  `SCHEMA-REG:SCHEMA-CON` needs one. A `TRUSTED:` or data word before the
+  hook gains no such declaration. A constant without one may be read at
+  top level into a file-owned constant (`REG-PROT-CAP constant MY-CAP`). An
+  unsealed prefix can bind a signed colon word by its declaration.
+- **A signature compiled with the hook empty is a row without authority.**
+  This applies to cold prefix and `0 set-check` definitions at either tier.
+  An unsealed checker can use the declared effect to check callers, rejecting
+  a missing input as `E-INPUT-UNDERFLOW`; sealed images
+  (`CHECKER-EFFECT-AUTHORITY:SEAL`) refuse it `E-CAP-TRUSTED`, while a
+  pre-hook internal name is refused by the engine first. `TRUSTED:` asserts
+  an authoritative row. Before the checker claims a cold prefix's source,
+  signed definitions are logged for that claim; a qualified definition there
+  terminates with `checker: qualified definition before the source claim`,
+  rc 76. A signature
+  missing, unparseable or containing a scope scheme records nothing. On tier
+  1 a refused scan leaves ordinary compilation using the declaration and
+  reports the reason; a native build requires the scan and refuses before
+  publication. A failed native compile retracts only the pending definition's
+  rows, preserving prior rows, including an earlier `CHECK!` under the same
+  name. If no row supplies arity it refuses with the hook reject status
+  (rc 70); if another owner's row supplies arity but the body underflows it,
+  it is `E-NELAB-UNDER` (-8304).
+- **Native compile callbacks cannot change the checker store.** From scan
+  completion through the last publication callback (`NBACK:OBSERVE!` and
+  `NPUB:WITH-UNIT` included), scans (`CHECK!`,
+  `CHECK-CANDIDATE!`) and writes (`generates:`, `CHECKER-DEFLINEAR`,
+  `CHECKER-DEFRECORD`, `CHECKER-DEFFAMILY`, `TYPE-FIELD-OWNER` phases,
+  extent marks) throw catchable
+  `E-NCOMP-STATE` (-8570) before mutation. The window closes on every exit,
+  including throws, so a refused definition cannot leave an orphaned type or
+  row. This applies to certified and hookless compilation.
+- **`catch` requires a callable with a known effect.** Literal quotations,
+  callable ticks, quotation parameters already on the stack and fetched
+  typed quotations are admitted. A callback whose effect does not preserve
+  the stack needs a preserving wrapper, such as `[: INV ;] catch`.
+  The quotation literal must preserve stack depth (see **Checker & type
+  model**). `catch` restores both stacks' depths on throw, never their
+  contents. Read the returned code; keep handles needed for cleanup in
+  accessible storage or on proven-intact input cells.
 
   ```forth
   : INV ( ptr u8 n [ ptr u8 n -- ] -- ptr u8 n [ ptr u8 n -- ] )
@@ -2384,146 +1865,63 @@ the rule.
      a u q execute a u q ;
   ```
 
-  So a combinator that must catch its callback needs no cell to park it in
-  (src/lib/fs.f's walk), and `drop` on the quotation-typed value afterwards is
-  admitted.
-- **`catch` restores the DEPTH of both stacks and never their contents.** On a
-  throw `nv ' WORD catch` leaves `( x code )` where `x` is whatever the callee
-  left in that cell: keep every handle to release in your own locals and read
-  only the code. The checker names that read only for a caught quotation
-  LITERAL: a cell in its window — its declared fixed input prefix, on either
-  stack — keeps its input type only when every throw path of that body provably
-  left it untouched. Every other window cell is `stale<t>` after the catch, and
-  reading one is `E-STALE-READ` (repair class `keep_value_before_catch`), named
-  on the token that reads it. `test/catch-stale-suite.f` pins the rows.
-  - A stale cell may be moved, dropped or bound to an untyped local; `@`, `c@`,
-    arithmetic, a typed local and the definition's own declared output refuse an
-    unguarded read. The exact code returned by that `catch` proves its normal
-    output on the success arm of core `0=` (or the false arm of core `0<>`), so
-    that arm may read the corresponding value; a different zero, a shadowed
-    predicate, or another catch's code proves nothing. The successful value
-    stays marked as physically replaced: if a later throw passes it through an
-    enclosing catch, that catch cannot treat it as intact. A live loop back edge
-    must carry the same status proof and replacement mark as its entry, or the
-    loop is refused. Quotation application carries replacement marks on its
-    explicit outputs, including a zero-input quotation's internal result, but no
-    private success proof escapes its boundary. A declared polymorphic effect
-    transports types, not the identity of a particular catch status.
-  - The evidence is the identity of the row's term at the throw edge, not
-    unification: a quotation literal infers its window on a fresh row, so until
-    the catch site fits it the window cells are unbound variables, and `( n -- n
-    n ) [: drop 5 -99 throw ;] catch` is refused too: the value the body left is
-    a different term.
-  - A CALLEE carries its own evidence: the checker records per definition which
-    declared inputs every throw path of its body left where they were, so `( ptr
-    u8 -- ptr u8 n ) [: WMAYBE ;] catch` over `: WMAYBE ( ptr u8 -- ptr u8 ) dup
-    c@ 0= IF E-CS-BOOM throw THEN ;` keeps the address typed, while the same
-    catch of a body that drops it, swaps it, binds it to a local or overwrites
-    it on one arm still stales it. A called word that throws counts as
-    overwriting every input it declared unless its own body proved otherwise: `(
-    ptr u8 -- ptr u8 n ) [: W ;] catch` is refused for a `W ( ptr u8 -- )` that
-    drops, swaps or rebuilds the cell on any throw path — one such arm clears
-    the evidence for all of them. The evidence covers at most the top 20
-    declared inputs, a deeper one being reported not intact. A callee that BINDS
-    its inputs to locals and pushes them back restores the cells but records
-    nothing.
-  - The edge is not part of a quotation's TYPE, so it travels on a TERM: a
-    literal's, and the one `['] W` pushes, which takes W's own edge with W's own
-    evidence. `['] WMAYBE catch` keeps the address typed while `['] WSWAPT
-    catch`, R1's body as a callee, stales what it swapped, per declared input,
-    in W's own orientation. A tick bound to a local in the same body is that
-    same term and keeps the edge.
-  - Outside the rule is the route whose term is a fresh instance of a DECLARED
-    type: `catch` of a quotation parameter, of a typed `xt<effect>` cell or of a
-    `defer` keeps the window typed even when the target throws. A tick of a
-    callee that never RETURNS takes the edge but not the dead flag (the native
-    elaborator cannot reconcile a body with no result row with a tick's routine
-    ABI: `E-NELAB-QUOT`, named on the `[']`), so that catch is still the
-    fit-check against W's declared output row.
-- **A LINEAR handle cannot cross a quotation-literal `catch` at all.** Reading
-  it afterwards is `E-STALE-READ` (`expected: XML:reader actual:
-  stale<XML:reader>`) and dropping it is the linear refusal — a linear cell may
-  not be dropped, with or without a catch. `TYPED-VARIABLE V XML:reader` and `1
-  TYPED-BUFFER V XML:reader` are both refused at the declaration, so the
-  one-slot `TYPED-BUFFER` route does not apply to a linear nominal. The three
-  shapes that work: open the handle INSIDE the caught body (`src/lib/xml-test.f
-  BAD`); where the handle must SURVIVE the caught failure, name the body and
-  call `['] WORD catch` (`src/lib/byte-edit-test.f`, `src/lib/xml-test.f`
-  `CAPACITY-AND-STATE`, `src/lib/json-read-test.f JRT-CATCH-BAD`), which survives
-  exactly while WORD's own throw paths leave the handle where they found it, the
-  evidence the tick carries; or, where the failure is to propagate, catch
-  nothing and dispose of the handle in the word that ends in `throw`
-  (`test/process-pty-tty-smoke.f DEADLINE`): the throw kills that path, so the
-  arm needs no balance. `['] X catch` then a teardown, X passing the handle
-  through a word before its throw, is `E-STALE-READ`; a word that consumes the
-  handle and returns inside an `if` arm is a mismatch at `then`; consuming it
-  and throwing in the arm certifies. A MULTICELL bundle is stale as one value,
-  not as the W hidden cells that carry it: an `option<pt>` window comes back as
-  ONE `stale<option<pt>>` — one `drop` removes it, `nip`/`swap` move it, an
-  untyped local holds it and gives it back stale, and every typed use (a word
-  input, a typed local, a `MATCH`) is `E-STALE-READ` naming the logical type
-  (`test/catch-stale-suite.f CS-SECTION-BUNDLES`, `test/compiler/native-catch.f
-  CATCH-STALE-DROP`).
-- **A checked word evaluates source with `evaluate-closed`, never
-  `evaluate`.** A body naming `evaluate` is `E-UNSAFE`: its effect is the
-  text's. `evaluate-closed` runs the text on a guarded data stack of its own
-  and refuses whatever the text leaves, so its row is
-  `( ptr u8 n -- )` and `: X ( ptr u8 n -- ) evaluate-closed ;` certifies.
-  Measured (`test/compiler/native-eval.f`): `depth` in a text starts at 0;
-  `7 [: s" drop" evaluate-closed ;] catch` answers 70
-  (`hb: interpret stack underdepth: drop`) with the 7 still below it;
-  `s" 1 2" evaluate-closed` throws `E-EVAL-RESIDUE` (-3804; uncaught,
-  `hb: uncaught throw code -3804`, rc 67), and an inner text's residue reaches
-  the outer text's caller as -3804; a definition the checker refuses throws 70;
-  a text that ends inside a definition it opened, `s" : D ( -- n ) 42"
-  evaluate-closed`, is refused as every source is, rc 74 after
-  `hb: source ended inside definition: D at <path>:<line>` (uncaught, rc 74),
-  D is rolled back with the text's stack and the caller's next token is
-  interpreted, and an inner text's unfinished definition reaches the outer
-  text's caller as 74;
-  an xt the text runs cannot reach the caller's cells either: with
-  `W ( n n -- n ) +`, `5 [: s" 1 ' W execute" evaluate-closed ;] catch`
-  answers 70 (`hb: interpret stack underdepth: execute`) with the 5 intact
-  and W unfinished, as do `' W CLEAN finally`, a quotation xt and a reach in
-  an inner text, and `1 ' W catch` inside the text receives the 70 itself,
-  because one cell under the text's floor is its stack's guard page and the
-  engine throws that fault; at plain top level `1 ' W execute` is the same
-  line and rc 70, not a crash; a data-stack overflow in a text exits
-  `hb: stack bounds exceeded (data)`, rc 102, as outside one, and so does a
-  jump under the floor ([debugging.md](debugging.md)); with a task live it
-  exits `$4F` before reading the text and prints nothing, as `evaluate` does.
-  The open cases are under **Checked code and primitive boundaries**.
-- **A test takes a value out of a text with `TEST-EVAL`, never an `evaluate`
-  wrapper.** `src/lib/test.f` loads it: `TEST-EVAL:N ( ptr u8 n -- n )` evaluates a
-  text that must leave exactly one cell, `TEST-EVAL:FLAG ( ptr u8 n -- bool )`
-  reads that cell with `0<>`, and `TEST-EVAL:RC ( ptr u8 n -- n )` is the
-  text's `evaluate-closed` throw code, 0 when it loaded. N runs the text with
-  plain `evaluate` at the top level of a constant closed text, so the closed
-  floor sits under the text and N's store takes its one cell. Measured
-  (`src/lib/test/eval-test.f`): an empty text throws 70
-  (`hb: interpret stack underdepth: TEST-EVAL:N!`), `1 2` throws
-  `E-EVAL-RESIDUE`, `drop 1` throws 70 with the caller's cells intact, N runs
-  inside the text of N, `: W ( -- bool ) s" 1" TEST-EVAL:N ;` is refused
-  (`expected: bool actual: n`), and a text that ends inside a definition it
-  opened is refused at its own end, rc 74. N keeps `evaluate-closed`'s open
-  cases.
-- **No signature declares a return-stack cell, and a quotation literal is
-  sealed at its `;]`.** A definition reads only the return-stack cells it
-  pushed with `>r` and leaves the return stack as it found it. Without the
-  rule `: RC1 ( | n -- | n ) r> drop 0 >r ;` certified and ran at tier 0 and
-  failed in the native compiler at tier 1 (`E-NELAB-UNDER`), and
-  `: F ( n -- n ) [: >r ;] execute r> ;` likewise (-8304). A `|` clause other
-  than one row variable on both sides — a cell on either side, a bar on one
-  side only, or the same inside a quotation type — is refused at the
-  declaration at both tiers (`E-BAD-SIGNATURE`, or `E-BAD-STORED-SIGNATURE` for
-  `TRUSTED:`, `defer`, a `trust` row and `CAST:`; `fix_return_stack`, exit 70),
-  and a quotation literal that pushes a cell its caller pops or pops one its
-  caller pushed is refused at its `;]` (`E-REJECTED`, `fix_return_stack`).
-  A definition with no signature is held to the same rule: `: X r@ ;`
-  certified at tier 0 and failed at tier 1 (-8304); it and `: X r> ;` are
-  refused at the token (`E-REJECTED`, `fix_return_stack`).
-  Park a value with `>r … r>` inside one definition
-  (test/compiler/native-rstack-input.f).
+- **A caught literal leaves possibly overwritten inputs stale.** In its
+  fixed input window, a cell keeps its type only if every throw path leaves
+  that exact term in place. Other cells become `stale<t>`;
+  `E-STALE-READ` (`keep_value_before_catch`) rejects `@`, `c@`, arithmetic,
+  typed locals, a declared output and other typed reads. A stale value may be
+  moved, dropped (unless linear), or bound to an untyped local. The exact
+  catch code proves normal output in the success arm of core `0=` (or false
+  arm of core `0<>`); an unrelated zero, shadowed predicate or another
+  catch's code proves nothing. A later catch still treats physically replaced
+  values as replaced. Live loop back edges agree on proof and replacement
+  status. Quotation output carries replacement marks, but private success
+  proofs do not escape its boundary; polymorphic effects transport types,
+  not a particular catch's status.
+- **Callee throw evidence follows the callable term.** A callee records which
+  of its top 20 declared input cells every throw path leaves untouched;
+  deeper inputs count as not intact. A drop, swap, overwrite, or local bind
+  and pushback loses evidence. A called word that throws is assumed to
+  overwrite its declared inputs unless its own body proves otherwise. The
+  literal and `['] W` carry W's evidence, including through a local bound to
+  that same tick. A fresh declared quotation parameter, typed `xt<effect>`
+  cell or `defer` has no such edge and leaves the window typed. A tick of a
+  never-returning callee still fits against its declared output row and can
+  be `E-NELAB-QUOT` at `[']` in native elaboration.
+- **Linear and multi-cell values respect the stale boundary.** A linear
+  handle cannot cross a quotation-literal catch: reading it is
+  `E-STALE-READ`, and dropping it is a linear refusal. A typed variable or
+  buffer cannot store that linear type. Open it inside the caught body;
+  use `['] WORD catch` only when WORD's own throw paths preserve the handle;
+  or consume it before rethrowing. A multi-cell value is one logical stale
+  value (`stale<option<pt>>`): one `drop` removes it, an untyped local can
+  transport it, and a typed use or `MATCH` is `E-STALE-READ`.
+- **`evaluate-closed ( ptr u8 n -- )` isolates a checked caller's stack.**
+  A checked body calling `evaluate` is `E-UNSAFE`. Text under
+  `evaluate-closed` starts at depth 0, cannot reach caller cells even through
+  an xt, `catch` or `finally`, and must leave no cells or open definition.
+  Underflow is catchable 70; residue is `E-EVAL-RESIDUE` (-3804, uncaught
+  rc 67); an unfinished definition is rc 74. Data-stack overflow exits 102.
+  With a task live, evaluation exits `$4F` before reading text. The three
+  open cases are under **Checked code and primitive boundaries**.
+- **`TEST-EVAL` returns a measured value from text.** From
+  `src/lib/test.f`, `TEST-EVAL:N ( ptr u8 n -- n )` takes exactly one cell,
+  `TEST-EVAL:FLAG ( ptr u8 n -- bool )` applies `0<>` to it, and
+  `TEST-EVAL:RC ( ptr u8 n -- n )` returns the `evaluate-closed` throw code
+  or zero. An empty N text underflows (70), `1 2` is
+  `E-EVAL-RESIDUE`, `drop 1` underflows without touching caller cells, and
+  an unfinished definition is rc 74. N can run inside N's evaluated text.
+  The value type remains checked at the
+  caller: declaring bool for N's numeric result is `E-MISMATCH`.
+- **Return-stack cells never cross a signature or quotation boundary.** The
+  only admitted `|` notation is the same single row variable on both sides;
+  cell entries, a bar on only one side, and such entries in quotation types
+  are `E-BAD-SIGNATURE` (or `E-BAD-STORED-SIGNATURE` for `TRUSTED:`, `defer`,
+  `trust` and `CAST:`), repair `fix_return_stack`, rc 70. A literal that
+  pushes a cell for its caller to pop, or pops one the caller pushed, is
+  `E-REJECTED` at `;]`; an unsigned definition's `r@` or `r>` on an input
+  it did not push is rejected at the token. Use `>r … r>` within one
+  definition (see **Checker & type model**).
 
 ## Spans: a pointer that carries its reach
 
