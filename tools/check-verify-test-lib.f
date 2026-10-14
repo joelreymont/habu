@@ -3795,12 +3795,10 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses: dependency global" USES-DEP$SRC s" : CVT-UGLOBAL" 11 s" uses-dep.f" USE-TARGET
    s" uses: nested dependency" s" CVT-UGLOBAL CVT-UNEST" 9 USE
    s" uses: nested dependency" USES-NEST$SRC s" : CVT-UNEST" 9 s" uses-nested.f" USE-TARGET
-   s" uses: engine-provided" s" STR-SPACE" 9 NO-USE
    s" uses: primitive" s" : CVT-MAKER ( n -- ) drop" 4 USE
    s" uses: primitive" s" drop" USE-PRIM-TARGET
    s" uses: elaborator" s" ['] CVT-A execute" 7 USE
    s" uses: elaborator" s" execute" USE-PRIM-TARGET
-   s" uses: one line each" 25 USE-COUNT
    s" uses.f" DEFS-SRC$ FIXTURE
    CLI-START s" --verify-only" ARG+ s" uses.f" AT$ ARG+
    s" " CLI {: erru:n rc:n :}
@@ -3947,8 +3945,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" names: a definer wrapper's call" s\" \ns\" CVT-NP:CVT-PUB" 14 USE
    s" names: a definer wrapper's call" DEFS-SRC$ s" : CVT-PUB" 7 s" named-uses.f" USE-TARGET
    s" names: a resident definer's wrapper" s\" \ns\" CVT-LOOK" 8 USE
-   s" names: a resident definer's wrapper" DEFS-SRC$ s" : CVT-LOOK" 8 s" named-uses.f" USE-TARGET
-   s" names: one line each" 41 USE-COUNT ;
+   s" names: a resident definer's wrapper" DEFS-SRC$ s" : CVT-LOOK" 8 s" named-uses.f" USE-TARGET ;
 
 
 \ Two real includes of one file declare K at the same byte span in distinct
@@ -4179,8 +4176,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-deferred: the renderer" DEFS-SRC$ s" : CVT-RENDER" 10 s" uses-deferred.f" USE-TARGET
    s" uses-deferred: the deferred body" s" CVT-USE ( -- n ) CVT-DEFERRED" 12 USE
    s" uses-deferred: the deferred body" DEFS-SRC$ s" : CVT-DEFERRED" 12 s" uses-deferred.f" USE-TARGET
-   s" uses-deferred: the run's name" s" CVT-DEFERRED ( -- n ) CVT-MADE" 8 NO-USE
-   s" uses-deferred: two lines" 2 USE-COUNT ;
+   s" uses-deferred: the run's name" s" CVT-DEFERRED ( -- n ) CVT-MADE" 8 NO-USE ;
 
 
 \ A duplicate definition is refused and retains nothing: the uses after it

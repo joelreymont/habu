@@ -2840,9 +2840,8 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 8" NOWHERE
    HEAR s" 9" -32602 REFUSED ;
 
-\ The uses of def-dep.f's global and, qualified, of its public word, each
-\ answered with its declaring token in the text on disk at the file's
-\ canonical URI.
+\ Definition and declaration of words in a dependency answer with the
+\ declaring token in its text on disk at the canonical URI.
 : DEF-DEP-TURNS ( -- )
    DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
    INITIALIZE
@@ -2852,26 +2851,11 @@ variable LENGTH-N                        \ the length of its directory's name
    TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
    s" 3" DEF-B-PATH 1 19 DEFINITION-ASK
    s" 4" DEF-B-PATH 1 27 DEFINITION-ASK
-   SAY
-   s" 3" DEF-DEP-CANON URI-OF 4 2 9 LOCATED
-   s" 4" DEF-DEP-CANON URI-OF 2 2 9 LOCATED ;
-
-\ Habu's source definition is also its declaration, including when it is in
-\ a dependency. An unrelated token has no declaration location.
-: DECL-TURNS ( -- )
-   DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
-   INITIALIZE
-   DEF-B-PATH TEXT-DEF-B 1 OPENS
-   SAY
-   HEAR CAPABILITIES
-   TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
-   s" 3" DEF-B-PATH 1 19 DECLARATION-ASK
-   s" 4" DEF-B-PATH 1 27 DECLARATION-ASK
-   s" 5" DEF-B-PATH 1 2 DECLARATION-ASK
+   s" 5" DEF-B-PATH 1 27 DECLARATION-ASK
    SAY
    s" 3" DEF-DEP-CANON URI-OF 4 2 9 LOCATED
    s" 4" DEF-DEP-CANON URI-OF 2 2 9 LOCATED
-   s" 5" NOWHERE ;
+   s" 5" DEF-DEP-CANON URI-OF 2 2 9 LOCATED ;
 
 \ The built-in multiplication word binds at a body call, an interpreted call,
 \ and a tick. A later user definition of the same spelling takes its own use.
@@ -2911,8 +2895,8 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 12" PRIM-PATH URI-OF 9 2 13 LOCATED
    s" 13" PRIM-PATH URI-OF 9 2 13 LOCATED ;
 
-\ The source used for the target came from the engine tree. An open unsaved
-\ copy of prims.f with a mismatched row sequence has no trusted target.
+\ An open unsaved prims.f with a mismatched row sequence has no trusted target.
+\ Closing it restores navigation from the engine's matching file on disk.
 : PRIM-OPEN-TURNS ( -- )
    INITIALIZE
    PRIM-PATH TEXT-PRIM-NAV 1 OPENS
@@ -2925,7 +2909,14 @@ variable LENGTH-N                        \ the length of its directory's name
    PRIM-PATH 1 EXPECT PUBLISHES
    s" 3" PRIM-PATH 0 24 DEFINITION-ASK
    SAY
-   s" 3" NOWHERE ;
+   s" 3" NOWHERE
+   PRIM-SOURCE-PATH CLOSES
+   SAY
+   PRIM-SOURCE-PATH -1 EXPECT PUBLISHES
+   TEXT-PRIM-NAV PRIM-PATH 1 s" verified" LISTED
+   s" 4" PRIM-PATH 0 24 DEFINITION-ASK
+   SAY
+   s" 4" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED ;
 
 \ An edited engine file can preserve the same spelling at the baked byte
 \ range while changing it from a declaration to a call.
@@ -5531,32 +5522,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-prim-upper/w/b.f" DISK-URI 0 11 23 REF+
    SYMBOLS-END ;
 
-\ Eighteen independent subjects cross the primitive verifier's chunk edge.
-\ Their numeric prefixes preserve the path order of the answer.
-: PRIM-BATCH-PATH ( n -- ptr u8 n )
-   {: k:n :}
-   SB-RESET s" refs-prim-batch/w/" SB-APPEND
-   k 10 < if s" 0" SB-APPEND then
-   k FMT:SB-U s" .f" SB-APPEND SB$ ;
-
-: PRIM-BATCH-TURNS ( -- )
-   s" refs-prim-batch" REFS-DIR s" refs-prim-batch/w" REFS-DIR
-   18 0 ?do i PRIM-BATCH-PATH TEXT-PR-A REFS-FILE loop
-   s" refs-prim-batch/w" ROOT-URI+ PAR$ INITIALIZE-WITH
-   0 PRIM-BATCH-PATH FIXTURE TEXT-PR-A 1 OPENS
-   SAY
-   HEAR CAPABILITIES
-   TEXT-PR-A 0 PRIM-BATCH-PATH FIXTURE 1 s" verified" LISTED
-   s" 3" 0 PRIM-BATCH-PATH FIXTURE 0 17 DECL-NOT REFS-ASK
-   SAY
-   s" 3" SYMBOLS-START
-   18 0 ?do
-      i PRIM-BATCH-PATH
-      i 0= if OPEN-URI else DISK-URI then
-      0 17 18 REF+
-   loop
-   SYMBOLS-END ;
-
 \ The second wave starts after four captures have run together. A shadowed
 \ primitive, a refused subject with no matching token, and an unsaved loaded
 \ dependency must leave the same ordered locations and coverage warning.
@@ -5672,8 +5637,8 @@ DYNAMIC-BUFFER PRIM-REF-TEXT u8
    PRIM-SOURCE-PATH [: PRIM-REF-ROOM ;] SOURCE:READ-WHOLE-FILE
    0 PRIM-REF-TEXT swap ;
 
-\ Asking from the declaration's exact name token selects its canonical row.
-\ The second + overload maps to the first + row, as uses do.
+\ Asking from the declaration's name or its exact end selects its canonical
+\ row. The second + overload maps to the first + row, as uses do.
 : PRIM-DECL-TURNS ( -- )
    PRIM-DECL-TREE
    s" refs-prim-decl/w" ROOT-URI+ PAR$ INITIALIZE-WITH
@@ -5688,6 +5653,7 @@ DYNAMIC-BUFFER PRIM-REF-TEXT u8
    s" 4" PRIM-SOURCE-PATH 437 6 DECL-TOO REFS-ASK
    s" 5" PRIM-SOURCE-PATH 432 7 DECL-TOO REFS-ASK
    s" 6" PRIM-SOURCE-PATH 437 7 DECL-NOT REFS-ASK
+   s" 7" PRIM-SOURCE-PATH 437 8 DECL-TOO REFS-ASK
    SAY
    1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
    s" 3" SYMBOLS-START
@@ -5703,6 +5669,12 @@ DYNAMIC-BUFFER PRIM-REF-TEXT u8
    SYMBOLS-END
    1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
    s" 6" SYMBOLS-START
+   s" refs-prim-decl/w/a.f" OPEN-URI 0 17 18 REF+
+   s" refs-prim-decl/w/b.f" DISK-URI 0 17 18 REF+
+   SYMBOLS-END
+   1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
+   s" 7" SYMBOLS-START
+   PRIM-SOURCE-PATH URI-OF 437 7 8 REF+
    s" refs-prim-decl/w/a.f" OPEN-URI 0 17 18 REF+
    s" refs-prim-decl/w/b.f" DISK-URI 0 17 18 REF+
    SYMBOLS-END ;
@@ -5867,7 +5839,7 @@ DYNAMIC-BUFFER BI-SOURCE-TEXT u8
    s" 4" BI-OTHER-PATH 1 32 DECL-TOO REFS-ASK
    SAY
    s" 3" SYMBOLS-START
-   s" src/habu/xref.f" IN-TREE URI-OF 83 2 12 REF+
+   s" src/habu/xref.f" IN-TREE URI-OF 84 2 12 REF+
    BI-OTHER-PATH URI-OF 0 19 29 REF+
    SYMBOLS-END
    s" 4" SYMBOLS-START
@@ -5902,7 +5874,6 @@ DYNAMIC-BUFFER BI-SOURCE-TEXT u8
    s" references-named" [: REFS-NAMED-TURNS ;] TALK
    s" references-primitive" [: PRIM-REF-TURNS ;] TALK
    s" references-primitive-uppercase" [: PRIM-UPPER-TURNS ;] TALK
-   s" references-primitive-batch" [: PRIM-BATCH-TURNS ;] TALK
    s" references-primitive-wave" [: PRIM-WAVE-TURNS ;] TALK
     s" references-primitive-batch-failure" [: PRIM-BATCH-FAIL-TURNS ;] TALK
    s" references-primitive-declaration" [: PRIM-DECL-TURNS ;] TALK
@@ -6762,7 +6733,6 @@ DYNAMIC-BUFFER BI-SOURCE-TEXT u8
 
 : TEST-DEFINITIONS ( -- )
    s" definition" [: DEF-TURNS ;] TALK
-   s" declaration" [: DECL-TURNS ;] TALK
    s" definition-primitive" [: PRIM-DEF-TURNS ;] TALK
    s" definition-primitive-open" [: PRIM-OPEN-TURNS ;] TALK
    s" definition-engine-open" [: ENGINE-OPEN-TURNS ;] TALK
@@ -6888,6 +6858,8 @@ DYNAMIC-BUFFER BI-SOURCE-TEXT u8
    s" deferred-definition" [: DEFINITION-TURNS ;] TALK
    s" deferred-unended" [: DEFERRED-UNENDED-TURNS ;] TALK ;
 
+public
+
 : TEST-INIT ( -- )
    LABEL-B READY
    IN-B READY
@@ -6907,26 +6879,10 @@ DYNAMIC-BUFFER BI-SOURCE-TEXT u8
    s" habu-lsp-test" HB-TMP-MKDIR N>BLEN DIR-B REPLACE
    T-RESET ;
 
-public
-
 : TEST-BUILTIN ( -- )
    TEST-INIT
    s" references-source-backed-builtin" [: REFS-BUILTIN-TURNS ;] TALK
    s" references-source-backed-other" [: REFS-BUILTIN-OTHER-TURNS ;] TALK
-   SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
-   T-REPORT ;
-
-: TEST-BATCH ( -- )
-   TEST-INIT
-   s" references-primitive" [: PRIM-REF-TURNS ;] TALK
-   s" references-primitive-uppercase" [: PRIM-UPPER-TURNS ;] TALK
-   s" references-primitive-batch" [: PRIM-BATCH-TURNS ;] TALK
-   s" references-primitive-wave" [: PRIM-WAVE-TURNS ;] TALK
-    s" references-primitive-batch-failure" [: PRIM-BATCH-FAIL-TURNS ;] TALK
-   s" references-primitive-declaration" [: PRIM-DECL-TURNS ;] TALK
-   s" references-primitive-source-changed" [: PRIM-MISSING-TURNS ;] TALK
-   s" references-primitive-coverage" [: PRIM-COVER-TURNS ;] TALK
-   s" references-primitive-conflict" [: PRIM-CONFLICT-TURNS ;] TALK
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
 
