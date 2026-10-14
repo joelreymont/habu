@@ -49,8 +49,8 @@ belong in the language core.
 - Use dots only when the task calls for them; they are not a gate for coding,
   commits, reviews or ordinary communication. `dot off` archives the file and
   orphans every `blocks:` edge naming it — search `.dots/` for the id first and
-  sweep the edges in the same commit. Use the session's agent messaging for
-  coordination. Do not post messages on the user's behalf without authorization.
+  sweep the edges in the same commit. Do not post messages on the user's behalf
+  without authorization.
 
 ## Language and implementation
 
