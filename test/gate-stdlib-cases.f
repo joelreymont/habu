@@ -371,10 +371,6 @@ SUITE diff-parser
    tools/lint/diff-test.f
 ;SUITE
 
-SUITE json-file-cursor
-   tools/json-file-test.f
-;SUITE
-
 SUITE imgdump-compare
    tools/imgdump-test.f
 ;SUITE
@@ -1798,6 +1794,8 @@ WHITEBOX-SUITE memory
 SUITE tail-pure-fixtures
    src/lib/json-write-test.f
    src/lib/json-read-test.f
+   src/lib/jsonl-test.f
+   src/lib/decimal-test.f
    src/lib/vector-test.f
    src/lib/byte-buffer-test.f
    src/lib/elf32-test.f

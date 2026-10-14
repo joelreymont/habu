@@ -4,6 +4,8 @@
 require src/lib/errors.f
 require src/lib/memory.f
 require src/lib/adt/result.f               \ result<root,code> for JSON-PARSE-TRY (switchover wave C)
+require src/lib/jsonl.f
+require src/lib/byte-buffer.f
 
 -7100 constant E-JSON-SYNTAX
 -7101 constant E-JSON-CAPACITY
@@ -93,9 +95,7 @@ variable JSON-GKA
 variable JSON-GKL
 variable JSON-GVAL
 
-variable JSONL-A
-variable JSONL-U
-variable JSONL-I
+TYPED-VARIABLE JSONL-CUR JSONL:cursor
 variable JSONL-LA
 variable JSONL-LU
 variable JSONL-ROOT
@@ -135,8 +135,6 @@ variable JSON-PARSE-TRY-ROOT
 : JSON-A! ( ptr u8 -- ) JSON-A JSON-PTR-U8! ;
 : JSON-GKA@ ( -- ptr u8 ) JSON-GKA JSON-PTR-U8@ ;
 : JSON-GKA! ( ptr u8 -- ) JSON-GKA JSON-PTR-U8! ;
-: JSONL-A@ ( -- ptr u8 ) JSONL-A JSON-PTR-U8@ ;
-: JSONL-A! ( ptr u8 -- ) JSONL-A JSON-PTR-U8! ;
 : JSONL-LA@ ( -- ptr u8 ) JSONL-LA JSON-PTR-U8@ ;
 : JSONL-LA! ( ptr u8 -- ) JSONL-LA JSON-PTR-U8! ;
 : JSON-STR-P! ( ptr u8 -- ) JSON-STR-P JSON-PTR-U8! ;
@@ -851,13 +849,12 @@ variable JSON-PARSE-TRY-ROOT
    JSON-TRIM-LEFT JSON-TRIM-RIGHT ;
 
 : JSONL-START-MODE ( ptr u8 i64 i64 -- )
-   {: a:ptr u mode :}
+   {: a:ptr u:n mode:n :}
    mode JSONL-MODE-STRICT <> mode JSONL-MODE-SKIP <> and IF
       s" jsonl: bad cursor mode" JSON-TYPE-ERROR
    THEN
-   a JSONL-A!
-   u JSONL-U !
-   0 JSONL-I !
+   JSONL-CUR JSONL:CLOSE
+   JSONL-CUR a u JSON-MAX-N BUF:N>BLEN JSONL:START
    0 JSONL-SKIPS !
    0 JSONL-LINE-N !
    mode JSONL-MODE ! ;
@@ -880,56 +877,39 @@ variable JSON-PARSE-TRY-ROOT
 : JSONL-SKIP-MODE? ( -- bool )
    JSONL-MODE @ JSONL-MODE-SKIP = ;
 
-: JSONL-TRUE ( -- bool )
-   0 0= ;
-
-: JSONL-FALSE ( -- bool )
-   JSONL-TRUE 0= ;
-
 : JSONL-LINE# ( -- i64 )
    JSONL-LINE-N @ ;
 
 : JSONL-LINE$ ( -- ptr u8 i64 )
    JSONL-LA@ JSONL-LU @ ;
 
-: JSONL-LINE++ ( -- )
-   JSONL-LINE-N @ 1+ JSONL-LINE-N ! ;
-
 : JSONL-TAKE-LINE ( -- bool )
-   JSONL-I @ JSONL-U @ >= IF JSONL-FALSE exit THEN
-   JSONL-I @ JSON-START !
-   begin JSONL-I @ JSONL-U @ < while
-      JSONL-A@ JSONL-I @ + c@ J-LF = IF
-         JSONL-A@ JSON-START @ +  JSONL-I @ JSON-START @ -  JSON-TRIM
+   JSONL-CUR JSONL:NEXT-LINE MATCH option
+      none OF false ENDOF
+      some OF
+         JSONL-LINE:UNMAKE {: a:ptr u:NUM:byte-len line:n :}
+         a u BUF:BLEN>N JSON-TRIM
          JSONL-LU ! JSONL-LA!
-         JSONL-I @ 1+ JSONL-I !
-         JSONL-LINE++ JSONL-TRUE exit
-      THEN
-      JSONL-I @ 1+ JSONL-I !
-   repeat
-   JSONL-A@ JSON-START @ +  JSONL-U @ JSON-START @ -  JSON-TRIM
-   JSONL-LU ! JSONL-LA!
-   JSONL-U @ JSONL-I !
-   JSONL-LINE++ JSONL-TRUE ;
-
-: JSONL-PARSE-LINE ( -- i64 )
-   JSONL-LA@ JSONL-LU @ JSON-PARSE ;
+         line JSONL-LINE-N !
+         true
+      ENDOF
+   ;MATCH ;
 
 : JSONL-PARSE-TRY ( -- result<i64,i64> )   \ ok = root node, err = the caught throw code
    JSONL-LA@ JSONL-LU @ JSON-PARSE-TRY ;
 
 : JSONL-PARSE-ROW ( -- i64 i64 i64 bool )
    JSONL-PARSE-TRY MATCH result
-     ok  OF JSONL-ROW-JSON 0 JSONL-TRUE ENDOF               \ ( root rowkind 0 true )
-     err OF -1 JSONL-ROW-ERROR rot JSONL-TRUE ENDOF          \ ( -1 rowkind code true )
+     ok  OF JSONL-ROW-JSON 0 true ENDOF               \ ( root rowkind 0 true )
+     err OF -1 JSONL-ROW-ERROR rot true ENDOF          \ ( -1 rowkind code true )
    ;MATCH ;
 
 : JSONL-NEXT-ROW ( -- i64 i64 i64 bool )
    JSONL-TAKE-LINE 0= IF
-      -1 JSONL-ROW-EOF 0 JSONL-FALSE exit
+      -1 JSONL-ROW-EOF 0 false exit
    THEN
    JSONL-LU @ 0= IF
-      -1 JSONL-ROW-BLANK 0 JSONL-TRUE exit
+      -1 JSONL-ROW-BLANK 0 true exit
    THEN
    JSONL-PARSE-ROW ;
 

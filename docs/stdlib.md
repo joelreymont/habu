@@ -17,6 +17,7 @@ Planned module files:
 - `src/lib/utf16.f`
 - `src/lib/uri.f`
 - `src/lib/json-write.f`
+- `src/lib/jsonl.f`
 - `src/lib/json-rpc.f`
 - `src/lib/map.f`
 - `src/lib/memory.f`
@@ -96,6 +97,7 @@ theirs.
 | `src/lib/fs-mutate.f` | task-local (the staged paths, FS-MUT-ABI band; the stream copy's descriptors and cursors) / process-wide (the copy buffer, so the two copy words are single-task; the cleanup registry, which any task may register into) |
 | `src/lib/json-write.f` | caller-owned |
 | `src/lib/json-read.f` | caller-owned |
+| `src/lib/jsonl.f` | caller-owned (cursor, line buffer, input and reader storage) |
 | `src/lib/utf16.f` | caller-owned |
 | `src/lib/uri.f` | caller-owned |
 | `src/lib/fd-io.f` | caller-owned (the descriptor and the span) |
@@ -793,6 +795,24 @@ buffer appends use the same rule and keep the current length in a `ptr len`
 cell. `SPLIT-NEXT` returns the next field, the next scan index, and a success
 flag.
 
+## Exact decimal parsing
+
+`src/lib/decimal.f` converts a complete byte span to `option<i64>` without
+floating-point rounding. `DECIMAL:EXACT` accepts an optional sign, decimal
+digits with single interior underscores, an optional decimal point, and an
+optional signed exponent. A decimal point needs at least one digit on one side;
+`1.` and `.5` are valid. It returns SOME only when the mathematical value is an
+integer within signed i64 range. `DECIMAL:INTEGER` accepts signed digits with
+any number of interior underscores, including `1__2`.
+It rejects points and exponents. Both return NONE for malformed or out-of-range
+text and throw `DECIMAL:E-SOURCE` for a negative length or a nonempty null span.
+Neither accepts surrounding whitespace.
+
+```forth
+DECIMAL:EXACT   ( ptr u8 n -- option<i64> )
+DECIMAL:INTEGER ( ptr u8 n -- option<i64> )
+```
+
 ## Number formatting
 
 `src/lib/fmt.f` provides `FMT:SB-HEX ( n -- )`. It appends a nonnegative integer
@@ -1056,6 +1076,7 @@ JR:VALUE-SPAN$ ( JR:reader -- JR:reader ptr u8 n )
 JR:NEXT       ( JR:reader -- JR:reader n )
 JR:INT        ( JR:reader -- JR:reader n )
 JR:FLOAT      ( JR:reader -- JR:reader r )
+JR:EXACT-INT  ( JR:reader -- JR:reader option<i64> )
 JR:STR        ( JR:reader ptr u8 n -- JR:reader n )
 JR:STR-EQ?    ( JR:reader ptr u8 n -- JR:reader bool )
 JR:SKIP-VALUE ( JR:reader -- JR:reader )
@@ -1068,6 +1089,10 @@ decodes the current string into non-null caller storage and rejects negative or
 insufficient capacity with `E-JR-STATE`. `NEXT` accepts a string token only
 after validating every escape, UTF-16 surrogate pair, and raw UTF-8 scalar.
 Token kinds remain the public `JR:T-*` constants.
+`JR:EXACT-INT` accepts the current `T-INT` or `T-FLOAT` token and converts its
+strict JSON number spelling exactly. It returns NONE for a fractional or
+out-of-range value, and throws `E-JR-STATE` on other token kinds; malformed JSON
+still fails during `NEXT`.
 VALUE-SPAN$ is valid on an object or array opener; it returns the borrowed raw
 source bytes from that opener through its matching close and leaves the reader
 positioned after the value.
@@ -1081,6 +1106,43 @@ decodes to exactly the given bytes, so `"init"` equals `init`. No buffer
 bounds the string and the reader stays on the token, which may be compared
 again. Any other token, a negative length, or a null pointer with a positive
 length is `E-JR-STATE`.
+
+## JSON Lines
+
+`src/lib/jsonl.f` frames a memory span or a file as physical lines. Allocate
+each `JSONL:cursor` with `TYPED-VARIABLE` or `TYPED-BUFFER`; its zero state is
+closed. `START` borrows memory bytes, while `OPEN` owns a file descriptor. Each
+open cursor also owns a growable line buffer, an 8 KiB file input block and
+fixed backing for `JR:reader`. `CLOSE` releases these resources and is
+idempotent. `WITH-FILE` closes on return or catchable throw, and a cleanup
+failure supersedes a callback failure.
+
+```forth
+JSONL:START     ( ptr JSONL:cursor ptr u8 n NUM:byte-len -- )
+JSONL:OPEN      ( ptr JSONL:cursor ptr u8 n NUM:byte-len -- )
+JSONL:NEXT-LINE ( ptr JSONL:cursor -- option<JSONL:line> )
+JSONL:NEXT      ( ptr JSONL:cursor -- option<JSONL:line> )
+JSONL:READER    ( ptr JSONL:cursor -- JR:reader )
+JSONL:CLOSE     ( ptr JSONL:cursor -- )
+JSONL:WITH-FILE ( R ptr JSONL:cursor ptr u8 n NUM:byte-len
+                  [ R ptr JSONL:cursor -- R ptr JSONL:cursor ] -- R )
+```
+
+`JSONL:line` carries `ptr u8`, `NUM:byte-len`, and a physical line number
+starting at one. `NEXT-LINE` returns empty physical lines; `NEXT` skips only
+zero-length lines. The inclusive limit counts raw bytes, including CR and
+excluding LF. Empty input has no lines; a final LF does not invent another
+empty line, and a final unterminated nonempty line is returned. No whitespace
+is trimmed and no JSON is parsed by framing itself. `READER` creates a fresh
+linear JR token over the current borrowed line. Only one reader may be live
+per cursor. Call `JR:CLOSE` before opening another reader, advancing or closing
+the cursor, or reusing its source or reader backing storage. A file line is borrowed
+until the next advance or close; the source of a memory cursor must remain
+live for its whole open lifetime. EOF closes the descriptor while retaining
+the last returned line until the next advance or close. The named framing
+errors are `JSONL:E-STATE`, `JSONL:E-SOURCE`, and `JSONL:E-LIMIT`; file and
+allocation errors retain their owning library codes. The `WITH-FILE` callback
+returns the same cursor pointer it received.
 
 ## JSON-RPC
 

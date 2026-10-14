@@ -14,7 +14,7 @@
 \ throw in the -3900..-3999 JSON-reader block.
 \
 \ The parser lives in `package JR`. External callers use the qualified public API
-\ (JR:INIT, JR:CLOSE, JR:NEXT, JR:TOKEN, JR:SPAN$, JR:VALUE-SPAN$, JR:INT, JR:FLOAT, JR:STR,
+\ (JR:INIT, JR:CLOSE, JR:NEXT, JR:TOKEN, JR:SPAN$, JR:VALUE-SPAN$, JR:INT, JR:FLOAT, JR:EXACT-INT, JR:STR,
 \ JR:STR-EQ?, JR:SKIP-VALUE, JR:FIND-KEY) and the qualified token kinds (JR:T-OBJ ..
 \ JR:T-END). Callers allocate JR:STORAGE-BYTES at a cell-aligned address and keep
 \ both storage and source live and exclusive until CLOSE. The byte constants,
@@ -36,6 +36,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/float.f
+require src/lib/decimal.f
 require src/lib/adt/option.f                 \ option<NUM:index> for STR:INDEX-OF (switchover wave A)
 
 \ JSON reader: -3900..-3999, minted here beside the package its last three codes
@@ -668,6 +669,10 @@ private
      some OF ENDOF
    ;MATCH ;
 
+: EXACT-INT-INNER ( ptr n -- option<i64> ) {: state:ptr :}
+   state KIND-OFF + @ dup T-INT = swap T-FLOAT = or 0= if E-JR-STATE throw then
+   state RAW-SPAN$ DECIMAL:EXACT ;
+
 public
 
 : INT ( JR:reader -- JR:reader n )
@@ -675,6 +680,9 @@ public
 
 : FLOAT ( JR:reader -- JR:reader r )
    READER>STATE FLOAT-INNER ;
+
+: EXACT-INT ( JR:reader -- JR:reader option<i64> )
+   READER>STATE EXACT-INT-INNER ;
 
 private
 

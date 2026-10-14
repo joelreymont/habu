@@ -302,7 +302,7 @@ create LF-BYTE 10 c,
 : RUN-CURRENT ( -- n n n )
    LINT-FALSE CORE-SETUP
    s" tools/checked-boundary-lint.f" CHECKED-BOUNDARY-LINT:FILE
-   s" tools/json-file.f" CHECKED-BOUNDARY-LINT:FILE
+   s" src/lib/jsonl.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/checked-boundary-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/hook-sites.f" CHECKED-BOUNDARY-LINT:FILE
    CORE-FINISH ;

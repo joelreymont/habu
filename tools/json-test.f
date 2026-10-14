@@ -4,6 +4,9 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/memory.f
 require tools/json.f
+require src/lib/jsonl.f
+require src/lib/byte-buffer.f
+require src/lib/fs.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable TEST-N
@@ -77,6 +80,40 @@ TYPED-VARIABLE TA ptr u8
 variable TU
 variable ROOT
 variable NODE
+TYPED-VARIABLE FILE-CURSOR JSONL:cursor
+
+: JSONL-FILE$ ( -- ptr u8 n )
+   s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then
+   SB-RESET SB-APPEND s" /habu-jsonl-tools-e2e.jsonl" SB-APPEND SB$ ;
+
+: FILE-ROW ( ptr JSONL:cursor -- ptr u8 n n )
+   JSONL:NEXT-LINE MATCH option
+      none OF JSONL:E-STATE throw ENDOF
+      some OF
+         JSONL-LINE:UNMAKE {: a:ptr u:NUM:byte-len line:n :}
+         a u BUF:BLEN>N line
+      ENDOF
+   ;MATCH ;
+
+: FILE-ROWS ( n ptr JSONL:cursor -- n ptr JSONL:cursor )
+   {: count:n cur:ptr :}
+   cur FILE-ROW {: a:ptr u:n line:n :}
+   line 1 ASSERT=
+   a u JSON-PARSE s" a" JSON-GET JSON-NUMBER$ s" 1" ASSERT$
+   cur FILE-ROW {: blank:ptr bu:n blank-line:n :}
+   bu 0 ASSERT= blank-line 2 ASSERT=
+   cur FILE-ROW {: bad:ptr badu:n bad-line:n :}
+   bad-line 3 ASSERT=
+   bad badu PARSE-CODE E-JSON-SYNTAX ASSERT=
+   cur FILE-ROW {: last:ptr lastu:n last-line:n :}
+   last-line 4 ASSERT=
+   last lastu JSON-PARSE s" b" JSON-GET JSON-BOOL@ ASSERT
+   count 1+ cur ;
+
+: TEST-FILE-JSONL ( -- )
+   JSONL-FILE$ s\" {\qa\q:1}\n\nbad\n{\qb\q:true}" WRITE-ALL
+   0 FILE-CURSOR JSONL-FILE$ 128 BUF:N>BLEN
+   [: FILE-ROWS ;] JSONL:WITH-FILE 1 ASSERT= ;
 
 : TA@ ( -- ptr u8 )
    TA @ ;
@@ -347,12 +384,14 @@ variable NODE
    TEST-LARGE-STRING
    TEST-STRICT-ERRORS
    TEST-PARSE-TRY
+   TEST-FILE-JSONL
    TEST-JSONL
    TEST-JSONL-BLANK-ROWS
    TEST-JSONL-MODES
    TEST-JSONL-ROW-OUTCOMES
    TEST-JSONL-FINAL-PARTIAL
    TEST-JSONL-NONSYNTAX-ERROR
-   s" json-test: ok (" type TEST-N @ 1- FMT:.INT s"  assertions)" type cr ;
+   s" json-test: ok (" type TEST-N @ 1- FMT:.INT s"  assertions); fixture: " type
+   JSONL-FILE$ type cr ;
 
 JSON-TEST

@@ -45,6 +45,18 @@ Core accessors:
 
 ## JSONL
 
+`src/lib/jsonl.f` owns JSONL framing for memory and files. Its checked
+`JSONL:cursor` API returns physical lines as `option<JSONL:line>`; each line
+contains its byte span and one-based physical number. `JSONL:NEXT` skips empty
+lines, and `JSONL:READER` opens a `JR:reader` on the current borrowed line.
+Only one reader may be live per cursor. Call `JR:CLOSE` before opening another
+reader, advancing or closing the cursor, or reusing its source or reader
+backing storage. The memory source must remain live until `JSONL:CLOSE`;
+`JSONL:WITH-FILE` closes on success and throw.
+
+`tools/json.f` uses that memory cursor for its DOM object iterator. It trims
+JSON whitespace and applies the following parser policy to each framed line:
+
 `JSONL-START-STRICT ( ptr u8 u -- )` initializes strict iteration over
 newline-separated input. `JSONL-NEXT-OBJECT ( -- node|-1 )` returns the next
 object row, skips blank rows, throws parser errors for invalid JSON/prose rows,
@@ -72,29 +84,13 @@ Returned nodes are valid until the next `JSONL-NEXT-OBJECT` or
 `JSONL-NEXT-ROW` call, because each line parse reuses the parser DOM tables and
 string arena.
 
-## JSONL Files
+## JSONL files
 
-`tools/json-file.f` adds a dynamic file-backed JSONL cursor. Load it after
-`src/lib/errors.f`, `src/lib/memory.f`, `src/lib/fs.f`, and `tools/json.f`:
-
-```sh
-bin/hb --load src/lib/errors.f src/lib/memory.f src/lib/fs.f tools/json.f tools/json-file.f my-tool.f -- rows.jsonl
-```
-
-Core words:
-
-- `JSONLF-OPEN ( ptr u8 n -- )`
-- `JSONLF-NEXT-LINE ( -- ptr u8 n bool )`
-- `JSONLF-NEXT-ROW ( -- node kind code bool )`
-- `JSONLF-LINE# ( -- n )`
-- `JSONLF-LINE-CAP ( -- n )`
-- `JSONLF-CLOSE ( -- )`
-
-The cursor reads fixed-size chunks and grows the current line through
-`src/lib/memory.f`, so JSONL rows are limited by OS allocation and parser table
-capacity, not by a fixed line buffer. Empty physical lines are reported as
-`JSONL-ROW-BLANK`, final partial lines are returned once, EOF is idempotent, and
-early `JSONLF-CLOSE` is allowed.
+Use `JSONL:OPEN` or `JSONL:WITH-FILE` from `src/lib/jsonl.f` to frame file
+input. Pass an inclusive byte limit for each physical line. The cursor reads
+8192-byte chunks and grows the current line as needed; final partial lines
+are returned once, EOF is idempotent, and early `JSONL:CLOSE` is allowed.
+Call `JSON-PARSE` on a returned line when a tool needs the DOM parser.
 
 ## Writer
 
