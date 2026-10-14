@@ -1532,6 +1532,9 @@ public
       TASK:HALTED? if
          idx ABANDON
          TASK:PAUSE
+         \ PAUSE returns when termination is deferred. The record is already
+         \ abandoned, so never read or park on it again.
+         CURLE-ABORTED >CODE CURL-CHUNK--RESULT:failed exit
       then
       idx REC R.REQUEST atomic@ REQUEST-WAITING <> if
          idx STREAM-RESULT-TAKE exit

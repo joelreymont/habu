@@ -1737,6 +1737,40 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    STOPPED? TTRUE
    HALT-HANDLE @ CURL:CLEANUP ;
 
+variable DEFER-RETURNED
+
+: DEFER-STREAM-WORK ( -- )
+   HALT-HANDLE @ CURL:STREAM-START EXPECT-OK
+   TASK:DEFER-ENTER
+   1 HALT-PARKED atomic!
+   HALT-HANDLE @ STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF 2drop ENDOF
+      response OF drop ENDOF
+      failed OF CURL:CODE>N HALT-RC ! ENDOF
+   ;MATCH
+   1 DEFER-RETURNED atomic!
+   TASK:DEFER-LEAVE
+   TASK:PAUSE ;
+
+: CASE-DEFERRED-STREAM-HALT ( -- )
+   0 HALT-PARKED ! 0 HALT-RC ! 0 DEFER-RETURNED !
+   PATH-STALL$ GET-READY HALT-HANDLE !
+   SERVER-HITS atomic@ {: before:n :}
+   ['] DEFER-STREAM-WORK HALT-TASK TASK:ACTIVATE
+   HALT-PARKED 1 REACHED? TTRUE
+   before WAIT-HIT
+   HALT-TASK TASK:HALT
+   HALT-TASK ENDED? 0= if
+      s" deferred stream halt remained parked" 99 die
+   then
+   HALT-TASK TASK:KILL
+   s" deferred halt returns cancellation before abandoning NEXT" T-LABEL
+   DEFER-RETURNED atomic@ 1 T=
+   HALT-RC @ 42 T=
+   STOPPED? TTRUE
+   HALT-HANDLE @ CURL:CLEANUP ;
+
 \ A throw after submission can reach task exit without either wait's explicit
 \ HALTED? branch. The loop must not keep a record that can wake this dead owner.
 : EARLY-WORK ( -- )
@@ -1883,6 +1917,8 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    CASE-CANCEL-STREAM-OTHER-TASK
    CASE-HALTED-STREAM
    CURL:LOOP-START EXPECT-OK
+   CASE-DEFERRED-STREAM-HALT
+   CURL:LOOP-START EXPECT-OK
    CASE-HALTED
    CURL:LOOP-START EXPECT-OK
    0 CASE-EARLY-EXIT
@@ -1899,7 +1935,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 76 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   SERVER-HITS atomic@ 77 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
