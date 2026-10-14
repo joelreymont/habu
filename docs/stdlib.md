@@ -1281,9 +1281,36 @@ Allocate cell-aligned storage with `capacity XML:STORAGE-BYTES`, then call
 source and source byte size. Keep both spans live and exclusive until
 `XML:CLOSE ( XML:reader -- )`. Raw pointers do not prove those caller promises;
 the private mint, projection and address-view leaves are the representation
-boundary. No parser allocation or process-global cursor state is involved.
+boundary. `INIT` makes no parser allocation or process-global cursor state.
 The assembled packages are sealed so callers cannot reopen their private
 representation helpers.
+
+For bounded UTF-8 input, use the same parser storage and a caller-owned chunk
+span with `XML:INIT-INPUT`. The callback writes up to the span's reach and
+returns its byte count; zero ends input, and a negative count or count beyond
+the reach throws `E-RANGE`. Its context is a `ptr n`, so a caller can keep
+source position and related state in its own cell storage. The context,
+callback, input span and parser storage stay live through `XML:CLOSE`.
+
+```forth
+XML:INIT-INPUT ( ptr n [ ptr n SPAN:span<u8> -- n ] SPAN:span<u8> ptr n n -- XML:reader )
+```
+
+The reader owns temporary storage for the current lexical event and active
+element and namespace strings, and `CLOSE` releases it after EOF or failure.
+Close a reader after a callback or parser throw, preserving that original error.
+Returned lexical views remain valid through the current event, until the next
+`NEXT` or `CLOSE`. Ordinary text may arrive in several consecutive `TEXT`
+events; concatenate decoded `TEXT` results to obtain an element's full text.
+A long start tag, comment or CDATA section can make the current event buffer
+grow, while consumed document bytes are released and active scope storage is
+reused.
+
+`RAW`, `CONTENT`, `ATTR-RAW` and `ATTR-VALUE` from this path report absolute
+physical byte offsets in the UTF-8 stream, including a leading BOM. It accepts
+UTF-8 only; the whole-source `XML:source` API retains its UTF-16 and original-byte
+mapping contract. The existing `STORAGE-BYTES` formula and `INIT`/`INIT-SOURCE`
+ownership do not change.
 
 Capacity sizes the element stack, active namespace declarations and attributes
 on one start tag. `E-DEPTH`, `E-NAMESPACES` and `E-ATTRIBUTES` identify exhaustion;
