@@ -237,6 +237,7 @@ public
 : ADD ( r r -- r ) f+ ;
 : SUB ( r r -- r ) f- ;
 : MUL ( r r -- r ) f* ;
+: DIV ( r r -- r ) f/ ;
 : EQUAL? ( r r -- bool ) f= ;
 
 \ Compare the fractional part before rounding; adding 0.5 first can round a
