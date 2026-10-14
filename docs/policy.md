@@ -94,7 +94,7 @@ After the seal a token is in the vocabulary when it is one of these.
 - A number literal: an integer in any spelling the engine reads, or a real such
   as `1.5`.
 - A local: a `{: a b:n :}` group and a reference to a name it bound.
-- One of twelve keywords: `if` `else` `then`, `{:` `:}`, `s"`, `package`
+- One of thirteen keywords: `if` `else` `then`, `{:` `:}`, `s"` `S\"`, `package`
   `public` `private` `;package`, `using` `;using`.
 - A word the sealed source defined itself, in whichever package it put it.
 - A public word of an admitted package that checked source may call. A word
@@ -103,6 +103,10 @@ After the seal a token is in the vocabulary when it is one of these.
 - With `POLICY:ROOT` set before the seal, the ordinary global `require` record
   at top level. Its path is a literal source token. The same record in a
   definition body remains refused at both tiers.
+
+`s"` and escaped `S\"` both produce `( ptr u8 n )`. The latter preserves
+embedded quotes, backslashes and UTF-8 names through source text; admitting
+it adds no loader, output or execution word to the vocabulary.
 
 Nothing else is. There is no arithmetic, no stack word, no loop, no `recurse`,
 no quotation or execution token, no definer other than `:`, no store or fetch,
@@ -132,7 +136,7 @@ harness catches.
 |---|---|
 | `require src/lib/ffi-abi.f` with the default seal; `s" f" included`, `s" 1" evaluate` | `require`, `included`, `evaluate` |
 | `trusted: X ( -- ) ;` | `trusted:` |
-| `' WORD`, `c" x"`, `." x"` | `'`, `c"`, `."` |
+| `' WORD`, `c" x"`, `C\" x"`, `." x"`, `.\" x"` | `'`, `c"`, `C\"`, `."`, `.\"` |
 | `1 +`, `!`, `execute` in a body | `+`, `!`, `execute` |
 | a public word of a package that was not admitted | the qualified name |
 | the same word through `using` | the bare name |
@@ -147,12 +151,12 @@ harness catches.
 Both tiers refuse at the same token. Tier 1 (`1 set-tier`, the native compiler)
 captures a body's text before it compiles it, and the capture admits what tier 0
 admits: a local the body declared, a record in the vocabulary, a number, and
-`if` `else` `then` `s"` `{:`, whose group ends at its `:}`. The compiler never
+`if` `else` `then` `s"` `S\"` `{:`, whose group ends at its `:}`. The compiler never
 reads a token outside the vocabulary.
 
 A definition may not be named like any keyword row the engine dispatches,
 because tier 0 would read the name as the row and tier 1 as the definition. A
-row outside the twelve keywords is refused as above; one of the twelve
+row outside the thirteen keywords is refused as above; one of the thirteen
 (`: package ( -- ) ;`) is the reserved-name refusal both tiers share,
 `hb: compile keyword cannot be a definition name: package`, exit code 70. A
 local may take any name: `{: type:n :} type` reads the local at both tiers.
