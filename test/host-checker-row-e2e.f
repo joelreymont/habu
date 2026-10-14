@@ -1,6 +1,6 @@
 \ host-checker-row-e2e.f - a host whose checker states a PRIM: row for another
 \ word than this tree does builds this tree into the same engine, with the same
-\ .names sidecar, as an engine of this tree does.
+\ .map sidecar, as an engine of this tree does.
 \
 \ WHY A ROW. The host certifies the window's prefix, src/ up to
 \ src/core/layout-valid.f, and src/core/checker.f TRANSFER-CHECKED copies each
@@ -161,10 +161,10 @@ variable RC
 
 : NAMES! ( ptr u8 n ptr u8 ptr n -- )
    {: path:ptr pathu:n dst:ptr up:ptr :}
-   pathu s" .names" nip + FS-PATH-CAP > if E-FS-PATH throw then
+   pathu s" .map" nip + FS-PATH-CAP > if E-FS-PATH throw then
    path dst pathu BYTE-COPY
-   s" .names" dst pathu + swap BYTE-COPY
-   pathu s" .names" nip + up ! ;
+   s" .map" dst pathu + swap BYTE-COPY
+   pathu s" .map" nip + up ! ;
 
 : SAME-PRODUCT ( ptr u8 n ptr u8 n -- )
    {: a:ptr au:n b:ptr bu:n :}

@@ -104,10 +104,10 @@ variable RC
    s" hb-root" AT-A EXECUTABLE? TTRUE
    s" hb-ordinary" AT-A CHMOD-X
    s" hb-ordinary" AT-A EXECUTABLE? TTRUE
-   s" hb-root.names" AT-A FILE? TTRUE
-   s" hb-root.names" AT-A {: names:ptr namesu:n :}
+   s" hb-root.map" AT-A FILE? TTRUE
+   s" hb-root.map" AT-A {: names:ptr namesu:n :}
    names TARGET namesu BYTE-COPY namesu TARGET-U !
-   TARGET TARGET-U @ s" hb-ordinary.names" AT-A COPY-FILE-STREAM ;
+   TARGET TARGET-U @ s" hb-ordinary.map" AT-A COPY-FILE-STREAM ;
 
 : RUN-IMAGE ( ptr u8 n ptr u8 n -- )
    {: image:ptr imageu:n source:ptr sourceu:n :}

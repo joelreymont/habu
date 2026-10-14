@@ -2460,7 +2460,7 @@ public
 \ Every record the capture SAW, shipped or not, read back by capture order. The
 \ image keeps the names it can be asked for and strips the rest, so a tool that
 \ needs to name the code a stripped image carries reads the map the build wrote
-\ beside it (tools/native-build-core.f writes <image>.names from these readers).
+\ beside it (tools/native-build-core.f writes <image>.map from these readers).
 \ The verbatim 48-byte records still hold every name when the driver asks, which
 \ is where the stripped ones come from.
 

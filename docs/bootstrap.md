@@ -202,7 +202,7 @@ HABU_UNDER_TEST="$HOST" HABU_FIXPOINT_ENGINE="$HOST" HB_TMP="$TMP" \
 
 Build a second product with `$OUT` as `HOST`; if those bytes differ, build
 another generation until successive products match. Keep each output private,
-with its paired `.names` file, and run the [native gate](gate.md) on the
+with its paired `.map` file, and run the [native gate](gate.md) on the
 converged product before promotion. A stale host can fail to compile an
 application against newer source while still compiling the current engine.
 

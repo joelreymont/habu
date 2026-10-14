@@ -140,7 +140,7 @@ variable EST-MAP-U
    s" habu-image-size" HB-TMP-MKDIR {: root:ptr rootu:n :}
    root rootu CLEANUP-TREE+
    root rootu s" hb" EST-IMG JOIN-PATH EST-IMG-U !
-   root rootu s" hb.names" EST-MAP JOIN-PATH EST-MAP-U !
+   root rootu s" hb.map" EST-MAP JOIN-PATH EST-MAP-U !
    SB-RESET
    S\" habu-names 1\ncolumns rec named start len wid name\n0 0 " SB-APPEND
    0 SPAN-START FMT:SB-U s"  " SB-APPEND

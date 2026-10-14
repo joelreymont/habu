@@ -52,7 +52,7 @@ variable TGT-M-U
    -1 TG-CMP-CAP TGT-COMPARE ;
 
 : TGT-MAP$ ( -- ptr u8 n )
-   TGT-ROOT$ s" a.names" TG-MAP-PATH JOIN-PATH
+   TGT-ROOT$ s" a.map" TG-MAP-PATH JOIN-PATH
    TG-MAP-PATH swap ;
 
 : TGT-NAMES ( -- )

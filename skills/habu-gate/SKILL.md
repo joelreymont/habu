@@ -8,8 +8,8 @@ description: Use when running Habu focused tests or the full native gate.
 Use native `bin/hb` for all gate work.
 
 Build a private product from the exact tree with `tools/native-build.f`, then
-copy the candidate and its `.names` file into that private tree's `bin/` as
-`hb` and `hb.names`. Run the full native gate there:
+copy the candidate and its `.map` file into that private tree's `bin/` as
+`hb` and `hb.map`. Run the full native gate there:
 
 ```sh
 bin/hb --load test/run.f

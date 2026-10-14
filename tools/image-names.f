@@ -1,4 +1,4 @@
-\ Read native-build's optional <image>.names map. Columns are addressed by
+\ Read native-build's optional <image>.map file. Columns are addressed by
 \ name; unknown versions or malformed rows supply no name. Matching a full
 \ span also checks its length, so a stale sidecar cannot label a resized body.
 require src/lib/string.f
@@ -54,13 +54,13 @@ public
 
 : LOAD ( ptr u8 n -- ) {: path:ptr pathu:n :}
    0 USED !
-   pathu 6 + FS-PATH-CAP > if E-FS-CAPACITY throw then
+   pathu 4 + FS-PATH-CAP > if E-FS-CAPACITY throw then
    path PATH pathu BYTE-COPY
-   s" .names" drop PATH pathu + 6 BYTE-COPY
-   PATH pathu 6 + FILE? 0= if exit then
-   PATH pathu 6 + FILE-SIZE {: size:n :}
+   s" .map" drop PATH pathu + 4 BYTE-COPY
+   PATH pathu 4 + FILE? 0= if exit then
+   PATH pathu 4 + FILE-SIZE {: size:n :}
    size CELL + CELL / TEXT-RESERVE
-   PATH pathu 6 + 0 TEXT BYTE-VIEW size READ-ALL size <> if
+   PATH pathu 4 + 0 TEXT BYTE-VIEW size READ-ALL size <> if
       s" image-names: short read" 74 die then
    size USED ! 0 POS !
    LINE$ s" habu-names 1" STR= 0= if 0 USED ! exit then

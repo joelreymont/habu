@@ -540,7 +540,7 @@ CAST: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
 \ strips the rest (src/habu/aot-capture.f ACAP-NAMED?). The code is all still
 \ there, so a tool that reads this image - imgdump, a debugger, an xref over a
 \ shipped engine - can still be handed a code address it cannot name. The build
-\ therefore writes the COMPLETE map beside the engine, at <image>.names: every
+\ therefore writes the COMPLETE map beside the engine, at <image>.map: every
 \ record the capture saw, stripped ones included, with the span the image kept
 \ and the name it did not.
 \
@@ -566,7 +566,7 @@ TYPED-VARIABLE NAMES-A ptr u8
 variable NAMES-CAP
 variable NAMES-U
 
-: NAMES-SUFFIX$ ( -- ptr u8 n ) s" .names" ;
+: NAMES-SUFFIX$ ( -- ptr u8 n ) s" .map" ;
 
 : NAMES-PATH! ( -- )
    OUTPUT$ {: a:ptr u:n :}

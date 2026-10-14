@@ -232,7 +232,7 @@ engine pinned at
 the dictionary-surface census reaches 5,313 anonymous spans (985,860 code
 bytes) and leaves 3,127 spans (66,980 bytes) unreachable. The engine-entry
 census reaches 4,715 spans (886,156 code bytes) and leaves 3,725 spans
-(166,684 bytes). The optional `.names` sidecar labels a matching full span;
+(166,684 bytes). The optional `.map` sidecar labels a matching full span;
 without one the report still gives the blob offset and byte count. The focused
 engine-size fixture covers both cases.
 

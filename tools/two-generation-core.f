@@ -83,7 +83,7 @@ variable TG-CMP-OFF
 variable TG-FIRST-DIFF
 variable TG-SEED-ARG
 
-\ The build emits a complete .names map, including code without shipped names.
+\ The build emits a complete .map file, including code without shipped names.
 DYNAMIC-BUFFER TG-MAP n
 create TG-MAP-PATH FS-PATH-CAP allot
 variable TG-MAP-U
@@ -309,14 +309,14 @@ variable TG-COL-NAME
    then s" " ;
 
 : TG-MAP-NAME$ ( ptr u8 n n -- ptr u8 n ) {: path:ptr pathu:n off:n :}
-   pathu 6 + FS-PATH-CAP > if E-FS-CAPACITY throw then
+   pathu 4 + FS-PATH-CAP > if E-FS-CAPACITY throw then
    path TG-MAP-PATH pathu BYTE-COPY
-   s" .names" drop TG-MAP-PATH pathu + 6 BYTE-COPY
-   TG-MAP-PATH pathu 6 + FILE? 0= if s" " exit then
-   TG-MAP-PATH pathu 6 + FILE-SIZE dup TG-MAP-U ! CELL + CELL / TG-MAP-RESERVE
+   s" .map" drop TG-MAP-PATH pathu + 4 BYTE-COPY
+   TG-MAP-PATH pathu 4 + FILE? 0= if s" " exit then
+   TG-MAP-PATH pathu 4 + FILE-SIZE dup TG-MAP-U ! CELL + CELL / TG-MAP-RESERVE
    \ A file that shrank after FILE-SIZE leaves the previous generation's bytes
    \ past the read in TG-MAP, and they would parse as this map's rows.
-   TG-MAP-PATH pathu 6 + 0 TG-MAP BYTE-VIEW TG-MAP-U @ READ-ALL
+   TG-MAP-PATH pathu 4 + 0 TG-MAP BYTE-VIEW TG-MAP-U @ READ-ALL
    TG-MAP-U @ <> if E-FS-IO throw then
    0 TG-MAP-POS !
    TG-MAP-LINE$ s" habu-names 1" STR= 0= if s" " exit then

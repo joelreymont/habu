@@ -2841,7 +2841,7 @@ public
 : DATA-OWNERS ( -- n ) DOWN-N @ ;
 
 \ File coordinates of the captured code, matching the start/len columns in
-\ native-build's .names sidecar. Valid after MEASURE on a baked engine.
+\ native-build's .map sidecar. Valid after MEASURE on a baked engine.
 : CODE-BLOB-RANGE ( -- n n ) BLOB-OFF @ BLOB-LEN @ ;
 
 \ File coordinates of a stripped image's DATA blob: its header, cell map and
