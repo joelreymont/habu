@@ -14,10 +14,12 @@ create HBT-MAKER-HB FS-PATH-CAP allot
 create HBT-MAKER-TOOL FS-PATH-CAP allot
 create HBT-MAKER-SHADOW FS-PATH-CAP allot
 create HBT-MAKER-OLD FS-PATH-CAP allot
+create HBT-MAKER-DIRECT-OUT FS-PATH-CAP allot
 variable HBT-MAKER-HB-U
 variable HBT-MAKER-TOOL-U
 variable HBT-MAKER-SHADOW-U
 variable HBT-MAKER-OLD-U
+variable HBT-MAKER-DIRECT-OUT-U
 
 : HBT-MAKER-IMAGE$ ( -- ptr u8 n )
    HBT-MAKER-IMAGE HBT-MAKER-IMAGE-U @ ;
@@ -33,6 +35,9 @@ variable HBT-MAKER-OLD-U
 
 : HBT-MAKER-OLD$ ( -- ptr u8 n )
    HBT-MAKER-OLD HBT-MAKER-OLD-U @ ;
+
+: HBT-MAKER-DIRECT-OUT$ ( -- ptr u8 n )
+   HBT-MAKER-DIRECT-OUT HBT-MAKER-DIRECT-OUT-U @ ;
 
 : HBT-MAKER-PATH-CHILD ( -- )
    SCRIPT-ARGC 3 <> if E-TBL-BOUNDS throw then
@@ -160,6 +165,56 @@ variable HBT-MAKER-OLD-U
    HBT-RUN-OUT runn s" rooted" CONTAINS? TTRUE
    s" counts" HBT-MAKER-ROOTED-ON ;
 
+\ The maker producer loads process support before the application, then the
+\ linker loads its own process support after the application. Temporary support
+\ must not spend the application's task-user band. Exercise the saved maker
+\ through hb-build and the compatibility maker directly on the public engine.
+: HBT-MAKER-USER-RUN ( ptr u8 n -- )
+   {: want:ptr wantu:n :}
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
+   HBT-AOT-OUT EXECUTABLE? TTRUE
+   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN
+      HBT-RUN-ERR HBT-CAPTURE-CAP >LEN HBT-TIMEOUT-MS >MS
+      RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rc:n :}
+   rc 0 T= errn 0 T=
+   HBT-RUN-OUT outn want wantu T$= ;
+
+: HBT-MAKER-DIRECT-RUN ( ptr u8 n -- )
+   {: want:ptr wantu:n :}
+   HBT-TMP s" hb-aot-got" HBT-MAKER-DIRECT-OUT JOIN-PATH
+      HBT-MAKER-DIRECT-OUT-U !
+   HBT-MAKER-DIRECT-OUT$ HBT-REMOVE-FILE?
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
+   s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" --" >LEN PROC-ARGV+
+   HBT-AOT-SRC >LEN PROC-ARGV+
+   s" 0" >LEN PROC-ARGV+
+   s" bin/hb" >LEN
+   S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" >LEN
+   HBT-OUT HBT-CAPTURE-CAP >LEN HBT-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
+      HBT-MAKER-CAPTURE>N {: outn:n errn:n rc:n :}
+   rc 0<> if HBT-OUT outn type HBT-ERR errn type rc throw then
+   errn 0 T=
+   HBT-MAKER-DIRECT-OUT$ EXECUTABLE? TTRUE
+   HBT-MAKER-DIRECT-OUT$ >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN
+      HBT-RUN-ERR HBT-CAPTURE-CAP >LEN HBT-TIMEOUT-MS >MS
+      RUN-CAPTURE HBT-CAPTURE>N {: runn:n rune:n runrc:n :}
+   runrc 0 T= rune 0 T=
+   HBT-RUN-OUT runn want wantu T$= ;
+
+: HBT-MAKER-USER-BAND ( -- )
+   HBT-AOT-SRC S\" require src/lib/task.f\nTASK:#USER 25 TASK:+USER APP-SLOT drop\n: MAIN ( -- ) APP-SLOT 0 swap ! s\" user-ok\" type cr ;\n" WRITE-ALL
+   S\" user-ok\n" HBT-MAKER-USER-RUN
+   S\" user-ok\n" HBT-MAKER-DIRECT-RUN
+   HBT-AOT-SRC S\" require src/lib/zip.f\n: MAIN ( -- ) s\" zip-ok\" type cr ;\n" WRITE-ALL
+   S\" zip-ok\n" HBT-MAKER-USER-RUN
+   S\" zip-ok\n" HBT-MAKER-DIRECT-RUN ;
+
 public
 
 : HBT-AOT-IMAGE-MAIN ( -- )
@@ -180,6 +235,7 @@ public
    HBT-HBB-BUILD-OUT
    HBT-AOT-OUT EXECUTABLE? TTRUE
    HBT-RUN-AOT
+   HBT-MAKER-USER-BAND
    HBT-MAKER-ROOT-EDIT
    HBT-MAKER-ROOTED-BUILD
    CLEANUP-RUN

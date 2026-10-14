@@ -1,5 +1,5 @@
-\ Fixed AOT maker support. The saved image carries the checked opener and
-\ saver, while each invocation loads the linker after the application window.
+\ Fixed AOT maker support. The producer saves the checked opener image, and
+\ each invocation loads the linker after the application window.
 1 set-tier
 require src/habu/aot-window-latch.f
 
@@ -7,6 +7,10 @@ package AOT-MAKER
 
 TYPED-VARIABLE OPEN-BODY [ -- ]
 TYPED-VARIABLE SAVE-BODY [ ptr u8 n -- ]
+variable USER-MARK
+variable SUPPORT-LIVE
+TASK:#USER USER-MARK !
+true SUPPORT-LIVE !
 
 ;package
 
@@ -98,16 +102,37 @@ CHECKER-SCOPE-DONE
 REQUIRE-REG:TRUNCATE
 
 package AOT-MAKER
+private
+
+: SAVE-RETIRED ( ptr u8 n -- )
+   2drop s" aot-maker: saved image cannot save itself" 74 die ;
+
+: RESTORE-USER ( ptr u8 -- )
+   USER-MARK @ swap CELL-VIEW ! ;
+
+\ Direct OPEN and producer SAVE retire the same temporary support once.
+: RETIRE-SUPPORT ( -- )
+   SUPPORT-LIVE @ 0= if exit then
+   false SUPPORT-LIVE !
+   ['] SAVE-RETIRED SAVE-BODY !
+   [: RESTORE-USER ;] TASK:OWNED-USER-NEXT ;
+
 public
 
-: OPEN ( -- ) OPEN-BODY @ execute ;
+: OPEN ( -- )
+   RETIRE-SUPPORT
+   OPEN-BODY @ execute ;
 
 : RUN ( -- )
    s" tools/aot-build.f" required
    s" AOT-LINK:BUILD-NATIVE" evaluate-closed ;
 
-\ Invoke from outer stdin after the maker include has returned. The capture
-\ can reset source history only after SAVE-IN-SCOPE has recorded its prefix.
-: SAVE ( ptr u8 n -- ) SAVE-BODY @ execute ;
+\ Invoke from outer stdin after the maker include has returned. The producer's
+\ saver uses process support through capture; keep its xt only for that call.
+\ The saved maker cannot call it or keep its task-user allocation.
+: SAVE ( ptr u8 n -- )
+   SAVE-BODY @ {: save :}
+   RETIRE-SUPPORT
+   save execute ;
 
 ;package
