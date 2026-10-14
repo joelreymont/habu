@@ -232,6 +232,13 @@ $413921FB00000000 constant MEDIUM-BITS     \ 2^20 * pi/2: the reduction's exact 
 
 public
 
+\ Binary64 arithmetic for callers whose admitted vocabulary excludes the
+\ global operators. These preserve the operators' IEEE behavior.
+: ADD ( r r -- r ) f+ ;
+: SUB ( r r -- r ) f- ;
+: MUL ( r r -- r ) f* ;
+: EQUAL? ( r r -- bool ) f= ;
+
 \ Compare the fractional part before rounding; adding 0.5 first can round a
 \ binary64 value immediately below the halfway point up to the next integer.
 : FROUND ( r -- n ) {: value:r :}
@@ -315,5 +322,72 @@ public
    x f0= n 0= or if x exit then
    n LDEXP-MAX min LDEXP-MIN max {: k:n :}
    x k LDEXP-STEPS FRESULT ;
+
+private
+
+\ The next representable nonnegative value is an outward bound after one
+\ rounded positive operation. Keep exact zero operands exact, but advance a
+\ nonzero product or quotient even when it rounded all the way to zero.
+: NEXT-UP ( r -- r )
+   IEEE754:F64>BITS 1+ IEEE754:BITS>F64 FRESULT ;
+
+: UP-ADD ( r r -- r ) {: a:r b:r :}
+   a f0= if b exit then
+   b f0= if a exit then
+   a b f+ FRESULT NEXT-UP ;
+
+: UP-MUL ( r r -- r ) {: a:r b:r :}
+   a f0= b f0= or if 0.0 exit then
+   a b f* FRESULT NEXT-UP ;
+
+: UP-DIV ( r r -- r ) {: a:r b:r :}
+   a f0= if 0.0 exit then
+   a b f/ FRESULT NEXT-UP ;
+
+\ Spacing at |x|, including eta at zero and throughout the subnormal range.
+\ At an exact binade edge the spacing below may be smaller; this choice is
+\ conservative on either side and for either sign.
+: SPACING ( r -- r )
+   ABS-BITS 52 rshift {: exponent:n :}
+   exponent 0= if 1 IEEE754:BITS>F64 exit then
+   1.0 exponent 1075 - LDEXP ;
+
+\ One rounded operation is within half an output spacing for normal results.
+\ Half eta is not representable, so use eta at zero and the first binade.
+: ROUND-BOUND ( r -- r ) {: x:r :}
+   x ABS-BITS 52 rshift 1 <= if 1 IEEE754:BITS>F64 exit then
+   x SPACING 0.5 f* ;
+
+: TRIG-BOUND ( r -- r ) SPACING 4.0 f* ;
+
+public
+
+\ Preserve the actual multiply-then-divide value, with an outward bound on
+\ conversion from binary64 degrees to ideal radians. PI's constant error is
+\ bounded by half its spacing, 2^-52.
+: DEG>RAD ( r -- r r ) {: degrees:r :}
+   degrees FINITE? 0= if E-DOMAIN throw then
+   degrees f0= if 0.0 0.0 exit then
+   degrees PI f* FRESULT {: product:r :}
+   product 180.0 f/ FRESULT {: radians:r :}
+   radians
+   product ROUND-BOUND
+   degrees fabs 1.0 -52 LDEXP UP-MUL UP-ADD
+   180.0 UP-DIV
+   radians ROUND-BOUND UP-ADD ;
+
+\ SIN/COS stay the source of the returned values. Their one-ulp contract,
+\ including argument reduction, costs at most four output spacings relative
+\ to the exact real function. Sine and cosine are 1-Lipschitz, so the input
+\ error adds directly to each evaluation bound.
+: SINCOS-BOUND ( r r -- r r r r ) {: radians:r input-error:r :}
+   radians TRIG-DOMAIN
+   input-error FINITE? 0= input-error 0.0 f< or if E-DOMAIN throw then
+   radians COS {: cosine:r :}
+   radians SIN {: sine:r :}
+   radians f0= if cosine sine input-error input-error exit then
+   cosine sine
+   cosine TRIG-BOUND input-error UP-ADD
+   sine TRIG-BOUND input-error UP-ADD ;
 
 ;package

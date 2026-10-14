@@ -1654,6 +1654,7 @@ SUITE crypto-sha1
 SUITE float-parse
    src/lib/float-test.f
    src/lib/fmath-test.f
+   src/lib/fmath-basis-test.f
 ;SUITE
 
 SUITE finite-float-text
@@ -2781,6 +2782,10 @@ SUITE layout-buffer
 
 SUITE dynamic-buffer
    test/dynamic-buffer.f
+;SUITE
+
+SUITE values
+   test/values.f
 ;SUITE
 
 SUITE primitive-registry

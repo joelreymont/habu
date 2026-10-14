@@ -2,8 +2,28 @@
 
 `require src/lib/fmath.f` exposes the checked `FMATH` vocabulary without libm.
 
+`require src/lib/fmath-basis.f` exposes `FBASIS:WORK-CELLS ( -- n )` and
+`FBASIS:SCALE3 ( r r r SPAN:span<cell> r r r SPAN:span<cell> -- r r r )`.
+The first three floats are a point; the first span holds twelve binary64 bit
+patterns in rows `[a00 a01 a02 o0, a10 a11 a12 o1, a20 a21 a22 o2]`.
+The next three floats scale the stored axis columns, and the last span is
+caller-owned scratch of at least `WORK-CELLS` cells. The operation evaluates
+`o + A diag(s) A⁻¹(p−o)` exactly from the supplied binary64 values and rounds
+each output once, to nearest with ties to even. Finite points, origins, axes
+and scales and a nonsingular basis form its domain. A nonfinite input, singular
+basis, short span or overlap between frame and scratch throws
+`FMATH:E-DOMAIN`; a final binary64 overflow throws `FMATH:E-OUTPUT`.
+Subnormal results and zero are rounded by the same rule. The function does
+not alter the frame, and its private fixed-limb arithmetic lives entirely in
+the supplied scratch. It does not impose a geometric tolerance or require a
+rigid frame; callers own those policies.
+
 | Word | Contract |
 | --- | --- |
+| `ADD ( r r -- r )` | IEEE binary64 addition, as `f+`. |
+| `SUB ( r r -- r )` | IEEE binary64 subtraction, as `f-`. |
+| `MUL ( r r -- r )` | IEEE binary64 multiplication, as `f*`. |
+| `EQUAL? ( r r -- bool )` | IEEE binary64 equality, as `f=`; NaN is unequal. |
 | `ISQRT-FLOOR ( n -- n )` | Exact floor of the root of a nonnegative signed cell. |
 | `ISQRT-CEIL ( n -- n )` | Exact ceiling; no square of the result is needed. |
 | `FLN ( r -- r )` | Natural logarithm of a positive finite binary64 value. |
@@ -14,6 +34,8 @@
 | `COS ( r -- r )` | Cosine, same domain. |
 | `PI ( -- r )` | pi as the nearest binary64, bit pattern $400921FB54442D18. |
 | `LDEXP ( r n -- r )` | `r * 2^n` for a finite `r`, exact for normal results. |
+| `DEG>RAD ( r -- r r )` | Binary64 degrees to radians, followed by an absolute conversion-error bound. |
+| `SINCOS-BOUND ( r r -- r r r r )` | Radians and nonnegative input error to cosine, sine, and their absolute error bounds, in that order. |
 
 Invalid root inputs, logarithm inputs, bases and exponents throw
 `FMATH:E-DOMAIN` (-9020). An overflowing power or a nonfinite intermediate
@@ -63,6 +85,30 @@ glibc's binary64 results, and every one agrees to the bit. Odd and even
 symmetry hold exactly because the reduction works on |x|. The constants are
 the exact bit patterns fdlibm was fitted with, so the source's decimal parser
 plays no part.
+
+`DEG>RAD` returns the same multiply-then-divide value as `degrees PI f* 180.0
+f/`. Its second result bounds the difference from converting the input
+binary64 degree value with real pi. Let `U(x)` be the binary64 spacing at
+`|x|` (the least subnormal spacing at zero and for subnormals), and `R(x)`
+be half `U(x)` for normal results or one least subnormal for zero/subnormal
+results. With `t = fl(degrees * PI)` and `theta = fl(t / 180)`, it evaluates an
+outward-rounded upper bound for
+`(R(t) + |degrees| * 2^-52) / 180 + R(theta)`. The `2^-52` term bounds the stored
+pi constant. Each nonzero positive bound operation advances to the next
+representable value; zero operands remain exact. This keeps underflowed
+nonzero conversions bounded, while zero degrees return exactly +0 radians
+and zero error. Nonfinite degrees throw `E-DOMAIN`; a nonfinite intermediate
+or result throws `E-OUTPUT`.
+
+`SINCOS-BOUND` returns the existing `COS` and `SIN` values. For a nonzero
+argument, each evaluation bound is four output spacings plus the supplied
+input error, rounded outward. The four spacings cover the documented one-ulp
+trigonometric result error, the correctly rounded result's half-ulp error,
+and a possible binade crossing. Sine and cosine each change by at most the
+change in their input radians. At zero, their evaluations are exact, so each
+bound is the supplied input error (both zero if it is zero). The radian domain
+is the `SIN`/`COS` domain. Nonfinite or negative input error throws
+`E-DOMAIN`; an unrepresentable bound throws `E-OUTPUT`.
 
 `LDEXP` multiplies by an exact power of two: 2^k for -1074 <= k <= 1023 is
 built from its bit pattern, and larger |n| goes through steps of 2^1023 and

@@ -2378,7 +2378,7 @@ variable LKWLINEAR
 
 private
 
-\ The design span: the twelve keyword spellings a sealed source may still use
+\ The design span: the thirteen keyword spellings a sealed source may still use
 \ (layout.f POLICY-NDICT-CELL). It is baked first and as one run, LKWIF opening
 \ it and LKWDESIGNEND closing it, because EMIT-CF-HELPERS' LKWCMP admits a
 \ matched keyword under the seal by ADDRESS: its baked spelling lies in
@@ -2390,6 +2390,7 @@ private
    LKWTHEN LABEL@ LBL,   s" then"   BYTES,
    LKWLBRACE LABEL@ LBL, LBRACE-KW 2 BYTES,  LKWENDLOC LABEL@ LBL, ENDLOC-KW 2 BYTES,
    LKWSQ LABEL@ LBL,     SQ-KW 2 BYTES,
+   LKWESQ LABEL@ LBL,    ESQ-KW 3 BYTES,
    LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
    LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,
    LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,
@@ -2407,7 +2408,6 @@ public
    LKWCREATE LABEL@ LBL, KWCREATE$ BYTES,    LKWVAR LABEL@ LBL,    s" variable" BYTES,
    LKWCQ LABEL@ LBL,     CQ-KW 2 BYTES,
    LKWDOTQ LABEL@ LBL,   DOTQ-KW 2 BYTES,
-   LKWESQ LABEL@ LBL,    ESQ-KW 3 BYTES,
    LKWECQ LABEL@ LBL,    ECQ-KW 3 BYTES,
    LKWEDOTQ LABEL@ LBL,  EDOTQ-KW 3 BYTES,
    LKWTYPE LABEL@ LBL,   s" type" BYTES,
@@ -8767,6 +8767,7 @@ ardone LBL,
       1 LSNAPVER LABEL@ ADR,  0 2 MOVZ,  2 SNAPVER-MSG-LEN MOVZ,  NR-WRITE SYS,
       0 80 MOVZ,  NR-EXIT-GROUP SYS,
    snok LBL,
+   CODE-ORIGIN:RELEASE,
    RELOC-EMIT:LINDEXRELEASE LABEL@ BL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
    \ The return and loop stacks are mappings this process made, so the image's
@@ -9217,7 +9218,7 @@ public
 \      used-publics leg) and admitted by LPOLICYREC. The probe only gates and
 \      then takes the miss, so a used package's immediate still does not run;
 \   4. on a miss, a number;
-\   5. on a miss, a body keyword of the design span: if, else, then, s" or {:,
+\   5. on a miss, a body keyword of the design span: if, else, then, s", S\" or {:,
 \      whose names and `:}` the locals parse consumes, so a `:}` outside a
 \      group is refused as tier 0 refuses it. Every other keyword row, `does>`
 \      and the other string forms among them, is refused here before
@@ -9264,6 +9265,7 @@ public
    0 LKWELSE LABEL@ ADR,    1 4 MOVZ,  LKWCMP LABEL@ BL,  0 maybe-does CBNZ,
    0 LKWTHEN LABEL@ ADR,    1 4 MOVZ,  LKWCMP LABEL@ BL,  0 maybe-does CBNZ,
    0 LKWSQ LABEL@ ADR,      1 2 MOVZ,  LKWCMP LABEL@ BL,  0 maybe-does CBNZ,
+   0 LKWESQ LABEL@ ADR,     1 3 MOVZ,  LKWCMP LABEL@ BL,  0 maybe-does CBNZ,
    0 LKWLBRACE LABEL@ ADR,  1 2 MOVZ,  LKWCMP LABEL@ BL,  0 locals CBNZ,
    LPOLICY LABEL@ B,
    locals LBL,                                     \ each name up to `:}` is recorded, and still captured for NCOMP

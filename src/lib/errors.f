@@ -1463,8 +1463,9 @@
 -9413 constant E-WS-WAIT          \ a RECEIVE wait below zero, or longer than a readiness poll takes
 -9414 constant E-WS-TEXT          \ SEND-TEXT of bytes that are not UTF-8 (RFC 6455 section 5.6)
 
-\ JSONL framing (package JSONL, src/lib/jsonl.f): -9470..-9479, minted by its
-\ owning file. The SSE package owns -9450..-9459.
+\ SSE owns -9450..-9459. DECIMAL owns -9460..-9469.
+\ JSONL framing (package JSONL, src/lib/jsonl.f): -9470..-9479.
+\ Scoped typed values: -9480..-9489, minted in src/lib/values.f.
 
 \ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,

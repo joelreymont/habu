@@ -20,7 +20,7 @@ public
 94 constant USING-AMBIGUOUS     \ bare tail resolves in more than one used public wordlist
 \ 95..99 belong to SNAP-RELOC relocation failures (layout.f).
 100 constant IMAGE-CODE-ORIGIN  \ retained callable code lacks native evidence
-101 constant CODE-ORIGIN-FULL   \ provenance capacity refuses before dropping a row
+101 constant CODE-ORIGIN-FULL   \ provenance storage cannot grow without losing evidence
 102 constant STACK-BOUNDS       \ a physical VM stack access exceeds its active allocation
 \ 103 belongs to SNAP-RELOC:SITE-RC, the x86-64 site-row band (layout.f).
 104 constant USING-OUTER       \ `;using` in a package would close a using opened before it

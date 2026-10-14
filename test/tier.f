@@ -677,9 +677,9 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" 0 set-tier variable OL cp@ OL ! : OLD ( -- n ) 1 ; OL @ cp! 1 set-tier : NEW-WITH-A-LONG-EXTERNAL-NAME ( -- n ) 54 ; OL @ cp@ code-origin . NEW-WITH-A-LONG-EXTERNAL-NAME ." EXEC
    0 ASSERT-RC OUT$ S\" 1\n54\n" STR= TTRUE ;
 
-\ Generate actual alternating engine/JIT publications up to the physical cap.
+\ Generate actual alternating engine/JIT publications beyond the inline table.
 \ No forged count or row store can make this pass without exercising insertion.
-$50000 constant OR-CAP
+$90000 constant OR-CAP
 60000 constant OR-TIMEOUT-MS
 create OR-BUF OR-CAP allot
 variable OR-U
@@ -693,6 +693,23 @@ variable OR-U
 
 : OR-SOURCE$ ( n -- ptr u8 n ) {: count:n :}
    0 OR-U !
+   S\" 0 set-tier\nTRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\n" OR+
+   count 0 ?do
+      s" variable OV" OR+ i OR-NUM+
+      S\" \n: OD" OR+ i OR-NUM+ S\"  ( -- n ) " OR+ i OR-NUM+ S\"  ;\n" OR+
+   loop
+   S\" OR-COUNT TIER-PROV:SPANS > . ' OV0 dup 4 + code-origin . ' OD0 dup 4 + code-origin . OD0 .\n' OV" OR+
+   count 2 / OR-NUM+ S\"  dup 4 + code-origin . ' OD" OR+
+   count 2 / OR-NUM+ S\"  dup 4 + code-origin . OD" OR+ count 2 / OR-NUM+
+   S\"  .\n' OV" OR+ count 1- OR-NUM+ S\"  dup 4 + code-origin . ' OD" OR+
+   count 1- OR-NUM+ S\"  dup 4 + code-origin . OD" OR+ count 1- OR-NUM+
+   S\"  . cp@ 4 - cp@ code-origin .\n" OR+
+   OR-BUF OR-U @ ;
+
+\ The x86-64 emitter still has a fixed table. Exercise its ordinary
+\ publications through the same real load path, including the refusal.
+: OR-X64-SOURCE$ ( n -- ptr u8 n ) {: count:n :}
+   0 OR-U !
    S\" 0 set-tier\nTRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\n: OR-HEADROOM ( -- ) OR-COUNT TIER-PROV:SPANS 64 - > OR-COUNT TIER-PROV:SPANS <= and if s\q headroom-ok\q type else 70 throw then ;\n" OR+
    count 0 ?do
       s" variable OV" OR+ i OR-NUM+
@@ -701,7 +718,45 @@ variable OR-U
    S\" OR-HEADROOM\n" OR+
    OR-BUF OR-U @ ;
 
+: OR-SPLIT-CHECK+ ( -- )
+   S\" \nOR-SPLIT-CHECK\n" OR+ ;
+
+: OR-SPLIT-SOURCE$ ( -- ptr u8 n )
+   0 OR-U !
+   S\" 0 set-tier\nTRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\nTRUSTED: OR-PATCH ( n -- ) dup @ swap patch32 ;\nvariable OS-DID\n" OR+
+   TIER-PROV:SPANS 2 / 128 + 0 ?do
+      s" variable SV" OR+ i OR-NUM+
+      i TIER-PROV:SPANS 2 / 64 - >= if OR-SPLIT-CHECK+ then
+      S\" \n: SD" OR+ i OR-NUM+ S\"  ( -- n ) " OR+
+      i 0= if S\" 0 1 2 3 drop drop drop" OR+ else i OR-NUM+ then
+      S\"  ;\n" OR+
+      i 0= if
+         S\" TRUSTED: OR-SPLIT-CHECK ( -- ) OR-COUNT TIER-PROV:SPANS = if ['] SD0 8 + OR-PATCH 1 OS-DID ! then ;\n" OR+
+      then
+      i TIER-PROV:SPANS 2 / 64 - >= if OR-SPLIT-CHECK+ then
+   loop
+   S\" OS-DID @ . OR-COUNT TIER-PROV:SPANS > . ' SD0 dup 4 + code-origin . ' SD0 8 + dup 4 + code-origin . ' SD0 12 + dup 4 + code-origin . SD0 .\n" OR+
+   OR-BUF OR-U @ ;
+
+: OR-GUARD-SOURCE$ ( bool -- ptr u8 n ) {: last?:bool :}
+   TIER-PROV:SPANS 2 / 16 + OR-SOURCE$ 2drop
+   S\" data-base TIER-PROV:MAP-CELL + @" OR+
+   last? if S\"  data-base TIER-PROV:MAP-CAP-CELL + @ TIER-PROV:SPAN-BYTES * + 8 -" OR+ then
+   S\"  0 swap !\n" OR+
+   OR-BUF OR-U @ ;
+
+: OR-IMAGE-SOURCE$ ( -- ptr u8 n )
+   0 OR-U !
+   S\" require src/habu/app-image.f\nvariable OR-CUT variable OR-DICT\n: OR-KEPT ( -- n ) 84 ;\n: OR-FINISH ( -- ) OR-DICT @ ndict! OR-CUT @ CODE-RECLAIM:TRUNCATE 0 OR-CUT ! s\q : OR-REWRITTEN-NATIVE-WORD ( -- n ) 86 ;\q evaluate-closed 0 SCRIPT-ARGV$ APP-IMAGE:SAVE ;\ncp@ OR-CUT ! ndict@ OR-DICT !\n0 set-tier\nTRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\n" OR+
+   TIER-PROV:SPANS 2 / 16 + 0 ?do
+      s" variable IV" OR+ i OR-NUM+
+      S\" \n: ID" OR+ i OR-NUM+ S\"  ( -- n ) " OR+ i OR-NUM+ S\"  ;\n" OR+
+   loop
+   S\" OR-COUNT TIER-PROV:SPANS > . 1 set-tier OR-FINISH\n" OR+
+   OR-BUF OR-U @ ;
+
 : OR-PATH$ ( -- ptr u8 n ) s" hb-code-origin-capacity.f" TMP-PATH ;
+: OR-IMAGE-PATH$ ( -- ptr u8 n ) s" hb-code-origin-grown-image" TMP-PATH ;
 
 \ A timeout names the loaded file as the program instead of printing thousands
 \ of generated lines; the case removes the file only after both loads return.
@@ -712,12 +767,54 @@ variable OR-U
    HB$ >LEN s" " >LEN OUT CAP >LEN ERR CAP >LEN
    OR-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME OR-PATH$ STORE! ;
 
-: TEST-ORIGIN-CAPACITY ( -- )
+: OR-IMAGE-LOAD ( -- )
+   PROC-ARGV-RESET
+   s" --" >LEN PROC-ARGV+
+   OR-IMAGE-PATH$ >LEN PROC-ARGV+
+   HB$ >LEN OR-IMAGE-SOURCE$ >LEN OUT CAP >LEN ERR CAP >LEN
+   OR-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME OR-BUF OR-U @ STORE! ;
+
+: OR-IMAGE-RUN ( -- )
+   PROC-ARGV-RESET
+   OR-IMAGE-PATH$ >LEN
+   S\" OR-KEPT . ' OR-KEPT dup 4 + code-origin . OR-REWRITTEN-NATIVE-WORD . ' OR-REWRITTEN-NATIVE-WORD dup 4 + code-origin . 1 set-tier : OR-NEW ( -- n ) 85 ; OR-NEW . ' OR-NEW dup 4 + code-origin .\n" >LEN
+   OUT CAP >LEN ERR CAP >LEN OR-TIMEOUT-MS >MS
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME OR-PATH$ STORE! ;
+
+: TEST-ORIGIN-GROWTH ( -- )
+   s" real alternating publications grow beyond the inline table" T-LABEL
+   OR-PATH$ TIER-PROV:SPANS 2 / 16 + OR-SOURCE$ ATOMIC-WRITE-FILE
+   OR-LOAD 0 ASSERT-RC
+   OUT$ S\" -1\n1\n0\n0\n1\n0\n2056\n1\n0\n4111\n0\n" STR= TTRUE
+   s" a later full mapped table grows again" T-LABEL
+   OR-PATH$ TIER-PROV:SPANS 16 + OR-SOURCE$ ATOMIC-WRITE-FILE
+   OR-LOAD 0 ASSERT-RC
+   OUT$ S\" -1\n1\n0\n0\n1\n0\n4104\n1\n0\n8207\n0\n" STR= TTRUE
+   s" a full table grows when an interior invalidation adds two rows" T-LABEL
+   OR-PATH$ OR-SPLIT-SOURCE$ ATOMIC-WRITE-FILE
+   OR-LOAD 0 ASSERT-RC
+   OUT$ S\" 1\n-1\n0\n-1\n0\n0\n" STR= TTRUE
+   s" the sealed guard rejects a write into mapped provenance storage" T-LABEL
+   OR-PATH$ false OR-GUARD-SOURCE$ ATOMIC-WRITE-FILE
+   OR-LOAD ENGINE-ERROR:SEAL-VIOLATION ASSERT-RC
+   s" the sealed guard covers the whole mapped capacity" T-LABEL
+   OR-PATH$ true OR-GUARD-SOURCE$ ATOMIC-WRITE-FILE
+   OR-LOAD ENGINE-ERROR:SEAL-VIOLATION ASSERT-RC
+   s" a saved image drops owned backing and rebuilds native origin" T-LABEL
+   OR-IMAGE-LOAD 0 ASSERT-RC
+   OUT$ S\" -1\n" STR= TTRUE
+   OR-IMAGE-PATH$ EXECUTABLE? TTRUE
+   OR-IMAGE-RUN 0 ASSERT-RC
+   OUT$ S\" 84\n1\n86\n1\n85\n1\n" STR= TTRUE
+   OR-IMAGE-PATH$ REMOVE-FILE
+   OR-PATH$ REMOVE-FILE ;
+
+: TEST-ORIGIN-CAPACITY-X64 ( -- )
    s" real publications use the declared capacity with headroom" T-LABEL
-   OR-PATH$ TIER-PROV:SPANS 2 / 16 - OR-SOURCE$ ATOMIC-WRITE-FILE
+   OR-PATH$ TIER-PROV:SPANS 2 / 16 - OR-X64-SOURCE$ ATOMIC-WRITE-FILE
    OR-LOAD s" headroom-ok" ASSERT-OK
    s" exhausting the interval store refuses before losing a row" T-LABEL
-   OR-PATH$ TIER-PROV:SPANS 2 / 16 + OR-SOURCE$ ATOMIC-WRITE-FILE
+   OR-PATH$ TIER-PROV:SPANS 2 / 16 + OR-X64-SOURCE$ ATOMIC-WRITE-FILE
    OR-LOAD ENGINE-ERROR:CODE-ORIGIN-FULL ASSERT-RC
    ERR$ S\" hb: code-origin table capacity\n" STR= TTRUE
    OR-PATH$ REMOVE-FILE ;
@@ -761,7 +858,8 @@ public
    TEST-TRUSTED-TICK-ORDER
    TEST-ORIGIN
    TEST-ORIGIN-OVERWRITE
-   TEST-ORIGIN-CAPACITY
+   HB-TARGET-LINUX? HB-TARGET-MACOS? or if TEST-ORIGIN-GROWTH then
+   HB-TARGET-LINUX-X86-64? if TEST-ORIGIN-CAPACITY-X64 then
    TEST-BUILD-SCOPE
    TEST-CHECKER-ROWS
    TEST-HOOK-CELL

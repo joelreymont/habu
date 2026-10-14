@@ -299,12 +299,24 @@ variable BAND-IX
 
 : GUARD-SPAN ( n n -- )
    {: addr:n len:n :}
-   LBL LBL {: ok:label trap:label :}
+   LBL LBL LBL {: ok:label trap:label nomap:label :}
    DREG DATA FRIEND-LATCH-CELL LDR,
    DREG ok CBZ,
    len ok CBZ,
    EREG addr len ADD,                   \ checked end = start + length
    EREG addr CMP,  C-CC trap BCOND,     \ unsigned wrap
+   \ The process-owned provenance array is outside fixed DATA. Guard every
+   \ allocated row, including unused capacity, before the DATA hull shortcut.
+   DREG TIER-PROV:MAP-CELL LIT64,  DREG DATA DREG ADD,  DREG DREG 0 LDR,
+   DREG nomap CBZ,
+   DREG TIER-PROV:MAP-CAP-CELL LIT64,  DREG DATA DREG ADD,  DREG DREG 0 LDR,
+   EREG DREG 1 LSLI,  EREG EREG DREG ADD,  EREG EREG 3 LSLI,
+   DREG TIER-PROV:MAP-CELL LIT64,  DREG DATA DREG ADD,  DREG DREG 0 LDR,
+   EREG EREG DREG ADD,
+   addr EREG CMP,  C-CS nomap BCOND,
+   EREG addr len ADD,  EREG DREG CMP,  C-HI trap BCOND,
+   nomap LBL,
+   EREG addr len ADD,
    \ Bounding test, in the two comparison forms GUARD-BAND itself uses. Every
    \ band lies in the hull [DATA-BANDS:LO, DATA-BANDS:HI), so a span starting at
    \ or above the hull's end, or ending at or below its start, intersects none

@@ -10,16 +10,31 @@ package CODE-ORIGIN
 
 variable LSET  variable LSET-END
 variable LQUERY  variable LQUERY-END
+variable LRESERVE  variable LRESERVE-END
+variable LRELEASE  variable LRELEASE-END
 variable CAPTURE-ORIGIN  -1 CAPTURE-ORIGIN !
 
 public
 : LABELS ( -- )
-   LBL LSET !  LBL LSET-END !  LBL LQUERY !  LBL LQUERY-END ! ;
+   LBL LSET !  LBL LSET-END !  LBL LQUERY !  LBL LQUERY-END !
+   LBL LRESERVE !  LBL LRESERVE-END !  LBL LRELEASE !  LBL LRELEASE-END ! ;
 
 private
 
-\ The text both table-capacity exits write.
-: FULL$ ( -- ptr u8 n ) S\" hb: code-origin table capacity\n" ;
+\ Every allocation, checked-size, or release failure closes the process.
+: FULL$ ( -- ptr u8 n ) S\" hb: code-origin storage allocation failed\n" ;
+
+\ Resolve the single active backing and its row capacity.
+: ACTIVE, ( n n -- ) {: base:n cap:n :}
+   LBL LBL {: inline:label done:label :}
+   base TIER-PROV:MAP-CELL LIT64,  base DATA base ADD,  base base 0 LDR,
+   base inline CBZ,
+      cap TIER-PROV:MAP-CAP-CELL LIT64,  cap DATA cap ADD,  cap cap 0 LDR,
+      done B,
+   inline LBL,
+      base TIER-PROV:TABLE-OFF LIT64,  base DATA base ADD,
+      cap TIER-PROV:SPANS LIT64,
+   done LBL, ;
 
 \ dst must differ from ix. A row has three cells, not a power-of-two stride.
 : ROW, ( n n n -- ) {: dst:n ix:n base:n :}
@@ -27,13 +42,95 @@ private
    dst base dst ADD, ;
 
 : SAVE, ( -- )
-   SP SP 208 SUBI,
+   SP SP 224 SUBI,
    18 2 do i SP i 2 - cells STR, loop
-   30 SP 128 STR, ;
+   30 SP 128 STR,  0 SP 200 STR,  1 SP 208 STR, ;
 
 : RESTORE, ( -- )
    18 2 do i SP i 2 - cells LDR, loop
-   30 SP 128 LDR,  SP SP 208 ADDI,  RET, ;
+   30 SP 128 LDR,  0 SP 200 LDR,  1 SP 208 LDR,
+   SP SP 224 ADDI,  RET, ;
+
+\ x16 requests the required number of rows. All live caller registers survive,
+\ except x2, which is refreshed if the backing moved. Mapping and copying finish
+\ before the old backing is released or the descriptors are published.
+: EMIT-RESERVE ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: size:label mapped:label copy:label copied:label publish:label done:label
+      full:label msg:label nonzero:label released:label :}
+   LRESERVE LABEL@ LBL,
+   SP SP 160 SUBI,
+   18 0 do i SP i cells STR, loop  30 SP 144 STR,
+   2 10 ACTIVE,
+   9 $7FFFFFFFFFFFFFFF TIER-PROV:SPAN-BYTES / LIT64,
+   16 9 CMP,  C-HI full BCOND,
+   16 10 CMP,  C-LS done BCOND,
+   9 10 0 ADDI,                           \ old capacity
+   size LBL,
+      10 16 CMP,  C-CS mapped BCOND,
+      13 $7FFFFFFFFFFFFFFF TIER-PROV:SPAN-BYTES / 2 / LIT64,
+      10 13 CMP,  C-HI full BCOND,
+      10 10 1 LSLI,  size B,
+   mapped LBL,
+   11 TIER-PROV:MAP-CELL LIT64,  11 DATA 11 ADD,  11 11 0 LDR,
+   14 2 0 ADDI,
+   0 0 MOVZ,  1 TIER-PROV:SPAN-BYTES LIT64,  1 10 1 MUL,
+   2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
+   NR-MMAP SYS,  C-CS full BCOND,  0 nonzero CBNZ,
+      full B,
+   nonzero LBL,
+   12 0 0 ADDI,
+   15 12 0 ADDI,
+   13 TIER-PROV:N-CELL LIT64,  13 DATA 13 ADD,  13 13 0 LDR,
+   17 3 MOVZ,  13 13 17 MUL,
+   copy LBL,
+      13 copied CBZ,
+      17 14 0 LDR,  17 15 0 STR,
+      14 14 8 ADDI,  15 15 8 ADDI,  13 13 1 SUBI,
+      copy B,
+   copied LBL,
+   11 publish CBZ,
+      0 11 0 ADDI,  1 TIER-PROV:SPAN-BYTES LIT64,  1 9 1 MUL,
+      NR-MUNMAP SYS,  C-CC released BCOND,  full B,
+   released LBL,
+   publish LBL,
+   13 TIER-PROV:MAP-CELL LIT64,  13 DATA 13 ADD,  12 13 0 STR,
+   13 TIER-PROV:MAP-CAP-CELL LIT64,  13 DATA 13 ADD,  10 13 0 STR,
+   2 12 0 ADDI,
+   done LBL,
+   2 SP 16 STR,
+   18 0 do i SP i cells LDR, loop  30 SP 144 LDR,
+   SP SP 160 ADDI,  RET,
+   full LBL,
+      0 2 MOVZ,  1 msg ADR,  2 FULL$ nip MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:CODE-ORIGIN-FULL MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  FULL$ BYTES,
+   LRESERVE-END LABEL@ LBL,
+   s" (CODE-ORIGIN-RESERVE)" LRESERVE @ LRESERVE-END @ ENGINE-PRIMS:HELPER-REGISTER ;
+
+\ Snapshot restore discards this process's mapping before overwriting DATA.
+: EMIT-RELEASE ( -- )
+   LBL LBL LBL LBL {: done:label full:label msg:label released:label :}
+   LRELEASE LABEL@ LBL,
+   SP SP 160 SUBI,
+   18 0 do i SP i cells STR, loop  30 SP 144 STR,
+   2 TIER-PROV:MAP-CELL LIT64,  2 DATA 2 ADD,  0 2 0 LDR,  0 done CBZ,
+   2 TIER-PROV:MAP-CAP-CELL LIT64,  2 DATA 2 ADD,  1 2 0 LDR,
+   2 TIER-PROV:SPAN-BYTES LIT64,  1 1 2 MUL,
+   NR-MUNMAP SYS,  C-CC released BCOND,  full B,
+   released LBL,
+   0 0 MOVZ,
+   2 TIER-PROV:MAP-CELL LIT64,  2 DATA 2 ADD,  0 2 0 STR,
+   2 TIER-PROV:MAP-CAP-CELL LIT64,  2 DATA 2 ADD,  0 2 0 STR,
+   done LBL,
+   18 0 do i SP i cells LDR, loop  30 SP 144 LDR,
+   SP SP 160 ADDI,  RET,
+   full LBL,
+      0 2 MOVZ,  1 msg ADR,  2 FULL$ nip MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:CODE-ORIGIN-FULL MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  FULL$ BYTES,
+   LRELEASE-END LABEL@ LBL,
+   s" (CODE-ORIGIN-RELEASE)" LRELEASE @ LRELEASE-END @ ENGINE-PRIMS:HELPER-REGISTER ;
 
 \ x2 table, x3 count cell, x4 count, x7 first, x8 end, x9 origin.
 \ Find [x5,x6), the rows that overlap the new interval.
@@ -98,13 +195,13 @@ private
    10 13 0 LDR,  11 13 8 LDR,  16 13 16 LDR,
    10 14 0 STR,  11 14 8 STR,  16 14 16 STR, ;
 
-: MOVE, ( label -- ) {: full:label :}
+: MOVE, ( -- )
    LBL LBL LBL LBL {: left:label right:label more:label done:label :}
    14 SP 184 STR,  15 SP 192 STR,
    17 14 15 ADD,  17 17 1 ADDI,
    16 6 5 SUB,  17 17 16 SUB,                 \ replacement count - removed count
    16 4 17 ADD,
-   10 TIER-PROV:SPANS LIT64,  16 10 CMP,  C-GT full BCOND,
+   LRESERVE LABEL@ BL,
    16 SP 176 STR,
    17 done CBZ,
    17 0 CMPI,  C-LT left BCOND,
@@ -146,8 +243,7 @@ private
    7 9 DBASE SUB,  8 10 DBASE SUB,  9 11 0 ADDI,
    7 8 CMP,  C-GE done BCOND,
    3 TIER-PROV:N-CELL LIT64,  3 DATA 3 ADD,  4 3 0 LDR,
-   10 TIER-PROV:SPANS LIT64,  4 10 CMP,  C-HI full BCOND,
-   2 TIER-PROV:TABLE-OFF LIT64,  2 DATA 2 ADD,
+   2 10 ACTIVE,  4 10 CMP,  C-HI full BCOND,
    \ x12 requests invalidation only where earlier evidence exists. Generic
    \ patch32 also writes dictionary/DATA metadata, which needs no code row.
    12 normal CBZ,
@@ -160,14 +256,14 @@ private
    11 13 16 LDR,  11 9 CMP,  C-NE append BCOND,
       8 13 8 STR,  done B,
    append LBL,
-      10 TIER-PROV:SPANS LIT64,  4 10 CMP,  C-GE full BCOND,
+      16 4 1 ADDI,  LRESERVE LABEL@ BL,
       13 4 2 ROW,
       7 13 0 STR,  8 13 8 STR,  9 13 16 STR,
       4 4 1 ADDI,  4 3 0 STR,  done B,
    interior LBL,
       SEARCH,
    replace LBL,
-      EDGES,  full MOVE,  PUT,  done B,
+      EDGES,  MOVE,  PUT,  done B,
    full LBL,
       0 2 MOVZ,  1 msg ADR,  2 FULL$ nip MOVZ,  NR-WRITE SYS,
       0 101 MOVZ,  NR-EXIT-GROUP SYS,
@@ -184,10 +280,10 @@ private
    9 10 CMP,  C-CS unknown BCOND,
    7 9 DBASE SUB,  8 10 DBASE SUB,
    7 8 CMP,  C-GE unknown BCOND,
-   2 TIER-PROV:TABLE-OFF LIT64,  2 DATA 2 ADD,
+   2 12 ACTIVE,
    3 TIER-PROV:N-CELL LIT64,  3 DATA 3 ADD,
    10 0 MOVZ,  11 3 0 LDR,  4 11 0 ADDI,
-   12 TIER-PROV:SPANS LIT64,  11 12 CMP,  C-HI unknown BCOND,
+   11 12 CMP,  C-HI unknown BCOND,
    search LBL,
       10 11 CMP,  C-GE found BCOND,
       12 10 11 ADD,  12 12 1 LSRI,  13 12 2 ROW,
@@ -223,7 +319,9 @@ private
 
 public
 
-: EMIT-HELPERS ( -- ) EMIT-SET EMIT-QUERY ;
+: EMIT-HELPERS ( -- ) EMIT-RESERVE EMIT-RELEASE EMIT-SET EMIT-QUERY ;
+
+: RELEASE, ( -- ) LRELEASE LABEL@ BL, ;
 
 : RANGE, ( n n n -- ) 0 0<> RANGE-MODE, ;
 : INVALIDATE, ( n n -- ) -1 0 0= RANGE-MODE, ;
@@ -273,9 +371,9 @@ public
 
 : RESTORE-REGION, ( -- )
    LBL LBL LBL {: more:label next:label done:label :}
-   2 TIER-PROV:TABLE-OFF LIT64,  2 DATA 2 ADD,
+   2 5 ACTIVE,
    3 TIER-PROV:N-CELL LIT64,  3 DATA 3 ADD,  4 3 0 LDR,
-   5 TIER-PROV:SPANS LIT64,  4 5 CMP,  C-LS more BCOND,
+   4 5 CMP,  C-LS more BCOND,
    LBL {: msg:label :}
    0 2 MOVZ,  1 msg ADR,  2 FULL$ nip MOVZ,  NR-WRITE SYS,
    0 101 MOVZ,  NR-EXIT-GROUP SYS,

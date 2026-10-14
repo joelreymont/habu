@@ -141,6 +141,15 @@ variable CODE                          \ the last child's exit code, -1 when it 
    TIER0 s" local-name" 0 s" " S\" 42\n" RUNS
    TIER1 s" local-name" 0 s" " S\" 42\n" RUNS ;
 
+: ESCAPED ( -- )
+   TIER0 s" escaped" 0 s" " S\" Bracket \\ \"Café\"Bracket \\ \"Café\"" RUNS
+   TIER1 s" escaped" 0 s" " S\" Bracket \\ \"Café\"Bracket \\ \"Café\"" RUNS
+   TIER0 s" escaped-tail" 107 s" hb: not in vocabulary: required at test/policy/escaped-tail.f:3" S\" Bracket \\ \"Café\"" RUNS
+   TIER1 s" escaped-tail" 107 s" hb: not in vocabulary: required at test/policy/escaped-tail.f:3" S\" Bracket \\ \"Café\"" RUNS
+   s" escaped-body-tail" s" hb: not in vocabulary: required at test/policy/escaped-body-tail.f:2" BOTH-REFUSE
+   s" escaped-c" S\" hb: not in vocabulary: C\\\q at test/policy/escaped-c.f:2" BOTH-REFUSE
+   s" escaped-dotq" S\" hb: not in vocabulary: .\\\q at test/policy/escaped-dotq.f:2" BOTH-REFUSE ;
+
 \ The seal removes words; it does not change what an admitted program does, what
 \ the checker refuses, how a throw ends the process, or the refusal of a source
 \ that ends inside a definition.
@@ -155,7 +164,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    TIER1 s" checked" 70 s" habu: in bad: at 'BAD' expected: n" s" " RUNS
    TIER0 s" eof" 74 s" hb: source ended inside definition: X at test/policy/eof.f:2" s" " RUNS
    TIER1 s" eof" 74 s" hb: source ended inside definition: X at test/policy/eof.f:2" s" " RUNS
-   LOCALS ;
+   LOCALS ESCAPED ;
 
 \ ---- refused at top level -----------------------------------------------------
 

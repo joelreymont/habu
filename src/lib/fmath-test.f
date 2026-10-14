@@ -230,6 +230,93 @@ public
    [: BAD-SIN-RANGE ;] FMATH:E-DOMAIN TTHROWSQ
    [: BAD-COS-RANGE ;] FMATH:E-DOMAIN TTHROWSQ ;
 
+\ The bounds must distinguish conversion error from a binary64 radian input.
+\ A quarter turn converted from degrees covers its small cosine, while the
+\ same stored radians supplied exactly do not acquire conversion slack.
+: DEGREE-BOUNDS ( -- )
+   0.0 FMATH:DEG>RAD {: zero:r zero-error:r :}
+   zero IEEE754:F64>BITS 0 T=  zero-error IEEE754:F64>BITS 0 T=
+   90.0 FMATH:DEG>RAD {: quarter:r quarter-error:r :}
+   quarter IEEE754:F64>BITS $3FF921FB54442D18 T=
+   quarter-error -54 F2-N f> TTRUE
+   quarter-error -50 F2-N f< TTRUE
+   -90.0 FMATH:DEG>RAD {: neg-quarter:r neg-error:r :}
+   neg-quarter IEEE754:F64>BITS $BFF921FB54442D18 T=
+   neg-error quarter-error f= TTRUE
+   180.0 FMATH:DEG>RAD {: half:r half-error:r :}
+   half IEEE754:F64>BITS $400921FB54442D18 T=
+   half-error -53 F2-N f> TTRUE
+   half-error -49 F2-N f< TTRUE
+   $3D3C25C268497682 IEEE754:BITS>F64 FMATH:DEG>RAD
+      {: tiny:r tiny-error:r :}
+   tiny IEEE754:F64>BITS $3CDF70E9171DBC8A T=
+   tiny-error 0.0 f> TTRUE
+   tiny-error -100 F2-N f< TTRUE
+   $0010000000000000 IEEE754:BITS>F64 FMATH:DEG>RAD
+      {: sub:r sub-error:r :}
+   sub IEEE754:F64>BITS $0000477D1A894A75 T=
+   sub-error $0000000000000001 IEEE754:BITS>F64 f>= TTRUE
+   sub-error $0000000000000008 IEEE754:BITS>F64 f< TTRUE
+   $8010000000000000 IEEE754:BITS>F64 FMATH:DEG>RAD
+      {: neg-sub:r neg-sub-error:r :}
+   neg-sub IEEE754:F64>BITS $8000477D1A894A75 T=
+   neg-sub-error sub-error f= TTRUE
+   $0000000000000001 IEEE754:BITS>F64 FMATH:DEG>RAD
+      {: under:r under-error:r :}
+   under IEEE754:F64>BITS 0 T=
+   under-error $0000000000000001 IEEE754:BITS>F64 f>= TTRUE
+   under-error $0000000000000008 IEEE754:BITS>F64 f< TTRUE
+   $8000000000000001 IEEE754:BITS>F64 FMATH:DEG>RAD
+      {: neg-under:r neg-under-error:r :}
+   neg-under IEEE754:F64>BITS $8000000000000000 T=
+   neg-under-error under-error f= TTRUE ;
+
+: SINCOS-BOUNDS ( -- )
+   0.0 0.0 FMATH:SINCOS-BOUND {: c0:r s0:r ec0:r es0:r :}
+   c0 1.0 f= TTRUE  s0 0.0 f= TTRUE
+   ec0 0.0 f= TTRUE  es0 0.0 f= TTRUE
+   90.0 FMATH:DEG>RAD FMATH:SINCOS-BOUND
+      {: cq:r sq:r ecq:r esq:r :}
+   cq fabs ecq f<= TTRUE
+   cq 0.0 f= 0= TTRUE
+   sq 1.0 f= TTRUE
+   ecq -50 F2-N f< TTRUE
+   esq -48 F2-N f< TTRUE
+   FMATH:PI 2.0 f/ 0.0 FMATH:SINCOS-BOUND
+      {: cr:r sr:r ecr:r esr:r :}
+   cr cq f= TTRUE  sr sq f= TTRUE
+   cr fabs ecr f> TTRUE
+   ecr -100 F2-N f< TTRUE
+   180.0 FMATH:DEG>RAD FMATH:SINCOS-BOUND
+      {: ch:r sh:r ech:r esh:r :}
+   sh fabs esh f<= TTRUE
+   ch -1.0 f= TTRUE
+   $3D3C25C268497682 IEEE754:BITS>F64 FMATH:DEG>RAD
+      FMATH:SINCOS-BOUND {: ct:r st:r ect:r est:r :}
+   st fabs est f> TTRUE
+   ect -48 F2-N f< TTRUE
+   $3CDF70E9171DBC8A IEEE754:BITS>F64 0.0 FMATH:SINCOS-BOUND
+      {: ctr:r str:r ectr:r estr:r :}
+   str st f= TTRUE
+   str fabs estr f> TTRUE
+   estr est f< TTRUE ;
+
+: BAD-DEG-NAN ( -- ) NAN FMATH:DEG>RAD 2drop ;
+: BAD-DEG-INF ( -- ) POS-INF FMATH:DEG>RAD 2drop ;
+: BAD-DEG-OVERFLOW ( -- ) $7FEFFFFFFFFFFFFF IEEE754:BITS>F64 FMATH:DEG>RAD 2drop ;
+: BAD-SINCOS-NAN ( -- ) NAN 0.0 FMATH:SINCOS-BOUND 2drop 2drop ;
+: BAD-SINCOS-NEG-ERROR ( -- ) 0.0 -0.0000000000000001 FMATH:SINCOS-BOUND 2drop 2drop ;
+: BAD-SINCOS-INF-ERROR ( -- ) 0.0 POS-INF FMATH:SINCOS-BOUND 2drop 2drop ;
+: BAD-SINCOS-RANGE ( -- ) 1647100.0 0.0 FMATH:SINCOS-BOUND 2drop 2drop ;
+: BOUND-REFUSALS ( -- )
+   [: BAD-DEG-NAN ;] FMATH:E-DOMAIN TTHROWSQ
+   [: BAD-DEG-INF ;] FMATH:E-DOMAIN TTHROWSQ
+   [: BAD-DEG-OVERFLOW ;] FMATH:E-OUTPUT TTHROWSQ
+   [: BAD-SINCOS-NAN ;] FMATH:E-DOMAIN TTHROWSQ
+   [: BAD-SINCOS-NEG-ERROR ;] FMATH:E-DOMAIN TTHROWSQ
+   [: BAD-SINCOS-INF-ERROR ;] FMATH:E-DOMAIN TTHROWSQ
+   [: BAD-SINCOS-RANGE ;] FMATH:E-DOMAIN TTHROWSQ ;
+
 : LDEXP-VALUES ( -- )
    1.0 10 FMATH:LDEXP 1024.0 f= TTRUE
    1.0 0 FMATH:LDEXP 1.0 f= TTRUE
@@ -259,6 +346,7 @@ public
    LOG-VALUES LOG-REFUSALS POWER-VALUES POWER-REFUSALS TYPES
    TRIG-VALUES
    TRIG-REFUSALS
+   DEGREE-BOUNDS SINCOS-BOUNDS BOUND-REFUSALS
    LDEXP-VALUES
    LDEXP-REFUSALS
    T-REPORT ;

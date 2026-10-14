@@ -1,0 +1,66 @@
+\ A checked nominal element survives a scope; its storage does not.
+require src/lib/test.f
+require src/lib/values.f
+
+package VALUES-TEST
+private
+NEWTYPE token
+CAST: TOKEN ( n -- token )
+CAST: TOKEN-N ( token -- n )
+TYPED-VARIABLE SAVED VALUES:values<token>
+
+: NO-SCOPE ( -- ) 1 VALUES:MAKE drop ;
+: EMPTY-GET ( -- ) SAVED @ 0 VALUES:GET drop ;
+: BAD-INDEX ( -- ) SAVED @ 2 VALUES:GET drop ;
+: NEG-INDEX ( -- ) SAVED @ -1 VALUES:GET drop ;
+: TOO-MANY ( -- ) 3 TOKEN SAVED @ VALUES:ADD ;
+: STALE-GET ( -- ) SAVED @ 0 VALUES:GET drop ;
+: STALE-ADD ( -- ) 4 TOKEN SAVED @ VALUES:ADD ;
+: NESTED ( -- ) [: ;] VALUE-SCOPE:WITH ;
+: NO-ROOM ( -- ) 0 VALUES:MAKE 1 TOKEN swap VALUES:ADD ;
+: NEG-CAP ( -- ) -1 VALUES:MAKE drop ;
+: BIG-CAP ( -- ) MEM-MAX-CELLS VALUES:MAKE drop ;
+
+: ROUNDTRIP ( -- token )
+   2 VALUES:MAKE {: vals :}
+   vals SAVED !
+   ['] EMPTY-GET E-VALUES-BOUNDS TTHROWS
+   7 TOKEN vals VALUES:ADD
+   8 TOKEN vals VALUES:ADD
+   vals 0 VALUES:GET TOKEN-N 7 T=
+   vals 1 VALUES:GET TOKEN-N 8 T=
+   ['] BAD-INDEX E-VALUES-BOUNDS TTHROWS
+   ['] NEG-INDEX E-VALUES-BOUNDS TTHROWS
+   ['] TOO-MANY E-VALUES-CAPACITY TTHROWS
+   ['] NESTED E-VALUES-STATE TTHROWS
+   vals 1 VALUES:GET ;
+
+: THROW-IN-SCOPE ( -- )
+   1 VALUES:MAKE SAVED !
+   77 throw ;
+
+: THROW-WITH ( -- )
+   [: THROW-IN-SCOPE ;] VALUE-SCOPE:WITH ;
+
+: LATER-SCOPE ( -- )
+   ['] STALE-GET E-VALUES-STATE TTHROWS
+   ['] STALE-ADD E-VALUES-STATE TTHROWS
+   0 VALUES:MAKE drop
+   ['] NO-ROOM E-VALUES-CAPACITY TTHROWS
+   ['] NEG-CAP E-VALUES-CAPACITY TTHROWS
+   ['] BIG-CAP E-VALUES-CAPACITY TTHROWS ;
+
+public
+: RUN ( -- )
+   T-RESET
+   ['] NO-SCOPE E-VALUES-STATE TTHROWS
+   [: ROUNDTRIP ;] VALUE-SCOPE:WITH TOKEN-N 8 T=
+   ['] STALE-GET E-VALUES-STATE TTHROWS
+   ['] STALE-ADD E-VALUES-STATE TTHROWS
+   ['] THROW-WITH catch 77 T=
+   ['] STALE-GET E-VALUES-STATE TTHROWS
+   [: LATER-SCOPE ;] VALUE-SCOPE:WITH
+   T-REPORT ;
+;package
+
+VALUES-TEST:RUN
