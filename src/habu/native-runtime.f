@@ -73,6 +73,7 @@ s" src/core/layout-buffer.f" provided
 s" src/core/layout-valid.f" provided
 s" src/core/check-hook.f" provided
 s" src/habu/engine-origin-early.f" provided
+s" src/habu/engine-origin-checked.f" provided
 s" src/core/roles.f" provided
 s" src/core/cell-effects.f" provided
 s" src/core/declaration-transaction.f" provided

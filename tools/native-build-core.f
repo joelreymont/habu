@@ -244,6 +244,27 @@ TYPED-VARIABLE SOURCE-TAIL [ -- ]
 
 TYPED-VARIABLE PREFIX-DISPATCH [ ptr u8 n -- ]
 CAST: PREFIX-COMPILE-XT ( n -- [ ptr u8 n -- ] )
+CAST: PREFIX-TAKE-XT ( n -- [ ptr u8 n n -- ] )
+variable PREFIX-TAKE
+
+: FIRST-TOKEN ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   0 begin dup u < if a over + c@ 32 > else false then while 1+ repeat
+   a swap ;
+
+\ The borrowed compiler finishes before the engine publishes the pending
+\ record. Keep only its exact global name token; the engine's subsequent
+\ publication makes that same record live for the origin owner to drain.
+: PREFIX-COMPILE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u NCOMP:COMPILE-CHECKED
+   PREFIX-TAKE @ 0= if exit then
+   data-base PEND-CELL + @ {: raw:n :}
+   raw 0= if exit then
+   raw XREF-ADDR>REC {: rec:ptr :}
+   rec XREF-WORDLIST 0<> if exit then
+   a u FIRST-TOKEN {: name:ptr nameu:n :}
+   rec XREF-NAME$ name nameu CORE-STR=CI 0= if exit then
+   name nameu raw PREFIX-TAKE @ PREFIX-TAKE-XT execute ;
 
 : RESTORE-PREFIX-DISPATCH ( -- )
    PREFIX-DISPATCH @ NCOMP:DISPATCH! ;
@@ -251,7 +272,8 @@ CAST: PREFIX-COMPILE-XT ( n -- [ ptr u8 n -- ] )
 \ Borrow the retained compiler only while the target has no check hook. The
 \ target's own NCOMP:INSTALL later replaces this dispatch after its source load.
 : LOAD-CHECKED-PREFIX ( -- )
-   [: NCOMP:COMPILE-CHECKED ;] NCOMP:DISPATCH!
+   0 PREFIX-TAKE !
+   ['] PREFIX-COMPILE NCOMP:DISPATCH!
    s" src/core/util.f" included
    s" src/core/cell.f" included
    s" src/core/pointer-storage.f" included
@@ -264,6 +286,8 @@ CAST: PREFIX-COMPILE-XT ( n -- [ ptr u8 n -- ] )
    s" src/core/checker.f" included
    s" src/core/engine-error-effects.f" included
    s" src/core/lower-cert-base.f" included
+   s" src/habu/engine-origin-early.f" included
+   s" ENGINE-ORIGIN-EARLY:PREFIX-TAKE" OPEN-TARGET-XT PREFIX-TAKE !
    s" src/core/type-schema.f" included
    s" src/core/type-family.f" included
    s" src/core/render.f" included
@@ -277,7 +301,8 @@ CAST: PREFIX-COMPILE-XT ( n -- [ ptr u8 n -- ] )
    CHECKER-OWNER:CAPTURE-PREPARE
    CHECKER-OWNER AOT-ARM:PAYLOAD-PERSISTENT
    s" src/core/check-hook.f" included
-   s" src/habu/engine-origin-early.f" included
+   0 PREFIX-TAKE !
+   s" src/habu/engine-origin-checked.f" included
    s" ENGINE-ORIGIN-EARLY:INSTALL" OPEN-TARGET-XT SOURCE-RESET-XT execute ;
 
 : CHECKED-PREFIX ( -- )

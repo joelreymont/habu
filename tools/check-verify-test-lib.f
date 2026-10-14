@@ -4103,7 +4103,8 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-lifetime: amendment preserves visit" T-LABEL USE-NODE @ DECL-VISIT first T=
    s" uses-lifetime: replacement visit" s" REPLACED ( -- n ) K" 1 USE
    s" uses-lifetime: replacement visit" T-LABEL USE-NODE @ DECL-VISIT later T=
-   s" uses-lifetime: three uses" 3 USE-COUNT ;
+   s" uses-lifetime: source-backed undefine" s" undefine" 8 USE
+   s" uses-lifetime: four uses" 4 USE-COUNT ;
 
 
 \ A name the checker refuses binds nothing: one two usings both export, one a
@@ -4143,7 +4144,8 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-order: after" DEFS-SRC$ s\" undefine CVT-W\n: CVT-W" 5 s" uses-order.f" USE-TARGET
    s" uses-order: top level after" s\" \nCVT-W" 5 USE
    s" uses-order: top level after" DEFS-SRC$ s\" undefine CVT-W\n: CVT-W" 5 s" uses-order.f" USE-TARGET
-   s" uses-order: four lines" 4 USE-COUNT ;
+   s" uses-order: source-backed undefine" s" undefine" 8 USE
+   s" uses-order: five lines" 5 USE-COUNT ;
 
 
 \ A refused body keeps its declared signature, and its uses bind it. A refused

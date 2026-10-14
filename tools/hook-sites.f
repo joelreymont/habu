@@ -26,7 +26,7 @@ private
       6 of s" src/core/top-row.f" s" TR-HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-TOP endof
       7 of s" test/top-row-hook-test.f" s" TRH-LOG" s" test-metaprog" s" cap:checker-hook-identity" KIND-TOP endof
       8 of s" src/habu/engine-origin.f" s" CHECKED-HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-CHECK endof
-      9 of s" src/habu/engine-origin-early.f" s" CHECKED-HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-CHECK endof
+      9 of s" src/habu/engine-origin-checked.f" s" CHECKED-HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-CHECK endof
       drop E-TBL-BOUNDS throw
    endcase ;
 

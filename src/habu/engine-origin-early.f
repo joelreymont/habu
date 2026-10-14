@@ -1,8 +1,9 @@
-\ Capture checked definitions before the source loader, SHA256 and XREF load.
-\ The full origin module consumes these process-local rows before image capture.
+\ Capture prefix and checked definitions before the source loader, SHA256 and
+\ XREF load. The full origin module consumes these rows before image capture.
 \ Source bytes are copied at acceptance because the loader may release them.
-\ This observer begins after check-hook.f installs the checker. Definitions
-\ before that boundary, and definers that bypass the hook, have no row here.
+\ The native builder calls PREFIX-TAKE for each accepted global definition in
+\ its checked prefix after this module loads, before the hook is installed.
+\ engine-origin-checked.f installs the later check-hook observer.
 
 package ENGINE-ORIGIN-EARLY
 public
@@ -90,13 +91,9 @@ CAST: SYM-XT ( n -- [ ptr u8 n -- n ] )
    data-base PEND-OFF + @ 0= if DEF-NAME-A @ exit then
    OPEN-A @ ;
 
-: TAKE ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
+: TAKE-REC ( ptr u8 n n n -- )
+   {: name:ptr nameu:n rec:n sym:n :}
    nameu 0 <= if exit then
-   name nameu RECORD-SYM {: sym:n :}
-   sym 0= if exit then
-   data-base PEND-OFF + @ dup 0= if drop data-base LAST-OFF + @ then
-   {: rec:n :}
    rec 0= if exit then
    PATH-A @ {: path:ptr :}
    data-base PATHLEN-OFF + @ {: pathu:n :}
@@ -114,14 +111,19 @@ CAST: SYM-XT ( n -- [ ptr u8 n -- n ] )
    then
    rec sym 0 0 NULL-PTR 0 name nameu NULL-PTR 0 APPEND ;
 
-: FIRST-TOKEN ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   0 begin dup u < if a over + c@ 32 > else 0 0= 0= then while 1 + repeat
-   a swap ;
-
-: CHECKED-HOOK ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u LOWER-CERT-HOOK:HOOK dup -1 = if a u FIRST-TOKEN TAKE then ;
+: TAKE ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   name nameu RECORD-SYM {: sym:n :}
+   sym 0= if exit then
+   data-base PEND-OFF + @ dup 0= if drop data-base LAST-OFF + @ then
+   {: rec:n :}
+   name nameu rec sym TAKE-REC ;
 
 public
+
+\ The borrowed compiler has not handed its symbols to this target checker yet.
+\ Save the pending global record and resolve its symbol at the later drain.
+: PREFIX-TAKE ( ptr u8 n n -- ) 0 TAKE-REC ;
 
 : ROWS ( -- ptr u8 n ) SCR-P @ BYTE-VIEW SCR-U @ ;
 
@@ -133,6 +135,6 @@ public
    then
    NULL-PTR SCR-P !  0 SCR-U !  0 SCR-CAP ! ;
 
-TRUSTED: INSTALL ( -- ) ['] CHECKED-HOOK set-check ;
+: CHECKED-TAKE ( ptr u8 n -- ) TAKE ;
 
 ;package

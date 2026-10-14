@@ -3867,6 +3867,18 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    THEN
    a u true renders TOP-RESOLVE ;
 
+\ A source-backed engine definer is a use of the word that parses its operand.
+\ RECORD-DEFINER? consumes that operand before TOP-TOKEN could observe the
+\ keyword. Retain its binding before the declaration changes scope, then use
+\ the same source target and use observer as any other engine word. A replaced
+\ or unlocated engine word has no live origin and contributes no source-backed use.
+: ENGINE-DEFINER-USE ( ptr u8 n n n -- )
+   {: a:ptr u:n at:n sym:n :}
+   sym 0= IF EXIT THEN
+   sym ENGINE-ORIGIN:TARGET
+   {: path:ptr pathu:n start:n end:n name:ptr nameu:n found:bool :}
+   found IF at BASE-BYTE @ - dup u + sym 0 0 0 USE-SEEN THEN ;
+
 \ A declaration a definer of the table above reads closes the stretch, unless
 \ the checker counted a refusal while it was read (MULTI-ERR-N, where refusals
 \ do not throw): then the stretch opens, unreported.
@@ -3874,8 +3886,11 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    {: a:ptr u:n :}
    MULTI-ERR-N @ {: before:n :}
    a u TICK-NATIVE-DEFINER? {: native:bool :}
+   TOKEN-BYTE @ {: at:n :}
+   a u TOP-BINDING drop drop {: sym:n :}
    a u RECORD-DEFINER? 0= IF 0 0= 0= EXIT THEN
    native 0= IF TICK-CONTEXT-UNKNOWN THEN
+   native 0= IF a u at sym ENGINE-DEFINER-USE THEN
    TOP-CLOSE
    MULTI-ERR-N @ before <> IF -1 TOP-DEFER ! THEN
    0 0= ;

@@ -151,7 +151,6 @@ CAST: REC-XT ( n -- [ n -- ptr n ] )
 : EARLY-ACCEPT ( ptr n -- ) {: row:ptr :}
    row ENGINE-ORIGIN-EARLY:E-REC cells + @
    XREF-ADDR>REC XREF-START {: xt:n :}
-   row ENGINE-ORIGIN-EARLY:E-SYM cells + @ {: sym:n :}
    row ENGINE-ORIGIN-EARLY:E-START cells + @ {: at:n :}
    row ENGINE-ORIGIN-EARLY:E-END cells + @ {: end:n :}
    row ENGINE-ORIGIN-EARLY:E-PATH-U cells + @ {: pathu:n :}
@@ -160,6 +159,10 @@ CAST: REC-XT ( n -- [ n -- ptr n ] )
    row ENGINE-ORIGIN-EARLY:E-CELLS cells + BYTE-VIEW {: path:ptr :}
    path pathu + {: name:ptr :}
    name nameu + {: source:ptr :}
+   row ENGINE-ORIGIN-EARLY:E-SYM cells + @ dup 0= if
+      drop name nameu RECORD-SYM
+   then {: sym:n :}
+   sym 0= if exit then
    path pathu ROOT-REL {: rel:ptr relu:n in-root:bool :}
    in-root sourceu 0 > and at 0 >= and end at > and end sourceu <= and if
       source at + end at - name nameu CORE-STR= if
@@ -316,6 +319,8 @@ public
 
 TRUSTED: INSTALL ( -- ) ['] CHECKED-HOOK set-check ;
 
-DRAIN-EARLY
-
+\ Resolve prefix globals after closing this package: their checker symbols
+\ were handed over after capture, and RECORD-SYM reads the current scope.
+' DRAIN-EARLY
 ;package
+execute

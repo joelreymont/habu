@@ -2945,6 +2945,59 @@ DYNAMIC-BUFFER ENGINE-OPEN-TEXT u8
    s" 3" NOWHERE
    s" 4" NOWHERE ;
 
+\ NEWTYPE is compiled in the checked prefix, before the normal engine-origin
+\ hook is installed. Its definition and declaration name the source token that
+\ built the image; an edited copy of that source cannot supply the target.
+: PREFIX-SOURCE-PATH ( -- ptr u8 n )  s" src/core/sumtype.f" IN-TREE ;
+: PREFIX-TARGET-PATH ( -- ptr u8 n )
+   HB-TARGET-MACOS? if s" src/os/macos/target.f" IN-TREE exit then
+   HB-TARGET-LINUX-X86-64? if
+      s" src/os/linux-x86-64/target.f" IN-TREE exit
+   then
+   s" src/os/linux/target.f" IN-TREE ;
+: PREFIX-USE-PATH ( -- ptr u8 n )  s" prefix-origin.f" FIXTURE ;
+: PREFIX-USE ( -- ptr u8 n )
+   s\" NEWTYPE prefix-role\n: target-probe ( -- bool ) HB-TARGET-MACOS? ;\n" ;
+
+: PREFIX-DEF-TURNS ( -- )
+   INITIALIZE
+   PREFIX-USE-PATH PREFIX-USE 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   PREFIX-USE PREFIX-USE-PATH 1 s" verified" LISTED
+   s" 3" PREFIX-USE-PATH 0 2 DEFINITION-ASK
+   s" 4" PREFIX-USE-PATH 0 2 DECLARATION-ASK
+   s" 5" PREFIX-USE-PATH 1 28 DEFINITION-ASK
+   s" 6" PREFIX-USE-PATH 1 28 DECLARATION-ASK
+   SAY
+   s" 3" PREFIX-SOURCE-PATH URI-OF 2802 2 9 LOCATED
+   s" 4" PREFIX-SOURCE-PATH URI-OF 2802 2 9 LOCATED
+   s" 5" PREFIX-TARGET-PATH URI-OF 5 2 18 LOCATED
+   s" 6" PREFIX-TARGET-PATH URI-OF 5 2 18 LOCATED
+   PREFIX-SOURCE-PATH s\" \\ changed\n" 1 OPENS
+   SAY
+   PREFIX-SOURCE-PATH 1 EXPECT PUBLISHES
+   PREFIX-USE-PATH 1 EXPECT PUBLISHES
+   s" 7" PREFIX-USE-PATH 0 2 DEFINITION-ASK
+   SAY
+   s" 7" NOWHERE ;
+
+\ A definer still binds at its call when its operand declares a word with the
+\ same spelling. The newly declared private word must not replace that use.
+: PREFIX-SHADOW-PATH ( -- ptr u8 n )  s" prefix-shadow.f" FIXTURE ;
+: PREFIX-SHADOW ( -- ptr u8 n )
+   s\" package REVIEW\nTYPED-VARIABLE a n\nTYPED-VARIABLE TYPED-VARIABLE n\n;package\n" ;
+
+: PREFIX-SHADOW-TURNS ( -- )
+   INITIALIZE
+   PREFIX-SHADOW-PATH PREFIX-SHADOW 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   PREFIX-SHADOW PREFIX-SHADOW-PATH 1 s" verified" LISTED
+   s" 3" PREFIX-SHADOW-PATH 2 2 DEFINITION-ASK
+   SAY
+   s" 3" s" src/core/layout-buffer.f" IN-TREE URI-OF 581 2 16 LOCATED ;
+
 \ def-od-dep.f on disk, and the text its open document holds: three lines
 \ inserted atop and its two lines swapped, so that DEF-DEPB's and DEF-DEPA's
 \ tokens lie on lines the text on disk does not have.
@@ -6736,6 +6789,7 @@ DYNAMIC-BUFFER BI-SOURCE-TEXT u8
    s" definition-primitive" [: PRIM-DEF-TURNS ;] TALK
    s" definition-primitive-open" [: PRIM-OPEN-TURNS ;] TALK
    s" definition-engine-open" [: ENGINE-OPEN-TURNS ;] TALK
+   s" definition-prefix-origin" [: PREFIX-DEF-TURNS ;] TALK
    s" definition-dependency" [: DEF-DEP-TURNS ;] TALK
    s" definition-dependency-open" [: DEF-OPEN-DEP-TURNS ;] TALK
    s" definition-not-open" [: DEF-NOT-OPEN-TURNS ;] TALK
@@ -6883,6 +6937,13 @@ public
    TEST-INIT
    s" references-source-backed-builtin" [: REFS-BUILTIN-TURNS ;] TALK
    s" references-source-backed-other" [: REFS-BUILTIN-OTHER-TURNS ;] TALK
+   SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
+   T-REPORT ;
+
+: TEST-PREFIX ( -- )
+   TEST-INIT
+   s" definition-prefix-origin" [: PREFIX-DEF-TURNS ;] TALK
+   s" definition-prefix-shadow" [: PREFIX-SHADOW-TURNS ;] TALK
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
 
