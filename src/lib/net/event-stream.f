@@ -9,12 +9,12 @@ require src/lib/utf8-scalar.f
 package SSE
 public
 
--9420 constant E-FIRST
--9429 constant E-LAST
--9420 constant E-STATE
--9421 constant E-STORAGE
--9422 constant E-SOURCE
--9423 constant E-UTF8
+-9450 constant E-FIRST
+-9459 constant E-LAST
+-9450 constant E-STATE
+-9451 constant E-STORAGE
+-9452 constant E-SOURCE
+-9453 constant E-UTF8
 
 NEWTYPE decoder 0
 
