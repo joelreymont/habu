@@ -2877,8 +2877,9 @@ variable LENGTH-N                        \ the length of its directory's name
 \ and a tick. A later user definition of the same spelling takes its own use.
 : PRIM-PATH ( -- ptr u8 n )  s" prim-nav.f" FIXTURE ;
 : PRIM-SOURCE-PATH ( -- ptr u8 n )  s" src/habu/prims.f" IN-TREE ;
+: SCRIPT-ARGV-PATH ( -- ptr u8 n )  s" src/os/script-argv.f" IN-TREE ;
 : TEXT-PRIM-NAV ( -- ptr u8 n )
-   s\" : PRIM-MUL ( -- n ) 2 3 * ;\n2 3 * drop\n' * drop\nundefine *\n: * ( n n -- n ) + ;\n: PRIM-SHADOW ( -- n ) 2 3 * ;\nscript-argc drop\n" ;
+   s\" : PRIM-MUL ( -- n ) 2 3 * ;\n2 3 * drop\n' * drop\nundefine *\n: * ( n n -- n ) + ;\n: PRIM-SHADOW ( -- n ) 2 3 * ;\nscript-argc drop\nscript-arg-start drop\nundefine script-argc\n: script-argc ( -- n ) 7 ;\nscript-argc drop\n" ;
 
 : PRIM-DEF-TURNS ( -- )
    INITIALIZE
@@ -2892,13 +2893,23 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 6" PRIM-PATH 5 27 DEFINITION-ASK
    s" 7" PRIM-PATH 0 24 DECLARATION-ASK
    s" 8" PRIM-PATH 6 2 DEFINITION-ASK
+   s" 9" PRIM-PATH 6 2 DECLARATION-ASK
+   s" 10" PRIM-PATH 7 2 DEFINITION-ASK
+   s" 11" PRIM-PATH 7 2 DECLARATION-ASK
+   s" 12" PRIM-PATH 10 2 DEFINITION-ASK
+   s" 13" PRIM-PATH 10 2 DECLARATION-ASK
    SAY
    s" 3" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
    s" 4" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
    s" 5" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
    s" 6" PRIM-PATH URI-OF 4 2 3 LOCATED
    s" 7" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
-   s" 8" NOWHERE ;
+   s" 8" SCRIPT-ARGV-PATH URI-OF 50 2 13 LOCATED
+   s" 9" SCRIPT-ARGV-PATH URI-OF 50 2 13 LOCATED
+   s" 10" SCRIPT-ARGV-PATH URI-OF 38 2 18 LOCATED
+   s" 11" SCRIPT-ARGV-PATH URI-OF 38 2 18 LOCATED
+   s" 12" PRIM-PATH URI-OF 9 2 13 LOCATED
+   s" 13" PRIM-PATH URI-OF 9 2 13 LOCATED ;
 
 \ The source used for the target came from the engine tree. An open unsaved
 \ copy of prims.f with a mismatched row sequence has no trusted target.
@@ -2915,6 +2926,33 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 3" PRIM-PATH 0 24 DEFINITION-ASK
    SAY
    s" 3" NOWHERE ;
+
+\ An edited engine file can preserve the same spelling at the baked byte
+\ range while changing it from a declaration to a call.
+DYNAMIC-BUFFER ENGINE-OPEN-TEXT u8
+: ENGINE-OPEN-ROOM ( n -- ptr u8 )
+   1+ ENGINE-OPEN-TEXT-RESERVE 0 ENGINE-OPEN-TEXT ;
+: ENGINE-OPEN-SOURCE ( -- ptr u8 n )
+   SCRIPT-ARGV-PATH [: ENGINE-OPEN-ROOM ;] SOURCE:READ-WHOLE-FILE
+   {: size:n :}
+   32 1676 ENGINE-OPEN-TEXT c!
+   0 ENGINE-OPEN-TEXT size ;
+
+: ENGINE-OPEN-TURNS ( -- )
+   INITIALIZE
+   PRIM-PATH TEXT-PRIM-NAV 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-PRIM-NAV PRIM-PATH 1 s" verified" LISTED
+   SCRIPT-ARGV-PATH ENGINE-OPEN-SOURCE 1 OPENS
+   SAY
+   SCRIPT-ARGV-PATH 1 EXPECT PUBLISHES
+   PRIM-PATH 1 EXPECT PUBLISHES
+   s" 3" PRIM-PATH 6 2 DEFINITION-ASK
+   s" 4" PRIM-PATH 7 2 DEFINITION-ASK
+   SAY
+   s" 3" NOWHERE
+   s" 4" NOWHERE ;
 
 \ def-od-dep.f on disk, and the text its open document holds: three lines
 \ inserted atop and its two lines swapped, so that DEF-DEPB's and DEF-DEPA's
@@ -6621,6 +6659,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" declaration" [: DECL-TURNS ;] TALK
    s" definition-primitive" [: PRIM-DEF-TURNS ;] TALK
    s" definition-primitive-open" [: PRIM-OPEN-TURNS ;] TALK
+   s" definition-engine-open" [: ENGINE-OPEN-TURNS ;] TALK
    s" definition-dependency" [: DEF-DEP-TURNS ;] TALK
    s" definition-dependency-open" [: DEF-OPEN-DEP-TURNS ;] TALK
    s" definition-not-open" [: DEF-NOT-OPEN-TURNS ;] TALK

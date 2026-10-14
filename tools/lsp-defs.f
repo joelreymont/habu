@@ -994,7 +994,8 @@ public
    u U-TARGET USE@ u U-TARGET-END USE@ ;
 
 \ A primitive use carries the selected PRIM-SPEC row as -2-row in its visit.
-\ Other unlocated words keep -1; source declarations have nonnegative visits.
+\ A source-backed engine word and an unlocated word keep -1; their target
+\ paths distinguish them. Source declarations have nonnegative visits.
 : USE-PRIMITIVE-ROW ( n -- n )
    U-VISIT USE@ dup -2 <= if -2 swap - else drop -1 then ;
 
