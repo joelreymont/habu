@@ -174,6 +174,7 @@ variable ML-NI
    s" src/core/combinators.f" ML-ENTRY+                        \ the quotation combinators the checker certifies
    s" src/habu/code-span.f" ML-ENTRY+                          \ the code spans the emitters record
    s" src/habu/xref.f" ML-ENTRY+                               \ the cross-reference registry the REPL reads
+   s" src/habu/engine-origin.f" ML-ENTRY+                      \ accepted engine source targets for language tools
    s" src/core/generated-declaration-dictionary.f" ML-ENTRY+   \ generated declarations the checker publishes
    s" src/core/generated-declaration-protection.f" ML-ENTRY+   \ their protection pass
    s" src/core/layout-buffer-seal.f" ML-ENTRY+                 \ seals the layout-buffer boundary

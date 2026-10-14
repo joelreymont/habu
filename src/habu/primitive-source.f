@@ -163,6 +163,12 @@ variable VALID
 
 public
 
+\ Raw source for a caller that validates an image-recorded name token. The
+\ bytes are borrowed until another read through this package.
+: FILE-BYTES ( ptr u8 n -- ptr u8 n bool )
+   READ-FILE if 0 SOURCE-B SOURCE-U @ true exit then
+   NULL$ false ;
+
 : ENGINE-PATH$ ( -- ptr u8 n bool )
    ENGINE-PATH
    PATH$ rot ;

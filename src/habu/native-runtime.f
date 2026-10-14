@@ -72,6 +72,7 @@ s" src/core/sumtype.f" provided
 s" src/core/layout-buffer.f" provided
 s" src/core/layout-valid.f" provided
 s" src/core/check-hook.f" provided
+s" src/habu/engine-origin-early.f" provided
 s" src/core/roles.f" provided
 s" src/core/cell-effects.f" provided
 s" src/core/declaration-transaction.f" provided
@@ -92,6 +93,9 @@ s" src/core/type-family-sha.f" required
 s" src/core/combinators.f" required
 s" src/habu/code-span.f" required
 s" src/habu/xref.f" required
+s" src/habu/engine-origin.f" required
+ENGINE-ORIGIN:INSTALL
+ENGINE-ORIGIN:ARM
 s" src/core/generated-declaration-dictionary.f" required
 s" src/core/generated-declaration-protection.f" required
 s" src/core/layout-buffer-seal.f" required
@@ -151,6 +155,7 @@ public
 \ Run outside an open source load. The checker reset must be the last
 \ checker operation before copying the image.
 : CAPTURE-PREPARE ( -- )
+   ENGINE-ORIGIN:CAPTURE-PREPARE
    IMAGE-LIFECYCLE:PREPARE
    REQUIRE-BOOT-FREEZE
    INCLUDE-SNAPSHOT-PREPARE

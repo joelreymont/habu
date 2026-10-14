@@ -276,7 +276,9 @@ CAST: PREFIX-COMPILE-XT ( n -- [ ptr u8 n -- ] )
    \ the retained compiler's paired checker; later calls use this one.
    CHECKER-OWNER:CAPTURE-PREPARE
    CHECKER-OWNER AOT-ARM:PAYLOAD-PERSISTENT
-   s" src/core/check-hook.f" included ;
+   s" src/core/check-hook.f" included
+   s" src/habu/engine-origin-early.f" included
+   s" ENGINE-ORIGIN-EARLY:INSTALL" OPEN-TARGET-XT SOURCE-RESET-XT execute ;
 
 : CHECKED-PREFIX ( -- )
    data-base NCOMP-DISPATCH:XT-CELL + CELL-VIEW @ PREFIX-COMPILE-XT
@@ -397,6 +399,9 @@ CAST: PLAN-APPLY-XT ( n -- [ ptr n n -- ] )
    AOT-ARM:R0 @ AOT-ARM:D0 @ AOT-CAPTURE:PRELUDE-MARK
    s" NHOST:INSTALL" AOT-CAPTURE:BOOTRUN+
    AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
+   \ The snapshot has its armed cell. The builder still uses the old checker
+   \ owner for the source writer compiled below, so stop observing in it.
+   s" ENGINE-ORIGIN:DISARM" TARGET-XT PREPARE-XT execute
    CHECK-FIXED-ROWS ;
 
 : CAPTURE-NAMED ( bool -- )
