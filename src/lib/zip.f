@@ -295,6 +295,9 @@ public
 
 : OPEN-SOURCE ( archive -- input ) ARCHIVE-NODE OPEN-SOURCE-INPUT ;
 
+\ A caller-owned aligned cell can hold an input across a raw callback context.
+: INPUT-SLOT ( ptr n -- ptr input ) >INPUT-SLOT ;
+
 : READ-IN ( input SPAN:span<u8> -- n ) READ-IN-CHECKED ;
 : CLOSE-ENTRY ( input -- ) CLOSE-IN-CHECKED ;
 
