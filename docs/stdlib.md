@@ -502,12 +502,19 @@ by their zero-based index, so duplicate filenames remain distinct.
 ```forth
 ZIP:OPEN    ( ptr u8 n -- ZIP:archive )
 ZIP:EDIT    ( ptr u8 n -- ZIP:archive )
+ZIP:OPEN-FILE ( ptr u8 n -- ZIP:archive )
+ZIP:EDIT-FILE ( ptr u8 n -- ZIP:archive )
 ZIP:SOURCE$ ( ZIP:archive -- ptr u8 n )
+ZIP:OPEN-SOURCE ( ZIP:archive -- ZIP:input )
 ZIP:COUNT   ( ZIP:archive -- n )
 ZIP:ENTRY   ( ZIP:archive n -- ZIP:entry )
 ZIP:NAME$   ( ZIP:archive ZIP:entry -- ptr u8 n )
 ZIP:READ    ( ZIP:archive ZIP:entry -- ptr u8 n )
+ZIP:OPEN-ENTRY ( ZIP:archive ZIP:entry -- ZIP:input )
+ZIP:READ-IN ( ZIP:input SPAN:span<u8> -- n )
+ZIP:CLOSE-ENTRY ( ZIP:input -- )
 ZIP:REPLACE ( ZIP:archive ZIP:entry ptr u8 n -- )
+ZIP:REPLACE-WITH ( ZIP:archive ZIP:entry n a [ a SPAN:span<u8> -- ] -- )
 ZIP:COMMIT  ( ZIP:archive -- )
 ZIP:CLOSE   ( ZIP:archive -- )
 ```
@@ -516,6 +523,14 @@ ZIP:CLOSE   ( ZIP:archive -- )
 output file first copy their input to that path. `SOURCE$` returns the original
 archive snapshot; pending replacements do not change it. Its borrowed bytes stay
 valid until successful `COMMIT` or `CLOSE` and must not be modified.
+`OPEN-FILE` and `EDIT-FILE` copy the input once to an owner-private disk snapshot.
+Their framing view is released before they return; they retain central-directory
+bytes, member offsets and fixed read buffers. Subsequent changes to the original
+path cannot change reads or the bytes used by a commit. `OPEN-SOURCE` streams
+those original raw bytes through an independent input cursor, suitable for
+incremental hashing. `SOURCE$` remains available when a caller explicitly needs
+the whole original byte string; on a file-backed owner it maps the snapshot on
+first request.
 `NAME$` returns the original
 name bytes, and `READ` returns uncompressed bytes. Both return archive-owned
 copies that stay valid until successful `COMMIT` or `CLOSE`, including across
@@ -525,6 +540,19 @@ replacement. Untouched local records remain byte-for-byte intact; central record
 only where their relocated offsets require it. Replacements use STORE with a
 fresh CRC and sizes, retaining their names, comments, attributes and non-ZIP64
 extra fields. ZIP64 size and offset fields are rebuilt as needed.
+`REPLACE-WITH` gives the callback one archive-owned destination span of exactly
+the requested length. The callback fills it before the replacement becomes
+visible. This avoids copying a separately built replacement buffer.
+
+`OPEN-ENTRY` gives each input its own cursor over the selected member, including
+a pending replacement. `READ-IN` writes at most the span's length and returns
+the number of bytes written. A positive-size read returning zero is EOF;
+repeated reads at EOF return zero. An empty destination returns zero without
+advancing. The input checks actual length and CRC through EOF. `CLOSE-ENTRY`
+drains an unfinished member and verifies it before closing. A source input
+needs no drain on close. If `READ-IN` fails, it releases that input and throws
+`ZIP:E-READ`; its handle is then stale. Inputs also retire when their archive
+closes or commits.
 
 Distinct archive handles can be used concurrently by separate `TASK` workers.
 Each handle and its entries have one task owner; callers coordinate any transfer
@@ -533,7 +561,9 @@ of a live handle between tasks.
 `COMMIT` builds a compact archive and atomically renames a temporary file in
 the destination directory, preserving file permissions. It invalidates the
 archive and its entries on success. A commit with no replacements only closes
-the archive.
+the archive. A file-backed commit copies unchanged source slices and writes
+changed members directly with a fixed copy buffer; it does not allocate the
+output archive in memory.
 If it throws `ZIP:E-COMMIT`, the archive stays live and the caller must retry or
 `CLOSE`. `CLOSE` discards pending changes and releases all owned buffers. Repeated
 close and other stale-handle use throw `ZIP:E-HANDLE`. A foreign entry, negative

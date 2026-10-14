@@ -3,6 +3,7 @@ package ZIP
 public
 NEWTYPE archive
 NEWTYPE entry
+NEWTYPE input
 \ $7A00 was E-LIBRARY: the FUNCTION: declarer resolves libzip and names its
 \ own failure, E-FFI-DLSYM. The number stays unused.
 $7A01 constant E-OPEN
@@ -19,4 +20,6 @@ CAST: >ARCHIVE ( n -- archive )
 CAST: ARCHIVE>N ( archive -- n )
 CAST: >ENTRY ( n -- entry )
 CAST: ENTRY>N ( entry -- n )
+CAST: >INPUT ( n -- input )
+CAST: INPUT>N ( input -- n )
 ;package

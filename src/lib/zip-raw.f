@@ -2,6 +2,7 @@
 require src/lib/zip-ffi.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/fd-io.f
 
 package ZIP
 using FFI
@@ -23,8 +24,6 @@ $14 constant LOCATOR-BYTES
 
 : PATH-PTR ( ptr n -- ptr ptr u8 ) 6 ptr-field ;
 : PATH-LEN ( ptr n -- ptr n ) 7 cells + ;
-: RAW-PTR ( ptr n -- ptr ptr u8 ) 8 ptr-field ;
-: RAW-LEN ( ptr n -- ptr n ) 9 cells + ;
 : MEMBERS ( ptr n -- ptr ptr n ) 10 ptr-field ;
 : MEMBER-COUNT ( ptr n -- ptr n ) 11 cells + ;
 : END-OFF ( ptr n -- ptr n ) 12 cells + ;
@@ -73,11 +72,33 @@ $14 constant LOCATOR-BYTES
 : U32! ( n ptr u8 -- ) 4 LE! ;
 : U64! ( n ptr u8 -- ) 8 LE! ;
 
-: RAW-SPAN ( ptr n n n -- ptr u8 ) {: node:ptr off:n len:n :}
+: RAW-RANGE ( ptr n n n -- ) {: node:ptr off:n len:n :}
    off SIZE-CHECK len SIZE-CHECK
    off node RAW-LEN @ > if E-READ throw then
-   len node RAW-LEN @ off - > if E-READ throw then
-   node RAW-PTR @ off + ;
+   len node RAW-LEN @ off - > if E-READ throw then ;
+
+: RAW-READ ( ptr n n n ptr u8 -- ) {: node:ptr off:n len:n dst:ptr :}
+   0 begin dup len < while
+      dup {: done:n :}
+      node SNAP-FD @ dst done + len done - off done + C-PREAD {: got:n :}
+      got 0 <= got len done - > or if E-READ throw then
+      got +
+   repeat drop ;
+
+: RAW-SPAN ( ptr n n n -- ptr u8 ) {: node:ptr off:n len:n :}
+   node off len RAW-RANGE
+   node RAW-PTR @ dup NULL? 0= if off + exit then drop
+   off node DIRECTORY-OFF @ >= if
+      off node DIRECTORY-OFF @ - {: delta:n :}
+      delta node DIRECTORY-SIZE @ <= if
+         len node DIRECTORY-SIZE @ delta - <= if
+            node DIRECTORY-PTR @ delta + exit
+         then
+      then
+   then
+   len $10000 > if E-READ throw then
+   node off len node RAW-SCRATCH @ RAW-READ
+   node RAW-SCRATCH @ ;
 : RAW-U16 ( ptr n n -- n ) 2 RAW-SPAN U16@ ;
 : RAW-U32 ( ptr n n -- n ) 4 RAW-SPAN U32@ ;
 : RAW-U64 ( ptr n n -- n ) 8 RAW-SPAN U64@ ;
@@ -240,16 +261,23 @@ $14 constant LOCATOR-BYTES
    loop dup node DIRECTORY-TAIL !
    node DIRECTORY-OFF @ node DIRECTORY-SIZE @ SAFE+ > if E-READ throw then ;
 
+: PARSE-RAW ( ptr n -- ) {: node:ptr :}
+   node FIND-END node END-OFF !
+   node HAS-END64? if node END-WIDE else node END-CLASSIC then
+   node ZIP-BASE @ SIZE-CHECK
+   node MEMBER-COUNT @ node OBJECT @ C-COUNT <> if E-READ throw then
+   node FILE-MODE @ 0<> if
+      node node node DIRECTORY-OFF @ node DIRECTORY-SIZE @ RAW-SPAN
+         node DIRECTORY-SIZE @ COPY-IN drop node DIRECTORY-PTR !
+   then
+   node PARSE-MEMBERS ;
+
 : RAW-LOAD ( ptr n -- ) {: node:ptr :}
    node PATH-PTR @ node PATH-LEN @ FILE-SIZE dup SIZE-CHECK {: len:n :}
    node len BUFFER-ALLOC {: data:ptr :}
    data node RAW-PTR ! len node RAW-LEN !
    node PATH-PTR @ node PATH-LEN @ data len READ-ALL len <> if E-READ throw then
-   node FIND-END node END-OFF !
-   node HAS-END64? if node END-WIDE else node END-CLASSIC then
-   node ZIP-BASE @ SIZE-CHECK
-   node MEMBER-COUNT @ node OBJECT @ C-COUNT <> if E-READ throw then
-   node PARSE-MEMBERS ;
+   node PARSE-RAW ;
 
 : CRC-BIT ( n -- n )
    dup 1 and 0 <> if 1 rshift $EDB88320 xor else 1 rshift then ;
@@ -261,15 +289,60 @@ $14 constant LOCATOR-BYTES
    node OUT-LEN @ len SAFE+ node OUT-CAP @ > if E-SIZE throw then
    node OUT-PTR @ node OUT-LEN @ + ;
 : EMIT-BYTES ( ptr n ptr u8 n -- ) {: node:ptr data:ptr len:n :}
-   data node len OUT-RESERVE len BYTE-COPY len node OUT-LEN +! ;
+   node FILE-MODE @ 0<> if
+      node OUT-LEN @ len SAFE+ {: next:n :}
+      node TEMP-FD @ >FD data len FD-IO:WRITE-FULL next node OUT-LEN !
+   else
+      data node len OUT-RESERVE len BYTE-COPY len node OUT-LEN +!
+   then ;
+: EMIT-RAW-FILE ( ptr n n n -- ) {: node:ptr off:n len:n :}
+   node off len RAW-RANGE
+   0 begin dup len < while
+      dup {: cursor:n :}
+      len cursor - $4000 min {: want:n :}
+      node SNAP-FD @ node COPY-BUF @ want off cursor + C-PREAD {: got:n :}
+      got 0 <= got want > or if E-COMMIT throw then
+      node node COPY-BUF @ got EMIT-BYTES got +
+   repeat drop ;
 : EMIT-RAW ( ptr n n n -- ) {: node:ptr off:n len:n :}
-   node node off len RAW-SPAN len EMIT-BYTES ;
+   node FILE-MODE @ 0<> if node off len EMIT-RAW-FILE
+   else node node off len RAW-SPAN len EMIT-BYTES then ;
 : EMIT-NUMBER ( ptr n n n -- ) {: node:ptr value:n width:n :}
-   value node width OUT-RESERVE width LE! width node OUT-LEN +! ;
+   node FILE-MODE @ 0<> if
+      value STAT-DATA BYTE-VIEW width LE!
+      node STAT-DATA BYTE-VIEW width EMIT-BYTES
+   else
+      value node width OUT-RESERVE width LE! width node OUT-LEN +!
+   then ;
 : EMIT-U16 ( ptr n n -- ) 2 EMIT-NUMBER ;
 : EMIT-U32 ( ptr n n -- ) 4 EMIT-NUMBER ;
 : EMIT-U64 ( ptr n n -- ) 8 EMIT-NUMBER ;
-: OUT-AT ( ptr n n -- ptr u8 ) swap OUT-PTR @ + ;
+: READ-PATCH ( ptr n n n -- ) {: node:ptr off:n len:n :}
+   0 begin dup len < while
+      dup {: done:n :}
+      node TEMP-FD @ STAT-DATA BYTE-VIEW done + len done - off done + C-PREAD
+      {: got:n :}
+      got 0 <= got len done - > or if E-COMMIT throw then
+      got +
+   repeat drop ;
+: WRITE-PATCH ( ptr n n n -- ) {: node:ptr off:n len:n :}
+   0 begin dup len < while
+      dup {: done:n :}
+      node TEMP-FD @ STAT-DATA BYTE-VIEW done + len done - off done + C-PWRITE
+      {: got:n :}
+      got 0 <= got len done - > or if E-COMMIT throw then
+      got +
+   repeat drop ;
+: OUT-AT ( ptr n n n -- ptr u8 ) {: node:ptr off:n len:n :}
+   node FILE-MODE @ 0<> if
+      len STAT-BYTES > if E-COMMIT throw then
+      node off len READ-PATCH
+      STAT-DATA BYTE-VIEW
+   else node OUT-PTR @ off + then ;
+: PATCH-FLUSH ( ptr n n n -- ) {: node:ptr off:n len:n :}
+   node FILE-MODE @ 0<> if
+      node off len WRITE-PATCH
+   then ;
 : REPLACED? ( ptr n -- bool ) REPLACEMENT @ NULL? 0= ;
 : OUTPUT-SIZE ( ptr n -- n )
    dup REPLACED? if REPLACE-LEN else PLAIN-SIZE then @ ;
@@ -301,7 +374,10 @@ $14 constant LOCATOR-BYTES
    node member OUTPUT-SIZE EMIT-U64
    node member OUTPUT-COMPRESSED EMIT-U64 ;
 : LOCAL-EXTRAS ( ptr n ptr n ptr u8 -- ) {: node:ptr member:ptr data:ptr :}
-   node data LOCAL-BYTES + data $1A + U16@ + data $1C + U16@ EMIT-EXTRAS
+   data $1C + U16@ {: extra-len:n :}
+   node node member LOCAL-OFF @ LOCAL-BYTES + data $1A + U16@ +
+      extra-len RAW-SPAN
+   extra-len EMIT-EXTRAS
    member SIZE64? if
       node 1 EMIT-U16 node $10 EMIT-U16 node member EMIT-WIDE-SIZES
    then ;
@@ -320,13 +396,15 @@ $14 constant LOCATOR-BYTES
    then
    node OUT-LEN @ {: start:n :}
    node member LOCAL-OFF @ LOCAL-BYTES RAW-SPAN {: original:ptr :}
-   node original LOCAL-BYTES original $1A + U16@ + EMIT-BYTES
+   node original LOCAL-BYTES EMIT-BYTES
+   node member LOCAL-OFF @ LOCAL-BYTES + original $1A + U16@ EMIT-RAW
    node OUT-LEN @ {: extras:n :}
    node member original LOCAL-EXTRAS
-   node start OUT-AT {: header:ptr :}
+   node start LOCAL-BYTES OUT-AT {: header:ptr :}
    node OUT-LEN @ extras - dup U16-MAX > if E-SIZE throw then header $1C + U16!
    member header 0 PATCH-CONTENT
    member SIZE64? if $2D else $14 then header 4 + U16!
+   node start LOCAL-BYTES PATCH-FLUSH
    node member REPLACEMENT @ member REPLACE-LEN @ EMIT-BYTES ;
 
 : CENTRAL-EXTRAS ( ptr n ptr n -- ) {: node:ptr member:ptr :}
@@ -339,7 +417,7 @@ $14 constant LOCATOR-BYTES
    member OFFSET64? if node member NEW-LOCAL @ EMIT-U64 then ;
 
 : PATCH-CENTRAL ( ptr n ptr n n n -- ) {: node:ptr member:ptr start:n extras:n :}
-   node start OUT-AT {: header:ptr :}
+   node start CENTRAL-BYTES OUT-AT {: header:ptr :}
    extras dup U16-MAX > if E-SIZE throw then header $1E + U16!
    member NEW-LOCAL @ U32-MAX min header $2A + U32!
    member OUTPUT-COMPRESSED U32-MAX min header $14 + U32!
@@ -349,7 +427,8 @@ $14 constant LOCATOR-BYTES
    member SIZE64? if
       U32-MAX header $14 + U32! U32-MAX header $18 + U32!
    then
-   member REPLACED? if member header 2 PATCH-CONTENT then ;
+   member REPLACED? if member header 2 PATCH-CONTENT then
+   node start CENTRAL-BYTES PATCH-FLUSH ;
 
 : REBUILD-CENTRAL ( ptr n ptr n -- ) {: node:ptr member:ptr :}
    node OUT-LEN @ {: start:n :}
@@ -367,8 +446,12 @@ $14 constant LOCATOR-BYTES
    node member CENTRAL-OFF @ member CENTRAL-LEN @ EMIT-RAW
    member ZIP64-OFFSET @ 0 <> if
       member NEW-LOCAL @
-      node start member ZIP64-OFFSET @ + member CENTRAL-OFF @ - OUT-AT U64!
-   else member NEW-LOCAL @ node start OUT-AT $2A + U32! then ;
+      node start member ZIP64-OFFSET @ + member CENTRAL-OFF @ - 8 OUT-AT U64!
+      node start member ZIP64-OFFSET @ + member CENTRAL-OFF @ - 8 PATCH-FLUSH
+   else
+      member NEW-LOCAL @ node start $2A + 4 OUT-AT U32!
+      node start $2A + 4 PATCH-FLUSH
+   then ;
 
 : OFFSET-INSERTION ( ptr u8 ptr u8 -- n ) {: central:ptr extra:ptr :}
    extra central - 4 +
@@ -382,7 +465,8 @@ $14 constant LOCATOR-BYTES
    node member CENTRAL-OFF @ split EMIT-RAW
    node member NEW-LOCAL @ EMIT-U64
    node member CENTRAL-OFF @ split + member CENTRAL-LEN @ split - EMIT-RAW
-   extra 2 + U16@ 8 + node extra-out OUT-AT 2 + U16! 8 ;
+   extra 2 + U16@ 8 + node extra-out 4 OUT-AT 2 + U16!
+   node extra-out 4 PATCH-FLUSH 8 ;
 
 : PROMOTE-NEW ( ptr n ptr n -- n ) {: node:ptr member:ptr :}
    node member CENTRAL-PTR {: central:ptr :}
@@ -396,9 +480,10 @@ $14 constant LOCATOR-BYTES
    node member EXTRA-SPAN 1 EXTRA-FIND {: extra:ptr len:n :}
    len 0= if node member PROMOTE-NEW else node member extra PROMOTE-EXISTING then
    {: added:n :}
-   node start OUT-AT {: header:ptr :}
+   node start CENTRAL-BYTES OUT-AT {: header:ptr :}
    header $1E + U16@ added + dup U16-MAX > if E-SIZE throw then header $1E + U16!
-   header 6 + U16@ $2D max header 6 + U16! U32-MAX header $2A + U32! ;
+   header 6 + U16@ $2D max header 6 + U16! U32-MAX header $2A + U32!
+   node start CENTRAL-BYTES PATCH-FLUSH ;
 
 : WRITE-CENTRAL ( ptr n ptr n -- ) {: node:ptr member:ptr :}
    member REPLACED? if node member REBUILD-CENTRAL exit then
@@ -428,10 +513,11 @@ $14 constant LOCATOR-BYTES
    node END64-OFF @ 0 <> if
       node node END64-OFF @ node END-OFF @ LOCATOR-BYTES - node END64-OFF @ - EMIT-RAW
    else node NEW-END64 then
-   node start OUT-AT {: header:ptr :}
+   node start END64-BYTES OUT-AT {: header:ptr :}
    node MEMBER-COUNT @ header $18 + U64! node MEMBER-COUNT @ header $20 + U64!
    dirsize header $28 + U64!
    node OUT-DIRECTORY @ node ZIP-BASE @ - header $30 + U64!
+   node start END64-BYTES PATCH-FLUSH
    node LOCATOR-SIG EMIT-U32 node 0 EMIT-U32
    node start node ZIP-BASE @ - EMIT-U64 node 1 EMIT-U32 ;
 
@@ -440,13 +526,15 @@ $14 constant LOCATOR-BYTES
    node dirsize NEED-END64? if node dirsize WRITE-END64 then
    node OUT-LEN @ {: start:n :}
    node node END-OFF @ node RAW-LEN @ node END-OFF @ - EMIT-RAW
-   node start OUT-AT {: header:ptr :}
+   node start END-BYTES OUT-AT {: header:ptr :}
    node MEMBER-COUNT @ U16-MAX min dup header 8 + U16! header $A + U16!
    dirsize U32-MAX min header $C + U32!
-   node OUT-DIRECTORY @ node ZIP-BASE @ - U32-MAX min header $10 + U32! ;
+   node OUT-DIRECTORY @ node ZIP-BASE @ - U32-MAX min header $10 + U32!
+   node start END-BYTES PATCH-FLUSH ;
 
 : BUILD-OUTPUT ( ptr n -- )
-   dup OUTPUT-ALLOC dup WRITE-MEMBERS WRITE-END ;
+   dup FILE-MODE @ 0= if dup OUTPUT-ALLOC then
+   dup WRITE-MEMBERS WRITE-END ;
 
 : DIRECTORY$ ( ptr u8 n -- ptr u8 n ) {: path:ptr len:n :}
    0 len 0 ?do path i + c@ $2F = if drop i 1+ then loop
@@ -469,14 +557,21 @@ $14 constant LOCATOR-BYTES
    node TEMP-FD @ node OUT-PTR @ off + node OUT-LEN @ off - write
    dup 0 <= if E-COMMIT throw then off SAFE+ ;
 : TEMP-WRITE ( ptr n -- ) {: node:ptr :}
-   0 begin dup node OUT-LEN @ < while node swap WRITE-STEP repeat drop
+   node FILE-MODE @ 0= if
+      0 begin dup node OUT-LEN @ < while node swap WRITE-STEP repeat drop
+   then
    node TEMP-FD @ -1 node TEMP-FD ! C-CLOSE-FD 0 <> if E-COMMIT throw then ;
 : TEMP-INSTALL ( ptr n -- ) {: node:ptr :}
    node TEMP-PTR @ node TEMP-LEN @ node PATH-PTR @ node PATH-LEN @ STAT-MODE CHMOD-MODE
    node TEMP-PTR @ node TEMP-LEN @ node PATH-PTR @ node PATH-LEN @ RENAME-FILE
    0 node TEMP-LIVE ! ;
-: COMMIT-WORK ( ptr n -- ptr n )
-   dup BUILD-OUTPUT dup TEMP-OPEN dup TEMP-WRITE dup TEMP-INSTALL ;
+: COMMIT-WORK ( ptr n -- ptr n ) {: node:ptr :}
+   node FILE-MODE @ 0<> if
+      node TEMP-OPEN 0 node OUT-LEN !
+      node BUILD-OUTPUT node TEMP-WRITE node TEMP-INSTALL
+   else
+      node BUILD-OUTPUT node TEMP-OPEN node TEMP-WRITE node TEMP-INSTALL
+   then node ;
 
 : TEMP-CLEANUP ( ptr n -- ) {: node:ptr :}
    node TEMP-LIVE @ 0= if exit then
