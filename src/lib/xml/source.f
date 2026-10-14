@@ -228,16 +228,19 @@ private
    {: state endpoint:n :}
    state SRC-LEXICAL$ {: lexical size:n :}
    state SRC-BOM-LEN + @ {: mapped:n :}
+   state SRC-ENCODING-N XML-ENCODING:UTF8 ENCODING>N = if
+      \ SOURCE-INIT validated every scalar; only continuation bytes split one.
+      endpoint 0<> endpoint size <> and if
+         lexical endpoint + c@ $C0 and $80 = if E-BOUNDARY throw then
+      then
+      mapped endpoint + exit
+   then
    0 mapped
    begin over endpoint < while
       {: cursor:n original:n :}
       lexical size cursor SCALAR-AT {: scalar:n next:n :}
       next endpoint > if E-BOUNDARY throw then
-      state SRC-ENCODING-N XML-ENCODING:UTF8 ENCODING>N = if
-         original next cursor - +
-      else
-         original scalar $10000 < if 2 else 4 then +
-      then
+      original scalar $10000 < if 2 else 4 then +
       next swap
    repeat
    nip ;
