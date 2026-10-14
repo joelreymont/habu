@@ -2417,6 +2417,11 @@ SUITE websocket-frame
    src/lib/net/ws-frame-test.f
 ;SUITE
 
+\ SSE framing over arbitrary byte chunks, with no network dependency.
+SUITE event-stream
+   src/lib/net/event-stream-test.f
+;SUITE
+
 \ RFC 6455 connections on the HTTP server, spoken to by a Habu client over
 \ TCP4; writes build/ws-transcript.txt and compares it whole.
 SUITE websocket
