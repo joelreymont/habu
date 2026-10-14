@@ -20,6 +20,7 @@ public
 -9470 constant E-STATE       \ closed cursor, second start, or reader without a line
 -9471 constant E-SOURCE      \ negative memory source or null nonempty source
 -9472 constant E-LIMIT       \ a physical line exceeds its inclusive byte limit
+-9473 constant E-CLOSE       \ closing the owned file descriptor failed
 
 STRUCTURE cursor OPAQUE DERIVE addr
    FIELD buf-base ptr u8
@@ -84,11 +85,10 @@ CAST: BUF-HDR ( ptr cursor -- ptr n )
    NULL-PTR cur CURSOR-LINE-BASE !
    0 BUF:N>BLEN cur CURSOR-LINE-LEN ! ;
 
-public
-
-: CLOSE ( ptr cursor -- ) {: cur:ptr :}
-   cur MODE@ CLOSED = if exit then
-   cur MODE@ FILE = if cur CURSOR-FD @ FD>N close-rc else 0 then
+: DISPOSE ( ptr cursor -- n ) {: cur:ptr :}
+   cur MODE@ CLOSED = if 0 exit then
+   cur MODE@ FILE = cur MODE@ FINISHED = or
+   if cur CURSOR-FD @ FD>N close-rc else 0 then
    {: rc:n :}
    CLOSED cur MODE!
    cur CURSOR-BUF-CAP @ 0<> if cur BUF-HDR BUF:DISPOSE then
@@ -97,7 +97,12 @@ public
    NULL-PTR cur CURSOR-SOURCE !
    cur RESET-LINE
    owned MEM:FREE-SPAN
-   rc 0<> if E-FS-IO throw then ;
+   rc ;
+
+public
+
+: CLOSE ( ptr cursor -- )
+   DISPOSE 0<> if E-CLOSE throw then ;
 
 private
 
@@ -110,7 +115,7 @@ private
 
 : ALLOCATE ( ptr cursor -- ) {: cur:ptr :}
    cur ['] PREPARE catch {: code:n :} drop
-   code 0<> if cur CLOSE code throw then ;
+   code 0<> if cur DISPOSE drop code throw then ;
 
 public
 
@@ -142,7 +147,7 @@ public
    {: cur:ptr path:ptr u:n max:NUM:byte-len :}
    cur NULL-PTR 0 max START
    cur path u ['] OPEN-RUN catch {: code:n :} 2drop drop
-   code 0<> if cur CLOSE code throw then ;
+   code 0<> if cur DISPOSE drop code throw then ;
 
 private
 
@@ -176,7 +181,6 @@ private
    n 0 < if E-FS-IO throw then
    n 0= if
       FINISHED cur MODE!
-      cur CURSOR-FD @ FD>N close-rc 0<> if E-FS-IO throw then
       false exit
    then
    0 cur POS!
@@ -222,7 +226,7 @@ public
 : NEXT-LINE ( ptr cursor -- option<line> ) {: cur:ptr :}
    cur LIVE
    cur ['] STEP catch {: code:n :} drop
-   code 0<> if cur CLOSE code throw then
+   code 0<> if cur DISPOSE drop code throw then
    cur HAS? if
       cur CURSOR-LINE-BASE @
       cur CURSOR-LINE-LEN @
@@ -263,7 +267,8 @@ public
    cur path u max OPEN
    cur cb ['] CALL catch {: code:n :}
    drop drop
-   cur CLOSE
-   code 0<> if code throw then ;
+   cur DISPOSE {: close-code:n :}
+   code 0<> if code throw then
+   close-code 0<> if E-CLOSE throw then ;
 
 ;package

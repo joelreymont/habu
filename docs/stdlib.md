@@ -1144,8 +1144,10 @@ each `JSONL:cursor` with `TYPED-VARIABLE` or `TYPED-BUFFER`; its zero state is
 closed. `START` borrows memory bytes, while `OPEN` owns a file descriptor. Each
 open cursor also owns a growable line buffer, an 8 KiB file input block and
 fixed backing for `JR:reader`. `CLOSE` releases these resources and is
-idempotent. `WITH-FILE` closes on return or catchable throw, and a cleanup
-failure supersedes a callback failure.
+idempotent. `WITH-FILE` closes on return or catchable throw. If the work
+completes but descriptor close fails, `CLOSE` or `WITH-FILE` throws
+`JSONL:E-CLOSE`; an earlier read, framing, or callback error takes precedence
+over a cleanup close failure.
 
 ```forth
 JSONL:START     ( ptr JSONL:cursor ptr u8 n NUM:byte-len -- )
@@ -1168,11 +1170,12 @@ linear JR token over the current borrowed line. Only one reader may be live
 per cursor. Call `JR:CLOSE` before opening another reader, advancing or closing
 the cursor, or reusing its source or reader backing storage. A file line is borrowed
 until the next advance or close; the source of a memory cursor must remain
-live for its whole open lifetime. EOF closes the descriptor while retaining
-the last returned line until the next advance or close. The named framing
-errors are `JSONL:E-STATE`, `JSONL:E-SOURCE`, and `JSONL:E-LIMIT`; file and
-allocation errors retain their owning library codes. The `WITH-FILE` callback
-returns the same cursor pointer it received.
+live for its whole open lifetime. EOF retains the last returned line until
+the next advance or close. The file descriptor remains owned through EOF and
+is closed by `CLOSE`. The named errors are
+`JSONL:E-STATE`, `JSONL:E-SOURCE`, `JSONL:E-LIMIT`, and `JSONL:E-CLOSE`;
+read, open, and allocation errors retain their owning library codes. The
+`WITH-FILE` callback returns the same cursor pointer it received.
 
 ## JSON-RPC
 

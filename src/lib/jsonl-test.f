@@ -11,6 +11,7 @@ private
 
 TYPED-VARIABLE A JSONL:cursor
 TYPED-VARIABLE B JSONL:cursor
+variable EXPECT-FD
 
 16399 constant LONG-N
 LONG-N 2 + BUFFER: FIXTURE
@@ -24,6 +25,20 @@ LONG-N 2 + BUFFER: FIXTURE
    10 FIXTURE LONG-N + c!
    [char] b FIXTURE LONG-N 1+ + c!
    PATH$ FIXTURE LONG-N 2 + WRITE-ALL ;
+
+\ POSIX open-rd takes the lowest free descriptor. With no other opens between
+\ the probe and JSONL:OPEN, the next probe verifies the cursor owns that fd.
+: FREE-FD ( -- n )
+   s" /dev/null" FS-PATHZ open-rd {: fd:n :}
+   fd 0 >= TTRUE
+   fd close-rc 0 T=
+   fd ;
+
+: OPEN-KNOWN ( -- n )
+   FREE-FD {: fd:n :}
+   A PATH$ LONG-N BUF:N>BLEN JSONL:OPEN
+   FREE-FD fd 1+ T=
+   fd ;
 
 : TAKE ( option<JSONL:line> -- ptr u8 n n )
    MATCH option
@@ -132,6 +147,26 @@ LONG-N 2 + BUFFER: FIXTURE
    A JSONL:CLOSE
    MAKE-FIXTURE ;
 
+: EOF-CLOSE-FAULT ( -- )
+   OPEN-KNOWN {: fd:n :}
+   A JSONL:NEXT-LINE TAKE 2drop drop
+   A JSONL:NEXT-LINE s" b" 2 CHECK-LINE
+   A JSONL:NEXT-LINE CHECK-END
+   A JSONL:NEXT-LINE CHECK-END
+   fd close-rc 0 T=
+   [: A JSONL:CLOSE ;] JSONL:E-CLOSE TTHROWSQ
+   A JSONL:CLOSE
+   [: A JSONL:NEXT-LINE drop ;] JSONL:E-STATE TTHROWSQ
+   A s" 1" 1 BUF:N>BLEN JSONL:START
+   A JSONL:NEXT-LINE s" 1" 1 CHECK-LINE
+   A JSONL:CLOSE ;
+
+: READ-FAULT ( -- )
+   OPEN-KNOWN {: fd:n :}
+   fd close-rc 0 T=
+   [: A JSONL:NEXT-LINE drop ;] E-FS-IO TTHROWSQ
+   A JSONL:CLOSE ;
+
 : OPEN-MISSING ( -- )
    A s" no-such-habu-jsonl-file" 1 BUF:N>BLEN JSONL:OPEN ;
 
@@ -141,6 +176,24 @@ LONG-N 2 + BUFFER: FIXTURE
 
 : THROW-WITH ( -- )
    3 A PATH$ LONG-N BUF:N>BLEN [: THROW-BODY ;] JSONL:WITH-FILE drop ;
+
+: CALLBACK-FAULT ( n ptr JSONL:cursor -- n ptr JSONL:cursor )
+   dup JSONL:NEXT-LINE drop
+   FREE-FD EXPECT-FD @ 1+ T=
+   EXPECT-FD @ close-rc 0 T=
+   dup JSONL:READER JR:NEXT drop JR:CLOSE ;
+
+: WITH-CLOSE-FAULT ( -- )
+   FREE-FD EXPECT-FD !
+   3 A PATH$ LONG-N BUF:N>BLEN [: CALLBACK-FAULT ;] JSONL:WITH-FILE drop ;
+
+: CLOSE-IN-BODY ( n ptr JSONL:cursor -- n ptr JSONL:cursor )
+   FREE-FD EXPECT-FD @ 1+ T=
+   EXPECT-FD @ close-rc 0 T= ;
+
+: WITH-CLOSE-ONLY ( -- )
+   FREE-FD EXPECT-FD !
+   3 A PATH$ LONG-N BUF:N>BLEN [: CLOSE-IN-BODY ;] JSONL:WITH-FILE drop ;
 
 : SUCCESS-BODY ( n ptr JSONL:cursor -- n ptr JSONL:cursor )
    dup JSONL:NEXT-LINE TAKE {: first:ptr u:n number:n :}
@@ -161,6 +214,9 @@ public
 : RUN ( -- )
    MEMORY NEXT-SKIPS INTERLEAVE READER
    FILE FILE-ZERO
+   EOF-CLOSE-FAULT READ-FAULT
+   [: WITH-CLOSE-ONLY ;] JSONL:E-CLOSE TTHROWSQ
+   [: WITH-CLOSE-FAULT ;] E-JR-MALFORMED TTHROWSQ
    [: TOO-LONG-MEM ;] JSONL:E-LIMIT TTHROWSQ
    A s" 1" 1 BUF:N>BLEN JSONL:START A JSONL:CLOSE
    [: CR-LIMIT ;] JSONL:E-LIMIT TTHROWSQ
