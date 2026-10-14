@@ -440,6 +440,14 @@ SUITE primitive-source
    test/primitive-source.f
 ;SUITE
 
+SUITE check-verify-batch
+   tools/check-verify-batch-test.f
+;SUITE
+
+SUITE lsp-batch
+   tools/lsp-batch-test.f
+;SUITE
+
 SUITE streaming-sha256
    tools/sha256-file-test.f
 ;SUITE

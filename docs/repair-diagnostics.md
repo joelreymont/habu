@@ -728,6 +728,16 @@ form includes unlocated bindings of that tail so references can detect a
 shared token bound to another word. Ordinary document checks still emit only
 located uses.
 
+An image-held word whose definition passed the installed checker hook may
+also have a source target with visit `-1`: the image records its accepted name
+token and a digest of the complete source bytes. The verifier reports that
+target only while the current disk or supplied file has the same digest and
+token. If the file changed, its use keeps the path and start byte for symbol
+identity, but has target end `0`, so navigation does not select stale source.
+An image word defined before the checker hook installed, or by a publication
+path that bypasses that hook, has no such captured target. Primitive axioms
+have their separate `PRIM-SPEC` source mapping.
+
 The child, `tools/check-verify-child.f`, is run only by this operation and by
 `CHECK:PREVERIFY-BYTES`, check.f's pre-pass:
 

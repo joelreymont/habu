@@ -11,6 +11,7 @@ require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/workspace.f
 require src/habu/primitive-source.f
+require src/habu/engine-origin.f
 
 package VERIFY
 
@@ -2050,6 +2051,13 @@ LOADER-INIT
 \ A use the checker published, at the base of the file being read: always a
 \ binding, with a declaration location only when this composition visited it.
 variable PRIM-OPEN-READY
+defer ENGINE-TARGET ( n -- ptr u8 n n n bool )
+
+: ENGINE-TARGET-NONE ( n -- ptr u8 n n n bool )
+   drop NULL$ 0 0 false ;
+
+: ENGINE-TARGET-INIT ( -- ) ['] ENGINE-TARGET-NONE is ENGINE-TARGET ;
+ENGINE-TARGET-INIT
 
 : PRIM-TARGET ( n -- ptr u8 n n n bool )
    {: row:n :}
@@ -2087,6 +2095,14 @@ variable PRIM-OPEN-READY
       s BASE-BYTE @ + e BASE-BYTE @ +
       path pathu at end sym v ON-USE
       EXIT
+   THEN
+   v 0= IF
+      sym ENGINE-TARGET {: path:ptr pathu:n at:n end:n found:bool :}
+      found IF
+         s BASE-BYTE @ + e BASE-BYTE @ +
+         path pathu at end sym -1 ON-USE
+         EXIT
+      THEN
    THEN
    v VISIT-IN? IF
       s BASE-BYTE @ +  e BASE-BYTE @ +  v VISIT-PATH  ds de sym v ON-USE
@@ -4074,6 +4090,199 @@ variable READ-FD
    rc 0<> IF rc throw THEN
    0 READ-BUF READ-U @ ;
 
+\ Engine origins are image facts, but the source token is trusted only while
+\ that same token still exists in the source tree (or the open supplied copy).
+\ Cache each file's bytes for one composition so repeated uses do not reread it.
+create ENGINE-PATH PATH-CAP allot
+DYNAMIC-BUFFER ENGINE-PATHS u8
+DYNAMIC-BUFFER ENGINE-BYTES u8
+DYNAMIC-BUFFER ENGINE-FILES n
+DYNAMIC-BUFFER ENGINE-TOKENS n
+DYNAMIC-BUFFER ENGINE-HASHES u8
+create ENGINE-HASH-CTX SHA256-CTX-BYTES allot
+create ENGINE-OPEN-HASH 32 allot
+variable ENGINE-PATHS-U
+variable ENGINE-BYTES-U
+variable ENGINE-FILES-N
+variable ENGINE-TOKEN-N
+6 constant ENGINE-FILE-CELLS           \ path, bytes and word-token offsets/counts
+
+: ENGINE-FILE-AT ( n n -- ptr n )
+   {: row:n field:n :}
+   row ENGINE-FILE-CELLS * field + ENGINE-FILES ;
+
+: ENGINE-FILE-DROP ( -- )
+   ENGINE-PATHS-RELEASE ENGINE-BYTES-RELEASE ENGINE-FILES-RELEASE
+   ENGINE-TOKENS-RELEASE ENGINE-HASHES-RELEASE
+   0 ENGINE-PATHS-U ! 0 ENGINE-BYTES-U ! 0 ENGINE-FILES-N !
+   0 ENGINE-TOKEN-N ! ;
+
+: ENGINE-TOKEN-AT ( n n -- ptr n )
+   {: token:n field:n :}
+   token 2 * field + ENGINE-TOKENS ;
+
+\ The lexer excludes comments and strings. Record its word-token boundaries
+\ once for this file, before its global token table is used for another file.
+: ENGINE-WORDS+ ( ptr u8 n -- n )
+   LINT-LEX:SOURCE
+   LINT-LEX:ERROR? if -1 exit then
+   ENGINE-TOKEN-N @ {: first:n :}
+   ENGINE-TOKEN-N @ LINT-LEX:COUNT + 2 * ENGINE-TOKENS-RESERVE
+   LINT-LEX:COUNT 0 ?do
+      i LINT-LEX:KIND@ LINT-LEX:WORD = if
+         i LINT-LEX:BYTE@ {: start:n :}
+         start ENGINE-TOKEN-N @ 0 ENGINE-TOKEN-AT !
+         i LINT-LEX:TOKEN nip start + ENGINE-TOKEN-N @ 1 ENGINE-TOKEN-AT !
+         1 ENGINE-TOKEN-N +!
+      then
+   loop
+   ENGINE-TOKEN-N @ first - ;
+
+: ENGINE-FULL-PATH ( ptr u8 n -- ptr u8 n bool )
+   {: rel:ptr relu:n :}
+   SOURCE-ROOT:ENGINE$ {: root:ptr rootu:n :}
+   rootu relu + 1 + PATH-CAP > if NULL$ false exit then
+   root ENGINE-PATH rootu BYTE-COPY
+   47 ENGINE-PATH rootu + c!
+   rel ENGINE-PATH rootu 1 + + relu BYTE-COPY
+   ENGINE-PATH rootu relu + 1 + true ;
+
+: ENGINE-FILE-LOOKUP ( ptr u8 n -- n )
+   {: path:ptr pathu:n :}
+   ENGINE-FILES-N @ 0 ?do
+      i 1 ENGINE-FILE-AT @ pathu = if
+         i 0 ENGINE-FILE-AT @ ENGINE-PATHS
+         pathu path pathu CORE-STR= if i unloop exit then
+      then
+   loop -1 ;
+
+: ENGINE-FILE-ADD ( ptr u8 n ptr u8 n bool -- n )
+   {: path:ptr pathu:n src:ptr srcu:n got:bool :}
+   ENGINE-FILES-N @ {: row:n :}
+   row 1 + ENGINE-FILE-CELLS * ENGINE-FILES-RESERVE
+   ENGINE-PATHS-U @ row 0 ENGINE-FILE-AT !
+   pathu row 1 ENGINE-FILE-AT !
+   ENGINE-PATHS-U @ pathu + ENGINE-PATHS-RESERVE
+   path ENGINE-PATHS-U @ ENGINE-PATHS pathu BYTE-COPY
+   ENGINE-PATHS-U @ pathu + ENGINE-PATHS-U !
+   ENGINE-BYTES-U @ row 2 ENGINE-FILE-AT !
+   ENGINE-TOKEN-N @ row 4 ENGINE-FILE-AT !
+   got if
+      row 1+ 32 * ENGINE-HASHES-RESERVE
+      ENGINE-HASH-CTX src srcu row 32 * ENGINE-HASHES SHA256-IN
+      src srcu ENGINE-WORDS+ {: words:n :}
+      words 0 >= if
+         words row 5 ENGINE-FILE-AT !
+         srcu row 3 ENGINE-FILE-AT !
+         ENGINE-BYTES-U @ srcu + ENGINE-BYTES-RESERVE
+         src ENGINE-BYTES-U @ ENGINE-BYTES srcu BYTE-COPY
+         ENGINE-BYTES-U @ srcu + ENGINE-BYTES-U !
+      else
+         -1 row 3 ENGINE-FILE-AT !
+         0 row 5 ENGINE-FILE-AT !
+      then
+   else
+      -1 row 3 ENGINE-FILE-AT !
+      0 row 5 ENGINE-FILE-AT !
+   then
+   row 1 + ENGINE-FILES-N !
+   row ;
+
+: ENGINE-FILE-READ+ ( ptr u8 n -- n )
+   {: path:ptr pathu:n :}
+   path pathu SUPPLIED {: src:ptr srcu:n got:bool :}
+   got if path pathu src srcu true ENGINE-FILE-ADD exit then
+   path pathu PRIM-SOURCE:FILE-BYTES {: disk:ptr disku:n read:bool :}
+   path pathu disk disku read ENGINE-FILE-ADD ;
+
+: ENGINE-FILE ( ptr u8 n -- ptr u8 n n bool )
+   {: path:ptr pathu:n :}
+   path pathu ENGINE-FILE-LOOKUP dup 0< if
+      drop path pathu ENGINE-FILE-READ+
+   then {: row:n :}
+   row 3 ENGINE-FILE-AT @ {: size:n :}
+   size 0< if NULL$ 0 false exit then
+   row 2 ENGINE-FILE-AT @ ENGINE-BYTES size row true ;
+
+: ENGINE-TOKEN? ( ptr u8 n n n n ptr u8 n -- bool )
+   {: src:ptr size:n row:n at:n end:n name:ptr nameu:n :}
+   at 0< end at <= or end size > or if false exit then
+   end at - nameu <> if false exit then
+   src at + nameu name nameu CORE-STR= 0= if false exit then
+   row 4 ENGINE-FILE-AT @ {: first:n :}
+   first row 5 ENGINE-FILE-AT @ + first ?do
+      i 0 ENGINE-TOKEN-AT @ at =
+      i 1 ENGINE-TOKEN-AT @ end = and if true unloop exit then
+   loop false ;
+
+: ENGINE-TARGET-READ ( n -- ptr u8 n n n bool )
+   {: sym:n :}
+   sym ENGINE-ORIGIN:TARGET {: rel:ptr relu:n at:n end:n name:ptr nameu:n found:bool :}
+   found 0= if NULL$ 0 0 false exit then
+   rel relu ENGINE-FULL-PATH {: path:ptr pathu:n fits:bool :}
+   fits 0= if NULL$ 0 0 false exit then
+   path pathu ENGINE-FILE {: src:ptr srcu:n row:n got:bool :}
+   got 0= if path pathu at 0 true exit then
+   sym ENGINE-ORIGIN:SOURCE-HASH {: saved:ptr savedu:n live:bool :}
+   live 0= if path pathu at 0 true exit then
+   row 32 * ENGINE-HASHES 32 saved savedu CORE-STR= 0= if
+      path pathu at 0 true exit
+   then
+   src srcu row at end name nameu ENGINE-TOKEN? 0= if
+      path pathu at 0 true exit
+   then
+   path pathu at end true ;
+
+: ENGINE-TARGET-INSTALL ( -- ) ['] ENGINE-TARGET-READ is ENGINE-TARGET ;
+ENGINE-TARGET-INSTALL
+
+public
+
+\ A source token in the engine tree selects the same checker symbol as its
+\ uses only when the latest image origin still names that token. This is the
+\ reverse of ENGINE-TARGET's source-backed visit -1 use packet.
+: ENGINE-SYMBOL-AT ( ptr u8 n n -- n bool )
+   {: path:ptr pathu:n byte:n :}
+   path pathu byte ENGINE-ORIGIN:SYMBOL-AT {: sym:n found:bool :}
+   found 0= if 0 false exit then
+   sym ENGINE-TARGET-READ {: located:ptr locatedu:n at:n end:n valid:bool :}
+   valid 0= if 0 false exit then
+   located locatedu path pathu CORE-STR=
+   byte at >= byte end < and and if sym true else 0 false then ;
+
+\ Select from an open engine document's current bytes. A changed token, a
+\ comment or a string at the saved span cannot claim the image's definition.
+: ENGINE-SYMBOL-IN ( ptr u8 n n ptr u8 n -- n bool )
+   {: path:ptr pathu:n byte:n src:ptr srcu:n :}
+   path pathu byte ENGINE-ORIGIN:SYMBOL-AT {: sym:n found:bool :}
+   found 0= if 0 false exit then
+   sym ENGINE-ORIGIN:TARGET
+   {: rel:ptr relu:n at:n end:n name:ptr nameu:n live:bool :}
+   live 0= if 0 false exit then
+   rel relu ENGINE-FULL-PATH {: full:ptr fullu:n fits:bool :}
+   fits 0= if 0 false exit then
+   full fullu path pathu CORE-STR= 0= if 0 false exit then
+   sym ENGINE-ORIGIN:SOURCE-HASH {: saved:ptr savedu:n current:bool :}
+   current 0= if 0 false exit then
+   ENGINE-HASH-CTX src srcu ENGINE-OPEN-HASH SHA256-IN
+   ENGINE-OPEN-HASH 32 saved savedu CORE-STR= 0= if 0 false exit then
+   at 0< end at <= or end srcu > or if 0 false exit then
+   end at - nameu <> if 0 false exit then
+   src at + nameu name nameu CORE-STR= 0= if 0 false exit then
+   src srcu LINT-LEX:SOURCE
+   LINT-LEX:ERROR? if 0 false exit then
+   LINT-LEX:COUNT 0 ?do
+      i LINT-LEX:KIND@ LINT-LEX:WORD = if
+         i LINT-LEX:BYTE@ at =
+         i LINT-LEX:TOKEN nip at + end = and if
+            sym true unloop exit
+         then
+      then
+   loop
+   0 false ;
+
+private
+
 \ The source a quiet composition verifies and its path, for the composition
 \ it runs under catch: a quotation cannot read its caller's locals.
 PTR-VARIABLE QUIET-SRC-A
@@ -4139,6 +4348,7 @@ public
    NULL-PTR COMPOSE-CUR-PATH-A !  0 COMPOSE-CUR-PATH-U !
    0 COMPOSE-STOP-U !
    0 COMPOSE-STOP-SRC-U !
+   ENGINE-FILE-DROP
    0 PRIM-OPEN-READY !
    0 PEND-N !
    REQUIRE-REG:COUNT COMPOSE-REQ0 !
@@ -4148,6 +4358,7 @@ public
    -1 COMPOSE-ON !
    [: COMPOSE-WITH-USES ;] catch {: rc:n :}
    VISITS-DROP
+   ENGINE-FILE-DROP
    CSR-RESET
    0 COMPOSE-ON !
    COMPOSE-REQ0 @ REQUIRE-REG:TRUNCATE

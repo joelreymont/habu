@@ -9,11 +9,13 @@
 \ Location. For a source declaration, the Location is the first record of the
 \ use's group, its check's group for the declaration's file
 \ (LSP-DEFS:USE-GROUP), whose token starts and ends at the declaration's bytes.
-\ For an engine primitive, it is the matching name in src/habu/prims.f.
+\ For an engine primitive, it is the matching name in src/habu/prims.f;
+\ for a source-backed engine word, it is the name the image accepted there.
 \ Both ranges count in the text the check read, at that group's URI.
 \ A byte no use holds, a document whose last check did not complete or that has
 \ none, and a declaration no such record holds answer an empty list. A primitive
-\ whose source is missing or differs from the running table has no Location.
+\ whose source is missing or differs from the running table, or a source-backed
+\ engine word whose source token cannot be validated, has no Location.
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer being written belongs to the
 \ server's one task.
@@ -44,12 +46,12 @@ TYPED-VARIABLE OUT ptr JSON-WRITE:writer \ the answer's writer
    {: g:n r:n :}
    g r REC-RANGE LOCATION-AT ;
 
-\ The Location of the declaration use U binds to: the first record of the
-\ use's group whose token is its declaring one, if one is.
+\ The Location of the declaration use U binds to: a negative visit's validated
+\ engine target, or the first record of its group at the declaring token.
 : TARGET ( n -- )
    {: u:n :}
    u USE-GROUP {: g:n :}
-   u USE-PRIMITIVE-ROW 0 >= if
+   u USE-VISIT 0< if
       u USE-TARGET {: start:n end:n :}
       end start > if g u USE-TARGET-RANGE LOCATION-AT then
       exit

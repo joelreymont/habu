@@ -163,6 +163,12 @@ variable VALID
 
 public
 
+\ Raw source for a caller that validates an image-recorded name token. The
+\ bytes are borrowed until another read through this package.
+: FILE-BYTES ( ptr u8 n -- ptr u8 n bool )
+   READ-FILE if 0 SOURCE-B SOURCE-U @ true exit then
+   NULL$ false ;
+
 : ENGINE-PATH$ ( -- ptr u8 n bool )
    ENGINE-PATH
    PATH$ rot ;
@@ -194,13 +200,6 @@ public
       then
    loop
    0 0 0 false ;
-
-: TARGET-FILE ( ptr u8 n n -- n n bool )
-   {: path:ptr pathu:n row:n :}
-   0 READY ! 0 VALID !
-   path pathu READ-FILE 0= if 0 0 false exit then
-   0 SOURCE-B SOURCE-U @ SCAN-IN 0= if 0 0 false exit then
-   row AT ;
 
 \ The engine path and its matched row offsets are read once per verifier
 \ child. A missing or changed source has no location for any primitive.

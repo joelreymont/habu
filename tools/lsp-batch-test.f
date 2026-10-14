@@ -1,8 +1,8 @@
-\ The primitive References end-to-end cases through the real LSP server.
+\ Internal batch regressions; protocol cases run in tools/lsp-test.f.
 \ Run: bin/hb --load tools/lsp-batch-test.f
 require tools/lsp-test-lib.f
 
-LSP-TEST:TEST-BATCH
+LSP-TEST:TEST-INIT
 
 \ A missed disk subject grows LSP-REFERENCES's movable pool after BEGIN. The
 \ checker must retain the original tail, not the pool's former address.
