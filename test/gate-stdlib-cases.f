@@ -1570,6 +1570,10 @@ SUITE zip
    src/lib/zip-lifecycle-test.f
 ;SUITE
 
+SUITE zip-xml-consumer
+   test/zip-xml-source.f
+;SUITE
+
 SUITE ffi-cabi
    src/lib/ffi-test.f
 ;SUITE

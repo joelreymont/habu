@@ -511,6 +511,7 @@ ZIP:ENTRY   ( ZIP:archive n -- ZIP:entry )
 ZIP:NAME$   ( ZIP:archive ZIP:entry -- ptr u8 n )
 ZIP:READ    ( ZIP:archive ZIP:entry -- ptr u8 n )
 ZIP:OPEN-ENTRY ( ZIP:archive ZIP:entry -- ZIP:input )
+ZIP:INPUT-SLOT ( ptr n -- ptr ZIP:input )
 ZIP:READ-IN ( ZIP:input SPAN:span<u8> -- n )
 ZIP:CLOSE-ENTRY ( ZIP:input -- )
 ZIP:REPLACE ( ZIP:archive ZIP:entry ptr u8 n -- )
@@ -553,6 +554,12 @@ drains an unfinished member and verifies it before closing. A source input
 needs no drain on close. If `READ-IN` fails, it releases that input and throws
 `ZIP:E-READ`; its handle is then stale. Inputs also retire when their archive
 closes or commits.
+
+`INPUT-SLOT` views one aligned caller-owned cell as `ptr ZIP:input`. Store a
+handle returned by `OPEN-ENTRY` or `OPEN-SOURCE` in that cell while a callback
+needs to recover it from a raw `ptr n` context. Keep the cell and handle live
+through the callback, then close the input. The accessor only retypes the cell;
+`READ-IN` and `CLOSE-ENTRY` check whether its handle is still live.
 
 Distinct archive handles can be used concurrently by separate `TASK` workers.
 Each handle and its entries have one task owner; callers coordinate any transfer
