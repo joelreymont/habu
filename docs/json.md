@@ -52,7 +52,11 @@ lines, and `JSONL:READER` opens a `JR:reader` on the current borrowed line.
 Only one reader may be live per cursor. Call `JR:CLOSE` before opening another
 reader, advancing or closing the cursor, or reusing its source or reader
 backing storage. The memory source must remain live until `JSONL:CLOSE`;
-`JSONL:WITH-FILE` closes on success and throw.
+the file descriptor remains owned through EOF until `JSONL:CLOSE`.
+`JSONL:WITH-FILE` closes on success and throw. A failed explicit close after
+successful work throws `JSONL:E-CLOSE`. If reading, framing, or the callback
+already failed, that primary error takes precedence over a cleanup close
+failure; the cursor still releases its storage and becomes closed.
 
 `tools/json.f` uses that memory cursor for its DOM object iterator. It trims
 JSON whitespace and applies the following parser policy to each framed line:
@@ -90,6 +94,7 @@ Use `JSONL:OPEN` or `JSONL:WITH-FILE` from `src/lib/jsonl.f` to frame file
 input. Pass an inclusive byte limit for each physical line. The cursor reads
 8192-byte chunks and grows the current line as needed; final partial lines
 are returned once, EOF is idempotent, and early `JSONL:CLOSE` is allowed.
+EOF leaves the descriptor open so an explicit close can report a close error.
 Call `JSON-PARSE` on a returned line when a tool needs the DOM parser.
 
 ## Writer
