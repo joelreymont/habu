@@ -151,6 +151,8 @@ until it asks for the answer.
 | `LOOP-START` | | `status` |
 | `START` | Handle, writable byte span | `status` |
 | `AWAIT` | Handle | `fetch-result` |
+| `STREAM-START` | Handle | `status` |
+| `NEXT` | Handle, writable byte span | `chunk-result` |
 | `CANCEL` | Handle | |
 | `LOOP-STOP` | | |
 
@@ -198,8 +200,49 @@ included. The wait is a `TASK:STOP` loop, so it costs no CPU and the main thread
 may wait too. A `TASK:HALT` while it waits ends the calling task at its next
 `TASK:PAUSE`, and the record is abandoned first: the loop takes the handle out,
 drops the body and frees the record without waking anybody, which is what keeps
-the loop from waking a TCB the join has released. No `TASK:AT-EXIT` is
-registered — the abandon in that wait is what a halted waiter needs.
+the loop from waking a TCB the join has released. A `TASK:AT-EXIT` cleanup is
+registered for each submitting task, with Habu deduplicating that registration
+across transfers and activations. It marks every uncollected record abandoned
+before task exit releases the TCB. This also covers a halt between the wait's
+state check and `PAUSE`, a thrown body, or a body returning before collection.
+Submission defers halt only until its record is completely initialized.
+
+`STREAM-START` submits a handle to this same loop with incremental receive.
+Its owner calls `NEXT ( handle ptr u8 len -- chunk-result )` repeatedly, with a
+fresh writable span of capacity `1..67108864` on each call. `NEXT` parks on the
+owner's task wakeup until bytes are available or the transfer ends; it never
+polls the handle concurrently with the loop. The result is an exhaustive match:
+
+| Variant | Payload | Meaning |
+| --- | --- | --- |
+| `chunk` | `http-status len` | The first `len` bytes of the span hold the next bytes of the body |
+| `response` | `http-status` | The successful response has ended and every body byte was delivered |
+| `failed` | `code` | The transfer ended with a libcurl or stream error |
+
+The loop flushes its body memstream after `curl_multi_perform` and, when a
+`NEXT` request is pending, copies available bytes into that call's span. The
+loop alone touches the active stream and its buffer: growth may move the buffer,
+but the reader sees only its own copy after the loop publishes the answer.
+Chunks arrive once and in order, with arbitrary binary data and arbitrary
+boundaries inside text. A short destination limits that call's chunk, not the
+response; unread bytes stay available for later calls. Only `len` bytes are
+written, and the caller owns them from the return onward. Each chunk carries
+the handle's HTTP status at delivery; an HTTP error such as 404 still streams
+its body and ends with `response` carrying 404. A transport failure can follow
+already delivered chunks and ends with `failed`. The terminal result is returned
+once and releases the record. After a successful terminal, `HEADERS` can read
+the final response headers as it can after `AWAIT`.
+
+`START`/`AWAIT` and `STREAM-START`/`NEXT` are distinct collection modes. A
+collector of the wrong mode, a different task, a missing transfer, a repeated
+terminal collection, or a transfer started before the loop runs throws
+`CURL:E-STATE`. A bad `NEXT` capacity throws `CURL:E-OPERAND` without consuming
+the transfer. `CANCEL` works in either mode and may be called by another task:
+the owner collects a cancelled stream with `NEXT` as `failed` code 42. A task halted while parked in `NEXT` abandons
+the stream through the same loop lifecycle as a halted `AWAIT`; the loop frees
+its record without waking that task. `LOOP-STOP` refuses while a stream still
+holds a record, including after libcurl finishes but before terminal
+collection. Whole-body and streaming transfers can share the loop.
 
 `CANCEL` ends one early — the loop takes the handle out of the multi handle,
 drops whatever body it had collected and answers the waiter `failed` with
@@ -318,6 +361,17 @@ stops once it has taken the abandoned record back; and the loop started again,
 carrying one more transfer. A last case checks the server task itself served
 every request whose arrival the row guarantees, plus the cut dribble's request
 when it got out, and reported no fault.
+
+The stream peer sends a NUL and two bytes of a UTF-8 scalar, then holds its
+HTTP response until `NEXT` has returned them. It sends the remaining scalar
+byte and a larger body afterward, exercising memstream growth and many short
+destination spans. A peer that closes before its declared `Content-Length`
+delivers the bytes it sent, then fails with libcurl code 18. The suite also
+checks that a whole-body transfer times out independently while that stream is
+held, an HTTP 404 streams its body, another task can cancel a parked `NEXT`,
+and timeout returns code 28. A wrong collector or task is refused, headers
+become available after terminal collection, and a halted `NEXT` releases its
+record so the loop can stop and restart.
 
 Setting `HABU_NET_TESTS=1` adds one request to `https://example.com`, which is
 the only case that leaves the machine and the only one that exercises TLS and

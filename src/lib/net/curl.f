@@ -40,6 +40,12 @@ SUMTYPE fetch-result 0
    VARIANT failed code ;VARIANT
 ;SUMTYPE
 
+SUMTYPE chunk-result 0
+   VARIANT chunk http-status len ;VARIANT
+   VARIANT response http-status ;VARIANT
+   VARIANT failed code ;VARIANT
+;SUMTYPE
+
 SUMTYPE header-result 0
    VARIANT complete len ;VARIANT
    VARIANT truncated len ;VARIANT
@@ -170,6 +176,7 @@ FUNCTION: MULTI-TIMEOUT curl_multi_timeout ( n ptr u8 -- i32 )
 PROCESS-SYMBOLS
 
 FUNCTION: STREAM-CLOSE fclose ( n -- i32 ) ;FUNCTION
+FUNCTION: STREAM-FLUSH fflush ( n -- i32 ) ;FUNCTION
 FUNCTION: DUP-TEXT strndup ( ptr u8 n -- n ) ;FUNCTION
 FUNCTION: TEXT-LENGTH strlen ( n -- n ) ;FUNCTION
 FUNCTION: RELEASE free ( n -- ) ;FUNCTION
@@ -540,6 +547,14 @@ $18 constant MSG-BYTES
 1 constant KIND-TRUNCATED
 2 constant KIND-FAILED
 
+0 constant MODE-WHOLE
+1 constant MODE-STREAM
+0 constant REQUEST-NONE
+1 constant REQUEST-WAITING
+2 constant REQUEST-CHUNK
+3 constant REQUEST-RESPONSE
+4 constant REQUEST-FAILED
+
 BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD R.STATE
    CELL +FIELD R.EASY
@@ -551,6 +566,11 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD R.STATUS
    CELL +FIELD R.LEN
    CELL +FIELD R.CODE
+   CELL +FIELD R.MODE
+   CELL +FIELD R.REQUEST
+   CELL +FIELD R.OFFSET
+   CELL +FIELD R.BODY
+   CELL +FIELD R.DELIVERED
 END-STRUCTURE
 
 \ One record per transfer, in cells the loop reads with atomic@ and atomic!.
@@ -647,6 +667,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 : REC-CAP@ ( n -- n )       REC R.CAP @ ;
 : REC-STREAM@ ( n -- n )    REC R.STREAM @ ;
 : REC-HSTREAM@ ( n -- n )   REC R.HSTREAM @ ;
+: REC-MODE@ ( n -- n )      REC R.MODE @ ;
 : REC-TARGET@ ( n -- ptr u8 ) REC-CHECK REC-TARGETS @ ;
 : REC-OWNER@ ( n -- ptr n ) REC-CHECK REC-OWNER @ ;
 
@@ -674,6 +695,9 @@ CAST: TICKET>N ( AIO:ticket -- n )
    0 idx REC R.EASY !
    0 idx REC R.STREAM !
    0 idx REC R.HSTREAM !
+   0 idx REC R.BODY !
+   MODE-WHOLE idx REC R.MODE !
+   REQUEST-NONE idx REC R.REQUEST atomic!
    0 idx REC R.ADDED !
    STATE-FREE idx REC-STATE! ;
 
@@ -682,6 +706,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 \ closed both streams and published it before the halt reached AWAIT.
 : ABANDON-RELEASE ( n -- ) {: idx:n :}
    idx REC-EASY@ STATE-GET STATE-CLEAR-RESPONSE
+   idx REC R.BODY @ dup 0 <> if RELEASE else drop then
    idx REC-RELEASE ;
 
 
@@ -709,7 +734,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
    false ;
 
 
-: REC-FILL ( n n ptr u8 n n n -- ) {: idx:n easy:n target capacity:n stream:n headers:n :}
+: REC-FILL ( n n ptr u8 n n n n -- ) {: idx:n easy:n target capacity:n stream:n headers:n mode:n :}
    easy idx REC R.EASY !
    capacity idx REC R.CAP !
    stream idx REC R.STREAM !
@@ -720,7 +745,12 @@ CAST: TICKET>N ( AIO:ticket -- n )
    KIND-FAILED idx REC R.KIND !
    0 idx REC R.STATUS !
    0 idx REC R.LEN !
-   CURLE-ABORTED idx REC R.CODE ! ;
+   CURLE-ABORTED idx REC R.CODE !
+   mode idx REC R.MODE !
+   REQUEST-NONE idx REC R.REQUEST atomic!
+   0 idx REC R.OFFSET !
+   0 idx REC R.BODY !
+   0 idx REC R.DELIVERED ! ;
 
 
 \ ---- the wake pipe -----------------------------------------------------------
@@ -796,7 +826,21 @@ CAST: TICKET>N ( AIO:ticket -- n )
 \ AWAIT reads them after its wait.
 : SETTLE ( n -- ) {: idx:n :}
    STATE-DONE idx REC-STATE!
-   idx REC-OWNER@ TASK:WAKE ;
+   idx REC-MODE@ MODE-WHOLE = if idx REC-OWNER@ TASK:WAKE then ;
+
+
+\ Failure paths that drop an active stream have no later loop turn to deliver
+\ buffered bytes. Answer a pending NEXT before waking its owner.
+: SETTLE-FAILED ( n -- ) {: idx:n :}
+   idx REC-MODE@ MODE-STREAM = if
+      idx REC R.REQUEST atomic@ REQUEST-WAITING = if
+         REQUEST-FAILED idx REC R.REQUEST atomic!
+         idx SETTLE
+         idx REC-OWNER@ TASK:WAKE
+         exit
+      then
+   then
+   idx SETTLE ;
 
 
 : ADD-ONE ( n -- n ) {: idx:n :}
@@ -829,6 +873,22 @@ CAST: TICKET>N ( AIO:ticket -- n )
    then
    rc bodyrc FIRST-ERROR headrc FIRST-ERROR clear-rc FIRST-ERROR
       {: outcome:n :}
+   idx REC-MODE@ MODE-STREAM = if
+      source idx REC R.BODY !
+      u idx REC R.LEN !
+      idx REC-EASY@ STATUS-TRY {: status:n valid:bool :}
+      status idx REC R.STATUS !
+      outcome CURLE-OK <> if
+         headers RELEASE
+         idx outcome FAILED-STORE
+      else
+         valid 0= if headers RELEASE E-RESULT throw then
+         KIND-RESPONSE idx REC R.KIND !
+         idx REC-EASY@ headers headeru STATE-PUBLISH
+      then
+      idx SETTLE
+      CURLM-OK exit
+   then
    outcome CURLE-OK <> if
       source RELEASE headers RELEASE
       idx outcome FAILED-STORE
@@ -845,13 +905,58 @@ CAST: TICKET>N ( AIO:ticket -- n )
    CURLM-OK ;
 
 
+\ Only the loop calls fflush or reads the foreign memstream cells. Its copy
+\ completes under CURL-LOCK before it publishes REQUEST-CHUNK to the owner.
+\ The owner's destination is untouched again until that owner calls NEXT.
+: STREAM-DELIVER ( n -- n ) {: idx:n :}
+   idx REC-MODE@ MODE-STREAM <> if CURLM-OK exit then
+   idx REC R.REQUEST atomic@ REQUEST-WAITING <> if CURLM-OK exit then
+   idx REC-STATE@ STATE-DONE = if
+      idx REC R.BODY @ idx REC R.LEN @ CURLM-OK
+   else
+      idx REC-STREAM@ STREAM-FLUSH 0= if
+         idx REC-BUF-CELL LE:U64@ idx REC-LEN-CELL LE:U64@ CURLM-OK
+      else 0 0 CURLE-WRITE-ERROR then
+   then
+   {: source:n u:n frc:n :}
+   frc CURLE-OK <> if
+      idx REMOVE-ONE dup CURLM-OK <> if exit then drop
+      idx STREAM-DROP drop
+      idx frc FAILED-STORE
+      idx SETTLE-FAILED
+      CURLM-OK exit
+   then
+   u idx REC R.OFFSET @ > if
+      idx REC-CAP@ u idx REC R.OFFSET @ - min {: count:n :}
+      idx REC-STATE@ STATE-DONE = if
+         idx REC R.STATUS @
+      else
+         idx REC-EASY@ STATUS-TRY 0= if drop E-RESULT throw then
+      then
+      idx REC R.STATUS !
+      idx REC-TARGET@ source idx REC R.OFFSET @ + count BODY-COPY
+      idx REC R.OFFSET @ count + idx REC R.OFFSET !
+      count idx REC R.DELIVERED !
+      REQUEST-CHUNK idx REC R.REQUEST atomic!
+      idx REC-OWNER@ TASK:WAKE
+      CURLM-OK exit
+   then
+   idx REC-STATE@ STATE-DONE = if
+      idx REC R.KIND @ KIND-FAILED = if REQUEST-FAILED
+      else REQUEST-RESPONSE then
+      idx REC R.REQUEST atomic!
+      idx REC-OWNER@ TASK:WAKE
+   then
+   CURLM-OK ;
+
+
 \ The owner asked for this transfer to end: libcurl's own code for a transfer an
 \ application ended is the answer it gets.
 : CANCEL-RUN ( n -- n ) {: idx:n :}
    idx REMOVE-ONE dup CURLM-OK <> if exit then drop
    idx STREAM-DROP drop
    idx CURLE-ABORTED FAILED-STORE
-   idx SETTLE
+   idx SETTLE-FAILED
    CURLM-OK ;
 
 
@@ -864,10 +969,11 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 : SERVICE-ONE ( n -- n ) {: idx:n :}
    idx REC-STATE@ {: st:n :}
+   st STATE-FREE = st STATE-CLAIMING = or if CURLM-OK exit then
    st STATE-CLAIMED = if idx ADD-ONE exit then
    st STATE-CANCEL = if idx CANCEL-RUN exit then
    st STATE-ABANDONED = if idx ABANDON-RUN exit then
-   CURLM-OK ;
+   idx STREAM-DELIVER ;
 
 
 : SERVICE-RECORDS ( -- n )
@@ -897,7 +1003,8 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 : TRANSFERS-RUN ( -- n )
    MULTI-CELL atomic@ COUNT-CELL MULTI-PERFORM dup CURLM-OK <> if exit then drop
-   REAP ;
+   REAP dup CURLM-OK <> if exit then drop
+   SERVICE-RECORDS ;
 
 
 \ Every record access but the claim runs under this one facility, and the two
@@ -1131,12 +1238,24 @@ CAST: TICKET>N ( AIO:ticket -- n )
 \ on a loop that is gone.
 : FAIL-ONE ( n -- ) {: idx:n :}
    idx REC-STATE@ {: st:n :}
-   st STATE-FREE = st STATE-DONE = or st STATE-CLAIMING = or if exit then
+   st STATE-FREE = st STATE-CLAIMING = or if exit then
+   st STATE-DONE = if
+      idx REC-MODE@ MODE-WHOLE = if exit then
+      idx REC R.BODY @ dup 0 <> if RELEASE else drop then
+      0 idx REC R.BODY !
+      idx REC R.OFFSET @ idx REC R.LEN !
+      idx CURLE-ABORTED FAILED-STORE
+      idx REC R.REQUEST atomic@ REQUEST-WAITING = if
+         REQUEST-FAILED idx REC R.REQUEST atomic!
+         idx REC-OWNER@ TASK:WAKE
+      then
+      exit
+   then
    idx REMOVE-ONE drop
    idx STREAM-DROP drop
    st STATE-ABANDONED = if idx ABANDON-RELEASE exit then
    idx CURLE-ABORTED FAILED-STORE
-   idx SETTLE ;
+   idx SETTLE-FAILED ;
 
 
 : FAIL-ALL ( -- )
@@ -1233,6 +1352,22 @@ CAST: TICKET>N ( AIO:ticket -- n )
    WAKE-POKE ;
 
 
+: OWNER-MARK ( ptr n n -- bool ) {: owner:ptr idx:n :}
+   idx REC-STATE@ dup STATE-FREE = swap STATE-CLAIMING = or if false exit then
+   idx REC-OWNER@ FFI:>CELL owner FFI:>CELL <> if false exit then
+   STATE-ABANDONED idx REC-STATE!
+   true ;
+
+\ Every task exit precedes release of its TCB. Marking its records under the
+\ loop's lock prevents a later copy or wake, including a halt at a wait's PAUSE.
+: OWNER-END ( -- )
+   TASK:SELF {: owner:ptr :}
+   CURL-LOCK TASK:GET
+   false MAX-TRANSFERS 0 ?do owner i OWNER-MARK or loop
+   CURL-LOCK TASK:RELEASE
+   if WAKE-POKE then ;
+
+
 : CANCEL-MARK ( n -- ) {: idx:n :}
    idx REC-STATE@ {: st:n :}
    st STATE-CLAIMED = st STATE-RUNNING = or 0= if exit then
@@ -1294,10 +1429,13 @@ public
 \ other task may touch either. A START with no loop running, and a second START
 \ on a handle already in flight, are E-STATE; a table with no record free is
 \ E-CAPACITY.
-: START ( handle ptr u8 len -- status ) {: subject:handle target capacity:len :}
+private
+
+: START-WITH-BODY ( handle ptr u8 len n -- status ) {: subject:handle target capacity:len mode:n :}
    subject HANDLE-CELL {: easy:n :}
    LOOP-LIVE atomic@ 0= if E-STATE throw then
-   capacity LEN>N 1 MAX-BYTES WITHIN-RANGE
+   mode MODE-WHOLE = if capacity LEN>N 1 MAX-BYTES WITHIN-RANGE then
+   TASK:SELF dup FFI:>CELL 0<> if ['] OWNER-END swap TASK:AT-EXIT else drop then
    easy START-CLAIM {: idx:n :}
    easy STATE-GET STATE-CLEAR-RESPONSE
    idx REC-BUF-CELL idx REC-LEN-CELL STREAM-OPEN dup 0= if
@@ -1312,7 +1450,7 @@ public
       idx REC-RELEASE OUT-OF-MEMORY exit
    then
    {: headers:n :}
-   idx easy target capacity LEN>N stream headers REC-FILL
+   idx easy target capacity LEN>N stream headers mode REC-FILL
    easy OPT-WRITE-DATA stream SETOPT-NUM dup CURLE-OK <> if
       idx STREAM-DROP drop
       idx REC-RELEASE
@@ -1328,6 +1466,80 @@ public
    CURL-STATUS:ok ;
 
 
+\ No halt may leave a half-initialized transfer behind. Once published, the
+\ task's exit cleanup owns abandonment until a terminal result is collected.
+: START-WITH ( handle ptr u8 len n -- status )
+   TASK:DEFER-ENTER
+   [: START-WITH-BODY ;] [: TASK:DEFER-LEAVE ;] finally ;
+
+
+: STREAM-RESULT-BUILD ( n n n n -- chunk-result ) {: kind:n status:n u:n rc:n :}
+   kind REQUEST-FAILED = if rc >CODE CURL-CHUNK--RESULT:failed exit then
+   kind REQUEST-RESPONSE = if
+      status >HTTP-STATUS CURL-CHUNK--RESULT:response exit
+   then
+   status >HTTP-STATUS u >LEN CURL-CHUNK--RESULT:chunk ;
+
+
+: STREAM-RESULT-TAKE ( n -- chunk-result ) {: idx:n :}
+   CURL-LOCK TASK:GET
+   idx REC R.REQUEST atomic@ {: kind:n :}
+   idx REC R.STATUS @ idx REC R.DELIVERED @ idx REC R.CODE @
+      {: status:n u:n rc:n :}
+   kind REQUEST-CHUNK = if
+      REQUEST-NONE idx REC R.REQUEST atomic!
+   else
+      idx REC R.BODY @ dup 0 <> if RELEASE else drop then
+      idx REC-RELEASE
+   then
+   CURL-LOCK TASK:RELEASE
+   kind status u rc STREAM-RESULT-BUILD ;
+
+public
+
+: START ( handle ptr u8 len -- status ) {: subject:handle target capacity:len :}
+   subject target capacity MODE-WHOLE START-WITH ;
+
+
+\ Queues the same prepared handle for incremental receive. NEXT supplies each
+\ destination; no caller span is held while the transfer is in flight.
+: STREAM-START ( handle -- status ) {: subject:handle :}
+   subject BUF-CELL 0 >LEN MODE-STREAM START-WITH ;
+
+
+: NEXT ( handle ptr u8 len -- chunk-result ) {: subject:handle target capacity:len :}
+   subject HANDLE-CELL OWNED-INDEX {: idx:n :}
+   idx REC-MODE@ MODE-STREAM <> if E-STATE throw then
+   capacity LEN>N 1 MAX-BYTES WITHIN-RANGE
+   CURL-LOCK TASK:GET
+   idx REC R.REQUEST atomic@ REQUEST-NONE <> if
+      CURL-LOCK TASK:RELEASE E-STATE throw
+   then
+   target idx REC-CHECK REC-TARGETS !
+   capacity LEN>N idx REC R.CAP !
+   idx REC-STATE@ STATE-DONE =
+      idx REC R.OFFSET @ idx REC R.LEN @ >= and if
+      idx REC R.KIND @ KIND-FAILED = if REQUEST-FAILED else REQUEST-RESPONSE then
+      true
+   else REQUEST-WAITING false then
+   {: request:n ready:bool :}
+   request idx REC R.REQUEST atomic!
+   CURL-LOCK TASK:RELEASE
+   ready if idx STREAM-RESULT-TAKE exit then
+   WAKE-POKE
+   begin
+      TASK:STOP
+      TASK:HALTED? if
+         idx ABANDON
+         TASK:PAUSE
+      then
+      idx REC R.REQUEST atomic@ REQUEST-WAITING <> if
+         idx STREAM-RESULT-TAKE exit
+      then
+      TASK:PAUSE
+   again ;
+
+
 \ Waits for that handle's transfer and answers the same fetch-result PERFORM
 \ would have. It is what gives the record back, so every started transfer is
 \ awaited exactly once, cancelled ones included. A handle with no transfer in
@@ -1336,10 +1548,11 @@ public
 \ The wait is a TASK:STOP loop, so it costs no CPU and the main thread may wait
 \ too. A TASK:HALT while it waits ends the calling task at the PAUSE below, and
 \ the record is abandoned first: the loop frees it and wakes nobody, which is
-\ what keeps the loop from waking a TCB the join has released. No TASK:AT-EXIT
-\ is registered here - the abandon in this wait is what a halted waiter needs.
+\ what keeps the loop from waking a TCB the join has released. The owner's exit
+\ cleanup also covers a halt between this check and PAUSE, or a body throw.
 : AWAIT ( handle -- fetch-result ) {: subject:handle :}
    subject HANDLE-CELL OWNED-INDEX {: idx:n :}
+   idx REC-MODE@ MODE-WHOLE <> if E-STATE throw then
    begin
       idx REC-STATE@ STATE-DONE = if idx RESULT-TAKE exit then
       TASK:STOP

@@ -52,6 +52,8 @@ $1000 constant READY-TRIES              \ TASK:PAUSE turns before the listener i
 $2710 constant REQUEST-MS               \ 10 s: a loopback request that slow is broken
 $FE constant FILL-BYTE                  \ the sentinel a refused transfer must not overwrite
 $300 constant DRIBBLE-U                 \ the dribble body, served whole but slowly
+$3003 constant STREAM-U                \ forces several memstream growths and short reads
+$7F constant STREAM-CAP                 \ much shorter than the response
 $40 constant DRIBBLE-STEP               \ bytes per timed write
 100 constant DRIBBLE-GAP-MS             \ 12 steps: 1.3 s at about 640 bytes a second
 \ The dribble must outlast LOW-SECONDS: a shorter one finishes before any stall
@@ -78,6 +80,9 @@ create TRANSCRIPT-BUF HEADER-CAP allot
 create JAR-TEXT-BUF RES-CAP allot
 create NUM-BUF NUM-CAP allot
 create DRIBBLE-BUF DRIBBLE-U allot
+create STREAM-BUF STREAM-U allot
+create STREAM-GOT STREAM-U allot
+create STREAM-CHUNK STREAM-CAP allot
 
 : TEST-ALIGN8 ( -- )
    here FFI:>CELL 7 and 8 swap - 7 and allot ;
@@ -102,6 +107,9 @@ variable SERVER-HITS
 variable SILENT-LISTENER
 variable SILENT-PORT
 variable CEILING-HITS                   \ the cut dribble's request, if it got out
+variable STREAM-ACK                     \ the peer may finish only after NEXT delivered
+variable STREAM-DONE
+variable STREAM-READ
 variable LAST-STATUS
 variable LAST-LEN
 variable LAST-CODE
@@ -128,6 +136,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : PATH-COOKIE$ ( -- ptr u8 n ) s" /cookie" ;
 : PATH-STALL$ ( -- ptr u8 n ) s" /stall" ;
 : PATH-DRIBBLE$ ( -- ptr u8 n ) s" /dribble" ;
+: PATH-STREAM$ ( -- ptr u8 n ) s" /stream" ;
+: PATH-STREAM-SHORT$ ( -- ptr u8 n ) s" /stream-short" ;
 : PATH-HEADERS$ ( -- ptr u8 n ) s" /headers" ;
 : PATH-HEADERS-B$ ( -- ptr u8 n ) s" /headers-b" ;
 : PATH-REDIRECT$ ( -- ptr u8 n ) s" /redirect" ;
@@ -144,6 +154,20 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 : DRIBBLE-FILL ( -- )
    DRIBBLE-U 0 do DRIBBLE-BYTE DRIBBLE-BUF i + c! loop ;
+
+
+\ Failure hypotheses for incremental receive: a memstream may hide bytes until
+\ close, move its buffer while growing, or expose binary/UTF-8 fragments; a
+\ short NEXT span may duplicate, skip or overwrite bytes; completion may race
+\ a reader; a second mode or foreign owner may collect the wrong record; cancel
+\ and HALT may strand a parked reader or wake a dead TCB. The held peer below
+\ refuses to finish until the first NEXT result has been inspected.
+: STREAM-FILL ( -- )
+   0 STREAM-BUF c!
+   $E2 STREAM-BUF 1+ c!
+   $82 STREAM-BUF 2 + c!
+   $AC STREAM-BUF 3 + c!
+   STREAM-U 4 do $78 STREAM-BUF i + c! loop ;
 
 
 \ ---- the request the server task reads ---------------------------------------
@@ -393,6 +417,46 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    conn TCP4:CLOSE PEER-STATUS ;
 
 
+: STREAM-HEAD ( -- )
+   RES-RESET
+   s" 200 OK" STATUS-LINE
+   s" Content-Length: " RES+ STREAM-U RES-NUM CRLF+
+   s" Connection: close" RES+ CRLF+ CRLF+ ;
+
+
+: STREAM-WAIT-ACK ( -- bool )
+   mono-ns REQUEST-MS NS-PER-MS * + {: deadline:n :}
+   begin
+      STREAM-ACK atomic@ 0 <> if true exit then
+      mono-ns deadline > if false exit then
+      1 >MS TASK:SLEEP
+   again ;
+
+
+: SERVE-STREAM ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   STREAM-HEAD
+   conn RES-BUF RES-U @ TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS
+   conn STREAM-BUF 3 TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS
+   STREAM-WAIT-ACK if
+      conn STREAM-BUF 3 + STREAM-U 3 - TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS
+      1 STREAM-DONE atomic!
+   else
+      1 SERVER-BAD +!
+   then
+   conn TCP4:SENDING TCP4:SHUTDOWN PEER-STATUS
+   conn DRAIN
+   conn TCP4:CLOSE PEER-STATUS ;
+
+
+: SERVE-STREAM-SHORT ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   STREAM-HEAD
+   conn RES-BUF RES-U @ TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS
+   conn STREAM-BUF 3 TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS
+   conn TCP4:SENDING TCP4:SHUTDOWN PEER-STATUS
+   conn DRAIN
+   conn TCP4:CLOSE PEER-STATUS ;
+
+
 : SERVE-HELLO ( TCP4:connection -- ) {: conn:TCP4:connection :}
    s" If-Modified-Since:" REQ-HAS-CI? if
       s" 304 Not Modified" RESPOND-EMPTY
@@ -465,6 +529,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    s" DELETE" METHOD-IS? if conn SERVE-UNIMPLEMENTED exit then
    PATH-STALL$ PATH-IS? if conn SERVE-STALL exit then
    PATH-DRIBBLE$ PATH-IS? if conn SERVE-DRIBBLE exit then
+   PATH-STREAM$ PATH-IS? if conn SERVE-STREAM exit then
+   PATH-STREAM-SHORT$ PATH-IS? if conn SERVE-STREAM-SHORT exit then
    PATH-HEADERS$ PATH-IS? if conn SERVE-HEADERS exit then
    PATH-HEADERS-B$ PATH-IS? if conn SERVE-HEADERS-B exit then
    PATH-REDIRECT$ PATH-IS? if conn SERVE-REDIRECT exit then
@@ -1136,6 +1202,7 @@ TEST-ALIGN8
 variable DURING-THREADS
 variable HALT-PARKED
 variable HALT-RC
+variable EARLY-MODE
 variable DONE-PARKED
 variable DONE-COLLECTED
 variable DONE-RC
@@ -1213,6 +1280,195 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    RESULT-RESET
    subject BODY-BUF capacity CURL:START EXPECT-OK
    subject AWAIT-ONE ;
+
+
+: STREAM-APPEND ( len -- ) {: u:len :}
+   u LEN>N {: count:n :}
+   STREAM-READ @ count + STREAM-U <= TTRUE
+   STREAM-CHUNK STREAM-GOT STREAM-READ @ + count BYTE-COPY
+   STREAM-READ @ count + STREAM-READ ! ;
+
+
+: STREAM-FIRST ( CURL:handle -- ) {: subject:CURL:handle :}
+   STREAM-CAP 0 do FILL-BYTE STREAM-CHUNK i + c! loop
+   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF
+         swap CURL:HTTP-STATUS>N 200 T=
+         dup LEN>N 3 T=
+         STREAM-APPEND
+      ENDOF
+      response OF CURL:HTTP-STATUS>N 0 T= ENDOF
+      failed OF CURL:CODE>N 0 T= ENDOF
+   ;MATCH
+   STREAM-DONE atomic@ 0 T=
+   STREAM-READ @ 3 T=
+   STREAM-CHUNK 3 + c@ FILL-BYTE T= ;
+
+
+: STREAM-REMAINING ( CURL:handle -- ) {: subject:CURL:handle :}
+   begin
+      subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+      MATCH CURL:chunk-result
+         chunk OF
+            swap CURL:HTTP-STATUS>N 200 T=
+            STREAM-APPEND true
+         ENDOF
+         response OF CURL:HTTP-STATUS>N 200 T= false ENDOF
+         failed OF CURL:CODE>N 0 T= false ENDOF
+      ;MATCH
+   0= until ;
+
+
+: STREAM-TERMINAL-AGAIN ( -- )
+   OWNER-HANDLE @ STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT drop ;
+
+
+\ The peer holds the connection after writing a NUL and two bytes of a UTF-8
+\ scalar. NEXT must return those bytes before ACK allows the rest to be sent.
+\ The rest grows the memstream and is collected through short caller spans.
+: CASE-STREAM-HELD ( -- )
+   s" the first stream chunk arrives while the HTTP response is held" T-LABEL
+   0 STREAM-ACK atomic! 0 STREAM-DONE atomic! 0 STREAM-READ !
+   PATH-STREAM$ GET-READY {: subject:CURL:handle :}
+   subject OWNER-HANDLE !
+   subject CURL:STREAM-START EXPECT-OK
+   subject HEADER-REFUSED
+   [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
+   subject STREAM-FIRST
+   STALL-READY {: other:CURL:handle :}
+   other BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   other AWAIT-ONE
+   LAST-KIND @ KIND-FAILED T=
+   LAST-CODE @ 28 T=
+   other CURL:CLEANUP
+   1 STREAM-ACK atomic!
+   subject STREAM-REMAINING
+   STREAM-DONE atomic@ 1 T=
+   STREAM-READ @ STREAM-U T=
+   STREAM-GOT STREAM-U STREAM-BUF STREAM-U T$=
+   STREAM-HEAD
+   subject RES-BUF RES-U @ HEADER-EXACT
+   [: STREAM-TERMINAL-AGAIN ;] CURL:E-STATE TTHROWSQ
+   subject CURL:CLEANUP ;
+
+
+: AWAIT-STREAM-REFUSED ( -- )
+   OWNER-HANDLE @ CURL:AWAIT DROP-FETCH ;
+
+: NEXT-WHOLE-REFUSED ( -- )
+   OWNER-HANDLE @ STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT drop ;
+
+: NEXT-ZERO-REFUSED ( -- )
+   OWNER-HANDLE @ STREAM-CHUNK 0 >LEN CURL:NEXT drop ;
+
+: OWNER-NEXT-WORK ( -- )
+   [: NEXT-WHOLE-REFUSED ;] catch OWNER-RC ! ;
+
+
+: CASE-STREAM-MODES ( -- )
+   PATH-HELLO$ GET-READY {: subject:CURL:handle :}
+   subject OWNER-HANDLE !
+   subject CURL:STREAM-START EXPECT-OK
+   s" AWAIT and a zero span refuse a streaming transfer" T-LABEL
+   [: AWAIT-STREAM-REFUSED ;] CURL:E-STATE TTHROWSQ
+   [: NEXT-ZERO-REFUSED ;] CURL:E-OPERAND TTHROWSQ
+   ['] OWNER-NEXT-WORK OWNER-TASK TASK:ACTIVATE
+   OWNER-TASK ENDED? TTRUE
+   OWNER-TASK TASK:KILL
+   OWNER-RC @ CURL:E-STATE T=
+   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF swap CURL:HTTP-STATUS>N 200 T= LEN>N HELLO$ nip T= ENDOF
+      response OF CURL:HTTP-STATUS>N 0 T= ENDOF
+      failed OF CURL:CODE>N 0 T= ENDOF
+   ;MATCH
+   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF 2drop false TTRUE ENDOF
+      response OF CURL:HTTP-STATUS>N 200 T= ENDOF
+      failed OF CURL:CODE>N 0 T= ENDOF
+   ;MATCH
+   subject CURL:CLEANUP
+   PATH-HELLO$ GET-READY {: whole:CURL:handle :}
+   whole OWNER-HANDLE !
+   whole BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   [: NEXT-WHOLE-REFUSED ;] CURL:E-STATE TTHROWSQ
+   whole AWAIT-ONE
+   LAST-KIND @ KIND-RESPONSE T=
+   whole CURL:CLEANUP ;
+
+
+: CASE-STREAM-HTTP-ERROR ( -- )
+   s" an HTTP error streams its body and status" T-LABEL
+   PATH-STALL$ GET-READY {: subject:CURL:handle :}
+   subject s" /absent" URL-FOR CURL:URL! EXPECT-OK
+   subject CURL:STREAM-START EXPECT-OK
+   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF
+         swap CURL:HTTP-STATUS>N 404 T=
+         dup LEN>N 9 T=
+         STREAM-CHUNK swap LEN>N s" not found" T$=
+      ENDOF
+      response OF CURL:HTTP-STATUS>N 0 T= ENDOF
+      failed OF CURL:CODE>N 0 T= ENDOF
+   ;MATCH
+   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF 2drop false TTRUE ENDOF
+      response OF CURL:HTTP-STATUS>N 404 T= ENDOF
+      failed OF CURL:CODE>N 0 T= ENDOF
+   ;MATCH
+   subject CURL:CLEANUP ;
+
+
+: CASE-STREAM-FAILURES ( -- )
+   s" cancel and timeout settle a stream without a success terminal" T-LABEL
+   PATH-STALL$ GET-READY {: subject:CURL:handle :}
+   SERVER-HITS atomic@ {: before:n :}
+   subject CURL:STREAM-START EXPECT-OK
+   before WAIT-HIT
+   subject CURL:CANCEL
+   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF 2drop false TTRUE ENDOF
+      response OF drop false TTRUE ENDOF
+      failed OF CURL:CODE>N 42 T= ENDOF
+   ;MATCH
+   subject CURL:CLEANUP
+   STALL-READY {: silent:CURL:handle :}
+   silent CURL:STREAM-START EXPECT-OK
+   silent STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF 2drop false TTRUE ENDOF
+      response OF drop false TTRUE ENDOF
+      failed OF CURL:CODE>N 28 T= ENDOF
+   ;MATCH
+   silent CURL:CLEANUP ;
+
+
+: CASE-STREAM-PARTIAL ( -- )
+   s" a premature close delivers received bytes and then reports failure" T-LABEL
+   PATH-STREAM-SHORT$ GET-READY {: subject:CURL:handle :}
+   subject CURL:STREAM-START EXPECT-OK
+   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF
+         swap CURL:HTTP-STATUS>N 200 T=
+         dup LEN>N 3 T=
+         STREAM-CHUNK swap LEN>N STREAM-BUF 3 T$=
+      ENDOF
+      response OF CURL:HTTP-STATUS>N 0 T= ENDOF
+      failed OF CURL:CODE>N 0 T= ENDOF
+   ;MATCH
+   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF 2drop false TTRUE ENDOF
+      response OF drop false TTRUE ENDOF
+      failed OF CURL:CODE>N 18 T= ENDOF
+   ;MATCH
+   subject CURL:CLEANUP ;
 
 
 \ One request through PERFORM and the same one through the loop: the answers
@@ -1421,6 +1677,89 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    HALT-HANDLE @ CURL:CLEANUP ;
 
 
+: HALT-STREAM-WORK ( -- )
+   HALT-HANDLE @ CURL:STREAM-START
+   MATCH CURL:status
+      ok OF ENDOF
+      failed OF CURL:CODE>N HALT-RC ! ENDOF
+   ;MATCH
+   1 HALT-PARKED atomic!
+   HALT-HANDLE @ STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF 2drop ENDOF
+      response OF drop ENDOF
+      failed OF drop ENDOF
+   ;MATCH ;
+
+
+: CANCEL-STREAM-WORK ( -- )
+   HALT-HANDLE @ CURL:STREAM-START
+   MATCH CURL:status
+      ok OF ENDOF
+      failed OF CURL:CODE>N HALT-RC ! ENDOF
+   ;MATCH
+   1 HALT-PARKED atomic!
+   HALT-HANDLE @ STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF 2drop ENDOF
+      response OF drop ENDOF
+      failed OF CURL:CODE>N HALT-RC ! ENDOF
+   ;MATCH ;
+
+
+: CASE-CANCEL-STREAM-OTHER-TASK ( -- )
+   0 HALT-PARKED ! 0 HALT-RC !
+   PATH-STALL$ GET-READY HALT-HANDLE !
+   SERVER-HITS atomic@ {: before:n :}
+   ['] CANCEL-STREAM-WORK HALT-TASK TASK:ACTIVATE
+   HALT-PARKED 1 REACHED? TTRUE
+   before WAIT-HIT
+   HALT-HANDLE @ CURL:CANCEL
+   HALT-TASK ENDED? TTRUE
+   HALT-TASK TASK:KILL
+   s" another task cancels the owner parked in NEXT" T-LABEL
+   HALT-RC @ 42 T=
+   HALT-HANDLE @ CURL:CLEANUP ;
+
+
+: CASE-HALTED-STREAM ( -- )
+   0 HALT-PARKED ! 0 HALT-RC !
+   PATH-STALL$ GET-READY HALT-HANDLE !
+   SERVER-HITS atomic@ {: before:n :}
+   ['] HALT-STREAM-WORK HALT-TASK TASK:ACTIVATE
+   HALT-PARKED 1 REACHED? TTRUE
+   before WAIT-HIT
+   HALT-TASK TASK:HALT
+   HALT-TASK ENDED? TTRUE
+   HALT-TASK TASK:KILL
+   s" a task halted in NEXT abandons its stream and lets the loop stop" T-LABEL
+   HALT-RC @ 0 T=
+   STOPPED? TTRUE
+   HALT-HANDLE @ CURL:CLEANUP ;
+
+\ A throw after submission can reach task exit without either wait's explicit
+\ HALTED? branch. The loop must not keep a record that can wake this dead owner.
+: EARLY-WORK ( -- )
+   EARLY-MODE @ if
+      HALT-HANDLE @ CURL:STREAM-START EXPECT-OK
+   else
+      HALT-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   then
+   -12345 throw ;
+
+: CASE-EARLY-EXIT ( n -- )
+   EARLY-MODE !
+   PATH-STALL$ GET-READY HALT-HANDLE !
+   ['] EARLY-WORK HALT-TASK TASK:ACTIVATE
+   HALT-TASK TASK:JOIN MATCH result
+      ok OF drop false TTRUE ENDOF
+      err OF -12345 T= ENDOF
+   ;MATCH
+   s" task exit releases an uncollected whole or streaming transfer" T-LABEL
+   STOPPED? TTRUE
+   HALT-HANDLE @ CURL:CLEANUP ;
+
+
 \ Read the handle's existing libcurl private slot before START transfers it to
 \ the loop. Its response-valid cell becomes nonzero only when FINISH publishes
 \ the completed peer response; reading it does not call libcurl on a busy handle.
@@ -1515,24 +1854,40 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
 : START-COLD ( -- )
    COLD-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK ;
 
+: START-COLD-STREAM ( -- )
+   COLD-HANDLE @ CURL:STREAM-START EXPECT-OK ;
+
 
 : TEST-MULTI ( -- )
    PATH-HELLO$ GET-READY COLD-HANDLE !
    s" a transfer started before the loop is running is refused" T-LABEL
    [: START-COLD ;] CURL:E-STATE TTHROWSQ
+   [: START-COLD-STREAM ;] CURL:E-STATE TTHROWSQ
    COLD-HANDLE @ CURL:CLEANUP
    CURL:LOOP-START EXPECT-OK
    s" a second LOOP-START is refused" T-LABEL
    [: CURL:LOOP-START EXPECT-OK ;] CURL:E-STATE TTHROWSQ
    PARITY-WHOLE
    PARITY-TRUNCATED
+   CASE-STREAM-HELD
+   CASE-STREAM-MODES
+   CASE-STREAM-HTTP-ERROR
+   CASE-STREAM-FAILURES
+   CASE-STREAM-PARTIAL
    CASE-HEADER-REUSE
    CASE-HEADER-INDEPENDENT
    CASE-MANY
    CASE-STALLED
    CASE-CANCEL
    CASE-OWNER
+   CASE-CANCEL-STREAM-OTHER-TASK
+   CASE-HALTED-STREAM
+   CURL:LOOP-START EXPECT-OK
    CASE-HALTED
+   CURL:LOOP-START EXPECT-OK
+   0 CASE-EARLY-EXIT
+   CURL:LOOP-START EXPECT-OK
+   1 CASE-EARLY-EXIT
    CURL:LOOP-START EXPECT-OK
    CASE-HALTED-DONE
    CASE-RESTART ;
@@ -1544,7 +1899,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 68 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   SERVER-HITS atomic@ 76 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
@@ -1574,6 +1929,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    MAKE-ROOT
    WRITE-FIXTURES
    DRIBBLE-FILL
+   STREAM-FILL
    START-SERVER
    OPEN-SILENT ;
 
