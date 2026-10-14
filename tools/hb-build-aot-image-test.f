@@ -169,10 +169,25 @@ variable HBT-MAKER-DIRECT-OUT-U
 \ linker loads its own process support after the application. Temporary support
 \ must not spend the application's task-user band. Exercise the saved maker
 \ through hb-build and the compatibility maker directly on the public engine.
+: HBT-MAKER-REPORT-BUILD ( bool -- )
+   {: warm:bool :}
+   HBT-ARGV-BASE
+   s" --report-json" >LEN PROC-ARGV+
+   HBT-AOT-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-AOT-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc 0<> if HBT-OUT outu type HBT-ERR erru type then
+   rc 0 T= erru 0 T=
+   HBB-RESET-OPTIONS
+   warm if
+      HBT-OUT outu JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-FALSE JR:T-TRUE CHECK-REPORT
+   else
+      HBT-OUT outu JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-TRUE CHECK-REPORT
+   then ;
+
 : HBT-MAKER-USER-RUN ( ptr u8 n -- )
    {: want:ptr wantu:n :}
-   HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
    HBT-AOT-OUT EXECUTABLE? TTRUE
    HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN
       HBT-RUN-ERR HBT-CAPTURE-CAP >LEN HBT-TIMEOUT-MS >MS
@@ -209,9 +224,13 @@ variable HBT-MAKER-DIRECT-OUT-U
 
 : HBT-MAKER-USER-BAND ( -- )
    HBT-AOT-SRC S\" require src/lib/task.f\nTASK:#USER 25 TASK:+USER APP-SLOT drop\n: MAIN ( -- ) APP-SLOT 0 swap ! s\" user-ok\" type cr ;\n" WRITE-ALL
+   HBT-REMOVE-AOT-OUT
+   true HBT-MAKER-REPORT-BUILD
    S\" user-ok\n" HBT-MAKER-USER-RUN
    S\" user-ok\n" HBT-MAKER-DIRECT-RUN
    HBT-AOT-SRC S\" require src/lib/zip.f\n: MAIN ( -- ) s\" zip-ok\" type cr ;\n" WRITE-ALL
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
    S\" zip-ok\n" HBT-MAKER-USER-RUN
    S\" zip-ok\n" HBT-MAKER-DIRECT-RUN ;
 
@@ -227,12 +246,7 @@ public
    s" " s" " HBT-KEYED!
    HBT-PREPARE
    BUILD-FIXPOINT:BF-ENGINE-RESET
-   HBB-MAKER-DEFAULT-MS AOT-MAKER-IMAGE:PATH$
-      HBT-MAKER-IMAGE HBT-MAKER-IMAGE-U HBT-COPY!
-   HBT-MAKER-IMAGE$ EXECUTABLE? TTRUE
-   HBB-MAKER-DEFAULT-MS AOT-MAKER-IMAGE:PATH$ HBT-MAKER-IMAGE$ T$=
-   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
-   HBT-HBB-BUILD-OUT
+   false HBT-MAKER-REPORT-BUILD
    HBT-AOT-OUT EXECUTABLE? TTRUE
    HBT-RUN-AOT
    HBT-MAKER-USER-BAND

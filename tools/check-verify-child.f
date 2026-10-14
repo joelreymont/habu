@@ -96,7 +96,8 @@
 \ PRIM-SPEC, D is -2 minus its selected row. F names src/habu/prims.f when
 \ its path is known. TS and TN span its name only when that source matches
 \ the running table; otherwise they are zero while D stays distinct.
-\ A word without a source target or primitive row has D of -1.
+\ A word without a source target or primitive row has D of -1. An accepted
+\ engine definition can also have D of -1 with F, TS and TN naming its source.
 \
 \ A load line names what src/habu/verify-source.f ON-LOADER reports, a
 \ top-level loader of the subject whose load reached a file, in the subject's

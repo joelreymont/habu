@@ -203,16 +203,17 @@ public
 \ use, and one a pruner took meanwhile is built again. The build runs the
 \ engine with the program on stdin and `--` then what ARGS stages, given the
 \ path the builder must save to. The engine path is copied; the family name,
-\ keyed path and program are read until ENSURE returns.
-: ENSURE-WITH ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n -- ] n -- )
+\ keyed path and program are read until ENSURE returns. TRUE means the existing
+\ image was selected; FALSE means this call built and published it.
+: ENSURE-WITH ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n -- ] n -- bool )
    {: fam:ptr famu:n path:ptr pathu:n eng:ptr engu:n prog:ptr progu:n args timeout:n :}
    timeout CHILD-TIMEOUT-MS !
-   path pathu EXECUTABLE? if path pathu BUILD-CACHE:USED if exit then then
+   path pathu EXECUTABLE? if path pathu BUILD-CACHE:USED if true exit then then
    fam FAMILY-A ! famu FAMILY-U !
    path PATH-A ! pathu PATH-U !
    prog PROGRAM-A ! progu PROGRAM-U !
    args ARGS-XT !
    eng engu ENGINE-BUF ENGINE-U COPY-OUT!
-   EMIT ;
+   EMIT false ;
 
 ;package

@@ -140,7 +140,8 @@ defer LOAD-XT ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
 
 public
 
-: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ) LOAD-XT ;
+variable GEN
+: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ) 1 GEN +! LOAD-XT ;
 : USE ( [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] -- ) is LOAD-XT ;
 : RESET ( -- ) [: ORDINARY ;] is LOAD-XT ;
 

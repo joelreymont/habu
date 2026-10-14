@@ -261,6 +261,9 @@ $3E8 constant UNIT-PREPARE-BEGIN-OFF  \ ( -- )
 $3F0 constant UNIT-PREPARE-OFF        \ ( section size data-floor data-end -- row )
 $3F8 constant UNIT-INSTALL-OFF        \ ( row -- )
 $400 constant UNIT-PREPARE-END-OFF    \ ( -- )
+\ The live dictionary record for a checker symbol, resolved in that symbol's
+\ wordlist after AOT has rebased package ids (src/core/checker.f VIS-SYM-REC).
+$408 constant ORIGIN-REC-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

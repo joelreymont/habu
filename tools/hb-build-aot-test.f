@@ -1,8 +1,9 @@
 \ hb-build-aot-test.f - checked fixture for tools/hb-build-lib.f: the AOT
 \ groups that build and run one program each - the object producer, the native
 \ call sites, the division refusal, the span definer as a snapshot and
-\ stripped (by both makers, to the same DATA), a build driver, the empty does>
-\ clause and one foreign call - and the programs the keyed linker image refuses.
+\ stripped (by both makers, to the same application DATA), a build driver,
+\ the empty does> clause and one foreign call - and the programs the keyed
+\ linker image refuses.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-aot-test.f
 
@@ -40,6 +41,25 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
    path pathu FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
    path pathu buf cap READ-ALL drop
    buf at +  len ;
+
+\ The final present cell in this fixture is TASK's carried user-slot cursor.
+\ Its value belongs to the engine that opened the window: the preloaded linker
+\ has support slots that the direct maker retires. The sparse blob stores each
+\ present cell as one unsigned LEB128 value, so locate that final value from
+\ its continuation bytes and compare everything before it.
+variable HBT-USER-VALUE-AT
+
+: HBT-USER-VALUE-START ( ptr u8 n -- n ) {: blob:ptr len:n :}
+   len 8 > TTRUE
+   blob len 1- + c@ $80 and 0= TTRUE
+   len 1- HBT-USER-VALUE-AT !
+   begin HBT-USER-VALUE-AT @ 0 > while
+      blob HBT-USER-VALUE-AT @ 1- + c@ $80 and 0= if
+         HBT-USER-VALUE-AT @ exit
+      then
+      -1 HBT-USER-VALUE-AT +!
+   repeat
+   HBT-USER-VALUE-AT @ ;
 
 \ A zero divisor in a STRIPPED image. The division is compiled by the native
 \ compiler (the image is built at tier 1, which `LOADING` holds it to), and its
@@ -123,7 +143,7 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
    HBB-MAKER-RUN @ 0 <> TTRUE
    HBB-OBJECT-HIT @ 0= TTRUE
    HBB-OBJECT-STORE @ 0 <> TTRUE
-   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE CHECK-REPORT
+   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-TRUE CHECK-REPORT
    HBT-OBJ-LOAD? TTRUE
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
@@ -149,9 +169,9 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
    HBB-BUILD
    HBB-ARTIFACT-HIT @ 0= TTRUE
    HBB-OBJECT-HIT @ 0= TTRUE
-   HBB-MAKER-HIT @ 0= TTRUE
+   HBB-MAKER-HIT @ 0<> TTRUE
    HBB-MAKER-RUN @ 0 <> TTRUE
-   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE CHECK-REPORT
+   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-FALSE JR:T-TRUE CHECK-REPORT
    HBT-RUN-AOT
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
@@ -222,7 +242,8 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
 \ it is a no-op, so a literal the maker compiles into the application's pool
 \ lands inside the capture window and travels in the engine's image alone:
 \ `tools/aot-build-core.f` did, in every image the engine linked. Neither maker
-\ may add a byte of its own, so both links of one source carry one cell stream.
+\ may add a byte of its own to the application's stream. The one carried TASK
+\ user-slot cursor may differ with the engine's pre-window support allocations.
 \ Their code differs: each window is restored at the DATA address its maker
 \ opened it at, and the linker image's sits above the linker. The maker key
 \ names the engine that runs it, so the second build is a link, not the first
@@ -236,7 +257,9 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
    HBT-SPAN-OUT HBT-DATA-BLOB {: img:ptr imgu:n :}
    HBT-SPAN-ENG HBT-DATA-BLOB {: eng:ptr engu:n :}
    imgu 0 > TTRUE
-   img imgu eng engu HBT-DIFF-AT -1 T=
+   img imgu HBT-USER-VALUE-START {: imguser:n :}
+   eng engu HBT-USER-VALUE-START {: enguser:n :}
+   img imguser eng enguser HBT-DIFF-AT -1 T=
    HBT-REMOVE-ARTIFACT
    HBT-SPAN-ENG HBT-REMOVE-FILE?
    HBT-SPAN-OUT HBT-REMOVE-FILE? ;

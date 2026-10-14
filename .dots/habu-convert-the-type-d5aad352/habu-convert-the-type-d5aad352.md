@@ -1,9 +1,9 @@
 ---
 title: "Retire SUMTYPE and PRODUCT: one declaration system"
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-30T16:15:45.305417+02:00"
+created-at: "\"2026-07-30T16:15:45.305417+02:00\""
 ---
 
 Problem: two declaration systems coexist. The legacy one, src/core/sumtype.f (2,382 lines: NEWTYPE, SUMTYPE, PRODUCT), sits beside STRUCTURE and ENUM (src/core/structure-decl.f and src/core/enum-decl.f, 1,168 lines), with the payload and field resolver, the arity parser and the POLICY and DERIVE clause parsers each written more than once. docs/forth.md ("Structures And Enums") calls SUMTYPE, PRODUCT, VALUE-RECORD and BEGIN-STRUCTURE migration debt, forbidden in new code. Measured on master 07764450: SUMTYPE is declared in 14 non-test files under src, lib and tools (31 sites) and in 42 files in all; PRODUCT only in 21 test files; BEGIN-STRUCTURE in 8 non-test files.

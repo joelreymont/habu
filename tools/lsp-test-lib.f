@@ -2840,9 +2840,8 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 8" NOWHERE
    HEAR s" 9" -32602 REFUSED ;
 
-\ The uses of def-dep.f's global and, qualified, of its public word, each
-\ answered with its declaring token in the text on disk at the file's
-\ canonical URI.
+\ Definition and declaration of words in a dependency answer with the
+\ declaring token in its text on disk at the canonical URI.
 : DEF-DEP-TURNS ( -- )
    DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
    INITIALIZE
@@ -2852,33 +2851,19 @@ variable LENGTH-N                        \ the length of its directory's name
    TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
    s" 3" DEF-B-PATH 1 19 DEFINITION-ASK
    s" 4" DEF-B-PATH 1 27 DEFINITION-ASK
-   SAY
-   s" 3" DEF-DEP-CANON URI-OF 4 2 9 LOCATED
-   s" 4" DEF-DEP-CANON URI-OF 2 2 9 LOCATED ;
-
-\ Habu's source definition is also its declaration, including when it is in
-\ a dependency. An unrelated token has no declaration location.
-: DECL-TURNS ( -- )
-   DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
-   INITIALIZE
-   DEF-B-PATH TEXT-DEF-B 1 OPENS
-   SAY
-   HEAR CAPABILITIES
-   TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
-   s" 3" DEF-B-PATH 1 19 DECLARATION-ASK
-   s" 4" DEF-B-PATH 1 27 DECLARATION-ASK
-   s" 5" DEF-B-PATH 1 2 DECLARATION-ASK
+   s" 5" DEF-B-PATH 1 27 DECLARATION-ASK
    SAY
    s" 3" DEF-DEP-CANON URI-OF 4 2 9 LOCATED
    s" 4" DEF-DEP-CANON URI-OF 2 2 9 LOCATED
-   s" 5" NOWHERE ;
+   s" 5" DEF-DEP-CANON URI-OF 2 2 9 LOCATED ;
 
 \ The built-in multiplication word binds at a body call, an interpreted call,
 \ and a tick. A later user definition of the same spelling takes its own use.
 : PRIM-PATH ( -- ptr u8 n )  s" prim-nav.f" FIXTURE ;
 : PRIM-SOURCE-PATH ( -- ptr u8 n )  s" src/habu/prims.f" IN-TREE ;
+: SCRIPT-ARGV-PATH ( -- ptr u8 n )  s" src/os/script-argv.f" IN-TREE ;
 : TEXT-PRIM-NAV ( -- ptr u8 n )
-   s\" : PRIM-MUL ( -- n ) 2 3 * ;\n2 3 * drop\n' * drop\nundefine *\n: * ( n n -- n ) + ;\n: PRIM-SHADOW ( -- n ) 2 3 * ;\nscript-argc drop\n" ;
+   s\" : PRIM-MUL ( -- n ) 2 3 * ;\n2 3 * drop\n' * drop\nundefine *\n: * ( n n -- n ) + ;\n: PRIM-SHADOW ( -- n ) 2 3 * ;\nscript-argc drop\nscript-arg-start drop\nundefine script-argc\n: script-argc ( -- n ) 7 ;\nscript-argc drop\n" ;
 
 : PRIM-DEF-TURNS ( -- )
    INITIALIZE
@@ -2892,16 +2877,26 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 6" PRIM-PATH 5 27 DEFINITION-ASK
    s" 7" PRIM-PATH 0 24 DECLARATION-ASK
    s" 8" PRIM-PATH 6 2 DEFINITION-ASK
+   s" 9" PRIM-PATH 6 2 DECLARATION-ASK
+   s" 10" PRIM-PATH 7 2 DEFINITION-ASK
+   s" 11" PRIM-PATH 7 2 DECLARATION-ASK
+   s" 12" PRIM-PATH 10 2 DEFINITION-ASK
+   s" 13" PRIM-PATH 10 2 DECLARATION-ASK
    SAY
    s" 3" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
    s" 4" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
    s" 5" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
    s" 6" PRIM-PATH URI-OF 4 2 3 LOCATED
    s" 7" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
-   s" 8" NOWHERE ;
+   s" 8" SCRIPT-ARGV-PATH URI-OF 50 2 13 LOCATED
+   s" 9" SCRIPT-ARGV-PATH URI-OF 50 2 13 LOCATED
+   s" 10" SCRIPT-ARGV-PATH URI-OF 38 2 18 LOCATED
+   s" 11" SCRIPT-ARGV-PATH URI-OF 38 2 18 LOCATED
+   s" 12" PRIM-PATH URI-OF 9 2 13 LOCATED
+   s" 13" PRIM-PATH URI-OF 9 2 13 LOCATED ;
 
-\ The source used for the target came from the engine tree. An open unsaved
-\ copy of prims.f with a mismatched row sequence has no trusted target.
+\ An open unsaved prims.f with a mismatched row sequence has no trusted target.
+\ Closing it restores navigation from the engine's matching file on disk.
 : PRIM-OPEN-TURNS ( -- )
    INITIALIZE
    PRIM-PATH TEXT-PRIM-NAV 1 OPENS
@@ -2914,7 +2909,41 @@ variable LENGTH-N                        \ the length of its directory's name
    PRIM-PATH 1 EXPECT PUBLISHES
    s" 3" PRIM-PATH 0 24 DEFINITION-ASK
    SAY
-   s" 3" NOWHERE ;
+   s" 3" NOWHERE
+   PRIM-SOURCE-PATH CLOSES
+   SAY
+   PRIM-SOURCE-PATH -1 EXPECT PUBLISHES
+   TEXT-PRIM-NAV PRIM-PATH 1 s" verified" LISTED
+   s" 4" PRIM-PATH 0 24 DEFINITION-ASK
+   SAY
+   s" 4" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED ;
+
+\ An edited engine file can preserve the same spelling at the baked byte
+\ range while changing it from a declaration to a call.
+DYNAMIC-BUFFER ENGINE-OPEN-TEXT u8
+: ENGINE-OPEN-ROOM ( n -- ptr u8 )
+   1+ ENGINE-OPEN-TEXT-RESERVE 0 ENGINE-OPEN-TEXT ;
+: ENGINE-OPEN-SOURCE ( -- ptr u8 n )
+   SCRIPT-ARGV-PATH [: ENGINE-OPEN-ROOM ;] SOURCE:READ-WHOLE-FILE
+   {: size:n :}
+   32 1676 ENGINE-OPEN-TEXT c!
+   0 ENGINE-OPEN-TEXT size ;
+
+: ENGINE-OPEN-TURNS ( -- )
+   INITIALIZE
+   PRIM-PATH TEXT-PRIM-NAV 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-PRIM-NAV PRIM-PATH 1 s" verified" LISTED
+   SCRIPT-ARGV-PATH ENGINE-OPEN-SOURCE 1 OPENS
+   SAY
+   SCRIPT-ARGV-PATH 1 EXPECT PUBLISHES
+   PRIM-PATH 1 EXPECT PUBLISHES
+   s" 3" PRIM-PATH 6 2 DEFINITION-ASK
+   s" 4" PRIM-PATH 7 2 DEFINITION-ASK
+   SAY
+   s" 3" NOWHERE
+   s" 4" NOWHERE ;
 
 \ def-od-dep.f on disk, and the text its open document holds: three lines
 \ inserted atop and its two lines swapped, so that DEF-DEPB's and DEF-DEPA's
@@ -5493,32 +5522,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-prim-upper/w/b.f" DISK-URI 0 11 23 REF+
    SYMBOLS-END ;
 
-\ Eighteen independent subjects cross the primitive verifier's chunk edge.
-\ Their numeric prefixes preserve the path order of the answer.
-: PRIM-BATCH-PATH ( n -- ptr u8 n )
-   {: k:n :}
-   SB-RESET s" refs-prim-batch/w/" SB-APPEND
-   k 10 < if s" 0" SB-APPEND then
-   k FMT:SB-U s" .f" SB-APPEND SB$ ;
-
-: PRIM-BATCH-TURNS ( -- )
-   s" refs-prim-batch" REFS-DIR s" refs-prim-batch/w" REFS-DIR
-   18 0 ?do i PRIM-BATCH-PATH TEXT-PR-A REFS-FILE loop
-   s" refs-prim-batch/w" ROOT-URI+ PAR$ INITIALIZE-WITH
-   0 PRIM-BATCH-PATH FIXTURE TEXT-PR-A 1 OPENS
-   SAY
-   HEAR CAPABILITIES
-   TEXT-PR-A 0 PRIM-BATCH-PATH FIXTURE 1 s" verified" LISTED
-   s" 3" 0 PRIM-BATCH-PATH FIXTURE 0 17 DECL-NOT REFS-ASK
-   SAY
-   s" 3" SYMBOLS-START
-   18 0 ?do
-      i PRIM-BATCH-PATH
-      i 0= if OPEN-URI else DISK-URI then
-      0 17 18 REF+
-   loop
-   SYMBOLS-END ;
-
 \ The second wave starts after four captures have run together. A shadowed
 \ primitive, a refused subject with no matching token, and an unsaved loaded
 \ dependency must leave the same ordered locations and coverage warning.
@@ -5634,8 +5637,8 @@ DYNAMIC-BUFFER PRIM-REF-TEXT u8
    PRIM-SOURCE-PATH [: PRIM-REF-ROOM ;] SOURCE:READ-WHOLE-FILE
    0 PRIM-REF-TEXT swap ;
 
-\ Asking from the declaration's exact name token selects its canonical row.
-\ The second + overload maps to the first + row, as uses do.
+\ Asking from the declaration's name or its exact end selects its canonical
+\ row. The second + overload maps to the first + row, as uses do.
 : PRIM-DECL-TURNS ( -- )
    PRIM-DECL-TREE
    s" refs-prim-decl/w" ROOT-URI+ PAR$ INITIALIZE-WITH
@@ -5650,6 +5653,7 @@ DYNAMIC-BUFFER PRIM-REF-TEXT u8
    s" 4" PRIM-SOURCE-PATH 437 6 DECL-TOO REFS-ASK
    s" 5" PRIM-SOURCE-PATH 432 7 DECL-TOO REFS-ASK
    s" 6" PRIM-SOURCE-PATH 437 7 DECL-NOT REFS-ASK
+   s" 7" PRIM-SOURCE-PATH 437 8 DECL-TOO REFS-ASK
    SAY
    1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
    s" 3" SYMBOLS-START
@@ -5665,6 +5669,12 @@ DYNAMIC-BUFFER PRIM-REF-TEXT u8
    SYMBOLS-END
    1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
    s" 6" SYMBOLS-START
+   s" refs-prim-decl/w/a.f" OPEN-URI 0 17 18 REF+
+   s" refs-prim-decl/w/b.f" DISK-URI 0 17 18 REF+
+   SYMBOLS-END
+   1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
+   s" 7" SYMBOLS-START
+   PRIM-SOURCE-PATH URI-OF 437 7 8 REF+
    s" refs-prim-decl/w/a.f" OPEN-URI 0 17 18 REF+
    s" refs-prim-decl/w/b.f" DISK-URI 0 17 18 REF+
    SYMBOLS-END ;
@@ -5733,6 +5743,110 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" references-probe: removed after the throw" T-LABEL
    LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE = TTRUE ;
 
+\ Independent workspace files bind the image's source-backed SCRIPT-ARGC.
+\ A same-spelling source word in a package is a separate binding.
+: TEXT-BI-A ( -- ptr u8 n )
+   s\" : A ( -- n ) SCRIPT-ARGC ;\n: C ( -- n ) SCRIPT-ARG-START ;\n" ;
+: TEXT-BI-B ( -- ptr u8 n )  s\" : B ( -- n ) SCRIPT-ARGC ;\n" ;
+: TEXT-BI-SHADOW ( -- ptr u8 n )
+   s\" package SH\n: SCRIPT-ARGC ( -- n ) 1 ;\n: S ( -- n ) SCRIPT-ARGC ;\n;package\n" ;
+: BI-A-PATH ( -- ptr u8 n )  s" refs-builtin/w/a.f" FIXTURE ;
+: BI-SOURCE-PATH ( -- ptr u8 n )  s" src/os/script-argv.f" IN-TREE ;
+DYNAMIC-BUFFER BI-SOURCE-TEXT u8
+: BI-SOURCE-ROOM ( n -- ptr u8 )  1+ BI-SOURCE-TEXT-RESERVE 0 BI-SOURCE-TEXT ;
+: BI-SOURCE$ ( -- ptr u8 n )
+   BI-SOURCE-PATH [: BI-SOURCE-ROOM ;] SOURCE:READ-WHOLE-FILE
+   0 BI-SOURCE-TEXT swap ;
+
+\ Put the same spelling at the image's saved byte as an ordinary use.
+: BI-SOURCE-FAKE$ ( -- ptr u8 n )
+   TXT-B CLEAR
+   1678 0 ?do s"  " HV+ loop
+   s\" SCRIPT-ARGC drop\n" HV+
+   TXT$ ;
+
+: BI-USES+ ( -- )
+   s" refs-builtin/w/a.f" OPEN-URI 0 13 24 REF+
+   s" refs-builtin/w/b.f" DISK-URI 0 13 24 REF+ ;
+
+: REFS-BUILTIN-TURNS ( -- )
+   s" refs-builtin" REFS-DIR s" refs-builtin/w" REFS-DIR
+   s" refs-builtin/w/a.f" TEXT-BI-A REFS-FILE
+   s" refs-builtin/w/b.f" TEXT-BI-B REFS-FILE
+   s" refs-builtin/w/shadow.f" TEXT-BI-SHADOW REFS-FILE
+   s" refs-builtin/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   BI-A-PATH TEXT-BI-A 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-BI-A BI-A-PATH 1 s" verified" LISTED
+   s" 3" BI-A-PATH 0 16 DECL-TOO REFS-ASK
+   s" 4" BI-A-PATH 0 16 DECL-NOT REFS-ASK
+   s" 12" BI-A-PATH 1 16 DECL-TOO REFS-ASK
+   s" textDocument/prepareRename" s" 10" BI-A-PATH 0 16 AT-ASK
+   s" textDocument/rename" s" 11" BI-A-PATH 0 16
+   s\" ,\"newName\":\"CROW\"" AT-ASK-WITH
+   SAY
+   s" 3" SYMBOLS-START
+   BI-SOURCE-PATH URI-OF 50 2 13 REF+ BI-USES+ SYMBOLS-END
+   s" 4" SYMBOLS-START BI-USES+ SYMBOLS-END
+   s" 12" SYMBOLS-START
+   BI-SOURCE-PATH URI-OF 38 2 18 REF+
+   s" refs-builtin/w/a.f" OPEN-URI 1 13 29 REF+
+   SYMBOLS-END
+   HEAR s" 10" -32803 REFUSED
+   HEAR s" 11" -32803 REFUSED
+   BI-SOURCE$ BI-SOURCE-PATH 2swap 1 OPENS
+   STREAM
+   BI-SOURCE-PATH 1 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 5" BI-SOURCE-PATH 50 3 DECL-TOO REFS-ASK
+   s" 6" BI-SOURCE-PATH 50 3 DECL-NOT REFS-ASK
+   SAY
+   1 NAMED BI-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
+   s" 5" SYMBOLS-START
+   BI-SOURCE-PATH URI-OF 50 2 13 REF+ BI-USES+ SYMBOLS-END
+   1 NAMED BI-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
+   s" 6" SYMBOLS-START BI-USES+ SYMBOLS-END
+   BI-SOURCE-PATH BI-SOURCE-FAKE$ 2 CHANGES
+   SAY
+   BI-SOURCE-PATH 2 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 7" BI-A-PATH 0 16 DECL-TOO REFS-ASK
+   s" 8" BI-SOURCE-PATH 0 1679 DECL-TOO REFS-ASK
+   s" 9" BI-A-PATH 0 16 DECL-NOT REFS-ASK
+   SAY
+   1 NAMED BI-SOURCE-PATH s" built-in source cannot be located" NAMED+ NAMED-END
+   s" 7" SYMBOLS-START BI-USES+ SYMBOLS-END
+   s" 8" SYMBOLS-START SYMBOLS-END
+   1 NAMED BI-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
+   s" 9" SYMBOLS-START BI-USES+ SYMBOLS-END ;
+
+\ A checked word loaded before origin recording and a public word in an
+\ image package both retain their source identities in a restored engine.
+: TEXT-BI-OTHER ( -- ptr u8 n )
+   s\" : X ( ptr n -- n ) XREF-START ;\n: Y ( n n -- bool ) CODE-BYTES:IN-CODE? ;\n" ;
+: BI-OTHER-PATH ( -- ptr u8 n )  s" refs-builtin-other/w/a.f" FIXTURE ;
+
+: REFS-BUILTIN-OTHER-TURNS ( -- )
+   s" refs-builtin-other" REFS-DIR s" refs-builtin-other/w" REFS-DIR
+   s" refs-builtin-other/w/a.f" TEXT-BI-OTHER REFS-FILE
+   s" refs-builtin-other/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   BI-OTHER-PATH TEXT-BI-OTHER 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-BI-OTHER BI-OTHER-PATH 1 s" verified" LISTED
+   s" 3" BI-OTHER-PATH 0 22 DECL-TOO REFS-ASK
+   s" 4" BI-OTHER-PATH 1 32 DECL-TOO REFS-ASK
+   SAY
+   s" 3" SYMBOLS-START
+   s" src/habu/xref.f" IN-TREE URI-OF 84 2 12 REF+
+   BI-OTHER-PATH URI-OF 0 19 29 REF+
+   SYMBOLS-END
+   s" 4" SYMBOLS-START
+   s" src/habu/code-bytes.f" IN-TREE URI-OF 61 2 10 REF+
+   BI-OTHER-PATH URI-OF 1 20 39 REF+
+   SYMBOLS-END ;
+
 : TEST-REFERENCES ( -- )
    s" references" [: REFS-TURNS ;] TALK
    s" references-not-open" [: REFS-NOT-OPEN-TURNS ;] TALK
@@ -5760,13 +5874,14 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" references-named" [: REFS-NAMED-TURNS ;] TALK
    s" references-primitive" [: PRIM-REF-TURNS ;] TALK
    s" references-primitive-uppercase" [: PRIM-UPPER-TURNS ;] TALK
-   s" references-primitive-batch" [: PRIM-BATCH-TURNS ;] TALK
    s" references-primitive-wave" [: PRIM-WAVE-TURNS ;] TALK
     s" references-primitive-batch-failure" [: PRIM-BATCH-FAIL-TURNS ;] TALK
    s" references-primitive-declaration" [: PRIM-DECL-TURNS ;] TALK
    s" references-primitive-source-changed" [: PRIM-MISSING-TURNS ;] TALK
    s" references-primitive-coverage" [: PRIM-COVER-TURNS ;] TALK
    s" references-primitive-conflict" [: PRIM-CONFLICT-TURNS ;] TALK
+   s" references-source-backed-builtin" [: REFS-BUILTIN-TURNS ;] TALK
+   s" references-source-backed-other" [: REFS-BUILTIN-OTHER-TURNS ;] TALK
    REFS-PROBE ;
 
 \ ---- rename ------------------------------------------------------------------
@@ -6618,9 +6733,9 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 
 : TEST-DEFINITIONS ( -- )
    s" definition" [: DEF-TURNS ;] TALK
-   s" declaration" [: DECL-TURNS ;] TALK
    s" definition-primitive" [: PRIM-DEF-TURNS ;] TALK
    s" definition-primitive-open" [: PRIM-OPEN-TURNS ;] TALK
+   s" definition-engine-open" [: ENGINE-OPEN-TURNS ;] TALK
    s" definition-dependency" [: DEF-DEP-TURNS ;] TALK
    s" definition-dependency-open" [: DEF-OPEN-DEP-TURNS ;] TALK
    s" definition-not-open" [: DEF-NOT-OPEN-TURNS ;] TALK
@@ -6743,6 +6858,8 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" deferred-definition" [: DEFINITION-TURNS ;] TALK
    s" deferred-unended" [: DEFERRED-UNENDED-TURNS ;] TALK ;
 
+public
+
 : TEST-INIT ( -- )
    LABEL-B READY
    IN-B READY
@@ -6762,19 +6879,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" habu-lsp-test" HB-TMP-MKDIR N>BLEN DIR-B REPLACE
    T-RESET ;
 
-public
-
-: TEST-BATCH ( -- )
+: TEST-BUILTIN ( -- )
    TEST-INIT
-   s" references-primitive" [: PRIM-REF-TURNS ;] TALK
-   s" references-primitive-uppercase" [: PRIM-UPPER-TURNS ;] TALK
-   s" references-primitive-batch" [: PRIM-BATCH-TURNS ;] TALK
-   s" references-primitive-wave" [: PRIM-WAVE-TURNS ;] TALK
-    s" references-primitive-batch-failure" [: PRIM-BATCH-FAIL-TURNS ;] TALK
-   s" references-primitive-declaration" [: PRIM-DECL-TURNS ;] TALK
-   s" references-primitive-source-changed" [: PRIM-MISSING-TURNS ;] TALK
-   s" references-primitive-coverage" [: PRIM-COVER-TURNS ;] TALK
-   s" references-primitive-conflict" [: PRIM-CONFLICT-TURNS ;] TALK
+   s" references-source-backed-builtin" [: REFS-BUILTIN-TURNS ;] TALK
+   s" references-source-backed-other" [: REFS-BUILTIN-OTHER-TURNS ;] TALK
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
 

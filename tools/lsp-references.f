@@ -1,11 +1,15 @@
 \ lsp-references.f - the language server's references for source declarations
-\ and built-in primitives. A primitive use carries its canonical PRIM-SPEC row
+\ and built-in words. A primitive use carries its canonical PRIM-SPEC row
 \ as a negative visit; a name token in the validated prims.f selects the same
 \ row. Its subjects are all workspace .f files and open documents, since an
 \ implicit primitive needs no load. Each checked use with that row contributes
 \ a location, subject to the same text digest, deduplication and coverage
 \ warnings as source uses. Its declaration is included only while prims.f's
-\ text validates against the running specification. Primitive rename refuses.
+\ text validates against the running specification. Built-in rename refuses.
+\ A source-backed engine use carries visit -1 and the latest image origin's
+\ path and token span. Its canonical engine symbol selects checked uses in
+\ every workspace file. A declaration in engine source selects that symbol
+\ only while its current token validates against the image origin.
 \ This inventory describes workspace references, not every use in engine
 \ source outside the workspace.
 \
@@ -132,6 +136,8 @@ require src/lib/json-write.f
 require src/lib/json-rpc.f
 require src/core/sha256.f
 require src/habu/primitive-source.f
+require src/habu/engine-origin.f
+require src/habu/verify-source.f
 require tools/lsp-docs.f
 require tools/lsp-text.f
 require tools/lsp-defs.f
@@ -245,7 +251,8 @@ variable PKG-U
 variable KEY-VIS                         \ and visibility,
 variable VISIT                           \ the visit D's check gave it,
 variable PRIM-ROW                        \ a selected built-in's canonical row, else -1,
-TYPED-VARIABLE PRIM-LOCATED bool          \ whether its source token can be placed,
+TYPED-VARIABLE SOURCE-LOCATED bool        \ whether its source token can be placed,
+variable BUILTIN-SYM                     \ a selected source-backed engine symbol, else 0,
 variable H-AT                            \ and the digest of the bytes of P it read
 variable H-U
 variable D-AT                            \ D's path in POOL,
@@ -298,6 +305,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
 : PKG$ ( -- ptr u8 n )  PKG-AT @ PKG-U @ POOL$ ;
 : H$ ( -- ptr u8 n )  H-AT @ H-U @ POOL$ ;
 : D$ ( -- ptr u8 n )  D-AT @ D-U @ POOL$ ;
+
+: IMPLICIT? ( -- bool )  PRIM-ROW @ 0 >= BUILTIN-SYM @ 0 > or ;
 
 \ The path of known file K.
 : KNOWN$ ( n -- ptr u8 n )  dup K-PATH KNOWN@ swap K-PATH-U KNOWN@ POOL$ ;
@@ -358,7 +367,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
    false REFUSED !
    false DECLARED !
    -1 PRIM-ROW !
-   false PRIM-LOCATED !
+   false SOURCE-LOCATED !
+   0 BUILTIN-SYM !
    true SPELT ! ;
 
 \ The request refused for this fact about the file at this path.
@@ -603,6 +613,57 @@ private
       none OF a u LSP-TEXT:FILE-TEXT! ENDOF
    ;MATCH ;
 
+\ The engine image records source paths relative to its source root.
+: ENGINE-PATH! ( ptr u8 n -- )
+   {: rel:ptr relu:n :}
+   SOURCE-ROOT:ENGINE$ {: root:ptr rootu:n :}
+   rootu relu + 2 + P-B-RESERVE
+   root 0 P-B rootu BYTE-COPY
+   47 rootu P-B c!
+   rel rootu 1+ P-B relu BYTE-COPY
+   rootu relu + 1+ P-U ! ;
+
+\ A checked use must carry the latest origin path and start byte. The checker
+\ sets target end to zero when current source cannot place the declaration;
+\ the binding remains the image symbol at that start byte.
+: ORIGIN-USE-SYM ( n -- n bool )
+   {: u:n :}
+   u USE-VISIT -1 <> if 0 false exit then
+   u USE-GROUP {: g:n :}
+   g 0 < if 0 false exit then
+   u USE-TARGET {: at:n end:n :}
+   at 0 < end 0 < or if 0 false exit then
+   g GROUP-PATH$ at ENGINE-ORIGIN:SYMBOL-AT
+   {: sym:n found:bool :}
+   found 0= if 0 false exit then
+   sym ENGINE-ORIGIN:TARGET
+   {: rel:ptr relu:n start:n stop:n name:ptr nameu:n live:bool :}
+   live start at = and end 0= stop end = or and
+   if sym true else 0 false then ;
+
+\ Select the image's symbol even when the present source cannot locate its
+\ token. Uses remain known; includeDeclaration will name that missing source.
+: FROM-BUILTIN ( n -- )
+   {: sym:n :}
+   sym ENGINE-ORIGIN:TARGET
+   {: rel:ptr relu:n start:n stop:n name:ptr nameu:n live:bool :}
+   live 0= if exit then
+   rel relu ENGINE-PATH!
+   name nameu s" " NAME!
+   start TS ! stop TE !
+   sym BUILTIN-SYM !
+   true FOUND !
+   false SOURCE-LOCATED !
+   [: P$ TEXT-OF! ;] catch {: rc:n :}
+   rc 0<> if rc LSP-TEXT:FS-RC? 0= if rc throw then exit then
+   P$ start LSP-TEXT:TEXT$ VERIFY:ENGINE-SYMBOL-IN
+   {: located:n valid:bool :}
+   valid 0= if exit then
+   located sym <> if exit then
+   LSP-TEXT:TEXT$ DIGEST$ {: sha:ptr shau:n :}
+   sha shau POOL+ H-AT ! shau H-U !
+   true SOURCE-LOCATED ! ;
+
 \ Keep the primitive's binding even when its specification is unavailable.
 \ Only a validated table gives the declaration a source location.
 : FROM-PRIMITIVE ( n -- )
@@ -613,7 +674,7 @@ private
    path pathu P-PATH!
    row PRIM-SPEC:NAME$ row PRIM-SPEC:PKG$ NAME!
    true FOUND !
-   false PRIM-LOCATED !
+   false SOURCE-LOCATED !
    0 TS ! 0 TE !
    [: P$ TEXT-OF! ;] catch {: rc:n :}
    rc 0<> if rc LSP-TEXT:FS-RC? 0= if rc throw then exit then
@@ -623,7 +684,7 @@ private
    start TS ! end TE !
    LSP-TEXT:TEXT$ DIGEST$ {: sha:ptr shau:n :}
    sha shau POOL+ H-AT ! shau H-U !
-   true PRIM-LOCATED ! ;
+   true SOURCE-LOCATED ! ;
 
 \ The declaration use U is bound to, as its line states it.
 : FROM-USE ( n -- )
@@ -653,6 +714,12 @@ private
    u USE-PRIMITIVE-ROW {: row:n :}
    row 0 >= if
       row FROM-PRIMITIVE
+      u USE-BYTES TAIL-FROM 0 < if false SPELT ! then
+      exit
+   then
+   u ORIGIN-USE-SYM {: sym:n origin:bool :}
+   origin if
+      sym FROM-BUILTIN
       u USE-BYTES TAIL-FROM 0 < if false SPELT ! then
       exit
    then
@@ -730,6 +797,16 @@ private
    {: marker:n start:n end:n located:bool :}
    located if -2 marker - FROM-PRIMITIVE then ;
 
+\ Only a currently valid token in an open engine document can select an
+\ image symbol from its declaration.
+: AT-BUILTIN-TOKEN ( n n -- )
+   {: slot:n at:n :}
+   slot DOC-CANON$ {: path:ptr pathu:n :}
+   path pathu TEXT-OF!
+   path pathu at LSP-TEXT:TEXT$ VERIFY:ENGINE-SYMBOL-IN
+   {: sym:n found:bool :}
+   found if sym FROM-BUILTIN then ;
+
 \ How many decls of the check of the document in this slot are the selected
 \ declaration: of its group, at its token, with its identity and visit.
 : HELD ( n -- n )
@@ -760,15 +837,21 @@ private
          u USE-PRIMITIVE-ROW 0 >= if slot at AT-TOKEN then
          FOUND @ 0= if slot u AT-USE then
       ENDOF
-      none OF slot at AT-TOKEN FOUND @ 0= if slot at AT-PRIMITIVE-TOKEN then ENDOF
+      none OF
+         slot at AT-TOKEN
+         FOUND @ 0= if slot at AT-PRIMITIVE-TOKEN then
+         FOUND @ 0= if slot at AT-BUILTIN-TOKEN then
+      ENDOF
    ;MATCH
-   FOUND @ PRIM-ROW @ 0< and if slot ANCHORED then ;
+   FOUND @ PRIM-ROW @ 0< and BUILTIN-SYM @ 0= and if slot ANCHORED then ;
 
 \ The declaration's location, first, and its token's text, while P's text has
 \ the digest D's check read.
 : DECLARATION ( -- )
-   PRIM-ROW @ 0 >= PRIM-LOCATED @ 0= and if
-      P$ s" primitive source cannot be located" MISS+
+   IMPLICIT? SOURCE-LOCATED @ 0= and if
+      BUILTIN-SYM @ 0 > if s" built-in source cannot be located"
+      else s" primitive source cannot be located" then
+      P$ 2swap MISS+
       exit
    then
    P$ TEXT-OF!
@@ -796,7 +879,7 @@ private
    slot DOC-CANON$ {: a:ptr u:n :}
    a u POOL+ D-AT !
    u D-U !
-   PRIM-ROW @ 0 >= if
+   IMPLICIT? if
       [: -1 swap DOC-EACH-BUT ;] LSP-WORKSPACE:ALL-SUBJECTS
       LSP-WORKSPACE:REFUSED? if
          LSP-WORKSPACE:BLOCKED$ s" the workspace folder cannot be walked" REFUSE exit
@@ -1018,11 +1101,14 @@ private
 \ read no P has no matching bindings, but may report uses of the tail.
 : CONTRIBUTE ( -- )
    PROBE DEFS-VERIFIED? 0= if LSP-CHECK:OUTCOME$ PENDING+ then
-   PRIM-ROW @ 0 >= if
+   IMPLICIT? if
       BY-PLACING VERIFIED-READS
       -1 TEXT-IN !
       PROBE DEFS-USE-RANGE ?do
-         i USE-PRIMITIVE-ROW PRIM-ROW @ = if i PLACE-USE else i OTHER+ then
+         BUILTIN-SYM @ 0 > if
+            i ORIGIN-USE-SYM if BUILTIN-SYM @ = else drop false then
+         else i USE-PRIMITIVE-ROW PRIM-ROW @ = then
+         if i PLACE-USE else i OTHER+ then
       loop
       exit
    then
@@ -1157,8 +1243,8 @@ public
    slot DOC-CANON$ s" its check is not verified" REFUSE
    false ;
 
-: PRIMITIVE? ( -- bool )  PRIM-ROW @ 0 >= ;
-: PRIMITIVE-RENAME$ ( -- ptr u8 n )  s" Built-in primitives cannot be renamed" ;
+: PRIMITIVE? ( -- bool )  IMPLICIT? ;
+: PRIMITIVE-RENAME$ ( -- ptr u8 n )  s" Built-in words cannot be renamed" ;
 
 \ Selects the declaration at this byte of the text of the open document in
 \ this slot, which positions count in, and places it; or refuses the request.
@@ -1221,7 +1307,7 @@ public
 \ from the files the locations placed since it last ran are in, and whether
 \ it gave any.
 : MORE? ( -- bool )
-   PRIM-ROW @ 0 >= if false exit then
+   PRIMITIVE? if false exit then
    SUB-N @ {: was:n :}
    LOC-N @ FOLLOWED @ ?do i FOLLOW loop
    LOC-N @ FOLLOWED !

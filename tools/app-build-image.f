@@ -96,7 +96,7 @@ public
    [: 2drop ;] BEFORE !
    rc 0<> if rc throw then
    FAMILY$ PATH-BYTES BUILD-FIXPOINT:BF-ENGINE$ PROGRAM$ ['] OUT-ARG timeout
-   KEYED-IMAGE:ENSURE-WITH
+   KEYED-IMAGE:ENSURE-WITH drop
    PATH-BYTES ;
 
 : PATH$ ( n -- ptr u8 n )
