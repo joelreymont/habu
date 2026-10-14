@@ -18,6 +18,7 @@ create BASE FS-PATH-CAP allot
 variable BASE-LEN
 create PATH-BUF FS-PATH-CAP allot
 create PAYLOAD $20 allot
+create STREAM-BUF $200 allot
 create TASK-PATH-A FS-PATH-CAP allot
 create TASK-PATH-B FS-PATH-CAP allot
 variable TASK-PATH-A-LEN
@@ -77,6 +78,9 @@ TASK:SEMAPHORE ZIP-START
    2dup NAME$ 2drop ;
 : TRY-REPLACE ( ZIP:archive ZIP:entry -- ZIP:archive ZIP:entry )
    2dup s" replacement" REPLACE ;
+: READONLY-FILL ( n SPAN:span<u8> -- ) 2drop ;
+: TRY-REPLACE-WITH ( ZIP:archive ZIP:entry -- ZIP:archive ZIP:entry )
+   2dup 11 0 [: READONLY-FILL ;] ZIP:REPLACE-WITH ;
 : TRY-COMMIT ( ZIP:archive -- ZIP:archive ) dup COMMIT ;
 
 : REJECT-INDICES ( -- )
@@ -200,6 +204,13 @@ TASK:SEMAPHORE ZIP-START
 
 : READONLY-COMMIT ( -- )
    INPUT$ ORIGINAL$ WRITE-ALL INPUT$ ZIP:OPEN COMMIT
+   INPUT$ RAW RAW-CAP READ-ALL RAW swap ORIGINAL$ T$=
+   INPUT$ ZIP:OPEN-FILE {: archive:ZIP:archive :}
+   archive 0 ENTRY {: member:ZIP:entry :}
+   archive member [: TRY-REPLACE ;] catch E-READONLY T= 2drop
+   archive member [: TRY-REPLACE-WITH ;] catch E-READONLY T= 2drop
+   archive 0 s" stored value" MEMBER=
+   archive COMMIT
    INPUT$ RAW RAW-CAP READ-ALL RAW swap ORIGINAL$ T$= ;
 
 : STALE-SOURCE ( ZIP:archive -- ZIP:archive ) dup SOURCE$ 2drop ;
@@ -223,13 +234,24 @@ TASK:SEMAPHORE ZIP-START
    archive 1 ENTRY archive swap NAME$ s" raw.txt" T$=
    archive 0 ENTRY archive swap s" replacement text" REPLACE archive COMMIT ;
 
+: REPLACE-FIRST-FILE ( -- )
+   INPUT$ ZIP:EDIT-FILE {: archive:ZIP:archive :}
+   archive 1 ENTRY archive swap NAME$ s" raw.txt" T$=
+   archive 0 ENTRY archive swap s" replacement text" REPLACE archive COMMIT ;
+
 : FRAMING-CASE ( ptr u8 n ptr u8 n -- ) {: before:ptr before-len:n after:ptr after-len:n :}
    INPUT$ before before-len WRITE-ALL REPLACE-FIRST
    INPUT$ RAW RAW-CAP READ-ALL {: len:n :}
    RAW len after after-len T$=
    INPUT$ ZIP:OPEN {: archive:ZIP:archive :}
    archive 0 s" replacement text" MEMBER= archive 1 s" keep" MEMBER=
-   archive ZIP:CLOSE ;
+   archive ZIP:CLOSE
+   INPUT$ before before-len WRITE-ALL REPLACE-FIRST-FILE
+   INPUT$ RAW RAW-CAP READ-ALL {: file-len:n :}
+   RAW file-len after after-len T$=
+   INPUT$ ZIP:OPEN-FILE {: file:ZIP:archive :}
+   file 0 s" replacement text" MEMBER= file 1 s" keep" MEMBER=
+   file ZIP:CLOSE ;
 
 : RAW-FRAMING ( -- )
    FRAMED-BEFORE$ FRAMED-AFTER$ FRAMING-CASE
@@ -271,12 +293,178 @@ $10000 constant WIDE-COUNT
    INPUT$ data cap READ-ALL {: len:n :}
    COUNT-END-AFTER$ {: expected:ptr size:n :}
    data len size - + size expected size T$=
-   data cap BYTES-ALLOC-LEN RELEASE-BYTES COUNT-CONTENT ;
+   data cap BYTES-ALLOC-LEN RELEASE-BYTES COUNT-CONTENT
+   INPUT$ ZIP:OPEN-FILE {: file:ZIP:archive :}
+   file ZIP:COUNT WIDE-COUNT T=
+   file WIDE-COUNT 1- s" " MEMBER=
+   file ZIP:CLOSE ;
 
 : TYPE-REJECTIONS ( -- )
    s" WRONG-HANDLE ( ZIP:entry -- n ) ZIP:COUNT" CHECK! 0 T=
    s" WRONG-ENTRY ( ZIP:archive ZIP:archive -- ptr u8 n ) ZIP:READ" CHECK! 0 T=
+   s" WRONG-INPUT ( ZIP:archive SPAN:span<u8> -- n ) ZIP:READ-IN" CHECK! 0 T=
+   s" WRONG-SOURCE ( ZIP:entry -- ZIP:input ) ZIP:OPEN-SOURCE" CHECK! 0 T=
    s" FORGED-HANDLE ( n -- ZIP:archive )" CHECK! 0 T= ;
+
+: FILE-MEMBERS ( -- )
+   INPUT$ ORIGINAL$ WRITE-ALL
+   INPUT$ ZIP:OPEN-FILE {: archive:ZIP:archive :}
+   archive ZIP:COUNT 5 T=
+   archive 0 s" stored value" MEMBER=
+   archive 1 ENTRY archive swap ZIP:READ nip 340 T=
+   archive 2 s" " MEMBER=
+   archive ZIP:CLOSE ;
+
+: FILE-STREAM-ONE ( ZIP:archive n ptr u8 n -- )
+   {: archive:ZIP:archive idx:n want:ptr size:n :}
+   archive archive idx ENTRY ZIP:OPEN-ENTRY {: input:ZIP:input :}
+   0 begin dup size < while
+      dup {: off:n :}
+      size off - 7 min {: cap:n :}
+      input STREAM-BUF off + cap SPAN:MAKE ZIP:READ-IN
+      dup 0= if E-READ throw then +
+   repeat drop
+   input STREAM-BUF 1 SPAN:MAKE ZIP:READ-IN 0 T=
+   input STREAM-BUF 1 SPAN:MAKE ZIP:READ-IN 0 T=
+   input ZIP:CLOSE-ENTRY
+   STREAM-BUF size want size T$= ;
+
+: FILE-STREAMS ( -- )
+   INPUT$ ORIGINAL$ WRITE-ALL
+   INPUT$ ZIP:OPEN-FILE {: archive:ZIP:archive :}
+   archive 0 s" stored value" FILE-STREAM-ONE
+   archive 1 archive archive 1 ENTRY ZIP:READ FILE-STREAM-ONE
+   archive 2 s" " FILE-STREAM-ONE
+   archive 3 s" first" FILE-STREAM-ONE
+   archive 4 s" second" FILE-STREAM-ONE
+   archive ZIP:CLOSE ;
+
+: FILE-SOURCE-STREAM ( ZIP:archive -- ) {: archive:ZIP:archive :}
+   archive ZIP:OPEN-SOURCE {: input:ZIP:input :}
+   ORIGINAL$ {: expected:ptr size:n :}
+   0 begin dup size < while
+      dup {: off:n :}
+      input RAW off + size off - 7 min SPAN:MAKE ZIP:READ-IN
+      dup 0= if E-READ throw then +
+   repeat drop
+   input RAW 1 SPAN:MAKE ZIP:READ-IN 0 T=
+   input ZIP:CLOSE-ENTRY
+   RAW size expected size T$= ;
+
+: FILE-SNAPSHOT ( -- )
+   INPUT$ ORIGINAL$ WRITE-ALL
+   INPUT$ ZIP:OPEN-FILE {: archive:ZIP:archive :}
+   INPUT$ s" changed at original path" WRITE-ALL
+   archive 0 s" stored value" MEMBER=
+   archive FILE-SOURCE-STREAM
+   archive ZIP:OPEN-SOURCE {: early:ZIP:input :}
+   early RAW 1 SPAN:MAKE ZIP:READ-IN 1 T=
+   early ZIP:CLOSE-ENTRY
+   archive ZIP:CLOSE ;
+
+: FILL-BYTE ( n SPAN:span<u8> -- ) {: byte:n dst :}
+   dst SPAN:$ {: data:ptr len:n :}
+   len 0 ?do byte data i + c! loop ;
+
+: FAIL-FILL ( n SPAN:span<u8> -- )
+   2drop E-WRITE throw ;
+
+: TRY-FILL ( ZIP:archive ZIP:entry -- ZIP:archive ZIP:entry )
+   2dup 11 0 [: FAIL-FILL ;] ZIP:REPLACE-WITH ;
+
+: FILE-REPLACE-WITH ( -- )
+   INPUT$ ORIGINAL$ WRITE-ALL
+   INPUT$ ZIP:EDIT-FILE {: archive:ZIP:archive :}
+   archive 0 ENTRY {: member:ZIP:entry :}
+   archive member [: TRY-FILL ;] catch E-WRITE T= 2drop
+   archive 0 s" stored value" MEMBER=
+   archive member 31 65 [: FILL-BYTE ;] ZIP:REPLACE-WITH
+   archive 2 ENTRY archive swap ZIP:READ nip 0 T=
+   archive COMMIT
+   INPUT$ ZIP:OPEN-FILE {: result:ZIP:archive :}
+   result 0 ENTRY result swap ZIP:READ {: data:ptr len:n :}
+   len 31 T=
+   len 0 ?do data i + c@ 65 T= loop
+   result ZIP:CLOSE ;
+
+: LARGE-FILE-COPY ( -- )
+   INPUT$ ORIGINAL$ WRITE-ALL
+   INPUT$ ZIP:EDIT-FILE {: first:ZIP:archive :}
+   first first 0 ENTRY 888832 65 [: FILL-BYTE ;] ZIP:REPLACE-WITH
+   first COMMIT
+   INPUT$ ZIP:EDIT-FILE {: second:ZIP:archive :}
+   second 1 ENTRY second swap s" changed" REPLACE second COMMIT
+   INPUT$ ZIP:OPEN-FILE {: result:ZIP:archive :}
+   result result 0 ENTRY ZIP:OPEN-ENTRY {: input:ZIP:input :}
+   0 begin input STREAM-BUF $200 SPAN:MAKE ZIP:READ-IN dup 0<> while
+      +
+   repeat drop
+   888832 T=
+   input ZIP:CLOSE-ENTRY
+   result 1 s" changed" MEMBER=
+   result ZIP:CLOSE ;
+
+: FILE-INSTALL-FAILURE ( -- )
+   INPUT$ ORIGINAL$ WRITE-ALL
+   INPUT$ ZIP:EDIT-FILE {: archive:ZIP:archive :}
+   archive 0 ENTRY archive swap s" pending" REPLACE SAVE-INPUT
+   archive [: TRY-COMMIT ;] catch E-COMMIT T= drop
+   archive 0 s" pending" MEMBER=
+   archive ZIP:COUNT 5 T=
+   BASE$ [: NO-TEMP ;] WALK-FILES
+   RESTORE-INPUT archive COMMIT
+   INPUT$ ZIP:OPEN-FILE {: result:ZIP:archive :}
+   result 0 s" pending" MEMBER= result ZIP:CLOSE ;
+
+: FILE-CRC-CLOSE ( -- )
+   CORRUPT-FIXTURE
+   s" corrupt.zip" PATH$ ZIP:OPEN-FILE {: archive:ZIP:archive :}
+   archive archive 0 ENTRY ZIP:OPEN-ENTRY {: input:ZIP:input :}
+   input [: dup ZIP:CLOSE-ENTRY ;] catch E-READ T= drop
+   archive ZIP:CLOSE ;
+
+: DRAIN-BAD ( ZIP:input -- ZIP:input ) {: input:ZIP:input :}
+   begin input STREAM-BUF 7 SPAN:MAKE ZIP:READ-IN 0= until
+   input ;
+
+: STALE-INPUT ( ZIP:input SPAN:span<u8> -- ZIP:input SPAN:span<u8> )
+   2dup ZIP:READ-IN drop ;
+
+: FILE-CRC-READ ( -- )
+   CORRUPT-FIXTURE
+   s" corrupt.zip" PATH$ ZIP:OPEN-FILE {: archive:ZIP:archive :}
+   archive archive 0 ENTRY ZIP:OPEN-ENTRY {: input:ZIP:input :}
+   input [: DRAIN-BAD ;] catch E-READ T= drop
+   input STREAM-BUF 1 SPAN:MAKE [: STALE-INPUT ;] catch
+      >r 2drop r> E-HANDLE T=
+   archive ZIP:CLOSE ;
+
+: SIZE-CASE ( n -- ) {: declared:n :}
+   ORIGINAL$ {: data:ptr len:n :}
+   data RAW len BYTE-COPY
+   declared RAW $128 + c!
+   s" size.zip" PATH$ RAW len WRITE-ALL
+   s" size.zip" PATH$ ZIP:OPEN-FILE {: archive:ZIP:archive :}
+   archive archive 0 ENTRY ZIP:OPEN-ENTRY {: input:ZIP:input :}
+   input [: dup ZIP:CLOSE-ENTRY ;] catch E-READ T= drop
+   archive ZIP:CLOSE ;
+
+: FILE-SIZE-ERRORS ( -- ) 11 SIZE-CASE 13 SIZE-CASE ;
+
+: FILE-INPUT-RETIRE ( -- )
+   INPUT$ ORIGINAL$ WRITE-ALL
+   INPUT$ ZIP:OPEN-FILE {: archive:ZIP:archive :}
+   archive archive 0 ENTRY ZIP:OPEN-ENTRY {: input:ZIP:input :}
+   archive ZIP:CLOSE
+   input RAW 1 SPAN:MAKE [: STALE-INPUT ;] catch
+   >r 2drop r> E-HANDLE T= ;
+
+: FILE-REPLACE ( -- )
+   INPUT$ ZIP:EDIT-FILE {: archive:ZIP:archive :}
+   archive 0 ENTRY archive swap s" replacement" REPLACE
+   archive 4 ENTRY archive swap s" " REPLACE
+   archive COMMIT
+   READ-REPLACED PRESERVED ;
 
 \ Different member sizes expose a concurrent zip_stat_index scratch collision.
 : TASK-READ-ONE ( ptr u8 n n ptr u8 n ptr u8 n -- )
@@ -329,7 +517,10 @@ $10000 constant WIDE-COUNT
    READ-MEMBERS DUP-NAMES REJECT-INDICES REJECT-HANDLES BAD-PATHS
    REPLACE-MEMBERS READ-REPLACED PRESERVED DISCARD-CHANGES
    COMMIT-FAILURE INSTALL-FAILURE READONLY-COMMIT CRC-FAILURE MANY-HANDLES ORIGINAL-SOURCE RAW-FRAMING ZIP64-COUNT TYPE-REJECTIONS
-   TASK-READERS
+   FILE-MEMBERS FILE-STREAMS FILE-SNAPSHOT FILE-REPLACE-WITH LARGE-FILE-COPY
+   FILE-CRC-CLOSE FILE-CRC-READ FILE-SIZE-ERRORS
+   FILE-INPUT-RETIRE FILE-INSTALL-FAILURE
+   FILE-REPLACE TASK-READERS
    CLEANUP-RUN T-REPORT ;
 
 RUN

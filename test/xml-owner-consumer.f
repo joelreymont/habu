@@ -23,6 +23,8 @@ create TEXT-BYTES 32 allot
 create TAIL-BYTES 32 allot
 create WRITTEN OUTPUT-CAP allot
 create DECODED 64 allot
+1 SPAN-BUFFER: STREAM-CHUNK
+variable STREAM-POS
 
 DYNAMIC-BUFFER OWNERS XML:source-owner
 DYNAMIC-BUFFER SOURCES ptr u8
@@ -77,6 +79,39 @@ CAST: ENCODING>N ( XML:encoding -- n )
 : NEXT= ( XML:reader XML:kind -- XML:reader )
    KIND>N {: want:n :}
    XML:NEXT KIND>N want T= ;
+
+: STREAM$ ( -- ptr u8 n )
+   s" <a xmlns:p='urn:x'><p:b q='&amp;'>Aé&amp;Z</p:b></a>" ;
+
+: STREAM-FILL ( ptr n SPAN:span<u8> -- n )
+   {: pos:ptr output :}
+   STREAM$ {: source size:n :}
+   pos @ size >= if 0 exit then
+   source pos @ + c@ output 0 SPAN:U8!
+   1 pos +! 1 ;
+
+: STREAM-READ ( -- )
+   0 STREAM-POS !
+   STREAM-POS ['] STREAM-FILL STREAM-CHUNK
+   READER-STORE READER-CAP XML:STORAGE-BYTES XML:INIT-INPUT
+   XML-KIND:START NEXT=
+   XML-KIND:START NEXT=
+   XML:NAME$ s" p:b" T$=
+   DECODED 64 XML:URI DECODED swap s" urn:x" T$=
+   XML:ATTR-NEXT TTRUE
+   DECODED 64 XML:ATTR-TEXT DECODED swap s" &" T$=
+   0
+   begin
+      >r XML:NEXT KIND>N XML-KIND:TEXT KIND>N =
+   while
+      r> {: used:n :}
+      DECODED used + 64 used - XML:TEXT used +
+   repeat
+   r> {: used:n :}
+   DECODED used s" Aé&Z" T$=
+   XML:KIND KIND>N XML-KIND:END KIND>N T=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT=
+   XML:CLOSE ;
 
 : READ-PART ( XML:reader -- XML:reader )
    XML-KIND:START NEXT=
@@ -245,6 +280,8 @@ CAST: ENCODING>N ( XML:encoding -- n )
 public
 : MAIN ( -- )
    T-RESET
+   s" bounded callback XML survives source and native capture" T-LABEL
+   STREAM-READ
    s" runtime-sized owners survive parser scratch reuse and later edits" T-LABEL
    DOCUMENT
    s" a malformed later part preserves the parser error and frees prior parts" T-LABEL

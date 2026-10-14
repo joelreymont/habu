@@ -1,9 +1,11 @@
 ---
 title: Retire native HIR observer
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-10-04T05:08:20.586680+03:00\""
+created-at: "\"\\\"2026-10-04T05:08:20.586680+03:00\\\"\""
+closed-at: "2026-10-14T23:02:39.650766+03:00"
+close-reason: HIR observer retirement f32a3451 and legacy host-row fix 894b7a47 are ancestors of qualified ed285fdc. Independent Astra follow-up found no defects and verified unchanged registered coverage; ed285 native-build-entry and native-dictionary-publish both pass. Release-owner 663/663 native gate and byte convergence apply. Publication/invalidation callbacks remain; unrelated DATA/CODE rows still refuse.
 ---
 
 HBR2 and UI-ADMIT were removed because they had no caller. Their target-neutral
