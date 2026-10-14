@@ -5,10 +5,10 @@
 \ UTF-8 returns RAW-BYTE with the exact lead byte and cursor+1. Cursor misuse is
 \ a bounds error; malformed input is data and never throws.
 \
-\ VALID? answers whether a whole counted span is strict canonical UTF-8: every
-\ step NEXT takes across it is a SCALAR, and a span with no bytes is valid. A
-\ negative length is E-STR-BOUNDS, as for NEXT; malformed bytes are data and
-\ never throw.
+\ VALID? answers whether a whole counted span is strict canonical UTF-8. It
+\ accepts ASCII directly and requires every non-ASCII NEXT step to be a SCALAR.
+\ An empty span is valid. A negative length is E-STR-BOUNDS, as for NEXT;
+\ malformed bytes are data and never throw.
 
 require src/lib/errors.f
 
@@ -175,11 +175,15 @@ public
    {: source:ptr length:n :}
    length NONNEGATIVE
    0 begin dup length < while
-      source length rot NEXT
-      MATCH scalar-step
-         scalar OF nip ENDOF
-         raw-byte OF 2drop NO exit ENDOF
-      ;MATCH
+      dup source + c@ ASCII-LIMIT < if
+         1+
+      else
+         source length rot NEXT
+         MATCH scalar-step
+            scalar OF nip ENDOF
+            raw-byte OF 2drop NO exit ENDOF
+         ;MATCH
+      then
    repeat
    drop YES ;
 
