@@ -706,6 +706,18 @@ variable OR-U
    S\"  . cp@ 4 - cp@ code-origin .\n" OR+
    OR-BUF OR-U @ ;
 
+\ The x86-64 emitter still has a fixed table. Exercise its ordinary
+\ publications through the same real load path, including the refusal.
+: OR-X64-SOURCE$ ( n -- ptr u8 n ) {: count:n :}
+   0 OR-U !
+   S\" 0 set-tier\nTRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\n: OR-HEADROOM ( -- ) OR-COUNT TIER-PROV:SPANS 64 - > OR-COUNT TIER-PROV:SPANS <= and if s\q headroom-ok\q type else 70 throw then ;\n" OR+
+   count 0 ?do
+      s" variable OV" OR+ i OR-NUM+
+      S\" \n: OD" OR+ i OR-NUM+ S\"  ( -- ) ;\n" OR+
+   loop
+   S\" OR-HEADROOM\n" OR+
+   OR-BUF OR-U @ ;
+
 : OR-SPLIT-CHECK+ ( -- )
    S\" \nOR-SPLIT-CHECK\n" OR+ ;
 
@@ -769,7 +781,7 @@ variable OR-U
    OUT CAP >LEN ERR CAP >LEN OR-TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE-OUTCOME OR-PATH$ STORE! ;
 
-: TEST-ORIGIN-CAPACITY ( -- )
+: TEST-ORIGIN-GROWTH ( -- )
    s" real alternating publications grow beyond the inline table" T-LABEL
    OR-PATH$ TIER-PROV:SPANS 2 / 16 + OR-SOURCE$ ATOMIC-WRITE-FILE
    OR-LOAD 0 ASSERT-RC
@@ -795,6 +807,16 @@ variable OR-U
    OR-IMAGE-RUN 0 ASSERT-RC
    OUT$ S\" 84\n1\n86\n1\n85\n1\n" STR= TTRUE
    OR-IMAGE-PATH$ REMOVE-FILE
+   OR-PATH$ REMOVE-FILE ;
+
+: TEST-ORIGIN-CAPACITY-X64 ( -- )
+   s" real publications use the declared capacity with headroom" T-LABEL
+   OR-PATH$ TIER-PROV:SPANS 2 / 16 - OR-X64-SOURCE$ ATOMIC-WRITE-FILE
+   OR-LOAD s" headroom-ok" ASSERT-OK
+   s" exhausting the interval store refuses before losing a row" T-LABEL
+   OR-PATH$ TIER-PROV:SPANS 2 / 16 + OR-X64-SOURCE$ ATOMIC-WRITE-FILE
+   OR-LOAD ENGINE-ERROR:CODE-ORIGIN-FULL ASSERT-RC
+   ERR$ S\" hb: code-origin table capacity\n" STR= TTRUE
    OR-PATH$ REMOVE-FILE ;
 
 : TEST-BUILD-SCOPE ( -- )
@@ -836,7 +858,8 @@ public
    TEST-TRUSTED-TICK-ORDER
    TEST-ORIGIN
    TEST-ORIGIN-OVERWRITE
-   TEST-ORIGIN-CAPACITY
+   HB-TARGET-LINUX? HB-TARGET-MACOS? or if TEST-ORIGIN-GROWTH then
+   HB-TARGET-LINUX-X86-64? if TEST-ORIGIN-CAPACITY-X64 then
    TEST-BUILD-SCOPE
    TEST-CHECKER-ROWS
    TEST-HOOK-CELL
