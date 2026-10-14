@@ -622,13 +622,19 @@ HBB-INSTALL-CHILD-LINT
    err HBB-ERR-BUF erru BYTE-COPY
    outu erru HBB-MAKER-TIMED-OUT ;
 
+: HBB-SELECT-MAKER ( -- )
+   HBB-MAKER-TIMEOUT-MS @ AOT-MAKER-IMAGE:SELECT$
+   {: image:ptr imageu:n hit:bool :}
+   image HBB-AOT-MAKER-A ! imageu HBB-AOT-MAKER-U !
+   hit HBB-MAKER-HIT !
+   hit 0= HBB-MAKER-BUILD ! ;
+
 \ Select the saved maker before HBB-RUN-MAKER-ARGS stages argv and env: image
 \ publication has its own child and staging buffer. RUN loads the linker after
 \ OPEN latched the application span.
 : HBB-RUN-MAKER-CMD ( -- len len outcome )
    KEYED-IMAGE:CAPTURE-RESET
-   [: HBB-MAKER-TIMEOUT-MS @ AOT-MAKER-IMAGE:PATH$
-      HBB-AOT-MAKER-U ! HBB-AOT-MAKER-A ! ;] catch {: rc:n :}
+   ['] HBB-SELECT-MAKER catch {: rc:n :}
    rc E-PROC-TIMEOUT = if HBB-AOT-MAKER-TIMED-OUT then
    rc 0<> if rc throw then
    HBB-RUN-MAKER-ARGS

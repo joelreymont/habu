@@ -63,11 +63,14 @@ variable RUNNING-U
 
 public
 
-: PATH$ ( n -- ptr u8 n )
+: SELECT$ ( n -- ptr u8 n bool )
    {: timeout:n :}
    RESOLVE
    FAMILY$ PATH-BYTES BUILD-FIXPOINT:BF-ENGINE$ PROGRAM$ ['] OUT-ARG timeout
-   KEYED-IMAGE:ENSURE-WITH
-   PATH-BYTES ;
+   KEYED-IMAGE:ENSURE-WITH {: hit:bool :}
+   PATH-BYTES hit ;
+
+: PATH$ ( n -- ptr u8 n )
+   SELECT$ drop ;
 
 ;package
