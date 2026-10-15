@@ -5,21 +5,11 @@
 \ Generated constructors seed bundles which cross the stack, return stack,
 \ locals and typed storage before their values are checked.
 
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
 using TFAM
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
+T-RESET
 
 \ ---------------------------------------------------------------------------
 \ layout families under test: width 2 (1 payload slot + tag), width 4
@@ -166,11 +156,8 @@ TLP-LOCAL-TEST:DEEP 1 T= 7 T= 4 T= 3 T= 2 T= 1 T=
 0 TLPX-BROUTER 1 T= 93 T= 92 T= 91 T=
 
 \ ---------------------------------------------------------------------------
-\ report: "ok" on success, nonzero exit on any failure.
+\ report: "test: ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" type-layout-lower-pending: failures" 1 die ;
-REPORT
+T-REPORT
 
 ;using

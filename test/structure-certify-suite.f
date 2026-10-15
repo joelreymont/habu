@@ -43,50 +43,23 @@
 \   7. Constructor-package protection: the STRUCTURE-derived package is
 \      closed-but-callable — reopen/undefine reject case-insensitively, the words
 \      stay callable — matching the shipped sum/product ctor protection.
-\ A failure prints F<index> + detail; REPORT exits 1 on any fail.
+\ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
 
 require test/checker-assert.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
-: T-TRUE ( bool -- ) {: b:bool :}
-   #CASE @ 1 + #CASE !
-   b 0= if T-FAIL s" assert: expected true" type cr then ;
-
-\ --- boundary shim (the test/structure-decl-suite.f idiom): a declaration given
-\ as a text runs through evaluate-closed, at top level or under TRY's catch. TRY
-\ runs it on a copy of the string because a throw restores the depth catch began
-\ with, and it drops both copies so a refusal leaves only its code.
-: TRY ( ptr u8 n -- n ) [: 2dup evaluate-closed ;] catch {: rc:n :} 2drop rc ;
+T-RESET
 
 \ --- diagnostic capture (the test/type-match-suite.f idiom): a JSON-mode render
 \ into a fixed buffer, asserted by substring.
-variable MDT-I
-: MDT-CONTAINS? ( ptr u8 n ptr u8 n -- bool ) {: h:ptr hu:n n:ptr nu:n :}
-   hu nu < if 0 0= 0= exit then
-   0 MDT-I !
-   begin MDT-I @ nu + hu <= while
-      h MDT-I @ + nu  n nu CORE-STR= if 0 0= exit then
-      MDT-I @ 1 + MDT-I !
-   repeat 0 0= 0= ;
 create SCG-BUF 8192 allot
 : SCG< ( ptr u8 n -- )   \ run one candidate with JSON diags captured; assert rejected
    SCG-BUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
    CHECK-CANDIDATE! 0 T= ;
 : SCG? ( ptr u8 n -- )   \ assert the captured diag contains the needle
-   #CASE @ 1 + #CASE !
-   DIAG-BUFFER$ 2swap MDT-CONTAINS? 0= if
-      T-FAIL s" assert: diag needle missing" type cr
+   T-NEXT
+   DIAG-BUFFER$ 2swap CONTAINS? 0= if
+      s" diag needle missing" T-ASSERT-DETAIL
    then ;
 : SCG-END ( -- ) 0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
 
@@ -197,11 +170,11 @@ SCG-END
 \    matching the shipped sum/product ctor protection.
 \ ---------------------------------------------------------------------------
 s" STRUCTURE scprot FIELD x n FIELD y n ;STRUCTURE" evaluate-closed
-s" package scprot" TRY E-CTOR-PROTECTED T=
-s" package SCPROT" TRY E-CTOR-PROTECTED T=                        \ case-insensitive
-s" undefine SCPROT:MAKE" TRY E-CTOR-PROTECTED T=
-s" undefine scprot:unmake" TRY E-CTOR-PROTECTED T=
-s" package scok ;package" TRY 0 T=                                \ an ordinary package still opens
+s" package scprot" TEST-EVAL:RC E-CTOR-PROTECTED T=
+s" package SCPROT" TEST-EVAL:RC E-CTOR-PROTECTED T=               \ case-insensitive
+s" undefine SCPROT:MAKE" TEST-EVAL:RC E-CTOR-PROTECTED T=
+s" undefine scprot:unmake" TEST-EVAL:RC E-CTOR-PROTECTED T=
+s" package scok ;package" TEST-EVAL:RC 0 T=                       \ an ordinary package still opens
 : SCPRT ( -- n n ) 3 4 SCPROT:MAKE SCPROT:UNMAKE ;               \ still callable after the rejects
 SCPRT 4 T= 3 T=
 
@@ -226,12 +199,12 @@ s" IPU ( scpkg:prow -- n n ) SCPKG-PROW:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 \    CK-PENDING-SYM). A scope whose rows did not bind refuses the declaration
 \    (`bad structure declaration`, 70). The derived words then run.
 \ ---------------------------------------------------------------------------
-s" STRUCTURE scder DERIVE eq hash FIELD x n ;STRUCTURE" TRY 0 T=
+s" STRUCTURE scder DERIVE eq hash FIELD x n ;STRUCTURE" TEST-EVAL:RC 0 T=
 : SCDEQ ( n n -- bool ) {: a:n b:n :} a SCDER:MAKE b SCDER:MAKE SCDER:EQ ;
 : SCDHS ( n n -- bool ) {: a:n b:n :} a SCDER:MAKE SCDER:HASH b SCDER:MAKE SCDER:HASH = ;
-5 5 SCDEQ T-TRUE
+5 5 SCDEQ TTRUE
 5 6 SCDEQ 0 T=
-5 5 SCDHS T-TRUE
+5 5 SCDHS TTRUE
 
 \ ---------------------------------------------------------------------------
 \ ACCESSOR NOTE (report + follow-up). The generate-field lane will emit sealed
@@ -246,7 +219,4 @@ s" STRUCTURE scder DERIVE eq hash FIELD x n ;STRUCTURE" TRY 0 T=
 \ end-to-end grammar fixtures wait on the generated accessor words.
 \ ---------------------------------------------------------------------------
 
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" structure-certify-suite: failures" 1 die ;
-REPORT
+T-REPORT

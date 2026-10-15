@@ -17,24 +17,15 @@
 \ xpb = free/batch #B, xpt = in-block/sequence #T, xpk = a head-dim inner extent,
 \ xpflat = a plain flat folded-rows extent. extprod/redx are the real families.
 \ CHECK-QUIET-CANDIDATE! : -1 accept, 0 reject. Routed positive suite: exit 0, empty
-\ stderr, stdout ends "ok\n" (REPORT dies exit 1 on any miss).
+\ stderr, stdout ends "test: ok\n" (T-REPORT dies exit 1 on any miss).
 
 require test/checker-assert.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
 create EP-DIAG 8192 allot
 EP-DIAG 8192 DIAG-BUFFER!
 
-variable #FAIL
-variable #CASE
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
+T-RESET
 
 NEWTYPE xidx<a>
 NEWTYPE xpb
@@ -72,7 +63,4 @@ s" XCB ( redx<xpb> -- redx<xpb> )"                            CHECK-QUIET-CANDID
 \ NEGATIVE: contracting the WHOLE product (summing across sequences) is rejected.
 s" XCP ( redx<extprod<xpb,xpt>> -- redx<extprod<xpb,xpt>> )"  CHECK-QUIET-CANDIDATE!  0 T=
 
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" extent-product-test: failures" 1 die ;
-REPORT
+T-REPORT

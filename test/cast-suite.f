@@ -27,26 +27,16 @@
 \     it is refused at the next fetch
 \   - a private read-view unpack ( read-view<p,q,u8> -- ptr u8 n ) certifies in
 \     any package and projects a live C2 view to its base and length
-\ A failure prints F<index> + detail; REPORT exits 1 on any fail.
+\ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
 
 require test/checker-assert.f
 require src/lib/test/subject.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 require src/lib/memory.f
 require src/lib/c2-memory.f
 require src/lib/c2-bytes.f
+require src/lib/test.f
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
+T-RESET
 
 \ silence expected rejection diagnostics (verdicts are asserted, not printed).
 create CSDIAG-BUF 8192 allot
@@ -374,7 +364,4 @@ public
 ;package
 CS-VIEW:RESULT -1 T=
 
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" cast-suite: failures" 1 die ;
-REPORT
+T-REPORT

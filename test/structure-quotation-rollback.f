@@ -4,25 +4,21 @@ require src/lib/test.f
 
 package QUOT-ROLLBACK-TEST
 
-\ TRY evaluates a copy of the string because a throw restores the depth catch
-\ began with, and it drops both copies so a refusal leaves only its code.
-: TRY ( ptr u8 n -- n ) [: 2dup evaluate-closed ;] catch {: rc:n :} 2drop rc ;
-
 : RUN ( -- )
    T-RESET
    64 0 ?do
       s" STRUCTURE qfail FIELD handler [ n n n n nope -- ] ;STRUCTURE"
-         TRY 7109 T=
+         TEST-EVAL:RC 7109 T=
    loop
-   s" STRUCTURE qgood FIELD handler [ n -- n ] ;STRUCTURE" TRY 0 T=
+   s" STRUCTURE qgood FIELD handler [ n -- n ] ;STRUCTURE" TEST-EVAL:RC 0 T=
    s" STRUCTURE qnest FIELD handler [ [ n -- n ] nope -- ] ;STRUCTURE"
-      TRY 7109 T=
+      TEST-EVAL:RC 7109 T=
    s" STRUCTURE qnest FIELD handler [ [ n -- n ] -- ] ;STRUCTURE"
-      TRY 0 T=
+      TEST-EVAL:RC 0 T=
    s" SUMTYPE qbad VARIANT call [ n nope -- n ] ;VARIANT ;SUMTYPE"
-      TRY 7109 T=
+      TEST-EVAL:RC 7109 T=
    s" SUMTYPE qsum VARIANT call [ n -- n ] ;VARIANT ;SUMTYPE"
-      TRY 0 T=
+      TEST-EVAL:RC 0 T=
    T-REPORT ;
 
 RUN

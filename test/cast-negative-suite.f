@@ -32,24 +32,14 @@
 \ keyword, evaluated as source, so what is asserted is what a file gets. A
 \ refusal throws its named code and leaves NO name behind — the record is not
 \ counted until the checker has accepted the row. A failure prints F<index>;
-\ REPORT exits 1 on any.
+\ T-REPORT exits 1 on any.
 
 require test/checker-assert.f
 require src/habu/verify-source.f
 require src/lib/test/subject.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
+T-RESET
 
 \ Silence expected rejection diagnostics (verdicts are asserted, not printed).
 \ The production declarer emits a real diagnostic per refusal where the old
@@ -571,7 +561,4 @@ package CN
 s" CNU1 ( n -- CN:cnfam ) cast:"                      CHECK-QUIET-CANDIDATE! 0 T=
 ;package
 
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" cast-negative-suite: failures" 1 die ;
-REPORT
+T-REPORT

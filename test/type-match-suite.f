@@ -12,19 +12,9 @@
 \ positives, negatives, forged-tag diagnostic, and checked round-trips.
 
 require test/checker-assert.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
+T-RESET
 
 \ ---------------------------------------------------------------------------
 \ families under test: scalar sum, multi-cell + padding, enum-shaped,
@@ -301,23 +291,14 @@ s" MATCH-SCOPE" type cr
 \ missing variant NAMES. Captured through the render diag buffer in JSON mode
 \ (the type-decl-suite pattern); one prose case pins the §24 text shape.
 \ ---------------------------------------------------------------------------
-variable MDT-I
-: MDT-CONTAINS? ( ptr u8 n ptr u8 n -- bool ) {: h:ptr hu:n n:ptr nu:n :}
-   hu nu < if 0 0= 0= exit then
-   0 MDT-I !
-   begin MDT-I @ nu + hu <= while
-      h MDT-I @ + nu  n nu CORE-STR= if 0 0= exit then
-      MDT-I @ 1 + MDT-I !
-   repeat 0 0= 0= ;
-
 create MDG-BUF 8192 allot
 : MDG< ( ptr u8 n -- )   \ run one candidate with JSON diags into the buffer
    MDG-BUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
    CHECK-CANDIDATE! 0 T= ;
 : MDG? ( ptr u8 n -- )   \ assert the captured diag contains the needle
-   #CASE @ 1 + #CASE !
-   DIAG-BUFFER$ 2swap MDT-CONTAINS? 0= if
-      T-FAIL s" assert: diag needle missing" type cr
+   T-NEXT
+   DIAG-BUFFER$ 2swap CONTAINS? 0= if
+      s" diag needle missing" T-ASSERT-DETAIL
    then ;
 : MDG-END ( -- ) 0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
 
@@ -385,7 +366,7 @@ MDG-END
 \ prose shape: the §24 text with the missing-variant names, prose mode.
 MDG-BUF 8192 DIAG-BUFFER!
 s" G18 ( mtri -- n ) MATCH mtri bb OF ENDOF ;MATCH" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" bad match: missing variants: aa cc" MDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" bad match: missing variants: aa cc" CONTAINS? TTRUE
 DIAG-BUFFER-OFF
 s" MATCH-DIAG" type cr
 
@@ -460,9 +441,6 @@ MDG-END
 s" ENUM-CONSTRUCT-MATCH" type cr
 
 \ ---------------------------------------------------------------------------
-\ report: "ok" on success, nonzero exit on any failure.
+\ report: "test: ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" type-match-suite: failures" 1 die ;
-REPORT
+T-REPORT

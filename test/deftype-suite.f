@@ -21,23 +21,13 @@
 \       table cannot deliver: a second same-named declaration would collide)
 \   - a tail an effect reads as something other than the family (`ptr`) is a
 \       reserved name in every scope; shadowing another package's family is not
-\ A failure prints F<index> + detail; REPORT exits 1 on any fail.
+\ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
 
 require src/lib/type/deftype.f
 require test/checker-assert.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
+T-RESET
 
 \ silence expected rejection diagnostics (verdicts are asserted, not printed).
 create VNDIAG-BUF 8192 allot
@@ -137,7 +127,4 @@ s" VN-SIDE-MK ( n -- side ) >SIDE"          CHECK-QUIET-CANDIDATE! -1 T=
 s" VN-SIDE-X ( side -- IR-SCHEMA:side )"    CHECK-QUIET-CANDIDATE!  0 T=
 ;package
 
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" deftype-suite: failures" 1 die ;
-REPORT
+T-REPORT
