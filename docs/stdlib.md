@@ -524,14 +524,17 @@ ZIP:CLOSE   ( ZIP:archive -- )
 output file first copy their input to that path. `SOURCE$` returns the original
 archive snapshot; pending replacements do not change it. Its borrowed bytes stay
 valid until successful `COMMIT` or `CLOSE` and must not be modified.
-`OPEN-FILE` and `EDIT-FILE` copy the input once to an owner-private disk snapshot.
-Their framing view is released before they return; they retain central-directory
-bytes, member offsets and fixed read buffers. Subsequent changes to the original
+`OPEN` and `EDIT` copy the input once to an owner-private disk snapshot;
+`OPEN-FILE` and `EDIT-FILE` are aliases. They require a writable `TMPDIR`
+(or `/tmp` when unset) and disk space for that snapshot. Failure to create it
+throws `ZIP:E-OPEN`, releases partial resources, and leaves the input unchanged.
+There is no in-memory fallback. Read-only opens need no write access to the input
+or its directory. Their framing view is released before they return; they retain
+central-directory bytes, member offsets and fixed read buffers. Subsequent changes to the original
 path cannot change reads or the bytes used by a commit. `OPEN-SOURCE` streams
 those original raw bytes through an independent input cursor, suitable for
 incremental hashing. `SOURCE$` remains available when a caller explicitly needs
-the whole original byte string; on a file-backed owner it maps the snapshot on
-first request.
+the whole original byte string; it maps the snapshot on first request.
 `NAME$` returns the original
 name bytes, and `READ` returns uncompressed bytes. Both return archive-owned
 copies that stay valid until successful `COMMIT` or `CLOSE`, including across
@@ -568,7 +571,7 @@ of a live handle between tasks.
 `COMMIT` builds a compact archive and atomically renames a temporary file in
 the destination directory, preserving file permissions. It invalidates the
 archive and its entries on success. A commit with no replacements only closes
-the archive. A file-backed commit copies unchanged source slices and writes
+the archive. A commit copies unchanged source slices and writes
 changed members directly with a fixed copy buffer; it does not allocate the
 output archive in memory.
 If it throws `ZIP:E-COMMIT`, the archive stays live and the caller must retry or

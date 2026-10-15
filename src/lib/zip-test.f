@@ -239,24 +239,14 @@ TASK:SEMAPHORE ZIP-START
    archive 1 ENTRY archive swap NAME$ s" raw.txt" T$=
    archive 0 ENTRY archive swap s" replacement text" REPLACE archive COMMIT ;
 
-: REPLACE-FIRST-FILE ( -- )
-   INPUT$ ZIP:EDIT-FILE {: archive:ZIP:archive :}
-   archive 1 ENTRY archive swap NAME$ s" raw.txt" T$=
-   archive 0 ENTRY archive swap s" replacement text" REPLACE archive COMMIT ;
-
-: FRAMING-CASE ( ptr u8 n ptr u8 n -- ) {: before:ptr before-len:n after:ptr after-len:n :}
+: FRAMING-CASE ( ptr u8 n ptr u8 n -- )
+   {: before:ptr before-len:n after:ptr after-len:n :}
    INPUT$ before before-len WRITE-ALL REPLACE-FIRST
    INPUT$ RAW RAW-CAP READ-ALL {: len:n :}
    RAW len after after-len T$=
    INPUT$ ZIP:OPEN {: archive:ZIP:archive :}
    archive 0 s" replacement text" MEMBER= archive 1 s" keep" MEMBER=
-   archive ZIP:CLOSE
-   INPUT$ before before-len WRITE-ALL REPLACE-FIRST-FILE
-   INPUT$ RAW RAW-CAP READ-ALL {: file-len:n :}
-   RAW file-len after after-len T$=
-   INPUT$ ZIP:OPEN-FILE {: file:ZIP:archive :}
-   file 0 s" replacement text" MEMBER= file 1 s" keep" MEMBER=
-   file ZIP:CLOSE ;
+   archive ZIP:CLOSE ;
 
 : RAW-FRAMING ( -- )
    FRAMED-BEFORE$ FRAMED-AFTER$ FRAMING-CASE

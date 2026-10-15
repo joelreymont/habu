@@ -56,15 +56,14 @@ s" mkstemp" FFI:PROCESS 1 FFI:DECLARE constant MKSTEMP-ROW
       input NODE-FREE
    repeat drop ;
 
-: DISCARD-NODE ( ptr n -- ) {: node:ptr :}
+: DISCARD-NODE ( ptr n -- )
+   {: node:ptr :}
    node CLOSE-OWNED
    node OBJECT @ dup NULL? if drop else C-DISCARD then
-   node FILE-MODE @ 0<> if
-      node SOURCE-FD @ dup 0 >= if C-CLOSE-FD 0<> or else drop then
-      node SNAP-FD @ dup 0 >= if C-CLOSE-FD 0<> or else drop then
-      node RAW-PTR @ dup NULL? if drop else node RAW-LEN @ munmap 0<> or then
-      node SOURCE-LIVE @ 0<> if node SOURCE-PTR @ unlink 0<> or then
-   then
+   node SOURCE-FD @ dup 0 >= if C-CLOSE-FD 0<> or else drop then
+   node SNAP-FD @ dup 0 >= if C-CLOSE-FD 0<> or else drop then
+   node RAW-PTR @ dup NULL? if drop else node RAW-LEN @ munmap 0<> or then
+   node SOURCE-LIVE @ 0<> if node SOURCE-PTR @ unlink 0<> or then
    node FORGET-ARCHIVE
    if E-READ throw then ;
 

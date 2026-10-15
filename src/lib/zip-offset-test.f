@@ -22,15 +22,35 @@ package ZIP
 : OFFSET-PLAIN-AFTER$ ( -- ptr u8 n )
    S\" \x50\x4B\x01\x02\x3F\x03\x2D\x00\x00\x00\x00\x00\x34\x12\x78\x56\x78\x56\x34\x12\x04\x00\x00\x00\x04\x00\x00\x00\x01\x00\x1C\x00\x03\x00\x00\x00\x01\x00\x00\x00\xA4\x81\xFF\xFF\xFF\xFF\x78\xFE\xCA\x04\x00\x6B\x65\x65\x70\xEF\xBE\x04\x00\x74\x61\x69\x6C\x01\x00\x08\x00\x03\x00\x00\x00\x01\x00\x00\x00\x65\x6E\x64" ;
 
-: OFFSET-PROMOTION-CASE ( ptr u8 n ptr u8 n -- ) {: before:ptr before-len:n after:ptr after-len:n :}
+: OFFSET-SOURCE ( ptr n ptr u8 n -- )
+   {: node:ptr data:ptr len:n :}
+   node SOURCE-TEMPLATE
+   node SOURCE-PTR @ node SOURCE-LEN @ 1+ C-MKSTEMP {: fd:n :}
+   fd 0 < if E-OPEN throw then
+   fd node SNAP-FD ! 1 node SOURCE-LIVE !
+   node SOURCE-PTR @ node PATH-PTR ! node SOURCE-LEN @ node PATH-LEN !
+   node FILE-CHUNK BUFFER-ALLOC node COPY-BUF !
+   fd >FD data len FD-IO:WRITE-FULL len node RAW-LEN !
+   0 len 1 2 fd 0 mmap {: mapped:n :}
+   mapped -1 = if E-READ throw then
+   mapped MAPPED>RAW node RAW-PTR !
+   node node RAW-PTR @ len COPY-IN drop node DIRECTORY-PTR !
+   len node DIRECTORY-SIZE ! ;
+
+: OFFSET-PROMOTION-CASE ( ptr u8 n ptr u8 n -- )
+   {: before:ptr before-len:n after:ptr after-len:n :}
    REGISTER ARCHIVE-NODE {: node:ptr :}
-   node before before-len COPY-IN node RAW-LEN ! node RAW-PTR !
+   node before before-len OFFSET-SOURCE
    node MEMBER-CELLS cells BUFFER-ALLOC CELL-VIEW {: member:ptr :}
    node member 0 MEMBER-CENTRAL drop
-   $100000003 member NEW-LOCAL ! node OUTPUT-ALLOC
+   node RAW-PTR @ node RAW-LEN @ munmap 0<> if E-READ throw then
+   0 MAPPED>RAW node RAW-PTR !
+   $100000003 member NEW-LOCAL ! node TEMP-OPEN
    node member WRITE-CENTRAL
-   node OUT-PTR @ node OUT-LEN @ after after-len T$=
-   node DISCARD-NODE ;
+   node node OUT-LEN @ BUFFER-ALLOC {: output:ptr :}
+   node TEMP-PTR @ node TEMP-LEN @ output node OUT-LEN @ READ-ALL
+   output swap after after-len T$=
+   node TEMP-CLEANUP node DISCARD-NODE ;
 
 : OFFSET-PROMOTION-TEST ( -- )
    OFFSET-WIDE-BEFORE$ OFFSET-WIDE-AFTER$ OFFSET-PROMOTION-CASE

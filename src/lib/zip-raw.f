@@ -32,16 +32,14 @@ $14 constant LOCATOR-BYTES
 : ZIP-BASE ( ptr n -- ptr n ) 15 cells + ;
 : PREFIX-SIZE ( ptr n -- ptr n ) 16 cells + ;
 : DIRECTORY-TAIL ( ptr n -- ptr n ) 17 cells + ;
-: OUT-PTR ( ptr n -- ptr ptr u8 ) 18 ptr-field ;
-: OUT-LEN ( ptr n -- ptr n ) 19 cells + ;
-: OUT-CAP ( ptr n -- ptr n ) 20 cells + ;
-: OUT-DIRECTORY ( ptr n -- ptr n ) 21 cells + ;
-: TEMP-PTR ( ptr n -- ptr ptr u8 ) 22 ptr-field ;
-: TEMP-LEN ( ptr n -- ptr n ) 23 cells + ;
-: TEMP-FD ( ptr n -- ptr n ) 24 cells + ;
-: TEMP-LIVE ( ptr n -- ptr n ) 25 cells + ;
-: END64-OFF ( ptr n -- ptr n ) 26 cells + ;
-: DIRTY ( ptr n -- ptr n ) 27 cells + ;
+: OUT-LEN ( ptr n -- ptr n ) 18 cells + ;
+: OUT-DIRECTORY ( ptr n -- ptr n ) 19 cells + ;
+: TEMP-PTR ( ptr n -- ptr ptr u8 ) 20 ptr-field ;
+: TEMP-LEN ( ptr n -- ptr n ) 21 cells + ;
+: TEMP-FD ( ptr n -- ptr n ) 22 cells + ;
+: TEMP-LIVE ( ptr n -- ptr n ) 23 cells + ;
+: END64-OFF ( ptr n -- ptr n ) 24 cells + ;
+: DIRTY ( ptr n -- ptr n ) 25 cells + ;
 
 : CENTRAL-OFF ( ptr n -- ptr n ) 0 cells + ;
 : CENTRAL-LEN ( ptr n -- ptr n ) 1 cells + ;
@@ -261,23 +259,15 @@ $14 constant LOCATOR-BYTES
    loop dup node DIRECTORY-TAIL !
    node DIRECTORY-OFF @ node DIRECTORY-SIZE @ SAFE+ > if E-READ throw then ;
 
-: PARSE-RAW ( ptr n -- ) {: node:ptr :}
+: PARSE-RAW ( ptr n -- )
+   {: node:ptr :}
    node FIND-END node END-OFF !
    node HAS-END64? if node END-WIDE else node END-CLASSIC then
    node ZIP-BASE @ SIZE-CHECK
    node MEMBER-COUNT @ node OBJECT @ C-COUNT <> if E-READ throw then
-   node FILE-MODE @ 0<> if
-      node node node DIRECTORY-OFF @ node DIRECTORY-SIZE @ RAW-SPAN
-         node DIRECTORY-SIZE @ COPY-IN drop node DIRECTORY-PTR !
-   then
+   node node node DIRECTORY-OFF @ node DIRECTORY-SIZE @ RAW-SPAN
+      node DIRECTORY-SIZE @ COPY-IN drop node DIRECTORY-PTR !
    node PARSE-MEMBERS ;
-
-: RAW-LOAD ( ptr n -- ) {: node:ptr :}
-   node PATH-PTR @ node PATH-LEN @ FILE-SIZE dup SIZE-CHECK {: len:n :}
-   node len BUFFER-ALLOC {: data:ptr :}
-   data node RAW-PTR ! len node RAW-LEN !
-   node PATH-PTR @ node PATH-LEN @ data len READ-ALL len <> if E-READ throw then
-   node PARSE-RAW ;
 
 : CRC-BIT ( n -- n )
    dup 1 and 0 <> if 1 rshift $EDB88320 xor else 1 rshift then ;
@@ -285,17 +275,12 @@ $14 constant LOCATOR-BYTES
 : CRC32 ( ptr u8 n -- n ) {: data:ptr len:n :}
    U32-MAX len 0 ?do data i + c@ CRC-BYTE loop U32-MAX xor ;
 
-: OUT-RESERVE ( ptr n n -- ptr u8 ) {: node:ptr len:n :}
-   node OUT-LEN @ len SAFE+ node OUT-CAP @ > if E-SIZE throw then
-   node OUT-PTR @ node OUT-LEN @ + ;
-: EMIT-BYTES ( ptr n ptr u8 n -- ) {: node:ptr data:ptr len:n :}
-   node FILE-MODE @ 0<> if
-      node OUT-LEN @ len SAFE+ {: next:n :}
-      node TEMP-FD @ >FD data len FD-IO:WRITE-FULL next node OUT-LEN !
-   else
-      data node len OUT-RESERVE len BYTE-COPY len node OUT-LEN +!
-   then ;
-: EMIT-RAW-FILE ( ptr n n n -- ) {: node:ptr off:n len:n :}
+: EMIT-BYTES ( ptr n ptr u8 n -- )
+   {: node:ptr data:ptr len:n :}
+   node OUT-LEN @ len SAFE+ {: next:n :}
+   node TEMP-FD @ >FD data len FD-IO:WRITE-FULL next node OUT-LEN ! ;
+: EMIT-RAW ( ptr n n n -- )
+   {: node:ptr off:n len:n :}
    node off len RAW-RANGE
    0 begin dup len < while
       dup {: cursor:n :}
@@ -304,16 +289,10 @@ $14 constant LOCATOR-BYTES
       got 0 <= got want > or if E-COMMIT throw then
       node node COPY-BUF @ got EMIT-BYTES got +
    repeat drop ;
-: EMIT-RAW ( ptr n n n -- ) {: node:ptr off:n len:n :}
-   node FILE-MODE @ 0<> if node off len EMIT-RAW-FILE
-   else node node off len RAW-SPAN len EMIT-BYTES then ;
-: EMIT-NUMBER ( ptr n n n -- ) {: node:ptr value:n width:n :}
-   node FILE-MODE @ 0<> if
-      value STAT-DATA BYTE-VIEW width LE!
-      node STAT-DATA BYTE-VIEW width EMIT-BYTES
-   else
-      value node width OUT-RESERVE width LE! width node OUT-LEN +!
-   then ;
+: EMIT-NUMBER ( ptr n n n -- )
+   {: node:ptr value:n width:n :}
+   value STAT-DATA BYTE-VIEW width LE!
+   node STAT-DATA BYTE-VIEW width EMIT-BYTES ;
 : EMIT-U16 ( ptr n n -- ) 2 EMIT-NUMBER ;
 : EMIT-U32 ( ptr n n -- ) 4 EMIT-NUMBER ;
 : EMIT-U64 ( ptr n n -- ) 8 EMIT-NUMBER ;
@@ -333,16 +312,11 @@ $14 constant LOCATOR-BYTES
       got 0 <= got len done - > or if E-COMMIT throw then
       got +
    repeat drop ;
-: OUT-AT ( ptr n n n -- ptr u8 ) {: node:ptr off:n len:n :}
-   node FILE-MODE @ 0<> if
-      len STAT-BYTES > if E-COMMIT throw then
-      node off len READ-PATCH
-      STAT-DATA BYTE-VIEW
-   else node OUT-PTR @ off + then ;
-: PATCH-FLUSH ( ptr n n n -- ) {: node:ptr off:n len:n :}
-   node FILE-MODE @ 0<> if
-      node off len WRITE-PATCH
-   then ;
+: OUT-AT ( ptr n n n -- ptr u8 )
+   {: node:ptr off:n len:n :}
+   len STAT-BYTES > if E-COMMIT throw then
+   node off len READ-PATCH STAT-DATA BYTE-VIEW ;
+: PATCH-FLUSH ( ptr n n n -- ) WRITE-PATCH ;
 : REPLACED? ( ptr n -- bool ) REPLACEMENT @ NULL? 0= ;
 : OUTPUT-SIZE ( ptr n -- n )
    dup REPLACED? if REPLACE-LEN else PLAIN-SIZE then @ ;
@@ -352,16 +326,6 @@ $14 constant LOCATOR-BYTES
    dup OUTPUT-SIZE U32-MAX >= swap OUTPUT-COMPRESSED U32-MAX >= or ;
 : OFFSET64? ( ptr n -- bool ) NEW-LOCAL @ U32-MAX >= ;
 : CENTRAL64? ( ptr n -- bool ) dup SIZE64? swap OFFSET64? or ;
-
-\ Existing bytes plus replacements bound payload size; each record needs at
-\ most 48 extra ZIP64 bytes, and the end records need fewer than 256 bytes.
-: OUTPUT-ALLOC ( ptr n -- ) {: node:ptr :}
-   node RAW-LEN @ node MEMBER-COUNT @ $40 SAFE* SAFE+ $100 SAFE+
-   node MEMBER-COUNT @ 0 ?do
-      node i MEMBER-AT REPLACE-LEN @ SAFE+
-   loop {: cap:n :}
-   node cap BUFFER-ALLOC node OUT-PTR ! cap node OUT-CAP !
-   0 node OUT-LEN ! ;
 
 : EMIT-EXTRAS ( ptr n ptr u8 n -- ) {: node:ptr data:ptr len:n :}
    data len begin dup 0 > while
@@ -533,7 +497,6 @@ $14 constant LOCATOR-BYTES
    node start END-BYTES PATCH-FLUSH ;
 
 : BUILD-OUTPUT ( ptr n -- )
-   dup FILE-MODE @ 0= if dup OUTPUT-ALLOC then
    dup WRITE-MEMBERS WRITE-END ;
 
 : DIRECTORY$ ( ptr u8 n -- ptr u8 n ) {: path:ptr len:n :}
@@ -553,25 +516,17 @@ $14 constant LOCATOR-BYTES
    dup $7FFFFFFF > over 0 < or if E-COMMIT throw then
    node TEMP-FD ! 1 node TEMP-LIVE ! ;
 
-: WRITE-STEP ( ptr n n -- n ) {: node:ptr off:n :}
-   node TEMP-FD @ node OUT-PTR @ off + node OUT-LEN @ off - write
-   dup 0 <= if E-COMMIT throw then off SAFE+ ;
-: TEMP-WRITE ( ptr n -- ) {: node:ptr :}
-   node FILE-MODE @ 0= if
-      0 begin dup node OUT-LEN @ < while node swap WRITE-STEP repeat drop
-   then
+: TEMP-WRITE ( ptr n -- )
+   {: node:ptr :}
    node TEMP-FD @ -1 node TEMP-FD ! C-CLOSE-FD 0 <> if E-COMMIT throw then ;
 : TEMP-INSTALL ( ptr n -- ) {: node:ptr :}
    node TEMP-PTR @ node TEMP-LEN @ node PATH-PTR @ node PATH-LEN @ STAT-MODE CHMOD-MODE
    node TEMP-PTR @ node TEMP-LEN @ node PATH-PTR @ node PATH-LEN @ RENAME-FILE
    0 node TEMP-LIVE ! ;
-: COMMIT-WORK ( ptr n -- ptr n ) {: node:ptr :}
-   node FILE-MODE @ 0<> if
-      node TEMP-OPEN 0 node OUT-LEN !
-      node BUILD-OUTPUT node TEMP-WRITE node TEMP-INSTALL
-   else
-      node BUILD-OUTPUT node TEMP-OPEN node TEMP-WRITE node TEMP-INSTALL
-   then node ;
+: COMMIT-WORK ( ptr n -- ptr n )
+   {: node:ptr :}
+   node TEMP-OPEN 0 node OUT-LEN !
+   node BUILD-OUTPUT node TEMP-WRITE node TEMP-INSTALL node ;
 
 : TEMP-CLEANUP ( ptr n -- ) {: node:ptr :}
    node TEMP-LIVE @ 0= if exit then

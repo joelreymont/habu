@@ -9,27 +9,9 @@ using MEM
    len SIZE-CHECK len 0= if E-PATH throw then
    len 0 ?do path i + c@ 0= if E-PATH throw then loop ;
 
-: OPEN-PATH ( archive ptr u8 n n -- archive ptr u8 n n ) {: archive:archive path:ptr len:n flags:n :}
-   archive ARCHIVE-NODE {: node:ptr :}
-   node len 1+ BUFFER-ALLOC {: cpath:ptr :}
-   path len cpath CSTR cpath flags C-OPEN {: czip:ptr :}
-   czip NULL? if E-OPEN throw then
-   czip node OBJECT ! flags node MODE !
-   cpath node PATH-PTR ! len node PATH-LEN ! node RAW-LOAD
-   archive path len flags ;
-
-: OPEN-ATTEMPT ( archive ptr u8 n n -- n )
-   [: OPEN-PATH ;] catch >r 2drop 2drop r> ;
-
 : DISCARD-FAILED ( ptr n n -- ) {: node:ptr code:n :}
    node [: dup DISCARD-NODE ;] catch 2drop
    code throw ;
-
-: OPEN-CHECKED ( ptr u8 n n -- archive ) {: path:ptr len:n flags:n :}
-   path len PATH-CHECK REGISTER {: archive:archive :}
-   archive path len flags OPEN-ATTEMPT {: code:n :}
-   code 0 <> if archive ARCHIVE-NODE code DISCARD-FAILED then
-   archive ;
 
 CAST: MAPPED>RAW ( n -- ptr u8 )
 
@@ -61,10 +43,9 @@ $4000 constant FILE-CHUNK
    -1 node SOURCE-FD !
    fd C-CLOSE-FD 0<> if E-READ throw then ;
 
-: FILE-OPEN-WORK ( ptr n ptr u8 n n -- ptr n ptr u8 n n )
+: OPEN-WORK ( ptr n ptr u8 n n -- ptr n ptr u8 n n )
    {: node:ptr path:ptr len:n flags:n :}
    flags node MODE !
-   1 node FILE-MODE ! -1 node SOURCE-FD ! -1 node SNAP-FD !
    node len 1+ BUFFER-ALLOC {: cpath:ptr :}
    path len cpath CSTR cpath node PATH-PTR ! len node PATH-LEN !
    node SOURCE-TEMPLATE
@@ -86,13 +67,14 @@ $4000 constant FILE-CHUNK
    0 MAPPED>RAW node RAW-PTR !
    node path len flags ;
 
-: FILE-OPEN-ATTEMPT ( ptr n ptr u8 n n -- n )
-   [: FILE-OPEN-WORK ;] catch >r 2drop 2drop r> ;
+: OPEN-ATTEMPT ( ptr n ptr u8 n n -- n )
+   [: OPEN-WORK ;] catch >r 2drop 2drop r> ;
 
-: FILE-OPEN-CHECKED ( ptr u8 n n -- archive ) {: path:ptr len:n flags:n :}
+: OPEN-CHECKED ( ptr u8 n n -- archive )
+   {: path:ptr len:n flags:n :}
    path len PATH-CHECK REGISTER {: archive:archive :}
    archive ARCHIVE-NODE {: node:ptr :}
-   node path len flags FILE-OPEN-ATTEMPT {: code:n :}
+   node path len flags OPEN-ATTEMPT {: code:n :}
    code 0<> if node code DISCARD-FAILED then
    archive ;
 
@@ -174,18 +156,15 @@ $4000 constant FILE-CHUNK
    then
    node REGISTER-INPUT ;
 
-: OPEN-SOURCE-INPUT ( ptr n -- input ) {: owner:ptr :}
+: OPEN-SOURCE-INPUT ( ptr n -- input )
+   {: owner:ptr :}
    NEXT-ID {: ident:n :}
    NODE-ALLOC {: node:ptr :}
    ident node ID !
    owner node INPUT-OWNER ! owner RAW-LEN @ node INPUT-LEN !
-   owner FILE-MODE @ 0<> if
-      owner SOURCE-PTR @ open-rd {: fd:n :}
-      fd 0 < if node NODE-FREE E-OPEN throw then
-      fd node INPUT-FD ! 1 node INPUT-KIND !
-   else
-      owner RAW-PTR @ node INPUT-DATA ! 2 node INPUT-KIND !
-   then
+   owner SOURCE-PTR @ open-rd {: fd:n :}
+   fd 0 < if node NODE-FREE E-OPEN throw then
+   fd node INPUT-FD ! 1 node INPUT-KIND !
    node REGISTER-INPUT ;
 
 : INPUT-END ( ptr n -- ) {: node:ptr :}
@@ -276,11 +255,11 @@ public
 
 : OPEN ( ptr u8 n -- archive ) READONLY-FLAG OPEN-CHECKED ;
 : EDIT ( ptr u8 n -- archive ) 0 OPEN-CHECKED ;
-: OPEN-FILE ( ptr u8 n -- archive ) READONLY-FLAG FILE-OPEN-CHECKED ;
-: EDIT-FILE ( ptr u8 n -- archive ) 0 FILE-OPEN-CHECKED ;
+: OPEN-FILE ( ptr u8 n -- archive ) OPEN ;
+: EDIT-FILE ( ptr u8 n -- archive ) EDIT ;
 : SOURCE$ ( archive -- ptr u8 n )
    ARCHIVE-NODE {: node:ptr :}
-   node FILE-MODE @ 0<> node RAW-PTR @ NULL? and if
+   node RAW-PTR @ NULL? if
       0 node RAW-LEN @ 1 2 node SNAP-FD @ 0 mmap {: mapped:n :}
       mapped -1 = if E-READ throw then
       mapped MAPPED>RAW node RAW-PTR !
