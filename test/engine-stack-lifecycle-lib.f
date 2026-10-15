@@ -3,9 +3,9 @@ require src/habu/stack-abi.f
 require src/lib/errors.f
 require src/lib/memory.f
 require src/lib/test.f
-require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
+require test/pcap-result.f
 
 package STACK-LIFECYCLE-TEST
 
@@ -89,13 +89,7 @@ variable ERRLEN
 : CHILD-RC ( ptr u8 n -- n ) {: src:ptr size:n :}
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN src size >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS
-   RUN-ARGV-STDIN-CAPTURE
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: out:len err:len :}
-         out LEN>N OUTLEN ! err LEN>N ERRLEN ! 0 ENDOF
-     err OF PCAP-FAILED:UNMAKE {: out:len err:len code:rc :}
-         out LEN>N OUTLEN ! err LEN>N ERRLEN ! code RC>N ENDOF
-   ;MATCH ;
+   RUN-ARGV-STDIN-CAPTURE PCAP-RESULT:>N >r ERRLEN ! OUTLEN ! r> ;
 
 : PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: g:ptr gu:n w:ptr wu:n :}
    gu wu < if 0 0= 0= exit then

@@ -2,9 +2,9 @@
 \ Exercise the real parser, checker, compiler, and runtime in child processes.
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
+require test/pcap-result.f
 
 package EMPTY-QUOTATION-TEST
 private
@@ -31,13 +31,7 @@ variable ERR-U
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ {: exe:ptr exeu:n :}
    exe exeu >LEN src size >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
-        o LEN>N OUT-U ! e LEN>N ERR-U ! 0 ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
-        o LEN>N OUT-U ! e LEN>N ERR-U ! c RC>N ENDOF
-   ;MATCH ;
+   RUN-ARGV-STDIN-CAPTURE PCAP-RESULT:>N >r ERR-U ! OUT-U ! r> ;
 
 : FATAL ( n ptr u8 n -- ) {: tier:n body:ptr size:n :}
    tier body size SOURCE$ RUN-SOURCE 86 T=

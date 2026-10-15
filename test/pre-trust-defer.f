@@ -53,6 +53,7 @@ require src/lib/codesign.f
 require src/lib/tree-copy.f
 require src/lib/engine-candidate.f
 require tools/build-fixpoint.f
+require test/pcap-result.f
 
 package PRE-TRUST-DEFER-TEST
 using BUILD-FIXPOINT
@@ -200,10 +201,7 @@ variable LAST-ERR-U
 \ state every case here assumes - from a pipe, a terminal, or a gate pool slot
 \ alike.
 : CAPTURE-RC ( result<pcap:captured,pcap:failed> -- n )
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N LAST-OUT-U !  e LEN>N LAST-ERR-U !  0 ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N LAST-OUT-U !  e LEN>N LAST-ERR-U !  c RC>N ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N >r LAST-ERR-U ! LAST-OUT-U ! r> ;
 
 : SPAWN-STDIN-RC ( ptr u8 n -- n ) {: in:ptr inu:n :}
    PROC-ARGV-RESET

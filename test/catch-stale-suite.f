@@ -37,6 +37,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require test/checker-assert.f
+require test/pcap-result.f
 
 package CS-SHADOW
 public
@@ -237,16 +238,7 @@ variable CS-CHILD-ERR-U
    CS-IMAGE-PATH-U ! ;
 
 : CS-IMAGE-RC ( result<pcap:captured,pcap:failed> -- n )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: out:len err:len :}
-         out LEN>N CS-CHILD-OUT-U !
-         err LEN>N CS-CHILD-ERR-U !
-         0 ENDOF
-      err OF PCAP-FAILED:UNMAKE {: out:len err:len rc:rc :}
-         out LEN>N CS-CHILD-OUT-U !
-         err LEN>N CS-CHILD-ERR-U !
-         rc RC>N ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N >r CS-CHILD-ERR-U ! CS-CHILD-OUT-U ! r> ;
 
 : CS-IMAGE-BUILD ( -- )
    PROC-ARGV-RESET
