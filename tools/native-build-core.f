@@ -642,8 +642,7 @@ variable NAMES-U
 : NAMES-PATH$ ( -- ptr u8 n ) NAMES-PATH NAMES-PATH-U @ ;
 
 \ The buffer address is held in a typed cell: a plain variable would hand
-\ BYTE-COPY a bare n where it wants a byte pointer, the same reason env-base.f
-\ keeps ENV-QA behind a ptr-field.
+\ BYTE-COPY a bare n where it wants a byte pointer.
 : NAMES-A@ ( -- ptr u8 ) NAMES-A @ ;
 : NAMES-A! ( ptr u8 -- ) NAMES-A ! ;
 

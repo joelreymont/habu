@@ -38,48 +38,19 @@ $2D constant ENV-DASH
 : ENV-FALSE ( -- bool )
    0 0= 0= ;
 
-\ The comparison cursors hold C-string addresses, so they are declared pointer
-\ cells (dot habu-refuse-a-ptr-5ad2734e); an undeclared cell never holds one.
-\ PTR-VARIABLE, not TYPED-VARIABLE: this file loads before src/core/include.f
-\ arms the generated-declaration evaluator that the typed definers need.
-PTR-VARIABLE ENV-Z
-PTR-VARIABLE ENV-A
-variable ENV-U
-
-: ENV-Z@ ( -- ptr u8 )
-   ENV-Z @ ;
-
-: ENV-A@ ( -- ptr u8 )
-   ENV-A @ ;
-
-: ENV-Z! ( ptr u8 -- )
-   ENV-Z ! ;
-
-: ENV-A! ( ptr u8 -- )
-   ENV-A ! ;
-
 : ENV=? ( ptr u8 ptr u8 n -- bool )
-   ENV-U ! ENV-A! ENV-Z!
-   ENV-U @ 0 ?do ENV-Z@ i ZBYTE@ ENV-A@ i ZBYTE@ = 0= if unloop ENV-FALSE exit then loop
-   ENV-Z@ ENV-U @ ZBYTE@ $3D = ;
+   {: z:ptr a:ptr u:n :}
+   u 0 ?do z i ZBYTE@ a i ZBYTE@ = 0= if unloop ENV-FALSE exit then loop
+   z u ZBYTE@ $3D = ;
 
 : NULL$ ( -- ptr u8 n )
    NULL-PTR 0 ;
 
-PTR-VARIABLE ENV-QA
-variable ENV-QU
-
-: ENV-QA@ ( -- ptr u8 )
-   ENV-QA @ ;
-
-: ENV-QA! ( ptr u8 -- )
-   ENV-QA ! ;
-
 : GETENV ( ptr u8 n -- ptr u8 n )
-   ENV-QU ! ENV-QA!
+   {: query:ptr queryu:n :}
    ENVP-BASE 0= if NULL$ exit then
    0 begin dup ENVP 0= 0= while
-      dup ENVP ENV-QA@ ENV-QU @ ENV=? if ENVP ENV-QU @ 1 + ZPTR+ dup ZLEN exit then
+      dup ENVP query queryu ENV=? if ENVP queryu 1 + ZPTR+ dup ZLEN exit then
       1 +
    repeat
    drop NULL$ ;
@@ -121,8 +92,6 @@ variable TPU
    TPS@ TPU @ TMP-PATH-COPY-SRC
    TPB TPQ @ 1 + TPU @ + ;
 
-\ Clear transient environment and path cursors before capturing an image.
+\ Clear transient path cursors before capturing an image.
 : ENV-SNAPSHOT-PREPARE ( -- )
-   NULL$ drop ENV-Z!  NULL$ drop ENV-A!  0 ENV-U !
-   NULL$ drop ENV-QA!  0 ENV-QU !
    NULL$ drop TPP !  0 TPQ !  NULL$ drop TPS!  0 TPU ! ;

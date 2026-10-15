@@ -11,6 +11,7 @@ require src/lib/process-argv.f
 require src/lib/test/outcome.f
 require src/lib/test/guard-page.f
 require src/lib/process-env.f
+require src/lib/task.f
 
 $8000 constant PET-CAP
 $20000 constant PET-EARLY-IN-CAP
@@ -30,6 +31,15 @@ create PET-PATH FS-PATH-CAP allot
 create PET-EARLY-IN PET-EARLY-IN-CAP allot
 variable PET-I
 variable PET-START-NS
+
+PTR-VARIABLE PET-HOME
+variable PET-HOME-U
+PTR-VARIABLE PET-GETENV-PATH-PTR
+variable PET-GETENV-PATH-U
+TASK:MIN-STACK TASK:TASK PET-ENV-READER-A
+TASK:MIN-STACK TASK:TASK PET-ENV-READER-B
+TASK:SEMAPHORE PET-ENV-START
+100000 constant PET-ENV-ROUNDS
 
 : PET-RESET ( -- )
    PROC-ARGV-RESET
@@ -165,6 +175,41 @@ variable PET-START-NS
    S\" SOME_HOME=alpha\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TFALSE
    S\" OTHER=HOME=alpha\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TFALSE
    S\" HOME=prefix-alpha\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TFALSE ;
+
+\ Two readers use different names while scanning the same captured envp.
+: PET-GETENV-CHECK ( ptr u8 n ptr u8 n -- n )
+   {: name:ptr nameu:n expected:ptr expectedu:n :}
+   PET-ENV-ROUNDS 0 ?do
+      name nameu GETENV expected expectedu STR= 0= if unloop 0 exit then
+   loop
+   1 ;
+
+: PET-GETENV-HOME ( -- )
+   PET-ENV-START TASK:WAIT
+   s" HOME" PET-HOME @ PET-HOME-U @ PET-GETENV-CHECK TASK:RETURN ;
+
+: PET-GETENV-PATH ( -- )
+   PET-ENV-START TASK:WAIT
+   s" PATH" PET-GETENV-PATH-PTR @ PET-GETENV-PATH-U @ PET-GETENV-CHECK TASK:RETURN ;
+
+: PET-GETENV-JOIN ( result<n,n> -- )
+   MATCH result
+     ok OF 1 T= ENDOF
+     err OF 0 T= ENDOF
+   ;MATCH ;
+
+: PET-GETENV-CONCURRENT ( -- )
+   s" HOME" GETENV PET-HOME-U ! PET-HOME !
+   s" PATH" GETENV PET-GETENV-PATH-U ! PET-GETENV-PATH-PTR !
+   PET-HOME-U @ 0 > TTRUE
+   PET-GETENV-PATH-U @ 0 > TTRUE
+   0 PET-ENV-START TASK:SEMAPHORE-INIT
+   ['] PET-GETENV-HOME PET-ENV-READER-A TASK:ACTIVATE
+   ['] PET-GETENV-PATH PET-ENV-READER-B TASK:ACTIVATE
+   PET-ENV-START TASK:SIGNAL PET-ENV-START TASK:SIGNAL
+   PET-ENV-READER-A TASK:JOIN PET-GETENV-JOIN
+   PET-ENV-READER-B TASK:JOIN PET-GETENV-JOIN
+   PET-ENV-START TASK:SEMAPHORE-DESTROY ;
 
 : PET-INHERIT-ENV-OUT ( n -- ) {: outu:n :}
    PET-OUT outu PET-ALPHA-LINE$ CONTAINS? TTRUE
@@ -522,6 +567,7 @@ variable PET-START-NS
    s" env-child" [: PET-RUN-ENV-CHILD ;] PET-CASE
    s" empty-env-child" [: PET-RUN-EMPTY-ENV-CHILD ;] PET-CASE
    s" env-line-boundaries" [: PET-ENV-LINE-BOUNDARIES ;] PET-CASE
+   s" getenv-concurrent" [: PET-GETENV-CONCURRENT ;] PET-CASE
    s" inherit-env-child" [: PET-RUN-INHERIT-ENV-CHILD ;] PET-CASE
    s" default-env-child" [: PET-DEFAULT-ENV-CHILD ;] PET-CASE
    s" default-lookup" [: PET-DEFAULT-LOOKUP ;] PET-CASE

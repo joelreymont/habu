@@ -37,10 +37,8 @@
 \ does not survive the capture that makes an engine: the prefix is compiled into
 \ the BUILDING HOST's DATA, millions of bytes above that host's base, and the
 \ image keeps only the captured span, so a cell claimed at prefix-load time
-\ records the host's offset and not the image's. Measured 2026-09-18 on a
-\ generation built with the claims in src/os/env-base.f: ENV-QU claimed at load
-\ reported offset 16893592 in an engine whose ENV-QU lives at 5466416. A
-\ code-spelled address is relocated by the capture; a number in a raw cell is
+\ records the host's offset and not the image's. A code-spelled address is
+\ relocated by the capture; a number in a raw cell is
 \ not. The offset therefore has to be taken from the LIVE cell, in the process
 \ that links - which is this one. It is the linker's question in any case: which
 \ engine cells a stripped entry may own is AOT policy, and src/core and src/os do
@@ -211,8 +209,8 @@ private
 \ ---- THE LIST -----------------------------------------------------------------
 \ The engine's environment (src/os/env-base.f). ENV-DATA-PTR holds the DATA base
 \ that ARGC-CELL/ARGV-CELL/ENVP-CELL are read through, so the entry republishes it
-\ together with those three startup cells themselves; the rest are GETENV's and
-\ ENV=?'s own cursors, each written from the caller's arguments before it is read.
+\ together with those three startup cells themselves. GETENV and ENV=? keep
+\ their lookup cursors on each invocation's stack.
 \
 \ The dynamic-storage registry (src/core/dynamic-storage.f), which every
 \ DYNAMIC-BUFFER declaration - and so src/lib/memory.f MEM:WITH-BYTES - reaches, is
@@ -341,11 +339,6 @@ public
    window ENGINE-WINDOW !
    0 COUNT !
    ENV-DATA-PTR IMAGE-BASE
-   ENV-Z  FRESH
-   ENV-A  FRESH
-   ENV-U  FRESH
-   ENV-QA FRESH
-   ENV-QU FRESH
    [: FRESH ;] DYNAMIC-STORAGE:OWNED-CELLS
    [: FRESH ;] MEM:OWNED-CELLS
    [: FRESH ;] IMAGE-LIFECYCLE:OWNED-CELLS

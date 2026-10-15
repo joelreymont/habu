@@ -238,7 +238,6 @@ in. Each entry declares how the entry initialises it:
 | `ENV-DATA-PTR` | `src/os/env-base.f` | image base | the entry stores this image's own DATA base (`x20`), the value the file writes when the engine loads |
 | `ARGC-CELL`, `ARGV-CELL`, `ENVP-CELL` | `src/habu/layout.f` | fixed startup cells | the entry stores the kernel's `argc`/`argv`/`envp`, read off the untouched entry frame before anything else runs |
 | `APP-ENTRY:XT-CELL` | `src/habu/layout.f` | entry xt | the entry stores the address of the word this image starts, the token an entry record would have written with `APP-IMAGE:START!` |
-| `ENV-Z`, `ENV-A`, `ENV-U`, `ENV-QA`, `ENV-QU` | `src/os/env-base.f` | fresh | nothing: they are `GETENV`/`ENV=?` cursors, written from the caller's arguments before they are read, and the fresh mapping's zero is their correct start |
 | the registry head, count and lock | `src/core/dynamic-storage.f` | fresh | nothing: a runtime instance with no mapping, no members and an open lock is correct, and that is the zero a fresh anonymous mapping holds |
 | the `WITH-BYTES` scope stack | `src/lib/memory.f` | fresh | nothing: depth zero with no cached mapping is the same fresh state |
 | `RBASE-CELL` | `src/habu/layout.f` | text base | the entry stores this image's own text content base — the address of its first instruction — which `rbase` answers and the engine's own entry writes at boot |
@@ -266,10 +265,8 @@ The list lives with the linker and not beside the cells it names, because a
 claim is a DATA offset and **an offset computed while the engine's own prefix
 loads does not survive the capture that makes an engine**: the prefix compiles
 into the building host's DATA, millions of bytes above that host's base, and the
-image keeps only the captured span. Measured on a generation built with the
-claims in `src/os/env-base.f`, `ENV-QU` was claimed at offset 16893592 in an
-engine whose `ENV-QU` lives at 5466416 — a code-spelled address is relocated by
-the capture, a number in a raw cell is not. The offsets therefore have to be
+image keeps only the captured span. A code-spelled address is relocated by the
+capture, a number in a raw cell is not. The offsets therefore have to be
 taken from the live cells in the process that links, which is the maker. Where
 the declaring package's cells are private — `dynamic-storage.f`, `memory.f` —
 that package exports one claim applier (`OWNED-CELLS ( [ ptr u8 -- ] -- )`) that
