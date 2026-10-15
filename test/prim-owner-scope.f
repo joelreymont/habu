@@ -35,6 +35,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/test/subject.f
 require test/whitebox-child.f
+require test/window-child-args.f
 
 package PRIM-OWNER-SCOPE-SUITE
 
@@ -64,45 +65,12 @@ variable EXP-U
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
-\ The window stops at src/core/cell-effects.f. These are the prefix files the
-\ include words and the seal stand on, in the build's order, before the
-\ fixture's rows and the pass itself (test/prim-owner-scope-prepare.f).
-: TARGET-ARGS ( -- )
-   HB-TARGET-LINUX-X86-64? if
-      s" src/os/linux-x86-64/target.f" ARG
-      s" src/os/linux/layout-constants.f" ARG
-      s" src/os/linux/layout.f" ARG exit
-   then
-   HB-TARGET-LINUX? if
-      s" src/os/linux/target.f" ARG
-      s" src/os/linux/layout-constants.f" ARG
-      s" src/os/linux/layout.f" ARG exit
-   then
-   s" src/os/macos/target.f" ARG s" src/os/macos/layout.f" ARG ;
-
 : ARGS ( -- )
-   PROC-ARGV-RESET
-   s" --load" ARG
-   s" test/native-window-owner-child.f" ARG
-   s" --" ARG
-   s" test/prim-owner-scope-child.f" ARG
-   s" src/core/declaration-transaction.f" ARG
-   s" src/core/generated-declaration.f" ARG
-   s" src/core/decl-event.f" ARG
-   s" src/core/structure-make.f" ARG
-   s" src/core/structure-decl.f" ARG
-   s" src/core/enum-decl.f" ARG
-   s" src/core/structures.f" ARG
-   s" src/core/bytes.f" ARG
+   s" test/prim-owner-scope-child.f" WINDOW-CHILD-ARGS:CHILD
+   WINDOW-CHILD-ARGS:CORE
    s" src/core/dynamic-storage.f" ARG
-   TARGET-ARGS
-   s" src/habu/stack-abi.f" ARG
-   s" src/habu/layout.f" ARG
-   s" src/os/env-base.f" ARG
-   s" src/core/include.f" ARG
-   s" src/habu/code-span.f" ARG
-   s" test/prim-owner-scope-prepare.f" ARG
-   WHITEBOX-CHILD:ENV! ;
+   WINDOW-CHILD-ARGS:TARGET WINDOW-CHILD-ARGS:HABU
+   s" test/prim-owner-scope-prepare.f" WINDOW-CHILD-ARGS:PREPARE ;
 
 : CASE+ ( ptr u8 n ptr u8 n -- ) {: la:ptr lu:n va:ptr vu:n :}
    s" prim-owner: " EXP+
