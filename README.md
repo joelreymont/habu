@@ -69,7 +69,7 @@ src/arch/arm64/   ARM64 assembler and native code generation
 src/habu/         native engine, JIT, AOT, debugger, profiler, image tools
 src/os/           Linux and macOS target seams
 src/lib/          checked standard, numeric, FFI, and runtime libraries
-src/examples/     example programs
+src/examples/     llm/good.f, the checked-source fixture the public-signatures tests scan
 tools/            build, lint, inspection, and backend smoke tools
 test/             native Habu suite and focused compiler/runtime tests
 docs/             language, compiler, runtime, and backend documentation

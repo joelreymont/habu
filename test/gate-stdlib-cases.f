@@ -399,7 +399,6 @@ SUITE tool-boundary-check-repair
 SUITE tool-boundary-doc-public
    tools/public-signatures-test.f
    tools/public-signatures-bracket-test.f
-   tools/examples-test.f
 ;SUITE
 
 SUITE tool-boundary-lints

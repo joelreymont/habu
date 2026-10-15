@@ -38,7 +38,7 @@ package CHAIN-PLAN-TEST
    s" src/lib/string.f" T-ENGINE
    s" src/lib/json-read.f" T-FOCUSED
    s" src/lib/net/curl.f" T-FOCUSED
-   s" src/examples/array.f" T-FOCUSED
+   s" src/examples/llm/good.f" T-FOCUSED
    s" test/gate-stdlib-cases.f" T-FOCUSED
    s" docs/bootstrap.md" T-FOCUSED
    s" tools/chain-plan.f" T-FOCUSED
