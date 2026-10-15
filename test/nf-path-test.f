@@ -5,11 +5,11 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/test/runner.f
 require test/gate-pool.f
+require test/pcap-result.f
 
 package NF-PATH-TEST
 private
@@ -140,16 +140,7 @@ create ERR CAP allot
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    s" /usr/bin/env" >LEN OUT CAP >LEN ERR CAP >LEN PROBE-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE MATCH result
-     ok OF
-       PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-       outu LEN>N erru LEN>N 0
-     ENDOF
-     err OF
-       PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
-       outu LEN>N erru LEN>N rc RC>N
-     ENDOF
-   ;MATCH ;
+   RUN-ARGV-ENV-CAPTURE PCAP-RESULT:>N ;
 
 : NONZERO-CONTROL-CASE ( -- )
    FORGED-RUN {: outu:n erru:n rc:n :}
@@ -172,16 +163,7 @@ create ERR CAP allot
    src srcu >LEN PROC-ARGV+
    root rootu GF-ENV
    s" /usr/bin/env" >LEN OUT CAP >LEN ERR CAP >LEN PROBE-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE MATCH result
-     ok OF
-       PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-       outu LEN>N erru LEN>N 0
-     ENDOF
-     err OF
-       PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
-       outu LEN>N erru LEN>N rc RC>N
-     ENDOF
-   ;MATCH ;
+   RUN-ARGV-ENV-CAPTURE PCAP-RESULT:>N ;
 
 : COMMAND-CAPACITY-CASE ( -- )
    LONG$ S\" require test/nf.fs NF-REPL-CMD$ nip 256 <= abort\q nf path command stayed inside the obsolete bound\q bye" GF-EVAL

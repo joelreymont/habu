@@ -8,6 +8,7 @@ require src/lib/codesign.f
 require test/app-image-engine.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
+require test/pcap-result.f
 package ADDRESS-CELL-TASK-TEST
 using ADDRESS-CELLS
 $10000 constant CAP
@@ -29,13 +30,6 @@ variable IMAGE-N
    a ROOT-BUF u BYTE-COPY u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" restored" IMAGE-BUF JOIN-PATH IMAGE-U ! ;
-: RESULT ( result<pcap:captured,pcap:failed> -- n n n )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N erru LEN>N 0 ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
-         outu LEN>N erru LEN>N rc RC>N ENDOF
-   ;MATCH ;
 : CLEAN ( n n n -- n ) {: outu:n erru:n rc:n :}
    rc 0<> erru 0<> or if OUT outu type ERR erru type then
    rc 0 T= erru 0 T= outu ;
@@ -43,7 +37,7 @@ variable IMAGE-N
    {: exe:ptr exeu:n input:ptr inputu:n :}
    exe exeu >LEN input inputu >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN ;
+   RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN ;
 : CHECK-OUTPUT ( n -- )
    OUT swap S\" test: ok\naddress-cell-tasks: ok\n" T$= ;
 : FRESH ( -- )

@@ -4,6 +4,7 @@ require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/process-cwd.f
 require test/whitebox-child.f
+require test/pcap-result.f
 
 package CONTROL-CAPTURE-TEST
 
@@ -31,14 +32,6 @@ FS-PATH-CAP BUFFER: DENIED-BUF variable DENIED-U
    ROOT$ s" denied" DENIED-BUF JOIN-PATH DENIED-U !
    ROOT$ WHITEBOX-CHILD:PROVIDE-IN ;
 
-: RESULT ( result<pcap:captured,pcap:failed> -- n n n )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N erru LEN>N 0 ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
-         outu LEN>N erru LEN>N rc RC>N ENDOF
-   ;MATCH ;
-
 : CHECK ( n n n ptr u8 n -- )
    {: outu:n erru:n rc:n marker:ptr mu:n :}
    rc 0<> OUT outu marker mu CONTAINS? 0= or if
@@ -60,8 +53,7 @@ FS-PATH-CAP BUFFER: DENIED-BUF variable DENIED-U
    WHITEBOX-CHILD:ENGINE$ >LEN
    S\" require src/habu/app-image.f\nrequire test/control-capture-subject.f\ns\q HABU_CONTROL_IMAGE\q GETENV APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n erru:n rc:n :}
-   outu erru rc
+   RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N
    s" control capture: prepared" CHECK
    FIRST$ EXECUTABLE? TTRUE ;
 
@@ -69,7 +61,7 @@ FS-PATH-CAP BUFFER: DENIED-BUF variable DENIED-U
    {: image:ptr imageu:n input:ptr inputu:n :}
    image imageu >LEN ROOT$ >LEN input inputu >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT ;
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE PCAP-RESULT:>N ;
 
 : RECAPTURE ( -- )
    PROC-ARGV-ENV-RESET

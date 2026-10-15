@@ -42,12 +42,12 @@ require src/lib/test.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/codesign.f
 require tools/build-fixpoint.f
+require test/pcap-result.f
 
 using BUILD-FIXPOINT                     \ the real stage payload and build tmp root
 
@@ -75,12 +75,6 @@ create CR-ERR CR-CAP allot
    CR-ROOT$ CLEANUP-TREE+
    CR-ROOT$ BF-TMP! ;
 
-: CR-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outu erru rc
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
-     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
-   ;MATCH ;
-
 \ The stage engine's own entry: HB_TMP and the `-- <tmp>` row every stage build
 \ hands it (tools/build-fixpoint.f BF-PREPARE-STAGE-ARGV), captured so the child's
 \ diagnostic is the evidence and not an exit code on its own.
@@ -93,7 +87,7 @@ create CR-ERR CR-CAP allot
 : CR-RUN-STAGE ( -- n n n )
    CR-STAGE-ARGV
    s" stage2-got" BF-A$ >LEN CR-OUT CR-CAP >LEN CR-ERR CR-CAP >LEN CR-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE CR-CAPTURE>N ;
+   RUN-ARGV-ENV-CAPTURE PCAP-RESULT:>N ;
 
 \ The same engine with the temp root as cwd: nothing named src/ is reachable from
 \ there, so the boot's own prefix read is what answers.
@@ -101,7 +95,7 @@ create CR-ERR CR-CAP allot
    CR-STAGE-ARGV
    s" stage2-got" BF-A$ >LEN CR-ROOT$ >LEN CR-OUT CR-CAP >LEN CR-ERR CR-CAP >LEN
    CR-TIMEOUT-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CR-CAPTURE>N ;
+   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE PCAP-RESULT:>N ;
 
 \ --build compiles an unpadded copy of the payload; the driver inside it then
 \ reads stage2-src, padded one byte past SOURCE-ARENA-CAP, and bakes all of it.

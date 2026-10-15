@@ -7,6 +7,7 @@ require src/lib/process-cwd.f
 require src/lib/pty.f
 require test/whitebox-child.f
 require test/suite-budget.f              \ CHILD-MS, every child's hang guard
+require test/pcap-result.f
 
 package APP-IMAGE-TEST
 
@@ -69,16 +70,6 @@ variable REFUSE-U
    ROOT$ s" refuse-jit.f" REFUSE-BUF JOIN-PATH REFUSE-U !
    ROOT$ WHITEBOX-CHILD:PROVIDE-IN ;
 
-: RESULT ( result<pcap:captured,pcap:failed> -- n n n )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N erru LEN>N 0
-      ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
-         outu LEN>N erru LEN>N rc RC>N
-      ENDOF
-   ;MATCH ;
-
 : CLEAN ( n n n -- n ) {: outu:n erru:n rc:n :}
    rc 0<> erru 0<> or if
       s" app-image child failed: " type rc . cr
@@ -140,7 +131,7 @@ variable PROBE-SOURCE-U
    WHITEBOX-CHILD:ENGINE$ >LEN
    BUILD-SOURCE$ >LEN
    OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN
+   RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN
    OUT swap S\" 1\n\n1\n\n" T$=
    IMAGE$ EXECUTABLE? TTRUE ;
 
@@ -156,7 +147,7 @@ variable PROBE-SOURCE-U
    WHITEBOX-CHILD:ENGINE$ >LEN
    S\" require tools/app-build.f\nAPP-BUILD:RUN\n" >LEN
    OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n erru:n rc:n :}
+   RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N {: outu:n erru:n rc:n :}
    s" application immediates cannot select JIT while building" T-LABEL
    rc 70 T=
    ERR erru s" executable build requires native tier 1" CONTAINS? TTRUE
@@ -166,7 +157,7 @@ variable PROBE-SOURCE-U
    {: path:ptr pathu:n input:ptr inputu:n :}
    path pathu >LEN ROOT$ >LEN input inputu >LEN
    OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT ;
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE PCAP-RESULT:>N ;
 
 : CHECK-APPLICATION ( ptr u8 n -- )
    PROC-ARGV-ENV-RESET
@@ -332,7 +323,7 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    s" --" >LEN PROC-ARGV+
    s" test/address-cell-owner.f" >LEN PROC-ARGV+
    SECOND$ >LEN OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   RUN-ARGV-CAPTURE RESULT CLEAN
+   RUN-ARGV-CAPTURE PCAP-RESULT:>N CLEAN
    OUT swap S\" address-cell-owner: ok\nwindow: 0\n" T$= ;
 
 : CHECK-RETIRED-ABI ( -- )
@@ -363,7 +354,7 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    WHITEBOX-CHILD:ENGINE$ >LEN
    S\" require src/habu/app-image.f\nrequire test/address-cell-cap-grown.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN drop
+   RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN drop
    SECOND$ EXECUTABLE? TTRUE
    0 0 <> RUN-ADDRESS-OWNER
    0 0 = RUN-ADDRESS-OWNER

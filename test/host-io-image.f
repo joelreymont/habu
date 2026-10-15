@@ -15,6 +15,7 @@ require src/lib/pty.f
 require src/lib/net/udp4.f
 require test/app-image-engine.f
 require test/suite-budget.f
+require test/pcap-result.f
 
 package HOST-IO-IMAGE
 private
@@ -188,16 +189,6 @@ TASK:MIN-STACK TASK:TASK UDP-PEER
    a SCRIPT u BYTE-COPY
    u SCRIPT-U ! ;
 
-: RESULT ( result<pcap:captured,pcap:failed> -- n n n )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N erru LEN>N 0
-      ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
-         outu LEN>N erru LEN>N rc RC>N
-      ENDOF
-   ;MATCH ;
-
 : CHECK-RUN ( n n n -- )
    {: outu:n erru:n rc:n :}
    rc 0<> erru 0<> or if
@@ -227,7 +218,7 @@ TASK:MIN-STACK TASK:TASK UDP-PEER
    true true SCRIPT!
    PEERS-START
    host hostu >LEN SCRIPT$ >LEN OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE RESULT
+   RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N
    PEERS-STOP CHECK-RUN PEERS-CHECK
    s" the first generation saved an executable" T-LABEL
    FIRST$ SAVED ;
@@ -244,7 +235,7 @@ TASK:MIN-STACK TASK:TASK UDP-PEER
    false save SCRIPT!
    PEERS-START
    exe exeu >LEN ROOT$ >LEN SCRIPT$ >LEN OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE PCAP-RESULT:>N
    PEERS-STOP CHECK-RUN PEERS-CHECK ;
 
 : GENERATIONS ( -- )

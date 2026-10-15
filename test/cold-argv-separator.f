@@ -23,10 +23,10 @@ require src/lib/test.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require test/cold-engine.f
+require test/pcap-result.f
 
 package COLD-ARGV-SEPARATOR
 
@@ -92,10 +92,7 @@ create CS-ERR CS-CAP allot
 : CS-RUN ( -- n n n )                              \ -> outu erru rc
    CS-HOST$ >LEN CS-OUT CS-CAP >LEN CS-ERR CS-CAP >LEN CS-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N ;
 
 \ The defect names itself on the child's stderr, so a red case prints what the
 \ child said instead of leaving a bare status behind.

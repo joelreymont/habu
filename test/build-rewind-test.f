@@ -35,8 +35,8 @@ require src/lib/test.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/process.f
 require src/lib/process-argv.f
+require test/pcap-result.f
 
 package BUILD-REWIND-TEST
 
@@ -131,10 +131,7 @@ create BR-ERR   BR-CAP allot
 : BR-RUN ( -- n n n )                              \ -> outu erru rc
    s" bin/hb" >LEN BR-OUT BR-CAP >LEN BR-ERR BR-CAP >LEN BR-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N ;
 
 : BR-OUT$ ( n -- ptr u8 n ) {: u:n :}   BR-OUT u ;
 : BR-ERR$ ( n -- ptr u8 n ) {: u:n :}   BR-ERR u ;

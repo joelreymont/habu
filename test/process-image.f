@@ -7,6 +7,7 @@ require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/process-cwd.f
 require test/app-image-engine.f
+require test/pcap-result.f
 
 package PROCESS-IMAGE-TEST
 
@@ -33,16 +34,6 @@ variable SECOND-U
    ROOT$ s" first" FIRST-BUF JOIN-PATH FIRST-U !
    ROOT$ s" second" SECOND-BUF JOIN-PATH SECOND-U ! ;
 
-: RESULT ( result<pcap:captured,pcap:failed> -- n n n )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N erru LEN>N 0
-      ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
-         outu LEN>N erru LEN>N rc RC>N
-      ENDOF
-   ;MATCH ;
-
 : CLEAN ( n n n -- ) {: outu:n erru:n rc:n :}
    rc 0<> erru 0<> or if
       s" process image child failed: " type rc . cr
@@ -65,7 +56,7 @@ variable SECOND-U
    host hostu >LEN
    S\" 1 set-tier\nrequire test/process-image-subject.f\nPROCESS-IMAGE-SUBJECT:CLEAN\nSIGNAL:INIT\nSIGNAL:SIGUSR1 SIGNAL:CATCH\nPROC-ENV-TABLE drop\n2 PROCESS-IMAGE-SUBJECT:ENV-SIZE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN
+   RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN
    FIRST$ EXECUTABLE? TTRUE ;
 
 : RESTORE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n input:ptr inputu:n :}
@@ -73,7 +64,7 @@ variable SECOND-U
    s" HABU_IMAGE_RESTORED" >LEN s" different-envp" >LEN PROC-ENV+
    path pathu >LEN ROOT$ >LEN input inputu >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT CLEAN ;
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE PCAP-RESULT:>N CLEAN ;
 
 : RECAPTURE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n next:ptr nextu:n :}
    PROC-ARGV-ENV-RESET

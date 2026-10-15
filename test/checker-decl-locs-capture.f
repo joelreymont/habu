@@ -14,6 +14,7 @@ require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/process-cwd.f
 require test/whitebox-child.f
+require test/pcap-result.f
 
 package NAVL-CAPTURE
 
@@ -35,14 +36,6 @@ FS-PATH-CAP BUFFER: IMAGE-BUF   variable IMAGE-U
    ROOT$ s" image" IMAGE-BUF JOIN-PATH IMAGE-U !
    ROOT$ WHITEBOX-CHILD:PROVIDE-IN ;
 
-: RESULT ( result<pcap:captured,pcap:failed> -- n n n )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N erru LEN>N 0 ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
-         outu LEN>N erru LEN>N rc RC>N ENDOF
-   ;MATCH ;
-
 \ The child exited 0 and its own tests passed.
 : CHECK ( n n n -- )
    {: outu:n erru:n rc:n :}
@@ -62,7 +55,7 @@ FS-PATH-CAP BUFFER: IMAGE-BUF   variable IMAGE-U
    WHITEBOX-CHILD:ENGINE$ >LEN
    S\" require src/habu/app-image.f\nrequire test/checker-decl-locs-capture-subject.f\nNAVL:KEEP\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE RESULT CHECK
+   RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CHECK
    IMAGE$ EXECUTABLE? TTRUE ;
 
 : RESTORE ( -- )
@@ -71,7 +64,7 @@ FS-PATH-CAP BUFFER: IMAGE-BUF   variable IMAGE-U
    PROC-ENV-INHERIT-MISSING
    IMAGE$ >LEN ROOT$ >LEN S\" NAVL:RESTORED\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT CHECK ;
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE PCAP-RESULT:>N CHECK ;
 
 public
 : RUN ( -- )
