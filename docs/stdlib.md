@@ -848,9 +848,10 @@ flag.
 `src/lib/decimal.f` converts a complete byte span to `option<i64>` without
 floating-point rounding. `DECIMAL:EXACT` accepts an optional sign, decimal
 digits with single interior underscores, an optional decimal point, and an
-optional signed exponent. A decimal point needs at least one digit on one side;
-`1.` and `.5` are valid. It returns SOME only when the mathematical value is an
-integer within signed i64 range. `DECIMAL:INTEGER` accepts signed digits with
+optional signed exponent; exponent digits also accept single interior
+underscores (`1e1_0` is 10000000000). A decimal point needs at least one digit
+on one side; `1.` and `.5` are valid. It returns SOME only when the mathematical
+value is an integer within signed i64 range. `DECIMAL:INTEGER` accepts signed digits with
 any number of interior underscores, including `1__2`.
 It rejects points and exponents. Both return NONE for malformed or out-of-range
 text and throw `DECIMAL:E-SOURCE` for a negative length or a nonempty null span.
@@ -1124,7 +1125,6 @@ JR:VALUE-SPAN$ ( JR:reader -- JR:reader ptr u8 n )
 JR:NEXT       ( JR:reader -- JR:reader n )
 JR:INT        ( JR:reader -- JR:reader n )
 JR:FLOAT      ( JR:reader -- JR:reader r )
-JR:EXACT-INT  ( JR:reader -- JR:reader option<i64> )
 JR:STR        ( JR:reader ptr u8 n -- JR:reader n )
 JR:STR-EQ?    ( JR:reader ptr u8 n -- JR:reader bool )
 JR:SKIP-VALUE ( JR:reader -- JR:reader )
@@ -1137,10 +1137,6 @@ decodes the current string into non-null caller storage and rejects negative or
 insufficient capacity with `E-JR-STATE`. `NEXT` accepts a string token only
 after validating every escape, UTF-16 surrogate pair, and raw UTF-8 scalar.
 Token kinds remain the public `JR:T-*` constants.
-`JR:EXACT-INT` accepts the current `T-INT` or `T-FLOAT` token and converts its
-strict JSON number spelling exactly. It returns NONE for a fractional or
-out-of-range value, and throws `E-JR-STATE` on other token kinds; malformed JSON
-still fails during `NEXT`.
 VALUE-SPAN$ is valid on an object or array opener; it returns the borrowed raw
 source bytes from that opener through its matching close and leaves the reader
 positioned after the value.
