@@ -12,3 +12,5 @@ Acceptance: the suite builds hb once and every test uses it; tests whose subject
 Files: test/run.f, test/gate-stdlib-cases.f, the 14 tests, docs/gate.md.
 Verify: full suite wall time and its count of engine builds before and after.
 Depends: none. Ownership: unassigned. Claim: unassigned.
+
+The native gate is a noninteractive batch command. Its child process groups can stop with SIGTTIN when stdin is an inherited PTY; stdlib-source-default and protection-span both passed unchanged with explicit EOF after such a stopped run. Keep qualification commands on non-PTY input with stdin closed, and preserve their actual read/input assertions; never increase deadlines to hide job-control stops.

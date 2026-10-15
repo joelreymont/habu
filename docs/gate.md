@@ -23,7 +23,7 @@ the checkout's source root when their scratch files are inside it; the same
 fixtures pass unchanged with external scratch.
 
 ```sh
-bin/hb --load test/run.f
+bin/hb --load test/run.f </dev/null
 ```
 
 A green native build does not show that the prefix boots from source. The
@@ -74,8 +74,12 @@ directory `tools/two-generation-build.f` prints), never the seed it was given.
 On macOS, keep the machine awake for the gate with a process-scoped assertion:
 
 ```sh
-caffeinate -is bin/hb --load test/run.f
+caffeinate -is bin/hb --load test/run.f </dev/null
 ```
+
+The registry is noninteractive. Keep stdin at EOF: its child process groups
+inherit that input, and a read from an inherited terminal can stop them with
+`SIGTTIN`. An agent should run the command without allocating a PTY.
 
 Sleep counts against the suites' elapsed-time deadlines. Repeated sleep/wake
 cycles produced simultaneous `TIMEOUT-UNDER-LOAD` reports even with one suite
