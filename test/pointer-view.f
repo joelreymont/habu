@@ -33,6 +33,7 @@ CAST: ITEM>N ( item -- n )
    s" BAD-IMPLICIT-VIEW ( ptr a -- ptr u8 ) " REJECT
    s" BAD-IMPLICIT-FETCH ( ptr a -- n ) @" REJECT
    s" BAD-BYTE-CELL ( ptr u8 -- n ) @" REJECT
+   s" BAD-NOMINAL-VIEW ( ptr u8 -- ptr item ) CELL-VIEW" REJECT
    s" BAD-ARRAY-READ ( ptr item len -- n ) ARRAY:A-SUM" REJECT
    s" BAD-ARRAY-STORE ( ptr item len -- ) ARRAY:A-PREFIX-SUM!" REJECT
    T-REPORT ;
