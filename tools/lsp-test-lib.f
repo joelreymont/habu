@@ -1470,18 +1470,6 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    rc 0 < if E-PROC-OUTPUT throw then
    rc 0= if E-PROC-TIMEOUT throw then ;
 
-\ Writes a turn: the input not yet written, in one write. Each turn but the
-\ first waits for output the server writes only once it has read all it was
-\ sent, so the pipe is empty and takes one piece whole: the turn's messages
-\ reach the server together, and no check runs between them.
-: SAY ( -- )
-   IN$ {: a:ptr u:n :}
-   u SENT @ - {: left:n :}
-   left PROC-STDIN-CHUNK-CAP <= s" turn past one write" HOLDS
-   WRITABLE
-   IN-W @ a SENT @ + left FD-IO:WRITE-FULL
-   u SENT ! ;
-
 \ Writes the next piece of the input, PIPE-ATOM bytes at most, once the pipe
 \ has room for it.
 : PIECE ( -- )
@@ -1495,6 +1483,16 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
 \ reading cannot hold the test past DEADLINE.
 : STREAM ( -- )
    begin SENT @ IN$ nip < while PIECE repeat ;
+
+\ Short turns fit in one write. A long turn, including one with long document
+\ paths, is streamed under the same deadline rather than refused by the test.
+: SAY ( -- )
+   IN$ {: a:ptr u:n :}
+   u SENT @ - {: left:n :}
+   left PROC-STDIN-CHUNK-CAP > if STREAM exit then
+   WRITABLE
+   IN-W @ a SENT @ + left FD-IO:WRITE-FULL
+   u SENT ! ;
 
 \ Whether the output not yet read as frames holds a whole frame.
 : WHOLE? ( -- bool )
@@ -1858,15 +1856,15 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    BIG-LINES 0 ?do s\" ( twenty-byte line )\n" N>BLEN TXT-B APPEND-SPAN loop
    TEXT-F N>BLEN TXT-B APPEND-SPAN ;
 
-\ The document is written in many pieces; F's packet on its last line proves
-\ it taken whole and checked.
+\ SAY streams this oversized turn; F's packet on its last line proves the
+\ document was received whole and checked.
 : BIG-TURNS ( -- )
    INITIALIZE
    SAY
    HEAR CAPABILITIES
    BIG-TEXT
    BIG-PATH TXT$ 1 OPENS
-   STREAM
+   SAY
    TXT$ BIG-PATH CHECKS
    BIG-PATH s" refused" COMPLETED
    BIG-PATH 1 EXPECT BIG-LINES 15 BIG-LINES 19 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
