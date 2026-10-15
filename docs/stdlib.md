@@ -97,7 +97,7 @@ theirs.
 | `src/lib/fs-mutate.f` | task-local (the staged paths, FS-MUT-ABI band; the stream copy's descriptors and cursors) / process-wide (the copy buffer, so the two copy words are single-task; the cleanup registry, which any task may register into) |
 | `src/lib/json-write.f` | caller-owned |
 | `src/lib/json-read.f` | caller-owned |
-| `src/lib/jsonl.f` | caller-owned (cursor, line buffer, input and reader storage) |
+| `src/lib/jsonl.f` | caller-owned cursor; BUF, input block and reader backing owned by the cursor between OPEN and end of input or CLOSE; splitter owns nothing |
 | `src/lib/utf16.f` | caller-owned |
 | `src/lib/uri.f` | caller-owned |
 | `src/lib/fd-io.f` | caller-owned (the descriptor and the span) |
@@ -1153,43 +1153,48 @@ length is `E-JR-STATE`.
 
 ## JSON Lines
 
-`src/lib/jsonl.f` frames a memory span or a file as physical lines. Allocate
-each `JSONL:cursor` with `TYPED-VARIABLE` or `TYPED-BUFFER`; its zero state is
-closed. `START` borrows memory bytes, while `OPEN` owns a file descriptor. Each
-open cursor also owns a growable line buffer, an 8 KiB file input block and
-fixed backing for `JR:reader`. `CLOSE` releases these resources and is
-idempotent. `WITH-FILE` closes on return or catchable throw. If the work
-completes but descriptor close fails, `CLOSE` or `WITH-FILE` throws
-`JSONL:E-CLOSE`; an earlier read, framing, or callback error takes precedence
-over a cleanup close failure.
+`src/lib/jsonl.f` frames JSONL input as physical lines: a file cursor for files
+and a stateless splitter for memory. Allocate each `JSONL:cursor` with
+`TYPED-VARIABLE` or `TYPED-BUFFER`; its zero state is closed.
 
 ```forth
-JSONL:START     ( ptr JSONL:cursor ptr u8 n NUM:byte-len -- )
-JSONL:OPEN      ( ptr JSONL:cursor ptr u8 n NUM:byte-len -- )
-JSONL:NEXT-LINE ( ptr JSONL:cursor -- option<JSONL:line> )
-JSONL:NEXT      ( ptr JSONL:cursor -- option<JSONL:line> )
-JSONL:READER    ( ptr JSONL:cursor -- JR:reader )
-JSONL:CLOSE     ( ptr JSONL:cursor -- )
-JSONL:WITH-FILE ( R ptr JSONL:cursor ptr u8 n NUM:byte-len
-                  [ R ptr JSONL:cursor -- R ptr JSONL:cursor ] -- R )
+JSONL:OPEN       ( ptr JSONL:cursor ptr u8 n NUM:byte-len -- )
+JSONL:NEXT       ( ptr JSONL:cursor -- bool )
+JSONL:READER     ( ptr JSONL:cursor -- JR:reader )
+JSONL:CLOSE      ( ptr JSONL:cursor -- )
+JSONL:SPLIT-LINE ( ptr u8 n n -- ptr u8 n n bool )
 ```
 
-`JSONL:line` carries `ptr u8`, `NUM:byte-len`, and a physical line number
-starting at one. `NEXT-LINE` returns empty physical lines; `NEXT` skips only
-zero-length lines. The inclusive limit counts raw bytes, including CR and
-excluding LF. Empty input has no lines; a final LF does not invent another
-empty line, and a final unterminated nonempty line is returned. No whitespace
-is trimmed and no JSON is parsed by framing itself. `READER` creates a fresh
-linear JR token over the current borrowed line. Only one reader may be live
-per cursor. Call `JR:CLOSE` before opening another reader, advancing or closing
-the cursor, or reusing its source or reader backing storage. A file line is borrowed
-until the next advance or close; the source of a memory cursor must remain
-live for its whole open lifetime. EOF retains the last returned line until
-the next advance or close. The file descriptor remains owned through EOF and
-is closed by `CLOSE`. The named errors are
-`JSONL:E-STATE`, `JSONL:E-SOURCE`, `JSONL:E-LIMIT`, and `JSONL:E-CLOSE`;
-read, open, and allocation errors retain their owning library codes. The
-`WITH-FILE` callback returns the same cursor pointer it received.
+`OPEN` opens the path read-only, then allocates a growable line buffer and one
+mapping holding an 8 KiB input block and fixed `JR:reader` backing. The cursor
+owns the descriptor and that storage until the end of input or `CLOSE`. The
+byte limit is inclusive for one physical line and counts CR but not LF. `OPEN`
+of an open cursor is `JSONL:E-STATE`; open, path and allocation failures keep
+their owning codes, and an allocation failure closes the descriptor first.
+
+`NEXT` frames the next nonempty physical line and returns true. Zero-length
+lines are skipped and CR is kept; a final unterminated nonempty line is
+returned, and a final LF invents no line. At the end of input `NEXT` closes the
+descriptor, frees the storage and returns false, once; a further `NEXT` is
+`JSONL:E-STATE`. A line over the limit is `JSONL:E-LIMIT` and a failed read is
+`E-FS-IO`; after any throw the cursor is closed. A failed descriptor close is a
+broken invariant: the process dies with `jsonl: close failed` and exit status
+71. macOS and Linux both release the descriptor before close reports an error,
+so a retry could close a reused descriptor.
+
+`READER` creates a fresh linear JR token over the current line, which stays
+borrowed until the next `NEXT` or `CLOSE`. It is `JSONL:E-STATE` on a closed
+cursor or before `NEXT` has returned true. Only one reader may be live per
+cursor: call `JR:CLOSE` before another `READER`, `NEXT` or `CLOSE`. `CLOSE`
+releases a cursor abandoned before the end of input; it is idempotent.
+
+`SPLIT-LINE a u pos` returns the physical line starting at `pos` (CR kept, LF
+excluded), the position after its LF (`u` for an unterminated final line) and
+true; at or past the end it returns an empty span at `a+pos`, `pos` and false.
+A negative length, a null pointer with a positive length or a negative position
+is `JSONL:E-SOURCE`. It allocates nothing and keeps no state: the caller keeps
+the bytes live while it uses the returned span. Neither form trims whitespace
+or parses JSON.
 
 ## JSON-RPC
 

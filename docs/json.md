@@ -45,20 +45,16 @@ Core accessors:
 
 ## JSONL
 
-`src/lib/jsonl.f` owns JSONL framing for memory and files. Its checked
-`JSONL:cursor` API returns physical lines as `option<JSONL:line>`; each line
-contains its byte span and one-based physical number. `JSONL:NEXT` skips empty
-lines, and `JSONL:READER` opens a `JR:reader` on the current borrowed line.
-Only one reader may be live per cursor. Call `JR:CLOSE` before opening another
-reader, advancing or closing the cursor, or reusing its source or reader
-backing storage. The memory source must remain live until `JSONL:CLOSE`;
-the file descriptor remains owned through EOF until `JSONL:CLOSE`.
-`JSONL:WITH-FILE` closes on success and throw. A failed explicit close after
-successful work throws `JSONL:E-CLOSE`. If reading, framing, or the callback
-already failed, that primary error takes precedence over a cleanup close
-failure; the cursor still releases its storage and becomes closed.
+`src/lib/jsonl.f` owns JSONL framing; docs/stdlib.md **JSON Lines** states the
+contract. `JSONL:SPLIT-LINE` frames memory statelessly: it returns every
+physical line, empty ones included, and the position after it. A file
+`JSONL:cursor` skips empty lines: `JSONL:NEXT` returns true with the next line
+and false at the end of input, by which point the cursor has closed itself, and
+`JSONL:READER` opens a `JR:reader` on the current line. Only one reader may be
+live per cursor; call `JR:CLOSE` before another reader, `JSONL:NEXT` or
+`JSONL:CLOSE`.
 
-`tools/json.f` uses that memory cursor for its DOM object iterator. It trims
+`tools/json.f` uses `JSONL:SPLIT-LINE` for its DOM object iterator. It trims
 JSON whitespace and applies the following parser policy to each framed line:
 
 `JSONL-START-STRICT ( ptr u8 u -- )` initializes strict iteration over
@@ -90,12 +86,12 @@ string arena.
 
 ## JSONL files
 
-Use `JSONL:OPEN` or `JSONL:WITH-FILE` from `src/lib/jsonl.f` to frame file
-input. Pass an inclusive byte limit for each physical line. The cursor reads
-8192-byte chunks and grows the current line as needed; final partial lines
-are returned once, EOF is idempotent, and early `JSONL:CLOSE` is allowed.
-EOF leaves the descriptor open so an explicit close can report a close error.
-Call `JSON-PARSE` on a returned line when a tool needs the DOM parser.
+Use `JSONL:OPEN`, `JSONL:NEXT` and `JSONL:READER` from `src/lib/jsonl.f` to
+frame file input. Pass an inclusive byte limit for each physical line. The
+cursor reads 8192-byte blocks and grows the current line as needed; a final
+partial line is returned once. The cursor closes its descriptor and frees its
+storage when `JSONL:NEXT` returns false or throws; call `JSONL:CLOSE` only to
+abandon a cursor before the end of input.
 
 ## Writer
 

@@ -5,7 +5,6 @@ require src/lib/errors.f
 require src/lib/memory.f
 require src/lib/adt/result.f               \ result<root,code> for JSON-PARSE-TRY (switchover wave C)
 require src/lib/jsonl.f
-require src/lib/byte-buffer.f
 
 -7100 constant E-JSON-SYNTAX
 -7101 constant E-JSON-CAPACITY
@@ -95,7 +94,9 @@ variable JSON-GKA
 variable JSON-GKL
 variable JSON-GVAL
 
-TYPED-VARIABLE JSONL-CUR JSONL:cursor
+TYPED-VARIABLE JSONL-SRC ptr u8
+variable JSONL-SRC-U
+variable JSONL-POS
 variable JSONL-LA
 variable JSONL-LU
 variable JSONL-ROOT
@@ -853,8 +854,9 @@ variable JSON-PARSE-TRY-ROOT
    mode JSONL-MODE-STRICT <> mode JSONL-MODE-SKIP <> and IF
       s" jsonl: bad cursor mode" JSON-TYPE-ERROR
    THEN
-   JSONL-CUR JSONL:CLOSE
-   JSONL-CUR a u JSON-MAX-N BUF:N>BLEN JSONL:START
+   a JSONL-SRC !
+   u JSONL-SRC-U !
+   0 JSONL-POS !
    0 JSONL-SKIPS !
    0 JSONL-LINE-N !
    mode JSONL-MODE ! ;
@@ -884,16 +886,11 @@ variable JSON-PARSE-TRY-ROOT
    JSONL-LA@ JSONL-LU @ ;
 
 : JSONL-TAKE-LINE ( -- bool )
-   JSONL-CUR JSONL:NEXT-LINE MATCH option
-      none OF false ENDOF
-      some OF
-         JSONL-LINE:UNMAKE {: a:ptr u:NUM:byte-len line:n :}
-         a u BUF:BLEN>N JSON-TRIM
-         JSONL-LU ! JSONL-LA!
-         line JSONL-LINE-N !
-         true
-      ENDOF
-   ;MATCH ;
+   JSONL-SRC @ JSONL-SRC-U @ JSONL-POS @ JSONL:SPLIT-LINE 0= IF 2drop drop false exit THEN
+   JSONL-POS !
+   JSON-TRIM JSONL-LU ! JSONL-LA!
+   JSONL-LINE-N @ 1+ JSONL-LINE-N !
+   true ;
 
 : JSONL-PARSE-TRY ( -- result<i64,i64> )   \ ok = root node, err = the caught throw code
    JSONL-LA@ JSONL-LU @ JSON-PARSE-TRY ;
