@@ -351,11 +351,14 @@ create FFI-T-LONG-PATH PATH-CAP allot
 
 \ The staging shapes no C function reproduces on both ABIs: ten integers, x0-x7
 \ plus two stack cells; a float register beside a float stack slot; an sret
-\ output in x8. A variadic callee is the only system witness for a stack spill,
-\ and Apple's ABI puts every variadic argument on the stack, so it never reaches
-\ the register exhaustion that spills. test/ffi-stub-child.f mints fixed stubs
-\ for them and calls them through owner words test/mcode-window-prepare.f
-\ opens, so it runs as a window child of test/native-window-owner-child.f.
+\ output in x8; a binary32 beside a double and an integer; eight binary32 beside
+\ eight integers; a binary32 register before a stack double. No libm function
+\ takes any of the binary32 shapes. A variadic callee is the only system witness
+\ for a stack spill, and Apple's ABI puts every variadic argument on the stack,
+\ so it never reaches the register exhaustion that spills.
+\ test/ffi-stub-child.f mints fixed stubs for them and calls them through owner
+\ words test/mcode-window-prepare.f opens, so it runs as a window child of
+\ test/native-window-owner-child.f.
 \ Reopening the window is refused on the sealed product (`hb: internal engine
 \ word`, exit 70), so the child runs on the engine test/whitebox-child.f names.
 : FFI-T-WIN-ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
