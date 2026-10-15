@@ -159,6 +159,8 @@ variable SERIAL
 : INPUT-LAST ( ptr n -- ptr n ) 11 cells + ;
 : INPUT-KIND ( ptr n -- ptr n ) 12 cells + ;
 : INPUT-FD ( ptr n -- ptr n ) 13 cells + ;
+: INPUT-PAYLOAD ( ptr n -- ptr n ) 14 cells + ;
+: INPUT-COMPRESSED ( ptr n -- ptr n ) 15 cells + ;
 
 : INPUT-NODE ( input -- ptr n )
    INPUT>N STATE-GET INPUTS @ FIND-ID STATE-RELEASE

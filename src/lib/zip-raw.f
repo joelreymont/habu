@@ -3,6 +3,7 @@ require src/lib/zip-ffi.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/fd-io.f
+require src/lib/utf8-scalar.f
 
 package ZIP
 using FFI
@@ -52,6 +53,7 @@ $14 constant LOCATOR-BYTES
 : REPLACE-LEN ( ptr n -- ptr n ) 8 cells + ;
 : REPLACE-CRC ( ptr n -- ptr n ) 9 cells + ;
 : NEW-LOCAL ( ptr n -- ptr n ) 10 cells + ;
+: PAYLOAD-OFF ( ptr n -- ptr n ) 11 cells + ;
 
 : SAFE+ ( n n -- n ) + dup SIZE-CHECK ;
 : SAFE* ( n n -- n ) {: left:n right:n :}
@@ -127,6 +129,20 @@ $14 constant LOCATOR-BYTES
    off node END-OFF @ LOCATOR-BYTES - END64-BYTES - > if false exit then
    node off END64-MATCH? ;
 
+: DIRECTORY-STRUCTURE? ( ptr n n n n -- bool )
+   {: node:ptr start:n size:n count:n :}
+   count 0 < if false exit then
+   count size CENTRAL-BYTES / > if false exit then
+   0 count 0 ?do
+      dup {: used:n :}
+      size used - CENTRAL-BYTES < if drop false unloop exit then
+      node start used + CENTRAL-BYTES RAW-SPAN {: central:ptr :}
+      central U32@ CENTRAL-SIG <> if drop false unloop exit then
+      central $1C + U16@ central $1E + U16@ +
+         central $20 + U16@ + CENTRAL-BYTES + +
+      dup size > if drop false unloop exit then
+   loop size = ;
+
 : PREFIX-END64? ( ptr n n -- bool ) {: node:ptr off:n :}
    node off END64-MATCH? 0= if false exit then
    node LOCATOR-OFFSET {: located:n :}
@@ -134,10 +150,8 @@ $14 constant LOCATOR-BYTES
    node off $28 + 8 RAW-SPAN 8 LE@ {: size:n :}
    size 0 < size located > or if false exit then
    node off $30 + 8 RAW-SPAN 8 LE@ located size - <> if false exit then
-   node off $20 + 8 RAW-SPAN 8 LE@ node OBJECT @ C-COUNT <> if false exit then
-   size 0= if true exit then
-   size CENTRAL-BYTES < if false exit then
-   node off size - RAW-U32 CENTRAL-SIG = ;
+   node off $20 + 8 RAW-SPAN 8 LE@ {: count:n :}
+   node off size - size count DIRECTORY-STRUCTURE? ;
 
 : FIND-END64 ( ptr n -- n ) {: node:ptr :}
    node LOCATOR-OFFSET dup node swap DIRECT-END64? if exit then drop
@@ -155,13 +169,31 @@ $14 constant LOCATOR-BYTES
    off node DIRECTORY-SIZE @ - node DIRECTORY-OFF !
    node DIRECTORY-OFF @ node off $10 + RAW-U32 - node ZIP-BASE ! ;
 
+: END-FIELD-MATCH? ( n n n -- bool )
+   {: found:n expected:n sentinel:n :}
+   found expected = found sentinel = or ;
+
 : END-WIDE ( ptr n -- ) {: node:ptr :}
    node FIND-END64 {: off:n :}
    off node END64-OFF !
+   node END-OFF @ LOCATOR-BYTES - {: loc:n :}
+   node loc 4 + RAW-U32 0 <> if E-OPEN throw then
+   node loc $10 + RAW-U32 1 <> if E-OPEN throw then
    node off $10 + RAW-U64 0 <> if E-READ throw then
    node off $18 + RAW-U64 node off $20 + RAW-U64 <> if E-READ throw then
    node off $20 + RAW-U64 node MEMBER-COUNT !
    node off $28 + RAW-U64 node DIRECTORY-SIZE !
+   node END-OFF @ {: classic:n :}
+   node classic 4 + RAW-U16 0 U16-MAX END-FIELD-MATCH? 0= if E-OPEN throw then
+   node classic 6 + RAW-U16 0 U16-MAX END-FIELD-MATCH? 0= if E-OPEN throw then
+   node classic 8 + RAW-U16 node MEMBER-COUNT @ U16-MAX
+      END-FIELD-MATCH? 0= if E-OPEN throw then
+   node classic $A + RAW-U16 node MEMBER-COUNT @ U16-MAX
+      END-FIELD-MATCH? 0= if E-OPEN throw then
+   node classic $C + RAW-U32 node DIRECTORY-SIZE @ U32-MAX
+      END-FIELD-MATCH? 0= if E-OPEN throw then
+   node classic $10 + RAW-U32 node off $30 + RAW-U64 U32-MAX
+      END-FIELD-MATCH? 0= if E-OPEN throw then
    off node DIRECTORY-SIZE @ - node DIRECTORY-OFF !
    node DIRECTORY-OFF @ node off $30 + RAW-U64 - node ZIP-BASE ! ;
 
@@ -178,6 +210,13 @@ $14 constant LOCATOR-BYTES
 : EXTRA-CHECK ( ptr u8 n -- ) {: data:ptr len:n :}
    len 4 < if E-READ throw then
    data 2 + U16@ len 4 - > if E-READ throw then ;
+: EXTRA-VALIDATE ( ptr u8 n -- )
+   begin dup 0 > while
+      dup 4 < if E-OPEN throw then
+      over 2 + U16@ over 4 - > if E-OPEN throw then
+      over 2 + U16@ 4 + {: step:n :}
+      swap step + swap step -
+   repeat 2drop ;
 : EXTRA-FIND ( ptr u8 n n -- ptr u8 n ) {: data:ptr len:n tag:n :}
    data len begin dup 0 > while
       2dup EXTRA-CHECK over U16@ tag = if exit then
@@ -188,23 +227,42 @@ $14 constant LOCATOR-BYTES
 : WIDE-FIELD ( ptr u8 n -- ptr u8 n n ) {: data:ptr len:n :}
    len 8 < if E-READ throw then
    data 8 + len 8 - data U64@ ;
+: WIDE-DISK ( ptr u8 n -- ptr u8 n ) {: data:ptr len:n :}
+   len 4 < if E-READ throw then
+   data U32@ 0 <> if E-READ throw then
+   data 4 + len 4 - ;
 : PARSE-WIDE ( ptr n ptr n -- ) {: node:ptr member:ptr :}
    node member CENTRAL-PTR {: central:ptr :}
    node member EXTRA-SPAN 1 EXTRA-FIND {: extra:ptr len:n :}
-   len 0= if exit then
-   extra 4 + extra 2 + U16@
+   central $18 + U32@ U32-MAX =
+   central $14 + U32@ U32-MAX = or
+   central $2A + U32@ U32-MAX = or
+   central $22 + U16@ U16-MAX = or {: needed:bool :}
+   len 0= if
+      needed if E-OPEN throw then
+      exit
+   then
+   needed 0= if exit then
+   extra 2 + U16@ {: size:n :}
+   extra 4 + size
    central $18 + U32@ U32-MAX = if WIDE-FIELD member PLAIN-SIZE ! then
    central $14 + U32@ U32-MAX = if WIDE-FIELD member COMPRESSED-SIZE ! then
    central $2A + U32@ U32-MAX = if
       over node RAW-PTR @ - member ZIP64-OFFSET !
       WIDE-FIELD member LOCAL-OFF !
    then
-   central $22 + U16@ U16-MAX = if
-      dup 4 < if E-READ throw then over U32@ 0 <> if E-READ throw then
+   central $22 + U16@ U16-MAX = if WIDE-DISK then
+   dup 0<> if
+      size 24 <> size 28 <> and if E-OPEN throw then
+      extra 4 + U64@ member PLAIN-SIZE @ <> if E-OPEN throw then
+      extra $C + U64@ member COMPRESSED-SIZE @ <> if E-OPEN throw then
+      extra $14 + U64@ member LOCAL-OFF @ <> if E-OPEN throw then
+      size 28 = if extra $1C + U32@ 0 <> if E-OPEN throw then then
    then 2drop ;
 
 : MEMBER-CENTRAL ( ptr n ptr n n -- n ) {: node:ptr member:ptr off:n :}
-   node off CENTRAL-SIG SIGNATURE! off member CENTRAL-OFF !
+   node off RAW-U32 CENTRAL-SIG <> if E-OPEN throw then
+   off member CENTRAL-OFF !
    node member CENTRAL-PTR {: data:ptr :}
    CENTRAL-BYTES data $1C + U16@ + data $1E + U16@ + data $20 + U16@ +
    dup member CENTRAL-LEN ! off + {: next:n :}
@@ -213,6 +271,12 @@ $14 constant LOCATOR-BYTES
    data $18 + U32@ member PLAIN-SIZE !
    data $2A + U32@ member LOCAL-OFF !
    data $22 + U16@ dup 0 <> swap U16-MAX <> and if E-READ throw then
+   node member EXTRA-SPAN EXTRA-VALIDATE
+   data 8 + U16@ $800 and 0<> if
+      node member CENTRAL-NAME UTF8:VALID? 0= if E-OPEN throw then
+      data CENTRAL-BYTES + data $1C + U16@ + data $1E + U16@ +
+         data $20 + U16@ UTF8:VALID? 0= if E-OPEN throw then
+   then
    node member PARSE-WIDE next ;
 
 : WIDE-DESCRIPTOR? ( ptr n ptr n -- bool ) {: node:ptr member:ptr :}
@@ -243,6 +307,8 @@ $14 constant LOCATOR-BYTES
    off member LOCAL-OFF ! node off LOCAL-SIG SIGNATURE!
    node off LOCAL-BYTES RAW-SPAN {: data:ptr :}
    LOCAL-BYTES data $1A + U16@ + data $1C + U16@ +
+   off + member PAYLOAD-OFF !
+   LOCAL-BYTES data $1A + U16@ + data $1C + U16@ +
    member COMPRESSED-SIZE @ SAFE+ {: len:n :}
    data 6 + U16@ 8 and 0 <> if
       len node member off len SAFE+ DESCRIPTOR-LEN SAFE+
@@ -254,17 +320,20 @@ $14 constant LOCATOR-BYTES
    node node MEMBER-COUNT @ MEMBER-CELLS cells SAFE* BUFFER-ALLOC CELL-VIEW node MEMBERS !
    node DIRECTORY-OFF @ node PREFIX-SIZE !
    node DIRECTORY-OFF @ node MEMBER-COUNT @ 0 ?do
+      dup node DIRECTORY-OFF @ node DIRECTORY-SIZE @ +
+         CENTRAL-BYTES - > if E-OPEN throw then
       node i MEMBER-AT {: member:ptr :}
-      node member rot MEMBER-CENTRAL node member MEMBER-LOCAL
+      node member rot MEMBER-CENTRAL
+      dup node DIRECTORY-OFF @ node DIRECTORY-SIZE @ + > if E-OPEN throw then
+      node member MEMBER-LOCAL
    loop dup node DIRECTORY-TAIL !
-   node DIRECTORY-OFF @ node DIRECTORY-SIZE @ SAFE+ > if E-READ throw then ;
+   node DIRECTORY-OFF @ node DIRECTORY-SIZE @ SAFE+ <> if E-OPEN throw then ;
 
 : PARSE-RAW ( ptr n -- )
    {: node:ptr :}
    node FIND-END node END-OFF !
    node HAS-END64? if node END-WIDE else node END-CLASSIC then
    node ZIP-BASE @ SIZE-CHECK
-   node MEMBER-COUNT @ node OBJECT @ C-COUNT <> if E-READ throw then
    node node node DIRECTORY-OFF @ node DIRECTORY-SIZE @ RAW-SPAN
       node DIRECTORY-SIZE @ COPY-IN drop node DIRECTORY-PTR !
    node PARSE-MEMBERS ;

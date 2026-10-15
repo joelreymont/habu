@@ -47,6 +47,7 @@ s" mkstemp" FFI:PROCESS 1 FFI:DECLARE constant MKSTEMP-ROW
 
 : CLOSE-INPUT-OBJECT ( ptr n -- bool ) {: node:ptr :}
    node INPUT-KIND @ 1 = if node INPUT-FD @ C-CLOSE-FD 0<> exit then
+   node INPUT-KIND @ 2 = if false exit then
    node INPUT-OBJECT @ dup NULL? if drop false else C-FCLOSE 0<> then ;
 
 : CLOSE-OWNED ( ptr n -- bool ) {: owner:ptr :}
@@ -72,8 +73,8 @@ s" mkstemp" FFI:PROCESS 1 FFI:DECLARE constant MKSTEMP-ROW
    begin ARCHIVES @ dup NULL? 0= while DISCARD-NODE repeat drop ;
 
 
-\ A libzip object is a process-local address: preparing an image discards every
-\ live archive, and the archives opened after that register again.
+\ Archive descriptors and optional libzip objects are process-local: preparing
+\ an image discards every live archive, and later opens register again.
 : CLEANUP-NATIVE ( -- )
    RETIRE-ARCHIVES
    0 REGISTERED ! ;
@@ -90,7 +91,6 @@ s" mkstemp" FFI:PROCESS 1 FFI:DECLARE constant MKSTEMP-ROW
 
 
 : C-OPEN ( ptr u8 n -- ptr u8 ) {: path:ptr flags:n :}
-   REGISTER-CLEANUP
    path flags 0 OPEN-CALL ;
 
 : C-COUNT ( ptr u8 -- n ) 0 COUNT-CALL ;

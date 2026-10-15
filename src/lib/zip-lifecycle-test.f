@@ -1,4 +1,4 @@
-\ zip-lifecycle-test.f - live libzip archives retired by image preparation.
+\ zip-lifecycle-test.f - live ZIP archives retired by image preparation.
 require src/lib/zip.f
 require src/lib/zip-test-fixture.f
 require src/lib/test.f
@@ -14,7 +14,6 @@ package ZIP
 using FFI
 using IMAGE-LIFECYCLE
 
-create LIFECYCLE-PATH $80 allot
 create BASE FS-PATH-CAP allot
 variable BASE-LEN
 create PATH-BUF FS-PATH-CAP allot
@@ -70,13 +69,9 @@ TASK:SEMAPHORE LOCK-RELEASE
    ARCHIVES @ NULL? TTRUE ;
 
 
-: LIFECYCLE-PATH$ ( -- ptr u8 )
-   s" /no/such/habu-zip-lifecycle.zip" LIFECYCLE-PATH CSTR
-   LIFECYCLE-PATH ;
-
-
 : LIFECYCLE-USE ( -- )
-   LIFECYCLE-PATH$ 0 C-OPEN >CELL 0 T= ;
+   [: s" /no/such/habu-zip-lifecycle.zip" OPEN drop ;]
+      E-OPEN TTHROWSQ ;
 
 
 : LIFECYCLE-ASSERT-CLEAR ( -- )

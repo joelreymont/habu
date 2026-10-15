@@ -535,6 +535,14 @@ path cannot change reads or the bytes used by a commit. `OPEN-SOURCE` streams
 those original raw bytes through an independent input cursor, suitable for
 incremental hashing. `SOURCE$` remains available when a caller explicitly needs
 the whole original byte string; it maps the snapshot on first request.
+Archives whose original members are all stored and unencrypted read members
+directly from that snapshot. If any original member is compressed or encrypted,
+the archive opens libzip during `OPEN`. Both paths use central-directory member
+identity and preserve the existing acceptance of local-header differences.
+The compatibility references are the [libzip open API](https://libzip.org/documentation/zip_open/),
+its [central-directory parser](https://raw.githubusercontent.com/nih-at/libzip/v1.11.4/lib/zip_dirent.c)
+and [end-record parser](https://raw.githubusercontent.com/nih-at/libzip/v1.11.4/lib/zip_open.c),
+with [ZIP flag definitions](https://raw.githubusercontent.com/nih-at/libzip/v1.11.4/lib/zipint.h).
 `NAME$` returns the original
 name bytes, and `READ` returns uncompressed bytes. Both return archive-owned
 copies that stay valid until successful `COMMIT` or `CLOSE`, including across

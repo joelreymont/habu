@@ -43,6 +43,13 @@ $4000 constant FILE-CHUNK
    -1 node SOURCE-FD !
    fd C-CLOSE-FD 0<> if E-READ throw then ;
 
+: NATIVE-STORED? ( ptr n -- bool ) {: node:ptr :}
+   node MEMBER-COUNT @ 0 ?do
+      node node i MEMBER-AT CENTRAL-PTR {: central:ptr :}
+      central 8 + U16@ 1 and 0<>
+      central $A + U16@ 0<> or if false unloop exit then
+   loop true ;
+
 : OPEN-WORK ( ptr n ptr u8 n n -- ptr n ptr u8 n n )
    {: node:ptr path:ptr len:n flags:n :}
    flags node MODE !
@@ -59,9 +66,12 @@ $4000 constant FILE-CHUNK
    0 swap 1 2 node SNAP-FD @ 0 mmap {: mapped:n :}
    mapped -1 = if E-OPEN throw then
    mapped MAPPED>RAW node RAW-PTR !
-   node SOURCE-PTR @ flags C-OPEN {: czip:ptr :}
-   czip NULL? if E-OPEN throw then czip node OBJECT !
    node PARSE-RAW
+   node NATIVE-STORED? 0= if
+      node SOURCE-PTR @ flags C-OPEN {: czip:ptr :}
+      czip NULL? if E-OPEN throw then czip node OBJECT !
+      czip C-COUNT node MEMBER-COUNT @ <> if E-OPEN throw then
+   then
    node $10000 BUFFER-ALLOC node RAW-SCRATCH !
    node RAW-PTR @ node RAW-LEN @ munmap 0<> if E-READ throw then
    0 MAPPED>RAW node RAW-PTR !
@@ -72,14 +82,13 @@ $4000 constant FILE-CHUNK
 
 : OPEN-CHECKED ( ptr u8 n n -- archive )
    {: path:ptr len:n flags:n :}
-   path len PATH-CHECK REGISTER {: archive:archive :}
+   path len PATH-CHECK REGISTER-CLEANUP REGISTER {: archive:archive :}
    archive ARCHIVE-NODE {: node:ptr :}
    node path len flags OPEN-ATTEMPT {: code:n :}
    code 0<> if node code DISCARD-FAILED then
    archive ;
 
-: COUNT-NODE ( ptr n -- n )
-   OBJECT @ C-COUNT dup 0 < if E-READ throw then ;
+: COUNT-NODE ( ptr n -- n ) MEMBER-COUNT @ ;
 
 : INDEX-CHECK ( ptr n n -- ) {: node:ptr idx:n :}
    idx 0 < if E-ENTRY throw then
@@ -99,39 +108,11 @@ $4000 constant FILE-CHUNK
    node len 1 max CHUNK-RESERVE {: dst:ptr :}
    name dst len BYTE-COPY dst len ;
 
-: MEMBER-SIZE ( ptr n n -- n )
-   swap OBJECT @ swap STAT-DATA C-STAT 0 <> if E-READ throw then
+: MEMBER-SIZE ( ptr n n -- n ) {: node:ptr idx:n :}
+   node OBJECT @ NULL? if node idx MEMBER-AT PLAIN-SIZE @ exit then
+   node OBJECT @ idx STAT-DATA C-STAT 0 <> if E-READ throw then
    STAT-DATA @ STAT-SIZE-VALID and 0= if E-READ throw then
    STAT-DATA STAT-SIZE-CELL cells + @ dup SIZE-CHECK ;
-
-: READ-CHUNK ( ptr u8 ptr u8 n -- n )
-   C-FREAD dup 0 <= if E-READ throw then ;
-
-: READ-STEP ( n ptr u8 ptr u8 n -- n ) {: offset:n file:ptr buf:ptr len:n :}
-   file buf offset + len offset - READ-CHUNK offset + ;
-
-\ libzip verifies CRC when a read reaches EOF, including empty members.
-: READ-EOF ( ptr u8 -- )
-   EOF-BYTE 1 C-FREAD 0 <> if E-READ throw then ;
-
-: MEMBER-READ-ALL ( ptr u8 ptr u8 n -- ptr u8 ptr u8 n ) {: file:ptr buf:ptr len:n :}
-   0 begin dup len < while
-      file buf len READ-STEP
-   repeat drop file READ-EOF file buf len ;
-
-: READ-ATTEMPT ( ptr u8 ptr u8 n -- n )
-   [: MEMBER-READ-ALL ;] catch >r 2drop drop r> ;
-
-: READ-COPY ( ptr n n -- ptr u8 n ) {: node:ptr idx:n :}
-   node idx MEMBER-AT {: member:ptr :}
-   member REPLACED? if member REPLACEMENT @ member REPLACE-LEN @ exit then
-   node idx MEMBER-SIZE {: len:n :}
-   node len BUFFER-ALLOC {: buf:ptr :}
-   node OBJECT @ idx C-FOPEN {: file:ptr :}
-   file NULL? if E-READ throw then
-   file buf len READ-ATTEMPT {: code:n :}
-   file C-FCLOSE 0 <> code 0 <> or if E-READ throw then
-   buf len ;
 
 : CRC-FEED ( n ptr u8 n -- n ) {: crc:n data:ptr len:n :}
    crc len 0 ?do data i + c@ CRC-BYTE loop ;
@@ -148,9 +129,15 @@ $4000 constant FILE-CHUNK
       member REPLACE-LEN @ node INPUT-LEN !
       member REPLACE-CRC @ node INPUT-EXPECT !
    else
-      owner OBJECT @ idx C-FOPEN {: file:ptr :}
-      file NULL? if node NODE-FREE E-READ throw then
-      file node INPUT-OBJECT !
+      owner OBJECT @ NULL? if
+         member PAYLOAD-OFF @ node INPUT-PAYLOAD !
+         member COMPRESSED-SIZE @ node INPUT-COMPRESSED !
+         2 node INPUT-KIND !
+      else
+         owner OBJECT @ idx C-FOPEN {: file:ptr :}
+         file NULL? if node NODE-FREE E-READ throw then
+         file node INPUT-OBJECT !
+      then
       member PLAIN-SIZE @ node INPUT-LEN !
       owner member CENTRAL-PTR $10 + U32@ node INPUT-EXPECT !
    then
@@ -169,13 +156,23 @@ $4000 constant FILE-CHUNK
 
 : INPUT-END ( ptr n -- ) {: node:ptr :}
    node INPUT-OFF @ node INPUT-LEN @ <> if E-READ throw then
-   node INPUT-KIND @ 0= if
+   node INPUT-KIND @ 2 = if
+      node INPUT-OFF @ node INPUT-COMPRESSED @ <> if E-READ throw then
+   then
+   node INPUT-KIND @ 1 <> if
       node INPUT-CRC @ U32-MAX xor node INPUT-EXPECT @ <> if E-READ throw then
    then
    1 node INPUT-DONE ! ;
 
 : INPUT-BYTES ( ptr n ptr u8 n -- n ) {: node:ptr dst:ptr cap:n :}
    node INPUT-KIND @ 1 = if node INPUT-FD @ dst cap read exit then
+   node INPUT-KIND @ 2 = if
+      node INPUT-LEN @ node INPUT-OFF @ -
+      node INPUT-COMPRESSED @ node INPUT-OFF @ - min cap min {: len:n :}
+      len 0= if 0 exit then
+      node INPUT-OWNER @ SNAP-FD @ dst len
+         node INPUT-PAYLOAD @ node INPUT-OFF @ + C-PREAD exit
+   then
    node INPUT-DATA @ {: data:ptr :}
    data NULL? if
       node INPUT-OBJECT @ dst cap C-FREAD
@@ -193,7 +190,7 @@ $4000 constant FILE-CHUNK
    got 0= if node INPUT-END 0 exit then
    node INPUT-OFF @ got SAFE+ dup node INPUT-LEN @ > if E-READ throw then
    node INPUT-OFF !
-   node INPUT-KIND @ 0= if
+   node INPUT-KIND @ 1 <> if
       node INPUT-CRC @ data got CRC-FEED node INPUT-CRC !
    then got ;
 
@@ -202,8 +199,10 @@ $4000 constant FILE-CHUNK
    node INPUT-KIND @ 1 = if
       node INPUT-FD @ C-CLOSE-FD
    else
-      node INPUT-OBJECT @ {: file:ptr :}
-      file NULL? if 0 else file C-FCLOSE then
+      node INPUT-KIND @ 2 = if 0 else
+         node INPUT-OBJECT @ {: file:ptr :}
+         file NULL? if 0 else file C-FCLOSE then
+      then
    then {: code:n :}
    node NODE-FREE code ;
 
@@ -217,7 +216,7 @@ $4000 constant FILE-CHUNK
    node INPUT-LAST @ ;
 
 : CLOSE-IN-WORK ( ptr n -- ptr n ) {: node:ptr :}
-   node INPUT-KIND @ 0<> if node exit then
+   node INPUT-KIND @ 1 = if node exit then
    begin node STAT-DATA BYTE-VIEW STAT-BYTES SPAN:MAKE READ-INNER 0<> while
    repeat node ;
 
@@ -227,6 +226,29 @@ $4000 constant FILE-CHUNK
    drop node DISCARD-INPUT {: close-code:n :}
    code 0<> if code throw then
    close-code 0<> if E-READ throw then ;
+
+: COPY-INPUT ( ptr n ptr u8 n -- ptr n ptr u8 n )
+   {: node:ptr buf:ptr len:n :}
+   0 begin dup len < while
+      dup {: off:n :}
+      node buf off + len off - SPAN:MAKE READ-INNER
+      dup 0= if E-READ throw then +
+   repeat drop
+   node buf 1 SPAN:MAKE READ-INNER 0<> if E-READ throw then
+   node buf len ;
+
+: COPY-ATTEMPT ( ptr n ptr u8 n -- n )
+   [: COPY-INPUT ;] catch >r 2drop drop r> ;
+
+: READ-COPY ( ptr n n -- ptr u8 n ) {: node:ptr idx:n :}
+   node idx MEMBER-AT {: member:ptr :}
+   member REPLACED? if member REPLACEMENT @ member REPLACE-LEN @ exit then
+   node idx MEMBER-SIZE {: len:n :}
+   node len BUFFER-ALLOC {: buf:ptr :}
+   node idx OPEN-INPUT INPUT-NODE {: input:ptr :}
+   input buf len COPY-ATTEMPT {: code:n :}
+   input DISCARD-INPUT 0<> code 0<> or if E-READ throw then
+   buf len ;
 
 : WRITABLE ( ptr n -- )
    MODE @ READONLY-FLAG and 0 <> if E-READONLY throw then ;
