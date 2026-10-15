@@ -49,6 +49,9 @@ FRAME-CELLS ATTR-CELLS + NS-CELLS + constant CAP-CELLS
 4 constant SOURCE-UTF16-LE-DECL
 5 constant SOURCE-UTF16-BE-DECL
 6 constant INPUT-UTF8
+7 constant SOURCE-ASCII
+8 constant LEGACY-ASCII
+9 constant INPUT-ASCII
 
 \ An input reader owns only its current lexical window and active scope strings.
 \ Its metadata and byte buffers are released by CLOSE, including after a
@@ -72,7 +75,8 @@ STRUCTURE stream DERIVE addr
    FIELD spare-cap n
 ;STRUCTURE
 
-: INPUT? ( ptr n -- bool ) SOURCE-MODE + @ INPUT-UTF8 = ;
+: INPUT? ( ptr n -- bool )
+   SOURCE-MODE + @ dup INPUT-UTF8 = swap INPUT-ASCII = or ;
 
 CAST: >STREAM ( ptr u8 -- ptr stream )
 CAST: STREAM>BYTES ( ptr stream -- ptr u8 )
@@ -175,6 +179,9 @@ private
    stream STREAM-FILL @ execute {: count:n :}
    count 0 < count stream STREAM-INPUT-CAP @ > or if E-RANGE throw then
    count 0= if 1 stream STREAM-EOF ! false exit then
+   state SOURCE-MODE + @ INPUT-ASCII = if
+      stream STREAM-INPUT @ count ASCII-WIRE
+   then
    stream STREAM-INPUT @ count BUF:N>BLEN stream TOKEN-BUF BUF:APPEND-SPAN
    stream TOKEN-BUF BUF:SPAN$ BUF:BLEN>N
    state SOURCE-LEN + ! state SOURCE-IDX ptr-field !
@@ -473,6 +480,7 @@ private
    {: source-state :}
    source-state SRC-ENCODING-N {: encoding:n :}
    encoding XML-ENCODING:UTF8 ENCODING>N = if SOURCE-UTF8 exit then
+   encoding XML-ENCODING:US-ASCII ENCODING>N = if SOURCE-ASCII exit then
    source-state SRC-BOM-LEN + @ 0= if
       encoding XML-ENCODING:UTF16-LE ENCODING>N = if
          SOURCE-UTF16-LE-DECL

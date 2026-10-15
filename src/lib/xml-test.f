@@ -317,6 +317,50 @@ CAST: TOKEN>N ( XML:kind -- n )
    s\" <a>\xF4\x90\x80\x80</a>" E-UTF8 BAD
    s\" <a>\z</a>" E-SCALAR BAD ;
 
+: ASCII-WIRE ( -- )
+   s\" <?xml version=\q1.0\q encoding='Us-AsCiI'?><a q='&#x4E2D;'>&#x4E2D;</a>"
+   OPEN XML-KIND:PI NEXT= XML-KIND:START NEXT=
+   ATTR-NEXT TTRUE s" 中" ATTR-TEXT=
+   XML-KIND:TEXT NEXT= s" 中" TEXT=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a><!--é--></a>"
+      E-ENCODING BAD
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a><![CDATA[é]]></a>"
+      E-ENCODING BAD
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a/><?p é?>"
+      E-ENCODING BAD
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a>é</a>"
+      E-ENCODING BAD
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a/>é"
+      E-ENCODING BAD
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a x='é'/>"
+      E-ENCODING BAD
+   s\" <?xml version='1.0' encoding='US-ASCII'?><é/>"
+      E-ENCODING BAD
+   s\" \xEF\xBB\xBF<?xml version='1.0' encoding='US-ASCII'?><a/>"
+      E-ENCODING BAD
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a>é</a>"
+      E-ENCODING INPUT-BAD
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a><!--é--></a>"
+      E-ENCODING INPUT-BAD
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a><![CDATA[é]]></a>"
+      E-ENCODING INPUT-BAD
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a/><?p é?>"
+      E-ENCODING INPUT-BAD
+   s\" <?xml version='1.0' encoding='US-ASCII'?><é/>"
+      E-ENCODING INPUT-BAD
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a q='é'/>"
+      E-ENCODING INPUT-BAD
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a/>é"
+      E-ENCODING INPUT-BAD
+   s\" \xEF\xBB\xBF<?xml version='1.0' encoding='US-ASCII'?><a/>"
+      E-ENCODING INPUT-BAD
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a>&#x4E2D;</a>"
+      1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
+   XML-KIND:PI NEXT= XML-KIND:START NEXT=
+   XML-KIND:TEXT NEXT= s" 中" TEXT=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
+
 \ ---- the caught bodies of the recovery cases --------------------------------
 \ Every case below reads the reader after the catch, so the handle must SURVIVE
 \ the caught failure. A quotation literal leaves it `stale<XML:reader>` - `catch`
@@ -622,6 +666,7 @@ MALFORMED-INPUT
 BAD-ENTITIES
 BAD-NAMESPACES
 BAD-ENCODINGS
+ASCII-WIRE
 CAPACITY-AND-STATE
 CALLER-SIZED-STORAGE
 NO-PARTIAL-DECODE

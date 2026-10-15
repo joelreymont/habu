@@ -1284,7 +1284,8 @@ binding uses per-task FFI scratch and exposes only the comparison operation. The
 
 ## XML and byte edits
 
-`src/lib/xml.f` reads UTF-8 XML 1.0 without changing the source bytes. Each cursor
+`src/lib/xml.f` reads UTF-8 or declared US-ASCII XML 1.0 without changing the
+source bytes. Each cursor
 is an explicit linear `XML:reader`; separate cursors have independent state.
 Allocate cell-aligned storage with `capacity XML:STORAGE-BYTES`, then call
 `XML:INIT ( ptr n n ptr u8 n -- XML:reader )` with storage, storage byte size,
@@ -1295,7 +1296,8 @@ boundary. `INIT` makes no parser allocation or process-global cursor state.
 The assembled packages are sealed so callers cannot reopen their private
 representation helpers.
 
-For bounded UTF-8 input, use the same parser storage and a caller-owned chunk
+For bounded UTF-8 or declared US-ASCII input, use the same parser storage and a
+caller-owned chunk
 span with `XML:INIT-INPUT`. The callback writes up to the span's reach and
 returns its byte count; zero ends input, and a negative count or count beyond
 the reach throws `E-RANGE`. Its context is a `ptr n`, so a caller can keep
@@ -1317,8 +1319,9 @@ grow, while consumed document bytes are released and active scope storage is
 reused.
 
 `RAW`, `CONTENT`, `ATTR-RAW` and `ATTR-VALUE` from this path report absolute
-physical byte offsets in the UTF-8 stream, including a leading BOM. It accepts
-UTF-8 only; the whole-source `XML:source` API retains its UTF-16 and original-byte
+physical byte offsets in the byte stream, including a leading BOM. It accepts
+UTF-8 and declared US-ASCII; the whole-source `XML:source` API retains its
+UTF-16 and original-byte
 mapping contract. The existing `STORAGE-BYTES` formula and `INIT`/`INIT-SOURCE`
 ownership do not change.
 
@@ -1387,8 +1390,9 @@ storage and original byte span are caller-owned and must remain live until
 `SOURCE-CLOSE`; close all readers and editors borrowing them first.
 `SOURCE-BYTES` validates the complete wire encoding and XML scalar range and
 returns the exact cell-aligned storage requirement. `SOURCE-INIT` repeats
-validation before publishing the handle. UTF-8 sources borrow their original
-payload; UTF-16 sources use canonical UTF-8 lexical bytes in caller storage.
+validation before publishing the handle. UTF-8 and US-ASCII sources borrow
+their original payload; UTF-16 sources use canonical UTF-8 lexical bytes in
+caller storage.
 Neither call establishes XML well-formedness. Drain a reader to EOF before
 editing a document.
 
@@ -1460,7 +1464,17 @@ buffers live until the editor closes. The edit flow is `SOURCE-INIT` → parse
 and drain → `SOURCE-RANGE` → `ENCODE` → `EDIT:INIT` on `SOURCE-ORIGINAL$` →
 `EDIT:REPLACE` → `EDIT:WRITE` → reopen. Untouched original byte spans are copied.
 
-Accepted wire forms are UTF-8 with or without BOM; UTF-16 LE/BE with BOM and
+For a source declared `US-ASCII`, `SOURCE-ENCODING` and `OWNER-ENCODING`
+report that encoding immediately. Literal wire bytes above `0x7F` throw
+`E-ENCODING`, including bytes in comments, names and trailing content.
+Numeric references such as `&#x4E2D;` remain ASCII wire bytes and decode to
+Unicode text. `ENCODE-SIZE` and `ENCODE` reject non-ASCII replacement markup
+with `E-ENCODING` before writing; supply ASCII numeric references where needed.
+The encoder cannot synthesize references because replacement markup also holds
+element and attribute names.
+
+Accepted wire forms are UTF-8 with or without BOM; declared US-ASCII without a
+BOM; UTF-16 LE/BE with BOM and
 an absent or generic `UTF-16` declaration; and BOM-less UTF-16 LE/BE beginning
 with `<?` in that byte order and an explicit matching `UTF-16LE` or `UTF-16BE`
 declaration. Encoding labels are case-insensitive, while the XML declaration
@@ -1472,6 +1486,10 @@ initial `<?` signature is not inferred as UTF-16. Malformed UTF-16 surrogate
 sequences throw `E-UTF16`; invalid lexical UTF-8 boundaries throw `E-BOUNDARY`.
 The existing scalar, range, capacity, storage and alias errors retain their
 meanings.
+
+XML 1.0 [§4.3.3](https://www.w3.org/TR/REC-xml/#charencoding) requires the
+declared encoding to match the document's wire bytes and treats illegal bytes
+as fatal; encoding names are case-insensitive.
 
 Decode words take an output buffer and capacity and return the bytes written.
 They validate the entire result before writing and reject overlap with source

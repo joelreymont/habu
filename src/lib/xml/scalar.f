@@ -71,6 +71,12 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
 : REQUIRE-SCALAR ( n -- )
    XML-SCALAR? 0= if E-SCALAR throw then ;
 
+: ASCII-WIRE ( ptr u8 n -- )
+   {: source size:n :}
+   size 0 ?do
+      source i + c@ $7F > if E-ENCODING throw then
+   loop ;
+
 : SCALAR-AT ( ptr u8 n n -- n n )
    {: source size:n cursor:n :}
    source size cursor BYTE@ drop

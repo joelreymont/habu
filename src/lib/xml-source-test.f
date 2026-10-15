@@ -19,6 +19,7 @@ create DECODED 64 allot
 create BOMLESS 256 allot
 create BOM-INPUT 256 allot
 create WIRE 64 allot
+TYPED-VARIABLE ASCII-OWNER XML:source-owner
 
 CAST: KIND>N ( XML:kind -- n )
 CAST: ENCODING>N ( XML:encoding -- n )
@@ -98,6 +99,66 @@ CAST: ENCODING>N ( XML:encoding -- n )
    DECODED 64 XML:TEXT DECODED swap s" é😀" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE ;
+
+: ASCII-READ ( -- )
+   s\" <?xml version='1.0' encoding='us-ascii'?><a q=\q&#x4E2D;\q>&#x4E2D;</a>"
+   OPEN
+   XML:SOURCE-ENCODING ENCODING>N XML-ENCODING:US-ASCII ENCODING>N T=
+   XML:SOURCE-BOM$ nip 0 T=
+   XML:SOURCE-LEXICAL$ {: lexical size:n :}
+   lexical size s\" <?xml version='1.0' encoding='us-ascii'?><a q=\q&#x4E2D;\q>&#x4E2D;</a>" T$=
+   READER XML-KIND:PI NEXT= XML-KIND:START NEXT=
+   XML:ATTR-NEXT TTRUE
+   DECODED 64 XML:ATTR-TEXT DECODED swap s" 中" T$=
+   XML-KIND:TEXT NEXT=
+   DECODED 64 XML:TEXT DECODED swap s" 中" T$=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT=
+   XML:CLOSE XML:SOURCE-CLOSE
+   s\" <?xml version='1.0' encoding=\quS-aScIi\q?><a/>" OPEN
+   XML:SOURCE-ENCODING ENCODING>N XML-ENCODING:US-ASCII ENCODING>N T=
+   XML:SOURCE-CLOSE
+   s" <?xml-stylesheet encoding='US-ASCII'?><a>é</a>" OPEN
+   XML:SOURCE-ENCODING ENCODING>N XML-ENCODING:UTF8 ENCODING>N T=
+   READER XML-KIND:PI NEXT= XML-KIND:START NEXT=
+   XML-KIND:TEXT NEXT= DECODED 64 XML:TEXT DECODED swap s" é" T$=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT=
+   XML:CLOSE XML:SOURCE-CLOSE ;
+
+: ASCII-OUTPUT ( -- )
+   s" <?xml version='1.0' encoding='US-ASCII'?><a>old</a>" OPEN
+   XML:SOURCE-OWN dup ASCII-OWNER ! {: owner :}
+   owner XML:OWNER-ENCODING ENCODING>N XML-ENCODING:US-ASCII ENCODING>N T=
+   owner READER-STORE READER-CAP XML:STORAGE-BYTES XML:OWNER-READER
+   XML-KIND:PI NEXT= XML-KIND:START NEXT=
+   owner XML:OWNER-ENCODING ENCODING>N XML-ENCODING:US-ASCII ENCODING>N T=
+   XML-KIND:TEXT NEXT= XML:CONTENT {: text-off:off text-len:len :}
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE
+   owner text-off text-len XML:OWNER-RANGE
+   {: edit-off:off edit-len:len :}
+   edit-len LEN>N 3 T= edit-off OFF>N 44 T=
+   owner s" &#x4E2D;" XML:OWNER-ENCODE-SIZE 8 T=
+   owner s" &#x4E2D;" ENCODED 64 XML:OWNER-ENCODE 8 T=
+   ENCODED 8 s" &#x4E2D;" T$=
+   $5A ENCODED c!
+   [: ASCII-OWNER @ s" 中" XML:OWNER-ENCODE-SIZE drop ;]
+   XML:E-ENCODING TTHROWSQ
+   [: ASCII-OWNER @ s" 中" ENCODED 64 XML:OWNER-ENCODE drop ;]
+   XML:E-ENCODING TTHROWSQ
+   [: ASCII-OWNER @ s\" \z" XML:OWNER-ENCODE-SIZE drop ;]
+   XML:E-SCALAR TTHROWSQ
+   ENCODED c@ $5A T=
+   owner s" &#x4E2D;" ENCODED 64 XML:OWNER-ENCODE 8 T=
+   owner XML:OWNER-ORIGINAL$ {: original size:n :}
+   EDIT-STORE 1 EDIT:STORAGE-BYTES original size EDIT:INIT
+   edit-off edit-len ENCODED 8 EDIT:REPLACE
+   WRITTEN 256 EDIT:WRITE {: written:n :}
+   EDIT:CLOSE
+   WRITTEN written s" <?xml version='1.0' encoding='US-ASCII'?><a>&#x4E2D;</a>" T$=
+   SECOND-STORE SOURCE-CAP WRITTEN written XML:SOURCE-INIT
+   READER XML-KIND:PI NEXT= XML-KIND:START NEXT=
+   XML-KIND:TEXT NEXT= DECODED 64 XML:TEXT DECODED swap s" 中" T$=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE XML:SOURCE-CLOSE
+   owner XML:OWNER-CLOSE ;
 
 : DECLARED-BOM ( -- )
    s\" <?xml version=\q1.0\q encoding='UTF-16'?><p:a xmlns:p=\qu\q q='x&amp;y'>a\r\n<![CDATA[<b>]]><?go v?></p:a><!--keep-->"
@@ -183,6 +244,28 @@ CAST: ENCODING>N ( XML:encoding -- n )
    {: want:n :}
    [: 2dup SOURCE-STORE SOURCE-CAP 2swap XML:SOURCE-INIT XML:SOURCE-CLOSE ;]
    catch want T= 2drop ;
+
+: ASCII-REJECTIONS ( -- )
+   s" <?xml version='1.0' encoding='ISO-8859-1'?><a/>"
+      XML:E-ENCODING BAD-NEXT
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a>é</a>"
+      XML:E-ENCODING BAD-INIT
+   s\" <?xml version='1.0' encoding='US-ASCII'?><é/>"
+      XML:E-ENCODING BAD-INIT
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a><!--é--></a>"
+      XML:E-ENCODING BAD-INIT
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a><![CDATA[é]]></a>"
+      XML:E-ENCODING BAD-INIT
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a/><?p é?>"
+      XML:E-ENCODING BAD-INIT
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a/>é"
+      XML:E-ENCODING BAD-INIT
+   s\" \xEF\xBB\xBF<?xml version='1.0' encoding='US-ASCII'?><a/>"
+      XML:E-ENCODING BAD-INIT
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a/>"
+      true ASCII>UTF16 XML:E-ENCODING BAD-INIT
+   s\" <?xml version='1.0' encoding='US-ASCII'?><a/>"
+      false ASCII>UTF16 XML:E-ENCODING BAD-INIT ;
 
 : BOMLESS-REJECTIONS ( -- )
    s\" <a/>" true ASCII>UTF16 XML:E-ENCODING BAD-INIT
@@ -483,6 +566,9 @@ CAST: ENCODING>N ( XML:encoding -- n )
 T-RESET
 UTF16-READ
 UTF8-READ
+ASCII-READ
+ASCII-OUTPUT
+ASCII-REJECTIONS
 DECLARED-BOM
 UNICODE-UTF16
 INTERLEAVED

@@ -166,19 +166,6 @@ private
    state 3 ADVANCE-N
    state XML-KIND:CDATA EVENT-FINISH ;
 
-: FOLD-ASCII ( n -- n )
-   dup $41 >= over $5A <= and if $20 + then ;
-
-: FOLD-EQUAL? ( ptr u8 n ptr u8 n -- bool )
-   {: first first-size:n second second-size:n :}
-   first-size second-size <> if false exit then
-   first-size 0 ?do
-      first i + c@ FOLD-ASCII second i + c@ FOLD-ASCII <> if
-         false unloop exit
-      then
-   loop
-   true ;
-
 : DECLARATION-POSITION ( ptr n -- )
    {: state :}
    state INPUT? if
@@ -210,20 +197,34 @@ private
    state 0 s" version" DECLARATION-NAME? 0= if E-MALFORMED throw then
    state 0 DECLARATION-VALUE$ s" 1.0" BYTES= 0= if E-ENCODING throw then ;
 
+: ENCODING-REQUIRED? ( ptr n -- bool )
+   SOURCE-MODE + @ dup SOURCE-ASCII = over SOURCE-UTF16-LE-DECL = or
+   swap SOURCE-UTF16-BE-DECL = or ;
+
+: UTF8-OR-ASCII? ( ptr n -- bool )
+   {: state :}
+   state 1 DECLARATION-VALUE$ s" UTF-8" FOLD-EQUAL? if true exit then
+   state 1 DECLARATION-VALUE$ s" US-ASCII" FOLD-EQUAL? 0= if
+      false exit
+   then
+   state INPUT? if
+      state STREAM@ STREAM-BASE @ 0<> if E-ENCODING throw then
+   else
+      state SOURCE$ s\" \xEF\xBB\xBF" SRC-STARTS? if E-ENCODING throw then
+   then
+   state SOURCE$ ASCII-WIRE
+   state INPUT? if INPUT-ASCII else LEGACY-ASCII then
+   state SOURCE-MODE + !
+   true ;
+
 : ENCODING-CHECK ( ptr n -- n )
    {: state :}
    state ATTR-COUNT + @ 1 = if
-      state SOURCE-MODE + @ SOURCE-UTF16-LE-DECL =
-      state SOURCE-MODE + @ SOURCE-UTF16-BE-DECL = or if
-         E-ENCODING throw
-      then
+      state ENCODING-REQUIRED? if E-ENCODING throw then
       1 exit
    then
    state 1 s" encoding" DECLARATION-NAME? 0= if
-      state SOURCE-MODE + @ SOURCE-UTF16-LE-DECL =
-      state SOURCE-MODE + @ SOURCE-UTF16-BE-DECL = or if
-         E-ENCODING throw
-      then
+      state ENCODING-REQUIRED? if E-ENCODING throw then
       1 exit
    then
    state SOURCE-MODE + @ case
@@ -235,7 +236,11 @@ private
          state 1 DECLARATION-VALUE$ s" UTF-16LE" FOLD-EQUAL? endof
       SOURCE-UTF16-BE-DECL of
          state 1 DECLARATION-VALUE$ s" UTF-16BE" FOLD-EQUAL? endof
-      state 1 DECLARATION-VALUE$ s" UTF-8" FOLD-EQUAL? swap
+      SOURCE-ASCII of
+         state 1 DECLARATION-VALUE$ s" US-ASCII" FOLD-EQUAL? endof
+      SOURCE-UTF8 of
+         state 1 DECLARATION-VALUE$ s" UTF-8" FOLD-EQUAL? endof
+      state UTF8-OR-ASCII? swap
    endcase
    0= if
       E-ENCODING throw
