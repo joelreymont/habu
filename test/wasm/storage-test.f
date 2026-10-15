@@ -95,6 +95,8 @@ public
 : RUN ( -- )
    T-RESET
    SETUP
+   s" generated structure accessors read and write distinct fields and rows" T-LABEL
+   s" WSTORE:RECORD" s" record" S\" 23\n1.250000\n47\n-2.500000\n" 0 ENTRY-CASE
    s" one buffer reserves, grows across a page, refuses, releases and is reused cleared" T-LABEL
    s" WSTORE:BUFFER" s" buffer" BUFFER$ 0 ENTRY-CASE
    s" freed neighbours join into one run, which a smaller request splits" T-LABEL

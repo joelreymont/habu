@@ -82,6 +82,8 @@ public
 : DATA-START ( -- ptr n )
    WPROF:DATA-BASE >DATA ;
 
+: FIELD-ADDRESS ( ptr a n -- ptr a ) + ;
+
 : ADD-STORE ( n ptr n -- )
    {: amount:n cell:ptr :}
    cell @ amount + cell ! ;
