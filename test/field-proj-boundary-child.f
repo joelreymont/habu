@@ -23,6 +23,8 @@ public
 variable RESULT
 private
 
+\ TRY stays local: this child runs on the build window's core prefix, which
+\ has no prelude, so src/lib/test/eval.f (TEST-EVAL:RC) cannot load here.
 : TRY ( ptr u8 n -- n )
    LENGTH ! SOURCE ! [: LOAD-SOURCE ;] catch ;
 
