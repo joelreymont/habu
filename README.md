@@ -72,7 +72,6 @@ src/lib/          checked standard, numeric, FFI, and runtime libraries
 src/examples/     example programs
 tools/            build, lint, inspection, and backend smoke tools
 test/             native Habu suite and focused compiler/runtime tests
-bench/            benchmarks
 docs/             language, compiler, runtime, and backend documentation
 skills/           operational recipes
 ```

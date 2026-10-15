@@ -193,9 +193,8 @@ the payoff from pass-level reader reuse still need attribution.
    is unnecessary. After selfbuild, use the product as seed and remove the
    explicit pre-record by-name bridge.
 6. **Interactive JIT.** Preserve direct native emission and checked call,
-   quotation, loop and KEEP behavior. Delete the uncalled general machine-code
-   copying inliner and tests requiring its existence; pending tier work already
-   contains this deletion. Do not rebuild an optimizer inside the JIT.
+   quotation, loop and KEEP behavior. Do not rebuild an optimizer inside the
+   JIT.
 
 ## Capture and persistence design
 

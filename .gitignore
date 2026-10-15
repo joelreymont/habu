@@ -3,9 +3,6 @@
 *.o
 /tmp/
 
-# regenerable paper PDF (build locally: `tectonic habu.tex` in docs/paper/)
-docs/paper/*.pdf
-
 # archived task state
 .dots/archive/
 bin/
@@ -25,16 +22,3 @@ __pycache__/
 
 # generated test scratch
 test/*.tmp
-
-# runtime-fetched GPT-2 vocab artifacts (fetch-gpt2-vocab.sh; never committed)
-gpt2-vocab/
-
-# local GPT-2 model assets (never committed)
-gpt2-model/
-
-# generated benchmark evidence and reports stay outside git
-bench/llm/RESULTS*.md
-bench/llm/*.json
-bench/llm/*.jsonl
-bench/llm/*.log
-bench/llm/results/
