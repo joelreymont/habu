@@ -70,6 +70,16 @@ DYNAMIC-BUFFER REC-STORAGE n
    AOT-REC-MAX 48 * AOT-REC-MAX AOT-CREC-ROW * + 48 + CELL / REC-STORAGE-RESERVE
    0 REC-STORAGE BYTE-VIEW ;
 variable AOT-REC-N
+\ A compact row's wid word on a package row, whose first two words are then its
+\ public and private wids (AOT-PACK:REC+, the linkers' PKG?).
+$FFFFFFFF constant PKG-MARK
+\ The packed u32 every row field of this format is, read a byte at a time: this
+\ file compiles where src/lib/le.f is not loaded, in the recovery boot
+\ (tools/bootstrap.sh) and ahead of le.f in the fixpoint stream
+\ (tools/build-fixpoint.f BF-EMIT-STDIN-RUN-SOURCE).
+: W32@ ( ptr u8 -- n )
+   {: p:ptr :}
+   0 4 0 ?do p i + c@ i 8 * lshift or loop ;
 \ A call-site row: three u32 words - blob-off, name-off, and the callee's SCOPE,
 \ the wordlist the seed resolves the name in. A wid below FIRST-DYNAMIC-WID is a
 \ layout constant and passes through, a window coordinate is rebased like a
@@ -481,6 +491,45 @@ variable XT-N
 : XT-BUF@ ( -- ptr u8 ) XT-N @ XT-RESERVE 0 XT-STORAGE BYTE-VIEW ;
 
 : RESET ( -- ) 0 REC-N !  0 CODE-LEN !  0 SITE-N !  0 XT-N ! ;
+
+\ ---- the rows ------------------------------------------------------------------
+\ Field f of record row r (shipped row 0, start 4, bytes 8, entry 12), of site
+\ row s (code byte 0, kind 4, target 8) and of xt row x (cell row 0, shipped row 4).
+: SH@ ( n n -- n )
+   {: r:n f:n :}
+   REC-BUF@ r REC-ROW * + f + AOT-BUF:W32@ ;
+: SH-REC ( n -- n ) 0 SH@ ;
+: SH-AT ( n -- n ) 4 SH@ ;
+: SH-LEN ( n -- n ) 8 SH@ ;
+: SH-ENTRY ( n -- n ) 12 SH@ ;
+: SITE@ ( n n -- n )
+   {: s:n f:n :}
+   SITE-BUF@ s SITE-ROW * + f + AOT-BUF:W32@ ;
+: XT@ ( n n -- n )
+   {: x:n f:n :}
+   XT-BUF@ x XT-ROW * + f + AOT-BUF:W32@ ;
+
+private
+variable LO
+variable HI
+public
+
+\ The row whose emission holds shadow code byte n: the first row of the last
+\ emission that starts at or below it. The rows' starts ascend because each
+\ capture appends an emission after the last and rows its records at that start
+\ (src/habu/aot-shadow.f SH-COPY, src/arch/wasm/capture.f WC-COPY, both through
+\ SH-REC+). A `does>` companion follows its definer at
+\ the definer's start, so the row is the definer's: an emission is placed as
+\ one, whichever of its rows enters it.
+: ROW-AT ( n -- n )
+   {: n:n :}
+   0 LO !  REC-N @ HI !
+   begin HI @ LO @ - 1 > while
+      LO @ HI @ + 2 / {: mid:n :}
+      mid SH-AT n <= if mid LO ! else mid HI ! then
+   repeat
+   begin LO @ 0 > if LO @ 1- SH-AT LO @ SH-AT = else false then while -1 LO +! repeat
+   LO @ ;
 ;package
 
 package AOT-BUF
@@ -583,6 +632,10 @@ public
 : BM-BUF@ ( -- ptr u8 ) BM-BUF ;
 : VAL-BUF@ ( -- ptr u8 ) VAL-BUF ;
 : XTOFF-BUF@ ( -- ptr u8 ) XTOFF-BUF ;
+\ Field f of address-cell row c: its location u32 at 0, its target u32 at 4.
+: XTOFF@ ( n n -- n )
+   {: c:n f:n :}
+   XTOFF-BUF@ c XTOFF-ROW * + f + AOT-BUF:W32@ ;
 ;package
 
 package AOT-BUF
@@ -590,6 +643,27 @@ public
 
 : AOT-BOOTRUN-BUF@ ( -- ptr u8 ) AOT-BOOTRUN-BUF ;
 : AOT-PWIN-BUF@ ( -- ptr u8 ) AOT-PWIN-BUF ;
+
+\ ---- the rows ------------------------------------------------------------------
+\ Compact record k, AOT-CREC-ROW bytes each behind the verbatim records (the
+\ regions AOT-REC-BUF lists), and field f of it.
+: CREC ( n -- ptr u8 )
+   {: k:n :}
+   AOT-REC-BUF@ AOT-REC-MAX 48 * + k AOT-CREC-ROW * + ;
+: CREC@ ( n n -- n )
+   {: k:n f:n :}
+   k CREC f + W32@ ;
+: PKG? ( n -- bool ) 16 CREC@ PKG-MARK = ;
+\ A pool entry: its length byte, then its name.
+: POOL$ ( n -- ptr u8 n )
+   {: off:n :}
+   AOT-NAMES-BUF@ off + {: e:ptr :}
+   e 1+ e c@ ;
+: CREC-NAME$ ( n -- ptr u8 n ) 8 CREC@ POOL$ ;
+\ Protected-wid row r, a zero-based window offset.
+: PWIN@ ( n -- n )
+   {: r:n :}
+   AOT-PWIN-BUF@ r 4 * + W32@ ;
 
 ;package
 
@@ -610,8 +684,6 @@ variable CUR variable LIMIT variable PREV
 
 : REFUSE ( -- ) s" aot: invalid packed seed metadata" 74 die ;
 : U32? ( n -- ) dup 0< swap $FFFFFFFF > or if REFUSE then ;
-: W32@ ( ptr u8 -- n ) {: p:ptr :}
-   0 4 0 ?do p i + c@ i 8 * lshift or loop ;
 : BEGIN-STREAM ( ptr u8 n -- ) LIMIT ! DST ! 0 CUR ! ;
 : V+ ( n -- ) {: v:n :}
    v U32?
@@ -635,7 +707,7 @@ variable CUR variable LIMIT variable PREV
 
 : REC+ ( ptr u8 -- ) {: rec:ptr :}
    rec 16 + W32@ {: wid:n :}
-   wid $FFFFFFFF = if
+   wid PKG-MARK = if
       0 V+ rec W32@ V+ rec 4 + W32@ V+
    else
       wid 1+ V+ rec W32@ OFF>Q V+ rec 4 + W32@ SPAN>Q V+

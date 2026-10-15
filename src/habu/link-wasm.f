@@ -54,11 +54,11 @@ require src/arch/wasm/kernel.f
 
 package WASMLINK
 using AOT-BUF
+using AOT-SHADOW
 
 \ The rc of a capture this link cannot place, the capture's own refusals', and
 \ of an output it cannot write, as the engine's drivers refuse theirs.
 74 constant REFUSE-RC
-$FFFFFFFF constant PKG-MARK          \ a compact row's wid word on a package row
 \ An emission's header: the magic and the function count, then per function its
 \ body offset, size, inputs, outputs, frame variant and a pad byte.
 8 constant HEAD-BYTES
@@ -82,48 +82,10 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 
 : REFUSE ( ptr u8 n -- ) REFUSE-RC die ;
 
-\ ---- the capture's rows ---------------------------------------------------------
-: CREC ( n -- ptr u8 )
-   {: k:n :}
-   AOT-REC-BUF@ AOT-REC-MAX 48 * + k AOT-CREC-ROW * + ;
-
-: CREC@ ( n n -- n )
-   {: k:n f:n :}
-   k CREC f + LE:U32@ ;
-
-: PKG? ( n -- bool ) 16 CREC@ PKG-MARK = ;
-
-\ A pool entry: its length byte, then its name.
-: POOL$ ( n -- ptr u8 n )
-   {: off:n :}
-   AOT-NAMES-BUF@ off + {: e:ptr :}
-   e 1+ e c@ ;
-
-: CREC-NAME$ ( n -- ptr u8 n ) 8 CREC@ POOL$ ;
-
-: SH@ ( n n -- n )
-   {: r:n f:n :}
-   AOT-SHADOW:REC-BUF@ r AOT-SHADOW:REC-ROW * + f + LE:U32@ ;
-
-: SH-REC ( n -- n ) 0 SH@ ;
-: SH-AT ( n -- n ) 4 SH@ ;
-: SH-ENTRY ( n -- n ) 12 SH@ ;
-
+\ Emission r's bytes in the shadow code.
 : EMISSION ( n -- ptr u8 )
    {: r:n :}
    AOT-SHADOW:CODE-BUF@ r SH-AT + ;
-
-: SITE@ ( n n -- n )
-   {: s:n f:n :}
-   AOT-SHADOW:SITE-BUF@ s AOT-SHADOW:SITE-ROW * + f + LE:U32@ ;
-
-: XT@ ( n n -- n )
-   {: x:n f:n :}
-   AOT-SHADOW:XT-BUF@ x AOT-SHADOW:XT-ROW * + f + LE:U32@ ;
-
-: XTOFF@ ( n n -- n )
-   {: c:n f:n :}
-   AOT-WINDOW:XTOFF-BUF@ c AOT-WINDOW:XTOFF-ROW * + f + LE:U32@ ;
 
 \ ---- an emission's functions -----------------------------------------------------
 : FUNS ( ptr u8 -- n ) 4 + LE:U32@ ;
@@ -326,20 +288,6 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    WENC:CALL-SITES 0 ?do  i KERNEL-CALL+  loop ;
 
 \ ---- the sites ------------------------------------------------------------------
-\ The row owning byte v. A does> definer and its clause share an emission,
-\ so a site before the clause entry belongs to the definer's row.
-: ROW-AT ( n -- n )
-   {: v:n :}
-   -1  AOT-SHADOW:REC-N @ 0 ?do
-      i SH-AT v <= if
-         dup 0< if drop i else
-            i SH-AT over SH-AT > if drop i else
-               v i SH-AT - i SH-ENTRY >= if drop i then
-            then
-         then
-      then
-   loop ;
-
 \ Index sites by their owning record. The worklist visits only records reached
 \ from runtime roots, omitting compile-time definers and their calls.
 : SITE-HEADS ( -- )
@@ -446,8 +394,8 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 \ declared code cell is a root; DATA cells are only image addresses.
 : MARK-CELLS ( -- )
    AOT-WINDOW:XTOFF-N @ 0 ?do
-      i 0 XTOFF@ {: loc:n :}
-      i 4 XTOFF@ {: meta:n :}
+      i 0 AOT-WINDOW:XTOFF@ {: loc:n :}
+      i 4 AOT-WINDOW:XTOFF@ {: meta:n :}
       meta AOT-WINDOW:XTOFF-VALUE-MASK and {: v:n :}
       loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0<> v 0<> and if
          meta AOT-WINDOW:XTOFF-KIND-MASK and {: kind:n :}
@@ -470,8 +418,8 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 
 : CELL+ ( n -- )
    {: c:n :}
-   c 0 XTOFF@ {: loc:n :}
-   c 4 XTOFF@ {: meta:n :}
+   c 0 AOT-WINDOW:XTOFF@ {: loc:n :}
+   c 4 AOT-WINDOW:XTOFF@ {: meta:n :}
    meta AOT-WINDOW:XTOFF-VALUE-MASK and {: v:n :}
    loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0=  v 0= or if exit then
    loc AOT-WINDOW:XTOFF-LOC-MASK and {: at:n :}
@@ -526,5 +474,6 @@ public
    2drop 2drop
    code 0<> if path pu UNWRITABLE then ;
 
+;using   \ AOT-SHADOW
 ;using
 ;package

@@ -75,6 +75,7 @@ require src/habu/aot-decl.f
 
 package X64LINK
 using AOT-BUF
+using AOT-SHADOW
 using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 \ The rc of a capture this layout cannot place: the capture's own refusals'.
@@ -85,7 +86,6 @@ $CC constant INT3
 X64ASM:CALL-REL32-OFF 4 + constant REL32-END
 $7FFFFFFF constant REL32-MAX
 REL32-MAX negate 1- constant REL32-MIN
-$FFFFFFFF constant PKG-MARK            \ a compact row's wid word on a package row
 \ The twin of kernel-x64.f HASH, and of habu1.f C-HIDX-HASH: FNV-1a over the
 \ name folded to lower case.
 $CBF29CE484222325 constant FNV-BASIS
@@ -109,20 +109,6 @@ variable HI
 
 : REFUSE ( ptr u8 n -- ) REFUSE-RC die ;
 : SLOT-UP ( n -- n ) X64KERNEL:CODE-SLOT 1- + X64KERNEL:CODE-SLOT negate and ;
-
-\ ---- the capture's rows ---------------------------------------------------------
-: CREC ( n -- ptr u8 ) {: k:n :} AOT-REC-BUF@ AOT-REC-MAX 48 * + k AOT-CREC-ROW * + ;
-: CREC@ ( n n -- n ) {: k:n f:n :} k CREC f + LE:U32@ ;
-: PKG? ( n -- bool ) 16 CREC@ PKG-MARK = ;
-: POOL ( n -- ptr u8 ) {: k:n :} AOT-NAMES-BUF@ k 8 CREC@ + ;
-: CREC-NAME$ ( n -- ptr u8 n ) POOL {: e:ptr :} e 1+ e c@ ;
-: PWIN@ ( n -- n ) {: r:n :} AOT-PWIN-BUF@ r 4 * + LE:U32@ ;
-: SH@ ( n n -- n ) {: r:n f:n :}
-   AOT-SHADOW:REC-BUF@ r AOT-SHADOW:REC-ROW * + f + LE:U32@ ;
-: SH-REC ( n -- n ) 0 SH@ ;
-: SH-AT ( n -- n ) 4 SH@ ;
-: SH-LEN ( n -- n ) 8 SH@ ;
-: SH-ENTRY ( n -- n ) 12 SH@ ;
 
 : WINDOW. ( n -- ) {: k:n :}
    s" x64link: window record " type k CREC-NAME$ type ;
@@ -150,19 +136,6 @@ variable HI
    s" x64link: protected-wid row " type row .INT
    s"  is window wordlist " type row PWIN@ .INT s"  of " type AOT-WID-SPAN @ .INT cr
    s" x64link: a protected wid outside the window or at PROT-WID-MAX" REFUSE ;
-
-\ The shadow row whose emission holds shadow code byte n: the first row of the
-\ last emission that starts at or below it, since the rows' starts ascend. A
-\ `does>` companion follows its definer at the definer's start, so the row is
-\ the definer's.
-: ROW-AT ( n -- n ) {: n:n :}
-   0 LO !  AOT-SHADOW:REC-N @ HI !
-   begin HI @ LO @ - 1 > while
-      LO @ HI @ + 2 / {: mid:n :}
-      mid SH-AT n <= if mid LO ! else mid HI ! then
-   repeat
-   begin LO @ 0 > if LO @ 1- SH-AT LO @ SH-AT = else false then while -1 LO +! repeat
-   LO @ ;
 
 \ ---- the wids -------------------------------------------------------------------
 : WID-IN? ( n -- bool ) {: w:n :}
@@ -219,7 +192,7 @@ variable HI
       i ENGINE-PRIMS:NAME-LEN {: len:n :}
       len DNAME-INL > if len + then
    loop
-   AOT-REC-N @ 0 ?do i EXT? if i POOL c@ + then loop ;
+   AOT-REC-N @ 0 ?do i EXT? if i CREC-NAME$ nip + then loop ;
 
 : ?FITS ( -- )
    ENGINE-PRIMS:COUNT AOT-REC-N @ + {: n:n :}
@@ -366,7 +339,7 @@ private
    w $FF and 60 lshift
    w 8 rshift $FF and 52 lshift or
    w 16 rshift $FF and 50 lshift or
-   k POOL c@ or ;
+   k CREC-NAME$ nip or ;
 
 \ A code record enters its routine; a does> companion at the clause.
 : CODE-REC! ( n n ptr u8 -- ) {: k:n r:n rec:ptr :}
@@ -403,14 +376,11 @@ private
 
 \ ---- the sites -------------------------------------------------------------------
 \ A site row is (shadow code byte, kind, target), src/habu/aot-decl.f AOT-SHADOW.
-: SITE@ ( n n -- n ) {: s:n f:n :}
-   AOT-SHADOW:SITE-BUF@ s AOT-SHADOW:SITE-ROW * + f + LE:U32@ ;
 : SITE-AT ( n -- n ) 0 SITE@ ;
 : SITE-KIND ( n -- n ) 4 SITE@ ;
 : REL32? ( n -- bool ) {: kind:n :} kind AOT-SHADOW:CALL =  kind AOT-SHADOW:TAIL = or ;
 
-: POOL-NAME$ ( n -- ptr u8 n ) {: off:n :} AOT-NAMES-BUF@ off + {: e:ptr :} e 1+ e c@ ;
-: SITE-NAME$ ( n -- ptr u8 n ) 8 SITE@ SITE-TARGET-MASK and POOL-NAME$ ;
+: SITE-NAME$ ( n -- ptr u8 n ) 8 SITE@ SITE-TARGET-MASK and POOL$ ;
 
 \ The kernel body a name of the engine's own prefix names: the first global row
 \ of that name, folded, the record the image's index finds; or -1.
@@ -506,15 +476,12 @@ private
 \ ---- the code cells --------------------------------------------------------------
 \ An address-cell row's target word (src/habu/aot-decl.f AOT-WINDOW): its two high
 \ bits are CODE (00), named CODE (01) or DATA (10); its low bits are 0 for null.
-: CELL-META ( n -- n ) {: c:n :}
-   AOT-WINDOW:XTOFF-BUF@ c AOT-WINDOW:XTOFF-ROW * + 4 + LE:U32@ ;
+: CELL-META ( n -- n ) 4 AOT-WINDOW:XTOFF@ ;
 : CODE-CELL? ( n -- bool ) CELL-META {: m:n :}
    m AOT-WINDOW:XTOFF-KIND-MASK and 0=  m AOT-WINDOW:XTOFF-VALUE-MASK and 0<> and ;
 : NAMED-CELL? ( n -- bool )
    CELL-META AOT-WINDOW:XTOFF-KIND-MASK and AOT-WINDOW:XTOFF-NAME-TAG = ;
-: CELL-NAME$ ( n -- ptr u8 n ) CELL-META AOT-WINDOW:XTOFF-VALUE-MASK and 1- POOL-NAME$ ;
-: XT@ ( n n -- n ) {: x:n f:n :}
-   AOT-SHADOW:XT-BUF@ x AOT-SHADOW:XT-ROW * + f + LE:U32@ ;
+: CELL-NAME$ ( n -- ptr u8 n ) CELL-META AOT-WINDOW:XTOFF-VALUE-MASK and 1- POOL$ ;
 
 : NO-XT ( n -- ) {: c:n :}
    s" x64link: address-cell row " type c .INT
@@ -581,5 +548,6 @@ public
    -1 ;
 
 ;using   \ X64LAYOUT
+;using   \ AOT-SHADOW
 ;using
 ;package
