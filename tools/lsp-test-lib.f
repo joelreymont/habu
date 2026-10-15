@@ -2845,6 +2845,40 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 4" DEF-DEP-CANON URI-OF 2 2 9 LOCATED
    s" 5" DEF-DEP-CANON URI-OF 2 2 9 LOCATED ;
 
+\ An in-tree file, read whole. A case that navigates into the tree finds its
+\ target's line or byte in the file as it stands, not by a number every edit
+\ above the target moves; a case that opens one sends this text.
+DYNAMIC-BUFFER TREE-TEXT u8
+: TREE-ROOM ( n -- ptr u8 )
+   1+ TREE-TEXT-RESERVE 0 TREE-TEXT ;
+: TREE-READ ( ptr u8 n -- n )
+   [: TREE-ROOM ;] SOURCE:READ-WHOLE-FILE ;
+\ The text of the file at PATH, held until the next read.
+: TREE$ ( ptr u8 n -- ptr u8 n )
+   TREE-READ 0 TREE-TEXT swap ;
+
+\ The offset of the first line among TREE-TEXT's first SIZE bytes that starts
+\ with TEXT. A file with no such line cannot hold the case's target.
+: LINE-START ( n ptr u8 n -- n )
+   {: size:n t:ptr tu:n :}
+   size 0 ?do
+      i 0= if 0 0= else i 1- TREE-TEXT c@ 10 = then
+      if i TREE-TEXT size i - t tu STARTS-WITH? if i unloop exit then then
+   loop
+   SB-RESET s" lsp-test: no line starts with " SB-APPEND t tu SB-APPEND
+   SB$ T-EX-FAIL die ;
+
+\ PATH and the line, counted from 0 as LSP positions are, of the first line of
+\ the file there that starts with TEXT.
+: PATH-LINE ( ptr u8 n ptr u8 n -- ptr u8 n n )
+   {: p:ptr pu:n t:ptr tu:n :}
+   p pu TREE-READ t tu LINE-START {: at:n :}
+   p pu 0 at 0 ?do i TREE-TEXT c@ 10 = if 1+ then loop ;
+
+\ The same line, with the path's file URI, in URI-SPAN, for the path.
+: URI-LINE ( ptr u8 n ptr u8 n -- ptr u8 n n )
+   PATH-LINE {: at:n :} URI-OF at ;
+
 \ The built-in multiplication word binds at a body call, an interpreted call,
 \ and a tick. A later user definition of the same spelling takes its own use.
 : PRIM-PATH ( -- ptr u8 n )  s" prim-nav.f" FIXTURE ;
@@ -2871,15 +2905,15 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 12" PRIM-PATH 10 2 DEFINITION-ASK
    s" 13" PRIM-PATH 10 2 DECLARATION-ASK
    SAY
-   s" 3" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
-   s" 4" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
-   s" 5" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
+   s" 3" PRIM-SOURCE-PATH s" EPRIM: * " URI-LINE 7 8 LOCATED
+   s" 4" PRIM-SOURCE-PATH s" EPRIM: * " URI-LINE 7 8 LOCATED
+   s" 5" PRIM-SOURCE-PATH s" EPRIM: * " URI-LINE 7 8 LOCATED
    s" 6" PRIM-PATH URI-OF 4 2 3 LOCATED
-   s" 7" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED
-   s" 8" SCRIPT-ARGV-PATH URI-OF 50 2 13 LOCATED
-   s" 9" SCRIPT-ARGV-PATH URI-OF 50 2 13 LOCATED
-   s" 10" SCRIPT-ARGV-PATH URI-OF 38 2 18 LOCATED
-   s" 11" SCRIPT-ARGV-PATH URI-OF 38 2 18 LOCATED
+   s" 7" PRIM-SOURCE-PATH s" EPRIM: * " URI-LINE 7 8 LOCATED
+   s" 8" SCRIPT-ARGV-PATH s" : SCRIPT-ARGC " URI-LINE 2 13 LOCATED
+   s" 9" SCRIPT-ARGV-PATH s" : SCRIPT-ARGC " URI-LINE 2 13 LOCATED
+   s" 10" SCRIPT-ARGV-PATH s" : SCRIPT-ARG-START " URI-LINE 2 18 LOCATED
+   s" 11" SCRIPT-ARGV-PATH s" : SCRIPT-ARG-START " URI-LINE 2 18 LOCATED
    s" 12" PRIM-PATH URI-OF 9 2 13 LOCATED
    s" 13" PRIM-PATH URI-OF 9 2 13 LOCATED ;
 
@@ -2904,18 +2938,15 @@ variable LENGTH-N                        \ the length of its directory's name
    TEXT-PRIM-NAV PRIM-PATH 1 s" verified" LISTED
    s" 4" PRIM-PATH 0 24 DEFINITION-ASK
    SAY
-   s" 4" PRIM-SOURCE-PATH URI-OF 437 7 8 LOCATED ;
+   s" 4" PRIM-SOURCE-PATH s" EPRIM: * " URI-LINE 7 8 LOCATED ;
 
 \ An edited engine file can preserve the same spelling at the baked byte
-\ range while changing it from a declaration to a call.
-DYNAMIC-BUFFER ENGINE-OPEN-TEXT u8
-: ENGINE-OPEN-ROOM ( n -- ptr u8 )
-   1+ ENGINE-OPEN-TEXT-RESERVE 0 ENGINE-OPEN-TEXT ;
+\ range while changing it from a declaration to a call: the colon of
+\ `: SCRIPT-ARGC` becomes a space.
 : ENGINE-OPEN-SOURCE ( -- ptr u8 n )
-   SCRIPT-ARGV-PATH [: ENGINE-OPEN-ROOM ;] SOURCE:READ-WHOLE-FILE
-   {: size:n :}
-   32 1676 ENGINE-OPEN-TEXT c!
-   0 ENGINE-OPEN-TEXT size ;
+   SCRIPT-ARGV-PATH TREE-READ {: size:n :}
+   32 size s" : SCRIPT-ARGC " LINE-START TREE-TEXT c!
+   0 TREE-TEXT size ;
 
 : ENGINE-OPEN-TURNS ( -- )
    INITIALIZE
@@ -2962,10 +2993,10 @@ DYNAMIC-BUFFER ENGINE-OPEN-TEXT u8
    s" 5" PREFIX-USE-PATH 1 28 DEFINITION-ASK
    s" 6" PREFIX-USE-PATH 1 28 DECLARATION-ASK
    SAY
-   s" 3" PREFIX-SOURCE-PATH URI-OF 2813 2 9 LOCATED
-   s" 4" PREFIX-SOURCE-PATH URI-OF 2813 2 9 LOCATED
-   s" 5" PREFIX-TARGET-PATH URI-OF 5 2 18 LOCATED
-   s" 6" PREFIX-TARGET-PATH URI-OF 5 2 18 LOCATED
+   s" 3" PREFIX-SOURCE-PATH s" : NEWTYPE " URI-LINE 2 9 LOCATED
+   s" 4" PREFIX-SOURCE-PATH s" : NEWTYPE " URI-LINE 2 9 LOCATED
+   s" 5" PREFIX-TARGET-PATH s" : HB-TARGET-MACOS? " URI-LINE 2 18 LOCATED
+   s" 6" PREFIX-TARGET-PATH s" : HB-TARGET-MACOS? " URI-LINE 2 18 LOCATED
    PREFIX-SOURCE-PATH s\" \\ changed\n" 1 OPENS
    SAY
    PREFIX-SOURCE-PATH 1 EXPECT PUBLISHES
@@ -2979,8 +3010,10 @@ DYNAMIC-BUFFER ENGINE-OPEN-TEXT u8
    s" 8" PREFIX-STRUCT-PATH 0 2 DEFINITION-ASK
    s" 9" PREFIX-STRUCT-PATH 2 2 DEFINITION-ASK
    SAY
-   s" 8" s" src/core/structures.f" IN-TREE URI-OF 88 2 17 LOCATED
-   s" 9" s" src/core/structures.f" IN-TREE URI-OF 133 2 15 LOCATED ;
+   s" 8" s" src/core/structures.f" IN-TREE
+   s" : BEGIN-STRUCTURE " URI-LINE 2 17 LOCATED
+   s" 9" s" src/core/structures.f" IN-TREE
+   s" : END-STRUCTURE " URI-LINE 2 15 LOCATED ;
 
 \ A definer still binds at its call when its operand declares a word with the
 \ same spelling. The newly declared private word must not replace that use.
@@ -2996,7 +3029,8 @@ DYNAMIC-BUFFER ENGINE-OPEN-TEXT u8
    PREFIX-SHADOW PREFIX-SHADOW-PATH 1 s" verified" LISTED
    s" 3" PREFIX-SHADOW-PATH 2 2 DEFINITION-ASK
    SAY
-   s" 3" s" src/core/layout-buffer.f" IN-TREE URI-OF 581 2 16 LOCATED ;
+   s" 3" s" src/core/layout-buffer.f" IN-TREE
+   s" : TYPED-VARIABLE " URI-LINE 2 16 LOCATED ;
 
 \ def-od-dep.f on disk, and the text its open document holds: three lines
 \ inserted atop and its two lines swapped, so that DEF-DEPB's and DEF-DEPA's
@@ -4889,7 +4923,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" 8" SYMBOLS-START ROOK-DECL+ ROOK-USES+ SYMBOLS-END
    s" 9" SYMBOLS-START SYMBOLS-END
    s" 10" SYMBOLS-START
-   PRIM-SOURCE-PATH URI-OF 423 7 8 REF+
+   PRIM-SOURCE-PATH s" EPRIM: + " URI-LINE 7 8 REF+
    REF-A-PATH URI-OF 1 26 27 REF+
    SYMBOLS-END ;
 
@@ -5544,13 +5578,13 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" 7" s" refs-prim/w/e.f" FIXTURE 0 26 DECL-TOO REFS-ASK
    SAY
    s" 3" SYMBOLS-START
-   PRIM-SOURCE-PATH URI-OF 437 7 8 REF+
+   PRIM-SOURCE-PATH s" EPRIM: * " URI-LINE 7 8 REF+
    PRIM-REF-USES SYMBOLS-END
    s" 4" SYMBOLS-START PRIM-REF-USES SYMBOLS-END
    HEAR s" 5" -32803 REFUSED
    HEAR s" 6" -32803 REFUSED
    s" 7" SYMBOLS-START
-   PRIM-SOURCE-PATH URI-OF 1046 6 13 REF+
+   PRIM-SOURCE-PATH s" ELAB: execute" URI-LINE 6 13 REF+
    s" refs-prim/w/e.f" OPEN-URI 0 26 33 REF+
    SYMBOLS-END ;
 
@@ -5684,12 +5718,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-prim-missing/w/b.f" DISK-URI 0 17 18 REF+
    SYMBOLS-END ;
 
-DYNAMIC-BUFFER PRIM-REF-TEXT u8
-: PRIM-REF-ROOM ( n -- ptr u8 )  1+ PRIM-REF-TEXT-RESERVE 0 PRIM-REF-TEXT ;
-: PRIM-REF-SOURCE ( -- ptr u8 n )
-   PRIM-SOURCE-PATH [: PRIM-REF-ROOM ;] SOURCE:READ-WHOLE-FILE
-   0 PRIM-REF-TEXT swap ;
-
 \ Asking from the declaration's name or its exact end selects its canonical
 \ row. The second + overload maps to the first + row, as uses do.
 : PRIM-DECL-TURNS ( -- )
@@ -5698,26 +5726,27 @@ DYNAMIC-BUFFER PRIM-REF-TEXT u8
    SAY
    HEAR CAPABILITIES
    PR-DECL-A-PATH TEXT-PR-A 1 OPENS
-   PRIM-REF-SOURCE PRIM-SOURCE-PATH 2swap 1 OPENS
+   PRIM-SOURCE-PATH 2dup TREE$ 1 OPENS
    STREAM
    TEXT-PR-A PR-DECL-A-PATH 1 s" verified" LISTED
    PRIM-SOURCE-PATH 1 EXPECT PUBLISHES
-   s" 3" PRIM-SOURCE-PATH 437 7 DECL-TOO REFS-ASK
-   s" 4" PRIM-SOURCE-PATH 437 6 DECL-TOO REFS-ASK
-   s" 5" PRIM-SOURCE-PATH 432 7 DECL-TOO REFS-ASK
-   s" 6" PRIM-SOURCE-PATH 437 7 DECL-NOT REFS-ASK
-   s" 7" PRIM-SOURCE-PATH 437 8 DECL-TOO REFS-ASK
+   s" 3" PRIM-SOURCE-PATH s" EPRIM: * " PATH-LINE 7 DECL-TOO REFS-ASK
+   s" 4" PRIM-SOURCE-PATH s" EPRIM: * " PATH-LINE 6 DECL-TOO REFS-ASK
+   s" 5" PRIM-SOURCE-PATH s" EPRIM: +      PE-PTR-A-OFF " PATH-LINE
+   7 DECL-TOO REFS-ASK
+   s" 6" PRIM-SOURCE-PATH s" EPRIM: * " PATH-LINE 7 DECL-NOT REFS-ASK
+   s" 7" PRIM-SOURCE-PATH s" EPRIM: * " PATH-LINE 8 DECL-TOO REFS-ASK
    SAY
    1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
    s" 3" SYMBOLS-START
-   PRIM-SOURCE-PATH URI-OF 437 7 8 REF+
+   PRIM-SOURCE-PATH s" EPRIM: * " URI-LINE 7 8 REF+
    s" refs-prim-decl/w/a.f" OPEN-URI 0 17 18 REF+
    s" refs-prim-decl/w/b.f" DISK-URI 0 17 18 REF+
    SYMBOLS-END
    s" 4" SYMBOLS-START SYMBOLS-END
    1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
    s" 5" SYMBOLS-START
-   PRIM-SOURCE-PATH URI-OF 423 7 8 REF+
+   PRIM-SOURCE-PATH s" EPRIM: + " URI-LINE 7 8 REF+
    s" refs-prim-decl/w/s.f" DISK-URI 1 17 18 REF+
    SYMBOLS-END
    1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
@@ -5727,7 +5756,7 @@ DYNAMIC-BUFFER PRIM-REF-TEXT u8
    SYMBOLS-END
    1 NAMED PRIM-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
    s" 7" SYMBOLS-START
-   PRIM-SOURCE-PATH URI-OF 437 7 8 REF+
+   PRIM-SOURCE-PATH s" EPRIM: * " URI-LINE 7 8 REF+
    s" refs-prim-decl/w/a.f" OPEN-URI 0 17 18 REF+
    s" refs-prim-decl/w/b.f" DISK-URI 0 17 18 REF+
    SYMBOLS-END ;
@@ -5748,7 +5777,7 @@ DYNAMIC-BUFFER PRIM-REF-TEXT u8
    SAY
    1 NAMED s" refs-prim-cover/w/bad.f" CANON s" refused" NAMED+ NAMED-END
    s" 3" SYMBOLS-START
-   PRIM-SOURCE-PATH URI-OF 437 7 8 REF+
+   PRIM-SOURCE-PATH s" EPRIM: * " URI-LINE 7 8 REF+
    s" refs-prim-cover/w/a.f" OPEN-URI 0 17 18 REF+
    s" refs-prim-cover/w/bad.f" DISK-URI 0 19 20 REF+
    SYMBOLS-END ;
@@ -5769,7 +5798,7 @@ DYNAMIC-BUFFER PRIM-REF-TEXT u8
    1 NAMED s" refs-prim-conflict/w/z.f"
    1 s" refs-prim-conflict/w/d.f" ELSEWHERE+ NAMED-END
    s" 3" SYMBOLS-START
-   PRIM-SOURCE-PATH URI-OF 402 7 10 REF+
+   PRIM-SOURCE-PATH s" EPRIM: dup " URI-LINE 7 10 REF+
    s" refs-prim-conflict/w/z.f" OPEN-URI 0 18 21 REF+
    SYMBOLS-END ;
 
@@ -5805,16 +5834,13 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s\" package SH\n: SCRIPT-ARGC ( -- n ) 1 ;\n: S ( -- n ) SCRIPT-ARGC ;\n;package\n" ;
 : BI-A-PATH ( -- ptr u8 n )  s" refs-builtin/w/a.f" FIXTURE ;
 : BI-SOURCE-PATH ( -- ptr u8 n )  s" src/os/script-argv.f" IN-TREE ;
-DYNAMIC-BUFFER BI-SOURCE-TEXT u8
-: BI-SOURCE-ROOM ( n -- ptr u8 )  1+ BI-SOURCE-TEXT-RESERVE 0 BI-SOURCE-TEXT ;
-: BI-SOURCE$ ( -- ptr u8 n )
-   BI-SOURCE-PATH [: BI-SOURCE-ROOM ;] SOURCE:READ-WHOLE-FILE
-   0 BI-SOURCE-TEXT swap ;
-
-\ Put the same spelling at the image's saved byte as an ordinary use.
+\ The image's saved byte for SCRIPT-ARGC: where its declaration's name starts
+\ in the file. The fake puts the same spelling there as an ordinary use.
+: BI-FAKE-AT ( -- n )
+   BI-SOURCE-PATH TREE-READ s" : SCRIPT-ARGC " LINE-START 2 + ;
 : BI-SOURCE-FAKE$ ( -- ptr u8 n )
    TXT-B CLEAR
-   1678 0 ?do s"  " HV+ loop
+   BI-FAKE-AT 0 ?do s"  " HV+ loop
    s\" SCRIPT-ARGC drop\n" HV+
    TXT$ ;
 
@@ -5840,32 +5866,33 @@ DYNAMIC-BUFFER BI-SOURCE-TEXT u8
    s\" ,\"newName\":\"CROW\"" AT-ASK-WITH
    SAY
    s" 3" SYMBOLS-START
-   BI-SOURCE-PATH URI-OF 50 2 13 REF+ BI-USES+ SYMBOLS-END
+   BI-SOURCE-PATH s" : SCRIPT-ARGC " URI-LINE 2 13 REF+ BI-USES+ SYMBOLS-END
    s" 4" SYMBOLS-START BI-USES+ SYMBOLS-END
    s" 12" SYMBOLS-START
-   BI-SOURCE-PATH URI-OF 38 2 18 REF+
+   BI-SOURCE-PATH s" : SCRIPT-ARG-START " URI-LINE 2 18 REF+
    s" refs-builtin/w/a.f" OPEN-URI 1 13 29 REF+
    SYMBOLS-END
    HEAR s" 10" -32803 REFUSED
    HEAR s" 11" -32803 REFUSED
-   BI-SOURCE$ BI-SOURCE-PATH 2swap 1 OPENS
+   BI-SOURCE-PATH 2dup TREE$ 1 OPENS
    STREAM
    BI-SOURCE-PATH 1 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
-   s" 5" BI-SOURCE-PATH 50 3 DECL-TOO REFS-ASK
-   s" 6" BI-SOURCE-PATH 50 3 DECL-NOT REFS-ASK
+   s" 5" BI-SOURCE-PATH s" : SCRIPT-ARGC " PATH-LINE 3 DECL-TOO REFS-ASK
+   s" 6" BI-SOURCE-PATH s" : SCRIPT-ARGC " PATH-LINE 3 DECL-NOT REFS-ASK
    SAY
    1 NAMED BI-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
    s" 5" SYMBOLS-START
-   BI-SOURCE-PATH URI-OF 50 2 13 REF+ BI-USES+ SYMBOLS-END
+   BI-SOURCE-PATH s" : SCRIPT-ARGC " URI-LINE 2 13 REF+ BI-USES+ SYMBOLS-END
    1 NAMED BI-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
    s" 6" SYMBOLS-START BI-USES+ SYMBOLS-END
-   BI-SOURCE-PATH BI-SOURCE-FAKE$ 2 CHANGES
+   BI-SOURCE-FAKE$ BI-SOURCE-PATH 2swap 2 CHANGES
    SAY
    BI-SOURCE-PATH 2 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 7" BI-A-PATH 0 16 DECL-TOO REFS-ASK
-   s" 8" BI-SOURCE-PATH 0 1679 DECL-TOO REFS-ASK
+   BI-FAKE-AT 1+ {: fake:n :}
+   s" 8" BI-SOURCE-PATH 0 fake DECL-TOO REFS-ASK
    s" 9" BI-A-PATH 0 16 DECL-NOT REFS-ASK
    SAY
    1 NAMED BI-SOURCE-PATH s" built-in source cannot be located" NAMED+ NAMED-END
@@ -5892,11 +5919,13 @@ DYNAMIC-BUFFER BI-SOURCE-TEXT u8
    s" 4" BI-OTHER-PATH 1 32 DECL-TOO REFS-ASK
    SAY
    s" 3" SYMBOLS-START
-   s" src/habu/xref.f" IN-TREE URI-OF 84 2 12 REF+
+   s" src/habu/xref.f" IN-TREE
+   s" : XREF-START " URI-LINE 2 12 REF+
    BI-OTHER-PATH URI-OF 0 19 29 REF+
    SYMBOLS-END
    s" 4" SYMBOLS-START
-   s" src/habu/code-bytes.f" IN-TREE URI-OF 61 2 10 REF+
+   s" src/habu/code-bytes.f" IN-TREE
+   s" : IN-CODE? " URI-LINE 2 10 REF+
    BI-OTHER-PATH URI-OF 1 20 39 REF+
    SYMBOLS-END ;
 
