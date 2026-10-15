@@ -3,6 +3,7 @@
 \ code kept, and the pass assert that prints both streams on a nonzero code.
 
 require src/lib/test.f
+require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
@@ -23,6 +24,12 @@ public
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+
+\ out and err become OUT$ and ERR$, as a capture leaves a child's streams.
+: STREAMS! ( ptr u8 n ptr u8 n -- )
+   {: out:ptr outu:n err:ptr erru:n :}
+   0 OUT-U ! out outu OUT CAP OUT-U BUF-APPEND
+   0 ERR-U ! err erru ERR CAP ERR-U BUF-APPEND ;
 
 \ The root named n under HB_TMP.
 : TREE ( ptr u8 n -- )

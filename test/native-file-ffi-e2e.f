@@ -3,40 +3,12 @@
 
 require src/lib/test.f
 require src/lib/string.f
-require src/lib/fs.f
-require src/lib/fs-mutate.f
-require src/lib/process-argv.f
 require src/lib/process-env.f
 require test/whitebox-engine.f
+require test/native-file-e2e.f
 
+using NATIVE-FILE-E2E
 package NATIVE-FILE-FFI-TEST
-
-$8000 constant CAP
-create ROOT FS-PATH-CAP allot  variable ROOT-U
-create PATH FS-PATH-CAP allot
-create OUT CAP allot  variable OUT-U
-create ERR CAP allot  variable ERR-U
-
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-: AT ( ptr u8 n -- ptr u8 n )
-   {: name:ptr u:n :}
-   ROOT$ name u PATH JOIN-PATH PATH swap ;
-: PUT ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n body:ptr bodyu:n :}
-   name nameu AT body bodyu WRITE-ALL ;
-: ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
-
-: CAPTURE ( ptr u8 n ptr u8 n -- n )
-   {: exe:ptr exeu:n stdin:ptr stdinu:n :}
-   exe exeu >LEN stdin stdinu >LEN
-   OUT CAP >LEN ERR CAP >LEN 600000 >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
-   {: outu:len erru:len rc:n :}
-   outu LEN>N OUT-U ! erru LEN>N ERR-U !
-   rc ;
-: SUCCESS ( n -- )
-   dup 0<> if OUT OUT-U @ type ERR ERR-U @ type then
-   0 T= ;
 
 : BUILD ( ptr u8 n ptr u8 n -- )
    {: mode:ptr modeu:n product:ptr productu:n :}
@@ -53,14 +25,13 @@ create ERR CAP allot  variable ERR-U
    {: name:ptr u:n :}
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    name u AT s" FILE-FFI-CLIENT:RESULT ." CAPTURE SUCCESS
-   OUT OUT-U @ S\" 1\n" CONTAINS? TTRUE ;
+   OUT$ S\" 1\n" CONTAINS? TTRUE ;
 
 public
 : MAIN ( -- )
    T-RESET
    s" FILE import carries FFI declaration tables and scope" T-LABEL
-   s" native-file-ffi" HB-TMP-MKDIR {: a:ptr u:n :}
-   a ROOT u BYTE-COPY u ROOT-U !
+   s" native-file-ffi" TREE
    s" prefix.f" S\" require src/lib/ffi-abi.f\n" PUT
    s" child.f" S\" FUNCTION: BEFORE getpid ( -- n ) ;FUNCTION\n" PUT
    s" unit.f" S\" package FILE-FFI\npublic\nPROCESS-SYMBOLS\nrequire child.f\nFUNCTION: HOST gethostname ( ptr u8 n -- i32 )\n;package\n" PUT
@@ -72,5 +43,6 @@ public
    T-REPORT
    s" native file ffi artifacts: " type ROOT$ type cr ;
 ;package
+;using
 
 NATIVE-FILE-FFI-TEST:MAIN

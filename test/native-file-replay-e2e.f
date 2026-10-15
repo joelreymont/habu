@@ -6,32 +6,20 @@ require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/le.f
-require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require test/native-file-app-lib.f
+require test/native-file-e2e.f
 
+using NATIVE-FILE-E2E
 package NATIVE-FILE-REPLAY-TEST
 
 $8000 constant CAP
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create PATH FS-PATH-CAP allot
 create TARGET FS-PATH-CAP allot variable TARGET-U
 create ARTIFACT FS-PATH-CAP allot variable ARTIFACT-U
 create HEADER FS-PATH-CAP allot
 create INPUT CAP allot variable INPUT-U
-create OUT CAP allot variable OUT-U
-create ERR CAP allot variable ERR-U
 variable EDIT
-
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-: AT ( ptr u8 n -- ptr u8 n )
-   {: name:ptr u:n :}
-   ROOT$ name u PATH JOIN-PATH PATH swap ;
-: PUT ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n body:ptr bodyu:n :}
-   name nameu AT body bodyu WRITE-ALL ;
-: ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
 : BUILD ( -- n )
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
@@ -40,27 +28,8 @@ variable EDIT
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    EDIT @ if s" HABU_REVIEW_EDIT" >LEN s" 1" >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING
-   s" --" ARG s" app.f" AT ARG s" app" AT ARG
-   builder builderu >LEN
-   S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" >LEN
-   OUT CAP >LEN ERR CAP >LEN 600000 >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
-   {: outu:len erru:len rc:n :}
-   outu LEN>N OUT-U ! erru LEN>N ERR-U !
-   rc ;
-
-: RUN-APP ( -- n )
-   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
-   s" app" AT >LEN s" " >LEN
-   OUT CAP >LEN ERR CAP >LEN 600000 >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
-   {: outu:len erru:len rc:n :}
-   outu LEN>N OUT-U ! erru LEN>N ERR-U !
-   rc ;
-
-: SUCCESS ( n -- )
-   dup 0<> if OUT OUT-U @ type ERR ERR-U @ type then
-   0 T= ;
+   s" --" ARG s" app.f" AT ARG s" app-hb" AT ARG
+   builder builderu S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" CAPTURE ;
 
 : MUTATOR ( -- )
    0 INPUT-U !
@@ -114,12 +83,7 @@ variable EDIT
    s" HABU_BUILD_CACHE" >LEN cache cacheu AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   builder builderu >LEN INPUT INPUT-U @ >LEN
-   OUT CAP >LEN ERR CAP >LEN 600000 >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
-   {: outu:len erru:len rc:n :}
-   outu LEN>N OUT-U ! erru LEN>N ERR-U !
-   rc SUCCESS ;
+   builder builderu INPUT INPUT-U @ CAPTURE SUCCESS ;
 
 : SESSION-PROBE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    s" " SESSION-PROBE-WITH ;
@@ -134,16 +98,16 @@ variable EDIT
       s" session-parent.f" s" cache-close"
       S\" s\" session=\" type NCOMP:SESSION-LIVE? . cr\ns\" open-result=\" type ' REVIEW-OPEN catch . cr\n"
       SESSION-PROBE
-   OUT OUT-U @ S\" file unit hits 0\n compiled 2" CONTAINS? TTRUE
-   OUT OUT-U @ s" session=0" CONTAINS? TTRUE
-   OUT OUT-U @ s" open-result=0" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 2" CONTAINS? TTRUE
+   OUT$ s" session=0" CONTAINS? TTRUE
+   OUT$ s" open-result=0" CONTAINS? TTRUE
    S\" : REVIEW-OPEN ( -- ) NABI:BINDING IR-CTX:SESSION-OPEN drop ;\n"
       s" session-parent.f" s" cache-close"
       S\" s\" session=\" type NCOMP:SESSION-LIVE? . cr\ns\" open-result=\" type ' REVIEW-OPEN catch . cr\n"
       SESSION-PROBE
-   OUT OUT-U @ S\" file unit hits 2\n compiled 0" CONTAINS? TTRUE
-   OUT OUT-U @ s" session=0" CONTAINS? TTRUE
-   OUT OUT-U @ s" open-result=0" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 2\n compiled 0" CONTAINS? TTRUE
+   OUT$ s" session=0" CONTAINS? TTRUE
+   OUT$ s" open-result=0" CONTAINS? TTRUE
 
    s" FILE replay never revives a retired child context" T-LABEL
    s" cache-revive" AT MAKE-DIR
@@ -153,13 +117,13 @@ variable EDIT
    s" " s" revive-parent.f" s" cache-revive"
       S\" s\" saved-live=\" type REVIEW-ID:LIVE . cr\n"
       SESSION-PROBE
-   OUT OUT-U @ S\" file unit hits 0\n compiled 2" CONTAINS? TTRUE
-   OUT OUT-U @ s" saved-live=0" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 2" CONTAINS? TTRUE
+   OUT$ s" saved-live=0" CONTAINS? TTRUE
    s" " s" revive-parent.f" s" cache-revive"
       S\" s\" saved-live=\" type REVIEW-ID:LIVE . cr\n"
       SESSION-PROBE
-   OUT OUT-U @ S\" file unit hits 2\n compiled 0" CONTAINS? TTRUE
-   OUT OUT-U @ s" saved-live=0" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 2\n compiled 0" CONTAINS? TTRUE
+   OUT$ s" saved-live=0" CONTAINS? TTRUE
 
    s" FILE replay does not revive a retired arena at a new session offset" T-LABEL
    s" cache-arena" AT MAKE-DIR
@@ -169,13 +133,13 @@ variable EDIT
    s" " s" arena-parent.f" s" cache-arena"
       S\" s\" saved-live=\" type REVIEW-ARENA:LIVE . cr\n"
       SESSION-PROBE
-   OUT OUT-U @ S\" file unit hits 0\n compiled 2" CONTAINS? TTRUE
-   OUT OUT-U @ s" saved-live=0" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 2" CONTAINS? TTRUE
+   OUT$ s" saved-live=0" CONTAINS? TTRUE
    s" " s" arena-parent.f" s" cache-arena"
       S\" s\" saved-live=\" type REVIEW-ARENA:LIVE . cr\n"
       SESSION-PROBE
-   OUT OUT-U @ S\" file unit hits 2\n compiled 0" CONTAINS? TTRUE
-   OUT OUT-U @ s" saved-live=0" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 2\n compiled 0" CONTAINS? TTRUE
+   OUT$ s" saved-live=0" CONTAINS? TTRUE
 
 ;
 
@@ -190,14 +154,14 @@ variable EDIT
       s" prototype-parent.f" s" cache-prototype"
       S\" s\" module=\" type 0 REVIEW-PROTOTYPE:SAVED @ 0 REVIEW-BACK:MODULE @ IR-ID:MODULE-SAME? . cr\n"
       SESSION-PROBE
-   OUT OUT-U @ S\" file unit hits 0\n compiled 2" CONTAINS? TTRUE
-   OUT OUT-U @ s" module=0" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 2" CONTAINS? TTRUE
+   OUT$ s" module=0" CONTAINS? TTRUE
    S\" package REVIEW-BACK\npublic\n1 TYPED-BUFFER MODULE IR-ID:ir-module-id\nprivate\n: NO ( CTARGET:contract -- bool ) drop false ;\n: NO-REWRITE ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module ) nip ;\n: NO-EMIT ( IR-CTX:ctx IR-BUILD:module n -- ) 2drop drop ;\n: NO-UNPLACED ( IR-CTX:ctx IR-BUILD:module -- ) 2drop ;\n: NO-STAGE ( -- ) ;\n: PROTOTYPE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- ) 0 IR-ID:PACK-SYMBOL IR-ID:SYMBOL-OWNER 0 MODULE ! 2drop drop ;\n: DECLARE ( n n NBACK:linkage -- ) 2drop drop ;\n: FAKE-PASS ( -- NBACK:pass ) [: DECLARE ;] [: NO-REWRITE ;] [: NO-REWRITE ;] [: NO-REWRITE ;] [: NO-EMIT ;] [: NO-UNPLACED ;] [: NO-STAGE ;] [: NO-STAGE ;] [: PROTOTYPE ;] [: NO-STAGE ;] [: NO-STAGE ;] NBACK-PASS:MAKE ;\npublic\n: INSTALL ( -- ) 30 CTARGET:ID CTARGET-ARCH:PTX [: NO ;] [: NO ;] CTARGET-BACKEND:MAKE FAKE-PASS NBACK:REGISTER ;\n;package\nREVIEW-BACK:INSTALL\n"
       s" prototype-parent.f" s" cache-prototype"
       S\" s\" module=\" type 0 REVIEW-PROTOTYPE:SAVED @ 0 REVIEW-BACK:MODULE @ IR-ID:MODULE-SAME? . cr\n"
       SESSION-PROBE
-   OUT OUT-U @ S\" file unit hits 2\n compiled 0" CONTAINS? TTRUE
-   OUT OUT-U @ s" module=0" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 2\n compiled 0" CONTAINS? TTRUE
+   OUT$ s" module=0" CONTAINS? TTRUE
 
 ;
 
@@ -209,13 +173,13 @@ variable EDIT
    s" " s" lease.f" s" cache-lease"
       S\" s\" lease-probe=\" type ' REVIEW-LEASE:PROBE catch . cr\n"
       SESSION-PROBE
-   OUT OUT-U @ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
-   OUT OUT-U @ s" lease-probe=0" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
+   OUT$ s" lease-probe=0" CONTAINS? TTRUE
    s" " s" lease.f" s" cache-lease"
       S\" s\" lease-probe=\" type ' REVIEW-LEASE:PROBE catch . cr\n"
       SESSION-PROBE
-   OUT OUT-U @ S\" file unit hits 1\n compiled 0" CONTAINS? TTRUE
-   OUT OUT-U @ s" lease-probe=0" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 1\n compiled 0" CONTAINS? TTRUE
+   OUT$ s" lease-probe=0" CONTAINS? TTRUE
 
    s" FILE source opening a foreign IR session remains a source load" T-LABEL
    s" cache-foreign" AT MAKE-DIR
@@ -224,14 +188,14 @@ variable EDIT
       s" foreign.f" s" cache-foreign"
       S\" s\" session=\" type IR-CTX:SESSION-LIVE? . cr\n"
       SESSION-PROBE
-   OUT OUT-U @ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
-   OUT OUT-U @ s" session=-1" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
+   OUT$ s" session=-1" CONTAINS? TTRUE
    S\" : REVIEW-OPEN ( -- ) NABI:BINDING IR-CTX:SESSION-OPEN drop ;\n"
       s" foreign.f" s" cache-foreign"
       S\" s\" session=\" type IR-CTX:SESSION-LIVE? . cr\n"
       SESSION-PROBE
-   OUT OUT-U @ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
-   OUT OUT-U @ s" session=-1" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
+   OUT$ s" session=-1" CONTAINS? TTRUE
 
    s" FILE replay rejects unrelated module serials before import" T-LABEL
    s" cache-module" AT MAKE-DIR
@@ -241,15 +205,15 @@ variable EDIT
       s" module.f" s" cache-module"
       S\" s\" module-collision=\" type 0 REVIEW-MODULE @ 0 REVIEW-OUTSIDE @ IR-ID:MODULE-SAME? . cr\n"
       s" " SESSION-PROBE-WITH
-   OUT OUT-U @ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
-   OUT OUT-U @ s" module-collision=0" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
+   OUT$ s" module-collision=0" CONTAINS? TTRUE
    S\" 1 TYPED-BUFFER REVIEW-OUTSIDE IR-ID:ir-module-id\n"
       s" module.f" s" cache-module"
       S\" s\" module-collision=\" type 0 REVIEW-MODULE @ 0 REVIEW-OUTSIDE @ IR-ID:MODULE-SAME? . cr\n"
       S\" IR-ID:NEW-MODULE 0 REVIEW-OUTSIDE ! drop\nIR-ID:NEW-MODULE 0 REVIEW-OUTSIDE ! drop\nIR-ID:NEW-MODULE 0 REVIEW-OUTSIDE ! drop\nIR-ID:NEW-MODULE 0 REVIEW-OUTSIDE ! drop\nIR-ID:NEW-MODULE 0 REVIEW-OUTSIDE ! drop\n"
       SESSION-PROBE-WITH
-   OUT OUT-U @ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
-   OUT OUT-U @ s" module-collision=0" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
+   OUT$ s" module-collision=0" CONTAINS? TTRUE
 
    s" FILE selection falls back after an unrelated retired context" T-LABEL
    s" cache-guard" AT MAKE-DIR
@@ -258,15 +222,15 @@ variable EDIT
       s" guard.f" s" cache-guard"
       S\" s\" guard=\" type REVIEW-GUARD . cr\n" s" "
       SESSION-PROBE-WITH
-   OUT OUT-U @ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
-   OUT OUT-U @ s" guard=7" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
+   OUT$ s" guard=7" CONTAINS? TTRUE
    S\" : REVIEW-UNRELATED ( -- ) NABI:BINDING [: drop ;] IR-CTX:WITH-CONTEXT ;\n"
       s" guard.f" s" cache-guard"
       S\" s\" guard=\" type REVIEW-GUARD . cr\n"
       S\" REVIEW-UNRELATED\n"
       SESSION-PROBE-WITH
-   OUT OUT-U @ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
-   OUT OUT-U @ s" guard=7" CONTAINS? TTRUE ;
+   OUT$ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
+   OUT$ s" guard=7" CONTAINS? TTRUE ;
 
 : HISTORY-CASES ( -- )
    s" FILE replay falls back when an unrelated lease shifts future serials" T-LABEL
@@ -276,15 +240,15 @@ variable EDIT
       s" lease-history.f" s" cache-lease-history"
       S\" s\" lease-delta=\" type NLEASE:HISTORY REVIEW-BEFORE @ - . cr\n"
       S\" NLEASE:HISTORY REVIEW-BEFORE !\n" SESSION-PROBE-WITH
-   OUT OUT-U @ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
-   OUT OUT-U @ s" lease-delta=1" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
+   OUT$ s" lease-delta=1" CONTAINS? TTRUE
    S\" variable REVIEW-BEFORE\n: REVIEW-LEASE-BURN ( -- ) [: drop ;] NLEASE:WITH ;\n"
       s" lease-history.f" s" cache-lease-history"
       S\" s\" lease-delta=\" type NLEASE:HISTORY REVIEW-BEFORE @ - . cr\n"
       S\" REVIEW-LEASE-BURN NLEASE:HISTORY REVIEW-BEFORE !\n"
       SESSION-PROBE-WITH
-   OUT OUT-U @ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
-   OUT OUT-U @ s" lease-delta=1" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
+   OUT$ s" lease-delta=1" CONTAINS? TTRUE
 
    s" FILE replay falls back when a context shifts future generations" T-LABEL
    s" cache-context-history" AT MAKE-DIR
@@ -294,17 +258,17 @@ variable EDIT
       S\" s\" gen-delta=\" type IR-CTX:HISTORY drop REVIEW-BEFORE-GEN @ - . cr\ns\" epoch-delta=\" type IR-CTX:EPOCH REVIEW-BEFORE-EPOCH @ - . cr\n"
       S\" IR-CTX:HISTORY REVIEW-BEFORE-EPOCH ! REVIEW-BEFORE-GEN !\n"
       SESSION-PROBE-WITH
-   OUT OUT-U @ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
-   OUT OUT-U @ s" gen-delta=1" CONTAINS? TTRUE
-   OUT OUT-U @ s" epoch-delta=1" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
+   OUT$ s" gen-delta=1" CONTAINS? TTRUE
+   OUT$ s" epoch-delta=1" CONTAINS? TTRUE
    S\" variable REVIEW-BEFORE-GEN\nvariable REVIEW-BEFORE-EPOCH\n: REVIEW-CONTEXT-BURN ( -- ) NABI:BINDING [: drop ;] IR-CTX:WITH-CONTEXT ;\n"
       s" context-history.f" s" cache-context-history"
       S\" s\" gen-delta=\" type IR-CTX:HISTORY drop REVIEW-BEFORE-GEN @ - . cr\ns\" epoch-delta=\" type IR-CTX:EPOCH REVIEW-BEFORE-EPOCH @ - . cr\n"
       S\" REVIEW-CONTEXT-BURN IR-CTX:HISTORY REVIEW-BEFORE-EPOCH ! REVIEW-BEFORE-GEN !\n"
       SESSION-PROBE-WITH
-   OUT OUT-U @ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
-   OUT OUT-U @ s" gen-delta=1" CONTAINS? TTRUE
-   OUT OUT-U @ s" epoch-delta=1" CONTAINS? TTRUE ;
+   OUT$ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
+   OUT$ s" gen-delta=1" CONTAINS? TTRUE
+   OUT$ s" epoch-delta=1" CONTAINS? TTRUE ;
 
 : BUILDER-CASE ( -- )
    s" FILE replay never revives a retired builder" T-LABEL
@@ -314,13 +278,13 @@ variable EDIT
    s" " s" builder.f" s" cache-builder"
       S\" s\" builder-probe=\" type ' REVIEW-BUILDER:PROBE catch . cr\n"
       SESSION-PROBE
-   OUT OUT-U @ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
-   OUT OUT-U @ s" builder-probe=0" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
+   OUT$ s" builder-probe=0" CONTAINS? TTRUE
    s" " s" builder.f" s" cache-builder"
       S\" s\" builder-probe=\" type ' REVIEW-BUILDER:PROBE catch . cr\n"
       SESSION-PROBE
-   OUT OUT-U @ S\" file unit hits 1\n compiled 0" CONTAINS? TTRUE
-   OUT OUT-U @ s" builder-probe=0" CONTAINS? TTRUE ;
+   OUT$ S\" file unit hits 1\n compiled 0" CONTAINS? TTRUE
+   OUT$ s" builder-probe=0" CONTAINS? TTRUE ;
 
 : SYMBOL-CASE ( -- )
    s" FILE replay reuses a symbol interned then undefined before the unit" T-LABEL
@@ -332,19 +296,19 @@ variable EDIT
       S\" s\" number=\" type REVIEW-SYMBOL:NUMBER . cr\ns\" keep=\" type REVIEW-SYMBOL:KEEP . cr\n"
       s" "
       SESSION-PROBE-WITH
-   OUT OUT-U @ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
-   OUT OUT-U @ s" symbol-source-ran" CONTAINS? TTRUE
-   OUT OUT-U @ s" number=5" CONTAINS? TTRUE
-   OUT OUT-U @ s" keep=7" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 1" CONTAINS? TTRUE
+   OUT$ s" symbol-source-ran" CONTAINS? TTRUE
+   OUT$ s" number=5" CONTAINS? TTRUE
+   OUT$ s" keep=7" CONTAINS? TTRUE
    S\" package REVIEW-SYMBOL public\n: KEEP ( -- n ) 7 ;\n: NUMBER ( -- n ) 3 ;\nundefine NUMBER\n;package\n"
       s" symbol.f" s" cache-symbol"
       S\" s\" number=\" type REVIEW-SYMBOL:NUMBER . cr\ns\" keep=\" type REVIEW-SYMBOL:KEEP . cr\n"
       s" "
       SESSION-PROBE-WITH
-   OUT OUT-U @ S\" file unit hits 1\n compiled 0" CONTAINS? TTRUE
-   OUT OUT-U @ s" symbol-source-ran" CONTAINS? 0= TTRUE
-   OUT OUT-U @ s" number=5" CONTAINS? TTRUE
-   OUT OUT-U @ s" keep=7" CONTAINS? TTRUE ;
+   OUT$ S\" file unit hits 1\n compiled 0" CONTAINS? TTRUE
+   OUT$ s" symbol-source-ran" CONTAINS? 0= TTRUE
+   OUT$ s" number=5" CONTAINS? TTRUE
+   OUT$ s" keep=7" CONTAINS? TTRUE ;
 
 : SESSION-CASES ( -- )
    SESSION-CASES-START PROTOTYPE-CASE SESSION-CASES-END HISTORY-CASES
@@ -354,27 +318,27 @@ public
 : MAIN ( -- )
    T-RESET
    s" FILE selection preserves carried values and using scope" T-LABEL
-   s" native-file-replay" HB-TMP-MKDIR {: a:ptr u:n :}
-   a ROOT u BYTE-COPY u ROOT-U !
+   s" native-file-replay" TREE
    s" cache" AT MAKE-DIR
    s" defs.f" S\" package REVIEW-USING public : VALUE ( -- n ) 41 ; ;package\n" PUT
    s" child.f" S\" : REVIEW-CHILD ( -- n ) REVIEW-USING:VALUE ;\n" PUT
    MUTATOR
    s" app.f" S\" require defs.f\nusing REVIEW-USING\n123 include mutate.f\ninclude child.f\nconstant CARRIED\n;using\n: MAIN ( -- ) REVIEW-CHILD CARRIED + . ;\n" PUT
    0 EDIT ! BUILD SUCCESS
-   OUT OUT-U @ S\" file unit hits 0\n compiled 4" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT OUT-U @ s" 164" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 0\n compiled 4" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 164" CONTAINS? TTRUE
    s" child.f" REMOVE-UNIT
    0 EDIT ! BUILD SUCCESS
-   OUT OUT-U @ S\" file unit hits 2\n compiled 2" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT OUT-U @ s" 164" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 2\n compiled 2" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 164" CONTAINS? TTRUE
    s" mutate.f" REMOVE-UNIT
    1 EDIT ! BUILD SUCCESS
-   OUT OUT-U @ S\" file unit hits 1\n compiled 3" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT OUT-U @ s" 165" CONTAINS? TTRUE
+   OUT$ S\" file unit hits 1\n compiled 3" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 165" CONTAINS? TTRUE
    SESSION-CASES
    T-REPORT ;
 
 ;package
+;using
 
 NATIVE-FILE-REPLAY-TEST:MAIN
