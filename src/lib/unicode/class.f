@@ -10,65 +10,20 @@ $10FFFF constant SCALAR-MAX
 $D800 constant SURROGATE-FIRST
 $DFFF constant SURROGATE-LAST
 
-: FALSE-VALUE ( -- bool )   0 0= 0= ;
-
-: LETTER-SEARCH ( n n n -- bool ) {: cp:n lo:n hi:n :}
-   lo hi >= if FALSE-VALUE exit then
-   lo hi + 2 / {: mid:n :}
-   mid UNICODE-CLASS-DATA:LETTER-RANGE@ {: first:n last:n :}
-   cp first < if cp lo mid recurse exit then
-   cp last > if cp mid 1+ hi recurse exit then
-   0 0= ;
-
-: NUMBER-SEARCH ( n n n -- bool ) {: cp:n lo:n hi:n :}
-   lo hi >= if FALSE-VALUE exit then
-   lo hi + 2 / {: mid:n :}
-   mid UNICODE-CLASS-DATA:NUMBER-RANGE@ {: first:n last:n :}
-   cp first < if cp lo mid recurse exit then
-   cp last > if cp mid 1+ hi recurse exit then
-   0 0= ;
-
-: SPACE-SEARCH ( n n n -- bool ) {: cp:n lo:n hi:n :}
-   lo hi >= if FALSE-VALUE exit then
-   lo hi + 2 / {: mid:n :}
-   mid UNICODE-CLASS-DATA:WHITE-SPACE-RANGE@ {: first:n last:n :}
-   cp first < if cp lo mid recurse exit then
-   cp last > if cp mid 1+ hi recurse exit then
-   0 0= ;
-
-: LETTER-NUMBER-SEARCH ( n n n -- bool ) {: cp:n lo:n hi:n :}
-   lo hi >= if FALSE-VALUE exit then
-   lo hi + 2 / {: mid:n :}
-   mid UNICODE-CLASS-DATA:LETTER-NUMBER-RANGE@ {: first:n last:n :}
-   cp first < if cp lo mid recurse exit then
-   cp last > if cp mid 1+ hi recurse exit then
-   0 0= ;
-
-: OTHER-ALPHABETIC-SEARCH ( n n n -- bool ) {: cp:n lo:n hi:n :}
-   lo hi >= if FALSE-VALUE exit then
-   lo hi + 2 / {: mid:n :}
-   mid UNICODE-CLASS-DATA:OTHER-ALPHABETIC-RANGE@ {: first:n last:n :}
-   cp first < if cp lo mid recurse exit then
-   cp last > if cp mid 1+ hi recurse exit then
-   0 0= ;
-
-
-: UPPERCASE-LETTER-SEARCH ( n n n -- bool ) {: cp:n lo:n hi:n :}
-   lo hi >= if FALSE-VALUE exit then
-   lo hi + 2 / {: mid:n :}
-   mid UNICODE-CLASS-DATA:UPPERCASE-LETTER-RANGE@ {: first:n last:n :}
-   cp first < if cp lo mid recurse exit then
-   cp last > if cp mid 1+ hi recurse exit then
-   0 0= ;
-
-
-: OTHER-UPPERCASE-SEARCH ( n n n -- bool ) {: cp:n lo:n hi:n :}
-   lo hi >= if FALSE-VALUE exit then
-   lo hi + 2 / {: mid:n :}
-   mid UNICODE-CLASS-DATA:OTHER-UPPERCASE-RANGE@ {: first:n last:n :}
-   cp first < if cp lo mid recurse exit then
-   cp last > if cp mid 1+ hi recurse exit then
-   0 0= ;
+\ Binary search of a class table: count sorted, disjoint, inclusive ranges,
+\ each a first and last cell pair.
+: RANGE-SEARCH ( n ptr n n -- bool )
+   {: cp:n ranges:ptr count:n :}
+   0 count
+   begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      ranges mid 2 * cells + {: pair:ptr :}
+      cp pair @ < if lo mid else
+         cp pair cell+ @ > if mid 1+ hi else true exit then
+      then
+   repeat
+   2drop false ;
 
 public
 
@@ -77,30 +32,30 @@ public
    cp SURROGATE-FIRST >= cp SURROGATE-LAST <= and 0= and ;
 
 : LETTER? ( n -- bool ) {: cp:n :}
-   cp SCALAR? 0= if FALSE-VALUE exit then
-   cp 0 UNICODE-CLASS-DATA:LETTER-RANGE-COUNT LETTER-SEARCH ;
+   cp SCALAR? 0= if false exit then
+   cp UNICODE-CLASS-DATA:LETTER-RANGES RANGE-SEARCH ;
 
 : NUMBER? ( n -- bool ) {: cp:n :}
-   cp SCALAR? 0= if FALSE-VALUE exit then
-   cp 0 UNICODE-CLASS-DATA:NUMBER-RANGE-COUNT NUMBER-SEARCH ;
+   cp SCALAR? 0= if false exit then
+   cp UNICODE-CLASS-DATA:NUMBER-RANGES RANGE-SEARCH ;
 
 : WHITE-SPACE? ( n -- bool ) {: cp:n :}
-   cp SCALAR? 0= if FALSE-VALUE exit then
-   cp 0 UNICODE-CLASS-DATA:WHITE-SPACE-RANGE-COUNT SPACE-SEARCH ;
+   cp SCALAR? 0= if false exit then
+   cp UNICODE-CLASS-DATA:WHITE-SPACE-RANGES RANGE-SEARCH ;
 
 \ Unicode Alphabetic = L + Nl + Other_Alphabetic, from the pinned inputs.
 : ALPHABETIC? ( n -- bool ) {: cp:n :}
-   cp SCALAR? 0= if FALSE-VALUE exit then
-   cp LETTER? if 0 0= exit then
-   cp 0 UNICODE-CLASS-DATA:LETTER-NUMBER-RANGE-COUNT LETTER-NUMBER-SEARCH
-   if 0 0= exit then
-   cp 0 UNICODE-CLASS-DATA:OTHER-ALPHABETIC-RANGE-COUNT OTHER-ALPHABETIC-SEARCH ;
+   cp SCALAR? 0= if false exit then
+   cp LETTER? if true exit then
+   cp UNICODE-CLASS-DATA:LETTER-NUMBER-RANGES RANGE-SEARCH
+   if true exit then
+   cp UNICODE-CLASS-DATA:OTHER-ALPHABETIC-RANGES RANGE-SEARCH ;
 
 \ Unicode Uppercase = Lu + Other_Uppercase, including Roman/circled capitals.
 : UPPERCASE? ( n -- bool ) {: cp:n :}
-   cp SCALAR? 0= if FALSE-VALUE exit then
-   cp 0 UNICODE-CLASS-DATA:UPPERCASE-LETTER-RANGE-COUNT UPPERCASE-LETTER-SEARCH
-   if 0 0= exit then
-   cp 0 UNICODE-CLASS-DATA:OTHER-UPPERCASE-RANGE-COUNT OTHER-UPPERCASE-SEARCH ;
+   cp SCALAR? 0= if false exit then
+   cp UNICODE-CLASS-DATA:UPPERCASE-LETTER-RANGES RANGE-SEARCH
+   if true exit then
+   cp UNICODE-CLASS-DATA:OTHER-UPPERCASE-RANGES RANGE-SEARCH ;
 
 ;package

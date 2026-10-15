@@ -36,9 +36,6 @@ create DIGEST-HEX 64 allot
 create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest context
 create OUTPUT-LOCK 65 allot
 
-: FALSE-VALUE ( -- bool )   0 0= 0= ;
-: TRUE-VALUE ( -- bool )    0 0= ;
-
 : UNICODE-PATH$ ( -- ptr u8 n )
    s" data/unicode/16.0.0/UnicodeData.txt" ;
 
@@ -58,10 +55,10 @@ create OUTPUT-LOCK 65 allot
    s" 53d614508e2a0b2305a8aa21cd60d993de9326cdf65993660dfcce4503548583" ;
 
 : HEX-DIGIT ( n -- n bool ) {: c:n :}
-   c 48 >= c 57 <= and if c 48 - TRUE-VALUE exit then
-   c 65 >= c 70 <= and if c 55 - TRUE-VALUE exit then
-   c 97 >= c 102 <= and if c 87 - TRUE-VALUE exit then
-   0 FALSE-VALUE ;
+   c 48 >= c 57 <= and if c 48 - true exit then
+   c 65 >= c 70 <= and if c 55 - true exit then
+   c 97 >= c 102 <= and if c 87 - true exit then
+   0 false ;
 
 : HEX-FOLD ( ptr u8 n n n -- n ) {: a:ptr u:n pos:n acc:n :}
    pos u >= if acc exit then
@@ -144,20 +141,20 @@ create OUTPUT-LOCK 65 allot
       name nameu LAST-NAME? 0= if E-MISMATCH throw then
       bit VERIFY-PENDING-BIT @ <> if E-MISMATCH throw then
       VERIFY-PENDING-LO @ cp bit MARK-RANGE
-      FALSE-VALUE VERIFY-PENDING !
+      false VERIFY-PENDING !
       exit
    then
    name nameu LAST-NAME? if E-MISMATCH throw then
    name nameu FIRST-NAME? if
       cp SCALAR VERIFY-PENDING-LO !
       bit VERIFY-PENDING-BIT !
-      TRUE-VALUE VERIFY-PENDING !
+      true VERIFY-PENDING !
       exit
    then
    cp bit TRUTH+ ;
 
 : VERIFY-UNICODE-BYTES ( ptr u8 n -- ) {: a:ptr u:n :}
-   FALSE-VALUE VERIFY-PENDING !
+   false VERIFY-PENDING !
    0 begin dup u <= while
       {: start:n :}
       a u LINE-FEED start SPLIT-NEXT {: line:ptr lineu:n next:n valid:bool :}
@@ -227,28 +224,22 @@ create OUTPUT-LOCK 65 allot
    idx 0 > if lo prev-hi 1+ <= if E-CANONICAL throw then then
    idx 1+ hi ;
 
-: CHECK-TABLE ( n [ n -- n n ] -- ) {: count:n getter :}
+: CHECK-TABLE ( ptr n n -- ) {: ranges:ptr count:n :}
    0 -2
    begin over count < while
-      over getter execute CHECK-RANGE
+      over 2 * cells ranges + {: pair:ptr :}
+      pair @ pair cell+ @ CHECK-RANGE
    repeat
    2drop ;
 
 : CHECK-TABLES ( -- )
-   UNICODE-CLASS-DATA:LETTER-RANGE-COUNT
-   [: UNICODE-CLASS-DATA:LETTER-RANGE@ ;] CHECK-TABLE
-   UNICODE-CLASS-DATA:NUMBER-RANGE-COUNT
-   [: UNICODE-CLASS-DATA:NUMBER-RANGE@ ;] CHECK-TABLE
-   UNICODE-CLASS-DATA:WHITE-SPACE-RANGE-COUNT
-   [: UNICODE-CLASS-DATA:WHITE-SPACE-RANGE@ ;] CHECK-TABLE
-   UNICODE-CLASS-DATA:LETTER-NUMBER-RANGE-COUNT
-   [: UNICODE-CLASS-DATA:LETTER-NUMBER-RANGE@ ;] CHECK-TABLE
-   UNICODE-CLASS-DATA:OTHER-ALPHABETIC-RANGE-COUNT
-   [: UNICODE-CLASS-DATA:OTHER-ALPHABETIC-RANGE@ ;] CHECK-TABLE
-   UNICODE-CLASS-DATA:UPPERCASE-LETTER-RANGE-COUNT
-   [: UNICODE-CLASS-DATA:UPPERCASE-LETTER-RANGE@ ;] CHECK-TABLE
-   UNICODE-CLASS-DATA:OTHER-UPPERCASE-RANGE-COUNT
-   [: UNICODE-CLASS-DATA:OTHER-UPPERCASE-RANGE@ ;] CHECK-TABLE ;
+   UNICODE-CLASS-DATA:LETTER-RANGES CHECK-TABLE
+   UNICODE-CLASS-DATA:NUMBER-RANGES CHECK-TABLE
+   UNICODE-CLASS-DATA:WHITE-SPACE-RANGES CHECK-TABLE
+   UNICODE-CLASS-DATA:LETTER-NUMBER-RANGES CHECK-TABLE
+   UNICODE-CLASS-DATA:OTHER-ALPHABETIC-RANGES CHECK-TABLE
+   UNICODE-CLASS-DATA:UPPERCASE-LETTER-RANGES CHECK-TABLE
+   UNICODE-CLASS-DATA:OTHER-UPPERCASE-RANGES CHECK-TABLE ;
 
 : TRUTH-BIT? ( n n -- bool ) {: cp:n bit:n :}
    TRUTH @ cp + c@ bit and 0= 0= ;
