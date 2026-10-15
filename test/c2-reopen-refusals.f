@@ -41,15 +41,6 @@ $4000 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 
-: STATUS? ( ptr u8 n n -- bool ) {: expected:n :}
-   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
-      exited OF expected = ENDOF
-      signaled OF drop false ENDOF
-      timeout OF false ENDOF
-   ;MATCH
-   >r 2drop r> ;
-
 : SECTION-CLASS ( -- )
    s" the engine under test keeps engine packages open" T-LABEL
    ENGINE-INTERNAL:IMAGE-CLASS ENGINE-INTERNAL:IMAGE-WHITEBOX T= ;
@@ -80,20 +71,20 @@ public get-current private constant QUAL-WID
 
 : SECTION-VIEWS ( -- )
    s" C2-MEM's private section packs raw cells into a view" T-LABEL
-   s" package C2-MEM private CAST: C2RR-PACK ( ptr u8 n -- read-view<p,q,u8> ) ;package" 0 STATUS? TTRUE
+   s" package C2-MEM private CAST: C2RR-PACK ( ptr u8 n -- read-view<p,q,u8> ) ;package" 0 SUBJECT:EXITED? TTRUE
    s" a checked C2-MEM word unpacks a mutable view and packs it again" T-LABEL
-   s" package C2-MEM private CAST: C2RR-MUN ( mut-view<p,q,a,u8> -- ptr u8 n ) CAST: C2RR-MPK ( ptr u8 n -- mut-view<p,q,a,u8> ) : C2RR-ROUND ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) C2RR-MUN C2RR-MPK ; ;package" 0 STATUS? TTRUE
+   s" package C2-MEM private CAST: C2RR-MUN ( mut-view<p,q,a,u8> -- ptr u8 n ) CAST: C2RR-MPK ( ptr u8 n -- mut-view<p,q,a,u8> ) : C2RR-ROUND ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) C2RR-MUN C2RR-MPK ; ;package" 0 SUBJECT:EXITED? TTRUE
    s" C2-MEM's public section cannot pack a view" T-LABEL
    s" package C2-MEM public CAST: C2RR-PUBLIC-PACK ( ptr u8 n -- read-view<p,q,u8> ) ;package" SCOPE-REFUSED? TTRUE
    s" a reopened C2-MEM definition cannot declare raw cells a view" T-LABEL
-   s" package C2-MEM private : C2RR-RAW-VIEW ( ptr u8 n -- read-view<p,q,u8> ) ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2RR-RAW-VIEW ( ptr u8 n -- read-view<p,q,u8> ) ; ;package" 70 SUBJECT:EXITED? TTRUE
    s" C2-MEM's private section cannot pack under another package's name" T-LABEL
    s" package C2-MEM private CAST: C2-REOPEN-REFUSALS:QUAL-PACK ( ptr u8 n -- read-view<p,q,u8> ) ;package" TEST-EVAL:RC E-CAST-SCOPE T=
    s" QUAL-PACK" QUAL-WID search-wl 0= TTRUE ;
 
 : SECTION-OWNER ( -- )
    s" a reopened C2-MEM calls the generated owner constructor" T-LABEL
-   s" package C2-MEM private : C2RR-CTOR ( mut-view<p,i,a,init<i,owner-state>> -- owner<p,i,a> ) OWNER-MAKE ; ;package" 0 STATUS? TTRUE ;
+   s" package C2-MEM private : C2RR-CTOR ( mut-view<p,i,a,init<i,owner-state>> -- owner<p,i,a> ) OWNER-MAKE ; ;package" 0 SUBJECT:EXITED? TTRUE ;
 
 public
 

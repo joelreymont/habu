@@ -56,19 +56,6 @@ private
    FRESH MK-VAR PARAM-SCR+
    base s" read-view" fam MK-PARAM ;
 
-$4000 constant CAP
-create OUT CAP allot
-create ERR CAP allot
-
-: STATUS? ( ptr u8 n n -- bool ) {: expected:n :}
-   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
-      exited OF expected = ENDOF
-      signaled OF drop false ENDOF
-      timeout OF false ENDOF
-   ;MATCH
-   >r 2drop r> ;
-
 public
 
 : CHECK ( -- )
@@ -89,21 +76,21 @@ public
    s" an open element unused by the view layout remains placeable" T-LABEL
    READ-OPEN WRAP TFAM:INIT-LAYOUT? TTRUE CELL T= 2 CELL * T=
    s" an initialized wide record retains its nominal type" T-LABEL
-   s" : C2-INIT-WIDE ( init<p,C2-INIT-SCHEMA:pair> -- init<p,C2-INIT-SCHEMA:pair> ) C2-INIT-SCHEMA:KEEP-WIDE ;" 0 STATUS? TTRUE
+   s" : C2-INIT-WIDE ( init<p,C2-INIT-SCHEMA:pair> -- init<p,C2-INIT-SCHEMA:pair> ) C2-INIT-SCHEMA:KEEP-WIDE ;" 0 SUBJECT:EXITED? TTRUE
    s" a different lifetime cannot be substituted" T-LABEL
-   s" : C2-INIT-SCOPE-ERASE ( init<p,C2-INIT-SCHEMA:pair> -- init<q,C2-INIT-SCHEMA:pair> ) ;" 70 STATUS? TTRUE
+   s" : C2-INIT-SCOPE-ERASE ( init<p,C2-INIT-SCHEMA:pair> -- init<q,C2-INIT-SCHEMA:pair> ) ;" 70 SUBJECT:EXITED? TTRUE
    s" the element's own scope dependency survives the wrapper" T-LABEL
-   s" : C2-INIT-NESTED ( init<p,read-view<q,q,u8>> -- init<p,read-view<q,q,u8>> ) ;" 0 STATUS? TTRUE
+   s" : C2-INIT-NESTED ( init<p,read-view<q,q,u8>> -- init<p,read-view<q,q,u8>> ) ;" 0 SUBJECT:EXITED? TTRUE
    s" the element's scope dependency cannot be substituted" T-LABEL
-   s" : C2-INIT-NESTED-ERASE ( init<p,read-view<q,q,u8>> -- init<p,read-view<r,r,u8>> ) ;" 70 STATUS? TTRUE
+   s" : C2-INIT-NESTED-ERASE ( init<p,read-view<q,q,u8>> -- init<p,read-view<r,r,u8>> ) ;" 70 SUBJECT:EXITED? TTRUE
    s" the element cannot be exposed by an identity effect" T-LABEL
-   s" : C2-INIT-ERASE ( init<p,C2-INIT-SCHEMA:pair> -- C2-INIT-SCHEMA:pair ) ;" 70 STATUS? TTRUE
+   s" : C2-INIT-ERASE ( init<p,C2-INIT-SCHEMA:pair> -- C2-INIT-SCHEMA:pair ) ;" 70 SUBJECT:EXITED? TTRUE
    s" raw cells cannot construct initialized storage" T-LABEL
-   s" : C2-INIT-FORGE ( -- init<p,C2-INIT-SCHEMA:pair> ) 1 2 ;" 70 STATUS? TTRUE
+   s" : C2-INIT-FORGE ( -- init<p,C2-INIT-SCHEMA:pair> ) 1 2 ;" 70 SUBJECT:EXITED? TTRUE
    s" a cast cannot erase the initialized lifetime" T-LABEL
-   s" CAST: C2-INIT-CAST ( init<p,n> -- n )" 67 STATUS? TTRUE
+   s" CAST: C2-INIT-CAST ( init<p,n> -- n )" 67 SUBJECT:EXITED? TTRUE
    s" initialized storage cannot enter a global slot" T-LABEL
-   s" TYPED-VARIABLE C2-INIT-GLOBAL init<p,n>" 70 STATUS? TTRUE ;
+   s" TYPED-VARIABLE C2-INIT-GLOBAL init<p,n>" 70 SUBJECT:EXITED? TTRUE ;
 
 ;package
 

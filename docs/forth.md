@@ -1156,7 +1156,8 @@ backend answers alike.
   newline, so a message never carries its own `\n`; an empty span writes
   nothing, which is what a site passes after ending its own report with `cr`.
 - **A word that never returns ends its branch.** After a call whose body ends in
-  `die`, the checker refuses an `exit` in the same `if` as `E-DEAD-CODE`:
+  `die` or `throw`, the checker refuses any further token in the same branch,
+  `exit` or a balancing value alike, as `E-DEAD-CODE`:
 
   ```forth
   ARG s" child" TOK= if CHILD-MAIN exit then

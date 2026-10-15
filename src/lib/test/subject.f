@@ -13,6 +13,10 @@ package SUBJECT
 PTR-VARIABLE SRC-A
 variable SRC-U
 PTR-VARIABLE STACK-A
+$4000 constant STATUS-CAP
+10000 constant STATUS-MS
+create STATUS-OUT STATUS-CAP allot
+create STATUS-ERR STATUS-CAP allot
 
 \ RUN is synchronous in the parent. The child inherits these cells by COW and
 \ exits before the next RUN, so no source or stack state is shared across cases.
@@ -103,5 +107,21 @@ public
    s" stdout:" type cr out outu type cr
    s" stderr:" type cr err erru type cr
    E-PROC-TIMEOUT throw ;
+
+\ Whether src, run as the subject, exited with code want; a signal is not an
+\ exit. The capture is kept only for this answer; a case that reads the
+\ child's stderr runs RUN itself. A deadline is no verdict (docs/gate.md):
+\ TIMED-OUT prints the program and its capture and throws E-PROC-TIMEOUT.
+: EXITED? ( ptr u8 n n -- bool )
+   {: src:ptr srcu:n want:n :}
+   src srcu STATUS-OUT STATUS-CAP >LEN STATUS-ERR STATUS-CAP >LEN STATUS-MS >MS RUN
+   {: outu:len erru:len oc :}
+   oc MATCH outcome
+      exited OF want = ENDOF
+      signaled OF drop false ENDOF
+      timeout OF
+         src srcu STATUS-OUT outu LEN>N STATUS-ERR erru LEN>N TIMED-OUT
+      ENDOF
+   ;MATCH ;
 
 ;package

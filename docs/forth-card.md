@@ -134,7 +134,7 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | `package` with a name over 255 bytes | `E-STATEMENT-THROW`, throw code 7154; `--load` exits 67 |
 | `: IR-ID:X ( -- ) ;`, `variable IR-ID:V` or `package IR-ID`: a definition into, or the reopening of, a package the engine bakes | `E-STATEMENT-THROW`, throw code 84 at the name; `--load` exits 84 |
 | a non-preserving `[: G ;] catch`, a read of what its throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-REJECTED`, `E-STALE-READ` |
-| `exit` after a word ending in `die` | `E-DEAD-CODE` |
+| any token after a call to a word whose body ends in `die` or `throw`, in the same branch: `: STOP ( -- ) 5 throw ; : AFTER ( -- n ) STOP 0 ;` | `E-DEAD-CODE`; `--load` exits 70 |
 | `: I ( -- ) ;` | `E-RESERVED-DEFINITION` |
 | a definer (`:`, `DEFTYPE`, `create`, `package`, …) or a parsing word (`char`, `'`, a field word) with nothing after it | `E-MISSING-NAME` from `tools/check.f`, rc 70 |
 | `\` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION`, rc 70 |

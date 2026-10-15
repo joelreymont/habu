@@ -11,19 +11,6 @@ private
 : ROUND ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> )
    C2VMUT:MAKE C2VMUT:UNMAKE ;
 
-$4000 constant CAP
-create OUT CAP allot
-create ERR CAP allot
-
-: STATUS? ( ptr u8 n n -- bool ) {: expected:n :}
-   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
-      exited OF expected = ENDOF
-      signaled OF drop false ENDOF
-      timeout OF false ENDOF
-   ;MATCH
-   >r 2drop r> ;
-
 public
 
 \ A refused STRUCTURE exits 70: the checker renders the declaration's refusal
@@ -31,11 +18,11 @@ public
 : RUN ( -- )
    T-RESET
    s" a region parameter cannot also be a value" T-LABEL
-   s" STRUCTURE c2vregfirst<a,b,c,d> FIELD value c FIELD view mut-view<a,b,c,d> ;STRUCTURE" 70 STATUS? TTRUE
+   s" STRUCTURE c2vregfirst<a,b,c,d> FIELD value c FIELD view mut-view<a,b,c,d> ;STRUCTURE" 70 SUBJECT:EXITED? TTRUE
    s" a region parameter cannot become a scope" T-LABEL
-   s" STRUCTURE c2vregscope<a,b,c,d> FIELD view mut-view<a,b,c,d> FIELD source read-view<a,c,u8> ;STRUCTURE" 70 STATUS? TTRUE
+   s" STRUCTURE c2vregscope<a,b,c,d> FIELD view mut-view<a,b,c,d> FIELD source read-view<a,c,u8> ;STRUCTURE" 70 SUBJECT:EXITED? TTRUE
    s" a raw pointer cannot hide an exclusive view" T-LABEL
-   s" STRUCTURE c2vptrmut<a,b,c,d> FIELD view ptr mut-view<a,b,c,d> ;STRUCTURE" 70 STATUS? TTRUE
+   s" STRUCTURE c2vptrmut<a,b,c,d> FIELD view ptr mut-view<a,b,c,d> ;STRUCTURE" 70 SUBJECT:EXITED? TTRUE
    T-REPORT
    s" c2-view-record-mut: ok" type cr ;
 

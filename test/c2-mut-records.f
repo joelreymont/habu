@@ -55,47 +55,33 @@ private
 
 : NEST-MOVE ( option<one<p,q,a,u8>> n -- n option<one<p,q,a,u8>> ) swap ;
 
-
-$4000 constant CAP
-create OUT CAP allot
-create ERR CAP allot
-
-: REJECT ( ptr u8 n n -- bool ) {: expected:n :}
-   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
-      exited OF expected = ENDOF
-      signaled OF drop false ENDOF
-      timeout OF false ENDOF
-   ;MATCH
-   >r 2drop r> ;
-
 public
 
 : CHECK ( -- )
    s" one view in a record cannot be copied" T-LABEL
-   s" : MREC-ONE-DUP ( one<p,q,a,u8> -- one<p,q,a,u8> one<p,q,a,u8> ) dup ;" 70 REJECT TTRUE
+   s" : MREC-ONE-DUP ( one<p,q,a,u8> -- one<p,q,a,u8> one<p,q,a,u8> ) dup ;" 70 SUBJECT:EXITED? TTRUE
    s" one view in a record cannot be dropped" T-LABEL
-   s" : MREC-ONE-DROP ( one<p,q,a,u8> -- ) drop ;" 70 REJECT TTRUE
+   s" : MREC-ONE-DROP ( one<p,q,a,u8> -- ) drop ;" 70 SUBJECT:EXITED? TTRUE
    s" phantom linear element does not permit record copying" T-LABEL
-   s" : MREC-PHANTOM-DUP ( one<p,q,a,tok> -- one<p,q,a,tok> one<p,q,a,tok> ) dup ;" 70 REJECT TTRUE
+   s" : MREC-PHANTOM-DUP ( one<p,q,a,tok> -- one<p,q,a,tok> one<p,q,a,tok> ) dup ;" 70 SUBJECT:EXITED? TTRUE
    s" view and owned field remain separate obligations" T-LABEL
-   s" : MREC-MIXED-DUP ( mixed<p,q,a,tok,tok> -- mixed<p,q,a,tok,tok> mixed<p,q,a,tok,tok> ) dup ;" 70 REJECT TTRUE
+   s" : MREC-MIXED-DUP ( mixed<p,q,a,tok,tok> -- mixed<p,q,a,tok,tok> mixed<p,q,a,tok,tok> ) dup ;" 70 SUBJECT:EXITED? TTRUE
    s" both independent views remain owned" T-LABEL
-   s" : MREC-TWO-DROP ( two<p,q,a,u8,b,u8> -- ) drop ;" 70 REJECT TTRUE
+   s" : MREC-TWO-DROP ( two<p,q,a,u8,b,u8> -- ) drop ;" 70 SUBJECT:EXITED? TTRUE
    s" independent views cannot be copied together" T-LABEL
-   s" : MREC-TWO-DUP ( two<p,q,a,u8,b,u8> -- two<p,q,a,u8,b,u8> two<p,q,a,u8,b,u8> ) dup ;" 70 REJECT TTRUE
+   s" : MREC-TWO-DUP ( two<p,q,a,u8,b,u8> -- two<p,q,a,u8,b,u8> two<p,q,a,u8,b,u8> ) dup ;" 70 SUBJECT:EXITED? TTRUE
    s" two views remain separate after UNMAKE" T-LABEL
-   s" : MREC-TWO-LOSE ( two<p,q,a,u8,b,u8> -- mut-view<p,q,a,u8> ) MREC-TWO:UNMAKE drop ;" 70 REJECT TTRUE
+   s" : MREC-TWO-LOSE ( two<p,q,a,u8,b,u8> -- mut-view<p,q,a,u8> ) MREC-TWO:UNMAKE drop ;" 70 SUBJECT:EXITED? TTRUE
    s" two views cannot be duplicated after UNMAKE" T-LABEL
-   s" : MREC-TWO-COPY ( two<p,q,a,u8,b,u8> -- mut-view<p,q,a,u8> mut-view<p,q,b,u8> mut-view<p,q,b,u8> ) MREC-TWO:UNMAKE dup ;" 70 REJECT TTRUE
+   s" : MREC-TWO-COPY ( two<p,q,a,u8,b,u8> -- mut-view<p,q,a,u8> mut-view<p,q,b,u8> mut-view<p,q,b,u8> ) MREC-TWO:UNMAKE dup ;" 70 SUBJECT:EXITED? TTRUE
    s" nested record cannot be copied" T-LABEL
-   s" : MREC-NEST-DUP ( option<one<p,q,a,u8>> -- option<one<p,q,a,u8>> option<one<p,q,a,u8>> ) dup ;" 70 REJECT TTRUE
+   s" : MREC-NEST-DUP ( option<one<p,q,a,u8>> -- option<one<p,q,a,u8>> option<one<p,q,a,u8>> ) dup ;" 70 SUBJECT:EXITED? TTRUE
    s" nested record cannot be dropped" T-LABEL
-   s" : MREC-NEST-DROP ( option<one<p,q,a,u8>> -- ) drop ;" 70 REJECT TTRUE
+   s" : MREC-NEST-DROP ( option<one<p,q,a,u8>> -- ) drop ;" 70 SUBJECT:EXITED? TTRUE
    s" an empty sum branch cannot absorb an owned record" T-LABEL
-   s" : MREC-NEST-LOSE ( one<p,q,a,u8> -- option<one<p,q,a,u8>> ) OPTION:NONE ;" 70 REJECT TTRUE
+   s" : MREC-NEST-LOSE ( one<p,q,a,u8> -- option<one<p,q,a,u8>> ) OPTION:NONE ;" 70 SUBJECT:EXITED? TTRUE
    s" matching cannot discard a view held by a sum" T-LABEL
-   s" : MREC-NEST-ARM-DROP ( option<one<p,q,a,u8>> -- n ) MATCH option none OF 0 ENDOF some OF drop 1 ENDOF ;MATCH ;" 70 REJECT TTRUE ;
+   s" : MREC-NEST-ARM-DROP ( option<one<p,q,a,u8>> -- n ) MATCH option none OF 0 ENDOF some OF drop 1 ENDOF ;MATCH ;" 70 SUBJECT:EXITED? TTRUE ;
 
 ;package
 
