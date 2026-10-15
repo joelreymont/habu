@@ -15,8 +15,6 @@ using NATIVE-FILE-E2E
 package NATIVE-FILE-STATE-TEST
 
 $8000 constant CAP
-create AT-A-BUF FS-PATH-CAP allot
-create AT-B-BUF FS-PATH-CAP allot
 create EXPORT-PATH FS-PATH-CAP allot
 create IMPORT-PATH FS-PATH-CAP allot
 create CUT CAP allot  variable CUT-U
@@ -27,16 +25,9 @@ variable IMPORT-U
 variable CODE-A-O  variable CODE-A-U
 variable CODE-B-O  variable CODE-B-U
 
-: AT-A ( ptr u8 n -- ptr u8 n )
-   {: name:ptr u:n :}
-   ROOT$ name u AT-A-BUF JOIN-PATH AT-A-BUF swap ;
-: AT-B ( ptr u8 n -- ptr u8 n )
-   {: name:ptr u:n :}
-   ROOT$ name u AT-B-BUF JOIN-PATH AT-B-BUF swap ;
-
-: BUILD ( ptr u8 n -- n ) {: product:ptr productu:n :}
-   s" app.f" AT-A product productu AT-B s" cache" AT
-      NATIVE-FILE-APP:BUILD
+: BUILD ( ptr u8 n -- n )
+   {: product:ptr productu:n :}
+   ROOT$ s" app.f" product productu NATIVE-FILE-APP:BUILD-AT
    NATIVE-FILE-APP:OUT$ NATIVE-FILE-APP:ERR$ STREAMS! ;
 
 : APP-SOURCE ( -- )

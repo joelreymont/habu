@@ -18,6 +18,9 @@ create ERR CAP allot variable ERR-U
 create TARGET FS-PATH-CAP allot variable TARGET-U
 create CACHE FS-PATH-CAP allot variable CACHE-U
 create BUILDER FS-PATH-CAP allot variable BUILDER-U
+create SRC-PATH FS-PATH-CAP allot
+create PROD-PATH FS-PATH-CAP allot
+create CACHE-PATH FS-PATH-CAP allot
 DYNAMIC-BUFFER OBJECT u8
 DYNAMIC-BUFFER SOURCE u8
 variable SOURCE-START
@@ -122,6 +125,13 @@ public
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;
+\ BUILD of root/source into root/product with the object cache at root/cache.
+: BUILD-AT ( ptr u8 n ptr u8 n ptr u8 n -- n )
+   {: root:ptr rootu:n source:ptr sourceu:n product:ptr productu:n :}
+   root rootu source sourceu SRC-PATH JOIN-PATH SRC-PATH swap
+   root rootu product productu PROD-PATH JOIN-PATH PROD-PATH swap
+   root rootu s" cache" CACHE-PATH JOIN-PATH CACHE-PATH swap
+   BUILD ;
 : PROFILE ( ptr u8 n ptr u8 n -- n n n n )
    {: cache:ptr cacheu:n target:ptr targetu:n :}
    targetu FS-PATH-CAP > cacheu FS-PATH-CAP > or if E-FS-PATH throw then

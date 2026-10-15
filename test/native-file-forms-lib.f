@@ -50,9 +50,9 @@ DYNAMIC-BUFFER IMAGE-B u8
    dup 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    0 T= ;
 
-: BUILD ( ptr u8 n -- n ) {: product:ptr productu:n :}
-   s" app.f" AT-A product productu AT-B s" cache" AT
-      NATIVE-FILE-APP:BUILD {: rc:n :}
+: BUILD ( ptr u8 n -- n )
+   {: product:ptr productu:n :}
+   ROOT$ s" app.f" product productu NATIVE-FILE-APP:BUILD-AT {: rc:n :}
    NATIVE-FILE-APP:OUT$ {: out:ptr outu:n :}
    NATIVE-FILE-APP:ERR$ {: err:ptr erru:n :}
    out OUT outu BYTE-COPY outu OUT-U !

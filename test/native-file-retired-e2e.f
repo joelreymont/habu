@@ -3,7 +3,6 @@
 
 require src/lib/test.f
 require src/lib/string.f
-require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-env.f
 require test/native-file-app-lib.f
@@ -11,9 +10,6 @@ require test/native-file-e2e.f
 
 using NATIVE-FILE-E2E
 package NATIVE-FILE-RETIRED-TEST
-
-create APP-BUF FS-PATH-CAP allot
-create PROD-BUF FS-PATH-CAP allot
 
 : PREPARE ( -- )
    s" cache" AT MAKE-DIR
@@ -34,10 +30,7 @@ create PROD-BUF FS-PATH-CAP allot
 
 : BUILD ( ptr u8 n ptr u8 n -- n )
    {: source:ptr sourceu:n product:ptr productu:n :}
-   ROOT$ source sourceu APP-BUF JOIN-PATH APP-BUF swap
-   ROOT$ product productu PROD-BUF JOIN-PATH PROD-BUF swap
-   s" cache" AT
-      NATIVE-FILE-APP:BUILD
+   ROOT$ source sourceu product productu NATIVE-FILE-APP:BUILD-AT
    NATIVE-FILE-APP:OUT$ NATIVE-FILE-APP:ERR$ STREAMS! ;
 
 : RUN-PRODUCT ( ptr u8 n ptr u8 n -- )
