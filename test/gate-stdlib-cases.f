@@ -1046,6 +1046,13 @@ SUITE process-image
    test/process-image.f
 ;SUITE
 
+\ Serial and UDP workers through three saved generations, each a fresh
+\ process, with the pty master and the UDP peer as tasks in this row. Runs on
+\ the saver image like process-image.
+SUITE host-io-image
+   test/host-io-image.f
+;SUITE
+
 SUITE compiler-native-many-locals
    test/compiler/native-many-locals.f
 ;SUITE

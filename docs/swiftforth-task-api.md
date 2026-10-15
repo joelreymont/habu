@@ -58,5 +58,6 @@ and library share its task-control-block layout, and the library checks the
 typed field offsets when loaded. Starting a worker or preparing an image no
 longer appends a generated callback to retained code. Foreign symbols are
 resolved again in each restored process. `test/task-entry.f` checks code-space
-stability across restarts; `test/host-io-image.py` exercises concurrent serial
-and UDP workers through three captured executable generations.
+stability across restarts; `test/host-io-image.f` (gate row
+`host-io-image`) exercises concurrent serial and UDP workers through three
+captured executable generations.
