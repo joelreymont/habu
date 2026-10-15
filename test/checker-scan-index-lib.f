@@ -21,12 +21,6 @@ package SCANIDX-TEST
 
 T-RESET
 
-: TTRUE ( bool -- )
-   if -1 else 0 then -1 T= ;
-
-: TFALSE ( bool -- )
-   if -1 else 0 then 0 T= ;
-
 \ ---------------------------------------------------------------------------
 \ whitebox reach. The stores, their indexes, and the walks that specify them
 \ are checker-internal colon words, named directly: on the unsealed engine a

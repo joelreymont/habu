@@ -17,15 +17,6 @@ using TFAM
 
 T-RESET
 
-\ TSNE ( ga gu wa wu -- ) : assert two strings are NOT byte-identical.
-: TSNE ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
-   T-NEXT
-   gu wu <> if exit then
-   0 begin dup gu < while
-      dup ga + c@  over wa + c@ <> if drop exit then
-      1+
-   repeat drop
-   T-FAIL s" assert strings differ: both " type ga gu type cr ;
 : T-PF-DROP ( n n n ptr u8 n n n n n n n n -- )
    2drop 2drop 2drop 2drop 2drop 2drop ;
 
@@ -751,7 +742,7 @@ CPA @ CPU @ TF-INTERN CPOFF !
 \ injectivity: a different long package hashes to a different name (the hash
 \ region separates inputs that share length and tail).
 s" verylongpackagenamx" s" resultresultr" TF-CTOR-PKG$ CQU ! CQA !
-CQA @ CQU @  CPOFF @ CPU @ TF-OFF$  TSNE       \ NOT equal to the first long name
+CQA @ CQU @  CPOFF @ CPU @ TF-OFF$  T$<>       \ NOT equal to the first long name
 \ exact golden pins the pinned algorithm byte-for-byte (hash covers the package
 \ segment list only, so the longer tail keeps the verylongpackagename golden):
 \ SHA-256(0x13 "verylongpackagename") = 92a8624462e75ea4... (independent impl).

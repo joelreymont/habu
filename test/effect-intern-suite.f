@@ -43,7 +43,6 @@
 
 require src/lib/errors.f
 require src/lib/string.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 require src/lib/test.f
 
 \ Every definition here is a fixture helper, so they live in this file's own
@@ -52,15 +51,6 @@ require src/lib/test.f
 package EFFINTERN-TEST
 
 T-RESET
-
-: T<> ( n n -- ) {: got:n want:n :}
-   T-NEXT
-   got want = if
-      T-FAIL s" assert: expected anything but " type want FMT:.INT cr
-   then ;
-
-: TTRUE ( bool -- ) if -1 else 0 then -1 T= ;
-: TFALSE ( bool -- ) if -1 else 0 then 0 T= ;
 
 \ ---------------------------------------------------------------------------
 \ whitebox shims. The store, its interner and the layout they share are

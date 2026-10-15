@@ -43,18 +43,11 @@ require src/lib/string.f
 require src/lib/memory.f
 require src/habu/verify-source.f
 require tools/effect-store-census.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 require src/lib/test.f
 
 package EFFCENSUS-TEST
 
 T-RESET
-
-: T<> ( n n -- ) {: got:n want:n :}
-   T-NEXT
-   got want = if
-      T-FAIL s" assert: expected anything but " type want FMT:.INT cr
-   then ;
 
 variable MK   variable TC
 

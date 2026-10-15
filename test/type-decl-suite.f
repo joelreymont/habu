@@ -14,6 +14,7 @@
 \ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
 
 require test/checker-assert.f
+require src/lib/string.f
 require src/lib/test.f
 
 using SCHEMA-REG
@@ -21,21 +22,6 @@ using TFAM
 using TYPE-DECL
 
 T-RESET
-
-\ substring search (diag packet assertions).
-variable TDC-I
-: TDT-AT? ( ptr u8 n ptr u8 n -- bool ) {: h:ptr hu:n n:ptr nu:n :}
-   hu nu < if 0 0= 0= exit then
-   0 begin dup nu < while
-      dup n + c@  over h + c@ <> if drop 0 0= 0= exit then
-      1+
-   repeat drop 0 0= ;
-: TDT-CONTAINS? ( ptr u8 n ptr u8 n -- bool ) {: h:ptr hu:n n:ptr nu:n :}
-   0 TDC-I !
-   begin TDC-I @ nu + hu <= while
-      h TDC-I @ +  nu  n nu TDT-AT? if 0 0= exit then
-      TDC-I @ 1+ TDC-I !
-   repeat 0 0= 0= ;
 
 \ evaluate a declaration string, returning its throw code (0 = accepted).
 \ Checked: the dynamic-evaluate boundary is the existing audited
@@ -1016,16 +1002,16 @@ s" TPC-MEM-REPLAY-BAD ( span<n,n,n> -- span<n,n,n> ) TPC-MEM-STORED" CHECK-QUIET
 \ before lookup.
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TPC-RENDER ( MEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" actual: mem:span<n,n,n,n,n,n> " TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" actual: MEM:span<n,n,n,n,n,n> " TDT-CONTAINS? 0 T=
+DIAG-BUFFER$ s" actual: mem:span<n,n,n,n,n,n> " CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: MEM:span<n,n,n,n,n,n> " CONTAINS? 0 T=
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TPC-JSON-RENDER ( MEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"actual\":\"mem:span<n,n,n,n,n,n> \"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"actual\":\"mem:span<n,n,n,n,n,n> \"" CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TPC-JSON-ARITY ( MEM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"token\":\"MEM:span\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"arity_expected\":6" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"arity_actual\":3" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"token\":\"MEM:span\"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"arity_expected\":6" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"arity_actual\":3" CONTAINS? -1 T=
 0 DIAG-JSON!
 TDIAG-BUF 8192 DIAG-BUFFER!
 
@@ -1571,39 +1557,39 @@ TDT-BASE=
 DIAG-BUFFER-OFF
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" NEWTYPE tdfoo<a,b>" E-TFAM-DUP TDT-NEG
-DIAG-BUFFER$ s\" \"code\":\"E-BAD-DECLARATION\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"repair_class\":\"fix_family_declaration\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"verdict\":\"rejected\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"decl\":\"newtype\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"family\":\"tdfoo\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"reason\":\"duplicate family\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"declared_effect\"" TDT-CONTAINS? 0 T=
-DIAG-BUFFER$ s\" \"definition_source\"" TDT-CONTAINS? 0 T=
-DIAG-BUFFER$ s\" \"return_stack\"" TDT-CONTAINS? 0 T=
+DIAG-BUFFER$ s\" \"code\":\"E-BAD-DECLARATION\"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"repair_class\":\"fix_family_declaration\"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"verdict\":\"rejected\"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"decl\":\"newtype\"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"family\":\"tdfoo\"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"reason\":\"duplicate family\"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"declared_effect\"" CONTAINS? 0 T=
+DIAG-BUFFER$ s\" \"definition_source\"" CONTAINS? 0 T=
+DIAG-BUFFER$ s\" \"return_stack\"" CONTAINS? 0 T=
 DIAG-BUFFER-OFF  0 DIAG-JSON!
 \ prose form names the declaration kind and reason.
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" SUMTYPE tdvd2<a> VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" E-TFAM-DUP TDT-NEG
-DIAG-BUFFER$ s" bad sumtype declaration" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" duplicate variant" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" bad sumtype declaration" CONTAINS? -1 T=
+DIAG-BUFFER$ s" duplicate variant" CONTAINS? -1 T=
 \ the enum kind token flows into the same declaration-shaped prose packet.
 s" ENUM tdediag red red ;ENUM" E-TFAM-DUP TDT-NEG
-DIAG-BUFFER$ s" bad enum declaration" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" duplicate variant" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" bad enum declaration" CONTAINS? -1 T=
+DIAG-BUFFER$ s" duplicate variant" CONTAINS? -1 T=
 \ PRODUCT delegates reserved field names to the PF registry truth while the
 \ declaration layer owns the exact token/reason packet.
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" PRODUCT tdpfdiag FIELD make n ;PRODUCT" E-PF-NAME TDT-NEG
-DIAG-BUFFER$ s" bad product declaration" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" reserved field name" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" at 'make'" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" bad product declaration" CONTAINS? -1 T=
+DIAG-BUFFER$ s" reserved field name" CONTAINS? -1 T=
+DIAG-BUFFER$ s" at 'make'" CONTAINS? -1 T=
 \ item 16: a policy reject flows into the same declaration-shaped prose packet —
 \ it rides the standard TDECL-THROW path, so it needs no repair-diagnostics (item
 \ 13) change; the richer JSON ADT fields join it unchanged when item 13 lands.
 s" SUMTYPE tdpoldg<a> POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 
-DIAG-BUFFER$ s" bad sumtype declaration" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" layout policy not yet supported" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" bad sumtype declaration" CONTAINS? -1 T=
+DIAG-BUFFER$ s" layout policy not yet supported" CONTAINS? -1 T=
 
 \ C2: a declaration body over TDECL-CAP ($1000) reports the packet, not a raw
 \ die (the length check fires ahead of variant parsing, so repeats never matter).
@@ -2091,18 +2077,18 @@ s" TDLB9 ( n -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! 0 T=
 \ reads, and the signature's own arity diagnostic is what comes out.
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLRA1 ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" wrong arity for type family 'x:tdres<n>'" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" wrong arity for type family 'x:tdres<n>'" CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR1 ( tdlnom -- n ) {: q:tdlnom :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlnom " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: n actual: tdlnom " CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR2 ( tdlnom -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlnom " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: n actual: tdlnom " CONTAINS? -1 T=
 \ enum-tier annotation term on the EXPECTED side of the :} bind check
 \ (pre-fix rendered 'expected: oplv<>').
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR3 ( tdlp -- n ) {: q:tdlv :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: tdlv actual: tdlp " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: tdlv actual: tdlp " CONTAINS? -1 T=
 \ foreign-package family: the interned name renders qualified pkg:tail. Use the
 \ real package path; checker mirror mutation is not namespace authority.
 package tdlrpk
@@ -2111,7 +2097,7 @@ NEWTYPE tdlrfam
 ;package
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR4 ( tdlrpk:tdlrfam -- n ) {: q:tdlrpk:tdlrfam :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrpk:tdlrfam " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrpk:tdlrfam " CONTAINS? -1 T=
 
 \ Same row, but the package was declared in UPPER case. TDLR4 above cannot see
 \ the difference — `tdlrpk` is already lowercase — so the renderer used to echo
@@ -2128,18 +2114,18 @@ NEWTYPE tdlrfamu
 ;package
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR5 ( TDLRPKU:tdlrfamu -- n ) {: q:TDLRPKU:tdlrfamu :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu " TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu " TDT-CONTAINS? 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu " CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu " CONTAINS? 0 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR6 ( TDLRPKU:tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu " TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu " TDT-CONTAINS? 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu " CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu " CONTAINS? 0 T=
 \ the folded qualifier still names the family back: a signature may spell it either way.
 s" TDLR6R ( tdlrpku:tdlrfamu -- TDLRPKU:tdlrfamu )" CHECK-QUIET-CANDIDATE! -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TDLR7 ( n -- TDLRPKU:tdlrfamu )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu \"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu \"" TDT-CONTAINS? 0 T=
+DIAG-BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu \"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu \"" CONTAINS? 0 T=
 0 DIAG-JSON!
 \ a package reopened under different capitalisation is the SAME package: the
 \ engine reports the first-registered spelling, so the family renders bare
@@ -2147,8 +2133,8 @@ DIAG-BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu \"" TDT-CONTAINS? 0 T=
 package tdlrpku
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR8 ( tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrfamu " TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" actual: tdlrpku:tdlrfamu " TDT-CONTAINS? 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrfamu " CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: tdlrpku:tdlrfamu " CONTAINS? 0 T=
 ;package
 TDIAG-BUF 8192 DIAG-BUFFER!
 
@@ -2167,11 +2153,11 @@ SUMTYPE tdlrjs VARIANT keep n ;VARIANT ;SUMTYPE
 ;package
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TDLRJ1 ( n -- tdlrjg )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"family\":\"tdlrjg\"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"family\":\"tdlrjg\"" CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLRJ2 ( n -- tdlrjp:tdlrjs )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"family\":\"tdlrjp:tdlrjs\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"family\":\"tdlrjs\"" TDT-CONTAINS? 0 T=
+DIAG-BUFFER$ s\" \"family\":\"tdlrjp:tdlrjs\"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"family\":\"tdlrjs\"" CONTAINS? 0 T=
 0 DIAG-JSON!
 DIAG-BUFFER-OFF
 
@@ -2220,8 +2206,8 @@ s" TDPN7 ( n -- tdpbres<tdpbw2,n> ) TDPBRES:ERR" CHECK-QUIET-CANDIDATE! -1 T=
 \ certified TDPN4-7 satisfy by construction.
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TDPA1 ( n -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" @tdpbopt.slot2<tdpbw2>" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" @tdpbopt.slot2<tdpbw2>" CONTAINS? -1 T=
 0 DIAG-JSON!
 DIAG-BUFFER-OFF
 s" TDPA2 ( tdpbw2 -- tdpbopt<n> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
@@ -2259,16 +2245,16 @@ s" TDNEST3 ( -- tdnopt<tdnres<n,n>> ) TDNOPT:NONE" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDNEST4 ( tdnres<tdnw2,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TDNOPEN ( tdnres<n,a> -- tdnopt<tdnres<n,a>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? -1 T=
 DIAG-BUFFER-OFF
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TDNA1 ( tdnres<n,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" @tdnres.slot2<tdnw2,n>" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" @tdnres.slot2<tdnw2,n>" CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDNA2 ( tdnopt<n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"family\":\"tdnres\"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"family\":\"tdnres\"" CONTAINS? -1 T=
 0 DIAG-JSON!
 DIAG-BUFFER-OFF
 s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
