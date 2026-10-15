@@ -702,11 +702,11 @@ first crosses the guard page.
   workload and reading wall/sys time and the minor-fault count together
   (`/usr/bin/time -l` on macOS); attribute it by moving the fault count,
   not by attributing samples to a stub.
-- `tools/perf/boot-census-watcher.c` + `boot-census-analyze.py` — follow a
-  command's whole process tree via kqueue `EVFILT_PROC` and classify every
-  child fork-vs-exec by image path and argv (fork children keep the
-  parent's argv). Start here for any "how many engines does this run actually
-  start" question.
+- `bin/hb --load tools/perf/boot-census.f -- LOGFILE CMD [ARGS...]` (macOS) —
+  run CMD, follow its whole process tree via kqueue `EVFILT_PROC`, log every
+  process to LOGFILE and print a census that classifies every child
+  fork-vs-exec by image path and argv (fork children keep the parent's argv).
+  Start here for any "how many engines does this run actually start" question.
 
 ## Sampling profiler
 

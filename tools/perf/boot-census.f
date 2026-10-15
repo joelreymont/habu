@@ -20,7 +20,7 @@
 \ listed, and at its exec event.
 \
 \ FORK OR EXEC. A process's image is its path (proc_pidpath) and its argv
-\ (KERN_PROCARGS2, joined with single spaces, at most ARGV-CAP - 1 bytes), read
+\ (KERN_PROCARGS2, joined with single spaces, at most ARGV-CAP bytes), read
 \ when it is registered and again on each exec event. A child whose image is its
 \ parent's latest image is a fork; every other child, the root and every exec
 \ event is a fresh image.
@@ -55,14 +55,14 @@ private
 74 constant RC-IO                  \ sysexits EX_IOERR: the log cannot be opened
 100000 constant PID-CAP            \ xnu PID_MAX is 99999; a larger pid is E-PROC-OUTPUT
 4096 constant PATH-CAP-BYTES       \ PROC_PIDPATHINFO_MAXSIZE, sys/proc_info.h
-512 constant ARGV-CAP              \ the old watcher's args[512]: at most 511 bytes of argv kept
-65536 constant RAW-CAP             \ the KERN_PROCARGS2 answer read, as the old watcher's
+512 constant ARGV-CAP              \ argv bytes kept per image
+65536 constant RAW-CAP             \ the KERN_PROCARGS2 answer buffer
 8192 constant LINE-CAP             \ one log line or key: a path, an argv and their framing
 1 constant CTL-KERN                \ sys/sysctl.h
 49 constant KERN-PROCARGS2         \ sys/sysctl.h
 6 constant PROC-PPID-ONLY          \ proc_listpids: children of a pid (src/lib/process-tree.f)
 4 constant PID-BYTES               \ pid_t
-4096 constant LIST-MAX             \ children of one process listed at once, as the old watcher's
+4096 constant LIST-MAX             \ children of one process listed at once; a full list is E-PROC-TRUNCATED
 LIST-MAX PID-BYTES * constant LIST-BYTES
 32 constant KEVENT-BYTES           \ struct kevent: ident u64 @0, filter i16 @8, flags u16 @10, fflags u32 @12, data i64 @16, udata @24
 $FFFB constant EVFILT-PROC         \ -5 as u16, sys/event.h
@@ -189,7 +189,7 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 
 : MORE? ( -- bool )   CUR @ RAW-U @ < ;
 : BYTE ( -- n )   RAW CUR @ + c@ ;
-: ARGS-ROOM? ( -- bool )   ARGS-U @ LEN>N 1+ ARGV-CAP < ;
+: ARGS-ROOM? ( -- bool )   ARGS-U @ LEN>N ARGV-CAP < ;
 
 \ The exec path at CUR, then the NULs that pad it.
 : SKIP-EXEC-PATH ( -- )
@@ -206,7 +206,7 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 
 \ KERN_PROCARGS2 answers argc, the exec path, its NUL padding, then the argv
 \ strings, each ending in a NUL. The argv of pid, joined with single spaces and
-\ cut at ARGV-CAP - 1 bytes, or ?argv-errno=E when sysctl refuses it.
+\ cut at ARGV-CAP bytes, or ?argv-errno=E when sysctl refuses it.
 : ARGS-READ ( n -- ) {: pid:n :}
    ARGS-U BUF-RESET
    CTL-KERN MIB LE:U32!
@@ -377,9 +377,7 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    0 -1 ;
 
 \ Just past the first "--load ", -1 when there is none or a space or nothing
-\ follows it. The old analyzer's `--load (\S+)` search could match a later
-\ "--load " where the first is followed by a space; an argv joined with single
-\ spaces has that only for an empty or space-led argument.
+\ follows it.
 : LOAD-AT ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" --load " FIND-SUB MATCH option
      none OF -1 ENDOF
@@ -571,7 +569,8 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 
 \ ---- the census -----------------------------------------------------------------
 
-: .ROW ( ptr u8 n n -- ) {: a:ptr u:n c:n :}       \ as the old analyzer's "  {v:6d}  {k}"
+\ Two spaces, the count right-aligned in six columns, two spaces, the key.
+: .ROW ( ptr u8 n n -- ) {: a:ptr u:n c:n :}
    c NUM$ {: d:ptr du:n :}
    s"   " type
    6 du - 0 ?do space loop
@@ -592,8 +591,7 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    1 t r K-DONE ROW!
    t r ROW$ t r K-COUNT ROW@ .ROW ;
 
-\ Rows by count, greatest first, ties in the order first seen, as Python's
-\ Counter.most_common.
+\ Rows by count, greatest first, ties in the order first seen.
 : .MOST-COMMON ( ptr n n -- ) {: t:ptr n:n :}
    n 0 ?do t n .NEXT loop ;
 
