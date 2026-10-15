@@ -1581,6 +1581,10 @@ SUITE zip-xml-consumer
    test/zip-xml-source.f
 ;SUITE
 
+SUITE zip-temp
+   test/zip-temp-e2e.f
+;SUITE
+
 SUITE ffi-cabi
    src/lib/ffi-test.f
 ;SUITE
