@@ -10,15 +10,6 @@ $4000 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 
-: REJECT ( ptr u8 n -- bool )
-   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
-      exited OF 70 = ENDOF
-      signaled OF drop false ENDOF
-      timeout OF false ENDOF
-   ;MATCH
-   >r 2drop r> ;
-
 : STALE? ( ptr u8 n -- bool )
    OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
    MATCH outcome
@@ -96,29 +87,29 @@ EXPORT REPLACE-R-CALLBACK
    s" a trusted callee that throws leaves its read view stale" T-LABEL
    s" -1 JSON-DIAGS ! : C2OP-TRUSTED-VIEW-CATCH ( read-view<p,q,u8> -- u8 read-view<p,q,u8> ) [: C2-OWNER-PRODUCER-REFUSALS:TRUSTED-THROW-VIEW ;] catch drop 0 C2-MEM:BYTE@ ;" STALE? TTRUE
    s" a throw cannot restore a scoped callback it replaced on its return stack" T-LABEL
-   s" : C2OP-R-CALLBACK-CATCH ( read-view<p,q,u8> [ read-view<p,q,u8> -- read-view<p,q,u8> ] -- read-view<p,q,u8> ) [: C2-OWNER-PRODUCER-REFUSALS:REPLACE-R-CALLBACK ;] catch drop execute ;" REJECT TTRUE
+   s" : C2OP-R-CALLBACK-CATCH ( read-view<p,q,u8> [ read-view<p,q,u8> -- read-view<p,q,u8> ] -- read-view<p,q,u8> ) [: C2-OWNER-PRODUCER-REFUSALS:REPLACE-R-CALLBACK ;] catch drop execute ;" 70 SUBJECT:EXITED? TTRUE
    s" an early throw keeps a callback parked on the return stack usable" T-LABEL
    s" : C2OP-EARLY-R-CALLBACK-CATCH ( read-view<p,q,u8> [ read-view<p,q,u8> -- read-view<p,q,u8> ] -- read-view<p,q,u8> ) >r [: -9363 throw ;] catch drop r> execute ;" ACCEPT? TTRUE
    s" an owner cannot be duplicated" T-LABEL
-   s" : C2OP-DUP ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) dup drop ;" REJECT TTRUE
+   s" : C2OP-DUP ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) dup drop ;" 70 SUBJECT:EXITED? TTRUE
    s" a published mutable view cannot be reused" T-LABEL
-   s" : C2OP-REUSE ( mut-view<p,l,a,u8> -- read-view<p,l,u8> ) dup C2-MEM:PUBLISH swap 0 C2-MEM:MUT-BYTE! ;" REJECT TTRUE
+   s" : C2OP-REUSE ( mut-view<p,l,a,u8> -- read-view<p,l,u8> ) dup C2-MEM:PUBLISH swap 0 C2-MEM:MUT-BYTE! ;" 70 SUBJECT:EXITED? TTRUE
    s" an input region cannot claim a new allocation" T-LABEL
-   s" : C2OP-FORGE ( C2-MEM:owner<p,i,a> NUM:alloc-byte-len -- C2-MEM:owner<p,i,a> mut-view<p,p,a,u8> ) C2-MEM:ALLOC ;" REJECT TTRUE
+   s" : C2OP-FORGE ( C2-MEM:owner<p,i,a> NUM:alloc-byte-len -- C2-MEM:owner<p,i,a> mut-view<p,p,a,u8> ) C2-MEM:ALLOC ;" 70 SUBJECT:EXITED? TTRUE
    s" two allocations cannot claim the same fresh region" T-LABEL
-   s" : C2OP-COLLAPSE ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> mut-view<p,p,fresh-region-b,u8> mut-view<p,p,fresh-region-b,u8> ) 16 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC swap 16 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC rot swap ;" REJECT TTRUE
+   s" : C2OP-COLLAPSE ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> mut-view<p,p,fresh-region-b,u8> mut-view<p,p,fresh-region-b,u8> ) 16 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC swap 16 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC rot swap ;" 70 SUBJECT:EXITED? TTRUE
    s" a raw-pointer disposer cannot receive an owned view" T-LABEL
-   s" : C2OP-RAW-DISPOSE ( ptr u8 NUM:alloc-byte-len -- ) 2drop ; : C2OP-RAW ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> mut-view<p,p,fresh-region-b,u8> ) 16 MEM:BYTES-ALLOC-LEN [: C2OP-RAW-DISPOSE ;] C2-MEM:ALLOC-DISPOSE ;" REJECT TTRUE
+   s" : C2OP-RAW-DISPOSE ( ptr u8 NUM:alloc-byte-len -- ) 2drop ; : C2OP-RAW ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> mut-view<p,p,fresh-region-b,u8> ) 16 MEM:BYTES-ALLOC-LEN [: C2OP-RAW-DISPOSE ;] C2-MEM:ALLOC-DISPOSE ;" 70 SUBJECT:EXITED? TTRUE
    s" a disposer tied to an existing region cannot claim a fresh one" T-LABEL
-   s" : C2OP-RIGID ( C2-MEM:owner<p,i,a> NUM:alloc-byte-len [ mut-view<p,p,a,u8> -- ] -- C2-MEM:owner<p,i,a> mut-view<p,p,fresh-region-b,u8> ) C2-MEM:ALLOC-DISPOSE ;" REJECT TTRUE
+   s" : C2OP-RIGID ( C2-MEM:owner<p,i,a> NUM:alloc-byte-len [ mut-view<p,p,a,u8> -- ] -- C2-MEM:owner<p,i,a> mut-view<p,p,fresh-region-b,u8> ) C2-MEM:ALLOC-DISPOSE ;" 70 SUBJECT:EXITED? TTRUE
    s" two disposer allocations cannot claim one fresh region" T-LABEL
-   s" : C2OP-DROP-VIEW ( mut-view<p,p,a,u8> -- ) C2-MEM:PUBLISH drop ; : C2OP-TWO-DISPOSE ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> mut-view<p,p,fresh-region-b,u8> mut-view<p,p,fresh-region-b,u8> ) 16 MEM:BYTES-ALLOC-LEN [: C2OP-DROP-VIEW ;] C2-MEM:ALLOC-DISPOSE swap 16 MEM:BYTES-ALLOC-LEN [: C2OP-DROP-VIEW ;] C2-MEM:ALLOC-DISPOSE rot swap ;" REJECT TTRUE
+   s" : C2OP-DROP-VIEW ( mut-view<p,p,a,u8> -- ) C2-MEM:PUBLISH drop ; : C2OP-TWO-DISPOSE ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> mut-view<p,p,fresh-region-b,u8> mut-view<p,p,fresh-region-b,u8> ) 16 MEM:BYTES-ALLOC-LEN [: C2OP-DROP-VIEW ;] C2-MEM:ALLOC-DISPOSE swap 16 MEM:BYTES-ALLOC-LEN [: C2OP-DROP-VIEW ;] C2-MEM:ALLOC-DISPOSE rot swap ;" 70 SUBJECT:EXITED? TTRUE
    s" the raw owner constructor cannot be called" T-LABEL
-   s" : C2OP-CTOR ( ptr u8 n -- C2-MEM:owner<p,i,a> ) C2-MEM:OWNER-MAKE ;" REJECT TTRUE
+   s" : C2OP-CTOR ( ptr u8 n -- C2-MEM:owner<p,i,a> ) C2-MEM:OWNER-MAKE ;" 70 SUBJECT:EXITED? TTRUE
    s" a mutable view cannot be unpacked outside the owner package" T-LABEL
-   s" : C2OP-UNPACK ( mut-view<p,l,a,u8> -- ptr u8 n ) C2-MEM:MUT-UNPACK ;" REJECT TTRUE
+   s" : C2OP-UNPACK ( mut-view<p,l,a,u8> -- ptr u8 n ) C2-MEM:MUT-UNPACK ;" 70 SUBJECT:EXITED? TTRUE
    s" ticking the unpacker does not cross its internal boundary" T-LABEL
-   s" : C2OP-TICK ( mut-view<p,l,a,u8> -- ptr u8 n ) ['] C2-MEM:MUT-UNPACK execute ;" REJECT TTRUE
+   s" : C2OP-TICK ( mut-view<p,l,a,u8> -- ptr u8 n ) ['] C2-MEM:MUT-UNPACK execute ;" 70 SUBJECT:EXITED? TTRUE
    s" the product refuses a reopen of C2-MEM by name" T-LABEL
    s" package C2-MEM ;package" SEALED? TTRUE
    T-REPORT
