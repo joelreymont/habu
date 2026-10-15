@@ -43,9 +43,10 @@ create OUT 1 cells allot
    $F94007E9 INSN  $8B090000 INSN
    $D65F03C0 INSN  MINT ;
 
-\ d0 = d0 + the double in stack slot 0; ret.
+\ d0 = d0 + the double in stack slot 0; ret. The sum goes through d1, which
+\ AAPCS64 lets a callee clobber; d8-d15 it must preserve.
 : FADD-FSTACK ( -- n )
-   $F94003E9 INSN  $9E670128 INSN  $1E682800 INSN  $D65F03C0 INSN  MINT ;
+   $F94003E9 INSN  $9E670121 INSN  $1E612800 INSN  $D65F03C0 INSN  MINT ;
 
 \ [x8] = x0; ret.
 : X8-STORE ( -- n )
