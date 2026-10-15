@@ -2,9 +2,9 @@
 require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
-require src/lib/process-argv.f
 require src/lib/process-env.f
 require test/whitebox-child.f
+require test/window-child-args.f
 
 package PAYLOAD-UNSUPPORTED-SUITE
 
@@ -19,37 +19,7 @@ create ERR IO-CAP allot
    CLEANUP-RESET
    s" aot-payload-unsupported" WHITEBOX-CHILD:PROVIDE ;
 
-: ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
-
-: ARGS ( ptr u8 n -- ) {: fixture:ptr fixtureu:n :}
-   PROC-ARGV-RESET
-   s" --load" ARG
-   s" test/native-window-owner-child.f" ARG
-   s" --" ARG
-   fixture fixtureu ARG
-   s" src/core/declaration-transaction.f" ARG
-   s" src/core/generated-declaration.f" ARG
-   s" src/core/decl-event.f" ARG
-   s" src/core/structure-make.f" ARG
-   s" src/core/structure-decl.f" ARG
-   s" src/core/enum-decl.f" ARG
-   s" src/core/structures.f" ARG
-   s" src/core/bytes.f" ARG
-   s" src/core/dynamic-storage.f" ARG
-   HB-TARGET-LINUX? if
-      s" src/os/linux/target.f" ARG
-      s" src/os/linux/layout-constants.f" ARG
-      s" src/os/linux/layout.f" ARG
-   else
-      s" src/os/macos/target.f" ARG s" src/os/macos/layout.f" ARG
-   then
-   s" src/habu/stack-abi.f" ARG
-   s" src/habu/layout.f" ARG
-   s" src/os/env-base.f" ARG
-   s" src/core/include.f" ARG
-   s" src/core/sha256.f" ARG
-   s" src/lib/prelude.f" ARG
-   WHITEBOX-CHILD:ENV! ;
+: ARGS ( ptr u8 n -- ) WINDOW-CHILD-ARGS:PAYLOAD WHITEBOX-CHILD:ENV! ;
 
 : CASE-RUN ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: fixture:ptr fixtureu:n present:ptr presentu:n diagnostic:ptr diagnosticu:n :}

@@ -8,6 +8,7 @@ require src/lib/process-env.f
 require src/lib/fmt.f
 require src/lib/engine-candidate.f
 require test/whitebox-child.f
+require test/window-child-args.f
 
 package PAYLOAD-GRAPH-SUITE
 
@@ -43,34 +44,8 @@ variable SUBJECT-U
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
-: ARGS ( ptr u8 n -- ) {: fixture:ptr u:n :}
-   PROC-ARGV-RESET
-   s" --load" ARG
-   s" test/native-window-owner-child.f" ARG
-   s" --" ARG
-   fixture u ARG
-   s" src/core/declaration-transaction.f" ARG
-   s" src/core/generated-declaration.f" ARG
-   s" src/core/decl-event.f" ARG
-   s" src/core/structure-make.f" ARG
-   s" src/core/structure-decl.f" ARG
-   s" src/core/enum-decl.f" ARG
-   s" src/core/structures.f" ARG
-   s" src/core/bytes.f" ARG
-   s" src/core/dynamic-storage.f" ARG
-   HB-TARGET-LINUX? if
-      s" src/os/linux/target.f" ARG
-      s" src/os/linux/layout-constants.f" ARG
-      s" src/os/linux/layout.f" ARG
-   else
-      s" src/os/macos/target.f" ARG s" src/os/macos/layout.f" ARG
-   then
-   s" src/habu/stack-abi.f" ARG
-   s" src/habu/layout.f" ARG
-   s" src/os/env-base.f" ARG
-   s" src/core/include.f" ARG
-   s" src/core/sha256.f" ARG
-   s" src/lib/prelude.f" ARG
+: ARGS ( ptr u8 n -- )
+   WINDOW-CHILD-ARGS:PAYLOAD
    PROC-ENV-RESET
    s" HABU_PAYLOAD_TEST_ARTIFACT" >LEN ART$ >LEN PROC-ENV+
    s" HABU_PAYLOAD_TEST_ENGINE" >LEN WHITEBOX-CHILD:ENGINE$ >LEN PROC-ENV+

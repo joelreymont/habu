@@ -1,8 +1,9 @@
 \ window-child-args.f - the argv of a native-window child: the owner child
 \ entry, the subject, then the prefix files the include words and the seal
 \ stand on, in the build's order (test/reloc-window-prepare.f), and the
-\ prepare file. The window stops at src/core/cell-effects.f. EXPECT runs the
-\ staged child on the whitebox engine and holds it to one exact stdout.
+\ prepare file. That window stops at src/core/cell-effects.f; PAYLOAD gives
+\ the AOT payload rows' window, which runs through the prelude. EXPECT runs
+\ the staged child on the whitebox engine and holds it to one exact stdout.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -20,6 +21,14 @@ create OUT IO-CAP allot
 create ERR IO-CAP allot
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+
+\ The host layout and include words the build appends after the target
+\ (tools/build-fixpoint.f BF-APPEND-HABU-LAYOUT … BF-APPEND-INCLUDE).
+: BASE ( -- )
+   s" src/habu/stack-abi.f" ARG
+   s" src/habu/layout.f" ARG
+   s" src/os/env-base.f" ARG
+   s" src/core/include.f" ARG ;
 
 public
 
@@ -54,12 +63,17 @@ public
    then
    s" src/os/macos/target.f" ARG s" src/os/macos/layout.f" ARG ;
 
-: HABU ( -- )
-   s" src/habu/stack-abi.f" ARG
-   s" src/habu/layout.f" ARG
-   s" src/os/env-base.f" ARG
-   s" src/core/include.f" ARG
-   s" src/habu/code-span.f" ARG ;
+: HABU ( -- ) BASE s" src/habu/code-span.f" ARG ;
+
+\ The window of the AOT payload rows: the core with dynamic storage, the
+\ target, the base, sha256 and the prelude, in the build's order
+\ (tools/build-fixpoint.f BF-APPEND-BOOT-CORE, BF-APPEND-COMMON), no code-span.
+: PAYLOAD ( ptr u8 n -- )
+   CHILD
+   CORE s" src/core/dynamic-storage.f" ARG
+   TARGET BASE
+   s" src/core/sha256.f" ARG
+   s" src/lib/prelude.f" ARG ;
 
 : PREPARE ( ptr u8 n -- )
    ARG
