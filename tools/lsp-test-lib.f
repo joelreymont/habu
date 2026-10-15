@@ -2959,6 +2959,10 @@ DYNAMIC-BUFFER ENGINE-OPEN-TEXT u8
 : PREFIX-USE ( -- ptr u8 n )
    s\" NEWTYPE prefix-role\n: target-probe ( -- bool ) HB-TARGET-MACOS? ;\n" ;
 
+: PREFIX-STRUCT-PATH ( -- ptr u8 n )  s" prefix-structure.f" FIXTURE ;
+: PREFIX-STRUCT ( -- ptr u8 n )
+   s\" BEGIN-STRUCTURE STRUCT-NAV\nCELL +FIELD STRUCT-NAV.F\nEND-STRUCTURE\n" ;
+
 : PREFIX-DEF-TURNS ( -- )
    INITIALIZE
    PREFIX-USE-PATH PREFIX-USE 1 OPENS
@@ -2980,7 +2984,15 @@ DYNAMIC-BUFFER ENGINE-OPEN-TEXT u8
    PREFIX-USE-PATH 1 EXPECT PUBLISHES
    s" 7" PREFIX-USE-PATH 0 2 DEFINITION-ASK
    SAY
-   s" 7" NOWHERE ;
+   s" 7" NOWHERE
+   PREFIX-STRUCT-PATH PREFIX-STRUCT 1 OPENS
+   SAY
+   PREFIX-STRUCT-PATH 1 EXPECT PUBLISHES
+   s" 8" PREFIX-STRUCT-PATH 0 2 DEFINITION-ASK
+   s" 9" PREFIX-STRUCT-PATH 2 2 DEFINITION-ASK
+   SAY
+   s" 8" s" src/core/structures.f" IN-TREE URI-OF 88 2 17 LOCATED
+   s" 9" s" src/core/structures.f" IN-TREE URI-OF 133 2 15 LOCATED ;
 
 \ A definer still binds at its call when its operand declares a word with the
 \ same spelling. The newly declared private word must not replace that use.
