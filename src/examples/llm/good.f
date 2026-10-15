@@ -1,6 +1,6 @@
-\ good.f — idiomatic CHECKED words. Each carries an explicit typed ( in -- out );
-\ each is accepted by the checker (CHECK! => -1 certified). UPPER-CASE per
-\ convention; built-in gforth words stay lower-case.
+\ good.f - idiomatic checked words, each with an explicit typed ( in -- out ).
+\ A fixture: the public-signatures tests scan it as their subject
+\ (test/gate-diagnostics-lib.f, tools/public-signatures-bracket-test.f).
 
 : SQUARE ( i64 -- i64 ) dup * ;                        \ 7 SQUARE => 49
 
