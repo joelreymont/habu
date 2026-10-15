@@ -1,45 +1,18 @@
 \ Use the initial C2 image, run borrowed records, capture declarations, then
 \ use their constructors from a fresh saved image in a relocated source tree.
 require src/lib/test.f
-require src/lib/string.f
 require src/lib/fs.f
-require src/lib/fs-mutate.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
 require src/lib/process-cwd.f
-require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 require test/c2-image-pair.f
+require test/e2e-tree.f
 
+using E2E-TREE
 package C2-VIEW-RECORD-E2E
 private
 
-$8000 constant IO-CAP
-
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create PATH FS-PATH-CAP allot
-create TARGET FS-PATH-CAP allot variable TARGET-U
-create OUT IO-CAP allot variable OUT-U
-create ERR IO-CAP allot variable ERR-U
-variable RC
-
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-
-: AT-A ( ptr u8 n -- ptr u8 n ) {: rel:ptr relu:n :}
-   ROOT$ rel relu PATH JOIN-PATH PATH swap ;
-
-: LINK ( ptr u8 n -- ) {: rel:ptr relu:n :}
-   SOURCE-ROOT:CWD$ rel relu TARGET JOIN-PATH TARGET-U !
-   TARGET TARGET-U @ rel relu AT-A MAKE-SYMLINK ;
-
-: COPY-TEST ( ptr u8 n -- ) {: rel:ptr relu:n :}
-   SOURCE-ROOT:CWD$ rel relu TARGET JOIN-PATH TARGET-U !
-   TARGET TARGET-U @ rel relu AT-A COPY-FILE-STREAM ;
-
 : SETUP ( -- )
-   s" c2-view-record-e2e" HB-TMP-MKDIR {: a:ptr u:n :}
-   a ROOT u BYTE-COPY u ROOT-U !
-   s" src" LINK s" tools" LINK
-   s" test" AT-A MAKE-DIRS
+   s" c2-view-record-e2e" TREE
    s" test/c2-view-record-defs.f" COPY-TEST
    s" test/c2-view-record-source.f" COPY-TEST
    s" test/c2-view-record-refusals.f" COPY-TEST
@@ -47,56 +20,10 @@ variable RC
    s" test/c2-retained-contract-wide.f" COPY-TEST
    s" test/c2-view-record-saved.f" COPY-TEST ;
 
-: CAPTURE-RESULT ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! 0 RC ! ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len code:rc :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! code RC>N RC ! ENDOF
-   ;MATCH ;
-
-: ARGS ( ptr u8 n -- ) {: source:ptr size:n :}
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   s" --load" >LEN PROC-ARGV+
-   source size >LEN PROC-ARGV+ ;
-
-: RUN-ON ( ptr u8 n ptr u8 n -- )
-   {: engine:ptr engineu:n cwd:ptr cwdu:n :}
-   PROC-ENV-INHERIT-MISSING
-   engine engineu >LEN cwd cwdu >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT ;
-
-: RUN-INPUT ( ptr u8 n ptr u8 n -- )
-   {: engine:ptr engineu:n input:ptr inputu:n :}
-   PROC-ENV-INHERIT-MISSING
-   engine engineu AT-A >LEN ROOT$ >LEN input inputu >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE-RESULT ;
-
-: SAVE-LOG ( ptr u8 n ptr u8 n -- )
-   {: outpath:ptr outu:n errpath:ptr erru:n :}
-   outpath outu AT-A OUT OUT-U @ WRITE-ALL
-   errpath erru AT-A ERR ERR-U @ WRITE-ALL ;
-
-: NEED-OK ( -- )
-   RC @ 0<> IF OUT OUT-U @ type ERR ERR-U @ type THEN
-   RC @ 0 T= ;
-
-: EXPECT-OK ( ptr u8 n -- ) {: marker:ptr markeru:n :}
-   NEED-OK
-   OUT OUT-U @ marker markeru CONTAINS? TTRUE ;
-
 : IMAGES ( -- )
    ROOT$ C2-IMAGE-PAIR:PROVIDE
-   0 RC !
    s" rooted image is supplied" T-LABEL
    s" hb-root" AT-A FILE? TTRUE ;
-
-: RUN-IMAGE ( ptr u8 n ptr u8 n -- )
-   {: image:ptr imageu:n source:ptr sourceu:n :}
-   source sourceu ARGS
-   image imageu AT-A ROOT$ RUN-ON ;
 
 : SOURCE-CASES ( -- )
    s" hb-root" s" test/c2-view-record-source.f" RUN-IMAGE
@@ -132,5 +59,6 @@ public
    T-REPORT ;
 
 ;package
+;using
 
 C2-VIEW-RECORD-E2E:RUN
