@@ -7,9 +7,9 @@
 \ loaded.  The checker participant's release is total: by the time the runner
 \ releases, publication has already happened and nothing may reject.
 \
-\ It also owns DECL-REJECT, the reject side of the same transaction: what a
-\ declaration reports when RUN rolls it back.  That package is defined first,
-\ because it depends on nothing else here.
+\ It also owns DECL-REJECT, the reject side of the same transaction (what a
+\ declaration reports when RUN rolls it back), defined first, and DECL-FRONT,
+\ the driver the declaration front ends wrap around the transaction, last.
 \
 \ ---------------------------------------------------------------------------
 \ DECL-REJECT — the shared reject packet for the unified declaration front ends.
@@ -674,6 +674,288 @@ public
 private
 
 get-current prot-wid-add
+
+;package
+
+\ ---------------------------------------------------------------------------
+\ DECL-FRONT — the driver the declaration front ends wrap.
+\
+\ A front end (structure-decl.f) owns only its grammar. Everything around the
+\ grammar is the same for every front end and lives here once: the reject
+\ codes, the token source and its one-token pushback, the per-declaration parse
+\ cells, the field-name window a replay checks, the guarded transaction run with
+\ its resynchronization, and the replay entries. A front end passes what varies
+\ as arguments: its kind word for the packet, its terminator for
+\ resynchronization, and its body quotation, which resets the front end's own
+\ grammar scalars and runs its grammar.
+\
+\ One set of cells serves every front end: STRUCTURE and ENUM are top-level
+\ interpret-only keywords that never nest (DECL-REJECT "Nesting" above; the
+\ runner refuses a second open declaration with E-ACTIVE and DECL-REPLAY a
+\ second stream with E-REPLAY-BUSY). Every source span a front end borrows —
+\ the pushback, the type token under resolution, the missing-type span — lives
+\ here and is forgotten as the declaration ends: RESET and MISS-CLEAR in DRIVE,
+\ and REPLAY-END for the span an E-UNRESOLVED replay answers. DECL-REJECT
+\ forgets its spans for the same reason: one left behind would be read stale or
+\ baked into an image with its build-time address, so engine generations differ.
+\
+\ Resynchronization matters only when the reject will be swallowed — a
+\ multi-error load, where the interpreter carries on with whatever the stream
+\ holds next. The legacy definers got this for free: they copied every token
+\ through the terminator into a buffer before parsing any of it. A front end
+\ reads as it parses and stops at the fault, so the tokens between the fault
+\ and the terminator are still ahead of the interpreter, which would try to
+\ execute them. Measured before the front ends resynchronized:
+\ `ENUM m7bad red red blue ;ENUM NEWTYPE m7cont<a>` reported the duplicate
+\ variant, counted it, then died on `E-UNDEFINED: blue`, and
+\ `STRUCTURE m7sbad FIELD x n FIELD x n ;STRUCTURE NEWTYPE m7scont<a>` died on
+\ `E-UNDEFINED: ;STRUCTURE`. The terminator is the declaration's own boundary,
+\ so skipping to it consumes exactly what belongs to it. Two cases need no
+\ skip and get none: a reject raised after the terminator was consumed
+\ (SEEN-END — skipping then would eat the NEXT declaration), and a reject
+\ raised because the input ended without one (the scan meets end of input).
+\ The skip reads through RAW, not NEXT, so the packet keeps naming the token
+\ that provoked the reject.
+\
+\ A reject is rendered AFTER the runner has rolled everything back, then
+\ rethrown with its exact code (DECL-REJECT:GUARD-CODE), the order the legacy
+\ definers use (sumtype.f TDECL-RUN: restore, report, rethrow). Live and
+\ replayed declarations share DRIVE, so both report through the same renderer.
+\
+\ A replay claims the stream BEFORE the packet is opened. Claiming can fail —
+\ another replay is already installed — and that failure belongs to the caller
+\ that misused the entry, not to any declaration: it must not clear the packet
+\ of the declaration that owns the live stream, and it must not close that
+\ stream on the way out. So it propagates as its own code with no packet, and
+\ only a claim that SUCCEEDED reaches REPLAY-END, which retires the stream on
+\ BOTH exits: closing only on success would leave a rejected replay installed,
+\ and the next live declaration would read its tokens from a spent buffer.
+\
+\ QUOT-ROLLBACK after a reject is unconditional: it zeroes the quotation-field
+\ parser's scratch (sumtype.f TDV-QUOT-N / TDV-QUOT-MISS), which only a
+\ quotation field dirties, and is a no-op for a body that never entered
+\ PARSE-QUOT.
+\ ---------------------------------------------------------------------------
+package DECL-FRONT
+
+public
+
+\ --- named reject codes: local names for the shared declaration codes, read at
+\ load time from their owners, sumtype.f E-TDECL-* and type-family.f E-TFAM-*.
+\ A post-hook checked body cannot name a pre-hook constant on a from-source
+\ build, but a top-level read can, and the alias leaves each code one numeric
+\ owner (tools/error-code-lint.f). The field record's E-PF-NAME / E-TFAM-DUP /
+\ E-TFAM-CASE / E-PF-SCHEMA name+schema gate codes are raised by TFAM-DECL,
+\ SUMV-ADD and the field-event path and pass through unchanged.
+E-TDECL-SYNTAX constant E-SYNTAX    \ malformed: missing name/terminator, token out of place
+E-TDECL-ARITY constant E-ARITY      \ malformed type parameter header
+E-TDECL-PAYLOAD constant E-PAYLOAD  \ unresolved / unknown field type
+E-TDECL-NAME constant E-NAME        \ reserved or colliding family name
+E-TDECL-POLICY constant E-POLICY    \ unknown or not-yet-supported layout policy
+E-TDECL-DERIVE constant E-DERIVE    \ unknown or not-yet-supported derive feature
+E-TDECL-CAP constant E-CAP          \ a family, variant or field name longer than NAME-MAX
+E-TFAM-CASE constant E-CASE         \ family name is not a lowercase canonical tail
+E-TFAM-DUP constant E-DUP           \ duplicate family, variant or field tail, raised by
+                                    \ TFAM-DECL / SUMV-ADD / the field-event path; named
+                                    \ here only so a reason can be armed before those calls
+7192 constant E-UNRESOLVED          \ private replay outcome after rollback
+
+110 constant ASCII-N
+102 constant ASCII-F
+114 constant ASCII-R
+
+\ The longest family, variant or field name, which every spelling derived from
+\ it has room for (src/core/type-family.f TF-NAME-MAX, read here at top level).
+TF-NAME-MAX constant NAME-MAX
+
+\ typed boolean producers (core has no `true`/`false`).
+: YES ( -- bool ) 0 0= ;
+: NO ( -- bool ) 0 0= 0= ;
+
+\ The single-letter con codes are src/core/checker.f constants created before it
+\ claims the source, so a from-source boot gives them no row: they are read
+\ here at top level, as the reject codes are.
+CC-N constant CON-N          \ single-letter n : signed cell
+CC-BOOL constant CON-BOOL    \ single-letter f : boolean/flag
+CC-R constant CON-R          \ single-letter r : real/float
+
+variable FIELD-MISS          \ the field under resolution named a type that may still arrive
+variable SEEN-END            \ this declaration's terminator has been consumed
+variable OUTCOME-NAMES       \ a replay wants the field-name window checked (REPLAY-OUTCOME)
+
+private
+
+\ --- one-token pushback. The token bytes stay valid across a line refill (the
+\ engine buffers the input source), so the pushback holds the raw span in a
+\ declared pointer cell.
+variable PEND-U   PTR-VARIABLE PEND-A
+: PEND! ( ptr u8 n -- ) PEND-U ! PEND-A ! ;
+: PEND@ ( -- ptr u8 n ) PEND-A @ PEND-U @ ;
+
+PTR-VARIABLE TYPE-A   variable TYPE-U     \ the field type token under resolution
+PTR-VARIABLE MISS-A   variable MISS-U     \ the first unresolved type span, kept for REPLAY-END
+$2000 constant SEEN-CAP                   \ the field-name window a replay checks
+create SEEN SEEN-CAP allot
+variable SEEN-U
+variable SEEN-I
+
+: MISS-CLEAR ( -- ) NULL-PTR MISS-A ! 0 MISS-U ! ;
+
+public
+
+: TYPE! ( ptr u8 n -- ) TYPE-U ! TYPE-A ! ;
+: TYPE@ ( -- ptr u8 n ) TYPE-A @ TYPE-U @ ;
+
+\ MISSING! ( span -- ) : the type under resolution may still arrive. The first
+\ such span is what a replay reports (REPLAY-OUTCOME); later ones are dropped.
+: MISSING! ( ptr u8 n -- )
+   -1 FIELD-MISS !
+   MISS-U @ 0= IF MISS-U ! MISS-A ! ELSE 2drop THEN ;
+: MISSING? ( -- bool ) MISS-U @ 0 <> ;
+
+: SEEN-CLEAR ( -- ) 0 SEEN-U ! ;
+
+\ Tokens come from the live input source, or — when a tool is replaying a
+\ declaration it has already lexed (REPLAY below) — from that tool's token
+\ stream. The pushback is checked first either way (RAW), so lookahead behaves
+\ identically on both sources.
+: SOURCE-NEXT ( -- ptr u8 n )
+   DECL-REPLAY:RP-ACTIVE? IF DECL-REPLAY:RP-NEXT EXIT THEN
+   parse-name ;
+
+private
+
+: RAW ( -- ptr u8 n )                  \ next body token (honours one pushback)
+   PEND-U @ 0 > IF PEND@ 0 PEND-U ! EXIT THEN
+   SOURCE-NEXT ;
+
+public
+
+\ Every body token is recorded as the packet's offending token as it is read, so
+\ a reject raised inside the family registry, the variant registry, the field
+\ record, or a transaction participant still names the token that provoked it
+\ without those owners knowing anything about the packet.
+: NEXT ( -- ptr u8 n )                 \ next body token, recorded for diagnostics
+   RAW 2dup DECL-REJECT:TOKEN! ;
+: UNGET ( ptr u8 n -- ) PEND! ;
+
+: NAME-LONG? ( ptr u8 n -- bool ) nip NAME-MAX > ;
+
+: POLICY-CODE ( ptr u8 n -- n )         \ policy name -> layout code (or reject)
+   dup 0= IF 2drop s" missing layout policy name" E-POLICY DECL-REJECT:REJECT throw THEN
+   2dup s" stack-cell-tag" CORE-STR=CI IF 2drop TL-STACK-CELL-TAG EXIT THEN
+   2dup s" packed-tag" CORE-STR=CI IF 2drop TL-PACKED-TAG EXIT THEN
+   2drop s" unknown layout policy" E-POLICY DECL-REJECT:REJECT throw ;
+
+: VIS ( -- n )                          \ declaration visibility (public at top level)
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF CHECKER-VIS-PUBLIC EXIT THEN CHECKER-AUTH-PACKAGE-MODE@ ;
+
+private
+
+: SEEN? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   0 SEEN-I !
+   BEGIN SEEN-I @ SEEN-U @ < WHILE
+      SEEN SEEN-I @ + c@ {: len:n :}
+      len u = IF
+         SEEN BYTE-VIEW SEEN-I @ + 1+ len a u CORE-STR= IF YES EXIT THEN
+      THEN
+      SEEN-I @ len 1+ + SEEN-I !
+   REPEAT NO ;
+
+public
+
+\ NAME-CHECK ( name reason -- ) : a replay's field-name gate. The name is
+\ validated, refused as a duplicate of one already in this window, and recorded;
+\ `reason` is the front end's text for a window overflow.
+: NAME-CHECK ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n wa:ptr wu:n :}
+   a u DECL-REJECT:TOKEN!
+   s" duplicate field name" E-DUP DECL-REJECT:EXPECT
+   a u PF-NAME-REQUIRE
+   a u SEEN? IF E-DUP throw THEN
+   SEEN-U @ u + 1+ SEEN-CAP > IF wa wu E-CAP DECL-REJECT:REJECT throw THEN
+   u SEEN SEEN-U @ + c!
+   0 SEEN-I !
+   BEGIN SEEN-I @ u < WHILE
+      a SEEN-I @ + c@
+      SEEN SEEN-U @ + 1+ SEEN-I @ + c!
+      SEEN-I @ 1+ SEEN-I !
+   REPEAT
+   SEEN-U @ u + 1+ SEEN-U ! ;
+
+private
+
+: RESET ( -- )                          \ base state, on both exits of DRIVE and at load
+   NULL-PTR 0 PEND!  NULL-PTR 0 TYPE!
+   0 SEEN-END !  0 FIELD-MISS !  SEEN-CLEAR ;
+
+: SKIP-BODY ( ptr u8 n -- )             \ to the terminator, or end of input
+   {: ta:ptr tu:n :}
+   BEGIN
+      RAW dup 0= IF 2drop EXIT THEN
+      2dup ta tu CORE-STR=CI IF 2drop EXIT THEN
+      2drop
+   AGAIN ;
+: RESYNC ( ptr u8 n -- )
+   SEEN-END @ IF 2drop EXIT THEN
+   MULTI-ERR? 0= IF 2drop EXIT THEN
+   SKIP-BODY ;
+
+\ DRIVE ( terminator body -- code ) : one declaration through the transaction,
+\ resynchronized and reset on the way out; 0 or the reject code. The body
+\ quotation rides the data stack through the catch (docs/forth.md, checked
+\ catch): the quotation is stack-preserving, so the xt is dropped after it.
+: DRIVE ( ptr u8 n [ -- ] -- n )
+   {: ta:ptr tu:n body :}
+   MISS-CLEAR RESET
+   body [: dup TDECL-TXN-XT ;] catch {: rc:n :} drop
+   rc 0= IF RESET 0 EXIT THEN
+   QUOT-ROLLBACK
+   ta tu RESYNC
+   RESET
+   rc E-UNRESOLVED <> IF MISS-CLEAR THEN
+   rc ;
+
+: REPLAY-END ( n -- ptr u8 n bool )    \ direct missing span after rollback
+   DECL-REPLAY:RP-RELEASE
+   dup E-UNRESOLVED = IF
+      drop MISS-A @ MISS-U @
+      0 DECL-REJECT:GUARD-CODE
+      YES MISS-CLEAR EXIT THEN
+   DECL-REJECT:GUARD-CODE
+   NULL-PTR 0 NO ;
+
+: REPLAY-WITH ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n [ -- ] bool -- ptr u8 n bool )
+   {: na:ptr nu:n ba:ptr bu:n ka:ptr ku:n ta:ptr tu:n body names:bool :}
+   na nu ba bu DECL-REPLAY:RP-CLAIM
+   ka ku DECL-REJECT:OPEN
+   names OUTCOME-NAMES !
+   ta tu body DRIVE
+   0 OUTCOME-NAMES !
+   REPLAY-END ;
+
+public
+
+\ RUN ( kind terminator body -- ) : one live declaration.
+: RUN ( ptr u8 n ptr u8 n [ -- ] -- )
+   {: ka:ptr ku:n ta:ptr tu:n body :}
+   ka ku DECL-REJECT:OPEN
+   ta tu body DRIVE DECL-REJECT:GUARD-CODE ;
+
+\ REPLAY-OUTCOME ( name body-text kind terminator body -- span bool ) : register
+\ a declaration from tokens a tool has already lexed, defining no word, and
+\ answer whether a type it names may still arrive, and which.
+: REPLAY-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n [ -- ] -- ptr u8 n bool )
+   YES REPLAY-WITH ;
+\ REPLAY ( name body-text kind terminator body -- ) : the same, raising
+\ E-UNRESOLVED instead of answering.
+: REPLAY ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n [ -- ] -- )
+   NO REPLAY-WITH IF 2drop E-UNRESOLVED throw THEN 2drop ;
+
+private
+
+RESET MISS-CLEAR
 
 ;package
 

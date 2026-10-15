@@ -2,6 +2,9 @@
 \ STRUCTURE-DECL). This is the FIRST consumer of the shared declaration-event
 \ transaction (src/core/decl-event.f, package DECL-EVENT). It owns ONLY the
 \ STRUCTURE grammar loop and its reject dispatch; it holds NO declaration state.
+\ The token source, the parse cells and the guarded transaction run are
+\ DECL-FRONT's (src/core/generated-declaration.f); this file hands it its kind,
+\ terminator and body.
 \ The declaration events (the header clauses and every field) are owned by the
 \ event module, and the duplicate / reserved / case field-name gate is raised by
 \ the field record through the field-event path unchanged (docs/type-families.md
@@ -55,107 +58,30 @@
 
 using SCHEMA-REG
 using TFAM
+using DECL-FRONT
 
 package STRUCTURE-DECL
-
-\ --- named reject codes: local names for the shared declaration codes, read at
-\ load time from their owners, sumtype.f TYPE-DECL:E-TDECL-* and type-family.f
-\ E-TFAM-*, as enum-decl.f reads them. The field record's E-PF-NAME /
-\ E-TFAM-DUP / E-TFAM-CASE name-gate codes are raised by TFAM-DECL / the
-\ field-event path and pass through unchanged.
-TYPE-DECL:E-TDECL-SYNTAX constant E-SYNTAX    \ malformed: missing name/arity/terminator, unexpected/legacy token
-TYPE-DECL:E-TDECL-ARITY constant E-ARITY      \ malformed type parameter header
-TYPE-DECL:E-TDECL-PAYLOAD constant E-PAYLOAD  \ unresolved / unknown field type
-TYPE-DECL:E-TDECL-NAME constant E-NAME        \ reserved or colliding family name
-TYPE-DECL:E-TDECL-POLICY constant E-POLICY    \ unknown or not-yet-supported layout policy
-TYPE-DECL:E-TDECL-DERIVE constant E-DERIVE    \ unknown or not-yet-supported derive feature
-TYPE-DECL:E-TDECL-CAP constant E-CAP          \ a family or field name longer than NAME-MAX
-E-TFAM-CASE constant E-CASE                   \ family name is not a lowercase canonical tail
-E-TFAM-DUP constant E-DUP                     \ duplicate family or field tail, raised by TFAM-DECL /
-                                              \ the field-event path; named here only so a
-                                              \ reason can be armed for it before those calls
-7192 constant E-UNRESOLVED                    \ private replay outcome after rollback
-
-110 constant ASCII-N
-102 constant ASCII-F
-114 constant ASCII-R
-
-\ The longest family or field name, which every spelling derived from it has
-\ room for (src/core/type-family.f TF-NAME-MAX, read here at top level).
-TF-NAME-MAX constant NAME-MAX
-
-\ typed boolean producers (core has no `true`/`false`).
-: YES ( -- bool ) 0 0= ;
-: NO ( -- bool ) 0 0= 0= ;
-
-\ The single-letter con codes are src/core/checker.f constants created before it
-\ claims the source, so a from-source boot gives them no row: they are read
-\ here at top level, as the reject codes are.
-CC-N constant CON-N          \ single-letter n : signed cell
-CC-BOOL constant CON-BOOL    \ single-letter f : boolean/flag
-CC-R constant CON-R          \ single-letter r : real/float
-
-\ --- one-token pushback. The token bytes stay valid across a line refill (the
-\ engine buffers the input source), so the pushback holds the raw span in a
-\ declared pointer cell.
-variable PEND-U   PTR-VARIABLE PEND-A
-: PEND! ( ptr u8 n -- ) PEND-U ! PEND-A ! ;
-: PEND@ ( -- ptr u8 n ) PEND-A @ PEND-U @ ;
 
 \ ---------------------------------------------------------------------------
 \ transient parse state (parse-loop bookkeeping, not declaration state). One
 \ declaration at a time: STRUCTURE is top-level interpret-only, never nested.
 \ ---------------------------------------------------------------------------
 variable FAM        \ family id being declared
-variable TOK        \ live declaration-event token (0 = no open transaction)
+variable TOK        \ declaration-event token; SD-RESET zeroes it at body start
 variable FLDBASE    \ committed field high-water at open (field range start)
 variable NFLD       \ field count in this declaration
 variable SD-CELLS      \ running field cell width (next field's slot / byte offset)
 variable SEEN-FIELD \ a FIELD has appeared (header clauses must precede fields)
-variable SEEN-END   \ this declaration's ;STRUCTURE has been consumed
 variable SD-TI         \ byte index within one field type token
-variable SD-FIELD-MISS
-PTR-VARIABLE SD-MISS-A
-variable SD-MISS-U
-PTR-VARIABLE SD-TYPE-A
-variable SD-TYPE-U
-$2000 constant SD-SEEN-CAP
-create SD-SEEN SD-SEEN-CAP allot
-variable SD-SEEN-U
-variable SD-SEEN-I
-variable SD-OUTCOME-NAMES
 
 $100 constant SD-ARG-CAP
 create SD-ARGS SD-ARG-CAP cells allot
 variable SD-ARG-N
 
-: SD-RESET ( -- )                      \ base state; re-seeded at load (process-local)
-   NULL-PTR 0 PEND!   0 TOK !   0 SEEN-FIELD !   0 SEEN-END !
-   0 SD-FIELD-MISS !  0 SD-SEEN-U !
-   NULL-PTR SD-TYPE-A !  0 SD-TYPE-U ! ;
+: SD-RESET ( -- )                      \ grammar scalars; re-seeded at load (process-local)
+   0 TOK !   0 SEEN-FIELD ! ;
 SD-RESET
-
-: SD-MISS-CLEAR ( -- ) NULL-PTR SD-MISS-A ! 0 SD-MISS-U ! ;
-SD-MISS-CLEAR
-: SD-MISSING! ( -- )
-   -1 SD-FIELD-MISS !
-   SD-MISS-U @ 0= IF SD-TYPE-A @ SD-MISS-A ! SD-TYPE-U @ SD-MISS-U ! THEN ;
-
-\ Tokens come from the live input source, or — when a tool is replaying a
-\ declaration it has already lexed (SD-REPLAY below) — from that tool's token
-\ stream. The pushback is checked first either way, so lookahead behaves
-\ identically on both sources.
-: SD-RAW ( -- ptr u8 n )               \ next body token (honours one pushback)
-   PEND-U @ 0 > IF PEND@ 0 PEND-U ! EXIT THEN
-   DECL-REPLAY:RP-ACTIVE? IF DECL-REPLAY:RP-NEXT EXIT THEN
-   parse-name ;
-\ Every body token is recorded as the packet's offending token as it is read, so
-\ a reject raised inside the family registry, the field record, or a transaction
-\ participant still names the token that provoked it without those owners
-\ knowing anything about the packet.
-: SD-NEXT ( -- ptr u8 n )              \ next body token, recorded for diagnostics
-   SD-RAW 2dup DECL-REJECT:TOKEN! ;
-: UNGET ( ptr u8 n -- ) PEND! ;
+: SD-MISSING! ( -- ) TYPE@ MISSING! ;
 
 \ ---------------------------------------------------------------------------
 \ name gate: a reserved family name is one TYPE-NAME:FAMILY-RESERVED? lists, the
@@ -168,8 +94,6 @@ SD-MISS-CLEAR
    2dup s" structure" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" ;structure" CORE-STR=CI IF 2drop YES EXIT THEN
    TYPE-NAME:FAMILY-RESERVED? ;
-
-: NAME-LONG? ( ptr u8 n -- bool ) nip NAME-MAX > ;
 
 : REQUIRE-NAME ( ptr u8 n -- )      \ validate the family name (throws; consumes the copy)
    dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
@@ -269,7 +193,7 @@ defer SD-PARSE-NODE ( ptr u8 n n -- n )
          SD-TI @ 1 + SD-TI !
          dup fam TFAM-ARITY@ <> IF
             s" field type has wrong arity" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-         SD-FIELD-MISS @ IF base SD-ARG-N ! drop 0 EXIT THEN
+         FIELD-MISS @ IF base SD-ARG-N ! drop 0 EXIT THEN
          SCHEMA-ROOT-N@ {: start:n :}
          base BEGIN dup SD-ARG-N @ < WHILE
             dup cells SD-ARGS + @ SCHEMA-ROOT+ drop 1 +
@@ -366,12 +290,12 @@ defer SD-QUOT-ELEM ( ptr u8 n -- n )
 
 : RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
    dup 0= IF 2drop s" missing field type" E-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup SD-TYPE-U ! SD-TYPE-A !
+   2dup TYPE!
    2dup s" [" CORE-STR= IF
-      2drop [: SD-NEXT ;] [: SD-QUOT-ELEM ;] [: SD-QUOT-FAIL ;] TYPE-DECL:PARSE-QUOT EXIT THEN
+      2drop [: NEXT ;] [: SD-QUOT-ELEM ;] [: SD-QUOT-FAIL ;] TYPE-DECL:PARSE-QUOT EXIT THEN
    2dup s" ptr" CORE-STR=CI IF
-      2drop SD-NEXT RECURSE
-      SD-FIELD-MISS @ IF drop 0 EXIT THEN
+      2drop NEXT RECURSE
+      FIELD-MISS @ IF drop 0 EXIT THEN
       REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
    0 SD-TI ! 0 SD-ARG-N !
    2dup PK-CELL SD-PARSE-NODE {: node:n :}
@@ -389,14 +313,9 @@ SD-QUOT-INSTALL
    SEEN-FIELD @ IF
       s" header clause after the first field" E-SYNTAX DECL-REJECT:REJECT throw THEN ;
 
-: POLICY-CODE ( ptr u8 n -- n )         \ policy name -> layout code (or reject)
-   dup 0= IF 2drop s" missing layout policy name" E-POLICY DECL-REJECT:REJECT throw THEN
-   2dup s" stack-cell-tag" CORE-STR=CI IF 2drop TL-STACK-CELL-TAG EXIT THEN
-   2dup s" packed-tag" CORE-STR=CI IF 2drop TL-PACKED-TAG EXIT THEN
-   2drop s" unknown layout policy" E-POLICY DECL-REJECT:REJECT throw ;
 : POLICY-CLAUSE ( -- )
    HEADER-ORDER
-   SD-NEXT POLICY-CODE {: code:n :}
+   NEXT POLICY-CODE {: code:n :}
    FAM @ code TFAM-LAYOUT!
    TOK @ FAM @ code DECL-EVENT:POLICY TOK ! ;
 
@@ -442,9 +361,9 @@ SD-QUOT-INSTALL
    2drop s" unknown derive feature" E-DERIVE DECL-REJECT:REJECT throw ;
 : DERIVE-CLAUSE ( -- )                  \ DERIVE feature+ : first mandatory, rest by lookahead
    HEADER-ORDER
-   SD-NEXT dup 0= IF
+   NEXT dup 0= IF
       2drop s" missing derive feature" E-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
-   BEGIN SD-NEXT dup 0= IF 2drop EXIT THEN
+   BEGIN NEXT dup 0= IF 2drop EXIT THEN
       2dup DERIVE-FEATURE? IF DERIVE-ONE ELSE UNGET EXIT THEN
    AGAIN ;
 
@@ -474,48 +393,22 @@ SD-QUOT-INSTALL
    FAM @ TFAM-DERIVE-ADDR? 0= IF 2drop EXIT THEN
    MEMBER-CLASH? IF
       s" field name is a generated member name" E-NAME DECL-REJECT:REJECT throw THEN ;
-: SD-SEEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 SD-SEEN-I !
-   BEGIN SD-SEEN-I @ SD-SEEN-U @ < WHILE
-      SD-SEEN SD-SEEN-I @ + c@ {: len:n :}
-      len u = IF
-         SD-SEEN BYTE-VIEW SD-SEEN-I @ + 1+ len a u CORE-STR= IF YES EXIT THEN
-      THEN
-      SD-SEEN-I @ len 1+ + SD-SEEN-I !
-   REPEAT NO ;
-: SD-NAME-CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u DECL-REJECT:TOKEN!
-   s" duplicate field name" E-DUP DECL-REJECT:EXPECT
-   a u PF-NAME-REQUIRE
-   a u SD-SEEN? IF E-DUP throw THEN
-   SD-SEEN-U @ u + 1+ SD-SEEN-CAP > IF
-      s" structure field names exceed declaration window"
-      E-CAP DECL-REJECT:REJECT throw THEN
-   u SD-SEEN SD-SEEN-U @ + c!
-   0 SD-SEEN-I !
-   BEGIN SD-SEEN-I @ u < WHILE
-      a SD-SEEN-I @ + c@
-      SD-SEEN SD-SEEN-U @ + 1+ SD-SEEN-I @ + c!
-      SD-SEEN-I @ 1+ SD-SEEN-I !
-   REPEAT
-   SD-SEEN-U @ u + 1+ SD-SEEN-U ! ;
 : FIELD-CLAUSE ( -- )
-   SD-NEXT dup 0= IF
+   NEXT dup 0= IF
       2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ field name
    {: na:ptr nu:n :}
    na nu NAME-LONG? IF TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    na nu REQUIRE-FIELD-NAME
-   SD-OUTCOME-NAMES @ 0 <> IF na nu SD-NAME-CHECK THEN
-   0 SD-FIELD-MISS !
-   SD-NEXT RESOLVE-TYPE {: node:n :}
-   SD-FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN
+   OUTCOME-NAMES @ 0 <> IF
+      na nu s" structure field names exceed declaration window" NAME-CHECK THEN
+   0 FIELD-MISS !
+   NEXT RESOLVE-TYPE {: node:n :}
+   FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN
    -1 SEEN-FIELD ! ;
 
 \ ---------------------------------------------------------------------------
 \ transaction orchestration.
 \ ---------------------------------------------------------------------------
-: VIS ( -- n )                          \ declaration visibility (public at top level)
-   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF CHECKER-VIS-PUBLIC EXIT THEN CHECKER-AUTH-PACKAGE-MODE@ ;
 : SD-REGISTER ( ptr u8 n n -- )            \ ( na nu arity -- ) register the family, open the tx
    {: na:ptr nu:n ar:n :}
    na nu DECL-REJECT:TOKEN!             \ the family name owns the registry's rejects
@@ -551,7 +444,7 @@ SD-QUOT-INSTALL
          s" field type parameter has incompatible kinds"
          E-PAYLOAD DECL-REJECT:REJECT throw THEN
    loop
-   SD-MISS-U @ IF E-UNRESOLVED throw THEN
+   MISSING? IF E-UNRESOLVED throw THEN
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    FAM @ SD-CELLS @ TFAM-SLOTS!
    FAM @ TFAM-OPAQUE? SD-MAKEABLE? 0= and IF
@@ -562,7 +455,7 @@ SD-QUOT-INSTALL
    SD-ADDR-ARM ;
 
 : CLAUSE ( -- bool )                    \ read + dispatch one body token; YES = ;STRUCTURE
-   SD-NEXT dup 0= IF 2drop
+   NEXT dup 0= IF 2drop
       DECL-REJECT:AT-FAMILY
       s" missing ;STRUCTURE" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ;structure" CORE-STR=CI IF 2drop -1 SEEN-END ! SD-CLOSE YES EXIT THEN
@@ -575,7 +468,7 @@ SD-QUOT-INSTALL
 : CLAUSES ( -- ) BEGIN CLAUSE UNTIL ;
 
 : DRIVE ( -- )                          \ family header + register + body
-   SD-NEXT 2dup DECL-REJECT:FAMILY!     \ ( na nu )  keep the span
+   NEXT 2dup DECL-REJECT:FAMILY!     \ ( na nu )  keep the span
    dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
    TYPE-DECL:DECL-HEADER 0= IF
       drop 2drop s" invalid type parameter header" E-ARITY DECL-REJECT:REJECT throw
@@ -587,66 +480,12 @@ SD-QUOT-INSTALL
    SD-REGISTER
    CLAUSES ;
 
-\ One provisional transaction: commit by persisting, roll the family + schema +
-\ layout + event stream back to a byte-identical registry on any reject.
-: SD-BODY ( -- )
-   SD-MISS-CLEAR
-   [: SD-RESET DRIVE ;] TYPE-DECL:TDECL-TXN-XT ;
-
-\ Resynchronize the input to the end of THIS declaration. Same contract, same
-\ reasoning and same two exemptions as enum-decl.f's ED-RESYNC: it matters only
-\ when a multi-error load will swallow the reject and hand the rest of the
-\ declaration to the interpreter, the terminator is this declaration's own
-\ boundary, and there is nothing to skip once `;STRUCTURE` has been consumed or
-\ the input has ended. Measured before this existed:
-\ `STRUCTURE m7sbad FIELD x n FIELD x n ;STRUCTURE NEWTYPE m7scont<a>`
-\ reported the duplicate field, counted it, then died on
-\ `E-UNDEFINED: ;STRUCTURE`.
-: SD-SKIP-BODY ( -- )
-   BEGIN
-      SD-RAW dup 0= IF 2drop EXIT THEN
-      2dup s" ;structure" CORE-STR=CI IF 2drop EXIT THEN
-      2drop
-   AGAIN ;
-: SD-RESYNC ( -- )
-   SEEN-END @ IF EXIT THEN
-   MULTI-ERR? 0= IF EXIT THEN
-   SD-SKIP-BODY ;
-
-\ A reject is rendered through the shared declaration packet AFTER the
-\ runner has rolled everything back, then rethrown with its exact code,
-\ which is the same order the legacy definers use (sumtype.f TDECL-RUN:
-\ restore, report, rethrow). Both drivers below share this one guarded body, so
-\ a replayed declaration reports through exactly the same renderer.
-: SD-DRIVE ( -- )                      \ body, then resynchronize before reporting
-   [: SD-BODY ;] catch {: rc:n :}
-   rc 0= IF SD-RESET EXIT THEN
-   TYPE-DECL:QUOT-ROLLBACK
-   SD-RESYNC
-   SD-RESET
-   rc E-UNRESOLVED <> IF SD-MISS-CLEAR THEN
-   rc throw ;
-: SD-GUARDED ( -- )
-   [: SD-DRIVE ;] DECL-REJECT:GUARD ;
-
-\ The replay stream is retired on BOTH exits. Closing only on success would
-\ leave a rejected replay installed, and the next live STRUCTURE would then read
-\ its tokens from a spent buffer instead of the input source.
-: SD-REPLAY-END ( n -- ptr u8 n bool ) \ direct missing span after rollback
-   DECL-REPLAY:RP-RELEASE
-   dup E-UNRESOLVED = IF
-      drop SD-MISS-A @ SD-MISS-U @
-      0 DECL-REJECT:GUARD-CODE
-      YES SD-MISS-CLEAR EXIT THEN
-   DECL-REJECT:GUARD-CODE
-   SD-MISS-CLEAR
-   NULL-PTR 0 NO ;
+: SD-FRONT ( -- ptr u8 n ptr u8 n [ -- ] )   \ kind, terminator and body for DECL-FRONT
+   s" structure" s" ;structure" [: SD-RESET DRIVE ;] ;
 
 public
 
-: SD-RUN ( -- )
-   s" structure" DECL-REJECT:OPEN
-   SD-GUARDED ;
+: SD-RUN ( -- ) SD-FRONT DECL-FRONT:RUN ;
 
 \ SD-REPLAY ( name body -- ) : register a STRUCTURE from tokens a tool has
 \ already lexed, defining no word. Same grammar, same validation, same registry
@@ -657,25 +496,12 @@ public
 \ name it. The body buffer is the declaration body INCLUDING its ;STRUCTURE
 \ terminator; a buffer without one rejects through the front end's own
 \ "missing ;STRUCTURE" gate exactly as a truncated live declaration does.
-\
-\ The stream is claimed BEFORE the packet is opened. Claiming can fail — another
-\ replay is already installed — and that failure belongs to the caller that
-\ misused the entry, not to any declaration: it must not clear the packet of the
-\ declaration that owns the live stream, and it must not close that stream on the
-\ way out. So it propagates as its own code with no packet of its own, and only a
-\ claim that SUCCEEDED reaches the close below.
-: SD-REPLAY-WITH ( ptr u8 n ptr u8 n bool -- ptr u8 n bool )
-   {: na:ptr nu:n ba:ptr bu:n names:bool :}
-   na nu ba bu DECL-REPLAY:RP-CLAIM
-   s" structure" DECL-REJECT:OPEN
-   names SD-OUTCOME-NAMES !
-   [: SD-DRIVE ;] catch
-   0 SD-OUTCOME-NAMES !
-   SD-REPLAY-END ;
+\ SD-REPLAY-OUTCOME answers the first type the body named that may still
+\ arrive instead of raising.
 : SD-REPLAY-OUTCOME ( ptr u8 n ptr u8 n -- ptr u8 n bool )
-   YES SD-REPLAY-WITH ;
+   SD-FRONT DECL-FRONT:REPLAY-OUTCOME ;
 : SD-REPLAY ( ptr u8 n ptr u8 n -- )
-   NO SD-REPLAY-WITH IF 2drop E-UNRESOLVED throw THEN 2drop ;
+   SD-FRONT DECL-FRONT:REPLAY ;
 
 ;package
 
@@ -686,5 +512,6 @@ public
 \ STRUCTURE type-name[<params>] [POLICY p] [DERIVE f+] [OPAQUE] (FIELD name type)* ;STRUCTURE
 : STRUCTURE ( -- ) STRUCTURE-DECL:SD-RUN ;
 
+;using
 ;using
 ;using
