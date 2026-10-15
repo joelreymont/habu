@@ -9,6 +9,7 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require src/lib/engine-candidate.f
 
 package NATIVE-FILE-E2E
 private
@@ -60,6 +61,20 @@ public
 : RUN-APP ( -- n )
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    s" app-hb" AT s" " CAPTURE ;
+
+\ tools/hb-build.f on the candidate engine: root/app.f into root/app-hb as a
+\ REPL build with the object cache at root/cache. HABU_FIXPOINT_ENGINE names
+\ the same engine, so the builder image hb-build spawns
+\ (tools/app-build-image.f, BUILD-FIXPOINT:BF-ENGINE$) comes from it and
+\ never from the bin/hb fallback.
+: BUILD-APP ( -- n )
+   PROC-ARGV-ENV-RESET
+   s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
+   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" --load" ARG s" tools/hb-build.f" ARG s" --" ARG
+   s" --repl" ARG s" app.f" AT ARG s" -o" ARG s" app-hb" AT ARG
+   ENGINE-CANDIDATE:PATH$ s" " CAPTURE ;
 
 : SUCCESS ( n -- )
    dup 0<> if OUT$ type ERR$ type then

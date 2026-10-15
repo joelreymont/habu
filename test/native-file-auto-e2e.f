@@ -14,15 +14,6 @@ package NATIVE-FILE-AUTO-TEST
 $8000 constant CAP
 create INPUT CAP allot  variable INPUT-U
 
-: RUN-BUILD ( -- n )
-   PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
-   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
-   s" --load" ARG s" tools/hb-build.f" ARG s" --" ARG
-   s" --repl" ARG s" app.f" AT ARG s" -o" ARG s" app-hb" AT ARG
-   ENGINE-CANDIDATE:PATH$ s" " CAPTURE ;
-
 : RUN-DIRECT ( -- n )
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN s" direct-cache" AT >LEN PROC-ENV+
@@ -59,12 +50,12 @@ public
    OUT$ S\" file unit hits 0\n compiled 2" CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ s" 42" CONTAINS? TTRUE
-   RUN-BUILD SUCCESS
+   BUILD-APP SUCCESS
    RUN-APP SUCCESS
    OUT$ s" 42" CONTAINS? TTRUE
    RUN-DIRECT SUCCESS
    OUT$ S\" file unit hits 2\n compiled 0" CONTAINS? TTRUE
-   RUN-BUILD SUCCESS
+   BUILD-APP SUCCESS
    RUN-APP SUCCESS
    OUT$ s" 42" CONTAINS? TTRUE
    s" app.f" S\" require leaf.f\n: MAIN ( -- ) FILE-LEAF:VALUE 3 + . ;\n" PUT
@@ -72,7 +63,7 @@ public
    OUT$ S\" file unit hits 1\n compiled 1" CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ s" 44" CONTAINS? TTRUE
-   RUN-BUILD SUCCESS
+   BUILD-APP SUCCESS
    RUN-APP SUCCESS
    OUT$ s" 44" CONTAINS? TTRUE
    s" leaf.f" S\" package FILE-LEAF public : VALUE ( -- n ) 101 ; ;package\n" PUT
@@ -80,7 +71,7 @@ public
    OUT$ S\" file unit hits 0\n compiled 2" CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ s" 104" CONTAINS? TTRUE
-   RUN-BUILD SUCCESS
+   BUILD-APP SUCCESS
    RUN-APP SUCCESS
    OUT$ s" 104" CONTAINS? TTRUE
    s" leaf.f" S\" package FILE-LEAF public : VALUE ( -- n ) FILE-PREFIX:VALUE ; ;package\n" PUT
@@ -89,7 +80,7 @@ public
    OUT$ S\" file unit hits 0\n compiled 2" CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ s" 41" CONTAINS? TTRUE
-   RUN-BUILD SUCCESS
+   BUILD-APP SUCCESS
    RUN-APP SUCCESS
    OUT$ s" 41" CONTAINS? TTRUE
    s" app.f" S\" package FILE-PREFIX public : PAD ( -- n ) 999 ; : VALUE ( -- n ) 41 ; ;package\nrequire leaf.f\n: MAIN ( -- ) FILE-LEAF:VALUE . ;\n" PUT
@@ -97,7 +88,7 @@ public
    OUT$ S\" file unit hits 0\n compiled 2" CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ s" 41" CONTAINS? TTRUE
-   RUN-BUILD SUCCESS
+   BUILD-APP SUCCESS
    RUN-APP SUCCESS
    OUT$ s" 41" CONTAINS? TTRUE
    s" producer.f" S\" package FILE-PRODUCER public : VALUE ( -- n ) 41 ; ;package\n" PUT

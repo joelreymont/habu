@@ -12,15 +12,6 @@ require test/native-file-e2e.f
 using NATIVE-FILE-E2E
 package NATIVE-FILE-ALIAS-TEST
 
-: RUN-BUILD ( -- n )
-   PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
-   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
-   s" --load" ARG s" tools/hb-build.f" ARG s" --" ARG
-   s" --repl" ARG s" app.f" AT ARG s" -o" ARG s" app-hb" AT ARG
-   ENGINE-CANDIDATE:PATH$ s" " CAPTURE ;
-
 : RUN-DIRECT ( -- n )
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN s" direct-cache" AT >LEN PROC-ENV+
@@ -52,18 +43,18 @@ public
    SOURCE ALIAS CONSUMER
    RUN-DIRECT SUCCESS
    OUT$ S\" file unit hits 0\n compiled 3" CONTAINS? TTRUE
-   RUN-BUILD SUCCESS
+   BUILD-APP SUCCESS
    RUN-APP SUCCESS
    OUT$ S\" 42\n42\n" CONTAINS? TTRUE
    RUN-DIRECT SUCCESS
    OUT$ S\" file unit hits 3\n compiled 0" CONTAINS? TTRUE
-   RUN-BUILD SUCCESS
+   BUILD-APP SUCCESS
    RUN-APP SUCCESS
    OUT$ S\" 42\n42\n" CONTAINS? TTRUE
    CHANGED-CONSUMER
    RUN-DIRECT SUCCESS
    OUT$ S\" file unit hits 2\n compiled 1" CONTAINS? TTRUE
-   RUN-BUILD SUCCESS
+   BUILD-APP SUCCESS
    RUN-APP SUCCESS
    OUT$ S\" 44\n44\n" CONTAINS? TTRUE
    T-REPORT
