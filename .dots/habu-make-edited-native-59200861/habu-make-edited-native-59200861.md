@@ -3,7 +3,7 @@ title: Make edited native rebuilds incremental
 status: active
 priority: 2
 issue-type: task
-created-at: "\"2026-09-29T12:09:07.007563+02:00\""
+created-at: "2026-09-29T12:09:07.007563+02:00"
 ---
 
 Problem: tools/native-build.f recompiles unchanged checked packages and build tools after an edit. One qualified macOS ARM64 baseline on source `089a587043eee49a44e2ece46ed7f8965fdcfafd`, hosted by `product-hb` SHA-256 `43d162ad79c940d9ef13633342cced3b11658527411374e79ce9f1b43158c4eb`, took 124.39 s externally: target source load 90.386 s (checker 13.119 s, native runtime 63.045 s), writer source load 21.218 s, and actual writer emission 0.153 s. The engine and .names were byte-identical to the qualified release candidate. Raw output and method are retained at `/Users/joel/.cache/tmp/habu-prefix-probe-20260929-knAWMN/probe.receipt.md`. A late-source prefix hit alone cannot meet the handful-of-seconds whole-invocation target.
@@ -15,3 +15,5 @@ Acceptance: real-load E2Es precede implementation. Build and execute edited engi
 Current gaps are tracked by habu-reuse-independent-file-1d1bf6f8 and habu-unify-engine-and-68ed6b51. The saved-maker reporting correction is separate: habu-reuse-the-unchanged-3495fdda. A prepared-HIR experiment at b5b69a22113cde660903613dc56ae5efb2838196 had unresolved relocation/key findings and is not a qualified implementation or speedup.
 
 FILE admission presently refuses every engine file: the first changed address-cell row is an older checker prefix cell at DATA+$12CE800 holding the mmap-backed `UNIT-BUF-P`. `CHECKER-REG:CHECKER-UNIT-EXPORT` returns that borrowed scratch buffer, and `NFILE-CACHE:STORE-RANGE` profiles prefix updates while the buffer is still live; the warm root/leaf E2E executes its products but gets zero cache hits and fails F17. Copy exported bytes into FILE-cache-owned storage, release scratch through the exporting checker owner's appended callback before admission, and retain the copy through packing. The existing warm E2E must then show real FILE hits; cold/warm products and nested ranges must remain correct.
+
+Native candidate `6ef44489` writes an enums FILE object and builds a working engine, but warm reuse remains unqualified. Raw prefix updates still include compiler scratch and mapped origin storage. Preserve source origins through an owner transfer keyed by portable declaration identity, with path, location and source digest; do not persist EARLY/SCR pointers or drop origins. FILE replay must handle the early-to-late origin transition and nested files. Loader CURRENT-A/U is dynamic context whose live scope must be preserved; public STRING-ABI state and ENGINE! fallback roots are not disposable scratch. Required evidence remains cold/warm output and map equality, real FILE hits, existing origin/navigation behavior and genuine pointer refusals.
