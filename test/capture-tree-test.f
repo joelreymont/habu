@@ -57,7 +57,6 @@ package CAPTURE-TREE-TEST
 64 constant CAP                      \ holds the subject's line
 8 constant SHORT-CAP                 \ does not
 64 constant SINK-CAP
--1 constant NO-FD
 
 create REPORT REPORT-BYTES allot
 create SINK SINK-CAP allot
@@ -74,16 +73,12 @@ TYPED-VARIABLE CASE-CLOSED bool      \ the subject closes its output first
 false REPORTED !
 true PIPE-DONE !
 false CASE-CLOSED !
-NO-FD PIPE-RD !
-NO-FD PIPE-WR !
+PROC-NO-FD PIPE-RD !
+PROC-NO-FD PIPE-WR !
 
 \ What test/check-signal-subject.f writes before it starts the sleeper.
 : LINE$ ( -- ptr u8 n )
    s\" check-signal-subject: up\n" ;
-
-: CLOSE-CELL ( ptr n -- ) {: p:ptr :}
-   p @ 0 >= if p @ close then
-   NO-FD p ! ;
 
 \ ---- the report pipe --------------------------------------------------------
 
@@ -131,7 +126,7 @@ NO-FD PIPE-WR !
 \ The subject has its copy of the write end once the capture has spawned it,
 \ so this process lets its own go and waits for the report.
 : AWAIT-REPORT ( -- )
-   PIPE-WR CLOSE-CELL
+   PIPE-WR PROC-CLOSE-CELL
    REPORT-READ? REPORTED ! ;
 
 \ Arms no reaper, as the default vector does, once the subject has reported.
@@ -233,12 +228,12 @@ NO-FD PIPE-WR !
 \ passed.
 : CASE-END ( -- )
    PROC-REAP-ARM-DEFAULT
-   PIPE-WR CLOSE-CELL
+   PIPE-WR PROC-CLOSE-CELL
    PIPE-DONE @ 0= if
       s" the processes the capture left ended on their own" T-LABEL
       EXPIRE-MS GONE-WITHIN? TTRUE
    then
-   PIPE-RD CLOSE-CELL ;
+   PIPE-RD PROC-CLOSE-CELL ;
 
 public
 

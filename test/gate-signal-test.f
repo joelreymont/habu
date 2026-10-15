@@ -90,7 +90,6 @@ package GATE-SIGNAL-TEST
 REPORT-N cells constant REPORT-BYTES
 64 constant SINK-CAP
 $8000 constant LOG-CAP
--1 constant NO-FD
 
 create REPORTS REPORT-BYTES allot
 create STARTS REPORT-BYTES allot     \ the start of each reported process, 0 for none
@@ -119,19 +118,15 @@ false ROOT-LIVE !
 true PIPE-DONE !
 false CASE-AGAIN !
 false CASE-NOHUP !
-NO-FD PIPE-RD !
-NO-FD PIPE-WR !
-NO-FD ROOT-WATCH !
+PROC-NO-FD PIPE-RD !
+PROC-NO-FD PIPE-WR !
+PROC-NO-FD ROOT-WATCH !
 
 : TMP$ ( -- ptr u8 n )    TMP TMP-U @ ;
 : LOG$ ( -- ptr u8 n )    LOG LOG-U @ ;
 
 : PAUSE ( n -- ) {: ms:n :}
    PAUSE-PFD 0 ms poll drop ;
-
-: CLOSE-CELL ( ptr n -- ) {: p:ptr :}
-   p @ 0 >= if p @ close then
-   NO-FD p ! ;
 
 \ Failure mode 8. RELEASE restores the default action for every signal CATCH
 \ installed (docs/signal.md), whatever this process inherited for it.
@@ -377,7 +372,7 @@ variable STAT-PATH-U
    true ROOT-LIVE !
    in close
    log close
-   PIPE-WR CLOSE-CELL
+   PIPE-WR PROC-CLOSE-CELL
    ROOT-PID @ proc-watch-open dup 0 < if drop E-PROC-OUTPUT throw then ROOT-WATCH ! ;
 
 \ A second signal may find the root already gone, so the answer is not read.
@@ -442,9 +437,9 @@ variable STAT-PATH-U
 : SIGNAL-END ( -- )
    ROOT-END
    PIPE-DONE @ 0= if SWEEP then
-   ROOT-WATCH CLOSE-CELL
-   PIPE-WR CLOSE-CELL
-   PIPE-RD CLOSE-CELL
+   ROOT-WATCH PROC-CLOSE-CELL
+   PIPE-WR PROC-CLOSE-CELL
+   PIPE-RD PROC-CLOSE-CELL
    TMP-CLEAR ;
 
 \ The signal the root is to answer, whether it is sent twice, and whether the
@@ -466,7 +461,7 @@ variable STAT-PATH-U
    REPORT-ENV
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ s" deadline row" ROW-MS GT-POOL-START
-   PIPE-WR CLOSE-CELL ;
+   PIPE-WR PROC-CLOSE-CELL ;
 
 : DEADLINE-NOW ( -- )
    0 0 >IDX GT-POOL-TIMEOUT-PTR ! ;
@@ -487,8 +482,8 @@ variable STAT-PATH-U
 : DEADLINE-END ( -- )
    GT-POOL-KILL-ALL
    PIPE-DONE @ 0= if SWEEP then
-   PIPE-WR CLOSE-CELL
-   PIPE-RD CLOSE-CELL ;
+   PIPE-WR PROC-CLOSE-CELL
+   PIPE-RD PROC-CLOSE-CELL ;
 
 \ The pool is reset before the body: GT-POOL-KILL-ALL reads the slot table the
 \ reset fills in.

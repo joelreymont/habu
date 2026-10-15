@@ -79,7 +79,6 @@ package CHECK-SIGNAL-TEST
 $20000 constant PAD-BYTES            \ twice the 64 KiB a pipe holds on either host
 64 constant SINK-CAP
 $8000 constant LOG-CAP
--1 constant NO-FD
 
 create REPORT REPORT-BYTES allot
 create SINK SINK-CAP allot
@@ -104,17 +103,13 @@ TYPED-VARIABLE CASE-CLOSED bool      \ the subject closes its output before it r
 false CHECK-LIVE !
 true PIPE-DONE !
 false CASE-CLOSED !
-NO-FD PIPE-RD !
-NO-FD PIPE-WR !
-NO-FD CHECK-WATCH !
-NO-FD FEED-WR !
+PROC-NO-FD PIPE-RD !
+PROC-NO-FD PIPE-WR !
+PROC-NO-FD CHECK-WATCH !
+PROC-NO-FD FEED-WR !
 
 : TMP$ ( -- ptr u8 n )    TMP TMP-U @ ;
 : LOG$ ( -- ptr u8 n )    LOG LOG-U @ ;
-
-: CLOSE-CELL ( ptr n -- ) {: p:ptr :}
-   p @ 0 >= if p @ close then
-   NO-FD p ! ;
 
 \ A process is started with its caller's ignored signals still ignored, and a
 \ check.f that inherited one would never see it. RELEASE restores the default
@@ -225,7 +220,7 @@ NO-FD FEED-WR !
    true CHECK-LIVE !
    in close
    log close
-   PIPE-WR CLOSE-CELL
+   PIPE-WR PROC-CLOSE-CELL
    CHECK-PID @ proc-watch-open dup 0 < if drop E-PROC-OUTPUT throw then CHECK-WATCH ! ;
 
 : SUBJECT$ ( -- ptr u8 n )
@@ -285,7 +280,7 @@ NO-FD FEED-WR !
 \ A definition that leaves nothing for its declared n, then end of file.
 : FEED-REFUSED? ( -- bool )
    s" : BAD ( -- n ) ;" READY-MS >MS PROC-DEADLINE-AT FEED?
-   FEED-WR CLOSE-CELL ;
+   FEED-WR PROC-CLOSE-CELL ;
 
 : CHECK-SIGNAL ( n -- ) {: sig:n :}
    CHECK-PID @ >PID sig PROC-KILL-RAW drop ;
@@ -405,10 +400,10 @@ NO-FD FEED-WR !
       s" the processes check.f left ended on their own" T-LABEL
       EXPIRE-MS GONE-WITHIN? TTRUE
    then
-   CHECK-WATCH CLOSE-CELL
-   FEED-WR CLOSE-CELL
-   PIPE-WR CLOSE-CELL
-   PIPE-RD CLOSE-CELL
+   CHECK-WATCH PROC-CLOSE-CELL
+   FEED-WR PROC-CLOSE-CELL
+   PIPE-WR PROC-CLOSE-CELL
+   PIPE-RD PROC-CLOSE-CELL
    TMP-CLEAR ;
 
 \ The signal check.f is to answer, and whether the subject closes its output.

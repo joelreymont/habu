@@ -110,7 +110,6 @@ package PG-KILL-TEST
 120000 constant ROW-MS               \ the row's own deadline, until a case ends it
 64 constant SINK-CAP
 10 constant NEWLINE
--1 constant NO-FD
 
 2 constant IPC-STAT
 256 constant SHMID-DS-BYTES          \ struct shmid_ds: 80 bytes on macOS, 112 on Linux
@@ -135,14 +134,10 @@ TYPED-VARIABLE REPORTED bool         \ the whole line is in
 TYPED-VARIABLE PIPE-DONE bool        \ the read end has reported end of file
 false REPORTED !
 true PIPE-DONE !
-NO-FD PIPE-RD !
-NO-FD PIPE-WR !
+PROC-NO-FD PIPE-RD !
+PROC-NO-FD PIPE-WR !
 
 : SOCKETS$ ( -- ptr u8 n )  LINE LINE-U @ ;
-
-: CLOSE-CELL ( ptr n -- ) {: p:ptr :}
-   p @ 0 >= if p @ close then
-   NO-FD p ! ;
 
 : FD-TEXT$ ( n -- ptr u8 n )
    SB-RESET FMT:SB-INT SB$ ;
@@ -236,7 +231,7 @@ NO-FD PIPE-WR !
    REPORT-ENV
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ s" pg row" ROW-MS GT-POOL-START
-   PIPE-WR CLOSE-CELL ;
+   PIPE-WR PROC-CLOSE-CELL ;
 
 \ Up: the case reported, and the directory and the segment it named are there.
 : EXPECT-LIVE ( -- )
@@ -292,8 +287,8 @@ NO-FD PIPE-WR !
 : CASE-END ( -- )
    GT-POOL-KILL-ALL
    PIPE-DONE @ 0= if SWEEP then
-   PIPE-WR CLOSE-CELL
-   PIPE-RD CLOSE-CELL ;
+   PIPE-WR PROC-CLOSE-CELL
+   PIPE-RD PROC-CLOSE-CELL ;
 
 \ The pool is reset before the body: GT-POOL-KILL-ALL reads the slot table the
 \ reset fills in.
