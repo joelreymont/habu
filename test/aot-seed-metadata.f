@@ -4,12 +4,12 @@
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/codesign.f
 require src/lib/engine-candidate.f
 require tools/image-size-lib.f
+require test/pcap-result.f
 
 package IMAGE-SIZE
 private
@@ -116,12 +116,7 @@ variable OUT-U variable ERR-U variable RC
    >LEN S\" .\" seed-metadata-user-ran\"" >LEN
    OUT CAP >LEN ERR CAP >LEN 10000 >MS
    RUN-ARGV-STDIN-CAPTURE
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
-         o LEN>N OUT-U ! e LEN>N ERR-U ! 0 RC ! ENDOF
-      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
-         o LEN>N OUT-U ! e LEN>N ERR-U ! c RC>N RC ! ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 : MUTATION ( n n -- ) {: table:n mode:n :}
    IMAGE-SIZE:SEED-RESTORE

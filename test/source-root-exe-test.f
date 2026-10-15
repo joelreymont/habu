@@ -39,6 +39,7 @@ require src/lib/fs-mutate.f
 require src/lib/process-argv.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
+require test/pcap-result.f
 
 using SOURCE-ROOT
 package SOURCE-ROOT-EXE-TEST
@@ -262,13 +263,7 @@ variable RC
 
 \ ---- one child ------------------------------------------------------------------
 
-: RESULT! ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE 0 ENDOF
-      err OF PCAP-FAILED:UNMAKE RC>N ENDOF
-   ;MATCH
-   {: outu:len erru:len rc:n :}
-   outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc RC ! ;
+: RESULT! ( result<pcap:captured,pcap:failed> -- ) PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 \ The engine at exe in cwd, with the argv the caller staged.
 : RUN-ARGS ( ptr u8 n ptr u8 n n -- )

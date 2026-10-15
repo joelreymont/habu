@@ -36,6 +36,7 @@ require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require tools/chain-run.f
 require src/lib/tree-copy.f
+require test/pcap-result.f
 
 package HOST-ROW-TEST
 
@@ -126,14 +127,6 @@ variable RC
    ;MATCH
    buf len MEM:RELEASE-BYTES ;
 
-: CAPTURE-RESULT ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! 0 RC ! ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc RC>N RC ! ENDOF
-   ;MATCH ;
-
 : SUCCESS ( -- )
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    RC @ 0 T= ;
@@ -156,7 +149,7 @@ variable RC
    ENV!
    engine engineu >LEN tree treeu >LEN
    OUT CAP >LEN ERR CAP >LEN BUILD-TIMEOUT-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT
+   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE PCAP-RESULT:>N RC ! ERR-U ! OUT-U !
    SUCCESS ;
 
 : NAMES! ( ptr u8 n ptr u8 ptr n -- )

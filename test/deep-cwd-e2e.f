@@ -15,6 +15,7 @@ require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
+require test/pcap-result.f
 
 package DEEP-CWD-E2E
 private
@@ -91,12 +92,7 @@ create TAIL TAIL-BYTES allot
    s" /usr/bin/env" >LEN MID$ >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! 0 RC ! ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len code:rc :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! code RC>N RC ! ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 : KEEP ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n err:ptr erru:n :}
    out outu OUT OUT-U @ SAVE
