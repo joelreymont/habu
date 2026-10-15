@@ -40,9 +40,9 @@
 \ registers both kinds through the front ends, so the end-to-end leg is covered
 \ by test/decl-replay-verify-source.f and tools/check-test.f as well.
 \
-\ The code is never laundered.  GUARD renders the packet and then rethrows the
-\ code it caught, unchanged, so every reject class keeps the exact value the
-\ suites pin.
+\ The code is never laundered.  GUARD-CODE renders the packet and then rethrows
+\ the code it was handed, unchanged, so every reject class keeps the exact value
+\ the suites pin.
 \
 \ Why this file owns it.  The packet must be defined before its first consumer,
 \ structure-decl.f, and it needs nothing from the declaration-event transaction
@@ -78,7 +78,7 @@ package DECL-REJECT
 \ name is read on the first line but rendered after a reject on a later one.  A
 \ borrowed span would render whatever bytes later occupied that buffer.  Each
 \ slot also keeps the span it was copied from, which a token that locates
-\ renders instead (TOKEN-SPAN@), until GUARD ends the declaration.
+\ renders instead (TOKEN-SPAN@), until GUARD-CODE ends the declaration.
 4 constant SLOTS
 34 constant REASON-CAP      \ reason-table rows: the codes the engine's owners explain
 96 constant SPAN-CAP        \ per-slot bytes; a longer copy is capped, never overruns
@@ -244,10 +244,11 @@ public
    wa wu code EXPECT
    code ;
 
-\ GUARD ( body -- ) : run one declaration.  A reject is rendered through the
-\ shared declaration diagnostic and then rethrown with its exact code (REFUSE),
-\ so the transaction's rollback, the caller's error handling, and every pinned
-\ reject value are unchanged; only the missing message is added.
+\ GUARD-CODE ( code -- ) : end one declaration DECL-FRONT ran.  0 forgets the
+\ borrowed spans; a reject is rendered through the shared declaration diagnostic
+\ and then rethrown with its exact code (CHECKER-REFUSE), so the transaction's
+\ rollback, the caller's error handling, and every pinned reject value are
+\ unchanged; only the missing message is added.
 \
 \ Under a multi-error load (`--all-errors`) the reject is counted and the load
 \ continues instead — the declaration is already rolled back by the time this
@@ -262,9 +263,9 @@ public
 \ by the time TDECL-RUN swallowed anything the stream was already past the
 \ terminator. A front end reads the stream as it parses, so it stops wherever the
 \ fault was and the interpreter would meet the rest of the declaration as if it
-\ were code. Resynchronizing is the front end's job — only it knows its own
-\ terminator — so each one skips to its own before raising, when MULTI-ERR? says
-\ this load will swallow.
+\ were code. Resynchronizing needs the terminator, which only the front end
+\ knows, so DECL-FRONT's driver skips to the terminator the front end hands it
+\ before this reports, when MULTI-ERR? says this load will swallow.
 \
 \ The spans the declaration borrowed are forgotten on both exits: they are good
 \ only while it runs, and one left behind would be read stale or baked into an
@@ -283,7 +284,6 @@ public
    FORGET-SRC
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    rc CHECKER-REFUSE ;
-: GUARD ( [ -- ] -- ) catch GUARD-CODE ;
 
 \ Reflection for the suites: what the packet would report right now.
 : KIND$ ( -- ptr u8 n ) S-KIND SLOT@ ;
@@ -680,24 +680,25 @@ get-current prot-wid-add
 \ ---------------------------------------------------------------------------
 \ DECL-FRONT — the driver the declaration front ends wrap.
 \
-\ A front end (structure-decl.f) owns only its grammar. Everything around the
-\ grammar is the same for every front end and lives here once: the reject
-\ codes, the token source and its one-token pushback, the per-declaration parse
-\ cells, the field-name window a replay checks, the guarded transaction run with
-\ its resynchronization, and the replay entries. A front end passes what varies
-\ as arguments: its kind word for the packet, its terminator for
-\ resynchronization, and its body quotation, which resets the front end's own
-\ grammar scalars and runs its grammar.
+\ A front end (structure-decl.f, enum-decl.f) owns only its grammar. Everything
+\ around the grammar is the same for every front end and lives here once: the
+\ reject codes, the token source with its one-token pushback and its lookahead
+\ span, the per-declaration parse cells, the field-name window a replay checks,
+\ the guarded transaction run with its resynchronization, and the replay
+\ entries. A front end passes what varies as arguments: its kind word for the
+\ packet, its terminator for resynchronization, and its body quotation, which
+\ resets the front end's own grammar scalars and runs its grammar.
 \
 \ One set of cells serves every front end: STRUCTURE and ENUM are top-level
 \ interpret-only keywords that never nest (DECL-REJECT "Nesting" above; the
 \ runner refuses a second open declaration with E-ACTIVE and DECL-REPLAY a
 \ second stream with E-REPLAY-BUSY). Every source span a front end borrows —
-\ the pushback, the type token under resolution, the missing-type span — lives
-\ here and is forgotten as the declaration ends: RESET and MISS-CLEAR in DRIVE,
-\ and REPLAY-END for the span an E-UNRESOLVED replay answers. DECL-REJECT
-\ forgets its spans for the same reason: one left behind would be read stale or
-\ baked into an image with its build-time address, so engine generations differ.
+\ the pushback, ENUM's lookahead span, the type token under resolution, the
+\ missing-type span — lives here and is forgotten as the declaration ends:
+\ RESET and MISS-CLEAR in DRIVE, and REPLAY-END for the span an E-UNRESOLVED
+\ replay answers. DECL-REJECT forgets its spans for the same reason: one left
+\ behind would be read stale or baked into an image with its build-time
+\ address, so engine generations differ.
 \
 \ Resynchronization matters only when the reject will be swallowed — a
 \ multi-error load, where the interpreter carries on with whatever the stream
@@ -791,6 +792,8 @@ private
 variable PEND-U   PTR-VARIABLE PEND-A
 : PEND! ( ptr u8 n -- ) PEND-U ! PEND-A ! ;
 : PEND@ ( -- ptr u8 n ) PEND-A @ PEND-U @ ;
+PTR-VARIABLE HEAD-A   variable HEAD-U   variable HEAD-I   \ a span read ahead, re-read token by token before the source
+: HEAD-CLEAR ( -- ) NULL-PTR HEAD-A ! 0 HEAD-U ! 0 HEAD-I ! ;
 
 PTR-VARIABLE TYPE-A   variable TYPE-U     \ the field type token under resolution
 PTR-VARIABLE MISS-A   variable MISS-U     \ the first unresolved type span, kept for REPLAY-END
@@ -815,18 +818,39 @@ public
 
 : SEEN-CLEAR ( -- ) 0 SEEN-U ! ;
 
+\ HEAD! ( span -- ) : retain a span the front end read ahead of its grammar;
+\ RAW hands it back token by token before reading the source again (ENUM's
+\ mode selection reads to the first variant before registering the family).
+: HEAD! ( ptr u8 n -- ) HEAD-U ! HEAD-A !  0 HEAD-I ! ;
+
 \ Tokens come from the live input source, or — when a tool is replaying a
 \ declaration it has already lexed (REPLAY below) — from that tool's token
-\ stream. The pushback is checked first either way (RAW), so lookahead behaves
-\ identically on both sources.
+\ stream. The pushback and the lookahead span are checked first either way
+\ (RAW), so lookahead behaves identically on both sources.
 : SOURCE-NEXT ( -- ptr u8 n )
    DECL-REPLAY:RP-ACTIVE? IF DECL-REPLAY:RP-NEXT EXIT THEN
    parse-name ;
 
 private
 
-: RAW ( -- ptr u8 n )                  \ next body token (honours one pushback)
+: HEAD-NEXT ( -- ptr u8 n )
+   HEAD-A @ {: a:ptr :}
+   BEGIN HEAD-I @ HEAD-U @ < IF
+      a HEAD-I @ + c@ 32 <= ELSE NO THEN WHILE
+      HEAD-I @ 1+ HEAD-I !
+   REPEAT
+   HEAD-I @ {: start:n :}
+   BEGIN HEAD-I @ HEAD-U @ < IF
+      a HEAD-I @ + c@ 32 > ELSE NO THEN WHILE
+      HEAD-I @ 1+ HEAD-I !
+   REPEAT
+   HEAD-I @ start - {: size:n :}
+   HEAD-I @ HEAD-U @ = IF HEAD-CLEAR THEN
+   a start + size ;
+
+: RAW ( -- ptr u8 n )                  \ next body token: pushback, lookahead, source
    PEND-U @ 0 > IF PEND@ 0 PEND-U ! EXIT THEN
+   HEAD-U @ 0 <> IF HEAD-NEXT EXIT THEN
    SOURCE-NEXT ;
 
 public
@@ -887,7 +911,7 @@ public
 private
 
 : RESET ( -- )                          \ base state, on both exits of DRIVE and at load
-   NULL-PTR 0 PEND!  NULL-PTR 0 TYPE!
+   NULL-PTR 0 PEND!  HEAD-CLEAR  NULL-PTR 0 TYPE!
    0 SEEN-END !  0 FIELD-MISS !  SEEN-CLEAR ;
 
 : SKIP-BODY ( ptr u8 n -- )             \ to the terminator, or end of input

@@ -1,10 +1,12 @@
 \ enum-decl.f — the ENUM typed-declaration front end (package ENUM-DECL). This is
 \ the SECOND consumer of the shared declaration-event transaction
 \ (src/core/decl-event.f, package DECL-EVENT), binding to the same atomic
-\ declaration transaction used by STRUCTURE. It owns only the ENUM
-\ grammar loop and its reject dispatch; it holds NO declaration state (the events,
-\ the field rows, the variant registration, and the current-variant selector all
-\ live in the event module).
+\ declaration transaction used by STRUCTURE. It owns only the ENUM grammar loop
+\ and its reject dispatch; it holds NO declaration state (the events, the field
+\ rows, the variant registration and the current-variant selector live in the
+\ event module), and the token source, the parse cells and the guarded
+\ transaction run are DECL-FRONT's (src/core/generated-declaration.f): this
+\ file hands it its kind, terminator and body.
 \
 \ Grammar (docs/type-families.md §2.1, §2.3):
 \   enum-decl    = ENUM type-name (full-enum | compact-enum) ;ENUM
@@ -65,65 +67,16 @@
 using SCHEMA-REG
 using TFAM
 using TYPE-DECL
+using DECL-FRONT
 
 package ENUM-DECL
-
-\ --- named reject codes: local names for the shared declaration codes, read at
-\ load time from their owners, sumtype.f E-TDECL-* and type-family.f E-TFAM-*.
-\ A post-hook checked body cannot name a pre-hook constant on a from-source
-\ build, but a top-level read can, and the alias leaves each code one numeric
-\ owner (tools/error-code-lint.f). The field record's E-PF-NAME / E-TFAM-DUP /
-\ E-TFAM-CASE / E-PF-SCHEMA name+schema gate codes are raised by TFAM-DECL,
-\ SUMV-ADD, and the field-event path and pass through unchanged.
-E-TDECL-SYNTAX constant E-SYNTAX    \ malformed: missing name/terminator, mixed mode, header/variant/field out of place
-E-TDECL-ARITY constant E-ARITY      \ malformed type parameter header
-E-TDECL-PAYLOAD constant E-PAYLOAD  \ unresolved / unknown field type
-E-TDECL-NAME constant E-NAME        \ reserved or colliding family name
-E-TDECL-POLICY constant E-POLICY    \ unknown or not-yet-supported layout policy
-E-TDECL-DERIVE constant E-DERIVE    \ unknown or not-yet-supported derive feature
-E-TDECL-CAP constant E-CAP          \ a family, variant or field name longer than NAME-MAX
-E-TFAM-CASE constant E-CASE         \ family name is not a lowercase canonical tail
-E-TFAM-DUP constant E-DUP           \ duplicate family, variant, or field tail, raised by
-                                    \ TFAM-DECL / SUMV-ADD / the field-event path; named here
-                                    \ only so a reason can be armed before those calls
-7193 constant E-UNRESOLVED            \ private replay outcome after rollback
-
-110 constant ASCII-N
-102 constant ASCII-F
-114 constant ASCII-R
-
-\ The longest family, variant or field name, which every spelling derived from
-\ it has room for (src/core/type-family.f TF-NAME-MAX, read here at top level).
-TF-NAME-MAX constant NAME-MAX
-
-\ typed boolean producers (core has no `true`/`false`).
-: YES ( -- bool ) 0 0= ;
-: NO ( -- bool ) 0 0= 0= ;
-
-\ The single-letter con codes are src/core/checker.f constants created before it
-\ claims the source, so a from-source boot gives them no row: they are read
-\ here at top level, as the reject codes are.
-CC-N constant CON-N          \ single-letter n : signed cell
-CC-BOOL constant CON-BOOL    \ single-letter f : boolean/flag
-CC-R constant CON-R          \ single-letter r : real/float
-
-\ --- one-token pushback. The token bytes stay valid across a line refill (the
-\ engine buffers the input source), so the pushback holds the raw span in a
-\ declared pointer cell.
-variable PEND-U   PTR-VARIABLE PEND-A
-: PEND! ( ptr u8 n -- ) PEND-U ! PEND-A ! ;
-: PEND@ ( -- ptr u8 n ) PEND-A @ PEND-U @ ;
-PTR-VARIABLE ED-HEAD-A
-variable ED-HEAD-U
-variable ED-HEAD-I
-: ED-HEAD-CLEAR ( -- ) NULL-PTR ED-HEAD-A ! 0 ED-HEAD-U ! 0 ED-HEAD-I ! ;
 
 \ ---------------------------------------------------------------------------
 \ transient parse state (parse-loop bookkeeping, not declaration state). One
 \ declaration at a time: ENUM is top-level interpret-only, never nested.
 \ ---------------------------------------------------------------------------
 variable FAM        \ family id being declared
-variable TOK        \ live declaration-event token (0 = no open transaction)
+variable TOK        \ declaration-event token; ED-RESET zeroes it at body start
 variable VBASE      \ variant high-water at open (variant range start)
 variable NVAR       \ variant count in this declaration
 variable FLDBASE    \ committed field high-water at open (field range start)
@@ -131,60 +84,10 @@ variable NFLD       \ total field count across all variants
 variable VCELLS     \ running payload cell width WITHIN the open variant
 variable MAXSLOTS   \ widest variant payload cell width (the sum's payload slots)
 variable SEEN-VARIANT \ a VARIANT has appeared (header clauses must precede variants)
-variable SEEN-END     \ this declaration's ;ENUM has been consumed
-variable ED-FIELD-MISS
-PTR-VARIABLE ED-MISS-A
-variable ED-MISS-U
-$2000 constant ED-SEEN-CAP
-create ED-SEEN ED-SEEN-CAP allot
-variable ED-SEEN-U
-variable ED-SEEN-I
-variable ED-OUTCOME-NAMES
 
-: ED-RESET ( -- )                      \ base state; re-seeded at load (process-local)
-   NULL-PTR 0 PEND!   0 TOK !   0 SEEN-VARIANT !   0 SEEN-END !
-   ED-HEAD-CLEAR
-   0 ED-FIELD-MISS !  0 ED-SEEN-U ! ;
+: ED-RESET ( -- )                      \ grammar scalars; re-seeded at load (process-local)
+   0 TOK !   0 SEEN-VARIANT ! ;
 ED-RESET
-
-: ED-MISS-CLEAR ( -- ) NULL-PTR ED-MISS-A ! 0 ED-MISS-U ! ;
-ED-MISS-CLEAR
-: ED-MISSING! ( ptr u8 n -- )
-   -1 ED-FIELD-MISS !
-   ED-MISS-U @ 0= IF ED-MISS-U ! ED-MISS-A ! ELSE 2drop THEN ;
-
-\ Tokens come from the live input source, or — when a tool is replaying a
-\ declaration it has already lexed (ED-REPLAY below) — from that tool's token
-\ stream. The pushback is checked first either way, so the compact body's
-\ lookahead behaves identically on both sources.
-: ED-SOURCE ( -- ptr u8 n )
-   DECL-REPLAY:RP-ACTIVE? IF DECL-REPLAY:RP-NEXT EXIT THEN
-   parse-name ;
-: ED-HEAD-NEXT ( -- ptr u8 n )
-   ED-HEAD-A @ {: a:ptr :}
-   BEGIN ED-HEAD-I @ ED-HEAD-U @ < IF
-      a ED-HEAD-I @ + c@ 32 <= ELSE NO THEN WHILE
-      ED-HEAD-I @ 1+ ED-HEAD-I !
-   REPEAT
-   ED-HEAD-I @ {: start:n :}
-   BEGIN ED-HEAD-I @ ED-HEAD-U @ < IF
-      a ED-HEAD-I @ + c@ 32 > ELSE NO THEN WHILE
-      ED-HEAD-I @ 1+ ED-HEAD-I !
-   REPEAT
-   ED-HEAD-I @ start - {: size:n :}
-   ED-HEAD-I @ ED-HEAD-U @ = IF ED-HEAD-CLEAR THEN
-   a start + size ;
-: ED-RAW ( -- ptr u8 n )               \ next body token (honours one pushback)
-   PEND-U @ 0 > IF PEND@ 0 PEND-U ! EXIT THEN
-   ED-HEAD-U @ 0 <> IF ED-HEAD-NEXT EXIT THEN
-   ED-SOURCE ;
-\ Every body token is recorded as the packet's offending token as it is read, so
-\ a reject raised inside the family registry, the variant registry, the field
-\ record, or a transaction participant still names the token that provoked it
-\ without those owners knowing anything about the packet.
-: ED-NEXT ( -- ptr u8 n )              \ next body token, recorded for diagnostics
-   ED-RAW 2dup DECL-REJECT:TOKEN! ;
-: UNGET ( ptr u8 n -- ) PEND! ;
 
 \ ---------------------------------------------------------------------------
 \ name gate: a reserved family name is one TYPE-NAME:FAMILY-RESERVED? lists, the
@@ -194,7 +97,6 @@ ED-MISS-CLEAR
 \ (`if`), then value record names (`ENUM vr` in a package after `VALUE-RECORD
 \ vr`).
 \ ---------------------------------------------------------------------------
-: NAME-LONG? ( ptr u8 n -- bool ) nip NAME-MAX > ;
 
 : REQUIRE-NAME ( ptr u8 n -- )      \ validate the family name (throws; consumes the copy)
    dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
@@ -255,13 +157,13 @@ ED-MISS-CLEAR
 : RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
    dup 0= IF 2drop s" missing payload type" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ptr" CORE-STR=CI IF
-      2drop ED-NEXT RECURSE
-      ED-FIELD-MISS @ IF drop 0 EXIT THEN
+      2drop NEXT RECURSE
+      FIELD-MISS @ IF drop 0 EXIT THEN
       REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
    dup 1 = IF LETTER-TYPE EXIT THEN
    2dup CON-OF dup 0 <> IF nip nip SCHEMA-CON EXIT THEN drop
    2dup FIELD-FAM? IF nip nip 0 0 SCHEMA-APP EXIT THEN drop
-   2dup TYPE-MAY-ARRIVE-XT IF ED-MISSING! 0 EXIT THEN
+   2dup TYPE-MAY-ARRIVE-XT IF MISSING! 0 EXIT THEN
    2drop s" unknown payload type" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : SCH-WIDTH ( n -- n )                  \ physical cell width of a field schema node
@@ -275,14 +177,9 @@ ED-MISS-CLEAR
    SEEN-VARIANT @ IF
       s" header clause after the first variant" E-SYNTAX DECL-REJECT:REJECT throw THEN ;
 
-: POLICY-CODE ( ptr u8 n -- n )         \ policy name -> layout code (or reject)
-   dup 0= IF 2drop s" missing layout policy name" E-POLICY DECL-REJECT:REJECT throw THEN
-   2dup s" stack-cell-tag" CORE-STR=CI IF 2drop TL-STACK-CELL-TAG EXIT THEN
-   2dup s" packed-tag" CORE-STR=CI IF 2drop TL-PACKED-TAG EXIT THEN
-   2drop s" unknown layout policy" E-POLICY DECL-REJECT:REJECT throw ;
 : POLICY-CLAUSE ( -- )
    HEADER-ORDER
-   ED-NEXT POLICY-CODE {: code:n :}
+   NEXT POLICY-CODE {: code:n :}
    FAM @ code TFAM-LAYOUT!
    TOK @ FAM @ code DECL-EVENT:POLICY TOK ! ;
 
@@ -293,36 +190,33 @@ ED-MISS-CLEAR
 
 \ Select the mode at the first variant, after optional header clauses. The
 \ engine and replay reader both return spans in one buffered source. Retain
-\ that prefix as a span and read it again through ED-RAW, so registration still
-\ fixes the kind before any clause is applied and diagnostics keep their bytes.
+\ that prefix as a span and read it again through DECL-FRONT's token source
+\ (HEAD!), so registration still fixes the kind before any clause is applied
+\ and diagnostics keep their bytes.
 : ED-LOOK-END? ( ptr u8 n -- bool )
    dup 0= IF 2drop YES EXIT THEN
    s" ;enum" CORE-STR=CI ;
 : ED-FIRST-VARIANT ( ptr u8 n -- ptr u8 n )
    BEGIN
       2dup s" policy" CORE-STR=CI IF
-         2drop ED-SOURCE
+         2drop SOURCE-NEXT
          2dup ED-LOOK-END? IF EXIT THEN
-         2drop ED-SOURCE
+         2drop SOURCE-NEXT
       ELSE
          2dup s" derive" CORE-STR=CI IF
-            2drop ED-SOURCE
-            BEGIN 2dup DERIVE-FEATURE? WHILE 2drop ED-SOURCE REPEAT
+            2drop SOURCE-NEXT
+            BEGIN 2dup DERIVE-FEATURE? WHILE 2drop SOURCE-NEXT REPEAT
          ELSE
             \ OPAQUE may be a compact variant or a forbidden header before
-            \ VARIANT blocks. Keep it in ED-HEAD and inspect the next token.
-            2dup s" opaque" CORE-STR=CI IF 2drop ED-SOURCE ELSE EXIT THEN
+            \ VARIANT blocks. Keep it in the lookahead and inspect the next token.
+            2dup s" opaque" CORE-STR=CI IF 2drop SOURCE-NEXT ELSE EXIT THEN
          THEN
       THEN
    AGAIN ;
 : ED-FULL? ( -- bool )
-   ED-SOURCE {: first:ptr size:n :}
+   SOURCE-NEXT {: first:ptr size:n :}
    first size ED-FIRST-VARIANT {: last:ptr lastu:n :}
-   size 0 <> IF
-      first ED-HEAD-A !
-      last lastu + first - ED-HEAD-U !
-      0 ED-HEAD-I !
-   THEN
+   size 0 <> IF first  last lastu + first -  HEAD! THEN
    last lastu s" variant" CORE-STR=CI ;
 : DERIVE-GUARD ( -- )                   \ derive needs a public, concrete (arity 0) family
    FAM @ TFAM-PUBLIC? 0= IF
@@ -340,9 +234,9 @@ ED-MISS-CLEAR
    2drop s" unknown derive feature" E-DERIVE DECL-REJECT:REJECT throw ;
 : DERIVE-CLAUSE ( -- )                  \ DERIVE feature+ : first mandatory, rest by lookahead
    HEADER-ORDER
-   ED-NEXT dup 0= IF
+   NEXT dup 0= IF
       2drop s" missing derive feature" E-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
-   BEGIN ED-NEXT dup 0= IF 2drop EXIT THEN
+   BEGIN NEXT dup 0= IF 2drop EXIT THEN
       2dup DERIVE-FEATURE? IF DERIVE-ONE ELSE UNGET EXIT THEN
    AGAIN ;
 
@@ -363,47 +257,23 @@ ED-MISS-CLEAR
    DECL-EVENT:FIELD TOK !
    fw VCELLS @ + VCELLS !
    NFLD @ 1 + NFLD ! ;
-: ED-SEEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 ED-SEEN-I !
-   BEGIN ED-SEEN-I @ ED-SEEN-U @ < WHILE
-      ED-SEEN ED-SEEN-I @ + c@ {: len:n :}
-      len u = IF
-         ED-SEEN BYTE-VIEW ED-SEEN-I @ + 1+ len a u CORE-STR= IF YES EXIT THEN
-      THEN
-      ED-SEEN-I @ len 1+ + ED-SEEN-I !
-   REPEAT NO ;
-: ED-NAME-CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u DECL-REJECT:TOKEN!
-   s" duplicate field name" E-DUP DECL-REJECT:EXPECT
-   a u PF-NAME-REQUIRE
-   a u ED-SEEN? IF E-DUP throw THEN
-   ED-SEEN-U @ u + 1+ ED-SEEN-CAP > IF
-      s" enum field names exceed declaration window"
-      E-CAP DECL-REJECT:REJECT throw THEN
-   u ED-SEEN ED-SEEN-U @ + c!
-   0 ED-SEEN-I !
-   BEGIN ED-SEEN-I @ u < WHILE
-      a ED-SEEN-I @ + c@
-      ED-SEEN ED-SEEN-U @ + 1+ ED-SEEN-I @ + c!
-      ED-SEEN-I @ 1+ ED-SEEN-I !
-   REPEAT
-   ED-SEEN-U @ u + 1+ ED-SEEN-U ! ;
 : FIELD-CLAUSE ( -- )
-   ED-NEXT dup 0= IF
+   NEXT dup 0= IF
       2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ field name
    {: na:ptr nu:n :}
    na nu NAME-LONG? IF TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
-   ED-OUTCOME-NAMES @ 0 <> IF na nu ED-NAME-CHECK THEN
-   0 ED-FIELD-MISS !
-   ED-NEXT RESOLVE-TYPE {: node:n :}
-   ED-FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN ;
+   OUTCOME-NAMES @ 0 <> IF
+      na nu s" enum field names exceed declaration window" NAME-CHECK THEN
+   0 FIELD-MISS !
+   NEXT RESOLVE-TYPE {: node:n :}
+   FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN ;
 
 : VARIANT-NAME ( -- ptr u8 n )          \ next token = variant name (must be present)
-   ED-NEXT dup 0= IF
+   NEXT dup 0= IF
       2drop s" missing variant name" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup NAME-LONG? IF 2drop TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN ;
 : OPEN-VARIANT ( -- )
-   0 ED-SEEN-U !
+   SEEN-CLEAR
    VARIANT-NAME {: na:ptr nu:n :}
    na nu DECL-REJECT:TOKEN!             \ the variant name owns the variant registry's rejects
    s" duplicate variant" E-DUP DECL-REJECT:EXPECT
@@ -415,7 +285,7 @@ ED-MISS-CLEAR
    TOK @ FAM @ DECL-EVENT:END-VARIANT TOK !     \ clear the current-variant selector
    NVAR @ 1 + NVAR ! ;
 : VARIANT-CLAUSE ( -- bool )            \ read one variant-body token; YES = ;VARIANT
-   ED-NEXT dup 0= IF 2drop s" missing ;VARIANT" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   NEXT dup 0= IF 2drop s" missing ;VARIANT" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ;variant" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" field" CORE-STR=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
    2drop s" unexpected token in variant block" E-SYNTAX
@@ -456,8 +326,6 @@ ED-MISS-CLEAR
 \ ---------------------------------------------------------------------------
 \ transaction orchestration.
 \ ---------------------------------------------------------------------------
-: VIS ( -- n )                          \ declaration visibility (public at top level)
-   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF CHECKER-VIS-PUBLIC EXIT THEN CHECKER-AUTH-PACKAGE-MODE@ ;
 : OPEN-TX ( -- )                        \ capture bases, open the event tx, emit DECL
    SUMV-N@ VBASE !
    TYPE-FIELD:COUNT FLDBASE !
@@ -509,7 +377,7 @@ ED-MISS-CLEAR
 : ED-CLOSE ( -- )                          \ bind variant + field ranges + width, bake layout, arm generation
    DECL-REJECT:AT-FAMILY                    \ close-stage faults belong to the whole declaration
    NVAR @ 0= IF s" empty enum" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ needs a variant
-   ED-MISS-U @ IF E-UNRESOLVED throw THEN
+   MISSING? IF E-UNRESOLVED throw THEN
    FAM @ VBASE @ NVAR @ TFAM-VAR-RANGE!
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    FAM @ MAXSLOTS @ TFAM-SLOTS!
@@ -524,7 +392,7 @@ ED-MISS-CLEAR
    FAM @ GENERATED-DECL-CTOR:OWNS? IF FAM @ GENERATED-DECL-CTOR:ARM THEN ;
 
 : FULL-CLAUSE ( -- bool )               \ read + dispatch one full-body token; YES = ;ENUM
-   ED-NEXT dup 0= IF 2drop
+   NEXT dup 0= IF 2drop
       DECL-REJECT:AT-FAMILY
       s" missing ;ENUM" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ;enum" CORE-STR=CI IF 2drop -1 SEEN-END ! YES EXIT THEN
@@ -541,11 +409,11 @@ ED-MISS-CLEAR
          DECL-REJECT:AT-FAMILY
          s" missing ;ENUM" E-SYNTAX DECL-REJECT:REJECT throw THEN
       COMPACT-CLAUSE IF EXIT THEN
-      ED-NEXT
+      NEXT
    AGAIN ;
 
 : DRIVE ( -- )                          \ name + mode select + register + body
-   ED-NEXT 2dup DECL-REJECT:FAMILY!     \ ( na nu )  keep the span
+   NEXT 2dup DECL-REJECT:FAMILY!     \ ( na nu )  keep the span
    dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
    DECL-HEADER 0= IF
       drop 2drop s" invalid type parameter header" E-ARITY DECL-REJECT:REJECT throw
@@ -559,110 +427,33 @@ ED-MISS-CLEAR
       FULL-BODY
    ELSE
       na nu REGISTER-COMPACT
-      ED-NEXT COMPACT-BODY
+      NEXT COMPACT-BODY
    THEN
    ED-CLOSE ;
 
-\ One provisional transaction: commit by persisting, roll the family + schema +
-\ layout + variant + event stream back to a byte-identical registry on any reject.
-: ED-BODY ( -- )
-   ED-MISS-CLEAR
-   [: ED-RESET DRIVE ;] TDECL-TXN-XT ;
-
-\ Resynchronize the input to the end of THIS declaration.
-\
-\ It matters only when the reject will be swallowed — a multi-error load, where
-\ the interpreter carries on with whatever the stream holds next. The legacy
-\ definer got this for free: it copied every token through `;ENUM` into a buffer
-\ before parsing any of it, so a swallowed reject always left the stream past the
-\ terminator. This front end reads as it parses and stops at the fault, so the
-\ tokens between the fault and `;ENUM` are still ahead of the interpreter, which
-\ would try to execute them. Measured on the commit before this one:
-\ `ENUM m7bad red red blue ;ENUM NEWTYPE m7cont<a>` reported the duplicate
-\ variant, counted it, and then died on `E-UNDEFINED: blue` — the load aborted
-\ where the legacy definer continued and declared `m7cont`.
-\
-\ The terminator is this declaration's own boundary, so skipping to it consumes
-\ exactly what belongs to it and nothing more. Two cases need no skip and get
-\ none: a reject raised after `;ENUM` was already consumed (SEEN-END — skipping
-\ then would eat the NEXT declaration), and a reject raised because the input
-\ ended without a terminator (the scan simply meets end of input). Tokens are
-\ read through ED-RAW rather than ED-NEXT so the packet keeps naming the token
-\ that actually provoked the reject; GUARD renders it after this returns.
-: ED-SKIP-BODY ( -- )
-   BEGIN
-      ED-RAW dup 0= IF 2drop EXIT THEN
-      2dup s" ;enum" CORE-STR=CI IF 2drop EXIT THEN
-      2drop
-   AGAIN ;
-: ED-RESYNC ( -- )
-   SEEN-END @ IF EXIT THEN
-   MULTI-ERR? 0= IF EXIT THEN
-   ED-SKIP-BODY ;
-
-\ A reject is rendered through the shared declaration packet AFTER the
-\ runner has rolled everything back, then rethrown with its exact code,
-\ which is the same order the legacy definers use (sumtype.f TDECL-RUN:
-\ restore, report, rethrow). Both drivers below share this one guarded body, so
-\ a replayed declaration reports through exactly the same renderer.
-: ED-DRIVE ( -- )                      \ body, then resynchronize before reporting
-   [: ED-BODY ;] catch {: rc:n :}
-   rc 0= IF ED-RESET EXIT THEN
-   ED-RESYNC
-   ED-RESET
-   rc E-UNRESOLVED <> IF ED-MISS-CLEAR THEN
-   rc throw ;
-: ED-GUARDED ( -- )
-   [: ED-DRIVE ;] DECL-REJECT:GUARD ;
-
-\ The replay stream is retired on BOTH exits. Closing only on success would
-\ leave a rejected replay installed, and the next live ENUM would then read its
-\ tokens from a spent buffer instead of the input source.
-: ED-REPLAY-END ( n -- ptr u8 n bool ) \ direct missing span after rollback
-   DECL-REPLAY:RP-RELEASE
-   dup E-UNRESOLVED = IF
-      drop ED-MISS-A @ ED-MISS-U @
-      0 DECL-REJECT:GUARD-CODE
-      YES ED-MISS-CLEAR EXIT THEN
-   DECL-REJECT:GUARD-CODE
-   ED-MISS-CLEAR
-   NULL-PTR 0 NO ;
+: ED-FRONT ( -- ptr u8 n ptr u8 n [ -- ] )   \ kind, terminator and body for DECL-FRONT
+   s" enum" s" ;enum" [: ED-RESET DRIVE ;] ;
 
 public
 
-: ED-RUN ( -- )
-   s" enum" DECL-REJECT:OPEN
-   ED-GUARDED ;
+: ED-RUN ( -- ) ED-FRONT DECL-FRONT:RUN ;
 
 \ ED-REPLAY ( name body -- ) : register an ENUM from tokens a tool has already
 \ lexed, defining no word. Same grammar, same validation, same registry writes,
 \ same reject packet as ED-RUN — only the token source differs and the variant
-\ constructors are registered without being rendered (the constructor participant
-\ in generated-declaration.f). BOTH modes replay: the first body token still
-\ selects full or compact exactly as it does live, so this entry replaces the
-\ legacy compact-only CHECKER-DEFENUM that tools/check-core.f and
-\ src/habu/verify-source.f drive today. The body buffer is the declaration body
-\ INCLUDING its ;ENUM terminator; a buffer without one rejects through the front
-\ end's own "missing ;ENUM" gate exactly as a truncated live declaration does.
-\
-\ The stream is claimed BEFORE the packet is opened. Claiming can fail — another
-\ replay is already installed — and that failure belongs to the caller that
-\ misused the entry, not to any declaration: it must not clear the packet of the
-\ declaration that owns the live stream, and it must not close that stream on the
-\ way out. So it propagates as its own code with no packet of its own, and only a
-\ claim that SUCCEEDED reaches the close below.
-: ED-REPLAY-WITH ( ptr u8 n ptr u8 n bool -- ptr u8 n bool )
-   {: na:ptr nu:n ba:ptr bu:n names:bool :}
-   na nu ba bu DECL-REPLAY:RP-CLAIM
-   s" enum" DECL-REJECT:OPEN
-   names ED-OUTCOME-NAMES !
-   [: ED-DRIVE ;] catch
-   0 ED-OUTCOME-NAMES !
-   ED-REPLAY-END ;
+\ constructors are registered without being rendered (the constructor
+\ participant in generated-declaration.f). BOTH modes replay: the first body
+\ token still selects full or compact exactly as it does live, so this entry
+\ replaces the legacy compact-only CHECKER-DEFENUM that tools/check-core.f and
+\ src/habu/verify-source.f drive. The body buffer is the declaration body
+\ INCLUDING its ;ENUM terminator; a buffer without one rejects through the
+\ front end's own "missing ;ENUM" gate exactly as a truncated live declaration
+\ does. ED-REPLAY-OUTCOME answers the first type the body named that may still
+\ arrive instead of raising.
 : ED-REPLAY-OUTCOME ( ptr u8 n ptr u8 n -- ptr u8 n bool )
-   YES ED-REPLAY-WITH ;
+   ED-FRONT DECL-FRONT:REPLAY-OUTCOME ;
 : ED-REPLAY ( ptr u8 n ptr u8 n -- )
-   NO ED-REPLAY-WITH IF 2drop E-UNRESOLVED throw THEN 2drop ;
+   ED-FRONT DECL-FRONT:REPLAY ;
 
 ;package
 
@@ -678,6 +469,7 @@ public
 \ ENUM type-name[<params>] [POLICY p] [DERIVE f+] (VARIANT name (FIELD n t)* ;VARIANT)+ ;ENUM
 : ENUM ( -- ) ENUM-DECL:ED-RUN ;
 
+;using
 ;using
 ;using
 ;using

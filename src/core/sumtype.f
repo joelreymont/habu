@@ -1106,9 +1106,10 @@ private
 \ Both entries run the body inside the one declaration transaction: the field
 \ rows go through DECL-EVENT, which only an open transaction admits. TDECL-RUN
 \ stays outside it, so a reject it swallows under a multi-error load is already
-\ rolled back -- DECL-EVENT rows, field rows, constructors -- as DECL-REJECT:GUARD
-\ stands outside ED-BODY. Each entry names its transaction step as a word
-\ because hb-stage0 compiles this file and cannot nest quotations.
+\ rolled back -- DECL-EVENT rows, field rows, constructors -- as DECL-FRONT's
+\ driver stands outside the transaction it runs (generated-declaration.f). Each
+\ entry names its transaction step as a word because hb-stage0 compiles this
+\ file and cannot nest quotations.
 : TDECL-PRODUCT-TXN ( [ -- ] -- )
    TDECL-EVENT-ARMED 0= TDECL-TXN-ARMED @ 0= or IF
       s" product: declaration event transaction not installed" 76 die

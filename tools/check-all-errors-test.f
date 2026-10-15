@@ -144,14 +144,15 @@ create CAE-LF-BYTE 10 c,
 
 \ Four faults: two in ENUM declarations, one in a PRODUCT and one ordinary
 \ definition reject. The global ENUM keyword is the unified front end, whose
-\ reporter is DECL-REJECT:GUARD; the PRODUCT reports through sumtype.f's
-\ TDECL-RUN; so one source exercises every reporter in one pass. Under a
-\ multi-error load every fault must be reported and the pass must continue:
-\ before GUARD grew its multi-error branch the first bad declaration ended the
-\ run and the later faults were never seen, even though TDECL-RUN had answered
-\ that way for the legacy definers all along. The good declarations prove the
-\ arm does not swallow accepted declarations, and CAE-PGOOD-USE that the refused
-\ product's rollback leaves the next product usable.
+\ reporter is DECL-REJECT:GUARD-CODE, reached through DECL-FRONT:RUN; the
+\ PRODUCT reports through sumtype.f's TDECL-RUN; so one source exercises every
+\ reporter in one pass. Under a multi-error load every fault must be reported
+\ and the pass must continue: before GUARD-CODE grew its multi-error branch the
+\ first bad declaration ended the run and the later faults were never seen,
+\ even though TDECL-RUN had answered that way for the legacy definers all
+\ along. The good declarations prove the arm does not swallow accepted
+\ declarations, and CAE-PGOOD-USE that the refused product's rollback leaves
+\ the next product usable.
 : CAE-DECL-SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" ENUM cae-dgood red green ;ENUM" SB-APPEND CAE-LF
