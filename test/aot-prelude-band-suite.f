@@ -75,7 +75,7 @@
 \ WINDOW-CLOSE now latch the span with the other three coordinates, so no
 \ producer can leave it undeclared and the refusal that named it is gone with it.
 \
-\ Cost: thirteen child bin/hb runs, no metabuild. Registered as
+\ Cost: thirteen child engine runs, no metabuild. Registered as
 \ `SUITE aot-prelude-band` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-prelude-band-suite.f
 
@@ -87,6 +87,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require src/lib/engine-candidate.f
 require test/pcap-result.f
 
 package AOT-PRELUDE-BAND
@@ -102,7 +103,6 @@ variable RC
 create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
-: HB$ ( -- ptr u8 n )   s" bin/hb" ;
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
 
@@ -111,8 +111,8 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+ ;
 
-\ One case: bin/hb --load <case file>, with the band mode in the environment and a
-\ private HB_TMP, exactly the way the capture tool will be run.
+\ One case: the engine under test with --load <case file>, the band mode in the
+\ environment and a private HB_TMP, exactly the way the capture tool will be run.
 : RUN-CASE ( ptr u8 n ptr u8 n -- ) {: f:ptr fu:n m:ptr mu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -121,7 +121,7 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
    s" HABU_BAND" >LEN m mu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   HB$ >LEN  OUT CAP >LEN  ERR CAP >LEN  CASE-TIMEOUT-MS >MS
+   ENGINE-CANDIDATE:PATH$ >LEN  OUT CAP >LEN  ERR CAP >LEN  CASE-TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 

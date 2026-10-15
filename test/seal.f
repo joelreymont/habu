@@ -13,7 +13,7 @@
 \ pinned below. Clean-start registry-capacity fixtures remain direct executions.
 \
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
-\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f test/seal.f
+\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f test/seal.f
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -24,8 +24,8 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
 require src/lib/test/subject.f
+require src/lib/engine-candidate.f
 require test/tail-parity.f
 
 package SEAL-SUITE
@@ -62,15 +62,6 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 : SLV-IN$ ( -- ptr u8 n )
    SLV-IN SLV-IN-U @ ;
-
-\ Resolve the child engine: gate default env HABU_UNDER_TEST -> the sealed
-\ candidate; standalone runs fall back to bin/hb.
-: SLV-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
 
 : SLV-LF ( -- )
    10 SB-APPEND-C ;
@@ -402,7 +393,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    SLV-CHILD >LEN PROC-ARGV+
-   SLV-HB$ >LEN  SLV-EMPTY 0 >LEN  SLV-OUT SLV-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  SLV-EMPTY 0 >LEN  SLV-OUT SLV-CAP >LEN
    SLV-ERR SLV-CAP >LEN  SLV-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src u SLV-STORE! ;
 
@@ -410,7 +401,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-RUN-STDIN ( ptr u8 n -- )
    SLV-IN!
    PROC-ARGV-RESET
-   SLV-HB$ >LEN  SLV-IN$ >LEN  SLV-OUT SLV-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  SLV-IN$ >LEN  SLV-OUT SLV-CAP >LEN
    SLV-ERR SLV-CAP >LEN  SLV-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SLV-IN$ SLV-STORE! ;
 

@@ -21,6 +21,7 @@ require src/lib/errors.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/process-argv.f
+require src/lib/engine-candidate.f
 require test/aot-chain-capture-lib.f
 
 package AOT-CHAIN-SUITE
@@ -44,14 +45,12 @@ $7FFFFFFF constant LOC-MASK
 
 create HDR HDR-BYTES allot
 create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this suite's file-digest context
-create PROD-HEX HEX-LEN allot        \ sha256(bin/hb), taken here
+create PROD-HEX HEX-LEN allot        \ sha256 of the engine under test, taken here
 create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
 create ART-BUF FS-PATH-CAP allot    variable ART-U
 
 : ART$ ( -- ptr u8 n ) ART-BUF ART-U @ ;
-: HB$ ( -- ptr u8 n ) s" bin/hb" ;
-
-: RUN-CHILD ( -- ) HB$ RUN-ENGINE ;
+: RUN-CHILD ( -- ) ENGINE-CANDIDATE:PATH$ RUN-ENGINE ;
 
 : RUN-ROUNDTRIP ( -- )
    PROC-ARGV-RESET
@@ -167,8 +166,8 @@ create ART-BUF FS-PATH-CAP allot    variable ART-U
 
 \ The producer key, hashed here rather than believed.
 : PROBE-PRODUCER ( -- )
-   s" bin/hb hashes at the path this suite reads it from" T-LABEL
-   FSHA-CTX HB$ PROD-HEX SHA256-FILE-HEX-IN 0 T=
+   s" the engine under test hashes at the path this suite reads it from" T-LABEL
+   FSHA-CTX ENGINE-CANDIDATE:PATH$ PROD-HEX SHA256-FILE-HEX-IN 0 T=
    s" the artifact names that hash as its producer" T-LABEL
    HDR O-PRODUCER + ART-HEX SHA256>HEX
    ART-HEX HEX-LEN  PROD-HEX HEX-LEN  T$= ;

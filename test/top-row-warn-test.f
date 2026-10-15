@@ -3,7 +3,7 @@
 \ sub-dot 7 - the tier-2 switch + tree burn-down).
 \
 \ The tracker (src/core/top-row.f) is installed by default in the cold prefix, so
-\ every child `bin/hb --load <program>` carries it. The child mode is staged by the
+\ every child `--load <program>` run carries it. The child mode is staged by the
 \ HABU_TOP_TIER env var: unset -> tier-1 (warn, rc unchanged), 2 -> tier-2 (reject
 \ pre-execution, rc 70 named diagnostic, no crash). Each probe program runs as a
 \ child; the fixture counts `hb: top-row: ` lines on the child's stderr.
@@ -44,6 +44,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/test/outcome.f
+require src/lib/engine-candidate.f
 
 package TOP-ROW-WARN-TEST
 
@@ -74,12 +75,6 @@ create TW-EMPTY 1 allot
 : TW-ROOT ( -- ptr u8 n ) TW-ROOT-BUF TW-ROOT-U @ ;
 : TW-CHILD ( -- ptr u8 n ) TW-CHILD-BUF TW-CHILD-U @ ;
 : TW-ERR$ ( -- ptr u8 n ) TW-ERR TW-ERR-U @ ;
-
-\ Resolve the child engine: gate default env HABU_UNDER_TEST, else bin/hb.
-: TW-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
 
 : TW-STORE! ( len len outcome ptr u8 n -- )
    {: outu:len erru:len oc src:ptr srcu:n :}
@@ -112,7 +107,7 @@ create TW-EMPTY 1 allot
    tier TW-SET-TIER
    s" --load" >LEN PROC-ARGV+
    TW-CHILD >LEN PROC-ARGV+
-   TW-HB$ >LEN  TW-EMPTY 0 >LEN  TW-OUT TW-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  TW-EMPTY 0 >LEN  TW-OUT TW-CAP >LEN
    TW-ERR TW-CAP >LEN  TW-TIMEOUT-MS >MS  RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
    src srcu TW-STORE! ;
 

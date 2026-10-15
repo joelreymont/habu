@@ -21,7 +21,7 @@
 \
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
 \   src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
-\   src/lib/process-env.f test/top-row-hook-test.f
+\   test/top-row-hook-test.f
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -33,7 +33,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
+require src/lib/engine-candidate.f
 
 package TOP-ROW-HOOK-TEST
 
@@ -218,15 +218,6 @@ create TRH-EMPTY 1 allot
 : TRH-ERR$ ( -- ptr u8 n )
    TRH-ERR TRH-ERR-U @ ;
 
-\ Resolve the child engine: gate default env HABU_UNDER_TEST -> the candidate;
-\ standalone runs fall back to bin/hb.
-: TRH-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
-
 : TRH-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
    erru LEN>N TRH-ERR-U !  outu LEN>N TRH-OUT-U !
    oc MATCH outcome
@@ -246,7 +237,7 @@ create TRH-EMPTY 1 allot
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    TRH-CHILD >LEN PROC-ARGV+
-   TRH-HB$ >LEN  TRH-EMPTY 0 >LEN  TRH-OUT TRH-IO-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  TRH-EMPTY 0 >LEN  TRH-OUT TRH-IO-CAP >LEN
    TRH-ERR TRH-IO-CAP >LEN  TRH-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src srcu TRH-STORE! ;
 
@@ -254,7 +245,7 @@ create TRH-EMPTY 1 allot
 : TRH-RUN-STDIN ( ptr u8 n -- ) {: src:ptr srcu:n :}
    src srcu TRH-IN!
    PROC-ARGV-RESET
-   TRH-HB$ >LEN  TRH-IN$ >LEN  TRH-OUT TRH-IO-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  TRH-IN$ >LEN  TRH-OUT TRH-IO-CAP >LEN
    TRH-ERR TRH-IO-CAP >LEN  TRH-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src srcu TRH-STORE! ;
 

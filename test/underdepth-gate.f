@@ -21,7 +21,7 @@
 \ parity retains direct `--load` and stdin representatives below.
 \
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
-\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f
+\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
 \   test/underdepth-gate.f
 
 require src/lib/errors.f
@@ -33,8 +33,8 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
 require src/lib/test/subject.f
+require src/lib/engine-candidate.f
 require test/tail-parity.f
 
 2048 constant UDG-CAP
@@ -76,15 +76,6 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
 : UDG-ERR$ ( -- ptr u8 n )
    UDG-ERR UDG-ERR-U @ ;
 
-\ Resolve the child engine: gate default env HABU_UNDER_TEST -> the candidate;
-\ standalone runs fall back to bin/hb.
-: UDG-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
-
 : UDG-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
    erru LEN>N UDG-ERR-U !  outu LEN>N UDG-OUT-U !
    oc MATCH outcome
@@ -104,7 +95,7 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    UDG-CHILD >LEN PROC-ARGV+
-   UDG-HB$ >LEN  UDG-EMPTY 0 >LEN  UDG-OUT UDG-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  UDG-EMPTY 0 >LEN  UDG-OUT UDG-CAP >LEN
    UDG-ERR UDG-CAP >LEN  UDG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src u UDG-STORE! ;
 
@@ -112,7 +103,7 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
 : UDG-RUN-STDIN ( ptr u8 n -- )
    UDG-IN!
    PROC-ARGV-RESET
-   UDG-HB$ >LEN  UDG-IN$ >LEN  UDG-OUT UDG-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  UDG-IN$ >LEN  UDG-OUT UDG-CAP >LEN
    UDG-ERR UDG-CAP >LEN  UDG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    UDG-IN$ UDG-STORE! ;
 

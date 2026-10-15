@@ -30,6 +30,7 @@ require src/lib/prelude.f
 require src/lib/aio.f
 require src/lib/test.f
 require src/lib/task.f                 \ TASK:SLEEP between probes of a sleeper's pid
+require src/lib/engine-candidate.f
 
 package PTY-TTY-SMOKE
 
@@ -40,8 +41,9 @@ $1388 constant EXIT-MS
 $1388 constant GONE-MS             \ a killed sleeper's reaping by init, on a loaded box
 $0A constant PROBE-MS              \ the pause between two probes of its pid
 
-: HB$ ( -- ptr u8 len )
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then >LEN ;
+\ The engine under test: the gate's freshly built candidate when it exported
+\ one, else the running engine itself (src/lib/engine-candidate.f).
+: HB$ ( -- ptr u8 len )      ENGINE-CANDIDATE:PATH$ >LEN ;
 
 : PROMPT$ ( -- ptr u8 n )    s" habu> " ;
 : ANYWHERE$ ( -- ptr u8 n )  s" " ;      \ an empty head: the tail may be anywhere

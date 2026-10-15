@@ -47,11 +47,11 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/test/spawn-report.f
 require src/lib/codesign.f
 require src/lib/tree-copy.f
+require src/lib/engine-candidate.f
 require tools/build-fixpoint.f
 
 package PRE-TRUST-DEFER-TEST
@@ -76,7 +76,7 @@ variable LAST-ERR-U
 : ABS? ( ptr u8 n -- bool ) {: a:ptr u:n :}  u 0 >  a c@ [char] / =  and ;
 
 : HB$ ( -- ptr u8 n )                                \ selected host builds the cold fixture once
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then {: e:ptr eu:n :}
+   ENGINE-CANDIDATE:PATH$ {: e:ptr eu:n :}
    e eu ABS? if e eu exit then
    \ against the real working directory: a gate's `env -i` child has no PWD
    e eu FS-PATHZ HB-BUF FS-PATH-CAP realpath {: n:n :}

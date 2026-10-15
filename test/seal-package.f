@@ -21,7 +21,7 @@
 \ pinned below; those direct representatives retain both cold-prefix entry paths.
 \
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
-\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f test/seal-package.f
+\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f test/seal-package.f
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -32,8 +32,8 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
 require src/lib/test/subject.f
+require src/lib/engine-candidate.f
 require test/tail-parity.f
 
 package SEAL-TEST
@@ -65,15 +65,6 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 : SPK-ROOT ( -- ptr u8 n )   SPK-ROOT-BUF SPK-ROOT-U @ ;
 : SPK-CHILD ( -- ptr u8 n )  SPK-CHILD-BUF SPK-CHILD-U @ ;
 : SPK-IN$ ( -- ptr u8 n )    SPK-IN SPK-IN-U @ ;
-
-\ Resolve the child engine: gate default env HABU_UNDER_TEST -> the sealed
-\ candidate; standalone runs fall back to bin/hb.
-: SPK-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
 
 : SPK-LF ( -- )   10 SB-APPEND-C ;
 
@@ -219,7 +210,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    SPK-CHILD >LEN PROC-ARGV+
-   SPK-HB$ >LEN  SPK-EMPTY 0 >LEN  SPK-OUT SPK-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  SPK-EMPTY 0 >LEN  SPK-OUT SPK-CAP >LEN
    SPK-ERR SPK-CAP >LEN  SPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src u SPK-STORE! ;
 
@@ -227,7 +218,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 : SPK-RUN-STDIN ( ptr u8 n -- )
    SPK-IN!
    PROC-ARGV-RESET
-   SPK-HB$ >LEN  SPK-IN$ >LEN  SPK-OUT SPK-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  SPK-IN$ >LEN  SPK-OUT SPK-CAP >LEN
    SPK-ERR SPK-CAP >LEN  SPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SPK-IN$ SPK-STORE! ;
 
