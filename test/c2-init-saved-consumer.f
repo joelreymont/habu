@@ -7,10 +7,6 @@ require src/lib/test/subject.f
 package C2-INIT-SAVED-CONSUMER
 private
 
-$4000 constant CAP
-create OUT CAP allot
-create ERR CAP allot
-
 : STEP ( n mut-view<p,i,a,init<i,C2-INIT-WRAPPER:c2isaved>> -- n mut-view<p,i,a,init<i,C2-INIT-WRAPPER:c2isaved>> )
    C2--INIT--WRAPPER-C2ISAVED:LEFT@ 11 <> if -7311 throw then
    C2--INIT--WRAPPER-C2ISAVED:RIGHT@ 22 <> if -7312 throw then
@@ -24,16 +20,6 @@ create ERR CAP allot
 : RESULT ( -- n )
    39 16 MEM:BYTES-ALLOC-LEN [: BODY ;] C2-MEM:WITH-MUT ;
 
-: INNER-STORE-REFUSED? ( -- bool )
-   s" : C2-INIT-INNER-STORE ( mut-view<p,i,a,init<i,C2-INIT-WRAPPER:c2isource<p,l>>> read-view<p,i,u8> -- mut-view<p,i,a,init<i,C2-INIT-WRAPPER:c2isource<p,l>>> ) C2--INIT--WRAPPER-C2ISOURCE:SOURCE! ;"
-   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
-      exited OF 70 = ENDOF
-      signaled OF drop false ENDOF
-      timeout OF false ENDOF
-   ;MATCH
-   >r 2drop r> ;
-
 public
 
 : RUN ( -- )
@@ -41,7 +27,8 @@ public
    s" a fresh saved consumer opens both initialized bounds" T-LABEL
    RESULT 42 T=
    s" a saved setter cannot store an inner-scope view in an outer field" T-LABEL
-   INNER-STORE-REFUSED? TTRUE
+   s" : C2-INIT-INNER-STORE ( mut-view<p,i,a,init<i,C2-INIT-WRAPPER:c2isource<p,l>>> read-view<p,i,u8> -- mut-view<p,i,a,init<i,C2-INIT-WRAPPER:c2isource<p,l>>> ) C2--INIT--WRAPPER-C2ISOURCE:SOURCE! ;"
+   70 SUBJECT:EXITED? TTRUE
    T-REPORT
    s" c2-init-saved-consumer: ok" type cr ;
 

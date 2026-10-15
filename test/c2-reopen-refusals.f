@@ -37,10 +37,6 @@ TRUSTED: STOW-WITH-LOOP ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] sto
 
 package C2-REOPEN-REFUSALS
 
-$4000 constant CAP
-create OUT CAP allot
-create ERR CAP allot
-
 : SECTION-CLASS ( -- )
    s" the engine under test keeps engine packages open" T-LABEL
    ENGINE-INTERNAL:IMAGE-CLASS ENGINE-INTERNAL:IMAGE-WHITEBOX T= ;
@@ -58,24 +54,14 @@ create ERR CAP allot
 67 constant UNCAUGHT-RC          \ hb's exit status for an uncaught throw
 public get-current private constant QUAL-WID
 
-: SCOPE-REFUSED? ( ptr u8 n -- bool )
-   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
-      exited OF UNCAUGHT-RC = ENDOF
-      signaled OF drop false ENDOF
-      timeout OF false ENDOF
-   ;MATCH
-   {: outu:len erru:len refused:bool :}
-   refused outu LEN>N 0= and
-   ERR erru LEN>N s" uncaught throw code 7151" CONTAINS? and ;
-
 : SECTION-VIEWS ( -- )
    s" C2-MEM's private section packs raw cells into a view" T-LABEL
    s" package C2-MEM private CAST: C2RR-PACK ( ptr u8 n -- read-view<p,q,u8> ) ;package" 0 SUBJECT:EXITED? TTRUE
    s" a checked C2-MEM word unpacks a mutable view and packs it again" T-LABEL
    s" package C2-MEM private CAST: C2RR-MUN ( mut-view<p,q,a,u8> -- ptr u8 n ) CAST: C2RR-MPK ( ptr u8 n -- mut-view<p,q,a,u8> ) : C2RR-ROUND ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) C2RR-MUN C2RR-MPK ; ;package" 0 SUBJECT:EXITED? TTRUE
    s" C2-MEM's public section cannot pack a view" T-LABEL
-   s" package C2-MEM public CAST: C2RR-PUBLIC-PACK ( ptr u8 n -- read-view<p,q,u8> ) ;package" SCOPE-REFUSED? TTRUE
+   s" package C2-MEM public CAST: C2RR-PUBLIC-PACK ( ptr u8 n -- read-view<p,q,u8> ) ;package"
+   UNCAUGHT-RC s" uncaught throw code 7151" SUBJECT:REFUSED? TTRUE
    s" a reopened C2-MEM definition cannot declare raw cells a view" T-LABEL
    s" package C2-MEM private : C2RR-RAW-VIEW ( ptr u8 n -- read-view<p,q,u8> ) ; ;package" 70 SUBJECT:EXITED? TTRUE
    s" C2-MEM's private section cannot pack under another package's name" T-LABEL

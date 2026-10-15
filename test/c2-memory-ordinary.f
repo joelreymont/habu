@@ -12,23 +12,10 @@ EXPORT C2-MEM:WITH-MUT
 package C2-MEMORY-ORDINARY
 private
 
-$4000 constant CAP
-create OUT CAP allot
-create ERR CAP allot
-
 : ENTRY ( ptr u8 n -- n )
    XREF-FIND dup XREF-FOUND? 0= if
       drop s" c2-memory-ordinary: missing entry" 71 die
    then XREF-START ;
-
-: REFUSED? ( ptr u8 n -- bool )
-   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
-      exited OF 70 = ENDOF
-      signaled OF drop false ENDOF
-      timeout OF false ENDOF
-   ;MATCH
-   >r 2drop r> ;
 
 public
 
@@ -42,15 +29,15 @@ public
    s" source export cannot grant an owner root" T-LABEL
    s" C2-MEMORY-ALIAS:WITH-MUT" ENTRY scope-kind? 0 T=
    s" raw root call cannot accept a unique-view callback" T-LABEL
-   s" : C2-ORD-DIRECT ( -- n ) 1 MEM:BYTES-ALLOC-LEN [: 0 C2-MEM:MUT-BYTE@ ;] C2-MEM:WITH-MUT ;" REFUSED? TTRUE
+   s" : C2-ORD-DIRECT ( -- n ) 1 MEM:BYTES-ALLOC-LEN [: 0 C2-MEM:MUT-BYTE@ ;] C2-MEM:WITH-MUT ;" 70 SUBJECT:EXITED? TTRUE
    s" a ticked raw root cannot introduce unique authority" T-LABEL
-   s" : C2-ORD-TICK ( -- n ) 1 MEM:BYTES-ALLOC-LEN [: 0 C2-MEM:MUT-BYTE@ ;] ['] C2-MEM:WITH-MUT execute ;" REFUSED? TTRUE
+   s" : C2-ORD-TICK ( -- n ) 1 MEM:BYTES-ALLOC-LEN [: 0 C2-MEM:MUT-BYTE@ ;] ['] C2-MEM:WITH-MUT execute ;" 70 SUBJECT:EXITED? TTRUE
    s" an exported raw root cannot introduce unique authority" T-LABEL
-   s" : C2-ORD-EXPORT ( -- n ) 1 MEM:BYTES-ALLOC-LEN [: 0 C2-MEM:MUT-BYTE@ ;] C2-MEMORY-ALIAS:WITH-MUT ;" REFUSED? TTRUE
+   s" : C2-ORD-EXPORT ( -- n ) 1 MEM:BYTES-ALLOC-LEN [: 0 C2-MEM:MUT-BYTE@ ;] C2-MEMORY-ALIAS:WITH-MUT ;" 70 SUBJECT:EXITED? TTRUE
    s" raw shared-loan source cannot acquire a scoped child" T-LABEL
-   s" : C2-ORD-READ ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: 0 C2-MEM:BYTE@ swap drop ;] C2-MEM:WITH-READ ;" REFUSED? TTRUE
+   s" : C2-ORD-READ ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: 0 C2-MEM:BYTE@ swap drop ;] C2-MEM:WITH-READ ;" 70 SUBJECT:EXITED? TTRUE
    s" raw exclusive-loan source cannot acquire a scoped child" T-LABEL
-   s" : C2-ORD-MUT-LOAN ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: 0 C2-MEM:MUT-BYTE@ swap drop ;] C2-MEM:WITH-MUT-LOAN ;" REFUSED? TTRUE
+   s" : C2-ORD-MUT-LOAN ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: 0 C2-MEM:MUT-BYTE@ swap drop ;] C2-MEM:WITH-MUT-LOAN ;" 70 SUBJECT:EXITED? TTRUE
    T-REPORT
    s" c2-memory-ordinary: ok" type cr ;
 
