@@ -278,14 +278,17 @@ and rejection of malformed tree and highlight records. The fixture also draws
 two triangles for browser inspection, one highlighted and one unselected.
 
 `test/browser/request-test.f` builds and validates the checked Wasm fixture
-`test/browser/request.f` and runs `test/browser/request-peer.mjs`. The peer
-drives two live turns whose tagged replies
-arrive in reverse order, checks exact IDs above 2^53, binary bodies and copied
-request data after memory growth, then exercises rejected records and the CLI's
-FIFO replies. It verifies immediate tagged reply reporting while a sibling
-waits, original error identity, aggregate error text, and the CLI's failure
-exit. A failed legacy sequence stops only its own later records. It also
-checks the old zero fields for fetch and post replies.
+`test/browser/request.f` and runs it through the same Wasm host runner,
+comparing each run's exact output. Replies answered by ID arrive in reverse
+order, across turns and within one run, with IDs above 2^53, binary bodies,
+the drawing size at reply time and a BOM kept in a path. A lost connection
+delivers status 0 and its error text. A trap in one reply is reported at once
+while its sibling waits, and the aggregate text names both reasons. A reply
+that leaves an invalid record is reported without ending the module, and a
+later turn still runs. Tagged requests start ahead of a legacy post from the
+same run, a legacy reply posts again, and legacy replies keep their zero
+fields. Fourteen malformed request records are refused before any reaches the
+host.
 
 `src/lib/browser/host-test.f` (gate row `browser-host`) starts Habu's HTTP server
 with `BROWSER-HOST:ROUTES` on a loopback port, and CURL checks that `/`,
