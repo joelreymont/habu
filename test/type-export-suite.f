@@ -16,21 +16,11 @@
 \ keyword's dual-name execution, checked callers and primitive-source reject
 \ (E-EXPORT-PRIM, the one CHECKER-EXPORT reject the keyword reaches) are
 \ test/export-package.f's.
-\ A failure prints F<index> + detail; REPORT exits 1 on any fail.
+\ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
 
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
+T-RESET
 
 require src/habu/verify-source.f   \ VERIFY:CANDIDATE-IN-SCOPE: the certify path's verdict
 
@@ -236,9 +226,6 @@ EXPORT XPG-HID
 4 XPG:XPG-HID 7 T=
 
 \ ---------------------------------------------------------------------------
-\ report: "ok" on success, nonzero exit on any failure.
+\ report: "test: ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" type-export-suite: failures" 1 die ;
-REPORT
+T-REPORT

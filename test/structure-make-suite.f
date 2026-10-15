@@ -16,24 +16,14 @@
 \ schema registries stay byte-identical (the canonical-zero invariant).
 \ structure-make.f is baked, so this suite uses STRUCTURE-MAKE:GENERATE directly
 \ (no require).
-\ A failure prints F<index> + detail; REPORT exits 1 on any fail.
+\ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
 
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
 using SCHEMA-REG
 using TFAM
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
+T-RESET
 
 1 constant CON-N       \ CC-N  (cell)
 
@@ -148,10 +138,7 @@ TYPE-FIELD:COUNT PF0 @ T=
 TF-STR-U@ STRU0 @ T=
 
 \ ---------------------------------------------------------------------------
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" structure-make-suite: failures" 1 die ;
-REPORT
+T-REPORT
 
 ;using
 ;using

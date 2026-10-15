@@ -146,7 +146,7 @@ s" : SCXCAP ( -- ) 0 0 NRX-LINK ; SCXCAP" SCX-REFUSED
 s" : SCXOK ( -- ) 0 SYM-CAP 1 - NRX-LINK ; SCXOK" SCX-CHILD
 SCX-RC @ 0 T=
 
-s" checker-scan-index-rollback-suite: failures" REPORT
+T-REPORT
 
 ;package
 

@@ -13,24 +13,13 @@
 \ open package is where the definitions those cases make land — which is why
 \ symbols are resolved with CHECKER-FIND-ACTIVE-SYM (the current scope) rather
 \ than as globals.
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
 using TFAM
 
 package SCANIDX-TEST
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
+T-RESET
 
 : TTRUE ( bool -- )
    if -1 else 0 then -1 T= ;
@@ -233,14 +222,6 @@ variable REF-NEXT              \ ... and the link it reads
    SCX-DIFF-SUMV 0 T=
    SCX-DIFF-TFAM 0 T=
    SCX-DIFF-VNX 0 T= ;
-
-\ ---------------------------------------------------------------------------
-\ report: "ok" on success; on any failure, the failure count and the row's own
-\ message, then a nonzero exit.
-\ ---------------------------------------------------------------------------
-: REPORT ( ptr u8 n -- ) {: msg:ptr msgu:n :}
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . msg msgu 1 die ;
 
 ;package
 

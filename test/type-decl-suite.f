@@ -11,37 +11,16 @@
 \ any reserved package.
 \ Only the capture-time seal of the other packages (internal-mark.f
 \ SEAL-PACKAGES) stands down here.
-\ A failure prints F<index> + detail; REPORT exits 1 on any fail.
+\ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
 
 require test/checker-assert.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
 using SCHEMA-REG
 using TFAM
 using TYPE-DECL
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
-: T$= ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
-   #CASE @ 1 + #CASE !
-   gu wu <> if
-      T-FAIL s" assert string len: expected " type wu FMT:.INT s"  got " type gu FMT:.INT cr exit
-   then
-   0 begin dup gu < while
-      dup ga + c@  over wa + c@ <> if
-         drop T-FAIL s" assert string byte mismatch" type cr exit
-      then
-      1+
-   repeat drop ;
+T-RESET
 
 \ substring search (diag packet assertions).
 variable TDC-I
@@ -1788,9 +1767,6 @@ s" tdmix" TD3M @ MK-PARAM  TD3MLOG !
 TD3MLOG @ 0 MK-HIDDEN  TD3LOG @ 0 MK-HIDDEN  UNIFY 0 T=
 
 \ ---------------------------------------------------------------------------
-\ report: "ok" on success, nonzero exit on any failure.
-\ ---------------------------------------------------------------------------
-\ ---------------------------------------------------------------------------
 \ derive S1 (dot habu-checker-capability-derive): `DERIVE eq` on a PUBLIC ENUM
 \ generates PKG:TAG (discriminant) + PKG:EQ (tag equality) as ORDINARY CHECKED
 \ words in the ctor package — no window, no trust, no engine lowering.
@@ -2297,10 +2273,7 @@ DIAG-BUFFER$ s\" \"family\":\"tdnres\"" TDT-CONTAINS? -1 T=
 DIAG-BUFFER-OFF
 s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
 
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" type-decl-suite: failures" 1 die ;
-REPORT
+T-REPORT
 
 ;using
 ;using

@@ -44,27 +44,17 @@
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
 \ Every definition here is a fixture helper, so they live in this file's own
 \ package; the cases run as top-level interpret lines inside it, and the words
 \ the cases define land in this package too.
 package EFFINTERN-TEST
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
+T-RESET
 
 : T<> ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
+   T-NEXT
    got want = if
       T-FAIL s" assert: expected anything but " type want FMT:.INT cr
    then ;
@@ -386,11 +376,8 @@ TABLE-LIVE
 s" EIXC3" SIG-MIN-IN 1 T=                          \ and the store still answers for it
 
 \ ---------------------------------------------------------------------------
-\ report: "ok" on success, nonzero exit on any failure.
+\ report: "test: ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" effect-intern-suite: failures" 1 die ;
-REPORT
+T-REPORT
 
 ;package

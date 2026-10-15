@@ -22,21 +22,11 @@
 \      malformed (uncommitted-id) arming — every one a checker reject (verdict 0).
 \ That checked source cannot arm the window itself is
 \ test/field-proj-boundary-child.f's (FPX-FORGE).
-\ REPORT prints "ok" and exits 0, or F<index> + detail and exits 1.
+\ T-REPORT prints "test: ok" and exits 0, or F<index> + detail and exits 1.
 
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
+T-RESET
 
 require test/checker-assert.f
 require test/field-proj-arm.f
@@ -114,9 +104,6 @@ s" FPX-BID" TYPE-FIELD:COUNT 100 + 0 TYPE-DECL:FP-ARM
 s" FPX-BID ( ptr fprec -- ptr n ) 0 field-project" CHECK-QUIET-CANDIDATE! 0 T=
 FP-CLEAR
 
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" field-proj-suite: failures" 1 die ;
-REPORT
+T-REPORT
 
 ;using

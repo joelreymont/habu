@@ -6,36 +6,15 @@
 \ engine, which test/whitebox-engine.f builds:
 \     <unsealed engine> --load test/type-family-rollback-suite.f
 \ Every rollback op (CHECKER-SCOPE-START/DONE, CHECK-CANDIDATE-START/DONE) is a
-\ top-level interpret line. A failure prints F<index> + detail; REPORT exits 1 on
-\ any fail.
+\ top-level interpret line. A failure prints F<index> + detail; T-REPORT exits 1
+\ on any fail.
 
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
 using SCHEMA-REG
 using TFAM
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
-: T$= ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
-   #CASE @ 1 + #CASE !
-   gu wu <> if
-      T-FAIL s" assert string len: expected " type wu FMT:.INT s"  got " type gu FMT:.INT cr exit
-   then
-   0 begin dup gu < while
-      dup ga + c@  over wa + c@ <> if
-         drop T-FAIL s" assert string byte mismatch" type cr exit
-      then
-      1+
-   repeat drop ;
+T-RESET
 
 \ scratch cells (all rollback query values are stashed before compare).
 variable FOUNDF
@@ -331,12 +310,9 @@ RB-SVX:SYM @ SUMV-FROM-CTOR-SYM FOUNDF ! drop
 FOUNDF @ 0 T=                                        \ and so is the head that named it
 
 \ ---------------------------------------------------------------------------
-\ report: "ok" on success, nonzero exit on any failure.
+\ report: "test: ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" type-family-rollback-suite: failures" 1 die ;
-REPORT
+T-REPORT
 
 ;using
 ;using

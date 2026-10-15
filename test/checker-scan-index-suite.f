@@ -266,7 +266,7 @@ s" SCXA" SCX-SIG-MIN-IN 3 T=
 s" SCXT" CTL-FLAGS CTL-THROW and 0 T=
 s" scxpk" s" scxfam" TFAM-FIND-IN TTRUE drop
 
-s" checker-scan-index-suite: failures" REPORT
+T-REPORT
 
 ;package
 

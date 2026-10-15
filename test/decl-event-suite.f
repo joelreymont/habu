@@ -13,30 +13,17 @@
 \ identical field events; the field-record name gate throws pass through unchanged;
 \ duplicate POLICY / DERIVE and out-of-range arity reject; changed declarations
 \ change snapshot identity; standalone PUBLISH cannot bypass the contiguity preflight.
-\ A failure prints F<index> + detail; REPORT exits 1 on any fail.
+\ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
 \
 \ Each field-publishing case uses its OWN family so committed field rows never
 \ collide on slot/byte layout across cases; header-only cases reuse one family.
 
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
 using SCHEMA-REG
 using TFAM
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
-: T-TRUE ( bool -- ) {: b:bool :}
-   #CASE @ 1 + #CASE !
-   b 0= if T-FAIL s" assert: expected true" type cr then ;
+T-RESET
 
 \ scratch cells.
 variable TOK   variable ITOK          \ live + inner transaction tokens
@@ -76,9 +63,9 @@ TOK @ FE2 @ P-PF @ ' DECL-EVENT:FIELD-SCHEMA@ catch TC ! drop drop drop
 TC @ 7173 T=                                            \ foreign family cannot use the token
 TOK @ DECL-EVENT:PUBLISH
 DECL-EVENT:COUNT 3 T=                                  \ DECL, ARITY, FIELD published atomically
-0 DECL-EVENT:DECL? T-TRUE
-1 DECL-EVENT:ARITY? T-TRUE
-2 DECL-EVENT:FIELD? T-TRUE
+0 DECL-EVENT:DECL? TTRUE
+1 DECL-EVENT:ARITY? TTRUE
+2 DECL-EVENT:FIELD? TTRUE
 2 DECL-EVENT:FAMILY@ FP1 @ T=
 2 DECL-EVENT:VAR@ DECL-EVENT:NO-VARIANT T=            \ structure field: no variant
 TYPE-FIELD:COUNT P-PF @ 1 + T=                         \ exactly one field committed
@@ -171,7 +158,7 @@ DECL-EVENT:OPEN TOK !
 TOK @ FS7 @ DECL-EVENT:DECL TOK !
 TOK @ FS7 @ s" sx" SCHROOT @ 0 1 0 CELL CELL 0 DECL-EVENT:FIELD TOK !
 TOK @ DECL-EVENT:PUBLISH
-1 DECL-EVENT:FIELD? T-TRUE                              \ structure field event (DECL=0, FIELD=1)
+1 DECL-EVENT:FIELD? TTRUE                               \ structure field event (DECL=0, FIELD=1)
 1 DECL-EVENT:VAR@ VAR-S !                               \ its selector = NO-VARIANT
 DECL-EVENT:RESET
 DECL-EVENT:OPEN TOK !
@@ -179,10 +166,10 @@ TOK @ FV7 @ DECL-EVENT:DECL TOK !
 TOK @ FV7 @ s" ex" DECL-EVENT:VARIANT TOK !
 TOK @ FV7 @ s" ey" SCHROOT @ 0 1 0 CELL CELL 0 DECL-EVENT:FIELD TOK !
 TOK @ DECL-EVENT:PUBLISH
-2 DECL-EVENT:FIELD? T-TRUE                              \ enum payload field event (DECL=0, VARIANT=1, FIELD=2)
+2 DECL-EVENT:FIELD? TTRUE                               \ enum payload field event (DECL=0, VARIANT=1, FIELD=2)
 2 DECL-EVENT:VAR@ VAR-E !                               \ its selector = the open variant id
 VAR-S @ DECL-EVENT:NO-VARIANT T=                        \ structure: no variant
-VAR-E @ DECL-EVENT:NO-VARIANT <> T-TRUE                 \ enum: a real variant selector
+VAR-E @ DECL-EVENT:NO-VARIANT <> TTRUE                  \ enum: a real variant selector
 
 \ ---------------------------------------------------------------------------
 \ 8. Nested event streams: an inner OPEN…ROLLBACK retires only the inner
@@ -198,8 +185,8 @@ ITOK @ FN8 @ s" n1" SCHROOT @ 1 1 CELL CELL CELL 0 DECL-EVENT:FIELD ITOK !
 ITOK @ DECL-EVENT:ROLLBACK                              \ retire only the inner field/event
 TOK @ DECL-EVENT:PUBLISH                                \ outer publishes n0 only
 DECL-EVENT:COUNT 2 T=                                   \ DECL + n0 (n1 rolled back)
-0 DECL-EVENT:DECL? T-TRUE
-1 DECL-EVENT:FIELD? T-TRUE
+0 DECL-EVENT:DECL? TTRUE
+1 DECL-EVENT:FIELD? TTRUE
 
 \ ---------------------------------------------------------------------------
 \ 9. Changing the declared arity changes the snapshot identity.
@@ -216,7 +203,7 @@ TOK @ FP1 @ DECL-EVENT:DECL TOK !
 TOK @ FP1 @ 3 DECL-EVENT:ARITY TOK !                    \ different arity
 TOK @ DECL-EVENT:PUBLISH
 DECL-EVENT:IDENTITY IDC !
-IDA @ IDC @ <> T-TRUE                                   \ different declaration -> different identity
+IDA @ IDC @ <> TTRUE                                    \ different declaration -> different identity
 
 \ ---------------------------------------------------------------------------
 \ 10. A stale / non-LIFO token is rejected (E-DEV-TX 7161).
@@ -370,7 +357,7 @@ variable HOLD-FDEPTH  variable HOLD-CDEPTH
    HOLD-SAVE
    SNAP-CATCH TC !
    TC @ TEST-E-PF-TX T=
-   DECLARATION-TRANSACTION:ACTIVE? 0= T-TRUE
+   DECLARATION-TRANSACTION:ACTIVE? 0= TTRUE
    HOLD-SAME
    HOLD-TOK @ ROLLBACK
    DEPTH 0 T=
@@ -504,7 +491,7 @@ variable VN-FOWNER
    TC @ 0 T=
    SUMV-N@ VN-SUMV @ 1 + T=
    DEV-VAR-ORD @ 1 T=
-   DEV-CUR-VAR @ DECL-EVENT:NO-VARIANT <> T-TRUE
+   DEV-CUR-VAR @ DECL-EVENT:NO-VARIANT <> TTRUE
    TOK @ ROLLBACK
    0 CHECK-CANDIDATE-DONE drop
    VN-CHECK-OUT  VN-CHECK-REG ;
@@ -1077,7 +1064,7 @@ RT-RESTORED
 : RT-LEAK-FAIL-CATCH ( -- n ) [: RT-LEAK-FAIL-RUN ;] catch ;
 
 : RT-HEALTHY ( -- )
-   DECLARATION-TRANSACTION:ACTIVE? 0= T-TRUE
+   DECLARATION-TRANSACTION:ACTIVE? 0= TTRUE
    RT-RESTORED ;
 
 RT-MARK
@@ -1109,10 +1096,7 @@ TYPE-FIELD:TX-DEPTH 0 T=
 ;package
 
 \ ---------------------------------------------------------------------------
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" decl-event-suite: failures" 1 die ;
-REPORT
+T-REPORT
 
 ;using
 ;using

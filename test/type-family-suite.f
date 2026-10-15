@@ -7,42 +7,19 @@
 \     <unsealed engine> --load test/type-family-suite.f
 \ The harness words below are ordinary checked definitions (public words only);
 \ every registry op is a top-level interpret line, naming the internal word or a
-\ checked probe of it. A failure prints F<index> + detail; REPORT exits 1 on any
-\ fail.
+\ checked probe of it. A failure prints F<index> + detail; T-REPORT exits 1 on
+\ any fail.
 
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
 using SCHEMA-REG
 using TFAM
 
-variable #FAIL
-variable #CASE
+T-RESET
 
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
-: T-TRUE ( bool -- )
-   #CASE @ 1 + #CASE !
-   0= if T-FAIL s" assert: expected true" type cr then ;
-: T$= ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
-   #CASE @ 1 + #CASE !
-   gu wu <> if
-      T-FAIL s" assert string len: expected " type wu FMT:.INT s"  got " type gu FMT:.INT cr exit
-   then
-   0 begin dup gu < while
-      dup ga + c@  over wa + c@ <> if
-         drop T-FAIL s" assert string byte mismatch" type cr exit
-      then
-      1+
-   repeat drop ;
 \ TSNE ( ga gu wa wu -- ) : assert two strings are NOT byte-identical.
 : TSNE ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
-   #CASE @ 1 + #CASE !
+   T-NEXT
    gu wu <> if exit then
    0 begin dup gu < while
       dup ga + c@  over wa + c@ <> if drop exit then
@@ -80,9 +57,9 @@ public
 : TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
 : TWX-SUMV-TAG@ ( n -- n ) SUMV-TAG@ ;
 : TDP-INDEX>CHAR ( n n -- ) {: index:n char:n :}
-   index TFAM-DECL-PARAM>CHAR T-TRUE char T= ;
+   index TFAM-DECL-PARAM>CHAR TTRUE char T= ;
 : TDP-CHAR>INDEX ( n n -- ) {: index:n char:n :}
-   char TFAM-DECL-CHAR>PARAM T-TRUE index T= ;
+   char TFAM-DECL-CHAR>PARAM TTRUE index T= ;
 : TDP-PAIR ( n n -- ) {: index:n char:n :}
    index char TDP-INDEX>CHAR
    index char TDP-CHAR>INDEX ;
@@ -1249,12 +1226,9 @@ s" ready" TYPE-NAME:VARIANT-REQUIRE
 ;package
 
 \ ---------------------------------------------------------------------------
-\ report: "ok" on success, nonzero exit on any failure.
+\ report: "test: ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" type-family-suite: failures" 1 die ;
-REPORT
+T-REPORT
 
 ;using
 ;using

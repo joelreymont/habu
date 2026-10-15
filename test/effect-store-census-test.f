@@ -44,24 +44,14 @@ require src/lib/memory.f
 require src/habu/verify-source.f
 require tools/effect-store-census.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
 package EFFCENSUS-TEST
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
+T-RESET
 
 : T<> ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
+   T-NEXT
    got want = if
       T-FAIL s" assert: expected anything but " type want FMT:.INT cr
    then ;
@@ -266,9 +256,6 @@ EFF-CENSUS:NODES 0 T<>
 EFF-CENSUS:NODES EFF-CENSUS:SHAPES T=
 EFF-CENSUS:BELOW-WINDOW 0 T=                   \ nothing is reachable below offset zero
 
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" effect-store-census-test: failures" 1 die ;
-REPORT
+T-REPORT
 
 ;package

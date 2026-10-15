@@ -17,34 +17,13 @@
 require test/checker-assert.f
 require tools/prot-wid-probe.f
 require src/lib/adt/result.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
 using SCHEMA-REG
 using TFAM
 using TYPE-DECL
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
-: T$= ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
-   #CASE @ 1 + #CASE !
-   gu wu <> if
-      T-FAIL s" assert string len: expected " type wu FMT:.INT s"  got " type gu FMT:.INT cr exit
-   then
-   0 begin dup gu < while
-      dup ga + c@  over wa + c@ <> if
-         drop T-FAIL s" assert string byte mismatch" type cr exit
-      then
-      1+
-   repeat drop ;
+T-RESET
 
 \ evaluate a declaration string, returning its throw code (0 = accepted);
 \ the type-decl-suite INCLUDE-EVALUATE catch shape.
@@ -1398,12 +1377,9 @@ s" : RFB-PTR-CON-BAD ( zpub:rfbwone<ptr a> -- result<zpub:rfbwone<ptr a>,n> ) co
    TCE-CATCH 70 T=
 
 \ ---------------------------------------------------------------------------
-\ report: "ok" on success, nonzero exit on any failure.
+\ report: "test: ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" type-ctor-suite: failures" 1 die ;
-REPORT
+T-REPORT
 
 ;using
 ;using
