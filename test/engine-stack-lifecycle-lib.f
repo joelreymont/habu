@@ -5,7 +5,7 @@ require src/lib/memory.f
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
+require src/lib/engine-candidate.f
 
 package STACK-LIFECYCLE-TEST
 
@@ -86,12 +86,9 @@ create ERR IO-CAP allot
 variable OUTLEN
 variable ERRLEN
 
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
-
 : CHILD-RC ( ptr u8 n -- n ) {: src:ptr size:n :}
    PROC-ARGV-RESET
-   HB$ >LEN src size >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS
+   ENGINE-CANDIDATE:PATH$ >LEN src size >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS
    RUN-ARGV-STDIN-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: out:len err:len :}

@@ -26,7 +26,7 @@
 \ and a packet in the subject after a required file returns locates in
 \ the subject: plain, under --all-errors and under --verify-only, the
 \ check a language server makes.
-\ The child engine is HABU_UNDER_TEST when the gate sets it, else bin/hb.
+\ The child engine is HABU_UNDER_TEST when the gate sets it, else the running engine.
 \
 \ Run: bin/hb --load test/diag-position-test.f
 
@@ -38,7 +38,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
+require src/lib/engine-candidate.f
 require tools/json.f
 require tools/gate-json-assert-core.f
 
@@ -85,13 +85,6 @@ variable RC
 
 : ERR$ ( -- ptr u8 n )
    ERR ERR-U @ ;
-
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
 
 : ROOT! ( -- )
    CLEANUP-RESET
@@ -151,7 +144,7 @@ variable RC
    flagu 0 > IF flag flagu >LEN PROC-ARGV+ THEN
    s" --json-errors" >LEN PROC-ARGV+
    FX-PATH$ >LEN PROC-ARGV+
-   HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    STORE!
    RC @ want T=
@@ -996,7 +989,7 @@ variable RC
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    FX-PATH$ >LEN PROC-ARGV+
-   HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    STORE!
    RC @ want T=

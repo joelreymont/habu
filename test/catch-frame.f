@@ -18,7 +18,7 @@ require src/lib/test.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
+require src/lib/engine-candidate.f
 require test/pcap-result.f
 
 package CATCH-FRAME-TEST
@@ -88,17 +88,14 @@ variable ACC
 
 variable ERRLEN
 
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
-
 : DIAG$ ( -- ptr u8 n )  S\" hb: catch frame corrupt\n" ;
 
 : ERR$ ( -- ptr u8 n )  ERR ERRLEN @ ;
 
-: FORGE-RC ( ptr u8 n -- n )           \ run forge source on stdin under HB$; leaves rc, ERR/ERRLEN hold stderr
+: FORGE-RC ( ptr u8 n -- n )           \ run forge source on stdin under the candidate engine; leaves rc, ERR/ERRLEN hold stderr
    {: src:ptr srcu:n :}
    PROC-ARGV-RESET
-   HB$ >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE                   \ record captured stderr length, return rc
    PCAP-RESULT:>N swap ERRLEN ! nip ;
 

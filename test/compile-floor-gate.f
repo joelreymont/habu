@@ -39,8 +39,8 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
 require src/lib/test/outcome.f
+require src/lib/engine-candidate.f
 
 package COMPILE-FLOOR-GATE
 
@@ -95,13 +95,6 @@ variable PARSE-POS
      timeout OF src srcu OUT$ ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
-
 : ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 : FLOOR$ ( -- ptr u8 n ) s" tools/compile-floor.f" ;
 : BENCH$ ( -- ptr u8 n ) s" tools/tier-bench.f" ;
@@ -112,7 +105,7 @@ variable PARSE-POS
    PROC-ARGV-RESET
    s" --load" ARG+
    FLOOR$ ARG+
-   HB$ >LEN OUT OUT-CAP >LEN ERR ERR-CAP >LEN TIMEOUT-MS >MS
+   ENGINE-CANDIDATE:PATH$ >LEN OUT OUT-CAP >LEN ERR ERR-CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME FLOOR$ STORE! ;
 
 : RUN-BENCH ( n -- ) {: tier:n :}
@@ -123,7 +116,7 @@ variable PARSE-POS
    tier ZERO-C + TIER-BUF c!
    TIER-BUF 1 ARG+
    s" src/lib/string.f" ARG+
-   HB$ >LEN OUT OUT-CAP >LEN ERR ERR-CAP >LEN TIMEOUT-MS >MS
+   ENGINE-CANDIDATE:PATH$ >LEN OUT OUT-CAP >LEN ERR ERR-CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME BENCH$ STORE! ;
 
 : SKIP-WS ( ptr u8 n n -- n ) {: a:ptr u:n from:n :}

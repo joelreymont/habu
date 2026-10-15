@@ -24,8 +24,8 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
 require src/lib/test/outcome.f
+require src/lib/engine-candidate.f
 
 package TOKSTREAM-TEST
 
@@ -58,13 +58,6 @@ create EMPTY 1 allot
 : SECOND$ ( -- ptr u8 n )  SECOND-BUF SECOND-U @ ;
 : OUT$ ( -- ptr u8 n )     OUT OUT-U @ ;
 : BASE$ ( -- ptr u8 n )    BASE BASE-U @ ;
-
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
 
 \ --- fixture sources ----------------------------------------------------------
 \ Every variant below differs from BASE by exactly one edit, so a case that fails
@@ -191,7 +184,7 @@ create EMPTY 1 allot
    s" --" >LEN PROC-ARGV+ ;
 
 : SPAWN ( -- )
-   HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
+   ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE-OUTCOME
    STORE! ;
 

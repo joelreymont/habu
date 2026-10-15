@@ -35,7 +35,7 @@ require src/lib/test.f
 require src/lib/test/eval.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
+require src/lib/engine-candidate.f
 require src/habu/verify-source.f
 require test/reopen-binding-lib.f
 require test/reopen-binding-late.f
@@ -539,13 +539,6 @@ variable ERR-U
 : ERR$ ( -- ptr u8 n )
    ERR ERR-U @ ;
 
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
-
 : STORE! ( len len outcome -- )
    MATCH outcome
      exited OF RC ! ENDOF
@@ -561,7 +554,7 @@ variable ERR-U
    s" tools/check.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    a u >LEN PROC-ARGV+
-   HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    STORE! ;
 
@@ -575,7 +568,7 @@ variable ERR-U
 \ A fresh engine reads the text on its standard input.
 : SESSION ( ptr u8 n -- ) {: a:ptr u:n :}
    PROC-ARGV-RESET
-   HB$ >LEN  a u >LEN  OUT CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  a u >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    STORE! ;
 

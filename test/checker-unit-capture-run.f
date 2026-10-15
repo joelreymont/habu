@@ -3,6 +3,7 @@
 
 require src/lib/process-argv.f
 require src/lib/test.f
+require src/lib/engine-candidate.f
 require test/pcap-result.f
 
 package CHECKER-UNIT-CAPTURE-RUN
@@ -12,9 +13,6 @@ $1000 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
-
 : REPORT ( result<pcap:captured,pcap:failed> -- )
    PCAP-RESULT:>N {: outu:n erru:n rc:n :} OUT outu type ERR erru type rc 0 T= ;
 
@@ -23,7 +21,7 @@ public
    T-RESET
    s" prepared checker unit capture child" T-LABEL
    PROC-ARGV-RESET
-   HB$ >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN
    S\" require test/checker-unit-capture-e2e.f\nCHECKER-UNIT-CAPTURE-TEST:RUN\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE REPORT

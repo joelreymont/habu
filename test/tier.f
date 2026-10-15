@@ -56,7 +56,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
+require src/lib/engine-candidate.f
 
 package TIER-TEST
 
@@ -89,15 +89,12 @@ variable RC     variable EXITED
 : RUN ( ptr u8 n -- ) {: src:ptr u:n :}
    src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN src u STORE! ;
 
-\ The SAME program through a real `bin/hb` process, stdin-piped.
+\ The SAME program through a real engine process, stdin-piped.
 \ SUBJECT:RUN forks in-process and never reaches the CLI's own eval boundary, so
 \ the recovery cases below -- which crashed exactly there -- have to exec.
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
+\ The engine under test: the gate's freshly built candidate when it exported
+\ one, else the running engine itself (src/lib/engine-candidate.f).
+: HB$ ( -- ptr u8 n )       ENGINE-CANDIDATE:PATH$ ;
 
 : EXEC ( ptr u8 n -- ) {: src:ptr u:n :}
    PROC-ARGV-RESET

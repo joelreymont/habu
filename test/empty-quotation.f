@@ -4,7 +4,7 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
+require src/lib/engine-candidate.f
 
 package EMPTY-QUOTATION-TEST
 private
@@ -15,9 +15,6 @@ create OUT CAP allot
 create ERR CAP allot
 variable OUT-U
 variable ERR-U
-
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
 
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
@@ -32,7 +29,7 @@ variable ERR-U
 
 : RUN-SOURCE ( ptr u8 n -- n ) {: src:ptr size:n :}
    PROC-ARGV-RESET
-   HB$ {: exe:ptr exeu:n :}
+   ENGINE-CANDIDATE:PATH$ {: exe:ptr exeu:n :}
    exe exeu >LEN src size >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE
    MATCH result

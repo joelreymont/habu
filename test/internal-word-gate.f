@@ -17,7 +17,7 @@
 \ parity retains direct `--load` and stdin representatives below.
 \
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
-\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f
+\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
 \   test/internal-word-gate.f
 \
 \ INTERNAL-WORD-GATE privately owns every definition in this file, exports
@@ -32,10 +32,10 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
 require src/lib/test/subject.f
 require test/tail-parity.f
 require src/lib/type/deftype.f         \ DEFTYPE - the declared-nominal exemplar used at top level
+require src/lib/engine-candidate.f
 
 package INTERNAL-WORD-GATE
 
@@ -81,14 +81,9 @@ create EMPTY 1 allot            \ zero-length stdin
 : OUT$ ( -- ptr u8 n )
    OUT OUT-U @ ;
 
-\ Resolve the child engine: gate default env HABU_UNDER_TEST -> the candidate;
-\ standalone runs fall back to bin/hb.
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
+\ The engine under test: the gate's freshly built candidate when it exported
+\ one, else the running engine itself (src/lib/engine-candidate.f).
+: HB$ ( -- ptr u8 n )       ENGINE-CANDIDATE:PATH$ ;
 
 : STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
    erru LEN>N ERR-U !  outu LEN>N OUT-U !

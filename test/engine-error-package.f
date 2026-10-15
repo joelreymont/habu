@@ -22,7 +22,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
+require src/lib/engine-candidate.f
 require test/pcap-result.f
 
 package ENGINE-ERROR-TEST
@@ -43,10 +43,9 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 : OUT$ ( -- ptr u8 n )
    OUT OUT-U @ ;
 
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
+\ The engine under test: the gate's freshly built candidate when it exported
+\ one, else the running engine itself (src/lib/engine-candidate.f).
+: HB$ ( -- ptr u8 n )       ENGINE-CANDIDATE:PATH$ ;
 
 : SOURCE$ ( ptr u8 n -- ptr u8 n ) {: name:ptr u:n :}
    SB-RESET

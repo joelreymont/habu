@@ -6,10 +6,10 @@
 \ labeling and the check.f E-FS-CAPACITY raw-67 fix). Pins the direct --load
 \ leg, the require-chain leg, and the checked-body reject leg by spawning the
 \ engine on generated rejecting fixtures and asserting stderr names the error.
-\ The child engine is HABU_UNDER_TEST when the gate sets it, else bin/hb.
+\ The child engine is HABU_UNDER_TEST when the gate sets it, else the running engine.
 \
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
-\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f
+\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
 \   tools/json.f tools/gate-json-assert-core.f src/lib/argv.f
 \   tools/repair-packet-core.f test/load-reject-diag-test.f
 
@@ -21,12 +21,12 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
 require tools/json.f
 require tools/gate-json-assert-core.f
 require src/lib/argv.f
 require tools/repair-packet-core.f
 require src/lib/test/outcome.f
+require src/lib/engine-candidate.f
 
 package LOAD-REJECT-TEST
 
@@ -133,14 +133,6 @@ variable RC
    post postu SB-APPEND
    path pathu SB$ WRITE-ALL ;
 
-\ Resolve the child engine used by the production-load probe.
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
-
 : PATH! ( ptr u8 n ptr u8 ptr n -- )
    {: name:ptr nameu:n dst:ptr lenp:ptr :}
    BASE$ name nameu dst JOIN-PATH lenp ! ;
@@ -242,7 +234,7 @@ LOWER-CERT-HOOK:INSTALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    path pathu >LEN PROC-ARGV+
-   HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    path pathu STORE! ;
 
