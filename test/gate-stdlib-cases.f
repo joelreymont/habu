@@ -2805,6 +2805,10 @@ SUITE perf-map-fixtures
    tools/perf-map-test.f
 ;SUITE
 
+SUITE boot-census
+   tools/perf/boot-census-test.f
+;SUITE
+
 SUITE native-gate-dictionary
    test/gate-dictionary.f
 ;SUITE
