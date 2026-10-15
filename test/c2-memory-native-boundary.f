@@ -19,18 +19,6 @@ EXPORT C2-MEM:WITH-READ
 package C2-MEMORY-NATIVE-BOUNDARY
 private
 
-create OUT $1000 allot
-create ERR $1000 allot
-
-: STATUS? ( ptr u8 n n -- bool ) {: expected:n :}
-   OUT $1000 >LEN ERR $1000 >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
-      exited OF expected = ENDOF
-      signaled OF drop false ENDOF
-      timeout OF false ENDOF
-   ;MATCH
-   >r 2drop r> ;
-
 : ENTRY ( ptr u8 n -- n )
    XREF-FIND dup XREF-FOUND? 0= if
       drop s" c2-memory-native-boundary: missing entry" 71 die
@@ -55,14 +43,14 @@ public
    s" C2-MEMORY-ALIAS:WITH-MUT" ENTRY scope-kind? 3 T=
    s" C2-MEMORY-ALIAS:WITH-READ" ENTRY scope-kind? 2 T=
    s" checked compilation cannot tick a scoped entry" T-LABEL
-   s" : C2-NATIVE-TICK ( -- ) ['] C2-MEM:WITH-MUT drop ;" 70 STATUS? TTRUE
-   s" : C2-NATIVE-READ-TICK ( -- ) ['] C2-MEM:WITH-READ drop ;" 70 STATUS? TTRUE
+   s" : C2-NATIVE-TICK ( -- ) ['] C2-MEM:WITH-MUT drop ;" 70 SUBJECT:EXITED? TTRUE
+   s" : C2-NATIVE-READ-TICK ( -- ) ['] C2-MEM:WITH-READ drop ;" 70 SUBJECT:EXITED? TTRUE
    s" unchecked interpretation cannot tick a scoped entry" T-LABEL
-   s" 0 set-check ' C2-MEM:WITH-MUT drop" 70 STATUS? TTRUE
-   s" 0 set-check ' C2-MEM:WITH-READ drop" 70 STATUS? TTRUE
+   s" 0 set-check ' C2-MEM:WITH-MUT drop" 70 SUBJECT:EXITED? TTRUE
+   s" 0 set-check ' C2-MEM:WITH-READ drop" 70 SUBJECT:EXITED? TTRUE
    s" unchecked compilation cannot tick a scoped entry" T-LABEL
-   s" 0 set-check : C2-NATIVE-RAW-TICK ( -- ) ['] C2-MEM:WITH-MUT drop ;" 70 STATUS? TTRUE
-   s" 0 set-check : C2-NATIVE-RAW-READ-TICK ( -- ) ['] C2-MEM:WITH-READ drop ;" 70 STATUS? TTRUE
+   s" 0 set-check : C2-NATIVE-RAW-TICK ( -- ) ['] C2-MEM:WITH-MUT drop ;" 70 SUBJECT:EXITED? TTRUE
+   s" 0 set-check : C2-NATIVE-RAW-READ-TICK ( -- ) ['] C2-MEM:WITH-READ drop ;" 70 SUBJECT:EXITED? TTRUE
    T-REPORT
    s" c2-memory-native-boundary: ok" type cr ;
 
