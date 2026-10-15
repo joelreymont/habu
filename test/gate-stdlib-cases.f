@@ -13,9 +13,9 @@ using TEST
 \ which load does not stretch as it does wall time, so a row is measured
 \ outside the gate:
 \ user plus system from `/usr/bin/time bin/hb --load <file>`, under 180 s.
-\ c2-memory, the longest, runs 113 s. Move a fixture group into a new row
-\ file - the shared fixture stays in the family's *-lib.f - rather than
-\ letting one row grow past that.
+\ native-file-unit, the longest, runs 115 s and c2-memory 113 s. Move a
+\ fixture group into a new row file - the shared fixture stays in the family's
+\ *-lib.f - rather than letting one row grow past that.
 
 \ Diagnostic modes run many fresh checker processes and need no shared image.
 \ Start them early so their serial checks overlap the other suite rows.
@@ -256,6 +256,17 @@ SUITE native-file-forms-repeat
    test/native-file-forms-repeat.f
 ;SUITE
 
+\ The explicit FILE unit and FFI rows spawn builds on the unsealed engine
+\ (test/whitebox-engine.f) and stay plain SUITE rows; loading that module
+\ makes each row wait for whitebox-engine-build.
+SUITE native-file-unit
+   test/native-file-unit-e2e.f
+;SUITE
+
+SUITE native-file-ffi
+   test/native-file-ffi-e2e.f
+;SUITE
+
 SUITE native-unit-refusals
    test/native-unit-key-e2e.f
    test/native-unit-file.f
@@ -302,6 +313,10 @@ SUITE build-fixpoint-source
 
 SUITE aot-chain-capture
    test/aot-chain-capture-suite.f
+;SUITE
+
+SUITE aot-owned
+   test/aot-owned.f
 ;SUITE
 
 SUITE build-fixpoint-sandbox
@@ -444,6 +459,10 @@ SUITE lsp-batch
    tools/lsp-batch-test.f
 ;SUITE
 
+SUITE lsp-prefix
+   tools/lsp-prefix-test.f
+;SUITE
+
 SUITE streaming-sha256
    tools/sha256-file-test.f
 ;SUITE
@@ -458,6 +477,10 @@ SUITE engine-identity
 
 SUITE engine-id-capture
    test/engine-id-capture-e2e.f
+;SUITE
+
+SUITE engine-id-replace
+   test/engine-id-replace-e2e.f
 ;SUITE
 
 WHITEBOX-SUITE compiler-ir-id
@@ -1074,6 +1097,10 @@ SUITE code-reclaim
 
 SUITE compiler-codegen-tail-probe
    test/compiler/codegen-tail-probe.f
+;SUITE
+
+SUITE native-branch-reloc
+   test/native-branch-reloc.f
 ;SUITE
 
 SUITE compiler-native-tail
@@ -2012,6 +2039,28 @@ SUITE c2-mut-view
 
 SUITE c2-mut-records
    test/c2-mut-records.f
+;SUITE
+
+SUITE c2-loan-checker
+   test/c2-loan-checker-positive.f
+   test/c2-loan-checker-region.f
+   test/c2-loan-checker-refusal.f
+;SUITE
+
+SUITE c2-memory-capture
+   test/c2-memory-capture.f
+;SUITE
+
+SUITE c2-memory-runtime
+   test/c2-memory-runtime.f
+;SUITE
+
+SUITE c2-view-record-mut
+   test/c2-view-record-mut.f
+;SUITE
+
+SUITE c2-unique-policy
+   test/c2-unique-policy.f
 ;SUITE
 
 SUITE certify-does-definer
