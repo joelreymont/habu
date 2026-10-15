@@ -176,12 +176,13 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 \ The offset just past the blank line that ends the head, or -1 while it is
-\ absent. The scan restarts at the first byte after every fill, over a head
-\ HEAD-CAP already bounds.
-: HEAD-END ( n -- n ) {: idx:n :}
+\ absent, scanning from the given offset. READ-HEAD resumes three bytes before
+\ the end of the window it last scanned, where a blank line a fill completes can
+\ begin, so a head that arrives a byte at a time is scanned in linear time.
+: HEAD-END ( n n -- n )
+   {: idx:n start:n :}
    idx IN-U@ 3 - {: limit:n :}
-   limit 0 < if -1 exit then
-   limit 1+ 0 ?do
+   limit 1+ start ?do
       idx i CRLF-AT? if
          idx i 2 + CRLF-AT? if i 4 + unloop exit then
       then
@@ -560,14 +561,22 @@ $5D constant CLOSE-BRACKET
 
 \ ---- connection tokens ------------------------------------------------------
 
-: LIST-HAS? ( ptr u8 n ptr u8 n n -- bool )
-   {: list:ptr listu:n token:ptr tokenu:n start:n :}
-   list listu CH-COMMA start SPLIT-NEXT {: fa:ptr fu:n next:n found:bool :}
-   found 0= if false exit then
-   fa fu TRIM token tokenu STR=CI if true exit then
-   next start <= if false exit then
-   list listu token tokenu next RECURSE ;
+public
 
+\ True when a comma-separated header value (RFC 9110 5.6.1) holds the token,
+\ each element trimmed and compared case-insensitively.
+: LIST-HAS? ( ptr u8 n ptr u8 n -- bool )
+   {: list:ptr listu:n token:ptr tokenu:n :}
+   0 begin {: start:n :}
+      list listu CH-COMMA start SPLIT-NEXT {: fa:ptr fu:n next:n found:bool :}
+      found 0= if false exit then
+      fa fu TRIM token tokenu STR=CI if true exit then
+      next start <= if false exit then
+      next
+   again ;
+
+
+private
 
 : KEEP-ALIVE-DEFAULT ( n -- bool ) {: idx:n :}
    idx SLOT-VERSION$ s" HTTP/1.1" STR= ;
@@ -577,8 +586,8 @@ $5D constant CLOSE-BRACKET
    idx KEEP-ALIVE-DEFAULT {: alive:bool :}
    idx s" connection" HEADER$ {: va:ptr vu:n found:bool :}
    found 0= if alive FLAG>N idx KEEP-ALIVE! exit then
-   va vu s" close" 0 LIST-HAS? if 0 idx KEEP-ALIVE! exit then
-   va vu s" keep-alive" 0 LIST-HAS? if 1 idx KEEP-ALIVE! exit then
+   va vu s" close" LIST-HAS? if 0 idx KEEP-ALIVE! exit then
+   va vu s" keep-alive" LIST-HAS? if 1 idx KEEP-ALIVE! exit then
    alive FLAG>N idx KEEP-ALIVE! ;
 
 
@@ -756,15 +765,17 @@ $5D constant CLOSE-BRACKET
 
 : READ-HEAD ( TCP4:connection n n -- parse-result )
    {: conn:TCP4:connection idx:n deadline:n :}
-   begin
-      idx HEAD-END {: end:n :}
+   0                                     \ the first scan reads the whole window
+   begin {: start:n :}
+      idx start HEAD-END {: end:n :}
       end 0 >= if
          end HEAD-CAP > if TOO-MUCH-HEAD exit then
          end idx HEAD-U!
          end idx IN-AT!
          OK exit
       then
-      idx IN-U@ HEAD-CAP >= if TOO-MUCH-HEAD exit then
+      idx IN-U@ {: scanned:n :}
+      scanned HEAD-CAP >= if TOO-MUCH-HEAD exit then
       conn idx deadline FILL {: outcome:fill-outcome :}
       outcome FILLED? 0= if
          outcome ENDED? if
@@ -772,6 +783,7 @@ $5D constant CLOSE-BRACKET
          then
          outcome OUTCOME>RESULT exit
       then
+      scanned 3 - 0 max
    again ;
 
 

@@ -144,7 +144,6 @@ $FF constant SLOT-MASK
 
 1000000 constant NS-PER-MS
 $7FFFFFFF constant WAIT-MAX       \ the longest wait a readiness poll takes, in ms (src/lib/net/tcp4.f)
-$2C constant COMMA
 $18 constant NONCE-CHARS          \ sixteen bytes in base64
 $10 constant NONCE-BYTES
 $18 constant NONCE-CAP            \ what 24 characters can decode to, to the cell
@@ -773,14 +772,6 @@ ARM-LOCKS
 
 \ ---- the handshake -----------------------------------------------------------
 
-: LISTED? ( ptr u8 n ptr u8 n n -- bool ) {: list lu:n token tu:n start:n :}
-   list lu COMMA start SPLIT-NEXT {: fa:ptr fu:n next:n found:bool :}
-   found 0= if false exit then
-   fa fu TRIM token tu STR=CI if true exit then
-   next start <= if false exit then
-   list lu token tu next RECURSE ;
-
-
 \ The value of a header the request carries exactly once.
 : SOLE ( HTTP:request ptr u8 n -- ptr u8 n bool ) {: asked:HTTP:request name nu:n :}
    asked name nu HTTP:HEADER-COUNT-OF 1 <> if name 0 false exit then
@@ -791,7 +782,7 @@ ARM-LOCKS
    {: asked:HTTP:request name nu:n token tu:n :}
    asked name nu SOLE {: va vu:n found:bool :}
    found 0= if false exit then
-   va vu token tu 0 LISTED? ;
+   va vu token tu HTTP:LIST-HAS? ;
 
 
 \ The count of bytes the key decodes to.

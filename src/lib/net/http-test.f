@@ -760,6 +760,21 @@ $7D0 constant COLLECT-MS          \ a loopback answer that slow is a hang
    REQ-RESET REQ+ REQ$ RAW-EXCHANGE ;
 
 
+$32 constant SPLIT-MS             \ long enough for the worker to read the first write
+
+
+\ One request on its own connection in two writes cut at the byte offset given,
+\ with a pause between them, so the server reads it in two fills.
+: RAW-SPLIT ( ptr u8 n n -- )
+   {: bytes:ptr len:n cut:n :}
+   RAW-OPEN {: conn:TCP4:connection :}
+   conn bytes cut RAW-SEND
+   SPLIT-MS >MS TASK:SLEEP
+   conn bytes cut + len cut - RAW-SEND
+   conn RAW-DRAIN
+   conn TCP4:CLOSE DROP-TCP-STATUS ;
+
+
 \ ---- reading the raw response ------------------------------------------------
 
 : BEGINS? ( ptr u8 n -- bool ) {: want:ptr len:n :}
@@ -957,6 +972,24 @@ $7D0 constant COLLECT-MS          \ a loopback answer that slow is a hang
    s" Content-Type: application/json" W
    s" Connection: close" W
    s" Content-Length: 32" W
+   s" " W
+   s" == split-head-1" W
+   s" HTTP/1.1 200 OK" W
+   s" Content-Type: application/json" W
+   s" Connection: close" W
+   s" Content-Length: 23" W
+   s" " W
+   s" == split-head-2" W
+   s" HTTP/1.1 200 OK" W
+   s" Content-Type: application/json" W
+   s" Connection: close" W
+   s" Content-Length: 23" W
+   s" " W
+   s" == split-head-3" W
+   s" HTTP/1.1 200 OK" W
+   s" Content-Type: application/json" W
+   s" Connection: close" W
+   s" Content-Length: 23" W
    s" " W
    s" == policy-asset" W
    s" HTTP/1.1 200 OK" W
@@ -1614,6 +1647,24 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" partial" HAS? TFALSE ;
 
 
+\ json-route's request with the given count of its blank line's four bytes in
+\ the first write, answered as the whole head is.
+: SPLIT-PING ( n ptr u8 n -- )
+   {: taken:n name:ptr nu:n :}
+   s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" {: head:ptr len:n :}
+   head len len BLANK-LINE$ nip - taken + RAW-SPLIT
+   S\" {\qservice\q:\qhttp-test\q}" HAS? TTRUE
+   name nu TRANSCRIBE ;
+
+
+\ The blank line that ends a head is found when it straddles two reads, cut
+\ after each of its first three bytes.
+: SPLIT-HEAD-CASE ( -- )
+   1 s" split-head-1" SPLIT-PING
+   2 s" split-head-2" SPLIT-PING
+   3 s" split-head-3" SPLIT-PING ;
+
+
 \ Read from the answers while the pool is live: both start hooks ran, in the
 \ order they were registered, before this worker's first request, however many
 \ requests it has answered since. Installing a hook or a rule on a running
@@ -2077,6 +2128,7 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    HEAD-CASE
    IDLE-CASE
    WRITER-RECOVERY-CASE
+   SPLIT-HEAD-CASE
    HOOK-LIVE-CASES
    HTTP:STOP
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=

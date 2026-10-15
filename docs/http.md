@@ -124,6 +124,9 @@ began, so a handle kept past its request is `E-HANDLE`.
 | `SEGMENT-OF$` | `( request ptr u8 n -- ptr u8 n bool )`, the decoded text `{name}` bound |
 | `BODY-READER` | `( request -- JR:reader )`, a [json-read](json.md) reader over the body on the slot's own storage; the caller closes it |
 
+`LIST-HAS? ( ptr u8 n ptr u8 n -- bool )` is true when a comma-separated header
+value holds the token, its elements trimmed and compared case-insensitively.
+
 `BODY$` and `BODY-READER` borrow the current request's body. The body remains
 available while its handler runs and through response sending, so a handler
 may pass it to `BODY!`. A request handle used after that request is answered
