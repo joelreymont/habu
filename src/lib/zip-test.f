@@ -159,6 +159,20 @@ TASK:SEMAPHORE ZIP-START
    KEEP-CENTRAL-TAIL$ RAW-HAS
    s" archive comment" RAW-HAS ;
 
+: REMOVED-FIRST-KEEPS-ORDER ( -- )
+   INPUT$ ORIGINAL$ WRITE-ALL
+   INPUT$ ZIP:EDIT {: archive:ZIP:archive :}
+   archive archive 0 ENTRY ZIP:REMOVE archive COMMIT
+   INPUT$ ZIP:OPEN {: result:ZIP:archive :}
+   result ZIP:COUNT 4 T=
+   result 0 ENTRY result swap NAME$ s" deflated.txt" T$=
+   result 1 ENTRY result swap NAME$ s" empty" T$=
+   result 2 s" first" MEMBER=
+   result 3 s" second" MEMBER=
+   result ZIP:CLOSE
+   INPUT$ RAW RAW-CAP READ-ALL {: size:n :}
+   RAW size s" stored value" CONTAINS? TFALSE ;
+
 : DISCARD-CHANGES ( -- )
    INPUT$ EDIT {: archive:ZIP:archive :}
    archive 0 ENTRY {: member:ZIP:entry :}
@@ -293,7 +307,14 @@ $10000 constant WIDE-COUNT
    INPUT$ ZIP:OPEN-FILE {: file:ZIP:archive :}
    file ZIP:COUNT WIDE-COUNT T=
    file WIDE-COUNT 1- s" " MEMBER=
-   file ZIP:CLOSE ;
+   file ZIP:CLOSE
+   INPUT$ ZIP:EDIT {: edit:ZIP:archive :}
+   edit edit WIDE-COUNT 1- ENTRY ZIP:REMOVE edit ZIP:COMMIT
+   INPUT$ ZIP:OPEN-FILE {: kept:ZIP:archive :}
+   kept ZIP:COUNT WIDE-COUNT 1- T=
+   kept 0 s" replacement text" MEMBER=
+   kept WIDE-COUNT 2 - s" " MEMBER=
+   kept ZIP:CLOSE ;
 
 : TYPE-REJECTIONS ( -- )
    s" WRONG-HANDLE ( ZIP:entry -- n ) ZIP:COUNT" CHECK! 0 T=
@@ -644,6 +665,7 @@ $10000 constant WIDE-COUNT
    T-RESET CLEANUP-RESET SETUP
    READ-MEMBERS DUP-NAMES REJECT-INDICES REJECT-HANDLES BAD-PATHS
    REPLACE-MEMBERS READ-REPLACED PRESERVED DISCARD-CHANGES
+   REMOVED-FIRST-KEEPS-ORDER
    COMMIT-FAILURE INSTALL-FAILURE READONLY-COMMIT CRC-FAILURE MANY-HANDLES ORIGINAL-SOURCE RAW-FRAMING ZIP64-COUNT TYPE-REJECTIONS
    FILE-MEMBERS FILE-STREAMS FILE-SNAPSHOT FILE-REPLACE-WITH LARGE-FILE-COPY
    FILE-CRC-CLOSE FILE-CRC-READ FILE-SIZE-ERRORS

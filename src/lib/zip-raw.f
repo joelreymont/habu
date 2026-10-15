@@ -54,6 +54,8 @@ $14 constant LOCATOR-BYTES
 : REPLACE-CRC ( ptr n -- ptr n ) 9 cells + ;
 : NEW-LOCAL ( ptr n -- ptr n ) 10 cells + ;
 : PAYLOAD-OFF ( ptr n -- ptr n ) 11 cells + ;
+: REMOVED ( ptr n -- ptr n ) 12 cells + ;
+: REMOVED? ( ptr n -- bool ) REMOVED @ 0<> ;
 
 : SAFE+ ( n n -- n ) + dup SIZE-CHECK ;
 : SAFE* ( n n -- n ) {: left:n right:n :}
@@ -526,14 +528,25 @@ $14 constant LOCATOR-BYTES
 
 : WRITE-MEMBERS ( ptr n -- ) {: node:ptr :}
    node 0 node PREFIX-SIZE @ EMIT-RAW
-   node MEMBER-COUNT @ 0 ?do node node i MEMBER-AT WRITE-LOCAL loop
+   node MEMBER-COUNT @ 0 ?do
+      node i MEMBER-AT {: member:ptr :}
+      member REMOVED? 0= if node member WRITE-LOCAL then
+   loop
    node OUT-LEN @ node OUT-DIRECTORY !
-   node MEMBER-COUNT @ 0 ?do node node i MEMBER-AT WRITE-CENTRAL loop
+   node MEMBER-COUNT @ 0 ?do
+      node i MEMBER-AT {: member:ptr :}
+      member REMOVED? 0= if node member WRITE-CENTRAL then
+   loop
    node node DIRECTORY-TAIL @
    node DIRECTORY-OFF @ node DIRECTORY-SIZE @ + node DIRECTORY-TAIL @ - EMIT-RAW ;
 
+: OUTPUT-COUNT ( ptr n -- n ) {: node:ptr :}
+   0 node MEMBER-COUNT @ 0 ?do
+      node i MEMBER-AT REMOVED? 0= if 1+ then
+   loop ;
+
 : NEED-END64? ( ptr n n -- bool ) {: node:ptr dirsize:n :}
-   node END64-OFF @ 0 <> node MEMBER-COUNT @ U16-MAX >= or
+   node END64-OFF @ 0 <> node OUTPUT-COUNT U16-MAX >= or
    dirsize U32-MAX >= or node OUT-DIRECTORY @ node ZIP-BASE @ - U32-MAX >= or ;
 
 : NEW-END64 ( ptr n -- ) {: node:ptr :}
@@ -547,7 +560,7 @@ $14 constant LOCATOR-BYTES
       node node END64-OFF @ node END-OFF @ LOCATOR-BYTES - node END64-OFF @ - EMIT-RAW
    else node NEW-END64 then
    node start END64-BYTES OUT-AT {: header:ptr :}
-   node MEMBER-COUNT @ header $18 + U64! node MEMBER-COUNT @ header $20 + U64!
+   node OUTPUT-COUNT header $18 + U64! node OUTPUT-COUNT header $20 + U64!
    dirsize header $28 + U64!
    node OUT-DIRECTORY @ node ZIP-BASE @ - header $30 + U64!
    node start END64-BYTES PATCH-FLUSH
@@ -560,7 +573,7 @@ $14 constant LOCATOR-BYTES
    node OUT-LEN @ {: start:n :}
    node node END-OFF @ node RAW-LEN @ node END-OFF @ - EMIT-RAW
    node start END-BYTES OUT-AT {: header:ptr :}
-   node MEMBER-COUNT @ U16-MAX min dup header 8 + U16! header $A + U16!
+   node OUTPUT-COUNT U16-MAX min dup header 8 + U16! header $A + U16!
    dirsize U32-MAX min header $C + U32!
    node OUT-DIRECTORY @ node ZIP-BASE @ - U32-MAX min header $10 + U32!
    node start END-BYTES PATCH-FLUSH ;

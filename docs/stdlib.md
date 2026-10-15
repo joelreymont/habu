@@ -493,7 +493,7 @@ FFI:DLSYM         ( n ptr u8 -- n )
 
 ## ZIP Archives
 
-`require src/lib/zip.f` loads indexed ZIP reading and replacement.
+`require src/lib/zip.f` loads indexed ZIP reading, replacement and removal.
 It uses `libzip.so.5` for decompression on Linux, so libzip must be installed. The public `ZIP`
 package uses distinct opaque `archive` and `entry` identities; each operation
 checks that the archive is live and the entry belongs to it. Entries are selected
@@ -516,6 +516,7 @@ ZIP:READ-IN ( ZIP:input SPAN:span<u8> -- n )
 ZIP:CLOSE-ENTRY ( ZIP:input -- )
 ZIP:REPLACE ( ZIP:archive ZIP:entry ptr u8 n -- )
 ZIP:REPLACE-WITH ( ZIP:archive ZIP:entry n a [ a SPAN:span<u8> -- ] -- )
+ZIP:REMOVE ( ZIP:archive ZIP:entry -- )
 ZIP:COMMIT  ( ZIP:archive -- )
 ZIP:CLOSE   ( ZIP:archive -- )
 ```
@@ -555,6 +556,14 @@ extra fields. ZIP64 size and offset fields are rebuilt as needed.
 `REPLACE-WITH` gives the callback one archive-owned destination span of exactly
 the requested length. The callback fills it before the replacement becomes
 visible. This avoids copying a separately built replacement buffer.
+`REMOVE` stages omission of one selected entry on an `EDIT` handle. It is
+idempotent for that entry. Until `COMMIT` or `CLOSE`, `COUNT`, entry indices,
+names and reads retain the opened archive view; reads still see any replacement
+staged before removal. Further `REPLACE` or `REPLACE-WITH` on that entry throws
+`ZIP:E-ENTRY`. `COMMIT` omits the removed local record, payload and central
+record from the output, including when a replacement was staged first. Retained
+members keep their source bytes, method and relative order. Removing every
+entry produces a valid empty archive; `CLOSE` discards staged removals.
 
 `OPEN-ENTRY` gives each input its own cursor over the selected member, including
 a pending replacement. `READ-IN` writes at most the span's length and returns
@@ -578,7 +587,7 @@ of a live handle between tasks.
 
 `COMMIT` builds a compact archive and atomically renames a temporary file in
 the destination directory, preserving file permissions. It invalidates the
-archive and its entries on success. A commit with no replacements only closes
+archive and its entries on success. A commit with no staged changes only closes
 the archive. A commit copies unchanged source slices and writes
 changed members directly with a fixed copy buffer; it does not allocate the
 output archive in memory.

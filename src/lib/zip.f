@@ -254,8 +254,10 @@ $4000 constant FILE-CHUNK
    MODE @ READONLY-FLAG and 0 <> if E-READONLY throw then ;
 
 : REPLACE-COPY ( ptr n n ptr u8 n -- ) {: node:ptr idx:n data:ptr len:n :}
-   node WRITABLE node data len COPY-IN {: buf:ptr size:n :}
+   node WRITABLE
    node idx MEMBER-AT {: member:ptr :}
+   member REMOVED? if E-ENTRY throw then
+   node data len COPY-IN {: buf:ptr size:n :}
    buf member REPLACEMENT ! size member REPLACE-LEN !
    buf size CRC32 member REPLACE-CRC ! 1 node DIRTY ! ;
 
@@ -267,6 +269,7 @@ $4000 constant FILE-CHUNK
 : REPLACE-FILL ( ptr n n n a [ a SPAN:span<u8> -- ] -- )
    {: node:ptr idx:n len:n ctx fill :}
    node WRITABLE node idx MEMBER-AT {: member:ptr :}
+   member REMOVED? if E-ENTRY throw then
    node len BUFFER-ALLOC {: buf:ptr :}
    ctx buf len fill [: FILL-BUFFER ;] catch >r 2drop 2drop r> {: code:n :}
    code 0<> if node buf BUFFER-RELEASE code throw then
@@ -310,6 +313,14 @@ public
 : REPLACE ( archive entry ptr u8 n -- ) {: archive:archive entry:entry data:ptr len:n :}
    archive ARCHIVE-NODE {: node:ptr :}
    node node entry ENTRY-INDEX data len REPLACE-COPY ;
+
+\ Staged omission keeps the opened view and entry identities stable until close.
+: REMOVE ( archive entry -- ) {: archive:archive entry:entry :}
+   archive ARCHIVE-NODE {: node:ptr :}
+   node entry ENTRY-INDEX {: idx:n :}
+   node WRITABLE
+   1 node idx MEMBER-AT REMOVED !
+   1 node DIRTY ! ;
 
 : REPLACE-WITH ( archive entry n a [ a SPAN:span<u8> -- ] -- )
    {: archive:archive entry:entry len:n ctx fill :}

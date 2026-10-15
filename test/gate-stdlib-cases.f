@@ -1568,6 +1568,7 @@ SUITE ffi-abi
 SUITE zip
    src/lib/zip-test.f
    src/lib/zip-lifecycle-test.f
+   test/zip-remove-source.f
 ;SUITE
 
 SUITE zip-xml-consumer
