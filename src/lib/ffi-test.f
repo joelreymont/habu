@@ -137,6 +137,10 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
    s" FUNCTION: FFI-T-XV getpid ( n -- n ) 2 VARIADIC ;FUNCTION" INCLUDE-EVALUATE ;
 : FFI-T-NO-FIXED ( -- )
    s" FUNCTION: FFI-T-XZ getpid ( n -- n ) 0 VARIADIC ;FUNCTION" INCLUDE-EVALUATE ;
+
+\ Promotion reaches only the variadic tail: a fixed f32 before it is admitted.
+: FFI-T-F32-FIXED ( -- )
+   s" FUNCTION: FFI-T-XQ getpid ( f32 n r -- f32 ) 2 VARIADIC ;FUNCTION" INCLUDE-EVALUATE ;
 \ A library selection belongs to the scope that states it, and there is no
 \ default: a declaration in a scope that never stated one is refused by name,
 \ so a file cannot inherit the library the previously loaded file selected.
@@ -603,6 +607,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    [: FFI-T-BAD-FLOAT-ARITY ;] E-FFI-ARITY TTHROWSQ
    [: FFI-T-BAD-F32-ARITY ;] E-FFI-ARITY TTHROWSQ
    [: FFI-T-BAD-F32-VARARG ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-F32-FIXED ;] 0 TTHROWSQ
    [: FFI-T-BAD-VARARG ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-NO-FIXED ;] E-FFI-SYNTAX TTHROWSQ
    s" a library selection is scoped to the scope that states it" T-LABEL
