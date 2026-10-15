@@ -190,6 +190,7 @@ bun src/lib/browser/host-cli.mjs <module.wasm> [--size W H] [step]...
 | `--control KEY` | selects a transient tree row key |
 | `--typed TEXT` | TEXT entered in the field |
 | `--answer STATUS FILE` | answers the oldest waiting request with STATUS and FILE's bytes; a legacy fetch answered outside 200-299 fails |
+| `--answer-id ID STATUS FILE` | answers the waiting tagged request with ID; replies may overtake earlier ones |
 | `--fail` | fails the oldest waiting request, as a lost connection does; a tagged request delivers status 0 |
 
 The drawing buffer is 640 by 480 unless `--size` says otherwise. The runner

@@ -17,6 +17,9 @@
 //    --answer STATUS FILE  answers the oldest waiting request with STATUS and
 //                          FILE's bytes; a fetch answered outside 200-299
 //                          fails, as in the browser
+//    --answer-id ID STATUS FILE
+//                          answers the waiting tagged request with ID, as a
+//                          reply that overtakes earlier ones does
 //    --fail                fails the oldest waiting request, as a lost
 //                          connection does
 //
@@ -37,7 +40,7 @@ const USAGE =
   "usage: bun host-cli.mjs <module.wasm> [--size W H] " +
   "[--pointer X Y BUTTONS MODS | --move X Y BUTTONS MODS | --release X Y BUTTONS MODS | " +
   "--wheel DX DY MODS | --key TEXT MODS | --resize W H | --control KEY | " +
-  "--typed TEXT | --answer STATUS FILE | --fail]...";
+  "--typed TEXT | --answer STATUS FILE | --answer-id ID STATUS FILE | --fail]...";
 
 let failed = false;
 
@@ -56,6 +59,12 @@ function request(kind, path, method, id) {
 function oldest(flag) {
   if (waiting.length === 0) throw new Error(`${flag}: no request is outstanding`);
   return waiting.shift();
+}
+
+function byId(flag, id) {
+  const at = waiting.findIndex((r) => r.kind === "request" && r.id === id);
+  if (at < 0) throw new Error(`${flag}: no request ${id} is outstanding`);
+  return waiting.splice(at, 1)[0];
 }
 
 // Answers only once every microtask has run, so every run a step let happen.
@@ -130,6 +139,16 @@ function parse(args) {
         steps.push(() => {
           const bytes = readFileSync(file);
           oldest(flag).resolve({ status: code, bytes });
+        });
+        break;
+      }
+      case "--answer-id": {
+        const [id, status, file] = take(3);
+        const key = BigInt(id);
+        const code = Number(BigInt(status));
+        steps.push(() => {
+          const bytes = readFileSync(file);
+          byId(flag, key).resolve({ status: code, bytes });
         });
         break;
       }
