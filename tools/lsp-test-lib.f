@@ -594,24 +594,14 @@ using BUF
 \ stdout and stderr is not bounded. Past its bound, any kind kills the server
 \ and fails by name.
 \
-\ Measured 2026-10-02 on a 12-core machine with six copies of this test running
-\ at once at a load average of 87 to 91: the conversations CONVERSE runs timed
-\ 418 to 793 ms; answers-at-once and stdout-closed, untimed, carry no more than
-\ lifecycle. CONVERSATION-MS, ten times that busiest measurement and no larger,
-\ rests on it. Measured 2026-10-08 in two back-to-back full runs on that
-\ machine at a load average of 7 to 12, the heaviest held conversation,
-\ references-identity, took 2226 and 1889 ms. CHECKED-MS is about four times
-\ its 2226 ms, and no larger. The one bounds 27 runs (the 24 conversations
-\ CONVERSE runs, answers-at-once, stdout-closed and TEST-EXIT-TIMEOUT's
-\ child) and the other 130 conversations. A server that blocks spends none
-\ of the row's CPU budget (test/suite-budget.f CPU-MS), so all 157 could
-\ reach their bounds, each failing by name, within 1386 s (27 times 8 s and
-\ 130 times 9 s), inside the row's hang guard (ROW-MS, 1860 s).
-\ One that spins to its bound spends that much of the budget's 360 s, so at
-\ most 40 such held runs, or 45 at CONVERSATION-MS, fail by name before the
-\ budget ends the row.
+\ The lightweight conversations took at most 793 ms with six copies of this
+\ test running at a load average of 87 to 91. A checked dependency-sharing
+\ conversation took 9032 ms during the full native gate and hit the former
+\ 9-second deadline despite a responding server. The checked deadline leaves
+\ room for concurrent native builds; the suite's CPU and wall budgets still
+\ bound a sequence of stuck conversations.
 8000 constant CONVERSATION-MS
-9000 constant CHECKED-MS
+60000 constant CHECKED-MS
 
 $10000 constant OUT-CAP                  \ the most a conversation writes to stdout
 $1000 constant ERR-CAP                   \ and to stderr
