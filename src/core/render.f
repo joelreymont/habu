@@ -1015,10 +1015,31 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    u 0 > IF
       a  a u +  JLOCATE IF JLOC-FIELDS THEN
    THEN ;
-\ The position fields of the checked definition's name token, where the
-\ scanner read it.
-: JNAME-FIELDS ( -- )
-   NMOFF @ TADDR NMU @ JTOKEN-FIELDS ;
+\ The checked definition's name token, where the scanner read it.
+: NM-SPAN ( -- ptr u8 n )
+   NMOFF @ TADDR NMU @ ;
+\ Every packet opens with JSTART: the schema version and its code. A refusal's
+\ packet opens with JHEAD, which adds the repair class and verdict, and JTAIL
+\ closes one with the file, the place of a span when it locates, and the
+\ suggestion; a code's own fields go between the two. DIAG-JSON, USING-JSON and
+\ STGR-JSON close themselves, because fields or a differently sourced place
+\ follow the file.
+: JSTART ( ptr u8 n -- )
+   {: ca:ptr cu:n :}
+   123 EMIT1                                              \ {
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY ca cu JSTR 44 EMIT1 ;
+: JHEAD ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: ca:ptr cu:n ka:ptr ku:n va:ptr vu:n :}
+   ca cu JSTART
+   s" repair_class" JKEY ka ku JSTR 44 EMIT1
+   s" verdict" JKEY va vu JSTR 44 EMIT1 ;
+: JTAIL ( ptr u8 n ptr u8 n -- )
+   {: aa:ptr au:n sa:ptr su:n :}
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   aa au JTOKEN-FIELDS
+   s" suggestion" JKEY sa su JSTR
+   125 EMIT1 ;                                            \ }
 : NP-FAM-REND ( -- )   \ append the specialized family's qualified name to the diagnostic
    NPBAD-TERM @ NP-FAM {: fam:n :}
    fam 0 >= IF s" family '" DTXT  fam FAM-QNAME-REND  s" '" DTXT
@@ -1153,11 +1174,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 : DIAG-JSON
    REFUSAL@ {: k:n :}
    TBASE@ FAILB @ +  TBASE@ FAILE @ +  JLOCATE 0= IF JLOC-ORIGIN THEN
-   123 EMIT1                                              \ {
-   s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY   DCODE JSTR  44 EMIT1
-   s" repair_class" JKEY REPAIR-CLASS JSTR  44 EMIT1
-   s" verdict" JKEY DVERDICT JSTR  44 EMIT1
+   DCODE REPAIR-CLASS DVERDICT JHEAD
    s" word" JKEY   NMA @ NMU @ JSTR   44 EMIT1
    s" token" JKEY  FAILTK FAILTU @ JSTR  44 EMIT1
    k RF-DEAD = IF s" dead_owner" JKEY DEADTA @ DEADTU @ JSTR 44 EMIT1 THEN
@@ -1235,18 +1252,11 @@ DIAG-PRINT-INSTALL
    WIDTH-REASON$ DTXT  SGBAD-SIZE @ WIDTH-COUNTS ;
 : BADSIG-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
-   123 EMIT1                                              \ {
-   s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY s" E-BAD-STORED-SIGNATURE" JSTR 44 EMIT1
-   s" repair_class" JKEY SGBAD-CLASS$ JSTR 44 EMIT1
-   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" E-BAD-STORED-SIGNATURE" SGBAD-CLASS$ s" rejected" JHEAD
    s" token" JKEY na nu JSTR 44 EMIT1
    s" signature" JKEY sa su SIG-TRIM JSTR 44 EMIT1
    SGBAD-SIZE? IF s" reason" JKEY JOPEN BADSIG-REASON JCLOSE 44 EMIT1 THEN
-   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
-   at atu JTOKEN-FIELDS
-   s" suggestion" JKEY SGBAD-SUGGEST$ JSTR
-   125 EMIT1 ;                                            \ }
+   at atu SGBAD-SUGGEST$ JTAIL ;
 : BADSIG-PROSE ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n :}
    s" habu: in " DTXT  na nu DTXT  s" : bad stored signature '" DTXT
@@ -1271,19 +1281,12 @@ BADSIG-DIAG-INSTALL
    s" Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks." ;
 : TDECL-DIAG-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n :}
-   123 EMIT1                                              \ {
-   s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY s" E-BAD-DECLARATION" JSTR 44 EMIT1
-   s" repair_class" JKEY s" fix_family_declaration" JSTR 44 EMIT1
-   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" E-BAD-DECLARATION" s" fix_family_declaration" s" rejected" JHEAD
    s" decl" JKEY ka ku JSTR 44 EMIT1
    s" family" JKEY fa fu JSTR 44 EMIT1
    s" token" JKEY ta tu JSTR 44 EMIT1
    s" reason" JKEY wa wu JSTR 44 EMIT1
-   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
-   ta tu JTOKEN-FIELDS
-   s" suggestion" JKEY TDECL-SUGGEST$ JSTR
-   125 EMIT1 ;                                            \ }
+   ta tu TDECL-SUGGEST$ JTAIL ;
 : TDECL-DIAG-PROSE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n :}
    s" habu: bad " DTXT  ka ku DTXT  s"  declaration '" DTXT  fa fu DTXT
@@ -1316,12 +1319,10 @@ BADSIG-DIAG-INSTALL
 \ A warning, outside the repair contract (docs/repair-diagnostics.md): the word
 \ loaded, so the JSON carries no verdict or repair class.
 : REC-REFUSE-JSON ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n wa:ptr wu:n :}
-   123 EMIT1
-   s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY s" W-EFFECT-NOT-RECORDED" JSTR 44 EMIT1
+   s" W-EFFECT-NOT-RECORDED" JSTART
    s" word" JKEY na nu JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
-   JNAME-FIELDS
+   NM-SPAN JTOKEN-FIELDS
    s" reason" JKEY wa wu JSTR
    125 EMIT1 ;
 
@@ -1399,27 +1400,18 @@ REC-SIG-INSTALL
    CK-USE-MAX 0 ?DO
       i UPKG-FIRST? IF  i over xt execute  drop RES-FALSE  THEN
    LOOP drop ;
-\ The head of a packet located at a token, USH-TOK-A/-U: its code, repair
-\ class and verdict, the token where the file holds it, the file, and the
-\ token's place there when it locates. The using refusals' packets below and a
-\ top-level token's (TOP-SPAN-JSON) open with it.
-: TOKEN-HEAD-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: code:ptr codeu:n class:ptr classu:n verd:ptr verdu:n :}
-   123 EMIT1
-   s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY code codeu JSTR 44 EMIT1
-   s" repair_class" JKEY class classu JSTR 44 EMIT1
-   s" verdict" JKEY verd verdu JSTR 44 EMIT1
-   s" token" JKEY USH-TOK-A @ USH-TOK-U @ JSTR 44 EMIT1
-   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
-   USH-TOK-A @ USH-TOK-U @ JTOKEN-FIELDS ;
 \ The packet of a bare token refused at its reference under `using`, this
-\ refusal's and the ambiguity's below: the head above and, as `used_packages`,
-\ each used package the token resolves in. For the shadow that is one package:
-\ every slot that matched holds its one used public.
+\ refusal's and the ambiguity's below, located at the token USH-TOK-A/-U. As
+\ `used_packages` it lists each used package the token resolves in, between
+\ the token's place and the suggestion, so this packet closes itself. For the
+\ shadow that is one package: every slot that matched holds its one used
+\ public.
 : USING-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
-   code codeu class classu s" rejected" TOKEN-HEAD-JSON
+   code codeu class classu s" rejected" JHEAD
+   s" token" JKEY USH-TOK-A @ USH-TOK-U @ JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   USH-TOK-A @ USH-TOK-U @ JTOKEN-FIELDS
    s" used_packages" JKEY 91 EMIT1
    [: 0= IF 44 EMIT1 THEN  UPKG-NAME$ JSTR ;] UPKG-EACH
    93 EMIT1 44 EMIT1
@@ -1466,17 +1458,10 @@ REC-SIG-INSTALL
    s"  effect on both (a public forwarder repeats its private word's signature)" DTXT
    s"  or rename one of the two" DTXT ;
 : SBARITY-JSON ( -- )
-   123 EMIT1
-   s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY s" E-SHADOWED-ARITY" JSTR 44 EMIT1
-   s" repair_class" JKEY s" match_shadowed_private_effect" JSTR 44 EMIT1
-   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" E-SHADOWED-ARITY" s" match_shadowed_private_effect" s" rejected" JHEAD
    s" token" JKEY SBA-TWIN @ SYM-NAME$ JSTR 44 EMIT1
    s" package" JKEY SBA-TWIN @ SYM-PKG$ JSTR 44 EMIT1
-   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
-   JNAME-FIELDS
-   s" suggestion" JKEY s" A private word of this package owns the same tail, and a bare tail binds the private word first, so the native compiler reads this definition's arity from it. Give the public definition the private word's effect, or rename one of the two." JSTR
-   125 EMIT1 ;
+   NM-SPAN s" A private word of this package owns the same tail, and a bare tail binds the private word first, so the native compiler reads this definition's arity from it. Give the public definition the private word's effect, or rename one of the two." JTAIL ;
 : SBARITY-DIAG ( -- )
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF SBARITY-JSON ELSE SBARITY-PROSE THEN
@@ -1512,9 +1497,9 @@ REC-SIG-INSTALL
 \ above); a deferral is no refusal, under W-CHECK-DEFERRED.
 : TOP-SPAN-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: c:ptr cu:n k:ptr ku:n v:ptr vu:n g:ptr gu:n :}
-   c cu k ku v vu TOKEN-HEAD-JSON
-   s" suggestion" JKEY g gu JSTR
-   125 EMIT1 ;
+   c cu k ku v vu JHEAD
+   s" token" JKEY USH-TOK-A @ USH-TOK-U @ JSTR 44 EMIT1
+   USH-TOK-A @ USH-TOK-U @ g gu JTAIL ;
 \ `CODE habu: FILE:LINE:COLUMN: TEXT 'TOKEN'`, the place when the token locates.
 : TOP-SPAN-PROSE ( ptr u8 n ptr u8 n -- )
    {: c:ptr cu:n t:ptr tu:n :}
@@ -1578,16 +1563,9 @@ SHADOW-DIAG-INSTALL
    s"  word it was meant to describe, or write it in the section that" DTXT
    s"  defines that word" DTXT ;
 : TSTALE-JSON ( -- )
-   123 EMIT1
-   s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY s" E-TRUST-UNRESOLVED" JSTR 44 EMIT1
-   s" repair_class" JKEY s" fix_stale_trust_row" JSTR 44 EMIT1
-   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" E-TRUST-UNRESOLVED" s" fix_stale_trust_row" s" rejected" JHEAD
    s" token" JKEY TSR-TOK-A @ TSR-TOK-U @ JSTR 44 EMIT1
-   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
-   TSR-TOK-A @ TSR-TOK-U @ JTOKEN-FIELDS
-   s" suggestion" JKEY s" This trust row names no word in the wordlist its record lands in: the open section's, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word." JSTR
-   125 EMIT1 ;
+   TSR-TOK-A @ TSR-TOK-U @ s" This trust row names no word in the wordlist its record lands in: the open section's, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word." JTAIL ;
 : TSTALE-DIAG ( -- )
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF TSTALE-JSON ELSE TSTALE-PROSE THEN
@@ -1597,6 +1575,8 @@ SHADOW-DIAG-INSTALL
 \ --- a checker storage registrar called outside the verifier window (checker.f
 \ CHECKER-REPLAY-NAME-OK?), on the same template: it names the word the
 \ registrar would have recorded and the definer that makes that word soundly.
+\ The name is the run's, so nothing recorded its place and the packet carries
+\ none.
 : REPLAY-ONLY-PROSE ( -- )
    s" E-PKG-CONTEXT habu: storage record for '" DTXT  RPL-TOK-A @ RPL-TOK-U @ DTXT
    s" ' refused outside the engine's verifier window: a checker storage" DTXT
@@ -1606,15 +1586,9 @@ SHADOW-DIAG-INSTALL
    s"  name. Define the storage with its definer: TYPED-VARIABLE, TYPED-BUFFER," DTXT
    s"  LAYOUT-BUFFER or DYNAMIC-BUFFER" DTXT ;
 : REPLAY-ONLY-JSON ( -- )
-   123 EMIT1
-   s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY s" E-PKG-CONTEXT" JSTR 44 EMIT1
-   s" repair_class" JKEY s" use_storage_definer" JSTR 44 EMIT1
-   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" E-PKG-CONTEXT" s" use_storage_definer" s" rejected" JHEAD
    s" token" JKEY RPL-TOK-A @ RPL-TOK-U @ JSTR 44 EMIT1
-   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
-   s" suggestion" JKEY s" A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar." JSTR
-   125 EMIT1 ;
+   NULL-PTR 0 s" A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar." JTAIL ;
 : REPLAY-ONLY-DIAG ( -- )
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF REPLAY-ONLY-JSON ELSE REPLAY-ONLY-PROSE THEN
@@ -1633,16 +1607,9 @@ SHADOW-DIAG-INSTALL
    s"  package and a second ':' names no word. Use one ':' qualifier, e.g." DTXT
    s"  PKG:WORD" DTXT ;
 : BADQUAL-JSON ( -- )
-   123 EMIT1
-   s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY s" E-BAD-QUALIFIED-RECORD" JSTR 44 EMIT1
-   s" repair_class" JKEY s" fix_qualified_name" JSTR 44 EMIT1
-   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" E-BAD-QUALIFIED-RECORD" s" fix_qualified_name" s" rejected" JHEAD
    s" token" JKEY TSR-TOK-A @ TSR-TOK-U @ JSTR 44 EMIT1
-   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
-   TSR-AT-A @ TSR-AT-U @ JTOKEN-FIELDS
-   s" suggestion" JKEY s" Use one ':' qualifier, e.g. PKG:WORD." JSTR
-   125 EMIT1 ;
+   TSR-AT-A @ TSR-AT-U @ s" Use one ':' qualifier, e.g. PKG:WORD." JTAIL ;
 : BADQUAL-DIAG ( -- )
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF BADQUAL-JSON ELSE BADQUAL-PROSE THEN
@@ -1697,20 +1664,15 @@ RECORD-DIAG-INSTALL
    STGR-SRC-A @ STGR-TOK-A @ STGR-SRC-LINE @ STGR-SRC-COL @ STGR-SRC-BYTE @
    DIAG-ORIGIN-SPAN! ;
 : STGR-JSON ( -- )
-   123 EMIT1
-   s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY s" E-BAD-STORAGE" JSTR 44 EMIT1
-   s" repair_class" JKEY STGR-CLASS$ JSTR 44 EMIT1
-   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" E-BAD-STORAGE" STGR-CLASS$ s" rejected" JHEAD
    s" word" JKEY STGR-NAME$ JSTR 44 EMIT1
    s" token" JKEY STGR-TOK$ JSTR 44 EMIT1
    s" reason" JKEY STGR-REASON$ JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
    STGR-AT @ IF
-      s" line" JKEY DIAGL0 @ JNUM 44 EMIT1
-      s" column" JKEY DIAGC0 @ JNUM 44 EMIT1
-      s" byte_start" JKEY DIAGB0 @ JNUM 44 EMIT1
-      s" byte_end" JKEY DIAGB0 @ STGR-TOK-U @ + JNUM 44 EMIT1
+      DIAGL0 @ JLOC-L !  DIAGC0 @ JLOC-C !  DIAGB0 @ JLOC-B !
+      DIAGB0 @ STGR-TOK-U @ + JLOC-E !
+      JLOC-FIELDS
    THEN
    s" suggestion" JKEY STGR-SUGGEST$ JSTR
    125 EMIT1 ;
@@ -1775,16 +1737,9 @@ STGR-DIAG-INSTALL
    SGBAD-CLASS$ ;
 : GENR-JSON ( n -- )
    {: kind:n :}
-   123 EMIT1
-   s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY s" E-GENERATES-ROW" JSTR 44 EMIT1
-   s" repair_class" JKEY kind GENR-CLASS$ JSTR 44 EMIT1
-   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" E-GENERATES-ROW" kind GENR-CLASS$ s" rejected" JHEAD
    s" token" JKEY GENR-TOK-A @ GENR-TOK-U @ JSTR 44 EMIT1
-   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
-   GENR-TOK-A @ GENR-TOK-U @ JTOKEN-FIELDS
-   s" suggestion" JKEY kind GENR-SUGGEST$ JSTR
-   125 EMIT1 ;
+   GENR-TOK-A @ GENR-TOK-U @ kind GENR-SUGGEST$ JTAIL ;
 : GENR-DIAG ( n -- )
    {: kind:n :}
    1 RDST !  0 RSN !  0 RQM !
@@ -1843,16 +1798,9 @@ GENERATES-DIAG-INSTALL
 \ and suggestion.
 : ROW-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: ca:ptr cu:n la:ptr lu:n sa:ptr su:n :}
-   123 EMIT1
-   s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY ca cu JSTR 44 EMIT1
-   s" repair_class" JKEY la lu JSTR 44 EMIT1
-   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   ca cu la lu s" rejected" JHEAD
    s" token" JKEY PRS-TOK-A @ PRS-TOK-U @ JSTR 44 EMIT1
-   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
-   PRS-TOK-A @ PRS-TOK-U @ JTOKEN-FIELDS
-   s" suggestion" JKEY sa su JSTR
-   125 EMIT1 ;
+   PRS-TOK-A @ PRS-TOK-U @ sa su JTAIL ;
 : PRS-DIAG ( n -- )
    {: kind:n :}
    1 RDST !  0 RSN !  0 RQM !
