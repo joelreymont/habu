@@ -226,8 +226,13 @@ TASK:SEMAPHORE ZIP-START
 
 : MANY-HANDLES ( -- )
    INPUT$ ZIP:OPEN {: archive:ZIP:archive :}
-   257 0 ?do archive 0 ENTRY archive swap NAME$ 2drop loop
-   archive ZIP:CLOSE ;
+   archive 0 ENTRY {: first:ZIP:entry :}
+   archive first NAME$ {: name:ptr name-len:n :}
+   768 0 ?do archive 1 ENTRY archive swap NAME$ 2drop loop
+   name name-len s" stored.txt" T$=
+   archive first ZIP:READ s" stored value" T$=
+   archive ZIP:CLOSE
+   archive first [: WRONG-READ ;] catch E-HANDLE T= 2drop ;
 
 : REPLACE-FIRST ( -- )
    INPUT$ EDIT {: archive:ZIP:archive :}

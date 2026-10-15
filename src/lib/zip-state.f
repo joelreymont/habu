@@ -16,6 +16,10 @@ using MEM
 
 $7FFFFFFFFFFFFFFF constant MAX-SIZE
 37 constant NODE-CELLS
+NODE-CELLS 1+ constant ARCHIVE-CELLS
+3 constant ENTRY-CELLS
+$4000 constant CHUNK-BYTES
+3 cells constant CHUNK-HEADER-BYTES
 $40 constant STAT-BYTES
 $10 constant READONLY-FLAG
 $4 constant STAT-SIZE-VALID
@@ -67,13 +71,19 @@ variable SERIAL
 : COPY-BUF ( ptr n -- ptr ptr u8 ) 34 ptr-field ;
 : DIRECTORY-PTR ( ptr n -- ptr ptr u8 ) 35 ptr-field ;
 : RAW-SCRATCH ( ptr n -- ptr ptr u8 ) 36 ptr-field ;
+: CHUNKS ( ptr n -- ptr ptr n ) 37 ptr-field ;
 : INDEX ( ptr n -- ptr n ) 2 cells + ;
 : DATA-PTR ( ptr n -- ptr ptr u8 ) 1 ptr-field ;
 : CAPACITY ( ptr n -- ptr n ) 2 cells + ;
+: CHUNK-LINK ( ptr n -- ptr ptr n ) 0 ptr-field ;
+: CHUNK-TOTAL ( ptr n -- ptr n ) 1 cells + ;
+: CHUNK-USED ( ptr n -- ptr n ) 2 cells + ;
 
 : NODE-ALLOC ( -- ptr n ) NODE-CELLS >COUNT MEM-ALLOC-CELLS ;
+: ARCHIVE-ALLOC ( -- ptr n ) ARCHIVE-CELLS >COUNT MEM-ALLOC-CELLS ;
 : BYTES-FREE ( ptr u8 n -- ) BYTES-ALLOC-LEN RELEASE-BYTES ;
 : NODE-FREE ( ptr n -- ) BYTE-VIEW NODE-CELLS cells BYTES-FREE ;
+: ARCHIVE-FREE ( ptr n -- ) BYTE-VIEW ARCHIVE-CELLS cells BYTES-FREE ;
 
 : NEXT-ID-LOCKED ( -- n )
    SERIAL @ MAX-SIZE = if E-SIZE throw then
@@ -85,6 +95,40 @@ variable SERIAL
 : SIZE-CHECK ( n -- )
    dup 0 < if E-SIZE throw then
    MAX-SIZE >= if E-SIZE throw then ;
+
+: CHUNK-SIZE ( n -- n )
+   dup SIZE-CHECK
+   dup 0= if E-SIZE throw then
+   dup MAX-SIZE CHUNK-HEADER-BYTES - CELL 1- - > if E-SIZE throw then
+   CELL 1- + CELL negate and ;
+
+: NEW-CHUNK ( ptr n n -- ptr n )
+   {: archive:ptr size:n :}
+   size CHUNK-HEADER-BYTES + CHUNK-BYTES max MEM-ALLOC-BYTES
+   {: base:ptr total:n :}
+   base CELL-VIEW {: chunk:ptr :}
+   total chunk CHUNK-TOTAL !
+   CHUNK-HEADER-BYTES chunk CHUNK-USED !
+   archive CHUNKS @ chunk CHUNK-LINK !
+   chunk archive CHUNKS ! chunk ;
+
+: CHUNK-FITS? ( ptr n n -- bool )
+   {: chunk:ptr size:n :}
+   size chunk CHUNK-TOTAL @ chunk CHUNK-USED @ - <= ;
+
+: CHUNK-FOR ( ptr n n -- ptr n )
+   {: archive:ptr size:n :}
+   archive CHUNKS @ dup NULL? if drop archive size NEW-CHUNK exit then
+   dup size CHUNK-FITS? if exit then
+   drop archive size NEW-CHUNK ;
+
+: CHUNK-RESERVE ( ptr n n -- ptr u8 )
+   {: archive:ptr len:n :}
+   len CHUNK-SIZE {: size:n :}
+   archive size CHUNK-FOR {: chunk:ptr :}
+   chunk CHUNK-USED @ {: off:n :}
+   off size + chunk CHUNK-USED !
+   chunk BYTE-VIEW off + ;
 
 : FIND-ID ( n ptr n -- ptr n ) {: wanted:n head:ptr :}
    head begin dup NULL? 0= while
@@ -132,7 +176,7 @@ variable SERIAL
    STATE-RELEASE ;
 
 : REGISTER ( -- archive )
-   NEXT-ID NODE-ALLOC {: ident:n node:ptr :}
+   NEXT-ID ARCHIVE-ALLOC {: ident:n node:ptr :}
    ident node ID !
    STATE-GET node ARCHIVES ADD-NODE STATE-RELEASE
    ident >ARCHIVE ;
@@ -144,10 +188,13 @@ variable SERIAL
    repeat node LINK @ swap !
    STATE-RELEASE ;
 
-: FREE-ENTRIES ( ptr n -- )
-   begin dup NULL? 0= while
-      dup LINK @ swap NODE-FREE
-   repeat drop ;
+: FREE-CHUNK ( ptr n -- ptr n )
+   {: chunk:ptr :}
+   chunk CHUNK-LINK @
+   chunk BYTE-VIEW chunk CHUNK-TOTAL @ BYTES-FREE ;
+
+: FREE-CHUNKS ( ptr n -- )
+   begin dup NULL? 0= while FREE-CHUNK repeat drop ;
 
 : FREE-BUFFER ( ptr n -- ) {: node:ptr :}
    node DATA-PTR @ NULL? 0= if
@@ -161,8 +208,8 @@ variable SERIAL
 
 : FORGET-ARCHIVE ( ptr n -- )
    dup UNREGISTER
-   dup ENTRIES @ FREE-ENTRIES
-   dup BUFFERS @ FREE-BUFFERS NODE-FREE ;
+   dup CHUNKS @ FREE-CHUNKS
+   dup BUFFERS @ FREE-BUFFERS ARCHIVE-FREE ;
 
 : BUFFER-ALLOC ( ptr n n -- ptr u8 ) {: archive:ptr len:n :}
    len SIZE-CHECK NODE-ALLOC {: node:ptr :}

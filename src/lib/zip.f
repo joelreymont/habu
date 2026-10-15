@@ -103,14 +103,19 @@ $4000 constant FILE-CHUNK
    idx 0 < if E-ENTRY throw then
    idx node COUNT-NODE >= if E-ENTRY throw then ;
 
-: NEW-ENTRY ( ptr n n -- entry ) {: archive:ptr idx:n :}
-   archive idx INDEX-CHECK NEXT-ID NODE-ALLOC {: ident:n node:ptr :}
+: NEW-ENTRY ( ptr n n -- entry )
+   {: archive:ptr idx:n :}
+   archive idx INDEX-CHECK NEXT-ID archive ENTRY-CELLS cells CHUNK-RESERVE CELL-VIEW
+   {: ident:n node:ptr :}
    ident node ID ! idx node INDEX ! node archive ENTRIES ADD-NODE
    ident >ENTRY ;
 
-: NAME-COPY ( ptr n n -- ptr u8 n ) {: node:ptr idx:n :}
+: NAME-COPY ( ptr n n -- ptr u8 n )
+   {: node:ptr idx:n :}
    node idx MEMBER-AT {: member:ptr :}
-   node node member CENTRAL-NAME COPY-IN ;
+   node member CENTRAL-NAME {: name:ptr len:n :}
+   node len 1 max CHUNK-RESERVE {: dst:ptr :}
+   name dst len BYTE-COPY dst len ;
 
 : MEMBER-SIZE ( ptr n n -- n )
    swap OBJECT @ swap STAT-DATA C-STAT 0 <> if E-READ throw then
