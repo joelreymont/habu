@@ -14,19 +14,9 @@
 
 require src/lib/prelude.f
 require src/habu/verify-source.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ . ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" using-test: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-      #FAIL @ 1 + #FAIL !
-   then ;
+T-RESET
 
 \ evaluate a source string, returning its throw code (0 = accepted).
 TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
@@ -397,7 +387,4 @@ s" using UA using UC : UAD-R2 ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMB
 0 set-tier
 
 \ ---------------------------------------------------------------------------
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" using-test: failures" 1 die ;
-REPORT
+T-REPORT

@@ -46,6 +46,7 @@
 \ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
 
 require test/checker-assert.f
+require src/lib/string.f
 require src/lib/test.f
 
 T-RESET

@@ -7,7 +7,7 @@
 \ call's outputs, so two accesses to ONE allocation certify while two allocations
 \ (or a recreated owner, or a stale generation) reject with a NAMED reason.
 \
-\ Run standalone:  bin/hb < test/rigid-region-suite.f   (exit 0 + "ok"; dies on miss)
+\ Run standalone:  bin/hb < test/rigid-region-suite.f   (exit 0 + "test: ok"; dies on miss)
 \ Registered directly in the native suite.
 \
 \ Modeling note: consumer type-var binding across 3+ co-resident fresh atoms in
@@ -21,6 +21,8 @@
 \ n/f/r; the domains themselves are independent, and space-global stays concrete.
 
 require test/checker-assert.f
+require src/lib/string.f
+require src/lib/test.f
 
 \ The whole suite is one package, and that is what lets the fixture words below
 \ be DEFINITIONS at all. A test file may not publish new global names (the
@@ -91,25 +93,13 @@ defer RR-XGEN3 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-
 
 0 set-check
 
-variable #FAIL
-variable #CASE
-: T-FAIL ( -- ) [char] F emit #CASE @ . cr  #FAIL @ 1 + #FAIL ! ;
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if T-FAIL then ;
+T-RESET
 
 \ Non-quiet candidate check that captures the rendered diagnostic into a buffer
 \ (kept off stderr) so a reject's NAMED reason can be asserted.
 create RR-DIAG 16384 allot
 : RR-CHECK ( ptr u8 n -- n ) RR-DIAG 16384 DIAG-BUFFER! CHECK-CANDIDATE! ;
-: RR-CONTAINS? ( ptr u8 n ptr u8 n -- bool ) {: ha:ptr hu:n na:ptr nu:n :}
-   nu 0= if -1 exit then
-   hu nu < if 0 exit then
-   0 begin dup hu nu - <= while
-      ha over + nu  na nu  CORE-STR= if drop -1 exit then
-      1 +
-   repeat drop 0 ;
-: RR-DIAG? ( ptr u8 n -- bool ) DIAG-BUFFER$ 2swap RR-CONTAINS? ;
+: RR-DIAG? ( ptr u8 n -- bool ) DIAG-BUFFER$ 2swap CONTAINS? ;
 
 \ Exhaustion probe: shrink the shared domain bound so the SECOND region mint of
 \ this check wraps — it must throw E-RIGID-EXHAUST (7140) instead of reusing id 1.
@@ -174,8 +164,5 @@ s" C-MSKX ( -- ) RR-BOXM RR-BOXM RR-UBOX"  RR-CHECK 0 T=
 \ same guard the per-domain counters got (case 7).
 RR-WRAPM  RR-EC @ E-RIGID-EXHAUST T=
 
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" rigid-region-suite: failures" 1 die ;
-REPORT
+T-REPORT
 ;package

@@ -1,20 +1,9 @@
 \ layout-buffer.f - generative typed ADT storage and provenance regressions.
 
 require test/checker-assert.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
+T-RESET
 
 SUMTYPE lb-res<a,b>
    VARIANT ok a ;VARIANT
@@ -227,8 +216,4 @@ LBP-FILL
 2 LBP-HUE@ 2 T=   2 LBP-CNT@ 30 T=
 LBP-WALK-SUM 360 T=
 
-: REPORT ( -- )
-   #FAIL @ 0= if s" ok" type cr exit then
-   #FAIL @ . s" layout-buffer failures" 1 die ;
-
-REPORT
+T-REPORT

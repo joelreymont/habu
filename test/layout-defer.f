@@ -7,20 +7,9 @@
 \ largest reuse; a bind past the sanity ceiling dies NAMED before any mutation
 \ (transactional), leaving the prior bind intact.
 
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/test.f
 
-variable #FAIL
-variable #CASE
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL s" expected " type want FMT:.INT s"  got " type got FMT:.INT cr
-   then ;
+T-RESET
 
 \ ---- deferred column over an arity-0 nominal scalar family (width 1) ---------
 NEWTYPE dtk
@@ -141,7 +130,4 @@ s" DEFER-LAYOUT-BUFFER DC-BAD TFAM:BAD" DFL-EVAL CHECKER-REJECT-RC T=
 s" LBUF-PEND!" 0 search-wl 0= -1 T=
 s" LBUF-PEND-MATCH?" 0 search-wl 0= -1 T=
 
-: DTK-REPORT ( -- )
-   #FAIL @ 0= if s" ok" type cr exit then
-   #FAIL @ . s" layout-defer failures" 1 die ;
-DTK-REPORT
+T-REPORT
