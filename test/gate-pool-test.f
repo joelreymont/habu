@@ -16,6 +16,7 @@ require src/lib/process-env.f
 require src/lib/process-fork.f
 require src/lib/time-cpu.f                   \ a worker runs a measured amount of CPU time
 require src/lib/test/runner.f
+require src/lib/engine-candidate.f
 require test/gate-pool.f
 
 package GATE-POOL-TEST
@@ -40,10 +41,9 @@ TYPED-VARIABLE GPT-BIG-A ptr u8
 variable GPT-COUNT-N
 variable GPT-ROOT-SAVE-U
 
-: GPT-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
+\ The engine under test: the gate's freshly built candidate when it exported
+\ one, else the running engine itself (src/lib/engine-candidate.f).
+: GPT-HB$ ( -- ptr u8 n )    ENGINE-CANDIDATE:PATH$ ;
 
 : GPT-WORKER ( -- )
    7 GPT-COW !

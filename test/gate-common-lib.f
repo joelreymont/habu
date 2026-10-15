@@ -13,6 +13,7 @@ require src/lib/process-env.f
 require src/lib/content-key.f
 require src/lib/test/runner.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/engine-candidate.f
 
 $40000 constant GE-SRC-CAP
 \ Generous deadlock deadline for one engine-gate child.
@@ -27,13 +28,11 @@ s" JSON-DIAGS" s" -- ptr a" TRUST
 
 create GE-SRC-BUF GE-SRC-CAP allot
 create GE-ARGV-BUF GE-SRC-CAP allot
-create GE-HB-BUF FS-PATH-CAP allot
 
 variable GE-SRC-U
 variable GE-RD
 variable GE-INFD
 variable GE-ARGV-U
-variable GE-HB-U
 variable GE-EVAL-CP
 variable GE-EVAL-NDICT
 variable GE-EVAL-CURRENT
@@ -366,19 +365,11 @@ variable GE-EVAL-SRC-U
    does> ( [ ptr u8 n -- ] -- )
       GE-FILES-RUN ;
 
-: GE-HB! ( ptr u8 n -- )
-   GE-HB-BUF GE-HB-U GE-COPY! ;
-
 : GE-HB-RESET ( -- )
    PROC-ARGV-ENV-RESET
    GE-ARGV-RESET ;
 
-: GE-HB$ ( -- ptr u8 n )
-   GE-HB-U @ 0 > if GE-HB-BUF GE-HB-U @ exit then
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then
-   2dup EXECUTABLE? 0= if E-FS-OPEN throw then ;
+: GE-HB$ ( -- ptr u8 n ) ENGINE-CANDIDATE:PATH$ ;
 
 : GE-BIN-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN

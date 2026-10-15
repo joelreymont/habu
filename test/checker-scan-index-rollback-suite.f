@@ -21,7 +21,7 @@
 
 require src/lib/string.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
+require src/lib/engine-candidate.f
 require test/checker-scan-index-lib.f
 require test/pcap-result.f
 
@@ -118,14 +118,9 @@ create SCX-ERR IO-CAP allot
 variable SCX-ERR-U
 variable SCX-RC
 
-: SCX-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
-
 : SCX-CHILD ( ptr u8 n -- ) {: src:ptr srcu:n :}
    PROC-ARGV-RESET
-   SCX-HB$ >LEN src srcu >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
    SCX-OUT IO-CAP >LEN SCX-ERR IO-CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE
    PCAP-RESULT:>N SCX-RC ! SCX-ERR-U ! drop ;

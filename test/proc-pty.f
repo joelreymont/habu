@@ -11,6 +11,7 @@
 
 require src/lib/pty-harness.f
 require src/lib/test/subject.f
+require src/lib/engine-candidate.f
 
 package PROC-PTY
 
@@ -33,9 +34,7 @@ variable PID
 
 : HB-EXE$ ( -- ptr u8 n )
    HB-ARG? if 0 SCRIPT-ARGV$ exit then
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
+   ENGINE-CANDIDATE:PATH$ ;
 
 : BUF-N ( -- n )
    BUF$ {: a:ptr u:n :} u ;

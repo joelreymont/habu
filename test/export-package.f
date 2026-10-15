@@ -19,13 +19,13 @@
 \ gate's diagnosis because the alias would not carry the mark (rc 70 at top
 \ level, a catchable 70 inside evaluate).
 \
-\ Each program runs in a fresh child engine (HABU_UNDER_TEST when the gate
-\ sets it, else bin/hb) over piped stdin; the representative undefined and
-\ internal cases also run --load for entry-path parity, exactly like
-\ test/seal-package.f.
+\ Each program runs in a fresh child engine (ENGINE-CANDIDATE:PATH$:
+\ HABU_UNDER_TEST when a gate sets it, else the running engine) over piped
+\ stdin; the representative undefined and internal cases also run --load for
+\ entry-path parity, exactly like test/seal-package.f.
 \
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
-\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f
+\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
 \   test/export-package.f
 
 require src/lib/errors.f
@@ -36,8 +36,8 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
 require src/lib/test/outcome.f
+require src/lib/engine-candidate.f
 
 2048 constant XPK-CAP
 10000 constant XPK-TIMEOUT-MS
@@ -71,13 +71,6 @@ create XPK-EMPTY 1 allot
 : XPK-ROOT ( -- ptr u8 n )   XPK-ROOT-BUF XPK-ROOT-U @ ;
 : XPK-CHILD ( -- ptr u8 n )  XPK-CHILD-BUF XPK-CHILD-U @ ;
 : XPK-IN$ ( -- ptr u8 n )    XPK-IN XPK-IN-U @ ;
-
-: XPK-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
 
 : XPK-LF ( -- )   10 SB-APPEND-C ;
 
@@ -263,14 +256,14 @@ create XPK-EMPTY 1 allot
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    XPK-CHILD >LEN PROC-ARGV+
-   XPK-HB$ >LEN  XPK-EMPTY 0 >LEN  XPK-OUT XPK-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  XPK-EMPTY 0 >LEN  XPK-OUT XPK-CAP >LEN
    XPK-ERR XPK-CAP >LEN  XPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src srcu XPK-STORE! ;
 
 : XPK-RUN-STDIN ( ptr u8 n -- )
    XPK-IN!
    PROC-ARGV-RESET
-   XPK-HB$ >LEN  XPK-IN$ >LEN  XPK-OUT XPK-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  XPK-IN$ >LEN  XPK-OUT XPK-CAP >LEN
    XPK-ERR XPK-CAP >LEN  XPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    XPK-IN$ XPK-STORE! ;
 

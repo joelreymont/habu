@@ -40,6 +40,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/argv.f
 require src/lib/test.f
+require src/lib/engine-candidate.f
 
 package LINT-CLI-STANDALONE-LOAD
 
@@ -60,10 +61,6 @@ variable PATHS-N
 variable PATHS-USED
 
 36000 constant TIMEOUT-MS
-
-: ENGINE$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" GETENV dup 0 > if exit then
-   2drop s" bin/hb" ;
 
 : TRUE ( -- bool ) 0 0= ;
 : FALSE ( -- bool ) 0 0= 0= ;
@@ -111,7 +108,7 @@ variable PATHS-USED
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    p u >LEN PROC-ARGV+
-   ENGINE$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  ms >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
 : DROP-LENS ( len len -- )

@@ -23,6 +23,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/test.f
 require src/lib/test/outcome.f
+require src/lib/engine-candidate.f
 
 package STDLIB-STANDALONE-LOAD
 
@@ -41,10 +42,6 @@ create PATH-OFF PATHS-MAX cells allot
 create PATH-LEN PATHS-MAX cells allot
 variable PATHS-N
 variable PATHS-USED
-
-: ENGINE$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" GETENV dup 0 > if exit then
-   2drop s" bin/hb" ;
 
 : TRUE ( -- bool ) 0 0= ;
 : FALSE ( -- bool ) 0 0= 0= ;
@@ -93,7 +90,7 @@ variable PATHS-USED
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    p u >LEN PROC-ARGV+
-   ENGINE$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
    {: outu:len erru:len oc :}
    p u T-LABEL
