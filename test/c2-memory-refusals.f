@@ -10,36 +10,6 @@ private
 
 STRUCTURE holder<a> FIELD value a ;STRUCTURE
 
-$4000 constant CAP
-create OUT CAP allot
-create ERR CAP allot
-
-: STALE? ( ptr u8 n -- bool )
-   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
-      exited OF 70 = ENDOF
-      signaled OF drop false ENDOF
-      timeout OF false ENDOF
-   ;MATCH
-   {: outu:len erru:len refused:bool :}
-   refused outu LEN>N 0= and
-   ERR erru LEN>N s" stale cell" CONTAINS? and ;
-
-\ The product seals C2-MEM with every package it bakes (src/core/internal-mark.f
-\ SEAL-PACKAGES): the engine refuses `package C2-MEM` by name, exit 84, before
-\ the checker sees a body. The checker's reopen cases run where C2-MEM stays
-\ open (test/c2-reopen-refusals.f).
-: SEALED? ( ptr u8 n -- bool )
-   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
-      exited OF ENGINE-ERROR:SEAL-PACKAGE = ENDOF
-      signaled OF drop false ENDOF
-      timeout OF false ENDOF
-   ;MATCH
-   {: outu:len erru:len refused:bool :}
-   refused outu LEN>N 0= and
-   ERR erru LEN>N s" C2-MEM" CONTAINS? and ;
-
 public
 
 : RUN ( -- )
@@ -91,14 +61,20 @@ public
    s" a read child cannot escape through raw global storage" T-LABEL
    s" variable C2-MEM-SLOT : C2-MEM-CHILD-STORE ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: dup C2-MEM-SLOT ! ;] C2-MEM:WITH-READ ;" 70 SUBJECT:EXITED? TTRUE
    s" a caught exclusive callback cannot restore its consumed parent" T-LABEL
-   s" : C2-MEM-MUT-THROW ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> ) 1 throw ; : C2-MEM-MUT-LOAN-THROW ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-MUT-THROW ;] C2-MEM:WITH-MUT-LOAN ; : C2-MEM-MUT-CATCH ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-MUT-LOAN-THROW ;] catch drop 0 C2-MEM:MUT-BYTE@ swap drop ;" STALE? TTRUE
+   s" : C2-MEM-MUT-THROW ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> ) 1 throw ; : C2-MEM-MUT-LOAN-THROW ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-MUT-THROW ;] C2-MEM:WITH-MUT-LOAN ; : C2-MEM-MUT-CATCH ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-MUT-LOAN-THROW ;] catch drop 0 C2-MEM:MUT-BYTE@ swap drop ;"
+   70 s" stale cell" SUBJECT:REFUSED? TTRUE
    s" a caught shared callback cannot restore its mutable parent" T-LABEL
-   s" : C2-MEM-READ-THROW ( read-view<p,l,u8> -- read-view<p,l,u8> ) 1 throw ; : C2-MEM-READ-LOAN-THROW ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-READ-THROW ;] C2-MEM:WITH-READ ; : C2-MEM-READ-CATCH ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-READ-LOAN-THROW ;] catch drop 0 C2-MEM:MUT-BYTE@ swap drop ;" STALE? TTRUE
+   s" : C2-MEM-READ-THROW ( read-view<p,l,u8> -- read-view<p,l,u8> ) 1 throw ; : C2-MEM-READ-LOAN-THROW ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-READ-THROW ;] C2-MEM:WITH-READ ; : C2-MEM-READ-CATCH ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-READ-LOAN-THROW ;] catch drop 0 C2-MEM:MUT-BYTE@ swap drop ;"
+   70 s" stale cell" SUBJECT:REFUSED? TTRUE
    s" an ordinary declaration cannot invent unique scope and region binders" T-LABEL
    \ The bad stored signature is rendered before its code is thrown, so it exits 70.
    s" TRUSTED: C2-MEM-FORGE ( -- mut-view<p,q,a,u8> ) 0 0 ;" 70 SUBJECT:EXITED? TTRUE
+   \ The product seals C2-MEM with every package it bakes (src/core/internal-mark.f
+   \ SEAL-PACKAGES): the engine refuses `package C2-MEM` by name, exit 84, before
+   \ the checker sees a body. The checker's reopen cases run where C2-MEM stays
+   \ open (test/c2-reopen-refusals.f).
    s" the product refuses a reopen of C2-MEM by name" T-LABEL
-   s" package C2-MEM ;package" SEALED? TTRUE
+   s" package C2-MEM ;package" ENGINE-ERROR:SEAL-PACKAGE s" C2-MEM" SUBJECT:REFUSED? TTRUE
    T-REPORT
    s" c2-memory-refusals: ok" type cr ;
 

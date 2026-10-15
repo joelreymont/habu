@@ -3283,7 +3283,10 @@ digest-bound typed source artifact and explicit isolated execution context.
 source exited with the given code, false for a signal. A caller that matches
 the outcome itself ends its timeout arm with `SUBJECT:TIMED-OUT`, which prints
 the program and its capture and throws `E-PROC-TIMEOUT`; `EXITED?` does the same,
-since a deadline is no verdict.
+since a deadline is no verdict. `SUBJECT:REFUSED? ( ptr u8 n n ptr u8 n -- bool )`
+is the refusal probe: whether the source exited with the given code, wrote
+nothing to stdout and named the given text on stderr; a deadline throws as in
+`EXITED?`.
 
 `src/lib/test/eval.f`, loaded by `src/lib/test.f`, publishes package `TEST-EVAL`:
 `N`, `FLAG` and `RC` take one cell, a flag or the throw code out of a source

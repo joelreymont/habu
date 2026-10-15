@@ -6,23 +6,6 @@ require test/c2-view-record-defs.f
 require test/c2-view-record-use-refusals.f
 
 package C2-VIEW-RECORD-REFUSALS
-private
-
-$4000 constant CAP
-create OUT CAP allot
-create ERR CAP allot
-
-: SCOPE-ESCAPE? ( ptr u8 n -- bool )
-   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
-      exited OF 70 = ENDOF
-      signaled OF drop false ENDOF
-      timeout OF false ENDOF
-   ;MATCH
-   {: out-u:len err-u:len rejected:bool :}
-   rejected out-u LEN>N 0= and
-   ERR err-u LEN>N S\" \"code\":\"E-C2-SCOPE-ESCAPE\"" CONTAINS? and ;
-
 public
 
 \ A refused STRUCTURE exits 70: the checker renders the declaration's refusal
@@ -42,7 +25,8 @@ public
    s" a parametric field cannot recursively name its owner" T-LABEL
    s" STRUCTURE c2recursive<a> FIELD next ptr c2recursive<a> ;STRUCTURE" 70 SUBJECT:EXITED? TTRUE
    s" nested record cannot escape an owner callback" T-LABEL
-   s" -1 JSON-DIAGS ! : C2V-S ( read-view<p,l,u8> -- c2vinner<p,l> read-view<p,l,u8> ) dup 1 C2VINNER:MAKE swap ; : C2V-B ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> ) [: C2V-S ;] C2-MEM:WITH-READ swap drop ;" SCOPE-ESCAPE? TTRUE
+   s" -1 JSON-DIAGS ! : C2V-S ( read-view<p,l,u8> -- c2vinner<p,l> read-view<p,l,u8> ) dup 1 C2VINNER:MAKE swap ; : C2V-B ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> ) [: C2V-S ;] C2-MEM:WITH-READ swap drop ;"
+   70 S\" \"code\":\"E-C2-SCOPE-ESCAPE\"" SUBJECT:REFUSED? TTRUE
    s" raw global storage cannot retain a borrowed record" T-LABEL
    s" variable C2V-SLOT : C2V-STORE ( c2vinner<p,q> -- ) C2V-SLOT ! ;" 70 SUBJECT:EXITED? TTRUE
    s" raw pointer field access cannot expose a view" T-LABEL
