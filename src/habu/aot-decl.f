@@ -55,19 +55,11 @@ DYNAMIC-BUFFER BLOB-STORAGE n
    AOT-BLOB-CAP CELL / BLOB-STORAGE-RESERVE
    0 BLOB-STORAGE BYTE-VIEW ;
 variable AOT-BLOB-LEN
-\ A capture window is a dictionary subrange, so DICT-CAP - 65536 records - is
-\ the absolute ceiling one can reach and any bound under it refuses a window the
-\ dictionary itself would hold. The line here read 16384 "because the chain
-\ needs ~6554"; the chain had grown to 16382 records by the time the next
-\ twenty definitions in src/ hit the bound. This is that bound doubled, measured
-\ at 16402 records for the build that first exceeded it. A build that crosses it
-\ prints the captured count, this bound and the name of the record being added
-\ before it dies `aot-capture: too many records` (ACAP-REC-REFUSE in
-\ src/habu/aot-capture.f); a record carries no file, so that name is the whole
-\ locator the refusal has. test/aot-capture-bound.f pins those lines over a
-\ private copy of this file with the bound lowered; because AOT-SIG-MAX below is
-\ this same constant, a lowered bound refuses a window of checked words at the
-\ signature buffer first, and that fixture's window is packages.
+\ AOT capture has a separate 32,768-record window within the live dictionary.
+\ REPL snapshots retain the full dictionary and do not use this window.
+\ ACAP-REC-REFUSE reports the count, bound and record name before refusing.
+\ test/aot-capture-bound.f lowers this bound in a private copy; AOT-SIG-MAX
+\ shares it, so checked words can reach the signature bound first.
 32768 constant AOT-REC-MAX
 \ AOT-REC-BUF holds three regions (all viewed via AOT-REC-BUF@, no extra TRUST):
 \   [0 .. MAX*48)              verbatim 48B dict records (capture source of truth)

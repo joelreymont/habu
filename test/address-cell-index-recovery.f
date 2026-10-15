@@ -38,13 +38,13 @@ DYNAMIC-BUFFER SAVED-STORAGE n
 
 : CATCH-REFUSAL ( -- )
    BEFORE-CAP @ cells {: bytes:n :}
-   \ PERSIST's whole-DATA span is valid, but allot must protect the profiler
-   \ band at the DATA tail. The refusal arrives through the real evaluator.
-   DATA-SIZE bytes - here data-base - - allot
+   \ Leave one cell too little room for PERSIST below the profiler band.
+   \ The refusal arrives through the real evaluator.
+   DATA-SIZE PROF-CNT-BYTES - bytes - CELL + here data-base - - allot
    [: TRY-PERSIST ;] catch 76 T=
    LOCK@ 0 T=
    LOCK@ 0<> if s" address-cell-index: caught throw retained mutex" 76 die then
-   here data-base - DATA-SIZE bytes - T=
+   here data-base - DATA-SIZE PROF-CNT-BYTES - bytes - CELL + T=
    BEFORE-DP @ here data-base - - allot ;
 
 : CHECK-UNCHANGED ( -- )

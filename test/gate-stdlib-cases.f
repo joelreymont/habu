@@ -2753,6 +2753,10 @@ SUITE native-gate-dictionary
    test/gate-dictionary.f
 ;SUITE
 
+SUITE dictionary-capacity
+   test/dictionary-capacity-e2e.f
+;SUITE
+
 SUITE proc-maps
    test/proc-maps.f
 ;SUITE

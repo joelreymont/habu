@@ -87,9 +87,9 @@ constant X64-MASK
 ;package
 
 \ Fixed budget for dictionary and code, including the retained build host and
-\ its replacement core. The bounds checks and boot BL-range assertion remain
-\ mandatory. Keep the Gforth recovery mirror in bootstrap/cg/forth.fs in step.
-$2000000 constant REGION
+\ its replacement core. The larger record band leaves the code band at its
+\ measured 30,404,608 bytes. Keep the Gforth recovery mirror in step.
+$2300000 constant REGION
 \ RBASE-VA: snapshot CANONICAL region base (a fixed portability sentinel, NOT the
 \ runtime map address). The live JIT region maps at __text base + REGION-OFF (see
 \ habu2.f EM-MMAP-CODE-REGION) so every call site and callee sit inside BL's
@@ -179,7 +179,9 @@ $48425350414E5321 constant SNAP-MAGIC
 \ $A00000 (dot habu-seeded-words-invisible-c7505a49). The derivation is under
 \ DICT-CAP; both sides grew for the same reason as last time, and the code side
 \ grew BECAUSE the dict side did - see CODE-BAND:BYTES below.
-$301000 constant DICT-SIZE
+\ Maki's STEP import needs over 65,536 total checked records. Doubling the slots
+\ adds $300000 to DICT-SIZE and REGION together, preserving code headroom.
+$601000 constant DICT-SIZE
 \ CODE-BAND:BYTES: what is left of REGION for emitted code, [DBASE+DICT-SIZE,
 \ DBASE+REGION). NAMED, not left as a subtraction nobody performs: the two bands
 \ share one budget, so every dictionary growth spends the code band's bytes, and
@@ -189,7 +191,7 @@ $301000 constant DICT-SIZE
 \ The former 10 MiB region was sized from a Maki load. It left 7,335,936 code
 \ bytes and failed the guarded core rebuild at EM-COMPILE-UNDEF. A core rebuild
 \ also retains its running compiler while compiling the replacement. The fixed
-\ 32 MiB region gives these two generations 30,404,608 code bytes. Qualification
+\ 35 MiB region gives these two generations 30,404,608 code bytes. Qualification
 \ measures both generations and their live build peak; it does not resize this
 \ budget at runtime. Anonymous pages are populated on demand, and snapshots
 \ write only the used span [SDB, CP).
@@ -350,13 +352,13 @@ $8000000000000000 constant DNAME-INT
 \ DNAME-INT without it keeps the compile refusal outside a TRUSTED: body.
 $0002000000000000 constant DNAME-OWNED
 \ DICT-CAP: dictionary record slots.
-\ 65536 exceeds the move-wide imm16 field, so the DICT-CAP comparison sites in
+\ 131072 exceeds the move-wide imm16 field, so the DICT-CAP comparison sites in
 \ src/habu/habu2.f and bootstrap/cg/forth.fs load it with LIT64 - the same
 \ treatment HIDX-SLOTS $10000 already needed. LIT64 emits ONE instruction for a
 \ single-chunk value, so the sites cost what MOVZ cost, and asm.f ?IMM16 dies
 \ `asm: 16-bit immediate out of range` on a missed one, so none can drift.
-65536 constant DICT-CAP
-$300000 constant CFSTK-OFF
+131072 constant DICT-CAP
+$600000 constant CFSTK-OFF
 32 constant CF-REC
 8 constant CF-LOCN
 16 constant CF-LOCF
@@ -1085,18 +1087,18 @@ DICT-CAP 256 * constant AOT-NAMES-CAP
 \ with LIT64), HIDX-BYTES $40000. Grown again with DICT-CAP 65536: HIDX-SLOTS
 \ $20000, HIDX-BYTES $80000 - the 2x identity is why DICT-CAP stays a power of
 \ two rather than taking the first value that clears the headroom rule.
-$20000 constant HIDX-SLOTS
-$80000 constant HIDX-BYTES
+DICT-CAP 2 * constant HIDX-SLOTS
+HIDX-SLOTS 4 * constant HIDX-BYTES
 \ HIDX:LOAD-MAX: the claimed-slot count at which LHIDXADD compacts the table
 \ in place instead of letting chains grow toward a full wrap. Three quarters of
-\ the file: strictly above DICT-CAP ($10000), so a compaction always lands the
+\ the file: strictly above DICT-CAP, so a compaction always lands the
 \ count back at NDICT with room to spare and can never itself be at the bound,
 \ and strictly below HIDX-SLOTS, so an insert always meets an empty slot within
 \ its chain and the full-wrap path is structurally unreachable (it dies loudly
 \ if reached; nothing silently disables the index any more - CG-25).
 package HIDX
 public
-$18000 constant LOAD-MAX
+HIDX-SLOTS 3 * 4 / constant LOAD-MAX
 ;package
 $36B8 constant FRCLM-CELL
 $37F8 constant SNAP-CELL

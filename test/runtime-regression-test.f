@@ -358,13 +358,13 @@ variable GE-DFULL-I                 \ copy/definition loop index
    repeat ;
 
 : GE-DFULL-DIGITS ( ptr u8 n -- ) {: buf:ptr i:n :}
-   10000 GE-DFULL-DIV !
+   100000 GE-DFULL-DIV !
    begin GE-DFULL-DIV @ 0 > while
       buf  i GE-DFULL-DIV @ / 10 mod 48 +  GE-DFULL-C
       GE-DFULL-DIV @ 10 / GE-DFULL-DIV !
    repeat ;
 
-: GE-DFULL-DEF ( ptr u8 n -- ) {: buf:ptr i:n :}      \ append `: wNNNNN ;\n`
+: GE-DFULL-DEF ( ptr u8 n -- ) {: buf:ptr i:n :}      \ append `: wNNNNNN ;\n`
    buf 58 GE-DFULL-C  buf 32 GE-DFULL-C  buf 119 GE-DFULL-C
    buf i GE-DFULL-DIGITS
    buf 32 GE-DFULL-C  buf 59 GE-DFULL-C  buf 10 GE-DFULL-C ;

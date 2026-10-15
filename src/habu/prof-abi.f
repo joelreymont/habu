@@ -77,13 +77,13 @@ public
 
 \ ---- caller edges -------------------------------------------------------------
 \ One open-addressed table for every (sampled word, caller) pair, keyed on the
-\ two record indices packed into 32 bits, probed at most PROF-CALL-PROBE times so
+\ two record indices packed into one cell, probed at most PROF-CALL-PROBE times so
 \ a tick's cost stays bounded; a pair that finds no slot is counted in ARN-DROP
 \ and reported, never silently merged into another row.
 $10000 constant PROF-CALL-SLOTS
 $FFFF  constant PROF-CALL-MASK          \ the slot index, PROF-CALL-SLOTS wide
-17 constant PROF-REC-BITS               \ a record index plus the one value above it
-$1FFFF constant PROF-REC-MASK
+18 constant PROF-REC-BITS               \ a record index plus the one value above it
+$3FFFF constant PROF-REC-MASK
 DICT-CAP constant PROF-CALLER-NONE      \ no record index reaches it: the unknown caller
 16 constant PROF-CALL-ENT               \ key+1, then the count
 8  constant PROF-CALL-PROBE

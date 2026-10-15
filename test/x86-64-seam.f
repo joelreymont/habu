@@ -76,7 +76,7 @@ $1000 constant WANT-CODE-OFF
 6 constant WANT-PHNUM
 $10000 constant WANT-PAGE-MAX
 $1400000 constant WANT-REGION-VA        \ VMBASE plus REGION-OFF
-$2000000 constant WANT-REGION
+$2300000 constant WANT-REGION
 $340000000 constant WANT-DATA-VA         \ the Linux target's, not a macOS host's
 $2000000 constant WANT-DATA-SIZE
 \ The metadata past the six program headers, which end at $190.

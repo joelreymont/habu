@@ -74,8 +74,8 @@ Plain chains would cost seconds per engine load: a load reads 237,186 tokens,
 11,264 of them numbers that miss every wordlist, the global wordlist holds 6,245
 words while loading, and a chain step costs about 10 ns in checked Habu. With 64
 chains the global one stays under 100 headers.
-**Now:** one global table of 131,072 slots is keyed by name hash and wordlist
-id, with a linear fallback for retired records (`src/habu/layout.f:205-229`).
+**Now:** one global table of 262,144 slots is keyed by name hash and wordlist
+id (`src/habu/layout.f`, `HIDX-SLOTS`).
 
 ## Memory
 
@@ -88,9 +88,9 @@ program.
 
 A word's header and its data are laid down at `HERE` as it is defined, and
 `ALLOT` grows the space. Headers and data interleave, as in Forth.
-**Now:** records are a fixed array of 65,536 slots inside the code region; that
-count and the region's 32 MiB were raised three times after overflows
-(`src/habu/layout.f:167-198`). Data is a separate space, and the engine's own
+**Now:** records are a fixed array of 131,072 slots inside the 35 MiB code
+region. The record band and region grow together to preserve 30,404,608 bytes
+for code (`src/habu/layout.f`, `DICT-CAP` and `CODE-BAND:BYTES`). Data is a separate space, and the engine's own
 state sits at 315 hand-assigned offsets in a header before it
 (`src/habu/layout.f`, `DATA-START` at :2273).
 
@@ -98,7 +98,7 @@ state sits at 315 hand-assigned offsets in a header before it
 
 Code has its own space and pointer because a page is writable or executable,
 never both ([portability.md](portability.md) §14).
-**Now:** code shares one 32 MiB region with the records, and the engine flips
+**Now:** code shares one 35 MiB region with the records, and the engine flips
 the region between writable and executable around compilation
 (`src/habu/habu2.f:12466-12476`). Records in that region are write-protected
 and changed through `patch32` and page flips (`src/habu/xref.f:476`,

@@ -2914,32 +2914,32 @@ variable ACAP-NIDX-XM                                \ pool scan disagrees with 
    s" AXY" -1 ACAP-NAME-CASE                         \ absent: a prefix of AXYB
    s" ABCD" -1 ACAP-NAME-CASE ;                      \ absent: an entry plus a byte
 
-\ THE BYTE COMPARISON NEEDS A COLLISION, AND FIVE NAMES IN 65,536 SLOTS DO NOT
+\ THE BYTE COMPARISON NEEDS A COLLISION, AND FIVE NAMES IN 262,144 SLOTS DO NOT
 \ COLLIDE. Measured: a mutation that accepts the first OCCUPIED slot without
 \ comparing the name at all passed every case above and the whole battery, because
-\ each of those names had its slot to itself. These three do not: AAAC and AACC
-\ are one length and QZS is another, and all three hash to one slot, so a reader
+\ each of those names had its slot to itself. These three do not: AAAV and ADQG
+\ are one length and LRK is another, and all three hash to one slot, so a reader
 \ that skips the bytes answers the first of them for all three and a reader that
 \ compares only the length answers the wrong four-byte one. The slots are asserted
 \ EQUAL first, so a future change to ACAP-NIDX-HASH ends the build here with this
 \ line rather than quietly retiring the case.
 : ACAP-NIDX-COLLIDE ( -- )
-   s" AAAC" ACAP-NIDX-HASH {: h1:n :}
-   s" AACC" ACAP-NIDX-HASH {: h2:n :}
-   s" QZS"  ACAP-NIDX-HASH {: h3:n :}
+   s" AAAV" ACAP-NIDX-HASH {: h1:n :}
+   s" ADQG" ACAP-NIDX-HASH {: h2:n :}
+   s" LRK"  ACAP-NIDX-HASH {: h3:n :}
    h1 h2 <> h1 h3 <> or if
       s" aot-capture: pool self-test: the collision fixture no longer collides" 74 die
    then
-   s" AAAC" ACAP-POOL-ADD {: c1:n :}
-   s" AACC" ACAP-POOL-ADD {: c2:n :}
-   s" QZS"  ACAP-POOL-ADD {: c3:n :}
+   s" AAAV" ACAP-POOL-ADD {: c1:n :}
+   s" ADQG" ACAP-POOL-ADD {: c2:n :}
+   s" LRK"  ACAP-POOL-ADD {: c3:n :}
    c1 c2 = c1 c3 = or c2 c3 = or if
       s" aot-capture: pool self-test: colliding names share an entry" 74 die
    then
-   s" AACC" c2 ACAP-NAME-CASE                        \ second on the chain, same length as the first
-   s" QZS"  c3 ACAP-NAME-CASE                        \ third on the chain, a different length
-   s" AAAC" c1 ACAP-NAME-CASE
-   s" AACA" -1 ACAP-NAME-CASE ;                      \ absent, one byte from two of the three
+   s" ADQG" c2 ACAP-NAME-CASE                        \ second on the chain, same length as the first
+   s" LRK"  c3 ACAP-NAME-CASE                        \ third on the chain, a different length
+   s" AAAV" c1 ACAP-NAME-CASE
+   s" AAAW" -1 ACAP-NAME-CASE ;                      \ absent, one byte from the first
 
 : ACAP-NIDX-SELFTEST ( -- )
    ACAP-POOL-RESET

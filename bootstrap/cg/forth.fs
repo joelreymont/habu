@@ -18,7 +18,7 @@
 20 constant RBASE
 26 constant DBASE  27 constant NDICT  28 constant CP
 
-$2000000 constant REGION      \ fixed 32 MiB dictionary/code budget; mirrors src/habu/layout.f
+$2300000 constant REGION      \ fixed 35 MiB dictionary/code budget; mirrors src/habu/layout.f
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
 3 constant SNAP-FORMAT-VERSION
 \ Trailer geometry, mirroring src/habu/layout.f. The recovery seed carries its
@@ -32,9 +32,7 @@ $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
 32 constant SNAP-TRL-DATALEN
 40 constant SNAP-TRL-VERSION
 40 constant SNAP-TRL-LEGACY-BYTES
-$301000 constant DICT-SIZE     \ dict + control-flow stack; code area follows (grown $181000->$301000 with DICT-CAP 65536)
-                               \ (= CFSTK-OFF + $1000; grown with DICT-CAP 16384,
-                               \ mirrors src/habu/layout.f)
+$601000 constant DICT-SIZE     \ CFSTK-OFF + $1000; mirrors src/habu/layout.f
 48      constant DREC          \ dict record: addr(8) clen(8) name-len|flags(8) name|ptr(16) wid(8)
 \ src/habu/code-span.f: exact spans use bit31; namespace WIDs remain raw.
 $80000000 constant CODE-SPAN:FULL
@@ -70,8 +68,8 @@ $8000000000000000 constant DNAME-INT
 $0002000000000000 constant DNAME-OWNED
 -1 constant PRIM-INT-WID  \ build-side marker: emitted as global with DNAME-INT
 -2 constant PRIM-OWNED-WID  \ build-side marker: global with DNAME-INT and DNAME-OWNED
-65536   constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..65535 end exactly at CFSTK. Past imm16, so the comparison sites below load it with LIT64.
-$300000 constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC frames
+131072  constant DICT-CAP      \ CFSTK-OFF / DREC; comparison sites below load it with LIT64.
+$600000 constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC frames
 24      constant CF-REC
 8       constant CF-LOCN
 16      constant CF-LOCF

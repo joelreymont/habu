@@ -1070,7 +1070,7 @@ $80 constant CK-PKG-PRI-OFF
 $88 constant CK-PKG-PARENT-OFF
 $90 constant CK-PKG-REC-OFF
 48 constant CK-DREC                        \ = layout.f DREC (dictionary record bytes)
-65536 constant CK-DICT-CAP                 \ = layout.f DICT-CAP (dictionary records)
+131072 constant CK-DICT-CAP                \ = layout.f DICT-CAP (dictionary records)
 \ The engine's live `using` depth, read raw like the package cells above. The
 \ using mirror reads it, and inside the verifier window the checker overlay
 \ drives it with the rest of the engine's scope.
