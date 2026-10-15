@@ -4,7 +4,7 @@
 \ so the request survives until the worker starts the next one.
 \
 \ The limits are answered, not thrown: a header block past HEAD-CAP is 431, a
-\ body past the configured BODY-CAP is 413, and a transfer coding other than
+\ body past the selected route or server cap is 413, and a transfer coding other than
 \ chunked is 501. Anything the grammar refuses is 400. START bounds each head;
 \ a configured body timeout starts after a valid head, otherwise that same
 \ deadline also bounds the body. Every wait for the peer is a readiness poll on
@@ -707,8 +707,8 @@ private
    TOO-MUCH-HEAD ;
 
 
-: READ-CHUNKED ( TCP4:connection n n -- parse-result )
-   {: conn:TCP4:connection idx:n deadline:n :}
+: READ-CHUNKED ( TCP4:connection n n n -- parse-result )
+   {: conn:TCP4:connection idx:n deadline:n cap:n :}
    begin
       conn idx deadline ENSURE-LINE {: outcome:parse-result at:n :}
       outcome COMPLETE? 0= if outcome exit then
@@ -716,7 +716,7 @@ private
       size 0 < if BAD exit then
       at 2 + idx IN-AT!
       size 0= if conn idx deadline READ-TRAILERS exit then
-      size BODY-CAP idx BODY-U@ - > if TOO-MUCH-BODY exit then
+      size cap idx BODY-U@ - > if TOO-MUCH-BODY exit then
       conn idx idx BODY-U@ size + deadline PUMP-BODY {: moved:parse-result :}
       moved COMPLETE? 0= if moved exit then
       conn idx deadline EXPECT-CRLF {: closed:parse-result :}
@@ -746,18 +746,18 @@ private
    va vu TRIM s" chunked" STR=CI ;
 
 
-: READ-BODY ( TCP4:connection n n -- parse-result )
-   {: conn:TCP4:connection idx:n deadline:n :}
+: READ-BODY ( TCP4:connection n n n -- parse-result )
+   {: conn:TCP4:connection idx:n deadline:n cap:n :}
    idx s" transfer-encoding" HEADER$ {: tea:ptr teu:n coded:bool :}
    idx CONTENT-LENGTH {: declared:n :}
    coded declared -1 <> and if BAD exit then
    coded if
       idx CHUNKED? 0= if NOT-SUPPORTED exit then
-      conn idx deadline READ-CHUNKED exit
+      conn idx deadline cap READ-CHUNKED exit
    then
    declared -2 = if BAD exit then
    declared -1 = if OK exit then
-   declared BODY-CAP > if TOO-MUCH-BODY exit then
+   declared cap > if TOO-MUCH-BODY exit then
    conn idx declared deadline PUMP-BODY ;
 
 
@@ -785,28 +785,6 @@ private
       then
       scanned 3 - 0 max
    again ;
-
-
-\ One whole request into the slot: the head uses START's deadline. A positive
-\ body timeout begins only after the head and Host pass validation. Zero keeps
-\ the head deadline for the body. The head spans stay valid until the next call
-\ on the same slot.
-: READ-REQUEST ( TCP4:connection n n -- parse-result )
-   {: conn:TCP4:connection idx:n ms:n :}
-   ms DEADLINE-AT {: deadline:n :}
-   idx SLOT-RESET
-   idx COMPACT
-   conn idx deadline READ-HEAD {: head:parse-result :}
-   head COMPLETE? 0= if head exit then
-   idx PARSE-HEAD {: parsed:parse-result :}
-   parsed COMPLETE? 0= if parsed exit then
-   idx HOST-OK? 0= if BAD exit then
-   idx DECIDE-KEEP-ALIVE
-   BODY-TIMEOUT-MS @ {: body-ms:n :}
-   body-ms 0 > if
-      conn idx body-ms DEADLINE-AT READ-BODY exit
-   then
-   conn idx deadline READ-BODY ;
 
 
 public

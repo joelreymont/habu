@@ -34,8 +34,9 @@ an interpreted `s"` after `AIO:START` ends the process.
    AIO:START
    HTTP:ROUTES-RESET
    s" GET" s" /api/ping" [: PING ;] HTTP:ROUTE
+   s" POST" s" /uploads" $4000000 [: UPLOAD ;] HTTP:ROUTE-CAPPED
    s" /srv/site" HTTP:STATIC-ROOT
-   $4000000 HTTP:BODY-CAP!          \ accept incoming bodies up to 64 MiB
+   $100000 HTTP:BODY-CAP!           \ other routes accept up to 1 MiB
    300000 HTTP:BODY-TIMEOUT!         \ five minutes for a complete body
    $7F000001 0 2 5000 HTTP:START     \ address, port, workers, header/idle ms
    HTTP:PORT .                    \ the port the listener bound
@@ -47,8 +48,8 @@ an interpreted `s"` after `AIO:START` ends the process.
 | word | effect | meaning |
 | --- | --- | --- |
 | `START` | `( n n n n -- )` | bind address and port, start that many workers (1..`MAX-WORKERS`), wait for all worker start hooks, then start the listener; the final argument bounds each request head and idle keep-alive wait in milliseconds |
-| `BODY-CAP!` | `( n -- )` | set the maximum incoming body size in bytes before `START`; zero accepts only empty bodies, a negative value is `E-CAPACITY` |
-| `BODY-CAP` | `( -- n )` | the current incoming body limit; defaults to 1 MiB |
+| `BODY-CAP!` | `( n -- )` | set the default incoming body size in bytes before `START`; zero accepts only empty bodies, a negative value is `E-CAPACITY` |
+| `BODY-CAP` | `( -- n )` | the current default incoming body limit; defaults to 1 MiB |
 | `BODY-TIMEOUT!` | `( n -- )` | set the body deadline in milliseconds before `START`; zero uses the `START` deadline, values outside 0..2,147,483,647 are `E-CAPACITY` |
 | `BODY-TIMEOUT` | `( -- n )` | the current body deadline; defaults to zero |
 | `STOP` | `( -- )` | ask every task to end, wait for them to the stop bound, kill any still inside its body, give everything back |
@@ -87,9 +88,9 @@ queued when it begins, or left behind a killed worker, is closed unserved.
 The pool is a fixed eight worker TCBs (`MAX-WORKERS`), each with a slot holding
 the input window, a 1 MiB generated body, a header table and request scratch.
 The incoming body has its own small initial mapping in that slot. It grows as
-bytes arrive, up to `BODY-CAP`, and is released after the response has been
-sent or the taken connection's release hook has run. Refusals, disconnects and
-worker shutdown release it as well.
+bytes arrive, up to the selected route's explicit cap or `BODY-CAP`, and is
+released after the response has been sent or the taken connection's release
+hook has run. Refusals, disconnects and worker shutdown release it as well.
 
 ## Handlers
 
@@ -108,6 +109,15 @@ pattern and a handler; the strings must outlive the server, which a literal
 does. A quotation compiles only inside a definition, so a program registers
 its routes from a word. A pattern segment `{name}` matches one nonempty path
 segment and binds its percent-decoded text; any other segment matches itself.
+`ROUTE-CAPPED ( ptr u8 n ptr u8 n n [ request response -- ] -- )` registers
+the same route with an explicit byte cap. Zero accepts only an empty body; a
+negative cap throws `E-CAPACITY` before the route is registered. Ordinary
+`ROUTE` entries inherit the final `BODY-CAP` set before `START`, even when
+registered before that setting. The matching route is selected after its head
+and Host are validated, before any declared body is buffered. A declared length
+past its cap gets 413 immediately; chunked bodies get 413 when their next
+chunk would cross it. Paths without a matching method use the server default
+while reading their body.
 The first route whose pattern and method both match answers. A path some
 pattern matches under another method is 405 with `Allow` listing the methods
 that do match; a path no pattern matches goes to the static tree, then 404.
@@ -274,7 +284,7 @@ answers its client routes with its one page:
 | `MAX-HEADERS` | 64 | headers in one request |
 | `MAX-SEGMENTS` | 8 | bound segments in one route |
 | `HEAD-CAP` | 7 KiB | request line and headers (431 past it) |
-| `BODY-CAP` | 1 MiB by default | configurable request body limit (413 past it) |
+| `BODY-CAP` | 1 MiB by default | default request body limit, overridden by `ROUTE-CAPPED` (413 past it) |
 | `HDR-CAP` | 2 KiB | response header lines a handler adds |
 | `JSON-CAP` | 1 MiB | a generated body: `JSON!` or the default error text |
 
@@ -288,7 +298,7 @@ published in the package under short names:
 | `HTTP:E-STATE` | -9340 | `START` on a running server, `STOP` on a stopped one, a body limit changed during startup or while running, a hook installed while one runs, a second `STATIC-ROOT`, a `TAKE-OVER` outside a running handler or a second one inside it |
 | `HTTP:E-HANDLE` | -9341 | a handle past its request, or one over another worker's slot |
 | `HTTP:E-WORKERS` | -9342 | a worker count outside 1..`MAX-WORKERS`, or an idle deadline under 1 ms |
-| `HTTP:E-CAPACITY` | -9343 | more hooks, headers or bound segments than a table holds, or a negative body limit or response body length |
+| `HTTP:E-CAPACITY` | -9343 | more hooks, headers or bound segments than a table holds, or a negative server or route body limit or response body length |
 | `HTTP:E-ROUTE` | -9344 | more routes than the table holds, an empty method, a pattern not starting with `/` |
 | `HTTP:E-STATIC` | -9345 | a static root that is not a directory, or a tree larger than its tables |
 | `HTTP:E-SOCKET` | -9346 | the listener could not be bound, put to listen or asked its address |
@@ -313,3 +323,6 @@ whole response head, its status line and headers are written to
 answers them runs one worker, so the request ids and every length are the same
 on every run. `TAKE-OVER` is exercised by its caller's suite,
 `src/lib/net/ws-test.f` ([websocket.md](websocket.md#tests)).
+The same loopback suite checks inherited and explicit route caps, including
+headers-only 413 refusals, chunk boundaries, exact and empty bodies, and
+404/405 responses for legal bodies.
