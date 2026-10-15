@@ -7,6 +7,7 @@ require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require tools/source-discovery.f
 require tools/event-closure-lib.f
+require test/pcap-result.f
 
 using SOURCE-ROOT
 using DISCOVER
@@ -162,14 +163,10 @@ private
    ENGINE-CANDIDATE:PATH$ CANONICAL TTRUE >LEN INVOCATION$ >LEN
    CHILD-OUT CHILD-CAP >LEN CHILD-ERR CHILD-CAP >LEN 30000 >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE 0 ENDOF
-      err OF PCAP-FAILED:UNMAKE RC>N ENDOF
-   ;MATCH
-   {: outu:len erru:len rc:n :}
-   rc 0 <> if CHILD-OUT outu LEN>N type CHILD-ERR erru LEN>N type then
-   rc 0 T= erru LEN>N 0 T=
-   CHILD-OUT outu LEN>N s" source root aliases: ok" CONTAINS? TTRUE
+   PCAP-RESULT:>N {: outu:n erru:n rc:n :}
+   rc 0 <> if CHILD-OUT outu type CHILD-ERR erru type then
+   rc 0 T= erru 0 T=
+   CHILD-OUT outu s" source root aliases: ok" CONTAINS? TTRUE
    RESTORED ;
 
 \ Each file resumes after its child. Distinct entry/exit ordinals expose

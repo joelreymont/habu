@@ -31,6 +31,7 @@ require src/lib/memory.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/test/outcome.f
+require test/pcap-result.f
 
 package PROC-CAPTURE-SIGNAL
 
@@ -50,18 +51,12 @@ create PCS-ERR PCS-ERR-CAP allot
 \ two spellings must stay identical or PCS-MARK below stops matching.
 : PCS-SCRIPT ( -- ptr u8 n ) s" sleep 0.25; printf %s habu-eintr-capture-ok" ;
 
-: PCS-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
-     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
-   ;MATCH ;
-
 : PCS-RUN-SLEEPER ( -- n n n )
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    PCS-SCRIPT >LEN PROC-ARGV+
    s" /bin/sh" >LEN PCS-OUT PCS-OUT-CAP >LEN PCS-ERR PCS-ERR-CAP >LEN PCS-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE PCS-CAPTURE>N ;
+   RUN-ARGV-CAPTURE PCAP-RESULT:>N ;
 
 \ The capture runs with a 1 kHz SIGALRM landing in it throughout.
 : CHECK-CAPTURE-UNDER-SIGNALS ( -- )
