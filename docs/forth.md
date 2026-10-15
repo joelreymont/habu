@@ -1193,7 +1193,10 @@ by name with the count it saw and the ceiling, and none truncates.
   checker's control-frame capacity. Past it:
   `hb: quotation nesting full at 32 levels: <name> needs 33`, rc 75, catchable
   inside `evaluate`; `tools/check.f` refuses the same source first,
-  `E-UNCHECKABLE`. Factor the inner quotations into named words.
+  `E-UNCHECKABLE`. Factor the inner quotations into named words. The files
+  `tools/bootstrap.sh` compiles allow one: `hb-stage0` holds a single open
+  quotation (`J-QUOT`, `bootstrap/cg/forth.fs`), so a nested `[:` there prints
+  `[:` and exits 75 in the Gforth recovery build while `bin/hb` accepts it.
 - **`do` and `?do` nesting in one definition: `LV-LEVELS`, 16**
   (`src/habu/layout.f`), the JIT's per-level `leave` chain and `?do` entry-test
   records. Past it: `hb: control-flow nesting too deep: do` (or `?do`), rc 70.

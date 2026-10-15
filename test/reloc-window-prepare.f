@@ -12,8 +12,8 @@
 \ A child loads src/lib/test.f and src/lib/memory.f after the seal, so before it the
 \ window loads what the product loads before its own seal
 \ (src/habu/native-runtime.f) and they need: the two declaration participants,
-\ the last of which seals registration (an ENUM is refused with
-\ E-REGISTRATION-SEALED until it does), dynamic storage and the prelude.
+\ the last of which installs the declaration runner (until it does, an ENUM dies
+\ on the unset TYPE-DECL:TDECL-TXN-XT), dynamic storage and the prelude.
 
 package NPUB
 public

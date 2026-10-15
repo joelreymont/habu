@@ -123,6 +123,7 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | an `if` arm or loop body that changes depth | `E-MISMATCH` at `then`/`repeat` |
 | a local read or declared inside `[: … ;]` | `E-BAD-LOCAL-SHAPE`, rc 75 |
 | a 33rd `[:` while 32 are open | `E-UNCHECKABLE`; `--load` exits 75, `hb: quotation nesting full at 32 levels` |
+| a nested `[:` in a file `tools/bootstrap.sh` compiles | the Gforth recovery build's `hb-stage0` prints `[:`, exits 75; name the inner body |
 | a definition leaving 4097 cells, or returning a quotation that leaves 4095 | `E-UNCHECKABLE`, `effect too deep to record (depth 4097, at most 4096)` |
 | a definition taking 256 cells, declared or inferred | `E-UNCHECKABLE`, `input row too wide to record (256 cells, at most 255)` |
 | a `trust` row leaving 4097 cells, or one, `TRUSTED:` or `defer` taking 256 | `E-BAD-STORED-SIGNATURE`, `fix_signature_size`, the same reasons |

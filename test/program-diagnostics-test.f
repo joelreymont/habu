@@ -94,10 +94,8 @@ package PROGRAM-DIAGNOSTICS
       s" AOT-XTCELL-OFF-GRID-ARMED" s" aot-capture: a declared DATA cell is not on the window cell grid" NEGATIVE-DIAG
    s" test/aot-window-base-off-grid-bad.f" 74
       s" AOT-WINDOW-BASE-OFF-GRID-ARMED" s" aot-capture: the captured DATA window base is not cell-aligned" NEGATIVE
-   s" test/checker-decl-nested-bad.f" 76
-      s" CHECKER-DECL-NESTED-ARMED" s" checker: declaration rollback frame mismatch" NEGATIVE
    s" test/checker-decl-depth0-bad.f" 76
-      s" CHECKER-DECL-DEPTH0-ARMED" s" checker: declaration rollback frame mismatch" NEGATIVE
+      s" CHECKER-DECL-DEPTH0-ARMED" s" declaration rollback failed" NEGATIVE
    s" test/enum-ctor-collide-bad.f"
       s" name is reserved or already taken" DIAGNOSTIC
    s" test/deftype-dup-bad.f" 70

@@ -98,9 +98,9 @@ variable RB-LAY   variable RB-SCH  variable RB-ROOT  variable RB-PFN  variable R
 variable RC   variable FID   variable B   variable NODE   variable PFB   variable DEVB
 variable VS0  variable VID
 
-\ The production parser and GENERATED-DECL coordinator stay unchanged.  These
-\ private drivers pause only the test body between DRIVE and coordinator
-\ PREPARE, while declaration events and field rows are still provisional.
+\ The production parser and declaration runner stay unchanged.  These private
+\ drivers pause only the test body between DRIVE and the runner's prepares,
+\ while declaration events and field rows are still provisional.
 package ENUM-DECL
 
 : TEST-PAYLOAD-VIEW ( -- )
@@ -108,9 +108,6 @@ package ENUM-DECL
    VBASE @ VS0 !
    VBASE @ 2 + VID !
    TOK @ RC !
-
-   s" ENUM-DECL:ED-RUN epnested VARIANT foreign FIELD nested n ;VARIANT ;ENUM" evaluate-closed
-   VBASE @ NODE !
 
    s" DECL-EVENT:CURRENT FID @ VS0 @ DECL-EVENT:PAYLOAD-N 0 T=" evaluate-closed
    s" DECL-EVENT:CURRENT FID @ VS0 @ DECL-EVENT:PAYLOAD-CELLS 0 T=" evaluate-closed
@@ -132,7 +129,6 @@ package ENUM-DECL
    s" DECL-EVENT:CURRENT FID @ VS0 @ 0 ' DECL-EVENT:PAYLOAD-SCHEMA@ catch B ! drop drop drop drop B @ 7172 T=" evaluate-closed
    s" DECL-EVENT:CURRENT FID @ VID @ -1 ' DECL-EVENT:PAYLOAD-WIDTH@ catch B ! drop drop drop drop B @ 7172 T=" evaluate-closed
    s" DECL-EVENT:CURRENT FID @ VID @ 2 ' DECL-EVENT:PAYLOAD-SCHEMA@ catch B ! drop drop drop drop B @ 7172 T=" evaluate-closed
-   s" DECL-EVENT:CURRENT FID @ NODE @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7172 T=" evaluate-closed
 
    DECL-EVENT:OPEN NODE !
    NODE @ FID @ DECL-EVENT:DECL NODE !
@@ -145,7 +141,7 @@ package ENUM-DECL
    TEST-PAYLOAD-VIEW ;
 
 : TEST-PAYLOAD-RUN ( -- )
-   [: TEST-PAYLOAD-BODY ;] GENERATED-DECL:RUN ;
+   [: TEST-PAYLOAD-BODY ;] DECLARATION-TRANSACTION:RUN ;
 
 : TEST-PAYLOAD-XT ( -- [ -- ] )
    [: TEST-PAYLOAD-RUN ;] ;
@@ -158,7 +154,7 @@ package ENUM-DECL
    E-SYNTAX throw ;
 
 : TEST-PAYLOAD-ROLL ( -- )
-   [: TEST-PAYLOAD-ROLL-BODY ;] GENERATED-DECL:RUN ;
+   [: TEST-PAYLOAD-ROLL-BODY ;] DECLARATION-TRANSACTION:RUN ;
 
 : TEST-PAYLOAD-ROLL-XT ( -- [ -- ] )
    [: TEST-PAYLOAD-ROLL ;] ;
@@ -512,7 +508,7 @@ s" ENUM-DECL:ED-RUN ptr ready ;ENUM" 7110 REJECT-SAME
 \ ---------------------------------------------------------------------------
 \ 20. Constructor generation. A public ENUM family with variants owns one sealed
 \     checked FAMILY:VARIANT constructor per variant, rendered, evaluated,
-\     certified and published by the ORDER 820 participant inside this
+\     certified and published by the constructor participant inside this
 \     declaration's own transaction (src/core/generated-declaration.f, package
 \     GENERATED-DECL-CTOR). The participant commits after DECL-EVENT has promoted
 \     this declaration's TYPE-FIELD rows past PF-COMMIT-N, so it generates from
@@ -536,12 +532,12 @@ variable CT-DICT   variable CT-CP   variable CT-FAM
 : DICT-CODE ( -- n ) cp@ ;
 : ARM-RC ( n -- n ) [: dup GENERATED-DECL-CTOR:ARM ;] catch {: rc:n :} drop rc ;
 
-\ Arm the participant with CT-FAM from inside a real coordinator transaction, so
-\ the depth precondition is satisfied and whatever ARM rejects is rejected on its
+\ Arm the participant with CT-FAM from inside a real declaration transaction, so
+\ ARM's ACTIVE? precondition holds and whatever ARM rejects is rejected on its
 \ own merits. The throw escapes RUN through the ordinary body-failure path, which
 \ also rolls the transaction back.
 : ARM-IN-TX-BODY ( -- ) CT-FAM @ GENERATED-DECL-CTOR:ARM ;
-: ARM-IN-TX ( -- ) [: ARM-IN-TX-BODY ;] GENERATED-DECL:RUN ;
+: ARM-IN-TX ( -- ) [: ARM-IN-TX-BODY ;] DECLARATION-TRANSACTION:RUN ;
 : ARM-IN-TX-RC ( -- n ) ['] ARM-IN-TX catch ;
 
 \ The committed payload arity, counted straight off the TYPE-FIELD registry
@@ -610,7 +606,7 @@ s" C5 ( n n n -- msgctor ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! 0 T=
 s" C6 ( n n -- n ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ 20b. DERIVE rides the same commit. TDECL-DERIVE-REQUIRE reads committed SUMV /
-\      TYPE-FIELD rows, which is exactly what ORDER 820 gives it, so a payload
+\      TYPE-FIELD rows, which is exactly what the constructor commit gives it, so a payload
 \      family that derives publishes its constructors AND its derived tag and
 \      equality words from one pass.
 s" ENUM-DECL:ED-RUN dctor DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two ;VARIANT ;ENUM" evaluate-closed
@@ -682,7 +678,7 @@ s" rollctor2" FAMID 0 T=
 s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM"
    TYPE-DECL:E-TDECL-NAME enum-ctor-test:CTOR-REJECT
 enum-ctor-test:PENDING 0 T=
-GENERATED-DECL:DEPTH 0 T=
+DECLARATION-TRANSACTION:ACTIVE? 0= T-TRUE
 s" rollcoll" FAMID 0 T=
 s" RC-FRESH ( -- n ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! 1 T=
 ROLLCOLL:TAKEN 37 T=
@@ -698,7 +694,7 @@ s" RC-VALID ( -- rollcoll ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! -1 T=
 s" STRUCTURE rollp FIELD value n ;STRUCTURE"
    TYPE-DECL:E-TDECL-NAME enum-ctor-test:CTOR-REJECT
 enum-ctor-test:PENDING 0 T=
-GENERATED-DECL:DEPTH 0 T=
+DECLARATION-TRANSACTION:ACTIVE? 0= T-TRUE
 s" rollp" FAMID 0 T=
 s" RP-MAKE ( n -- n ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! 1 T=
 ROLLP:UNMAKE 41 T=
@@ -718,14 +714,15 @@ s" msgctor" FAMID GENERATED-DECL-CTOR:OWNS? T-TRUE     \ still an owning kind
 s" msgctor" FAMID F-VAR-START SUMV-CTOR-SYM@ 0 <> T-TRUE            \ and already generated
 s" msgctor" FAMID enum-ctor-test:CT-FAM !
 enum-ctor-test:ARM-IN-TX-RC 7176 T=                   \ named reject, inside a real transaction
-GENERATED-DECL:DEPTH 0 T=                             \ which rolled back and left no frame
+DECLARATION-TRANSACTION:ACTIVE? 0= T-TRUE            \ which rolled back and closed
 s" R1 ( -- msgctor ) MSGCTOR:QUIT" CHECK-QUIET-CANDIDATE! -1 T=   \ live words untouched
 s" R2 ( n n -- msgctor ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! -1 T=
 \ The two other ARM preconditions are held satisfied above rather than assumed:
-\ the depth clause cannot be what fired, because ARM-IN-TX runs inside a live
-\ GENERATED-DECL:RUN, and the kind clause cannot be what fired, because OWNS? is
-\ true for this same family. Deleting the already-generated clause reds this
-\ block and lets ARM reach the named collision refusal again.
+\ the open-transaction clause cannot be what fired, because ARM-IN-TX runs
+\ inside a live DECLARATION-TRANSACTION:RUN, and the kind clause cannot be what
+\ fired, because OWNS? is true for this same family. Deleting the
+\ already-generated clause reds this block and lets ARM reach the named
+\ collision refusal again.
 
 \ ---------------------------------------------------------------------------
 \ 21. POLICY packed-tag bakes the memory ABI descriptor (docs §22.2). The
@@ -795,7 +792,7 @@ s" lay-unified-pay" FAMID 16 8 1 enum-layout-test:SHAPE   \ 8 payload bytes + 1 
 
 \ 21d. A reject AFTER the bake retires the descriptor with the family. The two
 \      declarations below differ in one token — the payload type — and both reach
-\      ED-CLOSE, so both bake a row; the second is then refused at ORDER 820 by
+\      ED-CLOSE, so both bake a row; the second is then refused at the constructor commit by
 \      the derive payload-role gate (a pointer payload has no derived equality,
 \      7119), which runs in the commit phase, well after ED-CLOSE. LAY-N is one
 \      of the marks the checker participant's savepoint carries, so the refused
@@ -949,7 +946,7 @@ s\" \"family\":\"dgquote\"" DECL-DIAG:HAS? -1 T=
 s\" \"code\":\"E-BAD-DECLARATION\"" DECL-DIAG:HAS? -1 T=
 
 \ 22f. Accepted declarations stay silent, and a rendered reject still leaves the
-\      registry byte-identical: rendering happens after the coordinator has
+\      registry byte-identical: rendering happens after the runner has
 \      rolled back and touches no registry cursor.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgok1 red green ;ENUM" TRY 0 T=

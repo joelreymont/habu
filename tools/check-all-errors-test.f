@@ -142,20 +142,25 @@ create CAE-LF-BYTE 10 c,
    s" : CAE-BAD2 ( i64 -- ) >r ;" SB-APPEND CAE-LF
    SB$ ;
 
-\ Three faults, two of them in ENUM declarations. The global ENUM keyword is the
-\ unified front end, whose reporter is DECL-REJECT:GUARD; the third fault is an
-\ ordinary definition reject, so one source exercises both reporters in one pass.
-\ Under a multi-error load every one of them must be reported and the pass must
-\ continue: before GUARD grew its multi-error branch the first bad declaration
-\ ended the run and the other two faults were never seen, even though sumtype.f's
-\ TDECL-RUN had answered that way for the legacy definers all along. The good
-\ declaration first proves the arm does not swallow accepted declarations.
+\ Four faults: two in ENUM declarations, one in a PRODUCT and one ordinary
+\ definition reject. The global ENUM keyword is the unified front end, whose
+\ reporter is DECL-REJECT:GUARD; the PRODUCT reports through sumtype.f's
+\ TDECL-RUN; so one source exercises every reporter in one pass. Under a
+\ multi-error load every fault must be reported and the pass must continue:
+\ before GUARD grew its multi-error branch the first bad declaration ended the
+\ run and the later faults were never seen, even though TDECL-RUN had answered
+\ that way for the legacy definers all along. The good declarations prove the
+\ arm does not swallow accepted declarations, and CAE-PGOOD-USE that the refused
+\ product's rollback leaves the next product usable.
 : CAE-DECL-SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" ENUM cae-dgood red green ;ENUM" SB-APPEND CAE-LF
    s" ENUM cae-dbad1 if ;ENUM" SB-APPEND CAE-LF
    s" ENUM cae-dbad2 red red ;ENUM" SB-APPEND CAE-LF
    s" : CAE-DBAD3 ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   s" PRODUCT cae-pbad FIELD x n FIELD x n ;PRODUCT" SB-APPEND CAE-LF
+   s" PRODUCT cae-pgood FIELD y n ;PRODUCT" SB-APPEND CAE-LF
+   s" : CAE-PGOOD-USE ( cae-pgood -- cae-pgood ) ;" SB-APPEND CAE-LF
    SB$ ;
 
 : CAE-SUPPORT-SOURCE$ ( -- ptr u8 n )
@@ -744,10 +749,16 @@ $100000 constant CAE-CHILD-ERR-CAP
    CONTAINS? TTRUE
    s" declaration-multi definition reject still reached" T-LABEL
    CAE-ERR erru s" cae-dbad3" CONTAINS? TTRUE
+   s" declaration-multi product reject" T-LABEL
+   CAE-ERR erru
+   s" habu: bad product declaration 'cae-pbad': duplicate field at 'x'"
+   CONTAINS? TTRUE
    s" declaration-multi accepted declaration silent" T-LABEL
    CAE-ERR erru s" cae-dgood" CONTAINS? TFALSE
+   s" declaration-multi accepted product silent" T-LABEL
+   CAE-ERR erru s" cae-pgood" CONTAINS? TFALSE
    s" declaration-multi diag count" T-LABEL
-   CAE-ERR erru 10 COUNT-CHAR 3 T= ;
+   CAE-ERR erru 10 COUNT-CHAR 4 T= ;
 
 : CAE-TEST-LARGE ( -- )
    CAE-WRITE-LARGE

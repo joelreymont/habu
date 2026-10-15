@@ -29,7 +29,7 @@
 \    raises those and this module surfaces the throw unchanged — no second gate.
 \
 \ Transaction shape mirrors the field record's strict last-in, first-out frames.
-\ GENERATED-DECL opens this participant at every coordinator snapshot, keeps
+\ DECLARATION-TRANSACTION:RUN opens this participant at its savepoint, keeps
 \ events and field rows provisional through body validation, preflights
 \ their contiguity, then publishes both reversible watermarks. Rollback restores
 \ the event arena, published event high-water, field ordinal, variant ordinal,
@@ -507,7 +507,7 @@ variable DEV-TX-SERIAL
 \ PREPARE proves the field rows are exactly the contiguous provisional range the
 \ event stream names, then delegates the field owner's mutation-free preflight.
 \ COMMIT advances reversible published watermarks while retaining both frames.
-\ Releasing them afterwards is the coordinator's release phase (DEV-PART-RELEASE
+\ Releasing them afterwards is the runner's release step (PART-RELEASE
 \ below); the public FINALIZE here is the standalone entry point and re-proves
 \ everything, which is why the participant does not use it.
 : DEV-PREPARE ( n -- ) {: tok:n :}
@@ -606,62 +606,32 @@ $cbf29ce484222325 constant DEV-FNV-OFFSET
       DEV-I @ 1 + DEV-I !
    REPEAT ;
 
-\ GENERATED-DECL adapter.  Each coordinator nesting depth owns one slot holding
-\ the EXACT event token and field token this participant opened there, both
-\ written before the declaration body can run.  Every later phase proves and
-\ drives that saved pair.  Reading the live top instead — as this adapter used
-\ to — let any frame the body opened and never closed stand in for the
-\ participant's own frame: prepare then validated the wrong frame, commit and
-\ finalize published and released the wrong frame, and the participant's real
-\ frame survived the transaction.  The checker participant released last, saw a
-\ field-transaction depth that no longer matched its savepoint, and threw E-PF-TX
-\ from cleanup, which poisoned the one production coordinator for the rest of the
-\ process.  Release can no longer report anything, so a defect of that shape now
-\ has to be caught where it belongs: at this participant's PREPARE.
-4 constant DEV-PART-CAP-INIT
-2 constant DEV-PART-REC          \ cells per depth: event token, then field token
-0 constant DEV-NO-TOKEN          \ slot sentinel; DEV-OPEN never mints a token <= 0
-create DEV-PART-BASE-BOOT DEV-PART-CAP-INIT DEV-PART-REC * cells allot
-PERSISTED-PTR-VARIABLE DEV-PART-BASE-P   DEV-PART-BASE-BOOT DEV-PART-BASE-P !
-variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
-
-: DEV-PART-BASE ( -- ptr n ) DEV-PART-BASE-P @ ;
-
-: DEV-PART-GROW ( -- )
-   DEV-PART-CAP @ 2 * {: nc:n :}
-   DEV-PART-BASE-P
-      DEV-PART-CAP @ DEV-PART-REC * cells
-      nc DEV-PART-REC * cells REG-GROW1
-   nc DEV-PART-CAP ! ;
-
-: DEV-PART-ENSURE ( -- )
-   GENERATED-DECL:DEPTH DEV-PART-CAP @ <= IF EXIT THEN
-   DEV-PART-GROW ;
-
-: DEV-PART-SLOT ( -- ptr n )
-   GENERATED-DECL:DEPTH 1 - DEV-PART-REC * cells DEV-PART-BASE + ;
-: DEV-PART-TOK-SLOT ( -- ptr n ) DEV-PART-SLOT ;
-: DEV-PART-FLD-SLOT ( -- ptr n ) DEV-PART-SLOT 1 cells + ;
+\ Declaration-transaction participant.  Two cells hold the EXACT event token and
+\ field token this participant opened, both written before the declaration body
+\ can run.  Every later step proves and drives that saved pair.  Reading the live
+\ top instead — as this adapter used to — let any frame the body opened and never
+\ closed stand in for the participant's own frame: prepare then validated the
+\ wrong frame, commit and finalize published and released the wrong frame, and
+\ the participant's real frame survived the transaction.  Release cannot report
+\ anything, so a defect of that shape has to be caught where it belongs: at this
+\ participant's PREPARE.
+0 constant DEV-NO-TOKEN          \ cell sentinel; DEV-OPEN never mints a token <= 0
+variable DEV-PART-TOK
+variable DEV-PART-FLD
 
 : DEV-PART-CLEAR ( -- )
-   DEV-NO-TOKEN DEV-PART-TOK-SLOT !
-   DEV-NO-TOKEN DEV-PART-FLD-SLOT ! ;
+   DEV-NO-TOKEN DEV-PART-TOK !
+   DEV-NO-TOKEN DEV-PART-FLD ! ;
 
 : DEV-PART-BIND ( n -- ) {: tok:n :}   \ pin the frame OPEN just created
-   tok DEV-PART-TOK-SLOT !
-   DEV-TX-TOP DEVTX.FLDTOK @ DEV-PART-FLD-SLOT ! ;
-
-: DEV-PART-SNAPSHOT ( n -- n )
-   DEV-PART-ENSURE
-   DEV-PART-CLEAR                 \ OPEN may reject before it mutates anything
-   DEV-OPEN DEV-PART-BIND ;
+   tok DEV-PART-TOK !
+   DEV-TX-TOP DEVTX.FLDTOK @ DEV-PART-FLD ! ;
 
 : DEV-PART-OPEN? ( -- bool )
-   GENERATED-DECL:DEPTH 0= IF 0 0= 0= EXIT THEN
-   DEV-PART-TOK-SLOT @ DEV-NO-TOKEN <> ;
+   DEV-PART-TOK @ DEV-NO-TOKEN <> ;
 
-: DEV-PART-TOKEN ( -- n ) DEV-PART-TOK-SLOT @ ;
-: DEV-PART-FIELD-TOKEN ( -- n ) DEV-PART-FLD-SLOT @ ;
+: DEV-PART-TOKEN ( -- n ) DEV-PART-TOK @ ;
+: DEV-PART-FIELD-TOKEN ( -- n ) DEV-PART-FLD @ ;
 
 \ Kept unexercised, like the DEV-OPEN serial-wrap guard above.  No test drives it
 \ and none can today: DEVTX.FLDTOK is written once, by DEV-OPEN, and DEV-PART-BIND
@@ -680,9 +650,9 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
 \ the field rows are exactly the contiguous range the event stream names.  Commit
 \ and release then only advance and drop marks this proof already covered.
 \ DEV-PREPARE repeats the token proof because it is also the standalone public
-\ entry point, so a mutation that guts THIS word still rejects one phase later —
-\ test/decl-event-suite.f §19e therefore asserts the failing PHASE, not just the
-\ code, or the participant reversibly commits before the rejection lands.
+\ entry point, so a mutation that guts THIS word still rejects one step later,
+\ in PART-COMMIT.  The runner runs every prepare before any commit, and this
+\ participant commits first, so no participant has committed when that lands.
 : DEV-PART-PROVE ( -- )
    DEV-PART-TOKEN DEV-TX-OPEN-REQUIRE
    DEV-PART-FIELD-REQUIRE
@@ -717,40 +687,48 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
    fldtok TDECL-FIELD-CLEANUP-XT
    keep DEV-FRAMES-RETIRE ;
 
-: DEV-PART-PREPARE ( n -- n )
+public
+
+: PART-SNAPSHOT ( -- )
+   DEV-PART-CLEAR                 \ OPEN may reject before it mutates anything
+   DEV-OPEN DEV-PART-BIND ;
+
+: PART-PREPARE ( -- )
    DEV-PART-OPEN? IF DEV-PART-PROVE THEN ;
 
-: DEV-PART-COMMIT ( n -- n )
+: PART-COMMIT ( -- )
    DEV-PART-OPEN? IF DEV-PART-TOKEN DEV-COMMIT THEN ;
 
-: DEV-PART-ROLLBACK ( n -- n )
+: PART-ROLLBACK ( -- )
    DEV-PART-OPEN? IF
       DEV-PART-TOKEN DEV-PART-FIELD-TOKEN DEV-RETIRE-THROUGH
       DEV-PART-CLEAR
    THEN ;
 
-\ Release. The coordinator runs this only after every participant's reversible
+\ Release. The runner calls this only after every participant's reversible
 \ commit succeeded, so it must not be able to reject and it is not caught. It is
 \ therefore NOT DEV-FINALIZE: that word is the standalone public entry point and
 \ re-proves the token, the frame state, and the field owner's watermarks, and
 \ any of those proofs can throw. Everything they would re-prove was already
 \ proved by this participant's own PREPARE (DEV-PART-PROVE) and then committed,
-\ so all that is left here is to drop the two frames this depth owns — the field
-\ frame through the owner's private total release vector, then our own event
-\ frame — and clear the saved token pair.
-: DEV-PART-RELEASE ( -- )
+\ so all that is left here is to drop the two frames this participant owns — the
+\ field frame through the owner's private total release vector, then our own
+\ event frame — and clear the saved token pair.
+: PART-RELEASE ( -- )
    DEV-PART-OPEN? IF
       TDECL-FIELD-RELEASE-XT
       DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH !
       DEV-PART-CLEAR
    THEN ;
 
+private
+
 \ ---------------------------------------------------------------------------
-\ IMAGE-SNAPSHOT RESET — a different "snapshot" from the participant phase just
-\ above. DEV-PART-SNAPSHOT opens a DECLARATION savepoint; this word prepares the
+\ IMAGE-SNAPSHOT RESET — a different "snapshot" from the participant step just
+\ above. PART-SNAPSHOT opens a DECLARATION savepoint; this word prepares the
 \ module to be written into a persisted engine IMAGE.
 \
-\ All three arenas here grow through REG-GROW1, which re-allocates from the
+\ Both arenas here grow through REG-GROW1, which re-allocates from the
 \ host process's allocator, so a grown base is a live address of THIS process and
 \ nothing else. The snapshot writer copies the DP heap verbatim, so a grown base
 \ left in place is persisted as a number that means nothing in the process that
@@ -775,29 +753,17 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
 \ It runs at depth 0 or not at all: an image captured mid-declaration would carry
 \ frames whose field-owner and checker savepoints no one will ever close.
 : DEV-SNAPSHOT-RESET ( -- )
-   GENERATED-DECL:DEPTH 0 <> DEV-TX-DEPTH @ 0 <> or IF
+   DECLARATION-TRANSACTION:ACTIVE? DEV-TX-DEPTH @ 0 <> or IF
       s" decl-event: snapshot inside declaration transaction" DEV-BUG-RC die
    THEN
    DEV-A-BOOT DEV-A-P !                DEV-CAP-INIT DEV-CAP-V !
    DEV-TX-BOOT DEV-TX-P !              DEV-TX-CAP-INIT DEV-TX-CAP-V !
-   DEV-PART-BASE-BOOT DEV-PART-BASE-P ! DEV-PART-CAP-INIT DEV-PART-CAP !
    DEV-RESET ;
-
-2 constant DEV-PARTICIPANT
-
-: DEV-PART-INSTALL ( -- )
-   DEV-PARTICIPANT GENERATED-DECL:ORDER-EVENT
-   [: DEV-PART-SNAPSHOT ;]
-   [: DEV-PART-PREPARE ;]
-   [: DEV-PART-COMMIT ;]
-   [: DEV-PART-ROLLBACK ;]
-   [: DEV-PART-RELEASE ;]
-   GENERATED-DECL-OWNER:REGISTER ;
 
 \ ---------------------------------------------------------------------------
 \ public API: the transaction both front ends drive + read-only reflection.
-\ Phase constraints: CURRENT returns the frame opened by the coordinator
-\ snapshot and rejects outside an active coordinator; OPEN remains the explicit
+\ Phase constraints: CURRENT returns the frame opened by the declaration
+\ savepoint and rejects outside an open declaration; OPEN remains the explicit
 \ standalone interface. DECL/ARITY/
 \ POLICY/DERIVE/OPAQUE/VARIANT/END-VARIANT/FIELD and provisional FIELD-SCHEMA@/
 \ PAYLOAD-* queries are legal only between OPEN and its
@@ -806,7 +772,7 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
 \ reversible frame; FINALIZE releases it, ROLLBACK restores it, and PUBLISH
 \ performs PREPARE, COMMIT, and FINALIZE in one call. FINALIZE is the
 \ standalone release and re-proves the token, the frame state, and the field
-\ owner's watermarks, so it is not what the coordinator's total release phase
+\ owner's watermarks, so it is not what the runner's total release step
 \ runs. Reflection + IDENTITY
 \ read only published events and are legal any time.
 \ ---------------------------------------------------------------------------
@@ -860,9 +826,9 @@ private
 
 \ The declaration front ends reach this module only through these hooks, and
 \ they go through the SAME public words an outside caller uses — CURRENT carries
-\ the coordinator-frame and open-state guards that the private token reader does
-\ not. Installed here rather than inside DEV-PART-INSTALL because a quotation
-\ binds its target at compile time and the public section is defined above.
+\ the declaration-frame and open-state guards that the private token reader does
+\ not. Installed after the public section because a quotation binds its target
+\ at compile time.
 : DEV-EVENT-HOOKS-INSTALL ( -- )
    [: CURRENT ;] is TYPE-DECL:TDECL-EVENT-CURRENT-XT
    [: DECL ;] is TYPE-DECL:TDECL-EVENT-DECL-XT
@@ -871,7 +837,6 @@ private
    [: 0 0= ;] is TYPE-DECL:TDECL-EVENT-ARMED ;
 
 DEV-EVENT-HOOKS-INSTALL
-DEV-PART-INSTALL
 
 ;package
 

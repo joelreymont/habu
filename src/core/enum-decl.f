@@ -1,7 +1,7 @@
 \ enum-decl.f — the ENUM typed-declaration front end (package ENUM-DECL). This is
 \ the SECOND consumer of the shared declaration-event transaction
 \ (src/core/decl-event.f, package DECL-EVENT), binding to the same atomic
-\ GENERATED-DECL coordinator used by STRUCTURE. It owns only the ENUM
+\ declaration transaction used by STRUCTURE. It owns only the ENUM
 \ grammar loop and its reject dispatch; it holds NO declaration state (the events,
 \ the field rows, the variant registration, and the current-variant selector all
 \ live in the event module).
@@ -46,7 +46,7 @@
 \ validated. A reject restores every owned registry in reverse participant order.
 \ This front end parses and publishes family, variant, and field metadata; it
 \ renders no constructor itself. Once the variant range, the field range and the
-\ payload width are bound, ED-CLOSE names the family to the ORDER 820 constructor
+\ payload width are bound, ED-CLOSE names the family to the constructor
 \ participant (src/core/generated-declaration.f) and the declaration transaction
 \ generates the per-variant checked constructor package (MESSAGE:QUIT, docs §2.3)
 \ inside its commit phase, so a failure anywhere publishes no constructor at all.
@@ -483,7 +483,7 @@ ED-MISS-CLEAR
 \ ---------------------------------------------------------------------------
 \ constructor generation. This front end still renders nothing itself: once the
 \ variant range, the field range, and the payload width are bound, it names the
-\ family to the ORDER 820 constructor participant and the declaration transaction
+\ family to the constructor participant and the declaration transaction
 \ does the work in its commit phase, after DECL-EVENT has promoted this
 \ declaration's TYPE-FIELD rows to the committed watermark the shared generator
 \ reads. So a rendering, evaluation, or certification failure anywhere in the set
@@ -567,7 +567,7 @@ ED-MISS-CLEAR
 \ layout + variant + event stream back to a byte-identical registry on any reject.
 : ED-BODY ( -- )
    ED-MISS-CLEAR
-   [: ED-RESET DRIVE ;] GENERATED-DECL:RUN ;
+   [: ED-RESET DRIVE ;] TDECL-TXN-XT ;
 
 \ Resynchronize the input to the end of THIS declaration.
 \
@@ -601,7 +601,7 @@ ED-MISS-CLEAR
    ED-SKIP-BODY ;
 
 \ A reject is rendered through the shared declaration packet AFTER the
-\ coordinator has rolled everything back, then rethrown with its exact code,
+\ runner has rolled everything back, then rethrown with its exact code,
 \ which is the same order the legacy definers use (sumtype.f TDECL-RUN:
 \ restore, report, rethrow). Both drivers below share this one guarded body, so
 \ a replayed declaration reports through exactly the same renderer.
@@ -637,7 +637,7 @@ public
 \ ED-REPLAY ( name body -- ) : register an ENUM from tokens a tool has already
 \ lexed, defining no word. Same grammar, same validation, same registry writes,
 \ same reject packet as ED-RUN — only the token source differs and the variant
-\ constructors are registered without being rendered (the ORDER 820 participant
+\ constructors are registered without being rendered (the constructor participant
 \ in generated-declaration.f). BOTH modes replay: the first body token still
 \ selects full or compact exactly as it does live, so this entry replaces the
 \ legacy compact-only CHECKER-DEFENUM that tools/check-core.f and

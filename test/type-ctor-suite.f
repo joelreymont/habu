@@ -883,8 +883,8 @@ variable GOT      \ family id the generator handed back
 
 : REGISTER-A ( -- ) s" zxa" s" VARIANT one n ;VARIANT" DEFSUM ;
 : REGISTER-B ( -- ) s" zxb" s" VARIANT two n ;VARIANT" DEFSUM ;
-: DECLARE-A ( -- ) [: REGISTER-A ;] GENERATED-DECL:RUN  FAM-REG FAM-A ! ;
-: DECLARE-B ( -- ) [: REGISTER-B ;] GENERATED-DECL:RUN  FAM-REG FAM-B ! ;
+: DECLARE-A ( -- ) [: REGISTER-A ;] DECLARATION-TRANSACTION:RUN  FAM-REG FAM-A ! ;
+: DECLARE-B ( -- ) [: REGISTER-B ;] DECLARATION-TRANSACTION:RUN  FAM-REG FAM-B ! ;
 : GENERATE-BODY ( -- ) ASKED @ CTOR-BODY GOT ! ;
 
 public
@@ -894,7 +894,7 @@ public
 : DECLARE ( -- ) DECLARE-A DECLARE-B ;
 : FIRST ( -- n ) FAM-A @ ;
 : SECOND ( -- n ) FAM-B @ ;
-: GENERATE ( n -- n ) ASKED ! [: GENERATE-BODY ;] GENERATED-DECL:RUN  GOT @ ;
+: GENERATE ( n -- n ) ASKED ! [: GENERATE-BODY ;] DECLARATION-TRANSACTION:RUN  GOT @ ;
 : PLAN-COUNT ( -- n ) PLAN-N ;
 : PLAN-NAME ( n -- ptr u8 n ) TDPLAN-NAME$ ;
 
@@ -1065,16 +1065,16 @@ variable ASKED   variable GOT
 : FSHORT-BODY ( -- )    FLIP-SHORT-PROV ASKED @ TDECL-CTOR-WORDS-BODY GOT ! ;
 : FLONG-BODY ( -- )     FLIP-LONG-PROV  ASKED @ TDECL-CTOR-WORDS-BODY GOT ! ;
 : HUGE-BODY ( -- )      HUGE-PROV  PROD-FAM @ TDECL-CTOR-WORDS-BODY GOT ! ;
-: SWAP-RUN ( -- )      [: SWAP-BODY ;] GENERATED-DECL:RUN ;
-: COMMITTED-RUN ( -- ) [: COMMITTED-BODY ;] GENERATED-DECL:RUN ;
-: NEG-RUN ( -- )       [: NEG-BODY ;] GENERATED-DECL:RUN ;
-: PNEG-RUN ( -- )      [: PNEG-BODY ;] GENERATED-DECL:RUN ;
-: ROOT-RUN ( -- )      [: ROOT-BODY ;] GENERATED-DECL:RUN ;
-: LEAN-RUN ( -- )      [: LEAN-BODY ;] GENERATED-DECL:RUN ;
-: WIDE-RUN ( -- )      [: WIDE-BODY ;] GENERATED-DECL:RUN ;
-: FSHORT-RUN ( -- )    [: FSHORT-BODY ;] GENERATED-DECL:RUN ;
-: FLONG-RUN ( -- )     [: FLONG-BODY ;] GENERATED-DECL:RUN ;
-: HUGE-RUN ( -- )      [: HUGE-BODY ;] GENERATED-DECL:RUN ;
+: SWAP-RUN ( -- )      [: SWAP-BODY ;] DECLARATION-TRANSACTION:RUN ;
+: COMMITTED-RUN ( -- ) [: COMMITTED-BODY ;] DECLARATION-TRANSACTION:RUN ;
+: NEG-RUN ( -- )       [: NEG-BODY ;] DECLARATION-TRANSACTION:RUN ;
+: PNEG-RUN ( -- )      [: PNEG-BODY ;] DECLARATION-TRANSACTION:RUN ;
+: ROOT-RUN ( -- )      [: ROOT-BODY ;] DECLARATION-TRANSACTION:RUN ;
+: LEAN-RUN ( -- )      [: LEAN-BODY ;] DECLARATION-TRANSACTION:RUN ;
+: WIDE-RUN ( -- )      [: WIDE-BODY ;] DECLARATION-TRANSACTION:RUN ;
+: FSHORT-RUN ( -- )    [: FSHORT-BODY ;] DECLARATION-TRANSACTION:RUN ;
+: FLONG-RUN ( -- )     [: FLONG-BODY ;] DECLARATION-TRANSACTION:RUN ;
+: HUGE-RUN ( -- )      [: HUGE-BODY ;] DECLARATION-TRANSACTION:RUN ;
 
 \ --- the live declaration, driven straight through the shared event
 \ transaction exactly as the ENUM front end drives it, then rolled back.
@@ -1120,29 +1120,28 @@ public
 \ hostile providers borrow.
 : DECLARE ( -- )
    [: s" zps" s" VARIANT sone n n ;VARIANT VARIANT stwo n ;VARIANT" SUM-DECL ;]
-      GENERATED-DECL:RUN
+      DECLARATION-TRANSACTION:RUN
    LAST-FAM SWAP-FAM !
    SWAP-FAM @ VAR-START {: base:n :}
    base SWAP-A !   base 1 + SWAP-B !
-   [: s" zph" s" VARIANT hone n ;VARIANT" SUM-DECL ;] GENERATED-DECL:RUN
+   [: s" zph" s" VARIANT hone n ;VARIANT" SUM-DECL ;] DECLARATION-TRANSACTION:RUN
    LAST-FAM HOSTILE-FAM !
    \ a PRODUCT never reads a payload cell width, so only the count capability's
    \ own check stands between a negative count and malformed derived text.
-   [: s" zpp" s" DERIVE eq FIELD ppx n FIELD ppy n" PROD-DECL ;]
-      GENERATED-DECL:RUN
+   s" zpp" s" DERIVE eq FIELD ppx n FIELD ppy n" PROD-DECL
    LAST-FAM PROD-FAM !
    \ a one-element, two-cell payload: its single root is a family application
    \ whose family is itself a tag plus one slot. WIDE-PROV lends it to the
    \ one-slot family, so the count bound passes and only the width bound stands.
-   [: s" zpu" s" VARIANT uone n ;VARIANT" SUM-DECL ;] GENERATED-DECL:RUN
-   [: s" zpw" s" VARIANT wone zpu ;VARIANT" SUM-DECL ;] GENERATED-DECL:RUN
+   [: s" zpu" s" VARIANT uone n ;VARIANT" SUM-DECL ;] DECLARATION-TRANSACTION:RUN
+   [: s" zpw" s" VARIANT wone zpu ;VARIANT" SUM-DECL ;] DECLARATION-TRANSACTION:RUN
    LAST-FAM VAR-START DONOR !
    \ two more ungenerated families for the call-count flip probes.
    [: s" zpfs" s" DERIVE eq VARIANT fsone n n ;VARIANT VARIANT fstwo n ;VARIANT" SUM-DECL ;]
-      GENERATED-DECL:RUN
+      DECLARATION-TRANSACTION:RUN
    LAST-FAM FSHORT-FAM !
    [: s" zpfl" s" DERIVE eq VARIANT flone n n ;VARIANT VARIANT fltwo n ;VARIANT" SUM-DECL ;]
-      GENERATED-DECL:RUN
+      DECLARATION-TRANSACTION:RUN
    LAST-FAM FLONG-FAM ! ;
 : SWAP-FAMILY ( -- n ) SWAP-FAM @ ;
 : HOSTILE-FAMILY ( -- n ) HOSTILE-FAM @ ;

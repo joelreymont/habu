@@ -79,8 +79,8 @@ public
 variable BASE
 \ Declaration-event and transaction-depth watermarks. TDT-BASE!/TDT-BASE= record
 \ only the registry high-waters, which cannot observe a rejected declaration that
-\ published an event or left an event/field frame open — the leak the nested
-\ declaration coordinator exists to prevent. SAVE/SAME bracket a negative to
+\ published an event or left an event/field frame open — the leak the
+\ declaration runner's rollback exists to prevent. SAVE/SAME bracket a negative to
 \ cover that.
 variable EV     variable EVD    variable PFD
 : SAVE ( -- )
@@ -1987,7 +1987,7 @@ s" PRODUCT tdhb4 DERIVE hash FIELD cc tdrw ;PRODUCT" E-TDECL-DERIVE TDT-NEG
 \ Unified named-field ENUM metadata drives the same derivation validator and
 \ semantic generators. This used to need a focused whitebox that called
 \ TDECL-DERIVE-REQUIRE, TDECL-CTOR-PUBLISH, and the derived-word publisher by
-\ hand, because the ENUM front end published nothing. The ORDER 820 constructor
+\ hand, because the ENUM front end published nothing. The constructor
 \ participant now does all three on the real declaration path — it commits after
 \ DECL-EVENT has promoted these FIELD rows past PF-COMMIT-N, which is exactly the
 \ committed view TDECL-DERIVE-REQUIRE reads — so the declaration below is the

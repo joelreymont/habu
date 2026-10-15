@@ -45,8 +45,8 @@ public
 
 \ The child's libraries stand on pre-seal sources the participants stop short
 \ of. They load here in src/habu/native-runtime.f's order, before the seal, as
-\ on the product. The last declaration source seals registration: until it
-\ loads, src/lib/string.f's ENUM is refused with E-REGISTRATION-SEALED.
+\ on the product. The last declaration source installs the declaration runner:
+\ until it loads, src/lib/string.f's ENUM dies on the unset TYPE-DECL:TDECL-TXN-XT.
 require src/habu/xref.f
 require src/core/generated-declaration-dictionary.f
 require src/core/generated-declaration-protection.f

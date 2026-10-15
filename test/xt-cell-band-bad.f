@@ -7,12 +7,9 @@
 \ the eight bytes there. A cell outside DATA therefore names eight bytes of
 \ something else entirely in all three.
 \
-\ Nothing in the tree should ever offer such a cell now that the declaration
-\ coordinator's table cannot move out of the DP heap, so the fixture has to build
-\ one deliberately: a fresh anonymous mmap page, which the kernel places nowhere
-\ near DATA (measured about 4.6e12 bytes below data-base on macos-arm64). That is
-\ exactly the storage the deleted growth path handed to `xt!`, so this is the real
-\ shape of the old defect and not a synthetic stand-in.
+\ Nothing in the tree offers such a cell, so the fixture builds one deliberately:
+\ a fresh anonymous mmap page, which the kernel places nowhere near DATA
+\ (measured about 4.6e12 bytes below data-base on macos-arm64).
 \
 \ The refusal is a process exit rather than a throw because the declarer is engine
 \ machine code beneath the catch machinery, and because a half-declared address

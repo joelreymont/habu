@@ -16,9 +16,10 @@
 \ or the field record's own name-gate code, and the whole provisional
 \ declaration rolls back to a byte-identical registry.
 \
-\ GENERATED-DECL owns the declaration savepoint. The checker, metadata, event,
-\ and constructor-protection participants keep their snapshots live until the
-\ complete declaration body has validated and every reversible commit succeeds.
+\ DECLARATION-TRANSACTION:RUN owns the declaration savepoint. The checker,
+\ metadata, event, and constructor-protection participants keep their snapshots
+\ live until the complete declaration body has validated and every reversible
+\ commit succeeds.
 \ A reject therefore retires the family, schema, layout, field, event, generated
 \ dictionary, and staged protection state together.
 \
@@ -44,7 +45,7 @@
 \ §10.4): the only construction surface another package gets is what the
 \ declaring package defines over the pair.
 \ Generation remains inside the shared transaction. If evaluation or checker
-\ certification rejects either constructor, the coordinator restores every
+\ certification rejects either constructor, the runner restores every
 \ participant before the error returns to the caller.
 \
 \ Loaded AFTER the checker hook, AFTER decl-event.f (it drives DECL-EVENT:*), and
@@ -531,7 +532,7 @@ SD-QUOT-INSTALL
    NFLD @ 0 > ;
 \ `DERIVE addr` names the family whose address surface this transaction owns; the
 \ words themselves are generated one phase later, at commit, because an accessor
-\ is armed with a COMMITTED field id (src/core/structure-make.f, ORDER 830). A
+\ is armed with a COMMITTED field id (src/core/structure-make.f). A
 \ fieldless structure is an opaque one-cell family with nothing to address, and
 \ the fields are what give it the MAKE/UNMAKE pair whose constructor package an
 \ accessor's public spelling is built from.
@@ -590,7 +591,7 @@ SD-QUOT-INSTALL
 \ layout + event stream back to a byte-identical registry on any reject.
 : SD-BODY ( -- )
    SD-MISS-CLEAR
-   [: SD-RESET DRIVE ;] GENERATED-DECL:RUN ;
+   [: SD-RESET DRIVE ;] TYPE-DECL:TDECL-TXN-XT ;
 
 \ Resynchronize the input to the end of THIS declaration. Same contract, same
 \ reasoning and same two exemptions as enum-decl.f's ED-RESYNC: it matters only
@@ -613,7 +614,7 @@ SD-QUOT-INSTALL
    SD-SKIP-BODY ;
 
 \ A reject is rendered through the shared declaration packet AFTER the
-\ coordinator has rolled everything back, then rethrown with its exact code,
+\ runner has rolled everything back, then rethrown with its exact code,
 \ which is the same order the legacy definers use (sumtype.f TDECL-RUN:
 \ restore, report, rethrow). Both drivers below share this one guarded body, so
 \ a replayed declaration reports through exactly the same renderer.

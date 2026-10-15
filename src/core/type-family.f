@@ -2397,7 +2397,7 @@ variable PF-TX-SERIAL   0 PF-TX-SERIAL !   REG-PROTECT
 defer TDECL-FIELD-CLEANUP-XT ( n -- )
 
 \ Total release seam, same shape and lifetime as the cleanup vector above. The
-\ coordinator's release phase runs after every reversible commit succeeded, so
+\ runner's release step runs after every reversible commit succeeded, so
 \ the declaration-event participant must discard its field frame without being
 \ able to reject: PREPARE already proved the frame is the live committed top.
 \ RELEASE below is that discard and nothing else. It stays private to this owner

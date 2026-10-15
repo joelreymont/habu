@@ -195,11 +195,11 @@ public
 
 variable TDECL-FAM-REG   REG-PROTECT   \ family id registered by the LAST successful sum (-1 = none)
 
-\ PF-N / PF-COMMIT-N are NOT snapshot here. PRODUCT records fields through the
-\ nested declaration coordinator, whose event participant owns the field frame
-\ through PREPARE, reversible COMMIT, FINALIZE, or ROLLBACK. The checker-scope
-\ frame independently owns the enclosing family/schema/layout marks. Thus either
-\ participant can reject and the coordinator restores the complete declaration;
+\ PF-N / PF-COMMIT-N are NOT snapshot here. PRODUCT records fields inside the
+\ one declaration transaction, whose event participant owns the field frame
+\ through PREPARE, COMMIT, RELEASE or ROLLBACK. The checker-scope frame
+\ independently owns the enclosing family/schema/layout marks. Thus either
+\ participant can reject and the transaction restores the complete declaration;
 \ SUMTYPE/ENUM/NEWTYPE never mutate PF directly.
 
 private
@@ -982,7 +982,6 @@ private
 
 variable TDP-N   \ product field count (schema roots)
 variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
-variable TDP-FAM
 variable TDP-EVT
 
 
@@ -1088,8 +1087,7 @@ private
    fam vstart 2 TFAM-VAR-RANGE!
    fam vstart 2 TDECL-CTOR-PUBLISH ;
 
-: TDECL-PRODUCT-TX-BODY ( -- )
-   TDP-FAM @ {: fam:n :}
+: TDECL-PRODUCT-RECORD ( n -- ) {: fam:n :}
    TDECL-EVENT-CURRENT-XT TDP-EVT !
    TDP-EVT @ fam TDECL-EVENT-DECL-XT TDP-EVT !
    TDP-EVT @ fam TDECL-FAM-ARITY @ TDECL-EVENT-ARITY-XT TDP-EVT !
@@ -1105,12 +1103,17 @@ private
    fam rstart TDECL-PRODUCT-ROWS
    fam fam TFAM-VAR-START@ 1 TDECL-DERIVE-REQUIRE ;
 
-: TDECL-PRODUCT-TX ( n -- ) {: fam:n :}
-   fam TDP-FAM !
+\ Both entries run the body inside the one declaration transaction: the field
+\ rows go through DECL-EVENT, which only an open transaction admits. TDECL-RUN
+\ stays outside it, so a reject it swallows under a multi-error load is already
+\ rolled back -- DECL-EVENT rows, field rows, constructors -- as DECL-REJECT:GUARD
+\ stands outside ED-BODY. Each entry names its transaction step as a word
+\ because hb-stage0 compiles this file and cannot nest quotations.
+: TDECL-PRODUCT-TXN ( [ -- ] -- )
    TDECL-EVENT-ARMED 0= TDECL-TXN-ARMED @ 0= or IF
       s" product: declaration event transaction not installed" 76 die
    THEN
-   [: TDECL-PRODUCT-TX-BODY ;] TDECL-TXN-XT ;
+   TDECL-TXN-XT ;
 
 : CHECKER-DEFPRODUCT-BODY ( -- )
    TDECL-REQUIRE-FIT
@@ -1121,8 +1124,10 @@ private
    fam TDECL-CUR-FAM !                    \ field self-references reject by id
    fam TDECL-POLICY                       \ optional POLICY clause before the fields
    fam TDECL-DERIVE                       \ optional DERIVE clause (derive S2)
-   fam TDECL-PRODUCT-TX
+   fam TDECL-PRODUCT-RECORD
    fam TDECL-FAM-REG ! ;
+
+: TDECL-DEFPRODUCT-TXN ( -- ) [: CHECKER-DEFPRODUCT-BODY ;] TDECL-PRODUCT-TXN ;
 
 
 public
@@ -1130,7 +1135,7 @@ public
 : TDECL-DEFPRODUCT ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
    {: na:ptr nu:n ba:ptr bu:n :}
    s" product" na nu ba bu TDECL-CTX!
-   [: CHECKER-DEFPRODUCT-BODY ;] TDECL-RUN ;
+   [: TDECL-DEFPRODUCT-TXN ;] TDECL-RUN ;
 
 
 private
@@ -2236,8 +2241,8 @@ public
 \ output type disagrees, so a generator that lies publishes nothing.
 \
 \ Generation runs at COMMIT, not while the body parses: a field id is the
-\ authority only once TYPE-FIELD has committed the row, and the declaration
-\ transaction's own order (event 800, this 830) is what makes that true.
+\ authority only once TYPE-FIELD has committed the row, and the runner's commit
+\ order (DECL-EVENT before the address surface) is what makes that true.
 
 private
 
@@ -2312,7 +2317,7 @@ variable TDAD-FAM                          \ the family under generation (read b
 \ Replay renders the same plan and takes only its FIRST reading: each row is
 \ armed and checked, so the accessor's effect is registered under its own name,
 \ and no row reaches TDECL-EVAL-XT, so no dictionary word is emitted. The arming
-\ is the live one — this participant commits after DECL-EVENT (800) has advanced
+\ is the live one — this participant commits after DECL-EVENT has advanced
 \ the committed field watermark, on the replay path exactly as on the live one,
 \ so the field ids the plan bakes are committed ids and the window reads them.
 : TDECL-ADDR-REPLAY-BODY ( -- )
@@ -2665,8 +2670,10 @@ public
 \ just registered through TDECL-FAM-REG, so that ambient read lives here, in the
 \ two adapters below, and nowhere beneath them. TDECL-CTOR-WORDS is also where the
 \ committed payload view is chosen: a definer that has already published its
-\ rows reads them back through TDECL-SUMV-PROVIDER. A refused declaration leaves
-\ -1 (the multi-error continue path in TDECL-RUN) and generates nothing.
+\ rows reads them back through TDECL-SUMV-PROVIDER. A SUMTYPE refused under a
+\ multi-error load leaves -1 (the continue path in TDECL-RUN) and generates
+\ nothing; PRODUCT generates inside the body TDECL-RUN guards, so a refused one
+\ never reaches generation.
 
 private
 
@@ -2679,6 +2686,12 @@ private
    TDECL-FAM-REG @ {: fam:n :}
    fam 0 < IF EXIT THEN
    fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-ARM-XT THEN ;
+
+\ A generation fault is the declaration's own: report it at the family name,
+\ not at the last field the body armed.
+: TDECL-PRODUCT-GENERATE ( -- )
+   TDN-A @ TDN-U @ TDECL-TOK!  s" declaration failed" TDECL-WHY!
+   TDECL-CTOR-WORDS TDECL-PRODUCT-INIT-ARM ;
 
 public
 
@@ -2767,21 +2780,19 @@ private
 : TDECL-PRODUCT-NOEND-BODY ( -- )
    TDN-A @ TDN-U @ s" missing ;PRODUCT" E-TDECL-SYNTAX TDECL-THROW ;
 
+: TDECL-PRODUCT-GEN-TXN ( -- )
+   [: CHECKER-DEFPRODUCT-BODY TDECL-PRODUCT-GENERATE ;] TDECL-PRODUCT-TXN ;
+
 
 public
 
 : TDECL-PRODUCT ( -- )
    parse-name {: na:ptr nu:n :}
    TDECL-CLEAR
-   PRODUCT-COLLECT 0= IF
-      s" product" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
-      [: TDECL-PRODUCT-NOEND-BODY ;] TDECL-RUN EXIT
-   THEN
-   na TDN-A !  nu TDN-U !
-   TDECL-TXN-ARMED @ 0= IF s" sumtype: declaration transaction not installed" 76 die THEN
-   [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ TDECL-DEFPRODUCT
-      TDECL-CTOR-WORDS TDECL-PRODUCT-INIT-ARM ;]
-      TDECL-TXN-XT ;
+   PRODUCT-COLLECT
+   s" product" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
+   0= IF [: TDECL-PRODUCT-NOEND-BODY ;] TDECL-RUN EXIT THEN
+   [: TDECL-PRODUCT-GEN-TXN ;] TDECL-RUN ;
 
 ;package
 

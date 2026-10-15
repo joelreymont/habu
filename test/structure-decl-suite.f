@@ -403,7 +403,7 @@ s\" \"token\":\"aq\\\"b\"" DECL-DIAG:HAS? -1 T=
 s\" \"family\":\"sdgquote\"" DECL-DIAG:HAS? -1 T=
 
 \ accepted declarations stay silent, and a rendered reject still leaves the
-\ registry byte-identical: rendering happens after the coordinator has rolled
+\ registry byte-identical: rendering happens after the runner has rolled
 \ back and touches no registry cursor.
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgok1 FIELD a n ;STRUCTURE" TRY 0 T=

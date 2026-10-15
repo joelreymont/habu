@@ -49,7 +49,7 @@
 \ every field row present in the current transaction, and MAKE/UNMAKE not
 \ already generated — and only then runs SM-EMIT-ROWS and the generator.
 \ Evaluation and checker certification may still reject while TDECL-PROD-WORDS
-\ generates the words; the enclosing GENERATED-DECL transaction retains every
+\ generates the words; the enclosing declaration transaction retains every
 \ registry and dictionary savepoint until that work succeeds, so either all
 \ metadata and both words publish or every participant rolls back.
 \
@@ -91,7 +91,7 @@ package STRUCTURE-MAKE
 \ adds the make(0)/unmake(1) variant rows over it at the family's product width,
 \ sets the variant range, and derives the constructor package.
 \ GENERATE has already validated its local preconditions; any evaluator or checker
-\ rejection propagates to GENERATED-DECL for full rollback.
+\ rejection propagates to DECLARATION-TRANSACTION:RUN for full rollback.
 variable SM-RSTART   variable SM-VSTART
 : SM-EMIT-ROWS ( n n n n -- )
    {: tok:n fam:n fs:n fc:n :}
@@ -160,46 +160,30 @@ public
 private
 
 \ ---------------------------------------------------------------------------
-\ The ADDRESS-SURFACE participant (ORDER 830), for `DERIVE addr`.
+\ The ADDRESS-SURFACE participant, for `DERIVE addr`.
 \
 \ MAKE / UNMAKE are generated from the still-provisional field schemas while the
 \ body parses, which is why GENERATE above reads them through DECL-EVENT. The
 \ accessors CANNOT be: each one is armed with a COMMITTED field id, and the
 \ checker's field-projection window reads that id through the committed
 \ reflection reader — a provisional id fails closed there, by design, because the
-\ id is the projection's whole authority. So this work runs one phase later, in
-\ the reversible commit phase, where the order does the arranging:
+\ id is the projection's whole authority. So this work runs one step later, in
+\ the reversible commit, where the runner's order does the arranging:
 \
-\   100 checker | 800 DECL-EVENT | 820 constructors | 830 here | 850 dictionary
+\   checker | DECL-EVENT | constructors | here | dictionary | protection
 \
 \ DECL-EVENT's commit has already advanced PF-COMMIT-N over this declaration's
 \ field rows by the time this participant commits, and the dictionary owner took
 \ its savepoint before the body ran, so a reject here truncates every accessor
 \ with the rest of the declaration and the registry stays byte-identical.
 \
-\ One armed family per nesting level, the slot shape GENERATED-DECL-CTOR uses.
+\ One armed family, in one cell: declarations never nest.
 \ ---------------------------------------------------------------------------
-6 constant SM-PARTICIPANT
 -1 constant SM-NO-FAMILY
-4 constant SM-ARM-CAP-INIT
+variable SM-ARMED   SM-NO-FAMILY SM-ARMED !
 
-create SM-ARM-BOOT SM-ARM-CAP-INIT cells allot
-PERSISTED-PTR-VARIABLE SM-ARM-P   SM-ARM-BOOT SM-ARM-P !
-variable SM-ARM-CAP   SM-ARM-CAP-INIT SM-ARM-CAP !
-
-: SM-ARM-BASE ( -- ptr n ) SM-ARM-P @ ;
-: SM-ARM-SLOT ( -- ptr n )
-   GENERATED-DECL:DEPTH 1 - cells SM-ARM-BASE + ;
-: SM-ARM-GROW1 ( -- )
-   SM-ARM-CAP @ 2 * {: nc:n :}
-   SM-ARM-P @ SM-ARM-CAP @ cells nc cells ARENA-BYTES-GROW SM-ARM-P !
-   nc SM-ARM-CAP ! ;
-: SM-ARM-ENSURE ( -- )
-   GENERATED-DECL:DEPTH SM-ARM-CAP @ <= IF EXIT THEN
-   SM-ARM-GROW1 ;
-
-: SM-ARMED-FAM ( -- n ) SM-ARM-SLOT @ ;
-: SM-DISARM ( -- ) SM-NO-FAMILY SM-ARM-SLOT ! ;
+: SM-ARMED-FAM ( -- n ) SM-ARMED @ ;
+: SM-DISARM ( -- ) SM-NO-FAMILY SM-ARMED ! ;
 
 \ THE GATE. A family owns an address surface when it is a live product that
 \ declared `DERIVE addr` and has at least one field. Visibility is not a
@@ -213,64 +197,47 @@ variable SM-ARM-CAP   SM-ARM-CAP-INIT SM-ARM-CAP !
 : SM-ADDR-REQUIRE ( n -- ) {: fam:n :}
    fam SM-ADDR-OK? 0= IF E-SM-FAM throw THEN ;
 
-: SM-PART-SNAPSHOT ( n -- n ) {: depth:n :}
-   SM-ARM-ENSURE
-   SM-DISARM
-   depth ;
+public
+
+: PART-SNAPSHOT ( -- ) SM-DISARM ;
 
 \ Non-mutating re-proof: the front end proved this gate when it armed, and if
 \ anything since made the family ineligible the declaration fails before a word
 \ is rendered rather than publishing a surface nobody validated.
-: SM-PART-PREPARE ( n -- n ) {: depth:n :}
+: PART-PREPARE ( -- )
    SM-ARMED-FAM {: fam:n :}
-   fam SM-NO-FAMILY <> IF fam SM-ADDR-REQUIRE THEN
-   depth ;
+   fam SM-NO-FAMILY <> IF fam SM-ADDR-REQUIRE THEN ;
 
 \ Replay registers the accessors' checked effects from the same plan and emits
-\ no code, the way the constructor participant (820) replays MAKE / UNMAKE — so
+\ no code, the way the constructor participant replays MAKE / UNMAKE — so
 \ a tool that pre-scans a source sees the record's own accessors.
-: SM-PART-COMMIT ( n -- n ) {: depth:n :}
+: PART-COMMIT ( -- )
    SM-ARMED-FAM {: fam:n :}
-   fam SM-NO-FAMILY = IF depth EXIT THEN
+   fam SM-NO-FAMILY = IF EXIT THEN
    fam SM-ADDR-REQUIRE
    DECL-REPLAY:RP-ACTIVE? IF
       fam TFAM-DERIVE-ADDR? IF fam TDECL-ADDR-REPLAY THEN
       fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-REPLAY THEN
-      depth EXIT
+      EXIT
    THEN
    fam TFAM-DERIVE-ADDR? IF fam TDECL-ADDR-WORDS THEN
-   fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-WORDS THEN
-   depth ;
+   fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-WORDS THEN ;
 
-: SM-PART-ROLLBACK ( n -- n ) {: depth:n :}
-   SM-DISARM
-   depth ;
+: PART-ROLLBACK ( -- ) SM-DISARM ;
 
-: SM-PART-RELEASE ( -- ) SM-DISARM ;
-
-: SM-INSTALL ( -- )
-   SM-PARTICIPANT GENERATED-DECL:ORDER-ADDRESS
-   [: SM-PART-SNAPSHOT ;]
-   [: SM-PART-PREPARE ;]
-   [: SM-PART-COMMIT ;]
-   [: SM-PART-ROLLBACK ;]
-   [: SM-PART-RELEASE ;]
-   GENERATED-DECL-OWNER:REGISTER ;
-
-public
+: PART-RELEASE ( -- ) SM-DISARM ;
 
 \ ARM ( fam -- ) : the declaration front end names the family whose address
 \ surface this transaction owns. Legal only inside an open declaration
 \ transaction and only for a family that passes the gate, so a caller cannot arm
-\ a family this participant refuses and discover it two phases later.
+\ a family this participant refuses and discover it two steps later.
 : ARM ( n -- ) {: fam:n :}
-   GENERATED-DECL:DEPTH 0 <= IF E-SM-FAM throw THEN
+   DECLARATION-TRANSACTION:ACTIVE? 0= IF E-SM-FAM throw THEN
    fam SM-ADDR-REQUIRE
-   fam SM-ARM-SLOT ! ;
+   fam SM-ARMED ! ;
 
 private
 
-SM-INSTALL
 : SM-INSTALL-INIT ( -- ) [: ARM ;] is TYPE-DECL:TDECL-INIT-ARM-XT ;
 SM-INSTALL-INIT
 

@@ -384,7 +384,7 @@ private
    LITERAL-SEGMENT:SURVIVED? TTRUE ;
 
 : DECL-BODY ( -- )
-   [: LITERAL-SEGMENT:OPEN 77 throw ;] GENERATED-DECL:RUN ;
+   [: LITERAL-SEGMENT:OPEN 77 throw ;] DECLARATION-TRANSACTION:RUN ;
 
 : DECL-SEGMENT-CASE ( -- )
    s" a segment opened in a rolled-back declaration outlives the rollback" T-LABEL

@@ -85,7 +85,7 @@ TYPE-FIELD:COUNT P-PF @ 1 + T=                         \ exactly one field commi
 TOK @ FP1 @ P-PF @ ' DECL-EVENT:FIELD-SCHEMA@ catch TC ! drop drop drop
 TC @ 7161 T=                                            \ consumed token cannot read the now-committed row
 ' DECL-EVENT:CURRENT catch TC !
-TC @ 7161 T=                                            \ CURRENT is coordinator-owned, never a lazy opener
+TC @ 7161 T=                                            \ CURRENT reads the runner's frame, never opens one
 
 \ ---------------------------------------------------------------------------
 \ 2. Rollback restores EVERY watermark. Inside a checker candidate, open a sum
@@ -227,7 +227,7 @@ TC @ 7161 T=
 TOK @ DECL-EVENT:ROLLBACK
 
 \ ---------------------------------------------------------------------------
-\ 11. Standalone PUBLISH runs the same contiguity preflight as the coordinator.
+\ 11. Standalone PUBLISH runs the same contiguity preflight as the runner's prepare.
 \     Inject one field row through this package's own field token without its
 \     matching event; PUBLISH rejects before either published high-water moves.
 \ ---------------------------------------------------------------------------
@@ -290,7 +290,7 @@ TEST-OWNER-BEFORE-DECL
 
 \ ---------------------------------------------------------------------------
 \ 13. Reversible publication closes the provisional payload view before the
-\     coordinator finalizes the frame.
+\     frame is finalized.
 \ ---------------------------------------------------------------------------
 E-PF-TX constant TEST-E-PF-TX
 
@@ -327,15 +327,16 @@ TEST-PUBLISHED-PAYLOAD-HIDDEN
 \ ---------------------------------------------------------------------------
 \ 14. A committed field-owner frame makes a nested generated declaration fail
 \     through the public lifecycle.  The rejected declaration changes neither
-\     participant's public state, and rollback retires the owner token.
+\     participant's public state, returns the checker frame it opened and
+\     closes the transaction, and rollback retires the owner token.
 \ ---------------------------------------------------------------------------
 variable HOLD-TOK     variable HOLD-NEXT
 variable HOLD-EVN     variable HOLD-ID
 variable HOLD-EDEPTH  variable HOLD-FLD
-variable HOLD-FDEPTH
+variable HOLD-FDEPTH  variable HOLD-CDEPTH
 
 : SNAP-BODY ( -- ) ;
-: SNAP-RUN ( -- ) [: SNAP-BODY ;] GENERATED-DECL:RUN ;
+: SNAP-RUN ( -- ) [: SNAP-BODY ;] DECLARATION-TRANSACTION:RUN ;
 : SNAP-CATCH ( -- n ) [: SNAP-RUN ;] catch ;
 
 : HOLD-SAVE ( -- )
@@ -343,14 +344,16 @@ variable HOLD-FDEPTH
    IDENTITY HOLD-ID !
    DEPTH HOLD-EDEPTH !
    TYPE-FIELD:COUNT HOLD-FLD !
-   TYPE-FIELD:TX-DEPTH HOLD-FDEPTH ! ;
+   TYPE-FIELD:TX-DEPTH HOLD-FDEPTH !
+   CHECKER-SCOPE-DEPTH HOLD-CDEPTH ! ;
 
 : HOLD-SAME ( -- )
    COUNT HOLD-EVN @ T=
    IDENTITY HOLD-ID @ T=
    DEPTH HOLD-EDEPTH @ T=
    TYPE-FIELD:COUNT HOLD-FLD @ T=
-   TYPE-FIELD:TX-DEPTH HOLD-FDEPTH @ T= ;
+   TYPE-FIELD:TX-DEPTH HOLD-FDEPTH @ T=
+   CHECKER-SCOPE-DEPTH HOLD-CDEPTH @ T= ;
 
 : HOLD-OWNER ( -- )
    OPEN HOLD-TOK !
@@ -367,6 +370,7 @@ variable HOLD-FDEPTH
    HOLD-SAVE
    SNAP-CATCH TC !
    TC @ TEST-E-PF-TX T=
+   DECLARATION-TRANSACTION:ACTIVE? 0= T-TRUE
    HOLD-SAME
    HOLD-TOK @ ROLLBACK
    DEPTH 0 T=
@@ -883,7 +887,7 @@ HF-SAME
 HF-CLOSE
 
 \ ---------------------------------------------------------------------------
-\ 19. The coordinator participant drives the exact tokens it opened, and its
+\ 19. The DECL-EVENT participant drives the exact tokens it opened, and its
 \     cleanup retires every frame a declaration body left open above them.
 \
 \     Before this, the participant read the LIVE TOP frame at every phase. A body
@@ -891,19 +895,19 @@ HF-CLOSE
 \     prepared, published and released in place of the participant's own, whose
 \     event and field frames both survived the transaction. The checker
 \     participant finalizes last, found a field-transaction depth that no longer
-\     matched its savepoint, and threw E-PF-TX out of cleanup — which poisons the
-\     single production coordinator for the whole process, so every later
-\     declaration failed with E-TRANSACTION-POISONED.
+\     matched its savepoint, and threw E-PF-TX out of cleanup — which left the
+\     process unable to complete another declaration. A cleanup that cannot
+\     complete now fails closed: the runner dies.
 \
 \     One deliberate behaviour change comes with this. A hostile or confused body
 \     that retires the participant's OWN frame (it can: DECL-EVENT is reopenable,
 \     the pre-existing posture) used to leave the participant reading whatever
 \     frame was on top and silently no-op. It now fails closed: the saved token
 \     no longer names a live frame, cleanup rejects before touching anything, and
-\     the coordinator poisons. That is the correct trade — once the frame the
+\     the runner fails closed. That is the correct trade — once the frame the
 \     participant opened is gone, its watermarks are unrecoverable, so there is
-\     nothing left to restore and pretending otherwise is what corrupted the
-\     coordinator in the first place.
+\     nothing left to restore, and pretending otherwise left the process unable
+\     to complete another declaration.
 \
 \     These are measured failures, not hypotheticals. Each mutation below was
 \     applied to the production source, the engine was refreshed, and this suite
@@ -1055,47 +1059,43 @@ RT-RETIRE
 RT-RESTORED
 0 CHECK-CANDIDATE-DONE drop
 
-\ 19e. The production coordinator. A body that leaks one nested frame is now
-\      rejected in PREPARE, cleaned up in ROLLBACK, and leaves no poison; a body
-\      that leaks and then fails surfaces only its OWN error.
+\ 19e. The production runner. A body that leaks one nested frame is rejected
+\      before anything commits and cleaned up in ROLLBACK; a body that leaks and
+\      then fails surfaces only its OWN error.
 \
-\      The PHASE assertion is load-bearing, not decoration. DEV-COMMIT repeats
-\      the same token proof, so gutting DEV-PART-PREPARE to `( n -- n ) ;` still
-\      rejects the leak with the identical code, identical depths and no poison —
-\      only one phase later, after the checker participant has already reversibly
-\      committed. Asserting the code alone lets that mutant live; asserting the
-\      failing phase and participant kills it.
+\      Which step rejects the leak is not observable, and need not be.
+\      DEV-COMMIT repeats the same token proof, so a gutted DEV-PART-PREPARE
+\      would reject it one step later, in DECL-EVENT's commit. The runner runs
+\      every prepare before any commit and commits DECL-EVENT first, so either
+\      rejection reaches the same rollback with nothing committed.
 : RT-LEAK-BODY ( -- ) OPEN drop ;
-: RT-LEAK-RUN ( -- ) [: RT-LEAK-BODY ;] GENERATED-DECL:RUN ;
+: RT-LEAK-RUN ( -- ) [: RT-LEAK-BODY ;] DECLARATION-TRANSACTION:RUN ;
 : RT-LEAK-CATCH ( -- n ) [: RT-LEAK-RUN ;] catch ;
 
 : RT-LEAK-FAIL-BODY ( -- ) OPEN drop RT-BODY-CODE throw ;
-: RT-LEAK-FAIL-RUN ( -- ) [: RT-LEAK-FAIL-BODY ;] GENERATED-DECL:RUN ;
+: RT-LEAK-FAIL-RUN ( -- ) [: RT-LEAK-FAIL-BODY ;] DECLARATION-TRANSACTION:RUN ;
 : RT-LEAK-FAIL-CATCH ( -- n ) [: RT-LEAK-FAIL-RUN ;] catch ;
 
 : RT-HEALTHY ( -- )
-   GENERATED-DECL:POISONED? 0= T-TRUE
-   GENERATED-DECL:DEPTH 0 T=
+   DECLARATION-TRANSACTION:ACTIVE? 0= T-TRUE
    RT-RESTORED ;
 
 RT-MARK
 RT-LEAK-CATCH RT-RC !
 RT-RC @ E-DEV-TX T=
-GENERATED-DECL:LAST-FAILURE-PHASE GENERATED-DECL:PHASE-PREPARE T=
-GENERATED-DECL:LAST-FAILURE-PARTICIPANT DEV-PARTICIPANT T=
 RT-HEALTHY
 
 RT-LEAK-FAIL-CATCH RT-RC !
 RT-RC @ RT-BODY-CODE T=
 RT-HEALTHY
 
-\ 19f. And the next declaration through the same coordinator still publishes:
+\ 19f. And the next declaration through the same runner still publishes:
 \      the participant's own frame is the one prepared, committed and released.
 : RT-GOOD-BODY ( -- )
    CURRENT {: tok:n :}
    tok FR9 @ DECL {: dtok:n :}
    dtok FR9 @ s" rt-after" SCHROOT @ 0 1 0 CELL CELL 0 FIELD drop ;
-: RT-GOOD-RUN ( -- ) [: RT-GOOD-BODY ;] GENERATED-DECL:RUN ;
+: RT-GOOD-RUN ( -- ) [: RT-GOOD-BODY ;] DECLARATION-TRANSACTION:RUN ;
 : RT-GOOD-CATCH ( -- n ) [: RT-GOOD-RUN ;] catch ;
 
 COUNT RT-EV0 !
@@ -1105,7 +1105,6 @@ COUNT RT-EV0 @ 2 + T=
 TYPE-FIELD:COUNT RT-PF0 @ 1 + T=
 DEPTH 0 T=
 TYPE-FIELD:TX-DEPTH 0 T=
-GENERATED-DECL:POISONED? 0= T-TRUE
 
 ;package
 

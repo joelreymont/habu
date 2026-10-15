@@ -9,9 +9,10 @@
 \ row. The sealed product refuses such a reopen, so a child that loads this
 \ file runs on the unsealed engine test/whitebox-child.f names.
 
-\ The last declaration participant seals registration. src/lib/ffi-abi.f requires
-\ src/lib/adt/option.f, whose ENUM is refused with E-REGISTRATION-SEALED until it
-\ is, so both participants load before any library.
+\ The last declaration participant installs the declaration runner.
+\ src/lib/ffi-abi.f requires src/lib/adt/option.f, whose ENUM dies on the unset
+\ TYPE-DECL:TDECL-TXN-XT until it is, so both participants load before any
+\ library.
 require src/core/prefix-boundary.f
 include src/core/generated-declaration-dictionary.f
 include src/core/generated-declaration-protection.f

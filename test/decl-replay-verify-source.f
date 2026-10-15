@@ -403,11 +403,12 @@ DECL-DIAG:HAS? -1 VSPARITY:T=
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
-\ 6. `DERIVE addr`. The accessors are minted by the SIXTH participant (830,
-\    src/core/structure-make.f) in the commit phase, one phase after the
-\    make/unmake set, so before this arm a replayed record had constructors and
-\    no accessors — and a source that read its own fields through them failed
-\    the pre-scan at the accessor's name while loading fine on the live path.
+\ 6. `DERIVE addr`. The accessors are minted by the address participant
+\    (src/core/structure-make.f) in the commit step, after the body has
+\    already generated the make/unmake set, so before this arm a replayed
+\    record had constructors and no accessors — and a source that read its
+\    own fields through them failed the pre-scan at the accessor's name while
+\    loading fine on the live path.
 \
 \    The replay renders the SAME plan the live path evaluates and stops after
 \    its first reading: each row is armed and checked, so the accessor's effect

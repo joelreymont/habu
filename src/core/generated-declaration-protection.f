@@ -1,11 +1,13 @@
-\ generated-declaration-protection.f - atomic constructor protection owner.
+\ generated-declaration-protection.f - atomic constructor protection owner, and
+\ the declaration runner.
 \
 \ Generated declarations stage constructor wordlists here.  PREPARE proves the
-\ irreversible engine registry has capacity, and this last ordered participant
-\ publishes only after every reversible owner committed.  Nested declarations
-\ retain their staged rows for the outer transaction.  Once this last owner is
-\ installed, the source-level registration and provisional-schema seams are
-\ retired; their already-compiled callers retain the only live capabilities.
+\ irreversible engine registry has capacity, and this owner publishes last,
+\ after every reversible owner committed.  This is the last participant to load,
+\ so the runner, DECLARATION-TRANSACTION:RUN, is defined below it; once it is
+\ installed, every participant step word and the field owner's cleanup and
+\ release seams are retired, and the compiled runner retains the only live
+\ capabilities.
 
 package GENERATED-DECL-PROTECTION
 
@@ -25,12 +27,10 @@ $0FFFFFFFFFFFFFFF constant CELL-CAP-MAX
 private
 
 create STAGE-BOOT CAP-INIT cells allot
-create BASE-BOOT CAP-INIT cells allot
 PERSISTED-PTR-VARIABLE STAGE-P   STAGE-BOOT STAGE-P !
-PERSISTED-PTR-VARIABLE BASE-P    BASE-BOOT BASE-P !
 variable STAGE-N
 variable STAGE-CAP
-variable BASE-CAP
+variable BASE         \ STAGE-N when the declaration took its savepoint
 
 : CELL@ ( ptr a n -- a ) {: base:ptr idx:n :}
    base idx cells + @ ;
@@ -54,21 +54,6 @@ variable BASE-CAP
    STAGE-P STAGE-CAP @ cap GROW
    cap STAGE-CAP ! ;
 
-: BASE-ENSURE ( -- )
-   GENERATED-DECL:DEPTH BASE-CAP @ <= IF EXIT THEN
-   GENERATED-DECL:DEPTH BASE-CAP @ GROW-CAP {: cap:n :}
-   BASE-P BASE-CAP @ cap GROW
-   cap BASE-CAP ! ;
-
-: BASE-SLOT ( -- n )
-   GENERATED-DECL:DEPTH 1 - ;
-
-: BASE@ ( -- n )
-   BASE-P @ BASE-SLOT CELL@ ;
-
-: BASE! ( n -- )
-   BASE-P @ BASE-SLOT CELL! ;
-
 : STAGE@ ( n -- n )
    STAGE-P @ swap CELL@ ;
 
@@ -78,7 +63,7 @@ variable BASE-CAP
    STAGE-N @ 1 + STAGE-N ! ;
 
 : SCRUB-TO-BASE ( -- )
-   BASE@ {: keep:n :}
+   BASE @ {: keep:n :}
    keep
    BEGIN dup STAGE-N @ < WHILE
       0 STAGE-P @ over CELL!
@@ -87,16 +72,16 @@ variable BASE-CAP
    drop
    keep STAGE-N ! ;
 
-: SNAPSHOT ( n -- n )
-   BASE-ENSURE
-   STAGE-N @ BASE! ;
+public
 
-: PREPARE ( n -- n )
-   STAGE-N @ BASE@ - prot-wid-room > IF E-PROTECTION-CAP throw THEN ;
+: SNAPSHOT ( -- )
+   STAGE-N @ BASE ! ;
 
-: PUBLISH ( n -- n )
-   GENERATED-DECL:DEPTH 1 <> IF EXIT THEN
-   BASE@
+: PREPARE ( -- )
+   STAGE-N @ BASE @ - prot-wid-room > IF E-PROTECTION-CAP throw THEN ;
+
+: PUBLISH ( -- )
+   BASE @
    BEGIN dup STAGE-N @ < WHILE
       dup STAGE@ prot-wid-add
       1 +
@@ -104,12 +89,10 @@ variable BASE-CAP
    drop
    SCRUB-TO-BASE ;
 
-: ROLLBACK ( n -- n )
+: ROLLBACK ( -- )
    SCRUB-TO-BASE ;
 
-\ Nothing to discard: PUBLISH already scrubbed the staged rows back to this
-\ depth's base, and the base cell itself is rewritten by the next SNAPSHOT here.
-: RELEASE ( -- ) ;
+private
 
 : STAGE-WORDLIST ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TFAM-CTOR-WORD? 0= IF s" xref: protected-WID constructor mismatch" 76 die THEN
@@ -137,37 +120,24 @@ variable BASE-CAP
    words 0 > prot-wid-room 0= and IF E-PROTECTION-CAP throw THEN
    STAGE-ENSURE ;
 
-\ The generated-declaration participants' image-snapshot reset, in descending
-\ participant order: protection (this file), then dictionary, then the event
-\ transaction. This word is the chain's anchor because this file is the last
-\ participant to load and therefore the one that owns TDECL-OWNER-SNAPSHOT-XT,
-\ the hook CHECKER-CAPTURE-PREPARE reaches all of them through; an earlier
-\ participant cannot name a later one, so the tail is a call and not a hook.
-\ Each link drops its own grown, process-local buffers back to their baked boot
-\ stores - a persisted host address is a wild pointer in the process that
-\ restores the image.
+\ The generated-declaration participants' image-snapshot reset: protection
+\ (this file), then dictionary, then the event transaction. This word is the
+\ chain's anchor because this file is the last participant to load and therefore
+\ the one that owns TDECL-OWNER-SNAPSHOT-XT, the hook CHECKER-CAPTURE-PREPARE
+\ reaches all of them through; an earlier participant cannot name a later one,
+\ so the tail is a call and not a hook. Each link drops its own grown,
+\ process-local buffers back to their baked boot stores - a persisted host
+\ address is a wild pointer in the process that restores the image.
 : SNAPSHOT-RESET ( -- )
-   GENERATED-DECL:DEPTH 0 <> STAGE-N @ 0 <> or IF E-PROTECTION-CAP throw THEN
+   DECLARATION-TRANSACTION:ACTIVE? STAGE-N @ 0 <> or IF E-PROTECTION-CAP throw THEN
    STAGE-BOOT STAGE-P !
-   BASE-BOOT BASE-P !
    CAP-INIT STAGE-CAP !
-   CAP-INIT BASE-CAP !
    GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET
    DECL-EVENT:SNAPSHOT-RESET ;
-
-3 constant PARTICIPANT
 
 : INSTALL ( -- )
    0 STAGE-N !
    CAP-INIT STAGE-CAP !
-   CAP-INIT BASE-CAP !
-   PARTICIPANT GENERATED-DECL:ORDER-PROTECTION
-   [: SNAPSHOT ;]
-   [: PREPARE ;]
-   [: PUBLISH ;]
-   [: ROLLBACK ;]
-   [: RELEASE ;]
-   GENERATED-DECL-OWNER:REGISTER-LAST
    [: STAGE-WORDLIST ;] is TYPE-DECL:TDECL-PROT-WID-XT
    [: PLAN-PREFLIGHT ;] is TYPE-DECL:TDECL-CAPACITY-PREFLIGHT-XT
    [: SNAPSHOT-RESET ;] is TYPE-DECL:TDECL-OWNER-SNAPSHOT-XT ;
@@ -180,23 +150,123 @@ private
 
 INSTALL
 
-undefine CHECKER-DECL-FRAME:INSTALL
-undefine GENERATED-DECL-OWNER:REGISTER
-undefine GENERATED-DECL-OWNER:REGISTER-LAST
-undefine GENERATED-DECL-OWNER:RUN
-undefine GENERATED-DECL-OWNER:COUNT
-undefine GENERATED-DECL-OWNER:DEPTH
-undefine GENERATED-DECL-OWNER:SEALED?
-undefine GENERATED-DECL-OWNER:POISONED?
-undefine GENERATED-DECL-OWNER:LAST-FAILURE-PHASE
-undefine GENERATED-DECL-OWNER:LAST-FAILURE-PARTICIPANT
-undefine GENERATED-DECL-OWNER:LAST-CLEANUP-PARTICIPANT
-undefine GENERATED-DECL-DICTIONARY:PREFLIGHT
-undefine GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET
-
 get-current prot-wid-add
 
 ;package
+
+package DECLARATION-TRANSACTION
+
+\ Savepoints in participant order: checker frame, DECL-EVENT, constructors,
+\ address surface, dictionary, protection. DECL-EVENT's can refuse (DEV-OPEN ->
+\ TYPE-FIELD-OWNER:OPEN TX-PARENT-REQUIRE throws E-PF-TX, decl-event-suite §14);
+\ the checker frame is the only savepoint taken before it. The four after it
+\ store cells and cannot fail.
+: SAVEPOINTS ( -- )
+   CHECKER-DECL-FRAME:PART-SNAPSHOT
+   [: DECL-EVENT:PART-SNAPSHOT ;] catch {: rc:n :}
+   rc 0 <> IF CHECKER-DECL-FRAME:PART-ROLLBACK rc throw THEN
+   GENERATED-DECL-CTOR:PART-SNAPSHOT
+   STRUCTURE-MAKE:PART-SNAPSHOT
+   GENERATED-DECL-DICTIONARY:SNAPSHOT
+   GENERATED-DECL-PROTECTION:SNAPSHOT ;
+
+: PREPARES ( -- )
+   CHECKER-DECL-FRAME:PART-PREPARE
+   DECL-EVENT:PART-PREPARE
+   GENERATED-DECL-CTOR:PART-PREPARE
+   STRUCTURE-MAKE:PART-PREPARE
+   GENERATED-DECL-PROTECTION:PREPARE ;
+
+\ DECL-EVENT commits first: its commit advances PF-COMMIT-N over the
+\ declaration's field rows, which the constructor and address-surface commits
+\ read through the committed provider. Protection publishes last, after every
+\ reversible owner committed.
+: COMMITS ( -- )
+   DECL-EVENT:PART-COMMIT
+   GENERATED-DECL-CTOR:PART-COMMIT
+   STRUCTURE-MAKE:PART-COMMIT
+   GENERATED-DECL-PROTECTION:PUBLISH ;
+
+: ROLLBACKS ( -- )
+   GENERATED-DECL-PROTECTION:ROLLBACK
+   GENERATED-DECL-DICTIONARY:ROLLBACK
+   STRUCTURE-MAKE:PART-ROLLBACK
+   GENERATED-DECL-CTOR:PART-ROLLBACK
+   DECL-EVENT:PART-ROLLBACK
+   CHECKER-DECL-FRAME:PART-ROLLBACK ;
+
+: RELEASES ( -- )
+   STRUCTURE-MAKE:PART-RELEASE
+   GENERATED-DECL-CTOR:PART-RELEASE
+   DECL-EVENT:PART-RELEASE
+   CHECKER-DECL-FRAME:PART-RELEASE ;
+
+\ A rollback that cannot complete leaves a savepoint live with nothing left
+\ to restore it from: fail closed, as the checker frame already does
+\ (checker.f FRAME-MISMATCH), instead of poisoning.
+: FAIL ( n -- )
+   {: rc:n :}
+   [: ROLLBACKS ;] catch {: cleanup:n :}
+   cleanup 0 <> IF s" declaration rollback failed" 76 die THEN
+   CLOSE
+   rc throw ;
+
+public
+
+\ Run one declaration body as one transaction: every participant's savepoint,
+\ the body, every prepare, every commit, every release. A failure before the
+\ commits finish rolls every participant back in reverse order and rethrows the
+\ failure's own code. A declaration opened inside another is E-ACTIVE.
+: RUN ( [ -- ] -- )
+   {: body :}
+   OPEN
+   [: SAVEPOINTS ;] catch {: save-rc:n :}
+   save-rc 0 <> IF CLOSE save-rc throw THEN
+   body catch {: body-rc:n :}
+   body-rc 0 <> IF body-rc FAIL THEN
+   [: PREPARES COMMITS ;] catch {: publish-rc:n :}
+   publish-rc 0 <> IF publish-rc FAIL THEN
+   RELEASES
+   CLOSE ;
+
+private
+
+: INSTALL-RUNNER ( -- ) [: RUN ;] TYPE-DECL:TXN-INSTALL ;
+INSTALL-RUNNER
+
+;package
+
+\ The compiled runner holds the only live capability onto each participant step:
+\ retire their source-level names, and the one-shot seams above with them.
+\ `undefine` resolves an unqualified name in the CURRENT wordlist, so each is
+\ retired by its QUALIFIED name, outside any package block.
+undefine CHECKER-DECL-FRAME:PART-SNAPSHOT
+undefine CHECKER-DECL-FRAME:PART-PREPARE
+undefine CHECKER-DECL-FRAME:PART-ROLLBACK
+undefine CHECKER-DECL-FRAME:PART-RELEASE
+undefine DECL-EVENT:PART-SNAPSHOT
+undefine DECL-EVENT:PART-PREPARE
+undefine DECL-EVENT:PART-COMMIT
+undefine DECL-EVENT:PART-ROLLBACK
+undefine DECL-EVENT:PART-RELEASE
+undefine GENERATED-DECL-CTOR:PART-SNAPSHOT
+undefine GENERATED-DECL-CTOR:PART-PREPARE
+undefine GENERATED-DECL-CTOR:PART-COMMIT
+undefine GENERATED-DECL-CTOR:PART-ROLLBACK
+undefine GENERATED-DECL-CTOR:PART-RELEASE
+undefine STRUCTURE-MAKE:PART-SNAPSHOT
+undefine STRUCTURE-MAKE:PART-PREPARE
+undefine STRUCTURE-MAKE:PART-COMMIT
+undefine STRUCTURE-MAKE:PART-ROLLBACK
+undefine STRUCTURE-MAKE:PART-RELEASE
+undefine GENERATED-DECL-DICTIONARY:SNAPSHOT
+undefine GENERATED-DECL-DICTIONARY:ROLLBACK
+undefine GENERATED-DECL-DICTIONARY:PREFLIGHT
+undefine GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET
+undefine GENERATED-DECL-PROTECTION:SNAPSHOT
+undefine GENERATED-DECL-PROTECTION:PREPARE
+undefine GENERATED-DECL-PROTECTION:PUBLISH
+undefine GENERATED-DECL-PROTECTION:ROLLBACK
 
 \ The field owner's multi-frame cleanup vector and its total release vector are
 \ now bound into the compiled declaration-event participant, the only caller

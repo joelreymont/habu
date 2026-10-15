@@ -1,5 +1,12 @@
 \ generated-declaration-transaction-suite.f - atomic declaration publication.
 \ Run: bin/hb --load test/generated-declaration-transaction-suite.f
+\
+\ Every case drives DECLARATION-TRANSACTION:RUN through real declarations and
+\ real bodies, and fails it at one point: the body, the checker frame's prepare,
+\ the constructor participant's commit, the generated-word evaluator, or a
+\ declaration opened inside another, and once under a multi-error load that
+\ continues past the refusal. Each asserts that every participant rolled back
+\ to its savepoint.
 
 require src/lib/test.f
 require tools/prot-wid-probe.f
@@ -15,61 +22,10 @@ T-RESET
 package GENERATED-DECLARATION-TXN-TEST
 
 -7190 constant E-INJECT
--7191 constant E-CLEANUP
 -7192 constant E-BODY
--7193 constant E-DIAGNOSTIC
 70 constant E-GENERATED-REJECT
 7161 constant E-DEV-TX            \ src/core/decl-event.f's, private there
 7175 constant E-DICTIONARY-CAP    \ src/core/generated-declaration-dictionary.f's, private there
-
-101 constant PARTICIPANT-A
-102 constant PARTICIPANT-B
-103 constant PARTICIPANT-C
-104 constant PARTICIPANT-D
-105 constant PARTICIPANT-CORRUPT
-109 constant PARTICIPANT-LATE
-
-200 constant ORDER-A
-700 constant ORDER-B
-850 constant ORDER-C
-400 constant ORDER-D
-600 constant ORDER-LATE
-
-\ Five participants enroll below (A, B, C, D and LATE), and the table cannot grow,
-\ so the arena has to hold all five from the start. The capacity refusal gets its
-\ own deliberately small instance further down rather than being provoked here.
-5 constant TEST-CAP
-DECLARATION-TRANSACTION:ROW-CELLS cells constant TEST-ROW-BYTES
-DECLARATION-TRANSACTION:STATE-CELLS cells constant TEST-STATE-BYTES
-TEST-CAP TEST-ROW-BYTES * constant TEST-TABLE-BYTES
-
-\ The full-table instance: two rows, both filled, so the third registration meets
-\ the closed world's edge for real instead of through a forged count.
-2 constant FULL-CAP
-FULL-CAP TEST-ROW-BYTES * constant FULL-TABLE-BYTES
-
-DECLARATION-TRANSACTION:ROW-CELLS cells constant CAP-TEST-ROW-BYTES
-DECLARATION-TRANSACTION:STATE-CELLS cells constant CAP-TEST-STATE-BYTES
-$7FFFFFFFFFFFFFFF CAP-TEST-ROW-BYTES / constant CAP-TEST-MAX-ROWS
-$5A5A5A5A5A5A5A5A constant CAP-TEST-STATE-SENTINEL
-111 constant CAP-TEST-ID
-300 constant CAP-TEST-ORDER
-
-create TEST-TABLE TEST-CAP DECLARATION-TRANSACTION:ROW-CELLS * cells allot
-create TEST-STATE DECLARATION-TRANSACTION:STATE-CELLS cells allot
-create TEST-TABLE-SAVE TEST-TABLE-BYTES allot
-create TEST-STATE-SAVE TEST-STATE-BYTES allot
-
-create FULL-TABLE FULL-CAP DECLARATION-TRANSACTION:ROW-CELLS * cells allot
-create FULL-STATE DECLARATION-TRANSACTION:STATE-CELLS cells allot
-create FULL-TABLE-SAVE FULL-TABLE-BYTES allot
-create FULL-STATE-SAVE TEST-STATE-BYTES allot
-
-create CAP-TEST-TABLE CAP-TEST-ROW-BYTES allot
-create CAP-TEST-TABLE-SAVE CAP-TEST-ROW-BYTES allot
-create CAP-TEST-REJECT-TABLE CAP-TEST-ROW-BYTES allot
-create CAP-TEST-STATE CAP-TEST-STATE-BYTES allot
-create CAP-TEST-STATE-SAVE CAP-TEST-STATE-BYTES allot
 
 PTR-VARIABLE SOURCE-A
 variable SOURCE-U
@@ -100,208 +56,19 @@ variable NATIVE-NDICT-N0
 variable NATIVE-CP-N0
 PTR-VARIABLE NATIVE-DP-N0
 
-variable SNAPSHOT-TRACE
-variable PREPARE-TRACE
-variable COMMIT-TRACE
-variable ROLLBACK-TRACE
-variable RELEASE-TRACE
-variable RELEASE-N
-variable TRACE-ON
-
-variable FAIL-PHASE
-variable FAIL-PARTICIPANT
-variable ROLLBACK-FAIL-PARTICIPANT
-variable SNAPSHOT-MUTATE-PARTICIPANT
-variable BODY-MUTATE
-variable BODY-REGISTER
-variable BODY-ERROR
-
-variable VALUE-A
-variable VALUE-B
-variable VALUE-C
-variable SAVED-A
-variable SAVED-B
-variable SAVED-C
-variable TRACK-VALUES
-
-variable CAP-TEST-N
-
-variable DIAGNOSTIC-COUNT
-variable DIAGNOSTIC-PRIMARY
-variable DIAGNOSTIC-CLEANUP
-variable DIAGNOSTIC-THROWS
-
-variable NESTING-LEFT
-variable NESTING-BODIES
-defer NESTED-XT ( -- )
-
-5 constant FIRST-GROWN-DEPTH
-variable GROW-NESTING-LEFT
-variable GROW-NESTING-BODIES
-variable GROW-MAX-DEPTH
-defer GROW-NESTED-XT ( -- )
-
 variable CHECKER-DEPTH-N0
 variable FIELD-DEPTH-N0
 variable EVENT-DEPTH-N0
 variable STAGED-N0
-variable INNER-EVENT-N
-variable INNER-FIELD-N
 variable OUTER-REF-SLOT
 variable OUTER-REF-OCC
 variable FAILED-REF-SLOT
 variable FAILED-REF-OCC
 variable WID-N0
 variable WID-N1
-PTR-VARIABLE TABLE-N0
-variable CAP-N0
 variable CAPACITY-PREFLIGHT-N
 variable AFTER-FAIL-FAM
 variable AFTER-FAIL-FIELD
-
-public
-
-defer CAP-COUNT! ( ptr n n -- )
-
-private
-
-;package
-
-package DECLARATION-TRANSACTION
-
-: CAP-TEST-COUNT! ( ptr n n -- )
-   swap ST.N ! ;
-
-: CAP-TEST-INSTALL ( -- )
-   [: CAP-TEST-COUNT! ;] is GENERATED-DECLARATION-TXN-TEST:CAP-COUNT! ;
-
-CAP-TEST-INSTALL
-
-;package
-
-package GENERATED-DECLARATION-TXN-TEST
-
-: CAP-TEST-DIAG ( n n -- ) 2drop ;
-: CAP-TEST-REJECT-DIAG ( n n -- ) 2drop ;
-: CAP-TEST-INERT ( n -- n ) ;
-: CAP-TEST-NO-RELEASE ( -- ) ;
-
-: CAP-TEST-FILL-CELLS ( n ptr n n -- )
-   {: value:n a:ptr count:n :}
-   count 0 ?do
-      value a i cells + !
-   loop ;
-
-: CAP-TEST-SAVE-STATE ( -- )
-   CAP-TEST-STATE BYTE-VIEW CAP-TEST-STATE-SAVE BYTE-VIEW
-      CAP-TEST-STATE-BYTES BYTE-COPY ;
-
-: CAP-TEST-SAVE-ALL ( -- )
-   CAP-TEST-SAVE-STATE
-   CAP-TEST-TABLE BYTE-VIEW CAP-TEST-TABLE-SAVE BYTE-VIEW
-      CAP-TEST-ROW-BYTES BYTE-COPY ;
-
-: CAP-TEST-STATE-SAME ( -- )
-   CAP-TEST-STATE BYTE-VIEW CAP-TEST-STATE-BYTES
-      CAP-TEST-STATE-SAVE BYTE-VIEW CAP-TEST-STATE-BYTES STR= TTRUE ;
-
-: CAP-TEST-ALL-SAME ( -- )
-   CAP-TEST-STATE-SAME
-   CAP-TEST-TABLE BYTE-VIEW CAP-TEST-ROW-BYTES
-      CAP-TEST-TABLE-SAVE BYTE-VIEW CAP-TEST-ROW-BYTES STR= TTRUE ;
-
-: CAP-TEST-INIT-RUN ( -- )
-   CAP-TEST-STATE CAP-TEST-TABLE CAP-TEST-N @
-   [: CAP-TEST-DIAG ;]
-   DECLARATION-TRANSACTION:INIT ;
-
-: CAP-TEST-REJECT-INIT-RUN ( -- )
-   CAP-TEST-STATE CAP-TEST-REJECT-TABLE CAP-TEST-N @
-   [: CAP-TEST-REJECT-DIAG ;]
-   DECLARATION-TRANSACTION:INIT ;
-
-: CAP-TEST-INIT-CATCH ( n -- n )
-   CAP-TEST-N !
-   [: CAP-TEST-INIT-RUN ;] catch ;
-
-: CAP-TEST-REJECT-INIT-CATCH ( n -- n )
-   CAP-TEST-N !
-   [: CAP-TEST-REJECT-INIT-RUN ;] catch ;
-
-: CAP-TEST-INIT ( -- )
-   CAP-TEST-MAX-ROWS CAP-TEST-INIT-CATCH 0 T= ;
-
-: CAP-TEST-REGISTER ( -- )
-   CAP-TEST-STATE CAP-TEST-ID CAP-TEST-ORDER
-   [: CAP-TEST-INERT ;] [: CAP-TEST-INERT ;] [: CAP-TEST-INERT ;]
-   [: CAP-TEST-INERT ;] [: CAP-TEST-NO-RELEASE ;]
-   DECLARATION-TRANSACTION:REGISTER ;
-
-: CAP-TEST-REGISTER-CATCH ( -- n )
-   [: CAP-TEST-REGISTER ;] catch ;
-
-: CAP-TEST-COUNT ( n -- )
-   CAP-TEST-STATE swap CAP-COUNT! ;
-
-: CAP-TEST-SEED-DUPLICATE ( -- )
-   CAP-TEST-REGISTER
-   CAP-TEST-STATE DECLARATION-TRANSACTION:COUNT 1 T= ;
-
-: CAP-TEST-INVALID-INIT ( -- )
-   CAP-TEST-STATE-SENTINEL CAP-TEST-STATE
-      DECLARATION-TRANSACTION:STATE-CELLS CAP-TEST-FILL-CELLS
-   CAP-TEST-SAVE-STATE
-   0 CAP-TEST-REJECT-INIT-CATCH
-      DECLARATION-TRANSACTION:E-PARTICIPANT-CAPACITY T=
-   CAP-TEST-STATE-SAME
-   -1 CAP-TEST-REJECT-INIT-CATCH
-      DECLARATION-TRANSACTION:E-PARTICIPANT-CAPACITY T=
-   CAP-TEST-STATE-SAME
-   CAP-TEST-MAX-ROWS 1 + CAP-TEST-REJECT-INIT-CATCH
-      DECLARATION-TRANSACTION:E-PARTICIPANT-CAPACITY T=
-   CAP-TEST-STATE-SAME ;
-
-: CAP-TEST-ACTIVE-BODY ( -- )
-   CAP-TEST-MAX-ROWS CAP-TEST-COUNT
-   CAP-TEST-SAVE-ALL
-   CAP-TEST-REGISTER-CATCH
-      DECLARATION-TRANSACTION:E-REGISTRATION-ACTIVE T=
-   CAP-TEST-ALL-SAME
-   1 CAP-TEST-COUNT ;
-
-: CAP-TEST-ACTIVE-PRECEDENCE ( -- )
-   CAP-TEST-INIT
-   CAP-TEST-SEED-DUPLICATE
-   CAP-TEST-STATE DECLARATION-TRANSACTION:SEAL
-   CAP-TEST-STATE [: CAP-TEST-ACTIVE-BODY ;]
-      DECLARATION-TRANSACTION:RUN
-   CAP-TEST-STATE DECLARATION-TRANSACTION:COUNT 1 T=
-   CAP-TEST-STATE DECLARATION-TRANSACTION:DEPTH 0 T= ;
-
-: CAP-TEST-SEALED-PRECEDENCE ( -- )
-   CAP-TEST-INIT
-   CAP-TEST-SEED-DUPLICATE
-   CAP-TEST-MAX-ROWS CAP-TEST-COUNT
-   CAP-TEST-STATE DECLARATION-TRANSACTION:SEAL
-   CAP-TEST-SAVE-ALL
-   CAP-TEST-REGISTER-CATCH
-      DECLARATION-TRANSACTION:E-REGISTRATION-SEALED T=
-   CAP-TEST-ALL-SAME ;
-
-: CAP-TEST-CAPACITY-PRECEDENCE ( -- )
-   CAP-TEST-INIT
-   CAP-TEST-SEED-DUPLICATE
-   CAP-TEST-MAX-ROWS CAP-TEST-COUNT
-   CAP-TEST-SAVE-ALL
-   CAP-TEST-REGISTER-CATCH
-      DECLARATION-TRANSACTION:E-PARTICIPANT-CAPACITY T=
-   CAP-TEST-ALL-SAME ;
-
-: CAP-TEST-RUN ( -- )
-   CAP-TEST-INVALID-INIT
-   CAP-TEST-ACTIVE-PRECEDENCE
-   CAP-TEST-SEALED-PRECEDENCE
-   CAP-TEST-CAPACITY-PRECEDENCE ;
 
 : BREAK-GENERATED-EFFECT ( ptr u8 n -- ) {: a:ptr u:n :}
    0 GENERATED-PLAN-BROKEN !
@@ -319,15 +86,16 @@ package GENERATED-DECLARATION-TXN-TEST
    s" GDTX:RED" XREF-FIND XREF-FOUND? 0= GENERATED-XREF-ABSENT !
    s" GDTX:RED" CHECKER-RESOLVES? 0= GENERATED-CHECKER-ABSENT !
    \ The declaration's own event rows ARE on the stream by the time generation
-   \ runs, and that is the point: commit runs in ascending participant order, so
-   \ DECL-EVENT (800) has already promoted this declaration's rows to the
-   \ committed watermark before the constructor participant (820) reads them
-   \ through the committed provider. The rows are reversible — ASSERT-UNCHANGED
-   \ below proves DECL-EVENT:COUNT is back at the baseline after the reject. This
-   \ used to read `= EVENT-N0` because the vehicle was sumtype.f's compact ENUM
-   \ definer, which wrote registry rows directly and emitted no events at all; the
-   \ global ENUM keyword is the unified front end now, so the honest observable at
-   \ this instant is that the events are staged, not that they are absent.
+   \ runs, and that is the point: the runner commits DECL-EVENT before the
+   \ constructor participant, so DECL-EVENT has already promoted this
+   \ declaration's rows to the committed watermark before the constructor commit
+   \ reads them through the committed provider. The rows are reversible —
+   \ ASSERT-UNCHANGED below proves DECL-EVENT:COUNT is back at the baseline after
+   \ the reject. This used to read `= EVENT-N0` because the vehicle was
+   \ sumtype.f's compact ENUM definer, which wrote registry rows directly and
+   \ emitted no events at all; the global ENUM keyword is the unified front end
+   \ now, so the honest observable at this instant is that the events are staged,
+   \ not that they are absent.
    DECL-EVENT:COUNT EVENT-N0 @ > GENERATED-EVENT-STAGED !
    PROT-WID-PROBE:COUNT PROTECTION-ROOM-N0 @ = GENERATED-PROTECTION-UNPUBLISHED !
    ndict@ NATIVE-NDICT-N0 @ =
@@ -438,13 +206,15 @@ package GENERATED-DECLARATION-TXN-TEST
    cp@ NATIVE-CP-N0 @ T=
    here NATIVE-DP-N0 @ = TTRUE ;
 
+: ASSERT-PRODUCTION-IDLE ( -- )
+   DECLARATION-TRANSACTION:ACTIVE? TFALSE ;
+
 : ASSERT-OWNER-DEPTHS ( -- )
    CHECKER-SCOPE-DEPTH CHECKER-DEPTH-N0 @ T=
    TYPE-FIELD:TX-DEPTH FIELD-DEPTH-N0 @ T=
    DECL-EVENT:DEPTH EVENT-DEPTH-N0 @ T=
    GENERATED-DECL-PROTECTION:STAGED-COUNT STAGED-N0 @ T=
-   GENERATED-DECL:DEPTH 0 T=
-   GENERATED-DECL:POISONED? 0= TTRUE ;
+   ASSERT-PRODUCTION-IDLE ;
 
 : ASSERT-UNCHANGED ( -- )
    TFAM-N@ FAMILY-N0 @ T=
@@ -457,622 +227,28 @@ package GENERATED-DECLARATION-TXN-TEST
    DECL-EVENT:COUNT EVENT-N0 @ T=
    PROT-WID-PROBE:COUNT PROTECTION-ROOM-N0 @ T= ;
 
-: APPEND-DIGIT ( n ptr n -- ) {: digit:n trace:ptr :}
-   TRACE-ON @ 0= IF EXIT THEN
-   trace @ 10 * digit + trace ! ;
-
-: RESET-TRACES ( -- )
-   0 SNAPSHOT-TRACE !
-   0 PREPARE-TRACE !
-   0 COMMIT-TRACE !
-   0 ROLLBACK-TRACE !
-   0 RELEASE-TRACE !
-   0 RELEASE-N ! ;
-
-: RESET-CONTROLS ( -- )
-   0 FAIL-PHASE !
-   0 FAIL-PARTICIPANT !
-   0 ROLLBACK-FAIL-PARTICIPANT !
-   0 SNAPSHOT-MUTATE-PARTICIPANT !
-   0 BODY-MUTATE !
-   0 BODY-REGISTER !
-   0 BODY-ERROR !
-   0 TRACK-VALUES !
-   0 TRACE-ON ! ;
-
-: MAYBE-MUTATE-SNAPSHOT ( ptr n n -- ) {: value:ptr participant:n :}
-   SNAPSHOT-MUTATE-PARTICIPANT @ participant = IF 1 value +! THEN ;
-
-: MAYBE-FAIL ( n n -- ) {: phase:n participant:n :}
-   FAIL-PHASE @ phase = FAIL-PARTICIPANT @ participant = and
-      IF E-INJECT throw THEN ;
-
-: MAYBE-FAIL-ROLLBACK ( n -- ) {: participant:n :}
-   ROLLBACK-FAIL-PARTICIPANT @ participant = IF E-CLEANUP throw THEN ;
-
-: SNAPSHOT-A ( n -- n ) {: depth:n :}
-   TRACK-VALUES @ IF VALUE-A @ SAVED-A ! THEN
-   1 SNAPSHOT-TRACE APPEND-DIGIT
-   VALUE-A PARTICIPANT-A MAYBE-MUTATE-SNAPSHOT
-   GENERATED-DECL:PHASE-SNAPSHOT PARTICIPANT-A MAYBE-FAIL
-   depth ;
-
-: PREPARE-A ( n -- n ) {: depth:n :}
-   1 PREPARE-TRACE APPEND-DIGIT
-   GENERATED-DECL:PHASE-PREPARE PARTICIPANT-A MAYBE-FAIL
-   depth ;
-
-: COMMIT-A ( n -- n ) {: depth:n :}
-   1 COMMIT-TRACE APPEND-DIGIT
-   GENERATED-DECL:PHASE-COMMIT PARTICIPANT-A MAYBE-FAIL
-   depth ;
-
-: ROLLBACK-A ( n -- n ) {: depth:n :}
-   TRACK-VALUES @ IF SAVED-A @ VALUE-A ! THEN
-   1 ROLLBACK-TRACE APPEND-DIGIT
-   PARTICIPANT-A MAYBE-FAIL-ROLLBACK
-   depth ;
-
-: RELEASE-A ( -- )
-   1 RELEASE-TRACE APPEND-DIGIT
-   RELEASE-N @ 1 + RELEASE-N ! ;
-
-: SNAPSHOT-B ( n -- n ) {: depth:n :}
-   TRACK-VALUES @ IF VALUE-B @ SAVED-B ! THEN
-   2 SNAPSHOT-TRACE APPEND-DIGIT
-   VALUE-B PARTICIPANT-B MAYBE-MUTATE-SNAPSHOT
-   GENERATED-DECL:PHASE-SNAPSHOT PARTICIPANT-B MAYBE-FAIL
-   depth ;
-
-: PREPARE-B ( n -- n ) {: depth:n :}
-   2 PREPARE-TRACE APPEND-DIGIT
-   GENERATED-DECL:PHASE-PREPARE PARTICIPANT-B MAYBE-FAIL
-   depth ;
-
-: COMMIT-B ( n -- n ) {: depth:n :}
-   2 COMMIT-TRACE APPEND-DIGIT
-   GENERATED-DECL:PHASE-COMMIT PARTICIPANT-B MAYBE-FAIL
-   depth ;
-
-: ROLLBACK-B ( n -- n ) {: depth:n :}
-   TRACK-VALUES @ IF SAVED-B @ VALUE-B ! THEN
-   2 ROLLBACK-TRACE APPEND-DIGIT
-   PARTICIPANT-B MAYBE-FAIL-ROLLBACK
-   depth ;
-
-: RELEASE-B ( -- )
-   2 RELEASE-TRACE APPEND-DIGIT
-   RELEASE-N @ 1 + RELEASE-N ! ;
-
-: SNAPSHOT-C ( n -- n ) {: depth:n :}
-   TRACK-VALUES @ IF VALUE-C @ SAVED-C ! THEN
-   3 SNAPSHOT-TRACE APPEND-DIGIT
-   VALUE-C PARTICIPANT-C MAYBE-MUTATE-SNAPSHOT
-   GENERATED-DECL:PHASE-SNAPSHOT PARTICIPANT-C MAYBE-FAIL
-   depth ;
-
-: PREPARE-C ( n -- n ) {: depth:n :}
-   3 PREPARE-TRACE APPEND-DIGIT
-   GENERATED-DECL:PHASE-PREPARE PARTICIPANT-C MAYBE-FAIL
-   depth ;
-
-: COMMIT-C ( n -- n ) {: depth:n :}
-   3 COMMIT-TRACE APPEND-DIGIT
-   GENERATED-DECL:PHASE-COMMIT PARTICIPANT-C MAYBE-FAIL
-   depth ;
-
-: ROLLBACK-C ( n -- n ) {: depth:n :}
-   TRACK-VALUES @ IF SAVED-C @ VALUE-C ! THEN
-   3 ROLLBACK-TRACE APPEND-DIGIT
-   PARTICIPANT-C MAYBE-FAIL-ROLLBACK
-   depth ;
-
-: RELEASE-C ( -- )
-   3 RELEASE-TRACE APPEND-DIGIT
-   RELEASE-N @ 1 + RELEASE-N ! ;
-
-: REGISTER-A ( -- )
-   TEST-STATE PARTICIPANT-A ORDER-A
-   [: SNAPSHOT-A ;] [: PREPARE-A ;] [: COMMIT-A ;]
-   [: ROLLBACK-A ;] [: RELEASE-A ;]
-   DECLARATION-TRANSACTION:REGISTER ;
-
-: REGISTER-B ( -- )
-   TEST-STATE PARTICIPANT-B ORDER-B
-   [: SNAPSHOT-B ;] [: PREPARE-B ;] [: COMMIT-B ;]
-   [: ROLLBACK-B ;] [: RELEASE-B ;]
-   DECLARATION-TRANSACTION:REGISTER ;
-
-: REGISTER-C ( -- )
-   TEST-STATE PARTICIPANT-C ORDER-C
-   [: SNAPSHOT-C ;] [: PREPARE-C ;] [: COMMIT-C ;]
-   [: ROLLBACK-C ;] [: RELEASE-C ;]
-   DECLARATION-TRANSACTION:REGISTER ;
-
-: INERT ( n -- n ) ;
-
-: NO-RELEASE ( -- ) ;
-
-: CORRUPT-SNAPSHOT ( n -- n ) 1 + ;
-
-: SNAPSHOT-D ( n -- n ) {: depth:n :}
-   4 SNAPSHOT-TRACE APPEND-DIGIT
-   depth ;
-
-: SNAPSHOT-LATE ( n -- n ) {: depth:n :}
-   5 SNAPSHOT-TRACE APPEND-DIGIT
-   depth ;
-
-: REGISTER-D ( -- )
-   TEST-STATE PARTICIPANT-D ORDER-D
-   [: SNAPSHOT-D ;] [: INERT ;] [: INERT ;] [: INERT ;] [: NO-RELEASE ;]
-   DECLARATION-TRANSACTION:REGISTER ;
-
-: REGISTER-LATE ( -- )
-   TEST-STATE PARTICIPANT-LATE ORDER-LATE
-   [: SNAPSHOT-LATE ;] [: INERT ;] [: INERT ;] [: INERT ;] [: NO-RELEASE ;]
-   DECLARATION-TRANSACTION:REGISTER ;
-
-: REGISTER-CORRUPT ( -- )
-   TEST-STATE PARTICIPANT-CORRUPT ORDER-A
-   [: CORRUPT-SNAPSHOT ;]
-   [: INERT ;] [: INERT ;] [: INERT ;] [: NO-RELEASE ;]
-   DECLARATION-TRANSACTION:REGISTER ;
-
-: SAVE-TEST-BYTES ( -- )
-   TEST-STATE BYTE-VIEW TEST-STATE-SAVE BYTE-VIEW TEST-STATE-BYTES BYTE-COPY
-   TEST-TABLE BYTE-VIEW TEST-TABLE-SAVE BYTE-VIEW TEST-TABLE-BYTES BYTE-COPY ;
-
-: ASSERT-TEST-BYTES ( -- )
-   TEST-STATE BYTE-VIEW TEST-STATE-BYTES
-      TEST-STATE-SAVE BYTE-VIEW TEST-STATE-BYTES STR= TTRUE
-   TEST-TABLE BYTE-VIEW TEST-TABLE-BYTES
-      TEST-TABLE-SAVE BYTE-VIEW TEST-TABLE-BYTES STR= TTRUE ;
-
-: REGISTER-A-CATCH ( -- n )
-   [: REGISTER-A ;] catch ;
-
-: REGISTER-B-CATCH ( -- n )
-   [: REGISTER-B ;] catch ;
-
-: REGISTER-LATE-CATCH ( -- n )
-   [: REGISTER-LATE ;] catch ;
-
-: RECORD-DIAGNOSTIC ( n n -- ) {: primary:n cleanup:n :}
-   primary DIAGNOSTIC-PRIMARY !
-   cleanup DIAGNOSTIC-CLEANUP !
-   DIAGNOSTIC-COUNT @ 1 + DIAGNOSTIC-COUNT !
-   DIAGNOSTIC-THROWS @ IF E-DIAGNOSTIC throw THEN ;
-
-: RESET-DIAGNOSTIC ( -- )
-   0 DIAGNOSTIC-COUNT !
-   0 DIAGNOSTIC-PRIMARY !
-   0 DIAGNOSTIC-CLEANUP !
-   0 DIAGNOSTIC-THROWS ! ;
-
-: INIT-TEST-COORDINATOR ( -- )
-   RESET-DIAGNOSTIC
-   TEST-STATE TEST-TABLE TEST-CAP
-   [: RECORD-DIAGNOSTIC ;]
-   DECLARATION-TRANSACTION:INIT ;
-
-: REGISTER-TEST-PARTICIPANTS ( -- )
-   REGISTER-A REGISTER-B REGISTER-C REGISTER-D REGISTER-LATE
-   TEST-STATE DECLARATION-TRANSACTION:SEAL ;
-
-: TRANSACTION-BODY ( -- )
-   BODY-MUTATE @ IF
-      10 VALUE-A +!
-      20 VALUE-B +!
-      30 VALUE-C +!
-   THEN
-   BODY-REGISTER @ IF REGISTER-D THEN
-   BODY-ERROR @ dup 0 <> IF throw THEN drop ;
-
-: RUN-BODY ( -- )
-   TEST-STATE [: TRANSACTION-BODY ;] DECLARATION-TRANSACTION:RUN ;
-
-: RUN-BODY-CATCH ( -- n )
-   [: RUN-BODY ;] catch ;
-
-: NESTED-BODY ( -- )
-   NESTING-BODIES @ 1 + NESTING-BODIES !
-   NESTING-LEFT @ 0 > IF
-      NESTING-LEFT @ 1 - NESTING-LEFT !
-      TEST-STATE [: NESTED-XT ;] DECLARATION-TRANSACTION:RUN
-   THEN ;
-
-: INSTALL-NESTED ( -- )
-   [: NESTED-BODY ;] is NESTED-XT ;
-INSTALL-NESTED
-
-: RUN-NESTED ( n -- )
-   NESTING-LEFT !
-   0 NESTING-BODIES !
-   TEST-STATE [: NESTED-BODY ;] DECLARATION-TRANSACTION:RUN ;
-
-: SET-VALUES ( n n n -- )
-   VALUE-C ! VALUE-B ! VALUE-A ! ;
-
-: ASSERT-VALUES ( n n n -- )
-   {: a:n b:n c:n :}
-   VALUE-A @ a T=
-   VALUE-B @ b T=
-   VALUE-C @ c T= ;
-
-: ASSERT-IDLE ( -- )
-   TEST-STATE DECLARATION-TRANSACTION:DEPTH 0 T= ;
-
-: ASSERT-PRODUCTION-IDLE ( -- )
-   GENERATED-DECL:DEPTH 0 T= ;
-
-\ ---- the closed world's edge, on a table that is genuinely full ---------------
-\ The precedence cases above reach E-PARTICIPANT-CAPACITY by forging the count.
-\ This one earns it: a two-row instance takes two participants and is then asked
-\ for a third. It also watches the engine's persisted-address-cell table, because
-\ the whole reason growth was deleted is that a grown row declared five cells
-\ outside DATA -- a refused registration must declare none at all.
-: FULL-XT-COUNT ( -- n )
-   data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
-
-: FULL-REGISTER ( n n -- ) {: id:n order:n :}
-   FULL-STATE id order
-   [: INERT ;] [: INERT ;] [: INERT ;] [: INERT ;] [: NO-RELEASE ;]
-   DECLARATION-TRANSACTION:REGISTER ;
-
-: FULL-REGISTER-KEEP ( n n -- n n )
-   2dup FULL-REGISTER ;
-
-: FULL-REGISTER-CATCH ( n n -- n )
-   [: FULL-REGISTER-KEEP ;] catch {: code:n :}
-   2drop
-   code ;
-
-: FULL-SAVE-BYTES ( -- )
-   FULL-STATE BYTE-VIEW FULL-STATE-SAVE BYTE-VIEW TEST-STATE-BYTES BYTE-COPY
-   FULL-TABLE BYTE-VIEW FULL-TABLE-SAVE BYTE-VIEW FULL-TABLE-BYTES BYTE-COPY ;
-
-: FULL-ASSERT-BYTES ( -- )
-   FULL-STATE BYTE-VIEW TEST-STATE-BYTES
-      FULL-STATE-SAVE BYTE-VIEW TEST-STATE-BYTES STR= TTRUE
-   FULL-TABLE BYTE-VIEW FULL-TABLE-BYTES
-      FULL-TABLE-SAVE BYTE-VIEW FULL-TABLE-BYTES STR= TTRUE ;
-
-: TEST-CAPACITY-REFUSAL ( -- )
-   FULL-STATE FULL-TABLE FULL-CAP
-   [: RECORD-DIAGNOSTIC ;]
-   DECLARATION-TRANSACTION:INIT
-   901 100 FULL-REGISTER
-   902 200 FULL-REGISTER
-   FULL-STATE DECLARATION-TRANSACTION:COUNT FULL-CAP T=
-   FULL-SAVE-BYTES
-   FULL-XT-COUNT {: cells0:n :}
-   903 300 FULL-REGISTER-CATCH
-      DECLARATION-TRANSACTION:E-PARTICIPANT-CAPACITY T=
-   \ nothing moved, and nothing new was declared to the relocation table
-   FULL-STATE DECLARATION-TRANSACTION:COUNT FULL-CAP T=
-   FULL-STATE DECLARATION-TRANSACTION:CAPACITY FULL-CAP T=
-   FULL-ASSERT-BYTES
-   FULL-XT-COUNT cells0 T=
-   \ and the refusal is not a one-shot: the edge holds on every later attempt
-   904 50 FULL-REGISTER-CATCH
-      DECLARATION-TRANSACTION:E-PARTICIPANT-CAPACITY T=
-   FULL-ASSERT-BYTES ;
-
-: TEST-REGISTRATION ( -- )
-   TEST-STATE DECLARATION-TRANSACTION:COUNT 0 T=
-   REGISTER-A
-   TEST-STATE DECLARATION-TRANSACTION:COUNT 1 T=
-   REGISTER-A-CATCH DECLARATION-TRANSACTION:E-PARTICIPANT-DUP T=
-   REGISTER-B REGISTER-C REGISTER-D
-   TEST-STATE DECLARATION-TRANSACTION:COUNT 4 T=
-
-   \ The arena is the table for good: registering the fifth participant fills the
-   \ declared capacity without moving the table or changing the capacity.
-   TEST-STATE DECLARATION-TRANSACTION:TABLE TABLE-N0 !
-   TEST-STATE DECLARATION-TRANSACTION:CAPACITY CAP-N0 !
-   CAP-N0 @ TEST-CAP T=
-   REGISTER-LATE
-   TEST-STATE DECLARATION-TRANSACTION:COUNT 5 T=
-   TEST-STATE DECLARATION-TRANSACTION:TABLE TABLE-N0 @ = TTRUE
-   TEST-STATE DECLARATION-TRANSACTION:CAPACITY CAP-N0 @ T=
-   TEST-STATE DECLARATION-TRANSACTION:SEAL
-   REGISTER-LATE-CATCH DECLARATION-TRANSACTION:E-REGISTRATION-SEALED T=
-
-   \ Six sealed production participants: the checker frame (100), DECL-EVENT
-   \ (800), constructor generation (820), the STRUCTURE address surface (830,
-   \ src/core/structure-make.f), the native dictionary (850), and protection
-   \ (900), which registers last and seals the set.
-   GENERATED-DECL:COUNT 6 T=
-   GENERATED-DECL:SEALED? TTRUE
-   s" GENERATED-DECL:REGISTER" WORD-ABSENT? TTRUE
-   \ There is no allocator seam left to swap, on the production owner or anywhere
-   \ else: the growth path was deleted outright (CG-22).
-   s" GENERATED-DECL:ALLOCATOR!" WORD-ABSENT? TTRUE
-   s" DECLARATION-TRANSACTION:DEFAULT-ALLOCATOR" QUALIFIED-ABSENT? TTRUE
-   s" GENERATED-DECL:DIAGNOSTIC!" WORD-ABSENT? TTRUE
-   s" GENERATED-DECL:RESET" WORD-ABSENT? TTRUE
-   s" GENERATED-DECL:SEAL" WORD-ABSENT? TTRUE
-   s" CHECKER-DECL-FRAME:INSTALL" QUALIFIED-ABSENT? TTRUE
-   s" CHECKER-DECL-FRAME:INSTALL" CHECKER-RESOLVES? 0= TTRUE
-   \ The four declaration-frame words are closed into the package PRIVATE
-   \ wordlist, so no caller outside the checker can reach them and no test can
-   \ drive RELEASE directly. That confinement is why "RELEASE must stay
-   \ throw-free" cannot be observed behaviourally from here: the only body that
-   \ could shift the product-field transaction depth across RELEASE is one that
-   \ leaks a declaration-event frame, and src/core/decl-event.f rejects that at
-   \ the participant's PREPARE (DEV-PART-PROVE -> DEV-TX-OPEN-REQUIRE, throwing
-   \ E-DEV-TX with the depths restored), which test/decl-event-suite.f §19e
-   \ already pins including the failing phase. Swapping RELEASE for the ordinary
-   \ CHECKER-SCOPE-FINALIZE would therefore survive every behavioural suite in the
-   \ repository. What makes that swap fail is the release phase's own
-   \ contract: it may not reach any throw, catch,
-   \ allocation, lookup, validation, or publication from a registered
-   \ release callback. The rows below stay as the second guard, because they fail
-   \ the moment anyone opens a public seam onto the frame words.
-   s" CHECKER-DECL-FRAME:START" QUALIFIED-ABSENT? TTRUE
-   s" CHECKER-DECL-FRAME:PREPARE" QUALIFIED-ABSENT? TTRUE
-   s" CHECKER-DECL-FRAME:ROLLBACK" QUALIFIED-ABSENT? TTRUE
-   s" CHECKER-DECL-FRAME:RELEASE" QUALIFIED-ABSENT? TTRUE
-   s" CHECKER-DECL-FRAME:RELEASE" CHECKER-RESOLVES? 0= TTRUE
-   s" GENERATED-DECL-OWNER:REGISTER" QUALIFIED-ABSENT? TTRUE
-   s" GENERATED-DECL-OWNER:REGISTER-LAST" QUALIFIED-ABSENT? TTRUE
-   s" GENERATED-DECL-OWNER:RUN" QUALIFIED-ABSENT? TTRUE
-   s" GENERATED-DECL-OWNER:DEPTH" QUALIFIED-ABSENT? TTRUE ;
-
-: TEST-PHASE-ORDER ( -- )
-   RESET-CONTROLS RESET-TRACES
-   -1 TRACE-ON !
-   RUN-BODY
-   SNAPSHOT-TRACE @ 14523 T=
-   PREPARE-TRACE @ 123 T=
-   COMMIT-TRACE @ 123 T=
-   RELEASE-TRACE @ 321 T=
-   ROLLBACK-TRACE @ 0 T=
-   ASSERT-IDLE ;
-
-: TEST-ACTIVE-REGISTRATION ( -- )
-   RESET-CONTROLS
-   -1 BODY-REGISTER !
-   RUN-BODY-CATCH DECLARATION-TRANSACTION:E-REGISTRATION-ACTIVE T=
-   TEST-STATE DECLARATION-TRANSACTION:COUNT 5 T=
-   TEST-STATE DECLARATION-TRANSACTION:LAST-FAILURE-PHASE GENERATED-DECL:PHASE-BODY T=
-   TEST-STATE DECLARATION-TRANSACTION:LAST-FAILURE-PARTICIPANT -1 T=
-   ASSERT-IDLE ;
-
-: TEST-PARTIAL-SNAPSHOT ( -- )
-   RESET-CONTROLS RESET-TRACES RESET-DIAGNOSTIC
-   10 20 30 SET-VALUES
-   -1 TRACK-VALUES !
-   -1 TRACE-ON !
-   PARTICIPANT-B SNAPSHOT-MUTATE-PARTICIPANT !
-   GENERATED-DECL:PHASE-SNAPSHOT FAIL-PHASE !
-   PARTICIPANT-B FAIL-PARTICIPANT !
-   RUN-BODY-CATCH E-INJECT T=
-   SNAPSHOT-TRACE @ 1452 T=
-   ROLLBACK-TRACE @ 21 T=
-   10 20 30 ASSERT-VALUES
-   TEST-STATE DECLARATION-TRANSACTION:LAST-FAILURE-PHASE GENERATED-DECL:PHASE-SNAPSHOT T=
-   TEST-STATE DECLARATION-TRANSACTION:LAST-FAILURE-PARTICIPANT PARTICIPANT-B T=
-   DIAGNOSTIC-PRIMARY @ E-INJECT T=
-   DIAGNOSTIC-CLEANUP @ 0 T=
-   ASSERT-IDLE ;
-
-: TEST-PREPARE-FAILURE ( -- )
-   RESET-CONTROLS RESET-TRACES
-   10 20 30 SET-VALUES
-   -1 TRACK-VALUES !
-   -1 TRACE-ON !
-   -1 BODY-MUTATE !
-   GENERATED-DECL:PHASE-PREPARE FAIL-PHASE !
-   PARTICIPANT-B FAIL-PARTICIPANT !
-   RUN-BODY-CATCH E-INJECT T=
-   SNAPSHOT-TRACE @ 14523 T=
-   PREPARE-TRACE @ 12 T=
-   COMMIT-TRACE @ 0 T=
-   ROLLBACK-TRACE @ 321 T=
-   10 20 30 ASSERT-VALUES
-   TEST-STATE DECLARATION-TRANSACTION:LAST-FAILURE-PHASE GENERATED-DECL:PHASE-PREPARE T=
-   TEST-STATE DECLARATION-TRANSACTION:LAST-FAILURE-PARTICIPANT PARTICIPANT-B T=
-   ASSERT-IDLE ;
-
-: TEST-COMMIT-FAILURE ( -- )
-   RESET-CONTROLS RESET-TRACES
-   10 20 30 SET-VALUES
-   -1 TRACK-VALUES !
-   -1 TRACE-ON !
-   -1 BODY-MUTATE !
-   GENERATED-DECL:PHASE-COMMIT FAIL-PHASE !
-   PARTICIPANT-B FAIL-PARTICIPANT !
-   RUN-BODY-CATCH E-INJECT T=
-   SNAPSHOT-TRACE @ 14523 T=
-   PREPARE-TRACE @ 123 T=
-   COMMIT-TRACE @ 12 T=
-   ROLLBACK-TRACE @ 321 T=
-   RELEASE-TRACE @ 0 T=
-   10 20 30 ASSERT-VALUES
-   TEST-STATE DECLARATION-TRANSACTION:LAST-FAILURE-PHASE GENERATED-DECL:PHASE-COMMIT T=
-   TEST-STATE DECLARATION-TRANSACTION:LAST-FAILURE-PARTICIPANT PARTICIPANT-B T=
-   ASSERT-IDLE ;
-
-: TEST-ROLLBACK-CLEANUP ( -- )
-   RESET-CONTROLS RESET-TRACES RESET-DIAGNOSTIC
-   10 20 30 SET-VALUES
-   -1 TRACK-VALUES !
-   -1 TRACE-ON !
-   -1 BODY-MUTATE !
-   E-BODY BODY-ERROR !
-   PARTICIPANT-B ROLLBACK-FAIL-PARTICIPANT !
-   -1 DIAGNOSTIC-THROWS !
-   RUN-BODY-CATCH E-BODY T=
-   ROLLBACK-TRACE @ 321 T=
-   10 20 30 ASSERT-VALUES
-   DIAGNOSTIC-COUNT @ 1 T=
-   DIAGNOSTIC-PRIMARY @ E-BODY T=
-   DIAGNOSTIC-CLEANUP @ E-CLEANUP T=
-   TEST-STATE DECLARATION-TRANSACTION:LAST-CLEANUP-PARTICIPANT PARTICIPANT-B T=
-   TEST-STATE DECLARATION-TRANSACTION:POISONED? TTRUE
-   RUN-BODY-CATCH DECLARATION-TRANSACTION:E-TRANSACTION-POISONED T=
-   ASSERT-IDLE ;
-
-\ Release is the phase that CANNOT report anything.  This test used to be
-\ TEST-FINALIZE-CLEANUP: it injected a failure into the last phase and pinned the
-\ old behaviour — the transaction threw, called the diagnostic with a zero
-\ primary error, named a cleanup participant, and poisoned the coordinator, all
-\ AFTER every reversible commit had already published.  That pin is retired with
-\ the injection seam that fed it; a release callback now takes nothing, returns
-\ nothing, and has no error channel to inject into.  What the run below proves is
-\ the opposite property: once every commit succeeds the transaction is over, so
-\ RUN returns normally, the diagnostic is never called, no cleanup participant is
-\ recorded, the coordinator stays usable, and every participant is still released
-\ in reverse order.
-: TEST-RELEASE-AFTER-PUBLICATION ( -- )
-   RESET-CONTROLS RESET-TRACES RESET-DIAGNOSTIC
-   -1 TRACE-ON !
-   RUN-BODY-CATCH 0 T=
-   RELEASE-TRACE @ 321 T=
-   COMMIT-TRACE @ 123 T=
-   DIAGNOSTIC-COUNT @ 0 T=
-   TEST-STATE DECLARATION-TRANSACTION:LAST-CLEANUP-PARTICIPANT -1 T=
-   TEST-STATE DECLARATION-TRANSACTION:POISONED? 0= TTRUE
-   RUN-BODY-CATCH 0 T=
-   ASSERT-IDLE ;
-
-: TEST-CALLBACK-DEPTH ( -- )
-   INIT-TEST-COORDINATOR
-   REGISTER-CORRUPT
-   TEST-STATE DECLARATION-TRANSACTION:SEAL
-   RUN-BODY-CATCH DECLARATION-TRANSACTION:E-PARTICIPANT-DEPTH T=
-   TEST-STATE DECLARATION-TRANSACTION:LAST-FAILURE-PHASE GENERATED-DECL:PHASE-SNAPSHOT T=
-   TEST-STATE DECLARATION-TRANSACTION:LAST-FAILURE-PARTICIPANT PARTICIPANT-CORRUPT T=
-   TEST-STATE DECLARATION-TRANSACTION:POISONED? TTRUE
-   RUN-BODY-CATCH DECLARATION-TRANSACTION:E-TRANSACTION-POISONED T=
-   ASSERT-IDLE ;
-
-\ Three of the five registered participants count their own releases, so a run
-\ nested 13 deep must record exactly 3 releases per depth: one per active
-\ participant at every depth, no depth skipped and none released twice.
-: TEST-NESTING-GROWTH ( -- )
-   RESET-CONTROLS RESET-TRACES
-   12 RUN-NESTED
-   NESTING-BODIES @ 13 T=
-   RELEASE-N @ 13 3 * T=
-   ASSERT-IDLE ;
-
-: GROW-NESTED-BODY ( -- )
-   GROW-NESTING-BODIES @ 1 + GROW-NESTING-BODIES !
-   GENERATED-DECL:DEPTH GROW-MAX-DEPTH @ max GROW-MAX-DEPTH !
-   GROW-NESTING-LEFT @ 0 > IF
-      GROW-NESTING-LEFT @ 1 - GROW-NESTING-LEFT !
-      [: GROW-NESTED-XT ;] GENERATED-DECL:RUN
-   THEN ;
-
-: INSTALL-GROW-NESTED ( -- )
-   [: GROW-NESTED-BODY ;] is GROW-NESTED-XT ;
-INSTALL-GROW-NESTED
-
-: RUN-TO-GROWN-DEPTH ( -- )
-   FIRST-GROWN-DEPTH GENERATED-DECL:DEPTH - 1 - GROW-NESTING-LEFT !
-   0 GROW-NESTING-BODIES !
-   0 GROW-MAX-DEPTH !
-   [: GROW-NESTED-XT ;] GENERATED-DECL:RUN ;
-
-: EVALUATE-INNER-DECLARATION ( -- )
-   s" STRUCTURE gdnested FIELD x n ;STRUCTURE" INCLUDE-EVALUATE ;
-
-: EVALUATE-OUTER-WORD ( -- )
-   s" package gdrow public : MARK ( -- n ) 1 ; ;package" INCLUDE-EVALUATE ;
-
-: EVALUATE-GROW-WORD ( -- )
-   s" package gdgrow public : MARK ( -- n ) 1 ; ;package" INCLUDE-EVALUATE ;
+\ ---- a body failure rolls the dictionary and data space back ----------------
 
 : EVALUATE-DATA-WORD ( -- )
    s" package gddata public variable CELL ;package" INCLUDE-EVALUATE ;
-
-: OUTER-NESTED-BODY ( -- )
-   EVALUATE-OUTER-WORD
-   s" GDROW:MARK" XREF-FIND DEF-OCC:SELECT
-   OUTER-REF-OCC ! OUTER-REF-SLOT !
-   EVALUATE-INNER-DECLARATION
-   DECL-EVENT:COUNT INNER-EVENT-N !
-   TYPE-FIELD:COUNT INNER-FIELD-N ! ;
-
-: OUTER-NESTED-FAIL-BODY ( -- )
-   OUTER-NESTED-BODY
-   E-BODY throw ;
-
-: RUN-OUTER-NESTED-FAIL-BODY ( -- )
-   [: OUTER-NESTED-FAIL-BODY ;] GENERATED-DECL:RUN ;
-
-: RUN-OUTER-NESTED-FAIL ( -- n )
-   [: RUN-OUTER-NESTED-FAIL-BODY ;] catch ;
-
-: GROW-OUTER-BODY ( -- )
-   EVALUATE-GROW-WORD
-   RUN-TO-GROWN-DEPTH
-   E-BODY throw ;
-
-: RUN-GROW-OUTER ( -- )
-   [: GROW-OUTER-BODY ;] GENERATED-DECL:RUN ;
-
-: RUN-GROW-OUTER-CATCH ( -- n )
-   [: RUN-GROW-OUTER ;] catch ;
 
 : DATA-FAIL-BODY ( -- )
    EVALUATE-DATA-WORD
    E-BODY throw ;
 
 : RUN-DATA-FAIL ( -- )
-   [: DATA-FAIL-BODY ;] GENERATED-DECL:RUN ;
+   [: DATA-FAIL-BODY ;] DECLARATION-TRANSACTION:RUN ;
 
 : RUN-DATA-FAIL-CATCH ( -- n )
    [: RUN-DATA-FAIL ;] catch ;
-
-: TEST-PRODUCTION-FRAME-GROWTH ( -- )
-   RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
-   RUN-GROW-OUTER-CATCH E-BODY T=
-   GROW-MAX-DEPTH @ FIRST-GROWN-DEPTH T=
-   GROW-NESTING-BODIES @ FIRST-GROWN-DEPTH 1 - T=
-   ASSERT-OWNER-DEPTHS ASSERT-NATIVE-HIGHWATERS
-   s" GDGROW:MARK" QUALIFIED-ABSENT? TTRUE ;
-
-\ The same nesting, but succeeding, on the real generated-declaration path.
-\ Every production participant's savepoint is a depth counter or a per-depth
-\ slot, so "one release per active participant at every nesting depth" is exactly
-\ "every owner depth is back at its baseline afterwards": a skipped release
-\ leaves a depth high, a doubled release drives it below the baseline, and both
-\ fail ASSERT-OWNER-DEPTHS. The declaration inside the outermost body also
-\ exercises the event and field owners, not just the dictionary and protection
-\ owners, and its word must be visible at the end because release runs after
-\ publication, never instead of it.
-: EVALUATE-NESTED-OK-DECLARATION ( -- )
-   s" STRUCTURE gdnestok FIELD x n ;STRUCTURE" INCLUDE-EVALUATE ;
-
-: PRODUCTION-NESTED-SUCCESS-BODY ( -- )
-   EVALUATE-NESTED-OK-DECLARATION
-   RUN-TO-GROWN-DEPTH ;
-
-: RUN-PRODUCTION-NESTED-SUCCESS ( -- )
-   [: PRODUCTION-NESTED-SUCCESS-BODY ;] GENERATED-DECL:RUN ;
-
-: TEST-PRODUCTION-NESTED-RELEASE ( -- )
-   RECORD-BASELINE RECORD-OWNER-DEPTHS
-   RUN-PRODUCTION-NESTED-SUCCESS
-   GROW-MAX-DEPTH @ FIRST-GROWN-DEPTH T=
-   GROW-NESTING-BODIES @ FIRST-GROWN-DEPTH 1 - T=
-   ASSERT-OWNER-DEPTHS
-   ASSERT-PRODUCTION-IDLE
-   DECL-EVENT:COUNT EVENT-N0 @ > TTRUE
-   TYPE-FIELD:COUNT FIELD-N0 @ > TTRUE
-   s" GDNESTOK:MAKE" QUALIFIED-ABSENT? 0= TTRUE
-   s" GDNESTOK-ROUNDTRIP ( n -- n ) GDNESTOK:MAKE GDNESTOK:UNMAKE"
-      CHECK-QUIET-CANDIDATE! -1 T= ;
 
 : TEST-DATA-ROLLBACK ( -- )
    RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
    RUN-DATA-FAIL-CATCH E-BODY T=
    ASSERT-OWNER-DEPTHS ASSERT-NATIVE-HIGHWATERS
    s" GDDATA:CELL" QUALIFIED-ABSENT? TTRUE ;
+
+\ ---- a declaration inside an ordinary checker scope keeps that scope --------
 
 : TEST-OUTER-CHECKER-SCOPE ( -- )
    RECORD-OWNER-DEPTHS
@@ -1082,19 +258,20 @@ INSTALL-GROW-NESTED
    CHECKER-SCOPE-DEPTH CHECKER-DEPTH-N0 @ 1 + T=
    s" GDOUTERSCOPE-ROUNDTRIP ( n -- n ) GDOUTERSCOPE:MAKE GDOUTERSCOPE:UNMAKE"
       CHECK-QUIET-CANDIDATE! -1 T=
-   GENERATED-DECL:POISONED? 0= TTRUE
    CHECKER-SCOPE-DONE
    ASSERT-OWNER-DEPTHS ;
 
-: EVALUATE-CHECKER-LEAK-DECLARATION ( -- )
-   s" STRUCTURE gdcheckerleak FIELD x n ;STRUCTURE" INCLUDE-EVALUATE ;
+\ ---- the checker frame's prepare refuses a body that leaked a scope ---------
+
+: EVALUATE-CHECKER-LEAK-WORD ( -- )
+   s" package gdcheckerleak public : MARK ( -- n ) 1 ; ;package" INCLUDE-EVALUATE ;
 
 : CHECKER-LEAK-BODY ( -- )
-   EVALUATE-CHECKER-LEAK-DECLARATION
+   EVALUATE-CHECKER-LEAK-WORD
    CHECKER-SCOPE-START ;
 
 : RUN-CHECKER-LEAK-BODY ( -- )
-   [: CHECKER-LEAK-BODY ;] GENERATED-DECL:RUN ;
+   [: CHECKER-LEAK-BODY ;] DECLARATION-TRANSACTION:RUN ;
 
 : RUN-CHECKER-LEAK ( -- n )
    [: RUN-CHECKER-LEAK-BODY ;] catch ;
@@ -1103,30 +280,27 @@ INSTALL-GROW-NESTED
    RECORD-BASELINE RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
    CHECKER-SCOPE-START
    CHECKER-SCOPE-DEPTH CHECKER-DEPTH-N0 @ 1 + T=
-   RUN-CHECKER-LEAK DECLARATION-TRANSACTION:E-PARTICIPANT-DEPTH T=
-   GENERATED-DECL:LAST-FAILURE-PHASE GENERATED-DECL:PHASE-PREPARE T=
-   GENERATED-DECL:LAST-FAILURE-PARTICIPANT 1 T=
+   RUN-CHECKER-LEAK DECLARATION-TRANSACTION:E-FRAME T=
    CHECKER-SCOPE-DEPTH CHECKER-DEPTH-N0 @ 1 + T=
-   GENERATED-DECL:POISONED? 0= TTRUE
    ASSERT-UNCHANGED ASSERT-NATIVE-HIGHWATERS
-   s" GDCHECKERLEAK:MAKE" QUALIFIED-ABSENT? TTRUE
+   s" GDCHECKERLEAK:MARK" QUALIFIED-ABSENT? TTRUE
    CHECKER-SCOPE-DONE
    ASSERT-OWNER-DEPTHS ;
 
 \ Frame records are reused as the rollback stack rises and falls, so the owner
 \ mark must be rewritten on every push, not just when a declaration claims the
-\ frame. This test seeds one slot with a finished declaration's coordinator depth
-\ and then makes an ordinary scope land on that exact slot inside a declaration
-\ at the same coordinator depth: two scopes, one successful declaration (its
-\ frame takes the third slot and is released), one scope closed, then a
-\ declaration whose body leaks a scope onto the seeded slot. A push that failed
-\ to reset the mark would leave the stale depth in place and PREPARE would accept
-\ the leaked scope as the declaration's own frame.
+\ frame. This test seeds one slot with a finished declaration's mark and then
+\ makes an ordinary scope land on that exact slot inside a later declaration:
+\ two scopes, one successful declaration (its frame takes the third slot and is
+\ released), one scope closed, then a declaration whose body leaks a scope onto
+\ the seeded slot. A push that failed to reset the mark would leave the
+\ declaration mark in place and PREPARE would accept the leaked scope as the
+\ declaration's own frame.
 : EVALUATE-RECYCLE-SEED-WORD ( -- )
    s" package gdrecycleseed public : MARK ( -- n ) 1 ; ;package" INCLUDE-EVALUATE ;
 
 : RUN-RECYCLE-SEED ( -- )
-   [: EVALUATE-RECYCLE-SEED-WORD ;] GENERATED-DECL:RUN ;
+   [: EVALUATE-RECYCLE-SEED-WORD ;] DECLARATION-TRANSACTION:RUN ;
 
 : EVALUATE-RECYCLE-LEAK-WORD ( -- )
    s" package gdrecycleleak public : MARK ( -- n ) 1 ; ;package" INCLUDE-EVALUATE ;
@@ -1136,7 +310,7 @@ INSTALL-GROW-NESTED
    CHECKER-SCOPE-START ;
 
 : RUN-RECYCLE-LEAK-BODY ( -- )
-   [: RECYCLE-LEAK-BODY ;] GENERATED-DECL:RUN ;
+   [: RECYCLE-LEAK-BODY ;] DECLARATION-TRANSACTION:RUN ;
 
 : RUN-RECYCLE-LEAK ( -- n )
    [: RUN-RECYCLE-LEAK-BODY ;] catch ;
@@ -1148,40 +322,50 @@ INSTALL-GROW-NESTED
    RUN-RECYCLE-SEED
    CHECKER-SCOPE-DEPTH CHECKER-DEPTH-N0 @ 2 + T=
    CHECKER-SCOPE-DONE
-   RUN-RECYCLE-LEAK DECLARATION-TRANSACTION:E-PARTICIPANT-DEPTH T=
-   GENERATED-DECL:LAST-FAILURE-PHASE GENERATED-DECL:PHASE-PREPARE T=
-   GENERATED-DECL:LAST-FAILURE-PARTICIPANT 1 T=
+   RUN-RECYCLE-LEAK DECLARATION-TRANSACTION:E-FRAME T=
    CHECKER-SCOPE-DEPTH CHECKER-DEPTH-N0 @ 1 + T=
-   GENERATED-DECL:POISONED? 0= TTRUE
    s" GDRECYCLELEAK:MARK" QUALIFIED-ABSENT? TTRUE
    s" GDRECYCLESEED:MARK" QUALIFIED-ABSENT? 0= TTRUE
    CHECKER-SCOPE-DONE
    ASSERT-OWNER-DEPTHS ;
 
-: TEST-NESTED-DECLARATION-ROLLBACK ( -- )
+\ ---- a rolled-back word's references go stale, and its slot is reused ------
+
+: EVALUATE-OUTER-WORD ( -- )
+   s" package gdrow public : MARK ( -- n ) 1 ; ;package" INCLUDE-EVALUATE ;
+
+: OUTER-BODY ( -- )
+   EVALUATE-OUTER-WORD
+   s" GDROW:MARK" XREF-FIND DEF-OCC:SELECT
+   OUTER-REF-OCC ! OUTER-REF-SLOT ! ;
+
+: OUTER-FAIL-BODY ( -- )
+   OUTER-BODY
+   E-BODY throw ;
+
+: RUN-OUTER-FAIL-BODY ( -- )
+   [: OUTER-FAIL-BODY ;] DECLARATION-TRANSACTION:RUN ;
+
+: RUN-OUTER-FAIL ( -- n )
+   [: RUN-OUTER-FAIL-BODY ;] catch ;
+
+: TEST-DECLARATION-ROLLBACK ( -- )
    RECORD-BASELINE RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
    WID-NEXT WID-N0 !
    CHECKER-SCOPE-START
    CHECKER-SCOPE-DEPTH CHECKER-DEPTH-N0 @ 1 + T=
-   RUN-OUTER-NESTED-FAIL E-BODY T=
-   INNER-EVENT-N @ EVENT-N0 @ T=
-   INNER-FIELD-N @ FIELD-N0 @ T=
+   RUN-OUTER-FAIL E-BODY T=
    ASSERT-UNCHANGED
    CHECKER-SCOPE-DEPTH CHECKER-DEPTH-N0 @ 1 + T=
    ASSERT-NATIVE-HIGHWATERS
    WID-NEXT dup WID-N1 ! WID-N0 @ > TTRUE
    s" GDROW:MARK" QUALIFIED-ABSENT? TTRUE
-   s" GDNESTED:MAKE" WORD-ABSENT? TTRUE
    [: OUTER-REF-SLOT @ OUTER-REF-OCC @ DEF-OCC:RESOLVE drop ;]
       DEF-OCC:E-STALE TTHROWSQ
    OUTER-REF-SLOT @ FAILED-REF-SLOT !
    OUTER-REF-OCC @ FAILED-REF-OCC !
 
-   [: OUTER-NESTED-BODY ;] GENERATED-DECL:RUN
-   INNER-EVENT-N @ EVENT-N0 @ T=
-   INNER-FIELD-N @ FIELD-N0 @ T=
-   DECL-EVENT:COUNT EVENT-N0 @ > TTRUE
-   TYPE-FIELD:COUNT FIELD-N0 @ > TTRUE
+   [: OUTER-BODY ;] DECLARATION-TRANSACTION:RUN
    WID-NEXT WID-N1 @ > TTRUE
    s" GDROW:MARK" QUALIFIED-ABSENT? 0= TTRUE
    OUTER-REF-SLOT @ FAILED-REF-SLOT @ T=
@@ -1190,12 +374,41 @@ INSTALL-GROW-NESTED
       DEF-OCC:E-STALE TTHROWSQ
    OUTER-REF-SLOT @ OUTER-REF-OCC @ DEF-OCC:RESOLVE XREF-START 0<> TTRUE
    s" GDROW:MARK 1 T=" INCLUDE-EVALUATE
-   s" GDNESTED-ROUNDTRIP ( n -- n ) GDNESTED:MAKE GDNESTED:UNMAKE"
-      CHECK-QUIET-CANDIDATE! -1 T=
    CHECKER-SCOPE-DEPTH CHECKER-DEPTH-N0 @ 1 + T=
-   ASSERT-PRODUCTION-IDLE
    CHECKER-SCOPE-DONE
    ASSERT-OWNER-DEPTHS ;
+
+\ ---- a declaration opened inside another is refused, and the outer rolls back
+
+: RUN-NESTED-EMPTY ( -- )
+   [: [: ;] DECLARATION-TRANSACTION:RUN ;] DECLARATION-TRANSACTION:RUN ;
+
+: RUN-NESTED-EMPTY-CATCH ( -- n )
+   [: RUN-NESTED-EMPTY ;] catch ;
+
+: EVALUATE-NESTED-DECLARATION ( -- )
+   s" STRUCTURE gdnested FIELD x n ;STRUCTURE" INCLUDE-EVALUATE ;
+
+: RUN-NESTED-DECLARATION ( -- )
+   [: EVALUATE-NESTED-DECLARATION ;] DECLARATION-TRANSACTION:RUN ;
+
+: RUN-NESTED-DECLARATION-CATCH ( -- n )
+   [: RUN-NESTED-DECLARATION ;] catch ;
+
+: TEST-NESTED-REFUSED ( -- )
+   RECORD-BASELINE RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
+   RUN-NESTED-EMPTY-CATCH DECLARATION-TRANSACTION:E-ACTIVE T=
+   ASSERT-UNCHANGED ASSERT-OWNER-DEPTHS ASSERT-NATIVE-HIGHWATERS
+   \ The front end is refused before it reads the family name.
+   DECL-DIAG:PROSE
+   RUN-NESTED-DECLARATION-CATCH DECLARATION-TRANSACTION:E-ACTIVE T=
+   s" habu: bad structure declaration '': a declaration is already open"
+   DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF
+   ASSERT-UNCHANGED ASSERT-OWNER-DEPTHS ASSERT-NATIVE-HIGHWATERS
+   s" GDNESTED:MAKE" QUALIFIED-ABSENT? TTRUE ;
+
+\ ---- generation failures clear every provisional authority -----------------
 
 : TEST-NAME-PREFLIGHT-CLEARS-AUTHORITY ( -- )
    RECORD-BASELINE RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
@@ -1218,7 +431,6 @@ INSTALL-GROW-NESTED
    ASSERT-UNCHANGED ASSERT-OWNER-DEPTHS ASSERT-NATIVE-HIGHWATERS ;
 
 : TEST-GENERATOR-ROLLBACK ( -- )
-   RESET-CONTROLS RESET-TRACES RESET-DIAGNOSTIC
    RECORD-BASELINE RECORD-OWNER-DEPTHS
    RECORD-NATIVE-HIGHWATERS
    INSTALL-SECOND-WORD-FAILURE
@@ -1254,7 +466,13 @@ INSTALL-GROW-NESTED
 : TEST-EVALUATOR-FAILURE-CLEARS-AUTHORITY ( -- )
    RECORD-BASELINE RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
    INSTALL-EVALUATOR-FAILURE
+   \ PRODUCT generates inside the body its reporter guards, as ENUM does, so the
+   \ generation fault is rendered at the family name before it is rethrown.
+   DECL-DIAG:PROSE
    s" PRODUCT gdevalfail FIELD value n ;PRODUCT" EVALUATE-CATCH E-INJECT T=
+   s" habu: bad product declaration 'gdevalfail': declaration failed at 'gdevalfail'"
+   DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF
    RESTORE-GENERATED-EVALUATOR
    GENERATED-N @ 1 T=
    s" GDEVALFAIL:MAKE" QUALIFIED-ABSENT? TTRUE
@@ -1289,23 +507,49 @@ INSTALL-GROW-NESTED
    AFTER-FAIL-FIELD @ TYPE-FIELD:BYTES@ CELL T=
    AFTER-FAIL-FIELD @ TYPE-FIELD:ALIGN@ CELL T=
    AFTER-FAIL-FIELD @ TYPE-FIELD:FLAGS@ 0 T=
-   ASSERT-OWNER-DEPTHS
-   ASSERT-PRODUCTION-IDLE ;
+   ASSERT-OWNER-DEPTHS ;
+
+\ ---- a multi-error load reports a refused product and continues ------------
+\ The path the all-errors check drives (tools/check-all-errors-core.f SESSION):
+\ the reject is counted and swallowed only after its transaction rolled back,
+\ so the next product consumes the refused one's event and field ids.
+
+: MULTI-ERROR-PRODUCTS ( -- )
+   s" gdmebad" s" FIELD x n FIELD x n" CHECKER-DEFPRODUCT
+   s" gdmegood" s" FIELD clean n" CHECKER-DEFPRODUCT ;
+
+: TEST-MULTI-ERROR-ROLLBACK ( -- )
+   RECORD-BASELINE RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
+   DECL-DIAG:PROSE
+   MULTI-ERR-BEGIN
+   [: MULTI-ERROR-PRODUCTS ;] catch {: rc:n :}
+   MULTI-ERR-END {: rejects:n :}
+   rc 0 T=
+   rejects 1 T=
+   s" habu: bad product declaration 'gdmebad': duplicate field at 'x'"
+   DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF
+   TFAM-N@ FAMILY-N0 @ 1 + T=
+   DECL-EVENT:COUNT EVENT-N0 @ 3 + T=
+   TYPE-FIELD:COUNT FIELD-N0 @ 1 + T=
+   EVENT-N0 @ 2 + DECL-EVENT:FIELD@ TYPE-FIELD:NAME$ s" clean" T$=
+   [: TRY-EVENT-CURRENT ;] catch E-DEV-TX T=
+   ASSERT-OWNER-DEPTHS ASSERT-NATIVE-HIGHWATERS ;
 
 \ Test-only friend boundary for the installed generated-plan capacity hook. A
 \ plain checked body since this suite became a WHITEBOX-SUITE: the hook's name
 \ carries its ordinary effect on an engine whose seal never ran.
 : RUN-CAPACITY-PREFLIGHT ( -- )
-   s" GDNESTED:MAKE" CAPACITY-PREFLIGHT-N @ TYPE-DECL:TDECL-CAPACITY-PREFLIGHT-XT ;
+   s" GDOUTERSCOPE:MAKE" CAPACITY-PREFLIGHT-N @ TYPE-DECL:TDECL-CAPACITY-PREFLIGHT-XT ;
 
 : CAPACITY-PREFLIGHT-CATCH ( n -- n )
    CAPACITY-PREFLIGHT-N !
    [: RUN-CAPACITY-PREFLIGHT ;] catch ;
 
 : TEST-PLAN-CAPACITY-PREFLIGHT ( -- )
-   s" GDNESTED:MAKE" 2 GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS 2 T=
+   s" GDOUTERSCOPE:MAKE" 2 GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS 2 T=
    s" GDCAP-MISSING:MAKE" 2 GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS 3 T=
-   s" GDNESTED:MAKE" GENERATED-DECL-NAME-PREFLIGHT:NEW-WORDLIST? 0= TTRUE
+   s" GDOUTERSCOPE:MAKE" GENERATED-DECL-NAME-PREFLIGHT:NEW-WORDLIST? 0= TTRUE
    s" GDCAP-MISSING:MAKE" GENERATED-DECL-NAME-PREFLIGHT:NEW-WORDLIST? TTRUE
    DICT-CAP ndict@ - {: room:n :}
    RECORD-NATIVE-HIGHWATERS
@@ -1315,7 +559,6 @@ INSTALL-GROW-NESTED
    ASSERT-PRODUCTION-IDLE ;
 
 : TEST-SUCCESS-PUBLICATION ( -- )
-   RESET-CONTROLS RESET-TRACES RESET-DIAGNOSTIC
    PROT-WID-PROBE:COUNT PROTECTION-ROOM-N0 !
    s" PRODUCT gdok FIELD x n ;PRODUCT" EVALUATE-CATCH 0 T=
    PROT-WID-PROBE:COUNT PROTECTION-ROOM-N0 @ 1 + T=
@@ -1324,42 +567,32 @@ INSTALL-GROW-NESTED
    s" package gdok ;package" EVALUATE-CATCH 7111 T=
    ASSERT-PRODUCTION-IDLE ;
 
-: TEST-DICTIONARY-DEPTH-PRIVATE ( -- )
-   s" GENERATED-DECL-DICTIONARY:DEPTH" QUALIFIED-ABSENT? TTRUE ;
+\ The runner holds the only live capability onto each participant's steps and
+\ the checker's private declaration-frame words: no public seam reaches them.
+: TEST-CLOSED-WORLD ( -- )
+   s" CHECKER-DECL-FRAME:PART-ROLLBACK" QUALIFIED-ABSENT? TTRUE
+   s" DECL-EVENT:PART-RELEASE" QUALIFIED-ABSENT? TTRUE
+   s" GENERATED-DECL-DICTIONARY:ROLLBACK" QUALIFIED-ABSENT? TTRUE
+   s" GENERATED-DECL-PROTECTION:PUBLISH" QUALIFIED-ABSENT? TTRUE
+   s" CHECKER-DECL-FRAME:RELEASE" QUALIFIED-ABSENT? TTRUE
+   s" CHECKER-DECL-FRAME:RELEASE" CHECKER-RESOLVES? 0= TTRUE ;
 
 public
 
 : RUN ( -- )
-   CAP-TEST-RUN
-   TEST-CAPACITY-REFUSAL
-   RESET-CONTROLS
-   INIT-TEST-COORDINATOR
-   TEST-REGISTRATION
-   TEST-PHASE-ORDER
-   TEST-ACTIVE-REGISTRATION
-   TEST-PARTIAL-SNAPSHOT
-   TEST-PREPARE-FAILURE
-   TEST-COMMIT-FAILURE
-   TEST-NESTING-GROWTH
-   TEST-ROLLBACK-CLEANUP
-   INIT-TEST-COORDINATOR
-   REGISTER-TEST-PARTICIPANTS
-   TEST-RELEASE-AFTER-PUBLICATION
-   TEST-CALLBACK-DEPTH
    TEST-OUTER-CHECKER-SCOPE
    TEST-CHECKER-LEAK-PREPARE
    TEST-RECYCLED-SLOT-LEAK
-   TEST-NESTED-DECLARATION-ROLLBACK
-   TEST-PRODUCTION-FRAME-GROWTH
-   TEST-PRODUCTION-NESTED-RELEASE
+   TEST-DECLARATION-ROLLBACK
+   TEST-NESTED-REFUSED
    TEST-DATA-ROLLBACK
    TEST-NAME-PREFLIGHT-CLEARS-AUTHORITY
    TEST-GENERATOR-ROLLBACK
    TEST-EVALUATOR-FAILURE-CLEARS-AUTHORITY
+   TEST-MULTI-ERROR-ROLLBACK
    TEST-PLAN-CAPACITY-PREFLIGHT
    TEST-SUCCESS-PUBLICATION
-   TEST-DICTIONARY-DEPTH-PRIVATE
-   RESTORE-GENERATED-EVALUATOR
+   TEST-CLOSED-WORLD
    T-REPORT ;
 
 ;package

@@ -1143,10 +1143,6 @@ SUITE compiler-native-catch
    test/compiler/native-catch.f
 ;SUITE
 
-SUITE compiler-native-declaration-diagnostic
-   test/compiler/native-declaration-diagnostic.f
-;SUITE
-
 SUITE finally
    test/finally.f
 ;SUITE

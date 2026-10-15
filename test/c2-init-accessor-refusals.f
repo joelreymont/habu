@@ -25,8 +25,9 @@ public
 
 : RUN ( -- )
    T-RESET
-   \ The STRUCTURE refusal is rendered before its code is thrown, so it exits 70;
-   \ the PRODUCT one below throws its code with nothing rendered and exits 67.
+   \ Both refusals are thrown inside the declaration transaction and rendered
+   \ by the runner that wraps it (TDECL-RUN, DECL-REJECT:GUARD) before the code
+   \ is rethrown, so each exits 70.
    s" an open-width field cannot derive initialized accessors" T-LABEL
    s" package C2IA STRUCTURE badwidth<a> DERIVE init FIELD value a FIELD tail n ;STRUCTURE ;package"
       70 REFUSED? TTRUE
@@ -34,7 +35,9 @@ public
    ERR ERR-U @ s" canonical fixed-cell record" CONTAINS? TTRUE
    s" a product with an open-width field cannot derive init" T-LABEL
    s" package C2IA PRODUCT badproduct<a> DERIVE init FIELD value a ;PRODUCT ;package"
-      67 REFUSED? TTRUE
+      70 REFUSED? TTRUE
+   s" the product refusal reports the fixed-cell requirement" T-LABEL
+   ERR ERR-U @ s" canonical fixed-cell record" CONTAINS? TTRUE
    s" a getter requires its own initialized record" T-LABEL
    s" package C2IA : BAD ( mut-view<a,b,c,init<d,pair>> -- mut-view<a,b,c,init<d,pair>> n ) C2IA-SHELF:COUNT@ ; ;package"
       70 REFUSED? TTRUE
