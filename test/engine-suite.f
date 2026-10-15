@@ -1,5 +1,5 @@
 \ engine-suite.f — the behavior suite run BY THE ENGINE ITSELF (bin/hb), no
-\ gforth. A failure prints F<index>, assertion detail, and exits 1 via report.
+\ gforth. A failure prints F<index>, assertion detail, and exits 1 via T-REPORT.
 
 \ LATCHED BEFORE THE REQUIRES, WHICH IS THE ONLY SOUND POINT. The claim is about
 \ a RESTORED engine: its thirteen lowering-certificate arena bases must be the
@@ -15,66 +15,10 @@ LOWER-CERT:ARENAS-STALE ES-CERT-STALE0 !
 require test/checker-assert.f
 require src/lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
 require src/lib/fs-mutate.f            \ HB-TMP-MKDIR - the filesystem block's private root
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/string.f               \ CONTAINS? - substring test for diagnostic text
+require src/lib/test.f
 
-variable #FAIL
-variable #CASE
-
-256 constant T-LABEL-CAP
-create T-LABEL-BUF T-LABEL-CAP allot
-variable T-LABEL-U
-
-: T-LABEL-CLEAR ( -- )
-   0 T-LABEL-U ! ;
-
-: T-LABEL$ ( -- ptr u8 n )
-   T-LABEL-BUF T-LABEL-U @ ;
-
-: T-LABEL ( ptr u8 n -- ) {: a:ptr u:n :}
-   u T-LABEL-CAP > if s" engine-suite: label too long" 1 die then
-   0 begin dup u < while
-      dup a + c@  over T-LABEL-BUF + c!
-      1+
-   repeat drop
-   u T-LABEL-U ! ;
-
-: T-LABEL. ( -- )
-   T-LABEL-U @ 0 > if s" case: " type T-LABEL$ type cr then ;
-
-: T-FAIL+ ( -- )
-   #FAIL @ 1 + #FAIL ! ;
-
-: T-FAIL ( -- )
-   [char] F emit #CASE @ .
-   T-LABEL.
-   T-FAIL+ ;
-
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want <> if
-      T-FAIL
-      s" assert: expected " type want FMT:.INT
-      s"  got " type got FMT:.INT cr
-   then
-   T-LABEL-CLEAR ;
-
-: T$= ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
-   #CASE @ 1 + #CASE !
-   gu wu <> if
-      T-FAIL
-      s" assert string len: expected " type wu FMT:.INT
-      s"  got " type gu FMT:.INT cr
-      T-LABEL-CLEAR exit
-   then
-   0 begin dup gu < while
-      dup ga + c@  over wa + c@ <> if
-         drop T-FAIL
-         s" assert string byte mismatch" type cr
-         T-LABEL-CLEAR exit
-      then
-      1 +
-   repeat drop
-   T-LABEL-CLEAR ;
+T-RESET
 
 \ A registered engine helper is sealed system-private: search-wl must never
 \ surface (PROT-SPAN), (LP2VEXEC) or (NUM) in any wordlist, so no checked
@@ -532,8 +476,8 @@ s" CUNK-PRES-BARE ( -- n ) ES-PRES-PUB" CHECK-QUIET-CANDIDATE! 1 T=
 \ it - so it is pinned by EXECUTION rather than by a verdict: every case below
 \ calls the word the engine resolved and reads back the number it returns.
 \
-\ THE SHARED TAIL IS T-LABEL-CAP, the global constant this file declares at the
-\ top and T-LABEL really reads. The fixture does not mint a global of its own:
+\ THE SHARED TAIL IS T-LABEL-CAP, the global constant src/lib/test/assert.f
+\ declares and T-LABEL really reads. The fixture does not mint a global of its own:
 \ it SHADOWS that one from inside a package, in the package's private wordlist
 \ and in its public wordlist at once, which is the shape a real package has and
 \ also proves the shadow does not leak back to the word already compiled
@@ -683,12 +627,6 @@ s" CBAD-USIGS-BYTE-STORE ( -- ) 0 ESB-BYTE-HEAD !" T-CHECK-REJECTS
 \ REC-SIG refusal is certified-but-unrecorded and must say which word and why.
 512 constant RSD-CAP
 create RSD-BUF RSD-CAP allot
-: T-HAS? ( ptr u8 n ptr u8 n -- n ) {: ha:ptr hu:n na:ptr nu:n :}
-   hu nu < IF 0 EXIT THEN
-   0 BEGIN dup hu nu - <= WHILE
-      ha over + nu na nu CORE-STR= IF drop -1 EXIT THEN
-      1 +
-   REPEAT drop 0 ;
 \ Quotation effects render recursively to QDEPTH-MAX levels: a triple-nested
 \ quot now renders fully and RECORDS (no '?' -> RQM stays 0), while a quot nested
 \ past the budget still caps at '?' and refuses recording via the unmodeled tag.
@@ -696,22 +634,22 @@ RSD-BUF RSD-CAP DIAG-BUFFER!
 s" triple-nested quot certifies" T-LABEL
 s" RSQ3 [: [: [: ;] ;] ;]" CHECK-QUIET-CANDIDATE! -1 T=
 s" triple-nested quot renders fully and records (no unmodeled-tag refusal)" T-LABEL
-DIAG-BUFFER$ s" unmodeled type tag" T-HAS? 0 T=
+DIAG-BUFFER$ s" unmodeled type tag" CONTAINS? 0 T=
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" quot nested past the render budget still certifies" T-LABEL
 s" RSQ7 [: [: [: [: [: [: [: ;] ;] ;] ;] ;] ;] ;]" CHECK-QUIET-CANDIDATE! -1 T=
 s" over-budget quot refuses recording and names the word" T-LABEL
-DIAG-BUFFER$ s" rsq7" T-HAS? -1 T=
+DIAG-BUFFER$ s" rsq7" CONTAINS? -1 T=
 s" over-budget quot refusal names the unmodeled-tag reason" T-LABEL
-DIAG-BUFFER$ s" unmodeled type tag" T-HAS? -1 T=
+DIAG-BUFFER$ s" unmodeled type tag" CONTAINS? -1 T=
 defer T-V14 ( -- a b c d e g h i j k l m o p )
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" rec-refuse var overflow still certifies" T-LABEL
 s" RSV28 T-V14 T-V14" CHECK-QUIET-CANDIDATE! -1 T=
 s" rec-refuse diag names var-count word" T-LABEL
-DIAG-BUFFER$ s" rsv28" T-HAS? -1 T=
+DIAG-BUFFER$ s" rsv28" CONTAINS? -1 T=
 s" rec-refuse diag names var-count reason" T-LABEL
-DIAG-BUFFER$ s" more than 23 type variables or binders" T-HAS? -1 T=
+DIAG-BUFFER$ s" more than 23 type variables or binders" CONTAINS? -1 T=
 : T-FQ ( forall<p,[ n -- n ]> -- ) drop ;
 : T-D23 ( a b c d e g h i j k l m o p q s t u v w x y z -- )
    drop drop drop drop drop drop drop drop drop drop drop drop
@@ -720,9 +658,9 @@ RSD-BUF RSD-CAP DIAG-BUFFER!
 s" rec-refuse binder overflow still certifies" T-LABEL
 s" RSB24 T-FQ T-D23" CHECK-QUIET-CANDIDATE! -1 T=
 s" rec-refuse diag names binder-count word" T-LABEL
-DIAG-BUFFER$ s" rsb24" T-HAS? -1 T=
+DIAG-BUFFER$ s" rsb24" CONTAINS? -1 T=
 s" rec-refuse diag names binder-count reason" T-LABEL
-DIAG-BUFFER$ s" more than 23 type variables or binders" T-HAS? -1 T=
+DIAG-BUFFER$ s" more than 23 type variables or binders" CONTAINS? -1 T=
 DIAG-BUFFER-OFF
 \ recurse checks against the cached declared sig (fresh instance per site)
 s" recurse against declared sig certifies" T-LABEL
@@ -759,9 +697,9 @@ s" qualified diag verdict" T-LABEL
 s" CBAD-QUAL-DIAG ( -- n ) a:b:c" CHECK-CANDIDATE! 0 T=
 0 0= 0= ES-JSON-DIAGS!
 s" qualified diag code" T-LABEL
-DIAG-BUFFER$ s" E-BAD-QUALIFIED" T-HAS? -1 T=
+DIAG-BUFFER$ s" E-BAD-QUALIFIED" CONTAINS? -1 T=
 s" qualified diag token" T-LABEL
-DIAG-BUFFER$ s" a:b:c" T-HAS? -1 T=
+DIAG-BUFFER$ s" a:b:c" CONTAINS? -1 T=
 DIAG-BUFFER-OFF
 variable TG-UEND
 variable TG-CAP
@@ -987,8 +925,6 @@ PARAM-CAP @ MAXPARAM-INIT =  and  -1 T=
 \ checker-internal colon words in checked bodies; on the unsealed engine a
 \ checked body binds each one's recorded row. A saved store base is a pointer,
 \ so its cell is a PTR-VARIABLE.
-: TR-BOOL= ( bool -- )
-   if -1 else 0 then -1 T= ;
 \ ---- CT registry ----
 variable TR-CTN  variable TR-CTU  variable TR-CTC  variable TR-CTSC
 variable TR-CTCODE  variable TR-CT-LC  variable TR-CT-STRLC
@@ -1005,19 +941,19 @@ PTR-VARIABLE TR-CT-PAP  PTR-VARIABLE TR-CT-PUP
    CTN @ dup CT-CAP-V !  TR-CT-LC !      \ next CT-SET crosses the record cap
    s" CTGROWTWO" CTN @ CT-ROLE 64 CS-NONE CT-SET
    s" ct-record-grow" T-LABEL
-   CT-CAP-V @ TR-CT-LC @ > TR-BOOL=
+   CT-CAP-V @ TR-CT-LC @ > TTRUE
    s" ct-record-grow-find" T-LABEL
    s" CTGROWPROBE" CT-FIND TR-CTCODE @ T=
    CT-STR-U @ dup CT-STR-CAP-V !  TR-CT-STRLC !   \ next name copy crosses the string cap
    s" CTGROWTHREE" CTN @ CT-ROLE 64 CS-NONE CT-SET
    s" ct-str-grow" T-LABEL
-   CT-STR-CAP-V @ TR-CT-STRLC @ > TR-BOOL=
+   CT-STR-CAP-V @ TR-CT-STRLC @ > TTRUE
    s" ct-str-grow-find" T-LABEL
    s" CTGROWPROBE" CT-FIND TR-CTCODE @ T=
    here {: mark:ptr :}
    CT-SNAPSHOT-PERSIST
    s" ct-persist-moved" T-LABEL
-   CT-NAME-A-P @ mark >= TR-BOOL=
+   CT-NAME-A-P @ mark >= TTRUE
    s" ct-persist-find" T-LABEL
    s" CTGROWPROBE" CT-FIND TR-CTCODE @ T=
    TR-CTN @ CTN !  TR-CTU @ CT-STR-U !  TR-CTC @ CT-CAP-V !  TR-CTSC @ CT-STR-CAP-V !
@@ -1044,31 +980,31 @@ variable TR-VFN variable TR-VFC variable TR-V-FIELD-LC
    VREC-N @ dup VREC-CAP-V !  TR-V-LC !  \ next VREC-BEGIN crosses the record cap
    s" VRGROWTWO" VREC-BEGIN drop
    s" vrec-record-grow" T-LABEL
-   VREC-CAP-V @ TR-V-LC @ > TR-BOOL=
+   VREC-CAP-V @ TR-V-LC @ > TTRUE
    s" vrec-record-grow-find" T-LABEL
-   s" VRGROWPROBE" VREC-FIND TR-BOOL= TR-VRID @ T=
+   s" VRGROWPROBE" VREC-FIND TTRUE TR-VRID @ T=
    VREC-NODE-N @ dup VREC-NODE-CAP-V !  TR-V-NODE-LC !   \ next node crosses the node cap
    VR-CON VREC-NODE-NEW drop
    s" vrec-node-grow" T-LABEL
-   VREC-NODE-CAP-V @ TR-V-NODE-LC @ > TR-BOOL=
+   VREC-NODE-CAP-V @ TR-V-NODE-LC @ > TTRUE
    VREC-FIELD-N @ dup VREC-FIELD-CAP-V !  TR-V-FIELD-LC !   \ next field crosses the field cap
    0 VREC-FIELD!
    s" vrec-field-grow" T-LABEL
-   VREC-FIELD-CAP-V @ TR-V-FIELD-LC @ > TR-BOOL=
+   VREC-FIELD-CAP-V @ TR-V-FIELD-LC @ > TTRUE
    VREC-STR-U @ dup VREC-STR-CAP-V !  TR-V-STRLC !   \ next name crosses the string cap
    s" VRGROWTHREE" VREC-BEGIN drop
    s" vrec-str-grow" T-LABEL
-   VREC-STR-CAP-V @ TR-V-STRLC @ > TR-BOOL=
+   VREC-STR-CAP-V @ TR-V-STRLC @ > TTRUE
    s" vrec-str-grow-find" T-LABEL
-   s" VRGROWPROBE" VREC-FIND TR-BOOL= TR-VRID @ T=
+   s" VRGROWPROBE" VREC-FIND TTRUE TR-VRID @ T=
    s" vrec-str-grow-name-intact" T-LABEL
    TR-VRID @ VREC-NAME$ s" VRGROWPROBE" T$=
    here {: mark:ptr :}
    VREC-SNAPSHOT-PERSIST
    s" vrec-persist-moved" T-LABEL
-   VREC-NAME-A-P @ mark >= TR-BOOL=
+   VREC-NAME-A-P @ mark >= TTRUE
    s" vrec-persist-find" T-LABEL
-   s" VRGROWPROBE" VREC-FIND TR-BOOL= TR-VRID @ T=
+   s" VRGROWPROBE" VREC-FIND TTRUE TR-VRID @ T=
    s" vrec-persist-name-intact" T-LABEL
    TR-VRID @ VREC-NAME$ s" VRGROWPROBE" T$=
    VREC-ARENA-BOOT                       \ every VREC store P back to its boot buffer
@@ -1093,51 +1029,51 @@ variable TR-S-LC variable TR-S-STRLC
    SYM-N @ dup SYM-CAP-V !  TR-S-LC !    \ next intern crosses the record cap
    HIDX-MEM-CLEAR  0 HIDX-VALID !        \ drop the full-cap index; rebuild at TR-S-LC
    s" syms-rehash-before-grow" T-LABEL
-   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TR-BOOL= TR-SID0 @ T=
+   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TTRUE TR-SID0 @ T=
    s" tgpkg" SYM-GLOBAL s" SYMGROWTWO" SYM-INTERN TR-SID1 !
    s" syms-record-grow" T-LABEL
-   SYM-CAP-V @ TR-S-LC @ > TR-BOOL=
+   SYM-CAP-V @ TR-S-LC @ > TTRUE
    s" syms-rehash-preserves-probe" T-LABEL
-   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TR-BOOL= TR-SID0 @ T=
+   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TTRUE TR-SID0 @ T=
    s" syms-new-findable" T-LABEL
-   s" tgpkg" SYM-GLOBAL s" SYMGROWTWO" SYM-FIND TR-BOOL= TR-SID1 @ T=
+   s" tgpkg" SYM-GLOBAL s" SYMGROWTWO" SYM-FIND TTRUE TR-SID1 @ T=
    SYM-STR-U @ dup SYM-STR-CAP-V !  TR-S-STRLC !   \ next name crosses the string cap
    s" tgpkg" SYM-GLOBAL s" SYMGROWTHREE" SYM-INTERN drop
    s" syms-str-grow" T-LABEL
-   SYM-STR-CAP-V @ TR-S-STRLC @ > TR-BOOL=
+   SYM-STR-CAP-V @ TR-S-STRLC @ > TTRUE
    s" syms-str-grow-find" T-LABEL
-   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TR-BOOL= TR-SID0 @ T=
+   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TTRUE TR-SID0 @ T=
    here {: mark:ptr :}
    SYM-SNAPSHOT-PERSIST
    s" syms-persist-moved" T-LABEL
-   SYMS-P @ mark >= TR-BOOL=
+   SYMS-P @ mark >= TTRUE
    s" syms-persist-find" T-LABEL
-   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TR-BOOL= TR-SID0 @ T=
+   s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TTRUE TR-SID0 @ T=
    saved BYTE-VIEW prior bytes ARENA-COPY
    TR-SC @ SYM-CAP-V !  TR-SSC @ SYM-STR-CAP-V !  TR-SN @ SYM-N !  TR-SSU @ SYM-STR-U !
    TR-SP @ SYMS-P !  TR-SSP @ SYM-STR-P !
    HIDX-RESET
    s" hidx snapshot reset clears mmap owner" T-LABEL
-   HIDX-MEM-READY? 0= TR-BOOL=
+   HIDX-MEM-READY? 0= TTRUE
    s" hidx snapshot reset invalidates cache" T-LABEL
-   HIDX-VALID @ 0= TR-BOOL=
+   HIDX-VALID @ 0= TTRUE
    \ The effect owner is a scratch slot, so the reset unbinds it: a capture bakes
    \ no store address through it, and the next read binds the live store again.
    s" hidx snapshot reset unbinds the effect owner" T-LABEL
-   HIDX-EFF-BASE@ 0= TR-BOOL=
+   HIDX-EFF-BASE@ 0= TTRUE
    HIDX-ENSURE
    HIDX-EFF-SYNC
    s" hidx snapshot reset rebuilds mmap owner" T-LABEL
-   HIDX-MEM-READY? TR-BOOL=
+   HIDX-MEM-READY? TTRUE
    s" hidx effect sync binds the live effect owner" T-LABEL
-   HIDX-EFF-BASE@ USIGS = TR-BOOL=
+   HIDX-EFF-BASE@ USIGS = TTRUE
    CHECKER-CAPTURE-PREPARE
    s" checker snapshot prepare clears mmap owner" T-LABEL
-   HIDX-MEM-READY? 0= TR-BOOL=
+   HIDX-MEM-READY? 0= TTRUE
    s" checker snapshot prepare invalidates cache" T-LABEL
-   HIDX-VALID @ 0= TR-BOOL=
+   HIDX-VALID @ 0= TTRUE
    s" checker snapshot prepare unbinds the effect owner" T-LABEL
-   HIDX-EFF-BASE@ 0= TR-BOOL= ;
+   HIDX-EFF-BASE@ 0= TTRUE ;
 LOWER-CERT-HOOK:INSTALL
 TR-SYMS-WHITEBOX
 
@@ -1228,31 +1164,31 @@ public
    stride 5 cells T=
    align $8 T=
    mask 0 T=
-   ok TR-BOOL= ;
+   ok TTRUE ;
 
 : TR-EFF-REC-LAYOUT ( -- )
    TR-EFF-REC-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
    s" effect-record-layout" T-LABEL
    stride 7 cells T=  align $8 T=  mask 0 T=
-   ok TR-BOOL= ;
+   ok TTRUE ;
 
 : TR-EFF-NODE-LAYOUT ( -- )
    TR-EFF-NODE-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
    s" effect-node-layout" T-LABEL
    stride 9 cells T=  align $8 T=  mask 0 T=
-   ok TR-BOOL= ;
+   ok TTRUE ;
 
 : TR-PE-LAYOUT ( -- )
    TR-PE-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
    s" primitive-record-layout" T-LABEL
    stride 3 cells T=  align $8 T=  mask 0 T=
-   ok TR-BOOL= ;
+   ok TTRUE ;
 
 : TR-DFER-LAYOUT ( -- )
    TR-DFER-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
    s" defer-record-layout" T-LABEL
    stride 2 cells T=  align $8 T=  mask 0 T=
-   ok TR-BOOL= ;
+   ok TTRUE ;
 
 \ Four cells: (sym, flags) and the two the store carries beside them - the
 \ per-symbol back-link and the effect a `does>` definer gives what it creates.
@@ -1260,7 +1196,7 @@ public
    TR-NORET-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
    s" control-record-layout" T-LABEL
    stride 5 cells T=  align $8 T=  mask 0 T=
-   ok TR-BOOL= ;
+   ok TTRUE ;
 
 ;package
 
@@ -1276,18 +1212,18 @@ public
 
 : TR-CORE-GROW-ASSERT ( -- )
    TR-CORE-MARKS@ {: sym:n uend:n dfer:n noret:n :}
-   sym TR-REG-SYM-MARK @ > TR-BOOL=
-   uend TR-REG-UEND-MARK @ > TR-BOOL=
-   dfer TR-REG-DFER-MARK @ > TR-BOOL=
-   noret TR-REG-NORET-MARK @ > TR-BOOL= ;
+   sym TR-REG-SYM-MARK @ > TTRUE
+   uend TR-REG-UEND-MARK @ > TTRUE
+   dfer TR-REG-DFER-MARK @ > TTRUE
+   noret TR-REG-NORET-MARK @ > TTRUE ;
 
 : TR-VREC-GROW-ASSERT ( -- )
    TR-VREC-MARKS@ {: rec:n field:n node:n arg:n str:n :}
-   rec TR-VREC-N-MARK @ > TR-BOOL=
-   field TR-VREC-FIELD-MARK @ > TR-BOOL=
-   node TR-VREC-NODE-MARK @ > TR-BOOL=
-   arg TR-VNARG-MARK @ > TR-BOOL=
-   str TR-VREC-STR-MARK @ > TR-BOOL= ;
+   rec TR-VREC-N-MARK @ > TTRUE
+   field TR-VREC-FIELD-MARK @ > TTRUE
+   node TR-VREC-NODE-MARK @ > TTRUE
+   arg TR-VNARG-MARK @ > TTRUE
+   str TR-VREC-STR-MARK @ > TTRUE ;
 
 : TR-CORE-ROLLBACK-ASSERT ( -- )
    TR-CORE-MARKS@ {: sym:n uend:n dfer:n noret:n :}
@@ -1402,11 +1338,11 @@ RSD-BUF RSD-CAP DIAG-BUFFER!
 s" over-width local rejects" T-LABEL
 s" CBAD-LOC17-DIAG ( n -- n ) {: abcdefghijklmnopq:n :} abcdefghijklmnopq" CHECK-CANDIDATE! 0 T=
 s" over-width local names E-LOCAL-NAME-TOO-LONG" T-LABEL
-DIAG-BUFFER$ s" E-LOCAL-NAME-TOO-LONG" T-HAS? -1 T=
+DIAG-BUFFER$ s" E-LOCAL-NAME-TOO-LONG" CONTAINS? -1 T=
 s" over-width local states the width and the limit" T-LABEL
-DIAG-BUFFER$ s" local 'abcdefghijklmnopq:n' has a 17-byte name; the limit is 16 bytes" T-HAS? -1 T=
+DIAG-BUFFER$ s" local 'abcdefghijklmnopq:n' has a 17-byte name; the limit is 16 bytes" CONTAINS? -1 T=
 s" over-width local is not reported as an undefined word" T-LABEL
-DIAG-BUFFER$ s" E-UNDEFINED" T-HAS? 0 T=
+DIAG-BUFFER$ s" E-UNDEFINED" CONTAINS? 0 T=
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" 64 locals certify" T-LABEL
 s" COK-LOC64" 64 LOCG-BUILD  LOCG$ CHECK-CANDIDATE! -1 T=
@@ -1414,14 +1350,14 @@ RSD-BUF RSD-CAP DIAG-BUFFER!
 s" 65 locals reject" T-LABEL
 s" CBAD-LOC65" 65 LOCG-BUILD  LOCG$ CHECK-CANDIDATE! 0 T=
 s" 65th local names E-TOO-MANY-LOCALS and the cap" T-LABEL
-DIAG-BUFFER$ s" E-TOO-MANY-LOCALS" T-HAS? -1 T=
-DIAG-BUFFER$ s" local 't64' is one over the 64 locals a definition may bind" T-HAS? -1 T=
+DIAG-BUFFER$ s" E-TOO-MANY-LOCALS" CONTAINS? -1 T=
+DIAG-BUFFER$ s" local 't64' is one over the 64 locals a definition may bind" CONTAINS? -1 T=
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" locals inside a quotation reject" T-LABEL
 s" CBAD-LOC-QUOTE ( -- n ) [: 1 {: x:n :} x ;] execute" CHECK-CANDIDATE! 0 T=
 s" quotation locals keep E-BAD-LOCAL-SHAPE" T-LABEL
-DIAG-BUFFER$ s" E-BAD-LOCAL-SHAPE" T-HAS? -1 T=
-DIAG-BUFFER$ s" a local cannot be bound or referenced inside a quotation, or bound on a dead path" T-HAS? -1 T=
+DIAG-BUFFER$ s" E-BAD-LOCAL-SHAPE" CONTAINS? -1 T=
+DIAG-BUFFER$ s" a local cannot be bound or referenced inside a quotation, or bound on a dead path" CONTAINS? -1 T=
 \ A local the load cannot bind refuses the definition at its token, as the
 \ load does while it compiles the body, ahead of any check failure before it.
 \ Only the FIRST local fault's kind is recorded: a later local fault of another
@@ -1430,18 +1366,18 @@ RSD-BUF RSD-CAP DIAG-BUFFER!
 s" quotation local before a wide local rejects" T-LABEL
 s" CBAD-LOC-SHAPE-THEN-WIDE ( n -- n ) [: {: y:n :} ;] drop {: abcdefghijklmnopq:n :} 1" CHECK-CANDIDATE! 0 T=
 s" quotation local before a wide local keeps the shape code on '{:'" T-LABEL
-DIAG-BUFFER$ s" E-BAD-LOCAL-SHAPE habu: in cbad-loc-shape-then-wide: at '{:'" T-HAS? -1 T=
+DIAG-BUFFER$ s" E-BAD-LOCAL-SHAPE habu: in cbad-loc-shape-then-wide: at '{:'" CONTAINS? -1 T=
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" wide local before a quotation local rejects" T-LABEL
 s" CBAD-LOC-WIDE-THEN-SHAPE ( n -- n ) {: abcdefghijklmnopq:n :} [: {: y:n :} ;] drop 1" CHECK-CANDIDATE! 0 T=
 s" wide local before a quotation local keeps the width code on its token" T-LABEL
-DIAG-BUFFER$ s" E-LOCAL-NAME-TOO-LONG habu: in cbad-loc-wide-then-shape: local 'abcdefghijklmnopq:n' has a 17-byte name" T-HAS? -1 T=
+DIAG-BUFFER$ s" E-LOCAL-NAME-TOO-LONG habu: in cbad-loc-wide-then-shape: local 'abcdefghijklmnopq:n' has a 17-byte name" CONTAINS? -1 T=
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" type fault before a wide local rejects" T-LABEL
 s" CBAD-LOC-AFTER-MISMATCH ( n -- n ) dup c@ {: abcdefghijklmnopq:n :} 1" CHECK-CANDIDATE! 0 T=
 s" type fault before a wide local names the local, as the load does" T-LABEL
-DIAG-BUFFER$ s" E-LOCAL-NAME-TOO-LONG habu: in cbad-loc-after-mismatch: local 'abcdefghijklmnopq:n' has a 17-byte name" T-HAS? -1 T=
-DIAG-BUFFER$ s" at 'c@'" T-HAS? 0 T=
+DIAG-BUFFER$ s" E-LOCAL-NAME-TOO-LONG habu: in cbad-loc-after-mismatch: local 'abcdefghijklmnopq:n' has a 17-byte name" CONTAINS? -1 T=
+DIAG-BUFFER$ s" at 'c@'" CONTAINS? 0 T=
 \ The JSON packet carries the same distinction: code, repair class and suggestion.
 8192 constant LOCJ-CAP
 create LOCJ-BUF LOCJ-CAP allot
@@ -1449,17 +1385,17 @@ LOCJ-BUF LOCJ-CAP DIAG-BUFFER!  -1 DIAG-JSON!
 s" over-width local JSON packet" T-LABEL
 s" CBAD-LOC17-JSON ( n -- n ) {: abcdefghijklmnopq:n :} abcdefghijklmnopq" CHECK-CANDIDATE! 0 T=
 s" over-width local JSON code" T-LABEL
-DIAG-BUFFER$ s\" \"code\":\"E-LOCAL-NAME-TOO-LONG\"" T-HAS? -1 T=
+DIAG-BUFFER$ s\" \"code\":\"E-LOCAL-NAME-TOO-LONG\"" CONTAINS? -1 T=
 s" over-width local JSON repair class" T-LABEL
-DIAG-BUFFER$ s\" \"repair_class\":\"shorten_local_name\"" T-HAS? -1 T=
+DIAG-BUFFER$ s\" \"repair_class\":\"shorten_local_name\"" CONTAINS? -1 T=
 s" over-width local JSON suggestion" T-LABEL
-DIAG-BUFFER$ s" Shorten the local name to at most 16 bytes." T-HAS? -1 T=
+DIAG-BUFFER$ s" Shorten the local name to at most 16 bytes." CONTAINS? -1 T=
 LOCJ-BUF LOCJ-CAP DIAG-BUFFER!
 s" 65th local JSON packet" T-LABEL
 LOCG$ CHECK-CANDIDATE! 0 T=
 s" 65th local JSON code and class" T-LABEL
-DIAG-BUFFER$ s\" \"code\":\"E-TOO-MANY-LOCALS\"" T-HAS? -1 T=
-DIAG-BUFFER$ s\" \"repair_class\":\"reduce_local_count\"" T-HAS? -1 T=
+DIAG-BUFFER$ s\" \"code\":\"E-TOO-MANY-LOCALS\"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"repair_class\":\"reduce_local_count\"" CONTAINS? -1 T=
 DIAG-BUFFER-OFF  0 DIAG-JSON!
 \ --- multi-error load mode: rejects do not abort the load; the declared sig is
 \ retained so later definitions keep checking, and the count drives a fail-closed
@@ -1495,9 +1431,9 @@ s" DNI-XCAST ( n -- exposure-us ) >frame-idx" T-CHECK-REJECTS
 LOCJ-BUF LOCJ-CAP DIAG-BUFFER!  -1 DIAG-JSON!
 s" DNI-RENDER ( frame-idx -- n )" CHECK! drop
 s" nominal type renders by name in diagnostic" T-LABEL
-DIAG-BUFFER$ s\" \"actual\":\"frame-idx \"" T-HAS? -1 T=
+DIAG-BUFFER$ s\" \"actual\":\"frame-idx \"" CONTAINS? -1 T=
 s" nominal declared effect renders bare" T-LABEL
-DIAG-BUFFER$ s\" \"declared_effect\":\"frame-idx -- n \"" T-HAS? -1 T=
+DIAG-BUFFER$ s\" \"declared_effect\":\"frame-idx -- n \"" CONTAINS? -1 T=
 DIAG-BUFFER-OFF  0 DIAG-JSON!
 \ The inferred effect REC-SIG renders for a sig-less word is that same spelling. A
 \ render is re-read as source (test/prop-test-core.f ROUNDTRIP re-declares a body
@@ -1624,12 +1560,12 @@ RSD-BUF RSD-CAP DIAG-BUFFER!
 s" arity-6 mismatch diagnostic rejects" T-LABEL
 s" CBAD-BIG6-REND ( -- n ) T-BIG6-MK" CHECK-CANDIDATE! 0 T=
 s" arity-6 diagnostic renders all six args" T-LABEL
-DIAG-BUFFER$ s" tfam6r-big<n,f32,u8,u16,i64,bool>" T-HAS? -1 T=
+DIAG-BUFFER$ s" tfam6r-big<n,f32,u8,u16,i64,bool>" CONTAINS? -1 T=
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" SC-QUOT mismatch diagnostic rejects" T-LABEL
 s" CBAD-SCQ-REND ( -- n ) T-SCQ-MK" CHECK-CANDIDATE! 0 T=
 s" SC-QUOT diagnostic renders quot rows" T-LABEL
-DIAG-BUFFER$ s" scq-fam<[ n-- n],f32>" T-HAS? -1 T=
+DIAG-BUFFER$ s" scq-fam<[ n-- n],f32>" CONTAINS? -1 T=
 DIAG-BUFFER-OFF
 variable TSHOW-N
 : TSHOW-HOOK ( ptr u8 n n -- )
@@ -1751,7 +1687,7 @@ RSD-BUF RSD-CAP DIAG-BUFFER!
 s" linear-local reject carries E-LINEAR-LOCAL" T-LABEL
 s" CBAD-OWN-LOCAL-DIAG ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) {: x:ES-OWN:own :} x x" CHECK-CANDIDATE! 0 T=
 s" linear-local diagnostic names E-LINEAR-LOCAL" T-LABEL
-DIAG-BUFFER$ s" E-LINEAR-LOCAL" T-HAS? -1 T=
+DIAG-BUFFER$ s" E-LINEAR-LOCAL" CONTAINS? -1 T=
 DIAG-BUFFER-OFF
 \ A qualified name its package declares no type for stays an unknown type in a
 \ typed local, as it is in a signature.
@@ -2285,20 +2221,20 @@ s" ESNP-FETCH-N-OK ( ptr n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" ESNP-SPEC ( a -- a ) ESNP-ID" CHECK-CANDIDATE! 0 T=
 s" specialize diag: E-NONPARAMETRIC-EFFECT code" T-LABEL
-DIAG-BUFFER$ s" E-NONPARAMETRIC-EFFECT" T-HAS? -1 T=
+DIAG-BUFFER$ s" E-NONPARAMETRIC-EFFECT" CONTAINS? -1 T=
 s" specialize diag: names the offending quantifier" T-LABEL
-DIAG-BUFFER$ s" variable 'a'" T-HAS? -1 T=
+DIAG-BUFFER$ s" variable 'a'" CONTAINS? -1 T=
 s" specialize diag: names the forged family" T-LABEL
-DIAG-BUFFER$ s" family 'esnp'" T-HAS? -1 T=
+DIAG-BUFFER$ s" family 'esnp'" CONTAINS? -1 T=
 DIAG-BUFFER-OFF
 
 \ aliasing diagnostic: E-NONPARAMETRIC-EFFECT, both quantifier letters
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" ESNP-ALIAS ( a b -- a ) ESNP-MERGE" CHECK-CANDIDATE! 0 T=
 s" aliasing diag: E-NONPARAMETRIC-EFFECT code" T-LABEL
-DIAG-BUFFER$ s" E-NONPARAMETRIC-EFFECT" T-HAS? -1 T=
+DIAG-BUFFER$ s" E-NONPARAMETRIC-EFFECT" CONTAINS? -1 T=
 s" aliasing diag: names both quantifiers" T-LABEL
-DIAG-BUFFER$ s" 'a' and 'b'" T-HAS? -1 T=
+DIAG-BUFFER$ s" 'a' and 'b'" CONTAINS? -1 T=
 DIAG-BUFFER-OFF
 
 \ pointer-pointee path stays stable: the ptr instance rejects via the existing
@@ -2306,7 +2242,7 @@ DIAG-BUFFER-OFF
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" ESNP-PSPEC ( -- ptr a ) 0 ESNP-AT" CHECK-CANDIDATE! 0 T=
 s" ptr-family diag names the forged family" T-LABEL
-DIAG-BUFFER$ s" esnp" T-HAS? -1 T=
+DIAG-BUFFER$ s" esnp" CONTAINS? -1 T=
 DIAG-BUFFER-OFF
 
 \ rollback/isolation: a rejected non-parametric definition leaves no residue —
@@ -3034,10 +2970,6 @@ align here CELL 1- and 0 T=
 s" align: leaves an aligned data pointer in place" T-LABEL
 align here align here - 0 T=
 
-\ report: count + nonzero exit on failure
-: REPORT ( -- )
-   #FAIL @ 0 = if [char] o emit [char] k emit cr exit then
-   #FAIL @ . s" engine-suite: failures" 1 die ;
-REPORT
+T-REPORT
 
 ;using

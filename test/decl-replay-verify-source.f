@@ -37,6 +37,7 @@
 \ the one whose result this file can actually read.
 
 require src/lib/errors.f
+require src/lib/test.f
 require test/checker-assert.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 require src/habu/verify-source.f
@@ -46,8 +47,7 @@ using TFAM
 
 package VSPARITY
 
-variable #FAIL
-variable #CASE
+T-RESET
 
 \ --- the registry reflection surface. Every one is a read; none mutates.
 \ Each forwards to a sealed pre-hook registry word, the same idiom the declaration
@@ -74,27 +74,6 @@ CAST: FLAG-CELL ( bool -- n )
    drop false ;
 : R-TOTAL ( -- n ) TYPE-FIELD:COUNT ;
 
-public
-
-: FAIL ( -- )
-   [char] F emit #CASE @ .
-   #FAIL @ 1 + #FAIL ! ;
-
-: T= ( n n -- ) {: got:n want:n :}
-   #CASE @ 1 + #CASE !
-   got want = IF EXIT THEN
-   FAIL
-   s" assert: expected " type want . cr
-   s" got " type got . cr ;
-
-: T-TRUE ( bool -- ) {: b:bool :}
-   #CASE @ 1 + #CASE !
-   b IF EXIT THEN
-   FAIL
-   s" assert: expected true" type cr ;
-
-private
-
 \ --- field-row walking. TYPE-FIELD rows are a flat table keyed (family,
 \ variant), so a family's rows are found by scanning for that key; the Nth match
 \ in table order is the Nth field in declaration order.
@@ -120,9 +99,9 @@ private
    count 0 ?DO
       af av i ROW-AT {: ai:n :}
       bf bv i ROW-AT {: bi:n :}
-      ai 0 >= T-TRUE
-      bi 0 >= T-TRUE
-      ai PF-NAME$ bi PF-NAME$ CORE-STR= T-TRUE
+      ai 0 >= TTRUE
+      bi 0 >= TTRUE
+      ai PF-NAME$ bi PF-NAME$ CORE-STR= TTRUE
       ai PF-SLOT@  bi PF-SLOT@  T=
       ai PF-CELLS@ bi PF-CELLS@ T=
    LOOP ;
@@ -135,7 +114,7 @@ private
    count 0 ?DO
       astart i + {: a:n :}
       bstart i + {: b:n :}
-      a V-NAME$ b V-NAME$ CORE-STR= T-TRUE
+      a V-NAME$ b V-NAME$ CORE-STR= TTRUE
       a V-TAG b V-TAG T=
       \ The constructor package is DERIVED from the declaring package and the
       \ family name, and the two copies must live in different packages to
@@ -143,11 +122,11 @@ private
       \ the replayed row carries one at all: that stamp is the registration a
       \ later FAMILY:VARIANT resolves through, and it is exactly what would be
       \ lost by skipping the arming instead of the rendering.
-      b V-PKG$ nip 0 > T-TRUE
-      a V-PKG$ nip 0 > T-TRUE
+      b V-PKG$ nip 0 > TTRUE
+      a V-PKG$ nip 0 > TTRUE
       \ Both paths register the checked constructor effects.
-      a SUMV-CTOR-SYM@ 0 <> T-TRUE
-      b SUMV-CTOR-SYM@ 0 <> T-TRUE
+      a SUMV-CTOR-SYM@ 0 <> TTRUE
+      b SUMV-CTOR-SYM@ 0 <> TTRUE
       af a bf b SAME-FIELDS
    LOOP ;
 
@@ -155,11 +134,11 @@ private
    {: fam:n name:ptr nameu:n slot:n :}
    fam TYPE-FIELD:NO-VARIANT name nameu TYPE-FIELD:FIND
    {: row:n found:bool :}
-   found T-TRUE
+   found TTRUE
    found IF
       row PF-SLOT@ slot T=
       row PF-CELLS@ 1 T=
-      row R-CON-N? T-TRUE
+      row R-CON-N? TTRUE
    THEN ;
 
 public
@@ -208,10 +187,6 @@ variable PAIR-BEFORE
 
 : VCOUNT ( ptr u8 n -- n ) FAMID F-VCOUNT ;
 : FCOUNT ( ptr u8 n -- n ) FAMID TFAM-FLD-COUNT@ ;
-
-: REPORT ( -- )
-   #FAIL @ 0 = if s" ok" type cr exit then
-   #FAIL @ . s" decl-replay-verify-source: failures" 1 die ;
 
 \ --- source builder, for the bodies that have to be too long to write out.
 $4000 constant SRC-CAP        \ 16384: comfortably past BODYBUF-CAP (8000)
@@ -263,7 +238,7 @@ variable SB-I   variable SB-J
 \ The over-cap declaration must leave NO family behind, not a short one.
 : FAM-FIND ( ptr u8 n -- n bool ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE ;
 : CAP-FAMILY-ABSENT ( -- )
-   s" capb:big" FAM-FIND 0= T-TRUE drop ;
+   s" capb:big" FAM-FIND 0= TTRUE drop ;
 
 \ A `\` comment ends at a newline, so this source needs a real one embedded.
 : BACKSLASH-ENUM-SOURCE ( -- ptr u8 n )
@@ -290,9 +265,9 @@ STRUCTURE pair
 
 s" package sdrep public STRUCTURE pair FIELD lo n FIELD hi n ;STRUCTURE ;package"
 VSPARITY:VS-OPEN
-s" PAIR ( n n -- sdrep:pair ) SDREP-PAIR:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
-s" UNPAIR ( sdrep:pair -- n n ) SDREP-PAIR:UNMAKE" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
-s" WRONG-PAIR ( n -- sdrep:pair ) SDREP-PAIR:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
+s" PAIR ( n n -- sdrep:pair ) SDREP-PAIR:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" UNPAIR ( sdrep:pair -- n n ) SDREP-PAIR:UNMAKE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" WRONG-PAIR ( n -- sdrep:pair ) SDREP-PAIR:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 VSPARITY:VS-DONE
 
 s" sdlive:pair" s" sdrep:pair" VSPARITY:COMPARE
@@ -311,10 +286,10 @@ ENUM colour red green blue ;ENUM
 
 s" package edrep public ENUM colour red green blue ;ENUM ;package"
 VSPARITY:VS-OPEN
-s" COLOUR ( -- edrep:colour ) EDREP-COLOUR:RED" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
-s" COLOUR-GREEN ( -- edrep:colour ) EDREP-COLOUR:GREEN" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
-s" COLOUR-BLUE ( -- edrep:colour ) EDREP-COLOUR:BLUE" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
-s" WRONG-COLOUR ( -- n ) EDREP-COLOUR:RED" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
+s" COLOUR ( -- edrep:colour ) EDREP-COLOUR:RED" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" COLOUR-GREEN ( -- edrep:colour ) EDREP-COLOUR:GREEN" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" COLOUR-BLUE ( -- edrep:colour ) EDREP-COLOUR:BLUE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" WRONG-COLOUR ( -- n ) EDREP-COLOUR:RED" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 VSPARITY:VS-DONE
 
 s" edlive:colour" s" edrep:colour" VSPARITY:COMPARE
@@ -334,8 +309,8 @@ VSPARITY:VS-LOAD
 \ ---------------------------------------------------------------------------
 s" package edpay public STRUCTURE slotrec FIELD v n ;STRUCTURE SUMTYPE box VARIANT full slotrec ;VARIANT VARIANT empty ;VARIANT ;SUMTYPE ;package"
 VSPARITY:VS-LOAD
-s" edpay:box" VSPARITY:VCOUNT 2 VSPARITY:T=
-s" edpay:slotrec" VSPARITY:FCOUNT 1 VSPARITY:T=
+s" edpay:box" VSPARITY:VCOUNT 2 T=
+s" edpay:slotrec" VSPARITY:FCOUNT 1 T=
 
 \ ---------------------------------------------------------------------------
 \ 4. A body the capture buffer cannot hold RAISES; it is never truncated.
@@ -365,11 +340,11 @@ s" edpay:slotrec" VSPARITY:FCOUNT 1 VSPARITY:T=
 \ 1000 variants is 6000 bytes — well past the legacy 4096 cap, and accepted,
 \ which is the "no legacy-cap emulation" ruling made executable.
 s" capa" 1000 VSPARITY:ENUM-SOURCE VSPARITY:VS-LOAD
-s" capa:big" VSPARITY:VCOUNT 1000 VSPARITY:T=
+s" capa:big" VSPARITY:VCOUNT 1000 T=
 
 \ Over the buffer's bound: raises the declaration layer's own "declaration too
 \ long" code, and registers nothing at all.
-s" capb" 1400 VSPARITY:ENUM-SOURCE VSPARITY:VSTRY 7118 VSPARITY:T=
+s" capb" 1400 VSPARITY:ENUM-SOURCE VSPARITY:VSTRY 7118 T=
 VSPARITY:CAP-FAMILY-ABSENT
 
 \ ---------------------------------------------------------------------------
@@ -385,21 +360,21 @@ VSPARITY:CAP-FAMILY-ABSENT
 \ ---------------------------------------------------------------------------
 DECL-DIAG:PROSE
 s" package vp public ENUM cm1 red ( note ) green ;ENUM ;package"
-VSPARITY:VSTRY 7101 VSPARITY:T=
+VSPARITY:VSTRY 7101 T=
 s" habu: bad enum declaration 'cm1': name must be a lowercase tail at '('"
-DECL-DIAG:HAS? -1 VSPARITY:T=
+DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
 s" package vq public STRUCTURE cm2 FIELD a n ( note ) FIELD b n ;STRUCTURE ;package"
-VSPARITY:VSTRY 7107 VSPARITY:T=
+VSPARITY:VSTRY 7107 T=
 s" habu: bad structure declaration 'cm2': unexpected token in structure declaration at '('"
-DECL-DIAG:HAS? -1 VSPARITY:T=
+DECL-DIAG:HAS? -1 T=
 
 \ a `\` comment runs to end of line, so this one needs a real newline in it
 DECL-DIAG:PROSE
-VSPARITY:BACKSLASH-ENUM-SOURCE VSPARITY:VSTRY 7101 VSPARITY:T=
+VSPARITY:BACKSLASH-ENUM-SOURCE VSPARITY:VSTRY 7101 T=
 s" habu: bad enum declaration 'cm3': name must be a lowercase tail at '\'"
-DECL-DIAG:HAS? -1 VSPARITY:T=
+DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
@@ -420,16 +395,16 @@ DECL-DIAG:OFF
 s" package adrep public STRUCTURE rec DERIVE addr FIELD a n FIELD b n ;STRUCTURE : ADR-USE ( ptr rec -- ptr n ) ADREP-REC:A ; : ADR-SPAN ( -- n ) ADREP-REC:BYTES ADREP-REC:CELLS + ; ;package"
 VSPARITY:VS-OPEN
 
-s" ADR-A ( ptr adrep:rec -- ptr n ) ADREP-REC:A" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
-s" ADR-B ( ptr adrep:rec -- ptr n ) ADREP-REC:B" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
-s" ADR-AT ( ptr adrep:rec n -- ptr adrep:rec ) ADREP-REC:AT" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
-s" ADR-BYTES ( -- n ) ADREP-REC:BYTES" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
-s" ADR-CELLS ( -- n ) ADREP-REC:CELLS" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
+s" ADR-A ( ptr adrep:rec -- ptr n ) ADREP-REC:A" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" ADR-B ( ptr adrep:rec -- ptr n ) ADREP-REC:B" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" ADR-AT ( ptr adrep:rec n -- ptr adrep:rec ) ADREP-REC:AT" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" ADR-BYTES ( -- n ) ADREP-REC:BYTES" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" ADR-CELLS ( -- n ) ADREP-REC:CELLS" VERIFY:CANDIDATE-IN-SCOPE -1 T=
 \ the projection is the field's, not the record's: a replayed accessor that
 \ answered its own input would be a registered lie
-s" ADR-SELF ( ptr adrep:rec -- ptr adrep:rec ) ADREP-REC:A" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
-s" ADR-NOARG ( -- ptr n ) ADREP-REC:A" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
-s" ADR-AT-WRONG ( ptr adrep:rec -- ptr adrep:rec ) ADREP-REC:AT" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
+s" ADR-SELF ( ptr adrep:rec -- ptr adrep:rec ) ADREP-REC:A" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+s" ADR-NOARG ( -- ptr n ) ADREP-REC:A" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+s" ADR-AT-WRONG ( ptr adrep:rec -- ptr adrep:rec ) ADREP-REC:AT" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 VSPARITY:VS-DONE
 
 \ The private spelling. A private product publishes FAMILY-MEMBER into its
@@ -439,9 +414,9 @@ s" package adprv STRUCTURE prec DERIVE addr FIELD lo n FIELD hi n ;STRUCTURE : P
 VSPARITY:VS-LOAD
 
 \ and stays private: the same name outside the package does not resolve
-s" ADR-LEAK ( ptr adprv:prec -- ptr n ) PREC-HI" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
+s" ADR-LEAK ( ptr adprv:prec -- ptr n ) PREC-HI" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 
-VSPARITY:REPORT
+T-REPORT
 
 ;using
 ;using
