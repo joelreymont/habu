@@ -17,9 +17,9 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/fs.f
-require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require test/pcap-result.f
 
 package CATCH-FRAME-TEST
 private
@@ -100,10 +100,7 @@ variable ERRLEN
    PROC-ARGV-RESET
    HB$ >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE                   \ record captured stderr length, return rc
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} e LEN>N ERRLEN !  0 ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} e LEN>N ERRLEN !  c RC>N ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N swap ERRLEN ! nip ;
 
 : FORGE-FAILS-CLOSED ( ptr u8 n ptr u8 n -- )   \ ( label forge-src -- ): rc 87 + exact diagnostic
    {: lbl:ptr lblu:n src:ptr srcu:n :}

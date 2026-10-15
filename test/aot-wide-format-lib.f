@@ -31,6 +31,7 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require test/pcap-result.f
 
 package AOT-WIDE-FORMAT
 
@@ -79,12 +80,7 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
    BUILDER-ARGV
    PLAIN$ >LEN  OUT CAP >LEN  ERR CAP >LEN  BUILD-TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  0 RC ! ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
-   ;MATCH
+   PCAP-RESULT:>N RC ! ERR-U ! OUT-U !
    \ The builder exits PROC-TIMEOUT-RC when a deadline expired in it: replay its
    \ stderr, which names the step, and throw E-PROC-TIMEOUT again, so the gate
    \ pool labels the row TIMEOUT-UNDER-LOAD.
@@ -102,12 +98,8 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
 : BATCH-RUN ( ptr u8 n -- ) {: p:ptr pu:n :}
    PROC-ARGV-RESET
    HB$ >LEN  p pu >LEN  OUT CAP >LEN  ERR CAP >LEN  PROBE-TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  0 RC ! ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
-   ;MATCH ;
+   RUN-ARGV-STDIN-CAPTURE
+   PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 \ The program prints its answer after a label of its own, because the boot-run
 \ reports ahead of it carry long numbers: awb-ext=6510767442340633178 holds "42",

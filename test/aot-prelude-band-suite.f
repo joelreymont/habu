@@ -85,9 +85,9 @@ require src/lib/test.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require test/pcap-result.f
 
 package AOT-PRELUDE-BAND
 
@@ -123,12 +123,7 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    PROC-ENV-INHERIT-MISSING
    HB$ >LEN  OUT CAP >LEN  ERR CAP >LEN  CASE-TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  0 RC ! ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 : CALL-CASE ( ptr u8 n -- ) s" test/aot-band-call.f" 2swap RUN-CASE ;
 : DATA-CASE ( ptr u8 n -- ) s" test/aot-band-data.f" 2swap RUN-CASE ;

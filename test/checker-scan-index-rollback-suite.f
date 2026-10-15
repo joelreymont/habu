@@ -20,10 +20,10 @@
 \ the grown case answers instead.
 
 require src/lib/string.f
-require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require test/checker-scan-index-lib.f
+require test/pcap-result.f
 
 \ Reopened, not imported: the cases run inside the fixture's package, where
 \ the definitions they make land (test/checker-scan-index-lib.f).
@@ -128,10 +128,7 @@ variable SCX-RC
    SCX-HB$ >LEN src srcu >LEN
    SCX-OUT IO-CAP >LEN SCX-ERR IO-CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} e LEN>N SCX-ERR-U ! 0 SCX-RC ! ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} e LEN>N SCX-ERR-U ! c RC>N SCX-RC ! ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N SCX-RC ! SCX-ERR-U ! drop ;
 
 : SCX-ERR$ ( -- ptr u8 n )
    SCX-ERR SCX-ERR-U @ ;

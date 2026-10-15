@@ -126,6 +126,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/test/outcome.f
+require test/pcap-result.f
 
 package AOT-WID-SUITE
 
@@ -228,12 +229,7 @@ create NUM-BUF 32 allot   variable NUM-U
    BUILDER-ARGV
    PLAIN$ >LEN  OUT CAP >LEN  ERR CAP >LEN  BUILD-TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  0 RC ! ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
-   ;MATCH
+   PCAP-RESULT:>N RC ! ERR-U ! OUT-U !
    \ The builder exits PROC-TIMEOUT-RC when a deadline expired in it: replay its
    \ stderr, which names the step, and throw E-PROC-TIMEOUT again, so the gate
    \ pool labels this row TIMEOUT-UNDER-LOAD.

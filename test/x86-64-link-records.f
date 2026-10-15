@@ -108,8 +108,8 @@ require src/arch/x86-64/abi.f
 require src/arch/x86-64/passes.f
 require src/habu/link-x64.f
 require src/core/sha256.f
-require src/lib/process.f
 require src/lib/process-argv.f
+require test/pcap-result.f
 
 \ A binding is a multi-cell value, which only a compiled body may hold.
 package X64LT
@@ -537,12 +537,7 @@ variable RC
    m mu >LEN PROC-ARGV+
    s" bin/hb" >LEN  EMPTY 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  CHILD-MS >MS
    RUN-ARGV-STDIN-CAPTURE
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  0 RC ! ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 : RUN-STRIP-IMAGE ( -- )
    HB-TARGET-LINUX-X86-64? 0= if exit then
@@ -551,12 +546,7 @@ variable RC
    s" hb-x64-link-private" TMP-PATH >LEN
       EMPTY 0 >LEN OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS
       RUN-ARGV-STDIN-CAPTURE
-   MATCH result
-     ok OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
-          o LEN>N OUT-U ! e LEN>N ERR-U ! 0 RC ! ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
-          o LEN>N OUT-U ! e LEN>N ERR-U ! c RC>N RC ! ENDOF
-   ;MATCH
+   PCAP-RESULT:>N RC ! ERR-U ! OUT-U !
    RC @ 0 T= ;
 
 : SHOW-CHILD ( -- )

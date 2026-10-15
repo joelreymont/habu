@@ -21,9 +21,9 @@
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require test/pcap-result.f
 
 package ENGINE-ERROR-TEST
 private
@@ -59,10 +59,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    PROC-ARGV-RESET
    exe exeu >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N OUT-U ! e LEN>N ERR-U ! 0 ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N OUT-U ! e LEN>N ERR-U ! c RC>N ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N {: outu:n erru:n rc:n :} outu OUT-U ! erru ERR-U ! rc ;
 
 : CHILD-RC ( ptr u8 n -- n )
    SOURCE$ {: src:ptr u:n :}

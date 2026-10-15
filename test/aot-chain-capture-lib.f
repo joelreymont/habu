@@ -9,8 +9,8 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/process.f
 require src/lib/process-argv.f
+require test/pcap-result.f
 
 package AOT-CHAIN-SUITE
 
@@ -42,12 +42,7 @@ create ROOT-BUF FS-PATH-CAP allot   variable ROOT-U
 : RUN-ENGINE ( ptr u8 n -- )
    >LEN  EMPTY 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  CHILD-TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  0 RC ! ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 : SAID? ( ptr u8 n -- ) {: m:ptr mu:n :}
    m mu T-LABEL

@@ -24,6 +24,7 @@ require src/lib/memory.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-fork.f
+require test/pcap-result.f
 
 300 constant GPO-SETTLE-MS
 100 constant GPO-POLL-MS
@@ -329,10 +330,7 @@ variable GCR-SAVED-FD
    PROC-REAP-PID @ 0 < ;
 
 : GCR-CODE ( result<pcap:captured,pcap:failed> -- n )   \ completion code: 0 on a clean exit, else nonzero
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE 2drop 0 ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} c RC>N ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N nip nip ;
 
 : GCR-DONE-DISARMED? ( -- bool bool )   \ completion terminator disarms, twice
    PROC-FORK:REAP-WATCH-FD @ GCR-SAVED-FD !
