@@ -235,9 +235,8 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
 \ checked casts, mirroring MEM's ALLOC-CELLS>N: the raw vector header cell and the
 \ cell-address arithmetic still consume a bare `n`, so the typed boundary reads a
 \ validated role's cell here. Private, no public export, confined to src/lib/vector.f
-\ like the MEM pair. They disappear entirely when TVK-RAW
-\ (habu-nominal-storage-raw-a3430ef2, under habu-epic-model-cad-70b629a9) lets the
-\ header and address primitives take the nominal role directly.
+\ like the MEM pair. Raw storage rejects nominal roles, so these projections
+\ are the explicit boundary to the numeric header and address arithmetic.
 
 package VEC
 private

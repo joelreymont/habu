@@ -11,6 +11,11 @@ PFX-APPEND-ENGINE-SNAP-HOOK chain is already gone. SIGSCOPE! and SIGSCOPE-OFF
 still have no callers, leaving the enabled SIG-SCOPE$ branch unreachable;
 confirm their current consumers before the focused removal.
 
+The indexed CHK-PTR-U8-SLOT, CHK-PTR-U8-SLOT@ and CHK-PTR-U8-SLOT!
+helpers in tools/check-core.f also have no callers in the current tree.
+Remove that small dead family after confirming source and generated uses;
+the non-indexed CHK-PTR-U8@/! helpers are used and remain.
+
 Do not require the retired textual zero-reference census/gate. Use the actual
 call/retention paths for each proposed deletion, preserve public named behavior,
 and measure the affected engine bytes. The wrej branch has a documented widened-

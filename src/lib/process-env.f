@@ -176,9 +176,8 @@ public
 \ own len/off roles, because PROC-TRY-PATH-SEG, JOIN-PATH and the PROC-PATH-I
 \ cursor cell are stated in those and that chain reaches this file's public entry.
 \ Two checked role-to-role casts at this file's scope do the crossing, so no raw
-\ cell exists in between and NUM is not reopened. (A NUM role cannot be
-\ stored directly: `!` takes ( a ptr a ) and a type variable does not bind an
-\ arity-zero family, which is what dot habu-nominal-storage-raw-a3430ef2 is for.)
+\ cell exists in between and NUM is not reopened. Raw storage rejects nominal
+\ roles; the casts preserve the engine's declared length and offset roles.
 CAST: PROC-SEG>LEN ( NUM:byte-len -- len )
 CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 

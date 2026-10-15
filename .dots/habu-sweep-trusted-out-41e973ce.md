@@ -6,39 +6,28 @@ issue-type: task
 created-at: "2026-09-16T15:49:57.931374+03:00"
 ---
 
-Problem: 298 TRUSTED: definition sites remain under src/ (src/core 146: enum-decl.f 39, structure-decl.f 35, generated-declaration.f 24, others; src/habu 68; src/compiler 84, checker-owner.f 67; src/os 4). Each opens a body the checker does not see. Joel (2026-09-16): TRUSTED: is to be retired entirely; agents keep reaching for it because the tree still carries it. Acceptance: every site under src/ is a checked `:` definition; where a body genuinely needs a primitive the checker cannot model, that primitive gets a package-owned PRIM axiom declared inside the owning package, never a TRUSTED: body; `rg -c "^\\s*TRUSTED:" src/` = 0; engine rebuilds to a byte fixpoint; full gate green. Work per file family (declaration machinery, checker-owner, engine emitters, compiler), one commit each. Files: src/core/*.f, src/habu/*.f, src/compiler/**/*.f, src/os/**/*.f. Verify: rg count; tools/native-build.f fixpoint; bin/hb --load test/run.f. Depends: none for a body that calls no trust-boundary primitive (the majority; start there). A body that calls a PE-TRUSTED-ONLY primitive (checker.f 6925-6945 code-injection prims, ffi-call-bounded) waits for the mechanism decision recorded in habu-delete-the-trusted-42b30edd: hazel recommends dropping the bit and making those primitives private to their owning packages, so package privacy, not a checker flag, bounds who may call them; the FFI consumers go through aspen FFI declarer. Ownership: src/. Claim: unassigned. Parent: habu-trusted-dies-prim-4fd12d60.
+Retire remaining unchecked bodies under src/core, src/compiler, src/habu and
+src/os. Ordinary Habu becomes checked code; genuinely unmodeled engine,
+syscall and FFI operations stay small explicit primitive boundaries owned by
+their package. Do not substitute an axiom for an ordinary checked word.
 
-## Leaves (2026-10-01 plan; census in the parent)
+The old B7/B8 row-recording and authority mechanism is implemented, including
+the declared-row window path and the declaration shim removal. Its historical
+source counts and schedule are not current prerequisites. The stricter
+package boundary/final flag work remains with e08e345f and 42b30edd.
 
-src, 352 non-evaluate sites, classified by token and shape (not yet probed through the build window): (d) 35 (publish.f:30-48, packages.f:39-42, definers.f:34-36, outer.f:190,470,527, hide.f:47,54, xref.f:399,473, internal-mark.f:38-39, checker.f:2275-2280,14782,14785, check-hook.f:45, top-row.f:260, prefix-rewind.f:45, debug.f:52, checker-owner.f:149, sumtype.f:1327, dict.f:44); UNSAFE tokens 4 (verify-source.f:576,579,587, checker-owner.f:244); (b) empty-body casts 58 (checker-owner.f:71-89 AS-* 19, aot-capture.f, aot-arm.f, verify-source.f, hide.f, address-cells.f, xref.f, checker.f:173,2871,5261,5748, packages.f:93-94, compiler.f:259, dict.f:116, string.f:71 and singletons); (c) ~150 single-call shims onto pre-hook registry words (structure-decl.f 38, enum-decl.f 36, generated-declaration.f 16, structure-make.f 10, decl-event.f 3, others); ~105 multi-token bodies (checker-owner.f:113-409 owner-ABI dispatchers 54, retired by the AS-* casts; hide.f BFR-*, snap-lib.f, outer.f, declaration-transaction.f ROW.*, verify-source.f OWNER-XT execute).
+When resumed after builds and test-suite work, inspect the current definitions
+and their real load paths. Known remaining candidates include generated
+declaration raw-memory/runner bodies, structure-make's row emitter and
+verify-source's checker dispatch. Probe before replacing each one: checked
+bodies use their actual bound effects; representation changes use explicit
+casts; source-window/owner access must work at the responsible boundary.
+Keep multi-call or raw-memory bodies separate from simple forwarding shims.
 
-(d) recipe: inside the owning package `PPRIM: <PKG> <prim> <atoms> CLOSE-PRIVATE` beside its other rows, the body becomes `:`, outside callers use a checked public word; the global trusted-only row stays until B11 deletes it. Owners: publisher prims -> src/compiler/native/publish.f's package; namespace-record/private, alias-record, package-scope! -> packages.f; def-open/body-append/trust-sig! -> definers.f; int-mark/min-in-mark -> internal-mark.f; xref-search-wl -> the XREF owner; execute-floor -> outer.f's package; set-check/set-preflight/set-top-check -> the set-check dots.
-B5 (worker-max, after B11): the 35 (d) sites; fixture extends test/prim-owner-scope.f's matrix per owner. Verify: tools/native-build.f byte fixpoint, test/run.f.
-B6 (worker-max, after B10a in habu-turn-deliberate-cast-ad2e237d): the 58 casts and the owner-ABI dispatchers they unblock.
-B7 (worker, after its design): the (c) shims. The registry files (type-schema.f, type-family.f, sumtype.f, layout-buffer.f, layout-valid.f) load before check-hook.f (tools/native-build-core.f:221-235), so their words carry no external authority under the product hook (fab55650 measured E-UNDEFINED for SCHEMA-CON from enum-decl.f). The mechanism is designed together with B8 in habu-visibility-discharge-548-fab55650; owner-private PPRIM rows for ordinary Forth words are excluded (docs/forth.md:15-17). Verify: native build fixpoint.
-
-## B7 design (2026-10-01)
-
-The mechanism is the internal-word authority design in habu-visibility-discharge-548-fab55650 (section of the same date). B7 runs after its step 3. Per site: delete the shim, load on its engine, read the refusal: E-UNDEFINED -> fix at the owner; E-MISMATCH -> a declared cast (habu-turn-deliberate-cast-ad2e237d); E-CAP-TRUSTED -> B3/B5. Shims are deleted, not converted to `:`, when the caller can name the target; raw-cell shims get an owner-declared accessor. A product SUITE file that turns E-UNDEFINED moves to WHITEBOX-SUITE.
-
-B6-2 landed 2026-10-02 (ywswtrpz 7d4c0142 Retype engine pointer and projection casts; trlrtqku 482b819a Map engine arenas with map-anon): src TRUSTED: 397 -> 376 -> 370; projections are checked BYTE-VIEW distances, byte views and six hide.f accessors deleted, AOT-N>U8 a private CAST:, every mmap+cast pair is map-anon (ARENA/TOKBUF/USIGS/HIDX, ICODE, MBUF); tools/bootstrap.sh BOOT-A>U8 twin gone (4 -> 3). Kept global mints, no typed source: xref.f XREF-N>REC/XREF-N>U8, hide.f BFR-N>REC/BFR-N>U8, debug.f BP-XT>PTR, os layout.f MACHO>N-PTR/LINUX-VA>PTR, address-cells.f N>ROWS (old-donor rule). Engine 2,427,511 B unchanged. Fable review ACCEPT.
-
-B6-1 landed 2026-10-03 (quyontvk 15c59c43, Declare engine quotation casts): the Group 1 quotation casts are private CAST:s (checker-owner.f AS-*, verify-source.f SYM/CREATES/CREATED/DOES-ACTION/VERIFIER-ACTION, aot-arm.f, aot-capture.f ACAP-*-XT, dict.f AS-FIXED, compiler.f AS-HOOK, packages.f, outer.f TICK-ACTION, aot-lib.f TASK-EXIT-SLOT) and the 52 checker-owner.f dispatchers, BIND-SOURCE-CALLS and the verify-source.f words are checked `:` over 13 NCOMP-DISPATCH:DECL-* re-exports; src TRUSTED: 397 -> 298 on its base. Kept: DOES-CHECK/FINISH/BEGIN/COMMIT, DECLARED-EFFECT, the verify-source UNSAFE rows, address-cells.f:35 and snapshot-format.f:30 (old donor); verify-source.f CHECK-BODY certifies as `:` and is a follow-up. Fable review ACCEPT.
-
-verify-source.f CHECK-BODY (:648-650) stays TRUSTED: until B8 step 2 (tier-0 recording, habu-visibility-discharge-548-fab55650) gives JSON-DIAGS (checker.f:3475, variable), DIAG-QUIET (checker.f:16961, variable) and DIAGXT (checker.f:16960, defer) pre-hook effect rows. As `:` it certifies on bin/hb (the B6-1 review probes ran only there) and is E-UNDEFINED on a from-source capture host: tools/build-fixpoint-test.f cases 65-67 and 73-74 (got 70 for 74). aot-closure.f:23's `JSON-DIAGS` TRUST row waits for the same rows. The body now also reads MULTI-ERR-MODE?. The bullet that found this named habu-finish-minimal-prim-c00c6a93 (closed, superseded) and habu-primitive-effect-axiom-1119f176 (in neither .dots nor its archive) as the rows' owners. Diff of the attempted conversion: /private/tmp/claude-501/-Users-joel-Work-habu/7a26c772-789c-447c-b6da-4c04943b1e3b/scratchpad/change2.diff.
-
-## Outcome (master d273e641)
-
-B7 landed as three commits, merged by 366e1d3a; each is an ancestor of master:
-- 1bc92f8f "Publish seed created-word rows via the owner";
-- fb1a4259 "Give the recovery reload the window's handover";
-- 8b055da6 "Delete the declaration files' trust shims".
-Both prerequisites fixed failures the Gforth recovery check found with the shims gone. fb1a4259 also deleted tools/native-build-core.f's IMPORT-XT (818 -> 817). 8b055da6 records TRUSTED: 817 -> 677 and src 278 -> 138: decl-event 3 -> 0, enum-decl 39 -> 0, generated-declaration 30 -> 7, structure-decl 54 -> 0, structure-make 15 -> 1, internal-mark 6 -> 2, sumtype 3 -> 2. Trusted-only rows stayed 56 -> 56.
-
-The acceptance (`rg -c` over src = 0) is not met: src holds 138 TRUSTED: definitions at d273e641. What remains, by owner:
-- B12 (habu-delete-the-trusted-42b30edd): B5's trust-boundary sites. These are xref-search-wl, the definers.f and packages.f primitives, MARK-INTERNAL/MARK-MIN-IN, patch32, seed-ndict!, TRUST, TRUST-DECL, and the CHECKER-DEFCAST and CHECKER-GENERATES wrappers. B12 also takes checker.f's pre-claim sites: 8b055da6 counted 27, and checker.f holds 28 TRUSTED: at d273e641.
-- habu-turn-deliberate-cast-ad2e237d: the B6 casts. These are declaration-transaction.f ST.DIAGNOSTIC and the five ROW.* words, the snap-lib.f *-PTR words, TRAILER@, the print-address words and IMAGE-BASE.
-- This dot keeps:
-  - generated-declaration.f's raw-memory bodies over `create` regions, INSTALL-DECLARATION-RUNNER and DICTIONARY-DP!, which are not shims;
-  - structure-make.f:92 SM-EMIT-ROWS, a multi-call body trusted only because it calls pre-hook words;
-  - verify-source.f:750 CHECK-BODY. The rows it waited for were due from B8 step 2, which landed in 7bcc8270, but no one has re-measured the conversion since.
+Use one coherent change per owner/file family, preserving existing positive
+and rejection behavior. Before adding tests, inspect the current downstream
+and source-window E2Es. Acceptance is no TRUSTED: definitions in the affected
+src surface, a matching engine, the required full native suite and convergence
+for shared checker/compiler/capture changes. Recovery checks apply when a
+seed, mirror or recovery dependency changes. Do not repeat completed row
+recording, resurrect obsolete temporary probes or weaken required boundaries.

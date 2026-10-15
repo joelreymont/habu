@@ -6,7 +6,7 @@
 \ omitted, reversed, or cross-unit pair is statically unavailable, because the
 \ only inputs each word accepts are its exact nominal roles. There is no generic
 \ raw-`n` arithmetic and no extra overload; the type system IS the table. New
-\ combinations require a consumer, a unit proof, and a plan amendment - they are
+\ combinations require a consumer and dimensionally valid units; they are
 \ never inferred from the shared one-cell representation.
 \
 \ Result discipline: a role-changing operation that can fail numerically returns
@@ -24,7 +24,7 @@
 \ and is returned as the `zero` value; the quotient is at most the dividend
 \ extent, so it never overflows.
 \
-\ Minting policy (dot audit): arithmetic mints NO role itself. Every success
+\ Arithmetic mints no role itself. Every success
 \ value is routed through slice 1's public validator (`BYTE-LEN`, `ITEM-COUNT`,
 \ `CELL-COUNT`, `INDEX`, `BYTE-OFF`, `CELL-OFF`), which owns the audited
 \ `MINT-*`; the raw kernels only decide overflow/underflow/misalignment BEFORE
