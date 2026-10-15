@@ -323,10 +323,21 @@ bin/hb --load test/db/pg-cluster.f
 ```
 
 Case files named after `--` run in place of those two.
+Set `HB_PG_CASE_MS` to give each case file a longer deadline when a caller
+needs one, for example:
+
+```sh
+HB_PG_CASE_MS=240000 bin/hb --load test/db/pg-cluster.f -- path/to/case.f
+```
+
+The harness rejects an empty, malformed, nonpositive or out-of-range value
+before starting a cluster. The limit is 2,147,483,647 milliseconds, the
+signed millisecond range passed to `poll(2)`.
 
 Each step has a deadline: `initdb`, the server's start and its stop 60 seconds
-each, and each case file 60, 300 seconds in all with the two default files,
-inside the row's hang guard ([gate.md](gate.md)). A step past its deadline is
+each, and each case file 60 by default. With the two default files and no
+override, the steps total 300 seconds inside the row's hang guard
+([gate.md](gate.md)). A step past its deadline is
 ended as a failed one is, and the server, if it runs, is stopped; then the
 harness ends with an uncaught `E-PROC-TIMEOUT`, which the engine reports on
 stderr as `hb: uncaught throw code -2502` before it exits 67. A gate pool

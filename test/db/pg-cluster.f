@@ -77,11 +77,12 @@ require src/lib/engine-candidate.f
 package PG-CLUSTER
 
 $10000 constant CAPTURE-CAP     \ initdb's chatter, or the server's log
-\ The step deadlines - initdb, start, each case file and stop - sum to 300 s,
-\ inside the row's hang guard (test/suite-budget.f ROW-MS), so this process
-\ and not the pool is the one that gives up and stops the server.
+\ With HB_PG_CASE_MS unset, the step deadlines - initdb, start, each of the
+\ two default case files and stop - sum to 300 s, inside the row's hang guard
+\ (test/suite-budget.f ROW-MS), so this process gives up and stops the server.
 60000 constant TOOL-MS
-60000 constant FILE-MS
+60000 constant DEFAULT-CASE-MS
+$7FFFFFFF constant CASE-MAX-MS  \ poll(2) receives a signed 32-bit millisecond count
 \ A signalled stop. An immediate shutdown SIGKILLs the children still alive
 \ 5 s into it (PostgreSQL's SIGKILL_CHILDREN_AFTER_SECS) and then exits, so
 \ 6 s is the server's whole stop. With the case engine's walk (2 s at most,
@@ -115,6 +116,7 @@ variable SERVER                 \ the postmaster's pid until it is reaped
 variable WATCH                  \ readable once the postmaster has exited
 variable RUNNING                \ the running case engine's pid until it is reaped
 variable CASE-WATCH             \ readable once that engine has exited
+variable CASE-MS                \ one deadline for each case file
 TYPED-VARIABLE UP bool          \ the server said it was ready
 TYPED-VARIABLE STOPPED bool     \ the server's stop ended it with exit 0
 TYPED-VARIABLE FAILED bool      \ a step has failed
@@ -129,6 +131,7 @@ false UP !
 false STOPPED !
 false FAILED !
 false LATE !
+DEFAULT-CASE-MS CASE-MS !
 
 : INITDB$ ( -- ptr u8 n )    INITDB INITDB-U @ ;
 : POSTGRES$ ( -- ptr u8 n )  POSTGRES POSTGRES-U @ ;
@@ -141,6 +144,19 @@ false LATE !
 : CONNINFO$ ( -- ptr u8 n )  CONNINFO CONNINFO-U @ ;
 : CONNINFO+ ( ptr u8 n -- )  CONNINFO TEXT-CAP CONNINFO-U BUF-APPEND ;
 : ARG+ ( ptr u8 n -- )       >LEN PROC-ARGV+ ;
+
+: BAD-CASE-MS ( -- )
+   s" pg-cluster: HB_PG_CASE_MS must be 1..2147483647 milliseconds" 64 die ;
+
+: READ-CASE-MS ( -- )
+   s" HB_PG_CASE_MS" GETENV {: value:ptr size:n :}
+   value NULL-PTR = if exit then
+   value size STR>NUMBER? MATCH option
+      none OF BAD-CASE-MS ENDOF
+      some OF ENDOF
+   ;MATCH {: ms:n :}
+   ms 1 < ms CASE-MAX-MS > or if BAD-CASE-MS then
+   ms CASE-MS ! ;
 
 
 \ ---- the tools and the two directories ------------------------------------
@@ -475,7 +491,7 @@ false LATE !
 
 : RUN-FILE ( ptr u8 n -- bool ) {: file:ptr fileu:n :}
    file fileu CASE-SPAWN
-   CASE-WATCH @ FILE-MS ENDED-WITHIN? if
+   CASE-WATCH @ CASE-MS @ ENDED-WITHIN? if
       CASE-REAP
    else
       CASE-KILL OUTCOME:TIMEOUT
@@ -514,6 +530,7 @@ false LATE !
 \ SHOW-LOG's READ-ALL throws E-FS-CAPACITY on a log over CAPTURE-CAP, which a
 \ server that ran the cases may write.
 : MAIN ( -- )
+   READ-CASE-MS
    SIGNAL:CATCH-STOPS
    s" initdb" INITDB TOOL INITDB-U !
    s" postgres" POSTGRES TOOL POSTGRES-U !
