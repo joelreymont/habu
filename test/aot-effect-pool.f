@@ -14,6 +14,7 @@ require tools/native-emit.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/le.f
 
 package AOT-FILE
 public
@@ -98,10 +99,6 @@ create OUT IO-CAP allot create ERR IO-CAP allot
 
 : EXPECTED$ ( -- ptr u8 n ) 0 EXPECTED BYTE-VIEW EXPECTED-U @ ;
 : POOL$ ( -- ptr u8 n ) AOT-SIG-STR-BUF@ AOT-SIG-STR-LEN @ ;
-: U32@ ( ptr u8 -- n ) {: p:ptr :}
-   p c@ p 1+ c@ 8 lshift or p 2 + c@ 16 lshift or p 3 + c@ 24 lshift or ;
-: U64@ ( ptr u8 -- n ) {: p:ptr :}
-   0 8 0 ?do 8 lshift p 7 i - + c@ or loop ;
 
 : WORD-TIER ( ptr u8 n -- )
    XREF-FIND {: rec:ptr :}
@@ -158,15 +155,15 @@ create OUT IO-CAP allot create ERR IO-CAP allot
    AOT-SIG-PAYLOAD:BUILD
    AOT-SIG-PAYLOAD:LEN @ $A0038 > TTRUE  \ former combined static capacity
    AOT-SIG-PAYLOAD:BUF@ {: p:ptr :}
-   p U64@ 3 T=
-   p 8 + U64@ 56 T= p 16 + U64@ WORDS SIG-ROW * T=
-   p 24 + U64@ 56 WORDS SIG-ROW * + T=
-   p 32 + U64@ EXPECTED-U @ T=
-   p 40 + U64@ 56 WORDS SIG-ROW * + EXPECTED-U @ + T=
-   p 48 + U64@ regu T=
+   p LE:U64@ 3 T=
+   p 8 + LE:U64@ 56 T= p 16 + LE:U64@ WORDS SIG-ROW * T=
+   p 24 + LE:U64@ 56 WORDS SIG-ROW * + T=
+   p 32 + LE:U64@ EXPECTED-U @ T=
+   p 40 + LE:U64@ 56 WORDS SIG-ROW * + EXPECTED-U @ + T=
+   p 48 + LE:U64@ regu T=
    p 56 + WORDS SIG-ROW * EXPECTED-ROWS WORDS SIG-ROW * STR= TTRUE
-   p p 24 + U64@ + EXPECTED-U @ EXPECTED$ STR= TTRUE
-   p p 40 + U64@ + regu AOT-REG-BUF@ regu STR= TTRUE
+   p p 24 + LE:U64@ + EXPECTED-U @ EXPECTED$ STR= TTRUE
+   p p 40 + LE:U64@ + regu AOT-REG-BUF@ regu STR= TTRUE
    AOT-SIG-PAYLOAD:LEN @ 56 WORDS SIG-ROW * + EXPECTED-U @ + regu + T= ;
 
 : MERGE ( -- )
@@ -188,11 +185,11 @@ create OUT IO-CAP allot create ERR IO-CAP allot
    WORDS 0 ?do
       AOT-SIG-BUF@ WORDS i + SIG-ROW * + {: row:ptr :}
       EXPECTED-ROWS i SIG-ROW * + {: old:ptr :}
-      row U32@ old U32@ base + T=
-      row 4 + U32@ old 4 + U32@ base + T=
-      row 4 + U32@ 7 and 0 T=
-      row 8 + U32@ old 8 + U32@ base + T=
-      row 12 + U32@ old 12 + U32@ T=
+      row LE:U32@ old LE:U32@ base + T=
+      row 4 + LE:U32@ old 4 + LE:U32@ base + T=
+      row 4 + LE:U32@ 7 and 0 T=
+      row 8 + LE:U32@ old 8 + LE:U32@ base + T=
+      row 12 + LE:U32@ old 12 + LE:U32@ T=
    loop ;
 
 public

@@ -12,6 +12,7 @@ require src/habu/aot-capture.f
 require src/habu/aot-ident.f
 require src/habu/fdio.f
 require src/habu/aot-file.f
+require src/lib/le.f
 
 AOT-ARM:WINDOW-OPEN
 include test/aot-named-cells-window.f
@@ -24,10 +25,6 @@ using AOT-WINDOW
 create KEY 32 allot
 create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 
-: U32@ ( ptr u8 -- n ) {: p:ptr :}
-   p c@ p 1+ c@ 8 lshift or p 2 + c@ 16 lshift or p 3 + c@ 24 lshift or ;
-: U32! ( n ptr u8 -- ) {: value:n p:ptr :}
-   4 0 ?do value i 8 * rshift p i + c! loop ;
 
 \ A third argument forges only the name of an otherwise admitted CODE row.
 \ The ordinary reader and writer still validate every serialized section.
@@ -42,8 +39,8 @@ create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest conte
    size 1+ AOT-NAMES-LEN +!
    XTOFF-N @ 0 ?do
       XTOFF-BUF@ i XTOFF-ROW * + 4 + {: row:ptr :}
-      row U32@ XTOFF-KIND-MASK and XTOFF-NAME-TAG = if
-         off 1+ XTOFF-NAME-TAG or row U32! unloop exit
+      row LE:U32@ XTOFF-KIND-MASK and XTOFF-NAME-TAG = if
+         off 1+ XTOFF-NAME-TAG or row LE:U32! unloop exit
       then
    loop
    79 throw ;

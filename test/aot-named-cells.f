@@ -36,6 +36,7 @@ require src/habu/aot-ident.f
 require src/habu/fdio.f
 require src/habu/aot-owned.f
 require src/compiler/native/string.f
+require src/lib/le.f
 
 package NAMED-CELLS-PRELUDE
 public
@@ -58,7 +59,7 @@ public
    {: index:n meta:n capture :}
    capture AOT-OWNED:BYTES$ drop {: bytes:ptr :}
    bytes S-XTOFFS ROW-BYTES * + U64@ bytes + index AOT-WINDOW:XTOFF-ROW * + 4 +
-   meta swap U32!
+   meta swap LE:U32!
    capture ;
 
 : NAMED-TEST-TRUNCATE ( AOT-OWNED:capture -- AOT-OWNED:capture )
@@ -87,11 +88,7 @@ variable BAD-META
 : ART$ ( -- ptr u8 n ) ART ART-U @ ;
 : BAD-ART$ ( -- ptr u8 n ) BAD-ART BAD-ART-U @ ;
 : ROW ( n -- ptr u8 ) XTOFF-ROW * XTOFF-BUF@ + ;
-: U32@ ( ptr u8 -- n ) {: p:ptr :}
-   p c@ p 1+ c@ 8 lshift or p 2 + c@ 16 lshift or p 3 + c@ 24 lshift or ;
-: U32! ( n ptr u8 -- ) {: value:n p:ptr :}
-   4 0 ?do value i 8 * rshift p i + c! loop ;
-: META! ( n -- ) NAME-ROW @ ROW 4 + U32! ;
+: META! ( n -- ) NAME-ROW @ ROW 4 + LE:U32! ;
 : SAVE ( -- )
    XTOFF-N @ dup SAVED-N ! SAVED-RESERVE
    XTOFF-BUF@ 0 SAVED byte-view SAVED-N @ XTOFF-ROW * BYTE-COPY
@@ -115,7 +112,7 @@ variable BAD-META
 : FIND-NAMES ( -- )
    -1 NAME-ROW ! 0
    XTOFF-N @ 0 ?do
-      i ROW 4 + U32@ {: meta:n :}
+      i ROW 4 + LE:U32@ {: meta:n :}
       meta XTOFF-KIND-MASK and XTOFF-NAME-TAG = if
          i NAME-ROW ! meta ORIGINAL-META ! 1+
       then
@@ -124,7 +121,7 @@ variable BAD-META
 
 : HAS-NAME? ( ptr u8 n -- bool ) {: text:ptr size:n :}
    XTOFF-N @ 0 ?do
-      i ROW 4 + U32@ {: meta:n :}
+      i ROW 4 + LE:U32@ {: meta:n :}
       meta XTOFF-KIND-MASK and XTOFF-NAME-TAG = if
          meta XTOFF-VALUE-MASK and 1- AOT-NAMES-BUF@ +
          dup 1+ swap c@ text size STR= if true unloop exit then
@@ -220,16 +217,16 @@ private
    XTOFF-BUF@ SAVED-N @ XTOFF-ROW * 0 SAVED byte-view SAVED-N @ XTOFF-ROW * STR= TTRUE
    SAVED-N @ 0 ?do
       0 SAVED byte-view i XTOFF-ROW * + {: old:ptr :}
-      old 4 + U32@ {: meta:n :}
+      old 4 + LE:U32@ {: meta:n :}
       meta XTOFF-VALUE-MASK and 0= if meta else
          meta XTOFF-NAME-TAG and 0<> if meta names + else
             meta XTOFF-DATA-TAG and 0<> if meta AOT-FILE:WDATA-BASE + else meta blob + then
          then
       then {: want:n :}
-      SAVED-N @ i + ROW 4 + U32@ want T=
-      old U32@ {: loc:n :}
+      SAVED-N @ i + ROW 4 + LE:U32@ want T=
+      old LE:U32@ {: loc:n :}
       loc XTOFF-WINDOW-TAG and 0<> if loc AOT-FILE:WDATA-BASE + else loc then
-      SAVED-N @ i + ROW U32@ T=
+      SAVED-N @ i + ROW LE:U32@ T=
    loop ;
 
 : RUN ( -- )

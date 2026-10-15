@@ -37,6 +37,7 @@ require src/habu/aot-ident.f
 require src/habu/fdio.f
 require src/habu/aot-file.f
 require src/habu/code-bytes.f
+require src/lib/le.f
 
 package PREFIX-LITERAL-PRODUCER
 public
@@ -89,8 +90,6 @@ create CHAIN 16 allot
 variable CHAIN-SITE
 
 : EQ ( n n -- ) <> if 79 throw then ;
-: U32@ ( ptr u8 -- n ) {: p:ptr :}
-   p c@ p 1+ c@ 8 lshift or p 2 + c@ 16 lshift or p 3 + c@ 24 lshift or ;
 
 TRUSTED: PATCH ( n n -- ) patch32 ;
 
@@ -121,11 +120,11 @@ TRUSTED: PATCH ( n n -- ) patch32 ;
    s" ASCII-UPPER" XREF-FIND XREF-START old EQ
    ndict@ 0 ?do i XREF-REC XREF-START old 2 + = if 79 throw then loop
    CHAIN old 2 + SET-CHAIN
-   4 0 ?do CHAIN i 4 * + U32@ CHAIN-SITE @ i 4 * + PATCH loop ;
+   4 0 ?do CHAIN i 4 * + LE:U32@ CHAIN-SITE @ i 4 * + PATCH loop ;
 using AOT-XTSITE
 : ROWS ( -- )
    N @ 1 EQ
-   BUF@ 4 + U32@ {: off:n :}
+   BUF@ 4 + LE:U32@ {: off:n :}
    s" named=" type AOT-NAMES-BUF@ off 1+ +
    AOT-NAMES-BUF@ off + c@ type cr ;
 ;using

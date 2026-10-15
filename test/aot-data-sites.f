@@ -12,6 +12,7 @@ require src/habu/aot-capture.f
 require src/habu/aot-ident.f
 require src/habu/fdio.f
 require src/habu/aot-owned.f
+require src/lib/le.f
 
 package AOT-CAPTURE
 public
@@ -71,11 +72,7 @@ create KEY 32 allot
 
 : DATA-OFF ( n -- n ) 16 * 16 + ;
 : CODE-OFF ( n -- n ) ROWS + 16 * 8 + ;
-: U32@ ( ptr u8 -- n ) {: p:ptr :}
-   p c@ p 1+ c@ 8 lshift or p 2 + c@ 16 lshift or p 3 + c@ 24 lshift or ;
-: U32! ( n ptr u8 -- ) {: value:n p:ptr :}
-   4 0 ?do value i 8 * rshift p i + c! loop ;
-: ROW@ ( n -- n ) 4 * AOT-DSITE-BUF@ + U32@ ;
+: ROW@ ( n -- n ) 4 * AOT-DSITE-BUF@ + LE:U32@ ;
 
 : CLEAR-COUNTS ( -- )
    0 AOT-BLOB-LEN ! 0 AOT-REC-N ! 0 AOT-SITE-N ! 0 AOT-NAMES-LEN !
@@ -94,14 +91,14 @@ TRUSTED: MARK-TEST-SITE ( n -- ) addrmap-set ;
    CLEAR-COUNTS
    12 AOT-BLOB-LEN !
    AOT-BLOB-BUF@ {: p:ptr :}
-   $D2C00009 p U32! $F2A00009 p 4 + U32! $F2800009 p 8 + U32!
-   $D503201F p 12 + U32!
+   $D2C00009 p LE:U32! $F2A00009 p 4 + LE:U32! $F2800009 p 8 + LE:U32!
+   $D503201F p 12 + LE:U32!
    cp@ {: base:n :}
    p base ADDRESS-CARRIER:DATA-CHAIN-BYTES ADDRESS-CARRIER:SET-CHAIN-VALUE
    base MARK-TEST-SITE
    base base 12 + AOT-CAPTURE:SITE-TEST-CODE-SCAN
    s" the compact carrier must not overwrite the following word" T-LABEL
-   p 12 + U32@ $D503201F T=
+   p 12 + LE:U32@ $D503201F T=
    T-REPORT ;
 
 : SOURCE ( -- )
@@ -109,7 +106,7 @@ TRUSTED: MARK-TEST-SITE ( n -- ) addrmap-set ;
    s" src/habu/aot-decl.f" AOT-IDENT:PATH+
    AOT-BLOB-CAP AOT-BLOB-LEN !
    $1000 AOT-DATA-D0 ! 8 AOT-DATA-SIZE !
-   $D65F03C0 AOT-BLOB-BUF@ U32!
+   $D65F03C0 AOT-BLOB-BUF@ LE:U32!
    ROWS 0 ?do
       AOT-BLOB-BUF@ i DATA-OFF + {: addr:ptr :}
       DEFER-MAGIC addr 8 - CELL-VIEW !
@@ -118,10 +115,10 @@ TRUSTED: MARK-TEST-SITE ( n -- ) addrmap-set ;
    loop
    ROWS 0 ?do
       AOT-BLOB-BUF@ i CODE-OFF + {: addr:ptr :}
-      $D2800009 addr U32!
-      $F2A00009 addr 4 + U32!
-      $F2C00009 addr 8 + U32!
-      $F2E00009 addr 12 + U32!
+      $D2800009 addr LE:U32!
+      $F2A00009 addr 4 + LE:U32!
+      $F2C00009 addr 8 + LE:U32!
+      $F2E00009 addr 12 + LE:U32!
       i CODE-OFF AOT-CAPTURE:SITE-TEST-CODE+
    loop ;
 
@@ -175,13 +172,13 @@ DATA-VA VA>N $1000 + constant NORM-BASE
       i NORM-CELL-OFF AOT-DSITE-CELL or AOT-CAPTURE:SITE-TEST-DATA+
    loop
    AOT-BLOB-BUF@ NORM-CHAIN-OFF + {: p:ptr :}
-   $D2800009 p U32!        $F2A00009 p 4 + U32!
-   $F2C00009 p 8 + U32!    $F2E00009 p 12 + U32!
+   $D2800009 p LE:U32!        $F2A00009 p 4 + LE:U32!
+   $F2C00009 p 8 + LE:U32!    $F2E00009 p 12 + LE:U32!
    p NORM-BASE r + NORM-CHAIN-K 8 * + ADDRESS-CARRIER:SET-CHAIN
    NORM-CHAIN-OFF AOT-CAPTURE:SITE-TEST-DATA+
    AOT-BLOB-BUF@ NORM-REL-OFF + {: rel:ptr :}
-   $D2C00005 rel U32!  $F2A00005 rel 4 + U32!
-   $F2800005 rel 8 + U32!
+   $D2C00005 rel LE:U32!  $F2A00005 rel 4 + LE:U32!
+   $F2800005 rel 8 + LE:U32!
    rel NORM-BASE r + 32 + ADDRESS-CARRIER:DATA-CHAIN-BYTES ADDRESS-CARRIER:SET-CHAIN-VALUE
    NORM-REL-OFF AOT-CAPTURE:SITE-TEST-DATA+ ;
 
