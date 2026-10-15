@@ -279,10 +279,11 @@ writes the stamp when its product is byte-identical to `bin/hb`.
 
 ## Stable local command
 
-Keep the checkout's `bin/hb` for development. Install a verified product and
-its matching sources under `~/.local/lib/habu/<revision>/`, with `current`
-selecting that version and `~/.local/bin/hb` pointing to `current/bin/hb`.
-Changing the checkout then leaves dependent projects on the verified version.
+Keep the checkout's `bin/hb` for development and build candidates outside
+`~/.local/lib/habu/`. Install only a verified product and its matching sources
+under `~/.local/lib/habu/<revision>/`, with `current` selecting that version and
+`~/.local/bin/hb` pointing to `current/bin/hb`. Changing the checkout then
+leaves dependent projects on the verified version.
 
 Libraries loaded from source must match the installed engine. Habu resolves
 application paths from the application's root, then the working directory,
@@ -307,8 +308,9 @@ The absolute entries `tools/lsp.f` and `tools/check-verify-child.f` load their
 implementation from the tree containing the entry, even when the caller is in
 another Habu tree. They restore the caller's root before checking its source.
 
-Retain the previous version when promoting a new verified release so switching
-`current` back restores both the binary and its sources.
+After promoting a new verified release, move processes pinned to an older
+version onto `current`, then trash every other version directory. The installed
+tree holds only the latest qualified release and the `current` symlink.
 
 ## Warm Dev Snapshot
 
