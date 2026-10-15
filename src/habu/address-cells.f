@@ -81,7 +81,18 @@ private
    cap 0 <= cap MAX-ROWS > or count 0 < or if REFUSE then
    count cap > if REFUSE then ;
 
-: HEADER ( -- ptr n ) data-base SNAP-RELOC:XTCELL-N-CELL + ;
+\ Native-build runs newly compiled target cleanup inside its older donor. That
+\ cleanup must read the donor's live registry; the target image uses its own
+\ address-cell offset after the scoped handover ends.
+variable LIVE-N-CELL
+SNAP-RELOC:XTCELL-N-CELL LIVE-N-CELL !
+
+: HEADER ( -- ptr n ) data-base LIVE-N-CELL @ + ;
+
+: WITH-HOST-HEADER ( n [ -- ] -- )
+   {: off:n action :}
+   off LIVE-N-CELL !
+   action [: SNAP-RELOC:XTCELL-N-CELL LIVE-N-CELL ! ;] finally ;
 \ The header's base and the index cell hold an outside mapping's address as an integer.
 CAST: N>ROWS ( n -- ptr n )
 : ROWS>N ( ptr n -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - ;

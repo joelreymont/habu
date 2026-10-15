@@ -377,16 +377,33 @@ CAST: PLAN-APPLY-XT ( n -- [ ptr n n -- ] )
       i LITERAL-SOURCE-ROWS importer LITERAL-IMPORT-XT execute
    loop ;
 
+\ Target cleanup executes against the live donor registry. Its own header is
+\ at a different offset when REGION or another reserved band grew. The host
+\ constant was bound before the target window replaced layout.f. Each cleanup
+\ scope ends before its capture reads the target layout.
+CAST: HOST-HEADER-XT ( n -- [ n [ -- ] -- ] )
+
+: WITH-DONOR-HEADER ( [ -- ] -- )
+   SNAP-RELOC:XTCELL-N-CELL swap
+   s" ADDRESS-CELLS" s" WITH-HOST-HEADER" TARGET-PRIVATE-XT
+   HOST-HEADER-XT execute ;
+
 \ The package seal comes first: CAPTURE-PREPARE's checker sweep reads the
 \ protected bits it sets (src/core/checker-surface.f KEEP?).
-: PREPARE-WINDOW ( -- )
+: PREPARE-WINDOW-BODY ( -- )
    s" NATIVE-RUNTIME:CAPTURE-PREPARE" TARGET-XT PREPARE-XT execute
    s" CHECKER-STORAGE-UNBIND-ALL" TARGET-XT PREPARE-XT execute
    AOT-ARM:HERE-N AOT-ARM:D1 ! ;
 
-: PREPARE-TARGET ( -- )
+: PREPARE-WINDOW ( -- )
+   ['] PREPARE-WINDOW-BODY WITH-DONOR-HEADER ;
+
+: PREPARE-TARGET-BODY ( -- )
    AOT-ARM:R0 @ s" ENGINE-INTERNAL:SEAL-PACKAGES" TARGET-XT SEAL-XT execute
-   PREPARE-WINDOW ;
+   PREPARE-WINDOW-BODY ;
+
+: PREPARE-TARGET ( -- )
+   ['] PREPARE-TARGET-BODY WITH-DONOR-HEADER ;
 
 \ Keep the source-time classifier's exact answers outside target DATA. The
 \ first capture releases target dynamic buffers before the sealed one runs.
@@ -736,8 +753,7 @@ variable BUNDLE-PATH-U
    dir diru s" hb-whitebox-source" BUNDLE-OUTPUT WRITE-NAMES
    OWN-CAPTURE {: white:AOT-OWNED:capture :}
    plan count APPLY-SEAL-PLAN
-   AOT-ARM:R0 @ s" ENGINE-INTERNAL:SEAL-PACKAGES" TARGET-XT SEAL-XT execute
-   PREPARE-WINDOW
+   PREPARE-TARGET
    false CAPTURE-NAMED
    dir diru s" hb-root" BUNDLE-OUTPUT WRITE-NAMES
    dir diru s" hb-ordinary" BUNDLE-OUTPUT WRITE-NAMES

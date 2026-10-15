@@ -154,6 +154,11 @@ reads the tree's `src/habu/layout.f` into the fresh target dictionary.
 `SOURCE-WRITER` then resolves the source emitter against that dictionary, so its
 compiled layout and the image's advertised bands agree in the first product.
 The live donor's heap floor remains the boundary used by `RESET-ADDRESS-ROWS`.
+Target cleanup still runs in that donor before capture. The ordinary build and
+both compiler bundle captures scope their cleanup to the donor's header offset,
+then restore the target offset before each capture. Run
+`test/native-layout-transition.f` with a saved same-machine donor whose
+reserved layout differs to check these first-product boundaries.
 The PD64 transition passed the first-product pre-trust, using and protection
 checks; its five-generation chain converged byte for byte.
 
