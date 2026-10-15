@@ -17,6 +17,7 @@ require src/lib/engine-candidate.f
 require src/lib/codesign.f
 require test/app-image-engine.f
 require src/lib/test/outcome.f
+require test/pcap-result.f
 
 package SNAP-WRITER-TEST
 
@@ -201,12 +202,7 @@ variable IMGU
 
 \ ---- child snapshot build with rc + stderr capture ----
 : CAPTURE! ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  0 RC ! ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 : SAVE-LINE$ ( -- ptr u8 n ) s\" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
 

@@ -11,6 +11,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
+require test/pcap-result.f
 
 package ENGINE-ID-CAPTURE-E2E
 private
@@ -53,12 +54,7 @@ variable AT
    ROOT$ s" data" DUMP JOIN-PATH DUMP-U ! ;
 
 : RESULT ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! 0 RC ! ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len code:rc :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! code RC>N RC ! ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 : LOG-RESULT ( ptr u8 n ptr u8 n -- ) {: outname:ptr outu:n errname:ptr erru:n :}
    ROOT$ outname outu LOG JOIN-PATH {: size:n :}

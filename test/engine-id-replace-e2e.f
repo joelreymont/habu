@@ -6,6 +6,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
+require test/pcap-result.f
 
 package ENGINE-ID-REPLACE-E2E
 
@@ -33,14 +34,6 @@ variable RC
    IMAGE$ CHMOD-X
    REPLACEMENT$ s" replacement image, not the running executable" WRITE-ALL ;
 
-: CAPTURE ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! 0 RC ! ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len code:rc :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! code RC>N RC ! ENDOF
-   ;MATCH ;
-
 : LOG-RESULT ( ptr u8 n ptr u8 n -- ) {: outname:ptr outu:n errname:ptr erru:n :}
    ROOT$ outname outu LOG JOIN-PATH {: size:n :}
    LOG size OUT OUT-U @ WRITE-ALL
@@ -57,7 +50,7 @@ variable RC
       OLD$ >LEN PROC-ARGV+
    then
    IMAGE$ >LEN OUT $4000 >LEN ERR $4000 >LEN 180000 >MS
-   RUN-ARGV-CAPTURE CAPTURE
+   RUN-ARGV-CAPTURE PCAP-RESULT:>N RC ! ERR-U ! OUT-U !
    replace? if
       s" replace.out" s" replace.err" LOG-RESULT
    else

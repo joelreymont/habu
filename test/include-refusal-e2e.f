@@ -26,6 +26,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
+require test/pcap-result.f
 
 using SOURCE-ROOT
 package INCLUDE-REFUSAL-E2E
@@ -79,12 +80,7 @@ variable RC
    SB-RESET s" cases/" SB-APPEND name nameu SB-APPEND suffix suffixu SB-APPEND SB$ AT ;
 
 : RESULT! ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE 0 ENDOF
-      err OF PCAP-FAILED:UNMAKE RC>N ENDOF
-   ;MATCH
-   {: outu:len erru:len rc:n :}
-   outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc RC ! ;
+   PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 \ The child's streams, beside its program.
 : KEEP ( ptr u8 n -- )

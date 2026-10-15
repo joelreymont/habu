@@ -11,6 +11,7 @@ require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require test/suite-budget.f
+require test/pcap-result.f
 
 package DECLARATION-HEADERS-E2E
 private
@@ -28,13 +29,6 @@ variable RC
 : LINK ( ptr u8 n -- ) {: a:ptr u:n :}
    SOURCE-ROOT:CWD$ a u TARGET JOIN-PATH TARGET-U !
    TARGET TARGET-U @ a u AT MAKE-SYMLINK ;
-: RESULT ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: ou:len eu:len :}
-         ou LEN>N OUT-U ! eu LEN>N ERR-U ! 0 RC ! ENDOF
-      err OF PCAP-FAILED:UNMAKE {: ou:len eu:len rc:rc :}
-         ou LEN>N OUT-U ! eu LEN>N ERR-U ! rc RC>N RC ! ENDOF
-   ;MATCH ;
 : ARGS ( ptr u8 n bool -- ) {: a:ptr u:n verify:bool :}
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" >LEN PROC-ARGV+
@@ -48,7 +42,8 @@ variable RC
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN ROOT$ >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT ;
+   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE PCAP-RESULT:>N
+   RC ! ERR-U ! OUT-U ! ;
 : SAVE ( ptr u8 n -- ) {: stem:ptr u:n :}
    stem u AT MAKE-DIRS
    stem u s" out" TARGET JOIN-PATH TARGET swap AT OUT OUT-U @ WRITE-ALL

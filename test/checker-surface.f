@@ -44,6 +44,7 @@ require src/lib/process.f
 require src/lib/fs-mutate.f
 require src/lib/test/subject.f
 require test/app-image-engine.f
+require test/pcap-result.f
 
 \ ---- a program's own definitions, compiled after boot --------------------------
 defer CS-HOOK ( n -- n )
@@ -181,12 +182,7 @@ create IMAGE-BUF FS-PATH-CAP allot  variable IMAGE-U
 
 \ ---- an application image, saved and reopened ----------------------------------
 : RESULT ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N OUT-U !  erru LEN>N ERR-U !  0 RC ! ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
-         outu LEN>N OUT-U !  erru LEN>N ERR-U !  rc RC>N RC ! ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 : SHOW ( -- )
    RC @ 0<> if s" checker-surface child rc " type RC @ . OUT$ type ERR$ type cr then ;

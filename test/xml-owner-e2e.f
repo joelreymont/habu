@@ -10,6 +10,7 @@ require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require test/suite-budget.f
+require test/pcap-result.f
 
 package XML-OWNER-E2E
 private
@@ -31,20 +32,13 @@ variable RC
 : FILE$ ( ptr u8 n -- ptr u8 n ) {: rel:ptr size:n :}
    ROOT$ rel size PATH JOIN-PATH PATH swap ;
 
-: CAPTURE ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! 0 RC ! ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len code:rc :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! code RC>N RC ! ENDOF
-   ;MATCH ;
-
 : RUN-INPUT ( ptr u8 n ptr u8 n -- )
    {: program size:n input input-size:n :}
    PROC-ENV-INHERIT-MISSING
    program size >LEN SOURCE-ROOT:CWD$ >LEN input input-size >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE ;
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE
+   PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 : NEED-OK ( -- )
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then

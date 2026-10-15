@@ -10,6 +10,7 @@ require src/lib/fs-mutate.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require test/pcap-result.f
 
 package ZIP-TEMP-E2E
 
@@ -33,14 +34,6 @@ variable RC
    ROOT$ s" temp.zip" ARCHIVE JOIN-PATH ARCHIVE-U !
    BAD$ s" x" WRITE-ALL ;
 
-: CAPTURE ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! 0 RC ! ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len code:rc :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! code RC>N RC ! ENDOF
-   ;MATCH ;
-
 \ TMPDIR is staged before the parent's rows are inherited, and inheriting skips
 \ a name already staged, so the child sees exactly one TMPDIR: BAD.
 : RUN-CHILD ( -- )
@@ -52,7 +45,7 @@ variable RC
    s" --" >LEN PROC-ARGV+
    ARCHIVE$ >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN OUT CAP >LEN ERR CAP >LEN 60000 >MS
-   RUN-ARGV-ENV-CAPTURE CAPTURE
+   RUN-ARGV-ENV-CAPTURE PCAP-RESULT:>N RC ! ERR-U ! OUT-U !
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    RC @ 0 T=
    OUT OUT-U @ s" test: ok" CONTAINS? TTRUE ;

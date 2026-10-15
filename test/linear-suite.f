@@ -24,12 +24,12 @@
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/process.f
 require src/lib/fs-mutate.f
 require src/lib/engine-candidate.f
 require src/lib/test/subject.f
 require src/habu/verify-source.f
 require test/app-image-engine.f
+require test/pcap-result.f
 
 \ Expected refusals are asserted, not printed.
 package LIN-DIAG
@@ -260,19 +260,12 @@ variable PROG-U
    PROG PROG-U @ + c!
    PROG-U @ 1 + PROG-U ! ;
 
-: RESULT ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N OUT-U !  erru LEN>N ERR-U !  0 RC ! ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
-         outu LEN>N OUT-U !  erru LEN>N ERR-U !  rc RC>N RC ! ENDOF
-   ;MATCH ;
-
 \ The argv is staged; run PATH with PROG on stdin.
 : RUN ( ptr u8 n n -- ) {: path:ptr pathu:n ms:n :}
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN  PROG$ >LEN  OUT CAP >LEN  ERR CAP >LEN  ms >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE RESULT ;
+   RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N
+   RC ! ERR-U ! OUT-U ! ;
 
 : ROOT ( -- )
    s" linear-suite" HB-TMP-MKDIR {: path:ptr size:n :}
