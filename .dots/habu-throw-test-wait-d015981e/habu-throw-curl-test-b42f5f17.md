@@ -1,9 +1,11 @@
 ---
 title: Throw curl test wait deadlines
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-16T16:28:19.589533+03:00"
+closed-at: "2026-10-16T22:57:19.683370+03:00"
+close-reason: "Landed: curl-test's own waits (REACH, AWAIT-END, STOP-LOOP retrying only E-STATE, WAIT-PUBLISHED, WAIT-READY, NOT-TIMEOUT on main) name themselves and throw E-PROC-TIMEOUT; DONE-WORK records its result unguarded inside the task, and a 28 there publishes no response, so main's WAIT-PUBLISHED names that deadline. Proofs: row curl-http rc 0; forced copies rc 67 with one named line each. Fable review REVISE (Medium: the DONE-WORK guard), fixed; Astra follow-up APPROVE."
 ---
 
 Problem: the parent's rule (a wait whose clock ends throws E-PROC-TIMEOUT after one named stdout line; a task records it and main throws it at the join; no deadline raised) is broken in the files below. The parent holds the shared interface (`TEST-WAIT:EXPIRED`, `TEST-WAIT:POLL` in src/lib/test/wait.f), the rulings and the proof notation `P(name)`.
@@ -31,4 +33,4 @@ Run `curl-http`: `src/lib/net/curl-test.f` (`gate-stdlib-cases.f:1646–1650`). 
 
 No deadline-only assertion or exit-99 path remains. Code 28 remains assertable only where explicitly expected.
 
-Files: src/lib/net/curl-test.f. Verify: the rows and forced copies under Proof. Depends: habu-share-a-named-85cc93f5. Ownership: the files above. Claim: unassigned.
+Files: src/lib/net/curl-test.f. Verify: the rows and forced copies under Proof. Depends: habu-share-a-named-85cc93f5. Ownership: the files above. Claim: agent=worker workspace=.jj-ws/jerry-wait-d2.

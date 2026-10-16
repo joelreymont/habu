@@ -12,6 +12,7 @@ require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/test.f
+require src/lib/test/wait.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-env.f
@@ -49,7 +50,7 @@ $20 constant NUM-CAP
 8 constant DRAIN-TRIES                  \ reads that finish a connection the peer is closing
 $1000 constant READY-TRIES              \ TASK:PAUSE turns before the listener is late
 100 constant STALL-MS                   \ well under the stall path's forever
-$2710 constant REQUEST-MS               \ 10 s: a loopback request that slow is broken
+$2710 constant REQUEST-MS               \ 10 s: the bound on one loopback request
 $FE constant FILL-BYTE                  \ the sentinel a refused transfer must not overwrite
 $300 constant DRIBBLE-U                 \ the dribble body, served whole but slowly
 $3003 constant STREAM-U                \ forces several memstream growths and short reads
@@ -705,7 +706,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       SERVER-READY atomic@ 0 > if unloop exit then
       TASK:PAUSE
    loop
-   E-PROC-TIMEOUT throw ;
+   s" curl-test WAIT-READY" TEST-WAIT:EXPIRED ;
 
 
 : WAIT-DONE ( -- )
@@ -713,7 +714,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       SERVER-DONE atomic@ 0 > if unloop exit then
       TASK:PAUSE
    loop
-   E-PROC-TIMEOUT throw ;
+   s" curl-test WAIT-DONE" TEST-WAIT:EXPIRED ;
 
 
 : WAKE-SERVER ( -- )
@@ -824,18 +825,14 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 28 constant CURLE-TIMED-OUT             \ CURLE_OPERATION_TIMEDOUT
 
-\ A code-28 result is a transfer limit this file set expiring, which on a
-\ starved process is no assertion result: one line on fd 2 names it and
-\ E-PROC-TIMEOUT follows, which the pool reads as TIMEOUT-UNDER-LOAD
-\ (docs/gate.md). A case that expects its limit to end a transfer records it
-\ through FETCH-LIMIT or AWAIT-LIMIT, or matches it inline unguarded, and
-\ asserts 28 itself.
+\ A code-28 result is a transfer bound this file set expiring, which is no
+\ assertion result: TEST-WAIT:EXPIRED names it on stdout and throws
+\ E-PROC-TIMEOUT, which the pool reads as TIMEOUT-UNDER-LOAD (docs/gate.md). A
+\ case that expects its bound to end a transfer records it through FETCH-LIMIT
+\ or AWAIT-LIMIT, or matches it inline unguarded, and asserts 28 itself.
 : NOT-TIMEOUT ( n -- n )
    {: code:n :}
-   code CURLE-TIMED-OUT = if
-      2 S\" curl-test: libcurl code 28, a transfer limit expired\n" write drop
-      E-PROC-TIMEOUT throw
-   then
+   code CURLE-TIMED-OUT = if s" curl-test NOT-TIMEOUT" TEST-WAIT:EXPIRED then
    code ;
 
 
@@ -1316,8 +1313,9 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 
 \ ---- many transfers on one task ----------------------------------------------
-\ Every wait below is bounded, so a transfer the loop never answers is a FAIL
-\ and not a hung suite.
+\ Every wait below is bounded. A wait whose bound passes names itself on stdout
+\ and throws E-PROC-TIMEOUT (src/lib/test/wait.f), so a transfer the loop never
+\ answers ends the row as a timeout and not as a hung suite.
 
 2000 constant WAIT-MS                   \ the bound on every wait in these cases
 $20 constant MANY-N                     \ the concurrent transfers of case one
@@ -1352,37 +1350,43 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
 TASK:MIN-STACK TASK:TASK DONE-TASK
 
 
-: REACHED? ( ptr n n -- bool ) {: cell:ptr want:n :}
-   mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      cell atomic@ want >= if true exit then
-      mono-ns deadline > if false exit then
-      TASK:PAUSE
-   again ;
+\ The end of a wait's WAIT-MS window, an absolute mono-ns.
+: DEADLINE ( -- n )
+   mono-ns WAIT-MS NS-PER-MS * + ;
 
 
-: ENDED? ( ptr n -- bool ) {: tcb:ptr :}
-   mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      tcb TASK:DONE? if true exit then
-      mono-ns deadline > if false exit then
-      TASK:PAUSE
-   again ;
+\ Returns once the count in the cell reaches want.
+: REACH ( ptr n n -- )
+   [: 2dup swap atomic@ <= ;] DEADLINE s" curl-test REACH" TEST-WAIT:POLL
+   2drop ;
+
+
+\ Returns once the task has ended.
+: AWAIT-END ( ptr n -- )
+   [: dup TASK:DONE? ;] DEADLINE s" curl-test AWAIT-END" TEST-WAIT:POLL
+   drop ;
 
 
 \ An abandoned record is given back by the loop and not by the task that left
 \ it, so the stop is retried to a bound rather than asserted on the first try.
+\ CURL:E-STATE answers both a busy record and a loop that is not live; every
+\ STOP-LOOP caller started the loop, so here it means a record not yet free and
+\ is the one code retried. Any other code from CURL:LOOP-STOP is a fault and is
+\ rethrown at once.
 : STOPPED? ( -- bool )
-   mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      [: CURL:LOOP-STOP ;] catch 0= if true exit then
-      mono-ns deadline > if false exit then
-      TASK:PAUSE
-   again ;
+   [: CURL:LOOP-STOP ;] catch {: code:n :}
+   code 0= if true exit then
+   code CURL:E-STATE <> if code throw then
+   false ;
 
 
-: WAIT-HIT ( n -- ) {: before:n :}
-   SERVER-HITS before 1+ REACHED? 0= if E-PROC-TIMEOUT throw then ;
+: STOP-LOOP ( -- )
+   [: STOPPED? ;] DEADLINE s" curl-test STOP-LOOP" TEST-WAIT:POLL ;
+
+
+\ Returns once the server has counted one more request than before.
+: WAIT-HIT ( n -- )
+   SERVER-HITS swap 1+ REACH ;
 
 
 \ The loop's answer for one handle, recorded exactly as FETCH records PERFORM's,
@@ -1502,7 +1506,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    [: AWAIT-STREAM-REFUSED ;] CURL:E-STATE TTHROWSQ
    [: NEXT-ZERO-REFUSED ;] CURL:E-OPERAND TTHROWSQ
    ['] OWNER-NEXT-WORK OWNER-TASK TASK:ACTIVATE
-   OWNER-TASK ENDED? TTRUE
+   OWNER-TASK AWAIT-END
    OWNER-TASK TASK:KILL
    OWNER-RC @ CURL:E-STATE T=
    subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
@@ -1795,7 +1799,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    s" the loop refuses to stop while a transfer is in flight" T-LABEL
    [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
    ['] OWNER-WORK OWNER-TASK TASK:ACTIVATE
-   OWNER-TASK ENDED? TTRUE
+   OWNER-TASK AWAIT-END
    OWNER-TASK TASK:KILL
    s" a transfer is awaited by the task that started it, and once" T-LABEL
    OWNER-RC @ CURL:E-STATE T=
@@ -1828,14 +1832,14 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    HALT-HANDLE @ PATH-STALL$ URL-FOR CURL:URL! EXPECT-OK
    SERVER-HITS atomic@ {: before:n :}
    ['] HALT-WORK HALT-TASK TASK:ACTIVATE
-   HALT-PARKED 1 REACHED? TTRUE
+   HALT-PARKED 1 REACH
    before WAIT-HIT
    HALT-TASK TASK:HALT
-   HALT-TASK ENDED? TTRUE
+   HALT-TASK AWAIT-END
    HALT-TASK TASK:KILL
    s" a submitter halted in AWAIT ends and the loop stops after it" T-LABEL
    HALT-RC @ 0 T=
-   STOPPED? TTRUE
+   STOP-LOOP
    HALT-HANDLE @ HEADER-REFUSED
    HALT-HANDLE @ CURL:CLEANUP ;
 
@@ -1875,10 +1879,10 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    PATH-STALL$ GET-READY HALT-HANDLE !
    SERVER-HITS atomic@ {: before:n :}
    ['] CANCEL-STREAM-WORK HALT-TASK TASK:ACTIVATE
-   HALT-PARKED 1 REACHED? TTRUE
+   HALT-PARKED 1 REACH
    before WAIT-HIT
    HALT-HANDLE @ CURL:CANCEL
-   HALT-TASK ENDED? TTRUE
+   HALT-TASK AWAIT-END
    HALT-TASK TASK:KILL
    s" another task cancels the owner parked in NEXT" T-LABEL
    HALT-RC @ NOT-TIMEOUT 42 T=
@@ -1890,14 +1894,14 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    PATH-STALL$ GET-READY HALT-HANDLE !
    SERVER-HITS atomic@ {: before:n :}
    ['] HALT-STREAM-WORK HALT-TASK TASK:ACTIVATE
-   HALT-PARKED 1 REACHED? TTRUE
+   HALT-PARKED 1 REACH
    before WAIT-HIT
    HALT-TASK TASK:HALT
-   HALT-TASK ENDED? TTRUE
+   HALT-TASK AWAIT-END
    HALT-TASK TASK:KILL
    s" a task halted in NEXT abandons its stream and lets the loop stop" T-LABEL
    HALT-RC @ 0 T=
-   STOPPED? TTRUE
+   STOP-LOOP
    HALT-HANDLE @ CURL:CLEANUP ;
 
 variable DEFER-RETURNED
@@ -1921,17 +1925,15 @@ variable DEFER-RETURNED
    PATH-STALL$ GET-READY HALT-HANDLE !
    SERVER-HITS atomic@ {: before:n :}
    ['] DEFER-STREAM-WORK HALT-TASK TASK:ACTIVATE
-   HALT-PARKED 1 REACHED? TTRUE
+   HALT-PARKED 1 REACH
    before WAIT-HIT
    HALT-TASK TASK:HALT
-   HALT-TASK ENDED? 0= if
-      s" deferred stream halt remained parked" 99 die
-   then
+   HALT-TASK AWAIT-END
    HALT-TASK TASK:KILL
    s" deferred halt returns cancellation before abandoning NEXT" T-LABEL
    DEFER-RETURNED atomic@ 1 T=
    HALT-RC @ NOT-TIMEOUT 42 T=
-   STOPPED? TTRUE
+   STOP-LOOP
    HALT-HANDLE @ CURL:CLEANUP ;
 
 \ A throw after submission can reach task exit without either wait's explicit
@@ -1953,7 +1955,7 @@ variable DEFER-RETURNED
       err OF -12345 T= ENDOF
    ;MATCH
    s" task exit releases an uncollected whole or streaming transfer" T-LABEL
-   STOPPED? TTRUE
+   STOP-LOOP
    HALT-HANDLE @ CURL:CLEANUP ;
 
 
@@ -1969,13 +1971,16 @@ variable DEFER-RETURNED
 
 
 : WAIT-PUBLISHED ( ptr n -- ) {: state:ptr :}
-   mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
+   DEADLINE {: deadline:n :}
    begin
       state DONE-PUBLISHED? if exit then
-      mono-ns deadline > if E-PROC-TIMEOUT throw then
+      mono-ns deadline > if s" curl-test WAIT-PUBLISHED" TEST-WAIT:EXPIRED then
    again ;
 
 
+\ Runs inside DONE-TASK, so its answer is recorded unguarded: a task throws
+\ nothing main does not read. A 28 publishes no response, so main's
+\ WAIT-PUBLISHED names that deadline.
 : DONE-WORK ( -- )
    DONE-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START
    MATCH CURL:status
@@ -1983,7 +1988,7 @@ variable DEFER-RETURNED
       failed OF CURL:CODE>N DONE-RC ! ENDOF
    ;MATCH
    1 DONE-PARKED atomic!
-   DONE-HANDLE @ AWAIT-ONE
+   DONE-HANDLE @ CURL:AWAIT true RECORD-RESULT
    1 DONE-COLLECTED atomic! ;
 
 
@@ -1994,13 +1999,13 @@ variable DEFER-RETURNED
    PATH-HEADERS$ GET-READY DONE-HANDLE !
    DONE-HANDLE @ DONE-STATE {: state:ptr :}
    ['] DONE-WORK DONE-TASK TASK:ACTIVATE
-   DONE-PARKED 1 REACHED? TTRUE
+   DONE-PARKED 1 REACH
    state WAIT-PUBLISHED
    DONE-TASK TASK:HALT
-   DONE-TASK ENDED? TTRUE
+   DONE-TASK AWAIT-END
    DONE-TASK TASK:KILL
    DONE-RC @ 0 T=
-   STOPPED? TTRUE
+   STOP-LOOP
    DONE-COLLECTED atomic@ if
       s" a collected response retains its successful final headers" T-LABEL
       LAST-KIND @ KIND-RESPONSE T=
