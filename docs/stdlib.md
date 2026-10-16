@@ -1591,12 +1591,11 @@ are package-private; `src/lib/map-test.f` reopens `package MAP` to test them. Tw
 families are public because only a public family has generated constructors,
 and the private words are their only producers and consumers:
 
-- `MAP:slot-state` (`empty`, `deleted`, `occupied`), constructed as
-  `MAP-SLOT--STATE:EMPTY`, `MAP-SLOT--STATE:DELETED` and
-  `MAP-SLOT--STATE:OCCUPIED`, is the per-slot lifecycle state. The slot reader
-  is a validating decoder: raw tags 0/1/2 become constructors and every other
-  tag throws `ENGINE-ERROR:BAD-TAG`, and the nominal getter and setter keep
-  checked code from laundering a state through `n`.
+- `MAP:slot-state` (`empty`, `occupied`), constructed as
+  `MAP-SLOT--STATE:EMPTY` and `MAP-SLOT--STATE:OCCUPIED`, is the per-slot state.
+  The slot reader is a validating decoder: raw tags 0/1 become constructors
+  and every other tag throws `ENGINE-ERROR:BAD-TAG`. The nominal getter and
+  setter keep checked code from laundering a state through `n`.
 - `MAP:loc` is the lookup verdict: `full` (table exhausted, no payload),
   `free idx` (insertion slot) and `found idx` (hit slot), constructed as
   `MAP-LOC:FULL`, `MAP-LOC:FREE` and `MAP-LOC:FOUND`. Every consumer dispatches
