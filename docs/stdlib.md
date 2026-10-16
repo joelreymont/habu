@@ -1891,6 +1891,10 @@ primitives such as `unlink`, `rename`, `chmod`, `mkdir`, and `rmdir`. It owns
 counted-path wrappers for files and directories. Public wrappers avoid the exact
 primitive names because the dictionary is case-insensitive: use `MAKE-DIR`,
 `REMOVE-DIR`, and `MAKE-DIRS`, not uppercase shadows of `mkdir` or `rmdir`.
+`MAKE-DIR`, `MKDIR-MODE` and `MAKE-DIRS` call libc's `mkdir`, so after their
+`E-FS-IO` `FFI:ERRNO` names the cause. `MAKE-DIRS` keeps a component that
+`mkdir` reports as existing (EEXIST) when it is a directory or a link to one,
+and throws at any other failure.
 `CHMOD-MODE` applies an explicit permission mode to one counted path, while
 `CHMOD-X` preserves existing permission bits and adds executable bits.
 `MAKE-SYMLINK` creates a link from counted target bytes to a counted link path.

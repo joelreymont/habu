@@ -55,6 +55,7 @@ $FFF constant FS-MUT-MODE-PERM
 $2D constant FS-MUT-DASH
 $2E constant FS-MUT-DOT
 $2F constant FS-MUT-SLASH
+17 constant FS-MUT-EXISTS                    \ EEXIST on both targets
 
 FS-MUT-COPY-CAP SPAN-BUFFER: FS-MUT-COPY-BUF
 FS-MUT-CLEANUP-MAX FS-PATH-CAP * SPAN-BUFFER: FS-MUT-CLEANUP-PATHS
@@ -127,13 +128,12 @@ FS-MUT-BAND-AGREE
    src srcu FS-PATHZ dst dstu FS-MUT-PATHZ2 rename 0 < if E-FS-IO throw then ;
 
 package FS-NOREPLACE
-17 constant DEST-EXISTS
 PROCESS-SYMBOLS
 FUNCTION: LINK-CALL link ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
 public
 : LINK-NEW? ( ptr u8 ptr u8 -- bool )
    LINK-CALL 0<> if
-      FFI:ERRNO DEST-EXISTS = if false exit then
+      FFI:ERRNO FS-MUT-EXISTS = if false exit then
       E-FS-IO throw
    then
    true ;
@@ -172,8 +172,19 @@ public
 : MAKE-SYMLINK ( ptr u8 n ptr u8 n -- ) {: target:ptr targetu link:ptr linku :}
    target targetu FS-PATHZ link linku FS-MUT-PATHZ2 symlink 0 < if E-FS-IO throw then ;
 
+\ mkdir(2) is bound through libc, the way FS-NOREPLACE binds link(2), so a
+\ failure leaves its errno for the caller's FFI:ERRNO: the engine primitive
+\ collapses every failure to a bare -1 (src/habu/habu1.f's errno rule).
+package FS-MKDIR
+PROCESS-SYMBOLS
+FUNCTION: MKDIR-CALL mkdir ( ptr u8 n -- i32 ) ;FUNCTION
+public
+: MADE? ( ptr u8 n -- bool )
+   MKDIR-CALL 0= ;
+;package
+
 : MKDIR-MODE ( ptr u8 n n -- ) {: a:ptr u mode :}
-   a u FS-PATHZ mode mkdir 0 < if E-FS-IO throw then ;
+   a u FS-PATHZ mode FS-MKDIR:MADE? 0= if E-FS-IO throw then ;
 
 : MAKE-DIR ( ptr u8 n -- )
    FS-MUT-MODE-DIR MKDIR-MODE ;
@@ -233,11 +244,12 @@ public
 : REMOVE-TREE ( ptr u8 n -- ) {: a:ptr u :}
    FS-WALK-CTX0 a u REMOVE-TREE-IN ;
 
+\ Only EEXIST can mean the folder is already there, so only it is checked
+\ with a stat. Any other failure throws at once, mkdir's errno intact.
 : FS-MUT-MKDIR-ONE ( ptr u8 n -- ) {: a:ptr u :}
-   a u FS-PATHZ FS-MUT-MODE-DIR mkdir {: rc :}
-   rc 0 < if
-      a u DIR? 0= if E-FS-IO throw then
-   then ;
+   a u FS-PATHZ FS-MUT-MODE-DIR FS-MKDIR:MADE? if exit then
+   FFI:ERRNO FS-MUT-EXISTS <> if E-FS-IO throw then
+   a u DIR? 0= if E-FS-IO throw then ;
 
 : MAKE-DIRS ( ptr u8 n -- ) {: a:ptr u :}
    u 0 <= if E-FS-PATH throw then

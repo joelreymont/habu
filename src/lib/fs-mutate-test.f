@@ -101,6 +101,8 @@ create FMT-PARENT-BOUND-BUF FS-PATH-CAP allot
 424244 constant FMT-ATOMIC-FAIL-SEED
 384 constant FMT-MODE-0600
 416 constant FMT-MODE-0640
+$16D constant FMT-MODE-0555             \ listable, not writable
+13 constant FMT-EACCES                  \ a denied mkdir's errno on both targets
 create FMT-STREAM-SRC-DATA FMT-STREAM-LEN allot
 create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
 
@@ -603,6 +605,22 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
    FMT-NEST-A DIR? TTRUE
    FMT-NEST-B DIR? TTRUE
    FMT-NEST-C DIR? TTRUE ;
+
+\ Under a parent it cannot write, MAKE-DIRS keeps the folder already there and
+\ fails the one it must make with mkdir's own errno, EACCES. The engine's mkdir
+\ and stat primitives set no errno, so through them FFI:ERRNO read whatever the
+\ last libc call left.
+: FMT-TEST-DIRS-DENIED ( -- )
+   FMT-NEST-B FMT-MODE-0555 CHMOD-MODE
+   FMT-NEST-C MAKE-DIRS
+   FMT-NEST-B FS-MUT-MODE-DIR CHMOD-MODE
+   FMT-NEST-C REMOVE-DIR
+   FMT-NEST-B FMT-MODE-0555 CHMOD-MODE
+   [: FMT-NEST-C MAKE-DIRS ;] catch FFI:ERRNO {: code:n cause:n :}
+   FMT-NEST-B FS-MUT-MODE-DIR CHMOD-MODE
+   code E-FS-IO T=
+   cause FMT-EACCES T=
+   FMT-NEST-C DIR? TFALSE ;
 
 : FMT-TEST-TEMPS ( -- )
    FMT-TEMP-BASE s" one" MAKE-TEMP-DIR 2dup DIR? TTRUE CLEANUP-DIR+
@@ -1249,6 +1267,7 @@ public
    FMT-TEST-ATOMIC-COLLISION
    FMT-TEST-ATOMIC-FAILURE
    FMT-TEST-DIRS
+   FMT-TEST-DIRS-DENIED
    FMT-TEST-TEMPS
    FMT-TEST-TEMP-COLLISION
    FMT-TEST-TEMP-EXHAUST
