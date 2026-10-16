@@ -51,6 +51,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f          \ the run child takes the unsealed engine
 require src/lib/fs-mutate.f            \ CLEANUP-RUN - that engine's private copy
 require test/whitebox-child.f
+require src/lib/test/subject.f
 require test/suite-budget.f        \ CHILD-MS, the run child's hang guard
 require test/compiler/native-emit-shapes.f
 
@@ -392,6 +393,7 @@ create CHILD-ERR CHILD-CAP allot
    SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
+   s" test/native-window-owner-child.f" CHILD-OUT outu LEN>N CHILD-ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    CHILD-OUT outu LEN>N S\" test: ok\nwindow: 0\n" STR= 0= rc 0 <> or
       if CHILD-OUT outu LEN>N type CHILD-ERR erru LEN>N type cr then
    s" the window child that runs the emitted bytes exits 0" T-LABEL

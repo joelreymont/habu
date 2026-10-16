@@ -3215,7 +3215,10 @@ digest-bound typed source artifact and explicit isolated execution context.
 source exited with the given code, false for a signal. A caller that matches
 the outcome itself ends its timeout arm with `SUBJECT:TIMED-OUT`, which prints
 the program and its capture and throws `E-PROC-TIMEOUT`; `EXITED?` does the same,
-since a deadline is no verdict. `SUBJECT:REFUSED? ( ptr u8 n n ptr u8 n -- bool )`
+since a deadline is no verdict. A parent that captured its own child passes the
+program, the capture and the exit code to `SUBJECT:RC-TIMED-OUT`, which does the
+same when the child exited `PROC-TIMEOUT-RC` (124) and leaves any other code to
+the caller. `SUBJECT:REFUSED? ( ptr u8 n n ptr u8 n -- bool )`
 is the refusal probe: whether the source exited with the given code, wrote
 nothing to stdout and named the given text on stderr; a deadline throws as in
 `EXITED?`.

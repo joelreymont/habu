@@ -6,7 +6,9 @@
 \
 \ The verdict goes to stdout as `window: <code>` - 0 when the window accepted
 \ the fixture, the thrown code when it refused. Printing rather than exiting
-\ keeps a refusal distinguishable from an acceptance for the parent test.
+\ keeps a refusal distinguishable from an acceptance for the parent test. A
+\ deadline is no refusal: E-PROC-TIMEOUT exits PROC-TIMEOUT-RC instead, and the
+\ parent throws it again (src/lib/test/subject.f RC-TIMED-OUT).
 \
 \ src/lib/memory.f is required HERE and in no window prefix file, so through the
 \ checker handover NUM's families are host-only: the retained checker knows
@@ -17,6 +19,7 @@ require src/lib/errors.f
 require src/core/prefix-boundary.f
 require src/lib/string.f
 require src/lib/memory.f
+require src/lib/process.f
 require src/lib/tier.f
 require src/habu/address-cells.f
 require src/compiler/native/string.f
@@ -219,8 +222,11 @@ public
    ADDRESS-CELLS:CURRENT? if 1 else 0 then ADDRESS-ABI !
    CHECKER-OWNER SRC-OWNER !
    SRC-OWNER @ LOGICAL-RESET
-   [: SRC-OWNER @ LOAD-WINDOW ;] catch
-   s" window: " type . ;
+   [: SRC-OWNER @ LOAD-WINDOW ;] catch {: code:n :}
+   code E-PROC-TIMEOUT = if
+      s" window: a deadline expired in the window load" PROC-TIMEOUT-RC die
+   then
+   s" window: " type code . ;
 
 ;package
 

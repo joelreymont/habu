@@ -6,6 +6,7 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require src/lib/test/subject.f
 require test/whitebox-child.f
 require test/window-child-args.f
 
@@ -97,12 +98,14 @@ variable COMMAND-N
    OUT outu LEN>N type ERR erru LEN>N type cr ;
 
 
-: CHILD ( ptr u8 n n ptr u8 n -- bool )
-   {: engine:ptr engineu:n expected:n message:ptr messageu:n :}
+\ prog names the program the argv loads, for the deadline report.
+: CHILD ( ptr u8 n ptr u8 n n ptr u8 n -- bool )
+   {: prog:ptr progu:n engine:ptr engineu:n expected:n message:ptr messageu:n :}
    PROC-ARGV-N @ COUNT>N COMMAND-N !
    engine engineu >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 30000 >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
+   prog progu OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    OUT outu LEN>N message messageu CONTAINS?
    ERR erru LEN>N message messageu CONTAINS? or {: said:bool :}
    rc expected <> said 0= or if outu erru FAILURE. then
@@ -112,19 +115,22 @@ variable COMMAND-N
 
 : ACCEPT ( ptr u8 n ptr u8 n -- ) {: mode:ptr modeu:n name:ptr nameu:n :}
    mode modeu CASE-SETUP PRODUCER-ARGS
-   WHITEBOX-CHILD:ENGINE$ 0 s" prefix-literal: captured" CHILD 0= if exit then
+   s" test/native-window-owner-child.f" WHITEBOX-CHILD:ENGINE$ 0
+   s" prefix-literal: captured" CHILD 0= if exit then
    OUT PROC-OUT-LEN @ name nameu CONTAINS? TTRUE
    OUT PROC-OUT-LEN @ S\" window: 0\n" CONTAINS? TTRUE
    ART$ EXISTS? TTRUE
    READER-ARGS
-   WHITEBOX-CHILD:ENGINE$ 0 s" prefix-literal: baked" CHILD 0= if exit then
+   s" test/aot-prefix-literal-reader.f" WHITEBOX-CHILD:ENGINE$ 0
+   s" prefix-literal: baked" CHILD 0= if exit then
    CONSUMER-ARGS
-   IMAGE$ 0 s" prefix-literal: exact identity and execution passed" CHILD drop ;
+   s" test/aot-prefix-literal-consumer.f" IMAGE$ 0
+   s" prefix-literal: exact identity and execution passed" CHILD drop ;
 
 
 : REFUSE ( ptr u8 n -- )
    CASE-SETUP PRODUCER-ARGS
-   WHITEBOX-CHILD:ENGINE$ 74
+   s" test/native-window-owner-child.f" WHITEBOX-CHILD:ENGINE$ 74
    s" aot-capture: recorded address site outside both window spans" CHILD drop
    ART$ EXISTS? TFALSE ;
 

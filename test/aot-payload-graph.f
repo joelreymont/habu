@@ -8,6 +8,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/fmt.f
 require src/lib/engine-candidate.f
+require src/lib/test/subject.f
 require test/whitebox-child.f
 require test/window-child-args.f
 
@@ -59,6 +60,7 @@ variable SUBJECT-U
    WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 30000 >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
+   s" test/aot-payload-graph-child.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    modeu 0= if
       rc 0 <> OUT outu LEN>N s" graph metadata file roundtrip: ok" CONTAINS? 0= or
       if OUT outu LEN>N type ERR erru LEN>N type cr then

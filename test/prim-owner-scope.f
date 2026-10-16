@@ -297,6 +297,7 @@ variable EXP-U
    WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
+   s" test/native-window-owner-child.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    OUT outu LEN>N {: oa:ptr ou:n :}
    ERR erru LEN>N {: ea:ptr eu:n :}
    rc 0 <> if oa ou type ea eu type cr then

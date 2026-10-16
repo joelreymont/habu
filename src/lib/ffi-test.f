@@ -12,6 +12,7 @@ require src/lib/process-argv.f         \ the growth case needs a child engine
 require src/lib/process-env.f          \ the stub child runs on the unsealed engine
 require src/lib/fs-mutate.f            \ CLEANUP-RUN - that engine's private copy
 require test/whitebox-child.f
+require src/lib/test/subject.f
 require test/suite-budget.f        \ CHILD-MS, the stub child's hang guard
 require src/lib/engine-candidate.f
 require src/lib/test/outcome.f
@@ -403,6 +404,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
+   s" test/native-window-owner-child.f" FFI-T-OUT outu LEN>N FFI-T-ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    FFI-T-OUT outu LEN>N S\" test: ok\nwindow: 0\n" STR= 0= rc 0 <> or
       if FFI-T-OUT outu LEN>N type erru FFI-T-ERR$ type cr then
    rc 0 T=

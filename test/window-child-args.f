@@ -10,6 +10,7 @@ require src/lib/string.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require src/lib/test/subject.f
 require test/whitebox-child.f
 require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
@@ -85,6 +86,7 @@ public
    SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
+   s" test/native-window-owner-child.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    OUT outu LEN>N pass passu STR= 0= rc 0 <> or
       if OUT outu LEN>N type ERR erru LEN>N type cr then
    rc 0 T=

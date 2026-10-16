@@ -44,6 +44,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require test/whitebox-child.f
+require src/lib/test/subject.f
 require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
 package NW-OWNER-TEST
@@ -77,6 +78,7 @@ create ERR IO-CAP allot
    WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
    SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+   fx fxu OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    rc 0 <> if ERR erru LEN>N type cr then
    rc 0 T=
    OUT outu LEN>N want wantu T$= ;
@@ -103,6 +105,7 @@ create ERR IO-CAP allot
    WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
    SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+   CHILD$ OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    rc 0 <> if ERR erru LEN>N type cr then
    rc 0 T=
    OUT outu LEN>N want wantu T$=
@@ -216,6 +219,7 @@ create ERR IO-CAP allot
    s" --recovery-row" ARG+
    WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+   s" test/native-window-cast-ok.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    rc 76 <> if OUT outu LEN>N type ERR erru LEN>N type cr then
    rc 76 T=
    ERR erru LEN>N s" checker: a failed declaration's row does not transfer"

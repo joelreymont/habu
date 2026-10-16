@@ -20,6 +20,7 @@ require src/lib/process-env.f
 require src/lib/codesign.f
 require src/lib/test/outcome.f
 require test/whitebox-child.f
+require src/lib/test/subject.f
 require src/habu/verify-source.f
 
 package VERIFY-PRIM-TEST
@@ -420,7 +421,9 @@ variable ROOT-U
    s" --" >LEN PROC-ARGV+
    path pathu PROC-ARGV+
    WHITEBOX-CHILD:ENGINE$ >LEN out outcap err errcap timeout RUN-ARGV-CAPTURE
-   CAPTURE> ;
+   CAPTURE> {: outu:len erru:len rc:n :}
+   path pathu LEN>N out outu LEN>N err erru LEN>N rc SUBJECT:RC-TIMED-OUT
+   outu erru rc ;
 
 : ADD-NORMAL-LIT ( -- )
    ADD-STRING-OPEN

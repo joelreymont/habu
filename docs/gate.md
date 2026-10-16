@@ -417,14 +417,18 @@ at its deadline.
   [debugging.md](debugging.md) has the exit rule. The pool labels a row
   `TIMEOUT-UNDER-LOAD` when it exits 67 with its own report of `E-PROC-TIMEOUT`
   (-2502) as the last stderr line (`test/gate-pool.f` `GT-POOL-INNER-TIMEOUT?`).
-- A deadline in a build child reaches the pool as a timeout through exit
-  statuses, because a throw code cannot cross a process boundary.
+- A deadline in a build or window child reaches the pool as a timeout through
+  exit statuses, because a throw code cannot cross a process boundary.
   `tools/native-build.f` and `tools/build-fixpoint.f` exit 124
   (`PROC-TIMEOUT-RC`, `src/lib/process.f`) when a deadline expired and 74 for any
   other failure they catch, after naming its throw code. build-fixpoint's
   `BF-RC0`, the build-fixpoint rows (`tools/build-fixpoint-test-lib.f`
   `BFT-FIXPOINT-RC`) and `test/whitebox-engine.f` throw `E-PROC-TIMEOUT` again
-  on 124, and the rows rethrow it once the step is named.
+  on 124, and the rows rethrow it once the step is named. The window child
+  (`test/native-window-owner-child.f`) exits 124 when its window load meets a
+  deadline; its parents pass the program, the capture and the exit code to
+  `SUBJECT:RC-TIMED-OUT` (`src/lib/test/subject.f`), which on 124 prints them
+  and throws `E-PROC-TIMEOUT` again.
 - A test's own capture deadline is no assertion result. `PROC-OUTCOME>RC`
   (`src/lib/process.f`), `GT-RC@` (`src/lib/test/runner.f`) and `GE-FAIL`
   (`test/gate-common-lib.f`) throw `E-PROC-TIMEOUT` for an expired deadline.

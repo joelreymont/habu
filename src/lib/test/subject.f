@@ -109,6 +109,15 @@ public
    s" stderr:" type cr err erru type cr
    E-PROC-TIMEOUT throw ;
 
+\ A throw code cannot cross a process boundary, so a child that met a deadline
+\ exits PROC-TIMEOUT-RC. Its parent passes the program, the captured stdout and
+\ stderr and the exit code; on that code TIMED-OUT prints them and throws
+\ E-PROC-TIMEOUT, so the row reaches the pool as TIMEOUT-UNDER-LOAD. Any other
+\ code is the caller's to assert.
+: RC-TIMED-OUT ( ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n rc:n :}
+   rc PROC-TIMEOUT-RC = if src srcu out outu err erru TIMED-OUT then ;
+
 private
 
 \ src run as the subject: the lengths of what it wrote to STATUS-OUT and

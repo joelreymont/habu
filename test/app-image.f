@@ -7,6 +7,7 @@ require src/lib/memory.f
 require src/lib/process-cwd.f
 require src/lib/pty.f
 require test/whitebox-child.f
+require src/lib/test/subject.f
 require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 require test/pcap-result.f
 
@@ -324,7 +325,9 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    s" --" >LEN PROC-ARGV+
    s" test/address-cell-owner.f" >LEN PROC-ARGV+
    SECOND$ >LEN OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   RUN-ARGV-CAPTURE PCAP-RESULT:>N CLEAN
+   RUN-ARGV-CAPTURE PCAP-RESULT:>N {: outu:n erru:n rc:n :}
+   s" test/address-cell-owner.f" OUT outu ERR erru rc SUBJECT:RC-TIMED-OUT
+   outu erru rc CLEAN
    OUT swap S\" address-cell-owner: ok\nwindow: 0\n" T$= ;
 
 : CHECK-RETIRED-ABI ( -- )

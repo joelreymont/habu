@@ -24,6 +24,7 @@ require src/lib/test/runner.f
 require src/lib/image-lifecycle.f
 require src/lib/task.f
 require test/whitebox-child.f
+require src/lib/test/subject.f
 require test/ffi-callback-fixture.f
 
 package FFI-CB-TEST
@@ -432,6 +433,7 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    DIRECT-ARGS
    WHITEBOX-CHILD:ENGINE$ >LEN OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+   s" test/native-window-owner-child.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    s" direct" outu erru rc TRANSCRIBE-RC
    s" the direct child exits 0" T-LABEL
    rc 0 T= ;
