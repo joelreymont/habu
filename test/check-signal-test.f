@@ -295,11 +295,14 @@ PROC-NO-FD FEED-WR !
    CHECK-PID @ >PID PROC-WAIT-OUTCOME
    false CHECK-LIVE ! ;
 
+\ PROC-WAIT-OUTCOME never makes `timeout`: its wait blocks until the child ends.
+\ The arm throws, as PROC-OUTCOME>RC's does, so a deadline wait fed here later
+\ cannot read as no kill.
 : KILLED-BY? ( outcome n -- bool ) {: sig:n :}
    MATCH outcome
       exited OF drop false ENDOF
       signaled OF sig = ENDOF
-      timeout OF false ENDOF
+      timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 \ A check.f still running is ended here. What it printed says why it was late;

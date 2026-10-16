@@ -7,6 +7,7 @@
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/test/subject.f
+require src/lib/test/outcome.f
 require test/structure-opaque-fixture.f
 
 package OPC
@@ -21,16 +22,18 @@ $4000 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 
-\ The child's exit status is `want` and its stderr contains `why`.
-: STATUS? ( ptr u8 n n ptr u8 n -- bool ) {: src:ptr srcu:n want:n why:ptr whyu:n :}
+\ The child's exit status is `want` and its stderr contains `why`. A deadline
+\ is no answer: the source and its capture are printed and E-PROC-TIMEOUT thrown.
+: STATUS? ( ptr u8 n n ptr u8 n -- bool )
+   {: src:ptr srcu:n want:n why:ptr whyu:n :}
    src srcu OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
+   {: outu:len erru:len oc :}
+   oc MATCH outcome
       exited OF want = ENDOF
       signaled OF drop false ENDOF
-      timeout OF false ENDOF
+      timeout OF src srcu OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
    ;MATCH
-   {: outu:len erru:len exited:bool :}
-   exited ERR erru LEN>N why whyu CONTAINS? and ;
+   ERR erru LEN>N why whyu CONTAINS? and ;
 
 : ADMITTED? ( ptr u8 n -- bool ) 0 s" " STATUS? ;
 : REFUSED? ( ptr u8 n ptr u8 n -- bool ) {: src:ptr srcu:n why:ptr whyu:n :}

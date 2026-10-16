@@ -3,6 +3,7 @@
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/subject.f
+require src/lib/test/outcome.f
 require src/lib/adt/option.f
 require src/lib/memory.f
 require src/lib/c2-memory.f
@@ -15,13 +16,17 @@ create OUT CAP allot
 create ERR CAP allot
 
 \ Run the source in a child: the lengths of what it wrote to OUT and ERR, and
-\ whether it exited with the expected status.
-: EXITED? ( ptr u8 n n -- len len bool ) {: expected:n :}
-   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
+\ whether it exited with the expected status. A deadline is no answer: the
+\ source and its capture are printed and E-PROC-TIMEOUT thrown.
+: EXITED? ( ptr u8 n n -- len len bool )
+   {: src:ptr srcu:n expected:n :}
+   src srcu OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
+   {: outu:len erru:len oc :}
+   outu erru
+   oc MATCH outcome
       exited OF expected = ENDOF
       signaled OF drop false ENDOF
-      timeout OF false ENDOF
+      timeout OF src srcu OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
    ;MATCH ;
 
 \ Exited with the expected status, WHY in the diagnostic and SAID in the output.

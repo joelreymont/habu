@@ -14,6 +14,7 @@
 \ the same from any checkout.
 \ Run: bin/hb --load src/lib/policy-test.f
 require src/lib/test.f
+require src/lib/test/outcome.f
 require src/lib/string.f
 require src/lib/adt/option.f
 require src/lib/fmt.f
@@ -42,16 +43,24 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 \ ---- one child ----------------------------------------------------------------
 
-: CODE! ( outcome -- )
-   MATCH outcome
+\ The path of the file with this stem under DIR$, in the string builder.
+: FILE$ ( ptr u8 n -- ptr u8 n )
+   {: stem:ptr su:n :}
+   SB-RESET DIR$ SB-APPEND stem su SB-APPEND s" .f" SB-APPEND
+   SB$ ;
+
+\ A deadline is no exit code: the file the child loaded last and its capture
+\ are printed and E-PROC-TIMEOUT thrown.
+: CODE! ( outcome ptr u8 n -- )
+   {: oc ran:ptr ranu:n :}
+   oc MATCH outcome
      exited OF CODE ! ENDOF
      signaled OF drop -1 CODE ! ENDOF
-     timeout OF -1 CODE ! ENDOF
+     timeout OF ran ranu PROC-CMD:OUT$ PROC-CMD:ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: FILE-ARG+ ( ptr u8 n -- ) {: stem:ptr su:n :}
-   SB-RESET DIR$ SB-APPEND stem su SB-APPEND s" .f" SB-APPEND
-   SB$ >LEN PROC-CMD:ARG+ ;
+: FILE-ARG+ ( ptr u8 n -- )
+   FILE$ >LEN PROC-CMD:ARG+ ;
 
 \ An empty case name loads the harness alone.
 : SPAWN ( ptr u8 n -- ) {: name:ptr nu:n :}
@@ -62,7 +71,8 @@ variable CODE                          \ the last child's exit code, -1 when it 
       s" --" >LEN PROC-CMD:ARG+
       name nu FILE-ARG+
    then
-   s" bin/hb" >LEN TIMEOUT-MS >MS PROC-CMD:RUN-OUTCOME CODE! ;
+   s" bin/hb" >LEN TIMEOUT-MS >MS PROC-CMD:RUN-OUTCOME
+   nu 0 > if name nu else STEM$ then FILE$ CODE! ;
 
 \ ---- what the child said ------------------------------------------------------
 
@@ -114,9 +124,9 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 : RUNS ( ptr u8 n n ptr u8 n ptr u8 n -- )
    {: name:ptr nu:n rc:n line:ptr lu:n out:ptr ou:n :}
+   name nu s" exit code" LABEL
    name nu SPAWN
    name nu LOG
-   name nu s" exit code" LABEL
    CODE @ rc T=
    name nu s" first stderr line" LABEL
    lu SAID-HEAD$ line lu T$=

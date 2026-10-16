@@ -211,6 +211,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/test.f
+require src/lib/test/outcome.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -316,15 +317,17 @@ variable CLI-OUT-U
    s" log: " type CHECK:VERIFY-LOG$ type cr ;
 
 
-\ How a child that gave no result ended: the exit code, -1 for a signal, -2
-\ for the deadline, and -3 for a verdict, which is no incomplete one.
-: STATUS ( CHECK:verdict -- n )
-   MATCH CHECK:verdict
+\ How a child that gave no result ended: the exit code, -1 for a signal, and
+\ -3 for a verdict, which is no incomplete one. A deadline is no exit code: the
+\ source and the verifier's capture are printed and E-PROC-TIMEOUT thrown.
+: STATUS ( CHECK:verdict ptr u8 n -- n )
+   {: v src:ptr srcu:n :}
+   v MATCH CHECK:verdict
       incomplete OF
          MATCH outcome
             exited OF ENDOF
             signaled OF drop -1 ENDOF
-            timeout OF -2 ENDOF
+            timeout OF src srcu CHECK:VERIFY-OUT$ CHECK:VERIFY-LOG$ T-TIMED-OUT ENDOF
          ;MATCH
       ENDOF
       verified OF -3 ENDOF
@@ -332,6 +335,24 @@ variable CLI-OUT-U
       engine-provided OF -3 ENDOF
       held OF -3 ENDOF
       deferred OF -3 ENDOF
+   ;MATCH ;
+
+
+\ Whether the verifier's child ran past its deadline.
+: TIMED-OUT? ( CHECK:verdict -- bool )
+   MATCH CHECK:verdict
+      incomplete OF
+         MATCH outcome
+            exited OF drop false ENDOF
+            signaled OF drop false ENDOF
+            timeout OF true ENDOF
+         ;MATCH
+      ENDOF
+      verified OF false ENDOF
+      refused OF false ENDOF
+      engine-provided OF false ENDOF
+      held OF false ENDOF
+      deferred OF false ENDOF
    ;MATCH ;
 
 
@@ -545,7 +566,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" no-run: a load runs both" T-LABEL o MATCH outcome
       exited OF ENDOF
       signaled OF drop -1 ENDOF
-      timeout OF -2 ENDOF
+      timeout OF MARK$SRC 0 OUT outu LEN>N 0 ERR erru LEN>N T-TIMED-OUT ENDOF
    ;MATCH 0 T=
    s" no-run: the loaded subject wrote its marker" T-LABEL s" marker" AT$ EXISTS? TTRUE
    s" no-run: the loaded dependency wrote its marker" T-LABEL s" marker-dep" AT$ EXISTS? TTRUE ;
@@ -702,7 +723,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : NO-RESULT ( -- )
    OVER-USING$SRC s" over-using.f" GUARD-MS CHECK-AS {: v :}
    v 4 s" no-result: incomplete" EXPECT-KIND
-   s" no-result: the child's exit" T-LABEL v STATUS 76 T=
+   s" no-result: the child's exit" T-LABEL v OVER-USING$SRC STATUS 76 T=
    s" no-result: the child's words" T-LABEL
    CHECK:VERIFY-LOG$ s" checker: using stack overflow" CONTAINS? TTRUE
    CHECK:VERIFY-OUT$ s" word" s" cvt-refused" PACKET {: p:n :}
@@ -712,7 +733,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : DEADLINE ( -- )
    DEP$SRC s" dep.f" SHORT-MS CHECK-AS {: v :}
    v 4 s" deadline: incomplete" EXPECT-KIND
-   s" deadline: timed out" T-LABEL v STATUS -2 T= ;
+   s" deadline: timed out" T-LABEL v TIMED-OUT? TTRUE ;
 
 
 \ The verifier stops at an open definition after it refused one: the packet it
@@ -1486,7 +1507,7 @@ $180000 constant LARGE-STDIN-LEN
    s" HABU_UNDER_TEST" >LEN s" unclean.f" AT$ >LEN PROC-ENV-DEFAULT+
    DEP$SRC s" unclean-verified.f" GUARD-MS CHECK-AS {: verified :}
    verified 4 s" unclean-answer: verified frame is incomplete" EXPECT-KIND
-   s" unclean-answer: verified process exit" T-LABEL verified STATUS 79 T=
+   s" unclean-answer: verified process exit" T-LABEL verified DEP$SRC STATUS 79 T=
    s" unclean-answer: verified frame is not a packet" T-LABEL CHECK:VERIFY-OUT$ nip 0 T=
    BAD-DEP$SRC s" unclean-refused.f" GUARD-MS CHECK-AS {: refused :}
    refused 4 s" unclean-answer: refused frame is incomplete" EXPECT-KIND
@@ -1534,16 +1555,17 @@ $180000 constant LARGE-STDIN-LEN
    JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
    s" unclean-answer: only two duplicate packets" T-LABEL JSONL-NEXT-OBJECT -1 T=
    s" unclean-pre.f" AT$ SUBJ SUBJ-U COPY!
+   s" unclean-answer: preverify remains incomplete" T-LABEL
    DUP$SRC SUBJ$ s" unclean-pre.f" GUARD-MS >MS CHECK:PREVERIFY-BYTES
    MATCH result
       ok OF drop false ENDOF
       err OF MATCH outcome
          exited OF 79 = ENDOF
          signaled OF drop false ENDOF
-         timeout OF false ENDOF
+         timeout OF DUP$SRC CHECK:VERIFY-OUT$ CHECK:VERIFY-LOG$ T-TIMED-OUT ENDOF
       ;MATCH ENDOF
    ;MATCH
-   s" unclean-answer: preverify remains incomplete" T-LABEL TTRUE
+   TTRUE
    s" unclean-answer: preverify stop is framing" T-LABEL CHECK:VERIFY-OUT$ nip 0 T=
    PROC-ENV-DEFAULT-RESET ;
 

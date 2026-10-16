@@ -3,6 +3,7 @@
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/subject.f
+require src/lib/test/outcome.f
 require src/lib/c2-memory.f
 require src/lib/c2-owner.f
 require test/c2-records-types.f
@@ -18,13 +19,13 @@ create ERR CAP allot
 : REFUSAL ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: source:ptr source-u:n operation:ptr operation-u:n culprit:ptr culprit-u:n reason:ptr reason-u:n :}
    source source-u OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
+   {: out-u:len err-u:len oc :}
+   oc MATCH outcome
       exited OF 70 = ENDOF
       signaled OF drop false ENDOF
-      timeout OF false ENDOF
+      timeout OF source source-u OUT out-u LEN>N ERR err-u LEN>N T-TIMED-OUT ENDOF
    ;MATCH
-   {: out-u:len err-u:len rejected:bool :}
-   rejected TTRUE
+   TTRUE
    ERR err-u LEN>N operation operation-u CONTAINS? TTRUE
    ERR err-u LEN>N culprit culprit-u CONTAINS? TTRUE
    ERR err-u LEN>N reason reason-u CONTAINS? TTRUE ;

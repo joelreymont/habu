@@ -59,6 +59,8 @@ create GPO-SLEEP-PFD 8 allot
    GPO-REFUSED-RC GPO-EXIT ;
 
 \ True when the wait status is a kill; a child that exited is reported.
+\ PROC-STATUS>OUTCOME never makes `timeout` from a wait status; the arm throws,
+\ as PROC-OUTCOME>RC's does, so it cannot read as no kill.
 : GPO-KILLED? ( n -- bool )
    PROC-STATUS>OUTCOME MATCH outcome
      exited OF
@@ -66,7 +68,7 @@ create GPO-SLEEP-PFD 8 allot
         false
      ENDOF
      signaled OF drop true ENDOF
-     timeout OF false ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 \ ---- test topology ----------------------------------------------------------

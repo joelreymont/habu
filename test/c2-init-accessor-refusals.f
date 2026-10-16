@@ -3,6 +3,7 @@
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/subject.f
+require src/lib/test/outcome.f
 require test/c2-init-accessors.f
 
 package C2-INIT-ACCESSOR-REFUSALS
@@ -13,14 +14,16 @@ create OUT CAP allot
 create ERR CAP allot
 variable ERR-U
 
-: REFUSED? ( ptr u8 n n -- bool ) {: expected:n :}
-   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
+: REFUSED? ( ptr u8 n n -- bool )
+   {: src:ptr srcu:n expected:n :}
+   src srcu OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
+   {: outu:len erru:len oc :}
+   erru LEN>N ERR-U !
+   oc MATCH outcome
       exited OF expected = ENDOF
       signaled OF drop false ENDOF
-      timeout OF false ENDOF
-   ;MATCH
-   >r LEN>N ERR-U ! drop r> ;
+      timeout OF src srcu OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 public
 

@@ -386,11 +386,14 @@ variable STAT-PATH-U
    ROOT-PID @ >PID PROC-WAIT-OUTCOME
    false ROOT-LIVE ! ;
 
+\ PROC-WAIT-OUTCOME never makes `timeout`: its wait blocks until the child ends.
+\ The arm throws, as PROC-OUTCOME>RC's does, so a deadline wait fed here later
+\ cannot read as no kill.
 : KILLED-BY? ( outcome n -- bool ) {: sig:n :}
    MATCH outcome
       exited OF drop false ENDOF
       signaled OF sig = ENDOF
-      timeout OF false ENDOF
+      timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 \ A root still running is ended here, and its rows with it: the pool's reapers
