@@ -68,7 +68,9 @@ deadline begins when a worker starts reading each request and covers its head
 and entire body. With a positive body timeout, `START` still bounds the head
 and an idle keep-alive connection; after headers parse and Host validation
 succeed, one fresh absolute deadline bounds the whole body, including chunk
-framing and trailers. Progress does not renew either deadline.
+framing and trailers. Progress does not renew either deadline. A request whose
+deadline passes gets no answer: its connection is closed plainly, so a peer
+still sending reads a reset rather than the end of the stream.
 If a worker start hook throws, `START` throws an actual hook error after every
 started worker has run its exit hooks and been joined. The listener is closed,
 the server's resources are released, and `RUNNING?` is false; the same address

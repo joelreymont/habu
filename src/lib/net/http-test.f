@@ -1429,15 +1429,21 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    conn 0 LARGE-SPAN @ LARGE-CHUNK SPAN:TAKE SPAN:$ RAW-SEND ;
 
 
+: ECONNRESET ( -- n ) HB-TARGET-MACOS? if 54 else $68 then ;
+
+
 \ True when the server ends the stream before the collect deadline: the read
-\ answers the end of the stream, not data and not a reset.
+\ answers the end of the stream or a reset, not data and not another failure.
+\ A server that closes with request bytes still unread, a timed-out or stopped
+\ body, is reset by the kernel. It promises no answer there (docs/http.md), so
+\ the reset is its close too.
 : CLOSED-WITHIN? ( TCP4:connection -- bool ) {: conn:TCP4:connection :}
    conn RAW-READY? 0= if false exit then
    conn RES-BUF RES-CAP TCP4:TRANSFER-BYTES TCP4:READ
    MATCH TCP4:read-result
       data OF drop false ENDOF
       closed OF drop true ENDOF
-      failed OF drop false ENDOF
+      failed OF TCP4:ERRNO>N ECONNRESET = ENDOF
    ;MATCH ;
 
 
