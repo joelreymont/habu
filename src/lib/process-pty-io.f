@@ -2,7 +2,7 @@
 \
 \ This file REOPENS package PROCESS-PTY (the package that src/lib/process-pty-handle.f
 \ owns). That registry publishes no public interface: RESERVE, COMMIT, TAKE,
-\ TEARDOWN-DONE, the per-field readers, and the pid/fd linear coercions are all
+\ TEARDOWN-DONE, the per-field readers, and the linear token conversions are all
 \ PRIVATE words. A supervisor that drives the linear reservation -> handle ->
 \ teardown lifecycle therefore has to live inside the same package and call those
 \ words by their bare names, exactly the way src/lib/process-pty-handle-test.f does.
@@ -10,12 +10,8 @@
 \ callers outside the package reach them as PROCESS-PTY:SPAWN, PROCESS-PTY:SIGNAL,
 \ and so on.
 \
-\ I/O model: this slice connects the supervised child through ordinary pipes (the
-\ `master` slot is the child's stdout read end and the `done` slot is its stdin
-\ write end). The registry's slot also demands two more supervised pids and their
-\ lifetime-watch descriptors, so the supervisor runs the target inside a small
-\ supervised set: the target plus two lifecycle-helper processes that occupy the
-\ registry's `group` (pgrp) and `sup` slots and stay alive until teardown. A
+\ I/O model: this slice connects the target through ordinary pipes (the
+\ `master` slot is its stdout read end and `done` its stdin write end).
 \ SPAWN-TTY is the second mode: the target's standard descriptors are the slave
 \ side of a fresh pseudo-terminal, opened by PTY:OPEN, which owns the
 \ per-target unlock-and-name dance for the whole tree, so a
@@ -37,7 +33,7 @@
 \ AWAIT and AWAIT-BYTES wait on the AIO loop (docs/aio.md): one POLL for the
 \ milliseconds the caller named, -1 for no deadline, and one AWAIT. A program
 \ calls AIO:START before the first of them; a wait with no loop running is
-\ E-AIO-STATE. The forked children never touch the ring; see IO-BUILD.
+\ E-AIO-STATE. The forked target never touches the ring; see IO-BUILD.
 
 require src/lib/process-pty-handle.f
 require src/lib/process-fork.f
@@ -62,7 +58,6 @@ $7F constant IO-EXEC-FAIL          \ child exit code when execve never replaces 
 create IO-PATH-BUF IO-PATH-CAP allot   \ supervised executable path bytes (child reads)
 1 TYPED-BUFFER IO-ENVP ptr u8          \ single NULL slot: the empty child environment
 create IO-GOBYTE 1 allot               \ the one-byte release token written by LAUNCH
-create IO-GO SLOT-CAP cells allot       \ per-slot release-gate write end, indexed by slot
 create IO-PTY-NAME PTY:SLAVE-PATH-CAP allot \ slave path (NUL-terminated)
 create IO-LFBYTE 1 allot                \ the line terminator WRITE-LINE appends
 
@@ -73,23 +68,11 @@ variable IO-TTY                         \ spawn mode: 0 pipes, -1 a pseudo-termi
 \ In-flight spawn state. One spawn runs to completion before the next, so a single
 \ set of cells is enough; every cell holds -1 until the build assigns it, which
 \ lets the abort path close/reap only what actually opened.
-variable IO-A-PID    variable IO-T-PID    variable IO-M-PID     \ anchor, target, monitor pids
-variable IO-MASTER   variable IO-DONE                            \ owner-kept child stdout/stdin ends
-variable IO-ANCHOR-W variable IO-LIFE                            \ owner-kept helper keepalive write ends
-variable IO-GW       variable IO-TW       variable IO-SW         \ anchor/target/monitor watch fds
-variable IO-GO-W                                                 \ owner-kept release-gate write end
-variable IO-SOUT-W   variable IO-SIN-R                           \ child-side stdout/stdin ends
-variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side helper/gate read ends
-
-\ ---- per-slot release-gate storage ------------------------------------------
-: IO-GO-SLOT ( idx -- ptr n )
-   IDX>N cells IO-GO + cell-view ;
-
-: IO-GO@ ( idx -- fd )
-   IO-GO-SLOT @ >FD ;
-
-: IO-GO! ( fd idx -- ) {: f:fd idx:idx :}
-   f FD>N idx IO-GO-SLOT ! ;
+variable IO-T-PID                                \ target pid
+variable IO-MASTER   variable IO-DONE             \ owner-kept stdout/stdin ends
+variable IO-TW       variable IO-GO-W             \ target watch and release gate
+variable IO-SOUT-W   variable IO-SIN-R            \ child-side stdout/stdin ends
+variable IO-GO-R                                 \ child-side release gate
 
 \ ---- small fd / pid helpers -------------------------------------------------
 : IO-CLOSE-FD ( fd -- ) {: f:fd :}
@@ -107,10 +90,6 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
    p PID>N 0 <= if exit then
    p PROC-KILL-TREE
    p PID>N wait-status drop ;
-
-: IO-GO-CLOSE ( idx -- ) {: idx:idx :}
-   idx IO-GO@ IO-CLOSE-FD
-   -1 >FD idx IO-GO! ;
 
 \ ---- signal classification --------------------------------------------------
 \ kill-errno reports 0 (delivered), -ESRCH (gone), or -EPERM (exists, denied). A
@@ -153,15 +132,7 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
       refused OF drop E-PROC-OUTPUT throw ENDOF
    ;MATCH ;
 
-\ ---- child bodies (each ends in die; never returns) -------------------------
-\ A lifecycle-helper child closes every inherited descriptor but the one keepalive
-\ read end it watches, blocks until that end reports EOF (owner drop) or the child
-\ is killed, then exits. It holds no other pipe end open, so it can never wedge a
-\ downstream EOF.
-: IO-HELPER-CHILD ( fd -- ) {: hr:fd :}
-   hr hr PROC-FORK:CLOSE-EXCEPT2
-   hr FD>N IO-GOBYTE 1 read drop
-   s" " 0 die ;
+\ ---- target child (ends in die if exec fails) --------------------------------
 
 : IO-CLOSE-HIGH ( -- )
    3 begin dup PROC-FORK:MAXFD < while
@@ -193,10 +164,10 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
 
 \ ---- parent-side build steps ------------------------------------------------
 : IO-RESET-STX ( -- )
-   -1 IO-A-PID !  -1 IO-T-PID !  -1 IO-M-PID !
-   -1 IO-MASTER !  -1 IO-DONE !  -1 IO-ANCHOR-W !  -1 IO-LIFE !
-   -1 IO-GW !  -1 IO-TW !  -1 IO-SW !  -1 IO-GO-W !
-   -1 IO-SOUT-W !  -1 IO-SIN-R !  -1 IO-AH-R !  -1 IO-MH-R !  -1 IO-GO-R ! ;
+   -1 IO-T-PID !
+   -1 IO-MASTER !  -1 IO-DONE !
+   -1 IO-TW !  -1 IO-GO-W !
+   -1 IO-SOUT-W !  -1 IO-SIN-R !  -1 IO-GO-R ! ;
 
 : IO-STORE-PATH ( ptr u8 len -- ) {: path:ptr pathu:len :}
    path pathu IO-PATH-BUF IO-PATH-CAP >LEN PROC-ZCOPY drop
@@ -221,19 +192,8 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
    IO-PTY-NAME PTY:PTY-OPEN-FLAGS 0 open IO-OPEN-CK >FD IO-SIN-R !
    IO-MASTER @ >FD FD>N F-DUPFD 3 fcntl IO-OPEN-CK >FD IO-DONE ! ;
 
-: IO-MK-HOLDS ( -- )
-   PIPE-PAIR IO-ANCHOR-W ! IO-AH-R !      \ anchor keepalive: owner write, child read
-   PIPE-PAIR IO-LIFE ! IO-MH-R !          \ monitor keepalive: owner write, child read
-   PIPE-PAIR IO-GO-W ! IO-GO-R ! ;        \ release gate: owner write, target read
-
-: IO-FORK-HELPER ( fd -- pid ) {: hr:fd :}
-   PROC-FORK:CHECKED dup PID>N 0= if drop hr IO-HELPER-CHILD then ;
-
-: IO-FORK-ANCHOR ( -- )
-   IO-AH-R @ >FD IO-FORK-HELPER IO-A-PID ! ;
-
-: IO-FORK-MON ( -- )
-   IO-MH-R @ >FD IO-FORK-HELPER IO-M-PID ! ;
+: IO-MK-GATE ( -- )
+   PIPE-PAIR IO-GO-W ! IO-GO-R ! ;
 
 : IO-FORK-TARGET ( -- )
    PROC-FORK:CHECKED dup PID>N 0= if drop IO-TARGET-CHILD then IO-T-PID ! ;
@@ -241,75 +201,45 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
 : IO-WATCH ( pid -- fd )
    PID>N proc-watch-open dup 0 < if drop E-PROC-OUTPUT throw then >FD ;
 
-: IO-OPEN-WATCHES ( -- )
-   IO-A-PID @ >PID IO-WATCH IO-GW !
-   IO-T-PID @ >PID IO-WATCH IO-TW !
-   IO-M-PID @ >PID IO-WATCH IO-SW ! ;
+: IO-OPEN-WATCH ( -- )
+   IO-T-PID @ >PID IO-WATCH IO-TW ! ;
 
 : IO-CLOSE-CHILD-ENDS ( -- )
    IO-SOUT-W @ >FD IO-CLOSE-FD
+   -1 IO-SOUT-W !
    IO-SIN-R @ >FD IO-CLOSE-FD
-   IO-AH-R @ >FD IO-CLOSE-FD
-   IO-MH-R @ >FD IO-CLOSE-FD
-   IO-GO-R @ >FD IO-CLOSE-FD ;
+   -1 IO-SIN-R !
+   IO-GO-R @ >FD IO-CLOSE-FD
+   -1 IO-GO-R ! ;
 
-\ Forks come before the watches so the children never inherit a lifetime-watch
-\ descriptor; child-only pipe ends close in the parent right after.
-\
-\ None of the three children touches the AIO ring, whether or not the loop is
-\ running in the parent. A helper child closes every inherited descriptor but
-\ its one keepalive read end (PROC-FORK:CLOSE-EXCEPT2 walks 0..MAXFD), so the
-\ ring descriptor is gone in it, and it then reads that end and ends in `die`,
-\ which the engine compiles to one write(2) of its message and exit_group
-\ (src/habu/habu1.f BDIE): no registered cleanup, no AT-EXIT, nothing that could
-\ reach the loop or the ring's mappings. The target child closes 3..MAXFD and
-\ execs, and io_uring_setup's descriptor is close-on-exec by the kernel's own
-\ rule, so it survives neither path.
+\ The target is forked before its watch opens, so it cannot inherit the watch.
+\ It closes 3..MAXFD before exec and never touches the parent's AIO loop.
 : IO-BUILD ( -- )
    IO-TTY @ if IO-MK-TTY else IO-MK-STDIO then
-   IO-MK-HOLDS
-   IO-FORK-ANCHOR
+   IO-MK-GATE
    IO-FORK-TARGET
-   IO-FORK-MON
-   IO-OPEN-WATCHES
+   IO-OPEN-WATCH
    IO-CLOSE-CHILD-ENDS ;
 
 : IO-COMMIT ( -- process-pty-handle )
    RESERVE
-   IO-M-PID @ >PID PID>SUP
-   IO-A-PID @ >PID PID>PGRP
-   IO-T-PID @ >PID PID>TARGET
+   IO-T-PID @ >PID
    IO-MASTER @ >FD
-   IO-LIFE @ >FD
    IO-DONE @ >FD
-   IO-ANCHOR-W @ >FD
-   IO-GW @ >FD FD>GROUP-WATCH
-   IO-TW @ >FD FD>TARGET-WATCH
-   IO-SW @ >FD FD>SUP-WATCH
+   IO-TW @ >FD
+   IO-GO-W @ >FD
    COMMIT ;
-
-: IO-STORE-GO ( process-pty-handle -- process-pty-handle )
-   HANDLE-IDX {: idx:idx :}
-   IO-GO-W @ >FD idx IO-GO! ;
 
 \ Abort path: close every descriptor still open and reap every child still live.
 \ Runs only when the build threw before COMMIT handed ownership to the registry.
 : IO-SPAWN-CLEAN ( -- )
-   IO-A-PID @ >PID IO-KILL-REAP
    IO-T-PID @ >PID IO-KILL-REAP
-   IO-M-PID @ >PID IO-KILL-REAP
    IO-MASTER @ >FD IO-CLOSE-FD
    IO-DONE @ >FD IO-CLOSE-FD
-   IO-ANCHOR-W @ >FD IO-CLOSE-FD
-   IO-LIFE @ >FD IO-CLOSE-FD
-   IO-GW @ >FD IO-CLOSE-FD
    IO-TW @ >FD IO-CLOSE-FD
-   IO-SW @ >FD IO-CLOSE-FD
    IO-GO-W @ >FD IO-CLOSE-FD
    IO-SOUT-W @ >FD IO-CLOSE-FD
    IO-SIN-R @ >FD IO-CLOSE-FD
-   IO-AH-R @ >FD IO-CLOSE-FD
-   IO-MH-R @ >FD IO-CLOSE-FD
    IO-GO-R @ >FD IO-CLOSE-FD ;
 
 \ The linear handle cannot thread through `catch` (the throw path has no handle to
@@ -318,12 +248,7 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
 : IO-TXN-SAVE ( -- )
    IO-BUILD
    IO-COMMIT
-   IO-STORE-GO
    HANDLE>N IO-RAW ! ;
-
-\ ---- live-handle readers (registry exposes takers, not live readers) --------
-: IO-TARGET-WATCH ( process-pty-handle -- process-pty-handle target-watch )
-   HANDLE-IDX TARGET-WATCH@ ;
 
 : IO-SPAWN-MODE ( ptr u8 len bool -- process-pty-handle ) {: path:ptr pathu:len tty:bool :}
    ROOM? 0= if E-PROC-PTY-CAPACITY throw then
@@ -340,7 +265,7 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
 
 public
 
-\ Spawn the supervised set and return a live handle. The target is forked but
+\ Spawn the target and return a live handle. The target is forked but
 \ blocked before exec; its lifetime watch is already open, so LAUNCH can release
 \ it and the exit stays observable.
 : SPAWN ( ptr u8 len -- process-pty-handle )
@@ -388,61 +313,44 @@ public
 
 \ Release the target to exec. Idempotent once the gate is spent.
 : LAUNCH ( process-pty-handle -- process-pty-handle )
-   HANDLE-IDX {: idx:idx :}
-   idx IO-GO@ {: gw:fd :}
+   HANDLE-GATE-TAKE {: gw:fd :}
    gw FD>N 0 < if exit then
    1 IO-GOBYTE c!
    gw FD>N IO-GOBYTE 1 write drop
-   idx IO-GO-CLOSE ;
+   gw IO-CLOSE-FD ;
 
 \ Deliver a signal to the target; report 0 or the negated errno so the caller can
 \ tell -ESRCH (gone) from -EPERM (exists, denied).
 : SIGNAL ( process-pty-handle n -- process-pty-handle rc ) {: sig:n :}
-   HANDLE-TARGET@ TARGET>PID PID>N sig kill-errno >RC ;
+   HANDLE-TARGET@ PID>N sig kill-errno >RC ;
 
 \ Probe target existence with signal 0.
 : ALIVE? ( process-pty-handle -- process-pty-handle bool )
    SIG-PROBE SIGNAL IO-ALIVE-CLASS? ;
 
 : TARGET ( process-pty-handle -- process-pty-handle pid )
-   HANDLE-TARGET@ TARGET>PID ;
+   HANDLE-TARGET@ ;
 
 \ Poll the target's lifetime watch up to ms; true once its exit is signalled.
 : AWAIT ( process-pty-handle n -- process-pty-handle bool ) {: ms:n :}
-   IO-TARGET-WATCH TARGET-WATCH>FD ms IO-POLL-READY? ;
+   HANDLE-IDX WATCH@ ms IO-POLL-READY? ;
 
-\ Ordered teardown: for each supervised pid close its lifetime watch BEFORE
-\ reaping the pid, then close the remaining control descriptors, then hand every
-\ slot back to the registry. TEARDOWN-DONE fails closed unless every descriptor
-\ was taken out, so a clean return proves every handle field was erased exactly
-\ once. The linear handle is consumed, so a second teardown cannot be written.
+\ Close the target watch before reaping, then retire every remaining descriptor
+\ and hand the slot back to the registry. The linear handle is consumed.
 : TEARDOWN ( process-pty-handle -- )
    TAKE
-   TEARDOWN-TARGET@ TARGET>PID {: tgt:pid :}
-   TEARDOWN-GROUP@ PGRP>PID {: grp:pid :}
-   TEARDOWN-SUP@ SUP>PID {: sup:pid :}
-   TEARDOWN-TARGET-WATCH-TAKE TARGET-WATCH>FD IO-CLOSE-FD
+   TEARDOWN-TARGET@ {: tgt:pid :}
+   TEARDOWN-WATCH-TAKE IO-CLOSE-FD
    tgt IO-KILL-REAP
-   TEARDOWN-GROUP-WATCH-TAKE GROUP-WATCH>FD IO-CLOSE-FD
-   grp IO-KILL-REAP
-   TEARDOWN-SUP-WATCH-TAKE SUP-WATCH>FD IO-CLOSE-FD
-   sup IO-KILL-REAP
    TEARDOWN-MASTER-TAKE IO-CLOSE-FD
-   TEARDOWN-LIFE-TAKE IO-CLOSE-FD
    TEARDOWN-DONE-TAKE IO-CLOSE-FD
-   TEARDOWN-ANCHOR-TAKE IO-CLOSE-FD
-   TEARDOWN-IDX {: idx:idx :}
-   idx IO-GO-CLOSE
+   TEARDOWN-GATE-TAKE IO-CLOSE-FD
    TEARDOWN-DONE ;
 
 private
 
 : IO-INIT ( -- )
-   NULL-PTR 0 IO-ENVP !
-   0 begin dup SLOT-CAP < while
-      -1 >FD over >IDX IO-GO!
-      1+
-   repeat drop ;
+   NULL-PTR 0 IO-ENVP ! ;
 
 IO-INIT
 

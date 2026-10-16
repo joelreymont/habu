@@ -32,13 +32,13 @@
 \ E-PROC-TIMEOUT, one read as data answers the timeout outcome, and each
 \ sleeper died of SIGKILL and was reaped; and here, that the walker's stderr is
 \ one line per capture naming the refused walk's E-PROC-OUTPUT.
-\  5. A REFUSED WALK THAT STRANDS A SUPERVISED SESSION. TEARDOWN kills each of
-\     a session's three pids with its tree (src/lib/process-pty-io.f IO-KILL-REAP),
+\  5. A REFUSED WALK THAT STRANDS A SUPERVISED SESSION. TEARDOWN kills the
+\     session target with its tree (src/lib/process-pty-io.f IO-KILL-REAP),
 \     and a throw out of it would strand the linear teardown token and leak
 \     the slot.
 \ Asserted by a third walker, `pty`, under the listing denial: TEARDOWN
-\ returns and the target is reaped; and here, that its stderr is one line per
-\ supervised pid naming the refused walk.
+\ returns and the target is reaped; and here, that its stderr names the one
+\ refused walk.
 \
 \ HOSTS. macOS only: sandbox-exec is the way here to make the kernel refuse.
 \ The Linux walk reads /proc through open, whose failure the engine reports
@@ -69,7 +69,7 @@ package PROC-TREE-TEST
 30000 constant WALKER-MS             \ one engine boot and one walk, on a loaded host
 1 constant CAPTURE-MS                \ passes long before the sleeper's 30 s
 2 constant CAPTURES                  \ the capture walker's, each walking once
-3 constant SUPERVISED                \ the pty walker's: target, anchor and monitor
+1 constant SUPERVISED                \ the pty walker's target
 $4000 constant CAP
 
 create OUT CAP allot
@@ -223,7 +223,7 @@ variable TARGET
    s" (version 1)(allow default)(deny process-info-listpids)"
    s" pty" SANDBOXED {: outn:n errn:n rc:n :}
    outn errn rc
-   s" a session whose tree walks are refused is torn down" VERDICT
+   s" a session whose tree walk is refused is torn down" VERDICT
    s" the walker's stderr names each refused walk" T-LABEL
    ERR errn SUPERVISED WALK-LINES$ T$= ;
 

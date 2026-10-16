@@ -149,9 +149,9 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
 \ AWAIT with the loop stopped is E-AIO-STATE, like every other wait on the loop,
 \ but this suite cannot pin it: the refusal has to happen on a spawned handle,
 \ the handle is linear and does not cross the throw a refusal assertion catches,
-\ and the supervised set it strands keeps the gate runner's capture pipe open
-\ through its still-gated target child (measured: the runner waits on that pipe
-\ forever). src/lib/serial-test.f, src/lib/pty-test.f and src/lib/signal-test.f pin the
+\ and the gated target it strands keeps the gate runner's capture pipe open
+\ (measured: the runner waits on that pipe forever). src/lib/serial-test.f,
+\ src/lib/pty-test.f and src/lib/signal-test.f pin the
 \ refusal on the three packages whose waits carry no linear token.
 \
 \ The loop is started after the last definition (a live task forbids

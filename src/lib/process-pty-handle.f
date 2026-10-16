@@ -1,30 +1,13 @@
-\ process-pty-handle.f - linear PTY supervisor authority registry.
+\ process-pty-handle.f - linear PTY target authority registry.
 
 require src/lib/errors.f
 require src/lib/prelude.f
 
 package PROCESS-PTY
 
-\ The three lifecycle tokens. Declared inside the package, so it owns them:
-\ only its private section may mint or erase one.
 DEFLINEAR process-pty-reservation
 DEFLINEAR process-pty-handle
 DEFLINEAR process-pty-teardown
-
-\ The six supervisor roles. Each is a distinct one-cell nominal family so the
-\ checker refuses a cross-role swap: a supervisor pid is not a process-group id
-\ is not a target pid, and the three watch descriptors are not interchangeable
-\ either. They are declared INSIDE the package and stay private to it: every
-\ user is in this package (this file and src/lib/process-pty-io.f, which reopens
-\ it), and the public lifecycle surface converts each role back to `pid` or `fd`
-\ at the boundary, so no caller outside ever names one.
-
-NEWTYPE sup-pid
-NEWTYPE pgrp
-NEWTYPE target-pid
-NEWTYPE group-watch
-NEWTYPE target-watch
-NEWTYPE sup-watch
 
 $10 constant SLOT-CAP
 $FF constant SLOT-MASK
@@ -35,45 +18,19 @@ create SLOT-GEN SLOT-CAP cells allot
 create SLOT-ACTIVE SLOT-CAP cells allot
 create SLOT-LIVE SLOT-CAP cells allot
 create SLOT-DRAIN SLOT-CAP cells allot
-SLOT-CAP TYPED-BUFFER SLOT-SUP sup-pid
-SLOT-CAP TYPED-BUFFER SLOT-GROUP pgrp
-SLOT-CAP TYPED-BUFFER SLOT-TARGET target-pid
+create SLOT-TARGET SLOT-CAP cells allot
 create SLOT-MASTER SLOT-CAP cells allot
-create SLOT-LIFE SLOT-CAP cells allot
 create SLOT-DONE SLOT-CAP cells allot
-create SLOT-ANCHOR SLOT-CAP cells allot
-SLOT-CAP TYPED-BUFFER SLOT-GROUP-WATCH group-watch
-SLOT-CAP TYPED-BUFFER SLOT-TARGET-WATCH target-watch
-SLOT-CAP TYPED-BUFFER SLOT-SUP-WATCH sup-watch
+create SLOT-WATCH SLOT-CAP cells allot
+create SLOT-GATE SLOT-CAP cells allot
 create SLOT-OWNER SLOT-CAP cells allot
 
-\ Packed slot/generation cell <-> the three linear lifecycle tokens: the
-\ checker certifies each row as this package's private mint or erase.
 LINEAR: N>HANDLE ( n -- process-pty-handle )
 LINEAR: HANDLE>N ( process-pty-handle -- n )
 LINEAR: N>RESERVATION ( n -- process-pty-reservation )
 LINEAR: RESERVATION>N ( process-pty-reservation -- n )
 LINEAR: N>TEARDOWN ( n -- process-pty-teardown )
 LINEAR: TEARDOWN>N ( process-pty-teardown -- n )
-
-\ The twelve supervisor-role conversions are checked casts: one cell in, one cell
-\ out, and every destination is either a family this package declares (the six
-\ NEWTYPEs above) or a core role the checker registers as a plain constant and
-\ leaves unowned (pid, fd). So the checker certifies each declaration rather than
-\ trusting it. What a cast still cannot say is that the pid really IS the
-\ supervisor's - that meaning stays this package's obligation.
-CAST: PID>SUP ( pid -- sup-pid )
-CAST: SUP>PID ( sup-pid -- pid )
-CAST: PID>PGRP ( pid -- pgrp )
-CAST: PGRP>PID ( pgrp -- pid )
-CAST: PID>TARGET ( pid -- target-pid )
-CAST: TARGET>PID ( target-pid -- pid )
-CAST: FD>GROUP-WATCH ( fd -- group-watch )
-CAST: GROUP-WATCH>FD ( group-watch -- fd )
-CAST: FD>TARGET-WATCH ( fd -- target-watch )
-CAST: TARGET-WATCH>FD ( target-watch -- fd )
-CAST: FD>SUP-WATCH ( fd -- sup-watch )
-CAST: SUP-WATCH>FD ( sup-watch -- fd )
 
 : CELL-AT ( ptr a idx -- ptr a ) {: base:ptr idx:idx :}
    base idx IDX>N cells + ;
@@ -102,23 +59,11 @@ CAST: SUP-WATCH>FD ( sup-watch -- fd )
 : DRAIN! ( bool idx -- )
    SLOT-DRAIN swap CELL-AT ! ;
 
-: SUP@ ( idx -- sup-pid )
-   IDX>N SLOT-SUP @ ;
+: TARGET@ ( idx -- pid )
+   SLOT-TARGET swap CELL-AT @ >PID ;
 
-: SUP! ( sup-pid idx -- )
-   IDX>N SLOT-SUP ! ;
-
-: GROUP@ ( idx -- pgrp )
-   IDX>N SLOT-GROUP @ ;
-
-: GROUP! ( pgrp idx -- )
-   IDX>N SLOT-GROUP ! ;
-
-: TARGET@ ( idx -- target-pid )
-   IDX>N SLOT-TARGET @ ;
-
-: TARGET! ( target-pid idx -- )
-   IDX>N SLOT-TARGET ! ;
+: TARGET! ( pid idx -- )
+   SLOT-TARGET swap CELL-AT ! ;
 
 : MASTER@ ( idx -- fd )
    SLOT-MASTER swap CELL-AT @ >FD ;
@@ -126,41 +71,23 @@ CAST: SUP-WATCH>FD ( sup-watch -- fd )
 : MASTER! ( fd idx -- )
    SLOT-MASTER swap CELL-AT ! ;
 
-: LIFE@ ( idx -- fd )
-   SLOT-LIFE swap CELL-AT @ >FD ;
-
-: LIFE! ( fd idx -- )
-   SLOT-LIFE swap CELL-AT ! ;
-
 : DONE@ ( idx -- fd )
    SLOT-DONE swap CELL-AT @ >FD ;
 
 : DONE! ( fd idx -- )
    SLOT-DONE swap CELL-AT ! ;
 
-: ANCHOR@ ( idx -- fd )
-   SLOT-ANCHOR swap CELL-AT @ >FD ;
+: WATCH@ ( idx -- fd )
+   SLOT-WATCH swap CELL-AT @ >FD ;
 
-: ANCHOR! ( fd idx -- )
-   SLOT-ANCHOR swap CELL-AT ! ;
+: WATCH! ( fd idx -- )
+   SLOT-WATCH swap CELL-AT ! ;
 
-: GROUP-WATCH@ ( idx -- group-watch )
-   IDX>N SLOT-GROUP-WATCH @ ;
+: GATE@ ( idx -- fd )
+   SLOT-GATE swap CELL-AT @ >FD ;
 
-: GROUP-WATCH! ( group-watch idx -- )
-   IDX>N SLOT-GROUP-WATCH ! ;
-
-: TARGET-WATCH@ ( idx -- target-watch )
-   IDX>N SLOT-TARGET-WATCH @ ;
-
-: TARGET-WATCH! ( target-watch idx -- )
-   IDX>N SLOT-TARGET-WATCH ! ;
-
-: SUP-WATCH@ ( idx -- sup-watch )
-   IDX>N SLOT-SUP-WATCH @ ;
-
-: SUP-WATCH! ( sup-watch idx -- )
-   IDX>N SLOT-SUP-WATCH ! ;
+: GATE! ( fd idx -- )
+   SLOT-GATE swap CELL-AT ! ;
 
 : OWNER@ ( idx -- pid )
    SLOT-OWNER swap CELL-AT @ >PID ;
@@ -172,16 +99,11 @@ CAST: SUP-WATCH>FD ( sup-watch -- fd )
    false idx ACTIVE!
    false idx LIVE!
    false idx DRAIN!
-   -1 >PID PID>SUP idx SUP!
-   -1 >PID PID>PGRP idx GROUP!
-   -1 >PID PID>TARGET idx TARGET!
+   -1 >PID idx TARGET!
    -1 >FD idx MASTER!
-   -1 >FD idx LIFE!
    -1 >FD idx DONE!
-   -1 >FD idx ANCHOR!
-   -1 >FD FD>GROUP-WATCH idx GROUP-WATCH!
-   -1 >FD FD>TARGET-WATCH idx TARGET-WATCH!
-   -1 >FD FD>SUP-WATCH idx SUP-WATCH!
+   -1 >FD idx WATCH!
+   -1 >FD idx GATE!
    -1 >PID idx OWNER! ;
 
 : SLOT-INIT ( idx -- ) {: idx:idx :}
@@ -194,11 +116,8 @@ CAST: SUP-WATCH>FD ( sup-watch -- fd )
       1+
    repeat drop ;
 
-: FREE? ( idx -- bool )
-   ACTIVE@ 0= ;
-
 : USABLE? ( idx -- bool ) {: idx:idx :}
-   idx FREE? idx GEN@ GEN-MAX < and ;
+   idx ACTIVE@ 0= idx GEN@ GEN-MAX < and ;
 
 : FIND-FREE ( -- idx )
    0 >IDX begin dup IDX>N SLOT-CAP < while
@@ -213,24 +132,8 @@ CAST: SUP-WATCH>FD ( sup-watch -- fd )
       IDX>N 1+ >IDX
    repeat drop false ;
 
-: NEXT-GEN ( idx -- n )
-   GEN@ 1+ ;
-
 : RELEASE ( idx -- )
    SLOT-CLEAR ;
-
-: STORE ( sup-pid pgrp target-pid fd fd fd fd group-watch target-watch sup-watch idx -- )
-   {: sup:sup-pid group:pgrp target:target-pid master:fd life:fd done:fd anchor:fd group-watch:group-watch target-watch:target-watch sup-watch:sup-watch idx:idx :}
-   sup idx SUP!
-   group idx GROUP!
-   target idx TARGET!
-   master idx MASTER!
-   life idx LIFE!
-   done idx DONE!
-   anchor idx ANCHOR!
-   group-watch idx GROUP-WATCH!
-   target-watch idx TARGET-WATCH!
-   sup-watch idx SUP-WATCH! ;
 
 : PACK ( idx -- n ) {: idx:idx :}
    idx GEN@ 8 lshift idx IDX>N or ;
@@ -249,7 +152,7 @@ CAST: SUP-WATCH>FD ( sup-watch -- fd )
 
 : RESERVE ( -- process-pty-reservation )
    getpid dup 0 <= if drop E-PROC-SPAWN throw then >PID {: owner:pid :}
-   FIND-FREE dup NEXT-GEN over GEN!
+   FIND-FREE dup GEN@ 1+ over GEN!
    owner over OWNER!
    true over ACTIVE!
    PACK N>RESERVATION ;
@@ -276,103 +179,64 @@ CAST: SUP-WATCH>FD ( sup-watch -- fd )
 : CANCEL ( process-pty-reservation -- )
    OPEN-RESERVATION UNPACK-IDX RELEASE ;
 
-: PID-POSITIVE? ( pid -- bool )
-   PID>N 0 > ;
-
 : FD-VALID? ( fd -- bool )
    FD>N dup 0 < if drop false exit then
    F-GETFD 0 fcntl 0 >= ;
 
-: DISTINCT-PIDS? ( pid sup-pid pgrp target-pid -- bool )
-   {: owner:pid sup:sup-pid group:pgrp target:target-pid :}
-   owner PID>N sup SUP>PID PID>N <>
-   owner PID>N group PGRP>PID PID>N <> and
-   owner PID>N target TARGET>PID PID>N <> and
-   sup SUP>PID PID>N group PGRP>PID PID>N <> and
-   sup SUP>PID PID>N target TARGET>PID PID>N <> and
-   group PGRP>PID PID>N target TARGET>PID PID>N <> and ;
+: DISTINCT-FDS? ( fd fd fd fd -- bool )
+   {: master:fd done:fd watch:fd gate:fd :}
+   master FD>N done FD>N <>
+   master FD>N watch FD>N <> and
+   master FD>N gate FD>N <> and
+   done FD>N watch FD>N <> and
+   done FD>N gate FD>N <> and
+   watch FD>N gate FD>N <> and ;
 
-: DISTINCT-FDS? ( fd fd fd fd group-watch target-watch sup-watch -- bool )
-   {: master:fd life:fd done:fd anchor:fd group-watch:group-watch target-watch:target-watch sup-watch:sup-watch :}
-   master FD>N life FD>N <>
-   master FD>N done FD>N <> and
-   master FD>N anchor FD>N <> and
-   master FD>N group-watch GROUP-WATCH>FD FD>N <> and
-   master FD>N target-watch TARGET-WATCH>FD FD>N <> and
-   master FD>N sup-watch SUP-WATCH>FD FD>N <> and
-   life FD>N done FD>N <> and
-   life FD>N anchor FD>N <> and
-   life FD>N group-watch GROUP-WATCH>FD FD>N <> and
-   life FD>N target-watch TARGET-WATCH>FD FD>N <> and
-   life FD>N sup-watch SUP-WATCH>FD FD>N <> and
-   done FD>N anchor FD>N <> and
-   done FD>N group-watch GROUP-WATCH>FD FD>N <> and
-   done FD>N target-watch TARGET-WATCH>FD FD>N <> and
-   done FD>N sup-watch SUP-WATCH>FD FD>N <> and
-   anchor FD>N group-watch GROUP-WATCH>FD FD>N <> and
-   anchor FD>N target-watch TARGET-WATCH>FD FD>N <> and
-   anchor FD>N sup-watch SUP-WATCH>FD FD>N <> and
-   group-watch GROUP-WATCH>FD FD>N target-watch TARGET-WATCH>FD FD>N <> and
-   group-watch GROUP-WATCH>FD FD>N sup-watch SUP-WATCH>FD FD>N <> and
-   target-watch TARGET-WATCH>FD FD>N sup-watch SUP-WATCH>FD FD>N <> and ;
-
-: COMMIT-PIDS-VALID? ( n sup-pid pgrp target-pid -- bool )
-   {: raw:n sup:sup-pid group:pgrp target:target-pid :}
-   sup SUP>PID PID-POSITIVE?
-   group PGRP>PID PID-POSITIVE? and
-   target TARGET>PID PID-POSITIVE? and
-   raw UNPACK-IDX OWNER@ sup group target DISTINCT-PIDS? and ;
-
-: COMMIT-FDS-VALID? ( fd fd fd fd group-watch target-watch sup-watch -- bool )
-   {: master:fd life:fd done:fd anchor:fd group-watch:group-watch target-watch:target-watch sup-watch:sup-watch :}
-   master FD-VALID? life FD-VALID? and
+: COMMIT-VALID? ( n pid fd fd fd fd -- bool )
+   {: raw:n target:pid master:fd done:fd watch:fd gate:fd :}
+   target PID>N 0 >
+   target PID>N raw UNPACK-IDX OWNER@ PID>N <> and
+   master FD-VALID? and
    done FD-VALID? and
-   anchor FD-VALID? and
-   group-watch GROUP-WATCH>FD FD-VALID? and
-   target-watch TARGET-WATCH>FD FD-VALID? and
-   sup-watch SUP-WATCH>FD FD-VALID? and
-   master life done anchor group-watch target-watch sup-watch DISTINCT-FDS? and ;
-
-: COMMIT-VALID? ( n sup-pid pgrp target-pid fd fd fd fd group-watch target-watch sup-watch -- bool )
-   {: raw:n sup:sup-pid group:pgrp target:target-pid master:fd life:fd done:fd anchor:fd group-watch:group-watch target-watch:target-watch sup-watch:sup-watch :}
-   raw sup group target COMMIT-PIDS-VALID?
-   master life done anchor group-watch target-watch sup-watch COMMIT-FDS-VALID? and ;
+   watch FD-VALID? and
+   gate FD-VALID? and
+   master done watch gate DISTINCT-FDS? and ;
 
 : COMMIT-REJECT ( n -- )
    UNPACK-IDX RELEASE
    E-PROC-PTY-HANDLE throw ;
 
-: COMMIT-RAW ( n sup-pid pgrp target-pid fd fd fd fd group-watch target-watch sup-watch -- process-pty-handle )
-   {: raw:n sup:sup-pid group:pgrp target:target-pid master:fd life:fd done:fd anchor:fd group-watch:group-watch target-watch:target-watch sup-watch:sup-watch :}
-   raw sup group target master life done anchor group-watch target-watch sup-watch
-   COMMIT-VALID? 0= if raw COMMIT-REJECT then
+: COMMIT-RAW ( n pid fd fd fd fd -- process-pty-handle )
+   {: raw:n target:pid master:fd done:fd watch:fd gate:fd :}
+   raw target master done watch gate COMMIT-VALID? 0= if raw COMMIT-REJECT then
    raw UNPACK-IDX {: idx:idx :}
-   sup group target master life done anchor group-watch target-watch sup-watch idx STORE
+   target idx TARGET!
+   master idx MASTER!
+   done idx DONE!
+   watch idx WATCH!
+   gate idx GATE!
    true idx LIVE!
    raw N>HANDLE ;
 
-: COMMIT ( process-pty-reservation sup-pid pgrp target-pid fd fd fd fd group-watch target-watch sup-watch -- process-pty-handle )
-   >r >r >r >r >r >r >r >r >r >r OPEN-RESERVATION
-   r> r> r> r> r> r> r> r> r> r> COMMIT-RAW ;
+: COMMIT ( process-pty-reservation pid fd fd fd fd -- process-pty-handle )
+   >r >r >r >r >r OPEN-RESERVATION
+   r> r> r> r> r> COMMIT-RAW ;
 
 : HANDLE-IDX ( process-pty-handle -- process-pty-handle idx )
    OPEN-HANDLE {: raw:n :}
    raw N>HANDLE raw UNPACK-IDX ;
 
-: HANDLE-CHECK ( process-pty-handle -- process-pty-handle )
-   HANDLE-IDX drop ;
-
-: HANDLE-SUP@ ( process-pty-handle -- process-pty-handle sup-pid )
-   HANDLE-IDX SUP@ ;
-
-: HANDLE-GROUP@ ( process-pty-handle -- process-pty-handle pgrp )
-   HANDLE-IDX GROUP@ ;
-
-: HANDLE-TARGET@ ( process-pty-handle -- process-pty-handle target-pid )
+: HANDLE-TARGET@ ( process-pty-handle -- process-pty-handle pid )
    HANDLE-IDX TARGET@ ;
 
 : HANDLE-MASTER@ ( process-pty-handle -- process-pty-handle fd )
    HANDLE-IDX MASTER@ ;
+
+: HANDLE-GATE-TAKE ( process-pty-handle -- process-pty-handle fd )
+   HANDLE-IDX {: idx:idx :}
+   idx GATE@ {: gate:fd :}
+   -1 >FD idx GATE!
+   gate ;
 
 : TAKE ( process-pty-handle -- process-pty-teardown )
    OPEN-HANDLE {: raw:n :}
@@ -385,13 +249,7 @@ CAST: SUP-WATCH>FD ( sup-watch -- fd )
    OPEN-TEARDOWN {: raw:n :}
    raw N>TEARDOWN raw UNPACK-IDX ;
 
-: TEARDOWN-SUP@ ( process-pty-teardown -- process-pty-teardown sup-pid )
-   TEARDOWN-IDX SUP@ ;
-
-: TEARDOWN-GROUP@ ( process-pty-teardown -- process-pty-teardown pgrp )
-   TEARDOWN-IDX GROUP@ ;
-
-: TEARDOWN-TARGET@ ( process-pty-teardown -- process-pty-teardown target-pid )
+: TEARDOWN-TARGET@ ( process-pty-teardown -- process-pty-teardown pid )
    TEARDOWN-IDX TARGET@ ;
 
 : TEARDOWN-FD-TAKE ( process-pty-teardown ptr n -- process-pty-teardown fd )
@@ -406,44 +264,23 @@ CAST: SUP-WATCH>FD ( sup-watch -- fd )
 : TEARDOWN-MASTER-TAKE ( process-pty-teardown -- process-pty-teardown fd )
    SLOT-MASTER TEARDOWN-FD-TAKE ;
 
-: TEARDOWN-LIFE-TAKE ( process-pty-teardown -- process-pty-teardown fd )
-   SLOT-LIFE TEARDOWN-FD-TAKE ;
-
 : TEARDOWN-DONE-TAKE ( process-pty-teardown -- process-pty-teardown fd )
    SLOT-DONE TEARDOWN-FD-TAKE ;
 
-: TEARDOWN-ANCHOR-TAKE ( process-pty-teardown -- process-pty-teardown fd )
-   SLOT-ANCHOR TEARDOWN-FD-TAKE ;
+: TEARDOWN-WATCH-TAKE ( process-pty-teardown -- process-pty-teardown fd )
+   SLOT-WATCH TEARDOWN-FD-TAKE ;
 
-: TEARDOWN-GROUP-WATCH-TAKE ( process-pty-teardown -- process-pty-teardown group-watch )
-   TEARDOWN-IDX {: idx:idx :}
-   idx GROUP-WATCH@ {: watch:group-watch :}
-   -1 >FD FD>GROUP-WATCH idx GROUP-WATCH!
-   watch ;
-
-: TEARDOWN-TARGET-WATCH-TAKE ( process-pty-teardown -- process-pty-teardown target-watch )
-   TEARDOWN-IDX {: idx:idx :}
-   idx TARGET-WATCH@ {: watch:target-watch :}
-   -1 >FD FD>TARGET-WATCH idx TARGET-WATCH!
-   watch ;
-
-: TEARDOWN-SUP-WATCH-TAKE ( process-pty-teardown -- process-pty-teardown sup-watch )
-   TEARDOWN-IDX {: idx:idx :}
-   idx SUP-WATCH@ {: watch:sup-watch :}
-   -1 >FD FD>SUP-WATCH idx SUP-WATCH!
-   watch ;
+: TEARDOWN-GATE-TAKE ( process-pty-teardown -- process-pty-teardown fd )
+   SLOT-GATE TEARDOWN-FD-TAKE ;
 
 : FD-MOVED? ( fd -- bool )
    FD>N 0 < ;
 
 : DRAINED? ( idx -- bool ) {: idx:idx :}
    idx MASTER@ FD-MOVED?
-   idx LIFE@ FD-MOVED? and
    idx DONE@ FD-MOVED? and
-   idx ANCHOR@ FD-MOVED? and
-   idx GROUP-WATCH@ GROUP-WATCH>FD FD-MOVED? and
-   idx TARGET-WATCH@ TARGET-WATCH>FD FD-MOVED? and
-   idx SUP-WATCH@ SUP-WATCH>FD FD-MOVED? and ;
+   idx WATCH@ FD-MOVED? and
+   idx GATE@ FD-MOVED? and ;
 
 : TEARDOWN-DONE ( process-pty-teardown -- )
    OPEN-TEARDOWN UNPACK-IDX

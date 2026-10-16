@@ -157,7 +157,7 @@ Both modes share the handle lifecycle (`LAUNCH`, `ALIVE?`, `AWAIT`, `SIGNAL`,
   absolute deadline (`PROC-DEADLINE-AT` / `PROC-LEFT-MS`) and ends only on the
   marker, the `-1`, or the clock.
 
-`TEARDOWN` kills each supervised pid with every process it started
+`TEARDOWN` kills the target with every process it started
 (`PROC-KILL-TREE`), so nothing the target spawned outlives the session holding
 its pipe or terminal; a tree walk the kernel refuses is reported on stderr,
 never thrown past the linear token.
