@@ -926,9 +926,8 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
 \
 \ A dictionary word that parses is not one of these. Which word `require`
 \ (src/core/include.f) or `SEE` (src/habu/xref.f) names is a scope question,
-\ and the tree defines words that take no operand under both spellings
-\ (test/native-unit-compile-e2e.f, test/compiler/tic6x-facts.f), so the token
-\ after one is read as an ordinary token.
+\ and the tree defines words that take no operand under those spellings, so
+\ the token after one is read as an ordinary token.
 : CHAR-KEYWORD? ( ptr u8 n -- bool )
    s" char" STR=CI ;
 

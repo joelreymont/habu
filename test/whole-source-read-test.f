@@ -1,7 +1,7 @@
 \ whole-source-read-test.f - a whole-source reader reads past its size sample.
 \
 \ check.f's readers (discovery, the lints, --all-errors, the verifier's stopped
-\ file), the native source view, diag-origin and the language server's read of
+\ file), diag-origin and the language server's read of
 \ a file its packets name each read a source whole through src/lib/source.f
 \ READ-WHOLE-FILE or READ-WHOLE-SAMPLED: the file's size is only the first
 \ room, and the read goes on to the end of the file. Each case is a child
@@ -115,18 +115,6 @@ create ERR IO-CAP allot
    OUT outu s" check: 70" CONTAINS? TTRUE
    ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE ;
 
-\ grown.f is absent, so the view refuses it by name only if it read the require
-\ that arrived after the stat.
-: VIEW-CASE ( -- )
-   s" view" CASE-DIR
-   s" view" RUN {: outu:n erru:n rc:n :}
-   s" the source view reads its subject past the sampled size" T-LABEL
-   rc 0 T=
-   s" ... and follows the require that arrived after the stat" T-LABEL
-   ERR erru s" cannot read " CONTAINS? TTRUE
-   s" ... to grown.f, the file it refuses" T-LABEL
-   ERR erru GROWN$ CONTAINS? TTRUE ;
-
 : ORIGIN-CASE ( -- )
    s" origin" CASE-DIR
    s" origin" RUN {: outu:n erru:n rc:n :}
@@ -181,7 +169,6 @@ public
    s" json" s" a plain check.f reads its subject past each sampled size" CHECK-CASE
    s" all" s" check.f --all-errors reads its subject past each sampled size" CHECK-CASE
    DEP-CASE
-   VIEW-CASE
    ORIGIN-CASE
    ORIGIN-REFUSED-CASE
    LSP-CASE

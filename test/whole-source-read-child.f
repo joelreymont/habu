@@ -7,7 +7,7 @@
 \ reader is loaded after the replacement and so calls it.
 \
 \ Run by the test: bin/hb --load test/whole-source-read-child.f -- MODE SUBJECT
-\ GROW, MODE one of check, json, all, dep, view, origin, origin-refused and
+\ GROW, MODE one of check, json, all, dep, origin, origin-refused and
 \ lsp, GROW the file to grow.
 
 require src/lib/fs.f
@@ -65,7 +65,6 @@ undefine FILE-SIZE
 : FILE-SIZE ( ptr u8 n -- n ) WHOLE-SOURCE-READ-CHILD:SIZE ;
 
 require tools/check-core.f
-require tools/native-source-view.f
 require tools/lsp-diag.f
 
 package WHOLE-SOURCE-READ-CHILD
@@ -94,16 +93,6 @@ variable PKT-U
 : CHECK-MODE? ( -- bool )
    s" check" MODE? s" json" MODE? or s" all" MODE? or s" dep" MODE? or ;
 
-: VIEW-COLLECT ( -- )
-   SUBJECT$ SOURCE-VIEW:COLLECT ;
-
-\ A file the view cannot read is named on standard error; the code is typed.
-: VIEW-RUN ( -- )
-   SOURCE-VIEW:OPEN
-   [: VIEW-COLLECT ;] catch
-   SOURCE-VIEW:CLOSE
-   s" view: " type . cr ;
-
 : PKT+ ( ptr u8 n -- )
    {: a:ptr u:n :}
    PKT-U @ u + PKT-CAP > if E-STR-CAPACITY throw then
@@ -127,7 +116,6 @@ public
 
 : MAIN ( -- )
    CHECK-MODE? if CHECK-RUN exit then
-   s" view" MODE? if VIEW-RUN exit then
    s" origin" MODE? REFUSED? or if SUBJECT$ DIAG-ORIGIN exit then
    s" lsp" MODE? if LSP-RUN exit then
    s" whole-source-read-child: no such mode" 64 die ;

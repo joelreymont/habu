@@ -1128,8 +1128,7 @@ public
 \ `throw` for a closure member's read. A zero code is no refusal; any other
 \ names the file on fd 2 and is rethrown unchanged, because the code alone
 \ (E-FS-STAT or E-FS-OPEN for a missing file) does not say which member it was.
-\ RUN-IN's reader and the source view's (tools/native-source-view.f
-\ READ-COLLECT) both refuse through it, so the line names no tool. The write
+\ RUN-IN's reader refuses through it, so the line names no tool. The write
 \ result is dropped because the next step raises the refusal itself, as
 \ src/core/checker.f's compile rejects do.
 : READ-THROW ( ptr u8 n n -- ) {: pa:ptr pu:n rc:n :}

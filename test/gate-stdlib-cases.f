@@ -268,10 +268,8 @@ SUITE native-file-ffi
 ;SUITE
 
 SUITE native-unit-refusals
-   test/native-unit-key-e2e.f
    test/native-unit-file.f
    test/native-file-object-wid-reject.f
-   test/native-unit-compile-e2e.f
 ;SUITE
 
 \ A package's checker facts survive an artifact boundary.
