@@ -1,9 +1,11 @@
 ---
 title: Throw WebSocket observation deadlines
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-16T16:28:19.729198+03:00"
+closed-at: "2026-10-16T22:58:20.428634+03:00"
+close-reason: "Landed: ws-test's own waits (AWAIT's idle arm, AWAITED, the handler's rest wait recorded as REST-EXPIRED and read by main's REST-AWAITED as one deadline) name themselves and throw E-PROC-TIMEOUT; deadline-only branches and TTRUEs are gone. Proofs: row ws rc 0; forced copies rc 67 with one named line each, the handler race 3 of 3. Fable review REVISE (Medium 1 fixed; Medium 2, per-site AWAITED names, declined under the family's <stem> <WAIT-WORD> naming); Astra follow-up APPROVE."
 ---
 
 Problem: the parent's rule (a wait whose clock ends throws E-PROC-TIMEOUT after one named stdout line; a task records it and main throws it at the join; no deadline raised) is broken in the files below. The parent holds the shared interface (`TEST-WAIT:EXPIRED`, `TEST-WAIT:POLL` in src/lib/test/wait.f), the rulings and the proof notation `P(name)`.
@@ -32,4 +34,4 @@ Run `websocket`: `src/lib/net/ws-test.f` (`gate-stdlib-cases.f:2561–2563`). Fo
 
 A handler deadline reaches main through recorded state, not an HTTP 500 or later failed REST assertion. No off-limits HTTP file changes.
 
-Files: src/lib/net/ws-test.f. Verify: the rows and forced copies under Proof. Depends: habu-share-a-named-85cc93f5. Ownership: the files above. Claim: unassigned.
+Files: src/lib/net/ws-test.f. Verify: the rows and forced copies under Proof. Depends: habu-share-a-named-85cc93f5. Ownership: the files above. Claim: agent=worker workspace=.jj-ws/jerry-wait-d9.

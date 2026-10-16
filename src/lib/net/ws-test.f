@@ -15,6 +15,7 @@
 \ Run: bin/hb --load src/lib/net/ws-test.f
 
 require src/lib/test.f
+require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -112,6 +113,9 @@ $52 constant REST-BYTE            \ 'R', what the frame whose rest waits in the 
 $40 constant LEAD-BYTES           \ of its payload, those that ride behind the handshake
 $1000 constant REST-BYTES         \ the rest, in one write far under a loopback segment
 LEAD-BYTES REST-BYTES + constant REST-FRAME-BYTES
+0 constant REST-PENDING           \ the handler has neither found the rest queued nor stopped looking
+1 constant REST-FOUND             \ it found the rest queued
+2 constant REST-EXPIRED           \ its wait for the rest ran out first
 $37FA213D constant MASK-KEY       \ the masking key of RFC 6455 section 5.7's examples
 1000000 constant NS-PER-MS
 1 constant SOL-SOCKET
@@ -240,7 +244,7 @@ variable FLOOD-CODE               \ what refused the push of the handler that fl
 variable FLOOD-END                \ and when
 variable EARLY-SEEN               \ the bytes the handler found held behind the handshake
 variable REST-WRITTEN             \ set once the client's write of the frame's rest has returned
-variable REST-SEEN                \ set once the handler found that rest queued in its socket before it received
+variable REST-SEEN                \ the handler's handoff, read and written atomically: REST-FOUND once it found that rest queued in its socket before it received, REST-EXPIRED once its wait ran out first
 variable ZERO-TIMEOUT             \ set when its RECEIVE that waits not at all answered timeout
 variable LONGEST                  \ the longest the timed handler's RECEIVE took, in ns
 variable TOOK-U                   \ the length of the binary message the timed handler took last
@@ -272,8 +276,11 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
 \ ---- the handlers, all defined before any task is live -----------------------
 
 \ What the probe answers once it answers other than 0, asked every POLL-MS; 0
-\ once that many ms have passed without that.
-: AWAITED ( [ -- n ] n -- n )
+\ once that many ms have passed without that. That 0 is a deadline its reader
+\ reports: the handler records it for the case (ZERO-FIRST), since a task
+\ asserts nothing and HTTP keeps a handler's throws, and REST-AWAITED reports
+\ its own the same way.
+: PROBED ( [ -- n ] n -- n )
    {: probe limit:n :}
    mono-ns limit NS-PER-MS * + {: deadline:n :}
    begin
@@ -282,6 +289,12 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
       mono-ns deadline > if 0 exit then
       POLL-MS >MS TASK:SLEEP
    again ;
+
+\ Returns once the probe answers other than 0, asked as PROBED asks it. A probe
+\ still 0 once that many ms have passed is a deadline, not a false answer: the
+\ wait names itself and throws E-PROC-TIMEOUT.
+: AWAITED ( [ -- n ] n -- )
+   PROBED 0= if s" ws-test AWAITED" TEST-WAIT:EXPIRED then ;
 
 : UNIFORM? ( ptr u8 n -- bool ) {: a u:n :}
    u 0 ?do a i + c@ a c@ <> if false unloop exit then loop
@@ -550,15 +563,17 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
    0 HELD @ WS-TEST:QUEUED? if 1 else 0 then ;
 
 \ The handler keeps its socket and notes how many bytes it holds from behind
-\ the handshake. Once the rest of the frame is queued it receives with no wait
-\ at all, noting whether that answered timeout; then it receives as TIMING
-\ does.
+\ the handshake. Once the rest of the frame is queued it publishes REST-FOUND
+\ and receives with no wait at all, noting whether that answered timeout; then
+\ it receives as TIMING does. A wait for the rest that runs out first publishes
+\ REST-EXPIRED and returns, receiving nothing.
 : ZERO-FIRST ( HTTP:request HTTP:response -- )
    WS:ACCEPT OPENED {: sock:WS:socket :}
    sock 0 HELD !
    sock WS-TEST:EARLY-HELD EARLY-SEEN !
    1 KEPT !
-   [: REST-QUEUED ;] REACH-MS AWAITED 0 <> if 1 REST-SEEN ! then
+   [: REST-QUEUED ;] REACH-MS PROBED 0= if REST-EXPIRED REST-SEEN atomic! exit then
+   REST-FOUND REST-SEEN atomic!
    sock 0 >MS WS:RECEIVE
    MATCH WS:message
       text OF 2drop ENDOF
@@ -661,13 +676,13 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
 : SEND-RAW ( TCP4:connection ptr u8 n -- ) {: conn:TCP4:connection a u:n :}
    conn a u TCP4:TRANSFER-BYTES TCP4:WRITE DROP-STATUS ;
 
-\ A server that says nothing for ANSWER-MS fails its case by name instead of
-\ hanging the suite.
+\ A server that says nothing for ANSWER-MS is a deadline that names itself,
+\ instead of a hung suite.
 : AWAIT ( TCP4:connection -- ) {: conn:TCP4:connection :}
    conn ANSWER-MS >MS TCP4:READABLE-WITHIN?
    MATCH TCP4:ready-result
       ready OF ENDOF
-      idle OF E-SILENT throw ENDOF
+      idle OF s" ws-test AWAIT" TEST-WAIT:EXPIRED ENDOF
       failed OF drop ENDOF
    ;MATCH ;
 
@@ -1361,15 +1376,24 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
    conn FAREWELL ;
 
 \ Whether the handler held the frame's header and first bytes, that many in
-\ all, behind the handshake and then found the rest queued in its socket: each
-\ a case of its own.
-: REST-HELD? ( n -- bool )
+\ all, behind the handshake: a case of its own.
+: LEAD-HELD? ( n -- bool )
    {: lead:n :}
    s" its header and first bytes were held behind the handshake" T-LABEL
    EARLY-SEEN @ lead T=
-   s" and all of the rest waited in the socket" T-LABEL
-   REST-SEEN @ 0 <> TTRUE
-   EARLY-SEEN @ lead = REST-SEEN @ 0 <> and ;
+   EARLY-SEEN @ lead = ;
+
+\ Returns once the handler has published REST-FOUND. The handler's REST-EXPIRED
+\ and this wait's own 0 (REST-PENDING still) are one deadline, the wait for the
+\ rest, both REACH-MS from the 101: the client closes, the stop joins the
+\ handler's worker, and the deadline is named and thrown before any assertion
+\ on what the handler saw.
+: REST-AWAITED ( TCP4:connection -- )
+   {: conn:TCP4:connection :}
+   [: REST-SEEN atomic@ ;] REACH-MS PROBED REST-FOUND = if exit then
+   conn TCP4:CLOSE DROP-STATUS
+   HTTP:STOP
+   s" ws-test handler rest wait" TEST-WAIT:EXPIRED ;
 
 \ A binary frame whose header and first LEAD-BYTES ride behind the handshake,
 \ where the HTTP server has already read them, and whose other REST-BYTES the
@@ -1382,12 +1406,13 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
 \ takes the bytes in hand, asks the socket nothing more and answers timeout,
 \ keeping them, though the rest of the frame is ready; the next takes the
 \ rest, and the message arrives whole. The client closes once the handler has
-\ found the rest, or REACH-MS after its write: a handler that missed it looked
-\ from its 101 on, for REACH-MS, so it answers the close inside ANSWER-MS.
+\ found the rest. The handler looks from its 101 on, for REACH-MS, and records
+\ in REST-SEEN whether it found the rest or its wait ran out; the case reports
+\ a wait that ran out as the handler's deadline (REST-AWAITED).
 : REST-CASE ( -- )
    s" a frame whose rest waits in the socket" SECTION
    0 KEPT ! 0 TOOK-U ! 0 TOOK-BYTE ! 0 ZERO-TIMEOUT !
-   0 EARLY-SEEN ! 0 REST-WRITTEN ! 0 REST-SEEN !
+   0 EARLY-SEEN ! 0 REST-WRITTEN ! REST-PENDING REST-SEEN atomic!
    s" GET" s" /zero" REQ-START GOOD-LINES S\" \r\n" REQ+
    s" > " true WS-OPCODE:binary REST-BUF SPAN:$ LOG-FRAME
    true WS-OPCODE:binary REST-BUF SPAN:$ FRAME$ {: f fu:n :}
@@ -1397,9 +1422,9 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
    HEAD$ s" HTTP/1.1 101 " STARTS-WITH? TTRUE
    conn f lead + REST-BYTES SEND-RAW
    1 REST-WRITTEN !
-   [: REST-SEEN @ ;] REACH-MS AWAITED drop
+   conn REST-AWAITED
    conn FAREWELL
-   lead REST-HELD? if
+   lead LEAD-HELD? if
       s" and a RECEIVE that waits not at all answered timeout" T-LABEL
       ZERO-TIMEOUT @ 0 <> TTRUE
    then
@@ -1795,19 +1820,17 @@ $3000000 constant BIG-BYTES
 
 \ A one-worker server whose handler keeps its socket and receives, and another
 \ task's push to a client that reads none, held in its write with the slot's
-\ lock: the connection, and whether the push was seen held. A stall seen here
-\ may pass while the connection's buffers grow, but the push's one frame never
-\ ends, so the lock stays with the push until it gives up.
-: PUSH-STALLED ( -- TCP4:connection bool )
+\ lock: the connection, once the push is seen held. A stall seen here may pass
+\ while the connection's buffers grow, but the push's one frame never ends, so
+\ the lock stays with the push until it gives up.
+: PUSH-STALLED ( -- TCP4:connection )
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    0 KEPT ! 0 GO-HOME ! 0 LAST-CLOSE !
    s" /goodbye" UPGRADE {: conn:TCP4:connection :}
    KEPT? TTRUE
    [: PUSH-BIG ;] PUSH-TASK TASK:ACTIVATE
-   s" the push is held, its client reading nothing" T-LABEL
-   [: PUSH-STALL ;] REACH-MS AWAITED 0 <> {: held:bool :}
-   held TTRUE
-   conn held ;
+   [: PUSH-STALL ;] REACH-MS AWAITED
+   conn ;
 
 \ The server stops and every task ends itself: none is killed, and the stop
 \ returns far inside a hang.
@@ -1863,14 +1886,8 @@ $3000000 constant BIG-BYTES
    0 KEPT ! 0 FLOOD-CODE ! 0 FLOOD-END !
    s" /flood" UPGRADE {: flooded:TCP4:connection :}
    KEPT? TTRUE
-   s" the handler's push is held, its client reading nothing" T-LABEL
-   [: PUSH-STALL ;] REACH-MS AWAITED 0 <> {: held:bool :}
-   held TTRUE
-   held if
-      s" the worker inside its push ended itself" STOP-CUTS-FLOOD
-   else
-      s" the worker inside its push ended itself" STOPS-IN-TIME
-   then
+   [: PUSH-STALL ;] REACH-MS AWAITED
+   s" the worker inside its push ended itself" STOP-CUTS-FLOOD
    flooded TCP4:CLOSE DROP-STATUS
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    mono-ns GRACE-MS TCP4:SEND-SLICE-MS + NS-PER-MS * + {: deadline:n :}
@@ -1919,8 +1936,8 @@ $3000000 constant BIG-BYTES
 \ that follows kills no task.
 : GOODBYE-CASE ( -- )
    s" a goodbye behind a stalled push" SECTION
-   PUSH-STALLED {: conn:TCP4:connection held:bool :}
-   held GOODBYE-CUT
+   PUSH-STALLED {: conn:TCP4:connection :}
+   true GOODBYE-CUT
    conn TCP4:CLOSE DROP-STATUS ;
 
 \ A stop finds the handler in a RECEIVE that would wait far past the stop's
@@ -1950,20 +1967,13 @@ $3000000 constant BIG-BYTES
 \ time.
 : BEHIND-PUSH ( ptr u8 n WS:opcode ptr u8 n -- ) {: label lu:n op a u:n :}
    label lu SECTION
-   PUSH-STALLED {: conn:TCP4:connection held:bool :}
+   PUSH-STALLED {: conn:TCP4:connection :}
    conn true op a u SAY
-   held if
-      s" the worker comes for the lock to answer, behind the push" T-LABEL
-      [: ANSWER-CLAIM ;] REACH-MS AWAITED 0 <> dup TTRUE
-   else
-      false
-   then {: behind:bool :}
+   [: ANSWER-CLAIM ;] REACH-MS AWAITED
    s" the worker answering behind the push ended itself" STOPS-IN-TIME
-   behind if
-      s" the socket was lost under the push" T-LABEL
-      LAST-CLOSE @ 1006 T=
-   then
-   held PUSH-REFUSED
+   s" the socket was lost under the push" T-LABEL
+   LAST-CLOSE @ 1006 T=
+   true PUSH-REFUSED
    conn TCP4:CLOSE DROP-STATUS ;
 
 : PING-BEHIND-CASE ( -- )
@@ -2092,7 +2102,8 @@ variable SIPPED                   \ what it has taken
    conn mono-ns REACH-MS PARK-MS + NS-PER-MS * + SIP-FROM
    [: PUSH-BIG ;] PUSH-TASK TASK:ACTIVATE
    s" the push is under way, its client taking bytes" T-LABEL
-   [: PUSH-TAKEN ;] REACH-MS AWAITED 0 <> PUSH-TASK TASK:DONE? 0= and dup TTRUE ;
+   [: PUSH-TAKEN ;] REACH-MS AWAITED
+   PUSH-TASK TASK:DONE? 0= dup TTRUE ;
 
 \ The handler returns on its cue while another task's BIG-BYTES push is under
 \ way to a client that keeps taking bytes. The worker comes for the lock for
@@ -2168,7 +2179,8 @@ variable SIPPED                   \ what it has taken
    KEPT? TTRUE
    conn mono-ns REACH-MS SIP-FOR-MS + NS-PER-MS * + SIP-FROM
    s" the handler's pushes are under way, their client taking bytes" T-LABEL
-   [: PUSH-TAKEN ;] REACH-MS AWAITED 0 <> FLOOD-CODE @ 0= and {: going:bool :}
+   [: PUSH-TAKEN ;] REACH-MS AWAITED
+   FLOOD-CODE @ 0= {: going:bool :}
    going TTRUE
    going if
       s" the worker pushing to its client ended itself" STOP-CUTS-FLOOD
