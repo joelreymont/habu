@@ -589,7 +589,7 @@ variable GE-NEST-J
    GE-HB$ GE-ARG+
    RUNTIME-RUNNER:PTY
    s" process/pty" GE-EXPECT-OK
-   s" PASS: process/pty primitives" s" process/pty output" GE-EXPECT-OUT-HAS
+   s" test: ok" s" process/pty output" GE-EXPECT-OUT-HAS
    s" PASS: process/pty primitives" type cr ;
 
 : GE-DEREF-1 ( ptr u8 n -- ) {: tok:ptr toku:n :}

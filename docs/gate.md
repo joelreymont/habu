@@ -433,7 +433,7 @@ at its deadline.
   `T-TIMED-OUT`, which prints the case label, the program and the capture
   first. A test that MATCHes the outcome itself throws it from its `timeout`
   arm through `T-TIMED-OUT`, or through `SUBJECT:TIMED-OUT`
-  (`src/lib/test/subject.f`) when it keeps its own counters (`test/proc-pty.f`);
+  (`src/lib/test/subject.f`) when it keeps no case label;
   both first print the program and the capture drained before the deadline,
   as `GE-FAIL` does for a gate entry. A capture inside a worker task only
   throws it, because a task asserts nothing, and the join throws it again

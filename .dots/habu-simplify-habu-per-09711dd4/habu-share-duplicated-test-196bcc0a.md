@@ -12,14 +12,14 @@ Status (2026-10-16), landed on master:
 - HB$ copies resolve through ENGINE-CANDIDATE: vnzynrmx, owxptlrs, lkwxmkvv.
 - Shared fixtures and readers: lmmozozv (native-window child argv), znrxyukl (capture rows through LE), rmztkvxv, nloupynr, nvrxpovq (PCAP-RESULT), kmmqxson, utkwyruo, yvznoyrt (SUBJECT:EXITED?), qorouzuy (scratch-tree e2e), tmzmqqoz, onvnqukq, rwynskqw (native FILE e2e fixture).
 - Brief A plrpnplw (SUBJECT:REFUSED?), B zpryzsns (c2 consumer rows), C owrxtwyt (NATIVE-FILE-E2E hb-build driver), D klkrwmxp (NATIVE-FILE-APP:BUILD-AT), E vwulyvnt (WINDOW-CHILD-ARGS:PAYLOAD), F pkykplvp (field boundary child keeps its TRY, with the reason), G zvxloyly, H uzpvxxyv, I xttoxksm (PCAP-RESULT:>N).
-- Shared test harness: B12a yzqnllmt (eight plain-row suites), B12b mornvozr (twelve whitebox suites and checker-scan-index-lib.f), B12c xkkxmntt (their copies of T<>, TTRUE, TFALSE, TSNE, TDT-CONTAINS?), B12d vlvszqmz (six more plain-row suites), B12e mlrrrzrz (engine-suite.f, decl-replay-verify-source.f).
+- Shared test harness: B12a yzqnllmt (eight plain-row suites), B12b mornvozr (twelve whitebox suites and checker-scan-index-lib.f), B12c xkkxmntt (their copies of T<>, TTRUE, TFALSE, TSNE, TDT-CONTAINS?), B12d vlvszqmz (six more plain-row suites), B12e mlrrrzrz (engine-suite.f, decl-replay-verify-source.f), mtsspvxs (test/proc-pty.f: a failed case still dumps the terminal buffer; its parent row reads `test: ok`).
 
 Remaining:
-- Held for carl's chain, which owns or edits these files: test/c2-memory-e2e.f (the G2/G3 c2 e2e helper copies and its own CAPTURE-RESULT at line 63), test/native-file-unit-e2e.f (the G6 copies), and test/c2-xml-consumer-e2e.f, test/gate-images-test.f, test/native-file-admission-e2e.f.
-- test/e2e-tree.f:30 keeps its own CAPTURE-RESULT.
-- test/proc-pty.f keeps its harness: its T-FAIL dumps the terminal buffer (BUF-DUMP), and its parent row (test/runtime-regression-test.f GE-PROCESS-PTY) reads the success line "PASS: process/pty primitives". Moving it means changing both files together.
+- The four-file patch for carl's chain, which owns or edits these files: test/c2-memory-e2e.f and test/c2-xml-consumer-e2e.f onto E2E-TREE, test/gate-images-test.f RESULT onto PCAP-RESULT:>N, test/native-file-admission-e2e.f onto NATIVE-FILE-E2E. It is made against carl's chain and handed to carl to integrate.
 
 Dropped groups, each with its reason:
+- test/e2e-tree.f CAPTURE-RESULT: the library's own store of PCAP-RESULT:>N, not a copy.
+- test/native-file-unit-e2e.f (the G6 copies): a three-root row; APP-relative AT/PUT would shadow NATIVE-FILE-E2E's under `using`.
 - test/c2-memory-scope-refusals.f EXITED?/REPORTED?: asserts stdout contains `said`; one file.
 - test/structure-opaque-program.f:25 STATUS?: no stdout condition; one file.
 - test/c2-diagnostics.f REFUSAL; test/c2-init-accessor-refusals.f REFUSED?: one file each.

@@ -10,8 +10,9 @@
 \ what the answers must be.
 
 require src/lib/pty-harness.f
-require src/lib/test/subject.f
+require src/lib/test/outcome.f
 require src/lib/engine-candidate.f
+require src/lib/test.f
 
 package PROC-PTY
 
@@ -19,8 +20,6 @@ using PTY-HARNESS
 
 1 constant PTY-QUIET-POLLS         \ polls in a row that bring nothing and so end a drain
 
-variable #FAIL
-variable #CASE
 variable IN-R
 variable IN-W
 variable OUT-R
@@ -45,34 +44,27 @@ variable PID
    s" buf:" type cr
    BUF$ type cr ;
 
-: T-FAIL ( -- )
-   [char] F emit #CASE @ . cr
-   BUF-DUMP
-   #FAIL @ 1 + #FAIL ! ;
+\ The shared harness counts and names a failed case; the terminal buffer is
+\ the evidence of where the child stopped, so a failed case prints it too.
+: BUF-ON-FAIL ( n -- )
+   T-FAILURES <> if BUF-DUMP then ;
 
-: T= {: got want :} ( n n -- )
-   #CASE @ 1 + #CASE !
-   got want <> if T-FAIL then ;
+: PTY-TRUE ( bool -- )
+   T-FAILURES {: before:n :}
+   TTRUE before BUF-ON-FAIL ;
 
-: TTRUE ( bool -- )
-   #CASE @ 1 + #CASE !
-   0= if T-FAIL then ;
+: PTY= ( n n -- )
+   T-FAILURES {: before:n :}
+   T= before BUF-ON-FAIL ;
 
 : TCONTAINS ( ptr u8 n -- )
-   IN-BUF? TTRUE ;
+   IN-BUF? PTY-TRUE ;
 
-\ Completion, in this file's own counters: the bounded reaps answer an outcome,
-\ and only a clean exit with this code passes. A reap that ran out of clock
-\ answers timeout: that is a deadline, not a wrong answer, so it prints the
-\ program and what the case drained from the child (SUBJECT:TIMED-OUT, which
-\ throws E-PROC-TIMEOUT for RUN to report).
+\ Completion: only a clean exit with this code passes; a reap that ran out of
+\ clock throws E-PROC-TIMEOUT through T-TIMED-OUT for RUN to report.
 : T-EXIT= ( ptr u8 n ptr u8 n ptr u8 n outcome n -- )
-   {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n oc want:n :}
-   oc MATCH outcome
-     exited OF want T= ENDOF
-     signaled OF drop 1 0 T= ENDOF
-     timeout OF src srcu out outu err erru SUBJECT:TIMED-OUT ENDOF
-   ;MATCH ;
+   T-FAILURES {: before:n :}
+   T-OUTCOME-EXITED= before BUF-ON-FAIL ;
 
 \ Every drain starts from an empty buffer: the bytes it swallows are the ones a
 \ later wait must not be answered by.
@@ -94,7 +86,7 @@ variable PID
    MFD-DRAIN ;
 
 : EXPECT ( ptr u8 n -- )
-   WAIT-FOR TTRUE ;
+   WAIT-FOR PTY-TRUE ;
 
 \ A redraw while echoing the input already contains a prompt. Completion
 \ requires a prompt after the answer, the same ordered pair in the wait
@@ -103,14 +95,14 @@ variable PID
    s" habu> " AFTER? ;
 
 : PROMPT-AFTER ( ptr u8 n -- )
-   s" habu> " WAIT-AFTER TTRUE ;
+   s" habu> " WAIT-AFTER PTY-TRUE ;
 
 \ Wait for a marker and close an absence claim's window at its end. The marker
 \ has to be one the child prints PAST the point where the rejected text could
 \ have appeared; a failed wait leaves no window, so the claim behind it is
 \ refused as well.
 : BARRIER ( ptr u8 n -- )
-   WAIT-BARRIER TTRUE ;
+   WAIT-BARRIER PTY-TRUE ;
 
 \ The barrier for a claim about the line before it: the child prints the hex
 \ literal in decimal, so the answer's digits are in nothing the line editor
@@ -122,7 +114,7 @@ variable PID
    s" 48879" BARRIER ;
 
 : REJECT ( ptr u8 n -- )
-   WINDOW-ABSENT? TTRUE ;
+   WINDOW-ABSENT? PTY-TRUE ;
 
 : CAPTURE-PIPES ( -- )
    PIPE-PAIR IN-W ! IN-R !
@@ -134,7 +126,7 @@ variable PID
 
 : CAPTURE-START-HB ( -- )
    HB-EXE$ >LEN IN-R @ >FD OUT-W @ >FD ERR-W @ >FD PROC-SPAWN-IO PID !
-   PID @ 0 > TTRUE ;
+   PID @ 0 > PTY-TRUE ;
 
 : CAPTURE-CLOSE-CHILD-ENDS ( -- )
    IN-R @ close
@@ -162,7 +154,7 @@ variable PID
 : CAPTURE-EXPECT-ERR ( -- )
    BUF-CLEAR
    ERR-R @ >FD READ-TO-EOF
-   BUF-N 0 T=
+   BUF-N 0 PTY=
    ERR-R @ close ;
 
 : CAPTURE-VERIFY ( -- )
@@ -237,7 +229,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    ERR-R @ close
    PID @ >PID WAIT-BUDGET-MS WAIT-EXIT {: oc :}
    SEED-LINE$ BUF$ s" " oc 0 T-EXIT=                 \ stderr is never read
-   SEEDNUM-U @ 0 > TTRUE ;
+   SEEDNUM-U @ 0 > PTY-TRUE ;
 
 : PTY-SEED-SURFACE ( -- )
    SEED-LINE$ STEP-LN
@@ -756,14 +748,14 @@ variable PTY-LONG-U
 : PTY-REJECT-UNBARRIERED ( -- )
    s" frobnicate" STEP-LN
    BUF-CLEAR                          \ the child's answer is not in the buffer
-   s"  ok" WINDOW-ABSENT? 0= TTRUE    \ so the claim is refused
+   s"  ok" WINDOW-ABSENT? 0= PTY-TRUE    \ so the claim is refused
    PROBE-BARRIER
-   s"  ok" WINDOW-ABSENT? TTRUE ;     \ and granted once a barrier closes the window
+   s"  ok" WINDOW-ABSENT? PTY-TRUE ;     \ and granted once a barrier closes the window
 
 : PTY-REJECT-CATCHES ( -- )
    s" 5 ." STEP-LN                    \ a line that DOES print the trailer
    PROBE-BARRIER
-   s"  ok" WINDOW-ABSENT? 0= TTRUE ;  \ the window holds it, so the claim is refuted
+   s"  ok" WINDOW-ABSENT? 0= PTY-TRUE ;  \ the window holds it, so the claim is refuted
 
 : PTY-REJECT-BARRIER ( -- )
    PTY-REJECT-UNBARRIERED
@@ -777,13 +769,13 @@ variable PTY-LONG-U
    s" $BEEF ." SEND
    s" habu> $BEEF ." EXPECT
    0 s" habu> $BEEF ." FIND-FROM {: echo:n :}
-   echo 0 >= TTRUE
-   s" 48879" PROMPT-READY? 0= TTRUE
+   echo 0 >= PTY-TRUE
+   s" 48879" PROMPT-READY? 0= PTY-TRUE
    10 SEND-BYTE
    s" 48879" PROMPT-AFTER
    0 s" 48879" FIND-FROM {: answer:n :}
-   echo answer < TTRUE
-   s" 48879" s" habu> " FIND-AFTER answer > TTRUE ;
+   echo answer < PTY-TRUE
+   s" 48879" s" habu> " FIND-AFTER answer > PTY-TRUE ;
 
 : PTY-THROW-RECOVERY ( -- )
    PTY-THROW-LINE
@@ -847,9 +839,9 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
 \ leaves no process behind.
 : PTY-HANGUP-REAP ( fd -- ) {: wfd:fd :}
    wfd PTY-EXIT-MS PTY-WATCH-EXITED? {: gone:bool :}
-   gone TTRUE
+   gone PTY-TRUE
    gone if
-      CHILD-PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
+      CHILD-PID PROC-WAIT-RC MATCH result ok OF 0 PTY= ENDOF err OF drop 1 0 PTY= ENDOF ;MATCH
    else
       PTY-KILL-CHILD
    then
@@ -915,10 +907,6 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
    PTY-STOP-HB
    PTY-HANGUP ;
 
-: REPORT ( -- )
-   #FAIL @ 0 = if s" PASS: process/pty primitives" type cr exit then
-   #FAIL @ . s" proc-pty: failures" 1 die ;
-
 \ A deadline is no failed case: a reap that ran out of clock, or a wait whose
 \ clock ended with the child still at the terminal (src/lib/pty-harness.f
 \ WAIT-AFTER-WITHIN), throws E-PROC-TIMEOUT. This run then exits
@@ -927,11 +915,11 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
 : RUN ( -- )
    [: CAPTURE-HB PTY-HB ;] catch {: code:n :}
    code E-PROC-TIMEOUT = if
-      s" proc-pty: deadline in case " type #CASE @ 1 + . cr
+      s" proc-pty: deadline in case " type T-CASES 1 + . cr
       s" proc-pty: a wait or a reap ran out of time" PROC-TIMEOUT-RC die
    then
    code 0<> if code throw then
-   REPORT ;
+   T-REPORT ;
 
 RUN
 
