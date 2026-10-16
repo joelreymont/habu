@@ -9,6 +9,7 @@
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
+require src/lib/test/wait.f
 require src/lib/process.f
 require src/lib/task.f
 require src/lib/ffi-abi.f
@@ -325,16 +326,13 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 \ TASK:JOIN would park the main task forever on a worker that never ends, so the
 \ wait owns a deadline. A worker that never ends ends the row as that deadline,
 \ not as an assertion result (docs/gate.md): the join names itself and throws
-\ E-PROC-TIMEOUT, so the asserts after a join read a finished task.
-: JOIN-TASK ( ptr n -- ) {: t:ptr :}
-   TASK-JOIN-MS >MS PROC-DEADLINE-AT {: deadline :}
-   begin
-      t TASK:DONE? if exit then
-      deadline PROC-LEFT-MS MS>N 0= if
-         s" task join: a deadline expired" type cr E-PROC-TIMEOUT throw
-      then
-      TASK:PAUSE
-   again ;
+\ E-PROC-TIMEOUT, so the asserts after a join read a finished task. The window
+\ closes once less than a whole millisecond of TASK-JOIN-MS is left, the cutoff
+\ a PROC-LEFT-MS reading gives.
+: JOIN-TASK ( ptr n -- )
+   [: dup TASK:DONE? ;] TASK-JOIN-MS >MS PROC-DEADLINE-AT PROC-NS-PER-MS - 1+
+   s" signal-test JOIN-TASK" TEST-WAIT:POLL
+   drop ;
 
 : TASK-CASE ( -- )
    0 TASK-FD-WORD !

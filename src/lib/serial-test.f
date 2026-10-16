@@ -11,6 +11,7 @@
 \ Run: bin/hb --load src/lib/serial-test.f
 
 require src/lib/test.f
+require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/task.f
 require src/lib/process.f
@@ -107,16 +108,12 @@ TASK:MIN-STACK TASK:TASK READER
 \ TASK:JOIN would park the main task forever on a reader that never ends, so the
 \ wait owns a deadline. A reader that never ends ends the row as that deadline,
 \ not as an assertion result (docs/gate.md): the join names itself and throws
-\ E-PROC-TIMEOUT, so the asserts after a join read a finished task.
+\ E-PROC-TIMEOUT, so the asserts after a join read a finished task. The window
+\ closes once less than a whole millisecond of JOIN-MS is left, the cutoff a
+\ PROC-LEFT-MS reading gives.
 : JOIN-READER ( -- )
-   JOIN-MS >MS PROC-DEADLINE-AT {: deadline :}
-   begin
-      READER TASK:DONE? if exit then
-      deadline PROC-LEFT-MS MS>N 0= if
-         s" task join: a deadline expired" type cr E-PROC-TIMEOUT throw
-      then
-      TASK:PAUSE
-   again ;
+   [: READER TASK:DONE? ;] JOIN-MS >MS PROC-DEADLINE-AT PROC-NS-PER-MS - 1+
+   s" serial-test JOIN-READER" TEST-WAIT:POLL ;
 
 \ ---- case one: the slave of a fresh pair opens as a serial port --------------
 
