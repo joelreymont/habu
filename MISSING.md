@@ -236,21 +236,9 @@ hurt. Two cheap mechanisms turn reactive pain into a measured, ranked backlog:
 
 ## Sequencing and the hard constraints
 
-Every item is a checker/compiler/stdlib change and is therefore bound by:
-
-- **Byte-for-byte fixpoint self-rebuild.** Prototype via `BF-BUILD-ALL` into a
-  temp `hb-new`; never disturb the shared `bin/hb` until the change rebuilds the
-  engine byte-identically and the change is proven.
-- **Full native gate green** (`test/run.f`) on an *uncontended* host — full-gate
-  budget timing is meaningless while another worktree is running a gate; check for
-  competing `bin/hb … test/run.f` processes and host load before claiming a budget
-  pass or regression. Run the gate with stdin from `/dev/null` (or `printf '' |`):
-  the gate spawns nested `hb` children that enter a stdin REPL after running a
-  script file, and an open inherited stdin makes them block until the deadline —
-  which surfaces as a misleading `E-PROC-TIMEOUT` on the process-env slice, not a
-  real failure.
-- **A negative fixture per fix** that was previously cryptic and now reports
-  precisely — the fix must be shown to actually fire.
+Select verification by the change's impact, following
+[AGENTS.md](AGENTS.md#verification-and-documentation) and the execution
+instructions in [docs/gate.md](docs/gate.md).
 
 Suggested order, cheapest/lowest-risk first so each de-risks the next:
 
