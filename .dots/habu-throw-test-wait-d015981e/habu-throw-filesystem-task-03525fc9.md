@@ -1,9 +1,11 @@
 ---
 title: Throw filesystem task deadlines at the join
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-16T16:28:19.681646+03:00"
+closed-at: "2026-10-16T23:09:18.209877+03:00"
+close-reason: "Landed: fs-mutate-test's WAIT-FOR and fs-rename-noreplace-test's RACE-WAIT name themselves and throw E-PROC-TIMEOUT; JOIN-BOTH ( -- bool ) joins both workers, asserts only codes that are neither 0 nor E-PROC-TIMEOUT, answers true when both answered 0 and names and throws the deadline only when neither failed; all five *-RUN words exit before reading worker results after a failed join. Proofs: row fs-mutate rc 0; forced WAIT-FOR and RACE-WAIT copies rc 67 with one named line each and -2502 last; b-dies and a-dies copies rc 1 with two -2105 TFAILs and no -2502. Fable review REVISE (Medium: a genuine worker failure reported as the deadline), fixed with JOIN-BOTH; Astra follow-up APPROVE; a consequential peer deadline still asserted (the D6 review's finding) was fixed in the lead; second Astra follow-up APPROVE."
 ---
 
 Problem: the parent's rule (a wait whose clock ends throws E-PROC-TIMEOUT after one named stdout line; a task records it and main throws it at the join; no deadline raised) is broken in the files below. The parent holds the shared interface (`TEST-WAIT:EXPIRED`, `TEST-WAIT:POLL` in src/lib/test/wait.f), the rulings and the proof notation `P(name)`.
@@ -31,4 +33,4 @@ Its registry is `gate-stdlib-cases.f:2497–2500`. Force a missed round-counter 
 
 No worker deadline becomes an assertion or `E-FS-IO`. Existing filesystem outcome checks remain.
 
-Files: src/lib/fs-mutate-test.f, src/lib/fs-rename-noreplace-test.f. Verify: the rows and forced copies under Proof. Depends: habu-share-a-named-85cc93f5. Ownership: the files above. Claim: unassigned.
+Files: src/lib/fs-mutate-test.f, src/lib/fs-rename-noreplace-test.f. Verify: the rows and forced copies under Proof. Depends: habu-share-a-named-85cc93f5. Ownership: the files above. Claim: agent=worker workspace=.jj-ws/jerry-wait-d7.

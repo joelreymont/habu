@@ -12,6 +12,7 @@ require src/lib/memory.f                            \ the walk contexts the last
 require src/lib/process-env.f
 require src/lib/test/outcome.f                      \ the HB_TMP child's outcome
 require src/lib/task.f                              \ the two-task rows at the end
+require src/lib/test/wait.f                         \ a worker's deadline at the join
 
 variable FMT-ROOT-U
 variable FMT-REMOVE-U
@@ -1004,19 +1005,45 @@ create P-W5DF FS-PATH-CAP allot variable P-W5DF-U
    path pathu FMT-READ-BUF 64 READ-ALL bodyu T=
    FMT-READ-BUF bodyu body bodyu T$= ;
 
-: JOIN-OK ( ptr n -- )
+\ A worker's answer: what it returned, which is 0, or the code it threw.
+: JOIN-CODE ( ptr n -- n )
    TASK:JOIN MATCH result
-      ok OF 0 T= ENDOF
-      err OF 0 T= ENDOF
+      ok OF ENDOF
+      err OF ENDOF
    ;MATCH ;
 
+\ A code that is neither success nor WAIT-FOR's deadline, the only
+\ E-PROC-TIMEOUT a worker here throws.
+: FAILED? ( n -- bool )
+   {: code :}
+   code 0<> code E-PROC-TIMEOUT <> and ;
+
+\ Joins both workers before reading either, and answers true when both
+\ answered 0. The two wait on each other, so a worker that fails leaves its
+\ peer to wait out WAIT-FOR: only the failure is asserted, never that
+\ deadline, and the case reads nothing the workers left. When neither failed,
+\ a deadline is the row's own, named and thrown.
+: JOIN-BOTH ( -- bool )
+   WORKER-A JOIN-CODE WORKER-B JOIN-CODE {: a b :}
+   a FAILED? b FAILED? or if
+      a FAILED? if a 0 T= then
+      b FAILED? if b 0 T= then
+      false exit
+   then
+   a E-PROC-TIMEOUT = b E-PROC-TIMEOUT = or if
+      s" fs-mutate-test WAIT-FOR" TEST-WAIT:EXPIRED
+   then
+   true ;
+
 \ A task waits for its peer's round counter rather than a flag, so no round has
-\ to clear what the next one sets. A peer that never arrives ends the row with a
-\ thrown code its JOIN reports, instead of hanging the suite.
-: WAIT-FOR ( ptr n n -- ) {: flag want :}
+\ to clear what the next one sets. A peer that never arrives ends the wait with
+\ E-PROC-TIMEOUT instead of hanging the suite: the task's JOIN records it and
+\ JOIN-BOTH reads it, never asserting it against zero.
+: WAIT-FOR ( ptr n n -- )
+   {: flag want :}
    mono-ns WAIT-NS + {: deadline :}
    begin flag atomic@ want < while
-      mono-ns deadline >= if E-FS-IO throw then
+      mono-ns deadline >= if E-PROC-TIMEOUT throw then
       1 >MS TASK:SLEEP
    repeat ;
 
@@ -1047,8 +1074,7 @@ create P-W5DF FS-PATH-CAP allot variable P-W5DF-U
    0 A-READY !  0 B-DONE !  0 T1-BAD !
    ['] T1-A WORKER-A TASK:ACTIVATE
    ['] T1-B WORKER-B TASK:ACTIVATE
-   WORKER-A JOIN-OK
-   WORKER-B JOIN-OK
+   JOIN-BOTH 0= if exit then
    s" another task cannot replace my returned temporary directory path" T-LABEL
    T1-BAD @ 0 T= ;
 
@@ -1065,8 +1091,7 @@ create P-W5DF FS-PATH-CAP allot variable P-W5DF-U
    B1$ B-BODY$ WRITE-ALL
    ['] T2-A WORKER-A TASK:ACTIVATE
    ['] T2-B WORKER-B TASK:ACTIVATE
-   WORKER-A JOIN-OK
-   WORKER-B JOIN-OK
+   JOIN-BOTH 0= if exit then
    s" two tasks renaming at once each moved only their own file" T-LABEL
    A1$ A-BODY$ FILE-IS?
    B1$ B-BODY$ FILE-IS?
@@ -1081,8 +1106,7 @@ create P-W5DF FS-PATH-CAP allot variable P-W5DF-U
 : T3-RUN ( -- )
    ['] T3-A WORKER-A TASK:ACTIVATE
    ['] T3-B WORKER-B TASK:ACTIVATE
-   WORKER-A JOIN-OK
-   WORKER-B JOIN-OK
+   JOIN-BOTH 0= if exit then
    s" two tasks writing atomically at once each kept their own contents" T-LABEL
    AW$ A-BODY$ FILE-IS?
    BW$ B-BODY$ FILE-IS?
@@ -1145,8 +1169,7 @@ create P-W5DF FS-PATH-CAP allot variable P-W5DF-U
    FS-MUT-CLEANUP-N @ {: base :}
    ['] T4-A WORKER-A TASK:ACTIVATE
    ['] T4-B WORKER-B TASK:ACTIVATE
-   WORKER-A JOIN-OK
-   WORKER-B JOIN-OK
+   JOIN-BOTH 0= if exit then
    s" every registration from either task claimed a slot of its own" T-LABEL
    FS-MUT-CLEANUP-N @ base REGS 2 * + T=
    REGS 2 * 0 ?do
@@ -1186,8 +1209,7 @@ variable T6-BAD
    KEEP$ s" keep" WRITE-ALL
    ['] T5-A WORKER-A TASK:ACTIVATE
    ['] T5-B WORKER-B TASK:ACTIVATE
-   WORKER-A JOIN-OK
-   WORKER-B JOIN-OK
+   JOIN-BOTH 0= if exit then
    s" two tasks removing trees at once each removed only its own" T-LABEL
    RA$ EXISTS? TFALSE
    RB$ EXISTS? TFALSE

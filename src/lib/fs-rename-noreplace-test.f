@@ -5,6 +5,7 @@ require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/task.f
 require src/lib/process-argv.f
+require src/lib/test/wait.f
 
 package FS-NOREPLACE-TEST
 
@@ -88,11 +89,14 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    SOURCE-CONTENT
    SOURCE REMOVE-FILE ;
 
+\ Each task joins the rendezvous and waits for the other. A peer that never
+\ arrives ends the wait with E-PROC-TIMEOUT: the task's JOIN records it and main
+\ names it in WINNER?.
 : RACE-WAIT ( -- )
    mono-ns RACE-WAIT-NS + {: deadline :}
    1 RACE-READY atomic-add drop
    begin RACE-READY atomic@ 2 < while
-      mono-ns deadline >= if E-FS-IO throw then
+      mono-ns deadline >= if E-PROC-TIMEOUT throw then
       TASK:PAUSE
    repeat ;
 
@@ -106,10 +110,15 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    SOURCE-B RACE-DEST RENAME-NOREPLACE
    if 1 else 0 then TASK:RETURN ;
 
+\ A worker's E-PROC-TIMEOUT is RACE-WAIT's deadline, the row's own: main names
+\ it here, after both joins. Every other code is rethrown as it came.
 : WINNER? ( result<n,n> -- bool )
    MATCH result
       ok OF 0<> ENDOF
-      err OF throw ENDOF
+      err OF
+         dup E-PROC-TIMEOUT = if s" fs-rename-noreplace-test RACE-WAIT" TEST-WAIT:EXPIRED then
+         throw
+      ENDOF
    ;MATCH ;
 
 : RACE ( -- )
