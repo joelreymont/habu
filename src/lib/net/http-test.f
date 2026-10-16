@@ -710,7 +710,10 @@ $7D0 constant COLLECT-MS          \ a loopback answer that slow is a hang
 1000000 constant NS-PER-MS
 
 
-: RAW-READY? ( TCP4:connection -- bool ) {: conn:TCP4:connection :}
+\ Waits until a read on the connection would not block: bytes, the end of the
+\ stream or a failure. The server ends the wait, so past COLLECT-MS it throws
+\ E-PROC-TIMEOUT rather than hang the suite (docs/gate.md).
+: RAW-AWAIT ( TCP4:connection -- ) {: conn:TCP4:connection :}
    mono-ns COLLECT-MS NS-PER-MS * + {: deadline:n :}
    begin
       conn TCP4:READABLE?
@@ -718,27 +721,29 @@ $7D0 constant COLLECT-MS          \ a loopback answer that slow is a hang
          ready OF true ENDOF
          idle OF false ENDOF
          failed OF drop true ENDOF
-      ;MATCH if true exit then
-      mono-ns deadline >= if false exit then
+      ;MATCH if exit then
+      mono-ns deadline >= if E-PROC-TIMEOUT throw then
       TASK:PAUSE
    again ;
 
 
 \ Reads until the answer carries the marker, on a connection the server keeps
-\ alive, so a worker that never answers fails the case instead of hanging it.
+\ alive, so a worker that never answers throws E-PROC-TIMEOUT past COLLECT-MS
+\ instead of hanging the case.
 : RAW-COLLECT ( TCP4:connection ptr u8 n -- bool )
    {: conn:TCP4:connection want:ptr len:n :}
    0 RES-U !
    begin
       RES$ want len CONTAINS? if true exit then
       RES-U @ RES-CAP >= if false exit then
-      conn RAW-READY? 0= if false exit then
+      conn RAW-AWAIT
       conn RAW-READ-STEP 0= if RES$ want len CONTAINS? exit then
    again ;
 
 
 \ One request on its own connection, read until the answer carries the marker,
-\ so a server whose worker died fails the case instead of hanging it.
+\ so a server whose worker died fails the case, or throws E-PROC-TIMEOUT past
+\ COLLECT-MS, instead of hanging it.
 : RAW-ASK ( ptr u8 n ptr u8 n -- bool ) {: bytes:ptr len:n want:ptr wantlen:n :}
    RAW-OPEN {: conn:TCP4:connection :}
    conn bytes len RAW-SEND
@@ -1432,13 +1437,13 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 : ECONNRESET ( -- n ) HB-TARGET-MACOS? if 54 else $68 then ;
 
 
-\ True when the server ends the stream before the collect deadline: the read
-\ answers the end of the stream or a reset, not data and not another failure.
-\ A server that closes with request bytes still unread, a timed-out or stopped
-\ body, is reset by the kernel. It promises no answer there (docs/http.md), so
-\ the reset is its close too.
+\ True when the server ends the stream: the read answers the end of the stream
+\ or a reset, not data and not another failure. A server that closes with
+\ request bytes still unread, a timed-out or stopped body, is reset by the
+\ kernel. It promises no answer there (docs/http.md), so the reset is its close
+\ too. Past COLLECT-MS with nothing to read it throws E-PROC-TIMEOUT.
 : CLOSED-WITHIN? ( TCP4:connection -- bool ) {: conn:TCP4:connection :}
-   conn RAW-READY? 0= if false exit then
+   conn RAW-AWAIT
    conn RES-BUF RES-CAP TCP4:TRANSFER-BYTES TCP4:READ
    MATCH TCP4:read-result
       data OF drop false ENDOF
@@ -1447,12 +1452,13 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    ;MATCH ;
 
 
-\ Wait until the worker is inside the parked handler before stopping it.
-: PARK-REACHED? ( -- bool )
+\ Waits until the worker is inside the parked handler before stopping it; past
+\ COLLECT-MS it throws E-PROC-TIMEOUT.
+: PARK-AWAIT ( -- )
    mono-ns COLLECT-MS NS-PER-MS * + {: deadline:n :}
    begin
-      PARKED @ 0 <> if true exit then
-      mono-ns deadline >= if false exit then
+      PARKED @ 0 <> if exit then
+      mono-ns deadline >= if E-PROC-TIMEOUT throw then
       TASK:PAUSE
    again ;
 
@@ -1495,7 +1501,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    RAW-OPEN {: held:TCP4:connection :}
    held s\" GET /api/park HTTP/1.1\r\nHost: x\r\n\r\n" RAW-SEND
-   PARK-REACHED? TTRUE
+   PARK-AWAIT
    HTTP:STOP
    0 PROBE-EXIT !
    EXIT-HANDLE-CODE @ HTTP:E-HANDLE T=
@@ -1630,7 +1636,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
       slow s" x" RAW-SEND
       80 >MS TASK:SLEEP
    loop
-   slow RAW-READY? TTRUE
+   slow RAW-AWAIT
    slow TCP4:CLOSE DROP-TCP-STATUS
    ECHO-HITS atomic@ 1 T=
    s" idle client releases worker" T-LABEL
@@ -1804,8 +1810,6 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under a hang
 
 
-\ True once the parked handler has been reached, which is when its worker can no
-\ longer end itself.
 \ A worker parked inside a handler is the one task a cooperative stop cannot
 \ wait out: the stop asks, waits its own bound - under a second for this
 \ IDLE-MS, well under the ceiling here - and then kills it, which is what
@@ -1826,7 +1830,7 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
    REQ-RESET
    s\" GET /api/park HTTP/1.1\r\nHost: x\r\n\r\n" REQ+
    held REQ$ RAW-SEND
-   PARK-REACHED? TTRUE
+   PARK-AWAIT
    mono-ns {: began:n :}
    HTTP:STOP
    mono-ns began - STOP-CEILING-MS NS-PER-MS * < TTRUE
@@ -1849,13 +1853,13 @@ HTTP-TEST:QUEUED TYPED-BUFFER QUEUED-CONN TCP4:connection
 variable OPENED                   \ the peers whose connect succeeded, first in QUEUED-CONN
 
 
-\ True once the listener has taken n connections since its server started,
-\ within the collect deadline.
-: TAKEN-WITHIN? ( n -- bool ) {: want:n :}
+\ Waits until the listener has taken n connections since its server started;
+\ past COLLECT-MS it throws E-PROC-TIMEOUT.
+: TAKEN-AWAIT ( n -- ) {: want:n :}
    mono-ns COLLECT-MS NS-PER-MS * + {: deadline:n :}
    begin
-      HTTP-TEST:TAKEN want >= if true exit then
-      mono-ns deadline >= if false exit then
+      HTTP-TEST:TAKEN want >= if exit then
+      mono-ns deadline >= if E-PROC-TIMEOUT throw then
       TASK:PAUSE
    again ;
 
@@ -1870,18 +1874,17 @@ variable OPENED                   \ the peers whose connect succeeded, first in 
 
 
 \ Opens QUEUED peers, each once the listener has taken the one before, and
-\ answers whether it took the last. Opened back to back they would outrun the
-\ listener and overflow the listen backlog, and the kernel may reset the peers
-\ past it instead of queueing them - macOS does, during the connect or just
-\ after it.
-: QUEUE-PEERS ( -- bool )
+\ throws E-PROC-TIMEOUT when it has not taken one past COLLECT-MS. Opened back
+\ to back they would outrun the listener and overflow the listen backlog, and
+\ the kernel may reset the peers past it instead of queueing them - macOS does,
+\ during the connect or just after it.
+: QUEUE-PEERS ( -- )
    0 OPENED !
    HTTP-TEST:TAKEN {: before:n :}
    HTTP-TEST:QUEUED 0 ?do
       PEER-OPEN
-      before OPENED @ + TAKEN-WITHIN? 0= if false unloop exit then
-   loop
-   true ;
+      before OPENED @ + TAKEN-AWAIT
+   loop ;
 
 
 \ How many of them read the end of their stream.
@@ -1908,9 +1911,9 @@ variable OPENED                   \ the peers whose connect succeeded, first in 
    REQ-RESET
    s\" GET /api/park HTTP/1.1\r\nHost: x\r\n\r\n" REQ+
    held REQ$ RAW-SEND
-   PARK-REACHED? TTRUE
+   PARK-AWAIT
    s" the listener takes every peer, the last one past a full queue" T-LABEL
-   QUEUE-PEERS TTRUE
+   QUEUE-PEERS
    OPENED @ HTTP-TEST:QUEUED T=
    mono-ns {: began:n :}
    HTTP:STOP
@@ -1946,12 +1949,12 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
    again ;
 
 
-\ True once the task has ended, false at the collect deadline.
-: TASK-ENDED? ( ptr n -- bool ) {: tcb:ptr :}
+\ Waits until the task has ended; past COLLECT-MS it throws E-PROC-TIMEOUT.
+: TASK-AWAIT ( ptr n -- ) {: tcb:ptr :}
    mono-ns COLLECT-MS NS-PER-MS * + {: deadline:n :}
    begin
-      tcb TASK:DONE? if true exit then
-      mono-ns deadline >= if false exit then
+      tcb TASK:DONE? if exit then
+      mono-ns deadline >= if E-PROC-TIMEOUT throw then
       TASK:PAUSE
    again ;
 
@@ -1974,7 +1977,7 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
    HTTP:STOP
    s" the lingering worker ended itself" T-LABEL
    HTTP:KILLED-TASKS 0 T=
-   SENDER-TASK TASK-ENDED? TTRUE
+   SENDER-TASK TASK-AWAIT
    SENDER-TASK TASK:KILL
    conn TCP4:CLOSE DROP-TCP-STATUS ;
 
