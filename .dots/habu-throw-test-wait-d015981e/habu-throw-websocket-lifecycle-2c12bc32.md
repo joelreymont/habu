@@ -1,9 +1,11 @@
 ---
 title: Throw WebSocket lifecycle wait deadlines
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-16T16:28:19.744756+03:00"
+closed-at: "2026-10-16T23:16:06.590206+03:00"
+close-reason: "Landed: ws-test's lifecycle waits AWAIT-QUIET, AWAIT-KEPT, AWAIT-END and AWAIT-CLOSE replace QUIET?, KEPT?, ENDED-BY? and CLOSED-BY?, keeping their sleeps and absolute deadlines, and name themselves and throw E-PROC-TIMEOUT; JOINED names a task's recorded deadline as 'ws-test task join' before any code reaches an assertion; the deadline-only TTRUEs and ended branches are gone, and GOODBYE-CUT's cut is the original seen. Proofs: row websocket rc 0; forced quiet, kept, end, close and join copies rc 67 with one named line each; the old KEPT? forced the same way rc 1 with 12 TFAILs. Astra review APPROVE."
 ---
 
 Problem: the parent's rule (a wait whose clock ends throws E-PROC-TIMEOUT after one named stdout line; a task records it and main throws it at the join; no deadline raised) is broken in the files below. The parent holds the shared interface (`TEST-WAIT:EXPIRED`, `TEST-WAIT:POLL` in src/lib/test/wait.f), the rulings and the proof notation `P(name)`.
@@ -30,4 +32,4 @@ Run `websocket`. Separate copies hold the timeout counter, kept flag, task compl
 
 All deadline-only boolean assertions and guards are gone. Actual refusal codes and conditions controlling behavioral checks remain.
 
-Files: src/lib/net/ws-test.f. Verify: the rows and forced copies under Proof. Depends: habu-throw-websocket-observation-8aab3bf5. Ownership: the files above. Claim: unassigned.
+Files: src/lib/net/ws-test.f. Verify: the rows and forced copies under Proof. Depends: habu-throw-websocket-observation-8aab3bf5. Ownership: the files above. Claim: agent=worker workspace=.jj-ws/jerry-wait-d10.

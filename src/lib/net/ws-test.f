@@ -1089,14 +1089,15 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
    conn FAREWELL ;
 
 \ The client says nothing until the handler's wait has run out twice more, so
-\ one whole wait began after the client's last byte. False when the handler
-\ never times out.
-: QUIET? ( -- bool )
+\ one whole wait began after the client's last byte. A handler not timed out
+\ twice by ANSWER-MS is a deadline: the wait names itself and throws
+\ E-PROC-TIMEOUT.
+: AWAIT-QUIET ( -- )
    TIMEOUTS @ 2 + {: goal:n :}
    mono-ns ANSWER-MS NS-PER-MS * + {: deadline:n :}
    begin
-      TIMEOUTS @ goal >= if true exit then
-      mono-ns deadline > if false exit then
+      TIMEOUTS @ goal >= if exit then
+      mono-ns deadline > if s" ws-test AWAIT-QUIET" TEST-WAIT:EXPIRED then
       POLL-MS >MS TASK:SLEEP
    again ;
 
@@ -1106,7 +1107,7 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
    s" > text " LOG u LOG-N s"  cut after byte " LOG at LOG-N LF LOG-C
    true WS-OPCODE:text a u FRAME$ {: f fu:n :}
    conn f at SEND-RAW
-   QUIET? TTRUE
+   AWAIT-QUIET
    conn f at + fu at - SEND-RAW
    conn HEAR WS-OPCODE:text a u GOT ;
 
@@ -1114,8 +1115,7 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
    s" timeouts" SECTION
    0 TIMEOUTS !
    s" /echo" UPGRADE {: conn:TCP4:connection :}
-   s" a quiet client is a timeout" T-LABEL
-   QUIET? TTRUE
+   AWAIT-QUIET
    s" a header cut in two" T-LABEL
    conn s" resumed" 1 CUT
    conn s" resumed" 3 CUT
@@ -1307,11 +1307,16 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
    a c@ HANDLER-BYTE = if 1 HANDLER-N +! exit then
    1 TORN +! ;
 
+\ The ended task's answer, or the code that ended it. A task asserts nothing:
+\ one that ended on its own deadline recorded it, and that is named and thrown
+\ here before any code reaches an assertion.
 : JOINED ( ptr n -- n )
    TASK:JOIN
    MATCH result
       ok OF ENDOF
-      err OF ENDOF
+      err OF
+         dup E-PROC-TIMEOUT = if s" ws-test task join" TEST-WAIT:EXPIRED then
+      ENDOF
    ;MATCH ;
 
 \ The burst: BURST-PINGS empty pings, as the client sends them. Every byte of
@@ -1357,15 +1362,14 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
    s" a burst the peer keeps queued" SECTION
    0 TIMEOUTS ! 0 LONGEST !
    s" /timed" UPGRADE {: conn:TCP4:connection :}
-   QUIET? TTRUE
+   AWAIT-QUIET
    conn 0 PEER !
    VOLLEY-FILL
    mono-ns {: began:n :}
    [: VOLLEY ;] VOLLEY-TASK TASK:ACTIVATE
    conn DRAIN
    mono-ns began - {: took:n :}
-   s" the handler waits again once the burst is answered" T-LABEL
-   QUIET? TTRUE
+   AWAIT-QUIET
    s" every ping of the burst was answered" T-LABEL
    VOLLEY-TASK JOINED BURST-PINGS T=
    PONGS @ BURST-PINGS T=
@@ -1477,12 +1481,13 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
    s" plain HTTP after the sockets" SECTION
    WORKERS 2 * 0 ?do PLAIN-ONCE loop ;
 
-\ True once the case's handler has kept its socket, false past ANSWER-MS.
-: KEPT? ( -- bool )
+\ Returns once the case's handler has kept its socket. One not kept by
+\ ANSWER-MS is a deadline: the wait names itself and throws E-PROC-TIMEOUT.
+: AWAIT-KEPT ( -- )
    mono-ns ANSWER-MS NS-PER-MS * + {: deadline:n :}
    begin
-      KEPT @ 0 <> if true exit then
-      mono-ns deadline > if false exit then
+      KEPT @ 0 <> if exit then
+      mono-ns deadline > if s" ws-test AWAIT-KEPT" TEST-WAIT:EXPIRED then
       POLL-MS >MS TASK:SLEEP
    again ;
 
@@ -1512,7 +1517,7 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
    0 KEPT !
    0 STALE-SEND !
    s" /park" UPGRADE {: parked:TCP4:connection :}
-   KEPT? TTRUE
+   AWAIT-KEPT
    1 EXIT-FAULT !
    HTTP:STOP
    0 EXIT-FAULT !
@@ -1527,12 +1532,14 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
    STALE-SEND @ E-WS-CLOSED T=
    conn FAREWELL ;
 
-\ True once the task has ended, false once the deadline, a mono-ns time, has
-\ passed.
-: ENDED-BY? ( ptr n n -- bool ) {: tcb:ptr deadline:n :}
+\ Returns once the task has ended. One still running once the deadline, a
+\ mono-ns time, has passed is a deadline: the wait names itself and throws
+\ E-PROC-TIMEOUT, leaving the task where it runs.
+: AWAIT-END ( ptr n n -- )
+   {: tcb:ptr deadline:n :}
    begin
-      tcb TASK:DONE? if true exit then
-      mono-ns deadline > if false exit then
+      tcb TASK:DONE? if exit then
+      mono-ns deadline > if s" ws-test AWAIT-END" TEST-WAIT:EXPIRED then
       POLL-MS >MS TASK:SLEEP
    again ;
 
@@ -1730,7 +1737,7 @@ variable HEADLESS-AT
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    0 KEPT ! 0 CLOSED-AT ! 0 LAST-CLOSE !
    s" /stall" UPGRADE {: conn:TCP4:connection :}
-   KEPT? TTRUE
+   AWAIT-KEPT
    conn 0 PEER !
    conn LINUX-PONG-CONTROL
    BURST-FILL
@@ -1746,7 +1753,8 @@ variable HEADLESS-AT
 \ the deadline the claim published and from HEADLESS-AT, which a claim
 \ published with a shorter deadline does not move. Another task's send, made
 \ while the pong is stalled, waits behind it and is refused; one still waiting
-\ at the deadline is left where it waits rather than joined.
+\ GRACE-MS after the close is checked is named and thrown as a deadline, the
+\ send unjoined.
 : STALLED-PONG ( n -- )
    {: claim:n :}
    [: HELD-SEND ;] SEND-TASK TASK:ACTIVATE
@@ -1763,14 +1771,11 @@ variable HEADLESS-AT
    claim CLOSE-LAG WS:STALL-MS NS-PER-MS * >= TTRUE
    s" nor sooner than WS:STALL-MS after a poll that began before the claim" T-LABEL
    HEADLESS-AT @ CLOSE-LAG WS:STALL-MS NS-PER-MS * >= TTRUE
+   SEND-TASK mono-ns GRACE-MS NS-PER-MS * + AWAIT-END
    s" the send behind the stalled pong is refused" T-LABEL
-   SEND-TASK mono-ns GRACE-MS NS-PER-MS * + ENDED-BY? {: ended:bool :}
-   ended TTRUE
-   ended if
-      SEND-TASK JOINED E-WS-CLOSED T=
-      LINUX? if
-         s" < Linux pong closed 1006; sender returned E-WS-CLOSED" LOG-LINE
-      then
+   SEND-TASK JOINED E-WS-CLOSED T=
+   LINUX? if
+      s" < Linux pong closed 1006; sender returned E-WS-CLOSED" LOG-LINE
    then ;
 
 \ A client task floods the socket with pings and never reads, so the pong the
@@ -1827,7 +1832,7 @@ $3000000 constant BIG-BYTES
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    0 KEPT ! 0 GO-HOME ! 0 LAST-CLOSE !
    s" /goodbye" UPGRADE {: conn:TCP4:connection :}
-   KEPT? TTRUE
+   AWAIT-KEPT
    [: PUSH-BIG ;] PUSH-TASK TASK:ACTIVATE
    [: PUSH-STALL ;] REACH-MS AWAITED
    conn ;
@@ -1843,15 +1848,12 @@ $3000000 constant BIG-BYTES
    s" and the stop returned in time" T-LABEL
    took STOP-CEILING-MS NS-PER-MS * < TTRUE ;
 
-\ The push ends within GRACE-MS and is reaped; one still running then is left
-\ where it waits. Its code is the refusal only when the push was seen held or
-\ under way, the state the refusal depends on.
+\ The push ends within GRACE-MS and is reaped; one still running then is named
+\ and thrown as a deadline, the push unjoined. Its code is the refusal only
+\ when the push was seen held or under way, the state the refusal depends on.
 : PUSH-REFUSED ( bool -- )
    {: seen:bool :}
-   s" the push ended" T-LABEL
-   PUSH-TASK mono-ns GRACE-MS NS-PER-MS * + ENDED-BY? {: ended:bool :}
-   ended TTRUE
-   ended 0= if exit then
+   PUSH-TASK mono-ns GRACE-MS NS-PER-MS * + AWAIT-END
    PUSH-TASK JOINED {: code:n :}
    seen 0= if exit then
    s" the push was refused" T-LABEL
@@ -1879,23 +1881,21 @@ $3000000 constant BIG-BYTES
 \ taken no byte for HTTP:RELEASE-MS: the push is E-WS-CLOSED within CUT-BOUND
 \ of the stop, the handler returns, and the stop kills no task. On the
 \ restarted server another task's send through the handle the handler kept is
-\ refused; one held past the deadline is left where it waits rather than
-\ joined.
+\ refused; one still held at its deadline is named and thrown as a deadline,
+\ the send unjoined.
 : FLOODED-CASE ( -- )
    s" a stop while the handler's own push is stalled" SECTION
    0 KEPT ! 0 FLOOD-CODE ! 0 FLOOD-END !
    s" /flood" UPGRADE {: flooded:TCP4:connection :}
-   KEPT? TTRUE
+   AWAIT-KEPT
    [: PUSH-STALL ;] REACH-MS AWAITED
    s" the worker inside its push ended itself" STOP-CUTS-FLOOD
    flooded TCP4:CLOSE DROP-STATUS
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    mono-ns GRACE-MS TCP4:SEND-SLICE-MS + NS-PER-MS * + {: deadline:n :}
    [: HELD-SEND ;] STALE-TASK TASK:ACTIVATE
+   STALE-TASK deadline AWAIT-END
    s" a send through its handle is refused on the restarted server" T-LABEL
-   STALE-TASK deadline ENDED-BY? {: ended:bool :}
-   ended TTRUE
-   ended 0= if exit then
    STALE-TASK JOINED E-WS-CLOSED T= ;
 
 \ One worker, so each socket is served in the slot the one before it held.
@@ -1916,13 +1916,10 @@ $3000000 constant BIG-BYTES
    {: seen:bool :}
    1 GO-HOME !
    seen if
-      s" the goodbye cut the push, before any stop" T-LABEL
-      PUSH-TASK mono-ns RECEIVE-MS NS-PER-MS * + CUT-BOUND + ENDED-BY? dup TTRUE
-   else
-      false
-   then {: cut:bool :}
+      PUSH-TASK mono-ns RECEIVE-MS NS-PER-MS * + CUT-BOUND + AWAIT-END
+   then
    s" the worker saying goodbye behind the push ended itself" STOPS-IN-TIME
-   cut if
+   seen if
       s" the handler returned on its cue, with its socket open" T-LABEL
       LAST-CLOSE @ 0 T=
    then
@@ -1950,7 +1947,7 @@ $3000000 constant BIG-BYTES
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    0 KEPT ! 0 LAST-CLOSE !
    s" /patient" UPGRADE {: conn:TCP4:connection :}
-   KEPT? TTRUE
+   AWAIT-KEPT
    s" the waiting worker ended itself" STOPS-IN-TIME
    s" the client is told the server is going away" T-LABEL
    conn HEAR 1001 GOT-CLOSE
@@ -2018,7 +2015,7 @@ $3000000 constant BIG-BYTES
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    0 KEPT ! 0 LAST-CLOSE !
    s" /late" UPGRADE {: conn:TCP4:connection :}
-   KEPT? TTRUE
+   AWAIT-KEPT
    s" the worker whose close was refused ended itself" STOPS-IN-TIME
    s" the client reads the text and then the end of the stream" T-LABEL
    conn HEAR WS-OPCODE:text s" cut" GOT
@@ -2079,10 +2076,8 @@ variable SIPPED                   \ what it has taken
 \ the connection by now, so no read holds it.
 : SIP-OVER ( -- )
    mono-ns SIP-UNTIL !
-   s" the client that kept taking bytes ended" T-LABEL
-   SIP-TASK mono-ns ANSWER-MS NS-PER-MS * + ENDED-BY? {: ended:bool :}
-   ended TTRUE
-   ended if SIP-TASK TASK:KILL then ;
+   SIP-TASK mono-ns ANSWER-MS NS-PER-MS * + AWAIT-END
+   SIP-TASK TASK:KILL ;
 
 \ What the client has taken, 0 until its first byte: the push to it is the
 \ only writer on its connection, so a byte taken is one that push wrote,
@@ -2116,18 +2111,19 @@ variable SIPPED                   \ what it has taken
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    0 KEPT ! 0 GO-HOME ! 0 LAST-CLOSE !
    s" /goodbye" UPGRADE {: conn:TCP4:connection :}
-   KEPT? TTRUE
+   AWAIT-KEPT
    conn BIG-UNDER-WAY GOODBYE-CUT
    SIP-OVER
    conn TCP4:CLOSE DROP-STATUS ;
 
-\ True once the handler has heard its socket close, false once the deadline, a
-\ mono-ns time, has passed.
-: CLOSED-BY? ( n -- bool )
+\ Returns once the handler has heard its socket close. A handler that has not
+\ heard it by the deadline, a mono-ns time, is a deadline: the wait names
+\ itself and throws E-PROC-TIMEOUT.
+: AWAIT-CLOSE ( n -- )
    {: deadline:n :}
    begin
-      LAST-CLOSE @ 0 <> if true exit then
-      mono-ns deadline > if false exit then
+      LAST-CLOSE @ 0 <> if exit then
+      mono-ns deadline > if s" ws-test AWAIT-CLOSE" TEST-WAIT:EXPIRED then
       POLL-MS >MS TASK:SLEEP
    again ;
 
@@ -2142,12 +2138,11 @@ variable SIPPED                   \ what it has taken
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    0 KEPT ! 0 LONGEST ! 0 LAST-CLOSE !
    s" /timed" UPGRADE {: conn:TCP4:connection :}
-   KEPT? TTRUE
+   AWAIT-KEPT
    conn BIG-UNDER-WAY {: going:bool :}
    conn true WS-OPCODE:ping s" hb" SAY
    going if
-      s" the socket was lost under the push in time" T-LABEL
-      mono-ns STALL-BOUND + CLOSED-BY? TTRUE
+      mono-ns STALL-BOUND + AWAIT-CLOSE
       going PUSH-REFUSED
    then
    s" the worker that owed the pong ended itself" STOPS-IN-TIME
@@ -2176,7 +2171,7 @@ variable SIPPED                   \ what it has taken
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    0 KEPT ! 0 FLOOD-CODE ! 0 FLOOD-END !
    s" /flood" UPGRADE {: conn:TCP4:connection :}
-   KEPT? TTRUE
+   AWAIT-KEPT
    conn mono-ns REACH-MS SIP-FOR-MS + NS-PER-MS * + SIP-FROM
    s" the handler's pushes are under way, their client taking bytes" T-LABEL
    [: PUSH-TAKEN ;] REACH-MS AWAITED
