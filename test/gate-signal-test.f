@@ -46,6 +46,14 @@
 \     answers SIGTERM like any other. For every other case this process gives
 \     its children the default action for all three before it starts a root.
 \
+\ THIS TEST'S OWN WAITS ARE NO ASSERTION RESULT. A wait for the reports, for
+\ the root to end, for end of file on the pipe or for the reported engines to go
+\ is named on stdout and thrown as E-PROC-TIMEOUT when its own deadline runs out
+\ (src/lib/test/wait.f), so the row ends as a timeout and not as a FAIL. End of
+\ file before both reports, a short report or a failed read of them is a failed
+\ report, and fails the case. A failed poll, a descriptor the poll reports
+\ broken, or a failed read in the wait for end of file throws E-PROC-OUTPUT.
+\
 \ A FAILED CASE LEAVES NOTHING EITHER, but for one case. Each case ends through
 \ SIGNAL-END or DEADLINE-END whatever it asserted or threw: the root is killed
 \ and reaped, the engines that reported are killed if they are still the
@@ -56,7 +64,8 @@
 \ - the helper's, whose group was orphaned already - outlives the wait and is
 \ left. The scratch is under this process's runner root, which its registered
 \ cleanup removes. A passing case costs none of it: the pipe is already at end
-\ of file.
+\ of file. When that wait runs out, the case still closes its descriptors and
+\ SIGNAL-END still clears the scratch.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -64,6 +73,7 @@ require src/lib/le.f
 require src/lib/ffi-abi.f
 require src/lib/fmt.f
 require src/lib/test.f
+require src/lib/test/wait.f
 require src/lib/fs.f
 require src/lib/fs-list.f
 require src/lib/fs-mutate.f
@@ -250,32 +260,51 @@ variable STAT-PATH-U
 : REPORT-ENV ( -- )
    s" GATE_SIGNAL_FD" >LEN PIPE-WR @ FD-TEXT$ >LEN PROC-ENV+ ;
 
-\ TRUE once fd has bytes to read or has reached end of file, within ms.
-: READY-WITHIN? ( n n -- bool ) {: fd:n ms:n :}
+\ TRUE once fd has bytes to read or has reached end of file, FALSE when ms ran
+\ out first. A failed poll, or a descriptor the poll reports broken (POLLERR or
+\ POLLNVAL), is no answer either way: it throws E-PROC-OUTPUT.
+: READY-WITHIN? ( n n -- bool )
+   {: fd:n ms:n :}
    fd >FD POLLIN PROC-PFD!
-   1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART 0 > ;
+   1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART {: rc:n :}
+   rc 0 < if E-PROC-OUTPUT throw then
+   0 >IDX PROC-PFD-REVENTS POLLERR POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
+   rc 0 > ;
 
-\ Both pids, before READY-MS runs out. End of file first means a reporter died.
+\ Both pids, before READY-MS runs out. End of file first means a reporter died:
+\ that, a short report or a failed read answers false. READY-MS running out
+\ first is this wait's own deadline, named and thrown as a timeout.
 : REPORTS-READ? ( -- bool )
    READY-MS >MS PROC-DEADLINE-AT {: deadline:n :}
    begin REPORT-U @ REPORT-BYTES < while
-      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN? 0= if false exit then
+      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN? 0= if
+         s" gate-signal-test REPORTS-READ" TEST-WAIT:EXPIRED
+      then
       PIPE-RD @ REPORTS REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
       got 0 <= if false exit then
       REPORT-U @ got + REPORT-U !
    repeat
    true ;
 
-\ End of file within ms: nothing under the subject holds the write end.
-: GONE-WITHIN? ( n -- bool ) {: ms:n :}
+\ End of file within ms: nothing under the subject holds the write end. FALSE
+\ when ms ran out first, which the zero-time probe of an ignored signal
+\ expects. A failed read throws E-PROC-OUTPUT, as a failed poll does.
+: GONE-WITHIN? ( n -- bool )
+   {: ms:n :}
    PIPE-DONE @ if true exit then
    ms >MS PROC-DEADLINE-AT {: deadline:n :}
    begin
       PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN? 0= if false exit then
       PIPE-RD @ SINK SINK-CAP read {: got:n :}
       got 0= if true PIPE-DONE ! true exit then
-      got 0 < if false exit then
+      got 0 < if E-PROC-OUTPUT throw then
    again ;
+
+\ Returns at end of file within ms. ms running out first is this wait's own
+\ deadline, named and thrown as a timeout; a failed poll or read is no
+\ deadline and throws E-PROC-OUTPUT.
+: GONE-WITHIN ( n -- )
+   GONE-WITHIN? 0= if s" gate-signal-test GONE-WITHIN" TEST-WAIT:EXPIRED then ;
 
 : REPORTED ( n -- pid ) {: i:n :}
    i cells REPORTS + @ >PID ;
@@ -295,38 +324,39 @@ variable STAT-PATH-U
    i cells STARTS + @ {: was:n :}
    was 0<> i REPORTED STARTED was = and ;
 
-\ A killed engine takes a moment to die, and on Linux its zombie keeps its
-\ start until its new parent reaps it, so "gone" is asked again for a moment
-\ rather than once.
-: REPORTED-GONE? ( -- bool )
+\ Returns once no engine that reported is still the process that reported. A
+\ killed engine takes a moment to die, and on Linux its zombie keeps its start
+\ until its new parent reaps it, so "gone" is asked again for a moment rather
+\ than once. GONE-MS running out first is this wait's own deadline, named and
+\ thrown as a timeout.
+: REPORTED-GONE ( -- )
    GONE-MS >MS PROC-DEADLINE-AT {: deadline:n :}
    begin
       true
       REPORTED# 0 ?do i REPORTED-SAME? if drop false then loop
-      if true exit then
-      deadline PROC-LEFT-MS MS>N 0= if false exit then
+      if exit then
+      deadline PROC-LEFT-MS MS>N 0= if
+         s" gate-signal-test REPORTED-GONE" TEST-WAIT:EXPIRED
+      then
       SETTLE-MS PAUSE
    again ;
 
 \ What a failed case owes: the engines that reported are killed, each only
 \ while it is still the process that reported, and the writers nobody could
-\ name have 20 s to live.
+\ name have 20 s to live. EXPIRE-MS running out first is this wait's own
+\ deadline, named and thrown as a timeout.
 : SWEEP ( -- )
    REPORTED# 0 ?do
       i REPORTED-SAME? if i REPORTED SIGKILL PROC-KILL-RAW drop then
    loop
-   s" the sweep left no process behind" T-LABEL
-   EXPIRE-MS GONE-WITHIN? TTRUE ;
+   EXPIRE-MS GONE-WITHIN ;
 
 \ The two claims that outlive the subject, asked of whichever process ended the
-\ row: nothing holds the pipe, and the engines that reported are gone.
+\ row: nothing holds the pipe, and the engines that reported are gone. Each is
+\ a wait, and its deadline running out is a timeout.
 : EXPECT-GONE ( -- )
-   s" no process under the row is left" T-LABEL
-   GONE-MS GONE-WITHIN? dup TTRUE
-   if
-      s" the engines that reported are gone" T-LABEL
-      REPORTED-GONE? TTRUE
-   then ;
+   GONE-MS GONE-WITHIN
+   REPORTED-GONE ;
 
 \ ---- the gate root ----------------------------------------------------------
 
@@ -379,8 +409,12 @@ variable STAT-PATH-U
 : ROOT-SIGNAL ( n -- ) {: sig:n :}
    ROOT-PID @ >PID sig PROC-KILL-RAW drop ;
 
-: ROOT-ENDED? ( -- bool )
-   ROOT-WATCH @ EXIT-MS READY-WITHIN? ;
+\ Returns once the root has ended. EXIT-MS running out first is this wait's own
+\ deadline, named and thrown as a timeout; a failed poll throws E-PROC-OUTPUT.
+: ROOT-ENDED ( -- )
+   ROOT-WATCH @ EXIT-MS READY-WITHIN? 0= if
+      s" gate-signal-test ROOT-ENDED" TEST-WAIT:EXPIRED
+   then ;
 
 : ROOT-REAP ( -- outcome )
    ROOT-PID @ >PID PROC-WAIT-OUTCOME
@@ -422,28 +456,27 @@ variable STAT-PATH-U
    CASE-NOHUP @ if EXPECT-IGNORED then
    CASE-SIG @ ROOT-SIGNAL
    CASE-AGAIN @ if AGAIN-GAP-MS PAUSE CASE-SIG @ ROOT-SIGNAL then
-   s" signal: the root ended inside its bound" T-LABEL
-   ROOT-ENDED? dup TTRUE
-   if
-      s" signal: the root's status names the signal" T-LABEL
-      ROOT-REAP CASE-SIG @ KILLED-BY? TTRUE
-      s" signal: the scratch is gone when the root has ended" T-LABEL
-      TMP-ENTRIES 0 T=
-   then
-   ROOT-END
+   ROOT-ENDED
+   s" signal: the root's status names the signal" T-LABEL
+   ROOT-REAP CASE-SIG @ KILLED-BY? TTRUE
+   s" signal: the scratch is gone when the root has ended" T-LABEL
+   TMP-ENTRIES 0 T=
    EXPECT-GONE
    s" signal: nothing put the scratch back" T-LABEL
    TMP-ENTRIES 0 T= ;
 
 \ Whatever the body asserted or threw. Every step is a no-op for a case that
-\ passed.
+\ passed. This process lets its own write end go before the sweep waits for end
+\ of file, which a spawn that threw before the root took the write end leaves
+\ open. The sweep runs even when ending the root throws, and the descriptors
+\ close and the scratch clears even when the sweep's wait throws.
 : SIGNAL-END ( -- )
-   ROOT-END
-   PIPE-DONE @ 0= if SWEEP then
-   ROOT-WATCH PROC-CLOSE-CELL
-   PIPE-WR PROC-CLOSE-CELL
-   PIPE-RD PROC-CLOSE-CELL
-   TMP-CLEAR ;
+   [: [: ROOT-END ;]
+      [: PIPE-WR PROC-CLOSE-CELL
+         PIPE-DONE @ 0= if SWEEP then ;] finally ;]
+   [: ROOT-WATCH PROC-CLOSE-CELL
+      PIPE-RD PROC-CLOSE-CELL
+      TMP-CLEAR ;] finally ;
 
 \ The signal the root is to answer, whether it is sent twice, and whether the
 \ root runs under nohup.
@@ -482,11 +515,15 @@ variable STAT-PATH-U
    s" deadline: the row's scratch is gone and stays gone" T-LABEL
    0 >IDX GT-POOL-TMP$ EXISTS? TFALSE ;
 
+\ Whatever the body asserted or threw. This process lets its own write end go
+\ before the sweep waits for end of file, which a row start that threw before
+\ the row took the write end leaves open. The sweep runs even when ending the
+\ pool's rows throws, and the read end closes even when the sweep's wait throws.
 : DEADLINE-END ( -- )
-   GT-POOL-KILL-ALL
-   PIPE-DONE @ 0= if SWEEP then
-   PIPE-WR PROC-CLOSE-CELL
-   PIPE-RD PROC-CLOSE-CELL ;
+   [: [: GT-POOL-KILL-ALL ;]
+      [: PIPE-WR PROC-CLOSE-CELL
+         PIPE-DONE @ 0= if SWEEP then ;] finally ;]
+   [: PIPE-RD PROC-CLOSE-CELL ;] finally ;
 
 \ The pool is reset before the body: GT-POOL-KILL-ALL reads the slot table the
 \ reset fills in.
