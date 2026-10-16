@@ -7,6 +7,7 @@
 \ each run must leave the directory it registered removed.
 require test/gate-common.f
 require test/gate-aot-image.f
+require src/lib/string.f
 require src/lib/engine-candidate.f
 
 package STRIPPED-IMAGE-TEST

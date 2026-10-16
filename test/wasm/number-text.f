@@ -1,5 +1,6 @@
 \ Native/Wasm numeric text fixture. Differential runner loads this source and
 \ reaches STEP through its checked entry, including JSON's float accessor.
+require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/float.f
 require src/lib/json-read.f

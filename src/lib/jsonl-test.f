@@ -1,6 +1,7 @@
 \ jsonl-test.f - the JSONL file cursor and memory splitter through the public API.
 \ Run: bin/hb --load src/lib/jsonl-test.f
 
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/byte-buffer.f

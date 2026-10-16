@@ -3,6 +3,7 @@
 \ Run: bin/hb --load tools/hb-build-repl-image-test.f
 
 require tools/hb-build-test-lib.f
+require src/lib/string.f
 require src/lib/process-cwd.f
 
 package HB-BUILD-CLI

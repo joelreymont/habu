@@ -3,6 +3,7 @@
 \ (test/gate-aot-positive-bundle.f, test/gate-aot-positive-preseed.f), so the
 \ pool runs them beside each other and beside every other row.
 
+require src/lib/string.f
 require src/lib/source.f
 require src/lib/build.f
 require src/lib/codesign.f

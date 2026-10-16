@@ -10,6 +10,7 @@
 require tools/hb-build-test-lib.f
 require tools/image-size-lib.f          \ this fixture measures image bytes directly
 require test/preloaded-engine.f
+require src/lib/string.f
 require src/lib/codegen.f
 
 using BUILD-FIXPOINT                     \ the build tmp root

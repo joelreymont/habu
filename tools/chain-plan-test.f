@@ -1,5 +1,6 @@
 \ chain-plan-test.f - the engine-impact boundary used by chain runners.
 
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/process.f

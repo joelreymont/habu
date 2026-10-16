@@ -4,6 +4,7 @@
 
 require tools/hb-build-test-lib.f
 require test/app-image-engine.f
+require src/lib/string.f
 require src/lib/process-cwd.f
 
 package HB-BUILD-CLI

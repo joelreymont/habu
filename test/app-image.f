@@ -1,4 +1,5 @@
 \ Build once, then run and recapture outside the source checkout.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

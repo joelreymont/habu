@@ -1,6 +1,7 @@
 \ A checked design-sized dictionary survives lookup, overlay, and REPL save/reopen.
 \ Run: bin/hb --load test/dictionary-capacity-e2e.f
 
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

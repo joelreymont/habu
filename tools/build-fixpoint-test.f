@@ -8,6 +8,7 @@
 \ Run: bin/hb --load tools/build-fixpoint-test.f
 
 require tools/build-fixpoint-writer-test-lib.f
+require src/lib/string.f
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer
 require src/lib/test/mapped.f

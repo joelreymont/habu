@@ -1,6 +1,7 @@
 \ Run as stdin: bin/hb < test/source-unit-range-e2e.f
 \ Execute one owned file in two byte ranges through the real require loader.
 \ Stdin leaves no outer source-unit callback when the escaped q is checked.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

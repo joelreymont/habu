@@ -38,6 +38,7 @@
 \ test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-wide-prefix-suite.f
 
+require src/lib/string.f
 require src/lib/test.f
 require test/aot-wide-format-lib.f
 

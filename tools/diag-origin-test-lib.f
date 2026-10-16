@@ -1,5 +1,6 @@
 \ diag-origin-test.f - checked fixtures for tools/diag-origin.f.
 \ Run: bin/hb --load tools/diag-origin-test.f
+require src/lib/string.f
 
 4096 constant DGT-BUF-CAP
 180000 constant DGT-TIMEOUT-MS       \ includes checked compilation of the CLI

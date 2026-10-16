@@ -1,5 +1,6 @@
 \ Capture the live checker through its owner, save an application image, then
 \ test the saved boundary and current control states in two fresh boots.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/process-cwd.f

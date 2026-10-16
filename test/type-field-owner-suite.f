@@ -1,5 +1,6 @@
 \ type-field-owner-suite.f — retained rollback-frame lifecycle regression.
 
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f

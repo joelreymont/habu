@@ -1,6 +1,7 @@
 \ Mutated signed final images exercise the native packed-metadata boot reader.
 \ The ordinary candidate boots first; every mutation must exit through the AOT
 \ integrity boundary before the user program can print its marker.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

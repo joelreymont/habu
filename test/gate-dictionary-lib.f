@@ -1,5 +1,6 @@
 \ gate-dictionary.f - checked runner for dictionary and checker contracts.
 
+require src/lib/string.f
 require src/lib/fs.f
 require tools/check-all-errors-core.f
 require test/gate-common.f

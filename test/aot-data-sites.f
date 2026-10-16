@@ -1,6 +1,7 @@
 \ Exercise the actual packed-site appenders beyond their former 16,384 rows.
 \ No generated code is executed: the buffer contains tagged metadata cells and
 \ correctly shaped address chains, then survives file and owned-value transfer.
+require src/lib/string.f
 require src/lib/test.f
 require src/os/script-argv.f
 require src/arch/arm64/asm.f

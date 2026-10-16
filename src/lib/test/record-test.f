@@ -3,6 +3,7 @@
 \ Expected literals are bound in compiled words: top-level (interpret-mode)
 \ escaped literals corrupt positionally (dot habu-interpret-mode-escaped-d8dad34b).
 
+require src/lib/string.f
 require src/lib/test.f
 
 variable RCT-I

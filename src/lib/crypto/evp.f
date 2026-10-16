@@ -1,6 +1,7 @@
 \ AES-256-GCM sealing and HMAC-SHA-256/SHA-1 over OpenSSL 3's libcrypto.
 require src/lib/errors.f
 require src/lib/prelude.f                      \ true / false
+require src/lib/string.f
 require src/lib/ffi-abi.f
 require src/lib/le.f                           \ the C int out-parameters below
 require src/lib/type/deftype.f

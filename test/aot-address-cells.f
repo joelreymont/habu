@@ -1,5 +1,6 @@
 \ Actual row append/WRITE/READ/IMPORT/MERGE beyond the former fixed limit.
 \ The synthetic rows are valid fixed-location null pointers; no code executes.
+require src/lib/string.f
 require src/lib/test.f
 require src/os/script-argv.f
 require src/arch/arm64/asm.f

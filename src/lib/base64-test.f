@@ -6,6 +6,7 @@
 \ system's `base64 -d` answers for it, so every character's value is pinned by
 \ an oracle this file does not share.
 
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/span.f

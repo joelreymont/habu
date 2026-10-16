@@ -3,6 +3,7 @@
 \ change which child a require selects even when the old child is unchanged.
 
 require src/lib/errors.f
+require src/lib/string.f
 require src/lib/fs.f
 require src/lib/le.f
 require src/lib/memory.f

@@ -6,6 +6,7 @@
 \ case took 293-338 s in the gate's pool.
 \ Run: bin/hb --load tools/build-fixpoint-sandbox-test.f
 
+require src/lib/string.f
 require tools/build-fixpoint-test-lib.f
 
 \ The shared fixture's words are private words of the tool's package, so this

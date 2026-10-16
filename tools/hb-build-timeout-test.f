@@ -1,6 +1,7 @@
 \ hb-build-timeout-test.f - checked maker deadline and diagnostic fixture.
 \ Run: bin/hb --load tools/hb-build-timeout-test.f
 
+require src/lib/string.f
 require tools/hb-build-test-lib.f
 require test/preloaded-engine.f
 

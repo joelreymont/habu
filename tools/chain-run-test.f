@@ -1,6 +1,7 @@
 \ chain-run-test.f - byte comparison, refusal boundary and generation lineage
 \ for chain-run.
 
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

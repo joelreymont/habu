@@ -14,6 +14,7 @@
 \ so the bytes stay put for the call that follows. A minter runs inside a
 \ definition: a top-level one would write over the line being interpreted.
 
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/le.f
 require src/lib/ffi-abi.f

@@ -25,6 +25,7 @@ ndict@ variable PRE-R  variable PRE-D  PRE-R !
 PRE-R PRE-D !
 ;package
 
+require src/lib/string.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f

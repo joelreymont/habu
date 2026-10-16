@@ -1,4 +1,5 @@
 \ Checked source capture, file read, and fresh native boot of prefix CODE literals.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

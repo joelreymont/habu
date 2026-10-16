@@ -2,6 +2,7 @@
 \ LINT-MAIN attributed-failure seam they throw into.
 
 require src/lib/errors.f
+require src/lib/string.f
 require src/lib/memory.f
 require src/lib/vector.f
 require tools/lint/text.f

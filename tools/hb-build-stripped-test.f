@@ -5,6 +5,7 @@
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-stripped-test.f
 
+require src/lib/string.f
 require tools/hb-build-test-lib.f
 require test/preloaded-engine.f
 

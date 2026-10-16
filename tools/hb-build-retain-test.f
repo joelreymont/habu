@@ -29,6 +29,7 @@
 \ prune reports.
 \ Run: bin/hb --load tools/hb-build-retain-test.f
 
+require src/lib/string.f
 require tools/hb-build-test-lib.f
 require test/preloaded-engine.f
 

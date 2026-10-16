@@ -1,3 +1,4 @@
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/engine-candidate.f
 require src/lib/fmt.f

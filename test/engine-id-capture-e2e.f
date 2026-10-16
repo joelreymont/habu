@@ -6,6 +6,7 @@
 \ asking nothing first. The parent counts, in the DATA file, the path and key
 \ the child printed: every count must be 0. The saved process then resolves
 \ its own pathname. Keep the saved image, DATA file and logs as evidence.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

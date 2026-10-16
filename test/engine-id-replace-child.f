@@ -1,5 +1,6 @@
 \ The child observes its own cached path before that pathname is replaced.
 \ Run through test/engine-id-replace-e2e.f so the executable can be copied safely.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/engine-id.f

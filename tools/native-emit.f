@@ -1,4 +1,5 @@
 \ Source-bound emission, loaded only after the target capture is complete.
+require src/lib/string.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f

@@ -1,5 +1,6 @@
 \ Internal batch regressions; protocol cases run in tools/lsp-test.f.
 \ Run: bin/hb --load tools/lsp-batch-test.f
+require src/lib/string.f
 require tools/lsp-test-lib.f
 
 LSP-TEST:TEST-INIT

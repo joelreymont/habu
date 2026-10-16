@@ -1,6 +1,7 @@
 \ hb-build-timeout-json-test.f - empty override and JSON error fixture.
 \ Run: bin/hb --load tools/hb-build-timeout-json-test.f
 
+require src/lib/string.f
 require tools/hb-build-test-lib.f
 
 package HB-BUILD-CLI

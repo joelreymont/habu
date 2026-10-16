@@ -17,6 +17,7 @@
 \ under RTLD_NOLOAD dyld finds a loaded image by absolute path, and answers
 \ NULL for the rendered libzip.5.dylib while that image is loaded.
 
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/codegen.f
 require src/lib/image-lifecycle.f

@@ -1,4 +1,5 @@
 \ zip-test.f - public lifecycle and independent archive-preservation checks.
+require src/lib/string.f
 require src/lib/zip.f
 require src/lib/zip-test-fixture.f
 require src/lib/zip-framing-fixture.f

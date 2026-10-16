@@ -2,6 +2,7 @@
 \ once by test/stripped-image.f. Each required subject is a package whose RUN
 \ prints its line or dies naming itself; its header says what the line guards.
 \ The row writes MAIN, which calls RUN here and ends in UNMAP.
+require src/lib/string.f
 require src/lib/num-types.f
 require src/lib/memory.f
 require src/lib/aio.f

@@ -1,6 +1,7 @@
 \ Warm F64 and ZIP, save, then use fresh native resources outside the checkout.
 \ The image is saved from the keyed host with the saver already loaded
 \ (test/app-image-engine.f).
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/process-cwd.f

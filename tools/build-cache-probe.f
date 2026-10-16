@@ -1,5 +1,6 @@
 \ build-cache-probe.f - child fixture for canonical cache-root resolution.
 
+require src/lib/string.f
 require src/lib/build-cache.f
 require src/lib/process.f
 

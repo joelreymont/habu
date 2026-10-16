@@ -5,6 +5,7 @@
 \ k mod 17 lanes in and answer k / 17 out, each type its own, and each calls the
 \ next; adapter 135, of no lanes, calls 0.
 
+require src/lib/string.f
 require src/lib/span.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/link.f

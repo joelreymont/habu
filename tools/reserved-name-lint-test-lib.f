@@ -1,6 +1,7 @@
 \ reserved-name-lint-test-lib.f - checked fixtures for tools/reserved-name-lint.f.
 \ Load-only fixture library; the thin entry tools/reserved-name-lint-test.f
 \ requires this file and its dependencies, then calls RESERVED-NAME-LINT-TEST:RUN.
+require src/lib/string.f
 
 package RESERVED-NAME-LINT-TEST
 

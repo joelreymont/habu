@@ -1,5 +1,6 @@
 \ Build and run the fixed quotation field subject through the product hb-build.
 \ Its whole-record replacements happen during source load, before the link.
+require src/lib/string.f
 require tools/hb-build-test-lib.f
 
 package HB-BUILD-CLI

@@ -1,5 +1,6 @@
 \ gate-stdlib-lib.f - adapter from the native suite registry to bin/hb.
 
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/runner.f
 require src/lib/process-argv.f

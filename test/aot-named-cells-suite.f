@@ -1,5 +1,6 @@
 \ Emit one cold engine and one partial image through the production source
 \ writer. The restored code must execute its stored prefix and window targets.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/fs-mutate.f

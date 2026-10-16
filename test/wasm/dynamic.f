@@ -35,6 +35,7 @@ public
 ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
 ;package
 
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/le.f
 require src/lib/fs.f

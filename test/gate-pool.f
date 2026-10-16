@@ -1,5 +1,6 @@
 \ gate-pool.f - checked bounded process pool for native tests.
 
+require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/process-fork.f
 require src/lib/process-env.f

@@ -8,6 +8,7 @@
 require tools/hb-build-test-lib.f
 require tools/image-size-lib.f          \ this fixture measures image bytes directly
 require test/preloaded-engine.f
+require src/lib/string.f
 require src/lib/test/outcome.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 

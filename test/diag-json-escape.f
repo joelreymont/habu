@@ -8,6 +8,7 @@
 \ Every packet stream must parse with the strict JSONL reader, and its "token"
 \ must decode to the four bytes n<c>--.
 
+require src/lib/string.f
 require test/gate-common.f
 require tools/json.f
 require tools/check-core.f

@@ -1,4 +1,5 @@
 \ Descriptor bounds only: no synthetic record supplies or executes callbacks.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/process.f

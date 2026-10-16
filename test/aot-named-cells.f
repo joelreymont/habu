@@ -1,6 +1,7 @@
 \ Actual captured cells, then byte-exact file/owned/merge and malformed rows.
 \ The harness loads before the tier selection: only the subject below it is
 \ compiled at the requested tier (docs/gate.md).
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f

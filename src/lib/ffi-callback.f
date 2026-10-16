@@ -18,6 +18,7 @@
 \ a context busy on another thread or on one with no outbound call in flight
 \ fails closed: the thunk exits 106 (ENGINE-ERROR:CALLBACK).
 require src/lib/errors.f
+require src/lib/string.f
 require src/lib/codegen.f
 require src/lib/ffi-abi.f
 require src/lib/task.f

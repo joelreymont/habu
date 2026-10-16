@@ -3,6 +3,7 @@
 \ environment sizing of the process that saved it (PROCESS-IMAGE-SUBJECT CLEAN,
 \ FIRST-FD, ENV-SIZE). The first generation is saved from the keyed host with
 \ the saver already loaded (test/app-image-engine.f).
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/process-cwd.f

@@ -1,5 +1,6 @@
 \ Save generated initialized-field effects, then compile fresh consumers from
 \ the image at both tiers. Logs and the image remain in the printed directory.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/process-argv.f

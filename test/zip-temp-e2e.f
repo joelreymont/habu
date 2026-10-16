@@ -4,6 +4,7 @@
 \ The child reads its archive path from argv, so it runs spawned and stays
 \ unregistered. The temporary tree is retained as evidence.
 \ Run: bin/hb --load test/zip-temp-e2e.f
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

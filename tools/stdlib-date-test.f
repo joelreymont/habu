@@ -7,6 +7,7 @@
 \ words composes cleanly standalone, spawned, and in-process.
 
 require src/lib/errors.f
+require src/lib/string.f
 require src/lib/date.f
 require src/lib/test.f
 require src/lib/task.f

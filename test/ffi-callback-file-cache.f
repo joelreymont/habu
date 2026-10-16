@@ -1,6 +1,7 @@
 \ Cold and warm FILE replay of a callback declaration must build the same
 \ runnable stripped image. The declaration lives in a required child file, so
 \ its table controls precede the parent source's native range.
+require src/lib/string.f
 require test/gate-common.f
 require test/aot-maker-engine.f
 

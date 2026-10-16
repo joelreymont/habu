@@ -4,6 +4,7 @@ package EFFECT-POOL-TEST
 ndict@ here variable PRE-R variable PRE-D PRE-D ! PRE-R !
 ;package
 
+require src/lib/string.f
 require src/lib/test.f
 require src/arch/arm64/icode.f
 require src/lib/test/outcome.f

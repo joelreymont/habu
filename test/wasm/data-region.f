@@ -1,4 +1,5 @@
 \ A checked tools/wasm-build program for the task DATA and static image boundary.
+require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/ieee754.f
 

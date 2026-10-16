@@ -1,4 +1,5 @@
 \ Named entries own root-relative dependencies; canonical identity deduplicates.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

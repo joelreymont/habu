@@ -1,5 +1,6 @@
 \ Real source effects are copied to saved graphs in a private matching engine.
 \ Each malformed graph runs in its own process because graph refusal exits.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/process.f

@@ -8,6 +8,7 @@
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-cli-errors-test.f
 
+require src/lib/string.f
 require tools/hb-build-test-lib.f
 require test/app-image-engine.f
 

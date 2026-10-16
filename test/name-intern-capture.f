@@ -1,6 +1,7 @@
 \ Save, boot, mutate, recapture and boot the checker with homonymous names.
 \ Behavior is asserted in both restored boots. The last phase prints the
 \ symbol offsets and pool growth for separate representation measurement.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/process-cwd.f

@@ -1,6 +1,7 @@
 \ The normal artifact fixture supplies a real closed window; two script args
 \ leave its file roundtrip to the caller. This test transfers that capture in RAM.
 require test/aot-artifact-roundtrip.f
+require src/lib/string.f
 require src/lib/test.f
 require src/habu/aot-owned.f
 

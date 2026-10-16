@@ -4,6 +4,7 @@
 \ bytes: REPORT-W writes into REPORT-BUF, and a span answered by one report word
 \ stays valid until the next one runs.
 
+require src/lib/string.f
 require src/lib/build-cache.f
 require src/lib/memory.f
 require src/lib/json-write.f

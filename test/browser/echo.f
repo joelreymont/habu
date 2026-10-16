@@ -23,6 +23,7 @@
 \ text.
 
 require src/lib/errors.f
+require src/lib/string.f
 
 package ECHO
 private

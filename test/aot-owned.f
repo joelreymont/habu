@@ -1,4 +1,5 @@
 \ An owned capture preserves complete sections after the live buffers change.
+require src/lib/string.f
 require src/lib/test.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f

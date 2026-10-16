@@ -7,6 +7,7 @@
 \ children's logs, except the tail: no FS-PATH-CAP-bounded walk (the gate
 \ pool's REMOVE-TREE of a slot's HB_TMP) can remove it, so an rm child removes
 \ it before the verdict.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

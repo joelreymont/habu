@@ -1,6 +1,7 @@
 \ assert-test.f - focused tests for src/lib/test/assert.f through src/lib/test.f.
 \ Run: bin/hb --load src/lib/test.f src/lib/test/assert-test.f
 
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

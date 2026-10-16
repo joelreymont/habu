@@ -4,6 +4,7 @@
 \ fence the snapshot across poll, so cancellation/reuse cannot deliver an old
 \ event to a new operation. Each serialized host call temporarily sets
 \ nonblocking status and restores it before releasing the facility.
+require src/lib/string.f
 require src/lib/aio.f
 require src/lib/le.f
 

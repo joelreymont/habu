@@ -1,5 +1,6 @@
 \ Checker boundaries for the public C2 owner and shared loan entries.
 
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/subject.f
 require src/lib/adt/option.f

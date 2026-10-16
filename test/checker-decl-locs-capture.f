@@ -10,6 +10,7 @@
 \ (test/checker-decl-locs-capture-subject.f). The subject reads checker
 \ internals, so both halves run the unsealed engine (test/whitebox-child.f)
 \ and this file is a plain SUITE.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/process-cwd.f

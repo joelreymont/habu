@@ -1,5 +1,6 @@
 \ gate-debug.f - checked runner for profiler/debug gate checks.
 
+require src/lib/string.f
 require tools/jitdump-core.f
 require test/gate-common.f
 require src/habu/prof-abi.f

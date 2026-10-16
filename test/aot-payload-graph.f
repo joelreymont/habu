@@ -1,4 +1,5 @@
 \ Supported graph metadata survives source-effect destruction and a fresh boot.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

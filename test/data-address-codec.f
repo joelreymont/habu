@@ -1,4 +1,5 @@
 \ The exact carrier grammar shared by capture, artifact merge and stripped link.
+require src/lib/string.f
 require src/lib/test.f
 require src/habu/layout.f
 require src/habu/address-carrier.f

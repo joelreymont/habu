@@ -1,5 +1,6 @@
 \ bundle-lib-test.f - checked fixtures for tools/bundle-lib.f.
 \ Run: bin/hb --load tools/bundle-lib-test.f (it requires what this file uses).
+require src/lib/string.f
 
 8192 constant BLTT-BUF-CAP
 $20000 constant BLTT-BUNDLE-CAP

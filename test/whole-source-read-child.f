@@ -10,6 +10,7 @@
 \ GROW, MODE one of check, json, all, dep, origin, origin-refused and
 \ lsp, GROW the file to grow.
 
+require src/lib/string.f
 require src/lib/fs.f
 
 package WHOLE-SOURCE-READ-CHILD

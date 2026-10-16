@@ -1,3 +1,4 @@
+require src/lib/string.f
 require src/lib/f64-text.f
 require src/lib/test.f
 

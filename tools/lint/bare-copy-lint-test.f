@@ -6,6 +6,7 @@
 \ LINT-SCAN the tree census runs, so a fixture that passes here is a fact about
 \ the census and not about a copy of its rule.
 
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/process-argv.f

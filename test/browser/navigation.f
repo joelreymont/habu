@@ -1,5 +1,6 @@
 \ navigation.f - Wasm fixture for the browser navigation, tree and highlight
 \ protocol. Build with tools/wasm-build.f, entry NAV:TURN.
+require src/lib/string.f
 
 package NAV
 private

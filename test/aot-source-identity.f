@@ -1,4 +1,5 @@
 \ Moving bytes across file boundaries must invalidate an artifact's source key.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f

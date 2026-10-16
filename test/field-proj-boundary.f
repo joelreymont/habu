@@ -1,4 +1,5 @@
 \ The current checker and production sealing pass own both child tiers.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/process.f

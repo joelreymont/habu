@@ -13,6 +13,7 @@
 \ under the printed test root for independent inspection.
 
 require tools/hb-build-test-lib.f
+require src/lib/string.f
 require src/lib/engine-candidate.f
 
 \ The shared fixture's words are private words of the library's package, so

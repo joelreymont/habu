@@ -1,5 +1,6 @@
 \ runtime-regression-test.f - unique engine runtime recovery regressions.
 
+require src/lib/string.f
 require test/gate-common.f
 
 package RUNTIME-RUNNER

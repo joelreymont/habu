@@ -1,6 +1,7 @@
 \ Exact address-row IO and MERGE through files, with independently chosen fields,
 \ and a closure list whose last path length is forged under an honest digest.
 \ Run with an artifact path and case name; the registered capture suite owns both.
+require src/lib/string.f
 require src/lib/le.f
 require test/aot-artifact-roundtrip.f
 

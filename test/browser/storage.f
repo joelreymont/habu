@@ -12,6 +12,7 @@
 \ the host's bytes, so a host page the module cleared or wrote changes it.
 \ Pointer releases the buffer and reserves two pages, which take P back cleared,
 \ and answers "x,y". A failed check throws its code, which the host shows.
+require src/lib/string.f
 package STORAGE-TURN
 private
 

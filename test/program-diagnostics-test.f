@@ -2,6 +2,7 @@
 
 require test/gate-common.f
 require test/whitebox-child.f
+require src/lib/string.f
 require src/lib/fmt.f
 
 package PROGRAM-DIAGNOSTICS

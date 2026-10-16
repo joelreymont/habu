@@ -1,5 +1,6 @@
 \ gate-build-common.f - checked helpers for native hb-build tests.
 
+require src/lib/string.f
 require src/lib/memory.f
 require tools/json.f
 require tools/gate-json-assert-core.f

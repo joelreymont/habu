@@ -6,6 +6,7 @@
 \ case and reads the exit status and both streams.
 \ Run: bin/hb --load test/ffi-callback-child.f -- <case>
 require test/ffi-callback-fixture.f
+require src/lib/string.f
 require src/lib/image-lifecycle.f
 require src/lib/task.f
 

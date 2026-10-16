@@ -12,6 +12,7 @@
 \
 \ Run: bin/hb --load test/gate-env-stdin-tty-test.f
 
+require src/lib/string.f
 require src/lib/test.f
 require test/gate-common.f
 require src/lib/pty.f

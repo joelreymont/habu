@@ -1,6 +1,7 @@
 \ gate-aot-negative-cases.f - the AOT closure rejection checks, run on the keyed
 \ linker image by test/gate-aot-negative.f (see test/preloaded-engine.f).
 
+require src/lib/string.f
 require src/lib/source.f
 require tools/json.f
 require tools/gate-json-assert-core.f

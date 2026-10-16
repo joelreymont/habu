@@ -28,6 +28,7 @@
 \ input, tree and highlight records through the same host. The modules stay in
 \ the printed directories.
 
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

@@ -2,6 +2,7 @@
 \ runtime source changes before object storage. The next build takes the edit.
 \ Run from a private copy of the tree via hb-build-producer-cache-test.f.
 
+require src/lib/string.f
 require src/lib/test.f
 require tools/hb-build-lib.f
 

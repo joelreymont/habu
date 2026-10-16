@@ -1,5 +1,6 @@
 \ End-to-end parity of framed, isolated reference checks with independent
 \ verifier children. Run: bin/hb --load tools/check-verify-batch-test.f
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require tools/check-verify-core.f

@@ -2,6 +2,7 @@
 \ the engine literals an application reaches must link however full its literal
 \ pool is. The retained-literal image is tested by test/stripped-image.f;
 \ mutable pre-window DATA is tested by test/compiler/aot-data-cell-refusals.f.
+require src/lib/string.f
 require test/gate-common.f
 require test/aot-maker-engine.f
 

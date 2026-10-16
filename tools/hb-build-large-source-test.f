@@ -5,6 +5,7 @@
 \ rows.
 \ Run: bin/hb --load tools/hb-build-large-source-test.f
 
+require src/lib/string.f
 require tools/hb-build-test-lib.f
 require test/preloaded-engine.f
 

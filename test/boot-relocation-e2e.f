@@ -6,6 +6,7 @@
 \ the engine its own path: the tree must still be found, and ENGINE-ID:PATH$
 \ must still throw E-ENGINE-PATH. The engine does not bake src/lib/engine-id.f, so
 \ the copy holds it for the child. Keep the children and their logs.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

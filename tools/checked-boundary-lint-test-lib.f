@@ -5,6 +5,7 @@
 \ tools/checked-boundary-lint-test.f
 \ The registry sweeps below read the committed hook-site files, so this test
 \ must run with the repository root as the working directory.
+require src/lib/string.f
 
 package CBLT
 

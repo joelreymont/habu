@@ -3,6 +3,7 @@
 \ fail closed, an output that cannot be opened is refused by name and creates
 \ nothing, a failed final close is reported and leaves the output path as it
 \ was, and a capture with a definition or quotation open is refused.
+require src/lib/string.f
 require src/lib/test.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f

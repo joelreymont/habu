@@ -1,4 +1,5 @@
 \ Exercise current registry source through the real replacement-owner load.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/process.f

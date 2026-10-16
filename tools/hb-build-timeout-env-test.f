@@ -1,6 +1,7 @@
 \ hb-build-timeout-env-test.f - checked maker deadline override validation.
 \ Run: bin/hb --load tools/hb-build-timeout-env-test.f
 
+require src/lib/string.f
 require tools/hb-build-test-lib.f
 
 package HB-BUILD-CLI

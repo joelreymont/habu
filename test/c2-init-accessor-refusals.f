@@ -1,5 +1,6 @@
 \ Generated initialized-field words keep their receiver, value, and private
 \ representation boundaries through ordinary source evaluation at both tiers.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/subject.f
 require test/c2-init-accessors.f

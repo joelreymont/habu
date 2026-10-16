@@ -36,6 +36,7 @@
 
 require test/checker-assert.f
 require src/habu/verify-source.f
+require src/lib/string.f
 require src/lib/test/subject.f
 require src/lib/test.f
 

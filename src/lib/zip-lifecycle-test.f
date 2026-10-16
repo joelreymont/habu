@@ -1,4 +1,5 @@
 \ zip-lifecycle-test.f - live ZIP archives retired by image preparation.
+require src/lib/string.f
 require src/lib/zip.f
 require src/lib/zip-test-fixture.f
 require src/lib/test.f
