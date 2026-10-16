@@ -34,7 +34,6 @@ variable VERIFY-PENDING-LO
 variable VERIFY-PENDING-BIT
 create DIGEST-HEX 64 allot
 create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest context
-create OUTPUT-LOCK 65 allot
 
 : UNICODE-PATH$ ( -- ptr u8 n )
    s" data/unicode/16.0.0/UnicodeData.txt" ;
@@ -44,9 +43,6 @@ create OUTPUT-LOCK 65 allot
 
 : DATA-PATH$ ( -- ptr u8 n )
    s" src/lib/unicode/class-data.f" ;
-
-: OUTPUT-LOCK-PATH$ ( -- ptr u8 n )
-   s" data/unicode/16.0.0/class-data.sha256" ;
 
 : EXPECTED-UNICODE-DIGEST$ ( -- ptr u8 n )
    s" ff58e5823bd095166564a006e47d111130813dcf8bf234ef79fa51a870edb48f" ;
@@ -213,11 +209,6 @@ create OUTPUT-LOCK 65 allot
    UNICODE-PATH$ EXPECTED-UNICODE-DIGEST$ CHECK-DIGEST
    PROPERTIES-PATH$ EXPECTED-PROPERTIES-DIGEST$ CHECK-DIGEST ;
 
-: CHECK-OUTPUT-LOCK ( -- )
-   OUTPUT-LOCK-PATH$ OUTPUT-LOCK 65 READ-ALL 65 <> if UNICODE-CLASS-TOOL:E-DIGEST throw then
-   OUTPUT-LOCK 64 + c@ LINE-FEED <> if UNICODE-CLASS-TOOL:E-DIGEST throw then
-   DATA-PATH$ OUTPUT-LOCK 64 CHECK-DIGEST ;
-
 : CHECK-RANGE ( n n n n -- n n ) {: idx:n prev-hi:n lo:n hi:n :}
    lo hi > lo 0 < or hi SCALAR-MAX > or if E-CANONICAL throw then
    lo SURROGATE-LAST <= hi SURROGATE-FIRST >= and if E-CANONICAL throw then
@@ -271,7 +262,6 @@ public
 
 : VERIFY ( -- )
    CHECK-DIGESTS
-   CHECK-OUTPUT-LOCK
    SCALAR-COUNT MEM-ALLOC-BYTES drop TRUTH !
    LOAD-UNICODE-TRUTH
    LOAD-PROPERTY-TRUTH

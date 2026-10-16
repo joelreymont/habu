@@ -12,16 +12,13 @@ The generator reads only the two authoritative property files below. The
 | `PropList.txt` | `https://www.unicode.org/Public/16.0.0/ucd/PropList.txt` | `53d614508e2a0b2305a8aa21cd60d993de9326cdf65993660dfcce4503548583` |
 | `LICENSE.txt` | `https://www.unicode.org/license.txt` | `e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96` |
 
-The generated runtime artifact `src/lib/unicode/class-data.f` has SHA-256
-`ab6d51dabdc76e59d1f4960bdeae526322942fc1fb3aab80a5ac6737cf205370`.
-It is 31,425 bytes and contains 677 canonical letter ranges, 144 number
-ranges, 10 whitespace ranges, 12 letter-number ranges, 250 Other_Alphabetic
-ranges, 651 uppercase-letter ranges and 5 Other_Uppercase ranges.
-The same value is stored alone in `class-data.sha256`, outside the generated
-source so the lock is not self-referential. The generator verifies both input
-digests before parsing, writes the table and lock atomically one file at a
-time, and the independent verifier requires the lock, the actual output hash,
-and a fresh byte-identical regeneration to agree.
+The generated runtime artifact `src/lib/unicode/class-data.f` contains 677
+canonical letter ranges, 144 number ranges, 10 whitespace ranges, 12
+letter-number ranges, 250 Other_Alphabetic ranges, 651 uppercase-letter ranges
+and 5 Other_Uppercase ranges.
+The generator verifies both input digests before parsing and writes the table
+atomically. The independent verifier checks every scalar against the source
+properties and compares the table with a fresh byte-identical regeneration.
 
 ## Why this version matches the GPT-2 reference
 

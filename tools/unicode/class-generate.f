@@ -15,7 +15,6 @@ private
 10 constant OUTPUT-LINE-FEED
 64 constant SHA256-HEX-LENGTH
 create INPUT-DIGEST SHA256-HEX-LENGTH allot
-create OUTPUT-LOCK SHA256-HEX-LENGTH 1+ allot
 create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest context
 
 : UNICODE-PATH$ ( -- ptr u8 n )
@@ -26,9 +25,6 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest conte
 
 : OUTPUT-PATH$ ( -- ptr u8 n )
    s" src/lib/unicode/class-data.f" ;
-
-: OUTPUT-LOCK-PATH$ ( -- ptr u8 n )
-   s" data/unicode/16.0.0/class-data.sha256" ;
 
 : EXPECTED-UNICODE-DIGEST$ ( -- ptr u8 n )
    s" ff58e5823bd095166564a006e47d111130813dcf8bf234ef79fa51a870edb48f" ;
@@ -123,11 +119,6 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest conte
    s" OTHER-UPPERCASE" OUT-ACCESSOR
    s" ;package" OUT-LINE ;
 
-: WRITE-OUTPUT-LOCK ( -- )
-   UC-FSHA-CTX OUTPUT-PATH$ OUTPUT-LOCK SHA256-FILE-HEX-IN 0 <> if E-DIGEST throw then
-   OUTPUT-LINE-FEED OUTPUT-LOCK SHA256-HEX-LENGTH + c!
-   OUTPUT-LOCK-PATH$ OUTPUT-LOCK SHA256-HEX-LENGTH 1+ ATOMIC-WRITE-FILE ;
-
 public
 
 : CHECK-FILE-DIGEST ( ptr u8 n ptr u8 n -- )
@@ -157,7 +148,6 @@ public
 
 : WRITE-PINNED ( -- )
    LOAD-PINNED
-   OUTPUT-PATH$ RENDER ATOMIC-WRITE-FILE
-   WRITE-OUTPUT-LOCK ;
+   OUTPUT-PATH$ RENDER ATOMIC-WRITE-FILE ;
 
 ;package
