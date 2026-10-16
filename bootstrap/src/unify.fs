@@ -1,5 +1,5 @@
 \ unify.fs — the three mutually-recursive unifiers + the deep occurs seams.
-\ Schemes/instantiation (PARSE-SIG) and rendering (GENERALIZE) live in sig.fs.
+\ Signature parsing and rendering live in sigparse.fs and render.fs.
 
 defer UNIFY-TYPE   ( a b -- )       \ forward (filled below; mutual with UNIFY-ROW)
 defer UNIFY-ROW    ( s1 s2 -- )
