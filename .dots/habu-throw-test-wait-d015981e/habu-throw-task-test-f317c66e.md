@@ -1,9 +1,11 @@
 ---
 title: Throw task-test stop wait deadlines
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-16T16:28:19.647989+03:00"
+closed-at: "2026-10-16T22:31:33.556121+03:00"
+close-reason: "Landed: STOP-REACH replaces STOP-REACHED? on TEST-WAIT:POLL; the three deadline TTRUEs are gone. Proofs: row tasking-threads rc 0 test: ok; forced copy (no STOP-EARLY-DONE publication) rc 67, stdout 'task-test STOP-REACH: a deadline expired', last stderr 'hb: uncaught throw code -2502'; the same edit before the change gave rc 1 F297. Fable review APPROVE."
 ---
 
 Problem: the parent's rule (a wait whose clock ends throws E-PROC-TIMEOUT after one named stdout line; a task records it and main throws it at the join; no deadline raised) is broken in the files below. The parent holds the shared interface (`TEST-WAIT:EXPIRED`, `TEST-WAIT:POLL` in src/lib/test/wait.f), the rulings and the proof notation `P(name)`.
@@ -24,4 +26,4 @@ Run `tasking-threads`: `src/lib/task-test.f` (`gate-stdlib-cases.f:1515–1517`)
 
 The three deadline assertions disappear. Actual wake, cleanup, task-error, and elapsed-time assertions remain.
 
-Files: src/lib/task-test.f. Verify: the rows and forced copies under Proof. Depends: habu-share-a-named-85cc93f5. Ownership: the files above. Claim: unassigned.
+Files: src/lib/task-test.f. Verify: the rows and forced copies under Proof. Depends: habu-share-a-named-85cc93f5. Ownership: the files above. Claim: agent=worker workspace=.jj-ws/jerry-wait-d5.

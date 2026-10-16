@@ -12,6 +12,7 @@ require src/habu/task-abi.f       \ the baked TCB size this suite pins
 require src/habu/code-bytes.f     \ CODE-BYTES:AT: the byte view the entry is read through
 require src/lib/adt/result.f          \ the join's answer is MATCHed here
 require src/lib/test/outcome.f
+require src/lib/test/wait.f
 require test/checker-assert.f
 
 package TASK-TEST
@@ -1149,7 +1150,7 @@ TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
 \ WAKE is a hint and STOP waits for one, so every case here re-checks its own
 \ cell after the STOP returns instead of treating the wake-up as the message.
 16 constant STOP-ITEM-N
-2000 constant STOP-HINT-MS           \ a lost hint parks forever: the bound makes that a FAIL
+2000 constant STOP-HINT-MS           \ a lost hint parks forever: the bound ends STOP-REACH
 5 constant STOP-PARK-MS              \ grace for the target to reach its STOP
 
 TASK:MIN-STACK TASK:TASK STOP-PROD
@@ -1178,15 +1179,13 @@ PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared
       TASK:STOP
    again ;
 
-\ True when the cell reached the value inside STOP-HINT-MS, false when the wait
-\ ran out - a hint that was dropped is a failed case, not a hung suite.
-: STOP-REACHED? ( ptr n n -- bool ) {: cell:ptr want:n :}
-   mono-ns STOP-HINT-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      cell atomic@ want = if 0 0= exit then
-      mono-ns deadline > if 0 0= 0= exit then
-      TASK:PAUSE
-   again ;
+\ Returns once the cell holds the value. A hint that was dropped is no false
+\ answer and no hung suite: at STOP-HINT-MS the wait is EXPIRED as
+\ task-test STOP-REACH, so the row ends as a timeout.
+: STOP-REACH ( ptr n n -- )
+   [: 2dup swap atomic@ = ;]
+   mono-ns STOP-HINT-MS NS-PER-MS * + s" task-test STOP-REACH" TEST-WAIT:POLL
+   2drop ;
 
 : STOP-PROD-WORK ( -- )
    STOP-ITEM-N 1 + 1 ?do
@@ -1235,7 +1234,7 @@ PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared
    ['] STOP-EARLY-WORK STOP-EARLY TASK:ACTIVATE
    STOP-EARLY TASK:WAKE
    STOP-GATE TASK:SIGNAL
-   STOP-EARLY-DONE 1 STOP-REACHED? TTRUE
+   STOP-EARLY-DONE 1 STOP-REACH
    STOP-EARLY APP-WAIT-DONE
    STOP-EARLY TASK:THROW@ 0 T=
    STOP-EARLY TASK:KILL
@@ -1252,7 +1251,7 @@ PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared
    0 STOP-PARKED !
    ['] JOIN-MARK STOP-HALTED TASK:AT-EXIT
    ['] STOP-HALTED-WORK STOP-HALTED TASK:ACTIVATE
-   STOP-PARKED 1 STOP-REACHED? TTRUE
+   STOP-PARKED 1 STOP-REACH
    STOP-PARK-MS TASK:SLEEP
    STOP-HALTED TASK:HALT
    STOP-HALTED APP-WAIT-DONE
@@ -1677,8 +1676,7 @@ variable EXPOSE-WOKE
    EXPOSE-WOKE atomic@ 0 T=
    s" ... which still waits in its STOP, so its WAKE is admitted" T-LABEL
    [: EXPOSE-WAKE TASK:WAKE ;] catch 0 T=
-   s" ... and releases it" T-LABEL
-   EXPOSE-WOKE 1 STOP-REACHED? TTRUE
+   EXPOSE-WOKE 1 STOP-REACH
    EXPOSE-WAKE TASK:KILL
    s" the case gives the live count back" T-LABEL
    TASK-LIVE-COUNT base T= ;
