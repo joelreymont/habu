@@ -152,6 +152,7 @@ require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-argv.f
+require src/lib/process-env.f
 require src/habu/aot-ident.f
 require src/habu/fdio.f
 require src/habu/address-carrier.f
@@ -420,9 +421,12 @@ variable RC
    s" --" >LEN PROC-ARGV+
    m mu >LEN PROC-ARGV+ ;
 
+\ The child inherits this process's environment, so the artifact it makes
+\ lies under the HB_TMP this run was given.
 : RUN-CHILD ( -- )
+   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
    s" bin/hb" >LEN  EMPTY 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  CHILD-MS >MS
-   RUN-ARGV-STDIN-CAPTURE
+   RUN-ARGV-ENV-STDIN-CAPTURE
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 : SHOW-CHILD ( -- )

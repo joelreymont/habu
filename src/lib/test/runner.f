@@ -7,6 +7,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
+require src/lib/process-env.f
 require src/lib/test/record.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text, shared builder untouched
 
@@ -156,9 +157,13 @@ variable GT-TAIL-U
 : GT-CAPTURE-STORE ( -- )
    PROC-CAPTURE-OUTCOME@ GT-STORE-RUN ;
 
+\ A test's child: path with the argv the caller staged. The child inherits this
+\ process's environment, so the scratch it makes lies under the HB_TMP this run
+\ was given.
 : GT-RUN ( ptr u8 n n -- ) {: path:ptr pathu timeout :}
+   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
    path pathu >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN timeout >MS
-   RUN-ARGV-CAPTURE-OUTCOME
+   RUN-ARGV-ENV-CAPTURE-OUTCOME
    GT-STORE-RUN ;
 
 : GT-CAPTURE-DRAIN ( -- )

@@ -160,14 +160,17 @@ variable GPT-ROOT-SAVE-U
    SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ a u STR= exit then
    0 0= 0= ;
 
+\ The child inherits this process's environment, so the root its GT-START
+\ makes lies under the HB_TMP this run was given.
 : GPT-MODE-CAPTURE ( ptr u8 n -- n n n ) {: mode:ptr modeu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    s" test/gate-pool-test.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    mode modeu >LEN PROC-ARGV+
+   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
    GPT-HB$ >LEN GPT-OUT GPT-CAP >LEN GPT-ERR GPT-CAP >LEN
-   GPT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
+   GPT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    PCAP-RESULT:>N ;
 
 : GPT-BATTERY-CAPTURE ( -- n n n )
