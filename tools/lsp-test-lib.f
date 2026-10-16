@@ -5833,11 +5833,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 : TEXT-BI-SHADOW ( -- ptr u8 n )
    s\" package SH\n: SCRIPT-ARGC ( -- n ) 1 ;\n: S ( -- n ) SCRIPT-ARGC ;\n;package\n" ;
 : BI-A-PATH ( -- ptr u8 n )  s" refs-builtin/w/a.f" FIXTURE ;
-: BI-SOURCE-PATH ( -- ptr u8 n )  s" src/os/script-argv.f" IN-TREE ;
 \ The image's saved byte for SCRIPT-ARGC: where its declaration's name starts
 \ in the file. The fake puts the same spelling there as an ordinary use.
 : BI-FAKE-AT ( -- n )
-   BI-SOURCE-PATH TREE-READ s" : SCRIPT-ARGC " LINE-START 2 + ;
+   SCRIPT-ARGV-PATH TREE-READ s" : SCRIPT-ARGC " LINE-START 2 + ;
 : BI-SOURCE-FAKE$ ( -- ptr u8 n )
    TXT-B CLEAR
    BI-FAKE-AT 0 ?do s"  " HV+ loop
@@ -5866,39 +5865,39 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s\" ,\"newName\":\"CROW\"" AT-ASK-WITH
    SAY
    s" 3" SYMBOLS-START
-   BI-SOURCE-PATH s" : SCRIPT-ARGC " URI-LINE 2 13 REF+ BI-USES+ SYMBOLS-END
+   SCRIPT-ARGV-PATH s" : SCRIPT-ARGC " URI-LINE 2 13 REF+ BI-USES+ SYMBOLS-END
    s" 4" SYMBOLS-START BI-USES+ SYMBOLS-END
    s" 12" SYMBOLS-START
-   BI-SOURCE-PATH s" : SCRIPT-ARG-START " URI-LINE 2 18 REF+
+   SCRIPT-ARGV-PATH s" : SCRIPT-ARG-START " URI-LINE 2 18 REF+
    s" refs-builtin/w/a.f" OPEN-URI 1 13 29 REF+
    SYMBOLS-END
    HEAR s" 10" -32803 REFUSED
    HEAR s" 11" -32803 REFUSED
-   BI-SOURCE-PATH 2dup TREE$ 1 OPENS
+   SCRIPT-ARGV-PATH 2dup TREE$ 1 OPENS
    STREAM
-   BI-SOURCE-PATH 1 EXPECT PUBLISHES
+   SCRIPT-ARGV-PATH 1 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
-   s" 5" BI-SOURCE-PATH s" : SCRIPT-ARGC " PATH-LINE 3 DECL-TOO REFS-ASK
-   s" 6" BI-SOURCE-PATH s" : SCRIPT-ARGC " PATH-LINE 3 DECL-NOT REFS-ASK
+   s" 5" SCRIPT-ARGV-PATH s" : SCRIPT-ARGC " PATH-LINE 3 DECL-TOO REFS-ASK
+   s" 6" SCRIPT-ARGV-PATH s" : SCRIPT-ARGC " PATH-LINE 3 DECL-NOT REFS-ASK
    SAY
-   1 NAMED BI-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
+   1 NAMED SCRIPT-ARGV-PATH s" engine-provided" NAMED+ NAMED-END
    s" 5" SYMBOLS-START
-   BI-SOURCE-PATH s" : SCRIPT-ARGC " URI-LINE 2 13 REF+ BI-USES+ SYMBOLS-END
-   1 NAMED BI-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
+   SCRIPT-ARGV-PATH s" : SCRIPT-ARGC " URI-LINE 2 13 REF+ BI-USES+ SYMBOLS-END
+   1 NAMED SCRIPT-ARGV-PATH s" engine-provided" NAMED+ NAMED-END
    s" 6" SYMBOLS-START BI-USES+ SYMBOLS-END
-   BI-SOURCE-FAKE$ BI-SOURCE-PATH 2swap 2 CHANGES
+   BI-SOURCE-FAKE$ SCRIPT-ARGV-PATH 2swap 2 CHANGES
    SAY
-   BI-SOURCE-PATH 2 EXPECT PUBLISHES
+   SCRIPT-ARGV-PATH 2 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 7" BI-A-PATH 0 16 DECL-TOO REFS-ASK
    BI-FAKE-AT 1+ {: fake:n :}
-   s" 8" BI-SOURCE-PATH 0 fake DECL-TOO REFS-ASK
+   s" 8" SCRIPT-ARGV-PATH 0 fake DECL-TOO REFS-ASK
    s" 9" BI-A-PATH 0 16 DECL-NOT REFS-ASK
    SAY
-   1 NAMED BI-SOURCE-PATH s" built-in source cannot be located" NAMED+ NAMED-END
+   1 NAMED SCRIPT-ARGV-PATH s" built-in source cannot be located" NAMED+ NAMED-END
    s" 7" SYMBOLS-START BI-USES+ SYMBOLS-END
    s" 8" SYMBOLS-START SYMBOLS-END
-   1 NAMED BI-SOURCE-PATH s" engine-provided" NAMED+ NAMED-END
+   1 NAMED SCRIPT-ARGV-PATH s" engine-provided" NAMED+ NAMED-END
    s" 9" SYMBOLS-START BI-USES+ SYMBOLS-END ;
 
 \ A checked word loaded before origin recording and a public word in an
