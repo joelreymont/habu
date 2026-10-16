@@ -105,6 +105,7 @@ variable SERVER-STOP
 variable SERVER-DONE
 variable SERVER-BAD
 variable SERVER-ERRNO
+variable SERVER-EXPIRED                 \ atomic: EXPIRED-NONE, or the server wait whose deadline ran out
 variable SERVER-HITS
 variable RETRY-POST-HITS
 variable SILENT-LISTENER
@@ -125,6 +126,10 @@ TYPED-VARIABLE HEADER-HANDLE CURL:handle
 0 constant KIND-RESPONSE
 1 constant KIND-TRUNCATED
 2 constant KIND-FAILED
+
+0 constant EXPIRED-NONE                 \ the server task has recorded no deadline
+1 constant EXPIRED-ACK                  \ STREAM-WAIT-ACK ran out before the case acknowledged
+2 constant EXPIRED-RETRY                \ RETRY-NEXT ran out before either readiness
 
 TASK:MIN-STACK TASK:TASK SERVER-TASK
 
@@ -455,11 +460,14 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    s" Connection: close" RES+ CRLF+ CRLF+ ;
 
 
+\ True once the case acknowledged the first chunk. A wait that runs out records
+\ EXPIRED-ACK for main to report at the join, before SERVE-STREAM closes the
+\ connection, and answers false.
 : STREAM-WAIT-ACK ( -- bool )
    mono-ns REQUEST-MS NS-PER-MS * + {: deadline:n :}
    begin
       STREAM-ACK atomic@ 0 <> if true exit then
-      mono-ns deadline > if false exit then
+      mono-ns deadline > if EXPIRED-ACK SERVER-EXPIRED atomic! false exit then
       1 >MS TASK:SLEEP
    again ;
 
@@ -471,8 +479,6 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    STREAM-WAIT-ACK if
       conn STREAM-BUF 3 + STREAM-U 3 - TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS
       1 STREAM-DONE atomic!
-   else
-      1 SERVER-BAD +!
    then
    conn TCP4:SENDING TCP4:SHUTDOWN PEER-STATUS
    conn DRAIN
@@ -558,14 +564,16 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 
 \ Answer 1 only when the pooled socket is readable, 0 only when a fresh
-\ connection is pending, and -1 on a fixture failure. A deadline cannot stand
-\ in for evidence of a fresh connection: the client may not have started yet.
+\ connection is pending, and -1 when the fixture path ends: on a fixture fault,
+\ counted in SERVER-BAD, or on the deadline, which is no fault and is recorded
+\ as EXPIRED-RETRY for main to report at the join. A deadline cannot stand in
+\ for evidence of a fresh connection: the client may not have started yet.
 : RETRY-NEXT ( TCP4:connection -- n ) {: conn:TCP4:connection :}
    conn TCP4:CONNECTION-FD RETRY-POLLS RETRY-POLL-FD!
    LISTENER@ TCP4:LISTENER-FD RETRY-POLLS 8 + RETRY-POLL-FD!
    mono-ns REQUEST-MS NS-PER-MS * + {: deadline:n :}
    begin
-      mono-ns deadline >= if 1 SERVER-BAD +! -1 exit then
+      mono-ns deadline >= if EXPIRED-RETRY SERVER-EXPIRED atomic! -1 exit then
       RETRY-POLLS 2 deadline mono-ns - NS-PER-MS 1- + NS-PER-MS / poll
       {: result:n :}
       result 0 > if
@@ -726,16 +734,58 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 
 : START-SERVER ( -- )
+   EXPIRED-NONE SERVER-EXPIRED atomic!
    ['] SERVER-WORK SERVER-TASK TASK:ACTIVATE
    WAIT-READY ;
 
 
-: STOP-SERVER ( -- )
+\ Ends the server task and closes its listener.
+: END-SERVER ( -- )
    1 SERVER-STOP atomic-add drop
    WAKE-SERVER
    WAIT-DONE
    SERVER-TASK TASK:KILL
    LISTENER@ TCP4:CLOSE-LISTENER SERVER-STATUS ;
+
+
+\ The server wait a recorded deadline names.
+: EXPIRED-NAME ( n -- ptr u8 n )
+   EXPIRED-ACK = if s" curl-test STREAM-WAIT-ACK" exit then
+   s" curl-test RETRY-NEXT" ;
+
+
+\ Main's report of the deadline the server task recorded, once the task has
+\ ended. A server fault beside the deadline is a genuine failure and wins: it is
+\ asserted, and the run ends there, reading nothing more the server left.
+\ Otherwise the wait is named and its deadline thrown.
+: REPORT-EXPIRED ( n -- )
+   {: reason:n :}
+   SERVER-BAD @ 0<> SERVER-ERRNO @ 0<> or if
+      s" the server task reported no fault beside its deadline" T-LABEL
+      SERVER-BAD @ 0 T=
+      SERVER-ERRNO @ 0 T=
+      T-REPORT
+   then
+   reason EXPIRED-NAME TEST-WAIT:EXPIRED ;
+
+
+\ Main's join at a client result: once the server task has recorded a deadline,
+\ main ends the task and reports the deadline before the result is read. The
+\ client's result followed that deadline, so no code of it is asserted.
+: JOIN-SERVER ( -- )
+   SERVER-EXPIRED atomic@ {: reason:n :}
+   reason EXPIRED-NONE = if exit then
+   END-SERVER
+   reason REPORT-EXPIRED ;
+
+
+\ Ends the server task and reports a deadline it recorded that no client result
+\ joined, before any case reads its counters.
+: STOP-SERVER ( -- )
+   END-SERVER
+   SERVER-EXPIRED atomic@ {: reason:n :}
+   reason EXPIRED-NONE = if exit then
+   reason REPORT-EXPIRED ;
 
 
 \ Nobody accepts on this listener: the kernel completes a client's connection
@@ -1411,7 +1461,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
 : MULTI-FETCH ( CURL:handle len -- ) {: subject:CURL:handle capacity:len :}
    RESULT-RESET
    subject BODY-BUF capacity CURL:START EXPECT-OK
-   subject AWAIT-ONE ;
+   subject CURL:AWAIT JOIN-SERVER false RECORD-RESULT ;
 
 
 : STREAM-APPEND ( len -- ) {: u:len :}
@@ -1423,7 +1473,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
 
 : STREAM-FIRST ( CURL:handle -- ) {: subject:CURL:handle :}
    STREAM-CAP 0 do FILL-BYTE STREAM-CHUNK i + c! loop
-   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT JOIN-SERVER
    MATCH CURL:chunk-result
       chunk OF
          swap CURL:HTTP-STATUS>N 200 T=
@@ -1440,7 +1490,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
 
 : STREAM-REMAINING ( CURL:handle -- ) {: subject:CURL:handle :}
    begin
-      subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+      subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT JOIN-SERVER
       MATCH CURL:chunk-result
          chunk OF
             swap CURL:HTTP-STATUS>N 200 T=

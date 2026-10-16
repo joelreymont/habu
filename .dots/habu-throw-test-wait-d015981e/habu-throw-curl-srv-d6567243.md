@@ -1,9 +1,11 @@
 ---
 title: Throw curl server deadlines at the join
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-16T16:28:19.606639+03:00"
+closed-at: "2026-10-16T23:38:40.770823+03:00"
+close-reason: "Landed: curl-test's server task records its ack and retry deadlines in SERVER-EXPIRED (no SERVER-BAD increment), and main joins them with JOIN-SERVER at each client result (MULTI-FETCH, STREAM-FIRST, STREAM-REMAINING) and at STOP-SERVER: a server fault beside the deadline is asserted and ends the run, otherwise 'curl-test STREAM-WAIT-ACK' or 'curl-test RETRY-NEXT' is named and E-PROC-TIMEOUT thrown; no client code is asserted once the server recorded a deadline. Proofs: row curl-http rc 0; forced ack and retry copies rc 67 with one named line each; ack plus a server fault rc 1 with only the fault's TFAIL; master code forced the same way rc 67 after TFAILs or named NOT-TIMEOUT. Astra review: one Medium (a fault discarded the deadline); kept fault precedence per the family's peer-join ruling and removed CAUSED? and the client-code plumbing; Astra follow-up APPROVE."
 ---
 
 Problem: the parent's rule (a wait whose clock ends throws E-PROC-TIMEOUT after one named stdout line; a task records it and main throws it at the join; no deadline raised) is broken in the files below. The parent holds the shared interface (`TEST-WAIT:EXPIRED`, `TEST-WAIT:POLL` in src/lib/test/wait.f), the rulings and the proof notation `P(name)`.
@@ -32,4 +34,4 @@ Run `curl-http`. In separate copies, suppress `STREAM-ACK` and prevent both read
 
 Deadline publication precedes connection closure. Workers assert nothing about expiry. Genuine poll errors and server counts retain their checks.
 
-Files: src/lib/net/curl-test.f. Verify: the rows and forced copies under Proof. Depends: habu-throw-curl-test-b42f5f17. Ownership: the files above. Claim: unassigned.
+Files: src/lib/net/curl-test.f. Verify: the rows and forced copies under Proof. Depends: habu-throw-curl-test-b42f5f17. Ownership: the files above. Claim: agent=worker workspace=.jj-ws/jerry-wait-d3.
