@@ -148,44 +148,6 @@ public
       E-CIE-FORM throw
    endcase ;
 
-\ How many operands the form carries. Both readers use it: the cases file to
-\ know how many to hand the emitter, the obligations file to know how many to
-\ write after the constructor.
-
-: NULLARY-FORM? ( n -- bool ) {: k:n :}
-   k F-RET = k F-BRK = or k F-NOP = or k F-DSB-ISH = or k F-ISB = or ;
-
-: UNARY-FORM? ( n -- bool ) {: k:n :}
-   k F-B = k F-BL = or k F-SVC = or k F-BLR = or k F-BR = or
-   k F-ICIVAU = or k F-DCCVAU = or ;
-
-\ The two SIMD forms with two operands are here for the same reason the two
-\ atomic memory forms are: a register and a register, whichever file each of
-\ them names. A vector load names the vector it fills and the general register
-\ holding the address; a reduction names the vector it writes and the vector it
-\ reads.
-: BINARY-FORM? ( n -- bool ) {: k:n :}
-   k F-LDAR = k F-STLR = or k F-CMP = or k F-CMPI = or k F-CSET = or
-   k F-BCOND = or k F-CBZ = or k F-CBNZ = or k F-ADR = or
-   k F-LD1V = or k F-UADDLV = or ;
-
-\ The forms with four operands, which are two pairs. A conditional select names
-\ a destination, two sources and the condition that chooses between them, and
-\ that is the same four whichever register file the three registers come out of.
-\ A multiply-add or multiply-subtract names a destination, the two registers it
-\ multiplies and the register it accumulates into, and there the fourth operand
-\ is a register like the other three.
-: QUATERNARY-FORM? ( n -- bool ) {: k:n :}
-   k F-CSEL = k F-FCSEL = or k F-MADD = or k F-MSUB = or ;
-
-: FORM-ARITY ( n -- n ) {: k:n :}
-   k 0 < k FORMS >= or if E-CIE-FORM throw then
-   k NULLARY-FORM? if 0 exit then
-   k UNARY-FORM? if 1 exit then
-   k BINARY-FORM? if 2 exit then
-   k QUATERNARY-FORM? if 4 exit then
-   3 ;
-
 \ The forms whose last operand is a label distance rather than a plain number.
 \ The cases file has to build a label that far away instead of pushing a value.
 : FORM-BRANCH? ( n -- bool ) {: k:n :}

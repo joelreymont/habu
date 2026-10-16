@@ -332,56 +332,11 @@ variable GE-EVAL-SRC-U
    a dst u BYTE-COPY
    u up ! ;
 
-: GE-FILES-WALK ( ptr u8 [ ptr u8 n -- ] -- ) {: p:ptr q :}
-   p begin dup c@ 0= 0= while
-      dup 1+ over c@ q execute
-      dup c@ 1 + +
-   repeat drop ;
-
-: GE-FILES-RUN ( [ ptr u8 n -- ] ptr u8 -- )
-   swap GE-FILES-WALK ;
-
-: GE-FILES-END? ( ptr u8 n -- bool )
-   s" ;GE-FILES" STR= ;
-
-: GE-FILES-ITEM, ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 < if E-STR-BOUNDS throw then
-   u STR-BYTE-MAX > if E-STR-BOUNDS throw then
-   u c,
-   0 begin dup u < while
-      dup a + c@ c,
-      1+
-   repeat drop ;
-
-: GE-FILES-PARSE ( -- )
-   begin
-      parse-name dup 0= if 2drop E-STR-BOUNDS throw then
-      2dup GE-FILES-END? if 2drop 0 c, exit then
-      GE-FILES-ITEM,
-   again ;
-
-: GE-FILES: ( -- )
-   create GE-FILES-PARSE
-   does> ( [ ptr u8 n -- ] -- )
-      GE-FILES-RUN ;
-
 : GE-HB-RESET ( -- )
    PROC-ARGV-ENV-RESET
    GE-ARGV-RESET ;
 
 : GE-HB$ ( -- ptr u8 n ) ENGINE-CANDIDATE:PATH$ ;
-
-: GE-BIN-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   label labelu GT-PROGRESS-RUN
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   label labelu GE-EXPECT-OK
-   label labelu GT-PROGRESS-PASS ;
-
-: GE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   label labelu GT-PROGRESS-RUN
-   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
-   label labelu GE-EXPECT-OK
-   label labelu GT-PROGRESS-PASS ;
 
 : GE-HB-RUN-STDIN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN

@@ -3,7 +3,6 @@
 
 require src/lib/prelude.f
 require src/lib/errors.f
-require src/lib/string.f
 
 package RELOC-PROOF
 public
@@ -24,44 +23,6 @@ public
 \ Follow the pure carrier module shared by the emitter, capture and inspection.
 : DECL-FILE$ ( -- ptr u8 n )
    s" src/habu/address-carrier.f" ;
-
-\ ---- what each vector row is there to show -----------------------------------
-\ Roles describe the relocation behavior each row exercises.
-
-0 constant ROLE-IDENTITY     \ same base both runs: the image comes back byte for byte
-1 constant ROLE-REBASE-UP    \ the restoring run's region sits above the writing run's
-2 constant ROLE-REBASE-DOWN  \ and below it, so the delta changes sign
-3 constant ROLE-BASE-FREE    \ a third writing base, and the identical canonical image
-4 constant ROLE-REFUSE       \ a recorded site that does not hold a call
-5 constant ROLE-XT-IDENTITY  \ a declared address cell, restored at the writing run's base
-6 constant ROLE-XT-REBASE    \ and at a different one
-7 constant ROLE-CH-IDENTITY  \ an address chain restored at the writing run's band base
-8 constant ROLE-CH-REBASE    \ and at a different one
-9 constant ROLE-CH-OTHER     \ a chain naming the OTHER band: this call must not touch it
-10 constant ROLE-CH-REFUSE   \ a recorded chain site whose fourth word is not a MOVK3
-11 constant ROLE-CH-WIDE     \ a move that changes every one of the four immediates
-12 constant ROLE-CH-REG      \ chains in registers the compiler's allocator chose, not x9
-13 constant ROLE-CH-MIXREG   \ a recorded chain whose four lanes name different registers
-14 constant ROLE-COUNT
-
-: ROLE-NAME$ ( n -- ptr u8 n )
-   case
-      0 of s" identity" endof
-      1 of s" rebase_up" endof
-      2 of s" rebase_down" endof
-      3 of s" base_free" endof
-      4 of s" refuse" endof
-      5 of s" xt_identity" endof
-      6 of s" xt_rebase" endof
-      7 of s" chain_identity" endof
-      8 of s" chain_rebase" endof
-      9 of s" chain_other_band" endof
-      10 of s" chain_refuse" endof
-      11 of s" chain_wide" endof
-      12 of s" chain_register" endof
-      13 of s" chain_mixed_register" endof
-      E-CRL-ROW throw
-   endcase ;
 
 \ A site holds either a call, written as a displacement in instruction units, or
 \ a raw word written whole. Both sides build a call word the same way from the
@@ -104,7 +65,6 @@ create SITE-V0 SITE-CAP cells allot
 create SITE-V1 SITE-CAP cells allot
 create SITE-V2 SITE-CAP cells allot
 
-create ROW-ROLE ROW-CAP cells allot
 create ROW-WOFF ROW-CAP cells allot
 create ROW-LOFF ROW-CAP cells allot
 create ROW-WORDS ROW-CAP cells allot
@@ -125,7 +85,6 @@ create ASITE-V0 SITE-CAP cells allot
 create ASITE-V1 SITE-CAP cells allot
 create ASITE-V2 SITE-CAP cells allot
 
-create AROW-ROLE ROW-CAP cells allot
 create AROW-WB ROW-CAP cells allot
 create AROW-CB ROW-CAP cells allot
 create AROW-LB ROW-CAP cells allot
@@ -143,7 +102,6 @@ create CELL-V0 CELL-CAP cells allot
 create CELL-V1 CELL-CAP cells allot
 create CELL-V2 CELL-CAP cells allot
 
-create XROW-ROLE ROW-CAP cells allot
 create XROW-DBW ROW-CAP cells allot
 create XROW-DBL ROW-CAP cells allot
 create XROW-BASE ROW-CAP cells allot
@@ -207,9 +165,8 @@ variable XOPEN-BASE
 : ROW ( -- )
    SITE-N @ OPEN-BASE ! ;
 
-: ;ROW ( n n n n n -- ) {: role:n woff:n loff:n words:n rc:n :}
+: ;ROW ( n n n n -- ) {: woff:n loff:n words:n rc:n :}
    ROW-N @ ROW-CAP >= if E-CRL-ROW throw then
-   role ROW-ROLE ROW-N @ cells + !
    woff ROW-WOFF ROW-N @ cells + !
    loff ROW-LOFF ROW-N @ cells + !
    words ROW-WORDS ROW-N @ cells + !
@@ -219,7 +176,7 @@ variable XOPEN-BASE
    ROW-N @ 1+ ROW-N ! ;
 
 \ ---- the call vector rows ----------------------------------------------------
-\ Read a block as: open, list every word of the region, close with the role, the
+\ Read a block as: open, list every word of the region, close with the
 \ region offset above __text the writing run got, the one the restoring run got,
 \ the region's length in words, and the exit status the writer's pass must
 \ report.
@@ -245,7 +202,7 @@ variable XOPEN-BASE
       5 7 BL-KEEP
       6 2550136831 RAW-KEEP
       7 5 RAW-KEEP
-   ROLE-IDENTITY $1400000 $1400000 8 0 ;ROW ;
+   $1400000 $1400000 8 0 ;ROW ;
 
 \ The writing run got the canonical offset itself, so its pass moves nothing;
 \ the restoring run's region sits four mebibytes higher, so the loader's pass
@@ -256,7 +213,7 @@ variable XOPEN-BASE
       1 -4194305 -4194305 -5242881 BL-SITE
       2 0 RAW-KEEP
       3 0 RAW-KEEP
-   ROLE-REBASE-UP $1000000 $1400000 4 0 ;ROW ;
+   $1000000 $1400000 4 0 ;ROW ;
 
 \ The restoring run's region sits four mebibytes LOWER than the writing run's,
 \ so both deltas are positive where the row above had one of each sign.
@@ -267,7 +224,7 @@ variable XOPEN-BASE
       1 0 RAW-KEEP
       2 -5238787 -4190211 -3141635 BL-SITE
       3 0 RAW-KEEP
-   ROLE-REBASE-DOWN $1400000 $C00000 4 0 ;ROW ;
+   $1400000 $C00000 4 0 ;ROW ;
 
 \ A third writing base, the same two callees as REBASE-UP-ROW, and therefore the
 \ same canonical words: -4192256 and -4194305 again. That is the whole
@@ -280,7 +237,7 @@ variable XOPEN-BASE
       1 -3145729 -4194305 -4194305 BL-SITE
       2 0 RAW-KEEP
       3 0 RAW-KEEP
-   ROLE-BASE-FREE $C00000 $1000000 4 0 ;ROW ;
+   $C00000 $1000000 4 0 ;ROW ;
 
 \ A recorded site holding a small integer instead of a call: the region bytes
 \ and the call map came from different builds, or one of them is damaged.
@@ -292,7 +249,7 @@ variable XOPEN-BASE
       0 -5240832 -4192256 -4192256 BL-SITE
       1 5 RAW-SITE
       2 -5240832 -5240832 -5240832 BL-SITE
-   ROLE-REFUSE $1400000 $1400000 3 95 ;ROW ;
+   $1400000 $1400000 3 95 ;ROW ;
 
 : BUILD-CALL-ROWS ( -- )
    0 SITE-N !
@@ -315,9 +272,8 @@ variable XOPEN-BASE
 : XROW ( -- )
    CELL-N @ XOPEN-BASE ! ;
 
-: ;XROW ( n n n -- ) {: role:n dbw:n dbl:n :}
+: ;XROW ( n n -- ) {: dbw:n dbl:n :}
    XROW-N @ ROW-CAP >= if E-CRL-ROW throw then
-   role XROW-ROLE XROW-N @ cells + !
    dbw XROW-DBW XROW-N @ cells + !
    dbl XROW-DBL XROW-N @ cells + !
    XOPEN-BASE @ XROW-BASE XROW-N @ cells + !
@@ -340,14 +296,14 @@ variable XOPEN-BASE
       0 0 0 CELL+
       $103550100 $300000100 $103550100 CELL+
       $103550000 $300000000 $103550000 CELL+
-   ROLE-XT-IDENTITY $103550000 $103550000 ;XROW ;
+   $103550000 $103550000 ;XROW ;
 
 : XT-REBASE-ROW ( -- )
    XROW
       0 0 0 CELL+
       $103550100 $300000100 $105A1D100 CELL+
       $103D50000 $300800000 $10621D000 CELL+
-   ROLE-XT-REBASE $103550000 $105A1D000 ;XROW ;
+   $103550000 $105A1D000 ;XROW ;
 
 : BUILD-XT-ROWS ( -- )
    0 CELL-N !
@@ -410,10 +366,9 @@ variable XOPEN-BASE
 : AROW ( -- )
    ASITE-N @ AOPEN-BASE ! ;
 
-: ;AROW ( n n n n n n n -- )
-   {: role:n wb:n cb:n lb:n blen:n words:n rc:n :}
+: ;AROW ( n n n n n n -- )
+   {: wb:n cb:n lb:n blen:n words:n rc:n :}
    AROW-N @ ROW-CAP >= if E-CRL-ROW throw then
-   role AROW-ROLE AROW-N @ cells + !
    wb AROW-WB AROW-N @ cells + !
    cb AROW-CB AROW-N @ cells + !
    lb AROW-LB AROW-N @ cells + !
@@ -425,7 +380,7 @@ variable XOPEN-BASE
    AROW-N @ 1+ AROW-N ! ;
 
 \ ---- the address-literal chain vector rows -----------------------------------
-\ Read a block as: open, list every slot of the region, close with the role, the
+\ Read a block as: open, list every slot of the region, close with the
 \ band base the writing run's region got, the canonical band base the image
 \ carries, the band base the restoring run got, the band's length, the region's
 \ length in words, and the exit status the writer's pass must report.
@@ -449,7 +404,7 @@ variable XOPEN-BASE
       4  $101000200 CHAIN-KEEP
       8  $1017FFFF0 $3007FFFF0 $1017FFFF0 CHAIN-SITE
       12 $101000300 CHAIN-DATA-KEEP
-   ROLE-CH-IDENTITY $101000000 $300000000 $101000000 $800000 16 0 ;AROW ;
+   $101000000 $300000000 $101000000 $800000 16 0 ;AROW ;
 
 \ The restoring run's region landed four and a bit mebibytes higher, so every
 \ recorded chain comes back naming the same word at the new base. Slot one sits
@@ -459,7 +414,7 @@ variable XOPEN-BASE
    AROW
       0 $101000100 $300000100 $105000100 CHAIN-SITE
       4 $1017FFFF0 $3007FFFF0 $1057FFFF0 CHAIN-SITE
-   ROLE-CH-REBASE $101000000 $300000000 $105000000 $800000 8 0 ;AROW ;
+   $101000000 $300000000 $105000000 $800000 8 0 ;AROW ;
 
 \ A recorded chain naming an address OUTSIDE the band this call is moving: a
 \ `[']` that names a PRIMITIVE, whose code is in the engine's
@@ -470,7 +425,7 @@ variable XOPEN-BASE
    AROW
       0 $1000A0 $1000A0 $1000A0 CHAIN-SITE
       4 $101000100 $300000100 $105000100 CHAIN-SITE
-   ROLE-CH-OTHER $101000000 $300000000 $105000000 $800000 8 0 ;AROW ;
+   $101000000 $300000000 $105000000 $800000 8 0 ;AROW ;
 
 \ A recorded slot whose FOURTH word is not a MOVK3: the region bytes and the
 \ address map came from different builds, or one of them is damaged. Rewriting
@@ -482,7 +437,7 @@ variable XOPEN-BASE
       0 $101000100 $300000100 $300000100 CHAIN-SITE
       4 3 $101000200 CHAIN-BROKEN
       8 $101000300 $101000300 $101000300 CHAIN-SITE
-   ROLE-CH-REFUSE $101000000 $300000000 $101000000 $800000 12 97 ;AROW ;
+   $101000000 $300000000 $101000000 $800000 12 97 ;AROW ;
 
 \ Every band base the engine actually hands the pass is 64 KiB aligned, and the
 \ canonical sentinel is too, so in an ordinary image the lowest immediate never
@@ -496,7 +451,7 @@ variable XOPEN-BASE
 : CHAIN-WIDE-ROW ( -- )
    AROW
       0 $23456789ACE34 $59BDEF0124634 $7111122224534 CHAIN-SITE
-   ROLE-CH-WIDE $23456789ABC00 $59BDEF0123400 $7111122223300 $10000 4 0 ;AROW ;
+   $23456789ABC00 $59BDEF0123400 $7111122223300 $10000 4 0 ;AROW ;
 
 \ The chain the NATIVE compiler emits does not name x9: its destination is
 \ whichever register the allocator gave the value. The pass takes that register
@@ -508,7 +463,7 @@ variable XOPEN-BASE
       0 0  $101000100 $300000100 $105000100 CHAIN-SITE-RD
       4 16 $101000200 $300000200 $105000200 CHAIN-SITE-RD
       8 31 $101000300 $300000300 $105000300 CHAIN-SITE-RD
-   ROLE-CH-REG $101000000 $300000000 $105000000 $800000 12 0 ;AROW ;
+   $101000000 $300000000 $105000000 $800000 12 0 ;AROW ;
 
 \ One recorded slot whose four words are each the right move-wide instruction
 \ but do not agree on a register. The old pass could not see this case at all,
@@ -521,7 +476,7 @@ variable XOPEN-BASE
    AROW
       0 $101000100 $300000100 $300000100 CHAIN-SITE
       4 rd odd $101000200 CHAIN-MIXED
-   ROLE-CH-MIXREG $101000000 $300000000 $101000000 $800000 8 97 ;AROW ;
+   $101000000 $300000000 $101000000 $800000 8 97 ;AROW ;
 
 : BUILD-CHAIN-ROWS ( -- )
    0 ASITE-N !
@@ -546,7 +501,6 @@ public
 : ROWS ( -- n )             ROW-N @ ;
 : SITES ( -- n )            SITE-N @ ;
 
-: ROW-ROLE@ ( n -- n )      dup ROW-RANGE cells ROW-ROLE + @ ;
 : ROW-WOFF@ ( n -- n )      dup ROW-RANGE cells ROW-WOFF + @ ;
 : ROW-LOFF@ ( n -- n )      dup ROW-RANGE cells ROW-LOFF + @ ;
 : ROW-WORDS@ ( n -- n )     dup ROW-RANGE cells ROW-WORDS + @ ;
@@ -564,7 +518,6 @@ public
 : XROWS ( -- n )            XROW-N @ ;
 : CELLS# ( -- n )           CELL-N @ ;
 
-: XROW-ROLE@ ( n -- n )     dup XROW-RANGE cells XROW-ROLE + @ ;
 : XROW-DBW@ ( n -- n )      dup XROW-RANGE cells XROW-DBW + @ ;
 : XROW-DBL@ ( n -- n )      dup XROW-RANGE cells XROW-DBL + @ ;
 : XROW-BASE@ ( n -- n )     dup XROW-RANGE cells XROW-BASE + @ ;
@@ -577,7 +530,6 @@ public
 : AROWS ( -- n )            AROW-N @ ;
 : ASITES ( -- n )           ASITE-N @ ;
 
-: AROW-ROLE@ ( n -- n )     dup AROW-RANGE cells AROW-ROLE + @ ;
 : AROW-WB@ ( n -- n )       dup AROW-RANGE cells AROW-WB + @ ;
 : AROW-CB@ ( n -- n )       dup AROW-RANGE cells AROW-CB + @ ;
 : AROW-LB@ ( n -- n )       dup AROW-RANGE cells AROW-LB + @ ;
