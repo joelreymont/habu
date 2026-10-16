@@ -304,6 +304,9 @@ public
 
 : OPEN-SOURCE ( archive -- input ) ARCHIVE-NODE OPEN-SOURCE-INPUT ;
 
+\ A caller-owned aligned cell can retain an archive through its lifetime.
+: ARCHIVE-SLOT ( ptr n -- ptr archive ) >ARCHIVE-SLOT ;
+
 \ A caller-owned aligned cell can hold an input across a raw callback context.
 : INPUT-SLOT ( ptr n -- ptr input ) >INPUT-SLOT ;
 

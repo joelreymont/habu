@@ -7,6 +7,42 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/test/runner.f
+require src/lib/task.f
+
+TASK:MIN-STACK TASK:TASK TAT-COUNT-A
+TASK:MIN-STACK TASK:TASK TAT-COUNT-B
+200000 constant TAT-COUNT-EACH
+variable TAT-COUNT-READY
+
+\ Failure output has shared formatting state, so workers exercise its counter
+\ directly while passing assertions exercise the public assertion path.
+: TAT-COUNT-WORK ( -- )
+   1 TAT-COUNT-READY atomic-add drop
+   begin TAT-COUNT-READY atomic@ 2 < while TASK:PAUSE repeat
+   TAT-COUNT-EACH 0 ?do
+      true T-ASSERT
+      T-FAIL+
+   loop
+   0 TASK:RETURN ;
+
+: TAT-COUNT-JOIN ( ptr n -- )
+   TASK:JOIN MATCH result
+      ok OF drop ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: TAT-COUNT-CONCURRENT ( -- )
+   T-RESET
+   0 TAT-COUNT-READY !
+   ['] TAT-COUNT-WORK TAT-COUNT-A TASK:ACTIVATE
+   ['] TAT-COUNT-WORK TAT-COUNT-B TASK:ACTIVATE
+   TAT-COUNT-A TAT-COUNT-JOIN
+   TAT-COUNT-B TAT-COUNT-JOIN
+   T-FAILURES TAT-COUNT-EACH 2 * <> if
+      s" assert-test: concurrent failure count" T-EX-FAIL die then
+   T-CASES TAT-COUNT-EACH 2 * <> if
+      s" assert-test: concurrent case count" T-EX-FAIL die then
+   T-RESET ;
 
 : TT-THROW-5 ( -- )
    5 throw ;
@@ -127,6 +163,7 @@ T-RESET
 1 TAT-EXPECT-FAILURES
 
 TAT-SB-SURVIVES-FAILURE
+TAT-COUNT-CONCURRENT
 
 T-RESET
 

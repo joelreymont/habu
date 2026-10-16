@@ -10,6 +10,9 @@ require src/lib/fmt.f                          \ FMT:.INT - one-line number text
 variable T-CASE#
 variable T-FAIL#
 
+\ Only the counters accept concurrent increments. Reset, labels, failure
+\ output, and report stay process-owned.
+
 256 constant T-LABEL-CAP
 create T-LABEL-BUF T-LABEL-CAP allot
 variable T-LABEL-U
@@ -26,7 +29,7 @@ variable T-LABEL-U
    T-FAIL# @ ;
 
 : T-NEXT ( -- )
-   T-CASE# @ 1+ T-CASE# ! ;
+   1 T-CASE# atomic-add drop ;
 
 : T-LABEL-CLEAR ( -- )
    0 T-LABEL-U ! ;
@@ -46,7 +49,7 @@ variable T-LABEL-U
    T-LABEL-U @ 0 > if s" case: " type T-LABEL$ type cr then ;
 
 : T-FAIL+ ( -- )
-   T-FAIL# @ 1+ T-FAIL# ! ;
+   1 T-FAIL# atomic-add drop ;
 
 : T-FAIL-AS ( ptr u8 n -- ) {: la:ptr lu:n :}
    [char] F emit T-CASE# @ .

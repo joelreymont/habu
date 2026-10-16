@@ -5,6 +5,7 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/hashmap.f
 require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
+require src/lib/task.f
 
 8 constant HMT-CAP
 create HMT-K HMT-CAP cells allot
@@ -80,6 +81,60 @@ variable HMP-I
    then
    total HMP-LIMIT < TTRUE ;
 
+\ Distinct tables are caller-owned. These Tasks insert simultaneously, then the
+\ parent probes every key after joining. A shared probe cursor loses keys even
+\ though neither Task touches the other's table.
+50000 constant HMC-N
+$20000 constant HMC-CAP
+$10000 TASK:TASK HMC-A
+$10000 TASK:TASK HMC-B
+create HMC-AK HMC-CAP cells allot
+create HMC-AU HMC-CAP cells allot
+create HMC-BK HMC-CAP cells allot
+create HMC-BU HMC-CAP cells allot
+
+: HMC-INSERT ( ptr n ptr n n -- )
+   {: keys:ptr used:ptr key:n :}
+   keys used HMC-CAP key HM:PROBE {: slot:n :}
+   used slot cells + @ 0= if
+      key keys slot cells + !
+      -1 used slot cells + !
+   then ;
+
+: HMC-FILL-A ( -- )
+   HMC-N 0 ?do HMC-AK HMC-AU i 1+ HMC-INSERT loop
+   0 TASK:RETURN ;
+
+: HMC-FILL-B ( -- )
+   HMC-N 0 ?do HMC-BK HMC-BU i HMC-N + 1+ HMC-INSERT loop
+   0 TASK:RETURN ;
+
+: HMC-JOIN ( ptr n -- )
+   TASK:JOIN MATCH result
+      ok OF 0 T= ENDOF
+      err OF 0 T= ENDOF
+   ;MATCH ;
+
+: HMC-LOST ( ptr n ptr n n -- n )
+   {: keys:ptr used:ptr base:n :}
+   0 HMC-N 0 ?do
+      i base + 1+ {: key:n :}
+      keys used HMC-CAP key HM:PROBE {: slot:n :}
+      used slot cells + @ 0= keys slot cells + @ key <> or if 1+ then
+   loop ;
+
+: HMC-RUN ( -- )
+   HMC-AU HMC-CAP HM:CLEAR
+   HMC-BU HMC-CAP HM:CLEAR
+   ['] HMC-FILL-A HMC-A TASK:ACTIVATE
+   ['] HMC-FILL-B HMC-B TASK:ACTIVATE
+   HMC-A HMC-JOIN
+   HMC-B HMC-JOIN
+   s" first Task retains every key in its own table" T-LABEL
+   HMC-AK HMC-AU 0 HMC-LOST 0 T=
+   s" second Task retains every key in its own table" T-LABEL
+   HMC-BK HMC-BU HMC-N HMC-LOST 0 T= ;
+
 
 : HM-RUN ( -- )
    T-RESET
@@ -117,7 +172,8 @@ variable HMP-I
    \ key entropy only above bit 33, where a fold that never mixes it down into
    \ the masked slot bits degenerates the table into a scan
    s" keys above bit 33 stay under the probe bound" T-LABEL
-   HMP-HIGH-SHIFT HMP-PROBES HMP-UNDER-BOUND ;
+   HMP-HIGH-SHIFT HMP-PROBES HMP-UNDER-BOUND
+   HMC-RUN ;
 
 HM-RUN
 T-REPORT
