@@ -1,6 +1,7 @@
 \ Exact address-row IO and MERGE through files, with independently chosen fields,
 \ and a closure list whose last path length is forged under an honest digest.
 \ Run with an artifact path and case name; the registered capture suite owns both.
+require src/lib/le.f
 require test/aot-artifact-roundtrip.f
 
 package AOT-CAPTURE
@@ -124,23 +125,8 @@ variable CHAIN-VALUE
    s" artifact-row-test: merged run table mismatch" $4C die ;
 
 
-: U32@ ( ptr u8 -- n )
-   {: p :}
-   p c@ p 1+ c@ 8 lshift or p 2 + c@ 16 lshift or p 3 + c@ 24 lshift or ;
-
-
-: U32! ( n ptr u8 -- )
-   {: value:n p :}
-   4 0 ?do value i 8 * rshift p i + c! loop ;
-
-
-: U64@ ( ptr u8 -- n )
-   {: p :}
-   0 8 0 ?do 8 lshift p 7 i - + c@ or loop ;
-
-
 : DSITE@ ( n -- n )
-   4 * AOT-DSITE-BUF@ + U32@ ;
+   4 * AOT-DSITE-BUF@ + LE:U32@ ;
 
 : CHAIN-VALUE@ ( ptr u8 -- n ) {: p:ptr :}
    p p AOT-BLOB-BUF@ AOT-BLOB-LEN @ + ADDRESS-CARRIER:CHAIN-SIZE ADDRESS-CARRIER:CHAIN-VALUE ;
@@ -153,7 +139,7 @@ variable CHAIN-VALUE
       i DSITE@ {: site:n :}
       site AOT-DSITE-CELL and 0<> if
          i RAW-INDEX ! site RAW-SITE !
-         AOT-BLOB-BUF@ site AOT-DSITE-OFF-MASK and + U64@
+         AOT-BLOB-BUF@ site AOT-DSITE-OFF-MASK and + LE:U64@
       else
          i CHAIN-INDEX ! site CHAIN-SITE !
          AOT-BLOB-BUF@ site + CHAIN-VALUE@
@@ -161,7 +147,7 @@ variable CHAIN-VALUE
       site AOT-CAPTURE:ROW-TEST-DATA-VALUE = ASSERT
    loop
    RAW-INDEX @ 0 >= CHAIN-INDEX @ 0 >= and ASSERT
-   AOT-BLOB-BUF@ RAW-SITE @ AOT-DSITE-OFF-MASK and + U64@ RAW-VALUE !
+   AOT-BLOB-BUF@ RAW-SITE @ AOT-DSITE-OFF-MASK and + LE:U64@ RAW-VALUE !
    AOT-BLOB-BUF@ CHAIN-SITE @ + CHAIN-VALUE@ CHAIN-VALUE ! ;
 
 
@@ -171,14 +157,14 @@ variable CHAIN-VALUE
 
 : ROW! ( n n n -- )
    {: loc:n target:n index:n :}
-   loc index ROW-AT U32!
-   target index ROW-AT 4 + U32! ;
+   loc index ROW-AT LE:U32!
+   target index ROW-AT 4 + LE:U32! ;
 
 
 : ROW= ( n n n -- )
    {: loc:n target:n index:n :}
-   index ROW-AT U32@ loc = ASSERT
-   index ROW-AT 4 + U32@ target = ASSERT ;
+   index ROW-AT LE:U32@ loc = ASSERT
+   index ROW-AT 4 + LE:U32@ target = ASSERT ;
 
 
 : MATRIX! ( -- )
@@ -303,7 +289,7 @@ variable CHAIN-VALUE
 : MERGED-DSITES= ( -- )
    RAW-INDEX @ DSITE@ RAW-SITE @ HOST-BLOB + = ASSERT
    CHAIN-INDEX @ DSITE@ CHAIN-SITE @ HOST-BLOB + = ASSERT
-   AOT-BLOB-BUF@ RAW-SITE @ AOT-DSITE-OFF-MASK and + HOST-BLOB + U64@
+   AOT-BLOB-BUF@ RAW-SITE @ AOT-DSITE-OFF-MASK and + HOST-BLOB + LE:U64@
    RAW-VALUE @ REBASED-DATA = ASSERT
    AOT-BLOB-BUF@ CHAIN-SITE @ + HOST-BLOB + CHAIN-VALUE@
    CHAIN-VALUE @ REBASED-DATA = ASSERT ;
@@ -354,11 +340,11 @@ variable CHAIN-VALUE
 : FORGE-SITE ( -- bool )
    s" bad-data-site" CASE? if
       ART-BLOB @ 7 - AOT-DSITE-CELL or
-      RAW-INDEX @ 4 * AOT-DSITE-BUF@ + U32! true exit
+      RAW-INDEX @ 4 * AOT-DSITE-BUF@ + LE:U32! true exit
    then
    s" bad-chain-site" CASE? if
       ART-BLOB @ ADDRESS-CARRIER:DATA-CHAIN-BYTES - 1+
-      CHAIN-INDEX @ 4 * AOT-DSITE-BUF@ + U32! true exit
+      CHAIN-INDEX @ 4 * AOT-DSITE-BUF@ + LE:U32! true exit
    then
    false ;
 
