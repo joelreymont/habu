@@ -544,6 +544,12 @@ $2710 constant PARK-MS            \ far past every stop bound
    s" GET" s" /api/items/{id}" [: ITEM ;] HTTP:ROUTE
    s" GET" s" /api/version" [: ASKED-VERSION ;] HTTP:ROUTE
    s" POST" s" /api/echo" [: ECHO ;] HTTP:ROUTE
+   s" POST" s" /api/chat" [: ECHO ;] HTTP:ROUTE
+   s" POST" s" /api/mcp" [: ECHO ;] HTTP:ROUTE
+   s" POST" s" /api/uploads" 8 [: ECHO ;] HTTP:ROUTE-CAPPED
+   s" POST" s" /api/tiny" 3 [: ECHO ;] HTTP:ROUTE-CAPPED
+   s" POST" s" /api/tiny" 8 [: ECHO ;] HTTP:ROUTE-CAPPED
+   s" POST" s" /api/empty" 0 [: ECHO ;] HTTP:ROUTE-CAPPED
    s" POST" s" /api/large-echo" [: LARGE-ECHO ;] HTTP:ROUTE
    s" GET" s" /api/boom" [: BOOM ;] HTTP:ROUTE
    s" GET" s" /api/boom-json" [: BOOM-JSON ;] HTTP:ROUTE
@@ -1277,6 +1283,18 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" HTTP/1.1 200 OK" BEGINS? TTRUE ;
 
 
+\ Route selection must reject an oversized body before a named path segment
+\ is decoded into the smaller segment buffer.
+: LONG-SEGMENT-BODY-CASE ( -- )
+   REQ-RESET
+   s" GET /api/items/" REQ+
+   FILL-BYTE 257 REQ-FILL
+   s\"  HTTP/1.1\r\nHost: x\r\nContent-Length: 1048577\r\nConnection: close\r\n\r\n" REQ+
+   REQ$ RAW-EXCHANGE
+   s" HTTP/1.1 413" BEGINS? TTRUE
+   s" body_too_large: " HAS? TTRUE ;
+
+
 \ A transfer coding other than chunked is one this server does not implement.
 : CODING-CASE ( -- )
    s\" POST /api/echo HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: gzip\r\nConnection: close\r\n\r\n" RAW-ONE
@@ -1510,6 +1528,57 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" " s" /api/echo" POST-JSON 200 T=
    RES$ S\" {\qbytes\q:0}" T$=
    HTTP:STOP
+   $100000 HTTP:BODY-CAP!
+   TRACE-RESET ;
+
+
+: REJECTED-ROUTE-CAP ( -- )
+   s" POST" s" /api/rejected" -1 [: ECHO ;] HTTP:ROUTE-CAPPED ;
+
+
+: CAP-DEFAULT-CASE ( -- )
+   s" abcd" s" /api/chat" POST-JSON 200 T=
+   S\" {\qbytes\q:4}" HAS? TTRUE
+   s" abcde" s" /api/chat" POST-JSON 413 T=
+   s" abcde" s" /api/mcp" POST-JSON 413 T= ;
+
+
+: CAP-EXPLICIT-CASE ( -- )
+   s" 12345678" s" /api/uploads" POST-JSON 200 T=
+   S\" {\qbytes\q:8}" HAS? TTRUE
+   s" 123456789" s" /api/uploads" POST-JSON 413 T=
+   s" abc" s" /api/tiny" POST-JSON 200 T=
+   s" abcd" s" /api/tiny" POST-JSON 413 T=
+   s" " s" /api/empty" POST-JSON 200 T=
+   s" x" s" /api/empty" POST-JSON 413 T= ;
+
+
+: CAP-FRAMING-CASE ( -- )
+   s\" POST /api/tiny HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\n\r\n"
+   s" HTTP/1.1 413" RAW-ASK TTRUE
+   s\" POST /api/uploads HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n4\r\nabcd\r\n5\r\n"
+   s" HTTP/1.1 413" RAW-ASK TTRUE ;
+
+
+: CAP-ROUTING-CASE ( -- )
+   s" abcd" s" /api/rejected" POST-JSON 404 T=
+   s" abcd" s" /api/missing" POST-JSON 404 T=
+   s" abcd" s" /api/ping" POST-JSON 405 T=
+   s" GET" s" /api/ping" FETCH 200 T= ;
+
+
+\ The default is set after registration. One worker and one server answer all
+\ cases; a refusal without body bytes must arrive before its body timeout.
+: ROUTE-CAP-CASES ( -- )
+   [: REJECTED-ROUTE-CAP ;] HTTP:E-CAPACITY TTHROWSQ
+   4 HTTP:BODY-CAP!
+   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   CAP-DEFAULT-CASE
+   CAP-EXPLICIT-CASE
+   CAP-FRAMING-CASE
+   CAP-ROUTING-CASE
+   HTTP:STOP
+   HTTP:KILLED-TASKS 0 T=
    $100000 HTTP:BODY-CAP!
    TRACE-RESET ;
 
@@ -2121,6 +2190,7 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    BIG-HEADER-CASE
    BIG-BODY-CASE
    OVER-BODY-CASE
+   LONG-SEGMENT-BODY-CASE
    CODING-CASE
    CHUNKED-CASE
    KEEP-ALIVE-CASE
@@ -2136,6 +2206,7 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    HTTP:RUNNING? TFALSE
    HOOK-TRACE-CASES
    LARGE-BODY-CASES
+   ROUTE-CAP-CASES
    BODY-TIMEOUT-CASES
    READ-FAULT-CASE
    POLICY-CASES

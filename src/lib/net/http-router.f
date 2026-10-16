@@ -22,6 +22,7 @@ MAX-ROUTES TYPED-BUFFER ROUTE-METHOD-N n
 MAX-ROUTES TYPED-BUFFER ROUTE-PATTERN-A ptr u8
 MAX-ROUTES TYPED-BUFFER ROUTE-PATTERN-N n
 MAX-ROUTES TYPED-BUFFER ROUTE-HANDLER [ request response -- ]
+MAX-ROUTES TYPED-BUFFER ROUTE-CAP n       \ -1 inherits BODY-CAP
 
 \ Routes are registered before any task is live and only read afterwards.
 variable ROUTE-COUNT
@@ -39,6 +40,13 @@ variable ROUTE-COUNT
 
 : ROUTE-PATTERN$ ( n -- ptr u8 n ) {: route:n :}
    route ROUTE-BOUNDED ROUTE-PATTERN-A @ route ROUTE-PATTERN-N @ ;
+
+
+: ROUTE-BODY-CAP ( n -- n ) {: route:n :}
+   route 0 < if BODY-CAP exit then
+   route ROUTE-CAP @ {: cap:n :}
+   cap 0 < if BODY-CAP exit then
+   cap ;
 
 
 \ ---- segments ---------------------------------------------------------------
@@ -86,13 +94,11 @@ variable ROUTE-COUNT
 
 \ ---- matching ---------------------------------------------------------------
 
-\ Walks both paths one segment at a time, binding what the pattern names. The
-\ bindings of a pattern that then fails are dropped by the next attempt.
+\ Select a route from the validated path without copying named segments. The
+\ request's body limit is checked before a selected route binds them.
 : SEGMENTS-MATCH? ( n n -- bool ) {: route:n idx:n :}
    route ROUTE-PATTERN$ {: pat:ptr patlen:n :}
    idx SLOT-PATH$ {: path:ptr pathlen:n :}
-   0 idx SEG-U!
-   0 idx SEGMENT-N!
    0 0
    begin
       {: patat:n pathat:n :}
@@ -104,9 +110,28 @@ variable ROUTE-COUNT
       path pathat 1+ + pathend pathat - 1- {: ha:ptr hu:n :}
       pa pu NAMED? if
          hu 0= if false exit then
-         ha hu idx BIND-SEGMENT
       else
          pa pu ha hu STR= 0= if false exit then
+      then
+      patend pathend
+   again ;
+
+
+\ The selected pattern already matches this path. Copy only its named
+\ segments once the body has been accepted, just before the handler runs.
+: BIND-ROUTE ( n n -- ) {: route:n idx:n :}
+   route ROUTE-PATTERN$ {: pat:ptr patlen:n :}
+   idx SLOT-PATH$ {: path:ptr pathlen:n :}
+   0 idx SEG-U!
+   0 idx SEGMENT-N!
+   0 0
+   begin
+      {: patat:n pathat:n :}
+      patat patlen >= if exit then
+      pat patlen patat 1+ SEG-END {: patend:n :}
+      path pathlen pathat 1+ SEG-END {: pathend:n :}
+      pat patat 1+ + patend patat - 1- NAMED? if
+         path pathat 1+ + pathend pathat - 1- idx BIND-SEGMENT
       then
       patend pathend
    again ;
@@ -178,12 +203,8 @@ variable ROUTE-COUNT
    s" this path does not answer that method" ERROR! ;
 
 
-public
-
-\ One route. The method, the pattern and the handler are the caller's and must
-\ outlive the server, which a literal and a definition both do.
-: ROUTE ( ptr u8 n ptr u8 n [ request response -- ] -- )
-   {: method:ptr methodlen:n pattern:ptr patternlen:n handler :}
+: ADD-ROUTE ( ptr u8 n ptr u8 n n [ request response -- ] -- )
+   {: method:ptr methodlen:n pattern:ptr patternlen:n cap:n handler :}
    ROUTE-COUNT @ MAX-ROUTES >= if E-ROUTE throw then
    methodlen 0 <= if E-ROUTE throw then
    patternlen 0 <= if E-ROUTE throw then
@@ -193,8 +214,25 @@ public
    methodlen at ROUTE-METHOD-N !
    pattern at ROUTE-PATTERN-A !
    patternlen at ROUTE-PATTERN-N !
+   cap at ROUTE-CAP !
    handler at ROUTE-HANDLER !
    at 1+ ROUTE-COUNT ! ;
+
+
+public
+
+\ One route. The method, the pattern and the handler are the caller's and must
+\ outlive the server, which a literal and a definition both do.
+: ROUTE ( ptr u8 n ptr u8 n [ request response -- ] -- )
+   {: method:ptr methodlen:n pattern:ptr patternlen:n handler :}
+   method methodlen pattern patternlen -1 handler ADD-ROUTE ;
+
+
+\ An explicit byte limit for this route, including zero for an empty body.
+: ROUTE-CAPPED ( ptr u8 n ptr u8 n n [ request response -- ] -- )
+   {: method:ptr methodlen:n pattern:ptr patternlen:n cap:n handler :}
+   cap 0 < if E-CAPACITY throw then
+   method methodlen pattern patternlen cap handler ADD-ROUTE ;
 
 
 : ROUTES-RESET ( -- )

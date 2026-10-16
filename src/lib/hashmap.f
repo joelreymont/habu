@@ -17,14 +17,14 @@
 \ distribution; a fold that turns a non-integer key (a string, a byte range)
 \ into one cell is a separate job and stays the caller's.
 \
+\ Storage class: caller-owned. PROBE and CLEAR keep traversal state in each
+\ invocation; distinct caller-owned tables may be used by concurrent Tasks.
 \ The module lives in `package HM`. External callers use the qualified public API
-\ (HM:HASH64, HM:PROBE, HM:CLEAR); the probe cursor state is package-private.
+\ (HM:HASH64, HM:PROBE, HM:CLEAR).
 
 require src/lib/errors.f
 
 package HM
-
-variable SLOT  variable DONE  variable IX  variable TRIES  \ probe cursor / loop state (private)
 
 \ cap must be a nonzero power of two: the probe masks the slot index with (cap-1),
 \ so cap-1 must be an all-ones bit run. Structural check, not a value range.
@@ -50,25 +50,21 @@ public
 : HASH64 ( n -- n ) XOR-FOLD FMIX-MUL1 *  XOR-FOLD FMIX-MUL2 *  XOR-FOLD ;
 
 \ slot where key already lives, or the first empty slot for insertion
-: PROBE ( ptr n ptr n n n -- n ) {: keys:ptr used:ptr cap:n key:n :}
+: PROBE ( ptr n ptr n n n -- n )
+   {: keys:ptr used:ptr cap:n key:n :}
    cap CAP-OK
-   key HASH64 cap 1- and SLOT !
-   0 DONE !  0 TRIES !
-   begin DONE @ 0= while
-      TRIES @ cap >= if E-HM-FULL throw then         \ every slot scanned, none empty/matching
-      used SLOT @ cells + @ 0= if -1 DONE ! else
-         keys SLOT @ cells + @ key = if -1 DONE ! else
-            SLOT @ 1+ cap 1- and SLOT !
-            TRIES @ 1+ TRIES !
-         then
-      then
-   repeat
-   SLOT @ ;
+   key HASH64 cap 1- and
+   cap 0 ?do
+      dup cells used + @ 0= if unloop exit then
+      dup cells keys + @ key = if unloop exit then
+      1+ cap 1- and
+   loop
+   drop E-HM-FULL throw ;
 
 \ zero a used[] array (mark all slots empty)
-: CLEAR ( ptr n n -- ) {: used:ptr cap:n :}
+: CLEAR ( ptr n n -- )
+   {: used:ptr cap:n :}
    cap CAP-OK
-   0 IX !
-   begin IX @ cap < while  0 used IX @ cells + !  IX @ 1+ IX !  repeat ;
+   cap 0 ?do 0 used i cells + ! loop ;
 
 ;package

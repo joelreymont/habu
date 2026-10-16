@@ -4,6 +4,7 @@ require src/lib/xml.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/memory.f
 
 package ZIP-XML-CONSUMER
 private
@@ -42,9 +43,11 @@ CAST: KIND>N ( XML:kind -- n )
    KIND>N {: expected:n :}
    XML:NEXT KIND>N expected T= ;
 
-: READ-PART ( -- )
-   s" sample.zip" FILE$ ZIP:OPEN-FILE {: archive:ZIP:archive :}
-   archive archive 0 ZIP:ENTRY ZIP:OPEN-ENTRY {: input:ZIP:input :}
+: READ-PART ( ptr n -- )
+   {: cell:ptr :}
+   s" sample.zip" FILE$ ZIP:OPEN-FILE cell ZIP:ARCHIVE-SLOT !
+   cell ZIP:ARCHIVE-SLOT @ dup 0 ZIP:ENTRY ZIP:OPEN-ENTRY
+   {: input:ZIP:input :}
    input OPEN-XML
    XML-KIND:START NEXT=
    XML:NAME$ s" r" T$=
@@ -60,6 +63,8 @@ CAST: KIND>N ( XML:kind -- n )
    XML-KIND:EOF NEXT=
    XML:CLOSE
    input ZIP:CLOSE-ENTRY
+   cell ZIP:ARCHIVE-SLOT @ {: archive:ZIP:archive :}
+   archive archive 0 ZIP:ENTRY ZIP:READ s" <r>hello&amp;world</r>" T$=
    archive ZIP:CLOSE ;
 
 : DRAIN ( XML:reader -- XML:reader )
@@ -71,15 +76,17 @@ CAST: KIND>N ( XML:kind -- n )
 : STALE-CLOSE ( ZIP:input -- ZIP:input )
    dup ZIP:CLOSE-ENTRY ;
 
-: READ-CORRUPT ( -- )
-   s" corrupt.zip" FILE$ ZIP:OPEN-FILE {: archive:ZIP:archive :}
-   archive archive 0 ZIP:ENTRY ZIP:OPEN-ENTRY {: input:ZIP:input :}
+: READ-CORRUPT ( ptr n -- )
+   {: cell:ptr :}
+   s" corrupt.zip" FILE$ ZIP:OPEN-FILE cell ZIP:ARCHIVE-SLOT !
+   cell ZIP:ARCHIVE-SLOT @ dup 0 ZIP:ENTRY ZIP:OPEN-ENTRY
+   {: input:ZIP:input :}
    input OPEN-XML ['] DRAIN catch swap XML:CLOSE
    ZIP:E-READ T=
    input CHUNK 7 SPAN:MAKE ['] STALE-READ catch
    >r 2drop r> ZIP:E-HANDLE T=
    input ['] STALE-CLOSE catch ZIP:E-HANDLE T= drop
-   archive ZIP:CLOSE ;
+   cell ZIP:ARCHIVE-SLOT @ dup ZIP:COUNT 1 T= ZIP:CLOSE ;
 
 : SETUP ( -- )
    s" habu-zip-xml" HB-TMP-MKDIR {: root:ptr len:n :}
@@ -92,10 +99,13 @@ CAST: KIND>N ( XML:kind -- n )
 public
 : RUN ( -- )
    T-RESET SETUP
+   1 cells MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES
+   {: cell:ptr bytes:NUM:alloc-byte-len :}
    s" public ZIP callback streams XML and closes both owners" T-LABEL
-   READ-PART
+   cell CELL-VIEW READ-PART
    s" callback read failure retires its ZIP handle" T-LABEL
-   READ-CORRUPT
+   cell CELL-VIEW READ-CORRUPT
+   cell bytes MEM:RELEASE-BYTES
    T-REPORT
    ROOT$ type cr ;
 ;package

@@ -186,10 +186,33 @@ private
    s" the handler did not finish this request" ERROR! ;
 
 
-: DISPATCH ( n -- ) {: idx:n :}
+\ Read the validated head first, select its first route, then bound body
+\ buffering by that route's explicit cap or the final server default.
+: READ-REQUEST ( TCP4:connection n n -- parse-result )
+   {: conn:TCP4:connection idx:n ms:n :}
+   ms DEADLINE-AT {: deadline:n :}
+   idx SLOT-RESET
+   idx COMPACT
+   conn idx deadline READ-HEAD {: head:parse-result :}
+   head COMPLETE? 0= if head exit then
+   idx PARSE-HEAD {: parsed:parse-result :}
+   parsed COMPLETE? 0= if parsed exit then
+   idx HOST-OK? 0= if BAD exit then
+   idx DECIDE-KEEP-ALIVE
    idx FIND-ROUTE {: route:n :}
+   route idx ROUTE-AT!
+   route ROUTE-BODY-CAP {: cap:n :}
+   BODY-TIMEOUT-MS @ {: body-ms:n :}
+   body-ms 0 > if
+      conn idx body-ms DEADLINE-AT cap READ-BODY exit
+   then
+   conn idx deadline cap READ-BODY ;
+
+
+: DISPATCH ( n -- ) {: idx:n :}
+   idx ROUTE-AT@ {: route:n :}
    route 0 >= if
-      route idx ROUTE-AT!
+      route idx BIND-ROUTE
       idx REQUEST-OF idx RESPONSE-OF route ROUTE-HANDLER @ execute
       exit
    then
