@@ -54,13 +54,13 @@
 \ thrown as E-PROC-TIMEOUT when its own deadline runs out (src/lib/test/wait.f),
 \ so the row ends as a timeout and not as a FAIL. End of file before the
 \ report, a short report, a short write or a failed read, write or poll fails
-\ the case.
+\ the case; a descriptor a readiness poll reports broken throws E-PROC-OUTPUT.
 \
 \ A FAILED CASE LEAVES NOTHING EITHER. Each case ends through CASE-END whatever
 \ it asserted or threw: a check.f still running is killed and reaped, and the
 \ case waits for the processes it could not end, which the sleeper's 20 s
-\ bounds. Its descriptors close and the scratch clears even when that wait runs
-\ out. The scratch is under this process's runner root, which its registered
+\ bounds, even when ending check.f throws. Its descriptors close and the
+\ scratch clears even when that wait runs out. The scratch is under this process's runner root, which its registered
 \ cleanup removes.
 
 require src/lib/errors.f
@@ -177,9 +177,12 @@ PROC-NO-FD FEED-WR !
    1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART ;
 
 \ fd within ms, answered as POLL-WITHIN answers: ready once it has bytes to read
-\ or has reached end of file.
+\ or has reached end of file. A descriptor the poll reports broken (POLLERR or
+\ POLLNVAL) is no answer either way: it throws E-PROC-OUTPUT.
 : READY-WITHIN ( n n -- n )
-   POLLIN swap POLL-WITHIN ;
+   POLLIN swap POLL-WITHIN {: ready:n :}
+   0 >IDX PROC-PFD-REVENTS POLLERR POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
+   ready ;
 
 \ The subject's pid, before READY-MS runs out. End of file first means check.f
 \ or its child died before the subject ran: that, a short report or a failed
@@ -315,8 +318,8 @@ PROC-NO-FD FEED-WR !
    CHECK-PID @ >PID sig PROC-KILL-RAW drop ;
 
 \ Returns once check.f has ended, within ms. ms running out first is this
-\ test's own deadline, named and thrown as a timeout; a failed poll of the watch
-\ throws E-PROC-OUTPUT, a failure.
+\ test's own deadline, named and thrown as a timeout; a failed poll of the
+\ watch, or one that reports it broken, throws E-PROC-OUTPUT, a failure.
 : CHECK-ENDED-WITHIN ( n -- )
    {: ms:n :}
    CHECK-WATCH @ ms READY-WITHIN {: ready:n :}
@@ -435,15 +438,14 @@ PROC-NO-FD FEED-WR !
 \ Whatever the body asserted or threw. Every step is a no-op for a case that
 \ passed. This process lets its own write end go before it waits for end of
 \ file, which a spawn that threw before check.f took the write end leaves
-\ open. Every descriptor closes and the scratch clears even when ending check.f
-\ or the wait for what it left throws.
+\ open. The wait for what check.f left runs even when ending check.f throws,
+\ and every descriptor closes and the scratch clears even when that wait throws.
 : CASE-END ( -- )
-   [: CHECK-END
-      PIPE-WR PROC-CLOSE-CELL
-      LEFT-ENDED ;]
+   [: [: CHECK-END ;]
+      [: PIPE-WR PROC-CLOSE-CELL
+         LEFT-ENDED ;] finally ;]
    [: CHECK-WATCH PROC-CLOSE-CELL
       FEED-WR PROC-CLOSE-CELL
-      PIPE-WR PROC-CLOSE-CELL
       PIPE-RD PROC-CLOSE-CELL
       TMP-CLEAR ;] finally ;
 
