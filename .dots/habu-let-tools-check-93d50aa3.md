@@ -3,6 +3,8 @@ title: Let tools/check.f accept the build drivers
 status: open
 priority: 3
 issue-type: task
+blocks:
+  - habu-let-the-pre-c145b1a2
 created-at: "2026-10-16T08:39:00.873233+03:00"
 ---
 
