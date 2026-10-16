@@ -33,6 +33,7 @@
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
+require src/lib/test/outcome.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -125,14 +126,17 @@ variable RC
    a DEP-P u BYTE-COPY
    u DEP-PU ! ;
 
-: STORE! ( len len outcome -- )
-   MATCH outcome
+\ The outcome of a child that ran the program src: its exit code, -1 for a
+\ signal. A deadline is no exit code: it prints src and the capture and throws
+\ E-PROC-TIMEOUT (T-TIMED-OUT).
+: STORE! ( ptr u8 n len len outcome -- )
+   {: src:ptr srcu:n outu:len erru:len oc :}
+   erru LEN>N ERR-U !
+   oc MATCH outcome
      exited OF RC ! ENDOF
      signaled OF drop -1 RC ! ENDOF
-     timeout OF -1 RC ! ENDOF
-   ;MATCH
-   LEN>N ERR-U !
-   LEN>N drop ;
+     timeout OF src srcu OUT outu LEN>N ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 \ Run the checker on the fixture, FLAG (when not empty) before --json-errors,
 \ and split its packets into lines; the checker exits WANT.
@@ -147,6 +151,7 @@ variable RC
    FX-PATH$ >LEN PROC-ARGV+
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
+   FX-PATH$
    ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
    STORE!
@@ -992,6 +997,7 @@ variable RC
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    FX-PATH$ >LEN PROC-ARGV+
+   FX-PATH$
    ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    STORE!

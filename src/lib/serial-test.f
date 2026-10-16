@@ -66,8 +66,12 @@ TASK:MIN-STACK TASK:TASK READER
       failed OF SERIAL:ERRNO>N K-FAILED swap ENDOF
    ;MATCH ;
 
+\ A deadline the case did not expect is no assertion result (docs/gate.md).
 : WANT ( SERIAL:io-result n n -- ) {: kind:n payload:n :}
    CLASSIFY {: got-kind:n got-payload:n :}
+   got-kind K-TIMEOUT = kind K-TIMEOUT <> and if
+      s" serial io: a deadline expired" type cr E-PROC-TIMEOUT throw
+   then
    got-kind kind T=
    got-payload payload T= ;
 

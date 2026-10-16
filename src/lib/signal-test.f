@@ -165,7 +165,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 : WANT-SIGNAL ( SIGNAL:signal-result n -- ) {: want:n :}
    MATCH SIGNAL:signal-result
       signal OF want T= ENDOF
-      timeout OF -1 want T= ENDOF
+      timeout OF s" signal wait: a deadline expired" type cr E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 : WANT-TIMEOUT ( SIGNAL:signal-result -- )

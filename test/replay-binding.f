@@ -32,6 +32,7 @@
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
+require src/lib/test/outcome.f
 require src/lib/test/eval.f
 require src/lib/process.f
 require src/lib/process-argv.f
@@ -540,14 +541,18 @@ variable ERR-U
 : ERR$ ( -- ptr u8 n )
    ERR ERR-U @ ;
 
-: STORE! ( len len outcome -- )
-   MATCH outcome
+\ The outcome of a child that ran the program src: its exit code, -1 for a
+\ signal. A deadline is no exit code: it prints src and the capture and throws
+\ E-PROC-TIMEOUT (T-TIMED-OUT).
+: STORE! ( ptr u8 n len len outcome -- )
+   {: src:ptr srcu:n outu:len erru:len oc :}
+   outu LEN>N OUT-U !
+   erru LEN>N ERR-U !
+   oc MATCH outcome
      exited OF RC ! ENDOF
      signaled OF drop -1 RC ! ENDOF
-     timeout OF -1 RC ! ENDOF
-   ;MATCH
-   LEN>N ERR-U !
-   LEN>N OUT-U ! ;
+     timeout OF src srcu OUT$ ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : CHECK-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
    PROC-ARGV-RESET
@@ -557,6 +562,7 @@ variable ERR-U
    a u >LEN PROC-ARGV+
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
+   a u
    ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
    STORE! ;
@@ -571,6 +577,7 @@ variable ERR-U
 \ A fresh engine reads the text on its standard input.
 : SESSION ( ptr u8 n -- ) {: a:ptr u:n :}
    PROC-ARGV-RESET
+   a u
    ENGINE-CANDIDATE:PATH$ >LEN  a u >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    STORE! ;

@@ -7,6 +7,7 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/process-cwd.f
+require src/lib/test/subject.f
 require test/app-image-engine.f
 require test/pcap-result.f
 
@@ -65,7 +66,9 @@ variable SECOND-U
    s" HABU_IMAGE_RESTORED" >LEN s" different-envp" >LEN PROC-ENV+
    path pathu >LEN ROOT$ >LEN input inputu >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE PCAP-RESULT:>N CLEAN ;
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE PCAP-RESULT:>N {: outu:n erru:n rc:n :}
+   input inputu OUT outu ERR erru rc SUBJECT:RC-TIMED-OUT
+   outu erru rc CLEAN ;
 
 : RECAPTURE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n next:ptr nextu:n :}
    PROC-ARGV-ENV-RESET

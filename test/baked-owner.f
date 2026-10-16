@@ -34,6 +34,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/test.f
+require src/lib/test/outcome.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
@@ -64,17 +65,23 @@ variable ROOT-U
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 
-: STORE! ( len len outcome -- )
-   MATCH outcome
+\ The outcome of a child that loaded src: its exit code or signal, and whether
+\ it exited. A deadline is neither: it prints src and the capture and throws
+\ E-PROC-TIMEOUT (T-TIMED-OUT).
+: STORE! ( ptr u8 n len len outcome -- )
+   {: src:ptr srcu:n outu:len erru:len oc :}
+   outu LEN>N OUT-U !
+   erru LEN>N ERR-U !
+   oc MATCH outcome
      exited OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout OF 0 RC ! 0 0= 0= EXITED ! ENDOF
-   ;MATCH
-   LEN>N ERR-U ! LEN>N OUT-U ! ;
+     timeout OF src srcu OUT$ ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
-: RUN-CHILD ( -- )
+\ The child loads src.
+: RUN-CHILD ( ptr u8 n -- )
    ENGINE-CANDIDATE:PATH$ >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME STORE! ;
 
@@ -84,13 +91,13 @@ variable ROOT-U
    s" test/baked-owner-child.f" ARG+
    s" --" ARG+
    src u ARG+
-   RUN-CHILD ;
+   src u RUN-CHILD ;
 
 : BUILD ( ptr u8 n -- ) {: src:ptr u:n :}
    PROC-ARGV-RESET
    s" --build" ARG+
    src u ARG+
-   RUN-CHILD ;
+   src u RUN-CHILD ;
 
 : REPORT ( -- )
    OUT$ type cr ERR$ type cr ;

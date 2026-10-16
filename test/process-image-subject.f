@@ -90,7 +90,9 @@ public
    IMAGE-LIFECYCLE:PREPARE IMAGE-LIFECYCLE:PREPARE
    CLEAN ;
 
-: USE ( -- )
+private
+
+: USE-CASES ( -- )
    T-RESET
    s" restored signal initialization opens a working self-pipe" T-LABEL
    AIO:START
@@ -99,7 +101,9 @@ public
    getpid SIGNAL:SIGUSR1 kill 0 T=
    100 >MS SIGNAL:WAIT MATCH SIGNAL:signal-result
       signal OF SIGNAL:SIGUSR1 T= ENDOF
-      timeout OF false TTRUE ENDOF
+      timeout OF
+         s" restored signal wait: a deadline expired" type cr
+         E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    AIO:STOP
    PROC-ENV-DEFAULT-RESET
@@ -114,5 +118,17 @@ public
    PROC-ARGV-N @ COUNT>N 1 T= PROC-ENV-N @ COUNT>N 1 T=
    CHECK-CAPTURE-ROWS
    T-REPORT ;
+
+public
+
+\ The signal wait and COMMAND's capture each have a deadline, and a throw code
+\ cannot cross the process boundary: this child exits PROC-TIMEOUT-RC for
+\ E-PROC-TIMEOUT so test/process-image.f throws it again (src/lib/process.f).
+: USE ( -- )
+   [: USE-CASES ;] catch {: code:n :}
+   code E-PROC-TIMEOUT = if
+      s" process-image: a deadline expired in the restored child" PROC-TIMEOUT-RC die
+   then
+   code 0<> if code throw then ;
 
 ;package

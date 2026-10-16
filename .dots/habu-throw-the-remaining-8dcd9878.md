@@ -1,9 +1,0 @@
----
-title: Throw the remaining test deadline arms
-status: open
-priority: 2
-issue-type: task
-created-at: "2026-10-16T14:48:07.011975+03:00"
----
-
-Problem: docs/gate.md:428-441 says a test's own deadline is no assertion result: an outcome or wait whose clock ends throws E-PROC-TIMEOUT (through T-TIMED-OUT or SUBJECT:TIMED-OUT when the test MATCHes it), unless the test expects that deadline and asserts it. A sweep of every timeout arm that neither throws nor delegates (rg 'timeout OF', 2026-10-16) leaves these candidates, each turning its deadline into a value a later assert reads: src/lib/net/udp4-test.f:66 and :76 (T-FAIL-AS "receive: unexpected timeout"), src/lib/signal-test.f:165-169 WANT-SIGNAL (timeout asserts -1 against the wanted signal), test/process-image-subject.f:102 (a 100 ms SIGNAL:WAIT timeout asserts false), test/aot-prefix-literal.f:88, test/diag-position-test.f:132 and test/replay-binding.f:547 (-1 RC), test/repl-open-definition.f:32 (-1), test/baked-owner.f:71 (0 RC with EXITED true), test/host-io-image.f:132, src/lib/serial-test.f:64 (K-TIMEOUT) and tools/repair-packet-test.f:196. The four one-file SUBJECT probes 196bcc0a recorded as answering false on a deadline are among them or already fixed. Arms that expect the deadline (udp4-test.f:87/:96, gate-pool-orphan-test.f:327, the code-window.f CW-BT table, outcome.f, runner.f, gate-pool.f, gate-common-lib.f printers, check-verify-core.f VFY-CLEAN-EXIT? in a tool) are out of scope. Acceptance: each candidate is read; one that reads its own deadline as a result throws E-PROC-TIMEOUT the way docs/gate.md names, after printing what it has; one that expects the deadline stays, with the reason in the closing note; no deadline is raised. Files: the candidates. Verify: each changed row rc 0; per changed mechanism, a copy with its deadline forced exits 67 with hb: uncaught throw code -2502 last. Depends: none. Ownership: those files. Claim: unassigned.

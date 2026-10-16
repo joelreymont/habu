@@ -3,6 +3,7 @@
 \ holds the compile loop's bands RW; its end of input is the pipe's refusal,
 \ rc 74, since no input remains for the REPL to recover into.
 require src/lib/test.f
+require src/lib/test/outcome.f
 require src/lib/pty-harness.f
 require src/lib/engine-candidate.f
 
@@ -24,13 +25,13 @@ using PTY-HARNESS
       tier 0= if s" 0 set-tier" else s" 1 set-tier" then STEP
    else false then ;
 
-\ The child's exit code, or -1 when a signal or the reap deadline ended it.
-: EXIT-CODE ( -- n )
-   REAP MATCH outcome
-      exited OF ENDOF
-      signaled OF drop -1 ENDOF
-      timeout OF -1 ENDOF
-   ;MATCH
+\ Reap the child and assert it exited with code want. The terminal carries both
+\ streams, and its buffer holds what the reap drained; a signal fails the case,
+\ and the reap deadline prints the capture and throws E-PROC-TIMEOUT.
+: EXIT= ( n -- )
+   {: want:n :}
+   REAP {: oc :}
+   ENGINE-CANDIDATE:PATH$ BUF$ s" " oc want T-OUTCOME-EXITED=
    CLOSE-MASTER ;
 
 \ The body of the definition SPAN-CASE opened, on its own line, defines a
@@ -59,7 +60,7 @@ using PTY-HARNESS
          4 SEND-BYTE
       then
    then
-   EXIT-CODE 0 T= ;
+   0 EXIT= ;
 
 \ ^D with the definition still open names it and exits 74.
 : EOF-CASE ( n -- )
@@ -69,7 +70,7 @@ using PTY-HARNESS
          4 SEND-BYTE
       then
    then
-   EXIT-CODE 74 T=
+   74 EXIT=
    s" hb: source ended inside definition: EOF-Y" IN-BUF? TTRUE ;
 
 public

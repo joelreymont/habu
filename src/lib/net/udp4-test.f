@@ -64,7 +64,7 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
       packet OF UDP4:PORT>N port T= UDP4:ADDRESS>N address T= BLEN>N want T= ENDOF
       truncated OF UDP4:PORT>N drop UDP4:ADDRESS>N drop drop
          s" receive: unexpectedly truncated" T-FAIL-AS ENDOF
-      timeout OF s" receive: unexpected timeout" T-FAIL-AS ENDOF
+      timeout OF s" receive: a deadline expired" type cr E-PROC-TIMEOUT throw ENDOF
       failed OF UDP4:ERRNO>N drop s" receive: failed" T-FAIL-AS ENDOF
    ;MATCH ;
 
@@ -74,7 +74,7 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
       packet OF UDP4:PORT>N drop UDP4:ADDRESS>N drop drop
          s" receive: unexpectedly whole" T-FAIL-AS ENDOF
       truncated OF UDP4:PORT>N port T= UDP4:ADDRESS>N address T= BLEN>N want T= ENDOF
-      timeout OF s" receive: unexpected timeout" T-FAIL-AS ENDOF
+      timeout OF s" receive: a deadline expired" type cr E-PROC-TIMEOUT throw ENDOF
       failed OF UDP4:ERRNO>N drop s" receive: failed" T-FAIL-AS ENDOF
    ;MATCH ;
 
