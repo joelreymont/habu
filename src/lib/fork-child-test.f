@@ -60,9 +60,10 @@ private
    [: WALK-GET [: FORK-HOLD:HOLDING ;] [: WALK-RELEASE ;] finally ;] FORK-HOLD:HOLD
    s" a child forked under a held walk ended its query"
    [: getpid >PID CPU-NS drop ;] 1 FORK-HOLD:FORK-CHECK
+   WALKING atomic@ {: walking:n :}
+   FORK-HOLD:RELEASE
    s" the parent's walk was still the holder's" T-LABEL
-   WALKING atomic@ 1 T=
-   FORK-HOLD:RELEASE ;
+   walking 1 T= ;
 
 FORK-UNDER-WALK
 

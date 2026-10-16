@@ -9,17 +9,18 @@
 \ and lets go (RELEASE). src/lib/fork-child-test.f and src/lib/pg-fork-test.f are the
 \ cases.
 \
-\ NOTHING IS LEFT. A child that does not end inside CHILD-MS is sent SIGKILL,
-\ every child is reaped, and the holder lets go before it is joined, whatever
-\ the children did. The parent closes its copy of a pipe's write end, so the
-\ children's copies are the last: the last child's exit closes it, which is how
-\ the parent sees them end without a wait that could block.
+\ NOTHING IS LEFT. A child that does not end inside CHILD-MS is sent SIGKILL and
+\ every child is reaped before FORK-CHECK asserts or throws, and the holder
+\ lets go before it is joined. The parent closes its copy of a pipe's write
+\ end, so the children's copies are the last: the last child's exit closes it,
+\ which is how the parent sees them end without a wait that could block.
 
 require src/lib/errors.f
 require src/lib/test.f
 require src/lib/task.f
 require src/lib/process.f
 require src/lib/process-fork.f
+require src/lib/test/wait.f
 
 package FORK-HOLD
 
@@ -38,13 +39,22 @@ CHILD-MAX TYPED-BUFFER PIDS pid
 TASK:MIN-STACK TASK:TASK HOLDER
 
 \ A wait the other side ends; past HOLD-WAIT-NS it throws E-PROC-TIMEOUT
-\ rather than hang the suite.
+\ rather than hang the suite. It prints nothing, because the holder waits here
+\ too and a task asserts nothing: main names the deadline where it reads it.
 : FLAG-WAIT ( ptr n n -- ) {: flag want :}
    mono-ns HOLD-WAIT-NS + {: until:n :}
    begin flag atomic@ want < while
       mono-ns until >= if E-PROC-TIMEOUT throw then
       1 >MS TASK:SLEEP
    repeat ;
+
+\ A FLAG-WAIT deadline main reads, its own or the holder's from the join, is
+\ the row's own deadline: it is named and thrown, never asserted. Any other
+\ code is answered.
+: FLAG-EXPIRED ( n -- n )
+   {: code:n :}
+   code E-PROC-TIMEOUT = if s" fork-hold FLAG-WAIT" TEST-WAIT:EXPIRED then
+   code ;
 
 \ Runs INSIDE the holder, so it asserts nothing: RELEASE's join answers a throw.
 : HOLDER-RUN ( -- )
@@ -96,7 +106,8 @@ public
    0 HELD atomic!
    0 LET-GO atomic!
    ['] HOLDER-RUN HOLDER TASK:ACTIVATE
-   HELD 1 FLAG-WAIT ;
+   [: HELD 1 FLAG-WAIT ;] catch FLAG-EXPIRED {: code:n :}
+   code 0<> if code throw then ;
 
 \ A holder body calls this while it holds its state: HOLD returns, and this
 \ returns once RELEASE lets go.
@@ -110,8 +121,10 @@ public
    1 HELD atomic!
    begin LET-GO atomic@ 0= while op execute repeat ;
 
-\ Forks k children, at most CHILD-MAX, that each run op and exit, and asserts
-\ under label that all of them ended inside CHILD-MS and that every one exited 0.
+\ Forks k children, at most CHILD-MAX, that each run op and exit. A child still
+\ running at CHILD-MS is the row's own deadline, thrown once every child is
+\ killed and reaped. Only a wait that completed has its status asserted under
+\ label, with every child's exit 0.
 : FORK-CHECK ( ptr u8 n [ -- ] n -- ) {: label:ptr u op k :}
    PIPE-PAIR {: rd:fd wr:fd :}
    op k SPAWN
@@ -120,18 +133,22 @@ public
    ended 0<> if k KILL-ALL then
    k REAP {: answered:n :}
    rd FD>N close
+   ended E-PROC-TIMEOUT = if s" fork-hold child exit" TEST-WAIT:EXPIRED then
    label u T-LABEL
    ended 0 T=
    label u T-LABEL
    answered k T= ;
 
-\ Lets the holder go and joins it; its body must have ended without a throw.
+\ Lets the holder go and joins it; its body must have ended without a throw. A
+\ holder whose FLAG-WAIT expired is the row's deadline, thrown before any
+\ assertion. That holder has already let go of its state, so a case reads the
+\ held state before RELEASE and asserts what it read after.
 : RELEASE ( -- )
    1 LET-GO atomic!
    s" the holder let go" T-LABEL
    HOLDER TASK:JOIN MATCH result
       ok OF 0 T= ENDOF
-      err OF 0 T= ENDOF
+      err OF FLAG-EXPIRED 0 T= ENDOF
    ;MATCH ;
 
 ;package

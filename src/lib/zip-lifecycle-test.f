@@ -109,8 +109,10 @@ TASK:SEMAPHORE LOCK-RELEASE
       FORK-HOLD:HOLD
    s" a child forked under a held ZIP lock read an archive"
    [: ZIP-CHILD-READ ;] 1 FORK-HOLD:FORK-CHECK
-   STATE-LOCK atomic@ 1 T=
-   FORK-HOLD:RELEASE ;
+   STATE-LOCK atomic@ {: held:n :}
+   FORK-HOLD:RELEASE
+   s" the ZIP lock was still the holder's" T-LABEL
+   held 1 T= ;
 
 
 \ A halt requested while disposal waits must take effect after the node is
