@@ -114,7 +114,9 @@ create DGT-ERR DGT-BUF-CAP allot
 : DGT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
-\ A tool on the input, its standard output captured into the given buffer.
+\ A tool on the input, its standard output captured into the given buffer. The
+\ tool runs with this process's environment, so tools/check.f makes its scratch
+\ root under the HB_TMP this run was handed.
 : DGT-RUN ( ptr u8 n ptr u8 n -- len len outcome )
    {: tool:ptr toolu:n out:ptr outcap:n :}
    PROC-ARGV-RESET
@@ -122,8 +124,10 @@ create DGT-ERR DGT-BUF-CAP allot
    tool toolu DGT-ARG+
    s" --" DGT-ARG+
    DGT-IN DGT-ARG+
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN out outcap >LEN DGT-ERR DGT-BUF-CAP >LEN
-   DGT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
+   DGT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
 \ Run a tool on DGT-IN, require exit 0 and an empty stderr, and answer the
 \ length of its stdout in DGT-OUT.

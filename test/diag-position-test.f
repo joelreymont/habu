@@ -38,6 +38,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
+require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require tools/json.f
 require tools/gate-json-assert-core.f
@@ -144,8 +145,10 @@ variable RC
    flagu 0 > IF flag flagu >LEN PROC-ARGV+ THEN
    s" --json-errors" >LEN PROC-ARGV+
    FX-PATH$ >LEN PROC-ARGV+
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
-   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
    STORE!
    RC @ want T=
    ERR$ GJA-SPLIT-LINES ;

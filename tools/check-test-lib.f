@@ -288,16 +288,22 @@ variable START-NS
 : CHECK-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
+\ The check.f child runs with this process's environment: its scratch root
+\ (CHK-MAKE-TEMP) goes under the HB_TMP this run was handed.
 : CHECK-CAPTURE ( -- n n n )
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
    HB$ >LEN CAP-OUT BUF-CAP >LEN
-   CAP-ERR BUF-CAP >LEN CHILD-HANG-MS >MS RUN-ARGV-CAPTURE
+   CAP-ERR BUF-CAP >LEN CHILD-HANG-MS >MS RUN-ARGV-ENV-CAPTURE
    CAPTURE>N ;
 
 : CHECK-STDIN-CAPTURE ( ptr u8 n -- n n n )
    {: src:ptr srcu:n :}
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
    HB$ >LEN src srcu >LEN
    CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
-   CHILD-HANG-MS >MS RUN-ARGV-STDIN-CAPTURE
+   CHILD-HANG-MS >MS RUN-ARGV-ENV-STDIN-CAPTURE
    CAPTURE>N ;
 
 \ ---- command-line drivers ---------------------------------------------------
@@ -440,9 +446,9 @@ variable START-NS
 \ ---- the run stage's environment --------------------------------------------
 \ The tool's run stage spawns the checked program, and a program that resolves
 \ an executable through $PATH or writes under $HB_TMP needs the environment the
-\ tool itself was given. CHECK-CAPTURE spawns the tool without one, so a row
-\ that only read PATH would prove nothing: the tool would have no PATH to pass
-\ on. This row therefore gives the child tool an environment of its own - one
+\ tool itself was given. A host may export no PATH, so a row that only read PATH
+\ could not tell a run stage that passes the environment from one that drops
+\ it. This row therefore gives the child tool an environment of its own - one
 \ marker row plus this process's - and reads the marker back out of the checked
 \ program's output. An env-less run stage prints an empty marker line instead.
 
@@ -2840,10 +2846,7 @@ create BIG $2000 allot   variable BIG-U
    PROC-ARGV-RESET
    s" tools/check.f" >LEN PROC-ARGV+
    BAD$ >LEN PROC-ARGV+
-   HB$ >LEN s" " >LEN
-   CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
-   CHILD-HANG-MS >MS RUN-ARGV-STDIN-CAPTURE
-   CAPTURE>N ;
+   s" " CHECK-STDIN-CAPTURE ;
 
 : ENUM-CLI-TEST ( -- )
    ENUM-CLI-RUN 70 T=

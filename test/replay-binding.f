@@ -35,6 +35,7 @@ require src/lib/test.f
 require src/lib/test/eval.f
 require src/lib/process.f
 require src/lib/process-argv.f
+require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/habu/verify-source.f
 require test/reopen-binding-lib.f
@@ -554,8 +555,10 @@ variable ERR-U
    s" tools/check.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    a u >LEN PROC-ARGV+
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
-   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
    STORE! ;
 
 : CHECK-CASE ( -- )

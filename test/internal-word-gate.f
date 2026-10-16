@@ -32,6 +32,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
+require src/lib/process-env.f
 require src/lib/test/subject.f
 require test/tail-parity.f
 require src/lib/type/deftype.f         \ DEFTYPE - the declared-nominal exemplar used at top level
@@ -116,8 +117,10 @@ create EMPTY 1 allot            \ zero-length stdin
    s" --" >LEN PROC-ARGV+
    s" --json-errors" >LEN PROC-ARGV+
    CHILD >LEN PROC-ARGV+
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
    HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
-   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
    src u STORE! ;
 
 \ Run the program as a piped stdin program (no --load), the other cold-prefix path.

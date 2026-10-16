@@ -10,6 +10,7 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/test/outcome.f
 require src/lib/process-argv.f
+require src/lib/process-env.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f

@@ -10,6 +10,7 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/test/outcome.f
 require src/lib/process-argv.f
+require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/lib/vector.f
 require tools/lint/text.f
@@ -146,10 +147,14 @@ create PACKET-BUF FS-PATH-CAP allot
 : WRITE-SOURCE ( ptr u8 n -- ) {: a:ptr u:n :}
    SRC a u SOURCE$ WRITE-ALL ;
 
+\ The tool runs with this process's environment, so tools/check.f makes its
+\ scratch root under the HB_TMP this run was handed.
 : HB-CAPTURE ( -- len len outcome )
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$  >LEN OUT CAPTURE-CAP >LEN
    ERR CAPTURE-CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME ;
+   RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
 : RUN-CHECK-ACT ( -- )
    LABEL$ SRC CHECK-ALL-ERRORS:FILE ;
