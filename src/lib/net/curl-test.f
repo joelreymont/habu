@@ -822,6 +822,37 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    KIND-FAILED LAST-KIND ! ;
 
 
+28 constant CURLE-TIMED-OUT             \ CURLE_OPERATION_TIMEDOUT
+
+\ A code-28 result is a transfer limit this file set expiring, which on a
+\ starved process is no assertion result: one line on fd 2 names it and
+\ E-PROC-TIMEOUT follows, which the pool reads as TIMEOUT-UNDER-LOAD
+\ (docs/gate.md). A case that expects its limit to end a transfer records it
+\ through FETCH-LIMIT or AWAIT-LIMIT, or matches it inline unguarded, and
+\ asserts 28 itself.
+: NOT-TIMEOUT ( n -- n )
+   {: code:n :}
+   code CURLE-TIMED-OUT = if
+      2 S\" curl-test: libcurl code 28, a transfer limit expired\n" write drop
+      E-PROC-TIMEOUT throw
+   then
+   code ;
+
+
+\ The one MATCH both recorders share. Unless limit says the case expects its
+\ own limit to end the transfer, NOT-TIMEOUT throws a 28 before a case reads it.
+: RECORD-RESULT ( CURL:fetch-result bool -- )
+   {: limit:bool :}
+   MATCH CURL:fetch-result
+      response OF RECORD-RESPONSE ENDOF
+      truncated OF RECORD-TRUNCATED ENDOF
+      failed OF
+         limit 0= if dup CURL:CODE>N NOT-TIMEOUT drop then
+         RECORD-FAILED
+      ENDOF
+   ;MATCH ;
+
+
 : BODY-FILL ( -- )
    BODY-CAP 0 do FILL-BYTE BODY-BUF i + c! loop ;
 
@@ -831,14 +862,19 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    BODY-FILL ;
 
 
-: FETCH ( CURL:handle len -- ) {: subject:CURL:handle capacity:len :}
+: PERFORM-BODY ( CURL:handle len -- CURL:fetch-result )
+   {: subject:CURL:handle capacity:len :}
    RESULT-RESET
-   subject BODY-BUF capacity CURL:PERFORM
-   MATCH CURL:fetch-result
-      response OF RECORD-RESPONSE ENDOF
-      truncated OF RECORD-TRUNCATED ENDOF
-      failed OF RECORD-FAILED ENDOF
-   ;MATCH ;
+   subject BODY-BUF capacity CURL:PERFORM ;
+
+
+: FETCH ( CURL:handle len -- )
+   PERFORM-BODY false RECORD-RESULT ;
+
+
+\ FETCH for a case that expects its own transfer limit to end the transfer.
+: FETCH-LIMIT ( CURL:handle len -- )
+   PERFORM-BODY true RECORD-RESULT ;
 
 
 : BODY$ ( -- ptr u8 n )
@@ -1124,7 +1160,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 : TEST-TIMEOUT ( -- )
    STALL-READY {: subject:CURL:handle :}
-   subject BODY-CAP >LEN FETCH
+   subject BODY-CAP >LEN FETCH-LIMIT
    subject HEADER-REFUSED
    subject CURL:CLEANUP
    s" a server that never answers ends as CURLE_OPERATION_TIMEDOUT" T-LABEL
@@ -1155,7 +1191,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    SERVER-HITS atomic@ {: before:n :}
    PATH-DRIBBLE$ GET-READY {: subject:CURL:handle :}
    subject CEILING-MS >MS CURL:TIMEOUT! EXPECT-OK
-   subject BODY-CAP >LEN FETCH
+   subject BODY-CAP >LEN FETCH-LIMIT
    subject CURL:CLEANUP
    s" a whole-transfer ceiling ends the dribble though it never stalled" T-LABEL
    LAST-KIND @ KIND-FAILED T=
@@ -1196,7 +1232,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    PATH-STALL$ GET-READY {: subject:CURL:handle :}
    subject 1 LOW-SECONDS CURL:LOW-SPEED! EXPECT-OK
    mono-ns {: started:n :}
-   subject BODY-CAP >LEN FETCH
+   subject BODY-CAP >LEN FETCH-LIMIT
    started ELAPSED-MS {: elapsed:n :}
    subject CURL:CLEANUP
    s" a stalled transfer ends under the low-speed limit alone" T-LABEL
@@ -1351,13 +1387,13 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
 
 \ The loop's answer for one handle, recorded exactly as FETCH records PERFORM's,
 \ so the two paths are compared field by field and not by their spelling.
-: AWAIT-ONE ( CURL:handle -- ) {: subject:CURL:handle :}
-   subject CURL:AWAIT
-   MATCH CURL:fetch-result
-      response OF RECORD-RESPONSE ENDOF
-      truncated OF RECORD-TRUNCATED ENDOF
-      failed OF RECORD-FAILED ENDOF
-   ;MATCH ;
+: AWAIT-ONE ( CURL:handle -- )
+   CURL:AWAIT false RECORD-RESULT ;
+
+
+\ AWAIT-ONE for a case that expects its own transfer limit to end the transfer.
+: AWAIT-LIMIT ( CURL:handle -- )
+   CURL:AWAIT true RECORD-RESULT ;
 
 
 : DROP-FETCH ( CURL:fetch-result -- )
@@ -1391,7 +1427,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
          STREAM-APPEND
       ENDOF
       response OF CURL:HTTP-STATUS>N 0 T= ENDOF
-      failed OF CURL:CODE>N 0 T= ENDOF
+      failed OF CURL:CODE>N NOT-TIMEOUT 0 T= ENDOF
    ;MATCH
    STREAM-DONE atomic@ 0 T=
    STREAM-READ @ 3 T=
@@ -1407,7 +1443,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
             STREAM-APPEND true
          ENDOF
          response OF CURL:HTTP-STATUS>N 200 T= false ENDOF
-         failed OF CURL:CODE>N 0 T= false ENDOF
+         failed OF CURL:CODE>N NOT-TIMEOUT 0 T= false ENDOF
       ;MATCH
    0= until ;
 
@@ -1430,7 +1466,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    subject STREAM-FIRST
    STALL-READY {: other:CURL:handle :}
    other BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
-   other AWAIT-ONE
+   other AWAIT-LIMIT
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 28 T=
    other CURL:CLEANUP
@@ -1473,13 +1509,13 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    MATCH CURL:chunk-result
       chunk OF swap CURL:HTTP-STATUS>N 200 T= LEN>N HELLO$ nip T= ENDOF
       response OF CURL:HTTP-STATUS>N 0 T= ENDOF
-      failed OF CURL:CODE>N 0 T= ENDOF
+      failed OF CURL:CODE>N NOT-TIMEOUT 0 T= ENDOF
    ;MATCH
    subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
    MATCH CURL:chunk-result
       chunk OF 2drop false TTRUE ENDOF
       response OF CURL:HTTP-STATUS>N 200 T= ENDOF
-      failed OF CURL:CODE>N 0 T= ENDOF
+      failed OF CURL:CODE>N NOT-TIMEOUT 0 T= ENDOF
    ;MATCH
    subject CURL:CLEANUP
    PATH-HELLO$ GET-READY {: whole:CURL:handle :}
@@ -1504,13 +1540,13 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
          STREAM-CHUNK swap LEN>N s" not found" T$=
       ENDOF
       response OF CURL:HTTP-STATUS>N 0 T= ENDOF
-      failed OF CURL:CODE>N 0 T= ENDOF
+      failed OF CURL:CODE>N NOT-TIMEOUT 0 T= ENDOF
    ;MATCH
    subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
    MATCH CURL:chunk-result
       chunk OF 2drop false TTRUE ENDOF
       response OF CURL:HTTP-STATUS>N 404 T= ENDOF
-      failed OF CURL:CODE>N 0 T= ENDOF
+      failed OF CURL:CODE>N NOT-TIMEOUT 0 T= ENDOF
    ;MATCH
    subject CURL:CLEANUP ;
 
@@ -1526,7 +1562,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    MATCH CURL:chunk-result
       chunk OF 2drop false TTRUE ENDOF
       response OF drop false TTRUE ENDOF
-      failed OF CURL:CODE>N 42 T= ENDOF
+      failed OF CURL:CODE>N NOT-TIMEOUT 42 T= ENDOF
    ;MATCH
    subject CURL:CLEANUP
    STALL-READY {: silent:CURL:handle :}
@@ -1552,13 +1588,13 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
          STREAM-CHUNK swap LEN>N STREAM-BUF 3 T$=
       ENDOF
       response OF CURL:HTTP-STATUS>N 0 T= ENDOF
-      failed OF CURL:CODE>N 0 T= ENDOF
+      failed OF CURL:CODE>N NOT-TIMEOUT 0 T= ENDOF
    ;MATCH
    subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
    MATCH CURL:chunk-result
       chunk OF 2drop false TTRUE ENDOF
       response OF drop false TTRUE ENDOF
-      failed OF CURL:CODE>N 18 T= ENDOF
+      failed OF CURL:CODE>N NOT-TIMEOUT 18 T= ENDOF
    ;MATCH
    subject CURL:CLEANUP ;
 
@@ -1715,7 +1751,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    RESULT-RESET
    bad BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
    STALL-GROUP 1- 0 ?do i MANY-START loop
-   bad AWAIT-ONE
+   bad AWAIT-LIMIT
    bad HEADER-REFUSED
    bad CURL:CLEANUP
    s" a stalled transfer ends as CURLE_OPERATION_TIMEDOUT and alone" T-LABEL
@@ -1845,7 +1881,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    HALT-TASK ENDED? TTRUE
    HALT-TASK TASK:KILL
    s" another task cancels the owner parked in NEXT" T-LABEL
-   HALT-RC @ 42 T=
+   HALT-RC @ NOT-TIMEOUT 42 T=
    HALT-HANDLE @ CURL:CLEANUP ;
 
 
@@ -1894,7 +1930,7 @@ variable DEFER-RETURNED
    HALT-TASK TASK:KILL
    s" deferred halt returns cancellation before abandoning NEXT" T-LABEL
    DEFER-RETURNED atomic@ 1 T=
-   HALT-RC @ 42 T=
+   HALT-RC @ NOT-TIMEOUT 42 T=
    STOPPED? TTRUE
    HALT-HANDLE @ CURL:CLEANUP ;
 
