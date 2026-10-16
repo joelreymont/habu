@@ -29,6 +29,7 @@ Byte spans are `ptr u8 n`; a response capacity is `ptr u8 len`.
 | `TIMEOUT!` | Handle, `ms` | `status` |
 | `LOW-SPEED!` | Handle, bytes a second, seconds | `status` |
 | `FOLLOW!` | Handle, `bool` | `status` |
+| `FRESH-CONNECT!` | Handle, `bool` | `status` |
 | `PERFORM` | Handle, writable byte span | `fetch-result`, described below |
 | `HEADERS` | Handle, writable byte span | `header-result`, described below |
 | `CLEANUP` | Handle | |
@@ -49,6 +50,14 @@ initialised flag, because a restored image is a different process.
 
 `METHOD!` sets the request verb. Without it libcurl sends `GET`, or `POST` once
 `BODY!` has been used; `METHOD!` overrides the verb and changes nothing else.
+
+`FRESH-CONNECT!` set to true makes libcurl open a new connection for the next
+transfer instead of trying a pooled one. Set it to false to allow connection
+reuse again, which is libcurl's default; a handle retains the setting until
+changed. This can avoid libcurl retrying a POST after a reused keepalive
+connection closes without a response, but does not guarantee exactly-once
+delivery. See libcurl's
+[`CURLOPT_FRESH_CONNECT`](https://curl.se/libcurl/c/CURLOPT_FRESH_CONNECT.html).
 
 `HEADER+` appends one line to the handle's request header list. The list head
 lives in the handle's private record, so `CLEANUP` frees exactly the list that
@@ -181,7 +190,8 @@ that arrives between the read and the scan costs one extra turn, never a missed
 record.
 
 Every per-handle option — `URL!`, `METHOD!`, `HEADER+`, `BODY!`,
-`COOKIE-FILE!`, `COOKIE-JAR!`, `TIMEOUT!`, `LOW-SPEED!`, `FOLLOW!` and the
+`COOKIE-FILE!`, `COOKIE-JAR!`, `TIMEOUT!`, `LOW-SPEED!`, `FOLLOW!`,
+`FRESH-CONNECT!` and the
 scheme restriction — is set before `START` and holds for that transfer alone, so
 one transfer's timeout, stall or failure ends that transfer and nothing else.
 
@@ -344,6 +354,12 @@ uncollected `START`, timeout, cancellation and halted-owner refusal. With
 `HB_TMP` set, the suite writes and reads back
 `$HB_TMP/curl-headers-transcript.txt` as a deterministic result/header/body
 artifact.
+
+The loopback peer also gives a GET a keepalive response, then consumes a POST
+on that same connection and closes without answering. With libcurl's default
+reuse, its retry makes the peer see two POSTs; after `FRESH-CONNECT!` true, the
+peer sees one on a new connection. Both transfers still go through the same
+multi loop and return the response from the final connection.
 
 The loop's own cases follow, with `AIO:START` run first because a live task
 forbids compilation: a `START` before `LOOP-START` and a second `LOOP-START`

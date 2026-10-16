@@ -83,6 +83,7 @@ create DRIBBLE-BUF DRIBBLE-U allot
 create STREAM-BUF STREAM-U allot
 create STREAM-GOT STREAM-U allot
 create STREAM-CHUNK STREAM-CAP allot
+create RETRY-POLLS 16 allot             \ two pollfd rows: pooled socket and listener
 
 : TEST-ALIGN8 ( -- )
    here FFI:>CELL 7 and 8 swap - 7 and allot ;
@@ -104,6 +105,7 @@ variable SERVER-DONE
 variable SERVER-BAD
 variable SERVER-ERRNO
 variable SERVER-HITS
+variable RETRY-POST-HITS
 variable SILENT-LISTENER
 variable SILENT-PORT
 variable CEILING-HITS                   \ the cut dribble's request, if it got out
@@ -142,6 +144,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : PATH-HEADERS-B$ ( -- ptr u8 n ) s" /headers-b" ;
 : PATH-REDIRECT$ ( -- ptr u8 n ) s" /redirect" ;
 : PATH-INTERIM$ ( -- ptr u8 n ) s" /interim" ;
+: PATH-RETRY$ ( -- ptr u8 n ) s" /retry" ;
 : JSON$ ( -- ptr u8 n ) s" {}" ;
 : HEADERS$ ( -- ptr u8 n )
    S\" HTTP/1.0 200 OK\r\nCache-Control: max-age=60\r\nExpires: Wed, 21 Oct 2030 07:28:00 GMT\r\nAge: 7\r\nRetry-After: 9\r\nX-Duplicate: first\r\nX-Duplicate: second\r\nContent-Length: 2\r\nConnection: close\r\n\r\n" ;
@@ -348,6 +351,33 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    again ;
 
 
+\ The peer consumes the complete small POST body before it closes an already
+\ reused connection without sending a response. A missing byte would turn the
+\ close into a different failure, so check the exact payload before counting it.
+: RETRY-BODY? ( TCP4:connection -- bool ) {: conn:TCP4:connection :}
+   s" POST" METHOD-IS? 0= if false exit then
+   PATH-RETRY$ PATH-IS? 0= if false exit then
+   s" Content-Length: 3" REQ-HAS-CI? 0= if false exit then
+   HEAD-U @ 3 + REQ-CAP > if false exit then
+   REQ-U @ HEAD-U @ 3 + < if
+      conn REQ-BUF REQ-U @ + HEAD-U @ 3 + REQ-U @ - TCP4:TRANSFER-BYTES TCP4:READ-EXACT
+      MATCH TCP4:read-result
+         data OF BLEN>N REQ-U @ + REQ-U ! ENDOF
+         closed OF drop false exit ENDOF
+         failed OF drop false exit ENDOF
+      ;MATCH
+   then
+   REQ-BUF HEAD-U @ + 3 s" a=1" STR= ;
+
+
+: RETRY-COUNT ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   conn RETRY-BODY? if
+      1 RETRY-POST-HITS atomic-add drop
+   else
+      1 SERVER-BAD +!
+   then ;
+
+
 : DRAIN-STEP ( TCP4:connection -- bool ) {: conn:TCP4:connection :}
    conn REQ-BUF REQ-CAP TCP4:TRANSFER-BYTES TCP4:READ
    MATCH TCP4:read-result
@@ -519,12 +549,74 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    conn SEND-RESPONSE ;
 
 
+\ A pollfd is an int descriptor, short events, then short returned events.
+: RETRY-POLL-FD! ( fd ptr u8 -- ) {: descriptor:fd slot:ptr :}
+   descriptor FD>N slot LE:U32!
+   1 slot 4 + LE:U16!
+   0 slot 6 + LE:U16! ;
+
+
+\ Answer 1 only when the pooled socket is readable, 0 only when a fresh
+\ connection is pending, and -1 on a fixture failure. A deadline cannot stand
+\ in for evidence of a fresh connection: the client may not have started yet.
+: RETRY-NEXT ( TCP4:connection -- n ) {: conn:TCP4:connection :}
+   conn TCP4:CONNECTION-FD RETRY-POLLS RETRY-POLL-FD!
+   LISTENER@ TCP4:LISTENER-FD RETRY-POLLS 8 + RETRY-POLL-FD!
+   mono-ns REQUEST-MS NS-PER-MS * + {: deadline:n :}
+   begin
+      mono-ns deadline >= if 1 SERVER-BAD +! -1 exit then
+      RETRY-POLLS 2 deadline mono-ns - NS-PER-MS 1- + NS-PER-MS / poll
+      {: result:n :}
+      result 0 > if
+         RETRY-POLLS 6 + LE:U16@ 1 and 0 <> if 1 exit then
+         RETRY-POLLS 14 + LE:U16@ 1 and 0 <> if 0 exit then
+         1 SERVER-BAD +! -1 exit
+      then
+      result 0 < if
+         result negate 4 <> if
+            result negate SERVER-ERRNO !
+            1 SERVER-BAD +! -1 exit
+         then
+      then
+   again ;
+
+
+\ Keep the priming connection live until the POST reaches that socket or a
+\ new connection reaches the listener. A reused POST is consumed and closed
+\ without a response, allowing libcurl's retry; a fresh POST is accepted next.
+: SERVE-RETRY-PRIME ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   RES-RESET
+   S\" HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nok" RES+
+   conn RES-BUF RES-U @ TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS
+   conn RETRY-NEXT {: next:n :}
+   next 1 = if
+      conn REQ-READ if
+         1 SERVER-HITS atomic-add drop
+         conn RETRY-COUNT
+      else
+         1 SERVER-BAD +!
+      then
+   then
+   conn TCP4:CLOSE PEER-STATUS
+   next 0 < if 1 SERVER-STOP atomic-add drop then ;
+
+
+: SERVE-RETRY-POST ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   conn RETRY-COUNT
+   s" 200 OK" s" ok" RESPOND
+   conn SEND-RESPONSE ;
+
+
 : SERVE-UNIMPLEMENTED ( TCP4:connection -- ) {: conn:TCP4:connection :}
    s" 501 Not Implemented" s" not implemented" RESPOND
    conn SEND-RESPONSE ;
 
 
 : ROUTE ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   PATH-RETRY$ PATH-IS? if
+      s" POST" METHOD-IS? if conn SERVE-RETRY-POST else conn SERVE-RETRY-PRIME then
+      exit
+   then
    s" POST" METHOD-IS? if conn SERVE-UNIMPLEMENTED exit then
    s" DELETE" METHOD-IS? if conn SERVE-UNIMPLEMENTED exit then
    PATH-STALL$ PATH-IS? if conn SERVE-STALL exit then
@@ -1492,6 +1584,41 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    BODY$ HELLO$ T$= ;
 
 
+\ A consumed POST with no response on a reused keepalive connection can be
+\ retried by libcurl. This control establishes the behavior the fresh option
+\ needs to avoid on the host's libcurl, through the same multi loop clients use.
+: CASE-RETRY-DEFAULT ( -- )
+   PATH-RETRY$ GET-READY {: subject:CURL:handle :}
+   subject BODY-CAP >LEN MULTI-FETCH
+   s" the priming GET leaves a keepalive connection in libcurl's pool" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   BODY$ s" ok" T$=
+   subject s" a=1" CURL:BODY! EXPECT-OK
+   subject BODY-CAP >LEN MULTI-FETCH
+   subject CURL:CLEANUP
+   s" a reused connection retries the consumed POST after no response" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   RETRY-POST-HITS atomic@ 2 T= ;
+
+
+: CASE-RETRY-FRESH ( -- )
+   PATH-RETRY$ GET-READY {: subject:CURL:handle :}
+   subject BODY-CAP >LEN MULTI-FETCH
+   s" a second priming GET succeeds before forcing a new connection" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   subject true CURL:FRESH-CONNECT! EXPECT-OK
+   subject s" a=1" CURL:BODY! EXPECT-OK
+   subject BODY-CAP >LEN MULTI-FETCH
+   subject CURL:CLEANUP
+   s" a fresh connection sends the consumed-body POST only once" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   RETRY-POST-HITS atomic@ 3 T= ;
+
+
 \ A span too short truncates on both paths, with the WHOLE body's length.
 : PARITY-TRUNCATED ( -- )
    PATH-HELLO$ GET-READY {: one:CURL:handle :}
@@ -1902,6 +2029,8 @@ variable DEFER-RETURNED
    s" a second LOOP-START is refused" T-LABEL
    [: CURL:LOOP-START EXPECT-OK ;] CURL:E-STATE TTHROWSQ
    PARITY-WHOLE
+   CASE-RETRY-DEFAULT
+   CASE-RETRY-FRESH
    PARITY-TRUNCATED
    CASE-STREAM-HELD
    CASE-STREAM-MODES
@@ -1935,7 +2064,7 @@ variable DEFER-RETURNED
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 77 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   SERVER-HITS atomic@ 82 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
