@@ -79,6 +79,7 @@ OPT-LONG 19 + constant OPT-LOW-SPEED-LIMIT \ CURLOPT_LOW_SPEED_LIMIT
 OPT-LONG 20 + constant OPT-LOW-SPEED-TIME  \ CURLOPT_LOW_SPEED_TIME
 OPT-LONG 52 + constant OPT-FOLLOW         \ CURLOPT_FOLLOWLOCATION
 OPT-LONG 60 + constant OPT-BODY-SIZE      \ CURLOPT_POSTFIELDSIZE
+OPT-LONG 74 + constant OPT-FRESH-CONNECT  \ CURLOPT_FRESH_CONNECT
 OPT-LONG 99 + constant OPT-NO-SIGNAL      \ CURLOPT_NOSIGNAL
 OPT-LONG 155 + constant OPT-TIMEOUT-MS    \ CURLOPT_TIMEOUT_MS
 OPT-LONG 181 + constant OPT-PROTOCOLS     \ CURLOPT_PROTOCOLS
@@ -498,6 +499,12 @@ public
 
 : FOLLOW! ( handle bool -- status ) {: subject:handle on:bool :}
    subject OPT-FOLLOW on FLAG>N SET-NUM-RAW CODE>STATUS ;
+
+
+\ Force a new connection for the next transfer when enabled. Zero restores
+\ libcurl's default attempt to reuse a connection from its pool.
+: FRESH-CONNECT! ( handle bool -- status ) {: subject:handle on:bool :}
+   subject OPT-FRESH-CONNECT on FLAG>N SET-NUM-RAW CODE>STATUS ;
 
 
 private
@@ -1423,8 +1430,9 @@ public
 
 \ Hands one prepared handle and one writable span to the loop and answers as
 \ soon as the record is queued. Every per-handle option - URL!, METHOD!,
-\ HEADER+, BODY!, COOKIE-FILE!, COOKIE-JAR!, TIMEOUT!, LOW-SPEED!, FOLLOW! and
-\ the scheme restriction - is set before this and holds for that transfer alone.
+\ HEADER+, BODY!, COOKIE-FILE!, COOKIE-JAR!, TIMEOUT!, LOW-SPEED!, FOLLOW!,
+\ FRESH-CONNECT! and the scheme restriction - is set before this and holds for
+\ that transfer alone.
 \ From here until AWAIT answers, the handle and the span belong to the loop: no
 \ other task may touch either. A START with no loop running, and a second START
 \ on a handle already in flight, are E-STATE; a table with no record free is
