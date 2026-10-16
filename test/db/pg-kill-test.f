@@ -100,6 +100,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require src/lib/test/wait.f
 require test/gate-pool.f
 
 package PG-KILL-TEST
@@ -154,24 +155,34 @@ PROC-NO-FD PIPE-WR !
    false REPORTED !
    false PIPE-DONE ! ;
 
-\ TRUE once fd has bytes to read or has reached end of file, within ms.
-: READY-WITHIN? ( n n -- bool ) {: fd:n ms:n :}
+\ fd within ms: a positive count once it has bytes to read or has reached end of
+\ file, 0 when ms ran out first, a negative errno when the poll failed.
+: READY-WITHIN ( n n -- n )
+   {: fd:n ms:n :}
    fd >FD POLLIN PROC-PFD!
-   1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART 0 > ;
+   1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART ;
 
 \ One line into buf, a byte at a time up to its newline, before the deadline.
-\ End of file first means the case died before it reported.
-: LINE-READ? ( ptr u8 ptr n n -- bool ) {: buf:ptr count:ptr deadline:n :}
+\ End of file first means the case died before it reported: that, a line that
+\ fills buf with no newline, a failed read or a failed poll answers false. The
+\ deadline running out first is REPORT-READ?'s, this test's own, named for it
+\ and thrown as a timeout.
+: LINE-READ? ( ptr u8 ptr n n -- bool )
+   {: buf:ptr count:ptr deadline:n :}
    0 count !
    begin
       count @ FS-PATH-CAP >= if false exit then
-      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN? 0= if false exit then
+      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
+      ready 0= if s" pg-kill-test REPORT-READ" TEST-WAIT:EXPIRED then
+      ready 0 < if false exit then
       PIPE-RD @ buf count @ + 1 read 1 <> if false exit then
       buf count @ + c@ NEWLINE = if true exit then
       count @ 1+ count !
    again ;
 
-\ Both lines, before READY-MS runs out.
+\ Both lines, before READY-MS runs out. A report the case could not finish
+\ answers false and leaves REPORTED false; READY-MS running out first is a
+\ timeout, which LINE-READ? throws.
 : REPORT-READ? ( -- bool )
    READY-MS >MS PROC-DEADLINE-AT {: deadline:n :}
    LINE LINE-U deadline LINE-READ? 0= if false exit then
@@ -202,12 +213,17 @@ PROC-NO-FD PIPE-WR !
    s" pg-kill: segment " type SHMID FMT:.INT
    s"  outlived its server; `ipcrm -m " type SHMID FMT:.INT
    s" ` removes it" type cr ;
-\ End of file within ms: nothing under the row holds the write end.
-: GONE-WITHIN? ( n -- bool ) {: ms:n :}
+\ End of file within ms: nothing under the row holds the write end. A failed
+\ read or poll answers false. ms running out first is this test's own
+\ deadline, named and thrown as a timeout.
+: GONE-WITHIN? ( n -- bool )
+   {: ms:n :}
    PIPE-DONE @ if true exit then
    ms >MS PROC-DEADLINE-AT {: deadline:n :}
    begin
-      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN? 0= if false exit then
+      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
+      ready 0= if s" pg-kill-test GONE-WITHIN" TEST-WAIT:EXPIRED then
+      ready 0 < if false exit then
       PIPE-RD @ SINK SINK-CAP read {: got:n :}
       got 0= if true PIPE-DONE ! true exit then
       got 0 < if false exit then
@@ -273,22 +289,27 @@ PROC-NO-FD PIPE-WR !
 
 \ What a failed case owes. A server the kill missed stops itself once its
 \ lock-file recheck, which runs once a minute, finds its data directory gone,
-\ so the row's directories go first and the pipe is given that long. The
-\ socket directory the case reported goes last, wherever it was.
+\ so the row's directories go first and the pipe is given that long; a writer
+\ still there after it is this test's own deadline, thrown as a timeout. The
+\ socket directory the case reported goes last, wherever it was, and goes even
+\ when that wait throws.
 : SWEEP ( -- )
-   0 >IDX GT-POOL-CHILD-TMP-REMOVE
-   s" the sweep left no process behind" T-LABEL
-   EXPIRE-MS GONE-WITHIN? TTRUE
-   REPORTED @ 0= if exit then
-   SOCKETS$ EXISTS? if SOCKETS$ REMOVE-TREE then ;
+   [: 0 >IDX GT-POOL-CHILD-TMP-REMOVE
+      s" the sweep left no process behind" T-LABEL
+      EXPIRE-MS GONE-WITHIN? TTRUE ;]
+   [: REPORTED @ if SOCKETS$ EXISTS? if SOCKETS$ REMOVE-TREE then then ;]
+   finally ;
 
 \ Whatever the body asserted or threw. Every step is a no-op for a case that
-\ passed.
+\ passed. This process lets its own write end go before the sweep waits for
+\ end of file, which a start that threw before ROW-START closed it leaves open.
+\ The sweep runs even when the kill throws, and the read end closes even when
+\ the sweep throws.
 : CASE-END ( -- )
-   GT-POOL-KILL-ALL
-   PIPE-DONE @ 0= if SWEEP then
-   PIPE-WR PROC-CLOSE-CELL
-   PIPE-RD PROC-CLOSE-CELL ;
+   [: [: GT-POOL-KILL-ALL ;]
+      [: PIPE-WR PROC-CLOSE-CELL
+         PIPE-DONE @ 0= if SWEEP then ;] finally ;]
+   [: PIPE-RD PROC-CLOSE-CELL ;] finally ;
 
 \ The pool is reset before the body: GT-POOL-KILL-ALL reads the slot table the
 \ reset fills in.
