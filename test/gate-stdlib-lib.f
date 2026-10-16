@@ -244,6 +244,9 @@ variable COMPILER-OFF
 
 public
 
+\ A fixture whose own teardown wraps this one reports and cleans up through it.
+EXPORT SUITE-FINISH
+
 : MAIN ( -- )
    SUITE-INSTALL-HOOKS
    TEST:RESET ;

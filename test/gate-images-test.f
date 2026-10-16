@@ -1,8 +1,9 @@
 \ The real gate adapter schedules a compiler supplier beside an independent
 \ row. A private source tree replaces only the compiler builder at the normal
 \ child process boundary. The builder cannot finish until that row releases
-\ it, so a synchronous setup fails by the builder's bounded wait. Keep each
-\ registry, builder, consumer copy and transcript for replay.
+\ it, so a synchronous setup ends at the builder's bounded wait, which this
+\ test reports as a timeout rather than a failure. Keep each registry,
+\ builder, consumer copy and transcript for replay.
 \ Run: bin/hb --load test/gate-images-test.f
 require src/lib/test.f
 require src/lib/string.f
@@ -11,6 +12,7 @@ require src/lib/fs-mutate.f
 require src/lib/process-cwd.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require src/lib/test/subject.f
 require test/suite-budget.f
 
 package GATE-IMAGES-ORCH-E2E
@@ -89,6 +91,13 @@ variable PARENT-U
    OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT ;
 
+\ A nested gate whose compiler bundle ran out of time exits PROC-TIMEOUT-RC
+\ (gate-images-orch-registry.f). Its transcript is already saved; the deadline
+\ is thrown again, never asserted as an exit code.
+: TIMED-OUT ( -- )
+   s" test/gate-images-orch-registry.f" OUT OUT-U @ ERR ERR-U @ RC @
+   SUBJECT:RC-TIMED-OUT ;
+
 : HAS-OUT ( ptr u8 n -- bool )
    OUT OUT-U @ 2swap CONTAINS? ;
 
@@ -129,12 +138,14 @@ public
    s" gate-images-orch-success" SETUP
    false RUN-GATE
    s" success.out" s" success.err" LOG
+   TIMED-OUT
    s" the independent row releases the bundle before dependent consumers" T-LABEL
    CHECK-SUCCESS
    s" success artifacts: " type ROOT$ type cr
    s" gate-images-orch-failure" SETUP
    true RUN-GATE
    s" failure.out" s" failure.err" LOG
+   TIMED-OUT
    s" a failed bundle leaves dependents red and later independent work green" T-LABEL
    CHECK-FAILURE
    s" failure artifacts: " type ROOT$ type cr

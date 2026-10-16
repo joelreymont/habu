@@ -1,14 +1,20 @@
 \ Controlled compiler bundle builder for gate-images-test.f. The release
-\ row must run while this builder is live; a bounded wait makes a serial gate
-\ fail promptly rather than hanging the focused test.
+\ row must run while this builder is live. A serial gate never releases it, so
+\ its bounded wait expires: the builder names the wait and exits
+\ PROC-TIMEOUT-RC, which the gate reports as a timeout rather than hanging the
+\ focused test or counting a failure.
+require src/lib/errors.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/string.f
+require src/lib/process.f
 require src/lib/process-env.f
+require src/lib/test/wait.f
 require src/os/script-argv.f
 
 package GATE-ORCH-BUILDER
 private
+60000000000 constant RELEASE-NS
 create PATH FS-PATH-CAP allot
 create NOISE 1024 allot
 
@@ -16,12 +22,18 @@ create NOISE 1024 allot
    0 SCRIPT-ARGV$ 2swap PATH JOIN-PATH PATH swap ;
 
 : WAIT-RELEASE ( -- )
-   mono-ns 60000000000 + {: deadline:n :}
-   begin s" release" AT FILE? 0= while
-      mono-ns deadline > if
-         s" gate orchestration: independent row never released builder" 71 die
-      then
-   repeat ;
+   [: s" release" AT FILE? ;] mono-ns RELEASE-NS +
+   s" gate-images-orch-builder WAIT-RELEASE" TEST-WAIT:POLL ;
+
+\ A throw code does not cross the process boundary: the expired wait leaves as
+\ PROC-TIMEOUT-RC, and COMPILER-IMAGES:BUILD throws E-PROC-TIMEOUT again.
+: RELEASED ( -- )
+   [: WAIT-RELEASE ;] catch {: code:n :}
+   code E-PROC-TIMEOUT = if
+      s" gate orchestration: independent row never released builder"
+      PROC-TIMEOUT-RC die
+   then
+   code 0<> if code throw then ;
 
 : FAILURE-NOISE ( -- )
    1024 0 ?do $78 NOISE i + c! loop
@@ -38,7 +50,7 @@ public
    s" HABU_GATE_COMPILER_BUNDLE" GETENV s" 1" STR= 0= if
       s" gate orchestration: compiler bundle switch missing" 72 die
    then
-   WAIT-RELEASE
+   RELEASED
    s" builder saw release" type cr
    s" HABU_GATE_ORCH_FAIL" GETENV s" 1" STR= if
       FAILURE-NOISE
