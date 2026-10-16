@@ -10,7 +10,6 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/content-key.f
 require src/lib/object.f
-require src/lib/object-link.f
 require tools/object-image.f
 
 package OBJIMG-TEST
@@ -50,22 +49,34 @@ DYNAMIC-BUFFER PADDING n
    ROOT ROOT-U COPY-PATH
    ROOT$ s" obj-exit" EXE JOIN-PATH EXE-U ! ;
 
-: BUILD-EXIT-OBJ ( -- )
+: START-OBJ ( -- )
    OBJ:RESET
    HASH$ SOURCE!
    s" host-aarch64" TARGET!
    s" checker-effect-v1" CHECKER!
-   s" hb-arm64-v1" COMPILER!
+   s" hb-arm64-v1" COMPILER! ;
+
+: EXIT-CODE ( -- )
    ASM-INIT
    0 0 MOVZ,
-   NR-EXIT-GROUP SYS,
+   NR-EXIT-GROUP SYS, ;
+
+: FINISH-OBJ ( -- )
    CODE ASM-LEN TEXT+
    s" MAIN" s" --" EXPORT+
    s" MAIN" 0 s" --" DEF+ ;
 
+: BUILD-EXIT-OBJ ( -- )
+   START-OBJ EXIT-CODE FINISH-OBJ ;
+
+: BUILD-EXIT-OFF ( n -- ) {: off:n :}
+   START-OBJ EXIT-CODE
+   CODE ASM-LEN TEXT+
+   s" MAIN" s" --" EXPORT+
+   s" MAIN" off s" --" DEF+ ;
+
 : WRITE-IMAGE ( -- )
-   OBJIMG:RESET
-   ADD
+   OBJIMG:LOAD
    EXE$ OBJIMG:WRITE
    EXE$ FILE? TTRUE ;
 
@@ -88,10 +99,11 @@ DYNAMIC-BUFFER PADDING n
    erru 0 T= ;
 
 : LARGE-IMAGE ( -- )
-   BUILD-EXIT-OBJ
+   START-OBJ EXIT-CODE
    PADDING-U CELL / PADDING-RESERVE
    \ The exit stub runs before this zero-filled, unreachable payload.
-   0 PADDING byte-view PADDING-U TEXT+
+   0 PADDING byte-view PADDING-U BYTES,
+   FINISH-OBJ
    WRITE-IMAGE
    EXE$ FILE-SIZE PADDING-U > TTRUE
    RUN-IMAGE
@@ -103,9 +115,30 @@ DYNAMIC-BUFFER PADDING n
    s" host-aarch64" TARGET!
    s" checker-effect-v1" CHECKER!
    s" hb-arm64-v1" COMPILER!
-   OBJIMG:RESET
-   ADD
-   [: EXE$ OBJIMG:WRITE ;] E-OBJ-SCHEMA TTHROWSQ ;
+   [: OBJIMG:LOAD ;] E-OBJ-SCHEMA TTHROWSQ ;
+
+: BAD-SHAPES-FAIL ( -- )
+   BUILD-EXIT-OBJ
+   s" package" s" public" OBJ:PACKAGE+
+   [: OBJIMG:LOAD ;] E-OBJ-SCHEMA TTHROWSQ
+   BUILD-EXIT-OBJ
+   s" MAIN" s" --" OBJ:IMPORT+
+   [: OBJIMG:LOAD ;] E-OBJ-SCHEMA TTHROWSQ
+   BUILD-EXIT-OBJ
+   s" MAIN" 1 s" --" OBJ:DEF+
+   [: OBJIMG:LOAD ;] E-OBJ-SCHEMA TTHROWSQ
+   1 BUILD-EXIT-OFF
+   [: OBJIMG:LOAD ;] E-OBJ-SCHEMA TTHROWSQ
+   BUILD-EXIT-OBJ
+   s" OTHER" 0 s" 0000000000000005" OBJ:ENTRY+
+   [: OBJIMG:LOAD ;] E-OBJ-SCHEMA TTHROWSQ ;
+
+: NAMED-ENTRY ( -- )
+   BUILD-EXIT-OBJ
+   s" MAIN" 1 s" 0000000000000005" OBJ:ENTRY+
+   OBJIMG:LOAD
+   EXE$ OBJIMG:WRITE
+   RUN-IMAGE ;
 
 public
 
@@ -117,6 +150,8 @@ public
    RUN-IMAGE
    LARGE-IMAGE
    EMPTY-FAILS
+   BAD-SHAPES-FAIL
+   NAMED-ENTRY
    CLEANUP-RUN
    T-REPORT ;
 

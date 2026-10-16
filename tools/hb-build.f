@@ -23,7 +23,6 @@ require src/lib/object.f
 require src/lib/object-cache.f
 require src/lib/object-index.f
 require src/lib/object-resolve.f
-require src/lib/object-link.f
 require tools/object-image.f
 require tools/hb-build-report.f
 require tools/hb-build-lib.f

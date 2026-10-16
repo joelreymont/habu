@@ -1474,10 +1474,6 @@ SUITE object-source-resolver
    src/lib/object-resolve-test.f
 ;SUITE
 
-SUITE object-link-symbols
-   src/lib/object-link-test.f
-;SUITE
-
 SUITE object-image-writer
    tools/object-image-test.f
 ;SUITE

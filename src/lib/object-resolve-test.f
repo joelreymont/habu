@@ -12,19 +12,15 @@ require src/lib/object.f
 require src/lib/object-cache.f
 require src/lib/object-index.f
 require src/lib/object-resolve.f
-require src/lib/object-link.f
 
 package OBJRES-TEST
 using OBJ
 using OBJRES
 using OBJSTORE
-using OBJLINK
 
 64 constant KEY-U
-\ One byte past the linker's former 64 KiB merge ceiling. Its text and data,
-\ hex-encoded, put the record past the codec's former 256 KiB ceiling and the
-\ cache's former fixed read; src/lib/object-test.f takes one section past the
-\ codec's former 128 KiB section ceiling.
+\ Text and data, hex-encoded, put the record past the codec's former 256 KiB
+\ ceiling and the cache's former fixed read.
 $10001 constant LARGE-U
 DYNAMIC-BUFFER LARGE-STORAGE n
 
@@ -79,20 +75,28 @@ create TEXT-BYTES 1 c, 2 c, 3 c,
    OBJ:CHECKER$ CHECKER$ T$=
    OBJ:COMPILER$ COMPILER$ T$= ;
 
+: HEX-DIGIT ( n -- n )
+   dup 10 < if 48 + exit then
+   87 + ;
+
 : ALIASED-APPEND ( -- )
    BYTES$ {: src:ptr size:n :}
    size CELL / 1+ LARGE-STORAGE-RESERVE
    src 0 LARGE-STORAGE byte-view size BYTE-COPY
-   \ The append needs three times the record, past every capacity the codec has
-   \ reserved, so it reads its own input across a relocation of the codec buffer.
+   \ Appending the codec's own record can move its storage during the copy.
    BYTES$ TEXT+
    s" the aliased append relocated the codec buffer" T-LABEL
    BYTES$ drop src <> TTRUE
-   OBJLINK:RESET
-   ADD APPLY
-   TEXT$ {: a:ptr u:n :}
-   u LARGE-U size + T=
-   a LARGE-U + size 0 LARGE-STORAGE byte-view size T$= ;
+   ROW-COUNT 7 T=
+   6 ROW-TAG$ s" text" T$=
+   6 0 ROW-FIELD$ {: hex:ptr hexu:n :}
+   hexu size 2 * T=
+   true
+   size 0 ?do
+      0 LARGE-STORAGE byte-view i + c@ {: b:n :}
+      hex i 2 * + c@ b 4 rshift HEX-DIGIT = and
+      hex i 2 * 1+ + c@ b 15 and HEX-DIGIT = and
+   loop TTRUE ;
 
 \ Exercise both payload sections above the former record and merge ceilings.
 \ Self-loading must leave the source intact before any growth or copy.
@@ -111,22 +115,14 @@ create TEXT-BYTES 1 c, 2 c, 3 c,
    SRC-KEY KEY-HEX
    KEY2 KEY-U SRC-KEY KEY-U T$=
    OBJRES:STORE nip KEY-U T=
-   SRC$ BUILD
-   OBJLINK:RESET
-   ADD
    SRC$ TARGET$ CHECKER$ COMPILER$ OBJRES:LOAD TTRUE
    SRC-KEY KEY-HEX
    KEY2 KEY-U SRC-KEY KEY-U T$=
-   ADD
-   APPLY
-   OBJECT-COUNT 2 T=
-   1 OBJECT-TEXT-BASE 3 T=
-   1 OBJECT-TEXT-SIZE LARGE-U T=
-   TEXT$ {: a:ptr u:n :}
-   u LARGE-U 3 + T=
-   a 3 TEXT-BYTES 3 T$=
-   a 3 + LARGE-U LARGE$ T$=
-   DATA$ LARGE$ T$=
+   ROW-COUNT 6 T=
+   4 ROW-TAG$ s" text" T$=
+   4 0 ROW-FIELD$ nip LARGE-U 2 * T=
+   5 ROW-TAG$ s" data" T$=
+   5 0 ROW-FIELD$ nip LARGE-U 2 * T=
    ALIASED-APPEND
    LARGE-STORAGE-RELEASE ;
 
@@ -168,7 +164,6 @@ public
    CLEANUP-RUN
    T-REPORT ;
 
-;using
 ;using
 ;using
 ;using
