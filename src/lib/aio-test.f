@@ -3,11 +3,12 @@
 \
 \ Pipes, one regular file under the test's own temporary directory, and one
 \ loopback stream this process is both ends of; no clock but the monotonic one.
-\ Every wait in this file is bounded, so an operation that never completes is a
-\ FAIL and not a hung suite.
+\ Every wait in this file is bounded: a wait that never finishes ends the row as a
+\ timeout and not a hung suite, and what a finished wait leaves is asserted.
 
 require src/lib/errors.f
 require src/lib/test.f
+require src/lib/test/wait.f
 require src/lib/task.f
 require src/lib/memory.f              \ the allocations the transfers own
 require src/lib/num-types.f           \ the alloc-byte-len those allocations carry
@@ -169,32 +170,32 @@ TASK:MIN-STACK TASK:TASK FAN7
 
 : THREADS ( -- n ) TEST-HOST:THREADS ;
 
-: REACHED? ( ptr n n -- bool ) {: cell:ptr want:n :}
-   mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      cell atomic@ want >= if 0 0= exit then
-      mono-ns deadline > if 0 0= 0= exit then
-      TASK:PAUSE
-   again ;
+\ The end of a wait's WAIT-MS window, an absolute mono-ns.
+: DEADLINE ( -- n )
+   mono-ns WAIT-MS NS-PER-MS * + ;
 
-: ENDED? ( ptr n -- bool ) {: tcb:ptr :}
-   mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      tcb TASK:DONE? if 0 0= exit then
-      mono-ns deadline > if 0 0= 0= exit then
-      TASK:PAUSE
-   again ;
+\ Returns once the count in the cell reaches want.
+: REACH ( ptr n n -- )
+   [: 2dup swap atomic@ <= ;] DEADLINE s" aio-test REACH" TEST-WAIT:POLL
+   2drop ;
+
+\ Returns once the task has ended.
+: AWAIT-END ( ptr n -- )
+   [: dup TASK:DONE? ;] DEADLINE s" aio-test AWAIT-END" TEST-WAIT:POLL
+   drop ;
 
 \ The scrub a halted task runs cancels its operations, and the cancels have to
 \ reach the kernel and come back before the ring is idle, so the stop is retried
-\ to a bound rather than asserted on the first try.
+\ to a bound rather than asserted on the first try. Only E-AIO-BUSY is retried:
+\ any other code from AIO:STOP is a fault and is rethrown at once.
 : STOPPED? ( -- bool )
-   mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      [: AIO:STOP ;] catch 0= if 0 0= exit then
-      mono-ns deadline > if 0 0= 0= exit then
-      TASK:PAUSE
-   again ;
+   [: AIO:STOP ;] catch {: code:n :}
+   code 0= if true exit then
+   code E-AIO-BUSY <> if code throw then
+   false ;
+
+: STOP-LOOP ( -- )
+   [: STOPPED? ;] DEADLINE s" aio-test STOP-LOOP" TEST-WAIT:POLL ;
 
 \ ---- 1: a task polls, the main thread writes --------------------------------
 : C1-WORK ( -- )
@@ -206,7 +207,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    ['] C1-WORK C1-TASK TASK:ACTIVATE
    SETTLE-MS TASK:SLEEP
    P-W @ POKE
-   C1-TASK ENDED? TTRUE
+   C1-TASK AWAIT-END
    C1-TASK TASK:THROW@ 0 T=
    C1-GOT @ AIO:READABLE and AIO:READABLE T=
    C1-TASK TASK:KILL
@@ -342,8 +343,8 @@ TASK:MIN-STACK TASK:TASK FAN7
    ['] FAN7-WORK FAN7 TASK:ACTIVATE ;
 
 : FAN-END ( -- )
-   FAN0 ENDED? TTRUE  FAN1 ENDED? TTRUE  FAN2 ENDED? TTRUE  FAN3 ENDED? TTRUE
-   FAN4 ENDED? TTRUE  FAN5 ENDED? TTRUE  FAN6 ENDED? TTRUE  FAN7 ENDED? TTRUE
+   FAN0 AWAIT-END  FAN1 AWAIT-END  FAN2 AWAIT-END  FAN3 AWAIT-END
+   FAN4 AWAIT-END  FAN5 AWAIT-END  FAN6 AWAIT-END  FAN7 AWAIT-END
    FAN0 TASK:THROW@ 0 T=  FAN1 TASK:THROW@ 0 T=
    FAN2 TASK:THROW@ 0 T=  FAN3 TASK:THROW@ 0 T=
    FAN4 TASK:THROW@ 0 T=  FAN5 TASK:THROW@ 0 T=
@@ -358,7 +359,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    0 FAN-READY !
    FAN-TASKS 0 ?do FAN-R CELL-VIEW i SLOT FAN-W CELL-VIEW i SLOT PIPE-OPEN loop
    FAN-START
-   FAN-ARMED FAN-TASKS REACHED? TTRUE
+   FAN-ARMED FAN-TASKS REACH
    THREADS FAN-DURING !
    FAN-TASKS 0 ?do FAN-W CELL-VIEW i SLOT @ POKE loop
    FAN-END
@@ -385,7 +386,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    P-R P-W PIPE-OPEN
    P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
    ['] OWNER-WORK OWNER-TASK TASK:ACTIVATE
-   OWNER-TASK ENDED? TTRUE
+   OWNER-TASK AWAIT-END
    OWNER-RC @ E-AIO-STATE T=
    OWNER-TASK TASK:KILL
    LONE-TICKET @ AIO:CANCEL
@@ -646,7 +647,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
    P-R @ >FD buf cap XFER-N 0 AIO:READ LONE-XFER !
    ['] XFER-OWNER-WORK XFER-OWNER-TASK TASK:ACTIVATE
-   XFER-OWNER-TASK ENDED? TTRUE
+   XFER-OWNER-TASK AWAIT-END
    XFER-OWNER-RC @ E-AIO-STATE T=
    XFER-OWNER-TASK TASK:KILL
    LONE-XFER @ AIO:CANCEL-XFER
@@ -747,10 +748,10 @@ CAST: XFER>N ( AIO:xfer -- n )
    0 XFER-FORGET-DONE !
    P-R P-W PIPE-OPEN
    ['] XFER-FORGET-WORK XFER-FORGET-TASK TASK:ACTIVATE
-   XFER-FORGET-DONE 1 REACHED? TTRUE
-   XFER-FORGET-TASK ENDED? TTRUE
+   XFER-FORGET-DONE 1 REACH
+   XFER-FORGET-TASK AWAIT-END
    XFER-FORGET-TASK TASK:KILL
-   STOPPED? TTRUE
+   STOP-LOOP
    P-W @ FORGET-PTR @ 1 write 0 < TTRUE
    P-R P-W PIPE-CLOSE
    AIO:START ;
@@ -774,11 +775,11 @@ CAST: XFER>N ( AIO:xfer -- n )
    0 OWN-EXIT-DONE !
    P-R P-W PIPE-OPEN
    ['] OWN-EXIT-WORK OWN-EXIT-TASK TASK:ACTIVATE
-   OWN-EXIT-DONE 1 REACHED? TTRUE
-   OWN-EXIT-TASK ENDED? TTRUE
+   OWN-EXIT-DONE 1 REACH
+   OWN-EXIT-TASK AWAIT-END
    OWN-EXIT-TASK TASK:KILL
    OWN-EXIT-MARK @ 1 T=
-   STOPPED? TTRUE
+   STOP-LOOP
    P-R P-W PIPE-CLOSE
    AIO:START ;
 
@@ -794,12 +795,12 @@ CAST: XFER>N ( AIO:xfer -- n )
    0 HALT-PARKED !
    P-R P-W PIPE-OPEN
    ['] HALT-WORK HALT-TASK TASK:ACTIVATE
-   HALT-PARKED 1 REACHED? TTRUE
+   HALT-PARKED 1 REACH
    SETTLE-MS TASK:SLEEP
    HALT-TASK TASK:HALT
-   HALT-TASK ENDED? TTRUE
+   HALT-TASK AWAIT-END
    HALT-TASK TASK:KILL
-   STOPPED? TTRUE
+   STOP-LOOP
    P-R P-W PIPE-CLOSE ;
 
 \ ---- 11: the ring opens again ------------------------------------------------

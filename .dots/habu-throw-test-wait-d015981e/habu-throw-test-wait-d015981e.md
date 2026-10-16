@@ -36,7 +36,7 @@ Add `src/lib/test/wait.f`, in package `TEST-WAIT`, with two public words:
 
 ```forth
 TEST-WAIT:EXPIRED ( ptr u8 n -- )
-TEST-WAIT:UNTIL   ( R [ R -- R bool ] n ptr u8 n -- R )
+TEST-WAIT:POLL    ( R [ R -- R bool ] n ptr u8 n -- R )
 ```
 
 ### `EXPIRED`
@@ -63,7 +63,7 @@ aio-test REACH: a deadline expired
 
 This follows the existing small diagnostic-and-throw shape in `src/lib/net/udp4-test.f:158–170`.
 
-### `UNTIL`
+### `POLL`
 
 Arguments, after the preserved stack row `R`, are:
 
@@ -75,7 +75,7 @@ It checks the predicate first. Success returns `R`. Otherwise, expiry calls `EXP
 
 It does not catch predicate errors, retry particular exceptions, reset deadlines, join tasks, or perform cleanup. Callers retain their explicit predicates and compute their existing deadlines. Use `>=` for expiry; this does not extend any existing window.
 
-The preserved row permits explicit cell/target or task-pointer arguments without closures or scratch globals. Habu quotations cannot capture locals; existing row-polymorphic callbacks provide the relevant language precedent (`docs/forth-card.md`, section 2; `src/core/combinators.f:15–21`; `src/lib/vector.f:216–219`). The signature has not been compiled yet: the first child validates it through its real consumers, and if the checker refuses this effect it reports the exact refusal instead of inventing another shape.
+The preserved row permits explicit cell/target or task-pointer arguments without closures or scratch globals. Habu quotations cannot capture locals; existing row-polymorphic callbacks provide the relevant language precedent (`docs/forth-card.md`, section 2; `src/core/combinators.f:15–21`; `src/lib/vector.f:216–219`). The checker admits this effect with the deadline typed `n` (what `mono-ns` returns), for count, task-end and empty-row predicates. The word is `POLL` because `until` is a reserved control word (`tools/reserved-name-lint-core.f` `RNL-RESERVED-CONTROL?`).
 
 Require this module explicitly from its users. Do not add a task dependency to every user of `src/lib/test.f`, whose current imports are at `src/lib/test.f:3–7`.
 
@@ -92,7 +92,7 @@ Nine straightforward `TASK:PAUSE` loops repeat across four files:
 
 `ws-test.f:1593–1599` supplies another simple polling caller.
 
-Sharing only the diagnostic would leave those loops duplicated. `UNTIL` removes their repeated clock and pause control while keeping each condition visible in a small local wrapper. Pure waits lose their boolean result and `?` suffix; their callers lose deadline-only `TTRUE`s.
+Sharing only the diagnostic would leave those loops duplicated. `POLL` removes their repeated clock and pause control while keeping each condition visible in a small local wrapper. Pure waits lose their boolean result and `?` suffix; their callers lose deadline-only `TTRUE`s.
 
 Keep local loops for sleeps, blocking polls, progress-reset clocks, mixed failure results, and cleanup-sensitive waits. Examples include `ws-test.f:276–284,1642–1681`, `tcp4-test.f:485–493`, and `capture-tree-test.f:103–122`. Do not add configurable scheduling or error policies to accommodate them.
 

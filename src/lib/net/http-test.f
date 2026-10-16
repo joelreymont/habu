@@ -2181,7 +2181,7 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
 \ A task killed inside a wait leaves its record in flight until the loop drains
 \ the kernel's cancel completion, and AIO:STOP is E-AIO-BUSY until it does, so
 \ the stop after the last join is retried to a bound rather than asserted on
-\ the first try (src/lib/aio-test.f STOPPED?). A ring still busy past the bound
+\ the first try (src/lib/aio-test.f STOP-LOOP). A ring still busy past the bound
 \ is a deadline, not a failure: one line on fd 2 names E-AIO-BUSY, then
 \ E-PROC-TIMEOUT, which the pool reads as TIMEOUT-UNDER-LOAD (docs/gate.md).
 \ Any other code from AIO:STOP is a fault and is rethrown at once.

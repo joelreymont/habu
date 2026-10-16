@@ -451,6 +451,14 @@ at its deadline.
   child of the `engine-runtime-regressions` row, exits `PROC-TIMEOUT-RC` for it;
   `test/process-pty-tty-smoke.f` `DEADLINE` tears the supervised target down
   before it throws, because the linear handle cannot cross a catch.
+  A named local wait or task join whose clock ends is the same deadline, never
+  a `TTRUE` on a false flag: `TEST-WAIT:EXPIRED` (`src/lib/test/wait.f`)
+  prints `<name>: a deadline expired` on stdout and throws it, and
+  `TEST-WAIT:POLL` asks a predicate, pausing the task, until it answers true
+  or the deadline expires (`src/lib/aio-test.f` `REACH`, `AWAIT-END`,
+  `STOP-LOOP`). A worker task records its deadline and the main task throws it
+  at the join. The wait keeps its deadline, retry count, sleep and grace
+  period: a timeout row is never fixed by raising one.
 - A build row's own capture deadline reaches the pool the same way. The image
   builders (`test/whitebox-engine.f`, `test/keyed-image.f`,
   `test/cold-engine.f`) and `test/aot-wid-build.f` read their captures through

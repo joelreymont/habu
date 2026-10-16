@@ -8,14 +8,14 @@ blocks:
   - habu-throw-websocket-lifecycle-2c12bc32
 ---
 
-Problem: the parent's rule (a wait whose clock ends throws E-PROC-TIMEOUT after one named stdout line; a task records it and main throws it at the join; no deadline raised) is broken in the files below. The parent holds the shared interface (`TEST-WAIT:EXPIRED`, `TEST-WAIT:UNTIL` in src/lib/test/wait.f), the rulings and the proof notation `P(name)`.
+Problem: the parent's rule (a wait whose clock ends throws E-PROC-TIMEOUT after one named stdout line; a task records it and main throws it at the join; no deadline raised) is broken in the files below. The parent holds the shared interface (`TEST-WAIT:EXPIRED`, `TEST-WAIT:POLL` in src/lib/test/wait.f), the rulings and the proof notation `P(name)`.
 
 **Files and edits**
 
 `src/lib/net/ws-test.f`:
 
 - `HEARD-CLOSE?:1566–1574`, consumer `1734`: void wait with named expiry.
-- `PRELOAD-ACKED-BY?:1593–1599`, consumer around `1691`: use `UNTIL`.
+- `PRELOAD-ACKED-BY?:1593–1599`, consumer around `1691`: use `POLL`.
 - `PONG-FILLED:1637–1662`: throw only for lack of progress; retain zero for queue-count failure and the assertion at `1715–1716`.
 - `PONG-WAITER?:1667–1681`: split both clock failures from claim changes; preserve genuine false/error outcomes and their checks at `1730–1731`.
 - `AIO-STOP:2500–2509`: retry busy only; named timeout at the unchanged drain deadline.
