@@ -690,8 +690,10 @@ create OUT CAP allot
 create ERR CAP allot
 create MISSING-BUF FS-PATH-CAP allot
 create PROG-BUF FS-PATH-CAP allot
+create WANT-BUF FS-PATH-CAP 64 + allot   \ a reason, a value, the newline
 variable MISSING-U
 variable PROG-U
+variable WANT-U
 
 : MISSING$ ( -- ptr u8 n )
    MISSING-BUF MISSING-U @ ;
@@ -706,23 +708,45 @@ variable PROG-U
 : PROG-SRC$ ( -- ptr u8 n )
    S\" require src/lib/fs-mutate.f\ns\q hb-tmp-child\q HB-TMP-MKDIR 2drop\n0 0 0 die\n" ;
 
-\ The child, with HB_TMP the missing path and the rest of the environment
+\ One byte past the longest HB_TMP with room for the temp name PROG-SRC$ asks
+\ for, whose prefix is hb-tmp-child. FMT-LONG! refills the buffer, which earlier
+\ rows reuse as a copy destination.
+: LONG$ ( -- ptr u8 n )
+   FMT-LONG!
+   FMT-LONG-BUF s" hb-tmp-child" nip TEMP-DIR-BASE-MAX 1+ ;
+
+\ The child, with HB_TMP the given value and the rest of the environment
 \ inherited.
-: RUN-CHILD ( -- len len outcome )
+: RUN-CHILD ( ptr u8 n -- len len outcome ) {: a:ptr u :}
    PROC-ARGV-ENV-RESET
-   s" HB_TMP" >LEN MISSING$ >LEN PROC-ENV-SET
+   s" HB_TMP" >LEN a u >LEN PROC-ENV-SET
    PROC-ENV-INHERIT-MISSING
    PROG$ >LEN PROC-ARGV+
    s" bin/hb" >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
-\ The whole line the child must print.
-: WANT$ ( -- ptr u8 n )
-   SB-RESET
-   s" hb: HB_TMP is not a directory: " SB-APPEND
-   MISSING$ SB-APPEND
-   10 SB-APPEND-C
-   SB$ ;
+: WANT+ ( ptr u8 n -- ) {: a:ptr u :}
+   a WANT-BUF WANT-U @ + u BYTE-COPY
+   WANT-U @ u + WANT-U ! ;
+
+\ The whole line the child must print: the reason, then the value. Not built
+\ in SB: a value near FS-PATH-CAP bytes with the reason overflows SB-CAP.
+: WANT$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: why:ptr whyu a:ptr u :}
+   0 WANT-U !
+   why whyu WANT+
+   a u WANT+
+   S\" \n" WANT+
+   WANT-BUF WANT-U @ ;
+
+\ A child given this HB_TMP exits nonzero and prints the line for it.
+: REFUSED ( ptr u8 n ptr u8 n -- ) {: a:ptr u why:ptr whyu :}
+   a u RUN-CHILD {: outu:len erru:len oc :}
+   oc MATCH outcome
+     exited OF 0 T<> ENDOF
+     signaled OF s" exit" s" signal" T-OUTCOME-MISS ENDOF
+     timeout OF PROG$ OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
+   ;MATCH
+   ERR erru LEN>N why whyu a u WANT$ CONTAINS? TTRUE ;
 
 public
 
@@ -730,15 +754,10 @@ public
    PATHS!
    PROG$ PROG-SRC$ WRITE-ALL
    PROG$ CLEANUP+
-   RUN-CHILD {: outu:len erru:len oc :}
-   s" a child whose HB_TMP is missing exits nonzero" T-LABEL
-   oc MATCH outcome
-     exited OF 0 T<> ENDOF
-     signaled OF s" exit" s" signal" T-OUTCOME-MISS ENDOF
-     timeout OF PROG$ OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
-   ;MATCH
-   s" the refusal names HB_TMP and its path" T-LABEL
-   ERR erru LEN>N WANT$ CONTAINS? TTRUE ;
+   s" a missing HB_TMP is refused by name" T-LABEL
+   MISSING$ s" hb: HB_TMP is not a directory: " REFUSED
+   s" an HB_TMP with no room for the temp name is refused by name" T-LABEL
+   LONG$ s" hb: HB_TMP is too long for a temp directory: " REFUSED ;
 
 ;package
 

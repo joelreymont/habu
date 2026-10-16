@@ -1932,7 +1932,9 @@ retrying bounded deterministic candidates if a name already exists.
 `HB-TMP-MKDIR`, which is `TMPDIR-MKDIR` under a base of `$HB_TMP` when the
 caller handed the process one: that directory is the caller's to reap, so a
 tree made under it goes away even with the process killed before its own
-`CLEANUP-RUN`. Cleanup registrations copy counted
+`CLEANUP-RUN`. An `$HB_TMP` that is not a directory, or too long to leave room
+for the temp name, is refused before anything is made, with one line on fd 2
+that names it. Cleanup registrations copy counted
 paths into owned storage and `CLEANUP-RUN` removes them in reverse order, so
 nested directory cleanups can register parent before child and still remove child first.
 `CLEANUP-TREE+` registers a recursive tree cleanup for temporary workspaces.

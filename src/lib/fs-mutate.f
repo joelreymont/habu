@@ -587,20 +587,30 @@ public
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then
    prefix prefixu MAKE-TEMP-DIR ;
 
-\ An HB_TMP that is not a directory is refused before anything is made, with
-\ one line on fd 2 that names HB_TMP and its value, then E-FS-DIR. Without it
-\ MAKE-TEMP-DIR's mkdir fails on the missing parent, which is no collision, and
-\ the process dies on a bare E-FS-IO that never says HB_TMP was the cause. The
-\ line is three writes, as src/core/include.f names a refused source path, and
-\ not one SB$ write as FS-MUT-EXIT-REPORT below: DIR? takes a value of up to
-\ FS-PATH-CAP bytes, which with the prefix overflows SB-CAP, and SB-APPEND would
-\ then throw E-STR-CAPACITY in place of the line and the code.
-: FS-MUT-HB-TMP-CHECK ( ptr u8 n -- )
-   {: a:ptr u :}
-   a u DIR? if exit then
-   2 s" hb: HB_TMP is not a directory: " write drop
+\ An HB_TMP that cannot hold the temp directory is refused before anything is
+\ made, with one line on fd 2 that names HB_TMP, why, and its value, then a
+\ throw. Without the check the process dies on a bare code that never says
+\ HB_TMP was the cause: a value too long to leave room for the temp name under
+\ it (TEMP-DIR-BASE-MAX) on MAKE-TEMP-DIR's E-SPAN-CAPACITY, or on DIR?'s
+\ E-FS-PATH past FS-PATH-CAP; a value that is not a directory on the E-FS-IO of
+\ a mkdir under a missing parent, which is no collision. The length refusal
+\ keeps MAKE-TEMP-DIR's code and the other throws E-FS-DIR. The line is three
+\ writes, as src/core/include.f names a refused source path, and not one SB$
+\ write as FS-MUT-EXIT-REPORT below: a value of FS-PATH-CAP bytes with the
+\ reason overflows SB-CAP, and SB-APPEND would then throw E-STR-CAPACITY in
+\ place of the line and the code.
+: FS-MUT-HB-TMP-REFUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u why:ptr whyu :}
+   2 why whyu write drop
    2 a u write drop
-   2 S\" \n" write drop
+   2 S\" \n" write drop ;
+
+: FS-MUT-HB-TMP-CHECK ( ptr u8 n n -- ) {: a:ptr u prefixu :}
+   u prefixu TEMP-DIR-BASE-MAX > if
+      a u s" hb: HB_TMP is too long for a temp directory: " FS-MUT-HB-TMP-REFUSE
+      E-SPAN-CAPACITY throw
+   then
+   a u DIR? if exit then
+   a u s" hb: HB_TMP is not a directory: " FS-MUT-HB-TMP-REFUSE
    E-FS-DIR throw ;
 
 \ The one base resolver for a process that was handed a scratch root. HB_TMP
@@ -612,7 +622,7 @@ public
    s" HB_TMP" GETENV dup 0= if
       2drop prefix prefixu TMPDIR-MKDIR exit
    then
-   2dup FS-MUT-HB-TMP-CHECK
+   2dup prefixu FS-MUT-HB-TMP-CHECK
    prefix prefixu MAKE-TEMP-DIR ;
 
 : CLEANUP-RESET ( -- )
