@@ -22,7 +22,6 @@ require tools/native-file-inputs.f
 require tools/build-support.f
 require tools/app-build-image.f
 require tools/aot-maker-image.f
-require tools/cli-run.f
 require tools/hb-build-report.f
 require tools/object-image.f
 require tools/event-closure-lib.f
@@ -44,7 +43,6 @@ using BUILD-FIXPOINT                     \ shared build paths, child env and sou
 $2B constant HBB-PLUS
 64 constant HBB-HEX-U
 96 constant HBB-ABI-CAP
-120000 constant HBB-LINT-TIMEOUT-MS
 600000 constant HBB-MAKER-DEFAULT-MS
 $7FFFFFFF constant HBB-MAKER-MAX-MS
 65536 constant HBB-CAPTURE-CAP
@@ -454,65 +452,6 @@ variable HBB-APP-BUILDER-U
    PROC-ARGV-RESET
    BF-PREPARE-ENV
    PROC-ENV-INHERIT-MISSING ;
-
-: HBB-LOAD-END ( -- )
-   s" --"  >LEN PROC-ARGV+ ;
-
-: HBB-ADD-LINT-LOADS ( -- )
-   s" --load"  >LEN PROC-ARGV+
-   s" src/lib/errors.f"  >LEN PROC-ARGV+
-   s" src/lib/string.f"  >LEN PROC-ARGV+
-   s" src/lib/memory.f"  >LEN PROC-ARGV+
-   s" src/lib/vector.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
-   s" src/lib/source-lex.f"  >LEN PROC-ARGV+
-   s" src/lib/argv.f"  >LEN PROC-ARGV+ ;
-
-: HBB-ADD-AOT-LINT-ENTRY ( -- )
-   s" tools/aot-lint.f" CLI-TOOLS-LOAD if exit then
-   HBB-ADD-LINT-LOADS
-   s" tools/aot-lint-core.f"  >LEN PROC-ARGV+
-   s" tools/aot-lint.f"  >LEN PROC-ARGV+
-   HBB-LOAD-END ;
-
-: HBB-ADD-AOT-LINT-CMD ( -- )
-   HBB-CMD-RESET
-   HBB-ADD-AOT-LINT-ENTRY
-   HBB-JSON @ if s" --json"  >LEN PROC-ARGV+ then
-   HBB-SRC$  >LEN PROC-ARGV+ ;
-
-: HBB-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
-     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
-   ;MATCH ;
-
-: HBB-RUN-HB-CAPTURE ( -- n n n )
-   CLI-TOOLS$ >LEN HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
-   HBB-LINT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
-   HBB-CAPTURE>N ;
-
-: HBB-FINISH-TOOL ( n n n -- ) {: outu erru rc :}
-   rc 0= if exit then
-   outu HBB-WOUT-ERR
-   erru HBB-WERR-ERR
-   rc HBB-EXIT ;
-
-: HBB-RUN-AOT-LINT-CHILD ( -- )
-   HBB-ADD-AOT-LINT-CMD
-   HBB-RUN-HB-CAPTURE HBB-FINISH-TOOL ;
-
-defer HBB-AOT-LINT-HOOK ( -- )
-
-: HBB-INSTALL-CHILD-LINT ( -- )
-   [: HBB-RUN-AOT-LINT-CHILD ;] is HBB-AOT-LINT-HOOK ;
-
-HBB-INSTALL-CHILD-LINT
-
-: HBB-RUN-AOT-LINT ( -- )
-   HBB-REPL @ if exit then
-   HBB-AOT-LINT-HOOK ;
 
 : HBB-GOT-NAME$ ( -- ptr u8 n )
    HBB-REPL @ if s" hb-build-got" else s" hb-aot-got" then ;
@@ -940,8 +879,7 @@ defer HBB-REPORT-HOOK ( -- )
    mono-ns HBB-START-NS !
    HB-BUILD:RESET
    HBB-RESET-TRACE
-   HBB-READ-MAKER-TIMEOUT
-   HBB-RUN-AOT-LINT ;
+   HBB-READ-MAKER-TIMEOUT ;
 
 : HBB-BUILD-REST ( -- )
    HBB-RESTORE-ARTIFACT? if HBB-FINISH exit then
@@ -1241,13 +1179,10 @@ defer HBB-REPORT-HOOK ( -- )
 \ ---------------------------------------------------------------------------
 \ The HB-BUILD-CLI surface: the words other files call, promoted in one place
 \ so the whole export list reads at a glance. tools/hb-build.f runs the entry
-\ with the package closed; the lint hook is a `defer` word its installer
-\ assigns through the QUALIFIED name, because `is` resolves its target through
-\ the engine's own lookup and does not consult used publics.
+\ with the package closed.
 
 public
 
-EXPORT HBB-AOT-LINT-HOOK
 EXPORT HBB-BUILD
 EXPORT HBB-EXIT
 EXPORT HBB-JSON
@@ -1257,7 +1192,6 @@ EXPORT HBB-PRESEED-ENTRY!
 EXPORT HBB-PRESEED-SEED!
 EXPORT HBB-REPORT-JSON
 EXPORT HBB-RESET-OPTIONS
-EXPORT HBB-RUN-AOT-LINT
 EXPORT HBB-SRC$
 
 ;using

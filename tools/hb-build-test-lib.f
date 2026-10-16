@@ -47,7 +47,6 @@ require src/lib/object-index.f
 require src/lib/object-resolve.f
 require src/lib/object-link.f
 require tools/build-fixpoint.f
-require tools/cli-run.f
 require tools/object-image.f
 require tools/hb-build-report.f
 require tools/hb-build-lib.f
@@ -220,7 +219,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    SB$ ;
 
 : HBT-BAD-SRC$ ( -- ptr u8 n )
-   s" : MAIN ( -- ) 0 0 patch32 ;" ;
+   s" TRUSTED: MAIN ( -- ) 0 0 patch32 ;" ;
 
 \ MAIN executes after restoration; loading the source only installs its state.
 : HBT-REPL-SRC$ ( -- ptr u8 n )

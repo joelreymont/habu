@@ -178,7 +178,6 @@ SUITE hb-build-aot-cache
    tools/hb-build-aot-cache-test.f
    tools/hb-build-producer-cache-test.f
    src/lib/codesign-test.f
-   tools/hb-build-direct-lints-test.f
 ;SUITE
 
 \ app-image uses the unsealed engine. whitebox-engine-build supplies its
@@ -413,7 +412,6 @@ SUITE tool-boundary-doc-public
 SUITE tool-boundary-lints
    tools/repl-lint-test.f
    tools/diag-origin-test.f
-   tools/aot-lint-test.f
    tools/checked-boundary-lint-test.f
    tools/reserved-name-lint-test.f
    tools/bundle-lib-test.f

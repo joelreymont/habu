@@ -12,13 +12,9 @@ require src/lib/process-argv.f
 
 variable CLI-TOOLS-U
 variable CLI-TOOLS-TRUST-U
-variable CLI-CHECK-U
-variable CLI-CHECK-TRUST-U
 
 create CLI-TOOLS-BUF FS-PATH-CAP allot
 create CLI-TOOLS-TRUST-BUF FS-PATH-CAP allot
-create CLI-CHECK-BUF FS-PATH-CAP allot
-create CLI-CHECK-TRUST-BUF FS-PATH-CAP allot
 
 : CLI-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    u 0 < if E-FS-PATH throw then
@@ -30,15 +26,8 @@ create CLI-CHECK-TRUST-BUF FS-PATH-CAP allot
    exe exeu CLI-TOOLS-BUF CLI-TOOLS-U CLI-COPY!
    ta tu CLI-TOOLS-TRUST-BUF CLI-TOOLS-TRUST-U CLI-COPY! ;
 
-: CLI-CHECK! ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n ta:ptr tu:n :}
-   exe exeu CLI-CHECK-BUF CLI-CHECK-U CLI-COPY!
-   ta tu CLI-CHECK-TRUST-BUF CLI-CHECK-TRUST-U CLI-COPY! ;
-
 : CLI-TOOLS-OVERRIDE? ( -- bool )
    CLI-TOOLS-U @ 0 > ;
-
-: CLI-CHECK-OVERRIDE? ( -- bool )
-   CLI-CHECK-U @ 0 > ;
 
 : CLI-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -76,23 +65,3 @@ create CLI-CHECK-TRUST-BUF FS-PATH-CAP allot
    then
    CLI-FALSE ;
 
-: CLI-CHECK? ( -- bool )
-   CLI-CHECK-OVERRIDE? ;
-
-: CLI-CHECK$ ( -- ptr u8 n )
-   CLI-CHECK-OVERRIDE? if CLI-CHECK-BUF CLI-CHECK-U @ exit then
-   s" bin/hb" ;
-
-: CLI-CHECK-TRUST$ ( -- ptr u8 n )
-   CLI-CHECK-OVERRIDE? if CLI-CHECK-TRUST-BUF CLI-CHECK-TRUST-U @ exit then
-   E-FS-OPEN throw ;
-
-: CLI-CHECK-LOAD ( ptr u8 n -- bool ) {: entry:ptr entryu:n :}
-   CLI-CHECK? if
-      s" --load" CLI-ARG+
-      CLI-CHECK-TRUST$ CLI-ARG+
-      entry entryu CLI-ARG+
-      s" --" CLI-ARG+
-      CLI-TRUE exit
-   then
-   CLI-FALSE ;

@@ -8,15 +8,7 @@ require src/lib/build.f
 require src/lib/codesign.f
 require src/lib/process-env.f
 require tools/build-fixpoint.f
-require tools/cli-run.f
 require tools/hb-build-lib.f
-require tools/lint/text.f
-require tools/lint/token.f
-require tools/lint/lib.f
-require tools/lint/json-writer.f
-require src/lib/source-lex.f
-require tools/aot-lint-core.f
-require tools/hb-build-direct-lints.f    \ the builds lint in process, not in a child
 require tools/json.f
 require tools/gate-json-assert-core.f
 require test/gate-common.f
@@ -444,6 +436,9 @@ variable SELF-SRC-U
    COMPACT-DEFS
    FEATURE-DEFS
    DATA-DEFS
+   \ An unused code writer is absent from MAIN's closure and must not reject
+   \ this build merely because its spelling appears in the source.
+   s" TRUSTED: UNUSED-PATCH ( -- ) 0 0 patch32 ;" GE-SRC-LINE
    BUNDLE-MAIN
    \ MAIN-OWNER-CHECK is engine reflection and stays in the application; the
    \ AOT-LINK surface check moved to MAKER-SELFTEST, where the linker exists.

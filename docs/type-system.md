@@ -565,7 +565,7 @@ pointer-bearing base: ~70 in `src/`, ~40 in `src/lib/`, ~25 in `tools/` and `tes
 
 | site | shape | cast |
 |---|---|:--:|
-| `LINT-SLAB`, `lint/text.f:110-166`, **7 `create`d instances** (`lint/text.f:173`, `error-code-lint-core.f` `SRC-SLAB`, `aot-section-reach-lint.f:47`, `aot-lint-core.f:13`, `public-signatures-core.f:45,46`, `lint/shadow-lint.f:34`) | 0 `ptr u8`, 1 cap, 2 len | A + plain `+ @` |
+| `LINT-SLAB`, `lint/text.f:110-166`, **6 `create`d instances** (`lint/text.f:173`, `error-code-lint-core.f` `SRC-SLAB`, `aot-section-reach-lint.f:47`, `public-signatures-core.f:45,46`, `lint/shadow-lint.f:34`) | 0 `ptr u8`, 1 cap, 2 len | A + plain `+ @` |
 | `*-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )` helpers (`json.f`, `check-core.f`, `build-fixpoint.f`, `hb-build-lib.f`, `json-only*.f`, `repair-*.f`) | one `variable` pointer slot beside a *separate* `variable` length — a two-field record spelled as two words | A only |
 | `tools/check-core.f:137-144` | an indexed cast-A helper with **no caller anywhere** | delete, do not migrate |
 | `test/` | the two documented-open rows `V8`/`V9`, the landed refusals in `test/compiler/raw-cell-pointer-refusals.f`, ~10 engine-layout readers, and `test/record-launder-probe.f` | A and B |
