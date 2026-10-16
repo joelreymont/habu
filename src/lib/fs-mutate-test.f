@@ -225,7 +225,8 @@ create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
 \ (test/gate-pool.f GT-POOL-CHILD-SOCK!), so a row the pool kills leaves no
 \ root behind; the socket path there is about 100 bytes under macOS's default
 \ TMPDIR. Run on its own, the root takes the short base TMPDIR, then /tmp.
-\ Either way FMT-PREPARE registers it, and the run removes what it made in it.
+\ Either way FMT-PREPARE registers it as a tree, so a run that throws before
+\ FMT-TEST-CLEANUP still loses the root at exit with whatever is left in it.
 : FMT-ROOT-COPY! ( ptr u8 n -- ) {: a:ptr u :}
    a FMT-ROOT-BUF u BYTE-COPY
    u FMT-ROOT-U ! ;
@@ -369,7 +370,7 @@ create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
    CLEANUP-RESET
    FMT-LONG!
    FMT-PATHS!
-   FMT-ROOT$ CLEANUP-DIR+
+   FMT-ROOT$ CLEANUP-TREE+
    FMT-WRITE-FIXTURES ;
 
 : FMT-REMOVE-MISSING ( -- )
@@ -609,11 +610,15 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
 \ Under a parent it cannot write, MAKE-DIRS keeps the folder already there and
 \ fails the one it must make with mkdir's own errno, EACCES. The engine's mkdir
 \ and stat primitives set no errno, so through them FFI:ERRNO read whatever the
-\ last libc call left.
+\ last libc call left. Each MAKE-DIRS under the read-only parent is caught so
+\ the mode comes back before an assert. The first runs while FMT-NEST-C is still
+\ there, so a throw from it would also leave a folder the exit cleanup cannot
+\ remove.
 : FMT-TEST-DIRS-DENIED ( -- )
    FMT-NEST-B FMT-MODE-0555 CHMOD-MODE
-   FMT-NEST-C MAKE-DIRS
+   [: FMT-NEST-C MAKE-DIRS ;] catch
    FMT-NEST-B FS-MUT-MODE-DIR CHMOD-MODE
+   0 T=
    FMT-NEST-C REMOVE-DIR
    FMT-NEST-B FMT-MODE-0555 CHMOD-MODE
    [: FMT-NEST-C MAKE-DIRS ;] catch FFI:ERRNO {: code:n cause:n :}
@@ -880,7 +885,7 @@ public
 \ task's RETURNED temporary directory path replaced by another task's - and is
 \ red on an engine whose fs-mutate.f stages that name process-wide. The paths
 \ T4 registers are left in the registry on purpose: FMT-TEST-CLEANUP's
-\ CLEANUP-RUN removes them, above the root it removes last.
+\ CLEANUP-RUN removes them before the root goes.
 package FMT-TASKS
 private
 
@@ -1225,6 +1230,11 @@ public
 
 ;package
 
+\ The root's tree slot is forgotten just before the registry runs, so the
+\ registry removes every fixture one by one and the root must then be empty: an
+\ rmdir that fails is a fixture nothing registered. A throw before that still
+\ leaves the root to the exit cleanup. The root goes as a tree afterwards
+\ either way.
 : FMT-TEST-CLEANUP ( -- )
    FMT-WRITE-TREE
    FMT-TREE CLEANUP-TREE+
@@ -1238,14 +1248,16 @@ public
    FMT-MKDIR-PATH CLEANUP-DIR+
    FMT-NEST-A CLEANUP-TREE+
    FMT-LINK-DIR CLEANUP-TREE+
-   CLEANUP-RUN
+   FMT-ROOT$ CLEANUP-FORGET
+   [: CLEANUP-RUN ;] catch 0 T=
    FMT-COPY-DST EXISTS? TFALSE
    FMT-ATOMIC-PATH EXISTS? TFALSE
    FMT-MKDIR-PATH EXISTS? TFALSE
    FMT-NEST-A EXISTS? TFALSE
    FMT-LINK-DIR EXISTS? TFALSE
    FMT-TREE EXISTS? TFALSE
-   FMT-ROOT$ EXISTS? TFALSE
+   [: FMT-ROOT$ REMOVE-DIR ;] catch 0 T=
+   FMT-ROOT$ CLEANUP-TREE+
    CLEANUP-RUN ;
 
 : FS-MUTATE-TEST-MAIN ( -- )
