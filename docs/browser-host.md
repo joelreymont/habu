@@ -121,8 +121,10 @@ The rules:
   in arrival order, each with its own ID and the drawing-buffer size sampled
   when its answer arrives. Legacy fetch and post records wait for one another
   in order; a reply's own requests complete before the next legacy record.
-  For each answer, the host grows memory by the pages it needs, copies it past
-  the old end and runs the module with an event naming it.
+  The host copies each answer into host-owned pages and runs the module with an
+  event naming the bytes. It uses unused room in those pages for later inputs,
+  growing another chunk at memory's current end when one does not fit. The
+  module may grow memory between inputs; neither owner reuses the other's pages.
 - Every input is taken at once: the host writes its event, runs the module and
   reads the records without yielding to anything else, so runs never overlap
   and none is dropped. While a turn waits for an answer, such as a post that
@@ -189,6 +191,8 @@ bun src/lib/browser/host-cli.mjs <module.wasm> [--size W H] [step]...
 | `--resize W H` | changes the runner's drawing-buffer size and sends resize |
 | `--control KEY` | selects a transient tree row key |
 | `--typed TEXT` | TEXT entered in the field |
+| `--repeat-typed TEXT N` | send N typed turns to one module |
+| `--memory` | print final Wasm memory capacity in bytes |
 | `--answer STATUS FILE` | answers the oldest waiting request with STATUS and FILE's bytes; a legacy fetch answered outside 200-299 fails |
 | `--answer-id ID STATUS FILE` | answers the waiting tagged request with ID; replies may overtake earlier ones |
 | `--fail` | fails the oldest waiting request, as a lost connection does; a tagged request delivers status 0 |
@@ -268,7 +272,10 @@ for a fetch larger than the module's image. The module throws unless the buffer
 lies past the host's bytes each time it is reserved after the fetch, kept its
 bytes as it grew and gets its first pages back cleared; its text is the
 checksum of the host's bytes, so a host page the module wrote changes it. It
-runs in the wasm device check too.
+then retains 500 `a` inputs followed by 500 `b` inputs across another module
+memory growth and checks every byte and the earlier fetched payload. The host
+runner reports memory capacity; the test checks that the inputs did not add a
+page each. It runs in the wasm device check too.
 
 `test/browser/navigation-test.f` builds `test/browser/navigation.f` and runs it
 through the same Wasm host runner. It checks pointer buttons and modifiers,

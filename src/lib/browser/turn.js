@@ -10,9 +10,10 @@
 // body copied, since later runs rewrite the storage they name and growth detaches
 // it. Once the run's other records are handled, tagged requests from that run
 // start independently; legacy fetches and posts still wait in order, including
-// the requests made by their replies. Memory grows by the pages each answer
-// needs, the answer is copied past the old end, and the module runs again with
-// an event naming it. Runs are synchronous and never overlap, but other turns
+// the requests made by their replies. An answer is copied into host-owned
+// pages, growing memory only when it does not fit in their unused tail. The
+// module runs again with an event naming those bytes.
+// Runs are synchronous and never overlap, but other turns
 // run while a request waits. A run that
 // traps ends the instance: nothing runs, and memory does not grow, after it.
 //
@@ -72,6 +73,8 @@ export class Module {
     this.event = null; // the address hello named
     this.ended = null; // the trap that ended the instance
     this.mask = null; // no highlight record yet: draw with an unselected mask
+    this.inputNext = 0; // next free byte in the host's last grown chunk
+    this.inputLimit = 0;
   }
 
   // The first turn.
@@ -321,14 +324,22 @@ export class Module {
     this.host.draw(corners, count, matrix, mask);
   }
 
-  // The bytes copied past memory's old end, which grows by the pages they
-  // need; answers where they start. A trap's instance is refused first.
+  // Keep host inputs in pages grown by the host, including after the module
+  // grows memory beyond them. Every placed span remains live for the instance.
   place(bytes) {
     this.live();
     const m = this.x.memory;
-    const at = m.buffer.byteLength;
-    m.grow(Math.ceil(bytes.length / PAGE_BYTES));
+    if (bytes.length === 0) return BigInt(m.buffer.byteLength);
+    if (bytes.length > this.inputLimit - this.inputNext) {
+      const at = m.buffer.byteLength;
+      const pages = Math.ceil(bytes.length / PAGE_BYTES);
+      m.grow(pages);
+      this.inputNext = at;
+      this.inputLimit = at + pages * PAGE_BYTES;
+    }
+    const at = this.inputNext;
     new Uint8Array(m.buffer, at, bytes.length).set(bytes);
+    this.inputNext += bytes.length;
     return BigInt(at);
   }
 }

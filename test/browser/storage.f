@@ -25,6 +25,11 @@ variable TEXT-U
 DYNAMIC-BUFFER HELD u8
 PTR-VARIABLE FIRST
 variable HOST-END                          \ the end of the host's bytes
+variable FETCH-AT
+variable FETCH-LEN
+variable FETCH-SUM
+1000 TYPED-BUFFER INPUT-PTR n
+variable INPUT-N
 
 : FIELD, ( n -- )
    8 0 do  dup $FF and emit  8 rshift  loop drop ;
@@ -70,6 +75,9 @@ variable HOST-END                          \ the end of the host's bytes
    TEXT-RECORD ;
 
 : BYTES ( -- )
+   1 EVENT@ FETCH-AT !
+   2 EVENT@ FETCH-LEN !
+   FETCH-AT @ FETCH-LEN @ SUM FETCH-SUM !
    1 EVENT@ 2 EVENT@ + HOST-END !
    262144 HELD-RESERVE
    91 PAST-HOST
@@ -90,12 +98,31 @@ variable HOST-END                          \ the end of the host's bytes
    1 EVENT@ DIGITS  44 CHAR+  2 EVENT@ DIGITS
    TEXT-RECORD ;
 
+\ Keep every host input address across later host and module memory growth.
+: TYPED ( -- )
+   2 EVENT@ 1 <> if 96 throw then
+   1 EVENT@ >BYTES c@ INPUT-N @ 500 < if 97 else 98 then <> if 97 throw then
+   1 EVENT@ INPUT-N @ INPUT-PTR !
+   INPUT-N @ 1+ INPUT-N !
+   INPUT-N @ 500 = if 327680 HELD-RESERVE then
+   INPUT-N @ 1000 = if
+      1000 0 ?do
+         i INPUT-PTR @ >BYTES c@ i 500 < if 97 else 98 then <> if 98 throw then
+      loop
+      FETCH-AT @ FETCH-LEN @ SUM FETCH-SUM @ <> if 99 throw then
+      0 TEXT-U !
+      s" retained " {: t:ptr tu:n :}
+      tu 0 ?do t i + c@ CHAR+ loop
+      INPUT-N @ DIGITS TEXT-RECORD
+   then ;
+
 public
 
 : TURN ( -- )
    0 EVENT@ {: kind:n :}
    kind 0 = if START exit then
    kind 1 = if BYTES exit then
+   kind 4 = if TYPED exit then
    POINTER ;
 
 ;package

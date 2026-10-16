@@ -83,13 +83,28 @@ DYNAMIC-BUFFER PAYLOAD u8
    S\" text 3,4\n" SB-APPEND
    SB$ ;
 
-: HOST ( -- n )
+: HOST ( bool -- n )
+   {: repeated:bool :}
    PROC-ARGV-RESET
    s" src/lib/browser/host-cli.mjs" ARG+ MOD MOD-U @ ARG+
    s" --answer" ARG+ s" 200" ARG+ FILE FILE-U @ ARG+
    s" --pointer" ARG+ s" 3" ARG+ s" 4" ARG+ s" 1" ARG+ s" 0" ARG+
+   repeated if
+      s" --repeat-typed" ARG+ s" a" ARG+ s" 500" ARG+
+      s" --repeat-typed" ARG+ s" b" ARG+ s" 500" ARG+
+   then
+   s" --memory" ARG+
    s" bun" >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u SPAWN ;
+
+: MEMORY-BYTES ( n -- n )
+   {: prefix:n :}
+   OUT-U @ prefix - {: u:n :}
+   OUT prefix + u s" memory " STARTS-WITH? 0= if E-PROC-OUTPUT throw then
+   OUT prefix + 7 + u 7 - TRIM STR>NUMBER? MATCH option
+      none OF E-PROC-OUTPUT throw ENDOF
+      some OF ENDOF
+   ;MATCH ;
 
 public
 
@@ -102,16 +117,25 @@ public
    rc 0<> if T-REPORT exit then
    s" it validates" T-LABEL
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
-   PAYLOAD! WANT {: want:ptr wu:n :}
-   DIR DIR-U @ s" expected.txt" FILE JOIN-PATH FILE-U !
-   FILE FILE-U @ want wu WRITE-ALL
-   DIR DIR-U @ s" payload.bin" FILE JOIN-PATH FILE-U !
+   PAYLOAD! {: sum:n :}
+   sum WANT {: want:ptr wu:n :}
    s" the buffer grows past the host's pages, never takes them, and its freed pages return cleared" T-LABEL
-   HOST {: status:n :}
+   false HOST {: status:n :}
    status 0 T=
+   OUT wu want wu T$=
+   wu MEMORY-BYTES {: base:n :}
+   DIR DIR-U @ s" payload.bin" FILE JOIN-PATH FILE-U !
+   s" fetched bytes and two typed batches survive module growth without a page each" T-LABEL
+   true HOST 0 T=
+   sum WANT drop drop
+   s\" text retained 1000\n" SB-APPEND
+   SB$ {: all:ptr allu:n :}
    DIR DIR-U @ s" actual.txt" FILE JOIN-PATH FILE-U !
    FILE FILE-U @ OUT OUT-U @ WRITE-ALL
-   OUT OUT-U @ want wu T$=
+   DIR DIR-U @ s" expected.txt" FILE JOIN-PATH FILE-U !
+   FILE FILE-U @ all allu WRITE-ALL
+   OUT allu all allu T$=
+   allu MEMORY-BYTES base 16 WPROF:PAGE-BYTES * + <= TTRUE
    T-REPORT ;
 
 ;package

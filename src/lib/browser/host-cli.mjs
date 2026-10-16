@@ -14,6 +14,8 @@
 //    --resize W H          change the drawing buffer and send a resize event
 //    --control KEY         select a transient tree row
 //    --typed TEXT          TEXT typed
+//    --repeat-typed TEXT N  type TEXT N times in the same module
+//    --memory              print final Wasm memory capacity in bytes
 //    --answer STATUS FILE  answers the oldest waiting request with STATUS and
 //                          FILE's bytes; a fetch answered outside 200-299
 //                          fails, as in the browser
@@ -40,7 +42,8 @@ const USAGE =
   "usage: bun host-cli.mjs <module.wasm> [--size W H] " +
   "[--pointer X Y BUTTONS MODS | --move X Y BUTTONS MODS | --release X Y BUTTONS MODS | " +
   "--wheel DX DY MODS | --key TEXT MODS | --resize W H | --control KEY | " +
-  "--typed TEXT | --answer STATUS FILE | --answer-id ID STATUS FILE | --fail]...";
+  "--typed TEXT | --repeat-typed TEXT N | --memory | " +
+  "--answer STATUS FILE | --answer-id ID STATUS FILE | --fail]...";
 
 let failed = false;
 
@@ -76,7 +79,7 @@ function settled() {
 // of the module.
 function parse(args) {
   if (args.length < 1) throw new Error(USAGE);
-  const state = { size: [640n, 480n] };
+  const state = { size: [640n, 480n], memory: false };
   const steps = [];
   let i = 1;
   const take = (n) => {
@@ -133,6 +136,16 @@ function parse(args) {
         steps.push((m) => m.typed(text).catch(report));
         break;
       }
+      case "--repeat-typed": {
+        const [text, times] = take(2);
+        const count = Number(times);
+        if (!Number.isSafeInteger(count) || count < 0) throw new Error(USAGE);
+        for (let n = 0; n < count; n++) steps.push((m) => m.typed(text).catch(report));
+        break;
+      }
+      case "--memory":
+        state.memory = true;
+        break;
       case "--answer": {
         const [status, file] = take(2);
         const code = Number(BigInt(status));
@@ -205,6 +218,7 @@ try {
   }
   for (const { kind, path, method, id } of waiting)
     console.log(kind === "request" ? `outstanding request ${method} ${path} ${id}` : `outstanding ${kind} ${path}`);
+  if (state.memory) console.log(`memory ${module.x.memory.buffer.byteLength}`);
 } catch (e) {
   report(e);
 }
