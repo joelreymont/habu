@@ -29,8 +29,9 @@
 \  5. A WAIT THAT DOES NOT HEAR IT. check.f waits in a capture of its child's
 \     output, and a signal that capture never answers would hold check.f to its
 \     deadline. A child that closed its output is waited for in the reap after
-\     the capture, which has to hear it too. Asserted: check.f ends inside
-\     EXIT-MS, in a case for each wait.
+\     the capture, which has to hear it too. Each wait has a case, and each case
+\     waits EXIT-MS for check.f to end: a check.f still running then is this
+\     test's own deadline, below.
 \  6. A STOP THAT FINDS NO CHILD. check.f answers a stop after its run however
 \     the run ended, and a refused program, a usage error or a list of resident
 \     inputs ends before any child is started. Its capture row then names pid 0,
@@ -46,10 +47,20 @@
 \     closed, so the deadline passes in each wait; and failures 1 to 3 do not
 \     happen.
 \
+\ THIS TEST'S OWN WAITS ARE NO ASSERTION RESULT. check.f's --deadline-ms, its
+\ exit 70 and its late line are the subject and are asserted. A wait this test
+\ runs around check.f - for the subject's report, for room in check.f's stdin,
+\ for check.f to end, for end of file on the pipe - is named on stdout and
+\ thrown as E-PROC-TIMEOUT when its own deadline runs out (src/lib/test/wait.f),
+\ so the row ends as a timeout and not as a FAIL. End of file before the
+\ report, a short report, a short write or a failed read, write or poll fails
+\ the case.
+\
 \ A FAILED CASE LEAVES NOTHING EITHER. Each case ends through CASE-END whatever
 \ it asserted or threw: a check.f still running is killed and reaped, and the
 \ case waits for the processes it could not end, which the sleeper's 20 s
-\ bounds. The scratch is under this process's runner root, which its registered
+\ bounds. Its descriptors close and the scratch clears even when that wait runs
+\ out. The scratch is under this process's runner root, which its registered
 \ cleanup removes.
 
 require src/lib/errors.f
@@ -65,6 +76,7 @@ require src/lib/process-env.f
 require src/lib/signal.f
 require src/lib/engine-candidate.f
 require src/lib/test/runner.f
+require src/lib/test/wait.f
 require src/core/include.f               \ SOURCE-ROOT:CANON-OS, the name --json-errors gives a file
 
 package CHECK-SIGNAL-TEST
@@ -157,33 +169,45 @@ PROC-NO-FD FEED-WR !
 : FD-TEXT$ ( n -- ptr u8 n )
    SB-RESET FMT:SB-INT SB$ ;
 
-\ TRUE once fd answers one of the poll events, within ms.
-: POLL-WITHIN? ( n n n -- bool ) {: fd:n events:n ms:n :}
+\ fd within ms: a positive count once it answers one of the poll events, 0 when
+\ ms ran out first, a negative errno when the poll failed.
+: POLL-WITHIN ( n n n -- n )
+   {: fd:n events:n ms:n :}
    fd >FD events PROC-PFD!
-   1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART 0 > ;
+   1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART ;
 
-\ TRUE once fd has bytes to read or has reached end of file, within ms.
-: READY-WITHIN? ( n n -- bool )
-   POLLIN swap POLL-WITHIN? ;
+\ fd within ms, answered as POLL-WITHIN answers: ready once it has bytes to read
+\ or has reached end of file.
+: READY-WITHIN ( n n -- n )
+   POLLIN swap POLL-WITHIN ;
 
 \ The subject's pid, before READY-MS runs out. End of file first means check.f
-\ or its child died before the subject ran.
+\ or its child died before the subject ran: that, a short report or a failed
+\ read or poll answers false. READY-MS running out first is this test's own
+\ deadline, named and thrown as a timeout.
 : REPORT-READ? ( -- bool )
    READY-MS >MS PROC-DEADLINE-AT {: deadline:n :}
    begin REPORT-U @ REPORT-BYTES < while
-      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN? 0= if false exit then
+      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
+      ready 0= if s" check-signal-test REPORT-READ" TEST-WAIT:EXPIRED then
+      ready 0 < if false exit then
       PIPE-RD @ REPORT REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
       got 0 <= if false exit then
       REPORT-U @ got + REPORT-U !
    repeat
    true ;
 
-\ End of file within ms: nothing under check.f holds the write end.
-: GONE-WITHIN? ( n -- bool ) {: ms:n :}
+\ End of file within ms: nothing under check.f holds the write end. A failed
+\ read or poll answers false. ms running out first is this test's own
+\ deadline, named and thrown as a timeout.
+: GONE-WITHIN? ( n -- bool )
+   {: ms:n :}
    PIPE-DONE @ if true exit then
    ms >MS PROC-DEADLINE-AT {: deadline:n :}
    begin
-      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN? 0= if false exit then
+      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
+      ready 0= if s" check-signal-test GONE-WITHIN" TEST-WAIT:EXPIRED then
+      ready 0 < if false exit then
       PIPE-RD @ SINK SINK-CAP read {: got:n :}
       got 0= if true PIPE-DONE ! true exit then
       got 0 < if false exit then
@@ -259,9 +283,14 @@ PROC-NO-FD FEED-WR !
    r FD>N CHECK-SPAWN ;
 
 \ u bytes at a into check.f's stdin once the pipe has room for them, before
-\ the deadline. u is at most FEED-CHUNK, so the write cannot block.
-: FEED? ( ptr u8 n n -- bool ) {: a:ptr u:n deadline:n :}
-   FEED-WR @ POLLOUT deadline PROC-LEFT-MS MS>N POLL-WITHIN? 0= if false exit then
+\ the deadline. u is at most FEED-CHUNK, so the write cannot block. A short
+\ write or a failed poll answers false. The deadline running out first is this
+\ test's own, named and thrown as a timeout.
+: FEED? ( ptr u8 n n -- bool )
+   {: a:ptr u:n deadline:n :}
+   FEED-WR @ POLLOUT deadline PROC-LEFT-MS MS>N POLL-WITHIN {: ready:n :}
+   ready 0= if s" check-signal-test FEED" TEST-WAIT:EXPIRED then
+   ready 0 < if false exit then
    FEED-WR @ a u write u = ;
 
 : FEED-FILL ( -- )
@@ -285,11 +314,18 @@ PROC-NO-FD FEED-WR !
 : CHECK-SIGNAL ( n -- ) {: sig:n :}
    CHECK-PID @ >PID sig PROC-KILL-RAW drop ;
 
-: CHECK-ENDED-WITHIN? ( n -- bool ) {: ms:n :}
-   CHECK-WATCH @ ms READY-WITHIN? ;
+\ Returns once check.f has ended, within ms. ms running out first is this
+\ test's own deadline, named and thrown as a timeout; a failed poll of the watch
+\ throws E-PROC-OUTPUT, a failure.
+: CHECK-ENDED-WITHIN ( n -- )
+   {: ms:n :}
+   CHECK-WATCH @ ms READY-WITHIN {: ready:n :}
+   ready 0= if s" check-signal-test CHECK-ENDED" TEST-WAIT:EXPIRED then
+   ready 0 < if E-PROC-OUTPUT throw then ;
 
-: CHECK-ENDED? ( -- bool )
-   EXIT-MS CHECK-ENDED-WITHIN? ;
+\ Returns once check.f has ended, inside the EXIT-MS a signal's answer gets.
+: CHECK-ENDED ( -- )
+   EXIT-MS CHECK-ENDED-WITHIN ;
 
 : CHECK-REAP ( -- outcome )
    CHECK-PID @ >PID PROC-WAIT-OUTCOME
@@ -321,21 +357,19 @@ PROC-NO-FD FEED-WR !
    LOG-TEXT LOG$ LOG-TEXT LOG-CAP READ-ALL {: a:ptr u:n :}
    a u s" threw" CONTAINS? a u s" not walked" CONTAINS? or ;
 
-: CASE-BODY ( n -- ) {: sig:n :}
+: CASE-BODY ( n -- )
+   {: sig:n :}
    CHECK-START
    s" signal: the subject came up under check.f" T-LABEL
    REPORT-READ? TTRUE
    sig CHECK-SIGNAL
-   s" signal: check.f ended inside its bound" T-LABEL
-   CHECK-ENDED? dup TTRUE
-   if
-      s" signal: check.f's status names the signal" T-LABEL
-      CHECK-REAP sig KILLED-BY? TTRUE
-      s" signal: no step of the answer threw" T-LABEL
-      LOG-THREW? TFALSE
-      s" signal: the scratch is gone when check.f has ended" T-LABEL
-      TMP-ENTRIES 0 T=
-   then
+   CHECK-ENDED
+   s" signal: check.f's status names the signal" T-LABEL
+   CHECK-REAP sig KILLED-BY? TTRUE
+   s" signal: no step of the answer threw" T-LABEL
+   LOG-THREW? TFALSE
+   s" signal: the scratch is gone when check.f has ended" T-LABEL
+   TMP-ENTRIES 0 T=
    CHECK-END
    s" signal: no process under check.f is left" T-LABEL
    GONE-MS GONE-WITHIN? TTRUE ;
@@ -349,16 +383,13 @@ PROC-NO-FD FEED-WR !
    SIGNAL:SIGTERM CHECK-SIGNAL
    s" stdin: check.f took the refused program" T-LABEL
    FEED-REFUSED? TTRUE
-   s" stdin: check.f ended inside its bound" T-LABEL
-   CHECK-ENDED? dup TTRUE
-   if
-      s" stdin: check.f's status names the signal" T-LABEL
-      CHECK-REAP SIGNAL:SIGTERM KILLED-BY? TTRUE
-      s" stdin: no step of the answer threw" T-LABEL
-      LOG-THREW? TFALSE
-      s" stdin: the scratch is gone when check.f has ended" T-LABEL
-      TMP-ENTRIES 0 T=
-   then
+   CHECK-ENDED
+   s" stdin: check.f's status names the signal" T-LABEL
+   CHECK-REAP SIGNAL:SIGTERM KILLED-BY? TTRUE
+   s" stdin: no step of the answer threw" T-LABEL
+   LOG-THREW? TFALSE
+   s" stdin: the scratch is gone when check.f has ended" T-LABEL
+   TMP-ENTRIES 0 T=
    CHECK-END
    s" stdin: no process under check.f is left" T-LABEL
    GONE-MS GONE-WITHIN? TTRUE ;
@@ -376,38 +407,45 @@ PROC-NO-FD FEED-WR !
 
 \ check.f counts the deadline from the run's start, which is before the report,
 \ so after the report it ends inside the deadline and the EXIT-MS a signal's
-\ answer gets.
-: LATE-BODY ( bool -- ) {: json:bool :}
+\ answer gets. That bound is this test's own wait for check.f to end; check.f's
+\ deadline, its exit 70 and its late line are the subject's, asserted here.
+: LATE-BODY ( bool -- )
+   {: json:bool :}
    json LATE-START
    s" deadline: the subject came up under check.f" T-LABEL
    REPORT-READ? TTRUE
-   s" deadline: check.f ended inside its bound" T-LABEL
-   DEADLINE-MS EXIT-MS + CHECK-ENDED-WITHIN? dup TTRUE
-   if
-      s" deadline: check.f exits its refusal status" T-LABEL
-      CHECK-REAP PROC-OUTCOME>RC RC>N 70 T=
-      s" deadline: one line names the subject and the deadline" T-LABEL
-      LOG-TEXT LOG$ LOG-TEXT LOG-CAP READ-ALL json LATE-LINE$ T$=
-      s" deadline: the scratch is gone when check.f has ended" T-LABEL
-      TMP-ENTRIES 0 T=
-   then
+   DEADLINE-MS EXIT-MS + CHECK-ENDED-WITHIN
+   s" deadline: check.f exits its refusal status" T-LABEL
+   CHECK-REAP PROC-OUTCOME>RC RC>N 70 T=
+   s" deadline: one line names the subject and the deadline" T-LABEL
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP READ-ALL json LATE-LINE$ T$=
+   s" deadline: the scratch is gone when check.f has ended" T-LABEL
+   TMP-ENTRIES 0 T=
    CHECK-END
    s" deadline: no process under check.f is left" T-LABEL
    GONE-MS GONE-WITHIN? TTRUE ;
 
-\ Whatever the body asserted or threw. Every step is a no-op for a case that
-\ passed.
-: CASE-END ( -- )
-   CHECK-END
+\ What check.f left ends on its own, before EXPIRE-MS runs out.
+: LEFT-ENDED ( -- )
    PIPE-DONE @ 0= if
       s" the processes check.f left ended on their own" T-LABEL
       EXPIRE-MS GONE-WITHIN? TTRUE
-   then
-   CHECK-WATCH PROC-CLOSE-CELL
-   FEED-WR PROC-CLOSE-CELL
-   PIPE-WR PROC-CLOSE-CELL
-   PIPE-RD PROC-CLOSE-CELL
-   TMP-CLEAR ;
+   then ;
+
+\ Whatever the body asserted or threw. Every step is a no-op for a case that
+\ passed. This process lets its own write end go before it waits for end of
+\ file, which a spawn that threw before check.f took the write end leaves
+\ open. Every descriptor closes and the scratch clears even when ending check.f
+\ or the wait for what it left throws.
+: CASE-END ( -- )
+   [: CHECK-END
+      PIPE-WR PROC-CLOSE-CELL
+      LEFT-ENDED ;]
+   [: CHECK-WATCH PROC-CLOSE-CELL
+      FEED-WR PROC-CLOSE-CELL
+      PIPE-WR PROC-CLOSE-CELL
+      PIPE-RD PROC-CLOSE-CELL
+      TMP-CLEAR ;] finally ;
 
 \ The signal check.f is to answer, and whether the subject closes its output.
 : SIGNAL-CASE ( n bool -- ) {: sig:n closed:bool :}
