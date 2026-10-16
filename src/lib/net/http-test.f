@@ -613,13 +613,28 @@ $2710 constant PARK-MS            \ far past every stop bound
    SB$ ;
 
 
+28 constant CURLE-TIMED-OUT             \ CURLE_OPERATION_TIMEDOUT
+
+
+\ Every failed transfer names its libcurl code on stderr, so a recurrence can
+\ be reduced. libcurl answers 28 only when a wall-clock limit expired; these
+\ handles set none, so it is libcurl's default 300 s connect timeout, met by a
+\ starved or stopped process. A deadline is no assertion result (docs/gate.md):
+\ it is thrown as E-PROC-TIMEOUT. Every other failure answers -2, a fault.
 : TAKE-RESPONSE ( CURL:handle -- n ) {: subject:CURL:handle :}
    subject RES-BUF RES-CAP >LEN CURL:PERFORM
    MATCH CURL:fetch-result
       response OF {: status:CURL:http-status got:len :}
          got LEN>N RES-U ! status CURL:HTTP-STATUS>N ENDOF
       truncated OF drop drop 0 RES-U ! -1 ENDOF
-      failed OF drop 0 RES-U ! -2 ENDOF
+      failed OF {: rc:CURL:code :}
+         SB-RESET
+         s" http-test: libcurl code " SB-APPEND
+         rc CURL:CODE>N FMT:SB-U
+         S\" \n" SB-APPEND
+         2 SB$ write drop
+         rc CURL:CODE>N CURLE-TIMED-OUT = if E-PROC-TIMEOUT throw then
+         0 RES-U ! -2 ENDOF
    ;MATCH ;
 
 
