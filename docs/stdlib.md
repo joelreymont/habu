@@ -3175,23 +3175,6 @@ BUILD:CHECK          ( ptr u8 n -- )
 BUILD:ARTIFACT       ( ptr u8 n ptr u8 n -- ptr u8 n )
 BUILD:STEP           ( ptr u8 n [ -- n ] -- )
 BUILD:RUN            ( ptr u8 n ptr u8 n -- n )
-BUILD:STEP-CELLS     ( -- n )
-BUILD:STEP-CLEAR     ( ptr BUILD:step -- )
-BUILD:STEP-NAME!     ( ptr u8 n ptr BUILD:step -- )
-BUILD:STEP-COMMAND!  ( ptr u8 n ptr BUILD:step -- )
-BUILD:STEP-ARGV!     ( ptr u8 n ptr BUILD:step -- )
-BUILD:STEP-TMP!      ( ptr u8 n ptr BUILD:step -- )
-BUILD:STEP-ARTIFACT! ( ptr u8 n ptr BUILD:step -- )
-BUILD:STEP-NAME$     ( ptr BUILD:step -- ptr u8 n )
-BUILD:STEP-COMMAND$  ( ptr BUILD:step -- ptr u8 n )
-BUILD:STEP-ARGV$     ( ptr BUILD:step -- ptr u8 n )
-BUILD:STEP-TMP$      ( ptr BUILD:step -- ptr u8 n )
-BUILD:STEP-ARTIFACT$ ( ptr BUILD:step -- ptr u8 n )
-BUILD:STEP-STATE@    ( ptr BUILD:step -- BUILD:state )
-BUILD:STEP-RC@       ( ptr BUILD:step -- n )
-BUILD:STEP-RC!       ( n ptr BUILD:step -- )
-BUILD:STEP-VALIDATE  ( ptr BUILD:step -- )
-BUILD:STEP-RUN       ( ptr BUILD:step -- n )
 ```
 
 `src/lib/test.f` is the public checked test framework interface. It loads assertion
@@ -3401,7 +3384,7 @@ the user cannot write or one removed during the build. The in-process build
 throws `E-BUILD-INSTALL`; the CLI cleans up and exits with the build failure
 status and `hb-build: cannot replace output` on stderr, nothing on stdout.
 
-`src/lib/build.f` lives in `package BUILD` and owns build step modeling, checked
+`src/lib/build.f` lives in `package BUILD` and owns checked
 source certification, artifact path construction, and fail-closed status
 reporting. `BUILD:CHECK` requires a counted source path that names a file, scans
 colon definitions in bounded module storage, and certifies each definition with
@@ -3415,25 +3398,6 @@ on nonzero rc, and throws `E-BUILD-PATH` if the expected artifact file is absent
 after a successful command. The artifact-existence check, the source scanner,
 the `CHECK!` trust boundary, and every buffer and state cell are package-private.
 Raw process exits are only allowed at the final CLI/script boundary.
-
-Allocate a build step with `TYPED-VARIABLE JOB BUILD:step` or a `TYPED-BUFFER`
-of that type, then call `JOB BUILD:STEP-CLEAR`. The record has five named
-`BUILD:text` counted spans for its name, command, argv metadata, temp path and
-artifact path, plus `BUILD:state`: `pending` or `completed` carrying an `rc`.
-`STEP-STATE@` exposes that distinction; the numeric `STEP-RC@` / `STEP-RC!`
-interface retains `-1` as the spelling of pending. `STEP-CELLS` reports the
-physical width; raw `create … allot` storage is not a typed step.
-
-`STEP-CLEAR` publishes a complete empty, pending record. Successful input
-setters make it pending again; a refused setter leaves the old input and
-result intact. `STEP-VALIDATE` rejects missing command files, missing temp
-directories and empty artifact paths without mutation. `STEP-RUN` validates
-first, makes the step pending, runs the command through `BUILD:RUN`, requires
-the artifact, then stores and returns the result. A throw after execution
-starts leaves it pending. Repeat runs and explicit result updates remain legal.
-These transition rules belong to the `STEP-*` operations; direct generated
-field stores enforce field types but do not invalidate the result.
-Argv and temp path remain metadata; `STEP-RUN` runs the command path as supplied.
 
 `src/lib/codesign.f` owns checked executable promotion and target signing policy for
 build drivers that already produced an artifact. On macOS it runs

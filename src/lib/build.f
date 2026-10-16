@@ -5,12 +5,7 @@
 \ counted source file, BUILD:ARTIFACT builds a bounded artifact path under a
 \ root, BUILD:RUN runs a counted command and requires its expected artifact, and
 \ BUILD:STEP runs one checked step quotation and throws on a nonzero result code.
-\ A build-step record is assembled and executed through BUILD:STEP-CLEAR, the
-\ BUILD:STEP-NAME! / STEP-COMMAND! / STEP-ARGV! / STEP-TMP! / STEP-ARTIFACT!
-\ setters, the matching STEP-NAME$ / STEP-COMMAND$ / STEP-ARGV$ / STEP-TMP$ /
-\ STEP-ARTIFACT$ readers, STEP-STATE@ / STEP-RC@ / STEP-RC!, STEP-VALIDATE,
-\ and STEP-RUN. Input setters invalidate the preceding result; refused edits
-\ leave it intact. The source scanner, buffers and state variables are private.
+\ The source scanner, buffers and state variables are private.
 \
 require src/lib/errors.f
 require src/lib/string.f
@@ -18,24 +13,6 @@ require src/lib/fs.f
 require src/lib/process.f
 
 package BUILD
-
-public
-
-STRUCTURE text FIELD base ptr u8 FIELD size len ;STRUCTURE
-ENUM state
-   VARIANT pending ;VARIANT
-   VARIANT completed FIELD code rc ;VARIANT
-;ENUM
-STRUCTURE step DERIVE addr
-   FIELD name text
-   FIELD command text
-   FIELD argv text
-   FIELD tmp text
-   FIELD artifact text
-   FIELD state state
-;STRUCTURE
-
-private
 
 65536 constant BUILD-SOURCE-CAP
 10 constant BUILD-LF
@@ -63,81 +40,6 @@ variable BUILD-END
    c BUILD-SP = if BUILD-TRUE exit then
    c BUILD-LF = if BUILD-TRUE exit then
    c BUILD-CR = ;
-
-: BUILD-LENGTH ( n -- len )
-   dup 0 < if E-BUILD-PATH throw then >LEN ;
-
-: BUILD-EMPTY ( -- ptr u8 len ) BUILD-SOURCE-BUF 0 >LEN ;
-
-: BUILD-PENDING ( ptr step -- )
-   BUILD-STATE:pending swap BUILD-STEP:STATE ! ;
-
-public
-
-\ Caller-owned storage is TYPED-VARIABLE / TYPED-BUFFER of BUILD:step.
-: STEP-CELLS ( -- n ) BUILD-STEP:CELLS ;
-
-: STEP-CLEAR ( ptr step -- ) {: rec:ptr :}
-   BUILD-EMPTY BUILD-TEXT:MAKE
-   BUILD-EMPTY BUILD-TEXT:MAKE
-   BUILD-EMPTY BUILD-TEXT:MAKE
-   BUILD-EMPTY BUILD-TEXT:MAKE
-   BUILD-EMPTY BUILD-TEXT:MAKE
-   BUILD-STATE:pending BUILD-STEP:MAKE rec ! ;
-
-: STEP-NAME! ( ptr u8 n ptr step -- ) {: a:ptr u:n rec:ptr :}
-   u 0 <= if E-BUILD-COMMAND throw then
-   a u BUILD-LENGTH BUILD-TEXT:MAKE rec BUILD-STEP:NAME !
-   rec BUILD-PENDING ;
-
-: STEP-COMMAND! ( ptr u8 n ptr step -- ) {: a:ptr u:n rec:ptr :}
-   u 0 <= if E-BUILD-COMMAND throw then
-   a u BUILD-LENGTH BUILD-TEXT:MAKE rec BUILD-STEP:COMMAND !
-   rec BUILD-PENDING ;
-
-: STEP-ARGV! ( ptr u8 n ptr step -- ) {: a:ptr u:n rec:ptr :}
-   a u BUILD-LENGTH BUILD-TEXT:MAKE rec BUILD-STEP:ARGV !
-   rec BUILD-PENDING ;
-
-: STEP-TMP! ( ptr u8 n ptr step -- ) {: a:ptr u:n rec:ptr :}
-   u 0 <= if E-BUILD-PATH throw then
-   a u BUILD-LENGTH BUILD-TEXT:MAKE rec BUILD-STEP:TMP !
-   rec BUILD-PENDING ;
-
-: STEP-ARTIFACT! ( ptr u8 n ptr step -- ) {: a:ptr u:n rec:ptr :}
-   u 0 <= if E-BUILD-PATH throw then
-   a u BUILD-LENGTH BUILD-TEXT:MAKE rec BUILD-STEP:ARTIFACT !
-   rec BUILD-PENDING ;
-
-: STEP-NAME$ ( ptr step -- ptr u8 n )
-   BUILD-STEP:NAME @ BUILD-TEXT:UNMAKE LEN>N ;
-
-: STEP-COMMAND$ ( ptr step -- ptr u8 n )
-   BUILD-STEP:COMMAND @ BUILD-TEXT:UNMAKE LEN>N ;
-
-: STEP-ARGV$ ( ptr step -- ptr u8 n )
-   BUILD-STEP:ARGV @ BUILD-TEXT:UNMAKE LEN>N ;
-
-: STEP-TMP$ ( ptr step -- ptr u8 n )
-   BUILD-STEP:TMP @ BUILD-TEXT:UNMAKE LEN>N ;
-
-: STEP-ARTIFACT$ ( ptr step -- ptr u8 n )
-   BUILD-STEP:ARTIFACT @ BUILD-TEXT:UNMAKE LEN>N ;
-
-: STEP-STATE@ ( ptr step -- state ) BUILD-STEP:STATE @ ;
-
-: STEP-RC@ ( ptr step -- n )
-   STEP-STATE@ MATCH state
-      pending OF -1 ENDOF
-      completed OF RC>N ENDOF
-   ;MATCH ;
-
-\ The public numeric API retains -1 as its pending spelling; storage does not.
-: STEP-RC! ( n ptr step -- ) {: code:n rec:ptr :}
-   code -1 = if rec BUILD-PENDING exit then
-   code >RC BUILD-STATE:completed rec BUILD-STEP:STATE ! ;
-
-private
 
 : BUILD-FIND-CHAR ( n n -- n ) {: start ch :}
    start begin dup BUILD-SOURCE-LEN @ < while
@@ -235,19 +137,6 @@ public
      err OF drop E-BUILD-STATUS throw ENDOF              \ nonzero exit / signal -> build failure
    ;MATCH {: rc:n :}
    artifact artifactu BUILD-EXPECT
-   rc ;
-
-: STEP-VALIDATE ( ptr step -- ) {: rec:ptr :}
-   rec STEP-NAME$ nip 0 <= if E-BUILD-COMMAND throw then
-   rec STEP-COMMAND$ FILE? 0= if E-BUILD-COMMAND throw then
-   rec STEP-TMP$ DIR? 0= if E-BUILD-PATH throw then
-   rec STEP-ARTIFACT$ nip 0 <= if E-BUILD-PATH throw then ;
-
-: STEP-RUN ( ptr step -- n ) {: rec:ptr :}
-   rec STEP-VALIDATE
-   rec BUILD-PENDING
-   rec STEP-COMMAND$ rec STEP-ARTIFACT$ RUN {: rc:n :}
-   rc rec STEP-RC!
    rc ;
 
 ;package
