@@ -530,6 +530,7 @@ valid until successful `COMMIT` or `CLOSE` and must not be modified.
 `OPEN-FILE` and `EDIT-FILE` are aliases. They require a writable `TMPDIR`
 (or `/tmp` when unset) and disk space for that snapshot. Failure to create it
 throws `ZIP:E-OPEN`, releases partial resources, and leaves the input unchanged.
+An input without a ZIP end record also throws `ZIP:E-OPEN`.
 There is no in-memory fallback. Read-only opens need no write access to the input
 or its directory. Their framing view is released before they return; they retain
 central-directory bytes, member offsets and fixed read buffers. Subsequent changes to the original

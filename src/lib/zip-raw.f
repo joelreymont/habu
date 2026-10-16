@@ -111,10 +111,10 @@ $14 constant LOCATOR-BYTES
    node off RAW-U32 END-SIG <> if false exit then
    node off $14 + RAW-U16 off + END-BYTES + node RAW-LEN @ = ;
 : FIND-END ( ptr n -- n ) {: node:ptr :}
-   node RAW-LEN @ END-BYTES - dup 0 < if E-READ throw then
+   node RAW-LEN @ END-BYTES - dup 0 < if E-OPEN throw then
    begin dup node RAW-LEN @ END-BYTES - U16-MAX - 0 max >= while
       node over END-MATCH? if exit then 1-
-   repeat E-READ throw ;
+   repeat E-OPEN throw ;
 
 : HAS-END64? ( ptr n -- bool ) {: node:ptr :}
    node END-OFF @ LOCATOR-BYTES < if false exit then

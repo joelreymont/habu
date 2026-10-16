@@ -108,7 +108,7 @@ TASK:SEMAPHORE ZIP-START
 : EMPTY-PATH ( -- ) s" " ZIP:OPEN drop ;
 : NUL-PATH ( -- ) S\" a\x00b" ZIP:OPEN drop ;
 : BAD-PATHS ( -- )
-   s" invalid.zip" PATH$ s" this is not a ZIP" WRITE-ALL
+   s" invalid.zip" PATH$ s" temporarily unavailable" WRITE-ALL
    [: MALFORMED ;] E-OPEN TTHROWSQ
    [: EMPTY-PATH ;] E-PATH TTHROWSQ
    [: NUL-PATH ;] E-PATH TTHROWSQ ;
