@@ -2024,6 +2024,9 @@ CONTENT-KEY:FINAL-HEX   ( CONTENT-KEY:fold ptr u8 -- )
 CONTENT-KEY:DISCARD     ( CONTENT-KEY:fold -- )
 ```
 
+Each live fold streams its tagged fields into its own SHA-256 context. Up to
+four folds may overlap; the complete manifest preimage is not retained.
+
 `CONTENT-KEY:FILE+` records the path in the manifest and hashes the file's
 current content on every call. `FILE-NAMED+` takes the physical path followed
 by a logical name: only that name and the file's content enter the key, while

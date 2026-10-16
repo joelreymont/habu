@@ -121,8 +121,7 @@ create CKT-INT-B 80 allot
    0 begin dup FOLDS 2 * < while
       OPEN s" recycle" TEXT+ CKT-SEQ-A FINAL-HEX
       1+
-   repeat drop
-   0 FOLD-FILL 0 T= ;
+   repeat drop ;
 
 : CKT-LOGICAL-NAME ( -- )
    CKT-ROOT$ s" copy.f" CKT-COPY-PATH JOIN-PATH {: copyu:n :}

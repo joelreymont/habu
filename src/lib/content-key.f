@@ -7,20 +7,17 @@
 \ CONTENT-KEY:DISCARD closes one whose key is not going to be taken. Because
 \ every operation names its own fold, two keys derived at overlapping times
 \ cannot mix bytes - see the fold-handle section below for what that replaced.
-\ FILE+ digests the file's current bytes on every call. The read-only fold
-\ census FOLDS / FOLD-FILL serves the capacity-throw reporter. Every other
-\ helper and all buffers are package-private.
+\ FILE+ digests the file's current bytes on every call. Each live fold owns a
+\ SHA-256 context; its complete preimage is never retained.
 \
 \ Requires the SHA-256 words; native bin/hb already carries src/core/sha256.f.
 
 require src/lib/errors.f
 require src/lib/string.f
-require src/lib/memory.f
 require src/lib/type/deftype.f
 
 package CONTENT-KEY
 
-$40000 constant CK-CAP
 $54 constant CK-TEXT-TAG
 $46 constant CK-FILE-TAG
 $44 constant CK-DIGEST-TAG
@@ -31,24 +28,22 @@ $FFFF constant CK-FRAG-MAX       \ the two length bytes a text or file fragment 
 \ The fold pool's own conditions get their own codes (the package-scoped shape
 \ src/lib/type/deftype.f uses for package VNOM). Throwing E-STR-CAPACITY for "no
 \ free fold" or E-STR-BOUNDS for "this handle no longer owns its slot" would
-\ send a reader to the preimage buffer, which is the one thing that is fine.
+\ hide the ownership error.
 -6920 constant E-CK-FOLDS    \ every fold slot is in use; an earlier fold was never closed
 -6921 constant E-CK-STALE    \ the handle does not own the slot it names (closed, or never opened)
 
-create CK-BUF CK-CAP allot
-CK-FOLD-N TYPED-BUFFER CK-FOLD-A ptr u8   \ one preimage buffer address per fold slot
-create CK-FOLD-U CK-FOLD-N cells allot
+create CK-FOLD-CTX CK-FOLD-N SHA256-CTX-BYTES * allot
 create CK-FOLD-G CK-FOLD-N cells allot
+create CK-BYTE 1 allot
 create CK-DG 40 allot
 create CK-FILE-DG 40 allot
-create CK-SHA-CTX SHA256-CTX-BYTES allot        \ this package's digest context
-create CK-FSHA-CTX SHA256-FILE-CTX-BYTES allot  \ ... and its file-digest context
+create CK-FSHA-CTX SHA256-FILE-CTX-BYTES allot  \ file-digest context
 
 variable CK-GEN
 
 \ ---- fold handles -----------------------------------------------------------
-\ A key is built by folding fields into a preimage buffer. There used to be ONE
-\ such buffer, so two folds that overlapped in time - a key derived while
+\ A key is built by feeding fields into its own SHA context. There used to be
+\ ONE preimage buffer, so two folds that overlapped in time - a key derived while
 \ another key's fold was open, which is what a nested cache-key derivation is -
 \ mixed their bytes into a single wrong key, silently and identically for both
 \ (dot habu-content-key-folds-9d2888c2). Every fold now owns a slot, and every
@@ -62,9 +57,7 @@ variable CK-GEN
 \ kept past FINAL names a slot it no longer owns and throws instead of writing
 \ into whatever fold holds that slot now.
 \
-\ Slot 0 folds into the static CK-BUF, so the ordinary single-fold run costs no
-\ allocation at all; the slots an overlapping fold needs take their buffers from
-\ the checked MEM: surface on first use.
+\ Each of the four slots holds one cell-aligned SHA-256 context.
 
 public
 
@@ -72,21 +65,8 @@ DEFTYPE FOLD
 
 private
 
-\ CK-CAP is a positive library constant: MEM:BYTES-ALLOC-LEN narrows it to the
-\ validated alloc role before MEM:ALLOC-BYTES, which throws E-MEM-SIZE on any
-\ refusal (unreachable for the constant).
-: CK-SLOT-BUF ( n -- ptr u8 ) {: s:n :}
-   s 0= if CK-BUF exit then
-   s CK-FOLD-A @ 0= if
-      CK-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop s CK-FOLD-A !
-   then
-   s CK-FOLD-A @ ;
-
-: CK-SLOT-U@ ( n -- n )
-   cells CK-FOLD-U + @ ;
-
-: CK-SLOT-U! ( n n -- ) {: u:n s:n :}
-   u s cells CK-FOLD-U + ! ;
+: CK-SLOT-CTX ( n -- ptr u8 )
+   SHA256-CTX-BYTES * CK-FOLD-CTX + ;
 
 : CK-SLOT-G@ ( n -- n )
    cells CK-FOLD-G + @ ;
@@ -116,13 +96,12 @@ private
 : CK-OPEN ( -- fold )
    CK-FREE-SLOT {: s:n :}
    CK-GEN @ 1+ dup CK-GEN ! {: g:n :}
-   0 s CK-SLOT-U!
+   s CK-SLOT-CTX SHA256-BEGIN
    g s CK-SLOT-G!
    g CK-FOLD-N * s + >FOLD ;
 
 : CK-CLOSE ( fold -- )
    CK-LIVE {: s:n :}
-   0 s CK-SLOT-U!
    0 s CK-SLOT-G! ;
 
 public
@@ -140,21 +119,14 @@ public
 
 private
 
-: CK-CAP-CHECK ( n n -- ) {: s:n n:n :}
-   n 0 < if E-STR-BOUNDS throw then
-   s CK-SLOT-U@ n + CK-CAP > if E-STR-CAPACITY throw then ;
-
 : CK-U8+ ( n n -- ) {: s:n c:n :}
-   s 1 CK-CAP-CHECK
    c 0 < if E-STR-BOUNDS throw then
    c STR-BYTE-MAX > if E-STR-BOUNDS throw then
-   c s CK-SLOT-BUF s CK-SLOT-U@ + c!
-   s CK-SLOT-U@ 1+ s CK-SLOT-U! ;
+   c CK-BYTE c!
+   s CK-SLOT-CTX CK-BYTE 1 SHA256-FEED ;
 
 : CK-BYTES+ ( n ptr u8 n -- ) {: s:n a:ptr u:n :}
-   s u CK-CAP-CHECK
-   a s CK-SLOT-BUF s CK-SLOT-U@ + u BYTE-COPY
-   s CK-SLOT-U@ u + s CK-SLOT-U! ;
+   s CK-SLOT-CTX a u SHA256-FEED ;
 
 \ A fragment is its tag, its length in two little-endian bytes and its bytes:
 \ FILE+ folds the file's name, and a path of PATH-CAP bytes has to fold whole.
@@ -200,25 +172,14 @@ public
 \ Finalizing a key closes its fold; the slot is released for the next one.
 : FINAL ( fold ptr u8 -- ) {: f:fold dst:ptr :}
    f CK-LIVE {: s:n :}
-   CK-SHA-CTX s CK-SLOT-BUF s CK-SLOT-U@ dst SHA256-IN
+   s CK-SLOT-CTX dst SHA256-END
    f CK-CLOSE ;
 
 : FINAL-HEX ( fold ptr u8 -- ) {: f:fold hex:ptr :}
    f CK-DG FINAL
    CK-DG hex SHA256>HEX ;
 
-\ Read-only introspection. The fold census (FOLDS/FOLD-FILL) lets the
-\ capacity-throw reporter name the fold that overflowed without holding a
-\ handle - it runs from a throw handler, where there is no fold to pass.
-: BUF-CAP ( -- n )   CK-CAP ;
-
 : FOLDS ( -- n )   CK-FOLD-N ;
-
-: FOLD-FILL ( n -- n ) {: s:n :}
-   s 0 < if E-STR-BOUNDS throw then
-   s CK-FOLD-N >= if E-STR-BOUNDS throw then
-   s CK-SLOT-G@ 0= if 0 exit then
-   s CK-SLOT-U@ ;
 
 \ Erase the mint. The nominal stays nameable outside as CONTENT-KEY:fold, but
 \ the only words that cross between it and a plain cell are gone from the public
