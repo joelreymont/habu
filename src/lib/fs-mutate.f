@@ -552,7 +552,7 @@ public
    baseu prefixu TEMP-DIR-BASE-MAX > if E-SPAN-CAPACITY throw then
    SB-RESET
    base baseu SB-APPEND
-   FS-MUT-SLASH SB-APPEND-C
+   base baseu FS-JOIN-SEPARATED? 0= if FS-MUT-SLASH SB-APPEND-C then
    prefix prefixu SB-APPEND
    FS-MUT-DASH SB-APPEND-C
    seed FS-MUT-SB-U

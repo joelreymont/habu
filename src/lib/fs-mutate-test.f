@@ -641,6 +641,15 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
    FMT-COLLIDE-BUF FMT-COLLIDE-U FMT-COPY!
    FMT-COLLIDE FMT-UNIQUE T$= ;
 
+\ A base that already ends in a slash, as macOS's TMPDIR does, takes no second
+\ one: the candidate is the one the bare base gives. Building a candidate makes
+\ no directory, so the bases need not exist.
+: FMT-TEST-TEMP-SLASH ( -- )
+   s" /a" s" slash" FMT-TMP-SEED 0 FS-MUT-BUILD-TEMP-TRY
+   FMT-COLLIDE-BUF FMT-COLLIDE-U FMT-COPY!
+   s" /a/" s" slash" FMT-TMP-SEED 0 FS-MUT-BUILD-TEMP-TRY
+   FMT-COLLIDE T$= ;
+
 : FMT-TEMP-EXHAUST-CANDIDATE ( n -- ptr u8 n ) {: attempt:n :}
    FMT-TEMP-BASE s" exhaust" FMT-TMP-SEED attempt FS-MUT-BUILD-TEMP-TRY ;
 
@@ -1270,6 +1279,7 @@ public
    FMT-TEST-DIRS-DENIED
    FMT-TEST-TEMPS
    FMT-TEST-TEMP-COLLISION
+   FMT-TEST-TEMP-SLASH
    FMT-TEST-TEMP-EXHAUST
    FMT-HB-TMP:RUN
    FMT-TEST-SYMLINK
