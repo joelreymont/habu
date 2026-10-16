@@ -575,6 +575,22 @@ public
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then
    prefix prefixu MAKE-TEMP-DIR ;
 
+\ An HB_TMP that is not a directory is refused before anything is made, with
+\ one line on fd 2 that names HB_TMP and its value, then E-FS-DIR. Without it
+\ MAKE-TEMP-DIR's mkdir fails on the missing parent, which is no collision, and
+\ the process dies on a bare E-FS-IO that never says HB_TMP was the cause. The
+\ line is three writes, as src/core/include.f names a refused source path, and
+\ not one SB$ write as FS-MUT-EXIT-REPORT below: DIR? takes a value of up to
+\ FS-PATH-CAP bytes, which with the prefix overflows SB-CAP, and SB-APPEND would
+\ then throw E-STR-CAPACITY in place of the line and the code.
+: FS-MUT-HB-TMP-CHECK ( ptr u8 n -- )
+   {: a:ptr u :}
+   a u DIR? if exit then
+   2 s" hb: HB_TMP is not a directory: " write drop
+   2 a u write drop
+   2 S\" \n" write drop
+   E-FS-DIR throw ;
+
 \ The one base resolver for a process that was handed a scratch root. HB_TMP
 \ names a directory the caller owns and will remove; a temp tree made under it
 \ therefore goes away with it, even for a process that is killed before it can
@@ -584,6 +600,7 @@ public
    s" HB_TMP" GETENV dup 0= if
       2drop prefix prefixu TMPDIR-MKDIR exit
    then
+   2dup FS-MUT-HB-TMP-CHECK
    prefix prefixu MAKE-TEMP-DIR ;
 
 : CLEANUP-RESET ( -- )

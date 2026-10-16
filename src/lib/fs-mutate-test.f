@@ -10,6 +10,7 @@ require src/lib/span.f
 require src/lib/fs-mutate.f
 require src/lib/memory.f                            \ the walk contexts the last two rows own
 require src/lib/process-env.f
+require src/lib/test/outcome.f                      \ the HB_TMP child's outcome
 require src/lib/task.f                              \ the two-task rows at the end
 
 variable FMT-ROOT-U
@@ -643,6 +644,72 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
    E-FS-IO TTHROWSQ
    FMT-TEMP-EXHAUST-CLEAN ;
 
+\ ---- an HB_TMP that is not a directory ----------------------------------------
+\ A child bin/hb whose HB_TMP names a path that does not exist calls
+\ HB-TMP-MKDIR. It exits nonzero with one stderr line that names HB_TMP and the
+\ path. The path and the child's program are under this test's root.
+package FMT-HB-TMP
+private
+
+$1000 constant CAP
+15000 constant TIMEOUT-MS
+
+create OUT CAP allot
+create ERR CAP allot
+create MISSING-BUF FS-PATH-CAP allot
+create PROG-BUF FS-PATH-CAP allot
+variable MISSING-U
+variable PROG-U
+
+: MISSING$ ( -- ptr u8 n )
+   MISSING-BUF MISSING-U @ ;
+
+: PROG$ ( -- ptr u8 n )
+   PROG-BUF PROG-U @ ;
+
+: PATHS! ( -- )
+   FMT-ROOT$ s" no-such-hb-tmp" MISSING-BUF JOIN-PATH MISSING-U !
+   FMT-ROOT$ s" hb-tmp-child.f" PROG-BUF JOIN-PATH PROG-U ! ;
+
+: PROG-SRC$ ( -- ptr u8 n )
+   S\" require src/lib/fs-mutate.f\ns\q hb-tmp-child\q HB-TMP-MKDIR 2drop\n0 0 0 die\n" ;
+
+\ The child, with HB_TMP the missing path and the rest of the environment
+\ inherited.
+: RUN-CHILD ( -- len len outcome )
+   PROC-ARGV-ENV-RESET
+   s" HB_TMP" >LEN MISSING$ >LEN PROC-ENV-SET
+   PROC-ENV-INHERIT-MISSING
+   PROG$ >LEN PROC-ARGV+
+   s" bin/hb" >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME ;
+
+\ The whole line the child must print.
+: WANT$ ( -- ptr u8 n )
+   SB-RESET
+   s" hb: HB_TMP is not a directory: " SB-APPEND
+   MISSING$ SB-APPEND
+   10 SB-APPEND-C
+   SB$ ;
+
+public
+
+: RUN ( -- )
+   PATHS!
+   PROG$ PROG-SRC$ WRITE-ALL
+   PROG$ CLEANUP+
+   RUN-CHILD {: outu:len erru:len oc :}
+   s" a child whose HB_TMP is missing exits nonzero" T-LABEL
+   oc MATCH outcome
+     exited OF 0 T<> ENDOF
+     signaled OF s" exit" s" signal" T-OUTCOME-MISS ENDOF
+     timeout OF PROG$ OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
+   ;MATCH
+   s" the refusal names HB_TMP and its path" T-LABEL
+   ERR erru LEN>N WANT$ CONTAINS? TTRUE ;
+
+;package
+
 : FMT-TEST-SYMLINK ( -- )
    FMT-LINK-TARGET s" link-target" WRITE-ALL
    FMT-LINK-TARGET FMT-LINK MAKE-SYMLINK
@@ -1185,6 +1252,7 @@ public
    FMT-TEST-TEMPS
    FMT-TEST-TEMP-COLLISION
    FMT-TEST-TEMP-EXHAUST
+   FMT-HB-TMP:RUN
    FMT-TEST-SYMLINK
    FMT-TEST-BROKEN-SYMLINK
    [: FMT-REMOVE-MISSING ;] E-FS-IO TTHROWSQ
