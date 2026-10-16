@@ -1320,14 +1320,17 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 
 \ An odd configured limit catches exact and one-past comparisons for both
 \ framings. The body is read through a real TCP connection and returned through
-\ a borrowed BODY$ byte, so its mapping must live through SEND.
+\ a borrowed BODY$ byte, so its mapping must live through SEND. The worker
+\ retires that request (SLOT-FINISH) only after SEND returns, so the old handle
+\ is probed once the next exchange has closed: this server's one worker answers
+\ that only after it has finished with the first request.
 : LARGE-CONTENT-CASE ( -- )
    0 LARGE-SPAN @ SPAN:$ s" /api/large-echo" POST-JSON 200 T=
    RES$ s"  " T$=
-   [: 0 OLD-REQUEST @ HTTP:BODY$ 2drop ;] HTTP:E-HANDLE TTHROWSQ
    s\" POST /api/large-echo HTTP/1.1\r\nHost: x\r\nContent-Length: 2097154\r\n\r\n" RAW-ONE
    s" HTTP/1.1 413" BEGINS? TTRUE
    s" body_too_large: " HAS? TTRUE
+   [: 0 OLD-REQUEST @ HTTP:BODY$ 2drop ;] HTTP:E-HANDLE TTHROWSQ
    s" GET" s" /api/ping" FETCH 200 T= ;
 
 
