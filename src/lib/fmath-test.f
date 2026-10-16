@@ -322,6 +322,78 @@ public
    [: BAD-SINCOS-INF-ERROR ;] FMATH:E-DOMAIN TTHROWSQ
    [: BAD-SINCOS-RANGE ;] FMATH:E-DOMAIN TTHROWSQ ;
 
+\ These cases use exact binary inputs and known real endpoints, so the checks
+\ detect an under-enclosed result without duplicating the bound formulas.
+: ARITHMETIC-BOUNDS ( -- )
+   1.0 0.0 -53 F2-N 0.0 FMATH:ADD-BOUND
+      {: sum:r sum-error:r :}
+   sum 1.0 f= TTRUE
+   sum-error -53 F2-N f>= TTRUE
+   sum sum-error 1.0 0.0 FMATH:SUB-BOUND
+      {: cancelled:r cancel-error:r :}
+   cancelled 0.0 f= TTRUE
+   cancel-error -53 F2-N f>= TTRUE
+
+   -1.0 0.0 -53 F2-N 0.0 FMATH:SUB-BOUND
+      {: negative:r negative-error:r :}
+   negative -1.0 f= TTRUE
+   negative-error -53 F2-N f>= TTRUE
+
+   -2.0 0.25 -3.0 0.5 FMATH:MUL-BOUND
+      {: product:r product-error:r :}
+   product 6.0 f= TTRUE
+   product-error 1.875 f>= TTRUE  \ (-2.25)*(-3.5) = 7.875
+
+   0.0 1.0 0.0 -53 F2-N FMATH:ADD-BOUND
+      {: zero-sum:r sum-bound:r :}
+   zero-sum 0.0 f= TTRUE
+   sum-bound 1.0 f> TTRUE  \ real input error can be 1 + 2^-53
+
+   0.0 1.0 -52 F2-N f+ 0.0 1.0 -52 F2-N f+
+      FMATH:MUL-BOUND {: zero-product:r product-bound:r :}
+   zero-product 0.0 f= TTRUE
+   product-bound 1.0 -51 F2-N f+ f> TTRUE
+      \ (1 + 2^-52)^2 exceeds the rounded 1 + 2^-51
+
+   -1074 F2-N 0.0 0.5 0.0 FMATH:MUL-BOUND
+      {: under:r under-error:r :}
+   under 0.0 f= TTRUE
+   under-error -1074 F2-N f>= TTRUE
+   0.0 -1074 F2-N 0.0 0.5 FMATH:MUL-BOUND
+      {: uncertain-zero:r uncertain-error:r :}
+   uncertain-zero 0.0 f= TTRUE
+   uncertain-error -1074 F2-N f>= TTRUE ;
+
+: BAD-ADD-VALUE ( -- ) POS-INF 0.0 1.0 0.0 FMATH:ADD-BOUND 2drop ;
+: BAD-SUB-VALUE ( -- ) NAN 0.0 1.0 0.0 FMATH:SUB-BOUND 2drop ;
+: BAD-MUL-VALUE ( -- ) 1.0 0.0 NEG-INF 0.0 FMATH:MUL-BOUND 2drop ;
+: BAD-ADD-ERROR ( -- ) 1.0 -1.0 2.0 0.0 FMATH:ADD-BOUND 2drop ;
+: BAD-SUB-ERROR ( -- ) 1.0 0.0 2.0 POS-INF FMATH:SUB-BOUND 2drop ;
+: BAD-MUL-ERROR ( -- ) 1.0 NAN 2.0 0.0 FMATH:MUL-BOUND 2drop ;
+: BAD-ADD-OVERFLOW ( -- )
+   $7FEFFFFFFFFFFFFF IEEE754:BITS>F64 0.0
+   $7FEFFFFFFFFFFFFF IEEE754:BITS>F64 0.0 FMATH:ADD-BOUND 2drop ;
+: BAD-MUL-OVERFLOW ( -- )
+   $7FEFFFFFFFFFFFFF IEEE754:BITS>F64 0.0 2.0 0.0 FMATH:MUL-BOUND 2drop ;
+: BAD-ADD-BOUND-OVERFLOW ( -- )
+   0.0 $7FEFFFFFFFFFFFFF IEEE754:BITS>F64
+   0.0 $7FEFFFFFFFFFFFFF IEEE754:BITS>F64 FMATH:ADD-BOUND 2drop ;
+: BAD-MUL-BOUND-OVERFLOW ( -- )
+   0.0 $7FEFFFFFFFFFFFFF IEEE754:BITS>F64
+   0.0 2.0 FMATH:MUL-BOUND 2drop ;
+
+: ARITHMETIC-REFUSALS ( -- )
+   [: BAD-ADD-VALUE ;] FMATH:E-DOMAIN TTHROWSQ
+   [: BAD-SUB-VALUE ;] FMATH:E-DOMAIN TTHROWSQ
+   [: BAD-MUL-VALUE ;] FMATH:E-DOMAIN TTHROWSQ
+   [: BAD-ADD-ERROR ;] FMATH:E-DOMAIN TTHROWSQ
+   [: BAD-SUB-ERROR ;] FMATH:E-DOMAIN TTHROWSQ
+   [: BAD-MUL-ERROR ;] FMATH:E-DOMAIN TTHROWSQ
+   [: BAD-ADD-OVERFLOW ;] FMATH:E-OUTPUT TTHROWSQ
+   [: BAD-MUL-OVERFLOW ;] FMATH:E-OUTPUT TTHROWSQ
+   [: BAD-ADD-BOUND-OVERFLOW ;] FMATH:E-OUTPUT TTHROWSQ
+   [: BAD-MUL-BOUND-OVERFLOW ;] FMATH:E-OUTPUT TTHROWSQ ;
+
 : LDEXP-VALUES ( -- )
    1.0 10 FMATH:LDEXP 1024.0 f= TTRUE
    1.0 0 FMATH:LDEXP 1.0 f= TTRUE
@@ -353,6 +425,7 @@ public
    TRIG-VALUES
    TRIG-REFUSALS
    DEGREE-BOUNDS SINCOS-BOUNDS BOUND-REFUSALS
+   ARITHMETIC-BOUNDS ARITHMETIC-REFUSALS
    LDEXP-VALUES
    LDEXP-REFUSALS
    T-REPORT ;

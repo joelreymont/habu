@@ -35,6 +35,9 @@ rigid frame; callers own those policies.
 | `COS ( r -- r )` | Cosine, same domain. |
 | `PI ( -- r )` | pi as the nearest binary64, bit pattern $400921FB54442D18. |
 | `LDEXP ( r n -- r )` | `r * 2^n` for a finite `r`, exact for normal results. |
+| `ADD-BOUND ( r r r r -- r r )` | Add `(a, ea, b, eb)` and return the binary64 sum with its absolute error bound. |
+| `SUB-BOUND ( r r r r -- r r )` | Subtract `(a, ea, b, eb)` and return the binary64 difference with its absolute error bound. |
+| `MUL-BOUND ( r r r r -- r r )` | Multiply `(a, ea, b, eb)` and return the binary64 product with its absolute error bound. |
 | `DEG>RAD ( r -- r r )` | Binary64 degrees to radians, followed by an absolute conversion-error bound. |
 | `SINCOS-BOUND ( r r -- r r r r )` | Radians and nonnegative input error to cosine, sine, and their absolute error bounds, in that order. |
 
@@ -91,8 +94,9 @@ plays no part.
 f/`. Its second result bounds the difference from converting the input
 binary64 degree value with real pi. Let `U(x)` be the binary64 spacing at
 `|x|` (the least subnormal spacing at zero and for subnormals), and `R(x)`
-be half `U(x)` for normal results or one least subnormal for zero/subnormal
-results. With `t = fl(degrees * PI)` and `theta = fl(t / 180)`, it evaluates an
+be half `U(x)` above the first normal binade or one least subnormal for zero,
+subnormal and first-binade results. With `t = fl(degrees * PI)` and
+`theta = fl(t / 180)`, it evaluates an
 outward-rounded upper bound for
 `(R(t) + |degrees| * 2^-52) / 180 + R(theta)`. The `2^-52` term bounds the stored
 pi constant. Each nonzero positive bound operation advances to the next
@@ -100,6 +104,20 @@ representable value; zero operands remain exact. This keeps underflowed
 nonzero conversions bounded, while zero degrees return exactly +0 radians
 and zero error. Nonfinite degrees throw `E-DOMAIN`; a nonfinite intermediate
 or result throws `E-OUTPUT`.
+
+`ADD-BOUND`, `SUB-BOUND` and `MUL-BOUND` propagate absolute errors through
+ordinary binary64 arithmetic. For each pair `(a, ea)`, the unknown real value
+lies within `ea` of the supplied binary64 `a`. The returned value is exactly
+the corresponding `f+`, `f-` or `f*` result. Addition and subtraction bound
+the output error by `ea + eb + R(result)`; multiplication bounds it by
+`|a|eb + |b|ea + ea*eb + R(result)`. Here `R` is half an output spacing above
+the first normal binade, or one least subnormal at and below it. Every
+positive term and sum in the bound rounds outward, including products that
+underflow to zero, so the bounds can be conservative. All four inputs must
+be finite and both errors nonnegative, or `E-DOMAIN` is thrown. A nonfinite
+arithmetic result or a bound that cannot be represented finitely throws
+`E-OUTPUT`. The conservative calculation can overflow even when a tighter
+mathematical error bound would fit; this is an output-range refusal.
 
 `SINCOS-BOUND` returns the existing `COS` and `SIN` values. For a nonzero
 argument, each evaluation bound is four output spacings plus the supplied

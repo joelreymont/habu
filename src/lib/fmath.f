@@ -361,7 +361,38 @@ private
 
 : TRIG-BOUND ( r -- r ) SPACING 4.0 f* ;
 
+\ All arithmetic-bound inputs are finite; absolute errors cannot be negative.
+: BOUND-INPUTS ( r r r r -- )
+   {: a:r ea:r b:r eb:r :}
+   a FINITE? b FINITE? and
+   ea FINITE? and eb FINITE? and
+   ea 0.0 f< 0= and eb 0.0 f< 0= and
+      0= if E-DOMAIN throw then ;
+
 public
+
+\ Carry absolute input errors through one binary64 operation. Positive bound
+\ arithmetic rounds outward; ROUND-BOUND also covers subnormal underflow.
+: ADD-BOUND ( r r r r -- r r )
+   {: a:r ea:r b:r eb:r :}
+   a ea b eb BOUND-INPUTS
+   a b f+ FRESULT {: result:r :}
+   result ea eb UP-ADD result ROUND-BOUND UP-ADD ;
+
+: SUB-BOUND ( r r r r -- r r )
+   {: a:r ea:r b:r eb:r :}
+   a ea b eb BOUND-INPUTS
+   a b f- FRESULT {: result:r :}
+   result ea eb UP-ADD result ROUND-BOUND UP-ADD ;
+
+: MUL-BOUND ( r r r r -- r r )
+   {: a:r ea:r b:r eb:r :}
+   a ea b eb BOUND-INPUTS
+   a b f* FRESULT {: result:r :}
+   result
+   a fabs eb UP-MUL b fabs ea UP-MUL UP-ADD
+   ea eb UP-MUL UP-ADD
+   result ROUND-BOUND UP-ADD ;
 
 \ Preserve the actual multiply-then-divide value, with an outward bound on
 \ conversion from binary64 degrees to ideal radians. PI's constant error is
