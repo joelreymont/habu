@@ -1,6 +1,6 @@
 ---
 title: Let residency skip loads the if-conversion elides
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-16T20:18:48.725493+03:00"
