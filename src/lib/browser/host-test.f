@@ -38,15 +38,28 @@ variable HEAD-U
    SB-RESET  s" http://127.0.0.1:" SB-APPEND  HTTP:PORT FMT:SB-U  path u SB-APPEND
    SB$ ;
 
+28 constant CURLE-TIMED-OUT             \ CURLE_OPERATION_TIMEDOUT
+
 \ The response's status, its body in BODY; -1 for a body past CAP, -2 for a
-\ failed transfer.
+\ failed transfer. Every failed transfer names its libcurl code on stderr.
+\ libcurl answers 28 only when a wall-clock limit expired; these handles set
+\ none, so it is libcurl's default 300 s connect timeout, met by a starved or
+\ stopped process. A deadline is no assertion result (docs/gate.md): it is
+\ thrown as E-PROC-TIMEOUT.
 : PERFORM ( CURL:handle -- n )
    BODY CAP >LEN CURL:PERFORM
    MATCH CURL:fetch-result
       response OF {: status:CURL:http-status got:len :}
          got LEN>N BODY-U ! status CURL:HTTP-STATUS>N ENDOF
       truncated OF drop drop -1 ENDOF
-      failed OF drop -2 ENDOF
+      failed OF {: rc:CURL:code :}
+         SB-RESET
+         s" host-test: libcurl code " SB-APPEND
+         rc CURL:CODE>N FMT:SB-U
+         S\" \n" SB-APPEND
+         2 SB$ write drop
+         rc CURL:CODE>N CURLE-TIMED-OUT = if E-PROC-TIMEOUT throw then
+         -2 ENDOF
    ;MATCH ;
 
 \ The response's header block into HEAD; empty past HEAD-CAP.
