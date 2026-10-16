@@ -69,7 +69,9 @@ require src/lib/engine-candidate.f
 require src/lib/build-cache.f
 require src/lib/task.f
 require src/lib/time.f
+require src/lib/test/wait.f
 require test/image-grant.f
+require test/suite-budget.f
 
 package KEYED-IMAGE-REAP-TEST
 
@@ -155,6 +157,19 @@ variable ENTRIES
 : RELEASE$ ( n -- ptr u8 n )
    s" .go" FILE$ ;
 
+\ Written by the build's builder when its release wait expires
+\ (test/keyed-image-reap-child.f AWAIT-RELEASE).
+: EXPIRY$ ( n -- ptr u8 n )
+   s" .expired" FILE$ ;
+
+\ A builder that met its release deadline wrote its expiry file before it
+\ exited, and so before its build removed anything: that deadline is named and
+\ thrown.
+: BUILDER-EXPIRED ( n -- )
+   EXPIRY$ EXISTS? if
+      s" keyed-image-reap-child AWAIT-RELEASE" TEST-WAIT:EXPIRED
+   then ;
+
 : LOG$ ( n -- ptr u8 n )
    s" .log" FILE$ ;
 
@@ -223,11 +238,13 @@ variable ENTRIES
    c KEY$ ARG
    c MARK$ ARG
    c RELEASE$ ARG
+   c EXPIRY$ ARG
    eng engu >LEN in >FD log >FD log >FD PROC-SPAWN-ARGV-ENV-IO
    in close
    log close ;
 
-\ Wait until the build's builder has written its mark.
+\ Wait until the build's builder has written its mark: FALSE when the deadline
+\ passes first, so the caller can kill the build before the wait expires.
 : MARKED? ( n -- bool ) {: c:n :}
    TIME:EPOCH-SECONDS READY-SECONDS + {: deadline:n :}
    begin
@@ -258,30 +275,48 @@ variable ENTRIES
    0 kill-errno 0<> ;
 
 \ Wait until a killed process no longer exists, so every lock it held is gone.
-: AWAIT-GONE ( n -- bool ) {: pid:n :}
+: AWAIT-GONE ( n -- )
+   {: pid:n :}
    TIME:EPOCH-SECONDS READY-SECONDS + {: deadline:n :}
-   begin
-      pid GONE? if 0 0= exit then
-      TIME:EPOCH-SECONDS deadline > if 0 0= 0= exit then
+   begin pid GONE? 0= while
+      TIME:EPOCH-SECONDS deadline > if
+         s" keyed-image-reap-test AWAIT-GONE" TEST-WAIT:EXPIRED
+      then
       POLL-MS >MS TASK:SLEEP
-   again ;
+   repeat ;
 
-\ A build that never marks is killed and the run stops: its checks would
-\ read a directory it never named.
-: UNMARKED ( pid -- ) {: pid:pid :}
+\ A build whose builder did not publish its mark before the deadline is killed
+\ and reaped, then the wait expires: its checks would read a directory it never
+\ named.
+: UNMARKED ( pid -- )
+   {: pid:pid :}
    pid SIGKILL PROC-KILL-RAW drop
    pid PROC-WAIT-STATUS drop
-   s" keyed-image-reap-test: a build's builder never started" 1 die ;
+   s" keyed-image-reap-test MARKED?" TEST-WAIT:EXPIRED ;
 
-: EXITED ( pid -- n )
-   PROC-WAIT-RC MATCH result
+\ The build's log: its output and its errors.
+: LOG-READ ( n -- ptr u8 n )
+   LOG$ LOG-BUF LOG-CAP READ-ALL {: u:n :}
+   LOG-BUF u ;
+
+\ A build's exit code. A build whose builder met a deadline exits
+\ PROC-TIMEOUT-RC (test/keyed-image-reap-child.f BUILD) with the builder's
+\ capture in its log: the log goes to stdout and the build wait expires before
+\ any exit code is asserted.
+: EXITED ( pid n -- n )
+   {: pid:pid c:n :}
+   pid PROC-WAIT-RC MATCH result
       ok OF ENDOF
       err OF ENDOF
-   ;MATCH ;
+   ;MATCH {: rc:n :}
+   rc PROC-TIMEOUT-RC = if
+      c LOG-READ type
+      s" keyed-image-reap-test build wait" TEST-WAIT:EXPIRED
+   then
+   rc ;
 
 : REPORTED? ( n -- bool )
-   LOG$ LOG-BUF LOG-CAP READ-ALL {: u:n :}
-   LOG-BUF u s" build-cache: cannot" CONTAINS? ;
+   LOG-READ s" build-cache: cannot" CONTAINS? ;
 
 : COUNT+ ( ptr u8 n -- )
    2drop 1 ENTRIES +! ;
@@ -323,14 +358,28 @@ variable ENTRIES
    UNLOCKED$ PLANT ;
 
 \ Kill the build once its builder runs, so nothing of it runs its cleanup, and
-\ leave the builder running with the hold it inherited.
+\ leave the builder running with the hold it inherited. A build whose builder
+\ met its deadline before the kill removes its directory, or has begun to when
+\ the kill lands: its end and its builder's record are classified before the
+\ kill is asserted. The build's own capture deadline, SUITE-BUDGET:CHILD-MS
+\ (test/keyed-image.f ENSURE), kills the builder and leaves no record; its clock
+\ starts after the spawn, so a build the kill ended before the same span from a
+\ reading taken before the spawn never met it, and one it ended later may have.
+\ A build that exited on its own with another status failed, and the checks
+\ report it.
 : KILL-BUILD ( -- )
+   SUITE-BUDGET:CHILD-MS >MS PROC-DEADLINE-AT {: capture:n :}
    KILLED SPAWN {: a:pid :}
    KILLED MARKED? 0= if a UNMARKED then
    KILLED KILLED-BUF KILLED-U MARK-READ ORPHAN !
+   a SIGKILL PROC-KILL-RAW RC>N {: killed:n :}
+   a KILLED EXITED {: rc:n :}
+   KILLED BUILDER-EXPIRED
+   rc SIGKILL 128 + = mono-ns capture >= and if
+      s" keyed-image-reap-test build wait" TEST-WAIT:EXPIRED
+   then
    s" the killed build is killed" T-LABEL
-   a SIGKILL PROC-KILL-RAW RC>N 0 T=
-   a PROC-WAIT-STATUS drop
+   killed 0 T=
    s" and leaves its work directory" T-LABEL
    KILLED$ EXISTS? TTRUE ;
 
@@ -340,51 +389,72 @@ variable ENTRIES
    LIVE MARKED? 0= if b UNMARKED then
    LIVE LIVE-BUF LIVE-U MARK-READ drop ;
 
-: NEXT-BUILD ( -- )
-   s" touch dates the live directory" T-LABEL
-   AGE 0 T=
+\ The live build's directory is observed while the other builds run and checked
+\ once the live build's own end is classified: a live build whose builder met a
+\ deadline removes its directory early, and that is a timeout, not a reap. The
+\ observations go to FINISH-LIVE. The killed build's directory is observed the
+\ same way and checked in KILL-BUILDER: a builder that met its deadline let the
+\ directory go, and the next build reaps it.
+: NEXT-BUILD ( -- n bool bool )
+   AGE {: aged:n :}
    s" the next build, of another family, exits 0" T-LABEL
-   NEXT SPAWN EXITED 0 T=
+   NEXT SPAWN NEXT EXITED 0 T=
    s" and publishes its image" T-LABEL
    NEXT IMAGE$ EXECUTABLE? TTRUE
-   s" the killed build's directory stays while its builder runs" T-LABEL
-   KILLED$ EXISTS? TTRUE
-   s" the live build's stays, though dated 2020" T-LABEL
-   LIVE$ EXISTS? TTRUE
+   KILLED$ EXISTS? {: kept:bool :}
+   LIVE$ EXISTS? {: held:bool :}
    s" a recent work directory nothing holds is gone" T-LABEL
    UNHELD$ AT$ EXISTS? TFALSE
    s" a directory no build locks stays" T-LABEL
    UNLOCKED$ AT$ EXISTS? TTRUE
    s" the next build reports nothing it passed over" T-LABEL
-   NEXT REPORTED? TFALSE ;
+   NEXT REPORTED? TFALSE
+   aged held kept ;
 
-\ The builder goes the way a gate that kills a slot's process tree takes it.
-: KILL-BUILDER ( -- )
+\ The builder goes the way a gate that kills a slot's process tree takes it, and
+\ is gone before the last build. A builder that met its release deadline has
+\ that named and thrown before the kill or the directory it held through the
+\ next build, kept, is asserted.
+: KILL-BUILDER ( bool -- )
+   {: kept:bool :}
+   ORPHAN @ SIGKILL kill-errno {: errno:n :}
+   ORPHAN @ AWAIT-GONE
+   KILLED BUILDER-EXPIRED
+   s" the killed build's directory stays while its builder runs" T-LABEL
+   kept TTRUE
    s" the killed build's builder is killed" T-LABEL
-   ORPHAN @ SIGKILL kill-errno 0 T=
-   s" and is gone before the last build" T-LABEL
-   ORPHAN @ AWAIT-GONE TTRUE ;
+   errno 0 T= ;
 
-: LAST-BUILD ( -- )
+\ Whether the live build's directory stays goes to FINISH-LIVE.
+: LAST-BUILD ( -- bool )
    s" the last build exits 0" T-LABEL
-   LAST SPAWN EXITED 0 T=
+   LAST SPAWN LAST EXITED 0 T=
    s" the killed build's work directory is gone" T-LABEL
    KILLED$ EXISTS? TFALSE
-   s" the live build's stays" T-LABEL
-   LIVE$ EXISTS? TTRUE
+   LIVE$ EXISTS? {: held:bool :}
    s" the last build reports nothing it passed over" T-LABEL
-   LAST REPORTED? TFALSE ;
+   LAST REPORTED? TFALSE
+   held ;
 
-: FINISH-LIVE ( -- )
+\ The touch's status and whether the live build's directory stayed through the
+\ next and the last build, asserted once the live build's end is classified.
+: FINISH-LIVE ( n bool bool -- )
+   {: aged:n next-held:bool last-held:bool :}
    LIVE RELEASE$ s" go" WRITE-ALL
    s" the live build exits 0" T-LABEL
-   LIVE-PID @ >PID EXITED 0 T=
+   LIVE-PID @ >PID LIVE EXITED 0 T=
    s" and publishes its image" T-LABEL
    LIVE IMAGE$ EXECUTABLE? TTRUE
    s" and removes its own work directory" T-LABEL
    LIVE$ EXISTS? TFALSE
    s" and reports nothing it passed over" T-LABEL
    LIVE REPORTED? TFALSE
+   s" touch dated its directory" T-LABEL
+   aged 0 T=
+   s" which stayed through the next build, though dated 2020" T-LABEL
+   next-held TTRUE
+   s" and through the last build" T-LABEL
+   last-held TTRUE
    s" the root holds the three images and the directory no build locks" T-LABEL
    ENTRIES# 4 T= ;
 
@@ -406,10 +476,10 @@ public
    SETUP
    KILL-BUILD
    START-LIVE
-   NEXT-BUILD
-   KILL-BUILDER
-   LAST-BUILD
-   FINISH-LIVE
+   NEXT-BUILD {: aged:n next-held:bool kept:bool :}
+   kept KILL-BUILDER
+   LAST-BUILD {: last-held:bool :}
+   aged next-held last-held FINISH-LIVE
    REFUSE-NO-FAMILY
    CLEANUP-RUN
    T-REPORT
