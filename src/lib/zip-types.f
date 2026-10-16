@@ -22,5 +22,6 @@ CAST: >ENTRY ( n -- entry )
 CAST: ENTRY>N ( entry -- n )
 CAST: >INPUT ( n -- input )
 CAST: INPUT>N ( input -- n )
+CAST: >ARCHIVE-SLOT ( ptr n -- ptr archive )
 CAST: >INPUT-SLOT ( ptr n -- ptr input )
 ;package
