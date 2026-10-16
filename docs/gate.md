@@ -226,8 +226,10 @@ at its deadline.
 
 - A `SUITE` block is **one** `bin/hb --load` spawn: its files load into one
   image in order. A suite file is therefore package-scoped, duplicate-safe, and
-  closes its `package` before `T-REPORT`; a later suite otherwise dies exit 75
-  with a bare token, one or two suites after the culprit. Fixture identities
+  closes its `package` by its last line. `T-REPORT` returns after `test: ok`,
+  so it may come before `;package`, as in the [forth.md](forth.md) example. A
+  file that leaves its package open makes the next file that opens one die
+  exit 75 at that `package` (`package at <file>:<line>`). Fixture identities
   carry the test's own tag so two suites never intern one name.
 - Files in a `SUITE` row are entries unless an `ENTRIES` marker follows an
   inert preload prefix. The marker is not passed to `--load`; every file after
