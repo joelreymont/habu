@@ -100,11 +100,17 @@ TASK:MIN-STACK TASK:TASK READER
       got +
    repeat drop ;
 
+\ TASK:JOIN would park the main task forever on a reader that never ends, so the
+\ wait owns a deadline. A reader that never ends ends the row as that deadline,
+\ not as an assertion result (docs/gate.md): the join names itself and throws
+\ E-PROC-TIMEOUT, so the asserts after a join read a finished task.
 : JOIN-READER ( -- )
    JOIN-MS >MS PROC-DEADLINE-AT {: deadline :}
    begin
       READER TASK:DONE? if exit then
-      deadline PROC-LEFT-MS MS>N 0= if exit then
+      deadline PROC-LEFT-MS MS>N 0= if
+         s" task join: a deadline expired" type cr E-PROC-TIMEOUT throw
+      then
       TASK:PAUSE
    again ;
 
@@ -169,6 +175,8 @@ TASK:MIN-STACK TASK:TASK READER
    BUF 6 s" forth!" STR= TTRUE ;
 
 \ ---- case six: a read parked in a task is not a thread parked in poll --------
+\ A task asserts nothing: the reader records a timeout as K-TIMEOUT, and the
+\ main task throws it as a deadline once the join has seen the reader end.
 
 : PARK-WORK ( -- )
    PORT BUF 4 SERIAL:BYTES WAIT-MS >MS SERIAL:READ
@@ -180,11 +188,11 @@ TASK:MIN-STACK TASK:TASK READER
    PARK-MS >MS TASK:SLEEP
    PEER s" tick" PTY:WRITE
    JOIN-READER
+   PARK-KIND @ K-TIMEOUT = if
+      s" parked read: a deadline expired" type cr E-PROC-TIMEOUT throw
+   then
 
-   s" a read parked in a task finished the window it was given" T-LABEL
-   READER TASK:DONE? TTRUE
-
-   s" ... answering the bytes the main task wrote at the master" T-LABEL
+   s" a read parked in a task answers the bytes the main task wrote at the master" T-LABEL
    PARK-KIND @ K-MOVED T=
    PARK-COUNT @ 4 T= ;
 

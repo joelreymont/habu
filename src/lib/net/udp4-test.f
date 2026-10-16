@@ -22,6 +22,7 @@ $40 constant PAYLOAD-N             \ the datagram every case sends
 $10 constant SMALL-CAP             \ the capacity the truncating case offers
 $80 constant BUF-CAP
 1000000 constant NS-PER-MS
+-2 constant GOT-TIMEOUT            \ PARK-GOT once the parked receive's deadline expired
 
 \ The deadlines the timed cases are measured against. They allow a scheduler's
 \ slack while still failing a wait that did not happen at all.
@@ -154,11 +155,17 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
    mono-ns start - NS-PER-MS / ;
 
 
-: REACHED? ( ptr n n -- bool ) {: cell:ptr want:n :}
+\ Returns once the count in the cell reaches want. A count still short of it at
+\ WAIT-MS is a deadline, not an assertion result (docs/gate.md): the wait names
+\ itself and throws E-PROC-TIMEOUT.
+: REACH ( ptr n n -- )
+   {: cell:ptr want:n :}
    mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
    begin
-      cell atomic@ want >= if true exit then
-      mono-ns deadline > if false exit then
+      cell atomic@ want >= if exit then
+      mono-ns deadline > if
+         s" count wait: a deadline expired" type cr E-PROC-TIMEOUT throw
+      then
       TASK:PAUSE
    again ;
 
@@ -218,13 +225,15 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
 
 \ The socket is nonblocking, so a RECEIVE with nothing queued is parked on the
 \ loop and not inside recvfrom: the main thread's later send is what answers it.
+\ A task asserts nothing: the worker records a timeout as GOT-TIMEOUT, and the
+\ case throws it as a deadline once the worker is done.
 : PARK-WORK ( -- )
    1 PARK-ARMED atomic-add drop
    BUF-CAP WAIT-MS RECEIVE-B
    MATCH UDP4:receive-result
       packet OF UDP4:PORT>N drop UDP4:ADDRESS>N drop BLEN>N PARK-GOT ! ENDOF
       truncated OF UDP4:PORT>N drop UDP4:ADDRESS>N drop drop -1 PARK-GOT ! ENDOF
-      timeout OF -2 PARK-GOT ! ENDOF
+      timeout OF GOT-TIMEOUT PARK-GOT ! ENDOF
       failed OF UDP4:ERRNO>N negate PARK-GOT ! ENDOF
    ;MATCH
    1 PARK-DONE atomic-add drop ;
@@ -236,10 +245,13 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
    PAT-FILL
    OPEN-PAIR
    ['] PARK-WORK PARK-TASK TASK:ACTIVATE
-   PARK-ARMED 1 REACHED? TTRUE
+   PARK-ARMED 1 REACH
    SETTLE-MS >MS TASK:SLEEP
    SEND-PAYLOAD
-   PARK-DONE 1 REACHED? TTRUE
+   PARK-DONE 1 REACH
+   PARK-GOT @ GOT-TIMEOUT = if
+      s" parked receive: a deadline expired" type cr E-PROC-TIMEOUT throw
+   then
    PARK-GOT @ PAYLOAD-N T=
    PARK-TASK TASK:KILL
    CLOSE-PAIR ;

@@ -322,14 +322,17 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    SIGNAL:SIGUSR1 RAISE
    1 TASK-RAISED ! ;
 
-\ TASK:JOIN would park the main task forever on a worker that never ends, and a
-\ worker that never ends is exactly what some of these cases are watching for,
-\ so the wait owns a deadline and the case asserts TASK:DONE? afterwards.
+\ TASK:JOIN would park the main task forever on a worker that never ends, so the
+\ wait owns a deadline. A worker that never ends ends the row as that deadline,
+\ not as an assertion result (docs/gate.md): the join names itself and throws
+\ E-PROC-TIMEOUT, so the asserts after a join read a finished task.
 : JOIN-TASK ( ptr n -- ) {: t:ptr :}
    TASK-JOIN-MS >MS PROC-DEADLINE-AT {: deadline :}
    begin
       t TASK:DONE? if exit then
-      deadline PROC-LEFT-MS MS>N 0= if exit then
+      deadline PROC-LEFT-MS MS>N 0= if
+         s" task join: a deadline expired" type cr E-PROC-TIMEOUT throw
+      then
       TASK:PAUSE
    again ;
 
@@ -359,7 +362,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 \ The loser's read is refused, it waits again against the deadline it had, and its own
 \ window closes on a timeout. With a BLOCKING read end the loser parks in read
 \ until the NEXT signal instead, which turns a race into a task that never
-\ finishes the window it was given - so DONE? is asserted, not assumed.
+\ finishes the window it was given - so its join's deadline ends the row.
 
 : RACE-RUN ( ptr n ptr n ptr n -- ) {: kind:ptr signo:ptr elapsed:ptr :}
    mono-ns {: started :}
@@ -385,12 +388,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    SIGNAL:SIGUSR1 RAISE
    RACER-A JOIN-TASK
    RACER-B JOIN-TASK
-
-   s" the first racing task finished the window it was given" T-LABEL
-   RACER-A TASK:DONE? TTRUE
-
-   s" ... and so did the second, rather than parking in read" T-LABEL
-   RACER-B TASK:DONE? TTRUE
 
    s" one of the two answered the signal and the other a timeout" T-LABEL
    A-KIND @ B-KIND @ + RACE-SIGNAL RACE-TIMEOUT + T=
