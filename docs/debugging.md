@@ -168,7 +168,7 @@ generated code before falling back to external tools.
 
 ```
 bin/hb --load src/arch/arm64/disasm.f tools/jitdump.f -- ': S dup * ;' S
-bin/hb --load src/lib/errors.f src/lib/string.f src/arch/arm64/disasm.f tools/imagedisasm.f -- bin/hb $1000 16
+bin/hb --load tools/imagedisasm.f -- bin/hb $1000 16
 bin/hb --load tools/imgdump.f -- bin/hb
 bin/hb --load tools/imgdump.f -- old-hb new-hb
 ```

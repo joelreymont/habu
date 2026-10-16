@@ -422,6 +422,10 @@ SUITE check-cli-boundary
    tools/check-test.f
 ;SUITE
 
+SUITE check-drivers
+   tools/check-drivers-test.f
+;SUITE
+
 SUITE live-verify-source
    test/live-verify-source-e2e.f
 ;SUITE

@@ -44,6 +44,7 @@ require src/lib/memory.f
 require src/habu/verify-source.f
 require tools/effect-store-census.f
 require src/lib/test.f
+require tools/check-exit-test-lib.f
 
 package EFFCENSUS-TEST
 
@@ -248,6 +249,14 @@ BALANCED
 EFF-CENSUS:NODES 0 T<>
 EFF-CENSUS:NODES EFF-CENSUS:SHAPES T=
 EFF-CENSUS:BELOW-WINDOW 0 T=                   \ nothing is reachable below offset zero
+
+\ The census tools read checker names the sealed engine strips, so check.f runs them here.
+: CHECKED ( ptr u8 n -- )
+   {: src:ptr srcu:n :}
+   src srcu CHECK-EXIT:RUN {: oc :}
+   src srcu oc 0 CHECK-EXIT:WANT ;
+s" tools/effect-store-census-run.f" CHECKED
+s" tools/effect-store-census.f" CHECKED
 
 T-REPORT
 

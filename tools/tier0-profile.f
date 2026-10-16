@@ -168,11 +168,10 @@ variable SRC-N
 
 public
 
-\ The hook the run compiles under. `set-check` is refused inside a checked
-\ body, so the entry line installs this value at the top level: a `-raw` mode
-\ clears the hook, any other reinstalls the current one.
-: RAW-HOOK ( -- n )
-   RAW? if 0 else check@ then ;
+\ The hook the run compiles under: a `-raw` mode clears it. `set-check` is a
+\ top-level boundary no checked body names; this is the one trusted step.
+TRUSTED: ABLATE ( -- )
+   RAW? if 0 set-check then ;
 
 : MAIN ( -- )
    script-argc 3 < if USAGE then
@@ -204,4 +203,4 @@ public
 
 ;package
 
-TIER0-PROF:RAW-HOOK set-check TIER0-PROF:MAIN
+TIER0-PROF:ABLATE TIER0-PROF:MAIN

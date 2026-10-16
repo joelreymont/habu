@@ -89,7 +89,6 @@ public
 
 WASM-BUILD:ARGS
 ' WASM-BUILD:RUN
-0 set-check
 include src/habu/prefix-rewind.f
 LOWER-CERT-HOOK:INSTALL
 ndict@ here rot execute

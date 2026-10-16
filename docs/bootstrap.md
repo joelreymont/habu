@@ -176,10 +176,7 @@ products byte for byte. It is separate from the ordinary gate and requires
 HABU_ALLOW_BOOTSTRAP=1 and a working Gforth. Run the driver from the
 repository root only when auditing recovery or a changed seed:
 
-    HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth bin/hb --load \
-      src/lib/errors.f src/lib/string.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f \
-      src/lib/process.f src/lib/process-argv.f src/lib/process-env.f \
-      tools/ddc-verify.f tools/ddc-drive.f
+    HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth bin/hb --load tools/ddc-drive.f
 
 A past match does not establish that the current source or engine matches.
 Inspect a DIVERGENT result before claiming the routes converge.

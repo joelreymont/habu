@@ -61,7 +61,6 @@ public
 ;package
 
 ' BUILD-FIXPOINT-CERTIFY:FINISH
-0 set-check
 include src/habu/prefix-rewind.f
 CHECKER-END-PACKAGE
 execute
