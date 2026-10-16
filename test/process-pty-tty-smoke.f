@@ -30,6 +30,7 @@ require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/aio.f
 require src/lib/test.f
+require src/lib/test/wait.f
 require src/lib/task.f                 \ TASK:SLEEP between probes of a sleeper's pid
 require src/lib/engine-candidate.f
 
@@ -274,13 +275,17 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    ;MATCH ;
 
 \ Whether nobody has pid within ms: the null signal answers ESRCH. A pid at or
-\ below 0 names a group or every process, so it is never probed.
-: GONE-WITHIN? ( n n -- bool ) {: pid:n ms:n :}
+\ below 0 names a group or every process, so it is never probed and answers
+\ false. A pid still taken when the clock ends is this test's own deadline, not
+\ an answer: the wait names itself and throws E-PROC-TIMEOUT. TREE-ENDS has torn
+\ the target down before it waits, so nothing is left open when it throws.
+: GONE-WITHIN? ( n n -- bool )
+   {: pid:n ms:n :}
    pid 0 <= if false exit then
    ms WAIT-OPEN
    begin
       pid 0 kill-errno ESRCH# negate = if true exit then
-      WAIT-LEFT 0= if false exit then
+      WAIT-LEFT 0= if s" process-pty-tty-smoke GONE-WITHIN" TEST-WAIT:EXPIRED then
       PROBE-MS >MS TASK:SLEEP
    again ;
 

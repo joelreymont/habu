@@ -12,6 +12,7 @@ require src/lib/test.f
 require src/lib/memory.f
 require src/lib/process.f
 require src/lib/process-fork.f
+require src/lib/test/wait.f
 
 package PROC-WATCH-SMOKE
 
@@ -87,16 +88,52 @@ variable GO-R    variable GO-W     \ go-pipe: parent write, child blocks on read
 : PFD-REVENTS ( -- n )
    POLL-FDS @ 48 rshift $FFFF and ;
 
-\ Poll the watch fd for ms; true only when it reports a clean readable exit,
-\ throwing on POLLERR/POLLNVAL so a broken descriptor cannot masquerade as ready.
-: WATCH-READY? ( fd n -- bool ) {: wfd:fd ms:n :}
+\ Poll the watch fd for ms: whether it is ready. A failed poll throws.
+: POLLED? ( fd n -- bool )
+   {: wfd:fd ms:n :}
    wfd PFD!
    POLL-FDS 1 ms poll {: rc:n :}
    rc 0 < if E-PROC-OUTPUT throw then
-   rc 0= if false exit then
+   rc 0 <> ;
+
+\ Whether the watch just polled ready reports a clean readable exit, throwing on
+\ POLLERR/POLLNVAL so a broken descriptor cannot masquerade as ready.
+: CLEAN-EXIT? ( -- bool )
    PFD-REVENTS {: ev:n :}
    ev POLLERR POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
    ev POLLIN and 0 <> ;
+
+\ The zero-time probe: whether the watch already reports a clean readable exit.
+\ One not ready yet answers false, the probe's own result.
+: READY-NOW? ( fd -- bool )
+   0 POLLED? 0= if false exit then
+   CLEAN-EXIT? ;
+
+\ Ends a check whose wait expired, before the timeout leaves it: the child may
+\ still be held on the go pipe or running, so it is killed, its watch closed and
+\ it is reaped. The close runs before the reap, the one step that throws. A
+\ failed kill throws E-PROC-OUTPUT without the reap, which would block on a
+\ child the kill missed: a held child ends once this process's exit closes the
+\ go pipe. A failed close throws E-PROC-OUTPUT once the reap is done.
+: ABANDON ( pid fd -- )
+   {: cpid:pid wfd:fd :}
+   cpid SIGKILL PROC-KILL-RAW RC>N {: krc:n :}
+   wfd CLOSE-BAD {: bad:n :}
+   krc 0 <> if E-PROC-OUTPUT throw then
+   cpid PROC-WAIT-STATUS drop
+   bad 0 <> if E-PROC-OUTPUT throw then ;
+
+\ The wait for a released child's exit: whether its watch reports a clean
+\ readable exit within READY-MS. A clock that ends first is this test's own
+\ deadline, not an answer: the child is abandoned, then the wait names itself
+\ and throws E-PROC-TIMEOUT.
+: WATCH-READY? ( pid fd -- bool )
+   {: cpid:pid wfd:fd :}
+   wfd READY-MS POLLED? 0= if
+      cpid wfd ABANDON
+      s" proc-watch-smoke WATCH-READY" TEST-WAIT:EXPIRED
+   then
+   CLEAN-EXIT? ;
 
 \ ---- children (each ends in die; never returns) -----------------------------
 : BLOCKED-CHILD ( -- )
@@ -118,12 +155,13 @@ variable GO-R    variable GO-W     \ go-pipe: parent write, child blocks on read
 
 \ ---- checks ------------------------------------------------------------------
 \ Fast path: watch a LIVE child, then release it to exit; the descriptor must
-\ signal readiness within the deadline.
+\ signal readiness, and one that has not within READY-MS is WATCH-READY?'s
+\ deadline.
 : CHECK-FAST ( -- )
    FORK-HELD {: cpid:pid :}
    cpid WATCH {: wfd:fd :}
    RELEASE
-   wfd READY-MS WATCH-READY? TTRUE
+   cpid wfd WATCH-READY? TTRUE
    cpid PROC-WAIT-STATUS 0 T=
    wfd CLOSE-OK ;
 
@@ -133,7 +171,7 @@ variable GO-R    variable GO-W     \ go-pipe: parent write, child blocks on read
 \ macOS cannot register an already-exited process and fails closed.
 : DEAD-WATCH-LINUX ( pid -- )   {: cpid:pid :}
    cpid WATCH {: wb:fd :}
-   wb 0 WATCH-READY? TTRUE
+   wb READY-NOW? TTRUE
    wb CLOSE-OK ;
 
 : DEAD-WATCH-MACOS ( pid -- )   {: cpid:pid :}
@@ -144,7 +182,7 @@ variable GO-R    variable GO-W     \ go-pipe: parent write, child blocks on read
    FORK-HELD {: cpid:pid :}
    cpid WATCH {: wa:fd :}
    RELEASE
-   wa READY-MS WATCH-READY? TTRUE
+   cpid wa WATCH-READY? TTRUE
    HB-TARGET-LINUX? if cpid DEAD-WATCH-LINUX else cpid DEAD-WATCH-MACOS then
    wa CLOSE-OK
    cpid PROC-WAIT-STATUS 0 T= ;

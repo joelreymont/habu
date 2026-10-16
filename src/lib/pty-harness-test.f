@@ -11,6 +11,7 @@
 \ Run: bin/hb --load src/lib/pty-harness-test.f
 require src/lib/test.f
 require src/lib/test/outcome.f
+require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/pty-harness.f
 
@@ -328,12 +329,15 @@ variable HIT                       \ did the loop reach the case it was feeding 
    CLOSE-MASTER ;
 
 
-\ Whether the master hangs up within ms: read it until it does or the clock ends.
-: HANGUP-WITHIN? ( n -- bool ) {: ms:n :}
+\ Returns once the master hangs up, reading it until then. A clock of ms that
+\ ends first is this test's own deadline, not an answer: the wait names itself
+\ and throws E-PROC-TIMEOUT.
+: HANGUP ( n -- )
+   {: ms:n :}
    ms WAIT-OPEN
    begin
-      WAIT-LEFT 0= if false exit then
-      MASTER-FD READ-STEP 0 < if true exit then
+      WAIT-LEFT 0= if s" pty-harness-test HANGUP" TEST-WAIT:EXPIRED then
+      MASTER-FD READ-STEP 0 < if exit then
    again ;
 
 
@@ -341,7 +345,9 @@ variable HIT                       \ did the loop reach the case it was feeding 
 \ the slave as well, so the master hangs up only once both are gone. A kill of
 \ the child's pid alone left the sleeper, leading a group of its own, holding
 \ the terminal for the rest of its 30 s under init (dot
-\ habu-kill-a-pty-1841a310); the wedge's kill ends the child's whole tree.
+\ habu-kill-a-pty-1841a310); the wedge's kill ends the child's whole tree. A
+\ terminal still held when HANGUP-MS ends throws the deadline from HANGUP, and
+\ the master closes either way.
 : CASE-TREE-REAP ( -- )
    BUF-CLEAR
    HB$ SPAWN-ON-PTY
@@ -354,9 +360,7 @@ variable HIT                       \ did the loop reach the case it was feeding 
    s" 48879" s" habu> " WAIT-AFTER TTRUE
    s" a child at its prompt is reaped as a timeout" T-LABEL
    WEDGE-MS REAP-WITHIN T-OUTCOME-TIMEOUT
-   s" and the terminal hangs up: nothing the child started still holds it" T-LABEL
-   HANGUP-MS HANGUP-WITHIN? TTRUE
-   CLOSE-MASTER ;
+   [: HANGUP-MS HANGUP ;] [: CLOSE-MASTER ;] finally ;
 
 
 : BODY ( -- )

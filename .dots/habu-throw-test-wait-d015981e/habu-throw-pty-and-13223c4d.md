@@ -1,9 +1,11 @@
 ---
 title: Throw pty and proc-watch wait deadlines
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-16T16:28:19.864085+03:00"
+closed-at: "2026-10-17T00:24:04.579877+03:00"
+close-reason: "Landed: pty-harness-test HANGUP, process-pty-tty-smoke GONE-WITHIN and proc-watch-smoke WATCH-READY name themselves and throw E-PROC-TIMEOUT; HANGUP closes the master under finally; WATCH-READY abandons the child (kill, close the watch, reap) before the timeout leaves, and a failed kill throws E-PROC-OUTPUT before the blocking reap; the zero-time probe (READY-NOW?) and the duration assertion stay assertions. Proofs (macOS): the three rows rc 0; forced copies named each wait (rc 67, -2502) with the master closed, the sleeper gone, the child reaped; the probe control stays a TFAIL; a failed-kill copy (signal 999, child held) ends rc 67, -2503, in 6 s with the child gone. Untested: Linux (DEAD-WATCH-LINUX, the Linux zero-time probe), full gate. Review: Astra full review found one Medium (ABANDON's blocking reap after a failed kill), fixed; Astra follow-up APPROVE."
 ---
 
 Problem: the parent's rule (a wait whose clock ends throws E-PROC-TIMEOUT after one named stdout line; a task records it and main throws it at the join; no deadline raised) is broken in the files below. The parent holds the shared interface (`TEST-WAIT:EXPIRED`, `TEST-WAIT:POLL` in src/lib/test/wait.f), the rulings and the proof notation `P(name)`.
@@ -30,4 +32,4 @@ Copies retain the terminal slave, retain the reported descendant, or withhold ch
 
 No child or watch is stranded by an early throw. Immediate probes and genuine invalid-pid/readiness results remain assertions.
 
-Files: src/lib/pty-harness-test.f, test/proc-watch-smoke.f, test/process-pty-tty-smoke.f. Verify: the rows and forced copies under Proof. Depends: habu-share-a-named-85cc93f5. Ownership: the files above. Claim: unassigned.
+Files: src/lib/pty-harness-test.f, test/proc-watch-smoke.f, test/process-pty-tty-smoke.f. Verify: the rows and forced copies under Proof. Depends: habu-share-a-named-85cc93f5. Ownership: the files above. Claim: agent=worker workspace=.jj-ws/jerry-wait-d17.
