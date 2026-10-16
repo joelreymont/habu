@@ -26,6 +26,14 @@
 \ Asserted in each: the capture's own answer, the subject reaped after a
 \ SIGKILL, and end of file on the pipe within GONE-MS.
 \
+\ THIS TEST'S OWN WAITS ARE NO ASSERTION RESULT. The capture deadlines above are
+\ the subject and are asserted. A wait this test runs around them - for the
+\ subject's report, for end of file on the pipe, for what a failed case left -
+\ is named on stdout and thrown as E-PROC-TIMEOUT when its own deadline runs
+\ out (src/lib/test/wait.f), so the row ends as a timeout and not as a FAIL. End
+\ of file before the report, a short report or a failed read is a failed
+\ report, and fails the case; the report's deadline running out is a timeout.
+\
 \ THE DEADLINE RUNS OUT AFTER THE SLEEPER STARTS. A capture runs PROC-REAP-ARM
 \ between its spawn and its first poll. The vector each case installs waits
 \ there for the subject's report, which comes after the sleeper started, so a
@@ -42,6 +50,7 @@ require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/test.f
 require src/lib/test/outcome.f
+require src/lib/test/wait.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
@@ -68,9 +77,11 @@ variable PIPE-RD
 variable PIPE-WR
 
 TYPED-VARIABLE REPORTED bool         \ the subject's pid arrived before READY-MS ran out
+TYPED-VARIABLE REPORT-EXPIRED bool   \ READY-MS ran out before the subject's pid arrived
 TYPED-VARIABLE PIPE-DONE bool        \ the read end has reported end of file
 TYPED-VARIABLE CASE-CLOSED bool      \ the subject closes its output first
 false REPORTED !
+false REPORT-EXPIRED !
 true PIPE-DONE !
 false CASE-CLOSED !
 PROC-NO-FD PIPE-RD !
@@ -91,31 +102,43 @@ PROC-NO-FD PIPE-WR !
    w FD>N PIPE-WR !
    0 REPORT-U !
    false REPORTED !
+   false REPORT-EXPIRED !
    false PIPE-DONE ! ;
 
-\ TRUE once the read end has bytes or has reached end of file, within ms.
-: READY-WITHIN? ( n -- bool ) {: ms:n :}
+\ The read end within ms: a positive count once it has bytes or has reached end
+\ of file, 0 when ms ran out first, a negative errno when the poll failed.
+: READY-WITHIN ( n -- n )
+   {: ms:n :}
    PIPE-RD @ >FD POLLIN PROC-PFD!
-   1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART 0 > ;
+   1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART ;
 
 \ The subject's pid, before READY-MS runs out. End of file first means the
-\ subject died before it reported.
+\ subject died before it reported: that, a short report or a failed read or
+\ poll is a failed report. READY-MS running out first is this wait's own
+\ deadline, a timeout: it answers false with REPORT-EXPIRED set.
 : REPORT-READ? ( -- bool )
    READY-MS >MS PROC-DEADLINE-AT {: deadline:n :}
    begin REPORT-U @ REPORT-BYTES < while
-      deadline PROC-LEFT-MS MS>N READY-WITHIN? 0= if false exit then
+      deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
+      ready 0= if true REPORT-EXPIRED ! false exit then
+      ready 0 < if false exit then
       PIPE-RD @ REPORT REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
       got 0 <= if false exit then
       REPORT-U @ got + REPORT-U !
    repeat
    true ;
 
-\ End of file within ms: nothing the subject started holds the write end.
-: GONE-WITHIN? ( n -- bool ) {: ms:n :}
+\ End of file within ms: nothing the subject started holds the write end. A
+\ failed read or poll answers false. ms running out first is this wait's own
+\ deadline, named and thrown as a timeout.
+: GONE-WITHIN? ( n -- bool )
+   {: ms:n :}
    PIPE-DONE @ if true exit then
    ms >MS PROC-DEADLINE-AT {: deadline:n :}
    begin
-      deadline PROC-LEFT-MS MS>N READY-WITHIN? 0= if false exit then
+      deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
+      ready 0= if s" capture-tree-test GONE-WITHIN" TEST-WAIT:EXPIRED then
+      ready 0 < if false exit then
       PIPE-RD @ SINK SINK-CAP read {: got:n :}
       got 0= if true PIPE-DONE ! true exit then
       got 0 < if false exit then
@@ -124,10 +147,18 @@ PROC-NO-FD PIPE-WR !
 \ ---- the reaper arm ---------------------------------------------------------
 
 \ The subject has its copy of the write end once the capture has spawned it,
-\ so this process lets its own go and waits for the report.
+\ so this process lets its own go and waits for the report. The wait records
+\ its deadline in REPORT-EXPIRED rather than throwing it: whatever this vector
+\ throws comes out of the capture as the capture's own code, and E-PROC-TIMEOUT
+\ is the code two cases expect from the capture.
 : AWAIT-REPORT ( -- )
    PIPE-WR PROC-CLOSE-CELL
    REPORT-READ? REPORTED ! ;
+
+\ Names and throws the report wait's deadline if it ran out, once the capture
+\ it ran in has returned or thrown and before the case asserts anything.
+: REPORT-DEADLINE ( -- )
+   REPORT-EXPIRED @ if s" capture-tree-test REPORT-READ" TEST-WAIT:EXPIRED then ;
 
 \ Arms no reaper, as the default vector does, once the subject has reported.
 : ARM-AFTER-REPORT ( pid -- pid )
@@ -168,6 +199,12 @@ PROC-NO-FD PIPE-WR !
    ENGINE-CANDIDATE:PATH$ >LEN OUT-BUF CAP >LEN ERR-BUF CAP >LEN CAPTURE-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
+\ The code the capture the xt runs threw, 0 if it returned. The report wait ran
+\ inside that capture: its deadline is named and thrown here, outside any
+\ assertion, so it never passes for the capture's own E-PROC-TIMEOUT.
+: CAPTURE-CODE ( [ -- ] -- n )
+   catch REPORT-DEADLINE ;
+
 \ ---- the cases ---------------------------------------------------------------
 
 : CASE-BEGIN ( bool -- ) {: closed:bool :}
@@ -187,7 +224,7 @@ PROC-NO-FD PIPE-WR !
    false CASE-BEGIN
    [: ARM-AFTER-REPORT ;] is PROC-REAP-ARM
    s" a deadline in the poll throws E-PROC-TIMEOUT" T-LABEL
-   [: CAP CAPTURE-RC ;] E-PROC-TIMEOUT TTHROWSQ
+   [: CAP CAPTURE-RC ;] CAPTURE-CODE E-PROC-TIMEOUT T=
    s" the line the subject wrote stays captured" T-LABEL
    OUT-BUF PROC-OUT-LEN @ LINE$ T$=
    ASSERT-ENDED ;
@@ -195,7 +232,7 @@ PROC-NO-FD PIPE-WR !
 : POLL-DATA-BODY ( -- )
    false CASE-BEGIN
    [: ARM-AFTER-REPORT ;] is PROC-REAP-ARM
-   CAPTURE-OUTCOME
+   [: CAPTURE-OUTCOME ;] [: REPORT-DEADLINE ;] finally
    s" a deadline in the poll answers the timeout outcome" T-LABEL
    T-OUTCOME-TIMEOUT {: outu:len erru:len :}
    s" the timeout outcome carries the line the subject wrote" T-LABEL
@@ -207,33 +244,37 @@ PROC-NO-FD PIPE-WR !
    true CASE-BEGIN
    [: ARM-AFTER-REPORT ;] is PROC-REAP-ARM
    s" a deadline in the reap throws E-PROC-TIMEOUT" T-LABEL
-   [: CAP CAPTURE-RC ;] E-PROC-TIMEOUT TTHROWSQ
+   [: CAP CAPTURE-RC ;] CAPTURE-CODE E-PROC-TIMEOUT T=
    ASSERT-ENDED ;
 
 : OVERFLOW-BODY ( -- )
    false CASE-BEGIN
    [: ARM-AFTER-REPORT ;] is PROC-REAP-ARM
    s" a line longer than the capture throws E-PROC-TRUNCATED" T-LABEL
-   [: SHORT-CAP CAPTURE-RC ;] E-PROC-TRUNCATED TTHROWSQ
+   [: [: SHORT-CAP CAPTURE-RC ;] CAPTURE-CODE throw ;] E-PROC-TRUNCATED TTHROWSQ
    ASSERT-ENDED ;
 
 : REFUSED-BODY ( -- )
    false CASE-BEGIN
    [: REFUSE-AFTER-REPORT ;] is PROC-REAP-ARM
    s" a refused reaper arm throws E-PROC-SPAWN" T-LABEL
-   [: CAP CAPTURE-RC ;] E-PROC-SPAWN TTHROWSQ
+   [: [: CAP CAPTURE-RC ;] CAPTURE-CODE throw ;] E-PROC-SPAWN TTHROWSQ
    ASSERT-ENDED ;
 
-\ Whatever the body asserted or threw. Every step is a no-op for a case that
-\ passed.
-: CASE-END ( -- )
-   PROC-REAP-ARM-DEFAULT
-   PIPE-WR PROC-CLOSE-CELL
+\ What a failed case left ends on its own, before EXPIRE-MS runs out.
+: LEFT-ENDED ( -- )
    PIPE-DONE @ 0= if
       s" the processes the capture left ended on their own" T-LABEL
       EXPIRE-MS GONE-WITHIN? TTRUE
-   then
-   PIPE-RD PROC-CLOSE-CELL ;
+   then ;
+
+\ Whatever the body asserted or threw. Every step is a no-op for a case that
+\ passed. The read end closes even when the wait for what the case left runs
+\ out.
+: CASE-END ( -- )
+   PROC-REAP-ARM-DEFAULT
+   PIPE-WR PROC-CLOSE-CELL
+   [: LEFT-ENDED ;] [: PIPE-RD PROC-CLOSE-CELL ;] finally ;
 
 public
 
