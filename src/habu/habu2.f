@@ -10203,9 +10203,8 @@ public
 \   the clause's name (C-EXPORT-CLAUSE-ROOM, C-EXPORT-CLAUSE-RECORD).
 \ - TOP LEVEL: the pre-existing hb-build --repl export directive surface
 \   (`EXPORT word…` keeps extra words callable; src/lib/prelude.f rides it).
-\   COMMENT-EXPORTS strips these lines before hb-build compiles, and a plain
-\   load consumes the name as a no-op so directive-carrying programs stay
-\   directly loadable.
+\   The engine consumes the name as a no-op, so directive-carrying programs
+\   stay directly loadable and compilable.
 \ Checker sync mirrors C-PACKAGE (CHECKER-EXPORT sees the ORIGINAL spelling
 \ and throws on unsigned/prim sources). Native walls that hold without the
 \ hook: missing name ($4A), sealed source prefix (C-QUALIFY-SEAL-GUARD,

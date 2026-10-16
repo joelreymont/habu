@@ -3057,8 +3057,8 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
 \ habu-compiler-pkg-re-688212c1): inside an open package it is the re-export
 \ declaration (CHECKER-EXPORT aliases the source's checked effect under its
 \ tail); at top level it is the hb-build --repl export directive, which the
-\ build strips via COMMENT-EXPORTS before engine load — replay consumes the
-\ name and records nothing, exactly like the engine never seeing the line.
+\ engine consumes as a no-op — replay likewise consumes the name and records
+\ nothing.
 \ A re-export duplicates its tail in the current section. The checker asks that
 \ only once the name has resolved (src/core/checker.f EXPORT-RECORD), as --load
 \ does, so its refusal is caught here and kept at the name as written.
