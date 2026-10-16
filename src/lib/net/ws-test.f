@@ -1595,13 +1595,16 @@ variable HEADLESS-AT
 : STALL-BOUND ( -- n )
    WS:STALL-MS TCP4:SEND-SLICE-MS + GRACE-MS + NS-PER-MS * ;
 
-\ True once the handler has heard its socket close; false once the claim is
-\ STALL-BOUND behind.
-: HEARD-CLOSE? ( n -- bool )
+\ Returns once the handler has heard its socket close. One not heard once the
+\ claim is STALL-BOUND behind is a deadline, no evidence the socket stayed open:
+\ the wait names itself and throws E-PROC-TIMEOUT.
+: HEARD-CLOSE ( n -- )
    {: claim:n :}
    begin
-      CLOSED-AT @ 0 <> if true exit then
-      mono-ns claim - STALL-BOUND > if false exit then
+      CLOSED-AT @ 0 <> if exit then
+      mono-ns claim - STALL-BOUND > if
+         s" ws-test HEARD-CLOSE" TEST-WAIT:EXPIRED
+      then
       POLL-MS >MS TASK:SLEEP
    again ;
 
@@ -1618,17 +1621,19 @@ variable HEADLESS-AT
       failed OF drop 0 false ENDOF
    ;MATCH ;
 
+\ Whether nothing of the preload is left unsent. An unsent queue the OS cannot
+\ count is a failure, not a wait: it throws E-SILENT rather than answer false
+\ until the deadline.
 : PRELOAD-ACKED? ( -- bool )
    0 HELD @ WS-TEST:LINK TCP4:UNSENT QUEUED-N {: pending:n counted:bool :}
-   counted pending 0= and ;
+   counted 0= if E-SILENT throw then
+   pending 0= ;
 
-: PRELOAD-ACKED-BY? ( -- bool )
-   mono-ns REACH-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      PRELOAD-ACKED? if true exit then
-      mono-ns deadline >= if false exit then
-      TASK:PAUSE
-   again ;
+\ Returns once the preload is acknowledged. One not acknowledged by REACH-MS is
+\ a deadline: the wait names itself and throws E-PROC-TIMEOUT.
+: PRELOAD-ACKED-BY ( -- )
+   [: PRELOAD-ACKED? ;] mono-ns REACH-MS NS-PER-MS * +
+   s" ws-test PRELOAD-ACKED-BY" TEST-WAIT:POLL ;
 
 \ Linux's fixed receive buffer is already overfull with unread bytes, and
 \ the peer advertises no room. The unsent queue exceeds a pong's payload.
@@ -1667,10 +1672,12 @@ variable HEADLESS-AT
    unsent unread + sent-ok read-ok and ;
 
 \ The worker's claim for the stalled pong (PONG-CLAIM), asked every POLL-MS;
-\ 0 once a queue cannot be counted, or once REACH-MS has passed with no more
-\ pong bytes held than before. The wait lasts as long as load makes the fill
-\ and misses only a fill that stopped short of a stall: a client that reads
-\ its pongs, a worker that answers none.
+\ 0 once a queue cannot be counted. The clock restarts each time more pong
+\ bytes are held than before, so the wait lasts as long as load makes the fill.
+\ REACH-MS with no more held is a deadline, not evidence the fill stopped short
+\ of a stall: a client that reads its pongs and a worker that answers none look
+\ the same from here as a fill a loaded box has not run. The wait names itself
+\ and throws E-PROC-TIMEOUT.
 : PONG-FILLED ( -- n )
    0 mono-ns                             \ the most pong bytes held yet, and when it grew
    begin {: most:n grew:n :}
@@ -1687,7 +1694,9 @@ variable HEADLESS-AT
       held most > if
          held mono-ns
       else
-         mono-ns grew - REACH-MS NS-PER-MS * > if 0 exit then
+         mono-ns grew - REACH-MS NS-PER-MS * > if
+            s" ws-test PONG-FILLED" TEST-WAIT:EXPIRED
+         then
          most grew
       then
       POLL-MS >MS TASK:SLEEP
@@ -1695,17 +1704,24 @@ variable HEADLESS-AT
 
 \ The Linux kernel returns one only after the sender was actually waiting on
 \ this pong's pthread mutex. Waking it is harmless while the pong owns the
-\ mutex: pthread_mutex_lock checks the word again and waits.
+\ mutex: pthread_mutex_lock checks the word again and waits. False once the
+\ claim changes. WS:STALL-MS past the claim, before the wake or by the time it
+\ returns, is a deadline, not evidence the sender never waited: the wait names
+\ itself and throws E-PROC-TIMEOUT.
 : PONG-WAITER? ( n -- bool )
    {: claim:n :}
    begin
-      mono-ns claim - WS:STALL-MS NS-PER-MS * >= if false exit then
+      mono-ns claim - WS:STALL-MS NS-PER-MS * >= if
+         s" ws-test PONG-WAITER" TEST-WAIT:EXPIRED
+      then
       0 HELD @ WS-TEST:CLAIM-DUE claim WS:STALL-MS NS-PER-MS * + <>
       if false exit then
       WAKE-LOCK-WAITER {: woken:n :}
       woken 1 = if
-         mono-ns claim - WS:STALL-MS NS-PER-MS * <
-         0 HELD @ WS-TEST:CLAIM-DUE claim WS:STALL-MS NS-PER-MS * + = and
+         mono-ns claim - WS:STALL-MS NS-PER-MS * >= if
+            s" ws-test PONG-WAITER" TEST-WAIT:EXPIRED
+         then
+         0 HELD @ WS-TEST:CLAIM-DUE claim WS:STALL-MS NS-PER-MS * + =
          exit
       then
       woken 0 <> if E-SILENT throw then
@@ -1719,9 +1735,8 @@ variable HEADLESS-AT
    \ No old ACK can later free sender memory; the unread payload alone then
    \ exceeds the fixed receive capacity until the peer reads or closes.
    0 HELD @ PATTERN BIG SPAN:TAKE SPAN:$ WS:SEND-BINARY
-   s" the Linux preload was acknowledged before the peer shrank" T-LABEL
-   PRELOAD-ACKED-BY? dup TTRUE
-   if s" < Linux preload acknowledged before peer shrank" LOG-LINE then
+   PRELOAD-ACKED-BY
+   s" < Linux preload acknowledged before peer shrank" LOG-LINE
    conn SOL-SOCKET SO-RCVBUF PEER-RCVBUF OPT-U32!
    conn IPPROTO-TCP TCP-WINDOW-CLAMP PEER-WINDOW OPT-U32!
    conn SOL-SOCKET SO-RCVBUF OPT-U32@ PEER-CAP !
@@ -1730,7 +1745,7 @@ variable HEADLESS-AT
 \ A one-worker server whose handler keeps its socket and receives, and a client
 \ task that floods it with pings and reads nothing, until the pong the worker
 \ owes stops moving bytes: the connection, and the worker's claim on the lock
-\ for that pong, 0 when the pongs stopped filling the buffers without a stall.
+\ for that pong, 0 when a queue could not be counted.
 \ The polls count from just before the first ping, when no pong can have been
 \ claimed.
 : PONG-STALLED ( -- TCP4:connection n )
@@ -1764,7 +1779,7 @@ variable HEADLESS-AT
       if s" < Linux sender waited on this pong's mutex" LOG-LINE then
    then
    s" the socket fails under 1006 within the stall bound" T-LABEL
-   claim HEARD-CLOSE? TTRUE
+   claim HEARD-CLOSE
    LAST-CLOSE @ 1006 T=
    CLOSED-AT @ 0 <> claim CLOSE-LAG STALL-BOUND <= and TTRUE
    s" and no sooner than its deadline" T-LABEL
@@ -2505,13 +2520,17 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
 10 constant RETRY-MS
 
 \ AIO:STOP is E-AIO-BUSY until the loop has drained every record, so the stop
-\ is retried to a bound (src/lib/net/http-test.f AIO-STOP).
+\ is retried to a bound (src/lib/net/http-test.f AIO-STOP). Only E-AIO-BUSY is
+\ retried: any other code from AIO:STOP is a fault and is rethrown at once. A
+\ ring still busy past DRAIN-MS is a deadline: the wait names itself and throws
+\ E-PROC-TIMEOUT.
 : AIO-STOP ( -- )
    mono-ns DRAIN-MS NS-PER-MS * + {: deadline:n :}
    begin
       [: AIO:STOP ;] catch {: code:n :}
       code 0= if exit then
-      mono-ns deadline > if code throw then
+      code E-AIO-BUSY <> if code throw then
+      mono-ns deadline > if s" ws-test AIO-STOP" TEST-WAIT:EXPIRED then
       RETRY-MS >MS TASK:SLEEP
    again ;
 
