@@ -1,9 +1,11 @@
 ---
 title: Throw TCP test wait deadlines
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-16T16:28:19.630629+03:00"
+closed-at: "2026-10-16T22:54:23.523308+03:00"
+close-reason: "Landed: tcp4-test's own waits (REACH, AWAIT-END, COUNTS?, WANT-READY via SETTLED?, the parked worker's PARK-EXPIRED, FAILED-SLICE-ERRNO) name themselves and throw E-PROC-TIMEOUT; real poll failures stay single assertions. Proofs: row tcp4 rc 0; forced copies rc 67 with one named line each; ordinary-failure copies rc 1 with no deadline line. Fable review APPROVE with one Low, applied; Astra follow-up APPROVE."
 ---
 
 Problem: the parent's rule (a wait whose clock ends throws E-PROC-TIMEOUT after one named stdout line; a task records it and main throws it at the join; no deadline raised) is broken in the files below. The parent holds the shared interface (`TEST-WAIT:EXPIRED`, `TEST-WAIT:POLL` in src/lib/test/wait.f), the rulings and the proof notation `P(name)`.
@@ -33,4 +35,4 @@ Also retain a negative queue-count/poll-error copy as an ordinary failure, and l
 
 Timeout, readiness, and actual I/O failure stay distinct. No bound changes.
 
-Files: src/lib/net/tcp4-test.f. Verify: the rows and forced copies under Proof. Depends: habu-share-a-named-85cc93f5. Ownership: the files above. Claim: unassigned.
+Files: src/lib/net/tcp4-test.f. Verify: the rows and forced copies under Proof. Depends: habu-share-a-named-85cc93f5. Ownership: the files above. Claim: agent=worker workspace=.jj-ws/jerry-wait-d4.

@@ -5,6 +5,7 @@
 \ which this suite starts before its first case and stops after its last.
 \ Run: bin/hb --load src/lib/net/tcp4-test.f
 require src/lib/test.f
+require src/lib/test/wait.f            \ a wait's expired deadline, by name
 require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/errors.f
@@ -279,20 +280,31 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
 
 : THREADS ( -- n ) TEST-HOST:THREADS ;
 
-: REACHED? ( ptr n n n -- bool ) {: cell:ptr want:n limit:n :}
-   mono-ns limit NS-PER-MS * + {: deadline:n :}
-   begin
-      cell atomic@ want >= if true exit then
-      mono-ns deadline > if false exit then
-      TASK:PAUSE
-   again ;
+\ The end of a wait of n ms from now, an absolute mono-ns.
+: DEADLINE ( n -- n )
+   NS-PER-MS * mono-ns + ;
+
+\ Returns once the count in the cell reaches want, within limit ms.
+: REACH ( ptr n n n -- ) {: cell:ptr want:n limit:n :}
+   cell want [: 2dup swap atomic@ <= ;] limit DEADLINE s" tcp4-test REACH" TEST-WAIT:POLL
+   2drop ;
+
+\ Returns once the task has ended, within limit ms.
+: AWAIT-END ( ptr n n -- ) {: tcb:ptr limit:n :}
+   tcb [: dup TASK:DONE? ;] limit DEADLINE s" tcp4-test AWAIT-END" TEST-WAIT:POLL
+   drop ;
 
 
-\ One number per answer, because the assertions belong to the main thread.
+\ The parked wait answered idle: its deadline expired in the task, which records
+\ it here for the main thread to report once it has joined the task.
+0 constant PARK-EXPIRED
+
+\ One number per answer, because the assertions belong to the main thread: 1
+\ ready, PARK-EXPIRED idle, a failed wait's errno negated.
 : PARK-ANSWER ( TCP4:ready-result -- n )
    MATCH TCP4:ready-result
       ready OF 1 ENDOF
-      idle OF 0 ENDOF
+      idle OF PARK-EXPIRED ENDOF
       failed OF TCP4:ERRNO>N negate ENDOF
    ;MATCH ;
 
@@ -391,15 +403,6 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    1 WRITER-ENDED atomic-add drop ;
 
 
-: DONE-WITHIN? ( n -- bool ) {: limit:n :}
-   mono-ns limit NS-PER-MS * + {: deadline:n :}
-   begin
-      WRITER-TASK TASK:DONE? if true exit then
-      mono-ns deadline > if false exit then
-      TASK:PAUSE
-   again ;
-
-
 \ ---- endpoints the cases share -----------------------------------------------
 
 : BIND-LISTENER ( -- n )
@@ -433,18 +436,49 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    ;MATCH ;
 
 
-: WAIT-PENDING ( n -- bool ) {: fd:n :}
-   POLL-TRIES 0 do
-      fd TCP4:>LISTENER TCP4:PENDING? READY? if unloop true exit then
-      TASK:PAUSE
-   loop false ;
+\ One answer of a readiness retry: true once it is ready, or once the poll
+\ failed, which fails the case once and ends the retries; false while idle.
+: SETTLED? ( TCP4:ready-result -- bool )
+   MATCH TCP4:ready-result
+      ready OF true ENDOF
+      idle OF false ENDOF
+      failed OF TCP4:ERRNO>N drop s" poll failed" T-FAIL-AS true ENDOF
+   ;MATCH ;
 
 
-: WAIT-READABLE ( n -- bool ) {: fd:n :}
+\ The answer of a timed wait expected to be ready: idle is that wait's deadline
+\ expiring under the name given, and a failed poll fails the case.
+: WANT-READY ( TCP4:ready-result ptr u8 n -- ) {: name:ptr len:n :}
+   SETTLED? 0= if name len TEST-WAIT:EXPIRED then ;
+
+
+\ Returns once a connection is pending on the listener, waiting at most WAIT-MS.
+: PENDING-WITHIN ( n -- )
+   TCP4:>LISTENER WAIT-MS >MS TCP4:PENDING-WITHIN? s" tcp4-test PENDING-WITHIN" WANT-READY ;
+
+
+\ Returns once the connection is readable, waiting at most WAIT-MS.
+: READABLE-WITHIN ( n -- )
+   TCP4:>CONNECTION WAIT-MS >MS TCP4:READABLE-WITHIN? s" tcp4-test READABLE-WITHIN" WANT-READY ;
+
+
+\ Returns once a connection is pending on the listener. Idle for all POLL-TRIES
+\ turns is the retries' deadline expiring, no failed readiness.
+: WAIT-PENDING ( n -- ) {: fd:n :}
    POLL-TRIES 0 do
-      fd TCP4:>CONNECTION TCP4:READABLE? READY? if unloop true exit then
+      fd TCP4:>LISTENER TCP4:PENDING? SETTLED? if unloop exit then
       TASK:PAUSE
-   loop false ;
+   loop
+   s" tcp4-test WAIT-PENDING" TEST-WAIT:EXPIRED ;
+
+
+\ Returns once the connection is readable, under the same turns as WAIT-PENDING.
+: WAIT-READABLE ( n -- ) {: fd:n :}
+   POLL-TRIES 0 do
+      fd TCP4:>CONNECTION TCP4:READABLE? SETTLED? if unloop exit then
+      TASK:PAUSE
+   loop
+   s" tcp4-test WAIT-READABLE" TEST-WAIT:EXPIRED ;
 
 
 \ A loopback pair the timed cases share: the listener plus both ends of one
@@ -453,7 +487,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
 : OPEN-PAIR ( -- )
    NEW-LISTENER PROBE-LISTENER !
    PROBE-LISTENER @ LISTENER-PORT CONNECT-TO dup 0 >= TTRUE CLIENT-FD !
-   PROBE-LISTENER @ TCP4:>LISTENER WAIT-MS >MS TCP4:PENDING-WITHIN? READY? TTRUE
+   PROBE-LISTENER @ PENDING-WITHIN
    PROBE-LISTENER @ TCP4:>LISTENER TCP4:ACCEPT ACCEPT-FD dup 0 >= TTRUE
    PROBE-CONNECTION ! ;
 
@@ -480,15 +514,16 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    unsent unread + ;
 
 
-\ True once the count answers the bytes wanted; false once it fails, or once
-\ WAIT-MS has passed: loopback delivers and acknowledges within it.
+\ True once the count answers the bytes wanted; false once it fails. Loopback
+\ delivers and acknowledges within WAIT-MS, so a count still short then is the
+\ wait's deadline expiring, no failed count.
 : COUNTS? ( [ -- n ] n -- bool ) {: count want:n :}
-   mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
+   WAIT-MS DEADLINE {: deadline:n :}
    begin
       count execute {: got:n :}
       got want = if true exit then
       got 0 < if false exit then
-      mono-ns deadline > if false exit then
+      mono-ns deadline >= if s" tcp4-test COUNTS?" TEST-WAIT:EXPIRED then
       TASK:PAUSE
    again ;
 
@@ -551,15 +586,16 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    OPEN-PAIR
    PROBE-CONNECTION @ PARK-FD !
    ['] PARK-WORK PARK-TASK TASK:ACTIVATE
-   PARK-ARMED 1 WAIT-MS REACHED? TTRUE
+   PARK-ARMED 1 WAIT-MS REACH
    SETTLE-MS >MS TASK:SLEEP
    THREADS PARKED-THREADS !
    PARKED-THREADS @ BASE-THREADS @ 1 + 1 + T=
    s" and the peer's write answers that parked wait" T-LABEL
    CLIENT-FD @ TCP4:>CONNECTION CHAT$ TCP4:TRANSFER-BYTES TCP4:WRITE STATUS-ERRNO 0 T=
-   PARK-DONE 1 WAIT-MS REACHED? TTRUE
-   PARK-READY @ 1 T=
+   PARK-DONE 1 WAIT-MS REACH
    PARK-TASK TASK:KILL
+   PARK-READY @ PARK-EXPIRED = if s" tcp4-test PARK-WORK" TEST-WAIT:EXPIRED then
+   PARK-READY @ 1 T=
    PROBE-CONNECTION @ TCP4:>CONNECTION SERVER-BUF BUF-CAP TCP4:TRANSFER-BYTES TCP4:READ
       CHAT-BYTES WANT-DATA
    SERVER-BUF CHAT-BYTES CHAT$ T$=
@@ -663,11 +699,11 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    PROBE-LISTENER @ TCP4:>LISTENER TCP4:PENDING? READY? TFALSE
    PROBE-LISTENER @ LISTENER-PORT CONNECT-TO dup 0 >= TTRUE CLIENT-FD !
    s" a waiting connection is pending, and a sent request readable" T-LABEL
-   PROBE-LISTENER @ WAIT-PENDING TTRUE
+   PROBE-LISTENER @ WAIT-PENDING
    PROBE-LISTENER @ TCP4:>LISTENER TCP4:ACCEPT ACCEPT-FD dup 0 >= TTRUE PROBE-CONNECTION !
    PROBE-CONNECTION @ TCP4:>CONNECTION TCP4:READABLE? READY? TFALSE
    CLIENT-FD @ TCP4:>CONNECTION CHAT$ TCP4:TRANSFER-BYTES TCP4:WRITE STATUS-ERRNO 0 T=
-   PROBE-CONNECTION @ WAIT-READABLE TTRUE
+   PROBE-CONNECTION @ WAIT-READABLE
    PROBE-CONNECTION @ TCP4:>CONNECTION SERVER-BUF BUF-CAP TCP4:TRANSFER-BYTES TCP4:READ
       CHAT-BYTES WANT-DATA
    SERVER-BUF CHAT-BYTES CHAT$ T$=
@@ -688,7 +724,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    CLIENT-FD @ PEER-FD !
    ['] PEER-WORK PEER-TASK TASK:ACTIVATE
    mono-ns {: start:n :}
-   PROBE-CONNECTION @ TCP4:>CONNECTION WAIT-MS >MS TCP4:READABLE-WITHIN? READY? TTRUE
+   PROBE-CONNECTION @ READABLE-WITHIN
    s" and that wait covered the peer's delay" T-LABEL
    start ELAPSED-MS LEAST-WAIT-MS >= TTRUE
    WAIT-DONE
@@ -716,7 +752,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    s" a closed peer is ready, and reads as the end of stream" T-LABEL
    OPEN-PAIR
    CLIENT-FD @ TCP4:>CONNECTION TCP4:CLOSE STATUS-ERRNO 0 T=
-   PROBE-CONNECTION @ TCP4:>CONNECTION WAIT-MS >MS TCP4:READABLE-WITHIN? READY? TTRUE
+   PROBE-CONNECTION @ READABLE-WITHIN
    PROBE-CONNECTION @ TCP4:>CONNECTION SERVER-BUF BUF-CAP TCP4:TRANSFER-BYTES TCP4:READ
       WANT-CLOSED
    PROBE-CONNECTION @ TCP4:>CONNECTION TCP4:CLOSE STATUS-ERRNO 0 T=
@@ -732,7 +768,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    start ELAPSED-MS LEAST-IDLE-MS >= TTRUE
    s" a pending connect makes the same listener ready" T-LABEL
    PROBE-LISTENER @ LISTENER-PORT CONNECT-TO dup 0 >= TTRUE CLIENT-FD !
-   PROBE-LISTENER @ TCP4:>LISTENER WAIT-MS >MS TCP4:PENDING-WITHIN? READY? TTRUE
+   PROBE-LISTENER @ PENDING-WITHIN
    PROBE-LISTENER @ TCP4:>LISTENER TCP4:ACCEPT ACCEPT-FD dup 0 >= TTRUE PROBE-CONNECTION !
    CLOSE-PAIR ;
 
@@ -786,19 +822,19 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
 
 \ WRITE still blocks until every byte is accepted, but in slices of
 \ SEND-SLICE-MS with a TASK:PAUSE between them, so a halt ends a writer whose
-\ peer stopped reading. Closing the reading end first releases a writer that
-\ never saw the halt, so a regression fails here instead of hanging.
+\ peer stopped reading. A writer still in WRITE once one slice and the slack
+\ have passed expires the wait for its end: a timeout, no failed halt assertion.
 : T-WRITE-HALTED ( -- )
    s" a task blocked in WRITE to a peer that never reads is still writing" T-LABEL
    0 WRITER-ARMED ! 0 WRITER-ENDED !
    OPEN-PAIR
    ['] WRITER-WORK WRITER-TASK TASK:ACTIVATE
-   WRITER-ARMED 1 WAIT-MS REACHED? TTRUE
+   WRITER-ARMED 1 WAIT-MS REACH
    FILL-MS >MS TASK:SLEEP
    WRITER-TASK TASK:DONE? TFALSE
    s" and ends within one send slice and a second of its halt" T-LABEL
    WRITER-TASK TASK:HALT
-   TCP4:SEND-SLICE-MS HALT-SLACK-MS + DONE-WITHIN? TTRUE
+   WRITER-TASK TCP4:SEND-SLICE-MS HALT-SLACK-MS + AWAIT-END
    WRITER-ENDED @ 0 T=
    CLOSE-PAIR
    WRITER-TASK TASK:KILL ;
@@ -817,7 +853,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    moved FLOOD-BYTES <= TTRUE
    s" and exactly the bytes it moved arrive, in order" T-LABEL
    CLIENT-FD @ TCP4:>CONNECTION TCP4:SENDING TCP4:SHUTDOWN STATUS-ERRNO 0 T=
-   DRAIN-DONE 1 DRAIN-MS REACHED? TTRUE
+   DRAIN-DONE 1 DRAIN-MS REACH
    DRAIN-TASK TASK:KILL
    DRAIN-GOT @ moved T=
    DRAIN-WRONG @ 0 T=
@@ -907,16 +943,16 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    longest SLICE-BOUND-MS < TTRUE
    1 SIP-STOP !
    CLIENT-FD @ TCP4:>CONNECTION TCP4:SENDING TCP4:SHUTDOWN STATUS-ERRNO 0 T=
-   DRAIN-DONE 1 DRAIN-MS REACHED? TTRUE
+   DRAIN-DONE 1 DRAIN-MS REACH
    DRAIN-TASK TASK:KILL
    CLOSE-PAIR ;
 
 
 \ A writer whose reader takes bytes every SIP-MS has slices that move some
 \ rather than ones that end empty, and a halt still ends it within one slice:
-\ WRITE pauses after every slice that leaves bytes to send. Stopping the reader
-\ and shutting the writer's side releases a writer that never saw the halt, so
-\ a regression fails here instead of hanging.
+\ WRITE pauses after every slice that leaves bytes to send. A writer still in
+\ WRITE once one slice and the slack have passed expires the wait for its end:
+\ a timeout, no failed halt assertion.
 : T-WRITE-SIPPED ( -- )
    s" a task in WRITE to a reader taking bytes every 10 ms is still writing" T-LABEL
    0 WRITER-ARMED ! 0 WRITER-ENDED !
@@ -925,24 +961,24 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    0 SIPPED ! 0 SIP-STOP ! 0 DRAIN-DONE !
    ['] SIP-WORK DRAIN-TASK TASK:ACTIVATE
    ['] WRITER-WORK WRITER-TASK TASK:ACTIVATE
-   WRITER-ARMED 1 WAIT-MS REACHED? TTRUE
+   WRITER-ARMED 1 WAIT-MS REACH
    FILL-MS >MS TASK:SLEEP
    WRITER-TASK TASK:DONE? TFALSE
    SIPPED atomic@ 0 > TTRUE
    s" and ends within one send slice and a second of its halt" T-LABEL
    WRITER-TASK TASK:HALT
-   TCP4:SEND-SLICE-MS HALT-SLACK-MS + DONE-WITHIN? TTRUE
+   WRITER-TASK TCP4:SEND-SLICE-MS HALT-SLACK-MS + AWAIT-END
    WRITER-ENDED @ 0 T=
    1 SIP-STOP !
    CLIENT-FD @ TCP4:>CONNECTION TCP4:SENDING TCP4:SHUTDOWN STATUS-ERRNO 0 T=
-   DRAIN-DONE 1 DRAIN-MS REACHED? TTRUE
+   DRAIN-DONE 1 DRAIN-MS REACH
    DRAIN-TASK TASK:KILL
    CLOSE-PAIR
    WRITER-TASK TASK:KILL ;
 
 
-\ Slices of the chat until one fails: its errno, or 0 when none did within
-\ POLL-TRIES slices.
+\ Slices of the chat until one fails: its errno. None failing within POLL-TRIES
+\ slices, SETTLE-MS apart, is the reset's deadline expiring, no errno.
 : FAILED-SLICE-ERRNO ( -- n )
    POLL-TRIES 0 do
       CLIENT-FD @ TCP4:>CONNECTION CHAT$ TCP4:TRANSFER-BYTES TCP4:SEND-SLICE
@@ -952,7 +988,8 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
          failed OF TCP4:ERRNO>N unloop exit ENDOF
       ;MATCH
       SETTLE-MS >MS TASK:SLEEP
-   loop 0 ;
+   loop
+   s" tcp4-test FAILED-SLICE-ERRNO" TEST-WAIT:EXPIRED ;
 
 
 \ The peer closes with the chat unread, and the connection is reset: the next
