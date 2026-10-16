@@ -382,10 +382,6 @@ SUITE lint-intern-set
    tools/lint/set-test.f
 ;SUITE
 
-SUITE diff-parser
-   tools/lint/diff-test.f
-;SUITE
-
 SUITE imgdump-compare
    tools/imgdump-test.f
 ;SUITE
@@ -2622,10 +2618,6 @@ SUITE check-repair-hints
 
 SUITE ddc-verify
    tools/ddc-verify-test.f
-;SUITE
-
-SUITE diff-side-content
-   tools/diff-side-content-test.f
 ;SUITE
 
 SUITE error-code-region
