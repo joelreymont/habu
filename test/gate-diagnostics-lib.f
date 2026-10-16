@@ -521,7 +521,6 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-json-record.err" s" storage record contract" DIAG-CONTRACT
    GT-ERR$ REC!
    s\" \"repair_class\":\"use_storage_definer\"" s\" \"repair_class\":\"fix_stale_trust_row\"" REC-SWAP
-   s" use_storage_definer" GJA-SUGGEST-FOR s" fix_stale_trust_row" GJA-SUGGEST-FOR REC-SWAP
    s" habu-record-class.err" s" repair class is not one its code names" s" storage record under the trust row's class refused" REFUSED ;
 
 \ A trust row naming no word where its record lands (checker.f
@@ -561,7 +560,6 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-json-qual.err" s" malformed record contract" DIAG-CONTRACT
    GT-ERR$ REC!
    s\" \"repair_class\":\"fix_qualified_name\"" s\" \"repair_class\":\"fix_stale_trust_row\"" REC-SWAP
-   s" fix_qualified_name" GJA-SUGGEST-FOR s" fix_stale_trust_row" GJA-SUGGEST-FOR REC-SWAP
    s" habu-qual-class.err" s" repair class is not one its code names" s" malformed record under the trust row's class refused" REFUSED ;
 
 \ A stored signature that does not parse, or is deeper or wider than a record
@@ -591,7 +589,6 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-json-signature-first.err" s" first stored signature contract" DIAG-CONTRACT
    GT-ERR$ REC!
    s\" \"repair_class\":\"fix_signature_type\"" s\" \"repair_class\":\"fix_type\"" REC-SWAP
-   s" fix_signature_type" GJA-SUGGEST-FOR s" fix_type" GJA-SUGGEST-FOR REC-SWAP
    s" habu-signature-class.err" s" repair class is not one its code names" s" stored signature under a definition class refused" REFUSED
    GE-HB-RESET
    s" habu-json-signature.f" RECORD-ARGS
@@ -714,7 +711,6 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-json-ambiguous.err" WRITE-REC
    s" habu-json-ambiguous.err" s" using ambiguity contract" DIAG-CONTRACT
    s\" \"repair_class\":\"disambiguate_using_ambiguous\"" s\" \"repair_class\":\"disambiguate_using_shadow\"" REC-SWAP
-   s" disambiguate_using_ambiguous" GJA-SUGGEST-FOR s" disambiguate_using_shadow" GJA-SUGGEST-FOR REC-SWAP
    s" habu-using-class.err" s" repair class is not one its code names" s" ambiguity under the shadow's class refused" REFUSED ;
 
 : UNSAFE-CHECK-SOURCE ( -- )
@@ -1003,7 +999,6 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-tfam-verdict.err" s" declaration verdict is not rejected" s" uncheckable declaration refused" REFUSED
    s\" \"verdict\":\"uncheckable\"" s\" \"verdict\":\"rejected\"" REC-SWAP
    s\" \"repair_class\":\"fix_family_declaration\"" s\" \"repair_class\":\"fix_nominal_type\"" REC-SWAP
-   s" fix_family_declaration" GJA-SUGGEST-FOR s" fix_nominal_type" GJA-SUGGEST-FOR REC-SWAP
    s" habu-tfam-class.err" s" repair class is not one its code names" s" declaration under another class refused" REFUSED ;
 
 \ A refusal only the run reads carries no place.
@@ -1133,7 +1128,6 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-bad-storage.err" s" storage diagnostic contract" DIAG-CONTRACT
    GT-ERR$ s\" \"word\":\"JSTG:A:B\"" REC-LINE-OF
    s\" \"repair_class\":\"fix_storage_name\"" s\" \"repair_class\":\"fix_storage_type\"" REC-SWAP
-   s" fix_storage_name" GJA-SUGGEST-FOR s" fix_storage_type" GJA-SUGGEST-FOR REC-SWAP
    s" habu-storage-reason.err" s" storage repair class does not follow its reason"
    s" storage name refusal under the type class refused" REFUSED
    RUN-STORAGE ;
@@ -1210,7 +1204,6 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-unterm.err" s" open string contract" DIAG-CONTRACT
    GT-ERR$ REC!
    s\" \"repair_class\":\"close_string\"" s\" \"repair_class\":\"close_primitive_row\"" REC-SWAP
-   s" close_string" GJA-SUGGEST-FOR s" close_primitive_row" GJA-SUGGEST-FOR REC-SWAP
    s" habu-unterm-class.err" s" repair class is not one its code names" s" open string under the open row's class refused" REFUSED
    GE-HB-RESET
    GE-SRC-RESET
@@ -1285,7 +1278,6 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-generates.err" s" generates: row contract" DIAG-CONTRACT
    GT-ERR$ REC!
    s\" \"repair_class\":\"fix_generates_row\"" s\" \"repair_class\":\"close_string\"" REC-SWAP
-   s" fix_generates_row" GJA-SUGGEST-FOR s" close_string" GJA-SUGGEST-FOR REC-SWAP
    s" habu-generates-class.err" s" repair class is not one its code names" s" generates: row under the open string's class refused" REFUSED ;
 
 : GENERATES-EVALUATED ( -- )
@@ -1364,7 +1356,6 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-engine.err" s" engine-provided contract" DIAG-CONTRACT
    GT-ERR$ REC!
    s\" \"repair_class\":\"rebuild_engine\"" s\" \"repair_class\":\"unknown_rejection\"" REC-SWAP
-   s" rebuild_engine" GJA-SUGGEST-FOR s" unknown_rejection" GJA-SUGGEST-FOR REC-SWAP
    s" habu-engine-class.err" s" repair class is not one its code names" s" engine-provided input under another class refused" REFUSED ;
 
 : PUBLIC-SIGNATURES ( -- )

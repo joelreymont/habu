@@ -317,114 +317,20 @@ variable GJA-DIRECT
    GJA-ROOT @ s" byte_start" GJA-IDX @ GJA-ASSERT-INT-FIELD
    GJA-ROOT @ s" byte_end" GJA-IDX @ 3 + GJA-ASSERT-INT-FIELD ;
 
-: GJA-SUGGEST-FOR ( ptr u8 n -- ptr u8 n )
-   s" remove_producer" s" Remove an extra producer or drop the surplus value."
-   GJA-MAP-ROW IF exit THEN
-   s" add_producer" s" Add the missing producer or stop consuming a required value."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_type" s" Change the body so produced types match the signature."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_return_stack" s" Balance return-stack transfers before the definition exits."
-   GJA-MAP-ROW IF exit THEN
-   s" supply_missing_input" s" Push the missing inputs before the call, or declare them in the signature; a definition may not consume below its declared inputs."
-   GJA-MAP-ROW IF exit THEN
-   s" trusted_boundary_required" s" Move this compiler or runtime boundary behind audited TRUST."
-   GJA-MAP-ROW IF exit THEN
-   s" model_compile_immediate" s" Declare a stack-neutral parsing immediate with parse-imm, or remove it from the compiled body."
-   GJA-MAP-ROW IF exit THEN
-   s" factor_local_shape" s" Move locals to a live top-level path or factor a helper."
-   GJA-MAP-ROW IF exit THEN
-   s" shorten_local_name" s" Shorten the local name to at most 16 bytes."
-   GJA-MAP-ROW IF exit THEN
-   s" reduce_local_count" s" Bind at most 64 locals in one definition, or factor a helper."
-   GJA-MAP-ROW IF exit THEN
-   s" factor_linear_local" s" Keep the linear value on the stack; do not bind it to a local."
-   GJA-MAP-ROW IF exit THEN
-   s" remove_dead_code" s" Remove tokens after the terminating control word, or move the work before it."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_qualified_name" s" Use one ':' qualifier, e.g. PKG:WORD."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_signature_syntax" s" Repair the stack-effect comment syntax, including --."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_signature_type" s" Use a known stack-signature type or a single-letter type variable."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_signature_arity" s" Give the type family its exact declared number of arguments."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_bare_ptr_element" s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_signature_size" s" Declare fewer cells: keep bulk values in a buffer, not on the stack."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_nominal_type" s" Choose a unique non-reserved nominal type name."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_missing_name" s" Give the definer a name: the next whitespace-delimited token."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_record_field" s" Declare at least one field, each with a unique name and a known type."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_family_declaration" s" Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks."
-   GJA-MAP-ROW IF exit THEN
-   s" rename_duplicate" s" Rename the word or undefine the old definition before redefining it."
-   GJA-MAP-ROW IF exit THEN
-   s" close_string" s" Close the string literal before the definition ends."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_load_path" s" No file is at the path this loader word names. Correct the path, or create the file."
-   GJA-MAP-ROW IF exit THEN
-   s" make_source_readable" s" The file this loader word names cannot be read. Make it readable, or correct the path."
-   GJA-MAP-ROW IF exit THEN
-   s" literal_loader_form" s" Load a file by a literal path that resolves within 1024 bytes, written in at most 1024 bytes after include or require and otherwise in under 2050 counting, when relative, a slash and the longest root searched for it, through a loader word no definition redefines or retires."
-   GJA-MAP-ROW IF exit THEN
-   s" close_primitive_row" s" Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM; or EPRIM: name effect... EPRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE, or EPPRIM: package name effect... ECLOSE-PRIVATE."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_generates_row" s" This generates: row names no word here. Write it after the definer's definition, spelled as the definition spells it."
-   GJA-MAP-ROW IF exit THEN
-   s" delete_generates_row" s" This definer already states what it makes: its does> clause, an earlier generates: row or the definer it wraps. Delete the row."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_parses_row" s" This row's target is no word here that reads the source after it. Write the row after the definition of a word that parses, spelled as the definition spells it."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_parses_syntax" s" Write the row as parses: W n or parses-through: W n ( E1 E2 ): a count of 0 or more, then at least one terminator between a standalone ( and )."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_names_row" s" This row's target is no word here that takes a string ( ptr u8 n ). Write the row after the definition of a word that looks its string operand up as a name, spelled as the definition spells it."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_names_syntax" s" Write the row as names: W, after the definition of a word W that looks its string operand up as a name."
-   GJA-MAP-ROW IF exit THEN
-   s" rebuild_engine" s" The engine provides this source; rebuild bin/hb to check a change to it."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_stale_trust_row" s" This trust row names no word in the wordlist its record lands in: the open section's, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word."
-   GJA-MAP-ROW IF exit THEN
-   s" use_storage_definer" s" A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar."
-   GJA-MAP-ROW IF exit THEN
-   s" disambiguate_using_shadow" s" A global word and a used package public share this name. Qualify the package word as PKG:WORD, or rename the collision; the global has no bare qualifier."
-   GJA-MAP-ROW IF exit THEN
-   s" match_shadowed_private_effect" s" A private word of this package owns the same tail, and a bare tail binds the private word first, so the native compiler reads this definition's arity from it. Give the public definition the private word's effect, or rename one of the two."
-   GJA-MAP-ROW IF exit THEN
-   s" disambiguate_using_ambiguous" s" Used publics of more than one package share this name. Qualify the one meant as PKG:WORD, or rename the collision."
-   GJA-MAP-ROW IF exit THEN
-   s" rewrite_uncheckable" s" Rewrite with modeled words or isolate an audited primitive."
-   GJA-MAP-ROW IF exit THEN
-   s" unknown_rejection" s" Inspect the token, signature, and raw stack evidence."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_storage_type" s" Declare the type before the storage, or store a closed, copyable type this definer admits."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_storage_name" s" Name the storage with at most one inner ':', outside a sealed system package."
-   GJA-MAP-ROW IF exit THEN
-   s" fix_storage_count" s" Put a positive count before the definer whose cells fit in memory: a literal, a constant or an expression."
-   GJA-MAP-ROW IF exit THEN
-   2drop s" unknown repair class in suggestion assertion" GJA-FAIL ;
-
-: GJA-DIAG-CLASS-SUGGEST ( n ptr u8 n -- ) {: root class:ptr classu :}
+: GJA-DIAG-CLASS-FIELDS ( n ptr u8 n -- ) {: root class:ptr classu :}
    root s" repair_class" GJA-REQ
    class classu GJA-ASSERT-STR
-   root s" suggestion" GJA-REQ dup GJA-NONEMPTY-STR
-   class classu GJA-SUGGEST-FOR GJA-ASSERT-STR ;
+   root s" suggestion" GJA-REQ GJA-NONEMPTY-STR ;
 
 : GJA-DIAG-REPAIR-CLASS ( ptr u8 n ptr u8 n -- )
    {: json:ptr jsonu class:ptr classu :}
    json jsonu GJA-FIRST-JSON GJA-ROOT !
-   GJA-ROOT @ class classu GJA-DIAG-CLASS-SUGGEST ;
+   GJA-ROOT @ class classu GJA-DIAG-CLASS-FIELDS ;
 
 : GJA-DIAG-WORD-REPAIR-CLASS ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: json:ptr jsonu word:ptr wordu class:ptr classu :}
    json jsonu word wordu GJA-FIND-WORD GJA-ROOT !
-   GJA-ROOT @ class classu GJA-DIAG-CLASS-SUGGEST ;
+   GJA-ROOT @ class classu GJA-DIAG-CLASS-FIELDS ;
 
 : GJA-HAS? ( n ptr u8 n -- bool )
    JSON-GET -1 <> ;
@@ -531,7 +437,7 @@ variable GJA-DIRECT
    root s" diagnostic_count" GJA-REQ GJA-INT 0 <= IF s" invalid diagnostic_count" GJA-FAIL THEN
    root s" code" GJA-REQ GJA-NONEMPTY-STR
    root s" file" GJA-REQ GJA-NONEMPTY-STR
-   root class classu GJA-DIAG-CLASS-SUGGEST ;
+   root class classu GJA-DIAG-CLASS-FIELDS ;
 
 : GJA-REPAIR-DEF ( n -- ) {: root:n :}
    root s" word" GJA-REQ GJA-NONEMPTY-STR
@@ -715,13 +621,13 @@ variable GJA-DIRECT
       s" span verdict is not rejected" GJA-FAIL
    THEN ;
 
-\ A record's repair class is one its code names, with that class's suggestion.
+\ A record's repair class is one its code names and has a suggestion.
 : GJA-DIAG-CLASS ( n -- ) {: root:n :}
    root s" repair_class" GJA-REQ JSON-STRING$ {: class:ptr classu:n :}
    root GJA-CODE$ class classu DIAG-CODE:ADMITS? 0= IF
       s" repair class is not one its code names" GJA-FAIL
    THEN
-   root class classu GJA-DIAG-CLASS-SUGGEST ;
+   root class classu GJA-DIAG-CLASS-FIELDS ;
 
 \ A deferral is no refusal: the source pre-pass left the stretch that opens at
 \ its token to the run. It is placed as a span is, under the verdict deferred
@@ -780,7 +686,7 @@ variable GJA-DIRECT
    ;MATCH ;
 
 \ Each record in the shape its code names; a refusal also under a verdict and
-\ one of the repair classes its code names, with that class's suggestion.
+\ one of the repair classes its code names, with a nonempty suggestion.
 : GJA-DIAG-CONTRACT-ROW ( n -- ) {: root:n :}
    root GJA-DIAG-SHAPE
    root GJA-CODE$ DIAG-CODE:REFUSAL? 0= IF exit THEN

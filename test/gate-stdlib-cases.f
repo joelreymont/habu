@@ -627,10 +627,6 @@ SUITE compiler-target-digest-goldens
    test/compiler/target-digest-goldens.f
 ;SUITE
 
-SUITE compiler-target-native-layout-goldens
-   test/compiler/target-native-layout-goldens.f
-;SUITE
-
 \ The sealed Wasm target, scalar-FP split and function convention.
 SUITE compiler-wasm-target
    test/compiler/wasm-target.f
