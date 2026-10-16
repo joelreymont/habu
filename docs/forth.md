@@ -1131,6 +1131,18 @@ backend answers alike.
 
 ## Errors
 
+- **External error codes use `-999999..-100000`, inclusive.** Applications and
+  separately distributed libraries allocate their own codes in this range.
+  Habu's runtime, compiler, bundled libraries, tools and tests allocate outside
+  it. Existing Habu codes, Forth-specified codes and process exit statuses keep
+  their meanings.
+- **Different errors in one process need different numeric codes.** Package
+  names qualify constants, not thrown values. External packages choose
+  nonoverlapping blocks within the external range; the application integrator
+  resolves collisions among dependencies. Applications that never run together
+  may reuse blocks. Re-export an existing error through its owner's constant.
+  This is an allocation convention: the checker does not enforce it, and Habu's
+  error-code lint scans this repository, not external dependency trees.
 - Engine process failures use only the sealed `ENGINE-ERROR` package ABI:
   `SEAL-VIOLATION` 83, `SEAL-PACKAGE` 84, `BAD-TAG` 85, `CALLABLE-ABI` 86,
   `CATCH-STACK` 87, `CODE-CERT` 88, and `OVERLAY-OPEN` 108 for a definition,

@@ -1,5 +1,9 @@
 \ errors.f - canonical stdlib throw codes.
 \
+\ The inclusive -999999..-100000 range is reserved for external applications
+\ and separately distributed libraries. Habu allocates outside it; loaded
+\ dependencies choose nonoverlapping blocks (docs/forth.md, Errors).
+\
 \ A library owns an inclusive block of codes, usually 100 wide. FIRST and LAST
 \ are the block's two bounds, and they reserve the whole range between them for
 \ the file that declares them, whether or not every code in it has been minted

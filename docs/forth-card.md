@@ -366,6 +366,11 @@ never holds an address".
 
 ## 6 Errors
 
+- External applications and separately distributed libraries allocate codes in
+  `-999999..-100000`, inclusive; Habu's runtime, compiler, bundled libraries,
+  tools and tests allocate outside it. Loaded dependencies need nonoverlapping
+  blocks: package names do not distinguish thrown numbers. The application
+  integrator resolves collisions; the checker does not enforce this convention.
 - Library codes are named constants in `src/lib/errors.f`; checker throws also use
   positive codes above 255 in their owning source. Codes 0..255 serve as
   process exit statuses and may be shared. Every other code, negative or above
