@@ -12,6 +12,7 @@ require src/lib/process-env.f
 require src/lib/process-command.f
 require src/lib/task.f
 require src/lib/test/outcome.f
+require src/lib/test/wait.f
 
 package PROCESS-TASK-TEST
 
@@ -48,7 +49,7 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
 
 \ Runs INSIDE the captor task, so it asserts nothing: it counts, and this
 \ thread reads the counts after the join. A deadline throws E-PROC-TIMEOUT,
-\ which the join throws again.
+\ which the join records and this thread names and throws (PTT-WORKER-ERR).
 : PTT-ONE-CAPTURE ( -- )
    PROC-CMD:RESET
    s" hello" >LEN PROC-CMD:ARG+
@@ -73,8 +74,10 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
    then
    PTT-POLLS @ 1 + PTT-POLLS ! ;
 
-\ True when the captor finished inside its budget. A shared row makes this
-\ false instead of hanging forever, so a regression reports a failed case.
+\ Polls this thread's own pipe while the captor runs, for at most the budget:
+\ true once the captor has ended, false when the budget ran out first. Only a
+\ captor that has ended is joined, so a shared row that stalls a capture ends
+\ in the named captor wait and never in a join that waits without a bound.
 : PTT-POLL-UNTIL-DONE ( -- bool )
    mono-ns PTT-BUDGET-NS + {: deadline:n :}
    begin PTT-CAPTOR TASK:DONE? 0= while
@@ -83,18 +86,54 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
    repeat
    0 0= ;
 
-\ A worker's code, which a deadline in its capture makes the row's own deadline.
-: PTT-WORKER-ERR ( n -- ) {: code:n :}
-   code E-PROC-TIMEOUT = if E-PROC-TIMEOUT throw then
+\ A worker's code, read here because a task asserts nothing. E-PROC-TIMEOUT is
+\ a deadline the worker recorded: this thread names it and throws it before
+\ any assertion on the result. Any other code is not 0 and fails.
+: PTT-WORKER-ERR ( n -- )
+   {: code:n :}
+   code E-PROC-TIMEOUT = if
+      s" process-task-test command task wait" TEST-WAIT:EXPIRED
+   then
    code 0 T= ;
 
-: PTT-JOIN-CAPTOR ( -- )
-   begin PTT-CAPTOR TASK:DONE? 0= while TASK:PAUSE repeat
-   PTT-CAPTOR TASK:JOIN
-   MATCH result
-     ok  OF PTT-CAPTURES T= ENDOF
-     err OF PTT-WORKER-ERR ENDOF                 \ the captor threw; its code is not 0
+\ Joins a worker: the answer it returned must be want, and a code it threw is
+\ read by PTT-WORKER-ERR.
+: PTT-JOIN= ( ptr n n -- )
+   {: t:ptr want:n :}
+   t TASK:JOIN MATCH result
+     ok  OF want T= ENDOF
+     err OF PTT-WORKER-ERR ENDOF
    ;MATCH ;
+
+\ A worker's answer: what it returned, or the code it threw.
+: PTT-JOIN-CODE ( ptr n -- n )
+   TASK:JOIN MATCH result
+     ok  OF ENDOF
+     err OF ENDOF
+   ;MATCH ;
+
+\ A code that is neither 0 nor a deadline the worker recorded.
+: PTT-FAILED? ( n -- bool )
+   {: code:n :}
+   code 0<> code E-PROC-TIMEOUT <> and ;
+
+\ Joins two workers that wait on each other before reading either, and answers
+\ true when both answered 0. A worker that fails leaves its peer to wait out
+\ PTT-WAIT: only the failure is asserted, never that deadline, and the case
+\ reads nothing the workers left. When neither failed, a deadline is named and
+\ thrown.
+: PTT-JOIN-PAIR ( ptr n ptr n -- bool )
+   {: ta:ptr tb:ptr :}
+   ta PTT-JOIN-CODE tb PTT-JOIN-CODE {: a:n b:n :}
+   a PTT-FAILED? b PTT-FAILED? or if
+      a PTT-FAILED? if a 0 T= then
+      b PTT-FAILED? if b 0 T= then
+      false exit
+   then
+   a E-PROC-TIMEOUT = b E-PROC-TIMEOUT = or if
+      s" process-task-test command task wait" TEST-WAIT:EXPIRED
+   then
+   true ;
 
 : PTT-CONCURRENT-CAPTURE-AND-POLL ( -- )
    0 PTT-DONE !  0 PTT-DID !  0 PTT-CAP-BAD !  0 PTT-POLLS !  0 PTT-POLL-BAD !
@@ -104,10 +143,10 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
    wr FD>N PTT-BYTE 1 write 1 T=
    ['] PTT-CAPTOR-BODY PTT-CAPTOR TASK:ACTIVATE
    PTT-POLL-UNTIL-DONE {: finished:bool :}
-   PTT-JOIN-CAPTOR
    PTT-PIPE-R @ close
    PTT-PIPE-W @ close
-   finished TTRUE
+   finished 0= if s" process-task-test captor wait" TEST-WAIT:EXPIRED then
+   PTT-CAPTOR PTT-CAPTURES PTT-JOIN=
    PTT-CAP-BAD @ 0 T=
    PTT-POLL-BAD @ 0 T=
    PTT-POLLS @ 0 > TTRUE ;
@@ -135,6 +174,8 @@ TASK:MIN-STACK TASK:TASK PTT-B
 variable PTT-A-READY                     \ rounds task A has stated its arguments for
 variable PTT-B-DONE                      \ rounds task B has run its own command for
 
+\ Runs INSIDE a worker: a handshake that does not arrive in time throws
+\ E-PROC-TIMEOUT, which the join records and this thread names and throws.
 : PTT-WAIT ( ptr n n -- ) {: flag want :}
    mono-ns PTT-WAIT-NS + {: until:n :}
    begin flag atomic@ want < while
@@ -143,8 +184,9 @@ variable PTT-B-DONE                      \ rounds task B has run its own command
    repeat ;
 
 \ Runs INSIDE a worker, so it asserts nothing: a bad completion throws and the
-\ join reports the code, a deadline throws E-PROC-TIMEOUT and the join throws it
-\ again; a wrong capture is counted and returned.
+\ join reports the code, a deadline throws E-PROC-TIMEOUT, which the join
+\ records and this thread names and throws; a wrong capture is counted and
+\ returned.
 : PTT-PRINT ( ptr ptr u8 -- ) {: h:ptr :}
    h s" /usr/bin/printf" >LEN PTT-RUN-MS >MS CMD:RUN-OUTCOME
    MATCH outcome
@@ -184,18 +226,11 @@ variable PTT-B-DONE                      \ rounds task B has run its own command
       PTT-B-ROUND
    repeat drop TASK:RETURN ;
 
-: PTT-JOIN-ZERO ( ptr n -- )
-   TASK:JOIN MATCH result
-     ok  OF 0 T= ENDOF                            \ rounds whose capture was not its own
-     err OF PTT-WORKER-ERR ENDOF                  \ the worker threw; its code is not 0
-   ;MATCH ;
-
 : PTT-TWO-COMMANDS ( -- )
    0 PTT-A-READY !  0 PTT-B-DONE !
    ['] PTT-A-BODY PTT-A TASK:ACTIVATE
    ['] PTT-B-BODY PTT-B TASK:ACTIVATE
-   PTT-A PTT-JOIN-ZERO
-   PTT-B PTT-JOIN-ZERO ;
+   PTT-A PTT-B PTT-JOIN-PAIR drop ;      \ each answers its rounds whose capture was not its own
 
 \ ---- four tasks, four commands ----------------------------------------------
 \ Each task holds its own environment row and its own stdin across a run, so
@@ -270,10 +305,10 @@ TASK:MIN-STACK TASK:TASK PTT-T3
    ['] PTT-T1-BODY PTT-T1 TASK:ACTIVATE
    ['] PTT-T2-BODY PTT-T2 TASK:ACTIVATE
    ['] PTT-T3-BODY PTT-T3 TASK:ACTIVATE
-   PTT-T0 PTT-JOIN-ZERO
-   PTT-T1 PTT-JOIN-ZERO
-   PTT-T2 PTT-JOIN-ZERO
-   PTT-T3 PTT-JOIN-ZERO ;
+   PTT-T0 0 PTT-JOIN=
+   PTT-T1 0 PTT-JOIN=
+   PTT-T2 0 PTT-JOIN=
+   PTT-T3 0 PTT-JOIN= ;
 
 \ ---- bounded waits beside each other and beside a capture -------------------
 \ This thread spawns both children before a task starts, because the argv table
@@ -312,9 +347,12 @@ variable PTT-HELD-W                      \ that stdin's write end
    in-r FD>N close
    in-w FD>N PTT-HELD-W ! ;
 
+\ Runs INSIDE a worker: the sleeper's rc, or E-PROC-TIMEOUT once PTT-RUN-MS
+\ passes without its exit, which the join records and this thread names and
+\ throws.
 : PTT-WAITER-BODY ( -- )
    PTT-SLEEPER @ >PID PTT-RUN-MS >MS PROC-WAIT-BOUNDED
-   PROC-OUTCOME>DEADLINE-RC RC>N TASK:RETURN ;
+   PROC-OUTCOME>RC RC>N TASK:RETURN ;
 
 : PTT-CAPTURER-BODY ( -- )
    PTT-CMD-CAP CMD:RESET
@@ -322,13 +360,6 @@ variable PTT-HELD-W                      \ that stdin's write end
    PTT-CMD-CAP s" sleep 0.2; printf capture-ok" >LEN CMD:ARG+
    PTT-CMD-CAP s" /bin/sh" >LEN PTT-RUN-OK
    PTT-CMD-CAP CMD:OUT$ s" capture-ok" STR= if 0 else 1 then TASK:RETURN ;
-
-: PTT-JOIN= ( ptr n n -- )
-   {: t:ptr want:n :}
-   t TASK:JOIN MATCH result
-     ok  OF want T= ENDOF
-     err OF PTT-WORKER-ERR ENDOF                  \ the worker threw; its code is not 0
-   ;MATCH ;
 
 : PTT-WAITS-BESIDE-CAPTURE ( -- )
    PTT-SPAWN-CHILDREN
@@ -398,8 +429,7 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
    0 PTT-A-READY ! 0 PTT-B-DONE !
    ['] PTT-GROW-A-WORK PTT-GROW-TA TASK:ACTIVATE
    ['] PTT-GROW-B-WORK PTT-GROW-TB TASK:ACTIVATE
-   PTT-GROW-TA 0 PTT-JOIN=
-   PTT-GROW-TB 0 PTT-JOIN=
+   PTT-GROW-TA PTT-GROW-TB PTT-JOIN-PAIR 0= if exit then
    PTT-GROW-OUT-A-U @ PTT-GROW-U 8 + T=
    PTT-GROW-OUT-B-U @ PTT-GROW-U 7 + T=
    PTT-GROW-ERR-A-U @ 0 T= PTT-GROW-ERR-B-U @ 0 T=
