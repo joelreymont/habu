@@ -217,14 +217,19 @@ DEFAULT-CASE-MS CASE-MS !
    true FAILED !
    late LATE ! ;
 
-\ True for a step that exited 0; otherwise one line says how it ended.
-: EXITED-0? ( outcome ptr u8 n -- bool ) {: what:ptr whatu:n :}
+\ True for a step that exited 0; otherwise one line says how it ended. A case
+\ engine exits PROC-TIMEOUT-RC (124) when a wait of its own passed its deadline
+\ (src/lib/pg-test.f RUN), so that exit is a late step, as a case this process
+\ ended at CASE-MS is.
+: EXITED-0? ( outcome ptr u8 n -- bool )
+   {: what:ptr whatu:n :}
    s" pg-cluster: " type what whatu type
    MATCH outcome
       exited OF
          dup 0= if drop s"  ok" type cr true exit then
-         s"  exited " type FMT:.INT
-         false STEP-FAILED
+         s"  exited " type dup FMT:.INT
+         PROC-TIMEOUT-RC = dup if s" , past its own deadline" type then
+         STEP-FAILED
       ENDOF
       signaled OF s"  died of signal " type FMT:.INT false STEP-FAILED ENDOF
       timeout OF s"  passed its deadline" type true STEP-FAILED ENDOF

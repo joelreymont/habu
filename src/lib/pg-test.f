@@ -9,7 +9,10 @@
 \ skip.
 
 require src/lib/test.f
+require src/lib/test/wait.f
 require src/lib/memory.f
+require src/lib/fmt.f
+require src/lib/process.f
 require src/lib/task.f
 require src/lib/aio.f
 require src/lib/image-lifecycle.f
@@ -147,10 +150,16 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
    loop ;
 
 
-\ These helpers run before the AIO loop starts. A single task advances both
-\ connections; a progress call that waits cannot let that task release the lock.
-: CHECK-PROGRESS ( n -- ) {: deadline:n :}
-   mono-ns deadline > if E-EXEC throw then
+\ The progress helpers. AWAIT-READY, OPEN-POLL and RESULT-POLL run before the
+\ AIO loop starts: a single task advances both connections, and a progress call
+\ that waits cannot let that task release the lock. CHECK-PROGRESS also ends
+\ each turn of EXIT-CASES's wait, while the loop and the exit worker are active.
+\ A wait that passes its PROGRESS-NS deadline is no assertion result
+\ (docs/gate.md): CHECK-PROGRESS names it and throws E-PROC-TIMEOUT, which the
+\ case engine exits with as PROC-TIMEOUT-RC (RUN).
+: CHECK-PROGRESS ( n -- )
+   {: deadline:n :}
+   mono-ns deadline > if s" pg-test CHECK-PROGRESS" TEST-WAIT:EXPIRED then
    TASK:PAUSE ;
 
 : AWAIT-READY ( fd n n -- ) {: socket:fd events:n deadline:n :}
@@ -832,6 +841,37 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
       err OF throw ENDOF
    ;MATCH ;
 
+\ Returns once EXIT-HALT has sent its query, or has ended without sending it:
+\ a worker that threw is no deadline, and its code reaches EXIT-CASES's join.
+: AWAIT-STARTED ( -- )
+   mono-ns PROGRESS-NS + {: deadline:n :}
+   begin
+      EXIT-STARTED atomic@ 0= EXIT-WORKER TASK:DONE? 0= and while
+      deadline CHECK-PROGRESS
+   repeat ;
+
+\ A worker that has not sent its query when AWAIT-STARTED passes its deadline
+\ may be waiting in PG:AWAIT with an AIO record in flight, and MAIN's AIO:STOP
+\ would meet that record and throw E-AIO-BUSY. So the worker is halted and
+\ joined before the deadline leaves, as the normal path halts it: its scrub
+\ cancels the record (src/lib/aio.f SCRUB) and EXIT-CLEAN closes the
+\ connection. The halt's own answer, E-TASK-NO-RESULT, is no assertion, since
+\ the deadline came first. Any other code the join carries, from the body or
+\ EXIT-CLEAN, is named on one line, and the deadline goes on.
+: STARTED-OR-HALT ( -- )
+   [: AWAIT-STARTED ;] catch {: code:n :}
+   code 0= if exit then
+   EXIT-WORKER TASK:HALT
+   EXIT-WORKER TASK:JOIN MATCH result
+      ok OF drop ENDOF
+      err OF
+         dup E-TASK-NO-RESULT = if drop else
+            s" pg-test EXIT-HALT: the halted worker threw " type FMT:.INT cr
+         then
+      ENDOF
+   ;MATCH
+   code throw ;
+
 : EXIT-CASES ( -- )
    ['] EXIT-CLEAN EXIT-WORKER TASK:AT-EXIT
    ['] EXIT-OPEN EXIT-WORKER TASK:ACTIVATE
@@ -844,8 +884,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    0 EXIT-CONN @ PG:LIVE? TFALSE
    0 EXIT-STARTED !
    ['] EXIT-HALT EXIT-WORKER TASK:ACTIVATE
-   mono-ns PROGRESS-NS + {: deadline:n :}
-   begin EXIT-STARTED atomic@ 0= while deadline CHECK-PROGRESS repeat
+   STARTED-OR-HALT
    EXIT-WORKER TASK:HALT
    EXIT-WORKER TASK:JOIN MATCH result
       ok OF drop E-EXEC throw ENDOF
@@ -927,6 +966,32 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    IMAGE-CASES ;
 
 
+\ The loop's stop with a deadline pending. The exit worker EXIT-CASES halted
+\ has had its records cancelled, but on Linux a cancel completes through the
+\ loop (src/lib/aio.f CANCEL-STAGE), so the stop retries E-AIO-BUSY, its "not
+\ yet". A stop still busy after PROGRESS-NS is this wait's own deadline, named
+\ and thrown as a timeout. Any other code is named on one line and LATE-STOP
+\ returns: the pending deadline stays the case's result, where under finally
+\ the stop's code would replace it.
+: LATE-STOP ( -- )
+   mono-ns PROGRESS-NS + {: deadline:n :}
+   begin
+      [: AIO:STOP ;] catch {: code:n :}
+      code 0= if exit then
+      code E-AIO-BUSY <> if
+         s" pg-test LATE-STOP: AIO:STOP threw " type code FMT:.INT cr exit
+      then
+      mono-ns deadline > if s" pg-test LATE-STOP" TEST-WAIT:EXPIRED then
+      TASK:PAUSE
+   again ;
+
+: LOOP-CASES ( -- )
+   CONNECT-CASES CONNECT-TEXT-CASES CAPACITY-CASES AIO-FAIL-CASES SERVER-CASES ;
+
+\ The AIO loop stops however LOOP-CASES ends. As under finally, a code from
+\ AIO:STOP replaces the cases' code, except a deadline's: with a deadline
+\ pending, LATE-STOP stops the loop or names why it could not, and the deadline
+\ goes on.
 : MAIN ( -- )
    SCRIPT-ARGC 1 <> if
       s" pg-test: no conninfo argument; test/db/pg-cluster.f runs this file" 2 die
@@ -935,12 +1000,23 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    PROGRESS-CASES
    RESULT-CAPACITY-CASES
    AIO:START
-   [: CONNECT-CASES CONNECT-TEXT-CASES CAPACITY-CASES AIO-FAIL-CASES SERVER-CASES ;]
-   [: AIO:STOP ;]
-   finally ;
+   [: LOOP-CASES ;] catch {: code:n :}
+   code E-PROC-TIMEOUT = if LATE-STOP E-PROC-TIMEOUT throw then
+   AIO:STOP
+   code 0<> if code throw then ;
+
+\ The case engine's entry. A throw code does not cross the process boundary:
+\ an uncaught one exits UNCAUGHT-RC (67), as a failure does. So a progress wait
+\ past its deadline, which CHECK-PROGRESS has named on stdout, ends the engine
+\ with PROC-TIMEOUT-RC (124), the case engine's timeout outcome, which
+\ test/db/pg-cluster.f reads as a late step. Every other code is rethrown.
+: RUN ( -- )
+   ['] MAIN catch {: code:n :}
+   code E-PROC-TIMEOUT = if s" " PROC-TIMEOUT-RC die then
+   code 0<> if code throw then ;
 
 T-RESET
-MAIN
+RUN
 T-REPORT
 
 ;using
