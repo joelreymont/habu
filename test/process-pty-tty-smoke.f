@@ -67,14 +67,15 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 
 \ A clock that ends while the target still holds its side has not been answered
 \ YET: a deadline, not a wrong answer, so it asserts nothing. The linear handle
-\ cannot cross the throw, so the target is torn down here; RUN stops the loop
-\ and lets E-PROC-TIMEOUT through, so the engine's report of it is the last line
-\ on stderr and the gate pool reads the row as a timeout (docs/gate.md). The
+\ cannot cross the throw, so the target is torn down here before the caller's
+\ wait is named and E-PROC-TIMEOUT thrown (TEST-WAIT:EXPIRED); RUN stops the
+\ loop and lets it through, so the engine's report of it is the last line on
+\ stderr and the gate pool reads the row as a timeout (docs/gate.md). The
 \ caller has shown what it waited for.
-: DEADLINE ( process-pty-handle -- )
+: DEADLINE ( process-pty-handle ptr u8 n -- ) {: name:ptr len:n :}
    READ-SO-FAR
    PROCESS-PTY:TEARDOWN
-   E-PROC-TIMEOUT throw ;
+   name len TEST-WAIT:EXPIRED ;
 
 \ What a wait waited for, and how long.
 : WAIT-SHOW ( ptr u8 n ptr u8 n -- ) {: ha:ptr hu:n ta:ptr tu:n :}
@@ -96,7 +97,10 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    WAIT-BUDGET-MS WAIT-OPEN
    begin
       ha hu ta tu AFTER? if true exit then
-      WAIT-LEFT 0= if ha hu ta tu WAIT-SHOW DEADLINE then
+      WAIT-LEFT 0= if
+         ha hu ta tu WAIT-SHOW
+         s" process-pty-tty-smoke EXPECT-AFTER" DEADLINE
+      then
       READ-STEP {: n:n :}
       n 0 < if ha hu ta tu AFTER? exit then
    again ;
@@ -110,7 +114,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
       WAIT-LEFT 0= if
          s" expected: the target's hang-up (wait budget " type
          WAIT-BUDGET-MS FMT:.INT s"  ms)" type cr
-         DEADLINE
+         s" process-pty-tty-smoke DRAIN-ALL" DEADLINE
       then
       READ-STEP 0 < if exit then
    again ;
@@ -120,7 +124,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 : EXPECT-EXIT ( process-pty-handle -- process-pty-handle )
    EXIT-MS PROCESS-PTY:AWAIT if exit then
    s" expected: the target's exit (exit budget " type EXIT-MS FMT:.INT s"  ms)" type cr
-   DEADLINE ;
+   s" process-pty-tty-smoke EXPECT-EXIT" DEADLINE ;
 
 \ A wait the target hung up on fails its case with what it waited for and what
 \ the target said.

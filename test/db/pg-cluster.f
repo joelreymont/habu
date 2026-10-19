@@ -223,16 +223,22 @@ DEFAULT-CASE-MS CASE-MS !
 \ ended at CASE-MS is.
 : EXITED-0? ( outcome ptr u8 n -- bool )
    {: what:ptr whatu:n :}
-   s" pg-cluster: " type what whatu type
    MATCH outcome
       exited OF
+         s" pg-cluster: " type what whatu type
          dup 0= if drop s"  ok" type cr true exit then
          s"  exited " type dup FMT:.INT
          PROC-TIMEOUT-RC = dup if s" , past its own deadline" type then
          STEP-FAILED
       ENDOF
-      signaled OF s"  died of signal " type FMT:.INT false STEP-FAILED ENDOF
-      timeout OF s"  passed its deadline" type true STEP-FAILED ENDOF
+      signaled OF
+         s" pg-cluster: " type what whatu type
+         s"  died of signal " type FMT:.INT false STEP-FAILED
+      ENDOF
+      timeout OF
+         s" pg-cluster " type what whatu type s" : a deadline expired" type
+         true STEP-FAILED
+      ENDOF
    ;MATCH
    cr false ;
 
@@ -485,7 +491,7 @@ DEFAULT-CASE-MS CASE-MS !
       STATUS-READY? if s" pg-cluster: postgres ready" type cr true exit then
       deadline PROC-LEFT-MS MS>N {: left:n :}
       left 0= if
-         s" pg-cluster: postgres not ready inside its deadline" type cr
+         s" pg-cluster READY?: a deadline expired" type cr
          true STEP-FAILED false exit
       then
       WATCH @ left READY-POLL-MS min ENDED-WITHIN? if

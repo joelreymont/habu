@@ -2,6 +2,7 @@
 require src/lib/process-command.f
 require src/lib/signal.f
 require src/lib/test.f
+require src/lib/test/wait.f
 
 package PROCESS-IMAGE-SUBJECT
 private
@@ -101,9 +102,7 @@ private
    getpid SIGNAL:SIGUSR1 kill 0 T=
    100 >MS SIGNAL:WAIT MATCH SIGNAL:signal-result
       signal OF SIGNAL:SIGUSR1 T= ENDOF
-      timeout OF
-         s" restored signal wait: a deadline expired" type cr
-         E-PROC-TIMEOUT throw ENDOF
+      timeout OF s" process-image-subject USE-CASES" TEST-WAIT:EXPIRED ENDOF
    ;MATCH
    AIO:STOP
    PROC-ENV-DEFAULT-RESET

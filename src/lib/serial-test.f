@@ -71,7 +71,7 @@ TASK:MIN-STACK TASK:TASK READER
 : WANT ( SERIAL:io-result n n -- ) {: kind:n payload:n :}
    CLASSIFY {: got-kind:n got-payload:n :}
    got-kind K-TIMEOUT = kind K-TIMEOUT <> and if
-      s" serial io: a deadline expired" type cr E-PROC-TIMEOUT throw
+      s" serial-test WANT" TEST-WAIT:EXPIRED
    then
    got-kind kind T=
    got-payload payload T= ;
@@ -189,9 +189,7 @@ TASK:MIN-STACK TASK:TASK READER
    PARK-MS >MS TASK:SLEEP
    PEER s" tick" PTY:WRITE
    JOIN-READER
-   PARK-KIND @ K-TIMEOUT = if
-      s" parked read: a deadline expired" type cr E-PROC-TIMEOUT throw
-   then
+   PARK-KIND @ K-TIMEOUT = if s" serial-test PARK-WORK" TEST-WAIT:EXPIRED then
 
    s" a read parked in a task answers the bytes the main task wrote at the master" T-LABEL
    PARK-KIND @ K-MOVED T=
