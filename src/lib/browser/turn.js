@@ -49,6 +49,8 @@ const POST = 4n;
 const TREE = 5n;
 const HIGHLIGHT = 6n;
 const REQUEST = 7n;
+const SVG = 8n;
+const INPUT = 9n;
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 // A request's leading BOM bytes are content, including at the start of a path.
@@ -61,7 +63,8 @@ export class Module {
   // id is an optional diagnostic argument for the CLI. A host that handles
   // REQUEST also provides error(error) for asynchronous reply failures.
   // Also draw(corners, count, matrix, mask), text(string), tree(rows, selected),
-  // highlight(mask), and size() -> [width, height] of the drawing buffer.
+  // highlight(mask), svg(copiedBytes), input(enabled), and size() ->
+  // [width, height] of the drawing buffer.
   static async load(bytes, host) {
     const { instance } = await WebAssembly.instantiate(bytes);
     return new Module(instance.exports, host);
@@ -267,6 +270,16 @@ export class Module {
         return;
       case HIGHLIGHT:
         this.highlight(a, b, c);
+        return;
+      case SVG:
+        if (c !== 0n) throw new Error("svg c must be zero");
+        if (b <= 0n) throw new RangeError("svg needs a positive byte length");
+        this.host.svg(this.span(a, b).slice());
+        return;
+      case INPUT:
+        if (b !== 0n || c !== 0n) throw new Error("input b and c must be zero");
+        if (a !== 0n && a !== 1n) throw new Error("input a must be 0 or 1");
+        this.host.input(a === 1n);
         return;
       default:
         throw new Error(`a record of kind ${kind}, which names no record`);

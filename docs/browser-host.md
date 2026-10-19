@@ -1,8 +1,9 @@
 # Browser host for Wasm modules
 
 `src/lib/browser/` runs a module built by `tools/wasm-build.f` in a browser: the
-host moves bytes, draws triangles, and shows a nested tree and text. The module
-decides what to ask for and what to draw. Its first caller is Maki's viewer.
+host moves bytes, draws triangles or SVG images, and shows a nested tree and
+text. The module decides what to ask for and what to draw. Its first caller is
+Maki's viewer.
 The page, the module and the module's data are served by Habu's HTTP server
 ([http.md](http.md)).
 
@@ -75,6 +76,29 @@ A record is 32 bytes, `kind a b c`:
 | 5 | tree | a and b name strict UTF-8 JSON rows, and c is the selected row key or 0 |
 | 6 | highlight | a names one u8 mask value per triangle, b is the count, and c is 0; 0 means unselected and 1 selected |
 | 7 | request | a and b name a span beginning with little-endian u64 method and path byte lengths, followed by the method's ASCII bytes, the path's strict UTF-8 bytes, and the arbitrary binary body; c is a positive signed 64-bit request ID |
+| 8 | svg | a and b name SVG image bytes, b is positive, and c is 0 |
+| 9 | input | a is 0 to disable the typed-text field or 1 to enable it; b and c are 0 |
+
+SVG bytes are checked and copied synchronously before `host.svg(bytes)` runs,
+so later memory writes or growth cannot alter the image. The protocol does not
+parse XML or interpret image contents. The browser uses an `image/svg+xml` Blob
+as an `img` source, fits the whole image while preserving its aspect ratio,
+and hides the canvas without changing its layout or drawing-buffer dimensions.
+Another SVG replaces the image; every draw, including zero triangles, removes
+it and shows the canvas. Text and tree records do not change the viewport.
+Replaced images' Blob URLs are revoked, and stale image callbacks have no
+effect. A current image's decode error uses the host's visible error path.
+
+The `img` context is the rendering boundary: SVG's
+[sub-resource processing rules](https://www.w3.org/TR/SVG/conform.html#processing-modes-for-svg-sub-resources)
+disable scripts, interaction and external references for SVG used as an image.
+Inline SVG inherits the surrounding document's processing mode, so the host
+never inserts supplied SVG markup into the document.
+
+Input records call `host.input(enabled)` with a boolean. They control only the
+typed-text field and its form submission; canvas, tree and resize events retain
+their behavior. Without an input record the field becomes enabled when its
+listener is ready. An input record from the start turn takes precedence.
 
 The request span has at least 16 bytes. Its method and path are nonempty, the
 method is an HTTP token, and both lengths must fit the span without wrapping;
@@ -171,8 +195,8 @@ y = (1 - ndc.y) * height / 2, origin top-left, pixel centres at +0.5.
 | file | holds |
 | --- | --- |
 | `src/lib/browser/turn.js` | the protocol alone: instantiate, write 56-byte events, validate and read records, take requests, grow memory and copy answers; shared by both hosts |
-| `src/lib/browser/host.js` | the browser host, on the main thread: WebGPU draws lit triangles with a depth test and a selected-triangle color, and resizes its depth texture with the canvas. It presents the validated tree with keyboard-accessible native buttons, preserves expansion on identical tree updates, and sends selected row keys as control events. Canvas pointer capture delivers drag and release, including cancellation; wheel deltas are normalized to device pixels, canvas keydown sends `KeyboardEvent.key`, and `ResizeObserver` sends size changes. The canvas suppresses its context menu and wheel scrolling. Enter in the separate field submits typed text |
-| `src/lib/browser/index.html` | the page: a scene tree to the left of a focusable canvas, text field in a form, text element and `host.js`; it loads `/module.wasm`, and the field is disabled until the host listens to it |
+| `src/lib/browser/host.js` | the browser host, on the main thread: WebGPU draws lit triangles with a depth test and a selected-triangle color, and resizes its depth texture with the canvas. It displays SVG through an inert image element in the same viewport. It presents the validated tree with keyboard-accessible native buttons, preserves expansion on identical tree updates, and sends selected row keys as control events. Canvas pointer capture delivers drag and release, including cancellation; wheel deltas are normalized to device pixels, canvas keydown sends `KeyboardEvent.key`, and `ResizeObserver` sends size changes. The canvas suppresses its context menu and wheel scrolling. Enter in the separate field submits typed text |
+| `src/lib/browser/index.html` | the page: a scene tree to the left of a viewport containing a focusable canvas and any SVG image, text field in a form, text element and `host.js`; it loads `/module.wasm`, and the field is disabled until the host listens to it |
 | `src/lib/browser/host-cli.mjs` | the bun runner for tests, below; it proves no rendering |
 | `src/lib/browser/host.f` | package `BROWSER-HOST`, which serves the page |
 
@@ -202,7 +226,8 @@ prints one line per record, a request's when the host makes it: `hello`,
 `fetch <path>`, `post <path> <length> <body in hex>`,
 `request <method> <path> <ID> <length> <body in hex>`,
 `tree <selected> <JSON>`, `highlight <count> <mask in hex>`,
-`draw <count> <mask in hex>` and `text <string>`; the mask is omitted for a
+`draw <count> <mask in hex>`, `svg <length> <bytes in hex>`, `input 0` or
+`input 1`, and `text <string>`; the mask is omitted for a
 zero-triangle draw or highlight. At the end, `outstanding fetch <path>`,
 `outstanding post <path>` or `outstanding request <method> <path> <ID>` appears
 for each request no step answered. Each failure is
@@ -296,6 +321,25 @@ later turn still runs. Tagged requests start ahead of a legacy post from the
 same run, a legacy reply posts again, and legacy replies keep their zero
 fields. Fourteen malformed request records are refused before any reaches the
 host.
+
+`test/browser/display-test.f` builds the checked `display.f` fixture and runs
+`display-peer.mjs` against the production turn protocol and CLI. It checks SVG
+bytes across source mutation and memory growth, valid input flags, rejected
+spans, empty SVG, reserved fields and invalid input flags. It runs in the Wasm
+device check. The printed directory retains the module and exact CLI output.
+The foreign peer also supports a headless Chrome check, using one shared server
+and an isolated browser profile without touching existing browser sessions:
+
+```sh
+bun test/browser/display-peer.mjs <display.wasm> <output-directory> --chrome <chrome-executable>
+```
+
+This checks actual SVG decoding and rendered pixels, aspect-preserving fit,
+stable canvas dimensions, replacement and zero/nonzero draw clearing, Blob URL
+revocation, stale callbacks, visible decoding errors, and enabled/disabled form
+submission. The SVG fixture includes script, a link and an external image;
+none runs, navigates or fetches. PNGs, DOM state and the Chrome log stay in the
+output directory.
 
 `src/lib/browser/host-test.f` (gate row `browser-host`) starts Habu's HTTP server
 with `BROWSER-HOST:ROUTES` on a loopback port, and CURL checks that `/`,

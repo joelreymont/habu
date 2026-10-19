@@ -1,6 +1,6 @@
 // host.js - the browser host (docs/browser-host.md): runs /module.wasm's turns
 // through turn.js on the main thread, draws its triangles with WebGPU, shows
-// its text and tree, and sends canvas input and the text entered in the field.
+// SVG images, its text and tree, and sends canvas input and text from the field.
 // A failure to start WebGPU, request, grow memory or run is shown in text.
 import { Module } from "./turn.js";
 
@@ -8,6 +8,7 @@ const canvas = document.querySelector("canvas");
 const field = document.querySelector("input");
 const shown = document.querySelector("#text");
 const tree = document.querySelector("#tree");
+const viewport = document.querySelector("#viewport");
 
 function show(s, error) {
   shown.textContent = s;
@@ -220,6 +221,31 @@ async function main() {
   const renderer = await gpu();
   const answer = await fetch("/module.wasm");
   if (!answer.ok) throw new Error(`/module.wasm: ${answer.status} ${answer.statusText}`);
+  let image = null;
+  const clearImage = () => {
+    if (image) {
+      const old = image;
+      image = null;
+      old.remove();
+      URL.revokeObjectURL(old.src);
+    }
+    // Visibility keeps the canvas's layout and drawing-buffer size stable.
+    canvas.style.visibility = "visible";
+  };
+  const svg = (bytes) => {
+    clearImage();
+    const next = document.createElement("img");
+    next.alt = "SVG image";
+    next.onerror = () => {
+      if (image === next) fail(new Error("SVG image could not be decoded"));
+    };
+    image = next;
+    // An img uses SVG's secure image mode: no scripts, external resources or
+    // document interaction. Never insert the supplied markup into the DOM.
+    next.src = URL.createObjectURL(new Blob([bytes], { type: "image/svg+xml" }));
+    canvas.style.visibility = "hidden";
+    viewport.append(next);
+  };
   const updateTree = sceneTree((key) => module.control(key).catch(fail));
   const module = await Module.load(await answer.arrayBuffer(), {
     hello: () => {},
@@ -240,7 +266,9 @@ async function main() {
       return { status: r.status, bytes: new Uint8Array(await r.arrayBuffer()) };
     },
     error: fail,
-    draw: renderer.draw,
+    draw: (...args) => { clearImage(); renderer.draw(...args); },
+    svg,
+    input: (enabled) => { field.disabled = !enabled; },
     text: (s) => show(s, false),
     tree: updateTree,
     highlight: () => {},
@@ -288,10 +316,12 @@ async function main() {
   // listener would submit the page.
   field.form.addEventListener("submit", (e) => {
     e.preventDefault();
+    if (field.disabled) return;
     const text = field.value;
     field.value = "";
     module.typed(text).catch(fail);
   });
+  // Enable only before start: its first records may immediately disable it.
   field.disabled = false;
   const started = module.start();
   const resize = () => {

@@ -29,7 +29,8 @@
 // line per record, a request's when the host makes it: hello, fetch <path>,
 // post <path> <length> <body in hex>, request <method> <path> <id> <length>
 // <hex>, tree <selected> <JSON>, highlight <count> <mask in hex>, draw <count>
-// <mask in hex>, text <string>. At the end, outstanding <fetch|post> <path>
+// <mask in hex>, svg <length> <bytes in hex>, input <0|1>, text <string>.
+// At the end, outstanding <fetch|post> <path>
 // or outstanding request <method> <path> <id>.
 // It
 // draws nothing. Each failure is printed on stderr as it happens, such as
@@ -203,6 +204,8 @@ try {
     tree: (rows, selected) => console.log(`tree ${selected} ${JSON.stringify(rows)}`),
     highlight: (mask) =>
       console.log(`highlight ${mask.length}${mask.length ? ` ${Buffer.from(mask).toString("hex")}` : ""}`),
+    svg: (bytes) => console.log(`svg ${bytes.length} ${Buffer.from(bytes).toString("hex")}`),
+    input: (enabled) => console.log(`input ${enabled ? 1 : 0}`),
     text: (s) => console.log(`text ${s}`),
     size: () => state.size,
   });
