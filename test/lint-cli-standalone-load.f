@@ -20,8 +20,10 @@
 \ a saturated box came to be reported as a dead lint entry: the failure read
 \ "expected true got false" and named neither the deadline nor the fact that one
 \ was hit (dot habu-un-flake-lint-2535cef6). Exit, signal and timeout each get
-\ their own verdict below, and a timeout is recorded as a timeout naming the entry
-\ and the budget it burned.
+\ their own verdict below. A timeout is the row's deadline, not a failure: it names
+\ the entry and the budget it burned, prints the capture drained before the
+\ deadline and throws E-PROC-TIMEOUT, so the pool reports the row as
+\ TIMEOUT-UNDER-LOAD (docs/gate.md).
 \
 \ The entry list is DERIVED each run by walking tools/ and keeping the flat
 \ tools/<name>-lint.f entries. Nested tools/lint/<name>-lint.f helpers are library
@@ -39,6 +41,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/argv.f
 require src/lib/test.f
+require src/lib/test/outcome.f
 require src/lib/engine-candidate.f
 
 package LINT-CLI-STANDALONE-LOAD
@@ -110,14 +113,11 @@ variable PATHS-USED
    ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  ms >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
-: DROP-LENS ( len len -- )
-   LEN>N drop LEN>N drop ;
-
-\ Its own failure kind, not an assertion that happened to go false: the entry and
-\ the budget it burned are the two facts needed to tell a slow box from a hang, so
-\ both go into the label and therefore into the machine-readable TFAIL record a
-\ gate log is read with, not only into an adjacent printed line. LOAD-VERDICT
-\ then throws E-PROC-TIMEOUT, so the pool reports the row as a timeout.
+\ The case label of a child that passed its deadline: the entry and the budget it
+\ burned are the two facts needed to tell a slow box from a hang. The deadline is
+\ the row's, not a failure: LOAD-VERDICT prints this label, the program and the
+\ capture through T-TIMED-OUT, which throws E-PROC-TIMEOUT, so the pool reports
+\ the row as a timeout.
 : OVER-BUDGET$ ( ptr u8 n n -- ptr u8 n ) {: p:ptr u:n ms:n :}
    SB-RESET
    p u SB-APPEND
@@ -133,12 +133,6 @@ variable PATHS-USED
    sig FMT:SB-U
    SB$ ;
 
-: TIMED-OUT ( ptr u8 n n -- )
-   T-NEXT
-   OVER-BUDGET$ T-LABEL
-   s" timeout" T-FAIL-AS
-   T-LABEL-CLEAR ;
-
 : SIGNALLED ( ptr u8 n n -- )
    T-NEXT
    ON-SIGNAL$ T-LABEL
@@ -147,14 +141,15 @@ variable PATHS-USED
 
 \ The budget is a parameter so the suite can drive this exact word - the one the
 \ real legs run - with a budget no child can meet and check the verdict it makes.
-: LOAD-VERDICT ( ptr u8 n n -- ) {: p:ptr u:n ms:n :}
-   p u ms SPAWN
-   MATCH outcome
+: LOAD-VERDICT ( ptr u8 n n -- )
+   {: p:ptr u:n ms:n :}
+   p u ms SPAWN {: outu:len erru:len oc :}
+   oc MATCH outcome
      exited   OF {: rc:n :} p u T-LABEL rc REJECT-RC <> TTRUE ENDOF
      signaled OF {: sig:n :} p u sig SIGNALLED ENDOF
-     timeout  OF p u ms TIMED-OUT E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   DROP-LENS ;
+     timeout  OF p u ms OVER-BUDGET$ T-LABEL
+        p u OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : LOADS ( ptr u8 n -- )
    TIMEOUT-MS LOAD-VERDICT ;
@@ -165,16 +160,15 @@ variable PATHS-USED
       1+
    repeat drop ;
 
-\ ---- fixture: a timeout is its own verdict ---------------------------------
+\ ---- fixture: a timeout is the row's deadline ------------------------------
 \ The distinction this suite exists to make is between an entry that never
 \ finished loading and one that merely ran out of wall clock, so the timeout path
 \ is exercised rather than assumed. A discovered entry is spawned through the same
-\ LOAD-VERDICT the real legs use, with a budget nothing can meet, and the record
-\ it produces is checked: kind `timeout`, and a label naming that entry and the
-\ budget it burned, then the E-PROC-TIMEOUT it throws so the pool reports the row
-\ as a timeout. It records one deliberate failure and clears it, which is the
-\ src/lib/test/assert-test.f convention for testing a failure path; it runs before
-\ anything else so the reset cannot erase a real one.
+\ LOAD-VERDICT the real legs use, with a budget nothing can meet. The deadline is
+\ the row's, not a failure: the verdict counts no failure, leaves a case label
+\ naming that entry and the budget it burned, and throws E-PROC-TIMEOUT so the
+\ pool reports the row as a timeout. It runs first and owns the suite's T-RESET,
+\ so the failure count it reads starts at zero.
 1 constant UNMEETABLE-MS
 256 constant GOT-CAP
 create GOT-BUF GOT-CAP allot
@@ -204,14 +198,12 @@ variable GOT-U
    PATHS-N @ 0 <= if E-TBL-BOUNDS throw then
    T-RESET
    [: 0 PATH$ UNMEETABLE-MS LOAD-VERDICT ;] catch {: code:n :}
-   TREC$ GOT!
-   T-CASES {: id:n :}
+   T-LABEL$ GOT!
    T-FAILURES {: fails:n :}
-   T-RESET                                   \ drop the deliberate failure, THEN judge it,
-   s" timeout verdict record" T-LABEL        \ so a verdict that came out wrong survives
-   GOT$  s" timeout" id  0 PATH$ UNMEETABLE-MS WANT-LABEL$  TREC-FAIL$  T$=
-   s" timeout counts as exactly one failure" T-LABEL
-   fails 1 T=
+   s" timeout case label" T-LABEL
+   GOT$  0 PATH$ UNMEETABLE-MS WANT-LABEL$  T$=
+   s" timeout counts no failure" T-LABEL
+   fails 0 T=
    s" timeout throws E-PROC-TIMEOUT" T-LABEL
    code E-PROC-TIMEOUT T= ;
 
