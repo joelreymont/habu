@@ -240,6 +240,17 @@ public
 : DIV ( r r -- r ) f/ ;
 : EQUAL? ( r r -- bool ) f= ;
 
+\ IEEE 754-2019 maximumNumber: the larger of two numbers, with +0 above -0 in
+\ either order. A NaN operand yields the other operand, so only two NaNs yield
+\ a NaN, and that one quiet: their sum. It never throws. Equal operands differ
+\ at most in the sign of zero.
+: FMAX ( r r -- r )
+   {: a:r b:r :}
+   a a f= 0= if b b f= if b else a b f+ then exit then
+   b b f= 0= if a exit then
+   a b f= if a IEEE754:F64>BITS 0< if b else a then exit then
+   a b f> if a else b then ;
+
 \ Compare the fractional part before rounding; adding 0.5 first can round a
 \ binary64 value immediately below the halfway point up to the next integer.
 : FROUND ( r -- n ) {: value:r :}
