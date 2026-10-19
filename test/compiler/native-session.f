@@ -44,6 +44,10 @@ variable RC     variable EXITED
 
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 
+: SOURCE-BEGIN ( -- )
+   SB-RESET
+   S\" : ZFLAG. ( bool -- ) if -1 else 0 then . ;\n" SB-APPEND ;
+
 : STORE! ( len len outcome ptr u8 n -- )
    {: outu:len erru:len oc src:ptr srcu:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
@@ -83,15 +87,16 @@ variable RC     variable EXITED
    SB$ ;
 
 \ A definition the checker refuses, evaluated under a catch so the load goes on.
-\ The refusals are interpreted at top level rather than wrapped in a helper,
-\ because the helper would be one more definition and the case is about what
-\ the REFUSED one leaves behind.
+\ TEST-EVAL:RC is the typed recovery boundary; the refused definition is the
+\ only definition the evaluated text adds to this compiler session.
 : REFUSAL ( n -- ) {: k:n :}
    S\" s\q : ZBAD" SB-APPEND  k FMT:SB-U
-   S\"  ( n -- n n ) dup * ;\q ' evaluate catch drop\n" SB-APPEND ;
+   S\"  ( n -- n n ) dup * ;\q ZREFUSE\n" SB-APPEND ;
 
 : REFUSED-SRC$ ( n -- ptr u8 n ) {: many:n :}
    SB-RESET
+   S\" require src/lib/test/eval.f\n" SB-APPEND
+   S\" : ZREFUSE ( ptr u8 n -- ) TEST-EVAL:RC 70 <> if 1 throw then ;\n" SB-APPEND
    S\" 1 set-tier\n" SB-APPEND
    S\" : ZA ( -- n ) 1 ;\n" SB-APPEND
    many 0 ?do i REFUSAL loop
@@ -120,13 +125,13 @@ variable RC     variable EXITED
 \ the first capture after the first tier-1 definition would refuse. That is
 \ exactly what this runs: a definition, then the capture sequence, in the child.
 : CAPTURE-SRC$ ( -- ptr u8 n )
-   SB-RESET
+   SOURCE-BEGIN
    S\" 1 set-tier\n" SB-APPEND
    S\" : ZC1 ( -- n ) 1 ;\n" SB-APPEND
    S\" 0 set-tier\n" SB-APPEND
    S\" IMAGE-LIFECYCLE:PREPARE\n" SB-APPEND
    S\" NCOMP:CAPTURE-PREPARE\n" SB-APPEND
-   S\" IR-CTX:SESSION-LIVE? . ZC1 . cr\n" SB-APPEND
+   S\" IR-CTX:SESSION-LIVE? ZFLAG. ZC1 . cr\n" SB-APPEND
    SB$ ;
 
 \ WHAT A LIVE SESSION COSTS A DEFINITION'S ARENAS, counted through the real
@@ -138,7 +143,7 @@ variable RC     variable EXITED
 \ worth, and sixteen times what the whole registry held - with no session
 \ standing and then with one, and both answer the same number.
 : SLOTS-SRC$ ( -- ptr u8 n )
-   SB-RESET
+   SOURCE-BEGIN
    S\" package ZSLOT\n" SB-APPEND
    S\" public\n" SB-APPEND
    S\" 1000 constant WANT\n" SB-APPEND
@@ -150,7 +155,7 @@ variable RC     variable EXITED
    S\" 1 set-tier\n" SB-APPEND
    S\" : ZL1 ( -- n ) 1 ;\n" SB-APPEND
    S\" 0 set-tier\n" SB-APPEND
-   S\" ZSLOT:COUNT . IR-CTX:SESSION-LIVE? . cr\n" SB-APPEND
+   S\" ZSLOT:COUNT . IR-CTX:SESSION-LIVE? ZFLAG. cr\n" SB-APPEND
    SB$ ;
 
 \ THE FLAGS GO OUT WITH THE SESSION. IMAGE-LIFECYCLE:PREPARE is one entry point
@@ -161,16 +166,16 @@ variable RC     variable EXITED
 \ E-IR-ARENA-STALE. The stand-down now belongs to the close itself, so a bare
 \ PREPARE leaves no such claim, and the next definition opens a fresh session.
 : STANDDOWN-SRC$ ( -- ptr u8 n )
-   SB-RESET
+   SOURCE-BEGIN
    S\" 1 set-tier\n" SB-APPEND
    S\" : ZW1 ( -- n ) 1 ;\n" SB-APPEND
    S\" 0 set-tier\n" SB-APPEND
    S\" IMAGE-LIFECYCLE:PREPARE\n" SB-APPEND
-   S\" HIR-WORD:SESSION-ROWS . IR-CTX:SESSION-LIVE? . cr\n" SB-APPEND
+   S\" HIR-WORD:SESSION-ROWS . IR-CTX:SESSION-LIVE? ZFLAG. cr\n" SB-APPEND
    S\" 1 set-tier\n" SB-APPEND
    S\" : ZW2 ( -- n ) 2 ;\n" SB-APPEND
    S\" 0 set-tier\n" SB-APPEND
-   S\" HIR-WORD:SESSION-ROWS HIR-WORD:WORDS = . ZW2 . cr\n" SB-APPEND
+   S\" HIR-WORD:SESSION-ROWS HIR-WORD:WORDS = ZFLAG. ZW2 . cr\n" SB-APPEND
    SB$ ;
 
 \ A SESSION OPENED INSIDE A CALLER'S OWN CONTEXT IS A NAMED REFUSAL. A session
@@ -180,7 +185,7 @@ variable RC     variable EXITED
 \ SIGSEGV. The definition is refused instead, and the load carries on: no session
 \ stands afterwards and the next definition compiles and runs.
 : NESTED-SRC$ ( -- ptr u8 n )
-   SB-RESET
+   SOURCE-BEGIN
    S\" package ZNEST\n" SB-APPEND
    S\" public\n" SB-APPEND
    S\" : BODY ( IR-CTX:ctx -- )\n" SB-APPEND
@@ -191,7 +196,7 @@ variable RC     variable EXITED
    S\" 1 set-tier\n" SB-APPEND
    S\" ZNEST:RUN\n" SB-APPEND
    S\" 0 set-tier\n" SB-APPEND
-   S\" IR-CTX:SESSION-LIVE? .\n" SB-APPEND
+   S\" IR-CTX:SESSION-LIVE? ZFLAG.\n" SB-APPEND
    S\" 1 set-tier\n" SB-APPEND
    S\" : ZN2 ( -- n ) 5 ;\n" SB-APPEND
    S\" 0 set-tier\n" SB-APPEND
@@ -202,7 +207,7 @@ variable RC     variable EXITED
 \ The next real tier-1 definition checks both dialect prototypes through their
 \ interning counters; a successful retry then stands the flags down.
 : CLOSE-PREFIX ( -- )
-   SB-RESET
+   SOURCE-BEGIN
    S\" require src/lib/task.f\n" SB-APPEND
    S\" require src/compiler/session/lease.f\n" SB-APPEND
    S\" 1 set-tier\n" SB-APPEND
@@ -212,13 +217,13 @@ variable RC     variable EXITED
 
 : CLOSE-SUFFIX ( -- ptr u8 n )
    S\" ;package\nZCLOSE:RUN\n" SB-APPEND
-   S\" IR-CTX:SESSION-LIVE? .\n" SB-APPEND
-   S\" HIR-WORD:SESSION-ROWS HIR-WORD:WORDS = .\n" SB-APPEND
+   S\" IR-CTX:SESSION-LIVE? ZFLAG.\n" SB-APPEND
+   S\" HIR-WORD:SESSION-ROWS HIR-WORD:WORDS = ZFLAG.\n" SB-APPEND
    S\" HIR:MISSES-CLEAR A64IR:MISSES-CLEAR\n" SB-APPEND
    S\" 1 set-tier\n: ZC2 ( -- n ) 2 ;\n0 set-tier\n" SB-APPEND
    S\" HIR:MISSES . A64IR:MISSES .\n" SB-APPEND
    S\" IR-CTX:SESSION-CLOSE\n" SB-APPEND
-   S\" IR-CTX:SESSION-LIVE? . HIR-WORD:SESSION-ROWS .\n" SB-APPEND
+   S\" IR-CTX:SESSION-LIVE? ZFLAG. HIR-WORD:SESSION-ROWS .\n" SB-APPEND
    S\" ZC1 ZC2 + . cr\n" SB-APPEND
    SB$ ;
 
@@ -228,9 +233,8 @@ variable RC     variable EXITED
    S\" : ATTEMPT ( -- ) [: IR-CTX:SESSION-CLOSE ;] catch TASK:RETURN ;\n" SB-APPEND
    S\" : JOIN-UNWRAP ( result<n,n> -- n n )\n" SB-APPEND
    S\"    MATCH result ok OF 0 ENDOF err OF 1 ENDOF ;MATCH ;\n" SB-APPEND
-   S\" : FLAG. ( bool -- ) if -1 else 0 then . ;\n" SB-APPEND
    S\" : RUN ( -- ) ['] ATTEMPT WORKER TASK:ACTIVATE\n" SB-APPEND
-   S\"    WORKER TASK:JOIN JOIN-UNWRAP 0 = FLAG. NLEASE:E-TASK = FLAG. ;\n" SB-APPEND
+   S\"    WORKER TASK:JOIN JOIN-UNWRAP 0 = ZFLAG. NLEASE:E-TASK = ZFLAG. ;\n" SB-APPEND
    CLOSE-SUFFIX ;
 
 : ROOT-CLOSE-SRC$ ( -- ptr u8 n )
@@ -238,7 +242,7 @@ variable RC     variable EXITED
    S\" : ATTEMPT ( NLEASE:lease -- n )\n" SB-APPEND
    S\"    drop [: IR-CTX:SESSION-CLOSE ;] catch ;\n" SB-APPEND
    S\" : RUN ( -- ) [: ATTEMPT ;] NLEASE:WITH NLEASE:E-BUSY =\n" SB-APPEND
-   S\"    if -1 else 0 then . ;\n" SB-APPEND
+   S\"    ZFLAG. ;\n" SB-APPEND
    CLOSE-SUFFIX ;
 
 : SESSION-CASES ( -- )

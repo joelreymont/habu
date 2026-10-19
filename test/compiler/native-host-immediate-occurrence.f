@@ -12,6 +12,7 @@ variable CUT
 variable COUNT
 variable PRIOR
 variable PRIOR-HOOK
+variable CODE
 
 : RETIRE ( ptr u8 n ptr u8 n n -- )
    drop 2drop 2drop
@@ -37,9 +38,9 @@ T-RESET
 s" immediate preserves occurrence across preflight" T-LABEL
 PRIOR!
 0 set-check PRIOR-HOOK @ set-check ' RETIRE set-preflight
-' TRIGGER catch
+' TRIGGER catch CODE !
 0 set-check PRIOR-HOOK @ set-check PRIOR @ set-preflight
-DEF-OCC:E-STALE T=
+CODE @ DEF-OCC:E-STALE T=
 RAN @ 0 T=
 T-REPORT
 

@@ -94,7 +94,7 @@ variable EXITED
 \ are what change between them. A quotation captures nothing, so the operands
 \ travel through variables rather than on the stack.
 : PROLOGUE$ ( -- ptr u8 n )
-   S\" 1 set-tier\nvariable A\nvariable B\nvariable R\n: DZ ( n n -- n ) / ;\n: DM ( n n -- n ) mod ;\n0 set-tier\n: TRY ( -- n ) [: A @ B @ DZ R ! ;] catch ;\n: TRYM ( -- n ) [: A @ B @ DM R ! ;] catch ;\n" ;
+   S\" : FLAG. ( bool -- ) if -1 else 0 then . ;\n1 set-tier\nvariable A\nvariable B\nvariable R\n: DZ ( n n -- n ) / ;\n: DM ( n n -- n ) mod ;\n0 set-tier\n: TRY ( -- n ) [: A @ B @ DZ R ! ;] catch ;\n: TRYM ( -- n ) [: A @ B @ DM R ! ;] catch ;\n" ;
 
 \ Literal divisors exercise the selector's scalar proof through the real native
 \ load path. Expected decimal output is supplied by the test, not computed by
@@ -246,7 +246,7 @@ public
    S\" 3\n-3\n-3\n" ASSERT-OK
 
    s" MIN-N -1 is still the modular answer and not a second refusal" T-LABEL
-   S\" $8000000000000000 -1 DZ $8000000000000000 = . $8000000000000000 -1 DM . cr\n"
+   S\" $8000000000000000 -1 DZ $8000000000000000 = FLAG. $8000000000000000 -1 DM . cr\n"
    PROGRAM RUN  S\" -1\n0\n" ASSERT-OK
 
    s" literal zero division and remainder retain catchable refusal" T-LABEL
