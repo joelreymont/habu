@@ -621,7 +621,8 @@ $2710 constant PARK-MS            \ far past every stop bound
 \ be reduced. libcurl answers 28 only when a wall-clock limit expired; these
 \ handles set none, so it is libcurl's default 300 s connect timeout, met by a
 \ starved or stopped process. A deadline is no assertion result (docs/gate.md):
-\ it is thrown as E-PROC-TIMEOUT. Every other failure answers -2, a fault.
+\ the wait names itself on stdout and throws E-PROC-TIMEOUT. Every other
+\ failure answers -2, a fault.
 : TAKE-RESPONSE ( CURL:handle -- n ) {: subject:CURL:handle :}
    subject RES-BUF RES-CAP >LEN CURL:PERFORM
    MATCH CURL:fetch-result
@@ -634,7 +635,9 @@ $2710 constant PARK-MS            \ far past every stop bound
          rc CURL:CODE>N FMT:SB-U
          S\" \n" SB-APPEND
          2 SB$ write drop
-         rc CURL:CODE>N CURLE-TIMED-OUT = if E-PROC-TIMEOUT throw then
+         rc CURL:CODE>N CURLE-TIMED-OUT = if
+            s" http-test TAKE-RESPONSE" TEST-WAIT:EXPIRED
+         then
          0 RES-U ! -2 ENDOF
    ;MATCH ;
 
@@ -727,20 +730,18 @@ $7D0 constant COLLECT-MS          \ a loopback answer that slow is a hang
 
 
 \ Waits until a read on the connection would not block: bytes, the end of the
-\ stream or a failure. The server ends the wait, so past COLLECT-MS it throws
-\ E-PROC-TIMEOUT rather than hang the suite (docs/gate.md).
-: RAW-AWAIT ( TCP4:connection -- ) {: conn:TCP4:connection :}
-   mono-ns COLLECT-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      conn TCP4:READABLE?
+\ stream or a failure. The server ends the wait, so past COLLECT-MS the wait
+\ names itself and throws E-PROC-TIMEOUT rather than hang the suite
+\ (docs/gate.md).
+: RAW-AWAIT ( TCP4:connection -- )
+   [: dup TCP4:READABLE?
       MATCH TCP4:ready-result
          ready OF true ENDOF
          idle OF false ENDOF
          failed OF drop true ENDOF
-      ;MATCH if exit then
-      mono-ns deadline >= if E-PROC-TIMEOUT throw then
-      TASK:PAUSE
-   again ;
+      ;MATCH ;]
+   mono-ns COLLECT-MS NS-PER-MS * + s" http-test RAW-AWAIT" TEST-WAIT:POLL
+   drop ;
 
 
 \ Reads until the answer carries the marker, on a connection the server keeps
@@ -1472,14 +1473,10 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 
 
 \ Waits until the worker is inside the parked handler before stopping it; past
-\ COLLECT-MS it throws E-PROC-TIMEOUT.
+\ COLLECT-MS the wait names itself and throws E-PROC-TIMEOUT.
 : PARK-AWAIT ( -- )
-   mono-ns COLLECT-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      PARKED @ 0 <> if exit then
-      mono-ns deadline >= if E-PROC-TIMEOUT throw then
-      TASK:PAUSE
-   again ;
+   [: PARKED @ 0 <> ;]
+   mono-ns COLLECT-MS NS-PER-MS * + s" http-test PARK-AWAIT" TEST-WAIT:POLL ;
 
 
 \ Timeout and STOP can interrupt an allocated body. The same worker slot then
@@ -1873,14 +1870,11 @@ variable OPENED                   \ the peers whose connect succeeded, first in 
 
 
 \ Waits until the listener has taken n connections since its server started;
-\ past COLLECT-MS it throws E-PROC-TIMEOUT.
-: TAKEN-AWAIT ( n -- ) {: want:n :}
-   mono-ns COLLECT-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      HTTP-TEST:TAKEN want >= if exit then
-      mono-ns deadline >= if E-PROC-TIMEOUT throw then
-      TASK:PAUSE
-   again ;
+\ past COLLECT-MS the wait names itself and throws E-PROC-TIMEOUT.
+: TAKEN-AWAIT ( n -- )
+   [: HTTP-TEST:TAKEN over >= ;]
+   mono-ns COLLECT-MS NS-PER-MS * + s" http-test TAKEN-AWAIT" TEST-WAIT:POLL
+   drop ;
 
 
 \ Opens a peer that says nothing, kept only when its connect succeeded.
@@ -1968,14 +1962,12 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
    again ;
 
 
-\ Waits until the task has ended; past COLLECT-MS it throws E-PROC-TIMEOUT.
-: TASK-AWAIT ( ptr n -- ) {: tcb:ptr :}
-   mono-ns COLLECT-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      tcb TASK:DONE? if exit then
-      mono-ns deadline >= if E-PROC-TIMEOUT throw then
-      TASK:PAUSE
-   again ;
+\ Waits until the task has ended; past COLLECT-MS the wait names itself and
+\ throws E-PROC-TIMEOUT.
+: TASK-AWAIT ( ptr n -- )
+   [: dup TASK:DONE? ;]
+   mono-ns COLLECT-MS NS-PER-MS * + s" http-test TASK-AWAIT" TEST-WAIT:POLL
+   drop ;
 
 
 \ A peer that reads its answer to the end of the stream and then keeps sending
