@@ -157,6 +157,47 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    s" new" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN   \ re-fills from offset 0
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" new" T$= ;
 
+\ ---- append with substitution: every old replaced by new, after the active bytes
+: BUFT-APPEND-REPLACED ( -- )
+   4 BUFT-FRESH
+   s" pre" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" ab-cd-ef" s" -" s" +++" BUFT-BUF BUF:APPEND-REPLACED 2 T=      \ grows across the pieces
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" preab+++cd+++ef" T$=
+   8 BUFT-FRESH
+   s" xx-yy-" s" -" s" " BUFT-BUF BUF:APPEND-REPLACED 2 T=          \ an empty new removes every old
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" xxyy" T$=
+   BUFT-BUF BUF:CLEAR
+   s" --a--" s" --" s" x" BUFT-BUF BUF:APPEND-REPLACED 2 T=         \ old at both ends
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" xax" T$=
+   BUFT-BUF BUF:CLEAR
+   s" aaa" s" aa" s" b" BUFT-BUF BUF:APPEND-REPLACED 1 T=           \ non-overlapping, as COUNT-SUB counts
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" ba" T$=
+   BUFT-BUF BUF:CLEAR
+   s" abc" s" z" s" q" BUFT-BUF BUF:APPEND-REPLACED 0 T=            \ absent old: the text as it is
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abc" T$=
+   BUFT-BUF BUF:CLEAR
+   s" abc" s" " s" q" BUFT-BUF BUF:APPEND-REPLACED 0 T=             \ empty old: COUNT-SUB's zero
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abc" T$=
+   s" -" s" -" BUFT-BUF BUF:SPAN$ BUFT-BL>RAW drop 1 + 0
+   BUFT-BUF BUF:APPEND-REPLACED 1 T=                                \ an empty new inside overlaps nothing
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abc" T$= ;
+
+\ An operand inside the buffer's mapping would dangle once an append grew it.
+: BUFT-REPLACED-SELF ( -- )
+   4 BUFT-FRESH
+   s" a-b" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" -" s" +" BUFT-BUF BUF:APPEND-REPLACED drop ;
+
+\ So would one that starts below the mapping and runs into it.
+: BUFT-REPLACED-STRADDLE ( -- )
+   4 BUFT-FRESH
+   s" a-b" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW drop 1 - 2 s" -" s" +" BUFT-BUF BUF:APPEND-REPLACED drop ;
+
+: BUFT-REPLACED-NEG ( n n n -- )
+   {: tu:n ou:n nu:n :}
+   s" a-b" drop tu s" -" drop ou s" +" drop nu BUFT-BUF BUF:APPEND-REPLACED drop ;
+
 \ ---- release / dispose lifecycle (address reuse proves the mapping was freed) ---
 : BUFT-GROW-RELEASES ( -- )                       \ a grow frees the prior mapping
    BUFT-CAP0 BUFT-REL-INIT
@@ -251,6 +292,9 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 : BUFT-USE-CLEAR ( -- )
    BUFT-CAP0 BUFT-REL-INIT  BUFT-REL-BUF BUF:DISPOSE
    BUFT-REL-BUF BUF:CLEAR ;
+: BUFT-USE-REPLACED ( -- )
+   BUFT-CAP0 BUFT-REL-INIT  BUFT-REL-BUF BUF:DISPOSE
+   s" a-b" s" -" s" +" BUFT-REL-BUF BUF:APPEND-REPLACED drop ;
 : BUFT-INIT-LIVE-REJECTS ( -- )
    BUFT-REL-BUF BUF:DISPOSE
    BUFT-CAP0 BUFT-REL-INIT                          \ header now owns a live mapping
@@ -306,6 +350,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-ENSURE
    BUFT-REPLACE
    BUFT-CLEAR
+   BUFT-APPEND-REPLACED
    \ ---- release / dispose lifecycle -------------------------------------------
    BUFT-GROW-RELEASES
    BUFT-DISPOSE-RELEASES
@@ -319,10 +364,19 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    [: BUFT-USE-ENSURE-ZERO ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-LEN ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-CLEAR ;] E-BUF-STATE TTHROWSQ
+   [: BUFT-USE-REPLACED ;] E-BUF-STATE TTHROWSQ
    [: BUFT-INIT-LIVE-REJECTS ;] E-BUF-STATE TTHROWSQ
    \ ---- capacity / bounds refusals --------------------------------------------
    [: BUFT-CAP-ZERO ;] E-BUF-CAPACITY TTHROWSQ
    [: BUFT-APPEND-OVERFLOW ;] E-BUF-CAPACITY TTHROWSQ
+   [: BUFT-REPLACED-SELF ;] E-BUF-BOUNDS TTHROWSQ
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" a-b" T$=                        \ refused before a byte moved
+   [: BUFT-REPLACED-STRADDLE ;] E-BUF-BOUNDS TTHROWSQ
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" a-b" T$=
+   [: -1 1 1 BUFT-REPLACED-NEG ;] E-STR-BOUNDS TTHROWSQ
+   [: 3 -1 1 BUFT-REPLACED-NEG ;] E-STR-BOUNDS TTHROWSQ
+   [: 3 1 -1 BUFT-REPLACED-NEG ;] E-STR-BOUNDS TTHROWSQ
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" a-b" T$=
    BUFT-GROW-OVER-READ
    BUFT-REL-BUF BUF:DISPOSE                                          \ the refused grow left the buffer owned
    \ ---- scale + property ------------------------------------------------------

@@ -30,6 +30,8 @@
 require src/lib/errors.f
 require src/lib/memory.f
 require src/lib/span.f
+require src/lib/string.f
+require src/lib/adt/option.f
 
 package BUF
 private
@@ -206,6 +208,24 @@ private
    src u buf BUF-SPAN SPAN:COPY
    u buf SET-LEN ;
 
+\ ---- append with substitution ------------------------------------------------
+\ An operand overlapping the owned mapping would dangle once an append grew it.
+: BORROWED? ( ptr u8 n ptr a -- bool )
+   {: p:ptr u:n buf:ptr :}
+   p buf DATA@ - {: off:n :}
+   u 0 > off buf CAP-RAW@ < and off u + 0 > and ;
+
+\ Appends text[at, hit) and new for the first old at or after at and answers
+\ the offset past that old and true; with no old left, appends the rest and
+\ answers at and false.
+: APPEND-UNTIL-OLD ( ptr u8 n ptr u8 n ptr u8 n ptr a n -- n bool )
+   {: text:ptr tu:n old:ptr ou:n new:ptr nu:n buf:ptr at:n :}
+   text tu old ou at FIND-SUB-FROM MATCH option
+      none OF text at + tu at - buf APPEND-SPAN-RAW at false ENDOF
+      some OF IDX>N dup at - text at + swap buf APPEND-SPAN-RAW
+              new nu buf APPEND-SPAN-RAW ou + true ENDOF
+   ;MATCH ;
+
 public
 
 \ ---- header size the caller allots for one buffer ------------------------------
@@ -243,5 +263,15 @@ public
    src u BLEN>N buf APPEND-SPAN-RAW ;
 : REPLACE ( ptr u8 NUM:byte-len ptr a -- ) {: src:ptr u:NUM:byte-len buf:ptr :}
    src u BLEN>N buf REPLACE-RAW ;
+
+\ The text with every old replaced by new, appended; the count COUNT-SUB answers.
+\ An empty old is its zero occurrences: FIND-SUB-FROM would answer every offset.
+: APPEND-REPLACED ( ptr u8 n ptr u8 n ptr u8 n ptr a -- n )
+   {: text:ptr tu:n old:ptr ou:n new:ptr nu:n buf:ptr :}
+   buf CHECK-LIVE
+   tu ou STR-CHECK-LENS nu STR-CHECK-LEN
+   text tu buf BORROWED? old ou buf BORROWED? or new nu buf BORROWED? or if E-BUF-BOUNDS throw then
+   ou 0= if text tu buf APPEND-SPAN-RAW 0 exit then
+   0 0 begin >r text tu old ou new nu buf r> APPEND-UNTIL-OLD while swap 1+ swap repeat drop ;
 
 ;package

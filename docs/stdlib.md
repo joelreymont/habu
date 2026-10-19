@@ -751,6 +751,15 @@ replace requires rebuilding rows that refer to the former contents.
 `BUF:APPEND-SPAN` accepts input borrowed from its own active bytes, including
 a substring: growth copies that input before releasing the former mapping.
 
+`BUF:APPEND-REPLACED ( ptr u8 n ptr u8 n ptr u8 n ptr a -- n )` appends the
+text with every occurrence of the old text replaced by the new one — the
+non-overlapping occurrences `COUNT-SUB` counts, left to right — and answers
+their count. An empty old is COUNT-SUB's zero: the text is appended as it is;
+an empty new removes every old. A dead buffer is `E-BUF-STATE`, a negative
+length `E-STR-BOUNDS` and an operand overlapping the buffer's own storage
+`E-BUF-BOUNDS`, each before a byte moves, since a growth would leave such an
+operand dangling.
+
 ## Bounded pointers (spans)
 
 `src/lib/span.f` (package `SPAN`) pairs a base pointer with the reach behind it, so a
