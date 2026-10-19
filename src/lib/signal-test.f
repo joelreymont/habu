@@ -84,9 +84,11 @@ variable RELEASED-FD
 variable A-KIND                    \ what the first racing task's WAIT answered
 variable A-SIGNO
 variable A-MS
+variable A-START                   \ mono-ns as its WAIT began
 variable B-KIND
 variable B-SIGNO
 variable B-MS
+variable B-START
 
 variable OUTSIDER-CATCH            \ what CATCH, RELEASE and FD threw off-owner
 variable OUTSIDER-RELEASE
@@ -166,7 +168,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 : WANT-SIGNAL ( SIGNAL:signal-result n -- ) {: want:n :}
    MATCH SIGNAL:signal-result
       signal OF want T= ENDOF
-      timeout OF s" signal wait: a deadline expired" type cr E-PROC-TIMEOUT throw ENDOF
+      timeout OF s" signal-test WANT-SIGNAL" TEST-WAIT:EXPIRED ENDOF
    ;MATCH ;
 
 : WANT-TIMEOUT ( SIGNAL:signal-result -- )
@@ -362,8 +364,10 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 \ until the NEXT signal instead, which turns a race into a task that never
 \ finishes the window it was given - so its join's deadline ends the row.
 
-: RACE-RUN ( ptr n ptr n ptr n -- ) {: kind:ptr signo:ptr elapsed:ptr :}
+: RACE-RUN ( ptr n ptr n ptr n ptr n -- )
+   {: kind:ptr signo:ptr elapsed:ptr start:ptr :}
    mono-ns {: started :}
+   started start !
    RACE-WINDOW-MS >MS SIGNAL:WAIT {: answer :}
    started ELAPSED-MS elapsed !
    answer MATCH SIGNAL:signal-result
@@ -372,20 +376,27 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    ;MATCH ;
 
 : RACE-A-WORK ( -- )
-   A-KIND A-SIGNO A-MS RACE-RUN ;
+   A-KIND A-SIGNO A-MS A-START RACE-RUN ;
 
 : RACE-B-WORK ( -- )
-   B-KIND B-SIGNO B-MS RACE-RUN ;
+   B-KIND B-SIGNO B-MS B-START RACE-RUN ;
 
 : RACE-CASE ( -- )
-   0 A-KIND !  0 A-SIGNO !  0 A-MS !
-   0 B-KIND !  0 B-SIGNO !  0 B-MS !
+   0 A-KIND !  0 A-SIGNO !  0 A-MS !  0 A-START !
+   0 B-KIND !  0 B-SIGNO !  0 B-MS !  0 B-START !
    ['] RACE-A-WORK RACER-A TASK:ACTIVATE
    ['] RACE-B-WORK RACER-B TASK:ACTIVATE
    RACE-ARM-MS >MS TASK:SLEEP
    SIGNAL:SIGUSR1 RAISE
+   mono-ns {: raised:n :}
    RACER-A JOIN-TASK
    RACER-B JOIN-TASK
+   \ Both timing out on a signal raised after both windows had closed means
+   \ main was starved past them: the row's deadline. A signal raised inside a
+   \ window that neither answers was lost, and fails below.
+   A-KIND @ RACE-TIMEOUT =  B-KIND @ RACE-TIMEOUT =  and
+   raised A-START @ B-START @ max RACE-WINDOW-MS NS-PER-MS * + >=  and
+   if s" signal-test RACE-RUN" TEST-WAIT:EXPIRED then
 
    s" one of the two answered the signal and the other a timeout" T-LABEL
    A-KIND @ B-KIND @ + RACE-SIGNAL RACE-TIMEOUT + T=
