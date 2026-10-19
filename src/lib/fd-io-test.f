@@ -18,6 +18,7 @@ require src/lib/memory.f
 require src/lib/process.f
 require src/lib/process-fork.f
 require src/lib/test/outcome.f
+require src/lib/test/wait.f
 require src/lib/fd-io.f
 
 package FD-IO-TEST
@@ -38,7 +39,7 @@ TYPED-VARIABLE DST SPAN:span<u8>  \ PAYLOAD bytes a reader fills
 16 SPAN-BUFFER: SMALL
 variable CHILD-FD                 \ the pipe end a forked child works on
 variable CHILD-CODE               \ the exit code a child's part chose
-variable ERR-FD                   \ the descriptor a refusal case uses
+variable ERR-FD                   \ the descriptor a word run under catch uses
 variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 
 : OUTCOME ( FD-IO:fill -- n )     \ FULL-MARK, or the bytes before end of file
@@ -60,10 +61,12 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    s" " rot die ;
 
 \ The rest of a forked child's life: its part runs under catch, and the exit
-\ code is 1 for a throw, else the code the part chose.
+\ code is PROC-TIMEOUT-RC for a deadline, 1 for any other throw, else the code
+\ the part chose. A throw code cannot cross the process boundary; the parent
+\ reads the deadline back from the exit (REAP-READER).
 : IN-CHILD ( [ -- ] -- )
    catch {: code:n :}
-   code 0<> if 1 CHILD-EXIT then
+   code 0<> if code 1 PROC-EXIT-RC CHILD-EXIT then
    CHILD-CODE @ CHILD-EXIT ;
 
 : WRITER ( -- )
@@ -71,9 +74,13 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    0 CHILD-CODE ! ;
 
 \ Waits for the writer's first bytes, so the writer is about to block on a full
-\ pipe, then leaves it blocked for READER-DELAY-MS while the storm lands.
+\ pipe, then leaves it blocked for READER-DELAY-MS while the storm lands. No
+\ bytes within WAIT-MS is the row's deadline, named here and thrown; any other
+\ code is rethrown unchanged.
 : HOLD-BACK ( -- )
-   CHILD-FD @ >FD WAIT-MS >MS POLL-IN-OR-TIMEOUT drop
+   [: CHILD-FD @ >FD WAIT-MS >MS POLL-IN-OR-TIMEOUT drop ;] catch {: code:n :}
+   code E-PROC-TIMEOUT = if s" fd-io-test HOLD-BACK" TEST-WAIT:EXPIRED then
+   code 0<> if code throw then
    READER-DELAY-MS >MS TASK:SLEEP ;
 
 : DRAIN ( -- )
@@ -90,11 +97,24 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    HOLD-BACK
    DELIVERED? if 0 else CHILD-MISMATCH then CHILD-CODE ! ;
 
+\ Reaps a held-back reader and answers its outcome. A reader whose HOLD-BACK
+\ wait expired has named it and exited PROC-TIMEOUT-RC: the row's deadline,
+\ thrown again here. Its writer holds off SIGPIPE, closes its end and reaps the
+\ reader before it acts on its write, so a write into the pipe a starved reader
+\ left fails rather than ending the row before the 124 is read back.
+: REAP-READER ( pid -- outcome )
+   PROC-WAIT-OUTCOME {: oc :}
+   oc PROC-OUTCOME>DEADLINE-RC RC>N PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
+   oc ;
+
 : FD-FLAGS ( fd -- n )
    FD>N 3 0 fcntl dup 0 < if E-FS-IO throw then ;
 
 : UNTIL-WRITE ( -- )
    ERR-FD @ >FD SRC @ $ UNTIL-AT @ WRITE-FULL-UNTIL ;
+
+: FULL-WRITE ( -- )
+   ERR-FD @ >FD SRC @ $ WRITE-FULL ;
 
 : UNTIL-BROKEN ( -- )
    ERR-FD @ >FD s" broken" UNTIL-AT @ WRITE-FULL-UNTIL ;
@@ -127,7 +147,9 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 
 \ A bounded write empties its whole payload into a slow reader in order. The
 \ pipe is made nonblocking inside WRITE-FULL-UNTIL and returns to its original
-\ status flags afterwards, including after the short writes in this case.
+\ status flags afterwards, including after the short writes in this case. Once
+\ the reader is reaped, a write unfinished at its deadline is the row's
+\ deadline, named and thrown; any other code is rethrown unchanged.
 : BOUNDED-SUCCESS ( -- )
    0 DST @ FILL
    PIPE-PAIR {: r:fd w:fd :}
@@ -136,10 +158,17 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if w FD>N close [: SLOW-READER ;] IN-CHILD then
    r FD>N close
-   w SRC @ $ mono-ns 3000 1000000 * + WRITE-FULL-UNTIL
-   w FD-FLAGS O-NONBLOCK and flags O-NONBLOCK and T=
+   w FD-NOSIGPIPE!
+   w FD>N ERR-FD !
+   mono-ns 3000 1000000 * + UNTIL-AT !
+   [: UNTIL-WRITE ;] catch {: code:n :}
+   w FD-FLAGS {: after:n :}
    w FD>N close
-   s" bounded reader" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+   pid REAP-READER {: oc :}
+   code E-FS-TIMEOUT = if s" fd-io-test BOUNDED-SUCCESS" TEST-WAIT:EXPIRED then
+   code 0<> if code throw then
+   after O-NONBLOCK and flags O-NONBLOCK and T=
+   s" bounded reader" s" " s" " oc 0 T-OUTCOME-EXITED= ;
 
 \ The child keeps the read end open and never reads. The deadline must stop a
 \ large write after filling the pipe, with the original descriptor flags put
@@ -226,12 +255,14 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if w FD>N close [: DRAIN ;] IN-CHILD then
    r FD>N close
+   w FD-NOSIGPIPE!
    w FD>N SRC @ $ write {: wrote:n :}
    prof-off
    w FD>N close
+   pid REAP-READER {: oc :}
    wrote 0 > TTRUE
    wrote PAYLOAD < TTRUE
-   s" forked reader" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+   s" forked reader" s" " s" " oc 0 T-OUTCOME-EXITED= ;
 
 \ The same storm and the same held-back reader: WRITE-FULL meets the short
 \ writes the premise proved, and the reader gets every byte in order, then the
@@ -244,10 +275,14 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if w FD>N close [: SLOW-READER ;] IN-CHILD then
    r FD>N close
-   w SRC @ $ WRITE-FULL
+   w FD-NOSIGPIPE!
+   w FD>N ERR-FD !
+   [: FULL-WRITE ;] catch {: code:n :}
    prof-off
    w FD>N close
-   s" forked reader" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+   pid REAP-READER {: oc :}
+   code 0<> if code throw then
+   s" forked reader" s" " s" " oc 0 T-OUTCOME-EXITED= ;
 
 : READ-CLOSED ( -- )
    ERR-FD @ >FD SMALL READ-EXACT OUTCOME drop ;
