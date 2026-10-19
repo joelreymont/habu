@@ -195,17 +195,15 @@ variable STR-TEST-BUF2-LEN
    s" nope" [: STR>NUMBER? ;] STR-PARSE-NONE ;
 
 \ switchover wave A: INDEX-OF / FIND-SUB return option<idx> (SOME index, else NONE).
-: STR-INDEX-OF>N ( ptr u8 n n -- n )                \ test re-wrap: found index, -1 when absent
-   INDEX-OF MATCH option
+: STR-IDX>N ( option<idx> -- n )                    \ test re-wrap: the index, -1 when absent
+   MATCH option
      none OF -1 ENDOF
      some OF IDX>N ENDOF
    ;MATCH ;
 
-: STR-FIND-SUB>N ( ptr u8 n ptr u8 n -- n )         \ test re-wrap: found offset, -1 when absent
-   FIND-SUB MATCH option
-     none OF -1 ENDOF
-     some OF IDX>N ENDOF
-   ;MATCH ;
+: STR-INDEX-OF>N ( ptr u8 n n -- n ) INDEX-OF STR-IDX>N ;
+: STR-FIND-SUB>N ( ptr u8 n ptr u8 n -- n ) FIND-SUB STR-IDX>N ;
+: STR-FIND-SUB-FROM>N ( ptr u8 n ptr u8 n n -- n ) FIND-SUB-FROM STR-IDX>N ;
 
 : STR-TEST-FIND-SUB-OPTION ( -- )                   \ direct both-branch option assertions
    s" abcdef" s" bcd" FIND-SUB MATCH option
@@ -559,6 +557,15 @@ s" abcdef" s" bcd" STR-FIND-SUB>N 1 STR-ASSERT=
 s" abcabc" s" abc" STR-FIND-SUB>N 0 STR-ASSERT=
 s" abcdef" s" z" STR-FIND-SUB>N -1 STR-ASSERT=
 s" abcdef" s" " STR-FIND-SUB>N 0 STR-ASSERT=
+s" abcabc" s" abc" 3 STR-FIND-SUB-FROM>N 3 STR-ASSERT=
+s" abcabc" s" abc" 4 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
+s" abcabc" s" bc" 2 STR-FIND-SUB-FROM>N 4 STR-ASSERT=
+s" abcabc" s" " 2 STR-FIND-SUB-FROM>N 2 STR-ASSERT=
+s" abc" s" " 3 STR-FIND-SUB-FROM>N 3 STR-ASSERT=
+s" abc" s" c" 3 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
+s" abc" s" " 4 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
+s" abc" s" a" -1 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
+STR-TEST-EDGE 0 s" a" 5 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
 s" abcdef" s" cde" CONTAINS? STR-ASSERT
 s" abcdef" s" " CONTAINS? STR-ASSERT
 s" abcdef" s" xyz" CONTAINS? 0= STR-ASSERT

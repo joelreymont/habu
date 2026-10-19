@@ -123,14 +123,18 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    u v < if 0 0= 0= exit then
    a u v - + v b v STR= ;
 
-: FIND-SUB ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}   \ SOME first offset of b in a (empty needle -> SOME 0), else NONE
+: FIND-SUB-FROM ( ptr u8 n ptr u8 n n -- option<idx> )   \ SOME first offset of b in a at or after start, else NONE
+   {: a:ptr u:n b:ptr v:n start:n :}
    u v STR-CHECK-LENS
-   v 0= if 0 >IDX OPTION:SOME exit then
-   u v < if OPTION:NONE exit then
-   0 begin dup u v - <= while
+   start 0 < start u > or if OPTION:NONE exit then
+   v 0= if start >IDX OPTION:SOME exit then
+   start begin dup u v - <= while
       dup a + v b v STR= if >IDX OPTION:SOME exit then
       1+
    repeat drop OPTION:NONE ;
+
+: FIND-SUB ( ptr u8 n ptr u8 n -- option<idx> )   \ SOME first offset of b in a (empty needle -> SOME 0), else NONE
+   0 FIND-SUB-FROM ;
 
 : CONTAINS? ( ptr u8 n ptr u8 n -- bool )
    FIND-SUB MATCH option

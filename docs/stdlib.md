@@ -831,6 +831,7 @@ STR=CI          ( ptr u8 n ptr u8 n -- bool )
 STARTS-WITH?    ( ptr u8 n ptr u8 n -- bool )
 ENDS-WITH?      ( ptr u8 n ptr u8 n -- bool )
 FIND-SUB        ( ptr u8 n ptr u8 n -- option<idx> )
+FIND-SUB-FROM   ( ptr u8 n ptr u8 n n -- option<idx> )
 CONTAINS?       ( ptr u8 n ptr u8 n -- bool )
 INDEX-OF        ( ptr u8 n n -- option<idx> )
 COUNT-CHAR      ( ptr u8 n n -- n )
@@ -863,6 +864,9 @@ STR>NUMBER?     ( ptr u8 n -- option<n> )
 
 `FIND-SUB` and `INDEX-OF` return `option<idx>` (SOME index, else NONE — every
 caller MATCHes the absent case; an empty `FIND-SUB` needle is SOME 0).
+`FIND-SUB-FROM` is `FIND-SUB` from a start offset, the result an offset into
+the whole text; a start outside `[0, length]` is NONE, and an empty needle at a
+start inside it is SOME start.
 `COUNT-SUB` counts non-overlapping occurrences of the needle left to right,
 resuming each scan past the match it counted (`aaaa` holds `aa` twice, `aaa`
 once); an empty needle counts 0. Builder
