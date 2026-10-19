@@ -9,13 +9,15 @@ require src/lib/fmt.f
 require src/lib/ieee754.f
 
 \ White-box test: reopen the module's package so the fixtures call FMT's public
-\ builders (SB-U / SB-HEX / SB-INT / SB-FIX) by their bare package-local names.
+\ builders (SB-U / SB-HEX / SB-HEX-WIDTH / SB-INT / SB-FIX) by their bare package-local names.
 package FMT
 
 : T-U ( n ptr u8 n -- ) {: a:ptr u :}            \ SB-U n == a/u
    SB-RESET SB-U  SB$ a u T$= ;
 : T-HEX ( n ptr u8 n -- ) {: a:ptr u :}
    SB-RESET s" pre:" SB-APPEND SB-HEX  SB$ a u T$= ;
+: T-HEXW ( n n ptr u8 n -- ) {: a:ptr u :}       \ ( value width expect )
+   SB-RESET s" pre:" SB-APPEND SB-HEX-WIDTH  SB$ a u T$= ;
 : T-INT ( n ptr u8 n -- ) {: a:ptr u :}
    SB-RESET SB-INT  SB$ a u T$= ;
 : T-SCALED ( n n ptr u8 n -- ) {: a:ptr u :}
@@ -65,6 +67,12 @@ package FMT
    16    s" pre:10" T-HEX
    $7FFF s" pre:7FFF" T-HEX
    STR-MAX-I64 s" pre:7FFFFFFFFFFFFFFF" T-HEX
+   255 2 s" pre:FF" T-HEXW
+   10 4 s" pre:000A" T-HEXW
+   0 1 s" pre:0" T-HEXW
+   -1 16 s" pre:FFFFFFFFFFFFFFFF" T-HEXW        \ width 16 renders the two's-complement pattern
+   1 63 lshift 16 s" pre:8000000000000000" T-HEXW
+   1.0 IEEE754:F64>BITS 16 s" pre:3FF0000000000000" T-HEXW
    -7    s" -7"     T-INT
    42    s" 42"     T-INT
    -123  s" -123"   T-INT
@@ -121,6 +129,14 @@ package FMT
    [: NEG-U-CASE ;]        E-FMT-DOMAIN   TTHROWSQ  \ negative into unsigned -> E-FMT-DOMAIN
    SB-RESET s" carry" SB-APPEND
    [: -1 SB-HEX ;] E-FMT-DOMAIN TTHROWSQ
+   SB$ s" carry" T$=
+   [: 256 2 SB-HEX-WIDTH ;] E-FMT-DOMAIN TTHROWSQ   \ needs a third digit
+   SB$ s" carry" T$=
+   [: -1 15 SB-HEX-WIDTH ;] E-FMT-DOMAIN TTHROWSQ   \ negative below width 16
+   SB$ s" carry" T$=
+   [: 0 0 SB-HEX-WIDTH ;] E-FMT-DOMAIN TTHROWSQ
+   SB$ s" carry" T$=
+   [: 0 17 SB-HEX-WIDTH ;] E-FMT-DOMAIN TTHROWSQ
    SB$ s" carry" T$=
    [: OVERFLOW-FIX-CASE ;]  E-FMT-OVERFLOW TTHROWSQ \ scaled overflow -> E-FMT-OVERFLOW
    [: OVERFLOW-2P63-CASE ;] E-FMT-OVERFLOW TTHROWSQ \ exactly 2^63 does not fit i64

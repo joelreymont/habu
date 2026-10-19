@@ -834,6 +834,7 @@ FIND-SUB        ( ptr u8 n ptr u8 n -- option<idx> )
 CONTAINS?       ( ptr u8 n ptr u8 n -- bool )
 INDEX-OF        ( ptr u8 n n -- option<idx> )
 COUNT-CHAR      ( ptr u8 n n -- n )
+COUNT-SUB       ( ptr u8 n ptr u8 n -- n )
 LTRIM           ( ptr u8 n -- ptr u8 n )
 RTRIM           ( ptr u8 n -- ptr u8 n )
 TRIM            ( ptr u8 n -- ptr u8 n )
@@ -861,7 +862,10 @@ STR>NUMBER?     ( ptr u8 n -- option<n> )
 ```
 
 `FIND-SUB` and `INDEX-OF` return `option<idx>` (SOME index, else NONE — every
-caller MATCHes the absent case; an empty `FIND-SUB` needle is SOME 0). Builder
+caller MATCHes the absent case; an empty `FIND-SUB` needle is SOME 0).
+`COUNT-SUB` counts non-overlapping occurrences of the needle left to right,
+resuming each scan past the match it counted (`aaaa` holds `aa` twice, `aaa`
+once); an empty needle counts 0. Builder
 words append to the
 module's current string-builder buffer and throw a named capacity error when the
 next append would exceed that buffer; they never truncate silently. Caller-owned
@@ -894,6 +898,13 @@ DECIMAL:INTEGER ( ptr u8 n -- option<i64> )
 to the shared string builder as uppercase hexadecimal, without a prefix or
 minimum width; zero renders as `0`. A negative input throws `E-FMT-DOMAIN`
 without changing the builder.
+
+`FMT:SB-HEX-WIDTH ( n n -- )` appends exactly the given width of uppercase
+hexadecimal digits of a value's 64-bit pattern, zero-padded and without a
+prefix: `10 4` renders `000A`. The width must be 1 through 16. At width 16 any
+value renders, a negative one as its two's-complement pattern; below 16 the
+value must lie in [0, 16^width). Any other input throws `E-FMT-DOMAIN` without
+changing the builder.
 
 `FMT:SB-SCALED ( n n -- )` appends a signed integer divided by 10 to the power
 of the second argument, using exact decimal digits. Places must be 0 through

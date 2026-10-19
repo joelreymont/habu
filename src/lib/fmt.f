@@ -7,9 +7,9 @@
 \ share nothing. See docs/threads.md.
 \
 \ The module lives in `package FMT`. External callers reach it through the
-\ qualified public API: FMT:SB-U, FMT:SB-HEX, FMT:SB-INT, and FMT:SB-SCALED
-\ append unsigned decimal, unsigned hexadecimal, signed decimal, or an exact
-\ scaled integer to the shared
+\ qualified public API: FMT:SB-U, FMT:SB-HEX, FMT:SB-HEX-WIDTH, FMT:SB-INT, and
+\ FMT:SB-SCALED append unsigned decimal, unsigned hexadecimal, fixed-width
+\ hexadecimal, signed decimal, or an exact scaled integer to the shared
 \ src/lib/string.f builder (open it with SB-RESET, read it
 \ back with SB$), FMT:SB-FIX appends a fixed-decimal float rounded half-up,
 \ FMT:SB-SCI appends a finite scientific decimal, and
@@ -27,6 +27,9 @@
 \ Every appender is fail-closed on its domain. SB-U / .U are unsigned only: a
 \ negative value throws E-FMT-DOMAIN rather than rendering a byte below '0'.
 \ SB-HEX has the same domain and emits uppercase digits without a prefix.
+\ SB-HEX-WIDTH takes a width of 1 through 16 and emits exactly that many
+\ zero-padded uppercase digits: at width 16 any value, as its 64-bit pattern;
+\ below 16 only a value in [0, 16^width).
 \ SB-INT covers the whole signed i64 range, including STR-MIN-I64
 \ ($8000000000000000), whose magnitude has no positive i64 form and so is
 \ emitted from the canonical STR-MIN-I64$ digit table instead of a negate that
@@ -114,6 +117,21 @@ BAND-AGREE
    dup 0 < if E-FMT-DOMAIN throw then
    0 FMT-NUM-U !  HEX-DIGITS>NUM ;
 
+\ Exactly `width` digits of the value's bit pattern, most significant first;
+\ a 64-bit cell holds 16 digits of 4 bits. Below full width the value must
+\ fit: the bits above the digits must be zero, which also refuses every
+\ negative value.
+: HEX-WIDTH>NUM ( n n -- )
+   {: value:n width:n :}
+   width 1 < width 16 > or if E-FMT-DOMAIN throw then
+   width 16 < if
+      value width 4 * rshift 0<> if E-FMT-DOMAIN throw then
+   then
+   0 FMT-NUM-U !
+   width begin dup 0 > while
+      1- value over 4 * rshift 15 and HEX-C+
+   repeat drop ;
+
 : INT>NUM ( n -- )                         \ signed (STR-MIN-I64 has no positive magnitude)
    0 FMT-NUM-U !
    dup STR-MIN-I64 = if
@@ -130,6 +148,8 @@ public
    U>NUM NUM$ SB-APPEND ;
 : SB-HEX ( n -- )                          \ uppercase, no prefix; negative -> E-FMT-DOMAIN
    HEX>NUM NUM$ SB-APPEND ;
+: SB-HEX-WIDTH ( n n -- )                  \ value width: exactly width uppercase digits, zero-padded
+   HEX-WIDTH>NUM NUM$ SB-APPEND ;
 : SB-INT ( n -- )                          \ signed int (STR-MIN-I64 has no positive magnitude)
    INT>NUM NUM$ SB-APPEND ;
 

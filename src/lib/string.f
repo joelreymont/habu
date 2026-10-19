@@ -152,6 +152,14 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       1+
    repeat drop ;
 
+: COUNT-SUB ( ptr u8 n ptr u8 n -- n )     \ non-overlapping occurrences of b in a; empty needle -> 0
+   {: a:ptr u:n b:ptr v:n :}
+   u v STR-CHECK-LENS
+   v 0= if 0 exit then
+   0 0 begin dup u v - <= while
+      dup a + v b v STR= if swap 1+ swap v + else 1+ then
+   repeat drop ;
+
 : LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    u STR-CHECK-LEN
    0 begin dup u < while
