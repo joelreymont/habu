@@ -21,6 +21,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
+require src/lib/span.f
 require src/habu/verify-source.f
 require test/checker-assert.f
 require src/habu/layout.f
@@ -115,19 +116,35 @@ TYPED-VARIABLE TSV tsk
 \ 3. TYPED-VARIABLE: closed typed pointer — checker seam + live deref round-trip
 \ =============================================================================
 TYPED-VARIABLE TSP ptr tsk
+TYPED-VARIABLE TSP-LAYOUT ptr SPAN:span<u8>
+1 TYPED-BUFFER TSP-SPANS SPAN:span<u8>
+7 SPAN-BUFFER: TSP-BYTES
 
 : TSP-STORE ( -- ) TSV TSP ! ;         \ store the address of the TSV nominal cell
 : TSP-VIA ( -- n ) TSP @ @ TSK>N ;     \ fetch ptr tsk, deref the tsk, to n
+: TSP-CLEAR ( -- ) NULL-PTR TSP-LAYOUT ! ;
+: TSP-NULL ( -- ptr SPAN:span<u8> ) NULL-PTR ;
 
 : TS-SECTION-POINTER ( -- )
    s" C1 ( ptr tsk -- ) TSP !" CHECK-QUIET-CANDIDATE! -1 T=
    s" C2 ( -- ptr tsk ) TSP @" CHECK-QUIET-CANDIDATE! -1 T=
    s" C3 ( ptr tsk2 -- ) TSP !" CHECK-QUIET-CANDIDATE! 0 T=
    s" C4 ( -- ptr tsk2 ) TSP @" CHECK-QUIET-CANDIDATE! 0 T=
+   s" C5 ( ptr SPAN:span<n> -- ) TSP-LAYOUT !" CHECK-QUIET-CANDIDATE! 0 T=
+   s" C6 ( -- ptr SPAN:span<n> ) TSP-LAYOUT @" CHECK-QUIET-CANDIDATE! 0 T=
+   s" C7 ( ptr u8 n -- ptr ptr SPAN:span<u8> ) ptr-field" CHECK-QUIET-CANDIDATE! 0 T=
+   s" C8 ( n -- ptr SPAN:span<u8> ) NULL-PTR +" CHECK-QUIET-CANDIDATE! 0 T=
    \ live: read TSV's value THROUGH the pointer stored in TSP
    99 TSV-PUT
    TSP-STORE
-   TSP-VIA 99 T= ;
+   TSP-VIA 99 T=
+   \ Read through a borrowed layout-array pointer, then clear it after use.
+   TSP-BYTES 0 TSP-SPANS !
+   0 TSP-SPANS TSP-LAYOUT !
+   TSP-LAYOUT @ @ SPAN:LEN 7 T=
+   TSP-CLEAR
+   TSP-LAYOUT @ NULL-PTR = TTRUE
+   TSP-NULL NULL-PTR = TTRUE ;
 
 \ =============================================================================
 \ 4. TYPED-VARIABLE / TYPED-BUFFER: closed layout family round-trip

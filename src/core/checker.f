@@ -2750,6 +2750,11 @@ variable NMOFF                           \ its token's offset in the checked tex
 
 : LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}   \ a layout pairing this op may NOT form
    a b LAYOUT-EITHER? 0= IF a b NOMPTR-BLOCK? EXIT THEN
+   \ Let RAW-BLOCK? apply the literal null's existing pointee exception.
+   CUR-STRICT @ 0 <> IF
+      a ISVAR IF a PAY TVK@ TVK-NULL = IF RES-FALSE EXIT THEN THEN
+      b ISVAR IF b PAY TVK@ TVK-NULL = IF RES-FALSE EXIT THEN THEN
+   THEN
    a b LAYOUT-XPORT-ALLOW? IF RES-FALSE EXIT THEN
    LAYOUT-INTRO @ 0 <> CUR-STRICT @ 0 <> and IF
       a HIDDEN-PARAM? b HIDDEN-PARAM? or 0= IF
