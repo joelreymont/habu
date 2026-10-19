@@ -40,6 +40,13 @@ FUNCTION: PRIVATE-GET curl_easy_getinfo ( n n ptr u8 -- i32 )
 
 $100015 constant INFO-PRIVATE
 
+PROCESS-SYMBOLS
+FUNCTION: ENV-GET getenv ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: ENV-DUP strdup ( n -- n ) ;FUNCTION
+FUNCTION: ENV-SET setenv ( ptr u8 n n -- i32 ) ;FUNCTION
+FUNCTION: ENV-UNSET unsetenv ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: ENV-FREE free ( n -- ) ;FUNCTION
+
 $7F000001 constant LOOPBACK
 $40 constant BACKLOG                    \ the concurrent case connects MANY-N times at once
 $2000 constant BODY-CAP
@@ -107,6 +114,9 @@ variable SERVER-BAD
 variable SERVER-ERRNO
 variable SERVER-EXPIRED                 \ atomic: EXPIRED-NONE, or the server wait whose deadline ran out
 variable SERVER-HITS
+variable HTTP-PROXY-OLD
+variable NO-PROXY-OLD
+variable NO-PROXY-UP-OLD
 variable RETRY-POST-HITS
 variable SILENT-LISTENER
 variable SILENT-PORT
@@ -138,6 +148,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : FILE$ ( -- ptr u8 n )       FILE-BUF FILE-U @ ;
 : JAR$ ( -- ptr u8 n )        JAR-BUF JAR-U @ ;
 : HELLO$ ( -- ptr u8 n )      S\" hello\n" ;
+: PROXY-BODY$ ( -- ptr u8 n ) S\" proxy\n" ;
 : COOKIE-PAIR$ ( -- ptr u8 n ) s" probe=value1" ;
 : NO-COOKIE$ ( -- ptr u8 n )  s" none" ;
 : PATH-HELLO$ ( -- ptr u8 n ) s" /hello.txt" ;
@@ -621,7 +632,11 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    conn SEND-RESPONSE ;
 
 
-: ROUTE ( TCP4:connection -- ) {: conn:TCP4:connection :}
+: ROUTE ( TCP4:connection -- )
+   {: conn:TCP4:connection :}
+   PATH$ s" http://" STARTS-WITH? if
+      s" 200 OK" PROXY-BODY$ RESPOND conn SEND-RESPONSE exit
+   then
    PATH-RETRY$ PATH-IS? if
       s" POST" METHOD-IS? if conn SERVE-RETRY-POST else conn SERVE-RETRY-PRIME then
       exit
@@ -1027,6 +1042,72 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 
 \ ---- cases -------------------------------------------------------------------
+
+: HTTP-PROXY-Z ( -- ptr u8 ) S\" http_proxy\z" drop ;
+: NO-PROXY-Z ( -- ptr u8 ) S\" no_proxy\z" drop ;
+: NO-PROXY-UP-Z ( -- ptr u8 ) S\" NO_PROXY\z" drop ;
+
+
+: PROXY-URL$ ( -- ptr u8 n )
+   SERVER-PORT @ s" " URL-AT ;
+
+
+: ENV-SAVE ( ptr u8 -- n )
+   ENV-GET dup 0= if exit then
+   ENV-DUP dup 0= if E-FS-IO throw then ;
+
+
+: ENV-RESTORE ( ptr u8 n -- )
+   {: name old:n :}
+   old 0= if
+      name ENV-UNSET
+   else
+      name old 1 ENV-SET
+   then
+   old ENV-FREE
+   0<> if E-FS-IO throw then ;
+
+
+: PROXY-ENV-SET ( -- )
+   HTTP-PROXY-Z ENV-SAVE HTTP-PROXY-OLD !
+   NO-PROXY-Z ENV-SAVE NO-PROXY-OLD !
+   NO-PROXY-UP-Z ENV-SAVE NO-PROXY-UP-OLD !
+   PROXY-URL$ 2drop 0 SB-APPEND-C
+   HTTP-PROXY-Z SB$ drop FFI:>CELL 1 ENV-SET 0 T=
+   NO-PROXY-Z S\" \z" drop FFI:>CELL 1 ENV-SET 0 T=
+   NO-PROXY-UP-Z S\" \z" drop FFI:>CELL 1 ENV-SET 0 T= ;
+
+
+: PROXY-ENV-RESTORE ( -- )
+   HTTP-PROXY-Z HTTP-PROXY-OLD @ ENV-RESTORE
+   NO-PROXY-Z NO-PROXY-OLD @ ENV-RESTORE
+   NO-PROXY-UP-Z NO-PROXY-UP-OLD @ ENV-RESTORE ;
+
+
+\ An HTTP proxy receives the absolute URL; the same server returns a distinct
+\ body for it, so the bytes identify which route libcurl actually used.
+: PROXY-CASES ( -- )
+   PATH-HELLO$ GET-READY {: subject:CURL:handle :}
+   PATH-HELLO$ GET-READY {: other:CURL:handle :}
+   subject s" " CURL:PROXY! EXPECT-OK
+   subject BODY-CAP >LEN FETCH
+   s" an empty proxy overrides the environment and reaches the origin" T-LABEL
+   BODY$ HELLO$ T$=
+   other BODY-CAP >LEN FETCH
+   other CURL:CLEANUP
+   s" another handle still uses the proxy environment" T-LABEL
+   BODY$ PROXY-BODY$ T$=
+   subject PROXY-URL$ CURL:PROXY! EXPECT-OK
+   subject BODY-CAP >LEN FETCH
+   subject CURL:CLEANUP
+   s" an explicit proxy routes the handle through the proxy" T-LABEL
+   BODY$ PROXY-BODY$ T$= ;
+
+
+: TEST-PROXY ( -- )
+   PROXY-ENV-SET
+   [: PROXY-CASES ;] [: PROXY-ENV-RESTORE ;] finally ;
+
 
 : TEST-GET ( -- )
    PATH-HELLO$ GET-READY {: subject:CURL:handle :}
@@ -2155,7 +2236,7 @@ variable DEFER-RETURNED
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 82 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   SERVER-HITS atomic@ 85 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
@@ -2213,6 +2294,7 @@ public
    T-RESET
    TEST-RECAPTURE
    PREPARE
+   TEST-PROXY
    TEST-GET
    TEST-MISSING
    TEST-HEADER

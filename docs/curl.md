@@ -21,6 +21,7 @@ Byte spans are `ptr u8 n`; a response capacity is `ptr u8 len`.
 | --- | --- | --- |
 | `INIT` | | `init-result`: `ready handle` or `failed code` |
 | `URL!` | Handle, borrowed URL text | `status`: `ok` or `failed code` |
+| `PROXY!` | Handle, borrowed proxy text | `status` |
 | `METHOD!` | Handle, borrowed method text | `status` |
 | `HEADER+` | Handle, borrowed `Name: value` line | `status` |
 | `BODY!` | Handle, borrowed byte span | `status` |
@@ -34,7 +35,7 @@ Byte spans are `ptr u8 n`; a response capacity is `ptr u8 len`.
 | `HEADERS` | Handle, writable byte span | `header-result`, described below |
 | `CLEANUP` | Handle | |
 
-Every input span is borrowed for its own call: libcurl copies the URL, the
+Every input span is borrowed for its own call: libcurl copies the URL, proxy,
 method, each header line, both cookie paths and the request body before the
 setter returns, so nothing has to stay alive until `PERFORM`.
 
@@ -50,6 +51,13 @@ initialised flag, because a restored image is a different process.
 
 `METHOD!` sets the request verb. Without it libcurl sends `GET`, or `POST` once
 `BODY!` has been used; `METHOD!` overrides the verb and changes nothing else.
+
+`PROXY!` sets the proxy for this handle. An empty string explicitly disables
+proxies even when proxy environment variables are set:
+`handle s" " CURL:PROXY!`. Without a call, libcurl uses its normal proxy
+environment rules. The setting lasts until replaced by another `PROXY!` call;
+see libcurl's
+[`CURLOPT_PROXY`](https://curl.se/libcurl/c/CURLOPT_PROXY.html).
 
 `FRESH-CONNECT!` set to true makes libcurl open a new connection for the next
 transfer instead of trying a pooled one. Set it to false to allow connection
@@ -331,7 +339,10 @@ listener that nothing accepts on is the peer that never answers. It needs
 nothing on PATH and opens no outward connection.
 
 The cases are a GET with the fixture's exact bytes and its `Content-Length`, a
-404 for an unknown path, a 304 the server gives only when it parsed
+proxy environment that routes through the fixture as a fake proxy while an
+empty `PROXY!` reaches the origin directly on another handle, an explicit
+`PROXY!` that enables the proxy again, a 404 for an unknown path, a 304 the
+server gives only when it parsed
 `If-Modified-Since` out of the request, a POST with headers and a body and a
 custom `DELETE` (both 501), a `Set-Cookie` that round trips through the jar file
 and comes back on a second request, a truncated response, a request to the

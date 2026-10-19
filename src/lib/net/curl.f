@@ -69,6 +69,7 @@ $200000 constant INFO-LONG                \ CURLINFO_LONG
 OPT-OBJECT 1 + constant OPT-WRITE-DATA    \ CURLOPT_WRITEDATA
 OPT-OBJECT 29 + constant OPT-HEADER-DATA  \ CURLOPT_HEADERDATA
 OPT-OBJECT 2 + constant OPT-URL           \ CURLOPT_URL
+OPT-OBJECT 4 + constant OPT-PROXY         \ CURLOPT_PROXY
 OPT-OBJECT 23 + constant OPT-HTTP-HEADER  \ CURLOPT_HTTPHEADER
 OPT-OBJECT 31 + constant OPT-COOKIE-FILE  \ CURLOPT_COOKIEFILE
 OPT-OBJECT 36 + constant OPT-METHOD       \ CURLOPT_CUSTOMREQUEST
@@ -98,7 +99,7 @@ INFO-STRING 21 + constant INFO-PRIVATE    \ CURLINFO_PRIVATE
 PROTO-HTTP PROTO-HTTPS or constant PROTO-WEB
 
 $4000000 constant MAX-BYTES               \ request body and response capacity
-$10000 constant MAX-TEXT                  \ one URL, method, path or header line
+$10000 constant MAX-TEXT                  \ one string option or header line
 $7FFFFFFF constant MAX-TIMEOUT            \ a C long option's own ceiling
 999 constant MAX-STATUS
 $08 constant CELL-BYTES
@@ -442,6 +443,12 @@ public
 : URL! ( handle ptr u8 n -- status ) {: subject:handle text u:n :}
    u 1 MAX-TEXT WITHIN-RANGE
    subject OPT-URL text u SET-TEXT ;
+
+
+\ An empty proxy disables proxies, including those named by the environment.
+: PROXY! ( handle ptr u8 n -- status )
+   {: subject:handle text u:n :}
+   subject OPT-PROXY text u SET-TEXT ;
 
 
 \ libcurl picks GET by default and POST once BODY! has been used; this overrides
@@ -1430,7 +1437,7 @@ public
 
 \ Hands one prepared handle and one writable span to the loop and answers as
 \ soon as the record is queued. Every per-handle option - URL!, METHOD!,
-\ HEADER+, BODY!, COOKIE-FILE!, COOKIE-JAR!, TIMEOUT!, LOW-SPEED!, FOLLOW!,
+\ PROXY!, HEADER+, BODY!, COOKIE-FILE!, COOKIE-JAR!, TIMEOUT!, LOW-SPEED!, FOLLOW!,
 \ FRESH-CONNECT! and the scheme restriction - is set before this and holds for
 \ that transfer alone.
 \ From here until AWAIT answers, the handle and the span belong to the loop: no
