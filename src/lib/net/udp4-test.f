@@ -5,6 +5,7 @@
 \ starts before its first case and stops after its last.
 \ Run: bin/hb --load src/lib/net/udp4-test.f
 require src/lib/test.f
+require src/lib/test/wait.f
 require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/errors.f
@@ -64,7 +65,7 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
       packet OF UDP4:PORT>N port T= UDP4:ADDRESS>N address T= BLEN>N want T= ENDOF
       truncated OF UDP4:PORT>N drop UDP4:ADDRESS>N drop drop
          s" receive: unexpectedly truncated" T-FAIL-AS ENDOF
-      timeout OF s" receive: a deadline expired" type cr E-PROC-TIMEOUT throw ENDOF
+      timeout OF s" udp4-test WANT-PACKET" TEST-WAIT:EXPIRED ENDOF
       failed OF UDP4:ERRNO>N drop s" receive: failed" T-FAIL-AS ENDOF
    ;MATCH ;
 
@@ -74,7 +75,7 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
       packet OF UDP4:PORT>N drop UDP4:ADDRESS>N drop drop
          s" receive: unexpectedly whole" T-FAIL-AS ENDOF
       truncated OF UDP4:PORT>N port T= UDP4:ADDRESS>N address T= BLEN>N want T= ENDOF
-      timeout OF s" receive: a deadline expired" type cr E-PROC-TIMEOUT throw ENDOF
+      timeout OF s" udp4-test WANT-TRUNCATED" TEST-WAIT:EXPIRED ENDOF
       failed OF UDP4:ERRNO>N drop s" receive: failed" T-FAIL-AS ENDOF
    ;MATCH ;
 
@@ -159,15 +160,9 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
 \ WAIT-MS is a deadline, not an assertion result (docs/gate.md): the wait names
 \ itself and throws E-PROC-TIMEOUT.
 : REACH ( ptr n n -- )
-   {: cell:ptr want:n :}
-   mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      cell atomic@ want >= if exit then
-      mono-ns deadline > if
-         s" count wait: a deadline expired" type cr E-PROC-TIMEOUT throw
-      then
-      TASK:PAUSE
-   again ;
+   [: 2dup swap atomic@ <= ;] mono-ns WAIT-MS NS-PER-MS * +
+   s" udp4-test REACH" TEST-WAIT:POLL
+   2drop ;
 
 
 \ ---- cases -------------------------------------------------------------------
@@ -206,7 +201,9 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
    s" and a zero timeout with a datagram queued answers it" T-LABEL
    SEND-PAYLOAD
    SOCK-B @ 1 32 lshift or READY-POLL !
-   READY-POLL 1 WAIT-MS poll 1 T=
+   READY-POLL 1 WAIT-MS poll
+   dup 0= if s" udp4-test T-ZERO-TIMEOUT" TEST-WAIT:EXPIRED then
+   1 T=
    BUF-CAP 0 RECEIVE-B PAYLOAD-N LOOPBACK PORT-A @ WANT-PACKET
    PAYLOAD-N PAT-CHECK TTRUE
    CLOSE-PAIR ;
@@ -249,9 +246,7 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
    SETTLE-MS >MS TASK:SLEEP
    SEND-PAYLOAD
    PARK-DONE 1 REACH
-   PARK-GOT @ GOT-TIMEOUT = if
-      s" parked receive: a deadline expired" type cr E-PROC-TIMEOUT throw
-   then
+   PARK-GOT @ GOT-TIMEOUT = if s" udp4-test PARK-WORK" TEST-WAIT:EXPIRED then
    PARK-GOT @ PAYLOAD-N T=
    PARK-TASK TASK:KILL
    CLOSE-PAIR ;
