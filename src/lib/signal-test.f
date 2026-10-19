@@ -204,6 +204,9 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    s" CATCH before INIT is refused by name" T-LABEL
    [: SIGNAL:SIGUSR1 SIGNAL:CATCH ;] E-SIGNAL-STATE TTHROWSQ
 
+   s" IGNORE before INIT is refused by name" T-LABEL
+   [: SIGNAL:SIGUSR1 SIGNAL:IGNORE ;] E-SIGNAL-STATE TTHROWSQ
+
    s" RELEASE before INIT is refused by name" T-LABEL
    [: SIGNAL:RELEASE ;] E-SIGNAL-STATE TTHROWSQ ;
 
@@ -487,6 +490,40 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    s" ... and RELEASE names the close it could not make" T-LABEL
    [: SIGNAL:RELEASE ;] E-SIGNAL-CLOSE TTHROWSQ ;
 
+\ ---- case thirteen: IGNORE, and the RELEASE that undoes it -------------------
+\ SIGUSR1 carries SIG_DFL here (case eleven), and its default action ends the
+\ process: a raise the ignore did not take ends this run with that signal.
+
+: IGNORE-CASE ( -- )
+   SIGNAL:INIT
+   SIGNAL:SIGUSR1 SIGNAL:IGNORE
+
+   s" IGNORE leaves the signal ignored" T-LABEL
+   SIGNAL:SIGUSR1 SIGNAL:IGNORED? TTRUE
+
+   SIGNAL:SIGUSR1 RAISE
+
+   s" ... so a raise leaves the process running and the pipe empty" T-LABEL
+   SIGNAL:PENDING? 0= TTRUE
+
+   \ On SIGUSR2, so that SIGUSR1 reaches RELEASE ignored and never caught.
+   s" a later CATCH replaces the ignore, so a raise reaches the pipe" T-LABEL
+   SIGNAL:SIGUSR2 SIGNAL:IGNORE
+   SIGNAL:SIGUSR2 SIGNAL:CATCH
+   SIGNAL:SIGUSR2 RAISE
+   RAISE-WAIT-MS >MS SIGNAL:WAIT SIGNAL:SIGUSR2 WANT-SIGNAL
+
+   s" IGNORE refuses a signal number outside the range by name" T-LABEL
+   [: SIG-ABOVE SIGNAL:IGNORE ;] E-SIGNAL-NUMBER TTHROWSQ
+
+   SIGNAL:RELEASE
+   SIGNAL:INIT
+
+   s" RELEASE restored the default disposition of an ignored signal" T-LABEL
+   SIGNAL:SIGUSR1 SIGNAL:IGNORED? 0= TTRUE
+
+   SIGNAL:RELEASE ;
+
 public
 
 \ The loop is started after the last definition (a live task forbids
@@ -512,6 +549,7 @@ public
    OWNER-CASE
    RELEASE-CASE
    BROKEN-CASE
+   IGNORE-CASE
    AIO:STOP
    T-REPORT ;
 

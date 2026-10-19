@@ -9,9 +9,9 @@
 \ for the whole process. INIT reads the engine's two published SIGNAL-ABI cells
 \ in the MAIN task - a spawned task's region carries neither - and keeps them,
 \ so every later arm and disarm reaches the same word by its absolute address.
-\ INIT also records the task that ran it: CATCH, IGNORED? and RELEASE share
-\ SA-ACT, SA-OLD and the caught set, so they answer to that task alone. FD,
-\ PENDING?, WAIT and TAKE touch none of the three and are callable from any
+\ INIT also records the task that ran it: CATCH, IGNORE, IGNORED? and RELEASE
+\ share SA-ACT, SA-OLD and the caught set, so they answer to that task alone.
+\ FD, PENDING?, WAIT and TAKE touch none of the three and are callable from any
 \ task; the four-byte staging span WAIT and TAKE read into is a TASK:+USER row,
 \ so two tasks reading the read end never share it. See docs/signal.md.
 \
@@ -109,7 +109,7 @@ create SA-OLD SA-BUF-BYTES allot   \ sigaction fills this; its prior content is 
 \ the slot the pointer type outright, for the cost of a bare cell load.
 variable STUB-A                    \ the stub's runtime address, as sa_handler
 PTR-VARIABLE FD-WORD-A             \ the ADDRESS of the process-wide fd word
-variable CAUGHT                    \ bit (sig-1) for every signal CATCH installed
+variable CAUGHT                    \ bit (sig-1) per signal RELEASE restores
 variable READ-FD-CELL
 variable WRITE-FD-CELL
 variable OWNER                     \ TASK:SELF-N at INIT; read only while READY
@@ -208,14 +208,15 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    SA-RESTART SA-FLAGS!
    sig SIGACTION! ;
 
-: INSTALL-DEFAULT ( n -- ) {: sig:n :}
+\ SIG-DFL or SIG-IGN: an action the kernel takes itself, so no flags.
+: INSTALL-ACTION ( n n -- ) {: sig:n action:n :}
    SA-ACT SA-BUF-BYTES ZERO-BYTES
-   SIG-DFL SA-HANDLER!
+   action SA-HANDLER!
    SA-NO-FLAGS SA-FLAGS!
    sig SIGACTION! ;
 
 : RESTORE-ONE ( n -- ) {: sig:n :}
-   sig CAUGHT? if sig INSTALL-DEFAULT then ;
+   sig CAUGHT? if sig SIG-DFL INSTALL-ACTION then ;
 
 : RESTORE-ALL ( -- )
    SIG-MAX 1+ SIG-MIN ?do i RESTORE-ONE loop
@@ -298,9 +299,9 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 : NEED-READY ( -- )
    READY @ 0= if E-SIGNAL-STATE throw then ;
 
-\ CATCH, IGNORED? and RELEASE share SA-ACT, SA-OLD and the caught set, so the
-\ facility has one owner - the task that ran INIT - rather than a documented
-\ convention two tasks could each believe they were keeping.
+\ CATCH, IGNORE, IGNORED? and RELEASE share SA-ACT, SA-OLD and the caught set,
+\ so the facility has one owner - the task that ran INIT - rather than a
+\ documented convention two tasks could each believe they were keeping.
 : NEED-OWNER ( -- )
    TASK:SELF-N OWNER @ <> if E-SIGNAL-STATE throw then ;
 
@@ -354,6 +355,18 @@ public
    NEED-OWNER
    sig SIG-CHECK
    sig INSTALL-STUB
+   sig CAUGHT+ ;
+
+\ Discard signal n: the kernel drops it and nothing reaches the descriptor. A
+\ later CATCH replaces the ignore, and RELEASE restores the default as it does
+\ for a caught signal. Unlike a caught signal, which exec resets to its
+\ default, an ignored one stays ignored in a child the process starts. From the
+\ task that ran INIT: the install writes the shared SA-ACT and SA-OLD.
+: IGNORE ( n -- ) {: sig:n :}
+   NEED-READY
+   NEED-OWNER
+   sig SIG-CHECK
+   sig SIG-IGN INSTALL-ACTION
    sig CAUGHT+ ;
 
 \ TRUE when signal n is ignored. A process is started with its caller's ignored

@@ -18,6 +18,7 @@ result. Everything else happens in checked Habu on the reading end.
 | --- | --- | --- | --- |
 | `INIT` | — | — | the main task |
 | `CATCH` | Signal number, `1..64` | — | the task that ran `INIT` |
+| `IGNORE` | Signal number, `1..64` | — | the task that ran `INIT` |
 | `IGNORED?` | Signal number, `1..64` | `bool`, ignored now | the task that ran `INIT` |
 | `FD` | — | `fd`, the read end | any |
 | `PENDING?` | — | `bool`, readable now | any |
@@ -53,10 +54,16 @@ its first `WAIT` or `PENDING?`, and either with no loop running is
 program that waits in a poll of its own: the gate pool asks it after every
 step (`test/gate-pool.f`). A process starts with its caller's ignored signals
 still ignored - `nohup`'s SIGHUP, the SIGINT of a background job - and a
-`CATCH` over one undoes that choice, so `IGNORED?` answers it first. `RELEASE`
+`CATCH` over one undoes that choice, so `IGNORED?` answers it first. `IGNORE`
+installs `SIG_IGN` for one signal instead: the kernel discards it, nothing
+reaches the pipe, and `IGNORED?` answers true for it until a later `CATCH`
+replaces the ignore. Unlike a caught signal, which `exec` resets to its
+default, an ignored one stays ignored in a child the process starts, so a
+child that must survive SIGTERM is started after an `IGNORE` of it. `RELEASE`
 clears the fd word first — so a signal delivered during the teardown is
 absorbed rather than written to a descriptor that is about to close — then
-restores `SIG_DFL` for every signal `CATCH` installed and closes both ends.
+restores `SIG_DFL` for every signal `CATCH` or `IGNORE` installed and closes
+both ends.
 
 `CATCH-STOPS` is that pattern for the three signals that ask a process to stop:
 `INIT`, then a `CATCH` of each of SIGTERM, SIGINT and SIGHUP that is not
@@ -86,8 +93,8 @@ baked literal rather than through the running task's region base. `INIT` in a
 spawned task, or on an engine that bakes no stub, reads zero and is refused
 with `E-SIGNAL-ABI`.
 
-`INIT` also records `TASK:SELF-N`, and `CATCH`, `IGNORED?` and `RELEASE`
-refuse any other task with `E-SIGNAL-STATE`. They share one `struct sigaction` pair — the record
+`INIT` also records `TASK:SELF-N`, and `CATCH`, `IGNORE`, `IGNORED?` and
+`RELEASE` refuse any other task with `E-SIGNAL-STATE`. They share one `struct sigaction` pair — the record
 handed to `sigaction` and the `oldact` it fills — and one caught set, so a
 second task in either would be overwriting a record the owner is in the middle
 of using. `FD`, `PENDING?`, `WAIT` and `TAKE` touch none of the three and
@@ -198,7 +205,7 @@ delivers a signal.
 
 | Code | Meaning |
 | --- | --- |
-| `E-SIGNAL-STATE` | A word that needs the facility before `INIT`, a second `INIT` without `RELEASE`, or `CATCH`/`RELEASE` from a task that did not run `INIT` |
+| `E-SIGNAL-STATE` | A word that needs the facility before `INIT`, a second `INIT` without `RELEASE`, or `CATCH`, `IGNORE`, `IGNORED?` or `RELEASE` from a task that did not run `INIT` |
 | `E-SIGNAL-ABI` | The published stub cells read zero: no baked stub, or not the main task |
 | `E-SIGNAL-NUMBER` | A signal number outside `1..64` |
 | `E-SIGNAL-INSTALL` | `sigaction` refused the install or the restore |
