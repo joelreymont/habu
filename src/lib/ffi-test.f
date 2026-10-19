@@ -76,6 +76,13 @@ FUNCTION: FFI-T-GLOBAL-PROBE crc32 ( n ptr u8 n -- n ) ;FUNCTION
 \ stack-neutral for its caller.
 FUNCTION: FFI-T-VOID$ getpid ( -- ) ;FUNCTION
 
+\ gcvt(double, int, char *) returns its output buffer. This real libc call
+\ exercises a pointer result beside floating, integer and pointer arguments.
+64 BUFFER: FFI-T-GCVT-BUF
+FUNCTION: FFI-T-GCVT gcvt ( r n ptr u8 -- ptr u8 )
+   2 64 WRITES-BYTES
+;FUNCTION
+
 \ Resolution happens inside the call, after the arguments are staged: DLSYM
 \ marshals through its own buffer, so a symbol resolved for the first time here
 \ cannot overwrite the pending argument. Call this alias before STRLEN$ so the
@@ -142,6 +149,18 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
 \ Promotion reaches only the variadic tail: a fixed f32 before it is admitted.
 : FFI-T-F32-FIXED ( -- )
    s" FUNCTION: FFI-T-XQ getpid ( f32 n r -- f32 ) 2 VARIADIC ;FUNCTION" INCLUDE-EVALUATE ;
+
+\ Declaration-only shapes: Cairo's exact signature must load without requiring
+\ Cairo, and Darwin's variadic stack routing must admit a pointer result. These
+\ words never call their symbols; gcvt below witnesses the mixed pointer call
+\ and FFI-T-STUBS witnesses the spill trampoline.
+: FFI-T-PTR-MIXED ( -- )
+   s" FUNCTION: FFI-T-XM cairo_pdf_surface_create ( ptr u8 r r -- ptr u8 ) ;FUNCTION"
+   INCLUDE-EVALUATE ;
+: FFI-T-PTR-VARARG ( -- )
+   s" FUNCTION: FFI-T-XW habu-pointer-variadic ( ptr u8 r n ptr u8 r -- ptr u8 ) 1 VARIADIC ;FUNCTION"
+   INCLUDE-EVALUATE ;
+
 \ A library selection belongs to the scope that states it, and there is no
 \ default: a declaration in a scope that never stated one is refused by name,
 \ so a file cannot inherit the library the previously loaded file selected.
@@ -573,6 +592,11 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-GETPID$ 0 T<>
    FFI-T-VOID$  FFI-T-GETPID$ 0 T<>               \ void-return wrapper is stack-neutral
 
+   s" a mixed floating call returns the output buffer and writes its value" T-LABEL
+   72.5 5 FFI-T-GCVT-BUF FFI-T-GCVT {: converted:ptr :}
+   converted FFI-T-GCVT-BUF - 0 T=
+   converted converted FFI-T-STRLEN$ s" 72.5" T$=
+
    FFI-T-CSTR-SRC 5 FFI-T-CSTR-DST FFI:CSTR       \ build "world\0" then strlen==5
    FFI-T-CSTR-DST FFI-T-STRLEN$ 5 T=
 
@@ -610,6 +634,8 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    [: FFI-T-BAD-F32-ARITY ;] E-FFI-ARITY TTHROWSQ
    [: FFI-T-BAD-F32-VARARG ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-F32-FIXED ;] 0 TTHROWSQ
+   [: FFI-T-PTR-MIXED ;] 0 TTHROWSQ
+   [: FFI-T-PTR-VARARG ;] 0 TTHROWSQ
    [: FFI-T-BAD-VARARG ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-NO-FIXED ;] E-FFI-SYNTAX TTHROWSQ
    s" a library selection is scoped to the scope that states it" T-LABEL

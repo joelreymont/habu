@@ -734,6 +734,8 @@ public
    FFI-BUF FFI-FBUF FFI-STACK-BUF FFI-REG-LEN-BUF FFI-STACK-LEN-BUF
    idx FN-SPILL@ fn ffi-call-abi-bounded ;
 
+: CALL-ABI-PTR ( n -- ptr u8 ) CALL-ABI CELL>PTR ;
+
 : CALL-ABI-R ( n -- r ) {: idx:n :}
    idx FN-RESOLVE {: fn:n :}
    FFI-BUF FFI-FBUF FFI-STACK-BUF FFI-REG-LEN-BUF FFI-STACK-LEN-BUF
@@ -1243,14 +1245,12 @@ variable SCOPE-HOOK
 : PLAN-CALL ( -- )
    PLAN-SPILLS
    STACK-N @ 0 > if
-      RES-KIND @ R-POINTER = if E-FFI-ARITY throw then
       RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or
          if C-ABI-R else C-ABI then CALL-KIND ! exit
    then
    RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or
       if REG-ROOM C-ABI-R CALL-KIND ! exit then
    FLT-N @ 0 > if
-      RES-KIND @ R-POINTER = if E-FFI-ARITY throw then
       REG-ROOM C-ABI CALL-KIND ! exit
    then
    RES-KIND @ R-POINTER = if C-POINTER CALL-KIND ! exit then
@@ -1323,7 +1323,10 @@ variable SCOPE-HOOK
 : CALL-WORD ( -- )
    RES-KIND @ R-FLOAT32 = if s" FFI:CALL-ABI-F32" GEN+ exit then
    CALL-KIND @ C-ABI-R = if s" FFI:CALL-ABI-R" GEN+ exit then
-   CALL-KIND @ C-ABI = if s" FFI:CALL-ABI" GEN+ exit then
+   CALL-KIND @ C-ABI = if
+      RES-KIND @ R-POINTER = if s" FFI:CALL-ABI-PTR"
+      else s" FFI:CALL-ABI" then GEN+ exit
+   then
    CALL-KIND @ C-POINTER = if s" FFI:CALL-PTR" GEN+ exit then
    s" FFI:CALL" GEN+ ;
 

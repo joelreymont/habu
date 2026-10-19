@@ -410,7 +410,8 @@ enum, `pid_t`, `kern_return_t`) `i32`, which sign-extends the low half and reads
 `n` to the checker, and an `unsigned int` (`mach_port_t`) `u32`, which masks it.
 `r` is a C double; `f32` is a C float widened to Habu `r` from the low
 32 return bits. `F32:NARROW` rounds an `f32` argument to binary32 at the call
-boundary. `ptr u8` is a foreign-owned address, and no result drops the register.
+boundary. `ptr u8` is a foreign-owned address, including with mixed integer and
+floating arguments, and no result drops the register.
 
 `VERSIONED-LIBRARY`, `LIBRARY` and `PROCESS-SYMBOLS` select for the
 declarations that follow and the selection belongs to the scope that states it -
@@ -429,8 +430,8 @@ arguments. Each additional argument still appears in the typed effect and keeps
 its writable extent. Darwin ARM64 places these arguments in eight-byte stack
 slots; Linux AAPCS64 uses the usual registers. See Apple's
 [ARM64 calling convention](https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms).
-The current variadic declaration supports integer, void and floating results;
-pointer results remain refused when a stack argument is required. A checked caller
+The current variadic declaration supports integer, pointer, void and floating
+results, including Darwin stack arguments. A checked caller
 cannot reclassify an argument or
 change its extent; an absent symbol is `E-FFI-DLSYM` at the first call, never at
 the declaration; and `FFI:ERRNO ( -- n )` is the one errno binding every
