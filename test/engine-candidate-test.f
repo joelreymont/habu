@@ -15,6 +15,7 @@
 \ Run: bin/hb --load test/engine-candidate-test.f
 
 require src/lib/test.f
+require src/lib/test/wait.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
@@ -107,7 +108,9 @@ create ERR   IO-CAP  allot
    DRV DRV-U @ >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN PROCESS-PTY:SPAWN
    PROCESS-PTY:LAUNCH
-   DEADLINE-MS PROCESS-PTY:AWAIT TTRUE
+   DEADLINE-MS PROCESS-PTY:AWAIT 0= if       \ the linear handle cannot cross the throw
+      PROCESS-PTY:TEARDOWN s" engine-candidate-test SUPERVISE-RESOLVED" TEST-WAIT:EXPIRED
+   then
    PROCESS-PTY:TEARDOWN ;
 
 \ SUPERVISE-RESOLVED's PROCESS-PTY:AWAIT waits on the AIO loop, so the loop runs

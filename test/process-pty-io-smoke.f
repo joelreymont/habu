@@ -24,6 +24,7 @@ require src/lib/process-pty-io.f
 require src/lib/prelude.f
 require src/lib/aio.f
 require src/lib/test.f
+require src/lib/test/wait.f
 require test/checker-assert.f
 
 package PTY-IO-SMOKE
@@ -56,7 +57,9 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
    TRUE-PATH PROCESS-PTY:SPAWN
    PROCESS-PTY:ALIVE? TTRUE
    PROCESS-PTY:LAUNCH
-   DEADLINE-MS PROCESS-PTY:AWAIT TTRUE
+   DEADLINE-MS PROCESS-PTY:AWAIT 0= if       \ the linear handle cannot cross the throw
+      PROCESS-PTY:TEARDOWN s" process-pty-io-smoke LIFECYCLE" TEST-WAIT:EXPIRED
+   then
    PROCESS-PTY:TARGET SAVE-TGT
    PROCESS-PTY:TEARDOWN
    TGT-PID @ SIG-PROBE kill-errno ESRCH# negate T= ;

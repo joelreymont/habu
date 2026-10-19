@@ -12,6 +12,7 @@ require src/lib/process-fork.f
 require src/lib/process-argv.f
 require src/lib/task.f
 require src/lib/test/outcome.f
+require src/lib/test/wait.f
 require src/lib/fmt.f
 require test/checker-assert.f
 
@@ -191,7 +192,8 @@ create PT-DRAIN-BUF PT-CHUNK allot
       0 PT-FORK-EXIT
    then
    PT-W @ close
-   PT-R @ 1000 >MS POLL-IN COUNT>N 1 T=
+   PT-R @ 1000 >MS POLL-IN COUNT>N
+   dup 0= if s" process-test TEST-PROC-FORK-WAIT" TEST-WAIT:EXPIRED then 1 T=
    PT-R @ PT-READ 1 T=
    PT-BUF c@ 102 T=
    pid >PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
@@ -546,7 +548,8 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
 
 \ What one read at the shared end takes once it is readable: 0 is EOF.
 : PT-HOLD-EOF ( -- n )
-   PT-HOLD-OUT @ >FD PT-WAIT-MS >MS POLL-IN COUNT>N 1 T=
+   PT-HOLD-OUT @ >FD PT-WAIT-MS >MS POLL-IN COUNT>N
+   dup 0= if s" process-test PT-HOLD-EOF" TEST-WAIT:EXPIRED then 1 T=
    PT-HOLD-OUT @ PT-READ ;
 
 \ The pid and the window as plain cells, so a case can name any value.

@@ -6,6 +6,7 @@
 \ Run: bin/hb --load src/lib/pty-test.f
 require src/lib/errors.f
 require src/lib/test.f
+require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/aio.f
@@ -17,6 +18,11 @@ create SLAVE PTY:SLAVE-PATH-CAP allot
 create SPARE PTY:SLAVE-PATH-CAP allot
 create BUF 32 allot
 variable SPARE-MASTER
+
+\ A read whose window ends with nothing read is PAIR's deadline, not a short
+\ count; a partial count still fails its T=.
+: ARRIVED ( n -- n )
+   dup 0= if s" pty-test PAIR" TEST-WAIT:EXPIRED then ;
 
 \ The slave end, opened the way a device driver under test opens a serial port.
 : SLAVE-FD ( n -- n ) {: u:n :}
@@ -40,14 +46,14 @@ variable SPARE-MASTER
    elapsed 1000000000 < TTRUE
    s" bytes written at the slave arrive at the master" T-LABEL
    s s" pong" write 4 T=
-   m BUF 32 2000 >MS PTY:READ 4 T=
+   m BUF 32 2000 >MS PTY:READ ARRIVED 4 T=
    BUF 4 s" pong" STR= TTRUE
    s" and a line written at the master arrives at the slave" T-LABEL
    m S\" ping\n" PTY:WRITE
    s BUF 32 read 5 T=
    BUF 5 S\" ping\n" STR= TTRUE
    s" and the master hears the terminal's echo of it, newline as CR LF" T-LABEL
-   m BUF 32 2000 >MS PTY:READ 6 T=
+   m BUF 32 2000 >MS PTY:READ ARRIVED 6 T=
    BUF 4 s" ping" STR= TTRUE
    BUF 4 + c@ 13 T=  BUF 5 + c@ 10 T=
    s close
