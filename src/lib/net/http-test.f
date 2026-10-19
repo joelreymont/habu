@@ -13,6 +13,7 @@
 \ dictionary mutation while a task is live.
 \ Run: bin/hb --load src/lib/net/http-test.f
 require src/lib/test.f
+require src/lib/test/wait.f
 require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -2182,7 +2183,7 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
 \ the kernel's cancel completion, and AIO:STOP is E-AIO-BUSY until it does, so
 \ the stop after the last join is retried to a bound rather than asserted on
 \ the first try (src/lib/aio-test.f STOP-LOOP). A ring still busy past the bound
-\ is a deadline, not a failure: one line on fd 2 names E-AIO-BUSY, then
+\ is a deadline, not a failure: the wait names itself on stdout and throws
 \ E-PROC-TIMEOUT, which the pool reads as TIMEOUT-UNDER-LOAD (docs/gate.md).
 \ Any other code from AIO:STOP is a fault and is rethrown at once.
 : AIO-STOP ( -- )
@@ -2191,10 +2192,7 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
       [: AIO:STOP ;] catch {: code:n :}
       code 0= if exit then
       code E-AIO-BUSY <> if code throw then
-      mono-ns deadline > if
-         2 S\" http-test: AIO ring not drained within DRAIN-MS: E-AIO-BUSY\n" write drop
-         E-PROC-TIMEOUT throw
-      then
+      mono-ns deadline > if s" http-test AIO-STOP" TEST-WAIT:EXPIRED then
       RETRY-MS >MS TASK:SLEEP
    again ;
 
