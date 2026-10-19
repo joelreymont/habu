@@ -794,6 +794,48 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    [: JRT-BAD-STR-ZERO ;] E-JR-STATE TTHROWSQ
    [: JRT-BAD-STR-SHORT ;] E-JR-STATE TTHROWSQ ;
 
+\ ---- FINISH: the unread rest checked from any position --------------------
+: JRT-TRAILING-TEXT$ ( -- ptr u8 n )
+   s\" {\"a\":1} x" ;
+
+: JRT-OBJ-COMMA$ ( -- ptr u8 n )
+   s\" {\"a\":1,\"b\":2,}" ;
+
+\ Finishes inside the first member's array, two containers deep.
+: JRT-FINISH-NESTED ( ptr u8 n -- )
+   JRT-OPEN-A
+   JR:NEXT drop JR:NEXT drop JR:NEXT drop JR:NEXT drop
+   JR:FINISH ;
+
+: JRT-CATCH-COLON ( JR:reader -- JR:reader )
+   ['] JRT-BAD-ADVANCE catch E-JR-COLON T= ;
+
+\ The caught advance moved the cursor past the key that lacks its colon; the
+\ reader stays failed, so FINISH throws that code instead of closing the object.
+: JRT-FINISH-AFTER-FAILURE ( -- )
+   s\" {\"a\"}" JRT-OPEN-A
+   JR:NEXT JR:T-OBJ T=
+   JRT-CATCH-COLON
+   JR:FINISH ;
+
+: JRT-FINISH-AFTER-OPEN ( ptr u8 n -- )
+   JRT-OPEN-A JR:NEXT JR:T-OBJ T= JR:FINISH ;
+
+: JRT-FINISH-AFTER-INT ( ptr u8 n -- )
+   JRT-OPEN-A JR:NEXT JR:T-OBJ T= JR:NEXT JR:T-KEY T= JR:NEXT JR:T-INT T=
+   JR:FINISH ;
+
+: JRT-TEST-FINISH ( -- )
+   JRT-NESTED$ JRT-OPEN-A JR:FINISH
+   JRT-NESTED$ JRT-FINISH-NESTED
+   JRT-NESTED$ JRT-OPEN-A JR:NEXT JR:T-OBJ T= JR:SKIP-VALUE JR:FINISH
+   JRT-NESTED$ JRT-OPEN-A JR:NEXT JR:T-OBJ T= JR:SKIP-VALUE
+   JR:NEXT JR:T-END T= JR:FINISH
+   [: JRT-NESTED$ 1- JRT-FINISH-NESTED ;] E-JR-EOF TTHROWSQ
+   [: JRT-TRAILING-TEXT$ JRT-FINISH-AFTER-OPEN ;] E-JR-TRAILING TTHROWSQ
+   [: JRT-OBJ-COMMA$ JRT-FINISH-AFTER-INT ;] E-JR-MALFORMED TTHROWSQ
+   [: JRT-FINISH-AFTER-FAILURE ;] E-JR-COLON TTHROWSQ ;
+
 : JRT-CORE ( -- )
    JRT-TEST-INTS
    JRT-TEST-FLOATS
@@ -825,7 +867,8 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    JRT-TEST-INTERLEAVE
    JRT-TEST-CATCH-ISOLATION
    JRT-TEST-OWNERSHIP
-   JRT-TEST-NEGATIVE ;
+   JRT-TEST-NEGATIVE
+   JRT-TEST-FINISH ;
 
 public
 

@@ -1159,21 +1159,23 @@ readers may be interleaved or nested under `catch` without sharing cursor,
 nesting, token, number, or string-decode state.
 
 The caller allocates `JR:STORAGE-BYTES` bytes at a cell-aligned address, keeps
-that storage and the borrowed source live and exclusive until `JR:CLOSE`, and
-does not reuse either as mutable reader backing while the token is live. `INIT`
-rejects null or misaligned storage, insufficient capacity, a negative source
-length, and a null source paired with a positive length before minting the
-token, using `JR:E-STORAGE`, `JR:E-CAPACITY`, and `JR:E-SOURCE`. The token's
-mint and erase are private `LINEAR:` rows, so the checker certifies that a
-reader comes only from `INIT` and ends only at `JR:CLOSE`; the package is sealed
-after assembly so callers cannot reopen it to reach them. The type system cannot
-prove the backing extent, lifetime, or exclusivity of raw host storage; those
-stay the caller's promise.
+that storage and the borrowed source live and exclusive until `JR:CLOSE` or
+`JR:FINISH`, and does not reuse either as mutable reader backing while the
+token is live. `INIT` rejects null or misaligned storage, insufficient
+capacity, a negative source length, and a null source paired with a positive
+length before minting the token, using `JR:E-STORAGE`, `JR:E-CAPACITY`, and
+`JR:E-SOURCE`. The token's mint and erase are private `LINEAR:` rows, so the
+checker certifies that a reader comes only from `INIT` and ends only at
+`JR:CLOSE` or `JR:FINISH`; the package is sealed after assembly so callers
+cannot reopen it to reach them. The type system cannot prove the backing
+extent, lifetime, or exclusivity of raw host storage; those stay the caller's
+promise.
 
 ```forth
 JR:STORAGE-BYTES ( -- n )
 JR:INIT       ( ptr n n ptr u8 n -- JR:reader )
 JR:CLOSE      ( JR:reader -- )
+JR:FINISH     ( JR:reader -- )
 JR:TOKEN      ( JR:reader -- JR:reader n )
 JR:SPAN$      ( JR:reader -- JR:reader ptr u8 n )
 JR:VALUE-SPAN$ ( JR:reader -- JR:reader ptr u8 n )
@@ -1186,11 +1188,20 @@ JR:SKIP-VALUE ( JR:reader -- JR:reader )
 JR:FIND-KEY   ( JR:reader ptr u8 n -- JR:reader bool )
 ```
 
-Every operation returns the same reader token except `CLOSE`, which consumes
-it. `SPAN$` borrows the raw source span and leaves escapes encoded; `STR`
-decodes the current string into non-null caller storage and rejects negative or
-insufficient capacity with `E-JR-STATE`. `NEXT` accepts a string token only
-after validating every escape, UTF-16 surrogate pair, and raw UTF-8 scalar.
+Every operation returns the same reader token except `CLOSE` and `FINISH`,
+which consume it. `CLOSE` checks nothing further; `FINISH` first reads the rest
+of the document from wherever the cursor stands, so a caller that has read the
+members it needs still learns that the whole document is well formed: a
+malformed or truncated rest throws the reader's own code, such as `E-JR-EOF` or
+`E-JR-TRAILING`. An advance that throws leaves the reader failed: every later
+`NEXT`, `SKIP-VALUE`, `VALUE-SPAN$`, `FIND-KEY` or `FINISH` that would move the
+cursor throws that first code again, while accessor refusals (`INT`, `FLOAT`,
+`STR`, `STR-EQ?`) and wrong-phase `E-JR-STATE` refusals leave it usable.
+`SPAN$` borrows the raw source span and leaves escapes
+encoded; `STR` decodes the current string into non-null caller storage and
+rejects negative or insufficient capacity with `E-JR-STATE`. `NEXT` accepts a
+string token only after validating every escape, UTF-16 surrogate pair, and
+raw UTF-8 scalar.
 Token kinds remain the public `JR:T-*` constants.
 VALUE-SPAN$ is valid on an object or array opener; it returns the borrowed raw
 source bytes from that opener through its matching close and leaves the reader
@@ -1240,8 +1251,9 @@ so a retry could close a reused descriptor.
 `READER` creates a fresh linear JR token over the current line, which stays
 borrowed until the next `NEXT` or `CLOSE`. It is `JSONL:E-STATE` on a closed
 cursor or before `NEXT` has returned true. Only one reader may be live per
-cursor: call `JR:CLOSE` before another `READER`, `NEXT` or `CLOSE`. `CLOSE`
-releases a cursor abandoned before the end of input; it is idempotent.
+cursor: call `JR:CLOSE` or `JR:FINISH` before another `READER`, `NEXT` or
+`CLOSE`. `CLOSE` releases a cursor abandoned before the end of input; it is
+idempotent.
 
 `SPLIT-LINE a u pos` returns the physical line starting at `pos` (CR kept, LF
 excluded), the position after its LF (`u` for an unterminated final line) and

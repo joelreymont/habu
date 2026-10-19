@@ -11,14 +11,19 @@
 \ well-formedness (RFC 8259: strict, no comments, no trailing commas, no single
 \ quotes, string escapes, and Unicode scalar encoding) is validated as the cursor
 \ advances; number and value decode happen on demand. Every failure is a named
-\ throw in the -3900..-3999 JSON-reader block.
+\ throw in the -3900..-3999 JSON-reader block. A throw from an advance leaves
+\ the reader failed: every later NEXT, SKIP-VALUE, VALUE-SPAN$, FIND-KEY or
+\ FINISH that would move the cursor throws that first code again. Accessor
+\ refusals (INT, FLOAT, STR, STR-EQ?) and wrong-phase E-JR-STATE refusals leave
+\ the reader usable.
 \
 \ The parser lives in `package JR`. External callers use the qualified public API
-\ (JR:INIT, JR:CLOSE, JR:NEXT, JR:TOKEN, JR:SPAN$, JR:VALUE-SPAN$, JR:INT, JR:FLOAT, JR:STR,
-\ JR:STR-EQ?, JR:SKIP-VALUE, JR:FIND-KEY) and the qualified token kinds (JR:T-OBJ ..
-\ JR:T-END). Callers allocate JR:STORAGE-BYTES at a cell-aligned address and keep
-\ both storage and source live and exclusive until CLOSE. The byte constants,
-\ the reader's LINEAR: mint and erase, cursor state, and scan/decode helpers -
+\ (JR:INIT, JR:CLOSE, JR:FINISH, JR:NEXT, JR:TOKEN, JR:SPAN$, JR:VALUE-SPAN$,
+\ JR:INT, JR:FLOAT, JR:STR, JR:STR-EQ?, JR:SKIP-VALUE, JR:FIND-KEY) and the
+\ qualified token kinds (JR:T-OBJ .. JR:T-END). Callers allocate
+\ JR:STORAGE-BYTES at a cell-aligned address and keep both storage and source
+\ live and exclusive until CLOSE or FINISH. The byte constants, the reader's
+\ LINEAR: mint and erase, cursor state, and scan/decode helpers -
 \ including the bounds-checked source reader AT - are package-private and sealed
 \ after the module is assembled.
 \
@@ -159,7 +164,7 @@ private
 0 constant UMODE-WRITE
 1 constant UMODE-MATCH
 
-18 constant STATE-CELLS
+19 constant STATE-CELLS
 STATE-CELLS cells constant CTX-OFF
 
 0 constant SRC-IDX
@@ -180,6 +185,7 @@ STATE-CELLS cells constant CTX-OFF
 15 cells constant NI-OFF
 16 cells constant UMODE-OFF
 17 cells constant UMATCH-OFF
+18 cells constant FAIL-OFF     \ the first advance failure's code; 0 while sound
 
 \ The container stack is one CELL per open container, not one byte: the whole
 \ storage block is a cell block (`ptr n`), so a byte-packed stack would need the
@@ -217,7 +223,8 @@ LINEAR: ERASE-READER ( JR:reader -- ptr n )
    0 state TOK-AT-OFF + !
    0 state TOK-LEN-OFF + !
    UMODE-WRITE state UMODE-OFF + !
-   1 state UMATCH-OFF + ! ;
+   1 state UMATCH-OFF + !
+   0 state FAIL-OFF + ! ;
 
 : TRUE ( -- bool )
    0 0= ;
@@ -637,13 +644,36 @@ private
    state STATE-OFF + @ ST-MEMBER = if state c DO-MEMBER exit then
    state c DO-SEP ;
 
+\ The token lands in the slot under the state, so catch sees a preserving row.
+: STEP-SLOT ( n ptr n -- n ptr n ) {: state:ptr :}
+   drop
+   begin state STEP dup RETRY = while drop repeat
+   state ;
+
+\ Every advance comes through here. A failed STEP may leave the cursor past the
+\ text it rejected while STATE still describes the text before it, so the code
+\ is stored and every later advance throws it again: a reader never parses on
+\ from a failure as if the rejected text had been valid.
 : NEXT-INNER ( ptr n -- n ) {: state:ptr :}
-   begin state STEP dup RETRY = while drop repeat ;
+   state FAIL-OFF + @ {: failed:n :}
+   failed 0<> if failed throw then
+   0 state [: STEP-SLOT ;] catch nip {: token code:n :}
+   code 0= if token exit then
+   code state FAIL-OFF + !
+   code throw ;
 
 public
 
 : NEXT ( JR:reader -- JR:reader n )
    READER>STATE NEXT-INNER ;
+
+\ FINISH reads to the document's end from any position (before the first NEXT,
+\ inside containers, after the last value, or after T-END, which a done reader
+\ answers again) and consumes the reader. A malformed or truncated rest throws
+\ the reader's own E-JR-* code.
+: FINISH ( JR:reader -- )
+   begin NEXT T-END = until
+   CLOSE ;
 
 private
 

@@ -51,8 +51,8 @@ physical line, empty ones included, and the position after it. A file
 `JSONL:cursor` skips empty lines: `JSONL:NEXT` returns true with the next line
 and false at the end of input, by which point the cursor has closed itself, and
 `JSONL:READER` opens a `JR:reader` on the current line. Only one reader may be
-live per cursor; call `JR:CLOSE` before another reader, `JSONL:NEXT` or
-`JSONL:CLOSE`.
+live per cursor; call `JR:CLOSE` or `JR:FINISH` before another reader,
+`JSONL:NEXT` or `JSONL:CLOSE`.
 
 `tools/json.f` uses `JSONL:SPLIT-LINE` for its DOM object iterator. It trims
 JSON whitespace and applies the following parser policy to each framed line:

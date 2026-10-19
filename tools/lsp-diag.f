@@ -104,8 +104,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    s" file" JR:FIND-KEY 0= if JR:CLOSE exit then
    JR:TOKEN JR:T-STR <> if JR:CLOSE exit then
    FILE-BUF FS-PATH-CAP JR:STR >r
-   begin JR:NEXT JR:T-END = until
-   JR:CLOSE
+   JR:FINISH
    r> FILE-U ! ;
 
 \ Whether the line is a diagnostic: an object whose file names an absolute
