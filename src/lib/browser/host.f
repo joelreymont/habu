@@ -15,6 +15,7 @@
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fs.f
+require src/lib/build-input.f
 require src/lib/net/http.f
 
 package BROWSER-HOST
@@ -30,7 +31,9 @@ private
 \ since it was measured is E-FS-IO, or READ-ALL's E-FS-CAPACITY.
 : READ ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n dst:ptr cap:n :}
-   a u PATH dst cap READ-ALL cap <> if E-FS-IO throw then ;
+   a u PATH {: path:ptr pathu:n :}
+   path pathu BUILD-INPUT:FILE
+   path pathu dst cap READ-ALL cap <> if E-FS-IO throw then ;
 
 s" src/lib/browser/index.html" PATH FILE-SIZE constant INDEX-U
 INDEX-U BUFFER: INDEX

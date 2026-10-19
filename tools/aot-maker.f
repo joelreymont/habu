@@ -2,6 +2,7 @@
 \ each invocation loads the linker after the application window.
 1 set-tier
 require src/habu/aot-window-latch.f
+require src/lib/build-input.f
 
 package AOT-MAKER
 

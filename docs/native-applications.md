@@ -88,6 +88,15 @@ in `HABU_BUILD_CACHE`. An unchanged file imports its compiled definitions,
 checker declarations and stored state without executing its source again.
 Editing a file recompiles it and the files that depend on its changed inputs.
 
+Source that embeds a non-source file declares its absolute path with
+`BUILD-INPUT:FILE ( ptr u8 n -- )` before reading it
+(`require src/lib/build-input.f`). `BROWSER-HOST` declares its three page files
+this way. `hb-build --repl` records these files in its existing input rows, so
+an edited or missing asset invalidates the image and its cached FILE unit.
+The declaration is a no-op during ordinary source loading. Stripped builds'
+outer artifact and object caches still use the static source closure; these
+declarations alone do not provide asset freshness for that build mode.
+
 For stripped builds, `hb-build` selects a saved maker image by engine, source
 root and maker support closure, so repeated builds reuse its compiled opener.
 Its producer support is retired before the application opens its DATA window,

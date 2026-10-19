@@ -6,6 +6,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/build-input.f
 require src/lib/le.f
 require src/lib/engine-id.f
 require src/core/sha256.f
@@ -769,6 +770,7 @@ CAST: CONT-N ( [ n n -- ] -- n )
    csec drop cns drop
    size READ-SIZE ! sec READ-SEC ! ns READ-NS !
    path pathu root rootu SOURCE-ROOT:READ-OS ;
+: FILE-INPUT ( ptr u8 n -- ) s" " NFILE-INPUTS:ADD-MTIME ;
 : PRINT-COUNTS ( -- )
    s" hb-build: file unit hits " type HIT-N @ .
    s"  compiled " type COMPILE-N @ . cr ;
@@ -780,6 +782,7 @@ variable REPORT-COUNTS
       0 HASH-CTX i + c!
    loop ;
 : CLOSE ( -- )
+   BUILD-INPUT:RESET
    CHECKER-END
    NULL-PTR APP-PATH ! 0 APP-PATH-U !
    SOURCE-UNIT:RESET SOURCE-INPUT:RESET
@@ -801,6 +804,7 @@ variable REPORT-COUNTS
 : RUN-APP ( -- ) APP-PATH @ APP-PATH-U @ script-required ;
 : BUILD ( -- )
    NFILE-INPUTS:RESET
+   [: FILE-INPUT ;] BUILD-INPUT:USE
    0 HIT-N ! 0 COMPILE-N ! 0 DEPTH !
    ARTIFACT-OFF FS-PATH-CAP + FRAME-BYTES !
    FILE-ROOT$ MAKE-DIRS
