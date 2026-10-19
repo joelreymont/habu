@@ -1,5 +1,5 @@
 \ string-test.f - focused tests for checked stdlib string helpers.
-\ Run: cat src/lib/errors.f src/lib/string.f src/lib/string-test.f | bin/hb
+\ Run: bin/hb --load src/lib/string-test.f
 
 require src/lib/errors.f
 require src/lib/string.f

@@ -1,5 +1,5 @@
 \ property-test.f - focused tests for property helper library.
-\ Run: cat src/lib/errors.f src/lib/test.f src/lib/property.f src/lib/property-test.f | bin/hb
+\ Run: bin/hb --load src/lib/property-test.f
 
 require src/lib/errors.f
 require src/lib/test.f

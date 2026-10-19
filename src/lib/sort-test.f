@@ -1,5 +1,5 @@
 \ sort-test.f - checked SORT:SORT! / SORT:FSORT! coverage.
-\ Run: cat src/lib/errors.f src/lib/test.f src/lib/sort.f src/lib/sort-test.f | bin/hb
+\ Run: bin/hb --load src/lib/sort-test.f
 
 require src/lib/errors.f
 require src/lib/test.f
