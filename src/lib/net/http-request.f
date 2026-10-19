@@ -207,26 +207,14 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    true ;
 
 
-: HEX-BYTE? ( n -- bool ) {: c:n :}
-   c $30 >= c $39 <= and if true exit then
-   c $41 >= c $46 <= and if true exit then
-   c $61 >= c $66 <= and ;
-
-
-: HEX-VALUE ( n -- n ) {: c:n :}
-   c $39 <= if c $30 - exit then
-   c $46 <= if c $37 - exit then
-   c $57 - ;
-
-
 \ Percent escapes are validated once, here, so a route that decodes a bound
 \ segment later can trust every escape it meets.
 : ESCAPES-OK? ( n n n -- bool ) {: idx:n at:n len:n :}
    len 0 ?do
       idx at i + AT-BYTE PERCENT = if
          i 2 + len >= if false unloop exit then
-         idx at i + 1+ AT-BYTE HEX-BYTE? 0= if false unloop exit then
-         idx at i + 2 + AT-BYTE HEX-BYTE? 0= if false unloop exit then
+         idx at i + 1+ AT-BYTE STR-HEX-DIGIT? 0= if false unloop exit then
+         idx at i + 2 + AT-BYTE STR-HEX-DIGIT? 0= if false unloop exit then
       then
    loop
    true ;
@@ -403,7 +391,7 @@ $5D constant CLOSE-BRACKET
 : ESCAPE? ( ptr u8 n n -- bool )
    {: a u:n at:n :}
    at 2 + u >= if false exit then
-   a at + 1+ 2 [: HEX-BYTE? ;] EVERY? ;
+   a at + 1+ 2 [: STR-HEX-DIGIT? ;] EVERY? ;
 
 
 \ reg-name (RFC 3986 3.2.2), which an IPv4address is too, never empty (RFC
@@ -434,7 +422,7 @@ $5D constant CLOSE-BRACKET
 : HEX16? ( ptr u8 n -- bool )
    {: a u:n :}
    u 1 < u 4 > or if false exit then
-   a u [: HEX-BYTE? ;] EVERY? ;
+   a u [: STR-HEX-DIGIT? ;] EVERY? ;
 
 
 \ dec-octet: 0 to 255, with no leading zero.
@@ -518,7 +506,7 @@ $5D constant CLOSE-BRACKET
    {: a u:n :}
    a u DOT BEFORE {: k:n :}
    k 0= k 1+ u >= or if false exit then
-   a k [: HEX-BYTE? ;] EVERY? 0= if false exit then
+   a k [: STR-HEX-DIGIT? ;] EVERY? 0= if false exit then
    a k + 1+ u k - 1- [: FUTURE-BYTE? ;] EVERY? ;
 
 
@@ -673,8 +661,8 @@ private
    at end >= if value exit then
    idx at AT-BYTE {: c:n :}
    c SEMICOLON = if value exit then
-   c HEX-BYTE? 0= if -1 exit then
-   c HEX-VALUE {: digit:n :}
+   c STR-HEX-DIGIT? 0= if -1 exit then
+   c STR-HEX-DIGIT-VALUE {: digit:n :}
    value MEM-MAX-N digit - HEX-BASE / > if -1 exit then
    value HEX-BASE * digit + {: next:n :}
    idx at 1+ end next RECURSE ;

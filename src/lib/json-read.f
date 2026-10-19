@@ -97,11 +97,6 @@ private
 123 constant LBRACE
 125 constant RBRACE
 
-65 constant HEXUP-A
-70 constant HEXUP-F
-97 constant HEXLO-A
-102 constant HEXLO-F
-10 constant HEX-TEN
 16 constant HEX-BASE
 
 \ ---- unicode / utf-8 ------------------------------------------------------
@@ -305,16 +300,15 @@ private
    state STATE-OFF + ! ;
 
 \ ---- string token scanning ------------------------------------------------
-: HEX-VAL ( n -- n bool )
-   dup STR-DIGIT? if STR-DIGIT-VALUE TRUE exit then
-   dup HEXUP-A >= over HEXUP-F <= and if HEXUP-A - HEX-TEN + TRUE exit then
-   dup HEXLO-A >= over HEXLO-F <= and if HEXLO-A - HEX-TEN + TRUE exit then
-   drop 0 FALSE ;
+\ The value of this hex digit byte; any other byte is a malformed escape.
+: HEX-DIGIT ( n -- n )
+   dup STR-HEX-DIGIT? 0= if E-JR-ESCAPE throw then
+   STR-HEX-DIGIT-VALUE ;
 
 : SCAN-HEX ( ptr n n -- n ) {: state:ptr value:n :}
    state EOF? if E-JR-ESCAPE throw then
    value HEX-BASE *
-   state PEEK HEX-VAL 0= if E-JR-ESCAPE throw then
+   state PEEK HEX-DIGIT
    +
    state ADVANCE ;
 
@@ -708,7 +702,7 @@ private
 
 : HEX-NEXT ( ptr n n -- n ) {: state:ptr value:n :}
    value HEX-BASE *
-   state state UI-OFF + @ SPAN-AT HEX-VAL 0= if E-JR-ESCAPE throw then
+   state state UI-OFF + @ SPAN-AT HEX-DIGIT
    +
    state UI-OFF + dup @ 1+ swap ! ;
 

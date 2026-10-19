@@ -1,6 +1,7 @@
 \ XML 1.0 scalar/entity decoding retains byte offsets in its input view.
 require src/lib/prelude.f
 require src/lib/utf8-scalar.f
+require src/lib/string.f
 
 package XML
 public
@@ -90,11 +91,8 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    scalar next ;
 
 : HEX-DIGIT ( n -- n )
-   {: byte:n :}
-   byte $30 >= byte $39 <= and if byte $30 - exit then
-   byte $61 >= byte $66 <= and if byte $61 - 10 + exit then
-   byte $41 >= byte $46 <= and if byte $41 - 10 + exit then
-   E-ENTITY throw ;
+   dup STR-HEX-DIGIT? 0= if E-ENTITY throw then
+   STR-HEX-DIGIT-VALUE ;
 
 : NUMERIC-STEP ( n n n -- n )
    {: value:n digit:n radix:n :}

@@ -76,8 +76,8 @@ variable ROUTE-COUNT
       {: at:n :}
       at len >= if exit then
       bytes at + c@ PERCENT = at 3 + len <= and if
-         bytes at 1+ + c@ HEX-VALUE HEX-BASE *
-         bytes at 2 + + c@ HEX-VALUE + idx SEGMENT+C
+         bytes at 1+ + c@ STR-HEX-DIGIT-VALUE HEX-BASE *
+         bytes at 2 + + c@ STR-HEX-DIGIT-VALUE + idx SEGMENT+C
          at 3 +
       else
          bytes at + c@ idx SEGMENT+C
