@@ -544,6 +544,35 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
 : FMT-PARENT-FILL ( ptr u8 n -- )
    s" published" WRITE-ALL ;
 
+: FMT-STAGED-SPAN ( SPAN:span<u8> ptr u8 n -- SPAN:span<u8> )
+   {: data path:ptr pathu:n :}
+   path pathu data SPAN:$ WRITE-ALL
+   data ;
+
+: FMT-STAGED-FAIL ( SPAN:span<u8> ptr u8 n -- SPAN:span<u8> )
+   {: data path:ptr pathu:n :}
+   path pathu FMT-UNIQUE-BUF FMT-UNIQUE-U FMT-COPY!
+   path pathu data SPAN:$ WRITE-ALL
+   E-FS-IO throw ;
+
+: FMT-TEST-STAGED-CONTEXT ( -- )
+   s" staged callbacks preserve a complete layout value" T-LABEL
+   s" context" SPAN:MAKE FMT-ATOMIC-PATH [: FMT-STAGED-SPAN ;] REPLACE-STAGED
+   SPAN:$ s" context" T$=
+   FMT-ATOMIC-PATH FMT-READ-BUF 64 READ-ALL 7 T=
+   FMT-READ-BUF 7 s" context" T$=
+   FS-MUT-CLEANUP-N @ {: before:n :}
+   s" a throwing callback preserves the old file and releases its sibling" T-LABEL
+   [: s" partial" SPAN:MAKE FMT-ATOMIC-PATH
+      [: FMT-STAGED-FAIL ;] REPLACE-STAGED SPAN:$ 2drop ;] E-FS-IO TTHROWSQ
+   FMT-ATOMIC-PATH FMT-READ-BUF 64 READ-ALL 7 T=
+   FMT-READ-BUF 7 s" context" T$=
+   FMT-UNIQUE EXISTS? TFALSE
+   FS-MUT-CLEANUP-N @ before T=
+   s" a staged callback cannot consume its caller's context" T-LABEL
+   s" FMT-BAD-STAGED ( n ptr u8 n -- ) [: 2drop drop ;] REPLACE-STAGED"
+      CHECK-QUIET-CANDIDATE! 0 T= ;
+
 : FMT-TEST-ATOMIC-RELATIVE ( -- )
    s" ./src/lib/../lib/fs-mutate.f" FS-MUT-ATOMIC-TARGET
    FMT-PARENT-BOUND-BUF FMT-PARENT-BOUND-U FMT-COPY!
@@ -1326,6 +1355,7 @@ public
    FMT-TEST-ATOMIC-DANGLING-LINK
    FMT-TEST-ATOMIC-RELATIVE
    FMT-TEST-ATOMIC-PARENT-LINK
+   FMT-TEST-STAGED-CONTEXT
    FMT-TEST-ATOMIC-COLLISION
    FMT-TEST-ATOMIC-FAILURE
    FMT-TEST-DIRS

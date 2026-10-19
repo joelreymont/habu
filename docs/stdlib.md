@@ -1879,7 +1879,7 @@ COPY-FILE               ( ptr u8 n ptr u8 n n -- )
 COPY-FILE-STREAM        ( ptr u8 n ptr u8 n -- )
 ATOMIC-WRITE-FILE       ( ptr u8 n ptr u8 n -- )
 RESERVE-SIBLING         ( ptr u8 n -- ptr u8 n n )
-REPLACE-STAGED          ( ptr u8 n [ ptr u8 n -- ] -- )
+REPLACE-STAGED          ( R ptr u8 n [ R ptr u8 n -- R ] -- R )
 SIBLING-PATH-MAX        ( -- n )
 SIBLING-NAME-MAX        ( -- n )
 MAKE-TEMP-DIR           ( ptr u8 n ptr u8 n -- ptr u8 n )
@@ -1971,7 +1971,10 @@ them.
 streams its file, and `REPLACE-STAGED` runs one: it hands the sibling's path to
 a filler, renames the sibling over the destination once the filler returns, and
 removes it if the filler or the rename throws or the filler dies, so the
-destination names its old file or the whole new one. A destination longer than
+destination names its old file or the whole new one. Values below the path
+pass to the filler and return from it with the same types and stack shape;
+this lets a writer carry typed context without storing it elsewhere.
+A destination longer than
 `SIBLING-PATH-MAX` has no room for a sibling and is `E-SPAN-CAPACITY`; one
 whose last name is longer than `SIBLING-NAME-MAX` gives a sibling name the
 host refuses, `E-FS-OPEN`.

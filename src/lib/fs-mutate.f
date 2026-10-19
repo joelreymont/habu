@@ -814,7 +814,7 @@ public
 
 \ Stack-preserving under `catch`: the caller still holds the sibling to remove
 \ when a step throws.
-: FS-MUT-STAGED-RUN ( ptr u8 n ptr u8 n [ ptr u8 n -- ] -- ptr u8 n ptr u8 n [ ptr u8 n -- ] )
+: FS-MUT-STAGED-RUN ( R ptr u8 n ptr u8 n [ R ptr u8 n -- R ] -- R ptr u8 n ptr u8 n [ R ptr u8 n -- R ] )
    {: path:ptr pathu tmp:ptr tmpu fill :}
    tmp tmpu CLEANUP+
    tmp tmpu fill execute
@@ -830,7 +830,9 @@ public
 \ refuses the claim, and the sibling goes then. fill must not reserve a
 \ sibling of its own (ATOMIC-WRITE-FILE does): RESERVE-SIBLING's path is this
 \ task's only until its next reservation.
-: REPLACE-STAGED ( ptr u8 n [ ptr u8 n -- ] -- )
+\ A caller may pass context below path; fill must return that context unchanged
+\ in shape. It can carry typed pointers and complete layout values directly.
+: REPLACE-STAGED ( R ptr u8 n [ R ptr u8 n -- R ] -- R )
    {: path:ptr pathu fill :}
    path pathu RESERVE-SIBLING {: tmp:ptr tmpu fd :}
    \ Closed once, before fill opens the sibling by path; ATOMIC-WRITE-FILE says
