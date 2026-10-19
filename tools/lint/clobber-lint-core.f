@@ -165,13 +165,13 @@ variable RX  variable RACC
    \ LROOM restores x9-x12; its exhaustion branch throws without returning.
    a u s" EM-DEF-OCC:LROOM" LINT-STR=CI if
       0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD exit then
-   \ LCOUNT frames x9-x14/x30; APPEND and RESET restore their own frames
-   \ around LCOUNT, which in turn restores the other touched input registers.
+   \ LCOUNT frames x9-x14/x30 and leaves x15 untouched. APPEND and RESET
+   \ restore their own frames around LCOUNT and inherit its x15 preservation.
    a u s" EM-DEF-OCC:LCOUNT" LINT-STR=CI
    a u s" EM-DEF-OCC:LAPPEND" LINT-STR=CI or
    a u s" EM-DEF-OCC:LRESET" LINT-STR=CI or if
       0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 14 CL-ADD
-        30 CL-ADD exit then
+        15 CL-ADD 30 CL-ADD exit then
    \ The relocation helpers touch syscall scratch only in fatal write/exit
    \ arms; neither x8 nor x16 is written on a returning path.
    a u s" RELOC-EMIT:LCALLS" LINT-STR=CI
