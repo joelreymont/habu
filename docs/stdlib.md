@@ -496,9 +496,12 @@ FFI:DLSYM         ( n ptr u8 -- n )
 ## SVG to PDF
 
 `require src/lib/svg-pdf.f` provides `SVG-PDF:WRITE ( ptr u8 n ptr u8 n -- )`:
-destination path, then completed SVG bytes. Native librsvg and Cairo preserve
-fractional intrinsic dimensions at 96 DPI and replace the destination only
-after PDF finalization succeeds. See [svg-pdf.md](svg-pdf.md) for dependencies,
+destination path, then completed SVG bytes, and
+`SVG-PDF:WRITE-PAGES ( ptr u8 n ptr SPAN:span<u8> n -- )`: destination path,
+then a borrowed contiguous SVG-span array and positive page count. Native
+librsvg and Cairo preserve each page's fractional intrinsic dimensions at
+96 DPI and replace the entire destination only after PDF finalization
+succeeds. See [svg-pdf.md](svg-pdf.md) for dependencies,
 resource policy, errors, precision and the native E2E check.
 
 ## ZIP Archives
