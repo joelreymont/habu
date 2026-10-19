@@ -80,8 +80,8 @@ CAST: ACTION-XT ( n -- [ -- ] )
    then
    XREF-START dup AOT-ARM:B0 @ < if E-NUNIT-PROFILE throw then ;
 
-\ These owners exist only when an application has loaded callback support.
-: CALLBACK-OWNER-XT ( ptr u8 n -- n )
+\ Optional runtime owners exist only after their support has been loaded.
+: RUNTIME-OWNER-XT ( ptr u8 n -- n )
    XREF-FIND dup XREF-FOUND? 0= if drop 0 exit then
    XREF-START dup AOT-ARM:B0 @ < if E-NUNIT-PROFILE throw then ;
 
@@ -150,12 +150,21 @@ CAST: ACTION-XT ( n -- [ -- ] )
 
 : IGNORE-DATA ( ptr u8 n -- ) 2drop ;
 
-: CALLBACK-OWNERS ( [ ptr u8 n -- ] -- ) {: keep :}
-   s" FFI-CB:OWNED-CELLS" CALLBACK-OWNER-XT dup 0<> if
+: CALLBACK-OWNERS ( [ ptr u8 n -- ] -- )
+   {: keep :}
+   s" FFI-CB:OWNED-CELLS" RUNTIME-OWNER-XT dup 0<> if
       DECL-OWNED-XT keep swap execute
    else drop then
-   s" TASK:OWNED-CALLBACK-ROWS" CALLBACK-OWNER-XT dup 0<> if
+   s" TASK:OWNED-CALLBACK-ROWS" RUNTIME-OWNER-XT dup 0<> if
       DECL-OWNED-XT keep swap execute
+   else drop then ;
+
+\ TASK declarations change baked DATA below the ordinary FILE prefix. Process
+\ scratch is fresh state, so only the runtime's carried declarations are kept.
+: TASK-OWNERS ( [ ptr u8 n -- ] -- )
+   {: keep :}
+   s" TASK:OWNED-CELLS" RUNTIME-OWNER-XT dup 0<> if
+      OWNED-XT keep ['] IGNORE-DATA rot execute
    else drop then ;
 
 : SNAP-OWNERS ( -- )
@@ -163,7 +172,8 @@ CAST: ACTION-XT ( n -- [ -- ] )
       ['] KEEP-DATA ['] IGNORE-DATA rot execute
    s" FFI-DECL:OWNED-CELLS" TARGET-XT DECL-OWNED-XT
       ['] KEEP-DATA swap execute
-   ['] KEEP-DATA CALLBACK-OWNERS ;
+   ['] KEEP-DATA CALLBACK-OWNERS
+   ['] KEEP-DATA TASK-OWNERS ;
 
 : REFRESH-LIVE ( -- )
    0 OWNED-N ! 0 OWNED-FIRST ! 0 OWNED-TOP !
@@ -171,13 +181,14 @@ CAST: ACTION-XT ( n -- [ -- ] )
       ['] KEEP-LIVE ['] IGNORE-DATA rot execute
    s" FFI-DECL:OWNED-CELLS" TARGET-XT DECL-OWNED-XT
       ['] KEEP-LIVE swap execute
-   ['] KEEP-LIVE CALLBACK-OWNERS ;
+   ['] KEEP-LIVE CALLBACK-OWNERS
+   ['] KEEP-LIVE TASK-OWNERS ;
 
 : ARM-OWNERS ( -- )
    s" FFI-DECL:ARM-SCOPE" TARGET-XT ACTION-XT execute ;
 
 : ARM-IMPORTED-CALLBACKS ( -- )
-   s" TASK:ARM-IMPORTED-CALLBACKS" CALLBACK-OWNER-XT dup 0<> if
+   s" TASK:ARM-IMPORTED-CALLBACKS" RUNTIME-OWNER-XT dup 0<> if
       ACTION-XT execute
    else drop then ;
 

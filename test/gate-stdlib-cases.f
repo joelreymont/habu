@@ -238,6 +238,10 @@ SUITE native-file-stripped-path
    test/native-file-stripped-path-e2e.f
 ;SUITE
 
+SUITE native-file-task-state
+   test/native-file-task-state-e2e.f
+;SUITE
+
 \ Each FILE pair builds twice; separate rows keep the native gate CPU budget.
 SUITE native-file-forms-zero
    test/native-file-forms-zero.f

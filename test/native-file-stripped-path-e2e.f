@@ -41,6 +41,35 @@ package NATIVE-FILE-STRIPPED-PATH-TEST
    OUT$ hits hitsu CONTAINS? TTRUE
    OUT$ compiled compiledu CONTAINS? TTRUE ;
 
+: RUN-USER-IMAGE ( -- )
+   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
+   s" hb-aot-got" AT s" " CAPTURE SUCCESS
+   OUT$ S\" 17\n29\n1\n1\n" T$= ;
+
+\ A cached accessor already contains its offset. Its declaration must also
+\ advance #USER before a source-loaded sibling allocates the next slot.
+: USER-SLOTS ( -- )
+   s" imported FILE user slots precede source-loaded slots" T-LABEL
+   s" user-cache" AT MAKE-DIR
+   s" user-cold-cache" AT MAKE-DIR
+   s" a.f" S\" require src/lib/task.f\npackage USER-A\npublic\nTASK:#USER CELL TASK:+USER SLOT drop\n;package\ns\q user A source ran\q type cr\n" PUT
+   s" app.f" S\" require a.f\n: MAIN ( -- ) 17 USER-A:SLOT ! ;\n" PUT
+   s" user-cache" MAKER SUCCESS
+   S\" file unit hits 0\n" S\" compiled 2\n" CHECK-COUNTS
+   s" b.f" S\" require src/lib/task.f\npackage USER-B\npublic\nTASK:#USER CELL TASK:+USER SLOT drop\n;package\ns\q user B source ran\q type cr\n" PUT
+   s" app.f" S\" require a.f\nrequire b.f\n: MAIN ( -- )\n   17 USER-A:SLOT ! 29 USER-B:SLOT !\n   USER-A:SLOT @ . USER-B:SLOT @ .\n   USER-B:SLOT BYTE-VIEW USER-A:SLOT BYTE-VIEW - CELL = if 1 else 0 then .\n   TASK:#USER USER-A:SLOT BYTE-VIEW data-base BYTE-VIEW - - 2 cells = if 1 else 0 then . ;\n" PUT
+   s" user-cache" MAKER SUCCESS
+   S\" file unit hits 1\n" S\" compiled 2\n" CHECK-COUNTS
+   OUT$ s" user A source ran" CONTAINS? TFALSE
+   OUT$ s" user B source ran" CONTAINS? TTRUE
+   RUN-USER-IMAGE
+   s" user-cache" MAKER SUCCESS
+   S\" file unit hits 3\n" S\" compiled 0\n" CHECK-COUNTS
+   RUN-USER-IMAGE
+   s" user-cold-cache" MAKER SUCCESS
+   S\" file unit hits 0\n" S\" compiled 3\n" CHECK-COUNTS
+   RUN-USER-IMAGE ;
+
 public
 : MAIN ( -- )
    T-RESET
@@ -68,6 +97,7 @@ public
    S\" file unit hits 9\n" S\" compiled 0\n" CHECK-COUNTS
    s" env-cache" BUILD SUCCESS
    CHECK-RUN
+   USER-SLOTS
    T-REPORT
    s" native file stripped artifacts: " type ROOT$ type cr ;
 ;package
