@@ -1586,6 +1586,10 @@ SUITE ffi-abi
    src/lib/ffi-abi-test.f
 ;SUITE
 
+SUITE svg-pdf
+   test/svg-pdf-e2e.f
+;SUITE
+
 SUITE zip
    src/lib/zip-test.f
    src/lib/zip-lifecycle-test.f

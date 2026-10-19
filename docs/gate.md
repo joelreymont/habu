@@ -26,6 +26,10 @@ fixtures pass unchanged with external scratch.
 bin/hb --load test/run.f </dev/null
 ```
 
+The `svg-pdf` row needs native librsvg (2.52 or newer) with Cairo PDF support,
+plus `qpdf`, `pdfinfo` and `pdfimages` on PATH. On macOS, install them with
+`brew install librsvg qpdf poppler` ([SVG/PDF](svg-pdf.md)).
+
 A green native build does not show that the prefix boots from source. The
 build compiles the whole prefix with a checker: the host's up to
 `src/core/check-hook.f`, then the window's own, which starts with the rows

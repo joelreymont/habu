@@ -25,6 +25,7 @@ Planned module files:
 - `src/lib/ffi-abi.f`
 - `src/lib/ffi-callback.f`
 - `src/lib/zip.f`
+- `src/lib/svg-pdf.f` ([SVG to PDF](svg-pdf.md))
 - `src/lib/net/udp4.f`
 - `src/lib/net/ws-frame.f`
 - `src/lib/net/ws.f`
@@ -94,6 +95,7 @@ theirs.
 | `src/lib/fs.f` | task-local (the per-call slots, FS-ABI band) / process-wide (the walk stack) |
 | `src/lib/fs-lock.f` | caller-owned (the held descriptor) |
 | `src/lib/fs-mutate.f` | task-local (the staged paths, FS-MUT-ABI band; the stream copy's descriptors and cursors) / process-wide (the copy buffer, so the two copy words are single-task; the cleanup registry, which any task may register into) |
+| `src/lib/svg-pdf.f` | task-local (the foreign handles and fractional viewport) |
 | `src/lib/json-write.f` | caller-owned |
 | `src/lib/json-read.f` | caller-owned |
 | `src/lib/jsonl.f` | caller-owned cursor; BUF, input block and reader backing owned by the cursor between OPEN and end of input or CLOSE; splitter owns nothing |
@@ -490,6 +492,14 @@ FFI:GLOBAL        ( -- n )
 FFI:DLOPEN        ( ptr u8 n -- n )
 FFI:DLSYM         ( n ptr u8 -- n )
 ```
+
+## SVG to PDF
+
+`require src/lib/svg-pdf.f` provides `SVG-PDF:WRITE ( ptr u8 n ptr u8 n -- )`:
+destination path, then completed SVG bytes. Native librsvg and Cairo preserve
+fractional intrinsic dimensions at 96 DPI and replace the destination only
+after PDF finalization succeeds. See [svg-pdf.md](svg-pdf.md) for dependencies,
+resource policy, errors, precision and the native E2E check.
 
 ## ZIP Archives
 

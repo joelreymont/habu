@@ -47,7 +47,8 @@ The full native suite has additional host requirements. On Linux its PTY
 tests need working /dev/ptmx and /dev/pts. The database row needs initdb
 and postgres on PATH, run as an ordinary user because initdb refuses root.
 On macOS the library rows use Homebrew libzip, libunistring, openssl@3,
-libpq and socat; keg-only postgresql@18 needs its bin directory on PATH.
+libpq and socat; SVG/PDF checks also need librsvg, qpdf and Poppler.
+Keg-only postgresql@18 needs its bin directory on PATH.
 See [gate.md](gate.md) for the suite and its boundaries.
 
 ## No-Binary Recovery
