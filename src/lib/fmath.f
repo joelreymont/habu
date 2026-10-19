@@ -251,6 +251,12 @@ public
    a b f= if a IEEE754:F64>BITS 0< if b else a then exit then
    a b f> if a else b then ;
 
+\ IEEE 754-2019 minimumNumber, which is exactly -FMAX(-a, -b): negation only
+\ flips the sign bit, so FMAX's NaN and signed-zero rules carry over mirrored.
+: FMIN ( r r -- r )
+   {: a:r b:r :}
+   a fnegate b fnegate FMAX fnegate ;
+
 \ Compare the fractional part before rounding; adding 0.5 first can round a
 \ binary64 value immediately below the halfway point up to the next integer.
 : FROUND ( r -- n ) {: value:r :}

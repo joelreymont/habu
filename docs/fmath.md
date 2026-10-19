@@ -26,6 +26,7 @@ rigid frame; callers own those policies.
 | `DIV ( r r -- r )` | IEEE binary64 division, as `f/`, including signed zero, infinities and NaN. |
 | `EQUAL? ( r r -- bool )` | IEEE binary64 equality, as `f=`; NaN is unequal. |
 | `FMAX ( r r -- r )` | IEEE 754-2019 maximumNumber: the larger operand, +0 above -0, a NaN operand yields the other; never throws. |
+| `FMIN ( r r -- r )` | IEEE 754-2019 minimumNumber: the smaller operand, -0 below +0, a NaN operand yields the other; never throws. |
 | `ISQRT-FLOOR ( n -- n )` | Exact floor of the root of a nonnegative signed cell. |
 | `ISQRT-CEIL ( n -- n )` | Exact ceiling; no square of the result is needed. |
 | `FLN ( r -- r )` | Natural logarithm of a positive finite binary64 value. |
