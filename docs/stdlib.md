@@ -1799,6 +1799,7 @@ FILE-SIZE               ( ptr u8 n -- n )
 FILE-META               ( ptr u8 n -- n n n n n )
 FILE?                   ( ptr u8 n -- bool )
 DIR?                    ( ptr u8 n -- bool )
+FIFO?                   ( ptr u8 n -- bool )
 SYMLINK?                ( ptr u8 n -- bool )
 EXECUTABLE?             ( ptr u8 n -- bool )
 BASENAME                ( ptr u8 n -- ptr u8 n )
@@ -1878,6 +1879,9 @@ to a regular file. Both write the full counted input or throw a named filesystem
 error. `OPEN-APPEND-FD` opens the same append-only regular-file target and
 returns an fd for callers that need to stream child process output directly into
 a file.
+`FIFO?` is true for a named pipe; like `FILE?` and `DIR?` it follows symlinks,
+and a missing path is false. `FD-IO:TRY-FIFO-WRITER` (Descriptor IO) opens one's
+write end.
 `SYMLINK?` uses `lstat64`, so it detects a link itself rather than following the
 target. `READ-LINK` reads the target bytes into the caller's span and returns the
 byte count without appending a NUL; missing, non-link, I/O, and capacity failures
@@ -2304,6 +2308,7 @@ FD-IO:fill                                          \ full | eof bytes
 FD-IO:READ-EXACT ( fd SPAN:span<u8> -- FD-IO:fill )
 FD-IO:WRITE-FULL ( fd ptr u8 n -- )
 FD-IO:WRITE-FULL-UNTIL ( fd ptr u8 n n -- )    \ final n is an absolute mono-ns deadline
+FD-IO:TRY-FIFO-WRITER ( ptr u8 n -- option<fd> )  \ none while the FIFO has no reader
 ```
 
 `READ-EXACT` reads until the span is full and answers `full`; a read that
@@ -2333,6 +2338,19 @@ descriptors created by `dup` or inherited across `fork`. The caller retains
 the descriptor and must decide how to discard a partially delivered message
 after failure. As with `WRITE-FULL`, a caller writing to a pipe with no reader
 must arm `FD-NOSIGPIPE!` to receive `E-FS-IO` instead of `SIGPIPE`.
+
+`TRY-FIFO-WRITER` makes one attempt to open the write end of an existing FIFO,
+following symlinks to it. It opens with `O_WRONLY|O_NONBLOCK`, never creating
+or truncating, so the attempt answers at once: `none` when no reader has the
+FIFO open (`ENXIO`), with no descriptor left open, and `some` with the write
+end once a reader has it. That descriptor has `O_NONBLOCK` cleared again, so
+`WRITE-FULL` and `close` treat it as any blocking descriptor; the caller owns
+and closes it. A path that is not a FIFO, a missing one included, and any
+other refusal of the open throw `E-FS-OPEN`; a descriptor whose `O_NONBLOCK`
+cannot be cleared is closed and throws `E-FS-IO`. The word neither sleeps nor
+polls: a caller waiting for a reader owns the deadline and the retry loop.
+`src/lib/fs-test.f` exercises it against the system `mkfifo` and a `cat`
+reader.
 
 ## Content-Length framing
 

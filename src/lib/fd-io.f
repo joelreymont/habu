@@ -22,15 +22,22 @@
 \ The caller exclusively owns the descriptor's open-file description while this
 \ word runs: O_NONBLOCK is shared by duped and inherited descriptors. Original
 \ status flags are restored before success or a catchable failure is reported.
+\ TRY-FIFO-WRITER makes one attempt to open an existing FIFO's write end with
+\ O_NONBLOCK, which answers ENXIO at once while no reader has the FIFO open; an
+\ open that succeeds is made blocking again, so these words write to it. It
+\ neither sleeps nor polls: the caller owns the deadline and the retries.
 \
-\ STORAGE CLASS. TASK-LOCAL: one pollfd row belongs to the calling task. Byte
-\ spans and descriptor ownership stay with the caller.
+\ STORAGE CLASS. TASK-LOCAL: one pollfd row belongs to the calling task, and
+\ TRY-FIFO-WRITER's path copy and stat are src/lib/fs.f's task-local buffers.
+\ Byte spans and descriptor ownership stay with the caller.
 
 require src/lib/errors.f
 require src/lib/span.f
 require src/lib/ffi-abi.f
 require src/lib/task.f
 require src/lib/le.f
+require src/lib/fs.f                \ FIFO?, FS-PATHZ and FS-O-WRONLY for TRY-FIFO-WRITER
+require src/lib/adt/option.f        \ option<fd>: TRY-FIFO-WRITER's none or write end
 
 package FD-IO
 using SPAN
@@ -49,6 +56,7 @@ private
 4 constant F-SETFL
 4 constant POLLOUT
 4 constant EINTR
+6 constant ENXIO                     \ the same number on macOS and Linux
 1000000 constant NS-PER-MS
 $7FFFFFFF constant MAX-POLL-MS
 : O-NONBLOCK ( -- n ) HB-TARGET-MACOS? if 4 else $800 then ;
@@ -56,6 +64,7 @@ $7FFFFFFF constant MAX-POLL-MS
 
 PROCESS-SYMBOLS
 FUNCTION: WRITE-CALL write ( n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: OPEN-CALL open ( ptr u8 n -- i32 ) ;FUNCTION
 
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER POLL-STORAGE drop
 : POLL-FD ( -- ptr u8 ) POLL-STORAGE BYTE-VIEW ;
@@ -176,6 +185,24 @@ public
    >r 2drop 2drop r> {: code:n :}
    changed if f flags RESTORE then
    code 0<> if code throw then ;
+
+\ One attempt to open the write end of the existing FIFO at the path, which
+\ is followed through symlinks. none: no reader has the FIFO open, and nothing
+\ stays open. some: the write end, blocking, which the caller closes. A path
+\ that is not a FIFO and any other refusal of the open throw E-FS-OPEN; a
+\ descriptor whose O_NONBLOCK cannot be cleared is closed and throws E-FS-IO.
+: TRY-FIFO-WRITER ( ptr u8 n -- option<fd> )
+   {: pa:ptr pu:n :}
+   pa pu FIFO? 0= if E-FS-OPEN throw then
+   pa pu FS-PATHZ FS-O-WRONLY O-NONBLOCK or OPEN-CALL {: opened:n :}
+   opened 0 < if
+      FFI:ERRNO ENXIO = if OPTION:NONE exit then
+      E-FS-OPEN throw
+   then
+   \ F_SETFL 0 clears the status flags F_SETFL can change; of those, the open
+   \ set only O_NONBLOCK, so this leaves the write end blocking.
+   opened F-SETFL 0 fcntl 0 < if opened close E-FS-IO throw then
+   opened >FD OPTION:SOME ;
 
 ;using
 ;package

@@ -876,7 +876,7 @@ variable SOCAT-U
    s" the child bound a real Unix socket" T-LABEL
    FMT-TREE-ROOT-FILE STAT-MODE S-IFMT and $C000 T=
    s" the nested inode is a FIFO" T-LABEL
-   FMT-TREE-LEAF STAT-MODE S-IFMT and $1000 T=
+   FMT-TREE-LEAF STAT-MODE S-IFMT and S-IFIFO T=
    FMT-TREE REMOVE-TREE ;
 
 

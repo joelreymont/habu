@@ -1,5 +1,6 @@
 \ fs-test.f - focused tests for checked stdlib filesystem helpers.
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f src/lib/fs-mutate.f src/lib/fs-test.f
+\ The FIFO rows require mkfifo and cat on PATH.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -9,6 +10,10 @@ require src/lib/fs-mutate.f
 require src/lib/memory.f                \ the walk contexts the two-context rows own
 require src/lib/task.f                  \ two tasks through READ-ALL / FILE-SIZE at once
 require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
+require src/lib/process.f               \ the FIFO rows' reader child and its pipe
+require src/lib/process-argv.f
+require src/lib/process-env.f           \ RESOLVE-EXECUTABLE finds mkfifo and cat
+require src/lib/fd-io.f                 \ FD-IO:TRY-FIFO-WRITER, WRITE-FULL, READ-EXACT
 
 1 constant FS-TEST-EX-FAIL
 $34 constant FS-TEST-U16-LO
@@ -798,6 +803,158 @@ TASK:MIN-STACK TASK:TASK FS-TEST-RACE-TASK
    FS-TEST-FREE-FD before FS-TEST=
    FS-TEST-RACE-LIVE REMOVE-FILE ;
 
+\ ---- a FIFO's write end -------------------------------------------------------
+\ A real FIFO, made by the system mkfifo, read by the system cat. With no
+\ reader an attempt answers none and holds no descriptor. Once cat has the read
+\ end, the retry loop below opens the write end, and the bytes written before it
+\ is closed are exactly what cat prints before it exits 0. The fixture's cleanup
+\ registry is full, so RUN removes the FIFO and its link itself.
+package FS-TEST-FIFO
+private
+
+5000 constant OPEN-MS
+1000000 constant NS-PER-MS
+$20 constant OUT-CAP
+3 constant F-GETFL
+
+\ The open needs O_NONBLOCK; the write end it answers must not keep it, or a
+\ write that fills the FIFO would fail instead of waiting for the reader.
+: NONBLOCK ( -- n )
+   HB-TARGET-MACOS? if 4 else $800 then ;
+
+create FIFO-BUF FS-PATH-CAP allot
+create LINK-BUF FS-PATH-CAP allot
+create TOOL-BUF FS-PATH-CAP allot
+create OUT-BUF OUT-CAP allot
+variable FIFO-U
+variable LINK-U
+variable WRITER
+
+: FIFO$ ( -- ptr u8 n )
+   FIFO-BUF FIFO-U @ ;
+
+: LINK$ ( -- ptr u8 n )
+   LINK-BUF LINK-U @ ;
+
+: PAYLOAD$ ( -- ptr u8 n )
+   s" through the fifo" ;
+
+\ A system tool's path, resolved through PATH into TOOL-BUF.
+: TOOL ( ptr u8 n -- ptr u8 len )
+   >LEN TOOL-BUF RESOLVE-EXECUTABLE TOOL-BUF swap ;
+
+: MAKE-FIFO ( -- )
+   PROC-ARGV-RESET
+   FIFO$ >LEN PROC-ARGV+
+   s" mkfifo" TOOL -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC
+   MATCH result
+      ok OF drop ENDOF
+      err OF drop E-FS-IO throw ENDOF
+   ;MATCH ;
+
+\ cat on the FIFO, its stdout the given pipe end.
+: SPAWN-CAT ( fd -- pid )
+   {: out:fd :}
+   PROC-ARGV-RESET
+   FIFO$ >LEN PROC-ARGV+
+   s" cat" TOOL -1 >FD out -1 >FD PROC-SPAWN-ARGV-IO ;
+
+\ True when the attempt opened the write end, which this closes again.
+: OPENED? ( option<fd> -- bool )
+   MATCH option
+      none OF false ENDOF
+      some OF FD>N close true ENDOF
+   ;MATCH ;
+
+\ One attempt, keeping in WRITER the write end it opened.
+: ATTEMPT ( -- bool )
+   FIFO$ FD-IO:TRY-FIFO-WRITER MATCH option
+      none OF false ENDOF
+      some OF FD>N WRITER ! true ENDOF
+   ;MATCH ;
+
+\ The caller's retry loop: an attempt a millisecond until OPEN-MS has passed.
+: AWAIT-READER ( -- bool )
+   mono-ns OPEN-MS NS-PER-MS * + {: deadline:n :}
+   begin ATTEMPT 0= while
+      mono-ns deadline >= if false exit then
+      1 >MS TASK:SLEEP
+   repeat
+   true ;
+
+: PREDICATES ( -- )
+   FIFO$ FIFO? FS-TEST-TRUE
+   LINK$ SYMLINK? FS-TEST-TRUE
+   LINK$ FIFO? FS-TEST-TRUE
+   FS-TEST-BIG-PATH FIFO? FS-TEST-FALSE
+   FS-TEST-BASE FIFO? FS-TEST-FALSE
+   s" no-such-habu-fs-path-for-stdlib-test" FIFO? FS-TEST-FALSE ;
+
+: NO-READER ( -- )
+   FS-TEST-FREE-FD {: before:n :}
+   FIFO$ FD-IO:TRY-FIFO-WRITER OPENED? FS-TEST-FALSE
+   FS-TEST-FREE-FD before FS-TEST= ;
+
+: REFUSALS ( -- )
+   T-RESET
+   [: FS-TEST-BIG-PATH FD-IO:TRY-FIFO-WRITER OPENED? drop ;] E-FS-OPEN TTHROWSQ
+   [: s" no-such-habu-fs-path-for-stdlib-test" FD-IO:TRY-FIFO-WRITER OPENED? drop ;]
+   E-FS-OPEN TTHROWSQ
+   T-FAILURES 0 FS-TEST= ;
+
+\ Everything cat printed: the payload, then end of file.
+: OUTPUT ( fd -- )
+   OUT-BUF PAYLOAD$ nip 1+ SPAN:MAKE FD-IO:READ-EXACT MATCH FD-IO:fill
+      full OF false FS-TEST-TRUE ENDOF
+      eof OF PAYLOAD$ nip FS-TEST= ENDOF
+   ;MATCH
+   OUT-BUF PAYLOAD$ nip PAYLOAD$ FS-TEST$= ;
+
+\ cat's exit, waited for before its output is read, so a reader that never
+\ sees end of file is killed and reaped rather than read from forever.
+: REAP ( pid -- )
+   {: child:pid :}
+   child OPEN-MS >MS PROC-WAIT-BOUNDED MATCH outcome
+      exited OF 0 FS-TEST= ENDOF
+      signaled OF drop false FS-TEST-TRUE ENDOF
+      timeout OF
+         child SIGKILL PROC-KILL-RAW drop
+         child PROC-WAIT-STATUS drop
+         false FS-TEST-TRUE
+      ENDOF
+   ;MATCH ;
+
+: READER ( -- )
+   PIPE-PAIR {: r:fd w:fd :}
+   w SPAWN-CAT {: child:pid :}
+   w FD>N close
+   AWAIT-READER {: opened:bool :}
+   opened FS-TEST-TRUE
+   opened if
+      WRITER @ F-GETFL 0 fcntl NONBLOCK and 0 FS-TEST=
+      WRITER @ >FD PAYLOAD$ FD-IO:WRITE-FULL
+      WRITER @ close
+   then
+   child REAP
+   r OUTPUT
+   r FD>N close ;
+
+public
+
+: RUN ( -- )
+   FS-TEST-BASE s" fifo" FIFO-BUF FIFO-U FS-TEST-PATH!
+   FS-TEST-BASE s" fifo-link" LINK-BUF LINK-U FS-TEST-PATH!
+   MAKE-FIFO
+   FIFO$ LINK$ MAKE-SYMLINK
+   PREDICATES
+   NO-READER
+   REFUSALS
+   READER
+   LINK$ REMOVE-FILE
+   FIFO$ REMOVE-FILE ;
+
+;package
+
 : FS-TEST-MAIN ( -- )
    FS-TEST-SETUP
    FS-TEST-PREPARE-FIXTURE
@@ -818,6 +975,7 @@ TASK:MIN-STACK TASK:TASK FS-TEST-RACE-TASK
    FS-TEST-IO
    FS-TEST-PARALLEL
    FS-TEST-RACED-REFUSAL
+   FS-TEST-FIFO:RUN
    FS-TEST-THROWS
    FS-TEST-CLEANUP
    FS-TEST-REPORT ;

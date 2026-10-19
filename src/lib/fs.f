@@ -65,6 +65,7 @@ $400 constant FS-O-TRUNC
 1 constant FS-READ-PROBE-CAP
 
 $F000 constant S-IFMT
+$1000 constant S-IFIFO
 $4000 constant S-IFDIR
 $8000 constant S-IFREG
 $A000 constant S-IFLNK
@@ -399,6 +400,12 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
    FS-TRY-STAT-MODE MATCH option
      none OF FS-FALSE ENDOF
      some OF S-IFMT and S-IFDIR = ENDOF
+   ;MATCH ;
+
+: FIFO? ( ptr u8 n -- bool )
+   FS-TRY-STAT-MODE MATCH option
+     none OF FS-FALSE ENDOF
+     some OF S-IFMT and S-IFIFO = ENDOF
    ;MATCH ;
 
 : SYMLINK? ( ptr u8 n -- bool )
