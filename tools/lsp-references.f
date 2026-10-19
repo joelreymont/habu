@@ -6,10 +6,10 @@
 \ a location, subject to the same text digest, deduplication and coverage
 \ warnings as source uses. Its declaration is included only while prims.f's
 \ text validates against the running specification. Built-in rename refuses.
-\ A source-backed engine use carries visit -1 and the latest image origin's
-\ path and token span. Its canonical engine symbol selects checked uses in
-\ every workspace file. A declaration in engine source selects that symbol
-\ only while its current token validates against the image origin.
+\ A source-backed engine use carries visit -1 and the live image origin's
+\ path and original token span as a compiled-binding locator. Its canonical
+\ engine symbol selects checked uses in every workspace file. A declaration
+\ in current engine source selects that symbol by package, tail and visibility.
 \ This inventory describes workspace references, not every use in engine
 \ source outside the workspace.
 \
@@ -137,6 +137,7 @@ require src/lib/json-rpc.f
 require src/core/sha256.f
 require src/habu/primitive-source.f
 require src/habu/engine-origin.f
+require tools/lsp-source-index.f
 require src/habu/verify-source.f
 require tools/lsp-docs.f
 require tools/lsp-text.f
@@ -623,9 +624,8 @@ private
    rel rootu 1+ P-B relu BYTE-COPY
    rootu relu + 1+ P-U ! ;
 
-\ A checked use must carry the latest origin path and start byte. The checker
-\ sets target end to zero when current source cannot place the declaration;
-\ the binding remains the image symbol at that start byte.
+\ A checked use carries the live origin's path and original span as its stable
+\ compiled-binding locator. An older packet may have an empty target end.
 : ORIGIN-USE-SYM ( n -- n bool )
    {: u:n :}
    u USE-VISIT -1 <> if 0 false exit then
@@ -656,10 +656,10 @@ private
    false SOURCE-LOCATED !
    [: P$ TEXT-OF! ;] catch {: rc:n :}
    rc 0<> if rc LSP-TEXT:FS-RC? 0= if rc throw then exit then
-   P$ start LSP-TEXT:TEXT$ VERIFY:ENGINE-SYMBOL-IN
-   {: located:n valid:bool :}
+   sym P$ LSP-TEXT:TEXT$ SOURCE-INDEX:TARGET-IN
+   {: at:n end:n valid:bool :}
    valid 0= if exit then
-   located sym <> if exit then
+   at TS !  end TE !
    LSP-TEXT:TEXT$ DIGEST$ {: sha:ptr shau:n :}
    sha shau POOL+ H-AT ! shau H-U !
    true SOURCE-LOCATED ! ;
@@ -803,7 +803,7 @@ private
    {: slot:n at:n :}
    slot DOC-CANON$ {: path:ptr pathu:n :}
    path pathu TEXT-OF!
-   path pathu at LSP-TEXT:TEXT$ VERIFY:ENGINE-SYMBOL-IN
+   path pathu at LSP-TEXT:TEXT$ SOURCE-INDEX:SYMBOL-IN
    {: sym:n found:bool :}
    found if sym FROM-BUILTIN then ;
 

@@ -3018,6 +3018,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ A definer still binds at its call when its operand declares a word with the
 \ same spelling. The newly declared private word must not replace that use.
 : PREFIX-SHADOW-PATH ( -- ptr u8 n )  s" prefix-shadow.f" FIXTURE ;
+: PREFIX-LAYOUT-PATH ( -- ptr u8 n )  s" src/core/layout-buffer.f" IN-TREE ;
 : PREFIX-SHADOW ( -- ptr u8 n )
    s\" package REVIEW\nTYPED-VARIABLE a n\nTYPED-VARIABLE TYPED-VARIABLE n\n;package\n" ;
 
@@ -5843,6 +5844,39 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s\" SCRIPT-ARGC drop\n" HV+
    TXT$ ;
 
+: BI-SOURCE-SHIFT$ ( -- ptr u8 n )
+   TXT-B CLEAR
+   s\" \n" HV+
+   SCRIPT-ARGV-PATH TREE$ HV+
+   TXT$ ;
+
+: BI-SOURCE-UNENDED$ ( -- ptr u8 n )
+   TXT-B CLEAR
+   SCRIPT-ARGV-PATH TREE$ HV+
+   s\" \n: BAD ( -- n" HV+
+   TXT$ ;
+
+: BI-SOURCE-REFUSED$ ( -- ptr u8 n )
+   s\" : SCRIPT-ARGC ( -- n ) drop ;\n: SCRIPT-ARG-START ( -- n ) 1 ;\n" ;
+
+: BI-SOURCE-PARSED$ ( -- ptr u8 n )
+   s\" : SKIP-DECL ( -- ) 8 0 do parse-name 2drop loop ;\nparses: SKIP-DECL 8\nSKIP-DECL : SCRIPT-ARGC ( -- n ) 1 ;\n" ;
+
+: BI-SOURCE-UNTERM$ ( -- ptr u8 n )
+   s\" : SCRIPT-ARGC ( -- n ) 1 ;\ns\" unclosed\n" ;
+
+: BI-SOURCE-DEFERRED$ ( -- ptr u8 n )
+   s\" : MK ( -- ) create 0 , ;\nparses: MK 1\nMK THING\n: SCRIPT-ARGC ( -- n ) THING @ ;\n" ;
+
+: BI-SOURCE-OPAQUE$ ( -- ptr u8 n )
+   s\" : SCRIPT-ARGC ( -- n ) 1 ;\ns\" undefine SCRIPT-ARGC\" evaluate\n" ;
+
+: BI-SOURCE-RETIRED$ ( -- ptr u8 n )
+   s\" : SCRIPT-ARGC ( -- n ) 1 ;\nundefine SCRIPT-ARGC\n: SCRIPT-ARGC ( -- n ) 2 ;\n" ;
+
+: BI-SOURCE-REPLACED-DEFINER$ ( -- ptr u8 n )
+   s\" package LSPRET\n: BEGIN-STRUCTURE ( -- ) 2 0 do parse-name 2drop loop ;\nBEGIN-STRUCTURE X END-STRUCTURE\n;package\n: SCRIPT-ARGC ( -- n ) 2 ;\n" ;
+
 : BI-USES+ ( -- )
    s" refs-builtin/w/a.f" OPEN-URI 0 13 24 REF+
    s" refs-builtin/w/b.f" DISK-URI 0 13 24 REF+ ;
@@ -5885,9 +5919,21 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    SCRIPT-ARGV-PATH s" : SCRIPT-ARGC " URI-LINE 2 13 REF+ BI-USES+ SYMBOLS-END
    1 NAMED SCRIPT-ARGV-PATH s" engine-provided" NAMED+ NAMED-END
    s" 6" SYMBOLS-START BI-USES+ SYMBOLS-END
-   BI-SOURCE-FAKE$ SCRIPT-ARGV-PATH 2swap 2 CHANGES
+   BI-SOURCE-SHIFT$ SCRIPT-ARGV-PATH 2swap 2 CHANGES
    SAY
    SCRIPT-ARGV-PATH 2 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 13" BI-A-PATH 0 16 DEFINITION-ASK
+   s" 14" SCRIPT-ARGV-PATH s" : SCRIPT-ARGC " PATH-LINE 1+ 3 DECL-TOO REFS-ASK
+   SAY
+   s" 13" SCRIPT-ARGV-PATH s" : SCRIPT-ARGC " URI-LINE 1+ 2 13 LOCATED
+   1 NAMED SCRIPT-ARGV-PATH s" engine-provided" NAMED+ NAMED-END
+   s" 14" SYMBOLS-START
+   SCRIPT-ARGV-PATH s" : SCRIPT-ARGC " URI-LINE 1+ 2 13 REF+
+   BI-USES+ SYMBOLS-END
+   BI-SOURCE-FAKE$ SCRIPT-ARGV-PATH 2swap 3 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 3 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 7" BI-A-PATH 0 16 DECL-TOO REFS-ASK
    BI-FAKE-AT 1+ {: fake:n :}
@@ -5898,7 +5944,84 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" 7" SYMBOLS-START BI-USES+ SYMBOLS-END
    s" 8" SYMBOLS-START SYMBOLS-END
    1 NAMED SCRIPT-ARGV-PATH s" engine-provided" NAMED+ NAMED-END
-   s" 9" SYMBOLS-START BI-USES+ SYMBOLS-END ;
+   s" 9" SYMBOLS-START BI-USES+ SYMBOLS-END
+   BI-SOURCE-UNENDED$ SCRIPT-ARGV-PATH 2swap 4 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 4 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 15" BI-A-PATH 0 16 DEFINITION-ASK
+   s" 16" BI-A-PATH 0 16 DECL-TOO REFS-ASK
+   SAY
+   s" 15" NOWHERE
+   1 NAMED SCRIPT-ARGV-PATH s" built-in source cannot be located" NAMED+ NAMED-END
+   s" 16" SYMBOLS-START BI-USES+ SYMBOLS-END
+   BI-SOURCE-REFUSED$ SCRIPT-ARGV-PATH 2swap 5 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 5 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 17" BI-A-PATH 0 16 DEFINITION-ASK
+   s" 18" BI-A-PATH 1 16 DEFINITION-ASK
+   SAY
+   s" 17" NOWHERE
+   s" 18" SCRIPT-ARGV-PATH URI-OF 1 2 18 LOCATED
+   BI-SOURCE-PARSED$ SCRIPT-ARGV-PATH 2swap 6 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 6 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 19" BI-A-PATH 0 16 DEFINITION-ASK
+   SAY
+   s" 19" NOWHERE
+   BI-SOURCE-UNTERM$ SCRIPT-ARGV-PATH 2swap 7 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 7 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 20" BI-A-PATH 0 16 DEFINITION-ASK
+   SAY
+   s" 20" NOWHERE
+   BI-SOURCE-DEFERRED$ SCRIPT-ARGV-PATH 2swap 8 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 8 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 21" BI-A-PATH 0 16 DEFINITION-ASK
+   SAY
+   s" 21" NOWHERE
+   BI-SOURCE-OPAQUE$ SCRIPT-ARGV-PATH 2swap 9 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 9 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 22" BI-A-PATH 0 16 DEFINITION-ASK
+   SAY
+   s" 22" NOWHERE
+   BI-SOURCE-RETIRED$ SCRIPT-ARGV-PATH 2swap 10 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 10 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 23" BI-A-PATH 0 16 DEFINITION-ASK
+   s" 24" SCRIPT-ARGV-PATH 0 2 DECL-TOO REFS-ASK
+   s" 25" SCRIPT-ARGV-PATH 2 2 DECL-TOO REFS-ASK
+   SAY
+   s" 23" NOWHERE
+   s" 24" SYMBOLS-START SYMBOLS-END
+   s" 25" SYMBOLS-START SYMBOLS-END
+   BI-SOURCE-REPLACED-DEFINER$ SCRIPT-ARGV-PATH 2swap 11 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 11 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 28" BI-A-PATH 0 16 DEFINITION-ASK
+   SAY
+   s" 28" NOWHERE
+   \ An unchanged prefix selects its accepted declaration over a PRIM: twin.
+   PREFIX-LAYOUT-PATH 2dup TREE$ 1 OPENS
+   STREAM
+   PREFIX-LAYOUT-PATH 1 EXPECT PUBLISHES
+   s" 29" PREFIX-LAYOUT-PATH s" : TYPED-VARIABLE " PATH-LINE
+   2 DECL-TOO REFS-ASK
+   SAY
+   2 NAMED PREFIX-LAYOUT-PATH s" engine-provided" NAMED+
+   SCRIPT-ARGV-PATH s" engine-provided" NAMED+ NAMED-END
+   s" 29" SYMBOLS-START
+   PREFIX-LAYOUT-PATH s" : TYPED-VARIABLE " URI-LINE 2 16 REF+
+   SYMBOLS-END ;
 
 \ A checked word loaded before origin recording and a public word in an
 \ image package both retain their source identities in a restored engine.

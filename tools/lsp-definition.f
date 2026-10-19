@@ -9,25 +9,30 @@
 \ Location. For a source declaration, the Location is the first record of the
 \ use's group, its check's group for the declaration's file
 \ (LSP-DEFS:USE-GROUP), whose token starts and ends at the declaration's bytes.
-\ For an engine primitive, it is the matching name in src/habu/prims.f;
-\ for a source-backed engine word, it is the name the image accepted there.
-\ Both ranges count in the text the check read, at that group's URI.
+\ For an engine primitive, it is the matching name in src/habu/prims.f.
+\ For a source-backed engine word, the check's original origin span identifies
+\ the compiled binding; its Location comes from the current declaration in
+\ that file, preferring an open document's text.
 \ A byte no use holds, a document whose last check did not complete or that has
 \ none, and a declaration no such record holds answer an empty list. A primitive
 \ whose source is missing or differs from the running table, or a source-backed
-\ engine word whose source token cannot be validated, has no Location.
+\ engine word whose current declaration is missing or ambiguous, has none.
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer being written belongs to the
 \ server's one task.
 
 require src/lib/json-write.f
 require src/lib/adt/option.f
+require src/habu/engine-origin.f
+require tools/lsp-source-index.f
+require tools/lsp-docs.f
 require tools/lsp-defs.f
 require tools/lsp-text.f
 
 package LSP-DEFINITION
 using JSON-WRITE
 using LSP-DEFS
+using LSP-DOCS
 
 private
 
@@ -46,11 +51,39 @@ TYPED-VARIABLE OUT ptr JSON-WRITE:writer \ the answer's writer
    {: g:n r:n :}
    g r REC-RANGE LOCATION-AT ;
 
-\ The Location of the declaration use U binds to: a negative visit's validated
-\ engine target, or the first record of its group at the declaring token.
+: TEXT-OF! ( ptr u8 n -- )
+   {: path:ptr pathu:n :}
+   path pathu DOC-HOLDING MATCH option
+      some OF DOC-TEXT$ LSP-TEXT:TEXT! ENDOF
+      none OF path pathu LSP-TEXT:FILE-TEXT! ENDOF
+   ;MATCH ;
+
+: BUILTIN-TARGET ( n n -- )
+   {: u:n g:n :}
+   u USE-TARGET {: old:n old-end:n :}
+   g GROUP-PATH$ old ENGINE-ORIGIN:SYMBOL-AT
+   {: sym:n found:bool :}
+   found 0= if exit then
+   sym ENGINE-ORIGIN:TARGET
+   {: rel:ptr relu:n at:n end:n name:ptr nameu:n live:bool :}
+   live at old = and old-end 0= old-end end = or and 0= if exit then
+   g [: dup GROUP-PATH$ TEXT-OF! ;] catch {: rc:n :} drop
+   rc 0<> if rc LSP-TEXT:FS-RC? 0= if rc throw then exit then
+   sym g GROUP-PATH$
+   LSP-TEXT:TEXT$ SOURCE-INDEX:TARGET-IN
+   {: start:n stop:n located:bool :}
+   located 0= if exit then
+   start LSP-TEXT:LINE-CHARACTER
+   stop LSP-TEXT:LINE-CHARACTER
+   {: line:n col:n end-line:n end-col:n :}
+   g line col end-line end-col LOCATION-AT ;
+
+\ The Location of the declaration use U binds to: a built-in's current source
+\ declaration, a primitive's validated source target, or a source record.
 : TARGET ( n -- )
    {: u:n :}
    u USE-GROUP {: g:n :}
+   u USE-VISIT -1 = if g 0 >= if u g BUILTIN-TARGET then exit then
    u USE-VISIT 0< if
       u USE-TARGET {: start:n end:n :}
       end start > if g u USE-TARGET-RANGE LOCATION-AT then
@@ -75,6 +108,7 @@ public
    ;MATCH
    w ARRAY-END ;
 
+;using
 ;using
 ;using
 ;package

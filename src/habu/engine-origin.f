@@ -310,6 +310,30 @@ public
    dup if exit then drop drop
    ROW-P @ BYTE-VIEW ROW-HEAD @ path pathu byte FIND-AT ;
 
+private
+
+\ Visit only the latest live origin for each symbol in this relative path.
+: EACH-ROWS ( ptr u8 n ptr u8 n [ n -- ] -- )
+   {: base:ptr head:n path:ptr pathu:n action :}
+   head begin dup 0= 0= while
+      base over ROW {: row:ptr :}
+      row PATH$ path pathu CORE-STR= if
+         row O-SYM CELL-AT @ FIND-SYM {: latest:ptr found:bool :}
+         found if latest row = row ROW-LIVE? and if
+            row O-SYM CELL-AT @ action execute
+         then then
+      then
+      row O-NEXT CELL-AT @ swap drop
+   repeat drop ;
+
+public
+
+: EACH-IN ( ptr u8 n [ n -- ] -- )
+   {: path:ptr pathu:n action :}
+   pathu 0= if exit then
+   SCR-P @ BYTE-VIEW SCR-HEAD @ path pathu action EACH-ROWS
+   ROW-P @ BYTE-VIEW ROW-HEAD @ path pathu action EACH-ROWS ;
+
 : FIRST-TOKEN ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    0 begin dup u < if a over + c@ 32 > else 0 0= 0= then while 1 + repeat
    a swap ;

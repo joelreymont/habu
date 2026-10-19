@@ -927,7 +927,14 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" whole-output: each complete" T-LABEL out outu ALL-JSON? TTRUE
    s" whole-output: every packet" T-LABEL out outu OBJECTS BIG-DEFS T=
    s" whole-output: the last" T-LABEL
-   out outu s" word" s" cvt-b9999" PACKET 0 >= TTRUE ;
+   out outu s" word" s" cvt-b9999" PACKET 0 >= TTRUE
+   \ Indexing retains a valid declaration after the same large refusal stream.
+   BIG$SRC 2drop
+   s\" : CVT-INDEX-SURVIVOR ( -- n ) 1 ;\n" GEN+
+   0 GEN GEN-U @ s" big.f" AT$ GUARD-MS >MS CHECK:INDEX-BYTES
+   1 s" whole-output: index refused" EXPECT-KIND
+   s" whole-output: index survivor" T-LABEL
+   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-survivor" PACKET 0 >= TTRUE ;
 
 
 \ ---- loader calls ------------------------------------------------------------

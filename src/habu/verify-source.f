@@ -103,6 +103,9 @@ variable BODY-ROWS
 \ nested loads so a require back to it observes these bytes, and an include of
 \ it scans these bytes again.
 variable COMPOSE-ON
+\ A standalone source index uses the checker's top-level parser verdicts, but
+\ follows no loader into another file.
+variable INDEX-ON
 PTR-VARIABLE COMPOSE-SUBJ-A
 variable COMPOSE-SUBJ-U
 create COMPOSE-SUBJ-PATH PATH-CAP allot
@@ -363,10 +366,10 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
    drop c@ dup $73 = swap $53 = or IF LIT-PATH EXIT THEN
    LIT-OTHER ;
 
-\ A literal the source ends inside stops a quiet composition at its opener, as
-\ discovery's lexer stops there (E-DISC-UNTERM).
+\ A literal the source ends inside stops a quiet composition or standalone
+\ index at its opener, as discovery's lexer stops there (E-DISC-UNTERM).
 : QUIET-UNTERM ( -- )
-   FOUND @ 0= QUIET @ and IF E-DISC-UNTERM throw THEN ;
+   FOUND @ 0= QUIET @ INDEX-ON @ or and IF E-DISC-UNTERM throw THEN ;
 
 \ The payload of the literal just skipped: after its opener and delimiter, pfx
 \ bytes, and before the quote SCAN-I stands one past. The length is negative
@@ -1021,7 +1024,7 @@ variable GROUP-AT
 \ stops there (E-DISC-UNTERM).
 : GROUP-NEXT ( -- ptr u8 n )
    NEXT-RAW dup 0= IF
-      QUIET @ IF GROUP-AT @ TOKEN-BYTE !  E-DISC-UNTERM throw THEN
+      QUIET @ INDEX-ON @ or IF GROUP-AT @ TOKEN-BYTE !  E-DISC-UNTERM throw THEN
       E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP
    THEN ;
 
@@ -1613,6 +1616,7 @@ variable DOES-PARENT-ROWS
 PTR-VARIABLE DOES-CLOSER-A
 variable DOES-CLOSER-U
 variable DOES-DEF-VERDICT
+variable DOES-ACCEPTED                  \ both parent and clause certified
 TYPED-VARIABLE DOES-PARENT-REFUSED bool
 PTR-VARIABLE DOES-CLAUSE-A
 variable DOES-CLAUSE-U
@@ -1750,6 +1754,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
    THEN ;
 
 : VERIFY-DOES ( -- bool )
+   false DOES-ACCEPTED !
    DEF-TICK-ORDER @ {: order:n :}
    order TICK-GATE = {: gate:bool :}
    order TICK-UNKNOWN = {: unknown:bool :}
@@ -1806,6 +1811,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
             sig sigu DEFINER-RECORD
             DOES-DEF-VERDICT @ -1 =  clause -1 =  and IF -1 ELSE 2 THEN TALLY
          THEN
+         DOES-DEF-VERDICT @ -1 =  clause -1 = and DOES-ACCEPTED !
          true EXIT
       THEN
       TICK-BODY-STEP
@@ -2361,10 +2367,12 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    name nameu sig sigu DECL-SIGNATURE
    {: kept:bool :}
    DISARM
-   kept IF name nameu sig sigu at DEF-WORD DEFINED-HERE
+   kept IF
+      INDEX-ON @ 0= IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN
    ELSE QUIET-TYPE-REPORT THEN
    name nameu kept SCAN-TRUSTED-BODY
    name nameu at TRUSTED-DOES @ 0<> REFUSE-SHAPE IF EXIT THEN
+   kept INDEX-ON @ and IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN
    TRUSTED-DOES @ kept and IF name nameu TRUSTED-CLAUSE THEN ;
 
 \ A cast has no body and no `;`, so unlike TRUSTED-DEFINITION above there is
@@ -2934,6 +2942,13 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
    STR-LAST-END @ STR-LAST-AT @ -  STR-LAST-U @ <> IF EXIT THEN
    STR-LAST-A @ STR-LAST-U @ NAMED-USE ;
 
+\ A call whose effects the scan cannot model makes the remaining source
+\ uncertain, including declarations already seen by the source index.
+: TOP-OPAQUE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u DEFER-AT
+   true TICK-REMAINDER ! ;
+
 \ A top-level call that binds a word, RENDERS when the word renders source: a
 \ renderer is deferred at it (RENDER-GAP), and the literal before it binds when
 \ a names: row marks the word (TOP-NAMED). A definer's call an arm of
@@ -2942,7 +2957,10 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
 : BOUND-CALL ( ptr u8 n bool -- )
    {: a:ptr u:n renders:bool :}
    renders IF a u RENDER-GAP THEN
-   a u TOP-NAMED ;
+   a u TOP-NAMED
+   \ The index does not execute top-level calls. Literal openers only push
+   \ the scanned string; any other call may alter later bindings.
+   INDEX-ON @ IF a u STRING-OPENER? 0= IF a u TOP-OPAQUE THEN THEN ;
 
 \ The id of the engine word a control word names (checker.f CTL-INTRINSIC).
 : BINDING-ID ( n -- n )
@@ -3733,15 +3751,20 @@ s" RESERVED-PTR-U8-CELL" XREF-FIND-INDEX constant RESERVED-PTR-U8-CELL-REC
       TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
          DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ false REFUSE-SHAPE IF EXIT THEN
-         VERIFY-NAMED-BODY dup REPORT-DEFERRED dup -1 = IF VERIFY-WRAPPER THEN TALLY
-         TICK-REMAINDER @ 0= IF COLON-DEFINED THEN EXIT
+         VERIFY-NAMED-BODY dup REPORT-DEFERRED dup -1 = IF VERIFY-WRAPPER THEN
+         dup TALLY
+         TICK-REMAINDER @ 0= IF
+            -1 = INDEX-ON @ 0= or IF COLON-DEFINED THEN
+         ELSE drop THEN EXIT
       THEN
       LOCAL-TOKEN? 0= IF
          TOKEN-A @ TOKEN-U @ s" does>" STR=CI IF
             DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ true REFUSE-SHAPE IF
                SKIP-DEFINITION EXIT
             THEN
-            VERIFY-DOES IF COLON-DEFINED THEN
+            VERIFY-DOES IF
+               DOES-ACCEPTED @ INDEX-ON @ 0= or IF COLON-DEFINED THEN
+            THEN
             TICK-REMAINDER @ IF 2 TALLY THEN EXIT
          THEN
          TOKEN-A @ TOKEN-U @ WRAP-TOKEN
@@ -3787,15 +3810,6 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    TOP-DEFER-U @ 0= IF EXIT THEN
    TOP-DEFER-A @ TOP-DEFER-U @ DEFER-AT
    0 TOP-DEFER-U ! ;
-
-\ A word that may read the source after it and states no operand shape: what
-\ it reads may be any of the rest, and may change the scope of what follows, so
-\ the scan reports it at once and stops, in this file and in each file whose
-\ load reached it (TICK-REMAINDER), keeping what it found before the word.
-: TOP-OPAQUE ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u DEFER-AT
-   true TICK-REMAINDER ! ;
 
 \ A token that runs a word that may read the source after it (TOP-VERDICT 2):
 \ a declarer reads its row; a word a row bounds is reported at once, as the
@@ -3851,7 +3865,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    OPERAND {: o:ptr ou:n :}
    a u CHAR-KEYWORD? IF EXIT THEN
    CSR-TOP
-   COMPOSE-ON @ 0=  TOP-DEFER @ 0<>  or IF EXIT THEN
+   COMPOSE-ON @ INDEX-ON @ or 0=  TOP-DEFER @ 0<>  or IF EXIT THEN
    o ou false false TOP-RESOLVE ;
 
 \ Any other token: a number the engine's reader takes is done. A word that may
@@ -3873,7 +3887,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    a u QUIET-NOMINAL
    a u MARK-RENDERS RENDERS-MARK? {: renders:bool :}
    renders 0= IF a u MARK-UNSEEN RENDERS-MARK? drop THEN
-   COMPOSE-ON @ 0=  TOP-DEFER @ 0<>  or IF
+   COMPOSE-ON @ INDEX-ON @ or 0=  TOP-DEFER @ 0<>  or IF
       renders IF a u RENDER-GAP THEN
       EXIT
    THEN
@@ -3886,6 +3900,9 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    {: a:ptr u:n :}
    MULTI-ERR-N @ {: before:n :}
    a u TICK-NATIVE-DEFINER? {: native:bool :}
+   \ A library definer is a call of a replaceable dictionary word. The index
+   \ cannot trust its spelling or infer the effects of its replacement.
+   INDEX-ON @ native 0= and IF false EXIT THEN
    TOKEN-BYTE @ {: at:n :}
    a u TOP-BINDING drop drop {: sym:n :}
    a u RECORD-DEFINER? 0= IF 0 0= 0= EXIT THEN
@@ -4115,7 +4132,6 @@ DYNAMIC-BUFFER ENGINE-FILES n
 DYNAMIC-BUFFER ENGINE-TOKENS n
 DYNAMIC-BUFFER ENGINE-HASHES u8
 create ENGINE-HASH-CTX SHA256-CTX-BYTES allot
-create ENGINE-OPEN-HASH 32 allot
 variable ENGINE-PATHS-U
 variable ENGINE-BYTES-U
 variable ENGINE-FILES-N
@@ -4264,37 +4280,6 @@ public
    valid 0= if 0 false exit then
    located locatedu path pathu CORE-STR=
    byte at >= byte end < and and if sym true else 0 false then ;
-
-\ Select from an open engine document's current bytes. A changed token, a
-\ comment or a string at the saved span cannot claim the image's definition.
-: ENGINE-SYMBOL-IN ( ptr u8 n n ptr u8 n -- n bool )
-   {: path:ptr pathu:n byte:n src:ptr srcu:n :}
-   path pathu byte ENGINE-ORIGIN:SYMBOL-AT {: sym:n found:bool :}
-   found 0= if 0 false exit then
-   sym ENGINE-ORIGIN:TARGET
-   {: rel:ptr relu:n at:n end:n name:ptr nameu:n live:bool :}
-   live 0= if 0 false exit then
-   rel relu ENGINE-FULL-PATH {: full:ptr fullu:n fits:bool :}
-   fits 0= if 0 false exit then
-   full fullu path pathu CORE-STR= 0= if 0 false exit then
-   sym ENGINE-ORIGIN:SOURCE-HASH {: saved:ptr savedu:n current:bool :}
-   current 0= if 0 false exit then
-   ENGINE-HASH-CTX src srcu ENGINE-OPEN-HASH SHA256-IN
-   ENGINE-OPEN-HASH 32 saved savedu CORE-STR= 0= if 0 false exit then
-   at 0< end at <= or end srcu > or if 0 false exit then
-   end at - nameu <> if 0 false exit then
-   src at + nameu name nameu CORE-STR= 0= if 0 false exit then
-   src srcu LINT-LEX:SOURCE
-   LINT-LEX:ERROR? if 0 false exit then
-   LINT-LEX:COUNT 0 ?do
-      i LINT-LEX:KIND@ LINT-LEX:WORD = if
-         i LINT-LEX:BYTE@ at =
-         i LINT-LEX:TOKEN nip at + end = and if
-            sym true unloop exit
-         then
-      then
-   loop
-   0 false ;
 
 private
 
@@ -4450,6 +4435,17 @@ public
    THEN-ACTION !
    SOURCE!
    [: VERIFY-THEN ;] RUN-IN-SCOPE ;
+
+\ Scan supplied bytes under a candidate scope, judging top-level parser payloads
+\ without opening loader dependencies. A throw propagates after cleanup.
+: SOURCE-INDEX-BUF-IN-SCOPE ( ptr u8 n -- )
+   SOURCE!
+   CHECKER-CANDIDATE-SCOPE-START
+   true INDEX-ON !
+   [: RUN ;] catch
+   false INDEX-ON !
+   CHECKER-CANDIDATE-SCOPE-DONE
+   THROW-RESULT ;
 
 \ What the certify path says about one candidate definition, `NAME ( effect )
 \ body`: -1 certified, 0 refused, 1 unresolvable, as CHECK-QUIET-CANDIDATE!

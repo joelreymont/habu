@@ -47,7 +47,9 @@
 \ CHECK:VERIFY-BYTES-AT's cursor offered, each one JSON object per line, never
 \ among the packets. VERIFY-LOG$ is the child's stderr, then after a loader's
 \ fault the status line naming the file it is in, or the file it could not
-\ read, and why. All seven hold until the next call.
+\ read, and why. VERIFY-INDEX$ holds the potentially partial declaration rows
+\ of a separate INDEX-BYTES scan, usable only for a verified or refused verdict.
+\ These outputs hold until the next call.
 \
 \ CHECK:PREVERIFY-BYTES is check.f's pre-pass, on the same child and image: the
 \ first refused definition stops it, as it stops the load, and the subject's
@@ -569,6 +571,7 @@ DYNAMIC-BUFFER VFY-FILES u8             \ VERIFY-FILES$
 DYNAMIC-BUFFER VFY-USES u8              \ VERIFY-USES$
 DYNAMIC-BUFFER VFY-LOADS u8             \ VERIFY-LOADS$
 DYNAMIC-BUFFER VFY-CANDS u8             \ VERIFY-CANDIDATES$
+DYNAMIC-BUFFER VFY-INDEX u8             \ VERIFY-INDEX$
 DYNAMIC-BUFFER VFY-IN u8                \ the child's stdin: the open documents, then the subject's bytes
 DYNAMIC-BUFFER VFY-OPEN-AT n            \ each open document's path's offset in VFY-IN and length, then its text's
 variable VFY-IN-U
@@ -581,6 +584,7 @@ variable VFY-FILES-U
 variable VFY-USES-U
 variable VFY-LOADS-U
 variable VFY-CANDS-U
+variable VFY-INDEX-U
 variable VFY-AT                         \ the child's completion cursor, -1 for none
 variable VFY-OUT-U
 variable VFY-LOG-U
@@ -596,6 +600,7 @@ variable VFY-CHILD-U
 SOURCE-ROOT:CURRENT$ s" tools/check-verify-child.f" VFY-CHILD JOIN-PATH VFY-CHILD-U !
 
 TYPED-VARIABLE VFY-PREPASS bool         \ the child runs check.f's pre-pass ...
+TYPED-VARIABLE VFY-INDEX? bool          \ standalone candidate scan
 TYPED-VARIABLE VFY-LABEL-A ptr u8       \ ... naming the subject by this label
 variable VFY-LABEL-U
 TYPED-VARIABLE VFY-OF-A ptr u8          \ the tail whose uses the child writes in every file,
@@ -624,6 +629,7 @@ variable VFY-TARGET-U
    0 VFY-USES-U !
    0 VFY-LOADS-U !
    0 VFY-CANDS-U !
+   0 VFY-INDEX-U !
    0 VFY-IN-U !
    0 VFY-OPEN-N !
    0 VFY-OPEN-START !
@@ -634,7 +640,8 @@ variable VFY-TARGET-U
    0 VFY-STOP-RC !
    0 VFY-FAULT-LEN !
    0 VFY-TARGET-U !
-   false VFY-PREPASS ! ;
+   false VFY-PREPASS !
+   false VFY-INDEX? ! ;
 
 
 \ PATH's canonical absolute spelling, a relative PATH read from the working
@@ -764,6 +771,7 @@ variable VFY-TARGET-U
    VFY-CHILD$ CHK-ARG+
    s" --" CHK-ARG+
    VFY-PATH$ CHK-ARG+
+   VFY-INDEX? @ if s" --index" CHK-ARG+ then
    VFY-PREPASS @ if VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+ then
    VFY-AT @ 0 >= if s" --at" CHK-ARG+  SB-RESET VFY-AT @ FMT:SB-U SB$ CHK-ARG+ then
    VFY-OF-U @ 0 > if s" --of" CHK-ARG+  VFY-OF-A @ VFY-OF-U @ CHK-ARG+ then
@@ -823,6 +831,9 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 
 : VFY-CAND$ ( -- ptr u8 n )
    s" check-verify: candidate " ;
+
+: VFY-INDEX$ ( -- ptr u8 n )
+   s" check-verify: index " ;
 
 : VFY-LOADER$ ( -- ptr u8 n )
    s" check-verify: loader " ;
@@ -1081,6 +1092,16 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    obj VFY-OUT end obj - VFY-CANDS+
    s\" \n" VFY-CANDS+ ;
 
+: VFY-INDEX-LINE ( n n -- )
+   {: at:n end:n :}
+   at VFY-INDEX$ nip + {: obj:n :}
+   end obj - VFY-INDEX-U @ + VFY-INDEX-RESERVE
+   obj VFY-OUT VFY-INDEX-U @ VFY-INDEX end obj - BYTE-COPY
+   end obj - VFY-INDEX-U +!
+   VFY-INDEX-U @ 1+ VFY-INDEX-RESERVE
+   VFY-LF VFY-INDEX-U @ VFY-INDEX c!
+   1 VFY-INDEX-U +! ;
+
 
 \ Where the line of VFY-OUT that starts at AT ends: at its line feed.
 : VFY-LINE-END ( n -- n )
@@ -1119,6 +1140,10 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    then
    at VFY-OUT end at - VFY-CAND$ STARTS-WITH? if
       at end VFY-CAND-LINE
+      end 1+ exit
+   then
+   at VFY-OUT end at - VFY-INDEX$ STARTS-WITH? if
+      at end VFY-INDEX-LINE
       end 1+ exit
    then
    at VFY-OUT end at - VFY-DUPLICATE$ STARTS-WITH?
@@ -1210,7 +1235,9 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 : VFY-BYTES ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] ms -- verdict )
    {: src:ptr srcu:n path:ptr pathu:n open deadline :}
    path pathu VFY-PATH!
-   VFY-PATH$ ENGINE-PROVIDES? if CHECK-VERDICT:engine-provided exit then
+   VFY-INDEX? @ 0= if
+      VFY-PATH$ ENGINE-PROVIDES? if CHECK-VERDICT:engine-provided exit then
+   then
    src CHK-BYTES-A !
    srcu CHK-BYTES-U !
    open VFY-IN!
@@ -1269,6 +1296,12 @@ public
    VFY-CANDS-U @ 0= if NULL$ exit then
    0 VFY-CANDS VFY-CANDS-U @ ;
 
+\ Potentially partial declarations from the last INDEX-BYTES, one JSON object
+\ per line. Use them only when its corresponding verdict is verified or refused.
+: VERIFY-INDEX$ ( -- ptr u8 n )
+   VFY-INDEX-U @ 0= if NULL$ exit then
+   0 VFY-INDEX VFY-INDEX-U @ ;
+
 \ Check the bytes as the file at PATH, the child given DEADLINE, with the
 \ documents open that OPEN gives: OPEN is given a word taking an open
 \ document's canonical path and text, and calls it once for each. A throw that
@@ -1294,6 +1327,14 @@ public
 : VERIFY-BYTES ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] ms -- verdict )
    {: src:ptr srcu:n path:ptr pathu:n open deadline :}
    src srcu path pathu -1 open deadline VERIFY-BYTES-AT ;
+
+\ Scan current source in the verifier child. It bypasses the engine-provided
+\ path skip only for this mode; incomplete children have no usable index.
+: INDEX-BYTES ( ptr u8 n ptr u8 n ms -- verdict )
+   {: src:ptr srcu:n path:ptr pathu:n deadline :}
+   VFY-RESET
+   true VFY-INDEX? !
+   src srcu path pathu [: drop ;] deadline VFY-BYTES ;
 
 \ VERIFY-BYTES with VERIFY-USES$ holding as well every use the check binds to
 \ a located declaration in a file other than the subject when the declaration's

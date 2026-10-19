@@ -9,6 +9,7 @@
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --of TAIL < STDIN
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --index < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- --batch TAIL < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- --batch-ref TAIL < STDIN
 \
@@ -32,6 +33,10 @@
 \ quietly (VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE), so no walk of the closure
 \ runs before them: the composition reads each file a loader loads and refuses
 \ the loader forms tools/source-discovery.f refuses where it meets them.
+\ `--index` scans only the supplied subject bytes, including for an
+\ engine-provided path. It emits accepted declarations as the checker reports
+\ them. Only a verified or refused result makes those index rows usable.
+\ A thrown scan has no result line, even if it reported earlier declarations.
 \
 \ stdout is the schema-1 JSON packets, one per line in verification order, each
 \ written as the checker makes it, so a child that dies has passed on every
@@ -537,6 +542,30 @@ variable OF-U                           \ 0 for the other forms
    OUT-FD s" }" WRITE
    OUT-FD NEWLINE ;
 
+: IDX-DUPLICATE ( n n ptr u8 n bool -- ) drop 2drop 2drop ;
+
+\ Consume the borrowed identity while the declaration's checker scope is open.
+: IDX-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
+   {: kind:ptr kindu:n name:ptr nameu:n sym:n eff:ptr effu:n at:n end:n class:n visit:n :}
+   sym VERIFY:SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
+   tailu 0= if exit then
+   pkg pkgu DEF-PKG!
+   OUT-FD s\" check-verify: index {\"decl_name\":" WRITE
+   tail tailu JSON-STR
+   OUT-FD s\" ,\"package\":" WRITE
+   DEF-PKG$ JSON-STR
+   OUT-FD s\" ,\"visibility\":" WRITE
+   vis VISIBILITY$ JSON-STR
+   OUT-FD s\" ,\"byte_start\":" WRITE
+   OUT-FD at FD-N
+   OUT-FD s\" ,\"byte_end\":" WRITE
+   OUT-FD end FD-N
+   OUT-FD s" }" WRITE
+   OUT-FD NEWLINE ;
+
+: INDEX-CUR ( -- )
+   SUBJECT$ VERIFY:SOURCE-INDEX-BUF-IN-SCOPE ;
+
 
 \ The digest and the file the Kth file line stated, end to end.
 : SEEN$ ( n -- ptr u8 n )
@@ -720,6 +749,21 @@ variable OF-U                           \ 0 for the other forms
    OUT-FD a u WRITE
    OUT-FD NEWLINE ;
 
+: INDEX-SUBJECT ( -- )
+   true DIAG-JSON!
+   OUT-FD DIAG-FD!
+   ['] IDX-DEFINITION is VERIFY:ON-DEFINITION
+   ['] IDX-DUPLICATE is VERIFY:ON-DUPLICATE
+   MULTI-ERR-BEGIN
+   [: INDEX-CUR ;] catch {: rc:n :}
+   MULTI-ERR-END {: rejects:n :}
+   rc 0<> if
+      ERR-FD s" check-verify: stopped by throw " WRITE ERR-FD rc FD-N ERR-FD NEWLINE
+      rc throw
+   then
+   VERIFY:DEFERRED? if s" deferred" RESULT exit then
+   rejects 0<> if s" refused" else s" verified" then RESULT ;
+
 
 \ Run the verification in one neutral checker scope, every diagnostic the
 \ checker renders a packet on stdout: the code it threw, 0 for none.
@@ -772,7 +816,7 @@ variable OF-U                           \ 0 for the other forms
 public
 
 : USAGE ( -- )
-   s" usage: check-verify-child.f -- SUBJECT [LABEL | --at N | --of TAIL]" 64 die ;
+   s" usage: check-verify-child.f -- SUBJECT [LABEL | --at N | --of TAIL | --index]" 64 die ;
 
 \ N in the third form's `--at N`; -1 for none.
 : CURSOR-ARG ( -- n )
@@ -833,7 +877,10 @@ public
          exit
       then
    then
-   SCRIPT-ARGC 2 = if READ-STDIN PREVERIFY exit then
+   SCRIPT-ARGC 2 = if
+      1 SCRIPT-ARGV$ s" --index" CORE-STR= if READ-STDIN INDEX-SUBJECT exit then
+      READ-STDIN PREVERIFY exit
+   then
    CURSOR-ARG {: at:n :}
    at 0 >= if at VERIFY:CURSOR! then
    at 0 >= OF-ARG or if 3 else 1 then SCRIPT-ARGC <> if USAGE then
