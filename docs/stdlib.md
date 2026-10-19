@@ -801,7 +801,9 @@ module boundary explicitly says it owns path conversion. `SB-*` words operate on
 the shared bounded string-builder buffer and throw `E-STR-CAPACITY` or
 `E-STR-BOUNDS` instead of truncating silently. `STR>NUMBER?` parses a signed
 i64 and returns `option<n>`: SOME value, or NONE on invalid or out-of-range
-input.
+input. `HEX>NUMBER?` parses 1 to 16 hex digits (`0-9`, `A-F`, `a-f`, with no
+sign, prefix or space) as the cell's bit pattern, so `FFFFFFFFFFFFFFFF` is
+SOME -1; empty input, more than 16 digits or any other byte is NONE.
 `STR-LEN`, `STR-OFF`, and `STR-COUNT` refine raw integers into nominal string
 roles and reject negative values. `STR-CHECK-LEN` throws `E-STR-BOUNDS` for a
 negative length and `STR-CHECK-LENS` for either of two; every word here that
@@ -855,11 +857,14 @@ BUF-APPEND-C    ( n ptr u8 n ptr len -- )
 SPLIT-NEXT      ( ptr u8 n n n -- ptr u8 n n bool )
 STR-DIGIT?      ( n -- bool )
 STR-DIGIT-VALUE ( n -- n )
+STR-HEX-DIGIT?  ( n -- bool )
+STR-HEX-DIGIT-VALUE ( n -- n )
 STR-DIGITS?     ( ptr u8 n -- bool )
 STR-DIGITS<=    ( ptr u8 n ptr u8 n -- bool )
 STR-PARSE-POS   ( ptr u8 n -- option<n> )
 STR-PARSE-NEG   ( ptr u8 n -- option<n> )
 STR>NUMBER?     ( ptr u8 n -- option<n> )
+HEX>NUMBER?     ( ptr u8 n -- option<n> )
 ```
 
 `FIND-SUB` and `INDEX-OF` return `option<idx>` (SOME index, else NONE — every

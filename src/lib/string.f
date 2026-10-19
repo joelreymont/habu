@@ -23,6 +23,10 @@ s" src/lib/adt/option.f" required            \ option<n> for STR-PARSE-POS/NEG (
 45 constant STR-MINUS
 48 constant STR-ZERO
 10 constant STR-BASE
+97 constant STR-LOWER-A
+102 constant STR-LOWER-F
+16 constant STR-HEX-BASE
+16 constant STR-HEX-MAX-DIGITS              \ 64 bits at 4 bits a digit
 19 constant STR-I64-DIGITS
 255 constant STR-BYTE-MAX
 STRING-ABI:SB-BUF-BYTES constant SB-CAP
@@ -261,6 +265,14 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 : STR-DIGIT-VALUE ( n -- n )
    STR-ZERO - ;
 
+: STR-HEX-DIGIT? ( n -- bool )   \ 0-9, A-F or a-f
+   dup STR-DIGIT? if drop STR-TRUE exit then
+   ASCII-LOWER dup STR-LOWER-A < swap STR-LOWER-F > or 0= ;
+
+: STR-HEX-DIGIT-VALUE ( n -- n )   \ the value of a byte STR-HEX-DIGIT? accepts
+   dup STR-DIGIT? if STR-DIGIT-VALUE exit then
+   ASCII-LOWER STR-LOWER-A - STR-BASE + ;
+
 : STR-DIGITS? ( ptr u8 n -- bool ) {: a:ptr u :}
    u STR-CHECK-LEN
    u 0= if STR-FALSE exit then
@@ -308,3 +320,16 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       a 1+ u 1- STR-PARSE-POS exit
    then
    a u STR-PARSE-POS ;
+
+\ Sixteen digits fill the cell, so the top digit sets the sign bit and
+\ FFFFFFFFFFFFFFFF is -1: the bit pattern, not a bounded magnitude.
+: HEX>NUMBER? ( ptr u8 n -- option<n> )   \ SOME the cell the 1..16 hex digits spell, else NONE
+   {: a:ptr u:n :}
+   u STR-CHECK-LEN
+   u 0= if OPTION:NONE exit then
+   u STR-HEX-MAX-DIGITS > if OPTION:NONE exit then
+   0 0 begin dup u < while
+      dup a + c@ dup STR-HEX-DIGIT? 0= if drop 2drop OPTION:NONE exit then
+      STR-HEX-DIGIT-VALUE rot STR-HEX-BASE * + swap
+      1+
+   repeat drop OPTION:SOME ;
