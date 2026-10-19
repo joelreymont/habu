@@ -58,9 +58,9 @@ create DRIVER FS-PATH-CAP allot     variable DRIVER-U
 
 : STAGE ( ptr u8 n -- )
    PROC-CMD:RESET
-   PROJECT PROJECT-U @ >LEN PROC-CMD:CWD!
-   s" --load" >LEN PROC-CMD:ARG+
-   >LEN PROC-CMD:ARG+ ;
+   PROJECT PROJECT-U @ PROC-CMD:CWD!
+   s" --load" PROC-CMD:ARG+
+   PROC-CMD:ARG+ ;
 
 : QUOTED ( ptr u8 n -- )
    s" s" SB-APPEND 34 SB-APPEND-C 32 SB-APPEND-C
@@ -81,16 +81,16 @@ create DRIVER FS-PATH-CAP allot     variable DRIVER-U
 
 : SERVER-CASE ( ptr u8 n -- )
    STAGE
-   ENGINE-CANDIDATE:PATH$ >LEN 30000 >MS PROC-CMD:RUN-RC RC>N
+   ENGINE-CANDIDATE:PATH$ 30000 >MS PROC-CMD:RUN-RC RC>N
    dup 1 <> if PROC-CMD:ERR$ type cr then 1 T=
    PROC-CMD:ERR$ s" lsp: input ended before exit" CONTAINS? TTRUE ;
 
 : CHILD-CASE ( ptr u8 n -- )
    STAGE
-   s" --" >LEN PROC-CMD:ARG+
-   SUBJECT SUBJECT-U @ >LEN PROC-CMD:ARG+
-   s\" \nrequire dep.f\n: A ( -- n ) DEP ;\n" >LEN PROC-CMD:IN!
-   ENGINE-CANDIDATE:PATH$ >LEN 30000 >MS PROC-CMD:RUN-RC RC>N
+   s" --" PROC-CMD:ARG+
+   SUBJECT SUBJECT-U @ PROC-CMD:ARG+
+   s\" \nrequire dep.f\n: A ( -- n ) DEP ;\n" PROC-CMD:IN!
+   ENGINE-CANDIDATE:PATH$ 30000 >MS PROC-CMD:RUN-RC RC>N
    dup 0 <> if PROC-CMD:ERR$ type cr then 0 T=
    PROC-CMD:OUT$ s" check-verify: verified" CONTAINS? TTRUE ;
 

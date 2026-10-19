@@ -55,9 +55,10 @@ create TAIL TAIL-BYTES allot
       [char] d i 1 + SEG-BYTES 1 + mod 0= if drop [char] / then TAIL i + c!
    loop ;
 
-: IN-MID ( ptr u8 n -- ) {: tool:ptr toolu:n :}
-   MID$ >LEN PROC-CMD:CWD!
-   tool toolu >LEN TIMEOUT-MS >MS PROC-CMD:RUN-RC MATCH result
+: IN-MID ( ptr u8 n -- )
+   {: tool:ptr toolu:n :}
+   MID$ PROC-CMD:CWD!
+   tool toolu TIMEOUT-MS >MS PROC-CMD:RUN-RC MATCH result
       ok OF drop ENDOF
       err OF drop PROC-CMD:ERR$ type s" deep-cwd: tool failed" 1 die ENDOF
    ;MATCH ;
@@ -74,7 +75,7 @@ create TAIL TAIL-BYTES allot
    PATH pathu TAIL$ MID JOIN-PATH MID-U !
    MID$ MAKE-DIRS
    PROC-CMD:RESET
-   s" -p" >LEN PROC-CMD:ARG+ TAIL$ >LEN PROC-CMD:ARG+
+   s" -p" PROC-CMD:ARG+ TAIL$ PROC-CMD:ARG+
    s" /bin/mkdir" IN-MID ;
 
 : SAVE ( ptr u8 n ptr u8 n -- ) {: rel:ptr relu:n data:ptr size:n :}
@@ -115,7 +116,7 @@ create TAIL TAIL-BYTES allot
    ENGINE-ARGV+
    RUN-CHILD
    PROC-CMD:RESET
-   s" -r" >LEN PROC-CMD:ARG+ TAIL-TOP$ >LEN PROC-CMD:ARG+
+   s" -r" PROC-CMD:ARG+ TAIL-TOP$ PROC-CMD:ARG+
    s" /bin/rm" IN-MID
    s" deep.out" s" deep.err" KEEP
    s" a working directory past PATH-CAP exits 74" T-LABEL

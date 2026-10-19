@@ -54,15 +54,16 @@ private
 
 \ Loads the replay probe in a child engine, forced or not, and asserts its exit
 \ code.
-: REPLAY-EXITS ( bool n -- ) {: forced:bool want:n :}
+: REPLAY-EXITS ( bool n -- )
+   {: forced:bool want:n :}
    s" test/compiler/ir-id-replay.f" {: path:ptr pathu:n :}
    PROC-CMD:RESET
    forced if
-      s" HABU_IR_ID_REPLAY_FORCE" >LEN s" 1" >LEN PROC-CMD:ENV+
+      s" HABU_IR_ID_REPLAY_FORCE" s" 1" PROC-CMD:ENV+
    then
-   s" --load" >LEN PROC-CMD:ARG+
-   path pathu >LEN PROC-CMD:ARG+
-   s" bin/hb" >LEN 60000 >MS PROC-CMD:RUN-OUTCOME {: oc :}
+   s" --load" PROC-CMD:ARG+
+   path pathu PROC-CMD:ARG+
+   s" bin/hb" 60000 >MS PROC-CMD:RUN-OUTCOME {: oc :}
    path pathu PROC-CMD:OUT$ PROC-CMD:ERR$ oc want T-OUTCOME-EXITED= ;
 
 : REPLAY-COVERAGE ( -- )

@@ -1618,16 +1618,14 @@ TASK:MIN-STACK TASK:TASK VFY-TASK11
    {: k:n :}
    k k VFY-LANE-ERR-CAP @ VFY-LANE-ERR-ROOM k VFY-LANE-ERR-U @ ;
 
-: VFY-LANE-ARG+ ( ptr ptr u8 ptr u8 n -- ) >LEN CMD:ARG+ ;
-
 : VFY-LANE-COMMAND ( n -- )
    VFY-LANE-CMD {: cmd:ptr :}
    cmd CMD:RESET
-   cmd s" --load" VFY-LANE-ARG+
-   cmd VFY-CHILD$ VFY-LANE-ARG+
-   cmd s" --" VFY-LANE-ARG+
-   cmd VFY-REF-BATCH @ if s" --batch-ref" else s" --batch" then VFY-LANE-ARG+
-   cmd VFY-OF-A @ VFY-OF-U @ VFY-LANE-ARG+ ;
+   cmd s" --load" CMD:ARG+
+   cmd VFY-CHILD$ CMD:ARG+
+   cmd s" --" CMD:ARG+
+   cmd VFY-REF-BATCH @ if s" --batch-ref" else s" --batch" then CMD:ARG+
+   cmd VFY-OF-A @ VFY-OF-U @ CMD:ARG+ ;
 
 : VFY-LANE-SAVE ( n -- )
    {: k:n :}

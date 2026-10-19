@@ -52,8 +52,8 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
 \ which the join records and this thread names and throws (PTT-WORKER-ERR).
 : PTT-ONE-CAPTURE ( -- )
    PROC-CMD:RESET
-   s" hello" >LEN PROC-CMD:ARG+
-   s" /bin/echo" >LEN PTT-CAPTURE-MS >MS PROC-CMD:RUN-OUTCOME
+   s" hello" PROC-CMD:ARG+
+   s" /bin/echo" PTT-CAPTURE-MS >MS PROC-CMD:RUN-OUTCOME
    PROC-OUTCOME>RC RC>N 0<> if PTT-CAP-BAD+ then
    PROC-CMD:OUT$ S\" hello\n" STR= 0= if PTT-CAP-BAD+ then
    PTT-DID @ 1 + PTT-DID ! ;
@@ -187,8 +187,9 @@ variable PTT-B-DONE                      \ rounds task B has run its own command
 \ join reports the code, a deadline throws E-PROC-TIMEOUT, which the join
 \ records and this thread names and throws; a wrong capture is counted and
 \ returned.
-: PTT-PRINT ( ptr ptr u8 -- ) {: h:ptr :}
-   h s" /usr/bin/printf" >LEN PTT-RUN-MS >MS CMD:RUN-OUTCOME
+: PTT-PRINT ( ptr ptr u8 -- )
+   {: h:ptr :}
+   h s" /usr/bin/printf" PTT-RUN-MS >MS CMD:RUN-OUTCOME
    MATCH outcome
       exited OF 0<> if E-PROC-OUTPUT throw then ENDOF
       signaled OF drop E-PROC-OUTPUT throw ENDOF
@@ -197,9 +198,10 @@ variable PTT-B-DONE                      \ rounds task B has run its own command
 
 \ ( bad round -- bad round+1 ): the counter rides the stack because a local
 \ binds once per definition, so a round cannot bind one of its own.
-: PTT-A-ROUND ( n n -- n n ) {: bad:n r:n :}
+: PTT-A-ROUND ( n n -- n n )
+   {: bad:n r:n :}
    PTT-CMD-A CMD:RESET
-   PTT-CMD-A s" alpha" >LEN CMD:ARG+
+   PTT-CMD-A s" alpha" CMD:ARG+
    r 1 + PTT-A-READY atomic!
    PTT-B-DONE r 1 + PTT-WAIT
    PTT-CMD-A PTT-PRINT
@@ -211,10 +213,11 @@ variable PTT-B-DONE                      \ rounds task B has run its own command
       PTT-A-ROUND
    repeat drop TASK:RETURN ;
 
-: PTT-B-ROUND ( n n -- n n ) {: bad:n r:n :}
+: PTT-B-ROUND ( n n -- n n )
+   {: bad:n r:n :}
    PTT-A-READY r 1 + PTT-WAIT
    PTT-CMD-B CMD:RESET
-   PTT-CMD-B s" beta" >LEN CMD:ARG+
+   PTT-CMD-B s" beta" CMD:ARG+
    PTT-CMD-B PTT-PRINT
    PTT-CMD-B CMD:OUT$ s" beta" STR= {: kept:bool :}
    r 1 + PTT-B-DONE atomic!
@@ -269,21 +272,23 @@ TASK:MIN-STACK TASK:TASK PTT-T3
    ix 2 = if s" stdin for two" exit then
    s" stdin for three" ;
 
-: PTT-RUN-OK ( ptr ptr u8 ptr u8 len -- ) {: h:ptr path:ptr pathu:len :}
-   h path pathu PTT-RUN-MS >MS CMD:RUN-OUTCOME PROC-OUTCOME>RC RC>N {: rc:n :}
+: PTT-RUN-OK ( ptr ptr u8 ptr u8 n -- )
+   PTT-RUN-MS >MS CMD:RUN-OUTCOME PROC-OUTCOME>RC RC>N {: rc:n :}
    rc 0<> if rc throw then ;
 
-: PTT-ENV-ROUND ( n n -- n ) {: bad:n ix:n :}
+: PTT-ENV-ROUND ( n n -- n )
+   {: bad:n ix:n :}
    ix PTT-SLOT CMD:RESET
    ix PTT-SLOT CMD:ENV-HERMETIC
-   ix PTT-SLOT s" HABU_CMD_TASK" >LEN ix PTT-VALUE$ >LEN CMD:ENV+
-   ix PTT-SLOT s" /usr/bin/env" >LEN PTT-RUN-OK
+   ix PTT-SLOT s" HABU_CMD_TASK" ix PTT-VALUE$ CMD:ENV+
+   ix PTT-SLOT s" /usr/bin/env" PTT-RUN-OK
    ix PTT-SLOT CMD:OUT$ ix PTT-ENV-OUT$ STR= if bad else bad 1 + then ;
 
-: PTT-STDIN-ROUND ( n n -- n ) {: bad:n ix:n :}
+: PTT-STDIN-ROUND ( n n -- n )
+   {: bad:n ix:n :}
    ix PTT-SLOT CMD:RESET
-   ix PTT-SLOT ix PTT-STDIN$ >LEN CMD:IN!
-   ix PTT-SLOT s" /bin/cat" >LEN PTT-RUN-OK
+   ix PTT-SLOT ix PTT-STDIN$ CMD:IN!
+   ix PTT-SLOT s" /bin/cat" PTT-RUN-OK
    ix PTT-SLOT CMD:OUT$ ix PTT-STDIN$ STR= if bad else bad 1 + then ;
 
 : PTT-T-ROUND ( n n n -- n n ) {: bad:n r:n ix:n :}
@@ -356,9 +361,9 @@ variable PTT-HELD-W                      \ that stdin's write end
 
 : PTT-CAPTURER-BODY ( -- )
    PTT-CMD-CAP CMD:RESET
-   PTT-CMD-CAP s" -c" >LEN CMD:ARG+
-   PTT-CMD-CAP s" sleep 0.2; printf capture-ok" >LEN CMD:ARG+
-   PTT-CMD-CAP s" /bin/sh" >LEN PTT-RUN-OK
+   PTT-CMD-CAP s" -c" CMD:ARG+
+   PTT-CMD-CAP s" sleep 0.2; printf capture-ok" CMD:ARG+
+   PTT-CMD-CAP s" /bin/sh" PTT-RUN-OK
    PTT-CMD-CAP CMD:OUT$ s" capture-ok" STR= if 0 else 1 then TASK:RETURN ;
 
 : PTT-WAITS-BESIDE-CAPTURE ( -- )
@@ -392,9 +397,9 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
 : PTT-GROW-A-WORK ( -- )
    PTT-CMD-A CMD:RESET
    PTT-CMD-A CMD:ENV-HERMETIC
-   PTT-CMD-A s" PTT_MARK" >LEN s" alpha" >LEN CMD:ENV+
-   PTT-CMD-A s" -c" >LEN CMD:ARG+
-   PTT-CMD-A s" echo A:$PTT_MARK; /bin/cat" >LEN CMD:ARG+
+   PTT-CMD-A s" PTT_MARK" s" alpha" CMD:ENV+
+   PTT-CMD-A s" -c" CMD:ARG+
+   PTT-CMD-A s" echo A:$PTT_MARK; /bin/cat" CMD:ARG+
    1 PTT-A-READY atomic!
    PTT-B-DONE 1 PTT-WAIT
    PTT-CMD-A s" /bin/sh" >LEN PTT-GROW-IN-A PTT-GROW-U >LEN
@@ -408,9 +413,9 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
 : PTT-GROW-B-WORK ( -- )
    PTT-CMD-B CMD:RESET
    PTT-CMD-B CMD:ENV-HERMETIC
-   PTT-CMD-B s" PTT_MARK" >LEN s" beta" >LEN CMD:ENV+
-   PTT-CMD-B s" -c" >LEN CMD:ARG+
-   PTT-CMD-B s" echo B:$PTT_MARK; /bin/cat" >LEN CMD:ARG+
+   PTT-CMD-B s" PTT_MARK" s" beta" CMD:ENV+
+   PTT-CMD-B s" -c" CMD:ARG+
+   PTT-CMD-B s" echo B:$PTT_MARK; /bin/cat" CMD:ARG+
    1 PTT-B-DONE atomic!
    PTT-A-READY 1 PTT-WAIT
    PTT-CMD-B s" /bin/sh" >LEN PTT-GROW-IN-B PTT-GROW-U >LEN

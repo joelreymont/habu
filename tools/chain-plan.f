@@ -100,15 +100,15 @@ public
 : REV-PLAN ( ptr u8 n ptr u8 n -- n )
    {: rev:ptr revu:n root:ptr rootu:n :}
    PROC-CMD:RESET
-   s" --ignore-working-copy" >LEN PROC-CMD:ARG+
-   s" -R" >LEN PROC-CMD:ARG+
-   root rootu >LEN PROC-CMD:ARG+
-   s" diff" >LEN PROC-CMD:ARG+
-   s" -r" >LEN PROC-CMD:ARG+
-   rev revu >LEN PROC-CMD:ARG+
-   s" --name-only" >LEN PROC-CMD:ARG+
-   root rootu >LEN PROC-CMD:CWD!
-   s" jj" >LEN CP-JJ-PATH RESOLVE-EXECUTABLE CP-JJ-U !
+   s" --ignore-working-copy" PROC-CMD:ARG+
+   s" -R" PROC-CMD:ARG+
+   root rootu PROC-CMD:ARG+
+   s" diff" PROC-CMD:ARG+
+   s" -r" PROC-CMD:ARG+
+   rev revu PROC-CMD:ARG+
+   s" --name-only" PROC-CMD:ARG+
+   root rootu PROC-CMD:CWD!
+   s" jj" >LEN CP-JJ-PATH RESOLVE-EXECUTABLE LEN>N CP-JJ-U !
    CP-JJ-PATH CP-JJ-U @ 30000 >MS PROC-CMD:RUN-RC MATCH result
       ok OF drop ENDOF
       err OF drop s" chain-plan: jj stderr: " type

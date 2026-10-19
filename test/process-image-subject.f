@@ -27,11 +27,11 @@ variable CAPTURE-ROWS
 : COMMAND ( -- )
    PROC-CMD:RESET
    PROC-CMD:ENV-HERMETIC
-   s" HABU_IMAGE_ENV" >LEN s" command-value" >LEN PROC-CMD:ENV+
-   s" -c" >LEN PROC-CMD:ARG+
-   S\" test \q$HABU_IMAGE_ENV\q = command-value && printf process-image-ok" >LEN
+   s" HABU_IMAGE_ENV" s" command-value" PROC-CMD:ENV+
+   s" -c" PROC-CMD:ARG+
+   S\" test \q$HABU_IMAGE_ENV\q = command-value && printf process-image-ok"
    PROC-CMD:ARG+
-   s" /bin/sh" >LEN 10000 >MS PROC-CMD:RUN-OUTCOME
+   s" /bin/sh" 10000 >MS PROC-CMD:RUN-OUTCOME
    PROC-OUTCOME>RC RC>N 0 T=
    PROC-CMD:OUT$ s" process-image-ok" T$=
    PROC-CMD:ERR$ 0 T= drop ;

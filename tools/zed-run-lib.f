@@ -97,15 +97,16 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
 \ ---- ssh/scp/rsync argv runners (capture stdout/stderr/rc) -------------------
 
 : BATCH-OPTS ( -- )
-   s" -o" >LEN PROC-CMD:ARG+  s" BatchMode=yes" >LEN PROC-CMD:ARG+
-   s" -o" >LEN PROC-CMD:ARG+  s" ConnectTimeout=10" >LEN PROC-CMD:ARG+ ;
+   s" -o" PROC-CMD:ARG+  s" BatchMode=yes" PROC-CMD:ARG+
+   s" -o" PROC-CMD:ARG+  s" ConnectTimeout=10" PROC-CMD:ARG+ ;
 
-: SSH-EXEC ( ptr u8 n -- rc ) {: a:ptr u:n :}   \ run one remote command string
+: SSH-EXEC ( ptr u8 n -- rc )   \ run one remote command string
+   {: a:ptr u:n :}
    PROC-CMD:RESET
    BATCH-OPTS
-   HOST$ >LEN PROC-CMD:ARG+
-   a u >LEN PROC-CMD:ARG+
-   SSH$ >LEN TIMEOUT-MS @ >MS PROC-CMD:RUN-RC MATCH result
+   HOST$ PROC-CMD:ARG+
+   a u PROC-CMD:ARG+
+   SSH$ TIMEOUT-MS @ >MS PROC-CMD:RUN-RC MATCH result
      ok  OF >RC ENDOF
      err OF >RC ENDOF
    ;MATCH ;
@@ -207,24 +208,26 @@ public
    CMD$ SSH-EXEC RUN-OK
    0 SCRATCH-U ! ;
 
-: PUT-DIR ( ptr u8 n -- ) {: a:ptr u:n :}   \ rsync local dir into scratch/
+: PUT-DIR ( ptr u8 n -- )   \ rsync local dir into scratch/
+   {: a:ptr u:n :}
    DEST-BUILD
    PROC-CMD:RESET
-   s" -rlt" >LEN PROC-CMD:ARG+
-   a u >LEN PROC-CMD:ARG+
-   DEST$ >LEN PROC-CMD:ARG+
-   RSYNC$ >LEN TIMEOUT-MS @ >MS PROC-CMD:RUN-RC MATCH result
+   s" -rlt" PROC-CMD:ARG+
+   a u PROC-CMD:ARG+
+   DEST$ PROC-CMD:ARG+
+   RSYNC$ TIMEOUT-MS @ >MS PROC-CMD:RUN-RC MATCH result
      ok  OF drop ENDOF
      err OF drop E-ZED-PUT throw ENDOF
    ;MATCH ;
 
-: PUT-FILE ( ptr u8 n -- ) {: a:ptr u:n :}   \ scp local file into scratch/
+: PUT-FILE ( ptr u8 n -- )   \ scp local file into scratch/
+   {: a:ptr u:n :}
    DEST-BUILD
    PROC-CMD:RESET
-   s" -o" >LEN PROC-CMD:ARG+  s" BatchMode=yes" >LEN PROC-CMD:ARG+
-   a u >LEN PROC-CMD:ARG+
-   DEST$ >LEN PROC-CMD:ARG+
-   SCP$ >LEN TIMEOUT-MS @ >MS PROC-CMD:RUN-RC MATCH result
+   s" -o" PROC-CMD:ARG+  s" BatchMode=yes" PROC-CMD:ARG+
+   a u PROC-CMD:ARG+
+   DEST$ PROC-CMD:ARG+
+   SCP$ TIMEOUT-MS @ >MS PROC-CMD:RUN-RC MATCH result
      ok  OF drop ENDOF
      err OF drop E-ZED-PUT throw ENDOF
    ;MATCH ;

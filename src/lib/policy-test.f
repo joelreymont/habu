@@ -60,18 +60,19 @@ variable CODE                          \ the last child's exit code, -1 when it 
    ;MATCH ;
 
 : FILE-ARG+ ( ptr u8 n -- )
-   FILE$ >LEN PROC-CMD:ARG+ ;
+   FILE$ PROC-CMD:ARG+ ;
 
 \ An empty case name loads the harness alone.
-: SPAWN ( ptr u8 n -- ) {: name:ptr nu:n :}
+: SPAWN ( ptr u8 n -- )
+   {: name:ptr nu:n :}
    PROC-CMD:RESET
-   s" --load" >LEN PROC-CMD:ARG+
+   s" --load" PROC-CMD:ARG+
    STEM$ FILE-ARG+
    nu 0 > if
-      s" --" >LEN PROC-CMD:ARG+
+      s" --" PROC-CMD:ARG+
       name nu FILE-ARG+
    then
-   s" bin/hb" >LEN TIMEOUT-MS >MS PROC-CMD:RUN-OUTCOME
+   s" bin/hb" TIMEOUT-MS >MS PROC-CMD:RUN-OUTCOME
    nu 0 > if name nu else STEM$ then FILE$ CODE! ;
 
 \ ---- what the child said ------------------------------------------------------

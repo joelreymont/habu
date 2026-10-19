@@ -24,20 +24,11 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 : PCMDT-RC>N ( result<n,n> -- n )   \ 0 on clean exit, else the completion code
    MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
 
-: PCMDT-PROC-RUN-RC ( ptr u8 n n -- n ) {: path:ptr pathu timeout :}
-   path pathu >LEN timeout >MS PROC-CMD:RUN-RC PCMDT-RC>N ;
+: PCMDT-PROC-RUN-RC ( ptr u8 n n -- n )
+   >MS PROC-CMD:RUN-RC PCMDT-RC>N ;
 
-: PCMDT-RUN-OUTCOME ( ptr u8 n n -- outcome ) {: path:ptr pathu:n timeout:n :}
-   path pathu >LEN timeout >MS PROC-CMD:RUN-OUTCOME ;
-
-: PCMDT-ENV+ ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu val:ptr valu :}
-   name nameu >LEN val valu >LEN PROC-CMD:ENV+ ;
-
-: PCMDT-ENV-ENTRY+ ( ptr u8 n -- ) {: a:ptr u :}
-   a u >LEN PROC-CMD:ENV-ENTRY+ ;
-
-: PCMDT-IN! ( ptr u8 n -- ) {: a:ptr u :}
-   a u >LEN PROC-CMD:IN! ;
+: PCMDT-RUN-OUTCOME ( ptr u8 n n -- outcome )
+   >MS PROC-CMD:RUN-OUTCOME ;
 
 : PCMDT-OUT-LEN ( -- n )
    PROC-CMD:OUT$ {: a:ptr u:n :} u ;
@@ -64,9 +55,9 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 
 : PCMDT-RUN-PRINTF ( -- )
    PROC-CMD:RESET
-   s" %s:%s" >LEN PROC-CMD:ARG+
-   s" left" >LEN PROC-CMD:ARG+
-   s" right" >LEN PROC-CMD:ARG+
+   s" %s:%s" PROC-CMD:ARG+
+   s" left" PROC-CMD:ARG+
+   s" right" PROC-CMD:ARG+
    s" /usr/bin/printf" PCMDT-CMD-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD:OUT$ s" left:right" T$=
    PCMDT-ERR-LEN 0 T=
@@ -75,7 +66,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 
 : PCMDT-RUN-STDIN ( -- )
    PROC-CMD:RESET
-   s" cmd-stdin" PCMDT-IN!
+   s" cmd-stdin" PROC-CMD:IN!
    s" /bin/cat" PCMDT-CMD-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD:OUT$ s" cmd-stdin" T$=
    PCMDT-ERR-LEN 0 T= ;
@@ -83,8 +74,8 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 : PCMDT-RUN-HERMETIC-ENV ( -- )
    PROC-CMD:RESET
    PROC-CMD:ENV-HERMETIC
-   s" test/process-env-child.f" >LEN PROC-CMD:ARG+
-   s" HABU_PROC_ENV_TEST" s" alpha" PCMDT-ENV+
+   s" test/process-env-child.f" PROC-CMD:ARG+
+   s" HABU_PROC_ENV_TEST" s" alpha" PROC-CMD:ENV+
    s" bin/hb" PCMDT-HB-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD:OUT$ PCMDT-ENV-OUT 8 T$=
    PCMDT-ERR-LEN 0 T= ;
@@ -92,16 +83,16 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 : PCMDT-RUN-ENTRY-ENV ( -- )
    PROC-CMD:RESET
    PROC-CMD:ENV-HERMETIC
-   s" test/process-env-child.f" >LEN PROC-CMD:ARG+
-   s" HABU_PROC_ENV_TEST=entry" PCMDT-ENV-ENTRY+
+   s" test/process-env-child.f" PROC-CMD:ARG+
+   s" HABU_PROC_ENV_TEST=entry" PROC-CMD:ENV-ENTRY+
    s" bin/hb" PCMDT-HB-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD:OUT$ PCMDT-ENTRY-OUT 8 T$=
    PCMDT-ERR-LEN 0 T= ;
 
 : PCMDT-RUN-INHERITED-ENV ( -- )
    PROC-CMD:RESET
-   s" test/process-env-child.f" >LEN PROC-CMD:ARG+
-   s" HABU_PROC_ENV_TEST" s" alpha" PCMDT-ENV+
+   s" test/process-env-child.f" PROC-CMD:ARG+
+   s" HABU_PROC_ENV_TEST" s" alpha" PROC-CMD:ENV+
    s" bin/hb" PCMDT-HB-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
    PCMDT-CHECK-INHERITED-ENV ;
 
@@ -112,7 +103,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 
 : PCMDT-RUN-TIMEOUT-OUTCOME ( -- )
    PROC-CMD:RESET
-   s" 5" >LEN PROC-CMD:ARG+
+   s" 5" PROC-CMD:ARG+
    s" /bin/sleep" PCMDT-SHORT-TIMEOUT-MS PCMDT-RUN-OUTCOME
    T-OUTCOME-TIMEOUT
    [: PCMDT-RC@ ;] E-PROC-TIMEOUT TTHROWSQ
@@ -121,7 +112,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 
 : PCMDT-RUN-RC-TIMEOUT ( -- )
    PROC-CMD:RESET
-   s" 5" >LEN PROC-CMD:ARG+
+   s" 5" PROC-CMD:ARG+
    s" /bin/sleep" PCMDT-SHORT-TIMEOUT-MS PCMDT-PROC-RUN-RC drop ;
 
 : PCMDT-RUN-YES-TRUNCATED ( -- )
@@ -131,29 +122,29 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 : PCMDT-TOO-MANY-ARGS ( -- )
    PROC-CMD:RESET
    0 begin dup PROC-CMD:ARG-MAX < while
-      s" x" >LEN PROC-CMD:ARG+
+      s" x" PROC-CMD:ARG+
       1+
    repeat drop
-   s" overflow" >LEN PROC-CMD:ARG+ ;
+   s" overflow" PROC-CMD:ARG+ ;
 
 : PCMDT-BAD-ENV-NAME ( -- )
    PROC-CMD:RESET
-   s" BAD=NAME" s" x" PCMDT-ENV+ ;
+   s" BAD=NAME" s" x" PROC-CMD:ENV+ ;
 
 : PCMDT-BAD-ENV-ENTRY ( -- )
    PROC-CMD:RESET
-   s" MISSING_EQUALS" PCMDT-ENV-ENTRY+ ;
+   s" MISSING_EQUALS" PROC-CMD:ENV-ENTRY+ ;
 
 \ Direct both-arm coverage for the migrated result<n,n>: a clean exit MATCHes the
 \ ok arm carrying 0; a nonzero exit MATCHes the err arm carrying the code.
 : PCMDT-RUN-RC-OK ( -- )
    PROC-CMD:RESET
-   s" /usr/bin/true" >LEN PCMDT-CMD-TIMEOUT-MS >MS PROC-CMD:RUN-RC
+   s" /usr/bin/true" PCMDT-CMD-TIMEOUT-MS >MS PROC-CMD:RUN-RC
    MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH ;
 
 : PCMDT-RUN-RC-ERR ( -- )
    PROC-CMD:RESET
-   s" /usr/bin/false" >LEN PCMDT-CMD-TIMEOUT-MS >MS PROC-CMD:RUN-RC
+   s" /usr/bin/false" PCMDT-CMD-TIMEOUT-MS >MS PROC-CMD:RUN-RC
    MATCH result ok OF drop 1 0 T= ENDOF err OF 1 T= ENDOF ;MATCH ;
 
 \ CWD!: the child runs from the given directory, proved by a relative-path
@@ -175,16 +166,16 @@ create PCMDT-REL FS-PATH-CAP allot   variable PCMDT-REL-U
    PCMDT-DIR PCMDT-DIR-U @ s" here.txt" PCMDT-REL JOIN-PATH PCMDT-REL-U !
    PCMDT-REL PCMDT-REL-U @ PCMDT-CWD-BODY$ WRITE-ALL
    PROC-CMD:RESET
-   PCMDT-DIR PCMDT-DIR-U @ >LEN PROC-CMD:CWD!
-   s" here.txt" >LEN PROC-CMD:ARG+
-   s" /bin/cat" >LEN PCMDT-CMD-TIMEOUT-MS >MS PROC-CMD:RUN-RC PCMDT-RC>N 0 T=
+   PCMDT-DIR PCMDT-DIR-U @ PROC-CMD:CWD!
+   s" here.txt" PROC-CMD:ARG+
+   s" /bin/cat" PCMDT-CMD-TIMEOUT-MS >MS PROC-CMD:RUN-RC PCMDT-RC>N 0 T=
    PROC-CMD:OUT$ PCMDT-CWD-BODY$ T$=
    s" here.txt" FILE? TFALSE
    CLEANUP-RUN ;
 
 : PCMDT-CWD-MISSING ( -- )
    PROC-CMD:RESET
-   s" /nonexistent-hb-proc-cmd-dir" >LEN PROC-CMD:CWD! ;
+   s" /nonexistent-hb-proc-cmd-dir" PROC-CMD:CWD! ;
 
 \ Inspect full capacities: empty OUT$/ERR$ alone cannot prove erasure. The
 \ storage is the context's, so the whole wipe row is stated once, on a handle,
@@ -208,19 +199,20 @@ public
    h IN-LEN-CELL @ 0 T=
    h OUT$ nip 0 T= h ERR$ nip 0 T= ;
 
-: TEST-WIPE ( ptr ptr u8 -- ) {: h:ptr :}
+: TEST-WIPE ( ptr ptr u8 -- )
+   {: h:ptr :}
    h WIPE h WIPE-CHECK              \ safe before the first run
    h WIPE-TAINT h RESET             \ RESET still only forgets live lengths
    h IN-BUF c@ 165 T=
    h OUT-BUF c@ 165 T=
    h ERR-BUF c@ 165 T=
-   h s" staged input" >LEN IN!
-   h s" /bin/cat" >LEN PCMDT-CMD-TIMEOUT-MS >MS RUN-RC PCMDT-RC>N 0 T=
+   h s" staged input" IN!
+   h s" /bin/cat" PCMDT-CMD-TIMEOUT-MS >MS RUN-RC PCMDT-RC>N 0 T=
    h OUT$ s" staged input" T$=      \ RUN has not wiped its capture
-   h s" /usr/bin/false" >LEN PCMDT-CMD-TIMEOUT-MS >MS RUN-RC PCMDT-RC>N 1 T=
-   h s" kept" >LEN ARG+
-   h s" WIPE_TEST" >LEN s" kept" >LEN ENV+
-   h s" /usr" >LEN CWD! h ENV-HERMETIC
+   h s" /usr/bin/false" PCMDT-CMD-TIMEOUT-MS >MS RUN-RC PCMDT-RC>N 1 T=
+   h s" kept" ARG+
+   h s" WIPE_TEST" s" kept" ENV+
+   h s" /usr" CWD! h ENV-HERMETIC
    h WIPE h WIPE-CHECK              \ stale tails and unused stderr are erased too
    h ARG-N-CELL @ 1 T=
    h ENV-N-CELL @ 1 T=
@@ -228,8 +220,8 @@ public
    h INHERIT-CELL @ 0 T=
    h RC@ PCMDT-RC>N 1 T=            \ wiping does not reset the outcome
    h RESET
-   h s" later input" >LEN IN!
-   h s" /bin/cat" >LEN PCMDT-CMD-TIMEOUT-MS >MS RUN-RC PCMDT-RC>N 0 T=
+   h s" later input" IN!
+   h s" /bin/cat" PCMDT-CMD-TIMEOUT-MS >MS RUN-RC PCMDT-RC>N 0 T=
    h OUT$ s" later input" T$=
    h WIPE h WIPE-CHECK
    h WIPE h WIPE-CHECK ;
@@ -243,7 +235,7 @@ public
    CTX0 CMD:TEST-WIPE ;
 
 : TEST-REFUSED-RUN ( -- )
-   CTX0 s" " >LEN PCMDT-CMD-TIMEOUT-MS >MS CMD:RUN-RC drop ;
+   CTX0 s" " PCMDT-CMD-TIMEOUT-MS >MS CMD:RUN-RC drop ;
 
 : TEST-WIPE-AFTER-REFUSAL ( -- )
    [: TEST-REFUSED-RUN ;] E-PROC-OUTPUT TTHROWSQ
@@ -256,47 +248,52 @@ public
 \ that must not share the command uses.
 CMD:COMMAND PCMDT-CMD
 
-: PCMDT-H-RUN-RC ( ptr ptr u8 ptr u8 n n -- n ) {: h:ptr path:ptr pathu timeout :}
-   h path pathu >LEN timeout >MS CMD:RUN-RC PCMDT-RC>N ;
+: PCMDT-H-RUN-RC ( ptr ptr u8 ptr u8 n n -- n )
+   >MS CMD:RUN-RC PCMDT-RC>N ;
 
-: PCMDT-H-PRINTF ( ptr ptr u8 -- ) {: h:ptr :}
+: PCMDT-H-PRINTF ( ptr ptr u8 -- )
+   {: h:ptr :}
    h CMD:RESET
-   h s" %s:%s" >LEN CMD:ARG+
-   h s" left" >LEN CMD:ARG+
-   h s" right" >LEN CMD:ARG+
+   h s" %s:%s" CMD:ARG+
+   h s" left" CMD:ARG+
+   h s" right" CMD:ARG+
    h s" /usr/bin/printf" PCMDT-CMD-TIMEOUT-MS PCMDT-H-RUN-RC 0 T=
    h CMD:OUT$ s" left:right" T$=
    h CMD:ERR$ nip 0 T=
    PROC-ARGV-N @ COUNT>N 0 T=            \ the owned path writes no process-wide staging
    PROC-ENV-N @ COUNT>N 0 T= ;
 
-: PCMDT-H-STDIN ( ptr ptr u8 -- ) {: h:ptr :}
+: PCMDT-H-STDIN ( ptr ptr u8 -- )
+   {: h:ptr :}
    h CMD:RESET
-   h s" cmd-stdin" >LEN CMD:IN!
+   h s" cmd-stdin" CMD:IN!
    h s" /bin/cat" PCMDT-CMD-TIMEOUT-MS PCMDT-H-RUN-RC 0 T=
    h CMD:OUT$ s" cmd-stdin" T$= ;
 
-: PCMDT-H-HERMETIC-ENV ( ptr ptr u8 -- ) {: h:ptr :}
+: PCMDT-H-HERMETIC-ENV ( ptr ptr u8 -- )
+   {: h:ptr :}
    h CMD:RESET
    h CMD:ENV-HERMETIC
-   h s" test/process-env-child.f" >LEN CMD:ARG+
-   h s" HABU_PROC_ENV_TEST" >LEN s" alpha" >LEN CMD:ENV+
+   h s" test/process-env-child.f" CMD:ARG+
+   h s" HABU_PROC_ENV_TEST" s" alpha" CMD:ENV+
    h s" bin/hb" PCMDT-HB-TIMEOUT-MS PCMDT-H-RUN-RC 0 T=
    h CMD:OUT$ PCMDT-ENV-OUT 8 T$=
    h CMD:ERR$ nip 0 T= ;
 
-: PCMDT-H-ENTRY-ENV ( ptr ptr u8 -- ) {: h:ptr :}
+: PCMDT-H-ENTRY-ENV ( ptr ptr u8 -- )
+   {: h:ptr :}
    h CMD:RESET
    h CMD:ENV-HERMETIC
-   h s" test/process-env-child.f" >LEN CMD:ARG+
-   h s" HABU_PROC_ENV_TEST=entry" >LEN CMD:ENV-ENTRY+
+   h s" test/process-env-child.f" CMD:ARG+
+   h s" HABU_PROC_ENV_TEST=entry" CMD:ENV-ENTRY+
    h s" bin/hb" PCMDT-HB-TIMEOUT-MS PCMDT-H-RUN-RC 0 T=
    h CMD:OUT$ PCMDT-ENTRY-OUT 8 T$= ;
 
-: PCMDT-H-INHERITED-ENV ( ptr ptr u8 -- ) {: h:ptr :}
+: PCMDT-H-INHERITED-ENV ( ptr ptr u8 -- )
+   {: h:ptr :}
    h CMD:RESET
-   h s" test/process-env-child.f" >LEN CMD:ARG+
-   h s" HABU_PROC_ENV_TEST" >LEN s" alpha" >LEN CMD:ENV+
+   h s" test/process-env-child.f" CMD:ARG+
+   h s" HABU_PROC_ENV_TEST" s" alpha" CMD:ENV+
    h s" bin/hb" PCMDT-HB-TIMEOUT-MS PCMDT-H-RUN-RC 0 T=
    h CMD:OUT$
    s" alpha" PCMDT-CHECK-LINE
@@ -304,25 +301,28 @@ CMD:COMMAND PCMDT-CMD
    s" PATH" GETENV PCMDT-CHECK-LINE
    nip 0 T= ;
 
-: PCMDT-H-RC-ARMS ( ptr ptr u8 -- ) {: h:ptr :}
+: PCMDT-H-RC-ARMS ( ptr ptr u8 -- )
+   {: h:ptr :}
    h CMD:RESET
-   h s" /usr/bin/true" >LEN PCMDT-CMD-TIMEOUT-MS >MS CMD:RUN-RC
+   h s" /usr/bin/true" PCMDT-CMD-TIMEOUT-MS >MS CMD:RUN-RC
    MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
    h CMD:RESET
-   h s" /usr/bin/false" >LEN PCMDT-CMD-TIMEOUT-MS >MS CMD:RUN-RC
+   h s" /usr/bin/false" PCMDT-CMD-TIMEOUT-MS >MS CMD:RUN-RC
    MATCH result ok OF drop 1 0 T= ENDOF err OF 1 T= ENDOF ;MATCH
    h CMD:RC@ MATCH result ok OF drop 1 0 T= ENDOF err OF 1 T= ENDOF ;MATCH ;
 
-: PCMDT-H-TIMEOUT ( ptr ptr u8 -- ) {: h:ptr :}
+: PCMDT-H-TIMEOUT ( ptr ptr u8 -- )
+   {: h:ptr :}
    h CMD:RESET
-   h s" 5" >LEN CMD:ARG+
-   h s" /bin/sleep" >LEN PCMDT-SHORT-TIMEOUT-MS >MS CMD:RUN-OUTCOME
+   h s" 5" CMD:ARG+
+   h s" /bin/sleep" PCMDT-SHORT-TIMEOUT-MS >MS CMD:RUN-OUTCOME
    T-OUTCOME-TIMEOUT
    h CMD:OUTCOME@ T-OUTCOME-TIMEOUT
    h CMD:OUT$ nip 0 T=
    h CMD:ERR$ nip 0 T= ;
 
-: PCMDT-H-CWD ( ptr ptr u8 -- ) {: h:ptr :}
+: PCMDT-H-CWD ( ptr ptr u8 -- )
+   {: h:ptr :}
    CLEANUP-RESET
    s" hb-cmd-cwd" HB-TMP-MKDIR {: d:ptr du :}
    d du CLEANUP-TREE+
@@ -332,8 +332,8 @@ CMD:COMMAND PCMDT-CMD
    PCMDT-DIR PCMDT-DIR-U @ s" here.txt" PCMDT-REL JOIN-PATH PCMDT-REL-U !
    PCMDT-REL PCMDT-REL-U @ PCMDT-CWD-BODY$ WRITE-ALL
    h CMD:RESET
-   h PCMDT-DIR PCMDT-DIR-U @ >LEN CMD:CWD!
-   h s" here.txt" >LEN CMD:ARG+
+   h PCMDT-DIR PCMDT-DIR-U @ CMD:CWD!
+   h s" here.txt" CMD:ARG+
    h s" /bin/cat" PCMDT-CMD-TIMEOUT-MS PCMDT-H-RUN-RC 0 T=
    h CMD:OUT$ PCMDT-CWD-BODY$ T$=
    s" here.txt" FILE? TFALSE
@@ -341,15 +341,15 @@ CMD:COMMAND PCMDT-CMD
 
 : PCMDT-H-CWD-MISSING ( -- )
    PCMDT-CMD CMD:RESET
-   PCMDT-CMD s" /nonexistent-hb-cmd-dir" >LEN CMD:CWD! ;
+   PCMDT-CMD s" /nonexistent-hb-cmd-dir" CMD:CWD! ;
 
 : PCMDT-H-TOO-MANY-ARGS ( -- )
    PCMDT-CMD CMD:RESET
    0 begin dup CMD:ARG-MAX < while
-      PCMDT-CMD s" x" >LEN CMD:ARG+
+      PCMDT-CMD s" x" CMD:ARG+
       1+
    repeat drop
-   PCMDT-CMD s" overflow" >LEN CMD:ARG+ ;
+   PCMDT-CMD s" overflow" CMD:ARG+ ;
 
 \ The envp vector's last cell belongs to the NULL, so the ceiling is ENV-ROWS-1
 \ caller rows. The refusal writes its line to stderr the way src/lib/process-env.f's
@@ -358,10 +358,10 @@ CMD:COMMAND PCMDT-CMD
    PCMDT-CMD CMD:RESET
    PCMDT-CMD CMD:ENV-HERMETIC
    0 begin dup CMD:ENV-ROWS 1 - < while
-      PCMDT-CMD s" R" >LEN s" v" >LEN CMD:ENV+
+      PCMDT-CMD s" R" s" v" CMD:ENV+
       1+
    repeat drop
-   PCMDT-CMD s" R" >LEN s" v" >LEN CMD:ENV+ ;
+   PCMDT-CMD s" R" s" v" CMD:ENV+ ;
 
 \ A command bound to storage the caller allocated itself: same surface, no
 \ declaration. Both mappings go back before the row returns.
@@ -369,8 +369,8 @@ CMD:COMMAND PCMDT-CMD
    CMD:BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: b:ptr :}
    CMD:VEC-CELLS >COUNT MEM-ALLOC-CELLS {: h:ptr :}
    b h CMD:BIND
-   h s" bound:%s" >LEN CMD:ARG+
-   h s" storage" >LEN CMD:ARG+
+   h s" bound:%s" CMD:ARG+
+   h s" storage" CMD:ARG+
    h s" /usr/bin/printf" PCMDT-CMD-TIMEOUT-MS PCMDT-H-RUN-RC 0 T=
    h CMD:OUT$ s" bound:storage" T$=
    b CMD:BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
@@ -387,11 +387,13 @@ create PCMDT-FILL PCMDT-FILL-LEN allot
    PCMDT-FILL-LEN 0 ?do 120 PCMDT-FILL i + c! loop
    61 PCMDT-FILL 1+ c! ;                 \ "x=xxx...": an entry at any length from two
 
-: PCMDT-ENTRY-AT ( n -- ) {: u:n :}
-   PROC-CMD:RESET PCMDT-FILL u PCMDT-ENV-ENTRY+ ;
+: PCMDT-ENTRY-AT ( n -- )
+   {: u:n :}
+   PROC-CMD:RESET PCMDT-FILL u PROC-CMD:ENV-ENTRY+ ;
 
-: PCMDT-ENV-AT ( n -- ) {: valu:n :}
-   PROC-CMD:RESET s" N" PCMDT-FILL valu PCMDT-ENV+ ;
+: PCMDT-ENV-AT ( n -- )
+   {: valu:n :}
+   PROC-CMD:RESET s" N" PCMDT-FILL valu PROC-CMD:ENV+ ;
 
 : PCMDT-ENV-BYTE-BOUNDS ( -- )
    PCMDT-FILL!
@@ -413,13 +415,15 @@ create PCMDT-FILL PCMDT-FILL-LEN allot
 8 constant PCMDT-LEFT
 
 : PCMDT-FILL-TO-LEFT ( -- )
-   PROC-CMD:RESET PCMDT-FILL PROC-ENV-EXTRA-BYTES PCMDT-LEFT - 1- PCMDT-ENV-ENTRY+ ;
+   PROC-CMD:RESET PCMDT-FILL PROC-ENV-EXTRA-BYTES PCMDT-LEFT - 1- PROC-CMD:ENV-ENTRY+ ;
 
-: PCMDT-ENTRY-UNREAD ( n -- ) {: u:n :}
-   PCMDT-FILL-TO-LEFT PCMDT-LEFT 1- [char] x GUARD-PAGE:TAIL u PCMDT-ENV-ENTRY+ ;
+: PCMDT-ENTRY-UNREAD ( n -- )
+   {: u:n :}
+   PCMDT-FILL-TO-LEFT PCMDT-LEFT 1- [char] x GUARD-PAGE:TAIL u PROC-CMD:ENV-ENTRY+ ;
 
-: PCMDT-ENV-UNREAD ( n -- ) {: nameu:n :}
-   PCMDT-FILL-TO-LEFT PCMDT-LEFT 2 - [char] x GUARD-PAGE:TAIL nameu s" " PCMDT-ENV+ ;
+: PCMDT-ENV-UNREAD ( n -- )
+   {: nameu:n :}
+   PCMDT-FILL-TO-LEFT PCMDT-LEFT 2 - [char] x GUARD-PAGE:TAIL nameu s" " PROC-CMD:ENV+ ;
 
 : PCMDT-ENV-BOUND-BEFORE-SCAN ( -- )
    PCMDT-FILL!
@@ -435,8 +439,9 @@ create PCMDT-FILL PCMDT-FILL-LEN allot
 
 \ The argument region is PROC-ARGV-BUF-CAP bytes, and PROC-ZCOPY alone compares
 \ an argument and its NUL with the room left in it.
-: PCMDT-ARG-AT ( n -- ) {: u:n :}
-   PROC-CMD:RESET PCMDT-FILL u >LEN PROC-CMD:ARG+ ;
+: PCMDT-ARG-AT ( n -- )
+   {: u:n :}
+   PROC-CMD:RESET PCMDT-FILL u PROC-CMD:ARG+ ;
 
 : PCMDT-ARG-BYTE-BOUNDS ( -- )
    PCMDT-FILL!

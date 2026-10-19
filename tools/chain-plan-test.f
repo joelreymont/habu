@@ -21,12 +21,12 @@ package CHAIN-PLAN-TEST
 : T-REFUSED-REVISION ( -- )
    s" a refused revision exits the planner with FAIL-RC" T-LABEL
    PROC-CMD:RESET
-   s" --load" >LEN PROC-CMD:ARG+
-   s" tools/chain-plan-build.f" >LEN PROC-CMD:ARG+
-   s" --" >LEN PROC-CMD:ARG+
-   s" chain-plan-test-no-such-revision" >LEN PROC-CMD:ARG+
-   SOURCE-ROOT:CWD$ >LEN PROC-CMD:ARG+
-   ENGINE-CANDIDATE:PATH$ >LEN 60000 >MS PROC-CMD:RUN-OUTCOME
+   s" --load" PROC-CMD:ARG+
+   s" tools/chain-plan-build.f" PROC-CMD:ARG+
+   s" --" PROC-CMD:ARG+
+   s" chain-plan-test-no-such-revision" PROC-CMD:ARG+
+   SOURCE-ROOT:CWD$ PROC-CMD:ARG+
+   ENGINE-CANDIDATE:PATH$ 60000 >MS PROC-CMD:RUN-OUTCOME
    PROC-OUTCOME>RC RC>N CHAIN-PLAN:FAIL-RC T=
    PROC-CMD:OUT$ s" chain-plan: uncaught throw code " CONTAINS? TTRUE ;
 

@@ -55,14 +55,14 @@ variable CMP-LEFT
 : BUILD ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: host:ptr hostu out:ptr outu tmp:ptr tmpu :}
    PROC-CMD:RESET
-   s" --load" >LEN PROC-CMD:ARG+
-   s" tools/native-build.f" >LEN PROC-CMD:ARG+
-   s" --" >LEN PROC-CMD:ARG+
-   out outu >LEN PROC-CMD:ARG+
-   s" HB_TMP" >LEN tmp tmpu >LEN PROC-CMD:ENV+
-   s" HABU_UNDER_TEST" >LEN host hostu >LEN PROC-CMD:ENV+
-   s" HABU_FIXPOINT_ENGINE" >LEN host hostu >LEN PROC-CMD:ENV+
-   host hostu >LEN 1800000 >MS PROC-CMD:RUN-RC MATCH result
+   s" --load" PROC-CMD:ARG+
+   s" tools/native-build.f" PROC-CMD:ARG+
+   s" --" PROC-CMD:ARG+
+   out outu PROC-CMD:ARG+
+   s" HB_TMP" tmp tmpu PROC-CMD:ENV+
+   s" HABU_UNDER_TEST" host hostu PROC-CMD:ENV+
+   s" HABU_FIXPOINT_ENGINE" host hostu PROC-CMD:ENV+
+   host hostu 1800000 >MS PROC-CMD:RUN-RC MATCH result
       ok OF drop ENDOF
       err OF BUILD-FAILED ENDOF
    ;MATCH

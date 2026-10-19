@@ -48,19 +48,20 @@ create BIG-B 32769 allot
 \ The CLI entry on a stand-in host: the script given replaces the engine that
 \ builds the first generation, so BUILD reads its exit status with no native
 \ build. Returns the entry's own exit status.
-: CHAIN-RC ( ptr u8 n -- n ) {: script:ptr scriptu:n :}
+: CHAIN-RC ( ptr u8 n -- n )
+   {: script:ptr scriptu:n :}
    HOST$ script scriptu WRITE-ALL
    HOST$ CHMOD-X
    PROC-CMD:RESET
-   s" --load" >LEN PROC-CMD:ARG+
-   s" tools/chain-run-build.f" >LEN PROC-CMD:ARG+
-   s" --" >LEN PROC-CMD:ARG+
-   HOST$ >LEN PROC-CMD:ARG+
-   ROOT$ s" gen1" JOIN >LEN PROC-CMD:ARG+
-   ROOT$ s" gen2" JOIN >LEN PROC-CMD:ARG+
-   ROOT$ s" gen3" JOIN >LEN PROC-CMD:ARG+
-   ROOT$ s" tmp" JOIN >LEN PROC-CMD:ARG+
-   ENGINE-CANDIDATE:PATH$ >LEN 60000 >MS PROC-CMD:RUN-OUTCOME
+   s" --load" PROC-CMD:ARG+
+   s" tools/chain-run-build.f" PROC-CMD:ARG+
+   s" --" PROC-CMD:ARG+
+   HOST$ PROC-CMD:ARG+
+   ROOT$ s" gen1" JOIN PROC-CMD:ARG+
+   ROOT$ s" gen2" JOIN PROC-CMD:ARG+
+   ROOT$ s" gen3" JOIN PROC-CMD:ARG+
+   ROOT$ s" tmp" JOIN PROC-CMD:ARG+
+   ENGINE-CANDIDATE:PATH$ 60000 >MS PROC-CMD:RUN-OUTCOME
    PROC-OUTCOME>RC RC>N ;
 
 \ The entry replays the failed child's stderr and names the code it caught.

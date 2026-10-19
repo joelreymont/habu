@@ -156,15 +156,17 @@ private
 \ address installed straight into the argv vector: no src/lib/process-argv.f
 \ staging is on this path. PROC-ZCOPY is handed the room left and makes the fit
 \ rule, so no second one is kept here to drift from it.
-: ARG-ZCOPY ( ptr ptr u8 ptr u8 len -- ptr u8 ) {: h:ptr a:ptr u:len :}
+: ARG-ZCOPY ( ptr ptr u8 ptr u8 n -- ptr u8 )
+   {: h:ptr a:ptr u:n :}
    h ARG-OFF-CELL @ {: off:n :}
-   a u h ARG-BUF off + ARG-BUF-CAP off - >LEN PROC-ZCOPY {: z:ptr :}
-   off u LEN>N 1 + + h ARG-OFF-CELL !
+   a u >LEN h ARG-BUF off + ARG-BUF-CAP off - >LEN PROC-ZCOPY {: z:ptr :}
+   off u 1 + + h ARG-OFF-CELL !
    z ;
 
 public
 
-: ARG+ ( ptr ptr u8 ptr u8 len -- ) {: h:ptr a:ptr u:len :}
+: ARG+ ( ptr ptr u8 ptr u8 n -- )
+   {: h:ptr a:ptr u:n :}
    h ARG-N-CELL @ ARG-MAX >= if E-PROC-OUTPUT throw then
    h a u ARG-ZCOPY h h ARG-N-CELL @ 1 + ARGV-CELL !
    h ARG-N-CELL @ 1 + h ARG-N-CELL ! ;
@@ -197,59 +199,64 @@ private
    z h h ENV-N-CELL @ ENVP-CELL !
    h ENV-N-CELL @ 1 + h ENV-N-CELL ! ;
 
-: ENV-STORE-Z ( ptr ptr u8 ptr u8 len -- ptr u8 ) {: h:ptr a:ptr u:len :}
-   u LEN>N 0 < if E-PROC-ENV throw then
+: ENV-STORE-Z ( ptr ptr u8 ptr u8 n -- ptr u8 )
+   {: h:ptr a:ptr u:n :}
+   u 0 < if E-PROC-ENV throw then
    h ENV-OFF-CELL @ {: off:n :}
-   off u PROC-ENV-NEED ENV-BUF-CAP > if E-PROC-ENV throw then
-   a u PROC-ENV-CHECK-ENTRY
-   a h ENV-BUF off + u LEN>N BYTE-COPY
-   0 h ENV-BUF off + u LEN>N + c!
-   off u LEN>N 1 + + h ENV-OFF-CELL !
+   off u >LEN PROC-ENV-NEED ENV-BUF-CAP > if E-PROC-ENV throw then
+   a u >LEN PROC-ENV-CHECK-ENTRY
+   a h ENV-BUF off + u BYTE-COPY
+   0 h ENV-BUF off + u + c!
+   off u 1 + + h ENV-OFF-CELL !
    h ENV-BUF off + ;
 
 public
 
-: ENV-ENTRY+ ( ptr ptr u8 ptr u8 len -- ) {: h:ptr a:ptr u:len :}
+: ENV-ENTRY+ ( ptr ptr u8 ptr u8 n -- )
+   {: h:ptr a:ptr u:n :}
    h ENV-CHECK-EXTRA
    h h a u ENV-STORE-Z ENV-INSTALL-Z ;
 
-: ENV+ ( ptr ptr u8 ptr u8 len ptr u8 len -- )
-   {: h:ptr name:ptr nameu:len val:ptr valu:len :}
+: ENV+ ( ptr ptr u8 ptr u8 n ptr u8 n -- )
+   {: h:ptr name:ptr nameu:n val:ptr valu:n :}
    h ENV-CHECK-EXTRA
    h ENV-OFF-CELL @ {: off:n :}
-   off nameu valu PROC-ENV-ROW-NEED ENV-BUF-CAP > if E-PROC-ENV throw then
-   name nameu PROC-ENV-CHECK-NAME
-   name h ENV-BUF off + nameu LEN>N BYTE-COPY
-   PROC-ENV-EQUAL h ENV-BUF off + nameu LEN>N + c!
-   val h ENV-BUF off + nameu LEN>N + 1 + valu LEN>N BYTE-COPY
-   0 h ENV-BUF off + nameu LEN>N + 1 + valu LEN>N + c!
+   off nameu >LEN valu >LEN PROC-ENV-ROW-NEED ENV-BUF-CAP > if E-PROC-ENV throw then
+   name nameu >LEN PROC-ENV-CHECK-NAME
+   name h ENV-BUF off + nameu BYTE-COPY
+   PROC-ENV-EQUAL h ENV-BUF off + nameu + c!
+   val h ENV-BUF off + nameu + 1 + valu BYTE-COPY
+   0 h ENV-BUF off + nameu + 1 + valu + c!
    h h ENV-BUF off + ENV-INSTALL-Z
-   off nameu LEN>N valu LEN>N + 2 + + h ENV-OFF-CELL ! ;
+   off nameu valu + 2 + + h ENV-OFF-CELL ! ;
 
 : ENV-HERMETIC ( ptr ptr u8 -- ) {: h:ptr :}
    0 h INHERIT-CELL ! ;
 
 private
 
-: CWD-CHECK ( ptr u8 len -- ) {: a:ptr u:len :}
-   u LEN>N 0 <= if E-PROC-PATH throw then
-   u LEN>N CWDZ-CAP 1 - > if E-PROC-PATH throw then
-   a u LEN>N DIR? 0= if E-PROC-PATH throw then ;
+: CWD-CHECK ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0 <= if E-PROC-PATH throw then
+   u CWDZ-CAP 1 - > if E-PROC-PATH throw then
+   a u DIR? 0= if E-PROC-PATH throw then ;
 
 public
 
 \ Run the child from this directory instead of the loader's. A missing path or a
 \ non-directory is refused here, before anything is spawned; RESET clears it.
-: CWD! ( ptr ptr u8 ptr u8 len -- ) {: h:ptr a:ptr u:len :}
+: CWD! ( ptr ptr u8 ptr u8 n -- )
+   {: h:ptr a:ptr u:n :}
    a u CWD-CHECK
-   a u h CWDZ CWDZ-CAP >LEN PROC-ZCOPY drop
-   u LEN>N h CWD-LEN-CELL ! ;
+   a u >LEN h CWDZ CWDZ-CAP >LEN PROC-ZCOPY drop
+   u h CWD-LEN-CELL ! ;
 
-: IN! ( ptr ptr u8 ptr u8 len -- ) {: h:ptr a:ptr u:len :}
-   u LEN>N 0 < if E-PROC-OUTPUT throw then
-   u LEN>N IN-CAP > if E-PROC-OUTPUT throw then
-   a h IN-BUF u LEN>N BYTE-COPY
-   u LEN>N h IN-LEN-CELL ! ;
+: IN! ( ptr ptr u8 ptr u8 n -- )
+   {: h:ptr a:ptr u:n :}
+   u 0 < if E-PROC-OUTPUT throw then
+   u IN-CAP > if E-PROC-OUTPUT throw then
+   a h IN-BUF u BYTE-COPY
+   u h IN-LEN-CELL ! ;
 
 private
 
@@ -288,15 +295,17 @@ private
 \ The vectors the child receives: argv slot 0 is the path and slot n+1 the NULL,
 \ envp ends at the NULL after the last row. Both terminators are written here,
 \ so a refused run leaves no half-built vector behind.
-: PREPARE ( ptr ptr u8 ptr u8 len -- ) {: h:ptr path:ptr pathu:len :}
-   path pathu h PATHZ PATHZ-CAP >LEN PROC-ZCOPY h 0 ARGV-CELL !
+: PREPARE ( ptr ptr u8 ptr u8 n -- )
+   {: h:ptr path:ptr pathu:n :}
+   path pathu >LEN h PATHZ PATHZ-CAP >LEN PROC-ZCOPY h 0 ARGV-CELL !
    NULL-PTR h h ARG-N-CELL @ 1 + ARGV-CELL !
    h ENV-N-CELL @ h ENV-FILL-CELL !
    h INHERIT-CELL @ 0<> if h ENV-INHERIT-MISSING then
    NULL-PTR h h ENV-FILL-CELL @ ENVP-CELL ! ;
 
-: CHECK-RUN ( ptr u8 len ms -- ) {: path:ptr pathu:len timeout:ms :}
-   path pathu PROC-ARGV-CHECK-PATH
+: CHECK-RUN ( ptr u8 n ms -- )
+   {: path:ptr pathu:n timeout:ms :}
+   path pathu >LEN PROC-ARGV-CHECK-PATH
    timeout MS>N 0 < if E-PROC-TIMEOUT throw then ;
 
 \ The spawn cores take the context's own vectors and reset no process-wide
@@ -329,8 +338,8 @@ public
    h EXITED-CELL @ 0<> if h CODE-CELL @ OUTCOME:EXITED exit then
    h CODE-CELL @ OUTCOME:SIGNALED ;
 
-: RUN-OUTCOME ( ptr ptr u8 ptr u8 len ms -- outcome )
-   {: h:ptr path:ptr pathu:len timeout:ms :}
+: RUN-OUTCOME ( ptr ptr u8 ptr u8 n ms -- outcome )
+   {: h:ptr path:ptr pathu:n timeout:ms :}
    path pathu timeout CHECK-RUN
    h CAPTURE-RESET
    h path pathu PREPARE
@@ -348,10 +357,10 @@ public
 : RUN-STDIN-GROWING-OUTCOME
   ( ptr ptr u8 ptr u8 len ptr u8 len [ n -- ptr u8 ] ptr u8 len ms -- len len outcome )
    {: h:ptr path:ptr pathu:len in:ptr inu:len sink err:ptr errcap:len timeout:ms :}
-   path pathu timeout CHECK-RUN
+   path pathu LEN>N timeout CHECK-RUN
    inu PROC-CAPTURE-CHECK-STDIN
    errcap PROC-CAPTURE-CHECK-CAP
-   h path pathu PREPARE
+   h path pathu LEN>N PREPARE
    timeout PROC-STDIN-CAPTURE-BEGIN
    h SPAWN
    in inu sink err errcap PROC-RUN-STDIN-GROWING-CAPTURE-OUTCOME-LOOP
@@ -375,8 +384,8 @@ public
 : RC@ ( ptr ptr u8 -- result<n,n> ) {: h:ptr :}
    h OUTCOME@ PROC-OUTCOME>RC RC>N RC>RESULT ;
 
-: RUN-RC ( ptr ptr u8 ptr u8 len ms -- result<n,n> )
-   {: h:ptr path:ptr pathu:len timeout:ms :}
+: RUN-RC ( ptr ptr u8 ptr u8 n ms -- result<n,n> )
+   {: h:ptr path:ptr pathu:n timeout:ms :}
    h path pathu timeout RUN-OUTCOME drop
    h RC@ ;
 
@@ -463,31 +472,38 @@ public
 : WIPE ( -- )
    CTX0 CMD:WIPE ;
 
-: ARG+ ( ptr u8 len -- ) {: a:ptr u:len :}
+: ARG+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
    CTX0 a u CMD:ARG+ ;
 
-: ENV-ENTRY+ ( ptr u8 len -- ) {: a:ptr u:len :}
+: ENV-ENTRY+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
    CTX0 a u CMD:ENV-ENTRY+ ;
 
-: ENV+ ( ptr u8 len ptr u8 len -- ) {: name:ptr nameu:len val:ptr valu:len :}
+: ENV+ ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n val:ptr valu:n :}
    CTX0 name nameu val valu CMD:ENV+ ;
 
 : ENV-HERMETIC ( -- )
    CTX0 CMD:ENV-HERMETIC ;
 
-: CWD! ( ptr u8 len -- ) {: a:ptr u:len :}
+: CWD! ( ptr u8 n -- )
+   {: a:ptr u:n :}
    CTX0 a u CMD:CWD! ;
 
-: IN! ( ptr u8 len -- ) {: a:ptr u:len :}
+: IN! ( ptr u8 n -- )
+   {: a:ptr u:n :}
    CTX0 a u CMD:IN! ;
 
 : OUTCOME@ ( -- outcome )
    CTX0 CMD:OUTCOME@ ;
 
-: RUN-OUTCOME ( ptr u8 len ms -- outcome ) {: path:ptr pathu:len timeout:ms :}
+: RUN-OUTCOME ( ptr u8 n ms -- outcome )
+   {: path:ptr pathu:n timeout:ms :}
    CTX0 path pathu timeout CMD:RUN-OUTCOME ;
 
-: RUN-RC ( ptr u8 len ms -- result<n,n> ) {: path:ptr pathu:len timeout:ms :}
+: RUN-RC ( ptr u8 n ms -- result<n,n> )
+   {: path:ptr pathu:n timeout:ms :}
    CTX0 path pathu timeout CMD:RUN-RC ;
 
 : OUT$ ( -- ptr u8 n )

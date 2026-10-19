@@ -40,7 +40,7 @@ execs. The test-pool timeout/reaper path depends on this invariant; parent-side
   `execve`; the parent returns a pid only after the child has either
   successfully exec'd (pipe EOF) or reported setup failure.
 
-`PROC-CMD:CWD! ( ptr u8 len -- )` runs every later `PROC-CMD` child from that
+`PROC-CMD:CWD! ( ptr u8 n -- )` runs every later `PROC-CMD` child from that
 directory instead of the loader's until `PROC-CMD:RESET` clears it; a missing
 path or a non-directory is refused before any spawn (`E-PROC-PATH`). A gate uses
 it to start a relocated executable from a private directory and prove that it
