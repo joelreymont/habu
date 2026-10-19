@@ -3,6 +3,8 @@
 \ Both transports wait on the AIO loop, so RUN starts it before the workers and
 \ stops it after they end: a saved image holds no live task, and the next RUN's
 \ START needs the loop down.
+require src/lib/errors.f
+require src/lib/process.f
 require src/lib/task.f
 require src/lib/aio.f
 require src/lib/net/udp4.f
@@ -51,7 +53,7 @@ TASK:MIN-STACK TASK:TASK SERIAL-WORKER
          UDP-BYTE c@ $E6 <> if -1 throw then
       ENDOF
       truncated OF drop drop drop -1 throw ENDOF
-      timeout OF -1 throw ENDOF
+      timeout OF E-PROC-TIMEOUT throw ENDOF
       failed OF UDP4:ERRNO>N throw ENDOF
    ;MATCH
    handle UDP4:CLOSE UDP-OK
@@ -61,7 +63,8 @@ TASK:MIN-STACK TASK:TASK SERIAL-WORKER
 : SERIAL-ONE ( SERIAL:io-result -- )
    MATCH SERIAL:io-result
       transferred OF BLEN>N 1 <> if -1 throw then ENDOF
-      timeout OF -1 throw ENDOF closed OF -1 throw ENDOF
+      timeout OF E-PROC-TIMEOUT throw ENDOF
+      closed OF -1 throw ENDOF
       failed OF SERIAL:ERRNO>N throw ENDOF
    ;MATCH ;
 
@@ -85,6 +88,19 @@ TASK:MIN-STACK TASK:TASK SERIAL-WORKER
 : WAIT-DONE ( ptr n -- ) {: worker:ptr :}
    begin worker TASK:DONE? 0= while TASK:PAUSE repeat ;
 
+\ A transfer that answered timeout met its 2000 ms deadline, which is no failure
+\ of the exchange (docs/gate.md). A task asserts nothing: it ends on
+\ E-PROC-TIMEOUT, which the task runtime records, and RUN reads it once both
+\ have ended. A throw code cannot cross the process boundary: the child names
+\ the wait and exits PROC-TIMEOUT-RC.
+: DEADLINE ( -- )
+   UDP-WORKER TASK:THROW@ E-PROC-TIMEOUT = if
+      s" host-io-image-subject UDP-RUN: a deadline expired" PROC-TIMEOUT-RC die
+   then
+   SERIAL-WORKER TASK:THROW@ E-PROC-TIMEOUT = if
+      s" host-io-image-subject SERIAL-RUN: a deadline expired" PROC-TIMEOUT-RC die
+   then ;
+
 public
 
 
@@ -95,7 +111,7 @@ public
    AIO:START
    ['] UDP-RUN UDP-WORKER TASK:ACTIVATE
    ['] SERIAL-RUN SERIAL-WORKER TASK:ACTIVATE
-   UDP-WORKER WAIT-DONE SERIAL-WORKER WAIT-DONE
+   UDP-WORKER WAIT-DONE SERIAL-WORKER WAIT-DONE DEADLINE
    UDP-WORKER TASK:KILL SERIAL-WORKER TASK:KILL
    AIO:STOP
    DONE atomic@ 2 <> if -1 throw then

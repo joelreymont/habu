@@ -14,6 +14,7 @@
 
 require src/lib/string.f
 require src/lib/test.f
+require src/lib/test/wait.f
 require test/gate-common.f
 require src/lib/pty.f
 
@@ -81,6 +82,8 @@ variable OUTPUT-RD
    OUTPUT-U @ OUTPUT-RD @ + OUTPUT-U !
    DRIVER-OK? ;
 
+\ A poll budget spent without the driver's line is the row's own deadline, not
+\ an assertion result: the wait names itself and throws E-PROC-TIMEOUT.
 : READ-OUTPUT ( -- )
    0 OUTPUT-U !
    0 begin dup OUTPUT-MAX-POLLS < while
@@ -88,7 +91,7 @@ variable OUTPUT-RD
       1+
    repeat drop
    MASTER-FD @ close
-   E-PROC-TIMEOUT throw ;
+   s" gate-env-stdin-tty-test READ-OUTPUT" TEST-WAIT:EXPIRED ;
 
 : SHOW-DRIVER-FAILURE ( -- )
    SESSION-RC @ 0= if exit then
@@ -112,8 +115,13 @@ variable OUTPUT-RD
    T-REPORT
    s" gate-env-stdin-tty-test: ok" type cr ;
 
+\ A throw code cannot cross the fork, so a deadline in the case exits
+\ PROC-TIMEOUT-RC; the wait already named itself on stdout. Any other throw
+\ stays an uncaught throw of the child.
 : RUN-CASE-CHILD ( -- )
-   RUN-CASE
+   [: RUN-CASE ;] catch {: code:n :}
+   code E-PROC-TIMEOUT = if s" " PROC-TIMEOUT-RC die then
+   code 0<> if code throw then
    s" " 0 die ;
 
 : RUN-OUTER ( -- )
@@ -128,7 +136,10 @@ variable OUTPUT-RD
    pid >PID PROC-WAIT-RC
    MATCH result
      ok  OF 0 T= ENDOF
-     err OF drop false TTRUE ENDOF
+     err OF
+        PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
+        false TTRUE
+     ENDOF
    ;MATCH
    T-REPORT ;
 

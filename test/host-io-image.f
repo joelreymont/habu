@@ -2,6 +2,7 @@
 \ processes: the pty master and the UDP peer are tasks in this row. The first
 \ generation is saved from the keyed saver host (test/app-image-engine.f).
 require src/lib/test.f
+require src/lib/test/subject.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f
@@ -189,8 +190,12 @@ TASK:MIN-STACK TASK:TASK UDP-PEER
    a SCRIPT u BYTE-COPY
    u SCRIPT-U ! ;
 
+\ A generation whose own transfer met its deadline exits PROC-TIMEOUT-RC: that is
+\ the row's deadline, printed with the program and capture and thrown, not
+\ asserted.
 : CHECK-RUN ( n n n -- )
    {: outu:n erru:n rc:n :}
+   SCRIPT$ OUT outu ERR erru rc SUBJECT:RC-TIMED-OUT
    rc 0<> erru 0<> or if
       s" host-io-image child failed: " type rc . cr
       OUT outu type ERR erru type
