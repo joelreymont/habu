@@ -3,6 +3,7 @@
 s" src/lib/errors.f" required
 s" src/lib/memory.f" required
 s" src/lib/process.f" required
+require src/lib/string.f
 require src/lib/image-lifecycle.f
 
 $100 constant PROC-ARGV-MAX
@@ -99,6 +100,21 @@ public
    a u PROC-ARGV-ZCOPY
    PROC-ARGV-N @ COUNT>N 1+ >IDX PROC-ARGV-SLOT !
    PROC-ARGV-N @ COUNT>N 1+ >COUNT PROC-ARGV-N ! ;
+
+\ Appends exe and the staged arguments as one command line, then `stdin:` and
+\ the stdin text when there is any: the program a report names for a rerun.
+\ Call it before the spawn, which resets the table.
+: PROC-ARGV-PROGRAM+ ( ptr u8 n ptr u8 n ptr u8 n ptr len -- )
+   {: exe:ptr exeu:n stdin:ptr stdinu:n dst:ptr cap:n lenp:ptr :}
+   exe exeu dst cap lenp BUF-APPEND
+   PROC-ARGV-N @ COUNT>N 0 ?do
+      STR-SPACE dst cap lenp BUF-APPEND-C
+      i 1+ >IDX PROC-ARGV-SLOT @ dup ZLEN dst cap lenp BUF-APPEND
+   loop
+   stdinu 0 > if
+      S\" \nstdin:\n" dst cap lenp BUF-APPEND
+      stdin stdinu dst cap lenp BUF-APPEND
+   then ;
 
 : PROC-ARGV-PREPARE ( ptr u8 len -- ptr u8 ptr ptr u8 ) {: path:ptr pathu :}
    pathu LEN>N 0 <= if E-PROC-OUTPUT throw then

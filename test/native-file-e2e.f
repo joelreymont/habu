@@ -10,6 +10,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require src/lib/test/subject.f
 
 package NATIVE-FILE-E2E
 private
@@ -19,6 +20,7 @@ create ROOT FS-PATH-CAP allot  variable ROOT-U
 create PATH FS-PATH-CAP allot
 create OUT CAP allot  variable OUT-U
 create ERR CAP allot  variable ERR-U
+create PROGRAM CAP allot  variable PROGRAM-U
 
 public
 
@@ -48,14 +50,18 @@ public
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
 \ exe with the staged argv and environment and the given stdin, under the hang
-\ guard; the streams stay in OUT$ and ERR$, and 124 is an expired deadline.
+\ guard; the streams stay in OUT$ and ERR$. On 124, the capture's own deadline
+\ or one the child met, SUBJECT:RC-TIMED-OUT prints the program and its streams
+\ and throws E-PROC-TIMEOUT; any other code is the caller's to assert.
 : CAPTURE ( ptr u8 n ptr u8 n -- n )
    {: exe:ptr exeu:n stdin:ptr stdinu:n :}
+   0 PROGRAM-U ! exe exeu stdin stdinu PROGRAM CAP PROGRAM-U PROC-ARGV-PROGRAM+
    exe exeu >LEN stdin stdinu >LEN
    OUT CAP >LEN ERR CAP >LEN 600000 >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U !
+   PROGRAM PROGRAM-U @ OUT$ ERR$ rc SUBJECT:RC-TIMED-OUT
    rc ;
 
 : RUN-APP ( -- n )

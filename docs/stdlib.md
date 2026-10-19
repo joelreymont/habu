@@ -2618,6 +2618,7 @@ PROC-ARGV-SLOT        ( idx -- ptr a )
 PROC-ARGV-FITS?       ( len -- bool )
 PROC-ARGV-ZCOPY       ( ptr u8 len -- ptr u8 )
 PROC-ARGV+            ( ptr u8 len -- )
+PROC-ARGV-PROGRAM+    ( ptr u8 n ptr u8 n ptr u8 n ptr len -- )
 PROC-ARGV-PREPARE     ( ptr u8 len -- ptr u8 ptr a )
 PROC-SPAWN-ARGV-IO         ( ptr u8 len fd fd fd -- pid )
 PROC-RUN-ARGV-IO-RC        ( ptr u8 len fd fd fd -- rc )
@@ -2633,7 +2634,9 @@ Use `PROC-ARGV-RESET`, append zero or more extra args with `PROC-ARGV+`, then
 call `PROC-SPAWN-ARGV-IO`, `PROC-RUN-ARGV-IO-RC`, `RUN-ARGV-CAPTURE`, or
 `RUN-ARGV-STDIN-CAPTURE` with the executable path. Use the `*-OUTCOME` variants
 when the caller needs timeout/signal/exit classification instead of an rc-only
-result.
+result. `PROC-ARGV-PROGRAM+` appends the executable, the staged args and any
+stdin text to a caller's buffer, the program a timeout report names for a
+rerun; call it before the spawn, which resets the table.
 `argv[0]` is always the executable path. `PROC-SPAWN-ARGV-IO` resets argv state after
 the primitive spawn returns, throws `E-PROC-SPAWN` on spawn failure, and reuses
 the same fd inheritance rules as `PROC-SPAWN-IO`.
