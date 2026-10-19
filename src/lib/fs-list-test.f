@@ -4,6 +4,7 @@
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
+require src/lib/test/wait.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/task.f
@@ -108,13 +109,22 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
    FLT-BOTH-WHOLE ;
 
 \ A wait the other side ends; past FLT-WAIT-NS it throws E-PROC-TIMEOUT rather
-\ than hang the suite.
+\ than hang the suite. It prints nothing, because the lister waits here too and
+\ a task asserts nothing: main names the deadline where it reads it.
 : FLT-WAIT ( ptr n n -- ) {: flag want :}
    mono-ns FLT-WAIT-NS + {: until:n :}
    begin flag atomic@ want < while
       mono-ns until >= if E-PROC-TIMEOUT throw then
       1 >MS TASK:SLEEP
    repeat ;
+
+\ A FLT-WAIT deadline main reads, its own or the lister's from the join, is the
+\ row's own deadline: it is named and thrown, never asserted. Any other code is
+\ answered.
+: FLT-EXPIRED ( n -- n )
+   {: code:n :}
+   code E-PROC-TIMEOUT = if s" fs-list-test FLT-WAIT" TEST-WAIT:EXPIRED then
+   code ;
 
 \ The lister's quotation: at its first name it hands over to this thread and
 \ waits until sub is listed.
@@ -133,14 +143,15 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
 : FLT-JOIN-LISTER ( -- )
    FLT-LISTER TASK:JOIN MATCH result
       ok OF 0 T= ENDOF
-      err OF 0 T= ENDOF
+      err OF FLT-EXPIRED 0 T= ENDOF
    ;MATCH ;
 
 : FLT-TEST-TWO-TASKS ( -- )
    FLT-COUNTS-RESET
    0 FLT-HANDED !  0 FLT-RESUMED !
    ['] FLT-LISTER-BODY FLT-LISTER TASK:ACTIVATE
-   FLT-HANDED 1 FLT-WAIT
+   [: FLT-HANDED 1 FLT-WAIT ;] catch FLT-EXPIRED {: code:n :}
+   code 0<> if code throw then
    FLT-SUB-NAMES
    1 FLT-RESUMED atomic!
    s" the lister's listing throws nothing" T-LABEL
