@@ -58,6 +58,14 @@ package HB-BUILD-CLI
    S\" MEM-ALLOC-64K drop PBUF !\n: MAIN ( -- ) s\" declared\" type cr ;\n" SB-APPEND
    SB$ ;
 
+\ A long zero run ends at an unaligned mapped address. This adds the raw-byte
+\ transition to the aligned and declared-cell cases on the same keyed linker.
+: HBT-MAPB-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" require src/lib/memory.f\ncreate BUF 64 allot\n" SB-APPEND
+   S\" : ARM ( -- ) 64 0 ?do 0 BUF i + c! loop\nMEM-ALLOC-64K drop BYTE-VIEW NULL-PTR BYTE-VIEW - BUF 35 + CELL-VIEW ! ;\nARM\n: MAIN ( -- ) ;\n" SB-APPEND
+   SB$ ;
+
 \ A PERSISTENT CELL HOLDING A POINTER INTO MEMORY THE BUILD MAPPED is refused by
 \ the cell that holds it. The value is left out of the pin because it is an mmap
 \ address: it differs in every build, which is the fault itself.
@@ -78,6 +86,13 @@ package HB-BUILD-CLI
    HBB-ERR-BUF derr s" holds a pointer into memory the build mapped" CONTAINS? TTRUE
    HBB-ERR-BUF derr s" word=PBUF" CONTAINS? TTRUE ;
 
+: HBT-STRIPPED-MAPPED-BYTES ( -- )
+   HBT-MAPC-SRC HBT-MAPB-SRC$ WRITE-ALL
+   HBT-MAPC-SRC HBT-RUN-MAKER {: outu:n erru:n rc:n :}
+   rc 0 <> TTRUE
+   HBB-ERR-BUF erru s" holds a pointer into memory the build mapped" CONTAINS? TTRUE
+   HBB-ERR-BUF erru s" data-off=" CONTAINS? TTRUE ;
+
 \ ... while a baked create table on no list is refused however much it looks like
 \ the carried ones.
 : HBT-STRIPPED-UNCARRIED-TABLE ( -- )
@@ -97,6 +112,7 @@ public
    HBT-PREPARE
    HBT-STRIPPED-MAPPED-CELL
    HBT-STRIPPED-MAPPED-DECLARED
+   HBT-STRIPPED-MAPPED-BYTES
    HBT-STRIPPED-UNCARRIED-TABLE
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE

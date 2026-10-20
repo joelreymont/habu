@@ -339,12 +339,23 @@ CAST: TASK-EXIT-SLOT ( ptr n -- ptr [ -- ] )
    0 AOT-CELL:PREPARE
    AOT-CARRIED-CELLS-CHECK
    XTC-REWIND
+   BLOB-END @ BLOB-SRC @ - 16 >= IF
+      0 CELL-TEXTPTR? 0 CELL-MAPPED? or 0=
+   ELSE false THEN {: zero-safe:bool :}
    BLOB-SRC @ DSCAN !
    BEGIN DSCAN @ 8 + BLOB-END @ <= WHILE
-      DSCAN @ CARRIED-WINDOW? 0= IF
-         DSCAN @ XTC-DECLARED? 0= IF DSCAN @ SCAN-DATA-CELL THEN
+      \ Two complete zero cells prove all eight overlapping windows zero.
+      \ Keep the byte walk at transitions and whenever zero itself is refused.
+      zero-safe DSCAN @ 16 + BLOB-END @ <= and IF
+         DSCAN @ DATA-CELL@ DSCAN @ 8 + DATA-CELL@ or 0=
+      ELSE false THEN IF
+         DSCAN @ 8 + DSCAN !
+      ELSE
+         DSCAN @ CARRIED-WINDOW? 0= IF
+            DSCAN @ XTC-DECLARED? 0= IF DSCAN @ SCAN-DATA-CELL THEN
+         THEN
+         DSCAN @ 1+ DSCAN !
       THEN
-      DSCAN @ 1+ DSCAN !
    REPEAT
    AOT-CELL:RESET ;
 
