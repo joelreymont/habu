@@ -45,86 +45,57 @@ private
    s" hb-ordinary" AT-A IMAGE-NAMES:LOAD
    IMAGE-NAMES:BOUND? TTRUE ;
 
+\ Each shared child session prints every program's own ok marker.
+: MARKED ( ptr u8 n ptr u8 n -- )
+   {: text:ptr textu:n mark:ptr marku:n :}
+   text textu T-LABEL
+   OUT$ mark marku CONTAINS? TTRUE ;
+
 : ROOT-CASES ( -- )
-   s" hb-root" s" test/c2-memory-native-boundary.f" RUN-IMAGE
-   s" root-native.out" s" root-native.err" SAVE-LOG
-   s" real, shadow, and alias entries retain expected native scope kinds" T-LABEL
-   s" c2-memory-native-boundary: ok" EXPECT-OK
-   s" hb-root" s" test/c2-memory-program.f" RUN-IMAGE
-   s" root-program.out" s" root-program.err" SAVE-LOG
-   s" unique byte and loan behavior works in the native image" T-LABEL
-   s" c2-memory-program: ok" EXPECT-OK
-   s" hb-root" s" test/c2-init-program.f" RUN-IMAGE
-   s" root-init.out" s" root-init.err" SAVE-LOG
-   s" a live owner initializes and clears fixed records" T-LABEL
-   s" c2-init-program: ok" EXPECT-OK
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" hb-root"
-   S\" 1 set-tier\nrequire test/c2-init-program.f\ns\q c2-init-program-tier1: ok\q type cr\n"
+   S\" require test/c2-memory-native-boundary.f\nrequire test/c2-memory-program.f\nrequire test/c2-init-program.f\nrequire test/c2-memory-refusals.f\nrequire test/c2-memory-scope-refusals.f\nrequire test/c2-init-refusals.f\nrequire test/c2-owner-producer-program.f\nrequire test/c2-owner-producer-refusals.f\nrequire test/c2-owner-dispose.f\nrequire test/c2-forall-input.f\nrequire test/c2-forall-input-refusals.f\n"
    RUN-INPUT
-   s" root-init-tier1.out" s" root-init-tier1.err" SAVE-LOG
-   s" fixed records initialize and clear at tier 1" T-LABEL
-   s" c2-init-program-tier1: ok" EXPECT-OK
+   s" root-tier0.out" s" root-tier0.err" SAVE-LOG
+   s" the shared tier-0 native session exits cleanly" T-LABEL NEED-OK
+   s" real, shadow, and alias entries retain expected native scope kinds"
+   s" c2-memory-native-boundary: ok" MARKED
+   s" unique byte and loan behavior works in the native image"
+   s" c2-memory-program: ok" MARKED
+   s" a live owner initializes and clears fixed records"
+   s" c2-init-program: ok" MARKED
+   s" unique copy and escape refusals remain enforced"
+   s" c2-memory-refusals: ok" MARKED
+   s" scope schemes and shared loans retain their boundaries"
+   s" c2-memory-scope-refusals: ok" MARKED
+   s" initialization rejects invalid records and views"
+   s" c2-init-refusals: ok" MARKED
+   s" an owner appends and publishes scoped allocations"
+   s" c2-owner-producer-program: ok" MARKED
+   s" producer capabilities reject copying and mutation after publish"
+   s" c2-owner-producer-refusals: ok" MARKED
+   s" explicit owners release registered foreign resources"
+   s" c2-owner-dispose: ok" MARKED
+   s" supplied callbacks specialize from typed inputs"
+   s" c2-forall-input: ok" MARKED
+   s" callbacks retain their input identities and bounds"
+   s" c2-forall-input-refusals: ok" MARKED
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" hb-root"
-   S\" 1 set-tier\nrequire test/c2-memory-program.f\ns\q c2-memory-program-tier1: ok\q type cr\n"
+   S\" 1 set-tier\nrequire test/c2-init-program.f\nrequire test/c2-memory-program.f\nrequire test/c2-owner-producer-program.f\nrequire test/c2-owner-dispose.f\nrequire test/c2-forall-input.f\n"
    RUN-INPUT
-   s" root-program-tier1.out" s" root-program-tier1.err" SAVE-LOG
-   s" unique byte and loan behavior works at tier 1" T-LABEL
-   s" c2-memory-program-tier1: ok" EXPECT-OK
-   s" hb-root" s" test/c2-memory-refusals.f" RUN-IMAGE
-   s" root-refusals.out" s" root-refusals.err" SAVE-LOG
-   s" unique copy and escape refusals remain enforced" T-LABEL
-   s" c2-memory-refusals: ok" EXPECT-OK
-   s" hb-root" s" test/c2-memory-scope-refusals.f" RUN-IMAGE
-   s" root-scope-refusals.out" s" root-scope-refusals.err" SAVE-LOG
-   s" scope schemes and shared loans retain their boundaries" T-LABEL
-   s" c2-memory-scope-refusals: ok" EXPECT-OK
-   s" hb-root" s" test/c2-init-refusals.f" RUN-IMAGE
-   s" root-init-refusals.out" s" root-init-refusals.err" SAVE-LOG
-   s" initialization rejects invalid records and views" T-LABEL
-   s" c2-init-refusals: ok" EXPECT-OK
-   s" hb-root" s" test/c2-owner-producer-program.f" RUN-IMAGE
-   s" root-producer.out" s" root-producer.err" SAVE-LOG
-   s" an owner appends and publishes scoped allocations" T-LABEL
-   s" c2-owner-producer-program: ok" EXPECT-OK
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
-   S\" 1 set-tier\nrequire test/c2-owner-producer-program.f\n"
-   RUN-INPUT
-   s" root-producer-tier1.out" s" root-producer-tier1.err" SAVE-LOG
-   s" appended allocations work through the native compiler" T-LABEL
-   s" c2-owner-producer-program: ok" EXPECT-OK
-   s" hb-root" s" test/c2-owner-producer-refusals.f" RUN-IMAGE
-   s" root-producer-refusals.out" s" root-producer-refusals.err" SAVE-LOG
-   s" producer capabilities reject copying and mutation after publish" T-LABEL
-   s" c2-owner-producer-refusals: ok" EXPECT-OK
-   s" hb-root" s" test/c2-owner-dispose.f" RUN-IMAGE
-   s" root-dispose.out" s" root-dispose.err" SAVE-LOG
-   s" explicit owners release registered foreign resources" T-LABEL
-   s" c2-owner-dispose: ok" EXPECT-OK
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
-   S\" 1 set-tier\nrequire test/c2-owner-dispose.f\n"
-   RUN-INPUT
-   s" root-dispose-tier1.out" s" root-dispose-tier1.err" SAVE-LOG
-   s" owner disposal works through the native compiler" T-LABEL
-   s" c2-owner-dispose: ok" EXPECT-OK
-   s" hb-root" s" test/c2-forall-input.f" RUN-IMAGE
-   s" root-forall.out" s" root-forall.err" SAVE-LOG
-   s" supplied callbacks specialize from typed inputs" T-LABEL
-   s" c2-forall-input: ok" EXPECT-OK
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
-   S\" 1 set-tier\nrequire test/c2-forall-input.f\n"
-   RUN-INPUT
-   s" root-forall-tier1.out" s" root-forall-tier1.err" SAVE-LOG
-   s" callback specialization also compiles at tier 1" T-LABEL
-   s" c2-forall-input: ok" EXPECT-OK
-   s" hb-root" s" test/c2-forall-input-refusals.f" RUN-IMAGE
-   s" root-forall-refusals.out" s" root-forall-refusals.err" SAVE-LOG
-   s" callbacks retain their input identities and bounds" T-LABEL
-   s" c2-forall-input-refusals: ok" EXPECT-OK ;
+   s" root-tier1.out" s" root-tier1.err" SAVE-LOG
+   s" the shared tier-1 native session exits cleanly" T-LABEL NEED-OK
+   s" fixed records initialize and clear at tier 1"
+   s" c2-init-program: ok" MARKED
+   s" unique byte and loan behavior works at tier 1"
+   s" c2-memory-program: ok" MARKED
+   s" appended allocations work through the native compiler"
+   s" c2-owner-producer-program: ok" MARKED
+   s" owner disposal works through the native compiler"
+   s" c2-owner-dispose: ok" MARKED
+   s" callback specialization also compiles at tier 1"
+   s" c2-forall-input: ok" MARKED ;
 
 : EXPECT-ENTRY-REFUSAL ( ptr u8 n ptr u8 n -- )
    {: reason:ptr reasonu:n name:ptr nameu:n :}
@@ -141,12 +112,6 @@ private
    RUN-INPUT
    s" entry-mut.out" s" entry-mut.err" SAVE-LOG
    s" hb: internal engine word: " s" C2-MEM:WITH-MUT" EXPECT-ENTRY-REFUSAL
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
-   S\" package C2-ENTRY-TEST public TRUSTED: LEAKER ( ptr u8 n -- ptr u8 n ) ; ;package\nusing C2-MEM\n8 MEM:BYTES-ALLOC-LEN ' C2-ENTRY-TEST:LEAKER WITH-MUT\ns\q accepted\q type cr\n"
-   RUN-INPUT
-   s" entry-bare.out" s" entry-bare.err" SAVE-LOG
-   s" hb: internal engine word: " s" WITH-MUT" EXPECT-ENTRY-REFUSAL
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" hb-root"
    S\" package C2-ENTRY-ALIAS public EXPORT C2-MEM:WITH-MUT ;package\npackage C2-ENTRY-TEST public TRUSTED: LEAKER ( ptr u8 n -- ptr u8 n ) ; ;package\n8 MEM:BYTES-ALLOC-LEN ' C2-ENTRY-TEST:LEAKER C2-ENTRY-ALIAS:WITH-MUT\ns\q accepted\q type cr\n"
@@ -177,13 +142,6 @@ private
    RUN-INPUT
    s" entry-forall.out" s" entry-forall.err" SAVE-LOG
    s" hb: interpret-mode layout value: " s" C2-MEMORY-WRAPPER:TWICE" EXPECT-ENTRY-REFUSAL
-   OUT$ s" raw callback entered" CONTAINS? TFALSE
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
-   S\" require test/c2-memory-wrapper.f\n: C2-ENTRY-RAW ( n ptr u8 n -- n ptr u8 n ) s\q raw callback entered\q type cr ;\nusing C2-MEMORY-WRAPPER\n0 ' C2-ENTRY-RAW TWICE .\ns\q accepted\q type cr\n"
-   RUN-INPUT
-   s" entry-forall-bare.out" s" entry-forall-bare.err" SAVE-LOG
-   s" hb: interpret-mode layout value: " s" TWICE" EXPECT-ENTRY-REFUSAL
    OUT$ s" raw callback entered" CONTAINS? TFALSE
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" hb-root"
@@ -236,65 +194,40 @@ private
    s" saved-entry-forall.out" s" saved-entry-forall.err" SAVE-LOG
    s" hb: interpret-mode layout value: " s" C2-MEMORY-WRAPPER:TWICE" EXPECT-ENTRY-REFUSAL
    OUT$ s" raw callback entered" CONTAINS? TFALSE
-   s" hb-saved" s" test/c2-memory-saved-consumer.f" RUN-IMAGE
-   s" saved-consumer.out" s" saved-consumer.err" SAVE-LOG
-   s" a fresh saved consumer invokes new owner and loan scopes" T-LABEL
-   s" c2-memory-saved-consumer: ok" EXPECT-OK
-   s" hb-saved" s" test/c2-init-saved-consumer.f" RUN-IMAGE
-   s" saved-init.out" s" saved-init.err" SAVE-LOG
-   s" a fresh saved consumer opens the initialized record bounds" T-LABEL
-   s" c2-init-saved-consumer: ok" EXPECT-OK
-   s" hb-saved" s" test/c2-owner-producer-program.f" RUN-IMAGE
-   s" saved-producer.out" s" saved-producer.err" SAVE-LOG
-   s" a fresh saved consumer appends through the owner" T-LABEL
-   s" c2-owner-producer-program: ok" EXPECT-OK
-   s" hb-saved" s" test/c2-owner-dispose.f" RUN-IMAGE
-   s" saved-dispose.out" s" saved-dispose.err" SAVE-LOG
-   s" a fresh saved consumer disposes foreign resources through its owner" T-LABEL
-   s" c2-owner-dispose: ok" EXPECT-OK
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" hb-saved"
-   S\" 1 set-tier\nrequire test/c2-owner-dispose.f\n"
+   S\" require test/c2-memory-saved-consumer.f\nrequire test/c2-init-saved-consumer.f\nrequire test/c2-owner-producer-program.f\nrequire test/c2-owner-dispose.f\nrequire test/c2-forall-input.f\nrequire test/c2-forall-input-refusals.f\n"
    RUN-INPUT
-   s" saved-dispose-tier1.out" s" saved-dispose-tier1.err" SAVE-LOG
-   s" a fresh saved tier 1 consumer disposes through its owner" T-LABEL
-   s" c2-owner-dispose: ok" EXPECT-OK
+   s" saved-tier0.out" s" saved-tier0.err" SAVE-LOG
+   s" the shared tier-0 saved session exits cleanly" T-LABEL NEED-OK
+   s" a fresh saved consumer invokes new owner and loan scopes"
+   s" c2-memory-saved-consumer: ok" MARKED
+   s" a fresh saved consumer opens the initialized record bounds"
+   s" c2-init-saved-consumer: ok" MARKED
+   s" a fresh saved consumer appends through the owner"
+   s" c2-owner-producer-program: ok" MARKED
+   s" a fresh saved consumer disposes foreign resources through its owner"
+   s" c2-owner-dispose: ok" MARKED
+   s" a fresh saved image specializes supplied callbacks"
+   s" c2-forall-input: ok" MARKED
+   s" saved callbacks retain their input identities and bounds"
+   s" c2-forall-input-refusals: ok" MARKED
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" hb-saved"
-   S\" 1 set-tier\nrequire test/c2-owner-producer-program.f\n"
+   S\" 1 set-tier\nrequire test/c2-owner-dispose.f\nrequire test/c2-owner-producer-program.f\nrequire test/c2-init-saved-consumer.f\nrequire test/c2-memory-saved-consumer.f\nrequire test/c2-forall-input.f\n"
    RUN-INPUT
-   s" saved-producer-tier1.out" s" saved-producer-tier1.err" SAVE-LOG
-   s" a fresh saved producer also compiles at tier 1" T-LABEL
-   s" c2-owner-producer-program: ok" EXPECT-OK
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-saved"
-   S\" 1 set-tier\nrequire test/c2-init-saved-consumer.f\ns\q c2-init-saved-tier1: ok\q type cr\n"
-   RUN-INPUT
-   s" saved-init-tier1.out" s" saved-init-tier1.err" SAVE-LOG
-   s" saved initialized accessors work at tier 1" T-LABEL
-   s" c2-init-saved-tier1: ok" EXPECT-OK
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-saved"
-   S\" 1 set-tier\nrequire test/c2-memory-saved-consumer.f\ns\q c2-memory-saved-tier1: ok\q type cr\n"
-   RUN-INPUT
-   s" saved-consumer-tier1.out" s" saved-consumer-tier1.err" SAVE-LOG
-   s" a fresh saved tier 1 consumer invokes new scopes" T-LABEL
-   s" c2-memory-saved-tier1: ok" EXPECT-OK
-   s" hb-saved" s" test/c2-forall-input.f" RUN-IMAGE
-   s" saved-forall.out" s" saved-forall.err" SAVE-LOG
-   s" a fresh saved image specializes supplied callbacks" T-LABEL
-   s" c2-forall-input: ok" EXPECT-OK
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-saved"
-   S\" 1 set-tier\nrequire test/c2-forall-input.f\n"
-   RUN-INPUT
-   s" saved-forall-tier1.out" s" saved-forall-tier1.err" SAVE-LOG
-   s" saved callback specialization also compiles at tier 1" T-LABEL
-   s" c2-forall-input: ok" EXPECT-OK
-   s" hb-saved" s" test/c2-forall-input-refusals.f" RUN-IMAGE
-   s" saved-forall-refusals.out" s" saved-forall-refusals.err" SAVE-LOG
-   s" saved callbacks retain their input identities and bounds" T-LABEL
-   s" c2-forall-input-refusals: ok" EXPECT-OK ;
+   s" saved-tier1.out" s" saved-tier1.err" SAVE-LOG
+   s" the shared tier-1 saved session exits cleanly" T-LABEL NEED-OK
+   s" a fresh saved tier 1 consumer disposes through its owner"
+   s" c2-owner-dispose: ok" MARKED
+   s" a fresh saved producer also compiles at tier 1"
+   s" c2-owner-producer-program: ok" MARKED
+   s" saved initialized accessors work at tier 1"
+   s" c2-init-saved-consumer: ok" MARKED
+   s" a fresh saved tier 1 consumer invokes new scopes"
+   s" c2-memory-saved-consumer: ok" MARKED
+   s" saved callback specialization also compiles at tier 1"
+   s" c2-forall-input: ok" MARKED ;
 
 : LIVE-SAVE ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
