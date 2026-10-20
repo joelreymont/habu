@@ -62,28 +62,8 @@ create PROGRAM CAPTURE-CAP allot  variable PROGRAM-U
    SOURCE-RESET
    WORDS 0 ?do i DEFINITION loop
    s" : CAP-SUM ( -- n ) DC000000 DC052999 + ;" SOURCE-LINE
-   s" source.f" AT SOURCE SOURCE-U @ WRITE-ALL ;
-
-: WRITE-CHECK ( -- )
-   SOURCE-RESET
-   s" require src/habu/verify-source.f" SOURCE-LINE
-   s" include " SOURCE+
-   s" source.f" AT SOURCE+ 10 SOURCE-C
-   s" ndict@ 65536 > . CAP-SUM ." SOURCE-LINE
-   s" CHECKER-SCOPE-START-NEUTRAL" SOURCE-LINE
-   s" s" SOURCE+ 34 SOURCE-C s"  : CAP-OVER ( -- n ) DC052999 ;" SOURCE+
-   34 SOURCE-C s"  VERIFY:SOURCE-BUF-IN-SCOPE" SOURCE-LINE
-   s" s" SOURCE+ 34 SOURCE-C s"  CAP-PROBE ( -- n ) CAP-OVER" SOURCE+
-   34 SOURCE-C s"  VERIFY:CANDIDATE-IN-SCOPE ." SOURCE-LINE
-   s" CHECKER-SCOPE-DONE" SOURCE-LINE
-   s" check.f" AT SOURCE SOURCE-U @ WRITE-ALL ;
-
-: WRITE-APP ( -- )
-   SOURCE-RESET
-   s" include " SOURCE+
-   s" source.f" AT SOURCE+ 10 SOURCE-C
    s" : MAIN ( -- ) CAP-SUM . ;" SOURCE-LINE
-   s" app.f" AT SOURCE SOURCE-U @ WRITE-ALL ;
+   s" source.f" AT SOURCE SOURCE-U @ WRITE-ALL ;
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
@@ -103,27 +83,31 @@ create PROGRAM CAPTURE-CAP allot  variable PROGRAM-U
    dup 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    0 T= ;
 
-: CHECK-LOAD ( -- )
-   PROC-ARGV-ENV-RESET
-   s" --load" ARG s" check.f" AT ARG
-   ENGINE-CANDIDATE:PATH$ s" " CAPTURE SUCCESS
-   OUT OUT-U @ S\" -1\n42\n-1\n" CONTAINS? TTRUE ;
-
 : BUILD ( -- )
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    s" --load" ARG s" tools/hb-build.f" ARG s" --" ARG
-   s" --repl" ARG s" app.f" AT ARG
+   s" --repl" ARG s" source.f" AT ARG
    s" -o" ARG s" app-hb" AT ARG
    ENGINE-CANDIDATE:PATH$ s" " CAPTURE SUCCESS ;
 
 : REOPEN ( -- )
    PROC-ARGV-ENV-RESET
-   s" app-hb" AT
-   S\" CAP-SUM .\n: CAP-FRESH ( -- n ) DC052999 1+ ;\nCAP-FRESH .\n"
-   CAPTURE SUCCESS
-   OUT OUT-U @ S\" 42\n36\n" CONTAINS? TTRUE ;
+   SOURCE-RESET
+   s" require src/habu/verify-source.f" SOURCE-LINE
+   s" ndict@ 65536 > ." SOURCE-LINE
+   s" CHECKER-SCOPE-START-NEUTRAL" SOURCE-LINE
+   s" s" SOURCE+ 34 SOURCE-C s"  : CAP-OVER ( -- n ) DC052999 ;" SOURCE+
+   34 SOURCE-C s"  VERIFY:SOURCE-BUF-IN-SCOPE" SOURCE-LINE
+   s" s" SOURCE+ 34 SOURCE-C s"  CAP-PROBE ( -- n ) CAP-OVER" SOURCE+
+   34 SOURCE-C s"  VERIFY:CANDIDATE-IN-SCOPE ." SOURCE-LINE
+   s" CHECKER-SCOPE-DONE" SOURCE-LINE
+   s" CAP-SUM ." SOURCE-LINE
+   s" : CAP-FRESH ( -- n ) DC052999 1+ ;" SOURCE-LINE
+   s" CAP-FRESH ." SOURCE-LINE
+   s" app-hb" AT SOURCE SOURCE-U @ CAPTURE SUCCESS
+   OUT OUT-U @ S\" -1\n-1\n42\n36\n" CONTAINS? TTRUE ;
 
 public
 : MAIN ( -- )
@@ -133,9 +117,6 @@ public
    a ROOT size BYTE-COPY size ROOT-U !
    s" cache" AT MAKE-DIR
    WRITE-SOURCE
-   WRITE-CHECK
-   WRITE-APP
-   CHECK-LOAD
    BUILD
    REOPEN
    T-REPORT
