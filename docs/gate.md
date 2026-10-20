@@ -280,7 +280,7 @@ at its deadline.
   through `test/whitebox-child.f` (`PROVIDE`, `ENGINE$`, `ENV!`) and stays a
   plain `SUITE`, green on its own; loading that file is what makes the row
   wait for the build row.
-- The gate settles seven image families, each once per run in a pool row of its
+- The gate settles nine image families, each once per run in a pool row of its
   own started beside the first rows (`test/gate-images.f`). The compiler bundle
   (`test/compiler-images.f`; `compiler-images-build`) uses the real
   `test/compiler-images-build.f` entry and writes its rooted, ordinary and
@@ -290,19 +290,23 @@ at its deadline.
   and the cold host it emits (`test/fixture-writer.f`, `test/cold-engine.f`;
   rows `fixture-writer-build`, `cold-engine-build`), the saver and linker
   images (`test/app-image-engine.f`, `test/preloaded-engine.f`;
-  `app-image-build`, `linker-build`), and the unsealed engine
-  (`test/whitebox-engine.f`; `whitebox-engine-build`), and the saved AOT builder
-  (`test/aot-builder-engine.f`; `aot-builder-build`). A row needs an
+  `app-image-build`, `linker-build`), the unsealed engine
+  (`test/whitebox-engine.f`; `whitebox-engine-build`), the saved AOT builder
+  on the product engine and on the linker image (`test/aot-builder-engine.f`,
+  `test/linker-builder-engine.f`; `aot-builder-build`, `linker-builder-build`),
+  and the saved REPL builder (`test/app-builder-engine.f`;
+  `app-builder-build`). A row needs an
   image when its load closure holds the image's module: the files it loads and
   what those import, or launch as a `.f` source through a path literal a known
   load helper consumes (`test/load-refs.f`, the reader the entry guard uses).
-  Nothing is declared; a cold host needs the writer and the linker needs the
-  saver image because their modules load those modules. A row that needs an
-  image not yet settled waits aside, out of the pool: the rows after it keep
-  starting, and it starts at the first start after its images settle, ahead of
-  every later row not yet started (`src/lib/test/suite.f` `PENDING`). Before a
-  sequential group and at the end of the run every wanted image settles and
-  every waiting row starts before the pool drains. A failed build row is red
+  Nothing is declared; a cold host needs the writer, the linker needs the saver
+  image and the linker's builder needs the linker because their modules load
+  those modules. A row that needs an image not yet settled waits aside, out of
+  the pool: the rows after it keep starting, and it starts at the first start
+  after its images settle, ahead of every later row not yet started
+  (`src/lib/test/suite.f` `PENDING`). Before a sequential group and at the end
+  of the run every wanted image settles and every waiting row starts before the
+  pool drains. A failed build row is red
   with the builder's exit status and output, and an image built on the failed one is not built: every row that
   needs either is red with a line naming the failed build row, and every other
   row runs. Each row's environment names its images in `HABU_GATE_IMAGES`

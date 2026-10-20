@@ -4,9 +4,8 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
-require src/lib/engine-candidate.f
 require src/lib/test/subject.f
-require tools/app-build-image.f
+require test/app-builder-engine.f
 
 package NATIVE-FILE-APP
 
@@ -22,16 +21,6 @@ DYNAMIC-BUFFER SOURCE u8
 variable SOURCE-START
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
-: SAVE-BUILDER ( -- )
-   600000 APP-BUILD-IMAGE:PATH$ {: path:ptr pathu:n :}
-   pathu FS-PATH-CAP > if E-FS-CAPACITY throw then
-   path BUILDER pathu BYTE-COPY
-   pathu BUILDER-U ! ;
-: SELECT-BUILDER ( -- )
-   ENGINE-CANDIDATE:PATH$ BUILD-FIXPOINT:BF-ENGINE!
-   ['] SAVE-BUILDER catch {: rc:n :}
-   BUILD-FIXPOINT:BF-ENGINE-RESET
-   rc 0<> if rc throw then ;
 : SKIP-LINE ( n -- ) {: size:n :}
    begin SOURCE-START @ size < while
       SOURCE-START @ SOURCE c@ 10 = if
@@ -45,7 +34,10 @@ public
 \ Resolve the production REPL builder before staging a child process. Its
 \ keyed-image path buffer can be reused by a later image lookup.
 : BUILDER$ ( -- ptr u8 n )
-   SELECT-BUILDER
+   APP-BUILDER-ENGINE:PATH$ {: path:ptr pathu:n :}
+   pathu FS-PATH-CAP > if E-FS-CAPACITY throw then
+   path BUILDER pathu BYTE-COPY
+   pathu BUILDER-U !
    BUILDER BUILDER-U @ ;
 
 \ Rehost the explicit-build fixtures: app.f requires local prefix/unit files,
