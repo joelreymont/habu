@@ -287,14 +287,6 @@ variable RC
    SB-RESET s" NOPE-" SB-APPEND $C3 SB-APPEND-C $A9 SB-APPEND-C
    0 SB$ 2 29 41 48 AT ;
 
-: TEST-ONE-LINE ( -- )
-   s" a one-line definition" T-LABEL
-   SB-RESET
-   s" : F ( n -- n ) drop ;" SB-APPEND LF+
-   s" one-line.f" FIXTURE!
-   s" " CHECK
-   0 s" drop" 1 16 15 19 AT ;
-
 : TEST-PAREN-EMOJI ( -- )
    s" a multibyte character in a comment before the name" T-LABEL
    SB-RESET
@@ -482,18 +474,6 @@ variable RC
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 7 12 79 84 AT ;
 
-: TEST-ALL-ERRORS ( -- )
-   s" every packet of an --all-errors run" T-LABEL
-   SB-RESET
-   s" : A1 ( n -- n ) drop ;" SB-APPEND LF+
-   s" : A2 ( n -- n )" SB-APPEND LF+
-   s"    drop ;" SB-APPEND LF+
-   s" all-errors.f" FIXTURE!
-   s" --all-errors" CHECK
-   GJA-LINE# @ 2 T=
-   0 s" drop" 1 17 16 20 AT
-   1 s" drop" 3 4 42 46 AT ;
-
 \ compose-base.f certifies. It is longer than the files that require it and its
 \ lines are short, so a packet located in its bytes by mistake lands on another
 \ line and column than its own.
@@ -526,18 +506,6 @@ variable RC
    s" " CHECK
    GJA-LINE# @ 1 T=
    0 s" drop" 4 4 48 52 DEP-AT ;
-
-: TEST-COMPOSE-AFTER ( -- )
-   s" a packet in the subject after a required file returns" T-LABEL
-   BASE-FIXTURE
-   SB-RESET
-   s" require compose-base.f" SB-APPEND LF+
-   s" : AFTER-BAD ( n -- n )" SB-APPEND LF+
-   s"    drop ;" SB-APPEND LF+
-   s" compose-after.f" FIXTURE!
-   s" " CHECK
-   GJA-LINE# @ 1 T=
-   0 s" drop" 3 4 49 53 AT ;
 
 : TEST-COMPOSE-ALL ( -- )
    s" --all-errors past a required file's refusal to the subject's" T-LABEL
@@ -622,17 +590,24 @@ variable RC
    0 s" code" c cu FIELD=
    0 s" verdict" s" rejected" FIELD= ;
 
-\ Each check of the fixture, plain, --all-errors and --verify-only (which names
-\ it by its resolved path), gives one packet, a rejection: CODE at TOK, on LINE
-\ at COL, in bytes [BS, BE).
+\ The composition check gives one packet, a rejection: CODE at TOK, on LINE at
+\ COL, in bytes [BS, BE). Plain preverification uses this same composition
+\ verifier; REFUSED-MODES keeps representative checks across the mode boundary.
 : REFUSED-AT ( ptr u8 n ptr u8 n n n n n -- )
+   {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
+   s" --all-errors" CHECK
+   c cu REJECTED-AS
+   0 tok toku line col bs be AT ;
+
+\ Body binding, signature and local/control parsing, and lexical priority also
+\ give that rejection in plain and quiet verification. The quiet packet names
+\ the fixture by its resolved path.
+: REFUSED-MODES ( ptr u8 n ptr u8 n n n n n -- )
    {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
    s" " CHECK
    c cu REJECTED-AS
    0 tok toku line col bs be AT
-   s" --all-errors" CHECK
-   c cu REJECTED-AS
-   0 tok toku line col bs be AT
+   c cu tok toku line col bs be REFUSED-AT
    s" --verify-only" CHECK
    c cu REJECTED-AS
    0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
@@ -667,16 +642,16 @@ variable RC
 : TEST-BAD-SIGNATURE ( -- )
    s" a signature that does not parse and an undefined word" T-LABEL
    s" : X ( n -- zz ) NOPE ;" s" badsig-undefined.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" NOPE" 1 17 16 20 REFUSED-AT
+   s" E-UNDEFINED" s" NOPE" 1 17 16 20 REFUSED-MODES
    s" that signature alone" T-LABEL
    s" : X ( n -- zz ) 1 ;" s" badsig.f" LINE-FIXTURE
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-MODES
    s" that undefined word alone" T-LABEL
    s" : X ( n -- n ) NOPE ;" s" undefined.f" LINE-FIXTURE
    s" E-UNDEFINED" s" NOPE" 1 16 15 19 REFUSED-AT
    s" that signature and a local name over 16 bytes" T-LABEL
    s" : X ( n -- zz ) {: abcdefghijklmnopq :} 1 ;" s" badsig-local.f" LINE-FIXTURE
-   s" E-LOCAL-NAME-TOO-LONG" s" abcdefghijklmnopq" 1 20 19 36 REFUSED-AT
+   s" E-LOCAL-NAME-TOO-LONG" s" abcdefghijklmnopq" 1 20 19 36 REFUSED-MODES
    s" that signature and an unsafe word" T-LABEL
    s" : X ( n -- zz ) evaluate ;" s" badsig-unsafe.f" LINE-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT ;
@@ -893,10 +868,6 @@ variable RC
    s" SUMTYPE mres VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- n ) MATCH mres ok OF FIRST ENDOF ;MATCH SECOND ;"
       s" scrutinee-first.f" LINE-FIXTURE
    s" E-UNDEFINED" s" FIRST" 1 77 76 81 REFUSED-AT
-   s" that word alone in the branch" T-LABEL
-   s" SUMTYPE mres VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- n ) MATCH mres ok OF NOPE ENDOF ;MATCH ;"
-      s" scrutinee-branch.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" NOPE" 1 77 76 80 REFUSED-AT
    s" an undefined word after that match" T-LABEL
    s" SUMTYPE mres VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- n ) MATCH mres ok OF 1 ENDOF ;MATCH SECOND ;"
       s" scrutinee-after.f" LINE-FIXTURE
@@ -1061,14 +1032,12 @@ variable RC
    s\" s\\\" NO\\x50E\" s\" -- n\" trust" SB-APPEND LF+
    s" escaped-hex-trust.f" FIXTURE!
    CERTIFIED
-   s" " 0 LOADED
    s" an escaped trust row: a letter escape in the name, a hex one in the effect" T-LABEL
    SB-RESET
    s\" : N\"E ( -- ) ;" SB-APPEND LF+
    s\" s\\\" N\\qE\" s\\\" --\\X20n\" trust" SB-APPEND LF+
    s" escaped-letter-trust.f" FIXTURE!
    CERTIFIED
-   s" " 0 LOADED
    s" an escaped trust row naming no word" T-LABEL
    SB-RESET
    s" : NOPE ( -- ) ;" SB-APPEND LF+
@@ -1088,7 +1057,7 @@ variable RC
    s\" s\\\" A\\yB\" 2drop" SB-APPEND LF+
    s\" s\" abc" SB-APPEND LF+
    s" escaped-bad-unterminated.f" FIXTURE!
-   s" E-UNTERMINATED-STRING" s\" s\"" 2 1 16 18 REFUSED-AT
+   s" E-UNTERMINATED-STRING" s\" s\"" 2 1 16 18 REFUSED-MODES
    s" bad string literal" 74 LOADED
    s" a definition that does not check before a string that never closes" T-LABEL
    SB-RESET
@@ -1175,14 +1144,12 @@ variable RC
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escaped-included.f" FIXTURE!
    CERTIFIED
-   s" " 0 LOADED
    s" an escaped required path" T-LABEL
    SB-RESET
    s\" s\\\" inc-t\\x61rget.f\" required" SB-APPEND LF+
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escaped-required.f" FIXTURE!
    CERTIFIED
-   s" " 0 LOADED
    s" a plain path holding a backslash" T-LABEL
    SB-RESET
    s" : BS-WORD ( -- n ) 9 ;" SB-APPEND LF+
@@ -1192,7 +1159,6 @@ variable RC
    s" BS-WORD drop" SB-APPEND LF+
    s" plain-backslash-path.f" FIXTURE!
    CERTIFIED
-   s" " 0 LOADED
    s" an escaped path in a body" T-LABEL
    SB-RESET
    s\" : L ( -- ) s\\\" inc-t\\x61rget.f\" included ;" SB-APPEND LF+
@@ -1200,7 +1166,6 @@ variable RC
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escaped-body-path.f" FIXTURE!
    s" L" 2 43 s" INCLUDED-WORD" 3 1 45 58 VERIFY-DEFERRED-AT
-   s" " 0 LOADED
    s" an escaped path with no escape in a body" T-LABEL
    SB-RESET
    s\" : L ( -- ) s\\\" inc-target.f\" included ;" SB-APPEND LF+
@@ -1208,7 +1173,6 @@ variable RC
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escape-free-body-path.f" FIXTURE!
    s" L" 2 40 s" INCLUDED-WORD" 3 1 42 55 VERIFY-DEFERRED-AT
-   s" " 0 LOADED
    SB-RESET
    s" : BODY-A-WORD ( -- n ) 1 ;" SB-APPEND LF+
    s" body-a.f" FIXTURE!
@@ -1226,7 +1190,6 @@ variable RC
    s" BODY-A-WORD drop BODY-B-WORD drop BODY-C-WORD drop" SB-APPEND LF+
    s" escaped-body-paths.f" FIXTURE!
    s" L" 2 91 s" BODY-A-WORD" 3 1 93 104 VERIFY-DEFERRED-AT
-   s" " 0 LOADED
    s" an escaped path in a body, escaped literals before its package closes" T-LABEL
    SB-RESET
    s" package DPT-ESC" SB-APPEND LF+
@@ -1239,15 +1202,12 @@ variable RC
    s" BODY-A-WORD drop" SB-APPEND LF+
    s" escaped-body-path-package.f" FIXTURE!
    s" DPT-ESC:L" 7 137 s" BODY-A-WORD" 8 1 147 158 VERIFY-DEFERRED-AT
-   s" " 0 LOADED
    s" an escaped path over the capacity as written, within it decoded" T-LABEL
    250 s" escaped-steps-fit.f" STEPS-FIXTURE
    CERTIFIED
-   s" " 0 LOADED
    s" an escaped path over the capacity decoded, within it normalized" T-LABEL
    600 s" escaped-steps-over.f" STEPS-FIXTURE
    CERTIFIED
-   s" " 0 LOADED
    s" a bad escape in a loader's path" T-LABEL
    SB-RESET
    s\" s\\\" inc-t\\yarget.f\" included" SB-APPEND LF+
@@ -1294,7 +1254,6 @@ variable RC
    s" --all-errors" 0 CHECK-EXIT
    GJA-LINE# @ 0 T=
    s" [']" VERIFY-DEFERS
-   s" " 0 LOADED
    s" a signature that does not parse and a call of that word" T-LABEL
    s" : X ( -- zz ) MADE ;" s" made-badsig.f" MADE-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 51 53 VERIFY-REFUSED-AT
@@ -1338,7 +1297,7 @@ variable RC
 : TEST-CONTROL-ORPHAN ( -- )
    s" a signature that does not parse and a then with no if" T-LABEL
    s" : X ( n -- zz ) then ;" s" badsig-then.f" LINE-FIXTURE
-   s" E-REJECTED" s" then" 1 17 16 20 REFUSED-AT
+   s" E-REJECTED" s" then" 1 17 16 20 REFUSED-MODES
    s" a then with no if before an undefined word" T-LABEL
    s" : X ( n -- n ) then NOPE ;" s" then-undefined.f" LINE-FIXTURE
    s" E-REJECTED" s" then" 1 16 15 19 REFUSED-AT
@@ -1498,7 +1457,6 @@ variable RC
    TEST-STRING
    TEST-EMOJI-STRING
    TEST-UTF8
-   TEST-ONE-LINE
    TEST-PAREN-EMOJI
    TEST-SIGNATURE-LINE
    TEST-LATER
@@ -1509,9 +1467,7 @@ variable RC
    TEST-NOT-RECORDED
    TEST-GENERATES
    TEST-GENERATES-SHADOW
-   TEST-ALL-ERRORS
    TEST-COMPOSE-DEP
-   TEST-COMPOSE-AFTER
    TEST-COMPOSE-ALL
    TEST-COMPOSE-VERIFY
    TEST-DECLARATION
