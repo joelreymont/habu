@@ -1704,7 +1704,8 @@ variable LSOURCEEXECFINISH
 
 : BCREATE ( -- )
    15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
-                                     \ startup-stored cell: subsets emit prims w/o labels
+                                     \ startup-stored cell: subsets emit prims w/o labels;
+                                     \ LCREATE publishes the word's `-- ptr a` in both modes
 
 : BEMIT ( -- )
    A G-POP  13 9 0 ADDI,  G-EMITC ;

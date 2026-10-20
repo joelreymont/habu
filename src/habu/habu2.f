@@ -2976,7 +2976,10 @@ public
 \ for the words its defining word creates, so it covers user-written defining
 \ words as well as PTR-VARIABLE. LASTC-TRUST:PUBLISH-PTR-A publishes `-- ptr a`
 \ for create and variable, and LASTC-TRUST:PUBLISH-A publishes `-- a` for
-\ constant.
+\ constant. LCREATE (EMIT-CREATE) reaches PUBLISH-PTR-A for the `create`
+\ keyword and the runtime `create` primitive alike, after the keyword's hook,
+\ so every word a defining word makes has `-- ptr a` before a `does>` of that
+\ defining word replaces it.
 package LASTC-TRUST
 
 \ Resolve `trust-raw`, the checker's raw-storage effect registrar (checker.f
@@ -4850,6 +4853,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    15 SP 8 LDR,  15 nokind CBZ,
    LKWCREATE KWCREATE$ nip C-DEFHOOK
    nokind LBL,
+   LASTC-TRUST:PUBLISH-PTR-A
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ Interpret-mode defining-word handlers. The interpret define-keyword dispatch
@@ -4858,8 +4862,7 @@ package INTERP-EMIT
 
 : C-CREATE ( -- )
    C-TASK-LIVE-GUARD
-   15 1 MOVZ,  LCREATE LABEL@ BL,
-   LASTC-TRUST:PUBLISH-PTR-A ;
+   15 1 MOVZ,  LCREATE LABEL@ BL, ;
 
 : C-VARIABLE ( -- )  C-CREATE
    9 DATA LASTC-CELL LDR,  2 3 MOVZ,  LPROTREC LABEL@ BL,

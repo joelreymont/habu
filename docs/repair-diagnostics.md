@@ -135,11 +135,16 @@ the engine's own load reports for the definition, chosen in the load's order:
    model. Code after a terminating word is such a check: `E-DEAD-CODE` at its
    first token, with `dead_owner` the word that ended the path. So is a
    `RECURSE` in a definition whose declared effect is too big to record, and
-   a call to a word the engine holds that no checker row types, as one a
-   `create` caller made, `E-UNDEFINED` at that word: after
-   `: MK ( -- ) create ; MK MADE`, `( -- zz ) MADE` is
-   `E-UNKNOWN-SIGNATURE-TYPE` at `zz` and `( -- ) evaluate MADE` is
-   `E-UNSAFE` at `evaluate`, while `( -- ) ['] MADE drop` is admitted.
+   a call to a word the engine holds that no checker row types, as one
+   defined without a declaration while checking was off, `E-UNDEFINED` at
+   that word: after `check@ 0 set-check : OFFW 1 ; set-check`,
+   `( -- zz ) OFFW` is `E-UNKNOWN-SIGNATURE-TYPE` at `zz` and
+   `( -- ) evaluate OFFW` is `E-UNSAFE` at `evaluate`, while
+   `( -- ) ['] OFFW drop` is admitted. These are the load's records:
+   `tools/check.f` never loads this file. Its checked-boundary lint refuses
+   the `set-check` tokens (`E-CHECKER-MUTATION`) and, since a bare
+   `set-check` does not end the unchecked span, reports `OFFW` and every
+   `:` definition after it as `E-UNCHECKED-DEFINITION` at its name.
 5. Otherwise the checks made at `;`, among them an effect more than 4096
    levels deep or an input row wider than 255 cells, `E-UNCHECKABLE` with
    verdict `uncheckable` and the bound in `reason`.

@@ -12773,9 +12773,9 @@ variable BIND-SEEDED
 \ pending row nor the lookup reads it.
 \
 \ A sym of 0 without a refusal is not proof the load cannot bind the name: the
-\ engine holds words no checker symbol names, as one a create caller made. So
-\ LIVE-BIND sets WALK-REC when its answer is the record the engine's lookup
-\ found, whether or not a symbol names it.
+\ engine holds words no checker symbol names, as one defined without a
+\ declaration under `0 set-check`. So LIVE-BIND sets WALK-REC when its answer
+\ is the record the engine's lookup found, whether or not a symbol names it.
 : LIVE-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
    NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
    0 BIND-SEEDED !
@@ -17626,9 +17626,9 @@ C2-STOW-BORROW-INSTALL
 \ while compiling, unless the run may define the name. A name the walk refused
 \ for a `using` (CUSING) is not undefined. Nor is one whose record the engine's
 \ lookup found (WALK-REC), though no checker symbol or row types it, as a word
-\ a create caller made, so neither caller asks this of it: the load compiles
-\ the call, which only fails its check (CALL-UNDEFINED in DO-TOK-BODY), and the
-\ tick, which BTICK-TOK admits.
+\ defined without a declaration under `0 set-check`, so neither caller asks
+\ this of it: the load compiles the call, which only fails its check
+\ (CALL-UNDEFINED in DO-TOK-BODY), and the tick, which BTICK-TOK admits.
 : REFUSE-UNDEFINED ( ptr u8 n -- )
    CUSING @ 0 <> IF 2drop EXIT THEN
    CALL-UNDEFINED IF EXIT THEN

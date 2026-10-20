@@ -935,7 +935,7 @@ variable RC
    CERTIFIED ;
 
 \ The fixture NAME holding the line TEXT after MK, the create caller the line
-\ DEF defines, made MADE, a word the engine binds and no checker row types.
+\ DEF defines, made MADE, which that run types `-- ptr a`.
 : MK-FIXTURE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: def:ptr defu:n text:ptr textu:n name:ptr nameu:n :}
    SB-RESET
@@ -1277,15 +1277,16 @@ variable RC
    1 s" E-MISSING-SOURCE" s" require" 2 1 48 55 VERIFY-REJECTED-AT
    s" bad string literal" 74 LOADED ;
 
-\ A word the engine binds and no checker row types, as one a create caller
-\ made, is no word the load cannot compile: its tick is admitted, and a call to
-\ it fails its check in source order, after a signature that does not parse and
-\ an earlier failing check, as the load reports. A name nothing defines is
-\ still the load's compiler's to refuse, before any check. MK's row bounds its
-\ call, so --verify-only checks what follows it; with no row the call may read
-\ any of the rest, and --verify-only discovers nothing after it.
-: TEST-UNROWED ( -- )
-   s" a ticked word the engine binds and no row types" T-LABEL
+\ A word a create caller made is bound, and typed `-- ptr a`, by the run of that
+\ caller (docs/forth.md, "A `create … does>` clause declares its created words'
+\ effects"): its tick is admitted, and a call to it fails its check in source
+\ order, after a signature that does not parse and an earlier failing check, as
+\ the load reports. A name nothing defines is still the load's compiler's to
+\ refuse, before any check. --verify-only does not run MK: MK's row bounds its
+\ call, so it checks what follows it; with no row the call may read any of the
+\ rest, and --verify-only discovers nothing after it.
+: TEST-MADE ( -- )
+   s" a ticked word a create caller made" T-LABEL
    s" : X ( -- ) ['] MADE drop ; X" s" made-tick.f" MADE-FIXTURE
    s" " 0 CHECK-EXIT
    GJA-LINE# @ 0 T=
@@ -1310,9 +1311,9 @@ variable RC
    s" E-UNSAFE" s" evaluate" 3 12 53 61 RUN-REFUSED-AT
    s" evaluate" VERIFY-DEFERS
    s" x at 'evaluate'" REJECT-RC LOADED
-   s" a call of that word alone" T-LABEL
+   s" a call of that word, whose address X does not declare" T-LABEL
    s" : X ( -- ) MADE ;" s" made-call.f" MADE-FIXTURE
-   s" E-UNDEFINED" s" MADE" 3 12 53 57 RUN-REFUSED-AT
+   s" E-MISMATCH" s" MADE" 3 12 53 57 RUN-REFUSED-AT
    s" MADE" VERIFY-DEFERS
    s" x at 'MADE'" REJECT-RC LOADED
    s" a signature that does not parse and a word nothing defines" T-LABEL
@@ -1527,7 +1528,7 @@ variable RC
    TEST-REPAIR-FOLLOWS
    TEST-LIVE-BRANCHES
    TEST-TICK-TARGET
-   TEST-UNROWED
+   TEST-MADE
    TEST-CONTROL-ORPHAN
    TEST-SECOND-ELSE
    TEST-CONTROL-OPEN

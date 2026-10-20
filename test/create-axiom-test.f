@@ -128,6 +128,14 @@ private
 \ parametric pointee over raw storage is E-NONPARAMETRIC-EFFECT (docs/forth.md,
 \ "Use real types, not reflexive n"). What this case measures is the arity.
 : LOAD-HERE ( -- )       s" : CAX-B7 ( -- ptr n ) here ;" evaluate-closed ;
+\ The definer's runtime `create` gives the word it makes `-- ptr a`, so a checked
+\ body can name it, and a package's public reader can name one its private
+\ definer made.
+: LOAD-CELL-READ ( -- )   s" : CAX-B8 ( -- n ) CAX-B4-CELL @ ;" evaluate-closed ;
+: LOAD-CELL-N ( -- )      s" : CAX-B9 ( -- n ) CAX-B4-CELL ;" evaluate-closed ;
+: LOAD-PKG-MADE ( -- )
+   s" package CAX-PKG  : CAX-PMK ( -- ) create 0 , ;  CAX-PMK CAX-PW  public  : CAX-PRD ( -- n ) CAX-PW @ ;  ;package"
+   evaluate-closed ;
 
 : BODY-CASE ( -- )
    s" a body whose whole content is `create` declares nothing and loads" T-LABEL
@@ -149,6 +157,17 @@ private
    s" and running it defines the name and stores the counter in it" T-LABEL
    s" 5 CAX-B4 CAX-B4-CELL" TEST-EVAL:N 6 T=
    s" CAX-B4-CELL @" TEST-EVAL:N 5 T=
+
+   s" the word the definer made has its address row, so a checked body reads it" T-LABEL
+   [: LOAD-CELL-READ ;] LOADED TTHROWSQ
+   s" CAX-B8" TEST-EVAL:N 5 T=
+
+   s" and the row is a typed address, not a wildcard" T-LABEL
+   [: LOAD-CELL-N ;] REJECT-RC TTHROWSQ
+
+   s" a word a definer makes inside a package is read by its public reader" T-LABEL
+   [: LOAD-PKG-MADE ;] LOADED TTHROWSQ
+   s" CAX-PKG:CAX-PRD" TEST-EVAL:N 0 T=
 
    s" `create` inside a string is a string" T-LABEL
    [: LOAD-IN-STRING ;] LOADED TTHROWSQ

@@ -63,6 +63,14 @@ TRUSTED: TRUSTED-MAKE ( n -- )
 0 0= MAYBE-PATCH UNPATCHED
 1 0= MAYBE-PATCH PATCHED
 UNPATCHED @ 99 T=
+\ The created words are private, so their rows are probed here, where this
+\ package's private section resolves them; RUN runs after `;package`.
+s" an explicit exit leaves the created word its address row" T-LABEL
+s" NU1 ( -- n ) UNPATCHED @" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" NU2 ( -- n ) UNPATCHED" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+s" fallthrough replaces it with the clause effect" T-LABEL
+s" NP4 ( -- n ) PATCHED" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" NP5 ( -- n ) PATCHED @" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 
 public
 

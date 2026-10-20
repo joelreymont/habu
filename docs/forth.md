@@ -1421,11 +1421,12 @@ any suite fails. Documentation-only edits need no rebuild.
   a structure still open where the definition ends, at its `;` or `does>`, else
   the first name a used public shadows or makes ambiguous beside a global,
   else a signature that does not parse, else the first failing check. A word
-  the engine holds that no checker row types, as one a `create` caller made,
-  is no word the load cannot compile: its tick is admitted, and its call is a
-  failing check, `E-UNDEFINED`. A word after a terminating word, or inside a
-  match nested past the checker's control-frame depth, is not resolved, though
-  the load names it if undefined.
+  the engine holds that no checker row types, as one defined without a
+  declaration while checking was off (`0 set-check`), is no word the load
+  cannot compile: its tick is admitted, and its call is a failing check,
+  `E-UNDEFINED`. A word after a terminating word, or inside a match nested
+  past the checker's control-frame depth, is not resolved, though the load
+  names it if undefined.
 
 ## Habu Native Tooling Gotchas
 
@@ -1690,7 +1691,11 @@ sections above.
   definer). A `TRUSTED:` body's clause is a declaration even though its body
   is asserted; `TASK:MIN-STACK TASK:TASK T1` gives T1 its declared effect.
   The same rule applies to a
-  replacement clause (see **Structures And Enums**).
+  replacement clause (see **Structures And Enums**). A definer's `create`
+  gives each word it makes `-- ptr a` the moment it is made, at either tier,
+  at top level, in a package or under `evaluate`; a `does>` the definer then
+  reaches replaces it with the clause effect, and a branch that `exit`s
+  before `does>` leaves `-- ptr a`.
 - **Renderers can define words absent from source text.** A word whose body
   reaches `INCLUDE-EVALUATE`, `evaluate` or `evaluate-closed` marks the
   wordlist of its top-level call. There, a later unresolved name that may be

@@ -2363,8 +2363,9 @@ $180000 constant LARGE-STDIN-LEN
 
 \ A body naming a word only the run can define is deferred where the checker's
 \ judgment of it stops: a name the evaluated text may define, and a create
-\ caller's product. The renderer's call is deferred too. Loaded, each refuses
-\ that name (E-UNDEFINED, exit 70), so neither is answered verified. A refusal
+\ caller's product. The renderer's call is deferred too. Loaded, the evaluate
+\ case refuses that name (E-UNDEFINED, exit 70) and the product is `-- ptr a`:
+\ only the run answers either, so neither is answered verified. A refusal
 \ anywhere keeps the file refused. A create caller no row bounds may read any
 \ of the rest, so the check discovers nothing after its call.
 : DEF-DEFERRED ( -- )

@@ -314,6 +314,11 @@ Every form loaded and its accessor effect certified.
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
 | `STRUCTURE p FIELD x n … ;STRUCTURE` | a by-value record; a 34-cell nested native roundtrip is tested | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled; `STRUCTURE p OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE` |
 
+A word a definer's `create` makes has `-- ptr a` from the moment it is made, at
+either tier, in a package or under `evaluate`, until a `does>` the definer then
+reaches replaces it with the clause effect; a branch that `exit`s before
+`does>` leaves `-- ptr a`.
+
 A definer that writes its word as text (`+USER`, `COMMAND`) states what it makes
 with `generates: D ( effect )` after D's definition, so `tools/check.f` checks
 that word's uses before the run; what no row states, such as `COMMAND`'s

@@ -5162,8 +5162,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ CREATE as a BL-able routine: the interpret keyword AND the runtime `create`
 \ prim share it, so defining words (`: CONST create , does> @ ;`) work.
 \ LCREATE ( x15=top-level? ): the hook KIND record (`NAME create` -> sig -- n)
-\ applies to top-level creates. Created-word effects are recorded by DOESPATCH
-\ after DOES> has parsed the created-word effect.
+\ applies to top-level creates. After it, LCREATE publishes `-- ptr a` for the
+\ keyword and the runtime prim alike (MIRROR of src/habu/habu2.f EMIT-CREATE),
+\ so every word a defining word makes has `-- ptr a` before a DOES> of that
+\ defining word replaces it through DOESPATCH.
 : EMIT-CREATE ( -- )
    LBL {: nokind :}
    LCREATE @ LBL,
@@ -5193,10 +5195,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    15 SP 8 LDR,  15 nokind CBZ,
    LKWCREATE 6 C-DEFHOOK
    nokind LBL,
+   C-PUBLISH-PTR-A
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-: C-CREATE ( -- )  15 1 MOVZ,  LCREATE @ BL,
-   C-PUBLISH-PTR-A ;
+: C-CREATE ( -- )  15 1 MOVZ,  LCREATE @ BL, ;
 
 : C-VARIABLE ( -- )  C-CREATE
    9 DATA LASTC-CELL LDR,  2 3 MOVZ,  LPROTREC @ BL,
