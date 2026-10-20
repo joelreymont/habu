@@ -260,11 +260,14 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 \ own mapping and not merely that it exited zero.
 \ tools/hb-build-stripped-cache-test.f HBT-STRIPPED-SAME-TWICE runs its first
 \ link against that line and links it a second time for byte equality.
+\ HBT-CALL is bound at load time: its producer address must not enter the
+\ sparse DATA payload, since the startup restores it from the stable XT row.
 : HBT-MAPL-SRC$ ( -- ptr u8 n )
    SB-RESET
-   S\" require src/lib/memory.f\npackage HBT-ATTR\n: HIDDEN ( -- n ) 65 ;\npublic\nEXPORT HIDDEN\n: PUBLIC ( -- n ) HIDDEN ;\n;package\n: HBT-GLOBAL ( -- n ) HBT-ATTR:PUBLIC ;\n: HBT-DEAD ( -- n ) 99 ;\nPTR-VARIABLE BUF\n: MAIN ( -- )\n" SB-APPEND
+   S\" require src/lib/memory.f\npackage HBT-ATTR\n: HIDDEN ( -- n ) 65 ;\npublic\nEXPORT HIDDEN\n: PUBLIC ( -- n ) HIDDEN ;\n;package\n: HBT-GLOBAL ( -- n ) HBT-ATTR:PUBLIC ;\n: HBT-DEAD ( -- n ) 99 ;\n" SB-APPEND
+   S\" defer HBT-CALL ( -- n )\n: HBT-BIND ( -- ) [: HBT-GLOBAL ;] is HBT-CALL ;\nHBT-BIND\nPTR-VARIABLE BUF\n: MAIN ( -- )\n" SB-APPEND
    S\"    MEM-ALLOC-64K drop BUF !\n   BUF @ {: p:ptr :}\n" SB-APPEND
-   S\"    [: 0 ;] execute drop\n   HBT-GLOBAL p c!  p 1 type cr\n" SB-APPEND
+   S\"    [: 0 ;] execute drop\n   HBT-CALL p c!  p 1 type cr\n" SB-APPEND
    S\"    MEM:ALLOC-64K {: q:ptr cap:NUM:alloc-byte-len :}\n" SB-APPEND
    S\"    q cap MEM:RELEASE-BYTES ;\n" SB-APPEND
    SB$ ;

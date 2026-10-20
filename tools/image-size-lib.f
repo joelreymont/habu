@@ -2693,7 +2693,8 @@ $D37EF54A constant XTC-LSL2
       RELOC-AT @ i XTOFF-ROW * + {: r:n :}
       r U32@ {: loc:n :}
       r 4 + U32@ {: tgt:n :}
-      loc 1 < loc DATA-SIZE >= or loc 7 and 0<> or if
+      \ XT storage may be unaligned; its complete byte interval must fit DATA.
+      loc 1 < loc DATA-SIZE CELL-BYTES - > or if
          s" image-size: a relocation row names no DATA cell" RC die
       then
       tgt 1 < tgt codelen >= or tgt 3 and 0<> or if

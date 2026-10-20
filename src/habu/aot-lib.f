@@ -559,9 +559,8 @@ variable FFI-BASE-INDEX
    7 DATA DP-CELL STR, ;                           \ DP = user-end (runtime here/allot base)
 
 \ ---- the declared xt cells: what the copy alone cannot restore -----------------
-\ The copy above restores every cell's capture-time BYTES, and for a cell declared
-\ to hold an execution token those bytes are the BUILDER's code address. The rows
-\ EMIT-XT-ROWS places after the blob say where such a cell is and where its word
+\ The copy above restores DATA with declared XT bytes zeroed. The rows
+\ EMIT-XT-ROWS places after the blob say where each XT cell is and where its word
 \ ended up in THIS image, in the shape src/habu/aot-file.f's XTOFF rows carry: a
 \ u32 location and a u32 target in one eight-byte row.
 \ THE ROWS NEED NO ADDRESS OF THEIR OWN. The copy loop's byte cursor x10 ends one
@@ -635,19 +634,34 @@ variable AOT-PAYLOAD-OFF
 \ every scan/copy site below reads it as a span, not a bare number.
 : BLOB-SRC@ ( -- ptr u8 ) BLOB-SRC @ DATA-PTR ;
 
-\ ONE CELL OF [0, BLOB-LEN), read as the unsigned number its bytes spell. Mirrors
-\ aot-capture.f ACAP-CELL@, rounding included: the last cell of the grid may
-\ reach above the latched span, and those bytes read as the zeros the fresh
-\ mapping leaves there. The stripped span has no declared address cells to
-\ exclude - EMIT-XT-CELLS rewrites each one after the copy - so every cell of the
-\ grid is offered.
+\ Exact byte coverage of the XT rows overlapping this grid cell. The sorted
+\ cursor stays on the first overlapping row: an unaligned XT also covers bytes
+\ in the next grid cell, and multiple XT rows may meet one grid cell.
+: BLOB-XT-MASK ( n -- n )
+   {: at:n :}
+   at XTC-DECLARED? 0= IF 0 exit THEN
+   0 XTC-CX @
+   BEGIN dup XTC-N @ < IF dup XTC-CELL at 8 + < ELSE false THEN WHILE
+      {: mask:n k:n :}
+      k XTC-CELL at - {: start:n :}
+      start 0 max {: lo:n :}
+      start 8 + 8 min {: hi:n :}
+      mask 1 hi lo - lshift 1- lo lshift or  k 1+
+   REPEAT drop ;
+
+\ ONE CELL OF [0, BLOB-LEN), read as the unsigned number its bytes spell. The
+\ partial tail reads as the fresh mapping's zero bytes, like ACAP-CELL@. An XT
+\ row is restored by EMIT-XT-CELLS, so its obsolete producer address contributes
+\ only zero bytes here. DATA-kind cells and neighboring bytes stay intact.
 variable BLOB-CV
 
-: BLOB-CELL@ ( n -- n ) {: c:n :}
+: BLOB-CELL@ ( n -- n )
+   {: c:n :}
+   c AOT-WINDOW:CELL-BYTES * BLOB-SRC @ + BLOB-XT-MASK {: mask:n :}
    0 BLOB-CV !
    AOT-WINDOW:CELL-BYTES 0 ?do
       c AOT-WINDOW:CELL-BYTES * i + {: off:n :}
-      off BLOB-LEN @ < IF
+      off BLOB-LEN @ <  mask 1 i lshift and 0= and IF
          BLOB-SRC@ off + c@  i 8 * lshift  BLOB-CV @ or  BLOB-CV !
       THEN
    loop
@@ -677,6 +691,7 @@ variable BLOB-CV
       s" aot: the captured DATA span does not start on a cell" 74 die THEN
    0 SPARSE-LEN !
    SPARSE-HDR SPARSE-ROOM?  SPARSE-HDR SPARSE-LEN !
+   XTC-REWIND
    SPAN-CELLS 0 ?do
       i BLOB-CELL@ 0<> IF i BLOB-BIT! THEN
    loop
@@ -687,6 +702,7 @@ variable BLOB-CV
    AOT-WINDOW:CBM-LEN 0 ?do
       AOT-WINDOW:CBM-BUF i + c@ SPARSE-BYTE!
    loop
+   XTC-REWIND
    SPAN-CELLS 0 ?do
       i BLOB-CELL@ {: v:n :}
       v 0<> IF v BLOB-V! THEN
