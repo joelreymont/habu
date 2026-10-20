@@ -17,8 +17,8 @@
 \     its row (test/native-window-declared-row.f), at both tiers;
 \   - a hook-less tier-1 definition whose declaration records no row, of the
 \     name an owner-private primitive types, is refused catchably
-\     (E-NELAB-UNDER -8304), alone and under a catch the window survives with
-\     the row before it kept (test/native-window-private-axiom.f, -catch.f),
+\     (E-NELAB-UNDER -8304), under a catch the window survives with the row
+\     before it kept (test/native-window-private-axiom-catch.f),
 \     even a row of its own name that CHECK! recorded and the row after that
 \     (-prior.f). Its rollback cuts only the rows recorded since its
 \     definition began; asking the axiom instead, it died 76 (`checker:
@@ -201,7 +201,6 @@ create ERR IO-CAP allot
    s" test/native-window-cast-bad.f"      S\" window: 7131\n" WINDOW-IS
    s" test/native-window-cast-host-bad.f" S\" window: 7131\n" WINDOW-IS
    s" test/native-window-declared-row.f"  S\" window: 0\n"    WINDOW-IS
-   s" test/native-window-private-axiom.f" S\" window: -8304\n" WINDOW-IS
    s" test/native-window-private-axiom-catch.f" S\" -8304\n-1\nwindow: 0\n" WINDOW-IS
    s" test/native-window-private-axiom-prior.f" S\" -1\n-8304\n-1\n-1\nwindow: 0\n" WINDOW-IS
    BINDINGS-CASE

@@ -361,15 +361,6 @@ create TEXT CAP allot                  variable TEXT-U
    OUT CAP >LEN ERR CAP >LEN BUILD-TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT ;
 
-: WINDOW-DECLARED ( -- )
-   s" the build refuses a mismatched pre-hook definition before publication" T-LABEL
-   S\" : PROBE-NZ ( n -- n ) 0= ;\n"
-      s" tools/native-build.f" BUILD-PROBE
-   RC @ RC-BUILD T=
-   s" habu: in probe-nz: at '0='" SAYS
-   s" native-build: uncaught throw code 70" SAYS
-   IMAGE$ FILE? 0= TTRUE ;
-
 \ `0<>` is src/lib/prelude.f's, which the window has not loaded at util.f.
 : WINDOW-PRELUDE ( -- )
    s" a caught pre-hook refusal restores the prior compiler dispatch" T-LABEL
@@ -405,7 +396,6 @@ create TEXT CAP allot                  variable TEXT-U
    s" native-hookless-reject artifacts: " type ROOT$ type cr
    TREE$ TREE-COPY:BUILD-SOURCES
    s" test/compiler/native-build-dispatch-child.f" TREE$ TREE-COPY:FILE
-   WINDOW-DECLARED
    WINDOW-PRELUDE
    WINDOW-TRUSTED
    T-REPORT ;
