@@ -27,6 +27,10 @@ SUITE hb-build-aot-image
    tools/hb-build-aot-image-test.f
 ;SUITE
 
+SUITE whitebox-engine-key
+   test/whitebox-engine-key-test.f
+;SUITE
+
 SUITE stripped-pool-reach
    test/stripped-pool-reach.f
 ;SUITE
@@ -2659,10 +2663,6 @@ SUITE error-code-region
 
 SUITE event-closure
    tools/event-closure-test.f
-;SUITE
-
-SUITE whitebox-engine-key
-   test/whitebox-engine-key-test.f
 ;SUITE
 
 SUITE fixture-cache
