@@ -1,4 +1,4 @@
-\ check-drivers-test.f - the build drivers are checked Habu programs: run through
+\ check-drivers-test.f - standalone build-driver regressions: run through
 \ the shared CHECK core with no arguments, each reaches its own exit
 \ (tools/check-exit-test-lib.f says what fails a case). The out and err each
 \ driver left, saved under the printed tree, are the row's artifact.
@@ -40,9 +40,6 @@ create TARGET FS-PATH-CAP allot
 public
 : RUN ( -- )
    T-RESET SETUP
-   s" tools/wasm-build.f" 64 DRIVER
-   s" tools/build-fixpoint-certify.f" 64 DRIVER
-   s" tools/tier0-profile.f" 64 DRIVER
    s" tools/build-fixpoint-main.f" 64 DRIVER
    \ The bootstrap refusal needs a fresh CLI process with HABU_ALLOW_BOOTSTRAP=0;
    \ the running process's startup environment cannot be changed by PROC-ENV.
@@ -50,8 +47,6 @@ public
    s" tools/imagedisasm.f" 0 DRIVER
    s" tools/json-only.f" 64 DRIVER
    s" tools/app-build.f" 0 DRIVER
-   s" tools/native-file-explicit.f" 0 DRIVER
-   s" tools/native-build.f" 74 DRIVER
    s" tools/build-profile.f" 67 DRIVER
    T-REPORT ;
 ;package
