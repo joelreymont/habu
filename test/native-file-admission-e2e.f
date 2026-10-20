@@ -54,31 +54,6 @@ package NATIVE-FILE-ADMISSION-TEST
       S\" require src/habu/native-body-abi.f\n1 set-tier\nvariable READER-SEEN\nTRUSTED: CHECK-HEAD ( ptr u8 n n n -- n bool )\n   {: source:ptr sourceu:n name-at:n body-at:n :}\n   name-at 0 < name-at sourceu >= or if 70 throw then\n   body-at name-at <= body-at sourceu >= or if 70 throw then\n   source name-at + c@ dup 80 = if\n      drop source body-at + c@ 32 <> if 70 throw then source body-at 1+ + c@ 53 <> if 70 throw then\n   else\n      84 <> if 70 throw then\n      source body-at + c@ 32 <> if 70 throw then source body-at 1+ + c@ 54 <> if 70 throw then\n   then\n   1 READER-SEEN +!  0 false ;\nTRUSTED: ARM-READER ( -- )\n   ['] CHECK-HEAD native-body-reuse-cell CELL-VIEW xt!\n   check@ native-body-reuse-cell NATIVE-BODY-ABI:ORIGIN-HOOK cells + CELL-VIEW ! ;\nTRUSTED: DROP-READER ( -- ) 0 native-body-reuse-cell CELL-VIEW ! ;\nARM-READER\n: PLAIN ( -- n ) 5 ;\nTRUSTED: T-READER-TRUST ( -- n ) 6 ;\nDROP-READER\n: READER-VERIFY ( -- ) READER-SEEN @ 2 <> if 70 throw then PLAIN T-READER-TRUST + . cr ;\nREADER-VERIFY\n" PUT
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    s" --load" ARG s" reader.f" AT ARG ENGINE-CANDIDATE:PATH$ s" " CAPTURE 0 T= OUT$ S\" 11\n" CONTAINS? TTRUE ;
-: STRICT-SCALARS ( -- )
-   s" prefix.f" S\" : ADMIT-PREFIX ( -- ) ;\n" PUT
-   s" selected.f"
-      S\" variable SHORT-ID variable LONG-ID\n2 SHORT-ID ! 3 LONG-ID !\n" PUT
-   s" downstream.f"
-      S\" : MAIN ( -- ) SHORT-ID @ LONG-ID @ + . ;\n" PUT ;
-: STRICT-DEFER ( -- )
-   s" prefix.f" S\" : ADMIT-PREFIX ( -- ) ;\n" PUT
-   s" selected.f"
-      S\" package ADMIT-DEFER\nSTRUCTURE item DERIVE addr FIELD value n ;STRUCTURE\nDEFER-LAYOUT-BUFFER ROWS item\n2 ROWS-BIND\n456 ITEM-MAKE 0 ROWS !\n4 ROWS-GROW\npublic\n: VALUE@ ( -- n ) 0 ROWS ITEM-VALUE @ ;\n;package\n" PUT
-   s" downstream.f"
-      S\" : MAIN ( -- ) ADMIT-DEFER:VALUE@ . ;\n" PUT ;
-: RUN-STRICT ( -- n )
-   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING s" strict-hb" AT s" MAIN" CAPTURE ;
-: FILE-DRIVER ( ptr u8 n -- n ) {: mode:ptr modeu:n :}
-   PROC-ARGV-ENV-RESET
-   s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
-   s" --load" ARG s" tools/native-unit-build.f" ARG s" --" ARG
-   mode modeu ARG
-   s" prefix.f" AT ARG s" selected.f" AT ARG s" downstream.f" AT ARG
-   s" strict.unit" AT ARG s" strict-hb" AT ARG
-   ENGINE-CANDIDATE:PATH$ s" " CAPTURE ;
-: EXPORT ( -- n ) s" --export-file" FILE-DRIVER ;
-: IMPORT ( -- n ) s" --import-file" FILE-DRIVER ;
 
 public
 : RUN ( -- )
@@ -136,24 +111,6 @@ public
    OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
    RUN-IMAGE 0 T=
    OUT$ S\" 5\n456\n" CONTAINS? TTRUE
-   s" adjacent scalar variables survive FILE replay" T-LABEL
-   STRICT-SCALARS
-   EXPORT 0 T=
-   RUN-STRICT 0 T=
-   OUT$ S\" 5\n" CONTAINS? TTRUE
-   IMPORT 0 T=
-   OUT$ s" native-build: file unit hit" CONTAINS? TTRUE
-   RUN-STRICT 0 T=
-   OUT$ S\" 5\n" CONTAINS? TTRUE
-   s" deferred layout growth survives FILE replay" T-LABEL
-   STRICT-DEFER
-   EXPORT 0 T=
-   RUN-STRICT 0 T=
-   OUT$ S\" 456\n" CONTAINS? TTRUE
-   IMPORT 0 T=
-   OUT$ s" native-build: file unit hit" CONTAINS? TTRUE
-   RUN-STRICT 0 T=
-   OUT$ S\" 456\n" CONTAINS? TTRUE
    T-REPORT
    s" native file admission artifacts: " type ROOT$ type cr ;
 ;package

@@ -209,14 +209,9 @@ SUITE app-image
 
 SUITE native-file-state
    test/native-file-object-prepared-e2e.f
-   test/native-file-object-strict-e2e.f
    test/native-file-prepared-boundary-e2e.f
    test/native-file-state-e2e.f
    test/native-file-retired-e2e.f
-;SUITE
-
-SUITE native-file-explicit-reclaim
-   test/native-file-explicit-reclaim-e2e.f
 ;SUITE
 
 SUITE engine-origin-lookup
@@ -271,10 +266,6 @@ SUITE native-file-stripped-path
    test/native-file-stripped-path-e2e.f
 ;SUITE
 
-SUITE native-file-task-state
-   test/native-file-task-state-e2e.f
-;SUITE
-
 \ Each FILE pair builds twice; separate rows keep the native gate CPU budget.
 SUITE native-file-forms-zero
    test/native-file-forms-zero.f
@@ -290,17 +281,6 @@ SUITE native-file-forms-global
 
 SUITE native-file-forms-repeat
    test/native-file-forms-repeat.f
-;SUITE
-
-\ The explicit FILE unit and FFI rows spawn builds on the unsealed engine
-\ (test/whitebox-engine.f) and stay plain SUITE rows; loading that module
-\ makes each row wait for whitebox-engine-build.
-SUITE native-file-unit
-   test/native-file-unit-e2e.f
-;SUITE
-
-SUITE native-file-ffi
-   test/native-file-ffi-e2e.f
 ;SUITE
 
 SUITE native-unit-refusals

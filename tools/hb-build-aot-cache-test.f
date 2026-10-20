@@ -285,7 +285,7 @@ create HBT-PAIR-GOT-HEX 64 allot
    HBT-OUTER-READ-N @ 1 T= ;
 
 \ Model the input range and loader pair owned by an enclosing
-\ NFILE-CACHE:LOAD-WITH-INPUTS. Maker selection returns both even when
+\ NDEF-CACHE:LOAD-WITH-INPUTS. Maker selection returns both even when
 \ publishing the selector fails after discovery.
 : HBT-MAKER-NESTED-INPUTS ( -- )
    HBB-RESET-OPTIONS

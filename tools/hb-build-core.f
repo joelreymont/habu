@@ -1,7 +1,7 @@
 \ One native build selection and one FILE source session. Product drivers own
 \ their validation, source window, and image writer through three continuations.
 require tools/build-target.f
-require tools/native-file-cache.f
+require tools/native-definition-cache.f
 
 package BUILD-CORE
 private
@@ -15,7 +15,7 @@ variable RESULT
 
 : RUN ( -- )
    PREPARE @ execute
-   MODE @ MODE-U @ LOAD @ NFILE-CACHE:WITH
+   MODE @ MODE-U @ LOAD @ NDEF-CACHE:WITH
    FINISH @ execute ;
 
 : ACTION ( RTARGET:build-action -- )

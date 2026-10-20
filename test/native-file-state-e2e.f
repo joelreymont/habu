@@ -1,6 +1,6 @@
 \ DATA, prior writes, typed cells, literals, reopened packages, created words,
-\ TASK slots and foreign functions survive cold compilation and warm definition
-\ reuse in small applications.
+\ TASK slots, task chains and exit hooks, and foreign functions survive cold
+\ compilation and warm definition reuse in small applications.
 \ bin/hb --load test/native-file-state-e2e.f
 
 require src/lib/test.f
@@ -137,6 +137,32 @@ variable CODE-B-O  variable CODE-B-U
    OUT$ s" ffi-unit-source-ran" CONTAINS? TTRUE
    s" ffi-warm-hb" RUN-FFI ;
 
+\ A cached task keeps its callback context chain membership and its exit hook.
+: HOOKS-FILES ( -- )
+   s" cache" AT MAKE-DIR
+   s" task.f"
+   S\" require src/lib/ffi-callback.f\nrequire src/lib/task.f\npackage FILE-TASK-HOOKS\npublic\n$10000 TASK:TASK CHAINED\nCALLBACK: ENTRY ( -- ) ;CALLBACK\n: CHAIN-RUN ( -- )\n   CHAINED TASK:EXPOSE\n   ENTRY CHAINED TASK:CONTEXT FFI-CB:ENTRY drop\n   CHAINED TASK:UNEXPOSE CHAINED TASK:KILL\n   s\q task chain ok\q type cr ;\n$10000 TASK:TASK HOOKED\n: EXIT-HOOK ( -- ) E-TASK-STATE throw ;\n' EXIT-HOOK HOOKED TASK:AT-EXIT\n: BODY ( -- ) 7 TASK:RETURN ;\n: EXIT-RUN ( -- )\n   ['] BODY HOOKED TASK:ACTIVATE\n   HOOKED TASK:JOIN MATCH result\n      ok OF drop s\q missing task exit hook\q 74 die ENDOF\n      err OF E-TASK-STATE <> if 74 throw then ENDOF\n   ;MATCH\n   s\q task exit ok\q type cr ;\n;package\ns\q task-hooks-unit-ran\q type cr\n" PUT
+   s" app.f" S\" require task.f\n: MAIN ( -- ) FILE-TASK-HOOKS:CHAIN-RUN FILE-TASK-HOOKS:EXIT-RUN ;\n" PUT ;
+
+: RUN-HOOKS ( ptr u8 n -- )
+   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
+   AT s" " CAPTURE SUCCESS
+   OUT$ S\" task chain ok\ntask exit ok\n" CONTAINS? TTRUE ;
+
+: HOOKS-CASE ( -- )
+   s" cached task declarations keep their callback chain and exit hooks" T-LABEL
+   s" native-file-task-hooks" TREE
+   HOOKS-FILES
+   s" hooks-cold-hb" BUILD SUCCESS
+   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ s" task-hooks-unit-ran" CONTAINS? TTRUE
+   s" hooks-cold-hb" RUN-HOOKS
+   s" hooks-warm-hb" BUILD SUCCESS
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" task-hooks-unit-ran" CONTAINS? TTRUE
+   s" hooks-warm-hb" RUN-HOOKS ;
+
 : PAIR-PATHS ( -- )
    s" cold-hb" AT {: a:ptr u:n :}
    a EXPORT-PATH u BYTE-COPY
@@ -195,6 +221,7 @@ public
    REJECT-TYPED-CLIENT
    TASK-STATE-CASE
    FFI-CASE
+   HOOKS-CASE
    T-REPORT
    s" native file unit artifacts: " type ROOT$ type cr ;
 ;package

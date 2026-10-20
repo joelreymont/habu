@@ -27,7 +27,7 @@ require src/os/script-argv.f
 require src/lib/ffi-abi.f
 
 : AOT-BUILDER-LOAD-SUPPORT ( -- )
-   [: s" tools/native-file-cache.f" required ;]
+   [: s" tools/native-definition-cache.f" required ;]
       FFI:WITH-MAKER-DECLARATIONS ;
 AOT-BUILDER-LOAD-SUPPORT
 require tools/hb-build-core.f
@@ -89,7 +89,7 @@ variable SAVED-ROOT-U
       true
    else
       false
-   then NFILE-CACHE:APP-LOAD ;
+   then NDEF-CACHE:APP-LOAD ;
 
 : FINISH ( -- ) AOT-DATA-SPAN ;
 
@@ -114,10 +114,10 @@ variable SAVED-ROOT-U
       FFI:WITH-MAKER-DECLARATIONS ;
 
 : LOAD-LINK-CACHED ( -- )
-   ['] LOAD-LINK-SUPPORT NFILE-CACHE:RUN ;
+   ['] LOAD-LINK-SUPPORT NDEF-CACHE:RUN ;
 
 : LOAD-LINK-IN-SCOPE ( -- )
-   s" aot" ['] LOAD-LINK-CACHED NFILE-CACHE:WITH-QUIET ;
+   s" aot" ['] LOAD-LINK-CACHED NDEF-CACHE:WITH-QUIET ;
 
 ' OPEN-IN-SCOPE
 ' SAVE-IN-SCOPE

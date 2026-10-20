@@ -237,7 +237,7 @@ CAST: SOURCE-READ-XT ( n -- [ ptr u8 n ptr u8 n -- ptr u8 n ] )
 \ forbids, and the capture keeps its name for this lookup
 \ (src/habu/aot-capture.f ACAP-KEEP?).
 \ NPUB:IMPORT-UNIT, the package unit importer, while the window is open, at a
-\ unit cut (tools/native-unit-build-core.f UNIT-CUT): a public one would let any
+\ unit cut (src/compiler/native/publish.f): a public one would let any
 \ source publish code bytes and dictionary rows, and the lookup precedes the
 \ capture, so the capture keeps no name for it.
 : PRIVATE-TARGET-XT ( ptr u8 n ptr u8 n -- n )
@@ -261,9 +261,9 @@ CAST: SOURCE-READ-XT ( n -- [ ptr u8 n ptr u8 n -- ptr u8 n ] )
       SOURCE-ROLES-XT {: install :}
    BUILD-PRODUCER:CHECKER$ ROLE-PTR
    BUILD-PRODUCER:COMPILER$ ROLE-PTR
-   NFILE-CACHE:SUSPEND-DISPATCH
+   NDEF-CACHE:SUSPEND-DISPATCH
    data-base NCOMP-DISPATCH:XT-CELL + CELL-VIEW @ OPEN-CODE PREFIX-COMPILE-XT
-   NFILE-CACHE:DEFINITIONS-CLOSE
+   NDEF-CACHE:DEFINITIONS-CLOSE
    install execute ;
 
 variable TARGET-SOURCE-BOUND
@@ -292,7 +292,7 @@ variable HOST-PREFIX-FIRST
 \ Save them before LOGICAL-RESET retires that dictionary, then bind the
 \ matching producers to code-bearing seed rows in the replacement window.
 : RETAIN-HOST-PRODUCERS ( -- )
-   NFILE-CACHE:RETAIN-HOST-CHECKER
+   NDEF-CACHE:RETAIN-HOST-CHECKER
    CORE-PREFIX:FIRST-RECORD HOST-PREFIX-FIRST !
    SOURCE-PRODUCER:KERNEL SOURCE-PRODUCER:ROLE$
       {: digest:ptr size:n known:bool :}
@@ -518,7 +518,7 @@ variable PRE-ROWS-N
 
 : PREFIX-ARM ( ptr u8 n -- )
    {: a:ptr u:n :}
-   ['] PREFIX-ACCEPT NFILE-CACHE:ARM-NATIVE-ACCEPT 0= if
+   ['] PREFIX-ACCEPT NDEF-CACHE:ARM-NATIVE-ACCEPT 0= if
       a u PREFIX-ACCEPT
    then ;
 
@@ -558,10 +558,10 @@ variable PRE-ROWS-N
    s" src/core/sumtype.f" included
    s" src/core/layout-buffer.f" included
    s" src/core/layout-valid.f" included
-   NFILE-CACHE:HANDOVER-PREPARE
+   NDEF-CACHE:HANDOVER-PREPARE
    RESTORE-PREFIX-RAW
    s" CHECKER-REG:HANDOVER" OPEN-TARGET-XT SOURCE-RESET-XT execute
-   NFILE-CACHE:HANDOVER-BIND
+   NDEF-CACHE:HANDOVER-BIND
    \ The handover, the same entry tools/bootstrap.sh's recovery reload calls,
    \ publishes the complete replacement owner. Earlier pre-hook code still needs
    \ the retained compiler's paired checker; later calls use this one.
@@ -576,11 +576,11 @@ variable PRE-ROWS-N
 : CHECKED-PREFIX ( -- )
    data-base NCOMP-DISPATCH:XT-CELL + CELL-VIEW @ PREFIX-COMPILE-XT
       PREFIX-DISPATCH !
-   ['] PREFIX-COMPILE ['] PREFIX-ARM NFILE-CACHE:BORROW
+   ['] PREFIX-COMPILE ['] PREFIX-ARM NDEF-CACHE:BORROW
    [: LOAD-CHECKED-PREFIX ;]
       [: RESTORE-PREFIX-RAW
          PRE-RELEASE
-         NFILE-CACHE:RETURN-BORROW RESTORE-PREFIX-DISPATCH ;] finally ;
+         NDEF-CACHE:RETURN-BORROW RESTORE-PREFIX-DISPATCH ;] finally ;
 
 : LOAD-TARGET ( -- )
    BIND-SEED-PRODUCERS
@@ -607,12 +607,12 @@ variable PRE-ROWS-N
    s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
    TARGET-ENGINE-ROOT
    SOURCE-BIND @ execute
-   NFILE-CACHE:REBIND
+   NDEF-CACHE:REBIND
    1 TARGET-SOURCE-BOUND !
    s" src/habu/native-runtime.f"
       s" included" OPEN-TARGET-XT SOURCE-INCLUDED-XT execute
    PREFIX-COMPILER-FINISH
-   NFILE-CACHE:REBIND
+   NDEF-CACHE:REBIND
    SOURCE-TAIL @ execute ;
 
 : OPEN-FILE-AND-COMPILE ( -- )
@@ -621,7 +621,7 @@ variable PRE-ROWS-N
    align
    AOT-ARM:WINDOW-OPEN-PERSISTENT
    NSTR:WINDOW-OPEN
-   [: ['] LOAD-TARGET NFILE-CACHE:RUN ;] SOURCE-ROOT:WITH-CWD
+   [: ['] LOAD-TARGET NDEF-CACHE:RUN ;] SOURCE-ROOT:WITH-CWD
    AOT-ARM:WINDOW-CLOSE ;
 
 \ Resolve a target operation without compiling another definition or opening a
@@ -938,11 +938,11 @@ variable BUILD-INPUTS-PATH-U
    \ Snapshot preparation cleared the target root from the captured image.
    TARGET-ENGINE-ROOT
    s" engine"
-      [: NFILE-CACHE:REBIND
+      [: NDEF-CACHE:REBIND
          WRITER-INPUTS
          [: READ-SOURCE-WRITER WRITER-INPUTS-RETAIN ;]
             [: WRITER-INPUTS-RESET ;] finally ;]
-      NFILE-CACHE:WITH-QUIET ;
+      NDEF-CACHE:WITH-QUIET ;
 
 \ The owned capture is already frozen. Only this uncaptured writer selects
 \ the host JIT; a caller-owned outer native scope still refuses that selection.

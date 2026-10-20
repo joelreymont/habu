@@ -41,37 +41,6 @@ package NATIVE-FILE-STRIPPED-PATH-TEST
    OUT$ s" definition hits " CONTAINS? TTRUE
    OUT$ S\" definition hits 0\n" CONTAINS? TFALSE ;
 
-: USER-FILE ( ptr u8 n ptr u8 n -- )
-   {: mode:ptr modeu:n product:ptr productu:n :}
-   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
-   s" --load" ARG s" tools/native-unit-build.f" ARG s" --" ARG
-   mode modeu ARG
-   s" prefix.f" AT ARG s" a.f" AT ARG s" app.f" AT ARG
-   s" user.unit" AT ARG product productu AT ARG
-   ENGINE-CANDIDATE:PATH$ s" " CAPTURE SUCCESS ;
-
-: RUN-USER-IMAGE ( ptr u8 n -- )
-   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
-   AT s" MAIN" CAPTURE SUCCESS
-   OUT$ S\" 17\n29\n1\n1\n" T$= ;
-
-\ A cached accessor already contains its offset. Its declaration must also
-\ advance #USER before a source-loaded sibling allocates the next slot.
-: USER-SLOTS ( -- )
-   s" imported FILE user slots precede source-loaded slots" T-LABEL
-   s" prefix.f" S\" require src/lib/task.f\n" PUT
-   s" a.f" S\" require src/lib/task.f\npackage USER-A\npublic\nTASK:#USER CELL TASK:+USER SLOT drop\n;package\ns\q user A source ran\q type cr\n" PUT
-   s" app.f" S\" require a.f\n: MAIN ( -- ) 17 USER-A:SLOT ! ;\n" PUT
-   s" --export-file" s" user-initial-hb" USER-FILE
-   OUT$ s" user A source ran" CONTAINS? TTRUE
-   s" b.f" S\" require src/lib/task.f\npackage USER-B\npublic\nTASK:#USER CELL TASK:+USER SLOT drop\n;package\ns\q user B source ran\q type cr\n" PUT
-   s" app.f" S\" require a.f\nrequire b.f\n: MAIN ( -- )\n   17 USER-A:SLOT ! 29 USER-B:SLOT !\n   USER-A:SLOT @ . USER-B:SLOT @ .\n   USER-B:SLOT BYTE-VIEW USER-A:SLOT BYTE-VIEW - CELL = if 1 else 0 then .\n   TASK:#USER USER-A:SLOT BYTE-VIEW data-base BYTE-VIEW - - 2 cells = if 1 else 0 then . ;\n" PUT
-   s" --import-file" s" user-import-hb" USER-FILE
-   OUT$ s" native-build: file unit hit" CONTAINS? TTRUE
-   OUT$ s" user A source ran" CONTAINS? TFALSE
-   OUT$ s" user B source ran" CONTAINS? TTRUE
-   s" user-import-hb" RUN-USER-IMAGE ;
-
 public
 : MAIN ( -- )
    T-RESET
@@ -92,7 +61,6 @@ public
    s" app.f" S\" require src/lib/fs.f\nrequire src/lib/engine-id.f\nrequire src/lib/process-env.f\n: MAIN ( -- ) PROC-ENV-RESET 42 . ;\n" PUT
    s" env-cache" BUILD SUCCESS
    s" app-hb" CHECK-RUN
-   USER-SLOTS
    T-REPORT
    s" native file stripped artifacts: " type ROOT$ type cr ;
 ;package

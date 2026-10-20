@@ -89,6 +89,42 @@ including in unchanged files. Individual definitions reuse native emission and
 checker facts only while their construction dependencies still match; other
 definitions compile normally.
 
+Set `HABU_NATIVE_CACHE_DIAG=1` to print one stderr line immediately before each
+native definition falls back to compilation. A line begins
+`native-cache: compile-attempt`, gives the admission reason, and includes the
+pending name and source path when available. `eligible-cache-miss` means the
+definition passed the cache admission checks but no reusable object was found;
+other reasons name the first failed check. These lines count attempted compiler
+calls, so a failed compiler call can print a line without increasing the build
+report's `compiled` count.
+
+`native-cache: cache-store-refused` reports the guard that prevents an admitted
+candidate from being stored. `native-cache: ordered-dependency` reports the first
+dependency that makes construction depend on an ordered source action, including
+its name, dictionary ordinal and package when available. Global dependencies
+have no package field. These events explain storage refusals and do not count
+compiler calls.
+
+The same switch sends `native-file: dependency miss` to stderr with the first
+dependency check that prevents reuse. Ordinary cache misses remain quiet.
+
+Each cached definition is one `HBNUNIT2` native unit (`tools/native-unit-file.f`) carrying its
+dictionary records, code relocations, wordlists, retired dictionary rows, initialized DATA,
+writes to earlier DATA, typed pointer and execution-token cells, literals, require/provided
+paths, checker effects and recorded inputs. A reused definition restores that compilation
+state; the source actions around it run again. The current native codec stores AArch64 code.
+
+`test/native-file-state-e2e.f` and `test/native-file-types-e2e.f` build small applications
+cold and warm through the ordinary loader and compile a new downstream client against the warm
+cache. They cover DATA and earlier writes, created words, reopened packages, typed cells,
+literals, nominal and linear types, deferred words, TASK user slots, foreign functions and
+rejected typed clients. `test/native-file-retired-e2e.f` covers retired dictionary rows and
+reclaimed slots; `test/native-file-admission-e2e.f` the DATA admission refusals and the cells
+that survive warm reuse. The forms rows (`test/native-file-forms-*.f`) cover definition-free,
+namespace-only, global-word and repeated-include outcomes by inspecting the cached object's
+inner `HBNUNIT2` sections. Other rows cover aliases, stack values across includes and stripped
+images.
+
 Source that embeds a non-source file declares its absolute path with
 `BUILD-INPUT:FILE ( ptr u8 n -- )` before reading it
 (`require src/lib/build-input.f`). `BROWSER-HOST` declares its three page files
