@@ -1,5 +1,5 @@
-\ Shared native writer runner for the two fixpoint rows that probe its retained
-\ runtime and stage reader. The sandbox row does not load or settle this image.
+\ Native writer runner for tools/build-fixpoint-source-test.f, which probes its
+\ retained runtime. The sandbox row does not load or settle this image.
 require tools/build-fixpoint-test-lib.f
 require test/fixture-writer.f
 

@@ -487,9 +487,9 @@ holds one source stream. `SOURCE-ARENA-CAP` is the read allowance:
   `DYNAMIC-BUFFER` byte row that doubles from 64 KiB until the source fits. It
   is not the engine input arena and has no fixed bound; the code window refuses
   a source an image cannot carry. It learns the size by reading because
-  `hb-stage0`, the Gforth-built engine that runs it first, has no `stat64`. A
-  fixture-writer regression reads a source one byte past `SOURCE-ARENA-CAP`
-  whole.
+  `hb-stage0`, the Gforth-built engine that runs it first, has no `stat64`.
+  `test/cold-runtime-test.f` CR-STAGE-BUILDS pads the source one byte past
+  `SOURCE-ARENA-CAP` and checks the built engine carries it whole.
 
 `SOURCE-ARENA-CAP` is the shared read capacity. Native layout and Gforth
 recovery carry matching owner tokens. The assembler image window budgets one

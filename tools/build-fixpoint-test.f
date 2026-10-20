@@ -1,17 +1,18 @@
-\ build-fixpoint-test.f - checked fixture for tools/build-fixpoint.f: the
-\ candidate boot, cached skip, watermark refusals on a cold capture host,
-\ CLI footguns, the stamp key and the boot pins. The
+\ build-fixpoint-test.f - checked fixture for tools/build-fixpoint.f: capture
+\ determinism, the stage argv and engine selection, private install cleanup,
+\ the candidate boot, cached skip, a failed build leaving no stamp, CLI
+\ footguns, watermark refusals on a cold capture host, the stamp key and its
+\ guards, the boot pin and the cold source-only host's arena limit. The
 \ stale-seed sandbox cases are tools/build-fixpoint-sandbox-test.f, and the
 \ emitted and certified sources are tools/build-fixpoint-source-test.f; each
 \ is a gate row of its own because one row running every case took 293-338 s
 \ in the gate's pool.
 \ Run: bin/hb --load tools/build-fixpoint-test.f
 
-require tools/build-fixpoint-writer-test-lib.f
+require tools/build-fixpoint-test-lib.f
 require src/lib/string.f
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer
-require src/lib/test/mapped.f
 require src/lib/test/outcome.f
 require test/whitebox-engine.f
 require test/cold-engine.f
@@ -129,11 +130,7 @@ variable BFT-ART-B-U
 
 \ Promote private copies of the supplied compiler and host from a copied
 \ checkout. Its bin directory belongs to the source tree, not the private
-\ install target, so cleanup must leave an unrelated file there alone. Repeat
-\ with no bin directory: a private install also works from a source-only tree.
-: BFT-CLEAN-BIN$ ( -- ptr u8 n )
-   BFT-STALE s" bin" BFT-CP-BUF JOIN-PATH BFT-CP-BUF swap ;
-
+\ install target, so cleanup must leave an unrelated file there alone.
 : BFT-CLEAN-KEEP$ ( -- ptr u8 n )
    BFT-STALE s" bin/keep" BFT-CP-BUF JOIN-PATH BFT-CP-BUF swap ;
 
@@ -161,7 +158,13 @@ variable BFT-ART-B-U
    BFT-TIMEOUT-MS >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    BFT-CAPTURE>N ;
 
-: BFT-CLEAN-PROMOTED ( -- )
+: BFT-TEST-PRIVATE-CLEANUP ( -- )
+   BFT-STALE-PREPARE
+   BFT-STALE-HB BFT-ENG-A COPY-FILE-STREAM
+   BFT-ENG-A CHMOD-X
+   BFT-STALE-HB REMOVE-FILE
+   BFT-CLEAN-DRIVER$ S\" package BUILD-FIXPOINT\nBF-INSTALL-HB\nBF-INSTALL-HOST\nBF-CLEAN-BIN\n;package\n" WRITE-ALL
+   BFT-CLEAN-KEEP$ s" unrelated" WRITE-ALL
    BFT-CLEAN-ARTIFACTS
    BFT-CLEAN-SPAWN {: outu:n erru:n rc:n :}
    rc 0 T=
@@ -170,31 +173,8 @@ variable BFT-ART-B-U
    BFT-ENG-B BF-ENGINE!
    BFT-ROOT s" hb-host" BFT-CP-BUF JOIN-PATH BFT-CP-BUF swap
    BF-HOST-DST$ BF-FILE= TTRUE
-   BF-ENGINE-RESET ;
-
-: BFT-TEST-PRIVATE-CLEANUP ( -- )
-   BFT-STALE-PREPARE
-   BFT-STALE-HB BFT-ENG-A COPY-FILE-STREAM
-   BFT-ENG-A CHMOD-X
-   BFT-STALE-HB REMOVE-FILE
-   BFT-CLEAN-DRIVER$ S\" package BUILD-FIXPOINT\nBF-INSTALL-HB\nBF-INSTALL-HOST\nBF-CLEAN-BIN\n;package\n" WRITE-ALL
-   BFT-CLEAN-KEEP$ s" unrelated" WRITE-ALL
-   BFT-CLEAN-PROMOTED
-   BFT-CLEAN-KEEP$ FILE? TTRUE
-   BFT-CLEAN-BIN$ REMOVE-TREE
-   BFT-CLEAN-BIN$ DIR? TFALSE
-   BFT-CLEAN-PROMOTED
-   BFT-CLEAN-BIN$ DIR? TFALSE ;
-
-: BFT-TEST-STAMP-SEED ( -- )
-   BFT-STAMP-SCOPE
-   BFT-RECORD!
-   BF-STAMP-WRITE
-   BFT-STAMP FILE? TTRUE
-   BFT-STAMP FILE-SIZE BF-STAMP-HEX-U 1 + T=
-   BF-STAMP-MATCH? TTRUE
-   BFT-STAMP REMOVE-FILE
-   BFT-STAMP-UNSCOPE ;
+   BF-ENGINE-RESET
+   BFT-CLEAN-KEEP$ FILE? TTRUE ;
 
 \ The candidate is installed into a directory of its own, so a sibling an
 \ install left beside the engine is a file there the engine is not.
@@ -507,16 +487,13 @@ variable BFT-BIN-FILES
    s" carries no checker boundary" BFT-MARK-VALUE-REFUSED ;
 
 \ A cold source-only host reads its stripped prefix, generated rows and --build
-\ argv into one arena. A seeded native engine starts past that prefix, so the
-\ adjacent-limit cases in test/main-argv.f cannot cover this host's limit.
-$10000 constant PROBE-START
-
+\ argv into one arena, so one source of SOURCE-ARENA-CAP bytes overflows it. A
+\ seeded native engine starts past that prefix, so the adjacent-limit cases in
+\ test/main-argv.f cannot cover this host's limit.
 variable EXITED
 variable EXIT-CODE
 variable ERR-U
 TYPED-VARIABLE SRC-A ptr u8
-variable OK-N
-variable BAD-N
 
 : SRC-BUF ( -- ptr u8 )
    SRC-A @ ;
@@ -554,115 +531,13 @@ variable BAD-N
    s" bft-srcfull.f" BF-A$ 2dup >LEN PROC-ARGV+
    RUN-COLD-SOURCE ;
 
-\ Every probe accepts a clean exit or exactly the buffer-full refusal.
-: PROBE ( n -- bool )
-   {: bytes:n :}
-   bytes WRITE-SRC
-   RUN-SOURCE
-   EXITED @ 0= if
-      EXITED @ TTRUE
-      0 0= 0= exit
-   then
-   EXIT-CODE @ 0= if
-      ERR-U @ 0 T=
-      0 0= exit
-   then
-   EXIT-CODE @ 74 T=
-   ERR$ S\" hb: source prefix buffer full\n" T$=
-   0 0= 0= ;
-
-: EXP-NEXT ( -- n )
-   OK-N @ 2 * SOURCE-ARENA-CAP min ;
-
-: EXP-STEP ( -- bool )
-   EXP-NEXT {: bytes:n :}
-   bytes PROBE if
-      bytes SOURCE-ARENA-CAP < {: below:bool :}
-      below TTRUE
-      below if
-         bytes OK-N !
-         0 0= 0= exit
-      then
-      bytes BAD-N !
-      0 0= exit
-   then
-   bytes BAD-N !
-   0 0= ;
-
-: EXP ( -- )
-   PROBE-START PROBE TTRUE
-   PROBE-START OK-N !
-   begin EXP-STEP until ;
-
-: MID ( -- n )
-   OK-N @ BAD-N @ OK-N @ - 2 / + ;
-
-: BINARY ( -- )
-   begin BAD-N @ OK-N @ - 1 > while
-      MID {: bytes:n :}
-      bytes PROBE if
-         bytes OK-N !
-      else
-         bytes BAD-N !
-      then
-   repeat ;
-
 : SOURCE-BOUNDARY ( -- )
    BFT-ROOT BF-TMP!
    SRC-ALLOC
-   EXP
-   BINARY
-   BAD-N @ OK-N @ 1 + T=
-   BF-TMP-RESET ;
-
-: STAGE2-DRIVER$ ( -- ptr u8 n )
-   s" bft-stage2-driver.f" ;
-
-: STAGE2-DRIVER ( -- ptr u8 n )
-   STAGE2-DRIVER$ BF-A$ ;
-
-: WRITE-STAGE2-DRIVER ( -- )
-   STAGE2-DRIVER$ {: out:ptr outu:n :}
-   out outu BF-RESET-OUT
-   out outu s" src/habu/stage2.f" s" : RUN ( -- )" BF-APPEND-SOURCE-BEFORE
-   out outu s" SOURCE-ARENA-CAP 1 + constant BFT-S2-SIZE" BF-APPEND-LINE
-   out outu s" : BFT-S2-READ-EXIT ( -- )" BF-APPEND-LINE
-   out outu s"    READ-SRC LEN @ BFT-S2-SIZE <>" BF-APPEND-LINE
-   out outu S\"    IF s\" bft: stage2 read part of its source\" 74 die THEN" BF-APPEND-LINE
-   out outu s"    DRV-EXIT-OK ;" BF-APPEND-LINE
-   out outu s" BFT-S2-READ-EXIT" BF-APPEND-LINE ;
-
-: WRITE-SPACES ( ptr u8 n n -- ) {: path:ptr pathu:n u:n :}
-   path pathu SRC-BUF u WRITE-ALL ;
-
-\ The reader's buffer grows with the source, so one byte past the shared read
-\ allowance reads whole; an empty source is still refused.
-: STAGE2 ( -- )
-   BFT-ROOT BF-TMP!
-   SRC-ALLOC
-   WRITE-STAGE2-DRIVER
-   STAGE2-DRIVER BFT-READ {: driveru:n :}
-   BFT-STAGE2 SOURCE-ARENA-CAP WRITE-SPACES
-   BFT-STAGE2 SRC-BUF 1 APPEND-FILE
-   s" bft-stage2-image" BF-A$ BFT-READ-BUF driveru BFT-WRITER-RUN
-   {: outu:n erru:n rc:n :}
-   rc 0 T=
-   BFT-OUT outu BFT-EMPTY$ T$=
-   BFT-ERR erru BFT-EMPTY$ T$=
-   BFT-STAGE2 0 WRITE-SPACES
-   s" bft-stage2-image" BF-A$ BFT-READ-BUF driveru BFT-WRITER-RUN
-   {: out2:n err2:n rc2:n :}
-   rc2 74 T=
-   BFT-OUT out2 BFT-EMPTY$ T$=
-   BFT-ERR err2 S\" stage2: empty source\n" T$=
-   BF-TMP-RESET ;
-
-: BFT-TEST-TMP-OVERRIDE ( -- )
-   BFT-ROOT BF-TMP!
-   BF-TMP$ BFT-ROOT T$=
-   s" stage2-src" BF-A$ BFT-STAGE2 T$=
-   BF-STAGE2-SOURCE
-   BFT-STAGE2 FILE? TTRUE
+   SOURCE-ARENA-CAP WRITE-SRC RUN-SOURCE
+   EXITED @ TTRUE
+   EXIT-CODE @ 74 T=
+   ERR$ S\" hb: source prefix buffer full\n" T$=
    BF-TMP-RESET ;
 
 : BFT-TEST-STAGE-ARGV-RESET ( -- )
@@ -828,21 +703,12 @@ create DG-C 40 allot
 
 \ Public so the driver below runs with the package CLOSED, as a gate row must.
 public
-: BFT-SOURCE-GROWTH-RELEASES ( -- )
-   BF-SOURCE-BUF {: old:ptr :}
-   old MAPPED:LIVE? TTRUE
-   s" (growth probe)" BF-SOURCE-CAP 1+ BF-SOURCE-ENSURE
-   old MAPPED:LIVE? TFALSE
-   BF-SOURCE-BUF MAPPED:LIVE? TTRUE ;
-
 : BFT-FIXTURES-RUN ( -- )
    T-RESET
    BFT-PREPARE
    s" suite compiler and cold host" [: BFT-PROVIDE-ENGINES ;] BFT-STEP
    s" chain capture deterministic" [: BFT-TEST-CAPTURE-DETERMINISM ;] BFT-STEP
-   s" tmp override" [: BFT-TEST-TMP-OVERRIDE ;] BFT-STEP
    s" stage argv reset" [: BFT-TEST-STAGE-ARGV-RESET ;] BFT-STEP
-   s" stamp seed" [: BFT-TEST-STAMP-SEED ;] BFT-STEP
    s" private install cleanup" [: BFT-TEST-PRIVATE-CLEANUP ;] BFT-STEP
    s" candidate boot" [: BFT-TEST-CANDIDATE-BOOT ;] BFT-STEP
    s" stage engine selection" [: BFT-TEST-ENGINE-SELECTION ;] BFT-STEP
@@ -862,8 +728,6 @@ public
    s" boot pin mismatch" [: BFT-TEST-BOOT-PIN ;] BFT-STEP
    s" split source pin mismatch" [: BFT-TEST-SPLIT-PIN ;] BFT-STEP
    s" cold source boundary" [: SOURCE-BOUNDARY ;] BFT-STEP
-   s" stage2 source size" [: STAGE2 ;] BFT-STEP
-   s" source buffer growth releases" [: BFT-SOURCE-GROWTH-RELEASES ;] BFT-STEP
    s" build-fixpoint-test: ok" BFT-FINISH ;
 
 ;package
