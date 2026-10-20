@@ -81,8 +81,8 @@ variable IMAGE-U
    s" PASS: a task thread and a callback thread" type cr ;
 
 \ The stripped application's own startup registers the alternate stack before
-\ it installs the handler (src/habu/aot-lib.f EMIT-ENTRY). A private cache root,
-\ as test/stripped-image.f uses: the maker links this subject on every run.
+\ it installs the handler (src/habu/aot-lib.f EMIT-ENTRY). The fresh subject
+\ path has no observed-input index, so hb-build links it with the shared maker.
 : STRIPPED ( -- )
    SUBJECT$ S\" TRUSTED: R ( -- ) recurse ;\n: MAIN ( -- ) R ;\n" WRITE-ALL
    GE-HB-RESET
@@ -91,7 +91,6 @@ variable IMAGE-U
    s" --" GE-ARG+ SUBJECT$ GE-ARG+
    s" -o" GE-ARG+ IMAGE$ GE-ARG+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN GT-ROOT >LEN PROC-ENV+
    ENGINE-CANDIDATE:PATH$ BUILD-MS GE-RUN-ENV
    s" stripped application build" GE-EXPECT-OK
    GE-HB-RESET

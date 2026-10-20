@@ -51,7 +51,6 @@ variable IMAGE-U
    s" --" GE-ARG+ SUBJECT$ GE-ARG+
    s" -o" GE-ARG+ IMAGE$ GE-ARG+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN GT-ROOT >LEN PROC-ENV+
    ENGINE-CANDIDATE:PATH$ TIMEOUT-MS GE-RUN-ENV
    s" large pooled image build" GE-EXPECT-OK
    IMAGE$ EXECUTABLE? 0= if s" large pooled image missing" GE-FAIL then ;

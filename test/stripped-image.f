@@ -60,8 +60,8 @@ variable RETURN-TREE-U
    S\"    STRIPPED-IMAGE-SUBJECT:UNMAP ;\n" SB-APPEND
    SUBJECT$ SB$ WRITE-ALL ;
 
-\ A private cache root, as the entry rows use: the maker links this subject on
-\ every run instead of hb-build restoring an artifact by its content key.
+\ The fresh subject path has no observed-input index, so hb-build links it
+\ with the shared maker instead of restoring an artifact.
 : BUILD ( -- )
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
@@ -69,7 +69,6 @@ variable RETURN-TREE-U
    s" --" GE-ARG+ SUBJECT$ GE-ARG+
    s" -o" GE-ARG+ IMAGE$ GE-ARG+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN GT-ROOT >LEN PROC-ENV+
    ENGINE-CANDIDATE:PATH$ TIMEOUT-MS GE-RUN-ENV
    s" stripped image build" GE-EXPECT-OK
    GT-ERR$ nip 0<> if s" stripped image build stderr" GE-FAIL then
