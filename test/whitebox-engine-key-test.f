@@ -1,6 +1,7 @@
-\ A whitebox request validates the source the engine builder actually consumes.
-\ Reuse one private tree and cache, edit a boot-prefix word, then run the supplied
-\ engine. A stale wrapper cache would keep printing 41 after the edit to 42.
+\ Exercise direct whitebox publication, private-copy execution and reuse.
+\ The unified builder owns source invalidation; native-build-edit-e2e.f covers
+\ changed-source runtime behavior and cached/cold equivalence. Here an unloaded
+\ file preserves its artifact, and build failures leave no supplier or product.
 \ Run: bin/hb --load test/whitebox-engine-key-test.f
 
 require src/lib/test.f
@@ -108,10 +109,6 @@ variable RC
    ORIGINAL-PREFIX
    PREFIX$ S\" \n: WHITEBOX-KEY-PROBE ( -- n ) 41 ;\n" APPEND-FILE ;
 
-: PREFIX-42 ( -- )
-   ORIGINAL-PREFIX
-   PREFIX$ S\" \n: WHITEBOX-KEY-PROBE ( -- n ) 42 ;\n" APPEND-FILE ;
-
 : NO-SUPPLIER ( ptr u8 n -- )
    s" hb-whitebox-" STARTS-WITH? TFALSE ;
 
@@ -161,9 +158,6 @@ public
    PROVIDE
    OUT OUT-U @ s" engine artifact hit" CONTAINS? TTRUE
    S\" 41\n\n" RUN-IMAGE
-   s" a prefix edit changes the next supplied engine's behavior" T-LABEL
-   ROOT$ s" src/core/internal-mark.f" PREFIX JOIN-PATH PREFIX-U !
-   PREFIX-42 PROVIDE S\" 42\n\n" RUN-IMAGE
    s" and bin/hb was never written" T-LABEL
    ENG-B ENGINE-DIGEST!
    ENG-A DIGEST-LEN ENG-B DIGEST-LEN T$=
