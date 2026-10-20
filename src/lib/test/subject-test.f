@@ -79,6 +79,11 @@ variable SAVED-REPLH
    s" probe program" s" probe stdout" s" probe stderr" OUTCOME:TIMEOUT
    9 T-OUTCOME-SIGNALED= ;
 
+: EXIT-MISS-PROBE ( -- )
+   s" exit-miss probe" T-LABEL
+   s" probe program" s" probe stdout" s" probe stderr" 70 OUTCOME:EXITED
+   0 T-OUTCOME-EXITED= ;
+
 : SHOWS ( n ptr u8 n -- ) {: outu:n want:ptr wantu:n :}
    OUT outu want wantu CONTAINS? TTRUE ;
 
@@ -97,6 +102,16 @@ variable SAVED-REPLH
    s" a timed-out signal assert reports its case and output" T-LABEL
    s" package SUBJECT-TEST SIGNALED-PROBE ;package" TIMEOUT-REPORT ;
 
+\ A failed assertion does not throw, so the child exits 0.
+: EXIT-MISS-REPORTS ( -- )
+   s" an exit assert that misses reports its case and output" T-LABEL
+   s" package SUBJECT-TEST EXIT-MISS-PROBE ;package" 0 EXITS drop {: outu:n :}
+   outu s" case: exit-miss probe" SHOWS
+   outu s" assert: expected 0 got 70" SHOWS
+   outu s" probe program" SHOWS
+   outu s" probe stdout" SHOWS
+   outu s" probe stderr" SHOWS ;
+
 public
 
 : TEST ( -- )
@@ -107,6 +122,7 @@ public
    PARENT-HANDLERS
    TIMED
    TIMEOUT-REPORTS
+   EXIT-MISS-REPORTS
    T-REPORT
    s" subject-test: ok" type cr ;
 

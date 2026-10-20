@@ -97,6 +97,13 @@ public
    out outcap err errcap PROC-RUN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME ;
 
+\ The program a child ran and the stdout and stderr its capture drained.
+: SHOW ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n :}
+   s" program:" type cr src srcu type cr
+   s" stdout:" type cr out outu type cr
+   s" stderr:" type cr err erru type cr ;
+
 \ The timeout arm of a caller that MATCHes a RUN outcome itself. The capture
 \ drained what the child printed before its deadline, and that is the only
 \ evidence of where it stopped: print the program the child ran, its stdout and
@@ -104,9 +111,7 @@ public
 : TIMED-OUT ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n :}
    s" timeout: the child passed its deadline" type cr
-   s" program:" type cr src srcu type cr
-   s" stdout:" type cr out outu type cr
-   s" stderr:" type cr err erru type cr
+   src srcu out outu err erru SHOW
    E-PROC-TIMEOUT throw ;
 
 \ A throw code cannot cross a process boundary, so a child that met a deadline
