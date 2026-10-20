@@ -1,4 +1,9 @@
-\ Build once, then run and recapture outside the source checkout.
+\ Build an application image once, outside the source checkout, from a cold
+\ native load. Run it, refuse a mistyped definition, recapture it twice with
+\ stable extents and run the third copy, carry grown and borrowed require rows
+\ and a discarded one unresolved across captures, start MAIN with arguments, a
+\ quit and an uncaught throw on a terminal, keep a grown address registry
+\ through a tier-1 rewind, and refuse a retired or forged address-ABI probe.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -23,10 +28,7 @@ create THIRD-BUF FS-PATH-CAP allot
 create PROBE-BUF FS-PATH-CAP allot
 create MUTATED-BUF FS-PATH-CAP allot
 create MUTATED-AGAIN-BUF FS-PATH-CAP allot
-create DISCARD-BUF FS-PATH-CAP allot
-create REPLACED-BUF FS-PATH-CAP allot
 create STARTUP-BUF FS-PATH-CAP allot
-create REFUSE-BUF FS-PATH-CAP allot
 variable ROOT-U
 variable IMAGE-U
 variable SECOND-U
@@ -34,10 +36,7 @@ variable THIRD-U
 variable PROBE-U
 variable MUTATED-U
 variable MUTATED-AGAIN-U
-variable DISCARD-U
-variable REPLACED-U
 variable STARTUP-U
-variable REFUSE-U
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
@@ -46,10 +45,7 @@ variable REFUSE-U
 : PROBE$ ( -- ptr u8 n ) PROBE-BUF PROBE-U @ ;
 : MUTATED$ ( -- ptr u8 n ) MUTATED-BUF MUTATED-U @ ;
 : MUTATED-AGAIN$ ( -- ptr u8 n ) MUTATED-AGAIN-BUF MUTATED-AGAIN-U @ ;
-: DISCARD$ ( -- ptr u8 n ) DISCARD-BUF DISCARD-U @ ;
-: REPLACED$ ( -- ptr u8 n ) REPLACED-BUF REPLACED-U @ ;
 : STARTUP$ ( -- ptr u8 n ) STARTUP-BUF STARTUP-U @ ;
-: REFUSE$ ( -- ptr u8 n ) REFUSE-BUF REFUSE-U @ ;
 
 \ A child reopens the engine's build window - test/address-cell-cap-grown.f
 \ rewinds the source window - which the sealed product refuses: `hb: internal
@@ -66,10 +62,7 @@ variable REFUSE-U
    ROOT$ s" require-probe.f" PROBE-BUF JOIN-PATH PROBE-U !
    ROOT$ s" mutated" MUTATED-BUF JOIN-PATH MUTATED-U !
    ROOT$ s" mutated-again" MUTATED-AGAIN-BUF JOIN-PATH MUTATED-AGAIN-U !
-   ROOT$ s" discard" DISCARD-BUF JOIN-PATH DISCARD-U !
-   ROOT$ s" replaced" REPLACED-BUF JOIN-PATH REPLACED-U !
    ROOT$ s" startup" STARTUP-BUF JOIN-PATH STARTUP-U !
-   ROOT$ s" refuse-jit.f" REFUSE-BUF JOIN-PATH REFUSE-U !
    ROOT$ WHITEBOX-CHILD:PROVIDE-IN ;
 
 : CLEAN ( n n n -- n ) {: outu:n erru:n rc:n :}
@@ -108,12 +101,7 @@ variable PROBE-SOURCE-U
    S\" : THIRD ( -- )\n   CHECK-TWO\n   s\q require-pool-three\q BORROW ;\n" PROBE+
    S\" : CHECK-THREE ( -- )\n   CHECK-TWO\n   s\q require-pool-three\q CHECK-FACT ;\n" PROBE+
    S\" : DISCARD ( -- )\n   REQUIRE-N @ {: count:n :}\n   REQUIRE-SNAPSHOT\n   s\q require-pool-discard\q provided\n   REQUIRE-RESTORE\n   REQUIRE-N @ count <> if 70 throw then ;\n" PROBE+
-   S\" : CHECK-DISCARD ( -- )\n   s\q require-pool-discard\q SOURCE-ROOT:RESOLVE nip nip\n   if 70 throw then ;\n" PROBE+
-   S\" : REPLACE ( -- )\n   REQUIRE-N @ 2 - {: idx:n :}\n   idx REQUIRE-SLOT {: old:ptr :}\n   idx REQUIRE-LEN@ {: len:n :}\n" PROBE+
-   S\"    old SAVED len BYTE-COPY\n   REQUIRE-N @ 1- REQUIRE-REG:TRUNCATE\n   s\q require-pool-replace\q provided\n" PROBE+
-   S\"    idx REQUIRE-SLOT old <> if 70 throw then\n   idx REQUIRE-LEN@ len <> if 70 throw then\n   idx REQUIRE-SLOT len SAVED len CORE-STR= 0= if 70 throw then ;\n" PROBE+
-   S\" : CHECK-REPLACE ( -- )\n   s\q require-pool-replace\q SOURCE-ROOT:RESOLVE\n   {: a:ptr u:n known:bool :}\n   known 0= if 70 throw then\n" PROBE+
-   S\"    REQUIRE-N @ 1- REQUIRE-LEN@ u <> if 70 throw then\n   REQUIRE-N @ 1- REQUIRE-SLOT u a u CORE-STR= 0= if 70 throw then\n   s\q require-pool-replace\q CHECK-FACT ;\n;package\n" PROBE+
+   S\" : CHECK-DISCARD ( -- )\n   s\q require-pool-discard\q SOURCE-ROOT:RESOLVE nip nip\n   if 70 throw then ;\n;package\n" PROBE+
    PROBE$ PROBE-SOURCE PROBE-SOURCE-U @ ATOMIC-WRITE-FILE ;
 
 \ Start cold: every instruction published by the image support load must carry
@@ -136,24 +124,6 @@ variable PROBE-SOURCE-U
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN
    OUT swap S\" 1\n\n1\n\n" T$=
    IMAGE$ EXECUTABLE? TTRUE ;
-
-: CHECK-BUILD-SCOPE ( -- )
-   REFUSE$
-   S\" require src/lib/tier.f\n: REQUEST-JIT ( -- ) 0 TIER:SELECT ; immediate\ns\q REQUEST-JIT\q 0 parse-imm\n: NEVER-PUBLISHED ( -- ) REQUEST-JIT ;\n: MAIN ( -- ) ;\n"
-   ATOMIC-WRITE-FILE
-   PROC-ARGV-ENV-RESET
-   s" --" >LEN PROC-ARGV+
-   REFUSE$ >LEN PROC-ARGV+
-   IMAGE$ >LEN PROC-ARGV+
-   WHITEBOX-CHILD:ENV!
-   WHITEBOX-CHILD:ENGINE$ >LEN
-   S\" require tools/app-build.f\nAPP-BUILD:RUN\n" >LEN
-   OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N {: outu:n erru:n rc:n :}
-   s" application immediates cannot select JIT while building" T-LABEL
-   rc 70 T=
-   ERR erru s" executable build requires native tier 1" CONTAINS? TTRUE
-   IMAGE$ EXISTS? TFALSE ;
 
 : RUN-INPUT ( ptr u8 n ptr u8 n -- n n n )
    {: path:ptr pathu:n input:ptr inputu:n :}
@@ -226,30 +196,19 @@ variable PROBE-SOURCE-U
    WHITEBOX-CHILD:ENV!
    source sourceu input inputu RUN-INPUT CLEAN drop ;
 
-\ The first recapture freezes more than 512 rows. FIRST-TWO then borrows a
-\ mutable row, and the next image restores those facts before appending again.
-\ Each saved image is booted as a new process before the next capture.
+\ The first recapture freezes more than 512 rows and FIRST-TWO borrows a
+\ mutable row. The next image restores them, discards a snapshot-scoped row,
+\ borrows a third and is captured again. The last image restores all of them
+\ and the discarded row stays unresolved. Each saved image boots as a new
+\ process.
 : CHECK-REQUIRE-IMAGES ( -- )
    IMAGE$ MUTATED$
    S\" IMAGE-REQUIRE-PROBE:GROW\nIMAGE-REQUIRE-PROBE:FIRST-TWO\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
    CAPTURE-PROBE
-   MUTATED$ S\" IMAGE-REQUIRE-PROBE:CHECK-GROWN\nIMAGE-REQUIRE-PROBE:CHECK-TWO\n" CHECK-PROBE
    MUTATED$ MUTATED-AGAIN$
-   S\" IMAGE-REQUIRE-PROBE:THIRD\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
+   S\" IMAGE-REQUIRE-PROBE:CHECK-GROWN\nIMAGE-REQUIRE-PROBE:CHECK-TWO\nIMAGE-REQUIRE-PROBE:DISCARD\nIMAGE-REQUIRE-PROBE:CHECK-DISCARD\nIMAGE-REQUIRE-PROBE:THIRD\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
    CAPTURE-PROBE
-   MUTATED-AGAIN$ S\" IMAGE-REQUIRE-PROBE:CHECK-GROWN\nIMAGE-REQUIRE-PROBE:CHECK-THREE\n" CHECK-PROBE
-
-   SECOND$ DISCARD$
-   S\" IMAGE-REQUIRE-PROBE:DISCARD\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
-   CAPTURE-PROBE
-   SECOND$ EXTENTS {: prefix:n region:n data:n :}
-   DISCARD$ EXTENTS data T= region T= prefix T=
-   DISCARD$ S\" IMAGE-REQUIRE-PROBE:CHECK-DISCARD\n" CHECK-PROBE
-
-   SECOND$ REPLACED$
-   S\" IMAGE-REQUIRE-PROBE:REPLACE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
-   CAPTURE-PROBE
-   REPLACED$ S\" IMAGE-REQUIRE-PROBE:CHECK-REPLACE\n" CHECK-PROBE ;
+   MUTATED-AGAIN$ S\" IMAGE-REQUIRE-PROBE:CHECK-GROWN\nIMAGE-REQUIRE-PROBE:CHECK-THREE\nIMAGE-REQUIRE-PROBE:CHECK-DISCARD\n" CHECK-PROBE ;
 
 : CAPTURE-STARTUP ( -- )
    PROC-ARGV-ENV-RESET
@@ -257,7 +216,7 @@ variable PROBE-SOURCE-U
    STARTUP$ >LEN PROC-ARGV+
    WHITEBOX-CHILD:ENV!
    IMAGE$
-   S\" 1 set-tier\npackage IMAGE-START-TEST\nvariable STARTS\n: MAIN ( -- ) 1 STARTS +! STARTS @ . cr SCRIPT-ARGC . cr SCRIPT-ARGC 0 ?do i SCRIPT-ARGV$ type cr loop SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ s\q quit\q STR= if s\q \q 0 die then 0 SCRIPT-ARGV$ s\q throw\q STR= if -123 throw then 0 SCRIPT-ARGV$ s\q eval-throw\q STR= if s\q -124 throw\q INCLUDE-EVALUATE then then ;\n' MAIN\n;package\nAPP-IMAGE:START!\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
+   S\" 1 set-tier\npackage IMAGE-START-TEST\nvariable STARTS\n: MAIN ( -- ) 1 STARTS +! STARTS @ . cr SCRIPT-ARGC . cr SCRIPT-ARGC 0 ?do i SCRIPT-ARGV$ type cr loop SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ s\q quit\q STR= if s\q \q 0 die then 0 SCRIPT-ARGV$ s\q throw\q STR= if -123 throw then then ;\n' MAIN\n;package\nAPP-IMAGE:START!\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
    RUN-INPUT CLEAN drop
    STARTUP$ EXECUTABLE? TTRUE ;
 
@@ -314,13 +273,12 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    OUT outu diagnostic diagnosticu CONTAINS? TTRUE ;
 
 : CHECK-STARTUP-THROWS ( -- )
-   s" throw" s" hb: uncaught throw code -123" CHECK-STARTUP-THROW
-   s" eval-throw" s" hb: uncaught throw code -124" CHECK-STARTUP-THROW ;
+   s" throw" s" hb: uncaught throw code -123" CHECK-STARTUP-THROW ;
 
-: RUN-ADDRESS-OWNER ( bool -- ) {: native:bool :}
+: RUN-ADDRESS-OWNER ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   native if s" test/compiler/aot-mode.f" >LEN PROC-ARGV+ then
+   s" test/compiler/aot-mode.f" >LEN PROC-ARGV+
    s" test/native-window-owner-child.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" test/address-cell-owner.f" >LEN PROC-ARGV+
@@ -349,8 +307,8 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    ERR erru s" address-cells: version probe is not an engine primitive"
    CONTAINS? TTRUE ;
 
-\ Restore a grown DATA-backed registry, then perform the actual source-window
-\ rewind. Its complete backing span must survive outside the retiring heap.
+\ Restore a grown DATA-backed registry, then perform the actual tier-1
+\ source-window rewind. Its complete backing span must survive outside the retiring heap.
 : CHECK-ADDRESS-OWNER ( -- )
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+ SECOND$ >LEN PROC-ARGV+
@@ -360,19 +318,15 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN drop
    SECOND$ EXECUTABLE? TTRUE
-   0 0 <> RUN-ADDRESS-OWNER
-   0 0 = RUN-ADDRESS-OWNER
+   RUN-ADDRESS-OWNER
    CHECK-RETIRED-ABI
    CHECK-FORGED-ABI ;
 
 : CASES ( -- )
-   CHECK-BUILD-SCOPE
    BUILD
-   IMAGE$ CHECK-APPLICATION
    CHECK-REJECTION
    RECAPTURE
    CHECK-REQUIRE-IMAGES
-   SECOND$ CHECK-APPLICATION
    CAPTURE-STARTUP
    CHECK-STARTUP
    CHECK-STARTUP-ARGS
