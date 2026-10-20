@@ -5344,8 +5344,7 @@ variable SIGSCOPE-U
 \ THE LONGEST NAME. A definer captures a word's name and one separator into the
 \ definition's body text before it writes the record, so `:` defines a name of
 \ BODYBUF-CAP - 1 bytes and refuses one byte more, rc 71. BODYBUF-CAP is
-\ src/habu/layout.f's, which loads after this file, so it is restated here and
-\ test/aot-sig-pool-suite.f holds the two equal.
+\ src/habu/layout.f's, which loads after this file, so it is restated here.
 8000 constant CK-BODYBUF-CAP               \ = layout.f BODYBUF-CAP
 CK-BODYBUF-CAP 1 - constant CK-NAME-MAX
 
@@ -6808,12 +6807,6 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    rec1 1 - DL-SEEK {: i:n :}
    i DL-N @ >= IF 0 RES-FALSE EXIT THEN
    i  i DL-ROW-OFF rec1 1 - = ;
-
-\ The name record REC1's declaration wrote, borrowed until the next row: false
-\ when no row locates the record.
-: CHECKER-REC-DECL-NAME ( n -- ptr u8 n bool )
-   DL-ROW-OF IF DL-NAME$ RES-TRUE EXIT THEN
-   drop NULL-PTR BYTE-VIEW 0 RES-FALSE ;
 
 : CHECKER-REC-DECL-AT ( n -- n n n bool )
    DL-ROW-OF IF DL-AT EXIT THEN
@@ -8555,8 +8548,7 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
 \ is overwritten by the very next append. Walking the chain alone therefore
 \ indexed the dead region and answered a symbol's newest record with an offset
 \ the store no longer holds - which the next definition of that name reads as a
-\ duplicate definition (measured: test/verify-prim-test.f's cold differential,
-\ rc 78 on `CAST: >IMG`).
+\ duplicate definition (measured: rc 78 on `CAST: >IMG`).
 \ THE LINEAR SPECIFICATION SHARED THE BLIND SPOT, which is why nothing caught it:
 \ USIG-NEWEST-LINEAR walked the same terminator, so the differential in
 \ test/checker-scan-index-suite.f compared two walks that agreed on the same wrong
@@ -13380,7 +13372,6 @@ variable EFFQ-SAVE-DOUT
 : EFFECT-DIN-N ( -- n )        EFFQ-DIN @ EFF-ROW-N ;      \ fixed din term count
 : EFFECT-DOUT-N ( -- n )       EFFQ-DOUT @ EFF-ROW-N ;     \ fixed dout term count
 : EFFECT-DIN-FAM ( n -- n )    EFFQ-DIN @ EFF-ROW-FAM ;    \ EFAM-* of din term i (top = 0)
-: EFFECT-DOUT-FAM ( n -- n )   EFFQ-DOUT @ EFF-ROW-FAM ;   \ EFAM-* of dout term i (top = 0)
 : EFFECT-DIN-CELLS ( -- n )    EFFQ-DIN @ EFF-ROW-CELLS ;  \ fixed din width in cells, or CELLS-NONE
 : EFFECT-DOUT-CELLS ( -- n )   EFFQ-DOUT @ EFF-ROW-CELLS ; \ fixed dout width in cells, or CELLS-NONE
 : EFFECT-DIN-SLOT ( n -- n )   EFFQ-DIN @ EFF-ROW-SLOT ;   \ bundle slot+1 of din term i (top = 0), 0 = logical
@@ -22947,9 +22938,7 @@ public
 \ nothing at all.
 \
 \ The legacy signature sidecar still mirrors these two fixed cells until that
-\ sidecar is deleted. The agreement is executable: test/aot-sig-pool-suite.f reads AOT-CELLS:SIG-POOL-CELL
-\ and these two constants out of a booted engine, where all three are live names,
-\ and refuses a disagreement.
+\ sidecar is deleted.
 $47D0 constant CK-AOT-SIG-POOL-OFF      \ = layout.f AOT-CELLS:SIG-POOL-CELL
 $47D8 constant CK-AOT-SIG-LEN-OFF       \ = layout.f AOT-CELLS:SIG-LEN-CELL
 
@@ -26418,8 +26407,7 @@ GENERATES-DIAG-DEFAULT
 
 \ The engine's input cursor and the input's end, and the token it read last,
 \ which is a word's own name as the word starts to run (src/habu/layout.f
-\ INP-CELL, INE-CELL, TKA-CELL and TKL-CELL, which loads after this file;
-\ test/aot-sig-pool-suite.f holds them equal).
+\ INP-CELL, INE-CELL, TKA-CELL and TKL-CELL, which loads after this file).
 $36A0 constant CK-INP-OFF                  \ = layout.f INP-CELL
 $36A8 constant CK-INE-OFF                  \ = layout.f INE-CELL
 $3690 constant CK-TKA-OFF                  \ = layout.f TKA-CELL
@@ -29893,7 +29881,6 @@ package CHECKER-REG
 \ the symbol - so a cold boot's checker holds the rows the build host records
 \ for the definitions of this file and the files before it. A TRUSTED:
 \ declaration before the claim is not logged: the claim grants no authority.
-\ test/aot-sig-pool-suite.f asserts each mirrored constant below.
 $4398 constant CK-DECLARED-LOG-CELL     \ = layout.f DECLARED-LOG:ADDR-CELL
 32 constant CK-DLOG-SLOT                \ = layout.f DECLARED-LOG:SLOT
 8 constant CK-DLOG-SLOTS-REL            \ = layout.f DECLARED-LOG:SLOTS-REL

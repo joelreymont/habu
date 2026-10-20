@@ -13,7 +13,6 @@
 \ SEAL-PACKAGES) stands down here.
 \ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
 
-require test/checker-assert.f
 require src/lib/string.f
 require src/lib/test.f
 
@@ -1102,6 +1101,10 @@ s" NEWTYPE tdnoar<>" E-TDECL-ARITY TDT-NEG
 s" NEWTYPE tdarx<x,x>" E-TDECL-ARITY TDT-NEG
 s" NEWTYPE tdarneg<-1>" E-TDECL-ARITY TDT-NEG
 s" NEWTYPE tdarbig<a,>" E-TDECL-ARITY TDT-NEG
+s" NEWTYPE tdarunc<a" E-TDECL-ARITY TDT-NEG
+s" NEWTYPE tdartrail<a>b" E-TDECL-ARITY TDT-NEG
+s" NEWTYPE tdarres<n>" E-TDECL-ARITY TDT-NEG
+s" NEWTYPE tdarlong<item>" E-TDECL-ARITY TDT-NEG
 s" PRODUCT tdarprod<a,a> FIELD v z ;PRODUCT" E-TDECL-ARITY TDT-NEG
 s" SUMTYPE tdarv<> VARIANT ok a ;VARIANT ;SUMTYPE" E-TDECL-ARITY TDT-NEG
 \ unterminated body (no ;SUMTYPE) reports the declaration packet via SUM-NOEND (S2).

@@ -5,7 +5,6 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
-require test/checker-assert.f
 require src/arch/arm64/icode.f
 using A64ICODE
 

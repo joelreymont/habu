@@ -4,7 +4,6 @@ require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/errors.f
 require src/lib/adt/option.f
-require test/checker-assert.f
 require src/compiler/native/compiler.f
 
 \ Tier 1 below: the `catch` lowering asserted below is the optimizing

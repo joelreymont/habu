@@ -18,7 +18,6 @@
 \ a width-identical non-linear control, and the TA block records that the atomic
 \ memory operations transport no layout at all.
 
-require test/checker-assert.f
 require src/habu/verify-source.f
 require src/lib/test.f
 

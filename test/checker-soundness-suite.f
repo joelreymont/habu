@@ -5,7 +5,6 @@
 \ signature with tokens after its output side.
 
 require src/lib/test.f
-require test/checker-assert.f
 
 package CHECKER-SOUNDNESS
 public

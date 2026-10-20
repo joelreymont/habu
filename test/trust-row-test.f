@@ -26,7 +26,6 @@
 \ public words while that package is open - must be accepted, or the refusal
 \ would be rejecting live rows and the whole boot prefix with them.
 
-require test/checker-assert.f
 require src/lib/type/deftype.f               \ DEFTYPE - a nominal a raw type variable refuses
 require src/lib/test.f
 

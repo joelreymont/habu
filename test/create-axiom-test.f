@@ -67,7 +67,6 @@
 
 require src/lib/test.f
 require src/habu/verify-source.f
-require test/checker-assert.f
 require src/compiler/native/compiler.f
 
 package CREATE-AXIOM-TEST

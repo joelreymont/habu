@@ -430,11 +430,7 @@ at its deadline.
   application args and `1 set-tier`, `AOT-BUILDER:OPEN`, `AOT-BUILDER:RUN` stdin
   program as `hb-build`. The positive AOT compatibility row keeps its raw
   builder child to require its self-test after the linker loads.
-  `test/gate-aot-negative.f` and `test/stripped-address.f` run on `LINKER$`:
-  their die paths are forks of the image, not `ENGINE-CANDIDATE` children, and
-  the mapped-band fixture's first question to the process-map reader reads the
-  running process's map, because every capture drops the map its builder read
-  (`src/habu/proc-maps.f`). A compile error in the saver's closure fails
+  A compile error in the saver's closure fails
   `app-image-build`, leaves the linker unbuilt and makes every row that loads
   either image red naming `app-image-build`; one in the linker's closure fails
   `linker-build` and the rows that load the linker. Every other row runs.
@@ -516,7 +512,6 @@ at its deadline.
   (`test/gate-common-lib.f`): an `E-PROC-TIMEOUT` that escapes the checks ends
   the child with 124 and any other throw leaves with its own code;
   `LINKER-LOAD` names the row and throws `E-PROC-TIMEOUT` again on 124.
-  `test/gate-aot-negative-cases.f` and `test/stripped-address-cases.f` do so;
   `test/compiler/native-code-span-cases.f` and
   `test/compiler/aot-nested-body-cases.f` start no process and have no
   deadline to report.

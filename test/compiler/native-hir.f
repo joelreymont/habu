@@ -9,7 +9,6 @@
 \ through their own API, so the tier this file loads under changes no row.
 
 require src/lib/test.f
-require test/checker-assert.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/hir-word.f
 require src/compiler/native/feed.f

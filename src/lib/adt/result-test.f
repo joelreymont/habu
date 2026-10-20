@@ -1,11 +1,10 @@
 \ result-test.f - distinct ok/err payload type refusals. Run:
-\   bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f test/checker-assert.f \
+\   bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f \
 \     src/lib/adt/result.f src/lib/adt/result-test.f
 
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
-require test/checker-assert.f
 require src/lib/adt/result.f
 
 \ Negative type checks over a result with DISTINCT ok/err types

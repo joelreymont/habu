@@ -13,7 +13,6 @@ require src/habu/code-bytes.f     \ CODE-BYTES:AT: the byte view the entry is re
 require src/lib/adt/result.f          \ the join's answer is MATCHed here
 require src/lib/test/outcome.f
 require src/lib/test/wait.f
-require test/checker-assert.f
 
 package TASK-TEST
 

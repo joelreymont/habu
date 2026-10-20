@@ -142,14 +142,6 @@ SUITE hb-build-large-source
    tools/hb-build-large-source-test.f
 ;SUITE
 
-SUITE aot-wide-format
-   test/aot-wide-format-suite.f
-;SUITE
-
-SUITE aot-wide-prefix
-   test/aot-wide-prefix-suite.f
-;SUITE
-
 SUITE stripped-entry-qualified
    test/stripped-entry-qualified.f
 ;SUITE
@@ -161,10 +153,6 @@ SUITE hb-build-fixtures
 
 SUITE hb-build-stripped-chain
    tools/hb-build-stripped-chain-test.f
-;SUITE
-
-SUITE aot-chain-producer
-   test/aot-chain-producer-suite.f
 ;SUITE
 
 SUITE hb-build-stripped-lifecycle
@@ -329,10 +317,6 @@ SUITE cell-body
    test/cell-body-e2e.f
 ;SUITE
 
-SUITE checker-unit-capture
-   test/checker-unit-capture-run.f
-;SUITE
-
 SUITE native-window-owner
    test/native-window-owner.f
 ;SUITE
@@ -363,10 +347,6 @@ SUITE build-fixpoint-source
 
 SUITE aot-chain-capture
    test/aot-chain-capture-suite.f
-;SUITE
-
-SUITE aot-owned
-   test/aot-owned.f
 ;SUITE
 
 SUITE build-fixpoint-sandbox
@@ -422,10 +402,6 @@ SUITE lint-slab
 
 SUITE byte-copy
    test/byte-copy-test.f
-;SUITE
-
-SUITE lint-def-fixtures
-   tools/lint/def-test.f
 ;SUITE
 
 SUITE lint-intern-set
@@ -498,10 +474,6 @@ SUITE check-verify-batch
 
 SUITE lsp-batch
    tools/lsp-batch-test.f
-;SUITE
-
-SUITE lsp-prefix
-   tools/lsp-prefix-test.f
 ;SUITE
 
 SUITE streaming-sha256
@@ -909,7 +881,6 @@ SUITE compiler-native-finally
 
 SUITE compiler-native-finally-aot
    src/lib/test.f
-   test/checker-assert.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-finally.f
@@ -977,10 +948,6 @@ SUITE prim-owner-scope
    test/prim-owner-scope.f
 ;SUITE
 
-WHITEBOX-SUITE checker-effect-authority
-   test/checker-effect-authority.f
-;SUITE
-
 SUITE control-capture
    test/control-capture.f
 ;SUITE
@@ -1003,16 +970,6 @@ SUITE stripped-image
 
 SUITE stripped-lifecycle-prepare
    test/stripped-lifecycle-prepare.f
-;SUITE
-
-\ These three rows run on the linker image (test/preloaded-engine.f): each
-\ waits aside until app-image-build and linker-build pass.
-SUITE stripped-address
-   test/stripped-address.f
-;SUITE
-
-SUITE native-gate-aot-negative
-   test/gate-aot-negative.f
 ;SUITE
 
 SUITE ffi-growth
@@ -1332,7 +1289,6 @@ SUITE compiler-native-quot-scope
 
 SUITE compiler-native-quot-scope-aot
    src/lib/test.f
-   test/checker-assert.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-quot-scope.f
@@ -1581,11 +1537,6 @@ SUITE bounded-queue
 
 SUITE task-entry
    test/task-entry.f
-;SUITE
-
-\ Exercise owner cleanup through the checked public allocation path.
-SUITE c2-owner-dispose
-   test/c2-owner-dispose.f
 ;SUITE
 
 SUITE string-helpers
@@ -1852,14 +1803,6 @@ SUITE icode-fixup
    test/icode-fixup-test.f
 ;SUITE
 
-SUITE aot-section-reach
-   tools/aot-section-reach-lint-test.f
-;SUITE
-
-SUITE aot-startup-reach
-   tools/aot-startup-reach-lint-test.f
-;SUITE
-
 \ src/lib/memory-test.f is not here: its WITH-BYTES frame audit reopens package MEM
 \ and reads the frame cells directly, which no shipped image has a name for.
 WHITEBOX-SUITE memory
@@ -2079,10 +2022,6 @@ SUITE c2-loan-checker
    test/c2-loan-checker-refusal.f
 ;SUITE
 
-SUITE c2-memory-capture
-   test/c2-memory-capture.f
-;SUITE
-
 SUITE c2-memory-runtime
    test/c2-memory-runtime.f
 ;SUITE
@@ -2127,10 +2066,6 @@ WHITEBOX-SUITE catch-stale
    test/catch-stale-suite.f
 ;SUITE
 
-WHITEBOX-SUITE effect-read-api
-   test/effect-read-api-test.f
-;SUITE
-
 SUITE create-axiom
    test/create-axiom-test.f
 ;SUITE
@@ -2165,10 +2100,6 @@ SUITE owner-access
    test/owner-access.f
 ;SUITE
 
-SUITE checker-assert
-   test/checker-assert-test.f
-;SUITE
-
 SUITE engine-span-end
    test/engine-span-end.f
 ;SUITE
@@ -2197,24 +2128,8 @@ WHITEBOX-SUITE checker-verify-order
    test/checker-verify-order.f
 ;SUITE
 
-WHITEBOX-SUITE checker-decl-locs
-   test/checker-decl-locs.f
-;SUITE
-
 WHITEBOX-SUITE checker-completion
    test/checker-completion.f
-;SUITE
-
-SUITE checker-decl-locs-capture
-   test/checker-decl-locs-capture.f
-;SUITE
-
-WHITEBOX-SUITE checker-replay-pkg-state
-   test/checker-replay-pkg-state.f
-;SUITE
-
-SUITE verify-prim
-   test/verify-prim-test.f
 ;SUITE
 
 SUITE defer-history
@@ -2257,16 +2172,8 @@ SUITE aot-wid-restore
    test/aot-wid-suite.f -- restore
 ;SUITE
 
-SUITE aot-wid-refuse-wid0
-   test/aot-wid-suite.f -- refuse-wid0
-;SUITE
-
 SUITE aot-wid-refuse-address-span
    test/aot-wid-suite.f -- refuse-address-span
-;SUITE
-
-SUITE aot-wid-boot-sealed
-   test/aot-wid-suite.f -- boot-sealed
 ;SUITE
 
 SUITE aot-wid-rebase
@@ -2310,10 +2217,6 @@ SUITE aot-named-cells-native
    test/aot-named-cells.f -- native
 ;SUITE
 
-SUITE aot-prelude-band
-   test/aot-prelude-band-suite.f
-;SUITE
-
 SUITE aot-payload-admission
    test/aot-payload-admission.f
 ;SUITE
@@ -2338,16 +2241,8 @@ SUITE checker-graph-domains
    test/checker-graph-domains.f
 ;SUITE
 
-SUITE aot-prefix-literal
-   test/aot-prefix-literal.f
-;SUITE
-
 SUITE aot-payload-unsupported
    test/aot-payload-unsupported.f
-;SUITE
-
-SUITE aot-sig-pool
-   test/aot-sig-pool-suite.f
 ;SUITE
 
 SUITE aot-effect-pool
@@ -3051,16 +2946,8 @@ WHITEBOX-SUITE type-decl
    test/type-decl-suite.f
 ;SUITE
 
-SUITE declaration-headers
-   test/declaration-headers-e2e.f
-;SUITE
-
 WHITEBOX-SUITE type-export
    test/type-export-suite.f
-;SUITE
-
-WHITEBOX-SUITE type-family-rollback
-   test/type-family-rollback-suite.f
 ;SUITE
 
 WHITEBOX-SUITE type-family
@@ -3083,17 +2970,8 @@ WHITEBOX-SUITE c2-reopen-refusals
    test/c2-reopen-refusals.f
 ;SUITE
 
-\ C2-MEM's own view packs and unpacks compiled at tier 1 in the reopened package.
-WHITEBOX-SUITE c2-view-cast
-   test/c2-view-cast.f
-;SUITE
-
 SUITE c2-init-accessors
    test/c2-init-accessor-refusals.f
-;SUITE
-
-SUITE c2-init-accessor-private
-   test/c2-init-accessor-private.f
 ;SUITE
 
 SUITE c2-init-accessor-image

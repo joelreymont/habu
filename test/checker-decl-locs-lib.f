@@ -1,12 +1,9 @@
 \ checker-decl-locs-lib.f - arm a declaration location as the verifier does,
-\ and read back the location a row took, for the files that test the
-\ checker's declaration locations (src/core/checker.f DECL-LOCS):
-\ test/checker-decl-locs.f and test/checker-decl-locs-capture-subject.f; and
+\ and find the row a name took (src/core/checker.f DECL-LOCS); and
 \ arm a completion cursor as the verifier does, for test/checker-completion.f. It
 \ reads checker internals, so only the unsealed engine
 \ (test/whitebox-engine.f) loads it.
 
-require src/lib/test.f
 require src/habu/verify-source.f
 
 package NAVL
@@ -81,30 +78,5 @@ public
    CHECKER-FIND-ACTIVE-SYM {: sym:n :}
    sym 0= IF 0 EXIT THEN
    sym USIG-NEWEST ;
-
-\ The row, offset+1, is there and has no location.
-: ROW-UNLOCATED ( n -- )
-   {: rec1:n :}
-   rec1 0 T<>
-   rec1 CHECKER-REC-DECL-AT {: v:n s:n e:n found:bool :}
-   found TFALSE ;
-
-\ NAME has a row, and the row has no location.
-: UNLOCATED ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u T-LABEL
-   a u ROW ROW-UNLOCATED ;
-
-\ NAME has a row, and the row carries the armed location.
-: LOCATED ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u T-LABEL
-   a u ROW {: rec1:n :}
-   rec1 0 T<>
-   rec1 CHECKER-REC-DECL-AT {: v:n s:n e:n found:bool :}
-   found TTRUE
-   v VISIT T=
-   s AT-START T=
-   e AT-END T= ;
 
 ;package

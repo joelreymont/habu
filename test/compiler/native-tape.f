@@ -13,7 +13,6 @@
 \ package, so no compiled body's lowering is asserted here.
 
 require src/lib/test.f
-require test/checker-assert.f
 require src/compiler/native/tape.f
 
 package NTAPE-TEST

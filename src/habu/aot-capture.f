@@ -607,16 +607,15 @@ variable ACAP-P
 \ A callee is refused when no record carrying its entry sits in a scope the seed
 \ can search: the qualifier reaches a package's PUBLIC wordlist only, and a record
 \ `undefine` retired is in no wordlist at all. The producer is a window word
-\ compiled against a word that was then retired and replaced
-\ (test/aot-band-retired.f): its spelling now reaches another body. A call to a
+\ compiled against a word that was then retired and replaced:
+\ its spelling now reaches another body. A call to a
 \ private word with no public alias does not arrive here - a caller outside its
 \ package cannot name it, and one inside is a window record of that package,
 \ which ACAP-?WID refuses first. Nor does a branch into the does> clause of a
 \ private definer that a window word was made with through its public alias:
 \ EXPORT publishes the clause with the definer (habu2.f DOES-REC "the clause an
-\ export carries"), so ACAP-SITE-REC finds the public record of the clause
-\ (test/aot-band-export-does.f), and goes on finding it after `undefine`
-\ retired the private pair (test/aot-band-export-undef.f).
+\ export carries"), so ACAP-SITE-REC finds the public record of the clause,
+\ and goes on finding it after `undefine` retired the private pair.
 : ACAP-REFUSE-SCOPE ( n n -- ) {: k:n w:n :}
    s" aot-capture: window word " type ACAP-P @ ACAP-REC-AT ACAP-NAME.
    s"  calls " type k ACAP-NAME.
@@ -1525,7 +1524,7 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ this asks whether it is COMPLETE. A window that is unsound is unsound whether
 \ or not its signatures were collected, so the more fundamental refusal has to be
 \ the one a reader sees. Running it earlier masked them (measured:
-\ test/aot-band-data.f's address refusal came back as an uncarried signature).
+\ an address refusal came back as an uncarried signature).
 \
 \ NOTHING TESTS THE ARMING SEPARATELY, and that is not an omission: a window
 \ compiled with the store disarmed has an empty pool, and the walk below then
@@ -1598,11 +1597,11 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ that name does not identify it, and both such names belong to a does>-clause
 \ record, which J-DOES names after its definer (habu2.f DOES-REC) without the
 \ duplicate wall. A public definer whose tail ends in a colon has a clause whose
-\ qualified spelling holds two colons, which the qualifier path refuses
-\ (test/aot-band-site.f). And a clause's name can already be live in its
+\ qualified spelling holds two colons, which the qualifier path refuses.
+\ And a clause's name can already be live in its
 \ wordlist, held by a word defined as X;does before X was, and the probe answers
 \ that older row. The clause of a definer `undefine` replaced is not one: it
-\ retires with its definer (xref.f XREF-RETIRE-INDEX, test/aot-band-redef.f).
+\ retires with its definer (xref.f XREF-RETIRE-INDEX).
 : ACAP-REFUSE-SITE ( n n ptr u8 n n -- ) {: s:n k:n a:ptr u:n w:n :}
    s" aot-capture: call site " type s .INT
    s"  bakes the name " type a u type

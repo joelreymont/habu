@@ -380,16 +380,4 @@ public
    at 0 < IF false EXIT THEN
    at EXT-HEAP @ 0<> ;
 
-\ WHERE THE BREAK BEGAN, an address the heap holds for as long as the process
-\ does: brk moves its end and never its start. The name is a range test in the
-\ kernel (a vma that starts at or below brk and ends at or above start_brk), so
-\ a brk area split by an mprotect is listed under it twice and the lowest row
-\ is where the break began. A process whose map lists no [heap] has no answer
-\ here, so the reader stops rather than naming an address outside it.
-: HEAP-START ( -- n )
-   AREAS 0 ?do
-      i EXT-HEAP @ 0<> IF i EXT-LO @ unloop EXIT THEN
-   loop
-   s" proc-maps: /proc/self/maps lists no [heap] area" FAIL-RC die ;
-
 ;package

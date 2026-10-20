@@ -27,7 +27,6 @@
 \ startup lint and stated there. The scan runs on the shared string-aware lexer
 \ (src/lib/source-lex.f), so the same three tokens inside a comment, inside a
 \ string literal, or in the wrong order are not a binding and not a reference.
-\ tools/aot-section-reach-lint-test.f pins each of those.
 \
 \ Run: bin/hb --load tools/aot-section-reach-lint.f
 

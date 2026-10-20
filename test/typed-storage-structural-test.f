@@ -1,8 +1,7 @@
 \ typed-storage-structural-test.f - closed STRUCTURAL storage cells
 \ (dot habu-typed-storage-sweep-b2cd1a61).
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
-\   src/habu/verify-source.f test/checker-assert.f
-\   test/typed-storage-structural-test.f
+\   src/habu/verify-source.f test/typed-storage-structural-test.f
 \
 \ Pins the fourth admissible stored type of TYPED-VARIABLE / TYPED-BUFFER: a
 \ CLOSED STRUCTURAL CELL — a non-linear one-cell con (n, bool, i64, the role
@@ -34,7 +33,6 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/habu/verify-source.f
-require test/checker-assert.f
 
 package TYPED-STORAGE-STRUCTURAL-TEST
 

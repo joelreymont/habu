@@ -1,6 +1,6 @@
 \ checker-scan-index-suite.f — the checker's symbol-keyed store indexes.
 \
-\ A WHITEBOX-SUITE row, like test/type-family-rollback-suite.f: every case is a
+\ A WHITEBOX-SUITE row: every case is a
 \ top-level interpret line, and the stores and their indexes are checker
 \ internals the unsealed engine binds by their recorded rows, named directly or
 \ through checked words. The gate runs it in its unsealed whitebox engine;

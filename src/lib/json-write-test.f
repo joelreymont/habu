@@ -11,7 +11,6 @@ require src/lib/byte-buffer.f
 require src/lib/json-read.f
 require src/lib/memory.f
 require src/lib/test/guard-page.f
-require test/checker-assert.f
 
 \ White-box test: reopen the module's package so the fixtures reach json-write's
 \ private byte plumbing (JW-APPEND-LEN and the byte constants)

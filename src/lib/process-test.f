@@ -14,7 +14,6 @@ require src/lib/task.f
 require src/lib/test/outcome.f
 require src/lib/test/wait.f
 require src/lib/fmt.f
-require test/checker-assert.f
 
 variable PT-R
 variable PT-W

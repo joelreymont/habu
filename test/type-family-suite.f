@@ -307,7 +307,7 @@ FID @ s" ok" 0 0 0 0 ' SUMV-ADD catch   TC ! 2drop 2drop 2drop drop  TC @ E-TFAM
 \ 11. shared fields: atomic tx add, committed reflection, dup rejection.
 \ ---------------------------------------------------------------------------
 variable PFTX   variable PFOUT   variable PFIN
-variable PFBASE variable PFSTR   variable PFSCH
+variable PFBASE variable PFSTR
 variable PFBAD  variable PFAPP   variable PFARG
 TYPE-FIELD:COUNT FX !
 TF-FIELD:OPEN PFTX !

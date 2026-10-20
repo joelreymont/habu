@@ -22,7 +22,6 @@
 \ and checker fixtures prove no mutation can be spelled against a frozen store.
 
 require src/lib/test.f
-require test/checker-assert.f
 require src/compiler/ir/fun.f
 
 package IR-FUN-TEST

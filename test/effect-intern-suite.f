@@ -320,7 +320,7 @@ TABLE-LIVE
 \ and a terminator a rewind did write is overwritten by the very next append. A
 \ rebuild that walked the record chain without bounding it by UEND therefore
 \ indexed the dead region, and the next intern could answer with an offset the
-\ store was about to write over - measured as test/verify-prim-test.f's cold
+\ store was about to write over - measured as a cold
 \ differential dying rc 78 on a duplicate definition the store did not hold.
 \
 \ THE CASE IS READ AT THE REBUILD, not after it. `undefine` appends ONE record
@@ -348,8 +348,8 @@ TABLE-LIVE                                         \ no entry may name the dead 
 \ USX-BUILD walked the same chain by the same terminator, so after the cut it
 \ still answered EIXC1's dead record as that symbol's newest and the checker
 \ reported a signature for a word the store no longer holds. Downstream that is a
-\ "duplicate definition" on the next definition of the name - verify-prim's cold
-\ differential, rc 78 on `CAST: >IMG`. FIND-SIG is the production query (through
+\ "duplicate definition" on the next definition of the name, rc 78
+\ on `CAST: >IMG`. FIND-SIG is the production query (through
 \ CHECKER-FIND-ACTIVE-SIG -> USIG-NEWEST -> USX), and -1 is what it must answer
 \ for a record in the dead region. The case lives HERE, with the rewind, because
 \ the differential in test/checker-scan-index-suite.f could not host it: the

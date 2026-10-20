@@ -13,7 +13,6 @@
 \ the registry API stay sealed.
 
 require src/lib/test.f
-require test/checker-assert.f
 require src/compiler/ir/source.f
 
 package IR-SOURCE-TEST

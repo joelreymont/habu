@@ -1,5 +1,4 @@
 require src/lib/test.f
-require test/checker-assert.f
 require src/arch/tic6x/asm.f
 
 package C6XASM-TEST

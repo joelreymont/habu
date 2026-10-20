@@ -3,7 +3,6 @@
 
 require src/lib/test.f
 require src/lib/ffi-abi.f
-require test/checker-assert.f
 require src/lib/type/deftype.f         \ DEFTYPE - the ffi-dev / ffi-ctx test nominals
 require src/lib/string.f               \ SB / CONTAINS? - the child's stderr is matched here
 require src/lib/fmt.f                  \ the code the child prints is rendered from its name

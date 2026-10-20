@@ -7,7 +7,6 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/argv.f
-require test/checker-assert.f
 require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
 
 \ White-box test: reopen the module's package so the fixtures reach argv's

@@ -1,7 +1,7 @@
 \ decl-event-suite.f — behavior + rollback suite for the shared declaration
 \ syntax-event transaction (src/core/decl-event.f, package DECL-EVENT; dot
-\ habu-type-declarations-shared-14ab0e48). A WHITEBOX-SUITE row, like
-\ test/type-family-rollback-suite.f: the transaction, registry and checker frame
+\ habu-type-declarations-shared-14ab0e48). A WHITEBOX-SUITE row:
+\ the transaction, registry and checker frame
 \ words are engine internals, which the unsealed engine binds by their recorded
 \ rows at top level and in a checked ':' body alike. The gate runs it on that
 \ engine, which test/whitebox-engine.f builds:

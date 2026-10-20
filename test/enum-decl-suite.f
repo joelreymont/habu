@@ -21,7 +21,6 @@
 \ the legacy sumtype.f definer until the hard cutover, so this suite drives the
 \ new front end through its package-qualified entry rather than a global keyword.
 
-require test/checker-assert.f      \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected, 1 uncheckable
 require src/habu/verify-source.f   \ VERIFY:CANDIDATE-IN-SCOPE: the certify path's verdict
 require test/replay-scope.f         \ REPLAY-SCOPE: the check tool's replay scope
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture

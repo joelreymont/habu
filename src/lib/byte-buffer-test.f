@@ -7,7 +7,6 @@ require src/lib/test.f
 require src/lib/memory.f
 require src/lib/byte-buffer.f
 require src/lib/property.f
-require test/checker-assert.f
 
 create BUFT-BUF BUF:HDR-BYTES allot
 create BUFT-REL-BUF BUF:HDR-BYTES allot     \ dedicated header for release/dispose lifecycle tests

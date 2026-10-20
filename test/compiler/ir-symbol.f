@@ -19,7 +19,6 @@
 
 require src/lib/test.f
 require src/lib/string.f
-require test/checker-assert.f
 require src/compiler/ir/symbol.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 

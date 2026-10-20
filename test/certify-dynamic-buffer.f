@@ -1,6 +1,6 @@
 \ certify-dynamic-buffer.f - certification knows what DYNAMIC-BUFFER publishes.
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f \
-\   src/habu/verify-source.f test/checker-assert.f test/certify-dynamic-buffer.f
+\   src/habu/verify-source.f test/certify-dynamic-buffer.f
 \
 \ One DYNAMIC-BUFFER line publishes three checked words through the generated
 \ source in src/core/layout-buffer.f DBUF-SOURCE: the accessor
@@ -25,7 +25,6 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
 require src/habu/verify-source.f
-require test/checker-assert.f
 
 package CERTIFY-DYNAMIC-BUFFER
 

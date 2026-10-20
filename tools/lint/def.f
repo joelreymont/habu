@@ -157,12 +157,4 @@ public
       drop OPTION:NONE
    then ;
 
-: EXPORT? ( n -- bool )
-   s" EXPORT" TOK=CI ;
-
-: EXPORT-I ( n -- option<n> ) {: tok:n :}
-   tok EXPORT? 0= if OPTION:NONE exit then
-   tok 1+ dup LINT-LEX:COUNT >= if drop OPTION:NONE exit then
-   dup LINT-LEX:KIND@ LINT-LEX:WORD = if OPTION:SOME else drop OPTION:NONE then ;
-
 ;package

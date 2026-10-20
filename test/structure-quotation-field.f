@@ -1,7 +1,6 @@
 \ A private route record carries a typed handler through construction, storage,
 \ buffer growth, field projection and checked dispatch.
 require src/lib/test.f
-require test/checker-assert.f
 
 package QUOT-FIELD-TEST
 

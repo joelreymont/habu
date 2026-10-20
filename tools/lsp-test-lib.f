@@ -7443,6 +7443,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" definition-primitive-open" [: PRIM-OPEN-TURNS ;] TALK
    s" definition-engine-open" [: ENGINE-OPEN-TURNS ;] TALK
    s" definition-prefix-origin" [: PREFIX-DEF-TURNS ;] TALK
+   s" definition-prefix-shadow" [: PREFIX-SHADOW-TURNS ;] TALK
    s" definition-dependency" [: DEF-DEP-TURNS ;] TALK
    s" definition-sumtype" [: SUMTYPE-DEF-TURNS ;] TALK
    s" definition-dependency-open" [: DEF-OPEN-DEP-TURNS ;] TALK
@@ -7606,15 +7607,6 @@ public
       s" references-source-backed-other" [: REFS-BUILTIN-OTHER-TURNS ;] TALK ;]
    SESSION-RUN
    false WORKSPACE? !
-   SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
-   T-REPORT ;
-
-: TEST-PREFIX ( -- )
-   TEST-INIT
-   s" prefix-session" [: INITIALIZE ;]
-   [: s" definition-prefix-origin" [: PREFIX-DEF-TURNS ;] TALK
-      s" definition-prefix-shadow" [: PREFIX-SHADOW-TURNS ;] TALK
-      s" definition-engine-open" [: ENGINE-OPEN-TURNS ;] TALK ;] SESSION-RUN
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
 

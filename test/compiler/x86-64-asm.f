@@ -18,7 +18,6 @@
 
 require src/lib/test.f
 require src/lib/byte-buffer.f
-require test/checker-assert.f
 require src/arch/x86-64/asm.f
 require src/lib/fmath.f                       \ FMATH:E-DOMAIN, borrowed for a malformed expected string
 

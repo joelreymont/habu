@@ -36,7 +36,6 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
-require test/checker-assert.f
 require test/pcap-result.f
 
 package CS-SHADOW

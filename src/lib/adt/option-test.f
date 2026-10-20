@@ -1,7 +1,6 @@
 \ option-test.f - constructor payload and nominal-role refusals.
 
 require src/lib/test.f
-require test/checker-assert.f
 require src/lib/adt/option.f
 
 T-RESET

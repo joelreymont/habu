@@ -9,7 +9,6 @@ require src/lib/memory.f
 require src/lib/test.f
 require src/lib/json-read.f
 require src/lib/json-write.f
-require test/checker-assert.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f
 

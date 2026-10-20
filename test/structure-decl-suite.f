@@ -16,7 +16,6 @@
 \ declaration generates no ctor words at all.
 \ A failure prints F<index> + detail; T-REPORT exits 1.
 
-require test/checker-assert.f
 require src/habu/verify-source.f
 require test/replay-scope.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture

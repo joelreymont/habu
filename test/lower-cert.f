@@ -1,6 +1,5 @@
 \ lower-cert.f — canonical lowering-certificate producer regressions.
 
-require test/checker-assert.f
 require test/layout-valid-guard-base.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 

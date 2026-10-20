@@ -1,7 +1,6 @@
 \ float32-buffer-test.f - F32 byte-buffer conversion tests.
 
 require src/lib/test.f
-require test/checker-assert.f
 require src/lib/float32.f
 require src/lib/float32-buffer.f
 

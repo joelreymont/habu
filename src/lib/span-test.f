@@ -8,7 +8,6 @@
 
 require src/lib/errors.f
 require src/lib/test.f
-require test/checker-assert.f
 require src/lib/span.f
 
 \ ---- fixtures ----------------------------------------------------------------

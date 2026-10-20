@@ -25,7 +25,6 @@ require src/lib/prelude.f
 require src/lib/aio.f
 require src/lib/test.f
 require src/lib/test/wait.f
-require test/checker-assert.f
 
 package PTY-IO-SMOKE
 

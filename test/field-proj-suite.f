@@ -28,7 +28,6 @@ require src/lib/test.f
 
 T-RESET
 
-require test/checker-assert.f
 require test/field-proj-arm.f
 require test/field-proj-lib.f
 using FIELD-PROJ-LIB

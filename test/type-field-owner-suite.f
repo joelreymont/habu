@@ -4,7 +4,6 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f
-require test/checker-assert.f
 
 T-RESET
 

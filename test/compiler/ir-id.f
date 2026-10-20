@@ -5,7 +5,6 @@ require src/lib/string.f
 require src/lib/process-argv.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f
-require test/checker-assert.f
 
 require src/compiler/ir/id.f
 

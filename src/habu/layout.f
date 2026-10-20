@@ -773,9 +773,7 @@ $47C8 constant CF
 \ before taking them, below $7FF8 and below DATA-START for the reasons above.
 \ THE CHECKER MIRRORS THESE TWO NUMBERS (src/core/checker.f CK-AOT-SIG-*-OFF)
 \ because src/core/checker.f loads BEFORE this file in every host that has both -
-\ the same reason CK-PKG-REC-OFF is mirrored there. The mirror is not left to
-\ prose: test/aot-sig-pool-suite.f reads both names out of a booted engine, where
-\ both are live, and refuses a disagreement.
+\ the same reason CK-PKG-REC-OFF is mirrored there.
 \ AOT-CELLS HOLDS EVERY AOT CELL THIS FILE DECLARES, and the packages the seed,
 \ the capture and the link write their code in (AOT-SIG, AOT-SPAN, AOT-WINDOW)
 \ are theirs: the engine bakes this file, so a cell declared in one of those
@@ -2396,8 +2394,8 @@ PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 \
 \ ADDR-CELL holds the log's ADDRESS while it holds entries, and 0 otherwise. The
 \ seed lays its bands out at other offsets (forth.fs SNAPSTK-END), so the checker
-\ finds the log through this one fixed cell (checker.f CK-DECLARED-LOG-CELL,
-\ test/aot-sig-pool-suite.f asserts the agreement) and mirrors no band offset; an
+\ finds the log through this one fixed cell (checker.f CK-DECLARED-LOG-CELL)
+\ and mirrors no band offset; an
 \ engine that predates the log reads 0, an empty log. WHERE IT HAD TO GO: a
 \ fixed DATA cell both engines leave free, below $7FF8 and below DATA-START for
 \ the reasons AOT-CELLS states. It is the last cell of the unclaimed run

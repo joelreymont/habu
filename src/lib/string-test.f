@@ -5,7 +5,6 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/test/guard-page.f
-require test/checker-assert.f
 require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
 
 64 constant STR-TEST-BUF-LEN

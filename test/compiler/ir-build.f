@@ -19,7 +19,6 @@
 
 require src/lib/test.f
 require src/lib/image-lifecycle.f
-require test/checker-assert.f
 require src/compiler/ir/build.f
 require src/compiler/native/frozen.f
 

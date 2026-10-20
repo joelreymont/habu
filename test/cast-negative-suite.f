@@ -34,7 +34,6 @@
 \ counted until the checker has accepted the row. A failure prints F<index>;
 \ T-REPORT exits 1 on any.
 
-require test/checker-assert.f
 require src/habu/verify-source.f
 require src/lib/string.f
 require src/lib/test/subject.f

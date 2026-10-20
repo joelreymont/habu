@@ -4,7 +4,6 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/test.f
-require test/checker-assert.f
 require src/lib/memory.f
 require src/lib/test/outcome.f
 require src/lib/process-fork.f

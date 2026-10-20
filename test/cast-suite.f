@@ -29,7 +29,6 @@
 \     any package and projects a live C2 view to its base and length
 \ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
 
-require test/checker-assert.f
 require src/lib/string.f
 require src/lib/test/subject.f
 require src/lib/test/outcome.f

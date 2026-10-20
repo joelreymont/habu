@@ -1,6 +1,6 @@
 \ type-export-suite.f — checker-level EXPORT alias suite (CHECKER-EXPORT, dot
-\ habu-compiler-pkg-re-688212c1). A WHITEBOX-SUITE row, like
-\ test/type-family-rollback-suite.f: CHECKER-EXPORT and the record queries are
+\ habu-compiler-pkg-re-688212c1). A WHITEBOX-SUITE row:
+\ CHECKER-EXPORT and the record queries are
 \ checker internals, which the unsealed engine binds by their recorded rows. The
 \ gate runs it on that engine, which test/whitebox-engine.f builds. Direct
 \ checker operations execute inside real engine package blocks so package

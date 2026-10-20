@@ -2,7 +2,6 @@
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/array.f
-require test/checker-assert.f
 
 package POINTER-VIEW-TEST
 private

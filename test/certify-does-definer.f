@@ -488,8 +488,7 @@ variable CDD-SRC-U
    s\" 5 CDD-SK CDD-SKMADE\n: CDD-SKU ( -- ptr n ) CDD-SKMADE ;\n" CDD-OWN 0 T= ;
 
 \ ---- 12. the engine refuses a row it cannot keep ----------------------------
-\ The checker's own error constant, read at load time under a local name, the
-\ way test/checker-replay-pkg-state.f reads E-USING-UNBALANCED.
+\ The checker's own error constant, read at load time under a local name.
 E-GENERATES-ROW constant E-GEN-ROW
 
 : CDD-SECTION-GENERATES-REFUSED ( -- )

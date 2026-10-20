@@ -15,7 +15,6 @@ require src/lib/num-types.f           \ the alloc-byte-len those allocations car
 require test/host-threads.f
 require src/lib/fs-mutate.f           \ the temporary directory the READ file lives in
 require src/lib/net/tcp4.f            \ the loopback listener ACCEPT and CONNECT run on
-require test/checker-assert.f     \ the effect candidates the public words refuse
 require src/lib/aio.f
 
 \ White-box helpers: reopen the module's package so both definitions below are

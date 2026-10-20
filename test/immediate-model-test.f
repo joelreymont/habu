@@ -9,7 +9,6 @@
 \ Run: bin/hb --load test/immediate-model-test.f
 
 require src/lib/test.f
-require test/checker-assert.f
 
 T-RESET
 

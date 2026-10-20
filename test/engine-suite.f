@@ -12,7 +12,6 @@
 variable ES-CERT-STALE0
 LOWER-CERT:ARENAS-STALE ES-CERT-STALE0 !
 
-require test/checker-assert.f
 require src/lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
 require src/lib/fs-mutate.f            \ HB-TMP-MKDIR - the filesystem block's private root
 require src/lib/string.f               \ CONTAINS? - substring test for diagnostic text

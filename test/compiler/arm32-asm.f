@@ -1,5 +1,4 @@
 require src/lib/test.f
-require test/checker-assert.f
 require src/arch/arm32/asm.f
 
 package A32ASM-TEST

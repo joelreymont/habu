@@ -14,7 +14,6 @@
 \ counting; their SV.CTOR-PKG metadata is still recorded. Private families
 \ generate nothing until item 9's construct form.
 
-require test/checker-assert.f
 require tools/prot-wid-probe.f
 require src/lib/adt/result.f
 require src/lib/test.f

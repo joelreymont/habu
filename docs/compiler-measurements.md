@@ -413,7 +413,6 @@ loads.
 | suite | tier 0 | tier 1 | ratio |
 |---|---:|---:|---:|
 | `test/native-window-owner.f` | 103.2 s | 105.7 s | 1.02x |
-| `test/aot-wide-format-suite.f` | 64.1 s | 66.0 s | 1.03x |
 | `test/compiler/native-checker-prefix.f` | 15.0 s | 17.3 s | 1.16x |
 | `test/compiler/x86-64-asm.f` | 0.11 s | 1.36 s | 12.4x |
 | `test/compiler/x64-emit.f` | 0.19 s | 4.65 s | 24.5x |

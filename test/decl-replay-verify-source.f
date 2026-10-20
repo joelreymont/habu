@@ -38,7 +38,6 @@
 
 require src/lib/errors.f
 require src/lib/test.f
-require test/checker-assert.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 require src/habu/verify-source.f
 

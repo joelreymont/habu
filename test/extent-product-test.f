@@ -19,7 +19,6 @@
 \ CHECK-QUIET-CANDIDATE! : -1 accept, 0 reject. Routed positive suite: exit 0, empty
 \ stderr, stdout ends "test: ok\n" (T-REPORT dies exit 1 on any miss).
 
-require test/checker-assert.f
 require src/lib/test.f
 
 create EP-DIAG 8192 allot

@@ -24,7 +24,6 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/habu/verify-source.f
-require test/checker-assert.f
 
 \ ---- the three storage forms a mixed record has today ------------------------
 

@@ -24,7 +24,6 @@
 \ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
 
 require src/lib/type/deftype.f
-require test/checker-assert.f
 require src/lib/test.f
 
 T-RESET

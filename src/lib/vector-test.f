@@ -6,7 +6,6 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/vector.f
-require test/checker-assert.f
 
 create VECT-VEC VEC-HEADER-CELLS cells allot
 \ The header of a vector OF POINTERS is declared storage: its base carries the

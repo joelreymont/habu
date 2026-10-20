@@ -1321,8 +1321,7 @@ create QNAME QNAME-CAP allot
 \ A word compiled at tier 1 with the check hook off keeps the row the native
 \ publication records for it: its ABI and no source authority (at tier 0 no row
 \ is recorded and its caller is E-UNDEFINED). An unsealed checker binds a
-\ checked call to such a row - test/checker-effect-authority.f, a
-\ WHITEBOX-SUITE, pins that - and the seal pass closes the gate
+\ checked call to such a row, and the seal pass closes the gate
 \ (src/core/internal-mark.f IMK-SEAL calls CHECKER-EFFECT-AUTHORITY:SEAL), so on
 \ the product the call is refused by name. An image whose seal skipped that call
 \ certifies the caller, as the whitebox engine does. ----

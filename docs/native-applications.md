@@ -440,9 +440,7 @@ mapping freed before the link is no longer listed, so a pointer into it is not
 refused. The residual runs the other way as well: a cell whose integer value
 spells an address inside any mapped area above those four bands — an `mmap`, the
 stack, the vDSO — is refused as a pointer, because a reader of values cannot
-tell a pointer-shaped integer from a pointer. `test/gate-aot-negative.f`'s
-mapped-band fixture pins both answers on the live process: its `[heap]` start is
-mapped and not refused, and a fresh `MEM-ALLOC-64K` address is refused. The map
+tell a pointer-shaped integer from a pointer. The map
 is a snapshot taken at the first question, so an area mapped after it is
 invisible; the application takes its buffers as it loads and the walk asks
 afterwards.

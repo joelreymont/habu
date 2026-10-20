@@ -1,7 +1,7 @@
 \ typed-storage-test.f - TYPED-VARIABLE / TYPED-BUFFER convenience definers
 \ (dot habu-nominal-storage-typed-c5f44d66).
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
-\   src/habu/verify-source.f test/checker-assert.f test/typed-storage-test.f
+\   src/habu/verify-source.f test/typed-storage-test.f
 \
 \ Pins the convenience typed-storage surface: single typed cell (TYPED-VARIABLE)
 \ and typed fixed-capacity buffer (TYPED-BUFFER) for nominal scalars, closed
@@ -23,7 +23,6 @@ require src/lib/test.f
 require src/lib/fs.f
 require src/lib/span.f
 require src/habu/verify-source.f
-require test/checker-assert.f
 require src/habu/layout.f
 require src/habu/address-cells.f
 

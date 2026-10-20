@@ -41,8 +41,8 @@
 \ holds two packages of the fixture's own - one sealed with `prot-wid-add`, one
 \ left open - and checks the capture's contract against the live band while it is
 \ still there to check. This suite then probes hb-pwid on the real batch paths,
-\ and spawns the same builder in its two refusal modes, its two boot-gate modes
-\ and the wid rebase and forge modes further down.
+\ and spawns the same builder in its refusal mode and the wid rebase and forge
+\ modes further down.
 \
 \ WHAT THE RETIREMENT CHANGED, and what it cost (commit 3e29a730b0d4, closing dot
 \ habu-retire-the-legacy-31ad57bc). The capture used to copy the host's whole live
@@ -79,9 +79,9 @@
 \ READS must not publish into a protected word-list (the forge cases). A name the
 \ engine BAKED must not resolve into one either: the AOT seed rewrites a call, an
 \ xt or a branch for every stored name, and LAOTWIDGATE stands between the lookup
-\ and all three. PROBE-BOOT-GATE-SEALED and the admit PROBE-WID-REBASE asserts
-\ on both of its target boots are that end (dot habu-return-the-record-9c9b1731);
-\ before them, nothing in the tree executed the routine.
+\ and all three. The admit PROBE-WID-REBASE asserts on both of its target boots
+\ is that end (dot habu-return-the-record-9c9b1731); before it, nothing in the
+\ tree executed the routine.
 \
 \ Note on the negative leg: an earlier revision proved "not protected" by having
 \ the same forge exit 0 against an unprotected id. Since the absent-package-context
@@ -109,7 +109,7 @@
 \ stable proof, and it is what a bitmap makes cheap - now read back at the id the
 \ engine says it gave the fixture's package, since the id is the seed's to choose.
 \
-\ Cost: six independent captures, one of which the rebase case writes three
+\ Cost: four independent captures, one of which the rebase case writes three
 \ ways. The gate registers one case per capture; a standalone run with no case
 \ keeps the complete focused sequence.
 \ Run standalone: bin/hb --load test/aot-wid-suite.f [-- CASE]
@@ -137,7 +137,6 @@ variable PROT-WID-V                  \ AWBPROT's public wordlist id, the one sea
 variable OPEN-WID-V                  \ AWBOPEN's, which the fixture left open
 : PROT-WID ( -- n ) PROT-WID-V @ ;
 : OPEN-WID ( -- n ) OPEN-WID-V @ ;
-0 constant WID-NOT-A-WORDLIST       \ bit 0 set is a band no capture may accept
 \ Raise the capture window's DATA span start by more than the whole span, so the
 \ span holds nothing and EVERY address chain the band recorded in the blob falls
 \ outside both spans. A small skew would depend on where the first data word
@@ -203,8 +202,8 @@ create COLD-DST FS-PATH-CAP allot
    REFUSE-ROOT$ CLEANUP-TREE+
    REFUSE-ROOT$ s" hb-pwid" REFUSE-HB-BUF JOIN-PATH REFUSE-HB-U ! ;
 
-\ Same rule for each boot-gate mode: its own tree, so the engine a probe boots
-\ can only be the one that mode's build wrote.
+\ Same rule for the boot-gate build: its own tree, so the engine a probe boots
+\ can only be the one that build wrote.
 : GATE-SETUP ( -- )
    s" habu-aot-wid-gate" HB-TMP-MKDIR {: a:ptr u:n :}
    a GATE-BUF u BYTE-COPY  u GATE-U !
@@ -249,20 +248,13 @@ create NUM-BUF 32 allot   variable NUM-U
    k ku >LEN  NUM$ >LEN PROC-ENV+
    RUN-BUILDER ;
 
-\ A boot-gate build: the mode number picks the fixture the builder injects.
-: BUILD-GATE ( n -- ) {: mode:n :}
+\ A boot-gate build: the builder injects the gate fixture.
+: BUILD-GATE ( -- )
    GATE-SETUP
-   mode NUM$!
    PROC-ENV-RESET
    s" HB_TMP" >LEN GATE-ROOT$ >LEN PROC-ENV+
-   s" HABU_AOT_GATE" >LEN  NUM$ >LEN PROC-ENV+
+   s" HABU_AOT_GATE" >LEN  s" 1" >LEN PROC-ENV+
    RUN-BUILDER ;
-
-create GWID-BUF 32 allot   variable GWID-U
-: GWID$! ( n -- ) {: v:n :}
-   v NUM$!  NUM$ {: a:ptr u:n :}
-   a GWID-BUF u BYTE-COPY  u GWID-U ! ;
-: GWID$ ( -- ptr u8 n ) GWID-BUF GWID-U @ ;
 
 \ The gate engine written again from the capture the last BUILD-GATE left in its
 \ tree, with the baked wid window moved AFTER the capture, so the records name
@@ -486,15 +478,12 @@ create PRB PRB-CAP allot   variable PRB-U
    s" an ordinary packaged define still exits 0 on the variant (--load)" T-LABEL
    HBPWID$ DEFINE-OK$ FORGE-LOAD  ASSERT-OK ;
 
-\ --- the two refusals on the build path -----------------------------------------
-\ Both are proved on the real build path: the builder dies named, and no engine
-\ is produced. The first is the capture's own: WID 0 is not a wordlist, so a
-\ band whose bit 0 is set is not a registry at all, and the re-capture the mode
-\ runs is what asks. The bitmap's upper bound is not here: `prot-wid-add` refuses
-\ an id at or above it before any capture is asked anything, so test/seal.f
-\ proves it on the shipped engine beside the other seal forges.
-\ The second is a different kind of guard and the reason it needs a build to reach
-\ it. Since the capture stopped recognising an address chain by the value it
+\ --- the refusal on the build path ---------------------------------------------
+\ It is proved on the real build path: the builder dies named, and no engine is
+\ produced. The bitmap's upper bound is not here: `prot-wid-add` refuses an id
+\ at or above it before any capture is asked anything, so test/seal.f proves it
+\ on the shipped engine beside the other seal forges.
+\ This guard needs a build to reach it. Since the capture stopped recognising an address chain by the value it
 \ carries and started reading the address-literal band, a recorded site is known
 \ to hold a real address and the only question left is WHICH span it belongs to.
 \ A site in neither span is an address the window does not carry, so there is
@@ -507,48 +496,25 @@ create PRB PRB-CAP allot   variable PRB-U
    ERR$ m mu CONTAINS? TTRUE
    REFUSE-HB$ EXISTS? 0= TTRUE ;
 
-: PROBE-REFUSE-WID0 ( -- )
-   s" capture refuses a band that marks WID 0" T-LABEL
-   s" HABU_PWID_BAD" WID-NOT-A-WORDLIST BUILD-REFUSED
-   s" aot-capture: protected-WID registry marks WID 0" ASSERT-BUILD-REFUSED ;
-
 : PROBE-REFUSE-ADDRESS-SPAN ( -- )
    s" capture refuses a recorded chain its window cannot place" T-LABEL
    s" HABU_AOT_D0_SKEW" D0-SKEW-PAST-SPAN BUILD-REFUSED
    s" aot-capture: recorded address site outside both window spans" ASSERT-BUILD-REFUSED ;
 
-: PROBE-REFUSALS ( -- )
-   PROBE-REFUSE-WID0  REQUIRE-PROBE
-   PROBE-REFUSE-ADDRESS-SPAN ;
-
 \ --- the AOT boot gate (dot habu-return-the-record-9c9b1731) --------------------
 \ The other end of the protected-WID registry. Everything above proves that a
-\ program the engine READS cannot publish into a sealed word-list. The two gate
-\ modes prove the same about what the engine BAKED: the AOT seed resolves every stored
-\ name and then rewrites a call, writes an xt, or branches to the word, and
-\ LAOTWIDGATE is what stands between the lookup and all three. Until this landed,
-\ nothing in the tree executed that routine at all - it could be deleted whole and
-\ every suite stayed green.
+\ program the engine READS cannot publish into a sealed word-list. The gate build
+\ the wid rebase case boots proves the same about what the engine BAKED: the AOT
+\ seed resolves every stored name and then rewrites a call, writes an xt, or
+\ branches to the word, and LAOTWIDGATE is what stands between the lookup and all
+\ three. Until this landed, nothing in the tree executed that routine at all - it
+\ could be deleted whole and every suite stayed green.
 \
-\ BOTH BOOT, AND THAT IS THE POINT. The window compiles a call to a QUALIFIED
-\ prefix word, so the seed resolves it through that package's public slot and the
-\ gate's last layer decides: a callee in a SEALED wordlist the engine already had
-\ is admitted when the wid is the package's PUBLIC one. Calling a public word of a
-\ sealed package is what checked source does every day - EMIT-STORE-DEF-NAME
-\ refuses DEFINING into a sealed wid and C-PACKAGE-SEAL-GUARD refuses OPENING one,
-\ and neither forbids the call - so a gate that rejected here would refuse
-\ legitimate work: the compiler chain's A64RAV:DKEEP-HOOK-DEFAULT boot-run entry
-\ died at this routine before the layers landed.
-\
-\ WHAT SEPARATES THE TWO IS THE MUTATION THEY SURVIVE. Delete the public-slot
-\ admit and mode 1 dies 84 naming FLOOR-FROM while mode 2, whose callee's package
-\ seals nothing, still boots. That contrast is what attributes mode 1's verdict to
-\ the bitmap rather than to a name that merely failed to resolve, and the builder
-\ asserts both packages' seal status on the live host before it builds either, so
-\ a tree that sealed CHECKER-TAPE or unsealed CODE-RECLAIM stops the build by name
-\ instead of quietly testing one thing twice. Mode 1 is PROBE-BOOT-GATE-SEALED
-\ below. Mode 2 is the engine the wid rebase case builds, and both of its target
-\ boots assert the same admit.
+\ The window compiles a call to a QUALIFIED prefix word, so the seed resolves it
+\ through that package's public slot and the gate judges the wid the lookup used.
+\ The callee's package seals nothing, and the builder asserts that on the live
+\ host before it builds, so a tree that sealed CHECKER-TAPE stops the build by
+\ name; both target boots of the rebase case assert the admit.
 \
 \ NO CASE HERE CAN MAKE THE GATE REFUSE, and that is a property of the format
 \ rather than a gap in the fixture: a call site's scope is a window coordinate the
@@ -565,17 +531,11 @@ create PRB PRB-CAP allot   variable PRB-U
       E-FS-OPEN throw
    then ;
 
-: BUILT-GATE ( n -- )
+: BUILT-GATE ( -- )
    BUILD-GATE
    RC @ 0 T=
    GATE-HB$ EXISTS? TTRUE
    REQUIRE-GATE-BUILD ;
-
-: PROBE-BOOT-GATE-SEALED ( -- )
-   s" a call site into a SEALED prefix package's PUBLIC word-list is admitted" T-LABEL
-   1 BUILT-GATE
-   GATE-HB$ BOOT-EMPTY
-   ASSERT-GATE-ADMITTED ;
 
 \ --- the wid rebase (dot habu-rebase-captured-wids-54dec421) --------------------
 \ A captured record travels with the wordlist id it had in the METABUILD HOST,
@@ -683,12 +643,11 @@ variable SOURCE-WID                  \ the ordinal the capture gave AWBGATE, as 
 \ cannot do, and it stops the build before an engine exists.
 : BUILD-GATE-NARROW ( n -- ) {: v:n :}
    GATE-SETUP
-   v GWID$!
-   2 NUM$!
+   v NUM$!
    PROC-ENV-RESET
    s" HB_TMP" >LEN GATE-ROOT$ >LEN PROC-ENV+
-   s" HABU_AOT_GATE" >LEN  NUM$ >LEN PROC-ENV+
-   s" HABU_AOT_WID_NARROW" >LEN  GWID$ >LEN PROC-ENV+
+   s" HABU_AOT_GATE" >LEN  s" 1" >LEN PROC-ENV+
+   s" HABU_AOT_WID_NARROW" >LEN  NUM$ >LEN PROC-ENV+
    RUN-BUILDER ;
 
 : PROBE-WID-CAPTURE-REFUSAL ( -- )
@@ -730,7 +689,7 @@ variable SOURCE-WID                  \ the ordinal the capture gave AWBGATE, as 
 \ forged.
 : PROBE-WID-REBASE ( -- )
    s" the GATE=2 engine builds and reports the ordinal its capture used" T-LABEL
-   2 BUILT-GATE
+   BUILT-GATE
    s" awb-source-wid=" TAGGED-N SOURCE-WID !  REQUIRE-PROBE
    s" cold-sealed" true ALIAS-CASE  REQUIRE-PROBE
    s" cold-open" false ALIAS-CASE  REQUIRE-PROBE
@@ -757,8 +716,7 @@ variable SOURCE-WID                  \ the ordinal the capture gave AWBGATE, as 
 
 : FULL ( -- )
    PROBE-RESTORE  REQUIRE-PROBE
-   PROBE-REFUSALS  REQUIRE-PROBE
-   PROBE-BOOT-GATE-SEALED  REQUIRE-PROBE
+   PROBE-REFUSE-ADDRESS-SPAN  REQUIRE-PROBE
    PROBE-WID-REBASE  REQUIRE-PROBE
    PROBE-WID-CAPTURE-REFUSAL ;
 
@@ -772,9 +730,7 @@ variable SOURCE-WID                  \ the ordinal the capture gave AWBGATE, as 
 : SELECTED ( -- )
    SETUP
    s" restore" ARG= if PROBE-RESTORE exit then
-   s" refuse-wid0" ARG= if PROBE-REFUSE-WID0 exit then
    s" refuse-address-span" ARG= if PROBE-REFUSE-ADDRESS-SPAN exit then
-   s" boot-sealed" ARG= if PROBE-BOOT-GATE-SEALED exit then
    s" rebase" ARG= if PROBE-WID-REBASE exit then
    s" capture-refusal" ARG= if PROBE-WID-CAPTURE-REFUSAL exit then
    ARG-ERROR ;

@@ -20,7 +20,6 @@
 \ type and never binds a fresh-region atom (case 12). Identity vars must avoid
 \ n/f/r; the domains themselves are independent, and space-global stays concrete.
 
-require test/checker-assert.f
 require src/lib/string.f
 require src/lib/test.f
 

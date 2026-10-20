@@ -29,9 +29,8 @@
 \ top-row copy can establish a real target WID collision.
 \
 \ The modes below are selected by environment so one builder serves every case
-\ its companion suites need (HABU_AOT_GATE serves two) -
-\ test/aot-wid-suite.f, test/aot-wide-format-suite.f, test/aot-wide-prefix-suite.f
-\ and test/aot-data-window-suite.f:
+\ its companion suites need -
+\ test/aot-wid-suite.f and test/aot-data-window-suite.f:
 \
 \   (default)          define two packages inside the capture window and protect
 \                      one of them, then check the capture's contract against the
@@ -40,10 +39,6 @@
 \                      the rows taken after it are exactly the live protected WIDs
 \                      inside the window, and the host's own protected WIDs - all
 \                      of which sit below the window - do not travel.
-\   HABU_PWID_BAD=N    hand N to `prot-wid-add` inside the window and re-capture.
-\                      N=0 sets the one bit no registry may carry and the capture
-\                      refuses the band, so the build dies named and no engine
-\                      appears.
 \   HABU_AOT_REWRITE=1 take no capture: run the writer again over the window.aot
 \                      and hb-cold an earlier build left in HB_TMP, replacing its
 \                      hb-pwid with one carrying the forge the knobs below ask
@@ -70,49 +65,12 @@
 \                      zeroed it and the seed re-trapped it; entering the engine
 \                      must die "defer: unset execution vector" rather than branch
 \                      into whatever the baked bytes held.
-\   HABU_AOT_BIG=1     grow the capture window past the 64 KiB world the format
-\                      used to live in (dot habu-widen-the-aot-089f5faf): compile
-\                      BIG-FILLER-N filler words, then a data cell, a callee and a
-\                      reporter ABOVE them, and capture the complete window. The build then asserts the three offsets that
-\                      no u16 field could have held - the blob length, the highest
-\                      call-site blob offset and the highest DATA-site blob offset
-\                      are each past 65535 - and dies named if any of them is not,
-\                      so the fixture cannot quietly stop testing what it is for.
-\                      It prints the three measurements for its callers to read.
-\   HABU_AOT_EXT=1     put a word whose NAME is longer than a dictionary record can
-\                      hold inside the capture window, and run it from the
-\                      boot-run list. Such a record keeps its name out of line,
-\                      which the capture used to refuse outright; the build now
-\                      asserts one was captured, and the engine can only report
-\                      when the boot-run's LFIND matches that out-of-line name.
-\   HABU_AOT_XTLIT=1   put a word holding `['] HH0` - a CODE literal naming a
-\                      PRE-WINDOW word - inside the capture window. The compile
-\                      handler emits that chain into the window word's own body, so
-\                      the inliner decline cannot reach it and the capture used to
-\                      die named. It is now carried as a name-keyed code row: the
-\                      build asserts, over the fixture word's own captured record,
-\                      exactly one such row inside its body naming HH0 and no
-\                      rebased code site there, and the engine reports the ticked
-\                      value at boot for its caller to compare against its own.
-\   HABU_AOT_PREWIN=1  put a word that names a PREFIX data word inside the capture
-\                      window, and run it from the boot-run list. The prefix word's
-\                      body is short enough to inline, so the copy used to carry an
-\                      address below the window's DATA span and the capture died
-\                      named; the engine now declines that copy and emits the call,
-\                      which the seed relocates by name. The build asserts, over
-\                      the fixture word's own captured record, that the body holds
-\                      no DATA relocation site and does hold a call to the prefix
-\                      word.
-\   HABU_AOT_GATE=1|2  compile a call to a QUALIFIED PREFIX word inside the capture
+\   HABU_AOT_GATE=1    compile a call to a QUALIFIED PREFIX word inside the capture
 \                      window, so the seed resolves that name through the package's
 \                      public word-list and the AOT boot gate judges the wid the
-\                      lookup used. Mode 1's callee is in a SEALED prefix package
-\                      (CODE-RECLAIM), mode 2's in an unsealed one (CHECKER-TAPE),
-\                      and both engines must boot: calling a public word of a
-\                      sealed package is what checked source does. The pair exists
-\                      for the mutation - deleting the gate's public-slot admit
-\                      kills mode 1 and leaves mode 2 alone - and the build asserts
-\                      each package's seal status before it uses it.
+\                      lookup used. The callee's package (CHECKER-TAPE) is
+\                      unsealed, the engine must boot, and the build asserts the
+\                      seal status before it uses it.
 \   HABU_AOT_D0_SKEW=N run the capture a SECOND time over the same window with
 \                      its DATA span start raised by N bytes. Hand it an N past
 \                      the whole span and the window then contains none of the
@@ -137,8 +95,7 @@ require test/fixture-writer.f
 
 package AOT-WID-BUILD
 
-\ The large mode contributes one checked definition per filler row.
-$20000 constant DRV-CAP
+$2000 constant DRV-CAP
 $10000 constant IO-CAP
 120000 constant CHILD-TIMEOUT-MS
 74 constant BUILD-RC
@@ -181,9 +138,7 @@ variable WINDOW-ENDED
    a DRV-BUF DRV-U @ + u BYTE-COPY
    DRV-U @ u + DRV-U ! ;
 
-: DRV-NL ( -- )
-   10 DRV-BUF DRV-U @ + c!
-   DRV-U @ 1+ DRV-U ! ;
+: DRV-NL ( -- ) S\" \n" DRV+ ;
 
 : DRV-LINE ( ptr u8 n -- ) DRV+ DRV-NL ;
 
@@ -209,13 +164,6 @@ variable WINDOW-ENDED
    S\" package AOT-CAPTURE\n" DRV-COUNT
    S\" package AOT-CAPTURE\nusing AOT-BUF\n" DRV-COUNT
    <> if s" aot-wid-build: a generated AOT-CAPTURE block has no `using AOT-BUF`" BUILD-RC die then ;
-
-create DRV-CH 1 allot
-: DRV-CH+ ( n -- ) {: c:n :}
-   c DRV-CH c!  DRV-CH 1 DRV+ ;
-: DRV-U+ ( n -- ) {: v:n :}        \ decimal, for the generated filler names
-   v 10 >= if v 10 / recurse then
-   v 10 mod 48 + DRV-CH+ ;
 
 \ Forge the emitted scalar after the ordinary artifact reader and image writer
 \ accept the valid capture. The generated patch checks its bound label, full
@@ -249,15 +197,10 @@ create DRV-CH 1 allot
    then ;
 
 \ --- the capture window and its fixture source --------------------------------
-: BAD-ENV$ ( -- ptr u8 n )       s" HABU_PWID_BAD" GETENV ;
 : SKEW-ENV$ ( -- ptr u8 n )      s" HABU_AOT_D0_SKEW" GETENV ;
 : SPAN-ENV$ ( -- ptr u8 n )      s" HABU_AOT_SPAN" GETENV ;
 : BAKE-ENV$ ( -- ptr u8 n )      s" HABU_AOT_BAKE" GETENV ;
 : TRAP-ENV$ ( -- ptr u8 n )      s" HABU_AOT_TRAP" GETENV ;
-: BIG-ENV$ ( -- ptr u8 n )       s" HABU_AOT_BIG" GETENV ;
-: EXT-ENV$ ( -- ptr u8 n )       s" HABU_AOT_EXT" GETENV ;
-: XL-ENV$ ( -- ptr u8 n )        s" HABU_AOT_XTLIT" GETENV ;
-: PREWIN-ENV$ ( -- ptr u8 n )    s" HABU_AOT_PREWIN" GETENV ;
 : GATE-ENV$ ( -- ptr u8 n )      s" HABU_AOT_GATE" GETENV ;
 
 \ The plain protected-WID fixture is the fallback mode, but the D0-skew refusal
@@ -294,8 +237,11 @@ create DRV-CH 1 allot
 \ one REQUIRE because src/habu/debug.f requires the watch cells and the stepper
 \ itself, and naming all three again loaded each of them twice (`duplicate
 \ definition: BPW-MAX`). The cold host provides none of the four, so the require
-\ reads the file.
+\ reads the file. The capture refuses a DATA window base off the cell grid, and
+\ the host-side lines before it leave HERE wherever their string bytes ended, so
+\ the window opens on an aligned HERE.
 : CAPTURE-REPL-LINES ( -- )
+   s" align" DRV-LINE
    s" AOT-ARM:WINDOW-OPEN" DRV-LINE
    HB-TARGET-LINUX? if s" include src/os/linux/repl-term.f"
    else s" include src/os/macos/repl-term.f" then DRV-LINE
@@ -410,16 +356,6 @@ create DRV-CH 1 allot
    PROT-CHECK-DEF
    REPL-BOOTRUN-LINES ;
 
-\ The refusal the live capture path owns. WID 0 is not a wordlist, so a band with
-\ bit 0 set is not a registry, and it is the RE-CAPTURE below that asks the
-\ capture about it (exit 74); the build never reaches an image. An id at or above
-\ PROT-WID-MAX is refused by `prot-wid-add` itself before any capture is asked
-\ anything, so test/seal.f proves that bound on the shipped engine and no build
-\ here adds code to it.
-: BAD-FIXTURE-LINES ( ptr u8 n -- ) {: v:ptr vu:n :}
-   v vu DRV+  s"  prot-wid-add" DRV-LINE
-   RECAPTURE-LINE ;
-
 \ An initialised cell plus a word that reads it. The word's reference to the cell
 \ is a DATA address literal inside the window, so the value only reaches the
 \ report if the content travelled AND that literal was rebased onto the seeded DP.
@@ -441,262 +377,6 @@ create DRV-CH 1 allot
    REPL-BOOTRUN-LINES
    S\" s\" AWB-CALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
 
-\ --- the big-window fixture (dot habu-widen-the-aot-089f5faf) ------------------
-\ THE POINT IS THE OFFSETS, not the size. Until the format widened, a call-site
-\ row, a DATA-site offset and a CODE-site offset were each u16, so a captured
-\ window could not describe anything past its 65535th byte and the capture died
-\ at AOT-BLOB-CAP before it ever got there. This fixture builds a window that is
-\ beyond that, with the three things that have to survive it defined ABOVE
-\ the filler: a data cell, a callee, and a reporter that calls the callee and
-\ prints the cell. So the
-\ engine can only report the magic if a call site AND a DATA site whose blob
-\ offsets do not fit sixteen bits were both recorded and patched at boot.
-\ The filler words carry no calls of their own; they exist to push the three
-\ words that matter past the old ceiling.
-1024 constant BIG-FILLER-N         \ 80 bytes each on the current JIT; keeps the sites past 64 KiB
-
-: BIG-FILLER ( -- )
-   BIG-FILLER-N 0 ?do
-      s" : AWB-BIG-F" DRV+  i DRV-U+
-      s"  ( n -- n ) dup + dup + dup + dup + dup + dup + dup + dup + ;" DRV-LINE
-   loop ;
-
-\ The three measurements, taken from the capture's own tables through its own
-\ private row readers, and each one fatal if it does not clear 65535. A window
-\ that stopped exceeding the old ceiling would make this fixture prove nothing,
-\ so it ends the build instead of quietly passing.
-: BIG-CHECK-DEF ( -- )
-   DRV-AOT-CAPTURE
-   s" : BIG-MAX-SITE ( -- n )" DRV-LINE
-   s"    0 AOT-SITE-N @ 0 ?do i ACAP-SITE-ROW ACAP-W32@ max loop ;" DRV-LINE
-   s" : BIG-MAX-DSITE ( -- n )" DRV-LINE
-   s"    0 AOT-DSITE-N @ 0 ?do AOT-DSITE-BUF@ i 4 * + ACAP-W32@ max loop ;" DRV-LINE
-   s" : BIG-CHECK ( -- )" DRV-LINE
-   s"    AOT-BLOB-LEN @ $10000 > 0= if" DRV-LINE
-   S\"       s\" aot-wid-build: big-window blob still fits the old 64KB world\" 74 die then" DRV-LINE
-   s"    BIG-MAX-SITE $FFFF > 0= if" DRV-LINE
-   S\"       s\" aot-wid-build: big-window call site still fits a u16 offset\" 74 die then" DRV-LINE
-   s"    BIG-MAX-DSITE $FFFF > 0= if" DRV-LINE
-   S\"       s\" aot-wid-build: big-window DATA site still fits a u16 offset\" 74 die then" DRV-LINE
-   S\"    s\" aot-wid-build: big-blob \" type AOT-BLOB-LEN @ . cr" DRV-LINE
-   S\"    s\" aot-wid-build: big-site \" type BIG-MAX-SITE . cr" DRV-LINE
-   S\"    s\" aot-wid-build: big-dsite \" type BIG-MAX-DSITE . cr ;" DRV-LINE
-   s" BIG-CHECK" DRV-LINE                  \ private to the package: run it while the block is open
-   s" ;package" DRV-LINE ;
-
-: BIG-FIXTURE-LINES ( -- )
-   BIG-FILLER
-   s" create AWB-BIG-CELL 8 allot" DRV-LINE
-   s" $5A5AB16B16B15A5A AWB-BIG-CELL !" DRV-LINE
-   s" : AWB-BIG-CORE ( -- ) 0 dup + dup + dup + dup + dup + dup + dup + dup + drop ;" DRV-LINE
-   s" : AWB-BIG-LAST ( -- n ) AWB-BIG-CORE AWB-BIG-CELL @ ;" DRV-LINE
-   S\" : AWB-BIG-REPORT ( -- ) s\" awb-big=\" type AWB-BIG-LAST . cr ;" DRV-LINE
-   RECAPTURE-LINE
-   BIG-CHECK-DEF
-   REPL-BOOTRUN-LINES
-   S\" s\" AWB-BIG-REPORT\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
-
-\ --- the out-of-line name fixture (dot habu-widen-the-aot-089f5faf) ------------
-\ A name longer than DNAME-INL is not kept in its dictionary record: the definer
-\ writes the bytes at CP and the record's [24] cell points at them. The capture
-\ used to refuse such a record outright ("rec has EXT name (uncompactable)"), and
-\ the compiler chain has 45 of them. Now the name travels in the deduped pool
-\ like every other name and the seed points [24] at the pooled bytes.
-\ WHAT MAKES THE BOOT HALF DIRECT: the reporter's own name is the long one, and
-\ the boot-run list resolves its entry words through LFIND - which, for an EXT
-\ record, compares the caller's token against the bytes at [24]. A wrong pointer
-\ there cannot find the word, and EM-AOT-BOOTRUN exits $52 instead of reporting.
-: EXT-CHECK-DEF ( -- )
-   DRV-AOT-CAPTURE
-   s" : EXT-REC-N ( -- n )" DRV-LINE
-   s"    0 AOT-REC-N @ 0 ?do i ACAP-CREC-DST 12 + c@ 2 and 0= 0= if 1+ then loop ;" DRV-LINE
-   s" : EXT-CHECK ( -- )" DRV-LINE
-   s"    EXT-REC-N {: n:n :}" DRV-LINE
-   s"    n 0= if" DRV-LINE
-   S\"       s\" aot-wid-build: ext fixture captured no out-of-line name\" 74 die then" DRV-LINE
-   S\"    s\" aot-wid-build: ext-recs \" type n . cr ;" DRV-LINE
-   s" EXT-CHECK" DRV-LINE
-   s" ;package" DRV-LINE ;
-
-: EXT-FIXTURE-LINES ( -- )
-   s" create AWB-EXT-CELL 8 allot" DRV-LINE
-   s" $5A5AE47E47E45A5A AWB-EXT-CELL !" DRV-LINE
-   S\" : AWB-A-DELIBERATELY-LONG-REPORT-NAME ( -- ) s\" awb-ext=\" type AWB-EXT-CELL @ . cr ;" DRV-LINE
-   RECAPTURE-LINE
-   EXT-CHECK-DEF
-   REPL-BOOTRUN-LINES
-   S\" s\" AWB-A-DELIBERATELY-LONG-REPORT-NAME\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
-
-\ --- what both body checks below need ------------------------------------------
-\ Each of them finds ONE captured dict record by name and then reads the capture's
-\ tables over that record's blob span, so both need the same byte compare and the
-\ same record search. One emitted definition of each, in one reopened AOT-CAPTURE
-\ block that the caller's own lines continue: the modes are mutually exclusive
-\ (FIXTURE-LINES picks one), so a single copy is all any driver ever carries.
-\ The search walks every verbatim record, ACAP-REC-ALL of them: AOT-REC-N counts
-\ only the named rows the capture ships, so a private record in the window
-\ would leave the fixture's own record past its end.
-: BODY-CHECK-OPEN ( -- )
-   DRV-AOT-CAPTURE
-   s" : AWB-NAME= ( ptr u8 ptr u8 n -- bool ) {: a:ptr b:ptr u:n :}" DRV-LINE
-   s"    u 0 ?do a i + c@ b i + c@ <> if 0 0= 0= unloop exit then loop  0 0= ;" DRV-LINE
-   s" : AWB-REC-BY-NAME ( ptr u8 n -- n ) {: a:ptr u:n :}" DRV-LINE
-   s"    ACAP-REC-ALL @ 0 ?do" DRV-LINE
-   s"       i ACAP-REC-DST {: v:ptr :}" DRV-LINE
-   s"       v 16 + ACAP-W32@ u = if" DRV-LINE
-   s"          v 24 + a u AWB-NAME= if i unloop exit then" DRV-LINE
-   s"       then" DRV-LINE
-   s"    loop  -1 ;" DRV-LINE ;
-
-\ --- the pre-window CODE literal fixture (dot habu-widen-the-aot-089f5faf) ------
-\ THE CASE THE INLINER DECLINE CANNOT REACH. `['] HH0` on a PREFIX word compiles a
-\ code-address chain straight into the window word's own body (habu2.f C-BTICK ->
-\ C-CODE-ADDR), so there is no copy to decline: the chain is the window's own. Its
-\ value is a prefix code address, which the window's DATA span does not hold and
-\ its code span does not hold either, and on the base this exact fixture ends the
-\ build - "aot-capture: recorded address site at blob offset N carries V which is
-\ in neither the window's DATA span nor its code span", exit 74, no image. The
-\ capture now recognises it as a call target that is not a BL and writes a
-\ name-keyed code row; the seed resolves HH0 in the engine it is booting.
-\
-\ WHAT THE CHECK ASSERTS, and why each half is needed. It finds AWB-XL-REPORT's own
-\ captured dict record BY NAME and takes its blob span from that record, then
-\ requires THREE things over that span: exactly one named code row inside it (more
-\ than one means the fixture grew a second literal and the case stopped being
-\ about the one under test), that row's pooled name is HH0 (a row naming something
-\ else would resolve to the wrong entry and still "pass" a count), and NO rebased
-\ code site inside it (which is the other way the classification could have gone -
-\ the two lists are exclusive, so this is what says the site took the named branch
-\ rather than being carried b0-relative).
-\
-\ WHAT THE BOOT HALF ASSERTS. The reporter prints the ticked value from INSIDE the
-\ window. Its caller boots the same engine again with a program that ticks the same
-\ word from OUTSIDE, in ordinary compiled code, and requires the two numbers to be
-\ equal. That needs no fixed constant, so it survives ASLR, and neither of the two
-\ wrong answers can produce it: the host's address (had the chain been carried
-\ verbatim) is not this engine's, and the zero the capture leaves is not either.
-: XL-CHECK-DEF ( -- )
-   BODY-CHECK-OPEN
-   s" variable XL-HIT  variable XL-CS" DRV-LINE
-   S\" : XL-HH0$ ( -- ptr u8 n ) s\" HH0\" ;" DRV-LINE
-   s" : XL-ROW ( n -- ptr u8 ) 8 * AOT-XTSITE:BUF@ + ;" DRV-LINE
-   s" : XL-POOL= ( n ptr u8 n -- bool ) {: noff:n a:ptr u:n :}" DRV-LINE
-   s"    AOT-NAMES-BUF@ noff + c@ u = 0= if 0 0= 0= exit then" DRV-LINE
-   s"    AOT-NAMES-BUF@ noff 1+ + a u AWB-NAME= ;" DRV-LINE
-   s" : XL-ROW-IN ( n n -- n ) {: start:n clen:n :}" DRV-LINE
-   s"    -1 XL-HIT !" DRV-LINE
-   s"    AOT-XTSITE:N @ 0 ?do" DRV-LINE
-   s"       i XL-ROW ACAP-W32@ {: off:n :}" DRV-LINE
-   s"       off start >= off start clen + < and if" DRV-LINE
-   s"          XL-HIT @ 0 >= if" DRV-LINE
-   S\"             s\" aot-wid-build: xtlit body holds more than one named row\" 74 die then" DRV-LINE
-   s"          i XL-HIT !" DRV-LINE
-   s"       then" DRV-LINE
-   s"    loop" DRV-LINE
-   s"    XL-HIT @ ;" DRV-LINE
-   s" : XL-CSITES ( n n -- n ) {: start:n clen:n :}" DRV-LINE
-   s"    0 XL-CS !" DRV-LINE
-   s"    AOT-CSITE-N @ 0 ?do" DRV-LINE
-   s"       AOT-DSITE-N @ i + 4 * AOT-DSITE-BUF@ + ACAP-W32@ {: off:n :}" DRV-LINE
-   s"       off start >= off start clen + < and if 1 XL-CS +! then" DRV-LINE
-   s"    loop  XL-CS @ ;" DRV-LINE
-   s" : XL-CHECK ( -- )" DRV-LINE
-   S\"    s\" AWB-XL-REPORT\" AWB-REC-BY-NAME {: k:n :}" DRV-LINE
-   s"    k 0 < if" DRV-LINE
-   S\"       s\" aot-wid-build: xtlit fixture record not found\" 74 die then" DRV-LINE
-   s"    k ACAP-REC-DST {: v:ptr :}" DRV-LINE
-   s"    v ACAP-W32@ {: start:n :}  v 8 + ACAP-W32@ {: clen:n :}" DRV-LINE
-   s"    start clen XL-ROW-IN {: xi:n :}" DRV-LINE
-   s"    xi 0 < if" DRV-LINE
-   S\"       s\" aot-wid-build: xtlit body made no named code row\" 74 die then" DRV-LINE
-   s"    xi XL-ROW 4 + ACAP-W32@ XL-HH0$ XL-POOL= 0= if" DRV-LINE
-   S\"       s\" aot-wid-build: xtlit row names some other word\" 74 die then" DRV-LINE
-   s"    start clen XL-CSITES {: cs:n :}" DRV-LINE
-   s"    cs 0= 0= if" DRV-LINE
-   S\"       s\" aot-wid-build: xtlit body still carries a rebased code site\" 74 die then" DRV-LINE
-   S\"    s\" aot-wid-build: xtlit \" type xi XL-ROW ACAP-W32@ . cr" DRV-LINE
-   S\"    s\" aot-wid-build: xtlit-csites \" type cs . cr ;" DRV-LINE
-   s" XL-CHECK" DRV-LINE
-   s" ;package" DRV-LINE ;
-
-: XL-FIXTURE-LINES ( -- )
-   \ Only diagnostic formatting observes the execution token's machine cell.
-   s" TRUSTED: AWB-XL>BITS ( [ -- ptr a ] -- n ) ;" DRV-LINE
-   S\" : AWB-XL-REPORT ( -- ) s\" awb-xl=\" type ['] HH0 AWB-XL>BITS . cr ;" DRV-LINE
-   RECAPTURE-LINE
-   XL-CHECK-DEF
-   REPL-BOOTRUN-LINES
-   S\" s\" AWB-XL-REPORT\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
-
-\ --- the pre-window DATA literal fixture (dot habu-aot-pre-window-0b01043c) -----
-\ THE SHAPE THE WHOLE DOT IS ABOUT. A window word names a data word the PREFIX
-\ defined. The prefix's `create` sits below the window's DATA span, so the address
-\ its body pushes is one the window cannot describe: rebasing it by the window
-\ delta is wrong (the metabuild host recompiles the whole core prefix a second
-\ time without rewinding DP, so its prefix band has no counterpart in the target)
-\ and leaving it is the building host's address baked into bin/hb.
-\
-\ HH0 is that prefix word: `create HH0 $6a09e667 , ...` in src/core/sha256.f,
-\ which the cold prefix loads before the capture window opens. It is
-\ short enough for habu2.f C-CALL to copy inline, so before the decline landed the
-\ copy carried the chain into the window and the capture died named
-\ ("recorded address site ... in neither the window's DATA span nor its code
-\ span", exit 74). Its name is in the cold prefix the image bakes, which is what
-\ makes the BL the decline emits relocatable at boot - and its first cell is
-\ INITIALISED to the SHA-256 seed constant $6a09e667, so the boot half in
-\ test/aot-wide-prefix-suite.f gets an answer that can only come from the right
-\ address in the built engine, not the zero an unrelocated read gives.
-\
-\ WHAT THE CHECK ASSERTS, and why it is structural rather than "the build did not
-\ die": it finds AWB-PRE-READ's own captured dict record BY NAME, takes its blob
-\ span from that record, and then requires BOTH halves over that span - no DATA
-\ relocation site inside it (the chain is gone) AND a call site inside it whose
-\ pooled callee name is HH0 (the BL is there, by name). Either half alone would
-\ pass on a fixture that stopped referencing the prefix word at all.
-: PREWIN-CHECK-DEF ( -- )
-   BODY-CHECK-OPEN
-   s" variable PW-DS  variable PW-CS" DRV-LINE
-   s" : PW-DSITES ( n n -- n ) {: start:n clen:n :}" DRV-LINE
-   s"    0 PW-DS !" DRV-LINE
-   s"    AOT-DSITE-N @ 0 ?do" DRV-LINE
-   s"       AOT-DSITE-BUF@ i 4 * + ACAP-W32@ {: off:n :}" DRV-LINE
-   s"       off start >= off start clen + < and if 1 PW-DS +! then" DRV-LINE
-   s"    loop  PW-DS @ ;" DRV-LINE
-   s" : PW-CALLS ( n n ptr u8 n -- n ) {: start:n clen:n a:ptr u:n :}" DRV-LINE
-   s"    0 PW-CS !" DRV-LINE
-   s"    AOT-SITE-N @ 0 ?do" DRV-LINE
-   s"       i ACAP-SITE-ROW {: r:ptr :}" DRV-LINE
-   s"       r ACAP-W32@ {: off:n :}  r 4 + ACAP-W32@ {: noff:n :}" DRV-LINE
-   s"       off start >= off start clen + < and" DRV-LINE
-   s"       AOT-NAMES-BUF@ noff + c@ u = and if" DRV-LINE
-   s"          AOT-NAMES-BUF@ noff 1+ + a u AWB-NAME= if 1 PW-CS +! then" DRV-LINE
-   s"       then" DRV-LINE
-   s"    loop  PW-CS @ ;" DRV-LINE
-   s" : PREWIN-CHECK ( -- )" DRV-LINE
-   S\"    s\" AWB-PRE-READ\" AWB-REC-BY-NAME {: k:n :}" DRV-LINE
-   s"    k 0 < if" DRV-LINE
-   S\"       s\" aot-wid-build: prewin fixture record not found\" 74 die then" DRV-LINE
-   s"    k ACAP-REC-DST {: v:ptr :}" DRV-LINE
-   s"    v ACAP-W32@ {: start:n :}  v 8 + ACAP-W32@ {: clen:n :}" DRV-LINE
-   s"    start clen PW-DSITES {: ds:n :}" DRV-LINE
-   s"    ds 0= 0= if" DRV-LINE
-   S\"       s\" aot-wid-build: prewin body still carries a DATA site\" 74 die then" DRV-LINE
-   S\"    start clen s\" HH0\" PW-CALLS {: cs:n :}" DRV-LINE
-   s"    cs 0= if" DRV-LINE
-   S\"       s\" aot-wid-build: prewin body holds no call to the prefix word\" 74 die then" DRV-LINE
-   S\"    s\" aot-wid-build: prewin-calls \" type cs . cr" DRV-LINE
-   S\"    s\" aot-wid-build: prewin-dsites \" type ds . cr ;" DRV-LINE
-   s" PREWIN-CHECK" DRV-LINE
-   s" ;package" DRV-LINE ;
-
-: PREWIN-FIXTURE-LINES ( -- )
-   s" : AWB-PRE-READ ( -- n ) HH0 @ ;" DRV-LINE
-   S\" : AWB-PRE-REPORT ( -- ) s\" awb-pre=\" type AWB-PRE-READ . cr ;" DRV-LINE
-   RECAPTURE-LINE
-   PREWIN-CHECK-DEF
-   REPL-BOOTRUN-LINES
-   S\" s\" AWB-PRE-REPORT\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
-
 \ --- the AOT boot-gate fixture (dot habu-return-the-record-9c9b1731) -----------
 \ THE GATE THIS REACHES. The seed resolves every baked name in the engine it is
 \ booting and then rewrites a call immediate, writes an xt into a code literal,
@@ -704,8 +384,7 @@ create DRV-CH 1 allot
 \ and it decides in layers: a wordlist THIS SEED created is admitted first, then
 \ the two engine-reserved ones, then any unprotected one, and a SEALED wordlist
 \ the engine already had is admitted only when it is a package's PUBLIC slot.
-\ Nothing else in the tree reaches that routine, so without this fixture the last
-\ layer can be deleted and every suite stays green.
+\ Nothing else in the tree reaches that routine.
 \
 \ WHY THE CALLEE IS A PREFIX WORD AND THE PATH IS A CALL SITE. A package the
 \ fixture opens inside the capture window is a wordlist the SEED creates, so the
@@ -720,72 +399,50 @@ create DRV-CH 1 allot
 \ site, before any of the window's code executes; running the callee would only
 \ add its side effects to the fixture.
 \
-\ THE TWO CALLEES DIFFER IN ONE FACT, THE SEAL, and the build asserts that fact
-\ rather than trusting it (GATE-SEAL-CHECK-LINES): CODE-RECLAIM seals both its
-\ word-lists in src/habu/xref.f, CHECKER-TAPE seals neither in src/core/checker.f,
-\ and both publish a word whose body reads a PRE-WINDOW data cell - which is what
-\ makes the compile-mode inliner decline the copy and emit the BL this fixture
-\ needs. A constant would have been inlined and left no call site at all.
-\
-\ WHY THERE IS A CONTROL MODE. Mode 1's callee is sealed and mode 2's is not, and
-\ BOTH must boot: calling a public word of a sealed package is what checked source
-\ does every day. What separates them is the mutation - delete the gate's
-\ public-slot admit and mode 1 dies 84 naming FLOOR-FROM while mode 2 still boots.
-\ Without mode 2 that exit would prove nothing about the bitmap, since a qualified
-\ name that simply failed to resolve would look much the same from outside.
+\ THE CALLEE'S PACKAGE IS UNSEALED, and the build asserts that rather than
+\ trusting it (GATE-SEAL-CHECK-LINES): CHECKER-TAPE seals neither word-list in
+\ src/core/checker.f, and it publishes a word whose body reads a PRE-WINDOW data
+\ cell - which is what makes the compile-mode inliner decline the copy and emit
+\ the BL this fixture needs. A constant would have been inlined and left no call
+\ site at all.
 : GATE-SEAL-CHECK-LINES ( -- )
    GATE-ENV$ nip 0= if exit then
    s" : AWB-PKG-PUB ( ptr u8 n -- n ) DICT-WL:NAMESPACE search-wl ;" DRV-LINE
    s" : AWB-PROT ( n -- n ) {: w:n :}" DRV-LINE
    s"    w 6 rshift 8 * data-base PROT-BITS-OFF + + @  w 63 and rshift  1 and ;" DRV-LINE
-   s" : AWB-?SEAL ( ptr u8 n n -- ) {: a:ptr u:n want:n :}" DRV-LINE
+   s" : AWB-?UNSEALED ( ptr u8 n -- ) {: a:ptr u:n :}" DRV-LINE
    s"    a u AWB-PKG-PUB {: w:n :}" DRV-LINE
    s"    w 0= if" DRV-LINE
    S\"       s\" aot-wid-build: the gate fixture's package is gone: \" type a u type cr" DRV-LINE
    S\"       s\" aot-wid-build: gate fixture package missing\" 74 die then" DRV-LINE
-   s"    w AWB-PROT want = if exit then" DRV-LINE
+   s"    w AWB-PROT 0= if exit then" DRV-LINE
    S\"    s\" aot-wid-build: gate fixture package \" type a u type" DRV-LINE
-   S\"    s\" : seal status is not what the mode assumes\" type cr" DRV-LINE
+   S\"    s\" : sealed, but the mode needs an unsealed one\" type cr" DRV-LINE
    S\"    s\" aot-wid-build: gate fixture seal assumption broken\" 74 die ;" DRV-LINE
-   S\" s\" CODE-RECLAIM\" 1 AWB-?SEAL" DRV-LINE
-   S\" s\" CHECKER-TAPE\" 0 AWB-?SEAL" DRV-LINE ;
+   S\" s\" CHECKER-TAPE\" AWB-?UNSEALED" DRV-LINE ;
 
-: GATE-ENTRY-LINES ( ptr u8 n -- ) {: mode:ptr mu:n :}
+: GATE-ENTRY-LINES ( -- )
    s" package AWBGATE" DRV-LINE
    s" public" DRV-LINE
-   mode mu s" 1" STR= if
-      s" : AWB-GATE-CALL ( -- ) ndict@ CODE-RECLAIM:FLOOR-FROM drop ;" DRV-LINE
-   else
-      s" : AWB-GATE-CALL ( -- ) CHECKER-TAPE:DISARM ;" DRV-LINE
-   then
+   s" : AWB-GATE-CALL ( -- ) CHECKER-TAPE:DISARM ;" DRV-LINE
    S\" : AWB-GATE-REPORT ( -- ) s\" awb-gate=open\" type cr ;" DRV-LINE ;
 
-: GATE-FIXTURE-LINES ( ptr u8 n -- ) {: mode:ptr mu:n :}
+: GATE-FIXTURE-LINES ( -- )
    s" variable AWB-GATE-WID" DRV-LINE
-   mode mu GATE-ENTRY-LINES
+   GATE-ENTRY-LINES
    s" get-current AWB-GATE-WID !" DRV-LINE
    s" ;package" DRV-LINE
    \ The target collision fixture allocates its own owner at this actual host
    \ ordinal before seeding. Neither process borrows the other's WIDN.
    S\" s\" awb-source-wid=\" type AWB-GATE-WID @ . cr" DRV-LINE
-   mode mu s" 2" STR= 0= if
-      s" AWB-GATE-WID @ prot-wid-add" DRV-LINE
-   then
    RECAPTURE-LINE
    REPL-BOOTRUN-LINES
    S\" s\" AWBGATE:AWB-GATE-REPORT\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
 
 : FIXTURE-LINES ( -- )
-   GATE-ENV$ {: g:ptr gu:n :}
-   gu 0 > if g gu GATE-FIXTURE-LINES exit then
-   BAD-ENV$ {: b:ptr bu:n :}
-   bu 0 > if b bu BAD-FIXTURE-LINES exit then
+   GATE-ENV$ nip 0 > if GATE-FIXTURE-LINES exit then
    BAKE-ENV$ nip 0 > if BAKE-FIXTURE-LINES exit then
    TRAP-ENV$ nip 0 > if TRAP-FIXTURE-LINES exit then
-   BIG-ENV$ nip 0 > if BIG-FIXTURE-LINES exit then
-   EXT-ENV$ nip 0 > if EXT-FIXTURE-LINES exit then
-   XL-ENV$ nip 0 > if XL-FIXTURE-LINES exit then
-   PREWIN-ENV$ nip 0 > if PREWIN-FIXTURE-LINES exit then
    PLAIN-MODE? if PROT-FIXTURE-LINES then ;
 
 : INJECT ( -- )

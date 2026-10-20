@@ -23,7 +23,7 @@
 \ - so the fact had to move into the store, where it is keyed by the symbol the
 \ token really names. Section 3 is that reproducer, held as a refusal.
 \
-\ HOW EACH CASE ASKS. CHECK-QUIET-CANDIDATE! (test/checker-assert.f) hands one
+\ HOW EACH CASE ASKS. CHECK-QUIET-CANDIDATE! (src/core/checker.f) hands one
 \ candidate definition to the real checker and answers -1 accepted / 0 refused,
 \ which is the same certification path a loaded file takes. Every candidate here
 \ is the SAME shape - an `if` arm that leaves one value fewer than the
@@ -40,7 +40,6 @@
 
 require src/lib/prelude.f
 require src/lib/test.f
-require test/checker-assert.f
 
 \ ---- fixtures ----------------------------------------------------------------
 \ A word that ends a path by its own body: it calls `throw`, so the checker

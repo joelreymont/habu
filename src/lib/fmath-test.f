@@ -1,7 +1,6 @@
 \ fmath-test.f - exact integer-root boundaries and measured float-math behavior.
 
 require src/lib/test.f
-require test/checker-assert.f
 require src/lib/fmath.f
 require src/lib/ieee754.f
 

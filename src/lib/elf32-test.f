@@ -1,7 +1,6 @@
 \ Bounded ELF32 decoding through the native checked public interface.
 require src/lib/elf32.f
 require src/lib/test.f
-require test/checker-assert.f
 
 package ELF32-TEST
 private

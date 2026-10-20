@@ -1,7 +1,6 @@
 \ native-quot-scope.f - quotation bodies, locals, and control-flow scope.
 
 require src/lib/test.f
-require test/checker-assert.f
 require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/errors.f

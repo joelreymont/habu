@@ -10,7 +10,6 @@
 
 require src/lib/test.f
 require src/lib/memory.f
-require test/checker-assert.f
 require src/lib/image-lifecycle.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f

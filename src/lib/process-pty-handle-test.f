@@ -3,7 +3,6 @@
 require src/lib/process-pty-handle.f
 require src/lib/process-fork.f
 require src/lib/test.f
-require test/checker-assert.f
 
 package PROCESS-PTY
 

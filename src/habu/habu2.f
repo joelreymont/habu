@@ -3930,10 +3930,10 @@ public
 \ the export's own, which is the pair a definer defined in that wordlist has.
 \ Without it a word made through the public alias of a private definer branches
 \ into a clause only the private wordlist names, and the AOT seed, whose
-\ qualifier reaches a package's PUBLIC wordlist alone, cannot resolve the branch
-\ (test/aot-band-export-does.f). The pair is also what `undefine` retires
+\ qualifier reaches a package's PUBLIC wordlist alone, cannot resolve the branch.
+\ The pair is also what `undefine` retires
 \ together (xref.f XREF-RETIRE-INDEX), so retiring the private original leaves
-\ the alias naming the definer and its clause (test/aot-band-export-undef.f).
+\ the alias naming the definer and its clause.
 
 \ x<a> = the name bytes of record x<rec>, x<u> = their length; x<t> is
 \ clobbered. The four registers differ.
@@ -8384,9 +8384,7 @@ ardone LBL,
 \ refused by name instead of being wired in. A defence whose threat lives in
 \ another file cannot be justified by a fixture in this one; the layers that DO
 \ decide are each falsified by mutation on the real chain (deleting one reds
-\ SERIAL-NEXT, (LP2VEXEC), HS@ and WATCH respectively), and test/aot-wid-suite.f
-\ holds the public-slot admit with a two-mode pair: PROBE-BOOT-GATE-SEALED (mode
-\ 1) and the ALIAS-CASE boots in PROBE-WID-REBASE (mode 2).
+\ SERIAL-NEXT, (LP2VEXEC), HS@ and WATCH respectively).
 \
 \ IT ASKS THE RECORD THE LOOKUP MATCHED, WHICH IS THE ONLY RECORD THAT ANSWERS.
 \ This used to take the xt alone and scan the whole dictionary for the first

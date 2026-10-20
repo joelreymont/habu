@@ -130,8 +130,7 @@ variable NESTED-DONES
 \ Every row here is CHECK!'s alone, a name the engine compiles no word for, so the
 \ case runs in the check tool's replay scope (test/replay-scope.f), where such a
 \ name binds through the record the checker's overlay publishes for it
-\ (src/core/checker.f CHECKER-OVERLAY), as the recovery cases of
-\ test/checker-effect-authority.f do.
+\ (src/core/checker.f CHECKER-OVERLAY).
 : TO-NESTED-RECOVERY ( -- )
    s" a nested candidate restores the enclosing recovery analysis" T-LABEL
    REPLAY-SCOPE:OPEN

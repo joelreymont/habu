@@ -4,7 +4,6 @@
 require src/lib/errors.f
 require src/lib/array.f
 require src/lib/test.f
-require test/checker-assert.f
 
 using ARRAY
 

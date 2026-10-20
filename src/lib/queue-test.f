@@ -9,7 +9,6 @@ require src/lib/codegen.f
 require src/lib/task.f
 require src/lib/queue.f
 require src/lib/test/outcome.f
-require test/checker-assert.f
 
 package QUEUE-TEST
 

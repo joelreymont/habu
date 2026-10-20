@@ -1,8 +1,7 @@
-\ aot-wide-format-lib.f - the fixture the capture-window gate rows share (dot
-\ habu-widen-the-aot-089f5faf). Loaded by test/aot-wide-format-suite.f,
-\ test/aot-wide-prefix-suite.f and test/aot-data-window-suite.f: the scratch
+\ aot-wide-format-lib.f - the fixture of the capture-window gate row (dot
+\ habu-widen-the-aot-089f5faf). Loaded by test/aot-data-window-suite.f: the scratch
 \ tree, the builder child, the batch boot of the built engine, the boot-run
-\ report reader and the row driver. It runs nothing; each row file reopens
+\ report reader and the row driver. It runs nothing; the row file reopens
 \ package AOT-WIDE-FORMAT and runs the probes it owns.
 \
 \ Each probe spawns test/aot-wid-build.f in a child process with one HABU_AOT_*
@@ -23,7 +22,6 @@
 
 require src/lib/errors.f
 require src/lib/string.f
-require src/lib/fmt.f
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/fs.f
@@ -41,7 +39,6 @@ $8000 constant CAP
 
 create OUT CAP allot     variable OUT-U
 create ERR CAP allot     variable ERR-U
-create EMPTY 1 allot                 \ zero-length stdin
 variable RC
 
 create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
@@ -120,12 +117,8 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
       1+
    repeat ;
 
-\ The digits a boot-run report printed after its label, as a string. Taking the
-\ SPAN rather than searching for an expected substring is what lets the named-code
-\ literal case (test/aot-wide-prefix-suite.f) compare two reports against each
-\ other: its value is an address in the engine that printed it, so no fixed text
-\ can stand for it. An absent label answers an empty span, which no expectation
-\ matches and which the code-literal case rejects outright before it compares.
+\ The digits a boot-run report printed after its label, as a string. An absent
+\ label answers an empty span, which no expectation matches.
 : REPORT$ ( ptr u8 n -- ptr u8 n ) {: m:ptr mu:n :}
    OUT$ m mu FIND-SUB MATCH option
      none OF OUT-U @ ENDOF                      \ absent: start at the end -> empty span
