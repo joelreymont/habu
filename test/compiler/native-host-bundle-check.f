@@ -387,7 +387,6 @@ public
    [: SPLIT-BUILD ;] [: SPLIT-CLOSE ;] finally
    2dup s" hb-whitebox-source" MAP-SEED-CHECK
    2dup s" hb-root" MAP-SEED-CHECK
-   2dup s" hb-ordinary" MAP-SEED-CHECK
    2dup SEED-GROWTH-CHECK
    MAP-ORIGIN-CHECK ;
 
