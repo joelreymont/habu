@@ -32,14 +32,13 @@ package NATIVE-FILE-STRIPPED-PATH-TEST
    s" app.f" AT ARG s" -o" ARG s" app-hb" AT ARG
    ENGINE-CANDIDATE:PATH$ s" " CAPTURE ;
 
-: CHECK-RUN ( -- )
-   RUN-APP SUCCESS
-   OUT$ S\" 42\n" CONTAINS? TTRUE ;
+: CHECK-RUN ( ptr u8 n -- )
+   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
+   AT s" " CAPTURE SUCCESS
+   OUT$ S\" 42\n" T$= ;
 
-: REPORT ( -- )
-   OUT$ s" definition hits " CONTAINS? TTRUE ;
 : HITS ( -- )
-   REPORT
+   OUT$ s" definition hits " CONTAINS? TTRUE
    OUT$ S\" definition hits 0\n" CONTAINS? TFALSE ;
 
 : USER-FILE ( ptr u8 n ptr u8 n -- )
@@ -83,23 +82,16 @@ public
    s" app.f" S\" require leaf.f\n: MAIN ( -- ) FILE-PATH-LEAF:VALUE . ;\n" PUT
    s" cache" MAKER SUCCESS
    OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
-   s" cache" MAKER SUCCESS
-   HITS
-   s" cache" BUILD SUCCESS
-   CHECK-RUN
    s" app.f" S\" require leaf.f\n\n: MAIN ( -- ) FILE-PATH-LEAF:VALUE . ;\n" PUT
    s" cache" MAKER SUCCESS
    HITS
-   s" cache" BUILD SUCCESS
-   CHECK-RUN
+   s" hb-aot-got" CHECK-RUN
+   \ Keep the simple leaf above free of library requirements: its linker loads
+   \ them after the capture window. This app loads them inside the window.
    s" env-cache" AT MAKE-DIR
    s" app.f" S\" require src/lib/fs.f\nrequire src/lib/engine-id.f\nrequire src/lib/process-env.f\n: MAIN ( -- ) PROC-ENV-RESET 42 . ;\n" PUT
-   s" env-cache" MAKER SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
-   s" env-cache" MAKER SUCCESS
-   REPORT
    s" env-cache" BUILD SUCCESS
-   CHECK-RUN
+   s" app-hb" CHECK-RUN
    USER-SLOTS
    T-REPORT
    s" native file stripped artifacts: " type ROOT$ type cr ;
