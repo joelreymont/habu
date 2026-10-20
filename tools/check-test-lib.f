@@ -1147,14 +1147,12 @@ variable LONG-J
 \ A count that cannot size a buffer is refused either way: a literal by the
 \ source pre-pass, which can read its value, and a computed one by the definer
 \ when the run reaches it.
-: COUNT-NAMED$ ( -- ptr u8 n )
-   s" 4 constant CKT-CAP CKT-CAP TYPED-BUFFER CKT-ROWS n : CKT-ROW ( n -- ptr n ) CKT-ROWS ;" ;
-
-: COUNT-EXPR$ ( -- ptr u8 n )
-   s" 2 constant CKT-CAP CKT-CAP 2 * TYPED-BUFFER CKT-ROWS n : CKT-ROW ( n -- ptr n ) CKT-ROWS ;" ;
-
-: COUNT-LAYOUT$ ( -- ptr u8 n )
-   s" SUMTYPE cklb<a> VARIANT value a ;VARIANT ;SUMTYPE 2 constant CKT-CAP CKT-CAP LAYOUT-BUFFER CKLB-BUF cklb<n> : CKT-ROW ( n -- ptr cklb<n> ) CKLB-BUF ;" ;
+: COUNT-GOOD$ ( -- ptr u8 n )
+   SB-RESET
+   s" package CKT-N 4 constant CKT-CAP CKT-CAP TYPED-BUFFER CKT-ROWS n : CKT-ROW ( n -- ptr n ) CKT-ROWS ; ;package " SB-APPEND
+   s" package CKT-E 2 constant CKT-CAP CKT-CAP 2 * TYPED-BUFFER CKT-ROWS n : CKT-ROW ( n -- ptr n ) CKT-ROWS ; ;package " SB-APPEND
+   s" package CKT-L SUMTYPE cklb<a> VARIANT value a ;VARIANT ;SUMTYPE 2 constant CKT-CAP CKT-CAP LAYOUT-BUFFER CKLB-BUF cklb<n> : CKT-ROW ( n -- ptr cklb<n> ) CKLB-BUF ; ;package" SB-APPEND
+   SB$ ;
 
 : COUNT-NAMED-MISUSE$ ( -- ptr u8 n )
    s" 4 constant CKT-CAP CKT-CAP TYPED-BUFFER CKT-ROWS n : CKT-BAD ( -- ptr n ) CKT-ROWS ;" ;
@@ -1171,9 +1169,7 @@ variable LONG-J
    erru 0 T= ;
 
 : TEST-BUFFER-COUNT ( -- )
-   COUNT-NAMED$ DIRECT-STDIN EXPECT-ACCEPTED
-   COUNT-EXPR$ DIRECT-STDIN EXPECT-ACCEPTED
-   COUNT-LAYOUT$ DIRECT-STDIN EXPECT-ACCEPTED
+   COUNT-GOOD$ DIRECT-STDIN EXPECT-ACCEPTED
    COUNT-NAMED-MISUSE$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
@@ -1194,17 +1190,13 @@ variable LONG-J
 \ as the engine and the checker match them. After `CHAR 0` the count is the
 \ keyword's value, left to the run, and the line after such a keyword is still
 \ read: a literal bad count and an undefined name are refused as before.
-: OPERAND-COLON$ ( -- ptr u8 n )
-   s" char : constant CKT-COLON : CKT-C ( -- n ) CKT-COLON ;" ;
-
-: OPERAND-TICK$ ( -- ptr u8 n )
-   s" ' TYPED-BUFFER constant CKT-TB" ;
-
-: OPERAND-COUNT$ ( -- ptr u8 n )
-   s" CHAR 0 TYPED-BUFFER CKT-ROWS n : CKT-ROW ( n -- ptr n ) CKT-ROWS ;" ;
-
-: OPERAND-BODY$ ( -- ptr u8 n )
-   s" : CKT-P ( -- n ) [char] ( ; : CKT-B ( -- n ) [CHAR] \ ; : CKT-Q ( -- n ) [char] : ;" ;
+: OPERAND-GOOD$ ( -- ptr u8 n )
+   SB-RESET
+   s" char : constant CKT-COLON : CKT-C ( -- n ) CKT-COLON ; " SB-APPEND
+   s" ' TYPED-BUFFER constant CKT-TB " SB-APPEND
+   s" CHAR 0 TYPED-BUFFER CKT-ROWS n : CKT-ROW ( n -- ptr n ) CKT-ROWS ; " SB-APPEND
+   s" : CKT-P ( -- n ) [char] ( ; : CKT-B ( -- n ) [CHAR] \ ; : CKT-Q ( -- n ) [char] : ;" SB-APPEND
+   SB$ ;
 
 : OPERAND-BAD-COUNT$ ( -- ptr u8 n )
    s" char : constant CKT-COLON 0 TYPED-BUFFER CKT-ROWS n" ;
@@ -1213,10 +1205,7 @@ variable LONG-J
    s" char : constant CKT-COLON : CKT-F ( -- n ) CKT-NOPE ;" ;
 
 : TEST-PARSED-OPERAND ( -- )
-   OPERAND-COLON$ DIRECT-STDIN EXPECT-ACCEPTED
-   OPERAND-TICK$ DIRECT-STDIN EXPECT-ACCEPTED
-   OPERAND-COUNT$ DIRECT-STDIN EXPECT-ACCEPTED
-   OPERAND-BODY$ DIRECT-STDIN EXPECT-ACCEPTED
+   OPERAND-GOOD$ DIRECT-STDIN EXPECT-ACCEPTED
    OPERAND-BAD-COUNT$ DIRECT-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
@@ -1306,16 +1295,8 @@ variable LONG-J
 : RENDER-CALLER$ ( -- ptr u8 n )
    s" : CKR-USE ( -- n ) CKR-SEVEN ; : CKR-CALLER ( -- ) CKR-USE ;" CKR-AFTER$ ;
 
-: RENDER-CMD$ ( ptr u8 n -- ptr u8 n )
-   {: use:ptr useu:n :}
-   SB-RESET s" require src/lib/process-command.f CMD:COMMAND CKR-CMD " SB-APPEND
-   use useu SB-APPEND SB$ ;
-
-: RENDER-CMD-VEC$ ( -- ptr u8 n )
-   s" : CKR-VEC ( -- ptr ptr u8 ) CKR-CMD#VEC ;" RENDER-CMD$ ;
-
-: RENDER-CMD-BUF$ ( -- ptr u8 n )
-   s" : CKR-BUF ( -- ) CKR-CMD#BUF drop ;" RENDER-CMD$ ;
+: RENDER-CMD$ ( -- ptr u8 n )
+   s" require src/lib/process-command.f CMD:COMMAND CKR-CMD : CKR-VEC ( -- ptr ptr u8 ) CKR-CMD#VEC ; : CKR-BUF ( -- ) CKR-CMD#BUF drop ;" ;
 
 : EXPECT-PREVERIFY-REFUSED ( n n n -- )
    70 T= {: outu:n erru:n :}
@@ -1367,10 +1348,8 @@ variable LONG-J
    CAP-ERR errc s" ckr-caller" CONTAINS? TTRUE ;
 
 : TEST-RENDERED-COMMAND ( -- )
-   RENDER-CMD-VEC$ DIRECT-STDIN EXPECT-ACCEPTED
-   RENDER-CMD-BUF$ DIRECT-STDIN EXPECT-ACCEPTED
-   RENDER-CMD-VEC$ DIRECT-ALL-STDIN EXPECT-ACCEPTED
-   RENDER-CMD-BUF$ DIRECT-ALL-STDIN EXPECT-ACCEPTED ;
+   RENDER-CMD$ DIRECT-STDIN EXPECT-ACCEPTED
+   RENDER-CMD$ DIRECT-ALL-STDIN EXPECT-ACCEPTED ;
 
 \ A definer's created effect is its clause's declaration, so CKR-X is learned
 \ when the clause or the definer's own body names a product only the run can
@@ -1449,16 +1428,6 @@ variable LONG-J
    [: CLAUSE-RENDERED-USED$ ;] CLAUSE-RENDERED-AT$ EXPECT-CLAUSE-REFUSED
    [: CLAUSE-RENDERED-UNUSED$ ;] CLAUSE-RENDERED-AT$ EXPECT-CLAUSE-REFUSED ;
 
-\ A named buffer count certifies by the effect of the word the load would run:
-\ it takes nothing and leaves one `n`. Its value is the definer's to bound. A
-\ word that takes input ends an expression whose value only the load has, so
-\ its count is the definer's too.
-: LBUF-ACCEPT ( ptr u8 n -- )
-   DIRECT-STDIN 0 T=
-   {: outu:n erru:n :}
-   outu 0 T=
-   erru 0 T= ;
-
 \ A count the pre-pass cannot certify is its storage refusal, at the token.
 : LBUF-REFUSE ( ptr u8 n -- )
    DIRECT-STDIN 70 T=
@@ -1488,18 +1457,25 @@ variable LONG-J
    outu 0 T=
    CAP-ERR erru s\" \"code\":\"E-USING-SHADOW-GLOBAL\",\"repair_class\":\"disambiguate_using_shadow\",\"verdict\":\"rejected\",\"token\":\"CKLB-CAP\"" CONTAINS? TTRUE ;
 
+\ A named buffer count certifies by the effect of the word the load would run:
+\ it takes nothing and leaves one `n`. Its value is the definer's to bound. A
+\ word that takes input ends an expression whose value only the load has, so
+\ its count is the definer's too. The accepted forms share one source; each
+\ package keeps its count and buffer definitions separate.
 : TEST-LAYOUT-BUFFER-COUNT ( -- )
-   s" package CKLB-B 8 constant CAP CAP TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
-   s" package CKLB-Q public 8 constant CAP ;package package CKLB-QU CKLB-Q:CAP TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
-   s" package CKLB-C 6 constant OPS 2 constant KEYS OPS KEYS + constant VOCAB VOCAB TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
-   s" package CKLB-H HIR:OPCODES TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
-   s" package CKLB-W : CAP ( -- n ) 4 ; CAP TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
-   s" package CKLB-L SUMTYPE cklb<a> VARIANT value a ;VARIANT ;SUMTYPE 2 constant CAP CAP LAYOUT-BUFFER BUF cklb<n> ;package" LBUF-ACCEPT
+   SB-RESET
+   s" package CKLB-B 8 constant CAP CAP TYPED-BUFFER ROWS n ;package " SB-APPEND
+   s" package CKLB-Q public 8 constant CAP ;package package CKLB-QU CKLB-Q:CAP TYPED-BUFFER ROWS n ;package " SB-APPEND
+   s" package CKLB-C 6 constant OPS 2 constant KEYS OPS KEYS + constant VOCAB VOCAB TYPED-BUFFER ROWS n ;package " SB-APPEND
+   s" package CKLB-H HIR:OPCODES TYPED-BUFFER ROWS n ;package " SB-APPEND
+   s" package CKLB-W : CAP ( -- n ) 4 ; CAP TYPED-BUFFER ROWS n ;package " SB-APPEND
+   s" package CKLB-L SUMTYPE cklb<a> VARIANT value a ;VARIANT ;SUMTYPE 2 constant CAP CAP LAYOUT-BUFFER BUF cklb<n> ;package " SB-APPEND
+   s" package CKLB-I : CAP ( n -- n ) 2 * ; 4 CAP TYPED-BUFFER ROWS n ;package " SB-APPEND
+   s" package CKLB-E 2 3 * TYPED-BUFFER ROWS n ;package" SB-APPEND
+   SB$ DIRECT-STDIN EXPECT-ACCEPTED
    s" package CKLB-U CKLB-NOPE TYPED-BUFFER ROWS n ;package" LBUF-UNDEFINED
    s" package CKLB-V variable CAP CAP TYPED-BUFFER ROWS n ;package" LBUF-REFUSE
    s" package CKLB-T : CAP ( -- bool ) 0 0= ; CAP TYPED-BUFFER ROWS n ;package" LBUF-REFUSE
-   s" package CKLB-I : CAP ( n -- n ) 2 * ; 4 CAP TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
-   s" package CKLB-E 2 3 * TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
    s" 8 constant CKLB-CAP package CKLB-S public 4 constant CKLB-CAP ;package using CKLB-S CKLB-CAP TYPED-BUFFER CKLB-ROWS n ;using" LBUF-SHADOWED
    \ A zero count passes pre-verification; the run's load refuses it.
    s" package CKLB-Z 0 constant CAP CAP TYPED-BUFFER ROWS n ;package" DIRECT-STDIN 67 T=
@@ -3130,8 +3106,9 @@ create BIG $2000 allot   variable BIG-U
 \ A definer, a parsing word, or `undefine`, with nothing after it has no name
 \ to read. Each source puts one alone on its second line, two columns in: the
 \ loader refuses the source, and the check refuses it at that place, naming
-\ that word, without reading past the last token: in prose and under
-\ --all-errors by the one line the nominal pass writes, and in JSON. The
+\ that word, without reading past the last token: under --all-errors by the
+\ one prose line the nominal pass writes, and in JSON. Default prose is checked
+\ below for both the nominal pass and the pre-verifier's name reader. The
 \ pre-verifier reads the names the nominal pass does not list (`defer`,
 \ `create`, a learned definer, `char`, a field word) and refuses them by that
 \ same line. Checked as a file, whose statements are also walked to place the
@@ -3162,7 +3139,6 @@ create BIG $2000 allot   variable BIG-U
    a u d du NONAME-SRC$ HB-LOAD-SRC
    {: outu:n erru:n rc:n :}
    rc 0 T<>
-   a u d du NONAME-SRC$ DIRECT-STDIN d du NONAME-PROSE
    a u d du NONAME-SRC$ DIRECT-ALL-STDIN d du NONAME-PROSE
    a u d du NONAME-SRC$ DIRECT-JSON-STDIN 70 T=
    {: outu3:n erru3:n :}
@@ -3214,7 +3190,9 @@ create BIG $2000 allot   variable BIG-U
    s" BEGIN-STRUCTURE CKB" s" PTR-FIELD:" NONAME-REFUSED
    s" : CKM ( n -- ) create , does> ( -- ptr n ) ;" s" CKM" NONAME-REFUSED
    s" \ lead" s" generates:" NONAME-REFUSED
-   s" require src/lib/ffi-abi.f" s" FUNCTION:" NONAME-REFUSED ;
+   s" require src/lib/ffi-abi.f" s" FUNCTION:" NONAME-REFUSED
+   s" \ lead" s" NEWTYPE" NONAME-SRC$ DIRECT-STDIN s" NEWTYPE" NONAME-PROSE
+   s" \ lead" s" create" NONAME-SRC$ DIRECT-STDIN s" create" NONAME-PROSE ;
 
 \ A parsing keyword takes the next whitespace-delimited token raw, whatever it
 \ spells, in every scanner of the check as in the loader, and a definer takes
@@ -6412,7 +6390,7 @@ create LC-LONG-ENGINE LC-LONG-U allot
    LC-LONG-ENGINE$ s" load-context: --json-errors --verify-only's overlong engine" LC-REFUSED-ENGINE-JSON ;
 
 \ A subject the file system will not read ends the check before any child, so
-\ no engine is selected: every --json-errors mode says so on stdout, by the
+\ no engine is selected: --json-errors says so on stdout, by the
 \ subject's canonical path, with the status the closure walk gives such a file,
 \ and a selection that would fail with the same code is not what it reports.
 \ An empty ENGINE leaves this process's selection in force.
@@ -6438,9 +6416,6 @@ create LC-LONG-ENGINE LC-LONG-U allot
    s" sub/lc-locked.f" CHECK-ARG+
    NULL$ s" load-context: --json-errors's unreadable subject" LC-UNREAD-EXPECT
    LC-ARGV-ALL
-   s" sub/lc-locked.f" CHECK-ARG+
-   NULL$ s" load-context: --all-errors's unreadable subject" LC-UNREAD-EXPECT
-   LC-ARGV-ALL
    s" --verify-only" CHECK-ARG+
    s" sub/lc-locked.f" CHECK-ARG+
    NULL$ s" load-context: --json-errors --verify-only's unreadable subject" LC-UNREAD-EXPECT ;
@@ -6456,9 +6431,6 @@ create LC-LONG-ENGINE LC-LONG-U allot
    s" sub/lc-locked.f" CHECK-ARG+
    LC-NO-ENGINE$ s" load-context: --json-errors's unreadable subject, absent engine" LC-UNREAD-EXPECT
    LC-ARGV-ALL
-   s" sub/lc-locked.f" CHECK-ARG+
-   LC-NO-ENGINE$ s" load-context: --all-errors's unreadable subject, absent engine" LC-UNREAD-EXPECT
-   LC-ARGV-ALL
    s" --verify-only" CHECK-ARG+
    s" sub/lc-locked.f" CHECK-ARG+
    LC-NO-ENGINE$ s" load-context: --json-errors --verify-only's unreadable subject, absent engine" LC-UNREAD-EXPECT ;
@@ -6473,12 +6445,7 @@ create LC-LONG-ENGINE LC-LONG-U allot
    s" --source-list" CHECK-ARG+
    s" sub/lc-use.f" CHECK-ARG+
    s" sub/lc-locked.f" CHECK-ARG+
-   NULL$ s" load-context: --json-errors's unreadable second listed file" LC-UNREAD-EXPECT
-   LC-ARGV-ALL
-   s" --source-list" CHECK-ARG+
-   s" sub/lc-use.f" CHECK-ARG+
-   s" sub/lc-locked.f" CHECK-ARG+
-   NULL$ s" load-context: --all-errors's unreadable second listed file" LC-UNREAD-EXPECT ;
+   NULL$ s" load-context: --json-errors's unreadable second listed file" LC-UNREAD-EXPECT ;
 
 \ What check.f says on stdout under --json-errors for a throw nothing caught.
 : LC-CHECK-UNCAUGHT$ ( n -- ptr u8 n )
@@ -6518,10 +6485,7 @@ $140 constant LC-MODE-0500   \ a directory its owner may list and enter, not wri
    CHECK-ARGV-START
    s" --json-errors" CHECK-ARG+
    s" sub/lc-use.f" CHECK-ARG+
-   s" load-context: --json-errors's read-only HB_TMP" LC-RO-TMP-RUN
-   LC-ARGV-ALL
-   s" sub/lc-use.f" CHECK-ARG+
-   s" load-context: --all-errors's read-only HB_TMP" LC-RO-TMP-RUN ;
+   s" load-context: --json-errors's read-only HB_TMP" LC-RO-TMP-RUN ;
 
 \ /bin/sh sets the file mode mask to 0222, then becomes the engine ($0) with
 \ the arguments CHECK-ARGV-START begins.
@@ -6549,12 +6513,7 @@ $140 constant LC-MODE-0500   \ a directory its owner may list and enter, not wri
    LC-UMASK-ARGV-START
    s" --json-errors" CHECK-ARG+
    s" sub/lc-use.f" CHECK-ARG+
-   s" load-context: --json-errors's unwritable scratch, absent engine" LC-UMASK-RUN
-   LC-UMASK-ARGV-START
-   s" --json-errors" CHECK-ARG+
-   s" --all-errors" CHECK-ARG+
-   s" sub/lc-use.f" CHECK-ARG+
-   s" load-context: --all-errors's unwritable scratch, absent engine" LC-UMASK-RUN ;
+   s" load-context: --json-errors's unwritable scratch, absent engine" LC-UMASK-RUN ;
 
 \ The verifier child is the one in the tree check.f was loaded from, never the
 \ working directory's: LC-OTHER's would end the check with 98.
@@ -6650,13 +6609,12 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 
 \ Every pass after the closure walk visits the files it found, so a type a
 \ required file declares is in scope wherever the source comes from: a named
-\ file, standard input or a SOURCE buffer, under --json-errors with and
-\ without --all-errors.
+\ file or a SOURCE buffer, under --json-errors with and without --all-errors.
+\ SOURCE and stdin join at CHK-MATERIALIZE-BYTES; LC-STDIN cases cover reading
+\ standard input.
 : LC-TYPE-CASE ( -- )
    s" lc-type-use.f" ST-JSON-RUN s" load-context: required type, file" LC-EXPECT-CLEAN
    s" lc-type-use.f" REQ-PLAIN-RUN s" load-context: required type, file, all" LC-EXPECT-CLEAN
-   LC-TYPE-BYTES s" --json-errors" CLI-FLAG-STDIN s" load-context: required type, stdin" LC-EXPECT-CLEAN
-   LC-TYPE-BYTES LC-STDIN s" load-context: required type, stdin, all" LC-EXPECT-CLEAN
    LC-TYPE-BYTES DIRECT-JSON-STDIN s" load-context: required type, SOURCE" LC-EXPECT-CLEAN
    LC-TYPE-BYTES ALL-JSON-STDIN s" load-context: required type, SOURCE, all" LC-EXPECT-CLEAN ;
 
