@@ -4534,28 +4534,34 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    s" 7" CMP-A-PATH 12 32 COMPLETION-ASK
    s" 8" CMP-A-PATH 12 47 COMPLETION-ASK
    SAY
-   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   CMP-A-PATH s" verified" COMPLETED
+   CMP-A-PATH 1 CLEAN
    s" 3" ITEMS-START
    s" CMPL-DEP" s" ( n -- n )" ITEM+
    s" CMPL-ONE" s" ( -- n ) \\ package cmpa" ITEM+
    ITEMS-END
-   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   CMP-A-PATH s" verified" COMPLETED
+   CMP-A-PATH 1 CLEAN
    s" 4" ITEMS-START
    s" swap" s" " ITEM+
    ITEMS-END
-   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   CMP-A-PATH s" verified" COMPLETED
+   CMP-A-PATH 1 CLEAN
    s" 5" ITEMS-START
    s" >CMPL-T" s" ( n -- cmpl-t )" ITEM+
    ITEMS-END
-   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   CMP-A-PATH s" verified" COMPLETED
+   CMP-A-PATH 1 CLEAN
    s" 6" ITEMS-START
    s" CMPL-T>N" s" ( cmpl-t -- n )" ITEM+
    ITEMS-END
-   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   CMP-A-PATH s" verified" COMPLETED
+   CMP-A-PATH 1 CLEAN
    s" 7" ITEMS-START
    s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
    ITEMS-END
-   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   CMP-A-PATH s" verified" COMPLETED
+   CMP-A-PATH 1 CLEAN
    s" 8" ITEMS-START
    s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
    ITEMS-END
@@ -4602,21 +4608,25 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    s" 5" CMP-A-PATH 12 28 COMPLETION-ASK
    s" 6" CMP-A-PATH 12 41 COMPLETION-ASK
    SAY
-   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   CMP-A-PATH s" verified" COMPLETED
+   CMP-A-PATH 1 CLEAN
    s" 3" ITEMS-START
    s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
    s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
    ITEMS-END
-   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   CMP-A-PATH s" verified" COMPLETED
+   CMP-A-PATH 1 CLEAN
    s" 4" ITEMS-START
    s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
    s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
    ITEMS-END
-   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   CMP-A-PATH s" verified" COMPLETED
+   CMP-A-PATH 1 CLEAN
    s" 5" ITEMS-START
    s" CMPQ:>CMPQ-T" s" ( n -- cmpq-t ) \\ package cmpq" ITEM+
    ITEMS-END
-   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   CMP-A-PATH s" verified" COMPLETED
+   CMP-A-PATH 1 CLEAN
    s" 6" ITEMS-START
    s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
    ITEMS-END
@@ -7087,7 +7097,8 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" 3" CANCELS
    SAY
    HEAR s" 3" -32800 REFUSED
-   TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
+   CMP-A-PATH s" verified" COMPLETED
+   CMP-A-PATH 1 CLEAN
    s" 4" ITEMS-START
    s" swap" s" " ITEM+
    ITEMS-END ;
