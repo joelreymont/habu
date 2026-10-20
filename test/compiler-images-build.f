@@ -6,14 +6,17 @@ require src/lib/executable-build.f
 
 package COMPILER-IMAGES-BUILD
 private
+: LOAD ( -- )
+   s" tools/native-build-core.f" required
+   s" test/compiler/native-host-bundle-check.f" required ;
+
 : BUILD ( -- )
    SCRIPT-ARGC 1 <> if
       s" compiler-images-build: one output directory is required" 64 die
    then
-   s" tools/native-build-core.f" required
-   s" test/compiler/native-host-bundle-check.f" required
+   ['] LOAD EXECUTABLE-BUILD:WITH
    s" 0 SCRIPT-ARGV$ NATIVE-BUILD:RUN-BUNDLE-HOST-CHECK" evaluate-closed ;
 
 ' BUILD
 ;package
-EXECUTABLE-BUILD:WITH
+execute

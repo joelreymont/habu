@@ -38,8 +38,8 @@ public
 
 : RUN ( -- )
    RESTORE-ROOT
-   \ APP-IMAGE:SAVE cleared the compile-time build scope.
-   [: ['] ORIGIN false NATIVE-BUILD:RUN ;] EXECUTABLE-BUILD:WITH ;
+   \ Target callbacks own their native scopes; the transient writer has none.
+   ['] ORIGIN false NATIVE-BUILD:RUN ;
 
 ;package
 

@@ -110,6 +110,10 @@ repeat invocation with matching inputs restores the complete image and `.map`
 sidecar from the build cache. An edit rebuilds the image; definitions whose
 dependencies still match may reuse their cached native emission. The ordinary
 loader still executes file-level initialization during a rebuild.
+Target compilation and capture run in the native build scope. Once the capture
+owns its bytes, the uncaptured source writer loads at the host's JIT tier on
+AArch64 (native tier on x86-64), then restores the previous tier. Its definitions
+use the fresh target layout and do not enter the emitted engine.
 An unchanged checked body can also be reused before the reader enters it when
 another body in the same file changes. That path requires the original body
 span, its following delimiter, the current reader behavior, and the saved

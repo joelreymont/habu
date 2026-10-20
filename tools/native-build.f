@@ -37,7 +37,7 @@ private
 \ The required driver is loaded inside the protected executable-build scope.
 \ The entry is named in a text because it resolves only after require returns.
 : BUILD ( -- )
-   s" tools/native-build-core.f" required
+   [: s" tools/native-build-core.f" required ;] EXECUTABLE-BUILD:WITH
    s" ' NATIVE-BUILD-ENTRY:ORIGIN false NATIVE-BUILD:RUN" evaluate-closed ;
 
 \ The public command owns the ordinary saved-support selection, source-input
@@ -49,7 +49,7 @@ private
    s" " 0 die ;
 
 : RUN ( -- )
-   SOURCE-ENTRY? if ['] BUILD EXECUTABLE-BUILD:WITH exit then
+   SOURCE-ENTRY? if BUILD exit then
    RUN-HB-BUILD ;
 
 ' RUN

@@ -26,7 +26,11 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/executable-build.f
-require tools/native-build-core.f
+package BUILD-PROFILE
+: LOAD ( -- ) s" tools/native-build-core.f" required ;
+' LOAD
+;package
+EXECUTABLE-BUILD:WITH
 
 package BUILD-PROFILE
 private
@@ -79,7 +83,7 @@ public
 : MAIN ( -- )
    ARGS-OK? 0= if USAGE then
    0 prof-on
-   ['] DRIVE-RC EXECUTABLE-BUILD:WITH {: rc:n :}
+   DRIVE-RC {: rc:n :}
    prof-off
    TEXT-REPORT
    JSON-REPORT

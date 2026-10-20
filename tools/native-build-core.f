@@ -1,6 +1,8 @@
-\ Shared native-build driver. Entries select and own the compilation tier.
+\ Native target compilation ends before the transient source writer loads.
 
 require tools/native-build-deps.f
+require src/lib/executable-build.f
+require src/lib/tier.f
 require src/lib/sort.f
 
 package NATIVE-BUILD
@@ -981,7 +983,7 @@ variable BUILD-INPUTS-PATH-U
    s" SOURCE-INPUT:OBSERVER-DEFAULT" OPEN-TARGET-XT
       SOURCE-RESET-XT execute ;
 
-: LOAD-SOURCE-WRITER ( -- )
+: READ-WRITER ( -- )
    \ Snapshot preparation cleared the target root from the captured image.
    TARGET-ENGINE-ROOT
    PREFIX-FILE-CACHE @ 0= if READ-SOURCE-WRITER exit then
@@ -992,20 +994,32 @@ variable BUILD-INPUTS-PATH-U
             [: WRITER-INPUTS-RESET ;] finally ;]
       NFILE-CACHE:WITH-QUIET ;
 
+\ The owned capture is already frozen. Only this uncaptured writer selects
+\ the host JIT; a caller-owned outer native scope still refuses that selection.
+variable WRITER-TIER
+: LOAD-SOURCE-WRITER ( -- )
+   tier@ WRITER-TIER !
+   [: HB-TARGET-LINUX-X86-64? if 1 else 0 then TIER:SELECT READ-WRITER ;]
+      [: WRITER-TIER @ TIER:SELECT ;] finally ;
+
+CAST: WRITER>N ( [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
+
 : WRITE-TARGET ( AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
    {: writer :}
    NATIVE-LAYOUT:CURRENT TEMP$ writer execute ;
 
 : WRITE-OWNED ( AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
    {: writer :}
+   writer WRITER>N ['] SOURCE-WRITER-DISPATCH WRITER>N = if
+      LOAD-SOURCE-WRITER
+   then
    dup writer WRITE-TARGET writer ;
 
-: EMIT-TEMP ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
-   {: query bootstrap:bool writer :}
-   AOT-CAPTURE:CODE-WINDOW query bootstrap AOT-FILE:OWN-WINDOW writer
-   ['] WRITE-OWNED catch {: rc:n :}
-   drop
-   AOT-OWNED:CLOSE
+: EMIT-TEMP ( AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
+   {: owned:AOT-OWNED:capture writer :}
+   owned writer ['] WRITE-OWNED catch {: rc:n :}
+   drop drop
+   owned AOT-OWNED:CLOSE
    rc 0<> if rc throw then
    TEMP$ CHMOD-X ;
 
@@ -1303,8 +1317,7 @@ variable SEALED-NAMES-U
    OPEN-FILE-AND-COMPILE
    FILE-INPUTS-SNAPSHOT ;
 
-: BUNDLE-FINISH ( -- )
-   BUNDLE-DIR @ BUNDLE-DIR-U @ {: dir:ptr diru:n :}
+: BUNDLE-CAPTURE ( -- AOT-OWNED:capture AOT-OWNED:capture ptr n n )
    SOURCE-CHECK @ execute
    RESET-TARGET-SOURCE
    SOURCE-CLOSE @ execute
@@ -1323,6 +1336,11 @@ variable SEALED-NAMES-U
    BUILD-NAMES
    NAMES-A@ SEALED-NAMES-A !  NAMES-U @ SEALED-NAMES-U !
    OWN-CAPTURE {: sealed:AOT-OWNED:capture :}
+   white sealed plan count ;
+
+: BUNDLE-WRITE ( AOT-OWNED:capture AOT-OWNED:capture ptr n n -- AOT-OWNED:capture AOT-OWNED:capture ptr n n )
+   {: white:AOT-OWNED:capture sealed:AOT-OWNED:capture plan:ptr count:n :}
+   BUNDLE-DIR @ BUNDLE-DIR-U @ {: dir:ptr diru:n :}
    WRITER-MACHINE-CK
    LOAD-SOURCE-WRITER
    dir diru s" hb-whitebox-source" BUNDLE-OUTPUT
@@ -1336,18 +1354,24 @@ variable SEALED-NAMES-U
    dir diru s" hb-ordinary" BUNDLE-OUTPUT
    sealed s" NATIVE-EMIT:WRITE" SOURCE-WRITER-NAMED WRITE-BUNDLE-CAPTURE
    WRITE-NAMES
+   white sealed plan count ;
+
+: BUNDLE-FINISH ( -- )
+   ['] BUNDLE-CAPTURE EXECUTABLE-BUILD:WITH
+   {: white:AOT-OWNED:capture sealed:AOT-OWNED:capture plan:ptr count:n :}
+   white sealed plan count ['] BUNDLE-WRITE catch {: rc:n :}
+   2drop drop drop
    white AOT-OWNED:CLOSE
    sealed AOT-OWNED:CLOSE
-   plan count 2 * cells munmap 0<> if E-MEM-UNMAP throw then ;
+   plan count 2 * cells munmap 0<> if E-MEM-UNMAP throw then
+   rc 0<> if rc throw then ;
 
 : REMOVE-STALE-TEMP ( -- )
    TEMP$ 2dup SYMLINK? if REMOVE-FILE exit then
    2dup EXISTS? if REMOVE-FILE else 2drop then ;
 
-CAST: WRITER>N ( [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
-
-: IMAGE-FINISH ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
-   {: query bootstrap:bool writer :}
+: IMAGE-CAPTURE ( [ n n -- n ] bool -- AOT-OWNED:capture )
+   {: query bootstrap:bool :}
    SOURCE-CHECK @ execute
    RESET-TARGET-SOURCE
    SOURCE-CLOSE @ execute
@@ -1358,17 +1382,22 @@ CAST: WRITER>N ( [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
    PREPARE-TARGET
    CAPTURE
    BUILD-NAMES
-   writer WRITER>N ['] SOURCE-WRITER-DISPATCH WRITER>N = if
-      LOAD-SOURCE-WRITER
-   then
-   query bootstrap writer EMIT-TEMP
+   AOT-CAPTURE:CODE-WINDOW query bootstrap AOT-FILE:OWN-WINDOW ;
+
+: IMAGE-INSTALL ( -- )
    SIGN-TEMP
    OUTPUT-LAUNCH-CK
    SMOKE
    PROMOTE
    WRITE-NAMES ;
 
-: DRIVE ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
+: IMAGE-FINISH ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
+   {: query bootstrap:bool writer :}
+   query bootstrap ['] IMAGE-CAPTURE EXECUTABLE-BUILD:WITH
+   writer EMIT-TEMP
+   IMAGE-INSTALL ;
+
+: READY-CAPTURE ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
    {: query bootstrap:bool writer :}
    0 PREFIX-FILE-CACHE !
    BUILD-TARGET:CURRENT RTARGET:CORE MATCH RTARGET:core-result
@@ -1385,7 +1414,12 @@ CAST: WRITER>N ( [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
    BIND-HOST-UNIT
    PREFIX-START
    OPEN-AND-COMPILE
-   query bootstrap writer IMAGE-FINISH
+   query bootstrap IMAGE-CAPTURE writer ;
+
+: DRIVE ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
+   {: query bootstrap:bool writer :}
+   query bootstrap writer ['] READY-CAPTURE EXECUTABLE-BUILD:WITH
+   EMIT-TEMP IMAGE-INSTALL
    query bootstrap writer ;
 
 \ The build proper, to an explicit output path, returning its result code.
@@ -1395,6 +1429,10 @@ CAST: WRITER>N ( [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
 \ an unconditional exit_group, so `include tools/native-build.f` has no code
 \ path back to its caller. tools/build-profile.f prints the profiler's report
 \ after the build and is that driver.
+\ A failed load reaches its policy close without passing IMAGE-CAPTURE.
+: CLEANUP-SOURCE ( -- )
+   [: RESET-TARGET-SOURCE SOURCE-CLOSE @ execute ;] EXECUTABLE-BUILD:WITH ;
+
 : RUN-READY-INNER ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
    {: query bootstrap:bool writer :}
    0 PREFIX-OBSERVING !
@@ -1406,8 +1444,7 @@ CAST: WRITER>N ( [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
    query bootstrap writer [: DRIVE ;] catch {: rc:n :}
    drop 2drop
    RESTORE-HOST-UNIT
-   RESET-TARGET-SOURCE
-   SOURCE-CLOSE @ execute
+   CLEANUP-SOURCE
    CLEANUP-RUN
    rc 0<> if s" native-build: uncaught throw code " type rc . cr then
    rc ;
@@ -1444,13 +1481,15 @@ variable READY-RC
    REMOVE-STALE-TEMP
    TEMP$ CLEANUP+
    SMOKE-DIR!
+   \ The load owns WINDOW-OPEN through WINDOW-CLOSE. Cache session setup and
+   \ reset outside it only bind loader state; finish audits and owns the window.
    s" engine" RTARGET:HOST BUILD-TARGET:CURRENT RTARGET:FOR-OUTPUT
-      ['] FILE-PREPARE ['] FILE-LOAD ['] FILE-FINISH
+      [: ['] FILE-PREPARE EXECUTABLE-BUILD:WITH ;]
+      [: ['] FILE-LOAD EXECUTABLE-BUILD:WITH ;] ['] FILE-FINISH
       BUILD-CORE:WITH {: rc:n :}
    RESTORE-HOST-UNIT
    0 PREFIX-OBSERVING !
-   RESET-TARGET-SOURCE
-   SOURCE-CLOSE @ execute
+   CLEANUP-SOURCE
    CLEANUP-RUN
    BUILD-INPUTS-RELEASE
    rc 0<> if s" native-build: uncaught throw code " type rc . cr then
@@ -1483,7 +1522,8 @@ public
    dir BUNDLE-DIR !
    diru BUNDLE-DIR-U !
    s" engine" RTARGET:HOST BUILD-TARGET:CURRENT RTARGET:FOR-OUTPUT
-      ['] BUNDLE-PREPARE ['] FILE-LOAD ['] BUNDLE-FINISH
+      [: ['] BUNDLE-PREPARE EXECUTABLE-BUILD:WITH ;]
+      [: ['] FILE-LOAD EXECUTABLE-BUILD:WITH ;] ['] BUNDLE-FINISH
       ['] BUILD-CORE:WITH WITH-TARGET-ROOT {: rc:n :}
    RESTORE-HOST-UNIT
    rc 0<> if rc throw then ;

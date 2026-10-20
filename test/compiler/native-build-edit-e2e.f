@@ -1143,11 +1143,36 @@ variable ENGINE-WHITEBOX
 \ Changing only the source writer moves the primitive entry in the newly
 \ emitted image. Unchanged definitions reuse their source compilation while
 \ the edited writer is compiled for the fresh target.
+: WRITER-RECOVERY ( -- )
+   s" tools/native-emit.f" AT S\" \nE-FS-PATH throw\n" APPEND-FILE
+   s" writer-recovery.f" AT
+   S\" 1 set-tier\nrequire tools/native-build-core.f\nrequire src/lib/executable-build.f\npackage WRITER-RECOVERY private\n: ORIGIN ( n n -- n ) code-origin ;\n: DRIVE ( -- n ) 0 SCRIPT-ARGV$ ['] ORIGIN false NATIVE-BUILD:RUN-PATH-RC ;\npublic\n: RUN ( -- )\n   tier@ {: prior:n :}\n   1 SCRIPT-ARGV$ s\" nested\" STR= if\n      ['] DRIVE EXECUTABLE-BUILD:WITH 70 <> if 76 throw then\n   else\n      DRIVE E-FS-PATH <> if 76 throw then\n   then\n   tier@ prior <> if 76 throw then\n   BUILD-TARGET:IDLE-CK\n   s\" writer recovery: ok\" type cr ;\n;package\nWRITER-RECOVERY:RUN\n"
+      WRITE-ALL
+   \ Each child needs the original donor dictionary: loading a target rewinds
+   \ its source records and installs its compiler before the writer fails.
+   s" cached/hb" s" cache" BUILD-SETUP
+   s" --load" ARG s" writer-recovery.f" ARG s" --" ARG
+   OUTPUT$ ARG s" throw" ARG
+   s" writer-throw" BUILD-RUN 0 T=
+   OUT$ s" writer recovery: ok" CONTAINS? TTRUE
+   HB-TARGET-LINUX-X86-64? if exit then
+   s" cached/hb" s" cache" BUILD-SETUP
+   s" --load" ARG s" writer-recovery.f" ARG s" --" ARG
+   OUTPUT$ ARG s" nested" ARG
+   s" writer-nested" BUILD-RUN 0 T=
+   OUT$ s" writer recovery: ok" CONTAINS? TTRUE
+   ERR$ s" executable build requires native tier 1" CONTAINS? TTRUE ;
+
 : WRITER-RELOCATION ( -- )
    T-RESET
    s" late writer definitions reuse and recompile edited source" T-LABEL
    1777 ABS-WANT !
    PREPARE
+   \ This source is loaded only after capture. Its tier must not inherit the
+   \ native-only target window's compilation scope.
+   s" tools/native-emit.f" AT
+   S\" \npackage BUILD-WRITER-TIER\npublic\n: CHECK ( -- ) HB-TARGET-LINUX-X86-64? if 1 else 0 then tier@ <> if s\" native edit: transient writer tier\" 76 die then ;\n;package\nBUILD-WRITER-TIER:CHECK\n"
+      APPEND-FILE
    false EARLY false MIDDLE false LATE
    s" base" s" cached/hb" s" cache" BUILD SUCCESS
    DEFINITION-COMPILE
@@ -1166,6 +1191,7 @@ variable ENGINE-WHITEBOX
    s" writer-cold" s" cold/hb" s" cold-cache-writer" BUILD SUCCESS
    101 201 301 RUN-IMAGE
    SAME-PRODUCT
+   WRITER-RECOVERY
    FINISH ;
 
 : HANDOVER-REFUSAL ( -- )
