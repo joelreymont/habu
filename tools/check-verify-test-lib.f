@@ -61,7 +61,7 @@
 \   the tree root or from outside the tree                                body-computed
 \   a closure wider than a fixed table is refused                         wide-closure
 \   output past 4 MiB is cut short, or puts prose on --verify-only's
-\   stderr                                              whole-output, cli-whole-output
+\   stderr                                                       cli-whole-output
 \   --verify-only drops stdin's closure, names the subject otherwise
 \   than the operation, or writes prose on stderr                         cli-file, cli-stdin
 \   --stdin-path or --verify-only is taken where it means nothing         cli-usage
@@ -200,9 +200,6 @@
 \   a name the load accepts at top level is refused                       top-accepted
 \   a type made by reached source rendering or nominal registration is
 \   refused as absent; an unrelated absence or later error is lost         type-deferred
-\
-\ `measure` prints the time of one check of a one-definition subject and of
-\ tools/check-core.f, whose closure is over thirty files.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -961,34 +958,30 @@ CK-USE-MAX 1 + constant OVER-USINGS
    0 s" wide-closure: verified" EXPECT-KIND ;
 
 
-\ More packets than OLD-CAPTURE held: every one, each complete, the last
-\ definition's among them.
-: WHOLE-OUTPUT ( -- )
-   BIG$SRC s" big.f" GUARD-MS CHECK-AS 1 s" whole-output: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ {: out:ptr outu:n :}
-   s" whole-output: past the old capture" T-LABEL outu OLD-CAPTURE > TTRUE
-   s" whole-output: each complete" T-LABEL out outu ALL-JSON? TTRUE
-   s" whole-output: every packet" T-LABEL out outu OBJECTS BIG-DEFS T=
-   s" whole-output: the last" T-LABEL
-   out outu s" word" s" cvt-b9999" PACKET SPAN:LEN 0<> TTRUE
-   \ Indexing retains a valid declaration after the same large refusal stream.
-   BIG$SRC 2drop
+\ Indexing continues after a refusal and keeps only accepted declarations.
+: INDEX ( -- )
+   0 GEN-U !
+   s\" : CVT-INDEX-ERROR ( -- n n ) 8 ;\n" GEN+
    s\" : CVT-INDEX-SURVIVOR ( -- n ) 1 ;\n" GEN+
    s\" : CVT-INDEX-MK ( n -- ) create , does> ( -- n ) @ ;\n" GEN+
    s\" : CVT-INDEX-BAD ( n -- n ) create , does> ( -- n ) @ ;\n" GEN+
    s\" TRUSTED: CVT-INDEX-TRUSTED ( -- n ) 1 ;\n" GEN+
    s\" TRUSTED: CVT-INDEX-REFUSED ( -- zzz-unknown ) ;\n" GEN+
-   0 GEN GEN-U @ s" big.f" AT$ GUARD-MS >MS CHECK:INDEX-BYTES
-   1 s" whole-output: index refused" EXPECT-KIND
-   s" whole-output: index survivor" T-LABEL
+   0 GEN GEN-U @ s" index.f" AT$ GUARD-MS >MS CHECK:INDEX-BYTES
+   1 s" index: refused" EXPECT-KIND
+   s" index: refused ordinary declaration" T-LABEL
+   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-error" PACKET SPAN:LEN 0= TTRUE
+   s" index: survivor" T-LABEL
    CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-survivor" PACKET SPAN:LEN 0<> TTRUE
-   s" whole-output: certified definer" T-LABEL
+   s" index: certified definer" T-LABEL
    CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-mk" PACKET SPAN:LEN 0<> TTRUE
    \ A certified clause cannot rescue its refused parent's kept signature.
-   s" whole-output: refused definer" T-LABEL
+   s" index: refused definer" T-LABEL
    CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-bad" PACKET SPAN:LEN 0= TTRUE
-   s" whole-output: completed trusted declaration" T-LABEL
-   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-trusted" PACKET SPAN:LEN 0<> TTRUE ;
+   s" index: completed trusted declaration" T-LABEL
+   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-trusted" PACKET SPAN:LEN 0<> TTRUE
+   s" index: refused trusted declaration" T-LABEL
+   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-refused" PACKET SPAN:LEN 0= TTRUE ;
 
 
 \ ---- loader calls ------------------------------------------------------------
@@ -1347,12 +1340,17 @@ $180000 constant LARGE-STDIN-LEN
    0 ERR erru4 s" check.f: source path exceeds capacity" CONTAINS? TTRUE ;
 
 
+\ More packets than OLD-CAPTURE held travel through the public CLI: every one,
+\ each complete, the last definition's among them.
 : CLI-WHOLE-OUTPUT ( -- )
    CLI-START s" --verify-only" ARG+ s" big.f" AT$ ARG+
    s" " CLI {: erru:n rc:n :}
    s" cli-whole-output: refused" T-LABEL rc 70 T=
+   s" cli-whole-output: past the old capture" T-LABEL erru OLD-CAPTURE > TTRUE
    s" cli-whole-output: only packets on stderr" T-LABEL 0 ERR erru ALL-JSON? TTRUE
-   s" cli-whole-output: every packet on stderr" T-LABEL 0 ERR erru OBJECTS BIG-DEFS T= ;
+   s" cli-whole-output: every packet on stderr" T-LABEL 0 ERR erru OBJECTS BIG-DEFS T=
+   s" cli-whole-output: the last" T-LABEL
+   0 ERR erru s" word" s" cvt-b9999" PACKET SPAN:LEN 0<> TTRUE ;
 
 
 \ --deadline-ms reaches the verifier's child, and the line names the deadline.
@@ -1448,15 +1446,14 @@ $180000 constant LARGE-STDIN-LEN
    s" load-parsing: all-errors follows the row" T-LABEL path pathu false true CHECK-RC 0 T= ;
 
 
-\ The exit status of check.f, given FLAG unless it is empty, on the tree's
-\ tools/source-discovery.f, run from the fixture directory, outside the tree,
-\ with check.f and the subject named by absolute paths.
-: OUTSIDE-RC ( ptr u8 n -- n ) {: flag:ptr flagu:n :}
+\ The exit status of check.f --verify-only on tools/source-discovery.f, run
+\ from the fixture directory, outside the tree, with absolute paths.
+: OUTSIDE-RC ( -- n )
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" ARG+
    s" tools/check.f" SOURCE-ROOT:CANONICAL drop ARG+
    s" --" ARG+
-   flagu 0 > if flag flagu ARG+ then
+   s" --verify-only" ARG+
    s" tools/source-discovery.f" SOURCE-ROOT:CANONICAL drop ARG+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN ROOT$ >LEN 0 OUT CAP >LEN 0 ERR CAP >LEN GUARD-MS >MS
@@ -1468,18 +1465,13 @@ $180000 constant LARGE-STDIN-LEN
 
 \ tools/source-discovery.f loads by computed paths, every one in a body
 \ (SD-CALL-ACT): calls no check makes, so the file verifies from the tree root
-\ and from outside the tree, in the operation and in each mode of check.f.
+\ in the operation and through --verify-only from outside the tree. The load
+\ order, context and package cases exercise check.f's mode composition.
 : BODY-COMPUTED ( -- )
    s" tools/source-discovery.f" TREE-BYTES s" tools/source-discovery.f" TREE$
    [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES
    0 s" body-computed: the operation" EXPECT-KIND
-   SUBJ$ {: path:ptr pathu:n :}
-   s" body-computed: verify-only from the root" T-LABEL path pathu true false CHECK-RC 0 T=
-   s" body-computed: a check from the root" T-LABEL path pathu false false CHECK-RC 0 T=
-   s" body-computed: all errors from the root" T-LABEL path pathu false true CHECK-RC 0 T=
-   s" body-computed: verify-only from outside" T-LABEL s" --verify-only" OUTSIDE-RC 0 T=
-   s" body-computed: a check from outside" T-LABEL s" " OUTSIDE-RC 0 T=
-   s" body-computed: all errors from outside" T-LABEL s" --all-errors" OUTSIDE-RC 0 T= ;
+   s" body-computed: verify-only from outside" T-LABEL OUTSIDE-RC 0 T= ;
 
 : DUPLICATE-AFTER-PACKET ( -- )
    s" order-errors.f"
@@ -4583,20 +4575,10 @@ variable SEEN-U
    0 ERR erru s" candidate" CONTAINS? or TFALSE ;
 
 
-\ ---- the measurement -------------------------------------------------------
+\ ---- case timings ----------------------------------------------------------
 
 : MS. ( -- )
    mono-ns START-NS @ - PROC-NS-PER-MS / FMT:.INT s"  ms" type ;
-
-
-: MEASURE ( -- )
-   mono-ns START-NS !
-   DEP$SRC s" dep.f" GUARD-MS CHECK-AS KIND
-   s" measure: one-definition file " type MS. s" , outcome " type FMT:.INT cr
-   s" tools/check-core.f" TREE-BYTES s" tools/check-core.f" TREE$
-   mono-ns START-NS !
-   [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES KIND
-   s" measure: tools/check-core.f " type MS. s" , outcome " type FMT:.INT cr ;
 
 
 : RUN-CASE ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
@@ -4640,7 +4622,7 @@ public
    s" unreadable-dependency" [: UNREADABLE-DEPENDENCY ;] RUN-CASE
    s" long-resolved" [: LONG-RESOLVED ;] RUN-CASE
    s" wide-closure" [: WIDE-CLOSURE ;] RUN-CASE
-   s" whole-output" [: WHOLE-OUTPUT ;] RUN-CASE
+   s" index" [: INDEX ;] RUN-CASE
    s" definitions" [: DEFINITIONS ;] RUN-CASE
    s" definitions-refused" [: DEFINITIONS-REFUSED ;] RUN-CASE
    s" definitions-undefine" [: DEFINITIONS-UNDEFINE ;] RUN-CASE
@@ -4738,7 +4720,6 @@ public
    s" top-defer-word" [: TOP-DEFER-WORD ;] RUN-CASE
    s" top-defer-comment" [: TOP-DEFER-COMMENT ;] RUN-CASE
    s" top-accepted" [: TOP-ACCEPTED ;] RUN-CASE
-   MEASURE
    ROOT$ REMOVE-TREE
    T-REPORT
    s" check-verify-test: ok" type cr ;
