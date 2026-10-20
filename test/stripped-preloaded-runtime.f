@@ -32,45 +32,20 @@ variable IMAGE-U
    then
    S\" FUNCTION: PID getpid ( -- i32 ) ;FUNCTION\n: PRE-CAP ( -- ) PID 0 > 0= if s\" stripped-preloaded-runtime: pre-capture pid\" 74 die then ;\nPRE-CAP\n"
    SUBJECT-SRC CODEGEN:APPEND-STRING
-   S\" package STRIPPED-PRELOADED-RUNTIME-SUBJECT\nprivate\nTASK:#USER CELL TASK:+USER USER-SLOT drop\nvariable USER-CEILING\nTASK:#USER USER-CEILING !\nvariable SHORT-ID\nvariable LONG-ID\ns\" /tmp/habu-ffi-capture-path\" FFI:LIBRARY-PATH SHORT-ID !\ns\" /tmp/habu-ffi-capture-path-extra\" FFI:LIBRARY-PATH LONG-ID !\ncreate EXTRA-PATH 64 allot\nvariable PREFIX-U\nvariable EXTRA-N\n: FILL-PATHS ( -- )\n   s\" /tmp/habu-ffi-extra-\" dup PREFIX-U ! EXTRA-PATH swap BYTE-COPY\n   270 0 ?do\n      EXTRA-PATH PREFIX-U @ + {: dst:ptr :}\n      EXTRA-N @ {: idx:n :}\n      idx 100 / [char] 0 + dst c!\n      idx 10 / 10 mod [char] 0 + dst 1+ c!\n      idx 10 mod [char] 0 + dst 2 + c!\n      EXTRA-PATH PREFIX-U @ 3 + FFI:LIBRARY-PATH drop\n      1 EXTRA-N +!\n   loop ;\npublic\n: RUN ( -- )\n   PID 0 > 0= if s\" stripped-preloaded-runtime: pid\" 74 die then\n   FILL-PATHS\n   depth 0 <> if s\" stripped-preloaded-runtime: ffi stack\" 74 die then\n   s\" /tmp/habu-ffi-capture-path\" FFI:LIBRARY-PATH SHORT-ID @ <> if s\" stripped-preloaded-runtime: short path\" 74 die then\n   s\" /tmp/habu-ffi-capture-path-extra\" FFI:LIBRARY-PATH LONG-ID @ <> if s\" stripped-preloaded-runtime: long path\" 74 die then\n   PID 0 > 0= if s\" stripped-preloaded-runtime: full pid\" 74 die then\n   TASK:#USER USER-CEILING @ <> if s\" stripped-preloaded-runtime: task user\" 74 die then\n   s\" stripped-preloaded-runtime: ok\" type cr ;\n;package\n: MAIN ( -- ) STRIPPED-PRELOADED-RUNTIME-SUBJECT:RUN ;\n"
+   S\" package STRIPPED-PRELOADED-RUNTIME-SUBJECT\nprivate\nTASK:#USER CELL TASK:+USER USER-SLOT drop\nvariable USER-CEILING\nTASK:#USER USER-CEILING !\nvariable SHORT-ID\nvariable LONG-ID\ns\" /tmp/habu-ffi-capture-path\" FFI:LIBRARY-PATH SHORT-ID !\ns\" /tmp/habu-ffi-capture-path-extra\" FFI:LIBRARY-PATH LONG-ID !\ncreate EXTRA-PATH 64 allot\nvariable PREFIX-U\nvariable EXTRA-N\n: FILL-PATHS ( -- )\n   s\" /tmp/habu-ffi-extra-\" dup PREFIX-U ! EXTRA-PATH swap BYTE-COPY\n   270 0 ?do\n      EXTRA-PATH PREFIX-U @ + {: dst:ptr :}\n      EXTRA-N @ {: idx:n :}\n      idx 100 / [char] 0 + dst c!\n      idx 10 / 10 mod [char] 0 + dst 1+ c!\n      idx 10 mod [char] 0 + dst 2 + c!\n      EXTRA-PATH PREFIX-U @ 3 + FFI:LIBRARY-PATH drop\n      1 EXTRA-N +!\n   loop ;\npublic\n: RUN ( -- )\n   PID 0 > 0= if s\" stripped-preloaded-runtime: pid\" 74 die then\n   FILL-PATHS\n   depth 0 <> if s\" stripped-preloaded-runtime: ffi stack\" 74 die then\n   s\" /tmp/habu-ffi-capture-path\" FFI:LIBRARY-PATH SHORT-ID @ <> if s\" stripped-preloaded-runtime: short path\" 74 die then\n   s\" /tmp/habu-ffi-capture-path-extra\" FFI:LIBRARY-PATH LONG-ID @ <> if s\" stripped-preloaded-runtime: long path\" 74 die then\n   PID 0 > 0= if s\" stripped-preloaded-runtime: full pid\" 74 die then\n   TASK:#USER USER-CEILING @ <> if s\" stripped-preloaded-runtime: task user\" 74 die then\n   s\" stripped-preloaded-runtime: ok\" type cr ;\n;package\n: MAIN ( -- )\n   SCRIPT-ARGC 0 > if\n      0 SCRIPT-ARGV$ s\" bounds\" STR= if DATA-SIZE allot exit then\n   then\n   STRIPPED-PRELOADED-RUNTIME-SUBJECT:RUN ;\n"
    SUBJECT-SRC CODEGEN:APPEND-STRING
    SUBJECT$ SUBJECT-SRC CODEGEN:CONTENTS WRITE-ALL ;
 
 : WRITE-PREWINDOW-SUBJECT ( -- )
    SUBJECT-SRC CODEGEN:RESET
-   S\" require src/lib/ffi-abi.f\n" SUBJECT-SRC CODEGEN:APPEND-STRING
-   HB-TARGET-MACOS? if
-      S\" LIBRARY /usr/lib/libSystem.B.dylib\n" SUBJECT-SRC CODEGEN:APPEND-STRING
-   else
-      S\" LIBRARY libc.so.6\n" SUBJECT-SRC CODEGEN:APPEND-STRING
-   then
-   S\" FUNCTION: PID getpid ( -- i32 ) ;FUNCTION\n: MAIN ( -- ) PID 0 > 0= if s\" stripped-preloaded-runtime: pid\" 74 die then s\" stripped-preloaded-runtime: ok\" type cr ;\n"
-   SUBJECT-SRC CODEGEN:APPEND-STRING
+   S\" require src/lib/ffi-abi.f\nFFI:IMAGE-MARK 2drop drop constant PRE-FN-END\nFFI:IMAGE-MARK 2drop nip constant PRE-LIB-END\nPROCESS-SYMBOLS\nFUNCTION: PID getpid ( -- i32 ) ;FUNCTION\n: MAIN ( -- )\n   FFI:RESET PRE-FN-END 270 - FFI:CALL 0 <= if s\" stripped-preloaded-runtime: first preloaded row\" 74 die then\n   FFI:RESET PRE-FN-END 1- FFI:CALL 0 <= if s\" stripped-preloaded-runtime: last preloaded row\" 74 die then\n   PID 0 > 0= if s\" stripped-preloaded-runtime: new row\" 74 die then\n   depth 0 <> if s\" stripped-preloaded-runtime: function stack\" 74 die then\n   s\" /tmp/habu-ffi-prewindow-missing-0\" FFI:LIBRARY-PATH PRE-LIB-END 270 - 1+ <> if s\" stripped-preloaded-runtime: first preloaded path\" 74 die then\n   s\" /tmp/habu-ffi-prewindow-missing-269\" FFI:LIBRARY-PATH PRE-LIB-END <> if s\" stripped-preloaded-runtime: last preloaded path\" 74 die then\n   FFI:IMAGE-MARK 2drop nip {: before:n :}\n   s\" /tmp/habu-ffi-runtime-new\" FFI:LIBRARY-PATH before 1+ <> if s\" stripped-preloaded-runtime: new path\" 74 die then\n   PID 0 > 0= if s\" stripped-preloaded-runtime: pid\" 74 die then\n   depth 0 <> if s\" stripped-preloaded-runtime: path stack\" 74 die then\n   s\" stripped-preloaded-runtime: ok\" type cr ;\n" SUBJECT-SRC CODEGEN:APPEND-STRING
    SUBJECT$ SUBJECT-SRC CODEGEN:CONTENTS WRITE-ALL ;
-
-: WRITE-FUNCTION-SUBJECT ( -- )
-   SUBJECT$ S\" require src/lib/ffi-abi.f\nFFI:IMAGE-MARK 2drop drop constant PRE-FN-END\nPROCESS-SYMBOLS\nFUNCTION: PID getpid ( -- i32 ) ;FUNCTION\n: MAIN ( -- )\n   FFI:RESET PRE-FN-END 270 - FFI:CALL 0 <= if s\" stripped-preloaded-runtime: first preloaded row\" 74 die then\n   FFI:RESET PRE-FN-END 1- FFI:CALL 0 <= if s\" stripped-preloaded-runtime: last preloaded row\" 74 die then\n   PID 0 > 0= if s\" stripped-preloaded-runtime: new row\" 74 die then\n   depth 0 <> if s\" stripped-preloaded-runtime: function stack\" 74 die then\n   s\" stripped-preloaded-runtime: ok\" type cr ;\n" WRITE-ALL ;
-
-: WRITE-PATH-SUBJECT ( -- )
-   SUBJECT-SRC CODEGEN:RESET
-   S\" require src/lib/ffi-abi.f\nFFI:IMAGE-MARK 2drop nip constant PRE-LIB-END\n" SUBJECT-SRC CODEGEN:APPEND-STRING
-   HB-TARGET-MACOS? if
-      S\" LIBRARY /usr/lib/libSystem.B.dylib\n" SUBJECT-SRC CODEGEN:APPEND-STRING
-   else
-      S\" LIBRARY libc.so.6\n" SUBJECT-SRC CODEGEN:APPEND-STRING
-   then
-   S\" FUNCTION: PID getpid ( -- i32 ) ;FUNCTION\n: MAIN ( -- )\n   s\" /tmp/habu-ffi-prewindow-missing-0\" FFI:LIBRARY-PATH PRE-LIB-END 270 - 1+ <> if s\" stripped-preloaded-runtime: first preloaded path\" 74 die then\n   s\" /tmp/habu-ffi-prewindow-missing-269\" FFI:LIBRARY-PATH PRE-LIB-END <> if s\" stripped-preloaded-runtime: last preloaded path\" 74 die then\n   FFI:IMAGE-MARK 2drop nip {: before:n :}\n   s\" /tmp/habu-ffi-runtime-new\" FFI:LIBRARY-PATH before 1+ <> if s\" stripped-preloaded-runtime: new path\" 74 die then\n   PID 0 > 0= if s\" stripped-preloaded-runtime: pid\" 74 die then\n   depth 0 <> if s\" stripped-preloaded-runtime: path stack\" 74 die then\n   s\" stripped-preloaded-runtime: ok\" type cr ;\n" SUBJECT-SRC CODEGEN:APPEND-STRING
-   SUBJECT$ SUBJECT-SRC CODEGEN:CONTENTS WRITE-ALL ;
-
-: WRITE-BOUNDS-SUBJECT ( -- )
-   SUBJECT$ S\" : MAIN ( -- ) DATA-SIZE allot ;\n" WRITE-ALL ;
 
 : MAKER$ ( -- ptr u8 n )
    S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" ;
-: FUNCTION-MAKER$ ( -- ptr u8 n )
-   S\" require test/ffi-growth-prewindow-functions.f\nrequire tools/aot-build-open.f\nrequire test/ffi-growth-linker.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" ;
-: PATH-MAKER$ ( -- ptr u8 n )
-   S\" require test/ffi-growth-prewindow-paths.f\nrequire tools/aot-build-open.f\nrequire test/ffi-growth-linker.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" ;
+: PREWINDOW-MAKER$ ( -- ptr u8 n )
+   \ Both tables start before the window and move again after it closes.
+   S\" require test/ffi-growth-prewindow-functions.f\nrequire test/ffi-growth-prewindow-paths.f\nrequire tools/aot-build-open.f\nrequire test/ffi-growth-linker.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" ;
 
 : BUILD-SOURCE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n maker:ptr makeru:n :}
    PRELOADED-ENGINE:LINKER$ {: linker:ptr linkeru:n :}
@@ -102,9 +77,9 @@ variable IMAGE-U
    s" " s" ffi growth image stderr" GE-EXPECT-ERR ;
 
 : RUN-BOUNDS ( -- )
-   WRITE-BOUNDS-SUBJECT MAKER$ BUILD
+   \ The normal product needs a fresh execution because allot exits the process.
    GE-HB-RESET
-   IMAGE$ GE-ARGV+
+   IMAGE$ GE-ARGV+ s" bounds" GE-ARG+
    IMAGE$ TIMEOUT-MS GE-RUN-ENV
    76 s" stripped data-space bound exit" GE-EXPECT-RC
    s" hb: data space out of range: DP " s" stripped data-space bound diagnostic" GE-EXPECT-ERR-HAS
@@ -112,13 +87,13 @@ variable IMAGE-U
    S\"  bytes\n" s" stripped data-space bound units and newline" GE-EXPECT-ERR-HAS ;
 
 : BODY ( -- )
-   PREPARE WRITE-FUNCTION-SUBJECT
-   FUNCTION-MAKER$ BUILD RUN-IMAGE
-   WRITE-PATH-SUBJECT
-   PATH-MAKER$ BUILD RUN-IMAGE
+   PREPARE WRITE-PREWINDOW-SUBJECT
+   PREWINDOW-MAKER$ BUILD RUN-IMAGE
+   \ Keep application declarations and runtime growth separate from prewindow rows.
    WRITE-SUBJECT MAKER$ BUILD RUN-IMAGE
-   RUN-GROWTH-IMAGE
    RUN-BOUNDS
+   \ This product grows both tables while the application window is open.
+   RUN-GROWTH-IMAGE
    s" PASS: stripped preloaded runtime" type cr ;
 
 public
